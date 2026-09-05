@@ -28,15 +28,16 @@ const (
 )
 
 type UpstreamModelMetadata struct {
-	ID                       string   `json:"id"`
-	DisplayName              string   `json:"display_name,omitempty"`
-	Description              string   `json:"description,omitempty"`
-	Reasoning                *bool    `json:"reasoning,omitempty"`
-	DefaultReasoningLevel    string   `json:"default_reasoning_level,omitempty"`
-	SupportedReasoningLevels []string `json:"supported_reasoning_levels,omitempty"`
-	InputModalities          []string `json:"input_modalities,omitempty"`
-	ContextWindow            int64    `json:"context_window,omitempty"`
-	MaxOutputTokens          int64    `json:"max_output_tokens,omitempty"`
+	ID                       string                     `json:"id"`
+	DisplayName              string                     `json:"display_name,omitempty"`
+	Description              string                     `json:"description,omitempty"`
+	Reasoning                *bool                      `json:"reasoning,omitempty"`
+	DefaultReasoningLevel    string                     `json:"default_reasoning_level,omitempty"`
+	SupportedReasoningLevels []string                   `json:"supported_reasoning_levels,omitempty"`
+	InputModalities          []string                   `json:"input_modalities,omitempty"`
+	ContextWindow            int64                      `json:"context_window,omitempty"`
+	MaxOutputTokens          int64                      `json:"max_output_tokens,omitempty"`
+	CodexToolCapabilities    map[string]json.RawMessage `json:"codex_tool_capabilities,omitempty"`
 }
 
 type UpstreamModelMetadataSnapshot struct {
@@ -207,6 +208,7 @@ func (s *AccountTestService) FetchUpstreamSupportedModels(ctx context.Context, a
 // untouched.
 func (s *AccountTestService) SyncUpstreamModelCatalog(ctx context.Context, account *Account) (*UpstreamModelCatalog, error) {
 	models, body, err := s.fetchUpstreamModelList(ctx, account)
+	liveListAvailable := err == nil
 	if err != nil {
 		configuredModels := configuredUpstreamModelsForCapabilitySync(account)
 		if !upstreamModelListEndpointUnsupported(err) || len(configuredModels) == 0 {
@@ -261,6 +263,31 @@ func (s *AccountTestService) SyncUpstreamModelCatalog(ctx context.Context, accou
 	completeMetadata := completeUpstreamModelMetadataSubset(capabilityIDs, catalog.Metadata)
 	persistedCapabilities := false
 	if len(completeMetadata) > 0 && account != nil && account.ID > 0 && s.accountRepo != nil {
+		// Retain known metadata only for models still listed or explicitly mapped.
+		if previous := account.GetUpstreamModelMetadataSnapshot(); previous != nil {
+			retainedModels := capabilityIDs
+			if !liveListAvailable {
+				retainedModels = append([]string(nil), capabilityIDs...)
+				for modelID := range previous.Models {
+					retainedModels = append(retainedModels, modelID)
+				}
+			}
+			for _, modelID := range retainedModels {
+				old, exists := previous.Models[modelID]
+				if !exists {
+					continue
+				}
+				if entry, ok := completeMetadata[modelID]; ok {
+					if entry.CodexToolCapabilities == nil {
+						entry.CodexToolCapabilities = make(map[string]json.RawMessage)
+					}
+					applyCodexToolCapabilities(entry.CodexToolCapabilities, old.CodexToolCapabilities, false)
+					completeMetadata[modelID] = entry
+				} else {
+					completeMetadata[modelID] = old
+				}
+			}
+		}
 		snapshot := UpstreamModelMetadataSnapshot{
 			Source:   source,
 			SyncedAt: time.Now().UTC().Format(time.RFC3339),
@@ -360,6 +387,7 @@ func upstreamModelMetadataIsUseful(metadata UpstreamModelMetadata) bool {
 		metadata.Reasoning != nil ||
 		len(metadata.SupportedReasoningLevels) > 0 ||
 		len(metadata.InputModalities) > 0 ||
+		len(metadata.CodexToolCapabilities) > 0 ||
 		metadata.ContextWindow > 0 ||
 		metadata.MaxOutputTokens > 0
 }
@@ -1249,6 +1277,11 @@ func extractUpstreamModelCatalog(body []byte, grok bool) ([]string, map[string]U
 		}
 		models = append(models, modelID)
 		entry := upstreamMetadataFromCapabilityEntry(modelID, capability)
+		var fields map[string]json.RawMessage
+		if err := json.Unmarshal(raw, &fields); err == nil {
+			entry.CodexToolCapabilities = make(map[string]json.RawMessage)
+			applyCodexToolCapabilities(entry.CodexToolCapabilities, fields, true)
+		}
 		if upstreamModelMetadataIsUseful(entry) {
 			metadata[modelID] = entry
 		}

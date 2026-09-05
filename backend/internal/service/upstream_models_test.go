@@ -545,8 +545,12 @@ func TestSyncUpstreamModelCatalogUsesConfiguredModelsWhenListEndpointUnsupported
 		},
 	}
 
+	account.SetUpstreamModelMetadataSnapshot(UpstreamModelMetadataSnapshot{Models: map[string]UpstreamModelMetadata{
+		"old-live-model": {ID: "old-live-model", ContextWindow: 256000},
+	}})
 	catalog, err := svc.SyncUpstreamModelCatalog(context.Background(), account)
 	require.NoError(t, err)
+	require.Contains(t, account.GetUpstreamModelMetadataSnapshot().Models, "old-live-model", "an unavailable model-list endpoint is not evidence of removal")
 	require.Equal(t, []string{"glm-5.3"}, catalog.Models)
 	require.Empty(t, catalog.Warnings)
 	require.Len(t, upstream.requests, 2)
@@ -1112,4 +1116,72 @@ func TestSyncUpstreamModelCatalogEnrichesConfiguredMappingModelsMissingFromUpstr
 	require.NoError(t, json.Unmarshal(encoded, &snapshot))
 	require.Contains(t, snapshot.Models, "gpt-5.6-sol")
 	require.Contains(t, snapshot.Models, "gpt-6-astra")
+}
+
+func TestSyncUpstreamModelCatalogAstraPartialRefreshPreservesKnownCapabilities(t *testing.T) {
+	upstream := &httpUpstreamRecorder{responses: []*http.Response{
+		{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(`{"data":[
+			{"id":"gpt-6-astra","supports_search_tool":false,"apply_patch_tool_type":null},
+			{"id":"still-listed"},{"id":"gpt-image-2"}
+		]}`))},
+		{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(`{"openai":{"id":"openai","models":{
+			"gpt-6-astra":{"reasoning":true,"reasoning_options":[{"type":"effort","values":["low","medium","high","xhigh","max"]}],"modalities":{"input":["text","image"]},"limit":{"context":1050000,"output":128000}},
+			"mapped-only":{"reasoning":false,"modalities":{"input":["text"]},"limit":{"context":64000}},
+			"gpt-image-2":{"reasoning":false,"modalities":{"input":["text","image"]},"limit":{"context":0}}
+		}}}`))},
+	}}
+	repo := &upstreamModelMetadataRepoStub{}
+	svc := &AccountTestService{accountRepo: repo, httpUpstream: upstream, cfg: upstreamModelSyncTestConfig()}
+	account := &Account{ID: 114, Platform: PlatformOpenAI, Type: AccountTypeAPIKey,
+		Credentials: map[string]any{"api_key": "test", "base_url": "https://api.openai.com/v1",
+			"model_mapping": map[string]any{"public-model": "mapped-only"}},
+	}
+	old := UpstreamModelMetadata{ID: "still-listed", ContextWindow: 256000}
+	account.SetUpstreamModelMetadataSnapshot(UpstreamModelMetadataSnapshot{Models: map[string]UpstreamModelMetadata{
+		"still-listed": old, "removed": {ID: "removed", ContextWindow: 128000},
+		"gpt-6-astra": {ID: "gpt-6-astra", CodexToolCapabilities: map[string]json.RawMessage{
+			"supports_search_tool": json.RawMessage("true"), "apply_patch_tool_type": json.RawMessage(`"freeform"`),
+			"comp_hash": json.RawMessage(`"3000"`),
+		}},
+	}})
+
+	catalog, err := svc.SyncUpstreamModelCatalog(context.Background(), account)
+	require.NoError(t, err)
+	require.Equal(t, UpstreamModelMetadataPartialCode, catalog.Warnings[0].Code)
+	require.NotContains(t, catalog.Models, "mapped-only", "capability enrichment must not change discovery")
+	snapshot := account.GetUpstreamModelMetadataSnapshot()
+	require.Equal(t, old, snapshot.Models["still-listed"])
+	require.NotContains(t, snapshot.Models, "removed")
+	require.NotContains(t, snapshot.Models, "gpt-image-2")
+	require.Contains(t, snapshot.Models, "mapped-only")
+	astra := snapshot.Models["gpt-6-astra"]
+	require.Equal(t, int64(1050000), astra.ContextWindow)
+	require.Equal(t, []string{"low", "medium", "high", "xhigh", "max"}, astra.SupportedReasoningLevels)
+	require.JSONEq(t, "false", string(astra.CodexToolCapabilities["supports_search_tool"]))
+	require.JSONEq(t, "null", string(astra.CodexToolCapabilities["apply_patch_tool_type"]))
+	require.JSONEq(t, `"3000"`, string(astra.CodexToolCapabilities["comp_hash"]))
+	require.NotNil(t, repo.updates)
+}
+
+func TestMatchModelsDevProviderOfficialHostsWithoutAPI(t *testing.T) {
+	registry := map[string]modelsDevProvider{
+		"openai": {ID: "openai", Models: map[string]modelsDevModel{"gpt-6-astra": {ID: "gpt-6-astra"}}},
+		"relay":  {ID: "relay", API: "https://relay.example/v1"},
+	}
+	for _, baseURL := range []string{"https://api.openai.com/v1", "https://chatgpt.com/backend-api/codex"} {
+		provider, ok := matchModelsDevProvider(registry, baseURL)
+		require.True(t, ok)
+		require.Equal(t, "openai", provider.ID)
+	}
+	for _, baseURL := range []string{"https://api.openai.com.evil.example/v1", "https://unknown.example/v1"} {
+		_, ok := matchModelsDevProvider(registry, baseURL)
+		require.False(t, ok)
+	}
+	provider, ok := matchModelsDevProvider(registry, "https://relay.example/v1")
+	require.True(t, ok)
+	require.Equal(t, "relay", provider.ID)
+	metadata := map[string]UpstreamModelMetadata{"gpt-6-astra": {
+		Reasoning: new(bool), InputModalities: []string{"text"}, ContextWindow: 1050000,
+	}}
+	require.False(t, upstreamCatalogNeedsRegistry(capabilitySyncModelIDs([]string{"gpt-6-astra", "gpt-image-2"}), metadata))
 }
