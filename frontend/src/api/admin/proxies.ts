@@ -8,6 +8,10 @@ import type {
   Proxy,
   ProxyAccountSummary,
   ProxyQualityCheckResult,
+  ProxyQualityPolicyApplyRequest,
+  ProxyQualityPolicyApplyResult,
+  ProxySubscriptionImportRequest,
+  ProxySubscriptionImportResult,
   CreateProxyRequest,
   UpdateProxyRequest,
   PaginatedResponse,
@@ -156,6 +160,16 @@ export async function checkProxyQuality(id: number): Promise<ProxyQualityCheckRe
   return data
 }
 
+export async function applyQualityPolicy(
+  payload: ProxyQualityPolicyApplyRequest
+): Promise<ProxyQualityPolicyApplyResult> {
+  const { data } = await apiClient.post<ProxyQualityPolicyApplyResult>(
+    '/admin/proxies/apply-quality-policy',
+    payload
+  )
+  return data
+}
+
 /**
  * Get proxy usage statistics
  * @param id - Proxy ID
@@ -209,6 +223,16 @@ export async function batchCreate(
     created: number
     skipped: number
   }>('/admin/proxies/batch', { proxies })
+  return data
+}
+
+export async function importSubscription(
+  payload: ProxySubscriptionImportRequest
+): Promise<ProxySubscriptionImportResult> {
+  const { data } = await apiClient.post<ProxySubscriptionImportResult>(
+    '/admin/proxies/import-subscription',
+    payload
+  )
   return data
 }
 
@@ -266,9 +290,11 @@ export const proxiesAPI = {
   toggleStatus,
   testProxy,
   checkProxyQuality,
+  applyQualityPolicy,
   getStats,
   getProxyAccounts,
   batchCreate,
+  importSubscription,
   batchDelete,
   exportData,
   importData

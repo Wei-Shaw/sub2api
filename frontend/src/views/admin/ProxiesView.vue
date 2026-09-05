@@ -65,6 +65,15 @@
               {{ t('admin.proxies.batchQualityCheck') }}
             </button>
             <button
+              @click="openQualityPolicyDialog"
+              :disabled="qualityPolicyApplying || batchQualityChecking || loading"
+              class="btn btn-secondary"
+              :title="t('admin.proxies.qualityPolicyApply')"
+            >
+              <Icon name="shield" size="md" class="mr-2" :class="qualityPolicyApplying ? 'animate-pulse' : ''" />
+              {{ t('admin.proxies.qualityPolicyApply') }}
+            </button>
+            <button
               @click="openBatchDelete"
               :disabled="selectedCount === 0"
               class="btn btn-danger"
@@ -75,6 +84,9 @@
             </button>
             <button @click="showImportData = true" class="btn btn-secondary">
               {{ t('admin.proxies.dataImport') }}
+            </button>
+            <button @click="showSubscriptionImport = true" class="btn btn-secondary">
+              {{ t('admin.proxies.subscriptionImport') }}
             </button>
             <button @click="showExportDataDialog = true" class="btn btn-secondary">
               {{ selectedCount > 0 ? t('admin.proxies.dataExportSelected') : t('admin.proxies.dataExport') }}
@@ -841,6 +853,128 @@
     />
 
     <BaseDialog
+      :show="showSubscriptionImport"
+      :title="t('admin.proxies.subscriptionImportTitle')"
+      width="normal"
+      @close="closeSubscriptionImport"
+    >
+      <form id="subscription-import-form" class="space-y-5" @submit.prevent="handleSubscriptionImport">
+        <div>
+          <label class="input-label">{{ t('admin.proxies.subscriptionUrl') }}</label>
+          <input
+            v-model="subscriptionImportForm.url"
+            type="url"
+            class="input"
+            :placeholder="t('admin.proxies.subscriptionUrlPlaceholder')"
+          />
+          <p class="input-hint mt-1">{{ t('admin.proxies.subscriptionUrlHint') }}</p>
+        </div>
+        <div>
+          <label class="input-label">{{ t('admin.proxies.subscriptionContent') }}</label>
+          <textarea
+            v-model="subscriptionImportForm.content"
+            rows="8"
+            class="input font-mono text-sm"
+            :placeholder="t('admin.proxies.subscriptionContentPlaceholder')"
+          ></textarea>
+          <p class="input-hint mt-1">{{ t('admin.proxies.subscriptionContentHint') }}</p>
+        </div>
+        <div>
+          <label class="input-label">{{ t('admin.proxies.subscriptionNamePrefix') }}</label>
+          <input
+            v-model="subscriptionImportForm.name_prefix"
+            type="text"
+            class="input"
+            :placeholder="t('admin.proxies.subscriptionNamePrefixPlaceholder')"
+          />
+        </div>
+        <div>
+          <label class="input-label">{{ t('admin.proxies.subscriptionQualityPolicy') }}</label>
+          <select v-model="subscriptionImportForm.quality_policy" class="input">
+            <option value="disable_d">{{ t('admin.proxies.subscriptionQualityDisableD') }}</option>
+            <option value="disable_c_or_below">{{ t('admin.proxies.subscriptionQualityDisableCOrBelow') }}</option>
+            <option value="disable_b_or_below">{{ t('admin.proxies.subscriptionQualityDisableBOrBelow') }}</option>
+            <option value="none">{{ t('admin.proxies.subscriptionQualityNone') }}</option>
+          </select>
+          <p class="input-hint mt-1">{{ t('admin.proxies.subscriptionQualityPolicyHint') }}</p>
+        </div>
+        <div class="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800 dark:border-amber-700 dark:bg-amber-900/30 dark:text-amber-200">
+          {{ t('admin.proxies.subscriptionSupportedHint') }}
+        </div>
+      </form>
+      <template #footer>
+        <div class="flex justify-end gap-3">
+          <button type="button" class="btn btn-secondary" @click="closeSubscriptionImport">
+            {{ t('common.cancel') }}
+          </button>
+          <button
+            type="submit"
+            form="subscription-import-form"
+            class="btn btn-primary"
+            :disabled="submitting || (!subscriptionImportForm.url.trim() && !subscriptionImportForm.content.trim())"
+          >
+            <svg
+              v-if="submitting"
+              class="-ml-1 mr-2 h-4 w-4 animate-spin"
+              fill="none"
+              viewBox="0 0 24 24"
+            >
+              <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+              <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+            </svg>
+            {{ submitting ? t('admin.proxies.importing') : t('admin.proxies.subscriptionImportButton') }}
+          </button>
+        </div>
+      </template>
+    </BaseDialog>
+
+    <BaseDialog
+      :show="showQualityPolicyDialog"
+      :title="t('admin.proxies.qualityPolicyTitle')"
+      width="normal"
+      @close="closeQualityPolicyDialog"
+    >
+      <form id="quality-policy-form" class="space-y-5" @submit.prevent="handleApplyQualityPolicy">
+        <div>
+          <label class="input-label">{{ t('admin.proxies.qualityPolicy') }}</label>
+          <select v-model="qualityPolicyForm.quality_policy" class="input">
+            <option value="disable_d">{{ t('admin.proxies.subscriptionQualityDisableD') }}</option>
+            <option value="disable_c_or_below">{{ t('admin.proxies.subscriptionQualityDisableCOrBelow') }}</option>
+            <option value="disable_b_or_below">{{ t('admin.proxies.subscriptionQualityDisableBOrBelow') }}</option>
+          </select>
+          <p class="input-hint mt-1">{{ t('admin.proxies.qualityPolicyHint') }}</p>
+        </div>
+        <div class="rounded-lg border border-gray-200 bg-gray-50 p-3 text-sm text-gray-700 dark:border-dark-600 dark:bg-dark-700 dark:text-gray-200">
+          {{ qualityPolicyScopeLabel }}
+        </div>
+      </form>
+      <template #footer>
+        <div class="flex justify-end gap-3">
+          <button type="button" class="btn btn-secondary" @click="closeQualityPolicyDialog">
+            {{ t('common.cancel') }}
+          </button>
+          <button
+            type="submit"
+            form="quality-policy-form"
+            class="btn btn-primary"
+            :disabled="qualityPolicyApplying"
+          >
+            <svg
+              v-if="qualityPolicyApplying"
+              class="-ml-1 mr-2 h-4 w-4 animate-spin"
+              fill="none"
+              viewBox="0 0 24 24"
+            >
+              <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+              <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+            </svg>
+            {{ qualityPolicyApplying ? t('admin.proxies.qualityPolicyApplying') : t('admin.proxies.qualityPolicyConfirm') }}
+          </button>
+        </div>
+      </template>
+    </BaseDialog>
+
+    <BaseDialog
       :show="showQualityReportDialog"
       :title="t('admin.proxies.qualityReportTitle')"
       width="normal"
@@ -968,7 +1102,7 @@ import { ref, reactive, computed, onMounted, onUnmounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useAppStore } from '@/stores/app'
 import { adminAPI } from '@/api/admin'
-import type { Proxy, ProxyAccountSummary, ProxyProtocol, ProxyQualityCheckResult } from '@/types'
+import type { Proxy, ProxyAccountSummary, ProxyProtocol, ProxyQualityCheckResult, ProxyQualityPolicy } from '@/types'
 import type { Column } from '@/components/common/types'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import TablePageLayout from '@/components/layout/TablePageLayout.vue'
@@ -1063,6 +1197,7 @@ const showEditModal = ref(false)
 const editPasswordVisible = ref(false)
 const editPasswordDirty = ref(false)
 const showImportData = ref(false)
+const showSubscriptionImport = ref(false)
 const showDeleteDialog = ref(false)
 const showBatchDeleteDialog = ref(false)
 const showExportDataDialog = ref(false)
@@ -1073,6 +1208,8 @@ const testingProxyIds = ref<Set<number>>(new Set())
 const qualityCheckingProxyIds = ref<Set<number>>(new Set())
 const batchTesting = ref(false)
 const batchQualityChecking = ref(false)
+const qualityPolicyApplying = ref(false)
+const showQualityPolicyDialog = ref(false)
 const proxyTableRef = ref<HTMLElement | null>(null)
 const {
   selectedSet: selectedProxyIds,
@@ -1121,6 +1258,16 @@ const batchParseResult = reactive({
   }>
 })
 
+const subscriptionImportForm = reactive({
+  url: '',
+  content: '',
+  name_prefix: '',
+  quality_policy: 'disable_d' as 'none' | 'disable_d' | 'disable_c_or_below' | 'disable_b_or_below'
+})
+
+const qualityPolicyForm = reactive({
+  quality_policy: 'disable_d' as ProxyQualityPolicy
+})
 const createForm = reactive({
   name: '',
   protocol: 'http' as ProxyProtocol,
@@ -1185,6 +1332,13 @@ const buildProxyQueryFilters = () => ({
   search: searchQuery.value || undefined,
   sort_by: sortState.sort_by,
   sort_order: sortState.sort_order
+})
+
+const qualityPolicyScopeLabel = computed(() => {
+  if (selectedCount.value > 0) {
+    return t('admin.proxies.qualityPolicySelectedScope', { count: selectedCount.value })
+  }
+  return t('admin.proxies.qualityPolicyFilteredScope')
 })
 
 const loadProxies = async () => {
@@ -1273,6 +1427,52 @@ const closeCreateModal = () => {
 const handleDataImported = () => {
   showImportData.value = false
   loadProxies()
+}
+
+const closeSubscriptionImport = () => {
+  showSubscriptionImport.value = false
+  subscriptionImportForm.url = ''
+  subscriptionImportForm.content = ''
+  subscriptionImportForm.name_prefix = ''
+  subscriptionImportForm.quality_policy = 'disable_d'
+}
+
+const handleSubscriptionImport = async () => {
+  if (!subscriptionImportForm.url.trim() && !subscriptionImportForm.content.trim()) {
+    appStore.showError(t('admin.proxies.subscriptionImportRequired'))
+    return
+  }
+  submitting.value = true
+  try {
+    const result = await adminAPI.proxies.importSubscription({
+      url: subscriptionImportForm.url.trim() || undefined,
+      content: subscriptionImportForm.content.trim() || undefined,
+      name_prefix: subscriptionImportForm.name_prefix.trim() || undefined,
+      quality_policy: subscriptionImportForm.quality_policy
+    })
+    const params = {
+      created: result.created,
+      skipped: result.skipped,
+      unsupported: result.unsupported,
+      invalid: result.invalid,
+      failed: result.failed,
+      quality_checked: result.quality_checked,
+      quality_disabled: result.quality_disabled,
+      quality_failed: result.quality_failed
+    }
+    if (result.failed > 0 || result.invalid > 0 || result.quality_failed > 0) {
+      appStore.showWarning(t('admin.proxies.subscriptionImportPartial', params))
+    } else {
+      appStore.showSuccess(t('admin.proxies.subscriptionImportSuccess', params))
+    }
+    closeSubscriptionImport()
+    loadProxies()
+  } catch (error: any) {
+    appStore.showError(error.response?.data?.detail || t('admin.proxies.subscriptionImportFailed'))
+    console.error('Error importing proxy subscription:', error)
+  } finally {
+    submitting.value = false
+  }
 }
 
 // Parse proxy URL: protocol://user:pass@host:port or protocol://host:port
@@ -1531,6 +1731,31 @@ const applyQualityResult = (proxyId: number, result: ProxyQualityCheckResult) =>
   target.quality_grade = result.grade
   target.quality_summary = result.summary
   target.quality_checked = result.checked_at
+}
+
+const qualityGradeRank = (grade?: string) => {
+  switch ((grade || '').trim().toUpperCase()) {
+    case 'A':
+      return 4
+    case 'B':
+      return 3
+    case 'C':
+      return 2
+    case 'D':
+      return 1
+    case 'F':
+      return 0
+    default:
+      return -1
+  }
+}
+
+const shouldDisableForQualityPolicy = (policy: ProxyQualityPolicy, grade?: string) => {
+  const rank = qualityGradeRank(grade)
+  if (rank < 0) return true
+  if (policy === 'disable_b_or_below') return rank <= qualityGradeRank('B')
+  if (policy === 'disable_c_or_below') return rank <= qualityGradeRank('C')
+  return rank <= qualityGradeRank('D')
 }
 
 const formatLocation = (proxy: Proxy) => {
@@ -1832,6 +2057,105 @@ const runBatchProxyTests = async (ids: number[]) => {
 
   const workers = Array.from({ length: Math.min(concurrency, ids.length) }, () => worker())
   await Promise.all(workers)
+}
+
+const runProxyQualityPolicy = async (ids: number[], policy: ProxyQualityPolicy) => {
+  const concurrency = 3
+  let index = 0
+  let checked = 0
+  let disabled = 0
+  let failed = 0
+
+  const worker = async () => {
+    while (index < ids.length) {
+      const current = ids[index]
+      index++
+      startQualityCheckingProxy(current)
+      try {
+        const result = await adminAPI.proxies.checkProxyQuality(current)
+        const baseStep = result.items.find((item) => item.target === 'base_connectivity')
+        if (baseStep && baseStep.status === 'pass') {
+          applyLatencyResult(current, {
+            success: true,
+            latency_ms: result.base_latency_ms,
+            message: result.summary,
+            ip_address: result.exit_ip,
+            country: result.country,
+            country_code: result.country_code
+          })
+        }
+        applyQualityResult(current, result)
+        checked++
+
+        if (shouldDisableForQualityPolicy(policy, result.grade)) {
+          await adminAPI.proxies.update(current, { status: 'inactive' })
+          const target = proxies.value.find((proxy) => proxy.id === current)
+          if (target) target.status = 'inactive'
+          disabled++
+        }
+      } catch {
+        failed++
+      } finally {
+        stopQualityCheckingProxy(current)
+      }
+    }
+  }
+
+  const workers = Array.from({ length: Math.min(concurrency, ids.length) }, () => worker())
+  await Promise.all(workers)
+  return { total: ids.length, checked, disabled, failed }
+}
+
+const openQualityPolicyDialog = () => {
+  showQualityPolicyDialog.value = true
+}
+
+const closeQualityPolicyDialog = () => {
+  if (qualityPolicyApplying.value) return
+  showQualityPolicyDialog.value = false
+  qualityPolicyForm.quality_policy = 'disable_d'
+}
+
+const resolveQualityPolicyTargetIDs = async () => {
+  if (selectedCount.value > 0) {
+    return Array.from(selectedProxyIds.value)
+  }
+  const allProxies = await fetchAllProxiesForBatch()
+  return allProxies.map((proxy) => proxy.id)
+}
+
+const handleApplyQualityPolicy = async () => {
+  if (qualityPolicyApplying.value) return
+
+  qualityPolicyApplying.value = true
+  try {
+    const ids = await resolveQualityPolicyTargetIDs()
+    if (ids.length === 0) {
+      appStore.showInfo(t('admin.proxies.qualityPolicyEmpty'))
+      return
+    }
+
+    const result = await runProxyQualityPolicy(ids, qualityPolicyForm.quality_policy)
+    const params = {
+      count: result.total,
+      checked: result.checked,
+      disabled: result.disabled,
+      failed: result.failed
+    }
+    if (result.failed > 0) {
+      appStore.showWarning(t('admin.proxies.qualityPolicyPartial', params))
+    } else {
+      appStore.showSuccess(t('admin.proxies.qualityPolicyDone', params))
+    }
+    closeQualityPolicyDialog()
+    clearSelectedProxies()
+    loadProxies()
+  } catch (error: any) {
+    appStore.showError(error.response?.data?.detail || t('admin.proxies.qualityPolicyFailed'))
+    console.error('Error applying proxy quality policy:', error)
+  } finally {
+    qualityPolicyApplying.value = false
+  }
 }
 
 const handleBatchTest = async () => {
