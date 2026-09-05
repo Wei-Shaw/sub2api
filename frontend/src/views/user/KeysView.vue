@@ -134,7 +134,7 @@
           </template>
 
           <template #cell-group="{ row }">
-            <div class="group/dropdown relative">
+            <div class="group/dropdown relative flex flex-col items-start gap-1.5">
               <button
                 :ref="(el) => setGroupButtonRef(row.id, el)"
                 @click="openGroupSelector(row)"
@@ -171,6 +171,28 @@
                   />
                 </svg>
               </button>
+              <div
+                v-if="supportsOpenAIFastMode(row)"
+                class="flex items-center gap-2"
+                @click.stop
+              >
+                <Toggle
+                  :model-value="Boolean(row.openai_default_fast_mode)"
+                  :disabled="isKeyMutationPending(row.id)"
+                  :aria-label="t('keys.fastMode')"
+                  data-test="fast-mode-toggle"
+                  @update:model-value="requestOpenAIDefaultFastMode(row, $event)"
+                />
+                <span class="text-xs font-medium text-gray-700 dark:text-gray-200">
+                  {{ t('keys.fastMode') }}
+                </span>
+                <span
+                  class="text-xs font-semibold text-amber-600 dark:text-amber-400"
+                  :title="fastModeBillingWarning(row)"
+                >
+                  {{ fastModeBillingLabel(row) }}
+                </span>
+              </div>
             </div>
           </template>
 
@@ -952,6 +974,16 @@
       </template>
     </BaseDialog>
 
+    <ConfirmDialog
+      :show="showFastModeConfirmDialog"
+      :title="t('keys.fastModeConfirmTitle')"
+      :message="t('keys.fastModeConfirmMessage', { name: fastModeConfirmKey?.name || '', multiplier: fastModeMultiplierLabel(fastModeConfirmKey) })"
+      :confirm-text="t('keys.fastModeConfirmAction')"
+      :cancel-text="t('common.cancel')"
+      @confirm="confirmOpenAIDefaultFastMode"
+      @cancel="cancelOpenAIDefaultFastMode"
+    />
+
     <!-- Delete Confirmation Dialog -->
     <ConfirmDialog
       :show="showDeleteDialog"
@@ -1135,6 +1167,7 @@ import TablePageLayout from '@/components/layout/TablePageLayout.vue'
 	import EmptyState from '@/components/common/EmptyState.vue'
 	import Select from '@/components/common/Select.vue'
 	import SearchInput from '@/components/common/SearchInput.vue'
+	import Toggle from '@/components/common/Toggle.vue'
 	import Icon from '@/components/icons/Icon.vue'
 	import UseKeyModal from '@/components/keys/UseKeyModal.vue'
 	import EndpointPopover from '@/components/keys/EndpointPopover.vue'
@@ -1299,11 +1332,14 @@ const showEditModal = ref(false)
 const showDeleteDialog = ref(false)
 const showResetQuotaDialog = ref(false)
 const showResetRateLimitDialog = ref(false)
+const showFastModeConfirmDialog = ref(false)
 const showUseKeyModal = ref(false)
 const showCcsClientSelect = ref(false)
 const showColumnDropdown = ref(false)
 const pendingCcsRow = ref<ApiKey | null>(null)
 const selectedKey = ref<ApiKey | null>(null)
+const fastModeConfirmKey = ref<ApiKey | null>(null)
+const keyMutationPendingKeys = reactive(new Set<number>())
 const copiedKeyId = ref<number | null>(null)
 const groupSelectorKeyId = ref<number | null>(null)
 const publicSettings = ref<PublicSettings | null>(null)
@@ -1558,6 +1594,8 @@ const handleSort = (key: string, order: 'asc' | 'desc') => {
 }
 
 const editKey = (key: ApiKey) => {
+  if (isKeyMutationPending(key.id)) return
+
   selectedKey.value = key
   const hasIPRestriction = (key.ip_whitelist?.length > 0) || (key.ip_blacklist?.length > 0)
   const hasExpiration = !!key.expires_at
@@ -1584,19 +1622,25 @@ const editKey = (key: ApiKey) => {
 }
 
 const toggleKeyStatus = async (key: ApiKey) => {
+  if (isKeyMutationPending(key.id)) return
+
   const newStatus = key.status === 'active' ? 'inactive' : 'active'
   try {
-    await keysAPI.toggleStatus(key.id, newStatus)
-    appStore.showSuccess(
-      newStatus === 'active' ? t('keys.keyEnabledSuccess') : t('keys.keyDisabledSuccess')
-    )
-    loadApiKeys()
+    await runKeyMutation(key.id, async () => {
+      await keysAPI.toggleStatus(key.id, newStatus)
+      appStore.showSuccess(
+        newStatus === 'active' ? t('keys.keyEnabledSuccess') : t('keys.keyDisabledSuccess')
+      )
+      await loadApiKeys()
+    })
   } catch (error) {
     appStore.showError(t('keys.failedToUpdateStatus'))
   }
 }
 
 const openGroupSelector = (key: ApiKey) => {
+  if (isKeyMutationPending(key.id)) return
+
   if (groupSelectorKeyId.value === key.id) {
     groupSelectorKeyId.value = null
     dropdownPosition.value = null
@@ -1633,15 +1677,97 @@ const openGroupSelector = (key: ApiKey) => {
 const changeGroup = async (key: ApiKey, newGroupId: number | null) => {
   groupSelectorKeyId.value = null
   dropdownPosition.value = null
-  if (key.group_id === newGroupId) return
+  if (key.group_id === newGroupId || isKeyMutationPending(key.id)) return
 
   try {
-    await keysAPI.update(key.id, { group_id: newGroupId })
-    appStore.showSuccess(t('keys.groupChangedSuccess'))
-    loadApiKeys()
+    await runKeyMutation(key.id, async () => {
+      await keysAPI.update(key.id, { group_id: newGroupId })
+      appStore.showSuccess(t('keys.groupChangedSuccess'))
+      await loadApiKeys()
+    })
   } catch (error) {
     appStore.showError(t('keys.failedToChangeGroup'))
   }
+}
+
+const supportsOpenAIFastMode = (key: ApiKey) => key.group?.platform === 'openai'
+
+const fastModeMultiplierLabel = (key: ApiKey | null | undefined) => {
+  const multiplier = key?.group?.fast_multiplier
+  return typeof multiplier === 'number' && Number.isFinite(multiplier) && multiplier > 0
+    ? `${multiplier}x`
+    : t('keys.fastModeActualMultiplier')
+}
+
+const fastModeBillingLabel = (key: ApiKey) =>
+  t('keys.fastModeBillingWarningShort', { multiplier: fastModeMultiplierLabel(key) })
+
+const fastModeBillingWarning = (key: ApiKey) =>
+  t('keys.fastModeBillingWarning', { multiplier: fastModeMultiplierLabel(key) })
+const isKeyMutationPending = (keyId: number) => keyMutationPendingKeys.has(keyId)
+
+const runKeyMutation = async (keyId: number, mutation: () => Promise<void>) => {
+  if (isKeyMutationPending(keyId)) return false
+
+  keyMutationPendingKeys.add(keyId)
+  try {
+    await mutation()
+    return true
+  } finally {
+    keyMutationPendingKeys.delete(keyId)
+  }
+}
+
+const persistOpenAIDefaultFastMode = async (keyId: number, enabled: boolean) => {
+  const key = apiKeys.value.find((item) => item.id === keyId)
+  if (!key || !supportsOpenAIFastMode(key) || isKeyMutationPending(keyId)) return
+
+  await runKeyMutation(keyId, async () => {
+    try {
+      const updated = await keysAPI.update(keyId, { openai_default_fast_mode: enabled })
+      const actualEnabled = updated.openai_default_fast_mode === true
+      if (actualEnabled !== enabled) {
+        appStore.showError(
+          t('keys.fastModeStateAdjusted', {
+            mode: t(actualEnabled ? 'keys.fastMode' : 'keys.normalMode')
+          })
+        )
+      } else {
+        appStore.showSuccess(
+          t(actualEnabled ? 'keys.fastModeEnabledSuccess' : 'keys.normalModeEnabledSuccess')
+        )
+      }
+    } catch (error: any) {
+      appStore.showError(error.response?.data?.detail || error?.message || t('keys.failedToSave'))
+    } finally {
+      await loadApiKeys()
+    }
+  })
+}
+
+const requestOpenAIDefaultFastMode = (key: ApiKey, enabled: boolean) => {
+  if (!supportsOpenAIFastMode(key) || isKeyMutationPending(key.id)) return
+  if (!enabled) {
+    void persistOpenAIDefaultFastMode(key.id, false)
+    return
+  }
+
+  fastModeConfirmKey.value = key
+  showFastModeConfirmDialog.value = true
+}
+
+const confirmOpenAIDefaultFastMode = () => {
+  const keyId = fastModeConfirmKey.value?.id
+  showFastModeConfirmDialog.value = false
+  fastModeConfirmKey.value = null
+  if (keyId !== undefined) {
+    void persistOpenAIDefaultFastMode(keyId, true)
+  }
+}
+
+const cancelOpenAIDefaultFastMode = () => {
+  showFastModeConfirmDialog.value = false
+  fastModeConfirmKey.value = null
 }
 
 const closeGroupSelector = (event: MouseEvent) => {
@@ -1657,11 +1783,15 @@ const closeGroupSelector = (event: MouseEvent) => {
 }
 
 const confirmDelete = (key: ApiKey) => {
+  if (isKeyMutationPending(key.id)) return
+
   selectedKey.value = key
   showDeleteDialog.value = true
 }
 
 const handleSubmit = async () => {
+  if (showEditModal.value && selectedKey.value && isKeyMutationPending(selectedKey.value.id)) return
+
   // Validate group_id is required
   if (formData.value.group_id === null) {
     appStore.showError(t('keys.groupRequired'))
@@ -1732,7 +1862,9 @@ const handleSubmit = async () => {
       if (shouldSubmitEditStatus(selectedKey.value, formData.value.status)) {
         updates.status = formData.value.status
       }
-      await keysAPI.update(selectedKey.value.id, updates)
+      await runKeyMutation(selectedKey.value.id, async () => {
+        await keysAPI.update(selectedKey.value!.id, updates)
+      })
       appStore.showSuccess(t('keys.keyUpdatedSuccess'))
     } else {
       const customKey = formData.value.use_custom_key ? formData.value.custom_key : undefined
@@ -1770,12 +1902,15 @@ const handleSubmit = async () => {
  */
 const handleDelete = async () => {
   if (!selectedKey.value) return
+  if (isKeyMutationPending(selectedKey.value.id)) return
 
   try {
-    await keysAPI.delete(selectedKey.value.id)
-    appStore.showSuccess(t('keys.keyDeletedSuccess'))
-    showDeleteDialog.value = false
-    loadApiKeys()
+    await runKeyMutation(selectedKey.value.id, async () => {
+      await keysAPI.delete(selectedKey.value!.id)
+      appStore.showSuccess(t('keys.keyDeletedSuccess'))
+      showDeleteDialog.value = false
+      await loadApiKeys()
+    })
   } catch (error: any) {
     // 优先使用后端返回的错误消息，提供更具体的错误信息给用户
     const errorMsg = error?.message || t('keys.failedToDelete')
@@ -1810,6 +1945,7 @@ const closeModals = () => {
 
 // Show reset quota confirmation dialog
 const confirmResetQuota = () => {
+  if (selectedKey.value && isKeyMutationPending(selectedKey.value.id)) return
   showResetQuotaDialog.value = true
 }
 
@@ -1824,14 +1960,17 @@ const setExpirationDays = (days: number) => {
 // Reset quota used for an API key
 const resetQuotaUsed = async () => {
   if (!selectedKey.value) return
+  if (isKeyMutationPending(selectedKey.value.id)) return
   showResetQuotaDialog.value = false
   try {
-    await keysAPI.update(selectedKey.value.id, { reset_quota: true })
-    appStore.showSuccess(t('keys.quotaResetSuccess'))
-    // Update local state
-    if (selectedKey.value) {
-      selectedKey.value.quota_used = 0
-    }
+    await runKeyMutation(selectedKey.value.id, async () => {
+      await keysAPI.update(selectedKey.value!.id, { reset_quota: true })
+      appStore.showSuccess(t('keys.quotaResetSuccess'))
+      // Update local state
+      if (selectedKey.value) {
+        selectedKey.value.quota_used = 0
+      }
+    })
   } catch (error: any) {
     const errorMsg = error.response?.data?.detail || t('keys.failedToResetQuota')
     appStore.showError(errorMsg)
@@ -1840,11 +1979,13 @@ const resetQuotaUsed = async () => {
 
 // Show reset rate limit confirmation dialog (from edit modal)
 const confirmResetRateLimit = () => {
+  if (selectedKey.value && isKeyMutationPending(selectedKey.value.id)) return
   showResetRateLimitDialog.value = true
 }
 
 // Show reset rate limit confirmation dialog (from table row)
 const confirmResetRateLimitFromTable = (row: ApiKey) => {
+  if (isKeyMutationPending(row.id)) return
   selectedKey.value = row
   showResetRateLimitDialog.value = true
 }
@@ -1852,17 +1993,20 @@ const confirmResetRateLimitFromTable = (row: ApiKey) => {
 // Reset rate limit usage for an API key
 const resetRateLimitUsage = async () => {
   if (!selectedKey.value) return
+  if (isKeyMutationPending(selectedKey.value.id)) return
   showResetRateLimitDialog.value = false
   try {
-    await keysAPI.update(selectedKey.value.id, { reset_rate_limit_usage: true })
-    appStore.showSuccess(t('keys.rateLimitResetSuccess'))
-    // Refresh key data
-    await loadApiKeys()
-    // Update the editing key with fresh data
-    const refreshedKey = apiKeys.value.find(k => k.id === selectedKey.value!.id)
-    if (refreshedKey) {
-      selectedKey.value = refreshedKey
-    }
+    await runKeyMutation(selectedKey.value.id, async () => {
+      await keysAPI.update(selectedKey.value!.id, { reset_rate_limit_usage: true })
+      appStore.showSuccess(t('keys.rateLimitResetSuccess'))
+      // Refresh key data
+      await loadApiKeys()
+      // Update the editing key with fresh data
+      const refreshedKey = apiKeys.value.find(k => k.id === selectedKey.value!.id)
+      if (refreshedKey) {
+        selectedKey.value = refreshedKey
+      }
+    })
   } catch (error: any) {
     const errorMsg = error.response?.data?.detail || t('keys.failedToResetRateLimit')
     appStore.showError(errorMsg)

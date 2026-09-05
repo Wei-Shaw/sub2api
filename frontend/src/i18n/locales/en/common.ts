@@ -157,6 +157,12 @@ export default {
 
   // Navigation
   nav: {
+    contactUs: 'Contact Us',
+    tutorials: 'Tutorials',
+    ccSwitchTutorial: 'CC Switch Tutorial',
+    claudeCodeTutorial: 'Claude Code Tutorial',
+    codexTutorial: 'Codex Tutorial',
+    codexImageTutorial: 'Codex Image Tutorial',
     dashboard: 'Dashboard',
     announcements: 'Announcements',
     apiKeys: 'API Keys',

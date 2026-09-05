@@ -42,6 +42,10 @@ type APIKey struct {
 	IPWhitelist []string `json:"ip_whitelist,omitempty"`
 	// Blocked IPs/CIDRs
 	IPBlacklist []string `json:"ip_blacklist,omitempty"`
+	// Allowed models for this API key; empty means unrestricted
+	AllowedModels []string `json:"allowed_models,omitempty"`
+	// Default OpenAI text requests to the priority service tier
+	OpenaiDefaultFastMode bool `json:"openai_default_fast_mode,omitempty"`
 	// Quota limit in USD for this API key (0 = unlimited)
 	Quota float64 `json:"quota,omitempty"`
 	// Used quota amount in USD
@@ -121,8 +125,10 @@ func (*APIKey) scanValues(columns []string) ([]any, error) {
 	values := make([]any, len(columns))
 	for i := range columns {
 		switch columns[i] {
-		case apikey.FieldIPWhitelist, apikey.FieldIPBlacklist:
+		case apikey.FieldIPWhitelist, apikey.FieldIPBlacklist, apikey.FieldAllowedModels:
 			values[i] = new([]byte)
+		case apikey.FieldOpenaiDefaultFastMode:
+			values[i] = new(sql.NullBool)
 		case apikey.FieldQuota, apikey.FieldQuotaUsed, apikey.FieldRateLimit5h, apikey.FieldRateLimit1d, apikey.FieldRateLimit7d, apikey.FieldUsage5h, apikey.FieldUsage1d, apikey.FieldUsage7d:
 			values[i] = new(sql.NullFloat64)
 		case apikey.FieldID, apikey.FieldUserID, apikey.FieldGroupID:
@@ -224,6 +230,20 @@ func (_m *APIKey) assignValues(columns []string, values []any) error {
 				if err := json.Unmarshal(*value, &_m.IPBlacklist); err != nil {
 					return fmt.Errorf("unmarshal field ip_blacklist: %w", err)
 				}
+			}
+		case apikey.FieldAllowedModels:
+			if value, ok := values[i].(*[]byte); !ok {
+				return fmt.Errorf("unexpected type %T for field allowed_models", values[i])
+			} else if value != nil && len(*value) > 0 {
+				if err := json.Unmarshal(*value, &_m.AllowedModels); err != nil {
+					return fmt.Errorf("unmarshal field allowed_models: %w", err)
+				}
+			}
+		case apikey.FieldOpenaiDefaultFastMode:
+			if value, ok := values[i].(*sql.NullBool); !ok {
+				return fmt.Errorf("unexpected type %T for field openai_default_fast_mode", values[i])
+			} else if value.Valid {
+				_m.OpenaiDefaultFastMode = value.Bool
 			}
 		case apikey.FieldQuota:
 			if value, ok := values[i].(*sql.NullFloat64); !ok {
@@ -390,6 +410,12 @@ func (_m *APIKey) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("ip_blacklist=")
 	builder.WriteString(fmt.Sprintf("%v", _m.IPBlacklist))
+	builder.WriteString(", ")
+	builder.WriteString("allowed_models=")
+	builder.WriteString(fmt.Sprintf("%v", _m.AllowedModels))
+	builder.WriteString(", ")
+	builder.WriteString("openai_default_fast_mode=")
+	builder.WriteString(fmt.Sprintf("%v", _m.OpenaiDefaultFastMode))
 	builder.WriteString(", ")
 	builder.WriteString("quota=")
 	builder.WriteString(fmt.Sprintf("%v", _m.Quota))

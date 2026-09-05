@@ -126,3 +126,24 @@ func TestSyncBalanceCacheAfterDeduction_QueuesDeductWhenBalanceStillEligible(t *
 		return cache.deductCalls.Load() == 1
 	}, 2*time.Second, 10*time.Millisecond)
 }
+
+func TestSyncBalanceCacheAfterDeduction_InvalidatesWhenTemporaryBalanceWasUsed(t *testing.T) {
+	cache := &balanceEligibilityCacheStub{balance: 10}
+	cfg := &config.Config{}
+	cfg.Billing.MinimumBalanceReserve = 0.01
+	svc := NewBillingCacheService(cache, nil, nil, nil, nil, nil, cfg, nil)
+	t.Cleanup(svc.Stop)
+
+	newBalance := 8.0
+	syncBalanceCacheAfterDeduction(context.Background(), &postUsageBillingParams{
+		Cost: &CostBreakdown{ActualCost: 2},
+		User: &User{ID: 1},
+	}, &billingDeps{billingCacheService: svc}, &UsageBillingApplyResult{
+		NewBalance:           &newBalance,
+		TemporaryBalanceCost: 1.25,
+		BalanceCostApplied:   0.75,
+	})
+
+	require.Equal(t, int64(1), cache.invalidateCalls.Load())
+	require.Equal(t, int64(0), cache.deductCalls.Load())
+}

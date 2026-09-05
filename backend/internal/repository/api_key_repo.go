@@ -241,8 +241,150 @@ func (r *apiKeyRepository) GetByKeyForAuth(ctx context.Context, key string) (*se
 	return apiKeyEntityToService(m), nil
 }
 
+var errAPIKeyFastModeGroupChanged = errors.New("api key group changed during fast-mode update")
+
+const apiKeyFastModeUpdateMaxAttempts = 4
+
 func (r *apiKeyRepository) Update(ctx context.Context, key *service.APIKey, fields service.APIKeyUpdateFields) error {
-	// 空掩码代表调用方不改任何列，直接返回，避免产生一次无意义的整行写。
+	if fields.IsEmpty() {
+		return nil
+	}
+	if !fields.GroupID && !fields.OpenAIDefaultFastMode {
+		return r.updateFields(ctx, key, fields)
+	}
+
+	expectedGroupID := cloneInt64Pointer(key.GroupID)
+	if r.hasActiveTransaction(ctx) {
+		observedGroupID, err := r.updateWithFastModeInvariant(ctx, key, fields, expectedGroupID)
+		if errors.Is(err, errAPIKeyFastModeGroupChanged) {
+			return fmt.Errorf("%w: expected group %v, observed group %v", err, pointerValue(expectedGroupID), pointerValue(observedGroupID))
+		}
+		return err
+	}
+
+	for attempt := 0; attempt < apiKeyFastModeUpdateMaxAttempts; attempt++ {
+		tx, err := r.client.Tx(ctx)
+		if err != nil {
+			return fmt.Errorf("begin api key fast-mode update transaction: %w", err)
+		}
+		opCtx := dbent.NewTxContext(ctx, tx)
+
+		observedGroupID, updateErr := r.updateWithFastModeInvariant(opCtx, key, fields, expectedGroupID)
+		if errors.Is(updateErr, errAPIKeyFastModeGroupChanged) {
+			_ = tx.Rollback()
+			expectedGroupID = cloneInt64Pointer(observedGroupID)
+			continue
+		}
+		if updateErr != nil {
+			_ = tx.Rollback()
+			return updateErr
+		}
+		if err := tx.Commit(); err != nil {
+			return fmt.Errorf("commit api key fast-mode update transaction: %w", err)
+		}
+		return nil
+	}
+
+	return fmt.Errorf("%w after %d attempts", errAPIKeyFastModeGroupChanged, apiKeyFastModeUpdateMaxAttempts)
+}
+
+func (r *apiKeyRepository) hasActiveTransaction(ctx context.Context) bool {
+	if dbent.TxFromContext(ctx) != nil {
+		return true
+	}
+	_, ok := r.sql.(*dbent.Tx)
+	return ok
+}
+
+func (r *apiKeyRepository) updateWithFastModeInvariant(
+	ctx context.Context,
+	key *service.APIKey,
+	fields service.APIKeyUpdateFields,
+	expectedGroupID *int64,
+) (*int64, error) {
+	client := clientFromContext(ctx, r.client)
+	targetGroupID := expectedGroupID
+	if fields.GroupID {
+		targetGroupID = key.GroupID
+	}
+
+	targetSupportsFastMode := false
+	if targetGroupID != nil {
+		query := client.Group.Query().
+			Where(group.IDEQ(*targetGroupID))
+		if client.Driver().Dialect() == dialect.Postgres {
+			query = query.ForUpdate()
+		}
+		lockedGroup, err := query.
+			Select(group.FieldID, group.FieldPlatform).
+			Only(ctx)
+		if err != nil {
+			return nil, translatePersistenceError(err, service.ErrGroupNotFound, nil)
+		}
+		targetSupportsFastMode = strings.EqualFold(strings.TrimSpace(lockedGroup.Platform), service.PlatformOpenAI)
+	}
+
+	query := client.APIKey.Query().
+		Where(apikey.IDEQ(key.ID), apikey.DeletedAtIsNil())
+	if client.Driver().Dialect() == dialect.Postgres {
+		query = query.ForUpdate()
+	}
+	current, err := query.
+		Select(apikey.FieldID, apikey.FieldGroupID, apikey.FieldOpenaiDefaultFastMode).
+		Only(ctx)
+	if err != nil {
+		return nil, translatePersistenceError(err, service.ErrAPIKeyNotFound, nil)
+	}
+
+	if !fields.GroupID && !sameInt64Pointer(current.GroupID, expectedGroupID) {
+		return cloneInt64Pointer(current.GroupID), errAPIKeyFastModeGroupChanged
+	}
+
+	desiredFastMode := current.OpenaiDefaultFastMode
+	if fields.OpenAIDefaultFastMode {
+		desiredFastMode = key.OpenAIDefaultFastMode
+	}
+	actualFastMode := desiredFastMode && targetSupportsFastMode
+	if actualFastMode != current.OpenaiDefaultFastMode {
+		fields.OpenAIDefaultFastMode = true
+	}
+	key.OpenAIDefaultFastMode = actualFastMode
+	if !fields.GroupID {
+		key.GroupID = cloneInt64Pointer(current.GroupID)
+		if key.Group == nil || key.GroupID == nil || key.Group.ID != *key.GroupID {
+			key.Group = nil
+		}
+	}
+
+	if err := r.updateFields(ctx, key, fields); err != nil {
+		return nil, err
+	}
+	return cloneInt64Pointer(key.GroupID), nil
+}
+
+func cloneInt64Pointer(value *int64) *int64 {
+	if value == nil {
+		return nil
+	}
+	copy := *value
+	return &copy
+}
+
+func sameInt64Pointer(left, right *int64) bool {
+	if left == nil || right == nil {
+		return left == nil && right == nil
+	}
+	return *left == *right
+}
+
+func pointerValue(value *int64) any {
+	if value == nil {
+		return nil
+	}
+	return *value
+}
+
+func (r *apiKeyRepository) updateFields(ctx context.Context, key *service.APIKey, fields service.APIKeyUpdateFields) error {
 	if fields.IsEmpty() {
 		return nil
 	}
@@ -257,6 +399,23 @@ func (r *apiKeyRepository) Update(ctx context.Context, key *service.APIKey, fiel
 	builder := client.APIKey.Update().
 		Where(apikey.IDEQ(key.ID), apikey.DeletedAtIsNil()).
 		SetUpdatedAt(now)
+	clearFastOnGroupMove := false
+	if fields.GroupID {
+		// Group moves must clear a stale fast-mode flag based on the target
+		// group's platform, even when the caller loaded an old API-key row.
+		// This makes the group update itself the final writer for the invariant.
+		clearFastOnGroupMove = key.GroupID == nil
+		if key.GroupID != nil {
+			targetGroup, err := client.Group.Query().Where(group.IDEQ(*key.GroupID)).Only(ctx)
+			if err != nil {
+				return err
+			}
+			clearFastOnGroupMove = !strings.EqualFold(strings.TrimSpace(targetGroup.Platform), service.PlatformOpenAI)
+		}
+		if clearFastOnGroupMove {
+			builder.SetOpenaiDefaultFastMode(false)
+		}
+	}
 	if fields.Name {
 		builder.SetName(key.Name)
 	}
@@ -268,6 +427,15 @@ func (r *apiKeyRepository) Update(ctx context.Context, key *service.APIKey, fiel
 	}
 	if fields.QuotaUsed {
 		builder.SetQuotaUsed(key.QuotaUsed)
+	}
+	if fields.OpenAIDefaultFastMode {
+		// Enabling API-key fast mode must be conditional on the row's current
+		// group still being OpenAI. This keeps a concurrent group move from
+		// leaving a true fast-mode flag attached to a non-OpenAI group.
+		if key.OpenAIDefaultFastMode && !fields.GroupID {
+			builder = builder.Where(apikey.HasGroupWith(group.PlatformEQ(service.PlatformOpenAI)))
+		}
+		builder.SetOpenaiDefaultFastMode(key.OpenAIDefaultFastMode)
 	}
 	if fields.RateLimits {
 		builder.
@@ -708,20 +876,57 @@ func (r *apiKeyRepository) SearchAPIKeys(ctx context.Context, userID int64, keyw
 
 // ClearGroupIDByGroupID 将指定分组的所有 API Key 的 group_id 设为 nil
 func (r *apiKeyRepository) ClearGroupIDByGroupID(ctx context.Context, groupID int64) (int64, error) {
-	n, err := r.client.APIKey.Update().
+	client := clientFromContext(ctx, r.client)
+	n, err := client.APIKey.Update().
 		Where(apikey.GroupIDEQ(groupID), apikey.DeletedAtIsNil()).
 		ClearGroupID().
+		SetOpenaiDefaultFastMode(false).
 		Save(ctx)
 	return int64(n), err
 }
 
 // UpdateGroupIDByUserAndGroup 将用户下绑定 oldGroupID 的所有 Key 迁移到 newGroupID
 func (r *apiKeyRepository) UpdateGroupIDByUserAndGroup(ctx context.Context, userID, oldGroupID, newGroupID int64) (int64, error) {
+	if r.hasActiveTransaction(ctx) {
+		return r.updateGroupIDByUserAndGroupLocked(ctx, userID, oldGroupID, newGroupID)
+	}
+
+	tx, err := r.client.Tx(ctx)
+	if err != nil {
+		return 0, fmt.Errorf("begin api key group migration transaction: %w", err)
+	}
+	opCtx := dbent.NewTxContext(ctx, tx)
+	migrated, updateErr := r.updateGroupIDByUserAndGroupLocked(opCtx, userID, oldGroupID, newGroupID)
+	if updateErr != nil {
+		_ = tx.Rollback()
+		return 0, updateErr
+	}
+	if err := tx.Commit(); err != nil {
+		return 0, fmt.Errorf("commit api key group migration transaction: %w", err)
+	}
+	return migrated, nil
+}
+
+func (r *apiKeyRepository) updateGroupIDByUserAndGroupLocked(ctx context.Context, userID, oldGroupID, newGroupID int64) (int64, error) {
 	client := clientFromContext(ctx, r.client)
-	n, err := client.APIKey.Update().
+	query := client.Group.Query().
+		Where(group.IDEQ(newGroupID))
+	if client.Driver().Dialect() == dialect.Postgres {
+		query = query.ForUpdate()
+	}
+	targetGroup, err := query.
+		Select(group.FieldID, group.FieldPlatform).
+		Only(ctx)
+	if err != nil {
+		return 0, translatePersistenceError(err, service.ErrGroupNotFound, nil)
+	}
+	builder := client.APIKey.Update().
 		Where(apikey.UserIDEQ(userID), apikey.GroupIDEQ(oldGroupID), apikey.DeletedAtIsNil()).
-		SetGroupID(newGroupID).
-		Save(ctx)
+		SetGroupID(newGroupID)
+	if !strings.EqualFold(strings.TrimSpace(targetGroup.Platform), service.PlatformOpenAI) {
+		builder.SetOpenaiDefaultFastMode(false)
+	}
+	n, err := builder.Save(ctx)
 	return int64(n), err
 }
 

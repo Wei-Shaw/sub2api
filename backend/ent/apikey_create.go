@@ -139,6 +139,26 @@ func (_c *APIKeyCreate) SetIPBlacklist(v []string) *APIKeyCreate {
 	return _c
 }
 
+// SetAllowedModels sets the "allowed_models" field.
+func (_c *APIKeyCreate) SetAllowedModels(v []string) *APIKeyCreate {
+	_c.mutation.SetAllowedModels(v)
+	return _c
+}
+
+// SetOpenaiDefaultFastMode sets the "openai_default_fast_mode" field.
+func (_c *APIKeyCreate) SetOpenaiDefaultFastMode(v bool) *APIKeyCreate {
+	_c.mutation.SetOpenaiDefaultFastMode(v)
+	return _c
+}
+
+// SetNillableOpenaiDefaultFastMode sets the "openai_default_fast_mode" field if the given value is not nil.
+func (_c *APIKeyCreate) SetNillableOpenaiDefaultFastMode(v *bool) *APIKeyCreate {
+	if v != nil {
+		_c.SetOpenaiDefaultFastMode(*v)
+	}
+	return _c
+}
+
 // SetQuota sets the "quota" field.
 func (_c *APIKeyCreate) SetQuota(v float64) *APIKeyCreate {
 	_c.mutation.SetQuota(v)
@@ -387,6 +407,14 @@ func (_c *APIKeyCreate) defaults() error {
 		v := apikey.DefaultStatus
 		_c.mutation.SetStatus(v)
 	}
+	if _, ok := _c.mutation.AllowedModels(); !ok {
+		v := apikey.DefaultAllowedModels
+		_c.mutation.SetAllowedModels(v)
+	}
+	if _, ok := _c.mutation.OpenaiDefaultFastMode(); !ok {
+		v := apikey.DefaultOpenaiDefaultFastMode
+		_c.mutation.SetOpenaiDefaultFastMode(v)
+	}
 	if _, ok := _c.mutation.Quota(); !ok {
 		v := apikey.DefaultQuota
 		_c.mutation.SetQuota(v)
@@ -456,6 +484,12 @@ func (_c *APIKeyCreate) check() error {
 		if err := apikey.StatusValidator(v); err != nil {
 			return &ValidationError{Name: "status", err: fmt.Errorf(`ent: validator failed for field "APIKey.status": %w`, err)}
 		}
+	}
+	if _, ok := _c.mutation.AllowedModels(); !ok {
+		return &ValidationError{Name: "allowed_models", err: errors.New(`ent: missing required field "APIKey.allowed_models"`)}
+	}
+	if _, ok := _c.mutation.OpenaiDefaultFastMode(); !ok {
+		return &ValidationError{Name: "openai_default_fast_mode", err: errors.New(`ent: missing required field "APIKey.openai_default_fast_mode"`)}
 	}
 	if _, ok := _c.mutation.Quota(); !ok {
 		return &ValidationError{Name: "quota", err: errors.New(`ent: missing required field "APIKey.quota"`)}
@@ -546,6 +580,14 @@ func (_c *APIKeyCreate) createSpec() (*APIKey, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.IPBlacklist(); ok {
 		_spec.SetField(apikey.FieldIPBlacklist, field.TypeJSON, value)
 		_node.IPBlacklist = value
+	}
+	if value, ok := _c.mutation.AllowedModels(); ok {
+		_spec.SetField(apikey.FieldAllowedModels, field.TypeJSON, value)
+		_node.AllowedModels = value
+	}
+	if value, ok := _c.mutation.OpenaiDefaultFastMode(); ok {
+		_spec.SetField(apikey.FieldOpenaiDefaultFastMode, field.TypeBool, value)
+		_node.OpenaiDefaultFastMode = value
 	}
 	if value, ok := _c.mutation.Quota(); ok {
 		_spec.SetField(apikey.FieldQuota, field.TypeFloat64, value)
@@ -844,6 +886,30 @@ func (u *APIKeyUpsert) UpdateIPBlacklist() *APIKeyUpsert {
 // ClearIPBlacklist clears the value of the "ip_blacklist" field.
 func (u *APIKeyUpsert) ClearIPBlacklist() *APIKeyUpsert {
 	u.SetNull(apikey.FieldIPBlacklist)
+	return u
+}
+
+// SetAllowedModels sets the "allowed_models" field.
+func (u *APIKeyUpsert) SetAllowedModels(v []string) *APIKeyUpsert {
+	u.Set(apikey.FieldAllowedModels, v)
+	return u
+}
+
+// UpdateAllowedModels sets the "allowed_models" field to the value that was provided on create.
+func (u *APIKeyUpsert) UpdateAllowedModels() *APIKeyUpsert {
+	u.SetExcluded(apikey.FieldAllowedModels)
+	return u
+}
+
+// SetOpenaiDefaultFastMode sets the "openai_default_fast_mode" field.
+func (u *APIKeyUpsert) SetOpenaiDefaultFastMode(v bool) *APIKeyUpsert {
+	u.Set(apikey.FieldOpenaiDefaultFastMode, v)
+	return u
+}
+
+// UpdateOpenaiDefaultFastMode sets the "openai_default_fast_mode" field to the value that was provided on create.
+func (u *APIKeyUpsert) UpdateOpenaiDefaultFastMode() *APIKeyUpsert {
+	u.SetExcluded(apikey.FieldOpenaiDefaultFastMode)
 	return u
 }
 
@@ -1280,6 +1346,34 @@ func (u *APIKeyUpsertOne) UpdateIPBlacklist() *APIKeyUpsertOne {
 func (u *APIKeyUpsertOne) ClearIPBlacklist() *APIKeyUpsertOne {
 	return u.Update(func(s *APIKeyUpsert) {
 		s.ClearIPBlacklist()
+	})
+}
+
+// SetAllowedModels sets the "allowed_models" field.
+func (u *APIKeyUpsertOne) SetAllowedModels(v []string) *APIKeyUpsertOne {
+	return u.Update(func(s *APIKeyUpsert) {
+		s.SetAllowedModels(v)
+	})
+}
+
+// UpdateAllowedModels sets the "allowed_models" field to the value that was provided on create.
+func (u *APIKeyUpsertOne) UpdateAllowedModels() *APIKeyUpsertOne {
+	return u.Update(func(s *APIKeyUpsert) {
+		s.UpdateAllowedModels()
+	})
+}
+
+// SetOpenaiDefaultFastMode sets the "openai_default_fast_mode" field.
+func (u *APIKeyUpsertOne) SetOpenaiDefaultFastMode(v bool) *APIKeyUpsertOne {
+	return u.Update(func(s *APIKeyUpsert) {
+		s.SetOpenaiDefaultFastMode(v)
+	})
+}
+
+// UpdateOpenaiDefaultFastMode sets the "openai_default_fast_mode" field to the value that was provided on create.
+func (u *APIKeyUpsertOne) UpdateOpenaiDefaultFastMode() *APIKeyUpsertOne {
+	return u.Update(func(s *APIKeyUpsert) {
+		s.UpdateOpenaiDefaultFastMode()
 	})
 }
 
@@ -1918,6 +2012,34 @@ func (u *APIKeyUpsertBulk) UpdateIPBlacklist() *APIKeyUpsertBulk {
 func (u *APIKeyUpsertBulk) ClearIPBlacklist() *APIKeyUpsertBulk {
 	return u.Update(func(s *APIKeyUpsert) {
 		s.ClearIPBlacklist()
+	})
+}
+
+// SetAllowedModels sets the "allowed_models" field.
+func (u *APIKeyUpsertBulk) SetAllowedModels(v []string) *APIKeyUpsertBulk {
+	return u.Update(func(s *APIKeyUpsert) {
+		s.SetAllowedModels(v)
+	})
+}
+
+// UpdateAllowedModels sets the "allowed_models" field to the value that was provided on create.
+func (u *APIKeyUpsertBulk) UpdateAllowedModels() *APIKeyUpsertBulk {
+	return u.Update(func(s *APIKeyUpsert) {
+		s.UpdateAllowedModels()
+	})
+}
+
+// SetOpenaiDefaultFastMode sets the "openai_default_fast_mode" field.
+func (u *APIKeyUpsertBulk) SetOpenaiDefaultFastMode(v bool) *APIKeyUpsertBulk {
+	return u.Update(func(s *APIKeyUpsert) {
+		s.SetOpenaiDefaultFastMode(v)
+	})
+}
+
+// UpdateOpenaiDefaultFastMode sets the "openai_default_fast_mode" field to the value that was provided on create.
+func (u *APIKeyUpsertBulk) UpdateOpenaiDefaultFastMode() *APIKeyUpsertBulk {
+	return u.Update(func(s *APIKeyUpsert) {
+		s.UpdateOpenaiDefaultFastMode()
 	})
 }
 

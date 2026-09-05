@@ -10,19 +10,22 @@ import (
 )
 
 type User struct {
-	ID            int64      `json:"id"`
-	Email         string     `json:"email"`
-	Username      string     `json:"username"`
-	Role          string     `json:"role"`
-	Balance       float64    `json:"balance"`
-	FrozenBalance float64    `json:"frozen_balance"`
-	Concurrency   int        `json:"concurrency"`
-	Status        string     `json:"status"`
-	AllowedGroups []int64    `json:"allowed_groups"`
-	LastActiveAt  *time.Time `json:"last_active_at,omitempty"`
-	CreatedAt     time.Time  `json:"created_at"`
-	UpdatedAt     time.Time  `json:"updated_at"`
-	DeletedAt     *time.Time `json:"deleted_at,omitempty"`
+	ID                        int64      `json:"id"`
+	Email                     string     `json:"email"`
+	Username                  string     `json:"username"`
+	Role                      string     `json:"role"`
+	Balance                   float64    `json:"balance"`
+	TemporaryBalance          float64    `json:"temporary_balance"`
+	ActiveTemporaryBalance    float64    `json:"active_temporary_balance"`
+	TemporaryBalanceExpiresAt *time.Time `json:"temporary_balance_expires_at,omitempty"`
+	FrozenBalance             float64    `json:"frozen_balance"`
+	Concurrency               int        `json:"concurrency"`
+	Status                    string     `json:"status"`
+	AllowedGroups             []int64    `json:"allowed_groups"`
+	LastActiveAt              *time.Time `json:"last_active_at,omitempty"`
+	CreatedAt                 time.Time  `json:"created_at"`
+	UpdatedAt                 time.Time  `json:"updated_at"`
+	DeletedAt                 *time.Time `json:"deleted_at,omitempty"`
 
 	// 余额不足通知
 	BalanceNotifyEnabled       bool               `json:"balance_notify_enabled"`
@@ -96,8 +99,12 @@ type Group struct {
 	Description    string  `json:"description"`
 	Platform       string  `json:"platform"`
 	RateMultiplier float64 `json:"rate_multiplier"`
-	IsExclusive    bool    `json:"is_exclusive"`
-	Status         string  `json:"status"`
+	// FastMultiplier is exposed only when all configured model/channel Fast
+	// prices share one multiplier; otherwise clients must use the generic
+	// model/channel pricing wording.
+	FastMultiplier *float64 `json:"fast_multiplier,omitempty"`
+	IsExclusive    bool     `json:"is_exclusive"`
+	Status         string   `json:"status"`
 
 	SubscriptionType          string   `json:"subscription_type"`
 	DailyLimitUSD             *float64 `json:"daily_limit_usd"`
@@ -155,7 +162,7 @@ type Group struct {
 	MaxReasoningEffort string `json:"max_reasoning_effort"`
 	// MaxReasoningEffortOverLimit 超过上限时的访问控制：downgrade（默认）或 deny。
 	MaxReasoningEffortOverLimit string `json:"max_reasoning_effort_over_limit"`
-	// ReasoningEffortMappings OpenAI/Codex 推理强度映射，可按模型精确名、前缀或后缀限定。
+	// ReasoningEffortMappings OpenAI/Codex 推理强度精确映射。
 	ReasoningEffortMappings []domain.ReasoningEffortMapping `json:"reasoning_effort_mappings"`
 
 	CreatedAt time.Time `json:"created_at"`

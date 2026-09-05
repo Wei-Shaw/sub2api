@@ -131,10 +131,11 @@ func (s *userRepoStubForGroupUpdate) RemoveGroupFromUserAllowedGroups(context.Co
 
 // apiKeyRepoStubForGroupUpdate implements APIKeyRepository for AdminUpdateAPIKeyGroupID tests.
 type apiKeyRepoStubForGroupUpdate struct {
-	key       *APIKey
-	getErr    error
-	updateErr error
-	updated   *APIKey // captures what was passed to Update
+	key           *APIKey
+	getErr        error
+	updateErr     error
+	updated       *APIKey // captures what was passed to Update
+	updatedFields APIKeyUpdateFields
 }
 
 func (s *apiKeyRepoStubForGroupUpdate) GetByID(_ context.Context, _ int64) (*APIKey, error) {
@@ -144,12 +145,13 @@ func (s *apiKeyRepoStubForGroupUpdate) GetByID(_ context.Context, _ int64) (*API
 	clone := *s.key
 	return &clone, nil
 }
-func (s *apiKeyRepoStubForGroupUpdate) Update(_ context.Context, key *APIKey, _ APIKeyUpdateFields) error {
+func (s *apiKeyRepoStubForGroupUpdate) Update(_ context.Context, key *APIKey, fields APIKeyUpdateFields) error {
 	if s.updateErr != nil {
 		return s.updateErr
 	}
 	clone := *key
 	s.updated = &clone
+	s.updatedFields = fields
 	return nil
 }
 
@@ -334,6 +336,23 @@ func TestAdminService_AdminUpdateAPIKeyGroupID_Unbind(t *testing.T) {
 	require.NotNil(t, repo.updated, "Update should have been called")
 	require.Nil(t, repo.updated.GroupID)
 	require.Equal(t, []string{"sk-test"}, cache.keys, "cache should be invalidated")
+}
+
+func TestAdminService_AdminUpdateAPIKeyGroupID_ClearsFastModeWhenMovingAwayFromOpenAI(t *testing.T) {
+	existing := &APIKey{
+		ID: 1, Key: "sk-test", GroupID: int64Ptr(5), OpenAIDefaultFastMode: true,
+		Group: &Group{ID: 5, Name: "OpenAI", Platform: PlatformOpenAI},
+	}
+	repo := &apiKeyRepoStubForGroupUpdate{key: existing}
+	groupRepo := &groupRepoStubForGroupUpdate{group: &Group{ID: 10, Name: "Gemini", Platform: PlatformGemini, Status: StatusActive}}
+	svc := &adminServiceImpl{apiKeyRepo: repo, groupRepo: groupRepo}
+
+	got, err := svc.AdminUpdateAPIKeyGroupID(context.Background(), 1, int64Ptr(10))
+	require.NoError(t, err)
+	require.False(t, got.APIKey.OpenAIDefaultFastMode)
+	require.False(t, repo.updated.OpenAIDefaultFastMode)
+	require.True(t, repo.updatedFields.GroupID)
+	require.True(t, repo.updatedFields.OpenAIDefaultFastMode)
 }
 
 func TestAdminService_AdminUpdateAPIKeyGroupID_BindActiveGroup(t *testing.T) {

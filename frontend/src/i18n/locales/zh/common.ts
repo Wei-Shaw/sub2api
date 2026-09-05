@@ -157,6 +157,12 @@ export default {
 
   // Navigation
   nav: {
+    contactUs: '联系我们',
+    tutorials: '使用教程',
+    ccSwitchTutorial: 'CC Switch 教程',
+    claudeCodeTutorial: 'Claude Code 教程',
+    codexTutorial: 'Codex 教程',
+    codexImageTutorial: 'Codex 生图教程',
     dashboard: '仪表盘',
     announcements: '公告',
     apiKeys: 'API 密钥',

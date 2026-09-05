@@ -230,6 +230,12 @@ func IsGroupContextValid(group *Group) bool {
 	return true
 }
 
+// SupportsOpenAIDefaultFastMode reports whether this group may apply the
+// persisted API-key default to eligible OpenAI text requests.
+func (g *Group) SupportsOpenAIDefaultFastMode() bool {
+	return g != nil && strings.EqualFold(strings.TrimSpace(g.Platform), PlatformOpenAI)
+}
+
 // GetRoutingAccountIDs 根据请求模型获取路由账号 ID 列表
 // 返回匹配的优先账号 ID 列表，如果没有匹配规则则返回 nil
 func (g *Group) GetRoutingAccountIDs(requestedModel string) []int64 {

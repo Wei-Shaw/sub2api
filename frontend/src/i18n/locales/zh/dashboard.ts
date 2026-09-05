@@ -3,6 +3,14 @@ export default {
     title: '仪表盘',
     welcomeMessage: '欢迎回来！这是您账户的概览。',
     balance: '余额',
+    balanceUsageTrend: '每日余额消耗',
+    trendMode: '趋势指标',
+    tokensMode: 'Token',
+    balanceMode: '余额',
+    temporaryBalance: '临时额度',
+    temporaryBalanceActive: '有效期至 {time}',
+    temporaryBalanceExpired: '已过期',
+    temporaryBalanceExpiredAt: '已于 {time} 过期',
     apiKeys: 'API 密钥',
     todayRequests: '今日请求',
     todayCost: '今日消费',
@@ -120,6 +128,20 @@ export default {
     groupChangedSuccess: '分组更换成功',
     failedToChangeGroup: '更换分组失败',
     groupRequired: '请选择分组',
+    openaiDefaultFastMode: 'OpenAI 快速模式',
+    fastMode: '快速模式',
+    normalMode: '普通模式',
+    fastModeActualMultiplier: '按模型/渠道实际倍率',
+    fastModeBillingWarning:
+      '符合条件的请求会强制使用 Priority 快速档位；当前分组已知统一 Fast 覆盖倍率为 {multiplier}，未覆盖模型/渠道仍按各自 Fast 档位价格计费；分组免费快速模式除外。',
+    fastModeBillingWarningShort: 'Fast：{multiplier}（已知覆盖）',
+    fastModeConfirmTitle: '确认开启快速模式？',
+    fastModeConfirmMessage:
+      'API 密钥“{name}”开启快速模式后，符合条件的请求将强制使用 Priority 快速档位；当前分组已知统一 Fast 覆盖倍率为 {multiplier}，未覆盖模型/渠道仍按各自 Fast 档位价格计费；分组免费快速模式除外。',
+    fastModeConfirmAction: '开启快速模式',
+    fastModeEnabledSuccess: '已开启快速模式',
+    normalModeEnabledSuccess: '已切换为普通模式',
+    fastModeStateAdjusted: '服务器已将快速模式调整为{mode}，列表已刷新。',
     usage: '用量',
     today: '今日',
     total: '近30天',
@@ -564,9 +586,14 @@ export default {
 
   // Available Channels (user-facing)
   availableChannels: {
-    title: '可用渠道',
-    description: '查看您可访问的渠道与其支持的模型、定价',
-    searchPlaceholder: '搜索渠道或模型...',
+    title: '模型价格',
+    description: '查看您可用分组中的模型与实际计费价格',
+    searchPlaceholder: '搜索模型、分组或服务商...',
+    providers: '服务商',
+    allProviders: '全部服务商',
+    groups: '分组',
+    allGroups: '全部分组',
+    resetFilters: '重置筛选',
     empty: '暂无可用渠道',
     noModels: '未配置模型',
     noPricing: '未配置定价',
@@ -598,7 +625,8 @@ export default {
       perRequestPrice: '每次请求',
       intervals: '阶梯定价',
       unitPerMillion: '/ 1M token',
-      unitPerRequest: '/ 次'
+      unitPerRequest: '/ 次',
+      unitPerSecond: '/ 秒'
     }
   },
 

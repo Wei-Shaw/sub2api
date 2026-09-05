@@ -52,6 +52,11 @@ export interface UserDashboardStats {
   average_duration_ms: number
   rpm: number // 近5分钟平均每分钟请求数
   tpm: number // 近5分钟平均每分钟Token数
+  /** Active temporary promotional balance, excluded once expired. */
+  active_temporary_balance?: number
+  temporary_balance_expires_at?: string | null
+  /** Permanent balance plus active temporary balance. */
+  available_balance?: number
   by_platform?: PlatformDashboardStats[]
 }
 

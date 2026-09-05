@@ -428,6 +428,21 @@ func syncBalanceCacheAfterDeduction(ctx context.Context, p *postUsageBillingPara
 	if p == nil || p.Cost == nil || p.User == nil || deps == nil || deps.billingCacheService == nil {
 		return
 	}
+	// Temporary balance is expiry-sensitive. The cache deduction is queued and
+	// can run after the grant boundary, so replaying the full request cost there
+	// could charge permanent balance twice (the DB transaction already split the
+	// deduction). Invalidate and let the next read rebuild the authoritative
+	// snapshot whenever this transaction consumed any temporary amount.
+	if result != nil && result.TemporaryBalanceCost > 0 {
+		if err := deps.billingCacheService.InvalidateUserBalance(ctx, p.User.ID); err != nil {
+			slog.Warn("invalidate balance cache after temporary deduction failed",
+				"user_id", p.User.ID,
+				"temporary_balance_cost", result.TemporaryBalanceCost,
+				"error", err,
+			)
+		}
+		return
+	}
 	if result != nil && result.NewBalance != nil && deps.billingCacheService.balanceBelowEligibilityThreshold(*result.NewBalance) {
 		if err := deps.billingCacheService.InvalidateUserBalance(ctx, p.User.ID); err != nil {
 			slog.Warn("invalidate balance cache after exhausted deduction failed",

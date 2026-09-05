@@ -3,6 +3,14 @@ export default {
     title: 'Dashboard',
     welcomeMessage: "Welcome back! Here's an overview of your account.",
     balance: 'Balance',
+    balanceUsageTrend: 'Daily balance consumption',
+    trendMode: 'Trend metric',
+    tokensMode: 'Tokens',
+    balanceMode: 'Balance',
+    temporaryBalance: 'Temporary balance',
+    temporaryBalanceActive: 'Active until {time}',
+    temporaryBalanceExpired: 'Expired',
+    temporaryBalanceExpiredAt: 'Expired {time}',
     apiKeys: 'API Keys',
     todayRequests: 'Today Requests',
     todayCost: 'Today Cost',
@@ -120,6 +128,20 @@ export default {
     groupChangedSuccess: 'Group changed successfully',
     failedToChangeGroup: 'Failed to change group',
     groupRequired: 'Please select a group',
+    openaiDefaultFastMode: 'OpenAI fast mode',
+    fastMode: 'Fast mode',
+    normalMode: 'Normal mode',
+    fastModeActualMultiplier: 'model/channel rate',
+    fastModeBillingWarning:
+      'Eligible requests are forced to the Priority fast tier. The group has a known uniform Fast override of {multiplier}; uncovered models/channels use their own Fast-tier price. Free-fast groups are excluded.',
+    fastModeBillingWarningShort: 'Fast: {multiplier} (known override)',
+    fastModeConfirmTitle: 'Enable fast mode?',
+    fastModeConfirmMessage:
+      'After fast mode is enabled for API key "{name}", eligible requests are forced to the Priority fast tier. The group has a known uniform Fast override of {multiplier}; uncovered models/channels use their own Fast-tier price. Free-fast groups are excluded.',
+    fastModeConfirmAction: 'Enable fast mode',
+    fastModeEnabledSuccess: 'Fast mode enabled',
+    normalModeEnabledSuccess: 'Normal mode enabled',
+    fastModeStateAdjusted: 'The server adjusted fast mode to {mode}. The list has been refreshed.',
     usage: 'Usage',
     today: 'Today',
     total: 'Last 30d',
@@ -559,9 +581,14 @@ export default {
 
   // Available Channels (user-facing)
   availableChannels: {
-    title: 'Available Channels',
-    description: 'Channels you can access, along with their supported models and pricing',
-    searchPlaceholder: 'Search channels or models...',
+    title: 'Model Pricing',
+    description: 'Models and effective billing prices for the groups you can access',
+    searchPlaceholder: 'Search models, groups, or providers...',
+    providers: 'Providers',
+    allProviders: 'All providers',
+    groups: 'Groups',
+    allGroups: 'All groups',
+    resetFilters: 'Reset filters',
     empty: 'No available channels',
     noModels: 'No models configured',
     noPricing: 'Pricing not configured',
@@ -593,7 +620,8 @@ export default {
       perRequestPrice: 'Per Request',
       intervals: 'Tiered Pricing',
       unitPerMillion: '/ 1M tokens',
-      unitPerRequest: '/ request'
+      unitPerRequest: '/ request',
+      unitPerSecond: '/ second'
     }
   },
 

@@ -28,6 +28,7 @@ func setupAdminRouter() (*gin.Engine, *stubAdminService) {
 	router.PUT("/api/v1/admin/users/:id", userHandler.Update)
 	router.DELETE("/api/v1/admin/users/:id", userHandler.Delete)
 	router.POST("/api/v1/admin/users/:id/balance", userHandler.UpdateBalance)
+	router.POST("/api/v1/admin/users/:id/temporary-balance", userHandler.GrantTemporaryBalance)
 	router.GET("/api/v1/admin/users/:id/api-keys", userHandler.GetUserAPIKeys)
 	router.GET("/api/v1/admin/users/:id/usage", userHandler.GetUserUsage)
 
