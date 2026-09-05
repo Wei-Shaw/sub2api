@@ -32,6 +32,38 @@ func (s *openaiOAuthClientRefreshStub) RefreshTokenWithClientID(ctx context.Cont
 	return nil, errors.New("not implemented")
 }
 
+func TestOpenAIOAuthService_BuildAccountCredentialsUsesRelayGatewayFormat(t *testing.T) {
+	svc := NewOpenAIOAuthService(nil, &openaiOAuthClientRefreshStub{})
+	defer svc.Stop()
+
+	expiresAt := int64(1700000000)
+	creds := svc.BuildAccountCredentials(&OpenAITokenInfo{
+		AccessToken:      "access-token",
+		RefreshToken:     "refresh-token",
+		IDToken:          "id-token",
+		ExpiresAt:        expiresAt,
+		Email:            "user@example.com",
+		ChatGPTAccountID: "chatgpt-account",
+		ChatGPTUserID:    "chatgpt-user",
+	})
+
+	expired := time.Unix(expiresAt, 0).Format(time.RFC3339)
+	require.Equal(t, "codex", creds["type"])
+	require.Equal(t, "access-token", creds["access_token"])
+	require.Equal(t, "refresh-token", creds["refresh_token"])
+	require.Equal(t, "id-token", creds["id_token"])
+	require.Equal(t, "user@example.com", creds["email"])
+	require.Equal(t, "chatgpt-account", creds["account_id"])
+	require.Equal(t, "chatgpt-account", creds["chatgpt_account_id"])
+	require.Equal(t, "chatgpt-user", creds["chatgpt_user_id"])
+	require.Equal(t, expired, creds["expired"])
+	require.Equal(t, expired, creds["expires_at"])
+	lastRefresh, ok := creds["last_refresh"].(string)
+	require.True(t, ok)
+	_, err := time.Parse(time.RFC3339, lastRefresh)
+	require.NoError(t, err)
+}
+
 func TestOpenAIOAuthService_RefreshAccountToken_NoRefreshTokenUsesExistingAccessToken(t *testing.T) {
 	client := &openaiOAuthClientRefreshStub{}
 	svc := NewOpenAIOAuthService(nil, client)
