@@ -9,6 +9,7 @@
       class="input pl-10"
       :placeholder="placeholder"
       @input="handleInput"
+      @keyup.enter="handleEnter"
     />
   </div>
 </template>
@@ -29,6 +30,7 @@ const props = withDefaults(defineProps<{
 const emit = defineEmits<{
   (e: 'update:modelValue', value: string): void
   (e: 'search', value: string): void
+  (e: 'enter', value: string): void
 }>()
 
 const debouncedEmitSearch = useDebounceFn((value: string) => {
@@ -39,5 +41,10 @@ const handleInput = (event: Event) => {
   const value = (event.target as HTMLInputElement).value
   emit('update:modelValue', value)
   debouncedEmitSearch(value)
+}
+
+const handleEnter = (event: Event) => {
+  const value = (event.target as HTMLInputElement).value
+  emit('enter', value)
 }
 </script>

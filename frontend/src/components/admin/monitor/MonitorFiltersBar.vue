@@ -14,6 +14,7 @@
           :placeholder="t('admin.channelMonitor.searchPlaceholder')"
           class="input pl-10"
           @input="$emit('search-input')"
+          @keyup.enter="$emit('reload')"
         />
       </div>
 
@@ -36,6 +37,14 @@
 
     <!-- Right: Actions -->
     <div class="flex w-full flex-shrink-0 flex-wrap items-center justify-end gap-3 lg:w-auto">
+      <button
+        type="button"
+        class="btn btn-primary"
+        :disabled="loading"
+        @click="$emit('reload')"
+      >
+        {{ t('common.search') }}
+      </button>
       <button
         @click="$emit('reload')"
         :disabled="loading"

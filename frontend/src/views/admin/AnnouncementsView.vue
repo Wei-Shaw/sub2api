@@ -11,6 +11,7 @@
               :placeholder="t('admin.announcements.searchAnnouncements')"
               class="input"
               @input="handleSearch"
+              @keyup.enter="searchAnnouncements"
             />
           </div>
           <Select
@@ -22,6 +23,9 @@
 
           <!-- Right: Action buttons -->
           <div class="flex flex-1 flex-wrap items-center justify-end gap-2">
+            <button type="button" @click="searchAnnouncements" class="btn btn-primary">
+              {{ t('common.search') }}
+            </button>
             <button
               @click="loadAnnouncements"
               :disabled="loading"
@@ -418,6 +422,13 @@ function handleSearch() {
     pagination.page = 1
     loadAnnouncements()
   }, 300)
+}
+
+// Reset to page 1 and search immediately (used by the search button/enter key)
+function searchAnnouncements() {
+  if (searchDebounceTimer) window.clearTimeout(searchDebounceTimer)
+  pagination.page = 1
+  loadAnnouncements()
 }
 
 // ===== Create/Edit dialog =====
