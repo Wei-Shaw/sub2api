@@ -96,6 +96,12 @@ export default {
       schedulableEnabled: 'Scheduling enabled',
       schedulableDisabled: 'Scheduling disabled',
       failedToToggleSchedulable: 'Failed to toggle scheduling status',
+      runtimeScheduling: {
+        disableTemp: 'Disable automatic scheduling temporarily',
+        disableTempDesc: 'When enabled, the account will not be automatically restored from a temporary unschedulable state.',
+        disableErrors: 'Disable scheduling on errors',
+        disableErrorsDesc: 'When enabled, the account will not be automatically restored after being paused due to errors.'
+      },
       groupCountTotal: '{count} groups total',
       platforms: {
         anthropic: 'Anthropic',
@@ -574,6 +580,8 @@ export default {
         oauthPassthrough: 'Auto passthrough (auth only)',
         oauthPassthroughDesc:
           'When enabled, this OpenAI account uses automatic passthrough: the gateway forwards request/response as-is and only swaps auth, while keeping billing/concurrency/audit and necessary safety filtering.',
+        requestHeaderPassthrough: 'Passthrough request headers',
+        requestHeaderPassthroughDesc: 'Forward client request headers to the upstream OpenAI request (authentication and internal headers are filtered).',
         flattenNamespaces: 'Flatten Codex namespace tools (compatibility)',
         flattenNamespacesDesc:
           'Disabled by default: Codex namespace tool declarations are forwarded as-is on /responses, which is what the ChatGPT Codex backend expects. Enable only when this OAuth account is routed to a relay that rejects namespace tools — flattening renames them to namespace__tool, which breaks models that address collaboration tools as functions.<namespace>.<tool>. Compaction requests always flatten regardless of this switch.',
@@ -1454,7 +1462,7 @@ export default {
       imagePromptDefault: 'Generate a cute orange cat astronaut sticker on a clean pastel background.',
       imageTestHint:
         'Calls standalone /v1/images/generations and shows the returned image below.',
-      imageTestMode: 'Mode: Image generation test',
+      imageTestMode: 'Image generation test',
       videoPromptLabel: 'Video prompt',
       videoPromptPlaceholder: 'Example: A red ball bouncing once on a white floor, short simple motion.',
       videoPromptDefault: 'A red ball bouncing once on a white floor, short simple motion.',

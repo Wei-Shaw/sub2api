@@ -13,6 +13,11 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func TestIsOpenAIImageModelKeepsGPTImageRouting(t *testing.T) {
+	require.True(t, isOpenAIImageModel("gpt-image-1"))
+	require.False(t, isOpenAIImageModel("agnes-image-2.1-flash"))
+}
+
 func TestAccountTestService_OpenAIImageOAuthHandlesOutputItemDoneFallback(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	rec := httptest.NewRecorder()

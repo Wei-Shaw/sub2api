@@ -446,6 +446,33 @@ func (_u *UserUpdate) AddRpmLimit(v int) *UserUpdate {
 	return _u
 }
 
+// SetLastImageAPIKeyID sets the "last_image_api_key_id" field.
+func (_u *UserUpdate) SetLastImageAPIKeyID(v int64) *UserUpdate {
+	_u.mutation.ResetLastImageAPIKeyID()
+	_u.mutation.SetLastImageAPIKeyID(v)
+	return _u
+}
+
+// SetNillableLastImageAPIKeyID sets the "last_image_api_key_id" field if the given value is not nil.
+func (_u *UserUpdate) SetNillableLastImageAPIKeyID(v *int64) *UserUpdate {
+	if v != nil {
+		_u.SetLastImageAPIKeyID(*v)
+	}
+	return _u
+}
+
+// AddLastImageAPIKeyID adds value to the "last_image_api_key_id" field.
+func (_u *UserUpdate) AddLastImageAPIKeyID(v int64) *UserUpdate {
+	_u.mutation.AddLastImageAPIKeyID(v)
+	return _u
+}
+
+// ClearLastImageAPIKeyID clears the value of the "last_image_api_key_id" field.
+func (_u *UserUpdate) ClearLastImageAPIKeyID() *UserUpdate {
+	_u.mutation.ClearLastImageAPIKeyID()
+	return _u
+}
+
 // AddAPIKeyIDs adds the "api_keys" edge to the APIKey entity by IDs.
 func (_u *UserUpdate) AddAPIKeyIDs(ids ...int64) *UserUpdate {
 	_u.mutation.AddAPIKeyIDs(ids...)
@@ -1115,6 +1142,15 @@ func (_u *UserUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	}
 	if value, ok := _u.mutation.AddedRpmLimit(); ok {
 		_spec.AddField(user.FieldRpmLimit, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.LastImageAPIKeyID(); ok {
+		_spec.SetField(user.FieldLastImageAPIKeyID, field.TypeInt64, value)
+	}
+	if value, ok := _u.mutation.AddedLastImageAPIKeyID(); ok {
+		_spec.AddField(user.FieldLastImageAPIKeyID, field.TypeInt64, value)
+	}
+	if _u.mutation.LastImageAPIKeyIDCleared() {
+		_spec.ClearField(user.FieldLastImageAPIKeyID, field.TypeInt64)
 	}
 	if _u.mutation.APIKeysCleared() {
 		edge := &sqlgraph.EdgeSpec{
@@ -2139,6 +2175,33 @@ func (_u *UserUpdateOne) AddRpmLimit(v int) *UserUpdateOne {
 	return _u
 }
 
+// SetLastImageAPIKeyID sets the "last_image_api_key_id" field.
+func (_u *UserUpdateOne) SetLastImageAPIKeyID(v int64) *UserUpdateOne {
+	_u.mutation.ResetLastImageAPIKeyID()
+	_u.mutation.SetLastImageAPIKeyID(v)
+	return _u
+}
+
+// SetNillableLastImageAPIKeyID sets the "last_image_api_key_id" field if the given value is not nil.
+func (_u *UserUpdateOne) SetNillableLastImageAPIKeyID(v *int64) *UserUpdateOne {
+	if v != nil {
+		_u.SetLastImageAPIKeyID(*v)
+	}
+	return _u
+}
+
+// AddLastImageAPIKeyID adds value to the "last_image_api_key_id" field.
+func (_u *UserUpdateOne) AddLastImageAPIKeyID(v int64) *UserUpdateOne {
+	_u.mutation.AddLastImageAPIKeyID(v)
+	return _u
+}
+
+// ClearLastImageAPIKeyID clears the value of the "last_image_api_key_id" field.
+func (_u *UserUpdateOne) ClearLastImageAPIKeyID() *UserUpdateOne {
+	_u.mutation.ClearLastImageAPIKeyID()
+	return _u
+}
+
 // AddAPIKeyIDs adds the "api_keys" edge to the APIKey entity by IDs.
 func (_u *UserUpdateOne) AddAPIKeyIDs(ids ...int64) *UserUpdateOne {
 	_u.mutation.AddAPIKeyIDs(ids...)
@@ -2838,6 +2901,15 @@ func (_u *UserUpdateOne) sqlSave(ctx context.Context) (_node *User, err error) {
 	}
 	if value, ok := _u.mutation.AddedRpmLimit(); ok {
 		_spec.AddField(user.FieldRpmLimit, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.LastImageAPIKeyID(); ok {
+		_spec.SetField(user.FieldLastImageAPIKeyID, field.TypeInt64, value)
+	}
+	if value, ok := _u.mutation.AddedLastImageAPIKeyID(); ok {
+		_spec.AddField(user.FieldLastImageAPIKeyID, field.TypeInt64, value)
+	}
+	if _u.mutation.LastImageAPIKeyIDCleared() {
+		_spec.ClearField(user.FieldLastImageAPIKeyID, field.TypeInt64)
 	}
 	if _u.mutation.APIKeysCleared() {
 		edge := &sqlgraph.EdgeSpec{

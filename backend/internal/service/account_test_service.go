@@ -663,8 +663,10 @@ func (s *AccountTestService) testOpenAIAccountConnection(c *gin.Context, account
 		return s.testOpenAICompactConnection(c, account, testModelID)
 	}
 
-	// Route to image generation test if an image model is selected
-	if isOpenAIImageModel(testModelID) {
+	// Route to image generation test if an image model is selected or the
+	// user explicitly chose the image test mode (2dev: mode=image forces the
+	// image-generation path regardless of model prefix).
+	if mode == AccountTestModeImage || isOpenAIImageModel(testModelID) {
 		imagePrompt := strings.TrimSpace(prompt)
 		if imagePrompt == "" {
 			imagePrompt = defaultOpenAIImageTestPrompt

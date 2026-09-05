@@ -368,6 +368,20 @@ func (_c *UserCreate) SetNillableRpmLimit(v *int) *UserCreate {
 	return _c
 }
 
+// SetLastImageAPIKeyID sets the "last_image_api_key_id" field.
+func (_c *UserCreate) SetLastImageAPIKeyID(v int64) *UserCreate {
+	_c.mutation.SetLastImageAPIKeyID(v)
+	return _c
+}
+
+// SetNillableLastImageAPIKeyID sets the "last_image_api_key_id" field if the given value is not nil.
+func (_c *UserCreate) SetNillableLastImageAPIKeyID(v *int64) *UserCreate {
+	if v != nil {
+		_c.SetLastImageAPIKeyID(*v)
+	}
+	return _c
+}
+
 // AddAPIKeyIDs adds the "api_keys" edge to the APIKey entity by IDs.
 func (_c *UserCreate) AddAPIKeyIDs(ids ...int64) *UserCreate {
 	_c.mutation.AddAPIKeyIDs(ids...)
@@ -892,6 +906,10 @@ func (_c *UserCreate) createSpec() (*User, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.RpmLimit(); ok {
 		_spec.SetField(user.FieldRpmLimit, field.TypeInt, value)
 		_node.RpmLimit = value
+	}
+	if value, ok := _c.mutation.LastImageAPIKeyID(); ok {
+		_spec.SetField(user.FieldLastImageAPIKeyID, field.TypeInt64, value)
+		_node.LastImageAPIKeyID = &value
 	}
 	if nodes := _c.mutation.APIKeysIDs(); len(nodes) > 0 {
 		edge := &sqlgraph.EdgeSpec{
@@ -1517,6 +1535,30 @@ func (u *UserUpsert) AddRpmLimit(v int) *UserUpsert {
 	return u
 }
 
+// SetLastImageAPIKeyID sets the "last_image_api_key_id" field.
+func (u *UserUpsert) SetLastImageAPIKeyID(v int64) *UserUpsert {
+	u.Set(user.FieldLastImageAPIKeyID, v)
+	return u
+}
+
+// UpdateLastImageAPIKeyID sets the "last_image_api_key_id" field to the value that was provided on create.
+func (u *UserUpsert) UpdateLastImageAPIKeyID() *UserUpsert {
+	u.SetExcluded(user.FieldLastImageAPIKeyID)
+	return u
+}
+
+// AddLastImageAPIKeyID adds v to the "last_image_api_key_id" field.
+func (u *UserUpsert) AddLastImageAPIKeyID(v int64) *UserUpsert {
+	u.Add(user.FieldLastImageAPIKeyID, v)
+	return u
+}
+
+// ClearLastImageAPIKeyID clears the value of the "last_image_api_key_id" field.
+func (u *UserUpsert) ClearLastImageAPIKeyID() *UserUpsert {
+	u.SetNull(user.FieldLastImageAPIKeyID)
+	return u
+}
+
 // UpdateNewValues updates the mutable fields using the new values that were set on create.
 // Using this option is equivalent to using:
 //
@@ -1979,6 +2021,34 @@ func (u *UserUpsertOne) AddRpmLimit(v int) *UserUpsertOne {
 func (u *UserUpsertOne) UpdateRpmLimit() *UserUpsertOne {
 	return u.Update(func(s *UserUpsert) {
 		s.UpdateRpmLimit()
+	})
+}
+
+// SetLastImageAPIKeyID sets the "last_image_api_key_id" field.
+func (u *UserUpsertOne) SetLastImageAPIKeyID(v int64) *UserUpsertOne {
+	return u.Update(func(s *UserUpsert) {
+		s.SetLastImageAPIKeyID(v)
+	})
+}
+
+// AddLastImageAPIKeyID adds v to the "last_image_api_key_id" field.
+func (u *UserUpsertOne) AddLastImageAPIKeyID(v int64) *UserUpsertOne {
+	return u.Update(func(s *UserUpsert) {
+		s.AddLastImageAPIKeyID(v)
+	})
+}
+
+// UpdateLastImageAPIKeyID sets the "last_image_api_key_id" field to the value that was provided on create.
+func (u *UserUpsertOne) UpdateLastImageAPIKeyID() *UserUpsertOne {
+	return u.Update(func(s *UserUpsert) {
+		s.UpdateLastImageAPIKeyID()
+	})
+}
+
+// ClearLastImageAPIKeyID clears the value of the "last_image_api_key_id" field.
+func (u *UserUpsertOne) ClearLastImageAPIKeyID() *UserUpsertOne {
+	return u.Update(func(s *UserUpsert) {
+		s.ClearLastImageAPIKeyID()
 	})
 }
 
@@ -2610,6 +2680,34 @@ func (u *UserUpsertBulk) AddRpmLimit(v int) *UserUpsertBulk {
 func (u *UserUpsertBulk) UpdateRpmLimit() *UserUpsertBulk {
 	return u.Update(func(s *UserUpsert) {
 		s.UpdateRpmLimit()
+	})
+}
+
+// SetLastImageAPIKeyID sets the "last_image_api_key_id" field.
+func (u *UserUpsertBulk) SetLastImageAPIKeyID(v int64) *UserUpsertBulk {
+	return u.Update(func(s *UserUpsert) {
+		s.SetLastImageAPIKeyID(v)
+	})
+}
+
+// AddLastImageAPIKeyID adds v to the "last_image_api_key_id" field.
+func (u *UserUpsertBulk) AddLastImageAPIKeyID(v int64) *UserUpsertBulk {
+	return u.Update(func(s *UserUpsert) {
+		s.AddLastImageAPIKeyID(v)
+	})
+}
+
+// UpdateLastImageAPIKeyID sets the "last_image_api_key_id" field to the value that was provided on create.
+func (u *UserUpsertBulk) UpdateLastImageAPIKeyID() *UserUpsertBulk {
+	return u.Update(func(s *UserUpsert) {
+		s.UpdateLastImageAPIKeyID()
+	})
+}
+
+// ClearLastImageAPIKeyID clears the value of the "last_image_api_key_id" field.
+func (u *UserUpsertBulk) ClearLastImageAPIKeyID() *UserUpsertBulk {
+	return u.Update(func(s *UserUpsert) {
+		s.ClearLastImageAPIKeyID()
 	})
 }
 

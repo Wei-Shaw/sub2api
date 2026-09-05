@@ -1,0 +1,78 @@
+# =============================================================================
+# Sub2API Remote Deployment Configuration
+# =============================================================================
+# Usage:
+#   1. Copy this file to .remote
+#   2. Fill in your server IP, username, and password or SSH key path
+#   3. Ensure deploy/.env is configured
+#   4. Run: python deploy/remote.py
+#
+# Note:
+#   - `.remote` contains sensitive credentials and should never be committed.
+#   - Password auth and SSH key auth are both supported; configure one of them.
+# =============================================================================
+
+# Remote server IP or domain
+SSH_HOST=127.0.0.1
+
+# SSH port
+SSH_PORT=22
+
+# SSH login user
+SSH_USER=root
+
+# SSH login password
+# Leave empty when using SSH_KEY_PATH
+SSH_PASSWORD=change_me
+
+# Local private key path (optional)
+# Example:
+# SSH_KEY_PATH=C:/Users/yourname/.ssh/id_rsa
+SSH_KEY_PATH=
+
+# Remote deployment directory
+REMOTE_DIR=/opt/sub2api
+
+# Compose file uploaded to remote_dir and used for deployment
+COMPOSE_FILE=docker-compose.local.yml
+
+# Deployment target:
+# - all: deploy main Sub2API service and plugin-service together
+# - plugin_service: deploy only plugin-service
+DEPLOY_TARGET=all
+
+# Image source:
+# - compose: use the image configured in COMPOSE_FILE on the remote host
+# - local_image: upload LOCAL_IMAGE_TAR / PLUGIN_LOCAL_IMAGE_TAR, docker load them on the remote host,
+#   then recreate the selected services
+IMAGE_SOURCE=compose
+
+# Required when IMAGE_SOURCE=local_image and DEPLOY_TARGET=all.
+# Build and save this image locally before running deploy/remote_deploy.py:
+#   docker build -t weishaw/sub2api:latest -f Dockerfile .
+#   docker save -o deploy/weishaw-sub2api-latest.tar weishaw/sub2api:latest
+LOCAL_IMAGE=weishaw/sub2api:latest
+LOCAL_IMAGE_TAR=deploy/weishaw-sub2api-latest.tar
+
+# Optional: build and save LOCAL_IMAGE automatically before upload.
+BUILD_LOCAL_IMAGE=false
+
+# Optional docker build args. Use these when Docker Hub is not reachable locally.
+# LOCAL_IMAGE_BUILD_ARG_NODE_IMAGE=docker.m.daocloud.io/library/node:24-alpine
+# LOCAL_IMAGE_BUILD_ARG_GOLANG_IMAGE=docker.m.daocloud.io/library/golang:1.26.5-alpine
+# LOCAL_IMAGE_BUILD_ARG_ALPINE_IMAGE=docker.m.daocloud.io/library/alpine:3.21
+# LOCAL_IMAGE_BUILD_ARG_ALPINE_REPOSITORY=https://mirrors.aliyun.com/alpine
+
+# Plugin service local image configuration.
+# Required when IMAGE_SOURCE=local_image for both DEPLOY_TARGET=all and DEPLOY_TARGET=plugin_service.
+#   docker build -t weishaw/sub2api-plugin-service:latest -f plugin-service/Dockerfile .
+#   docker save -o deploy/weishaw-sub2api-plugin-service-latest.tar weishaw/sub2api-plugin-service:latest
+PLUGIN_LOCAL_IMAGE=weishaw/sub2api-plugin-service:latest
+PLUGIN_LOCAL_IMAGE_TAR=deploy/weishaw-sub2api-plugin-service-latest.tar
+
+# Optional: build and save PLUGIN_LOCAL_IMAGE automatically before upload.
+BUILD_PLUGIN_LOCAL_IMAGE=false
+
+# Optional docker build args for plugin-service image.
+# PLUGIN_LOCAL_IMAGE_BUILD_ARG_GOLANG_IMAGE=docker.m.daocloud.io/library/golang:1.26.4-alpine
+# PLUGIN_LOCAL_IMAGE_BUILD_ARG_ALPINE_IMAGE=docker.m.daocloud.io/library/alpine:3.21

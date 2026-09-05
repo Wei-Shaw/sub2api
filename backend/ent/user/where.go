@@ -180,6 +180,11 @@ func RpmLimit(v int) predicate.User {
 	return predicate.User(sql.FieldEQ(FieldRpmLimit, v))
 }
 
+// LastImageAPIKeyID applies equality check predicate on the "last_image_api_key_id" field. It's identical to LastImageAPIKeyIDEQ.
+func LastImageAPIKeyID(v int64) predicate.User {
+	return predicate.User(sql.FieldEQ(FieldLastImageAPIKeyID, v))
+}
+
 // CreatedAtEQ applies the EQ predicate on the "created_at" field.
 func CreatedAtEQ(v time.Time) predicate.User {
 	return predicate.User(sql.FieldEQ(FieldCreatedAt, v))
@@ -1398,6 +1403,56 @@ func RpmLimitLT(v int) predicate.User {
 // RpmLimitLTE applies the LTE predicate on the "rpm_limit" field.
 func RpmLimitLTE(v int) predicate.User {
 	return predicate.User(sql.FieldLTE(FieldRpmLimit, v))
+}
+
+// LastImageAPIKeyIDEQ applies the EQ predicate on the "last_image_api_key_id" field.
+func LastImageAPIKeyIDEQ(v int64) predicate.User {
+	return predicate.User(sql.FieldEQ(FieldLastImageAPIKeyID, v))
+}
+
+// LastImageAPIKeyIDNEQ applies the NEQ predicate on the "last_image_api_key_id" field.
+func LastImageAPIKeyIDNEQ(v int64) predicate.User {
+	return predicate.User(sql.FieldNEQ(FieldLastImageAPIKeyID, v))
+}
+
+// LastImageAPIKeyIDIn applies the In predicate on the "last_image_api_key_id" field.
+func LastImageAPIKeyIDIn(vs ...int64) predicate.User {
+	return predicate.User(sql.FieldIn(FieldLastImageAPIKeyID, vs...))
+}
+
+// LastImageAPIKeyIDNotIn applies the NotIn predicate on the "last_image_api_key_id" field.
+func LastImageAPIKeyIDNotIn(vs ...int64) predicate.User {
+	return predicate.User(sql.FieldNotIn(FieldLastImageAPIKeyID, vs...))
+}
+
+// LastImageAPIKeyIDGT applies the GT predicate on the "last_image_api_key_id" field.
+func LastImageAPIKeyIDGT(v int64) predicate.User {
+	return predicate.User(sql.FieldGT(FieldLastImageAPIKeyID, v))
+}
+
+// LastImageAPIKeyIDGTE applies the GTE predicate on the "last_image_api_key_id" field.
+func LastImageAPIKeyIDGTE(v int64) predicate.User {
+	return predicate.User(sql.FieldGTE(FieldLastImageAPIKeyID, v))
+}
+
+// LastImageAPIKeyIDLT applies the LT predicate on the "last_image_api_key_id" field.
+func LastImageAPIKeyIDLT(v int64) predicate.User {
+	return predicate.User(sql.FieldLT(FieldLastImageAPIKeyID, v))
+}
+
+// LastImageAPIKeyIDLTE applies the LTE predicate on the "last_image_api_key_id" field.
+func LastImageAPIKeyIDLTE(v int64) predicate.User {
+	return predicate.User(sql.FieldLTE(FieldLastImageAPIKeyID, v))
+}
+
+// LastImageAPIKeyIDIsNil applies the IsNil predicate on the "last_image_api_key_id" field.
+func LastImageAPIKeyIDIsNil() predicate.User {
+	return predicate.User(sql.FieldIsNull(FieldLastImageAPIKeyID))
+}
+
+// LastImageAPIKeyIDNotNil applies the NotNil predicate on the "last_image_api_key_id" field.
+func LastImageAPIKeyIDNotNil() predicate.User {
+	return predicate.User(sql.FieldNotNull(FieldLastImageAPIKeyID))
 }
 
 // HasAPIKeys applies the HasEdge predicate on the "api_keys" edge.

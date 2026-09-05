@@ -767,17 +767,36 @@ func (s *AccountRepoSuite) TestListSchedulableByGroupID_TimeBoundaries_And_Statu
 	mustBindAccountToGroup(s.T(), s.client, rateLimited.ID, group.ID, 1)
 	s.Require().NoError(s.repo.SetRateLimited(s.ctx, rateLimited.ID, now.Add(10*time.Minute)), "SetRateLimited")
 
+	protected := mustCreateAccount(s.T(), s.client, &service.Account{
+		Name:        "runtime-protected",
+		Schedulable: true,
+		Credentials: map[string]any{
+			"disable_runtime_error_handling": true,
+		},
+	})
+	mustBindAccountToGroup(s.T(), s.client, protected.ID, group.ID, 2)
+	_, err := s.client.Account.UpdateOneID(protected.ID).
+		SetStatus(service.StatusError).
+		SetSchedulable(false).
+		SetOverloadUntil(now.Add(10 * time.Minute)).
+		SetRateLimitResetAt(now.Add(10 * time.Minute)).
+		SetTempUnschedulableUntil(now.Add(10 * time.Minute)).
+		SetErrorMessage("internal error").
+		Save(s.ctx)
+	s.Require().NoError(err, "mark runtime-protected account with all runtime blocks")
+
 	s.Require().NoError(s.repo.SetError(s.ctx, overloaded.ID, "boom"), "SetError")
 
 	sched, err := s.repo.ListSchedulableByGroupID(s.ctx, group.ID)
 	s.Require().NoError(err, "ListSchedulableByGroupID")
-	s.Require().Len(sched, 1, "expected only ok account schedulable")
+	s.Require().Len(sched, 2, "expected ok plus runtime-protected account schedulable")
 	s.Require().Equal(okAcc.ID, sched[0].ID)
+	s.Require().Equal(protected.ID, sched[1].ID)
 
 	s.Require().NoError(s.repo.ClearRateLimit(s.ctx, rateLimited.ID), "ClearRateLimit")
 	sched2, err := s.repo.ListSchedulableByGroupID(s.ctx, group.ID)
 	s.Require().NoError(err, "ListSchedulableByGroupID after ClearRateLimit")
-	s.Require().Len(sched2, 2, "expected 2 schedulable accounts after ClearRateLimit")
+	s.Require().Len(sched2, 3, "expected 3 schedulable accounts after ClearRateLimit")
 }
 
 func (s *AccountRepoSuite) TestListSchedulableByPlatform() {

@@ -179,7 +179,22 @@ func (a *Account) EffectiveLoadFactor() int {
 }
 
 func (a *Account) IsSchedulable() bool {
-	if !a.IsActive() || !a.Schedulable {
+	if a == nil || a.Status == StatusDisabled {
+		return false
+	}
+	if a.IsRuntimeSchedulingProtectionDisabled() {
+		if a.Status == StatusError {
+			return true
+		}
+		if !a.Schedulable {
+			return false
+		}
+		return true
+	}
+	if !a.Schedulable {
+		return false
+	}
+	if !a.IsActive() {
 		return false
 	}
 	now := time.Now()
@@ -424,6 +439,16 @@ func (a *Account) IsTempUnschedulableEnabled() bool {
 	}
 	enabled, ok := raw.(bool)
 	return ok && enabled
+}
+
+func (a *Account) IsTempUnschedulableDisabled() bool {
+	return a != nil && a.Credentials != nil && a.Credentials["disable_temp_unschedulable"] == true
+}
+
+// IsRuntimeSchedulingProtectionDisabled keeps an account eligible after
+// runtime upstream failures. Manual disable and disabled status still win.
+func (a *Account) IsRuntimeSchedulingProtectionDisabled() bool {
+	return a != nil && a.Credentials != nil && a.Credentials["disable_runtime_error_handling"] == true
 }
 
 func (a *Account) GetTempUnschedulableRules() []TempUnschedulableRule {

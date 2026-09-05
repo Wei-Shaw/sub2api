@@ -94,6 +94,12 @@ export default {
       schedulableEnabled: '调度已开启',
       schedulableDisabled: '调度已关闭',
       failedToToggleSchedulable: '切换调度状态失败',
+      runtimeScheduling: {
+        disableTemp: '临时禁用自动调度',
+        disableTempDesc: '启用后，账号在临时不可调度状态下不会自动恢复。',
+        disableErrors: '错误时禁用自动调度',
+        disableErrorsDesc: '启用后，账号因错误被暂时停用时不会自动恢复。'
+      },
       groupCountTotal: '共 {count} 个分组',
       columns: {
         name: '名称',
@@ -659,6 +665,8 @@ export default {
         oauthPassthrough: '自动透传（仅替换认证）',
         oauthPassthroughDesc:
           '开启后，该 OpenAI 账号将自动透传请求与响应，仅替换认证并保留计费/并发/审计及必要安全过滤；如遇兼容性问题可随时关闭回滚。',
+        requestHeaderPassthrough: '透传请求头',
+        requestHeaderPassthroughDesc: '将客户端请求头透传到上游 OpenAI 请求（会过滤认证和内部头）。',
         flattenNamespaces: '摊平 Codex namespace 工具（兼容）',
         flattenNamespacesDesc:
           '默认关闭：/responses 上的 namespace 工具声明原样转发，这正是 ChatGPT Codex 后端期望的形态。仅当该 OAuth 账号指向不认识 namespace 的兼容上游时才开启——摊平会把工具改名为 namespace__tool，使按 functions.<命名空间>.<工具> 寻址的模型（如 gpt-5.6 多智能体）无法调用。压缩（compact）请求不受该开关影响，始终摊平。',
@@ -1510,7 +1518,7 @@ export default {
       imagePromptDefault: 'Generate a cute orange cat astronaut sticker on a clean pastel background.',
       imageTestHint:
         '调用独立 /v1/images/generations 生图，并在下方预览返回图片。',
-      imageTestMode: '模式：生图测试',
+      imageTestMode: '生图测试',
       videoPromptLabel: '视频提示词',
       videoPromptPlaceholder: '例如：一只红球在白地板上弹跳一次，动作简短。',
       videoPromptDefault: 'A red ball bouncing once on a white floor, short simple motion.',

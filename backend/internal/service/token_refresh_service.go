@@ -1082,6 +1082,10 @@ func (s *TokenRefreshService) refreshWithRetryWithRateGate(
 	)
 
 	// 设置临时不可调度 10 分钟（不标记 error，保持 status=active 让下个刷新周期能继续尝试）
+	if account.IsTempUnschedulableDisabled() || account.IsRuntimeSchedulingProtectionDisabled() {
+		return lastErr
+	}
+
 	until := time.Now().Add(tokenRefreshTempUnschedDuration)
 	reason := "token refresh retry exhausted"
 	if lastErr != nil {

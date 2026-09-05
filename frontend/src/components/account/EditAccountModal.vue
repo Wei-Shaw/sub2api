@@ -1321,6 +1321,23 @@
         </div>
       </div>
 
+      <div class="border-t border-gray-200 pt-4 dark:border-dark-600 space-y-4">
+        <div class="flex items-center justify-between gap-4">
+          <div>
+            <label class="input-label mb-0">{{ t('admin.accounts.runtimeScheduling.disableTemp') }}</label>
+            <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ t('admin.accounts.runtimeScheduling.disableTempDesc') }}</p>
+          </div>
+          <Toggle v-model="disableTempUnschedulable" />
+        </div>
+        <div class="flex items-center justify-between gap-4">
+          <div>
+            <label class="input-label mb-0">{{ t('admin.accounts.runtimeScheduling.disableErrors') }}</label>
+            <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ t('admin.accounts.runtimeScheduling.disableErrorsDesc') }}</p>
+          </div>
+          <Toggle v-model="disableRuntimeErrorHandling" />
+        </div>
+      </div>
+
       <!-- Temp Unschedulable Rules -->
       <div class="border-t border-gray-200 pt-4 dark:border-dark-600 space-y-4">
         <div class="mb-3 flex items-center justify-between">
@@ -1654,6 +1671,16 @@
       </div>
 
       <!-- OpenAI Codex namespace 工具摊平（兼容开关，仅 OAuth） -->
+      <div class="border-t border-gray-200 pt-4 dark:border-dark-600">
+        <div class="flex items-center justify-between">
+          <div>
+            <label class="input-label mb-0">{{ t('admin.accounts.openai.requestHeaderPassthrough') }}</label>
+            <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ t('admin.accounts.openai.requestHeaderPassthroughDesc') }}</p>
+          </div>
+          <Toggle v-model="openaiRequestHeaderPassthroughEnabled" data-testid="edit-openai-request-header-passthrough-toggle" :aria-label="t('admin.accounts.openai.requestHeaderPassthrough')" />
+        </div>
+      </div>
+
       <div
         v-if="account?.platform === 'openai' && account?.type === 'oauth'"
         class="border-t border-gray-200 pt-4 dark:border-dark-600"
@@ -3265,6 +3292,8 @@ const supportsAccountSchedulingThresholdOverride = computed(() =>
   supportsAccountSchedulingThresholdOverridePlatform(props.account?.platform)
 )
 const tempUnschedRules = ref<TempUnschedRuleForm[]>([])
+const disableTempUnschedulable = ref(false)
+const disableRuntimeErrorHandling = ref(false)
 const getModelMappingKey = createStableObjectKeyResolver<ModelMapping>('edit-model-mapping')
 const getOpenAICompactModelMappingKey = createStableObjectKeyResolver<ModelMapping>('edit-openai-compact-model-mapping')
 const getAntigravityModelMappingKey = createStableObjectKeyResolver<ModelMapping>('edit-antigravity-model-mapping')
@@ -3306,6 +3335,7 @@ const customBaseUrl = ref('')
 
 // OpenAI 自动透传开关（OAuth/API Key）
 const openaiPassthroughEnabled = ref(false)
+const openaiRequestHeaderPassthroughEnabled = ref(false)
 // OpenAI Codex namespace 工具摊平兼容开关（仅 OAuth），缺省关闭即原样保留
 const openaiFlattenNamespacesEnabled = ref(false)
 const openAILongContextBillingEnabled = ref(false)
@@ -3791,6 +3821,7 @@ const syncFormFromAccount = (newAccount: Account | null) => {
 
   // Load OpenAI passthrough toggle (OpenAI OAuth/SetupToken/API Key)
   openaiPassthroughEnabled.value = false
+  openaiRequestHeaderPassthroughEnabled.value = false
   openaiFlattenNamespacesEnabled.value = false
   openAILongContextBillingEnabled.value = false
   editPlanType.value = ''
@@ -3809,6 +3840,7 @@ const syncFormFromAccount = (newAccount: Account | null) => {
   webSearchEmulationMode.value = 'default'
   if (newAccount.platform === 'openai' && (newAccount.type === 'oauth' || newAccount.type === 'setup-token' || newAccount.type === 'apikey')) {
     openaiPassthroughEnabled.value = extra?.openai_passthrough === true || extra?.openai_oauth_passthrough === true
+    openaiRequestHeaderPassthroughEnabled.value = extra?.openai_request_header_passthrough === true
     openaiFlattenNamespacesEnabled.value =
       newAccount.type === 'oauth' && extra?.openai_responses_flatten_namespaces === true
     const longContextBillingValue = extra?.openai_long_context_billing_enabled
@@ -4367,6 +4399,16 @@ const buildTempUnschedRules = (rules: TempUnschedRuleForm[]) => {
 }
 
 const applyTempUnschedConfig = (credentials: Record<string, unknown>) => {
+	if (disableTempUnschedulable.value) {
+		credentials.disable_temp_unschedulable = true
+	} else {
+		delete credentials.disable_temp_unschedulable
+	}
+	if (disableRuntimeErrorHandling.value) {
+		credentials.disable_runtime_error_handling = true
+	} else {
+		delete credentials.disable_runtime_error_handling
+	}
   if (!tempUnschedEnabled.value) {
     delete credentials.temp_unschedulable_enabled
     delete credentials.temp_unschedulable_rules
@@ -4448,6 +4490,8 @@ const applyAccountSchedulingThresholdOverridePatch = (
 }
 
 function loadTempUnschedRules(credentials?: Record<string, unknown>) {
+  disableTempUnschedulable.value = credentials?.disable_temp_unschedulable === true
+  disableRuntimeErrorHandling.value = credentials?.disable_runtime_error_handling === true
   tempUnschedEnabled.value = credentials?.temp_unschedulable_enabled === true
   const rawRules = credentials?.temp_unschedulable_rules
   if (!Array.isArray(rawRules)) {
@@ -5236,6 +5280,11 @@ const handleSubmit = async () => {
       } else {
         delete newExtra.openai_passthrough
         delete newExtra.openai_oauth_passthrough
+      }
+      if (openaiRequestHeaderPassthroughEnabled.value) {
+        newExtra.openai_request_header_passthrough = true
+      } else {
+        delete newExtra.openai_request_header_passthrough
       }
       // 缺省即保留 namespace，不写空值，避免 extra 里堆积默认项
       if (props.account.type === 'oauth' && openaiFlattenNamespacesEnabled.value) {

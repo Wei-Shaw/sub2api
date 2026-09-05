@@ -56,6 +56,10 @@ func main() {
 	logger.InitBootstrap()
 	defer logger.Sync()
 
+	if err := loadProjectDotEnv(); err != nil {
+		log.Fatalf("Failed to load .env files: %v", err)
+	}
+
 	// Parse command line flags
 	setupMode := flag.Bool("setup", false, "Run setup wizard in CLI mode")
 	showVersion := flag.Bool("version", false, "Show version information")

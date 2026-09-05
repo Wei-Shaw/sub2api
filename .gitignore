@@ -45,6 +45,7 @@ npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
+.pnpm-store/
 
 # ===================
 # 环境配置
@@ -148,6 +149,7 @@ docs/screenshots/*
 !docs/screenshots/mobile-account-actions-menu.png
 .serena/
 .codex/
+.superpowers/
 frontend/coverage/
 aicodex
 output/

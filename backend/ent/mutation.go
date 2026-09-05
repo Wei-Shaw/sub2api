@@ -48648,6 +48648,8 @@ type UserMutation struct {
 	addtotal_recharged            *float64
 	rpm_limit                     *int
 	addrpm_limit                  *int
+	last_image_api_key_id         *int64
+	addlast_image_api_key_id      *int64
 	clearedFields                 map[string]struct{}
 	api_keys                      map[int64]struct{}
 	removedapi_keys               map[int64]struct{}
@@ -49890,6 +49892,76 @@ func (m *UserMutation) ResetRpmLimit() {
 	m.addrpm_limit = nil
 }
 
+// SetLastImageAPIKeyID sets the "last_image_api_key_id" field.
+func (m *UserMutation) SetLastImageAPIKeyID(i int64) {
+	m.last_image_api_key_id = &i
+	m.addlast_image_api_key_id = nil
+}
+
+// LastImageAPIKeyID returns the value of the "last_image_api_key_id" field in the mutation.
+func (m *UserMutation) LastImageAPIKeyID() (r int64, exists bool) {
+	v := m.last_image_api_key_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldLastImageAPIKeyID returns the old "last_image_api_key_id" field's value of the User entity.
+// If the User object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *UserMutation) OldLastImageAPIKeyID(ctx context.Context) (v *int64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldLastImageAPIKeyID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldLastImageAPIKeyID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldLastImageAPIKeyID: %w", err)
+	}
+	return oldValue.LastImageAPIKeyID, nil
+}
+
+// AddLastImageAPIKeyID adds i to the "last_image_api_key_id" field.
+func (m *UserMutation) AddLastImageAPIKeyID(i int64) {
+	if m.addlast_image_api_key_id != nil {
+		*m.addlast_image_api_key_id += i
+	} else {
+		m.addlast_image_api_key_id = &i
+	}
+}
+
+// AddedLastImageAPIKeyID returns the value that was added to the "last_image_api_key_id" field in this mutation.
+func (m *UserMutation) AddedLastImageAPIKeyID() (r int64, exists bool) {
+	v := m.addlast_image_api_key_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ClearLastImageAPIKeyID clears the value of the "last_image_api_key_id" field.
+func (m *UserMutation) ClearLastImageAPIKeyID() {
+	m.last_image_api_key_id = nil
+	m.addlast_image_api_key_id = nil
+	m.clearedFields[user.FieldLastImageAPIKeyID] = struct{}{}
+}
+
+// LastImageAPIKeyIDCleared returns if the "last_image_api_key_id" field was cleared in this mutation.
+func (m *UserMutation) LastImageAPIKeyIDCleared() bool {
+	_, ok := m.clearedFields[user.FieldLastImageAPIKeyID]
+	return ok
+}
+
+// ResetLastImageAPIKeyID resets all changes to the "last_image_api_key_id" field.
+func (m *UserMutation) ResetLastImageAPIKeyID() {
+	m.last_image_api_key_id = nil
+	m.addlast_image_api_key_id = nil
+	delete(m.clearedFields, user.FieldLastImageAPIKeyID)
+}
+
 // AddAPIKeyIDs adds the "api_keys" edge to the APIKey entity by ids.
 func (m *UserMutation) AddAPIKeyIDs(ids ...int64) {
 	if m.api_keys == nil {
@@ -50702,6 +50774,9 @@ func (m *UserMutation) Fields() []string {
 	if m.rpm_limit != nil {
 		fields = append(fields, user.FieldRpmLimit)
 	}
+	if m.last_image_api_key_id != nil {
+		fields = append(fields, user.FieldLastImageAPIKeyID)
+	}
 	return fields
 }
 
@@ -50760,6 +50835,8 @@ func (m *UserMutation) Field(name string) (ent.Value, bool) {
 		return m.TotalRecharged()
 	case user.FieldRpmLimit:
 		return m.RpmLimit()
+	case user.FieldLastImageAPIKeyID:
+		return m.LastImageAPIKeyID()
 	}
 	return nil, false
 }
@@ -50819,6 +50896,8 @@ func (m *UserMutation) OldField(ctx context.Context, name string) (ent.Value, er
 		return m.OldTotalRecharged(ctx)
 	case user.FieldRpmLimit:
 		return m.OldRpmLimit(ctx)
+	case user.FieldLastImageAPIKeyID:
+		return m.OldLastImageAPIKeyID(ctx)
 	}
 	return nil, fmt.Errorf("unknown User field %s", name)
 }
@@ -51003,6 +51082,13 @@ func (m *UserMutation) SetField(name string, value ent.Value) error {
 		}
 		m.SetRpmLimit(v)
 		return nil
+	case user.FieldLastImageAPIKeyID:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetLastImageAPIKeyID(v)
+		return nil
 	}
 	return fmt.Errorf("unknown User field %s", name)
 }
@@ -51029,6 +51115,9 @@ func (m *UserMutation) AddedFields() []string {
 	if m.addrpm_limit != nil {
 		fields = append(fields, user.FieldRpmLimit)
 	}
+	if m.addlast_image_api_key_id != nil {
+		fields = append(fields, user.FieldLastImageAPIKeyID)
+	}
 	return fields
 }
 
@@ -51049,6 +51138,8 @@ func (m *UserMutation) AddedField(name string) (ent.Value, bool) {
 		return m.AddedTotalRecharged()
 	case user.FieldRpmLimit:
 		return m.AddedRpmLimit()
+	case user.FieldLastImageAPIKeyID:
+		return m.AddedLastImageAPIKeyID()
 	}
 	return nil, false
 }
@@ -51100,6 +51191,13 @@ func (m *UserMutation) AddField(name string, value ent.Value) error {
 		}
 		m.AddRpmLimit(v)
 		return nil
+	case user.FieldLastImageAPIKeyID:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddLastImageAPIKeyID(v)
+		return nil
 	}
 	return fmt.Errorf("unknown User numeric field %s", name)
 }
@@ -51125,6 +51223,9 @@ func (m *UserMutation) ClearedFields() []string {
 	}
 	if m.FieldCleared(user.FieldBalanceNotifyThreshold) {
 		fields = append(fields, user.FieldBalanceNotifyThreshold)
+	}
+	if m.FieldCleared(user.FieldLastImageAPIKeyID) {
+		fields = append(fields, user.FieldLastImageAPIKeyID)
 	}
 	return fields
 }
@@ -51157,6 +51258,9 @@ func (m *UserMutation) ClearField(name string) error {
 		return nil
 	case user.FieldBalanceNotifyThreshold:
 		m.ClearBalanceNotifyThreshold()
+		return nil
+	case user.FieldLastImageAPIKeyID:
+		m.ClearLastImageAPIKeyID()
 		return nil
 	}
 	return fmt.Errorf("unknown User nullable field %s", name)
@@ -51240,6 +51344,9 @@ func (m *UserMutation) ResetField(name string) error {
 		return nil
 	case user.FieldRpmLimit:
 		m.ResetRpmLimit()
+		return nil
+	case user.FieldLastImageAPIKeyID:
+		m.ResetLastImageAPIKeyID()
 		return nil
 	}
 	return fmt.Errorf("unknown User field %s", name)

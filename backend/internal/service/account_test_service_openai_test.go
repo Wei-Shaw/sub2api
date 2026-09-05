@@ -642,6 +642,36 @@ func TestAccountTestService_OpenAIChatCompletionsPathReturns4xx(t *testing.T) {
 	require.NotContains(t, recorder.Body.String(), `"success":true`)
 }
 
+func TestAccountTestService_OpenAICloudflareChallengeDoesNotExposeHTML(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	ctx, recorder := newTestContext()
+
+	challenge := `<!DOCTYPE html><html><head><title>Attention Required! | Cloudflare</title></head><body><h1>Sorry, you have been blocked</h1></body></html>`
+	resp := newJSONResponse(http.StatusForbidden, challenge)
+	resp.Header.Set("Content-Type", "text/html; charset=UTF-8")
+	resp.Header.Set("cf-ray", "a2d8937aaaef2d36")
+	upstream := &httpUpstreamRecorder{resp: resp}
+	svc := &AccountTestService{
+		httpUpstream: upstream,
+		cfg:          &config.Config{Security: config.SecurityConfig{URLAllowlist: config.URLAllowlistConfig{Enabled: false}}},
+	}
+	account := &Account{
+		ID:          96,
+		Platform:    PlatformOpenAI,
+		Type:        AccountTypeAPIKey,
+		Concurrency: 1,
+		Credentials: map[string]any{"api_key": "sk-test", "base_url": "https://compat-upstream.example"},
+		Extra:       map[string]any{openai_compat.ExtraKeyResponsesSupported: false},
+	}
+
+	err := svc.testOpenAIAccountConnection(ctx, account, "gpt-5.4", "", "")
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "upstream Cloudflare challenge blocked the request")
+	require.Contains(t, err.Error(), "cf-ray: a2d8937aaaef2d36")
+	require.NotContains(t, err.Error(), "<!DOCTYPE html>")
+	require.NotContains(t, recorder.Body.String(), "<!DOCTYPE html>")
+}
+
 func TestAccountTestService_OpenAIChatCompletionsPathTimeout(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	ctx, recorder := newTestContext()

@@ -156,6 +156,61 @@ services:
       retries: 3
       start_period: 30s
 
+  sub2api-plugin-server:
+    image: ${PLUGIN_SERVER_IMAGE:-weishaw/sub2api-plugin-service:latest}
+    container_name: sub2api-plugin-server
+    restart: unless-stopped
+    ulimits:
+      nofile:
+        soft: 100000
+        hard: 100000
+    ports:
+      - "127.0.0.1:${PLUGIN_SERVER_PORT:-8091}:${PLUGIN_SERVER_PORT:-8091}"
+    environment:
+      - PLUGIN_SERVER_PORT=${PLUGIN_SERVER_PORT:-8091}
+      - PLUGIN_AI_RELAY_PUBLIC_BASE_URL=http://plugin-server:${PLUGIN_SERVER_PORT:-8091}
+      - PLUGIN_MAIN_SERVICE_BASE_URL=${PLUGIN_MAIN_SERVICE_BASE_URL:-http://sub2api:8080}
+      - MINIO_ENDPOINT=minio:9000
+      - MINIO_ACCESS_KEY=${MINIO_ROOT_USER:-sub2api-plugin}
+      - MINIO_SECRET_KEY=${MINIO_ROOT_PASSWORD:?MINIO_ROOT_PASSWORD is required}
+      - MINIO_BUCKET=${MINIO_BUCKET:-plugin-media}
+      - MINIO_USE_SSL=${MINIO_USE_SSL:-false}
+    depends_on:
+      sub2api:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    networks:
+      default:
+        aliases:
+          - plugin-server
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-T", "5", "-O", "/dev/null", "http://localhost:${PLUGIN_SERVER_PORT:-8091}/healthz"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+  minio:
+    image: minio/minio:RELEASE.2025-04-22T22-12-26Z
+    container_name: sub2api-minio
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    ports:
+      - "127.0.0.1:${MINIO_API_PORT:-9000}:9000"
+      - "127.0.0.1:${MINIO_CONSOLE_PORT:-9001}:9001"
+    environment:
+      - MINIO_ROOT_USER=${MINIO_ROOT_USER:-sub2api-plugin}
+      - MINIO_ROOT_PASSWORD=${MINIO_ROOT_PASSWORD:?MINIO_ROOT_PASSWORD is required}
+    volumes:
+      - ./minio_data:/data:Z
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+
 volumes:
   sub2api_data:
     driver: local
