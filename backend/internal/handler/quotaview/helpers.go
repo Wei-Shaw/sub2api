@@ -13,7 +13,7 @@ import (
 // includeWindowStart=true 时输出 *_window_start 字段（admin 视角调试用）
 func LazyZeroQuotaForResponse(r service.UserPlatformQuotaRecord, now time.Time, includeWindowStart bool) map[string]any {
 	daily := buildWindowSlice(r.DailyUsageUSD, r.DailyLimitUSD, r.DailyWindowStart, NeedsDailyReset(r.DailyWindowStart, now), nextDailyResetTime(now), includeWindowStart)
-	weekly := buildWindowSlice(r.WeeklyUsageUSD, r.WeeklyLimitUSD, r.WeeklyWindowStart, NeedsWeeklyReset(r.WeeklyWindowStart, now), nextWeeklyResetTime(now), includeWindowStart)
+	weekly := buildWindowSlice(r.WeeklyUsageUSD, r.WeeklyLimitUSD, r.WeeklyWindowStart, NeedsWeeklyReset(r.WeeklyWindowStart, now), nextWeeklyResetTime(r.WeeklyWindowStart, now), includeWindowStart)
 	monthly := buildWindowSlice(r.MonthlyUsageUSD, r.MonthlyLimitUSD, r.MonthlyWindowStart, NeedsMonthlyReset(r.MonthlyWindowStart, now), NextMonthlyResetTimeFrom(r.MonthlyWindowStart, now), includeWindowStart)
 	out := map[string]any{
 		"platform":                 r.Platform,
@@ -71,7 +71,8 @@ func NeedsWeeklyReset(start *time.Time, now time.Time) bool {
 	if start == nil {
 		return false
 	}
-	return start.Before(timezone.StartOfWeek(now))
+	_, needsReset := timezone.EffectiveWeeklyWindowStart(start, now)
+	return needsReset
 }
 
 // NeedsMonthlyReset 30 天滚动窗口语义（与订阅模式 NeedsMonthlyReset 一致）。
@@ -86,8 +87,9 @@ func nextDailyResetTime(now time.Time) time.Time {
 	return timezone.StartOfDay(now).AddDate(0, 0, 1)
 }
 
-func nextWeeklyResetTime(now time.Time) time.Time {
-	return timezone.StartOfWeek(now).AddDate(0, 0, 7)
+func nextWeeklyResetTime(start *time.Time, now time.Time) time.Time {
+	effective, _ := timezone.EffectiveWeeklyWindowStart(start, now)
+	return effective.Add(7 * 24 * time.Hour)
 }
 
 // NextMonthlyResetTimeFrom 计算 30 天滚动月度窗口的下次重置时间。

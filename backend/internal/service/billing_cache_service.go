@@ -1120,11 +1120,11 @@ func (s *BillingCacheService) checkUserPlatformQuotaEligibility(
 			dayStart := timezone.StartOfDay(now)
 			newDailyStart = &dayStart
 		}
-		if quotaWindowExpired(entry.WeeklyWindowStart, timezone.StartOfWeek(now)) {
+		effectiveWeeklyStart, weeklyNeedsReset := timezone.EffectiveWeeklyWindowStart(entry.WeeklyWindowStart, now)
+		if weeklyNeedsReset {
 			weeklyUsage = 0
 			windowExpired = true
-			weekStart := timezone.StartOfWeek(now)
-			newWeeklyStart = &weekStart
+			newWeeklyStart = &effectiveWeeklyStart
 		}
 		if monthlyQuotaWindowExpired(entry.MonthlyWindowStart, now) {
 			monthlyUsage = 0
@@ -1170,7 +1170,7 @@ func (s *BillingCacheService) checkUserPlatformQuotaEligibility(
 			return withWindowResetsMetadata(ErrUserPlatformDailyQuotaExhausted, nextDailyReset(now))
 		}
 		if entry.WeeklyLimitUSD != nil && weeklyUsage >= *entry.WeeklyLimitUSD {
-			return withWindowResetsMetadata(ErrUserPlatformWeeklyQuotaExhausted, nextWeeklyReset(now))
+			return withWindowResetsMetadata(ErrUserPlatformWeeklyQuotaExhausted, nextWeeklyResetFrom(newWeeklyStart, now))
 		}
 		if entry.MonthlyLimitUSD != nil && monthlyUsage >= *entry.MonthlyLimitUSD {
 			return withWindowResetsMetadata(ErrUserPlatformMonthlyQuotaExhausted, nextMonthlyResetFrom(entry.MonthlyWindowStart, now))
@@ -1241,11 +1241,14 @@ func (s *BillingCacheService) checkUserPlatformQuotaEligibility(
 	dailyUsage := rec.DailyUsageUSD
 	weeklyUsage := rec.WeeklyUsageUSD
 	monthlyUsage := rec.MonthlyUsageUSD
+	weeklyWindowStart := rec.WeeklyWindowStart
 	if quotaWindowExpired(rec.DailyWindowStart, timezone.StartOfDay(now)) {
 		dailyUsage = 0
 	}
-	if quotaWindowExpired(rec.WeeklyWindowStart, timezone.StartOfWeek(now)) {
+	effectiveWeeklyStart, weeklyNeedsReset := timezone.EffectiveWeeklyWindowStart(rec.WeeklyWindowStart, now)
+	if weeklyNeedsReset {
 		weeklyUsage = 0
+		weeklyWindowStart = &effectiveWeeklyStart
 	}
 	if monthlyQuotaWindowExpired(rec.MonthlyWindowStart, now) {
 		monthlyUsage = 0
@@ -1257,7 +1260,7 @@ func (s *BillingCacheService) checkUserPlatformQuotaEligibility(
 			return withWindowResetsMetadata(ErrUserPlatformDailyQuotaExhausted, nextDailyReset(now))
 		}
 		if rec.WeeklyLimitUSD != nil && weeklyUsage >= *rec.WeeklyLimitUSD {
-			return withWindowResetsMetadata(ErrUserPlatformWeeklyQuotaExhausted, nextWeeklyReset(now))
+			return withWindowResetsMetadata(ErrUserPlatformWeeklyQuotaExhausted, nextWeeklyResetFrom(weeklyWindowStart, now))
 		}
 		if rec.MonthlyLimitUSD != nil && monthlyUsage >= *rec.MonthlyLimitUSD {
 			return withWindowResetsMetadata(ErrUserPlatformMonthlyQuotaExhausted, nextMonthlyResetFrom(rec.MonthlyWindowStart, now))
@@ -1275,7 +1278,7 @@ func (s *BillingCacheService) checkUserPlatformQuotaEligibility(
 		WeeklyLimitUSD:     rec.WeeklyLimitUSD,
 		MonthlyLimitUSD:    rec.MonthlyLimitUSD,
 		DailyWindowStart:   rec.DailyWindowStart,
-		WeeklyWindowStart:  rec.WeeklyWindowStart,
+		WeeklyWindowStart:  weeklyWindowStart,
 		MonthlyWindowStart: rec.MonthlyWindowStart,
 	}
 	if s.cache != nil {
@@ -1294,7 +1297,7 @@ func (s *BillingCacheService) checkUserPlatformQuotaEligibility(
 		return withWindowResetsMetadata(ErrUserPlatformDailyQuotaExhausted, nextDailyReset(now))
 	}
 	if rec.WeeklyLimitUSD != nil && weeklyUsage >= *rec.WeeklyLimitUSD {
-		return withWindowResetsMetadata(ErrUserPlatformWeeklyQuotaExhausted, nextWeeklyReset(now))
+		return withWindowResetsMetadata(ErrUserPlatformWeeklyQuotaExhausted, nextWeeklyResetFrom(weeklyWindowStart, now))
 	}
 	if rec.MonthlyLimitUSD != nil && monthlyUsage >= *rec.MonthlyLimitUSD {
 		return withWindowResetsMetadata(ErrUserPlatformMonthlyQuotaExhausted, nextMonthlyResetFrom(rec.MonthlyWindowStart, now))
@@ -1319,10 +1322,11 @@ func nextDailyReset(now time.Time) time.Time {
 	return timezone.StartOfDay(now).AddDate(0, 0, 1)
 }
 
-// nextWeeklyReset 计算下一个周窗口起点（下周一全局时区 0 点）。
-// 必须与 timezone.StartOfWeek 同口径，否则 Retry-After 会偏差。
-func nextWeeklyReset(now time.Time) time.Time {
-	return timezone.StartOfWeek(now).AddDate(0, 0, 7)
+// nextWeeklyResetFrom returns the end of the active seven-day window. This
+// keeps Retry-After aligned with an explicit admin reset boundary.
+func nextWeeklyResetFrom(start *time.Time, now time.Time) time.Time {
+	effective, _ := timezone.EffectiveWeeklyWindowStart(start, now)
+	return effective.Add(7 * 24 * time.Hour)
 }
 
 // nextMonthlyResetFrom 返回 30 天滚动窗口的下次重置时间（start + 30d）。
