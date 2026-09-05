@@ -1180,6 +1180,12 @@ export default {
         unsupportedMessage: 'This Sub2API server cannot generate the required Live attestation. Live will not work even if enabled. Continue anyway?',
         enableAnyway: 'Enable anyway'
       },
+      openaiAudioTranscription: {
+        title: 'OpenAI Audio Transcription',
+        allow: 'Allow /v1/audio/transcriptions',
+        hint: 'When enabled, API keys in this group can upload audio for transcription. ChatGPT OAuth accounts upload the audio to chatgpt.com, where OpenAI retains it for about 30 days; API key accounts forward to the upstream /v1/audio/transcriptions. Billed by audio duration. Disabled by default.',
+        priceHint: 'Leave blank for the default rate (0.10 USD per hour); 0 means free.'
+      },
       openaiFast: {
         title: 'OpenAI Fast mode',
         force: 'Force Fast (priority)',

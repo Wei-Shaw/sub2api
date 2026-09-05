@@ -1178,6 +1178,12 @@ export default {
         unsupportedMessage: '当前 Sub2API 服务端无法生成 Live 所需的设备证明，即使开启也不能使用。是否仍然开启？',
         enableAnyway: '仍然开启'
       },
+      openaiAudioTranscription: {
+        title: 'OpenAI 语音转写',
+        allow: '允许访问 /v1/audio/transcriptions',
+        hint: '启用后，此分组的 API Key 可以上传音频进行转写。ChatGPT OAuth 账号会把音频上传到 chatgpt.com，OpenAI 会保留该音频约 30 天；API Key 账号直接转发到上游的 /v1/audio/transcriptions。按音频时长计费，默认关闭。',
+        priceHint: '留空使用默认单价（每小时 0.10 USD），填 0 表示免费。'
+      },
       openaiFast: {
         title: 'OpenAI Fast 模式',
         force: '强制使用 Fast（priority）',

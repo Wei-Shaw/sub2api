@@ -177,3 +177,9 @@ func TestExtractContentModerationInput_ResponsesLastIsAssistantSkipped(t *testin
 	require.Empty(t, input.Text)
 	require.Empty(t, input.Images)
 }
+
+func TestExtractContentModerationInput_AudioTranscriptionAuditsPrompt(t *testing.T) {
+	input := ExtractContentModerationInput(ContentModerationProtocolOpenAIAudioTranscription, []byte(`{"model":"whisper-1","prompt":"sub2api openless"}`))
+	require.Equal(t, "sub2api openless", input.Text)
+	require.Empty(t, input.Images)
+}

@@ -11,6 +11,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/pkg/servertiming"
 
 	"github.com/imroc/req/v3"
+	utls "github.com/refraction-networking/utls"
 )
 
 // reqClientOptions 定义 req 客户端的构建参数
@@ -19,6 +20,19 @@ type reqClientOptions struct {
 	Timeout     time.Duration // 请求超时时间
 	Impersonate bool          // 是否模拟 Chrome 浏览器指纹
 	ForceHTTP2  bool          // 是否强制使用 HTTP/2
+	// LatestChrome upgrades the impersonated TLS hello and client hints to the
+	// newest Chrome release utls knows. chatgpt.com rejects uploads that
+	// present the Chrome 120 profile req ships by default.
+	LatestChrome bool
+}
+
+// latestChromeHeaders keeps the advertised browser consistent with
+// utls.HelloChrome_Auto; a modern TLS hello paired with Chrome 120 client
+// hints is still classified as a bot.
+var latestChromeHeaders = map[string]string{
+	"user-agent":      "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36",
+	"sec-ch-ua":       `"Not(A:Brand";v="99", "Google Chrome";v="133", "Chromium";v="133"`,
+	"accept-language": "en-US,en;q=0.9",
 }
 
 // sharedReqClients 存储按配置参数缓存的 req 客户端实例
@@ -51,6 +65,9 @@ func getSharedReqClient(opts reqClientOptions) (*req.Client, error) {
 	}
 	if opts.Impersonate {
 		client = client.ImpersonateChrome()
+		if opts.LatestChrome {
+			client = client.SetTLSFingerprint(utls.HelloChrome_Auto).SetCommonHeaders(latestChromeHeaders)
+		}
 	}
 	trimmed, _, err := proxyurl.Parse(opts.ProxyURL)
 	if err != nil {
@@ -80,12 +97,26 @@ func instrumentReqClient(client *req.Client) *req.Client {
 }
 
 func buildReqClientKey(opts reqClientOptions) string {
-	return fmt.Sprintf("%s|%s|%t|%t",
+	return fmt.Sprintf("%s|%s|%t|%t|%t",
 		strings.TrimSpace(opts.ProxyURL),
 		opts.Timeout.String(),
 		opts.Impersonate,
 		opts.ForceHTTP2,
+		opts.LatestChrome,
 	)
+}
+
+// CreateChatGPTUploadReqClient creates the Chrome-impersonating client for
+// multipart uploads to chatgpt.com/backend-api. It is pooled separately from
+// the privacy client because a 25 MB audio upload plus transcription does not
+// fit that client's 30 second budget.
+func CreateChatGPTUploadReqClient(proxyURL string) (*req.Client, error) {
+	return getSharedReqClient(reqClientOptions{
+		ProxyURL:     proxyURL,
+		Timeout:      120 * time.Second,
+		Impersonate:  true,
+		LatestChrome: true,
+	})
 }
 
 // CreatePrivacyReqClient creates an HTTP client for OpenAI privacy settings API

@@ -704,6 +704,20 @@ func (_c *GroupCreate) SetNillableAllowLive(v *bool) *GroupCreate {
 	return _c
 }
 
+// SetAllowAudioTranscription sets the "allow_audio_transcription" field.
+func (_c *GroupCreate) SetAllowAudioTranscription(v bool) *GroupCreate {
+	_c.mutation.SetAllowAudioTranscription(v)
+	return _c
+}
+
+// SetNillableAllowAudioTranscription sets the "allow_audio_transcription" field if the given value is not nil.
+func (_c *GroupCreate) SetNillableAllowAudioTranscription(v *bool) *GroupCreate {
+	if v != nil {
+		_c.SetAllowAudioTranscription(*v)
+	}
+	return _c
+}
+
 // SetForceOpenaiFast sets the "force_openai_fast" field.
 func (_c *GroupCreate) SetForceOpenaiFast(v bool) *GroupCreate {
 	_c.mutation.SetForceOpenaiFast(v)
@@ -1151,6 +1165,10 @@ func (_c *GroupCreate) defaults() error {
 		v := group.DefaultAllowLive
 		_c.mutation.SetAllowLive(v)
 	}
+	if _, ok := _c.mutation.AllowAudioTranscription(); !ok {
+		v := group.DefaultAllowAudioTranscription
+		_c.mutation.SetAllowAudioTranscription(v)
+	}
 	if _, ok := _c.mutation.ForceOpenaiFast(); !ok {
 		v := group.DefaultForceOpenaiFast
 		_c.mutation.SetForceOpenaiFast(v)
@@ -1357,6 +1375,9 @@ func (_c *GroupCreate) check() error {
 	}
 	if _, ok := _c.mutation.AllowLive(); !ok {
 		return &ValidationError{Name: "allow_live", err: errors.New(`ent: missing required field "Group.allow_live"`)}
+	}
+	if _, ok := _c.mutation.AllowAudioTranscription(); !ok {
+		return &ValidationError{Name: "allow_audio_transcription", err: errors.New(`ent: missing required field "Group.allow_audio_transcription"`)}
 	}
 	if _, ok := _c.mutation.ForceOpenaiFast(); !ok {
 		return &ValidationError{Name: "force_openai_fast", err: errors.New(`ent: missing required field "Group.force_openai_fast"`)}
@@ -1648,6 +1669,10 @@ func (_c *GroupCreate) createSpec() (*Group, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.AllowLive(); ok {
 		_spec.SetField(group.FieldAllowLive, field.TypeBool, value)
 		_node.AllowLive = value
+	}
+	if value, ok := _c.mutation.AllowAudioTranscription(); ok {
+		_spec.SetField(group.FieldAllowAudioTranscription, field.TypeBool, value)
+		_node.AllowAudioTranscription = value
 	}
 	if value, ok := _c.mutation.ForceOpenaiFast(); ok {
 		_spec.SetField(group.FieldForceOpenaiFast, field.TypeBool, value)
@@ -2720,6 +2745,18 @@ func (u *GroupUpsert) SetAllowLive(v bool) *GroupUpsert {
 // UpdateAllowLive sets the "allow_live" field to the value that was provided on create.
 func (u *GroupUpsert) UpdateAllowLive() *GroupUpsert {
 	u.SetExcluded(group.FieldAllowLive)
+	return u
+}
+
+// SetAllowAudioTranscription sets the "allow_audio_transcription" field.
+func (u *GroupUpsert) SetAllowAudioTranscription(v bool) *GroupUpsert {
+	u.Set(group.FieldAllowAudioTranscription, v)
+	return u
+}
+
+// UpdateAllowAudioTranscription sets the "allow_audio_transcription" field to the value that was provided on create.
+func (u *GroupUpsert) UpdateAllowAudioTranscription() *GroupUpsert {
+	u.SetExcluded(group.FieldAllowAudioTranscription)
 	return u
 }
 
@@ -3967,6 +4004,20 @@ func (u *GroupUpsertOne) SetAllowLive(v bool) *GroupUpsertOne {
 func (u *GroupUpsertOne) UpdateAllowLive() *GroupUpsertOne {
 	return u.Update(func(s *GroupUpsert) {
 		s.UpdateAllowLive()
+	})
+}
+
+// SetAllowAudioTranscription sets the "allow_audio_transcription" field.
+func (u *GroupUpsertOne) SetAllowAudioTranscription(v bool) *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetAllowAudioTranscription(v)
+	})
+}
+
+// UpdateAllowAudioTranscription sets the "allow_audio_transcription" field to the value that was provided on create.
+func (u *GroupUpsertOne) UpdateAllowAudioTranscription() *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateAllowAudioTranscription()
 	})
 }
 
@@ -5413,6 +5464,20 @@ func (u *GroupUpsertBulk) SetAllowLive(v bool) *GroupUpsertBulk {
 func (u *GroupUpsertBulk) UpdateAllowLive() *GroupUpsertBulk {
 	return u.Update(func(s *GroupUpsert) {
 		s.UpdateAllowLive()
+	})
+}
+
+// SetAllowAudioTranscription sets the "allow_audio_transcription" field.
+func (u *GroupUpsertBulk) SetAllowAudioTranscription(v bool) *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetAllowAudioTranscription(v)
+	})
+}
+
+// UpdateAllowAudioTranscription sets the "allow_audio_transcription" field to the value that was provided on create.
+func (u *GroupUpsertBulk) UpdateAllowAudioTranscription() *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateAllowAudioTranscription()
 	})
 }
 
