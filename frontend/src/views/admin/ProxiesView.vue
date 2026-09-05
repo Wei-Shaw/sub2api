@@ -184,18 +184,23 @@
           </template>
 
           <template #cell-location="{ row }">
-            <div class="flex items-center gap-2">
+            <div v-if="row.ip_address || row.country_code" class="flex items-center gap-2">
               <img
                 v-if="row.country_code"
                 :src="flagUrl(row.country_code)"
                 :alt="row.country || row.country_code"
                 class="h-4 w-6 rounded-sm"
               />
-              <span v-if="formatLocation(row)" class="text-sm text-gray-700 dark:text-gray-200">
-                {{ formatLocation(row) }}
-              </span>
-              <span v-else class="text-sm text-gray-400">-</span>
+              <div class="flex flex-col">
+                <span v-if="formatLocation(row)" class="text-sm text-gray-700 dark:text-gray-200">
+                  {{ formatLocation(row) }}
+                </span>
+                <code v-if="row.ip_address" class="text-xs text-gray-500 dark:text-gray-400">
+                  {{ row.ip_address }}
+                </code>
+              </div>
             </div>
+            <span v-else class="text-sm text-gray-400">-</span>
           </template>
 
           <template #cell-account_count="{ row, value }">
