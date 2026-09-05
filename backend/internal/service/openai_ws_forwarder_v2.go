@@ -356,6 +356,7 @@ func (s *OpenAIGatewayService) forwardOpenAIWSV2(
 
 	usage := &OpenAIUsage{}
 	imageCounter := newOpenAIImageOutputCounter()
+	strictWireNormalizer := newOpenAIWSStrictWireNormalizer()
 	var firstTokenMs *int
 	responseID := ""
 	var finalResponse []byte
@@ -525,6 +526,11 @@ func (s *OpenAIGatewayService) forwardOpenAIWSV2(
 			return nil, fmt.Errorf("openai ws read event: %w", readErr)
 		}
 		if normalized, changed := normalizeCompletedImageGenerationStatus(message); changed {
+			message = normalized
+		}
+		if normalized, changed, err := strictWireNormalizer.normalize(message); err != nil {
+			logOpenAIWSModeInfo("strict_wire_normalize_failed path=ws_v2 err=%v", err)
+		} else if changed {
 			message = normalized
 		}
 

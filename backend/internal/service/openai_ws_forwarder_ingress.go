@@ -968,6 +968,7 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 		responseID := ""
 		usage := OpenAIUsage{}
 		imageCounter := newOpenAIImageOutputCounter()
+		strictWireNormalizer := newOpenAIWSStrictWireNormalizer()
 		var firstTokenMs *int
 		reqStream := openAIWSPayloadBoolFromRaw(payload, "stream", true)
 		turnPreviousResponseID := openAIWSPayloadStringFromRaw(payload, "previous_response_id")
@@ -1006,6 +1007,11 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 				)
 			}
 			if normalized, changed := normalizeCompletedImageGenerationStatus(upstreamMessage); changed {
+				upstreamMessage = normalized
+			}
+			if normalized, changed, err := strictWireNormalizer.normalize(upstreamMessage); err != nil {
+				logOpenAIWSModeInfo("strict_wire_normalize_failed path=ingress err=%v", err)
+			} else if changed {
 				upstreamMessage = normalized
 			}
 
