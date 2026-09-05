@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -25,10 +26,33 @@ type openAIWSClientFrameConn struct {
 	interTurnIdleTimeout time.Duration
 	interTurnStarted     chan struct{}
 	waitingForNextTurn   atomic.Bool
+	// restoreResponseIdentity reverses only known structured Profile aliases.
+	// Ordinary model output is deliberately outside that schema.
+	restoreResponseIdentity func([]byte) ([]byte, error)
 	// The relay observes upstream payloads, while clients must keep seeing the
 	// model identifier they supplied for the current turn.
 	restoreResponseModel func([]byte) []byte
 	restoreToolNames     func([]byte) []byte
+}
+
+func cloneOpenAIWSPayloadBytes(payload []byte) []byte {
+	if len(payload) == 0 {
+		return nil
+	}
+	cloned := make([]byte, len(payload))
+	copy(cloned, payload)
+	return cloned
+}
+
+func cloneOpenAIWSRawMessages(items []json.RawMessage) []json.RawMessage {
+	if items == nil {
+		return nil
+	}
+	cloned := make([]json.RawMessage, 0, len(items))
+	for idx := range items {
+		cloned = append(cloned, json.RawMessage(cloneOpenAIWSPayloadBytes(items[idx])))
+	}
+	return cloned
 }
 
 // openAIWSPolicyEnforcingFrameConn wraps a client-side FrameConn and runs
@@ -254,6 +278,100 @@ func openAIWSPassthroughRequestModelFromSessionFrame(payload []byte) string {
 		return ""
 	}
 	return strings.TrimSpace(gjson.GetBytes(payload, "session.model").String())
+}
+
+type openAIWSPassthroughReplayState struct {
+	mu sync.Mutex
+
+	historyInput    []json.RawMessage
+	historyExists   bool
+	historyComplete bool
+
+	currentPayload  []byte
+	currentModel    string
+	currentInput    []json.RawMessage
+	currentExists   bool
+	currentComplete bool
+	collector       openAIWSToolCallReplayCollector
+}
+
+func (s *openAIWSPassthroughReplayState) BeginTurn(payload []byte, originalModel string) error {
+	if s == nil {
+		return nil
+	}
+	hasPreviousResponseID := strings.TrimSpace(gjson.GetBytes(payload, "previous_response_id").String()) != ""
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	var (
+		fullInput       []json.RawMessage
+		fullInputExists bool
+		err             error
+	)
+	if hasPreviousResponseID && !s.historyComplete {
+		fullInput, fullInputExists, err = openAIWSExtractNormalizedInputSequence(payload)
+	} else {
+		fullInput, fullInputExists, err = buildOpenAIWSReplayInputSequence(
+			s.historyInput,
+			s.historyExists,
+			payload,
+			hasPreviousResponseID,
+		)
+	}
+	if err != nil {
+		return err
+	}
+
+	s.currentPayload = append(s.currentPayload[:0], payload...)
+	s.currentModel = strings.TrimSpace(originalModel)
+	s.currentInput = cloneOpenAIWSRawMessages(fullInput)
+	s.currentExists = fullInputExists
+	s.currentComplete = fullInputExists && (!hasPreviousResponseID || s.historyComplete)
+	s.collector = openAIWSToolCallReplayCollector{}
+	return nil
+}
+
+func (s *openAIWSPassthroughReplayState) ObserveUpstream(payload []byte) {
+	if s == nil || len(payload) == 0 {
+		return
+	}
+	eventType := strings.TrimSpace(gjson.GetBytes(payload, "type").String())
+	if eventType == "" {
+		return
+	}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.collector.AddEvent(eventType, payload)
+	if eventType != "response.completed" && eventType != "response.done" {
+		return
+	}
+	if !s.currentComplete {
+		s.historyInput = nil
+		s.historyExists = false
+		s.historyComplete = false
+		return
+	}
+
+	history := cloneOpenAIWSRawMessages(s.currentInput)
+	history = append(history, s.collector.AllItems()...)
+	s.historyInput = history
+	s.historyExists = s.currentExists || len(history) > 0
+	s.historyComplete = s.historyExists
+}
+
+func (s *openAIWSPassthroughReplayState) CurrentTurnRetryPayload() ([]byte, bool, error) {
+	if s == nil {
+		return nil, false, nil
+	}
+	s.mu.Lock()
+	payload := append([]byte(nil), s.currentPayload...)
+	model := s.currentModel
+	fullInput := cloneOpenAIWSRawMessages(s.currentInput)
+	fullInputExists := s.currentExists && s.currentComplete
+	s.mu.Unlock()
+	return buildOpenAIWSCurrentTurnRetryPayload(payload, fullInput, fullInputExists, model)
 }
 
 const openaiWSV2PassthroughModeFields = "ws_mode=passthrough ws_router=v2"
@@ -644,6 +762,16 @@ func (c *openAIWSClientFrameConn) WriteFrame(ctx context.Context, msgType coderw
 		if normalized, changed := normalizeCompletedImageGenerationStatus(payload); changed {
 			payload = normalized
 		}
+	}
+	if (msgType == coderws.MessageText || msgType == coderws.MessageBinary) &&
+		c.restoreResponseIdentity != nil && json.Valid(payload) {
+		restored, err := c.restoreResponseIdentity(payload)
+		if err != nil {
+			return err
+		}
+		payload = restored
+	}
+	if msgType == coderws.MessageText {
 		if c.restoreResponseModel != nil {
 			payload = c.restoreResponseModel(payload)
 		}
@@ -688,6 +816,7 @@ func (s *OpenAIGatewayService) proxyResponsesWebSocketV2Passthrough(
 	if err := validateOpenAIWSBearerToken(account, token); err != nil {
 		return err
 	}
+	firstClientSemanticMessage := append([]byte(nil), firstClientMessage...)
 	if isOpenAIResponsesLiteWebSocketPayload(firstClientMessage) {
 		liteFirstMessage, _, liteErr := normalizeOpenAIResponsesLitePayloadForAccount(firstClientMessage, account)
 		if liteErr != nil {
@@ -791,6 +920,21 @@ func (s *OpenAIGatewayService) proxyResponsesWebSocketV2Passthrough(
 		return NewOpenAIWSClientCloseError(coderws.StatusPolicyViolation, blocked.Message, blocked)
 	}
 	firstClientMessage = updatedFirst
+	replayState := &openAIWSPassthroughReplayState{}
+	if replayErr := replayState.BeginTurn(firstClientSemanticMessage, initialRequestModel); replayErr != nil {
+		return NewOpenAIWSClientCloseError(coderws.StatusPolicyViolation, "invalid websocket replay input", replayErr)
+	}
+	if plan := stagedCodexIdentityAttemptPlan(c, account); plan != nil {
+		plan, profileErr := refreshCodexProfileTurnPlan(c, account, firstClientMessage)
+		if profileErr != nil {
+			return NewOpenAIWSClientCloseError(coderws.StatusPolicyViolation, "invalid Codex profile turn identity", profileErr)
+		}
+		profilePayload, _, profileErr := ApplyCodexIdentityPlanToJSON(firstClientMessage, plan)
+		if profileErr != nil {
+			return NewOpenAIWSClientCloseError(coderws.StatusPolicyViolation, "invalid Codex profile identity payload", profileErr)
+		}
+		firstClientMessage = profilePayload
+	}
 
 	// 在 policy filter 之后再提取 service_tier / reasoning_effort 用于
 	// usage 上报：filter 命中时 service_tier 已经从 firstClientMessage 中删除，
@@ -958,6 +1102,9 @@ func (s *OpenAIGatewayService) proxyResponsesWebSocketV2Passthrough(
 		controlCtx:           ctx,
 		interTurnIdleTimeout: s.openAIWSIngressInterTurnIdleTimeout(),
 		interTurnStarted:     make(chan struct{}, 1),
+		restoreResponseIdentity: func(payload []byte) ([]byte, error) {
+			return restoreStagedCodexIdentityJSON(c, account, payload)
+		},
 		restoreResponseModel: func(payload []byte) []byte {
 			eventType := strings.TrimSpace(gjson.GetBytes(payload, "type").String())
 			if !openAIWSEventMayContainModel(eventType) {
@@ -980,6 +1127,7 @@ func (s *OpenAIGatewayService) proxyResponsesWebSocketV2Passthrough(
 			if msgType != coderws.MessageText && msgType != coderws.MessageBinary {
 				return payload, nil, nil
 			}
+			clientSemanticPayload := append([]byte(nil), payload...)
 			eventType := strings.TrimSpace(gjson.GetBytes(payload, "type").String())
 			isResponseCreate := eventType == "response.create"
 			responseCreateAt := time.Time{}
@@ -1091,6 +1239,22 @@ func (s *OpenAIGatewayService) proxyResponsesWebSocketV2Passthrough(
 				payload = s.ReplaceModelInBody(payload, model)
 			}
 			out, blocked, policyErr := s.applyOpenAIFastPolicyToWSResponseCreate(ctx, account, model, payload)
+			if policyErr == nil && blocked == nil && isResponseCreate {
+				if replayErr := replayState.BeginTurn(clientSemanticPayload, requestModelForThisFrame); replayErr != nil {
+					return payload, nil, NewOpenAIWSClientCloseError(coderws.StatusPolicyViolation, "invalid websocket replay input", replayErr)
+				}
+				if plan := stagedCodexIdentityAttemptPlan(c, account); plan != nil {
+					plan, profileErr := refreshCodexProfileTurnPlan(c, account, out)
+					if profileErr != nil {
+						return payload, nil, NewOpenAIWSClientCloseError(coderws.StatusPolicyViolation, "invalid Codex profile turn identity", profileErr)
+					}
+					profilePayload, _, profileErr := ApplyCodexIdentityPlanToJSON(out, plan)
+					if profileErr != nil {
+						return payload, nil, NewOpenAIWSClientCloseError(coderws.StatusPolicyViolation, "invalid Codex profile identity payload", profileErr)
+					}
+					out = profilePayload
+				}
+			}
 			// 多轮 passthrough usage：仅在成功（non-block / non-err）
 			// 的 response.create 帧上更新 usageMeta，使用
 			// filter 处理后的 payload，与首帧 policy-after-extract 语义
@@ -1269,11 +1433,12 @@ func (s *OpenAIGatewayService) proxyResponsesWebSocketV2Passthrough(
 				_ = clientConn.Close(status, reason)
 				_ = clientConn.CloseNow()
 			},
-			BeforeWriteClient: func(msgType coderws.MessageType, payload []byte, wroteDownstream bool) error {
+			BeforeWriteClient: func(msgType coderws.MessageType, payload []byte, currentTurnWroteDownstream bool) error {
 				if msgType != coderws.MessageText {
 					return nil
 				}
 				eventType, _, _ := parseOpenAIWSEventEnvelope(payload)
+				replayState.ObserveUpstream(payload)
 				if eventType == "response.created" {
 					failureAccountSideEffectsApplied = false
 				}
@@ -1281,14 +1446,14 @@ func (s *OpenAIGatewayService) proxyResponsesWebSocketV2Passthrough(
 					return nil
 				}
 				errCodeRaw, errTypeRaw, errMsgRaw := parseOpenAIWSErrorEventFields(payload)
-				isPreOutputRateLimit := eventType == "error" && !wroteDownstream && isOpenAIWSRateLimitError(errCodeRaw, errTypeRaw, errMsgRaw)
+				isPreOutputRateLimit := eventType == "error" && !currentTurnWroteDownstream && isOpenAIWSRateLimitError(errCodeRaw, errTypeRaw, errMsgRaw)
 				if (eventType == "error" || eventType == "response.failed") && !failureAccountSideEffectsApplied && !isPreOutputRateLimit {
 					failureAccountSideEffectsApplied = s.handleOpenAIWSFailureAccountSideEffects(ctx, account, capturedSessionModel, handshakeHeaders, payload)
 				}
 				if eventType != "error" {
 					return nil
 				}
-				if wroteDownstream || !isOpenAIWSRateLimitError(errCodeRaw, errTypeRaw, errMsgRaw) {
+				if currentTurnWroteDownstream || !isOpenAIWSRateLimitError(errCodeRaw, errTypeRaw, errMsgRaw) {
 					return nil
 				}
 				s.persistOpenAIWSRateLimitSignal(ctx, account, handshakeHeaders, payload, errCodeRaw, errTypeRaw, errMsgRaw, capturedSessionModel)
@@ -1299,7 +1464,18 @@ func (s *OpenAIGatewayService) proxyResponsesWebSocketV2Passthrough(
 					truncateOpenAIWSLogValue(errTypeRaw, openAIWSLogValueMaxLen),
 					truncateOpenAIWSLogValue(errMsgRaw, openAIWSLogValueMaxLen),
 				)
-				return s.newOpenAIWSRateLimitFailoverError(account, handshakeHeaders, payload, errMsgRaw)
+				failoverErr := s.newOpenAIWSRateLimitFailoverError(account, handshakeHeaders, payload, errMsgRaw)
+				if completedTurns.Load() == 0 {
+					return failoverErr
+				}
+				retryPayload, retrySafe, retryErr := replayState.CurrentTurnRetryPayload()
+				if retryErr != nil {
+					return fmt.Errorf("build websocket passthrough current-turn failover payload: %w", retryErr)
+				}
+				if !retrySafe {
+					retryPayload = nil
+				}
+				return newOpenAIWSCurrentTurnFailoverError(failoverErr, retryPayload)
 			},
 			OnTrace: func(event openaiwsv2.RelayTraceEvent) {
 				logOpenAIWSV2Passthrough(

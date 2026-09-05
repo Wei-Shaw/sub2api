@@ -51,6 +51,33 @@
         />
       </div>
 
+      <div v-if="files.length" class="border-t border-gray-200 pt-4 dark:border-dark-600">
+        <label class="flex items-start gap-3 text-sm text-gray-700 dark:text-dark-200">
+          <input
+            v-model="applyCodexIdentityPolicyOverride"
+            type="checkbox"
+            class="mt-0.5 rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+            data-testid="import-codex-identity-override"
+          />
+          <span>
+            <span class="block font-medium">
+              {{ t('admin.accounts.dataImportCodexPolicyOverride') }}
+            </span>
+            <span class="mt-1 block text-xs leading-5 text-gray-500 dark:text-dark-400">
+              {{ t('admin.accounts.dataImportCodexPolicyPreserve') }}
+            </span>
+          </span>
+        </label>
+        <div class="mt-4" :class="!applyCodexIdentityPolicyOverride && 'pointer-events-none opacity-50'">
+          <CodexIdentityPolicyEditor
+            v-model="codexIdentityPolicy"
+            :proxies="proxies"
+            :disabled="!applyCodexIdentityPolicyOverride"
+            id-prefix="import-codex-identity"
+          />
+        </div>
+      </div>
+
       <div
         v-if="result"
         class="space-y-2 rounded-xl border border-gray-200 p-4 dark:border-dark-700"
@@ -101,10 +128,24 @@ import { useI18n } from 'vue-i18n'
 import BaseDialog from '@/components/common/BaseDialog.vue'
 import { adminAPI } from '@/api/admin'
 import { useAppStore } from '@/stores/app'
-import type { AdminDataImportResult, AdminDataPayload } from '@/types'
+import type {
+  AdminDataImportResult,
+  AdminDataPayload,
+  CodexIdentityPolicy,
+  Proxy
+} from '@/types'
+import { CodexIdentityPolicyEditor } from '@/components/account/codex-identity'
+import {
+  createDefaultCodexIdentityPolicy,
+  availableCodexIdentityProxyIDs,
+  codexIdentityValidationMessageKey,
+  serializeCodexIdentityPolicy,
+  validateCodexIdentityPolicy
+} from '@/utils/codexIdentityValidation'
 
 interface Props {
   show: boolean
+  proxies?: Proxy[]
 }
 
 interface Emits {
@@ -112,7 +153,9 @@ interface Emits {
   (e: 'imported'): void
 }
 
-const props = defineProps<Props>()
+const props = withDefaults(defineProps<Props>(), {
+  proxies: () => []
+})
 const emit = defineEmits<Emits>()
 
 const { t } = useI18n()
@@ -124,6 +167,8 @@ const dragDepth = ref(0)
 const dragActive = computed(() => dragDepth.value > 0)
 const hasCreatedData = ref(false)
 const result = ref<AdminDataImportResult | null>(null)
+const codexIdentityPolicy = ref<CodexIdentityPolicy>(createDefaultCodexIdentityPolicy())
+const applyCodexIdentityPolicyOverride = ref(false)
 
 const fileInput = ref<HTMLInputElement | null>(null)
 const selectedFilesLabel = computed(() => {
@@ -143,6 +188,8 @@ watch(
       dragDepth.value = 0
       hasCreatedData.value = false
       result.value = null
+      codexIdentityPolicy.value = createDefaultCodexIdentityPolicy()
+      applyCodexIdentityPolicyOverride.value = false
       if (fileInput.value) {
         fileInput.value.value = ''
       }
@@ -292,10 +339,30 @@ const handleImport = async () => {
       dataPayloads.push(parsed)
     }
     const dataPayload = mergeDataPayloads(dataPayloads)
+    const openAIOAuthAccounts = dataPayload.accounts.filter(
+      (account) => account.platform === 'openai' && account.type === 'oauth'
+    )
+    if (openAIOAuthAccounts.length > 0 && applyCodexIdentityPolicyOverride.value) {
+      const identityValidation = validateCodexIdentityPolicy(codexIdentityPolicy.value, {
+        availableProxyIDs: availableCodexIdentityProxyIDs(props.proxies)
+      })
+      if (!identityValidation.valid) {
+        const issue = identityValidation.errors[0]
+        const key = issue ? codexIdentityValidationMessageKey(issue.code) : null
+        appStore.showError(key ? t(key) : issue?.message || t('admin.accounts.codexIdentity.fixErrors'))
+        return
+      }
+    }
 
     const res = await adminAPI.accounts.importData({
       data: dataPayload,
-      skip_default_group_bind: true
+      skip_default_group_bind: true,
+      ...(openAIOAuthAccounts.length > 0 && applyCodexIdentityPolicyOverride.value
+        ? {
+            codex_identity_policy_override: serializeCodexIdentityPolicy(codexIdentityPolicy.value),
+            override_imported_identity_policies: true
+          }
+        : {})
     })
 
     result.value = res

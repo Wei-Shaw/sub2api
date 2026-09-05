@@ -112,7 +112,7 @@ func (s *OpenAICodexVersionSyncService) syncedWithinInterval() bool {
 	if err != nil || setting == nil || setting.UpdatedAt.IsZero() {
 		return false
 	}
-	if NormalizeCodexClientVersion(setting.Value) == "" {
+	if !IsSupportedCodexClientVersion(setting.Value) {
 		return false
 	}
 	return time.Since(setting.UpdatedAt) < s.interval
@@ -127,7 +127,7 @@ func (s *OpenAICodexVersionSyncService) runOnce() {
 	}
 
 	latest := s.fetchLatestStableVersion(ctx)
-	if latest == "" {
+	if !IsSupportedCodexClientVersion(latest) {
 		return
 	}
 
@@ -212,7 +212,7 @@ func latestCodexStableReleaseVersion(releases []*GitHubRelease) string {
 			continue
 		}
 		version := NormalizeCodexClientVersion(strings.TrimPrefix(tag, openAICodexVersionTagPrefix))
-		if version == "" || strings.Contains(version, "-") {
+		if !IsSupportedCodexClientVersion(version) || strings.Contains(version, "-") {
 			continue
 		}
 		if best == "" || CompareVersions(version, best) > 0 {

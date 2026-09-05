@@ -92,6 +92,13 @@ const ModelWhitelistSelectorStub = defineComponent({
   `
 })
 
+const CodexIdentityTemplateSelectorStub = defineComponent({
+  name: 'CodexIdentityTemplateSelector',
+  props: ['modelValue'],
+  emits: ['update:modelValue'],
+  template: '<div data-testid="edit-codex-template-selector" :data-enabled="String(modelValue.enabled)" :data-template-id="modelValue.template_id ?? \'\'" />',
+})
+
 const SelectStub = defineComponent({
   name: 'SelectStub',
   props: {
@@ -302,6 +309,28 @@ function buildOpenAIOAuthParentAccount() {
   } as any
 }
 
+function buildLegacyOpenAIProfileAccount() {
+  return {
+    ...buildOpenAIOAuthParentAccount(),
+    codex_identity_policy: {
+      mode: 'os_profile_device_pool',
+      binding_scope: 'api_key_os_surface',
+      session_policy: { mode: 'conversation_isolated' },
+      affinity_ttl_seconds: 3600,
+      unsupported_policy: 'reject',
+      version: 3,
+      profiles: [{
+        os_class: 'linux',
+        canonical_surface: 'cli',
+        architecture: 'x86_64',
+        slot_count: 1,
+        proxy_mode: 'inherit',
+        slots: [{ index: 0, proxy_mode: 'inherit', client_version_mode: 'inherit' }],
+      }],
+    },
+  } as any
+}
+
 function mountModal(account = buildAccount()) {
   return mount(EditAccountModal, {
     props: {
@@ -317,7 +346,9 @@ function mountModal(account = buildAccount()) {
         Icon: true,
         ProxySelector: true,
         GroupSelector: GroupSelectorStub,
-        ModelWhitelistSelector: ModelWhitelistSelectorStub
+        ModelWhitelistSelector: ModelWhitelistSelectorStub,
+        CodexDeviceSlotLifecycle: true,
+        CodexIdentityTemplateSelector: CodexIdentityTemplateSelectorStub
       }
     }
   })
@@ -1473,6 +1504,54 @@ describe('EditAccountModal', () => {
     expect(updateAccountMock.mock.calls[0]?.[1]?.credentials).not.toHaveProperty(
       'antigravity_project_id'
     )
+  })
+
+  it('initializes and submits the account template assignment', async () => {
+    const account = {
+      ...buildAccount(),
+      type: 'oauth',
+      codex_identity_template_id: 19,
+      codex_identity_template_applied_revision: 7,
+    } as any
+    updateAccountMock.mockReset().mockResolvedValue(account)
+    const wrapper = mountModal(account)
+
+    const selector = wrapper.get('[data-testid="edit-codex-template-selector"]')
+    expect(selector.attributes('data-enabled')).toBe('true')
+    expect(selector.attributes('data-template-id')).toBe('19')
+    expect(wrapper.find('[data-testid="edit-codex-fingerprint-mode-select"]').exists()).toBe(false)
+    await wrapper.get('form#edit-account-form').trigger('submit.prevent')
+
+    expect(updateAccountMock.mock.calls[0]?.[1]?.codex_identity_assignment).toEqual({
+      enabled: true,
+      template_id: 19,
+      expected_revision: 7,
+    })
+    expect(updateAccountMock.mock.calls[0]?.[1]).not.toHaveProperty('codex_identity_policy')
+  })
+
+  it('preserves a legacy account-owned Codex profile when no template assignment changed', async () => {
+    const account = buildLegacyOpenAIProfileAccount()
+    updateAccountMock.mockReset().mockResolvedValue(account)
+    const wrapper = mountModal(account)
+
+    await wrapper.get('form#edit-account-form').trigger('submit.prevent')
+
+    expect(updateAccountMock).toHaveBeenCalledTimes(1)
+    expect(updateAccountMock.mock.calls[0]?.[1]).not.toHaveProperty('codex_identity_assignment')
+    expect(updateAccountMock.mock.calls[0]?.[1]).not.toHaveProperty('codex_identity_policy')
+  })
+
+  it('shows pending provisioning as not schedulable in the edit state area', () => {
+    const account = {
+      ...buildAccount(),
+      type: 'oauth',
+      provisioning_state: 'pending'
+    } as any
+    const wrapper = mountModal(account)
+
+    expect(wrapper.get('[data-testid="account-provisioning-pending"]').attributes('role')).toBe('status')
+    expect(wrapper.text()).toContain('admin.accounts.status.provisioningPendingHint')
   })
 })
 

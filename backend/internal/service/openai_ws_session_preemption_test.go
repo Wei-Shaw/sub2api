@@ -225,13 +225,13 @@ func TestOpenAIWSSessionPreemptRemoteClaimAndStaleReleaseAreAtomic(t *testing.T)
 }
 
 func TestNewOpenAIWSSessionPreemptKeyRequiresFullIsolationScope(t *testing.T) {
-	_, ok := newOpenAIWSSessionPreemptKey(0, 11, "sess")
+	_, ok := newOpenAIWSSessionPreemptKeyWithProfile(0, 11, "sess", "")
 	require.False(t, ok)
-	_, ok = newOpenAIWSSessionPreemptKey(7, 0, "sess")
+	_, ok = newOpenAIWSSessionPreemptKeyWithProfile(7, 0, "sess", "")
 	require.False(t, ok)
-	_, ok = newOpenAIWSSessionPreemptKey(7, 11, " ")
+	_, ok = newOpenAIWSSessionPreemptKeyWithProfile(7, 11, " ", "")
 	require.False(t, ok)
-	key, ok := newOpenAIWSSessionPreemptKey(7, 11, " sess ")
+	key, ok := newOpenAIWSSessionPreemptKeyWithProfile(7, 11, " sess ", "")
 	require.True(t, ok)
 	require.Equal(t, "sess", key.sessionHash)
 }

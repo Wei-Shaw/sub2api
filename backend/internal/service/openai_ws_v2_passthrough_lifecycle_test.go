@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -103,11 +104,40 @@ func (c *stagedPassthroughConn) Close() error {
 }
 
 type stagedPassthroughDialer struct {
-	conn openAIWSClientConn
+	mu          sync.Mutex
+	conn        openAIWSClientConn
+	lastHeaders http.Header
 }
 
-func (d *stagedPassthroughDialer) Dial(context.Context, string, http.Header, string) (openAIWSClientConn, int, http.Header, error) {
+type stagedPassthroughSequenceDialer struct {
+	mu      sync.Mutex
+	conns   []openAIWSClientConn
+	headers []http.Header
+}
+
+func (d *stagedPassthroughSequenceDialer) Dial(_ context.Context, _ string, headers http.Header, _ string) (openAIWSClientConn, int, http.Header, error) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	if len(d.conns) == 0 {
+		return nil, http.StatusServiceUnavailable, nil, errors.New("no staged passthrough connection")
+	}
+	conn := d.conns[0]
+	d.conns = d.conns[1:]
+	d.headers = append(d.headers, headers.Clone())
+	return conn, http.StatusSwitchingProtocols, http.Header{}, nil
+}
+
+func (d *stagedPassthroughDialer) Dial(_ context.Context, _ string, headers http.Header, _ string) (openAIWSClientConn, int, http.Header, error) {
+	d.mu.Lock()
+	d.lastHeaders = headers.Clone()
+	d.mu.Unlock()
 	return d.conn, http.StatusSwitchingProtocols, http.Header{}, nil
+}
+
+func (d *stagedPassthroughDialer) LastHeaders() http.Header {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	return d.lastHeaders.Clone()
 }
 
 func newPassthroughLifecycleService(cfg *config.Config, upstream *stagedPassthroughConn) *OpenAIGatewayService {
@@ -515,6 +545,395 @@ func TestOpenAIWSPassthroughTurnLifecycle_SerializesTerminalCommitAndNextTurn(t 
 	require.False(t, <-admitted, "failed terminal write must keep the current turn in flight")
 }
 
+func TestCodexProfileWSPassthroughTransformsEveryTurnAndRestoresStructuredResponses(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	cfg := passthroughLifecycleConfig()
+	cfg.Gateway.OpenAIWS.OAuthEnabled = true
+	account := codexProfileTestAccount(t, 902, CodexOSWindows, CodexSurfaceDesktop, CodexArchX8664, false)
+	account.Extra["openai_oauth_responses_websockets_v2_mode"] = OpenAIWSIngressModePassthrough
+	repo := &codexProfileGatewayAccountRepo{
+		accounts: map[int64]*Account{account.ID: account},
+		resolvedSlots: map[int64]*CodexResolvedDeviceSlot{
+			account.ID: {
+				AccountID: account.ID, SlotID: 90201, ProfileID: 90200,
+				OSClass: CodexOSWindows, CanonicalSurface: CodexSurfaceDesktop,
+				Architecture: CodexArchX8664, CatalogVersion: 1,
+				SlotIndex: 0, Epoch: 4, State: "active", PolicyVersion: 1,
+			},
+		},
+	}
+	upstream := newStagedPassthroughConn()
+	dialer := &stagedPassthroughDialer{conn: upstream}
+	svc := &OpenAIGatewayService{
+		accountRepo:               repo,
+		cache:                     &codexProfileGatewayCache{values: map[string]int64{}},
+		cfg:                       cfg,
+		openaiWSResolver:          NewOpenAIWSProtocolResolver(cfg),
+		toolCorrector:             NewCodexToolCorrector(),
+		openaiWSPassthroughDialer: dialer,
+	}
+
+	serverErr := make(chan error, 1)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		client, err := coderws.Accept(w, r, nil)
+		if err != nil {
+			serverErr <- err
+			return
+		}
+		defer func() { _ = client.CloseNow() }()
+		readCtx, cancel := context.WithTimeout(r.Context(), 3*time.Second)
+		_, firstMessage, err := client.Read(readCtx)
+		cancel()
+		if err != nil {
+			serverErr <- err
+			return
+		}
+		ginCtx := newCodexProfileGatewayContext(t, 7, 101, firstMessage)
+		if svc.GenerateSessionHash(ginCtx, firstMessage) == "" {
+			serverErr <- errors.New("missing passthrough Profile session hash")
+			return
+		}
+		prepared, err := svc.PrepareCodexProfileAttempt(ginCtx.Request.Context(), ginCtx, account, firstMessage)
+		if err != nil {
+			serverErr <- err
+			return
+		}
+		err = svc.proxyResponsesWebSocketV2Passthrough(
+			ginCtx.Request.Context(), ginCtx, client, prepared, "test-token", firstMessage, nil,
+			OpenAIWSProtocolDecision{Transport: OpenAIUpstreamTransportResponsesWebsocketV2},
+		)
+		svc.ReleaseCodexProfileAttempt(ginCtx, prepared)
+		serverErr <- err
+	}))
+	defer server.Close()
+
+	dialCtx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	client, _, err := coderws.Dial(dialCtx, "ws"+strings.TrimPrefix(server.URL, "http"), nil)
+	cancel()
+	require.NoError(t, err)
+	defer func() { _ = client.CloseNow() }()
+
+	// The request headers identify a Windows Desktop client; keep the explicit
+	// body surface consistent so profile classification is not ambiguous.
+	first := []byte(`{"type":"response.create","model":"gpt-5.6-sol","client_metadata":{"installation_id":"client-install","session_id":"client-session","turn_id":"client-turn-1","os":"windows","arch":"arm64","surface":"desktop"},"input":[{"role":"user","content":"first"}]}`)
+	writeCtx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	require.NoError(t, client.Write(writeCtx, coderws.MessageText, first))
+	cancel()
+	select {
+	case serverErrValue := <-serverErr:
+		t.Fatalf("passthrough server exited before upstream write: %v", serverErrValue)
+	default:
+	}
+	firstUpstream := requirePassthroughUpstreamWrite(t, upstream, 3*time.Second)
+	expectedProfile, err := ResolveCodexRuntimeProfile(account.CodexIdentityPolicy.Profiles[0])
+	require.NoError(t, err)
+	handshakeHeaders := dialer.LastHeaders()
+	require.Equal(t, expectedProfile.UserAgent, handshakeHeaders.Get("user-agent"))
+	require.Equal(t, "Codex Desktop", handshakeHeaders.Get("originator"))
+	require.Equal(t, expectedProfile.Version, handshakeHeaders.Get("version"))
+	installationAlias := gjson.GetBytes(firstUpstream, "client_metadata.installation_id").String()
+	sessionAlias := gjson.GetBytes(firstUpstream, "client_metadata.session_id").String()
+	firstTurnAlias := gjson.GetBytes(firstUpstream, "client_metadata.turn_id").String()
+	require.NotEmpty(t, installationAlias)
+	require.NotEmpty(t, sessionAlias)
+	require.NotEmpty(t, firstTurnAlias)
+	require.NotEqual(t, "client-install", installationAlias)
+	require.NotEqual(t, "client-session", sessionAlias)
+	require.NotEqual(t, "client-turn-1", firstTurnAlias)
+	require.Equal(t, "windows", gjson.GetBytes(firstUpstream, "client_metadata.os").String())
+	require.Equal(t, "x86_64", gjson.GetBytes(firstUpstream, "client_metadata.arch").String())
+	require.Equal(t, "desktop", gjson.GetBytes(firstUpstream, "client_metadata.surface").String())
+
+	upstream.Send(`{"type":"response.completed","response":{"id":"resp_profile_pt_1","client_metadata":{"installation_id":"` + installationAlias + `","session_id":"` + sessionAlias + `","turn_id":"` + firstTurnAlias + `","os":"windows","arch":"x86_64","surface":"desktop"},"output":[{"type":"message","content":[{"type":"output_text","text":"` + sessionAlias + `"}]}],"usage":{"input_tokens":1,"output_tokens":1}}}`)
+	firstResponse, err := readPassthroughLifecycleFrame(t, client, 3*time.Second)
+	require.NoError(t, err)
+	require.Equal(t, "client-install", gjson.GetBytes(firstResponse, "response.client_metadata.installation_id").String())
+	require.Equal(t, "client-session", gjson.GetBytes(firstResponse, "response.client_metadata.session_id").String())
+	require.Equal(t, "client-turn-1", gjson.GetBytes(firstResponse, "response.client_metadata.turn_id").String())
+	require.Equal(t, "arm64", gjson.GetBytes(firstResponse, "response.client_metadata.arch").String())
+	require.Equal(t, "desktop", gjson.GetBytes(firstResponse, "response.client_metadata.surface").String())
+	require.Equal(t, sessionAlias, gjson.GetBytes(firstResponse, "response.output.0.content.0.text").String(), "ordinary model output must not be globally restored")
+
+	second := []byte(`{"type":"response.create","model":"gpt-5.6-sol","client_metadata":{"installation_id":"client-install","session_id":"client-session","turn_id":"client-turn-2","os":"windows","arch":"arm64","surface":"desktop"},"input":[{"role":"user","content":"second"}]}`)
+	writeCtx, cancel = context.WithTimeout(context.Background(), 3*time.Second)
+	require.NoError(t, client.Write(writeCtx, coderws.MessageText, second))
+	cancel()
+	secondUpstream := requirePassthroughUpstreamWrite(t, upstream, 3*time.Second)
+	secondTurnAlias := gjson.GetBytes(secondUpstream, "client_metadata.turn_id").String()
+	require.Equal(t, installationAlias, gjson.GetBytes(secondUpstream, "client_metadata.installation_id").String())
+	require.Equal(t, sessionAlias, gjson.GetBytes(secondUpstream, "client_metadata.session_id").String())
+	require.NotEmpty(t, secondTurnAlias)
+	require.NotEqual(t, firstTurnAlias, secondTurnAlias)
+
+	upstream.Send(`{"type":"response.completed","response":{"id":"resp_profile_pt_2","client_metadata":{"installation_id":"` + installationAlias + `","session_id":"` + sessionAlias + `","turn_id":"` + secondTurnAlias + `","os":"windows","arch":"x86_64","surface":"desktop"},"usage":{"input_tokens":1,"output_tokens":1}}}`)
+	secondResponse, err := readPassthroughLifecycleFrame(t, client, 3*time.Second)
+	require.NoError(t, err)
+	require.Equal(t, "client-turn-2", gjson.GetBytes(secondResponse, "response.client_metadata.turn_id").String())
+	require.Equal(t, "client-session", gjson.GetBytes(secondResponse, "response.client_metadata.session_id").String())
+	_ = client.Close(coderws.StatusNormalClosure, "done")
+
+	select {
+	case err := <-serverErr:
+		var closeErr *OpenAIWSClientCloseError
+		if err != nil && (!errors.As(err, &closeErr) || closeErr.StatusCode() != coderws.StatusNormalClosure) {
+			require.NoError(t, err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("timed out waiting for Profile passthrough relay shutdown")
+	}
+}
+
+func TestCodexProfileWSPassthroughLaterTurn429RebindsAndReplaysCurrentTurnPerAPIKey(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	cfg := passthroughLifecycleConfig()
+	cfg.Gateway.OpenAIWS.OAuthEnabled = true
+	firstAccount := codexProfileTestAccount(t, 912, CodexOSWindows, CodexSurfaceDesktop, CodexArchX8664, false)
+	firstAccount.Name = "passthrough-limited"
+	firstAccount.Credentials["model_mapping"] = map[string]any{"client-model": "upstream-a"}
+	firstAccount.Extra["openai_oauth_responses_websockets_v2_mode"] = OpenAIWSIngressModePassthrough
+	secondAccount := codexProfileTestAccount(t, 913, CodexOSWindows, CodexSurfaceDesktop, CodexArchX8664, false)
+	secondAccount.Name = "passthrough-replacement"
+	secondAccount.Credentials["model_mapping"] = map[string]any{"client-model": "upstream-b"}
+	secondAccount.Extra[codexFingerprintSeedExtraKey] = "33333333-3333-4333-8333-333333333333"
+	secondAccount.Extra["openai_oauth_responses_websockets_v2_mode"] = OpenAIWSIngressModePassthrough
+	repo := &codexProfileGatewayAccountRepo{
+		accounts: map[int64]*Account{firstAccount.ID: firstAccount, secondAccount.ID: secondAccount},
+		resolvedSlots: map[int64]*CodexResolvedDeviceSlot{
+			firstAccount.ID: {
+				AccountID: firstAccount.ID, SlotID: 91201, ProfileID: 91200,
+				OSClass: CodexOSWindows, CanonicalSurface: CodexSurfaceDesktop,
+				Architecture: CodexArchX8664, CatalogVersion: 1,
+				SlotIndex: 0, Epoch: 4, State: "active", PolicyVersion: 1,
+			},
+			secondAccount.ID: {
+				AccountID: secondAccount.ID, SlotID: 91301, ProfileID: 91300,
+				OSClass: CodexOSWindows, CanonicalSurface: CodexSurfaceDesktop,
+				Architecture: CodexArchX8664, CatalogVersion: 1,
+				SlotIndex: 0, Epoch: 4, State: "active", PolicyVersion: 1,
+			},
+		},
+	}
+	profileCache := &codexProfileGatewayCache{values: map[string]int64{}}
+	upstreamFirst := newStagedPassthroughConn()
+	upstreamSecond := newStagedPassthroughConn()
+	dialer := &stagedPassthroughSequenceDialer{conns: []openAIWSClientConn{upstreamFirst, upstreamSecond}}
+	svc := &OpenAIGatewayService{
+		accountRepo:               repo,
+		cache:                     profileCache,
+		cfg:                       cfg,
+		openaiWSResolver:          NewOpenAIWSProtocolResolver(cfg),
+		toolCorrector:             NewCodexToolCorrector(),
+		openaiWSPassthroughDialer: dialer,
+	}
+	firstHooks := &OpenAIWSIngressHooks{
+		MapRequestModel: func(_ int, originalModel string) (string, error) {
+			if originalModel == "client-model" {
+				return "upstream-a", nil
+			}
+			return originalModel, nil
+		},
+	}
+	secondHooks := &OpenAIWSIngressHooks{
+		MapRequestModel: func(_ int, originalModel string) (string, error) {
+			if originalModel == "client-model" {
+				return "upstream-b", nil
+			}
+			return originalModel, nil
+		},
+	}
+
+	type isolationProbe struct {
+		indexKey   string
+		bindingKey string
+	}
+	retryPayloadCh := make(chan []byte, 1)
+	isolationProbeCh := make(chan isolationProbe, 1)
+	serverErr := make(chan error, 1)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		client, err := coderws.Accept(w, r, nil)
+		if err != nil {
+			serverErr <- err
+			return
+		}
+		defer func() { _ = client.CloseNow() }()
+		readCtx, cancel := context.WithTimeout(r.Context(), 3*time.Second)
+		_, firstMessage, err := client.Read(readCtx)
+		cancel()
+		if err != nil {
+			serverErr <- err
+			return
+		}
+
+		ginCtx := newCodexProfileGatewayContext(t, 7, 101, firstMessage)
+		sessionHash := svc.GenerateSessionHash(ginCtx, firstMessage)
+		if sessionHash == "" {
+			serverErr <- errors.New("missing passthrough failover session hash")
+			return
+		}
+		requestB := codexProfileTestContext(7, 202, CodexClientProfile{
+			OSClass: CodexOSWindows, Surface: CodexSurfaceCLI, Architecture: CodexArchARM64,
+		}, sessionHash)
+		profileRequestB, ok := codexProfileRequestFromContext(requestB)
+		if !ok {
+			serverErr <- errors.New("missing API key B Profile request")
+			return
+		}
+		probe := isolationProbe{
+			indexKey:   codexProfileAffinityKey(profileRequestB, sessionHash, 0, true),
+			bindingKey: codexProfileAffinityKey(profileRequestB, sessionHash, 1, false),
+		}
+		profileCache.values[probe.indexKey] = 999
+		profileCache.values[probe.bindingKey] = 999
+		isolationProbeCh <- probe
+
+		groupID := int64(3)
+		preparedFirst, err := svc.PrepareCodexProfileAttempt(ginCtx.Request.Context(), ginCtx, firstAccount, firstMessage)
+		if err != nil {
+			serverErr <- err
+			return
+		}
+		if _, err = svc.setCodexProfileAffinityAccountID(ginCtx.Request.Context(), &groupID, sessionHash, preparedFirst.ID); err != nil {
+			svc.ReleaseCodexProfileAttempt(ginCtx, preparedFirst)
+			serverErr <- err
+			return
+		}
+		proxyErr := svc.proxyResponsesWebSocketV2Passthrough(
+			ginCtx.Request.Context(), ginCtx, client, preparedFirst, "test-token", firstMessage, firstHooks,
+			OpenAIWSProtocolDecision{Transport: OpenAIUpstreamTransportResponsesWebsocketV2},
+		)
+		svc.ReleaseCodexProfileAttempt(ginCtx, preparedFirst)
+		var failoverErr *UpstreamFailoverError
+		if !errors.As(proxyErr, &failoverErr) || failoverErr.StatusCode != http.StatusTooManyRequests {
+			serverErr <- fmt.Errorf("expected passthrough 429 failover, got %w", proxyErr)
+			return
+		}
+		retryPayload, retryCurrentTurn := OpenAIWSCurrentTurnRetryPayload(proxyErr)
+		if !retryCurrentTurn || len(retryPayload) == 0 {
+			serverErr <- errors.New("missing passthrough current-turn retry payload")
+			return
+		}
+		retryPayload, err = svc.RestoreCodexProfileRetryPayload(ginCtx, preparedFirst, retryPayload)
+		if err != nil {
+			serverErr <- err
+			return
+		}
+		retryPayloadCh <- append([]byte(nil), retryPayload...)
+
+		preparedSecond, err := svc.PrepareCodexProfileAttempt(ginCtx.Request.Context(), ginCtx, secondAccount, retryPayload)
+		if err != nil {
+			serverErr <- err
+			return
+		}
+		if _, err = svc.setCodexProfileAffinityAccountID(ginCtx.Request.Context(), &groupID, sessionHash, preparedSecond.ID); err != nil {
+			svc.ReleaseCodexProfileAttempt(ginCtx, preparedSecond)
+			serverErr <- err
+			return
+		}
+		err = svc.proxyResponsesWebSocketV2Passthrough(
+			ginCtx.Request.Context(), ginCtx, client, preparedSecond, "test-token", retryPayload, secondHooks,
+			OpenAIWSProtocolDecision{Transport: OpenAIUpstreamTransportResponsesWebsocketV2},
+		)
+		svc.ReleaseCodexProfileAttempt(ginCtx, preparedSecond)
+		serverErr <- err
+	}))
+	defer server.Close()
+
+	dialCtx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	client, _, err := coderws.Dial(dialCtx, "ws"+strings.TrimPrefix(server.URL, "http"), nil)
+	cancel()
+	require.NoError(t, err)
+	defer func() { _ = client.CloseNow() }()
+
+	firstMessage := []byte(`{"type":"response.create","model":"client-model","client_metadata":{"installation_id":"client-install","session_id":"client-session","turn_id":"client-turn-1","os":"windows","arch":"arm64","surface":"desktop"},"input":[{"role":"user","content":"first"}]}`)
+	writeCtx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	require.NoError(t, client.Write(writeCtx, coderws.MessageText, firstMessage))
+	cancel()
+	select {
+	case serverErrValue := <-serverErr:
+		t.Fatalf("passthrough failover server exited before upstream write: %v", serverErrValue)
+	default:
+	}
+	firstWire := requirePassthroughUpstreamWrite(t, upstreamFirst, 3*time.Second)
+	require.Equal(t, "upstream-a", gjson.GetBytes(firstWire, "model").String())
+	firstInstallAlias := gjson.GetBytes(firstWire, "client_metadata.installation_id").String()
+	firstSessionAlias := gjson.GetBytes(firstWire, "client_metadata.session_id").String()
+	firstTurnAlias := gjson.GetBytes(firstWire, "client_metadata.turn_id").String()
+	require.NotEmpty(t, firstInstallAlias)
+	require.NotEmpty(t, firstSessionAlias)
+
+	upstreamFirst.Send(`{"type":"response.completed","response":{"id":"resp_passthrough_first","client_metadata":{"installation_id":"` + firstInstallAlias + `","session_id":"` + firstSessionAlias + `","turn_id":"` + firstTurnAlias + `"},"output":[{"id":"msg_1","type":"message","role":"assistant","content":[{"type":"output_text","text":"first-ok"}]},{"id":"fc_1","type":"function_call","call_id":"call_1","name":"inspect","arguments":"{}"}],"usage":{"input_tokens":1,"output_tokens":1}}}`)
+	firstResponse, err := readPassthroughLifecycleFrame(t, client, 3*time.Second)
+	require.NoError(t, err)
+	require.Equal(t, "resp_passthrough_first", gjson.GetBytes(firstResponse, "response.id").String())
+	require.Equal(t, "client-session", gjson.GetBytes(firstResponse, "response.client_metadata.session_id").String())
+
+	secondMessage := []byte(`{"type":"response.create","model":"client-model","previous_response_id":"resp_passthrough_first","client_metadata":{"installation_id":"client-install","session_id":"client-session","turn_id":"client-turn-2","os":"windows","arch":"arm64","surface":"desktop"},"input":[{"type":"function_call_output","call_id":"call_1","output":"second"}]}`)
+	writeCtx, cancel = context.WithTimeout(context.Background(), 3*time.Second)
+	require.NoError(t, client.Write(writeCtx, coderws.MessageText, secondMessage))
+	cancel()
+	secondWireFirstAccount := requirePassthroughUpstreamWrite(t, upstreamFirst, 3*time.Second)
+	require.Equal(t, "upstream-a", gjson.GetBytes(secondWireFirstAccount, "model").String())
+	require.Equal(t, "resp_passthrough_first", gjson.GetBytes(secondWireFirstAccount, "previous_response_id").String())
+	upstreamFirst.Send(`{"type":"error","error":{"type":"rate_limit_error","code":"rate_limit_exceeded","message":"limited"}}`)
+
+	retryWire := requirePassthroughUpstreamWrite(t, upstreamSecond, 5*time.Second)
+	require.False(t, gjson.GetBytes(retryWire, "previous_response_id").Exists())
+	require.Equal(t, "upstream-b", gjson.GetBytes(retryWire, "model").String())
+	require.Len(t, gjson.GetBytes(retryWire, "input").Array(), 4)
+	require.Contains(t, gjson.GetBytes(retryWire, "input").Raw, "first")
+	require.Contains(t, gjson.GetBytes(retryWire, "input").Raw, "first-ok")
+	require.Contains(t, gjson.GetBytes(retryWire, "input").Raw, "second")
+	secondInstallAlias := gjson.GetBytes(retryWire, "client_metadata.installation_id").String()
+	secondSessionAlias := gjson.GetBytes(retryWire, "client_metadata.session_id").String()
+	secondTurnAlias := gjson.GetBytes(retryWire, "client_metadata.turn_id").String()
+	require.NotEqual(t, firstInstallAlias, secondInstallAlias)
+	require.NotEqual(t, firstSessionAlias, secondSessionAlias)
+	require.NotEmpty(t, secondTurnAlias)
+
+	upstreamSecond.Send(`{"type":"response.completed","response":{"id":"resp_passthrough_second","client_metadata":{"installation_id":"` + secondInstallAlias + `","session_id":"` + secondSessionAlias + `","turn_id":"` + secondTurnAlias + `"},"output":[{"id":"msg_2","type":"message","role":"assistant","content":[{"type":"output_text","text":"second-ok"}]}],"usage":{"input_tokens":4,"output_tokens":1}}}`)
+	secondResponse, err := readPassthroughLifecycleFrame(t, client, 5*time.Second)
+	require.NoError(t, err)
+	require.Equal(t, "resp_passthrough_second", gjson.GetBytes(secondResponse, "response.id").String())
+	require.Equal(t, "client-turn-2", gjson.GetBytes(secondResponse, "response.client_metadata.turn_id").String())
+	require.NoError(t, client.Close(coderws.StatusNormalClosure, "done"))
+
+	retryPayload := <-retryPayloadCh
+	require.False(t, gjson.GetBytes(retryPayload, "previous_response_id").Exists())
+	require.Equal(t, "client-model", gjson.GetBytes(retryPayload, "model").String(), "retry payload must retain client model semantics for the replacement account")
+	require.Equal(t, [][2]int64{{firstAccount.ID, secondAccount.ID}}, repo.rebinds)
+	probe := <-isolationProbeCh
+	require.Equal(t, int64(999), profileCache.values[probe.indexKey], "API key A failover must not overwrite API key B affinity index")
+	require.Equal(t, int64(999), profileCache.values[probe.bindingKey], "API key A failover must not overwrite API key B affinity binding")
+
+	select {
+	case err := <-serverErr:
+		var closeErr *OpenAIWSClientCloseError
+		if err != nil && (!errors.As(err, &closeErr) || closeErr.StatusCode() != coderws.StatusNormalClosure) {
+			require.NoError(t, err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("timed out waiting for passthrough failover relay shutdown")
+	}
+}
+
+func TestOpenAIWSPassthroughReplayStateFailsClosedForOrphanToolOutput(t *testing.T) {
+	state := &openAIWSPassthroughReplayState{}
+	require.NoError(t, state.BeginTurn(
+		[]byte(`{"type":"response.create","model":"client-model","input":[{"role":"user","content":"first"}]}`),
+		"client-model",
+	))
+	state.ObserveUpstream([]byte(`{"type":"response.completed","response":{"id":"resp_first","output":[{"type":"message","role":"assistant","content":[{"type":"output_text","text":"ok"}]}]}}`))
+	require.NoError(t, state.BeginTurn(
+		[]byte(`{"type":"response.create","model":"client-model","previous_response_id":"resp_first","input":[{"type":"function_call_output","call_id":"missing_call","output":"done"}]}`),
+		"client-model",
+	))
+
+	retryPayload, retrySafe, err := state.CurrentTurnRetryPayload()
+	require.NoError(t, err)
+	require.False(t, retrySafe)
+	require.Nil(t, retryPayload)
+}
+
 func TestPassthroughLifecycle_LeaseLossSendsRetryClose(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	controlCtx, cancelControl := context.WithCancelCause(context.Background())
@@ -804,6 +1223,36 @@ func TestPassthroughLifecycle_ResponseCreatedTimeoutClosesWithoutFailover(t *tes
 		require.Equal(t, "upstream produced no semantic output; please reconnect", closeErr.Reason())
 	case <-time.After(2500 * time.Millisecond):
 		t.Fatal("response.created timeout did not close the passthrough connection")
+	}
+}
+
+func TestPassthroughLifecycle_RateLimitAfterCurrentTurnOutputDoesNotFailOver(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	controlCtx, cancelControl := context.WithCancelCause(context.Background())
+	defer cancelControl(context.Canceled)
+	upstream := newStagedPassthroughConn()
+	upstream.Send(`{"type":"response.created","response":{"id":"resp_partial","model":"gpt-5.1"}}`)
+	upstream.Send(`{"type":"error","error":{"type":"rate_limit_error","code":"rate_limit_exceeded","message":"limited"}}`)
+	server, serverErr := startPassthroughLifecycleServer(t, controlCtx, newPassthroughLifecycleService(passthroughLifecycleConfig(), upstream), passthroughLifecycleAccount())
+	defer server.Close()
+	clientConn := dialPassthroughLifecycleClient(t, server)
+	defer func() { _ = clientConn.CloseNow() }()
+
+	created, err := readPassthroughLifecycleFrame(t, clientConn, 3*time.Second)
+	require.NoError(t, err)
+	require.Equal(t, "response.created", gjson.GetBytes(created, "type").String())
+	errorEvent, err := readPassthroughLifecycleFrame(t, clientConn, 3*time.Second)
+	require.NoError(t, err)
+	require.Equal(t, "error", gjson.GetBytes(errorEvent, "type").String())
+	require.NoError(t, clientConn.Close(coderws.StatusNormalClosure, "done"))
+	require.NoError(t, upstream.Close())
+
+	select {
+	case err := <-serverErr:
+		var failoverErr *UpstreamFailoverError
+		require.NotErrorAs(t, err, &failoverErr, "a turn that already produced downstream output must never be replayed")
+	case <-time.After(3 * time.Second):
+		t.Fatal("same-turn rate-limit relay did not exit")
 	}
 }
 

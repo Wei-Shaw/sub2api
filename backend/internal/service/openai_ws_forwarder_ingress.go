@@ -115,7 +115,7 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 	}
 
 	wsDecision := s.getOpenAIWSProtocolResolver().Resolve(account)
-	forceHTTPBridge := account.Platform == PlatformGrok ||
+	forceHTTPBridge := s.shouldForceOpenAIWSHTTPBridge(account) ||
 		(s.pluginManager != nil && s.pluginManager.ShouldRouteOpenAIOAuth(account))
 	modeRouterV2Enabled := s != nil && s.cfg != nil && s.cfg.Gateway.OpenAIWS.ModeRouterV2Enabled
 	ingressMode := OpenAIWSIngressModeCtxPool
@@ -466,6 +466,19 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 			)
 		}
 		normalized = policyApplied
+		plan, refreshProfileErr := refreshCodexProfileTurnPlan(c, account, normalized)
+		if refreshProfileErr != nil {
+			return openAIWSClientPayload{}, NewOpenAIWSClientCloseError(coderws.StatusPolicyViolation, "invalid Codex profile turn identity", refreshProfileErr)
+		}
+		if plan != nil {
+			profilePayload, changed, profileErr := ApplyCodexIdentityPlanToJSON(normalized, plan)
+			if profileErr != nil {
+				return openAIWSClientPayload{}, NewOpenAIWSClientCloseError(coderws.StatusPolicyViolation, "invalid Codex profile identity payload", profileErr)
+			}
+			if changed {
+				normalized = profilePayload
+			}
+		}
 		ingressSessionOriginalModel = originalModel
 
 		return openAIWSClientPayload{
@@ -486,6 +499,11 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 	writeClientMessage := func(message []byte) error {
 		writeCtx, cancel := newOpenAIWSDownstreamWriteContext(ctx, hooks, s.openAIWSWriteTimeout())
 		defer cancel()
+		restored, restoreErr := restoreStagedCodexIdentityJSON(c, account, message)
+		if restoreErr != nil {
+			return fmt.Errorf("restore Codex Profile identity before downstream write: %w", restoreErr)
+		}
+		message = restored
 		message = restoreCodexToolNamesFromContext(c, message)
 		return clientConn.Write(writeCtx, coderws.MessageText, message)
 	}
@@ -1009,6 +1027,12 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 				upstreamMessage = normalized
 			}
 
+			restoredMessage, restoreErr := restoreStagedCodexIdentityJSON(c, account, upstreamMessage)
+			if restoreErr != nil {
+				lease.MarkBroken()
+				return nil, wrapOpenAIWSIngressTurnError("restore_identity", restoreErr, wroteDownstream)
+			}
+			upstreamMessage = restoredMessage
 			eventType, eventResponseID, _ := parseOpenAIWSEventEnvelope(upstreamMessage)
 			responseModelObserver.ObserveOpenAI(upstreamMessage, eventType)
 			if responseID == "" && eventResponseID != "" {

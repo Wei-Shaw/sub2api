@@ -11,6 +11,17 @@ FRONTEND_CRITICAL_VITEST := \
 	src/views/user/__tests__/ChannelStatusView.mode.spec.ts \
 	src/components/user/profile/__tests__/ProfileInfoCard.spec.ts \
 	src/views/admin/__tests__/SettingsView.spec.ts \
+	src/api/__tests__/admin.accounts.codexIdentity.spec.ts \
+	src/__tests__/integration/data-import.spec.ts \
+	src/components/account/__tests__/AccountStatusIndicator.spec.ts \
+	src/components/account/__tests__/BulkEditAccountModal.spec.ts \
+	src/components/account/__tests__/CreateAccountModal.spec.ts \
+	src/components/account/__tests__/EditAccountModal.spec.ts \
+	src/components/account/__tests__/SyncFromCrsModal.codexIdentity.spec.ts \
+	src/components/account/codex-identity/__tests__/codexIdentityValidation.spec.ts \
+	src/components/account/codex-identity/__tests__/CodexDeviceSlotLifecycle.spec.ts \
+	src/components/account/codex-identity/__tests__/CodexIdentityPolicyEditor.spec.ts \
+	src/i18n/__tests__/codexIdentityLocales.spec.ts \
 	src/features/channel-monitor-v2/__tests__/designSystem.structure.spec.ts \
 	src/features/channel-monitor-v2/__tests__/monitorFormat.spec.ts \
 	src/features/channel-monitor-v2/__tests__/monitorZoom.spec.ts

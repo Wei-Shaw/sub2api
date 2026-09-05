@@ -2,6 +2,8 @@ package repository
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"strconv"
@@ -35,9 +37,11 @@ const (
 	liveAPIKeySlotKeyPrefix  = "concurrency:live:api_key:"
 	// API-key-scoped client WebSocket ingress leases use a shorter TTL than
 	// ordinary request slots, because idle ingress sessions do not hold a turn slot.
-	openAIWSIngressLeaseKeyPrefix  = "concurrency:openai_ws_ingress:api_key:"
-	openAIWSIngressLeaseTTLSeconds = 60
-	liveLeaseTTLSeconds            = 60
+	openAIWSIngressLeaseKeyPrefix          = "concurrency:openai_ws_ingress:api_key:"
+	openAIWSIngressLeaseTTLSeconds         = 60
+	codexDeviceConversationLeaseKeyPrefix  = "concurrency:codex_device_session:"
+	codexDeviceConversationLeaseTTLSeconds = 60
+	liveLeaseTTLSeconds                    = 60
 	// 等待队列计数器格式: concurrency:wait:{userID}
 	waitQueueKeyPrefix = "concurrency:wait:"
 	// 账号级等待队列计数器格式: wait:account:{accountID}
@@ -245,6 +249,56 @@ var (
 		return 1
 	`)
 
+	acquireCodexDeviceConversationLeaseScript = redis.NewScript(`
+		redis.replicate_commands()
+		local key = KEYS[1]
+		local ttl = tonumber(ARGV[1])
+		local leaseID = ARGV[2]
+		local limit = tonumber(ARGV[3])
+		local kind = redis.call('TYPE', key).ok
+		-- A legacy process still owns its mutex. Do not steal or convert it.
+		if kind == 'string' then return 0 end
+		local now = tonumber(redis.call('TIME')[1])
+		redis.call('ZREMRANGEBYSCORE', key, '-inf', now - ttl)
+		if redis.call('ZSCORE', key, leaseID) then return 1 end
+		if limit > 0 and redis.call('ZCARD', key) >= limit then return 0 end
+		redis.call('ZADD', key, now, leaseID)
+		redis.call('EXPIRE', key, ttl)
+		return 1
+	`)
+
+	refreshCodexDeviceConversationLeaseScript = redis.NewScript(`
+		redis.replicate_commands()
+		local key = KEYS[1]
+		local ttl = tonumber(ARGV[1])
+		local leaseID = ARGV[2]
+		local kind = redis.call('TYPE', key).ok
+		if kind == 'string' then
+			if redis.call('GET', key) ~= leaseID then return 0 end
+			redis.call('EXPIRE', key, ttl)
+			return 1
+		end
+		if kind ~= 'zset' then return 0 end
+		local now = tonumber(redis.call('TIME')[1])
+		redis.call('ZREMRANGEBYSCORE', key, '-inf', now - ttl)
+		if not redis.call('ZSCORE', key, leaseID) then return 0 end
+		redis.call('ZADD', key, now, leaseID)
+		redis.call('EXPIRE', key, ttl)
+		return 1
+	`)
+
+	releaseCodexDeviceConversationLeaseScript = redis.NewScript(`
+		local key = KEYS[1]
+		local leaseID = ARGV[1]
+		local kind = redis.call('TYPE', key).ok
+		if kind == 'string' then
+			if redis.call('GET', key) ~= leaseID then return 0 end
+			return redis.call('DEL', key)
+		end
+		if kind ~= 'zset' then return 0 end
+		return redis.call('ZREM', key, leaseID)
+	`)
+
 	// incrementWaitScript - refreshes TTL on each increment to keep queue depth accurate
 	// KEYS[1] = wait queue key
 	// ARGV[1] = maxWait
@@ -404,6 +458,11 @@ func liveAPIKeySlotKey(apiKeyID int64) string {
 
 func openAIWSIngressLeaseKey(apiKeyID int64) string {
 	return fmt.Sprintf("%s%d", openAIWSIngressLeaseKeyPrefix, apiKeyID)
+}
+
+func codexDeviceConversationLeaseKey(slotKey string) string {
+	sum := sha256.Sum256([]byte(slotKey))
+	return codexDeviceConversationLeaseKeyPrefix + hex.EncodeToString(sum[:16])
 }
 
 func waitQueueKey(userID int64) string {
@@ -790,6 +849,61 @@ func (c *concurrencyCache) ReleaseOpenAIWSIngressLease(ctx context.Context, apiK
 		return nil
 	}
 	return c.rdb.ZRem(ctx, openAIWSIngressLeaseKey(apiKeyID), leaseID).Err()
+}
+
+func (c *concurrencyCache) AcquireCodexDeviceConversationLease(ctx context.Context, slotKey, leaseID string) (bool, error) {
+	return c.AcquireCodexDeviceConversationLeaseWithLimit(ctx, slotKey, leaseID, 1)
+}
+
+func (c *concurrencyCache) AcquireCodexDeviceConversationLeaseWithLimit(ctx context.Context, slotKey, leaseID string, maxConcurrency int) (bool, error) {
+	if maxConcurrency < 0 || maxConcurrency > service.MaxCodexSlotConcurrency {
+		return false, fmt.Errorf("invalid Codex slot concurrency limit: %d", maxConcurrency)
+	}
+	if c == nil || c.rdb == nil || slotKey == "" || leaseID == "" {
+		return false, nil
+	}
+	result, err := acquireCodexDeviceConversationLeaseScript.Run(
+		ctx,
+		c.rdb,
+		[]string{codexDeviceConversationLeaseKey(slotKey)},
+		codexDeviceConversationLeaseTTLSeconds,
+		leaseID,
+		maxConcurrency,
+	).Int()
+	if err != nil {
+		return false, err
+	}
+	return result == 1, nil
+}
+
+func (c *concurrencyCache) RefreshCodexDeviceConversationLease(ctx context.Context, slotKey, leaseID string) (bool, error) {
+	if c == nil || c.rdb == nil || slotKey == "" || leaseID == "" {
+		return false, nil
+	}
+	result, err := refreshCodexDeviceConversationLeaseScript.Run(
+		ctx,
+		c.rdb,
+		[]string{codexDeviceConversationLeaseKey(slotKey)},
+		codexDeviceConversationLeaseTTLSeconds,
+		leaseID,
+	).Int()
+	if err != nil {
+		return false, err
+	}
+	return result == 1, nil
+}
+
+func (c *concurrencyCache) ReleaseCodexDeviceConversationLease(ctx context.Context, slotKey, leaseID string) error {
+	if c == nil || c.rdb == nil || slotKey == "" || leaseID == "" {
+		return nil
+	}
+	_, err := releaseCodexDeviceConversationLeaseScript.Run(
+		ctx,
+		c.rdb,
+		[]string{codexDeviceConversationLeaseKey(slotKey)},
+		leaseID,
+	).Result()
+	return err
 }
 
 func (c *concurrencyCache) AcquireLiveLease(

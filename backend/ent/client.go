@@ -16,6 +16,10 @@ import (
 	"entgo.io/ent/dialect/sql"
 	"entgo.io/ent/dialect/sql/sqlgraph"
 	"github.com/Wei-Shaw/sub2api/ent/account"
+	"github.com/Wei-Shaw/sub2api/ent/accountcodexdevicebinding"
+	"github.com/Wei-Shaw/sub2api/ent/accountcodexdeviceslot"
+	"github.com/Wei-Shaw/sub2api/ent/accountcodexidentitypolicy"
+	"github.com/Wei-Shaw/sub2api/ent/accountcodexprofile"
 	"github.com/Wei-Shaw/sub2api/ent/accountgroup"
 	"github.com/Wei-Shaw/sub2api/ent/announcement"
 	"github.com/Wei-Shaw/sub2api/ent/announcementread"
@@ -67,6 +71,14 @@ type Client struct {
 	APIKey *APIKeyClient
 	// Account is the client for interacting with the Account builders.
 	Account *AccountClient
+	// AccountCodexDeviceBinding is the client for interacting with the AccountCodexDeviceBinding builders.
+	AccountCodexDeviceBinding *AccountCodexDeviceBindingClient
+	// AccountCodexDeviceSlot is the client for interacting with the AccountCodexDeviceSlot builders.
+	AccountCodexDeviceSlot *AccountCodexDeviceSlotClient
+	// AccountCodexIdentityPolicy is the client for interacting with the AccountCodexIdentityPolicy builders.
+	AccountCodexIdentityPolicy *AccountCodexIdentityPolicyClient
+	// AccountCodexProfile is the client for interacting with the AccountCodexProfile builders.
+	AccountCodexProfile *AccountCodexProfileClient
 	// AccountGroup is the client for interacting with the AccountGroup builders.
 	AccountGroup *AccountGroupClient
 	// Announcement is the client for interacting with the Announcement builders.
@@ -154,6 +166,10 @@ func (c *Client) init() {
 	c.Schema = migrate.NewSchema(c.driver)
 	c.APIKey = NewAPIKeyClient(c.config)
 	c.Account = NewAccountClient(c.config)
+	c.AccountCodexDeviceBinding = NewAccountCodexDeviceBindingClient(c.config)
+	c.AccountCodexDeviceSlot = NewAccountCodexDeviceSlotClient(c.config)
+	c.AccountCodexIdentityPolicy = NewAccountCodexIdentityPolicyClient(c.config)
+	c.AccountCodexProfile = NewAccountCodexProfileClient(c.config)
 	c.AccountGroup = NewAccountGroupClient(c.config)
 	c.Announcement = NewAnnouncementClient(c.config)
 	c.AnnouncementRead = NewAnnouncementReadClient(c.config)
@@ -285,6 +301,10 @@ func (c *Client) Tx(ctx context.Context) (*Tx, error) {
 		config:                        cfg,
 		APIKey:                        NewAPIKeyClient(cfg),
 		Account:                       NewAccountClient(cfg),
+		AccountCodexDeviceBinding:     NewAccountCodexDeviceBindingClient(cfg),
+		AccountCodexDeviceSlot:        NewAccountCodexDeviceSlotClient(cfg),
+		AccountCodexIdentityPolicy:    NewAccountCodexIdentityPolicyClient(cfg),
+		AccountCodexProfile:           NewAccountCodexProfileClient(cfg),
 		AccountGroup:                  NewAccountGroupClient(cfg),
 		Announcement:                  NewAnnouncementClient(cfg),
 		AnnouncementRead:              NewAnnouncementReadClient(cfg),
@@ -343,6 +363,10 @@ func (c *Client) BeginTx(ctx context.Context, opts *sql.TxOptions) (*Tx, error) 
 		config:                        cfg,
 		APIKey:                        NewAPIKeyClient(cfg),
 		Account:                       NewAccountClient(cfg),
+		AccountCodexDeviceBinding:     NewAccountCodexDeviceBindingClient(cfg),
+		AccountCodexDeviceSlot:        NewAccountCodexDeviceSlotClient(cfg),
+		AccountCodexIdentityPolicy:    NewAccountCodexIdentityPolicyClient(cfg),
+		AccountCodexProfile:           NewAccountCodexProfileClient(cfg),
 		AccountGroup:                  NewAccountGroupClient(cfg),
 		Announcement:                  NewAnnouncementClient(cfg),
 		AnnouncementRead:              NewAnnouncementReadClient(cfg),
@@ -409,16 +433,17 @@ func (c *Client) Close() error {
 // In order to add hooks to a specific client, call: `client.Node.Use(...)`.
 func (c *Client) Use(hooks ...Hook) {
 	for _, n := range []interface{ Use(...Hook) }{
-		c.APIKey, c.Account, c.AccountGroup, c.Announcement, c.AnnouncementRead,
-		c.AuthIdentity, c.AuthIdentityChannel, c.BatchImageEvent, c.BatchImageItem,
-		c.BatchImageJob, c.ChannelMonitor, c.ChannelMonitorDailyRollup,
-		c.ChannelMonitorHistory, c.ChannelMonitorRequestTemplate,
-		c.CompositeModelRoute, c.ErrorPassthroughRule, c.Group, c.IdempotencyRecord,
-		c.IdentityAdoptionDecision, c.PaymentAuditLog, c.PaymentOrder,
-		c.PaymentProviderInstance, c.PendingAuthSession, c.PromoCode, c.PromoCodeUsage,
-		c.Proxy, c.RedeemCode, c.SecuritySecret, c.Setting, c.SubscriptionPlan,
-		c.TLSFingerprintProfile, c.UsageCleanupTask, c.UsageLog, c.User,
-		c.UserAllowedGroup, c.UserAttributeDefinition, c.UserAttributeValue,
+		c.APIKey, c.Account, c.AccountCodexDeviceBinding, c.AccountCodexDeviceSlot,
+		c.AccountCodexIdentityPolicy, c.AccountCodexProfile, c.AccountGroup,
+		c.Announcement, c.AnnouncementRead, c.AuthIdentity, c.AuthIdentityChannel,
+		c.BatchImageEvent, c.BatchImageItem, c.BatchImageJob, c.ChannelMonitor,
+		c.ChannelMonitorDailyRollup, c.ChannelMonitorHistory,
+		c.ChannelMonitorRequestTemplate, c.CompositeModelRoute, c.ErrorPassthroughRule,
+		c.Group, c.IdempotencyRecord, c.IdentityAdoptionDecision, c.PaymentAuditLog,
+		c.PaymentOrder, c.PaymentProviderInstance, c.PendingAuthSession, c.PromoCode,
+		c.PromoCodeUsage, c.Proxy, c.RedeemCode, c.SecuritySecret, c.Setting,
+		c.SubscriptionPlan, c.TLSFingerprintProfile, c.UsageCleanupTask, c.UsageLog,
+		c.User, c.UserAllowedGroup, c.UserAttributeDefinition, c.UserAttributeValue,
 		c.UserPlatformQuota, c.UserSubscription,
 	} {
 		n.Use(hooks...)
@@ -429,16 +454,17 @@ func (c *Client) Use(hooks ...Hook) {
 // In order to add interceptors to a specific client, call: `client.Node.Intercept(...)`.
 func (c *Client) Intercept(interceptors ...Interceptor) {
 	for _, n := range []interface{ Intercept(...Interceptor) }{
-		c.APIKey, c.Account, c.AccountGroup, c.Announcement, c.AnnouncementRead,
-		c.AuthIdentity, c.AuthIdentityChannel, c.BatchImageEvent, c.BatchImageItem,
-		c.BatchImageJob, c.ChannelMonitor, c.ChannelMonitorDailyRollup,
-		c.ChannelMonitorHistory, c.ChannelMonitorRequestTemplate,
-		c.CompositeModelRoute, c.ErrorPassthroughRule, c.Group, c.IdempotencyRecord,
-		c.IdentityAdoptionDecision, c.PaymentAuditLog, c.PaymentOrder,
-		c.PaymentProviderInstance, c.PendingAuthSession, c.PromoCode, c.PromoCodeUsage,
-		c.Proxy, c.RedeemCode, c.SecuritySecret, c.Setting, c.SubscriptionPlan,
-		c.TLSFingerprintProfile, c.UsageCleanupTask, c.UsageLog, c.User,
-		c.UserAllowedGroup, c.UserAttributeDefinition, c.UserAttributeValue,
+		c.APIKey, c.Account, c.AccountCodexDeviceBinding, c.AccountCodexDeviceSlot,
+		c.AccountCodexIdentityPolicy, c.AccountCodexProfile, c.AccountGroup,
+		c.Announcement, c.AnnouncementRead, c.AuthIdentity, c.AuthIdentityChannel,
+		c.BatchImageEvent, c.BatchImageItem, c.BatchImageJob, c.ChannelMonitor,
+		c.ChannelMonitorDailyRollup, c.ChannelMonitorHistory,
+		c.ChannelMonitorRequestTemplate, c.CompositeModelRoute, c.ErrorPassthroughRule,
+		c.Group, c.IdempotencyRecord, c.IdentityAdoptionDecision, c.PaymentAuditLog,
+		c.PaymentOrder, c.PaymentProviderInstance, c.PendingAuthSession, c.PromoCode,
+		c.PromoCodeUsage, c.Proxy, c.RedeemCode, c.SecuritySecret, c.Setting,
+		c.SubscriptionPlan, c.TLSFingerprintProfile, c.UsageCleanupTask, c.UsageLog,
+		c.User, c.UserAllowedGroup, c.UserAttributeDefinition, c.UserAttributeValue,
 		c.UserPlatformQuota, c.UserSubscription,
 	} {
 		n.Intercept(interceptors...)
@@ -452,6 +478,14 @@ func (c *Client) Mutate(ctx context.Context, m Mutation) (Value, error) {
 		return c.APIKey.mutate(ctx, m)
 	case *AccountMutation:
 		return c.Account.mutate(ctx, m)
+	case *AccountCodexDeviceBindingMutation:
+		return c.AccountCodexDeviceBinding.mutate(ctx, m)
+	case *AccountCodexDeviceSlotMutation:
+		return c.AccountCodexDeviceSlot.mutate(ctx, m)
+	case *AccountCodexIdentityPolicyMutation:
+		return c.AccountCodexIdentityPolicy.mutate(ctx, m)
+	case *AccountCodexProfileMutation:
+		return c.AccountCodexProfile.mutate(ctx, m)
 	case *AccountGroupMutation:
 		return c.AccountGroup.mutate(ctx, m)
 	case *AnnouncementMutation:
@@ -942,6 +976,538 @@ func (c *AccountClient) mutate(ctx context.Context, m *AccountMutation) (Value, 
 		return (&AccountDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
 	default:
 		return nil, fmt.Errorf("ent: unknown Account mutation op: %q", m.Op())
+	}
+}
+
+// AccountCodexDeviceBindingClient is a client for the AccountCodexDeviceBinding schema.
+type AccountCodexDeviceBindingClient struct {
+	config
+}
+
+// NewAccountCodexDeviceBindingClient returns a client for the AccountCodexDeviceBinding from the given config.
+func NewAccountCodexDeviceBindingClient(c config) *AccountCodexDeviceBindingClient {
+	return &AccountCodexDeviceBindingClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `accountcodexdevicebinding.Hooks(f(g(h())))`.
+func (c *AccountCodexDeviceBindingClient) Use(hooks ...Hook) {
+	c.hooks.AccountCodexDeviceBinding = append(c.hooks.AccountCodexDeviceBinding, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `accountcodexdevicebinding.Intercept(f(g(h())))`.
+func (c *AccountCodexDeviceBindingClient) Intercept(interceptors ...Interceptor) {
+	c.inters.AccountCodexDeviceBinding = append(c.inters.AccountCodexDeviceBinding, interceptors...)
+}
+
+// Create returns a builder for creating a AccountCodexDeviceBinding entity.
+func (c *AccountCodexDeviceBindingClient) Create() *AccountCodexDeviceBindingCreate {
+	mutation := newAccountCodexDeviceBindingMutation(c.config, OpCreate)
+	return &AccountCodexDeviceBindingCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of AccountCodexDeviceBinding entities.
+func (c *AccountCodexDeviceBindingClient) CreateBulk(builders ...*AccountCodexDeviceBindingCreate) *AccountCodexDeviceBindingCreateBulk {
+	return &AccountCodexDeviceBindingCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *AccountCodexDeviceBindingClient) MapCreateBulk(slice any, setFunc func(*AccountCodexDeviceBindingCreate, int)) *AccountCodexDeviceBindingCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &AccountCodexDeviceBindingCreateBulk{err: fmt.Errorf("calling to AccountCodexDeviceBindingClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*AccountCodexDeviceBindingCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &AccountCodexDeviceBindingCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for AccountCodexDeviceBinding.
+func (c *AccountCodexDeviceBindingClient) Update() *AccountCodexDeviceBindingUpdate {
+	mutation := newAccountCodexDeviceBindingMutation(c.config, OpUpdate)
+	return &AccountCodexDeviceBindingUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *AccountCodexDeviceBindingClient) UpdateOne(_m *AccountCodexDeviceBinding) *AccountCodexDeviceBindingUpdateOne {
+	mutation := newAccountCodexDeviceBindingMutation(c.config, OpUpdateOne, withAccountCodexDeviceBinding(_m))
+	return &AccountCodexDeviceBindingUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *AccountCodexDeviceBindingClient) UpdateOneID(id int64) *AccountCodexDeviceBindingUpdateOne {
+	mutation := newAccountCodexDeviceBindingMutation(c.config, OpUpdateOne, withAccountCodexDeviceBindingID(id))
+	return &AccountCodexDeviceBindingUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for AccountCodexDeviceBinding.
+func (c *AccountCodexDeviceBindingClient) Delete() *AccountCodexDeviceBindingDelete {
+	mutation := newAccountCodexDeviceBindingMutation(c.config, OpDelete)
+	return &AccountCodexDeviceBindingDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *AccountCodexDeviceBindingClient) DeleteOne(_m *AccountCodexDeviceBinding) *AccountCodexDeviceBindingDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *AccountCodexDeviceBindingClient) DeleteOneID(id int64) *AccountCodexDeviceBindingDeleteOne {
+	builder := c.Delete().Where(accountcodexdevicebinding.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &AccountCodexDeviceBindingDeleteOne{builder}
+}
+
+// Query returns a query builder for AccountCodexDeviceBinding.
+func (c *AccountCodexDeviceBindingClient) Query() *AccountCodexDeviceBindingQuery {
+	return &AccountCodexDeviceBindingQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeAccountCodexDeviceBinding},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a AccountCodexDeviceBinding entity by its id.
+func (c *AccountCodexDeviceBindingClient) Get(ctx context.Context, id int64) (*AccountCodexDeviceBinding, error) {
+	return c.Query().Where(accountcodexdevicebinding.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *AccountCodexDeviceBindingClient) GetX(ctx context.Context, id int64) *AccountCodexDeviceBinding {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// Hooks returns the client hooks.
+func (c *AccountCodexDeviceBindingClient) Hooks() []Hook {
+	return c.hooks.AccountCodexDeviceBinding
+}
+
+// Interceptors returns the client interceptors.
+func (c *AccountCodexDeviceBindingClient) Interceptors() []Interceptor {
+	return c.inters.AccountCodexDeviceBinding
+}
+
+func (c *AccountCodexDeviceBindingClient) mutate(ctx context.Context, m *AccountCodexDeviceBindingMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&AccountCodexDeviceBindingCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&AccountCodexDeviceBindingUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&AccountCodexDeviceBindingUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&AccountCodexDeviceBindingDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown AccountCodexDeviceBinding mutation op: %q", m.Op())
+	}
+}
+
+// AccountCodexDeviceSlotClient is a client for the AccountCodexDeviceSlot schema.
+type AccountCodexDeviceSlotClient struct {
+	config
+}
+
+// NewAccountCodexDeviceSlotClient returns a client for the AccountCodexDeviceSlot from the given config.
+func NewAccountCodexDeviceSlotClient(c config) *AccountCodexDeviceSlotClient {
+	return &AccountCodexDeviceSlotClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `accountcodexdeviceslot.Hooks(f(g(h())))`.
+func (c *AccountCodexDeviceSlotClient) Use(hooks ...Hook) {
+	c.hooks.AccountCodexDeviceSlot = append(c.hooks.AccountCodexDeviceSlot, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `accountcodexdeviceslot.Intercept(f(g(h())))`.
+func (c *AccountCodexDeviceSlotClient) Intercept(interceptors ...Interceptor) {
+	c.inters.AccountCodexDeviceSlot = append(c.inters.AccountCodexDeviceSlot, interceptors...)
+}
+
+// Create returns a builder for creating a AccountCodexDeviceSlot entity.
+func (c *AccountCodexDeviceSlotClient) Create() *AccountCodexDeviceSlotCreate {
+	mutation := newAccountCodexDeviceSlotMutation(c.config, OpCreate)
+	return &AccountCodexDeviceSlotCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of AccountCodexDeviceSlot entities.
+func (c *AccountCodexDeviceSlotClient) CreateBulk(builders ...*AccountCodexDeviceSlotCreate) *AccountCodexDeviceSlotCreateBulk {
+	return &AccountCodexDeviceSlotCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *AccountCodexDeviceSlotClient) MapCreateBulk(slice any, setFunc func(*AccountCodexDeviceSlotCreate, int)) *AccountCodexDeviceSlotCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &AccountCodexDeviceSlotCreateBulk{err: fmt.Errorf("calling to AccountCodexDeviceSlotClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*AccountCodexDeviceSlotCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &AccountCodexDeviceSlotCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for AccountCodexDeviceSlot.
+func (c *AccountCodexDeviceSlotClient) Update() *AccountCodexDeviceSlotUpdate {
+	mutation := newAccountCodexDeviceSlotMutation(c.config, OpUpdate)
+	return &AccountCodexDeviceSlotUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *AccountCodexDeviceSlotClient) UpdateOne(_m *AccountCodexDeviceSlot) *AccountCodexDeviceSlotUpdateOne {
+	mutation := newAccountCodexDeviceSlotMutation(c.config, OpUpdateOne, withAccountCodexDeviceSlot(_m))
+	return &AccountCodexDeviceSlotUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *AccountCodexDeviceSlotClient) UpdateOneID(id int64) *AccountCodexDeviceSlotUpdateOne {
+	mutation := newAccountCodexDeviceSlotMutation(c.config, OpUpdateOne, withAccountCodexDeviceSlotID(id))
+	return &AccountCodexDeviceSlotUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for AccountCodexDeviceSlot.
+func (c *AccountCodexDeviceSlotClient) Delete() *AccountCodexDeviceSlotDelete {
+	mutation := newAccountCodexDeviceSlotMutation(c.config, OpDelete)
+	return &AccountCodexDeviceSlotDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *AccountCodexDeviceSlotClient) DeleteOne(_m *AccountCodexDeviceSlot) *AccountCodexDeviceSlotDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *AccountCodexDeviceSlotClient) DeleteOneID(id int64) *AccountCodexDeviceSlotDeleteOne {
+	builder := c.Delete().Where(accountcodexdeviceslot.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &AccountCodexDeviceSlotDeleteOne{builder}
+}
+
+// Query returns a query builder for AccountCodexDeviceSlot.
+func (c *AccountCodexDeviceSlotClient) Query() *AccountCodexDeviceSlotQuery {
+	return &AccountCodexDeviceSlotQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeAccountCodexDeviceSlot},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a AccountCodexDeviceSlot entity by its id.
+func (c *AccountCodexDeviceSlotClient) Get(ctx context.Context, id int64) (*AccountCodexDeviceSlot, error) {
+	return c.Query().Where(accountcodexdeviceslot.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *AccountCodexDeviceSlotClient) GetX(ctx context.Context, id int64) *AccountCodexDeviceSlot {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// Hooks returns the client hooks.
+func (c *AccountCodexDeviceSlotClient) Hooks() []Hook {
+	return c.hooks.AccountCodexDeviceSlot
+}
+
+// Interceptors returns the client interceptors.
+func (c *AccountCodexDeviceSlotClient) Interceptors() []Interceptor {
+	return c.inters.AccountCodexDeviceSlot
+}
+
+func (c *AccountCodexDeviceSlotClient) mutate(ctx context.Context, m *AccountCodexDeviceSlotMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&AccountCodexDeviceSlotCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&AccountCodexDeviceSlotUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&AccountCodexDeviceSlotUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&AccountCodexDeviceSlotDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown AccountCodexDeviceSlot mutation op: %q", m.Op())
+	}
+}
+
+// AccountCodexIdentityPolicyClient is a client for the AccountCodexIdentityPolicy schema.
+type AccountCodexIdentityPolicyClient struct {
+	config
+}
+
+// NewAccountCodexIdentityPolicyClient returns a client for the AccountCodexIdentityPolicy from the given config.
+func NewAccountCodexIdentityPolicyClient(c config) *AccountCodexIdentityPolicyClient {
+	return &AccountCodexIdentityPolicyClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `accountcodexidentitypolicy.Hooks(f(g(h())))`.
+func (c *AccountCodexIdentityPolicyClient) Use(hooks ...Hook) {
+	c.hooks.AccountCodexIdentityPolicy = append(c.hooks.AccountCodexIdentityPolicy, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `accountcodexidentitypolicy.Intercept(f(g(h())))`.
+func (c *AccountCodexIdentityPolicyClient) Intercept(interceptors ...Interceptor) {
+	c.inters.AccountCodexIdentityPolicy = append(c.inters.AccountCodexIdentityPolicy, interceptors...)
+}
+
+// Create returns a builder for creating a AccountCodexIdentityPolicy entity.
+func (c *AccountCodexIdentityPolicyClient) Create() *AccountCodexIdentityPolicyCreate {
+	mutation := newAccountCodexIdentityPolicyMutation(c.config, OpCreate)
+	return &AccountCodexIdentityPolicyCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of AccountCodexIdentityPolicy entities.
+func (c *AccountCodexIdentityPolicyClient) CreateBulk(builders ...*AccountCodexIdentityPolicyCreate) *AccountCodexIdentityPolicyCreateBulk {
+	return &AccountCodexIdentityPolicyCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *AccountCodexIdentityPolicyClient) MapCreateBulk(slice any, setFunc func(*AccountCodexIdentityPolicyCreate, int)) *AccountCodexIdentityPolicyCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &AccountCodexIdentityPolicyCreateBulk{err: fmt.Errorf("calling to AccountCodexIdentityPolicyClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*AccountCodexIdentityPolicyCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &AccountCodexIdentityPolicyCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for AccountCodexIdentityPolicy.
+func (c *AccountCodexIdentityPolicyClient) Update() *AccountCodexIdentityPolicyUpdate {
+	mutation := newAccountCodexIdentityPolicyMutation(c.config, OpUpdate)
+	return &AccountCodexIdentityPolicyUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *AccountCodexIdentityPolicyClient) UpdateOne(_m *AccountCodexIdentityPolicy) *AccountCodexIdentityPolicyUpdateOne {
+	mutation := newAccountCodexIdentityPolicyMutation(c.config, OpUpdateOne, withAccountCodexIdentityPolicy(_m))
+	return &AccountCodexIdentityPolicyUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *AccountCodexIdentityPolicyClient) UpdateOneID(id int64) *AccountCodexIdentityPolicyUpdateOne {
+	mutation := newAccountCodexIdentityPolicyMutation(c.config, OpUpdateOne, withAccountCodexIdentityPolicyID(id))
+	return &AccountCodexIdentityPolicyUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for AccountCodexIdentityPolicy.
+func (c *AccountCodexIdentityPolicyClient) Delete() *AccountCodexIdentityPolicyDelete {
+	mutation := newAccountCodexIdentityPolicyMutation(c.config, OpDelete)
+	return &AccountCodexIdentityPolicyDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *AccountCodexIdentityPolicyClient) DeleteOne(_m *AccountCodexIdentityPolicy) *AccountCodexIdentityPolicyDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *AccountCodexIdentityPolicyClient) DeleteOneID(id int64) *AccountCodexIdentityPolicyDeleteOne {
+	builder := c.Delete().Where(accountcodexidentitypolicy.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &AccountCodexIdentityPolicyDeleteOne{builder}
+}
+
+// Query returns a query builder for AccountCodexIdentityPolicy.
+func (c *AccountCodexIdentityPolicyClient) Query() *AccountCodexIdentityPolicyQuery {
+	return &AccountCodexIdentityPolicyQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeAccountCodexIdentityPolicy},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a AccountCodexIdentityPolicy entity by its id.
+func (c *AccountCodexIdentityPolicyClient) Get(ctx context.Context, id int64) (*AccountCodexIdentityPolicy, error) {
+	return c.Query().Where(accountcodexidentitypolicy.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *AccountCodexIdentityPolicyClient) GetX(ctx context.Context, id int64) *AccountCodexIdentityPolicy {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// Hooks returns the client hooks.
+func (c *AccountCodexIdentityPolicyClient) Hooks() []Hook {
+	return c.hooks.AccountCodexIdentityPolicy
+}
+
+// Interceptors returns the client interceptors.
+func (c *AccountCodexIdentityPolicyClient) Interceptors() []Interceptor {
+	return c.inters.AccountCodexIdentityPolicy
+}
+
+func (c *AccountCodexIdentityPolicyClient) mutate(ctx context.Context, m *AccountCodexIdentityPolicyMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&AccountCodexIdentityPolicyCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&AccountCodexIdentityPolicyUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&AccountCodexIdentityPolicyUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&AccountCodexIdentityPolicyDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown AccountCodexIdentityPolicy mutation op: %q", m.Op())
+	}
+}
+
+// AccountCodexProfileClient is a client for the AccountCodexProfile schema.
+type AccountCodexProfileClient struct {
+	config
+}
+
+// NewAccountCodexProfileClient returns a client for the AccountCodexProfile from the given config.
+func NewAccountCodexProfileClient(c config) *AccountCodexProfileClient {
+	return &AccountCodexProfileClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `accountcodexprofile.Hooks(f(g(h())))`.
+func (c *AccountCodexProfileClient) Use(hooks ...Hook) {
+	c.hooks.AccountCodexProfile = append(c.hooks.AccountCodexProfile, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `accountcodexprofile.Intercept(f(g(h())))`.
+func (c *AccountCodexProfileClient) Intercept(interceptors ...Interceptor) {
+	c.inters.AccountCodexProfile = append(c.inters.AccountCodexProfile, interceptors...)
+}
+
+// Create returns a builder for creating a AccountCodexProfile entity.
+func (c *AccountCodexProfileClient) Create() *AccountCodexProfileCreate {
+	mutation := newAccountCodexProfileMutation(c.config, OpCreate)
+	return &AccountCodexProfileCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of AccountCodexProfile entities.
+func (c *AccountCodexProfileClient) CreateBulk(builders ...*AccountCodexProfileCreate) *AccountCodexProfileCreateBulk {
+	return &AccountCodexProfileCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *AccountCodexProfileClient) MapCreateBulk(slice any, setFunc func(*AccountCodexProfileCreate, int)) *AccountCodexProfileCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &AccountCodexProfileCreateBulk{err: fmt.Errorf("calling to AccountCodexProfileClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*AccountCodexProfileCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &AccountCodexProfileCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for AccountCodexProfile.
+func (c *AccountCodexProfileClient) Update() *AccountCodexProfileUpdate {
+	mutation := newAccountCodexProfileMutation(c.config, OpUpdate)
+	return &AccountCodexProfileUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *AccountCodexProfileClient) UpdateOne(_m *AccountCodexProfile) *AccountCodexProfileUpdateOne {
+	mutation := newAccountCodexProfileMutation(c.config, OpUpdateOne, withAccountCodexProfile(_m))
+	return &AccountCodexProfileUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *AccountCodexProfileClient) UpdateOneID(id int64) *AccountCodexProfileUpdateOne {
+	mutation := newAccountCodexProfileMutation(c.config, OpUpdateOne, withAccountCodexProfileID(id))
+	return &AccountCodexProfileUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for AccountCodexProfile.
+func (c *AccountCodexProfileClient) Delete() *AccountCodexProfileDelete {
+	mutation := newAccountCodexProfileMutation(c.config, OpDelete)
+	return &AccountCodexProfileDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *AccountCodexProfileClient) DeleteOne(_m *AccountCodexProfile) *AccountCodexProfileDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *AccountCodexProfileClient) DeleteOneID(id int64) *AccountCodexProfileDeleteOne {
+	builder := c.Delete().Where(accountcodexprofile.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &AccountCodexProfileDeleteOne{builder}
+}
+
+// Query returns a query builder for AccountCodexProfile.
+func (c *AccountCodexProfileClient) Query() *AccountCodexProfileQuery {
+	return &AccountCodexProfileQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeAccountCodexProfile},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a AccountCodexProfile entity by its id.
+func (c *AccountCodexProfileClient) Get(ctx context.Context, id int64) (*AccountCodexProfile, error) {
+	return c.Query().Where(accountcodexprofile.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *AccountCodexProfileClient) GetX(ctx context.Context, id int64) *AccountCodexProfile {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// Hooks returns the client hooks.
+func (c *AccountCodexProfileClient) Hooks() []Hook {
+	return c.hooks.AccountCodexProfile
+}
+
+// Interceptors returns the client interceptors.
+func (c *AccountCodexProfileClient) Interceptors() []Interceptor {
+	return c.inters.AccountCodexProfile
+}
+
+func (c *AccountCodexProfileClient) mutate(ctx context.Context, m *AccountCodexProfileMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&AccountCodexProfileCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&AccountCodexProfileUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&AccountCodexProfileUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&AccountCodexProfileDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown AccountCodexProfile mutation op: %q", m.Op())
 	}
 }
 
@@ -6825,28 +7391,30 @@ func (c *UserSubscriptionClient) mutate(ctx context.Context, m *UserSubscription
 // hooks and interceptors per client, for fast access.
 type (
 	hooks struct {
-		APIKey, Account, AccountGroup, Announcement, AnnouncementRead, AuthIdentity,
-		AuthIdentityChannel, BatchImageEvent, BatchImageItem, BatchImageJob,
-		ChannelMonitor, ChannelMonitorDailyRollup, ChannelMonitorHistory,
-		ChannelMonitorRequestTemplate, CompositeModelRoute, ErrorPassthroughRule,
-		Group, IdempotencyRecord, IdentityAdoptionDecision, PaymentAuditLog,
-		PaymentOrder, PaymentProviderInstance, PendingAuthSession, PromoCode,
-		PromoCodeUsage, Proxy, RedeemCode, SecuritySecret, Setting, SubscriptionPlan,
-		TLSFingerprintProfile, UsageCleanupTask, UsageLog, User, UserAllowedGroup,
-		UserAttributeDefinition, UserAttributeValue, UserPlatformQuota,
-		UserSubscription []ent.Hook
+		APIKey, Account, AccountCodexDeviceBinding, AccountCodexDeviceSlot,
+		AccountCodexIdentityPolicy, AccountCodexProfile, AccountGroup, Announcement,
+		AnnouncementRead, AuthIdentity, AuthIdentityChannel, BatchImageEvent,
+		BatchImageItem, BatchImageJob, ChannelMonitor, ChannelMonitorDailyRollup,
+		ChannelMonitorHistory, ChannelMonitorRequestTemplate, CompositeModelRoute,
+		ErrorPassthroughRule, Group, IdempotencyRecord, IdentityAdoptionDecision,
+		PaymentAuditLog, PaymentOrder, PaymentProviderInstance, PendingAuthSession,
+		PromoCode, PromoCodeUsage, Proxy, RedeemCode, SecuritySecret, Setting,
+		SubscriptionPlan, TLSFingerprintProfile, UsageCleanupTask, UsageLog, User,
+		UserAllowedGroup, UserAttributeDefinition, UserAttributeValue,
+		UserPlatformQuota, UserSubscription []ent.Hook
 	}
 	inters struct {
-		APIKey, Account, AccountGroup, Announcement, AnnouncementRead, AuthIdentity,
-		AuthIdentityChannel, BatchImageEvent, BatchImageItem, BatchImageJob,
-		ChannelMonitor, ChannelMonitorDailyRollup, ChannelMonitorHistory,
-		ChannelMonitorRequestTemplate, CompositeModelRoute, ErrorPassthroughRule,
-		Group, IdempotencyRecord, IdentityAdoptionDecision, PaymentAuditLog,
-		PaymentOrder, PaymentProviderInstance, PendingAuthSession, PromoCode,
-		PromoCodeUsage, Proxy, RedeemCode, SecuritySecret, Setting, SubscriptionPlan,
-		TLSFingerprintProfile, UsageCleanupTask, UsageLog, User, UserAllowedGroup,
-		UserAttributeDefinition, UserAttributeValue, UserPlatformQuota,
-		UserSubscription []ent.Interceptor
+		APIKey, Account, AccountCodexDeviceBinding, AccountCodexDeviceSlot,
+		AccountCodexIdentityPolicy, AccountCodexProfile, AccountGroup, Announcement,
+		AnnouncementRead, AuthIdentity, AuthIdentityChannel, BatchImageEvent,
+		BatchImageItem, BatchImageJob, ChannelMonitor, ChannelMonitorDailyRollup,
+		ChannelMonitorHistory, ChannelMonitorRequestTemplate, CompositeModelRoute,
+		ErrorPassthroughRule, Group, IdempotencyRecord, IdentityAdoptionDecision,
+		PaymentAuditLog, PaymentOrder, PaymentProviderInstance, PendingAuthSession,
+		PromoCode, PromoCodeUsage, Proxy, RedeemCode, SecuritySecret, Setting,
+		SubscriptionPlan, TLSFingerprintProfile, UsageCleanupTask, UsageLog, User,
+		UserAllowedGroup, UserAttributeDefinition, UserAttributeValue,
+		UserPlatformQuota, UserSubscription []ent.Interceptor
 	}
 )
 

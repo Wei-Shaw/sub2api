@@ -95,6 +95,15 @@ func (s *OpenAIGatewayService) openAIWSHTTPBridgeEnabled() bool {
 	return s != nil && s.cfg != nil && s.cfg.Gateway.OpenAIWS.HTTPBridgeEnabled
 }
 
+// shouldForceOpenAIWSHTTPBridge identifies account modes whose identity
+// projection is host-owned and therefore cannot be sent through the native
+// upstream WebSocket handshake. Profile-managed Codex accounts must use the
+// HTTP bridge so the request/response identity can be rewritten symmetrically.
+func (s *OpenAIGatewayService) shouldForceOpenAIWSHTTPBridge(account *Account) bool {
+	return account != nil && (account.Platform == PlatformGrok ||
+		account.CodexIdentityPolicy.Mode == CodexIdentityPolicyOSProfileDevicePool)
+}
+
 func (s *OpenAIGatewayService) openAIWSHTTPBridgeThresholdBytes() int64 {
 	if s == nil || s.cfg == nil || s.cfg.Gateway.OpenAIWS.HTTPBridgeThresholdBytes <= 0 {
 		return openAIWSHTTPBridgeThresholdBytesDefault

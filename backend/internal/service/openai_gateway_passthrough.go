@@ -193,7 +193,7 @@ func (s *OpenAIGatewayService) forwardOpenAIPassthrough(
 		// 一次性解析收敛 ID：请求体 client_metadata 在此改写（raw 字节外科
 		// 手术，透传热路径禁全量 Unmarshal），出站头改写由请求构造器读取
 		// context 中的同一份 IDs 完成（turn_id 等随机字段两侧必须一致）。
-		if !isOpenAIResponsesCompactPath(c) {
+		if !isOpenAIResponsesCompactPath(c) && stagedCodexIdentityAttemptPlan(c, account) == nil {
 			var clientHeaders http.Header
 			if c != nil && c.Request != nil {
 				clientHeaders = c.Request.Header
@@ -209,6 +209,15 @@ func (s *OpenAIGatewayService) forwardOpenAIPassthrough(
 				}
 			}
 			stageCodexFingerprintIDs(c, fpIDs)
+		}
+		if plan := stagedCodexIdentityAttemptPlan(c, account); plan != nil && !isOpenAIResponsesCompactPath(c) {
+			profileBody, profileChanged, profileErr := ApplyCodexIdentityPlanToJSON(body, plan)
+			if profileErr != nil {
+				return nil, profileErr
+			}
+			if profileChanged {
+				body = profileBody
+			}
 		}
 	}
 	if account != nil && account.IsOpenAI() {
@@ -708,11 +717,13 @@ func (s *OpenAIGatewayService) buildUpstreamRequestOpenAIPassthrough(
 	// 指纹收敛：使用 forwardOpenAIPassthrough 中预计算的收敛 ID 改写出站头，
 	// 与请求体 client_metadata 共享同一份 IDs（与非透传路径相同的相对位置：
 	// 会话隔离之后、终态身份收口之前）。
-	applyStagedCodexFingerprintHeaders(c, account, req.Header)
+	if !applyStagedCodexProfileHeaders(c, account, req.Header) {
+		applyStagedCodexFingerprintHeaders(c, account, req.Header)
+	}
 	// 终态收口：透传路径的 OAuth 与非透传完全一致，同样强制统一出站身份
 	// （User-Agent / originator / version 同源自洽），客户端自报身份不会到达上游。
 	if account.UsesOpenAICodexProtocol() {
-		enforceCodexIdentityHeadersWithUA(req.Header, s.codexIdentityOverrideUA(account))
+		enforceCodexIdentityHeadersForAttempt(c, account, req.Header, s.codexIdentityOverrideUA(account))
 	}
 
 	if req.Header.Get("content-type") == "" {
@@ -2017,6 +2028,10 @@ func (s *OpenAIGatewayService) handleStreamingResponsePassthrough(
 				if restoreErr != nil {
 					return resultWithUsage(), fmt.Errorf("restore OpenAI passthrough namespace response: %w", restoreErr)
 				}
+				restoredData, restoreErr = restoreStagedCodexIdentityJSON(c, account, restoredData)
+				if restoreErr != nil {
+					return resultWithUsage(), fmt.Errorf("restore Codex passthrough identity: %w", restoreErr)
+				}
 				restoredData = restoreCodexToolNamesFromSSEContext(c, restoredData, rawEventType)
 				if !bytes.Equal(restoredData, dataBytes) {
 					dataBytes = restoredData
@@ -2263,6 +2278,17 @@ func (s *OpenAIGatewayService) handleNonStreamingResponsePassthrough(
 	originalModel string,
 	mappedModel string,
 ) (*openaiNonStreamingResultPassthrough, error) {
+	return s.handleNonStreamingResponsePassthroughWithAccount(ctx, resp, c, account, originalModel, mappedModel)
+}
+
+func (s *OpenAIGatewayService) handleNonStreamingResponsePassthroughWithAccount(
+	ctx context.Context,
+	resp *http.Response,
+	c *gin.Context,
+	account *Account,
+	originalModel string,
+	mappedModel string,
+) (*openaiNonStreamingResultPassthrough, error) {
 	body, err := ReadUpstreamResponseBody(resp.Body, s.cfg, c, openAITooLargeError)
 	if err != nil {
 		return nil, err
@@ -2311,6 +2337,10 @@ func (s *OpenAIGatewayService) handleNonStreamingResponsePassthrough(
 	body, err = restoreOpenAIResponsesNamespacePayload(c, body)
 	if err != nil {
 		return nil, fmt.Errorf("restore OpenAI passthrough namespace response: %w", err)
+	}
+	body, err = restoreStagedCodexIdentityJSON(c, account, body)
+	if err != nil {
+		return nil, fmt.Errorf("restore Codex passthrough identity: %w", err)
 	}
 	body = restoreCodexToolNamesFromContext(c, body)
 	body, err = restoreOpenAIResponsesClientToolPayload(c, body)
@@ -2376,6 +2406,10 @@ func (s *OpenAIGatewayService) handlePassthroughSSEToJSON(resp *http.Response, c
 		if restoreErr != nil {
 			return nil, fmt.Errorf("restore OpenAI passthrough namespace response: %w", restoreErr)
 		}
+		restoredBody, restoreErr = restoreStagedCodexIdentityJSON(c, account, restoredBody)
+		if restoreErr != nil {
+			return nil, fmt.Errorf("restore Codex passthrough identity: %w", restoreErr)
+		}
 		restoredBody = restoreCodexToolNamesFromContext(c, restoredBody)
 		body = restoredBody
 	} else {
@@ -2383,6 +2417,11 @@ func (s *OpenAIGatewayService) handlePassthroughSSEToJSON(resp *http.Response, c
 			bodyText = s.replaceModelInSSEBody(bodyText, mappedModel, originalModel)
 		}
 		body = []byte(bodyText)
+		restoredSSE, restoreErr := restoreStagedCodexIdentitySSE(c, account, body)
+		if restoreErr != nil {
+			return nil, fmt.Errorf("restore Codex passthrough SSE identity: %w", restoreErr)
+		}
+		body = restoredSSE
 	}
 
 	writeOpenAIPassthroughResponseHeaders(c.Writer.Header(), resp.Header, s.responseHeaderFilter)

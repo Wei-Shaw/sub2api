@@ -175,6 +175,44 @@ describe('ImportDataModal', () => {
     expect(showSuccess).toHaveBeenCalledWith('admin.accounts.dataImportSuccess')
   })
 
+  it('preserves stable Codex profile proxy-key references when merging files', async () => {
+    const { adminAPI } = await import('@/api/admin')
+    vi.mocked(adminAPI.accounts.importData).mockResolvedValue({
+      proxy_created: 0,
+      proxy_reused: 0,
+      proxy_failed: 0,
+      account_created: 2,
+      account_failed: 0
+    })
+    const wrapper = mountModal()
+    const input = wrapper.find('input[type="file"]')
+    const stableRefs = {
+      linux: {
+        proxy_key: 'proxy-linux',
+        slot_proxy_keys: { '1': 'proxy-linux-slot-1' }
+      }
+    }
+    setInputFiles(input.element, [
+      makeJsonFile('first.json', JSON.stringify({
+        exported_at: '2026-08-24T00:00:00Z',
+        proxies: [],
+        accounts: [{ name: 'oauth', codex_profile_proxies: stableRefs }]
+      })),
+      makeJsonFile('second.json', JSON.stringify({
+        exported_at: '2026-08-24T00:00:01Z',
+        proxies: [],
+        accounts: [{ name: 'other' }]
+      }))
+    ])
+
+    await input.trigger('change')
+    await wrapper.find('form').trigger('submit')
+    await flushPromises()
+
+    expect(vi.mocked(adminAPI.accounts.importData).mock.calls[0]?.[0]?.data.accounts[0])
+      .toMatchObject({ codex_profile_proxies: stableRefs })
+  })
+
   it('部分成功时关闭弹窗仍通知父组件刷新', async () => {
     const { adminAPI } = await import('@/api/admin')
     vi.mocked(adminAPI.accounts.importData).mockResolvedValue({
@@ -210,5 +248,82 @@ describe('ImportDataModal', () => {
 
     expect(wrapper.emitted('imported')).toHaveLength(1)
     expect(wrapper.emitted('close')).toHaveLength(1)
+  })
+
+  it('preserves imported identity policies by default for server-side proxy-key validation', async () => {
+    const { adminAPI } = await import('@/api/admin')
+    vi.mocked(adminAPI.accounts.importData).mockResolvedValue({
+      proxy_created: 0,
+      proxy_reused: 0,
+      proxy_failed: 0,
+      account_created: 1,
+      account_failed: 0
+    })
+    const wrapper = mountModal()
+    const input = wrapper.find('input[type="file"]')
+    setInputFiles(input.element, [
+      makeJsonFile('openai.json', JSON.stringify({
+        exported_at: '2026-08-24T00:00:00Z',
+        proxies: [],
+        accounts: [{
+          name: 'oauth',
+          platform: 'openai',
+          type: 'oauth',
+          codex_identity_policy: {
+            mode: 'os_profile_device_pool',
+            version: 9,
+            profiles: [{ os_class: 'linux', canonical_surface: 'cli', architecture: 'x86_64', slot_count: 1, proxy_id: 999, epoch: 4 }]
+          }
+        }]
+      }))
+    ])
+
+    await input.trigger('change')
+    await wrapper.find('form').trigger('submit')
+    await flushPromises()
+
+    const payload = vi.mocked(adminAPI.accounts.importData).mock.calls[0]?.[0]
+    expect(payload?.data.accounts[0]?.codex_identity_policy).toMatchObject({
+      mode: 'os_profile_device_pool',
+      version: 9
+    })
+    expect(payload?.codex_identity_policy_override).toBeUndefined()
+    expect(payload?.override_imported_identity_policies).toBeUndefined()
+  })
+
+  it('applies a current-deployment identity policy only after explicit opt-in', async () => {
+    const { adminAPI } = await import('@/api/admin')
+    vi.mocked(adminAPI.accounts.importData).mockResolvedValue({
+      proxy_created: 0,
+      proxy_reused: 0,
+      proxy_failed: 0,
+      account_created: 1,
+      account_failed: 0
+    })
+    const wrapper = mountModal()
+    const input = wrapper.find('input[type="file"]')
+    setInputFiles(input.element, [
+      makeJsonFile('openai.json', JSON.stringify({
+        exported_at: '2026-08-24T00:00:00Z',
+        proxies: [],
+        accounts: [{ name: 'oauth', platform: 'openai', type: 'oauth' }]
+      }))
+    ])
+
+    await input.trigger('change')
+    await wrapper.get('[data-testid="import-codex-identity-override"]').setValue(true)
+    await wrapper.find('form').trigger('submit')
+    await flushPromises()
+
+    const payload = vi.mocked(adminAPI.accounts.importData).mock.calls[0]?.[0]
+    expect(payload?.codex_identity_policy_override).toEqual({
+      mode: 'off',
+      binding_scope: 'api_key_os_surface',
+      session_policy: { mode: 'conversation_isolated' },
+      affinity_ttl_seconds: 3600,
+      unsupported_policy: 'reject',
+      profiles: []
+    })
+    expect(payload?.override_imported_identity_policies).toBe(true)
   })
 })

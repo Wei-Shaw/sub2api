@@ -1,7 +1,14 @@
 <template>
   <div class="flex items-center gap-2">
+    <div v-if="isProvisioningPending" class="flex flex-col items-center gap-1" role="status">
+      <span class="badge badge-warning text-xs">{{ t('admin.accounts.status.provisioningPending') }}</span>
+      <span class="max-w-[180px] text-center text-[11px] leading-4 text-gray-500 dark:text-gray-400">
+        {{ t('admin.accounts.status.provisioningPendingHint') }}
+      </span>
+    </div>
+
     <!-- Rate Limit Display (429) - Two-line layout -->
-    <div v-if="isRateLimited" class="flex flex-col items-center gap-1">
+    <div v-else-if="isRateLimited" class="flex flex-col items-center gap-1">
       <span class="badge text-xs badge-warning">{{ t('admin.accounts.status.rateLimited') }}</span>
       <span class="text-[11px] text-gray-400 dark:text-gray-500">{{ rateLimitResumeText }}</span>
     </div>
@@ -13,7 +20,7 @@
     </div>
 
     <!-- Main Status Badge (shown when not rate limited/overloaded) -->
-    <template v-else>
+    <template v-else-if="!isProvisioningPending">
       <div v-if="isTempUnschedulable" class="flex flex-col items-center gap-1">
         <button
           type="button"
@@ -174,6 +181,8 @@ const props = defineProps<{
 const emit = defineEmits<{
   (e: 'show-temp-unsched', account: Account): void
 }>()
+
+const isProvisioningPending = computed(() => props.account.provisioning_state === 'pending')
 
 // Computed: is rate limited (429)
 const isRateLimited = computed(() => {

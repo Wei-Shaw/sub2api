@@ -5,6 +5,17 @@ import BulkEditAccountModal from '../BulkEditAccountModal.vue'
 import ModelWhitelistSelector from '../ModelWhitelistSelector.vue'
 import { adminAPI } from '@/api/admin'
 
+const CodexIdentityTemplateSelectorStub = {
+  props: ['modelValue', 'disabled'],
+  emits: ['update:modelValue'],
+  template: `
+    <div data-testid="bulk-codex-template-selector">
+      <button type="button" data-testid="bulk-enable-template" @click="$emit('update:modelValue', { enabled: true, template_id: 23 })">enable</button>
+      <button type="button" data-testid="bulk-disable-template" @click="$emit('update:modelValue', { enabled: false })">disable</button>
+    </div>
+  `,
+}
+
 const { showError, showSuccess, translate } = vi.hoisted(() => ({
   showError: vi.fn(),
   showSuccess: vi.fn(),
@@ -74,7 +85,8 @@ function mountModal(extraProps: Record<string, unknown> = {}) {
         },
         ProxySelector: true,
         GroupSelector: true,
-        Icon: true
+        Icon: true,
+        CodexIdentityTemplateSelector: CodexIdentityTemplateSelectorStub
       }
     }
   })
@@ -990,5 +1002,62 @@ describe('BulkEditAccountModal', () => {
         codex_cli_only: true
       }
     })
+  })
+
+  it('批量选择修改后可统一停用模板，并与旧指纹模式互斥', async () => {
+    const wrapper = mountModal({
+      selectedPlatforms: ['openai'],
+      selectedTypes: ['oauth']
+    })
+
+    await wrapper.get('#bulk-edit-codex-identity-enabled').setValue(true)
+    expect(wrapper.find('[data-testid="bulk-codex-fingerprint-mode-select"]').exists()).toBe(false)
+    await wrapper.get('#bulk-edit-account-form').trigger('submit.prevent')
+    await flushPromises()
+
+    expect(adminAPI.accounts.bulkUpdate).toHaveBeenCalledWith([1, 2], {
+      codex_identity_assignment: { enabled: false }
+    })
+  })
+
+  it('批量启用时提交所选模板 ID', async () => {
+    const wrapper = mountModal({
+      selectedPlatforms: ['openai'],
+      selectedTypes: ['oauth']
+    })
+
+    await wrapper.get('#bulk-edit-codex-identity-enabled').setValue(true)
+    await wrapper.get('[data-testid="bulk-enable-template"]').trigger('click')
+    await wrapper.get('#bulk-edit-account-form').trigger('submit.prevent')
+    await flushPromises()
+
+    expect(adminAPI.accounts.bulkUpdate).toHaveBeenCalledWith([1, 2], {
+      codex_identity_assignment: { enabled: true, template_id: 23 }
+    })
+  })
+
+  it('setup-token 账号不展示仅支持 OAuth 的 OS Profile 设备池操作', () => {
+    const wrapper = mountModal({
+      selectedPlatforms: ['openai'],
+      selectedTypes: ['setup-token']
+    })
+
+    expect(wrapper.find('#bulk-edit-codex-identity-enabled').exists()).toBe(false)
+  })
+
+  it('筛选全量模式不根据前 100 条预览推断 OS Profile 设备池资格', () => {
+    const wrapper = mountModal({
+      selectedPlatforms: [],
+      selectedTypes: [],
+      target: {
+        mode: 'filtered',
+        filters: { status: 'active' },
+        previewCount: 150,
+        selectedPlatforms: ['openai'],
+        selectedTypes: ['oauth']
+      }
+    })
+
+    expect(wrapper.find('#bulk-edit-codex-identity-enabled').exists()).toBe(false)
   })
 })

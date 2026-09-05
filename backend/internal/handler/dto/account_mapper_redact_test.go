@@ -58,6 +58,28 @@ func TestAccountFromServiceShallow_RedactsSensitiveCredentials(t *testing.T) {
 	require.Equal(t, "rt-secret", src.Credentials["refresh_token"])
 }
 
+func TestAccountFromServiceShallowIncludesProvisioningPolicyWithoutSeed(t *testing.T) {
+	account := &service.Account{
+		ID:                7,
+		ProvisioningState: service.AccountProvisioningPending,
+		Extra: map[string]any{
+			service.CodexFingerprintSeedExtraKey: "11111111-1111-4111-8111-111111111111",
+		},
+		CodexIdentityPolicy: service.CodexIdentityPolicySpec{
+			Mode: service.CodexIdentityPolicyOSProfileDevicePool,
+			Profiles: []service.CodexOSProfilePolicy{{
+				OSClass: service.CodexOSLinux, CanonicalSurface: service.CodexSurfaceDesktop,
+				Architecture: service.CodexArchARM64, SlotCount: 1,
+			}},
+		},
+	}
+
+	got := AccountFromServiceShallow(account)
+	require.Equal(t, service.AccountProvisioningPending, got.ProvisioningState)
+	require.Equal(t, service.CodexIdentityPolicyOSProfileDevicePool, got.CodexIdentityPolicy.Mode)
+	require.NotContains(t, got.Extra, service.CodexFingerprintSeedExtraKey)
+}
+
 func TestAccountFromServiceShallow_RedactsOllamaCloudManagedExtra(t *testing.T) {
 	snapshot := map[string]any{
 		"status":          service.OllamaCloudUsageStatusOK,

@@ -5,7 +5,9 @@ package repository
 import (
 	"context"
 	"database/sql"
+	"fmt"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -16,6 +18,209 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
 )
+
+func TestCodexDeviceBindingConcurrentResolveIsStable(t *testing.T) {
+	ctx := context.Background()
+	client := testEntClient(t)
+	repo := newAccountRepositoryWithSQL(client, integrationDB, nil)
+	suffix := time.Now().UnixNano()
+	user := mustCreateUser(t, client, &service.User{Email: fmt.Sprintf("codex-concurrent-%d@example.com", suffix)})
+	apiKey := mustCreateApiKey(t, client, &service.APIKey{UserID: user.ID, Key: fmt.Sprintf("sk-codex-concurrent-%d", suffix)})
+	account := &service.Account{
+		Name: fmt.Sprintf("codex-concurrent-%d", suffix), Platform: service.PlatformOpenAI, Type: service.AccountTypeOAuth,
+		Credentials: map[string]any{"access_token": "test-token"}, Extra: map[string]any{},
+		Status: service.StatusActive, Schedulable: true, Concurrency: 3, Priority: 50,
+	}
+	policy := service.CodexIdentityPolicySpec{
+		Mode: service.CodexIdentityPolicyOSProfileDevicePool,
+		Profiles: []service.CodexOSProfilePolicy{{
+			OSClass: service.CodexOSLinux, CanonicalSurface: service.CodexSurfaceCLI,
+			Architecture: service.CodexArchX8664, SlotCount: 3,
+		}},
+	}
+	require.NoError(t, repo.ProvisionAccount(ctx, &service.AccountProvisioningSpec{
+		Account: account, Identity: &policy, FinalStatus: service.StatusActive,
+		Schedulable: true, ProvisioningState: service.AccountProvisioningActive,
+	}))
+	t.Cleanup(func() {
+		_ = client.Account.DeleteOneID(account.ID).Exec(context.Background())
+		_ = client.APIKey.DeleteOneID(apiKey.ID).Exec(context.Background())
+		_ = client.User.DeleteOneID(user.ID).Exec(context.Background())
+	})
+
+	const workers = 12
+	results := make(chan *service.CodexResolvedDeviceSlot, workers)
+	errorsCh := make(chan error, workers)
+	var wg sync.WaitGroup
+	for range workers {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			resolved, err := repo.ResolveCodexDeviceBinding(ctx, account.ID, apiKey.ID, service.CodexOSLinux, service.CodexSurfaceCLI)
+			if err != nil {
+				errorsCh <- err
+				return
+			}
+			results <- resolved
+		}()
+	}
+	wg.Wait()
+	close(results)
+	close(errorsCh)
+	for err := range errorsCh {
+		require.NoError(t, err)
+	}
+	var bindingID, slotID int64
+	for resolved := range results {
+		if bindingID == 0 {
+			bindingID, slotID = resolved.BindingID, resolved.SlotID
+		}
+		require.Equal(t, bindingID, resolved.BindingID)
+		require.Equal(t, slotID, resolved.SlotID)
+	}
+}
+
+func TestProvisionAccountInvalidGroupRollsBackIdentityGraphAndOutbox(t *testing.T) {
+	ctx := context.Background()
+	client := testEntClient(t)
+	repo := newAccountRepositoryWithSQL(client, integrationDB, nil)
+	account := &service.Account{
+		Name:     fmt.Sprintf("invalid-provision-%d", time.Now().UnixNano()),
+		Platform: service.PlatformOpenAI, Type: service.AccountTypeOAuth,
+		Credentials: map[string]any{"access_token": "test-token"}, Extra: map[string]any{},
+		Status: service.StatusActive, Schedulable: true, Concurrency: 3, Priority: 50,
+	}
+	policy := service.CodexIdentityPolicySpec{
+		Mode: service.CodexIdentityPolicyOSProfileDevicePool,
+		Profiles: []service.CodexOSProfilePolicy{{
+			OSClass: service.CodexOSLinux, CanonicalSurface: service.CodexSurfaceCLI,
+			Architecture: service.CodexArchX8664, SlotCount: 1,
+		}},
+	}
+	err := repo.ProvisionAccount(ctx, &service.AccountProvisioningSpec{
+		Account: account, GroupIDs: []int64{int64(1 << 60)}, Identity: &policy,
+		FinalStatus: service.StatusActive, Schedulable: true,
+		ProvisioningState: service.AccountProvisioningActive,
+	})
+	require.Error(t, err)
+	require.NotZero(t, account.ID, "the failure must occur after the account insert to prove rollback")
+
+	for table, predicate := range map[string]string{
+		"accounts":                        "id=$1",
+		"account_groups":                  "account_id=$1",
+		"account_codex_identity_policies": "account_id=$1",
+		"account_codex_profiles":          "account_id=$1",
+		"account_codex_device_slots":      "account_id=$1",
+		"account_codex_device_bindings":   "account_id=$1",
+		"scheduler_outbox":                "account_id=$1",
+	} {
+		var count int
+		require.NoError(t, integrationDB.QueryRowContext(ctx, "SELECT COUNT(*) FROM "+table+" WHERE "+predicate, account.ID).Scan(&count))
+		require.Zerof(t, count, "%s must roll back", table)
+	}
+}
+
+func TestProvisionAccountIsInvisibleToConcurrentSchedulerUntilCommit(t *testing.T) {
+	ctx := context.Background()
+	tx, err := integrationEntClient.Tx(ctx)
+	require.NoError(t, err)
+	defer func() { _ = tx.Rollback() }()
+	txRepo := newAccountRepositoryWithSQL(tx.Client(), tx, nil)
+	rootRepo := newAccountRepositoryWithSQL(integrationEntClient, integrationDB, nil)
+	account := &service.Account{
+		Name:     fmt.Sprintf("provision-visibility-%d", time.Now().UnixNano()),
+		Platform: service.PlatformOpenAI, Type: service.AccountTypeOAuth,
+		Credentials: map[string]any{"access_token": "test-token"}, Extra: map[string]any{},
+		Status: service.StatusActive, Schedulable: true, Concurrency: 3, Priority: 50,
+	}
+	policy := service.CodexIdentityPolicySpec{
+		Mode: service.CodexIdentityPolicyOSProfileDevicePool,
+		Profiles: []service.CodexOSProfilePolicy{{
+			OSClass: service.CodexOSLinux, CanonicalSurface: service.CodexSurfaceCLI,
+			Architecture: service.CodexArchX8664, SlotCount: 1,
+		}},
+	}
+	require.NoError(t, txRepo.ProvisionAccount(ctx, &service.AccountProvisioningSpec{
+		Account: account, Identity: &policy, FinalStatus: service.StatusActive,
+		Schedulable: true, ProvisioningState: service.AccountProvisioningActive,
+	}))
+
+	beforeCommit, err := rootRepo.ListSchedulableByPlatform(ctx, service.PlatformOpenAI)
+	require.NoError(t, err)
+	require.NotContains(t, idsOfAccounts(beforeCommit), account.ID)
+	require.NoError(t, tx.Commit())
+	t.Cleanup(func() { _ = integrationEntClient.Account.DeleteOneID(account.ID).Exec(context.Background()) })
+
+	afterCommit, err := rootRepo.ListSchedulableByPlatform(ctx, service.PlatformOpenAI)
+	require.NoError(t, err)
+	require.Contains(t, idsOfAccounts(afterCommit), account.ID)
+}
+
+func TestConcurrentPolicyUpdatesAllocateDistinctVersionsAndEpochs(t *testing.T) {
+	ctx := context.Background()
+	client := testEntClient(t)
+	repo := newAccountRepositoryWithSQL(client, integrationDB, nil)
+	account := &service.Account{
+		Name:     fmt.Sprintf("policy-concurrency-%d", time.Now().UnixNano()),
+		Platform: service.PlatformOpenAI, Type: service.AccountTypeOAuth,
+		Credentials: map[string]any{"access_token": "test-token"}, Extra: map[string]any{},
+		Status: service.StatusActive, Schedulable: true, Concurrency: 3, Priority: 50,
+	}
+	policy := service.CodexIdentityPolicySpec{
+		Mode: service.CodexIdentityPolicyOSProfileDevicePool,
+		Profiles: []service.CodexOSProfilePolicy{{
+			OSClass: service.CodexOSLinux, CanonicalSurface: service.CodexSurfaceCLI,
+			Architecture: service.CodexArchX8664, SlotCount: 1,
+		}},
+	}
+	require.NoError(t, repo.ProvisionAccount(ctx, &service.AccountProvisioningSpec{
+		Account: account, Identity: &policy, FinalStatus: service.StatusActive,
+		Schedulable: true, ProvisioningState: service.AccountProvisioningActive,
+	}))
+	t.Cleanup(func() { _ = client.Account.DeleteOneID(account.ID).Exec(context.Background()) })
+
+	first, err := repo.GetByID(ctx, account.ID)
+	require.NoError(t, err)
+	second, err := repo.GetByID(ctx, account.ID)
+	require.NoError(t, err)
+	firstPolicy := first.CodexIdentityPolicy
+	firstPolicy.Profiles = append([]service.CodexOSProfilePolicy(nil), firstPolicy.Profiles...)
+	firstPolicy.Profiles[0].Architecture = service.CodexArchARM64
+	secondPolicy := second.CodexIdentityPolicy
+	secondPolicy.Profiles = append([]service.CodexOSProfilePolicy(nil), secondPolicy.Profiles...)
+	secondPolicy.Profiles[0].SlotCount = 2
+
+	start := make(chan struct{})
+	errorsCh := make(chan error, 2)
+	var wg sync.WaitGroup
+	for _, update := range []struct {
+		account *service.Account
+		policy  *service.CodexIdentityPolicySpec
+	}{{first, &firstPolicy}, {second, &secondPolicy}} {
+		update := update
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			<-start
+			errorsCh <- repo.UpdateProvisionedAccount(ctx, &service.AccountProvisioningSpec{
+				Account: update.account, Identity: update.policy, FinalStatus: service.StatusActive,
+				Schedulable: true, ProvisioningState: service.AccountProvisioningActive,
+			}, nil, nil, update.account.RateMultiplier)
+		}()
+	}
+	close(start)
+	wg.Wait()
+	close(errorsCh)
+	for err := range errorsCh {
+		require.NoError(t, err)
+	}
+
+	final, err := repo.GetByID(ctx, account.ID)
+	require.NoError(t, err)
+	require.EqualValues(t, 3, final.CodexIdentityPolicy.Version)
+	require.Len(t, final.CodexIdentityPolicy.Profiles, 1)
+	require.EqualValues(t, 3, final.CodexIdentityPolicy.Profiles[0].Epoch)
+}
 
 type AccountRepoSuite struct {
 	suite.Suite
@@ -300,6 +505,41 @@ func (s *AccountRepoSuite) TestDelete_WithGroupBindings() {
 	count, err := s.client.AccountGroup.Query().Where(accountgroup.AccountIDEQ(account.ID)).Count(s.ctx)
 	s.Require().NoError(err)
 	s.Require().Zero(count, "expected bindings to be removed")
+}
+
+func (s *AccountRepoSuite) TestDelete_RemovesCodexIdentityGraphDespiteAccountSoftDelete() {
+	user := mustCreateUser(s.T(), s.client, &service.User{Email: "delete-codex-graph@example.com"})
+	apiKey := mustCreateApiKey(s.T(), s.client, &service.APIKey{UserID: user.ID, Key: "sk-delete-codex-graph"})
+	policy := service.CodexIdentityPolicySpec{
+		Mode: service.CodexIdentityPolicyOSProfileDevicePool,
+		Profiles: []service.CodexOSProfilePolicy{{
+			OSClass: service.CodexOSLinux, CanonicalSurface: service.CodexSurfaceCLI,
+			Architecture: service.CodexArchX8664, SlotCount: 1,
+		}},
+	}
+	account := &service.Account{
+		Name: "delete-codex-graph", Platform: service.PlatformOpenAI, Type: service.AccountTypeOAuth,
+		Credentials: map[string]any{"access_token": "test-token"}, Extra: map[string]any{},
+		Status: service.StatusActive, Schedulable: true, Concurrency: 3, Priority: 50,
+	}
+	s.Require().NoError(s.repo.ProvisionAccount(s.ctx, &service.AccountProvisioningSpec{
+		Account: account, Identity: &policy, FinalStatus: service.StatusActive,
+		Schedulable: true, ProvisioningState: service.AccountProvisioningActive,
+	}))
+	_, err := s.repo.ResolveCodexDeviceBinding(s.ctx, account.ID, apiKey.ID, service.CodexOSLinux, service.CodexSurfaceCLI)
+	s.Require().NoError(err)
+
+	s.Require().NoError(s.repo.Delete(s.ctx, account.ID))
+	for table := range map[string]struct{}{
+		"account_codex_identity_policies": {},
+		"account_codex_profiles":          {},
+		"account_codex_device_slots":      {},
+		"account_codex_device_bindings":   {},
+	} {
+		var count int
+		s.Require().NoError(scanSingleRow(s.ctx, s.repo.sql, "SELECT COUNT(*) FROM "+table+" WHERE account_id=$1", []any{account.ID}, &count))
+		s.Require().Zero(count, table)
+	}
 }
 
 // --- List / ListWithFilters ---
@@ -733,6 +973,410 @@ func (s *AccountRepoSuite) TestBindGroups_EmptyList() {
 }
 
 // --- Schedulable ---
+
+func (s *AccountRepoSuite) TestProvisionAccount_CommitsIdentityGraphAndPublishesOnlyActiveRow() {
+	group := mustCreateGroup(s.T(), s.client, &service.Group{Name: "provision-group", Platform: service.PlatformOpenAI})
+	proxy := mustCreateProxy(s.T(), s.client, &service.Proxy{Name: "provision-proxy"})
+	policy := service.CodexIdentityPolicySpec{
+		Mode: service.CodexIdentityPolicyOSProfileDevicePool,
+		Profiles: []service.CodexOSProfilePolicy{{
+			OSClass:          service.CodexOSLinux,
+			CanonicalSurface: service.CodexSurfaceDesktop,
+			Architecture:     service.CodexArchARM64,
+			SlotCount:        2,
+			ProxyID:          &proxy.ID,
+			Slots: []service.CodexDeviceSlotPolicy{{
+				Index: 1, ClientVersionMode: service.CodexClientVersionPinned, ClientVersion: "0.200.1",
+			}},
+		}},
+	}
+	account := &service.Account{
+		Name:        "provisioned-openai",
+		Platform:    service.PlatformOpenAI,
+		Type:        service.AccountTypeOAuth,
+		Credentials: map[string]any{"access_token": "test-token"},
+		Extra:       map[string]any{},
+		Concurrency: 3,
+		Priority:    50,
+	}
+
+	err := s.repo.ProvisionAccount(s.ctx, &service.AccountProvisioningSpec{
+		Account:           account,
+		GroupIDs:          []int64{group.ID},
+		Identity:          &policy,
+		FinalStatus:       service.StatusActive,
+		Schedulable:       true,
+		ProvisioningState: service.AccountProvisioningActive,
+	})
+	s.Require().NoError(err)
+	s.Require().NotZero(account.ID)
+	s.Require().Equal(service.AccountProvisioningActive, account.ProvisioningState)
+	s.Require().True(account.Schedulable)
+	s.Require().NotEmpty(account.Extra[service.CodexFingerprintSeedExtraKey])
+
+	var policyCount, profileCount, slotCount, bindingCount, outboxCount int
+	s.Require().NoError(scanSingleRow(s.ctx, s.repo.sql, "SELECT COUNT(*) FROM account_codex_identity_policies WHERE account_id=$1", []any{account.ID}, &policyCount))
+	s.Require().NoError(scanSingleRow(s.ctx, s.repo.sql, "SELECT COUNT(*) FROM account_codex_profiles WHERE account_id=$1", []any{account.ID}, &profileCount))
+	s.Require().NoError(scanSingleRow(s.ctx, s.repo.sql, "SELECT COUNT(*) FROM account_codex_device_slots WHERE account_id=$1", []any{account.ID}, &slotCount))
+	s.Require().NoError(scanSingleRow(s.ctx, s.repo.sql, "SELECT COUNT(*) FROM account_codex_device_bindings WHERE account_id=$1", []any{account.ID}, &bindingCount))
+	s.Require().NoError(scanSingleRow(s.ctx, s.repo.sql, "SELECT COUNT(*) FROM scheduler_outbox WHERE account_id=$1 AND event_type=$2", []any{account.ID, service.SchedulerOutboxEventAccountChanged}, &outboxCount))
+	s.Require().Equal(1, policyCount)
+	s.Require().Equal(1, profileCount)
+	s.Require().Equal(2, slotCount)
+	s.Require().Zero(bindingCount)
+	s.Require().Equal(1, outboxCount)
+	var slotVersionMode, slotVersion string
+	s.Require().NoError(scanSingleRow(s.ctx, s.repo.sql, `
+		SELECT client_version_mode, client_version
+		FROM account_codex_device_slots
+		WHERE account_id=$1 AND slot_index=1
+	`, []any{account.ID}, &slotVersionMode, &slotVersion))
+	s.Require().Equal(string(service.CodexClientVersionPinned), slotVersionMode)
+	s.Require().Equal("0.200.1", slotVersion)
+	resolvedSlots, err := s.repo.ListCodexDeviceSlots(s.ctx, account.ID, service.CodexOSLinux, service.CodexSurfaceDesktop, false)
+	s.Require().NoError(err)
+	s.Require().Len(resolvedSlots, 2)
+	var pinnedSlot *service.CodexResolvedDeviceSlot
+	for index := range resolvedSlots {
+		if resolvedSlots[index].SlotIndex == 1 {
+			pinnedSlot = &resolvedSlots[index]
+			break
+		}
+	}
+	s.Require().NotNil(pinnedSlot)
+	s.Require().Equal(service.CodexClientVersionPinned, pinnedSlot.ClientVersionMode)
+	s.Require().Equal("0.200.1", pinnedSlot.ClientVersion)
+
+	schedulable, err := s.repo.ListSchedulableByGroupIDAndPlatform(s.ctx, group.ID, service.PlatformOpenAI)
+	s.Require().NoError(err)
+	s.Require().Len(schedulable, 1)
+	s.Require().Equal(account.ID, schedulable[0].ID)
+}
+
+func (s *AccountRepoSuite) TestListSchedulableRejectsPendingProvisioningState() {
+	pending := mustCreateAccount(s.T(), s.client, &service.Account{
+		Name:        "pending-provisioning",
+		Platform:    service.PlatformOpenAI,
+		Schedulable: true,
+	})
+	_, err := s.client.Account.UpdateOneID(pending.ID).
+		SetProvisioningState(string(service.AccountProvisioningPending)).
+		Save(s.ctx)
+	s.Require().NoError(err)
+
+	accounts, err := s.repo.ListSchedulableByPlatform(s.ctx, service.PlatformOpenAI)
+	s.Require().NoError(err)
+	s.Require().NotContains(idsOfAccounts(accounts), pending.ID)
+}
+
+func (s *AccountRepoSuite) TestPendingProvisioningTriggerForcesUnschedulableForLegacyWriter() {
+	created, err := s.client.Account.Create().
+		SetName("legacy-writer-pending").
+		SetPlatform(service.PlatformOpenAI).
+		SetType(service.AccountTypeOAuth).
+		SetCredentials(map[string]any{}).
+		SetExtra(map[string]any{}).
+		SetStatus(service.StatusActive).
+		SetSchedulable(true).
+		Save(s.ctx)
+	s.Require().NoError(err)
+	loaded, err := s.client.Account.Get(s.ctx, created.ID)
+	s.Require().NoError(err)
+	s.Require().Equal(string(service.AccountProvisioningPending), loaded.ProvisioningState)
+	s.Require().False(loaded.Schedulable)
+}
+
+func (s *AccountRepoSuite) TestDatabaseRejectsLegacyIdentityModeConflict() {
+	policy := service.CodexIdentityPolicySpec{
+		Mode: service.CodexIdentityPolicyOSProfileDevicePool,
+		Profiles: []service.CodexOSProfilePolicy{{
+			OSClass: service.CodexOSLinux, CanonicalSurface: service.CodexSurfaceCLI,
+			Architecture: service.CodexArchX8664, SlotCount: 1,
+		}},
+	}
+	account := &service.Account{
+		Name: "constraint-account", Platform: service.PlatformOpenAI, Type: service.AccountTypeOAuth,
+		Credentials: map[string]any{"access_token": "test-token"}, Extra: map[string]any{},
+		Status: service.StatusActive, Schedulable: true, Concurrency: 3, Priority: 50,
+	}
+	s.Require().NoError(s.repo.ProvisionAccount(s.ctx, &service.AccountProvisioningSpec{
+		Account: account, Identity: &policy, FinalStatus: service.StatusActive,
+		Schedulable: true, ProvisioningState: service.AccountProvisioningActive,
+	}))
+
+	conflictingExtra := copyJSONMap(account.Extra)
+	conflictingExtra["codex_fingerprint_mode"] = "session"
+	_, err := s.client.Account.UpdateOneID(account.ID).SetExtra(conflictingExtra).Save(s.ctx)
+	s.Require().Error(err)
+}
+
+func (s *AccountRepoSuite) TestDatabaseRejectsActiveDevicePoolWithoutCredential() {
+	policy := service.CodexIdentityPolicySpec{
+		Mode: service.CodexIdentityPolicyOSProfileDevicePool,
+		Profiles: []service.CodexOSProfilePolicy{{
+			OSClass: service.CodexOSLinux, CanonicalSurface: service.CodexSurfaceCLI,
+			Architecture: service.CodexArchX8664, SlotCount: 1,
+		}},
+	}
+	account := &service.Account{
+		Name: "credential-constraint-account", Platform: service.PlatformOpenAI, Type: service.AccountTypeOAuth,
+		Credentials: map[string]any{"refresh_token": "test-refresh-token"}, Extra: map[string]any{},
+		Status: service.StatusActive, Schedulable: true, Concurrency: 3, Priority: 50,
+	}
+	s.Require().NoError(s.repo.ProvisionAccount(s.ctx, &service.AccountProvisioningSpec{
+		Account: account, Identity: &policy, FinalStatus: service.StatusActive,
+		Schedulable: true, ProvisioningState: service.AccountProvisioningActive,
+	}))
+	_, err := s.client.Account.UpdateOneID(account.ID).SetCredentials(map[string]any{}).Save(s.ctx)
+	s.Require().Error(err)
+}
+
+func (s *AccountRepoSuite) TestLegacyCachedAccountUpdatePreservesProvisioningAndIdentityPolicy() {
+	policy := service.CodexIdentityPolicySpec{
+		Mode: service.CodexIdentityPolicyOSProfileDevicePool,
+		Profiles: []service.CodexOSProfilePolicy{{
+			OSClass: service.CodexOSLinux, CanonicalSurface: service.CodexSurfaceCLI,
+			Architecture: service.CodexArchX8664, SlotCount: 1,
+		}},
+	}
+	account := &service.Account{
+		Name: "legacy-cache-update", Platform: service.PlatformOpenAI, Type: service.AccountTypeOAuth,
+		Credentials: map[string]any{"access_token": "before"}, Extra: map[string]any{},
+		Status: service.StatusActive, Schedulable: true, Concurrency: 3, Priority: 50,
+	}
+	s.Require().NoError(s.repo.ProvisionAccount(s.ctx, &service.AccountProvisioningSpec{
+		Account: account, Identity: &policy, FinalStatus: service.StatusActive,
+		Schedulable: true, ProvisioningState: service.AccountProvisioningActive,
+	}))
+
+	legacyPayload, err := s.repo.GetByID(s.ctx, account.ID)
+	s.Require().NoError(err)
+	legacyPayload.ProvisioningState = ""
+	legacyPayload.CodexIdentityPolicy = service.CodexIdentityPolicySpec{}
+	legacyPayload.Credentials["access_token"] = "after"
+	s.Require().NoError(s.repo.Update(s.ctx, legacyPayload))
+
+	updated, err := s.repo.GetByID(s.ctx, account.ID)
+	s.Require().NoError(err)
+	s.Require().Equal(service.AccountProvisioningActive, updated.ProvisioningState)
+	s.Require().Equal(service.CodexIdentityPolicyOSProfileDevicePool, updated.CodexIdentityPolicy.Mode)
+	s.Require().EqualValues(1, updated.CodexIdentityPolicy.Version)
+	var profileCount int
+	s.Require().NoError(scanSingleRow(s.ctx, s.repo.sql, "SELECT COUNT(*) FROM account_codex_profiles WHERE account_id=$1", []any{account.ID}, &profileCount))
+	s.Require().Equal(1, profileCount)
+}
+
+func (s *AccountRepoSuite) TestAccountDefaultProxyChangeRotatesOnlyInheritedProfileEpoch() {
+	proxyOne := mustCreateProxy(s.T(), s.client, &service.Proxy{Name: "identity-proxy-one"})
+	proxyTwo := mustCreateProxy(s.T(), s.client, &service.Proxy{Name: "identity-proxy-two"})
+	user := mustCreateUser(s.T(), s.client, &service.User{Email: "identity-proxy-epoch@example.com"})
+	apiKey := mustCreateApiKey(s.T(), s.client, &service.APIKey{UserID: user.ID, Key: "sk-identity-proxy-epoch"})
+	policy := service.CodexIdentityPolicySpec{
+		Mode: service.CodexIdentityPolicyOSProfileDevicePool,
+		Profiles: []service.CodexOSProfilePolicy{
+			{OSClass: service.CodexOSLinux, CanonicalSurface: service.CodexSurfaceCLI, Architecture: service.CodexArchX8664, SlotCount: 1},
+			{OSClass: service.CodexOSWindows, CanonicalSurface: service.CodexSurfaceCLI, Architecture: service.CodexArchX8664, SlotCount: 1,
+				Slots: []service.CodexDeviceSlotPolicy{{Index: 0, ProxyID: &proxyOne.ID}}},
+		},
+	}
+	account := &service.Account{
+		Name: "proxy-epoch-account", Platform: service.PlatformOpenAI, Type: service.AccountTypeOAuth,
+		Credentials: map[string]any{"access_token": "test-token"}, Extra: map[string]any{},
+		ProxyID: &proxyOne.ID, Status: service.StatusActive, Schedulable: true, Concurrency: 3, Priority: 50,
+	}
+	s.Require().NoError(s.repo.ProvisionAccount(s.ctx, &service.AccountProvisioningSpec{
+		Account: account, Identity: &policy, FinalStatus: service.StatusActive,
+		Schedulable: true, ProvisioningState: service.AccountProvisioningActive,
+	}))
+	oldBinding, err := s.repo.ResolveCodexDeviceBinding(s.ctx, account.ID, apiKey.ID, service.CodexOSLinux, service.CodexSurfaceCLI)
+	s.Require().NoError(err)
+	s.Require().NotNil(oldBinding.ProxyID)
+	s.Require().Equal(proxyOne.ID, *oldBinding.ProxyID)
+	requested := account.CodexIdentityPolicy
+	account.ProxyID = &proxyTwo.ID
+	s.Require().NoError(s.repo.UpdateProvisionedAccount(s.ctx, &service.AccountProvisioningSpec{
+		Account: account, Identity: &requested, FinalStatus: service.StatusActive,
+		Schedulable: true, ProvisioningState: service.AccountProvisioningActive,
+	}, nil, nil, account.RateMultiplier))
+
+	profiles := make(map[service.CodexOSClass]service.CodexOSProfilePolicy)
+	for _, profile := range account.CodexIdentityPolicy.Profiles {
+		profiles[profile.OSClass] = profile
+	}
+	s.Require().EqualValues(2, account.CodexIdentityPolicy.Version)
+	s.Require().EqualValues(2, profiles[service.CodexOSLinux].Epoch)
+	s.Require().EqualValues(1, profiles[service.CodexOSWindows].Epoch)
+	stillOld, err := s.repo.ResolveCodexDeviceBinding(s.ctx, account.ID, apiKey.ID, service.CodexOSLinux, service.CodexSurfaceCLI)
+	s.Require().NoError(err)
+	s.Require().Equal(oldBinding.SlotID, stillOld.SlotID)
+	s.Require().Equal("draining", stillOld.State)
+	s.Require().NotNil(stillOld.ProxyID)
+	s.Require().Equal(proxyOne.ID, *stillOld.ProxyID, "old epoch must retain its old effective proxy during drain")
+}
+
+func (s *AccountRepoSuite) TestCodexDeviceBindingDrainsAfterAffinitySilence() {
+	user := mustCreateUser(s.T(), s.client, &service.User{Email: "codex-binding@example.com"})
+	apiKey := mustCreateApiKey(s.T(), s.client, &service.APIKey{UserID: user.ID, Key: "sk-codex-binding"})
+	policy := service.CodexIdentityPolicySpec{
+		Mode:               service.CodexIdentityPolicyOSProfileDevicePool,
+		AffinityTTLSeconds: 60,
+		Profiles: []service.CodexOSProfilePolicy{{
+			OSClass: service.CodexOSLinux, CanonicalSurface: service.CodexSurfaceCLI,
+			Architecture: service.CodexArchX8664, SlotCount: 2,
+		}},
+	}
+	account := &service.Account{
+		Name: "binding-account", Platform: service.PlatformOpenAI, Type: service.AccountTypeOAuth,
+		Credentials: map[string]any{"access_token": "test-token"}, Extra: map[string]any{},
+		Status: service.StatusActive, Schedulable: true, Concurrency: 3, Priority: 50,
+	}
+	s.Require().NoError(s.repo.ProvisionAccount(s.ctx, &service.AccountProvisioningSpec{
+		Account: account, Identity: &policy, FinalStatus: service.StatusActive,
+		Schedulable: true, ProvisioningState: service.AccountProvisioningActive,
+	}))
+
+	first, err := s.repo.ResolveCodexDeviceBinding(s.ctx, account.ID, apiKey.ID, service.CodexOSLinux, service.CodexSurfaceCLI)
+	s.Require().NoError(err)
+	again, err := s.repo.ResolveCodexDeviceBinding(s.ctx, account.ID, apiKey.ID, service.CodexOSLinux, service.CodexSurfaceCLI)
+	s.Require().NoError(err)
+	s.Require().Equal(first.SlotID, again.SlotID)
+	s.Require().EqualValues(1, first.Epoch)
+
+	nextPolicy := account.CodexIdentityPolicy
+	nextPolicy.Profiles = append([]service.CodexOSProfilePolicy(nil), account.CodexIdentityPolicy.Profiles...)
+	nextPolicy.Profiles[0].SlotCount = 1
+	s.Require().NoError(s.repo.UpdateProvisionedAccount(s.ctx, &service.AccountProvisioningSpec{
+		Account: account, Identity: &nextPolicy, FinalStatus: service.StatusActive,
+		Schedulable: true, ProvisioningState: service.AccountProvisioningActive,
+	}, nil, nil, account.RateMultiplier))
+
+	stillOld, err := s.repo.ResolveCodexDeviceBinding(s.ctx, account.ID, apiKey.ID, service.CodexOSLinux, service.CodexSurfaceCLI)
+	s.Require().NoError(err)
+	s.Require().Equal(first.SlotID, stillOld.SlotID)
+	s.Require().Equal("draining", stillOld.State)
+
+	_, err = s.repo.sql.ExecContext(s.ctx, `
+		UPDATE account_codex_device_bindings SET updated_at=NOW()-INTERVAL '2 minutes'
+		WHERE id=$1
+	`, first.BindingID)
+	s.Require().NoError(err)
+	migrated, err := s.repo.ResolveCodexDeviceBinding(s.ctx, account.ID, apiKey.ID, service.CodexOSLinux, service.CodexSurfaceCLI)
+	s.Require().NoError(err)
+	s.Require().NotEqual(first.SlotID, migrated.SlotID)
+	s.Require().EqualValues(2, migrated.Epoch)
+	s.Require().Equal("active", migrated.State)
+
+	var oldSlotCount int
+	s.Require().NoError(scanSingleRow(s.ctx, s.repo.sql, `
+		SELECT COUNT(*) FROM account_codex_device_slots
+		WHERE account_id=$1 AND epoch=1
+	`, []any{account.ID}, &oldSlotCount))
+	s.Require().Zero(oldSlotCount)
+
+	removeLinux := account.CodexIdentityPolicy
+	removeLinux.Profiles = []service.CodexOSProfilePolicy{{
+		OSClass: service.CodexOSWindows, CanonicalSurface: service.CodexSurfaceCLI,
+		Architecture: service.CodexArchX8664, SlotCount: 1,
+	}}
+	s.Require().NoError(s.repo.UpdateProvisionedAccount(s.ctx, &service.AccountProvisioningSpec{
+		Account: account, Identity: &removeLinux, FinalStatus: service.StatusActive,
+		Schedulable: true, ProvisioningState: service.AccountProvisioningActive,
+	}, nil, nil, account.RateMultiplier))
+	// Removed profiles retain an affinity binding until its TTL expires. Mark
+	// the binding stale and run the normal finalizer before asserting cleanup.
+	_, err = s.repo.sql.ExecContext(s.ctx, `
+		UPDATE account_codex_device_bindings SET updated_at=NOW()-INTERVAL '2 minutes'
+		WHERE account_id=$1 AND os_class='linux'
+	`, account.ID)
+	s.Require().NoError(err)
+	_, err = s.repo.FinalizeDrainedCodexDeviceSlots(s.ctx, account.ID)
+	s.Require().NoError(err)
+	var linuxBindingCount, linuxSlotCount int
+	s.Require().NoError(scanSingleRow(s.ctx, s.repo.sql, `
+		SELECT COUNT(*) FROM account_codex_device_bindings
+		WHERE account_id=$1 AND os_class='linux'
+	`, []any{account.ID}, &linuxBindingCount))
+	s.Require().NoError(scanSingleRow(s.ctx, s.repo.sql, `
+		SELECT COUNT(*)
+		FROM account_codex_device_slots AS slots
+		JOIN account_codex_profiles AS profiles ON profiles.id=slots.profile_id
+		WHERE slots.account_id=$1 AND profiles.os_class='linux'
+	`, []any{account.ID}, &linuxSlotCount))
+	s.Require().Zero(linuxBindingCount)
+	s.Require().Zero(linuxSlotCount)
+}
+
+func (s *AccountRepoSuite) TestFinalizeRemovesAbandonedStaleDrainingBinding() {
+	user := mustCreateUser(s.T(), s.client, &service.User{Email: "codex-abandoned-binding@example.com"})
+	apiKey := mustCreateApiKey(s.T(), s.client, &service.APIKey{UserID: user.ID, Key: "sk-codex-abandoned-binding"})
+	policy := service.CodexIdentityPolicySpec{
+		Mode: service.CodexIdentityPolicyOSProfileDevicePool, AffinityTTLSeconds: 60,
+		Profiles: []service.CodexOSProfilePolicy{{
+			OSClass: service.CodexOSLinux, CanonicalSurface: service.CodexSurfaceCLI,
+			Architecture: service.CodexArchX8664, SlotCount: 1,
+		}},
+	}
+	account := &service.Account{
+		Name: "abandoned-binding-account", Platform: service.PlatformOpenAI, Type: service.AccountTypeOAuth,
+		Credentials: map[string]any{"access_token": "test-token"}, Extra: map[string]any{},
+		Status: service.StatusActive, Schedulable: true, Concurrency: 3, Priority: 50,
+	}
+	s.Require().NoError(s.repo.ProvisionAccount(s.ctx, &service.AccountProvisioningSpec{
+		Account: account, Identity: &policy, FinalStatus: service.StatusActive,
+		Schedulable: true, ProvisioningState: service.AccountProvisioningActive,
+	}))
+	binding, err := s.repo.ResolveCodexDeviceBinding(s.ctx, account.ID, apiKey.ID, service.CodexOSLinux, service.CodexSurfaceCLI)
+	s.Require().NoError(err)
+	next := account.CodexIdentityPolicy
+	next.Profiles = append([]service.CodexOSProfilePolicy(nil), next.Profiles...)
+	next.Profiles[0].CanonicalSurface = service.CodexSurfaceDesktop
+	s.Require().NoError(s.repo.UpdateProvisionedAccount(s.ctx, &service.AccountProvisioningSpec{
+		Account: account, Identity: &next, FinalStatus: service.StatusActive,
+		Schedulable: true, ProvisioningState: service.AccountProvisioningActive,
+	}, nil, nil, account.RateMultiplier))
+	_, err = s.repo.sql.ExecContext(s.ctx, "UPDATE account_codex_device_bindings SET updated_at=NOW()-INTERVAL '2 minutes' WHERE id=$1", binding.BindingID)
+	s.Require().NoError(err)
+	deleted, err := s.repo.FinalizeDrainedCodexDeviceSlots(s.ctx, account.ID)
+	s.Require().NoError(err)
+	s.Require().EqualValues(1, deleted)
+	var bindingCount int
+	s.Require().NoError(scanSingleRow(s.ctx, s.repo.sql, "SELECT COUNT(*) FROM account_codex_device_bindings WHERE id=$1", []any{binding.BindingID}, &bindingCount))
+	s.Require().Zero(bindingCount)
+}
+
+func (s *AccountRepoSuite) TestSessionOnlyPolicyUpdateRefreshesBindingVersionWithoutEpochRotation() {
+	user := mustCreateUser(s.T(), s.client, &service.User{Email: "codex-session-policy@example.com"})
+	apiKey := mustCreateApiKey(s.T(), s.client, &service.APIKey{UserID: user.ID, Key: "sk-codex-session-policy"})
+	policy := service.CodexIdentityPolicySpec{
+		Mode: service.CodexIdentityPolicyOSProfileDevicePool,
+		Profiles: []service.CodexOSProfilePolicy{{
+			OSClass: service.CodexOSLinux, CanonicalSurface: service.CodexSurfaceCLI,
+			Architecture: service.CodexArchX8664, SlotCount: 1,
+		}},
+	}
+	account := &service.Account{
+		Name: "session-policy-account", Platform: service.PlatformOpenAI, Type: service.AccountTypeOAuth,
+		Credentials: map[string]any{"access_token": "test-token"}, Extra: map[string]any{},
+		Status: service.StatusActive, Schedulable: true, Concurrency: 3, Priority: 50,
+	}
+	s.Require().NoError(s.repo.ProvisionAccount(s.ctx, &service.AccountProvisioningSpec{
+		Account: account, Identity: &policy, FinalStatus: service.StatusActive,
+		Schedulable: true, ProvisioningState: service.AccountProvisioningActive,
+	}))
+	binding, err := s.repo.ResolveCodexDeviceBinding(s.ctx, account.ID, apiKey.ID, service.CodexOSLinux, service.CodexSurfaceCLI)
+	s.Require().NoError(err)
+	next := account.CodexIdentityPolicy
+	next.SessionPolicy = service.CodexSessionPolicySpec{Mode: service.CodexSessionAPIKeyShared}
+	s.Require().NoError(s.repo.UpdateProvisionedAccount(s.ctx, &service.AccountProvisioningSpec{
+		Account: account, Identity: &next, FinalStatus: service.StatusActive,
+		Schedulable: true, ProvisioningState: service.AccountProvisioningActive,
+	}, nil, nil, account.RateMultiplier))
+	updatedBinding, err := s.repo.ResolveCodexDeviceBinding(s.ctx, account.ID, apiKey.ID, service.CodexOSLinux, service.CodexSurfaceCLI)
+	s.Require().NoError(err)
+	s.Require().Equal(binding.SlotID, updatedBinding.SlotID)
+	s.Require().EqualValues(1, updatedBinding.Epoch)
+	s.Require().EqualValues(2, updatedBinding.PolicyVersion)
+}
 
 func (s *AccountRepoSuite) TestListSchedulable() {
 	now := time.Now()
@@ -1504,6 +2148,8 @@ func (s *AccountRepoSuite) TestUpdateExtra_SchedulerNeutralSkipsOutboxAndSyncsFr
 		Platform: service.PlatformOpenAI,
 		Extra:    map[string]any{"codex_usage_updated_at": "old"},
 	})
+	_, err := s.repo.sql.ExecContext(s.ctx, "TRUNCATE scheduler_outbox")
+	s.Require().NoError(err)
 	cacheRecorder := &schedulerCacheRecorder{
 		accounts: map[int64]*service.Account{
 			account.ID: {

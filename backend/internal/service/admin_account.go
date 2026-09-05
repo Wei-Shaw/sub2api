@@ -318,6 +318,9 @@ func (s *adminServiceImpl) DuplicateAccount(ctx context.Context, id int64, actor
 	if err != nil {
 		return nil, err
 	}
+	duplicate.CodexIdentityPolicy = source.CodexIdentityPolicy
+	duplicate.CodexIdentityTemplateID = cloneAccountValuePointer(source.CodexIdentityTemplateID)
+	duplicate.CodexIdentityTemplateAppliedRevision = cloneAccountValuePointer(source.CodexIdentityTemplateAppliedRevision)
 	// A copied credential must be reviewed before it can share live traffic with its source.
 	duplicate.Schedulable = false
 	if s.accountDuplicateRepo == nil {
@@ -406,7 +409,7 @@ func buildAccountForCreate(input *CreateAccountInput, accountExtra map[string]an
 	delete(accountExtra, OllamaCloudUsageSessionExtraKey)
 	delete(accountExtra, OllamaCloudUsageAutoRefreshExtraKey)
 	delete(accountExtra, OllamaCloudUsageSnapshotExtraKey)
-	accountExtra = prepareCodexFingerprintExtraForCreate(input.Platform, input.Type, accountExtra)
+	accountExtra = PrepareCodexFingerprintExtraForCreate(input.Platform, input.Type, accountExtra)
 	account := &Account{
 		Name:        input.Name,
 		Notes:       normalizeAccountNotes(input.Notes),
@@ -462,6 +465,9 @@ func buildAccountForCreate(input *CreateAccountInput, accountExtra map[string]an
 }
 
 func (s *adminServiceImpl) CreateAccount(ctx context.Context, input *CreateAccountInput) (*Account, error) {
+	if input == nil {
+		return nil, ErrAccountNilInput
+	}
 	accountExtra, err := normalizeOpenAILongContextBillingExtra(input.Platform, input.Extra)
 	if err != nil {
 		return nil, err
@@ -495,6 +501,11 @@ func (s *adminServiceImpl) CreateAccount(ctx context.Context, input *CreateAccou
 	}
 
 	// 检查混合渠道风险（除非用户已确认）
+	if len(groupIDs) > 0 {
+		if err := s.validateGroupIDsExist(ctx, groupIDs); err != nil {
+			return nil, err
+		}
+	}
 	if len(groupIDs) > 0 && !input.SkipMixedChannelCheck {
 		if err := s.checkMixedChannelRisk(ctx, 0, input.Platform, groupIDs); err != nil {
 			return nil, err
@@ -512,14 +523,58 @@ func (s *adminServiceImpl) CreateAccount(ctx context.Context, input *CreateAccou
 	if err != nil {
 		return nil, err
 	}
-	if err := s.accountRepo.Create(ctx, account); err != nil {
+	if input.CodexIdentityPolicy != nil && input.CodexIdentityAssignment != nil {
+		return nil, infraerrors.BadRequest("CONFLICTING_CODEX_IDENTITY_CONFIGURATION", "codex_identity_policy and codex_identity_assignment cannot be provided together")
+	}
+	identityPolicy := DefaultCodexIdentityPolicySpec()
+	if input.CodexIdentityPolicy != nil {
+		identityPolicy = *input.CodexIdentityPolicy
+	} else if input.CodexIdentityAssignment != nil {
+		identityPolicy, account.CodexIdentityTemplateID, account.CodexIdentityTemplateAppliedRevision, err = s.materializeCodexIdentityAssignment(ctx, input.CodexIdentityAssignment)
+		if err != nil {
+			return nil, err
+		}
+	}
+	identityPolicy, err = identityPolicy.NormalizeAndValidate(account.Platform, account.Type)
+	if err != nil {
 		return nil, err
 	}
+	if err := s.validateAccountProvisioningProxies(ctx, account.ProxyID, identityPolicy); err != nil {
+		return nil, err
+	}
+	account.CodexIdentityPolicy = identityPolicy
+	atomicProvisioning := HasAtomicAccountProvisioning(s.accountRepo)
+	if atomicProvisioning {
+		account.GroupIDs = append([]int64(nil), groupIDs...)
+	}
 
-	// 绑定分组
-	if len(groupIDs) > 0 {
-		if err := s.accountRepo.BindGroups(ctx, account.ID, groupIDs); err != nil {
+	provisioningRepo := s.accountProvisioningRepo
+	if provisioningRepo == nil {
+		provisioningRepo, _ = s.accountRepo.(AccountProvisioningRepository)
+	}
+	if identityPolicy.Mode == CodexIdentityPolicyOSProfileDevicePool && provisioningRepo != nil {
+		provisioningSpec := &AccountProvisioningSpec{
+			Account:           account,
+			GroupIDs:          append([]int64(nil), groupIDs...),
+			Identity:          &identityPolicy,
+			FinalStatus:       StatusActive,
+			Schedulable:       true,
+			ProvisioningState: AccountProvisioningActive,
+		}
+		if err := provisioningRepo.ProvisionAccount(ctx, provisioningSpec); err != nil {
 			return nil, err
+		}
+	} else if identityPolicy.Mode == CodexIdentityPolicyOSProfileDevicePool {
+		return nil, errors.New("account provisioning repository is not configured")
+	} else {
+		if err := s.accountRepo.Create(ctx, account); err != nil {
+			return nil, err
+		}
+		if !atomicProvisioning && len(groupIDs) > 0 {
+			if err := s.accountRepo.BindGroups(ctx, account.ID, groupIDs); err != nil {
+				return nil, err
+			}
+			account.GroupIDs = append([]int64(nil), groupIDs...)
 		}
 	}
 
@@ -552,9 +607,22 @@ func (s *adminServiceImpl) CreateAccount(ctx context.Context, input *CreateAccou
 }
 
 func (s *adminServiceImpl) UpdateAccount(ctx context.Context, id int64, input *UpdateAccountInput) (*Account, error) {
+	if input != nil && input.CodexIdentityPolicy != nil && input.CodexIdentityAssignment != nil {
+		return nil, infraerrors.BadRequest("CONFLICTING_CODEX_IDENTITY_CONFIGURATION", "codex_identity_policy and codex_identity_assignment cannot be provided together")
+	}
 	account, err := s.accountRepo.GetByID(ctx, id)
 	if err != nil {
 		return nil, err
+	}
+	// Keep the database-owned seed separate from the request map. The admin
+	// update path can change an account from API key to OAuth (or back), and it
+	// must apply the same generation, preservation, and removal rules even when
+	// the repository implementation is wrapped by another service.
+	currentFingerprintExtra := make(map[string]any, 1)
+	if account.Platform == PlatformOpenAI && account.Type == AccountTypeOAuth {
+		if seed, ok := codexFingerprintSeed(account.Extra); ok {
+			currentFingerprintExtra[CodexFingerprintSeedExtraKey] = seed
+		}
 	}
 	var normalizedExtra map[string]any
 	if input.Extra != nil {
@@ -673,7 +741,12 @@ func (s *adminServiceImpl) UpdateAccount(ctx context.Context, id int64, input *U
 				normalizedExtra[key] = v
 			}
 		}
-		normalizedExtra = prepareCodexFingerprintExtraForUpdate(account, normalizedExtra)
+		normalizedExtra = PrepareCodexFingerprintExtraForUpdate(
+			account.Platform,
+			account.Type,
+			account.Extra,
+			normalizedExtra,
+		)
 		account.Extra = normalizedExtra
 		if account.Platform == PlatformAntigravity && wasOveragesEnabled && !account.IsOveragesEnabled() {
 			delete(account.Extra, "antigravity_credits_overages") // 清理旧版 overages 运行态
@@ -694,7 +767,12 @@ func (s *adminServiceImpl) UpdateAccount(ctx context.Context, id int64, input *U
 		NormalizeFixedQuotaWindows(account.Extra)
 	}
 	if input.Extra == nil {
-		account.Extra = prepareCodexFingerprintExtraForUpdate(account, account.Extra)
+		account.Extra = PrepareCodexFingerprintExtraForUpdate(
+			account.Platform,
+			account.Type,
+			account.Extra,
+			account.Extra,
+		)
 	}
 	if requestedRateSyncEnabledUpdate != nil && *requestedRateSyncEnabledUpdate {
 		if requestedProbeEnabledUpdate != nil && !*requestedProbeEnabledUpdate {
@@ -787,6 +865,9 @@ func (s *adminServiceImpl) UpdateAccount(ctx context.Context, id int64, input *U
 	if input.Status != "" {
 		account.Status = input.Status
 	}
+	if input.Schedulable != nil {
+		account.Schedulable = *input.Schedulable
+	}
 	if input.ExpiresAt != nil {
 		if *input.ExpiresAt <= 0 {
 			account.ExpiresAt = nil
@@ -813,42 +894,102 @@ func (s *adminServiceImpl) UpdateAccount(ctx context.Context, id int64, input *U
 		}
 	}
 
-	billingSettingsAppliedAtomically := false
-	updater := s.accountBillingRepo
-	if updater == nil {
-		// Unit tests and narrow internal callers may construct adminServiceImpl
-		// directly; production wiring requires this capability through
-		// AdminAccountRepository.
-		updater, _ = s.accountRepo.(AccountBillingSettingsRepository)
+	account.Extra = PrepareCodexFingerprintExtraForUpdate(
+		account.Platform,
+		account.Type,
+		currentFingerprintExtra,
+		account.Extra,
+	)
+
+	existingIdentityMode := account.CodexIdentityPolicy.Mode
+	identityPolicy := account.CodexIdentityPolicy
+	if input.CodexIdentityPolicy != nil {
+		requested, normalizeErr := input.CodexIdentityPolicy.NormalizeAndValidate(account.Platform, account.Type)
+		if normalizeErr != nil {
+			return nil, normalizeErr
+		}
+		if account.CodexIdentityTemplateID != nil && requested.Mode != CodexIdentityPolicyOff {
+			current, currentErr := account.CodexIdentityPolicy.NormalizeAndValidate(account.Platform, account.Type)
+			if currentErr != nil {
+				return nil, currentErr
+			}
+			if !reflect.DeepEqual(codexPolicyMaterial(current), codexPolicyMaterial(requested)) {
+				return nil, infraerrors.Conflict(
+					"CODEX_IDENTITY_TEMPLATE_MANAGED",
+					"this account is managed by a Codex identity template; update the template or change the account assignment",
+				)
+			}
+			identityPolicy = current
+		} else {
+			identityPolicy = requested
+			account.CodexIdentityTemplateID = nil
+			account.CodexIdentityTemplateAppliedRevision = nil
+		}
+	} else if input.CodexIdentityAssignment != nil {
+		identityPolicy, account.CodexIdentityTemplateID, account.CodexIdentityTemplateAppliedRevision, err = s.materializeCodexIdentityAssignment(ctx, input.CodexIdentityAssignment)
+		if err != nil {
+			return nil, err
+		}
 	}
-	if updater != nil {
-		if err := updater.UpdateWithAccountBillingSettings(
-			ctx,
-			account,
-			requestedProbeEnabledUpdate,
-			requestedRateSyncEnabledUpdate,
-			input.RateMultiplier,
+	identityPolicy, err = identityPolicy.NormalizeAndValidate(account.Platform, account.Type)
+	if err != nil {
+		return nil, err
+	}
+	if identityPolicy.Mode == CodexIdentityPolicyOSProfileDevicePool && account.IsCredentialShadow() {
+		return nil, infraerrors.BadRequest(
+			"SPARK_SHADOW_CODEX_IDENTITY_UNSUPPORTED",
+			"Codex OS profile device pool must be configured on the credential owner, not a Spark shadow",
+		)
+	}
+	if identityPolicy.Mode == CodexIdentityPolicyOSProfileDevicePool {
+		shadows, err := s.accountRepo.ListShadowsByParent(ctx, account.ID)
+		if err != nil {
+			return nil, err
+		}
+		if len(shadows) > 0 {
+			return nil, infraerrors.BadRequest(
+				"SPARK_SHADOW_CODEX_IDENTITY_UNSUPPORTED",
+				"delete the account's Spark shadow before enabling Codex OS profile device pool",
+			)
+		}
+	}
+	if err := s.validateAccountProvisioningProxies(ctx, account.ProxyID, identityPolicy); err != nil {
+		return nil, err
+	}
+	groupIDs := append([]int64(nil), account.GroupIDs...)
+	if input.GroupIDs != nil {
+		groupIDs = append([]int64(nil), (*input.GroupIDs)...)
+	}
+	desiredSchedulable := account.Schedulable
+	if !account.IsProvisioned() && account.Status == StatusActive {
+		desiredSchedulable = true
+	}
+	account.CodexIdentityPolicy = identityPolicy
+	provisioningRepo := s.accountProvisioningRepo
+	if provisioningRepo == nil {
+		provisioningRepo, _ = s.accountRepo.(AccountProvisioningRepository)
+	}
+	requiresProvisioning := existingIdentityMode == CodexIdentityPolicyOSProfileDevicePool ||
+		identityPolicy.Mode == CodexIdentityPolicyOSProfileDevicePool
+	if !requiresProvisioning {
+		if err := s.updateLegacyAccountWithoutProvisioning(
+			ctx, account, input, requestedProbeEnabledUpdate, requestedRateSyncEnabledUpdate,
 		); err != nil {
 			return nil, err
 		}
-		billingSettingsAppliedAtomically = true
-	}
-	if !billingSettingsAppliedAtomically {
-		if err := s.accountRepo.Update(ctx, account); err != nil {
-			return nil, err
+	} else {
+		if provisioningRepo == nil {
+			return nil, errors.New("account provisioning repository is not configured")
 		}
-		if (requestedProbeEnabledUpdate != nil || requestedRateSyncEnabledUpdate != nil) &&
-			isUpstreamBillingProbeAccount(account) {
-			settings := make(map[string]any, 2)
-			if requestedProbeEnabledUpdate != nil {
-				settings[UpstreamBillingProbeEnabledExtraKey] = *requestedProbeEnabledUpdate
-			}
-			if requestedRateSyncEnabledUpdate != nil {
-				settings[UpstreamBillingRateSyncEnabledExtraKey] = *requestedRateSyncEnabledUpdate
-			}
-			if err := s.accountRepo.UpdateExtra(ctx, account.ID, settings); err != nil {
-				return nil, err
-			}
+		if err := provisioningRepo.UpdateProvisionedAccount(ctx, &AccountProvisioningSpec{
+			Account:           account,
+			GroupIDs:          groupIDs,
+			Identity:          &identityPolicy,
+			FinalStatus:       account.Status,
+			Schedulable:       desiredSchedulable,
+			ProvisioningState: AccountProvisioningActive,
+		}, requestedProbeEnabledUpdate, requestedRateSyncEnabledUpdate, input.RateMultiplier); err != nil {
+			return nil, err
 		}
 	}
 
@@ -856,13 +997,6 @@ func (s *adminServiceImpl) UpdateAccount(ctx context.Context, id int64, input *U
 	// 影子自身 proxy 不可独立编辑(见上),故对影子的更新不触发传播。
 	if input.ProxyID != nil && !account.IsCredentialShadow() {
 		if err := s.propagateProxyToShadows(ctx, id, account.ProxyID); err != nil {
-			return nil, err
-		}
-	}
-
-	// 绑定分组
-	if input.GroupIDs != nil {
-		if err := s.accountRepo.BindGroups(ctx, account.ID, *input.GroupIDs); err != nil {
 			return nil, err
 		}
 	}
@@ -875,10 +1009,112 @@ func (s *adminServiceImpl) UpdateAccount(ctx context.Context, id int64, input *U
 	return updated, nil
 }
 
+func (s *adminServiceImpl) materializeCodexIdentityAssignment(
+	ctx context.Context,
+	assignment *CodexIdentityAssignment,
+) (CodexIdentityPolicySpec, *int64, *int64, error) {
+	if assignment == nil || !assignment.Enabled {
+		return DefaultCodexIdentityPolicySpec(), nil, nil, nil
+	}
+	if assignment.TemplateID <= 0 {
+		return CodexIdentityPolicySpec{}, nil, nil, infraerrors.BadRequest("INVALID_CODEX_IDENTITY_ASSIGNMENT", "enabled assignment requires a positive template_id")
+	}
+	reader, ok := s.accountRepo.(CodexIdentityTemplateReader)
+	if !ok {
+		return CodexIdentityPolicySpec{}, nil, nil, errors.New("codex identity template reader is not configured")
+	}
+	template, err := reader.GetCodexIdentityTemplate(ctx, assignment.TemplateID)
+	if (err != nil || assignment.ExpectedTemplateName != "" &&
+		!strings.EqualFold(strings.TrimSpace(template.Name), strings.TrimSpace(assignment.ExpectedTemplateName))) &&
+		assignment.ExpectedTemplateName != "" {
+		template, err = reader.GetCodexIdentityTemplateByName(ctx, assignment.ExpectedTemplateName)
+	}
+	if err != nil {
+		return CodexIdentityPolicySpec{}, nil, nil, err
+	}
+	policy, err := MaterializeCodexIdentityTemplate(template)
+	if err != nil {
+		return CodexIdentityPolicySpec{}, nil, nil, err
+	}
+	if assignment.ExpectedRuntimeSHA256 != "" {
+		digest, digestErr := CodexIdentityPolicyRuntimeSHA256(policy)
+		if digestErr != nil {
+			return CodexIdentityPolicySpec{}, nil, nil, digestErr
+		}
+		if !strings.EqualFold(digest, strings.TrimSpace(assignment.ExpectedRuntimeSHA256)) {
+			return CodexIdentityPolicySpec{}, nil, nil, infraerrors.Conflict(
+				"CODEX_IDENTITY_TEMPLATE_RUNTIME_MISMATCH",
+				"the selected Codex identity template does not match the exported runtime policy",
+			)
+		}
+	} else if assignment.ExpectedRevision != nil && *assignment.ExpectedRevision != template.Revision {
+		return CodexIdentityPolicySpec{}, nil, nil, ErrCodexIdentityTemplateRevisionConflict.WithMetadata(map[string]string{
+			"expected_revision": fmt.Sprintf("%d", *assignment.ExpectedRevision),
+			"current_revision":  fmt.Sprintf("%d", template.Revision),
+		})
+	}
+	templateID, revision := template.ID, template.Revision
+	return policy, &templateID, &revision, nil
+}
+
+func (s *adminServiceImpl) GetCodexIdentityTemplateForExport(
+	ctx context.Context,
+	templateID int64,
+) (*CodexIdentityTemplate, error) {
+	reader, ok := s.accountRepo.(CodexIdentityTemplateReader)
+	if !ok {
+		return nil, errors.New("codex identity template reader is not configured")
+	}
+	return reader.GetCodexIdentityTemplate(ctx, templateID)
+}
+
+func (s *adminServiceImpl) updateLegacyAccountWithoutProvisioning(
+	ctx context.Context,
+	account *Account,
+	input *UpdateAccountInput,
+	probeEnabled *bool,
+	rateSyncEnabled *bool,
+) error {
+	updater := s.accountBillingRepo
+	if updater == nil {
+		updater, _ = s.accountRepo.(AccountBillingSettingsRepository)
+	}
+	if updater != nil {
+		if err := updater.UpdateWithAccountBillingSettings(ctx, account, probeEnabled, rateSyncEnabled, input.RateMultiplier); err != nil {
+			return err
+		}
+	} else {
+		if err := s.accountRepo.Update(ctx, account); err != nil {
+			return err
+		}
+		if (probeEnabled != nil || rateSyncEnabled != nil) && isUpstreamBillingProbeAccount(account) {
+			settings := make(map[string]any, 2)
+			if probeEnabled != nil {
+				settings[UpstreamBillingProbeEnabledExtraKey] = *probeEnabled
+			}
+			if rateSyncEnabled != nil {
+				settings[UpstreamBillingRateSyncEnabledExtraKey] = *rateSyncEnabled
+			}
+			if len(settings) > 0 {
+				if err := s.accountRepo.UpdateExtra(ctx, account.ID, settings); err != nil {
+					return err
+				}
+			}
+		}
+	}
+	if input.GroupIDs != nil {
+		if err := s.accountRepo.BindGroups(ctx, account.ID, *input.GroupIDs); err != nil {
+			return err
+		}
+		account.GroupIDs = append([]int64(nil), (*input.GroupIDs)...)
+	}
+	return nil
+}
+
 // UpdateAccountExtra 仅对 Extra JSONB 做 key 级合并，避免覆盖其它运行态键
 // （如 model_rate_limits / passive_usage_* 等）。
 func (s *adminServiceImpl) UpdateAccountExtra(ctx context.Context, id int64, updates map[string]any) error {
-	updates = sanitizedCodexFingerprintExtraUpdates(updates)
+	updates = SanitizedCodexFingerprintExtraUpdates(updates)
 	updates = stripOpenAIAutoResetCreditManagedExtra(updates, true)
 	delete(updates, UpstreamBillingProbeEnabledExtraKey)
 	delete(updates, UpstreamBillingRateSyncEnabledExtraKey)
@@ -904,8 +1140,11 @@ func (s *adminServiceImpl) UpdateAccountExtra(ctx context.Context, id int64, upd
 // BulkUpdateAccounts updates multiple accounts in one request.
 // It merges credentials/extra keys instead of overwriting the whole object.
 func (s *adminServiceImpl) BulkUpdateAccounts(ctx context.Context, input *BulkUpdateAccountsInput) (*BulkUpdateAccountsResult, error) {
+	if input != nil && input.CodexIdentityPolicy != nil && input.CodexIdentityAssignment != nil {
+		return nil, infraerrors.BadRequest("CONFLICTING_CODEX_IDENTITY_CONFIGURATION", "codex_identity_policy and codex_identity_assignment cannot be provided together")
+	}
 	// Managed probe/session state may only enter through dedicated typed endpoints.
-	input.Extra = sanitizedCodexFingerprintExtraUpdates(input.Extra)
+	input.Extra = SanitizedCodexFingerprintExtraUpdates(input.Extra)
 	input.Extra = stripOpenAIAutoResetCreditManagedExtra(input.Extra, true)
 	delete(input.Extra, UpstreamBillingProbeEnabledExtraKey)
 	delete(input.Extra, UpstreamBillingRateSyncEnabledExtraKey)
@@ -945,7 +1184,10 @@ func (s *adminServiceImpl) BulkUpdateAccounts(ctx context.Context, input *BulkUp
 
 	// 预取所有目标账号，供凭据守卫/代理守卫/混合渠道检查共用，避免多次 DB 查询。
 	var cachedTargets []*Account
-	if len(input.Credentials) > 0 || input.ProxyID != nil || needMixedChannelCheck || openAISettings.any() || input.ProbeEnabled != nil || input.RateMultiplier != nil {
+	needsTargets := len(input.Credentials) > 0 || len(input.Extra) > 0 || input.ProxyID != nil ||
+		input.GroupIDs != nil || openAISettings.any() || input.ProbeEnabled != nil ||
+		input.RateMultiplier != nil || input.CodexIdentityPolicy != nil || input.CodexIdentityAssignment != nil
+	if needsTargets {
 		loaded, err := s.accountRepo.GetByIDs(ctx, input.AccountIDs)
 		if err != nil {
 			return nil, err
@@ -956,6 +1198,16 @@ func (s *adminServiceImpl) BulkUpdateAccounts(ctx context.Context, input *BulkUp
 	for _, account := range cachedTargets {
 		if account != nil {
 			targetsByID[account.ID] = account
+		}
+	}
+	if requestedLegacyMode, _ := input.Extra[codexFingerprintModeExtraKey].(string); requestedLegacyMode != "" && requestedLegacyMode != string(codexFingerprintOff) {
+		for _, account := range cachedTargets {
+			if account != nil && account.CodexIdentityPolicy.Mode == CodexIdentityPolicyOSProfileDevicePool {
+				return nil, infraerrors.BadRequest(
+					"ACCOUNT_PROVISIONING_INVALID",
+					"legacy codex_fingerprint_mode cannot be enabled while OS profile device pool is active",
+				)
+			}
 		}
 	}
 	if openAISettings.any() {
@@ -1046,6 +1298,19 @@ func (s *adminServiceImpl) BulkUpdateAccounts(ctx context.Context, input *BulkUp
 	// 校验并规范化请求头覆写配置（批量路径为 JSONB 顶层 key 合并，直接校验增量即可）
 	if err := NormalizeHeaderOverrideCredentials(input.Credentials); err != nil {
 		return nil, err
+	}
+
+	requiresProvisioning := input.CodexIdentityPolicy != nil || input.CodexIdentityAssignment != nil
+	if !requiresProvisioning {
+		for _, account := range cachedTargets {
+			if account != nil && account.CodexIdentityPolicy.Mode == CodexIdentityPolicyOSProfileDevicePool {
+				requiresProvisioning = true
+				break
+			}
+		}
+	}
+	if requiresProvisioning {
+		return s.bulkUpdateAccountsWithIdentityPolicy(ctx, input, result, targetsByID)
 	}
 	// Bulk may mix platforms; always drop ephemeral SSO/password keys (cookie
 	// only when platform is known Grok — empty platform still strips password/*).
@@ -1147,6 +1412,63 @@ func (s *adminServiceImpl) BulkUpdateAccounts(ctx context.Context, input *BulkUp
 		result.Results = append(result.Results, entry)
 	}
 
+	return result, nil
+}
+
+func (s *adminServiceImpl) bulkUpdateAccountsWithIdentityPolicy(
+	ctx context.Context,
+	input *BulkUpdateAccountsInput,
+	result *BulkUpdateAccountsResult,
+	targetsByID map[int64]*Account,
+) (*BulkUpdateAccountsResult, error) {
+	for _, accountID := range input.AccountIDs {
+		entry := BulkUpdateAccountResult{AccountID: accountID}
+		account := targetsByID[accountID]
+		if account == nil {
+			entry.Error = ErrAccountNotFound.Error()
+		} else if input.CodexIdentityPolicy != nil &&
+			(account.Platform != PlatformOpenAI || account.Type != AccountTypeOAuth || account.IsCredentialShadow()) {
+			entry.Error = "Codex identity policy bulk update requires non-shadow OpenAI OAuth accounts"
+		} else if input.CodexIdentityAssignment != nil && input.CodexIdentityAssignment.Enabled &&
+			(account.Platform != PlatformOpenAI || account.Type != AccountTypeOAuth || account.IsCredentialShadow()) {
+			entry.Error = "Codex identity assignment bulk update requires non-shadow OpenAI OAuth accounts"
+		} else {
+			update := &UpdateAccountInput{
+				Name:                    input.Name,
+				ProxyID:                 input.ProxyID,
+				Concurrency:             input.Concurrency,
+				Priority:                input.Priority,
+				RateMultiplier:          input.RateMultiplier,
+				LoadFactor:              input.LoadFactor,
+				Status:                  input.Status,
+				Schedulable:             input.Schedulable,
+				GroupIDs:                input.GroupIDs,
+				ProbeEnabled:            input.ProbeEnabled,
+				CodexIdentityPolicy:     input.CodexIdentityPolicy,
+				CodexIdentityAssignment: input.CodexIdentityAssignment,
+				SkipMixedChannelCheck:   input.SkipMixedChannelCheck,
+			}
+			if len(input.Credentials) > 0 {
+				update.Credentials = mergeMap(account.Credentials, input.Credentials)
+			}
+			if len(input.Extra) > 0 {
+				update.Extra = mergeMap(account.Extra, input.Extra)
+			}
+			if _, err := s.UpdateAccount(ctx, accountID, update); err != nil {
+				entry.Error = err.Error()
+			} else {
+				entry.Success = true
+			}
+		}
+		if entry.Success {
+			result.Success++
+			result.SuccessIDs = append(result.SuccessIDs, accountID)
+		} else {
+			result.Failed++
+			result.FailedIDs = append(result.FailedIDs, accountID)
+		}
+		result.Results = append(result.Results, entry)
+	}
 	return result, nil
 }
 
@@ -1307,6 +1629,12 @@ func (s *adminServiceImpl) CreateShadow(ctx context.Context, parentID int64, opt
 	if err != nil {
 		return nil, fmt.Errorf("get parent account: %w", err)
 	}
+	if parent.CodexIdentityPolicy.Mode == CodexIdentityPolicyOSProfileDevicePool {
+		return nil, infraerrors.BadRequest(
+			"SPARK_SHADOW_CODEX_IDENTITY_UNSUPPORTED",
+			"Spark shadows are not supported while Codex OS profile device pool is enabled on the credential owner",
+		)
+	}
 	if !parent.IsOpenAIOAuth() {
 		return nil, infraerrors.New(http.StatusBadRequest, "SPARK_SHADOW_INVALID_PARENT",
 			"spark shadow requires an OpenAI OAuth parent account")
@@ -1388,6 +1716,7 @@ func (s *adminServiceImpl) CreateShadow(ctx context.Context, parentID int64, opt
 		Priority:        priority,
 		Concurrency:     concurrency,
 		Schedulable:     true,
+		GroupIDs:        append([]int64(nil), groupIDs...),
 		Extra: map[string]any{
 			openAILongContextBillingEnabledKey: parent.IsOpenAILongContextBillingEnabled(),
 		},
@@ -1402,12 +1731,7 @@ func (s *adminServiceImpl) CreateShadow(ctx context.Context, parentID int64, opt
 		}
 		return nil, fmt.Errorf("create spark shadow: %w", err)
 	}
-
-	// 6. 绑定分组。注意:create+bind 非单一 DB 事务(通用 Create 走 r.client、outbox 走 r.sql,
-	// 无现成共享事务路径),故绑组失败时做 best-effort 补偿删除刚建的影子,避免半成品影子(否则
-	// 一母一影唯一索引会挡住重试)——外审 C/P1。补偿删除用 detached ctx,即便请求 ctx 已取消/超时
-	// 仍能完成清理(外审第4轮);进程崩溃这种极端仍可能残留,属已知权衡。
-	if len(groupIDs) > 0 {
+	if !HasAtomicAccountProvisioning(s.accountRepo) && len(groupIDs) > 0 {
 		if err := s.accountRepo.BindGroups(ctx, shadow.ID, groupIDs); err != nil {
 			if delErr := s.accountRepo.Delete(context.WithoutCancel(ctx), shadow.ID); delErr != nil {
 				slog.Error("spark_shadow_bind_groups_rollback_failed",
@@ -1415,7 +1739,7 @@ func (s *adminServiceImpl) CreateShadow(ctx context.Context, parentID int64, opt
 			}
 			return nil, fmt.Errorf("bind groups for spark shadow: %w", err)
 		}
-		shadow.GroupIDs = groupIDs
+		shadow.GroupIDs = append([]int64(nil), groupIDs...)
 	}
 
 	return shadow, nil

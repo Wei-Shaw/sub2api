@@ -117,6 +117,25 @@ func (Account) Fields() []ent.Field {
 		field.String("status").
 			MaxLen(20).
 			Default(domain.StatusActive),
+		// provisioning_state is independent from the operational account status.
+		// Only fully configured rows are visible to the scheduler.
+		field.String("provisioning_state").
+			MaxLen(20).
+			Default("pending"),
+		// codex_identity_policy is one atomically replaced, strongly validated
+		// policy snapshot. The system-managed fingerprint seed remains in extra
+		// and is never exposed through this document.
+		field.JSON("codex_identity_policy", map[string]any{}).
+			Default(func() map[string]any {
+				return map[string]any{
+					"mode":                 "off",
+					"session_policy":       map[string]any{"mode": "conversation_isolated"},
+					"affinity_ttl_seconds": 3600,
+				}
+			}).
+			SchemaType(map[string]string{dialect.Postgres: "jsonb"}),
+		field.Int64("codex_identity_template_id").Optional().Nillable(),
+		field.Int64("codex_identity_template_applied_revision").Optional().Nillable(),
 
 		// error_message: 错误信息，记录账户异常时的详细信息
 		field.String("error_message").
@@ -237,6 +256,7 @@ func (Account) Indexes() []ent.Index {
 		index.Fields("platform"),            // 按平台筛选
 		index.Fields("type"),                // 按认证类型筛选
 		index.Fields("status"),              // 按状态筛选
+		index.Fields("provisioning_state"),  // 筛选已完成配置的账户
 		index.Fields("proxy_id"),            // 按代理筛选
 		index.Fields("priority"),            // 按优先级排序
 		index.Fields("last_used_at"),        // 按最后使用时间排序

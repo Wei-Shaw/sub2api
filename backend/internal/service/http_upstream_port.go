@@ -1,10 +1,62 @@
 package service
 
 import (
+	"context"
+	"fmt"
 	"net/http"
+	"strings"
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/tlsfingerprint"
 )
+
+type httpUpstreamIsolationScopeContextKey struct{}
+
+type httpUpstreamIsolationIdentity struct {
+	Scope    string
+	UserID   int64
+	APIKeyID int64
+}
+
+func WithHTTPUpstreamIsolationScope(ctx context.Context, userID int64, apiKeyID int64) context.Context {
+	if ctx == nil || userID <= 0 || apiKeyID <= 0 {
+		return ctx
+	}
+	scope := fmt.Sprintf("user:%d|key:%d", userID, apiKeyID)
+	return context.WithValue(ctx, httpUpstreamIsolationScopeContextKey{}, httpUpstreamIsolationIdentity{
+		Scope:    scope,
+		UserID:   userID,
+		APIKeyID: apiKeyID,
+	})
+}
+
+func HTTPUpstreamIsolationScopeFromContext(ctx context.Context) string {
+	if ctx == nil {
+		return ""
+	}
+	switch value := ctx.Value(httpUpstreamIsolationScopeContextKey{}).(type) {
+	case httpUpstreamIsolationIdentity:
+		return strings.TrimSpace(value.Scope)
+	case string:
+		// Backward compatibility for contexts created before the typed identity
+		// was introduced and for narrow tests that inject the legacy value.
+		return strings.TrimSpace(value)
+	default:
+		return ""
+	}
+}
+
+// HTTPUpstreamIsolationIDsFromContext exposes the authenticated IDs without
+// parsing the stable scope string used by Codex profile affinity and leases.
+func HTTPUpstreamIsolationIDsFromContext(ctx context.Context) (userID, apiKeyID int64, ok bool) {
+	if ctx == nil {
+		return 0, 0, false
+	}
+	identity, ok := ctx.Value(httpUpstreamIsolationScopeContextKey{}).(httpUpstreamIsolationIdentity)
+	if !ok || identity.UserID <= 0 || identity.APIKeyID <= 0 {
+		return 0, 0, false
+	}
+	return identity.UserID, identity.APIKeyID, true
+}
 
 // HTTPUpstream 上游 HTTP 请求接口
 // 用于向上游 API（Claude、OpenAI、Gemini 等）发送请求

@@ -26,7 +26,9 @@ import type {
   UpstreamBillingProbeSettings,
   UpstreamBillingRatesResponse,
   OllamaCloudUsageSettings,
-  OllamaCloudUsageState
+  OllamaCloudUsageState,
+  BulkUpdateAccountsRequest,
+  CodexIdentityPolicy
 } from '@/types'
 
 /**
@@ -109,6 +111,41 @@ export async function getUpstreamBillingRatesWithEtag(
   const etagHeader = typeof response.headers?.etag === 'string' ? response.headers.etag : null
   if (response.status === 304) return { notModified: true, etag: etagHeader, data: null }
   return { notModified: false, etag: etagHeader, data: response.data }
+}
+
+export interface CodexDeviceSlotSummary {
+  os_class: 'windows' | 'macos' | 'linux' | 'generic'
+  canonical_surface: 'desktop' | 'cli' | 'sdk' | 'third_party'
+  architecture?: 'x86_64' | 'arm64' | ''
+  catalog_version: number
+  epoch: number
+  slot_index: number
+  state: 'active' | 'draining'
+  proxy_id?: number | null
+  client_version_mode: 'inherit' | 'pinned'
+  client_version?: string
+  effective_client_version: string
+  client_profile_verification?: 'unverified' | 'verified'
+  client_profile_source?: string
+  binding_count: number
+}
+
+export async function listCodexDeviceSlots(
+  id: number,
+  includeDraining = true
+): Promise<CodexDeviceSlotSummary[]> {
+  const { data } = await apiClient.get<{ slots: CodexDeviceSlotSummary[] }>(
+    `/admin/accounts/${id}/codex-device-slots`,
+    { params: { include_draining: includeDraining } }
+  )
+  return data.slots ?? []
+}
+
+export async function finalizeCodexDrainingSlots(id: number): Promise<{ deleted: number }> {
+  const { data } = await apiClient.post<{ deleted: number }>(
+    `/admin/accounts/${id}/codex-device-slots/finalize-draining`
+  )
+  return data
 }
 
 export async function listWithEtag(
@@ -504,8 +541,8 @@ export async function batchUpdateCredentials(request: {
  * @returns Success confirmation
  */
 export async function bulkUpdate(
-  accountIdsOrPayload: number[] | Record<string, unknown>,
-  updates?: Record<string, unknown>
+  accountIdsOrPayload: number[] | BulkUpdateAccountsRequest,
+  updates?: BulkUpdateAccountsRequest
 ): Promise<{
   success: number
   failed: number
@@ -659,6 +696,8 @@ export async function syncFromCrs(params: {
   password: string
   sync_proxies?: boolean
   selected_account_ids?: string[]
+  codex_identity_policy?: CodexIdentityPolicy
+  override_existing_codex_identity_policies?: boolean
 }): Promise<{
   created: number
   updated: number
@@ -728,11 +767,18 @@ export async function exportData(options?: {
 export async function importData(payload: {
   data: AdminDataPayload
   skip_default_group_bind?: boolean
+  codex_identity_policy_override?: CodexIdentityPolicy
+  override_imported_identity_policies?: boolean
 }): Promise<AdminDataImportResult> {
-  const { data } = await apiClient.post<AdminDataImportResult>('/admin/accounts/data', {
+  const request: Record<string, unknown> = {
     data: payload.data,
     skip_default_group_bind: payload.skip_default_group_bind
-  })
+  }
+  if (payload.codex_identity_policy_override) {
+    request.codex_identity_policy_override = payload.codex_identity_policy_override
+    request.override_imported_identity_policies = payload.override_imported_identity_policies === true
+  }
+  const { data } = await apiClient.post<AdminDataImportResult>('/admin/accounts/data', request)
   return data
 }
 
@@ -1050,6 +1096,8 @@ export const accountsAPI = {
   list,
   listWithEtag,
   getUpstreamBillingRatesWithEtag,
+  listCodexDeviceSlots,
+  finalizeCodexDrainingSlots,
   getById,
   create,
   duplicate,

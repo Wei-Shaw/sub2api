@@ -112,63 +112,69 @@ func NewAccountHandler(
 
 // CreateAccountRequest represents create account request
 type CreateAccountRequest struct {
-	Name                    string         `json:"name" binding:"required"`
-	Notes                   *string        `json:"notes"`
-	Platform                string         `json:"platform" binding:"required"`
-	Type                    string         `json:"type" binding:"required,oneof=oauth setup-token apikey upstream bedrock service_account"`
-	Credentials             map[string]any `json:"credentials" binding:"required"`
-	Extra                   map[string]any `json:"extra"`
-	ProxyID                 *int64         `json:"proxy_id"`
-	Concurrency             int            `json:"concurrency"`
-	Priority                int            `json:"priority"`
-	RateMultiplier          *float64       `json:"rate_multiplier"`
-	LoadFactor              *int           `json:"load_factor"`
-	GroupIDs                []int64        `json:"group_ids"`
-	ExpiresAt               *int64         `json:"expires_at"`
-	AutoPauseOnExpired      *bool          `json:"auto_pause_on_expired"`
-	ProbeEnabled            *bool          `json:"upstream_billing_probe_enabled"`
-	ConfirmMixedChannelRisk *bool          `json:"confirm_mixed_channel_risk"` // 用户确认混合渠道风险
+	Name                    string                           `json:"name" binding:"required"`
+	Notes                   *string                          `json:"notes"`
+	Platform                string                           `json:"platform" binding:"required"`
+	Type                    string                           `json:"type" binding:"required,oneof=oauth setup-token apikey upstream bedrock service_account"`
+	Credentials             map[string]any                   `json:"credentials" binding:"required"`
+	Extra                   map[string]any                   `json:"extra"`
+	ProxyID                 *int64                           `json:"proxy_id"`
+	Concurrency             int                              `json:"concurrency"`
+	Priority                int                              `json:"priority"`
+	RateMultiplier          *float64                         `json:"rate_multiplier"`
+	LoadFactor              *int                             `json:"load_factor"`
+	GroupIDs                []int64                          `json:"group_ids"`
+	ExpiresAt               *int64                           `json:"expires_at"`
+	AutoPauseOnExpired      *bool                            `json:"auto_pause_on_expired"`
+	ProbeEnabled            *bool                            `json:"upstream_billing_probe_enabled"`
+	CodexIdentityPolicy     *service.CodexIdentityPolicySpec `json:"codex_identity_policy,omitempty"`
+	CodexIdentityAssignment *service.CodexIdentityAssignment `json:"codex_identity_assignment,omitempty"`
+	ConfirmMixedChannelRisk *bool                            `json:"confirm_mixed_channel_risk"` // 用户确认混合渠道风险
 }
 
 // UpdateAccountRequest represents update account request
 // 使用指针类型来区分"未提供"和"设置为0"
 type UpdateAccountRequest struct {
-	Name                    string         `json:"name"`
-	Notes                   *string        `json:"notes"`
-	Type                    string         `json:"type" binding:"omitempty,oneof=oauth setup-token apikey upstream bedrock service_account"`
-	Credentials             map[string]any `json:"credentials"`
-	Extra                   map[string]any `json:"extra"`
-	ProxyID                 *int64         `json:"proxy_id"`
-	Concurrency             *int           `json:"concurrency"`
-	Priority                *int           `json:"priority"`
-	RateMultiplier          *float64       `json:"rate_multiplier"`
-	LoadFactor              *int           `json:"load_factor"`
-	Status                  string         `json:"status" binding:"omitempty,oneof=active inactive error"`
-	GroupIDs                *[]int64       `json:"group_ids"`
-	ExpiresAt               *int64         `json:"expires_at"`
-	AutoPauseOnExpired      *bool          `json:"auto_pause_on_expired"`
-	ProbeEnabled            *bool          `json:"upstream_billing_probe_enabled"`
-	RateSyncEnabled         *bool          `json:"upstream_billing_rate_sync_enabled"`
-	ConfirmMixedChannelRisk *bool          `json:"confirm_mixed_channel_risk"` // 用户确认混合渠道风险
+	Name                    string                           `json:"name"`
+	Notes                   *string                          `json:"notes"`
+	Type                    string                           `json:"type" binding:"omitempty,oneof=oauth setup-token apikey upstream bedrock service_account"`
+	Credentials             map[string]any                   `json:"credentials"`
+	Extra                   map[string]any                   `json:"extra"`
+	ProxyID                 *int64                           `json:"proxy_id"`
+	Concurrency             *int                             `json:"concurrency"`
+	Priority                *int                             `json:"priority"`
+	RateMultiplier          *float64                         `json:"rate_multiplier"`
+	LoadFactor              *int                             `json:"load_factor"`
+	Status                  string                           `json:"status" binding:"omitempty,oneof=active inactive error"`
+	GroupIDs                *[]int64                         `json:"group_ids"`
+	ExpiresAt               *int64                           `json:"expires_at"`
+	AutoPauseOnExpired      *bool                            `json:"auto_pause_on_expired"`
+	ProbeEnabled            *bool                            `json:"upstream_billing_probe_enabled"`
+	RateSyncEnabled         *bool                            `json:"upstream_billing_rate_sync_enabled"`
+	CodexIdentityPolicy     *service.CodexIdentityPolicySpec `json:"codex_identity_policy,omitempty"`
+	CodexIdentityAssignment *service.CodexIdentityAssignment `json:"codex_identity_assignment,omitempty"`
+	ConfirmMixedChannelRisk *bool                            `json:"confirm_mixed_channel_risk"` // 用户确认混合渠道风险
 }
 
 // BulkUpdateAccountsRequest represents the payload for bulk editing accounts
 type BulkUpdateAccountsRequest struct {
-	AccountIDs              []int64                   `json:"account_ids"`
-	Filters                 *BulkUpdateAccountFilters `json:"filters"`
-	Name                    string                    `json:"name"`
-	ProxyID                 *int64                    `json:"proxy_id"`
-	Concurrency             *int                      `json:"concurrency"`
-	Priority                *int                      `json:"priority"`
-	RateMultiplier          *float64                  `json:"rate_multiplier"`
-	LoadFactor              *int                      `json:"load_factor"`
-	Status                  string                    `json:"status" binding:"omitempty,oneof=active inactive error"`
-	Schedulable             *bool                     `json:"schedulable"`
-	GroupIDs                *[]int64                  `json:"group_ids"`
-	Credentials             map[string]any            `json:"credentials"`
-	Extra                   map[string]any            `json:"extra"`
-	ProbeEnabled            *bool                     `json:"upstream_billing_probe_enabled"`
-	ConfirmMixedChannelRisk *bool                     `json:"confirm_mixed_channel_risk"` // 用户确认混合渠道风险
+	AccountIDs              []int64                          `json:"account_ids"`
+	Filters                 *BulkUpdateAccountFilters        `json:"filters"`
+	Name                    string                           `json:"name"`
+	ProxyID                 *int64                           `json:"proxy_id"`
+	Concurrency             *int                             `json:"concurrency"`
+	Priority                *int                             `json:"priority"`
+	RateMultiplier          *float64                         `json:"rate_multiplier"`
+	LoadFactor              *int                             `json:"load_factor"`
+	Status                  string                           `json:"status" binding:"omitempty,oneof=active inactive error"`
+	Schedulable             *bool                            `json:"schedulable"`
+	GroupIDs                *[]int64                         `json:"group_ids"`
+	Credentials             map[string]any                   `json:"credentials"`
+	Extra                   map[string]any                   `json:"extra"`
+	ProbeEnabled            *bool                            `json:"upstream_billing_probe_enabled"`
+	CodexIdentityPolicy     *service.CodexIdentityPolicySpec `json:"codex_identity_policy,omitempty"`
+	CodexIdentityAssignment *service.CodexIdentityAssignment `json:"codex_identity_assignment,omitempty"`
+	ConfirmMixedChannelRisk *bool                            `json:"confirm_mixed_channel_risk"` // 用户确认混合渠道风险
 }
 
 type BulkUpdateAccountFilters struct {
@@ -224,6 +230,23 @@ type AccountSchedulerGroupScore struct {
 	GroupName     string `json:"group_name,omitempty"`
 	GroupPriority *int   `json:"group_priority,omitempty"`
 	AccountSchedulerScore
+}
+
+type CodexDeviceSlotSummary struct {
+	OSClass                   service.CodexOSClass                   `json:"os_class"`
+	CanonicalSurface          service.CodexClientSurface             `json:"canonical_surface"`
+	Architecture              service.CodexArchitecture              `json:"architecture,omitempty"`
+	CatalogVersion            int64                                  `json:"catalog_version"`
+	Epoch                     int64                                  `json:"epoch"`
+	SlotIndex                 int                                    `json:"slot_index"`
+	State                     string                                 `json:"state"`
+	ProxyID                   *int64                                 `json:"proxy_id,omitempty"`
+	ClientVersionMode         service.CodexClientVersionMode         `json:"client_version_mode"`
+	ClientVersion             string                                 `json:"client_version,omitempty"`
+	EffectiveClientVersion    string                                 `json:"effective_client_version"`
+	ClientProfileVerification service.CodexClientProfileVerification `json:"client_profile_verification"`
+	ClientProfileSource       string                                 `json:"client_profile_source"`
+	BindingCount              int64                                  `json:"binding_count"`
 }
 
 const accountListGroupUngroupedQueryValue = "ungrouped"
@@ -830,6 +853,65 @@ func (h *AccountHandler) GetByID(c *gin.Context) {
 	response.Success(c, h.buildAccountResponseWithRuntime(c.Request.Context(), account))
 }
 
+func (h *AccountHandler) ListCodexDeviceSlots(c *gin.Context) {
+	accountID, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil || accountID <= 0 {
+		response.BadRequest(c, "Invalid account ID")
+		return
+	}
+	if _, err := h.adminService.GetAccount(c.Request.Context(), accountID); err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	adminService, ok := h.adminService.(service.CodexDeviceSlotAdminService)
+	if !ok {
+		response.Error(c, http.StatusNotImplemented, "Codex device slot management is unavailable")
+		return
+	}
+	includeDraining, _ := strconv.ParseBool(c.DefaultQuery("include_draining", "false"))
+	slots, err := adminService.ListAccountCodexDeviceSlots(c.Request.Context(), accountID, includeDraining)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	summaries := make([]CodexDeviceSlotSummary, 0, len(slots))
+	for _, slot := range slots {
+		summaries = append(summaries, CodexDeviceSlotSummary{
+			OSClass: slot.OSClass, CanonicalSurface: slot.CanonicalSurface,
+			Architecture: slot.Architecture, CatalogVersion: slot.CatalogVersion,
+			Epoch: slot.Epoch, SlotIndex: slot.SlotIndex, State: slot.State,
+			ProxyID: slot.ProxyID, ClientVersionMode: slot.ClientVersionMode,
+			ClientVersion: slot.ClientVersion, EffectiveClientVersion: slot.EffectiveClientVersion,
+			ClientProfileVerification: slot.ClientProfileVerification, ClientProfileSource: slot.ClientProfileSource,
+			BindingCount: slot.BindingCount,
+		})
+	}
+	response.Success(c, gin.H{"slots": summaries})
+}
+
+func (h *AccountHandler) FinalizeCodexDrainingSlots(c *gin.Context) {
+	accountID, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil || accountID <= 0 {
+		response.BadRequest(c, "Invalid account ID")
+		return
+	}
+	if _, err := h.adminService.GetAccount(c.Request.Context(), accountID); err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	adminService, ok := h.adminService.(service.CodexDeviceSlotAdminService)
+	if !ok {
+		response.Error(c, http.StatusNotImplemented, "Codex device slot management is unavailable")
+		return
+	}
+	deleted, err := adminService.FinalizeAccountCodexDeviceSlots(c.Request.Context(), accountID)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, gin.H{"deleted": deleted})
+}
+
 // CheckMixedChannel handles checking mixed channel risk for account-group binding.
 // POST /api/v1/admin/accounts/check-mixed-channel
 func (h *AccountHandler) CheckMixedChannel(c *gin.Context) {
@@ -906,22 +988,24 @@ func (h *AccountHandler) Create(c *gin.Context) {
 
 	result, err := executeAdminIdempotent(c, "admin.accounts.create", req, service.DefaultWriteIdempotencyTTL(), func(ctx context.Context) (any, error) {
 		account, execErr := h.adminService.CreateAccount(ctx, &service.CreateAccountInput{
-			Name:                  req.Name,
-			Notes:                 req.Notes,
-			Platform:              req.Platform,
-			Type:                  req.Type,
-			Credentials:           req.Credentials,
-			Extra:                 req.Extra,
-			ProxyID:               req.ProxyID,
-			Concurrency:           req.Concurrency,
-			Priority:              req.Priority,
-			RateMultiplier:        req.RateMultiplier,
-			LoadFactor:            req.LoadFactor,
-			GroupIDs:              req.GroupIDs,
-			ExpiresAt:             req.ExpiresAt,
-			AutoPauseOnExpired:    req.AutoPauseOnExpired,
-			ProbeEnabled:          req.ProbeEnabled,
-			SkipMixedChannelCheck: skipCheck,
+			Name:                    req.Name,
+			Notes:                   req.Notes,
+			Platform:                req.Platform,
+			Type:                    req.Type,
+			Credentials:             req.Credentials,
+			Extra:                   req.Extra,
+			ProxyID:                 req.ProxyID,
+			Concurrency:             req.Concurrency,
+			Priority:                req.Priority,
+			RateMultiplier:          req.RateMultiplier,
+			LoadFactor:              req.LoadFactor,
+			GroupIDs:                req.GroupIDs,
+			ExpiresAt:               req.ExpiresAt,
+			AutoPauseOnExpired:      req.AutoPauseOnExpired,
+			ProbeEnabled:            req.ProbeEnabled,
+			CodexIdentityPolicy:     req.CodexIdentityPolicy,
+			CodexIdentityAssignment: req.CodexIdentityAssignment,
+			SkipMixedChannelCheck:   skipCheck,
 		})
 		if execErr != nil {
 			return nil, execErr
@@ -1038,23 +1122,25 @@ func (h *AccountHandler) Update(c *gin.Context) {
 	skipCheck := req.ConfirmMixedChannelRisk != nil && *req.ConfirmMixedChannelRisk
 
 	account, err := h.adminService.UpdateAccount(c.Request.Context(), accountID, &service.UpdateAccountInput{
-		Name:                  req.Name,
-		Notes:                 req.Notes,
-		Type:                  req.Type,
-		Credentials:           req.Credentials,
-		Extra:                 req.Extra,
-		ProxyID:               req.ProxyID,
-		Concurrency:           req.Concurrency, // 指针类型，nil 表示未提供
-		Priority:              req.Priority,    // 指针类型，nil 表示未提供
-		RateMultiplier:        req.RateMultiplier,
-		LoadFactor:            req.LoadFactor,
-		Status:                req.Status,
-		GroupIDs:              req.GroupIDs,
-		ExpiresAt:             req.ExpiresAt,
-		AutoPauseOnExpired:    req.AutoPauseOnExpired,
-		ProbeEnabled:          req.ProbeEnabled,
-		RateSyncEnabled:       req.RateSyncEnabled,
-		SkipMixedChannelCheck: skipCheck,
+		Name:                    req.Name,
+		Notes:                   req.Notes,
+		Type:                    req.Type,
+		Credentials:             req.Credentials,
+		Extra:                   req.Extra,
+		ProxyID:                 req.ProxyID,
+		Concurrency:             req.Concurrency, // 指针类型，nil 表示未提供
+		Priority:                req.Priority,    // 指针类型，nil 表示未提供
+		RateMultiplier:          req.RateMultiplier,
+		LoadFactor:              req.LoadFactor,
+		Status:                  req.Status,
+		GroupIDs:                req.GroupIDs,
+		ExpiresAt:               req.ExpiresAt,
+		AutoPauseOnExpired:      req.AutoPauseOnExpired,
+		ProbeEnabled:            req.ProbeEnabled,
+		RateSyncEnabled:         req.RateSyncEnabled,
+		CodexIdentityPolicy:     req.CodexIdentityPolicy,
+		CodexIdentityAssignment: req.CodexIdentityAssignment,
+		SkipMixedChannelCheck:   skipCheck,
 	})
 	if err != nil {
 		// 检查是否为混合渠道错误
@@ -1136,11 +1222,13 @@ type TestAccountRequest struct {
 }
 
 type SyncFromCRSRequest struct {
-	BaseURL            string   `json:"base_url" binding:"required"`
-	Username           string   `json:"username" binding:"required"`
-	Password           string   `json:"password" binding:"required"`
-	SyncProxies        *bool    `json:"sync_proxies"`
-	SelectedAccountIDs []string `json:"selected_account_ids"`
+	BaseURL                               string                           `json:"base_url" binding:"required"`
+	Username                              string                           `json:"username" binding:"required"`
+	Password                              string                           `json:"password" binding:"required"`
+	SyncProxies                           *bool                            `json:"sync_proxies"`
+	SelectedAccountIDs                    []string                         `json:"selected_account_ids"`
+	CodexIdentityPolicy                   *service.CodexIdentityPolicySpec `json:"codex_identity_policy,omitempty"`
+	OverrideExistingCodexIdentityPolicies bool                             `json:"override_existing_codex_identity_policies"`
 }
 
 type PreviewFromCRSRequest struct {
@@ -1226,11 +1314,13 @@ func (h *AccountHandler) SyncFromCRS(c *gin.Context) {
 	}
 
 	result, err := h.crsSyncService.SyncFromCRS(c.Request.Context(), service.SyncFromCRSInput{
-		BaseURL:            req.BaseURL,
-		Username:           req.Username,
-		Password:           req.Password,
-		SyncProxies:        syncProxies,
-		SelectedAccountIDs: req.SelectedAccountIDs,
+		BaseURL:                               req.BaseURL,
+		Username:                              req.Username,
+		Password:                              req.Password,
+		SyncProxies:                           syncProxies,
+		SelectedAccountIDs:                    req.SelectedAccountIDs,
+		CodexIdentityPolicy:                   req.CodexIdentityPolicy,
+		OverrideExistingCodexIdentityPolicies: req.OverrideExistingCodexIdentityPolicies,
 	})
 	if err != nil {
 		// Provide detailed error message for CRS sync failures
@@ -1990,6 +2080,7 @@ func (h *AccountHandler) BatchCreate(c *gin.Context) {
 				GroupIDs:              item.GroupIDs,
 				ExpiresAt:             item.ExpiresAt,
 				AutoPauseOnExpired:    item.AutoPauseOnExpired,
+				CodexIdentityPolicy:   item.CodexIdentityPolicy,
 				SkipMixedChannelCheck: skipCheck,
 			})
 			if err != nil {
@@ -2186,7 +2277,9 @@ func (h *AccountHandler) BulkUpdate(c *gin.Context) {
 		req.GroupIDs != nil ||
 		len(req.Credentials) > 0 ||
 		len(req.Extra) > 0 ||
-		req.ProbeEnabled != nil
+		req.ProbeEnabled != nil ||
+		req.CodexIdentityPolicy != nil ||
+		req.CodexIdentityAssignment != nil
 
 	if !hasUpdates {
 		response.BadRequest(c, "No updates provided")
@@ -2194,21 +2287,23 @@ func (h *AccountHandler) BulkUpdate(c *gin.Context) {
 	}
 
 	result, err := h.adminService.BulkUpdateAccounts(c.Request.Context(), &service.BulkUpdateAccountsInput{
-		AccountIDs:            req.AccountIDs,
-		Filters:               toServiceBulkUpdateAccountFilters(req.Filters),
-		Name:                  req.Name,
-		ProxyID:               req.ProxyID,
-		Concurrency:           req.Concurrency,
-		Priority:              req.Priority,
-		RateMultiplier:        req.RateMultiplier,
-		LoadFactor:            req.LoadFactor,
-		Status:                req.Status,
-		Schedulable:           req.Schedulable,
-		GroupIDs:              req.GroupIDs,
-		Credentials:           req.Credentials,
-		Extra:                 req.Extra,
-		ProbeEnabled:          req.ProbeEnabled,
-		SkipMixedChannelCheck: skipCheck,
+		AccountIDs:              req.AccountIDs,
+		Filters:                 toServiceBulkUpdateAccountFilters(req.Filters),
+		Name:                    req.Name,
+		ProxyID:                 req.ProxyID,
+		Concurrency:             req.Concurrency,
+		Priority:                req.Priority,
+		RateMultiplier:          req.RateMultiplier,
+		LoadFactor:              req.LoadFactor,
+		Status:                  req.Status,
+		Schedulable:             req.Schedulable,
+		GroupIDs:                req.GroupIDs,
+		Credentials:             req.Credentials,
+		Extra:                   req.Extra,
+		ProbeEnabled:            req.ProbeEnabled,
+		CodexIdentityPolicy:     req.CodexIdentityPolicy,
+		CodexIdentityAssignment: req.CodexIdentityAssignment,
+		SkipMixedChannelCheck:   skipCheck,
 	})
 	if err != nil {
 		var mixedErr *service.MixedChannelError
