@@ -273,6 +273,7 @@ type UpdateSettingsRequest struct {
 	PaymentVisibleMethodWxpayEnabled  *bool   `json:"payment_visible_method_wxpay_enabled"`
 
 	// OpenAI account scheduling
+	OpenAIChromeUTLSEnabled                            *bool    `json:"openai_chrome_utls_enabled"`
 	OpenAILowUpstreamRatePriorityEnabled               *bool    `json:"openai_low_upstream_rate_priority_enabled"`
 	OpenAIOAuthSchedulingRateMultiplier                *float64 `json:"openai_oauth_scheduling_rate_multiplier"`
 	OpenAIAdvancedSchedulerEnabled                     *bool    `json:"openai_advanced_scheduler_enabled"`
@@ -1799,6 +1800,12 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 			}
 			return previousSettings.PaymentVisibleMethodWxpayEnabled
 		}(),
+		OpenAIChromeUTLSEnabled: func() bool {
+			if req.OpenAIChromeUTLSEnabled != nil {
+				return *req.OpenAIChromeUTLSEnabled
+			}
+			return previousSettings.OpenAIChromeUTLSEnabled
+		}(),
 		OpenAILowUpstreamRatePriorityEnabled: func() bool {
 			if req.OpenAILowUpstreamRatePriorityEnabled != nil {
 				return *req.OpenAILowUpstreamRatePriorityEnabled
@@ -2304,6 +2311,7 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		PaymentVisibleMethodWxpaySource:                        updatedSettings.PaymentVisibleMethodWxpaySource,
 		PaymentVisibleMethodAlipayEnabled:                      updatedSettings.PaymentVisibleMethodAlipayEnabled,
 		PaymentVisibleMethodWxpayEnabled:                       updatedSettings.PaymentVisibleMethodWxpayEnabled,
+		OpenAIChromeUTLSEnabled:                                updatedSettings.OpenAIChromeUTLSEnabled,
 		OpenAILowUpstreamRatePriorityEnabled:                   updatedSettings.OpenAILowUpstreamRatePriorityEnabled,
 		OpenAIOAuthSchedulingRateMultiplier:                    updatedSettings.OpenAIOAuthSchedulingRateMultiplier,
 		OpenAIAdvancedSchedulerEnabled:                         updatedSettings.OpenAIAdvancedSchedulerEnabled,

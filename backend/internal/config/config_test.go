@@ -612,6 +612,15 @@ func TestLoadDefaultOpenAIHTTP2Enabled(t *testing.T) {
 	require.Equal(t, 600, cfg.Gateway.OpenAIProxyStreamCircuit.TTLSeconds)
 }
 
+func TestOpenAIChromeUTLSRuntimeSetting(t *testing.T) {
+	cfg := &Config{}
+	require.False(t, cfg.OpenAIChromeUTLSEnabled())
+	cfg.SetOpenAIChromeUTLSEnabled(true)
+	require.True(t, cfg.OpenAIChromeUTLSEnabled())
+	cfg.SetOpenAIChromeUTLSEnabled(false)
+	require.False(t, cfg.OpenAIChromeUTLSEnabled())
+}
+
 func TestLoadOpenAIProxyStreamCircuitFromEnv(t *testing.T) {
 	resetViperWithJWTSecret(t)
 	t.Setenv("GATEWAY_OPENAI_PROXY_STREAM_CIRCUIT_DISABLED", "true")

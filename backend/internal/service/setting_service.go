@@ -361,6 +361,28 @@ func (s *SettingService) LoadForwardedClientIPSettings(ctx context.Context) erro
 	return headersErr
 }
 
+// LoadOpenAIChromeUTLSSetting loads the DB-backed transport switch into the
+// shared runtime config. Missing or unreadable values fail closed to standard
+// Go TLS so startup never silently changes the OpenAI egress fingerprint.
+func (s *SettingService) LoadOpenAIChromeUTLSSetting(ctx context.Context) error {
+	if s == nil || s.cfg == nil || s.settingRepo == nil {
+		return nil
+	}
+	value, err := s.settingRepo.GetValue(ctx, SettingKeyOpenAIChromeUTLSEnabled)
+	if err != nil {
+		s.cfg.SetOpenAIChromeUTLSEnabled(false)
+		if errors.Is(err, ErrSettingNotFound) {
+			if setErr := s.settingRepo.Set(ctx, SettingKeyOpenAIChromeUTLSEnabled, "false"); setErr != nil {
+				return fmt.Errorf("initialize OpenAI Chrome uTLS setting: %w", setErr)
+			}
+			return nil
+		}
+		return fmt.Errorf("get OpenAI Chrome uTLS setting: %w", err)
+	}
+	s.cfg.SetOpenAIChromeUTLSEnabled(strings.EqualFold(strings.TrimSpace(value), "true"))
+	return nil
+}
+
 // GetAllSettings 获取所有系统设置
 func (s *SettingService) GetAllSettings(ctx context.Context) (*SystemSettings, error) {
 	settings, err := s.settingRepo.GetAll(ctx)
