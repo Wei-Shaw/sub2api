@@ -485,14 +485,12 @@ function onPaymentDone() {
   }
 }
 
-async function onPaymentSuccess() {
-  const completedPayment = { ...paymentState.value }
+function onPaymentSuccess() {
   removeRecoverySnapshot()
   authStore.refreshUser()
   if (paymentState.value.orderType === 'subscription') {
     subscriptionStore.fetchActiveSubscriptions(true).catch(() => {})
   }
-  await redirectToPaymentResult(completedPayment)
 }
 
 function onPaymentSettled() {
