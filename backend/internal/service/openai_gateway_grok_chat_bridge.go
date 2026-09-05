@@ -481,7 +481,7 @@ func grokChatNullOrEmptyArray(raw json.RawMessage) bool {
 // sanitizeGrokChatCompletionsBody removes Chat Completions controls that xAI's
 // native Grok endpoint rejects even though they are accepted by many OpenAI
 // compatible clients. In particular, tool_choice without a non-empty tools
-// array is invalid upstream, and Grok 4.x rejects the stop parameter.
+// array is invalid upstream, and Grok 4.x rejects stop/penalty parameters.
 func sanitizeGrokChatCompletionsBody(body []byte) ([]byte, error) {
 	out := body
 	tools := gjson.GetBytes(out, "tools")
@@ -498,11 +498,14 @@ func sanitizeGrokChatCompletionsBody(body []byte) ([]byte, error) {
 			}
 		}
 	}
-	if gjson.GetBytes(out, "stop").Exists() {
+	for _, field := range []string{"stop", "presence_penalty", "presencePenalty", "frequency_penalty", "frequencyPenalty"} {
+		if !gjson.GetBytes(out, field).Exists() {
+			continue
+		}
 		var err error
-		out, err = sjson.DeleteBytes(out, "stop")
+		out, err = sjson.DeleteBytes(out, field)
 		if err != nil {
-			return nil, fmt.Errorf("remove unsupported Grok chat stop: %w", err)
+			return nil, fmt.Errorf("remove unsupported Grok chat %s: %w", field, err)
 		}
 	}
 	return out, nil

@@ -33,7 +33,7 @@ func TestSanitizeGrokChatCompletionsBody(t *testing.T) {
 	}{
 		{
 			name: "orphan tool choice and stop are removed",
-			body: `{"model":"grok-4.5","messages":[{"role":"user","content":"hi"}],"tool_choice":"auto","parallel_tool_calls":true,"stop":["END"]}`,
+			body: `{"model":"grok-4.5","messages":[{"role":"user","content":"hi"}],"tool_choice":"auto","parallel_tool_calls":true,"stop":["END"],"presencePenalty":0.1,"frequency_penalty":0.2}`,
 		},
 		{
 			name:              "real tools keep tool controls but stop is removed",
