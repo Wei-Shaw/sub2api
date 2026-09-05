@@ -509,16 +509,22 @@ type RectifierSettings struct {
 	Enabled                  bool     `json:"enabled"`                    // 总开关
 	ThinkingSignatureEnabled bool     `json:"thinking_signature_enabled"` // Thinking 签名整流
 	ThinkingBudgetEnabled    bool     `json:"thinking_budget_enabled"`    // Thinking Budget 整流
+	ThinkingDisplayMode      string   `json:"thinking_display_mode"`      // 思考摘要注入：off | display_only | force
 	APIKeySignatureEnabled   bool     `json:"apikey_signature_enabled"`   // API Key 签名整流开关
 	APIKeySignaturePatterns  []string `json:"apikey_signature_patterns"`  // API Key 自定义匹配关键词
 }
 
 // DefaultRectifierSettings 返回默认的整流器配置（全部启用）
+//
+// ThinkingDisplayMode 默认取 display_only 而非 force：display_only 只是把已经发生、
+// 已经计费的思考摘要取消隐藏，零成本零风险；force 会为未开启思考的请求真正开启思考，
+// 属于成本与缓存行为的改变，应由运维显式选择。
 func DefaultRectifierSettings() *RectifierSettings {
 	return &RectifierSettings{
 		Enabled:                  true,
 		ThinkingSignatureEnabled: true,
 		ThinkingBudgetEnabled:    true,
+		ThinkingDisplayMode:      ThinkingDisplayModeDisplayOnly,
 	}
 }
 

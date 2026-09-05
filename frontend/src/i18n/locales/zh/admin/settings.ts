@@ -1032,6 +1032,14 @@ export default {
         thinkingSignatureHint: '当上游返回 thinking block 签名校验错误时，自动去除签名并重试',
         thinkingBudget: 'Thinking Budget 整流',
         thinkingBudgetHint: '当上游返回 budget_tokens 约束错误（≥1024）时，自动将 budget 设为 32000 并重试',
+        thinkingDisplay: '思考摘要可见性',
+        thinkingDisplayHint:
+          'Opus 4.8/4.7、Sonnet 5、Fable 5 上思考摘要默认隐藏：模型照常思考、照常计费，但客户端收到的思考块文本为空，用户会误以为上游不支持思考。同时会改写这些模型直接拒绝的老写法（thinking.type="enabled" / budget_tokens）。',
+        thinkingDisplayOff: '关闭 —— 原样转发',
+        thinkingDisplayOnlyMode: '仅取消隐藏摘要（不额外花费）',
+        thinkingDisplayForce: '强制所有请求开启思考',
+        thinkingDisplayForceWarning:
+          '强制模式会为未请求思考的请求也开启思考：额外消耗 token、messages 层 prompt 缓存失效，并会抬高 max_tokens 以防思考挤占正文导致截断。',
         apikeySignature: 'API Key 签名整流',
         apikeySignatureHint:
           '当 API Key 账号的上游返回签名相关错误时，自动去除签名并重试（内置规则始终生效）',

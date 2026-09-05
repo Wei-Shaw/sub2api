@@ -670,6 +670,42 @@
                     <Toggle v-model="rectifierForm.thinking_budget_enabled" />
                   </div>
 
+                  <!-- Thinking Summary Visibility -->
+                  <div>
+                    <label
+                      class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300"
+                    >
+                      {{ t("admin.settings.rectifier.thinkingDisplay") }}
+                    </label>
+                    <select
+                      v-model="rectifierForm.thinking_display_mode"
+                      class="input w-64"
+                    >
+                      <option value="off">
+                        {{ t("admin.settings.rectifier.thinkingDisplayOff") }}
+                      </option>
+                      <option value="display_only">
+                        {{
+                          t("admin.settings.rectifier.thinkingDisplayOnlyMode")
+                        }}
+                      </option>
+                      <option value="force">
+                        {{ t("admin.settings.rectifier.thinkingDisplayForce") }}
+                      </option>
+                    </select>
+                    <p class="mt-1.5 text-xs text-gray-500 dark:text-gray-400">
+                      {{ t("admin.settings.rectifier.thinkingDisplayHint") }}
+                    </p>
+                    <p
+                      v-if="rectifierForm.thinking_display_mode === 'force'"
+                      class="mt-1.5 text-xs text-amber-600 dark:text-amber-400"
+                    >
+                      {{
+                        t("admin.settings.rectifier.thinkingDisplayForceWarning")
+                      }}
+                    </p>
+                  </div>
+
                   <!-- API Key Signature Rectifier -->
                   <div class="flex items-center justify-between">
                     <div>
@@ -8787,6 +8823,7 @@ import type {
   DefaultSubscriptionSetting,
   DefaultPlatformQuotasMap,
   OpenAIFastPolicyRule,
+  ThinkingDisplayMode,
   WeChatConnectMode,
   WebSearchEmulationConfig,
   WebSearchProviderConfig,
@@ -9018,6 +9055,9 @@ const rectifierForm = reactive({
   enabled: true,
   thinking_signature_enabled: true,
   thinking_budget_enabled: true,
+  // 与后端 DefaultRectifierSettings 保持一致：display_only 只取消隐藏已经产生并
+  // 计费的思考摘要，零成本；force 会改变成本与缓存行为，须由运维显式选择。
+  thinking_display_mode: "display_only" as ThinkingDisplayMode,
   apikey_signature_enabled: false,
   apikey_signature_patterns: [] as string[],
 });
@@ -11969,6 +12009,7 @@ async function saveRectifierSettings() {
       enabled: rectifierForm.enabled,
       thinking_signature_enabled: rectifierForm.thinking_signature_enabled,
       thinking_budget_enabled: rectifierForm.thinking_budget_enabled,
+      thinking_display_mode: rectifierForm.thinking_display_mode,
       apikey_signature_enabled: rectifierForm.apikey_signature_enabled,
       apikey_signature_patterns: rectifierForm.apikey_signature_patterns.filter(
         (p) => p.trim() !== "",

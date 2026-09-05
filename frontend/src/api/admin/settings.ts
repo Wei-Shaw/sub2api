@@ -1386,12 +1386,21 @@ export async function updateStreamTimeoutSettings(
 // ==================== Rectifier Settings ====================
 
 /**
+ * Thinking summary injection mode.
+ * - off: forward the client's thinking parameter untouched
+ * - display_only: reveal summaries that are already being generated and billed (no extra cost)
+ * - force: additionally enable thinking on requests that did not ask for it
+ */
+export type ThinkingDisplayMode = "off" | "display_only" | "force";
+
+/**
  * Rectifier settings interface
  */
 export interface RectifierSettings {
   enabled: boolean;
   thinking_signature_enabled: boolean;
   thinking_budget_enabled: boolean;
+  thinking_display_mode: ThinkingDisplayMode;
   apikey_signature_enabled: boolean;
   apikey_signature_patterns: string[];
 }

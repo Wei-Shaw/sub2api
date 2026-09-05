@@ -1038,6 +1038,14 @@ export default {
         thinkingSignatureHint: 'Automatically strip signatures and retry when upstream returns thinking block signature validation errors',
         thinkingBudget: 'Thinking Budget Rectifier',
         thinkingBudgetHint: 'Automatically set budget to 32000 and retry when upstream returns budget_tokens constraint error (≥1024)',
+        thinkingDisplay: 'Thinking Summary Visibility',
+        thinkingDisplayHint:
+          'On Opus 4.8/4.7, Sonnet 5 and Fable 5 thinking summaries are hidden by default: the model still thinks and is still billed, but clients receive thinking blocks with empty text and users assume the upstream cannot think. Also rewrites the legacy thinking.type="enabled" / budget_tokens form, which these models reject outright.',
+        thinkingDisplayOff: 'Off — forward unchanged',
+        thinkingDisplayOnlyMode: 'Reveal summaries only (no extra cost)',
+        thinkingDisplayForce: 'Force thinking on every request',
+        thinkingDisplayForceWarning:
+          'Force also turns thinking on for requests that never asked for it: extra tokens, message-level prompt cache invalidation, and max_tokens is raised so thinking cannot truncate the answer.',
         apikeySignature: 'API Key Signature Rectifier',
         apikeySignatureHint:
           'Automatically strip signatures and retry when API Key accounts receive signature-related errors (built-in patterns always apply)',

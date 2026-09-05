@@ -120,6 +120,14 @@ func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *A
 				passthroughModel = mappedModel
 			}
 		}
+		// 直通路径在此提前 return，走不到下方的整流链，因此思考摘要归一化需在这里单独做一次，
+		// 否则直通账号的流量看不到思考摘要 —— 同一个用户会因调度到的账号不同而时有时无。
+		if mode := s.settingService.GetThinkingDisplayMode(ctx); mode != ThinkingDisplayModeOff {
+			if rewritten, applied := NormalizeAnthropicThinkingDisplay(passthroughBody, passthroughModel, mode, parsed.Stream); applied {
+				passthroughBody = rewritten
+				logger.LegacyPrintf("service.gateway", "Passthrough: normalized thinking display for %s (mode=%s, account: %s)", passthroughModel, mode, account.Name)
+			}
+		}
 		return s.forwardAnthropicAPIKeyPassthroughWithInput(ctx, c, account, anthropicPassthroughForwardInput{
 			Body:          passthroughBody,
 			Parsed:        parsed,
@@ -368,6 +376,19 @@ func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *A
 				return nil, err
 			}
 			logger.LegacyPrintf("service.gateway", "Account %d: rewrote thinking.type for %s (Anthropic-SDK default 'enabled' -> vendor-specific)", account.ID, reqModel)
+		}
+	}
+	// 思考摘要可见性归一化：Opus 4.8/4.7、Sonnet 5、Fable 5 上 thinking.display 默认为
+	// "omitted" —— 思考照常发生并计费，但返回的 thinking block 文本为空，客户端无从展示，
+	// 终端用户会误以为上游不支持思考。同时把这些模型上必定 400 的老写法
+	// （thinking.type="enabled" / budget_tokens）归一到 adaptive。
+	// reqModel 此时已是映射后的模型 ID —— 决定 display 行为的是真正执行请求的模型。
+	if mode := s.settingService.GetThinkingDisplayMode(ctx); mode != ThinkingDisplayModeOff {
+		if rewritten, applied := NormalizeAnthropicThinkingDisplay(body, reqModel, mode, reqStream); applied {
+			if err := replaceBody(rewritten); err != nil {
+				return nil, err
+			}
+			logger.LegacyPrintf("service.gateway", "Account %d: normalized thinking display for %s (mode=%s)", account.ID, reqModel, mode)
 		}
 	}
 

@@ -909,6 +909,31 @@ func (s *SettingService) IsBudgetRectifierEnabled(ctx context.Context) bool {
 	return settings.Enabled && settings.ThinkingBudgetEnabled
 }
 
+// GetThinkingDisplayMode 返回思考摘要注入模式（总开关关闭时视为 off）。
+// 空值/未知值归一到 display_only —— 该档只做零成本的摘要取消隐藏，是安全的保底。
+//
+// 本方法在网关热路径上被调用，因此必须对未装配 settingService/settingRepo 的
+// GatewayService 保持安全（GetRectifierSettings 会直接解引用 settingRepo）。
+// 读不到配置时返回 off：不确定该不该改写流量时，就不改写。
+func (s *SettingService) GetThinkingDisplayMode(ctx context.Context) string {
+	if s == nil || s.settingRepo == nil {
+		return ThinkingDisplayModeOff
+	}
+	settings, err := s.GetRectifierSettings(ctx)
+	if err != nil {
+		return ThinkingDisplayModeDisplayOnly // fail-safe: 保底不做有成本的注入
+	}
+	if !settings.Enabled {
+		return ThinkingDisplayModeOff
+	}
+	switch settings.ThinkingDisplayMode {
+	case ThinkingDisplayModeOff, ThinkingDisplayModeDisplayOnly, ThinkingDisplayModeForce:
+		return settings.ThinkingDisplayMode
+	default:
+		return ThinkingDisplayModeDisplayOnly
+	}
+}
+
 // GetBetaPolicySettings 获取 Beta 策略配置
 func (s *SettingService) GetBetaPolicySettings(ctx context.Context) (*BetaPolicySettings, error) {
 	value, err := s.settingRepo.GetValue(ctx, SettingKeyBetaPolicySettings)
