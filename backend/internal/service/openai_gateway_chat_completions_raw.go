@@ -157,6 +157,10 @@ func (s *OpenAIGatewayService) forwardAsRawChatCompletions(
 		if err != nil {
 			return nil, fmt.Errorf("normalize Grok chat reasoning effort: %w", err)
 		}
+		upstreamBody, err = sanitizeGrokChatCompletionsBody(upstreamBody)
+		if err != nil {
+			return nil, fmt.Errorf("sanitize Grok chat compatibility fields: %w", err)
+		}
 	}
 	upstreamBody = applyOllamaCloudRawChatCompletionsRequest(account, upstreamBody)
 

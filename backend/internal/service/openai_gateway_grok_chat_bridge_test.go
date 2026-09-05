@@ -20,6 +20,46 @@ import (
 	"github.com/tidwall/gjson"
 )
 
+func TestSanitizeGrokChatCompletionsBody(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name              string
+		body              string
+		wantTools         bool
+		wantToolChoice    bool
+		wantParallelTools bool
+		wantStop          bool
+	}{
+		{
+			name: "orphan tool choice and stop are removed",
+			body: `{"model":"grok-4.5","messages":[{"role":"user","content":"hi"}],"tool_choice":"auto","parallel_tool_calls":true,"stop":["END"]}`,
+		},
+		{
+			name:              "real tools keep tool controls but stop is removed",
+			body:              `{"model":"grok-4.5","messages":[{"role":"user","content":"hi"}],"tools":[{"type":"function","function":{"name":"lookup","parameters":{"type":"object"}}}],"tool_choice":"auto","parallel_tool_calls":true,"stop":"END"}`,
+			wantTools:         true,
+			wantToolChoice:    true,
+			wantParallelTools: true,
+		},
+		{
+			name: "empty tools are treated as tool free",
+			body: `{"model":"grok-4.5","messages":[{"role":"user","content":"hi"}],"tools":[],"tool_choice":"none"}`,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			patched, err := sanitizeGrokChatCompletionsBody([]byte(tt.body))
+			require.NoError(t, err)
+			require.Equal(t, tt.wantTools, gjson.GetBytes(patched, "tools").Exists())
+			require.Equal(t, tt.wantToolChoice, gjson.GetBytes(patched, "tool_choice").Exists())
+			require.Equal(t, tt.wantParallelTools, gjson.GetBytes(patched, "parallel_tool_calls").Exists())
+			require.Equal(t, tt.wantStop, gjson.GetBytes(patched, "stop").Exists())
+		})
+	}
+}
+
 func TestGrokChatResponsesBridgeEligibility(t *testing.T) {
 	t.Parallel()
 
