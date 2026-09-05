@@ -134,20 +134,6 @@ func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *A
 		return s.forwardBedrock(ctx, c, account, parsed, startTime)
 	}
 
-	// Beta policy: evaluate once; block check + cache filter set for buildUpstreamRequest.
-	// Always overwrite the cache to prevent stale values from a previous retry with a different account.
-	if account.Platform == PlatformAnthropic && c != nil {
-		policy := s.evaluateBetaPolicy(ctx, c.GetHeader("anthropic-beta"), account, parsed.Model)
-		if policy.blockErr != nil {
-			return nil, policy.blockErr
-		}
-		filterSet := policy.filterSet
-		if filterSet == nil {
-			filterSet = map[string]struct{}{}
-		}
-		c.Set(betaPolicyFilterSetKey, filterSet)
-	}
-
 	body := parsed.Body.Bytes()
 	replaceBody := func(next []byte) error {
 		if err := parsed.ReplaceBody(next); err != nil {
@@ -191,6 +177,34 @@ func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *A
 	// 通过检查 body 中的 billing attribution block 来识别被代理的真实 CC 流量。
 	if !isClaudeCode && parsed.MetadataUserID != "" {
 		isClaudeCode = systemHasBillingAttributionBlock(body)
+	}
+
+	// Claude Code uses a legacy Auto classifier request shape when it is pointed at
+	// a relay through ANTHROPIC_BASE_URL. Subscription OAuth rejects that shape with
+	// an opaque 429 even though the same classifier succeeds on the first-party path.
+	// Upgrade only a strictly verified Claude Code request whose forced model passes
+	// the current account and channel policies. OAuth and Setup Token accounts share
+	// the same upstream OAuth wire contract and therefore use the same compatibility path.
+	autoClassifierCompat := false
+	if c != nil {
+		c.Set(claudeAutoClassifierCompatKey, false)
+	}
+	if compatModel, ok := s.resolveClaudeAutoClassifierOAuthModel(ctx, account, parsed.GroupID, body); ok {
+		compatBody, compat, err := prepareClaudeAutoClassifierOAuthBody(body, compatModel)
+		if err != nil {
+			return nil, err
+		}
+		if compat {
+			if err := replaceBody(compatBody); err != nil {
+				return nil, err
+			}
+			autoClassifierCompat = true
+			if c != nil {
+				c.Set(claudeAutoClassifierCompatKey, true)
+			}
+			reqModel = compatModel
+			parsed.Model = reqModel
+		}
 	}
 
 	shouldMimicClaudeCode := account.IsOAuth() && !isClaudeCode
@@ -308,6 +322,23 @@ func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *A
 		reqModel = mappedModel
 		parsed.Model = mappedModel
 		logger.LegacyPrintf("service.gateway", "Model mapping applied: %s -> %s (account: %s, source=%s)", originalModel, mappedModel, account.Name, mappingSource)
+	}
+
+	// Evaluate beta policy only after all server-side model rewrites and account
+	// mappings. The cached filter set must therefore reflect the actual upstream
+	// model, not the client-requested model used during account selection.
+	if account.Platform == PlatformAnthropic && c != nil {
+		policy := s.evaluateBetaPolicy(ctx, c.GetHeader("anthropic-beta"), account, reqModel)
+		if policy.blockErr != nil {
+			return nil, policy.blockErr
+		}
+		filterSet := policy.filterSet
+		if filterSet == nil {
+			filterSet = map[string]struct{}{}
+		}
+		// Always overwrite the cache to prevent stale values from a previous retry
+		// that selected a different account or mapped model.
+		c.Set(betaPolicyFilterSetKey, filterSet)
 	}
 
 	if s.shouldInjectAnthropicCacheTTL1h(ctx, account) {
@@ -864,6 +895,10 @@ func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *A
 			// 流中断（缺失 terminal 事件、读错误、数据间隔超时等）时保留已观测到的
 			// usage 与错误一起返回，handler 在错误处理完成后照常提交 usage 记录。
 			if partial := partialStreamUsageResult(c, resp, streamResult, originalModel, mappedModel, startTime, err); partial != nil {
+				if autoClassifierCompat {
+					partial.Model = mappedModel
+					partial.BillingModelOverride = mappedModel
+				}
 				return partial, err
 			}
 			return nil, err
@@ -877,13 +912,20 @@ func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *A
 			return nil, err
 		}
 	}
+	resultModel := originalModel
+	billingModelOverride := ""
+	if autoClassifierCompat {
+		resultModel = mappedModel
+		billingModelOverride = mappedModel
+	}
 
 	return &ForwardResult{
 		RequestID:                     resp.Header.Get("x-request-id"),
 		UpstreamHeaders:               resp.Header,
 		Usage:                         *usage,
-		Model:                         originalModel, // 使用原始模型用于计费和日志
+		Model:                         resultModel,
 		UpstreamModel:                 mappedModel,
+		BillingModelOverride:          billingModelOverride,
 		UpstreamResponseModel:         observedUpstreamResponseModel(c),
 		UpstreamResponseModelConflict: observedUpstreamResponseModelConflict(c),
 		UpstreamResponseServiceTier:   observedUpstreamResponseServiceTier(c),
