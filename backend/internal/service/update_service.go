@@ -2,6 +2,7 @@ package service
 
 import (
 	"archive/tar"
+	"archive/zip"
 	"bufio"
 	"compress/gzip"
 	"context"
@@ -506,6 +507,11 @@ func (s *UpdateService) verifyChecksum(ctx context.Context, filePath, checksumUR
 }
 
 func (s *UpdateService) extractBinary(archivePath, destPath string) error {
+	// Handle zip archive (Windows release format from GoReleaser)
+	if strings.HasSuffix(archivePath, ".zip") {
+		return extractBinaryFromZip(archivePath, destPath)
+	}
+
 	f, err := os.Open(archivePath)
 	if err != nil {
 		return err
@@ -591,6 +597,69 @@ func (s *UpdateService) extractBinary(archivePath, destPath string) error {
 		return err
 	}
 	return out.Close()
+}
+
+// extractBinaryFromZip extracts the sub2api binary from a zip archive.
+// This is the release format used by GoReleaser for Windows builds.
+func extractBinaryFromZip(archivePath, destPath string) error {
+	rc, err := zip.OpenReader(archivePath)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = rc.Close() }()
+
+	for _, f := range rc.File {
+		baseName := filepath.Base(f.Name)
+
+		// Only extract the specific binary we need
+		if baseName != "sub2api" && baseName != "sub2api.exe" {
+			continue
+		}
+
+		// SECURITY: Prevent Zip Slip / Path Traversal attack
+		if strings.Contains(f.Name, "..") {
+			return fmt.Errorf("path traversal attempt detected: %s", f.Name)
+		}
+
+		// Validate the entry is a regular file
+		if f.FileInfo().IsDir() {
+			continue
+		}
+
+		// Additional security: limit file size (max 500MB)
+		const maxBinarySize = 500 * 1024 * 1024
+		if f.UncompressedSize64 > maxBinarySize {
+			return fmt.Errorf("binary too large: %d bytes (max %d)", f.UncompressedSize64, maxBinarySize)
+		}
+
+		inFile, err := f.Open()
+		if err != nil {
+			return err
+		}
+
+		out, err := os.Create(destPath)
+		if err != nil {
+			_ = inFile.Close()
+			return err
+		}
+
+		// Use LimitReader to prevent decompression bombs
+		limited := io.LimitReader(inFile, maxBinarySize)
+		_, copyErr := io.Copy(out, limited)
+
+		closeErr := out.Close()
+		_ = inFile.Close()
+
+		if copyErr != nil {
+			return copyErr
+		}
+		if closeErr != nil {
+			return closeErr
+		}
+		return nil
+	}
+
+	return fmt.Errorf("binary not found in zip archive")
 }
 
 func (s *UpdateService) getFromCache(ctx context.Context) (*UpdateInfo, error) {
