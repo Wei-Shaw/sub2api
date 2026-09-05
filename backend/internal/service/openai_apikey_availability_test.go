@@ -115,7 +115,8 @@ func TestOpenAIAPIKeyAvailability_RateLimitRetryAfter(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			svc, account := newAPIKeyAvailabilityTestService(true)
-			repo := svc.rateLimitService.accountRepo.(*availabilityAccountRepo)
+			repo, ok := svc.rateLimitService.accountRepo.(*availabilityAccountRepo)
+			require.True(t, ok)
 			body := []byte(`{"error":{"code":"rate_limit_exceeded","message":"Rate limited"}}`)
 			if tc.quota {
 				body = []byte(fmt.Sprintf(`{"error":{"type":"usage_limit_reached","resets_at":%d}}`, time.Now().Add(5*time.Minute).Unix()))
@@ -135,7 +136,8 @@ func TestOpenAIAPIKeyAvailability_RateLimitRetryAfter(t *testing.T) {
 		c, _ := gin.CreateTestContext(httptest.NewRecorder())
 		c.Request = httptest.NewRequest(http.MethodPost, "/", nil)
 		svc.handleOpenAIStreamTerminalAccountSideEffects(c, account, body, "Rate limited", http.Header{"Retry-After": {"90"}}, "gpt-test")
-		repo := svc.rateLimitService.accountRepo.(*availabilityAccountRepo)
+		repo, ok := svc.rateLimitService.accountRepo.(*availabilityAccountRepo)
+		require.True(t, ok)
 		if enabled {
 			require.Greater(t, time.Until(repo.rateLimitedUntil), 89*time.Second)
 		} else {

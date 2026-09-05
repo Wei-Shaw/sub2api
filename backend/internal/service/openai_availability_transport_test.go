@@ -206,7 +206,8 @@ func TestOpenAIAvailabilityFirstOutputTimeoutDoesNotPunishCancellation(t *testin
 		t.Run(cancellation, func(t *testing.T) {
 			svc, account := newAPIKeyAvailabilityTestService(true)
 			settings, counter := installAvailabilityTimeoutPolicy(t, svc, 1)
-			repo := svc.rateLimitService.accountRepo.(*availabilityAccountRepo)
+			repo, ok := svc.rateLimitService.accountRepo.(*availabilityAccountRepo)
+			require.True(t, ok)
 			c, _ := gin.CreateTestContext(httptest.NewRecorder())
 			c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", nil)
 			cancelled, cancel := context.WithCancel(context.Background())
@@ -217,7 +218,8 @@ func TestOpenAIAvailabilityFirstOutputTimeoutDoesNotPunishCancellation(t *testin
 			} else {
 				forwardCtx = cancelled
 			}
-			svc.newOpenAIFirstOutputTimeoutError(forwardCtx, c, account, opsUpstreamProxyID(account), opsUpstreamProxyName(account), time.Now(), "model", "", 30*time.Second, "semantic_output", nil)
+			err := svc.newOpenAIFirstOutputTimeoutError(forwardCtx, c, account, opsUpstreamProxyID(account), opsUpstreamProxyName(account), time.Now(), "model", "", 30*time.Second, "semantic_output", nil)
+			require.Error(t, err)
 			require.Zero(t, settings.calls.Load(), "cancelled caller must not invoke administrator timeout policy")
 			require.Zero(t, counter.increments.Load())
 			require.Zero(t, counter.resets.Load())
@@ -231,7 +233,8 @@ func TestOpenAIAvailabilityFirstOutputTimeoutDoesNotPunishCancellation(t *testin
 		settings, counter := installAvailabilityTimeoutPolicy(t, svc, 1)
 		c, _ := gin.CreateTestContext(httptest.NewRecorder())
 		c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", nil)
-		svc.newOpenAIFirstOutputTimeoutError(c.Request.Context(), c, account, opsUpstreamProxyID(account), opsUpstreamProxyName(account), time.Now(), "model", "", 30*time.Second, "semantic_output", nil)
+		err := svc.newOpenAIFirstOutputTimeoutError(c.Request.Context(), c, account, opsUpstreamProxyID(account), opsUpstreamProxyName(account), time.Now(), "model", "", 30*time.Second, "semantic_output", nil)
+		require.Error(t, err)
 		require.EqualValues(t, 1, settings.calls.Load())
 		require.EqualValues(t, 1, counter.increments.Load())
 		require.EqualValues(t, 1, counter.resets.Load())
@@ -244,7 +247,8 @@ func TestOpenAIAvailabilityFirstOutputTimeoutUsesActualCanonicalModel(t *testing
 	account.Credentials = map[string]any{"model_mapping": map[string]any{"A": "C", "B": "D"}}
 	c, _ := gin.CreateTestContext(httptest.NewRecorder())
 	c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", nil)
-	svc.newOpenAIFirstOutputTimeoutError(c.Request.Context(), c, account, opsUpstreamProxyID(account), opsUpstreamProxyName(account), time.Now(), "A", "", 30*time.Second, "semantic_output", nil, "B")
+	err := svc.newOpenAIFirstOutputTimeoutError(c.Request.Context(), c, account, opsUpstreamProxyID(account), opsUpstreamProxyName(account), time.Now(), "A", "", 30*time.Second, "semantic_output", nil, "B")
+	require.Error(t, err)
 	state := svc.getOpenAIAccountModelTransientState()
 	require.True(t, state.isBlocked(account.ID, "B", time.Now()))
 	for _, unaffected := range []string{"A", "C", "D"} {

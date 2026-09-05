@@ -81,7 +81,7 @@ func (u *availabilityHTTPUpstream) Do(req *http.Request, _ string, accountID int
 			contentType = "application/json"
 		}
 	}
-	var body io.ReadCloser = io.NopCloser(strings.NewReader(payload))
+	body := io.NopCloser(strings.NewReader(payload))
 	if accountID == 9910 && u.readErr != nil {
 		body = &availabilityErrorBody{reader: strings.NewReader(payload), err: u.readErr}
 	}
