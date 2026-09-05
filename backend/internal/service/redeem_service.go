@@ -25,8 +25,7 @@ var (
 )
 
 const (
-	redeemMaxErrorsPerHour  = 20
-	redeemRateLimitDuration = time.Hour
+	redeemMaxFailedAttempts = 30
 	redeemLockDuration      = 10 * time.Second // 锁超时时间，防止死锁
 )
 
@@ -337,7 +336,7 @@ func (s *RedeemService) checkRedeemRateLimit(ctx context.Context, userID int64) 
 		return nil
 	}
 
-	if count >= redeemMaxErrorsPerHour {
+	if count >= redeemMaxFailedAttempts {
 		return ErrRedeemRateLimited
 	}
 
