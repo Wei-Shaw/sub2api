@@ -696,7 +696,7 @@ export default {
         effectiveClientVersion: '生效版本',
         clientVersionPlaceholder: '例如 0.146.0',
         clientVersionInheritHint: '自动跟随部署当前的 Codex 客户端版本。',
-        clientVersionPinnedHint: '仅固定 Codex 版本号，例如 0.146.0；不修改 UA、App build 或模型。',
+        clientVersionPinnedHint: '只设置向上游声明的版本号，并更新 UA 中的版本；不会安装 Codex、更新桌面版或切换模型，也不会自动提取新版本指纹。',
         sessionPolicy: '会话策略',
         sessionPolicyDesc: '只控制上游应用身份；HTTP、WebSocket 与响应状态仍按 API Key 隔离。',
         conversationIsolated: '每个对话独立',

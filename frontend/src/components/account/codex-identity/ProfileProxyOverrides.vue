@@ -80,7 +80,7 @@
             />
             <p :id="`${idPrefix}-slot-${slotIndex}-client-version-hint`" class="text-xs text-gray-500 dark:text-dark-400">
               {{ slotClientVersionMode(slotIndex) === 'pinned'
-                ? copy('admin.accounts.codexIdentity.clientVersionPinnedHint', 'Use a version such as 0.146.0.')
+                ? copy('admin.accounts.codexIdentity.clientVersionPinnedHint', 'Sets the version declared upstream and updates the User-Agent version. It does not install Codex, update the Desktop app, change the model, or extract a new release fingerprint.')
                 : copy('admin.accounts.codexIdentity.clientVersionInheritHint', 'Follow the deployment Codex client version automatically.') }}
             </p>
           </div>

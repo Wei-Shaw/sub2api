@@ -62,6 +62,14 @@ describe('Codex identity locales', () => {
     }
   })
 
+  it('distinguishes the declared version from installing a client or extracting fingerprints', () => {
+    expect(zhMessages.clientVersionPinnedHint).toContain('更新 UA 中的版本')
+    expect(zhMessages.clientVersionPinnedHint).toContain('不会自动提取新版本指纹')
+    expect(enMessages.clientVersionPinnedHint).toContain('updates the User-Agent version')
+    expect(enMessages.clientVersionPinnedHint).toContain('does not install Codex')
+    expect(enMessages.clientVersionPinnedHint).toContain('or extract a new release fingerprint')
+  })
+
   it.each([
     ['en', enMessages],
     ['zh', zhMessages],

@@ -611,7 +611,7 @@ export default {
         effectiveClientVersion: 'Effective version',
         clientVersionPlaceholder: 'e.g. 0.146.0',
         clientVersionInheritHint: 'Follow the deployment Codex client version automatically.',
-        clientVersionPinnedHint: 'Pin only the Codex version, such as 0.146.0; UA, app build, and model remain managed by the server.',
+        clientVersionPinnedHint: 'Sets the version declared upstream and updates the User-Agent version. It does not install Codex, update the Desktop app, change the model, or extract a new release fingerprint.',
         sessionPolicy: 'Session policy',
         sessionPolicyDesc: 'Controls upstream application identity only. HTTP and WebSocket state remain isolated by API key.',
         conversationIsolated: 'Isolate every conversation',
