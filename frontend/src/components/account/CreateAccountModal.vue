@@ -2967,9 +2967,9 @@
         </p>
       </div>
 
-      <!-- OpenAI 自动透传开关（OAuth/API Key） -->
+      <!-- OpenAI / Grok 自动透传开关（OAuth/API Key） -->
       <div
-        v-if="form.platform === 'openai'"
+        v-if="form.platform === 'openai' || form.platform === 'grok'"
         class="border-t border-gray-200 pt-4 dark:border-dark-600"
       >
         <div class="flex items-center justify-between">
@@ -4471,7 +4471,7 @@ const openAIWSModeConcurrencyHintKey = computed(() =>
 )
 
 const isOpenAIModelRestrictionDisabled = computed(() =>
-  form.platform === 'openai' && openaiPassthroughEnabled.value
+  (form.platform === 'openai' || form.platform === 'grok') && openaiPassthroughEnabled.value
 )
 
 const mixedChannelWarningMessageText = computed(() => {
@@ -5222,6 +5222,19 @@ const handleClose = () => {
   emit('close')
 }
 
+const buildGrokExtra = (base?: Record<string, unknown>): Record<string, unknown> | undefined => {
+  if (form.platform !== 'grok') {
+    return base
+  }
+  const extra: Record<string, unknown> = { ...(base || {}) }
+  if (openaiPassthroughEnabled.value) {
+    extra.grok_passthrough = true
+  } else {
+    delete extra.grok_passthrough
+  }
+  return Object.keys(extra).length > 0 ? extra : undefined
+}
+
 const buildOpenAIExtra = (base?: Record<string, unknown>): Record<string, unknown> | undefined => {
   if (form.platform !== 'openai') {
     return base
@@ -5662,7 +5675,7 @@ const handleSubmit = async () => {
   }
 
   form.credentials = credentials
-  const extra = buildAnthropicExtra(buildOpenAIExtra())
+  const extra = buildGrokExtra(buildAnthropicExtra(buildOpenAIExtra()))
 
   await doCreateAccount({
     ...form,
@@ -5776,13 +5789,18 @@ const createAccountAndFinish = async (
     if (!credentials.base_url) {
       credentials.base_url = apiKeyBaseUrl.value.trim() || 'https://api.x.ai/v1'
     }
-    const modelMapping = buildModelMappingObject(modelRestrictionMode.value, allowedModels.value, modelMappings.value)
-    if (modelMapping) {
-      credentials.model_mapping = modelMapping
+    if (!isOpenAIModelRestrictionDisabled.value) {
+      const modelMapping = buildModelMappingObject(modelRestrictionMode.value, allowedModels.value, modelMappings.value)
+      if (modelMapping) {
+        credentials.model_mapping = modelMapping
+      } else {
+        delete credentials.model_mapping
+      }
     } else {
       delete credentials.model_mapping
     }
   }
+  finalExtra = buildGrokExtra(finalExtra)
   await doCreateAccount({
     name: form.name,
     notes: form.notes,
@@ -5839,12 +5857,14 @@ const handleGrokValidateRT = async (refreshTokenInput: string) => {
 
         const credentials = grokOAuth.buildCredentials(tokenInfo)
         applyGrokOAuthUpstreamConfig(credentials)
-        const extra = grokOAuth.buildExtraInfo(tokenInfo)
+        const extra = buildGrokExtra(grokOAuth.buildExtraInfo(tokenInfo) as Record<string, unknown> | undefined)
         const accountName = refreshTokens.length > 1 ? `${form.name || tokenInfo.email || 'Grok OAuth Account'} #${i + 1}` : (form.name || tokenInfo.email || 'Grok OAuth Account')
 
-        const modelMapping = buildModelMappingObject(modelRestrictionMode.value, allowedModels.value, modelMappings.value)
-        if (modelMapping) {
-          credentials.model_mapping = modelMapping
+        if (!isOpenAIModelRestrictionDisabled.value) {
+          const modelMapping = buildModelMappingObject(modelRestrictionMode.value, allowedModels.value, modelMappings.value)
+          if (modelMapping) {
+            credentials.model_mapping = modelMapping
+          }
         }
         if (!applyTempUnschedConfig(credentials)) {
           return

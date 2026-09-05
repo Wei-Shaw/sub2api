@@ -29,6 +29,11 @@ const (
 
 	// CLIClientMode is used by billing / quota probes on the CLI surface.
 	CLIClientMode = "cli"
+
+	// CLIAuthenticateResponse is required by cli-chat-proxy auth middleware.
+	CLIAuthenticateResponse = "authenticate-response"
+
+	officialShellUserAgentPrefix = "grok-shell/"
 )
 
 // ResolveCLIVersion returns a supported CLI client version.
@@ -60,6 +65,60 @@ func CLIUserAgent(version string) string {
 		version = CLIClientVersion
 	}
 	return "xai-grok-workspace/" + version
+}
+
+// OfficialShellUserAgentVersion returns the grok-shell/ version from a User-Agent.
+func OfficialShellUserAgentVersion(userAgent string) string {
+	ua := strings.TrimSpace(userAgent)
+	if !strings.HasPrefix(strings.ToLower(ua), officialShellUserAgentPrefix) {
+		return ""
+	}
+	rest := ua[len(officialShellUserAgentPrefix):]
+	if i := strings.IndexAny(rest, " \t"); i >= 0 {
+		rest = rest[:i]
+	}
+	return strings.TrimSpace(rest)
+}
+
+// HasSupportedOfficialIdentity reports whether headers already identify a
+// supported official grok-shell / grok CLI client.
+func HasSupportedOfficialIdentity(h http.Header) bool {
+	if h == nil {
+		return false
+	}
+	version := strings.TrimSpace(firstHeaderValue(h, "x-grok-client-version"))
+	if version == "" {
+		version = OfficialShellUserAgentVersion(h.Get("User-Agent"))
+	}
+	if !IsSupportedCLIVersion(version) {
+		return false
+	}
+	identifier := strings.TrimSpace(firstHeaderValue(h, "x-grok-client-identifier"))
+	ua := strings.ToLower(strings.TrimSpace(h.Get("User-Agent")))
+	return identifier == CLIClientIdentifier || strings.HasPrefix(ua, officialShellUserAgentPrefix)
+}
+
+// EnsureCLIProxyAuthHeaders fills cli-chat-proxy auth headers when missing.
+func EnsureCLIProxyAuthHeaders(h http.Header) {
+	if h == nil {
+		return
+	}
+	if strings.TrimSpace(h.Get("X-XAI-Token-Auth")) == "" {
+		h.Set("X-XAI-Token-Auth", CLITokenAuth)
+	}
+	if strings.TrimSpace(firstHeaderValue(h, "x-authenticateresponse")) == "" {
+		h.Set("x-authenticateresponse", CLIAuthenticateResponse)
+	}
+}
+
+func firstHeaderValue(h http.Header, key string) string {
+	if h == nil {
+		return ""
+	}
+	if v := strings.TrimSpace(h.Get(key)); v != "" {
+		return v
+	}
+	return strings.TrimSpace(h.Get(http.CanonicalHeaderKey(key)))
 }
 
 // ApplyCLIProxyHeaders stamps the fixed Grok CLI identity when the request

@@ -1136,6 +1136,12 @@ func (h *GatewayHandler) Models(c *gin.Context) {
 		return
 	}
 
+	if platform == service.PlatformGrok {
+		if wrote := writeGrokPassthroughModelsIfEnabled(c, h.gatewayService, groupID, apiKey); wrote {
+			return
+		}
+	}
+
 	// Get available models from account configurations for the selected group platform.
 	availableModels := h.gatewayService.GetAvailableModels(c.Request.Context(), groupID, platform)
 	if apiKey != nil && apiKey.Group != nil && apiKey.Group.CustomModelsListEnabled() {
@@ -1361,6 +1367,42 @@ func writeGrokModelsList(c *gin.Context, modelIDs []string) {
 		"object": "list",
 		"data":   models,
 	})
+}
+
+func writeGrokPassthroughModelsIfEnabled(c *gin.Context, gatewayService *service.GatewayService, groupID *int64, apiKey *service.APIKey) bool {
+	if gatewayService == nil {
+		return false
+	}
+	resolution := gatewayService.ResolveGrokPassthroughModels(c.Request.Context(), groupID)
+	if !resolution.Enabled {
+		return false
+	}
+
+	raw := resolution.RawData
+	fallbackIDs := resolution.FallbackIDs
+	if apiKey != nil && apiKey.Group != nil && apiKey.Group.CustomModelsListEnabled() {
+		selected := apiKey.Group.ModelsListConfig.Models
+		if len(raw) > 0 {
+			raw = service.FilterGrokPassthroughCatalog(raw, selected)
+		}
+		if len(fallbackIDs) > 0 {
+			fallbackIDs = filterModelsByCustomList(fallbackIDs, xai.DefaultModelIDs(), selected)
+		} else if len(raw) == 0 {
+			fallbackIDs = filterModelsByCustomList(xai.DefaultModelIDs(), xai.DefaultModelIDs(), selected)
+		}
+	}
+	if len(raw) > 0 {
+		c.JSON(http.StatusOK, gin.H{
+			"object": "list",
+			"data":   raw,
+		})
+		return true
+	}
+	if len(fallbackIDs) == 0 {
+		fallbackIDs = xai.DefaultModelIDs()
+	}
+	writeGrokModelsList(c, fallbackIDs)
+	return true
 }
 
 func grokModelSupportsConfigurableReasoning(modelID string) bool {

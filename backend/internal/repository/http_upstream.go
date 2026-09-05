@@ -467,10 +467,15 @@ func applyGrokCLIProxyHeaders(req *http.Request) {
 	if !isSupportedGrokCLIVersion(version) {
 		version = grokCLIStableVersion
 	}
+	if xai.HasSupportedOfficialIdentity(req.Header) {
+		xai.EnsureCLIProxyAuthHeaders(req.Header)
+		return
+	}
 	req.Header.Set("X-XAI-Token-Auth", xai.CLITokenAuth)
 	req.Header.Set("x-grok-client-version", version)
 	req.Header.Set("x-grok-client-identifier", xai.CLIClientIdentifier)
 	req.Header.Set("User-Agent", xai.CLIUserAgent(version))
+	xai.EnsureCLIProxyAuthHeaders(req.Header)
 }
 
 func isSupportedGrokCLIVersion(version string) bool {
