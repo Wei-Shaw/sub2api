@@ -953,6 +953,10 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 		} else {
 			h.gatewayService.ReportOpenAIAccountScheduleResult(account, openAIAccountScheduleModel(c, account, forwardModel, requireCompact, result), openAIForwardSucceededForScheduling(result), nil)
 		}
+		// 首 Token 慢响应自动冷却：仅影响后续请求的调度
+		if result != nil {
+			h.gatewayService.MaybeCooldownSlowFirstToken(c.Request.Context(), account.ID, result.FirstTokenMs)
+		}
 
 		// 使用量记录通过有界 worker 池提交，避免请求热路径创建无界 goroutine。
 		submitResponsesUsage(result)
@@ -1493,6 +1497,10 @@ func (h *OpenAIGatewayHandler) Messages(c *gin.Context) {
 			h.gatewayService.ReportOpenAIAccountScheduleResult(account, openAIAccountScheduleModel(c, account, currentRoutingModel, false, result), true, result.FirstTokenMs)
 		} else {
 			h.gatewayService.ReportOpenAIAccountScheduleResult(account, openAIAccountScheduleModel(c, account, currentRoutingModel, false, result), true, nil)
+		}
+		// 首 Token 慢响应自动冷却：仅影响后续请求的调度
+		if result != nil {
+			h.gatewayService.MaybeCooldownSlowFirstToken(c.Request.Context(), account.ID, result.FirstTokenMs)
 		}
 
 		submitMessagesUsage(result)
