@@ -20,7 +20,7 @@ func (r *accountRepository) RefreshCodexConversationBinding(ctx context.Context,
 		return err
 	}
 	if n != 1 {
-		return fmt.Errorf("Codex conversation binding is no longer available")
+		return fmt.Errorf("codex conversation binding is no longer available")
 	}
 	return nil
 }
@@ -102,7 +102,7 @@ func (r *accountRepository) BindCodexConversationSlot(ctx context.Context, accou
 		return nil, err
 	}
 	if slot == nil {
-		return nil, fmt.Errorf("Codex conversation binding disappeared")
+		return nil, fmt.Errorf("codex conversation binding disappeared")
 	}
 	if tx != nil {
 		if err := tx.Commit(); err != nil {

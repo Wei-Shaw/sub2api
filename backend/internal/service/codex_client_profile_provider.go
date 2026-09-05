@@ -58,10 +58,10 @@ func (BuiltinCodexClientProfileProvider) LookupCodexClientProfile(request CodexC
 
 func validateCodexClientProfileRecord(request CodexClientProfileRequest, record CodexClientProfileRecord) error {
 	if request != record.Request {
-		return fmt.Errorf("Codex client profile does not match the requested version or device family")
+		return fmt.Errorf("codex client profile does not match the requested version or device family")
 	}
 	if strings.TrimSpace(record.Source) == "" {
-		return fmt.Errorf("Codex client profile source is required")
+		return fmt.Errorf("codex client profile source is required")
 	}
 	switch record.Verification {
 	case CodexClientProfileUnverified:
