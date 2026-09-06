@@ -777,6 +777,23 @@ export default {
 
     // Groups
     groups: {
+      bulkEdit: {
+        title: 'Bulk Edit',
+        selectedCount: '{count} groups selected',
+        selectGroup: 'Select group {name}',
+        clearSelection: 'Clear selection',
+        hint: 'Check the fields to update. Unchecked fields keep their current values.',
+        descriptionHint: 'Leave empty to clear the description on the selected groups.',
+        subscriptionOnly: 'Subscription limits can only be edited when all selected groups are subscription groups.',
+        limitHint: '0 blocks usage. Select Unlimited to remove this limit.',
+        invalidRate: 'The rate multiplier must be a valid number greater than 0.',
+        invalidRPM: 'RPM must be an integer greater than or equal to 0.',
+        invalidLimit: 'Enter a valid limit greater than or equal to 0, or select Unlimited.',
+        apply: 'Apply to {count} groups',
+        success: 'Updated {count} groups',
+        partialFailure: 'Updated {success} groups; {failed} failed',
+        failureHint: 'These groups could not be updated. Adjust the settings and retry. Only failed groups will be retried.'
+      },
       title: 'Group Management',
       description: 'Manage API key groups and rate multipliers',
       searchGroups: 'Search groups...',

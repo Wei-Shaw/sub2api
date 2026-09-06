@@ -148,8 +148,9 @@ const TablePageLayoutStub = {
 }
 
 const DataTableStub = {
-  props: ['columns', 'data'],
-  emits: ['sort'],
+  name: 'DataTable',
+  props: { columns: Array, data: Array, selectedKeys: Array, selectable: Boolean },
+  emits: ['sort', 'update:selectedKeys'],
   template: `
     <div>
       <div data-test="columns">{{ columns.map((col) => col.key).join(',') }}</div>
@@ -162,6 +163,7 @@ const DataTableStub = {
 }
 
 const SelectStub = {
+  name: 'Select',
   props: ['modelValue', 'options', 'placeholder'],
   emits: ['update:modelValue', 'change'],
   template: `
@@ -203,6 +205,7 @@ const mountView = async () => {
         GroupCapacityBadge: true,
         GroupRateMultipliersModal: true,
         GroupRPMOverridesModal: true,
+        BulkEditGroupModal: true,
         VueDraggable: { template: '<div><slot /></div>' },
       },
     },
@@ -279,6 +282,67 @@ describe('admin GroupsView column settings', () => {
     ])
     expect(localStorage.getItem('group-hidden-columns')).toBe(JSON.stringify(['id']))
     expect(localStorage.getItem('group-column-settings-version')).toBe('2')
+  })
+
+  it('opens bulk editing with only the selected visible groups', async () => {
+    const wrapper = await mountView()
+    const table = wrapper.findComponent({ name: 'DataTable' })
+    expect(table.props('selectable')).toBe(true)
+    table.vm.$emit('update:selectedKeys', [1, 99])
+    await flushPromises()
+    await wrapper.get('[data-test="bulk-edit-groups"]').trigger('click')
+    const modal = wrapper.findComponent({ name: 'BulkEditGroupModal' })
+    expect(modal.props('show')).toBe(true)
+    expect(modal.props('selectedGroups').map((group: AdminGroup) => group.id)).toEqual([1])
+    wrapper.unmount()
+  })
+
+  it.each(['filter', 'page', 'page size', 'sort', 'search'])('clears the selection on %s changes', async (change) => {
+    const wrapper = await mountView()
+    const table = wrapper.findComponent({ name: 'DataTable' })
+    table.vm.$emit('update:selectedKeys', [1])
+    await flushPromises()
+    if (change === 'filter') {
+      wrapper.findComponent({ name: 'Select' }).vm.$emit('change')
+    } else if (change === 'page') {
+      wrapper.findComponent({ name: 'Pagination' }).vm.$emit('update:page', 2)
+    } else if (change === 'page size') {
+      wrapper.findComponent({ name: 'Pagination' }).vm.$emit('update:pageSize', 50)
+    } else if (change === 'sort') {
+      table.vm.$emit('sort', 'name', 'asc')
+    } else {
+      await wrapper.get('input[type="text"]').setValue('different group')
+    }
+    await flushPromises()
+    expect(table.props('selectedKeys')).toEqual([])
+    expect(wrapper.find('[data-test="bulk-edit-groups"]').exists()).toBe(false)
+    wrapper.unmount()
+  })
+
+  it('deselects successful groups and refreshes while retaining failed groups', async () => {
+    listGroups.mockResolvedValue({ items: [createGroup(), createGroup({ id: 2, name: 'Second' })], total: 2, pages: 1 })
+    const wrapper = await mountView()
+    const table = wrapper.findComponent({ name: 'DataTable' })
+    table.vm.$emit('update:selectedKeys', [1, 2])
+    await flushPromises()
+    await wrapper.get('[data-test="bulk-edit-groups"]').trigger('click')
+    wrapper.findComponent({ name: 'BulkEditGroupModal' }).vm.$emit('updated', [1])
+    await flushPromises()
+    expect(listGroups).toHaveBeenCalledTimes(2)
+    expect(table.props('selectedKeys')).toEqual([2])
+    wrapper.unmount()
+  })
+
+  it('drops groups that disappear from the page after a refresh', async () => {
+    const wrapper = await mountView()
+    const table = wrapper.findComponent({ name: 'DataTable' })
+    table.vm.$emit('update:selectedKeys', [1])
+    await flushPromises()
+    listGroups.mockResolvedValue({ items: [], total: 0, pages: 0 })
+    await wrapper.get('button[title="common.refresh"]').trigger('click')
+    await flushPromises()
+    expect(table.props('selectedKeys')).toEqual([])
+    wrapper.unmount()
   })
 
   it('applies saved hidden columns on mount and ignores unknown keys', async () => {

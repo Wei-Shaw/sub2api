@@ -3,6 +3,9 @@
 FRONTEND_CRITICAL_VITEST := \
 	src/api/__tests__/client.spec.ts \
 	src/api/__tests__/tokenRefresh.spec.ts \
+	src/api/__tests__/admin.groups.bulkUpdate.spec.ts \
+	src/components/admin/group/__tests__/BulkEditGroupModal.spec.ts \
+	src/views/admin/__tests__/GroupsView.columnSettings.spec.ts \
 	src/api/__tests__/channelMonitorV2.spec.ts \
 	src/views/auth/__tests__/LinuxDoCallbackView.spec.ts \
 	src/views/auth/__tests__/WechatCallbackView.spec.ts \
