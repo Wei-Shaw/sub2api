@@ -102,6 +102,7 @@ type RelayTraceEvent struct {
 type relayState struct {
 	usage                   Usage
 	turnUsage               Usage
+	turnWroteDownstream     atomic.Bool
 	requestModelMu          sync.RWMutex
 	requestModel            string
 	pendingTurnStart        atomic.Pointer[time.Time]
@@ -204,7 +205,8 @@ func Relay(
 		return upstreamConn.WriteFrame(writeCtx, msgType, payload)
 	}
 	writeClientFrameUpstream := func(msgType coderws.MessageType, payload []byte) error {
-		if isClientResponseCreateFrame(msgType, payload) {
+		isResponseCreate := isClientResponseCreateFrame(msgType, payload)
+		if isResponseCreate {
 			state.setRequestModel(strings.TrimSpace(gjson.GetBytes(payload, "model").String()))
 			turnStartedAt := time.Time{}
 			if options.TakeNextTurnStartedAt != nil {
@@ -214,8 +216,18 @@ func Relay(
 				turnStartedAt = nowFn()
 			}
 			state.setPendingTurnStartedAt(turnStartedAt)
+			// The policy-enforcing client connection has accepted this turn.
+			// Reset before the write so an immediate upstream response cannot race
+			// with the transport returning from WriteFrame.
+			state.turnWroteDownstream.Store(false)
 		}
-		return writeUpstream(msgType, payload)
+		err := writeUpstream(msgType, payload)
+		if err != nil && isResponseCreate {
+			// The relay exits on this error, but retain the previous turn's state
+			// for accurate diagnostics while the two relay goroutines settle.
+			state.turnWroteDownstream.Store(true)
+		}
+		return err
 	}
 	writeClient := func(msgType coderws.MessageType, payload []byte) error {
 		// 下行写超时故意不挂在 relayCtx 上：coder/websocket 在已武装的 write
@@ -559,7 +571,11 @@ func runUpstreamToClient(
 		}
 		markActivity()
 		if beforeWriteClient != nil {
-			if err := beforeWriteClient(msgType, payload, wroteDownstream); err != nil {
+			wroteDownstreamInTurn := wroteDownstream
+			if state != nil {
+				wroteDownstreamInTurn = state.turnWroteDownstream.Load()
+			}
+			if err := beforeWriteClient(msgType, payload, wroteDownstreamInTurn); err != nil {
 				emitRelayTrace(onTrace, RelayTraceEvent{
 					Stage:           "upstream_message_rejected",
 					Direction:       "upstream_to_client",
@@ -630,6 +646,9 @@ func runUpstreamToClient(
 			return
 		}
 		wroteDownstream = true
+		if state != nil {
+			state.turnWroteDownstream.Store(true)
+		}
 		if afterWriteClient != nil {
 			afterWriteClient(msgType, payload)
 		}

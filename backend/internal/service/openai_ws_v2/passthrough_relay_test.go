@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"io"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -900,6 +901,63 @@ func TestRelay_OnTurnComplete_UsesSubsequentResponseCreateTimeAcrossPricingBound
 	case <-done:
 	case <-time.After(time.Second):
 		t.Fatal("relay did not stop after cancellation")
+	}
+}
+
+func TestRelay_BeforeWriteClientTracksDownstreamPerTurn(t *testing.T) {
+	t.Parallel()
+
+	clientConn := newPassthroughTestFrameConn(nil, false)
+	upstreamConn := newPassthroughTestFrameConn(nil, false)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	wroteStates := make(chan bool, 3)
+	done := make(chan *RelayExit, 1)
+	stopErr := errors.New("stop after second-turn error")
+	go func() {
+		_, relayExit := Relay(
+			ctx,
+			clientConn,
+			upstreamConn,
+			[]byte(`{"type":"response.create","model":"gpt-5.3-codex","input":[]}`),
+			RelayOptions{BeforeWriteClient: func(_ coderws.MessageType, payload []byte, wroteDownstream bool) error {
+				wroteStates <- wroteDownstream
+				if strings.Contains(string(payload), `"type":"error"`) {
+					return stopErr
+				}
+				return nil
+			}},
+		)
+		done <- relayExit
+	}()
+
+	require.Eventually(t, func() bool { return len(upstreamConn.Writes()) == 1 }, time.Second, time.Millisecond)
+	upstreamConn.readCh <- passthroughTestFrame{
+		msgType: coderws.MessageText,
+		payload: []byte(`{"type":"response.completed","response":{"id":"resp_first","usage":{"input_tokens":1,"output_tokens":1}}}`),
+	}
+	require.False(t, <-wroteStates)
+	require.Eventually(t, func() bool { return len(clientConn.Writes()) == 1 }, time.Second, time.Millisecond)
+
+	clientConn.readCh <- passthroughTestFrame{
+		msgType: coderws.MessageText,
+		payload: []byte(`{"type":"response.create","model":"gpt-5.3-codex","input":[]}`),
+	}
+	require.Eventually(t, func() bool { return len(upstreamConn.Writes()) == 2 }, time.Second, time.Millisecond)
+	upstreamConn.readCh <- passthroughTestFrame{
+		msgType: coderws.MessageText,
+		payload: []byte(`{"type":"error","error":{"type":"usage_limit_reached"}}`),
+	}
+	require.False(t, <-wroteStates, "the next turn must not inherit the first turn's downstream write")
+
+	select {
+	case relayExit := <-done:
+		require.NotNil(t, relayExit)
+		require.ErrorIs(t, relayExit.Err, stopErr)
+		require.True(t, relayExit.WroteDownstream, "connection-wide diagnostics must retain prior output")
+	case <-time.After(time.Second):
+		t.Fatal("relay did not stop after the rejected second-turn event")
 	}
 }
 
