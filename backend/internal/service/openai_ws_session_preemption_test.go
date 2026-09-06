@@ -224,6 +224,59 @@ func TestOpenAIWSSessionPreemptRemoteClaimAndStaleReleaseAreAtomic(t *testing.T)
 	require.Equal(t, "owner-b", current, "stale cleanup must preserve the replacement owner")
 }
 
+func TestOpenAIWSHTTPBridgeSessionPreemptionEligibility(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	tests := []struct {
+		name          string
+		routerEnabled bool
+		defaultMode   string
+		accountMode   string
+		wantArmed     bool
+	}{
+		{name: "explicit HTTP bridge", routerEnabled: true, defaultMode: OpenAIWSIngressModeCtxPool, accountMode: OpenAIWSIngressModeHTTPBridge},
+		{name: "default HTTP bridge", routerEnabled: true, defaultMode: OpenAIWSIngressModeHTTPBridge},
+		{name: "ctx pool overrides bridge default", routerEnabled: true, defaultMode: OpenAIWSIngressModeHTTPBridge, accountMode: OpenAIWSIngressModeCtxPool, wantArmed: true},
+		{name: "disabled router retains legacy preemption", defaultMode: OpenAIWSIngressModeHTTPBridge, accountMode: OpenAIWSIngressModeHTTPBridge, wantArmed: true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := &config.Config{}
+			cfg.Gateway.OpenAIWS.ModeRouterV2Enabled = tt.routerEnabled
+			cfg.Gateway.OpenAIWS.IngressModeDefault = tt.defaultMode
+			cache := &openAIWSSessionPreemptCacheStub{}
+			svc := &OpenAIGatewayService{cfg: cfg, cache: cache}
+			groupID := int64(7)
+			newContext := func() *gin.Context {
+				c, _ := gin.CreateTestContext(httptest.NewRecorder())
+				c.Request = httptest.NewRequest(http.MethodGet, "/v1/responses", nil)
+				c.Request.Header.Set("session-id", "shared-session")
+				c.Set("api_key", &APIKey{ID: 11, GroupID: &groupID})
+				return c
+			}
+			account := &Account{ID: 1, Platform: PlatformOpenAI, Type: AccountTypeOAuth,
+				Extra: map[string]any{"openai_oauth_responses_websockets_v2_mode": tt.accountMode}}
+			firstMessage := []byte(`{"type":"response.create","prompt_cache_key":"cache-a","input":"first request"}`)
+			secondMessage := []byte(`{"type":"response.create","prompt_cache_key":"cache-b","input":"second request"}`)
+			first, cleanupFirst, firstArmed := svc.BeginOpenAIWSIngressSessionPreemption(context.Background(), newContext(), account, firstMessage)
+			defer cleanupFirst()
+			second, cleanupSecond, secondArmed := svc.BeginOpenAIWSIngressSessionPreemption(context.Background(), newContext(), account, secondMessage)
+			defer cleanupSecond()
+			require.Equal(t, tt.wantArmed, firstArmed)
+			require.Equal(t, tt.wantArmed, secondArmed)
+			require.NoError(t, second.Err())
+			if tt.wantArmed {
+				require.True(t, IsOpenAIWSSessionPreemptedError(context.Cause(first)))
+			} else {
+				require.NoError(t, first.Err(), "independent HTTP bridges must not cancel each other")
+				cache.mu.Lock()
+				ownerCount := len(cache.owners)
+				cache.mu.Unlock()
+				require.Zero(t, ownerCount, "HTTP bridges must not claim a distributed preemption owner")
+			}
+		})
+	}
+}
+
 func TestNewOpenAIWSSessionPreemptKeyRequiresFullIsolationScope(t *testing.T) {
 	_, ok := newOpenAIWSSessionPreemptKey(0, 11, "sess")
 	require.False(t, ok)
