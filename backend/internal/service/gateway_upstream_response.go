@@ -285,6 +285,12 @@ func ExtractUpstreamErrorMessage(body []byte) string {
 	return extractUpstreamErrorMessage(body)
 }
 
+// SanitizeUpstreamErrorMessage redacts sensitive query parameter values before
+// an upstream error message is recorded or returned to a client.
+func SanitizeUpstreamErrorMessage(message string) string {
+	return sanitizeUpstreamErrorMessage(message)
+}
+
 func extractUpstreamErrorMessage(body []byte) string {
 	// Claude 风格：{"type":"error","error":{"type":"...","message":"..."}}
 	if m := gjson.GetBytes(body, "error.message").String(); strings.TrimSpace(m) != "" {
