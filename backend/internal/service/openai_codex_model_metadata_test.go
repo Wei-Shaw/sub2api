@@ -30,7 +30,7 @@ func TestAstraCodexToolCapabilitiesUseAccountScopeAndSharedDeclarations(t *testi
 		{"implemented chat bridge", []Account{bridge}, true},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
-			body, err := buildCodexModelsManifestForAccounts(PlatformOpenAI, []string{"public-astra"}, tt.accounts, nil, true)
+			body, err := buildCodexModelsManifestForAccounts(PlatformOpenAI, []string{"public-astra"}, tt.accounts, nil, nil, true)
 			require.NoError(t, err)
 			model := decodeCodexManifestModels(t, body)[0]
 			require.Equal(t, "public-astra", model["slug"])
@@ -48,7 +48,7 @@ func TestAstraCodexToolCapabilitiesUseAccountScopeAndSharedDeclarations(t *testi
 			"comp_hash": json.RawMessage(`"3000"`), "tool_mode": json.RawMessage("null"), "use_responses_lite": json.RawMessage("false"),
 		}},
 	}})
-	body, err := buildCodexModelsManifestForAccounts(PlatformOpenAI, []string{"public-astra"}, []Account{official, custom}, nil, true)
+	body, err := buildCodexModelsManifestForAccounts(PlatformOpenAI, []string{"public-astra"}, []Account{official, custom}, nil, nil, true)
 	require.NoError(t, err)
 	model := decodeCodexManifestModels(t, body)[0]
 	require.Equal(t, true, model["supports_search_tool"])
@@ -200,7 +200,7 @@ func TestBuildCodexModelsManifestForGroupAdvertisesSearchOnlyForChatBridgeRoutes
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			body, err := buildCodexModelsManifestForAccounts(
-				PlatformOpenAI, []string{"company-coding-model"}, tc.accounts, nil, true,
+				PlatformOpenAI, []string{"company-coding-model"}, tc.accounts, nil, nil, true,
 			)
 			require.NoError(t, err)
 			models := decodeCodexManifestModels(t, body)
@@ -585,12 +585,107 @@ func TestAstraCodexToolCapabilitiesKeepAPIKeyResponsesLiteGuard(t *testing.T) {
 	account.SetUpstreamModelMetadataSnapshot(UpstreamModelMetadataSnapshot{Models: map[string]UpstreamModelMetadata{
 		"gpt-6-astra": {CodexToolCapabilities: map[string]json.RawMessage{"use_responses_lite": json.RawMessage("true")}},
 	}})
-	body, err := buildCodexModelsManifestForAccounts(PlatformOpenAI, []string{"my-astra"}, []Account{account}, nil, true)
+	body, err := buildCodexModelsManifestForAccounts(PlatformOpenAI, []string{"my-astra"}, []Account{account}, nil, nil, true)
 	require.NoError(t, err)
 	require.Equal(t, false, decodeCodexManifestModels(t, body)[0]["use_responses_lite"])
 	body, err = adjustAPIKeyCodexModelsManifest([]byte(`{"models":[{"slug":"my-astra","use_responses_lite":true}]}`), &account)
 	require.NoError(t, err)
 	require.Equal(t, false, decodeCodexManifestModels(t, body)[0]["use_responses_lite"])
+}
+
+// Scenario: an OpenAI group keeps a failover account whose mapping points the
+// shared public alias at a different upstream model. Without an explicit routing
+// rule the alias target is ambiguous and capabilities must fail closed; with one,
+// the operator has declared who serves the alias, so the reasoning slider and
+// image input must survive.
+func TestCodexAliasFailoverMappingHonorsModelRouting(t *testing.T) {
+	newAccount := func(id int64, target string, priority int) Account {
+		return Account{
+			ID:       id,
+			Platform: PlatformOpenAI,
+			Type:     AccountTypeAPIKey,
+			Priority: priority,
+			Credentials: map[string]any{
+				"base_url":      "https://relay.example/v1",
+				"model_mapping": map[string]any{"gpt-6-astra": target},
+			},
+		}
+	}
+	// Account 16-alike serves the alias natively; account 1-alike is the failover
+	// and can only reach a different upstream model.
+	primary := newAccount(16, "gpt-6-astra", 0)
+	failover := newAccount(1, "gpt-5.6-sol", 10)
+	accounts := []Account{primary, failover}
+
+	// supported_reasoning_levels entries are {effort, description} objects; the
+	// slider only cares about the effort names.
+	manifestFieldsOf := func(t *testing.T, group *Group) ([]string, any, any) {
+		t.Helper()
+		body, err := buildCodexModelsManifestForAccounts(
+			PlatformOpenAI, []string{"gpt-6-astra"}, accounts, group, nil, true,
+		)
+		require.NoError(t, err)
+		models := decodeCodexManifestModels(t, body)
+		require.Len(t, models, 1)
+		model := models[0]
+		require.Equal(t, "gpt-6-astra", model["slug"])
+		var efforts []string
+		levels, _ := model["supported_reasoning_levels"].([]any)
+		for _, level := range levels {
+			entry, ok := level.(map[string]any)
+			require.True(t, ok, "reasoning level entry must be an object")
+			effort, ok := entry["effort"].(string)
+			require.True(t, ok, "reasoning level entry must carry an effort name")
+			efforts = append(efforts, effort)
+		}
+		return efforts, model["default_reasoning_level"], model["input_modalities"]
+	}
+
+	t.Run("no routing rule still fails closed", func(t *testing.T) {
+		levels, def, modalities := manifestFieldsOf(t, nil)
+		require.Empty(t, levels, "ambiguous alias target must not advertise reasoning levels")
+		require.Nil(t, def)
+		require.Equal(t, []any{"text"}, modalities)
+	})
+
+	t.Run("routing rule resolves the alias", func(t *testing.T) {
+		group := &Group{
+			ID:                  2,
+			Platform:            PlatformOpenAI,
+			ModelRoutingEnabled: true,
+			ModelRouting:        map[string][]int64{"gpt-6-astra": {16, 1}},
+		}
+		levels, def, modalities := manifestFieldsOf(t, group)
+		require.Equal(t,
+			[]string{"low", "medium", "high", "xhigh", "max"},
+			levels,
+			"routed alias must keep a movable reasoning slider",
+		)
+		require.Equal(t, "medium", def)
+		require.Contains(t, modalities, "image")
+	})
+
+	t.Run("routing disabled falls back to failing closed", func(t *testing.T) {
+		group := &Group{
+			ID:                  2,
+			Platform:            PlatformOpenAI,
+			ModelRoutingEnabled: false,
+			ModelRouting:        map[string][]int64{"gpt-6-astra": {16, 1}},
+		}
+		levels, _, _ := manifestFieldsOf(t, group)
+		require.Empty(t, levels, "a disabled routing rule must not resolve the alias")
+	})
+
+	t.Run("routing rule for another alias does not leak", func(t *testing.T) {
+		group := &Group{
+			ID:                  2,
+			Platform:            PlatformOpenAI,
+			ModelRoutingEnabled: true,
+			ModelRouting:        map[string][]int64{"gpt-5.6-sol": {1}},
+		}
+		levels, _, _ := manifestFieldsOf(t, group)
+		require.Empty(t, levels, "unrelated routing rules must not resolve this alias")
+	})
 }
 
 // Scenario: mixed groups prefer capability metadata synced for the routed account.
