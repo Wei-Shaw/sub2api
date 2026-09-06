@@ -26,21 +26,21 @@
               :options="platformFilterOptions"
               :placeholder="t('admin.groups.allPlatforms')"
               class="w-44"
-              @change="loadGroups"
+              @change="handleFilterChange"
             />
             <Select
               v-model="filters.status"
               :options="statusOptions"
               :placeholder="t('admin.groups.allStatus')"
               class="w-40"
-              @change="loadGroups"
+              @change="handleFilterChange"
             />
             <Select
               v-model="filters.is_exclusive"
               :options="exclusiveOptions"
               :placeholder="t('admin.groups.allGroups')"
               class="w-44"
-              @change="loadGroups"
+              @change="handleFilterChange"
             />
           </div>
 
@@ -110,6 +110,22 @@
             </button>
           </div>
         </div>
+        <div v-if="selectedIds.length" class="mt-3 flex flex-wrap items-center gap-3 text-sm">
+          <span class="text-gray-600 dark:text-gray-300">
+            {{ t("admin.groups.bulkEdit.selectedCount", { count: selectedIds.length }) }}
+          </span>
+          <button
+            class="btn btn-primary btn-sm"
+            :disabled="loading"
+            data-test="bulk-edit-groups"
+            @click="showBulkEditModal = true"
+          >
+            {{ t("admin.groups.bulkEdit.title") }}
+          </button>
+          <button class="btn btn-secondary btn-sm" @click="selectedIds = []">
+            {{ t("admin.groups.bulkEdit.clearSelection") }}
+          </button>
+        </div>
       </template>
 
       <template #table>
@@ -117,6 +133,11 @@
           :columns="columns"
           :data="groups"
           :loading="loading"
+          selectable
+          row-key="id"
+          :selected-keys="selectedIds"
+          :selection-label="(group: AdminGroup) => t('admin.groups.bulkEdit.selectGroup', { name: group.name })"
+          @update:selected-keys="handleSelectionChange"
           :server-side-sort="true"
           default-sort-key="sort_order"
           default-sort-order="asc"
@@ -4554,6 +4575,13 @@
       @success="loadGroups"
     />
 
+    <BulkEditGroupModal
+      :show="showBulkEditModal"
+      :selected-groups="selectedGroups"
+      @close="showBulkEditModal = false"
+      @updated="handleBulkUpdated"
+    />
+
     <!-- Group RPM Overrides Modal -->
     <GroupRPMOverridesModal
       :show="showRPMOverridesModal"
@@ -4598,6 +4626,7 @@ import PlatformIcon from "@/components/common/PlatformIcon.vue";
 import Icon from "@/components/icons/Icon.vue";
 import GroupRateMultipliersModal from "@/components/admin/group/GroupRateMultipliersModal.vue";
 import GroupRPMOverridesModal from "@/components/admin/group/GroupRPMOverridesModal.vue";
+import BulkEditGroupModal from "@/components/admin/group/BulkEditGroupModal.vue";
 import GroupCapacityBadge from "@/components/common/GroupCapacityBadge.vue";
 import ReasoningEffortPolicyFields from "@/components/admin/group/ReasoningEffortPolicyFields.vue";
 import CodexManifestAccountsField from "@/components/admin/group/CodexManifestAccountsField.vue";
@@ -5078,6 +5107,21 @@ const copyAccountsGroupOptionsForEdit = computed(() => {
 });
 
 const groups = ref<AdminGroup[]>([]);
+const selectedIds = ref<number[]>([]);
+const showBulkEditModal = ref(false);
+const selectedGroups = computed(() => groups.value.filter((group) => selectedIds.value.includes(group.id)));
+
+const handleSelectionChange = (ids: Array<string | number>) => {
+  const visibleIds = new Set(groups.value.map((group) => group.id));
+  selectedIds.value = [...new Set(ids.map(Number))].filter((id) => visibleIds.has(id));
+};
+
+const handleBulkUpdated = (succeededIds: number[]) => {
+  const succeeded = new Set(succeededIds);
+  selectedIds.value = selectedIds.value.filter((id) => !succeeded.has(id));
+  loadGroups();
+};
+
 const loading = ref(false);
 type GroupUsageSummary = {
   today_cost: number;
@@ -5889,6 +5933,7 @@ const loadGroups = async () => {
     );
     if (signal.aborted) return;
     groups.value = response.items;
+    handleSelectionChange(selectedIds.value);
     pagination.total = response.total;
     pagination.pages = response.pages;
     if (hasVisibleUsageSummaryConsumer.value) {
@@ -6000,7 +6045,14 @@ const loadCapacitySummary = async () => {
 };
 
 let searchTimeout: ReturnType<typeof setTimeout>;
+const handleFilterChange = () => {
+  selectedIds.value = [];
+  pagination.page = 1;
+  loadGroups();
+};
+
 const handleSearch = () => {
+  selectedIds.value = [];
   clearTimeout(searchTimeout);
   searchTimeout = setTimeout(() => {
     pagination.page = 1;
@@ -6009,17 +6061,20 @@ const handleSearch = () => {
 };
 
 const handlePageChange = (page: number) => {
+  selectedIds.value = [];
   pagination.page = page;
   loadGroups();
 };
 
 const handlePageSizeChange = (pageSize: number) => {
+  selectedIds.value = [];
   pagination.page_size = pageSize;
   pagination.page = 1;
   loadGroups();
 };
 
 const handleSort = (key: string, order: 'asc' | 'desc') => {
+  selectedIds.value = [];
   sortState.sort_by = key;
   sortState.sort_order = order;
   pagination.page = 1;

@@ -774,6 +774,23 @@ export default {
 
     // Groups Management
     groups: {
+      bulkEdit: {
+        title: '批量编辑',
+        selectedCount: '已选择 {count} 个分组',
+        selectGroup: '选择分组 {name}',
+        clearSelection: '取消选择',
+        hint: '勾选需要修改的字段，未勾选的字段保持原值。',
+        descriptionHint: '留空将清空所选分组的描述。',
+        subscriptionOnly: '仅当所选分组全部为订阅分组时，才能批量修改订阅额度。',
+        limitHint: '0 表示不允许产生用量；勾选“无限制”可解除此项限额。',
+        invalidRate: '费率倍数必须是大于 0 的有效数字。',
+        invalidRPM: 'RPM 必须是大于或等于 0 的整数。',
+        invalidLimit: '请输入大于或等于 0 的有效额度，或勾选“无限制”。',
+        apply: '应用到 {count} 个分组',
+        success: '已更新 {count} 个分组',
+        partialFailure: '已更新 {success} 个分组，{failed} 个失败',
+        failureHint: '以下分组更新失败，可修改设置后重试。再次提交只会更新失败的分组。'
+      },
       title: '分组管理',
       description: '管理 API 密钥分组和费率配置',
       searchGroups: '搜索分组...',
