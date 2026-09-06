@@ -308,6 +308,109 @@ export function appendAuthSourceDefaultsToUpdateRequest(
   return payload;
 }
 
+/**
+ * 按键合并部分响应里的 auth_source_default_* 到现有 state。
+ * PUT 响应已瘦身为只含本次发送的字段（见后端 setting_handler_response_filter.go），
+ * 不能再用 buildAuthSourceDefaultsState 整体重算——它会用默认值覆盖未发送的 source。
+ */
+export function mergeAuthSourceDefaultsFromResponse(
+  current: AuthSourceDefaultsState,
+  response: Partial<SystemSettings>,
+): AuthSourceDefaultsState {
+  const raw = response as Record<string, unknown>;
+  const merged = {} as AuthSourceDefaultsState;
+
+  for (const source of AUTH_SOURCE_TYPES) {
+    const prev = current[source];
+    const next = { ...prev };
+    const has = (field: string) =>
+      `auth_source_default_${source}_${field}` in raw;
+
+    if (has("balance")) next.balance = Number(raw[`auth_source_default_${source}_balance`]);
+    if (has("concurrency"))
+      next.concurrency = Math.max(
+        1,
+        Number(raw[`auth_source_default_${source}_concurrency`]),
+      );
+    if (has("subscriptions"))
+      next.subscriptions = normalizeDefaultSubscriptionSettings(
+        raw[`auth_source_default_${source}_subscriptions`] as DefaultSubscriptionSetting[],
+      );
+    if (has("grant_on_signup"))
+      next.grant_on_signup = raw[`auth_source_default_${source}_grant_on_signup`] === true;
+    if (has("grant_on_first_bind"))
+      next.grant_on_first_bind =
+        raw[`auth_source_default_${source}_grant_on_first_bind`] === true;
+    if (has("platform_quotas"))
+      next.platform_quotas = normalizePlatformQuotasMap(
+        raw[`auth_source_default_${source}_platform_quotas`] as DefaultPlatformQuotasMap,
+      );
+
+    merged[source] = next;
+  }
+
+  return merged;
+}
+
+// ---------------------------------------------------------------------------
+// 保存 diff：设置页保存时只发送相对基线变化过的字段，而不是整份 ~800KB 文档。
+// 基线 = 上次加载/保存后由 buildSettingsPayload() 生成的指纹；未变的键不发送。
+// ---------------------------------------------------------------------------
+
+/**
+ * 递归排序 key 的稳定序列化：同一数据结构不同 key 顺序得到相同字符串。
+ * undefined 属性与「键不存在」归一为同一种缺失（密钥留空=未变更=不发送）。
+ */
+export function stableStringify(value: unknown): string {
+  if (value === undefined) return "null";
+  if (value === null || typeof value !== "object") {
+    return JSON.stringify(value) ?? "null";
+  }
+  if (Array.isArray(value)) {
+    return `[${value.map((item) => stableStringify(item)).join(",")}]`;
+  }
+  const record = value as Record<string, unknown>;
+  const parts: string[] = [];
+  for (const key of Object.keys(record).sort()) {
+    const item = record[key];
+    if (item === undefined) continue;
+    parts.push(`${JSON.stringify(key)}:${stableStringify(item)}`);
+  }
+  return `{${parts.join(",")}}`;
+}
+
+/** payload 的逐键指纹，用作保存 diff 的基线。 */
+export function fingerprintSettingsPayload(
+  payload: UpdateSettingsRequest,
+): Record<string, string> {
+  const source = payload as Record<string, unknown>;
+  const result: Record<string, string> = {};
+  for (const key of Object.keys(source)) {
+    result[key] = stableStringify(source[key]);
+  }
+  return result;
+}
+
+/**
+ * 只保留相对基线变化过的键。基线为 null（首次加载前）时原样返回全量 payload。
+ * 注意：外部写入（如 codex 版本自动同步）会让基线过期，但 diff 只含用户改的键，
+ * 外部变更不会被覆盖——这比整包重写更安全。
+ */
+export function diffSettingsPayload(
+  current: UpdateSettingsRequest,
+  baseline: Record<string, string> | null,
+): UpdateSettingsRequest {
+  if (!baseline) return current;
+  const source = current as Record<string, unknown>;
+  const result: Record<string, unknown> = {};
+  for (const key of Object.keys(source)) {
+    if (baseline[key] !== stableStringify(source[key])) {
+      result[key] = source[key];
+    }
+  }
+  return result as UpdateSettingsRequest;
+}
+
 export function getPaymentVisibleMethodSourceOptions(
   method: PaymentVisibleMethod,
 ): PaymentVisibleMethodSourceOption[] {
@@ -1051,13 +1154,13 @@ export async function getSettings(): Promise<SystemSettings> {
 
 /**
  * Update system settings
- * @param settings - Partial settings to update
- * @returns Updated settings
+ * @param settings - Partial settings to update（后端 PUT 支持 omitted 字段保持现值）
+ * @returns 本次发送字段的终值及其只读伴生键（PUT 响应已瘦身，不再是整份文档）
  */
 export async function updateSettings(
   settings: UpdateSettingsRequest,
-): Promise<SystemSettings> {
-  const { data } = await apiClient.put<SystemSettings>(
+): Promise<Partial<SystemSettings>> {
+  const { data } = await apiClient.put<Partial<SystemSettings>>(
     "/admin/settings",
     settings,
   );

@@ -474,6 +474,11 @@ func loginAgreementDocumentsToService(items []dto.LoginAgreementDocument) []serv
 	return result
 }
 
+// systemSettingsResponseData 把 dto.SystemSettings 展平为响应 map，并附加
+// auth_source_default_* 与 force_email_on_third_party_signup 等只读派生键。
+// 注意：PUT 路径会再用 filterSystemSettingsResponseForPut 裁剪（见
+// setting_handler_response_filter.go）；若此处新增派生自请求字段的只读键，
+// 需同步登记到 putResponseCompanions，否则部分载荷保存后客户端拿不到它。
 func systemSettingsResponseData(settings dto.SystemSettings, authSourceDefaults *service.AuthSourceDefaultSettings) map[string]any {
 	data := make(map[string]any)
 	raw, err := json.Marshal(settings)
