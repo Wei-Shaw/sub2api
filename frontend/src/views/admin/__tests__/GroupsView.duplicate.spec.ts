@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import type { AdminGroup } from '@/types'
 import GroupsView from '@/views/admin/GroupsView.vue'
+import { adminAPI } from '@/api/admin'
 
 const {
   listGroups,
@@ -302,4 +303,70 @@ describe('GroupsView duplicate action', () => {
     expect(showError).toHaveBeenCalledWith('group name already exists')
     wrapper.unmount()
   })
+
+  it('updates manifest controls immediately and submits the displayed selection', async () => {
+    vi.useFakeTimers()
+    vi.mocked(adminAPI.accounts.list).mockResolvedValue({
+      items: [{ id: 5, name: 'Manifest account' }]
+    } as never)
+    updateGroup.mockResolvedValue(sourceGroup)
+    const wrapper = mountView()
+    try {
+      await flushPromises()
+      const editButton = wrapper.findAll('button').find((button) => button.text() === 'common.edit')!
+      await editButton.trigger('click')
+      await flushPromises()
+
+      const toggle = wrapper.get('[data-testid="codex-manifest-toggle"]')
+      await toggle.trigger('click')
+      expect(toggle.attributes('aria-checked')).toBe('true')
+      const search = wrapper.get('[data-testid="codex-manifest-search"]')
+      await search.trigger('focus')
+      await vi.advanceTimersByTimeAsync(300)
+      await flushPromises()
+      expect(adminAPI.accounts.list).toHaveBeenCalledWith(
+        1, 20, { search: '', platform: 'openai', group: '42' }, expect.anything()
+      )
+      await wrapper.get('[data-testid="codex-manifest-dropdown"] button').trigger('click')
+      expect(wrapper.get('[data-testid="codex-manifest-selected-tags"]').text()).toContain('Manifest account')
+
+      await wrapper.get('[aria-label="remove account 5"]').trigger('click')
+      expect(wrapper.find('[data-testid="codex-manifest-selected-tags"]').exists()).toBe(false)
+      await wrapper.get('#edit-group-form').trigger('submit')
+      expect(updateGroup).not.toHaveBeenCalled()
+      expect(wrapper.find('[data-testid="codex-manifest-validation-error"]').exists()).toBe(true)
+
+      await search.trigger('focus')
+      await wrapper.get('[data-testid="codex-manifest-dropdown"] button').trigger('click')
+      expect(wrapper.get('[data-testid="codex-manifest-selected-tags"]').text()).toContain('Manifest account')
+      const fallback = wrapper.get('[data-testid="codex-manifest-fallback-toggle"]')
+      await fallback.trigger('click')
+      expect(fallback.attributes('aria-checked')).toBe('true')
+      await fallback.trigger('click')
+      expect(fallback.attributes('aria-checked')).toBe('false')
+      await fallback.trigger('click')
+
+      await toggle.trigger('click')
+      expect(wrapper.find('[data-testid="codex-manifest-search"]').exists()).toBe(false)
+      await toggle.trigger('click')
+      expect(wrapper.get('[data-testid="codex-manifest-selected-tags"]').text()).toContain('Manifest account')
+      await wrapper.get('#edit-group-form').trigger('submit')
+      await flushPromises()
+      expect(updateGroup).toHaveBeenCalledWith(42, expect.objectContaining({
+        codex_models_manifest_config: {
+          enabled: true, account_ids: [5], fallback_to_scheduler: true
+        }
+      }))
+
+      // Reopening reads the saved group afresh, without retaining the prior draft.
+      await editButton.trigger('click')
+      await flushPromises()
+      expect(wrapper.get('[data-testid="codex-manifest-toggle"]').attributes('aria-checked')).toBe('false')
+      expect(wrapper.find('[data-testid="codex-manifest-search"]').exists()).toBe(false)
+    } finally {
+      wrapper.unmount()
+      vi.useRealTimers()
+    }
+  })
+
 })
