@@ -3,6 +3,7 @@ package repository
 import (
 	"context"
 	"strconv"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -12,6 +13,40 @@ import (
 	"github.com/redis/go-redis/v9"
 	"github.com/stretchr/testify/require"
 )
+
+func TestGatewayCacheCyberSessionLineageRoundTripAndIsolation(t *testing.T) {
+	server := miniredis.RunT(t)
+	client := redis.NewClient(&redis.Options{Addr: server.Addr()})
+	t.Cleanup(func() { _ = client.Close() })
+	store, ok := NewGatewayCache(client).(service.CyberSessionLineageStore)
+	require.True(t, ok)
+
+	ctx := context.Background()
+	require.NoError(t, store.BindCyberSessionRoot(ctx, 7, 11, "resp_1", "root-a", time.Minute))
+	root, found, err := store.GetCyberSessionRoot(ctx, 7, 11, "resp_1")
+	require.NoError(t, err)
+	require.True(t, found)
+	require.Equal(t, "root-a", root)
+
+	_, found, err = store.GetCyberSessionRoot(ctx, 7, 12, "resp_1")
+	require.NoError(t, err)
+	require.False(t, found)
+	_, found, err = store.GetCyberSessionRoot(ctx, 8, 11, "resp_1")
+	require.NoError(t, err)
+	require.False(t, found)
+
+	keys := server.Keys()
+	for _, key := range keys {
+		require.NotContains(t, key, "resp_1")
+		require.NotContains(t, key, "root-a")
+		require.True(t, strings.HasPrefix(key, cyberSessionLineagePrefix))
+	}
+
+	server.FastForward(time.Minute + time.Second)
+	_, found, err = store.GetCyberSessionRoot(ctx, 7, 11, "resp_1")
+	require.NoError(t, err)
+	require.False(t, found)
+}
 
 type cyberRedisCommandHook struct {
 	mu            sync.Mutex

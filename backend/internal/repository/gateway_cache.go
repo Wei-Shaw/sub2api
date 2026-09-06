@@ -225,6 +225,8 @@ func (c *gatewayCache) ReleaseGrokVideoBilled(ctx context.Context, key string) e
 
 // Compile-time assertion: gatewayCache must implement CyberSessionBlockStore.
 var _ service.CyberSessionBlockStore = (*gatewayCache)(nil)
+var _ service.CyberSessionLineageStore = (*gatewayCache)(nil)
+var _ service.CyberSessionLineageRefresher = (*gatewayCache)(nil)
 var _ service.LiveCallStore = (*gatewayCache)(nil)
 
 const reasoningContentPrefix = "reasoning_content:"
@@ -272,8 +274,116 @@ func (c *gatewayCache) GetReasoningContent(ctx context.Context, itemID string) (
 const (
 	cyberSessionBlockPrefix         = "cyber_session_block:"
 	cyberSessionScopePrefix         = "cyber_session_scope:"
+	cyberSessionLineagePrefix       = "cyber_session_lineage:"
 	cyberSessionRedisCommandMaxKeys = 128
 )
+
+func cyberSessionLineageKey(groupID, apiKeyID int64, responseID string) string {
+	raw := fmt.Sprintf("v1|group=%d|api_key=%d|response=%s", groupID, apiKeyID, strings.TrimSpace(responseID))
+	sum := sha256.Sum256([]byte(raw))
+	return cyberSessionLineagePrefix + hex.EncodeToString(sum[:])
+}
+
+func cyberSessionLineageMembersKey(groupID, apiKeyID int64, root string) string {
+	return cyberSessionLineageKey(groupID, apiKeyID, root) + ":members"
+}
+
+var bindCyberLineage = redis.NewScript(`
+local ttl = tonumber(ARGV[2])
+if redis.call('GET', KEYS[1]) == ARGV[1] then
+  ttl = math.max(ttl, redis.call('PTTL', KEYS[1]))
+end
+redis.call('SET', KEYS[1], ARGV[1], 'PX', ttl)
+redis.call('SADD', KEYS[2], KEYS[1])
+if redis.call('PTTL', KEYS[2]) < ttl then
+  redis.call('PEXPIRE', KEYS[2], ttl)
+end
+return 1
+`)
+
+func (c *gatewayCache) BindCyberSessionRoot(ctx context.Context, groupID, apiKeyID int64, responseID, root string, ttl time.Duration) error {
+	if c == nil || c.rdb == nil {
+		return errors.New("gateway cache unavailable")
+	}
+	responseID = strings.TrimSpace(responseID)
+	root = strings.TrimSpace(root)
+	if groupID <= 0 || apiKeyID <= 0 || responseID == "" || root == "" {
+		return errors.New("invalid cyber session lineage binding")
+	}
+	if ttl <= 0 {
+		ttl = time.Hour
+	}
+	key := cyberSessionLineageKey(groupID, apiKeyID, responseID)
+	members := cyberSessionLineageMembersKey(groupID, apiKeyID, root)
+	return bindCyberLineage.Run(ctx, c.rdb, []string{key, members}, root, max(int64(1), ttl.Milliseconds())).Err()
+}
+
+const refreshCyberLineageAlias = `
+local current = redis.call('GET', KEYS[1])
+if not current or current == ARGV[1] then
+  local remaining = redis.call('PTTL', KEYS[1])
+  local ttl = math.max(remaining, tonumber(ARGV[2]))
+  redis.call('SET', KEYS[1], ARGV[1], 'PX', ttl)
+end
+return 1
+`
+
+func (c *gatewayCache) RefreshCyberSessionLineage(ctx context.Context, groupID, apiKeyID int64, root string, ttl time.Duration) error {
+	if c == nil || c.rdb == nil {
+		return errors.New("gateway cache unavailable")
+	}
+	if ttl <= 0 {
+		return nil
+	}
+	members := cyberSessionLineageMembersKey(groupID, apiKeyID, root)
+	var cursor uint64
+	for {
+		keys, next, err := c.rdb.SScan(ctx, members, cursor, "", cyberSessionRedisCommandMaxKeys).Result()
+		if err != nil {
+			return err
+		}
+		// SSCAN's count is a hint; explicitly bound each pipeline as well.
+		for start := 0; start < len(keys); start += cyberSessionRedisCommandMaxKeys {
+			pipe := c.rdb.Pipeline()
+			for _, key := range keys[start:min(start+cyberSessionRedisCommandMaxKeys, len(keys))] {
+				pipe.Eval(ctx, refreshCyberLineageAlias, []string{key}, root, max(int64(1), ttl.Milliseconds()))
+			}
+			if _, err := pipe.Exec(ctx); err != nil {
+				return err
+			}
+		}
+		cursor = next
+		if cursor == 0 {
+			return c.rdb.Eval(ctx, `
+if redis.call('PTTL', KEYS[1]) < tonumber(ARGV[1]) then
+  redis.call('PEXPIRE', KEYS[1], ARGV[1])
+end
+return 1`, []string{members}, max(int64(1), ttl.Milliseconds())).Err()
+		}
+	}
+}
+
+func (c *gatewayCache) GetCyberSessionRoot(ctx context.Context, groupID, apiKeyID int64, responseID string) (string, bool, error) {
+	if c == nil || c.rdb == nil {
+		return "", false, errors.New("gateway cache unavailable")
+	}
+	responseID = strings.TrimSpace(responseID)
+	if groupID <= 0 || apiKeyID <= 0 || responseID == "" {
+		return "", false, errors.New("invalid cyber session lineage lookup")
+	}
+	root, err := c.rdb.Get(ctx, cyberSessionLineageKey(groupID, apiKeyID, responseID)).Result()
+	if errors.Is(err, redis.Nil) {
+		return "", false, nil
+	}
+	if err != nil {
+		return "", false, err
+	}
+	root = strings.TrimSpace(root)
+	if root == "" {
+		return "", false, nil
+	}
+	return root, true, nil
+}
 
 // SetCyberSessionBlocked writes exact blocks in bounded transactions. The
 // coarse scope is activated only after all exact blocks have been stored.
@@ -288,7 +398,7 @@ func (c *gatewayCache) SetCyberSessionBlocked(ctx context.Context, scopeKey stri
 		}
 		pipe := c.rdb.TxPipeline()
 		for _, key := range exactKeys {
-			pipe.Set(ctx, cyberSessionBlockPrefix+key, "1", ttl)
+			pipe.SetNX(ctx, cyberSessionBlockPrefix+key, "1", ttl)
 		}
 		_, err := pipe.Exec(ctx)
 		exactKeys = exactKeys[:0]

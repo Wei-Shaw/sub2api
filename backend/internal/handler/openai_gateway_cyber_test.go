@@ -1,12 +1,15 @@
 package handler
 
 import (
+	"context"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/service"
+	"github.com/Wei-Shaw/sub2api/internal/testutil"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
 )
@@ -176,6 +179,39 @@ func TestRejectIfCyberSessionBlocked_FailOpen(t *testing.T) {
 	h2 := &OpenAIGatewayHandler{gatewayService: nil}
 	key := &service.APIKey{ID: 1}
 	require.False(t, h2.rejectIfCyberSessionBlocked(c, key, []byte(`{}`), "gpt-5", cyberBlockFormatResponses), "nil gateway service → pass")
+}
+
+func TestRejectIfCyberSessionBlockedUsesPreviousResponseLineageBeforeAccountSelection(t *testing.T) {
+	gatewayCache := testutil.NewRedisGatewayCache(t)
+	lineageStore, ok := gatewayCache.(service.CyberSessionLineageStore)
+	require.True(t, ok)
+	blockStore, ok := gatewayCache.(service.CyberSessionBlockStore)
+	require.True(t, ok)
+
+	settingRepo := &contentModerationHandlerSettingRepo{values: map[string]string{
+		service.SettingKeyCyberSessionBlockEnabled:    "true",
+		service.SettingKeyCyberSessionBlockTTLSeconds: "60",
+	}}
+	gatewayService := service.NewOpenAIGatewayService(
+		nil, nil, nil, nil, nil, nil, gatewayCache, nil, nil, nil, nil, nil, nil,
+		nil, nil, nil, nil, nil, nil, nil, service.NewSettingService(settingRepo, nil), nil,
+	)
+	groupID := int64(7)
+	const apiKeyID = int64(11)
+	const root = "blocked-lineage-root"
+	require.NoError(t, lineageStore.BindCyberSessionRoot(context.Background(), groupID, apiKeyID, "resp_1", root, time.Minute))
+	require.NoError(t, blockStore.SetCyberSessionBlocked(context.Background(), "", []string{root}, time.Minute))
+
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	body := []byte(`{"previous_response_id":"resp_1","input":"continue"}`)
+	c.Request = httptest.NewRequest(http.MethodPost, "/openai/v1/responses", strings.NewReader(string(body)))
+	h := &OpenAIGatewayHandler{gatewayService: gatewayService}
+	apiKey := &service.APIKey{ID: apiKeyID, GroupID: &groupID}
+
+	require.True(t, h.rejectIfCyberSessionBlocked(c, apiKey, body, "gpt-5.6-sol", cyberBlockFormatResponses))
+	require.Equal(t, http.StatusForbidden, recorder.Code)
+	require.Contains(t, recorder.Body.String(), `"code":"session_blocked_by_cyber_policy"`)
 }
 
 func TestBuildCyberSessionBlockWritePlanCombinesExplicitAndTranscriptKeys(t *testing.T) {

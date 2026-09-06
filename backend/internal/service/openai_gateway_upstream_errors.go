@@ -491,6 +491,7 @@ func (s *OpenAIGatewayService) handleErrorResponse(
 	// 当前请求恒透传（需求1）；标记供 handler 事后写风控/邮件。400 cyber 不可 failover
 	// （shouldFailoverUpstreamError(400)=false），故走到此处即可安全早返回。
 	if hit, code, cyberMsg := detectOpenAICyberPolicy(body); hit {
+		ObserveCyberSessionResponseID(c, extractOpenAIResponseIDFromJSONBytes(body))
 		MarkOpsCyberPolicy(c, CyberPolicyMark{
 			Code:           code,
 			Message:        cyberMsg,
@@ -743,6 +744,7 @@ func (s *OpenAIGatewayService) handleCompatErrorResponse(
 	// 安全策略拦截，不冷却账号，故标记后直接以兼容格式回写错误并返回，跳过下方
 	// handleOpenAIAccountUpstreamError（避免自定义 temp-unschedulable 规则误冷却）。
 	if hit, code, cyberMsg := detectOpenAICyberPolicy(body); hit {
+		ObserveCyberSessionResponseID(c, extractOpenAIResponseIDFromJSONBytes(body))
 		MarkOpsCyberPolicy(c, CyberPolicyMark{
 			Code:           code,
 			Message:        cyberMsg,

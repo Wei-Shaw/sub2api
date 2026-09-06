@@ -2388,7 +2388,7 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 
 	// The first response.create frame is available here, so explicit IDs are
 	// checked directly and body-derived sessions use the coarse scope gate.
-	if cyberBlockKey := findBlockedCyberSessionKey(c.Request.Context(), h.gatewayService, apiKey.ID, c, firstMessage); cyberBlockKey != "" {
+	if cyberBlockKey := findBlockedCyberSessionKey(c.Request.Context(), h.gatewayService, derefGroupID(apiKey.GroupID), apiKey.ID, c, firstMessage); cyberBlockKey != "" {
 		writeCyberSessionBlockedWSError(c.Request.Context(), wsConn)
 		closeOpenAIClientWS(wsConn, coderws.StatusPolicyViolation, "session blocked by cyber-security policy")
 		h.enqueueCyberSessionBlockedOpsEntry(c, apiKey, reqModel, cyberBlockKey)
@@ -2747,7 +2747,7 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 				// the connection-level cyber session gate here as well. Native ingress
 				// visits this hook first and gets the same side-effect-free close error;
 				// its original BeforeTurn guard remains as defense in depth.
-				if cyberBlockedThisConn {
+				if cyberBlockedThisConn && service.CyberSessionBlockStillActive(c) {
 					return service.NewOpenAIWSClientCloseError(coderws.StatusPolicyViolation, cyberSessionBlockedClientMsg, nil)
 				}
 				if turn == 1 {
@@ -2755,6 +2755,9 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 				}
 				if !gjson.ValidBytes(payload) {
 					return service.NewOpenAIWSClientCloseError(coderws.StatusPolicyViolation, "invalid websocket request payload", errors.New("invalid json"))
+				}
+				if cyberBlockKey := findBlockedCyberSessionKey(c.Request.Context(), h.gatewayService, derefGroupID(apiKey.GroupID), apiKey.ID, c, payload); cyberBlockKey != "" {
+					return service.NewOpenAIWSClientCloseError(coderws.StatusPolicyViolation, cyberSessionBlockedClientMsg, nil)
 				}
 				model := strings.TrimSpace(originalModel)
 				if model == "" {
@@ -2788,7 +2791,7 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 			},
 			BeforeTurn: func(turn int) error {
 				// turn==1 的会话屏蔽已由握手层检查覆盖；连接内 flag 只拦截后续 turn。
-				if cyberBlockedThisConn {
+				if cyberBlockedThisConn && service.CyberSessionBlockStillActive(c) {
 					return service.NewOpenAIWSClientCloseError(coderws.StatusPolicyViolation, cyberSessionBlockedClientMsg, nil)
 				}
 				// 长连接跨峰谷/倍率刷新防护：每个 turn 按当前时刻重装门并复核
@@ -3924,7 +3927,7 @@ func (h *OpenAIGatewayHandler) rejectIfCyberSessionBlocked(c *gin.Context, apiKe
 	if enabled, _ := h.gatewayService.CyberSessionBlockRuntime(c.Request.Context()); !enabled {
 		return false
 	}
-	key := findBlockedCyberSessionKey(c.Request.Context(), h.gatewayService, apiKey.ID, c, body)
+	key := findBlockedCyberSessionKey(c.Request.Context(), h.gatewayService, derefGroupID(apiKey.GroupID), apiKey.ID, c, body)
 	if key == "" {
 		return false
 	}
@@ -3961,15 +3964,14 @@ type cyberSessionBlockWritePlan struct {
 }
 
 func buildCyberSessionBlockWritePlan(apiKeyID int64, c *gin.Context, body []byte) cyberSessionBlockWritePlan {
-	plan := cyberSessionBlockWritePlan{}
+	identityScope, identityKeys := service.CyberSessionIdentityBlockWritePlan(c)
+	plan := cyberSessionBlockWritePlan{scopeKey: identityScope, keys: identityKeys}
 	if key := service.CyberSessionExplicitBlockKey(apiKeyID, c, body); key != "" {
-		plan.keys = append(plan.keys, key)
+		plan.keys = appendCyberSessionBlockPlanKey(plan.keys, key)
 	}
 	transcriptKeys := service.CyberSessionTranscriptBlockKeys(apiKeyID, body)
 	for _, key := range transcriptKeys {
-		if len(plan.keys) == 0 || key != plan.keys[0] {
-			plan.keys = append(plan.keys, key)
-		}
+		plan.keys = appendCyberSessionBlockPlanKey(plan.keys, key)
 	}
 	if len(transcriptKeys) > 0 {
 		plan.scopeKey = cyberSessionScopeKey(apiKeyID, c)
@@ -3977,7 +3979,19 @@ func buildCyberSessionBlockWritePlan(apiKeyID int64, c *gin.Context, body []byte
 	return plan
 }
 
-func findBlockedCyberSessionKey(ctx context.Context, gatewayService *service.OpenAIGatewayService, apiKeyID int64, c *gin.Context, body []byte) string {
+func appendCyberSessionBlockPlanKey(keys []string, key string) []string {
+	if key == "" {
+		return keys
+	}
+	for _, existing := range keys {
+		if existing == key {
+			return keys
+		}
+	}
+	return append(keys, key)
+}
+
+func findBlockedCyberSessionKey(ctx context.Context, gatewayService *service.OpenAIGatewayService, groupID, apiKeyID int64, c *gin.Context, body []byte) string {
 	if gatewayService == nil {
 		return ""
 	}
@@ -3986,6 +4000,8 @@ func findBlockedCyberSessionKey(ctx context.Context, gatewayService *service.Ope
 		clientIP = strings.TrimSpace(ip.GetClientIP(c))
 		userAgent = c.GetHeader("User-Agent")
 	}
+	identity := gatewayService.PrepareCyberSessionIdentity(ctx, groupID, apiKeyID, c, body, clientIP, userAgent)
+	service.BindCyberSessionIdentity(c, identity)
 	return gatewayService.FindCyberSessionBlockedForRequest(ctx, apiKeyID, c, body, clientIP, userAgent)
 }
 
@@ -4121,7 +4137,7 @@ func (h *OpenAIGatewayHandler) recordCyberPolicyIfMarked(c *gin.Context, apiKey 
 		ClientIP:        clientIPStr,
 		CreatedAt:       time.Now(),
 	}
-	if gwSvc != nil && apiKey != nil {
+	if gwSvc != nil && apiKey != nil && !service.RetryCyberSessionBlock(c) {
 		plan := buildCyberSessionBlockWritePlan(apiKey.ID, c, cyberBlockBody)
 		if len(plan.keys) > 0 {
 			blockCtx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)

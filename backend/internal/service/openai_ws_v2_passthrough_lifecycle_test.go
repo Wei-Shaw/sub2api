@@ -229,8 +229,8 @@ func TestPassthroughLifecycle_CyberTerminalEventsMarkBeforeAfterTurn(t *testing.
 			},
 			wantBody:    `"type":"error"`,
 			wantMessage: "blocked by error event",
-			wantInput:   5,
-			wantOutput:  1,
+			wantInput:   9,
+			wantOutput:  2,
 		},
 		{
 			name: "response_failed",

@@ -103,6 +103,7 @@ type fakeCyberBlockStore struct {
 	blocked   map[string]bool
 	scopes    map[string]bool
 	findCalls int
+	findKeys  [][]string
 }
 
 var _ CyberSessionBlockStore = (*fakeCyberBlockStore)(nil)
@@ -129,6 +130,7 @@ func (f *fakeCyberBlockStore) IsCyberSessionScopeActive(_ context.Context, scope
 
 func (f *fakeCyberBlockStore) FindCyberSessionBlocked(_ context.Context, keys []string) (string, error) {
 	f.findCalls++
+	f.findKeys = append(f.findKeys, append([]string(nil), keys...))
 	for _, key := range keys {
 		if f.blocked[key] {
 			return key, nil
@@ -157,8 +159,14 @@ func (r *fakeSettingRepo) Get(_ context.Context, _ string) (*Setting, error) {
 func (r *fakeSettingRepo) Set(_ context.Context, _, _ string) error {
 	panic("fakeSettingRepo.Set not implemented")
 }
-func (r *fakeSettingRepo) GetMultiple(_ context.Context, _ []string) (map[string]string, error) {
-	panic("fakeSettingRepo.GetMultiple not implemented")
+func (r *fakeSettingRepo) GetMultiple(_ context.Context, keys []string) (map[string]string, error) {
+	values := make(map[string]string, len(keys))
+	for _, key := range keys {
+		if value, ok := r.vals[key]; ok {
+			values[key] = value
+		}
+	}
+	return values, nil
 }
 func (r *fakeSettingRepo) SetMultiple(_ context.Context, _ map[string]string) error {
 	panic("fakeSettingRepo.SetMultiple not implemented")
@@ -176,11 +184,17 @@ var _ SettingRepository = (*fakeSettingRepo)(nil)
 // CyberSessionBlockStore (delegates to fakeCyberBlockStore) so it can be
 // injected as s.cache and successfully type-asserted to CyberSessionBlockStore.
 type comboCacheAndStore struct {
-	store fakeCyberBlockStore
+	store       fakeCyberBlockStore
+	lineages    map[string]string
+	lineageGets int
+	lineageSets int
+	lineageErr  error
+	events      []string
 }
 
 var _ GatewayCache = (*comboCacheAndStore)(nil)
 var _ CyberSessionBlockStore = (*comboCacheAndStore)(nil)
+var _ CyberSessionLineageStore = (*comboCacheAndStore)(nil)
 
 func (c *comboCacheAndStore) GetSessionAccountID(_ context.Context, _ int64, _ string) (int64, error) {
 	return 0, errors.New("stub")
@@ -217,6 +231,7 @@ func (c *comboCacheAndStore) GetReasoningContent(_ context.Context, _ string) (s
 }
 
 func (c *comboCacheAndStore) SetCyberSessionBlocked(ctx context.Context, scopeKey string, keys []string, ttl time.Duration) error {
+	c.events = append(c.events, "block_set")
 	return c.store.SetCyberSessionBlocked(ctx, scopeKey, keys, ttl)
 }
 func (c *comboCacheAndStore) IsCyberSessionScopeActive(ctx context.Context, scopeKey string) (bool, error) {
@@ -224,6 +239,32 @@ func (c *comboCacheAndStore) IsCyberSessionScopeActive(ctx context.Context, scop
 }
 func (c *comboCacheAndStore) FindCyberSessionBlocked(ctx context.Context, keys []string) (string, error) {
 	return c.store.FindCyberSessionBlocked(ctx, keys)
+}
+
+func fakeCyberLineageKey(groupID, apiKeyID int64, responseID string) string {
+	return strconv.FormatInt(groupID, 10) + ":" + strconv.FormatInt(apiKeyID, 10) + ":" + strings.TrimSpace(responseID)
+}
+
+func (c *comboCacheAndStore) BindCyberSessionRoot(_ context.Context, groupID, apiKeyID int64, responseID, root string, _ time.Duration) error {
+	c.lineageSets++
+	c.events = append(c.events, "lineage_bind")
+	if c.lineageErr != nil {
+		return c.lineageErr
+	}
+	if c.lineages == nil {
+		c.lineages = map[string]string{}
+	}
+	c.lineages[fakeCyberLineageKey(groupID, apiKeyID, responseID)] = root
+	return nil
+}
+
+func (c *comboCacheAndStore) GetCyberSessionRoot(_ context.Context, groupID, apiKeyID int64, responseID string) (string, bool, error) {
+	c.lineageGets++
+	if c.lineageErr != nil {
+		return "", false, c.lineageErr
+	}
+	root, ok := c.lineages[fakeCyberLineageKey(groupID, apiKeyID, responseID)]
+	return root, ok, nil
 }
 
 // --- tests ---
@@ -329,4 +370,202 @@ func TestCyberSessionScopeKeyNormalizesUserAgentVersion(t *testing.T) {
 	require.Equal(t, base, CyberSessionScopeKey(7, "203.0.113.10", "Codex CLI 1.2.4"))
 	require.NotEqual(t, base, CyberSessionScopeKey(8, "203.0.113.10", "Codex CLI 1.2.3"))
 	require.NotEqual(t, base, CyberSessionScopeKey(7, "203.0.113.11", "Codex CLI 1.2.3"))
+}
+
+func enabledCyberSessionTestService(cache GatewayCache) *OpenAIGatewayService {
+	return &OpenAIGatewayService{
+		cache: cache,
+		settingService: &SettingService{settingRepo: &fakeSettingRepo{vals: map[string]string{
+			SettingKeyCyberSessionBlockEnabled:    "true",
+			SettingKeyCyberSessionBlockTTLSeconds: "60",
+		}}},
+	}
+}
+
+func TestPrepareCyberSessionIdentityResolvesExplicitAndPreviousResponseLineage(t *testing.T) {
+	ctx := context.Background()
+	combo := &comboCacheAndStore{lineages: map[string]string{
+		fakeCyberLineageKey(7, 11, "resp_known"): "known-root",
+	}}
+	svc := enabledCyberSessionTestService(combo)
+
+	explicitCtx, explicitBody := newCyberBlockTestCtx(map[string]string{"session_id": "sess-1"}, `{}`)
+	explicit := svc.PrepareCyberSessionIdentity(ctx, 7, 11, explicitCtx, explicitBody, "203.0.113.1", "client/1.0")
+	require.NotNil(t, explicit)
+	require.Equal(t, CyberSessionExplicitBlockKey(11, explicitCtx, explicitBody), explicit.lineageRoot)
+	require.Equal(t, explicit.explicitKey, explicit.lineageRoot)
+	require.Zero(t, combo.lineageGets)
+
+	previousCtx, previousBody := newCyberBlockTestCtx(nil, `{"previous_response_id":"resp_known","input":"continue"}`)
+	previous := svc.PrepareCyberSessionIdentity(ctx, 7, 11, previousCtx, previousBody, "203.0.113.1", "client/1.0")
+	require.NotNil(t, previous)
+	require.Equal(t, "known-root", previous.lineageRoot)
+	require.Equal(t, 1, combo.lineageGets)
+	require.Equal(t, 1, combo.lineageSets, "a resolved lineage refreshes its TTL")
+
+	missingCtx, missingBody := newCyberBlockTestCtx(nil, `{"previous_response_id":"resp_missing","input":"continue"}`)
+	missing := svc.PrepareCyberSessionIdentity(ctx, 7, 11, missingCtx, missingBody, "203.0.113.1", "client/1.0")
+	require.NotNil(t, missing)
+	require.NotEmpty(t, missing.lineageRoot)
+	missingAgain := svc.PrepareCyberSessionIdentity(ctx, 7, 11, missingCtx, missingBody, "203.0.113.1", "client/1.0")
+	require.Equal(t, missing.lineageRoot, missingAgain.lineageRoot)
+	differentAPIKey := svc.PrepareCyberSessionIdentity(ctx, 7, 12, missingCtx, missingBody, "203.0.113.1", "client/1.0")
+	require.NotEqual(t, missing.lineageRoot, differentAPIKey.lineageRoot)
+}
+
+func TestPrepareCyberSessionIdentityAllocatesNewRootAndSkipsStoreWhenDisabled(t *testing.T) {
+	ctx := context.Background()
+	combo := &comboCacheAndStore{}
+	svc := enabledCyberSessionTestService(combo)
+	c, body := newCyberBlockTestCtx(nil, `{"input":"new turn"}`)
+	first := svc.PrepareCyberSessionIdentity(ctx, 7, 11, c, body, "203.0.113.1", "client/1.0")
+	second := svc.PrepareCyberSessionIdentity(ctx, 7, 11, c, body, "203.0.113.1", "client/1.0")
+	require.NotNil(t, first)
+	require.NotNil(t, second)
+	require.NotEmpty(t, first.lineageRoot)
+	require.NotEqual(t, first.lineageRoot, second.lineageRoot)
+	require.Zero(t, combo.lineageGets)
+	require.Zero(t, combo.lineageSets)
+
+	disabled := &OpenAIGatewayService{
+		cache: combo,
+		settingService: &SettingService{settingRepo: &fakeSettingRepo{vals: map[string]string{
+			SettingKeyCyberSessionBlockEnabled: "false",
+		}}},
+	}
+	require.Nil(t, disabled.PrepareCyberSessionIdentity(ctx, 7, 11, c, []byte(`{"previous_response_id":"resp_known"}`), "203.0.113.1", "client/1.0"))
+	require.Zero(t, combo.lineageGets)
+	require.Zero(t, combo.lineageSets)
+}
+
+func TestFindCyberSessionBlockedForBoundIdentityUsesExplicitThenLineageThenTranscript(t *testing.T) {
+	ctx := context.Background()
+	combo := &comboCacheAndStore{}
+	svc := enabledCyberSessionTestService(combo)
+	c, body := newCyberBlockTestCtx(map[string]string{"session_id": "sess-order"}, `{"messages":[{"role":"user","content":"setup"},{"role":"assistant","content":"ready"},{"role":"user","content":"continue"}]}`)
+	identity := svc.PrepareCyberSessionIdentity(ctx, 7, 11, c, body, "203.0.113.1", "client/1.0")
+	require.NotNil(t, identity)
+	BindCyberSessionIdentity(c, identity)
+
+	transcriptKey := CyberSessionTranscriptBlockKeys(11, body)[0]
+	combo.store.blocked = map[string]bool{transcriptKey: true}
+	combo.store.scopes = map[string]bool{identity.scopeKey: true}
+
+	require.Equal(t, transcriptKey, svc.FindCyberSessionBlockedForRequest(ctx, 11, c, body, "203.0.113.1", "client/1.0"))
+	require.Len(t, combo.store.findKeys, 2)
+	require.Equal(t, []string{identity.explicitKey}, combo.store.findKeys[0])
+	require.Equal(t, identity.transcriptLookupKeys, combo.store.findKeys[1])
+
+	combo.store.findKeys = nil
+	combo.store.blocked[identity.lineageRoot] = true
+	require.Equal(t, identity.lineageRoot, svc.FindCyberSessionBlockedForRequest(ctx, 11, c, body, "203.0.113.1", "client/1.0"))
+	require.Len(t, combo.store.findKeys, 1, "explicit roots are checked only once")
+}
+
+func TestCyberSessionIdentityNeverBlocksOnlyByIPAndUserAgent(t *testing.T) {
+	ctx := context.Background()
+	combo := &comboCacheAndStore{}
+	svc := enabledCyberSessionTestService(combo)
+	c1, body := newCyberBlockTestCtx(nil, `{"input":"first independent request"}`)
+	c2, _ := newCyberBlockTestCtx(nil, string(body))
+	first := svc.PrepareCyberSessionIdentity(ctx, 7, 11, c1, body, "203.0.113.1", "client/1.0")
+	second := svc.PrepareCyberSessionIdentity(ctx, 7, 11, c2, body, "203.0.113.1", "client/1.0")
+	require.NotEqual(t, first.lineageRoot, second.lineageRoot)
+	combo.store.blocked = map[string]bool{first.lineageRoot: true}
+	combo.store.scopes = map[string]bool{first.scopeKey: true}
+	BindCyberSessionIdentity(c2, second)
+
+	require.Empty(t, svc.FindCyberSessionBlockedForRequest(ctx, 11, c2, body, "203.0.113.1", "client/1.0"))
+}
+
+func TestFindCyberSessionBlockedForMappedPreviousResponseUsesLineageRoot(t *testing.T) {
+	ctx := context.Background()
+	combo := &comboCacheAndStore{
+		lineages: map[string]string{fakeCyberLineageKey(7, 11, "resp_known"): "known-root"},
+		store:    fakeCyberBlockStore{blocked: map[string]bool{"known-root": true}},
+	}
+	svc := enabledCyberSessionTestService(combo)
+	c, body := newCyberBlockTestCtx(nil, `{"previous_response_id":"resp_known","input":"continue"}`)
+	identity := svc.PrepareCyberSessionIdentity(ctx, 7, 11, c, body, "203.0.113.1", "client/1.0")
+	BindCyberSessionIdentity(c, identity)
+
+	require.Equal(t, "known-root", svc.FindCyberSessionBlockedForRequest(ctx, 11, c, body, "203.0.113.1", "client/1.0"))
+	require.Equal(t, [][]string{{"known-root"}}, combo.store.findKeys)
+}
+
+func TestCyberSessionLineageReadFailureKeepsTranscriptFallback(t *testing.T) {
+	ctx := context.Background()
+	combo := &comboCacheAndStore{lineageErr: errors.New("redis unavailable")}
+	svc := enabledCyberSessionTestService(combo)
+	body := []byte(`{"previous_response_id":"resp_unknown","messages":[{"role":"user","content":"setup"},{"role":"assistant","content":"ready"},{"role":"user","content":"continue"}]}`)
+	c, _ := newCyberBlockTestCtx(nil, string(body))
+	identity := svc.PrepareCyberSessionIdentity(ctx, 7, 11, c, body, "203.0.113.1", "client/1.0")
+	require.NotNil(t, identity)
+	require.NotEmpty(t, identity.lineageRoot)
+	BindCyberSessionIdentity(c, identity)
+	transcriptKey := CyberSessionTranscriptBlockKeys(11, body)[0]
+	combo.store.blocked = map[string]bool{transcriptKey: true}
+	combo.store.scopes = map[string]bool{identity.scopeKey: true}
+
+	require.Equal(t, transcriptKey, svc.FindCyberSessionBlockedForRequest(ctx, 11, c, body, "203.0.113.1", "client/1.0"))
+}
+
+func TestCyberSessionIdentityBindsResponsesAndBlocksBeforeClientWrite(t *testing.T) {
+	ctx := context.Background()
+	combo := &comboCacheAndStore{}
+	svc := enabledCyberSessionTestService(combo)
+	c, body := newCyberBlockTestCtx(nil, `{"input":"first turn"}`)
+	identity := svc.PrepareCyberSessionIdentity(ctx, 7, 11, c, body, "203.0.113.1", "client/1.0")
+	BindCyberSessionIdentity(c, identity)
+
+	ObserveCyberSessionResponseID(c, "resp_1")
+	MarkOpsCyberPolicy(c, CyberPolicyMark{Message: "blocked", UpstreamStatus: 200})
+	combo.events = append(combo.events, "downstream_write")
+
+	require.Equal(t, []string{"lineage_bind", "lineage_bind", "block_set", "downstream_write"}, combo.events)
+	require.True(t, combo.store.blocked[identity.lineageRoot])
+	require.Equal(t, identity.lineageRoot, combo.lineages[fakeCyberLineageKey(7, 11, "resp_1")])
+	require.True(t, identity.activated)
+
+	MarkOpsCyberPolicy(c, CyberPolicyMark{Message: "duplicate", UpstreamStatus: 200})
+	require.Equal(t, []string{"lineage_bind", "lineage_bind", "block_set", "downstream_write"}, combo.events)
+
+	nextCtx, nextBody := newCyberBlockTestCtx(nil, `{"previous_response_id":"resp_1","input":"continue"}`)
+	next := svc.PrepareCyberSessionIdentity(ctx, 7, 11, nextCtx, nextBody, "203.0.113.1", "client/1.0")
+	BindCyberSessionIdentity(nextCtx, next)
+	require.Equal(t, identity.lineageRoot, svc.FindCyberSessionBlockedForRequest(ctx, 11, nextCtx, nextBody, "203.0.113.1", "client/1.0"))
+
+	newCtx, newBody := newCyberBlockTestCtx(nil, `{"input":"genuinely new session"}`)
+	newIdentity := svc.PrepareCyberSessionIdentity(ctx, 7, 11, newCtx, newBody, "203.0.113.1", "client/1.0")
+	BindCyberSessionIdentity(newCtx, newIdentity)
+	require.Empty(t, svc.FindCyberSessionBlockedForRequest(ctx, 11, newCtx, newBody, "203.0.113.1", "client/1.0"))
+}
+
+func TestCyberSessionIdentityObservesResponseAfterActivation(t *testing.T) {
+	ctx := context.Background()
+	combo := &comboCacheAndStore{}
+	svc := enabledCyberSessionTestService(combo)
+	c, body := newCyberBlockTestCtx(nil, `{"input":"blocked before response id"}`)
+	identity := svc.PrepareCyberSessionIdentity(ctx, 7, 11, c, body, "203.0.113.1", "client/1.0")
+	BindCyberSessionIdentity(c, identity)
+	MarkOpsCyberPolicy(c, CyberPolicyMark{Message: "blocked", UpstreamStatus: 200})
+
+	ObserveCyberSessionResponseID(c, "resp_late")
+
+	require.Equal(t, identity.lineageRoot, combo.lineages[fakeCyberLineageKey(7, 11, "resp_late")])
+	require.True(t, combo.store.blocked[identity.lineageRoot])
+}
+
+func TestCyberSessionIdentityBoundsObservedResponseLineageWrites(t *testing.T) {
+	combo := &comboCacheAndStore{}
+	svc := enabledCyberSessionTestService(combo)
+	c, body := newCyberBlockTestCtx(nil, `{"input":"bounded response ids"}`)
+	identity := svc.PrepareCyberSessionIdentity(c.Request.Context(), 7, 11, c, body, "203.0.113.1", "client/1.0")
+	BindCyberSessionIdentity(c, identity)
+
+	for i := 0; i < 20; i++ {
+		ObserveCyberSessionResponseID(c, "resp_"+strconv.Itoa(i))
+	}
+
+	require.Equal(t, 8, combo.lineageSets)
 }
