@@ -213,3 +213,34 @@ func TestNativeAnthropicPassthroughLeavesOtherThinkingUntouched(t *testing.T) {
 		})
 	}
 }
+
+// zhipu 账号走原生 Anthropic 直通时，入站的 claude-cli 客户端身份头必须被
+// 统一改写为 ZCode Desktop 指纹（applyZCodeIdentityHeaders 接线回归）。
+func TestBuildNativeAnthropicUpstreamRequest_ZhipuMimicsZCode(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	c := adaptiveProtocolTestContext("/v1/messages", []byte(`{}`))
+	c.Request.Header.Set("User-Agent", "claude-cli/2.1.81 (external, cli)")
+	c.Request.Header.Set("x-app", "cli")
+
+	account := &Account{
+		ID:          4105,
+		Name:        "zhipu-native",
+		Platform:    PlatformZhipu,
+		Type:        AccountTypeAPIKey,
+		Concurrency: 1,
+		Credentials: map[string]any{
+			"api_key":       "zhu-test",
+			"api_protocol":  APIProtocolAnthropic,
+			"api_base_urls": map[string]any{APIProtocolAnthropic: "http://anthropic.example"},
+		},
+	}
+	svc := &OpenAIGatewayService{}
+	req, _, err := svc.buildNativeAnthropicUpstreamRequest(context.Background(), c, account,
+		[]byte(`{"model":"glm-4.7","max_tokens":32,"messages":[{"role":"user","content":"hi"}]}`),
+		"zhu-test", "http://anthropic.example/v1/messages")
+	require.NoError(t, err)
+
+	require.True(t, strings.HasPrefix(getHeaderRaw(req.Header, "user-agent"), "ZCode/"+zcodeAppVersion))
+	require.Empty(t, getHeaderRaw(req.Header, "x-app"))
+	require.Equal(t, "glm", getHeaderRaw(req.Header, "X-Zcode-Agent"))
+}

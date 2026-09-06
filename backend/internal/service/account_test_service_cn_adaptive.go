@@ -82,6 +82,8 @@ func (s *AccountTestService) testCNProviderAdaptiveAnthropicConnection(c *gin.Co
 	}
 	req.Header.Set("anthropic-beta", claude.APIKeyBetaHeader)
 	setAnthropicAPIKeyAuthHeader(req.Header, account, authToken)
+	// zhipu 探测同样按 ZCode Desktop 客户端身份出站（非 zhipu 账号 no-op）。
+	applyZCodeIdentityHeaders(req.Header, account, zcodeIdentityAnthropic)
 	account.ApplyHeaderOverrides(req.Header)
 
 	resp, err := s.doCNProviderAdaptiveRequest(req, account)
@@ -261,6 +263,8 @@ func (s *AccountTestService) testCNProviderAnthropicConnection(c *gin.Context, a
 		req.Header.Set(key, value)
 	}
 	setAnthropicAPIKeyAuthHeader(req.Header, account, authToken)
+	// zhipu 探测同样按 ZCode Desktop 客户端身份出站（非 zhipu 账号 no-op）。
+	applyZCodeIdentityHeaders(req.Header, account, zcodeIdentityAnthropic)
 	account.ApplyHeaderOverrides(req.Header)
 
 	resp, err := s.doCNProviderAdaptiveRequest(req, account)

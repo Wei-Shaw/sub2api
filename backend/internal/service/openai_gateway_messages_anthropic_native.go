@@ -191,6 +191,10 @@ func (s *OpenAIGatewayService) buildNativeAnthropicUpstreamRequest(
 		setHeaderRaw(req.Header, "anthropic-version", "2023-06-01")
 	}
 
+	// zhipu 账号统一为 ZCode Desktop 客户端指纹：盖过 claude-cli 等残留身份头
+	// （header_overrides 仍可再覆盖）。
+	applyZCodeIdentityHeaders(req.Header, account, zcodeIdentityAnthropic)
+
 	// 账号级请求头覆写（最终生效，覆盖上面所有来源的同名头）
 	account.ApplyHeaderOverrides(req.Header)
 
