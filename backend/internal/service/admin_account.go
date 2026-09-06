@@ -574,6 +574,10 @@ func (s *adminServiceImpl) UpdateAccount(ctx context.Context, id int64, input *U
 		if err != nil {
 			return nil, err
 		}
+		normalizedExtra, err = normalizeZhipuMCPUpdateExtra(account, input, normalizedExtra)
+		if err != nil {
+			return nil, err
+		}
 		if err := ValidateUpstreamRequestIDHeaderExtra(normalizedExtra); err != nil {
 			return nil, err
 		}

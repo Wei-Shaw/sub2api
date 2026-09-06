@@ -513,6 +513,22 @@
         </div>
       </div>
 
+      <!-- Zhipu MCP passthrough (Coding Plan only) -->
+      <div v-if="form.platform === 'zhipu'" class="mt-4" data-testid="zhipu-mcp-section">
+        <div class="flex items-center justify-between gap-4">
+          <div class="min-w-0">
+            <label class="input-label mb-0">{{ t('admin.accounts.zhipuMcp.title') }}</label>
+            <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ zhipuMcpHint }}</p>
+          </div>
+          <Toggle
+            v-model="zhipuMcpPassthroughEnabled"
+            :disabled="accountMode !== 'coding'"
+            data-testid="zhipu-mcp-toggle"
+            :aria-label="t('admin.accounts.zhipuMcp.title')"
+          />
+        </div>
+      </div>
+
       <!-- API Protocol Selection (Kimi / Zhipu / DeepSeek) -->
       <div v-if="isCNPlatform" class="mt-4">
         <label class="input-label">{{ t('admin.accounts.cnProviders.apiProtocol.title') }}</label>
@@ -4052,6 +4068,13 @@ const upstreamBillingAutoProbeEnabled = ref(true)
 
 // ── 国产供应商（Kimi / Zhipu / DeepSeek）账号类型、API 协议与端点 ──
 const accountMode = ref<CnAccountMode>('payg')
+// 智谱 MCP 转发：仅 Coding Plan 模式可开启，提交时写入 extra.zhipu_mcp_enabled。
+const zhipuMcpPassthroughEnabled = ref(false)
+const zhipuMcpHint = computed(() =>
+  accountMode.value === 'coding'
+    ? t('admin.accounts.zhipuMcp.hint')
+    : t('admin.accounts.zhipuMcp.paygDisabledHint')
+)
 // API 协议决定转发端点与格式：cc=现有转换链，anthropic=原生直通（Claude Code），
 // responses=deepseek / kimi 原生 Responses 端点（Codex）。与账号类型正交。
 const apiProtocol = ref<CnApiProtocol>('adaptive')
@@ -4139,6 +4162,10 @@ function selectCNPlatform(platform: 'kimi' | 'zhipu' | 'deepseek') {
 // 账号类型 / 协议变更时同步默认 base url。
 watch(accountMode, (mode, previousMode) => {
   if (!isCNPlatform.value) return
+  // 智谱 MCP 转发仅 Coding Plan 可开启：切回按量付费时重置，避免带开启状态提交。
+  if (mode !== 'coding') {
+    zhipuMcpPassthroughEnabled.value = false
+  }
   if (apiProtocol.value === 'adaptive') {
     const previousDefaults = defaultCNAdaptiveBaseUrls(cnPresetPlatform.value, previousMode)
     const nextDefaults = defaultCNAdaptiveBaseUrls(cnPresetPlatform.value, mode)
@@ -4690,6 +4717,10 @@ watch(
               ? 'https://api.x.ai/v1'
               : 'https://api.anthropic.com'
     }
+    // 智谱专属开关：离开 zhipu 平台时重置，避免残留开启状态。
+    if (newPlatform !== 'zhipu') {
+      zhipuMcpPassthroughEnabled.value = false
+    }
     // Clear model-related settings
     allowedModels.value = []
     upstreamModelsPreviewed.value = false
@@ -5153,6 +5184,7 @@ const resetForm = () => {
   accountCategory.value = 'oauth-based'
   addMethod.value = 'oauth'
   accountMode.value = 'payg'
+  zhipuMcpPassthroughEnabled.value = false
   apiProtocol.value = 'adaptive'
   adaptiveBaseUrls.value = { chat_completions: '', anthropic: '', responses: '' }
   apiKeyBaseUrl.value = 'https://api.anthropic.com'
@@ -5342,6 +5374,16 @@ const buildOpenAICodexImportExtra = (): Record<string, unknown> | undefined => {
     delete extra.openai_long_context_billing_enabled
   }
   return Object.keys(extra).length > 0 ? extra : undefined
+}
+
+const buildZhipuExtra = (base?: Record<string, unknown>): Record<string, unknown> | undefined => {
+  if (form.platform !== 'zhipu' || !zhipuMcpPassthroughEnabled.value) {
+    return base
+  }
+  // 缺省（关闭）不落键，与后端 extra.zhipu_mcp_enabled 默认不开启的约定一致。
+  const extra: Record<string, unknown> = { ...(base || {}) }
+  extra.zhipu_mcp_enabled = true
+  return extra
 }
 
 const buildAnthropicExtra = (base?: Record<string, unknown>): Record<string, unknown> | undefined => {
@@ -5702,7 +5744,7 @@ const handleSubmit = async () => {
   }
 
   form.credentials = credentials
-  const extra = buildAnthropicExtra(buildOpenAIExtra())
+  const extra = buildZhipuExtra(buildAnthropicExtra(buildOpenAIExtra()))
 
   await doCreateAccount({
     ...form,

@@ -357,6 +357,11 @@ export default {
         balanceLow: '余额不足',
         noBalanceEndpoint: '该平台暂无余额查询接口',
       },
+      zhipuMcp: {
+        title: 'MCP 转发',
+        hint: '开启后 MCP 协议请求将通过该智谱账号转发。',
+        paygDisabledHint: '仅 Coding Plan 订阅模式的智谱账号可开启 MCP 转发。',
+      },
       types: {
         oauth: 'OAuth',
         chatgptOauth: 'ChatGPT OAuth',
