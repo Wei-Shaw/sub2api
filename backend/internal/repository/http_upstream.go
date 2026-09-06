@@ -512,11 +512,6 @@ func isSupportedGrokCLIVersion(version string) bool {
 		semver.Compare(canonical, minimum) >= 0
 }
 
-// acquireClientWithTLS 获取或创建带 TLS 指纹的客户端
-func (s *httpUpstreamService) acquireClientWithTLS(proxyURL string, accountID int64, accountConcurrency int, profile *tlsfingerprint.Profile, upstreamProfile service.HTTPUpstreamProfile) (*upstreamClientEntry, error) {
-	return s.getClientEntryWithTLS(proxyURL, accountID, accountConcurrency, profile, upstreamProfile, true, true)
-}
-
 func (s *httpUpstreamService) acquireClientWithTLSAndScope(proxyURL string, accountID int64, accountConcurrency int, profile *tlsfingerprint.Profile, upstreamProfile service.HTTPUpstreamProfile, scope string) (*upstreamClientEntry, error) {
 	return s.getClientEntryWithTLSAndScope(proxyURL, accountID, accountConcurrency, profile, upstreamProfile, true, scope, true)
 }

@@ -761,15 +761,6 @@ func (b *openAIWSAccountBudget) releaseConn(conn *openAIWSConn) {
 	b.mu.Unlock()
 }
 
-func (b *openAIWSAccountBudget) usage() int {
-	if b == nil {
-		return 0
-	}
-	b.mu.Lock()
-	defer b.mu.Unlock()
-	return b.used
-}
-
 func (b *openAIWSAccountBudget) snapshotRevision() uint64 {
 	if b == nil {
 		return 0
@@ -888,10 +879,7 @@ func (b *openAIWSAccountBudget) idleCandidates(maxIdle int) ([]openAIWSAccountId
 		if item.conn == nil || item.conn.isLeased() || item.conn.waiters.Load() > 0 {
 			continue
 		}
-		candidates = append(candidates, openAIWSAccountIdleCandidate{
-			poolKey: item.poolKey,
-			conn:    item.conn,
-		})
+		candidates = append(candidates, openAIWSAccountIdleCandidate(item))
 	}
 	b.mu.Unlock()
 
