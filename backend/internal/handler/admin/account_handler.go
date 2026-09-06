@@ -64,6 +64,7 @@ type AccountHandler struct {
 	grokImportProber        grokImportProber
 	upstreamBillingProbe    *service.UpstreamBillingProbeService
 	ollamaCloudUsage        *service.OllamaCloudUsageService
+	opencodeGoUsage         *service.OpenCodeGoUsageService
 }
 
 // SetUpstreamBillingProbeService attaches the optional remote billing probe service.
@@ -73,6 +74,10 @@ func (h *AccountHandler) SetUpstreamBillingProbeService(probe *service.UpstreamB
 
 func (h *AccountHandler) SetOllamaCloudUsageService(usage *service.OllamaCloudUsageService) {
 	h.ollamaCloudUsage = usage
+}
+
+func (h *AccountHandler) SetOpenCodeGoUsageService(usage *service.OpenCodeGoUsageService) {
+	h.opencodeGoUsage = usage
 }
 
 // NewAccountHandler creates a new admin account handler
@@ -562,14 +567,22 @@ func (h *AccountHandler) List(c *gin.Context) {
 		response.ErrorFrom(c, err)
 		return
 	}
-	if h.ollamaCloudUsage != nil && len(accounts) > 0 {
+	if len(accounts) > 0 {
 		accountPointers := make([]*service.Account, len(accounts))
 		for index := range accounts {
 			accountPointers[index] = &accounts[index]
 		}
-		if err := h.ollamaCloudUsage.ResolveAccounts(c.Request.Context(), accountPointers); err != nil {
-			response.ErrorFrom(c, err)
-			return
+		if h.ollamaCloudUsage != nil {
+			if err := h.ollamaCloudUsage.ResolveAccounts(c.Request.Context(), accountPointers); err != nil {
+				response.ErrorFrom(c, err)
+				return
+			}
+		}
+		if h.opencodeGoUsage != nil {
+			if err := h.opencodeGoUsage.ResolveOpenCodeGoUsageAccounts(c.Request.Context(), accountPointers); err != nil {
+				response.ErrorFrom(c, err)
+				return
+			}
 		}
 	}
 
@@ -822,6 +835,12 @@ func (h *AccountHandler) GetByID(c *gin.Context) {
 	}
 	if h.ollamaCloudUsage != nil {
 		if err := h.ollamaCloudUsage.ResolveAccounts(c.Request.Context(), []*service.Account{account}); err != nil {
+			response.ErrorFrom(c, err)
+			return
+		}
+	}
+	if h.opencodeGoUsage != nil {
+		if err := h.opencodeGoUsage.ResolveOpenCodeGoUsageAccounts(c.Request.Context(), []*service.Account{account}); err != nil {
 			response.ErrorFrom(c, err)
 			return
 		}

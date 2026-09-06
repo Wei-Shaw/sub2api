@@ -641,7 +641,19 @@ func lockAndMergeAccountProbeExtra(
 			extra -> 'upstream_billing_probe',
 			extra -> 'ollama_cloud_usage_session',
 			extra -> 'ollama_cloud_usage_auto_refresh',
-			extra -> 'ollama_cloud_usage_snapshot'
+			extra -> 'ollama_cloud_usage_snapshot',
+			COALESCE(
+				platform = 'openai'
+				AND $2 = 'openai'
+				AND type = 'apikey'
+				AND $3 = 'apikey'
+				AND credentials -> 'api_key' IS NOT DISTINCT FROM $4::jsonb -> 'api_key'
+				AND `+opencodeGoBaseURLMatchSQLPrefix+`credentials ->> 'base_url'`+opencodeGoBaseURLMatchSQLSuffix+`
+				AND `+opencodeGoBaseURLMatchSQLPrefix+`$4::jsonb ->> 'base_url'`+opencodeGoBaseURLMatchSQLSuffix+`,
+				false
+			),
+			extra -> 'opencode_go_usage_auto_refresh',
+			extra -> 'opencode_go_usage_snapshot'
 		FROM accounts
 		WHERE id = $1 AND deleted_at IS NULL
 		FOR NO KEY UPDATE
@@ -658,15 +670,18 @@ func lockAndMergeAccountProbeExtra(
 	}
 
 	var (
-		identityUnchanged            bool
-		ollamaGroupIdentityUnchanged bool
-		ollamaProxyIdentityUnchanged bool
-		currentEnabled               []byte
-		currentRateSyncEnabled       []byte
-		currentSnapshot              []byte
-		currentOllamaSession         []byte
-		currentOllamaAutoRefresh     []byte
-		currentOllamaSnapshot        []byte
+		identityUnchanged              bool
+		ollamaGroupIdentityUnchanged   bool
+		ollamaProxyIdentityUnchanged   bool
+		opencodeGroupIdentityUnchanged bool
+		currentEnabled                 []byte
+		currentRateSyncEnabled         []byte
+		currentSnapshot                []byte
+		currentOllamaSession           []byte
+		currentOllamaAutoRefresh       []byte
+		currentOllamaSnapshot          []byte
+		currentOpenCodeAutoRefresh     []byte
+		currentOpenCodeSnapshot        []byte
 	)
 	if err := rows.Scan(
 		&identityUnchanged,
@@ -678,6 +693,9 @@ func lockAndMergeAccountProbeExtra(
 		&currentOllamaSession,
 		&currentOllamaAutoRefresh,
 		&currentOllamaSnapshot,
+		&opencodeGroupIdentityUnchanged,
+		&currentOpenCodeAutoRefresh,
+		&currentOpenCodeSnapshot,
 	); err != nil {
 		return nil, err
 	}
@@ -693,6 +711,8 @@ func lockAndMergeAccountProbeExtra(
 		service.OllamaCloudUsageSessionExtraKey,
 		service.OllamaCloudUsageAutoRefreshExtraKey,
 		service.OllamaCloudUsageSnapshotExtraKey,
+		service.OpenCodeGoUsageAutoRefreshExtraKey,
+		service.OpenCodeGoUsageSnapshotExtraKey,
 	} {
 		delete(extra, key)
 	}
@@ -770,6 +790,24 @@ func lockAndMergeAccountProbeExtra(
 			}
 		}
 	}
+	// OpenCode Go 受管状态与 Ollama 同范式：组身份（normalized opencode base URL +
+	// api_key）未变时从锁定的 DB 行回填，客户端 DTO 脱敏或并发 refresh 写入都无法
+	// 覆盖/丢失；身份改变或不再 eligible 时既不回填，写出的 extra 即清除旧状态。
+	// 代理不属于组身份，但 snapshot 外呼与 CAS 经代理，故代理变化时快照失效而开关保留。
+	if service.IsOpenCodeGoUsageAccount(account) && opencodeGroupIdentityUnchanged {
+		if value, ok, err := decodeAccountExtraJSON(currentOpenCodeAutoRefresh); err != nil {
+			return nil, err
+		} else if ok {
+			extra[service.OpenCodeGoUsageAutoRefreshExtraKey] = value
+		}
+		if ollamaProxyIdentityUnchanged {
+			if snapshot, ok, err := decodeAccountExtraJSON(currentOpenCodeSnapshot); err != nil {
+				return nil, err
+			} else if ok {
+				extra[service.OpenCodeGoUsageSnapshotExtraKey] = snapshot
+			}
+		}
+	}
 	return extra, nil
 }
 
@@ -812,6 +850,25 @@ func (r *accountRepository) UpdateCredentials(ctx context.Context, id int64, cre
 		SET
 			credentials = $1::jsonb,
 			extra = CASE
+				-- OpenCode Go 分支必须先于 Ollama 分支求值：Ollama 守卫对任意
+				-- openai/anthropic apikey 行在 api_key/base_url 变化时都会命中，
+				-- 若排在前面会遮蔽 opencode 行的清理。opencode 与 ollama base URL
+				-- 正则互斥，旧行只会命中其中一个分支。
+				WHEN platform = 'openai'
+					AND type = 'apikey'
+					AND credentials IS DISTINCT FROM $1::jsonb
+					AND `+opencodeGoBaseURLMatchSQLPrefix+`credentials ->> 'base_url'`+opencodeGoBaseURLMatchSQLSuffix+`
+					AND (
+						credentials -> 'api_key' IS DISTINCT FROM $1::jsonb -> 'api_key'
+						OR (`+opencodeGoBaseURLMatchSQLPrefix+`$1::jsonb ->> 'base_url'`+opencodeGoBaseURLMatchSQLSuffix+`) IS NOT TRUE
+					)
+				THEN COALESCE(extra, '{}'::jsonb)
+					- 'upstream_billing_probe'
+					- 'opencode_go_usage_auto_refresh'
+					- 'opencode_go_usage_snapshot'
+					- 'ollama_cloud_usage_session'
+					- 'ollama_cloud_usage_auto_refresh'
+					- 'ollama_cloud_usage_snapshot'
 				-- 凭证整体未变化 ⇒ Ollama 组身份必然未变化；顶层 DISTINCT 守卫防止
 				-- 非 Ollama 账号的无变化持久化误清探测快照或重写 NULL extra。
 				WHEN platform IN (`+ollamaCloudUsagePlatformsSQL+`)
@@ -2918,7 +2975,23 @@ func (r *accountRepository) BulkUpdate(ctx context.Context, ids []int64, updates
 				" AND "+ollamaCloudBaseURLMatchesSQL(credentialPlaceholder+"::jsonb ->> 'base_url'")+")")
 	}
 
-	if len(updates.Extra) > 0 || len(ollamaGroupIdentityChanges) > 0 || ollamaProxyIdentityChanged != "" || updates.EnsureCodexFingerprintSeed {
+	// OpenCode Go 身份清理与 Ollama 同范式但更精确：仅当旧行是 opencode base URL
+	// 身份时才可能持有受管键，且只在该组身份（api_key / normalized base URL）真正
+	// 变化或不再 eligible 时清除，避免与 Ollama 分支交叉误清。
+	opencodeGroupIdentityChanges := make([]string, 0, 2)
+	opencodeOldBaseURL := opencodeGoBaseURLMatchSQLPrefix + "credentials ->> 'base_url'" + opencodeGoBaseURLMatchSQLSuffix
+	if _, ok := updates.Credentials["api_key"]; ok {
+		opencodeGroupIdentityChanges = append(opencodeGroupIdentityChanges,
+			opencodeOldBaseURL+" AND credentials -> 'api_key' IS DISTINCT FROM "+credentialPlaceholder+"::jsonb -> 'api_key'")
+	}
+	if _, ok := updates.Credentials["base_url"]; ok {
+		// NULL-safe：新 base_url 缺失/为 null 时 regex(NULL) 为 NULL，NOT NULL 仍为
+		// NULL 会令 WHEN 不命中而残留 OpenCode 状态；IS NOT TRUE 把 NULL 视为不匹配。
+		opencodeGroupIdentityChanges = append(opencodeGroupIdentityChanges,
+			opencodeOldBaseURL+" AND ("+opencodeGoBaseURLMatchSQLPrefix+credentialPlaceholder+"::jsonb ->> 'base_url'"+opencodeGoBaseURLMatchSQLSuffix+") IS NOT TRUE")
+	}
+
+	if len(updates.Extra) > 0 || len(ollamaGroupIdentityChanges) > 0 || len(opencodeGroupIdentityChanges) > 0 || ollamaProxyIdentityChanged != "" || updates.EnsureCodexFingerprintSeed {
 		extraExpression := "COALESCE(extra, '{}'::jsonb)"
 		if len(updates.Extra) > 0 {
 			payload, err := json.Marshal(updates.Extra)
@@ -2949,13 +3022,44 @@ func (r *accountRepository) BulkUpdate(ctx context.Context, ids []int64, updates
 				snapshotIdentityChanged = "(" + snapshotIdentityChanged + " OR " + proxyChanged + ")"
 			}
 		}
+		// 代理不属于 OpenCode 组身份，但 snapshot 外呼与 CAS 经代理：
+		// 组身份变化清除开关+快照，仅代理变化清除快照而保留开关。
+		// eligible 判定必须包含旧行 opencode base URL：否则 OpenAI+Ollama 行在
+		// 代理变化时会先命中 OpenCode 分支（CASE 按序求值）而遮蔽 Ollama 分支的
+		// 快照清理。opencode 与 ollama 正则互斥，带上 base URL 后两套分支互斥。
+		opencodeEligibleAccount := "platform = 'openai' AND type = 'apikey' AND " + opencodeOldBaseURL
+		opencodeGroupIdentityChanged := ""
+		if len(opencodeGroupIdentityChanges) > 0 {
+			opencodeGroupIdentityChanged = "(" + opencodeEligibleAccount + " AND (" + joinClauses(opencodeGroupIdentityChanges, " OR ") + "))"
+		}
+		opencodeSnapshotIdentityChanged := opencodeGroupIdentityChanged
+		if ollamaProxyIdentityChanged != "" {
+			opencodeProxyChanged := "(" + opencodeEligibleAccount + " AND " + ollamaProxyIdentityChanged + ")"
+			if opencodeSnapshotIdentityChanged == "" {
+				opencodeSnapshotIdentityChanged = opencodeProxyChanged
+			} else {
+				opencodeSnapshotIdentityChanged = "(" + opencodeSnapshotIdentityChanged + " OR " + opencodeProxyChanged + ")"
+			}
+		}
+		caseBranches := make([]string, 0, 4)
+		if opencodeGroupIdentityChanged != "" {
+			caseBranches = append(caseBranches,
+				" WHEN "+opencodeGroupIdentityChanged+" THEN ("+extraExpression+") - 'opencode_go_usage_auto_refresh' - 'opencode_go_usage_snapshot'")
+		}
+		if opencodeSnapshotIdentityChanged != "" {
+			caseBranches = append(caseBranches,
+				" WHEN "+opencodeSnapshotIdentityChanged+" THEN ("+extraExpression+") - 'opencode_go_usage_snapshot'")
+		}
 		if groupIdentityChanged != "" {
-			extraExpression = "CASE" +
-				" WHEN " + groupIdentityChanged + " THEN (" + extraExpression + ") - 'ollama_cloud_usage_session' - 'ollama_cloud_usage_auto_refresh' - 'ollama_cloud_usage_snapshot'" +
-				" WHEN " + snapshotIdentityChanged + " THEN (" + extraExpression + ") - 'ollama_cloud_usage_snapshot'" +
-				" ELSE " + extraExpression + " END"
-		} else if snapshotIdentityChanged != "" {
-			extraExpression = "CASE WHEN " + snapshotIdentityChanged + " THEN (" + extraExpression + ") - 'ollama_cloud_usage_snapshot' ELSE " + extraExpression + " END"
+			caseBranches = append(caseBranches,
+				" WHEN "+groupIdentityChanged+" THEN ("+extraExpression+") - 'ollama_cloud_usage_session' - 'ollama_cloud_usage_auto_refresh' - 'ollama_cloud_usage_snapshot'")
+		}
+		if snapshotIdentityChanged != "" {
+			caseBranches = append(caseBranches,
+				" WHEN "+snapshotIdentityChanged+" THEN ("+extraExpression+") - 'ollama_cloud_usage_snapshot'")
+		}
+		if len(caseBranches) > 0 {
+			extraExpression = "CASE" + strings.Join(caseBranches, "") + " ELSE " + extraExpression + " END"
 		}
 		if updates.EnsureCodexFingerprintSeed {
 			extraExpression = ensureCodexFingerprintSeedSQL(extraExpression)
