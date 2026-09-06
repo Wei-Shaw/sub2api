@@ -459,6 +459,24 @@ export default {
         saved: 'Ollama Cloud usage refresh settings saved',
         saveFailed: 'Failed to save Ollama Cloud usage refresh settings'
       },
+      gatewayRuntime: {
+        title: 'Outbound Privacy and Connection Isolation',
+        description: 'Manage HTTP/TLS pool isolation, outbound privacy headers, and account-wide OpenAI WebSocket budgets. New requests use changes immediately; idle pools converge in the background.',
+        connectionPoolIsolation: 'HTTP/TLS connection pool isolation',
+        connectionPoolIsolationHint: 'Account + proxy is suited to shared gateways. Strict account isolation upgrades proxy-only mode automatically.',
+        isolationAccountProxy: 'By account + proxy (recommended)', isolationAccount: 'By account', isolationProxy: 'By proxy only',
+        outboundPrivacy: 'Sanitize outbound privacy headers', outboundPrivacyHint: 'Remove client network, distributed tracing, and hop-by-hop request headers.',
+        strictAccountIsolation: 'Strict HTTP/TLS isolation across API keys',
+        strictAccountIsolationHint: 'API keys sharing one upstream account keep separate HTTP/TLS connection state. WebSocket state is always isolated by API key.',
+        preserveHeaders: 'Preserved request headers', preserveHeadersPlaceholder: 'For example X-Request-ID, one per line or comma-separated',
+        preserveHeadersHint: 'List only privacy or trace headers that must reach the upstream. Names are case-insensitive.',
+        openAIWSBudget: 'Account-wide OpenAI WebSocket budget', openAIWSBudgetHint: 'All three values are aggregated per upstream account instead of multiplied per API key.',
+        maxConnections: 'Max connections', minIdle: 'Min idle', maxIdle: 'Max idle', integerRequired: 'WebSocket budget values must be integers.',
+        nonNegativeBudget: 'Max connections must be positive and idle values cannot be negative.', minIdleExceedsMaxIdle: 'Min idle cannot exceed max idle.',
+        maxIdleExceedsMaxConnections: 'Max idle cannot exceed max connections.', retry: 'Reload', apply: 'Apply runtime settings',
+        saved: 'Outbound privacy and connection isolation settings applied', loadFailed: 'Failed to load outbound privacy and connection isolation settings',
+        saveFailed: 'Failed to save outbound privacy and connection isolation settings'
+      },
       gatewayForwarding: {
         title: 'Request Forwarding',
         description: 'Control how requests are forwarded to upstream OAuth accounts',

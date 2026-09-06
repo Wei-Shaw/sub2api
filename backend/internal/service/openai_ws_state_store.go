@@ -114,6 +114,21 @@ type defaultOpenAIWSStateStore struct {
 	lastCleanupUnixNano atomic.Int64
 }
 
+// scopedOpenAIWSStateKey prevents response/session continuity from crossing
+// API-key boundaries while keeping the storage interface backward compatible.
+func scopedOpenAIWSStateKey(ctx context.Context, key string) string {
+	key = strings.TrimSpace(key)
+	if key == "" {
+		return ""
+	}
+	scope := HTTPUpstreamIsolationScopeFromContext(ctx)
+	if scope == "" {
+		return key
+	}
+	sum := sha256.Sum256([]byte(scope))
+	return "scope:" + hex.EncodeToString(sum[:8]) + ":" + key
+}
+
 // NewOpenAIWSStateStore 创建默认 WS 状态存储。
 func NewOpenAIWSStateStore(cache GatewayCache) OpenAIWSStateStore {
 	store := &defaultOpenAIWSStateStore{

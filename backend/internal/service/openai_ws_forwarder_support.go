@@ -166,8 +166,8 @@ func (s *OpenAIGatewayService) performOpenAIWSGeneratePrewarm(
 	lease.MarkPrewarmed()
 	if prewarmResponseID != "" && stateStore != nil {
 		ttl := s.openAIWSResponseStickyTTL()
-		logOpenAIWSBindResponseAccountWarn(groupID, account.ID, prewarmResponseID, stateStore.BindResponseAccount(ctx, groupID, prewarmResponseID, account.ID, ttl))
-		stateStore.BindResponseConn(prewarmResponseID, lease.ConnID(), ttl)
+		logOpenAIWSBindResponseAccountWarn(groupID, account.ID, prewarmResponseID, stateStore.BindResponseAccount(ctx, groupID, scopedOpenAIWSStateKey(ctx, prewarmResponseID), account.ID, ttl))
+		stateStore.BindResponseConn(scopedOpenAIWSStateKey(ctx, prewarmResponseID), lease.ConnID(), ttl)
 	}
 	logOpenAIWSModeInfo(
 		"prewarm_done account_id=%d conn_id=%s response_id=%s events=%d terminal_events=%d duration_ms=%d",
@@ -483,7 +483,7 @@ func (s *OpenAIGatewayService) selectAccountByPreviousResponseIDForCapability(
 			derefGroupID(groupID),
 			accountID,
 			responseID,
-			store.BindResponseAccount(ctx, derefGroupID(groupID), responseID, accountID, s.openAIWSResponseStickyTTL()),
+			store.BindResponseAccount(ctx, derefGroupID(groupID), scopedOpenAIWSStateKey(ctx, responseID), accountID, s.openAIWSResponseStickyTTL()),
 		)
 		return attachSelectionProfitGate(ctx, &AccountSelectionResult{
 			Account:     account,
@@ -541,7 +541,7 @@ func (s *OpenAIGatewayService) resolveAccountByPreviousResponseIDForCapability(
 		return 0, nil, "", nil
 	}
 
-	accountID, err := store.GetResponseAccount(ctx, derefGroupID(groupID), responseID)
+	accountID, err := store.GetResponseAccount(ctx, derefGroupID(groupID), scopedOpenAIWSStateKey(ctx, responseID))
 	if err != nil || accountID <= 0 {
 		return 0, nil, "", nil
 	}
