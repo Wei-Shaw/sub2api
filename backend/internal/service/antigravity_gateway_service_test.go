@@ -399,7 +399,7 @@ func TestAntigravityGatewayService_ForwardGemini_ImageUsesDefaultMappingAndOAuth
 	require.Equal(t, []any{"TEXT", "IMAGE"}, generationConfig["responseModalities"])
 }
 
-func TestAntigravityGatewayService_ForwardGemini_PreservesServerSideToolInvocationConfig(t *testing.T) {
+func TestAntigravityGatewayService_ForwardGemini_StripsBuiltinsWhenClientFunctionsPresent(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	body := []byte(`{"contents":[{"role":"user","parts":[{"text":"hello"}]}],"tools":[{"functionDeclarations":[{"name":"get_weather","parameters":{"type":"object","additionalProperties":false}}]},{"googleSearch":{}}],"toolConfig":{"includeServerSideToolInvocations":true}}`)
 	writer := httptest.NewRecorder()
@@ -431,10 +431,16 @@ func TestAntigravityGatewayService_ForwardGemini_PreservesServerSideToolInvocati
 	require.NoError(t, json.Unmarshal(upstream.requestBodies[0], &wrapped))
 	request, ok := wrapped["request"].(map[string]any)
 	require.True(t, ok)
-	toolConfig, ok := request["toolConfig"].(map[string]any)
+	tools, ok := request["tools"].([]any)
 	require.True(t, ok)
-	require.Equal(t, true, toolConfig["includeServerSideToolInvocations"])
-	require.NotContains(t, toolConfig, "include_server_side_tool_invocations")
+	require.Len(t, tools, 1)
+	tool, ok := tools[0].(map[string]any)
+	require.True(t, ok)
+	require.Contains(t, tool, "functionDeclarations")
+	require.NotContains(t, tool, "googleSearch")
+	if toolConfig, exists := request["toolConfig"].(map[string]any); exists {
+		require.NotContains(t, toolConfig, "includeServerSideToolInvocations")
+	}
 }
 
 func TestAntigravityGatewayService_ForwardGemini_MissingProjectReturnsLocalError(t *testing.T) {
