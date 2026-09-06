@@ -214,7 +214,9 @@ func (s *OpenAIGatewayService) forwardOpenAIWSV2(
 	if err != nil {
 		var dialErr *openAIWSDialError
 		if errors.As(err, &dialErr) && dialErr != nil {
-			markOpenAICyberPolicyEvent(c, dialErr.ResponseBody, dialErr.StatusCode, nil)
+			if writeOpenAICyberPolicyHTTPError(c, dialErr.ResponseBody, dialErr.StatusCode, nil) {
+				return nil, errOpenAICyberPolicyForwarded
+			}
 		}
 		if s.isAgentIdentityAccount(ctx, account) && isAgentIdentityTaskInvalidWSDialError(dialErr) && agentTaskRecoveryTried != nil && !*agentTaskRecoveryTried {
 			*agentTaskRecoveryTried = true
@@ -534,6 +536,7 @@ func (s *OpenAIGatewayService) forwardOpenAIWSV2(
 		if eventType == "" {
 			continue
 		}
+		ObserveCyberSessionResponseID(c, eventResponseID)
 		responseModelObserver.ObserveOpenAI(message, eventType)
 		eventCount++
 		if firstEventType == "" {
@@ -650,6 +653,9 @@ func (s *OpenAIGatewayService) forwardOpenAIWSV2(
 				emitStreamMessage(message, true)
 			}
 			if !reqStream {
+				if writeOpenAICyberPolicyHTTPError(c, message, http.StatusOK, usage) {
+					return nil, errOpenAICyberPolicyForwarded
+				}
 				c.JSON(statusCode, gin.H{
 					"error": gin.H{
 						"type":    "upstream_error",
@@ -728,6 +734,7 @@ func (s *OpenAIGatewayService) forwardOpenAIWSV2(
 		if responseID == "" {
 			responseID = strings.TrimSpace(gjson.GetBytes(finalResponse, "id").String())
 		}
+		ObserveCyberSessionResponseID(c, responseID)
 
 		c.Data(http.StatusOK, "application/json", finalResponse)
 	} else {

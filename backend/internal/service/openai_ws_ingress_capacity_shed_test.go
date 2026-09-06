@@ -197,9 +197,9 @@ func TestProxyResponsesWebSocketFromClient_MarksCyberPolicyBeforeEarlyReturn(t *
 		wantOutput    int
 	}{
 		{
-			name:          "error_before_rate_limit_failover",
+			name:          "cyber_error_bypasses_rate_limit_failover",
 			upstreamEvent: []byte(`{"type":"error","error":{"type":"rate_limit_error","code":"cyber_policy","message":"rate limit exceeded by cyber policy"},"usage":{"input_tokens":5,"output_tokens":1}}`),
-			wantFailover:  true,
+			wantClientMsg: true,
 			wantInput:     5,
 			wantOutput:    1,
 		},
@@ -285,7 +285,7 @@ func TestProxyResponsesWebSocketFromClient_MarksCyberPolicyBeforeEarlyReturn(t *
 				_, message, readErr := clientConn.Read(readCtx)
 				cancelRead()
 				require.NoError(t, readErr)
-				require.Equal(t, "response.failed", gjson.GetBytes(message, "type").String())
+				require.Equal(t, gjson.GetBytes(tt.upstreamEvent, "type").String(), gjson.GetBytes(message, "type").String())
 			}
 
 			select {

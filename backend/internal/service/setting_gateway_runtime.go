@@ -167,6 +167,8 @@ func (s *SettingService) GetCyberSessionBlockRuntime(ctx context.Context) (bool,
 		}
 	}
 	result, _, _ := s.cyberSessionBlockRuntimeSF.Do("cyber_session_block_runtime", func() (any, error) {
+		s.cyberSessionBlockRuntimeMu.Lock()
+		defer s.cyberSessionBlockRuntimeMu.Unlock()
 		if cached, ok := s.cyberSessionBlockRuntimeCache.Load().(*cachedCyberSessionBlockRuntime); ok && cached != nil {
 			if time.Now().UnixNano() < cached.expiresAt {
 				return cached, nil

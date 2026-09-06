@@ -378,6 +378,8 @@ func (s *OpenAIGatewayService) handleStreamingResponseWithReasoning(ctx context.
 		}
 		if codexFailureTerminal && sawBareError && !sawResponseFailed && !clientDisconnected {
 			applyAttemptResponseHeaders()
+			responseID = ensureOpenAIResponseID(responseID)
+			ObserveCyberSessionResponseID(c, responseID)
 			if _, err := writePendingString(buildOpenAIResponseFailedSSE(responseID, originalModel, bareErrorPayload, failedMessage)); err != nil {
 				handlePendingWriteError(err)
 			} else {
@@ -508,6 +510,7 @@ func (s *OpenAIGatewayService) handleStreamingResponseWithReasoning(ctx context.
 			if responseID == "" {
 				responseID = extractOpenAIResponseIDFromJSONBytes(dataBytes)
 			}
+			ObserveCyberSessionResponseID(c, responseID)
 			forceFlushFailedEvent := false
 			if !capacityFailoverSuppressedLogged && account != nil && account.Platform == PlatformOpenAI &&
 				(eventType == "error" || eventType == "response.failed") &&
@@ -1603,6 +1606,9 @@ func (s *OpenAIGatewayService) handleNonStreamingResponse(ctx context.Context, r
 	}
 
 	usageValue, usageOK := extractOpenAIUsageFromJSONBytes(body)
+	if !bodyLooksLikeSSE && writeOpenAICyberPolicyHTTPError(c, body, resp.StatusCode, &usageValue) {
+		return nil, errOpenAICyberPolicyForwarded
+	}
 	if !usageOK {
 		if bodyLooksLikeSSE {
 			return s.handleSSEToJSON(resp, c, account, body, originalModel, mappedModel)
@@ -1641,6 +1647,8 @@ func (s *OpenAIGatewayService) handleNonStreamingResponse(ctx context.Context, r
 		}
 	}
 
+	responseID := extractOpenAIResponseIDFromJSONBytes(body)
+	ObserveCyberSessionResponseID(c, responseID)
 	if !writeOpenAICompactSSEBridge(c, resp.StatusCode, body) {
 		c.Data(resp.StatusCode, contentType, body)
 	}
@@ -1648,7 +1656,7 @@ func (s *OpenAIGatewayService) handleNonStreamingResponse(ctx context.Context, r
 	return &openaiNonStreamingResult{
 		OpenAIUsage:      usage,
 		usage:            usage,
-		responseID:       extractOpenAIResponseIDFromJSONBytes(body),
+		responseID:       responseID,
 		imageCount:       countOpenAIResponseImageOutputsFromJSONBytes(body),
 		imageOutputSizes: collectOpenAIResponseImageOutputSizesFromJSONBytes(body),
 		searchCount:      countGrokNativeSearchCallsFromJSONBytes(body),
@@ -1680,6 +1688,9 @@ func (s *OpenAIGatewayService) handleSSEToJSON(resp *http.Response, c *gin.Conte
 	bodyText := string(body)
 	terminalType, terminalPayload, terminalOK := extractOpenAISSETerminalEvent(bodyText)
 	if terminalOK && (terminalType == "response.failed" || terminalType == "error") {
+		if writeOpenAICyberPolicyHTTPError(c, terminalPayload, resp.StatusCode, s.parseSSEUsageFromBody(bodyText)) {
+			return nil, errOpenAICyberPolicyForwarded
+		}
 		msg := extractOpenAISSEErrorMessage(terminalPayload)
 		if msg == "" {
 			msg = "Upstream compact response failed"
@@ -1748,6 +1759,8 @@ func (s *OpenAIGatewayService) handleSSEToJSON(resp *http.Response, c *gin.Conte
 			contentType = "text/event-stream"
 		}
 	}
+	responseID := extractOpenAIResponseIDFromJSONBytes(body)
+	ObserveCyberSessionResponseID(c, responseID)
 	if !writeOpenAICompactSSEBridge(c, resp.StatusCode, body) {
 		c.Data(resp.StatusCode, contentType, body)
 	}
@@ -1755,7 +1768,7 @@ func (s *OpenAIGatewayService) handleSSEToJSON(resp *http.Response, c *gin.Conte
 	return &openaiNonStreamingResult{
 		OpenAIUsage:      usage,
 		usage:            usage,
-		responseID:       extractOpenAIResponseIDFromJSONBytes(body),
+		responseID:       responseID,
 		imageCount:       countOpenAIImageOutputsFromSSEBody(bodyText),
 		imageOutputSizes: collectOpenAIImageOutputSizesFromSSEBody(bodyText),
 		searchCount:      countGrokNativeSearchCallsFromSSEBody(bodyText),
@@ -1782,31 +1795,21 @@ func extractOpenAISSEErrorMessage(payload []byte) string {
 	if len(payload) == 0 {
 		return ""
 	}
-	for _, path := range []string{"response.error.message", "error.message", "message"} {
-		if msg := strings.TrimSpace(gjson.GetBytes(payload, path).String()); msg != "" {
-			return sanitizeUpstreamErrorMessage(msg)
-		}
+	if message := extractOpenAIResponsesErrorFields(payload, 0).Message; message != "" {
+		return sanitizeUpstreamErrorMessage(message)
 	}
 	return sanitizeUpstreamErrorMessage(strings.TrimSpace(extractUpstreamErrorMessage(payload)))
 }
 
 func buildOpenAIResponseFailedSSE(responseID, model string, source []byte, fallbackMessage string) string {
-	responseID = strings.TrimSpace(responseID)
-	if responseID == "" {
-		responseID = "resp_" + strings.ReplaceAll(uuid.NewString(), "-", "")
-	}
-	errorType := strings.TrimSpace(gjson.GetBytes(source, "error.type").String())
-	if errorType == "" {
-		errorType = strings.TrimSpace(gjson.GetBytes(source, "response.error.type").String())
-	}
-	code := strings.TrimSpace(gjson.GetBytes(source, "error.code").String())
-	if code == "" {
-		code = strings.TrimSpace(gjson.GetBytes(source, "response.error.code").String())
-	}
+	responseID = ensureOpenAIResponseID(responseID)
+	fields := extractOpenAIResponsesErrorFields(source, http.StatusOK)
+	errorType := fields.Type
+	code := fields.Code
 	if code == "" {
 		code = "upstream_error"
 	}
-	message := extractOpenAISSEErrorMessage(source)
+	message := sanitizeUpstreamErrorMessage(fields.Message)
 	if message == "" {
 		message = strings.TrimSpace(fallbackMessage)
 	}
@@ -1836,6 +1839,14 @@ func buildOpenAIResponseFailedSSE(responseID, model string, source []byte, fallb
 		payload = []byte(`{"type":"response.failed","response":{"status":"failed","output":[],"error":{"code":"upstream_error","message":"Upstream response failed"}}}`)
 	}
 	return "event: response.failed\ndata: " + string(payload) + "\n\n"
+}
+
+func ensureOpenAIResponseID(responseID string) string {
+	responseID = strings.TrimSpace(responseID)
+	if responseID != "" {
+		return responseID
+	}
+	return "resp_" + strings.ReplaceAll(uuid.NewString(), "-", "")
 }
 
 func sanitizeOpenAIResponseFailedEventForClient(payload []byte, eventType string, clientOutputStarted bool) ([]byte, bool) {

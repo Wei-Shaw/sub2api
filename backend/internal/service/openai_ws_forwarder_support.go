@@ -230,27 +230,10 @@ func markOpenAIWSClientVisibleFailure(c *gin.Context, eventType string, payload 
 	if eventType != "error" && eventType != "response.failed" {
 		return
 	}
-	prefix := "error"
-	if eventType == "response.failed" {
-		prefix = "response.error"
-	}
-	code := strings.TrimSpace(gjson.GetBytes(payload, prefix+".code").String())
-	errType := strings.TrimSpace(gjson.GetBytes(payload, prefix+".type").String())
-	message := strings.TrimSpace(gjson.GetBytes(payload, prefix+".message").String())
-	if eventType == "response.failed" && code == "" && errType == "" && message == "" {
-		prefix = "error"
-		code = strings.TrimSpace(gjson.GetBytes(payload, prefix+".code").String())
-		errType = strings.TrimSpace(gjson.GetBytes(payload, prefix+".type").String())
-		message = strings.TrimSpace(gjson.GetBytes(payload, prefix+".message").String())
-	}
-	status := int(gjson.GetBytes(payload, prefix+".status_code").Int())
-	if status == 0 {
-		status = int(gjson.GetBytes(payload, prefix+".status").Int())
-	}
-	if status == 0 && eventType == "error" {
-		status = int(gjson.GetBytes(payload, "status").Int())
-	}
-	if status == 0 {
+	fields := extractOpenAIResponsesErrorFields(payload, 0)
+	code, errType, message := fields.Code, fields.Type, fields.Message
+	status := fields.SemanticStatus
+	if status == http.StatusBadGateway {
 		status = openAIWSErrorHTTPStatusFromRaw(code, errType)
 	}
 	if errType == "" {
@@ -269,6 +252,10 @@ func openAIWSPayloadTransientStatus(payload []byte) int {
 	if len(payload) == 0 {
 		return 0
 	}
+	fields := extractOpenAIResponsesErrorFields(payload, 0)
+	if strings.EqualFold(strings.TrimSpace(fields.Code), "cyber_policy") {
+		return 0
+	}
 	status := int(gjson.GetBytes(payload, "response.error.status_code").Int())
 	if status == 0 {
 		status = int(gjson.GetBytes(payload, "response.error.status").Int())
@@ -279,20 +266,20 @@ func openAIWSPayloadTransientStatus(payload []byte) int {
 	if status == 0 {
 		status = int(gjson.GetBytes(payload, "error.status").Int())
 	}
+	if status == 0 {
+		status = int(gjson.GetBytes(payload, "status_code").Int())
+	}
+	if status == 0 {
+		status = int(gjson.GetBytes(payload, "status").Int())
+	}
 	if shouldCooldownOpenAITransientUpstreamError(status, payload) {
 		return status
 	}
 	if status != 0 {
 		return 0
 	}
-	code := strings.ToLower(strings.TrimSpace(gjson.GetBytes(payload, "response.error.code").String()))
-	errType := strings.ToLower(strings.TrimSpace(gjson.GetBytes(payload, "response.error.type").String()))
-	if code == "" {
-		code = strings.ToLower(strings.TrimSpace(gjson.GetBytes(payload, "error.code").String()))
-	}
-	if errType == "" {
-		errType = strings.ToLower(strings.TrimSpace(gjson.GetBytes(payload, "error.type").String()))
-	}
+	code := strings.ToLower(strings.TrimSpace(fields.Code))
+	errType := strings.ToLower(strings.TrimSpace(fields.Type))
 	switch {
 	case code == "server_is_overloaded", code == "slow_down":
 		return http.StatusServiceUnavailable
@@ -669,6 +656,9 @@ func classifyOpenAIWSAcquireError(err error) string {
 
 func isOpenAIWSRateLimitError(codeRaw, errTypeRaw, msgRaw string) bool {
 	code := strings.ToLower(strings.TrimSpace(codeRaw))
+	if code == "cyber_policy" {
+		return false
+	}
 	errType := strings.ToLower(strings.TrimSpace(errTypeRaw))
 	msg := strings.ToLower(strings.TrimSpace(msgRaw))
 
@@ -732,6 +722,8 @@ func classifyOpenAIWSErrorEventFromRaw(codeRaw, errTypeRaw, msgRaw string) (stri
 	msg := strings.ToLower(strings.TrimSpace(msgRaw))
 
 	switch code {
+	case "cyber_policy":
+		return "cyber_policy", false
 	case "upgrade_required":
 		return "upgrade_required", true
 	case "websocket_not_supported", "websocket_unsupported":
@@ -783,6 +775,8 @@ func openAIWSErrorHTTPStatusFromRaw(codeRaw, errTypeRaw string) int {
 	code := strings.ToLower(strings.TrimSpace(codeRaw))
 	errType := strings.ToLower(strings.TrimSpace(errTypeRaw))
 	switch {
+	case code == "cyber_policy":
+		return http.StatusBadRequest
 	case strings.Contains(errType, "invalid_request"),
 		strings.Contains(code, "invalid_request"),
 		strings.Contains(code, "bad_request"),

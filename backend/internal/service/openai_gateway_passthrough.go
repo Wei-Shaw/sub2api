@@ -936,6 +936,7 @@ func (s *OpenAIGatewayService) handleErrorResponsePassthrough(
 	// 故下方跳过 handleOpenAIAccountUpstreamError（避免自定义 temp-unschedulable 规则误冷却）。
 	cyberHit, cyberCode, cyberMsg := detectOpenAICyberPolicy(body)
 	if cyberHit {
+		ObserveCyberSessionResponseID(c, extractOpenAIResponseIDFromJSONBytes(body))
 		MarkOpsCyberPolicy(c, CyberPolicyMark{
 			Code:           cyberCode,
 			Message:        cyberMsg,
@@ -1284,11 +1285,7 @@ func openAIStreamDataStartsTTFT(data, eventType string, forceOutput bool, mode s
 // openAIStreamFailedEventErrorCode 提取流内 failed 事件的错误码（小写），
 // 兼容 response.failed 的嵌套形态与裸 error 形态。
 func openAIStreamFailedEventErrorCode(payload []byte) string {
-	code := strings.ToLower(strings.TrimSpace(gjson.GetBytes(payload, "response.error.code").String()))
-	if code == "" {
-		code = strings.ToLower(strings.TrimSpace(gjson.GetBytes(payload, "error.code").String()))
-	}
-	return code
+	return strings.ToLower(strings.TrimSpace(extractOpenAIResponsesErrorFields(payload, 0).Code))
 }
 
 // isOpenAIUpstreamCapacityShedEvent 判断流内 failed 事件是否为上游容量降载信号。
@@ -1363,19 +1360,31 @@ func sanitizeOpenAICapacityShedErrorCodeForClient(payload []byte) ([]byte, bool)
 		updated = next
 		changed = true
 	}
+	if topLevelCode := gjson.GetBytes(updated, "code"); topLevelCode.Exists() {
+		code := strings.ToLower(strings.TrimSpace(topLevelCode.String()))
+		if code == "server_is_overloaded" || code == "slow_down" {
+			next, err := sjson.SetBytes(updated, "code", openAICapacityShedRetryableClientCode)
+			if err != nil {
+				return payload, false
+			}
+			updated = next
+			changed = true
+		}
+	}
 	return updated, changed
 }
 
 func openAIStreamFailedEventSemanticStatus(payload []byte, message string) int {
+	fields := extractOpenAIResponsesErrorFields(payload, http.StatusOK)
+	if strings.EqualFold(strings.TrimSpace(fields.Code), "cyber_policy") {
+		return fields.SemanticStatus
+	}
 	if isOpenAIContextWindowError(message, payload) {
 		return http.StatusBadRequest
 	}
 
-	code := openAIStreamFailedEventErrorCode(payload)
-	errType := strings.ToLower(strings.TrimSpace(gjson.GetBytes(payload, "response.error.type").String()))
-	if errType == "" {
-		errType = strings.ToLower(strings.TrimSpace(gjson.GetBytes(payload, "error.type").String()))
-	}
+	code := strings.ToLower(strings.TrimSpace(fields.Code))
+	errType := strings.ToLower(strings.TrimSpace(fields.Type))
 	combined := strings.TrimSpace(errType + " " + code + " " + strings.ToLower(strings.TrimSpace(message)))
 	for _, path := range []string{"response.error.status_code", "error.status_code", "status_code"} {
 		if status := int(gjson.GetBytes(payload, path).Int()); status == http.StatusUnauthorized ||
@@ -1950,6 +1959,8 @@ func (s *OpenAIGatewayService) handleStreamingResponsePassthrough(
 		if clientDisconnected || !writePendingLines() {
 			return
 		}
+		responseID = ensureOpenAIResponseID(responseID)
+		ObserveCyberSessionResponseID(c, responseID)
 		if _, err := fmt.Fprint(w, buildOpenAIResponseFailedSSE(responseID, originalModel, bareErrorPayload, failedMessage)); err != nil {
 			clientDisconnected = true
 			return
@@ -2126,6 +2137,7 @@ func (s *OpenAIGatewayService) handleStreamingResponsePassthrough(
 			if responseID == "" {
 				responseID = extractOpenAIResponseIDFromJSONBytes(dataBytes)
 			}
+			ObserveCyberSessionResponseID(c, responseID)
 			imageCounter.AddSSEData(dataBytes)
 			if sanitizedData, sanitized := sanitizeOpenAIResponseFailedEventForClient(
 				dataBytes,
@@ -2297,6 +2309,9 @@ func (s *OpenAIGatewayService) handleNonStreamingResponsePassthrough(
 		// 兜底：尝试从 SSE 文本中解析 usage
 		usage = s.parseSSEUsageFromBody(string(body))
 	}
+	if !bodyHasSSEFraming(body) && writeOpenAICyberPolicyHTTPError(c, body, resp.StatusCode, usage) {
+		return nil, errOpenAICyberPolicyForwarded
+	}
 	logOpenAISuccessMissingUsage(ctx, c, account, resp, usage, "json", false)
 
 	writeOpenAIPassthroughResponseHeaders(c.Writer.Header(), resp.Header, s.responseHeaderFilter)
@@ -2317,13 +2332,15 @@ func (s *OpenAIGatewayService) handleNonStreamingResponsePassthrough(
 	if err != nil {
 		return nil, fmt.Errorf("restore OpenAI Responses client tools: %w", err)
 	}
+	responseID := extractOpenAIResponseIDFromJSONBytes(body)
+	ObserveCyberSessionResponseID(c, responseID)
 	if !writeOpenAICompactSSEBridge(c, resp.StatusCode, body) {
 		c.Data(resp.StatusCode, contentType, body)
 	}
 	return &openaiNonStreamingResultPassthrough{
 		OpenAIUsage:      usage,
 		usage:            usage,
-		responseID:       extractOpenAIResponseIDFromJSONBytes(body),
+		responseID:       responseID,
 		imageCount:       countOpenAIResponseImageOutputsFromJSONBytes(body),
 		imageOutputSizes: collectOpenAIResponseImageOutputSizesFromJSONBytes(body),
 	}, nil
@@ -2337,6 +2354,9 @@ func (s *OpenAIGatewayService) handlePassthroughSSEToJSON(resp *http.Response, c
 	bodyText := string(body)
 	terminalType, terminalPayload, terminalOK := extractOpenAISSETerminalEvent(bodyText)
 	if terminalOK && (terminalType == "response.failed" || terminalType == "error") {
+		if writeOpenAICyberPolicyHTTPError(c, terminalPayload, resp.StatusCode, s.parseSSEUsageFromBody(bodyText)) {
+			return nil, errOpenAICyberPolicyForwarded
+		}
 		msg := extractOpenAISSEErrorMessage(terminalPayload)
 		if msg == "" {
 			msg = "Upstream compact response failed"
@@ -2395,6 +2415,8 @@ func (s *OpenAIGatewayService) handlePassthroughSSEToJSON(resp *http.Response, c
 			contentType = "text/event-stream"
 		}
 	}
+	responseID := extractOpenAIResponseIDFromJSONBytes(body)
+	ObserveCyberSessionResponseID(c, responseID)
 	if !writeOpenAICompactSSEBridge(c, resp.StatusCode, body) {
 		c.Data(resp.StatusCode, contentType, body)
 	}
@@ -2402,7 +2424,7 @@ func (s *OpenAIGatewayService) handlePassthroughSSEToJSON(resp *http.Response, c
 	return &openaiNonStreamingResultPassthrough{
 		OpenAIUsage:      usage,
 		usage:            usage,
-		responseID:       extractOpenAIResponseIDFromJSONBytes(body),
+		responseID:       responseID,
 		imageCount:       countOpenAIImageOutputsFromSSEBody(bodyText),
 		imageOutputSizes: collectOpenAIImageOutputSizesFromSSEBody(bodyText),
 	}, nil

@@ -687,6 +687,18 @@ func (s *SettingService) refreshCachedSettings(settings *SystemSettings) {
 	if settings == nil {
 		return
 	}
+	// Serialize with a cold runtime read so a pre-save DB snapshot cannot
+	// overwrite the value that the administrator just saved.
+	s.cyberSessionBlockRuntimeMu.Lock()
+	cyberTTL := time.Hour
+	if settings.CyberSessionBlockTTLSeconds > 0 {
+		cyberTTL = time.Duration(settings.CyberSessionBlockTTLSeconds) * time.Second
+	}
+	s.cyberSessionBlockRuntimeCache.Store(&cachedCyberSessionBlockRuntime{
+		enabled: settings.CyberSessionBlockEnabled, ttl: cyberTTL,
+		expiresAt: time.Now().Add(cyberSessionBlockRuntimeCacheTTL).UnixNano(),
+	})
+	s.cyberSessionBlockRuntimeMu.Unlock()
 
 	// 先使 inflight singleflight 失效，再刷新缓存，缩小旧值覆盖新值的竞态窗口
 	versionBoundsSF.Forget("version_bounds")

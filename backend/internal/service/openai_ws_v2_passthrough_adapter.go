@@ -892,7 +892,12 @@ func (s *OpenAIGatewayService) proxyResponsesWebSocketV2Passthrough(
 		if errors.As(err, &handshakeErr) && handshakeErr != nil {
 			responseBody = handshakeErr.Body
 		}
-		markOpenAICyberPolicyEvent(c, responseBody, statusCode, nil)
+		if markOpenAICyberPolicyEvent(c, responseBody, statusCode, nil) {
+			writeCtx, cancelWrite := context.WithTimeout(ctx, s.openAIWSWriteTimeout())
+			_ = clientConn.Write(writeCtx, coderws.MessageText, buildOpenAICyberPolicyErrorEvent(responseBody))
+			cancelWrite()
+			return finishHandshakeFailure(NewOpenAIWSClientCloseError(coderws.StatusPolicyViolation, "request blocked by cyber-security policy", errOpenAICyberPolicyForwarded))
+		}
 		dialErr := &openAIWSDialError{StatusCode: statusCode, ResponseHeaders: cloneHeader(handshakeHeaders), ResponseBody: responseBody, Err: err}
 		if s.isAgentIdentityAccount(ctx, account) && isAgentIdentityTaskInvalidWSDialError(dialErr) && !agentTaskRecoveryTried {
 			agentTaskRecoveryTried = true
@@ -1280,7 +1285,8 @@ func (s *OpenAIGatewayService) proxyResponsesWebSocketV2Passthrough(
 				if msgType != coderws.MessageText {
 					return nil
 				}
-				eventType, _, _ := parseOpenAIWSEventEnvelope(payload)
+				eventType, responseID, _ := parseOpenAIWSEventEnvelope(payload)
+				ObserveCyberSessionResponseID(c, responseID)
 				if eventType == "response.created" {
 					failureAccountSideEffectsApplied = false
 				}

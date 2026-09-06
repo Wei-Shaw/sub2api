@@ -369,18 +369,13 @@ func buildOpenAIWSHTTPBridgeErrorEvent(statusCode int, message string) []byte {
 }
 
 func buildOpenAIWSHTTPBridgeFailedEvent(responseID, model string, source []byte, fallbackMessage string) []byte {
-	errorType := strings.TrimSpace(gjson.GetBytes(source, "error.type").String())
-	if errorType == "" {
-		errorType = strings.TrimSpace(gjson.GetBytes(source, "response.error.type").String())
-	}
-	code := strings.TrimSpace(gjson.GetBytes(source, "error.code").String())
-	if code == "" {
-		code = strings.TrimSpace(gjson.GetBytes(source, "response.error.code").String())
-	}
+	fields := extractOpenAIResponsesErrorFields(source, http.StatusOK)
+	errorType := fields.Type
+	code := fields.Code
 	if code == "" {
 		code = "upstream_error"
 	}
-	message := extractOpenAISSEErrorMessage(source)
+	message := sanitizeUpstreamErrorMessage(fields.Message)
 	if message == "" {
 		message = strings.TrimSpace(fallbackMessage)
 	}
@@ -563,7 +558,12 @@ func (s *OpenAIGatewayService) proxyOpenAIWSHTTPBridgeTurn(
 
 		respBody, _ := io.ReadAll(io.LimitReader(resp.Body, openAIWSHTTPBridgeErrorBodyLimitBytes))
 		_ = resp.Body.Close()
-		markOpenAICyberPolicyEvent(c, respBody, resp.StatusCode, nil)
+		if markOpenAICyberPolicyEvent(c, respBody, resp.StatusCode, nil) {
+			if err := writeClientMessage(buildOpenAICyberPolicyErrorEvent(respBody)); err != nil {
+				return nil, err
+			}
+			return nil, errOpenAICyberPolicyForwarded
+		}
 		if resp.StatusCode == http.StatusBadRequest &&
 			extractUpstreamErrorCode(respBody) == openAIWSFallbackReasonInvalidEncryptedContent {
 			s.markOpenAIWSInvalidEncryptedContentLineageFromPayload(
@@ -708,6 +708,8 @@ func (s *OpenAIGatewayService) proxyOpenAIWSHTTPBridgeTurn(
 		if clientDisconnected {
 			return nil
 		}
+		responseID = ensureOpenAIResponseID(responseID)
+		ObserveCyberSessionResponseID(c, responseID)
 		clientMessage := buildOpenAIWSHTTPBridgeFailedEvent(responseID, originalModel, bareErrorPayload, bareErrorMessage)
 		if rewritten, changed := sanitizeOpenAICapacityShedErrorCodeForClient(clientMessage); changed {
 			clientMessage = rewritten
@@ -760,6 +762,7 @@ func (s *OpenAIGatewayService) proxyOpenAIWSHTTPBridgeTurn(
 		if responseID == "" && eventResponseID != "" {
 			responseID = eventResponseID
 		}
+		ObserveCyberSessionResponseID(c, eventResponseID)
 		if eventType != "" {
 			eventCount++
 			if firstEventType == "" {
