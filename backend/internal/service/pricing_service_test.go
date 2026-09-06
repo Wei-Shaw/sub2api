@@ -77,6 +77,95 @@ func TestParsePricingData_ParsesPriorityAndServiceTierFields(t *testing.T) {
 	require.True(t, pricing.SupportsServiceTier)
 }
 
+const gpt6AstraCatalogJSON = `{
+	"gpt-6-astra": {
+		"litellm_provider": "openai",
+		"mode": "chat",
+		"input_cost_per_token": 1e-05,
+		"input_cost_per_token_priority": 2e-05,
+		"output_cost_per_token": 5e-05,
+		"output_cost_per_token_priority": 1e-04,
+		"cache_creation_input_token_cost": 1.25e-05,
+		"cache_creation_input_token_cost_priority": 2.5e-05,
+		"cache_read_input_token_cost": 1e-06,
+		"cache_read_input_token_cost_priority": 2e-06,
+		"input_cost_per_token_above_272k_tokens": 2e-05,
+		"output_cost_per_token_above_272k_tokens": 7.5e-05,
+		"cache_creation_input_token_cost_above_272k_tokens": 2.5e-05,
+		"cache_read_input_token_cost_above_272k_tokens": 2e-06
+	}
+}`
+
+func TestBillingServiceGPT6AstraUsesOfficialPricingAcrossTiersAndLongContext(t *testing.T) {
+	svc := NewBillingService(&config.Config{}, newStubPricingServiceFromJSON(t, gpt6AstraCatalogJSON))
+	boundaryTokens := UsageTokens{InputTokens: 100_000, CacheCreationTokens: 100_000, CacheReadTokens: 72_000, OutputTokens: 10}
+	boundary, err := svc.CalculateCost("gpt-6-astra", boundaryTokens, 1)
+	require.NoError(t, err)
+	require.False(t, boundary.LongContextBillingApplied)
+	require.InDelta(t, 100_000*10e-6, boundary.InputCost, 1e-12)
+	require.InDelta(t, 100_000*12.5e-6, boundary.CacheCreationCost, 1e-12)
+	require.InDelta(t, 72_000*1e-6, boundary.CacheReadCost, 1e-12)
+	require.InDelta(t, 10*50e-6, boundary.OutputCost, 1e-12)
+
+	tokens := UsageTokens{InputTokens: 100_000, CacheCreationTokens: 100_000, CacheReadTokens: 73_000, OutputTokens: 10}
+	tiers := []struct {
+		name        string
+		serviceTier string
+		priceScale  float64
+	}{
+		{name: "standard", priceScale: 1},
+		{name: "fast", serviceTier: "priority", priceScale: 2},
+		{name: "flex", serviceTier: "flex", priceScale: 0.5},
+	}
+	for _, tier := range tiers {
+		t.Run(tier.name, func(t *testing.T) {
+			cost, err := svc.CalculateCostWithServiceTier("gpt-6-astra", tokens, 1, tier.serviceTier)
+			require.NoError(t, err)
+			require.True(t, cost.LongContextBillingApplied)
+			require.InDelta(t, 100_000*10e-6*tier.priceScale*2, cost.InputCost, 1e-12)
+			require.InDelta(t, 100_000*12.5e-6*tier.priceScale*2, cost.CacheCreationCost, 1e-12)
+			require.InDelta(t, 73_000*1e-6*tier.priceScale*2, cost.CacheReadCost, 1e-12)
+			require.InDelta(t, 10*50e-6*tier.priceScale*1.5, cost.OutputCost, 1e-12)
+		})
+	}
+}
+
+func TestGPT6AstraDedicatedFallbacksUseOfficialRates(t *testing.T) {
+	tests := []struct {
+		name string
+		svc  *BillingService
+	}{
+		{name: "pricing_service", svc: NewBillingService(&config.Config{}, &PricingService{pricingData: map[string]*LiteLLMModelPricing{}})},
+		{name: "billing_service", svc: NewBillingService(&config.Config{}, nil)},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			pricing, err := tt.svc.GetModelPricing("gpt-6-astra")
+			require.NoError(t, err)
+			require.InDelta(t, 10e-6, pricing.InputPricePerToken, 1e-12)
+			require.InDelta(t, 20e-6, pricing.InputPricePerTokenPriority, 1e-12)
+			require.InDelta(t, 50e-6, pricing.OutputPricePerToken, 1e-12)
+			require.InDelta(t, 100e-6, pricing.OutputPricePerTokenPriority, 1e-12)
+			require.InDelta(t, 12.5e-6, pricing.CacheCreationPricePerToken, 1e-12)
+			require.InDelta(t, 25e-6, pricing.CacheCreationPricePerTokenPriority, 1e-12)
+			require.InDelta(t, 1e-6, pricing.CacheReadPricePerToken, 1e-12)
+			require.InDelta(t, 2e-6, pricing.CacheReadPricePerTokenPriority, 1e-12)
+			require.Equal(t, 272_000, pricing.LongContextInputThreshold)
+			require.InDelta(t, 2.0, pricing.LongContextInputMultiplier, 1e-12)
+			require.InDelta(t, 1.5, pricing.LongContextOutputMultiplier, 1e-12)
+		})
+	}
+}
+
+func TestPricingServiceBareGPT6AliasUsesAstra(t *testing.T) {
+	astraPricing := &LiteLLMModelPricing{InputCostPerToken: 123e-6, OutputCostPerToken: 456e-6}
+	pricingSvc := &PricingService{pricingData: map[string]*LiteLLMModelPricing{"gpt-6-astra": astraPricing}}
+	for _, model := range []string{"gpt-6", "openai/gpt-6"} {
+		pricing := pricingSvc.GetModelPricing(model)
+		require.Same(t, astraPricing, pricing)
+	}
+}
+
 func TestBillingService_GPT56CacheWritePricingUsesOfficialMultiplier(t *testing.T) {
 	tests := []struct {
 		model             string

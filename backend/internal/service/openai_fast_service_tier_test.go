@@ -43,7 +43,7 @@ func TestValidateOpenAIServiceTierField(t *testing.T) {
 	})
 
 	t.Run("official tiers pass through", func(t *testing.T) {
-		for _, tier := range []string{"flex", "auto", "default", "scale"} {
+		for _, tier := range []string{"flex", "auto", "default", "scale", "ultrafast"} {
 			norm, err := ValidateOpenAIServiceTierField([]byte(`{"model":"gpt-5.5","service_tier":"` + tier + `"}`))
 			require.NoError(t, err, "tier %q must be accepted", tier)
 			require.Equal(t, tier, norm)
