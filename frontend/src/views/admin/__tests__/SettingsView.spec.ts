@@ -132,6 +132,12 @@ vi.mock("@/stores", () => ({
 vi.mock("@/stores/adminSettings", () => ({
   useAdminSettingsStore: () => ({
     fetch: adminSettingsFetch,
+    // 保存后不再整包重拉，改为本地打补丁（见 saveSettings 尾部）
+    setOpsMonitoringEnabledLocal: vi.fn(),
+    setOpsRealtimeMonitoringEnabledLocal: vi.fn(),
+    setOpsQueryModeDefaultLocal: vi.fn(),
+    setCustomMenuItemsLocal: vi.fn(),
+    setPaymentEnabledLocal: vi.fn(),
   }),
 }));
 
@@ -604,6 +610,44 @@ async function openUsersTab(wrapper: ReturnType<typeof mountView>) {
   await flushPromises();
 }
 
+async function openFeaturesTab(wrapper: ReturnType<typeof mountView>) {
+  const featuresTabButton = wrapper
+    .findAll("button")
+    .find((node) => node.text().includes("admin.settings.tabs.features"));
+
+  expect(featuresTabButton).toBeDefined();
+  await featuresTabButton?.trigger("click");
+  await flushPromises();
+}
+
+// 定位没有 data-testid 的 Toggle：按所在行（div.flex）里渲染出的 label key 找。
+// i18n mock 未翻译的 key 会原样输出，因此可用 key 文本匹配。
+function findToggleByLabelText(
+  wrapper: ReturnType<typeof mountView>,
+  labelKey: string,
+) {
+  const toggle = wrapper
+    .findAll('input[type="checkbox"]')
+    .find(
+      (node) =>
+        node.element.closest("div.flex")?.textContent?.includes(labelKey),
+    );
+  expect(toggle, `toggle for ${labelKey} should exist`).toBeDefined();
+  return toggle!;
+}
+
+// 同上，按 placeholder key 定位文本输入框。
+function findInputByPlaceholder(
+  wrapper: ReturnType<typeof mountView>,
+  placeholderKey: string,
+) {
+  const input = wrapper.findAll("input").find((node) =>
+    node.attributes("placeholder")?.includes(placeholderKey),
+  );
+  expect(input, `input with placeholder ${placeholderKey} should exist`).toBeDefined();
+  return input!;
+}
+
 describe("admin SettingsView email domain quota copy", () => {
   it("documents the email domain quota and empty-whitelist behavior in both locales", () => {
     expect(zhCommon.auth.emailDomainRegistrationLimit).toContain("主流邮箱");
@@ -807,6 +851,12 @@ describe("admin SettingsView payment visible method controls", () => {
   });
 
   it("人机验证切换到腾讯天御并保存四项配置", async () => {
+    // 基线让 Turnstile 处于启用状态：切换到腾讯时 turnstile_enabled 才会
+    // 出现在 diff 里（部分 PUT 语义：未变化的键不发送）。
+    getSettings.mockResolvedValueOnce({
+      ...baseSettingsResponse,
+      turnstile_enabled: true,
+    });
     const wrapper = mountView();
     await flushPromises();
     await openSecurityTab(wrapper);
@@ -842,12 +892,10 @@ describe("admin SettingsView payment visible method controls", () => {
       expect.objectContaining({
         turnstile_enabled: false,
         tencent_captcha_enabled: true,
-        aliyun_captcha_enabled: false,
         tencent_captcha_app_id: "123456789",
         tencent_captcha_app_secret_key: "app-secret-value",
         tencent_captcha_cloud_secret_id: "cloud-secret-id-value",
         tencent_captcha_cloud_secret_key: "cloud-secret-key-value",
-        tencent_captcha_region: "cn",
       }),
     );
   });
@@ -882,6 +930,11 @@ describe("admin SettingsView payment visible method controls", () => {
   });
 
   it("人机验证切换到阿里云并保存配置", async () => {
+    // 基线启用 Turnstile，切换阿里云后 turnstile_enabled 变化才会进入 diff。
+    getSettings.mockResolvedValueOnce({
+      ...baseSettingsResponse,
+      turnstile_enabled: true,
+    });
     const wrapper = mountView();
     await flushPromises();
     await openSecurityTab(wrapper);
@@ -910,13 +963,11 @@ describe("admin SettingsView payment visible method controls", () => {
     expect(updateSettings).toHaveBeenCalledWith(
       expect.objectContaining({
         turnstile_enabled: false,
-        tencent_captcha_enabled: false,
         aliyun_captcha_enabled: true,
         aliyun_captcha_prefix: "prefix-1",
         aliyun_captcha_scene_id: "scene-1",
         aliyun_captcha_access_key_id: "ak-id",
         aliyun_captcha_access_key_secret: "ak-secret-value",
-        aliyun_captcha_region: "cn",
       }),
     );
   });
@@ -943,13 +994,16 @@ describe("admin SettingsView payment visible method controls", () => {
     await wrapper.find("form").trigger("submit.prevent");
     await flushPromises();
 
+    // 部分 PUT 语义：只有真正变化的 tencent 开关进入 payload；
+    // 本来就是 false 的 turnstile/aliyun 开关不随包发送（省略 = 保留当前值）。
     expect(updateSettings).toHaveBeenCalledWith(
       expect.objectContaining({
-        turnstile_enabled: false,
         tencent_captcha_enabled: false,
-        aliyun_captcha_enabled: false,
       }),
     );
+    const payload = updateSettings.mock.calls[0]?.[0] as Record<string, unknown>;
+    expect(payload).not.toHaveProperty("turnstile_enabled");
+    expect(payload).not.toHaveProperty("aliyun_captcha_enabled");
   });
 
   it("disables passkey sign-in when the RP configuration is unavailable", async () => {
@@ -1063,6 +1117,8 @@ describe("admin SettingsView payment visible method controls", () => {
     const wrapper = mountView();
 
     await flushPromises();
+    // 部分 PUT 语义下需要有变更才会发送 PUT；借首页紧凑开关触发一次保存。
+    await wrapper.get('[data-testid="compact-home-toggle"]').setValue(true);
     await openPaymentTab(wrapper);
     await wrapper.find("form").trigger("submit.prevent");
     await flushPromises();
@@ -1085,26 +1141,31 @@ describe("admin SettingsView payment visible method controls", () => {
     const wrapper = mountView();
 
     await flushPromises();
+    await openFeaturesTab(wrapper);
+    await findToggleByLabelText(
+      wrapper,
+      "admin.settings.features.affiliate.adminRechargeRebate",
+    ).setValue(false);
     await wrapper.find("form").trigger("submit.prevent");
     await flushPromises();
 
     expect(updateSettings).toHaveBeenCalledTimes(1);
     expect(updateSettings).toHaveBeenCalledWith(
       expect.objectContaining({
-        affiliate_admin_recharge_enabled: true,
+        affiliate_admin_recharge_enabled: false,
       }),
     );
   });
 
   it("submits Anthropic cache TTL injection gateway setting", async () => {
-    getSettings.mockResolvedValueOnce({
-      ...baseSettingsResponse,
-      enable_anthropic_cache_ttl_1h_injection: true,
-    });
-
     const wrapper = mountView();
 
     await flushPromises();
+    await openGatewayTab(wrapper);
+    await findToggleByLabelText(
+      wrapper,
+      "admin.settings.gatewayForwarding.anthropicCacheTTL1hInjection",
+    ).setValue(true);
     await wrapper.find("form").trigger("submit.prevent");
     await flushPromises();
 
@@ -1117,14 +1178,14 @@ describe("admin SettingsView payment visible method controls", () => {
   });
 
   it("submits message cache_control rewrite gateway setting", async () => {
-    getSettings.mockResolvedValueOnce({
-      ...baseSettingsResponse,
-      rewrite_message_cache_control: true,
-    });
-
     const wrapper = mountView();
 
     await flushPromises();
+    await openGatewayTab(wrapper);
+    await findToggleByLabelText(
+      wrapper,
+      "admin.settings.gatewayForwarding.rewriteMessageCacheControl",
+    ).setValue(true);
     await wrapper.find("form").trigger("submit.prevent");
     await flushPromises();
 
@@ -1147,13 +1208,27 @@ describe("admin SettingsView payment visible method controls", () => {
     const wrapper = mountView();
 
     await flushPromises();
+    await openGatewayTab(wrapper);
+
+    // 展开第一个系统块并修改文本，让 blocks JSON 相对基线发生变化
+    // （部分 PUT 语义：未变化的 blocks 不会随包发送；加载的块默认展开）。
+    const blockTextarea = wrapper.findAll("textarea").find(
+      (node) => (node.element as HTMLTextAreaElement).value === "custom block",
+    );
+    expect(blockTextarea).toBeDefined();
+    await blockTextarea!.setValue("edited block text");
+
+    await findToggleByLabelText(
+      wrapper,
+      "admin.settings.gatewayForwarding.claudeOAuthSystemPromptInjection",
+    ).setValue(true);
     await wrapper.find("form").trigger("submit.prevent");
     await flushPromises();
 
     expect(updateSettings).toHaveBeenCalledTimes(1);
     expect(updateSettings).toHaveBeenCalledWith(
       expect.objectContaining({
-        enable_claude_oauth_system_prompt_injection: false,
+        enable_claude_oauth_system_prompt_injection: true,
       }),
     );
     const payload = updateSettings.mock.calls[0][0] as {
@@ -1163,7 +1238,7 @@ describe("admin SettingsView payment visible method controls", () => {
       {
         enabled: true,
         type: "text",
-        text: "custom block",
+        text: "edited block text",
         cache_control: {
           type: "ephemeral",
           ttl: "5m",
@@ -1173,14 +1248,14 @@ describe("admin SettingsView payment visible method controls", () => {
   });
 
   it("submits Antigravity user agent version gateway setting", async () => {
-    getSettings.mockResolvedValueOnce({
-      ...baseSettingsResponse,
-      antigravity_user_agent_version: "1.23.2",
-    });
-
     const wrapper = mountView();
 
     await flushPromises();
+    await openGatewayTab(wrapper);
+    await findInputByPlaceholder(
+      wrapper,
+      "admin.settings.gatewayForwarding.antigravityUserAgentVersionPlaceholder",
+    ).setValue("1.23.2");
     await wrapper.find("form").trigger("submit.prevent");
     await flushPromises();
 
@@ -1723,17 +1798,14 @@ describe("admin SettingsView wechat connect controls", () => {
     await flushPromises();
 
     expect(updateSettings).toHaveBeenCalledTimes(1);
+    // 部分 PUT 语义：只断言相对基线变化过的键（enabled/mp_enabled/回调地址
+    // 与基线一致，不随包发送；省略 = 保留当前值）。
     expect(updateSettings).toHaveBeenCalledWith(
       expect.objectContaining({
-        wechat_connect_enabled: true,
         wechat_connect_app_id: "wx-app-id-updated",
         wechat_connect_open_enabled: true,
-        wechat_connect_mp_enabled: true,
         wechat_connect_mp_app_id: "wx-app-id-updated",
         wechat_connect_mp_app_secret: "new-secret",
-        wechat_connect_redirect_url:
-          "https://admin.example.com/api/v1/auth/oauth/wechat/callback",
-        wechat_connect_frontend_redirect_url: "/auth/wechat/callback",
       }),
     );
     expect(
@@ -1780,14 +1852,19 @@ describe("admin SettingsView wechat connect controls", () => {
     getSettings.mockResolvedValueOnce({
       ...baseSettingsResponse,
       oidc_connect_enabled: true,
-      oidc_connect_use_pkce: false,
-      oidc_connect_validate_id_token: false,
+      oidc_connect_use_pkce: true,
+      oidc_connect_validate_id_token: true,
     });
 
     const wrapper = mountView();
 
     await flushPromises();
     await openSecurityTab(wrapper);
+    // 用户显式关闭 PKCE：保存时应如实提交 false，而不是被强制回 true；
+    // 未改动的 validate_id_token 不随包发送（省略 = 保留当前值）。
+    await wrapper
+      .get('[data-testid="oidc-connect-use-pkce"]')
+      .setValue(false);
     await wrapper.find("form").trigger("submit.prevent");
     await flushPromises();
 
@@ -1795,9 +1872,150 @@ describe("admin SettingsView wechat connect controls", () => {
     expect(updateSettings).toHaveBeenCalledWith(
       expect.objectContaining({
         oidc_connect_use_pkce: false,
-        oidc_connect_validate_id_token: false,
       }),
     );
+    const payload = updateSettings.mock.calls[0][0] as Record<string, unknown>;
+    expect(payload).not.toHaveProperty("oidc_connect_validate_id_token");
+  });
+
+  it("零变更保存不发 PUT、仍保存 web-search 配置并提示成功", async () => {
+    const wrapper = mountView();
+
+    await flushPromises();
+    updateSettings.mockClear();
+    updateWebSearchEmulationConfig.mockClear();
+    showSuccess.mockClear();
+
+    await wrapper.find("form").trigger("submit.prevent");
+    await flushPromises();
+
+    expect(updateSettings).not.toHaveBeenCalled();
+    expect(updateWebSearchEmulationConfig).toHaveBeenCalledTimes(1);
+    expect(showSuccess).toHaveBeenCalled();
+  });
+
+  it("只改 site_name 时 payload 恰好只包含该键", async () => {
+    const wrapper = mountView();
+
+    await flushPromises();
+    await findInputByPlaceholder(
+      wrapper,
+      "admin.settings.site.siteNamePlaceholder",
+    ).setValue("RickToken Gateway");
+    await wrapper.find("form").trigger("submit.prevent");
+    await flushPromises();
+
+    expect(updateSettings).toHaveBeenCalledTimes(1);
+    const payload = updateSettings.mock.calls[0][0] as Record<string, unknown>;
+    expect(payload).toEqual({ site_name: "RickToken Gateway" });
+    expect(payload).not.toHaveProperty("site_logo");
+  });
+
+  it("瘦身响应（只回传发送字段）不会清空未发送的表单状态", async () => {
+    // 模拟后端 PUT 响应瘦身：只回传发送字段 + 只读伴生键。
+    updateSettings.mockResolvedValueOnce({
+      site_name: "Slim Response Site",
+    });
+
+    const wrapper = mountView();
+
+    await flushPromises();
+    await findInputByPlaceholder(
+      wrapper,
+      "admin.settings.site.siteNamePlaceholder",
+    ).setValue("Slim Response Site");
+    await wrapper.find("form").trigger("submit.prevent");
+    await flushPromises();
+
+    expect(updateSettings).toHaveBeenCalledTimes(1);
+
+    // WeChat 开关与公众号 AppID：未发送 → 保持加载值，不被 undefined 清掉
+    expect(
+      (
+        wrapper.get('[data-testid="wechat-connect-enabled"]')
+          .element as HTMLInputElement
+      ).checked,
+    ).toBe(true);
+    expect(
+      (
+        wrapper.get('[data-testid="wechat-connect-mp-app-id"]')
+          .element as HTMLInputElement
+      ).value,
+    ).toBe("wx-app-id-123");
+    // 平台配额（嵌套对象）：未发送 → 保持加载值（openai 周限额 12.5）
+    const openaiQuotaRow = wrapper.findAll("tr").find(
+      (tr) =>
+        tr.text().includes("openai") &&
+        tr.findAll('input[type="number"]').length >= 3,
+    );
+    expect(openaiQuotaRow).toBeDefined();
+    const quotaCells = openaiQuotaRow!.findAll('input[type="number"]');
+    expect(
+      (quotaCells[1]!.element as HTMLInputElement).value,
+    ).toBe("12.5");
+    // passkey 开关：未发送 → 保持启用
+    expect(
+      (
+        wrapper.get('[data-testid="passkey-toggle"]')
+          .element as HTMLInputElement
+      ).checked,
+    ).toBe(true);
+  });
+
+  it("密钥回环：未动密钥不发送，填了新密钥才进入 payload", async () => {
+    // SMTP 卡片仅在开启邮箱验证时渲染，这里打开它以获得密钥输入框。
+    getSettings.mockResolvedValueOnce({
+      ...baseSettingsResponse,
+      email_verify_enabled: true,
+      smtp_host: "smtp.example.com",
+    });
+    // 回显 mock 需保持邮箱验证开启（真实瘦身响应根本不含该键，不会改写它）。
+    updateSettings.mockImplementation(async (payload: Record<string, unknown>) => ({
+      ...baseSettingsResponse,
+      email_verify_enabled: true,
+      ...payload,
+    }));
+    const wrapper = mountView();
+
+    await flushPromises();
+    // ① 只改站点名：密钥字段留空 = 未变更，不应随包发送
+    await findInputByPlaceholder(
+      wrapper,
+      "admin.settings.site.siteNamePlaceholder",
+    ).setValue("Secret Round Trip");
+    await wrapper.find("form").trigger("submit.prevent");
+    await flushPromises();
+
+    expect(updateSettings).toHaveBeenCalledTimes(1);
+    let payload = updateSettings.mock.calls[0][0] as Record<string, unknown>;
+    expect(payload).not.toHaveProperty("smtp_password");
+    expect(payload).not.toHaveProperty("turnstile_secret_key");
+
+    // ② 填入新 SMTP 密钥：该字段进入 payload
+    await findInputByPlaceholder(
+      wrapper,
+      "admin.settings.smtp.passwordPlaceholder",
+    ).setValue("new-smtp-secret");
+    await wrapper.find("form").trigger("submit.prevent");
+    await flushPromises();
+
+    expect(updateSettings).toHaveBeenCalledTimes(2);
+    payload = updateSettings.mock.calls[1][0] as Record<string, unknown>;
+    expect(payload).not.toHaveProperty("site_name");
+    expect(payload).toHaveProperty("smtp_password", "new-smtp-secret");
+    // 保存成功后密钥输入框清空
+    expect(
+      (
+        wrapper
+          .findAll('input[type="password"]')
+          .find(
+            (node) =>
+              node.attributes("placeholder")?.includes(
+                "admin.settings.smtp.passwordPlaceholder",
+              ),
+          )?.element as HTMLInputElement
+      ).value,
+    ).toBe("");
   });
 });
 
@@ -1865,6 +2083,15 @@ describe("admin SettingsView platform quota matrix", () => {
     await flushPromises();
     await openUsersTab(wrapper);
 
+    // 部分 PUT 语义：配额矩阵是一个整体键，先改一个值让该键进入 diff。
+    const inputs = wrapper.findAll('input[type="number"]');
+    const anthropicDailyInput = inputs.find((i) => {
+      const parent = i.element.closest("tr");
+      return parent?.textContent?.includes("anthropic");
+    });
+    expect(anthropicDailyInput).toBeDefined();
+    await anthropicDailyInput!.setValue("3");
+
     await wrapper.find("form").trigger("submit.prevent");
     await flushPromises();
 
@@ -1884,6 +2111,7 @@ describe("admin SettingsView platform quota matrix", () => {
       expect(pq).toHaveProperty("weekly");
       expect(pq).toHaveProperty("monthly");
     }
+    expect((quotas["anthropic"] as Record<string, unknown>)["daily"]).toBe(3);
 
     // 不应存在旧扁平字段
     expect(payload).not.toHaveProperty("default_platform_quota_anthropic_daily");
@@ -1904,13 +2132,23 @@ describe("admin SettingsView platform quota matrix", () => {
     await flushPromises();
     await openUsersTab(wrapper);
 
+    // 改 anthropic daily，让 default_platform_quotas 作为整体键进入 diff；
+    // 未改的 openai weekly 12.5 随嵌套对象一起提交。
+    const inputs = wrapper.findAll('input[type="number"]');
+    const anthropicDailyInput = inputs.find((i) => {
+      const parent = i.element.closest("tr");
+      return parent?.textContent?.includes("anthropic");
+    });
+    expect(anthropicDailyInput).toBeDefined();
+    await anthropicDailyInput!.setValue("7");
+
     await wrapper.find("form").trigger("submit.prevent");
     await flushPromises();
 
     const payload = updateSettings.mock.calls.at(-1)![0] as Record<string, unknown>;
     const quotas = payload["default_platform_quotas"] as Record<string, Record<string, unknown>>;
 
-    expect(quotas["anthropic"]?.["daily"]).toBe(5);
+    expect(quotas["anthropic"]?.["daily"]).toBe(7);
     expect(quotas["openai"]?.["weekly"]).toBe(12.5);
     // 缺失平台应补全为 null
     expect(quotas["gemini"]).toEqual({ daily: null, weekly: null, monthly: null });
