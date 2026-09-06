@@ -88,11 +88,14 @@ func TransformClaudeToGeminiWithOptions(claudeReq *ClaudeRequest, projectID, map
 	// 用于存储 tool_use id -> name 映射
 	toolIDToName := make(map[string]string)
 
-	// 检测是否有 web_search 工具
-	hasWebSearchTool := hasWebSearchTool(claudeReq.Tools)
+	// 仅在「只有内置 web_search、没有客户端 function tools」时走 web_search 降级模型。
+	// Antigravity v1internal 不支持内置工具与 functionDeclarations 混用（即使设置
+	// includeServerSideToolInvocations 仍会 400，见 issue #6464），混用时会丢弃内置搜索，
+	// 因此不能再强制切到 gemini-2.5-flash，否则 Codex 等带 shell 工具的请求会整单失败。
+	useWebSearchRequest := hasWebSearchTool(claudeReq.Tools) && !hasClientFunctionTools(claudeReq.Tools)
 	requestType := "agent"
 	targetModel := mappedModel
-	if hasWebSearchTool {
+	if useWebSearchRequest {
 		requestType = "web_search"
 		if targetModel != webSearchFallbackModel {
 			targetModel = webSearchFallbackModel
@@ -155,13 +158,6 @@ func TransformClaudeToGeminiWithOptions(claudeReq *ClaudeRequest, projectID, map
 			FunctionCallingConfig: &GeminiFunctionCallingConfig{
 				Mode: "VALIDATED",
 			},
-		}
-		// 内置工具（googleSearch）与函数调用混用时，上游要求显式开启
-		// includeServerSideToolInvocations，否则返回 400（issue #5709）。
-		// 与 raw 透传路的 enableMixedGeminiToolInvocations 注入保持同一语义。
-		if hasMixedToolInvocations(tools) {
-			enabled := true
-			innerRequest.ToolConfig.IncludeServerSideToolInvocations = &enabled
 		}
 	}
 
@@ -697,6 +693,20 @@ func hasWebSearchTool(tools []ClaudeTool) bool {
 	return false
 }
 
+// hasClientFunctionTools 判断是否存在可转发的客户端 function/custom 工具。
+// 内置 web_search / code_execution 不算客户端工具。
+func hasClientFunctionTools(tools []ClaudeTool) bool {
+	for _, tool := range tools {
+		if isWebSearchTool(tool) || isCodeExecutionTool(tool) {
+			continue
+		}
+		if strings.TrimSpace(tool.Name) != "" {
+			return true
+		}
+	}
+	return false
+}
+
 func isWebSearchTool(tool ClaudeTool) bool {
 	if strings.HasPrefix(tool.Type, "web_search") || tool.Type == "google_search" {
 		return true
@@ -713,21 +723,6 @@ func isWebSearchTool(tool ClaudeTool) bool {
 
 func isCodeExecutionTool(tool ClaudeTool) bool {
 	return strings.TrimSpace(tool.Type) == "code_execution"
-}
-
-// hasMixedToolInvocations 判断构建后的工具声明是否同时包含函数声明与内置工具
-// （googleSearch）。仅在两者并存时需要开启 includeServerSideToolInvocations。
-func hasMixedToolInvocations(declarations []GeminiToolDeclaration) bool {
-	hasFunc, hasBuiltin := false, false
-	for _, d := range declarations {
-		if len(d.FunctionDeclarations) > 0 {
-			hasFunc = true
-		}
-		if d.GoogleSearch != nil || d.CodeExecution != nil {
-			hasBuiltin = true
-		}
-	}
-	return hasFunc && hasBuiltin
 }
 
 // buildTools 构建 tools
@@ -793,6 +788,18 @@ func buildTools(tools []ClaudeTool) []GeminiToolDeclaration {
 			Description: description,
 			Parameters:  params,
 		})
+	}
+
+	// Antigravity v1internal 协议不支持内置工具与 functionDeclarations 混用：
+	// 即便带上 includeServerSideToolInvocations 仍返回 400（issue #6464）。
+	// Codex 默认同时带 web_search 与 shell 等客户端工具，优先保留客户端工具，
+	// 使代理会话可继续，而不是整单 upstream_error。
+	if len(funcDecls) > 0 {
+		if hasWebSearch || hasCodeExecution {
+			log.Printf("[antigravity] dropping built-in tools (web_search/code_execution) because client function tools are present; Antigravity v1internal rejects the mix")
+		}
+		hasWebSearch = false
+		hasCodeExecution = false
 	}
 
 	var declarations []GeminiToolDeclaration
