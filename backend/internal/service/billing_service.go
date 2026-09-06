@@ -1168,7 +1168,7 @@ func (s *BillingService) GetModelPricing(model string) (*ModelPricing, error) {
 			price5m := litellmPricing.CacheCreationInputTokenCost
 			price1h := litellmPricing.CacheCreationInputTokenCostAbove1hr
 			enableBreakdown := price1h > 0 && price1h > price5m
-			return s.applyModelSpecificPricingPolicy(model, &ModelPricing{
+			return s.applyDefaultModelPricingPolicy(model, &ModelPricing{
 				InputPricePerToken:                 litellmPricing.InputCostPerToken,
 				InputPricePerTokenPriority:         litellmPricing.InputCostPerTokenPriority,
 				OutputPricePerToken:                litellmPricing.OutputCostPerToken,
@@ -1199,10 +1199,23 @@ func (s *BillingService) GetModelPricing(model string) (*ModelPricing, error) {
 		if _, seen := s.fallbackWarnSeen.LoadOrStore(model, struct{}{}); !seen {
 			log.Printf("[Billing] Using fallback pricing for model: %s", model)
 		}
-		return s.applyModelSpecificPricingPolicy(model, fallback), nil
+		return s.applyDefaultModelPricingPolicy(model, fallback), nil
 	}
 
 	return nil, fmt.Errorf("%w for model: %s", ErrModelPricingUnavailable, model)
+}
+
+// applyDefaultModelPricingPolicy 在目录/兜底价卡入口应用默认计费策略。
+// Astra 缓存读取按原价的 2 倍计费；在此仅调整一次，后续渠道覆盖与结算不重复叠乘。
+func (s *BillingService) applyDefaultModelPricingPolicy(model string, pricing *ModelPricing) *ModelPricing {
+	pricing = s.applyModelSpecificPricingPolicy(model, pricing)
+	if !isOpenAIGPT6AstraModel(model) {
+		return pricing
+	}
+	cloned := *pricing
+	cloned.CacheReadPricePerToken *= 2
+	cloned.CacheReadPricePerTokenPriority *= 2
+	return &cloned
 }
 
 // GetModelPricingWithChannel 获取模型定价，渠道配置的价格覆盖默认值
