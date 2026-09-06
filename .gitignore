@@ -3,6 +3,19 @@
 .codex
 
 # ===================
+# 编译产物 / 构建二进制（根目录）
+# ===================
+/sub2api-server
+/sub2api
+*.exe
+
+# ===================
+# 依赖缓存
+# ===================
+.pnpm-store/
+
+
+# ===================
 # Go 后端
 # ===================
 # 二进制文件
@@ -152,6 +165,25 @@ frontend/coverage/
 aicodex
 output/
 .codegraph/
+
+# impeccable-ignore-start
+# Ephemeral Impeccable output; shared design/config artifacts remain trackable.
+.impeccable/config.local.json
+.impeccable/hook.cache.json
+.impeccable/hook.pending.json
+.impeccable/*.png
+.impeccable/live/server.json
+.impeccable/live/sessions/
+.impeccable/live/previews/
+.impeccable/live/annotations/
+.impeccable/live/cache/
+.impeccable/live/manual-edit-apply-transaction.json
+.impeccable/live/manual-edit-events.jsonl
+.impeccable/live/manual-edit-evidence/
+.impeccable/live/pending-manual-edits.json
+.impeccable/live/deferred-svelte-component-accepts.json
+.impeccable/live/*.png
+# impeccable-ignore-end
 
 # Vitest / Vite cache at repo root
 .vite/

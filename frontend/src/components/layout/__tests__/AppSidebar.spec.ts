@@ -9,6 +9,24 @@ const componentSource = readFileSync(componentPath, 'utf8')
 const stylePath = resolve(dirname(fileURLToPath(import.meta.url)), '../../../style.css')
 const styleSource = readFileSync(stylePath, 'utf8')
 
+describe('AppSidebar home navigation', () => {
+  const headerSource = componentSource.slice(
+    componentSource.indexOf('<!-- Logo/Brand -->'),
+    componentSource.indexOf('<!-- Navigation -->')
+  )
+
+  it('routes both the logo and site title to the current deployment home page', () => {
+    expect(headerSource.match(/to="\/home"/g)).toHaveLength(2)
+    expect(headerSource).not.toContain('localhost')
+    expect(headerSource).not.toContain('/dashboard')
+  })
+
+  it('keeps both home links keyboard accessible with visible focus states', () => {
+    expect(headerSource.match(/<router-link/g)).toHaveLength(2)
+    expect(headerSource.match(/focus-visible:ring-2/g)).toHaveLength(2)
+  })
+})
+
 describe('AppSidebar custom SVG styles', () => {
   it('does not override uploaded SVG fill or stroke colors', () => {
     expect(componentSource).toContain('.sidebar-svg-icon {')
@@ -60,5 +78,15 @@ describe('AppSidebar header styles', () => {
     expect(sidebarBrandBlockMatch).not.toBeNull()
     expect(sidebarHeaderBlockMatch?.[0]).not.toContain('@apply overflow-hidden;')
     expect(sidebarBrandBlockMatch?.[0]).not.toContain('overflow: hidden;')
+  })
+})
+
+describe('AppSidebar selection treatment', () => {
+  it('uses the global light-blue glass selection and motion-safe hover feedback', () => {
+    expect(styleSource).toContain('.sidebar-link-active {')
+    expect(styleSource).toContain('background: rgb(219 234 254 / 72%);')
+    expect(styleSource).toContain('backdrop-filter: blur(12px) saturate(140%);')
+    expect(styleSource).toContain('transform: translateX(2px);')
+    expect(styleSource).toContain('@media (prefers-reduced-motion: reduce)')
   })
 })

@@ -14,6 +14,45 @@ export default {
     login: 'Login',
     getStarted: 'Get Started',
     goToDashboard: 'Go to Dashboard',
+    nav: {
+      capabilities: 'Capabilities',
+      models: 'Model ecosystem',
+      menu: 'Open navigation menu',
+      closeMenu: 'Close navigation menu',
+      backHome: 'Back to home'
+    },
+    macosHero: {
+      eyebrow: 'One gateway for AI applications',
+      description: 'Bring multiple AI services into one stable, observable API entry point, with keys, routing, and usage managed in one place.',
+      windowTitle: 'Sub2API Gateway',
+      request: 'Request',
+      response: 'Response',
+      connected: 'Gateway connected',
+      providerDockLabel: 'Connected AI services',
+      endpointLabel: 'API endpoint'
+    },
+    macosCapabilities: {
+      eyebrow: 'Built for real workflows',
+      title: 'Less switching. More creating.',
+      description: 'Keep the clients and calling patterns you know while Sub2API unifies access, upstream routing, and usage visibility.',
+      modelsEyebrow: 'Model ecosystem',
+      modelsTitle: 'One entry point for leading AI services',
+      modelsDescription: 'Use compatible APIs for services connected to this deployment. Exact model availability follows console configuration.',
+      workflowEyebrow: 'Workflow',
+      workflowTitle: 'From key to request in three steps',
+      workflowDescription: 'Keep your tools and bring access and observability together on one platform.',
+      steps: {
+        keyTitle: 'Create a key',
+        keyDesc: 'Sign in, create an API key, and scope it for your team or use case.',
+        connectTitle: 'Connect your client',
+        connectDesc: 'Point existing AI clients and developer tools at the compatible endpoint.',
+        observeTitle: 'Review usage',
+        observeDesc: 'Inspect requests, quota, and spending details in the console as you work.'
+      },
+      ctaEyebrow: 'Start building',
+      ctaTitle: 'Make AI access simple and dependable',
+      ctaDescription: 'Open the console to manage your keys and services, or sign in to get started.'
+    },
     // User-focused value proposition
     heroSubtitle: 'One Key, All AI Models',
     heroDescription: 'No need to manage multiple subscriptions. Access Claude, GPT, Gemini and more with a single API key',
