@@ -1,10 +1,30 @@
 package service
 
 import (
+	"context"
+	"fmt"
 	"net/http"
+	"strings"
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/tlsfingerprint"
 )
+
+type httpUpstreamIsolationScopeContextKey struct{}
+
+func WithHTTPUpstreamIsolationScope(ctx context.Context, userID int64, apiKeyID int64) context.Context {
+	if ctx == nil || userID <= 0 || apiKeyID <= 0 {
+		return ctx
+	}
+	return context.WithValue(ctx, httpUpstreamIsolationScopeContextKey{}, fmt.Sprintf("user:%d|key:%d", userID, apiKeyID))
+}
+
+func HTTPUpstreamIsolationScopeFromContext(ctx context.Context) string {
+	if ctx == nil {
+		return ""
+	}
+	scope, _ := ctx.Value(httpUpstreamIsolationScopeContextKey{}).(string)
+	return strings.TrimSpace(scope)
+}
 
 // HTTPUpstream 上游 HTTP 请求接口
 // 用于向上游 API（Claude、OpenAI、Gemini 等）发送请求

@@ -6,6 +6,7 @@ import (
 	"compress/flate"
 	"compress/gzip"
 	"context"
+	"crypto/sha256"
 	"crypto/tls"
 	"encoding/json"
 	"errors"
@@ -16,6 +17,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"sort"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -103,6 +105,21 @@ const (
 )
 
 var errUpstreamClientLimitReached = errors.New("upstream client cache limit reached")
+
+var outboundPrivacyHeaders = map[string]struct{}{
+	"b3": {}, "baggage": {}, "cdn-loop": {}, "client-ip": {}, "connection": {},
+	"cf-connecting-ip": {}, "cf-ipcountry": {}, "cf-ray": {}, "cf-visitor": {},
+	"fastly-client-ip": {}, "fly-client-ip": {}, "forwarded": {}, "keep-alive": {},
+	"proxy-authorization": {}, "proxy-connection": {}, "request-id": {}, "te": {},
+	"traceparent": {}, "tracestate": {}, "trailer": {}, "transfer-encoding": {},
+	"true-client-ip": {}, "upgrade": {}, "via": {}, "x-amzn-trace-id": {},
+	"x-client-ip": {}, "x-cloud-trace-context": {}, "x-cluster-client-ip": {},
+	"x-correlation-id": {}, "x-originating-ip": {}, "x-ot-span-context": {},
+	"x-real-ip": {}, "x-remote-addr": {}, "x-remote-ip": {}, "x-request-id": {},
+	"x-true-ip": {}, "uber-trace-id": {},
+}
+
+var outboundPrivacyHeaderPrefixes = []string{"x-b3-", "x-datadog-", "x-envoy-", "x-forwarded-", "x-newrelic-"}
 
 // poolSettings 连接池配置参数
 // 封装 Transport 所需的各项连接池参数
@@ -198,6 +215,7 @@ func NewHTTPUpstream(cfg *config.Config) service.HTTPUpstream {
 //   - inFlight > 0 的客户端不会被淘汰，确保活跃请求不被中断
 func (s *httpUpstreamService) Do(req *http.Request, proxyURL string, accountID int64, accountConcurrency int) (*http.Response, error) {
 	applyGrokCLIProxyHeaders(req)
+	s.applyOutboundPrivacy(req, accountID)
 	if err := s.validateRequestHost(req); err != nil {
 		return nil, err
 	}
@@ -207,7 +225,7 @@ func (s *httpUpstreamService) Do(req *http.Request, proxyURL string, accountID i
 	}
 
 	// 获取或创建对应的客户端，并标记请求占用
-	entry, err := s.acquireClientWithProfile(proxyURL, accountID, accountConcurrency, profile)
+	entry, err := s.acquireClientWithProfileAndScope(proxyURL, accountID, accountConcurrency, profile, s.requestIsolationScope(req))
 	if err != nil {
 		return nil, err
 	}
@@ -252,6 +270,7 @@ func (s *httpUpstreamService) DoWithTLS(req *http.Request, proxyURL string, acco
 		return s.Do(req, proxyURL, accountID, accountConcurrency)
 	}
 	applyGrokCLIProxyHeaders(req)
+	s.applyOutboundPrivacy(req, accountID)
 	upstreamProfile := service.HTTPUpstreamProfileDefault
 	if req != nil {
 		upstreamProfile = service.HTTPUpstreamProfileFromContext(req.Context())
@@ -271,7 +290,7 @@ func (s *httpUpstreamService) DoWithTLS(req *http.Request, proxyURL string, acco
 		return nil, err
 	}
 
-	entry, err := s.acquireClientWithTLS(proxyURL, accountID, accountConcurrency, profile, upstreamProfile)
+	entry, err := s.acquireClientWithTLSAndScope(proxyURL, accountID, accountConcurrency, profile, upstreamProfile, s.requestIsolationScope(req))
 	if err != nil {
 		slog.Debug("tls_fingerprint_acquire_client_failed", "account_id", accountID, "error", err)
 		return nil, err
@@ -493,14 +512,17 @@ func isSupportedGrokCLIVersion(version string) bool {
 		semver.Compare(canonical, minimum) >= 0
 }
 
-// acquireClientWithTLS 获取或创建带 TLS 指纹的客户端
-func (s *httpUpstreamService) acquireClientWithTLS(proxyURL string, accountID int64, accountConcurrency int, profile *tlsfingerprint.Profile, upstreamProfile service.HTTPUpstreamProfile) (*upstreamClientEntry, error) {
-	return s.getClientEntryWithTLS(proxyURL, accountID, accountConcurrency, profile, upstreamProfile, true, true)
+func (s *httpUpstreamService) acquireClientWithTLSAndScope(proxyURL string, accountID int64, accountConcurrency int, profile *tlsfingerprint.Profile, upstreamProfile service.HTTPUpstreamProfile, scope string) (*upstreamClientEntry, error) {
+	return s.getClientEntryWithTLSAndScope(proxyURL, accountID, accountConcurrency, profile, upstreamProfile, true, scope, true)
 }
 
 // getClientEntryWithTLS 获取或创建带 TLS 指纹的客户端条目
 // TLS 指纹客户端使用独立的缓存键，与普通客户端隔离
 func (s *httpUpstreamService) getClientEntryWithTLS(proxyURL string, accountID int64, accountConcurrency int, profile *tlsfingerprint.Profile, upstreamProfile service.HTTPUpstreamProfile, markInFlight bool, enforceLimit bool) (*upstreamClientEntry, error) {
+	return s.getClientEntryWithTLSAndScope(proxyURL, accountID, accountConcurrency, profile, upstreamProfile, markInFlight, "", enforceLimit)
+}
+
+func (s *httpUpstreamService) getClientEntryWithTLSAndScope(proxyURL string, accountID int64, accountConcurrency int, profile *tlsfingerprint.Profile, upstreamProfile service.HTTPUpstreamProfile, markInFlight bool, scope string, enforceLimit bool) (*upstreamClientEntry, error) {
 	isolation := s.getIsolationMode()
 	proxyKey, parsedProxy, err := normalizeProxyURL(proxyURL)
 	if err != nil {
@@ -508,9 +530,10 @@ func (s *httpUpstreamService) getClientEntryWithTLS(proxyURL string, accountID i
 	}
 	settings := s.resolvePoolSettings(isolation, accountConcurrency)
 	settings = s.applyProfilePoolSettings(settings, upstreamProfile)
-	// TLS 指纹客户端使用独立的缓存键，加 "tls:" 前缀
-	cacheKey := "tls:" + buildCacheKey(isolation, proxyKey, accountID, upstreamProtocolModeDefault)
-	poolKey := buildPoolKey(settings, upstreamProtocolModeDefault) + ":tls"
+	profileKey := tlsFingerprintProfileCacheKey(profile)
+	base := appendIsolationScope(buildCacheKey(isolation, proxyKey, accountID, upstreamProtocolModeDefault), scope)
+	cacheKey := "tls:" + base + "|fp:" + profileKey
+	poolKey := buildPoolKey(settings, upstreamProtocolModeDefault) + ":tls:" + profileKey
 
 	now := time.Now()
 	nowUnix := now.UnixNano()
@@ -637,6 +660,10 @@ func (s *httpUpstreamService) acquireClientWithProfile(proxyURL string, accountI
 	return s.getClientEntry(proxyURL, accountID, accountConcurrency, profile, true, true)
 }
 
+func (s *httpUpstreamService) acquireClientWithProfileAndScope(proxyURL string, accountID int64, accountConcurrency int, profile service.HTTPUpstreamProfile, scope string) (*upstreamClientEntry, error) {
+	return s.getClientEntryWithScope(proxyURL, accountID, accountConcurrency, profile, scope, true, true)
+}
+
 // getOrCreateClient 获取或创建客户端
 // 根据隔离策略和参数决定缓存键，处理代理变更和配置变更
 //
@@ -660,6 +687,10 @@ func (s *httpUpstreamService) getOrCreateClient(proxyURL string, accountID int64
 // markInFlight=true 时会标记进行中请求，用于请求路径防止被淘汰
 // enforceLimit=true 时会限制客户端数量，超限且无法淘汰时返回错误
 func (s *httpUpstreamService) getClientEntry(proxyURL string, accountID int64, accountConcurrency int, profile service.HTTPUpstreamProfile, markInFlight bool, enforceLimit bool) (*upstreamClientEntry, error) {
+	return s.getClientEntryWithScope(proxyURL, accountID, accountConcurrency, profile, "", markInFlight, enforceLimit)
+}
+
+func (s *httpUpstreamService) getClientEntryWithScope(proxyURL string, accountID int64, accountConcurrency int, profile service.HTTPUpstreamProfile, scope string, markInFlight bool, enforceLimit bool) (*upstreamClientEntry, error) {
 	// 获取隔离模式
 	isolation := s.getIsolationMode()
 	// 标准化代理 URL 并解析
@@ -672,7 +703,7 @@ func (s *httpUpstreamService) getClientEntry(proxyURL string, accountID int64, a
 	settings := s.resolvePoolSettings(isolation, accountConcurrency)
 	settings = s.applyProfilePoolSettings(settings, profile)
 	// 构建缓存键（根据隔离策略不同）
-	cacheKey := buildCacheKey(isolation, proxyKey, accountID, protocolMode)
+	cacheKey := appendIsolationScope(buildCacheKey(isolation, proxyKey, accountID, protocolMode), scope)
 	// 构建连接池配置键（用于检测配置变更）
 	poolKey := buildPoolKey(settings, protocolMode)
 
@@ -854,16 +885,129 @@ func (s *httpUpstreamService) getIsolationMode() string {
 	if s.cfg == nil {
 		return config.ConnectionPoolIsolationAccountProxy
 	}
-	mode := strings.ToLower(strings.TrimSpace(s.cfg.Gateway.ConnectionPoolIsolation))
+	runtime := s.cfg.GatewayRuntimeSettingsSnapshot()
+	mode := strings.ToLower(strings.TrimSpace(runtime.ConnectionPoolIsolation))
 	if mode == "" {
 		return config.ConnectionPoolIsolationAccountProxy
 	}
 	switch mode {
 	case config.ConnectionPoolIsolationProxy, config.ConnectionPoolIsolationAccount, config.ConnectionPoolIsolationAccountProxy:
+		if mode == config.ConnectionPoolIsolationProxy && s.strictAccountIsolationEnabled() {
+			return config.ConnectionPoolIsolationAccountProxy
+		}
 		return mode
 	default:
 		return config.ConnectionPoolIsolationAccountProxy
 	}
+}
+
+func (s *httpUpstreamService) outboundPrivacyEnabled() bool {
+	return s == nil || s.cfg == nil || s.cfg.GatewayRuntimeSettingsSnapshot().OutboundPrivacy.Enabled
+}
+
+func (s *httpUpstreamService) strictAccountIsolationEnabled() bool {
+	if s == nil || s.cfg == nil {
+		return false
+	}
+	privacy := s.cfg.GatewayRuntimeSettingsSnapshot().OutboundPrivacy
+	return privacy.Enabled && privacy.StrictAccountIsolation
+}
+
+func (s *httpUpstreamService) requestIsolationScope(req *http.Request) string {
+	if req == nil || !s.strictAccountIsolationEnabled() {
+		return ""
+	}
+	return service.HTTPUpstreamIsolationScopeFromContext(req.Context())
+}
+
+func appendIsolationScope(base, scope string) string {
+	scope = strings.TrimSpace(scope)
+	if scope == "" {
+		return base
+	}
+	sum := sha256.Sum256([]byte(scope))
+	return base + fmt.Sprintf("|tenant:%x", sum[:12])
+}
+
+func (s *httpUpstreamService) applyOutboundPrivacy(req *http.Request, accountID int64) {
+	if req == nil || !s.outboundPrivacyEnabled() {
+		return
+	}
+	preserve := make(map[string]struct{})
+	if s.cfg != nil {
+		for _, name := range s.cfg.GatewayRuntimeSettingsSnapshot().OutboundPrivacy.PreserveHeaders {
+			preserve[strings.ToLower(strings.TrimSpace(name))] = struct{}{}
+		}
+	}
+	stripped := sanitizeOutboundHeaders(req.Header, preserve)
+	if len(stripped) == 0 {
+		return
+	}
+	host := ""
+	if req.URL != nil {
+		host = req.URL.Hostname()
+	}
+	slog.Debug("outbound_privacy_headers_stripped", "account_id", accountID, "host", host, "headers", stripped)
+}
+
+func sanitizeOutboundHeaders(headers http.Header, preserve map[string]struct{}) []string {
+	if len(headers) == 0 {
+		return nil
+	}
+	connectionHeaders := make(map[string]struct{})
+	for name, values := range headers {
+		if !strings.EqualFold(strings.TrimSpace(name), "connection") {
+			continue
+		}
+		for _, value := range values {
+			for _, token := range strings.Split(value, ",") {
+				if token = strings.ToLower(strings.TrimSpace(token)); token != "" {
+					connectionHeaders[token] = struct{}{}
+				}
+			}
+		}
+	}
+	strippedSet := make(map[string]struct{})
+	for name := range headers {
+		normalized := strings.ToLower(strings.TrimSpace(name))
+		if _, ok := preserve[normalized]; ok {
+			continue
+		}
+		_, strip := outboundPrivacyHeaders[normalized]
+		if !strip {
+			_, strip = connectionHeaders[normalized]
+		}
+		if !strip {
+			for _, prefix := range outboundPrivacyHeaderPrefixes {
+				if strings.HasPrefix(normalized, prefix) {
+					strip = true
+					break
+				}
+			}
+		}
+		if strip {
+			delete(headers, name)
+			strippedSet[normalized] = struct{}{}
+		}
+	}
+	stripped := make([]string, 0, len(strippedSet))
+	for name := range strippedSet {
+		stripped = append(stripped, name)
+	}
+	sort.Strings(stripped)
+	return stripped
+}
+
+func tlsFingerprintProfileCacheKey(profile *tlsfingerprint.Profile) string {
+	if profile == nil {
+		return "none"
+	}
+	data, err := json.Marshal(profile)
+	if err != nil {
+		data = []byte(fmt.Sprintf("%#v", profile))
+	}
+	sum := sha256.Sum256(data)
+	return fmt.Sprintf("%x", sum[:12])
 }
 
 // maxUpstreamClients 获取最大客户端缓存数量

@@ -18,10 +18,8 @@ import (
 )
 
 const (
-	openAIWSConnMaxAge          = 60 * time.Minute
-	openAIWSConnHealthCheckIdle = 90 * time.Second
-	// coder/websocket cannot consume pong frames without a reader. Recycle
-	// unsupported idle sockets before the upstream keepalive window expires.
+	openAIWSConnMaxAge             = 60 * time.Minute
+	openAIWSConnHealthCheckIdle    = 90 * time.Second
 	openAIWSConnIdleRecycleAfter   = 90 * time.Second
 	openAIWSConnHealthCheckTO      = 2 * time.Second
 	openAIWSConnPrewarmExtraDelay  = 2 * time.Second
@@ -64,9 +62,10 @@ func (e *openAIWSDialError) Unwrap() error {
 }
 
 type openAIWSAcquireRequest struct {
-	Account *Account
-	WSURL   string
-	Headers http.Header
+	Account        *Account
+	WSURL          string
+	Headers        http.Header
+	IsolationScope string
 	// HeadersFactory is evaluated inside dialConn. It exists so credentials
 	// whose authorization is per-dial (Agent Identity) are never cached in
 	// lastAcquire or delayed prewarm state.
@@ -89,9 +88,47 @@ type openAIWSHandshakeCompatibilityKey struct {
 	codexWindowID       string
 }
 
+// openAIWSAccountPoolKey scopes pooled connections by account and tenant.
+type openAIWSAccountPoolKey struct {
+	accountID int64
+	scope     string
+}
+
+// openAIWSAccountBudget is shared by every isolation scope of one upstream
+// account. used includes both published connections and in-flight dials so
+// concurrent scopes cannot each consume the per-account limit independently.
+type openAIWSAccountBudget struct {
+	mu              sync.Mutex
+	used            int
+	conns           map[*openAIWSConn]openAIWSAccountBudgetConn
+	revision        uint64
+	epoch           uint64
+	lastIdleCleanup time.Time
+}
+
+type openAIWSAccountBudgetConn struct {
+	poolKey openAIWSAccountPoolKey
+	conn    *openAIWSConn
+}
+
+type openAIWSAccountIdleCandidate struct {
+	poolKey openAIWSAccountPoolKey
+	conn    *openAIWSConn
+}
+
+// newOpenAIWSAccountPoolKey normalizes the tenant scope used as the map key.
+// An empty scope preserves the legacy account-only pool.
+func newOpenAIWSAccountPoolKey(accountID int64, scope string) openAIWSAccountPoolKey {
+	return openAIWSAccountPoolKey{
+		accountID: accountID,
+		scope:     strings.TrimSpace(scope),
+	}
+}
+
 type openAIWSConnLease struct {
 	pool      *openAIWSConnPool
 	accountID int64
+	poolKey   openAIWSAccountPoolKey
 	conn      *openAIWSConn
 	queueWait time.Duration
 	connPick  time.Duration
@@ -233,7 +270,11 @@ func (l *openAIWSConnLease) MarkBroken() {
 	if l == nil || l.pool == nil || l.conn == nil || l.released.Load() {
 		return
 	}
-	l.pool.evictConn(l.accountID, l.conn.id)
+	poolKey := l.poolKey
+	if poolKey.accountID <= 0 {
+		poolKey = newOpenAIWSAccountPoolKey(l.accountID, "")
+	}
+	l.pool.evictConnForKey(poolKey, l.conn.id)
 }
 
 func (l *openAIWSConnLease) Release() {
@@ -245,13 +286,26 @@ func (l *openAIWSConnLease) Release() {
 	}
 	l.conn.release()
 	if l.pool != nil {
-		l.pool.notifyAccountPoolChanged(l.accountID)
+		poolKey := l.poolKey
+		if poolKey.accountID <= 0 {
+			poolKey = newOpenAIWSAccountPoolKey(l.accountID, "")
+		}
+		if l.pool.closed.Load() {
+			l.pool.evictConnForKey(poolKey, l.conn.id)
+			return
+		}
+		l.pool.notifyAccountPoolChangedForKey(poolKey)
 	}
 }
 
 type openAIWSConn struct {
 	id string
 	ws openAIWSClientConn
+
+	// The budget is published while holding the budget mutex, but close can run
+	// from an eviction path that does not hold that mutex. Keep the pointer
+	// atomic so binding and release cannot race.
+	accountBudget atomic.Pointer[openAIWSAccountBudget]
 
 	handshakeHeaders       http.Header
 	handshakeCompatibility openAIWSHandshakeCompatibilityKey
@@ -361,6 +415,9 @@ func (c *openAIWSConn) close() {
 		select {
 		case c.leaseCh <- struct{}{}:
 		default:
+		}
+		if budget := c.accountBudget.Load(); budget != nil {
+			budget.releaseConn(c)
 		}
 	})
 }
@@ -601,28 +658,261 @@ func (ap *openAIWSAccountPool) signalChangedLocked() {
 	ap.changedCh = make(chan struct{})
 }
 
+func (b *openAIWSAccountBudget) reserve(maxConns int) bool {
+	if b == nil || maxConns <= 0 {
+		return false
+	}
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	if b.used >= maxConns {
+		return false
+	}
+	b.used++
+	return true
+}
+
+// reservePrewarm atomically combines scope-local demand with the account-wide
+// minimum. This is what prevents every API-key scope from prewarming its own
+// copy of MinIdlePerAccount.
+func (b *openAIWSAccountBudget) reservePrewarm(maxConns, minIdle, localDemandNeed int) int {
+	if b == nil || maxConns <= 0 {
+		return 0
+	}
+	if minIdle < 0 {
+		minIdle = 0
+	}
+	if minIdle > maxConns {
+		minIdle = maxConns
+	}
+	if localDemandNeed < 0 {
+		localDemandNeed = 0
+	}
+
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	available := maxConns - b.used
+	if available <= 0 {
+		return 0
+	}
+	minIdleNeed := minIdle - b.used
+	if minIdleNeed < 0 {
+		minIdleNeed = 0
+	}
+	want := max(localDemandNeed, minIdleNeed)
+	if want > available {
+		want = available
+	}
+	if want <= 0 {
+		return 0
+	}
+	b.used += want
+	return want
+}
+
+func (b *openAIWSAccountBudget) releaseReservation() {
+	if b == nil {
+		return
+	}
+	b.mu.Lock()
+	if b.used > 0 {
+		b.used--
+	}
+	b.mu.Unlock()
+}
+
+func (b *openAIWSAccountBudget) bindConnLocked(poolKey openAIWSAccountPoolKey, conn *openAIWSConn) {
+	if b.conns == nil {
+		b.conns = make(map[*openAIWSConn]openAIWSAccountBudgetConn)
+	}
+	conn.accountBudget.Store(b)
+	b.conns[conn] = openAIWSAccountBudgetConn{poolKey: poolKey, conn: conn}
+	b.revision++
+}
+
+func (b *openAIWSAccountBudget) bindConnForEpoch(
+	poolKey openAIWSAccountPoolKey,
+	conn *openAIWSConn,
+	expectedEpoch uint64,
+) bool {
+	if b == nil || conn == nil {
+		return false
+	}
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	if b.epoch != expectedEpoch {
+		return false
+	}
+	b.bindConnLocked(poolKey, conn)
+	return true
+}
+
+func (b *openAIWSAccountBudget) releaseConn(conn *openAIWSConn) {
+	if b == nil || conn == nil {
+		return
+	}
+	b.mu.Lock()
+	if _, ok := b.conns[conn]; ok {
+		delete(b.conns, conn)
+		if b.used > 0 {
+			b.used--
+		}
+		b.revision++
+	}
+	b.mu.Unlock()
+}
+
+func (b *openAIWSAccountBudget) snapshotRevision() uint64 {
+	if b == nil {
+		return 0
+	}
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.revision
+}
+
+func (b *openAIWSAccountBudget) snapshotEpoch() uint64 {
+	if b == nil {
+		return 0
+	}
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.epoch
+}
+
+func (b *openAIWSAccountBudget) advanceEpoch() uint64 {
+	if b == nil {
+		return 0
+	}
+	b.mu.Lock()
+	b.epoch++
+	epoch := b.epoch
+	b.mu.Unlock()
+	return epoch
+}
+
+// reconcileSnapshot applies a pool snapshot only when no connection was bound
+// or released while that snapshot was being collected. A stale snapshot must
+// never remove a newly published connection from the account-wide budget.
+func (b *openAIWSAccountBudget) reconcileSnapshot(
+	revision uint64,
+	present map[*openAIWSConn]openAIWSAccountBudgetConn,
+) bool {
+	if b == nil {
+		return true
+	}
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	if b.revision != revision {
+		return false
+	}
+
+	changed := false
+	for conn := range b.conns {
+		if _, ok := present[conn]; ok {
+			continue
+		}
+		delete(b.conns, conn)
+		if b.used > 0 {
+			b.used--
+		}
+		changed = true
+	}
+	// Legacy/manual pools may already contain published connections without a
+	// reservation entry. Import them before the next acquire applies the cap;
+	// in-flight dial reservations are represented only by used and are retained.
+	for conn, item := range present {
+		if conn == nil {
+			continue
+		}
+		select {
+		case <-conn.closedCh:
+			continue
+		default:
+		}
+		if _, exists := b.conns[conn]; exists {
+			continue
+		}
+		conn.accountBudget.Store(b)
+		b.conns[conn] = item
+		b.used++
+		changed = true
+		select {
+		case <-conn.closedCh:
+			delete(b.conns, conn)
+			if b.used > 0 {
+				b.used--
+			}
+		default:
+		}
+	}
+	if changed {
+		b.revision++
+	}
+	return true
+}
+
+func (b *openAIWSAccountBudget) markIdleCleanupDue(now time.Time, interval time.Duration) bool {
+	if b == nil {
+		return false
+	}
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	if interval > 0 && !b.lastIdleCleanup.IsZero() && now.Sub(b.lastIdleCleanup) < interval {
+		return false
+	}
+	b.lastIdleCleanup = now
+	return true
+}
+
+func (b *openAIWSAccountBudget) idleCandidates(maxIdle int) ([]openAIWSAccountIdleCandidate, int) {
+	if b == nil {
+		return nil, 0
+	}
+	b.mu.Lock()
+	redundant := len(b.conns) - maxIdle
+	if redundant <= 0 {
+		b.mu.Unlock()
+		return nil, 0
+	}
+	candidates := make([]openAIWSAccountIdleCandidate, 0, len(b.conns))
+	for _, item := range b.conns {
+		if item.conn == nil || item.conn.isLeased() || item.conn.waiters.Load() > 0 {
+			continue
+		}
+		candidates = append(candidates, openAIWSAccountIdleCandidate(item))
+	}
+	b.mu.Unlock()
+
+	sort.SliceStable(candidates, func(i, j int) bool {
+		return candidates[i].conn.lastUsedAt().Before(candidates[j].conn.lastUsedAt())
+	})
+	return candidates, redundant
+}
+
 type OpenAIWSPoolMetricsSnapshot struct {
-	AcquireTotal            int64
-	AcquireReuseTotal       int64
-	AcquireCreateTotal      int64
-	AcquireQueueWaitTotal   int64
-	AcquireQueueWaitMsTotal int64
-	ConnPickTotal           int64
-	ConnPickMsTotal         int64
-	ScaleUpTotal            int64
-	ScaleDownTotal          int64
+	AcquireTotal             int64
+	AcquireReuseTotal        int64
+	AcquireCreateTotal       int64
+	AcquireQueueWaitTotal    int64
+	AcquireQueueWaitMsTotal  int64
+	ConnPickTotal            int64
+	ConnPickMsTotal          int64
+	ScaleUpTotal             int64
+	ScaleDownTotal           int64
+	AccountBudgetRejectTotal int64
 }
 
 type openAIWSPoolMetrics struct {
-	acquireTotal          atomic.Int64
-	acquireReuseTotal     atomic.Int64
-	acquireCreateTotal    atomic.Int64
-	acquireQueueWaitTotal atomic.Int64
-	acquireQueueWaitMs    atomic.Int64
-	connPickTotal         atomic.Int64
-	connPickMs            atomic.Int64
-	scaleUpTotal          atomic.Int64
-	scaleDownTotal        atomic.Int64
+	acquireTotal             atomic.Int64
+	acquireReuseTotal        atomic.Int64
+	acquireCreateTotal       atomic.Int64
+	acquireQueueWaitTotal    atomic.Int64
+	acquireQueueWaitMs       atomic.Int64
+	connPickTotal            atomic.Int64
+	connPickMs               atomic.Int64
+	scaleUpTotal             atomic.Int64
+	scaleDownTotal           atomic.Int64
+	accountBudgetRejectTotal atomic.Int64
 }
 
 type openAIWSConnPool struct {
@@ -630,14 +920,19 @@ type openAIWSConnPool struct {
 	// 通过接口解耦底层 WS 客户端实现，默认使用 coder/websocket。
 	clientDialer openAIWSClientDialer
 
-	accounts sync.Map // key: int64(accountID), value: *openAIWSAccountPool
-	seq      atomic.Uint64
+	accounts       sync.Map // key: openAIWSAccountPoolKey, value: *openAIWSAccountPool
+	accountBudgets sync.Map // key: account ID, value: *openAIWSAccountBudget
+	seq            atomic.Uint64
 
 	metrics openAIWSPoolMetrics
 
 	workerStopCh chan struct{}
 	workerWg     sync.WaitGroup
 	closeOnce    sync.Once
+	closed       atomic.Bool
+	publishMu    sync.RWMutex
+
+	testBeforeAccountPoolLookup func(int64)
 }
 
 func newOpenAIWSConnPool(cfg *config.Config) *openAIWSConnPool {
@@ -655,15 +950,16 @@ func (p *openAIWSConnPool) SnapshotMetrics() OpenAIWSPoolMetricsSnapshot {
 		return OpenAIWSPoolMetricsSnapshot{}
 	}
 	return OpenAIWSPoolMetricsSnapshot{
-		AcquireTotal:            p.metrics.acquireTotal.Load(),
-		AcquireReuseTotal:       p.metrics.acquireReuseTotal.Load(),
-		AcquireCreateTotal:      p.metrics.acquireCreateTotal.Load(),
-		AcquireQueueWaitTotal:   p.metrics.acquireQueueWaitTotal.Load(),
-		AcquireQueueWaitMsTotal: p.metrics.acquireQueueWaitMs.Load(),
-		ConnPickTotal:           p.metrics.connPickTotal.Load(),
-		ConnPickMsTotal:         p.metrics.connPickMs.Load(),
-		ScaleUpTotal:            p.metrics.scaleUpTotal.Load(),
-		ScaleDownTotal:          p.metrics.scaleDownTotal.Load(),
+		AcquireTotal:             p.metrics.acquireTotal.Load(),
+		AcquireReuseTotal:        p.metrics.acquireReuseTotal.Load(),
+		AcquireCreateTotal:       p.metrics.acquireCreateTotal.Load(),
+		AcquireQueueWaitTotal:    p.metrics.acquireQueueWaitTotal.Load(),
+		AcquireQueueWaitMsTotal:  p.metrics.acquireQueueWaitMs.Load(),
+		ConnPickTotal:            p.metrics.connPickTotal.Load(),
+		ConnPickMsTotal:          p.metrics.connPickMs.Load(),
+		ScaleUpTotal:             p.metrics.scaleUpTotal.Load(),
+		ScaleDownTotal:           p.metrics.scaleDownTotal.Load(),
+		AccountBudgetRejectTotal: p.metrics.accountBudgetRejectTotal.Load(),
 	}
 }
 
@@ -690,6 +986,9 @@ func (p *openAIWSConnPool) Close() {
 		return
 	}
 	p.closeOnce.Do(func() {
+		p.publishMu.Lock()
+		p.closed.Store(true)
+		p.publishMu.Unlock()
 		if p.workerStopCh != nil {
 			close(p.workerStopCh)
 		}
@@ -706,6 +1005,7 @@ func (p *openAIWSConnPool) Close() {
 					conn.close()
 				}
 			}
+			ap.signalChangedLocked()
 			ap.mu.Unlock()
 			return true
 		})
@@ -728,8 +1028,8 @@ func (p *openAIWSConnPool) startBackgroundWorkers() {
 }
 
 type openAIWSIdlePingCandidate struct {
-	accountID int64
-	conn      *openAIWSConn
+	poolKey openAIWSAccountPoolKey
+	conn    *openAIWSConn
 }
 
 func (p *openAIWSConnPool) runBackgroundPingWorker() {
@@ -762,7 +1062,7 @@ func (p *openAIWSConnPool) runBackgroundPingSweep() {
 		}
 		g.Go(func() error {
 			if err := item.conn.pingWithTimeout(openAIWSConnHealthCheckTO); err != nil {
-				p.evictConn(item.accountID, item.conn.id)
+				p.evictConnForKey(item.poolKey, item.conn.id)
 			}
 			return nil
 		})
@@ -776,8 +1076,8 @@ func (p *openAIWSConnPool) snapshotIdleConnsForPing() []openAIWSIdlePingCandidat
 	}
 	candidates := make([]openAIWSIdlePingCandidate, 0)
 	p.accounts.Range(func(key, value any) bool {
-		accountID, ok := key.(int64)
-		if !ok || accountID <= 0 {
+		poolKey, ok := openAIWSPoolKeyFromMapKey(key)
+		if !ok || poolKey.accountID <= 0 {
 			return true
 		}
 		ap, ok := value.(*openAIWSAccountPool)
@@ -790,8 +1090,8 @@ func (p *openAIWSConnPool) snapshotIdleConnsForPing() []openAIWSIdlePingCandidat
 				continue
 			}
 			candidates = append(candidates, openAIWSIdlePingCandidate{
-				accountID: accountID,
-				conn:      conn,
+				poolKey: poolKey,
+				conn:    conn,
 			})
 		}
 		ap.mu.Unlock()
@@ -824,7 +1124,9 @@ func (p *openAIWSConnPool) runBackgroundCleanupSweep(now time.Time) {
 		evicted []*openAIWSConn
 	}
 	results := make([]cleanupResult, 0)
-	p.accounts.Range(func(_ any, value any) bool {
+	accountMaxConns := make(map[int64]int)
+	p.accounts.Range(func(key, value any) bool {
+		poolKey, keyOK := openAIWSPoolKeyFromMapKey(key)
 		ap, ok := value.(*openAIWSAccountPool)
 		if !ok || ap == nil {
 			return true
@@ -833,6 +1135,11 @@ func (p *openAIWSConnPool) runBackgroundCleanupSweep(now time.Time) {
 		ap.mu.Lock()
 		if ap.lastAcquire != nil && ap.lastAcquire.Account != nil {
 			maxConns = p.effectiveMaxConnsByAccount(ap.lastAcquire.Account)
+		}
+		if keyOK && poolKey.accountID > 0 {
+			if existing, exists := accountMaxConns[poolKey.accountID]; !exists || maxConns < existing {
+				accountMaxConns[poolKey.accountID] = maxConns
+			}
 		}
 		evicted := p.cleanupAccountLocked(ap, now, maxConns)
 		ap.lastCleanupAt = now
@@ -844,6 +1151,9 @@ func (p *openAIWSConnPool) runBackgroundCleanupSweep(now time.Time) {
 	})
 	for _, result := range results {
 		closeOpenAIWSConns(result.evicted)
+	}
+	for accountID, maxConns := range accountMaxConns {
+		p.cleanupAccountIdleBudget(accountID, maxConns)
 	}
 }
 
@@ -858,23 +1168,52 @@ func (p *openAIWSConnPool) acquire(ctx context.Context, req openAIWSAcquireReque
 	if p == nil || req.Account == nil || req.Account.ID <= 0 {
 		return nil, errors.New("invalid ws acquire request")
 	}
+	if p.closed.Load() {
+		return nil, errOpenAIWSConnClosed
+	}
 	if stringsTrim(req.WSURL) == "" {
 		return nil, errors.New("ws url is empty")
 	}
 
 retryAcquire:
+	if p.closed.Load() {
+		return nil, errOpenAIWSConnClosed
+	}
 	accountID := req.Account.ID
+	poolKey := newOpenAIWSAccountPoolKey(accountID, req.IsolationScope)
 	compatibility := normalizeOpenAIWSHandshakeCompatibility(req.Account, req.Headers)
 	routingAffinity := normalizeOpenAIWSRoutingAffinity(req.Headers)
 	effectiveMaxConns := p.effectiveMaxConnsByAccount(req.Account)
 	if effectiveMaxConns <= 0 {
 		return nil, errOpenAIWSConnQueueFull
 	}
+	budget := p.getOrCreateAccountBudget(accountID)
+	accountEpoch := budget.snapshotEpoch()
+	// Repair legacy/manual pool entries before applying the account-wide cap.
+	// In-flight reservations are intentionally kept by reconcileAccountBudget
+	// until their dial path resolves.
+	p.reconcileAccountBudget(accountID)
+	if p.testBeforeAccountPoolLookup != nil {
+		p.testBeforeAccountPoolLookup(accountID)
+	}
+	if p.closed.Load() {
+		return nil, errOpenAIWSConnClosed
+	}
+	if budget.snapshotEpoch() != accountEpoch {
+		goto retryAcquire
+	}
+	now := time.Now()
+	if budget.markIdleCleanupDue(now, openAIWSAcquireCleanupInterval) {
+		p.cleanupAccountIdleBudget(accountID, effectiveMaxConns)
+	}
 	var evicted []*openAIWSConn
-	ap := p.getOrCreateAccountPool(accountID)
+	ap := p.getOrCreateAccountPoolForKey(poolKey)
 	ap.mu.Lock()
 	acquireGeneration := ap.generation
-	now := time.Now()
+	if p.closed.Load() || budget.snapshotEpoch() != accountEpoch {
+		ap.mu.Unlock()
+		goto retryAcquire
+	}
 	if ap.lastCleanupAt.IsZero() || now.Sub(ap.lastCleanupAt) >= openAIWSAcquireCleanupInterval {
 		evicted = p.cleanupAccountLocked(ap, now, effectiveMaxConns)
 		ap.lastCleanupAt = now
@@ -907,7 +1246,7 @@ retryAcquire:
 				if p.shouldHealthCheckConn(preferredConn) {
 					if err := preferredConn.pingWithTimeout(openAIWSConnHealthCheckTO); err != nil {
 						preferredConn.close()
-						p.evictConn(accountID, preferredConn.id)
+						p.evictConnForKey(poolKey, preferredConn.id)
 						if retry < 1 {
 							return p.acquire(ctx, req, retry+1)
 						}
@@ -917,13 +1256,14 @@ retryAcquire:
 				lease := &openAIWSConnLease{
 					pool:      p,
 					accountID: accountID,
+					poolKey:   poolKey,
 					conn:      preferredConn,
 					connPick:  connPick,
 					reused:    true,
 				}
 				p.metrics.acquireReuseTotal.Add(1)
-				p.recordLastSuccessfulAcquire(accountID, acquireGeneration, req)
-				p.ensureTargetIdleAsync(accountID)
+				p.recordLastSuccessfulAcquireForKey(poolKey, acquireGeneration, req)
+				p.ensureTargetIdleAsyncForKey(poolKey)
 				return lease, nil
 			}
 
@@ -951,7 +1291,7 @@ retryAcquire:
 				if err := preferredConn.pingWithTimeout(openAIWSConnHealthCheckTO); err != nil {
 					preferredConn.release()
 					preferredConn.close()
-					p.evictConn(accountID, preferredConn.id)
+					p.evictConnForKey(poolKey, preferredConn.id)
 					if retry < 1 {
 						return p.acquire(ctx, req, retry+1)
 					}
@@ -964,14 +1304,15 @@ retryAcquire:
 			lease := &openAIWSConnLease{
 				pool:      p,
 				accountID: accountID,
+				poolKey:   poolKey,
 				conn:      preferredConn,
 				queueWait: queueWait,
 				connPick:  connPick,
 				reused:    true,
 			}
 			p.metrics.acquireReuseTotal.Add(1)
-			p.recordLastSuccessfulAcquire(accountID, acquireGeneration, req)
-			p.ensureTargetIdleAsync(accountID)
+			p.recordLastSuccessfulAcquireForKey(poolKey, acquireGeneration, req)
+			p.ensureTargetIdleAsyncForKey(poolKey)
 			return lease, nil
 		}
 
@@ -984,17 +1325,17 @@ retryAcquire:
 				if p.shouldHealthCheckConn(conn) {
 					if err := conn.pingWithTimeout(openAIWSConnHealthCheckTO); err != nil {
 						conn.close()
-						p.evictConn(accountID, conn.id)
+						p.evictConnForKey(poolKey, conn.id)
 						if retry < 1 {
 							return p.acquire(ctx, req, retry+1)
 						}
 						return nil, err
 					}
 				}
-				lease := &openAIWSConnLease{pool: p, accountID: accountID, conn: conn, connPick: connPick, reused: true}
+				lease := &openAIWSConnLease{pool: p, accountID: accountID, poolKey: poolKey, conn: conn, connPick: connPick, reused: true}
 				p.metrics.acquireReuseTotal.Add(1)
-				p.recordLastSuccessfulAcquire(accountID, acquireGeneration, req)
-				p.ensureTargetIdleAsync(accountID)
+				p.recordLastSuccessfulAcquireForKey(poolKey, acquireGeneration, req)
+				p.ensureTargetIdleAsyncForKey(poolKey)
 				return lease, nil
 			}
 		}
@@ -1011,17 +1352,17 @@ retryAcquire:
 			if p.shouldHealthCheckConn(best) {
 				if err := best.pingWithTimeout(openAIWSConnHealthCheckTO); err != nil {
 					best.close()
-					p.evictConn(accountID, best.id)
+					p.evictConnForKey(poolKey, best.id)
 					if retry < 1 {
 						return p.acquire(ctx, req, retry+1)
 					}
 					return nil, err
 				}
 			}
-			lease := &openAIWSConnLease{pool: p, accountID: accountID, conn: best, connPick: connPick, reused: true}
+			lease := &openAIWSConnLease{pool: p, accountID: accountID, poolKey: poolKey, conn: best, connPick: connPick, reused: true}
 			p.metrics.acquireReuseTotal.Add(1)
-			p.recordLastSuccessfulAcquire(accountID, acquireGeneration, req)
-			p.ensureTargetIdleAsync(accountID)
+			p.recordLastSuccessfulAcquireForKey(poolKey, acquireGeneration, req)
+			p.ensureTargetIdleAsyncForKey(poolKey)
 			return lease, nil
 		}
 		if routingAffinity == "" || len(ap.conns)+ap.creating >= effectiveMaxConns {
@@ -1037,17 +1378,17 @@ retryAcquire:
 					if p.shouldHealthCheckConn(conn) {
 						if err := conn.pingWithTimeout(openAIWSConnHealthCheckTO); err != nil {
 							conn.close()
-							p.evictConn(accountID, conn.id)
+							p.evictConnForKey(poolKey, conn.id)
 							if retry < 1 {
 								return p.acquire(ctx, req, retry+1)
 							}
 							return nil, err
 						}
 					}
-					lease := &openAIWSConnLease{pool: p, accountID: accountID, conn: conn, connPick: connPick, reused: true}
+					lease := &openAIWSConnLease{pool: p, accountID: accountID, poolKey: poolKey, conn: conn, connPick: connPick, reused: true}
 					p.metrics.acquireReuseTotal.Add(1)
-					p.recordLastSuccessfulAcquire(accountID, acquireGeneration, req)
-					p.ensureTargetIdleAsync(accountID)
+					p.recordLastSuccessfulAcquireForKey(poolKey, acquireGeneration, req)
+					p.ensureTargetIdleAsyncForKey(poolKey)
 					return lease, nil
 				}
 			}
@@ -1100,22 +1441,46 @@ retryAcquire:
 	}
 
 	if len(ap.conns)+ap.creating < effectiveMaxConns {
+		if !budget.reserve(effectiveMaxConns) {
+			p.recordConnPickDuration(time.Since(pickStartedAt))
+			ap.mu.Unlock()
+			hadLocalEviction := len(evicted) > 0
+			closeOpenAIWSConns(evicted)
+			if hadLocalEviction || p.evictOneIdleAccountConn(accountID) {
+				goto retryAcquire
+			}
+			p.metrics.accountBudgetRejectTotal.Add(1)
+			return nil, errOpenAIWSConnQueueFull
+		}
 		connPick := time.Since(pickStartedAt)
 		p.recordConnPickDuration(connPick)
 		ap.creating++
 		ap.mu.Unlock()
 		closeOpenAIWSConns(evicted)
 
+		reservationHeld := true
 		conn, dialErr := p.dialConn(ctx, req)
+		if dialErr != nil {
+			budget.releaseReservation()
+			reservationHeld = false
+		}
 
-		ap = p.getOrCreateAccountPool(accountID)
+		ap = p.getOrCreateAccountPoolForKey(poolKey)
 		ap.mu.Lock()
 		ap.creating--
-		if ap.generation != acquireGeneration {
+		staleAccount := budget.snapshotEpoch() != accountEpoch
+		poolClosed := p.closed.Load()
+		if ap.generation != acquireGeneration || staleAccount || poolClosed {
 			ap.signalChangedLocked()
 			ap.mu.Unlock()
 			if conn != nil {
 				conn.close()
+			}
+			if reservationHeld {
+				budget.releaseReservation()
+			}
+			if poolClosed {
+				return nil, errOpenAIWSConnClosed
 			}
 			if retry < 1 {
 				return p.acquire(ctx, req, retry+1)
@@ -1136,9 +1501,26 @@ retryAcquire:
 			ap.signalChangedLocked()
 			ap.mu.Unlock()
 			conn.close()
+			if reservationHeld {
+				budget.releaseReservation()
+			}
 			return nil, errOpenAIWSConnClosed
 		}
-		ap.conns[conn.id] = conn
+		if !p.publishAccountConnLocked(ap, poolKey, budget, accountEpoch, conn) {
+			ap.signalChangedLocked()
+			ap.mu.Unlock()
+			conn.close()
+			if reservationHeld {
+				budget.releaseReservation()
+			}
+			if p.closed.Load() {
+				return nil, errOpenAIWSConnClosed
+			}
+			if retry < 1 {
+				return p.acquire(ctx, req, retry+1)
+			}
+			return nil, errOpenAIWSConnClosed
+		}
 		ap.prewarmFails = 0
 		ap.prewarmFailAt = time.Time{}
 		// Wake acquires that observed creating>0 with no compatible connection.
@@ -1147,9 +1529,9 @@ retryAcquire:
 		ap.signalChangedLocked()
 		ap.mu.Unlock()
 		p.metrics.acquireCreateTotal.Add(1)
-		lease := &openAIWSConnLease{pool: p, accountID: accountID, conn: conn, connPick: connPick}
-		p.recordLastSuccessfulAcquire(accountID, acquireGeneration, req)
-		p.ensureTargetIdleAsync(accountID)
+		lease := &openAIWSConnLease{pool: p, accountID: accountID, poolKey: poolKey, conn: conn, connPick: connPick}
+		p.recordLastSuccessfulAcquireForKey(poolKey, acquireGeneration, req)
+		p.ensureTargetIdleAsyncForKey(poolKey)
 		return lease, nil
 	}
 
@@ -1191,7 +1573,7 @@ acquireAtCapacity:
 		if err := target.pingWithTimeout(openAIWSConnHealthCheckTO); err != nil {
 			target.release()
 			target.close()
-			p.evictConn(accountID, target.id)
+			p.evictConnForKey(poolKey, target.id)
 			if retry < 1 {
 				return p.acquire(ctx, req, retry+1)
 			}
@@ -1201,10 +1583,10 @@ acquireAtCapacity:
 
 	queueWait := time.Since(waitStart)
 	p.metrics.acquireQueueWaitMs.Add(queueWait.Milliseconds())
-	lease := &openAIWSConnLease{pool: p, accountID: accountID, conn: target, queueWait: queueWait, connPick: connPick, reused: true}
+	lease := &openAIWSConnLease{pool: p, accountID: accountID, poolKey: poolKey, conn: target, queueWait: queueWait, connPick: connPick, reused: true}
 	p.metrics.acquireReuseTotal.Add(1)
-	p.recordLastSuccessfulAcquire(accountID, acquireGeneration, req)
-	p.ensureTargetIdleAsync(accountID)
+	p.recordLastSuccessfulAcquireForKey(poolKey, acquireGeneration, req)
+	p.ensureTargetIdleAsyncForKey(poolKey)
 	return lease, nil
 }
 
@@ -1219,11 +1601,11 @@ func (p *openAIWSConnPool) recordConnPickDuration(duration time.Duration) {
 	p.metrics.connPickMs.Add(duration.Milliseconds())
 }
 
-func (p *openAIWSConnPool) recordLastSuccessfulAcquire(accountID int64, generation uint64, req openAIWSAcquireRequest) {
-	if p == nil || accountID <= 0 {
+func (p *openAIWSConnPool) recordLastSuccessfulAcquireForKey(poolKey openAIWSAccountPoolKey, generation uint64, req openAIWSAcquireRequest) {
+	if p == nil || poolKey.accountID <= 0 {
 		return
 	}
-	ap, ok := p.getAccountPool(accountID)
+	ap, ok := p.getAccountPoolForKey(poolKey)
 	if !ok || ap == nil {
 		return
 	}
@@ -1234,6 +1616,10 @@ func (p *openAIWSConnPool) recordLastSuccessfulAcquire(accountID int64, generati
 	}
 	ap.lastAcquire = cloneOpenAIWSAcquireRequestPtr(&req)
 	ap.mu.Unlock()
+}
+
+func (p *openAIWSConnPool) recordLastSuccessfulAcquire(accountID int64, generation uint64, req openAIWSAcquireRequest) { //nolint:unused
+	p.recordLastSuccessfulAcquireForKey(newOpenAIWSAccountPoolKey(accountID, ""), generation, req)
 }
 
 func (p *openAIWSConnPool) pickOldestIdleConnLocked(ap *openAIWSAccountPool) *openAIWSConn {
@@ -1273,13 +1659,23 @@ func (p *openAIWSConnPool) pickOldestIdleConnWithoutHandshakeCompatibilityLocked
 	return oldest
 }
 
-func (p *openAIWSConnPool) getOrCreateAccountPool(accountID int64) *openAIWSAccountPool {
-	if p == nil || accountID <= 0 {
+func (p *openAIWSConnPool) getOrCreateAccountPoolForKey(poolKey openAIWSAccountPoolKey) *openAIWSAccountPool {
+	if p == nil || poolKey.accountID <= 0 {
 		return nil
 	}
-	if existing, ok := p.accounts.Load(accountID); ok {
+	if existing, ok := p.accounts.Load(poolKey); ok {
 		if ap, typed := existing.(*openAIWSAccountPool); typed && ap != nil {
 			return ap
+		}
+	}
+	// Builds before scoped isolation used the account ID itself as the map key.
+	// Reuse that pool for the legacy empty scope so an upgrade does not create a
+	// second connection set (or bypass the account-wide budget) on first use.
+	if poolKey.scope == "" {
+		if existing, ok := p.accounts.Load(poolKey.accountID); ok {
+			if ap, typed := existing.(*openAIWSAccountPool); typed && ap != nil {
+				return ap
+			}
 		}
 	}
 	ap := &openAIWSAccountPool{
@@ -1287,11 +1683,107 @@ func (p *openAIWSConnPool) getOrCreateAccountPool(accountID int64) *openAIWSAcco
 		pinnedConns: make(map[string]int),
 		changedCh:   make(chan struct{}),
 	}
-	actual, _ := p.accounts.LoadOrStore(accountID, ap)
+	actual, _ := p.accounts.LoadOrStore(poolKey, ap)
 	if typed, ok := actual.(*openAIWSAccountPool); ok && typed != nil {
 		return typed
 	}
 	return ap
+}
+
+func (p *openAIWSConnPool) getOrCreateAccountBudget(accountID int64) *openAIWSAccountBudget {
+	if p == nil || accountID <= 0 {
+		return nil
+	}
+	if existing, ok := p.accountBudgets.Load(accountID); ok {
+		if budget, typed := existing.(*openAIWSAccountBudget); typed && budget != nil {
+			return budget
+		}
+	}
+	budget := &openAIWSAccountBudget{
+		conns: make(map[*openAIWSConn]openAIWSAccountBudgetConn),
+	}
+	actual, _ := p.accountBudgets.LoadOrStore(accountID, budget)
+	if typed, ok := actual.(*openAIWSAccountBudget); ok && typed != nil {
+		return typed
+	}
+	return budget
+}
+
+// publishAccountConnLocked linearizes connection publication against both
+// Close and the account epoch advanced by ClearAccount. The caller holds ap.mu.
+func (p *openAIWSConnPool) publishAccountConnLocked(
+	ap *openAIWSAccountPool,
+	poolKey openAIWSAccountPoolKey,
+	budget *openAIWSAccountBudget,
+	accountEpoch uint64,
+	conn *openAIWSConn,
+) bool {
+	if p == nil || ap == nil || budget == nil || conn == nil {
+		return false
+	}
+	p.publishMu.RLock()
+	defer p.publishMu.RUnlock()
+	if p.closed.Load() || !budget.bindConnForEpoch(poolKey, conn, accountEpoch) {
+		return false
+	}
+	ap.conns[conn.id] = conn
+	return true
+}
+
+func (p *openAIWSConnPool) snapshotAccountBudgetConnections(accountID int64) map[*openAIWSConn]openAIWSAccountBudgetConn {
+	present := make(map[*openAIWSConn]openAIWSAccountBudgetConn)
+	p.accounts.Range(func(key, value any) bool {
+		poolKey, ok := openAIWSPoolKeyFromMapKey(key)
+		if !ok || poolKey.accountID != accountID {
+			return true
+		}
+		ap, ok := value.(*openAIWSAccountPool)
+		if !ok || ap == nil {
+			return true
+		}
+		ap.mu.Lock()
+		for _, conn := range ap.conns {
+			if conn != nil {
+				present[conn] = openAIWSAccountBudgetConn{poolKey: poolKey, conn: conn}
+			}
+		}
+		ap.mu.Unlock()
+		return true
+	})
+	return present
+}
+
+// reconcileAccountBudget removes published connections that disappeared from
+// a scope pool without going through openAIWSConn.close. The revision check
+// prevents a snapshot from deleting a connection published while the scope
+// pools were being scanned. In-flight dial reservations are deliberately kept
+// until their dial goroutine reports success or failure.
+func (p *openAIWSConnPool) reconcileAccountBudget(accountID int64) {
+	if p == nil || accountID <= 0 {
+		return
+	}
+	budget := p.getOrCreateAccountBudget(accountID)
+	if budget == nil {
+		return
+	}
+	for {
+		revision := budget.snapshotRevision()
+		present := p.snapshotAccountBudgetConnections(accountID)
+		p.publishMu.RLock()
+		if p.closed.Load() {
+			p.publishMu.RUnlock()
+			return
+		}
+		applied := budget.reconcileSnapshot(revision, present)
+		p.publishMu.RUnlock()
+		if applied {
+			return
+		}
+	}
+}
+
+func (p *openAIWSConnPool) getOrCreateAccountPool(accountID int64) *openAIWSAccountPool {
+	return p.getOrCreateAccountPoolForKey(newOpenAIWSAccountPoolKey(accountID, ""))
 }
 
 // ensureAccountPoolLocked 兼容旧调用。
@@ -1299,11 +1791,14 @@ func (p *openAIWSConnPool) ensureAccountPoolLocked(accountID int64) *openAIWSAcc
 	return p.getOrCreateAccountPool(accountID)
 }
 
-func (p *openAIWSConnPool) getAccountPool(accountID int64) (*openAIWSAccountPool, bool) {
-	if p == nil || accountID <= 0 {
+func (p *openAIWSConnPool) getAccountPoolForKey(poolKey openAIWSAccountPoolKey) (*openAIWSAccountPool, bool) {
+	if p == nil || poolKey.accountID <= 0 {
 		return nil, false
 	}
-	value, ok := p.accounts.Load(accountID)
+	value, ok := p.accounts.Load(poolKey)
+	if !ok && poolKey.scope == "" {
+		value, ok = p.accounts.Load(poolKey.accountID)
+	}
 	if !ok || value == nil {
 		return nil, false
 	}
@@ -1311,14 +1806,106 @@ func (p *openAIWSConnPool) getAccountPool(accountID int64) (*openAIWSAccountPool
 	return ap, typed && ap != nil
 }
 
-func (p *openAIWSConnPool) notifyAccountPoolChanged(accountID int64) {
-	ap, ok := p.getAccountPool(accountID)
+func (p *openAIWSConnPool) getAccountPool(accountID int64) (*openAIWSAccountPool, bool) {
+	return p.getAccountPoolForKey(newOpenAIWSAccountPoolKey(accountID, ""))
+}
+
+func openAIWSPoolKeyFromMapKey(key any) (openAIWSAccountPoolKey, bool) {
+	switch value := key.(type) {
+	case openAIWSAccountPoolKey:
+		return value, true
+	case int64:
+		poolKey := newOpenAIWSAccountPoolKey(value, "")
+		return poolKey, true
+	}
+	return openAIWSAccountPoolKey{}, false
+}
+
+func (p *openAIWSConnPool) notifyAccountPoolChangedForKey(poolKey openAIWSAccountPoolKey) {
+	ap, ok := p.getAccountPoolForKey(poolKey)
 	if !ok || ap == nil {
 		return
 	}
 	ap.mu.Lock()
 	ap.signalChangedLocked()
 	ap.mu.Unlock()
+}
+
+func (p *openAIWSConnPool) notifyAccountPoolChanged(accountID int64) { //nolint:unused
+	p.notifyAccountPoolChangedForKey(newOpenAIWSAccountPoolKey(accountID, ""))
+}
+
+func (p *openAIWSConnPool) cleanupAccountIdleBudget(accountID int64, maxConns int) int {
+	if p == nil || accountID <= 0 {
+		return 0
+	}
+	maxIdle := p.maxIdlePerAccount()
+	if maxIdle < 0 {
+		return 0
+	}
+	if maxConns > 0 && maxIdle > maxConns {
+		maxIdle = maxConns
+	}
+	budget := p.getOrCreateAccountBudget(accountID)
+	candidates, redundant := budget.idleCandidates(maxIdle)
+	if redundant <= 0 {
+		return 0
+	}
+	evicted := 0
+	for _, candidate := range candidates {
+		if evicted >= redundant {
+			break
+		}
+		if p.evictIdleConnForKey(candidate.poolKey, candidate.conn) {
+			evicted++
+		}
+	}
+	if evicted > 0 {
+		p.metrics.scaleDownTotal.Add(int64(evicted))
+	}
+	return evicted
+}
+
+// evictOneIdleAccountConn rebalances a full account budget between isolation
+// scopes. An idle connection cannot serve another scope, so replacing the
+// oldest one is preferable to allowing the new scope to exceed the account cap.
+func (p *openAIWSConnPool) evictOneIdleAccountConn(accountID int64) bool {
+	if p == nil || accountID <= 0 {
+		return false
+	}
+	budget := p.getOrCreateAccountBudget(accountID)
+	candidates, _ := budget.idleCandidates(0)
+	for _, candidate := range candidates {
+		if p.evictIdleConnForKey(candidate.poolKey, candidate.conn) {
+			p.metrics.scaleDownTotal.Add(1)
+			return true
+		}
+	}
+	return false
+}
+
+func (p *openAIWSConnPool) evictIdleConnForKey(poolKey openAIWSAccountPoolKey, candidate *openAIWSConn) bool {
+	if p == nil || candidate == nil {
+		return false
+	}
+	ap, ok := p.getAccountPoolForKey(poolKey)
+	if !ok || ap == nil {
+		return false
+	}
+	ap.mu.Lock()
+	conn, exists := ap.conns[candidate.id]
+	if !exists || conn != candidate || conn.isLeased() || conn.waiters.Load() > 0 || p.isConnPinnedLocked(ap, conn.id) {
+		ap.mu.Unlock()
+		return false
+	}
+	delete(ap.conns, conn.id)
+	if len(ap.pinnedConns) > 0 {
+		delete(ap.pinnedConns, conn.id)
+	}
+	ap.signalChangedLocked()
+	ap.mu.Unlock()
+	conn.close()
+	return true
 }
 
 func (p *openAIWSConnPool) isConnPinnedLocked(ap *openAIWSAccountPool, connID string) bool {
@@ -1510,30 +2097,44 @@ func (p *openAIWSConnPool) AccountPoolLoad(accountID int64) (inflight int, waite
 	if p == nil || accountID <= 0 {
 		return 0, 0, 0
 	}
-	ap, ok := p.getAccountPool(accountID)
-	if !ok || ap == nil {
-		return 0, 0, 0
-	}
-	ap.mu.Lock()
-	defer ap.mu.Unlock()
-	inflight, waiters = accountPoolLoadLocked(ap)
-	return inflight, waiters, len(ap.conns)
+	p.accounts.Range(func(key, value any) bool {
+		poolKey, ok := openAIWSPoolKeyFromMapKey(key)
+		if !ok || poolKey.accountID != accountID {
+			return true
+		}
+		ap, ok := value.(*openAIWSAccountPool)
+		if !ok || ap == nil {
+			return true
+		}
+		ap.mu.Lock()
+		poolInflight, poolWaiters := accountPoolLoadLocked(ap)
+		inflight += poolInflight
+		waiters += poolWaiters
+		conns += len(ap.conns)
+		ap.mu.Unlock()
+		return true
+	})
+	return inflight, waiters, conns
 }
 
-func (p *openAIWSConnPool) ensureTargetIdleAsync(accountID int64) {
-	if p == nil || accountID <= 0 {
+func (p *openAIWSConnPool) ensureTargetIdleAsyncForKey(poolKey openAIWSAccountPoolKey) {
+	if p == nil || poolKey.accountID <= 0 || p.closed.Load() {
 		return
 	}
 
 	var req openAIWSAcquireRequest
 	generation := uint64(0)
 	need := 0
-	ap, ok := p.getAccountPool(accountID)
+	ap, ok := p.getAccountPoolForKey(poolKey)
 	if !ok || ap == nil {
 		return
 	}
+	p.reconcileAccountBudget(poolKey.accountID)
 	ap.mu.Lock()
 	defer ap.mu.Unlock()
+	if p.closed.Load() {
+		return
+	}
 	if ap.lastAcquire == nil {
 		return
 	}
@@ -1551,12 +2152,12 @@ func (p *openAIWSConnPool) ensureTargetIdleAsync(accountID int64) {
 	if ap.lastAcquire != nil && ap.lastAcquire.Account != nil {
 		effectiveMaxConns = p.effectiveMaxConnsByAccount(ap.lastAcquire.Account)
 	}
-	target := p.targetConnCountLocked(ap, effectiveMaxConns)
 	current := len(ap.conns) + ap.creating
-	if current >= target {
-		return
-	}
-	need = target - current
+	demandTarget := p.targetConnCountWithMinIdleLocked(ap, effectiveMaxConns, 0)
+	localDemandNeed := demandTarget - current
+	budget := p.getOrCreateAccountBudget(poolKey.accountID)
+	accountEpoch := budget.snapshotEpoch()
+	need = budget.reservePrewarm(effectiveMaxConns, p.minIdlePerAccount(), localDemandNeed)
 	if need <= 0 {
 		return
 	}
@@ -1569,10 +2170,18 @@ func (p *openAIWSConnPool) ensureTargetIdleAsync(accountID int64) {
 	ap.creating += need
 	p.metrics.scaleUpTotal.Add(int64(need))
 
-	go p.prewarmConns(accountID, req, need, generation)
+	go p.prewarmReservedConnsForKey(poolKey, req, need, generation, accountEpoch, budget)
+}
+
+func (p *openAIWSConnPool) ensureTargetIdleAsync(accountID int64) {
+	p.ensureTargetIdleAsyncForKey(newOpenAIWSAccountPoolKey(accountID, ""))
 }
 
 func (p *openAIWSConnPool) targetConnCountLocked(ap *openAIWSAccountPool, maxConns int) int {
+	return p.targetConnCountWithMinIdleLocked(ap, maxConns, p.minIdlePerAccount())
+}
+
+func (p *openAIWSConnPool) targetConnCountWithMinIdleLocked(ap *openAIWSAccountPool, maxConns, minIdle int) int {
 	if ap == nil {
 		return 0
 	}
@@ -1581,7 +2190,6 @@ func (p *openAIWSConnPool) targetConnCountLocked(ap *openAIWSAccountPool, maxCon
 		return 0
 	}
 
-	minIdle := p.minIdlePerAccount()
 	if minIdle < 0 {
 		minIdle = 0
 	}
@@ -1612,14 +2220,39 @@ func (p *openAIWSConnPool) targetConnCountLocked(ap *openAIWSAccountPool, maxCon
 	return target
 }
 
-func (p *openAIWSConnPool) prewarmConns(accountID int64, req openAIWSAcquireRequest, total int, generations ...uint64) {
+func (p *openAIWSConnPool) prewarmConnsForKey(poolKey openAIWSAccountPoolKey, req openAIWSAcquireRequest, total int, generations ...uint64) {
+	if p == nil || p.closed.Load() {
+		return
+	}
 	generation := uint64(0)
 	if len(generations) > 0 {
 		generation = generations[0]
 	}
+	budget := p.getOrCreateAccountBudget(poolKey.accountID)
+	accountEpoch := budget.snapshotEpoch()
+	reserved := budget.reservePrewarm(p.effectiveMaxConnsByAccount(req.Account), 0, total)
+	if reserved <= 0 {
+		return
+	}
+	p.prewarmReservedConnsForKey(poolKey, req, reserved, generation, accountEpoch, budget)
+}
+
+func (p *openAIWSConnPool) prewarmReservedConnsForKey(
+	poolKey openAIWSAccountPoolKey,
+	req openAIWSAcquireRequest,
+	total int,
+	generation uint64,
+	accountEpoch uint64,
+	budget *openAIWSAccountBudget,
+) {
 	staleTarget := false
+	remainingReservations := total
 	defer func() {
-		if ap, ok := p.getAccountPool(accountID); ok && ap != nil {
+		for remainingReservations > 0 {
+			budget.releaseReservation()
+			remainingReservations--
+		}
+		if ap, ok := p.getAccountPoolForKey(poolKey); ok && ap != nil {
 			ap.mu.Lock()
 			ap.prewarmActive = false
 			ap.signalChangedLocked()
@@ -1629,19 +2262,32 @@ func (p *openAIWSConnPool) prewarmConns(accountID int64, req openAIWSAcquireRequ
 			// A newer acquire arrived while the old dial was in flight. Re-run
 			// target selection only after clearing prewarmActive so the latest
 			// beta/hint target can fill the idle budget.
-			p.ensureTargetIdleAsync(accountID)
+			p.ensureTargetIdleAsyncForKey(poolKey)
 		}
 	}()
 
 	for i := 0; i < total; i++ {
+		if p.closed.Load() || budget.snapshotEpoch() != accountEpoch {
+			return
+		}
 		ctx, cancel := context.WithTimeout(context.Background(), p.dialTimeout()+openAIWSConnPrewarmExtraDelay)
 		conn, err := p.dialConn(ctx, req)
 		cancel()
+		reservationHeld := true
+		if err != nil {
+			budget.releaseReservation()
+			remainingReservations--
+			reservationHeld = false
+		}
 
-		ap, ok := p.getAccountPool(accountID)
+		ap, ok := p.getAccountPoolForKey(poolKey)
 		if !ok || ap == nil {
 			if conn != nil {
 				conn.close()
+				if reservationHeld {
+					budget.releaseReservation()
+					remainingReservations--
+				}
 			}
 			return
 		}
@@ -1656,9 +2302,13 @@ func (p *openAIWSConnPool) prewarmConns(accountID int64, req openAIWSAcquireRequ
 			ap.mu.Unlock()
 			continue
 		}
-		if ap.generation != generation || ap.lastAcquire == nil {
+		if p.closed.Load() || budget.snapshotEpoch() != accountEpoch || ap.generation != generation || ap.lastAcquire == nil {
 			ap.mu.Unlock()
 			conn.close()
+			if reservationHeld {
+				budget.releaseReservation()
+				remainingReservations--
+			}
 			continue
 		}
 		if !sameOpenAIWSPrewarmTarget(req, *ap.lastAcquire) {
@@ -1666,15 +2316,33 @@ func (p *openAIWSConnPool) prewarmConns(accountID int64, req openAIWSAcquireRequ
 			ap.signalChangedLocked()
 			ap.mu.Unlock()
 			conn.close()
+			if reservationHeld {
+				budget.releaseReservation()
+				remainingReservations--
+			}
 			continue
 		}
 		if len(ap.conns) >= p.effectiveMaxConnsByAccount(req.Account) {
 			ap.signalChangedLocked()
 			ap.mu.Unlock()
 			conn.close()
+			if reservationHeld {
+				budget.releaseReservation()
+				remainingReservations--
+			}
 			continue
 		}
-		ap.conns[conn.id] = conn
+		if !p.publishAccountConnLocked(ap, poolKey, budget, accountEpoch, conn) {
+			ap.signalChangedLocked()
+			ap.mu.Unlock()
+			conn.close()
+			if reservationHeld {
+				budget.releaseReservation()
+				remainingReservations--
+			}
+			continue
+		}
+		remainingReservations--
 		ap.prewarmFails = 0
 		ap.prewarmFailAt = time.Time{}
 		ap.signalChangedLocked()
@@ -1682,15 +2350,12 @@ func (p *openAIWSConnPool) prewarmConns(accountID int64, req openAIWSAcquireRequ
 	}
 }
 
-// ClearAccount closes all pooled connections and discards delayed prewarm
-// state for one account. The generation guard prevents an in-flight prewarm
-// started before credential recovery from re-entering the pool afterwards.
-func (p *openAIWSConnPool) ClearAccount(accountID int64) {
-	if p == nil || accountID <= 0 {
-		return
-	}
-	ap, ok := p.getAccountPool(accountID)
-	if !ok || ap == nil {
+func (p *openAIWSConnPool) prewarmConns(accountID int64, req openAIWSAcquireRequest, total int, generations ...uint64) {
+	p.prewarmConnsForKey(newOpenAIWSAccountPoolKey(accountID, ""), req, total, generations...)
+}
+
+func (p *openAIWSConnPool) clearAccountPool(_ openAIWSAccountPoolKey, ap *openAIWSAccountPool) {
+	if p == nil || ap == nil {
 		return
 	}
 	ap.mu.Lock()
@@ -1712,12 +2377,33 @@ func (p *openAIWSConnPool) ClearAccount(accountID int64) {
 	closeOpenAIWSConns(conns)
 }
 
-func (p *openAIWSConnPool) evictConn(accountID int64, connID string) {
-	if p == nil || accountID <= 0 || stringsTrim(connID) == "" {
+// ClearAccount closes all pooled connections and discards delayed prewarm
+// state for one account. The generation guard prevents an in-flight prewarm
+// started before credential recovery from re-entering the pool afterwards.
+func (p *openAIWSConnPool) ClearAccount(accountID int64) {
+	if p == nil || accountID <= 0 {
+		return
+	}
+	p.getOrCreateAccountBudget(accountID).advanceEpoch()
+	p.accounts.Range(func(key, value any) bool {
+		poolKey, ok := openAIWSPoolKeyFromMapKey(key)
+		if !ok || poolKey.accountID != accountID {
+			return true
+		}
+		ap, ok := value.(*openAIWSAccountPool)
+		if ok {
+			p.clearAccountPool(poolKey, ap)
+		}
+		return true
+	})
+}
+
+func (p *openAIWSConnPool) evictConnForKey(poolKey openAIWSAccountPoolKey, connID string) {
+	if p == nil || poolKey.accountID <= 0 || stringsTrim(connID) == "" {
 		return
 	}
 	var conn *openAIWSConn
-	ap, ok := p.getAccountPool(accountID)
+	ap, ok := p.getAccountPoolForKey(poolKey)
 	if ok && ap != nil {
 		ap.mu.Lock()
 		if c, exists := ap.conns[connID]; exists {
@@ -1735,7 +2421,15 @@ func (p *openAIWSConnPool) evictConn(accountID int64, connID string) {
 	}
 }
 
+func (p *openAIWSConnPool) evictConn(accountID int64, connID string) {
+	p.evictConnForKey(newOpenAIWSAccountPoolKey(accountID, ""), connID)
+}
+
 func (p *openAIWSConnPool) PinConn(accountID int64, connID string) bool {
+	return p.PinConnScoped(accountID, "", connID)
+}
+
+func (p *openAIWSConnPool) PinConnScoped(accountID int64, scope string, connID string) bool {
 	if p == nil || accountID <= 0 {
 		return false
 	}
@@ -1743,7 +2437,7 @@ func (p *openAIWSConnPool) PinConn(accountID int64, connID string) bool {
 	if connID == "" {
 		return false
 	}
-	ap, ok := p.getAccountPool(accountID)
+	ap, ok := p.getAccountPoolForKey(newOpenAIWSAccountPoolKey(accountID, scope))
 	if !ok || ap == nil {
 		return false
 	}
@@ -1760,6 +2454,10 @@ func (p *openAIWSConnPool) PinConn(accountID int64, connID string) bool {
 }
 
 func (p *openAIWSConnPool) UnpinConn(accountID int64, connID string) {
+	p.UnpinConnScoped(accountID, "", connID)
+}
+
+func (p *openAIWSConnPool) UnpinConnScoped(accountID int64, scope string, connID string) {
 	if p == nil || accountID <= 0 {
 		return
 	}
@@ -1767,7 +2465,7 @@ func (p *openAIWSConnPool) UnpinConn(accountID int64, connID string) {
 	if connID == "" {
 		return
 	}
-	ap, ok := p.getAccountPool(accountID)
+	ap, ok := p.getAccountPoolForKey(newOpenAIWSAccountPoolKey(accountID, scope))
 	if !ok || ap == nil {
 		return
 	}
@@ -1844,8 +2542,10 @@ func (p *openAIWSConnPool) shouldHealthCheckConn(conn *openAIWSConn) bool {
 }
 
 func (p *openAIWSConnPool) maxConnsHardCap() int {
-	if p != nil && p.cfg != nil && p.cfg.Gateway.OpenAIWS.MaxConnsPerAccount > 0 {
-		return p.cfg.Gateway.OpenAIWS.MaxConnsPerAccount
+	if p != nil && p.cfg != nil {
+		if value := p.cfg.GatewayRuntimeSettingsSnapshot().OpenAIWS.MaxConnsPerAccount; value > 0 {
+			return value
+		}
 	}
 	return 8
 }
@@ -1917,15 +2617,19 @@ func (p *openAIWSConnPool) effectiveMaxConnsByAccount(account *Account) int {
 }
 
 func (p *openAIWSConnPool) minIdlePerAccount() int {
-	if p != nil && p.cfg != nil && p.cfg.Gateway.OpenAIWS.MinIdlePerAccount >= 0 {
-		return p.cfg.Gateway.OpenAIWS.MinIdlePerAccount
+	if p != nil && p.cfg != nil {
+		if value := p.cfg.GatewayRuntimeSettingsSnapshot().OpenAIWS.MinIdlePerAccount; value >= 0 {
+			return value
+		}
 	}
 	return 0
 }
 
 func (p *openAIWSConnPool) maxIdlePerAccount() int {
-	if p != nil && p.cfg != nil && p.cfg.Gateway.OpenAIWS.MaxIdlePerAccount >= 0 {
-		return p.cfg.Gateway.OpenAIWS.MaxIdlePerAccount
+	if p != nil && p.cfg != nil {
+		if value := p.cfg.GatewayRuntimeSettingsSnapshot().OpenAIWS.MaxIdlePerAccount; value >= 0 {
+			return value
+		}
 	}
 	return 4
 }
@@ -1987,6 +2691,7 @@ func (p *openAIWSConnPool) dialTimeout() time.Duration {
 func cloneOpenAIWSAcquireRequest(req openAIWSAcquireRequest) openAIWSAcquireRequest {
 	copied := req
 	copied.Headers = cloneHeader(req.Headers)
+	copied.IsolationScope = strings.TrimSpace(req.IsolationScope)
 	copied.WSURL = stringsTrim(req.WSURL)
 	copied.ProxyURL = stringsTrim(req.ProxyURL)
 	copied.PreferredConnID = stringsTrim(req.PreferredConnID)
@@ -2002,7 +2707,8 @@ func cloneOpenAIWSAcquireRequestPtr(req *openAIWSAcquireRequest) *openAIWSAcquir
 }
 
 func sameOpenAIWSPrewarmTarget(a, b openAIWSAcquireRequest) bool {
-	return stringsTrim(a.WSURL) == stringsTrim(b.WSURL) &&
+	return strings.TrimSpace(a.IsolationScope) == strings.TrimSpace(b.IsolationScope) &&
+		stringsTrim(a.WSURL) == stringsTrim(b.WSURL) &&
 		stringsTrim(a.ProxyURL) == stringsTrim(b.ProxyURL) &&
 		normalizeOpenAIWSHandshakeCompatibility(a.Account, a.Headers) == normalizeOpenAIWSHandshakeCompatibility(b.Account, b.Headers)
 }

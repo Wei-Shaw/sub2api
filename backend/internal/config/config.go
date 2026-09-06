@@ -66,44 +66,45 @@ const DefaultUpstreamResponseReadMaxBytes int64 = 128 * 1024 * 1024
 const DefaultModelsListReadMaxBytes int64 = 8 * 1024 * 1024
 
 type Config struct {
-	Server                  ServerConfig                  `mapstructure:"server"`
-	Log                     LogConfig                     `mapstructure:"log"`
-	CORS                    CORSConfig                    `mapstructure:"cors"`
-	Security                SecurityConfig                `mapstructure:"security"`
-	Billing                 BillingConfig                 `mapstructure:"billing"`
-	Turnstile               TurnstileConfig               `mapstructure:"turnstile"`
-	Database                DatabaseConfig                `mapstructure:"database"`
-	Redis                   RedisConfig                   `mapstructure:"redis"`
-	Ops                     OpsConfig                     `mapstructure:"ops"`
-	JWT                     JWTConfig                     `mapstructure:"jwt"`
-	Totp                    TotpConfig                    `mapstructure:"totp"`
-	WebAuthn                WebAuthnConfig                `mapstructure:"webauthn"`
-	LinuxDo                 LinuxDoConnectConfig          `mapstructure:"linuxdo_connect"`
-	WeChat                  WeChatConnectConfig           `mapstructure:"wechat_connect"`
-	OIDC                    OIDCConnectConfig             `mapstructure:"oidc_connect"`
-	DingTalk                DingTalkConnectConfig         `mapstructure:"dingtalk_connect"`
-	GitHubOAuth             EmailOAuthProviderConfig      `mapstructure:"github_oauth"`
-	GoogleOAuth             EmailOAuthProviderConfig      `mapstructure:"google_oauth"`
-	Default                 DefaultConfig                 `mapstructure:"default"`
-	RateLimit               RateLimitConfig               `mapstructure:"rate_limit"`
-	Pricing                 PricingConfig                 `mapstructure:"pricing"`
-	Gateway                 GatewayConfig                 `mapstructure:"gateway"`
-	APIKeyAuth              APIKeyAuthCacheConfig         `mapstructure:"api_key_auth_cache"`
-	SubscriptionCache       SubscriptionCacheConfig       `mapstructure:"subscription_cache"`
-	SubscriptionMaintenance SubscriptionMaintenanceConfig `mapstructure:"subscription_maintenance"`
-	Dashboard               DashboardCacheConfig          `mapstructure:"dashboard_cache"`
-	DashboardAgg            DashboardAggregationConfig    `mapstructure:"dashboard_aggregation"`
-	UsageCleanup            UsageCleanupConfig            `mapstructure:"usage_cleanup"`
-	Concurrency             ConcurrencyConfig             `mapstructure:"concurrency"`
-	TokenRefresh            TokenRefreshConfig            `mapstructure:"token_refresh"`
-	RunMode                 string                        `mapstructure:"run_mode" yaml:"run_mode"`
-	Timezone                string                        `mapstructure:"timezone"` // e.g. "Asia/Shanghai", "UTC"
-	Gemini                  GeminiConfig                  `mapstructure:"gemini"`
-	Update                  UpdateConfig                  `mapstructure:"update"`
-	Idempotency             IdempotencyConfig             `mapstructure:"idempotency"`
-	BatchImage              BatchImageConfig              `mapstructure:"batch_image"`
-	ImageStorage            ImageStorageConfig            `mapstructure:"image_storage"`
-	Plugins                 PluginConfig                  `mapstructure:"plugins"`
+	Server                  ServerConfig                            `mapstructure:"server"`
+	Log                     LogConfig                               `mapstructure:"log"`
+	CORS                    CORSConfig                              `mapstructure:"cors"`
+	Security                SecurityConfig                          `mapstructure:"security"`
+	Billing                 BillingConfig                           `mapstructure:"billing"`
+	Turnstile               TurnstileConfig                         `mapstructure:"turnstile"`
+	Database                DatabaseConfig                          `mapstructure:"database"`
+	Redis                   RedisConfig                             `mapstructure:"redis"`
+	Ops                     OpsConfig                               `mapstructure:"ops"`
+	JWT                     JWTConfig                               `mapstructure:"jwt"`
+	Totp                    TotpConfig                              `mapstructure:"totp"`
+	WebAuthn                WebAuthnConfig                          `mapstructure:"webauthn"`
+	LinuxDo                 LinuxDoConnectConfig                    `mapstructure:"linuxdo_connect"`
+	WeChat                  WeChatConnectConfig                     `mapstructure:"wechat_connect"`
+	OIDC                    OIDCConnectConfig                       `mapstructure:"oidc_connect"`
+	DingTalk                DingTalkConnectConfig                   `mapstructure:"dingtalk_connect"`
+	GitHubOAuth             EmailOAuthProviderConfig                `mapstructure:"github_oauth"`
+	GoogleOAuth             EmailOAuthProviderConfig                `mapstructure:"google_oauth"`
+	Default                 DefaultConfig                           `mapstructure:"default"`
+	RateLimit               RateLimitConfig                         `mapstructure:"rate_limit"`
+	Pricing                 PricingConfig                           `mapstructure:"pricing"`
+	Gateway                 GatewayConfig                           `mapstructure:"gateway"`
+	gatewayRuntimeLive      *atomic.Pointer[GatewayRuntimeSettings] `mapstructure:"-" json:"-" yaml:"-"`
+	APIKeyAuth              APIKeyAuthCacheConfig                   `mapstructure:"api_key_auth_cache"`
+	SubscriptionCache       SubscriptionCacheConfig                 `mapstructure:"subscription_cache"`
+	SubscriptionMaintenance SubscriptionMaintenanceConfig           `mapstructure:"subscription_maintenance"`
+	Dashboard               DashboardCacheConfig                    `mapstructure:"dashboard_cache"`
+	DashboardAgg            DashboardAggregationConfig              `mapstructure:"dashboard_aggregation"`
+	UsageCleanup            UsageCleanupConfig                      `mapstructure:"usage_cleanup"`
+	Concurrency             ConcurrencyConfig                       `mapstructure:"concurrency"`
+	TokenRefresh            TokenRefreshConfig                      `mapstructure:"token_refresh"`
+	RunMode                 string                                  `mapstructure:"run_mode" yaml:"run_mode"`
+	Timezone                string                                  `mapstructure:"timezone"` // e.g. "Asia/Shanghai", "UTC"
+	Gemini                  GeminiConfig                            `mapstructure:"gemini"`
+	Update                  UpdateConfig                            `mapstructure:"update"`
+	Idempotency             IdempotencyConfig                       `mapstructure:"idempotency"`
+	BatchImage              BatchImageConfig                        `mapstructure:"batch_image"`
+	ImageStorage            ImageStorageConfig                      `mapstructure:"image_storage"`
+	Plugins                 PluginConfig                            `mapstructure:"plugins"`
 }
 
 // PluginConfig 控制管理员手动上传的本地进程插件。
@@ -974,6 +975,9 @@ type GatewayConfig struct {
 	GeminiDebugResponseHeaders bool `mapstructure:"gemini_debug_response_headers"`
 	// ConnectionPoolIsolation: 上游连接池隔离策略（proxy/account/account_proxy）
 	ConnectionPoolIsolation string `mapstructure:"connection_pool_isolation"`
+	// OutboundPrivacy controls removal of client/proxy tracing headers and
+	// strict API-key isolation of reusable upstream state.
+	OutboundPrivacy GatewayOutboundPrivacyConfig `mapstructure:"outbound_privacy"`
 	// ForceCodexCLI: 强制将 OpenAI `/v1/responses` 请求按 Codex CLI 处理。
 	// 用于网关未透传/改写 User-Agent 时的兼容兜底（默认关闭，避免影响其他客户端）。
 	ForceCodexCLI bool `mapstructure:"force_codex_cli"`
@@ -1099,6 +1103,80 @@ type GatewayConfig struct {
 	// CNProviders: 国产 OpenAI 兼容供应商（kimi/zhipu/deepseek）的余额检测配置。
 	// 仅作用于 payg（按量付费）账号：周期探测余额，低于阈值则临时停调。
 	CNProviders GatewayCNProvidersConfig `mapstructure:"cn_providers"`
+}
+
+type GatewayOutboundPrivacyConfig struct {
+	Enabled                bool     `mapstructure:"enabled" json:"enabled"`
+	StrictAccountIsolation bool     `mapstructure:"strict_account_isolation" json:"strict_account_isolation"`
+	PreserveHeaders        []string `mapstructure:"preserve_headers" json:"preserve_headers"`
+}
+
+type GatewayOpenAIWSRuntimeSettings struct {
+	MaxConnsPerAccount int `json:"max_conns_per_account"`
+	MinIdlePerAccount  int `json:"min_idle_per_account"`
+	MaxIdlePerAccount  int `json:"max_idle_per_account"`
+}
+
+type GatewayRuntimeSettings struct {
+	ConnectionPoolIsolation string                         `json:"connection_pool_isolation"`
+	OutboundPrivacy         GatewayOutboundPrivacyConfig   `json:"outbound_privacy"`
+	OpenAIWS                GatewayOpenAIWSRuntimeSettings `json:"openai_ws"`
+}
+
+func cloneGatewayRuntimeSettings(settings GatewayRuntimeSettings) GatewayRuntimeSettings {
+	settings.OutboundPrivacy.PreserveHeaders = append([]string(nil), settings.OutboundPrivacy.PreserveHeaders...)
+	return settings
+}
+
+func (c *Config) GatewayRuntimeSettingsSnapshot() GatewayRuntimeSettings {
+	if c == nil {
+		return GatewayRuntimeSettings{
+			ConnectionPoolIsolation: ConnectionPoolIsolationAccountProxy,
+			OutboundPrivacy:         GatewayOutboundPrivacyConfig{Enabled: true, StrictAccountIsolation: true},
+			OpenAIWS:                GatewayOpenAIWSRuntimeSettings{MaxConnsPerAccount: 128, MinIdlePerAccount: 4, MaxIdlePerAccount: 12},
+		}
+	}
+	if live := c.gatewayRuntimeLive; live != nil {
+		if snapshot := live.Load(); snapshot != nil {
+			return cloneGatewayRuntimeSettings(*snapshot)
+		}
+	}
+	mode := strings.ToLower(strings.TrimSpace(c.Gateway.ConnectionPoolIsolation))
+	if mode == "" {
+		mode = ConnectionPoolIsolationAccountProxy
+	}
+	maxConns := c.Gateway.OpenAIWS.MaxConnsPerAccount
+	if maxConns <= 0 {
+		maxConns = 128
+	}
+	minIdle := c.Gateway.OpenAIWS.MinIdlePerAccount
+	if minIdle < 0 {
+		minIdle = 0
+	}
+	maxIdle := c.Gateway.OpenAIWS.MaxIdlePerAccount
+	if maxIdle < 0 {
+		maxIdle = 12
+	}
+	return cloneGatewayRuntimeSettings(GatewayRuntimeSettings{
+		ConnectionPoolIsolation: mode,
+		OutboundPrivacy:         c.Gateway.OutboundPrivacy,
+		OpenAIWS: GatewayOpenAIWSRuntimeSettings{
+			MaxConnsPerAccount: maxConns,
+			MinIdlePerAccount:  minIdle,
+			MaxIdlePerAccount:  maxIdle,
+		},
+	})
+}
+
+func (c *Config) SetGatewayRuntimeSettings(settings GatewayRuntimeSettings) {
+	if c == nil {
+		return
+	}
+	if c.gatewayRuntimeLive == nil {
+		c.gatewayRuntimeLive = &atomic.Pointer[GatewayRuntimeSettings]{}
+	}
+	copy := cloneGatewayRuntimeSettings(settings)
+	c.gatewayRuntimeLive.Store(&copy)
 }
 
 // GatewayGrokConfig holds Grok-specific gateway scheduling knobs.
@@ -2469,6 +2547,9 @@ func setDefaults() {
 	viper.SetDefault("gateway.proxy_probe_response_read_max_bytes", int64(1024*1024))
 	viper.SetDefault("gateway.gemini_debug_response_headers", false)
 	viper.SetDefault("gateway.connection_pool_isolation", ConnectionPoolIsolationAccountProxy)
+	viper.SetDefault("gateway.outbound_privacy.enabled", true)
+	viper.SetDefault("gateway.outbound_privacy.strict_account_isolation", true)
+	viper.SetDefault("gateway.outbound_privacy.preserve_headers", []string{})
 	// HTTP 上游连接池配置（针对 5000+ 并发用户优化）
 	viper.SetDefault("gateway.max_idle_conns", 2560)          // 最大空闲连接总数（高并发场景可调大）
 	viper.SetDefault("gateway.max_idle_conns_per_host", 120)  // 每主机最大空闲连接（HTTP/2 场景默认）

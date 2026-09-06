@@ -520,6 +520,8 @@ const (
 	// SettingKeyPluginManagementEnabled controls sidebar visibility only; it does
 	// not stop or otherwise change already loaded plugin runtimes.
 	SettingKeyPluginManagementEnabled = "plugin_management_enabled"
+	// SettingKeyGatewayRuntimeSettings stores admin-managed gateway isolation settings.
+	SettingKeyGatewayRuntimeSettings = "gateway_runtime_settings"
 
 	// SettingKeyUpstreamBillingProbeSettings stores the global enable switch and interval
 	// for probing remote Sub2API API-key billing metadata.
