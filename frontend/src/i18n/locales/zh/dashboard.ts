@@ -482,6 +482,10 @@ export default {
     // 配额快照展示（MonitorQuotaView，管理端与用户端共用）
     quota: {
       unavailable: '配额信息不可用',
+      // 组级聚合摘要：绑定分组的监控展示「还有几个号有额度」
+      accountsHealthy: '{healthy}/{total} 账号有额度',
+      accountsExhausted: '{count} 个已耗尽',
+      accountsUnknown: '{count} 个未知',
       windows: {
         '5h': '5 小时',
         '7d': '7 天',

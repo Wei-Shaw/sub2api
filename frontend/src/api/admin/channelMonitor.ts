@@ -55,6 +55,12 @@ export interface MonitorQuotaSnapshot {
   credential_invalid?: boolean
   error?: string
   fetched_at: string
+  /** 组级聚合（监控绑定分组时填充）：参与聚合的账号数。> 0 即表示这是聚合快照 */
+  accounts_total?: number
+  /** 组级聚合：仍有额度可用的账号数 */
+  accounts_healthy?: number
+  /** 组级聚合：额度耗尽 / 余额不足 / 凭据失效的账号数 */
+  accounts_exhausted?: number
 }
 
 export interface ChannelMonitor {

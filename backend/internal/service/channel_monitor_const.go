@@ -82,6 +82,12 @@ const (
 	// （primary_model 列 NotEmpty，用 "quota" 让历史行/时间线机制无需特判）。
 	MonitorDefaultQuotaModel = "quota"
 
+	// 配额抓取的「配置类问题」哨兵错误文案。deriveQuotaCheckResult 按这些文案
+	// 把快照推导为 degraded 而非 error/failed：数据源没配好不是渠道故障。
+	monitorQuotaErrAccountNotFound = "linked account not found"
+	monitorQuotaErrGroupNotFound   = "linked group not found"
+	monitorQuotaErrGroupNoAccounts = "linked group has no accounts"
+
 	// monitorQuotaFetchCacheTTL 配额快照缓存时长。多个监控可能关联同一账号，
 	// 而 interval 最小 15s 且国产配额服务无缓存，TTL 防止打爆上游配额端点。
 	monitorQuotaFetchCacheTTL = 5 * time.Minute
@@ -94,6 +100,18 @@ const (
 	// monitorQuotaDegradedUsedPercent 任一用量窗口使用率超过该阈值时，
 	// 配额检查状态记为 degraded（对齐账号页展示阈值）。
 	monitorQuotaDegradedUsedPercent = 90.0
+	// monitorQuotaExhaustedUsedPercent 单账号「额度耗尽」的判定阈值（组级聚合用）。
+	// 区别于 degraded 阈值：90% 是「快满了」，100% 是「这个号已经用不了了」。
+	monitorQuotaExhaustedUsedPercent = 100.0
+
+	// monitorGroupQuotaConcurrency 组级聚合并发抓取账号配额的并发上限。
+	// 单账号抓取自带 singleflight + TTL 缓存，这里只是防止大分组一次性把
+	// 上游配额端点打满。
+	monitorGroupQuotaConcurrency = 6
+	// monitorGroupQuotaBudget 一次组级聚合的总时间预算。刻意小于单账号的
+	// monitorQuotaFetchTimeout（45s），保证冷启动时不会拖过调度间隔；
+	// 被掐断的账号计为「未知」而非「耗尽」。
+	monitorGroupQuotaBudget = 40 * time.Second
 
 	// MonitorDefaultGrokModel 是新增 Grok 监控未显式指定模型时使用的轻量测活模型。
 	MonitorDefaultGrokModel = "grok-4.5"
@@ -157,10 +175,20 @@ var (
 		"CHANNEL_MONITOR_INVALID_CHECK_MODE", "check_mode must be one of probe/quota/quota_probe; antigravity only supports quota",
 	)
 	ErrChannelMonitorAccountRequired = infraerrors.BadRequest(
-		"CHANNEL_MONITOR_ACCOUNT_REQUIRED", "account_id is required for quota-based check_mode",
+		"CHANNEL_MONITOR_ACCOUNT_REQUIRED", "quota-based check_mode requires exactly one data source: account_id or group_id",
+	)
+	// ErrChannelMonitorQuotaTargetConflict 同时绑定账号与分组：数据源歧义，
+	// 组绑定迁移的 CHECK 约束也会在库层拒绝，这里提前给出可读错误。
+	ErrChannelMonitorQuotaTargetConflict = infraerrors.BadRequest(
+		"CHANNEL_MONITOR_QUOTA_TARGET_CONFLICT", "account_id and group_id are mutually exclusive; bind exactly one quota data source",
 	)
 	ErrChannelMonitorProviderIncompatible = infraerrors.BadRequest(
 		"CHANNEL_MONITOR_PROVIDER_INCOMPATIBLE", "monitor provider must match the linked account platform",
+	)
+	// ErrChannelMonitorGroupIncompatible 分组平台与监控 provider 不一致：
+	// 聚合出来的额度不属于被监控的渠道，直接拦掉。
+	ErrChannelMonitorGroupIncompatible = infraerrors.BadRequest(
+		"CHANNEL_MONITOR_GROUP_INCOMPATIBLE", "monitor provider must match the linked group platform",
 	)
 	ErrChannelMonitorAccountNotSupportable = infraerrors.BadRequest(
 		"CHANNEL_MONITOR_ACCOUNT_NOT_SUPPORTABLE", "linked account cannot serve as a quota data source (cn coding plan must be kimi/zhipu, cn payg must be kimi/deepseek, openai requires an oauth account, anthropic requires oauth or setup-token)",

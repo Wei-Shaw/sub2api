@@ -239,6 +239,7 @@ func buildUserViewFromSummary(
 		PrimaryStatus:    summary.PrimaryStatus,
 		PrimaryLatencyMs: summary.PrimaryLatencyMs,
 		Availability7d:   summary.Availability7d,
+		CheckMode:        defaultCheckMode(m.CheckMode),
 		ExtraModels:      summary.ExtraModels,
 		Timeline:         buildTimelinePoints(timelineEntries),
 	}

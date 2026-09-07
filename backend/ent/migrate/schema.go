@@ -626,6 +626,7 @@ var (
 		{Name: "provider", Type: field.TypeEnum, Enums: []string{"openai", "anthropic", "gemini", "grok", "antigravity", "kimi", "zhipu", "deepseek"}},
 		{Name: "check_mode", Type: field.TypeString, Size: 32, Default: "probe"},
 		{Name: "account_id", Type: field.TypeInt64, Nullable: true},
+		{Name: "group_id", Type: field.TypeInt64, Nullable: true},
 		{Name: "api_mode", Type: field.TypeString, Size: 32, Default: "chat_completions"},
 		{Name: "endpoint", Type: field.TypeString, Size: 500},
 		{Name: "api_key_encrypted", Type: field.TypeString},
@@ -650,7 +651,7 @@ var (
 		ForeignKeys: []*schema.ForeignKey{
 			{
 				Symbol:     "channel_monitors_channel_monitor_request_templates_request_template",
-				Columns:    []*schema.Column{ChannelMonitorsColumns[21]},
+				Columns:    []*schema.Column{ChannelMonitorsColumns[22]},
 				RefColumns: []*schema.Column{ChannelMonitorRequestTemplatesColumns[0]},
 				OnDelete:   schema.SetNull,
 			},
@@ -659,7 +660,7 @@ var (
 			{
 				Name:    "channelmonitor_enabled_last_checked_at",
 				Unique:  false,
-				Columns: []*schema.Column{ChannelMonitorsColumns[13], ChannelMonitorsColumns[16]},
+				Columns: []*schema.Column{ChannelMonitorsColumns[14], ChannelMonitorsColumns[17]},
 			},
 			{
 				Name:    "channelmonitor_provider",
@@ -669,22 +670,27 @@ var (
 			{
 				Name:    "channelmonitor_provider_api_mode",
 				Unique:  false,
-				Columns: []*schema.Column{ChannelMonitorsColumns[4], ChannelMonitorsColumns[7]},
+				Columns: []*schema.Column{ChannelMonitorsColumns[4], ChannelMonitorsColumns[8]},
 			},
 			{
 				Name:    "channelmonitor_group_name",
 				Unique:  false,
-				Columns: []*schema.Column{ChannelMonitorsColumns[12]},
+				Columns: []*schema.Column{ChannelMonitorsColumns[13]},
 			},
 			{
 				Name:    "channelmonitor_template_id",
 				Unique:  false,
-				Columns: []*schema.Column{ChannelMonitorsColumns[21]},
+				Columns: []*schema.Column{ChannelMonitorsColumns[22]},
 			},
 			{
 				Name:    "channelmonitor_account_id",
 				Unique:  false,
 				Columns: []*schema.Column{ChannelMonitorsColumns[6]},
+			},
+			{
+				Name:    "channelmonitor_group_id",
+				Unique:  false,
+				Columns: []*schema.Column{ChannelMonitorsColumns[7]},
 			},
 		},
 	}

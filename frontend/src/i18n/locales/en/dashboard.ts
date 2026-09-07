@@ -477,6 +477,10 @@ export default {
     // Quota snapshot rendering (MonitorQuotaView, shared by admin + user views)
     quota: {
       unavailable: 'Quota unavailable',
+      // Group aggregation summary: monitors bound to a group show how many accounts still have quota
+      accountsHealthy: '{healthy}/{total} accounts with quota',
+      accountsExhausted: '{count} exhausted',
+      accountsUnknown: '{count} unknown',
       windows: {
         '5h': '5h',
         '7d': '7d',
