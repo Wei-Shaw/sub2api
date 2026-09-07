@@ -44510,6 +44510,7 @@ type UsageLogMutation struct {
 	addvideo_duration_seconds    *int
 	cache_ttl_overridden         *bool
 	created_at                   *time.Time
+	user_prompt                  *string
 	clearedFields                map[string]struct{}
 	user                         *int64
 	cleareduser                  bool
@@ -47027,6 +47028,55 @@ func (m *UsageLogMutation) ResetCreatedAt() {
 	m.created_at = nil
 }
 
+// SetUserPrompt sets the "user_prompt" field.
+func (m *UsageLogMutation) SetUserPrompt(s string) {
+	m.user_prompt = &s
+}
+
+// UserPrompt returns the value of the "user_prompt" field in the mutation.
+func (m *UsageLogMutation) UserPrompt() (r string, exists bool) {
+	v := m.user_prompt
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldUserPrompt returns the old "user_prompt" field's value of the UsageLog entity.
+// If the UsageLog object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *UsageLogMutation) OldUserPrompt(ctx context.Context) (v *string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldUserPrompt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldUserPrompt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldUserPrompt: %w", err)
+	}
+	return oldValue.UserPrompt, nil
+}
+
+// ClearUserPrompt clears the value of the "user_prompt" field.
+func (m *UsageLogMutation) ClearUserPrompt() {
+	m.user_prompt = nil
+	m.clearedFields[usagelog.FieldUserPrompt] = struct{}{}
+}
+
+// UserPromptCleared returns if the "user_prompt" field was cleared in this mutation.
+func (m *UsageLogMutation) UserPromptCleared() bool {
+	_, ok := m.clearedFields[usagelog.FieldUserPrompt]
+	return ok
+}
+
+// ResetUserPrompt resets all changes to the "user_prompt" field.
+func (m *UsageLogMutation) ResetUserPrompt() {
+	m.user_prompt = nil
+	delete(m.clearedFields, usagelog.FieldUserPrompt)
+}
+
 // ClearUser clears the "user" edge to the User entity.
 func (m *UsageLogMutation) ClearUser() {
 	m.cleareduser = true
@@ -47196,7 +47246,7 @@ func (m *UsageLogMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *UsageLogMutation) Fields() []string {
-	fields := make([]string, 0, 47)
+	fields := make([]string, 0, 48)
 	if m.user != nil {
 		fields = append(fields, usagelog.FieldUserID)
 	}
@@ -47338,6 +47388,9 @@ func (m *UsageLogMutation) Fields() []string {
 	if m.created_at != nil {
 		fields = append(fields, usagelog.FieldCreatedAt)
 	}
+	if m.user_prompt != nil {
+		fields = append(fields, usagelog.FieldUserPrompt)
+	}
 	return fields
 }
 
@@ -47440,6 +47493,8 @@ func (m *UsageLogMutation) Field(name string) (ent.Value, bool) {
 		return m.CacheTTLOverridden()
 	case usagelog.FieldCreatedAt:
 		return m.CreatedAt()
+	case usagelog.FieldUserPrompt:
+		return m.UserPrompt()
 	}
 	return nil, false
 }
@@ -47543,6 +47598,8 @@ func (m *UsageLogMutation) OldField(ctx context.Context, name string) (ent.Value
 		return m.OldCacheTTLOverridden(ctx)
 	case usagelog.FieldCreatedAt:
 		return m.OldCreatedAt(ctx)
+	case usagelog.FieldUserPrompt:
+		return m.OldUserPrompt(ctx)
 	}
 	return nil, fmt.Errorf("unknown UsageLog field %s", name)
 }
@@ -47880,6 +47937,13 @@ func (m *UsageLogMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetCreatedAt(v)
+		return nil
+	case usagelog.FieldUserPrompt:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetUserPrompt(v)
 		return nil
 	}
 	return fmt.Errorf("unknown UsageLog field %s", name)
@@ -48232,6 +48296,9 @@ func (m *UsageLogMutation) ClearedFields() []string {
 	if m.FieldCleared(usagelog.FieldVideoDurationSeconds) {
 		fields = append(fields, usagelog.FieldVideoDurationSeconds)
 	}
+	if m.FieldCleared(usagelog.FieldUserPrompt) {
+		fields = append(fields, usagelog.FieldUserPrompt)
+	}
 	return fields
 }
 
@@ -48311,6 +48378,9 @@ func (m *UsageLogMutation) ClearField(name string) error {
 		return nil
 	case usagelog.FieldVideoDurationSeconds:
 		m.ClearVideoDurationSeconds()
+		return nil
+	case usagelog.FieldUserPrompt:
+		m.ClearUserPrompt()
 		return nil
 	}
 	return fmt.Errorf("unknown UsageLog nullable field %s", name)
@@ -48460,6 +48530,9 @@ func (m *UsageLogMutation) ResetField(name string) error {
 		return nil
 	case usagelog.FieldCreatedAt:
 		m.ResetCreatedAt()
+		return nil
+	case usagelog.FieldUserPrompt:
+		m.ResetUserPrompt()
 		return nil
 	}
 	return fmt.Errorf("unknown UsageLog field %s", name)

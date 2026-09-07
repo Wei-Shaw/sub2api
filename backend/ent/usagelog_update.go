@@ -947,6 +947,26 @@ func (_u *UsageLogUpdate) SetNillableCacheTTLOverridden(v *bool) *UsageLogUpdate
 	return _u
 }
 
+// SetUserPrompt sets the "user_prompt" field.
+func (_u *UsageLogUpdate) SetUserPrompt(v string) *UsageLogUpdate {
+	_u.mutation.SetUserPrompt(v)
+	return _u
+}
+
+// SetNillableUserPrompt sets the "user_prompt" field if the given value is not nil.
+func (_u *UsageLogUpdate) SetNillableUserPrompt(v *string) *UsageLogUpdate {
+	if v != nil {
+		_u.SetUserPrompt(*v)
+	}
+	return _u
+}
+
+// ClearUserPrompt clears the value of the "user_prompt" field.
+func (_u *UsageLogUpdate) ClearUserPrompt() *UsageLogUpdate {
+	_u.mutation.ClearUserPrompt()
+	return _u
+}
+
 // SetUser sets the "user" edge to the User entity.
 func (_u *UsageLogUpdate) SetUser(v *User) *UsageLogUpdate {
 	return _u.SetUserID(v.ID)
@@ -1380,6 +1400,12 @@ func (_u *UsageLogUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	}
 	if value, ok := _u.mutation.CacheTTLOverridden(); ok {
 		_spec.SetField(usagelog.FieldCacheTTLOverridden, field.TypeBool, value)
+	}
+	if value, ok := _u.mutation.UserPrompt(); ok {
+		_spec.SetField(usagelog.FieldUserPrompt, field.TypeString, value)
+	}
+	if _u.mutation.UserPromptCleared() {
+		_spec.ClearField(usagelog.FieldUserPrompt, field.TypeString)
 	}
 	if _u.mutation.UserCleared() {
 		edge := &sqlgraph.EdgeSpec{
@@ -2461,6 +2487,26 @@ func (_u *UsageLogUpdateOne) SetNillableCacheTTLOverridden(v *bool) *UsageLogUpd
 	return _u
 }
 
+// SetUserPrompt sets the "user_prompt" field.
+func (_u *UsageLogUpdateOne) SetUserPrompt(v string) *UsageLogUpdateOne {
+	_u.mutation.SetUserPrompt(v)
+	return _u
+}
+
+// SetNillableUserPrompt sets the "user_prompt" field if the given value is not nil.
+func (_u *UsageLogUpdateOne) SetNillableUserPrompt(v *string) *UsageLogUpdateOne {
+	if v != nil {
+		_u.SetUserPrompt(*v)
+	}
+	return _u
+}
+
+// ClearUserPrompt clears the value of the "user_prompt" field.
+func (_u *UsageLogUpdateOne) ClearUserPrompt() *UsageLogUpdateOne {
+	_u.mutation.ClearUserPrompt()
+	return _u
+}
+
 // SetUser sets the "user" edge to the User entity.
 func (_u *UsageLogUpdateOne) SetUser(v *User) *UsageLogUpdateOne {
 	return _u.SetUserID(v.ID)
@@ -2924,6 +2970,12 @@ func (_u *UsageLogUpdateOne) sqlSave(ctx context.Context) (_node *UsageLog, err 
 	}
 	if value, ok := _u.mutation.CacheTTLOverridden(); ok {
 		_spec.SetField(usagelog.FieldCacheTTLOverridden, field.TypeBool, value)
+	}
+	if value, ok := _u.mutation.UserPrompt(); ok {
+		_spec.SetField(usagelog.FieldUserPrompt, field.TypeString, value)
+	}
+	if _u.mutation.UserPromptCleared() {
+		_spec.ClearField(usagelog.FieldUserPrompt, field.TypeString)
 	}
 	if _u.mutation.UserCleared() {
 		edge := &sqlgraph.EdgeSpec{
