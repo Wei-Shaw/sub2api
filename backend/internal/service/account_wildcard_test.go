@@ -159,7 +159,9 @@ func TestAccountIsModelSupported(t *testing.T) {
 	tests := []struct {
 		name           string
 		platform       string
+		typ            string
 		credentials    map[string]any
+		extra          map[string]any
 		requestedModel string
 		expected       bool
 	}{
@@ -174,6 +176,48 @@ func TestAccountIsModelSupported(t *testing.T) {
 			name:           "empty mapping allows all",
 			credentials:    map[string]any{},
 			requestedModel: "any-model",
+			expected:       true,
+		},
+		{
+			name:           "anthropic oauth can disable Fable scheduling",
+			platform:       PlatformAnthropic,
+			typ:            AccountTypeOAuth,
+			extra:          map[string]any{AnthropicFableSchedulingEnabledExtraKey: false},
+			requestedModel: "claude-fable-5[1m]",
+			expected:       false,
+		},
+		{
+			name:           "anthropic setup token Fable switch does not affect Sonnet",
+			platform:       PlatformAnthropic,
+			typ:            AccountTypeSetupToken,
+			extra:          map[string]any{AnthropicFableSchedulingEnabledExtraKey: false},
+			requestedModel: "claude-sonnet-5",
+			expected:       true,
+		},
+		{
+			name:     "anthropic Fable switch checks mapped target",
+			platform: PlatformAnthropic,
+			typ:      AccountTypeOAuth,
+			credentials: map[string]any{
+				"model_mapping": map[string]any{"premium-model": "claude-fable-5"},
+			},
+			extra:          map[string]any{AnthropicFableSchedulingEnabledExtraKey: false},
+			requestedModel: "premium-model",
+			expected:       false,
+		},
+		{
+			name:           "missing Anthropic Fable switch preserves scheduling",
+			platform:       PlatformAnthropic,
+			typ:            AccountTypeOAuth,
+			requestedModel: "claude-fable-5",
+			expected:       true,
+		},
+		{
+			name:           "Anthropic API key ignores subscription Fable switch",
+			platform:       PlatformAnthropic,
+			typ:            AccountTypeAPIKey,
+			extra:          map[string]any{AnthropicFableSchedulingEnabledExtraKey: false},
+			requestedModel: "claude-fable-5",
 			expected:       true,
 		},
 
@@ -237,7 +281,9 @@ func TestAccountIsModelSupported(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			account := &Account{
 				Platform:    tt.platform,
+				Type:        tt.typ,
 				Credentials: tt.credentials,
+				Extra:       tt.extra,
 			}
 			result := account.IsModelSupported(tt.requestedModel)
 			if result != tt.expected {

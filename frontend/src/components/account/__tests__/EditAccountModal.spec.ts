@@ -279,6 +279,18 @@ function buildGrokAPIKeyAccount() {
   } as any
 }
 
+function buildAnthropicOAuthAccount() {
+  return {
+    ...buildAccount(),
+    id: 8,
+    name: 'Anthropic OAuth',
+    platform: 'anthropic',
+    type: 'oauth',
+    credentials: { access_token: 'oauth-token' },
+    extra: {}
+  } as any
+}
+
 function buildOpenAISetupTokenAccount() {
   return {
     ...buildAccount(),
@@ -326,6 +338,39 @@ function mountModal(account = buildAccount()) {
 describe('EditAccountModal', () => {
   beforeEach(() => {
     authIsSimpleMode.value = true
+  })
+
+  it('defaults Anthropic OAuth accounts to allowing Fable scheduling and persists opt-out', async () => {
+    const account = buildAnthropicOAuthAccount()
+    updateAccountMock.mockReset().mockResolvedValue(account)
+    checkMixedChannelRiskMock.mockReset().mockResolvedValue({ has_risk: false })
+
+    const wrapper = mountModal(account)
+    const toggle = wrapper.get('[data-testid="anthropic-fable-scheduling-toggle"]')
+    expect(toggle.attributes('aria-checked')).toBe('true')
+
+    await toggle.trigger('click')
+    await wrapper.get('form#edit-account-form').trigger('submit.prevent')
+
+    expect(updateAccountMock).toHaveBeenCalledTimes(1)
+    expect(updateAccountMock.mock.calls[0]?.[1]?.extra?.anthropic_fable_scheduling_enabled).toBe(false)
+  })
+
+  it('loads an Anthropic Fable opt-out and removes it when scheduling is re-enabled', async () => {
+    const account = buildAnthropicOAuthAccount()
+    account.extra = { anthropic_fable_scheduling_enabled: false }
+    updateAccountMock.mockReset().mockResolvedValue(account)
+    checkMixedChannelRiskMock.mockReset().mockResolvedValue({ has_risk: false })
+
+    const wrapper = mountModal(account)
+    const toggle = wrapper.get('[data-testid="anthropic-fable-scheduling-toggle"]')
+    expect(toggle.attributes('aria-checked')).toBe('false')
+
+    await toggle.trigger('click')
+    await wrapper.get('form#edit-account-form').trigger('submit.prevent')
+
+    expect(updateAccountMock).toHaveBeenCalledTimes(1)
+    expect(updateAccountMock.mock.calls[0]?.[1]?.extra).not.toHaveProperty('anthropic_fable_scheduling_enabled')
   })
 
   it('reopening the same account rehydrates the OpenAI whitelist from props', async () => {
