@@ -1162,20 +1162,20 @@ func openAIStreamAddedEventStartsClientOutput(payload []byte, eventType string) 
 	}
 }
 
-// Only the explicitly tagged synthetic heartbeat is exempt from output commit.
-// Untagged whitespace, tool events and empty item headers keep their existing semantics.
-func openAIStreamIsSyntheticHeartbeat(data, eventType string) bool {
+// Text filler is staged, not discarded. It cannot start output or TTFT, and
+// after real output the caller's committed state remains sticky.
+func openAIStreamTextDeltaIsOnlyFiller(data, eventType string) bool {
 	const kind = "response.output_text.delta"
 	if (eventType != "" && eventType != kind) || !gjson.Valid(data) {
 		return false
 	}
 	v := gjson.Parse(data)
-	marker := v.Get("SSE-Keep-Alive")
+	payloadType := v.Get("type").String()
+	if payloadType != kind && !(payloadType == "" && eventType == kind) {
+		return false
+	}
 	delta := v.Get("delta")
-	if v.Get("type").String() != kind || marker.Type != gjson.True ||
-		v.Get("item_id").String() != "SSE-Keep-Alive" ||
-		(v.Get("error").Exists() && v.Get("error").Type != gjson.Null) ||
-		delta.Type != gjson.String || delta.String() == "" {
+	if delta.Type != gjson.String {
 		return false
 	}
 	for _, ch := range delta.String() {
@@ -1187,7 +1187,7 @@ func openAIStreamIsSyntheticHeartbeat(data, eventType string) bool {
 }
 
 func openAIStreamDataStartsClientOutput(data, eventType string) bool {
-	if openAIStreamIsSyntheticHeartbeat(data, eventType) {
+	if openAIStreamTextDeltaIsOnlyFiller(data, eventType) {
 		return false
 	}
 	trimmed := strings.TrimSpace(data)
@@ -1228,7 +1228,7 @@ func openAIStreamItemHasVisibleOutput(item gjson.Result) bool {
 // Structural progress can commit an attempt and disarm first-output failover,
 // but TTFT should start only when the stream carries content a client can use.
 func openAIStreamDataStartsVisibleOutput(data, eventType string) bool {
-	if openAIStreamIsSyntheticHeartbeat(data, eventType) {
+	if openAIStreamTextDeltaIsOnlyFiller(data, eventType) {
 		return false
 	}
 	trimmed := strings.TrimSpace(data)
@@ -1274,7 +1274,7 @@ func openAIStreamDataStartsVisibleOutput(data, eventType string) bool {
 // openAIStreamDataStartsSemanticTTFT 保留 900194fab 之前的 first_token_ms
 // 口径：跳过 Responses preamble 后，首个语义 SSE 事件即视为首 token。
 func openAIStreamDataStartsSemanticTTFT(data, eventType string) bool {
-	if openAIStreamIsSyntheticHeartbeat(data, eventType) {
+	if openAIStreamTextDeltaIsOnlyFiller(data, eventType) {
 		return false
 	}
 	trimmed := strings.TrimSpace(data)
