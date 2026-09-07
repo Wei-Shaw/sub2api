@@ -662,8 +662,10 @@ func (a *Account) resolveModelMapping(rawMapping map[string]any) map[string]stri
 				"gemini-3.6-flash-low",
 				"gemini-3.6-flash-medium",
 				"gemini-3.6-flash-tiered",
+				"gemini-3.7-flash-tiered",
 			})
 			applyAntigravityGemini31ProAliases(result)
+			applyAntigravityDefaultAlias(result, "gemini-3.7-flash", "gemini-3.7-flash-tiered", "gemini-3.7-flash")
 		}
 		return result
 	}
@@ -731,6 +733,29 @@ func ensureAntigravityDefaultPassthroughs(mapping map[string]string, models []st
 	for _, model := range models {
 		ensureAntigravityDefaultPassthrough(mapping, model)
 	}
+}
+
+func applyAntigravityDefaultAlias(mapping map[string]string, model, targetModel string, legacyTargets ...string) {
+	if mapping == nil || model == "" || targetModel == "" {
+		return
+	}
+	target := strings.TrimSpace(mapping[targetModel])
+	if target == "" {
+		target = targetModel
+	}
+	if current, exists := mapping[model]; exists {
+		for _, legacy := range legacyTargets {
+			if current == legacy {
+				mapping[model] = target
+				return
+			}
+		}
+		return
+	}
+	if mappingHasWildcardForModel(mapping, model) {
+		return
+	}
+	mapping[model] = target
 }
 
 func applyAntigravityGemini31ProAliases(mapping map[string]string) {
