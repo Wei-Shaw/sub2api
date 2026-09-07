@@ -263,7 +263,7 @@ func TestBuildTools_CustomTypeTools(t *testing.T) {
 	}
 }
 
-func TestBuildTools_PreservesWebSearchAlongsideFunctions(t *testing.T) {
+func TestBuildTools_DropsWebSearchWhenClientFunctionsPresent(t *testing.T) {
 	tools := []ClaudeTool{
 		{
 			Name:        "get_weather",
@@ -277,13 +277,27 @@ func TestBuildTools_PreservesWebSearchAlongsideFunctions(t *testing.T) {
 	}
 
 	result := buildTools(tools)
-	require.Len(t, result, 2)
+	// Antigravity v1internal rejects mixed built-in + functionDeclarations (#6464).
+	require.Len(t, result, 1)
 	require.Len(t, result[0].FunctionDeclarations, 1)
 	require.Equal(t, "get_weather", result[0].FunctionDeclarations[0].Name)
-	require.NotNil(t, result[1].GoogleSearch)
-	require.NotNil(t, result[1].GoogleSearch.EnhancedContent)
-	require.NotNil(t, result[1].GoogleSearch.EnhancedContent.ImageSearch)
-	require.Equal(t, 5, result[1].GoogleSearch.EnhancedContent.ImageSearch.MaxResultCount)
+	require.Nil(t, result[0].GoogleSearch)
+}
+
+func TestBuildTools_KeepsWebSearchWhenNoClientFunctions(t *testing.T) {
+	tools := []ClaudeTool{
+		{
+			Type: "web_search_20250305",
+			Name: "web_search",
+		},
+	}
+
+	result := buildTools(tools)
+	require.Len(t, result, 1)
+	require.NotNil(t, result[0].GoogleSearch)
+	require.NotNil(t, result[0].GoogleSearch.EnhancedContent)
+	require.NotNil(t, result[0].GoogleSearch.EnhancedContent.ImageSearch)
+	require.Equal(t, 5, result[0].GoogleSearch.EnhancedContent.ImageSearch.MaxResultCount)
 }
 
 func TestBuildGenerationConfig_ThinkingDynamicBudget(t *testing.T) {
