@@ -204,6 +204,9 @@ func (m *mockUserRepo) DeductBalance(ctx context.Context, id int64, amount float
 	}
 	return nil
 }
+func (m *mockUserRepo) TransferBalance(context.Context, BalanceTransferInput) (*BalanceTransfer, error) {
+	return nil, nil
+}
 
 func (m *mockUserRepo) DeductAvailableBalance(ctx context.Context, id int64, amount float64) (float64, error) {
 	if m.deductAvailableBalanceFn != nil {

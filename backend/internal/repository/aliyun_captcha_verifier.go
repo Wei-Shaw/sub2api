@@ -65,15 +65,23 @@ func (v *aliyunCaptchaVerifier) VerifyCaptcha(ctx context.Context, cred service.
 func normalizeAliyunCaptchaError(err error) error {
 	var teaErr *tea.SDKError
 	if errors.As(err, &teaErr) {
+		code := tea.StringValue(teaErr.Code)
+		if code == "" || code == "<nil>" {
+			return err
+		}
 		return &service.AliyunCaptchaAPIError{
-			Code:    tea.StringValue(teaErr.Code),
+			Code:    code,
 			Message: tea.StringValue(teaErr.Message),
 		}
 	}
 	var daraErr *dara.SDKError
 	if errors.As(err, &daraErr) {
+		code := dara.StringValue(daraErr.Code)
+		if code == "" || code == "<nil>" {
+			return err
+		}
 		return &service.AliyunCaptchaAPIError{
-			Code:    dara.StringValue(daraErr.Code),
+			Code:    code,
 			Message: dara.StringValue(daraErr.Message),
 		}
 	}
