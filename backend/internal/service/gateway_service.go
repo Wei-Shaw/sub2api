@@ -617,6 +617,9 @@ type ForwardResult struct {
 	// UpstreamModel is the actual upstream model after mapping.
 	// Prefer empty when it is identical to Model; persistence normalizes equal values away as no-op mappings.
 	UpstreamModel string
+	// BillingModelOverride forces billing to use the actual model selected by a
+	// server-side compatibility rewrite instead of a client-selected billing source.
+	BillingModelOverride string
 	// UpstreamResponseModel is captured from the raw successful upstream
 	// response before any client-facing rewrite or protocol conversion.
 	UpstreamResponseModel         string
