@@ -165,6 +165,15 @@ func (s *OpenAIGatewayService) forwardAsChatCompletions(
 	originalModel := chatReq.Model
 	clientStream := chatReq.Stream
 
+	replayEnabled := s.chatReasoningReplayEnabled(ctx, account)
+	var replayStats *chatReasoningReplayStats
+	replayLog := logger.FromContext(ctx).With(zap.Int64("account_id", account.ID))
+	if replayEnabled {
+		setChatReasoningReplayRecorder(c, newChatReasoningReplayRecorder(s, account.ID, replayLog))
+	} else {
+		setChatReasoningReplayRecorder(c, nil)
+	}
+
 	// 2. Resolve model mapping early so compat prompt_cache_key injection can
 	// derive a stable seed from the final upstream model family.
 	billingModel := resolveOpenAIForwardModel(account, originalModel, defaultMappedModel)
@@ -230,9 +239,28 @@ func (s *OpenAIGatewayService) forwardAsChatCompletions(
 	} else {
 		// Normal path: convert Chat Completions → Responses.
 		// ChatCompletionsToResponses always sets Stream=true (upstream always streams).
-		responsesReq, err = apicompat.ChatCompletionsToResponses(&chatReq)
+		// On the Codex OAuth path the converter also restores cached encrypted
+		// reasoning items in front of replayed tool calls (see
+		// openai_chat_reasoning_replay.go); a miss leaves the body unchanged.
+		var convertOpts *apicompat.ChatToResponsesOptions
+		if replayEnabled {
+			hook, stats := s.chatReasoningReplayLookup(account.ID, replayLog)
+			replayStats = stats
+			convertOpts = &apicompat.ChatToResponsesOptions{ReasoningByToolCallID: hook}
+		}
+		responsesReq, err = apicompat.ChatCompletionsToResponsesWithOptions(&chatReq, convertOpts)
 		if err != nil {
 			return nil, fmt.Errorf("convert chat completions to responses: %w", err)
+		}
+		if replayStats != nil && replayStats.Lookups > 0 {
+			replayLog.Debug("openai chat_completions: reasoning replay lookup",
+				zap.Int("tool_call_lookups", replayStats.Lookups),
+				zap.Int("hits", replayStats.Hits),
+				zap.Int("misses", replayStats.Misses),
+				zap.Int("covered_by_sibling", replayStats.CoveredBySibling),
+				zap.Int("account_mismatch", replayStats.AccountMismatch),
+				zap.Int("reasoning_items_injected", replayStats.Injected),
+			)
 		}
 		responsesReq.Model = upstreamModel
 		normalizeResponsesRequestServiceTier(responsesReq)
@@ -360,6 +388,18 @@ func (s *OpenAIGatewayService) forwardAsChatCompletions(
 	// 8. Handle error response with failover
 	if resp.StatusCode >= 400 {
 		respBody, upstreamMsg := s.readOpenAIUpstreamError(resp)
+		if replayStats != nil && replayStats.Injected > 0 &&
+			resp.StatusCode == http.StatusBadRequest &&
+			isOpenAIInvalidEncryptedContentError(respBody, upstreamMsg) {
+			// The injected reasoning was rejected (typically the sticky account
+			// changed since it was cached). Retry once without replay so the
+			// client still gets an answer; the request then behaves like before.
+			replayLog.Warn("openai chat_completions: upstream rejected replayed reasoning, retrying without replay",
+				zap.Int("reasoning_items_injected", replayStats.Injected),
+				zap.String("upstream_message", upstreamMsg),
+			)
+			return s.ForwardAsChatCompletions(withChatReasoningReplayDisabled(ctx), c, account, body, promptCacheKey, defaultMappedModel)
+		}
 		if !agentIdentityTaskRecoveryWasTried(ctx) && s.isAgentIdentityAccount(ctx, account) && isAgentIdentityTaskInvalidHTTPResponse(resp.StatusCode, respBody) {
 			expectedTaskID := account.GetCredential("task_id")
 			if err := s.recoverAgentIdentityTask(ctx, account, expectedTaskID); err != nil {
@@ -563,6 +603,11 @@ func (s *OpenAIGatewayService) handleChatBufferedStreamingResponse(
 	// accumulated delta events so the client receives the full content.
 	acc.SupplementResponseOutput(finalResponse)
 
+	if replayRecorder := chatReasoningReplayRecorderFromContext(c); replayRecorder != nil {
+		replayRecorder.ObserveOutput(finalResponse.ID, finalResponse.Output)
+		replayRecorder.Finish()
+	}
+
 	chatResp := apicompat.ResponsesToChatCompletions(finalResponse, originalModel)
 
 	if s.responseHeaderFilter != nil {
@@ -681,6 +726,8 @@ func (s *OpenAIGatewayService) handleChatStreamingResponse(
 	}
 
 	scanner := s.newUpstreamSSEScanner(resp.Body)
+	replayRecorder := chatReasoningReplayRecorderFromContext(c)
+	defer replayRecorder.Finish()
 
 	streamInterval := time.Duration(0)
 	if s.cfg != nil && s.cfg.Gateway.StreamDataIntervalTimeout > 0 {
@@ -739,6 +786,7 @@ func (s *OpenAIGatewayService) handleChatStreamingResponse(
 		observer.ObserveOpenAI([]byte(payload), event.Type)
 		refusalDetector.ObservePayload([]byte(payload))
 		s.parseSSEUsageBytesWithType([]byte(payload), event.Type, &usage)
+		replayRecorder.Observe(&event)
 
 		isTerminalEvent := isOpenAICompatResponsesTerminalEvent(event.Type)
 		if isTerminalEvent {
