@@ -115,6 +115,9 @@ func collectOpenAIResponsesToolNameFields(reqBody map[string]any) []codexToolNam
 		}
 	}
 	if choice, ok := reqBody["tool_choice"].(map[string]any); ok {
+		if strings.EqualFold(strings.TrimSpace(firstNonEmptyString(choice["type"])), "allowed_tools") {
+			collectTools(choice["tools"])
+		}
 		if strings.EqualFold(strings.TrimSpace(firstNonEmptyString(choice["type"])), "function") {
 			appendName(choice, "name")
 			if function, ok := choice["function"].(map[string]any); ok {
