@@ -89,13 +89,22 @@
       </span>
     </div>
 
-    <div v-if="primaryResetCreditExpiry" class="space-y-1">
+    <div v-if="primaryResetCreditExpiry || expiryResetAt" class="space-y-1">
       <div class="flex flex-wrap items-center gap-1">
         <span
+          v-if="primaryResetCreditExpiry"
           class="inline-flex max-w-full items-center rounded bg-gray-100 px-1.5 py-0.5 text-[10px] leading-4 text-gray-600 tabular-nums dark:bg-dark-800 dark:text-gray-300"
           :title="t('admin.accounts.openaiQuotaReset.expiresAtFull', { time: formatResetCreditExpiry(primaryResetCreditExpiry, 'full') })"
         >
           {{ t('admin.accounts.openaiQuotaReset.expiresAt', { time: formatResetCreditExpiry(primaryResetCreditExpiry, 'short') }) }}
+        </span>
+        <span
+          v-if="expiryResetAt"
+          data-testid="expiry-reset-at"
+          class="inline-flex max-w-full items-center rounded bg-amber-50 px-1.5 py-0.5 text-[10px] leading-4 text-amber-700 tabular-nums dark:bg-amber-900/30 dark:text-amber-300"
+          :title="t('admin.accounts.openaiQuotaReset.expiryResetAtFull', { time: formatResetCreditExpiry(expiryResetAt, 'full') })"
+        >
+          {{ t('admin.accounts.openaiQuotaReset.expiryResetAt', { time: formatResetCreditExpiry(expiryResetAt, 'short') }) }}
         </span>
         <button
           v-if="hiddenResetCreditCount > 0"
@@ -201,7 +210,8 @@ const showResetCreditDetails = ref(false)
 type AutoResetCreditState = NonNullable<NonNullable<Account['extra']>['codex_auto_reset_credit_state']>
 const validAutoResetStatuses = new Set(['checking', 'available', 'resetting', 'success', 'no_credit', 'failed'])
 const autoResetState = computed<AutoResetCreditState | null>(() => {
-  if (props.account.extra?.auto_reset_credit_enabled !== true) return null
+  const extra = props.account.extra
+  if (extra?.auto_reset_credit_enabled !== true && extra?.auto_reset_credit_expiry_enabled !== true) return null
   const state = props.account.extra?.codex_auto_reset_credit_state
   if (!state || typeof state !== 'object' || !validAutoResetStatuses.has(String(state.status))) return null
   return state
@@ -294,6 +304,11 @@ const resetCreditExpirations = computed(() =>
     .sort(compareResetCreditExpiry)
 )
 const primaryResetCreditExpiry = computed(() => resetCreditExpirations.value[0] ?? '')
+// 只在后端为该账号排了到期重置定时器时存在，撤销定时器即清空。
+const expiryResetAt = computed(() => {
+  const value = props.account.extra?.codex_auto_reset_credit_expiry_at
+  return typeof value === 'string' && !Number.isNaN(new Date(value).getTime()) ? value : ''
+})
 const hiddenResetCreditCount = computed(() => Math.max(resetCreditExpirations.value.length - 1, 0))
 const canReset = computed(() => availableResetCount.value > 0 && !isShadow.value)
 

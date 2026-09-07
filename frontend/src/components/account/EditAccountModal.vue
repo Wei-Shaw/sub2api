@@ -2454,6 +2454,50 @@
         <p class="input-hint">{{ t('admin.accounts.autoResetCredit.thresholdHint') }}</p>
       </div>
 
+      <div
+        v-if="account?.platform === 'openai' && account?.type === 'oauth' && !isSparkShadow"
+        class="space-y-4 border-t border-gray-200 pt-4 dark:border-dark-600"
+        data-testid="auto-reset-credit-expiry-settings"
+      >
+        <div class="flex items-center justify-between gap-4">
+          <div class="min-w-0">
+            <label class="input-label mb-0">{{ t('admin.accounts.autoResetCredit.expiryTitle') }}</label>
+            <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+              {{ t('admin.accounts.autoResetCredit.expiryHint') }}
+            </p>
+          </div>
+          <button
+            type="button"
+            data-testid="auto-reset-credit-expiry-enabled"
+            @click="autoResetCreditExpiryEnabled = !autoResetCreditExpiryEnabled"
+            :class="[
+              'relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2',
+              autoResetCreditExpiryEnabled ? 'bg-primary-600' : 'bg-gray-200 dark:bg-dark-600'
+            ]"
+          >
+            <span
+              :class="[
+                'pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out',
+                autoResetCreditExpiryEnabled ? 'translate-x-5' : 'translate-x-0'
+              ]"
+            />
+          </button>
+        </div>
+        <div>
+          <label class="input-label">{{ t('admin.accounts.autoResetCredit.expiryLeadMinutes') }}</label>
+          <input
+            v-model.number="autoResetCreditExpiryLeadMinutes"
+            type="number"
+            min="10"
+            step="1"
+            class="input"
+            :disabled="!autoResetCreditExpiryEnabled"
+            data-testid="auto-reset-credit-expiry-lead-minutes"
+          />
+          <p class="input-hint">{{ t('admin.accounts.autoResetCredit.expiryLeadHint') }}</p>
+        </div>
+      </div>
+
       <!-- 配额控制 (Anthropic OAuth/SetupToken: 亲和 + 窗口费用 + 会话 + RPM 等) -->
       <div
         v-if="account?.platform === 'anthropic' && (account?.type === 'oauth' || account?.type === 'setup-token')"
@@ -3352,6 +3396,8 @@ const autoPause7dDisabled = ref(false)
 const autoResetCreditEnabled = ref(false)
 const autoResetCredit5hThreshold = ref(100)
 const autoResetCredit7dThreshold = ref(100)
+const autoResetCreditExpiryEnabled = ref(false)
+const autoResetCreditExpiryLeadMinutes = ref(10)
 const upstreamBillingAutoProbeEnabled = ref(false)
 const upstreamBillingRateSyncEnabled = ref(false)
 const mixedScheduling = ref(false) // For antigravity accounts: enable mixed scheduling
@@ -3895,6 +3941,11 @@ const syncFormFromAccount = (newAccount: Account | null) => {
 		typeof extra?.auto_reset_credit_5h_threshold === 'number' ? extra.auto_reset_credit_5h_threshold * 100 : 100
 	autoResetCredit7dThreshold.value =
 		typeof extra?.auto_reset_credit_7d_threshold === 'number' ? extra.auto_reset_credit_7d_threshold * 100 : 100
+	autoResetCreditExpiryEnabled.value = extra?.auto_reset_credit_expiry_enabled === true
+	autoResetCreditExpiryLeadMinutes.value =
+		typeof extra?.auto_reset_credit_expiry_lead_minutes === 'number' && extra.auto_reset_credit_expiry_lead_minutes > 0
+			? extra.auto_reset_credit_expiry_lead_minutes
+			: 10
 	upstreamBillingAutoProbeEnabled.value = extra?.upstream_billing_probe_enabled === true
   upstreamBillingRateSyncEnabled.value =
     upstreamBillingAutoProbeEnabled.value && extra?.upstream_billing_rate_sync_enabled === true
@@ -4860,6 +4911,13 @@ const handleSubmit = async () => {
 			return
 		}
 	}
+	if (autoResetCreditExpiryEnabled.value) {
+		const lead = Number(autoResetCreditExpiryLeadMinutes.value || 0)
+		if (!Number.isInteger(lead) || lead < 10 || lead > 527040) {
+			appStore.showError(t('admin.accounts.autoResetCredit.expiryLeadInvalid'))
+			return
+		}
+	}
 
   const updatePayload: Record<string, unknown> = { ...form }
   try {
@@ -5446,9 +5504,12 @@ const handleSubmit = async () => {
 			newExtra.auto_reset_credit_enabled = autoResetCreditEnabled.value
 			newExtra.auto_reset_credit_5h_threshold = autoResetCredit5hThreshold.value / 100
 			newExtra.auto_reset_credit_7d_threshold = autoResetCredit7dThreshold.value / 100
+			newExtra.auto_reset_credit_expiry_enabled = autoResetCreditExpiryEnabled.value
+			newExtra.auto_reset_credit_expiry_lead_minutes = Number(autoResetCreditExpiryLeadMinutes.value || 0)
 		}
 		// 运行态只允许后端服务更新，账号编辑不得回写旧状态。
 		delete newExtra.codex_auto_reset_credit_state
+		delete newExtra.codex_auto_reset_credit_expiry_at
 
 		delete newExtra.codex_image_generation_bridge_enabled
       switch (codexImageToolMode.value) {

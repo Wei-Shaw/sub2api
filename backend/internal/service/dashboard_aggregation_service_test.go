@@ -188,6 +188,10 @@ func (c *dashboardAggregationLeaderLockRecordingCache) ReleaseLeaderLock(ctx con
 	return c.delegate.ReleaseLeaderLock(ctx, key, owner)
 }
 
+func (c *dashboardAggregationLeaderLockRecordingCache) ExtendLeaderLock(ctx context.Context, key, owner string, ttl time.Duration) (bool, error) {
+	return c.delegate.ExtendLeaderLock(ctx, key, owner, ttl)
+}
+
 func TestDashboardAggregationService_StartupGroupSyncUsesIndependentLongLivedLeaderLock(t *testing.T) {
 	delegate := &fakeLeaderLockCache{}
 	_, err := delegate.TryAcquireLeaderLock(context.Background(), dashboardAggregationLeaderLockKey, "periodic-peer", time.Hour)

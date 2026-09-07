@@ -550,6 +550,7 @@ func TestQueryUsageIncludesResetCreditExpirations_EndToEnd(t *testing.T) {
 		w.Header().Set("content-type", "application/json")
 		switch r.URL.Path {
 		case "/backend-api/wham/usage":
+			w.Header().Set("Date", "Fri, 03 Jul 2026 04:00:00 GMT")
 			_ = json.NewEncoder(w).Encode(OpenAIQuotaUsage{
 				RateLimitResetCredits: &OpenAIRateLimitResetCredits{AvailableCount: 2},
 			})
@@ -570,6 +571,7 @@ func TestQueryUsageIncludesResetCreditExpirations_EndToEnd(t *testing.T) {
 	require.NotNil(t, usage)
 	require.NotNil(t, usage.RateLimitResetCredits)
 	require.Equal(t, 2, usage.RateLimitResetCredits.AvailableCount)
+	require.True(t, usage.upstreamTime.Equal(time.Date(2026, 7, 3, 4, 0, 0, 0, time.UTC)), "上游 Date 头应被解析为参考时钟")
 	require.Equal(t, 1, detailCalls)
 	require.Equal(t, openaiQuotaCodexBeta, capturedBeta)
 	require.Equal(t, []OpenAIRateLimitResetCreditDetail{
@@ -650,6 +652,7 @@ func TestCacheResetCreditsSnapshot(t *testing.T) {
 
 		require.NoError(t, svc.CacheResetCreditsSnapshot(ctx, 100, credits))
 		require.Equal(t, credits, repo.extraUpdates[100][openaiQuotaResetCreditsKey])
+		require.NotEmpty(t, repo.extraUpdates[100][openaiQuotaResetCreditsSyncedAtKey])
 	})
 
 	t.Run("missing expiration list preserves the cache", func(t *testing.T) {

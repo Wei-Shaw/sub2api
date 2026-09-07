@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
 	"github.com/stretchr/testify/require"
 )
 
@@ -18,6 +19,65 @@ func TestNormalizeOpenAIAutoResetCreditExtra(t *testing.T) {
 		require.False(t, config.Enabled)
 		require.Equal(t, 1.0, config.Threshold5h)
 		require.Equal(t, 1.0, config.Threshold7d)
+		require.False(t, config.ExpiryEnabled)
+		require.False(t, config.Active())
+		require.Equal(t, 10*time.Minute, config.ExpiryLead)
+	})
+
+	t.Run("到期用卡独立开关", func(t *testing.T) {
+		extra, err := normalizeOpenAIAutoResetCreditExtra(PlatformOpenAI, AccountTypeOAuth, false, map[string]any{
+			OpenAIAutoResetCreditExpiryEnabledExtraKey: true,
+		})
+		require.NoError(t, err)
+		require.Equal(t, 10.0, extra[OpenAIAutoResetCreditExpiryLeadMinutesExtraKey], "开启时补齐默认 10 分钟")
+		config := ResolveOpenAIAutoResetCreditConfig(&Account{Platform: PlatformOpenAI, Type: AccountTypeOAuth, Extra: extra})
+		require.False(t, config.Enabled)
+		require.True(t, config.ExpiryEnabled)
+		require.True(t, config.Active())
+		require.Equal(t, 10*time.Minute, config.ExpiryLead)
+
+		_, err = normalizeOpenAIAutoResetCreditExtra(PlatformOpenAI, AccountTypeOAuth, false, map[string]any{
+			OpenAIAutoResetCreditExpiryEnabledExtraKey:     true,
+			OpenAIAutoResetCreditExpiryLeadMinutesExtraKey: 0,
+		})
+		require.Error(t, err, "开启到期用卡时提前量不能为 0")
+
+		_, err = normalizeOpenAIAutoResetCreditExtra(PlatformOpenAI, AccountTypeOAuth, false, map[string]any{
+			OpenAIAutoResetCreditExpiryEnabledExtraKey: "yes",
+		})
+		require.Error(t, err)
+
+		stripped := stripOpenAIAutoResetCreditManagedExtra(map[string]any{OpenAIAutoResetCreditExpiryEnabledExtraKey: true}, true)
+		require.NotContains(t, stripped, OpenAIAutoResetCreditExpiryEnabledExtraKey)
+	})
+
+	t.Run("到期提前量为非负整数分钟", func(t *testing.T) {
+		extra, err := normalizeOpenAIAutoResetCreditExtra(PlatformOpenAI, AccountTypeOAuth, false, map[string]any{
+			OpenAIAutoResetCreditEnabledExtraKey:           true,
+			OpenAIAutoResetCreditExpiryLeadMinutesExtraKey: "1440",
+		})
+		require.NoError(t, err)
+		require.Equal(t, 1440.0, extra[OpenAIAutoResetCreditExpiryLeadMinutesExtraKey])
+		config := ResolveOpenAIAutoResetCreditConfig(&Account{Platform: PlatformOpenAI, Type: AccountTypeOAuth, Extra: extra})
+		require.Equal(t, 24*time.Hour, config.ExpiryLead)
+
+		extra, err = normalizeOpenAIAutoResetCreditExtra(PlatformOpenAI, AccountTypeOAuth, false, map[string]any{
+			OpenAIAutoResetCreditEnabledExtraKey:           true,
+			OpenAIAutoResetCreditExpiryLeadMinutesExtraKey: 10,
+		})
+		require.NoError(t, err, "非零提前量的下限是 10 分钟")
+		require.Equal(t, 10.0, extra[OpenAIAutoResetCreditExpiryLeadMinutesExtraKey])
+
+		for _, invalid := range []any{-1, 1.5, 5, "abc"} {
+			_, err := normalizeOpenAIAutoResetCreditExtra(PlatformOpenAI, AccountTypeOAuth, false, map[string]any{
+				OpenAIAutoResetCreditEnabledExtraKey:           true,
+				OpenAIAutoResetCreditExpiryLeadMinutesExtraKey: invalid,
+			})
+			require.Error(t, err, "%v", invalid)
+		}
+
+		stripped := stripOpenAIAutoResetCreditManagedExtra(map[string]any{OpenAIAutoResetCreditExpiryLeadMinutesExtraKey: 60}, true)
+		require.NotContains(t, stripped, OpenAIAutoResetCreditExpiryLeadMinutesExtraKey)
 	})
 
 	t.Run("开启时补齐两个百分百阈值并剥离运行态", func(t *testing.T) {
@@ -139,7 +199,7 @@ func TestOpenAIQuotaAutoResetService_AssessesIndependentWindows(t *testing.T) {
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			assessment := service.buildAssessment(account, config, test.fiveHour, test.sevenDay)
+			assessment := service.buildAssessment(account, config, test.fiveHour, test.sevenDay, false)
 			require.True(t, assessment.resetReached)
 			require.Equal(t, test.wantWindow, assessment.triggerWindow)
 		})
@@ -172,9 +232,18 @@ func (r *autoResetTestAccountRepo) UpdateExtra(_ context.Context, id int64, upda
 	return nil
 }
 
+func (r *autoResetTestAccountRepo) ListWithFilters(context.Context, pagination.PaginationParams, string, string, string, string, int64, string) ([]Account, *pagination.PaginationResult, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return []Account{*r.account}, &pagination.PaginationResult{Pages: 1}, nil
+}
+
 type autoResetTestQuota struct {
 	usage        *OpenAIQuotaUsage
 	resetCalls   atomic.Int32
+	queryCalls   atomic.Int32
+	cacheCalls   atomic.Int32
+	cacheErr     error
 	resetEntered chan struct{}
 	releaseReset chan struct{}
 	enterOnce    sync.Once
@@ -184,12 +253,14 @@ type autoResetTestQuota struct {
 }
 
 func (q *autoResetTestQuota) QueryUsage(context.Context, int64) (*OpenAIQuotaUsage, error) {
+	q.queryCalls.Add(1)
 	copy := *q.usage
 	return &copy, nil
 }
 
 func (q *autoResetTestQuota) CacheResetCreditsSnapshot(context.Context, int64, *OpenAIRateLimitResetCredits) error {
-	return nil
+	q.cacheCalls.Add(1)
+	return q.cacheErr
 }
 
 func (q *autoResetTestQuota) CachePostResetSnapshot(context.Context, int64, *OpenAIQuotaUsage) error {
@@ -333,4 +404,518 @@ func TestOpenAIQuotaAutoResetService_TimeoutRetryReusesRequestBody(t *testing.T)
 	quota.mu.Unlock()
 	require.Len(t, args, 2)
 	require.Equal(t, args[0], args[1], "超时重试必须复用相同 credit_id 与 redeem_request_id")
+}
+
+func TestOpenAIQuotaAutoResetService_ExpiryTrigger(t *testing.T) {
+	now := time.Now().UTC()
+	in := func(d time.Duration) string { return now.Add(d).Format(time.RFC3339) }
+	tests := []struct {
+		name        string
+		lead        time.Duration
+		expirations []string
+		want        bool
+	}{
+		{name: "未配置提前量不触发", lead: 0, expirations: []string{in(time.Minute)}, want: false},
+		{name: "窗内触发", lead: time.Hour, expirations: []string{in(48 * time.Hour), in(30 * time.Minute)}, want: true},
+		{name: "窗外不触发", lead: time.Hour, expirations: []string{in(90 * time.Minute)}, want: false},
+		{name: "已过期不触发", lead: time.Hour, expirations: []string{in(-time.Minute)}, want: false},
+		{name: "无法解析跳过", lead: time.Hour, expirations: []string{"bad", ""}, want: false},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			require.Equal(t, test.want, openAIAutoResetCreditExpiring(test.expirations, test.lead, now))
+		})
+	}
+
+	service := &OpenAIQuotaAutoResetService{}
+	account := &Account{Extra: map[string]any{
+		"auto_pause_5h_disabled": true,
+		"auto_pause_7d_disabled": true,
+	}}
+	config := OpenAIAutoResetCreditConfig{Enabled: true, Threshold5h: 1, Threshold7d: 1, ExpiryLead: time.Hour}
+	assessment := service.buildAssessment(account, config, 0.1, 0.1, true)
+	require.True(t, assessment.resetReached)
+	require.Equal(t, "expiry", assessment.triggerWindow)
+	assessment = service.buildAssessment(account, config, 1, 0.1, true)
+	require.Equal(t, "5h+expiry", assessment.triggerWindow)
+}
+
+func TestOpenAIAutoResetEarliestExpiryDelay(t *testing.T) {
+	now := time.Now().UTC().Truncate(time.Second)
+	in := func(d time.Duration) string { return now.Add(d).Format(time.RFC3339) }
+	_, ok := openAIAutoResetEarliestExpiryDelay([]string{in(time.Hour)}, 0, now)
+	require.False(t, ok, "未配置提前量不排定时器")
+	_, ok = openAIAutoResetEarliestExpiryDelay([]string{in(-time.Minute), "bad"}, time.Hour, now)
+	require.False(t, ok, "没有未到期的卡不排定时器")
+	delay, ok := openAIAutoResetEarliestExpiryDelay([]string{in(72 * time.Hour), in(26 * time.Hour)}, 24*time.Hour, now)
+	require.True(t, ok)
+	require.Equal(t, 2*time.Hour, delay.Round(time.Second), "以最早到期的卡计算")
+}
+
+func newAutoResetTestService(repo AccountRepository, quota openAIAutoResetQuota) *OpenAIQuotaAutoResetService {
+	config := DefaultIdempotencyConfig()
+	config.ObserveOnly = false
+	config.ProcessingTimeout = time.Second
+	return NewOpenAIQuotaAutoResetService(repo, quota, autoResetTestRecoverer{}, NewIdempotencyCoordinator(newInMemoryIdempotencyRepo(), config), nil, nil, nil)
+}
+
+func newAutoResetLowUsageAccount(now time.Time, extra map[string]any) *Account {
+	account := &Account{
+		ID: 7, Platform: PlatformOpenAI, Type: AccountTypeOAuth,
+		Status: StatusActive, Schedulable: true,
+		Extra: map[string]any{
+			OpenAIAutoResetCreditEnabledExtraKey:     true,
+			OpenAIAutoResetCredit5hThresholdExtraKey: 1.0,
+			OpenAIAutoResetCredit7dThresholdExtraKey: 1.0,
+			"codex_5h_used_percent":                  10.0,
+			"codex_7d_used_percent":                  10.0,
+			"codex_usage_updated_at":                 now.Format(time.RFC3339),
+			"codex_5h_reset_at":                      now.Add(time.Hour).Format(time.RFC3339),
+			"codex_7d_reset_at":                      now.Add(24 * time.Hour).Format(time.RFC3339),
+		},
+	}
+	for key, value := range extra {
+		account.Extra[key] = value
+	}
+	return account
+}
+
+func newAutoResetLowUsage(now time.Time, creditID string, expiresAt time.Time) *OpenAIQuotaUsage {
+	expiry := expiresAt.Format(time.RFC3339)
+	return &OpenAIQuotaUsage{
+		FetchedAt: now.Unix(),
+		RateLimit: &OpenAIRateLimit{
+			PrimaryWindow:   &OpenAIRateLimitWindow{UsedPercent: 10, LimitWindowSeconds: 5 * 60 * 60, ResetAfterSeconds: 3600, ResetAt: now.Add(time.Hour).Unix()},
+			SecondaryWindow: &OpenAIRateLimitWindow{UsedPercent: 10, LimitWindowSeconds: 7 * 24 * 60 * 60, ResetAfterSeconds: 86400, ResetAt: now.Add(24 * time.Hour).Unix()},
+		},
+		RateLimitResetCredits: &OpenAIRateLimitResetCredits{
+			AvailableCount: 1,
+			Credits:        []OpenAIRateLimitResetCreditDetail{{ExpiresAt: expiry}},
+		},
+		autoResetCandidates: []openAIAutoResetCreditCandidate{{ID: creditID, ExpiresAt: expiry}},
+		upstreamTime:        now,
+	}
+}
+
+func newAutoResetExpiringCardAccount(now time.Time, extra map[string]any) *Account {
+	merged := map[string]any{
+		OpenAIAutoResetCreditExpiryEnabledExtraKey:     true,
+		OpenAIAutoResetCreditExpiryLeadMinutesExtraKey: 1440.0,
+		openaiQuotaResetCreditsSyncedAtKey:             now.Format(time.RFC3339),
+		openaiQuotaResetCreditsKey: map[string]any{
+			"available_count": 1,
+			"credits":         []any{map[string]any{"expires_at": now.Add(2 * time.Hour).Format(time.RFC3339)}},
+		},
+	}
+	for key, value := range extra {
+		merged[key] = value
+	}
+	return newAutoResetLowUsageAccount(now, merged)
+}
+
+func TestOpenAIQuotaAutoResetService_ExpiringCreditConsumedAfterLiveCheck(t *testing.T) {
+	now := time.Now().UTC()
+	cachedExpiry := now.Add(2 * time.Hour).Format(time.RFC3339)
+	account := newAutoResetLowUsageAccount(now, map[string]any{
+		OpenAIAutoResetCreditExpiryEnabledExtraKey:     true,
+		OpenAIAutoResetCreditExpiryLeadMinutesExtraKey: 1440.0,
+		openaiQuotaResetCreditsSyncedAtKey:             now.Format(time.RFC3339),
+		openaiQuotaResetCreditsKey: map[string]any{
+			"available_count": 1,
+			"credits":         []any{map[string]any{"expires_at": cachedExpiry}},
+		},
+	})
+	repo := &autoResetTestAccountRepo{account: account}
+	quota := &autoResetTestQuota{usage: newAutoResetLowUsage(now, "credit-expiring", now.Add(2*time.Hour))}
+
+	require.NoError(t, newAutoResetTestService(repo, quota).evaluateAccount(context.Background(), account.ID))
+
+	require.Equal(t, int32(1), quota.resetCalls.Load())
+	require.Equal(t, "credit-expiring", quota.resetArgs[0][0])
+	state := openAIAutoResetStateFromExtra(repo.account.Extra)
+	require.NotNil(t, state)
+	require.Equal(t, OpenAIAutoResetStatusSuccess, state.Status)
+	require.Equal(t, "expiry", state.TriggerWindow)
+}
+
+func TestOpenAIQuotaAutoResetService_ExpiringCreditGoneOnLiveCheckIsNotConsumed(t *testing.T) {
+	now := time.Now().UTC()
+	account := newAutoResetLowUsageAccount(now, map[string]any{
+		OpenAIAutoResetCreditExpiryEnabledExtraKey:     true,
+		OpenAIAutoResetCreditExpiryLeadMinutesExtraKey: 1440.0,
+		openaiQuotaResetCreditsSyncedAtKey:             now.Format(time.RFC3339),
+		openaiQuotaResetCreditsKey: map[string]any{
+			"available_count": 1,
+			"credits":         []any{map[string]any{"expires_at": now.Add(2 * time.Hour).Format(time.RFC3339)}},
+		},
+	})
+	repo := &autoResetTestAccountRepo{account: account}
+	quota := &autoResetTestQuota{usage: newAutoResetLowUsage(now, "credit-fresh", now.Add(10*24*time.Hour))}
+	service := newAutoResetTestService(repo, quota)
+	t.Cleanup(service.Stop)
+
+	require.NoError(t, service.evaluateAccount(context.Background(), account.ID))
+
+	require.Equal(t, int32(0), quota.resetCalls.Load())
+	require.Equal(t, int32(1), quota.queryCalls.Load())
+	state := openAIAutoResetStateFromExtra(repo.account.Extra)
+	require.NotNil(t, state)
+	require.Equal(t, OpenAIAutoResetStatusAvailable, state.Status)
+	require.Equal(t, 1, state.AvailableCount)
+	_, armed := service.expiryTimers.Load(account.ID)
+	require.True(t, armed, "卡未进窗时按实时明细排定时器")
+}
+
+func TestOpenAIQuotaAutoResetService_RefreshesCreditSnapshotDaily(t *testing.T) {
+	now := time.Now().UTC()
+	account := newAutoResetLowUsageAccount(now, nil)
+	repo := &autoResetTestAccountRepo{account: account}
+	quota := &autoResetTestQuota{usage: newAutoResetLowUsage(now, "credit-id", now.Add(10*24*time.Hour))}
+	service := newAutoResetTestService(repo, quota)
+
+	require.NoError(t, service.evaluateAccount(context.Background(), account.ID))
+	require.Equal(t, int32(1), quota.queryCalls.Load(), "进程内首次评估必须取一次卡信息")
+	require.Equal(t, int32(1), quota.cacheCalls.Load())
+	require.Equal(t, int32(0), quota.resetCalls.Load())
+
+	require.NoError(t, service.evaluateAccount(context.Background(), account.ID))
+	require.Equal(t, int32(1), quota.queryCalls.Load(), "24 小时内不重复取")
+
+	service.fetchStates.Store(account.ID, openAIAutoResetFetchState{nextAt: time.Now().Add(-time.Second), fetched: true})
+	require.NoError(t, service.evaluateAccount(context.Background(), account.ID))
+	require.Equal(t, int32(2), quota.queryCalls.Load(), "到期后再取一次")
+
+	service.fetchStates.Store(account.ID, openAIAutoResetFetchState{nextAt: time.Now().Add(time.Hour)})
+	repo.mu.Lock()
+	repo.account.Extra["codex_usage_updated_at"] = now.Add(-time.Hour).Format(time.RFC3339)
+	repo.mu.Unlock()
+	require.NoError(t, service.evaluateAccount(context.Background(), account.ID))
+	require.Equal(t, int32(2), quota.queryCalls.Load(), "启动错峰未轮到前，用量快照过期也不提前实查")
+}
+
+func TestOpenAIQuotaAutoResetService_IncompleteCreditDetailsReportPreciseCode(t *testing.T) {
+	now := time.Now().UTC()
+	account := newAutoResetLowUsageAccount(now, nil)
+	repo := &autoResetTestAccountRepo{account: account}
+	quota := &autoResetTestQuota{
+		usage:    newAutoResetLowUsage(now, "credit-id", now.Add(10*24*time.Hour)),
+		cacheErr: errOpenAIQuotaResetCreditsRefreshFailed,
+	}
+
+	service := newAutoResetTestService(repo, quota)
+	_ = service.evaluateAccount(context.Background(), account.ID)
+
+	state := openAIAutoResetStateFromExtra(repo.account.Extra)
+	require.NotNil(t, state)
+	require.Equal(t, OpenAIAutoResetStatusFailed, state.Status)
+	require.Equal(t, "RESET_CREDIT_DETAILS_INCOMPLETE", state.ErrorCode)
+
+	_ = service.evaluateAccount(context.Background(), account.ID)
+	require.Equal(t, int32(1), quota.queryCalls.Load(), "已取过一次，24 小时内不因明细缺失重取")
+}
+
+func TestOpenAIQuotaAutoResetService_ExpiryUsesUpstreamClock(t *testing.T) {
+	now := time.Now().UTC()
+	account := newAutoResetExpiringCardAccount(now, nil)
+	repo := &autoResetTestAccountRepo{account: account}
+	usage := newAutoResetLowUsage(now, "credit-expiring", now.Add(2*time.Hour))
+	usage.upstreamTime = now.Add(-30 * time.Hour)
+	quota := &autoResetTestQuota{usage: usage}
+
+	service := newAutoResetTestService(repo, quota)
+	t.Cleanup(service.Stop)
+
+	require.NoError(t, service.evaluateAccount(context.Background(), account.ID))
+
+	require.Equal(t, int32(0), quota.resetCalls.Load(), "按上游时间该卡还剩 32 小时，不在提前窗内")
+	state := openAIAutoResetStateFromExtra(repo.account.Extra)
+	require.NotNil(t, state)
+	require.Equal(t, OpenAIAutoResetStatusAvailable, state.Status)
+	_, armed := service.expiryTimers.Load(account.ID)
+	require.True(t, armed)
+}
+
+func TestOpenAIQuotaAutoResetService_LocalClockDoesNotAffectExpiry(t *testing.T) {
+	now := time.Now().UTC()
+	account := newAutoResetExpiringCardAccount(now, nil)
+	repo := &autoResetTestAccountRepo{account: account}
+	usage := newAutoResetLowUsage(now, "credit-expiring", now.Add(2*time.Hour))
+	usage.upstreamTime = now.Add(10 * time.Minute)
+	quota := &autoResetTestQuota{usage: usage}
+
+	require.NoError(t, newAutoResetTestService(repo, quota).evaluateAccount(context.Background(), account.ID))
+
+	require.Equal(t, int32(1), quota.resetCalls.Load(), "本机时钟偏差只记日志，不影响按上游时间的判定")
+	state := openAIAutoResetStateFromExtra(repo.account.Extra)
+	require.NotNil(t, state)
+	require.Equal(t, OpenAIAutoResetStatusSuccess, state.Status)
+}
+
+func TestOpenAIQuotaAutoResetService_UpstreamTimeMissingDoesNotConsume(t *testing.T) {
+	now := time.Now().UTC()
+	account := newAutoResetExpiringCardAccount(now, nil)
+	repo := &autoResetTestAccountRepo{account: account}
+	usage := newAutoResetLowUsage(now, "credit-expiring", now.Add(2*time.Hour))
+	usage.upstreamTime = time.Time{}
+	quota := &autoResetTestQuota{usage: usage}
+	service := newAutoResetTestService(repo, quota)
+	t.Cleanup(service.Stop)
+
+	require.NoError(t, service.evaluateAccount(context.Background(), account.ID))
+
+	require.Equal(t, int32(0), quota.resetCalls.Load())
+	state := openAIAutoResetStateFromExtra(repo.account.Extra)
+	require.NotNil(t, state)
+	require.Equal(t, OpenAIAutoResetStatusAvailable, state.Status)
+	_, armed := service.expiryTimers.Load(account.ID)
+	require.False(t, armed, "没有上游时间不排定时器")
+	fetch, ok := service.fetchStates.Load(account.ID)
+	require.True(t, ok)
+	fetchState, _ := fetch.(openAIAutoResetFetchState)
+	require.LessOrEqual(t, time.Until(fetchState.nextAt), openAIAutoResetSnapshotTTL, "拿不到上游时间时按 10 分钟节奏继续取")
+
+	usage.upstreamTime = now
+	service.fetchStates.Store(account.ID, openAIAutoResetFetchState{nextAt: time.Now().Add(-time.Second), fetched: true})
+	require.NoError(t, service.evaluateAccount(context.Background(), account.ID))
+	require.Equal(t, int32(1), quota.resetCalls.Load(), "拿到上游时间后按实时明细判定并用卡")
+}
+
+func TestOpenAIQuotaAutoResetService_ExpiryTimerTriggersFinalCheck(t *testing.T) {
+	now := time.Now().UTC().Truncate(time.Second)
+	account := newAutoResetLowUsageAccount(now, map[string]any{OpenAIAutoResetCreditExpiryEnabledExtraKey: true, OpenAIAutoResetCreditExpiryLeadMinutesExtraKey: 1440.0})
+	repo := &autoResetTestAccountRepo{account: account}
+	expiresAt := now.Add(24*time.Hour + time.Second)
+	quota := &autoResetTestQuota{usage: newAutoResetLowUsage(now, "credit-expiring", expiresAt)}
+	service := newAutoResetTestService(repo, quota)
+	t.Cleanup(service.Stop)
+
+	require.NoError(t, service.evaluateAccount(context.Background(), account.ID))
+	require.Equal(t, int32(0), quota.resetCalls.Load(), "还差 1 秒进窗，只排定时器")
+	_, armed := service.expiryTimers.Load(account.ID)
+	require.True(t, armed)
+
+	require.Eventually(t, func() bool {
+		_, due := service.expiryDue.Load(account.ID)
+		return due
+	}, 3*time.Second, 10*time.Millisecond, "定时器到点应打上到期待核标记")
+
+	later := newAutoResetLowUsage(now, "credit-expiring", expiresAt)
+	later.upstreamTime = now.Add(2 * time.Second)
+	quota.usage = later
+	require.NoError(t, service.evaluateAccount(context.Background(), account.ID))
+	require.Equal(t, int32(1), quota.resetCalls.Load(), "最终校验通过后用卡")
+	require.Equal(t, "credit-expiring", quota.resetArgs[0][0])
+}
+
+func TestOpenAIQuotaAutoResetService_DisablingDisarmsExpiryTimer(t *testing.T) {
+	now := time.Now().UTC()
+	account := newAutoResetLowUsageAccount(now, map[string]any{OpenAIAutoResetCreditExpiryEnabledExtraKey: true, OpenAIAutoResetCreditExpiryLeadMinutesExtraKey: 1440.0})
+	repo := &autoResetTestAccountRepo{account: account}
+	quota := &autoResetTestQuota{usage: newAutoResetLowUsage(now, "credit-id", now.Add(10*24*time.Hour))}
+	service := newAutoResetTestService(repo, quota)
+	t.Cleanup(service.Stop)
+
+	require.NoError(t, service.evaluateAccount(context.Background(), account.ID))
+	_, armed := service.expiryTimers.Load(account.ID)
+	require.True(t, armed)
+	require.NotNil(t, repo.account.Extra[OpenAIAutoResetCreditExpiryAtExtraKey])
+
+	repo.mu.Lock()
+	repo.account.Extra[OpenAIAutoResetCreditExpiryEnabledExtraKey] = false
+	repo.mu.Unlock()
+	require.NoError(t, service.evaluateAccount(context.Background(), account.ID))
+	_, armed = service.expiryTimers.Load(account.ID)
+	require.False(t, armed, "关闭到期开关后撤销定时器，即使阈值用卡仍开着")
+	require.Nil(t, repo.account.Extra[OpenAIAutoResetCreditExpiryAtExtraKey], "撤销定时器后清空计划触发时刻")
+}
+
+type autoResetTestListRepo struct {
+	AccountRepository
+	accounts []Account
+}
+
+func (r *autoResetTestListRepo) ListWithFilters(context.Context, pagination.PaginationParams, string, string, string, string, int64, string) ([]Account, *pagination.PaginationResult, error) {
+	return r.accounts, &pagination.PaginationResult{Pages: 1}, nil
+}
+
+func TestOpenAIQuotaAutoResetService_StaggersInitialFetch(t *testing.T) {
+	previous := openAIAutoResetInitialFetchInterval
+	openAIAutoResetInitialFetchInterval = 10 * time.Millisecond
+	t.Cleanup(func() { openAIAutoResetInitialFetchInterval = previous })
+
+	mk := func(id int64, schedulable bool, extra map[string]any) Account {
+		return Account{ID: id, Platform: PlatformOpenAI, Type: AccountTypeOAuth, Schedulable: schedulable, Extra: extra}
+	}
+	thresholdOn := map[string]any{OpenAIAutoResetCreditEnabledExtraKey: true}
+	expiryOn := map[string]any{OpenAIAutoResetCreditExpiryEnabledExtraKey: true}
+	repo := &autoResetTestListRepo{accounts: []Account{mk(1, true, thresholdOn), mk(2, true, thresholdOn), mk(3, true, expiryOn), mk(4, false, thresholdOn), mk(5, true, nil)}}
+	service := NewOpenAIQuotaAutoResetService(repo, &autoResetTestQuota{}, autoResetTestRecoverer{}, nil, nil, nil, nil)
+	t.Cleanup(service.Stop)
+
+	service.scheduleInitialFetch(context.Background())
+
+	var order []int64
+	for len(order) < 3 {
+		select {
+		case id := <-service.queue:
+			order = append(order, id)
+		case <-time.After(time.Second):
+			t.Fatalf("只收到 %d 个启动取卡通知", len(order))
+		}
+	}
+	require.ElementsMatch(t, []int64{1, 2, 3}, order, "阈值或到期任一开启的账号参与启动错峰")
+	for i := 1; i < len(order); i++ {
+		prev, _ := service.fetchStates.Load(order[i-1])
+		next, _ := service.fetchStates.Load(order[i])
+		prevState, _ := prev.(openAIAutoResetFetchState)
+		nextState, _ := next.(openAIAutoResetFetchState)
+		require.False(t, nextState.nextAt.Before(prevState.nextAt), "通知顺序应与错峰计划一致")
+	}
+	select {
+	case id := <-service.queue:
+		t.Fatalf("未开启或不可调度的账号 %d 不应被取卡", id)
+	case <-time.After(50 * time.Millisecond):
+	}
+}
+
+func TestOpenAIQuotaAutoResetService_SchedulerLeaseGatesScheduledFetch(t *testing.T) {
+	now := time.Now().UTC()
+	lock := &fakeLeaderLockCache{}
+	newInstance := func(quota *autoResetTestQuota) (*OpenAIQuotaAutoResetService, *autoResetTestAccountRepo) {
+		repo := &autoResetTestAccountRepo{account: newAutoResetLowUsageAccount(now, map[string]any{OpenAIAutoResetCreditExpiryEnabledExtraKey: true, OpenAIAutoResetCreditExpiryLeadMinutesExtraKey: 1440.0})}
+		config := DefaultIdempotencyConfig()
+		config.ObserveOnly = false
+		service := NewOpenAIQuotaAutoResetService(repo, quota, autoResetTestRecoverer{}, NewIdempotencyCoordinator(newInMemoryIdempotencyRepo(), config), nil, nil, lock)
+		t.Cleanup(service.Stop)
+		return service, repo
+	}
+	quotaA := &autoResetTestQuota{usage: newAutoResetLowUsage(now, "credit-a", now.Add(10*24*time.Hour))}
+	quotaB := &autoResetTestQuota{usage: newAutoResetLowUsage(now, "credit-b", now.Add(10*24*time.Hour))}
+	leader, _ := newInstance(quotaA)
+	follower, followerRepo := newInstance(quotaB)
+
+	leader.refreshSchedulerLease(context.Background())
+	follower.refreshSchedulerLease(context.Background())
+	require.True(t, leader.isSchedulerLeader())
+	require.False(t, follower.isSchedulerLeader())
+
+	require.NoError(t, follower.evaluateAccount(context.Background(), 7))
+	require.Equal(t, int32(0), quotaB.queryCalls.Load(), "非领导实例不做计划内取卡")
+	_, armed := follower.expiryTimers.Load(int64(7))
+	require.False(t, armed)
+
+	require.NoError(t, leader.evaluateAccount(context.Background(), 7))
+	require.Equal(t, int32(1), quotaA.queryCalls.Load())
+	_, armed = leader.expiryTimers.Load(int64(7))
+	require.True(t, armed)
+
+	followerRepo.mu.Lock()
+	followerRepo.account.Extra["codex_5h_used_percent"] = 100.0
+	followerRepo.mu.Unlock()
+	_ = follower.evaluateAccount(context.Background(), 7)
+	require.Equal(t, int32(1), quotaB.queryCalls.Load(), "用量阈值触发不受领导租约限制")
+	_, armed = follower.expiryTimers.Load(int64(7))
+	require.False(t, armed, "非领导实例即使实查过也不设定时器")
+
+	lock.mu.Lock()
+	lock.owners[openAIAutoResetSchedulerLockKey] = "someone-else"
+	lock.mu.Unlock()
+	leader.refreshSchedulerLease(context.Background())
+	require.False(t, leader.isSchedulerLeader())
+	_, armed = leader.expiryTimers.Load(int64(7))
+	require.False(t, armed, "失去租约后撤销全部定时器")
+
+	lock.mu.Lock()
+	delete(lock.owners, openAIAutoResetSchedulerLockKey)
+	lock.mu.Unlock()
+	follower.refreshSchedulerLease(context.Background())
+	require.True(t, follower.isSchedulerLeader(), "租约空出后另一实例接任")
+	_, scheduled := follower.fetchStates.Load(int64(7))
+	require.True(t, scheduled, "接任时重建错峰取卡计划")
+}
+
+func TestOpenAIQuotaAutoResetService_WithoutLockEveryInstanceSchedules(t *testing.T) {
+	service := NewOpenAIQuotaAutoResetService(&autoResetTestAccountRepo{account: &Account{}}, &autoResetTestQuota{}, autoResetTestRecoverer{}, nil, nil, nil, nil)
+	t.Cleanup(service.Stop)
+	require.True(t, service.isSchedulerLeader(), "没有 Redis 时退化为单实例")
+}
+
+func TestOpenAIQuotaAutoResetService_ExpiryOnlyUsesCardAndIgnoresThreshold(t *testing.T) {
+	now := time.Now().UTC()
+	account := newAutoResetExpiringCardAccount(now, map[string]any{
+		OpenAIAutoResetCreditEnabledExtraKey: false,
+		"codex_5h_used_percent":              100.0,
+	})
+	repo := &autoResetTestAccountRepo{account: account}
+	usage := newAutoResetLowUsage(now, "credit-expiring", now.Add(2*time.Hour))
+	usage.RateLimit.PrimaryWindow.UsedPercent = 100
+	quota := &autoResetTestQuota{usage: usage}
+	service := newAutoResetTestService(repo, quota)
+	t.Cleanup(service.Stop)
+
+	require.NoError(t, service.evaluateAccount(context.Background(), account.ID))
+
+	require.Equal(t, int32(1), quota.resetCalls.Load(), "只开到期开关也能按到期用卡")
+	state := openAIAutoResetStateFromExtra(repo.account.Extra)
+	require.NotNil(t, state)
+	require.Equal(t, "expiry", state.TriggerWindow, "阈值开关关闭时 100% 用量不参与触发")
+}
+
+func TestOpenAIQuotaAutoResetService_ExpiryOnlyWithoutExpiringCardDoesNotConsume(t *testing.T) {
+	now := time.Now().UTC()
+	account := newAutoResetLowUsageAccount(now, map[string]any{
+		OpenAIAutoResetCreditExpiryEnabledExtraKey:     true,
+		OpenAIAutoResetCreditExpiryLeadMinutesExtraKey: 1440.0,
+		OpenAIAutoResetCreditEnabledExtraKey:           false,
+		"codex_5h_used_percent":                        100.0,
+	})
+	repo := &autoResetTestAccountRepo{account: account}
+	usage := newAutoResetLowUsage(now, "credit-far", now.Add(10*24*time.Hour))
+	usage.RateLimit.PrimaryWindow.UsedPercent = 100
+	quota := &autoResetTestQuota{usage: usage}
+	service := newAutoResetTestService(repo, quota)
+	t.Cleanup(service.Stop)
+
+	require.NoError(t, service.evaluateAccount(context.Background(), account.ID))
+
+	require.Equal(t, int32(0), quota.resetCalls.Load(), "阈值开关关闭时即使 100% 也不用卡")
+	_, armed := service.expiryTimers.Load(account.ID)
+	require.True(t, armed, "到期开关开启时按最早到期的卡排定时器")
+	wantFireAt := now.Add(10 * 24 * time.Hour).Truncate(time.Second).Add(-24 * time.Hour).UTC().Format(time.RFC3339)
+	require.Equal(t, wantFireAt, repo.account.Extra[OpenAIAutoResetCreditExpiryAtExtraKey], "计划触发时刻写入 extra 供列表显示")
+}
+
+func TestOpenAIQuotaAutoResetService_ConfigChangeTriggersRefetch(t *testing.T) {
+	now := time.Now().UTC()
+	account := newAutoResetLowUsageAccount(now, nil)
+	repo := &autoResetTestAccountRepo{account: account}
+	quota := &autoResetTestQuota{usage: newAutoResetLowUsage(now, "credit-id", now.Add(10*24*time.Hour))}
+	service := newAutoResetTestService(repo, quota)
+	t.Cleanup(service.Stop)
+
+	require.NoError(t, service.evaluateAccount(context.Background(), account.ID))
+	require.Equal(t, int32(1), quota.queryCalls.Load())
+	_, armed := service.expiryTimers.Load(account.ID)
+	require.False(t, armed, "只开阈值用卡时没有定时器")
+
+	repo.mu.Lock()
+	repo.account.Extra[OpenAIAutoResetCreditExpiryEnabledExtraKey] = true
+	repo.account.Extra[OpenAIAutoResetCreditExpiryLeadMinutesExtraKey] = 1440.0
+	repo.mu.Unlock()
+	require.NoError(t, service.evaluateAccount(context.Background(), account.ID))
+	require.Equal(t, int32(2), quota.queryCalls.Load(), "开启到期用卡后立即重取并排定时器")
+	_, armed = service.expiryTimers.Load(account.ID)
+	require.True(t, armed)
+
+	require.NoError(t, service.evaluateAccount(context.Background(), account.ID))
+	require.Equal(t, int32(2), quota.queryCalls.Load(), "配置不变时 24 小时内不重复取")
+
+	repo.mu.Lock()
+	repo.account.Extra[OpenAIAutoResetCreditEnabledExtraKey] = false
+	repo.account.Extra[OpenAIAutoResetCreditExpiryEnabledExtraKey] = false
+	repo.mu.Unlock()
+	require.NoError(t, service.evaluateAccount(context.Background(), account.ID))
+	require.Equal(t, int32(2), quota.queryCalls.Load(), "全部关闭后不再取信息")
+	_, armed = service.expiryTimers.Load(account.ID)
+	require.False(t, armed, "全部关闭后撤销定时器")
 }

@@ -22,6 +22,13 @@ end
 return 0
 `)
 
+var leaderLockExtendScript = redis.NewScript(`
+if redis.call("GET", KEYS[1]) == ARGV[1] then
+  return redis.call("PEXPIRE", KEYS[1], ARGV[2])
+end
+return 0
+`)
+
 type leaderLockCache struct {
 	rdb *redis.Client
 }
@@ -39,4 +46,12 @@ func (c *leaderLockCache) TryAcquireLeaderLock(ctx context.Context, key, owner s
 
 func (c *leaderLockCache) ReleaseLeaderLock(ctx context.Context, key, owner string) error {
 	return leaderLockReleaseScript.Run(ctx, c.rdb, []string{leaderLockKeyPrefix + key}, owner).Err()
+}
+
+func (c *leaderLockCache) ExtendLeaderLock(ctx context.Context, key, owner string, ttl time.Duration) (bool, error) {
+	extended, err := leaderLockExtendScript.Run(ctx, c.rdb, []string{leaderLockKeyPrefix + key}, owner, ttl.Milliseconds()).Int()
+	if err != nil {
+		return false, err
+	}
+	return extended == 1, nil
 }

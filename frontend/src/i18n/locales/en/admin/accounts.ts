@@ -884,7 +884,12 @@ export default {
 	    threshold5h: '5h auto-reset threshold (%)',
 	    threshold7d: '7d auto-reset threshold (%)',
 	    thresholdHint: 'Each window is evaluated independently. Enter 0.1–100; both default to 100.',
-	    thresholdInvalid: 'Automatic reset-credit thresholds must be between 0.1% and 100%.'
+	    thresholdInvalid: 'Automatic reset-credit thresholds must be between 0.1% and 100%.',
+	    expiryTitle: 'Use reset credits before they expire',
+	    expiryHint: 'Independent of the threshold switch above. Credit details are fetched immediately when this is enabled or changed and once a day afterwards, and a timer is armed for the earliest-expiring credit; when it fires the upstream is re-checked and the credit is used regardless of usage only if it is still there with no more than N minutes left. All timing uses the upstream clock, never the local one.',
+	    expiryLeadMinutes: 'Use unconditionally N minutes before expiry',
+	    expiryLeadHint: 'Defaults to 10 minutes, which is also the minimum allowed.',
+	    expiryLeadInvalid: 'The expiry lead must be a whole number of minutes between 10 and 527040.'
 	  },
       // Quota control (Anthropic OAuth/SetupToken only)
       quotaControl: {
@@ -1577,6 +1582,8 @@ export default {
         expandExpirations: 'Expand the other {count} reset credit expiration(s)',
         collapseExpirations: 'Collapse reset credit expirations',
         expirationDetails: 'Reset credit expiration details',
+        expiryResetAt: 'Auto-reset at {time}',
+        expiryResetAtFull: 'Scheduled expiry auto-reset: {time}',
         noCreditsAvailable: 'No reset credits available',
         resetSuccess: 'Reset {windows} window(s); credits and account state updated',
         resetCacheRefreshFailed: 'The window was reset and account state recovered, but the reset-credit count could not be read back. Query it again.',

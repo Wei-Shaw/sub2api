@@ -37,6 +37,14 @@ const (
 	openaiQuotaResetCreditsKey  = "codex_reset_credit_snapshot"
 )
 
+const openaiQuotaResetCreditsSyncedAtKey = "codex_reset_credit_snapshot_at"
+
+var errOpenAIQuotaResetCreditsRefreshFailed = infraerrors.New(
+	http.StatusBadGateway,
+	"OPENAI_QUOTA_RESET_CREDITS_REFRESH_FAILED",
+	"failed to refresh reset-credit expiration details; cached data was preserved",
+)
+
 // OpenAIRateLimitWindow describes a single rate-limit window returned by
 // /wham/usage. The upstream returns an explicit `null` window when the slot
 // is unused, so consumers should treat a nil pointer as "no data".
@@ -88,6 +96,7 @@ type OpenAIQuotaUsage struct {
 	RateLimitResetCredits *OpenAIRateLimitResetCredits `json:"rate_limit_reset_credits,omitempty"`
 	FetchedAt             int64                        `json:"fetched_at"`
 	autoResetCandidates   []openAIAutoResetCreditCandidate
+	upstreamTime          time.Time
 }
 
 // OpenAIQuotaResetCredit captures the redeemed credit metadata returned by the
@@ -189,6 +198,9 @@ func (s *OpenAIQuotaService) QueryUsage(ctx context.Context, accountID int64) (*
 			slog.Warn("openai_quota_query_failed", "account_id", accountID, "status", status, "body", body)
 			return nil, infraerrors.Newf(mapUpstreamStatus(status), "OPENAI_QUOTA_UPSTREAM_ERROR", "upstream returned %d: %s", status, body)
 		}
+		if parsed, err := http.ParseTime(resp.Header.Get("Date")); err == nil {
+			payload.upstreamTime = parsed
+		}
 		break
 	}
 
@@ -243,16 +255,13 @@ func (s *OpenAIQuotaService) CachePostResetSnapshot(ctx context.Context, account
 
 func (s *OpenAIQuotaService) cacheResetCreditsSnapshot(ctx context.Context, accountID int64, credits *OpenAIRateLimitResetCredits, updates map[string]any) error {
 	if credits == nil || (credits.AvailableCount > 0 && len(credits.Credits) == 0) {
-		return infraerrors.New(
-			http.StatusBadGateway,
-			"OPENAI_QUOTA_RESET_CREDITS_REFRESH_FAILED",
-			"failed to refresh reset-credit expiration details; cached data was preserved",
-		)
+		return errOpenAIQuotaResetCreditsRefreshFailed
 	}
 	if updates == nil {
-		updates = make(map[string]any, 1)
+		updates = make(map[string]any, 2)
 	}
 	updates[openaiQuotaResetCreditsKey] = credits
+	updates[openaiQuotaResetCreditsSyncedAtKey] = time.Now().UTC().Format(time.RFC3339)
 	if err := s.accountRepo.UpdateExtra(ctx, accountID, updates); err != nil {
 		return infraerrors.New(
 			http.StatusInternalServerError,
