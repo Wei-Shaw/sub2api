@@ -715,7 +715,7 @@ func (s *GatewayService) SelectAccountWithLoadAwareness(ctx context.Context, gro
 
 	loadMap, err := s.concurrencyService.GetAccountsLoadBatch(ctx, accountLoads)
 	if err != nil {
-		if result, ok, legacyErr := s.tryAcquireByLegacyOrder(ctx, candidates, groupID, sessionHash, preferOAuth); legacyErr != nil {
+		if result, ok, legacyErr := s.tryAcquireByLegacyOrder(ctx, candidates, groupID, sessionHash, preferOAuth, s.highAvailabilityEnabledForGroup(ctx, nil, groupID)); legacyErr != nil {
 			return nil, legacyErr
 		} else if ok {
 			return result, nil
@@ -747,6 +747,9 @@ func (s *GatewayService) SelectAccountWithLoadAwareness(ctx context.Context, gro
 			candidates = filterByMinLoadRate(candidates)
 			// 4. LRU 选择最久未用的账号
 			selected := selectByLRU(candidates, preferOAuth)
+			if s.highAvailabilityEnabledForGroup(ctx, nil, groupID) {
+				selected = selectByHealth(candidates, preferOAuth)
+			}
 			if selected == nil {
 				break
 			}
@@ -777,7 +780,11 @@ func (s *GatewayService) SelectAccountWithLoadAwareness(ctx context.Context, gro
 	}
 
 	// ============ Layer 3: 兜底排队 ============
-	s.sortCandidatesForFallback(candidates, preferOAuth, cfg.FallbackSelectionMode)
+	if s.highAvailabilityEnabledForGroup(ctx, nil, groupID) {
+		s.sortCandidatesByHealth(candidates, preferOAuth)
+	} else {
+		s.sortCandidatesForFallback(candidates, preferOAuth, cfg.FallbackSelectionMode)
+	}
 	for _, acc := range candidates {
 		// 会话数量限制检查（等待计划也需要占用会话配额）
 		if !s.checkAndRegisterSession(ctx, acc, sessionHash) {
@@ -793,9 +800,13 @@ func (s *GatewayService) SelectAccountWithLoadAwareness(ctx context.Context, gro
 	return nil, ErrNoAvailableAccounts
 }
 
-func (s *GatewayService) tryAcquireByLegacyOrder(ctx context.Context, candidates []*Account, groupID *int64, sessionHash string, preferOAuth bool) (*AccountSelectionResult, bool, error) {
+func (s *GatewayService) tryAcquireByLegacyOrder(ctx context.Context, candidates []*Account, groupID *int64, sessionHash string, preferOAuth bool, highAvailability bool) (*AccountSelectionResult, bool, error) {
 	ordered := append([]*Account(nil), candidates...)
-	sortAccountsByPriorityAndLastUsed(ordered, preferOAuth)
+	if highAvailability {
+		s.sortCandidatesByHealth(ordered, preferOAuth)
+	} else {
+		sortAccountsByPriorityAndLastUsed(ordered, preferOAuth)
+	}
 
 	for _, acc := range ordered {
 		result, err := s.tryAcquireAccountSlot(ctx, acc.ID, acc.Concurrency)
@@ -1689,6 +1700,98 @@ func selectByLRU(accounts []accountWithLoad, preferOAuth bool) *accountWithLoad 
 	// 5. 随机选择一个
 	selectedIdx := candidateIdxs[mathrand.Intn(len(candidateIdxs))]
 	return &accounts[selectedIdx]
+}
+
+// selectByHealth keeps priority and load filtering intact, then prefers the
+// account with the strongest recent cross-platform health sample. Accounts
+// without a sample receive a neutral error rate so a known-good account wins
+// over an unobserved cold account, while ties still use the legacy LRU order.
+func selectByHealth(accounts []accountWithLoad, preferOAuth bool) *accountWithLoad {
+	if len(accounts) == 0 {
+		return nil
+	}
+	ordered := append([]accountWithLoad(nil), accounts...)
+	sort.SliceStable(ordered, func(i, j int) bool {
+		a, b := ordered[i], ordered[j]
+		aErr, aLatency, aHas := sharedAccountHealthSnapshot(a.account.ID)
+		bErr, bLatency, bHas := sharedAccountHealthSnapshot(b.account.ID)
+		if !aHas {
+			aErr = 0.5
+		}
+		if !bHas {
+			bErr = 0.5
+		}
+		if aErr != bErr {
+			return aErr < bErr
+		}
+		if aHas && bHas && aLatency != bLatency {
+			return aLatency < bLatency
+		}
+		return accountWithLoadLess(a, b, preferOAuth)
+	})
+	return &ordered[0]
+}
+
+func accountWithLoadLess(a, b accountWithLoad, preferOAuth bool) bool {
+	if a.account.Priority != b.account.Priority {
+		return a.account.Priority < b.account.Priority
+	}
+	if a.loadInfo.LoadRate != b.loadInfo.LoadRate {
+		return a.loadInfo.LoadRate < b.loadInfo.LoadRate
+	}
+	if a.account.LastUsedAt == nil && b.account.LastUsedAt != nil {
+		return true
+	}
+	if a.account.LastUsedAt != nil && b.account.LastUsedAt == nil {
+		return false
+	}
+	if a.account.LastUsedAt != nil && b.account.LastUsedAt != nil && !a.account.LastUsedAt.Equal(*b.account.LastUsedAt) {
+		return a.account.LastUsedAt.Before(*b.account.LastUsedAt)
+	}
+	if preferOAuth && a.account.Type != b.account.Type {
+		return a.account.Type == AccountTypeOAuth
+	}
+	return false
+}
+
+func (s *GatewayService) sortCandidatesByHealth(accounts []*Account, preferOAuth bool) {
+	sort.SliceStable(accounts, func(i, j int) bool {
+		a, b := accounts[i], accounts[j]
+		if a.Priority != b.Priority {
+			return a.Priority < b.Priority
+		}
+		aErr, aLatency, aHas := sharedAccountHealthSnapshot(a.ID)
+		bErr, bLatency, bHas := sharedAccountHealthSnapshot(b.ID)
+		if !aHas {
+			aErr = 0.5
+		}
+		if !bHas {
+			bErr = 0.5
+		}
+		if aErr != bErr {
+			return aErr < bErr
+		}
+		if aHas && bHas && aLatency != bLatency {
+			return aLatency < bLatency
+		}
+		return accountLessByLastUsed(a, b, preferOAuth)
+	})
+}
+
+func accountLessByLastUsed(a, b *Account, preferOAuth bool) bool {
+	if a.LastUsedAt == nil && b.LastUsedAt != nil {
+		return true
+	}
+	if a.LastUsedAt != nil && b.LastUsedAt == nil {
+		return false
+	}
+	if a.LastUsedAt != nil && b.LastUsedAt != nil && !a.LastUsedAt.Equal(*b.LastUsedAt) {
+		return a.LastUsedAt.Before(*b.LastUsedAt)
+	}
+	if preferOAuth && a.Type != b.Type {
+		return a.Type == AccountTypeOAuth
+	}
+	return false
 }
 
 func sortAccountsByPriorityAndLastUsed(accounts []*Account, preferOAuth bool) {

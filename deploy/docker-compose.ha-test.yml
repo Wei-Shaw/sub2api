@@ -1,0 +1,48 @@
+# =============================================================================
+# Sub2API High-Availability Test Override
+# =============================================================================
+# Use together with docker-compose.local.yml. This file builds the current
+# checkout and redirects every persistent mount to ./ha-test so production
+# directories or named volumes cannot be reused accidentally.
+#
+# From the repository root:
+#   docker compose --env-file deploy/ha-test/.env -p sub2api-ha-test \
+#     -f deploy/docker-compose.local.yml \
+#     -f deploy/docker-compose.ha-test.yml up -d --build
+#
+# Requires Docker Compose v2.24.4+ for the !override tag.
+# =============================================================================
+
+services:
+  sub2api:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+      args:
+        NPM_CONFIG_REGISTRY: ${NPM_CONFIG_REGISTRY:-https://registry.npmmirror.com}
+    image: ${HA_IMAGE_REPOSITORY:-sub2api}:${HA_IMAGE_TAG:-ha-test-local}
+    container_name: sub2api-ha-test
+    restart: "no"
+    ports: !override
+      - "${HA_BIND_HOST:-0.0.0.0}:${HA_SERVER_PORT:-18080}:8080"
+    volumes: !override
+      - ./ha-test/data:/app/data:Z
+    environment:
+      - SERVER_MODE=${HA_SERVER_MODE:-debug}
+      - LOG_LEVEL=${HA_LOG_LEVEL:-debug}
+
+  postgres:
+    # Raw PGDATA can only be mounted by the same PostgreSQL major version.
+    # Set HA_POSTGRES_IMAGE to match ha-test/postgres_data/PG_VERSION.
+    image: ${HA_POSTGRES_IMAGE:-postgres:18-alpine}
+    container_name: sub2api-postgres-ha-test
+    restart: "no"
+    volumes: !override
+      - ./ha-test/postgres_data:/var/lib/postgresql/data:Z
+
+  redis:
+    image: ${HA_REDIS_IMAGE:-redis:8-alpine}
+    container_name: sub2api-redis-ha-test
+    restart: "no"
+    volumes: !override
+      - ./ha-test/redis_data:/data:Z

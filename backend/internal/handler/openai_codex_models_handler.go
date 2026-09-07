@@ -90,6 +90,7 @@ func (h *OpenAIGatewayHandler) CodexModels(c *gin.Context) {
 	}
 
 	maxAccountSwitches := h.maxAccountSwitches
+	maxAccountSwitches = service.ResolveGroupMaxAccountSwitches(apiKey.Group, maxAccountSwitches)
 	if maxAccountSwitches <= 0 {
 		maxAccountSwitches = 3
 	}
