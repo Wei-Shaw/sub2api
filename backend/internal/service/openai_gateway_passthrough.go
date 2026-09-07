@@ -1837,6 +1837,8 @@ func (s *OpenAIGatewayService) handleStreamingResponsePassthrough(
 	if observer == nil {
 		observer = beginUpstreamResponseModelObservation(c)
 	}
+	observer.engineTrace = newOpenAIEngineTrace(c, account, originalModel, mappedModel, "sse_passthrough")
+	defer observer.engineTrace.Close()
 	writeOpenAIPassthroughResponseHeaders(c.Writer.Header(), resp.Header, s.responseHeaderFilter)
 
 	// SSE headers
@@ -2271,6 +2273,8 @@ func (s *OpenAIGatewayService) handleNonStreamingResponsePassthrough(
 	if observer == nil {
 		observer = beginUpstreamResponseModelObservation(c)
 	}
+	observer.engineTrace = newOpenAIEngineTrace(c, account, originalModel, mappedModel, "http_passthrough")
+	defer observer.engineTrace.Close()
 	if bodyHasSSEFraming(body) {
 		observeOpenAISSEBody(observer, string(body))
 	} else {

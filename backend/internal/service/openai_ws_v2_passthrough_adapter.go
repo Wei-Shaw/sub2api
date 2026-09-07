@@ -1162,6 +1162,9 @@ func (s *OpenAIGatewayService) proxyResponsesWebSocketV2Passthrough(
 		firstTurnStartedAt = hooks.InitialTurnStartedAt
 	}
 	failureAccountSideEffectsApplied := false
+	traceRequestedModel, traceUpstreamModel := usageMeta.turnModels("")
+	engineTrace := newOpenAIEngineTrace(c, account, traceRequestedModel, traceUpstreamModel, "websocket_passthrough")
+	defer engineTrace.Close()
 	relayResult, relayExit := openaiwsv2.RunEntry(openaiwsv2.EntryInput{
 		Ctx:                ctx,
 		ClientConn:         policyClientConn,
@@ -1273,6 +1276,9 @@ func (s *OpenAIGatewayService) proxyResponsesWebSocketV2Passthrough(
 				if msgType != coderws.MessageText {
 					return nil
 				}
+				traceRequestedModel, traceUpstreamModel := usageMeta.turnModels("")
+				engineTrace.Models(traceRequestedModel, traceUpstreamModel)
+				engineTrace.Observe(payload, "")
 				eventType, _, _ := parseOpenAIWSEventEnvelope(payload)
 				if eventType == "response.created" {
 					failureAccountSideEffectsApplied = false

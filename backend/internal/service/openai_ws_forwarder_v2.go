@@ -37,7 +37,8 @@ func (s *OpenAIGatewayService) forwardOpenAIWSV2(
 	if s == nil || account == nil {
 		return nil, wrapOpenAIWSFallback("invalid_state", errors.New("service or account is nil"))
 	}
-	responseModelObserver := &upstreamResponseModelObserver{}
+	responseModelObserver := &upstreamResponseModelObserver{engineTrace: newOpenAIEngineTrace(c, account, originalModel, mappedModel, "websocket")}
+	defer responseModelObserver.engineTrace.Close()
 
 	wsURL, err := s.buildOpenAIResponsesWSURL(account)
 	if err != nil {

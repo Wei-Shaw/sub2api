@@ -942,7 +942,8 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 
 	var rejectedFieldRetryState *openAIResponsesRejectedFieldRetryState
 	sendAndRelay := func(turn int, lease *openAIWSConnLease, payload []byte, payloadBytes int, originalModel string, imageBillingModel string, imageSizeTier string, imageInputSize string, requestedReasoningEffort *string) (*OpenAIForwardResult, error) {
-		responseModelObserver := &upstreamResponseModelObserver{}
+		responseModelObserver := &upstreamResponseModelObserver{engineTrace: newOpenAIEngineTrace(c, account, originalModel, gjson.GetBytes(payload, "model").String(), "websocket_ingress")}
+		defer responseModelObserver.engineTrace.Close()
 		if lease == nil {
 			return nil, errors.New("upstream websocket lease is nil")
 		}

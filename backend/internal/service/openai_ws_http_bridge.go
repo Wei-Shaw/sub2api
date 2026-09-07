@@ -432,7 +432,8 @@ func (s *OpenAIGatewayService) proxyOpenAIWSHTTPBridgeTurn(
 	if writeClientMessage == nil {
 		return nil, errors.New("client websocket writer is nil")
 	}
-	responseModelObserver := &upstreamResponseModelObserver{}
+	responseModelObserver := &upstreamResponseModelObserver{engineTrace: newOpenAIEngineTrace(c, account, originalModel, gjson.GetBytes(payload, "model").String(), "sse_ws_bridge")}
+	defer responseModelObserver.engineTrace.Close()
 
 	body, err := prepareOpenAIWSHTTPBridgeBody(account, payload)
 	if err != nil {
@@ -640,6 +641,7 @@ func (s *OpenAIGatewayService) proxyOpenAIWSHTTPBridgeTurn(
 	bareErrorMessage := ""
 	failureAccountSideEffectsApplied := false
 	mappedModel := actualModel
+	responseModelObserver.engineTrace.Models(originalModel, mappedModel)
 	needModelReplace := false
 	var mappedModelBytes []byte
 	if originalModel != "" {

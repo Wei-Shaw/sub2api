@@ -53,6 +53,8 @@ func (s *OpenAIGatewayService) handleStreamingResponseWithReasoning(ctx context.
 	if observer == nil {
 		observer = beginUpstreamResponseModelObservation(c)
 	}
+	observer.engineTrace = newOpenAIEngineTrace(c, account, originalModel, mappedModel, "sse")
+	defer observer.engineTrace.Close()
 	firstOutputTimeout := time.Duration(0)
 	if account != nil && account.Platform == PlatformOpenAI {
 		firstOutputTimeout = s.openAIFirstOutputTimeout(reasoningEffort)
@@ -1567,6 +1569,8 @@ func (s *OpenAIGatewayService) handleNonStreamingResponse(ctx context.Context, r
 	if observer == nil {
 		observer = beginUpstreamResponseModelObservation(c)
 	}
+	observer.engineTrace = newOpenAIEngineTrace(c, account, originalModel, mappedModel, "http")
+	defer observer.engineTrace.Close()
 	if bodyHasSSEFraming(body) {
 		observeOpenAISSEBody(observer, string(body))
 	} else {
