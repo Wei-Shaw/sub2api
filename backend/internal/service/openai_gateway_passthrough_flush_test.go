@@ -175,6 +175,43 @@ func TestOpenAIStreamingPassthroughFailedBeforeOutputCanStillFailOverWithoutFlus
 	require.Empty(t, writer.flushBodyLengths)
 }
 
+func TestOpenAIStreamingPassthroughFailedDuringFunctionArgumentsCanFailOverWithoutPartialJSON(t *testing.T) {
+	upstream := "event: response.created\n" +
+		`data: {"type":"response.created","response":{"id":"resp_tool_failover"}}` + "\n\n" +
+		"event: response.output_item.added\n" +
+		`data: {"type":"response.output_item.added","output_index":0,"item":{"type":"function_call","id":"fc_1","call_id":"call_1","name":"exec","arguments":""}}` + "\n\n" +
+		"event: response.function_call_arguments.delta\n" +
+		`data: {"type":"response.function_call_arguments.delta","output_index":0,"item_id":"fc_1","delta":"{\"cmd\":\"half"}` + "\n\n" +
+		"event: response.failed\n" +
+		`data: {"type":"response.failed","response":{"id":"resp_tool_failover","error":{"code":"server_is_overloaded","message":"Please retry later."}}}` + "\n\n"
+
+	_, recorder, writer, err := runPassthroughFlushTest(t, io.NopCloser(strings.NewReader(upstream)), -1)
+
+	require.Error(t, err)
+	var failoverErr *UpstreamFailoverError
+	require.ErrorAs(t, err, &failoverErr)
+	require.Empty(t, recorder.Body.String())
+	require.Empty(t, writer.flushBodyLengths)
+}
+
+func TestOpenAIStreamingPassthroughCompleteFunctionArgumentsFlushAtDoneBoundary(t *testing.T) {
+	prefix := "event: response.output_item.added\n" +
+		`data: {"type":"response.output_item.added","output_index":0,"item":{"type":"function_call","id":"fc_1","call_id":"call_1","name":"exec","arguments":""}}` + "\n\n" +
+		"event: response.function_call_arguments.delta\n" +
+		`data: {"type":"response.function_call_arguments.delta","output_index":0,"item_id":"fc_1","delta":"{\"cmd\":\"pwd\"}"}` + "\n\n"
+	done := "event: response.function_call_arguments.done\n" +
+		`data: {"type":"response.function_call_arguments.done","output_index":0,"item_id":"fc_1","arguments":"{\"cmd\":\"pwd\"}"}` + "\n\n"
+	terminal := "event: response.completed\n" +
+		`data: {"type":"response.completed","response":{"id":"resp_tool_ok","usage":{"input_tokens":3,"output_tokens":2}}}` + "\n\n"
+
+	_, recorder, writer, err := runPassthroughFlushTest(t, io.NopCloser(strings.NewReader(prefix+done+terminal)), -1)
+
+	require.NoError(t, err)
+	require.Equal(t, prefix+done+terminal, recorder.Body.String())
+	require.NotEmpty(t, writer.flushBodyLengths)
+	require.Equal(t, len(prefix)+len(done), writer.flushBodyLengths[0])
+}
+
 func TestOpenAIStreamingPassthroughNonRetryableFailedBeforeOutputFlushesAtBoundary(t *testing.T) {
 	upstream := "event: response.failed\n" +
 		`data: {"type":"response.failed","error":{"code":"content_policy","message":"request blocked by policy"},"usage":{"input_tokens":6,"output_tokens":0,"total_tokens":6}}` + "\n\n"

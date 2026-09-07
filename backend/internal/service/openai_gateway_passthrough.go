@@ -1120,9 +1120,12 @@ func openAIStreamAddedEventStartsClientOutput(payload []byte, eventType string) 
 			}
 			return false
 		case "function_call":
-			return item.Get("arguments").String() != ""
+			// Function arguments are not usable until the item/done boundary. Keep
+			// every partial delta attempt-local so a late capacity failure can be
+			// discarded and retried without leaking half of a JSON document.
+			return false
 		case "custom_tool_call":
-			return item.Get("input").String() != ""
+			return false
 		case "compaction":
 			return item.Get("encrypted_content").String() != ""
 		default:
@@ -1159,6 +1162,11 @@ func openAIStreamDataStartsClientOutput(data, eventType string) bool {
 	}
 	switch strings.TrimSpace(eventType) {
 	case "response.failed":
+		return false
+	case "response.function_call_arguments.delta", "response.custom_tool_call_input.delta":
+		// A partial tool payload cannot be consumed safely. Buffer through its
+		// corresponding done event; if the upstream sheds capacity first, the
+		// normal pre-output failover path can discard the incomplete attempt.
 		return false
 	case "error":
 		// 上游降载/瞬时故障会先推 {"type":"error"} 帧、再以 response.failed 收尾。
