@@ -1,10 +1,13 @@
 package handler
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
+	"encoding/xml"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"runtime/debug"
 	"strconv"
@@ -50,6 +53,21 @@ type openAIWSTurnChannelMappingSnapshot struct {
 	mapping service.ChannelMappingResult
 }
 
+func advanceOpenAIWSCyberBlockState(blocked, pending, marked bool, turnErr error) (bool, bool) {
+	var failoverErr *service.UpstreamFailoverError
+	isFailover := errors.As(turnErr, &failoverErr)
+	if marked {
+		if isFailover {
+			return false, true
+		}
+		return true, false
+	}
+	if pending && !isFailover {
+		return true, false
+	}
+	return blocked, pending
+}
+
 var errOpenAIWSUnsupportedModelSwitch = errors.New("selected account does not support websocket model switch")
 
 func newOpenAIWSUnsupportedModelSwitchError(model string) error {
@@ -59,6 +77,55 @@ func newOpenAIWSUnsupportedModelSwitchError(model string) error {
 
 func shouldReportOpenAIWSProxyAccountFailure(err error) bool {
 	return err != nil && !errors.Is(err, errOpenAIWSUnsupportedModelSwitch) && !service.IsOpenAIWSSessionPreemptedError(err)
+}
+
+// openAIWSIngressEndedByClient reports whether a finished ingress WebSocket turn
+// ended the way a healthy client ends one, rather than through an upstream or
+// account fault.
+//
+// Three error shapes describe that same benign outcome and only the first was
+// recognised:
+//
+//   - *service.OpenAIWSClientCloseError carrying 1000 — the gateway closing the
+//     socket on its own terms, e.g. the inter-turn idle timeout.
+//   - a bare coderws.CloseError{Code: 1000} — what coder/websocket returns when
+//     the client closes cleanly. ReadOpenAIWSClientMessage hands conn.Read's
+//     error back verbatim, so nothing ever wraps it into the type above and an
+//     errors.As against that type cannot see it.
+//   - context.Canceled — the client went away mid-turn. That path closes with
+//     StatusGoingAway (1001) and carries the cancellation as its cause, so a
+//     check for 1000 alone never matched it either.
+//
+// The last two fell through to shouldReportOpenAIWSProxyAccountFailure, which
+// filters only model-switch and session-preemption errors. Everything else
+// reaches ObserveOpenAIAPIKeyHealthFailure and scheduler.ReportResult(false), so
+// a client that merely disconnected counted against the upstream account's
+// health and could trip it out of scheduling.
+//
+// failoverClientGone already states the rule this restores for the HTTP failover
+// path — a cancelled client context "被误报成账号耗尽" is a bug, not a signal —
+// and summarizeWSCloseErrorForLog already reads the close code the correct way,
+// which is why the resulting WARN printed close_status=1000(StatusNormalClosure)
+// for an error that was, in the same breath, being charged to the account.
+//
+// Deliberately narrow. StatusGoingAway is not matched on its own: the gateway
+// emits 1001 when it tears a session down for its own reasons too, and the
+// client-cancellation case is already covered by context.Canceled.
+// context.DeadlineExceeded is left out as well — the idle-timeout path wraps it
+// in a 1000 close error and stays benign through the first check, while any
+// other deadline is a genuine stall worth reporting.
+func openAIWSIngressEndedByClient(err error) bool {
+	if err == nil {
+		return true
+	}
+	var closeErr *service.OpenAIWSClientCloseError
+	if errors.As(err, &closeErr) && closeErr.StatusCode() == coderws.StatusNormalClosure {
+		return true
+	}
+	if coderws.CloseStatus(err) == coderws.StatusNormalClosure {
+		return true
+	}
+	return errors.Is(err, context.Canceled)
 }
 
 func openAIWSTurnBillingModel(result *service.OpenAIForwardResult, mapping service.ChannelMappingResult, requestedModel, upstreamModel string) string {
@@ -86,6 +153,18 @@ func openAIWSTurnBillingModel(result *service.OpenAIForwardResult, mapping servi
 		}
 	}
 	return billingModel
+}
+
+// openAIChannelForwardModel returns the model used for upstream capability
+// routing. The client-requested model remains separate for logs, billing, and
+// responses.
+func openAIChannelForwardModel(mapping service.ChannelMappingResult, requestedModel string) string {
+	if mapping.Mapped {
+		if mappedModel := strings.TrimSpace(mapping.MappedModel); mappedModel != "" {
+			return mappedModel
+		}
+	}
+	return requestedModel
 }
 
 type grokMediaEligibilityProber interface {
@@ -383,8 +462,23 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 		h.errorResponse(c, http.StatusBadRequest, "invalid_request_error", "Model is not supported by this OpenAI-compatible endpoint for composite groups")
 		return
 	}
-	if cappedBody, changed := applyOpenAIReasoningEffortPolicyForRequest(c, apiKey, body); changed {
+	if cappedBody, changed, err := applyOpenAIReasoningEffortPolicyForRequest(c, apiKey, body); err != nil {
+		respondOpenAIReasoningEffortPolicyError(c, err, h.errorResponse)
+		return
+	} else if changed {
 		body = cappedBody
+	}
+	if normalizedBody, changed := normalizeCodexAutomationBootstrap(body); changed {
+		body = normalizedBody
+		reqLog.Info("openai.codex_automation_bootstrap_normalized",
+			zap.String("normalization", "call_output_to_user_message"),
+		)
+	}
+	if normalizedBody, changed := normalizeCodexDelegationBootstrap(body); changed {
+		body = normalizedBody
+		reqLog.Info("openai.codex_delegation_bootstrap_normalized",
+			zap.String("normalization", "call_output_to_user_message"),
+		)
 	}
 
 	reqStream, ok := parseOpenAICompatibleStream(body)
@@ -466,10 +560,7 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 	channelMapping, _ := h.gatewayService.ResolveChannelMappingAndRestrict(c.Request.Context(), apiKey.GroupID, reqModel)
 	forwardBody := openAIModelMappedBody(body, channelMapping.Mapped, channelMapping.MappedModel, h.gatewayService.ReplaceModelInBody)
 	seedOpenAIForwardImageIntentHint(c, channelMapping.Mapped, imageIntent)
-	forwardModel := reqModel
-	if channelMapping.Mapped {
-		forwardModel = channelMapping.MappedModel
-	}
+	forwardModel := openAIChannelForwardModel(channelMapping, reqModel)
 	c.Request = c.Request.WithContext(service.WithOpenAIForwardModel(
 		c.Request.Context(),
 		forwardModel,
@@ -562,7 +653,7 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 			apiKey.GroupID,
 			previousResponseID,
 			sessionHash,
-			reqModel,
+			forwardModel,
 			failedAccountIDs,
 			service.OpenAIUpstreamTransportAny,
 			requiredCapability,
@@ -702,6 +793,7 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 			if res == nil {
 				return
 			}
+			stampOpenAIRequestedReasoningEffort(res, c)
 			userAgent := c.GetHeader("User-Agent")
 			clientIP := ip.GetClientIP(c)
 			requestPayloadHash := service.HashUsageRequestPayload(body)
@@ -728,6 +820,7 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 					ChannelUsageFields: clientRequestedUsageFields(c, channelMapping, reqModel, res.UpstreamModel),
 					PricingAt:          pricingAt,
 					CyberBlocked:       cyberBlocked,
+					NativeCompactionV2: nativeV2,
 				}); err != nil {
 					logger.L().With(
 						zap.String("component", "handler.openai_gateway.responses"),
@@ -1133,7 +1226,7 @@ func (h *OpenAIGatewayHandler) Messages(c *gin.Context) {
 
 	sessionHash := h.gatewayService.GenerateSessionHash(c, body)
 	promptCacheKey := h.gatewayService.ExtractSessionID(c, body)
-	sessionHash, promptCacheKey = resolveOpenAIMessagesMetadataSession(sessionHash, promptCacheKey, reqModel, body)
+	sessionHash, promptCacheKey = resolveOpenAIMessagesMetadataSession(c, sessionHash, promptCacheKey, reqModel, body)
 	if h.rejectIfCyberSessionBlocked(c, apiKey, body, reqModel, cyberBlockFormatAnthropic) {
 		return
 	}
@@ -1266,6 +1359,7 @@ func (h *OpenAIGatewayHandler) Messages(c *gin.Context) {
 			if res == nil {
 				return
 			}
+			stampOpenAIRequestedReasoningEffort(res, c)
 			userAgent := c.GetHeader("User-Agent")
 			clientIP := ip.GetClientIP(c)
 			requestPayloadHash := service.HashUsageRequestPayload(body)
@@ -1410,10 +1504,19 @@ func (h *OpenAIGatewayHandler) Messages(c *gin.Context) {
 	}
 }
 
-func resolveOpenAIMessagesMetadataSession(sessionHash, promptCacheKey, reqModel string, body []byte) (string, string) {
+func resolveOpenAIMessagesMetadataSession(c *gin.Context, sessionHash, promptCacheKey, reqModel string, body []byte) (string, string) {
 	// Anthropic metadata.user_id 只作为账号粘性信号。上游 GPT/Codex 缓存键
 	// 交给 ForwardAsAnthropic 从 cache_control 或完整消息 digest 派生，避免
 	// 固定 metadata key 压住后续 turn 的缓存滚动。
+	//
+	// Claude Code 的 X-Claude-Code-Session-Id 是比 body content fallback 更稳定的
+	// 会话边界，但它只用于本地账号粘性；不要把它提升为 prompt_cache_key 或上游
+	// session_id，否则会改变现有 Messages→Codex 缓存滚动语义。
+	if promptCacheKey == "" {
+		if claudeSessionID := service.ClaudeCodeSessionIDFromHeader(c); claudeSessionID != "" {
+			return service.DeriveSessionHashFromSeed(claudeSessionID), promptCacheKey
+		}
+	}
 	if sessionHash != "" {
 		return sessionHash, promptCacheKey
 	}
@@ -1520,6 +1623,373 @@ func (h *OpenAIGatewayHandler) validateFunctionCallOutputRequest(c *gin.Context,
 	return false
 }
 
+func normalizeCodexDelegationBootstrap(body []byte) ([]byte, bool) {
+	// 已有任务通过 send_message_to_thread 唤醒时会携带 previous_response_id；
+	// 完整历史回放还会带有已配对的调用项。delegation 仍是客户端注入的用户输入，
+	// 不属于这些历史调用的结果，因此允许它与可明确配对的历史上下文共存。
+	return normalizeCodexCallOutputBootstrap(body, isCodexDelegationCandidate, true)
+}
+
+func normalizeCodexAutomationBootstrap(body []byte) ([]byte, bool) {
+	return normalizeCodexCallOutputBootstrap(body, isCodexAutomationCandidate, false)
+}
+
+func normalizeCodexCallOutputBootstrap(body []byte, isCandidate func(map[string]any) bool, allowHistoricalContext bool) ([]byte, bool) {
+	if !hasUniqueJSONMembers(body) {
+		return body, false
+	}
+	decoder := json.NewDecoder(bytes.NewReader(body))
+	decoder.UseNumber()
+	var request map[string]any
+	if err := decoder.Decode(&request); err != nil {
+		return body, false
+	}
+	if previousResponseID, exists := request["previous_response_id"]; exists {
+		value, ok := previousResponseID.(string)
+		if !ok || (!allowHistoricalContext && strings.TrimSpace(value) != "") {
+			return body, false
+		}
+	}
+	input, ok := request["input"].([]any)
+	if !ok {
+		return body, false
+	}
+
+	// Responses built-ins follow the *_call / *_call_output naming convention,
+	// so classify by the wire type shape instead of maintaining an incomplete
+	// allowlist. Delegation may coexist with historical anchors only when their
+	// IDs make them unambiguous; automation retains the bootstrap-only boundary.
+	for _, raw := range input {
+		item, ok := raw.(map[string]any)
+		if !ok {
+			continue
+		}
+		typ := stringField(item, "type")
+		if isCandidate(item) {
+			callIDValue, exists := item["call_id"]
+			callID, isString := callIDValue.(string)
+			if exists && (!isString || strings.TrimSpace(callID) != "") {
+				return body, false
+			}
+			continue
+		}
+		if typ == "item_reference" {
+			if allowHistoricalContext && strings.TrimSpace(stringField(item, "id")) != "" {
+				continue
+			}
+			return body, false
+		}
+		if strings.HasSuffix(typ, "_call") || isResponsesCallOutputType(typ) {
+			if allowHistoricalContext && strings.TrimSpace(stringField(item, "call_id")) != "" {
+				continue
+			}
+			return body, false
+		}
+	}
+
+	changed := false
+	for i, raw := range input {
+		item, ok := raw.(map[string]any)
+		if !ok || !isCandidate(item) {
+			continue
+		}
+		output, ok := item["output"].(string)
+		if !ok {
+			continue
+		}
+		input[i] = map[string]any{
+			"type": "message",
+			"role": "user",
+			"content": []any{map[string]any{
+				"type": "input_text",
+				"text": output,
+			}},
+		}
+		changed = true
+	}
+	if !changed {
+		return body, false
+	}
+	normalized, err := json.Marshal(request)
+	if err != nil {
+		return body, false
+	}
+	return normalized, true
+}
+
+func hasUniqueJSONMembers(body []byte) bool {
+	decoder := json.NewDecoder(bytes.NewReader(body))
+	if !consumeUniqueJSONValue(decoder) {
+		return false
+	}
+	_, err := decoder.Token()
+	return err == io.EOF
+}
+
+func consumeUniqueJSONValue(decoder *json.Decoder) bool {
+	token, err := decoder.Token()
+	if err != nil {
+		return false
+	}
+	delim, ok := token.(json.Delim)
+	if !ok {
+		return true
+	}
+
+	switch delim {
+	case '{':
+		members := make(map[string]struct{})
+		for decoder.More() {
+			keyToken, err := decoder.Token()
+			if err != nil {
+				return false
+			}
+			key, ok := keyToken.(string)
+			if !ok {
+				return false
+			}
+			if _, duplicate := members[key]; duplicate {
+				return false
+			}
+			members[key] = struct{}{}
+			if !consumeUniqueJSONValue(decoder) {
+				return false
+			}
+		}
+		end, err := decoder.Token()
+		return err == nil && end == json.Delim('}')
+	case '[':
+		for decoder.More() {
+			if !consumeUniqueJSONValue(decoder) {
+				return false
+			}
+		}
+		end, err := decoder.Token()
+		return err == nil && end == json.Delim(']')
+	default:
+		return false
+	}
+}
+
+func isResponsesCallOutputType(typ string) bool {
+	return strings.HasSuffix(typ, "_call_output") || typ == "tool_search_output"
+}
+
+func isCodexDelegationCandidate(item map[string]any) bool {
+	if stringField(item, "type") != "function_call_output" ||
+		!isCodexDelegationTool(stringField(item, "namespace"), stringField(item, "name")) {
+		return false
+	}
+	output, ok := item["output"].(string)
+	return ok && validCodexDelegationEnvelope(output)
+}
+
+func isCodexAutomationCandidate(item map[string]any) bool {
+	if stringField(item, "type") != "function_call_output" ||
+		stringField(item, "namespace") != "codex_app" ||
+		stringField(item, "name") != "automation_update" {
+		return false
+	}
+	output, ok := item["output"].(string)
+	return ok && (validCodexAutomationBootstrap(output) || validCodexAutomationHeartbeat(output))
+}
+
+func stringField(item map[string]any, key string) string {
+	value, _ := item[key].(string)
+	return value
+}
+
+func isCodexDelegationTool(namespace, name string) bool {
+	return (namespace == "codex_app" || namespace == "codex_tui") &&
+		(name == "create_thread" || name == "send_message_to_thread")
+}
+
+func validCodexAutomationBootstrap(value string) bool {
+	normalized := strings.ReplaceAll(value, "\r\n", "\n")
+	if strings.ContainsRune(normalized, '\r') {
+		return false
+	}
+	lines := strings.Split(normalized, "\n")
+	if len(lines) < 6 {
+		return false
+	}
+	if _, ok := codexAutomationHeaderValue(lines[0], "Automation: "); !ok {
+		return false
+	}
+	automationID, ok := codexAutomationHeaderValue(lines[1], "Automation ID: ")
+	if !ok || !validCodexAutomationID(automationID) {
+		return false
+	}
+	expectedMemory := "Automation memory: $CODEX_HOME/automations/" + automationID + "/memory.md"
+	if lines[2] != expectedMemory {
+		return false
+	}
+	lastRun, ok := codexAutomationHeaderValue(lines[3], "Last run: ")
+	if !ok || !validCodexAutomationLastRun(lastRun) || lines[4] != "" {
+		return false
+	}
+	return strings.TrimSpace(strings.Join(lines[5:], "\n")) != ""
+}
+
+func codexAutomationHeaderValue(line, prefix string) (string, bool) {
+	if !strings.HasPrefix(line, prefix) {
+		return "", false
+	}
+	value := strings.TrimPrefix(line, prefix)
+	return value, value != "" && strings.TrimSpace(value) == value
+}
+
+func validCodexAutomationID(value string) bool {
+	if len(value) == 0 || len(value) > 128 || value == "." || value == ".." {
+		return false
+	}
+	for i := 0; i < len(value); i++ {
+		c := value[i]
+		if (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '-' || c == '_' || c == '.' {
+			continue
+		}
+		return false
+	}
+	return true
+}
+
+func validCodexAutomationLastRun(value string) bool {
+	if value == "never" {
+		return true
+	}
+	separator := strings.LastIndex(value, " (")
+	if separator <= 0 || !strings.HasSuffix(value, ")") {
+		return false
+	}
+	runAt, err := time.Parse(time.RFC3339Nano, value[:separator])
+	if err != nil {
+		return false
+	}
+	epochMillis, err := strconv.ParseInt(value[separator+2:len(value)-1], 10, 64)
+	return err == nil && runAt.UnixMilli() == epochMillis
+}
+
+func validCodexAutomationHeartbeat(value string) bool {
+	decoder := xml.NewDecoder(strings.NewReader(value))
+	var rootSeen, automationIDSeen bool
+	var automationID bytes.Buffer
+	depth := 0
+	for {
+		token, err := decoder.Token()
+		if err == io.EOF {
+			id := automationID.String()
+			return rootSeen && automationIDSeen && depth == 0 &&
+				strings.TrimSpace(id) == id && validCodexAutomationID(id)
+		}
+		if err != nil {
+			return false
+		}
+		switch current := token.(type) {
+		case xml.StartElement:
+			depth++
+			if current.Name.Space != "" || len(current.Attr) != 0 || depth > 2 {
+				return false
+			}
+			if depth == 1 {
+				if rootSeen || current.Name.Local != "heartbeat" {
+					return false
+				}
+				rootSeen = true
+			} else if automationIDSeen || current.Name.Local != "automation_id" {
+				return false
+			}
+			automationIDSeen = depth == 2
+		case xml.EndElement:
+			if current.Name.Space != "" {
+				return false
+			}
+			depth--
+			if depth < 0 {
+				return false
+			}
+		case xml.CharData:
+			if depth == 2 {
+				_, _ = automationID.Write(current)
+			} else if len(bytes.TrimSpace(current)) != 0 {
+				return false
+			}
+		case xml.Comment, xml.ProcInst, xml.Directive:
+			return false
+		}
+	}
+}
+
+func validCodexDelegationEnvelope(value string) bool {
+	decoder := xml.NewDecoder(strings.NewReader(value))
+	var rootSeen, sourceSeen, inputSeen bool
+	var childName string
+	var childText bytes.Buffer
+	depth := 0
+	for {
+		token, err := decoder.Token()
+		if err == io.EOF {
+			return rootSeen && depth == 0 && sourceSeen && inputSeen
+		}
+		if err != nil {
+			return false
+		}
+		switch current := token.(type) {
+		case xml.StartElement:
+			depth++
+			if current.Name.Space != "" || len(current.Attr) != 0 || (depth == 1 && current.Name.Local != "codex_delegation") || depth > 2 {
+				return false
+			}
+			if depth == 1 {
+				if rootSeen {
+					return false
+				}
+				rootSeen = true
+				continue
+			}
+			if current.Name.Local != "source_thread_id" && current.Name.Local != "input" {
+				return false
+			}
+			childName = current.Name.Local
+			childText.Reset()
+		case xml.EndElement:
+			if current.Name.Space != "" {
+				return false
+			}
+			if depth == 2 {
+				if current.Name.Local != childName || strings.TrimSpace(childText.String()) == "" {
+					return false
+				}
+				if childName == "source_thread_id" {
+					if sourceSeen {
+						return false
+					}
+					sourceSeen = true
+				} else {
+					if inputSeen {
+						return false
+					}
+					inputSeen = true
+				}
+				childName = ""
+			}
+			depth--
+			if depth < 0 {
+				return false
+			}
+		case xml.CharData:
+			if depth == 2 {
+				_, _ = childText.Write(current)
+			} else if len(bytes.TrimSpace(current)) != 0 {
+				return false
+			}
+		case xml.Comment:
+			return false
+		case xml.ProcInst, xml.Directive:
+			return false
+		}
+	}
+}
+
 func (h *OpenAIGatewayHandler) acquireResponsesUserSlot(
 	c *gin.Context,
 	userID int64,
@@ -1619,7 +2089,7 @@ func (h *OpenAIGatewayHandler) acquireResponsesAccountSlot(
 	return h.acquireOpenAIAccountSlot(c, groupID, sessionHash, selection, reqStream, streamStarted, reqLog, nil)
 }
 
-type openAISlotErrorWriter func(status int, errType, message string)
+type openAISlotErrorWriter func(status int, errType, code, message string)
 
 // acquireOpenAIAccountSlot centralizes scheduler selection admission. The
 // optional error writer lets non-Responses endpoints retain their wire format
@@ -1635,13 +2105,13 @@ func (h *OpenAIGatewayHandler) acquireOpenAIAccountSlot(
 	writeError openAISlotErrorWriter,
 ) (func(), openAISlotAcquireResult) {
 	if writeError == nil {
-		writeError = func(status int, errType, message string) {
-			h.handleStreamingAwareError(c, status, errType, message, *streamStarted)
+		writeError = func(status int, errType, code, message string) {
+			h.handleStreamingAwareErrorWithCode(c, status, errType, code, message, *streamStarted, false)
 		}
 	}
 	if selection == nil || selection.Account == nil {
 		markOpsRoutingCapacityLimited(c)
-		writeError(http.StatusServiceUnavailable, "api_error", "No available accounts")
+		writeError(http.StatusServiceUnavailable, "api_error", "", "No available accounts")
 		return nil, openAISlotAcquireFailed
 	}
 
@@ -1671,7 +2141,7 @@ func (h *OpenAIGatewayHandler) acquireOpenAIAccountSlot(
 	}
 	if selection.WaitPlan == nil {
 		markOpsRoutingCapacityLimited(c)
-		writeError(http.StatusServiceUnavailable, "api_error", "No available accounts")
+		writeError(http.StatusServiceUnavailable, "api_error", "", "No available accounts")
 		return nil, openAISlotAcquireFailed
 	}
 
@@ -1682,8 +2152,8 @@ func (h *OpenAIGatewayHandler) acquireOpenAIAccountSlot(
 	)
 	if err != nil {
 		reqLog.Warn("openai.account_slot_quick_acquire_failed", zap.Int64("account_id", account.ID), zap.Error(err))
-		status, errType, message := concurrencyErrorResponse(err, "account")
-		writeError(status, errType, message)
+		status, errType, code, message := concurrencyErrorResponse(err, "account")
+		writeError(status, errType, code, message)
 		return nil, openAISlotAcquireFailed
 	}
 	if fastAcquired {
@@ -1713,7 +2183,7 @@ func (h *OpenAIGatewayHandler) acquireOpenAIAccountSlot(
 			zap.Int64("account_id", account.ID),
 			zap.Int("max_waiting", selection.WaitPlan.MaxWaiting),
 		)
-		writeError(http.StatusTooManyRequests, "rate_limit_error", "Too many pending requests, please retry later")
+		writeError(http.StatusTooManyRequests, "rate_limit_error", gatewayQueueFullCode, "Too many pending requests, please retry later")
 		return nil, openAISlotAcquireFailed
 	}
 
@@ -1736,8 +2206,8 @@ func (h *OpenAIGatewayHandler) acquireOpenAIAccountSlot(
 	)
 	if err != nil {
 		reqLog.Warn("openai.account_slot_acquire_failed", zap.Int64("account_id", account.ID), zap.Error(err))
-		status, errType, message := concurrencyErrorResponse(err, "account")
-		writeError(status, errType, message)
+		status, errType, code, message := concurrencyErrorResponse(err, "account")
+		writeError(status, errType, code, message)
 		return nil, openAISlotAcquireFailed
 	}
 
@@ -1925,6 +2395,7 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 		return
 	}
 	cyberBlockedThisConn := false
+	cyberBlockPendingAfterFailover := false
 	var cyberTurnBodiesMu sync.Mutex
 	cyberTurnBodies := map[int][]byte{1: append([]byte(nil), firstMessage...)}
 	setCyberTurnBody := func(turn int, payload []byte) {
@@ -1942,10 +2413,7 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 
 	// 解析渠道级模型映射
 	channelMappingWS, _ := h.gatewayService.ResolveChannelMappingAndRestrict(ctx, apiKey.GroupID, reqModel)
-	wsForwardModel := reqModel
-	if channelMappingWS.Mapped && strings.TrimSpace(channelMappingWS.MappedModel) != "" {
-		wsForwardModel = strings.TrimSpace(channelMappingWS.MappedModel)
-	}
+	wsForwardModel := openAIChannelForwardModel(channelMappingWS, reqModel)
 
 	var currentUserRelease func()
 	var currentAccountRelease func()
@@ -2108,7 +2576,7 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 			apiKey.GroupID,
 			previousResponseID,
 			sessionHash,
-			reqModel,
+			wsForwardModel,
 			failedAccountIDs,
 			requiredTransport,
 			requiredCapability,
@@ -2237,7 +2705,7 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 			zap.Int("candidate_count", scheduleDecision.CandidateCount),
 		)
 
-		maxReasoningEffort, reasoningEffortMappings, _ := openAIReasoningEffortPolicyForRequest(c, apiKey)
+		maxReasoningEffort, reasoningEffortMappings, maxReasoningEffortOverLimit, _ := openAIReasoningEffortPolicyForRequest(c, apiKey)
 		var requestPayloadHash string
 		var turnStartsMu sync.Mutex
 		turnStarts := make(map[int]time.Time, 4)
@@ -2264,16 +2732,24 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 		// passthrough 没有 BeforeTurn 时，AfterTurn 回退到 TurnStarted 的所属 turn 时刻。
 		var turnPricing openAIWSTurnPricing
 		hooks := &service.OpenAIWSIngressHooks{
-			ClientLifecycleContext:  clientLifecycleCtx,
-			InitialRequestModel:     reqModel,
-			InitialTurnStartedAt:    firstTurnStartedAt,
-			MaxReasoningEffort:      maxReasoningEffort,
-			ReasoningEffortMappings: reasoningEffortMappings,
-			TurnStarted:             recordTurnStart,
+			ClientLifecycleContext:      clientLifecycleCtx,
+			InitialRequestModel:         reqModel,
+			InitialTurnStartedAt:        firstTurnStartedAt,
+			MaxReasoningEffort:          maxReasoningEffort,
+			MaxReasoningEffortOverLimit: maxReasoningEffortOverLimit,
+			ReasoningEffortMappings:     reasoningEffortMappings,
+			TurnStarted:                 recordTurnStart,
 			BeforeRequest: func(turn int, payload []byte, originalModel string) error {
 				c.Set(securityAuditWSTurnContextKey, turn)
 				service.BeginOpsStreamTurn(c, turn)
 				setCyberTurnBody(turn, payload)
+				// Passthrough ingress intentionally skips BeforeTurn, so enforce only
+				// the connection-level cyber session gate here as well. Native ingress
+				// visits this hook first and gets the same side-effect-free close error;
+				// its original BeforeTurn guard remains as defense in depth.
+				if cyberBlockedThisConn {
+					return service.NewOpenAIWSClientCloseError(coderws.StatusPolicyViolation, cyberSessionBlockedClientMsg, nil)
+				}
 				if turn == 1 {
 					return nil
 				}
@@ -2360,10 +2836,12 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 			AfterTurn: func(turn int, result *service.OpenAIForwardResult, turnErr error) {
 				turnStart := getTurnStart(turn)
 				cyberBlockBody := takeCyberTurnBody(turn)
-				// F1: cyber 标记按 turn 生命周期清理——defer 保证任意早返回路径都执行；
-				// CyberBlocked 必须在 submit 前同步预捕获（task 闭包由 worker 池异步执行，
-				// 届时 defer 已清除标记）。
-				defer clearCyberPolicyTurnState(c)
+				// 每次 attempt 都清 cyber mark；failover 链结束前保留 recorded guard，
+				// 避免同一逻辑 turn 换号后重复落风控。CyberBlocked 必须在 submit 前
+				// 同步预捕获（task 闭包由 worker 池异步执行，届时 mark 已清除）。
+				defer func() {
+					clearCyberPolicyAttemptState(c, !cyberBlockPendingAfterFailover)
+				}()
 				releaseTurnSlots()
 				turnRequestedModel := reqModel
 				turnUpstreamModel := ""
@@ -2385,10 +2863,14 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 					turnUpstreamModel = turnRequestedModel
 				}
 				turnUsageFields := turnMapping.ToUsageFields(turnRequestedModel, turnUpstreamModel)
+				cyberMarked := service.GetOpsCyberPolicy(c) != nil
 				h.recordCyberPolicyIfMarked(c, apiKey, account, subscription, turnRequestedModel, turnErr != nil, cyberBlockBody, turnUsageFields, requestPayloadHash)
-				if service.GetOpsCyberPolicy(c) != nil {
-					cyberBlockedThisConn = true
-				}
+				cyberBlockedThisConn, cyberBlockPendingAfterFailover = advanceOpenAIWSCyberBlockState(
+					cyberBlockedThisConn,
+					cyberBlockPendingAfterFailover,
+					cyberMarked,
+					turnErr,
+				)
 				if turnErr != nil {
 					if result == nil || result.ImageCount <= 0 {
 						return
@@ -2542,12 +3024,23 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 			}
 
 			var closeErr *service.OpenAIWSClientCloseError
-			if errors.As(err, &closeErr) && closeErr.StatusCode() == coderws.StatusNormalClosure {
-				reqLog.Info("openai.websocket_ingress_closed_normally",
-					zap.Int64("account_id", account.ID),
-					zap.String("reason", closeErr.Reason()),
-				)
-				closeOpenAIClientWS(wsConn, closeErr.StatusCode(), closeErr.Reason())
+			hasClientCloseErr := errors.As(err, &closeErr)
+			if openAIWSIngressEndedByClient(err) {
+				closedFields := []zap.Field{zap.Int64("account_id", account.ID)}
+				if hasClientCloseErr {
+					closedFields = append(closedFields, zap.String("reason", closeErr.Reason()))
+				} else {
+					closedFields = append(closedFields, zap.Error(err))
+				}
+				reqLog.Info("openai.websocket_ingress_closed_normally", closedFields...)
+				// A bare coderws.CloseError or a plain cancellation carries no
+				// gateway-chosen close frame; mirror the client's clean 1000
+				// rather than the 1011 the proxy-failure tail would have sent.
+				if hasClientCloseErr {
+					closeOpenAIClientWS(wsConn, closeErr.StatusCode(), closeErr.Reason())
+				} else {
+					closeOpenAIClientWS(wsConn, coderws.StatusNormalClosure, "")
+				}
 				return
 			}
 
@@ -2572,7 +3065,7 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 				proxyFailedFields = append(proxyFailedFields, zap.Int64p("proxy_id", account.ProxyID))
 			}
 			reqLog.Warn("openai.websocket_proxy_failed", proxyFailedFields...)
-			if errors.As(err, &closeErr) {
+			if hasClientCloseErr {
 				closeOpenAIClientWS(wsConn, closeErr.StatusCode(), closeErr.Reason())
 				return
 			}
@@ -2768,14 +3261,14 @@ func (h *OpenAIGatewayHandler) acquireImageGenerationSlot(c *gin.Context, stream
 	if acquired {
 		return release, true
 	}
-	h.handleStreamingAwareError(c, http.StatusTooManyRequests, "rate_limit_error", "Image generation concurrency limit exceeded, please retry later", streamStarted)
+	h.handleStreamingAwareErrorWithCode(c, http.StatusTooManyRequests, "rate_limit_error", gatewayConcurrencyLimitCode, "Image generation concurrency limit exceeded, please retry later", streamStarted, false)
 	return nil, false
 }
 
 // handleConcurrencyError handles concurrency-related acquire errors.
 func (h *OpenAIGatewayHandler) handleConcurrencyError(c *gin.Context, err error, slotType string, streamStarted bool) {
-	status, errType, message := concurrencyErrorResponse(err, slotType)
-	h.handleStreamingAwareError(c, status, errType, message, streamStarted)
+	status, errType, code, message := concurrencyErrorResponse(err, slotType)
+	h.handleStreamingAwareErrorWithCode(c, status, errType, code, message, streamStarted, false)
 }
 
 func (h *OpenAIGatewayHandler) handleFailoverExhausted(c *gin.Context, failoverErr *service.UpstreamFailoverError, streamStarted bool) {
@@ -2955,7 +3448,7 @@ func (h *OpenAIGatewayHandler) handleStreamingAwareErrorWithCode(
 		// 通用 `event: error` 帧不被识别为终止事件，会导致
 		// "stream closed before response.completed"。
 		if inboundIsResponses(c) {
-			if writeResponsesFailedSSE(c, errType, message) {
+			if writeResponsesFailedSSE(c, errType, code, message) {
 				return
 			}
 		}
@@ -3122,7 +3615,7 @@ func (h *OpenAIGatewayHandler) errorResponse(c *gin.Context, status int, errType
 	// 提交的 SSE 流交错，必须降级为 response.failed 终止事件（#3887）。
 	if service.StopOpenAICompactSSEKeepaliveCommitted(c) {
 		service.MarkOpsStreamError(c, errType, message, status)
-		if writeResponsesFailedSSE(c, errType, message) {
+		if writeResponsesFailedSSE(c, errType, "", message) {
 			return
 		}
 	}
@@ -3440,7 +3933,7 @@ func (h *OpenAIGatewayHandler) rejectIfCyberSessionBlocked(c *gin.Context, apiKe
 	// 写 JSON（#3887）。
 	if service.StopOpenAICompactSSEKeepaliveCommitted(c) {
 		service.MarkOpsStreamError(c, "permission_error", cyberSessionBlockedClientMsg, http.StatusForbidden)
-		if writeResponsesFailedSSE(c, "permission_error", cyberSessionBlockedClientMsg) {
+		if writeResponsesFailedSSE(c, "permission_error", "", cyberSessionBlockedClientMsg) {
 			h.enqueueCyberSessionBlockedOpsEntry(c, apiKey, model, key)
 			return true
 		}
@@ -3606,6 +4099,7 @@ func (h *OpenAIGatewayHandler) recordCyberPolicyIfMarked(c *gin.Context, apiKey 
 	}
 	// 提前拍成标量，避免在下方 goroutine 内访问 gin.Context。
 	sessionID := service.ExtractClientSessionID(c)
+	nativeCompactionV2 := service.IsOpenAINativeCompactionV2(c)
 	apiKeyPrefix := ""
 	if apiKey != nil {
 		apiKeyPrefix = keyPrefix(apiKey.Key, 8)
@@ -3673,6 +4167,7 @@ func (h *OpenAIGatewayHandler) recordCyberPolicyIfMarked(c *gin.Context, apiKey 
 				SessionID:          sessionID,
 				RequestPayloadHash: requestPayloadHash,
 				APIKeyService:      apiKeySvc,
+				NativeCompactionV2: nativeCompactionV2,
 				ChannelUsageFields: channelFields,
 			})
 		}
@@ -3682,15 +4177,20 @@ func (h *OpenAIGatewayHandler) recordCyberPolicyIfMarked(c *gin.Context, apiKey 
 	}()
 }
 
-// clearCyberPolicyTurnState resets the cyber mark and the per-request recorded
-// guard. WS-only: called at the END of AfterTurn, after recordCyberPolicyIfMarked
-// and RecordUsage (which reads CyberBlocked) have both consumed the mark.
+// clearCyberPolicyTurnState resets the cyber mark and recorded guard after a
+// logical WS turn has finished.
 func clearCyberPolicyTurnState(c *gin.Context) {
+	clearCyberPolicyAttemptState(c, true)
+}
+
+func clearCyberPolicyAttemptState(c *gin.Context, resetRecorded bool) {
 	if c == nil {
 		return
 	}
 	service.ClearOpsCyberPolicy(c)
-	c.Set(cyberPolicyRecordedKey, false)
+	if resetRecorded {
+		c.Set(cyberPolicyRecordedKey, false)
+	}
 }
 
 func summarizeWSCloseErrorForLog(err error) (string, string) {

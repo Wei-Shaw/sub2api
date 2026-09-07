@@ -355,6 +355,39 @@ describe('EditAccountModal', () => {
     })
   })
 
+  it('preserves adaptive Kimi Responses endpoint on submit', async () => {
+    const account = buildAccount()
+    account.platform = 'kimi'
+    account.credentials = {
+      api_key: 'sk-kimi',
+      account_mode: 'payg',
+      api_protocol: 'adaptive',
+      base_url: 'https://api.moonshot.cn/v1',
+      api_base_urls: {
+        chat_completions: 'https://api.moonshot.cn/v1',
+        anthropic: 'https://api.moonshot.cn/anthropic',
+        responses: 'https://api.moonshot.cn/v1'
+      }
+    }
+    updateAccountMock.mockReset().mockResolvedValue(account)
+    checkMixedChannelRiskMock.mockReset().mockResolvedValue({ has_risk: false })
+
+    const wrapper = mountModal(account)
+    await wrapper.get('form#edit-account-form').trigger('submit.prevent')
+
+    expect(updateAccountMock).toHaveBeenCalledTimes(1)
+    expect(updateAccountMock.mock.calls[0]?.[1]?.credentials).toMatchObject({
+      account_mode: 'payg',
+      api_protocol: 'adaptive',
+      base_url: 'https://api.moonshot.cn/v1',
+      api_base_urls: {
+        chat_completions: 'https://api.moonshot.cn/v1',
+        anthropic: 'https://api.moonshot.cn/anthropic',
+        responses: 'https://api.moonshot.cn/v1'
+      }
+    })
+  })
+
   it('preserves adaptive GLM endpoints on submit', async () => {
     const account = buildAccount()
     account.platform = 'zhipu'
@@ -640,6 +673,85 @@ describe('EditAccountModal', () => {
     expect(updateAccountMock.mock.calls[0]?.[1]?.extra?.openai_responses_flatten_namespaces).toBe(
       true
     )
+  })
+
+  it('writes the upstream request id header into extra only when it changes', async () => {
+    const account = buildAccount()
+    account.extra = { openai_compact_mode: 'force_on' }
+    updateAccountMock.mockReset()
+    checkMixedChannelRiskMock.mockReset()
+    checkMixedChannelRiskMock.mockResolvedValue({ has_risk: false })
+    updateAccountMock.mockResolvedValue(account)
+
+    const untouched = mountModal(account)
+    await untouched.get('form#edit-account-form').trigger('submit.prevent')
+    expect(updateAccountMock).toHaveBeenCalledTimes(1)
+    expect(updateAccountMock.mock.calls[0]?.[1]?.extra?.upstream_request_id_header).toBeUndefined()
+
+    updateAccountMock.mockClear()
+    const wrapper = mountModal(account)
+    await wrapper.get('[data-testid="upstream-request-id-header"]').setValue(' X-Oneapi-Request-Id ')
+    await wrapper.get('form#edit-account-form').trigger('submit.prevent')
+
+    expect(updateAccountMock).toHaveBeenCalledTimes(1)
+    expect(updateAccountMock.mock.calls[0]?.[1]?.extra).toMatchObject({
+      openai_compact_mode: 'force_on',
+      upstream_request_id_header: 'X-Oneapi-Request-Id'
+    })
+  })
+
+  it('removes the upstream request id header from extra when cleared', async () => {
+    const account = buildAccount()
+    account.extra = { upstream_request_id_header: 'X-Request-ID' }
+    updateAccountMock.mockReset()
+    checkMixedChannelRiskMock.mockReset()
+    checkMixedChannelRiskMock.mockResolvedValue({ has_risk: false })
+    updateAccountMock.mockResolvedValue(account)
+
+    const wrapper = mountModal(account)
+    expect((wrapper.get('[data-testid="upstream-request-id-header"]').element as HTMLInputElement).value).toBe('X-Request-ID')
+    await wrapper.get('[data-testid="upstream-request-id-header"]').setValue('')
+    await wrapper.get('form#edit-account-form').trigger('submit.prevent')
+
+    expect(updateAccountMock).toHaveBeenCalledTimes(1)
+    expect(updateAccountMock.mock.calls[0]?.[1]?.extra).toBeDefined()
+    expect(updateAccountMock.mock.calls[0]?.[1]?.extra).not.toHaveProperty('upstream_request_id_header')
+  })
+
+  it('writes images_url_to_b64_json into extra when toggled on', async () => {
+    const account = buildAccount()
+    updateAccountMock.mockReset()
+    checkMixedChannelRiskMock.mockReset()
+    checkMixedChannelRiskMock.mockResolvedValue({ has_risk: false })
+    updateAccountMock.mockResolvedValue(account)
+
+    const wrapper = mountModal(account)
+    const toggle = wrapper.get('[data-testid="openai-images-url-to-b64-json-toggle"]')
+    expect(toggle.attributes('aria-checked')).toBe('false')
+    await toggle.trigger('click')
+    await wrapper.get('form#edit-account-form').trigger('submit.prevent')
+
+    expect(updateAccountMock).toHaveBeenCalledTimes(1)
+    expect(updateAccountMock.mock.calls[0]?.[1]?.extra?.images_url_to_b64_json).toBe(true)
+  })
+
+  it('removes images_url_to_b64_json from extra when toggled off', async () => {
+    const account = buildAccount()
+    account.extra = { images_url_to_b64_json: true }
+    updateAccountMock.mockReset()
+    checkMixedChannelRiskMock.mockReset()
+    checkMixedChannelRiskMock.mockResolvedValue({ has_risk: false })
+    updateAccountMock.mockResolvedValue(account)
+
+    const wrapper = mountModal(account)
+    const toggle = wrapper.get('[data-testid="openai-images-url-to-b64-json-toggle"]')
+    expect(toggle.attributes('aria-checked')).toBe('true')
+    await toggle.trigger('click')
+    await wrapper.get('form#edit-account-form').trigger('submit.prevent')
+
+    expect(updateAccountMock).toHaveBeenCalledTimes(1)
+    expect(updateAccountMock.mock.calls[0]?.[1]?.extra).toBeDefined()
+    expect(updateAccountMock.mock.calls[0]?.[1]?.extra).not.toHaveProperty('images_url_to_b64_json')
   })
 
   it('hides the Codex namespace flatten toggle for non-OAuth OpenAI accounts', async () => {

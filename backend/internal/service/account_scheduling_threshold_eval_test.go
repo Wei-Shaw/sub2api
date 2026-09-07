@@ -96,6 +96,43 @@ func TestEvaluateAccountSchedulingThreshold_AnthropicIgnoresExpiredFiveHourWindo
 	require.True(t, wantUntil.Equal(*decision.Until))
 }
 
+func TestEvaluateAnthropicFableSchedulingThreshold_UsesAccountOverrideWithoutPausingAccount(t *testing.T) {
+	t.Parallel()
+
+	now := time.Date(2026, 8, 29, 1, 0, 0, 0, time.UTC)
+	wantUntil := now.Add(4 * 24 * time.Hour)
+	account := &Account{
+		Platform: PlatformAnthropic,
+		Credentials: map[string]any{
+			"account_scheduling_threshold": 60,
+		},
+		Extra: map[string]any{
+			"passive_usage_7d_utilization":    0.40,
+			"passive_usage_7d_reset":          float64(now.Add(3 * 24 * time.Hour).Unix()),
+			"passive_usage_7d_oi_utilization": 0.61,
+			"passive_usage_7d_oi_reset":       float64(wantUntil.Unix()),
+		},
+	}
+
+	thresholds := map[string]int{
+		PlatformAnthropic: 100,
+	}
+
+	accountDecision := EvaluateAccountSchedulingThreshold(account, thresholds, now)
+	require.False(t, accountDecision.ShouldPause)
+
+	decision := evaluateAnthropicFableSchedulingThreshold(account, thresholds, now)
+
+	require.True(t, decision.ShouldPause)
+	require.Equal(t, PlatformAnthropic, decision.Platform)
+	require.Equal(t, "7d_oi", decision.Window)
+	require.Equal(t, anthropicFableRateLimitKey, decision.Scope)
+	require.Equal(t, 60, decision.ThresholdPercent)
+	require.Equal(t, 61.0, decision.UsedPercent)
+	require.NotNil(t, decision.Until)
+	require.True(t, wantUntil.Equal(*decision.Until))
+}
+
 func TestEvaluateAccountSchedulingThreshold_OpenAIPreservesPercentageSemantics(t *testing.T) {
 	t.Parallel()
 

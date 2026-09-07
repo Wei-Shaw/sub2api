@@ -141,6 +141,36 @@ func EffectiveResponsesTools(req *ResponsesRequest) ([]ResponsesTool, error) {
 		}
 		tools = append(tools, item.Tools...)
 	}
+
+	// A completed client tool search can introduce tools for the remainder of
+	// the turn. Promote them before lowering to ChatCompletions, using the same
+	// dedupe, conflict, namespace, and custom-tool rules as the native adapter.
+	toolsRaw, err := json.Marshal(tools)
+	if err != nil {
+		return nil, fmt.Errorf("encode responses tools for discovery promotion: %w", err)
+	}
+	var rawTools, rawInput []any
+	if err := json.Unmarshal(toolsRaw, &rawTools); err != nil {
+		return nil, fmt.Errorf("decode responses tools for discovery promotion: %w", err)
+	}
+	if err := json.Unmarshal(inputRaw, &rawInput); err != nil {
+		return nil, fmt.Errorf("parse responses input for discovery promotion: %w", err)
+	}
+	promoted, err := promotedResponsesToolSearchDiscoveries(rawTools, rawInput)
+	if err != nil {
+		return nil, err
+	}
+	if len(promoted) > 0 {
+		promotedRaw, err := json.Marshal(promoted)
+		if err != nil {
+			return nil, fmt.Errorf("encode promoted responses tools: %w", err)
+		}
+		var discovered []ResponsesTool
+		if err := json.Unmarshal(promotedRaw, &discovered); err != nil {
+			return nil, fmt.Errorf("decode promoted responses tools: %w", err)
+		}
+		tools = append(tools, discovered...)
+	}
 	return tools, nil
 }
 
@@ -456,6 +486,11 @@ func buildChatMessagesFromItems(messages []ChatMessage, rawItems []json.RawMessa
 			continue
 		case "function_call_output", "custom_tool_call_output", "tool_search_output":
 			outputRaw := bytesTrimSpace(item["output"])
+			if itemType == "tool_search_output" && (len(outputRaw) == 0 || string(outputRaw) == "null") {
+				// Newer clients return discoveries in tools[] without a separate
+				// output field. Keep that useful result in Chat tool history.
+				outputRaw = bytesTrimSpace(item["tools"])
+			}
 			callID := rawString(item["call_id"])
 			if callID == "" && invalidEmptyFunctionCallOutputs > 0 {
 				invalidEmptyFunctionCallOutputs--
@@ -1211,9 +1246,20 @@ func ChatCompletionsResponseToResponses(resp *ChatCompletionsResponse, model str
 		id = generateResponsesID()
 	}
 
+	// Carry the upstream's own creation timestamp when it sent one; otherwise
+	// stamp now, same fallback shape as the generated id above.
+	createdAt := int64(0)
+	if resp != nil {
+		createdAt = resp.Created
+	}
+	if createdAt <= 0 {
+		createdAt = time.Now().Unix()
+	}
+
 	out := &ResponsesResponse{
 		ID:          id,
 		Object:      "response",
+		CreatedAt:   createdAt,
 		Model:       model,
 		Status:      "completed",
 		ServiceTier: chatServiceTier(resp),
@@ -1711,6 +1757,7 @@ func FinalizeChatCompletionsResponsesStream(state *ChatCompletionsToResponsesStr
 		Response: &ResponsesResponse{
 			ID:                state.ResponseID,
 			Object:            "response",
+			CreatedAt:         state.Created,
 			Model:             state.Model,
 			Status:            status,
 			ServiceTier:       state.ServiceTier,
@@ -1731,6 +1778,7 @@ func ensureChatToResponsesCreated(state *ChatCompletionsToResponsesStreamState) 
 		Response: &ResponsesResponse{
 			ID:          state.ResponseID,
 			Object:      "response",
+			CreatedAt:   state.Created,
 			Model:       state.Model,
 			Status:      "in_progress",
 			ServiceTier: state.ServiceTier,

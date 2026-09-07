@@ -75,6 +75,8 @@ const (
 const (
 	openAIImageRateLimitDefaultCooldown = time.Minute
 	openAIImageRateLimitReason          = "openai_image_rate_limited"
+	openAIImageCapabilityLossCooldown   = 30 * time.Minute
+	openAIImageCapabilityLossReason     = "openai_image_capability_lost"
 )
 
 var openAIImageTryAgainPattern = regexp.MustCompile(`(?i)try again in\s+([0-9]+(?:\.[0-9]+)?)\s*(ms|s|sec|secs|second|seconds|m|min|mins|minute|minutes)`)
@@ -167,6 +169,7 @@ func (s *RateLimitService) ApplyAccountSchedulingThreshold(ctx context.Context, 
 	thresholds := s.settingService.GetAccountSchedulingThresholds(ctx)
 	decision := EvaluateAccountSchedulingThreshold(account, thresholds, now)
 	if !decision.ShouldPause || decision.Until == nil || !decision.Until.After(now) {
+		s.applyAnthropicFableSchedulingThreshold(ctx, account, thresholds, now)
 		return false
 	}
 
@@ -218,6 +221,43 @@ func (s *RateLimitService) ApplyAccountSchedulingThreshold(ctx context.Context, 
 		"used_percent", decision.UsedPercent,
 		"until", decision.Until.UTC())
 	return true
+}
+
+func (s *RateLimitService) applyAnthropicFableSchedulingThreshold(ctx context.Context, account *Account, thresholds map[string]int, now time.Time) {
+	decision := evaluateAnthropicFableSchedulingThreshold(account, thresholds, now)
+	if !decision.ShouldPause || decision.Until == nil || !decision.Until.After(now) {
+		return
+	}
+	if account.isRateLimitActiveForKey(anthropicFableRateLimitKey) {
+		return
+	}
+
+	reason := BuildDetailedAccountSchedulingThresholdReason(AccountSchedulingThresholdReasonInput{
+		Platform:         decision.Platform,
+		Window:           decision.Window,
+		Scope:            decision.Scope,
+		ThresholdPercent: decision.ThresholdPercent,
+		UsedPercent:      decision.UsedPercent,
+		Until:            *decision.Until,
+		Now:              now,
+	})
+	setAccountModelRateLimitSnapshot(account, anthropicFableRateLimitKey, *decision.Until, reason, now)
+	if err := s.accountRepo.SetModelRateLimit(ctx, account.ID, anthropicFableRateLimitKey, *decision.Until, reason); err != nil {
+		slog.Warn("anthropic_fable_scheduling_threshold_set_model_limit_failed",
+			"account_id", account.ID,
+			"threshold_percent", decision.ThresholdPercent,
+			"used_percent", decision.UsedPercent,
+			"until", decision.Until.UTC(),
+			"error", err)
+		return
+	}
+
+	slog.Info("anthropic_fable_scheduling_threshold_model_limited",
+		"account_id", account.ID,
+		"scope", anthropicFableRateLimitKey,
+		"threshold_percent", decision.ThresholdPercent,
+		"used_percent", decision.UsedPercent,
+		"until", decision.Until.UTC())
 }
 
 func accountHasSameSchedulingThresholdPause(account *Account, until time.Time, reason string) bool {
@@ -2188,6 +2228,81 @@ func (s *RateLimitService) HandleOpenAIImageRateLimit(ctx context.Context, accou
 	}
 	slog.Info("openai_image_rate_limited", "account_id", account.ID, "scope", openAIImageGenerationRateLimitKey, "reset_at", resetAt, "reset_in", time.Until(resetAt).Truncate(time.Second))
 	return true
+}
+
+// HandleOpenAICodexSparkRateLimit 将 Spark 独立配额窗口记录为模型级限流。
+// Spark 的 x-codex-* 使用率和 reset 时间只代表 Spark 模型维度，不能写入账号级
+// RateLimitResetAt，否则同一 OAuth 账号上的其他模型也会被错误停调。
+func (s *RateLimitService) HandleOpenAICodexSparkRateLimit(ctx context.Context, account *Account, requestedModel string, statusCode int, headers http.Header, responseBody []byte) bool {
+	if s == nil || account == nil || s.accountRepo == nil || statusCode != http.StatusTooManyRequests || !isOpenAIOAuthAccount(account) {
+		return false
+	}
+	if !isCodexSparkModel(requestedModel) || !account.ShouldHandleErrorCode(statusCode) {
+		return false
+	}
+
+	modelKey := normalizeCodexModel(modelRateLimitKeyForUpstreamModelNotFound(ctx, account, requestedModel))
+	if modelKey == "" {
+		return false
+	}
+	now := time.Now()
+	disposition, resetAt := classifyOpenAIOAuth429(headers, responseBody)
+	// Spark 只有明确耗尽 5h/7d 窗口时才能使用上游长 reset；普通瞬时 429
+	// 即使携带全局 reset 头，也只能使用短时回避，避免错误冷却数天。
+	if disposition != openAIOAuth429Quota5h && disposition != openAIOAuth429Quota7d {
+		resetAt = nil
+	}
+	if resetAt == nil || !resetAt.After(now) {
+		cooldown, ok := s.get429FallbackCooldown(ctx, account)
+		if !ok || cooldown <= 0 {
+			cooldown = time.Duration(defaultRateLimit429CooldownSeconds) * time.Second
+		}
+		reset := now.Add(cooldown)
+		resetAt = &reset
+	}
+	if err := s.accountRepo.SetModelRateLimit(ctx, account.ID, modelKey, *resetAt, openAICodexSparkRateLimitReason); err != nil {
+		slog.Warn("openai_codex_spark_model_rate_limit_set_failed", "account_id", account.ID, "model", modelKey, "error", err)
+	}
+	slog.Info("openai_codex_spark_model_rate_limited", "account_id", account.ID, "model", modelKey, "reset_at", *resetAt)
+	return true
+}
+
+func (s *RateLimitService) HandleOpenAIImageCapabilityLoss(ctx context.Context, account *Account, statusCode int, responseBody []byte) bool {
+	if s == nil || account == nil || s.accountRepo == nil {
+		return false
+	}
+	if account.Platform != PlatformOpenAI {
+		return false
+	}
+	if !account.ShouldHandleErrorCode(statusCode) {
+		slog.Info("openai_image_capability_loss_skipped_by_error_code_policy", "account_id", account.ID, "status_code", statusCode)
+		return false
+	}
+	if !isOpenAIImageCapabilityLossError(statusCode, responseBody) {
+		return false
+	}
+
+	resetAt := time.Now().Add(openAIImageCapabilityLossCooldown)
+	if err := s.accountRepo.SetModelRateLimit(ctx, account.ID, openAIImageGenerationRateLimitKey, resetAt, openAIImageCapabilityLossReason); err != nil {
+		slog.Warn("openai_image_capability_loss_set_model_rate_limit_failed", "account_id", account.ID, "scope", openAIImageGenerationRateLimitKey, "error", err)
+		return true
+	}
+	slog.Info("openai_image_capability_lost", "account_id", account.ID, "scope", openAIImageGenerationRateLimitKey, "reset_at", resetAt, "reset_in", time.Until(resetAt).Truncate(time.Second))
+	return true
+}
+
+// isOpenAIImageCapabilityLossError reports whether upstream rejected the
+// image_generation tool choice that sub2api itself put into the request body.
+// Only meaningful for self-built images requests, where tools always carries a
+// matching image_generation entry — upstream saying otherwise means the account
+// lost the capability.
+func isOpenAIImageCapabilityLossError(statusCode int, body []byte) bool {
+	if statusCode != http.StatusBadRequest || len(body) == 0 {
+		return false
+	}
+	lower := strings.ToLower(string(body))
+	return strings.Contains(lower, "image_generation") &&
+		strings.Contains(lower, "not found in 'tools' parameter")
 }
 
 func isOpenAIImageRateLimitError(statusCode int, body []byte) bool {

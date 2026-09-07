@@ -320,15 +320,16 @@ func TestPricingRequestToService_Defaults(t *testing.T) {
 func TestPricingRequestToService_WithAllFields(t *testing.T) {
 	reqs := []channelModelPricingRequest{
 		{
-			Platform:         "openai",
-			Models:           []string{"gpt-4", "gpt-4o"},
-			BillingMode:      "per_request",
-			InputPrice:       float64Ptr(0.01),
-			OutputPrice:      float64Ptr(0.03),
-			CacheWritePrice:  float64Ptr(0.005),
-			CacheReadPrice:   float64Ptr(0.002),
-			ImageOutputPrice: float64Ptr(0.04),
-			PerRequestPrice:  float64Ptr(0.5),
+			Platform:          "openai",
+			Models:            []string{"gpt-4", "gpt-4o"},
+			BillingMode:       "per_request",
+			InputPrice:        float64Ptr(0.01),
+			OutputPrice:       float64Ptr(0.03),
+			CacheWritePrice:   float64Ptr(0.005),
+			CacheWrite1hPrice: float64Ptr(0.008),
+			CacheReadPrice:    float64Ptr(0.002),
+			ImageOutputPrice:  float64Ptr(0.04),
+			PerRequestPrice:   float64Ptr(0.5),
 		},
 	}
 
@@ -341,6 +342,7 @@ func TestPricingRequestToService_WithAllFields(t *testing.T) {
 	require.Equal(t, float64Ptr(0.01), r.InputPrice)
 	require.Equal(t, float64Ptr(0.03), r.OutputPrice)
 	require.Equal(t, float64Ptr(0.005), r.CacheWritePrice)
+	require.Equal(t, float64Ptr(0.008), r.CacheWrite1hPrice)
 	require.Equal(t, float64Ptr(0.002), r.CacheReadPrice)
 	require.Equal(t, float64Ptr(0.04), r.ImageOutputPrice)
 	require.Equal(t, float64Ptr(0.5), r.PerRequestPrice)
@@ -353,15 +355,16 @@ func TestPricingRequestToService_WithIntervals(t *testing.T) {
 			BillingMode: "per_request",
 			Intervals: []pricingIntervalRequest{
 				{
-					MinTokens:       0,
-					MaxTokens:       intPtr(2000),
-					TierLabel:       "small",
-					InputPrice:      float64Ptr(0.01),
-					OutputPrice:     float64Ptr(0.02),
-					CacheWritePrice: float64Ptr(0.003),
-					CacheReadPrice:  float64Ptr(0.001),
-					PerRequestPrice: float64Ptr(0.1),
-					SortOrder:       1,
+					MinTokens:         0,
+					MaxTokens:         intPtr(2000),
+					TierLabel:         "small",
+					InputPrice:        float64Ptr(0.01),
+					OutputPrice:       float64Ptr(0.02),
+					CacheWritePrice:   float64Ptr(0.003),
+					CacheWrite1hPrice: float64Ptr(0.006),
+					CacheReadPrice:    float64Ptr(0.001),
+					PerRequestPrice:   float64Ptr(0.1),
+					SortOrder:         1,
 				},
 				{
 					MinTokens: 2000,
@@ -384,6 +387,7 @@ func TestPricingRequestToService_WithIntervals(t *testing.T) {
 	require.Equal(t, float64Ptr(0.01), iv0.InputPrice)
 	require.Equal(t, float64Ptr(0.02), iv0.OutputPrice)
 	require.Equal(t, float64Ptr(0.003), iv0.CacheWritePrice)
+	require.Equal(t, float64Ptr(0.006), iv0.CacheWrite1hPrice)
 	require.Equal(t, float64Ptr(0.001), iv0.CacheReadPrice)
 	require.Equal(t, float64Ptr(0.1), iv0.PerRequestPrice)
 	require.Equal(t, 1, iv0.SortOrder)
@@ -449,10 +453,11 @@ func TestPricingRequestToService_TimePricingNil(t *testing.T) {
 // 避免渠道倍率意外污染账号成本口径。
 func TestPricingRequestToService_MultipliersGatedByFlag(t *testing.T) {
 	req := channelModelPricingRequest{
-		Models:         []string{"gpt-5"},
-		BillingMode:    "token",
-		FastMultiplier: float64Ptr(2.5),
-		FlexMultiplier: float64Ptr(0.5),
+		Models:                       []string{"gpt-5"},
+		BillingMode:                  "token",
+		FastMultiplier:               float64Ptr(2.5),
+		FlexMultiplier:               float64Ptr(0.5),
+		MaxReasoningEffortMultiplier: float64Ptr(3),
 		Intervals: []pricingIntervalRequest{{
 			MinTokens:            272000,
 			InputMultiplier:      float64Ptr(2),
@@ -465,6 +470,7 @@ func TestPricingRequestToService_MultipliersGatedByFlag(t *testing.T) {
 	allowed := pricingRequestToService([]channelModelPricingRequest{req}, true)
 	require.Equal(t, float64Ptr(2.5), allowed[0].FastMultiplier)
 	require.Equal(t, float64Ptr(0.5), allowed[0].FlexMultiplier)
+	require.Equal(t, float64Ptr(3), allowed[0].MaxReasoningEffortMultiplier)
 	require.Equal(t, float64Ptr(2), allowed[0].Intervals[0].InputMultiplier)
 	require.Equal(t, float64Ptr(1.5), allowed[0].Intervals[0].OutputMultiplier)
 	require.Equal(t, float64Ptr(2), allowed[0].Intervals[0].CacheWriteMultiplier)
@@ -473,6 +479,7 @@ func TestPricingRequestToService_MultipliersGatedByFlag(t *testing.T) {
 	dropped := pricingRequestToService([]channelModelPricingRequest{req}, false)
 	require.Nil(t, dropped[0].FastMultiplier)
 	require.Nil(t, dropped[0].FlexMultiplier)
+	require.Nil(t, dropped[0].MaxReasoningEffortMultiplier)
 	require.Nil(t, dropped[0].Intervals[0].InputMultiplier)
 	require.Nil(t, dropped[0].Intervals[0].OutputMultiplier)
 	require.Nil(t, dropped[0].Intervals[0].CacheWriteMultiplier)
@@ -557,4 +564,54 @@ func TestSyncPricingModels_ValidPlatform_EmptyService(t *testing.T) {
 		require.NoError(t, json.Unmarshal(w.Body.Bytes(), &body))
 		require.NotNil(t, body.Data.Models, "models must not be null for platform=%s", platform)
 	}
+}
+
+func setupModelDefaultPricingRouter() *gin.Engine {
+	gin.SetMode(gin.TestMode)
+	router := gin.New()
+	h := &ChannelHandler{billingService: service.NewBillingService(nil, nil)}
+	router.GET("/channels/model-pricing", h.GetModelDefaultPricing)
+	return router
+}
+
+func TestGetModelDefaultPricing_ReturnsFable51CacheTTLs(t *testing.T) {
+	router := setupModelDefaultPricingRouter()
+	req := httptest.NewRequest(http.MethodGet, "/channels/model-pricing?model=claude-fable-5-1", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	require.Equal(t, http.StatusOK, w.Code)
+	var body struct {
+		Data struct {
+			Found                        bool     `json:"found"`
+			CacheWritePrice              float64  `json:"cache_write_price"`
+			CacheWrite1hPrice            *float64 `json:"cache_write_1h_price"`
+			MaxReasoningEffortMultiplier *float64 `json:"max_reasoning_effort_multiplier"`
+		} `json:"data"`
+	}
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &body))
+	require.True(t, body.Data.Found)
+	require.InDelta(t, 12.5e-6, body.Data.CacheWritePrice, 1e-12)
+	require.NotNil(t, body.Data.CacheWrite1hPrice)
+	require.InDelta(t, 20e-6, *body.Data.CacheWrite1hPrice, 1e-12)
+	require.NotNil(t, body.Data.MaxReasoningEffortMultiplier)
+	require.Equal(t, 3.0, *body.Data.MaxReasoningEffortMultiplier)
+}
+
+func TestGetModelDefaultPricing_OmitsUnsupportedCache1hPrice(t *testing.T) {
+	router := setupModelDefaultPricingRouter()
+	req := httptest.NewRequest(http.MethodGet, "/channels/model-pricing?model=claude-sonnet-4", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	require.Equal(t, http.StatusOK, w.Code)
+	var body struct {
+		Data struct {
+			Found             bool     `json:"found"`
+			CacheWrite1hPrice *float64 `json:"cache_write_1h_price"`
+		} `json:"data"`
+	}
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &body))
+	require.True(t, body.Data.Found)
+	require.Nil(t, body.Data.CacheWrite1hPrice)
 }

@@ -667,6 +667,8 @@ type PricingConfig struct {
 	DataDir string `mapstructure:"data_dir"`
 	// 回退文件路径
 	FallbackFile string `mapstructure:"fallback_file"`
+	// 覆盖补丁文件路径（可选）：条目按字段浅合并覆盖目录/回退数据，优先级最高
+	OverrideFile string `mapstructure:"override_file"`
 	// 更新间隔（小时）
 	UpdateIntervalHours int `mapstructure:"update_interval_hours"`
 	// 哈希校验间隔（分钟）
@@ -2279,11 +2281,12 @@ func setDefaults() {
 	viper.SetDefault("rate_limit.overload_cooldown_minutes", 10)
 	viper.SetDefault("rate_limit.oauth_401_cooldown_minutes", 10)
 
-	// Pricing - 从 model-price-repo 同步模型定价和上下文窗口数据（固定到 commit，避免分支漂移）
+	// Pricing - 从 model-price-repo main 分支同步模型定价和上下文窗口数据
 	viper.SetDefault("pricing.remote_url", "https://raw.githubusercontent.com/Wei-Shaw/model-price-repo/main/model_prices_and_context_window.json")
 	viper.SetDefault("pricing.hash_url", "https://raw.githubusercontent.com/Wei-Shaw/model-price-repo/main/model_prices_and_context_window.sha256")
 	viper.SetDefault("pricing.data_dir", "./data")
 	viper.SetDefault("pricing.fallback_file", "./resources/model-pricing/model_prices_and_context_window.json")
+	viper.SetDefault("pricing.override_file", "")
 	viper.SetDefault("pricing.update_interval_hours", 24)
 	viper.SetDefault("pricing.hash_check_interval_minutes", 10)
 

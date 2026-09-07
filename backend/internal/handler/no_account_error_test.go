@@ -234,3 +234,72 @@ func TestClassifyNoAccountError_FromGin_NilContextStillSafe(t *testing.T) {
 	require.False(t, service.HasOpsClientBusinessLimited(nil))
 	require.Empty(t, service.OpsClientBusinessLimitedReason(nil))
 }
+
+// 权威的 404 model_not_found 不能被"账号被限流"的 429 盖掉。
+//
+// 选号失败的错误串同时携带多种过滤原因，例如
+// "pool=9, filtered: model_not_supported=8 model_rate_limited=1"：8 个账号根本不支持该模型，
+// 剩下 1 个恰好处于模型级冷却。此时 classifyNoAccountError 已通过持久化判据确认整个分组
+// 没有账号能服务该模型（ModelNotFound=true），改判成 429 "All available accounts are
+// currently rate-limited" 是错误诊断——重试永远不会成功，而把 429 当限流的客户端会反复
+// 重试并吞掉 body（Codex 只显示 "exceeded retry limit"），恰好丢掉唯一说明真实原因的信息。
+func TestClassifySelectionFailureError_ModelNotFoundIsNotOverriddenByRateLimited(t *testing.T) {
+	modelNotFound := noAccountErrorClassification{
+		Status:        http.StatusNotFound,
+		ErrType:       "model_not_found",
+		Message:       `Model "gpt-5.3-codex" is not supported by any configured account in this group`,
+		ModelNotFound: true,
+	}
+
+	got := classifySelectionFailureError(
+		fmt.Errorf("no available OpenAI accounts supporting model: gpt-5.3-codex "+
+			"(pool=9, filtered: model_not_supported=8 model_rate_limited=1)"),
+		modelNotFound,
+	)
+
+	require.Equal(t, modelNotFound, got,
+		"分组里没有任何账号能服务该模型时，模型级冷却不该把 404 改判成 429")
+}
+
+// 真实调用点的顺序：先 classifyNoAccountErrorFromGin，再 classifySelectionFailureError。
+// 覆盖这条链路是为了同时锁住 ops 归因——调用点用 ModelNotFound 决定是否标记
+// routing capacity limited，一旦 404 被改判成 429，同一个请求会既被标成
+// local model configuration 又被标成容量问题，自相矛盾。
+func TestClassifySelectionFailureError_CallSiteChainKeepsModelNotFoundAttribution(t *testing.T) {
+	c := newTestGinContextWithRequest()
+	fd := &fakeDiagnoser{resp: service.ModelAvailabilityDiagnosis{HasAccountsInPool: true, HasModelSupport: false}}
+	apiKey := &service.APIKey{GroupID: ptrInt64(43)}
+
+	cls := classifyNoAccountErrorFromGin(c, fd, apiKey, "gpt-5.3-codex", "gpt-5.3-codex", service.PlatformOpenAI)
+	cls = classifySelectionFailureError(
+		fmt.Errorf("no available OpenAI accounts supporting model: gpt-5.3-codex "+
+			"(pool=9, filtered: model_not_supported=8 model_rate_limited=1)"),
+		cls,
+	)
+
+	require.Equal(t, http.StatusNotFound, cls.Status)
+	require.Equal(t, "model_not_found", cls.ErrType)
+	require.True(t, cls.ModelNotFound)
+	require.Contains(t, cls.Message, "gpt-5.3-codex")
+	require.True(t, service.HasOpsClientBusinessLimited(c))
+	require.Equal(t, service.OpsClientBusinessLimitedReasonLocalModelConfiguration, service.OpsClientBusinessLimitedReason(c))
+}
+
+// 池子里确实存在能服务该模型、只是全部在冷却的账号时，429 改判仍需保留：
+// 这种情况 fallback 是 503（HasModelSupport=true），重试是有意义的。
+func TestClassifySelectionFailureError_StillUpgradesNonModelNotFoundFallback(t *testing.T) {
+	fallback := noAccountErrorClassification{
+		Status:  http.StatusServiceUnavailable,
+		ErrType: "api_error",
+		Message: "Service temporarily unavailable",
+	}
+
+	got := classifySelectionFailureError(
+		fmt.Errorf("no available accounts supporting model: gpt-5.6-sol (total=3 eligible=0 model_rate_limited=3)"),
+		fallback,
+	)
+
+	require.Equal(t, http.StatusTooManyRequests, got.Status)
+	require.Equal(t, "rate_limit_error", got.ErrType)
+	require.False(t, got.ModelNotFound)
+}

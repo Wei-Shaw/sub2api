@@ -340,6 +340,7 @@ export default {
 	  modelVariant: '疑似版本变体',
 	  modelMismatch: '模型不一致',
     reasoningEffort: '推理强度',
+    requestedReasoningEffort: '请求推理强度',
     endpoint: '端点',
     endpointDistribution: '端点分布',
     inbound: '入站',
@@ -360,6 +361,10 @@ export default {
     ws: 'WS',
     stream: '流式',
     sync: '同步',
+    nativeCompactionV2: '压缩',
+    compactionFilter: '请求类别',
+    allCompactionTypes: '全部请求',
+    compactionOnly: '仅原生压缩',
     cyber: '安全策略',
     live: 'Live',
     unknown: '未知',
@@ -398,6 +403,7 @@ export default {
     cacheWrite: '写入',
     serviceTier: '服务档位',
     serviceTierPriority: 'Fast',
+    serviceTierUltrafast: 'Ultrafast',
     serviceTierFlex: 'Flex',
     serviceTierStandard: 'Standard',
     rate: '倍率',
@@ -476,7 +482,6 @@ export default {
     // 配额快照展示（MonitorQuotaView，管理端与用户端共用）
     quota: {
       unavailable: '配额信息不可用',
-      resetSoon: '即将重置',
       windows: {
         '5h': '5 小时',
         '7d': '7 天',
@@ -586,6 +591,8 @@ export default {
       inputPrice: '输入',
       outputPrice: '输出',
       cacheWritePrice: '缓存写入',
+      cacheWrite5mPrice: '缓存写入（5m）',
+      cacheWrite1hPrice: '缓存写入（1h）',
       cacheReadPrice: '缓存读取',
       imageInputPrice: '图片输入',
       imageOutputPrice: '图片输出',
@@ -634,6 +641,8 @@ export default {
       cacheReadShort: '读',
       tierHint: '按单次请求的总上下文（输入 + 缓存写入 + 缓存读取）所在档位对整单计价',
       tierHintMarginal: '仅超过阈值的部分按该档计价，输出不加价',
+      maxReasoningMultiplierBadge: 'Max ×{multiplier}',
+      maxReasoningMultiplierHint: '最终转发的推理强度为 max 时，整次请求的计费与额度消耗乘以 {multiplier}',
       marginalBadge: '超出部分计价',
       timePricingRowHint: '按 {timezone} 时间，在该时段内发起的请求按本行价格计费',
       timePricingRowHintWeekdays:

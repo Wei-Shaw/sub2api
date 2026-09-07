@@ -494,6 +494,66 @@ func TestForwardAsAnthropic_AutoDerivesPromptCacheKeyWhenMessagesDispatchHasNoSe
 	require.Equal(t, generateSessionUUID(isolateOpenAISessionID(0, cacheKey)), upstream.lastReq.Header.Get("session_id"))
 }
 
+func TestForwardAsAnthropic_GPT6AstraPromptCacheIdentityStableAcrossAppendedTurns(t *testing.T) {
+	t.Parallel()
+	gin.SetMode(gin.TestMode)
+
+	for _, mappedModel := range []string{"gpt-6-astra", "gpt-6"} {
+		mappedModel := mappedModel
+		t.Run(mappedModel, func(t *testing.T) {
+			t.Parallel()
+
+			upstream := &httpUpstreamRecorder{responses: []*http.Response{
+				openAICompatSSECompletedResponse("resp_gpt6_first", mappedModel),
+				openAICompatSSECompletedResponse("resp_gpt6_second", mappedModel),
+			}}
+			svc := &OpenAIGatewayService{
+				httpUpstream: upstream,
+				cfg:          &config.Config{Security: config.SecurityConfig{URLAllowlist: config.URLAllowlistConfig{Enabled: false}}},
+			}
+			account := &Account{
+				ID:          6615,
+				Name:        "openai-apikey",
+				Platform:    PlatformOpenAI,
+				Type:        AccountTypeAPIKey,
+				Concurrency: 1,
+				Credentials: map[string]any{
+					"api_key":  "sk-test",
+					"base_url": "https://api.openai.com/v1",
+				},
+			}
+
+			bodies := [][]byte{
+				[]byte(`{"model":"claude-sonnet-4-5","max_tokens":16,"system":"You are helpful.","messages":[{"role":"user","content":"Inspect the repository"}],"stream":false}`),
+				[]byte(`{"model":"claude-sonnet-4-5","max_tokens":16,"system":"You are helpful.","messages":[{"role":"user","content":"Inspect the repository"},{"role":"assistant","content":"Done."},{"role":"user","content":"Run the tests"}],"stream":false}`),
+			}
+			for _, body := range bodies {
+				rec := httptest.NewRecorder()
+				c, _ := gin.CreateTestContext(rec)
+				c.Request = httptest.NewRequest(http.MethodPost, "/v1/messages", bytes.NewReader(body))
+				c.Request.Header.Set("Content-Type", "application/json")
+
+				result, err := svc.ForwardAsAnthropic(context.Background(), c, account, body, "", mappedModel)
+				require.NoError(t, err)
+				require.NotNil(t, result)
+			}
+
+			require.Len(t, upstream.bodies, 2)
+			require.Len(t, upstream.requests, 2)
+			require.Equal(t, mappedModel, gjson.GetBytes(upstream.bodies[0], "model").String())
+			require.Equal(t, mappedModel, gjson.GetBytes(upstream.bodies[1], "model").String())
+			firstCacheKey := gjson.GetBytes(upstream.bodies[0], "prompt_cache_key").String()
+			secondCacheKey := gjson.GetBytes(upstream.bodies[1], "prompt_cache_key").String()
+			require.NotEmpty(t, firstCacheKey)
+			require.Equal(t, firstCacheKey, secondCacheKey)
+			firstSessionID := upstream.requests[0].Header.Get("session_id")
+			secondSessionID := upstream.requests[1].Header.Get("session_id")
+			require.NotEmpty(t, firstSessionID)
+			require.Equal(t, firstSessionID, secondSessionID)
+		})
+	}
+}
+
 func TestForwardAsAnthropic_DoesNotAutoDerivePromptCacheKeyForNonCodexModel(t *testing.T) {
 	t.Parallel()
 	gin.SetMode(gin.TestMode)
@@ -753,7 +813,7 @@ func TestForwardAsAnthropic_PreviousResponseIDKeepsMultiToolCallContext(t *testi
 	require.Equal(t, "continue", gjson.GetBytes(upstream.lastBody, "input.5.content.0.text").String())
 }
 
-func TestForwardAsAnthropic_ReplaysWithoutContinuationWhenPreviousResponseMissing(t *testing.T) {
+func TestForwardAsAnthropic_ReplaysFullToolHistoryWhenPreviousResponseUnavailable(t *testing.T) {
 	t.Parallel()
 	gin.SetMode(gin.TestMode)
 
@@ -775,12 +835,12 @@ func TestForwardAsAnthropic_ReplaysWithoutContinuationWhenPreviousResponseMissin
 	}
 
 	svc.bindOpenAICompatSessionResponseID(context.Background(), nil, account, "stable-cache-key", "resp_missing")
-	secondBody := []byte(`{"model":"claude-sonnet-4-5","max_tokens":16,"messages":[{"role":"user","content":"first"},{"role":"assistant","content":"ok"},{"role":"user","content":"second"}],"stream":false}`)
+	secondBody := []byte(`{"model":"claude-sonnet-4-5","max_tokens":16,"messages":[{"role":"user","content":"first"},{"role":"assistant","content":[{"type":"tool_use","id":"call_1","name":"lookup","input":{"q":"first"}}]},{"role":"user","content":[{"type":"tool_result","tool_use_id":"call_1","content":"found"},{"type":"text","text":"second"}]}],"tools":[{"name":"lookup","input_schema":{"type":"object"}}],"stream":false}`)
 	upstream.responses = []*http.Response{
 		{
 			StatusCode: http.StatusBadRequest,
 			Header:     http.Header{"Content-Type": []string{"application/json"}, "x-request-id": []string{"rid_prev_missing"}},
-			Body:       io.NopCloser(strings.NewReader(`{"error":{"code":"previous_response_not_found","message":"previous response not found"}}`)),
+			Body:       io.NopCloser(strings.NewReader(`{"error":{"message":"previous_response_id is not available for this user","type":"invalid_request_error"}}`)),
 		},
 		openAICompatSSECompletedResponse("resp_replayed", "gpt-5.3-codex"),
 	}
@@ -797,11 +857,54 @@ func TestForwardAsAnthropic_ReplaysWithoutContinuationWhenPreviousResponseMissin
 	require.Len(t, upstream.requests, 2)
 	require.Equal(t, "resp_missing", gjson.GetBytes(upstream.bodies[0], "previous_response_id").String())
 	require.False(t, gjson.GetBytes(upstream.bodies[1], "previous_response_id").Exists())
-	require.Equal(t, int64(4), gjson.GetBytes(upstream.bodies[1], "input.#").Int())
+	require.Equal(t, int64(5), gjson.GetBytes(upstream.bodies[1], "input.#").Int())
 	require.Equal(t, "developer", gjson.GetBytes(upstream.bodies[1], "input.0.role").String())
 	require.Contains(t, gjson.GetBytes(upstream.bodies[1], "input.0.content.0.text").String(), "<sub2api-claude-code-todo-guard>")
 	require.Equal(t, "first", gjson.GetBytes(upstream.bodies[1], "input.1.content.0.text").String())
-	require.Equal(t, "second", gjson.GetBytes(upstream.bodies[1], "input.3.content.0.text").String())
+	require.Equal(t, "function_call", gjson.GetBytes(upstream.bodies[1], "input.2.type").String())
+	require.Equal(t, "call_1", gjson.GetBytes(upstream.bodies[1], "input.2.call_id").String())
+	require.Equal(t, "function_call_output", gjson.GetBytes(upstream.bodies[1], "input.3.type").String())
+	require.Equal(t, "call_1", gjson.GetBytes(upstream.bodies[1], "input.3.call_id").String())
+	require.Equal(t, "found", gjson.GetBytes(upstream.bodies[1], "input.3.output").String())
+	require.Equal(t, "second", gjson.GetBytes(upstream.bodies[1], "input.4.content.0.text").String())
+}
+
+func TestOpenAICompatPreviousResponseUnavailableRecognitionIsStrict(t *testing.T) {
+	t.Parallel()
+	body := []byte(`{"error":{"message":"previous_response_id is not available for this user","type":"invalid_request_error"}}`)
+	require.True(t, isOpenAICompatPreviousResponseNotFound(http.StatusBadRequest, "", body))
+	require.False(t, isOpenAICompatPreviousResponseNotFound(http.StatusForbidden, "", body))
+	require.False(t, isOpenAICompatPreviousResponseNotFound(http.StatusBadRequest, "permission is not available for this user", nil))
+	require.False(t, isOpenAICompatPreviousResponseNotFound(http.StatusBadRequest, "previous_response_id is not available for this project", nil))
+}
+
+func TestForwardAsAnthropic_PreviousResponseUnavailableRetryFailureDoesNotLoop(t *testing.T) {
+	t.Parallel()
+	gin.SetMode(gin.TestMode)
+
+	unavailable := func() *http.Response {
+		return &http.Response{
+			StatusCode: http.StatusBadRequest,
+			Header:     http.Header{"Content-Type": []string{"application/json"}},
+			Body:       io.NopCloser(strings.NewReader(`{"error":{"message":"previous_response_id is not available for this user","type":"invalid_request_error"}}`)),
+		}
+	}
+	upstream := &httpUpstreamRecorder{responses: []*http.Response{unavailable(), unavailable()}}
+	svc := &OpenAIGatewayService{
+		httpUpstream: upstream,
+		cfg:          &config.Config{Security: config.SecurityConfig{URLAllowlist: config.URLAllowlistConfig{Enabled: false}}},
+	}
+	account := &Account{ID: 1, Platform: PlatformOpenAI, Type: AccountTypeAPIKey, Concurrency: 1, Credentials: map[string]any{"api_key": "sk-test", "base_url": "https://api.openai.com/v1"}}
+	svc.bindOpenAICompatSessionResponseID(context.Background(), nil, account, "stable-cache-key", "resp_missing")
+	body := []byte(`{"model":"claude-sonnet-4-5","max_tokens":16,"messages":[{"role":"user","content":"hello"}],"stream":false}`)
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/messages", bytes.NewReader(body))
+
+	_, _ = svc.ForwardAsAnthropic(context.Background(), c, account, body, "stable-cache-key", "gpt-5.3-codex")
+	require.Len(t, upstream.requests, 2)
+	require.True(t, gjson.GetBytes(upstream.bodies[0], "previous_response_id").Exists())
+	require.False(t, gjson.GetBytes(upstream.bodies[1], "previous_response_id").Exists())
 }
 
 func TestForwardAsAnthropic_DisablesAPIKeyContinuationWhenUpstreamRequiresWebSocketV2(t *testing.T) {
@@ -2167,4 +2270,44 @@ func TestForwardAsAnthropic_UpstreamRequestIgnoresClientCancel(t *testing.T) {
 	require.NotNil(t, result)
 	require.NotNil(t, upstream.lastReq)
 	require.NoError(t, upstream.lastReq.Context().Err())
+}
+
+func TestForwardAsAnthropic_AstraContinuationRestoresHistoryAndDisablesUnsupportedSession(t *testing.T) {
+	for _, message := range []string{
+		"previous_response_id is not available for this user",
+		"previous_response_id requires an OpenAI API-key account for HTTP requests",
+	} {
+		t.Run(message, func(t *testing.T) {
+			encodedError, err := json.Marshal(map[string]any{"error": map[string]string{"message": message}})
+			require.NoError(t, err)
+			upstream := &httpUpstreamRecorder{responses: []*http.Response{
+				{StatusCode: http.StatusBadRequest, Body: io.NopCloser(bytes.NewReader(encodedError))},
+				openAICompatSSECompletedResponse("resp_replayed", "gpt-6-astra"),
+				openAICompatSSECompletedResponse("resp_later", "gpt-6-astra"),
+			}}
+			svc := &OpenAIGatewayService{httpUpstream: upstream, cfg: &config.Config{}}
+			account := rawGPT56ResponsesAPIKeyAccount("gpt-6-astra", "gpt-6-astra")
+			svc.bindOpenAICompatSessionResponseID(context.Background(), nil, account, "astra-session", "resp_old")
+			body := []byte(`{"model":"gpt-6-astra","max_tokens":16,"messages":[{"role":"user","content":"first"},{"role":"assistant","content":"ok"},{"role":"user","content":"second"}]}`)
+			for i := 0; i < 2; i++ {
+				c, _ := gin.CreateTestContext(httptest.NewRecorder())
+				c.Request = httptest.NewRequest(http.MethodPost, "/v1/messages", bytes.NewReader(body))
+				result, err := svc.ForwardAsAnthropic(context.Background(), c, account, body, "astra-session", "gpt-6-astra")
+				require.NoError(t, err)
+				require.NotNil(t, result)
+			}
+			require.Len(t, upstream.bodies, 3)
+			require.Equal(t, "resp_old", gjson.GetBytes(upstream.bodies[0], "previous_response_id").String())
+			for _, sent := range upstream.bodies[1:] {
+				require.False(t, gjson.GetBytes(sent, "previous_response_id").Exists())
+				require.Equal(t, "astra-session", gjson.GetBytes(sent, "prompt_cache_key").String())
+				require.Equal(t, int64(4), gjson.GetBytes(sent, "input.#").Int())
+				require.Contains(t, gjson.GetBytes(sent, "input.0.content.0.text").String(), "<sub2api-claude-code-todo-guard>")
+				require.Equal(t, "first", gjson.GetBytes(sent, "input.1.content.0.text").String())
+				require.Equal(t, "second", gjson.GetBytes(sent, "input.3.content.0.text").String())
+			}
+		})
+	}
+	require.False(t, isOpenAICompatPreviousResponseUnsupported(http.StatusUnauthorized, "previous_response_id is not available for this user", nil))
+	require.False(t, isOpenAICompatPreviousResponseUnsupported(http.StatusBadRequest, "The model is not available for this user", nil))
 }

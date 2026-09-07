@@ -3806,7 +3806,10 @@ func TestHandleSSEToJSON_NoFinalResponseKeepsSSEBody(t *testing.T) {
 	require.Contains(t, rec.Body.String(), `data: {"type":"response.in_progress"`)
 }
 
-func TestHandleSSEToJSON_ResponseFailedReturnsProtocolError(t *testing.T) {
+// 无账号时没有可换的对象：newOpenAIStreamFailoverError 要拿 account 记录 ops 归属与
+// 账号健康，故这一支保持原有的协议错误行为。带真实账号的同一报文改为换号，
+// 由 TestNonStreamingSSEToJSON_UnclassifiedFailedEventFailsOver 钉死（issue #5281）。
+func TestHandleSSEToJSON_ResponseFailedWithoutAccountReturnsProtocolError(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	rec := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(rec)

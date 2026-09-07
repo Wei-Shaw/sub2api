@@ -335,6 +335,7 @@ export default {
 	  modelVariant: 'Possible version variant',
 	  modelMismatch: 'Different model',
     reasoningEffort: 'Reasoning Effort',
+    requestedReasoningEffort: 'Requested reasoning effort',
     endpoint: 'Endpoint',
     endpointDistribution: 'Endpoint Distribution',
     inbound: 'Inbound',
@@ -355,6 +356,10 @@ export default {
     ws: 'WS',
     stream: 'Stream',
     sync: 'Sync',
+    nativeCompactionV2: 'Compaction',
+    compactionFilter: 'Request Kind',
+    allCompactionTypes: 'All Requests',
+    compactionOnly: 'Compaction Only',
     cyber: 'Cyber',
     live: 'Live',
     unknown: 'Unknown',
@@ -393,6 +398,7 @@ export default {
     cacheWrite: 'Write',
     serviceTier: 'Service tier',
     serviceTierPriority: 'Fast',
+    serviceTierUltrafast: 'Ultrafast',
     serviceTierFlex: 'Flex',
     serviceTierStandard: 'Standard',
     rate: 'Rate',
@@ -471,7 +477,6 @@ export default {
     // Quota snapshot rendering (MonitorQuotaView, shared by admin + user views)
     quota: {
       unavailable: 'Quota unavailable',
-      resetSoon: 'resetting',
       windows: {
         '5h': '5h',
         '7d': '7d',
@@ -581,6 +586,8 @@ export default {
       inputPrice: 'Input',
       outputPrice: 'Output',
       cacheWritePrice: 'Cache Write',
+      cacheWrite5mPrice: 'Cache Write (5m)',
+      cacheWrite1hPrice: 'Cache Write (1h)',
       cacheReadPrice: 'Cache Read',
       imageInputPrice: 'Image Input',
       imageOutputPrice: 'Image Output',
@@ -629,6 +636,8 @@ export default {
       cacheReadShort: 'R',
       tierHint: 'The whole request is billed at the tier matching its total context (input + cache write + cache read)',
       tierHintMarginal: 'Only the portion above the threshold is billed at this tier; output is unaffected',
+      maxReasoningMultiplierBadge: 'Max ×{multiplier}',
+      maxReasoningMultiplierHint: 'When the forwarded reasoning effort is max, billing and quota usage for the request are multiplied by {multiplier}',
       marginalBadge: 'excess-only tiers',
       timePricingRowHint: 'Requests made within this period ({timezone} time) are billed at the prices in this row',
       timePricingRowHintWeekdays:

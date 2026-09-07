@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"errors"
 	"sync"
 	"testing"
 
@@ -73,6 +74,52 @@ func TestCNProviderBalanceCheckRunOnceWithoutQuotaService(t *testing.T) {
 	}}
 	svc := &CNProviderBalanceCheckService{accountRepo: repo, cfg: &config.Config{}}
 	require.NotPanics(t, func() { svc.runOnce() })
+}
+
+// recordingCNBalanceLoadRepo 记录余额探测服务的 GetByID 调用：payg 账号进入
+// payg 检查队列必然触发 loadPayGAccount → GetByID，以此断言"未入队"这一内部
+// 状态。GetByID 直接报错，保证不发生真实外呼。
+type recordingCNBalanceLoadRepo struct {
+	AccountRepository
+	getByIDIDs []int64
+}
+
+func (r *recordingCNBalanceLoadRepo) GetByID(ctx context.Context, id int64) (*Account, error) {
+	r.getByIDIDs = append(r.getByIDIDs, id)
+	return nil, errors.New("not found")
+}
+
+// 挂在国产平台下、base_url 指向官方 ollama.com 的账号由 Ollama Cloud 用量窗口
+// 负责：CN 探测端点由 base_url 衍生，ollama.com 会被出站 URL 白名单拒绝
+// （CN_BALANCE_URL_REJECTED），周期任务必须整体跳过——不进额度目标，也不进
+// payg 检查队列。
+func TestCNProviderBalanceCheckRunOnceSkipsOllamaCloudUsageAccounts(t *testing.T) {
+	// 对照组：普通 kimi coding 账号仍进额度探测。
+	kimiCoding := Account{ID: 1, Platform: PlatformKimi, Type: AccountTypeAPIKey, Status: StatusActive,
+		Credentials: map[string]any{"account_mode": "coding"}}
+	// ollama.com 挂 kimi：coding 模式不进额度目标。
+	ollamaKimiCoding := Account{ID: 2, Platform: PlatformKimi, Type: AccountTypeAPIKey, Status: StatusActive,
+		Credentials: map[string]any{"account_mode": "coding", "base_url": "https://ollama.com"}}
+	// ollama.com 挂 kimi：payg 模式不进 payg 检查队列。
+	ollamaKimiPayg := Account{ID: 3, Platform: PlatformKimi, Type: AccountTypeAPIKey, Status: StatusActive, Schedulable: true,
+		Credentials: map[string]any{"base_url": "https://ollama.com", "api_key": "sk-ollama"}}
+
+	loadRepo := &recordingCNBalanceLoadRepo{}
+	repo := &fakeCNCheckRepo{byPlatform: map[string][]Account{
+		PlatformKimi: {kimiCoding, ollamaKimiCoding, ollamaKimiPayg},
+	}}
+	prober := &fakeCNQuotaProber{}
+	svc := &CNProviderBalanceCheckService{
+		accountRepo:    repo,
+		balanceService: NewCNProviderBalanceService(loadRepo, nil, nil, &config.Config{}),
+		quotaService:   prober,
+		cfg:            &config.Config{},
+	}
+
+	svc.runOnce()
+
+	require.Equal(t, []int64{1}, prober.probed)
+	require.Empty(t, loadRepo.getByIDIDs, "ollama 账号不得进入 payg 检查队列")
 }
 
 // 双币种（deepseek CNY+USD）停调判定：任一币种达标即不停调，全部低于阈值才停；

@@ -9,15 +9,12 @@ import (
 	"time"
 )
 
-// ContextPricingBasis 阶梯的计价基准。
+// ContextPricingBasis 阶梯的计价基准。当前只有整单口径；历史上的
+// Gemini 边际口径（"marginal"）已随平台旧规则一并移除。
 type ContextPricingBasis string
 
-const (
-	// ContextPricingBasisWholeRequest 整单按所在档单价计价（目录阶梯、渠道区间）。
-	ContextPricingBasisWholeRequest ContextPricingBasis = "whole_request"
-	// ContextPricingBasisMarginal 仅超出阈值的部分按该档单价计价（平台旧规则）。
-	ContextPricingBasisMarginal ContextPricingBasis = "marginal"
-)
+// ContextPricingBasisWholeRequest 整单按所在档单价计价（目录阶梯、渠道区间）。
+const ContextPricingBasisWholeRequest ContextPricingBasis = "whole_request"
 
 // ContextPricingTier (MinTokens, MaxTokens] 区间内的有效 per-token 单价（USD）。
 // nil 表示该项无价/不计费；MaxTokens 为 nil 表示无上限。
@@ -73,8 +70,8 @@ const contextProbeDelta = 1000
 // ResolveContextPricingSchedule 解析分组+模型的上下文阶梯单价表。
 //
 // 解析链与扣费完全一致：Resolver.Resolve（分组卡 → 渠道 → 目录 → 策略）给出定价，
-// CalculateTokenCostForRequest 给出路径（分组/渠道定价 → 平台旧规则 → 内置目录）。
-// 断点只取自计费自身的规则输入（渠道区间边界、目录阶梯阈值、旧规则阈值），
+// CalculateTokenCostForRequest 给出路径（分组/渠道定价 → 内置目录）。
+// 断点只取自计费自身的规则输入（渠道区间边界、目录阶梯阈值），
 // 每一段的单价由真实计费函数在该段内两点探针的差商得到，因此倍率、策略等
 // 规则变更无需同步到这里；相邻同价段会合并。
 //
@@ -103,22 +100,13 @@ func (s *BillingService) ResolveContextPricingSchedule(ctx context.Context, reso
 		return nil, nil
 	}
 
-	var legacy *LegacyLongContextRule
-	if in.Group != nil {
-		legacy = s.LegacyLongContextRule(in.Platform)
-	}
-	if !legacyLongContextApplies(resolved, in.Group, legacy) {
-		legacy = nil
-	}
-
 	req := TokenCostRequest{
-		Ctx:               ctx,
-		Model:             in.Model,
-		Group:             in.Group,
-		RateMultiplier:    1,
-		Resolver:          resolver,
-		Resolved:          resolved,
-		LegacyLongContext: legacy,
+		Ctx:            ctx,
+		Model:          in.Model,
+		Group:          in.Group,
+		RateMultiplier: 1,
+		Resolver:       resolver,
+		Resolved:       resolved,
 	}
 	probe := func(tokens UsageTokens) (*CostBreakdown, error) {
 		r := req
@@ -126,7 +114,7 @@ func (s *BillingService) ResolveContextPricingSchedule(ctx context.Context, reso
 		return s.CalculateTokenCostForRequest(r)
 	}
 
-	plan := s.contextPricingBreakpoints(resolver, resolved, in.Model, legacy)
+	plan := s.contextPricingBreakpoints(resolver, resolved, in.Model)
 	segments := buildContextSegments(plan.bounds)
 
 	tiers := make([]ContextPricingTier, 0, len(segments))
@@ -140,11 +128,7 @@ func (s *BillingService) ResolveContextPricingSchedule(ctx context.Context, reso
 	tiers = mergeEqualContextTiers(tiers)
 	applyContextTierLabels(tiers, plan)
 
-	basis := ContextPricingBasisWholeRequest
-	if legacy != nil {
-		basis = ContextPricingBasisMarginal
-	}
-	return &ContextPricingSchedule{Basis: basis, Tiers: tiers, TimePricing: resolvedTimePricingSchedule(resolved)}, nil
+	return &ContextPricingSchedule{Basis: ContextPricingBasisWholeRequest, Tiers: tiers, TimePricing: resolvedTimePricingSchedule(resolved)}, nil
 }
 
 // resolvedTimePricingSchedule 列出计费会生效的分时倍率时段。
@@ -210,14 +194,8 @@ type contextBreakpointPlan struct {
 }
 
 // contextPricingBreakpoints 从计费自身的规则输入收集价格断点（不读取任何倍率）。
-func (s *BillingService) contextPricingBreakpoints(resolver *ModelPricingResolver, resolved *ResolvedPricing, model string, legacy *LegacyLongContextRule) contextBreakpointPlan {
+func (s *BillingService) contextPricingBreakpoints(resolver *ModelPricingResolver, resolved *ResolvedPricing, model string) contextBreakpointPlan {
 	plan := contextBreakpointPlan{}
-	if legacy != nil {
-		plan.bounds = []int{legacy.Threshold}
-		plan.thresholdBound = legacy.Threshold
-		plan.threshold = legacy.Threshold
-		return plan
-	}
 	if !resolved.longContextPricingEnabled {
 		return plan
 	}

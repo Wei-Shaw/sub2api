@@ -131,7 +131,8 @@ func (s *OpenAIGatewayService) performOpenAIWSGeneratePrewarm(
 
 		if eventType == "error" {
 			errCodeRaw, errTypeRaw, errMsgRaw := parseOpenAIWSErrorEventFields(message)
-			s.persistOpenAIWSRateLimitSignal(ctx, account, lease.HandshakeHeaders(), message, errCodeRaw, errTypeRaw, errMsgRaw)
+			prewarmModel, _ := reqBody["model"].(string)
+			s.persistOpenAIWSRateLimitSignal(ctx, account, lease.HandshakeHeaders(), message, errCodeRaw, errTypeRaw, errMsgRaw, prewarmModel)
 			errMsg := strings.TrimSpace(errMsgRaw)
 			if errMsg == "" {
 				errMsg = "OpenAI websocket prewarm error"
@@ -324,6 +325,9 @@ func (s *OpenAIGatewayService) handleOpenAIWSErrorEventTransientFailure(ctx cont
 	}
 	status := openAIWSPayloadTransientStatus(payload)
 	if status != 0 {
+		if status == http.StatusTooManyRequests {
+			headers = openAIWSSemantic429Headers(account, canonicalModel, headers)
+		}
 		s.handleOpenAIAccountUpstreamError(ctx, account, status, headers, payload, canonicalModel)
 	}
 }
@@ -336,13 +340,13 @@ func (s *OpenAIGatewayService) handleOpenAIWSFailureAccountSideEffects(ctx conte
 	status := openAIStreamFailureStatus(payload, message)
 	switch status {
 	case http.StatusUnauthorized, http.StatusTooManyRequests, 529:
-		s.handleOpenAIStreamTerminalAccountSideEffects(nil, account, payload, message, headers)
+		s.handleOpenAIStreamTerminalAccountSideEffects(nil, account, payload, message, headers, canonicalModel)
 		return true
 	case http.StatusForbidden:
 		if !openAIStream403AccountFailure(payload, message) {
 			return false
 		}
-		s.handleOpenAIStreamTerminalAccountSideEffects(nil, account, payload, message, headers)
+		s.handleOpenAIStreamTerminalAccountSideEffects(nil, account, payload, message, headers, canonicalModel)
 		return true
 	}
 
@@ -683,14 +687,31 @@ func isOpenAIWSRateLimitError(codeRaw, errTypeRaw, msgRaw string) bool {
 	return false
 }
 
-func (s *OpenAIGatewayService) persistOpenAIWSRateLimitSignal(ctx context.Context, account *Account, headers http.Header, responseBody []byte, codeRaw, errTypeRaw, msgRaw string) {
+func (s *OpenAIGatewayService) persistOpenAIWSRateLimitSignal(ctx context.Context, account *Account, headers http.Header, responseBody []byte, codeRaw, errTypeRaw, msgRaw string, canonicalModel ...string) {
 	if s == nil || s.rateLimitService == nil || account == nil || account.Platform != PlatformOpenAI {
 		return
 	}
 	if !isOpenAIWSRateLimitError(codeRaw, errTypeRaw, msgRaw) {
 		return
 	}
-	s.handleOpenAIAccountUpstreamError(ctx, account, http.StatusTooManyRequests, headers, responseBody)
+	model := firstNonEmpty(canonicalModel...)
+	if model == "" {
+		model = firstNonEmpty(gjson.GetBytes(responseBody, "model").String(), gjson.GetBytes(responseBody, "response.model").String())
+	}
+	// 非空 responseBody 表示已建立连接后收到的语义错误事件；握手响应头
+	// 可能只是成功连接时的全局快照，不能用于普通模型的 429 账号级限流。
+	// 实际拨号 HTTP 429 使用 nil responseBody，必须保留响应头。
+	if len(responseBody) > 0 {
+		headers = openAIWSSemantic429Headers(account, model, headers)
+	}
+	s.handleOpenAIAccountUpstreamError(ctx, account, http.StatusTooManyRequests, headers, responseBody, model)
+}
+
+func openAIWSSemantic429Headers(account *Account, model string, headers http.Header) http.Header {
+	if isCodexSparkModel(model) && isOpenAIOAuthAccount(account) {
+		return headers
+	}
+	return nil
 }
 
 func (s *OpenAIGatewayService) newOpenAIWSRateLimitFailoverError(account *Account, headers http.Header, responseBody []byte, message string) *UpstreamFailoverError {

@@ -133,6 +133,17 @@ func (s *OpenAIGatewayService) handleOpenAIAccountUpstreamError(ctx context.Cont
 		return false
 	}
 
+	// Self-built images requests always carry a matching image_generation tool, so a
+	// "tool choice not found in 'tools'" 400 means upstream revoked this account's
+	// image capability. Gated on the self-built marker: passthrough clients control
+	// their own tools/tool_choice and could otherwise poison a healthy account.
+	if isOpenAIImagesSelfBuiltRequest(ctx) && isOpenAIImageCapabilityLossError(statusCode, responseBody) {
+		if s != nil && s.rateLimitService != nil {
+			_ = s.rateLimitService.HandleOpenAIImageCapabilityLoss(stateCtx, account, statusCode, responseBody)
+		}
+		return false
+	}
+
 	if s == nil || account == nil {
 		return false
 	}
@@ -150,6 +161,10 @@ func (s *OpenAIGatewayService) handleOpenAIAccountUpstreamError(ctx context.Cont
 	if s.rateLimitService != nil && statusCode != http.StatusUnauthorized && len(canonicalModel) > 0 && strings.TrimSpace(canonicalModel[0]) != "" &&
 		s.rateLimitService.HandleTempUnschedulable(stateCtx, account, statusCode, responseBody, canonicalModel[0]) {
 		return true
+	}
+	if statusCode == http.StatusTooManyRequests && s.rateLimitService != nil && len(canonicalModel) > 0 &&
+		s.rateLimitService.HandleOpenAICodexSparkRateLimit(stateCtx, account, canonicalModel[0], statusCode, headers, responseBody) {
+		return false
 	}
 	if statusCode == http.StatusTooManyRequests {
 		s.markOpenAIOAuth429RateLimited(stateCtx, account, headers, responseBody)

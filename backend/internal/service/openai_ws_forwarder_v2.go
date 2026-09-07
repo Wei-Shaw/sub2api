@@ -245,7 +245,7 @@ func (s *OpenAIGatewayService) forwardOpenAIWSV2(
 		)
 		var dialErr *openAIWSDialError
 		if errors.As(err, &dialErr) && dialErr != nil && dialErr.StatusCode == http.StatusTooManyRequests {
-			s.persistOpenAIWSRateLimitSignal(ctx, account, dialErr.ResponseHeaders, nil, "rate_limit_exceeded", "rate_limit_error", strings.TrimSpace(err.Error()))
+			s.persistOpenAIWSRateLimitSignal(ctx, account, dialErr.ResponseHeaders, nil, "rate_limit_exceeded", "rate_limit_error", strings.TrimSpace(err.Error()), mappedModel)
 		}
 		return nil, wrapOpenAIWSFallback(classifyOpenAIWSAcquireError(err), err)
 	}
@@ -585,23 +585,14 @@ func (s *OpenAIGatewayService) forwardOpenAIWSV2(
 		}
 		imageCounter.AddSSEData(message)
 
-		if eventType == "response.failed" {
-			if hit, code, msg := detectOpenAICyberPolicy(message); hit {
-				MarkOpsCyberPolicy(c, CyberPolicyMark{
-					Code:           code,
-					Message:        msg,
-					Body:           truncateString(string(message), 4096),
-					UpstreamStatus: http.StatusOK,
-					UpstreamInTok:  usage.InputTokens,
-					UpstreamOutTok: usage.OutputTokens,
-				})
-			}
+		if eventType == "error" || eventType == "response.failed" {
+			markOpenAICyberPolicyEvent(c, message, http.StatusOK, usage)
 		}
 
 		if eventType == "error" {
 			s.handleOpenAIWSErrorEventTransientFailure(ctx, account, mappedModel, lease.HandshakeHeaders(), message)
 			errCodeRaw, errTypeRaw, errMsgRaw := parseOpenAIWSErrorEventFields(message)
-			s.persistOpenAIWSRateLimitSignal(ctx, account, lease.HandshakeHeaders(), message, errCodeRaw, errTypeRaw, errMsgRaw)
+			s.persistOpenAIWSRateLimitSignal(ctx, account, lease.HandshakeHeaders(), message, errCodeRaw, errTypeRaw, errMsgRaw, mappedModel)
 			errMsg := strings.TrimSpace(errMsgRaw)
 			if errMsg == "" {
 				errMsg = "Upstream websocket error"
@@ -784,6 +775,7 @@ func (s *OpenAIGatewayService) forwardOpenAIWSV2(
 		ImageOutputSizes:              imageCounter.Sizes(),
 		ServiceTier:                   resolvedOpenAIUpstreamServiceTierFromObserver(responseModelObserver, extractOpenAIServiceTier(reqBody)),
 		ReasoningEffort:               extractOpenAIReasoningEffort(reqBody, mappedModel, originalModel),
+		RequestedReasoningEffort:      CanonicalRequestedReasoningEffortFromReqBody(reqBody, originalModel, mappedModel),
 		Stream:                        reqStream,
 		OpenAIWSMode:                  true,
 		UpstreamTerminalEvent:         upstreamTerminalEvent,

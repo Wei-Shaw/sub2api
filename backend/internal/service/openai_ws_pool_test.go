@@ -1307,6 +1307,32 @@ func TestOpenAIWSConnPool_BackgroundCleanupSweep_WithoutAcquire(t *testing.T) {
 	require.False(t, exists, "后台清理应在无新 acquire 时也回收过期连接")
 }
 
+func TestOpenAIWSConnPool_RecyclesUnsupportedIdlePingConnection(t *testing.T) {
+	cfg := &config.Config{}
+	cfg.Gateway.OpenAIWS.MaxConnsPerAccount = 2
+	cfg.Gateway.OpenAIWS.MaxIdlePerAccount = 2
+	pool := &openAIWSConnPool{cfg: cfg}
+
+	accountID := int64(303)
+	ap := &openAIWSAccountPool{conns: make(map[string]*openAIWSConn)}
+	conn := newOpenAIWSConn("stale_unsupported_idle_ping", accountID, &openAIWSIdlePingUnsupportedConn{}, nil)
+	conn.lastUsedNano.Store(time.Now().Add(-openAIWSConnIdleRecycleAfter - time.Second).UnixNano())
+	ap.conns[conn.id] = conn
+	pool.accounts.Store(accountID, ap)
+
+	pool.runBackgroundCleanupSweep(time.Now())
+
+	ap.mu.Lock()
+	_, exists := ap.conns[conn.id]
+	ap.mu.Unlock()
+	require.False(t, exists, "不支持无 reader idle ping 的陈旧连接应被主动回收")
+	select {
+	case <-conn.closedCh:
+	default:
+		t.Fatal("被回收的陈旧连接应已关闭")
+	}
+}
+
 func TestOpenAIWSConnPool_BackgroundWorkerGuardBranches(t *testing.T) {
 	var nilPool *openAIWSConnPool
 	require.NotPanics(t, func() {

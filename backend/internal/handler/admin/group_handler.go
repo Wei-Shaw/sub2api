@@ -81,8 +81,8 @@ func (f optionalLimitField) ToServiceInput() *float64 {
 	if f.value != nil {
 		return f.value
 	}
-	zero := 0.0
-	return &zero
+	unlimited := -1.0
+	return &unlimited
 }
 
 // NewGroupHandler creates a new admin group handler
@@ -147,16 +147,22 @@ type CreateGroupRequest struct {
 	// OpenAI Messages 调度配置（仅 openai 平台使用）
 	AllowMessagesDispatch       bool                                      `json:"allow_messages_dispatch"`
 	AllowLive                   bool                                      `json:"allow_live"`
+	ForceOpenAIFast             bool                                      `json:"force_openai_fast"`
+	FreeOpenAIFast              bool                                      `json:"free_openai_fast"`
 	RequireOAuthOnly            bool                                      `json:"require_oauth_only"`
 	RequirePrivacySet           bool                                      `json:"require_privacy_set"`
 	DefaultMappedModel          string                                    `json:"default_mapped_model"`
 	MessagesDispatchModelConfig service.OpenAIMessagesDispatchModelConfig `json:"messages_dispatch_model_config"`
 	ModelsListConfig            service.GroupModelsListConfig             `json:"models_list_config"`
+	// 固定账号 manifest 配置；创建路径禁止开启，仅编辑可配置。
+	CodexModelsManifestConfig service.GroupCodexModelsManifestConfig `json:"codex_models_manifest_config"`
 	// 分组 RPM 上限（0 = 不限制）
 	RPMLimit int `json:"rpm_limit"`
-	// OpenAI/Codex 请求推理强度上限，空字符串表示不限制。
+	// Anthropic/OpenAI 请求推理强度上限，空字符串表示不限制。
 	MaxReasoningEffort string `json:"max_reasoning_effort"`
-	// OpenAI/Codex 推理强度精确映射。
+	// 超过上限时的访问控制：downgrade（默认）或 deny。
+	MaxReasoningEffortOverLimit string `json:"max_reasoning_effort_over_limit"`
+	// Anthropic/OpenAI 推理强度映射，可按模型精确名、前缀或后缀限定。
 	ReasoningEffortMappings []service.ReasoningEffortMapping `json:"reasoning_effort_mappings"`
 	// 从指定分组复制账号（创建后自动绑定）
 	CopyAccountsFromGroupIDs []int64 `json:"copy_accounts_from_group_ids"`
@@ -216,15 +222,21 @@ type UpdateGroupRequest struct {
 	// OpenAI Messages 调度配置（仅 openai 平台使用）
 	AllowMessagesDispatch       *bool                                      `json:"allow_messages_dispatch"`
 	AllowLive                   *bool                                      `json:"allow_live"`
+	ForceOpenAIFast             *bool                                      `json:"force_openai_fast"`
+	FreeOpenAIFast              *bool                                      `json:"free_openai_fast"`
 	RequireOAuthOnly            *bool                                      `json:"require_oauth_only"`
 	RequirePrivacySet           *bool                                      `json:"require_privacy_set"`
 	DefaultMappedModel          *string                                    `json:"default_mapped_model"`
 	MessagesDispatchModelConfig *service.OpenAIMessagesDispatchModelConfig `json:"messages_dispatch_model_config"`
 	ModelsListConfig            *service.GroupModelsListConfig             `json:"models_list_config"`
+	// 固定账号 manifest 配置；nil 表示不修改。
+	CodexModelsManifestConfig *service.GroupCodexModelsManifestConfig `json:"codex_models_manifest_config"`
 	// 分组 RPM 上限（0 = 不限制）；nil 表示未提供不改动
 	RPMLimit *int `json:"rpm_limit"`
-	// OpenAI/Codex 请求推理强度上限；空字符串清除，nil 不修改。
+	// Anthropic/OpenAI 请求推理强度上限；空字符串清除，nil 不修改。
 	MaxReasoningEffort *string `json:"max_reasoning_effort"`
+	// 超过上限时的访问控制；空字符串视为 downgrade，nil 不修改。
+	MaxReasoningEffortOverLimit *string `json:"max_reasoning_effort_over_limit"`
 	// nil 不修改，空数组清空，非空数组替换。
 	ReasoningEffortMappings *[]service.ReasoningEffortMapping `json:"reasoning_effort_mappings"`
 	// 从指定分组复制账号（同步操作：先清空当前分组的账号绑定，再绑定源分组的账号）
@@ -550,13 +562,17 @@ func (h *GroupHandler) Create(c *gin.Context) {
 		SupportedModelScopes:            req.SupportedModelScopes,
 		AllowMessagesDispatch:           req.AllowMessagesDispatch,
 		AllowLive:                       req.AllowLive,
+		ForceOpenAIFast:                 req.ForceOpenAIFast,
+		FreeOpenAIFast:                  req.FreeOpenAIFast,
 		RequireOAuthOnly:                req.RequireOAuthOnly,
 		RequirePrivacySet:               req.RequirePrivacySet,
 		DefaultMappedModel:              req.DefaultMappedModel,
 		MessagesDispatchModelConfig:     req.MessagesDispatchModelConfig,
 		ModelsListConfig:                req.ModelsListConfig,
+		CodexModelsManifestConfig:       req.CodexModelsManifestConfig,
 		RPMLimit:                        req.RPMLimit,
 		MaxReasoningEffort:              req.MaxReasoningEffort,
+		MaxReasoningEffortOverLimit:     req.MaxReasoningEffortOverLimit,
 		ReasoningEffortMappings:         req.ReasoningEffortMappings,
 		CopyAccountsFromGroupIDs:        req.CopyAccountsFromGroupIDs,
 	})
@@ -679,13 +695,17 @@ func (h *GroupHandler) Update(c *gin.Context) {
 		SupportedModelScopes:            req.SupportedModelScopes,
 		AllowMessagesDispatch:           req.AllowMessagesDispatch,
 		AllowLive:                       req.AllowLive,
+		ForceOpenAIFast:                 req.ForceOpenAIFast,
+		FreeOpenAIFast:                  req.FreeOpenAIFast,
 		RequireOAuthOnly:                req.RequireOAuthOnly,
 		RequirePrivacySet:               req.RequirePrivacySet,
 		DefaultMappedModel:              req.DefaultMappedModel,
 		MessagesDispatchModelConfig:     req.MessagesDispatchModelConfig,
 		ModelsListConfig:                req.ModelsListConfig,
+		CodexModelsManifestConfig:       req.CodexModelsManifestConfig,
 		RPMLimit:                        req.RPMLimit,
 		MaxReasoningEffort:              req.MaxReasoningEffort,
+		MaxReasoningEffortOverLimit:     req.MaxReasoningEffortOverLimit,
 		ReasoningEffortMappings:         req.ReasoningEffortMappings,
 		CopyAccountsFromGroupIDs:        req.CopyAccountsFromGroupIDs,
 	})

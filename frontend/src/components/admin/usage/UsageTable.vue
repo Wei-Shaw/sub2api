@@ -91,7 +91,15 @@
         </template>
 
         <template #cell-reasoning_effort="{ row }">
-          <span class="text-sm text-gray-900 dark:text-white">
+          <div v-if="hasReasoningEffortMapping(row)" data-testid="reasoning-effort-cell" class="space-y-0.5 text-xs">
+            <div class="font-medium text-gray-900 dark:text-white">
+              {{ formatReasoningEffort(row.reasoning_effort) }}
+            </div>
+            <div class="text-gray-500 dark:text-gray-400">
+              <span class="mr-0.5">↳</span>{{ formatReasoningEffort(row.upstream_reasoning_effort) }}
+            </div>
+          </div>
+          <span v-else data-testid="reasoning-effort-cell" class="text-sm text-gray-900 dark:text-white">
             {{ formatReasoningEffort(row.reasoning_effort) }}
           </span>
         </template>
@@ -117,9 +125,18 @@
         </template>
 
         <template #cell-stream="{ row }">
-          <span class="inline-flex items-center rounded px-2 py-0.5 text-xs font-medium" :class="getRequestTypeBadgeClass(row)">
-            {{ getRequestTypeLabel(row) }}
-          </span>
+          <div class="flex flex-wrap items-center gap-1">
+            <span data-testid="request-type-badge" class="inline-flex items-center rounded px-2 py-0.5 text-xs font-medium" :class="getRequestTypeBadgeClass(row)">
+              {{ getRequestTypeLabel(row) }}
+            </span>
+            <span
+              v-if="row.native_compaction_v2"
+              data-testid="native-compaction-badge"
+              class="inline-flex items-center rounded bg-teal-100 px-2 py-0.5 text-xs font-medium text-teal-800 dark:bg-teal-900 dark:text-teal-200"
+            >
+              {{ t('usage.nativeCompactionV2') }}
+            </span>
+          </div>
         </template>
 
         <template #cell-billing_mode="{ row }">
@@ -251,6 +268,24 @@
               @click="copyRequestId(row.request_id)"
             >
               <Icon :name="copiedRequestId === row.request_id ? 'check' : 'copy'" size="sm" class="h-3.5 w-3.5" />
+            </button>
+          </div>
+          <span v-else class="text-sm text-gray-400 dark:text-gray-500">-</span>
+        </template>
+
+        <template #cell-upstream_request_id="{ row }">
+          <div v-if="row.upstream_request_id" class="flex max-w-[160px] items-center gap-1.5">
+            <span class="truncate font-mono text-xs text-gray-500 dark:text-gray-400" :title="row.upstream_request_id">
+              {{ row.upstream_request_id }}
+            </span>
+            <button
+              type="button"
+              class="shrink-0 rounded p-0.5 text-gray-400 transition-colors hover:bg-gray-100 hover:text-gray-600 dark:hover:bg-dark-700 dark:hover:text-gray-300"
+              :class="copiedRequestId === row.upstream_request_id ? 'text-green-500 hover:text-green-500' : ''"
+              :title="copiedRequestId === row.upstream_request_id ? t('keys.copied') : t('keys.copyToClipboard')"
+              @click="copyUpstreamRequestId(row.upstream_request_id)"
+            >
+              <Icon :name="copiedRequestId === row.upstream_request_id ? 'check' : 'copy'" size="sm" class="h-3.5 w-3.5" />
             </button>
           </div>
           <span v-else class="text-sm text-gray-400 dark:text-gray-500">-</span>
@@ -500,7 +535,7 @@
 import { computed, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useAppStore } from '@/stores/app'
-import { formatDateTime, formatReasoningEffort } from '@/utils/format'
+import { formatDateTime, formatReasoningEffort, reasoningEffortValuesEqual } from '@/utils/format'
 import { formatCacheTokens, formatMultiplier } from '@/utils/formatters'
 import { formatTokenPricePerMillion } from '@/utils/usagePricing'
 import { getUsageServiceTierLabel } from '@/utils/usageServiceTier'
@@ -587,6 +622,12 @@ const ipGeoBatchLoading = ref(false)
 
 const showIpGeoToolbar = computed(() => props.columns.some((col) => col.key === 'ip_address'))
 
+const hasReasoningEffortMapping = (row: AdminUsageLog): boolean => {
+  const requested = row.reasoning_effort?.trim() || ''
+  const forwarded = row.upstream_reasoning_effort?.trim() || ''
+  return requested !== '' && forwarded !== '' && !reasoningEffortValuesEqual(requested, forwarded)
+}
+
 const sentUpstreamModel = (row: AdminUsageLog): string => row.upstream_model?.trim() || row.model?.trim() || ''
 
 const normalizeModelVariant = (model: string): string => model
@@ -630,18 +671,22 @@ const handleBatchFetchIpGeo = async () => {
   }
 }
 
-const copyRequestId = async (requestId: string) => {
+const copyIdentifier = async (value: string, copiedMessage: string) => {
   try {
-    await navigator.clipboard.writeText(requestId)
-    copiedRequestId.value = requestId
-    appStore.showSuccess(t('admin.usage.requestIdCopied'))
+    await navigator.clipboard.writeText(value)
+    copiedRequestId.value = value
+    appStore.showSuccess(copiedMessage)
     window.setTimeout(() => {
-      if (copiedRequestId.value === requestId) copiedRequestId.value = null
+      if (copiedRequestId.value === value) copiedRequestId.value = null
     }, 2000)
   } catch {
     appStore.showError(t('common.copyFailed'))
   }
 }
+
+const copyRequestId = (requestId: string) => copyIdentifier(requestId, t('admin.usage.requestIdCopied'))
+const copyUpstreamRequestId = (upstreamRequestId: string) =>
+  copyIdentifier(upstreamRequestId, t('admin.usage.upstreamRequestIdCopied'))
 
 // Tooltip state - cost
 const tooltipVisible = ref(false)

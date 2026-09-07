@@ -68,6 +68,15 @@ describe('PlazaModelPricingTable', () => {
     expect(text).toContain('1x')
   })
 
+  it('shows the Max reasoning billing multiplier', () => {
+    const model = tokenModel()
+    model.pricing!.max_reasoning_effort_multiplier = 3
+    const wrapper = mountTable([model], 1)
+
+    expect(wrapper.text()).toContain('modelPlaza.table.maxReasoningMultiplierBadge')
+    expect(wrapper.find('[title="modelPlaza.table.maxReasoningMultiplierHint"]').exists()).toBe(true)
+  })
+
   it('倍率 ≠ 1 时价格列为折后实付价,官方价列保持原价', () => {
     const wrapper = mountTable([tokenModel()], 0.5)
     const text = wrapper.text()
@@ -202,6 +211,16 @@ describe('PlazaModelPricingTable', () => {
     expect(cells[4].text().trim()).toBe('-')
     expect(cells[5].text().trim()).toBe('-')
     expect(cells[6].text().trim()).toBe('-')
+  })
+
+  it('实付价分别展示自定义 5m 与 1h 缓存写入价', () => {
+    const model = tokenModel()
+    model.pricing!.cache_write_1h_price = 7e-6
+
+    const wrapper = mountTable([model], 1)
+    expect(wrapper.text()).toContain('$3.75')
+    expect(wrapper.text()).toContain('$7.00')
+    expect(wrapper.text()).toContain('(1h')
   })
 
   it('per_request 模型按单次价 × 倍率展示,官方价列显示 -', () => {

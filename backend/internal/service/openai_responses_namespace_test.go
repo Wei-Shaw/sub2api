@@ -78,6 +78,7 @@ func TestShouldKeepOpenAIResponsesToolCallNamespaces(t *testing.T) {
 		transport          OpenAIUpstreamTransport
 		passthroughEnabled bool
 		compactPath        bool
+		body               []byte
 		want               bool
 	}{
 		// 上游按 namespace 解析历史调用，缺字段会 400 "Missing namespace for function_call"。
@@ -92,15 +93,20 @@ func TestShouldKeepOpenAIResponsesToolCallNamespaces(t *testing.T) {
 		// WSv2 + compact 是唯一「不摊平但仍必须清理」的组合，钉住 compact 判定本身，
 		// 使其不会被误当成可由 shouldFlatten 推导出的冗余分支。
 		{name: "oauth_compact_wsv2_strips", account: oauth, transport: OpenAIUpstreamTransportResponsesWebsocketV2, compactPath: true, want: false},
-		// API Key 出口是标准 Responses API，不认识该字段。
-		{name: "apikey_strips", account: apiKey, transport: OpenAIUpstreamTransportHTTPSSE, want: false},
+		// API Key 默认按标准 Responses API 清理；请求显式声明 namespace 工具时，
+		// 自定义上游需要原样接收对应的历史调用。
+		{name: "apikey_without_namespace_tool_strips", account: apiKey, transport: OpenAIUpstreamTransportHTTPSSE, want: false},
+		{name: "apikey_with_namespace_tool_keeps", account: apiKey, transport: OpenAIUpstreamTransportHTTPSSE, body: []byte(`{"tools":[{"type":"namespace","name":"mcp__codex_app","tools":[]}]}`), want: true},
+		{name: "apikey_with_mixed_case_namespace_tool_keeps", account: apiKey, transport: OpenAIUpstreamTransportHTTPSSE, body: []byte(`{"tools":[{"type":" Namespace ","name":"mcp__codex_app","tools":[]}]}`), want: true},
+		{name: "apikey_function_tool_with_namespace_field_strips", account: apiKey, transport: OpenAIUpstreamTransportHTTPSSE, body: []byte(`{"tools":[{"type":"function","name":"automation_update","namespace":"mcp__codex_app"}]}`), want: false},
+		{name: "apikey_compact_with_namespace_tool_strips", account: apiKey, transport: OpenAIUpstreamTransportHTTPSSE, compactPath: true, body: []byte(`{"tools":[{"type":"namespace","name":"mcp__codex_app","tools":[]}]}`), want: false},
 		{name: "setup_token_keeps", account: setupToken, transport: OpenAIUpstreamTransportHTTPSSE, want: true},
 		{name: "nil_account", account: nil, transport: OpenAIUpstreamTransportHTTPSSE, want: false},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			require.Equal(t, tt.want, shouldKeepOpenAIResponsesToolCallNamespaces(
-				tt.account, tt.transport, tt.passthroughEnabled, tt.compactPath,
+				tt.account, tt.transport, tt.passthroughEnabled, tt.compactPath, tt.body,
 			))
 		})
 	}

@@ -6,6 +6,7 @@ package service
 
 import (
 	"bufio"
+	"encoding/json"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -55,6 +56,29 @@ func miniAnthropicSSEStream() string {
 		"event: message_stop",
 		`data: {"type":"message_stop"}`,
 		"",
+		"",
+	}, "\n")
+}
+
+func toolAnthropicSSEStream() string {
+	return strings.Join([]string{
+		"event: message_start",
+		`data: {"type":"message_start","message":{"id":"msg_tool","type":"message","role":"assistant","content":[],"model":"glm-4.7","usage":{"input_tokens":10}}}`,
+		"",
+		"event: content_block_start",
+		`data: {"type":"content_block_start","index":0,"content_block":{"type":"tool_use","id":"toolu_1","name":"lookup","input":{}}}`,
+		"",
+		"event: content_block_delta",
+		`data: {"type":"content_block_delta","index":0,"delta":{"type":"input_json_delta","partial_json":"{\"query\":\"status\"}"}}`,
+		"",
+		"event: content_block_stop",
+		`data: {"type":"content_block_stop","index":0}`,
+		"",
+		"event: message_delta",
+		`data: {"type":"message_delta","delta":{"stop_reason":"tool_use"},"usage":{"output_tokens":5}}`,
+		"",
+		"event: message_stop",
+		`data: {"type":"message_stop"}`,
 		"",
 	}, "\n")
 }
@@ -240,5 +264,69 @@ func TestCCBufferedFromNativeAnthropic_HappyPathStillConverts(t *testing.T) {
 	}
 	if res.Usage.InputTokens != 10 || res.Usage.OutputTokens != 5 {
 		t.Fatalf("expected usage 10/5, got %+v", res.Usage)
+	}
+}
+
+func TestCCBufferedFromNativeAnthropic_ToolArgumentsAreValidJSON(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	svc := newNativeAnthropicHangTestService(5)
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/", nil)
+	resp := &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(toolAnthropicSSEStream())), Header: http.Header{}}
+
+	_, err := svc.handleCCBufferedFromNativeAnthropic(resp, c, "glm-4.7", "glm-4.7", "glm-4.7", nil, time.Now())
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	var body struct {
+		Choices []struct {
+			Message struct {
+				ToolCalls []struct {
+					Function struct {
+						Arguments string `json:"arguments"`
+					} `json:"function"`
+				} `json:"tool_calls"`
+			} `json:"message"`
+		} `json:"choices"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if len(body.Choices) != 1 || len(body.Choices[0].Message.ToolCalls) != 1 {
+		t.Fatalf("expected one tool call, got %s", rec.Body.String())
+	}
+	args := body.Choices[0].Message.ToolCalls[0].Function.Arguments
+	if !json.Valid([]byte(args)) || args != `{"query":"status"}` {
+		t.Fatalf("expected valid tool arguments, got %q", args)
+	}
+}
+
+func TestResponsesBufferedFromNativeAnthropic_ToolArgumentsAreValidJSON(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	svc := newNativeAnthropicHangTestService(5)
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/", nil)
+	resp := &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(toolAnthropicSSEStream())), Header: http.Header{}}
+
+	_, err := svc.handleResponsesBufferedFromNativeAnthropic(resp, c, "glm-4.7", "glm-4.7", "glm-4.7", nil, time.Now(), apicompat.ResponsesClientToolMapping{})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	var body struct {
+		Output []struct {
+			Type      string `json:"type"`
+			Arguments string `json:"arguments"`
+		} `json:"output"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if len(body.Output) != 1 || body.Output[0].Type != "function_call" {
+		t.Fatalf("expected one function call, got %s", rec.Body.String())
+	}
+	if args := body.Output[0].Arguments; !json.Valid([]byte(args)) || args != `{"query":"status"}` {
+		t.Fatalf("expected valid tool arguments, got %q", args)
 	}
 }

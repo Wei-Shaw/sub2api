@@ -99,12 +99,6 @@
 </tr>
 
 <tr>
-<td width="180"><a href="https://sui-xiang.com/"><img src="assets/partners/logos/sui-xiang.jpg" alt="sui-xiang" width="150"></a></td>
-<td>随想AI ゲートウェイのご支援に感謝します！<a href="https://sui-xiang.com/">随想AI ゲートウェイ</a> は信頼性と効率に優れた API 中継サービスプロバイダーで、Claude、Codex、Gemini などの中継サービスを提供しています。プライバシー重視の中継ステーション・データ転売なし・モデル水増しなし、プライバシー・透明性・超高速アフターサービス。新規アカウント登録後、毎日サインインで 0.5 元のテストクレジットがもらえ、チャージは 1:1、サブスクリプション不要、従量課金。マルチライン冗長、クロスリージョン災害復旧、自動フェイルオーバー、長時間 SSE 接続が途切れません。99.9% の可用性、重要な呼び出しは決して遅れません。
-</td>
-</tr>
-
-<tr>
 <td width="180"><a href="https://www.proxy4free.com/?keyword=4yjqecpc"><img src="assets/partners/logos/proxy4free.png" alt="proxy4free" width="150"></a></td>
 <td>Proxy4Free のご支援に感謝します！Proxy4Free は開発者と AI アプリケーション向けのデータプロキシサービスプロバイダーで、住宅プロキシ、静的住宅プロキシ、ISP プロキシ、データセンタープロキシなど多様なプロキシソリューションを提供しており、Web Scraping、Browser Automation、AI Agent などのシナリオに適しています。グローバル IP リソース、安定した接続、柔軟な切り替えをサポートし、開発者のデータ収集成功率の向上と IP ブロックリスクの低減を支援します。<a href="https://www.proxy4free.com/?keyword=4yjqecpc">こちらのリンクから登録</a>して、より安定した効率的な自動化ワークフローを簡単に構築しましょう。
 </td>
@@ -127,11 +121,6 @@
 <tr>
 <td width="180"><a href="https://nagora.ai/"><img src="assets/partners/logos/nagora.png" alt="Nagora" width="150"></a></td>
 <td><a href="https://nagora.ai/">Nagora</a>は、開発者やチーム向けに設計されたマルチモデルAI APIゲートウェイです。1つのアカウントと1つのAPIキーだけで、26種類以上の主要なテキストモデルおよび画像モデルを一元的に利用できます。OpenAI、Anthropic、Geminiの各プロトコルに対応し、Claude Code、Codex、Gemini CLIなどの開発ツールにもシームレスに接続できます。 プラットフォームには、インテリジェントルーティング、自動フェイルオーバー、透明性の高い料金体系、請求の一元管理に加え、予算管理、レート制限、同時実行数の制御機能が備わっています。これにより、個人開発、チームでの共同作業、本番環境におけるAI APIの利用を、より安定的かつ柔軟に管理できます。 既存のアプリケーションを改修する必要はありません。Base URLとAPIキーを置き換えるだけで、最短1分で導入を完了できます。</td>
-</tr>
-
-<tr>
-<td width="180"><a href="https://www.novada.com/?sub2api/"><img src="assets/partners/logos/novada.png" alt="Novada" width="150"></a></td>
-<td>Novada のご支援に感謝します！<a href="https://www.novada.com/?sub2api/">Novada</a> は、AI アプリケーションや自動化ワークフローを構築する開発者向けに、レジデンシャル、ISP、データセンター、モバイルプロキシに加え、Web Unlocker と Scraper API を提供しています。グローバルな IP カバレッジ、柔軟なローテーション／スティッキーセッション、精密なジオターゲティングにより、AI エージェントワークフロー、クロスリージョンテスト、Web リサーチ、ブラウザ自動化などのシーンで、チームが Web データへ確実にアクセスできるよう支援します。Novada で、より安定しスケーラブルな AI ワークフローを構築しましょう。</td>
 </tr>
 
 <tr>
@@ -172,6 +161,11 @@
 <tr>
 <td width="180"><a href="https://go.apimart.ai/gh-sub2api"><img src="assets/partners/logos/apimart.jpg" alt="APIMart" width="150"></a></td>
 <td>APIMart のご支援に感謝します！<a href="https://go.apimart.ai/gh-sub2api">APIMart</a> は AI 画像・動画生成に特化した低価格 API プラットフォームです。GPT-Image-2 は 1 枚 $0.006 から、1 ドルで 160 枚以上の画像を生成できます。画像と動画の両方に対応する非同期 API を 1 つで利用でき、タスクを送信して ID を取得し、ポーリングまたはコールバックで結果を取得できます。数万枚規模のバッチ処理でもタイムアウトせず、モデルを変更してもコードの変更は不要です。月額料金なしの従量課金制で、<a href="https://go.apimart.ai/gh-sub2api">こちらの登録リンク</a>からすぐに利用を開始できます。</td>
+</tr>
+
+<tr>
+<td width="180"><a href="https://www.axisnow.io/"><img src="assets/partners/logos/axisnow.jpg" alt="AxisNow" width="150"></a></td>
+<td>AxisNow のご支援に感謝します！<a href="https://www.axisnow.io/">AxisNow</a> はウェブサイトと API を保護・高速化し、中国本土および世界中で快適なアクセス体験を実現します。クライアント SDK により、ネイティブ／モバイルアプリにも高速化・セキュリティ機能を拡張できます — <strong>自社構築・プライベートデプロイ CDN</strong>｜<strong>サブスクリプション型高防御 CDN</strong>｜<strong>自律制御で柔軟に組み合わせられる CDN ネットワーク</strong>。</td>
 </tr>
 
 </table>

@@ -39,17 +39,23 @@ func (r codexModelsVisibilityAccountRepo) ListSchedulableByGroupID(_ context.Con
 	return append([]Account(nil), accounts...), nil
 }
 
-func (r codexModelsVisibilityAccountRepo) ListByGroup(_ context.Context, groupID int64) ([]Account, error) {
-	accounts := r.byGroup[groupID]
+func (r codexModelsVisibilityAccountRepo) ListModelAvailabilityCandidates(_ context.Context, groupID *int64, _ []string, _ bool) ([]Account, error) {
+	if groupID == nil {
+		return nil, nil
+	}
+	accounts := r.byGroup[*groupID]
 	return append([]Account(nil), accounts...), nil
 }
 
 type countingCodexModelsAccountRepo struct {
 	AccountRepository
-	accounts       []Account
-	err            error
-	listByGroupErr error
-	calls          atomic.Int32
+	accounts        []Account
+	err             error
+	availabilityErr error
+	groupID         *int64
+	platforms       []string
+	includeGrouped  bool
+	calls           atomic.Int32
 }
 
 func (r *countingCodexModelsAccountRepo) ListSchedulableByGroupID(_ context.Context, _ int64) ([]Account, error) {
@@ -60,9 +66,15 @@ func (r *countingCodexModelsAccountRepo) ListSchedulableByGroupID(_ context.Cont
 	return append([]Account(nil), r.accounts...), nil
 }
 
-func (r *countingCodexModelsAccountRepo) ListByGroup(_ context.Context, _ int64) ([]Account, error) {
-	if r.listByGroupErr != nil {
-		return nil, r.listByGroupErr
+func (r *countingCodexModelsAccountRepo) ListModelAvailabilityCandidates(_ context.Context, groupID *int64, platforms []string, includeGrouped bool) ([]Account, error) {
+	if groupID != nil {
+		value := *groupID
+		r.groupID = &value
+	}
+	r.platforms = append([]string(nil), platforms...)
+	r.includeGrouped = includeGrouped
+	if r.availabilityErr != nil {
+		return nil, r.availabilityErr
 	}
 	return append([]Account(nil), r.accounts...), nil
 }
@@ -71,6 +83,7 @@ type splitCodexModelsAccountRepo struct {
 	AccountRepository
 	schedulable map[int64][]Account
 	catalog     map[int64][]Account
+	all         map[int64][]Account
 }
 
 func (r splitCodexModelsAccountRepo) ListSchedulableByGroupID(_ context.Context, groupID int64) ([]Account, error) {
@@ -78,7 +91,18 @@ func (r splitCodexModelsAccountRepo) ListSchedulableByGroupID(_ context.Context,
 }
 
 func (r splitCodexModelsAccountRepo) ListByGroup(_ context.Context, groupID int64) ([]Account, error) {
-	return append([]Account(nil), r.catalog[groupID]...), nil
+	accounts := r.all[groupID]
+	if accounts == nil {
+		accounts = r.catalog[groupID]
+	}
+	return append([]Account(nil), accounts...), nil
+}
+
+func (r splitCodexModelsAccountRepo) ListModelAvailabilityCandidates(_ context.Context, groupID *int64, _ []string, _ bool) ([]Account, error) {
+	if groupID == nil {
+		return nil, nil
+	}
+	return append([]Account(nil), r.catalog[*groupID]...), nil
 }
 
 func newCodexCatalogMappedAccount(
@@ -181,7 +205,7 @@ func requireCompleteConfiguredCodexModel(t *testing.T, model map[string]any, slu
 	require.Equal(t, true, model["supported_in_api"])
 	require.NotNil(t, model["priority"])
 	require.Equal(t, []any{}, model["additional_speed_tiers"])
-	require.Equal(t, []any{}, model["service_tiers"])
+	require.IsType(t, []any{}, model["service_tiers"])
 	require.Contains(t, model, "default_service_tier")
 	require.Contains(t, model, "availability_nux")
 	require.Contains(t, model, "upgrade")
@@ -325,6 +349,30 @@ func TestNewConfiguredCodexModelDescriptorUsesProviderMetadataAndSafeFallback(t 
 	require.Equal(t, []string{"low", "medium", "high", "xhigh", "max"}, effortsFromConfiguredCodexLevels(gpt56Luna.SupportedReasoningLevels))
 	require.Equal(t, "medium", *gpt56Luna.DefaultReasoningLevel)
 
+	gpt6Astra := newConfiguredCodexModelDescriptor("gpt-6-astra")
+	require.Equal(t, "GPT-6 Astra", gpt6Astra.DisplayName)
+	require.NotNil(t, gpt6Astra.DefaultReasoningLevel)
+	require.Equal(t, "medium", *gpt6Astra.DefaultReasoningLevel)
+	require.Equal(t, []string{"low", "medium", "high", "xhigh", "max"}, effortsFromConfiguredCodexLevels(gpt6Astra.SupportedReasoningLevels))
+	require.NotContains(t, gpt6Astra.SupportedReasoningLevels, configuredCodexReasoningLevel{Effort: "ultra"})
+	require.NotContains(t, gpt6Astra.SupportedReasoningLevels, configuredCodexReasoningLevel{Effort: "none"})
+	require.True(t, configuredCodexSupportsPriorityServiceTier("gpt-6-astra"))
+	require.Equal(t, []configuredCodexServiceTier{{
+		ID:          "priority",
+		Name:        "Fast",
+		Description: "Priority processing for lower latency.",
+	}}, gpt6Astra.ServiceTiers)
+	require.True(t, isOpenAICodexImageInputModel("gpt-6-astra"))
+	require.True(t, isOpenAICodexReasoningGPTModel("openai/gpt-6-astra"))
+	require.True(t, isOpenAIGPT6AstraModel("gpt-6-astra-2026-09-01"))
+	require.False(t, isOpenAIGPT6AstraModel("gpt-6-other"))
+	require.Equal(t, int64(1_050_000), gpt6Astra.ContextWindow)
+	require.Equal(t, int64(1_050_000), gpt6Astra.MaxContextWindow)
+	gpt6 := newConfiguredCodexModelDescriptor("gpt-6")
+	require.Equal(t, "GPT-6 (Astra)", gpt6.DisplayName)
+	require.Equal(t, []string{"low", "medium", "high", "xhigh", "max"}, effortsFromConfiguredCodexLevels(gpt6.SupportedReasoningLevels))
+	require.Equal(t, int64(1_050_000), gpt6.ContextWindow)
+
 	gpt55 := newConfiguredCodexModelDescriptor("gpt-5.5")
 	require.Equal(t, "GPT-5.5", gpt55.DisplayName)
 	require.NotNil(t, gpt55.DefaultReasoningLevel)
@@ -401,6 +449,81 @@ func TestBuildCodexModelsManifestKeepsKnownReasoningChoices(t *testing.T) {
 	firstLevel, ok := levels[0].(map[string]any)
 	require.True(t, ok)
 	require.NotEqual(t, "none", firstLevel["effort"])
+}
+
+// Scenario: 支持 Fast 的 GPT 型号在目录中声明 priority service tier。
+func TestBuildCodexModelsManifestAdvertisesPriorityServiceTierForFastGPTModels(t *testing.T) {
+	t.Parallel()
+
+	body, err := BuildCodexModelsManifest([]string{
+		"gpt-5.4-mini",
+		"gpt-5.5",
+		"gpt-5.6-terra",
+	})
+	require.NoError(t, err)
+	models := decodeCodexManifestModels(t, body)
+	require.Len(t, models, 3)
+
+	for _, model := range models {
+		require.Equal(t, []any{
+			map[string]any{
+				"id":          "priority",
+				"name":        "Fast",
+				"description": "Priority processing for lower latency.",
+			},
+		}, model["service_tiers"])
+		require.Nil(t, model["default_service_tier"])
+	}
+}
+
+// Scenario: GPT-5.6 Sol 在 Fast 之外额外声明 ultrafast service tier。
+func TestBuildCodexModelsManifestAdvertisesUltrafastServiceTierForSol(t *testing.T) {
+	t.Parallel()
+
+	body, err := BuildCodexModelsManifest([]string{
+		"gpt-5.6-sol",
+		"gpt-5.6",
+	})
+	require.NoError(t, err)
+	models := decodeCodexManifestModels(t, body)
+	require.Len(t, models, 2)
+
+	wantTiers := []any{
+		map[string]any{
+			"id":          "priority",
+			"name":        "Fast",
+			"description": "Priority processing for lower latency.",
+		},
+		map[string]any{
+			"id":          "ultrafast",
+			"name":        "Ultrafast",
+			"description": "Ultra-low latency processing.",
+		},
+	}
+	for _, model := range models {
+		require.Equal(t, wantTiers, model["service_tiers"])
+		require.Nil(t, model["default_service_tier"])
+	}
+}
+
+// Scenario: 未明确支持 Fast 的型号不推测 service tier。
+func TestBuildCodexModelsManifestLeavesServiceTiersEmptyForOtherModels(t *testing.T) {
+	t.Parallel()
+
+	body, err := BuildCodexModelsManifest([]string{
+		"gpt-4o",
+		"claude-opus-4-6",
+		"deepseek-v4-pro",
+		"company-coding-model",
+	})
+	require.NoError(t, err)
+	models := decodeCodexManifestModels(t, body)
+	require.Len(t, models, 4)
+
+	for _, model := range models {
+		require.Equal(t, []any{}, model["service_tiers"])
+		require.Nil(t, model["default_service_tier"])
+	}
 }
 
 // Scenario: 专用图片生成模型不进入 Codex 主模型目录。
@@ -492,7 +615,7 @@ func TestBuildCodexModelsManifestForGroupAdvertisesOfficialOpenAIResponsesImageI
 	require.Equal(t, []any{"text", "image"}, models[0]["input_modalities"])
 }
 
-func TestBuildCodexModelsManifestForGroupUsesConservativeProviderImageCapabilities(t *testing.T) {
+func TestBuildCodexModelsManifestForGroupUsesProviderImageCapabilities(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
@@ -602,6 +725,15 @@ func TestBuildCodexModelsManifestForGroupUsesConservativeProviderImageCapabiliti
 				ID: 18, Platform: PlatformOpenAI, Type: AccountTypeAPIKey,
 				Credentials: map[string]any{"base_url": "https://openai-compatible.example.test/v1"},
 			}},
+			modalities: []any{"text", "image"},
+		},
+		{
+			name:  "custom OpenAI-compatible host with unknown model",
+			model: "company-coding-model",
+			accounts: []Account{{
+				ID: 29, Platform: PlatformOpenAI, Type: AccountTypeAPIKey,
+				Credentials: map[string]any{"base_url": "https://openai-compatible.example.test/v1"},
+			}},
 			modalities: []any{"text"},
 		},
 	}
@@ -619,6 +751,67 @@ func TestBuildCodexModelsManifestForGroupUsesConservativeProviderImageCapabiliti
 				&Group{ID: groupID, Platform: PlatformComposite},
 				"",
 				[]string{tt.model},
+			)
+			require.NoError(t, err)
+			models := decodeCodexManifestModels(t, body)
+			require.Len(t, models, 1)
+			require.Equal(t, tt.modalities, models[0]["input_modalities"])
+		})
+	}
+}
+
+func TestBuildCodexModelsManifestForGroupPrefersSyncedOpenAIImageCapabilities(t *testing.T) {
+	t.Parallel()
+
+	newAccount := func(id int64, modalities []string) Account {
+		account := Account{
+			ID: id, Platform: PlatformOpenAI, Type: AccountTypeAPIKey,
+			Credentials: map[string]any{"base_url": "https://openai-compatible.example.test/v1"},
+		}
+		if modalities != nil {
+			account.SetUpstreamModelMetadataSnapshot(UpstreamModelMetadataSnapshot{Models: map[string]UpstreamModelMetadata{
+				"gpt-5.6-sol": {ID: "gpt-5.6-sol", InputModalities: modalities},
+			}})
+		}
+		return account
+	}
+
+	tests := []struct {
+		name       string
+		accounts   []Account
+		modalities []any
+	}{
+		{
+			name: "explicit text-only snapshot narrows local fallback",
+			accounts: []Account{
+				newAccount(30, nil),
+				newAccount(31, []string{"text"}),
+			},
+			modalities: []any{"text"},
+		},
+		{
+			name: "explicit multimodal snapshot preserves local fallback",
+			accounts: []Account{
+				newAccount(32, nil),
+				newAccount(33, []string{"text", "image"}),
+			},
+			modalities: []any{"text", "image"},
+		},
+	}
+
+	for i, tt := range tests {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			groupID := int64(760 + i)
+			svc := &GatewayService{accountRepo: codexModelsVisibilityAccountRepo{byGroup: map[int64][]Account{
+				groupID: tt.accounts,
+			}}}
+			body, err := svc.BuildCodexModelsManifestForGroup(
+				context.Background(),
+				&Group{ID: groupID, Platform: PlatformOpenAI},
+				"",
+				[]string{"gpt-5.6-sol"},
 			)
 			require.NoError(t, err)
 			models := decodeCodexManifestModels(t, body)
@@ -814,6 +1007,13 @@ func TestBuildCodexModelsManifestForGroupLoadsAccountsOnce(t *testing.T) {
 	)
 	require.NoError(t, err)
 	require.Equal(t, int32(1), repo.calls.Load())
+	require.NotNil(t, repo.groupID)
+	require.Equal(t, groupID, *repo.groupID)
+	require.False(t, repo.includeGrouped)
+	require.Contains(t, repo.platforms, PlatformOpenAI)
+	require.Contains(t, repo.platforms, PlatformGrok)
+	require.Contains(t, repo.platforms, PlatformDeepseek)
+	require.NotContains(t, repo.platforms, PlatformComposite)
 }
 
 func TestBuildCodexModelsManifestForGroupUsesFallbackWhenTextOnlyPlatformHasNoSnapshot(t *testing.T) {
@@ -1003,8 +1203,9 @@ func TestBuildGroupConfiguredCodexModelsManifestExpandsSelectedModelCoveredByWil
 	require.NotContains(t, string(manifest.Body), "gpt-*")
 }
 
-// Scenario: OpenAI 配置目录对暂时不可调度账号取能力交集，且不发布其独有模型。
-func TestBuildGroupConfiguredCodexModelsManifestIntersectsUnschedulableMappedAccounts(t *testing.T) {
+// Scenario: OpenAI 配置目录对仅因瞬态状态退出当前调度池的账号取能力交集，
+// 且不发布其独有模型。持久 schedulable 仍为 true。
+func TestBuildGroupConfiguredCodexModelsManifestIntersectsTransientlyUnschedulableMappedAccounts(t *testing.T) {
 	t.Parallel()
 
 	const groupID int64 = 79
@@ -1018,19 +1219,19 @@ func TestBuildGroupConfiguredCodexModelsManifestIntersectsUnschedulableMappedAcc
 		true,
 		nil,
 	)
-	unschedulable := newCodexCatalogMappedAccount(
+	transientlyUnschedulable := newCodexCatalogMappedAccount(
 		42,
 		"glm-5.3",
 		"GLM 5.3",
 		[]string{"low", "medium", "high"},
 		[]string{"text"},
 		272_000,
-		false,
+		true,
 		map[string]any{"exclusive-model": "exclusive-upstream"},
 	)
 	svc := &OpenAIGatewayService{accountRepo: splitCodexModelsAccountRepo{
 		schedulable: map[int64][]Account{groupID: {schedulable}},
-		catalog:     map[int64][]Account{groupID: {schedulable, unschedulable}},
+		catalog:     map[int64][]Account{groupID: {schedulable, transientlyUnschedulable}},
 	}}
 
 	manifest, configured, err := svc.BuildGroupConfiguredCodexModelsManifest(
@@ -1047,6 +1248,52 @@ func TestBuildGroupConfiguredCodexModelsManifestIntersectsUnschedulableMappedAcc
 	require.Equal(t, []string{"low", "medium", "high"}, effortsFromManifestModel(t, models[0]))
 	require.Equal(t, []any{"text"}, models[0]["input_modalities"])
 	require.EqualValues(t, 272_000, models[0]["context_window"])
+}
+
+// Scenario: 管理员持久禁用的账号不能继续收窄 Codex 能力目录。
+func TestBuildGroupConfiguredCodexModelsManifestIgnoresPersistentlyDisabledMappedAccounts(t *testing.T) {
+	t.Parallel()
+
+	const groupID int64 = 80
+	enabled := newCodexCatalogMappedAccount(
+		51,
+		"gpt-5.6-sol",
+		"GPT-5.6 Sol",
+		[]string{"low", "medium", "high", "xhigh"},
+		[]string{"text", "image"},
+		1_000_000,
+		true,
+		nil,
+	)
+	disabled := newCodexCatalogMappedAccount(
+		52,
+		"glm-5.3",
+		"GLM 5.3",
+		[]string{"low", "medium", "high"},
+		[]string{"text"},
+		272_000,
+		false,
+		nil,
+	)
+	svc := &OpenAIGatewayService{accountRepo: splitCodexModelsAccountRepo{
+		schedulable: map[int64][]Account{groupID: {enabled}},
+		catalog:     map[int64][]Account{groupID: {enabled}},
+		all:         map[int64][]Account{groupID: {enabled, disabled}},
+	}}
+
+	manifest, configured, err := svc.BuildGroupConfiguredCodexModelsManifest(
+		context.Background(),
+		&Group{ID: groupID, Platform: PlatformOpenAI},
+		"",
+	)
+	require.NoError(t, err)
+	require.True(t, configured)
+	models := decodeCodexManifestModels(t, manifest.Body)
+	require.Len(t, models, 1)
+	require.Equal(t, "my-coder", models[0]["slug"])
+	require.Equal(t, []string{"low", "medium", "high", "xhigh"}, effortsFromManifestModel(t, models[0]))
+	require.Equal(t, []any{"text", "image"}, models[0]["input_modalities"])
+	require.EqualValues(t, 1_000_000, models[0]["context_window"])
 }
 
 // Scenario: 没有管理员模型配置时保留现有上游发现路径。
@@ -1544,11 +1791,12 @@ func TestFetchCodexModelsManifestDefaultClientVersion(t *testing.T) {
 }
 
 func TestFetchCodexModelsManifestNotModified(t *testing.T) {
-	var gotIfNoneMatch string
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		gotIfNoneMatch = r.Header.Get("If-None-Match")
+	manifestBody := `{"models":[{"slug":"gpt-5.5"}]}`
+	var calls atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		calls.Add(1)
 		w.Header().Set("ETag", `W/"abc123"`)
-		w.WriteHeader(http.StatusNotModified)
+		_, _ = w.Write([]byte(manifestBody))
 	}))
 	defer server.Close()
 
@@ -1557,15 +1805,32 @@ func TestFetchCodexModelsManifestNotModified(t *testing.T) {
 	defer func() { chatgptCodexModelsURL = original }()
 
 	s := &OpenAIGatewayService{}
-	manifest, err := s.FetchCodexModelsManifest(context.Background(), newCodexModelsTestAccount(), "0.137.0", `W/"abc123"`)
+	account := newCodexModelsTestAccount()
+	first, err := s.FetchCodexModelsManifest(context.Background(), account, "0.137.0", "")
 	if err != nil {
 		t.Fatalf("FetchCodexModelsManifest returned error: %v", err)
 	}
-	if !manifest.NotModified {
-		t.Error("expected NotModified to be true")
+	if first.NotModified {
+		t.Fatal("cold fetch must return the manifest body")
 	}
-	if gotIfNoneMatch != `W/"abc123"` {
-		t.Errorf("if-none-match header: got %q", gotIfNoneMatch)
+	if first.ETag != `W/"abc123"` {
+		t.Errorf("etag not passed through: got %q", first.ETag)
+	}
+
+	// OAuth 路径接入缓存后，客户端 If-None-Match 与缓存内容 ETag 比较，不再透传上游：
+	// 新鲜期内命中缓存且匹配直接 304，零上游请求。
+	second, err := s.FetchCodexModelsManifest(context.Background(), account, "0.137.0", `W/"abc123"`)
+	if err != nil {
+		t.Fatalf("cached fetch returned error: %v", err)
+	}
+	if !second.NotModified {
+		t.Fatal("matching cached ETag must return NotModified")
+	}
+	if second.ETag != `W/"abc123"` {
+		t.Errorf("NotModified etag: got %q", second.ETag)
+	}
+	if got := calls.Load(); got != 1 {
+		t.Errorf("upstream calls: got %d, want 1", got)
 	}
 }
 
@@ -1723,6 +1988,8 @@ func TestFetchCodexModelsManifestAPIKeyConvertsStandardOpenAIModelList(t *testin
 	require.Len(t, models, 2)
 	requireCompleteConfiguredCodexModel(t, models[0], "gpt-5.6")
 	requireCompleteConfiguredCodexModel(t, models[1], "gpt-5.6-codex")
+	require.Equal(t, []any{"text", "image"}, models[0]["input_modalities"])
+	require.Equal(t, []any{"text", "image"}, models[1]["input_modalities"])
 	require.Equal(t, codexModelsManifestBodyETag(manifest.Body), manifest.ETag)
 	require.Equal(t, `W/"openai-list"`, manifest.upstreamETag)
 }
@@ -1745,7 +2012,7 @@ func TestCompleteAPIKeyCodexModelsManifestForClientPreservesProviderMetadata(t *
 
 	svc := &OpenAIGatewayService{}
 	manifest := &CodexModelsManifest{
-		Body: []byte(`{"models":[{"slug":"grok-4.6","description":"Provider supplied","model_messages":{"auto_review":{"enabled":true}},"truncation_policy":{"mode":"tokens"},"unknown":{"kept":true}}],"metadata":{"source":"upstream"}}`),
+		Body: []byte(`{"models":[{"slug":"grok-4.6","description":"Provider supplied","service_tiers":[{"id":"provider-priority","name":"Provider Fast","description":"Provider supplied tier."}],"model_messages":{"auto_review":{"enabled":true}},"truncation_policy":{"mode":"tokens"},"unknown":{"kept":true}}],"metadata":{"source":"upstream"}}`),
 	}
 	account := newCodexModelsAPIKeyTestAccount("https://upstream.example/v1")
 
@@ -1755,6 +2022,13 @@ func TestCompleteAPIKeyCodexModelsManifestForClientPreservesProviderMetadata(t *
 	requireCompleteConfiguredCodexModel(t, models[0], "grok-4.6")
 	require.Equal(t, "Provider supplied", models[0]["description"])
 	require.Equal(t, map[string]any{"kept": true}, models[0]["unknown"])
+	require.Equal(t, []any{
+		map[string]any{
+			"id":          "provider-priority",
+			"name":        "Provider Fast",
+			"description": "Provider supplied tier.",
+		},
+	}, models[0]["service_tiers"])
 	require.Equal(t, []any{"text"}, models[0]["input_modalities"])
 	require.Equal(t, []string{"low", "medium", "high", "xhigh"}, effortsFromManifestModel(t, models[0]))
 	modelMessages, ok := models[0]["model_messages"].(map[string]any)
@@ -1767,6 +2041,32 @@ func TestCompleteAPIKeyCodexModelsManifestForClientPreservesProviderMetadata(t *
 	var envelope map[string]any
 	require.NoError(t, json.Unmarshal(manifest.Body, &envelope))
 	require.Equal(t, map[string]any{"source": "upstream"}, envelope["metadata"])
+}
+
+func TestCompleteAPIKeyCodexModelsManifestForClientUsesKnownGPTImageFallback(t *testing.T) {
+	t.Parallel()
+
+	svc := &OpenAIGatewayService{}
+	manifest := &CodexModelsManifest{Body: []byte(`{"models":[
+		{"slug":"gpt-5.6-sol"},
+		{"slug":"company-coding-model"},
+		{"slug":"gpt-4o","input_modalities":["text"]}
+	]}`)}
+	account := newCodexModelsAPIKeyTestAccount("https://openai-compatible.example.test/v1")
+
+	require.NoError(t, svc.CompleteAPIKeyCodexModelsManifestForClient(manifest, account))
+	models := decodeCodexManifestModels(t, manifest.Body)
+	require.Len(t, models, 3)
+
+	bySlug := make(map[string]map[string]any, len(models))
+	for _, model := range models {
+		slug, ok := model["slug"].(string)
+		require.True(t, ok)
+		bySlug[slug] = model
+	}
+	require.Equal(t, []any{"text", "image"}, bySlug["gpt-5.6-sol"]["input_modalities"])
+	require.Equal(t, []any{"text"}, bySlug["company-coding-model"]["input_modalities"])
+	require.Equal(t, []any{"text"}, bySlug["gpt-4o"]["input_modalities"])
 }
 
 // Scenario: 标准 /models 型号列表优先使用已同步账号能力，再使用本地 descriptor 兜底。
@@ -1901,12 +2201,12 @@ func TestCompleteAPIKeyCodexModelsManifestForClientMarksOnlyOfficialVisionGPTIma
 	t.Parallel()
 
 	svc := &OpenAIGatewayService{}
-	manifest := &CodexModelsManifest{Body: []byte(`{"models":[{"slug":"gpt-5.6-sol"},{"slug":"gpt-4o"},{"slug":"gpt-3.5-turbo"},{"slug":"gpt-4"}]}`)}
+	manifest := &CodexModelsManifest{Body: []byte(`{"models":[{"slug":"gpt-6-astra"},{"slug":"gpt-5.6-sol"},{"slug":"gpt-4o"},{"slug":"gpt-3.5-turbo"},{"slug":"gpt-4"}]}`)}
 	account := newCodexModelsAPIKeyTestAccount("")
 
 	require.NoError(t, svc.CompleteAPIKeyCodexModelsManifestForClient(manifest, account))
 	models := decodeCodexManifestModels(t, manifest.Body)
-	require.Len(t, models, 4)
+	require.Len(t, models, 5)
 
 	bySlug := make(map[string]map[string]any, len(models))
 	for _, model := range models {
@@ -1914,7 +2214,7 @@ func TestCompleteAPIKeyCodexModelsManifestForClientMarksOnlyOfficialVisionGPTIma
 		require.True(t, ok)
 		bySlug[slug] = model
 	}
-	for _, slug := range []string{"gpt-5.6-sol", "gpt-4o"} {
+	for _, slug := range []string{"gpt-6-astra", "gpt-5.6-sol", "gpt-4o"} {
 		require.Equal(t, []any{"text", "image"}, bySlug[slug]["input_modalities"])
 		require.Equal(t, true, bySlug[slug]["supports_image_detail_original"])
 	}
@@ -1945,8 +2245,8 @@ func TestAdjustAPIKeyCodexModelsManifest(t *testing.T) {
 	}{
 		{
 			name: "affected models disable responses lite and preserve unknown fields",
-			body: `{"models":[{"slug":"gpt-5.6-sol","use_responses_lite":true,"unknown_model":{"enabled":true}},{"slug":"gpt-5.6-terra","use_responses_lite":true},{"slug":"gpt-5.6-luna","use_responses_lite":true}],"unknown_top":{"version":1}}`,
-			want: `{"models":[{"slug":"gpt-5.6-sol","unknown_model":{"enabled":true},"use_responses_lite":false},{"slug":"gpt-5.6-terra","use_responses_lite":false},{"slug":"gpt-5.6-luna","use_responses_lite":false}],"unknown_top":{"version":1}}`,
+			body: `{"models":[{"slug":"gpt-6-astra","use_responses_lite":true},{"slug":"gpt-5.6-sol","use_responses_lite":true,"unknown_model":{"enabled":true}},{"slug":"gpt-5.6-terra","use_responses_lite":true},{"slug":"gpt-5.6-luna","use_responses_lite":true}],"unknown_top":{"version":1}}`,
+			want: `{"models":[{"slug":"gpt-6-astra","use_responses_lite":false},{"slug":"gpt-5.6-sol","unknown_model":{"enabled":true},"use_responses_lite":false},{"slug":"gpt-5.6-terra","use_responses_lite":false},{"slug":"gpt-5.6-luna","use_responses_lite":false}],"unknown_top":{"version":1}}`,
 		},
 		{
 			name: "unaffected model unchanged",
@@ -1962,7 +2262,7 @@ func TestAdjustAPIKeyCodexModelsManifest(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := adjustAPIKeyCodexModelsManifest([]byte(tt.body))
+			got, err := adjustAPIKeyCodexModelsManifest([]byte(tt.body), nil)
 			require.NoError(t, err)
 			require.Equal(t, tt.want, string(got))
 		})
@@ -2518,22 +2818,22 @@ func TestFetchCodexModelsManifestAPIKeyCacheBoundsEntriesAndBodySize(t *testing.
 		t.Fatalf("body-size bounded cache calls: got %d, want 5", got)
 	}
 
-	for i := int64(10); i < 75; i++ {
+	for i := int64(10); i < 523; i++ {
 		account := newCodexModelsAPIKeyTestAccount("https://bounded.example")
 		account.ID = i
 		fetch(account)
 	}
 	last := newCodexModelsAPIKeyTestAccount("https://bounded.example")
-	last.ID = 74
+	last.ID = 522
 	fetch(last)
-	if got := calls.Load(); got != 70 {
-		t.Fatalf("most recent cache entry was not retained: calls=%d, want 70", got)
+	if got := calls.Load(); got != 518 {
+		t.Fatalf("most recent cache entry was not retained: calls=%d, want 518", got)
 	}
 	first := newCodexModelsAPIKeyTestAccount("https://bounded.example")
 	first.ID = 10
 	fetch(first)
-	if got := calls.Load(); got != 71 {
-		t.Errorf("oldest cache entry was not evicted: calls=%d, want 71", got)
+	if got := calls.Load(); got != 519 {
+		t.Errorf("oldest cache entry was not evicted: calls=%d, want 519", got)
 	}
 }
 
@@ -3026,4 +3326,272 @@ func TestFetchCodexModelsManifestAPIKeyUsesOfficialOpenAIModelsEndpoint(t *testi
 			require.Equal(t, []any{"text", "image"}, models[0]["input_modalities"])
 		})
 	}
+}
+
+// --- OAuth manifest 账号级缓存（统一缓存策略） ---
+
+// newCodexModelsOAuthCacheServer 返回一个记录调用次数、返回给定 manifest 的
+// ChatGPT Codex models 测试上游。
+func newCodexModelsOAuthCacheServer(t *testing.T, body string) (*httptest.Server, *atomic.Int32) {
+	t.Helper()
+	calls := &atomic.Int32{}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		calls.Add(1)
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(body))
+	}))
+	t.Cleanup(server.Close)
+	original := chatgptCodexModelsURL
+	chatgptCodexModelsURL = server.URL
+	t.Cleanup(func() { chatgptCodexModelsURL = original })
+	return server, calls
+}
+
+func expireCodexModelsManifestCache(s *OpenAIGatewayService, age time.Duration) {
+	s.codexModelsManifestCache.mu.Lock()
+	for key, entry := range s.codexModelsManifestCache.entries {
+		entry.expiresAt = time.Now().Add(-age)
+		entry.staleUntil = time.Now().Add(codexModelsManifestCacheStaleTTL - age)
+		s.codexModelsManifestCache.entries[key] = entry
+	}
+	s.codexModelsManifestCache.mu.Unlock()
+}
+
+func TestFetchCodexModelsManifestOAuthFreshWindowZeroUpstreamRequests(t *testing.T) {
+	_, calls := newCodexModelsOAuthCacheServer(t, `{"models":[{"slug":"gpt-5.5"}]}`)
+	s := &OpenAIGatewayService{}
+	account := newCodexModelsTestAccount()
+
+	for i := 0; i < 10; i++ {
+		manifest, err := s.FetchCodexModelsManifest(context.Background(), account, "0.137.0", "")
+		require.NoError(t, err)
+		require.False(t, manifest.NotModified)
+		require.JSONEq(t, `{"models":[{"slug":"gpt-5.5"}]}`, string(manifest.Body))
+	}
+	require.EqualValues(t, 1, calls.Load(), "新鲜期内重复请求不得打到 chatgpt.com")
+}
+
+func TestFetchCodexModelsManifestOAuthStaleServesOldValueAndRefreshesInBackground(t *testing.T) {
+	calls := &atomic.Int32{}
+	refreshStarted := make(chan struct{})
+	var refreshOnce sync.Once
+	release := make(chan struct{})
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		if calls.Add(1) == 2 {
+			refreshOnce.Do(func() { close(refreshStarted) })
+			<-release
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"models":[{"slug":"new"}]}`))
+	}))
+	t.Cleanup(server.Close)
+	original := chatgptCodexModelsURL
+	chatgptCodexModelsURL = server.URL
+	t.Cleanup(func() { chatgptCodexModelsURL = original })
+
+	s := &OpenAIGatewayService{}
+	account := newCodexModelsTestAccount()
+	first, err := s.FetchCodexModelsManifest(context.Background(), account, "0.137.0", "")
+	require.NoError(t, err)
+	require.Contains(t, string(first.Body), `"new"`)
+
+	expireCodexModelsManifestCache(s, 2*time.Minute)
+
+	resultCh := make(chan *CodexModelsManifest, 1)
+	errCh := make(chan error, 1)
+	go func() {
+		manifest, fetchErr := s.FetchCodexModelsManifest(context.Background(), account, "0.137.0", "")
+		resultCh <- manifest
+		errCh <- fetchErr
+	}()
+	select {
+	case <-refreshStarted:
+	case <-time.After(time.Second):
+		t.Fatal("乐观期后台刷新未触发")
+	}
+
+	// 乐观期：立即返回旧值，不同步等待刷新。
+	select {
+	case manifest := <-resultCh:
+		require.NoError(t, <-errCh)
+		require.Contains(t, string(manifest.Body), `"new"`)
+	case <-time.After(100 * time.Millisecond):
+		t.Fatal("乐观期必须立即返回缓存旧值")
+	}
+	require.EqualValues(t, 2, calls.Load())
+
+	close(release)
+	deadline := time.Now().Add(time.Second)
+	for time.Now().Before(deadline) {
+		manifest, fetchErr := s.FetchCodexModelsManifest(context.Background(), account, "0.137.0", "")
+		if fetchErr == nil && manifest != nil && !manifest.NotModified {
+			require.Contains(t, string(manifest.Body), `"new"`)
+		}
+		s.codexModelsManifestCache.mu.Lock()
+		fresh := len(s.codexModelsManifestCache.entries) > 0
+		s.codexModelsManifestCache.mu.Unlock()
+		if fresh {
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	require.EqualValues(t, 2, calls.Load(), "后台刷新必须单飞")
+}
+
+func TestFetchCodexModelsManifestOAuthOverdueSynchronousRefreshAndFailure(t *testing.T) {
+	t.Run("overdue refresh waits and re-caches", func(t *testing.T) {
+		calls := &atomic.Int32{}
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			if calls.Add(1) == 2 {
+				w.Header().Set("Content-Type", "application/json")
+				_, _ = w.Write([]byte(`{"models":[{"slug":"refreshed"}]}`))
+				return
+			}
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"models":[{"slug":"stale"}]}`))
+		}))
+		t.Cleanup(server.Close)
+		original := chatgptCodexModelsURL
+		chatgptCodexModelsURL = server.URL
+		t.Cleanup(func() { chatgptCodexModelsURL = original })
+
+		s := &OpenAIGatewayService{}
+		account := newCodexModelsTestAccount()
+		_, err := s.FetchCodexModelsManifest(context.Background(), account, "0.137.0", "")
+		require.NoError(t, err)
+
+		// 超过 5 分钟：缓存条目被丢弃，同步等待上游刷新。
+		expireCodexModelsManifestCache(s, 6*time.Minute)
+
+		manifest, err := s.FetchCodexModelsManifest(context.Background(), account, "0.137.0", "")
+		require.NoError(t, err)
+		require.Contains(t, string(manifest.Body), `"refreshed"`)
+		require.EqualValues(t, 2, calls.Load())
+
+		// 新内容写回缓存并重新开始新鲜期。
+		again, err := s.FetchCodexModelsManifest(context.Background(), account, "0.137.0", "")
+		require.NoError(t, err)
+		require.Contains(t, string(again.Body), `"refreshed"`)
+		require.EqualValues(t, 2, calls.Load())
+	})
+
+	t.Run("overdue upstream failure returns error not stale cache", func(t *testing.T) {
+		fail := &atomic.Bool{}
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			if fail.Load() {
+				w.WriteHeader(http.StatusInternalServerError)
+				_, _ = w.Write([]byte(`{"detail":"boom"}`))
+				return
+			}
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"models":[{"slug":"stale"}]}`))
+		}))
+		t.Cleanup(server.Close)
+		original := chatgptCodexModelsURL
+		chatgptCodexModelsURL = server.URL
+		t.Cleanup(func() { chatgptCodexModelsURL = original })
+
+		s := &OpenAIGatewayService{}
+		account := newCodexModelsTestAccount()
+		_, err := s.FetchCodexModelsManifest(context.Background(), account, "0.137.0", "")
+		require.NoError(t, err)
+
+		fail.Store(true)
+		expireCodexModelsManifestCache(s, 6*time.Minute)
+
+		_, err = s.FetchCodexModelsManifest(context.Background(), account, "0.137.0", "")
+		require.Error(t, err, "超期后上游失败必须返回错误而非旧缓存")
+		require.Equal(t, "OPENAI_CODEX_MODELS_UPSTREAM_FAILED", infraerrors.Reason(err))
+	})
+}
+
+func TestFetchCodexModelsManifestOAuthTokenChangeCacheMiss(t *testing.T) {
+	_, calls := newCodexModelsOAuthCacheServer(t, `{"models":[]}`)
+	s := &OpenAIGatewayService{}
+	account := newCodexModelsTestAccount()
+
+	_, err := s.FetchCodexModelsManifest(context.Background(), account, "0.137.0", "")
+	require.NoError(t, err)
+	require.EqualValues(t, 1, calls.Load())
+
+	// 令牌刷新后缓存键变化，下一次拉取视为未命中并同步请求上游。
+	account.Credentials["access_token"] = "rotated-access-token"
+	manifest, err := s.FetchCodexModelsManifest(context.Background(), account, "0.137.0", "")
+	require.NoError(t, err)
+	require.Contains(t, string(manifest.Body), `"models"`)
+	require.EqualValues(t, 2, calls.Load())
+}
+
+func TestFetchCodexModelsManifestOAuthSharedAcrossGroupsWithIndependentFiltering(t *testing.T) {
+	started := make(chan struct{})
+	var startedOnce sync.Once
+	release := make(chan struct{})
+	calls := &atomic.Int32{}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		calls.Add(1)
+		startedOnce.Do(func() { close(started) })
+		<-release
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"models":[{"slug":"model-a"},{"slug":"model-b"}]}`))
+	}))
+	t.Cleanup(server.Close)
+	original := chatgptCodexModelsURL
+	chatgptCodexModelsURL = server.URL
+	t.Cleanup(func() { chatgptCodexModelsURL = original })
+
+	s := &OpenAIGatewayService{
+		accountRepo: codexModelsVisibilityAccountRepo{
+			byGroup: map[int64][]Account{
+				91: {},
+				92: {},
+			},
+		},
+	}
+	account := newCodexModelsTestAccount()
+	groupA := &Group{ID: 91, Platform: PlatformOpenAI, ModelsListConfig: GroupModelsListConfig{Enabled: true, Models: []string{"model-a"}}}
+	groupB := &Group{ID: 92, Platform: PlatformOpenAI, ModelsListConfig: GroupModelsListConfig{Enabled: true, Models: []string{"model-b"}}}
+
+	begin := make(chan struct{})
+	type result struct {
+		slugs []string
+		err   error
+	}
+	results := make(chan result, 2)
+	for _, group := range []*Group{groupA, groupB} {
+		go func(g *Group) {
+			<-begin
+			manifest, err := s.FetchCodexModelsManifest(context.Background(), account, "0.137.0", "")
+			if err == nil {
+				err = s.MergeGroupConfiguredCodexModels(context.Background(), g, manifest, "")
+			}
+			slugs := []string{}
+			if err == nil {
+				slugs = codexManifestModelSlugs(t, manifest.Body)
+			}
+			results <- result{slugs: slugs, err: err}
+		}(group)
+	}
+	close(begin)
+	select {
+	case <-started:
+	case <-time.After(time.Second):
+		t.Fatal("upstream request did not start")
+	}
+	close(release)
+
+	got := map[int64][]string{91: nil, 92: nil}
+	for i := 0; i < 2; i++ {
+		r := <-results
+		require.NoError(t, r.err)
+		if len(r.slugs) == 1 && r.slugs[0] == "model-a" {
+			got[91] = r.slugs
+		} else if len(r.slugs) == 1 && r.slugs[0] == "model-b" {
+			got[92] = r.slugs
+		} else {
+			t.Fatalf("unexpected filtered slugs: %v", r.slugs)
+		}
+	}
+	require.Equal(t, []string{"model-a"}, got[91])
+	require.Equal(t, []string{"model-b"}, got[92])
+	require.EqualValues(t, 1, calls.Load(), "同一账号两个分组同时请求时只发一次上游请求")
 }

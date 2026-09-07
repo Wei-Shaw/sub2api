@@ -620,6 +620,7 @@ export interface SystemSettings {
   allow_ungrouped_key_scheduling: boolean;
 
   // Gateway forwarding behavior
+  openai_ttft_mode: string;
   enable_fingerprint_unification: boolean;
   enable_metadata_passthrough: boolean;
   enable_cch_signing: boolean;
@@ -935,6 +936,7 @@ export interface UpdateSettingsRequest {
   min_claude_code_version?: string;
   max_claude_code_version?: string;
   allow_ungrouped_key_scheduling?: boolean;
+  openai_ttft_mode?: string;
   enable_fingerprint_unification?: boolean;
   enable_metadata_passthrough?: boolean;
   enable_cch_signing?: boolean;
@@ -1427,7 +1429,7 @@ export async function updateRectifierSettings(
  * Matches backend dto.OpenAIFastPolicyRule.
  */
 export interface OpenAIFastPolicyRule {
-  service_tier: "all" | "priority" | "flex";
+  service_tier: "all" | "priority" | "flex" | "ultrafast";
   action: "pass" | "filter" | "block" | "force_priority";
   scope: "all" | "oauth" | "apikey" | "bedrock";
   user_ids?: number[];

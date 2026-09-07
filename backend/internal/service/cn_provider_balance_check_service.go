@@ -113,6 +113,13 @@ func (s *CNProviderBalanceCheckService) runOnce() {
 			if !account.IsActive() {
 				continue
 			}
+			// 挂在国产平台下、base_url 指向官方 ollama.com 的账号由 Ollama Cloud
+			// 用量窗口负责：CN 探测端点由 base_url 衍生，ollama.com 会被出站
+			// URL 白名单拒绝（CN_BALANCE_URL_REJECTED），不跳过则每个周期都
+			// 白跑并产生告警噪声。
+			if IsOllamaCloudUsageAccount(account) {
+				continue
+			}
 			// coding 账号：探测滚动窗口并落快照（不要求 Schedulable——已被
 			// 阈值停调的账号也需要新鲜快照决定是否续停）。
 			if account.IsCodingPlan() {

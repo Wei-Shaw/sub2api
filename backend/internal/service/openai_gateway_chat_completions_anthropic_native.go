@@ -106,7 +106,7 @@ func (s *OpenAIGatewayService) forwardChatCompletionsViaNativeAnthropic(
 	}
 
 	proxyURL := ""
-	if account.Proxy != nil {
+	if account.ProxyID != nil && account.Proxy != nil {
 		proxyURL = account.Proxy.URL()
 	}
 
@@ -281,6 +281,7 @@ func (s *OpenAIGatewayService) handleCCBufferedFromNativeAnthropic(
 
 	return &OpenAIForwardResult{
 		RequestID:        requestID,
+		UpstreamHeaders:  resp.Header,
 		Usage:            claudeUsageToOpenAIUsage(&usage),
 		Model:            originalModel,
 		BillingModel:     billingModel,
@@ -336,6 +337,7 @@ func (s *OpenAIGatewayService) handleCCStreamingFromNativeAnthropic(
 	resultWithUsage := func() *OpenAIForwardResult {
 		return &OpenAIForwardResult{
 			RequestID:        requestID,
+			UpstreamHeaders:  resp.Header,
 			Usage:            claudeUsageToOpenAIUsage(&usage),
 			Model:            originalModel,
 			BillingModel:     billingModel,

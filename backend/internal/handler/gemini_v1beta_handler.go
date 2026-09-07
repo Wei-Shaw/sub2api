@@ -52,6 +52,11 @@ func (h *GatewayHandler) GeminiV1BetaListModels(c *gin.Context) {
 		return
 	}
 
+	if models, ok := customGeminiModelsList(apiKey.Group); ok {
+		c.JSON(http.StatusOK, models)
+		return
+	}
+
 	account, err := h.geminiCompatService.SelectAccountForAIStudioEndpoints(c.Request.Context(), apiKey.GroupID)
 	if err != nil {
 		// 没有 gemini 账户，检查是否有 antigravity 账户可用
@@ -76,6 +81,17 @@ func (h *GatewayHandler) GeminiV1BetaListModels(c *gin.Context) {
 		return
 	}
 	writeUpstreamResponse(c, res)
+}
+
+func customGeminiModelsList(group *service.Group) (gemini.ModelsListResponse, bool) {
+	if group == nil || !group.CustomModelsListEnabled() {
+		return gemini.ModelsListResponse{}, false
+	}
+	models := make([]gemini.Model, 0, len(group.ModelsListConfig.Models))
+	for _, modelID := range group.ModelsListConfig.Models {
+		models = append(models, gemini.FallbackModel(modelID))
+	}
+	return gemini.ModelsListResponse{Models: models}, true
 }
 
 // GeminiV1BetaGetModel proxies:
@@ -569,33 +585,25 @@ func (h *GatewayHandler) GeminiV1BetaModels(c *gin.Context) {
 		forceCacheBilling := fs.ForceCacheBilling
 		quotaPlatform := service.QuotaPlatform(c.Request.Context(), apiKey)
 		sessionID := service.ExtractClientSessionID(c)
-		// 长上下文规则由计费服务统一持有（模型广场展示同源），入口只负责声明自己适用该规则。
-		var longContextThreshold int
-		var longContextMultiplier float64
-		if rule := h.gatewayService.LegacyLongContextRule(service.PlatformGemini); rule != nil {
-			longContextThreshold = rule.Threshold
-			longContextMultiplier = rule.Multiplier
-		}
+		// 长上下文阶梯由目录数据驱动，统一在计费路径内生效，入口无需声明。
 		h.submitUsageRecordTask(c.Request.Context(), func(ctx context.Context) {
-			if err := h.gatewayService.RecordUsageWithLongContext(ctx, &service.RecordUsageLongContextInput{
-				Result:                result,
-				QuotaPlatform:         quotaPlatform,
-				APIKey:                apiKey,
-				User:                  apiKey.User,
-				Account:               account,
-				Subscription:          subscription,
-				PricingAt:             pricingAt,
-				InboundEndpoint:       inboundEndpoint,
-				UpstreamEndpoint:      upstreamEndpoint,
-				UserAgent:             userAgent,
-				IPAddress:             clientIP,
-				RequestPayloadHash:    requestPayloadHash,
-				LongContextThreshold:  longContextThreshold,
-				LongContextMultiplier: longContextMultiplier,
-				ForceCacheBilling:     forceCacheBilling,
-				APIKeyService:         h.apiKeyService,
-				SessionID:             sessionID,
-				ChannelUsageFields:    clientRequestedUsageFields(c, channelMapping, reqModel, result.UpstreamModel),
+			if err := h.gatewayService.RecordUsage(ctx, &service.RecordUsageInput{
+				Result:             result,
+				QuotaPlatform:      quotaPlatform,
+				APIKey:             apiKey,
+				User:               apiKey.User,
+				Account:            account,
+				Subscription:       subscription,
+				PricingAt:          pricingAt,
+				InboundEndpoint:    inboundEndpoint,
+				UpstreamEndpoint:   upstreamEndpoint,
+				UserAgent:          userAgent,
+				IPAddress:          clientIP,
+				RequestPayloadHash: requestPayloadHash,
+				ForceCacheBilling:  forceCacheBilling,
+				APIKeyService:      h.apiKeyService,
+				SessionID:          sessionID,
+				ChannelUsageFields: clientRequestedUsageFields(c, channelMapping, reqModel, result.UpstreamModel),
 			}); err != nil {
 				logger.L().With(
 					zap.String("component", "handler.gemini_v1beta.models"),

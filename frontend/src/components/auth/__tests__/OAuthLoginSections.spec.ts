@@ -46,7 +46,7 @@ describe('OAuth login sections', () => {
     const wrapper = mount(LinuxDoOAuthSection, {
       props: {
         affCode: 'AFF456',
-        promoCode: '  PROMO-2026  '
+        promoCode: ' PROMO789 '
       }
     })
 
@@ -56,7 +56,7 @@ describe('OAuth login sections', () => {
       provider: 'linuxdo',
       params: {
         redirect: '/billing?plan=pro',
-        promo_code: 'PROMO-2026'
+        promo_code: 'PROMO789'
       }
     })
   })

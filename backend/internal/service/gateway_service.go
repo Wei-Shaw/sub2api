@@ -610,8 +610,10 @@ type AudioUsage struct {
 
 type ForwardResult struct {
 	RequestID string
-	Usage     ClaudeUsage
-	Model     string
+	// UpstreamHeaders 是直接上游的响应头，用于按账户配置解析上游请求标识。
+	UpstreamHeaders http.Header
+	Usage           ClaudeUsage
+	Model           string
 	// UpstreamModel is the actual upstream model after mapping.
 	// Prefer empty when it is identical to Model; persistence normalizes equal values away as no-op mappings.
 	UpstreamModel string
@@ -627,6 +629,8 @@ type ForwardResult struct {
 	FirstTokenMs                *int // 首字时间（流式请求）
 	ClientDisconnect            bool // 客户端是否在流式传输过程中断开
 	ReasoningEffort             *string
+	// RequestedReasoningEffort is the client-requested effort before mapping.
+	RequestedReasoningEffort *string
 	// ServiceTier records the tier requested by the client. OpenAI uses
 	// service_tier; Anthropic speed=fast is normalized to "fast". Usage recording
 	// lowers it to UpstreamResponseServiceTier when the upstream reports a
