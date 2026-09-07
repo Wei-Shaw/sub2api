@@ -694,6 +694,12 @@ func (s *adminServiceImpl) UpdateAccount(ctx context.Context, id int64, input *U
 				normalizedExtra[key] = v
 			}
 		}
+		// 到期定时器的计划时刻由后台服务维护，开关仍开启时保留，避免保存后列表展示消失。
+		if resolveAccountExtraBool(normalizedExtra, OpenAIAutoResetCreditExpiryEnabledExtraKey) {
+			if v, ok := account.Extra[OpenAIAutoResetCreditExpiryAtExtraKey]; ok {
+				normalizedExtra[OpenAIAutoResetCreditExpiryAtExtraKey] = v
+			}
+		}
 		normalizedExtra = prepareCodexFingerprintExtraForUpdate(account, normalizedExtra)
 		account.Extra = normalizedExtra
 		if account.Platform == PlatformAntigravity && wasOveragesEnabled && !account.IsOveragesEnabled() {
@@ -895,6 +901,9 @@ func (s *adminServiceImpl) UpdateAccount(ctx context.Context, id int64, input *U
 	updated, err := s.accountRepo.GetByID(ctx, id)
 	if err != nil {
 		return nil, err
+	}
+	if ResolveOpenAIAutoResetCreditConfig(updated).Active() {
+		notifyOpenAIAutoReset(updated.ID)
 	}
 	return updated, nil
 }
