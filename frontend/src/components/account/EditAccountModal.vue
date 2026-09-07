@@ -2842,7 +2842,6 @@
 
       <!-- Group Selection - 仅标准模式显示 -->
       <GroupSelector
-        v-if="!authStore.isSimpleMode"
         v-model="form.group_ids"
         :groups="groups"
         :platform="account?.platform"
@@ -2907,7 +2906,7 @@
 import { ref, reactive, computed, watch, nextTick } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useAppStore } from '@/stores/app'
-import { useAuthStore } from '@/stores/auth'
+
 import { adminAPI } from '@/api/admin'
 import { useQuotaNotifyState } from '@/composables/useQuotaNotifyState'
 import type {
@@ -2999,7 +2998,6 @@ const emit = defineEmits<{
 
 const { t } = useI18n()
 const appStore = useAppStore()
-const authStore = useAuthStore()
 const browserTimeZone = getBrowserTimeZone()
 
 // Spark 影子账号(parent_account_id 非空):代理恒继承母账号,不可独立编辑(外审 B/P1),

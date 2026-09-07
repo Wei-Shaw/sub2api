@@ -27,6 +27,8 @@ const {
   showError: vi.fn()
 }))
 
+const authState = vi.hoisted(() => ({ isSimpleMode: false }))
+
 vi.mock('@/api/admin', () => ({
   adminAPI: {
     groups: {
@@ -51,6 +53,10 @@ vi.mock('@/api/admin', () => ({
 
 vi.mock('@/stores/app', () => ({
   useAppStore: () => ({ showSuccess, showError })
+}))
+
+vi.mock('@/stores/auth', () => ({
+  useAuthStore: () => authState
 }))
 
 vi.mock('@/stores/onboarding', () => ({
@@ -170,6 +176,7 @@ function mountView() {
 
 describe('GroupsView duplicate action', () => {
   beforeEach(() => {
+    authState.isSimpleMode = false
     localStorage.clear()
     vi.spyOn(console, 'error').mockImplementation(() => {})
     for (const fn of [
@@ -220,6 +227,20 @@ describe('GroupsView duplicate action', () => {
     expect(duplicateGroup).toHaveBeenCalledWith(42)
     expect(showSuccess).toHaveBeenCalledWith('admin.groups.duplicateSuccess')
     expect(listGroups).toHaveBeenCalledTimes(2)
+    wrapper.unmount()
+  })
+
+  it('hides advanced group actions in simple mode', async () => {
+    authState.isSimpleMode = true
+    const compositeGroup = { ...sourceGroup, platform: 'composite' }
+    listGroups.mockResolvedValueOnce({ items: [compositeGroup], total: 1, page: 1, page_size: 20, pages: 1 })
+    const wrapper = mountView()
+    await flushPromises()
+
+    expect(wrapper.find('[data-testid="group-duplicate"]').exists()).toBe(false)
+    expect(wrapper.find('[data-testid="group-composite-routes"]').exists()).toBe(false)
+    expect(wrapper.find('[data-testid="group-rate-multipliers"]').exists()).toBe(false)
+    expect(wrapper.find('[data-testid="group-rpm-overrides"]').exists()).toBe(false)
     wrapper.unmount()
   })
 

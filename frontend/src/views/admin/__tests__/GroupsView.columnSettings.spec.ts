@@ -16,6 +16,7 @@ const {
   showSuccess,
   isCurrentStep,
   nextStep,
+  authState,
 } = vi.hoisted(() => ({
   listGroups: vi.fn(),
   getAllGroups: vi.fn(),
@@ -28,6 +29,7 @@ const {
   showSuccess: vi.fn(),
   isCurrentStep: vi.fn(),
   nextStep: vi.fn(),
+  authState: { isSimpleMode: false },
 }))
 
 const messages: Record<string, string> = {
@@ -73,6 +75,10 @@ vi.mock('@/stores/app', () => ({
     showError,
     showSuccess,
   }),
+}))
+
+vi.mock('@/stores/auth', () => ({
+  useAuthStore: () => authState,
 }))
 
 vi.mock('@/stores/onboarding', () => ({
@@ -236,11 +242,13 @@ describe('admin GroupsView column settings', () => {
     getModelsListCandidates.mockReset()
     getUsageSummary.mockReset()
     getCapacitySummary.mockReset()
+    getLiveCapability.mockReset()
     listAccounts.mockReset()
     showError.mockReset()
     showSuccess.mockReset()
     isCurrentStep.mockReset()
     nextStep.mockReset()
+    authState.isSimpleMode = false
 
     listGroups.mockResolvedValue({
       items: [createGroup()],
@@ -256,6 +264,23 @@ describe('admin GroupsView column settings', () => {
     getLiveCapability.mockResolvedValue({ supported: false })
     listAccounts.mockResolvedValue({ items: [], total: 0, page: 1, page_size: 20, pages: 0 })
     isCurrentStep.mockReturnValue(false)
+  })
+
+  it('does not call advanced group APIs or expose the exclusive filter in simple mode', async () => {
+    authState.isSimpleMode = true
+    const wrapper = await mountView()
+
+    expect(getLiveCapability).not.toHaveBeenCalled()
+    expect(getModelsListCandidates).not.toHaveBeenCalled()
+    expect(getUsageSummary).not.toHaveBeenCalled()
+    expect(getCapacitySummary).not.toHaveBeenCalled()
+    expect(listGroups).toHaveBeenCalledWith(
+      expect.any(Number),
+      expect.any(Number),
+      expect.objectContaining({ is_exclusive: undefined }),
+      expect.anything(),
+    )
+    expect(wrapper.find('select').text()).not.toContain('admin.groups.allGroups')
   })
 
   afterEach(() => {

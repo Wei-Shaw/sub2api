@@ -142,6 +142,12 @@ type Group struct {
 	RateLimitedAccountCount int64
 }
 
+// IsGroupBindableInSimpleMode is the shared policy for groups that may be
+// surfaced and bound to accounts while running in simple mode.
+func IsGroupBindableInSimpleMode(group *Group) bool {
+	return group != nil && group.Platform != PlatformComposite
+}
+
 func (g *Group) IsActive() bool {
 	return g.Status == StatusActive
 }

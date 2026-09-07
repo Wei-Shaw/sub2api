@@ -17,6 +17,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/domain"
 	"github.com/Wei-Shaw/sub2api/internal/handler/dto"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/antigravity"
@@ -64,6 +65,7 @@ type AccountHandler struct {
 	grokImportProber        grokImportProber
 	upstreamBillingProbe    *service.UpstreamBillingProbeService
 	ollamaCloudUsage        *service.OllamaCloudUsageService
+	cfg                     *config.Config
 }
 
 // SetUpstreamBillingProbeService attaches the optional remote billing probe service.
@@ -190,6 +192,7 @@ type CheckMixedChannelRequest struct {
 // AccountWithConcurrency extends Account with real-time concurrency info
 type AccountWithConcurrency struct {
 	*dto.Account
+	simpleMode         bool                         `json:"-"`
 	CurrentConcurrency int                          `json:"current_concurrency"`
 	SchedulerScore     *AccountSchedulerScore       `json:"scheduler_score,omitempty"`
 	SchedulerScores    []AccountSchedulerGroupScore `json:"scheduler_scores,omitempty"`
@@ -210,6 +213,110 @@ type AccountListItemWithConcurrency struct {
 	CurrentWindowCost  *float64                     `json:"current_window_cost,omitempty"`
 	ActiveSessions     *int                         `json:"active_sessions,omitempty"`
 	CurrentRPM         *int                         `json:"current_rpm,omitempty"`
+}
+
+type simpleModeGroupReference struct {
+	ID       int64  `json:"id"`
+	Name     string `json:"name"`
+	Platform string `json:"platform"`
+	Status   string `json:"status"`
+}
+
+type simpleModeAccountGroupReference struct {
+	AccountID int64                     `json:"account_id"`
+	GroupID   int64                     `json:"group_id"`
+	Priority  int                       `json:"priority"`
+	CreatedAt time.Time                 `json:"created_at"`
+	Group     *simpleModeGroupReference `json:"group,omitempty"`
+}
+
+func simpleModeGroupReferenceFromDTO(group *dto.Group) *simpleModeGroupReference {
+	if group == nil {
+		return nil
+	}
+	return &simpleModeGroupReference{ID: group.ID, Name: group.Name, Platform: group.Platform, Status: group.Status}
+}
+
+func simpleModeCompositeGroupIDs(account *dto.Account) map[int64]struct{} {
+	hidden := make(map[int64]struct{})
+	if account == nil {
+		return hidden
+	}
+	for _, group := range account.Groups {
+		if group != nil && group.Platform == service.PlatformComposite {
+			hidden[group.ID] = struct{}{}
+		}
+	}
+	for _, accountGroup := range account.AccountGroups {
+		if accountGroup.Group != nil && accountGroup.Group.Platform == service.PlatformComposite {
+			hidden[accountGroup.GroupID] = struct{}{}
+		}
+	}
+	return hidden
+}
+
+func filterSimpleModeGroupIDs(groupIDs []int64, hidden map[int64]struct{}) []int64 {
+	visible := make([]int64, 0, len(groupIDs))
+	for _, groupID := range groupIDs {
+		if _, ok := hidden[groupID]; !ok {
+			visible = append(visible, groupID)
+		}
+	}
+	return visible
+}
+
+func simpleModeCompositeServiceGroupIDs(account *service.Account) map[int64]struct{} {
+	hidden := make(map[int64]struct{})
+	if account == nil {
+		return hidden
+	}
+	for _, group := range account.Groups {
+		if group != nil && group.Platform == service.PlatformComposite {
+			hidden[group.ID] = struct{}{}
+		}
+	}
+	for _, accountGroup := range account.AccountGroups {
+		if accountGroup.Group != nil && accountGroup.Group.Platform == service.PlatformComposite {
+			hidden[accountGroup.GroupID] = struct{}{}
+		}
+	}
+	return hidden
+}
+
+func (a AccountWithConcurrency) MarshalJSON() ([]byte, error) {
+	type alias AccountWithConcurrency
+	if !a.simpleMode || a.Account == nil {
+		return json.Marshal(alias(a))
+	}
+	groups := make([]simpleModeGroupReference, 0, len(a.Groups))
+	compositeIDs := simpleModeCompositeGroupIDs(a.Account)
+	for _, group := range a.Groups {
+		if group != nil && group.Platform == service.PlatformComposite {
+			continue
+		}
+		if ref := simpleModeGroupReferenceFromDTO(group); ref != nil {
+			groups = append(groups, *ref)
+		}
+	}
+	accountGroups := make([]simpleModeAccountGroupReference, 0, len(a.AccountGroups))
+	for _, accountGroup := range a.AccountGroups {
+		if accountGroup.Group != nil && accountGroup.Group.Platform == service.PlatformComposite {
+			continue
+		}
+		if _, hidden := compositeIDs[accountGroup.GroupID]; hidden {
+			continue
+		}
+		accountGroups = append(accountGroups, simpleModeAccountGroupReference{
+			AccountID: accountGroup.AccountID, GroupID: accountGroup.GroupID, Priority: accountGroup.Priority,
+			CreatedAt: accountGroup.CreatedAt, Group: simpleModeGroupReferenceFromDTO(accountGroup.Group),
+		})
+	}
+	return json.Marshal(struct {
+		alias
+		GroupIDs      []int64                           `json:"group_ids,omitempty"`
+		Groups        []simpleModeGroupReference        `json:"groups"`
+		AccountGroups []simpleModeAccountGroupReference `json:"account_groups"`
+	}{alias: alias(a), GroupIDs: filterSimpleModeGroupIDs(a.GroupIDs, compositeIDs), Groups: groups, AccountGroups: accountGroups})
 }
 
 type AccountSchedulerScore struct {
@@ -247,9 +354,14 @@ func (h *AccountHandler) accountListResponseFromService(account *service.Account
 	return out
 }
 
+func (h *AccountHandler) isSimpleMode() bool {
+	return h != nil && h.cfg != nil && h.cfg.RunMode == config.RunModeSimple
+}
+
 func (h *AccountHandler) buildAccountResponseWithRuntime(ctx context.Context, account *service.Account) AccountWithConcurrency {
 	item := AccountWithConcurrency{
 		Account:            h.accountResponseFromService(account),
+		simpleMode:         h.isSimpleMode(),
 		CurrentConcurrency: 0,
 	}
 	if account == nil {
@@ -677,9 +789,13 @@ func (h *AccountHandler) List(c *gin.Context) {
 		accountResponse := h.accountResponseFromService(acc)
 		if lite {
 			accountResponse = h.accountListResponseFromService(acc)
+			if h.isSimpleMode() {
+				accountResponse.GroupIDs = filterSimpleModeGroupIDs(accountResponse.GroupIDs, simpleModeCompositeServiceGroupIDs(acc))
+			}
 		}
 		item := AccountWithConcurrency{
 			Account:            accountResponse,
+			simpleMode:         h.isSimpleMode(),
 			CurrentConcurrency: concurrencyCounts[acc.ID],
 			SchedulerScore:     schedulerScores[acc.ID],
 			SchedulerScores:    schedulerGroupScores[acc.ID],
@@ -1941,6 +2057,14 @@ func (h *AccountHandler) BatchCreate(c *gin.Context) {
 			response.ErrorFrom(c, err)
 			return
 		}
+	}
+	groupIDs := make([]int64, 0)
+	for _, item := range req.Accounts {
+		groupIDs = append(groupIDs, item.GroupIDs...)
+	}
+	if err := h.adminService.ValidateAccountGroupBindings(c.Request.Context(), groupIDs); err != nil {
+		response.ErrorFrom(c, err)
+		return
 	}
 
 	executeAdminIdempotentJSON(c, "admin.accounts.batch_create", req, service.DefaultWriteIdempotencyTTL(), func(ctx context.Context) (any, error) {
