@@ -524,18 +524,28 @@ func buildParts(content json.RawMessage, toolIDToName map[string]string, allowDu
 			parts = append(parts, part)
 
 		case "tool_result":
-			// 获取函数名
+			// Get function name
 			funcName := block.Name
 			if funcName == "" {
 				if name, ok := toolIDToName[block.ToolUseID]; ok {
 					funcName = name
-				} else {
-					funcName = block.ToolUseID
 				}
 			}
 
-			// 解析 content
+			// Parse content
 			resultContent := parseToolResultContent(block.Content, block.IsError)
+
+			if funcName == "" {
+				// When client trims history in multi-turn sessions, the corresponding tool_use block is absent,
+				// causing key lookup failure in toolIDToName map.
+				// We must not fallback to using raw tool_use_id as function name when sending to Gemini,
+				// as upstream will reject the turn with MALFORMED_FUNCTION_CALL / empty reply.
+				// Degrade to plain text context: preserves semantics, stays structurally valid, and allows session to continue.
+				parts = append(parts, GeminiPart{
+					Text: fmt.Sprintf("[tool result %s]\n%s", block.ToolUseID, resultContent),
+				})
+				continue
+			}
 
 			parts = append(parts, GeminiPart{
 				FunctionResponse: &GeminiFunctionResponse{
