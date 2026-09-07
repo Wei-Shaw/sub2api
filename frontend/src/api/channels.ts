@@ -31,6 +31,10 @@ export interface UserPricingInterval {
   cache_write_price: number | null
   cache_write_1h_price?: number | null
   cache_read_price: number | null
+  input_multiplier?: number | null
+  output_multiplier?: number | null
+  cache_write_multiplier?: number | null
+  cache_read_multiplier?: number | null
   per_request_price: number | null
 }
 
