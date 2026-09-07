@@ -90,6 +90,7 @@ func provideCleanup(
 	opsCleanup *service.OpsCleanupService,
 	opsScheduledReport *service.OpsScheduledReportService,
 	opsSystemLogSink *service.OpsSystemLogSink,
+	otlpLogSink *service.OTLPLogSink,
 	opsService *service.OpsService,
 	opsIngressReject *service.OpsIngressRejectAggregator,
 	apiKeyService *service.APIKeyService,
@@ -197,6 +198,12 @@ func provideCleanup(
 			{"OpsSystemLogSink", func() error {
 				if opsSystemLogSink != nil {
 					opsSystemLogSink.Stop()
+				}
+				return nil
+			}},
+			{"OTLPLogSink", func() error {
+				if otlpLogSink != nil {
+					return otlpLogSink.Shutdown(ctx)
 				}
 				return nil
 			}},
