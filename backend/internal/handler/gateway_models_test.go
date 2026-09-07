@@ -5,7 +5,9 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/claude"
 	middleware2 "github.com/Wei-Shaw/sub2api/internal/server/middleware"
@@ -68,6 +70,20 @@ func (s *gatewayModelsAccountRepoStub) ListSchedulableByGroupID(ctx context.Cont
 	return out, nil
 }
 
+func (s *gatewayModelsAccountRepoStub) ListSchedulableByGroupIDAndPlatform(ctx context.Context, groupID int64, platform string) ([]service.Account, error) {
+	accounts, err := s.ListSchedulableByGroupID(ctx, groupID)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]service.Account, 0, len(accounts))
+	for _, account := range accounts {
+		if account.Platform == platform && account.IsSchedulable() {
+			out = append(out, account)
+		}
+	}
+	return out, nil
+}
+
 func (s *gatewayModelsAccountRepoStub) ListByGroup(ctx context.Context, groupID int64) ([]service.Account, error) {
 	return s.ListSchedulableByGroupID(ctx, groupID)
 }
@@ -105,6 +121,55 @@ func TestDefaultModelIDsForAnthropicExcludeAntigravityGemini(t *testing.T) {
 
 	antigravityIDs := defaultModelIDsForPlatform(service.PlatformAntigravity)
 	require.Contains(t, antigravityIDs, "gemini-2.5-flash")
+}
+
+func TestGatewayModelAvailability_ReturnsOnlyCurrentSchedulability(t *testing.T) {
+	groupID := int64(24)
+	resetAt := time.Now().Add(time.Hour).Format(time.RFC3339)
+	h := newGatewayModelsHandlerForTest(
+		&gatewayModelsAccountRepoStub{
+			byGroup: map[int64][]service.Account{
+				groupID: {
+					{
+						ID:          1,
+						Platform:    service.PlatformOpenAI,
+						Status:      service.StatusActive,
+						Schedulable: true,
+						Credentials: map[string]any{
+							"model_mapping": map[string]any{"gpt-ready": "gpt-ready", "gpt-limited": "gpt-limited"},
+						},
+						Extra: map[string]any{
+							"model_rate_limits": map[string]any{
+								"gpt-limited": map[string]any{"rate_limit_reset_at": resetAt},
+							},
+						},
+					},
+				},
+			},
+		},
+	)
+
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/models/availability", strings.NewReader(`{"models":["gpt-ready","gpt-limited","gpt-unknown"]}`))
+	c.Request.Header.Set("content-type", "application/json")
+	c.Set(string(middleware2.ContextKeyAPIKey), &service.APIKey{
+		GroupID: &groupID,
+		Group:   &service.Group{ID: groupID, Platform: service.PlatformOpenAI},
+	})
+
+	h.ModelAvailability(c)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	var got struct {
+		Data []service.ModelAvailability `json:"data"`
+	}
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &got))
+	require.Equal(t, []service.ModelAvailability{
+		{Model: "gpt-ready", Available: true},
+		{Model: "gpt-limited", Available: false},
+		{Model: "gpt-unknown", Available: false},
+	}, got.Data)
 }
 
 // Scenario: non-OpenAI groups return a Codex manifest instead of a standard model list.
