@@ -1,0 +1,186 @@
+name: Production Deployment
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+# 同一时间只允许一个生产部署运行，避免并发更新同一台服务器。
+concurrency:
+  group: production
+  cancel-in-progress: false
+
+env:
+  IMAGE_NAME: ghcr.io/pulannitu/sub2api
+
+jobs:
+  build:
+    name: Build production image
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      # 拉取已经进入 main 的生产代码。
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      # 启用 BuildKit 构建缓存并固定输出为生产服务器使用的 amd64 架构。
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      # 使用仓库临时令牌登录 GHCR，不需要长期有效的个人令牌。
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # 每个 main 提交对应一个不可变镜像标签，便于追踪和回滚。
+      - name: Build and push production image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: linux/amd64
+          push: true
+          tags: ${{ env.IMAGE_NAME }}:sha-${{ github.sha }}
+          build-args: |
+            VERSION=sha-${{ github.sha }}
+            COMMIT=${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  deploy:
+    name: Deploy to production
+    needs: build
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment:
+      name: production
+    env:
+      PROD_HOST: ${{ secrets.PROD_HOST }}
+      PROD_PORT: ${{ secrets.PROD_PORT }}
+      PROD_USER: ${{ secrets.PROD_USER }}
+      PROD_PATH: ${{ vars.PROD_PATH }}
+      PROD_SSH_PRIVATE_KEY: ${{ secrets.PROD_SSH_PRIVATE_KEY }}
+      PROD_KNOWN_HOSTS: ${{ secrets.PROD_KNOWN_HOSTS }}
+      DEPLOY_IMAGE: ghcr.io/pulannitu/sub2api:sha-${{ github.sha }}
+    steps:
+      # 拉取本次部署所需的 Compose 文件。
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      # 写入临时 SSH 配置并强制校验生产服务器主机公钥。
+      - name: Configure SSH
+        run: |
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$PROD_SSH_PRIVATE_KEY" | tr -d '\r' > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          printf '%s\n' "$PROD_KNOWN_HOSTS" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+
+      # 部署前验证 SSH、目标目录和服务器端 .env 均已准备好。
+      - name: Verify production server
+        run: |
+          ssh -p "$PROD_PORT" -o BatchMode=yes "$PROD_USER@$PROD_HOST" \
+            "test -d '$PROD_PATH' && test -w '$PROD_PATH' && test -f '$PROD_PATH/.env'"
+
+      # 使用短期 GITHUB_TOKEN 拉取同一仓库的私有 GHCR 镜像。
+      - name: Log production server in to GHCR
+        env:
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          printf '%s' "$GHCR_TOKEN" | ssh -p "$PROD_PORT" "$PROD_USER@$PROD_HOST" \
+            "docker login ghcr.io -u '${{ github.actor }}' --password-stdin"
+
+      # 先上传为临时文件，服务器验证成功后再替换正式 Compose 文件。
+      - name: Upload Docker Compose configuration
+        run: |
+          scp -P "$PROD_PORT" deploy/docker-compose.local.yml \
+            "$PROD_USER@$PROD_HOST:$PROD_PATH/docker-compose.yml.next"
+
+      # 更新精确镜像版本，等待健康检查，并在失败时恢复上一镜像。
+      - name: Deploy and verify
+        run: |
+          ssh -p "$PROD_PORT" "$PROD_USER@$PROD_HOST" \
+            "DEPLOY_PATH='$PROD_PATH' DEPLOY_IMAGE='$DEPLOY_IMAGE' bash -s" <<'REMOTE_SCRIPT'
+          set -Eeuo pipefail
+
+          cd "$DEPLOY_PATH"
+
+          # update_image 将镜像标签持久化到 .env，保证后续手工重启仍使用同一版本。
+          update_image() {
+            local next_image="$1"
+            local temporary_env
+            temporary_env="$(mktemp "$DEPLOY_PATH/.env.XXXXXX")"
+            grep -v '^SUB2API_IMAGE=' .env > "$temporary_env" || true
+            printf 'SUB2API_IMAGE=%s\n' "$next_image" >> "$temporary_env"
+            chmod 600 "$temporary_env"
+            mv "$temporary_env" .env
+          }
+
+          # 优先读取上次持久化的镜像；首次升级旧部署时再读取当前容器镜像。
+          previous_image="$(sed -n 's/^SUB2API_IMAGE=//p' .env | tail -n 1)"
+          if [ -z "$previous_image" ]; then
+            previous_image="$(docker inspect --format '{{.Config.Image}}' sub2api 2>/dev/null || true)"
+          fi
+
+          # 新配置和新镜像均验证成功后，才替换正式 Compose 文件并更新服务。
+          SUB2API_IMAGE="$DEPLOY_IMAGE" docker compose --env-file .env \
+            -f docker-compose.yml.next config --quiet
+          SUB2API_IMAGE="$DEPLOY_IMAGE" docker compose --env-file .env \
+            -f docker-compose.yml.next pull
+          mv docker-compose.yml.next docker-compose.yml
+          update_image "$DEPLOY_IMAGE"
+
+          if ! docker compose --env-file .env -f docker-compose.yml up -d --remove-orphans; then
+            # 容器更新失败时恢复上一镜像，首次部署没有可回滚版本。
+            if [ -n "$previous_image" ] && [ "$previous_image" != "$DEPLOY_IMAGE" ]; then
+              update_image "$previous_image"
+              docker compose --env-file .env -f docker-compose.yml up -d --no-deps sub2api || true
+            fi
+            exit 1
+          fi
+
+          # 最多等待三分钟，覆盖应用启动期和容器健康检查重试时间。
+          deployment_healthy=false
+          for attempt in $(seq 1 36); do
+            health_status="$(docker inspect --format '{{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}}' sub2api 2>/dev/null || true)"
+            if [ "$health_status" = "healthy" ]; then
+              deployment_healthy=true
+              break
+            fi
+            if [ "$health_status" = "unhealthy" ] || [ "$health_status" = "exited" ]; then
+              break
+            fi
+            sleep 5
+          done
+
+          if [ "$deployment_healthy" != "true" ]; then
+            docker compose --env-file .env -f docker-compose.yml ps
+            # 健康检查失败时恢复上一镜像，避免失败版本继续对外服务。
+            if [ -n "$previous_image" ] && [ "$previous_image" != "$DEPLOY_IMAGE" ]; then
+              update_image "$previous_image"
+              docker compose --env-file .env -f docker-compose.yml up -d --no-deps sub2api || true
+            fi
+            exit 1
+          fi
+
+          docker compose --env-file .env -f docker-compose.yml ps
+          REMOTE_SCRIPT
+
+      # 无论部署成功与否，都移除服务器上的短期 GHCR 登录凭据。
+      - name: Log production server out of GHCR
+        if: always()
+        run: |
+          ssh -p "$PROD_PORT" "$PROD_USER@$PROD_HOST" "docker logout ghcr.io" || true
+
+      # GitHub 托管运行器是临时的，但仍显式清理本次写入的 SSH 文件。
+      - name: Clean up SSH files
+        if: always()
+        run: rm -f ~/.ssh/id_ed25519 ~/.ssh/known_hosts
