@@ -353,8 +353,10 @@ func TestNewConfiguredCodexModelDescriptorUsesProviderMetadataAndSafeFallback(t 
 	require.Equal(t, "GPT-6 Astra", gpt6Astra.DisplayName)
 	require.NotNil(t, gpt6Astra.DefaultReasoningLevel)
 	require.Equal(t, "medium", *gpt6Astra.DefaultReasoningLevel)
-	require.Equal(t, []string{"low", "medium", "high", "xhigh", "max"}, effortsFromConfiguredCodexLevels(gpt6Astra.SupportedReasoningLevels))
-	require.NotContains(t, gpt6Astra.SupportedReasoningLevels, configuredCodexReasoningLevel{Effort: "ultra"})
+	require.Equal(t, []string{"low", "medium", "high", "xhigh", "max", "ultra"}, effortsFromConfiguredCodexLevels(gpt6Astra.SupportedReasoningLevels))
+	require.NotNil(t, gpt6Astra.MultiAgentReasoningEffort)
+	require.Equal(t, "xhigh", *gpt6Astra.MultiAgentReasoningEffort)
+	require.Equal(t, "v2", gpt6Astra.MultiAgentVersion)
 	require.NotContains(t, gpt6Astra.SupportedReasoningLevels, configuredCodexReasoningLevel{Effort: "none"})
 	require.True(t, configuredCodexSupportsPriorityServiceTier("gpt-6-astra"))
 	require.Equal(t, []configuredCodexServiceTier{{
@@ -370,7 +372,9 @@ func TestNewConfiguredCodexModelDescriptorUsesProviderMetadataAndSafeFallback(t 
 	require.Equal(t, int64(1_050_000), gpt6Astra.MaxContextWindow)
 	gpt6 := newConfiguredCodexModelDescriptor("gpt-6")
 	require.Equal(t, "GPT-6 (Astra)", gpt6.DisplayName)
-	require.Equal(t, []string{"low", "medium", "high", "xhigh", "max"}, effortsFromConfiguredCodexLevels(gpt6.SupportedReasoningLevels))
+	require.Equal(t, []string{"low", "medium", "high", "xhigh", "max", "ultra"}, effortsFromConfiguredCodexLevels(gpt6.SupportedReasoningLevels))
+	require.NotNil(t, gpt6.MultiAgentReasoningEffort)
+	require.Equal(t, "xhigh", *gpt6.MultiAgentReasoningEffort)
 	require.Equal(t, int64(1_050_000), gpt6.ContextWindow)
 
 	gpt55 := newConfiguredCodexModelDescriptor("gpt-5.5")

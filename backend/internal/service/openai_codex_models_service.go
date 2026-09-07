@@ -361,6 +361,7 @@ type configuredCodexModelDescriptor struct {
 	Description                       string                          `json:"description"`
 	DefaultReasoningLevel             *string                         `json:"default_reasoning_level,omitempty"`
 	SupportedReasoningLevels          []configuredCodexReasoningLevel `json:"supported_reasoning_levels"`
+	MultiAgentReasoningEffort         *string                         `json:"multi_agent_reasoning_effort,omitempty"`
 	ShellType                         string                          `json:"shell_type"`
 	Visibility                        string                          `json:"visibility"`
 	SupportedInAPI                    bool                            `json:"supported_in_api"`
@@ -492,6 +493,11 @@ func newConfiguredCodexModelDescriptor(modelID string) configuredCodexModelDescr
 				descriptor.MaxContextWindow = configuredCodexGPT56MaxContext
 			}
 			if isOpenAIGPT6AstraModel(modelID) {
+				// Codex resolves the Ultra workflow to this effort before inference.
+				// openai/codex a9896da3: codex-rs/models-manager/models.json.
+				multiAgentEffort := "xhigh"
+				descriptor.MultiAgentReasoningEffort = &multiAgentEffort
+				descriptor.MultiAgentVersion = "v2"
 				descriptor.ContextWindow = configuredCodexGPT6AstraContext
 				descriptor.MaxContextWindow = configuredCodexGPT6AstraContext
 			}
@@ -602,7 +608,7 @@ func configuredCodexGPTReasoningLevels(modelID string) []configuredCodexReasonin
 			Description: "Maximum reasoning depth for complex tasks",
 		})
 	}
-	if normalized == "gpt-5.6-sol" || normalized == "gpt-5.6-terra" {
+	if isOpenAIGPT6AstraModel(modelID) || normalized == "gpt-5.6-sol" || normalized == "gpt-5.6-terra" {
 		levels = append(levels, configuredCodexReasoningLevel{
 			Effort:      "ultra",
 			Description: "Maximum reasoning with automatic task delegation",

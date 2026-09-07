@@ -9,6 +9,7 @@ import (
 
 var codexToolCapabilityFields = []string{
 	"supports_search_tool", "apply_patch_tool_type", "comp_hash", "tool_mode", "use_responses_lite",
+	"multi_agent_reasoning_effort", "multi_agent_version",
 }
 
 func applyCodexToolCapabilities(dst, src map[string]json.RawMessage, overwrite bool) bool {
@@ -18,7 +19,7 @@ func applyCodexToolCapabilities(dst, src map[string]json.RawMessage, overwrite b
 		if len(value) == 0 {
 			continue
 		}
-		// These five Codex fields are nullable booleans or strings, never arbitrary objects.
+		// These Codex fields are nullable booleans or strings, never arbitrary objects.
 		if !bytes.Equal(value, []byte("null")) {
 			if field == "supports_search_tool" || field == "use_responses_lite" {
 				if !bytes.Equal(value, []byte("true")) && !bytes.Equal(value, []byte("false")) {
@@ -396,6 +397,8 @@ func configuredCodexReasoningLevelDescription(level string) string {
 		return "Extra-high reasoning depth for difficult tasks"
 	case "max":
 		return "Maximum reasoning depth for complex tasks"
+	case "ultra":
+		return "Maximum reasoning with automatic task delegation"
 	default:
 		return "Reasoning effort supported by the upstream model"
 	}
