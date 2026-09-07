@@ -1644,8 +1644,6 @@ export default {
         resetAccountRefreshFailed: 'The window, account state, and reset-credit cache were updated, but the latest account display could not be loaded.',
         refreshCachePersistFailed: 'Showing the live count, but its expiration details were unavailable, so the cached details were kept.',
         autoStatus: {
-          checking: 'Checking',
-          available: 'Credit available',
           resetting: 'Auto-resetting',
           success: 'Auto-reset succeeded',
           noCredit: 'No credit',
