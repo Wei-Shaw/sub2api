@@ -90,6 +90,14 @@ func (a *Account) modelRateLimitKeysForRequest(ctx context.Context, requestedMod
 		if isAnthropicFableModel(modelKey) && modelKey != anthropicFableRateLimitKey {
 			keys = append(keys, anthropicFableRateLimitKey)
 		}
+	case PlatformKiro:
+		// Kiro 的冷却是账号级的，不像 Antigravity 那样分模型——不管请求的是
+		// 哪个模型，都要检查这一个 key（C4：之前没有这个 case，credits 耗尽/
+		// 订阅停用写进 model_rate_limits["KiroCredits"] 之后，调度器永远读
+		// 不到，账号从未被真正排除出候选池）。
+		if modelKey != kiroCreditsExhaustedKey {
+			keys = append(keys, kiroCreditsExhaustedKey)
+		}
 	}
 	return keys
 }

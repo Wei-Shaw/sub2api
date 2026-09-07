@@ -263,7 +263,21 @@ func (h *GatewayHandler) Responses(c *gin.Context) {
 		}
 		var result *service.ForwardResult
 		setActualUpstreamEndpoint(c, "")
-		if shouldUseAntigravityCompat(account) {
+		switch {
+		case account.Platform == service.PlatformKiro:
+			// Codex 客户端专用（/backend-api/codex/responses）：跟 /v1/messages
+			// 走的是同一个 h.kiroGatewayService，只是入口方法不同——两者共享
+			// forwardUpstream 这同一套核心转发引擎（配额/重试/模型限流），见
+			// KiroGatewayService.ForwardAsResponses 的文档。
+			if h.kiroGatewayService == nil {
+				h.responsesErrorResponse(c, http.StatusBadGateway, "upstream_error", "Kiro gateway service is not configured")
+				if accountReleaseFunc != nil {
+					accountReleaseFunc()
+				}
+				return
+			}
+			result, err = h.kiroGatewayService.ForwardAsResponses(requestCtx, c, account, forwardBody, parsedReq)
+		case shouldUseAntigravityCompat(account):
 			if h.antigravityGatewayService == nil {
 				h.responsesErrorResponse(c, http.StatusBadGateway, "upstream_error", "Antigravity compatibility service is not configured")
 				if accountReleaseFunc != nil {
@@ -273,7 +287,7 @@ func (h *GatewayHandler) Responses(c *gin.Context) {
 			}
 			setActualUpstreamEndpoint(c, EndpointAntigravityGenerateContent)
 			result, err = h.antigravityGatewayService.ForwardAsResponses(requestCtx, c, account, forwardBody, parsedReq)
-		} else {
+		default:
 			result, err = h.gatewayService.ForwardAsResponses(requestCtx, c, account, forwardBody, parsedReq)
 		}
 

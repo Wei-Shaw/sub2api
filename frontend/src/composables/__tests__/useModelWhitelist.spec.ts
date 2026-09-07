@@ -154,6 +154,53 @@ describe('useModelWhitelist', () => {
     })
   })
 
+  // Kiro 模型限制功能（可选，参照 Antigravity 的账号级限制约定）：
+  // 与后端 kiro.DefaultModels()/kiroModelAliases（backend/internal/pkg/kiro/
+  // models.go）保持一致，只收录真实账号测试验证过的模型。
+  it('kiro 模型列表与后端 DefaultModels() 保持一致', () => {
+    const models = getModelsByPlatform('kiro')
+
+    // 2026-09-06：opus-4.5/4.6/4.7/4.8、sonnet-5 经真实账号权威接口
+    // ListAvailableModels 核实后加入，与后端 kiro.DefaultModels() 同步更新。
+    expect(models).toEqual([
+      'claude-sonnet-4.6',
+      'claude-sonnet-4.5',
+      'claude-sonnet-4',
+      'claude-haiku-4.5',
+      'claude-opus-5',
+      'claude-sonnet-5',
+      'claude-opus-4.8',
+      'claude-opus-4.7',
+      'claude-opus-4.6',
+      'claude-opus-4.5'
+    ])
+  })
+
+  it('kiro 有自己的预设映射，不会回退到 anthropic 的连字符命名', () => {
+    const presets = getPresetMappingsByPlatform('kiro')
+
+    expect(presets.map(p => p.from)).toEqual(
+      expect.arrayContaining(['claude-sonnet-4.6', 'claude-haiku-4.5', 'claude-opus-5'])
+    )
+    // Anthropic 预设用的是连字符+日期后缀命名（如 claude-sonnet-4-5-20250929），
+    // Kiro 预设必须全部是 Kiro 规范点号形态，两者不能混用。
+    expect(presets.every(p => !p.from.includes('-2') && !/-\d-\d/.test(p.from))).toBe(true)
+  })
+
+  // 白名单模式产出 from===to 的身份映射，账号级限制会拿这份映射去匹配
+  // kiro.MapModel 转换后的规范模型名（见后端 forwardUpstream 的账号级
+  // 限制说明）——这里只验证前端产出的 mapping 形状本身是预期的身份映射，
+  // 不掺入连字符/日期后缀等客户端书写形式（那部分由后端 MapModel 统一
+  // 归一化，不是前端的职责）。
+  it('kiro whitelist 模式产出的身份映射覆盖选中的模型', () => {
+    const mapping = buildModelMappingObject('whitelist', ['claude-sonnet-4.6', 'claude-haiku-4.5'], [])
+
+    expect(mapping).toEqual({
+      'claude-sonnet-4.6': 'claude-sonnet-4.6',
+      'claude-haiku-4.5': 'claude-haiku-4.5'
+    })
+  })
+
   it('splitModelMappingObject 会把身份映射还原成白名单，其余保留为映射', () => {
     const parsed = splitModelMappingObject({
       'gpt-5.4': 'gpt-5.4',

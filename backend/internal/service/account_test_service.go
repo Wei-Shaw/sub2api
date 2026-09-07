@@ -29,6 +29,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/claude"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/geminicli"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/kiro"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/openai"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/openai_compat"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/xai"
@@ -143,6 +144,7 @@ type AccountTestService struct {
 	claudeTokenProvider       *ClaudeTokenProvider
 	grokTokenProvider         *GrokTokenProvider
 	antigravityGatewayService *AntigravityGatewayService
+	kiroGatewayService        *KiroGatewayService
 	httpUpstream              HTTPUpstream
 	cfg                       *config.Config
 	settingService            *SettingService
@@ -202,6 +204,7 @@ func NewAccountTestService(
 	claudeTokenProvider *ClaudeTokenProvider,
 	grokTokenProvider *GrokTokenProvider,
 	antigravityGatewayService *AntigravityGatewayService,
+	kiroGatewayService *KiroGatewayService,
 	httpUpstream HTTPUpstream,
 	cfg *config.Config,
 	tlsFPProfileService *TLSFingerprintProfileService,
@@ -212,6 +215,7 @@ func NewAccountTestService(
 		claudeTokenProvider:       claudeTokenProvider,
 		grokTokenProvider:         grokTokenProvider,
 		antigravityGatewayService: antigravityGatewayService,
+		kiroGatewayService:        kiroGatewayService,
 		httpUpstream:              httpUpstream,
 		cfg:                       cfg,
 		tlsFPProfileService:       tlsFPProfileService,
@@ -348,6 +352,10 @@ func (s *AccountTestService) TestAccountConnection(c *gin.Context, accountID int
 
 	if account.Platform == PlatformAntigravity {
 		return s.routeAntigravityTest(c, account, modelID, prompt)
+	}
+
+	if account.Platform == PlatformKiro {
+		return s.testKiroAccountConnection(c, account, modelID)
 	}
 
 	return s.testClaudeAccountConnection(c, account, modelID)
@@ -2376,6 +2384,43 @@ func antigravityConnectionTestModel(modelID string) string {
 		return defaultAntigravityTestModel
 	}
 	return modelID
+}
+
+// testKiroAccountConnection 测试 Kiro 账号连接。真实账号联调发现这里此前
+// 完全没有 Kiro 分支——任何 Kiro 账号点"测试连接"都会落进
+// testClaudeAccountConnection 的通用 apikey/oauth 分支，要么报
+// "No API key available"（前端账号创建时把所有 Kiro 账号的 Type 统一设成了
+// "apikey"，不管实际 auth_method 是不是 idc/builder_id/social），要么即便
+// Type 恰好是 oauth，也会把 Kiro 的 access_token 发去 Anthropic 的真实 API
+// （testClaudeAPIURL）——两条路都是错的，Kiro 账号从未被真正测试过。
+func (s *AccountTestService) testKiroAccountConnection(c *gin.Context, account *Account, modelID string) error {
+	ctx := c.Request.Context()
+
+	if s.kiroGatewayService == nil {
+		return s.sendErrorAndEnd(c, "Kiro gateway service not configured")
+	}
+
+	testModelID := modelID
+	if testModelID == "" {
+		models := kiro.DefaultModels()
+		if len(models) > 0 {
+			testModelID = models[0]
+		}
+	}
+
+	s.sendEvent(c, TestEvent{Type: "test_start", Model: testModelID})
+
+	result, err := s.kiroGatewayService.TestConnection(ctx, account, testModelID)
+	if err != nil {
+		return s.sendErrorAndEnd(c, err.Error())
+	}
+
+	if result.Text != "" {
+		s.sendEvent(c, TestEvent{Type: "content", Text: result.Text})
+	}
+
+	s.sendEvent(c, TestEvent{Type: "test_complete", Success: true})
+	return nil
 }
 
 // buildGeminiAPIKeyRequest builds request for Gemini API Key accounts

@@ -61,6 +61,11 @@ func RegisterGatewayRoutes(
 			h.OpenAIGateway.CountTokens(c)
 		case service.PlatformGrok:
 			h.OpenAIGateway.GrokCountTokens(c)
+		case service.PlatformKiro:
+			// Kiro 没有真实的 count_tokens 上游端点，落进下面的 default 会
+			// 把请求当成 Anthropic 账号转发，打到错的凭证/endpoint 形态上——
+			// 与 Grok 走同一条本地估算路子，见 KiroCountTokens 的文档。
+			h.Gateway.KiroCountTokens(c)
 		default:
 			h.Gateway.CountTokens(c)
 		}

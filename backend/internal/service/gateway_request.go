@@ -222,10 +222,20 @@ func parseGatewayRequestCurrentBody(parsed *ParsedRequest, protocol string) erro
 
 	parsed.MetadataUserID = gjson.Get(jsonStr, "metadata.user_id").String()
 
-	thinkingType := gjson.Get(jsonStr, "thinking.type").String()
+	thinkingType := strings.ToLower(strings.TrimSpace(gjson.Get(jsonStr, "thinking.type").String()))
 	parsed.ThinkingEnabled = thinkingType == "enabled" || thinkingType == "adaptive"
 
 	parsed.OutputEffort = strings.TrimSpace(gjson.Get(jsonStr, "output_config.effort").String())
+	if parsed.OutputEffort == "" && parsed.ThinkingEnabled {
+		// output_config.effort 是新字段，真实 Claude Code 客户端更常用原生的
+		// thinking.budget_tokens（一个具体数字，不是档位名字）表达思考强度——
+		// 此前这种情况下 OutputEffort 一直是空字符串，usage_log 的
+		// requested_reasoning_effort 因此长期显示为空，看起来像没请求过思考，
+		// 实际是请求了但没被这里认出来。见 effortFromThinkingTypeAndBudget
+		// 的文档（openai_gateway_request_body.go，跟 explicitRequestedReasoningEffortFromBody
+		// 共用同一份档位换算规则）。
+		parsed.OutputEffort = effortFromThinkingTypeAndBudget(thinkingType, gjson.Get(jsonStr, "thinking.budget_tokens").Int())
+	}
 	if protocol == domain.PlatformAnthropic {
 		parsed.Speed = strings.ToLower(strings.TrimSpace(gjson.Get(jsonStr, "speed").String()))
 	}

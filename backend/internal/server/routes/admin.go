@@ -61,6 +61,9 @@ func RegisterAdminRoutes(
 		// Grok OAuth
 		registerGrokOAuthRoutes(admin, h)
 
+		// Kiro OAuth
+		registerKiroOAuthRoutes(v1, admin, h)
+
 		// 国产供应商（kimi/zhipu/deepseek）额度与余额
 		registerCNProviderRoutes(admin, h)
 
@@ -489,6 +492,25 @@ func registerGrokOAuthRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 		grok.GET("/accounts/:id/quota", h.Admin.GrokOAuth.QueryQuota)
 		grok.POST("/accounts/:id/reset-quota", h.Admin.GrokOAuth.ResetQuota)
 		grok.GET("/runtime-sanity", h.Admin.GrokOAuth.RuntimeSanity)
+	}
+}
+
+// registerKiroOAuthRoutes 注册 Kiro（Amazon Q Developer / CodeWhisperer）OAuth 授权路由。
+//
+// 真实账号联调验证过：AWS SSO-OIDC 的 client/register 对 IdC 授权码流程
+// （clientType=public）强制要求 redirect_uri 是裸的 loopback 地址，服务端
+// 自建回调页这条路走不通（哪怕回调页就挂在 127.0.0.1 上，带自定义端口/
+// 业务路径依然会被拒），因此这里不再需要一个匿名的 /callback 路由——IdC
+// 授权码换取靠管理员手动粘贴回调 URL，走的是 /kiro/oauth/idc/complete，
+// 一个普通的、带 Authorization 头、挂在 admin 分组下的 fetch 调用（与
+// authorize-url / device/start / device/poll 完全一致，不需要放宽鉴权）。
+func registerKiroOAuthRoutes(_ *gin.RouterGroup, admin *gin.RouterGroup, h *handler.Handlers) {
+	kiroOAuth := admin.Group("/kiro/oauth")
+	{
+		kiroOAuth.POST("/authorize-url", h.Admin.KiroOAuth.AuthorizeURL)
+		kiroOAuth.POST("/idc/complete", h.Admin.KiroOAuth.CompleteIdC)
+		kiroOAuth.POST("/device/start", h.Admin.KiroOAuth.DeviceStart)
+		kiroOAuth.POST("/device/poll", h.Admin.KiroOAuth.DevicePoll)
 	}
 }
 

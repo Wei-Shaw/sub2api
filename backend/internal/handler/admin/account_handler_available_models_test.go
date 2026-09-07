@@ -68,6 +68,7 @@ func setupSyncUpstreamModelsRouter(adminSvc service.AdminService, upstream servi
 		nil,
 		nil,
 		nil,
+		nil,
 		upstream,
 		&config.Config{Security: config.SecurityConfig{URLAllowlist: config.URLAllowlistConfig{Enabled: false}}},
 		nil,
@@ -292,6 +293,53 @@ func TestAccountHandlerGetAvailableModels_OpenAISparkShadowReturnsMappingModels(
 	require.ElementsMatch(t, []string{
 		"gpt-5.3-codex-spark",
 	}, ids, "影子可用模型由 model_mapping 派生（非写死）")
+}
+
+// TestAccountHandlerGetAvailableModels_KiroReturnsKiroWhitelistNotAnthropicDefaults
+// 是 Kiro Type 语义修正（跟 Antigravity 对齐，social/builder_id/idc 都是真
+// OAuth）的必要配套：Type 变准确后，OAuth 形态的 Kiro 账号会通过
+// account.IsOAuth() 门槛——如果这个函数没有专属的 Kiro 分支，就会落进
+// "Handle Claude/Anthropic accounts" 分支，错误地返回 claude.DefaultModels
+// （Anthropic 自己的模型清单），而不是 kiro.DefaultModels()（真实账号
+// ListAvailableModels 核实过的 Kiro 清单，见 internal/pkg/kiro/models.go）。
+func TestAccountHandlerGetAvailableModels_KiroReturnsKiroWhitelistNotAnthropicDefaults(t *testing.T) {
+	svc := &availableModelsAdminService{
+		stubAdminService: newStubAdminService(),
+		account: service.Account{
+			ID:       47,
+			Name:     "kiro-idc",
+			Platform: service.PlatformKiro,
+			Type:     service.AccountTypeOAuth,
+			Status:   service.StatusActive,
+			Credentials: map[string]any{
+				"auth_method": "idc",
+			},
+		},
+	}
+	router := setupAvailableModelsRouter(svc)
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/admin/accounts/47/models", nil)
+	router.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+
+	var resp struct {
+		Data []struct {
+			ID string `json:"id"`
+		} `json:"data"`
+	}
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
+	require.NotEmpty(t, resp.Data)
+
+	var ids []string
+	for _, model := range resp.Data {
+		ids = append(ids, model.ID)
+	}
+	require.Contains(t, ids, "claude-sonnet-4.6")
+	require.Contains(t, ids, "claude-opus-5")
+	require.NotContains(t, ids, "claude-3-5-sonnet-20241022",
+		"claude.DefaultModels 的连字符/日期形态型号绝不应该出现在 Kiro 的清单里")
 }
 
 func TestAccountHandlerGetAvailableModels_GeminiGoogleOneUsesConservativeCatalog(t *testing.T) {

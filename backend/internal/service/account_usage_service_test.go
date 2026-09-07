@@ -256,3 +256,68 @@ func TestBuildCodexUsageProgressFromExtra_ZerosExpiredWindow(t *testing.T) {
 		}
 	})
 }
+
+// accountUsageTestProxyRepo 是一个只覆盖 GetByID 的最小 ProxyRepository
+// 假实现——本文件不带 //go:build unit，不能复用 oauth_service_test.go 里
+// 带那个 build tag 的 mockProxyRepoForOAuth（两者不会被同一次 go test
+// 编译单元一起编译）。
+type accountUsageTestProxyRepo struct {
+	ProxyRepository
+	getByIDFunc func(ctx context.Context, id int64) (*Proxy, error)
+}
+
+func (m *accountUsageTestProxyRepo) GetByID(ctx context.Context, id int64) (*Proxy, error) {
+	return m.getByIDFunc(ctx, id)
+}
+
+// TestResolveKiroProxyURLFallsBackToRepositoryWhenNotPreloaded 与
+// KiroGatewayService.resolveProxyURL 是同一个真实账号测试后走查代码发现的
+// 缺口在另一处的复现：account.Proxy 没预加载时之前直接返回空代理，
+// AccountUsageService 的额度查询路径会悄悄走直连。
+func TestResolveKiroProxyURLFallsBackToRepositoryWhenNotPreloaded(t *testing.T) {
+	proxyID := int64(7)
+	repo := &accountUsageTestProxyRepo{
+		getByIDFunc: func(_ context.Context, id int64) (*Proxy, error) {
+			if id != proxyID {
+				t.Fatalf("expected proxy id %d, got %d", proxyID, id)
+			}
+			return &Proxy{ID: proxyID, Protocol: "http", Host: "proxy.internal", Port: 8080}, nil
+		},
+	}
+
+	svc := &AccountUsageService{proxyRepo: repo}
+	account := &Account{ID: 1, Platform: PlatformKiro, ProxyID: &proxyID}
+
+	got := svc.resolveKiroProxyURL(context.Background(), account)
+	if got != "http://proxy.internal:8080" {
+		t.Fatalf("expected fallback proxy URL, got %q", got)
+	}
+	if account.Proxy == nil {
+		t.Fatal("expected resolveKiroProxyURL to write the resolved proxy back onto account.Proxy")
+	}
+}
+
+// TestResolveKiroProxyURLPrefersPreloadedProxy 覆盖已预加载场景：不应该
+// 再打一次仓储。
+func TestResolveKiroProxyURLPrefersPreloadedProxy(t *testing.T) {
+	proxyID := int64(7)
+	repo := &accountUsageTestProxyRepo{
+		getByIDFunc: func(_ context.Context, _ int64) (*Proxy, error) {
+			t.Fatal("account.Proxy 已经预加载时不应该再查仓储")
+			return nil, nil
+		},
+	}
+
+	svc := &AccountUsageService{proxyRepo: repo}
+	account := &Account{
+		ID:       1,
+		Platform: PlatformKiro,
+		ProxyID:  &proxyID,
+		Proxy:    &Proxy{ID: proxyID, Protocol: "socks5", Host: "preloaded.internal", Port: 1080},
+	}
+
+	got := svc.resolveKiroProxyURL(context.Background(), account)
+	if got != "socks5://preloaded.internal:1080" {
+		t.Fatalf("expected preloaded proxy URL, got %q", got)
+	}
+}

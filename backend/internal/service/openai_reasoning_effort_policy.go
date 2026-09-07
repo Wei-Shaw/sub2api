@@ -28,6 +28,25 @@ const (
 var openAIReasoningEffortValues = []string{"minimal", "low", "medium", "high", "xhigh", "max"}
 var anthropicReasoningEffortValues = []string{"low", "medium", "high", "xhigh", "max"}
 
+// reasoningEffortBudgetTokens 是 low/medium/high/xhigh/max 五档各自对应的
+// 参考 token 预算——anthropicReasoningEffortValues 明确把 xhigh 列成 high
+// 和 max 之间独立的一档（不是 max 的同义词），任何按预算数字反推档位名字
+// 或按档位名字换算预算的地方都要覆盖全部五档，漏掉 xhigh 会让"xhigh"这个
+// 档位在数字↔名字的换算链路上直接消失（真实场景：某个环节漏了 xhigh，落到
+// 那一档的请求要么被错误地当成默认预算处理，要么在展示层永远显示不出
+// xhigh，只会显示成 high 或 max）。
+//
+// 供 kiro_gateway_thinking.go（真实注入预算换算）与
+// openai_gateway_request_body.go 的 effortFromThinkingTypeAndBudget（用量
+// 记录展示换算）共用同一套数字，避免两处各自维护一份、后续修改时只改一边。
+var reasoningEffortBudgetTokens = map[string]int{
+	"low":    1024,
+	"medium": 4096,
+	"high":   10240,
+	"xhigh":  20480,
+	"max":    32768,
+}
+
 func normalizeReasoningEffortMappingSource(raw string) string {
 	if strings.EqualFold(strings.TrimSpace(raw), "none") {
 		return "none"

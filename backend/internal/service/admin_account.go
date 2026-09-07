@@ -16,6 +16,7 @@ import (
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/kiro"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
 )
@@ -470,7 +471,22 @@ func buildAccountForCreate(input *CreateAccountInput, accountExtra map[string]an
 	return account, nil
 }
 
+// normalizeKiroAccountType 让 Kiro 账号的 Type 准确反映鉴权方式，跟
+// Antigravity 一样是真正的 OAuth/APIKey 二分，而不是恒填 'apikey'。
+// 不信任前端传来的 Type——落库前按 credentials.auth_method 权威改写一遍，
+// 避免未来任何新入口忘记正确设置 Type 就悄悄产生同样的口径不一致。
+func normalizeKiroAccountType(platform string, credentials map[string]any) string {
+	probe := &Account{Credentials: credentials}
+	if probe.KiroAuthMethod() == kiro.AuthAPIKey {
+		return AccountTypeAPIKey
+	}
+	return AccountTypeOAuth
+}
+
 func (s *adminServiceImpl) CreateAccount(ctx context.Context, input *CreateAccountInput) (*Account, error) {
+	if input.Platform == PlatformKiro {
+		input.Type = normalizeKiroAccountType(input.Platform, input.Credentials)
+	}
 	accountExtra, err := normalizeOpenAILongContextBillingExtra(input.Platform, input.Extra)
 	if err != nil {
 		return nil, err

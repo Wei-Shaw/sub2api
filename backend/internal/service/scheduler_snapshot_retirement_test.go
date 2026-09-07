@@ -176,7 +176,9 @@ func TestSchedulerFullRebuildCapturesAllRegistryTokensBeforeDBLoad(t *testing.T)
 	}
 
 	captures, reopens := cache.captureAndReopenCounts()
-	require.Equal(t, 36, captures, "group0 and active-group canonical tokens must be captured before the first DB load")
+	// I6：group0 与 active group（61）各自的 canonical bucket 数都从 18
+	// 变成 20（补上 kiro），36 变成 40。
+	require.Equal(t, 40, captures, "group0 and active-group canonical tokens must be captured before the first DB load")
 	require.Zero(t, reopens)
 	require.NoError(t, cache.RetireBucket(context.Background(), queued))
 	_, err := cache.ReopenBucket(context.Background(), queued)

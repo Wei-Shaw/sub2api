@@ -48,9 +48,7 @@ const (
 	PlatformZhipu     = domain.PlatformZhipu
 	PlatformDeepseek  = domain.PlatformDeepseek
 	PlatformComposite = domain.PlatformComposite
-	// PlatformKiro is retained for unsupported-platform threshold tests and legacy
-	// account rows. Scheduling-threshold evaluation never pauses kiro accounts.
-	PlatformKiro = "kiro"
+	PlatformKiro      = domain.PlatformKiro
 )
 
 // 账号接入模式（国产供应商）：按量付费 vs Coding Plan。
@@ -108,11 +106,14 @@ var AllowedQuotaPlatforms = []string{
 	PlatformKimi,
 	PlatformZhipu,
 	PlatformDeepseek,
+	PlatformKiro,
 }
 
 // AllowedSchedulingThresholdPlatforms 是允许设置账号自动停调阈值的平台列表。
 // openai/anthropic/grok 有原生用量窗口；kimi/zhipu 的 Coding Plan 同样暴露 5h/weekly
 // 滚动窗口，纳入阈值评估。deepseek 为余额型，走余额检测而非阈值。
+// kiro 是 credits 制：额度由 getUsageLimits 快照与 model_rate_limits["KiroCredits"]
+// 冷却管理，没有可用于阈值评估的 token 用量窗口，因此不纳入本列表。
 var AllowedSchedulingThresholdPlatforms = []string{
 	PlatformOpenAI,
 	PlatformAnthropic,

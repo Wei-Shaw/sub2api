@@ -27,6 +27,52 @@ func TestCanonicalRequestedReasoningEffort(t *testing.T) {
 	require.Nil(t, CanonicalRequestedReasoningEffort([]byte(`{"model":"gpt-5.4"}`), "gpt-5.4"))
 }
 
+// TestCanonicalRequestedReasoningEffortRecognizesNativeThinkingBudget 覆盖
+// 真实账号对比测试发现的真实缺口：GPT 走 reasoning.effort 能被这个函数正确
+// 识别，但 Claude 客户端更常用的原生 thinking.budget_tokens（一个具体数字，
+// 不是档位名字）此前完全没被识别过，导致用量记录 requested_reasoning_effort
+// 一列对这类真实发生过的思考请求长期显示为空。
+func TestCanonicalRequestedReasoningEffortRecognizesNativeThinkingBudget(t *testing.T) {
+	t.Parallel()
+
+	got := CanonicalRequestedReasoningEffort([]byte(`{"model":"claude-sonnet-4-6","thinking":{"type":"enabled","budget_tokens":8000}}`))
+	require.NotNil(t, got)
+	require.Equal(t, "high", *got)
+
+	require.Nil(t, CanonicalRequestedReasoningEffort([]byte(`{"model":"claude-sonnet-4-6","thinking":{"type":"disabled","budget_tokens":8000}}`)),
+		"显式关闭 thinking 不应该被识别成请求过推理强度")
+}
+
+func TestEffortFromThinkingTypeAndBudget(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		typ     string
+		budget  int64
+		wantVal string
+	}{
+		{"disabled type returns blank", "disabled", 8000, ""},
+		{"empty type returns blank", "", 8000, ""},
+		{"enabled with no budget defaults to high, not blank", "enabled", 0, "high"},
+		{"enabled at exactly the low boundary", "enabled", 1024, "low"},
+		{"enabled just above the low boundary", "enabled", 1025, "medium"},
+		{"enabled at exactly the medium boundary", "enabled", 4096, "medium"},
+		{"enabled just above the medium boundary", "enabled", 4097, "high"},
+		{"enabled at exactly the high boundary", "enabled", 10240, "high"},
+		{"enabled just above the high boundary", "enabled", 10241, "xhigh"},
+		{"enabled at exactly the xhigh boundary", "enabled", 20480, "xhigh"},
+		{"enabled just above the xhigh boundary", "enabled", 20481, "max"},
+		{"enabled far above every boundary", "enabled", 200000, "max"},
+		{"adaptive type counts the same as enabled", "adaptive", 2000, "medium"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			require.Equal(t, tt.wantVal, effortFromThinkingTypeAndBudget(tt.typ, tt.budget))
+		})
+	}
+}
+
 func TestRequestedReasoningEffortContext(t *testing.T) {
 	t.Parallel()
 

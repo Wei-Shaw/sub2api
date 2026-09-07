@@ -141,6 +141,23 @@ describe('AccountActionMenu — spark shadow 按钮可见性', () => {
     wrapper.unmount()
   })
 
+  // Kiro 的 Type 现在跟 Antigravity 一样准确区分 OAuth/APIKey
+  // （social/builder_id/idc 都是真 OAuth），会满足这个菜单原本
+  // "type === 'oauth'" 的显示条件——但 ReAuthAccountModal 和后端
+  // refreshSingleAccount 都还没有 Kiro 分支（会误当成 Anthropic 处理），
+  // 显式排除 kiro，避免暴露一个半成品入口。
+  it('Kiro OAuth 账号隐藏重授权/刷新token（后端与弹窗都还没接入 Kiro）', () => {
+    const account = makeAccount({ platform: 'kiro', type: 'oauth', parent_account_id: null })
+    const wrapper = mount(AccountActionMenu, {
+      props: { show: true, account, position },
+      attachTo: document.body,
+    })
+    const body = getBodyText()
+    expect(body).not.toContain('admin.accounts.reAuthorize')
+    expect(body).not.toContain('admin.accounts.refreshToken')
+    wrapper.unmount()
+  })
+
   it('普通 OpenAI OAuth 母账号仍显示凭据/隐私类操作', () => {
     const account = makeAccount({ platform: 'openai', type: 'oauth', parent_account_id: null })
     const wrapper = mount(AccountActionMenu, {

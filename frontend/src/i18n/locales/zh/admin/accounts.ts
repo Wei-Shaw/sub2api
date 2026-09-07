@@ -479,7 +479,9 @@ export default {
         grokLastProbe: '探测 {time}',
         grokLastHeadersSeen: '响应头 {time}',
         passiveSampled: '被动采样',
-        activeQuery: '查询'
+        activeQuery: '查询',
+        kiroCredits: '请求数',
+        kiroOverageDisabled: '额度用尽后不会自动超额，账号将直接不可调度'
       },
       openaiQuotaReset: {
         count: '次数',
@@ -1255,6 +1257,73 @@ export default {
               '找不到所选代理。请选择可用代理后重试。'
           },
           oauthOnlyHint: '首版 Grok 支持仅包含 OAuth 订阅的 Responses API 文本/推理转发。'
+        },
+        // Kiro specific
+        kiro: {
+          authMethodSocial: 'Social（粘贴 refreshToken）',
+          authMethodBuilderId: 'AWS Builder ID（设备码授权）',
+          authMethodIdc: 'IAM Identity Center（组织 SSO）',
+          authMethodApiKey: 'Kiro API Key',
+          fieldRequired: '请填写 {field}',
+          fieldRefreshToken: 'Refresh Token',
+          fieldClientId: 'Client ID',
+          fieldClientSecret: 'Client Secret',
+          fieldIssuerUrl: 'SSO 门户地址',
+          fieldApiKey: 'API Key',
+          refreshTokenLabel: 'Refresh Token',
+          refreshTokenPlaceholderSocial: '粘贴 Kiro 客户端本地保存的 refreshToken',
+          refreshTokenPlaceholderBuilderId: '粘贴 refreshToken，或使用上方的设备码授权自动获取',
+          refreshTokenPlaceholderIdc: '粘贴 refreshToken，或使用上方的授权码授权自动获取',
+          refreshTokenAutoHint: '可用上方的设备码授权自动获取',
+          leaveEmptyHint: '留空则不修改，账号已配置该字段',
+          regionLabel: 'Region',
+          clientIdLabel: 'Client ID',
+          clientSecretLabel: 'Client Secret',
+          profileArnLabel: 'Profile ARN（可选）',
+          profileArnHintBuilderId:
+            'Builder ID/IdC 登录拿到的令牌不带 profileArn，只有 Social 登录会自动带。不填时账号级额度查询/模型列表等依赖 profileArn 的接口可能受限；可从本机 Kiro CLI 运行一次 kiro-cli profile 后在其本地状态里找到，或找组织管理员要。',
+          profileArnHintIdc:
+            'IAM Identity Center 登录拿到的令牌不带 profileArn，需要组织管理员在 AWS 控制台配置好 Q Developer Profile 后提供这个 ARN；不填时账号级额度查询/模型列表等依赖 profileArn 的接口可能受限。可从本机 Kiro CLI 运行一次 kiro-cli profile 后在其本地状态里找到。',
+          issuerUrlLabel: 'SSO 门户地址',
+          issuerUrlHint: '组织的 IAM Identity Center（AWS SSO）门户地址',
+          apiKeyLabel: 'API Key',
+          fakeThinkingTitle: '假思考（模拟 thinking）',
+          fakeThinkingDesc:
+            'Kiro 无原生 thinking。开启后会向每个请求注入约数百 token 的思考指令，产出的是模型自写文本而非真实 reasoning。默认关闭。',
+          // Auth wizard（授权码/设备码）
+          headingIdc: 'IAM Identity Center 授权码授权',
+          headingBuilderId: 'AWS Builder ID 设备码授权',
+          idleDescIdc: '点击后会在新标签页打开 AWS SSO 登录页，请用组织账号登录并完成授权。',
+          idleDescBuilderId: '点击后生成一次性设备码，需要在弹出的页面用 AWS Builder ID 账号登录并批准。',
+          startButtonLoading: '正在获取…',
+          startButtonIdc: '生成授权链接',
+          startButtonBuilderId: '获取设备码',
+          issuerUrlRequiredHint: '请先在下方填写 SSO 门户地址',
+          startedIdcOpenedHint: '已在新标签页打开授权链接。若被浏览器拦截，',
+          startedIdcReopenLink: '点此重新打开',
+          startedIdcInstructions:
+            '登录并同意授权后，浏览器会跳转到一个打不开的地址（显示"无法连接"，这是正常的——该地址本来就没有服务监听）。请把地址栏里的完整 URL 复制下来，粘贴到下方后点击提交。',
+          expiresInSeconds: '授权链接 {seconds} 秒后失效',
+          sessionExpired: '授权会话已过期，请重新生成授权链接',
+          submitButtonLoading: '提交中…',
+          submitCallbackUrl: '提交回调地址',
+          restartButton: '重新开始',
+          userCodeCopied: '已复制',
+          userCodeCopy: '复制',
+          builderIdOpenedHint: '已在新标签页打开验证页面并预填此码。若未自动打开，',
+          builderIdOpenLink: '点此打开',
+          deviceCodeExpiresInSeconds: '设备码 {seconds} 秒后失效，正在自动轮询授权结果…',
+          deviceCodeExpired: '设备码已过期，请重新获取',
+          reacquireButton: '重新获取',
+          successMessage: '已获取凭证，下方字段已自动填入。如需更换账号可重新授权。',
+          reauthorizeButton: '重新授权',
+          errorMissingIssuerUrl: '请先填写 SSO 门户地址',
+          errorGenerateAuthUrlFailed: '生成授权链接失败',
+          errorMissingCallbackUrl: '请粘贴授权后浏览器地址栏的完整 URL',
+          errorParseCallbackFailed: '未能从粘贴的地址里解析出授权结果，请确认复制的是完整地址栏 URL',
+          errorCompleteAuthFailed: '完成授权失败',
+          errorGetDeviceCodeFailed: '获取设备码失败',
+          errorDeviceAuthFailed: '设备码授权失败'
         },
         // Gemini specific
         gemini: {

@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/claude"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/kiro"
 	"github.com/stretchr/testify/require"
 )
 
@@ -216,4 +217,21 @@ func TestAdminService_CNProviderModelsListCandidatesKeepClaudeDefaults(t *testin
 	for _, platform := range []string{PlatformKimi, PlatformZhipu, PlatformDeepseek} {
 		require.Equal(t, want, defaultModelsListCandidateIDs(platform), "platform=%s", platform)
 	}
+}
+
+// TestDefaultModelsListCandidateIDs_Kiro_UsesKiroDefaultsNotClaudeFallback 是
+// I4 的回归：defaultModelsListCandidateIDs 的 switch 之前没有 PlatformKiro
+// 分支，落到 default 分支返回 Claude 模型列表——开了 CustomModelsListEnabled
+// 的 Kiro 分组，管理后台"可选模型"候选列表会显示一份 Kiro 上游根本不认的
+// Claude 模型名，而不是 kiro.DefaultModels() 里真实可用的模型。
+func TestDefaultModelsListCandidateIDs_Kiro_UsesKiroDefaultsNotClaudeFallback(t *testing.T) {
+	want := kiro.DefaultModels()
+	got := defaultModelsListCandidateIDs(PlatformKiro)
+	require.Equal(t, want, got)
+
+	claudeIDs := make([]string, 0, len(claude.DefaultModels))
+	for _, model := range claude.DefaultModels {
+		claudeIDs = append(claudeIDs, model.ID)
+	}
+	require.NotEqual(t, claudeIDs, got, "Kiro 的候选列表不能退化成 Claude 平台的默认列表")
 }
