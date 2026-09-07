@@ -152,6 +152,23 @@ func TestOpenAIReasoningEffortPolicyForCompositeTarget(t *testing.T) {
 	var overLimit *service.ReasoningEffortOverLimitError
 	require.ErrorAs(t, err, &overLimit)
 
+	mappingDenyGroup := *group
+	mappingDenyGroup.MaxReasoningEffort = ""
+	mappingDenyGroup.ReasoningEffortMappings = []service.ReasoningEffortMapping{
+		{From: "max", To: service.ReasoningEffortMappingDeny},
+	}
+	mappingDenyAPIKey := &service.APIKey{Group: &mappingDenyGroup}
+	mappingDenyCtx, _ := gin.CreateTestContext(httptest.NewRecorder())
+	mappingDenyCtx.Request = httptest.NewRequest("POST", "/v1/responses", nil)
+	mappingDenyCtx.Request = mappingDenyCtx.Request.WithContext(service.WithResolvedTargetPlatform(mappingDenyCtx.Request.Context(), service.PlatformOpenAI))
+	_, changed, err = applyOpenAIReasoningEffortPolicyForRequest(mappingDenyCtx, mappingDenyAPIKey, body)
+	require.Error(t, err)
+	require.False(t, changed)
+	var mappingDenied *service.ReasoningEffortMappingDeniedError
+	require.ErrorAs(t, err, &mappingDenied)
+	require.Equal(t, "max", mappingDenied.Requested)
+	require.Contains(t, mappingDenied.Error(), "denied by this group's mapping policy")
+
 	grokCtx, _ := gin.CreateTestContext(httptest.NewRecorder())
 	grokCtx.Request = httptest.NewRequest("POST", "/v1/responses", nil)
 	grokCtx.Request = grokCtx.Request.WithContext(service.WithResolvedTargetPlatform(grokCtx.Request.Context(), service.PlatformGrok))
