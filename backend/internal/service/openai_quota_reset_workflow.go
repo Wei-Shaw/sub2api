@@ -32,14 +32,16 @@ type OpenAIQuotaResetPostProcessResult struct {
 	WarningCode           string
 }
 
-// RunOpenAIQuotaResetPostProcess 按“解除限流、刷新额度缓存、刷新账号行”的固定顺序
-// 执行消费后恢复，避免手动和自动入口在失败语义上逐渐分叉。
+// RunOpenAIQuotaResetPostProcess 按“解除限流、刷新额度缓存、同步调度器、刷新账号行”的固定顺序
+// 执行消费后恢复，避免手动和自动入口在失败语义上逐渐分叉。syncAutoReset 只在快照落库后
+// 收到本次实查结果，且先于重读账号，让返回的账号行已带重排后的计划时刻。
 func RunOpenAIQuotaResetPostProcess(
 	ctx context.Context,
 	accountID int64,
 	quota openAIQuotaResetWorkflowQuota,
 	recoverer openAIQuotaResetWorkflowRecoverer,
 	loadAccount func(context.Context, int64) (*Account, error),
+	syncAutoReset func(context.Context, int64, *OpenAIQuotaUsage),
 ) OpenAIQuotaResetPostProcessResult {
 	result := OpenAIQuotaResetPostProcessResult{}
 	if recoverer == nil {
@@ -66,6 +68,9 @@ func RunOpenAIQuotaResetPostProcess(
 			} else {
 				result.Quota = usage
 				result.CacheRefreshed = true
+				if syncAutoReset != nil {
+					syncAutoReset(ctx, accountID, usage)
+				}
 			}
 		}
 	}
