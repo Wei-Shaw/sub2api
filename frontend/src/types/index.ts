@@ -1765,6 +1765,10 @@ export interface AdminUsageLog extends UsageLog {
 
   // 最小账号信息（仅管理员接口返回）
   account?: UsageLogAccountSummary
+
+
+  // 是否存在可诊断的 dump（列表不返回正文）
+  has_detail?: boolean
 }
 
 export interface UsageCleanupFilters {

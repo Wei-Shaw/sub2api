@@ -60,6 +60,7 @@ func (h *GatewayHandler) ChatCompletions(c *gin.Context) {
 		return
 	}
 
+	service.CaptureUsageDiagnosisRequest(c, body)
 	setOpsRequestContext(c, "", false)
 
 	// Validate JSON
@@ -337,6 +338,12 @@ func (h *GatewayHandler) ChatCompletions(c *gin.Context) {
 		quotaPlatform := service.QuotaPlatform(c.Request.Context(), apiKey)
 		sessionID := service.ExtractClientSessionID(c)
 		stampForwardRequestedReasoningEffort(result, service.RequestedReasoningEffortFromContext(c.Request.Context()))
+		if dump := service.BuildDumpFromDraft(result.RequestID, service.GetUsageDiagnosisDraft(c)); dump != nil {
+			if dump.StatusCode == 0 {
+				dump.StatusCode = 200
+			}
+			_ = service.SaveUsageRequestDump(dump)
+		}
 		h.submitUsageRecordTask(c.Request.Context(), func(ctx context.Context) {
 			if err := h.gatewayService.RecordUsage(ctx, &service.RecordUsageInput{
 				Result:             result,

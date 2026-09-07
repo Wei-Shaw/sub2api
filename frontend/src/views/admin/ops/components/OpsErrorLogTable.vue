@@ -8,11 +8,12 @@
         :data="rows"
         :loading="loading"
         clickable-rows
+        row-activate-mode="dblclick"
         server-side-sort
         default-sort-key="created_at"
         default-sort-order="desc"
         @sort="onSort"
-        @rowClick="(row) => emit('openErrorDetail', row.id)"
+        @row-dbl-click="(row) => emit('openErrorDetail', row.id)"
       >
         <template #cell-created_at="{ row }">
           <span

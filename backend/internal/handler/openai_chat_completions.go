@@ -64,6 +64,8 @@ func (h *OpenAIGatewayHandler) ChatCompletions(c *gin.Context) {
 		return
 	}
 
+	service.CaptureUsageDiagnosisRequest(c, body)
+
 	if !gjson.ValidBytes(body) {
 		logRequestBodyParseFailure(reqLog, body, nil)
 		h.errorResponse(c, http.StatusBadRequest, "invalid_request_error", "Failed to parse request body")
@@ -279,6 +281,14 @@ func (h *OpenAIGatewayHandler) ChatCompletions(c *gin.Context) {
 			quotaPlatform := service.QuotaPlatform(c.Request.Context(), apiKey)
 			sessionID := service.ExtractClientSessionID(c)
 			cyberBlocked := service.GetOpsCyberPolicy(c) != nil
+			if dump := service.BuildDumpFromDraft(res.RequestID, service.GetUsageDiagnosisDraft(c)); dump != nil {
+				dump.Path = inboundEndpoint
+				dump.UpstreamURL = firstNonEmpty(dump.UpstreamURL, upstreamEndpoint)
+				if dump.StatusCode == 0 {
+					dump.StatusCode = 200
+				}
+				_ = service.SaveUsageRequestDump(dump)
+			}
 			h.submitOpenAIUsageRecordTask(c.Request.Context(), res, func(ctx context.Context) {
 				if err := h.gatewayService.RecordUsage(ctx, &service.OpenAIRecordUsageInput{
 					Result:             res,

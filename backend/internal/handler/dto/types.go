@@ -701,6 +701,45 @@ type AdminUsageLog struct {
 
 	// Account 最小账号信息（避免泄露敏感字段）
 	Account *AccountSummary `json:"account,omitempty"`
+
+	// HasDetail indicates a request dump exists for diagnosis (admin list only).
+	// Body/header fields are never included in list responses.
+	HasDetail bool `json:"has_detail"`
+}
+
+
+// UsageDiagnosisDetail is the admin-only request diagnosis payload.
+type UsageDiagnosisDetail struct {
+	Source          string            `json:"source"`
+	ID              int64             `json:"id"`
+	RequestID       string            `json:"request_id"`
+	ClientIP        string            `json:"client_ip,omitempty"`
+	Path            string            `json:"path,omitempty"`
+	CreatedAt       time.Time         `json:"created_at"`
+	StatusCode      int               `json:"status_code,omitempty"`
+	Method          string            `json:"method,omitempty"`
+	Stream          bool              `json:"stream"`
+	DurationMs      *int              `json:"duration_ms,omitempty"`
+	FirstTokenMs    *int              `json:"first_token_ms,omitempty"`
+	RequestedModel  string            `json:"requested_model,omitempty"`
+	UpstreamModel   string            `json:"upstream_model,omitempty"`
+	APIKeyName      string            `json:"api_key_name,omitempty"`
+	GroupName       string            `json:"group_name,omitempty"`
+	InputTokens     int               `json:"input_tokens,omitempty"`
+	OutputTokens    int               `json:"output_tokens,omitempty"`
+	CacheReadTokens int               `json:"cache_read_tokens,omitempty"`
+	TotalCost       float64           `json:"total_cost,omitempty"`
+	ActualCost      float64           `json:"actual_cost,omitempty"`
+	UpstreamURL     string            `json:"upstream_url,omitempty"`
+	UpstreamStatus  int               `json:"upstream_status,omitempty"`
+	HasDetail       bool              `json:"has_detail"`
+	ReqHeaders      map[string]string `json:"req_headers,omitempty"`
+	ResHeaders      map[string]string `json:"res_headers,omitempty"`
+	ReqBody         string            `json:"req_body,omitempty"`
+	ResBody         string            `json:"res_body,omitempty"`
+	UpstreamReqBody string            `json:"upstream_req_body,omitempty"`
+	Dialog          json.RawMessage   `json:"dialog,omitempty"`
+	ErrorChain      json.RawMessage   `json:"error_chain,omitempty"`
 }
 
 type UsageCleanupFilters struct {

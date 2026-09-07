@@ -53,7 +53,8 @@
           'cursor-pointer': clickableRows,
           'border-primary-300 bg-primary-50/40 dark:border-primary-700 dark:bg-primary-900/10': selectable && isRowSelected(row, index)
         }"
-        @click="clickableRows && emit('rowClick', row)"
+        @click="handleRowActivateClick(row)"
+        @dblclick="handleRowActivateDblClick(row)"
       >
         <div class="space-y-3">
           <div v-if="selectable" class="flex justify-end">
@@ -218,7 +219,8 @@
               'cursor-pointer': clickableRows,
               'bg-primary-50/40 dark:bg-primary-900/10': selectable && isRowSelected(item.row, item.index)
             }"
-            @click="clickableRows && emit('rowClick', item.row)"
+            @click="handleRowActivateClick(item.row)"
+            @dblclick="handleRowActivateDblClick(item.row)"
           >
             <td v-if="selectable" class="w-11 min-w-11 px-3 py-4 text-center">
               <input
@@ -276,9 +278,31 @@ const isDesktopViewport = ref(
   typeof window === 'undefined' ? true : window.matchMedia(desktopViewportQuery).matches
 )
 
+const isCoarsePointer = ref(
+  typeof window === 'undefined' ? false : window.matchMedia('(pointer: coarse)').matches
+)
+
+function handleRowActivateClick(row: any) {
+  if (!props.clickableRows) return
+  const mode = props.rowActivateMode || 'click'
+  if (mode === 'dblclick') {
+    if (isCoarsePointer.value) emit('rowDblClick', row)
+    return
+  }
+  emit('rowClick', row)
+}
+
+function handleRowActivateDblClick(row: any) {
+  if (!props.clickableRows) return
+  if ((props.rowActivateMode || 'click') === 'dblclick') {
+    emit('rowDblClick', row)
+  }
+}
+
 const emit = defineEmits<{
   sort: [key: string, order: 'asc' | 'desc']
   rowClick: [row: any]
+  rowDblClick: [row: any]
   'update:selectedKeys': [keys: Array<string | number>]
   selectionChange: [keys: Array<string | number>]
 }>()
@@ -455,6 +479,8 @@ interface Props {
   serverSideSort?: boolean
   /** Emit 'rowClick' on row/card click and show pointer cursor (interactive cells should @click.stop) */
   clickableRows?: boolean
+  /** When 'dblclick', desktop uses dblclick; coarse pointers still activate on click. */
+  rowActivateMode?: 'click' | 'dblclick'
   /** Estimated row height in px for the virtualizer (default 56) */
   estimateRowHeight?: number
   /** Number of rows to render beyond the visible area (default 5) */

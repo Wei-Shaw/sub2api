@@ -3,7 +3,7 @@
     <button
       type="button"
       class="text-primary-600 underline decoration-dashed underline-offset-2 hover:text-primary-700 dark:text-primary-400 dark:hover:text-primary-300"
-      @click="handleFetch"
+      @click.stop="handleFetch"
     >
       {{ t('usage.ipGeo.fetch') }}
     </button>
@@ -29,7 +29,7 @@
       type="button"
       class="truncate text-gray-500 underline decoration-dotted underline-offset-2 hover:text-primary-600 dark:text-gray-400 dark:hover:text-primary-400"
       :title="tooltipText"
-      @click="handleOpenDetail"
+      @click.stop="handleOpenDetail"
     >
       {{ entry.label }}
     </button>
@@ -37,7 +37,7 @@
       type="button"
       class="text-gray-400 hover:text-primary-600 dark:hover:text-primary-400"
       :title="t('usage.ipGeo.refreshTitle')"
-      @click="handleRefresh"
+      @click.stop="handleRefresh"
     >
       <Icon name="refresh" size="xs" />
     </button>
@@ -47,7 +47,7 @@
     <button
       type="button"
       class="text-red-600 underline decoration-dashed underline-offset-2 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300"
-      @click="handleFetch"
+      @click.stop="handleFetch"
     >
       {{ t('usage.ipGeo.failed') }}
     </button>

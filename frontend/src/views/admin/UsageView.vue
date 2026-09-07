@@ -134,6 +134,7 @@
             @sort="handleSort"
             @userClick="handleUserClick"
             @ipGeoBatchFailed="handleIpGeoBatchFailed"
+            @row-activate="openUsageDiagnosis"
           />
           <Pagination v-if="pagination.total > 0" :page="pagination.page" :total="pagination.total" :page-size="pagination.page_size" @update:page="handlePageChange" @update:pageSize="handlePageSizeChange" />
         </div>
@@ -164,6 +165,7 @@
         </div>
       </div>
       <OpsErrorDetailModal v-model:show="showErrorModal" :error-id="selectedErrorId" :error-type="'request'" />
+      <RequestDiagnosisModal v-model:show="showDiagnosisModal" :usage-id="diagnosisUsageId" />
     </div>
   </AppLayout>
   <UsageExportProgress :show="exportProgress.show" :progress="exportProgress.progress" :current="exportProgress.current" :total="exportProgress.total" :estimated-time="exportProgress.estimatedTime" @cancel="cancelExport" />
@@ -200,6 +202,7 @@ import UsageCleanupDialog from '@/components/admin/usage/UsageCleanupDialog.vue'
 import UserBalanceHistoryModal from '@/components/admin/user/UserBalanceHistoryModal.vue'
 import OpsErrorLogTable from '@/views/admin/ops/components/OpsErrorLogTable.vue'
 import OpsErrorDetailModal from '@/views/admin/ops/components/OpsErrorDetailModal.vue'
+import RequestDiagnosisModal from '@/features/usage-diagnosis/components/RequestDiagnosisModal.vue'
 import { listErrorLogs } from '@/api/admin/ops'
 import type { OpsErrorLog } from '@/api/admin/ops'
 import ModelDistributionChart from '@/components/charts/ModelDistributionChart.vue'; import GroupDistributionChart from '@/components/charts/GroupDistributionChart.vue'; import TokenUsageTrend from '@/components/charts/TokenUsageTrend.vue'
@@ -808,6 +811,8 @@ const errPageSize = ref(20)
 const errTotal = ref(0)
 const errSortBy = ref('created_at')
 const errSortOrder = ref<'asc' | 'desc'>('desc')
+const showDiagnosisModal = ref(false)
+const diagnosisUsageId = ref<number | null>(null)
 const showErrorModal = ref(false)
 const selectedErrorId = ref<number | null>(null)
 
@@ -853,6 +858,18 @@ const onErrSort = (sortBy: string, sortOrder: 'asc' | 'desc') => {
 }
 const onErrPage = (p: number) => { errPage.value = p; loadAdminErrors() }
 const onErrPageSize = (s: number) => { errPageSize.value = s; errPage.value = 1; loadAdminErrors() }
+
+const openUsageDiagnosis = (row: AdminUsageLog) => {
+  if (!row?.id) return
+  diagnosisUsageId.value = row.id
+  showDiagnosisModal.value = true
+}
+
+const openErrorDiagnosis = (id: number) => {
+  // Error rows currently share ops error detail; prefer diagnosis when usage dump linked later.
+  // For now open classic error detail (body-bearing) via existing modal.
+  openError(id)
+}
 const openError = (id: number) => { selectedErrorId.value = id; showErrorModal.value = true }
 
 const showColumnDropdown = ref(false)

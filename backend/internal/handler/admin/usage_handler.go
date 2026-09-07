@@ -213,9 +213,21 @@ func (h *UsageHandler) List(c *gin.Context) {
 		return
 	}
 
+	requestIDs := make([]string, 0, len(records))
+	for i := range records {
+		if rid := strings.TrimSpace(records[i].RequestID); rid != "" {
+			requestIDs = append(requestIDs, rid)
+		}
+	}
+	hasDump := h.usageService.HasRequestDumps(requestIDs)
+
 	out := make([]dto.AdminUsageLog, 0, len(records))
 	for i := range records {
-		out = append(out, *dto.UsageLogFromServiceAdmin(&records[i]))
+		item := *dto.UsageLogFromServiceAdmin(&records[i])
+		if hasDump[strings.TrimSpace(records[i].RequestID)] {
+			item.HasDetail = true
+		}
+		out = append(out, item)
 	}
 	response.Paginated(c, out, result.Total, page, pageSize)
 }
@@ -647,4 +659,21 @@ func (h *UsageHandler) CancelCleanupTask(c *gin.Context) {
 	}
 	logger.LegacyPrintf("handler.admin.usage", "[UsageCleanup] 清理任务已取消: task=%d operator=%d", taskID, subject.UserID)
 	response.Success(c, gin.H{"id": taskID, "status": service.UsageCleanupStatusCanceled})
+}
+
+
+// GetDiagnosis returns admin-only request diagnosis details (merged with dump).
+// GET /api/v1/admin/usage/:id/diagnosis
+func (h *UsageHandler) GetDiagnosis(c *gin.Context) {
+	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil || id <= 0 {
+		response.BadRequest(c, "Invalid usage log id")
+		return
+	}
+	detail, err := h.usageService.GetUsageDiagnosis(c.Request.Context(), id)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, dto.UsageDiagnosisFromService(detail))
 }

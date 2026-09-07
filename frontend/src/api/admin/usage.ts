@@ -5,6 +5,7 @@
 
 import { apiClient } from '../client'
 import type { AdminUsageLog, UsageQueryParams, PaginatedResponse, UsageRequestType } from '@/types'
+import type { UsageDiagnosisDetail } from '@/features/usage-diagnosis/types'
 import type { EndpointStat } from '@/types'
 
 // ==================== Types ====================
@@ -207,6 +208,15 @@ export async function cancelCleanupTask(taskId: number): Promise<{ id: number; s
   return data
 }
 
+
+/**
+ * Get admin request diagnosis detail (merged with dump). Admin only.
+ */
+export async function getDiagnosis(id: number): Promise<UsageDiagnosisDetail> {
+  const { data } = await apiClient.get<UsageDiagnosisDetail>(`/admin/usage/${id}/diagnosis`)
+  return data
+}
+
 export const adminUsageAPI = {
   list,
   getStats,
@@ -214,7 +224,8 @@ export const adminUsageAPI = {
   searchApiKeys,
   listCleanupTasks,
   createCleanupTask,
-  cancelCleanupTask
+  cancelCleanupTask,
+  getDiagnosis
 }
 
 export default adminUsageAPI

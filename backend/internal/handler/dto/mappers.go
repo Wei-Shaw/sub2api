@@ -956,3 +956,43 @@ func PromoCodeUsageFromService(u *service.PromoCodeUsage) *PromoCodeUsage {
 		User:        UserFromServiceShallow(u.User),
 	}
 }
+
+
+// UsageDiagnosisFromService maps service diagnosis detail to DTO.
+func UsageDiagnosisFromService(d *service.UsageDiagnosisDetail) *UsageDiagnosisDetail {
+	if d == nil {
+		return nil
+	}
+	return &UsageDiagnosisDetail{
+		Source:          d.Source,
+		ID:              d.ID,
+		RequestID:       d.RequestID,
+		ClientIP:        d.ClientIP,
+		Path:            d.Path,
+		CreatedAt:       d.CreatedAt,
+		StatusCode:      d.StatusCode,
+		Method:          d.Method,
+		Stream:          d.Stream,
+		DurationMs:      d.DurationMs,
+		FirstTokenMs:    d.FirstTokenMs,
+		RequestedModel:  d.RequestedModel,
+		UpstreamModel:   d.UpstreamModel,
+		APIKeyName:      d.APIKeyName,
+		GroupName:       d.GroupName,
+		InputTokens:     d.InputTokens,
+		OutputTokens:    d.OutputTokens,
+		CacheReadTokens: d.CacheReadTokens,
+		TotalCost:       d.TotalCost,
+		ActualCost:      d.ActualCost,
+		UpstreamURL:     d.UpstreamURL,
+		UpstreamStatus:  d.UpstreamStatus,
+		HasDetail:       d.HasDetail,
+		ReqHeaders:      d.ReqHeaders,
+		ResHeaders:      d.ResHeaders,
+		ReqBody:         d.ReqBody,
+		ResBody:         d.ResBody,
+		UpstreamReqBody: d.UpstreamReqBody,
+		Dialog:          d.Dialog,
+		ErrorChain:      d.ErrorChain,
+	}
+}

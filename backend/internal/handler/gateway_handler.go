@@ -158,6 +158,7 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 	}
 
 	setOpsRequestContext(c, "", false)
+	service.CaptureUsageDiagnosisRequest(c, body)
 
 	bodyRef := service.NewRequestBodyRef(body)
 	parsedReq, err := service.ParseGatewayRequest(bodyRef, domain.PlatformAnthropic)
@@ -575,6 +576,14 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 			forceCacheBilling := fs.ForceCacheBilling
 			quotaPlatform := service.QuotaPlatform(c.Request.Context(), apiKey)
 			sessionID := service.ExtractClientSessionID(c)
+			if dump := service.BuildDumpFromDraft(result.RequestID, service.GetUsageDiagnosisDraft(c)); dump != nil {
+				dump.Path = inboundEndpoint
+				dump.UpstreamURL = firstNonEmpty(dump.UpstreamURL, upstreamEndpoint)
+				if dump.StatusCode == 0 {
+					dump.StatusCode = 200
+				}
+				_ = service.SaveUsageRequestDump(dump)
+			}
 			h.submitUsageRecordTask(c.Request.Context(), func(ctx context.Context) {
 				if err := h.gatewayService.RecordUsage(ctx, &service.RecordUsageInput{
 					Result:             result,

@@ -60,6 +60,7 @@ type UsageService struct {
 	userRepo             UserRepository
 	entClient            *dbent.Client
 	authCacheInvalidator APIKeyAuthCacheInvalidator
+	dumpStore            *UsageRequestDumpStore
 }
 
 // NewUsageService 创建使用统计服务实例
@@ -69,6 +70,7 @@ func NewUsageService(usageRepo UsageLogRepository, userRepo UserRepository, entC
 		userRepo:             userRepo,
 		entClient:            entClient,
 		authCacheInvalidator: authCacheInvalidator,
+		dumpStore:            DefaultUsageRequestDumpStore(),
 	}
 }
 
