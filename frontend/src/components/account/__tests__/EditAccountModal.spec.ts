@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { defineComponent } from 'vue'
-import { mount } from '@vue/test-utils'
+import { flushPromises, mount } from '@vue/test-utils'
 
 const { updateAccountMock, checkMixedChannelRiskMock, authIsSimpleMode } = vi.hoisted(() => ({
   updateAccountMock: vi.fn(),
@@ -1145,6 +1145,98 @@ describe('EditAccountModal', () => {
     expect(updateAccountMock).toHaveBeenCalledTimes(1)
     expect(updateAccountMock.mock.calls[0]?.[1]?.credentials?.openai_capabilities).toEqual([
       'chat_completions'
+    ])
+  })
+
+  it('loads and persists an explicit OpenAI Rerank capability', async () => {
+    const account = buildAccount()
+    account.credentials.base_url = 'https://openrouter.ai/api/v1'
+    account.credentials.openai_capabilities = ['chat_completions', 'rerank']
+    updateAccountMock.mockReset()
+    checkMixedChannelRiskMock.mockReset()
+    checkMixedChannelRiskMock.mockResolvedValue({ has_risk: false })
+    updateAccountMock.mockResolvedValue(account)
+
+    const wrapper = mountModal(account)
+    const rerankCheckbox = wrapper.get<HTMLInputElement>(
+      '[data-testid="openai-endpoint-capability-rerank"]'
+    )
+    expect(rerankCheckbox.element.checked).toBe(true)
+
+    await wrapper.get('form#edit-account-form').trigger('submit.prevent')
+
+    expect(updateAccountMock.mock.calls[0]?.[1]?.credentials?.openai_capabilities).toEqual([
+      'chat_completions',
+      'rerank'
+    ])
+  })
+
+  it('loads and persists Gemini API-key endpoint capabilities using endpoint_capabilities', async () => {
+    const account = buildAccount()
+    account.platform = 'gemini'
+    account.credentials = {
+      api_key: 'gemini-test',
+      endpoint_capabilities: ['gemini_native']
+    }
+    updateAccountMock.mockReset()
+    checkMixedChannelRiskMock.mockReset()
+    checkMixedChannelRiskMock.mockResolvedValue({ has_risk: false })
+    updateAccountMock.mockResolvedValue(account)
+
+    const wrapper = mountModal(account)
+    const nativeCheckbox = wrapper.get<HTMLInputElement>(
+      '[data-testid="gemini-endpoint-capability-gemini_native"]'
+    )
+    const embeddingsCheckbox = wrapper.get<HTMLInputElement>(
+      '[data-testid="gemini-endpoint-capability-embeddings"]'
+    )
+    expect(nativeCheckbox.element.checked).toBe(true)
+    expect(embeddingsCheckbox.element.checked).toBe(false)
+
+    await embeddingsCheckbox.setValue(true)
+    await wrapper.get('form#edit-account-form').trigger('submit.prevent')
+
+    expect(updateAccountMock.mock.calls[0]?.[1]?.credentials?.endpoint_capabilities).toEqual([
+      'gemini_native',
+      'embeddings'
+    ])
+  })
+
+  it('shows Gemini endpoint capabilities for non-API-key accounts with Embeddings unavailable', async () => {
+    const account = buildAccount()
+    account.platform = 'gemini'
+    account.type = 'oauth'
+    account.credentials = { access_token: 'gemini-oauth' }
+
+    const wrapper = mountModal(account)
+
+    expect(wrapper.find('[data-testid="gemini-endpoint-capability-gemini_native"]').exists()).toBe(true)
+    expect(wrapper.get('[data-testid="gemini-endpoint-capability-embeddings"]').attributes('disabled')).toBeDefined()
+  })
+
+  it('loads and persists Zhipu endpoint capabilities using endpoint_capabilities', async () => {
+    const account = buildAccount()
+    account.platform = 'zhipu'
+    account.type = 'apikey'
+    account.credentials = {
+      api_key: 'zhipu-key',
+      base_url: 'https://open.bigmodel.cn/api/paas/v4',
+      endpoint_capabilities: ['chat_completions']
+    }
+    updateAccountMock.mockReset()
+    updateAccountMock.mockResolvedValue(account)
+
+    const wrapper = mountModal(account)
+    expect(wrapper.get<HTMLInputElement>('[data-testid="zhipu-endpoint-capability-chat_completions"]').element.checked).toBe(true)
+    expect(wrapper.get<HTMLInputElement>('[data-testid="zhipu-endpoint-capability-embeddings"]').element.checked).toBe(false)
+
+    await wrapper.get('[data-testid="zhipu-endpoint-capability-embeddings"]').setValue(true)
+    await wrapper.get('form#edit-account-form').trigger('submit.prevent')
+    await flushPromises()
+
+    expect(updateAccountMock.mock.calls.at(-1)?.[1]?.credentials?.endpoint_capabilities).toEqual([
+      'chat_completions',
+      'embeddings'
     ])
   })
 

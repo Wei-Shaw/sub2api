@@ -697,13 +697,14 @@ export default {
           '仅对 OpenAI API Key 的 Images 非流式响应生效。上游返回的图片缺少 b64_json 但带 url 时，网关下载该 url 并以 base64 回填 b64_json（url 保留），兼容按官方接口实现的客户端；下载失败则原样返回。',
         endpointCapabilities: '端点能力',
         endpointCapabilitiesDesc:
-          '用于调度筛选。文本端点会跟随上方 Responses API 支持显示为 Responses、Chat Completions 或自动模式；Embeddings 独立控制 /v1/embeddings。',
+          '用于调度筛选。文本端点会跟随上方 Responses API 支持显示为 Responses、Chat Completions 或自动模式；Embeddings 控制 /v1/embeddings。OpenAI本身不支持Rerank，部分其他模型提供商有Rerank功能。Rerank 仅会路由到已显式选择且使用官方 OpenRouter 的账号。',
         capabilityResponses: 'Responses',
         capabilityTextAuto: 'Responses / Chat Completions（自动）',
         capabilityResponsesAuto: 'Responses（自动探测）',
         capabilityChatCompletions: 'Chat Completions',
         capabilityChatCompletionsAuto: 'Chat Completions（自动探测）',
         capabilityEmbeddings: 'Embeddings',
+        capabilityRerank: 'Rerank',
         responsesStatusAutoSupported: '自动探测：Responses',
         responsesStatusAutoUnsupported: '自动探测：Chat Completions',
         responsesStatusAutoUnknown: '自动探测：未探测',
@@ -1342,6 +1343,11 @@ export default {
         modelPassthroughDesc: '所有模型请求将直接转发至 Gemini API，不进行模型限制或映射。',
         baseUrlHint: '留空使用官方 Gemini API',
         apiKeyHint: '您的 Gemini API Key（以 AIza 开头）',
+        endpointCapabilities: '端点能力',
+        endpointCapabilitiesDesc:
+          'Gemini的Embeddings只在使用 API 密钥时支持，Sub2API会将其转化为OpenAI格式调用。原生生成继续走 Gemini 原生路由；Embeddings 控制 /v1/embeddings 兼容路由。',
+        capabilityNativeGeneration: 'Gemini 原生生成',
+        capabilityEmbeddings: 'Embeddings',
         tier: {
           label: '账号等级',
           hint: '提示：系统会优先尝试自动识别账号等级；若自动识别不可用或失败，则使用你选择的等级作为回退（本地模拟配额）。',
@@ -1474,6 +1480,12 @@ export default {
           limited: '限流 {time}',
           now: '现在'
         }
+      },
+      zhipu: {
+        endpointCapabilities: '端点能力',
+        endpointCapabilitiesDesc: '模型生成控制智谱生成路由；Embeddings 控制 /v1/embeddings。',
+        capabilityGeneration: '模型生成',
+        capabilityEmbeddings: 'Embeddings',
       },
       // Re-Auth Modal
       reAuthorizeAccount: '重新授权账号',

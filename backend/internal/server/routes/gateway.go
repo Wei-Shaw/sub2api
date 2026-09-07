@@ -75,8 +75,8 @@ func RegisterGatewayRoutes(
 		}
 		h.Gateway.Models(c)
 	}
-	isOpenAIOnlyEndpointGatewayPlatform := func(c *gin.Context) bool {
-		return getGroupPlatform(c) == service.PlatformOpenAI
+	rerankHandler := func(c *gin.Context) {
+		h.OpenAIGateway.Rerank(c)
 	}
 	imagesHandler := func(c *gin.Context) {
 		switch getGroupPlatform(c) {
@@ -238,19 +238,8 @@ func RegisterGatewayRoutes(
 			}
 			h.Gateway.ChatCompletions(c)
 		})
-		gateway.POST("/embeddings", textBodyLimit, func(c *gin.Context) {
-			if !isOpenAIOnlyEndpointGatewayPlatform(c) {
-				service.MarkOpsClientBusinessLimited(c, service.OpsClientBusinessLimitedReasonLocalFeatureGate)
-				c.JSON(http.StatusNotFound, gin.H{
-					"error": gin.H{
-						"type":    "not_found_error",
-						"message": "Embeddings API is not supported for this platform",
-					},
-				})
-				return
-			}
-			h.OpenAIGateway.Embeddings(c)
-		})
+		gateway.POST("/embeddings", textBodyLimit, h.OpenAIGateway.Embeddings)
+		gateway.POST("/rerank", textBodyLimit, rerankHandler)
 		gateway.POST("/images/generations", imagesHandler)
 		gateway.POST("/images/edits", imagesHandler)
 		gateway.POST("/images/generations/async", h.AsyncImage.Submit)
@@ -394,19 +383,8 @@ func RegisterGatewayRoutes(
 		}
 		h.Gateway.ChatCompletions(c)
 	})
-	rootRoute(http.MethodPost, "/embeddings", textBodyLimit, func(c *gin.Context) {
-		if !isOpenAIOnlyEndpointGatewayPlatform(c) {
-			service.MarkOpsClientBusinessLimited(c, service.OpsClientBusinessLimitedReasonLocalFeatureGate)
-			c.JSON(http.StatusNotFound, gin.H{
-				"error": gin.H{
-					"type":    "not_found_error",
-					"message": "Embeddings API is not supported for this platform",
-				},
-			})
-			return
-		}
-		h.OpenAIGateway.Embeddings(c)
-	})
+	rootRoute(http.MethodPost, "/embeddings", textBodyLimit, h.OpenAIGateway.Embeddings)
+	rootRoute(http.MethodPost, "/rerank", textBodyLimit, rerankHandler)
 	rootRoute(http.MethodPost, "/images/generations", bodyLimit, imagesHandler)
 	rootRoute(http.MethodPost, "/images/edits", bodyLimit, imagesHandler)
 	rootRoute(http.MethodPost, "/images/generations/async", bodyLimit, h.AsyncImage.Submit)
@@ -666,6 +644,8 @@ func compositeRouteEndpointForPath(path string) string {
 		return service.CompositeRouteEndpointChatCompletions
 	case strings.Contains(path, "/embeddings"):
 		return service.CompositeRouteEndpointEmbeddings
+	case strings.Contains(path, "/rerank"):
+		return service.CompositeRouteEndpointRerank
 	case strings.Contains(path, "/images/"):
 		return service.CompositeRouteEndpointImages
 	case strings.Contains(path, "/v1beta/"):

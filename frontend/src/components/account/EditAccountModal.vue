@@ -1809,7 +1809,7 @@
         </div>
         <div>
           <label class="input-label mb-2 block">{{ t('admin.accounts.openai.endpointCapabilities') }}</label>
-          <div class="grid grid-cols-1 gap-2 sm:grid-cols-2">
+          <div class="grid grid-cols-1 gap-2 sm:grid-cols-3">
             <label
               v-for="option in openAIEndpointCapabilityOptions"
               :key="option.value"
@@ -1826,6 +1826,59 @@
             </label>
           </div>
           <p class="input-hint">{{ t('admin.accounts.openai.endpointCapabilitiesDesc') }}</p>
+        </div>
+      </div>
+
+      <div
+        v-if="account?.platform === 'gemini'"
+        class="space-y-4 border-t border-gray-200 pt-4 dark:border-dark-600"
+      >
+        <div>
+          <label class="input-label mb-2 block">{{ t('admin.accounts.gemini.endpointCapabilities') }}</label>
+          <div class="grid grid-cols-1 gap-2 sm:grid-cols-2">
+            <label
+              v-for="option in geminiEndpointCapabilityOptions"
+              :key="option.value"
+              class="flex cursor-pointer items-center gap-2 rounded-lg border border-gray-200 px-3 py-2 text-sm dark:border-dark-600"
+            >
+              <input
+                type="checkbox"
+                class="rounded border-gray-300 text-primary-600 focus:ring-primary-500 dark:border-dark-500"
+                :data-testid="`gemini-endpoint-capability-${option.value}`"
+                :disabled="option.value === 'embeddings' && account?.type !== 'apikey'"
+                :checked="geminiEndpointCapabilities.includes(option.value)"
+                @change="toggleGeminiEndpointCapability(option.value, $event)"
+              />
+              <span class="text-gray-700 dark:text-gray-200">{{ option.label }}</span>
+            </label>
+          </div>
+          <p class="input-hint">{{ t('admin.accounts.gemini.endpointCapabilitiesDesc') }}</p>
+        </div>
+      </div>
+
+      <div
+        v-if="account?.platform === 'zhipu'"
+        class="space-y-4 border-t border-gray-200 pt-4 dark:border-dark-600"
+      >
+        <div>
+          <label class="input-label mb-2 block">{{ t('admin.accounts.zhipu.endpointCapabilities') }}</label>
+          <div class="grid grid-cols-1 gap-2 sm:grid-cols-2">
+            <label
+              v-for="option in zhipuEndpointCapabilityOptions"
+              :key="option.value"
+              class="flex cursor-pointer items-center gap-2 rounded-lg border border-gray-200 px-3 py-2 text-sm dark:border-dark-600"
+            >
+              <input
+                type="checkbox"
+                class="rounded border-gray-300 text-primary-600 focus:ring-primary-500 dark:border-dark-500"
+                :data-testid="`zhipu-endpoint-capability-${option.value}`"
+                :checked="zhipuEndpointCapabilities.includes(option.value)"
+                @change="toggleZhipuEndpointCapability(option.value, $event)"
+              />
+              <span class="text-gray-700 dark:text-gray-200">{{ option.label }}</span>
+            </label>
+          </div>
+          <p class="input-hint">{{ t('admin.accounts.zhipu.endpointCapabilitiesDesc') }}</p>
         </div>
       </div>
 
@@ -2925,6 +2978,8 @@ import type {
   OpenAICompactMode,
   OpenAIResponsesMode,
   OpenAIEndpointCapability,
+  GeminiEndpointCapability,
+  ZhipuEndpointCapability,
   OllamaCloudUsageState
 } from '@/types'
 import BaseDialog from '@/components/common/BaseDialog.vue'
@@ -3323,6 +3378,8 @@ const openAIResponsesMode = ref<OpenAIResponsesMode>('auto')
 // Images 非流式响应缺 b64_json 时由网关下载 url 回填（仅 OpenAI API Key）。
 const openAIImagesUrlToB64JsonEnabled = ref(false)
 const openAIEndpointCapabilities = ref<OpenAIEndpointCapability[]>(['chat_completions', 'embeddings'])
+const geminiEndpointCapabilities = ref<GeminiEndpointCapability[]>(['gemini_native', 'embeddings'])
+const zhipuEndpointCapabilities = ref<ZhipuEndpointCapability[]>(['chat_completions', 'embeddings'])
 const openaiOAuthResponsesWebSocketV2Mode = ref<OpenAIWSMode>(OPENAI_WS_MODE_OFF)
 const openaiAPIKeyResponsesWebSocketV2Mode = ref<OpenAIWSMode>(OPENAI_WS_MODE_OFF)
 const codexCLIOnlyEnabled = ref(false)
@@ -3483,24 +3540,53 @@ const openAITextEndpointCapabilityLabel = computed(() => {
 })
 const openAIEndpointCapabilityOptions = computed<{ value: OpenAIEndpointCapability; label: string }[]>(() => [
   { value: 'chat_completions', label: openAITextEndpointCapabilityLabel.value },
-  { value: 'embeddings', label: t('admin.accounts.openai.capabilityEmbeddings') }
+  { value: 'embeddings', label: t('admin.accounts.openai.capabilityEmbeddings') },
+  { value: 'rerank', label: t('admin.accounts.openai.capabilityRerank') }
+])
+const geminiEndpointCapabilityOptions = computed<{ value: GeminiEndpointCapability; label: string }[]>(() => [
+  { value: 'gemini_native', label: t('admin.accounts.gemini.capabilityNativeGeneration') },
+  { value: 'embeddings', label: t('admin.accounts.gemini.capabilityEmbeddings') }
+])
+const zhipuEndpointCapabilityOptions = computed<{ value: ZhipuEndpointCapability; label: string }[]>(() => [
+  { value: 'chat_completions', label: t('admin.accounts.zhipu.capabilityGeneration') },
+  { value: 'embeddings', label: t('admin.accounts.zhipu.capabilityEmbeddings') }
 ])
 const openAITextGenerationCapabilityEnabled = computed(() =>
   openAIEndpointCapabilities.value.includes('chat_completions')
 )
 
-const normalizeOpenAIEndpointCapabilities = (values: OpenAIEndpointCapability[]) => {
-  const allowed: OpenAIEndpointCapability[] = ['chat_completions', 'embeddings']
+const normalizeOpenAIEndpointCapabilities = (values: OpenAIEndpointCapability[]): OpenAIEndpointCapability[] => {
+  const allowed: OpenAIEndpointCapability[] = ['chat_completions', 'embeddings', 'rerank']
   const selected = allowed.filter((value) => values.includes(value))
-  return selected.length > 0 ? selected : allowed
+  return selected.length > 0 ? selected : ['chat_completions', 'embeddings']
 }
+
+const isOfficialOpenRouterBaseURL = (baseURL: unknown) => {
+  if (typeof baseURL !== 'string') return false
+  try {
+    const parsed = new URL(baseURL.trim())
+    const path = parsed.pathname.replace(/\/$/, '')
+    return parsed.protocol === 'https:' &&
+      parsed.hostname.toLowerCase() === 'openrouter.ai' &&
+      !parsed.username && !parsed.password && !parsed.search && !parsed.hash &&
+      (path === '' || path === '/api' || path === '/api/v1')
+  } catch {
+    return false
+  }
+}
+
+const defaultOpenAIEndpointCapabilities = (baseURL: unknown): OpenAIEndpointCapability[] => [
+  'chat_completions',
+  'embeddings',
+  ...(isOfficialOpenRouterBaseURL(baseURL) ? ['rerank' as const] : [])
+]
 
 const readOpenAIEndpointCapabilities = (credentials?: Record<string, unknown>): OpenAIEndpointCapability[] => {
   const raw = credentials?.openai_capabilities
   if (Array.isArray(raw)) {
     return normalizeOpenAIEndpointCapabilities(
       raw.filter((value): value is OpenAIEndpointCapability =>
-        value === 'chat_completions' || value === 'embeddings'
+        value === 'chat_completions' || value === 'embeddings' || value === 'rerank'
       )
     )
   }
@@ -3512,7 +3598,7 @@ const readOpenAIEndpointCapabilities = (credentials?: Record<string, unknown>): 
         .filter((value) => capabilityMap[value] === true)
     )
   }
-  return ['chat_completions', 'embeddings']
+  return defaultOpenAIEndpointCapabilities(credentials?.base_url)
 }
 
 const toggleOpenAIEndpointCapability = (capability: OpenAIEndpointCapability, event?: Event) => {
@@ -3538,11 +3624,107 @@ const toggleOpenAIEndpointCapability = (capability: OpenAIEndpointCapability, ev
 
 const applyOpenAIEndpointCapabilities = (credentials: Record<string, unknown>) => {
   const capabilities = normalizeOpenAIEndpointCapabilities(openAIEndpointCapabilities.value)
-  if (capabilities.length === 2) {
+  const defaults = defaultOpenAIEndpointCapabilities(credentials.base_url)
+  const isDefault = capabilities.length === defaults.length &&
+    capabilities.every((value) => defaults.includes(value))
+  if (isDefault) {
     delete credentials.openai_capabilities
     return
   }
   credentials.openai_capabilities = capabilities
+}
+
+const normalizeGeminiEndpointCapabilities = (values: GeminiEndpointCapability[]): GeminiEndpointCapability[] => {
+  const allowed: GeminiEndpointCapability[] = ['gemini_native', 'embeddings']
+  const selected = allowed.filter((value) => values.includes(value))
+  return selected.length > 0 ? selected : allowed
+}
+
+const readGeminiEndpointCapabilities = (credentials?: Record<string, unknown>): GeminiEndpointCapability[] => {
+  const raw = credentials?.endpoint_capabilities
+  if (Array.isArray(raw)) {
+    return normalizeGeminiEndpointCapabilities(
+      raw.filter((value): value is GeminiEndpointCapability =>
+        value === 'gemini_native' || value === 'embeddings'
+      )
+    )
+  }
+  if (raw !== null && typeof raw === 'object') {
+    const capabilityMap = raw as Record<string, unknown>
+    return normalizeGeminiEndpointCapabilities(
+      geminiEndpointCapabilityOptions.value
+        .map((option) => option.value)
+        .filter((value) => capabilityMap[value] === true)
+    )
+  }
+  return ['gemini_native', 'embeddings']
+}
+
+const toggleGeminiEndpointCapability = (capability: GeminiEndpointCapability, event?: Event) => {
+  if (geminiEndpointCapabilities.value.includes(capability)) {
+    if (geminiEndpointCapabilities.value.length <= 1) {
+      const input = event?.target as HTMLInputElement | null
+      if (input) input.checked = true
+      return
+    }
+    geminiEndpointCapabilities.value = geminiEndpointCapabilities.value.filter((value) => value !== capability)
+    return
+  }
+  geminiEndpointCapabilities.value = normalizeGeminiEndpointCapabilities([
+    ...geminiEndpointCapabilities.value,
+    capability
+  ])
+}
+
+const applyGeminiEndpointCapabilities = (credentials: Record<string, unknown>) => {
+  const capabilities = normalizeGeminiEndpointCapabilities(geminiEndpointCapabilities.value)
+  credentials.endpoint_capabilities = capabilities
+}
+
+const normalizeZhipuEndpointCapabilities = (values: ZhipuEndpointCapability[]): ZhipuEndpointCapability[] => {
+  const allowed: ZhipuEndpointCapability[] = ['chat_completions', 'embeddings']
+  const selected = allowed.filter((value) => values.includes(value))
+  return selected.length > 0 ? selected : allowed
+}
+
+const readZhipuEndpointCapabilities = (credentials?: Record<string, unknown>): ZhipuEndpointCapability[] => {
+  const raw = credentials?.endpoint_capabilities
+  if (Array.isArray(raw)) {
+    return normalizeZhipuEndpointCapabilities(
+      raw.filter((value): value is ZhipuEndpointCapability =>
+        value === 'chat_completions' || value === 'embeddings'
+      )
+    )
+  }
+  if (raw !== null && typeof raw === 'object') {
+    const capabilityMap = raw as Record<string, unknown>
+    return normalizeZhipuEndpointCapabilities(
+      zhipuEndpointCapabilityOptions.value
+        .map((option) => option.value)
+        .filter((value) => capabilityMap[value] === true)
+    )
+  }
+  return ['chat_completions', 'embeddings']
+}
+
+const toggleZhipuEndpointCapability = (capability: ZhipuEndpointCapability, event?: Event) => {
+  if (zhipuEndpointCapabilities.value.includes(capability)) {
+    if (zhipuEndpointCapabilities.value.length <= 1) {
+      const input = event?.target as HTMLInputElement | null
+      if (input) input.checked = true
+      return
+    }
+    zhipuEndpointCapabilities.value = zhipuEndpointCapabilities.value.filter((value) => value !== capability)
+    return
+  }
+  zhipuEndpointCapabilities.value = normalizeZhipuEndpointCapabilities([
+    ...zhipuEndpointCapabilities.value,
+    capability
+  ])
+}
+
+const applyZhipuEndpointCapabilities = (credentials: Record<string, unknown>) => {
+  credentials.endpoint_capabilities = normalizeZhipuEndpointCapabilities(zhipuEndpointCapabilities.value)
 }
 const normalizeOpenAIResponsesMode = (mode: unknown): OpenAIResponsesMode => {
   if (mode === 'force_responses' || mode === 'force_chat_completions') {
@@ -3804,6 +3986,8 @@ const syncFormFromAccount = (newAccount: Account | null) => {
   openAICompactMode.value = 'auto'
   openAIResponsesMode.value = 'auto'
   openAIEndpointCapabilities.value = ['chat_completions', 'embeddings']
+  geminiEndpointCapabilities.value = ['gemini_native', 'embeddings']
+  zhipuEndpointCapabilities.value = ['chat_completions', 'embeddings']
   openAICompactModelMappings.value = []
   openaiOAuthResponsesWebSocketV2Mode.value = OPENAI_WS_MODE_OFF
   openaiAPIKeyResponsesWebSocketV2Mode.value = OPENAI_WS_MODE_OFF
@@ -3873,6 +4057,16 @@ const syncFormFromAccount = (newAccount: Account | null) => {
     if (compactMappings && typeof compactMappings === 'object') {
       openAICompactModelMappings.value = Object.entries(compactMappings).map(([from, to]) => ({ from, to }))
     }
+  }
+  if (newAccount.platform === 'gemini' && newAccount.type === 'apikey') {
+    geminiEndpointCapabilities.value = readGeminiEndpointCapabilities(
+      newAccount.credentials as Record<string, unknown> | undefined
+    )
+  }
+  if (newAccount.platform === 'zhipu') {
+    zhipuEndpointCapabilities.value = readZhipuEndpointCapabilities(
+      newAccount.credentials as Record<string, unknown> | undefined
+    )
   }
   if (newAccount.platform === 'anthropic' && newAccount.type === 'apikey') {
     anthropicPassthroughEnabled.value = extra?.anthropic_passthrough === true
@@ -4809,6 +5003,12 @@ const handleSubmit = async () => {
         } else {
           delete newCredentials.compact_model_mapping
         }
+      }
+      if (props.account.platform === 'gemini') {
+        applyGeminiEndpointCapabilities(newCredentials)
+      }
+      if (props.account.platform === 'zhipu') {
+        applyZhipuEndpointCapabilities(newCredentials)
       }
 
       // Add pool mode if enabled

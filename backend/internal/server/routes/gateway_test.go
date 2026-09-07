@@ -94,6 +94,22 @@ func TestGatewayRoutesOpenAIAlphaSearchPathsAreRegistered(t *testing.T) {
 	}
 }
 
+func TestGatewayRoutesUnifiedEmbeddingAndRerankAliasesAreRegistered(t *testing.T) {
+	router := newGatewayRoutesTestRouter(service.PlatformGemini)
+	registered := make(map[string]bool)
+	for _, route := range router.Routes() {
+		registered[route.Method+" "+route.Path] = true
+	}
+	for _, route := range []string{
+		"POST /v1/embeddings",
+		"POST /embeddings",
+		"POST /v1/rerank",
+		"POST /rerank",
+	} {
+		require.True(t, registered[route], "%s should be registered", route)
+	}
+}
+
 func TestGatewayRoutesAlphaSearchRejectsUnsupportedGroup(t *testing.T) {
 	router := newGatewayRoutesTestRouter(service.PlatformGrok)
 	req := httptest.NewRequest(http.MethodPost, "/v1/alpha/search", strings.NewReader(`{"model":"gpt-5.6-sol"}`))
@@ -357,7 +373,7 @@ func TestGatewayRoutesCompositeVideoGenerationAllowed(t *testing.T) {
 	require.NotContains(t, w.Body.String(), "not supported")
 }
 
-func TestGatewayRoutesCompositeOpenAIOnlyEndpointsRequireOpenAITarget(t *testing.T) {
+func TestGatewayRoutesCompositeEmbeddingsDispatchesByConcreteTarget(t *testing.T) {
 	router := newGatewayRoutesTestRouter(service.PlatformComposite)
 
 	req := httptest.NewRequest(http.MethodPost, "/v1/embeddings", strings.NewReader(`{"model":"gemini-2.5-pro","input":"hello"}`))
@@ -365,7 +381,7 @@ func TestGatewayRoutesCompositeOpenAIOnlyEndpointsRequireOpenAITarget(t *testing
 	w := httptest.NewRecorder()
 
 	router.ServeHTTP(w, req)
-	require.Equal(t, http.StatusNotFound, w.Code)
+	require.NotEqual(t, http.StatusNotFound, w.Code)
 
 	req = httptest.NewRequest(http.MethodPost, "/v1/embeddings", strings.NewReader(`{"model":"text-embedding-3-small","input":"hello"}`))
 	req.Header.Set("Content-Type", "application/json")

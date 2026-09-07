@@ -671,6 +671,7 @@ export type CompositeRouteEndpoint =
   | 'responses'
   | 'chat_completions'
   | 'embeddings'
+  | 'rerank'
   | 'images'
   | 'gemini'
 
@@ -1448,7 +1449,9 @@ export interface CodexUsageSnapshot {
 
 export type OpenAICompactMode = 'auto' | 'force_on' | 'force_off'
 export type OpenAIResponsesMode = 'auto' | 'force_responses' | 'force_chat_completions'
-export type OpenAIEndpointCapability = 'chat_completions' | 'embeddings'
+export type OpenAIEndpointCapability = 'chat_completions' | 'embeddings' | 'rerank'
+export type GeminiEndpointCapability = 'gemini_native' | 'embeddings'
+export type ZhipuEndpointCapability = 'chat_completions' | 'embeddings'
 
 export interface OpenAICompactState {
   openai_compact_mode?: OpenAICompactMode

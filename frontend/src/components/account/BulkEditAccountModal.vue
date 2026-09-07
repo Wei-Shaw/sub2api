@@ -1031,48 +1031,51 @@
         </div>
       </div>
 
-      <!-- OpenAI API Key endpoint capabilities -->
-      <div v-if="allOpenAIAPIKey" class="border-t border-gray-200 pt-4 dark:border-dark-600">
+      <!-- API Key endpoint capabilities -->
+      <div v-if="allEndpointCapabilitiesEligible" class="border-t border-gray-200 pt-4 dark:border-dark-600">
         <div class="mb-3 flex items-center justify-between gap-4">
           <div class="flex-1">
             <label
-              id="bulk-edit-openai-endpoint-capabilities-label"
+              :id="`bulk-edit-${endpointCapabilityTestIDPrefix}-endpoint-capabilities-label`"
               class="input-label mb-0"
-              for="bulk-edit-openai-endpoint-capabilities-enabled"
+              :for="`bulk-edit-${endpointCapabilityTestIDPrefix}-endpoint-capabilities-enabled`"
             >
-              {{ t('admin.accounts.openai.endpointCapabilities') }}
+              {{ endpointCapabilitiesTitle }}
             </label>
             <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
-              {{ t('admin.accounts.openai.endpointCapabilitiesDesc') }}
+              {{ endpointCapabilitiesDescription }}
             </p>
           </div>
           <input
-            v-model="enableOpenAIEndpointCapabilities"
-            id="bulk-edit-openai-endpoint-capabilities-enabled"
+            v-model="enableEndpointCapabilities"
+            :id="`bulk-edit-${endpointCapabilityTestIDPrefix}-endpoint-capabilities-enabled`"
             type="checkbox"
-            aria-controls="bulk-edit-openai-endpoint-capabilities-body"
+            :aria-controls="`bulk-edit-${endpointCapabilityTestIDPrefix}-endpoint-capabilities-body`"
             class="rounded border-gray-300 text-primary-600 focus:ring-primary-500"
           />
         </div>
         <div
-          id="bulk-edit-openai-endpoint-capabilities-body"
-          :class="!enableOpenAIEndpointCapabilities && 'pointer-events-none opacity-50'"
+          :id="`bulk-edit-${endpointCapabilityTestIDPrefix}-endpoint-capabilities-body`"
+          :class="!enableEndpointCapabilities && 'pointer-events-none opacity-50'"
           role="group"
-          aria-labelledby="bulk-edit-openai-endpoint-capabilities-label"
+          :aria-labelledby="`bulk-edit-${endpointCapabilityTestIDPrefix}-endpoint-capabilities-label`"
         >
-          <div class="grid grid-cols-1 gap-2 sm:grid-cols-2">
+          <div class="grid grid-cols-1 gap-2 sm:grid-cols-3">
             <label
-              v-for="option in openAIEndpointCapabilityOptions"
+              v-for="option in endpointCapabilityOptions"
               :key="option.value"
-              class="flex cursor-pointer items-center gap-2 rounded-lg border border-gray-200 px-3 py-2 text-sm dark:border-dark-600"
+              :class="[
+                'flex items-center gap-2 rounded-lg border border-gray-200 px-3 py-2 text-sm dark:border-dark-600',
+                option.disabled ? 'cursor-not-allowed opacity-60' : 'cursor-pointer'
+              ]"
             >
               <input
                 type="checkbox"
-                :disabled="!enableOpenAIEndpointCapabilities"
+                :disabled="!enableEndpointCapabilities || option.disabled"
                 class="rounded border-gray-300 text-primary-600 focus:ring-primary-500 dark:border-dark-500"
-                :data-testid="`bulk-edit-openai-endpoint-capability-${option.value}`"
-                :checked="openAIEndpointCapabilities.includes(option.value)"
-                @change="toggleOpenAIEndpointCapability(option.value, $event)"
+                :data-testid="`bulk-edit-${endpointCapabilityTestIDPrefix}-endpoint-capability-${option.value}`"
+                :checked="endpointCapabilities.includes(option.value)"
+                @change="toggleEndpointCapability(option.value, $event)"
               />
               <span class="text-gray-700 dark:text-gray-200">{{ option.label }}</span>
             </label>
@@ -1117,7 +1120,7 @@
             aria-labelledby="bulk-edit-openai-responses-mode-label"
           />
           <p
-            v-if="enableOpenAIEndpointCapabilities && !openAITextGenerationCapabilityEnabled"
+            v-if="enableEndpointCapabilities && !openAITextGenerationCapabilityEnabled"
             class="mt-2 rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-700 dark:bg-amber-900/20 dark:text-amber-300"
             data-testid="bulk-edit-openai-responses-mode-not-applicable"
           >
@@ -1484,7 +1487,9 @@ import type {
   AccountType,
   OpenAICompactMode,
   OpenAIEndpointCapability,
-  OpenAIResponsesMode
+  OpenAIResponsesMode,
+  GeminiEndpointCapability,
+  ZhipuEndpointCapability
 } from '@/types'
 import BaseDialog from '@/components/common/BaseDialog.vue'
 import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
@@ -1591,6 +1596,39 @@ const allOpenAIAPIKey = computed(() => {
   )
 })
 
+const allGeminiAPIKey = computed(() => {
+  return (
+    targetSelectedPlatforms.value.length === 1 &&
+    targetSelectedPlatforms.value[0] === 'gemini' &&
+    targetSelectedTypes.value.length > 0 &&
+    targetSelectedTypes.value.every(t => t === 'apikey')
+  )
+})
+const allGemini = computed(() => {
+  return (
+    targetSelectedPlatforms.value.length === 1 &&
+    targetSelectedPlatforms.value[0] === 'gemini' &&
+    targetSelectedTypes.value.length > 0
+  )
+})
+const allZhipu = computed(() => {
+  return (
+    targetSelectedPlatforms.value.length === 1 &&
+    targetSelectedPlatforms.value[0] === 'zhipu' &&
+    targetSelectedTypes.value.length > 0
+  )
+})
+const allEndpointCapabilitiesEligible = computed(() =>
+  allOpenAIAPIKey.value || allGemini.value || allZhipu.value
+)
+const geminiEmbeddingsAvailable = computed(() => allGeminiAPIKey.value)
+const endpointCapabilitiesPlatform = computed<'openai' | 'gemini' | 'zhipu' | null>(() => {
+  if (allOpenAIAPIKey.value) return 'openai'
+  if (allGemini.value) return 'gemini'
+  if (allZhipu.value) return 'zhipu'
+  return null
+})
+
 // 上游倍率自动探测已放宽到全部 API-key 平台：只要求所选类型全为 apikey，
 // 平台不限（sub2api 上游即可应答 /v1/sub2api/billing）。
 const allBillingProbeCapable = computed(() => {
@@ -1660,7 +1698,7 @@ const enableGroups = ref(false)
 const enableOpenAIPassthrough = ref(false)
 const enableOpenAIFlattenNamespaces = ref(false)
 const enableOpenAILongContextBilling = ref(false)
-const enableOpenAIEndpointCapabilities = ref(false)
+const enableEndpointCapabilities = ref(false)
 const enableOpenAIResponsesMode = ref(false)
 const enableOpenAIWSMode = ref(false)
 const enableOpenAIAPIKeyWSMode = ref(false)
@@ -1696,7 +1734,7 @@ const openaiPassthroughEnabled = ref(false)
 // Codex namespace 工具摊平兼容开关（仅 OAuth），缺省关闭即原样保留
 const openaiFlattenNamespacesEnabled = ref(false)
 const openAILongContextBillingEnabled = ref(false)
-const openAIEndpointCapabilities = ref<OpenAIEndpointCapability[]>([
+const endpointCapabilities = ref<Array<OpenAIEndpointCapability | GeminiEndpointCapability | ZhipuEndpointCapability>>([
   'chat_completions',
   'embeddings'
 ])
@@ -1783,47 +1821,112 @@ const openAITextEndpointCapabilityLabel = computed(() => {
   return t('admin.accounts.openai.capabilityTextAuto')
 })
 const openAIEndpointCapabilityOptions = computed<
-  Array<{ value: OpenAIEndpointCapability; label: string }>
+  Array<{ value: OpenAIEndpointCapability; label: string; disabled?: boolean }>
 >(() => [
   { value: 'chat_completions', label: openAITextEndpointCapabilityLabel.value },
-  { value: 'embeddings', label: t('admin.accounts.openai.capabilityEmbeddings') }
+  { value: 'embeddings', label: t('admin.accounts.openai.capabilityEmbeddings') },
+  { value: 'rerank', label: t('admin.accounts.openai.capabilityRerank') }
 ])
+const geminiEndpointCapabilityOptions = computed<
+  Array<{ value: GeminiEndpointCapability; label: string; disabled?: boolean }>
+>(() => [
+  { value: 'gemini_native', label: t('admin.accounts.gemini.capabilityNativeGeneration') },
+  {
+    value: 'embeddings',
+    label: t('admin.accounts.gemini.capabilityEmbeddings'),
+    disabled: !geminiEmbeddingsAvailable.value
+  }
+])
+const zhipuEndpointCapabilityOptions = computed<
+  Array<{ value: ZhipuEndpointCapability; label: string; disabled?: boolean }>
+>(() => [
+  { value: 'chat_completions', label: t('admin.accounts.zhipu.capabilityGeneration') },
+  { value: 'embeddings', label: t('admin.accounts.zhipu.capabilityEmbeddings') }
+])
+const endpointCapabilityOptions = computed(() =>
+  allGemini.value
+    ? geminiEndpointCapabilityOptions.value
+    : allZhipu.value
+      ? zhipuEndpointCapabilityOptions.value
+      : openAIEndpointCapabilityOptions.value
+)
+const endpointCapabilityTestIDPrefix = computed(() =>
+  allGemini.value ? 'gemini' : allZhipu.value ? 'zhipu' : 'openai'
+)
+const endpointCapabilitiesTitle = computed(() => t(
+  allGemini.value
+    ? 'admin.accounts.gemini.endpointCapabilities'
+    : allZhipu.value
+      ? 'admin.accounts.zhipu.endpointCapabilities'
+      : 'admin.accounts.openai.endpointCapabilities'
+))
+const endpointCapabilitiesDescription = computed(() => t(
+  allGemini.value
+    ? 'admin.accounts.gemini.endpointCapabilitiesDesc'
+    : allZhipu.value
+      ? 'admin.accounts.zhipu.endpointCapabilitiesDesc'
+      : 'admin.accounts.openai.endpointCapabilitiesDesc'
+))
 const openAITextGenerationCapabilityEnabled = computed(() =>
-  openAIEndpointCapabilities.value.includes('chat_completions')
+  endpointCapabilities.value.includes('chat_completions')
 )
 const openAIResponsesModeApplicable = computed(
-  () => !enableOpenAIEndpointCapabilities.value || openAITextGenerationCapabilityEnabled.value
+  () => !enableEndpointCapabilities.value || openAITextGenerationCapabilityEnabled.value
 )
 
-const normalizeOpenAIEndpointCapabilities = (values: OpenAIEndpointCapability[]) => {
-  const allowed: OpenAIEndpointCapability[] = ['chat_completions', 'embeddings']
+const normalizeOpenAIEndpointCapabilities = (values: Array<OpenAIEndpointCapability | GeminiEndpointCapability | ZhipuEndpointCapability>): OpenAIEndpointCapability[] => {
+  const allowed: OpenAIEndpointCapability[] = ['chat_completions', 'embeddings', 'rerank']
+  const selected = allowed.filter((value) => values.includes(value))
+  return selected.length > 0 ? selected : ['chat_completions', 'embeddings']
+}
+
+const normalizeGeminiEndpointCapabilities = (values: Array<OpenAIEndpointCapability | GeminiEndpointCapability | ZhipuEndpointCapability>): GeminiEndpointCapability[] => {
+  const allowed: GeminiEndpointCapability[] = ['gemini_native', 'embeddings']
+  const selected = allowed.filter((value) => values.includes(value) &&
+    (value !== 'embeddings' || geminiEmbeddingsAvailable.value))
+  return selected.length > 0 ? selected : ['gemini_native']
+}
+const normalizeZhipuEndpointCapabilities = (values: Array<OpenAIEndpointCapability | GeminiEndpointCapability | ZhipuEndpointCapability>): ZhipuEndpointCapability[] => {
+  const allowed: ZhipuEndpointCapability[] = ['chat_completions', 'embeddings']
   const selected = allowed.filter((value) => values.includes(value))
   return selected.length > 0 ? selected : allowed
 }
 
-const toggleOpenAIEndpointCapability = (
-  capability: OpenAIEndpointCapability,
+const toggleEndpointCapability = (
+  capability: OpenAIEndpointCapability | GeminiEndpointCapability | ZhipuEndpointCapability,
   event?: Event
 ) => {
-  if (openAIEndpointCapabilities.value.includes(capability)) {
-    if (openAIEndpointCapabilities.value.length <= 1) {
+  if (endpointCapabilities.value.includes(capability)) {
+    if (endpointCapabilities.value.length <= 1) {
       const input = event?.target as HTMLInputElement | null
       if (input) input.checked = true
       return
     }
-    openAIEndpointCapabilities.value = openAIEndpointCapabilities.value.filter(
+    endpointCapabilities.value = endpointCapabilities.value.filter(
       (value) => value !== capability
     )
-    if (!openAITextGenerationCapabilityEnabled.value) {
+    if (allOpenAIAPIKey.value && !openAITextGenerationCapabilityEnabled.value) {
       openAIResponsesMode.value = 'auto'
     }
     return
   }
-  openAIEndpointCapabilities.value = normalizeOpenAIEndpointCapabilities([
-    ...openAIEndpointCapabilities.value,
-    capability
-  ])
+  const selected = [...endpointCapabilities.value, capability]
+  endpointCapabilities.value = allGemini.value
+    ? normalizeGeminiEndpointCapabilities(selected)
+    : allZhipu.value
+      ? normalizeZhipuEndpointCapabilities(selected)
+      : normalizeOpenAIEndpointCapabilities(selected)
 }
+
+watch(endpointCapabilitiesPlatform, (platform) => {
+  if (!enableEndpointCapabilities.value) {
+    endpointCapabilities.value = platform === 'gemini'
+      ? geminiEmbeddingsAvailable.value ? ['gemini_native', 'embeddings'] : ['gemini_native']
+      : platform === 'zhipu'
+        ? ['chat_completions', 'embeddings']
+        : ['chat_completions', 'embeddings']
+  }
+}, { immediate: true })
 const openAIWSModeConcurrencyHintKey = computed(() =>
   resolveOpenAIWSModeConcurrencyHintKey(openaiOAuthResponsesWebSocketV2Mode.value)
 )
@@ -1926,8 +2029,8 @@ const buildUpdatePayload = (): Record<string, unknown> | null => {
   let credentialsChanged = false
   const applyOpenAILongContextBilling =
     enableOpenAILongContextBilling.value && allOpenAIPassthroughCapable.value
-  const applyOpenAIEndpointCapabilities =
-    enableOpenAIEndpointCapabilities.value && allOpenAIAPIKey.value
+  const applyEndpointCapabilities =
+    enableEndpointCapabilities.value && allEndpointCapabilitiesEligible.value
   const applyOpenAIResponsesMode = enableOpenAIResponsesMode.value && allOpenAIAPIKey.value
   const ensureExtra = (): Record<string, unknown> => {
     if (!updates.extra) {
@@ -1994,17 +2097,24 @@ const buildUpdatePayload = (): Record<string, unknown> | null => {
     extra.openai_long_context_billing_enabled = openAILongContextBillingEnabled.value
   }
 
-  if (applyOpenAIEndpointCapabilities) {
-    credentials.openai_capabilities =
-      openAIEndpointCapabilities.value.length === 2
-        ? null
-        : [...openAIEndpointCapabilities.value]
+  if (applyEndpointCapabilities && allOpenAIAPIKey.value) {
+    credentials.openai_capabilities = normalizeOpenAIEndpointCapabilities(endpointCapabilities.value)
+    credentialsChanged = true
+  }
+
+  if (applyEndpointCapabilities && allGemini.value) {
+    credentials.endpoint_capabilities = normalizeGeminiEndpointCapabilities(endpointCapabilities.value)
+    credentialsChanged = true
+  }
+
+  if (applyEndpointCapabilities && allZhipu.value) {
+    credentials.endpoint_capabilities = normalizeZhipuEndpointCapabilities(endpointCapabilities.value)
     credentialsChanged = true
   }
 
   if (
     applyOpenAIResponsesMode ||
-    (applyOpenAIEndpointCapabilities && !openAITextGenerationCapabilityEnabled.value)
+    (applyEndpointCapabilities && allOpenAIAPIKey.value && !openAITextGenerationCapabilityEnabled.value)
   ) {
     const extra = ensureExtra()
     extra.openai_responses_mode =
@@ -2204,7 +2314,7 @@ const handleSubmit = async () => {
     enableOpenAIPassthrough.value ||
     enableOpenAIFlattenNamespaces.value ||
     (enableOpenAILongContextBilling.value && allOpenAIPassthroughCapable.value) ||
-    (enableOpenAIEndpointCapabilities.value && allOpenAIAPIKey.value) ||
+    (enableEndpointCapabilities.value && allEndpointCapabilitiesEligible.value) ||
     (enableOpenAIResponsesMode.value && allOpenAIAPIKey.value) ||
     enableModelRestriction.value ||
     enableCustomErrorCodes.value ||
@@ -2366,7 +2476,7 @@ watch(
       enableOpenAIPassthrough.value = false
       enableOpenAIFlattenNamespaces.value = false
       enableOpenAILongContextBilling.value = false
-      enableOpenAIEndpointCapabilities.value = false
+      enableEndpointCapabilities.value = false
       enableOpenAIResponsesMode.value = false
       enableOpenAIWSMode.value = false
       enableOpenAIAPIKeyWSMode.value = false
@@ -2384,7 +2494,7 @@ watch(
       openaiPassthroughEnabled.value = false
       openaiFlattenNamespacesEnabled.value = false
       openAILongContextBillingEnabled.value = false
-      openAIEndpointCapabilities.value = ['chat_completions', 'embeddings']
+      endpointCapabilities.value = ['chat_completions', 'embeddings']
       openAIResponsesMode.value = 'auto'
       modelRestrictionMode.value = 'whitelist'
       allowedModels.value = []

@@ -91,6 +91,7 @@ const openAILongContextBillingEnabledKey = "openai_long_context_billing_enabled"
 const (
 	OpenAIEndpointCapabilityChatCompletions OpenAIEndpointCapability = "chat_completions"
 	OpenAIEndpointCapabilityEmbeddings      OpenAIEndpointCapability = "embeddings"
+	OpenAIEndpointCapabilityRerank          OpenAIEndpointCapability = "rerank"
 	OpenAIEndpointCapabilityAlphaSearch     OpenAIEndpointCapability = "alpha_search"
 	OpenAIEndpointCapabilityLive            OpenAIEndpointCapability = "live"
 	// OpenAIEndpointCapabilityGrokMediaGeneration keeps image/video generation
@@ -107,6 +108,7 @@ const (
 )
 
 const openAIEndpointCapabilitiesCredentialKey = "openai_capabilities"
+const endpointCapabilitiesCredentialKey = "endpoint_capabilities"
 
 // GrokMediaEligibleExtraKey is an optional per-account override stored in
 // accounts.extra. true forces media routing on, false disables it, and an
@@ -1329,6 +1331,23 @@ func (a *Account) IsOpenAIApiKey() bool {
 	return a.IsOpenAI() && a.Type == AccountTypeAPIKey
 }
 
+// IsOpenRouterAPIKey reports the existing OpenAI API-key account shape that is
+// explicitly configured for OpenRouter's official API host. OpenRouter is
+// intentionally represented by the existing OpenAI platform; it is not a new
+// platform or account type.
+func (a *Account) IsOpenRouterAPIKey() bool {
+	if a == nil || !a.IsOpenAIApiKey() || strings.TrimSpace(a.GetCredential("api_key")) == "" {
+		return false
+	}
+	baseURL := strings.TrimSpace(a.GetCredential("base_url"))
+	parsed, err := url.Parse(baseURL)
+	if err != nil || !strings.EqualFold(parsed.Scheme, "https") || !strings.EqualFold(parsed.Hostname(), "openrouter.ai") || parsed.User != nil || parsed.RawQuery != "" || parsed.Fragment != "" {
+		return false
+	}
+	path := strings.TrimRight(parsed.Path, "/")
+	return path == "" || path == "/api" || path == "/api/v1"
+}
+
 // GetOpenAIBaseURL 解析 OpenAI 协议族账号的上游 base_url。
 // 适用 openai 与国产 OpenAI 兼容供应商（kimi/zhipu/deepseek）；grok 走 GetGrokBaseURL，
 // 此处对 grok 返回 "" 以保持原有行为。
@@ -1777,8 +1796,67 @@ func (a *Account) SupportsOpenAIEndpointCapability(capability OpenAIEndpointCapa
 	if capability == "" {
 		return true
 	}
+	if capability == OpenAIEndpointCapabilityEmbeddings {
+		switch {
+		case a.Platform == PlatformGemini:
+			if a.Type != AccountTypeAPIKey {
+				return false
+			}
+			configured, found := a.endpointCapabilitySet(endpointCapabilitiesCredentialKey)
+			if !found {
+				// Gemini API-key capability settings use the provider-neutral key.
+				// Retain the legacy key as a read fallback for any early UI builds
+				// that persisted it before the generic name was introduced.
+				configured, found = a.openAIEndpointCapabilitySet()
+			}
+			if !found {
+				return true
+			}
+			return configured[string(capability)]
+		case a.Platform == PlatformZhipu:
+			// Zhipu endpoint choices are provider-neutral and apply across its
+			// account-mode/protocol forms. Keep the legacy OpenAI key only as a
+			// read fallback for pre-generic settings.
+			configured, found := a.endpointCapabilitySet(endpointCapabilitiesCredentialKey)
+			if !found {
+				configured, found = a.openAIEndpointCapabilitySet()
+			}
+			if !found {
+				return true
+			}
+			return configured[string(capability)]
+		case a.IsOpenAI():
+			if a.Type != AccountTypeAPIKey {
+				return false
+			}
+		default:
+			return false
+		}
+		configured, found := a.openAIEndpointCapabilitySet()
+		if !found {
+			return true
+		}
+		return configured[string(capability)]
+	}
+	if capability == OpenAIEndpointCapabilityRerank {
+		if !a.IsOpenRouterAPIKey() {
+			return false
+		}
+		configured, found := a.openAIEndpointCapabilitySet()
+		return !found || configured[string(capability)]
+	}
 	if !a.IsOpenAICompatible() {
 		return false
+	}
+	if a.Platform == PlatformZhipu && capability == OpenAIEndpointCapabilityChatCompletions {
+		configured, found := a.endpointCapabilitySet(endpointCapabilitiesCredentialKey)
+		if !found {
+			configured, found = a.openAIEndpointCapabilitySet()
+		}
+		if !found {
+			return true
+		}
+		return configured[string(capability)]
 	}
 	if a.IsGrok() {
 		switch capability {
@@ -1892,10 +1970,14 @@ func grokMediaEligibilityOverride(extra map[string]any) (bool, bool) {
 }
 
 func (a *Account) openAIEndpointCapabilitySet() (map[string]bool, bool) {
+	return a.endpointCapabilitySet(openAIEndpointCapabilitiesCredentialKey)
+}
+
+func (a *Account) endpointCapabilitySet(credentialKey string) (map[string]bool, bool) {
 	if a == nil || a.Credentials == nil {
 		return nil, false
 	}
-	raw, found := a.Credentials[openAIEndpointCapabilitiesCredentialKey]
+	raw, found := a.Credentials[credentialKey]
 	if !found || raw == nil {
 		return nil, false
 	}
