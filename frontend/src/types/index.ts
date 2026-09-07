@@ -531,7 +531,7 @@ export interface PaginationConfig {
 
 // ==================== API Key & Group Types ====================
 
-export type GroupPlatform = 'anthropic' | 'openai' | 'gemini' | 'antigravity' | 'grok' | 'kimi' | 'zhipu' | 'deepseek' | 'composite'
+export type GroupPlatform = 'anthropic' | 'openai' | 'gemini' | 'antigravity' | 'grok' | 'kimi' | 'zhipu' | 'deepseek' | 'kiro' | 'composite'
 
 export type VideoModelPrices = Record<string, Record<string, number>>
 
@@ -911,7 +911,7 @@ export interface UpdateGroupRequest {
 
 // ==================== Account & Proxy Types ====================
 
-export type AccountPlatform = 'anthropic' | 'openai' | 'gemini' | 'antigravity' | 'grok' | 'kimi' | 'zhipu' | 'deepseek'
+export type AccountPlatform = 'anthropic' | 'openai' | 'gemini' | 'antigravity' | 'grok' | 'kimi' | 'zhipu' | 'deepseek' | 'kiro'
 export type AccountType = 'oauth' | 'setup-token' | 'apikey' | 'upstream' | 'bedrock' | 'service_account'
 export type OAuthAddMethod = 'oauth' | 'setup-token'
 export type ProxyProtocol = 'http' | 'https' | 'socks5' | 'socks5h'
@@ -1397,6 +1397,12 @@ export interface AccountUsageInfo {
   grok_local_usage_7d?: WindowStats | null
   grok_local_usage_monthly?: WindowStats | null
   grok_billing?: GrokBillingSummary | null
+  /** Kiro credits 额度。used/limit 是**请求数**（AGENTIC_REQUEST），不是 token */
+  kiro_credits?: UsageProgress | null
+  /** 订阅档位，如 KIRO FREE / KIRO PRO+ */
+  kiro_subscription_title?: string
+  /** Overage 开关状态：ENABLED / DISABLED */
+  kiro_overage_status?: string
   subscription_tier?: string
   subscription_tier_raw?: string
   ai_credits?: Array<{

@@ -335,6 +335,43 @@
       <div v-else class="text-xs text-gray-400">-</div>
     </template>
 
+    <!-- Kiro accounts: credits quota from getUsageLimits (all auth methods, not just OAuth) -->
+    <template v-else-if="account.platform === 'kiro'">
+      <div v-if="kiroSubscriptionLabel" class="mb-1">
+        <span class="inline-block rounded px-1.5 py-0.5 text-[10px] font-medium bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400">
+          {{ kiroSubscriptionLabel }}
+        </span>
+      </div>
+
+      <!-- Loading state -->
+      <div v-if="loading" class="space-y-1.5">
+        <div class="flex items-center gap-1">
+          <div class="h-3 w-[32px] animate-pulse rounded bg-gray-200 dark:bg-gray-700"></div>
+          <div class="h-1.5 w-8 animate-pulse rounded-full bg-gray-200 dark:bg-gray-700"></div>
+          <div class="h-3 w-[32px] animate-pulse rounded bg-gray-200 dark:bg-gray-700"></div>
+        </div>
+      </div>
+
+      <!-- Error state -->
+      <div v-else-if="error" class="text-xs text-red-500">
+        {{ error }}
+      </div>
+
+      <!-- Usage data: kiro_credits.used_requests/limit_requests — 按请求数计，不是 token -->
+      <div v-else-if="usageInfo?.kiro_credits" class="space-y-1">
+        <UsageProgressBar
+          :label="t('admin.accounts.usageWindow.kiroCredits')"
+          :utilization="usageInfo.kiro_credits.utilization"
+          :resets-at="usageInfo.kiro_credits.resets_at"
+          color="amber"
+        />
+        <div v-if="kiroOverageDisabled" class="text-[10px] text-amber-600 dark:text-amber-400">
+          ⚠ {{ t('admin.accounts.usageWindow.kiroOverageDisabled') }}
+        </div>
+      </div>
+      <div v-else class="text-xs text-gray-400">-</div>
+    </template>
+
     <!-- Grok OAuth accounts: passive xAI quota headers + local Sub2API usage -->
     <template v-else-if="account.platform === 'grok' && account.type === 'oauth'">
       <div v-if="loading" class="space-y-1.5">
@@ -722,6 +759,10 @@ let visibilityObserver: IntersectionObserver | null = null
 const showUsageWindows = computed(() => {
   // Gemini: we can always compute local usage windows from DB logs (simulated quotas).
   if (props.account.platform === 'gemini') return true
+  // Kiro: credits quota applies regardless of auth_method (social/builder_id/idc/api_key
+  // all map to account.type values other than a fixed 'oauth', so the generic fallback
+  // below would miss api_key accounts).
+  if (props.account.platform === 'kiro') return true
   // CN providers: apikey 账号也有滚动用量窗口（coding plan）或余额（payg），
   // 由 CNProviderQuotaCell / CNProviderBalanceCell 自行探测与展示。
   if (
@@ -739,6 +780,9 @@ const shouldFetchUsage = computed(() => {
     return props.account.type === 'oauth' || props.account.type === 'setup-token'
   }
   if (props.account.platform === 'gemini') {
+    return true
+  }
+  if (props.account.platform === 'kiro') {
     return true
   }
   if (props.account.platform === 'antigravity') {
@@ -874,6 +918,12 @@ const aiCreditsDisplay = computed(() => {
   if (total <= 0) return null
   return total.toFixed(0)
 })
+
+// Kiro 订阅档位（KIRO FREE / KIRO PRO+ ...），后端已是可直接展示的成品字符串。
+const kiroSubscriptionLabel = computed(() => usageInfo.value?.kiro_subscription_title || '')
+
+// Kiro overage 关闭：额度用尽后不会自动超额，账号会直接不可调度——需要一个显眼提示。
+const kiroOverageDisabled = computed(() => usageInfo.value?.kiro_overage_status === 'DISABLED')
 
 // Antigravity 账户类型（从 load_code_assist 响应中提取）
 const antigravityTier = computed(() => {

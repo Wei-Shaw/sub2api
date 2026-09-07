@@ -1369,7 +1369,56 @@ func explicitRequestedReasoningEffortFromBody(body []byte) string {
 	if raw == "" {
 		raw = strings.TrimSpace(gjson.GetBytes(body, "output_config.effort").String())
 	}
+	if raw == "" {
+		raw = effortFromNativeThinkingBudget(body)
+	}
 	return raw
+}
+
+// effortFromNativeThinkingBudget 处理 Anthropic 原生的 thinking 参数——它是一个
+// 具体的 token 预算数字（thinking.budget_tokens），不是 output_config.effort/
+// reasoning.effort 那样的 low/medium/high/max 档位名字，此前完全没被任何一处
+// 推理强度提取逻辑识别过。真实 Claude Code 客户端习惯用这个原生字段而不是更新的
+// output_config.effort，导致用量记录里 requested_reasoning_effort 一列，对
+// 这类真实发生过的思考请求长期显示成空——不是没请求，是请求了但没被认出来
+// （对比同一批测试：GPT 侧走 reasoning.effort 能正确显示，Claude 侧走
+// thinking.budget_tokens 的全部显示为空，两者唯一的差异就是这个字段）。
+func effortFromNativeThinkingBudget(body []byte) string {
+	thinkingType := strings.ToLower(strings.TrimSpace(gjson.GetBytes(body, "thinking.type").String()))
+	budget := gjson.GetBytes(body, "thinking.budget_tokens").Int()
+	return effortFromThinkingTypeAndBudget(thinkingType, budget)
+}
+
+// effortFromThinkingTypeAndBudget 把 thinking.type + thinking.budget_tokens
+// 换算成离它最近的 low/medium/high/xhigh/max 档位名（anthropicReasoningEffortValues
+// 明确把 xhigh 列成 high 和 max 之间独立的一档，不是 max 的同义词，漏掉这一
+// 档会让预算落在这个区间的请求永远显示不出 xhigh），供 gateway_request.go 的
+// ParsedRequest.OutputEffort 解析和本文件的 explicitRequestedReasoningEffortFromBody
+// 共用同一份换算规则，不重复维护两份边界数字。档位边界复用
+// reasoningEffortBudgetTokens（openai_reasoning_effort_policy.go）——跟
+// kiro_gateway_thinking.go 的 kiroReasoningEffortBudgets 是同一份数字，只用于
+// 用量记录展示，不影响实际转发行为。
+func effortFromThinkingTypeAndBudget(thinkingType string, budgetTokens int64) string {
+	if thinkingType != "enabled" && thinkingType != "adaptive" {
+		return ""
+	}
+	switch {
+	case budgetTokens <= 0:
+		// 开了 thinking 但没给具体预算数字——没有数字可换算，只能给一个
+		// 不低估的档位：宁可展示偏高，也不要因为"没给数字"就干脆显示成
+		// 空白、看起来像没请求过思考。
+		return "high"
+	case budgetTokens <= int64(reasoningEffortBudgetTokens["low"]):
+		return "low"
+	case budgetTokens <= int64(reasoningEffortBudgetTokens["medium"]):
+		return "medium"
+	case budgetTokens <= int64(reasoningEffortBudgetTokens["high"]):
+		return "high"
+	case budgetTokens <= int64(reasoningEffortBudgetTokens["xhigh"]):
+		return "xhigh"
+	default:
+		return "max"
+	}
 }
 
 // CanonicalRequestedReasoningEffort extracts the client-requested effort before

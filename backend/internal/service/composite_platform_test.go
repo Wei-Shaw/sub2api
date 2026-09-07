@@ -211,7 +211,9 @@ func TestCompositeGroupSchedulerHasAllCanonicalPlatformBuckets(t *testing.T) {
 		platforms = append(platforms, platform)
 	}
 	require.ElementsMatch(t,
-		[]string{PlatformAnthropic, PlatformGemini, PlatformOpenAI, PlatformAntigravity, PlatformGrok, PlatformKimi, PlatformZhipu, PlatformDeepseek},
+		// I6: schedulerSnapshotPlatforms（schedulerCanonicalBuckets 的数据源）
+		// 补上了 PlatformKiro，canonical bucket 集合因此也多了 kiro。
+		[]string{PlatformAnthropic, PlatformGemini, PlatformOpenAI, PlatformAntigravity, PlatformGrok, PlatformKimi, PlatformZhipu, PlatformDeepseek, PlatformKiro},
 		platforms,
 	)
 }

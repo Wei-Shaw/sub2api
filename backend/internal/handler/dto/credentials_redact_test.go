@@ -88,6 +88,9 @@ func TestRedactCredentials_AllKnownSensitiveKeys(t *testing.T) {
 		"aws_secret_access_key", "aws_session_token",
 		"service_account_json", "service_account", "private_key",
 		"agent_private_key",
+		// Kiro IdC/Builder ID 的 OIDC 客户端密钥——之前遗漏，账号详情接口会
+		// 把它明文吐给管理员，见 account_credentials_redact.go 的说明。
+		"client_secret",
 	}
 	in := make(map[string]any, len(keys))
 	for _, k := range keys {

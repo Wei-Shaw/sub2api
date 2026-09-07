@@ -543,3 +543,55 @@ func TestIsAnthropicFableModel(t *testing.T) {
 	require.False(t, isAnthropicFableModel("claude-sonnet-4-6"))
 	require.False(t, isAnthropicFableModel(""))
 }
+
+// TestModelRateLimitKeysForRequest_Kiro_IncludesCreditsKey 是 C4 的单元级
+// 回归：modelRateLimitKeysForRequest 之前的 switch a.Platform 没有
+// PlatformKiro 分支，导致 model_rate_limits["KiroCredits"]（credits 耗尽/
+// 订阅停用/overage 冷却写入的 key）从未被调度器读回，是纯 write-only 遥测。
+// Kiro 的冷却是账号级的，不像 Antigravity 那样按具体 Gemini 模型区分，所以
+// 不管请求的是哪个模型，key 列表里都必须无条件包含这一个账号级 key。
+func TestModelRateLimitKeysForRequest_Kiro_IncludesCreditsKey(t *testing.T) {
+	account := &Account{Platform: PlatformKiro}
+
+	for _, model := range []string{"claude-sonnet-4.6", "claude-opus-4.6", "claude-haiku-4.6"} {
+		t.Run(model, func(t *testing.T) {
+			keys := account.modelRateLimitKeysForRequest(context.Background(), model)
+			require.Contains(t, keys, kiroCreditsExhaustedKey,
+				"Kiro 账号不管请求哪个模型，都必须检查账号级的 %q key", kiroCreditsExhaustedKey)
+		})
+	}
+}
+
+// TestIsSchedulableForModelWithContext_Kiro_ExcludesAccountOnCreditsKey 是
+// C4 的集成级回归——这正是能真正抓到 C4 的那条断言：核心调度器
+// （gateway_scheduling.go）直接调用的入口是
+// Account.IsSchedulableForModelWithContext，不是
+// modelRateLimitKeysForRequest 本身；即便后者的 key 列表算对了，如果
+// IsSchedulableForModelWithContext 沿途某处又不认这个平台，账号照样不会被
+// 真正排除。这里在一个满足所有其它可调度前提的 Kiro 账号上写入
+// model_rate_limits["KiroCredits"]，断言调度器会把它判定为不可调度。
+//
+// 用 break/restore 验证过：临时把 model_rate_limit.go 里的
+// `case PlatformKiro:` 分支去掉，这个测试会失败（账号仍判定为可调度）；
+// 恢复分支后通过。
+func TestIsSchedulableForModelWithContext_Kiro_ExcludesAccountOnCreditsKey(t *testing.T) {
+	future := time.Now().Add(time.Hour).Format(time.RFC3339)
+	account := &Account{
+		Platform:    PlatformKiro,
+		Status:      StatusActive,
+		Schedulable: true,
+		Extra: map[string]any{
+			modelRateLimitsKey: map[string]any{
+				kiroCreditsExhaustedKey: map[string]any{
+					"rate_limit_reset_at": future,
+				},
+			},
+		},
+	}
+
+	require.True(t, account.IsSchedulable(),
+		"账号本身的调度前置条件必须先满足，否则下面的断言测的就不是模型级限流了")
+	require.False(t, account.IsSchedulableForModelWithContext(context.Background(), "claude-sonnet-4.6"),
+		"C4：model_rate_limits[%q] 必须真正让调度器排除该账号，不能是 write-only 遥测",
+		kiroCreditsExhaustedKey)
+}

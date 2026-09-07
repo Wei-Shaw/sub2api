@@ -1239,6 +1239,57 @@ func TestParseGatewayRequest_OutputEffort(t *testing.T) {
 			body:       `{"model":"claude-opus-4-6","output_config":{"effort":" high "},"messages":[]}`,
 			wantEffort: "high",
 		},
+		// 真实 Claude Code 客户端习惯用原生的 thinking.budget_tokens（一个具体
+		// 数字），不是 output_config.effort 这样的档位名字——此前这种情况下
+		// OutputEffort 一直是空字符串，usage_log 的 requested_reasoning_effort
+		// 因此长期显示为空，看起来像没请求过思考，实际是请求了但没被认出来
+		// （真实账号对比测试发现：GPT 走 reasoning.effort 能正确显示，Claude
+		// 走 thinking.budget_tokens 的全部显示为空）。
+		{
+			name:       "native thinking budget_tokens low tier",
+			body:       `{"model":"claude-sonnet-4-6","thinking":{"type":"enabled","budget_tokens":500},"messages":[]}`,
+			wantEffort: "low",
+		},
+		{
+			name:       "native thinking budget_tokens medium tier",
+			body:       `{"model":"claude-sonnet-4-6","thinking":{"type":"enabled","budget_tokens":2000},"messages":[]}`,
+			wantEffort: "medium",
+		},
+		{
+			name:       "native thinking budget_tokens high tier",
+			body:       `{"model":"claude-sonnet-4-6","thinking":{"type":"enabled","budget_tokens":8000},"messages":[]}`,
+			wantEffort: "high",
+		},
+		{
+			name:       "native thinking budget_tokens xhigh tier",
+			body:       `{"model":"claude-sonnet-4-6","thinking":{"type":"enabled","budget_tokens":15000},"messages":[]}`,
+			wantEffort: "xhigh",
+		},
+		{
+			name:       "native thinking budget_tokens max tier",
+			body:       `{"model":"claude-sonnet-4-6","thinking":{"type":"enabled","budget_tokens":25000},"messages":[]}`,
+			wantEffort: "max",
+		},
+		{
+			name:       "native thinking enabled without budget_tokens still reports high, not blank",
+			body:       `{"model":"claude-sonnet-4-6","thinking":{"type":"enabled"},"messages":[]}`,
+			wantEffort: "high",
+		},
+		{
+			name:       "native thinking adaptive type also counts",
+			body:       `{"model":"claude-sonnet-4-6","thinking":{"type":"adaptive","budget_tokens":2000},"messages":[]}`,
+			wantEffort: "medium",
+		},
+		{
+			name:       "native thinking disabled stays blank",
+			body:       `{"model":"claude-sonnet-4-6","thinking":{"type":"disabled","budget_tokens":8000},"messages":[]}`,
+			wantEffort: "",
+		},
+		{
+			name:       "output_config.effort still wins over native thinking budget when both present",
+			body:       `{"model":"claude-sonnet-4-6","output_config":{"effort":"low"},"thinking":{"type":"enabled","budget_tokens":15000},"messages":[]}`,
+			wantEffort: "low",
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

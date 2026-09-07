@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/claude"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/kiro"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/openai"
 	middleware2 "github.com/Wei-Shaw/sub2api/internal/server/middleware"
 	"github.com/Wei-Shaw/sub2api/internal/service"
@@ -106,6 +107,18 @@ func TestDefaultModelIDsForAnthropicExcludeAntigravityGemini(t *testing.T) {
 
 	antigravityIDs := defaultModelIDsForPlatform(service.PlatformAntigravity)
 	require.Contains(t, antigravityIDs, "gemini-2.5-flash")
+}
+
+// TestDefaultModelIDsForPlatform_Kiro_UsesKiroDefaultsNotClaudeFallback 是 I4
+// 的回归：defaultModelIDsForPlatform 的 switch 之前没有 PlatformKiro 分支，
+// 落到 default 分支返回 Claude 模型列表——Kiro 账号池为空、又没有开
+// CustomModelsListEnabled 时，/v1/models 会给 Kiro 分组的客户端展示一份
+// Kiro 上游根本不认的 Claude 模型名。
+func TestDefaultModelIDsForPlatform_Kiro_UsesKiroDefaultsNotClaudeFallback(t *testing.T) {
+	got := defaultModelIDsForPlatform(service.PlatformKiro)
+	require.Equal(t, kiro.DefaultModels(), got)
+	require.NotEqual(t, defaultModelIDsForPlatform(service.PlatformAnthropic), got,
+		"Kiro 的默认模型列表不能退化成 Claude 平台的默认列表")
 }
 
 // Scenario: non-OpenAI groups return a Codex manifest instead of a standard model list.

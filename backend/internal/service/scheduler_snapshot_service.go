@@ -824,8 +824,13 @@ func (s *SchedulerSnapshotService) rebuildByAccount(ctx context.Context, account
 	return s.rebuildBuckets(ctx, buckets, reason)
 }
 
-func schedulerSnapshotPlatforms() [8]string {
-	return [8]string{PlatformAnthropic, PlatformGemini, PlatformOpenAI, PlatformAntigravity, PlatformGrok, PlatformKimi, PlatformZhipu, PlatformDeepseek}
+// schedulerSnapshotPlatforms 之前漏掉了 PlatformKiro（I6）——Kiro 账号的
+// model_rate_limits/账号级冷却变更因此从未触发过这里驱动的调度快照失效，
+// 只能等下一次全量同步才会被调度器看到。所有调用点都是 range 遍历或
+// `platforms[:]...` 全切片展开（数组长度对两者都不敏感，改成 [9]string 不
+// 需要动任何调用点，go build 会在假设有误时立刻报错）。
+func schedulerSnapshotPlatforms() [9]string {
+	return [9]string{PlatformAnthropic, PlatformGemini, PlatformOpenAI, PlatformAntigravity, PlatformGrok, PlatformKimi, PlatformZhipu, PlatformDeepseek, PlatformKiro}
 }
 
 // 生命周期辅助函数有意排除 group0；full rebuild 构造 group0 canonical 集时必须显式调用 canonical helper。

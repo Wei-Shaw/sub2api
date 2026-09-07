@@ -24,6 +24,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/pkg/claude"
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/geminicli"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/kiro"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/openai"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/response"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/timezone"
@@ -1390,6 +1391,20 @@ func (h *AccountHandler) refreshSingleAccount(ctx context.Context, account *serv
 	if account.IsCredentialShadow() {
 		return nil, "", infraerrors.BadRequest("SPARK_SHADOW_NO_REFRESH",
 			"cannot refresh spark shadow account; its credentials are managed by the parent account")
+	}
+	// Kiro 的 Type 现在准确反映鉴权方式（social/builder_id/idc 都是真 OAuth），
+	// 会通过上面的 IsOAuth() 门槛——但下面的 if/else 链条是照着 Anthropic 风格的
+	// OAuth 凭证形状写的，落到最后的 else 会错误地拿 h.oauthService（Anthropic）
+	// 去刷新 Kiro 的 token。Kiro 自己的刷新是反应式的（由真实 401 触发，见
+	// KiroTokenRefresher），这个手动刷新按钮目前不支持 Kiro，需要显式拒绝。
+	// Kiro 的 Type 现在准确反映鉴权方式（social/builder_id/idc 都是真 OAuth），
+	// 会通过上面的 IsOAuth() 门槛——但下面的 if/else 链条是照着 Anthropic 风格的
+	// OAuth 凭证形状写的，落到最后的 else 会错误地拿 h.oauthService（Anthropic）
+	// 去刷新 Kiro 的 token。Kiro 自己的刷新是反应式的（由真实 401 触发，见
+	// KiroTokenRefresher），这个手动刷新按钮目前不支持 Kiro，需要显式拒绝。
+	if account.Platform == service.PlatformKiro {
+		return nil, "", infraerrors.BadRequest("KIRO_MANUAL_REFRESH_UNSUPPORTED",
+			"kiro accounts refresh automatically on demand; manual refresh via this endpoint is not supported yet")
 	}
 
 	var newCredentials map[string]any
@@ -2863,6 +2878,33 @@ func (h *AccountHandler) GetAvailableModels(c *gin.Context) {
 					CreatedAt:   "",
 				})
 			}
+		}
+		response.Success(c, models)
+		return
+	}
+
+	// Handle Kiro accounts: return the real-account-verified whitelist
+	// (kiro.MapModel's targets, see internal/pkg/kiro/models.go)。加在这里、
+	// 在下面通用的 "Claude/Anthropic accounts" 分支之前——Kiro 账号的 Type
+	// 现在准确反映鉴权方式（跟 Antigravity 一样区分 OAuth/APIKey），如果没有
+	// 这个专属分支，OAuth 形态的 Kiro 账号会落进 IsOAuth() 分支，被错误地
+	// 当成 Anthropic 账号返回 claude.DefaultModels。
+	// Handle Kiro accounts: return the real-account-verified whitelist
+	// (kiro.MapModel's targets, see internal/pkg/kiro/models.go)。加在这里、
+	// 在下面通用的 "Claude/Anthropic accounts" 分支之前——Kiro 账号的 Type
+	// 现在准确反映鉴权方式（跟 Antigravity 一样区分 OAuth/APIKey），如果没有
+	// 这个专属分支，OAuth 形态的 Kiro 账号会落进 IsOAuth() 分支，被错误地
+	// 当成 Anthropic 账号返回 claude.DefaultModels。
+	if account.Platform == service.PlatformKiro {
+		defaultModels := kiro.DefaultModels()
+		models := make([]openai.Model, 0, len(defaultModels))
+		for _, id := range defaultModels {
+			models = append(models, openai.Model{
+				ID:          id,
+				Object:      "model",
+				Type:        "model",
+				DisplayName: id,
+			})
 		}
 		response.Success(c, models)
 		return

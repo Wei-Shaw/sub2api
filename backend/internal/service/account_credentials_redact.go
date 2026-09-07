@@ -5,6 +5,11 @@ package service
 var SensitiveCredentialKeys = []string{
 	// OAuth
 	"access_token", "refresh_token", "id_token", "agent_private_key",
+	// Kiro IdC/Builder ID 的 OIDC 客户端密钥——与 refresh_token 同等敏感，
+	// 泄露后可用于冒充该客户端刷新令牌。之前遗漏在这份清单外，账号详情
+	// 接口会把它明文吐给任何能看到账号的管理员（真实账号测试后走查代码时
+	// 发现，不是假设性风险）。
+	"client_secret",
 	// API Key 类
 	"api_key", "session_key", "cookie",
 	// Grok Web SSO / password (must never persist or echo after Build OAuth)

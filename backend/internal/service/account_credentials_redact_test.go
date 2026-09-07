@@ -84,7 +84,35 @@ func TestIsSensitiveCredentialKey(t *testing.T) {
 	require.True(t, IsSensitiveCredentialKey("refresh_token"))
 	require.True(t, IsSensitiveCredentialKey("api_key"))
 	require.True(t, IsSensitiveCredentialKey("private_key"))
+	// Kiro IdC/Builder ID 的 client_secret 与 refresh_token 同等敏感——之前
+	// 遗漏在清单外，账号详情接口会把它明文吐给管理员。
+	require.True(t, IsSensitiveCredentialKey("client_secret"))
 	require.False(t, IsSensitiveCredentialKey("base_url"))
 	require.False(t, IsSensitiveCredentialKey(""))
 	require.False(t, IsSensitiveCredentialKey("model_mapping"))
+}
+
+// TestMergePreservingSensitiveCreds_PreservesKiroClientSecretWhenIncomingMissing
+// 是 I7 耦合修复的后端一半：client_secret 加进 SensitiveCredentialKeys 后，
+// 编辑 Kiro idc/builder_id 账号时前端必须能"留空 = 保留"，不能变成"留空 =
+// 清空"。这里验证 MergePreservingSensitiveCreds 本身对新收录的 client_secret
+// 生效（前端配套修复见 EditAccountModal.vue 的 kiroHasExistingClientSecret）。
+func TestMergePreservingSensitiveCreds_PreservesKiroClientSecretWhenIncomingMissing(t *testing.T) {
+	existing := map[string]any{
+		"auth_method":   "idc",
+		"refresh_token": "rt-old",
+		"client_secret": "cs-old",
+		"client_id":     "client-1",
+	}
+	incoming := map[string]any{
+		"auth_method": "idc",
+		"client_id":   "client-1",
+		// 前端留空 refresh_token/client_secret 时会把这两个键从提交对象里
+		// 整体删掉（不是提交空字符串）——模拟这个约定。
+	}
+
+	out := MergePreservingSensitiveCreds(existing, incoming)
+
+	require.Equal(t, "rt-old", out["refresh_token"], "incoming 没传 refresh_token，应保留 existing")
+	require.Equal(t, "cs-old", out["client_secret"], "incoming 没传 client_secret，应保留 existing")
 }

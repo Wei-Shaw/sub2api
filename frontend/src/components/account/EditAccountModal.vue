@@ -26,8 +26,8 @@
         <p class="input-hint">{{ t('admin.accounts.notesHint') }}</p>
       </div>
 
-      <!-- API Key fields (only for apikey type) -->
-      <div v-if="account.type === 'apikey'" class="space-y-4">
+      <!-- API Key fields (only for apikey type, excluding Kiro which has its own fields) -->
+      <div v-if="account.type === 'apikey' && account.platform !== 'kiro'" class="space-y-4">
         <div v-if="!isCNApiKeyAccount || editApiProtocol !== 'adaptive'">
           <label class="input-label">{{ t('admin.accounts.baseUrl') }}</label>
           <input
@@ -520,6 +520,127 @@
           </div>
         </div>
 
+      </div>
+
+      <!-- Kiro credential fields (独立分支，不复用上面通用 apikey 的 base_url/api_key) -->
+      <div v-if="account.platform === 'kiro'" class="space-y-4">
+        <div>
+          <label class="input-label">{{ t('admin.accounts.accountType') }}</label>
+          <div class="mt-2 grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <button
+              v-for="opt in KIRO_AUTH_METHOD_OPTIONS"
+              :key="opt.value"
+              type="button"
+              :data-testid="`kiro-auth-method-${opt.value}`"
+              @click="kiroForm.authMethod = opt.value"
+              :class="[
+                'flex items-center gap-3 rounded-lg border-2 p-3 text-left transition-all',
+                kiroForm.authMethod === opt.value
+                  ? 'border-amber-500 bg-amber-50 dark:bg-amber-900/20'
+                  : 'border-gray-200 hover:border-amber-300 dark:border-dark-600 dark:hover:border-amber-700'
+              ]"
+            >
+              <div
+                :class="[
+                  'flex h-8 w-8 shrink-0 items-center justify-center rounded-lg',
+                  kiroForm.authMethod === opt.value
+                    ? 'bg-amber-500 text-white'
+                    : 'bg-gray-100 text-gray-500 dark:bg-dark-600 dark:text-gray-400'
+                ]"
+              >
+                <Icon name="key" size="sm" />
+              </div>
+              <span class="text-sm font-medium text-gray-900 dark:text-white">{{ t(opt.labelKey) }}</span>
+            </button>
+          </div>
+        </div>
+
+        <KiroAuthWizard
+          v-if="kiroForm.authMethod === 'idc' || kiroForm.authMethod === 'builder_id'"
+          :mode="kiroForm.authMethod"
+          :issuer-url="kiroForm.issuerUrl"
+          :region="kiroForm.region"
+          :proxy-id="form.proxy_id"
+          @filled="(v) => Object.assign(kiroForm, v)"
+        />
+
+        <KiroCredentialFields
+          v-model="kiroForm"
+          :has-existing-secret="kiroHasExistingSecret"
+          :has-existing-client-secret="kiroHasExistingClientSecret"
+        />
+
+        <!-- Kiro model restriction（可选，参照 Antigravity 的账号级限制约定；
+             未配置时不影响任何行为，见后端 forwardUpstream 的账号级限制说明） -->
+        <div class="border-t border-gray-200 pt-4 dark:border-dark-600">
+          <label class="input-label">{{ t('admin.accounts.modelRestriction') }}</label>
+
+          <!-- Mode Toggle -->
+          <div class="mb-4 flex gap-2">
+            <button
+              type="button"
+              @click="modelRestrictionMode = 'whitelist'"
+              :class="[
+                'flex-1 rounded-lg px-4 py-2 text-sm font-medium transition-all',
+                modelRestrictionMode === 'whitelist'
+                  ? 'bg-primary-100 text-primary-700 dark:bg-primary-900/30 dark:text-primary-400'
+                  : 'bg-gray-100 text-gray-600 hover:bg-gray-200 dark:bg-dark-600 dark:text-gray-400 dark:hover:bg-dark-500'
+              ]"
+            >
+              {{ t('admin.accounts.modelWhitelist') }}
+            </button>
+            <button
+              type="button"
+              @click="modelRestrictionMode = 'mapping'"
+              :class="[
+                'flex-1 rounded-lg px-4 py-2 text-sm font-medium transition-all',
+                modelRestrictionMode === 'mapping'
+                  ? 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400'
+                  : 'bg-gray-100 text-gray-600 hover:bg-gray-200 dark:bg-dark-600 dark:text-gray-400 dark:hover:bg-dark-500'
+              ]"
+            >
+              {{ t('admin.accounts.modelMapping') }}
+            </button>
+          </div>
+
+          <!-- Whitelist Mode -->
+          <div v-if="modelRestrictionMode === 'whitelist'">
+            <ModelWhitelistSelector
+              v-model="allowedModels"
+              platform="kiro"
+            />
+            <p class="text-xs text-gray-500 dark:text-gray-400">
+              {{ t('admin.accounts.selectedModels', { count: allowedModels.length }) }}
+              <span v-if="allowedModels.length === 0">{{ t('admin.accounts.supportsAllModels') }}</span>
+            </p>
+          </div>
+
+          <!-- Mapping Mode -->
+          <div v-else class="space-y-3">
+            <div v-for="(mapping, index) in modelMappings" :key="getModelMappingKey(mapping)" class="flex items-center gap-2">
+              <input v-model="mapping.from" type="text" class="input flex-1" :placeholder="t('admin.accounts.requestModel')" />
+              <span class="text-gray-400">→</span>
+              <input v-model="mapping.to" type="text" class="input flex-1" :placeholder="t('admin.accounts.actualModel')" />
+              <button type="button" @click="removeModelMapping(index)" class="text-red-500 hover:text-red-700">
+                <Icon name="trash" size="sm" />
+              </button>
+            </div>
+            <button type="button" @click="addModelMapping" class="btn btn-secondary text-sm">
+              + {{ t('admin.accounts.addMapping') }}
+            </button>
+            <div class="flex flex-wrap gap-2">
+              <button
+                v-for="preset in presetMappings"
+                :key="preset.label"
+                type="button"
+                @click="addPresetMapping(preset.from, preset.to)"
+                :class="['rounded-lg px-3 py-1 text-xs transition-colors', preset.color]"
+              >
+                + {{ preset.label }}
+              </button>
+            </div>
+          </div>
+        </div>
       </div>
 
       <!-- Grok OAuth client-tool prompt cache opt-in -->
@@ -1594,7 +1715,7 @@
             }}
           </p>
           <div
-            v-if="account?.type === 'apikey'"
+            v-if="account?.type === 'apikey' && account?.platform !== 'kiro'"
             class="mt-3 flex items-center justify-between gap-3"
           >
             <div class="min-w-0">
@@ -1861,7 +1982,7 @@
       </div>
 
       <div
-        v-if="account?.type === 'apikey'"
+        v-if="account?.type === 'apikey' && account?.platform !== 'kiro'"
         class="flex items-center justify-between gap-4 border-t border-gray-200 pt-4 dark:border-dark-600"
       >
         <div>
@@ -2943,6 +3064,14 @@ import GrokBaseUrlPresets from '@/components/account/GrokBaseUrlPresets.vue'
 import CnBaseUrlPresets from '@/components/account/CnBaseUrlPresets.vue'
 import HeaderOverrideEditor from '@/components/account/HeaderOverrideEditor.vue'
 import OllamaCloudUsageSettings from '@/components/account/OllamaCloudUsageSettings.vue'
+import KiroCredentialFields from '@/components/account/KiroCredentialFields.vue'
+import KiroAuthWizard from '@/components/account/KiroAuthWizard.vue'
+import {
+  KIRO_AUTH_METHOD_OPTIONS,
+  validateKiroCredentials,
+  buildKiroCredentials,
+  type KiroCredentialForm
+} from '@/components/account/kiroCredentials'
 import {
   applyAntigravityProjectID,
   applyHeaderOverride,
@@ -3180,6 +3309,67 @@ const isBedrockAPIKeyMode = computed(() =>
   props.account?.type === 'bedrock' &&
   (props.account?.credentials as Record<string, unknown>)?.auth_mode === 'apikey'
 )
+
+// Kiro credentials（独立分支，见 kiroCredentials.ts；不复用通用 apikey 的 base_url/api_key 字段）
+function createDefaultKiroForm(): KiroCredentialForm {
+  return {
+    authMethod: 'social',
+    refreshToken: '',
+    accessToken: '',
+    clientId: '',
+    clientSecret: '',
+    issuerUrl: '',
+    region: '',
+    profileArn: '',
+    apiKey: '',
+    fakeThinking: true
+  }
+}
+const kiroForm = ref<KiroCredentialForm>(createDefaultKiroForm())
+// 该 auth_method 下"密钥类"字段是否已有值——留空提交代表不修改而非清空。
+// refresh_token/api_key 属于后端 SensitiveCredentialKeys 通用敏感键清单，响应里
+// 已脱敏（原文不回传），优先看 credentials_status.has_<key>，没有则退化读原始
+// currentCredentials（兼容老后端）。
+const kiroHasExistingSecret = computed(() => {
+  const currentCredentials = (props.account?.credentials as Record<string, unknown>) || {}
+  const status = props.account?.credentials_status
+  if (kiroForm.value.authMethod === 'api_key') {
+    return status?.has_api_key ?? Boolean(currentCredentials.api_key)
+  }
+  return status?.has_refresh_token ?? Boolean(currentCredentials.refresh_token)
+})
+// client_secret 是独立于 refresh_token/api_key 的另一个敏感字段（idc/
+// builder_id 才有），同样脱敏，需要自己的"留空即保留"信号——不能复用
+// kiroHasExistingSecret，两者可能不同时为真/假。
+const kiroHasExistingClientSecret = computed(() => {
+  const currentCredentials = (props.account?.credentials as Record<string, unknown>) || {}
+  const status = props.account?.credentials_status
+  return status?.has_client_secret ?? Boolean(currentCredentials.client_secret)
+})
+// Edit 态校验：密钥类字段留空但账号已有值时视为"保持不变"，不强制要求重填；
+// 非密钥字段（client_id/issuer_url 等）始终必填，与 kiroCredentials.ts 的
+// validateKiroCredentials 保持一致口径，只在校验前临时补一个非空占位值。
+// refreshToken/apiKey 与 clientSecret 是两个独立的敏感字段，各自按自己的
+// "已有值"信号决定要不要打占位符，不能共用一个判断（I7 耦合修复）。
+function validateKiroCredentialsForEdit(
+  form: KiroCredentialForm,
+  hasExistingSecret: boolean,
+  hasExistingClientSecret: boolean
+): string | null {
+  const secretField: 'apiKey' | 'refreshToken' = form.authMethod === 'api_key' ? 'apiKey' : 'refreshToken'
+  const patched: KiroCredentialForm = { ...form }
+  if (hasExistingSecret && !String(form[secretField] || '').trim()) {
+    patched[secretField] = '__existing__'
+  }
+  if (
+    (form.authMethod === 'idc' || form.authMethod === 'builder_id') &&
+    hasExistingClientSecret &&
+    !form.clientSecret.trim()
+  ) {
+    patched.clientSecret = '__existing__'
+  }
+  return validateKiroCredentials(patched)
+}
 const modelMappings = ref<ModelMapping[]>([])
 const openAICompactModelMappings = ref<ModelMapping[]>([])
 const modelRestrictionMode = ref<'whitelist' | 'mapping'>('whitelist')
@@ -3988,8 +4178,51 @@ const syncFormFromAccount = (newAccount: Account | null) => {
     }
   }
 
+  // Initialize Kiro credentials — 独立分支，凭证形状与其余 apikey 平台完全不同
+  // （Task 22 kiroCredentials.ts），不读取/复用下面通用 apikey 分支的
+  // base_url/model_mapping/pool_mode 等初始化逻辑。
+  if (newAccount.platform === 'kiro') {
+    const kiroCreds = (newAccount.credentials as Record<string, unknown>) || {}
+    const str = (k: string): string => (typeof kiroCreds[k] === 'string' ? (kiroCreds[k] as string) : '')
+    const method = str('auth_method')
+    kiroForm.value = {
+      authMethod:
+        method === 'builder_id' || method === 'idc' || method === 'api_key' ? method : 'social',
+      // refresh_token/access_token/api_key/client_secret 都在后端
+      // SensitiveCredentialKeys 清单里，已被脱敏，原文不会回传，留空由
+      // kiroHasExistingSecret/kiroHasExistingClientSecret 驱动"留空即保留"
+      // 提示；其余字段未被脱敏，直接回填（client_secret 之前遗漏在清单外，
+      // 会明文回传——I7 修复，见 account_credentials_redact.go）。
+      refreshToken: '',
+      accessToken: '',
+      clientId: str('client_id'),
+      clientSecret: '',
+      issuerUrl: str('issuer_url'),
+      region: str('region'),
+      profileArn: str('profile_arn'),
+      apiKey: '',
+      // 后端 KiroFakeThinking() 默认开启，只有显式 false 才关闭——这里必须
+      // 用 !== false 而不是 === true，否则老账号从没存过这个字段时，编辑框
+      // 会显示"关闭"，跟账号实际生效的行为（开启）对不上。
+      fakeThinking: kiroCreds.fake_thinking !== false
+    }
+    // Kiro 不在后端 IsUpstreamBillingProbeIdentity 白名单里（见
+    // backend/internal/service/upstream_billing_probe.go）——显式设为 true 的探测/
+    // 倍率同步开关会让整个更新请求被 ErrUpstreamBillingProbeAccountInvalid 拒绝。
+    // 上面已从 UI 隐藏这两个开关（v-if 排除 kiro），这里再强制归零做纵深防御，
+    // 防止后续代码改动绕过 UI 隐藏后仍提交 true。与 CreateAccountModal.vue 的
+    // selectKiroPlatform() 同一模式。
+    upstreamBillingAutoProbeEnabled.value = false
+    upstreamBillingRateSyncEnabled.value = false
+
+    // Load model restriction（可选，见 KiroCredentialFields 之后的独立小节）——
+    // 与其它平台复用同一套 loadModelRestrictionFromMapping/allowedModels/
+    // modelMappings 状态，只是不走下面通用 apikey 分支的初始化逻辑。
+    loadModelRestrictionFromMapping(kiroCreds.model_mapping as Record<string, unknown> | undefined)
+  }
+
   // Initialize API Key fields for apikey type
-  if (newAccount.type === 'apikey' && newAccount.credentials) {
+  else if (newAccount.type === 'apikey' && newAccount.credentials) {
     const credentials = newAccount.credentials as Record<string, unknown>
     // 国产供应商：读取 account_mode 与 api_protocol 作为可编辑初始值
     // （编辑弹窗允许修正两者，用于修复早期存错默认值的账号）。
@@ -4734,8 +4967,51 @@ const handleSubmit = async () => {
       }
     }
 
+    // For Kiro, handle credentials update — 独立分支（Task 22 kiroCredentials.ts），
+    // 不复用下面通用 apikey 分支的 base_url/model_mapping/pool_mode 等逻辑。
+    if (props.account.platform === 'kiro') {
+      const kiroError = validateKiroCredentialsForEdit(
+        kiroForm.value,
+        kiroHasExistingSecret.value,
+        kiroHasExistingClientSecret.value
+      )
+      if (kiroError) {
+        appStore.showError(kiroError)
+        return
+      }
+      const currentCredentials = (props.account.credentials as Record<string, unknown>) || {}
+      const built = buildKiroCredentials(kiroForm.value)
+      const newCredentials: Record<string, unknown> = { ...currentCredentials, ...built }
+      // 密钥类字段留空 = 保持不变：refresh_token/api_key/client_secret 都属于
+      // 后端 MergePreservingSensitiveCreds 的通用敏感键清单，从提交对象里删掉
+      // 这个键就能让后端自动保留旧值——绝不能提交空字符串，那会被当成"显式
+      // 清空"直接覆盖。
+      if (!kiroForm.value.refreshToken.trim()) {
+        delete newCredentials.refresh_token
+      }
+      if (kiroForm.value.authMethod === 'api_key' && !kiroForm.value.apiKey.trim()) {
+        delete newCredentials.api_key
+      }
+      if (
+        (kiroForm.value.authMethod === 'idc' || kiroForm.value.authMethod === 'builder_id') &&
+        !kiroForm.value.clientSecret.trim()
+      ) {
+        delete newCredentials.client_secret
+      }
+
+      // Model restriction（可选）：与其它平台复用同一套 allowedModels/
+      // modelMappings 状态构建，留空表示不限制，与新建时的行为一致。
+      const kiroModelMapping = buildModelRestrictionMapping()
+      if (kiroModelMapping) {
+        newCredentials.model_mapping = kiroModelMapping
+      } else {
+        delete newCredentials.model_mapping
+      }
+      updatePayload.credentials = newCredentials
+    }
+
     // For apikey type, handle credentials update
-    if (props.account.type === 'apikey') {
+    else if (props.account.type === 'apikey') {
       const currentCredentials = (props.account.credentials as Record<string, unknown>) || {}
       const newBaseUrl = editBaseUrl.value.trim() || defaultBaseUrl.value
       const shouldApplyModelMapping = !(props.account.platform === 'openai' && openaiPassthroughEnabled.value)

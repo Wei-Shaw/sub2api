@@ -267,6 +267,61 @@ function buildGrokOAuthAccount() {
   } as any
 }
 
+function buildKiroAccount() {
+  return {
+    id: 8,
+    name: 'Kiro Account',
+    notes: '',
+    platform: 'kiro',
+    type: 'apikey',
+    credentials: {
+      auth_method: 'social',
+      region: 'us-east-1',
+      model_mapping: {
+        'claude-sonnet-4.6': 'claude-sonnet-4.6'
+      }
+    },
+    credentials_status: { has_refresh_token: true },
+    extra: {},
+    proxy_id: null,
+    concurrency: 1,
+    priority: 1,
+    rate_multiplier: 1,
+    status: 'active',
+    group_ids: [],
+    expires_at: null,
+    auto_pause_on_expired: false
+  } as any
+}
+
+function buildKiroIdcAccount() {
+  return {
+    id: 9,
+    name: 'Kiro IdC Account',
+    notes: '',
+    platform: 'kiro',
+    type: 'apikey',
+    credentials: {
+      auth_method: 'idc',
+      region: 'us-east-1',
+      client_id: 'client-1',
+      issuer_url: 'https://d-90667b4f8e.awsapps.com/start'
+      // refresh_token/client_secret 已被后端脱敏，不会出现在这里——
+      // 只靠 credentials_status.has_refresh_token/has_client_secret 反映存在性。
+    },
+    credentials_status: { has_refresh_token: true, has_client_secret: true },
+    extra: {},
+    proxy_id: null,
+    concurrency: 1,
+    priority: 1,
+    rate_multiplier: 1,
+    status: 'active',
+    group_ids: [],
+    expires_at: null,
+    auto_pause_on_expired: false
+  } as any
+}
+
 function buildGrokAPIKeyAccount() {
   return {
     ...buildAccount(),
@@ -1517,6 +1572,71 @@ describe('EditAccountModal', () => {
     expect(updateAccountMock.mock.calls[0]?.[1]?.credentials).not.toHaveProperty(
       'antigravity_project_id'
     )
+  })
+
+  // Kiro 模型限制功能（可选，参照 Antigravity 的账号级限制约定）：与
+  // CreateAccountModal.spec.ts 的同名场景对应，这里额外覆盖编辑态特有的
+  // "打开时从已有 credentials.model_mapping 回填" 这一步（loadModelRestrictionFromMapping）。
+  it('rehydrates the Kiro model restriction from existing credentials.model_mapping', async () => {
+    const account = buildKiroAccount()
+    updateAccountMock.mockReset()
+    checkMixedChannelRiskMock.mockReset()
+    checkMixedChannelRiskMock.mockResolvedValue({ has_risk: false })
+    updateAccountMock.mockResolvedValue(account)
+
+    const wrapper = mountModal(account)
+
+    expect(wrapper.get('[data-testid="model-whitelist-value"]').text()).toBe('claude-sonnet-4.6')
+  })
+
+  it('sends the updated Kiro model restriction on submit', async () => {
+    const account = buildKiroAccount()
+    updateAccountMock.mockReset()
+    checkMixedChannelRiskMock.mockReset()
+    checkMixedChannelRiskMock.mockResolvedValue({ has_risk: false })
+    updateAccountMock.mockResolvedValue(account)
+
+    const wrapper = mountModal(account)
+    await wrapper.get('[data-testid="rewrite-to-snapshot"]').trigger('click')
+    await wrapper.get('form#edit-account-form').trigger('submit.prevent')
+
+    expect(updateAccountMock).toHaveBeenCalledTimes(1)
+    expect(updateAccountMock.mock.calls[0]?.[1]?.credentials?.model_mapping).toEqual({
+      'gpt-5.2-2025-12-11': 'gpt-5.2-2025-12-11'
+    })
+  })
+
+  // client_secret 是 I7 修复新增进 SensitiveCredentialKeys 的敏感字段——
+  // 这两个测试覆盖耦合修复的前端一半："留空 = 保留"和"填写 = 旋转"都必须
+  // 正确，否则要么把已有 client_secret 悄悄清空，要么用户主动旋转的新值
+  // 提交不出去。
+  it('leaving client secret blank on a Kiro IdC account preserves the existing value', async () => {
+    const account = buildKiroIdcAccount()
+    updateAccountMock.mockReset()
+    checkMixedChannelRiskMock.mockReset()
+    checkMixedChannelRiskMock.mockResolvedValue({ has_risk: false })
+    updateAccountMock.mockResolvedValue(account)
+
+    const wrapper = mountModal(account)
+    await wrapper.get('form#edit-account-form').trigger('submit.prevent')
+
+    expect(updateAccountMock).toHaveBeenCalledTimes(1)
+    expect(updateAccountMock.mock.calls[0]?.[1]?.credentials).not.toHaveProperty('client_secret')
+  })
+
+  it('submits a rotated client secret for a Kiro IdC account', async () => {
+    const account = buildKiroIdcAccount()
+    updateAccountMock.mockReset()
+    checkMixedChannelRiskMock.mockReset()
+    checkMixedChannelRiskMock.mockResolvedValue({ has_risk: false })
+    updateAccountMock.mockResolvedValue(account)
+
+    const wrapper = mountModal(account)
+    await wrapper.get('[data-test="kiro-client-secret"]').setValue('new-client-secret')
+    await wrapper.get('form#edit-account-form').trigger('submit.prevent')
+
+    expect(updateAccountMock).toHaveBeenCalledTimes(1)
+    expect(updateAccountMock.mock.calls[0]?.[1]?.credentials?.client_secret).toBe('new-client-secret')
   })
 })
 
