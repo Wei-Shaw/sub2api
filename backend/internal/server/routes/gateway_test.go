@@ -1,7 +1,9 @@
 package routes
 
 import (
+	"bytes"
 	"encoding/json"
+	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -372,6 +374,31 @@ func TestGatewayRoutesCompositeOpenAIOnlyEndpointsRequireOpenAITarget(t *testing
 	w = httptest.NewRecorder()
 
 	router.ServeHTTP(w, req)
+	require.NotEqual(t, http.StatusNotFound, w.Code)
+}
+
+func TestGatewayRoutesCompositeTranscriptionsRequireOpenAITarget(t *testing.T) {
+	router := newGatewayRoutesTestRouter(service.PlatformComposite)
+	buildRequest := func(model string) *http.Request {
+		var body bytes.Buffer
+		writer := multipart.NewWriter(&body)
+		require.NoError(t, writer.WriteField("model", model))
+		file, err := writer.CreateFormFile("file", "sample.wav")
+		require.NoError(t, err)
+		_, err = file.Write([]byte("RIFFaudio"))
+		require.NoError(t, err)
+		require.NoError(t, writer.Close())
+		req := httptest.NewRequest(http.MethodPost, "/v1/audio/transcriptions", bytes.NewReader(body.Bytes()))
+		req.Header.Set("Content-Type", writer.FormDataContentType())
+		return req
+	}
+
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, buildRequest("gemini-2.5-pro"))
+	require.Equal(t, http.StatusNotFound, w.Code)
+
+	w = httptest.NewRecorder()
+	router.ServeHTTP(w, buildRequest("fun-asr-nano"))
 	require.NotEqual(t, http.StatusNotFound, w.Code)
 }
 

@@ -54,6 +54,7 @@ func TestEveryGatewayPOSTRouteIsClassifiedForPromptAuditCoverage(t *testing.T) {
 		"/messages/count_tokens":     "tokenization only; it does not execute a model request",
 		"/images/batches/:id/cancel": "control-plane cancellation with no user prompt",
 		"/stt":                       "speech transcription is not a text-generation prompt",
+		"/audio/transcriptions":      "speech transcription is not a text-generation prompt",
 		"/custom-voices":             "voice profile management has no model prompt",
 	}
 
