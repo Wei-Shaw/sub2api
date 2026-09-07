@@ -943,3 +943,270 @@ func TestOpenAIQuotaAutoResetService_ConfigChangeTriggersRefetch(t *testing.T) {
 	_, armed = service.expiryTimers.Load(account.ID)
 	require.False(t, armed, "全部关闭后撤销定时器")
 }
+
+func TestOpenAIQuotaAutoResetService_ManualCreditSyncRearmsExpiryTimer(t *testing.T) {
+	now := time.Now().UTC()
+	account := newAutoResetLowUsageAccount(now, map[string]any{
+		OpenAIAutoResetCreditEnabledExtraKey:           false,
+		OpenAIAutoResetCreditExpiryEnabledExtraKey:     true,
+		OpenAIAutoResetCreditExpiryLeadMinutesExtraKey: 1440.0,
+	})
+	repo := &autoResetTestAccountRepo{account: account}
+	quota := &autoResetTestQuota{usage: newAutoResetLowUsage(now, "credit-old", now.Add(10*24*time.Hour))}
+	service := newAutoResetTestService(repo, quota)
+	t.Cleanup(service.Stop)
+
+	require.NoError(t, service.evaluateAccount(context.Background(), account.ID))
+	_, armed := service.expiryTimers.Load(account.ID)
+	require.True(t, armed)
+
+	consumed := newAutoResetLowUsage(now, "", now)
+	consumed.RateLimitResetCredits = &OpenAIRateLimitResetCredits{}
+	consumed.autoResetCandidates = nil
+	service.syncCreditUsage(context.Background(), account.ID, consumed)
+	_, armed = service.expiryTimers.Load(account.ID)
+	require.False(t, armed, "手动用掉唯一一张卡后撤销定时器")
+	require.Nil(t, repo.account.Extra[OpenAIAutoResetCreditExpiryAtExtraKey], "撤销定时器后清空计划触发时刻")
+	state := openAIAutoResetStateFromExtra(repo.account.Extra)
+	require.NotNil(t, state)
+	require.Equal(t, OpenAIAutoResetStatusAvailable, state.Status, "运行态只由调度器实查后写入，手动同步不碰")
+	require.Equal(t, 1, state.AvailableCount)
+
+	regranted := newAutoResetLowUsage(now, "credit-new", now.Add(3*24*time.Hour))
+	service.syncCreditUsage(context.Background(), account.ID, regranted)
+	_, armed = service.expiryTimers.Load(account.ID)
+	require.True(t, armed, "手动查询到新卡后按新卡排定时器")
+	wantFireAt := now.Add(3 * 24 * time.Hour).Truncate(time.Second).Add(-24 * time.Hour).UTC().Format(time.RFC3339)
+	require.Equal(t, wantFireAt, repo.account.Extra[OpenAIAutoResetCreditExpiryAtExtraKey])
+	require.Equal(t, int32(1), quota.queryCalls.Load(), "同步只用手动路径已取到的结果，不额外实查")
+}
+
+func TestOpenAIQuotaAutoResetService_ManualCreditSyncReplacesScheduledFetch(t *testing.T) {
+	now := time.Now().UTC()
+	account := newAutoResetLowUsageAccount(now, map[string]any{OpenAIAutoResetCreditExpiryEnabledExtraKey: true, OpenAIAutoResetCreditExpiryLeadMinutesExtraKey: 1440.0})
+	repo := &autoResetTestAccountRepo{account: account}
+	quota := &autoResetTestQuota{usage: newAutoResetLowUsage(now, "credit-id", now.Add(10*24*time.Hour))}
+	service := newAutoResetTestService(repo, quota)
+	t.Cleanup(service.Stop)
+
+	service.syncCreditUsage(context.Background(), account.ID, newAutoResetLowUsage(now, "credit-id", now.Add(10*24*time.Hour)))
+	_, armed := service.expiryTimers.Load(account.ID)
+	require.True(t, armed)
+
+	require.NoError(t, service.evaluateAccount(context.Background(), account.ID))
+	require.Equal(t, int32(0), quota.queryCalls.Load(), "手动路径的实查结果顶替本轮计划取卡")
+}
+
+func TestOpenAIQuotaAutoResetService_ManualCreditSyncKeepsInFlightAttempt(t *testing.T) {
+	now := time.Now().UTC()
+	account := newAutoResetLowUsageAccount(now, map[string]any{
+		OpenAIAutoResetCreditExpiryEnabledExtraKey:     true,
+		OpenAIAutoResetCreditExpiryLeadMinutesExtraKey: 1440.0,
+		OpenAIAutoResetCreditStateExtraKey: OpenAIAutoResetCreditState{
+			Status: OpenAIAutoResetStatusResetting, AvailableCount: 1, AttemptCycleHash: "cycle", AttemptCreditHash: "credit",
+		},
+	})
+	repo := &autoResetTestAccountRepo{account: account}
+	service := newAutoResetTestService(repo, &autoResetTestQuota{})
+	t.Cleanup(service.Stop)
+
+	service.syncCreditUsage(context.Background(), account.ID, newAutoResetLowUsage(now, "credit-id", now.Add(10*24*time.Hour)))
+
+	state := openAIAutoResetStateFromExtra(repo.account.Extra)
+	require.Equal(t, OpenAIAutoResetStatusResetting, state.Status, "自动用卡进行中不覆盖尝试指纹")
+	require.Equal(t, "credit", state.AttemptCreditHash)
+	_, armed := service.expiryTimers.Load(account.ID)
+	require.True(t, armed, "定时器仍按最新卡信息重排")
+}
+
+func TestOpenAIQuotaAutoResetService_ManualCreditSyncOnFollowerLeavesTimerToLeader(t *testing.T) {
+	now := time.Now().UTC()
+	lock := &fakeLeaderLockCache{owners: map[string]string{openAIAutoResetSchedulerLockKey: "someone-else"}}
+	account := newAutoResetLowUsageAccount(now, map[string]any{
+		OpenAIAutoResetCreditExpiryEnabledExtraKey:     true,
+		OpenAIAutoResetCreditExpiryLeadMinutesExtraKey: 1440.0,
+		OpenAIAutoResetCreditExpiryAtExtraKey:          "2099-01-01T00:00:00Z",
+	})
+	repo := &autoResetTestAccountRepo{account: account}
+	config := DefaultIdempotencyConfig()
+	config.ObserveOnly = false
+	service := NewOpenAIQuotaAutoResetService(repo, &autoResetTestQuota{}, autoResetTestRecoverer{}, NewIdempotencyCoordinator(newInMemoryIdempotencyRepo(), config), nil, nil, lock)
+	t.Cleanup(service.Stop)
+	service.refreshSchedulerLease(context.Background())
+	require.False(t, service.isSchedulerLeader())
+
+	service.syncCreditUsage(context.Background(), account.ID, newAutoResetLowUsage(now, "credit-id", now.Add(10*24*time.Hour)))
+
+	_, armed := service.expiryTimers.Load(account.ID)
+	require.False(t, armed, "非领导实例不设定时器")
+	require.Equal(t, "2099-01-01T00:00:00Z", repo.account.Extra[OpenAIAutoResetCreditExpiryAtExtraKey], "计划时刻留给领导实例重排")
+	require.Nil(t, repo.account.Extra[OpenAIAutoResetCreditStateExtraKey], "手动同步不写运行态")
+}
+
+func TestSyncOpenAIAutoResetCredit_DelegatesToRegisteredService(t *testing.T) {
+	now := time.Now().UTC()
+	account := newAutoResetLowUsageAccount(now, map[string]any{OpenAIAutoResetCreditExpiryEnabledExtraKey: true, OpenAIAutoResetCreditExpiryLeadMinutesExtraKey: 1440.0})
+	repo := &autoResetTestAccountRepo{account: account}
+	service := newAutoResetTestService(repo, &autoResetTestQuota{})
+	t.Cleanup(service.Stop)
+	usage := newAutoResetLowUsage(now, "credit-id", now.Add(10*24*time.Hour))
+
+	SyncOpenAIAutoResetCredit(context.Background(), account.ID, usage)
+	_, armed := service.expiryTimers.Load(account.ID)
+	require.False(t, armed, "未注册调度器时静默忽略")
+
+	setOpenAIAutoResetNotifier(service)
+	t.Cleanup(func() { clearOpenAIAutoResetNotifier(service) })
+	SyncOpenAIAutoResetCredit(context.Background(), account.ID, usage)
+	_, armed = service.expiryTimers.Load(account.ID)
+	require.True(t, armed)
+}
+
+func TestOpenAIQuotaAutoResetService_ManualCreditSyncKeepsFailedAttemptFingerprint(t *testing.T) {
+	now := time.Now().UTC()
+	account := &Account{
+		ID: 100, Platform: PlatformOpenAI, Type: AccountTypeOAuth,
+		Status: StatusActive, Schedulable: true,
+		Extra: map[string]any{
+			OpenAIAutoResetCreditEnabledExtraKey:     true,
+			OpenAIAutoResetCredit5hThresholdExtraKey: 1.0,
+			OpenAIAutoResetCredit7dThresholdExtraKey: 1.0,
+			"codex_5h_used_percent":                  100.0,
+			"codex_usage_updated_at":                 now.Format(time.RFC3339),
+			"codex_5h_reset_at":                      now.Add(time.Hour).Format(time.RFC3339),
+		},
+	}
+	repo := &autoResetTestAccountRepo{account: account}
+	expiresAt := now.Add(48 * time.Hour).Format(time.RFC3339)
+	usage := &OpenAIQuotaUsage{
+		FetchedAt: now.Unix(),
+		RateLimit: &OpenAIRateLimit{
+			PrimaryWindow: &OpenAIRateLimitWindow{UsedPercent: 100, LimitWindowSeconds: 5 * 60 * 60, ResetAfterSeconds: 3600, ResetAt: now.Add(time.Hour).Unix()},
+		},
+		RateLimitResetCredits: &OpenAIRateLimitResetCredits{
+			AvailableCount: 1,
+			Credits:        []OpenAIRateLimitResetCreditDetail{{ExpiresAt: expiresAt}},
+		},
+		autoResetCandidates: []openAIAutoResetCreditCandidate{{ID: "credit-a", ExpiresAt: expiresAt}},
+		upstreamTime:        now,
+	}
+	quota := &autoResetTestQuota{failFirst: true, usage: usage}
+	idempotencyConfig := DefaultIdempotencyConfig()
+	idempotencyConfig.ObserveOnly = false
+	idempotencyConfig.FailedRetryBackoff = 0
+	service := NewOpenAIQuotaAutoResetService(repo, quota, autoResetTestRecoverer{}, NewIdempotencyCoordinator(newInMemoryIdempotencyRepo(), idempotencyConfig), nil, nil, nil)
+	t.Cleanup(service.Stop)
+
+	require.Error(t, service.evaluateAccount(context.Background(), account.ID), "首次消费超时，结果未明")
+	state := openAIAutoResetStateFromExtra(repo.account.Extra)
+	require.Equal(t, OpenAIAutoResetStatusFailed, state.Status)
+	require.NotEmpty(t, state.AttemptCreditHash)
+
+	replaced := *usage
+	replaced.autoResetCandidates = []openAIAutoResetCreditCandidate{{ID: "credit-b", ExpiresAt: expiresAt}}
+	service.syncCreditUsage(context.Background(), account.ID, &replaced)
+	state = openAIAutoResetStateFromExtra(repo.account.Extra)
+	require.NotEmpty(t, state.AttemptCreditHash, "管理员刷新不得抹掉未明结果的尝试指纹")
+
+	quota.usage = &replaced
+	require.Error(t, service.evaluateAccount(context.Background(), account.ID))
+	require.Equal(t, int32(1), quota.resetCalls.Load(), "原卡从明细消失时拒绝改选另一张卡")
+}
+
+func TestOpenAIQuotaAutoResetService_ManualCreditSyncTriggersFinalCheckForExpiringCard(t *testing.T) {
+	now := time.Now().UTC()
+	account := newAutoResetLowUsageAccount(now, map[string]any{
+		OpenAIAutoResetCreditEnabledExtraKey:           false,
+		OpenAIAutoResetCreditExpiryEnabledExtraKey:     true,
+		OpenAIAutoResetCreditExpiryLeadMinutesExtraKey: 1440.0,
+	})
+	repo := &autoResetTestAccountRepo{account: account}
+	usage := newAutoResetLowUsage(now, "credit-soon", now.Add(2*time.Hour))
+	quota := &autoResetTestQuota{usage: usage}
+	service := newAutoResetTestService(repo, quota)
+	t.Cleanup(service.Stop)
+
+	service.syncCreditUsage(context.Background(), account.ID, usage)
+	_, armed := service.expiryTimers.Load(account.ID)
+	require.False(t, armed, "已进入提前窗口的卡不设定时器")
+
+	require.NoError(t, service.evaluateAccount(context.Background(), account.ID))
+	require.Equal(t, int32(2), quota.queryCalls.Load(), "手动刷新发现卡已进入提前窗口时立即实查做最终校验，用卡后再刷新一次额度")
+	require.Equal(t, int32(1), quota.resetCalls.Load(), "校验通过后用卡")
+	require.Equal(t, "credit-soon", quota.resetArgs[0][0])
+}
+
+func TestOpenAIQuotaAutoResetService_ManualCreditSyncCorrectsPauseDecision(t *testing.T) {
+	now := time.Now().UTC()
+	newPauseZoneAccount := func(state OpenAIAutoResetCreditState) *Account {
+		return newAutoResetLowUsageAccount(now, map[string]any{
+			"auto_pause_5h_threshold":          0.8,
+			"auto_pause_7d_disabled":           true,
+			"codex_5h_used_percent":            90.0,
+			OpenAIAutoResetCreditStateExtraKey: state,
+		})
+	}
+	usageWithCards := func(count int) *OpenAIQuotaUsage {
+		usage := newAutoResetLowUsage(now, "credit-id", now.Add(10*24*time.Hour))
+		usage.RateLimit.PrimaryWindow.UsedPercent = 90
+		if count == 0 {
+			usage.RateLimitResetCredits = &OpenAIRateLimitResetCredits{}
+			usage.autoResetCandidates = nil
+		}
+		return usage
+	}
+	freshState := func(status string, count int) OpenAIAutoResetCreditState {
+		return OpenAIAutoResetCreditState{Status: status, AvailableCount: count, CheckedAt: now.Format(time.RFC3339)}
+	}
+
+	t.Run("旧状态有卡而实查无卡时立即校正并暂停", func(t *testing.T) {
+		account := newPauseZoneAccount(freshState(OpenAIAutoResetStatusAvailable, 1))
+		repo := &autoResetTestAccountRepo{account: account}
+		quota := &autoResetTestQuota{usage: usageWithCards(0)}
+		service := newAutoResetTestService(repo, quota)
+		t.Cleanup(service.Stop)
+		paused, _ := shouldAutoPauseOpenAIAccountByQuota(context.Background(), account)
+		require.False(t, paused, "前提：旧运行态有卡，网关放行到用卡阈值")
+
+		service.syncCreditUsage(context.Background(), account.ID, usageWithCards(0))
+		require.NoError(t, service.evaluateAccount(context.Background(), account.ID))
+
+		require.Equal(t, int32(1), quota.queryCalls.Load(), "卡数与运行态不一致时立即实查校正")
+		refreshed, err := repo.GetByID(context.Background(), account.ID)
+		require.NoError(t, err)
+		paused, _ = shouldAutoPauseOpenAIAccountByQuota(context.Background(), refreshed)
+		require.True(t, paused, "校正后无卡，按普通暂停阈值退出调度")
+	})
+
+	t.Run("旧状态无卡而实查有卡时立即校正并放行", func(t *testing.T) {
+		account := newPauseZoneAccount(freshState(OpenAIAutoResetStatusNoCredit, 0))
+		repo := &autoResetTestAccountRepo{account: account}
+		quota := &autoResetTestQuota{usage: usageWithCards(1)}
+		service := newAutoResetTestService(repo, quota)
+		t.Cleanup(service.Stop)
+		paused, _ := shouldAutoPauseOpenAIAccountByQuota(context.Background(), account)
+		require.True(t, paused, "前提：旧运行态无卡，网关按普通阈值暂停")
+
+		service.syncCreditUsage(context.Background(), account.ID, usageWithCards(1))
+		require.NoError(t, service.evaluateAccount(context.Background(), account.ID))
+
+		require.Equal(t, int32(1), quota.queryCalls.Load())
+		refreshed, err := repo.GetByID(context.Background(), account.ID)
+		require.NoError(t, err)
+		paused, _ = shouldAutoPauseOpenAIAccountByQuota(context.Background(), refreshed)
+		require.False(t, paused, "校正后有卡，放行到用卡阈值")
+	})
+
+	t.Run("卡数一致时不额外实查", func(t *testing.T) {
+		account := newPauseZoneAccount(freshState(OpenAIAutoResetStatusAvailable, 1))
+		repo := &autoResetTestAccountRepo{account: account}
+		quota := &autoResetTestQuota{usage: usageWithCards(1)}
+		service := newAutoResetTestService(repo, quota)
+		t.Cleanup(service.Stop)
+
+		service.syncCreditUsage(context.Background(), account.ID, usageWithCards(1))
+		require.NoError(t, service.evaluateAccount(context.Background(), account.ID))
+
+		require.Equal(t, int32(0), quota.queryCalls.Load(), "运行态已与实查一致，沿用手动路径的结果")
+	})
+}

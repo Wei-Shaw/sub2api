@@ -540,6 +540,7 @@ func (h *OpenAIOAuthHandler) RefreshQuota(c *gin.Context) {
 		return
 	}
 	refreshResponse.CachePersisted = true
+	service.SyncOpenAIAutoResetCredit(c.Request.Context(), accountID, usage)
 	response.Success(c, refreshResponse)
 }
 
@@ -612,6 +613,7 @@ func (h *OpenAIOAuthHandler) ResetQuota(c *gin.Context) {
 		h.quotaService,
 		h.rateLimitService,
 		h.adminService.GetAccount,
+		service.SyncOpenAIAutoResetCredit,
 	)
 	resetResponse.Quota = postResult.Quota
 	resetResponse.CacheRefreshed = postResult.CacheRefreshed
