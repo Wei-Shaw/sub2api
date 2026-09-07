@@ -727,6 +727,50 @@ func TestForwardAsRawChatCompletions_TruncatedStreamAfterOutputFailsRequest(t *t
 	// 已写出的内容保持原样透传，客户端拿到的仍是它已经收到的那部分。
 	require.Contains(t, rec.Body.String(), `"content":"half an ans"`)
 	require.NotContains(t, rec.Body.String(), "data: [DONE]")
+
+	rawEvents, ok := c.Get(OpsUpstreamErrorsKey)
+	require.True(t, ok)
+	events := rawEvents.([]*OpsUpstreamErrorEvent)
+	require.Len(t, events, 1)
+	require.Equal(t, "http_error", events[0].Kind)
+	require.Nil(t, events[0].ProxyID)
+	require.Equal(t, opsProxyNameDirect, events[0].ProxyName)
+}
+
+// 截断 failover 事件必须带上本次传输真实使用的托管代理快照。
+func TestForwardAsRawChatCompletions_TruncationFailoverAttributesManagedProxy(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	body := []byte(`{"model":"deepseek-v4-pro","messages":[{"role":"user","content":"hello"}],"stream":true}`)
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/chat/completions", bytes.NewReader(body))
+	c.Request.Header.Set("Content-Type", "application/json")
+
+	upstream := &httpUpstreamRecorder{resp: &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     http.Header{"Content-Type": []string{"text/event-stream"}, "x-request-id": []string{"rid_empty_proxy"}},
+		Body:       io.NopCloser(strings.NewReader("")),
+	}}
+	svc := &OpenAIGatewayService{cfg: rawChatCompletionsTestConfig(), httpUpstream: upstream}
+	proxy := &Proxy{ID: 8001, Name: "oxylabs-uk-8001", Protocol: "http", Host: "proxy.example", Port: 8080}
+	account := rawChatCompletionsTestAccount()
+	account.ProxyID = &proxy.ID
+	account.Proxy = proxy
+
+	_, err := svc.forwardAsRawChatCompletions(context.Background(), c, account, body, "")
+	var failoverErr *UpstreamFailoverError
+	require.ErrorAs(t, err, &failoverErr)
+	require.Equal(t, proxy.URL(), upstream.lastProxyURL)
+
+	rawEvents, ok := c.Get(OpsUpstreamErrorsKey)
+	require.True(t, ok)
+	events := rawEvents.([]*OpsUpstreamErrorEvent)
+	require.Len(t, events, 1)
+	require.Equal(t, "failover", events[0].Kind)
+	require.NotNil(t, events[0].ProxyID)
+	require.Equal(t, proxy.ID, *events[0].ProxyID)
+	require.Equal(t, proxy.Name, events[0].ProxyName)
 }
 
 // 上游 200 但一个 SSE 字节都没发：响应头尚未提交，应换号重试而不是回 200 空流。

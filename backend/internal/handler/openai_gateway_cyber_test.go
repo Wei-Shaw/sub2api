@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
@@ -100,6 +101,44 @@ func TestClearCyberPolicyTurnState(t *testing.T) {
 	h.recordCyberPolicyIfMarked(c, nil, nil, nil, "gpt-5", false, nil, service.ChannelUsageFields{}, "")
 	require.True(t, c.GetBool(cyberPolicyRecordedKey))
 	require.Equal(t, "turn2", service.GetOpsCyberPolicy(c).Message)
+}
+
+func TestAdvanceOpenAIWSCyberBlockStateDefersBlockAcrossFailover(t *testing.T) {
+	failoverErr := &service.UpstreamFailoverError{StatusCode: http.StatusTooManyRequests}
+
+	blocked, pending := advanceOpenAIWSCyberBlockState(false, false, true, failoverErr)
+	require.False(t, blocked, "the replacement account must receive the current turn")
+	require.True(t, pending, "the cyber hit must still block later turns")
+
+	blocked, pending = advanceOpenAIWSCyberBlockState(blocked, pending, false, failoverErr)
+	require.False(t, blocked, "additional failover attempts must remain eligible")
+	require.True(t, pending)
+
+	blocked, pending = advanceOpenAIWSCyberBlockState(blocked, pending, false, nil)
+	require.True(t, blocked, "the next client turn must be blocked after failover finishes")
+	require.False(t, pending)
+}
+
+func TestClearCyberPolicyAttemptStatePreservesRecordedGuardDuringFailover(t *testing.T) {
+	c := newTestGinContext()
+	h := &OpenAIGatewayHandler{}
+
+	service.MarkOpsCyberPolicy(c, service.CyberPolicyMark{Message: "account-a", UpstreamStatus: http.StatusOK})
+	h.recordCyberPolicyIfMarked(c, nil, nil, nil, "gpt-5", true, nil, service.ChannelUsageFields{}, "")
+	require.True(t, c.GetBool(cyberPolicyRecordedKey))
+
+	clearCyberPolicyAttemptState(c, false)
+	require.Nil(t, service.GetOpsCyberPolicy(c))
+	require.True(t, c.GetBool(cyberPolicyRecordedKey), "the same logical turn must not record again after failover")
+
+	service.MarkOpsCyberPolicy(c, service.CyberPolicyMark{Message: "account-b", UpstreamStatus: http.StatusOK})
+	h.recordCyberPolicyIfMarked(c, nil, nil, nil, "gpt-5", true, nil, service.ChannelUsageFields{}, "")
+	require.Equal(t, "account-b", service.GetOpsCyberPolicy(c).Message)
+	require.True(t, c.GetBool(cyberPolicyRecordedKey))
+
+	clearCyberPolicyAttemptState(c, true)
+	require.Nil(t, service.GetOpsCyberPolicy(c))
+	require.False(t, c.GetBool(cyberPolicyRecordedKey), "a completed logical turn must reset the guard")
 }
 
 // TestBuildCyberSessionBlockedOpsEntry verifies the locally-rejected request is
