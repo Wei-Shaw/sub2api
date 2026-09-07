@@ -93,7 +93,11 @@ const antigravityModels = [
 // Kiro（Amazon Q Developer / CodeWhisperer）—— 与后端 kiro.DefaultModels() 保持一致
 const kiroModels = [
   'claude-sonnet-4.6', 'claude-sonnet-4.5', 'claude-sonnet-4', 'claude-haiku-4.5',
-  'claude-opus-5', 'claude-sonnet-5', 'claude-opus-4.8', 'claude-opus-4.7', 'claude-opus-4.6', 'claude-opus-4.5'
+  'claude-opus-5', 'claude-sonnet-5', 'claude-opus-4.8', 'claude-opus-4.7', 'claude-opus-4.6', 'claude-opus-4.5',
+  // Claude Code 走 /v1/messages 用上面的 claude-* 系列；Codex 走
+  // /backend-api/codex/responses 用下面这三个 gpt-5.6-* 系列——两个端点
+  // 从不混用，见 kiro_gateway_service.go 的 kiroOutputProtocol 说明。
+  'gpt-5.6-sol', 'gpt-5.6-terra', 'gpt-5.6-luna'
 ]
 
 // 智谱 GLM
@@ -398,7 +402,12 @@ const kiroPresetMappings = [
   { label: 'Opus 4.5', from: 'claude-opus-4.5', to: 'claude-opus-4.5', color: 'bg-purple-100 text-purple-700 hover:bg-purple-200 dark:bg-purple-900/30 dark:text-purple-400' },
   { label: 'Opus 4.6', from: 'claude-opus-4.6', to: 'claude-opus-4.6', color: 'bg-purple-100 text-purple-700 hover:bg-purple-200 dark:bg-purple-900/30 dark:text-purple-400' },
   { label: 'Opus 4.7', from: 'claude-opus-4.7', to: 'claude-opus-4.7', color: 'bg-purple-100 text-purple-700 hover:bg-purple-200 dark:bg-purple-900/30 dark:text-purple-400' },
-  { label: 'Opus 4.8', from: 'claude-opus-4.8', to: 'claude-opus-4.8', color: 'bg-purple-100 text-purple-700 hover:bg-purple-200 dark:bg-purple-900/30 dark:text-purple-400' }
+  { label: 'Opus 4.8', from: 'claude-opus-4.8', to: 'claude-opus-4.8', color: 'bg-purple-100 text-purple-700 hover:bg-purple-200 dark:bg-purple-900/30 dark:text-purple-400' },
+  // Codex 客户端专用（/backend-api/codex/responses），与上面 Claude Code 用的
+  // claude-* 系列并列，不互相替代。
+  { label: 'GPT 5.6 Sol', from: 'gpt-5.6-sol', to: 'gpt-5.6-sol', color: 'bg-teal-100 text-teal-700 hover:bg-teal-200 dark:bg-teal-900/30 dark:text-teal-400' },
+  { label: 'GPT 5.6 Terra', from: 'gpt-5.6-terra', to: 'gpt-5.6-terra', color: 'bg-teal-100 text-teal-700 hover:bg-teal-200 dark:bg-teal-900/30 dark:text-teal-400' },
+  { label: 'GPT 5.6 Luna', from: 'gpt-5.6-luna', to: 'gpt-5.6-luna', color: 'bg-teal-100 text-teal-700 hover:bg-teal-200 dark:bg-teal-900/30 dark:text-teal-400' }
 ]
 
 // Bedrock 预设映射（与后端 DefaultBedrockModelMapping 保持一致）
