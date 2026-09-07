@@ -161,6 +161,25 @@ func TestCreateAccountAcceptsDedicatedUpstreamBillingProbeSetting(t *testing.T) 
 	require.ErrorIs(t, err, ErrUpstreamBillingProbeAccountInvalid)
 }
 
+func TestCreateAccountQwenTokenPlanAcceptsUpstreamBillingProbe(t *testing.T) {
+	enabled := true
+	created, err := (&adminServiceImpl{accountRepo: &upstreamBillingProbeAccountRepo{}}).CreateAccount(context.Background(), &CreateAccountInput{
+		Name:     "qwen-token-plan",
+		Platform: PlatformQwen,
+		Type:     AccountTypeAPIKey,
+		Credentials: map[string]any{
+			"api_key":      "sk-qwen",
+			"account_mode": AccountModeTokenPlan,
+			"api_protocol": "adaptive",
+			"base_url":     "https://token-plan.cn-beijing.maas.aliyuncs.com/compatible-mode/v1",
+		},
+		ProbeEnabled:         &enabled,
+		SkipDefaultGroupBind: true,
+	})
+	require.NoError(t, err)
+	require.Equal(t, true, created.Extra[UpstreamBillingProbeEnabledExtraKey])
+}
+
 func TestUpdateAccountPreservesManagedUpstreamBillingProbeStateForUnrelatedEdit(t *testing.T) {
 	accountID := int64(110)
 	repo := &upstreamBillingProbeAccountRepo{accounts: map[int64]*Account{

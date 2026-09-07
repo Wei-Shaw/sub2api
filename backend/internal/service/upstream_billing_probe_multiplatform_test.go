@@ -172,6 +172,10 @@ func TestUpstreamBillingProbeOfficialAPIBaseURLIsUnsupportedWithoutRequest(t *te
 		{PlatformZhipu, "https://open.bigmodel.cn/api/anthropic"},
 		{PlatformDeepseek, "https://api.deepseek.com"},
 		{PlatformDeepseek, "https://api.deepseek.com/anthropic"},
+		{PlatformQwen, "https://dashscope.aliyuncs.com/compatible-mode/v1"},
+		{PlatformQwen, "https://dashscope.aliyuncs.com/apps/anthropic"},
+		{PlatformQwen, "https://token-plan.cn-beijing.maas.aliyuncs.com/compatible-mode/v1"},
+		{PlatformQwen, "https://token-plan.cn-beijing.maas.aliyuncs.com/apps/anthropic"},
 	}
 	for i, tc := range cases {
 		account := &Account{
@@ -213,6 +217,8 @@ func TestUpstreamBillingProbeOfficialAPIHostMatchingIsNormalized(t *testing.T) {
 	require.True(t, upstreamBillingProbeTargetIsOfficialAPI("https://api.kimi.com/coding/v1"))
 	require.True(t, upstreamBillingProbeTargetIsOfficialAPI("https://open.bigmodel.cn/api/anthropic"))
 	require.True(t, upstreamBillingProbeTargetIsOfficialAPI("https://api.deepseek.com/anthropic"))
+	require.True(t, upstreamBillingProbeTargetIsOfficialAPI("https://dashscope.aliyuncs.com/compatible-mode/v1"))
+	require.True(t, upstreamBillingProbeTargetIsOfficialAPI("https://token-plan.cn-beijing.maas.aliyuncs.com/compatible-mode/v1"))
 	// 相似但不同的注册域不拦：中转完全可能叫 *-x.ai 之外的任何名字。
 	require.False(t, upstreamBillingProbeTargetIsOfficialAPI("https://relay.example/v1"))
 	require.False(t, upstreamBillingProbeTargetIsOfficialAPI("https://notx.ai"))
@@ -226,6 +232,8 @@ func TestUpstreamBillingProbeOfficialAPIHostMatchingIsNormalized(t *testing.T) {
 	require.False(t, upstreamBillingProbeTargetIsOfficialAPI("https://kimi.example/v1"))
 	require.False(t, upstreamBillingProbeTargetIsOfficialAPI("https://notbigmodel.cn"))
 	require.False(t, upstreamBillingProbeTargetIsOfficialAPI("https://deepseek.example.com"))
+	require.False(t, upstreamBillingProbeTargetIsOfficialAPI("https://notaliyuncs.com"))
+	require.False(t, upstreamBillingProbeTargetIsOfficialAPI("https://aliyuncs.com.evil.example"))
 }
 
 // OpenAI 语义保持不变：无自定义 base 时仍探官方域，且沿用 openai 传输画像。
