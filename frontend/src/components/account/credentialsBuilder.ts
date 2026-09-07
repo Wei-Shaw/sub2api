@@ -355,7 +355,6 @@ export function defaultCNAdaptiveBaseUrls(
   platform: string,
   mode: CnAccountMode
 ): Record<CnNativeApiProtocol, string> {
-  const normalizedPlatform = normalizeCnProviderPlatform(platform)
   return {
     chat_completions: defaultCNBaseUrl(platform, mode, 'chat_completions'),
     anthropic: defaultCNBaseUrl(platform, mode, 'anthropic'),
