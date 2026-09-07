@@ -260,6 +260,9 @@ func (s *OpenAIGatewayService) shouldFailoverOpenAIUpstreamResponse(statusCode i
 	if isOpenAIContextWindowError(upstreamMsg, upstreamBody) {
 		return false
 	}
+	if isOpenAIShortInputPolicyError(statusCode, upstreamBody) {
+		return true
+	}
 	if isOpenAIHTTPUpstreamAccessStateError(statusCode, upstreamMsg, upstreamBody) {
 		return true
 	}
@@ -270,6 +273,27 @@ func (s *OpenAIGatewayService) shouldFailoverOpenAIUpstreamResponse(statusCode i
 		return true
 	}
 	return isOpenAITransientProcessingError(statusCode, upstreamMsg, upstreamBody)
+}
+
+const (
+	openAIShortInputPolicyReason        = GatewayFailureReason("openai_short_input_policy")
+	openAIShortInputPolicyClientMessage = "Upstream does not support this request; please retry"
+)
+
+// isOpenAIShortInputPolicyError recognizes a provider-specific policy that
+// rejects otherwise valid short Responses requests. The structured code is
+// authoritative; messages and arbitrary JSON fields may contain echoed user
+// input and must not trigger account failover.
+func isOpenAIShortInputPolicyError(statusCode int, upstreamBody []byte) bool {
+	if statusCode != http.StatusBadRequest || len(upstreamBody) == 0 || !gjson.ValidBytes(upstreamBody) {
+		return false
+	}
+	for _, path := range []string{"error.code", "response.error.code", "code"} {
+		if strings.EqualFold(strings.TrimSpace(gjson.GetBytes(upstreamBody, path).String()), "short_input_rejected") {
+			return true
+		}
+	}
+	return false
 }
 
 // OpenAIRequestBodyTooLargeClientMessage is the fixed downstream message used
@@ -305,6 +329,15 @@ func newOpenAIUpstreamFailoverError(
 		failoverErr.NextAccountAction = NextAccountRetry
 		failoverErr.ClientStatusCode = http.StatusRequestEntityTooLarge
 		failoverErr.ClientMessage = OpenAIRequestBodyTooLargeClientMessage
+	}
+	if isOpenAIShortInputPolicyError(statusCode, responseBody) {
+		failoverErr.RetryableOnSameAccount = false
+		failoverErr.RequestScopedTransient = false
+		failoverErr.Scope = GatewayFailureScopeAccount
+		failoverErr.Reason = openAIShortInputPolicyReason
+		failoverErr.NextAccountAction = NextAccountRetry
+		failoverErr.ClientStatusCode = http.StatusBadGateway
+		failoverErr.ClientMessage = openAIShortInputPolicyClientMessage
 	}
 	if isOpenAIHTTPUpstreamAccessStateError(statusCode, upstreamMsg, responseBody) {
 		failoverErr.RetryableOnSameAccount = false
