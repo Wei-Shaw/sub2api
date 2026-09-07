@@ -55,3 +55,9 @@ func writeOpenAIUpstreamClientError(c *gin.Context, statusCode int, body []byte,
 
 	c.JSON(statusCode, gin.H{"error": errorPayload})
 }
+
+// WriteOpenAIUpstreamClientError preserves a structured deterministic upstream
+// client error when the handler has exhausted all eligible accounts.
+func WriteOpenAIUpstreamClientError(c *gin.Context, statusCode int, body []byte, upstreamMsg string) {
+	writeOpenAIUpstreamClientError(c, statusCode, body, upstreamMsg)
+}
