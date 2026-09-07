@@ -248,6 +248,7 @@ func TestAPIContracts(t *testing.T) {
 					"window_1d_start": null,
 					"window_7d_start": null,
 					"expires_at": null,
+					"max_rate_multiplier": null,
 					"created_at": "2025-01-02T03:04:05Z",
 					"updated_at": "2025-01-02T03:04:05Z"
 				}
@@ -299,6 +300,7 @@ func TestAPIContracts(t *testing.T) {
 							"window_1d_start": null,
 							"window_7d_start": null,
 							"expires_at": null,
+							"max_rate_multiplier": null,
 							"created_at": "2025-01-02T03:04:05Z",
 							"updated_at": "2025-01-02T03:04:05Z"
 						}

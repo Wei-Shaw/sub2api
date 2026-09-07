@@ -20,7 +20,8 @@ type APIKeyAuthSnapshot struct {
 	QuotaUsed float64 `json:"quota_used"` // Used quota amount
 
 	// Expiration field for API Key expiration feature
-	ExpiresAt *time.Time `json:"expires_at,omitempty"` // Expiration time (nil = never expires)
+	ExpiresAt         *time.Time `json:"expires_at,omitempty"` // Expiration time (nil = never expires)
+	MaxRateMultiplier *float64   `json:"max_rate_multiplier,omitempty"`
 
 	// Rate limit configuration (only limits, not usage - usage read from Redis at check time)
 	RateLimit5h float64 `json:"rate_limit_5h"`

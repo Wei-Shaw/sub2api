@@ -3,7 +3,9 @@ package middleware
 import (
 	"errors"
 	"fmt"
+	"net/http"
 	"strings"
+	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/googleapi"
@@ -162,6 +164,11 @@ func APIKeyAuthWithSubscriptionGoogle(apiKeyService *service.APIKeyService, subs
 		}
 		if apiKey.IsQuotaExhausted() {
 			abortWithGoogleError(c, 429, "API key 额度已用完")
+			return
+		}
+		if current, maximum, exceeded := apiKeyService.CheckAPIKeyMaxRateMultiplier(c.Request.Context(), apiKey, time.Now()); exceeded {
+			service.MarkOpsClientBusinessLimited(c, service.OpsClientBusinessLimitedReasonLocalPolicyDenied)
+			abortWithGoogleError(c, http.StatusPaymentRequired, apiKeyPriceLimitMessage(current, maximum))
 			return
 		}
 

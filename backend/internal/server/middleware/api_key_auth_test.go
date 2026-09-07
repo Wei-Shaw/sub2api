@@ -270,6 +270,40 @@ func TestSimpleModeBypassesQuotaCheck(t *testing.T) {
 	})
 }
 
+func TestAPIKeyAuthRejectsWhenMaxRateMultiplierIsExceeded(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	groupID := int64(42)
+	maximum := 1.5
+	apiKey := &service.APIKey{
+		ID:                100,
+		UserID:            7,
+		Key:               "sk-price-guard",
+		Status:            service.StatusActive,
+		MaxRateMultiplier: &maximum,
+		GroupID:           &groupID,
+		User:              &service.User{ID: 7, Status: service.StatusActive, Role: service.RoleUser, Balance: 10},
+		Group:             &service.Group{ID: groupID, Status: service.StatusActive, RateMultiplier: 2},
+	}
+	repo := &stubApiKeyRepo{getByKey: func(_ context.Context, key string) (*service.APIKey, error) {
+		if key != apiKey.Key {
+			return nil, service.ErrAPIKeyNotFound
+		}
+		return apiKey, nil
+	}}
+	cfg := &config.Config{RunMode: config.RunModeStandard}
+	router := newAuthTestRouter(service.NewAPIKeyService(repo, nil, nil, nil, nil, nil, cfg), nil, cfg)
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/responses", nil)
+	req.Header.Set("Authorization", "Bearer "+apiKey.Key)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	require.Equal(t, http.StatusPaymentRequired, w.Code)
+	var body map[string]map[string]any
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &body))
+	require.Equal(t, "price_limit_exceeded", body["error"]["code"])
+}
+
 func TestAPIKeyAuthSetsGroupContext(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 

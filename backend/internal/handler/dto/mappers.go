@@ -95,6 +95,7 @@ func APIKeyFromService(k *service.APIKey) *APIKey {
 		Quota:              k.Quota,
 		QuotaUsed:          k.QuotaUsed,
 		ExpiresAt:          k.ExpiresAt,
+		MaxRateMultiplier:  k.MaxRateMultiplier,
 		CreatedAt:          k.CreatedAt,
 		UpdatedAt:          k.UpdatedAt,
 		CurrentConcurrency: k.CurrentConcurrency,

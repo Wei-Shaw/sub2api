@@ -181,6 +181,20 @@ func (_c *APIKeyCreate) SetNillableExpiresAt(v *time.Time) *APIKeyCreate {
 	return _c
 }
 
+// SetMaxRateMultiplier sets the "max_rate_multiplier" field.
+func (_c *APIKeyCreate) SetMaxRateMultiplier(v float64) *APIKeyCreate {
+	_c.mutation.SetMaxRateMultiplier(v)
+	return _c
+}
+
+// SetNillableMaxRateMultiplier sets the "max_rate_multiplier" field if the given value is not nil.
+func (_c *APIKeyCreate) SetNillableMaxRateMultiplier(v *float64) *APIKeyCreate {
+	if v != nil {
+		_c.SetMaxRateMultiplier(*v)
+	}
+	return _c
+}
+
 // SetRateLimit5h sets the "rate_limit_5h" field.
 func (_c *APIKeyCreate) SetRateLimit5h(v float64) *APIKeyCreate {
 	_c.mutation.SetRateLimit5h(v)
@@ -559,6 +573,10 @@ func (_c *APIKeyCreate) createSpec() (*APIKey, *sqlgraph.CreateSpec) {
 		_spec.SetField(apikey.FieldExpiresAt, field.TypeTime, value)
 		_node.ExpiresAt = &value
 	}
+	if value, ok := _c.mutation.MaxRateMultiplier(); ok {
+		_spec.SetField(apikey.FieldMaxRateMultiplier, field.TypeFloat64, value)
+		_node.MaxRateMultiplier = &value
+	}
 	if value, ok := _c.mutation.RateLimit5h(); ok {
 		_spec.SetField(apikey.FieldRateLimit5h, field.TypeFloat64, value)
 		_node.RateLimit5h = value
@@ -898,6 +916,30 @@ func (u *APIKeyUpsert) UpdateExpiresAt() *APIKeyUpsert {
 // ClearExpiresAt clears the value of the "expires_at" field.
 func (u *APIKeyUpsert) ClearExpiresAt() *APIKeyUpsert {
 	u.SetNull(apikey.FieldExpiresAt)
+	return u
+}
+
+// SetMaxRateMultiplier sets the "max_rate_multiplier" field.
+func (u *APIKeyUpsert) SetMaxRateMultiplier(v float64) *APIKeyUpsert {
+	u.Set(apikey.FieldMaxRateMultiplier, v)
+	return u
+}
+
+// UpdateMaxRateMultiplier sets the "max_rate_multiplier" field to the value that was provided on create.
+func (u *APIKeyUpsert) UpdateMaxRateMultiplier() *APIKeyUpsert {
+	u.SetExcluded(apikey.FieldMaxRateMultiplier)
+	return u
+}
+
+// AddMaxRateMultiplier adds v to the "max_rate_multiplier" field.
+func (u *APIKeyUpsert) AddMaxRateMultiplier(v float64) *APIKeyUpsert {
+	u.Add(apikey.FieldMaxRateMultiplier, v)
+	return u
+}
+
+// ClearMaxRateMultiplier clears the value of the "max_rate_multiplier" field.
+func (u *APIKeyUpsert) ClearMaxRateMultiplier() *APIKeyUpsert {
+	u.SetNull(apikey.FieldMaxRateMultiplier)
 	return u
 }
 
@@ -1343,6 +1385,34 @@ func (u *APIKeyUpsertOne) UpdateExpiresAt() *APIKeyUpsertOne {
 func (u *APIKeyUpsertOne) ClearExpiresAt() *APIKeyUpsertOne {
 	return u.Update(func(s *APIKeyUpsert) {
 		s.ClearExpiresAt()
+	})
+}
+
+// SetMaxRateMultiplier sets the "max_rate_multiplier" field.
+func (u *APIKeyUpsertOne) SetMaxRateMultiplier(v float64) *APIKeyUpsertOne {
+	return u.Update(func(s *APIKeyUpsert) {
+		s.SetMaxRateMultiplier(v)
+	})
+}
+
+// AddMaxRateMultiplier adds v to the "max_rate_multiplier" field.
+func (u *APIKeyUpsertOne) AddMaxRateMultiplier(v float64) *APIKeyUpsertOne {
+	return u.Update(func(s *APIKeyUpsert) {
+		s.AddMaxRateMultiplier(v)
+	})
+}
+
+// UpdateMaxRateMultiplier sets the "max_rate_multiplier" field to the value that was provided on create.
+func (u *APIKeyUpsertOne) UpdateMaxRateMultiplier() *APIKeyUpsertOne {
+	return u.Update(func(s *APIKeyUpsert) {
+		s.UpdateMaxRateMultiplier()
+	})
+}
+
+// ClearMaxRateMultiplier clears the value of the "max_rate_multiplier" field.
+func (u *APIKeyUpsertOne) ClearMaxRateMultiplier() *APIKeyUpsertOne {
+	return u.Update(func(s *APIKeyUpsert) {
+		s.ClearMaxRateMultiplier()
 	})
 }
 
@@ -1981,6 +2051,34 @@ func (u *APIKeyUpsertBulk) UpdateExpiresAt() *APIKeyUpsertBulk {
 func (u *APIKeyUpsertBulk) ClearExpiresAt() *APIKeyUpsertBulk {
 	return u.Update(func(s *APIKeyUpsert) {
 		s.ClearExpiresAt()
+	})
+}
+
+// SetMaxRateMultiplier sets the "max_rate_multiplier" field.
+func (u *APIKeyUpsertBulk) SetMaxRateMultiplier(v float64) *APIKeyUpsertBulk {
+	return u.Update(func(s *APIKeyUpsert) {
+		s.SetMaxRateMultiplier(v)
+	})
+}
+
+// AddMaxRateMultiplier adds v to the "max_rate_multiplier" field.
+func (u *APIKeyUpsertBulk) AddMaxRateMultiplier(v float64) *APIKeyUpsertBulk {
+	return u.Update(func(s *APIKeyUpsert) {
+		s.AddMaxRateMultiplier(v)
+	})
+}
+
+// UpdateMaxRateMultiplier sets the "max_rate_multiplier" field to the value that was provided on create.
+func (u *APIKeyUpsertBulk) UpdateMaxRateMultiplier() *APIKeyUpsertBulk {
+	return u.Update(func(s *APIKeyUpsert) {
+		s.UpdateMaxRateMultiplier()
+	})
+}
+
+// ClearMaxRateMultiplier clears the value of the "max_rate_multiplier" field.
+func (u *APIKeyUpsertBulk) ClearMaxRateMultiplier() *APIKeyUpsertBulk {
+	return u.Update(func(s *APIKeyUpsert) {
+		s.ClearMaxRateMultiplier()
 	})
 }
 
