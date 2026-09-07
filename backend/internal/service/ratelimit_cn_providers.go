@@ -21,6 +21,14 @@ import (
 // 「确属余额不足」与「尚未探测」。
 const cnBalanceExtraSuffixLow = "balance_low"
 
+const (
+	// Qwen Token Plan is a one-time allowance. These markers are written only
+	// after the inference endpoint explicitly reports the allowance as exhausted.
+	qwenTokenPlanExhaustedExtraKey       = "qwen_token_plan_exhausted"
+	qwenTokenPlanExhaustedAtExtraKey     = "qwen_token_plan_exhausted_at"
+	qwenTokenPlanExhaustedReasonExtraKey = "qwen_token_plan_exhausted_reason"
+)
+
 // cnBalanceLowReasonPrefix 是余额不足临时停调 reason 的稳定前缀。
 // 周期余额检测任务据此识别「是我们停调的」并在余额恢复后安全清除——不会误清
 // 其他子系统（阈值/限流/401）写入的临时停调。
@@ -152,7 +160,17 @@ func (s *RateLimitService) applyCNProviderReactive429(
 	headers http.Header,
 	responseBody []byte,
 ) bool {
-	if !account.IsCNProvider() {
+	if account == nil || !account.IsCNProvider() {
+		return false
+	}
+	// Token Plan is a one-time allowance. Its documented exhaustion response is
+	// a 429 with explicit quota wording. Do not turn a generic 429, credential
+	// error, or transport failure into a permanent scheduling block.
+	if account.IsTokenPlan() {
+		if qwenTokenPlanQuotaExhausted(responseBody) {
+			s.handleQwenTokenPlanExhausted(ctx, account, responseBody)
+			return true
+		}
 		return false
 	}
 	// 1) 余额不足文案：可恢复临时停调（含智谱 payg 这类无余额端点的场景）。
@@ -178,4 +196,102 @@ func (s *RateLimitService) applyCNProviderReactive429(
 		}
 	}
 	return false
+}
+
+// qwenTokenPlanQuotaExhausted recognizes Qwen Token Plan allowance exhaustion.
+// The caller already limits this to a Token Plan account on HTTP 429, so a
+// literal "token-plan" substring is not required.
+//
+// Documented plan-exhaustion wording (permanently unschedulable):
+//   - "Your token-plan ... quota has been exhausted. The quota will reset at ..."
+//   - "Allocated quota exceeded" (Token Plan personal FAQ: 5h / 7-day limit used up)
+//   - "insufficient_quota" / "You exceeded your current quota"
+//   - "quota exhausted" even when the one-time allowance has no reset time
+//   - Chinese 额度/配额/限额 + 用尽/耗尽
+//
+// Documented transient rate limits (must not pause the account):
+//   - "Requests rate limit exceeded" / "API-Key Requests rate limit exceeded"
+//   - "Request rate increased too quickly"
+//   - generic "rate limit exceeded" without quota / allocation evidence
+func qwenTokenPlanQuotaExhausted(responseBody []byte) bool {
+	if len(responseBody) == 0 {
+		return false
+	}
+
+	message := strings.ToLower(string(responseBody))
+	if qwenTokenPlanTransientRateLimit(message) {
+		return false
+	}
+	if strings.Contains(message, "token-plan") &&
+		(strings.Contains(message, "quota") || strings.Contains(message, "exhausted") || strings.Contains(message, "exceeded")) {
+		return true
+	}
+	if strings.Contains(message, "quota") && strings.Contains(message, "exhausted") {
+		return true
+	}
+	if strings.Contains(message, "allocated quota exceeded") {
+		return true
+	}
+	if strings.Contains(message, "insufficient_quota") || strings.Contains(message, "exceeded your current quota") {
+		return true
+	}
+	if (strings.Contains(message, "额度") || strings.Contains(message, "配额") || strings.Contains(message, "限额")) &&
+		(strings.Contains(message, "用尽") || strings.Contains(message, "耗尽")) {
+		return true
+	}
+	hasQuota := strings.Contains(message, "quota")
+	hasExhaustion := strings.Contains(message, "exhausted") || strings.Contains(message, "exceeded")
+	hasReset := strings.Contains(message, "will reset") || strings.Contains(message, "reset at")
+	return hasQuota && hasExhaustion && hasReset
+}
+
+func qwenTokenPlanTransientRateLimit(message string) bool {
+	if strings.Contains(message, "requests rate limit") ||
+		strings.Contains(message, "request rate increased too quickly") ||
+		strings.Contains(message, "api-key requests rate limit") {
+		return true
+	}
+	if strings.Contains(message, "rate limit exceeded") &&
+		!strings.Contains(message, "quota") &&
+		!strings.Contains(message, "allocation") &&
+		!strings.Contains(message, "token-plan") {
+		return true
+	}
+	return false
+}
+
+// handleQwenTokenPlanExhausted permanently removes an exhausted one-time Token
+// Plan account from scheduling. This state must never be automatically cleared.
+func (s *RateLimitService) handleQwenTokenPlanExhausted(ctx context.Context, account *Account, responseBody []byte) {
+	now := time.Now().UTC()
+	reason := qwenTokenPlanExhaustionReason(responseBody)
+	updates := map[string]any{
+		qwenTokenPlanExhaustedExtraKey:       true,
+		qwenTokenPlanExhaustedAtExtraKey:     now.Format(time.RFC3339),
+		qwenTokenPlanExhaustedReasonExtraKey: reason,
+	}
+	if err := s.accountRepo.UpdateExtra(ctx, account.ID, updates); err != nil {
+		slog.Warn("qwen_token_plan_exhaustion_mark_failed", "account_id", account.ID, "error", err)
+	}
+
+	s.notifyAccountSchedulingBlocked(account, time.Time{}, "qwen_token_plan_exhausted")
+	if err := s.accountRepo.SetSchedulable(ctx, account.ID, false); err != nil {
+		slog.Warn("qwen_token_plan_pause_failed", "account_id", account.ID, "error", err)
+		return
+	}
+	slog.Warn("qwen_token_plan_exhausted", "account_id", account.ID)
+}
+
+func qwenTokenPlanExhaustionReason(responseBody []byte) string {
+	message := strings.TrimSpace(extractUpstreamErrorMessage(responseBody))
+	if message == "" {
+		message = strings.TrimSpace(string(responseBody))
+	}
+	message = strings.Join(strings.Fields(message), " ")
+	message = sanitizeUpstreamErrorMessage(message)
+	message = truncateForLog([]byte(message), 512)
+	if message == "" {
+		return "Qwen Token Plan quota exhausted"
+	}
+	return "Qwen Token Plan quota exhausted: " + message
 }

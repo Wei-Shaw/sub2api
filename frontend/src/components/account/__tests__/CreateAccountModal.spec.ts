@@ -446,6 +446,31 @@ describe('CreateAccountModal OpenAI long-context billing', () => {
     })
   })
 
+  it('creates Qwen Token Plan accounts with the one-time quota mode', async () => {
+    const wrapper = mountModal()
+    await selectButtonByText(wrapper, 'Qwen / Alibaba')
+    await wrapper.get('form#create-account-form input[type="text"]').setValue('Qwen Token Plan')
+    await wrapper.get('form#create-account-form input[type="password"]').setValue('sk-qwen-plan')
+
+    await wrapper.get('form#create-account-form').trigger('submit.prevent')
+    await flushPromises()
+
+    expect(createAccountMock).toHaveBeenCalledTimes(1)
+    expect(createAccountMock.mock.calls[0]?.[0]).toMatchObject({
+      platform: 'qwen',
+      type: 'apikey',
+      credentials: {
+        account_mode: 'token_plan',
+        api_protocol: 'adaptive',
+        base_url: 'https://token-plan.cn-beijing.maas.aliyuncs.com/compatible-mode/v1',
+        api_base_urls: {
+          chat_completions: 'https://token-plan.cn-beijing.maas.aliyuncs.com/compatible-mode/v1',
+          anthropic: 'https://token-plan.cn-beijing.maas.aliyuncs.com/apps/anthropic'
+        }
+      }
+    })
+  })
+
   it('uses the edited adaptive Chat endpoint when previewing upstream models', async () => {
     const wrapper = mountModal()
     await selectButtonByText(wrapper, 'Kimi')

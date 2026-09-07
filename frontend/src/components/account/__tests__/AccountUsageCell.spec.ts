@@ -106,6 +106,33 @@ describe('AccountUsageCell', () => {
     })
   })
 
+  it('renders a Qwen Token Plan exhaustion warning without the usage placeholder', async () => {
+    const wrapper = mount(AccountUsageCell, {
+      props: {
+        account: makeAccount({
+          id: 73,
+          platform: 'qwen',
+          type: 'apikey',
+          credentials: { account_mode: 'token_plan' },
+          extra: {
+            qwen_token_plan_exhausted: true,
+            qwen_token_plan_exhausted_reason: 'Your token-plan quota has been exhausted.'
+          }
+        })
+      },
+      global: {
+        stubs: {
+          CNProviderBalanceCell: true
+        }
+      }
+    })
+
+    await flushPromises()
+
+    expect(wrapper.get('[data-test="qwen-token-plan-exhausted"]').exists()).toBe(true)
+    expect(wrapper.find('.text-xs.text-gray-400').exists()).toBe(false)
+  })
+
   it('renders eligible Ollama Cloud state and forwards query updates', async () => {
     const wrapper = mount(AccountUsageCell, {
       props: {

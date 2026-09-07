@@ -1096,8 +1096,9 @@ type GatewayConfig struct {
 	// Grok: Grok/xAI gateway scheduling and free-tier soft-gate settings.
 	Grok GatewayGrokConfig `mapstructure:"grok"`
 
-	// CNProviders: 国产 OpenAI 兼容供应商（kimi/zhipu/deepseek）的余额检测配置。
-	// 仅作用于 payg（按量付费）账号：周期探测余额，低于阈值则临时停调。
+	// CNProviders: 国产 OpenAI 兼容供应商的余额和套餐用量检测配置。
+	// payg 账号周期探测余额；Kimi/Zhipu Coding Plan 账号周期探测用量。
+	// Qwen Token Plan 无公开用量端点，不参与周期探测。
 	CNProviders GatewayCNProvidersConfig `mapstructure:"cn_providers"`
 }
 
@@ -1131,12 +1132,14 @@ type GatewayGrokConfig struct {
 	FreeQuotaStatsCacheSeconds int `mapstructure:"free_quota_stats_cache_seconds"`
 }
 
-// GatewayCNProvidersConfig 国产 OpenAI 兼容供应商（kimi/zhipu/deepseek）的余额检测配置。
+// GatewayCNProvidersConfig 国产 OpenAI 兼容供应商的余额和套餐用量检测配置。
 //
-// 仅作用于 payg（按量付费）账号（kimi/deepseek 有公开余额端点；zhipu 无，仅靠响应式 429/402）。
-//   - balance_check_enabled: 是否启用周期余额检测（默认 true）
+// payg 账号仅 Kimi/DeepSeek 有公开余额端点；Kimi/Zhipu Coding Plan
+// 通过同一周期任务查询官方用量接口。Qwen Token Plan 无公开用量端点，
+// 仅在推理响应明确报告额度耗尽时永久关闭调度。
+//   - balance_check_enabled: 是否启用周期余额/套餐用量检测（默认 true）
 //   - balance_threshold: 余额低于此值（账户货币单位，默认 0.5）触发临时停调
-//   - balance_check_interval_minutes: 余额检测周期（分钟，默认 10）
+//   - balance_check_interval_minutes: 检测周期（分钟，默认 10）
 type GatewayCNProvidersConfig struct {
 	BalanceCheckEnabled         bool    `mapstructure:"balance_check_enabled"`
 	BalanceThreshold            float64 `mapstructure:"balance_threshold"`
@@ -2451,7 +2454,8 @@ func setDefaults() {
 	viper.SetDefault("gateway.grok.free_quota_soft_gate_percent", 95)
 	viper.SetDefault("gateway.grok.free_quota_window_hours", 24)
 	viper.SetDefault("gateway.grok.free_quota_stats_cache_seconds", 60)
-	// 国产供应商余额检测（kimi/deepseek payg；zhipu 无余额端点，仅靠响应式 429/402）。
+	// 国产供应商余额/套餐用量检测（Kimi/DeepSeek payg、Kimi/Zhipu Coding Plan）。
+	// Qwen Token Plan 不走周期用量探测。
 	viper.SetDefault("gateway.cn_providers.balance_check_enabled", true)
 	viper.SetDefault("gateway.cn_providers.balance_threshold", 0.5)
 	viper.SetDefault("gateway.cn_providers.balance_check_interval_minutes", 10)

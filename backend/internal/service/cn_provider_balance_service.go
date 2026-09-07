@@ -268,6 +268,9 @@ func validatePayGAccount(account *Account) error {
 	if account.IsCodingPlan() {
 		return infraerrors.New(http.StatusBadRequest, "CN_BALANCE_CODING_PLAN", "coding plan account has no balance endpoint; use quota probe")
 	}
+	if account.IsTokenPlan() {
+		return infraerrors.New(http.StatusBadRequest, "CN_BALANCE_TOKEN_PLAN", "Qwen Token Plan has no balance endpoint")
+	}
 	return nil
 }
 

@@ -272,7 +272,7 @@ func (a *Account) IsGrokOAuth() bool {
 	return a.IsGrok() && a.Type == AccountTypeOAuth
 }
 
-// IsKimi / IsZhipu / IsDeepseek 标识国产 OpenAI 兼容供应商账号。
+// IsKimi / IsZhipu / IsDeepseek / IsQwen 标识国产 OpenAI 兼容供应商账号。
 func (a *Account) IsKimi() bool {
 	return a.Platform == PlatformKimi
 }
@@ -285,17 +285,20 @@ func (a *Account) IsDeepseek() bool {
 	return a.Platform == PlatformDeepseek
 }
 
-// IsCNProvider 报告是否为国产 OpenAI 兼容供应商（kimi/zhipu/deepseek）。
+func (a *Account) IsQwen() bool {
+	return a.Platform == PlatformQwen
+}
+
+// IsCNProvider 报告是否为国产 OpenAI 兼容供应商。
 func (a *Account) IsCNProvider() bool {
 	return a != nil && IsCNProvider(a.Platform)
 }
 
 // IsOpenAICompatible 报告账号是否走 OpenAI 网关（OpenAI 协议族）。
-// openai/grok 原生走 OpenAI 网关；kimi/zhipu/deepseek 同为 OpenAI Chat Completions
+// openai/grok 原生走 OpenAI 网关；国产供应商同为 OpenAI Chat Completions
 // 兼容上游，也经 OpenAI 网关转发。
 func (a *Account) IsOpenAICompatible() bool {
-	return a != nil && (a.Platform == PlatformOpenAI || a.Platform == PlatformGrok ||
-		a.Platform == PlatformKimi || a.Platform == PlatformZhipu || a.Platform == PlatformDeepseek)
+	return a != nil && (a.Platform == PlatformOpenAI || a.Platform == PlatformGrok || a.IsCNProvider())
 }
 
 func (a *Account) GeminiOAuthType() string {
@@ -1330,7 +1333,7 @@ func (a *Account) IsOpenAIApiKey() bool {
 }
 
 // GetOpenAIBaseURL 解析 OpenAI 协议族账号的上游 base_url。
-// 适用 openai 与国产 OpenAI 兼容供应商（kimi/zhipu/deepseek）；grok 走 GetGrokBaseURL，
+// 适用 openai 与国产 OpenAI 兼容供应商；grok 走 GetGrokBaseURL，
 // 此处对 grok 返回 "" 以保持原有行为。
 func (a *Account) GetOpenAIBaseURL() string {
 	if !a.IsOpenAI() && !a.IsCNProvider() {
@@ -1362,19 +1365,24 @@ func (a *Account) GetOpenAIBaseURL() string {
 		return DefaultZhipuPayGBaseURL
 	case PlatformDeepseek:
 		return DefaultDeepseekBaseURL
+	case PlatformQwen:
+		if a.GetAccountMode() == AccountModeTokenPlan {
+			return DefaultQwenTokenPlanBaseURL
+		}
+		return DefaultQwenPayGBaseURL
 	default:
 		return "https://api.openai.com"
 	}
 }
 
-// GetAccountMode 返回国产供应商账号的接入模式（payg / coding）；非国产供应商或未设置时
+// GetAccountMode 返回国产供应商账号的接入模式（payg / coding / token_plan）；非国产供应商或未设置时
 // 返回空串。存储于 credentials["account_mode"]。
 func (a *Account) GetAccountMode() string {
 	if a == nil {
 		return ""
 	}
 	mode := strings.TrimSpace(a.GetCredential("account_mode"))
-	if mode == AccountModePayG || mode == AccountModeCoding {
+	if mode == AccountModePayG || mode == AccountModeCoding || mode == AccountModeTokenPlan {
 		return mode
 	}
 	return ""
@@ -1383,6 +1391,12 @@ func (a *Account) GetAccountMode() string {
 // IsCodingPlan 报告账号是否为 Coding Plan 模式（用于滚动用量窗口冷却）。
 func (a *Account) IsCodingPlan() bool {
 	return a.GetAccountMode() == AccountModeCoding
+}
+
+// IsTokenPlan reports Qwen's one-time Token Plan mode. Unlike Coding Plan,
+// an exhausted Token Plan never has a rolling reset window.
+func (a *Account) IsTokenPlan() bool {
+	return a != nil && a.Platform == PlatformQwen && a.GetAccountMode() == AccountModeTokenPlan
 }
 
 // GetAPIProtocol 返回国产供应商账号的上游 API 协议。存储于
@@ -1477,6 +1491,11 @@ func (a *Account) defaultCNProtocolBaseURL(protocol string) string {
 			return DefaultZhipuAnthropicBaseURL
 		case PlatformDeepseek:
 			return DefaultDeepseekAnthropicBaseURL
+		case PlatformQwen:
+			if a.GetAccountMode() == AccountModeTokenPlan {
+				return DefaultQwenTokenPlanAnthropicBaseURL
+			}
+			return DefaultQwenPayGAnthropicBaseURL
 		}
 	case APIProtocolChatCompletions, APIProtocolResponses:
 		switch a.Platform {
@@ -1492,6 +1511,11 @@ func (a *Account) defaultCNProtocolBaseURL(protocol string) string {
 			return DefaultZhipuPayGBaseURL
 		case PlatformDeepseek:
 			return DefaultDeepseekBaseURL
+		case PlatformQwen:
+			if a.GetAccountMode() == AccountModeTokenPlan {
+				return DefaultQwenTokenPlanBaseURL
+			}
+			return DefaultQwenPayGBaseURL
 		}
 	}
 	return ""
@@ -1528,6 +1552,11 @@ func (a *Account) GetAnthropicProtocolBaseURL() string {
 		return DefaultZhipuAnthropicBaseURL
 	case PlatformDeepseek:
 		return DefaultDeepseekAnthropicBaseURL
+	case PlatformQwen:
+		if a.GetAccountMode() == AccountModeTokenPlan {
+			return DefaultQwenTokenPlanAnthropicBaseURL
+		}
+		return DefaultQwenPayGAnthropicBaseURL
 	default:
 		return ""
 	}
@@ -1555,6 +1584,11 @@ func (a *Account) GetOpenAIFormatBaseURL() string {
 		return DefaultZhipuPayGBaseURL
 	case PlatformDeepseek:
 		return DefaultDeepseekBaseURL
+	case PlatformQwen:
+		if a.GetAccountMode() == AccountModeTokenPlan {
+			return DefaultQwenTokenPlanBaseURL
+		}
+		return DefaultQwenPayGBaseURL
 	default:
 		return a.GetOpenAIBaseURL()
 	}

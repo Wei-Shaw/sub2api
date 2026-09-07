@@ -177,6 +177,10 @@ func TestDetectModelPlatform(t *testing.T) {
 		{name: "zhipu", model: "glm-5.2", platform: PlatformZhipu, ok: true},
 		{name: "deepseek", model: "deepseek-v4-pro", platform: PlatformDeepseek, ok: true},
 		{name: "unknown k3 alias", model: "k3-preview", ok: false},
+		{name: "qwen", model: "qwen3-max", platform: PlatformQwen, ok: true},
+		{name: "qwen dotted version", model: "qwen2.5-72b-instruct", platform: PlatformQwen, ok: true},
+		{name: "qwq", model: "qwq-32b", platform: PlatformQwen, ok: true},
+		{name: "dashscope prefix", model: "dashscope/qwen3-max", platform: PlatformQwen, ok: true},
 		{name: "unknown", model: "llama-4-maverick", ok: false},
 	}
 
@@ -211,13 +215,13 @@ func TestCompositeGroupSchedulerHasAllCanonicalPlatformBuckets(t *testing.T) {
 		platforms = append(platforms, platform)
 	}
 	require.ElementsMatch(t,
-		[]string{PlatformAnthropic, PlatformGemini, PlatformOpenAI, PlatformAntigravity, PlatformGrok, PlatformKimi, PlatformZhipu, PlatformDeepseek},
+		[]string{PlatformAnthropic, PlatformGemini, PlatformOpenAI, PlatformAntigravity, PlatformGrok, PlatformKimi, PlatformZhipu, PlatformDeepseek, PlatformQwen},
 		platforms,
 	)
 }
 
 func TestCompositeConcretePlatformsIncludeCNProviders(t *testing.T) {
-	for _, platform := range []string{PlatformKimi, PlatformZhipu, PlatformDeepseek} {
+	for _, platform := range []string{PlatformKimi, PlatformZhipu, PlatformDeepseek, PlatformQwen} {
 		require.True(t, isConcreteRequestPlatform(platform))
 		require.True(t, canCopyAccountsFromGroupPlatform(PlatformComposite, platform))
 	}

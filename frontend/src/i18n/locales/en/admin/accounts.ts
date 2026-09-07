@@ -107,6 +107,7 @@ export default {
         kimi: 'Kimi',
         zhipu: 'Zhipu GLM',
         deepseek: 'DeepSeek',
+        qwen: 'Qwen / Alibaba',
       },
       cnProviders: {
         accountMode: {
@@ -115,6 +116,8 @@ export default {
           paygDesc: 'Consumes account balance, billed per token. Auto-cools down on low balance and recovers after top-up.',
           coding: 'Coding Plan',
           codingDesc: 'Subscription coding package, rate-limited by 5-hour / weekly rolling usage windows.',
+          tokenPlan: 'Token Plan',
+          tokenPlanDesc: 'One-time Qwen token allocation. When exhausted, scheduling is permanently disabled until manually re-enabled.',
         },
         apiProtocol: {
           title: 'API Protocol',
@@ -148,11 +151,13 @@ export default {
         balance: 'Balance --',
         window5h: '5h',
         windowWeekly: '7d',
+        tokenPlan: 'Token Plan',
         probe: 'Query',
-        probeTooltip: 'Query the provider quota endpoint for 5-hour / weekly rolling window usage',
+        probeTooltip: 'Query the provider quota endpoint for rolling or one-time usage',
         balanceProbeTooltip: 'Query the provider balance endpoint for the account balance',
         balanceLow: 'Insufficient balance',
         noBalanceEndpoint: 'This platform has no balance query endpoint',
+        tokenPlanExhausted: 'Token Plan exhausted. Scheduling has been permanently disabled; manually re-enable this account after obtaining more quota.',
       },
       types: {
         oauth: 'OAuth',

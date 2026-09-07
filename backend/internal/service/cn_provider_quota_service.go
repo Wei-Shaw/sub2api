@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"math"
 	"net/http"
 	"sort"
 	"strconv"
@@ -267,6 +268,11 @@ func validateCodingPlanAccount(account *Account) error {
 	}
 	if !account.IsCNProvider() {
 		return infraerrors.New(http.StatusBadRequest, "CN_QUOTA_INVALID_PLATFORM", "account is not a CN provider account")
+	}
+	// Token Plan is a one-time allowance with no public usage endpoint.
+	// Reject before singleflight / any outbound request.
+	if account.IsTokenPlan() {
+		return infraerrors.New(http.StatusBadRequest, "CN_QUOTA_NOT_SUPPORTED", "Qwen Token Plan does not support usage queries")
 	}
 	if !account.IsCodingPlan() {
 		return infraerrors.New(http.StatusBadRequest, "CN_QUOTA_NOT_CODING_PLAN", "account is not a coding plan account")
@@ -532,24 +538,33 @@ func cnQuotaExtraUpdates(provider string, tiers []CNQuotaTier, now time.Time) ma
 
 // cnParseF64 把 JSON 数值或字符串解析为 float64（兼容 "100" 与 100）。
 func cnParseF64(raw any) (float64, bool) {
+	var (
+		f   float64
+		ok  bool
+		err error
+	)
 	switch v := raw.(type) {
 	case float64:
-		return v, true
+		f, ok = v, true
 	case float32:
-		return float64(v), true
+		f, ok = float64(v), true
 	case int:
-		return float64(v), true
+		f, ok = float64(v), true
 	case int64:
-		return float64(v), true
+		f, ok = float64(v), true
 	case json.Number:
-		f, err := v.Float64()
-		return f, err == nil
+		f, err = v.Float64()
+		ok = err == nil
 	case string:
-		f, err := strconv.ParseFloat(strings.TrimSpace(v), 64)
-		return f, err == nil
+		f, err = strconv.ParseFloat(strings.TrimSpace(v), 64)
+		ok = err == nil
 	default:
 		return 0, false
 	}
+	if !ok || math.IsNaN(f) || math.IsInf(f, 0) {
+		return 0, false
+	}
+	return f, true
 }
 
 // cnNormalizeResetTime 把上游重置时间（ISO8601 字符串 / 秒级 / 毫秒级数字）归一化为

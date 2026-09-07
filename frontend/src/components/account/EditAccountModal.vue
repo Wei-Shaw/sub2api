@@ -34,17 +34,7 @@
             v-model="editBaseUrl"
             type="text"
             class="input"
-            :placeholder="
-              account.platform === 'openai'
-                ? 'https://api.openai.com'
-                : account.platform === 'gemini'
-                  ? 'https://generativelanguage.googleapis.com'
-                  : account.platform === 'antigravity'
-                    ? 'https://cloudcode-pa.googleapis.com'
-                    : account.platform === 'grok'
-                      ? 'https://api.x.ai/v1'
-                      : 'https://api.anthropic.com'
-            "
+            :placeholder="editBaseUrlPlaceholder"
           />
           <p v-if="baseUrlHint" class="input-hint">{{ baseUrlHint }}</p>
           <GrokBaseUrlPresets
@@ -157,17 +147,7 @@
             data-1p-ignore
             data-lpignore="true"
             data-bwignore="true"
-            :placeholder="
-              account.platform === 'openai'
-                ? 'sk-proj-...'
-                : account.platform === 'gemini'
-                  ? 'AIza...'
-                  : account.platform === 'antigravity'
-                    ? 'sk-...'
-                    : account.platform === 'grok'
-                      ? 'xai-...'
-                      : 'sk-ant-...'
-            "
+            :placeholder="editApiKeyPlaceholder"
           />
           <p class="input-hint">{{ t('admin.accounts.leaveEmptyToKeep') }}</p>
         </div>
@@ -2967,6 +2947,12 @@ import { createStableObjectKeyResolver } from '@/utils/stableObjectKey'
 import { allSelectedGroupsEnableLongContextPricing } from '@/components/account/longContextBilling'
 import { VERTEX_LOCATION_OPTIONS } from '@/constants/account'
 import {
+  isCnProviderPlatform,
+  isQwenPlatform,
+  normalizeCnProviderPlatform,
+  type CanonicalCnProviderPlatform
+} from '@/constants/cnProviders'
+import {
   OPENAI_WS_MODE_CTX_POOL,
   OPENAI_WS_MODE_OFF,
   OPENAI_WS_MODE_PASSTHROUGH,
@@ -3023,6 +3009,46 @@ const baseUrlHint = computed(() => {
   return t('admin.accounts.baseUrlHint')
 })
 
+const editBaseUrlPlaceholder = computed(() => {
+  if (!props.account) return 'https://api.anthropic.com'
+  if (isCnProviderPlatform(props.account.platform)) {
+    return defaultCNBaseUrl(props.account.platform, editAccountMode.value, editApiProtocol.value)
+  }
+  switch (props.account.platform) {
+    case 'openai':
+      return 'https://api.openai.com'
+    case 'gemini':
+      return 'https://generativelanguage.googleapis.com'
+    case 'antigravity':
+      return 'https://cloudcode-pa.googleapis.com'
+    case 'grok':
+      return 'https://api.x.ai/v1'
+    default:
+      return 'https://api.anthropic.com'
+  }
+})
+
+const editApiKeyPlaceholder = computed(() => {
+  if (!props.account) return 'sk-ant-...'
+  switch (normalizeCnProviderPlatform(props.account.platform) ?? props.account.platform) {
+    case 'openai':
+      return 'sk-proj-...'
+    case 'gemini':
+      return 'AIza...'
+    case 'antigravity':
+    case 'kimi':
+    case 'deepseek':
+    case 'qwen':
+      return 'sk-...'
+    case 'zhipu':
+      return '<api-key>.<secret>'
+    case 'grok':
+      return 'xai-...'
+    default:
+      return 'sk-ant-...'
+  }
+})
+
 const antigravityPresetMappings = computed(() => getPresetMappingsByPlatform('antigravity'))
 const bedrockPresets = computed(() => getPresetMappingsByPlatform('bedrock'))
 
@@ -3044,25 +3070,19 @@ const submitting = ref(false)
 const editBaseUrl = ref('https://api.anthropic.com')
 const editApiKey = ref('')
 
-// ── 国产供应商（Kimi / Zhipu / DeepSeek）account_mode / api_protocol 编辑 ──
+// ── 国产供应商（Kimi / Zhipu / DeepSeek / Qwen）account_mode / api_protocol 编辑 ──
 // account_mode 决定额度/余额监控路径，api_protocol 决定转发端点与格式；
 // 二者均可修正（早期创建的账号可能存错默认值），切换时重置 base_url 预置。
 const isCNApiKeyAccount = computed(
   () =>
     props.account?.type === 'apikey' &&
-    (props.account.platform === 'kimi' ||
-      props.account.platform === 'zhipu' ||
-      props.account.platform === 'deepseek')
+    isCnProviderPlatform(props.account.platform)
 )
 // CnBaseUrlPresets 的 platform prop 是平台字面量联合类型，模板里不能写
 // `as` 断言（其中的 `|` 会被 eslint 误判为 Vue2 filter 语法），经此 computed 传递。
-const cnPresetPlatform = computed<'kimi' | 'zhipu' | 'deepseek'>(() => {
-  const platform = props.account?.platform
-  if (platform === 'kimi' || platform === 'zhipu' || platform === 'deepseek') {
-    return platform
-  }
-  return 'kimi'
-})
+const cnPresetPlatform = computed<CanonicalCnProviderPlatform>(
+  () => normalizeCnProviderPlatform(props.account?.platform) ?? 'kimi'
+)
 const editApiProtocol = ref<CnApiProtocol>('adaptive')
 const editAccountMode = ref<CnAccountMode>('payg')
 // 智谱团队版 Coding Plan：组织/项目 ID，写入 credentials 供额度探测切换团队端点
@@ -3078,10 +3098,17 @@ const editAdaptiveBaseUrls = ref<Record<CnNativeApiProtocol, string>>({
 // 存储版 base_url（可能是用户自定义/中转地址）覆盖为官方预设并在下次保存时持久化。
 // nextTick 后解除，此后用户主动切换模式/协议仍正常联动重置。
 const syncingForm = ref(false)
-const cnAccountModeOptions = computed<Array<{ value: CnAccountMode; labelKey: 'payg' | 'coding' }>>(
+const cnAccountModeOptions = computed<Array<{ value: CnAccountMode; labelKey: 'payg' | 'coding' | 'tokenPlan' }>>(
   () => {
+    const platform = normalizeCnProviderPlatform(props.account?.platform)
+    if (platform === 'qwen') {
+      return [
+        { value: 'payg', labelKey: 'payg' },
+        { value: 'token_plan', labelKey: 'tokenPlan' }
+      ]
+    }
     // DeepSeek 无 coding 套餐（与创建弹窗一致），仅保留按量付费。
-    if (props.account?.platform === 'deepseek') {
+    if (platform === 'deepseek') {
       return [{ value: 'payg', labelKey: 'payg' }]
     }
     return [
@@ -3131,8 +3158,16 @@ watch(editApiProtocol, (protocol, previousProtocol) => {
 })
 watch(editAccountMode, (mode, previousMode) => {
   if (!isCNApiKeyAccount.value || syncingForm.value) return
-  // deepseek 无 coding 套餐：防御性回退（UI 已隐藏该选项）。
-  const effectiveMode = props.account!.platform === 'deepseek' && mode === 'coding' ? 'payg' : mode
+  // 防御性回退：DeepSeek 无 coding 套餐；Qwen 不使用 coding，旧别名的
+  // 非按量模式在编辑 UI 中统一视作一次性 Token Plan。
+  const platform = normalizeCnProviderPlatform(props.account!.platform)
+  const effectiveMode = platform === 'qwen'
+    ? (mode === 'payg' ? 'payg' : 'token_plan')
+    : platform === 'deepseek' && mode === 'coding'
+      ? 'payg'
+      : mode === 'token_plan'
+        ? 'payg'
+        : mode
   if (effectiveMode !== mode) {
     editAccountMode.value = effectiveMode
     return
@@ -3610,17 +3645,14 @@ const tempUnschedPresets = computed(() => [
 
 // Computed: default base URL based on platform
 const defaultBaseUrl = computed(() => {
-  if (props.account?.platform === 'openai') return 'https://api.openai.com'
-  if (props.account?.platform === 'gemini') return 'https://generativelanguage.googleapis.com'
-  if (props.account?.platform === 'grok') return 'https://api.x.ai/v1'
+  const platform = props.account?.platform
+  if (platform === 'openai') return 'https://api.openai.com'
+  if (platform === 'gemini') return 'https://generativelanguage.googleapis.com'
+  if (platform === 'grok') return 'https://api.x.ai/v1'
   // CN 供应商：按当前模式/协议回落到官方预设（清空输入框提交时使用），
   // 不能落到 anthropic 默认值（会被当 CC base 拼出错误端点）。
-  if (
-    props.account?.platform === 'kimi' ||
-    props.account?.platform === 'zhipu' ||
-    props.account?.platform === 'deepseek'
-  ) {
-    return defaultCNBaseUrl(props.account.platform, editAccountMode.value, editApiProtocol.value)
+  if (platform && isCnProviderPlatform(platform)) {
+    return defaultCNBaseUrl(platform, editAccountMode.value, editApiProtocol.value)
   }
   return 'https://api.anthropic.com'
 })
@@ -3986,8 +4018,12 @@ const syncFormFromAccount = (newAccount: Account | null) => {
     const credentials = newAccount.credentials as Record<string, unknown>
     // 国产供应商：读取 account_mode 与 api_protocol 作为可编辑初始值
     // （编辑弹窗允许修正两者，用于修复早期存错默认值的账号）。
-    if (newAccount.platform === 'kimi' || newAccount.platform === 'zhipu' || newAccount.platform === 'deepseek') {
-      editAccountMode.value = credentials.account_mode === 'coding' ? 'coding' : 'payg'
+    if (isCnProviderPlatform(newAccount.platform)) {
+      editAccountMode.value = isQwenPlatform(newAccount.platform)
+        ? (credentials.account_mode === 'payg' ? 'payg' : 'token_plan')
+        : credentials.account_mode === 'coding'
+          ? 'coding'
+          : 'payg'
       const storedProtocol = credentials.api_protocol
       editApiProtocol.value =
         storedProtocol === 'adaptive' ||
@@ -4043,9 +4079,7 @@ const syncFormFromAccount = (newAccount: Account | null) => {
           ? 'https://generativelanguage.googleapis.com'
           : newAccount.platform === 'grok'
             ? 'https://api.x.ai/v1'
-            : newAccount.platform === 'kimi' ||
-                newAccount.platform === 'zhipu' ||
-                newAccount.platform === 'deepseek'
+            : isCnProviderPlatform(newAccount.platform)
               ? defaultCNBaseUrl(newAccount.platform, editAccountMode.value, editApiProtocol.value)
               : 'https://api.anthropic.com'
     editBaseUrl.value = isCNApiKeyAccount.value && editApiProtocol.value === 'adaptive'

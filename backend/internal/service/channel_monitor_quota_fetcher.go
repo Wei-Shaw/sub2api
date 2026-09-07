@@ -20,9 +20,10 @@ import (
 //
 // 不直接对接上游，而是把账号侧现成的用量服务归一成 domain.MonitorQuotaSnapshot：
 //   - 海外 5 家（anthropic/openai/gemini/antigravity/grok）→ AccountUsageService.GetUsageForAccount
-//   - 国产 coding plan（kimi/zhipu/deepseek）→ CNProviderQuotaService.QueryUsageForAccount
+//   - 国产 coding plan（kimi/zhipu）→ CNProviderQuotaService.QueryUsageForAccount
 //   - 国产 payg（kimi/deepseek）→ CNProviderBalanceService.QueryBalanceForAccount
 //     （zhipu payg 无公开余额端点，探测会返回该错误，原样透出）
+//   - Qwen Token Plan 无公开用量端点，依靠推理响应中的明确耗尽错误停调
 // 数据源统一接受已加载的 *Account：fetchUncached 路由前 GetByID 一次并传下去，
 // 下游服务不再各自重载（每次 GetByID 含 proxies/groups 联查）。
 //
@@ -221,6 +222,10 @@ func (f *ChannelMonitorQuotaFetcher) fetchUncached(ctx context.Context, accountI
 			return f.fetchCNQuota(ctx, account, now)
 		}
 		return f.fetchCNBalance(ctx, account, now)
+	case domain.PlatformQwen:
+		// Qwen (payg and Token Plan) has no public usage/balance endpoint.
+		// Do not fall through to the overseas usage probe.
+		return quotaErrorSnapshot("cn_quota", "Qwen Token Plan does not support usage queries", now)
 	default:
 		return f.fetchUsage(ctx, account, now)
 	}

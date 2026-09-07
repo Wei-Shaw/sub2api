@@ -429,8 +429,8 @@
       </div>
     </template>
 
-    <!-- CN providers (Kimi / Zhipu / DeepSeek): coding-plan quota or payg balance -->
-    <template v-else-if="account.platform === 'kimi' || account.platform === 'zhipu' || account.platform === 'deepseek'">
+    <!-- CN providers: Coding Plan quota, Qwen Token Plan status, or payg balance -->
+    <template v-else-if="isCnProviderPlatform(account.platform)">
       <!-- 挂在 CN 平台下的 Ollama Cloud 账号（资格由后端下发 eligible）：用量由
            Ollama 用量窗口负责。这类账号不是国产厂商订阅，CN 的额度/余额探测端点由
            base_url 衍生，对 ollama.com 会被后端出站 URL 白名单拒绝，渲染出来只会
@@ -442,7 +442,8 @@
       />
       <div v-else class="space-y-1">
         <!-- 子单元格各自按 模式×平台 判定可见；两者都不可见时（智谱 payg 无公开
-             余额端点、coding 探测也不适用）才回落到占位符。 -->
+             余额端点、Coding Plan 探测也不适用）才回落到占位符。Qwen Token Plan
+             始终保留状态单元格，避免在耗尽告警旁显示占位符。 -->
         <div
           v-if="!cnQuotaCellVisible && !cnBalanceCellVisible"
           class="text-xs text-gray-400"
@@ -661,6 +662,7 @@ import CNProviderQuotaCell from './CNProviderQuotaCell.vue'
 import CNProviderBalanceCell from './CNProviderBalanceCell.vue'
 import OllamaCloudUsageCell from './OllamaCloudUsageCell.vue'
 import { cnQuotaCellVisible as cnQuotaCellVisibleFn, cnBalanceCellVisible as cnBalanceCellVisibleFn } from './credentialsBuilder'
+import { isCnProviderPlatform } from '@/constants/cnProviders'
 
 // Module-level cache shared across all AccountUsageCell instances
 const _usageCache = new Map<number, { data: AccountUsageInfo; ts: number }>()
@@ -722,13 +724,9 @@ let visibilityObserver: IntersectionObserver | null = null
 const showUsageWindows = computed(() => {
   // Gemini: we can always compute local usage windows from DB logs (simulated quotas).
   if (props.account.platform === 'gemini') return true
-  // CN providers: apikey 账号也有滚动用量窗口（coding plan）或余额（payg），
-  // 由 CNProviderQuotaCell / CNProviderBalanceCell 自行探测与展示。
-  if (
-    props.account.platform === 'kimi' ||
-    props.account.platform === 'zhipu' ||
-    props.account.platform === 'deepseek'
-  ) {
+  // CN providers: apikey 账号有 Coding Plan 用量、Token Plan 耗尽状态或 payg 余额，
+  // 由 CNProviderQuotaCell / CNProviderBalanceCell 自行展示。
+  if (isCnProviderPlatform(props.account.platform)) {
     return true
   }
   return props.account.type === 'oauth' || props.account.type === 'setup-token'

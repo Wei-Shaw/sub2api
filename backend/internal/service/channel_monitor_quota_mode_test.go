@@ -464,6 +464,17 @@ func TestMonitorAccountQuotaCapability_Matrix(t *testing.T) {
 			wantErr: ErrChannelMonitorAccountNotSupportable,
 		},
 		{
+			name: "qwen token plan has no usage endpoint",
+			account: &Account{ID: 16, Platform: domain.PlatformQwen, Type: AccountTypeAPIKey,
+				Credentials: map[string]any{"account_mode": AccountModeTokenPlan}},
+			wantErr: ErrChannelMonitorAccountNotSupportable,
+		},
+		{
+			name:    "qwen payg has no usage endpoint",
+			account: &Account{ID: 17, Platform: domain.PlatformQwen, Type: AccountTypeAPIKey},
+			wantErr: ErrChannelMonitorAccountNotSupportable,
+		},
+		{
 			name:    "kimi payg ok",
 			account: &Account{ID: 6, Platform: domain.PlatformKimi},
 		},

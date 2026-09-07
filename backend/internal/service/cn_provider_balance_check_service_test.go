@@ -49,10 +49,12 @@ func TestCNProviderBalanceCheckRunOnceProbesCodingPlanQuota(t *testing.T) {
 		Credentials: map[string]any{"account_mode": "coding"}}
 	zhipuCoding := Account{ID: 4, Platform: PlatformZhipu, Type: AccountTypeAPIKey, Status: StatusActive,
 		Credentials: map[string]any{"account_mode": "coding"}}
-
+	qwenTokenPlan := Account{ID: 5, Platform: PlatformQwen, Type: AccountTypeAPIKey, Status: StatusActive,
+		Credentials: map[string]any{"account_mode": AccountModeTokenPlan}}
 	repo := &fakeCNCheckRepo{byPlatform: map[string][]Account{
 		PlatformKimi:  {kimiActive, kimiPaused, kimiInactive},
 		PlatformZhipu: {zhipuCoding},
+		PlatformQwen:  {qwenTokenPlan},
 	}}
 	prober := &fakeCNQuotaProber{}
 	svc := &CNProviderBalanceCheckService{
