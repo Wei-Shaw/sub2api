@@ -35,6 +35,32 @@ func TestWire_IndexFieldsPresentAtZero(t *testing.T) {
 	require.Contains(t, r, "summary_index")
 }
 
+func TestWire_WebSearchActionAndCitationsArePreserved(t *testing.T) {
+	m := marshalEvent(t, ResponsesStreamEvent{
+		Type: "response.output_item.done",
+		Item: &ResponsesOutput{Type: "web_search_call", ID: "ws_1", Status: "completed", Action: &WebSearchAction{
+			Type: "search", Query: "current release", Sources: []ResponsesWebSearchSource{{Type: "url", URL: "https://example.com", Title: "Example"}},
+		}},
+	})
+	item, ok := m["item"].(map[string]any)
+	require.True(t, ok)
+	action, ok := item["action"].(map[string]any)
+	require.True(t, ok)
+	require.Equal(t, "current release", action["query"])
+	require.Len(t, action["sources"], 1)
+
+	m = marshalEvent(t, ResponsesStreamEvent{
+		Type: "response.content_part.done",
+		Part: &ResponsesContentPart{
+			Type: "output_text", Text: "Example",
+			Annotations: []ResponsesAnnotation{{Type: "url_citation", URL: "https://example.com", Title: "Example", StartIndex: 0, EndIndex: 7}},
+		},
+	})
+	part, ok := m["part"].(map[string]any)
+	require.True(t, ok)
+	require.Len(t, part["annotations"], 1)
+}
+
 // TestWire_FunctionCallItemAlwaysComplete guards that a function_call item
 // always carries call_id/name/arguments, including arguments:"" on .added.
 func TestWire_FunctionCallItemAlwaysComplete(t *testing.T) {

@@ -309,9 +309,10 @@ func (i *ResponsesInputItem) UnmarshalJSON(data []byte) error {
 
 // ResponsesContentPart is a typed content part in a Responses message.
 type ResponsesContentPart struct {
-	Type     string `json:"type"` // "input_text" | "output_text" | "input_image" | "input_file"
-	Text     string `json:"text,omitempty"`
-	ImageURL string `json:"image_url,omitempty"` // data URI for input_image
+	Type        string                `json:"type"` // "input_text" | "output_text" | "input_image" | "input_file"
+	Text        string                `json:"text,omitempty"`
+	ImageURL    string                `json:"image_url,omitempty"` // data URI for input_image
+	Annotations []ResponsesAnnotation `json:"annotations,omitempty"`
 
 	// input_file fields.
 	Filename string `json:"filename,omitempty"`
@@ -491,8 +492,23 @@ func (o *ResponsesOutput) UnmarshalJSON(data []byte) error {
 
 // WebSearchAction describes the search action in a web_search_call output item.
 type WebSearchAction struct {
-	Type  string `json:"type,omitempty"`  // "search"
-	Query string `json:"query,omitempty"` // primary search query
+	Type    string                     `json:"type,omitempty"` // "search"
+	Query   string                     `json:"query,omitempty"`
+	Sources []ResponsesWebSearchSource `json:"sources,omitempty"`
+}
+
+type ResponsesWebSearchSource struct {
+	Type  string `json:"type,omitempty"`
+	URL   string `json:"url"`
+	Title string `json:"title,omitempty"`
+}
+
+type ResponsesAnnotation struct {
+	Type       string `json:"type"`
+	URL        string `json:"url,omitempty"`
+	Title      string `json:"title,omitempty"`
+	StartIndex int    `json:"start_index"`
+	EndIndex   int    `json:"end_index"`
 }
 
 // ResponsesSummary is a summary text block inside a reasoning output.
@@ -636,7 +652,9 @@ type ResponsesStreamEvent struct {
 
 	// response.content_part.added / done and
 	// response.reasoning_summary_part.added / done
-	Part *ResponsesContentPart `json:"part,omitempty"`
+	Part            *ResponsesContentPart `json:"part,omitempty"`
+	Annotation      *ResponsesAnnotation  `json:"annotation,omitempty"`
+	AnnotationIndex int                   `json:"annotation_index,omitempty"`
 
 	// error event fields
 	Code  string `json:"code,omitempty"`

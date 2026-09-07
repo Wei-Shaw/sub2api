@@ -23,6 +23,19 @@ import "encoding/json"
 // events.
 func (e ResponsesStreamEvent) MarshalJSON() ([]byte, error) {
 	switch e.Type {
+	case "response.web_search_call.in_progress", "response.web_search_call.searching", "response.web_search_call.completed":
+		m := e.wireBase()
+		e.putItemID(m)
+		m["output_index"] = e.OutputIndex
+		return json.Marshal(m)
+	case "response.output_text.annotation.added":
+		m := e.wireBase()
+		e.putItemID(m)
+		m["output_index"] = e.OutputIndex
+		m["content_index"] = e.ContentIndex
+		m["annotation_index"] = e.AnnotationIndex
+		m["annotation"] = e.Annotation
+		return json.Marshal(m)
 	case "response.output_text.delta", "response.output_text.done":
 		m := e.wireBase()
 		e.putItemID(m)
@@ -129,13 +142,17 @@ func (e ResponsesStreamEvent) putItemID(m map[string]any) {
 // carrying text/annotations/logprobs (matching cc-switch's push_text_delta).
 func outputTextPartWire(part *ResponsesContentPart) map[string]any {
 	text := ""
+	annotations := []ResponsesAnnotation{}
 	if part != nil {
 		text = part.Text
+		if part.Annotations != nil {
+			annotations = part.Annotations
+		}
 	}
 	return map[string]any{
 		"type":        "output_text",
 		"text":        text,
-		"annotations": []any{},
+		"annotations": annotations,
 		"logprobs":    []any{},
 	}
 }
@@ -201,6 +218,8 @@ func responsesItemWire(item *ResponsesOutput) map[string]any {
 		m["call_id"] = item.CallID
 		m["execution"] = "client"
 		m["arguments"] = toolSearchCallArgumentsJSON(item.Arguments)
+	case "web_search_call":
+		m["action"] = item.Action
 	}
 	return m
 }
@@ -214,7 +233,16 @@ func messageContentWire(parts []ResponsesContentPart) []map[string]any {
 		if typ == "" {
 			typ = "output_text"
 		}
-		out = append(out, map[string]any{"type": typ, "text": p.Text})
+		part := map[string]any{"type": typ, "text": p.Text}
+		if typ == "output_text" {
+			annotations := p.Annotations
+			if annotations == nil {
+				annotations = []ResponsesAnnotation{}
+			}
+			part["annotations"] = annotations
+			part["logprobs"] = []any{}
+		}
+		out = append(out, part)
 	}
 	return out
 }
