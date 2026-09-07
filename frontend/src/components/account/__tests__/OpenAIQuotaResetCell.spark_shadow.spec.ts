@@ -136,7 +136,7 @@ describe('OpenAIQuotaResetCell — 外审 F6:影子禁用重置', () => {
       parent_account_id: null,
       extra: {
         auto_reset_credit_expiry_enabled: true,
-        codex_auto_reset_credit_state: { status: 'available', available_count: 1, checked_at: '2026-09-05T14:55:03Z' },
+        codex_auto_reset_credit_state: { status: 'no_credit', available_count: 0, checked_at: '2026-09-05T14:55:03Z' },
         codex_reset_credit_snapshot: { available_count: 1, credits: [{ expires_at: FUTURE_EXPIRY_EARLY }] },
       },
     })
@@ -386,8 +386,6 @@ describe('OpenAIQuotaResetCell — 外审 F6:影子禁用重置', () => {
 
 describe('OpenAIQuotaResetCell 自动用卡运行态', () => {
   it.each([
-    ['checking', 'checking'],
-    ['available', 'available'],
     ['resetting', 'resetting'],
     ['success', 'success'],
     ['no_credit', 'noCredit'],
@@ -418,6 +416,18 @@ describe('OpenAIQuotaResetCell 自动用卡运行态', () => {
       extra: {
         auto_reset_credit_enabled: false,
         codex_auto_reset_credit_state: { status: 'success', available_count: 1 },
+      },
+    })
+    const wrapper = mount(OpenAIQuotaResetCell, { props: { account } })
+    expect(wrapper.find('[data-testid="auto-reset-credit-state"]').exists()).toBe(false)
+    wrapper.unmount()
+  })
+
+  it.each(['available', 'checking'])('%s 属于稳态,不显示状态行', (status) => {
+    const account = makeAccount({
+      extra: {
+        auto_reset_credit_enabled: true,
+        codex_auto_reset_credit_state: { status, trigger_window: '7d', available_count: 2, checked_at: '2099-07-03T04:05:06Z' },
       },
     })
     const wrapper = mount(OpenAIQuotaResetCell, { props: { account } })

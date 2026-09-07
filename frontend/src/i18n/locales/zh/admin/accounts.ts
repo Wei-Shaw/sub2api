@@ -507,8 +507,6 @@ export default {
         resetAccountRefreshFailed: '窗口、账号状态和重置次数缓存已更新，但无法加载最新账号显示。',
         refreshCachePersistFailed: '已显示实时次数，但到期明细获取失败，仍保留原有缓存明细。',
         autoStatus: {
-          checking: '检测中',
-          available: '卡可用',
           resetting: '自动重置中',
           success: '自动重置成功',
           noCredit: '无卡',
