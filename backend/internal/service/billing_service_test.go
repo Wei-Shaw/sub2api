@@ -1800,7 +1800,7 @@ func TestGetModelPricing_Fable51FallbackPricing(t *testing.T) {
 	require.InDelta(t, 20e-6, pricing.CacheCreation1hPrice, 1e-12)
 	require.InDelta(t, 0.25e-6, pricing.CacheReadPricePerToken, 1e-12)
 	require.NotNil(t, pricing.MaxReasoningEffortMultiplier)
-	require.Equal(t, 3.0, *pricing.MaxReasoningEffortMultiplier)
+	require.Equal(t, 1.0, *pricing.MaxReasoningEffortMultiplier)
 }
 
 func TestGetModelPricingWithChannel_CacheReadPriceAffectsPriority(t *testing.T) {

@@ -62,7 +62,7 @@ func TestWithDefaultMaxReasoningEffortMultiplier_Fable51(t *testing.T) {
 	got := withDefaultMaxReasoningEffortMultiplier(base, "claude-fable-5-1")
 	require.NotSame(t, base, got)
 	require.NotNil(t, got.MaxReasoningEffortMultiplier)
-	require.Equal(t, 3.0, *got.MaxReasoningEffortMultiplier)
+	require.Equal(t, 1.0, *got.MaxReasoningEffortMultiplier)
 	require.Nil(t, base.MaxReasoningEffortMultiplier)
 
 	configured := 1.25
