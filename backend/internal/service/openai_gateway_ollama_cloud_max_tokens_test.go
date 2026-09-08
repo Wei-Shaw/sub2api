@@ -553,3 +553,206 @@ func TestForwardResponsesClampsOllamaCloudMaxOutputTokensForCodexClients(t *test
 		})
 	}
 }
+
+// TestForwardResponses_DeepseekOllamaCloudClampsClientMaxTokensFallback 覆盖问题 1：
+// 原生 /v1/responses 入站只带 max_tokens（无 max_output_tokens）的 deepseek 平台
+// ollama 账号，clamp 判据不限定平台——出站 patch 为 max_output_tokens=cap，并清除
+// 残留的 max_tokens。
+func TestForwardResponses_DeepseekOllamaCloudClampsClientMaxTokensFallback(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	newAccount := func(id int64) *Account {
+		account := ollamaUpstreamTestAccount(PlatformDeepseek, id)
+		account.Credentials["api_protocol"] = APIProtocolResponses
+		return account
+	}
+	run := func(account *Account, body []byte) (*httpUpstreamRecorder, error) {
+		upstream := &httpUpstreamRecorder{err: errors.New("stop after capture")}
+		svc := &OpenAIGatewayService{cfg: rawChatCompletionsTestConfig(), httpUpstream: upstream}
+		_, err := svc.Forward(context.Background(), adaptiveProtocolTestContext("/v1/responses", body), account, body)
+		return upstream, err
+	}
+
+	t.Run("max_tokens above cap is clamped and removed", func(t *testing.T) {
+		account := newAccount(351)
+		body := []byte(`{"model":"deepseek-v4-flash","input":"Reply with exactly OK and nothing else.","max_tokens":256000,"stream":false}`)
+		upstream, err := run(account, body)
+		require.Error(t, err)
+		require.Equal(t, "https://ollama.com/v1/responses", upstream.lastReq.URL.String())
+		require.Equal(t, int64(65535), gjson.GetBytes(upstream.lastBody, "max_output_tokens").Int())
+		require.False(t, gjson.GetBytes(upstream.lastBody, "max_tokens").Exists())
+	})
+
+	t.Run("max_tokens at or below cap is not rewritten", func(t *testing.T) {
+		account := newAccount(352)
+		body := []byte(`{"model":"deepseek-v4-flash","input":"Reply with exactly OK and nothing else.","max_tokens":1000,"stream":false}`)
+		upstream, err := run(account, body)
+		require.Error(t, err)
+		require.False(t, gjson.GetBytes(upstream.lastBody, "max_output_tokens").Exists())
+		// 既有行为：非 openai 平台只发 max_tokens（≤cap）时残留 max_tokens，本次不处理。
+		require.Equal(t, int64(1000), gjson.GetBytes(upstream.lastBody, "max_tokens").Int())
+	})
+}
+
+// TestForwardAsChatCompletions_DeepseekOllamaCloudClampsMaxOutputTokens 覆盖问题 2 的
+// CC 入站路径：/v1/chat/completions 入站、账号出站协议为原生 Responses 时，转换生成的
+// max_output_tokens 在发出前被 clamp；≤cap 保持转换后的原值。
+func TestForwardAsChatCompletions_DeepseekOllamaCloudClampsMaxOutputTokens(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	newAccount := func(id int64) *Account {
+		account := ollamaUpstreamTestAccount(PlatformDeepseek, id)
+		account.Credentials["api_protocol"] = APIProtocolResponses
+		return account
+	}
+	run := func(account *Account, body []byte) (*httpUpstreamRecorder, error) {
+		upstream := &httpUpstreamRecorder{err: errors.New("stop after capture")}
+		svc := &OpenAIGatewayService{cfg: rawChatCompletionsTestConfig(), httpUpstream: upstream}
+		_, err := svc.ForwardAsChatCompletions(context.Background(), adaptiveProtocolTestContext("/v1/chat/completions", body), account, body, "", "")
+		return upstream, err
+	}
+
+	t.Run("max_tokens above cap is clamped", func(t *testing.T) {
+		account := newAccount(361)
+		body := []byte(`{"model":"deepseek-chat","max_tokens":256000,"messages":[{"role":"user","content":"hi"}],"stream":false}`)
+		upstream, err := run(account, body)
+		require.Error(t, err)
+		require.Equal(t, "https://ollama.com/v1/responses", upstream.lastReq.URL.String())
+		require.Equal(t, "deepseek-chat", gjson.GetBytes(upstream.lastBody, "model").String())
+		require.Equal(t, int64(65535), gjson.GetBytes(upstream.lastBody, "max_output_tokens").Int())
+	})
+
+	t.Run("max_tokens at or below cap is preserved", func(t *testing.T) {
+		account := newAccount(362)
+		body := []byte(`{"model":"deepseek-chat","max_tokens":1000,"messages":[{"role":"user","content":"hi"}],"stream":false}`)
+		upstream, err := run(account, body)
+		require.Error(t, err)
+		require.Equal(t, int64(1000), gjson.GetBytes(upstream.lastBody, "max_output_tokens").Int())
+	})
+}
+
+// TestForwardAsAnthropic_DeepseekOllamaCloudClampsMaxOutputTokens 覆盖问题 2 的
+// Messages 入站路径：/v1/messages 入站、账号出站协议为原生 Responses 时，转换生成的
+// max_output_tokens 在发出前被 clamp；≤cap 保持转换后的原值。
+func TestForwardAsAnthropic_DeepseekOllamaCloudClampsMaxOutputTokens(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	newAccount := func(id int64) *Account {
+		account := ollamaUpstreamTestAccount(PlatformDeepseek, id)
+		account.Credentials["api_protocol"] = APIProtocolResponses
+		return account
+	}
+	run := func(account *Account, body []byte) (*httpUpstreamRecorder, error) {
+		upstream := &httpUpstreamRecorder{err: errors.New("stop after capture")}
+		svc := &OpenAIGatewayService{cfg: rawChatCompletionsTestConfig(), httpUpstream: upstream}
+		_, err := svc.ForwardAsAnthropic(context.Background(), adaptiveProtocolTestContext("/v1/messages", body), account, body, "", "")
+		return upstream, err
+	}
+
+	t.Run("max_tokens above cap is clamped", func(t *testing.T) {
+		account := newAccount(371)
+		body := []byte(`{"model":"deepseek-chat","max_tokens":256000,"messages":[{"role":"user","content":"hi"}],"stream":false}`)
+		upstream, err := run(account, body)
+		require.Error(t, err)
+		require.Equal(t, "https://ollama.com/v1/responses", upstream.lastReq.URL.String())
+		require.Equal(t, "deepseek-chat", gjson.GetBytes(upstream.lastBody, "model").String())
+		require.Equal(t, int64(65535), gjson.GetBytes(upstream.lastBody, "max_output_tokens").Int())
+	})
+
+	t.Run("max_tokens at or below cap is preserved", func(t *testing.T) {
+		account := newAccount(372)
+		body := []byte(`{"model":"deepseek-chat","max_tokens":1000,"messages":[{"role":"user","content":"hi"}],"stream":false}`)
+		upstream, err := run(account, body)
+		require.Error(t, err)
+		require.Equal(t, int64(1000), gjson.GetBytes(upstream.lastBody, "max_output_tokens").Int())
+	})
+}
+
+// TestResponsesPathNotClampedForOfficialDeepseekOrNonDeepSeekModel 对照用例（问题 1/2）：
+// 官方 deepseek（api.deepseek.com）与 ollama.com + 非 DeepSeek 模型的账号，同一判据不
+// 命中——三个出站入口的出站 body 保持 256000、不做任何改写。
+func TestResponsesPathNotClampedForOfficialDeepseekOrNonDeepSeekModel(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	type entry struct {
+		name    string
+		path    string
+		body    []byte
+		forward func(*OpenAIGatewayService, *gin.Context, *Account, []byte) error
+	}
+	entries := []entry{
+		{
+			name: "responses ingress",
+			path: "/v1/responses",
+			body: []byte(`{"model":"deepseek-v4-flash","input":"Reply with exactly OK and nothing else.","max_tokens":256000,"stream":false}`),
+			forward: func(svc *OpenAIGatewayService, c *gin.Context, account *Account, body []byte) error {
+				_, err := svc.Forward(context.Background(), c, account, body)
+				return err
+			},
+		},
+		{
+			name: "chat completions ingress",
+			path: "/v1/chat/completions",
+			body: []byte(`{"model":"deepseek-chat","max_tokens":256000,"messages":[{"role":"user","content":"hi"}],"stream":false}`),
+			forward: func(svc *OpenAIGatewayService, c *gin.Context, account *Account, body []byte) error {
+				_, err := svc.ForwardAsChatCompletions(context.Background(), c, account, body, "", "")
+				return err
+			},
+		},
+		{
+			name: "messages ingress",
+			path: "/v1/messages",
+			body: []byte(`{"model":"deepseek-chat","max_tokens":256000,"messages":[{"role":"user","content":"hi"}],"stream":false}`),
+			forward: func(svc *OpenAIGatewayService, c *gin.Context, account *Account, body []byte) error {
+				_, err := svc.ForwardAsAnthropic(context.Background(), c, account, body, "", "")
+				return err
+			},
+		},
+	}
+
+	run := func(account *Account, e entry) *httpUpstreamRecorder {
+		upstream := &httpUpstreamRecorder{err: errors.New("stop after capture")}
+		svc := &OpenAIGatewayService{cfg: rawChatCompletionsTestConfig(), httpUpstream: upstream}
+		err := e.forward(svc, adaptiveProtocolTestContext(e.path, e.body), account, e.body)
+		require.Error(t, err)
+		return upstream
+	}
+
+	t.Run("official deepseek keeps 256000", func(t *testing.T) {
+		account := officialDeepSeekTestAccount(381)
+		account.Credentials["api_protocol"] = APIProtocolResponses
+		for _, e := range entries {
+			t.Run(e.name, func(t *testing.T) {
+				upstream := run(account, e)
+				require.Equal(t, "https://api.deepseek.com/responses", upstream.lastReq.URL.String())
+				// 原生 Responses 入站只发 max_tokens 时保持原样（无 max_output_tokens）；
+				// 转换路径经转换器生成 max_output_tokens=256000，均不做 clamp。
+				if out := gjson.GetBytes(upstream.lastBody, "max_output_tokens"); out.Exists() {
+					require.Equal(t, int64(256000), out.Int())
+				} else {
+					require.Equal(t, int64(256000), gjson.GetBytes(upstream.lastBody, "max_tokens").Int())
+				}
+			})
+		}
+	})
+
+	t.Run("ollama account with non-deepseek model keeps 256000", func(t *testing.T) {
+		account := ollamaUpstreamTestAccount(PlatformDeepseek, 382)
+		account.Credentials["api_protocol"] = APIProtocolResponses
+		glmEntries := entries
+		glmEntries[0].body = []byte(`{"model":"glm-5.3-flash","input":"Reply with exactly OK and nothing else.","max_tokens":256000,"stream":false}`)
+		glmEntries[1].body = []byte(`{"model":"glm-5.3-flash","max_tokens":256000,"messages":[{"role":"user","content":"hi"}],"stream":false}`)
+		glmEntries[2].body = []byte(`{"model":"glm-5.3-flash","max_tokens":256000,"messages":[{"role":"user","content":"hi"}],"stream":false}`)
+		for _, e := range glmEntries {
+			t.Run(e.name, func(t *testing.T) {
+				upstream := run(account, e)
+				require.Equal(t, "https://ollama.com/v1/responses", upstream.lastReq.URL.String())
+				if out := gjson.GetBytes(upstream.lastBody, "max_output_tokens"); out.Exists() {
+					require.Equal(t, int64(256000), out.Int())
+				} else {
+					require.Equal(t, int64(256000), gjson.GetBytes(upstream.lastBody, "max_tokens").Int())
+				}
+			})
+		}
+	})
+}
