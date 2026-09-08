@@ -1469,14 +1469,10 @@ func (s *OpenAIGatewayService) proxyResponsesWebSocketV2Passthrough(
 					truncateOpenAIWSLogValue(errTypeRaw, openAIWSLogValueMaxLen),
 					truncateOpenAIWSLogValue(errMsgRaw, openAIWSLogValueMaxLen),
 				)
-				if completedTurns.Load() > 0 {
-					return NewOpenAIWSClientCloseError(
-						coderws.StatusTryAgainLater,
-						"upstream rate limit exceeded; please reconnect",
-						errors.New("later passthrough turn was rate limited before output"),
-					)
-				}
 				failoverErr := s.newOpenAIWSRateLimitFailoverError(account, handshakeHeaders, payload, errMsgRaw)
+				if completedTurns.Load() == 0 {
+					return failoverErr
+				}
 				retryPayload, retrySafe, retryErr := replayState.CurrentTurnRetryPayload()
 				if retryErr != nil {
 					return fmt.Errorf("build websocket passthrough current-turn failover payload: %w", retryErr)

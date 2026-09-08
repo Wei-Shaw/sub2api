@@ -105,7 +105,6 @@ type relayState struct {
 	turnWroteDownstream     atomic.Bool
 	requestModelMu          sync.RWMutex
 	requestModel            string
-	turnWroteDownstream     atomic.Bool
 	pendingTurnStart        atomic.Pointer[time.Time]
 	lastResponseID          string
 	lastResponseModel       string
