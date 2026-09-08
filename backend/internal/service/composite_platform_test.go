@@ -180,8 +180,13 @@ func TestDetectModelPlatform(t *testing.T) {
 		{name: "glm", model: "glm-4.6", platform: PlatformZhipu, ok: true},
 		{name: "zhipu latest", model: "glm-5.2", platform: PlatformZhipu, ok: true},
 		{name: "zhipu prefix", model: "zhipu/glm-4.5", platform: PlatformZhipu, ok: true},
-		{name: "deepseek", model: "deepseek-v4-pro", platform: PlatformDeepSeek, ok: true},
-		{name: "deepseek prefix", model: "deepseek/deepseek-v4-flash", platform: PlatformDeepSeek, ok: true},
+		{name: "deepseek", model: "deepseek-v4-pro", platform: PlatformDeepseek, ok: true},
+		{name: "deepseek prefix", model: "deepseek/deepseek-v4-flash", platform: PlatformDeepseek, ok: true},
+		{name: "minimax", model: "MiniMax-M3", platform: PlatformMiniMax, ok: true},
+		{name: "minimax prefix", model: "minimax/MiniMax-M2.5", platform: PlatformMiniMax, ok: true},
+		{name: "abab legacy", model: "abab6.5-chat", platform: PlatformMiniMax, ok: true},
+		{name: "abab7 legacy", model: "abab7-chat-preview", platform: PlatformMiniMax, ok: true},
+		{name: "abab unrelated namespace", model: "abab-other", ok: false},
 		{name: "unknown k3 alias", model: "k3-preview", ok: false},
 		{name: "unknown", model: "llama-4-maverick", ok: false},
 	}
@@ -217,16 +222,7 @@ func TestCompositeGroupSchedulerHasAllCanonicalPlatformBuckets(t *testing.T) {
 		platforms = append(platforms, platform)
 	}
 	require.ElementsMatch(t,
-		[]string{
-			PlatformAnthropic,
-			PlatformGemini,
-			PlatformOpenAI,
-			PlatformAntigravity,
-			PlatformGrok,
-			PlatformDeepSeek,
-			PlatformKimi,
-			PlatformZhipu,
-		},
+		[]string{PlatformAnthropic, PlatformGemini, PlatformOpenAI, PlatformAntigravity, PlatformGrok, PlatformKimi, PlatformZhipu, PlatformDeepseek, PlatformMiniMax},
 		platforms,
 	)
 }
@@ -261,7 +257,7 @@ func TestResolveCompositeRouteDecisionExplicitRouteOverridesDetectorContext(t *t
 }
 
 func TestCompositeConcretePlatformsIncludeCNProviders(t *testing.T) {
-	for _, platform := range []string{PlatformKimi, PlatformZhipu, PlatformDeepSeek} {
+	for _, platform := range []string{PlatformKimi, PlatformZhipu, PlatformDeepseek, PlatformMiniMax} {
 		require.True(t, isConcreteRequestPlatform(platform))
 		require.True(t, canCopyAccountsFromGroupPlatform(PlatformComposite, platform))
 	}

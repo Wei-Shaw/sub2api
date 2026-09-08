@@ -7,7 +7,8 @@ const (
 )
 
 // ReasoningEffortMapping rewrites one explicit OpenAI/Codex reasoning effort
-// value to another before the group ceiling is applied.
+// value to another before the group ceiling is applied. To may also be "deny"
+// to reject the request when the matching source value is present.
 //
 // Model and MatchType optionally scope the rewrite to a request model:
 // exact matches the full model id, prefix/suffix match a model-id affix.

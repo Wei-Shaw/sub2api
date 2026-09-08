@@ -466,6 +466,15 @@ func (s *OpenAIGatewayService) RestoreDeepSeekCompactInputForTarget(ctx context.
 	}
 	hasCompactState, err := probeDeepSeekResponsesCompactionState(body)
 	if err != nil {
+		// DeepSeek fail-closed rejects ambiguous root keys. Other targets leave
+		// duplicate/non-canonical model keys to allowlist / upstream JSON
+		// semantics so identical duplicates stay legal and conflicting ones
+		// surface as model-not-allowed rather than compact errors.
+		if !rejectForeign &&
+			(errors.Is(err, ErrDeepSeekResponsesDuplicateJSONKey) ||
+				errors.Is(err, ErrDeepSeekResponsesNonCanonicalJSONKey)) {
+			return body, false, nil
+		}
 		return nil, false, err
 	}
 	if !hasCompactState {

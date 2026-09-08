@@ -1068,6 +1068,33 @@ func (s *OpenAIGatewayService) proxyResponsesWebSocketV2Passthrough(
 				if requestModelForThisFrame == "" {
 					requestModelForThisFrame = capturedSessionModel
 				}
+				// PrepareRequest restores gateway-owned checkpoints before
+				// BeforeRequest so allowlist/audit see plaintext. Call each
+				// hook once: BeforeRequest → BeforeTurn → MapRequestModel.
+				if hooks != nil && hooks.PrepareRequest != nil {
+					prepared, prepareErr := hooks.PrepareRequest(turnNo, payload, requestModelForThisFrame)
+					if prepareErr != nil {
+						return payload, nil, prepareErr
+					}
+					if len(prepared) == 0 || !gjson.ValidBytes(prepared) {
+						return payload, nil, NewOpenAIWSClientCloseError(
+							coderws.StatusPolicyViolation,
+							"invalid websocket request payload",
+							errors.New("request preparation returned invalid JSON"),
+						)
+					}
+					payload = prepared
+				}
+				if hooks != nil && hooks.BeforeRequest != nil {
+					if err := hooks.BeforeRequest(turnNo, payload, requestModelForThisFrame); err != nil {
+						return payload, nil, err
+					}
+				}
+				if hooks != nil && hooks.BeforeTurn != nil {
+					if err := hooks.BeforeTurn(turnNo); err != nil {
+						return payload, nil, err
+					}
+				}
 				if hooks != nil && hooks.MapRequestModel != nil {
 					upstreamModel, err := hooks.MapRequestModel(turnNo, requestModelForThisFrame)
 					if err != nil {
@@ -1103,25 +1130,6 @@ func (s *OpenAIGatewayService) proxyResponsesWebSocketV2Passthrough(
 			}
 			if isResponseCreate && model != "" && model != strings.TrimSpace(gjson.GetBytes(payload, "model").String()) {
 				payload = s.ReplaceModelInBody(payload, model)
-			}
-			if isResponseCreate && hooks != nil && hooks.PrepareRequest != nil {
-				prepared, prepareErr := hooks.PrepareRequest(turnNo, payload, requestModelForThisFrame)
-				if prepareErr != nil {
-					return payload, nil, prepareErr
-				}
-				if len(prepared) == 0 || !gjson.ValidBytes(prepared) {
-					return payload, nil, NewOpenAIWSClientCloseError(
-						coderws.StatusPolicyViolation,
-						"invalid websocket request payload",
-						errors.New("request preparation returned invalid JSON"),
-					)
-				}
-				payload = prepared
-			}
-			if isResponseCreate && hooks != nil && hooks.BeforeRequest != nil {
-				if err := hooks.BeforeRequest(turnNo, payload, requestModelForThisFrame); err != nil {
-					return payload, nil, err
-				}
 			}
 			out, blocked, policyErr := s.applyOpenAIFastPolicyToWSResponseCreate(ctx, account, model, payload)
 			if policyErr == nil && blocked == nil && isResponseCreate {
@@ -1339,6 +1347,13 @@ func (s *OpenAIGatewayService) proxyResponsesWebSocketV2Passthrough(
 					truncateOpenAIWSLogValue(errTypeRaw, openAIWSLogValueMaxLen),
 					truncateOpenAIWSLogValue(errMsgRaw, openAIWSLogValueMaxLen),
 				)
+				if completedTurns.Load() > 0 {
+					return NewOpenAIWSClientCloseError(
+						coderws.StatusTryAgainLater,
+						"upstream rate limit exceeded; please reconnect",
+						errors.New("later passthrough turn was rate limited before output"),
+					)
+				}
 				return s.newOpenAIWSRateLimitFailoverError(account, handshakeHeaders, payload, errMsgRaw)
 			},
 			OnTrace: func(event openaiwsv2.RelayTraceEvent) {

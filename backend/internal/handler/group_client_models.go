@@ -18,7 +18,7 @@ type userGroupClientModelsResponse struct {
 
 // ListUserGroupModels returns the model IDs a bindable group will expose to
 // Codex and Claude clients. Codex-only automatic modes are omitted unless the
-// group's enabled custom list explicitly selects them.
+// group's enabled allowlist explicitly selects them.
 func (h *GatewayHandler) ListUserGroupModels(c *gin.Context) {
 	if h == nil || h.apiKeyService == nil {
 		response.ErrorFrom(c, service.ErrGroupNotAllowed)
@@ -64,8 +64,12 @@ func listClientVisibleModelIDs(
 	var modelIDs []string
 	if platform == service.PlatformComposite {
 		modelIDs = listCompositeAvailableModels(ctx, gateway, &groupID)
-		if group.CustomModelsListEnabled() {
-			modelIDs = filterModelsByCustomList(modelIDs, nil, group.ModelsListConfig.Models)
+		if group.ModelAllowlistEnabled() {
+			source := modelIDs
+			if len(source) == 0 {
+				source = defaultModelIDsForPlatform(service.PlatformComposite)
+			}
+			modelIDs = group.ModelAllowlist.FilterForListing(source)
 		}
 	} else {
 		if gateway != nil {
@@ -77,9 +81,9 @@ func listClientVisibleModelIDs(
 				fallbackModels = defaultModelIDsForPlatform(platform)
 			}
 		}
-		if group.CustomModelsListEnabled() {
-			source := customModelsListSource(platform, modelIDs, fallbackModels)
-			modelIDs = filterModelsByCustomList(source, fallbackModels, group.ModelsListConfig.Models)
+		if group.ModelAllowlistEnabled() {
+			source := modelListingSource(platform, modelIDs, fallbackModels)
+			modelIDs = group.ModelAllowlist.FilterForListing(source)
 		} else if len(modelIDs) == 0 {
 			modelIDs = fallbackModels
 		}
@@ -100,12 +104,15 @@ func listCompositeAvailableModels(ctx context.Context, gateway *service.GatewayS
 		service.PlatformOpenAI,
 		service.PlatformAntigravity,
 		service.PlatformGrok,
-		service.PlatformDeepSeek,
 		service.PlatformKimi,
 		service.PlatformZhipu,
+		service.PlatformDeepseek,
+		service.PlatformMiniMax,
 	} {
 		platformModels := gateway.GetAvailableModels(ctx, groupID, platform)
 		if len(platformModels) == 0 {
+			// Schedulable platforms without account mapping keys fall back to
+			// the platform catalog (including CN providers that publish one).
 			if _, ok := schedulablePlatforms[platform]; ok {
 				platformModels = defaultModelIDsForPlatform(platform)
 			}

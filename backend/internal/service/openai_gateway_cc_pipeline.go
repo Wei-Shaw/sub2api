@@ -91,7 +91,7 @@ func (s *OpenAIGatewayService) failoverOpenAIUpstreamHTTPError(
 	sanitizeDeepSeekResponseHeadersInPlace(account, resp.Header)
 	respBody = redactDeepSeekAPIKey(account, respBody)
 	upstreamMsg = redactDeepSeekAPIKeyString(account, upstreamMsg)
-	shouldFailover := s.shouldFailoverOpenAIUpstreamResponse(resp.StatusCode, upstreamMsg, respBody)
+	shouldFailover := s.shouldFailoverOpenAIUpstreamResponse(account, resp.StatusCode, upstreamMsg, respBody)
 	tempUnscheduled := false
 	if c != nil && account != nil && account.Platform != PlatformGrok && !shouldFailover && !IsResponseCommitted(c) && s.rateLimitService != nil {
 		tempUnscheduled = s.rateLimitService.CheckErrorPolicy(ctx, account, resp.StatusCode, respBody, upstreamModel) == ErrorPolicyTempUnscheduled

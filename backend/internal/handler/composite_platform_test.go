@@ -100,6 +100,7 @@ func TestOpenAICompatibleTextTargetAllowsCompositeProviders(t *testing.T) {
 		{model: "k3", platform: service.PlatformKimi},
 		{model: "glm-5.2", platform: service.PlatformZhipu},
 		{model: "deepseek-v3.2", platform: service.PlatformDeepseek},
+		{model: "MiniMax-M3", platform: service.PlatformMiniMax},
 	}
 	for _, path := range []string{"/v1/messages", "/v1/chat/completions", "/v1/responses", "/v1/responses/input_tokens", "/v1/messages/count_tokens"} {
 		for _, provider := range providers {
@@ -121,7 +122,7 @@ func TestResponsesWebSocketCompositePlatformGuardAllowsSupportedTargets(t *testi
 	require.True(t, isResponsesWebSocketCompositePlatform(service.PlatformGrok))
 	require.True(t, isResponsesWebSocketCompositePlatform(service.PlatformDeepSeek))
 	for _, platform := range []string{
-		service.PlatformKimi, service.PlatformZhipu,
+		service.PlatformKimi, service.PlatformZhipu, service.PlatformMiniMax,
 		service.PlatformAnthropic, service.PlatformGemini,
 	} {
 		require.False(t, isResponsesWebSocketCompositePlatform(platform), "platform=%s", platform)
@@ -256,6 +257,23 @@ func TestOpenAIReasoningEffortPolicyForCompositeTarget(t *testing.T) {
 	require.Error(t, err)
 	var overLimit *service.ReasoningEffortOverLimitError
 	require.ErrorAs(t, err, &overLimit)
+
+	mappingDenyGroup := *group
+	mappingDenyGroup.MaxReasoningEffort = ""
+	mappingDenyGroup.ReasoningEffortMappings = []service.ReasoningEffortMapping{
+		{From: "max", To: service.ReasoningEffortMappingDeny},
+	}
+	mappingDenyAPIKey := &service.APIKey{Group: &mappingDenyGroup}
+	mappingDenyCtx, _ := gin.CreateTestContext(httptest.NewRecorder())
+	mappingDenyCtx.Request = httptest.NewRequest("POST", "/v1/responses", nil)
+	mappingDenyCtx.Request = mappingDenyCtx.Request.WithContext(service.WithResolvedTargetPlatform(mappingDenyCtx.Request.Context(), service.PlatformOpenAI))
+	_, changed, err = applyOpenAIReasoningEffortPolicyForRequest(mappingDenyCtx, mappingDenyAPIKey, body)
+	require.Error(t, err)
+	require.False(t, changed)
+	var mappingDenied *service.ReasoningEffortMappingDeniedError
+	require.ErrorAs(t, err, &mappingDenied)
+	require.Equal(t, "max", mappingDenied.Requested)
+	require.Contains(t, mappingDenied.Error(), "denied by this group's mapping policy")
 
 	grokCtx, _ := gin.CreateTestContext(httptest.NewRecorder())
 	grokCtx.Request = httptest.NewRequest("POST", "/v1/responses", nil)
