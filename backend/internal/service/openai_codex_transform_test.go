@@ -1428,7 +1428,7 @@ func TestApplyCodexOAuthTransform_EmptyInput(t *testing.T) {
 	require.Len(t, input, 0)
 }
 
-func TestNormalizeCodexModel_Gpt53(t *testing.T) {
+func TestNormalizeCodexModel_KnownModels(t *testing.T) {
 	cases := map[string]string{
 		"gpt-6-astra":               "gpt-6-astra",
 		"openai/gpt-6-astra":        "gpt-6-astra",
@@ -1450,19 +1450,12 @@ func TestNormalizeCodexModel_Gpt53(t *testing.T) {
 		"gpt5.4-mini":               "gpt-5.4-mini",
 		"gpt5.4mini":                "gpt-5.4-mini",
 		"gpt 5.4 mini":              "gpt-5.4-mini",
-		"gpt-5.3":                   "gpt-5.3-codex",
-		"gpt5.3":                    "gpt-5.3-codex",
-		"gpt-5.3-codex":             "gpt-5.3-codex",
-		"gpt5.3-codex":              "gpt-5.3-codex",
-		"gpt5.3codex":               "gpt-5.3-codex",
-		"gpt-5.3-codex-xhigh":       "gpt-5.3-codex",
 		"gpt-5.3-codex-spark":       "gpt-5.3-codex-spark",
 		"gpt5.3-codex-spark":        "gpt-5.3-codex-spark",
 		"gpt5.3codexspark":          "gpt-5.3-codex-spark",
 		"gpt 5.3 codex spark":       "gpt-5.3-codex-spark",
 		"gpt-5.3-codex-spark-high":  "gpt-5.3-codex-spark",
 		"gpt-5.3-codex-spark-xhigh": "gpt-5.3-codex-spark",
-		"gpt 5.3 codex":             "gpt-5.3-codex",
 	}
 
 	for input, expected := range cases {
@@ -1470,23 +1463,36 @@ func TestNormalizeCodexModel_Gpt53(t *testing.T) {
 	}
 }
 
+// 旧 GPT-5 系名字归一到仍在售的目标（gpt-5.4 / gpt-5.2）；空模型名回退到 openai.DefaultTestModel。
 func TestNormalizeCodexModel_RemovedModelsFallbackToSupportedTargets(t *testing.T) {
 	cases := map[string]string{
-		"":                   "gpt-5.4",
-		"gpt-5":              "gpt-5.4",
-		"gpt-5-mini":         "gpt-5.4",
-		"gpt-5-nano":         "gpt-5.4",
-		"gpt-5.1":            "gpt-5.4",
-		"gpt-5.1-codex":      "gpt-5.3-codex",
-		"gpt-5.1-codex-max":  "gpt-5.3-codex",
-		"gpt-5.1-codex-mini": "gpt-5.3-codex",
-		"gpt-5.2-codex":      "gpt-5.2",
-		"codex-mini-latest":  "gpt-5.3-codex",
-		"gpt-5-codex":        "gpt-5.3-codex",
+		"":              "gpt-5.5",
+		"gpt-5":         "gpt-5.4",
+		"gpt-5-mini":    "gpt-5.4",
+		"gpt-5-nano":    "gpt-5.4",
+		"gpt-5.1":       "gpt-5.4",
+		"gpt-5.3":       "gpt-5.4",
+		"gpt-5.2-codex": "gpt-5.2",
 	}
 
 	for input, expected := range cases {
 		require.Equal(t, expected, normalizeCodexModel(input))
+	}
+}
+
+// 已关停的 Codex 系型号（gpt-5.3-codex、gpt-5.1-codex 系、gpt-5-codex、codex-mini-latest）
+// 不再有别名归一化，名字原样透传。
+func TestNormalizeCodexModel_RetiredCodexModelsPassThrough(t *testing.T) {
+	for _, model := range []string{
+		"gpt-5.3-codex",
+		"gpt-5.3-codex-xhigh",
+		"gpt-5.1-codex",
+		"gpt-5.1-codex-max",
+		"gpt-5.1-codex-mini",
+		"gpt-5-codex",
+		"codex-mini-latest",
+	} {
+		require.Equal(t, model, normalizeCodexModel(model), "model %s", model)
 	}
 }
 

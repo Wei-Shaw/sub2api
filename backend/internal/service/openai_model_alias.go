@@ -68,12 +68,9 @@ func normalizeKnownOpenAICodexModel(model string) string {
 		return "gpt-5.2"
 	case strings.Contains(normalized, "gpt-5.3-codex-spark"):
 		return "gpt-5.3-codex-spark"
-	case strings.Contains(normalized, "gpt-5.3-codex"):
-		return "gpt-5.3-codex"
-	case strings.Contains(normalized, "gpt-5.3"):
-		return "gpt-5.3-codex"
 	case strings.Contains(normalized, "codex"):
-		return "gpt-5.3-codex"
+		// 已关停的 Codex 系型号（gpt-5.3-codex / gpt-5.x-codex 等）不再归一化，视为未知模型。
+		return ""
 	case strings.Contains(normalized, "gpt-5"):
 		return "gpt-5.4"
 	default:

@@ -19,8 +19,8 @@ func shouldAutoInjectPromptCacheKeyForCompat(model string) bool {
 	if canonical == "gpt-6" || canonical == "gpt-6-astra" {
 		return true
 	}
-	// 仅对 Responses 兼容路径支持的 GPT-5 族开启自动注入，避免 normalizeCodexModel
-	// 的默认兜底把任意模型（如 gpt-4o、claude-*）误判为 gpt-5.4。
+	// 仅对 Responses 兼容路径支持的 GPT-5 族开启自动注入，避免把任意模型
+	// （如 gpt-4o、claude-*）误判为 GPT-5 族。
 	if !strings.Contains(trimmed, "gpt-5") && !strings.Contains(trimmed, "codex") {
 		return false
 	}
