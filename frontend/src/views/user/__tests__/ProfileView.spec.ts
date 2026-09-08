@@ -95,5 +95,32 @@ describe('ProfileView', () => {
     expect(wrapper.get('[data-testid="profile-shell"]').html()).toContain('profile-info-card')
     expect(wrapper.get('[data-testid="profile-shell"]').html()).toContain('profile-password-form')
     expect(wrapper.get('[data-testid="profile-shell"]').html()).toContain('profile-totp-card')
+    expect(wrapper.find('[data-testid="profile-web3-identity"]').exists()).toBe(false)
+  })
+
+  it('shows the Web3 identity block when the profile has a wallet address', async () => {
+    authState.user = {
+      ...authState.user,
+      web3_address: '0x52908400098527886e0f7030069857d2e4169ee7'
+    }
+
+    const wrapper = mount(ProfileView, {
+      global: {
+        stubs: {
+          AppLayout: { template: '<div><slot /></div>' },
+          ProfileInfoCard: { template: '<div data-testid="profile-info-card" />' },
+          ProfileBalanceNotifyCard: true,
+          ProfilePasswordForm: true,
+          ProfileTotpCard: true,
+          ProfilePasskeyCard: true,
+          Icon: true
+        }
+      }
+    })
+
+    await flushPromises()
+
+    const block = wrapper.get('[data-testid="profile-web3-identity"]')
+    expect(block.text()).toContain('0x52908400098527886e0f7030069857d2e4169ee7')
   })
 })

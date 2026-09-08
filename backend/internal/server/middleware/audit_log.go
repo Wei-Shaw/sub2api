@@ -58,6 +58,8 @@ var auditExtraAllowedKeys = map[string]struct{}{
 	"http_status": {}, "latency_ms": {}, "token_applied": {}, "retryable": {},
 	"event_id": {}, "requested_count": {}, "deleted_events": {}, "deleted_jobs": {},
 	"matched_count": {}, "snapshot_max_id": {}, "filter_hash": {}, "confirm": {},
+	"deposit_id": {}, "job_id": {}, "old_status": {}, "new_status": {}, "reason": {},
+	"network_key": {}, "asset_key": {}, "from_block": {}, "to_block": {},
 }
 
 // SetAuditExtra adds allowlisted, scalar details to the current audit entry.
@@ -122,6 +124,8 @@ var auditSensitiveReads = map[string]string{
 
 // auditActionOverrides 变更类请求的动作名精确映射（未命中时自动推导）。
 var auditActionOverrides = map[string]string{
+	"POST /api/v1/auth/web3/login/verify":                     service.AuditActionLogin,
+	"POST /api/v1/auth/web3/register/verify":                  service.AuditActionRegister,
 	"POST /api/v1/auth/login":                                 service.AuditActionLogin,
 	"POST /api/v1/auth/login/2fa":                             service.AuditActionLogin2FA,
 	"POST /api/v1/auth/passkey/login/finish":                  service.AuditActionLogin,
@@ -142,11 +146,19 @@ var auditActionOverrides = map[string]string{
 	"POST /api/v1/admin/prompt-audit/events/batch-delete":     "admin.prompt_audit.events.batch_delete",
 	"POST /api/v1/admin/prompt-audit/events/delete-preview":   "admin.prompt_audit.events.delete_preview",
 	"POST /api/v1/admin/prompt-audit/events/delete-by-filter": "admin.prompt_audit.events.filter_delete",
+	"POST /api/v1/admin/web3-deposits/:id/approve":            "admin.web3_deposits.approve",
+	"POST /api/v1/admin/web3-deposits/:id/ignore":             "admin.web3_deposits.ignore",
+	"POST /api/v1/admin/web3-deposits/:id/retry":              "admin.web3_deposits.retry",
+	"POST /api/v1/admin/web3-deposits/rescan":                 "admin.web3_deposits.rescan",
 }
 
 // auditBodyOmittedRoutes 请求体几乎整体由凭证构成的路由（如整块粘贴 auth JSON 的导入接口）。
 // 这类 body 的凭证内嵌在普通字符串值里，键级脱敏无法覆盖，整体不入库。
 var auditBodyOmittedRoutes = map[string]struct{}{
+	"POST /api/v1/auth/web3/login/challenge":                    {},
+	"POST /api/v1/auth/web3/login/verify":                       {},
+	"POST /api/v1/auth/web3/register/challenge":                 {},
+	"POST /api/v1/auth/web3/register/verify":                    {},
 	"POST /api/v1/auth/passkey/login/finish":                    {},
 	"POST /api/v1/user/passkeys/register/finish":                {},
 	"POST /api/v1/admin/accounts/import/codex-session":          {},

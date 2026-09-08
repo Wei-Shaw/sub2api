@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
 )
@@ -136,6 +137,36 @@ func TestUserHandlerEndpoints(t *testing.T) {
 	req = httptest.NewRequest(http.MethodGet, "/api/v1/admin/users/1/usage?period=today", nil)
 	router.ServeHTTP(rec, req)
 	require.Equal(t, http.StatusOK, rec.Code)
+}
+
+func TestAdminAPIKeyListsKeepWeb3SyntheticEmail(t *testing.T) {
+	router, adminSvc := setupAdminRouter()
+	const email = "web3-52908400098527886e0f7030069857d2e4169ee7@web3-connect.invalid"
+	adminSvc.apiKeys[0].User = &service.User{ID: 1, Email: email}
+
+	for _, path := range []string{
+		"/api/v1/admin/users/1/api-keys",
+		"/api/v1/admin/groups/2/api-keys",
+	} {
+		rec := httptest.NewRecorder()
+		req := httptest.NewRequest(http.MethodGet, path, nil)
+		router.ServeHTTP(rec, req)
+		require.Equal(t, http.StatusOK, rec.Code)
+
+		var body struct {
+			Data struct {
+				Items []struct {
+					User *struct {
+						Email string `json:"email"`
+					} `json:"user"`
+				} `json:"items"`
+			} `json:"data"`
+		}
+		require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &body))
+		require.Len(t, body.Data.Items, 1)
+		require.NotNil(t, body.Data.Items[0].User)
+		require.Equal(t, email, body.Data.Items[0].User.Email)
+	}
 }
 
 func TestUserHandlerBindAuthIdentityMapsRequest(t *testing.T) {

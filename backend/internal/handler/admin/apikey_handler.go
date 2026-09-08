@@ -67,7 +67,7 @@ func (h *AdminAPIKeyHandler) UpdateGroup(c *gin.Context) {
 		GrantedGroupID         *int64      `json:"granted_group_id,omitempty"`
 		GrantedGroupName       string      `json:"granted_group_name,omitempty"`
 	}{
-		APIKey:                 dto.APIKeyFromService(result.APIKey),
+		APIKey:                 dto.APIKeyFromServiceAdmin(result.APIKey),
 		AutoGrantedGroupAccess: result.AutoGrantedGroupAccess,
 		GrantedGroupID:         result.GrantedGroupID,
 		GrantedGroupName:       result.GrantedGroupName,

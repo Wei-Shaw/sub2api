@@ -25,6 +25,16 @@ type userHandlerRepoStub struct {
 	unbound    []string
 }
 
+type userHandlerWeb3IdentityRepoStub struct {
+	service.Web3IdentityRepository
+	address string
+	found   bool
+}
+
+func (s *userHandlerWeb3IdentityRepoStub) GetAddressByUserID(context.Context, int64) (string, bool, error) {
+	return s.address, s.found, nil
+}
+
 func (s *userHandlerRepoStub) Create(context.Context, *service.User) error { return nil }
 func (s *userHandlerRepoStub) CreateWithEmailAliasGuard(context.Context, *service.User) error {
 	return nil
@@ -280,6 +290,43 @@ func TestUserHandlerGetProfileReturnsIdentitySummaries(t *testing.T) {
 	require.False(t, resp.Data.Identities.WeChat.Bound)
 	require.True(t, resp.Data.Identities.WeChat.CanBind)
 	require.Contains(t, resp.Data.Identities.WeChat.BindStartPath, "/api/v1/auth/oauth/wechat/bind/start")
+}
+
+func TestUserHandlerGetProfileReturnsWeb3Address(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	repo := &userHandlerRepoStub{
+		user: &service.User{
+			ID:       11,
+			Email:    "web3-user@web3-connect.invalid",
+			Username: "web3-user",
+			Role:     service.RoleUser,
+			Status:   service.StatusActive,
+		},
+	}
+	handler := NewUserHandler(service.NewUserService(repo, nil, nil, nil), nil, nil, nil, nil, nil)
+	handler.SetWeb3IdentityRepository(&userHandlerWeb3IdentityRepoStub{
+		address: "0x52908400098527886e0f7030069857d2e4169ee7",
+		found:   true,
+	})
+
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	c.Request = httptest.NewRequest(http.MethodGet, "/api/v1/user/profile", nil)
+	c.Set(string(middleware2.ContextKeyUser), middleware2.AuthSubject{UserID: 11})
+
+	handler.GetProfile(c)
+
+	require.Equal(t, http.StatusOK, recorder.Code)
+	var resp struct {
+		Code int `json:"code"`
+		Data struct {
+			Web3Address string `json:"web3_address"`
+		} `json:"data"`
+	}
+	require.NoError(t, json.Unmarshal(recorder.Body.Bytes(), &resp))
+	require.Equal(t, 0, resp.Code)
+	require.Equal(t, "0x52908400098527886e0f7030069857d2e4169ee7", resp.Data.Web3Address)
 }
 
 func TestUserHandlerGetProfileReturnsLegacyCompatibilityFields(t *testing.T) {

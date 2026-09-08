@@ -19,6 +19,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/server"
 	"github.com/Wei-Shaw/sub2api/internal/server/middleware"
 	"github.com/Wei-Shaw/sub2api/internal/service"
+	"github.com/Wei-Shaw/sub2api/internal/web3deposit"
 
 	"github.com/google/wire"
 	"github.com/redis/go-redis/v9"
@@ -125,6 +126,10 @@ func provideCleanup(
 	upstreamBillingProbe *service.UpstreamBillingProbeService,
 	ollamaCloudUsage *service.OllamaCloudUsageService,
 	auditLog *service.AuditLogService,
+	scannerRuntime *web3deposit.ScannerRuntimeRegistry,
+	creditWorkerRuntime *web3deposit.CreditWorkerRuntime,
+	rescanJobRuntime *web3deposit.RescanJobRuntime,
+	confluxNetworkRuntime *web3deposit.ConfluxNetworkRuntimeRegistry,
 	openAIAutoReset *service.OpenAIQuotaAutoResetService,
 	promptAudit *securityaudit.PromptService,
 	pluginManager *service.PluginManager,
@@ -140,6 +145,21 @@ func provideCleanup(
 
 		// 应用层清理步骤可并行执行，基础设施资源（Redis/Ent）最后按顺序关闭。
 		parallelSteps := []cleanupStep{
+			{"Web3DepositRuntime", func() error {
+				if rescanJobRuntime != nil {
+					rescanJobRuntime.Stop()
+				}
+				if creditWorkerRuntime != nil {
+					creditWorkerRuntime.Stop()
+				}
+				if scannerRuntime != nil {
+					scannerRuntime.Stop()
+				}
+				if confluxNetworkRuntime != nil {
+					confluxNetworkRuntime.Close()
+				}
+				return nil
+			}},
 			{"PluginManager", func() error {
 				if pluginManager != nil {
 					pluginManager.Stop()

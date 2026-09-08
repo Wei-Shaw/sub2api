@@ -50,6 +50,16 @@ const routes: RouteRecordRaw[] = [
     }
   },
   {
+    path: '/login/web3',
+    name: 'Web3Login',
+    component: () => import('@/views/auth/Web3LoginView.vue'),
+    meta: {
+      requiresAuth: false,
+      title: 'Web3 Login',
+      titleKey: 'auth.web3.loginTitle'
+    }
+  },
+  {
     path: '/register',
     name: 'Register',
     component: () => import('@/views/auth/RegisterView.vue'),
@@ -57,6 +67,16 @@ const routes: RouteRecordRaw[] = [
       requiresAuth: false,
       title: 'Register',
       titleKey: 'auth.createAccount'
+    }
+  },
+  {
+    path: '/register/web3',
+    name: 'Web3Register',
+    component: () => import('@/views/auth/Web3RegisterView.vue'),
+    meta: {
+      requiresAuth: false,
+      title: 'Web3 Register',
+      titleKey: 'auth.web3.registerTitle'
     }
   },
   {
@@ -323,6 +343,30 @@ const routes: RouteRecordRaw[] = [
       title: 'My Orders',
       titleKey: 'nav.myOrders',
       requiresPayment: true
+    }
+  },
+  {
+    path: '/web3-deposit',
+    name: 'Web3Deposit',
+    component: () => import('@/views/user/Web3DepositAddressView.vue'),
+    meta: {
+      requiresAuth: true,
+      requiresAdmin: false,
+      title: 'Web3 Deposit',
+      titleKey: 'web3Deposit.title',
+      descriptionKey: 'web3Deposit.description'
+    }
+  },
+  {
+    path: '/web3-deposit/history',
+    name: 'Web3DepositHistory',
+    component: () => import('@/views/user/Web3DepositHistoryView.vue'),
+    meta: {
+      requiresAuth: true,
+      requiresAdmin: false,
+      title: 'Web3 Deposit History',
+      titleKey: 'web3Deposit.historyTitle',
+      descriptionKey: 'web3Deposit.historyDescription'
     }
   },
   {
@@ -678,6 +722,10 @@ const routes: RouteRecordRaw[] = [
 
   // ==================== Payment Admin Routes ====================
   {
+    path: '/admin/web3-deposits', name: 'AdminWeb3Deposits', component: () => import('@/views/admin/Web3DepositsView.vue'),
+    meta: { requiresAuth: true, requiresAdmin: true, title: 'Web3 Deposits', titleKey: 'nav.web3Deposits' }
+  },
+  {
     path: '/admin/orders/dashboard',
     name: 'AdminPaymentDashboard',
     component: () => import('@/views/admin/orders/AdminPaymentDashboardView.vue'),
@@ -818,7 +866,7 @@ router.beforeEach(async (to, _from, next) => {
   // If route doesn't require auth, allow access
   if (!requiresAuth) {
     // If already authenticated and trying to access login/register, redirect to appropriate dashboard
-    if (authStore.isAuthenticated && (to.path === '/login' || to.path === '/register')) {
+    if (authStore.isAuthenticated && (to.path.startsWith('/login') || to.path.startsWith('/register'))) {
       // In backend mode, non-admin users should NOT be redirected away from login
       // (they are blocked from all protected routes, so redirecting would cause a loop)
       if (appStore.backendModeEnabled && !authStore.isAdmin) {
