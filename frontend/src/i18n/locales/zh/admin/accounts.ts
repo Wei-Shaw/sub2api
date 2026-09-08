@@ -83,6 +83,7 @@ export default {
       notesHint: '备注可选',
       // Filter options
       allPlatforms: '全部平台',
+      platformTabsLabel: '按平台筛选账号',
       allTypes: '全部类型',
       allStatus: '全部状态',
       allGroups: '全部分组',

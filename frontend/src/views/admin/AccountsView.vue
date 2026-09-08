@@ -2,11 +2,41 @@
   <AppLayout>
     <TablePageLayout>
       <template #filters>
+        <div class="account-platform-tabs mb-4 rounded-xl border border-gray-200 bg-white p-1 shadow-sm dark:border-dark-700 dark:bg-dark-800">
+          <div
+            class="flex gap-1 overflow-x-auto pb-px"
+            role="tablist"
+            :aria-label="t('admin.accounts.platformTabsLabel')"
+          >
+            <button
+              v-for="tab in platformTabs"
+              :key="tab.value || 'all'"
+              type="button"
+              role="tab"
+              :aria-selected="activePlatform === tab.value"
+              :class="[
+                'relative shrink-0 rounded-lg px-3 py-2 text-sm font-medium transition-colors',
+                activePlatform === tab.value
+                  ? 'bg-primary-50 text-primary-700 dark:bg-primary-900/30 dark:text-primary-300'
+                  : 'text-gray-500 hover:bg-gray-50 hover:text-gray-700 dark:text-gray-400 dark:hover:bg-dark-700 dark:hover:text-gray-200'
+              ]"
+              @click="selectPlatformTab(tab.value)"
+            >
+              {{ tab.label }}
+              <span
+                v-if="activePlatform === tab.value && loading"
+                class="ml-1.5 inline-block h-3 w-3 animate-spin rounded-full border-2 border-current border-r-transparent align-[-2px]"
+                aria-hidden="true"
+              />
+            </button>
+          </div>
+        </div>
         <div class="flex flex-wrap-reverse items-start justify-between gap-3">
           <AccountTableFilters
             v-model:searchQuery="params.search"
             :filters="params"
             :groups="groups"
+            :show-platform="false"
             @update:filters="(newFilters) => Object.assign(params, newFilters)"
             @change="debouncedReload"
             @update:searchQuery="debouncedReload"
@@ -532,6 +562,7 @@ import { extractApiErrorMessage } from '@/utils/apiError'
 import { sanitizeUrl } from '@/utils/url'
 import { getFloatingPanelPosition } from '@/utils/floatingPanel'
 import { formatMultiplier } from '@/utils/formatters'
+import { CONCRETE_PLATFORM_OPTIONS } from '@/constants/platforms'
 import type { Account, AccountListItem, AccountPlatform, AccountSchedulerGroupScore, AccountType, AccountUsageInfo, Proxy as AccountProxy, AdminGroup, WindowStats, ClaudeModel, UpstreamBillingProbeSnapshot } from '@/types'
 
 const { t } = useI18n()
@@ -540,6 +571,14 @@ const authStore = useAuthStore()
 
 const proxies = ref<AccountProxy[]>([])
 const groups = ref<AdminGroup[]>([])
+const activePlatform = ref<AccountPlatform | ''>('')
+const platformTabs = computed(() => [
+  { value: '' as const, label: t('admin.accounts.allPlatforms') },
+  ...CONCRETE_PLATFORM_OPTIONS.map((platform) => ({
+    value: platform.value,
+    label: t(`admin.accounts.platforms.${platform.value}`)
+  }))
+])
 const groupsByID = computed(() => new Map(groups.value.map(group => [group.id, group])))
 const accountGroupsForRow = (account: Pick<AccountListItem, 'group_ids'>): AdminGroup[] => {
   const groupIDs = account.group_ids ?? []
@@ -1185,6 +1224,20 @@ const buildUpstreamBillingRateFilters = () => {
     sort_by: sortState.sort_by,
     sort_order: sortState.sort_order
   }
+}
+
+const selectPlatformTab = (platform: AccountPlatform | '') => {
+  if (activePlatform.value === platform) return
+  activePlatform.value = platform
+  params.platform = platform
+  pagination.page = 1
+  clearSelection()
+  hasPendingListSync.value = false
+  resetAutoRefreshCache()
+  pendingTodayStatsRefresh.value = true
+  load().catch((error) => {
+    console.error('Failed to load accounts for platform tab:', error)
+  })
 }
 
 const sameAccountIDOrder = (left: number[], right: number[]) =>

@@ -83,6 +83,7 @@ export default {
       notesPlaceholder: 'Enter notes',
       notesHint: 'Notes are optional',
       allPlatforms: 'All Platforms',
+      platformTabsLabel: 'Filter accounts by platform',
       allTypes: 'All Types',
       allStatus: 'All Status',
       allGroups: 'All Groups',

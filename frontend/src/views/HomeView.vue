@@ -16,9 +16,9 @@
   <div
     v-else-if="compactHomeEnabled"
     data-testid="compact-home"
-    class="flex min-h-screen flex-col bg-gray-50 text-gray-900 dark:bg-dark-950 dark:text-white"
+    class="home-shell home-shell-compact flex min-h-screen flex-col bg-gray-50 text-gray-900 dark:bg-dark-950 dark:text-white"
   >
-    <header class="border-b border-gray-200 px-4 py-4 sm:px-6 dark:border-dark-800">
+    <header class="home-header border-b border-gray-200 px-4 py-4 sm:px-6 dark:border-dark-800">
       <nav class="mx-auto flex max-w-5xl flex-wrap items-center justify-between gap-3 sm:gap-4">
         <div class="flex min-w-0 flex-1 items-center gap-3">
           <img
@@ -47,8 +47,11 @@
             :title="t('nav.modelPlaza')"
           >
             <Icon name="grid" size="md" />
-            <span class="hidden sm:inline">{{ t('nav.modelPlaza') }}</span>
-          </router-link>
+          <span class="hidden sm:inline">{{ t('nav.modelPlaza') }}</span>
+        </router-link>
+          <div class="hidden md:block">
+            <UiThemeSwitcher />
+          </div>
           <button
             class="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg text-gray-500 hover:bg-gray-100 dark:text-dark-400 dark:hover:bg-dark-800"
             :title="isDark ? t('home.switchToLight') : t('home.switchToDark')"
@@ -93,10 +96,10 @@
   <!-- Default Home Page -->
   <div
     v-else
-    class="relative flex min-h-screen flex-col overflow-hidden bg-gradient-to-br from-gray-50 via-primary-50/30 to-gray-100 dark:from-dark-950 dark:via-dark-900 dark:to-dark-950"
+    class="home-shell home-shell-default relative flex min-h-screen flex-col overflow-hidden bg-gradient-to-br from-gray-50 via-primary-50/30 to-gray-100 dark:from-dark-950 dark:via-dark-900 dark:to-dark-950"
   >
     <!-- Background Decorations -->
-    <div class="pointer-events-none absolute inset-0 overflow-hidden">
+    <div class="home-background-decoration pointer-events-none absolute inset-0 overflow-hidden">
       <div
         class="absolute -right-40 -top-40 h-96 w-96 rounded-full bg-primary-400/20 blur-3xl"
       ></div>
@@ -115,7 +118,7 @@
     </div>
 
     <!-- Header -->
-    <header class="relative z-20 px-6 py-4">
+    <header class="home-header relative z-20 px-6 py-4">
       <nav class="mx-auto flex max-w-6xl items-center justify-between">
         <!-- Logo -->
         <div class="flex items-center">
@@ -151,6 +154,10 @@
             <Icon name="grid" size="md" />
             <span class="hidden sm:inline">{{ t('nav.modelPlaza') }}</span>
           </router-link>
+
+          <div class="hidden md:block">
+            <UiThemeSwitcher />
+          </div>
 
           <!-- Theme Toggle -->
           <button
@@ -498,6 +505,7 @@ import { ref, computed, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useAuthStore, useAppStore } from '@/stores'
 import LocaleSwitcher from '@/components/common/LocaleSwitcher.vue'
+import UiThemeSwitcher from '@/components/common/UiThemeSwitcher.vue'
 import Icon from '@/components/icons/Icon.vue'
 import { sanitizeUrl } from '@/utils/url'
 import { FeatureFlags, isFeatureFlagEnabled } from '@/utils/featureFlags'
