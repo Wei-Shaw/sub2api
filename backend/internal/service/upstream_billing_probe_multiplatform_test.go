@@ -16,7 +16,7 @@ import (
 func TestUpstreamBillingProbeIdentityCoversAllAPIKeyPlatforms(t *testing.T) {
 	for _, platform := range []string{
 		PlatformOpenAI, PlatformGrok, PlatformAnthropic, PlatformGemini, PlatformAntigravity,
-		PlatformKimi, PlatformZhipu, PlatformDeepseek,
+		PlatformKimi, PlatformZhipu, PlatformDeepseek, PlatformMiniMax,
 	} {
 		require.True(t, IsUpstreamBillingProbeIdentity(platform, AccountTypeAPIKey), platform)
 		require.True(t, isUpstreamBillingProbeAccount(&Account{Platform: platform, Type: AccountTypeAPIKey}), platform)

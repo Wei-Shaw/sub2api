@@ -163,7 +163,7 @@ func TestCodexModelsAppliesLocalFiltersBeforeClientETag(t *testing.T) {
 	group := &service.Group{
 		ID:       groupID,
 		Platform: service.PlatformOpenAI,
-		ModelsListConfig: service.GroupModelsListConfig{
+		ModelAllowlist: service.GroupModelAllowlist{
 			Enabled: true,
 			Models:  []string{"codex-auto-review", "gpt-5.6"},
 		},
@@ -181,7 +181,7 @@ func TestCodexModelsAppliesLocalFiltersBeforeClientETag(t *testing.T) {
 		t.Fatal("first response did not include an ETag")
 	}
 
-	group.ModelsListConfig.Enabled = false
+	group.ModelAllowlist.Enabled = false
 	second := performCodexModelsRequestForGroup(t, handler, group, oldETag)
 	if second.Code != http.StatusOK {
 		t.Fatalf("second status: got %d, want %d; body=%s", second.Code, http.StatusOK, second.Body.String())
@@ -232,7 +232,7 @@ func TestCodexModelsAPIKeyCacheDoesNotLeakGroupFilters(t *testing.T) {
 	groupA := &service.Group{
 		ID:       91,
 		Platform: service.PlatformOpenAI,
-		ModelsListConfig: service.GroupModelsListConfig{
+		ModelAllowlist: service.GroupModelAllowlist{
 			Enabled: true,
 			Models:  []string{"model-a"},
 		},
@@ -240,7 +240,7 @@ func TestCodexModelsAPIKeyCacheDoesNotLeakGroupFilters(t *testing.T) {
 	groupB := &service.Group{
 		ID:       92,
 		Platform: service.PlatformOpenAI,
-		ModelsListConfig: service.GroupModelsListConfig{
+		ModelAllowlist: service.GroupModelAllowlist{
 			Enabled: true,
 			Models:  []string{"model-b"},
 		},
@@ -292,8 +292,7 @@ func TestCodexModelsAPIKeyCacheDoesNotLeakGroupFilters(t *testing.T) {
 	require.True(t, sawGroupB)
 }
 
-// Scenario: OpenAI 分组内混用 OAuth 和第三方 API Key 时，管理员模型配置优先。
-func TestCodexModelsUsesConfiguredModelsBeforeUpstreamDiscovery(t *testing.T) {
+func TestCodexModelsSupplementsConfiguredModelsWithUnmappedAccountDefaults(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	groupID := int64(44)
 	repo := &codexModelsFailoverAccountRepo{accounts: []service.Account{
@@ -354,12 +353,59 @@ func TestCodexModelsUsesConfiguredModelsBeforeUpstreamDiscovery(t *testing.T) {
 	if err := json.Unmarshal(recorder.Body.Bytes(), &envelope); err != nil {
 		t.Fatalf("decode body: %v; body=%s", err, recorder.Body.String())
 	}
-	if len(envelope.Models) != 1 || envelope.Models[0]["slug"] != "glm-5.3" {
-		t.Fatalf("models: got %v, want only glm-5.3", envelope.Models)
+	require.Contains(t, codexHandlerManifestSlugs(t, recorder), "gpt-5.6-sol")
+	require.Contains(t, codexHandlerManifestSlugs(t, recorder), "glm-5.3")
+	for _, model := range envelope.Models {
+		require.Contains(t, model, "supported_reasoning_levels")
 	}
-	if _, ok := envelope.Models[0]["supported_reasoning_levels"]; !ok {
-		t.Fatalf("configured model is missing the Codex descriptor contract: %v", envelope.Models[0])
+}
+
+func TestCodexModelsUnmappedParentAndSparkShadowHonorCustomListAndETag(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	const sparkModel = "gpt-5.3-codex-spark"
+	parentID := int64(1)
+	repo := &codexModelsFailoverAccountRepo{accounts: []service.Account{
+		{
+			ID: parentID, Platform: service.PlatformOpenAI, Type: service.AccountTypeOAuth,
+			Status: service.StatusActive, Schedulable: true,
+		},
+		{
+			ID: 2, Platform: service.PlatformOpenAI, Type: service.AccountTypeOAuth,
+			Status: service.StatusActive, Schedulable: true,
+			ParentAccountID: &parentID, QuotaDimension: "spark",
+			Credentials: map[string]any{"model_mapping": map[string]any{sparkModel: sparkModel}},
+		},
+	}}
+	upstream := &codexModelsFailoverHTTPUpstream{firstStatus: http.StatusNotFound}
+	gatewayService := service.NewOpenAIGatewayService(
+		repo,
+		nil, nil, nil, nil, nil, nil, &config.Config{RunMode: config.RunModeSimple}, nil, nil, nil, nil, nil,
+		upstream,
+		nil, nil, nil, nil, nil, nil, nil, nil,
+	)
+	handler := &OpenAIGatewayHandler{gatewayService: gatewayService}
+	group := &service.Group{ID: 45, Platform: service.PlatformOpenAI}
+	first := performCodexModelsRequestForGroup(t, handler, group, "")
+	require.Equal(t, http.StatusOK, first.Code, first.Body.String())
+	slugs := codexHandlerManifestSlugs(t, first)
+	require.Contains(t, slugs, "gpt-5.6-sol")
+	require.Contains(t, slugs, sparkModel)
+	require.NotContains(t, slugs, "gpt-image-2")
+	require.NotContains(t, slugs, "codex-auto-review")
+	firstETag := first.Header().Get("ETag")
+	require.NotEmpty(t, firstETag)
+
+	group.ModelAllowlist = service.GroupModelAllowlist{
+		Enabled: true, Models: []string{"gpt-5.6-sol", sparkModel, "unknown-model"},
 	}
+	second := performCodexModelsRequestForGroup(t, handler, group, firstETag)
+	require.Equal(t, http.StatusOK, second.Code, second.Body.String())
+	require.ElementsMatch(t, []string{"gpt-5.6-sol", sparkModel}, codexHandlerManifestSlugs(t, second))
+	require.NotEqual(t, firstETag, second.Header().Get("ETag"))
+	third := performCodexModelsRequestForGroup(t, handler, group, second.Header().Get("ETag"))
+	require.Equal(t, http.StatusNotModified, third.Code)
+	require.Empty(t, third.Body.Bytes())
+	require.Empty(t, upstream.calls())
 }
 
 func TestCompositeCodexModelsReusesExistingManifestSelection(t *testing.T) {
@@ -912,7 +958,7 @@ func TestCodexModelsPinnedAccountsStillApplyCustomModelsListFilter(t *testing.T)
 	group := &service.Group{
 		ID:       84,
 		Platform: service.PlatformOpenAI,
-		ModelsListConfig: service.GroupModelsListConfig{
+		ModelAllowlist: service.GroupModelAllowlist{
 			Enabled: true,
 			Models:  []string{"model-b"},
 		},

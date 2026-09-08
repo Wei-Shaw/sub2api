@@ -169,6 +169,11 @@
 <td>感谢 AxisNow 赞助了本项目！<a href="https://www.axisnow.io/">AxisNow</a> 保护并加速网站与 API，兼顾中国大陆及全球的访问体验，并通过客户端 SDK，将加速与安全能力延伸至原生/移动 App — <strong>自建私有部署 CDN</strong>｜<strong>订阅式高防 CDN</strong>｜<strong>自主可控、灵活组合的 CDN 网络</strong>。</td>
 </tr>
 
+<tr>
+<td width="180"><a href="https://pp.dog/register?aff=SUB2API"><img src="assets/partners/logos/ppdog.png" alt="PP.dog" width="150"></a></td>
+<td><a href="https://pp.dog/register?aff=SUB2API">PP.dog</a> 是自建账号池的源头 API 网关，专注为下游中转站与高频开发者提供 API 网关中继服务，帮您省去自建号池的一切麻烦——✅ 源头直供：自持海量账号池，无中间商赚差价；🧧 成本屠夫：综合倍率低至 0.03x，成本仅为官方的千分之3.5；🚀 极速体验：首 Token 延迟 < 1s，流畅媲美官方原生 API。<a href="https://www.pp.dog/register?aff=SUB2API">立即接入PP.dog</a></td>
+</tr>
+
 </table>
 
 ## 项目概述

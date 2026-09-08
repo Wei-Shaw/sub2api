@@ -385,6 +385,24 @@ func TestResolveContextPricingSchedule_NilResolver(t *testing.T) {
 	require.Nil(t, sched)
 }
 
+func TestPlazaSchedulePreservesCacheWrite1h(t *testing.T) {
+	cp := sonnetChannel(PricingInterval{MinTokens: 272000, CacheWriteMultiplier: testPtrFloat64(2)})
+	cp[0].CacheWritePrice = testPtrFloat64(12.5e-6)
+	cp[0].CacheWrite1hPrice = testPtrFloat64(20e-6)
+	group := enabledGroup(PlatformAnthropic)
+	bs, resolver := newScheduleTestEnv(t, scheduleScenario{channel: cp, groupPlatform: PlatformAnthropic})
+	sched, err := bs.ResolveContextPricingSchedule(context.Background(), resolver, ContextPricingScheduleInput{Model: "claude-sonnet-4", Group: group, Platform: PlatformAnthropic})
+	require.NoError(t, err)
+	display := plazaPricingFromSchedule(&cp[0], sched)
+	requirePrice(t, testPtrFloat64(20e-6), display.CacheWrite1hPrice, "base 1h")
+	require.Len(t, display.Intervals, 2)
+	requirePrice(t, testPtrFloat64(25e-6), display.Intervals[1].CacheWritePrice, "tier 5m")
+	requirePrice(t, testPtrFloat64(40e-6), display.Intervals[1].CacheWrite1hPrice, "tier 1h")
+	a := ContextPricingTier{CacheWrite1h: testPtrFloat64(1)}
+	b := ContextPricingTier{CacheWrite1h: testPtrFloat64(2)}
+	require.Len(t, mergeEqualContextTiers([]ContextPricingTier{a, b}), 2)
+}
+
 // --- 对账：阶梯表推算的费用必须等于真实计费函数 ---
 
 type tokenKind int

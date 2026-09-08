@@ -6,6 +6,7 @@ import (
 	"time"
 
 	dbent "github.com/Wei-Shaw/sub2api/ent"
+	"github.com/Wei-Shaw/sub2api/internal/config"
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 )
 
@@ -48,6 +49,7 @@ type AdminService interface {
 	RecoverDuplicateGroup(ctx context.Context, id int64, actorScope, operationKey string) (*Group, error)
 	UpdateGroup(ctx context.Context, id int64, input *UpdateGroupInput) (*Group, error)
 	DeleteGroup(ctx context.Context, id int64) error
+	DeleteGroupIfEmpty(ctx context.Context, id int64) error
 	ListCompositeRoutes(ctx context.Context, groupID int64) ([]CompositeModelRoute, error)
 	CreateCompositeRoute(ctx context.Context, groupID int64, input CompositeRouteInput) (*CompositeModelRoute, error)
 	UpdateCompositeRoute(ctx context.Context, groupID, routeID int64, input CompositeRouteInput) (*CompositeModelRoute, error)
@@ -79,6 +81,7 @@ type AdminService interface {
 	GetAccount(ctx context.Context, id int64) (*Account, error)
 	GetAccountsByIDs(ctx context.Context, ids []int64) ([]*Account, error)
 	CreateAccount(ctx context.Context, input *CreateAccountInput) (*Account, error)
+	ValidateAccountGroupBindings(ctx context.Context, groupIDs []int64) error
 	// DuplicateAccount creates an independent account from an existing account's configuration.
 	// First-class runtime columns are intentionally reset by the normal account creation path.
 	DuplicateAccount(ctx context.Context, id int64, actorScope, operationKey string) (*Account, error)
@@ -135,6 +138,24 @@ type AdminService interface {
 	BatchDeleteRedeemCodes(ctx context.Context, ids []int64) (int64, error)
 	ExpireRedeemCode(ctx context.Context, id int64) (*RedeemCode, error)
 	ResetAccountQuota(ctx context.Context, id int64) error
+}
+
+type AdminGroupOperation string
+
+const (
+	AdminGroupOperationBasic          AdminGroupOperation = "basic"
+	AdminGroupOperationDuplicate      AdminGroupOperation = "duplicate"
+	AdminGroupOperationCompositeRoute AdminGroupOperation = "composite_route"
+	AdminGroupOperationMultiplier     AdminGroupOperation = "multiplier"
+	AdminGroupOperationRPMOverride    AdminGroupOperation = "rpm_override"
+	AdminGroupOperationSort           AdminGroupOperation = "sort"
+)
+
+func ValidateSimpleModeGroupOperation(cfg *config.Config, operation AdminGroupOperation) error {
+	if cfg != nil && cfg.RunMode == config.RunModeSimple && operation != AdminGroupOperationBasic {
+		return infraerrors.New(http.StatusForbidden, "SIMPLE_MODE_OPERATION_UNSUPPORTED", "This operation is not supported in simple mode")
+	}
+	return nil
 }
 
 // CreateUserInput represents input for creating a new user via admin operations.
@@ -272,7 +293,7 @@ type CreateGroupInput struct {
 	RequireOAuthOnly            bool
 	RequirePrivacySet           bool
 	MessagesDispatchModelConfig OpenAIMessagesDispatchModelConfig
-	ModelsListConfig            GroupModelsListConfig
+	ModelAllowlist              GroupModelAllowlist
 	// CodexModelsManifestConfig 固定账号 manifest 配置；创建路径禁止开启，仅编辑可配置。
 	CodexModelsManifestConfig GroupCodexModelsManifestConfig
 	// RPMLimit 分组 RPM 上限（0 = 不限制）
@@ -353,7 +374,7 @@ type UpdateGroupInput struct {
 	RequireOAuthOnly            *bool
 	RequirePrivacySet           *bool
 	MessagesDispatchModelConfig *OpenAIMessagesDispatchModelConfig
-	ModelsListConfig            *GroupModelsListConfig
+	ModelAllowlist              *GroupModelAllowlist
 	// CodexModelsManifestConfig nil 表示不修改；非 openai 平台会被归一化为关闭。
 	CodexModelsManifestConfig *GroupCodexModelsManifestConfig
 	// RPMLimit 分组 RPM 上限（0 = 不限制），nil 表示未提供不改动。
@@ -513,6 +534,8 @@ type CreateProxyInput struct {
 	ExpiryWarnDays int
 }
 
+// UpdateProxyInput preserves omitted expiry/backup values; Clear flags explicitly
+// remove them. A nil ExpiryWarnDays preserves the current warning period.
 type UpdateProxyInput struct {
 	Name           string
 	Protocol       string
@@ -522,9 +545,11 @@ type UpdateProxyInput struct {
 	Password       string
 	Status         string
 	ExpiresAt      *time.Time
+	ClearExpiresAt bool
 	FallbackMode   string
 	BackupProxyID  *int64
-	ExpiryWarnDays int
+	ClearBackupID  bool
+	ExpiryWarnDays *int
 }
 
 type GenerateRedeemCodesInput struct {
@@ -658,9 +683,11 @@ var ErrRPMStatusUnavailable = infraerrors.New(http.StatusNotImplemented, "RPM_ST
 
 // adminServiceImpl implements AdminService
 type adminServiceImpl struct {
+	cfg                  *config.Config
 	userRepo             UserRepository
 	groupRepo            GroupRepository
 	groupDuplicateRepo   GroupDuplicateRepository
+	emptyGroupDeleteRepo EmptyGroupDeleteRepository
 	accountRepo          AccountRepository
 	accountDuplicateRepo AccountDuplicateRepository
 	accountBillingRepo   AccountBillingSettingsRepository
@@ -702,6 +729,7 @@ type userGroupRateBatchReader interface {
 
 // NewAdminService creates a new AdminService
 func NewAdminService(
+	cfg *config.Config,
 	userRepo UserRepository,
 	groupRepo AdminGroupRepository,
 	accountRepo AdminAccountRepository,
@@ -726,9 +754,11 @@ func NewAdminService(
 	channelCacheInvalidator ChannelCacheInvalidator,
 ) AdminService {
 	return &adminServiceImpl{
+		cfg:                  cfg,
 		userRepo:             userRepo,
 		groupRepo:            groupRepo,
 		groupDuplicateRepo:   groupRepo,
+		emptyGroupDeleteRepo: groupRepo,
 		accountRepo:          accountRepo,
 		accountDuplicateRepo: accountRepo,
 		accountBillingRepo:   accountRepo,

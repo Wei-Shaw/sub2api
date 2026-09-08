@@ -47,12 +47,21 @@ describe("ReasoningEffortPolicyFields", () => {
     expect(optionValues("edit-group-reasoning-max-effort")).not.toContain(
       "none",
     );
+    expect(optionValues("edit-group-reasoning-max-effort")).not.toContain(
+      "deny",
+    );
     expect(
       optionValues(`edit-group-reasoning-${mapping.pairs[0].id}-from`),
     ).toContain("none");
     expect(
+      optionValues(`edit-group-reasoning-${mapping.pairs[0].id}-from`),
+    ).not.toContain("deny");
+    expect(
       optionValues(`edit-group-reasoning-${mapping.pairs[0].id}-to`),
     ).not.toContain("none");
+    expect(
+      optionValues(`edit-group-reasoning-${mapping.pairs[0].id}-to`),
+    ).toContain("deny");
   });
 
   it("renders model scope fields for each mapping", () => {

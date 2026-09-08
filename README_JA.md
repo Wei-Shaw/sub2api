@@ -168,6 +168,11 @@
 <td>AxisNow のご支援に感謝します！<a href="https://www.axisnow.io/">AxisNow</a> はウェブサイトと API を保護・高速化し、中国本土および世界中で快適なアクセス体験を実現します。クライアント SDK により、ネイティブ／モバイルアプリにも高速化・セキュリティ機能を拡張できます — <strong>自社構築・プライベートデプロイ CDN</strong>｜<strong>サブスクリプション型高防御 CDN</strong>｜<strong>自律制御で柔軟に組み合わせられる CDN ネットワーク</strong>。</td>
 </tr>
 
+<tr>
+<td width="180"><a href="https://pp.dog/register?aff=SUB2API"><img src="assets/partners/logos/ppdog.png" alt="PP.dog" width="150"></a></td>
+<td><a href="https://pp.dog/register?aff=SUB2API">PP.dog</a> は自社運用の大規模アカウントプールを持つソースレベルの API ゲートウェイで、下流の中継ステーションや高頻度開発者向けに API ゲートウェイリレーサービスを提供し、アカウントプールの自主構築にかかるすべての手間を省きます。✅ ソース直供：自社運用の大規模アカウントプール、中間マージンなし；🧧 コスト最強：総合レート倍率わずか 0.03x、コストは公式の 0.35% のみ；🚀 超高速体験：ファーストトークンレイテンシ 1 秒未満、公式ネイティブ API に匹敵するスムーズさ。<a href="https://www.pp.dog/register?aff=SUB2API">今すぐ PP.dog に接続</a></td>
+</tr>
+
 </table>
 
 ## 概要

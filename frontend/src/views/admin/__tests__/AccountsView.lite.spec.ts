@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { flushPromises, mount } from '@vue/test-utils'
+import { DOMWrapper, flushPromises, mount } from '@vue/test-utils'
 import { defineComponent } from 'vue'
 
 import AccountsView from '../AccountsView.vue'
@@ -88,8 +88,9 @@ const AccountStatsModalStub = defineComponent({
   template: '<div data-test="stats-account">{{ show ? account?.name : "" }}</div>'
 })
 
-function mountView() {
+function mountView(stubActionMenu = true) {
   return mount(AccountsView, {
+    attachTo: document.body,
     global: {
       stubs: {
         AppLayout: { template: '<div><slot /></div>' },
@@ -100,7 +101,7 @@ function mountView() {
         AccountBulkActionsBar: true,
         Pagination: true,
         ConfirmDialog: true,
-        AccountActionMenu: true,
+        AccountActionMenu: stubActionMenu,
         ImportDataModal: true,
         ReAuthAccountModal: true,
         AccountTestModal: AccountTestModalStub,
@@ -122,7 +123,7 @@ function mountView() {
         UpstreamBillingRateCell: true,
         HelpTooltip: true,
         Icon: true,
-        Teleport: true
+        Teleport: stubActionMenu
       }
     }
   })
@@ -186,6 +187,27 @@ describe('admin AccountsView lite account list', () => {
     await flushPromises()
 
     expect(wrapper.get('[data-test="account-groups"]').text()).toBe('codex')
+    wrapper.unmount()
+  })
+
+  it('keeps the action menu open during internal scrolling but closes it on table scrolling', async () => {
+    const wrapper = mountView(false)
+    await flushPromises()
+
+    const trigger = wrapper.findAll('button').find(button => button.text() === 'common.more')!
+    await trigger.trigger('click')
+    const menu = new DOMWrapper(document.body.querySelector('.action-menu-content')!)
+    menu.element.dispatchEvent(new Event('scroll'))
+    await flushPromises()
+    expect(wrapper.findComponent(AccountActionMenu).props('show')).toBe(true)
+
+    menu.get('button').element.dispatchEvent(new Event('scroll'))
+    await flushPromises()
+    expect(wrapper.findComponent(AccountActionMenu).props('show')).toBe(true)
+
+    wrapper.getComponent(DataTableStub).element.dispatchEvent(new Event('scroll'))
+    await flushPromises()
+    expect(wrapper.findComponent(AccountActionMenu).props('show')).toBe(false)
     wrapper.unmount()
   })
 

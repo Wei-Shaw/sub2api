@@ -56,9 +56,14 @@ func (s *OpenAIGatewayService) BeginOpenAIWSIngressSessionPreemption(
 	if armed, _ := ctx.Value(openAIWSSessionPreemptContextKey{}).(bool); armed {
 		return ctx, func() {}, true
 	}
-	if s != nil && s.cfg != nil && s.cfg.Gateway.OpenAIWS.ModeRouterV2Enabled &&
-		account != nil && account.ResolveOpenAIResponsesWebSocketV2Mode(s.cfg.Gateway.OpenAIWS.IngressModeDefault) == OpenAIWSIngressModePassthrough {
-		return ctx, func() {}, false
+	if s != nil && s.cfg != nil && s.cfg.Gateway.OpenAIWS.ModeRouterV2Enabled && account != nil {
+		switch account.ResolveOpenAIResponsesWebSocketV2Mode(s.cfg.Gateway.OpenAIWS.IngressModeDefault) {
+		case OpenAIWSIngressModePassthrough, OpenAIWSIngressModeHTTPBridge:
+			// These modes own their upstream transport and replay state per
+			// inbound connection. Sharing a sticky/cache identity does not mean
+			// a new connection should cancel an independent in-flight request.
+			return ctx, func() {}, false
+		}
 	}
 
 	preemptSessionHash := ""

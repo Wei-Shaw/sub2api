@@ -44,6 +44,12 @@ vi.mock('@/api/admin', () => ({
   }
 }))
 
+const authState = vi.hoisted(() => ({ isSimpleMode: false }))
+
+vi.mock('@/stores/auth', () => ({
+  useAuthStore: () => authState
+}))
+
 vi.mock('@/stores/app', () => ({
   useAppStore: () => ({ showSuccess: vi.fn(), showError: vi.fn() })
 }))
@@ -177,6 +183,7 @@ describe('GroupsView copy-accounts source groups', () => {
   beforeEach(() => {
     localStorage.clear()
     vi.spyOn(console, 'error').mockImplementation(() => {})
+    authState.isSimpleMode = false
     listGroups.mockResolvedValue({
       items: [currentPageGroup],
       total: 5,

@@ -7,7 +7,7 @@ import (
 )
 
 func TestNormalizeKnownOpenAICodexModelGPT6Astra(t *testing.T) {
-	for _, model := range []string{"gpt-6-astra", "openai/gpt-6-astra", "gpt-6", "openai/gpt-6"} {
+	for _, model := range []string{"gpt-6-astra", "openai/gpt-6-astra", "OPENAI/GPT-6_ASTRA", "gpt-6", "openai/gpt-6"} {
 		require.Equal(t, "gpt-6-astra", normalizeKnownOpenAICodexModel(model))
 	}
 }

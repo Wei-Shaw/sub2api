@@ -2,6 +2,8 @@ package service
 
 import (
 	"context"
+	"encoding/json"
+	"fmt"
 	"net/http"
 	"strings"
 	"testing"
@@ -11,6 +13,21 @@ import (
 )
 
 func TestSanitizeOpenAIResponsesOrphanToolOutputs(t *testing.T) {
+	t.Run("named standalone inputs do not legitimize orphan results", func(t *testing.T) {
+		named := map[string]any{"type": "function_call_output", "name": "send_message_to_thread", "namespace": "codex_app", "output": "delegation"}
+		input := []any{
+			named,
+			map[string]any{"type": "function_call_output", "output": "missing name and call id"},
+			map[string]any{"type": "function_call_output", "name": " ", "output": "blank name"},
+			map[string]any{"type": "function_call_output", "name": "send_message_to_thread", "call_id": "missing", "output": "orphan result"},
+			map[string]any{"type": "custom_tool_call_output", "name": "apply_patch", "output": "missing call id"},
+		}
+		reqBody := map[string]any{"input": input}
+
+		require.True(t, sanitizeOpenAIResponsesOrphanToolOutputs(reqBody, input, false))
+		require.Equal(t, []any{named}, reqBody["input"])
+	})
+
 	t.Run("preserves matches regardless of item order", func(t *testing.T) {
 		input := []any{
 			map[string]any{"type": "tool_search_output", "call_id": "search_1", "output": "first"},
@@ -69,6 +86,48 @@ func TestSanitizeOpenAIResponsesOrphanToolOutputs(t *testing.T) {
 		require.False(t, sanitizeOpenAIResponsesOrphanToolOutputs(reqBody, input, true))
 		require.Equal(t, input, reqBody["input"])
 	})
+}
+
+func TestWebSocketCompatibilityPreservesNamedDelegation(t *testing.T) {
+	for _, toolName := range []string{"create_thread", "send_message_to_thread"} {
+		for _, withHistory := range []bool{false, true} {
+			for _, previousResponseID := range []string{"", "resp_previous"} {
+				name := fmt.Sprintf("%s/history=%t/previous=%t", toolName, withHistory, previousResponseID != "")
+				t.Run(name, func(t *testing.T) {
+					input := []any{}
+					if withHistory {
+						input = append(input,
+							map[string]any{"type": "function_call", "call_id": "fc_history", "name": "lookup", "arguments": "{}"},
+							map[string]any{"type": "function_call_output", "call_id": "fc_history", "output": "historical result"},
+						)
+					}
+					input = append(input,
+						map[string]any{"type": "message", "role": "user", "content": []any{map[string]any{"type": "input_text", "text": "Updated environment context."}}},
+						map[string]any{"type": "function_call_output", "name": toolName, "namespace": "codex_app", "output": "<codex_delegation>\n  <source_thread_id>source-task</source_thread_id>\n  <input>Reply with DELEGATION_OK.</input>\n</codex_delegation>"},
+					)
+					reqBody := map[string]any{"type": "response.create", "model": "gpt-5.5", "input": input}
+					if previousResponseID != "" {
+						reqBody["previous_response_id"] = previousResponseID
+					}
+					body, err := json.Marshal(reqBody)
+					require.NoError(t, err)
+					account := &Account{Platform: PlatformOpenAI, Type: AccountTypeOAuth}
+
+					normalized, _, err := normalizeOpenAIResponsesWebSocketCompatibilityBody(body, account, false)
+					require.NoError(t, err)
+					var got map[string]any
+					require.NoError(t, json.Unmarshal(normalized, &got))
+					require.Equal(t, input, got["input"], "preserve the delegation envelope, native type and history in order")
+					require.Equal(t, reqBody["previous_response_id"], got["previous_response_id"])
+
+					again, changed, err := normalizeOpenAIResponsesWebSocketCompatibilityBody(normalized, account, false)
+					require.NoError(t, err)
+					require.False(t, changed, "normalization must be idempotent")
+					require.JSONEq(t, string(normalized), string(again))
+				})
+			}
+		}
+	}
 }
 
 func TestOpenAIResponsesInputTextIsNeverSilentlyTruncated(t *testing.T) {
