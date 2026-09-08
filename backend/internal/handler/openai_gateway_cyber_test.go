@@ -178,7 +178,7 @@ func TestRejectIfCyberSessionBlocked_FailOpen(t *testing.T) {
 	require.False(t, h2.rejectIfCyberSessionBlocked(c, key, []byte(`{}`), "gpt-5", cyberBlockFormatResponses), "nil gateway service → pass")
 }
 
-func TestBuildCyberSessionBlockWritePlanCombinesExplicitAndTranscriptKeys(t *testing.T) {
+func TestBuildCyberSessionBlockWritePlanUsesOnlyExplicitIdentity(t *testing.T) {
 	body := []byte(`{"messages":[{"role":"user","content":"setup"},{"role":"assistant","content":"ready"},{"role":"user","content":"trigger"}]}`)
 	c := newTestGinContext()
 	c.Request = httptest.NewRequest("POST", "/openai/v1/responses", strings.NewReader(string(body)))
@@ -186,13 +186,14 @@ func TestBuildCyberSessionBlockWritePlanCombinesExplicitAndTranscriptKeys(t *tes
 	c.Request.Header.Set("User-Agent", "client/1.2.3")
 
 	plan := buildCyberSessionBlockWritePlan(7, c, body)
-	require.Len(t, plan.keys, 2)
-	require.NotEmpty(t, plan.scopeKey)
+	require.Empty(t, plan.keys)
 
 	c.Request.Header.Set("session_id", "sess-explicit")
 	plan = buildCyberSessionBlockWritePlan(7, c, body)
-	require.Len(t, plan.keys, 3)
-	require.NotEmpty(t, plan.scopeKey)
+	require.Equal(t, []string{service.CyberSessionExplicitBlockKey(7, c, body)}, plan.keys)
+
+	c.Request.Header.Del("session_id")
+	require.Empty(t, buildCyberSessionBlockWritePlan(7, c, []byte(`{"prompt_cache_key":"shared-cache"}`)).keys)
 }
 
 // TestRecordCyberPolicyIfMarked_BlockKeyPlumbed verifies the 6th param is
