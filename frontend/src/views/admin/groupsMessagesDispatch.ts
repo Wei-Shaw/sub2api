@@ -20,9 +20,9 @@ export function supportsMessagesDispatchPlatform(platform: string): boolean {
 export function createDefaultMessagesDispatchFormState(): MessagesDispatchFormState {
   return {
     allow_messages_dispatch: false,
-    opus_mapped_model: "gpt-5.4",
-    sonnet_mapped_model: "gpt-5.3-codex",
-    haiku_mapped_model: "gpt-5.4-mini",
+    opus_mapped_model: "gpt-5.6-sol",
+    sonnet_mapped_model: "gpt-5.6-terra",
+    haiku_mapped_model: "gpt-5.6-luna",
     exact_model_mappings: [],
   };
 }
