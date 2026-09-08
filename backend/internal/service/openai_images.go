@@ -14,6 +14,7 @@ import (
 	"mime/multipart"
 	"net/http"
 	"net/textproto"
+	"os"
 	"strconv"
 	"strings"
 	"sync/atomic"
@@ -39,9 +40,22 @@ const (
 	openAIImageBackendUserAgent            = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
 	openAIImageMaxDownloadBytes            = 20 << 20 // 20MB per image download
 	openAIImageMaxUploadPartSize           = 20 << 20 // 20MB per multipart upload part
-	openAIImagesResponsesMainModel         = "gpt-5.4-mini"
+	openAIImagesResponsesMainModel         = "gpt-5.6-luna"
+	openAIImagesMainModelEnv               = "SUB2API_IMAGES_MAIN_MODEL"
 	openAIImagesVerbatimPromptInstructions = "When invoking the image_generation tool, use the user's image prompt verbatim. Do not rewrite, expand, summarize, embellish, translate, normalize punctuation, or add or remove visual details or constraints. Preserve the original language, wording, capitalization, quotes, and punctuation exactly."
 )
+
+// openAIImagesResponsesMainModelValue returns the main (driver) model used to
+// carry image_generation tool calls on ChatGPT accounts. The default can be
+// overridden via the SUB2API_IMAGES_MAIN_MODEL environment variable so that an
+// upstream model retirement (e.g. gpt-5.4-mini on 2026-09-08) can be handled
+// without shipping a new build.
+func openAIImagesResponsesMainModelValue() string {
+	if v := strings.TrimSpace(os.Getenv(openAIImagesMainModelEnv)); v != "" {
+		return v
+	}
+	return openAIImagesResponsesMainModel
+}
 
 type OpenAIImagesCapability string
 
