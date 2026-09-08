@@ -359,6 +359,12 @@ func (s *OpenAIGatewayService) forwardAsChatCompletions(
 	responsesBody = updatedBody
 	responsesReq.ServiceTier = normalizedOpenAIServiceTierValue(gjson.GetBytes(responsesBody, "service_tier").String())
 
+	// Ollama Cloud 原生 Responses 出站 clamp：与 /v1/responses 入站路径（Forward）同一
+	// 判据（实际 Responses 上游为 ollama.com + 映射后的出站模型为 DeepSeek 系），在此
+	// 转换路径（Chat Completions 入站 → Responses 出站）独立补齐，模型映射与服务层
+	// 改写全部完成后、构建上游请求前最后一次改写 body。
+	responsesBody = ollamaCloudClampResponsesMaxOutputTokensBody(account, upstreamModel, responsesBody)
+
 	// 5. Get access token
 	token, _, err := s.GetAccessToken(ctx, account)
 	if err != nil {
