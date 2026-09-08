@@ -294,6 +294,53 @@ describe('PlazaModelPricingTable', () => {
     expect(text).toContain('$15.00')
   })
 
+  it('仅配置区间倍率时按基础价格展示 input/output/cache 各档价格', () => {
+    const model = tokenModel({
+      pricing: {
+        billing_mode: 'token',
+        input_price: 10e-6,
+        output_price: 50e-6,
+        cache_write_price: 12.5e-6,
+        cache_write_1h_price: 12.5e-6,
+        cache_read_price: 2e-6,
+        image_input_price: null,
+        image_output_price: null,
+        per_request_price: null,
+        intervals: [{
+          min_tokens: 272000,
+          max_tokens: null,
+          tier_label: '>272K',
+          input_price: null,
+          output_price: null,
+          cache_write_price: null,
+          cache_write_1h_price: null,
+          cache_read_price: null,
+          input_multiplier: 2,
+          output_multiplier: 1.5,
+          cache_write_multiplier: 2,
+          cache_read_multiplier: 2,
+          per_request_price: null
+        }]
+      },
+      official_pricing: null
+    })
+
+    const text = mountTable([model], 1).text()
+    expect(text).toContain('$20.00')
+    expect(text).toContain('$75.00')
+    expect(text).toContain('$25.00')
+    expect(text).toContain('$4.00')
+    model.pricing!.intervals.unshift({
+      ...model.pricing!.intervals[0], min_tokens: 0, max_tokens: 272000,
+      tier_label: '<=272K', cache_write_multiplier: null, cache_read_multiplier: null
+    })
+    const cells = mountTable([model], 1).findAll('tbody td')
+    expect(cells[3].text()).toContain('$12.50')
+    expect(cells[3].text()).toContain('$2.00')
+    expect(cells[3].text()).toContain('$25.00')
+    expect(cells[3].text()).toContain('$4.00')
+  })
+
   it('生图独立倍率开启时,按图价格 × 独立倍率,不乘分组倍率;倍率列展示独立倍率', () => {
     const model = tokenModel({
       name: 'gpt-image-2',

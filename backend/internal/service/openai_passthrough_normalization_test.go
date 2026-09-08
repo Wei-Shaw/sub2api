@@ -138,6 +138,69 @@ func TestNormalizeOpenAIResponsesReasoningMode(t *testing.T) {
 	}
 }
 
+func TestNormalizeOpenAIResponsesReasoningMode_AstraPreservesBody(t *testing.T) {
+	// GPT-6 Astra 保留官方 reasoning.mode 与 reasoning.effort 各自原样：
+	// 不删 mode、缺失 effort 也不补 max。非 Astra 的旧兼容行为不受影响。
+	tests := []struct {
+		name string
+		body string
+	}{
+		{name: "pro + max preserved", body: `{"model":"gpt-6-astra","reasoning":{"mode":"pro","effort":"max"}}`},
+		{name: "standard + max preserved", body: `{"model":"gpt-6-astra","reasoning":{"mode":"standard","effort":"max"}}`},
+		{name: "missing mode + max preserved", body: `{"model":"gpt-6-astra","reasoning":{"effort":"max"}}`},
+		{name: "pro + explicit high preserved", body: `{"model":"gpt-6-astra","reasoning":{"mode":"pro","effort":"high"}}`},
+		{name: "pro without effort does not inject max", body: `{"model":"gpt-6-astra","reasoning":{"mode":"pro"}}`},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			normalized, changed, err := normalizeOpenAIResponsesReasoningMode([]byte(tt.body))
+			require.NoError(t, err)
+			require.False(t, changed)
+			require.JSONEq(t, tt.body, string(normalized))
+		})
+	}
+}
+
+func TestNormalizeOpenAIResponsesReasoningMode_NonAstraKeepsLegacyBehavior(t *testing.T) {
+	// 确保 guard 只放过 Astra，非 Astra model 字段不影响既有 strip/pro->max 语义。
+	tests := []struct {
+		name       string
+		body       string
+		wantEffort string
+	}{
+		{name: "gpt-5.6-sol pro maps to max", body: `{"model":"gpt-5.6-sol","reasoning":{"mode":"pro"}}`, wantEffort: "max"},
+		{name: "gpt-5.4 explicit effort wins", body: `{"model":"gpt-5.4","reasoning":{"mode":"pro","effort":"high"}}`, wantEffort: "high"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			normalized, changed, err := normalizeOpenAIResponsesReasoningMode([]byte(tt.body))
+			require.NoError(t, err)
+			require.True(t, changed)
+			require.False(t, gjson.GetBytes(normalized, "reasoning.mode").Exists())
+			require.Equal(t, tt.wantEffort, gjson.GetBytes(normalized, "reasoning.effort").String())
+		})
+	}
+}
+
+func TestNormalizeOpenAIPassthroughOAuthBody_AstraPreservesReasoningMode(t *testing.T) {
+	body := []byte(`{"model":"gpt-6-astra","reasoning":{"mode":"pro","effort":"max"}}`)
+
+	normalized, _, err := normalizeOpenAIPassthroughOAuthBody(body, false)
+	require.NoError(t, err)
+	require.Equal(t, "pro", gjson.GetBytes(normalized, "reasoning.mode").String())
+	require.Equal(t, "max", gjson.GetBytes(normalized, "reasoning.effort").String())
+}
+
+func TestNormalizeOpenAIResponsesWebSocketCompatibilityBody_AstraPreservesReasoningMode(t *testing.T) {
+	body := []byte(`{"type":"response.create","model":"gpt-6-astra","reasoning":{"mode":"pro","effort":"max"}}`)
+	for _, accountType := range []string{AccountTypeOAuth, AccountTypeSetupToken} {
+		normalized, _, err := normalizeOpenAIResponsesWebSocketCompatibilityBody(body, &Account{Platform: PlatformOpenAI, Type: accountType}, false)
+		require.NoError(t, err)
+		require.Equal(t, "pro", gjson.GetBytes(normalized, "reasoning.mode").String())
+		require.Equal(t, "max", gjson.GetBytes(normalized, "reasoning.effort").String())
+	}
+}
+
 func TestNormalizeOpenAIResponsesWebSocketCompatibilityBody_ReasoningModeAccountScope(t *testing.T) {
 	body := []byte(`{"type":"response.create","reasoning":{"mode":"pro"}}`)
 	for _, accountType := range []string{AccountTypeOAuth, AccountTypeSetupToken} {

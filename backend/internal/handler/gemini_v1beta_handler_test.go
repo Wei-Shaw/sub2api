@@ -9,40 +9,21 @@ import (
 	"testing"
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/antigravity"
-	"github.com/Wei-Shaw/sub2api/internal/pkg/gemini"
 	"github.com/Wei-Shaw/sub2api/internal/server/middleware"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
 )
 
-func TestGeminiV1BetaListModels_CustomGroupListUsesNativeResponse(t *testing.T) {
-	gin.SetMode(gin.TestMode)
-	rec := httptest.NewRecorder()
-	c, _ := gin.CreateTestContext(rec)
-	c.Request = httptest.NewRequest(http.MethodGet, "/v1beta/models", nil)
-	c.Set(string(middleware.ContextKeyAPIKey), &service.APIKey{
-		Group: &service.Group{
-			Platform: service.PlatformGemini,
-			ModelsListConfig: service.GroupModelsListConfig{
-				Enabled: true,
-				Models:  []string{"gemini-2.5-pro", "models/gemini-custom"},
-			},
-		},
-	})
-
-	(&GatewayHandler{}).GeminiV1BetaListModels(c)
-
-	require.Equal(t, http.StatusOK, rec.Code)
-	var got gemini.ModelsListResponse
-	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &got))
-	require.Equal(t, []gemini.Model{
-		gemini.FallbackModel("gemini-2.5-pro"),
-		gemini.FallbackModel("models/gemini-custom"),
-	}, got.Models)
+func TestGeminiV1BetaListModels_AllowlistFiltersNativeResponse(t *testing.T) {
+	body := []byte(`{"models":[{"name":"models/gemini-2.5-pro"},{"name":"models/gemini-2.5-flash"}],"nextPageToken":"next"}`)
+	filtered, dropped, ok := filterUpstreamGeminiModelsBody(body, service.GroupModelAllowlist{Enabled: true, Models: []string{"gemini-2.5-pro"}})
+	require.True(t, ok)
+	require.True(t, dropped)
+	require.JSONEq(t, `{"models":[{"name":"models/gemini-2.5-pro"}],"nextPageToken":"next"}`, string(filtered))
 }
 
-func TestGeminiV1BetaListModels_ForcedAntigravityIgnoresCustomGroupList(t *testing.T) {
+func TestGeminiV1BetaListModels_ForcedAntigravityAppliesAllowlist(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	rec := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(rec)
@@ -50,7 +31,7 @@ func TestGeminiV1BetaListModels_ForcedAntigravityIgnoresCustomGroupList(t *testi
 	c.Set(string(middleware.ContextKeyAPIKey), &service.APIKey{
 		Group: &service.Group{
 			Platform: service.PlatformGemini,
-			ModelsListConfig: service.GroupModelsListConfig{
+			ModelAllowlist: service.GroupModelAllowlist{
 				Enabled: true,
 				Models:  []string{"gemini-custom"},
 			},
@@ -63,19 +44,15 @@ func TestGeminiV1BetaListModels_ForcedAntigravityIgnoresCustomGroupList(t *testi
 	require.Equal(t, http.StatusOK, rec.Code)
 	var got antigravity.GeminiModelsListResponse
 	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &got))
-	require.Equal(t, antigravity.FallbackGeminiModelsList(), got)
+	require.Empty(t, got.Models)
 }
 
-func TestCustomGeminiModelsList_DisabledKeepsExistingFlow(t *testing.T) {
-	group := &service.Group{
-		ModelsListConfig: service.GroupModelsListConfig{
-			Enabled: false,
-			Models:  []string{"gemini-2.5-pro"},
-		},
-	}
-
-	_, ok := customGeminiModelsList(group)
-	require.False(t, ok)
+func TestGeminiModelAllowlist_DisabledPreservesNativeResponse(t *testing.T) {
+	body := []byte(`{"models":[{"name":"models/gemini-2.5-pro"}]}`)
+	filtered, dropped, ok := filterUpstreamGeminiModelsBody(body, service.GroupModelAllowlist{Enabled: false, Models: []string{"other"}})
+	require.True(t, ok)
+	require.False(t, dropped)
+	require.Equal(t, body, filtered)
 }
 
 // TestGeminiV1BetaHandler_PlatformRoutingInvariant 文档化并验证 Handler 层的平台路由逻辑不变量

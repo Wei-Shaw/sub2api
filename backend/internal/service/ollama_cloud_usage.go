@@ -1014,7 +1014,7 @@ func OllamaCloudUsageStateFromAccount(account *Account) *OllamaCloudUsageState {
 // （ollamaCloudUsagePlatformsSQL）是本列表的镜像，两侧必须同步修改。
 func isOllamaCloudUsagePlatform(platform string) bool {
 	switch platform {
-	case PlatformOpenAI, PlatformAnthropic, PlatformKimi, PlatformZhipu, PlatformDeepseek:
+	case PlatformOpenAI, PlatformAnthropic, PlatformKimi, PlatformZhipu, PlatformDeepseek, PlatformMiniMax:
 		return true
 	default:
 		return false

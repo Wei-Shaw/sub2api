@@ -33,7 +33,7 @@ func setupAdminRouter() (*gin.Engine, *stubAdminService) {
 
 	router.GET("/api/v1/admin/groups", groupHandler.List)
 	router.GET("/api/v1/admin/groups/all", groupHandler.GetAll)
-	router.GET("/api/v1/admin/groups/:id/models-list-candidates", groupHandler.GetModelsListCandidates)
+	router.GET("/api/v1/admin/groups/:id/model-allowlist-candidates", groupHandler.GetGroupModelAllowlistCandidates)
 	router.GET("/api/v1/admin/groups/:id/composite-routes", groupHandler.ListCompositeRoutes)
 	router.POST("/api/v1/admin/groups/:id/composite-routes", groupHandler.CreateCompositeRoute)
 	router.POST("/api/v1/admin/groups/:id/composite-routes/preview", groupHandler.PreviewCompositeRoute)
@@ -184,7 +184,7 @@ func TestGroupHandlerEndpoints(t *testing.T) {
 	require.Equal(t, http.StatusOK, rec.Code)
 
 	rec = httptest.NewRecorder()
-	req = httptest.NewRequest(http.MethodGet, "/api/v1/admin/groups/0/models-list-candidates?platform=openai", nil)
+	req = httptest.NewRequest(http.MethodGet, "/api/v1/admin/groups/0/model-allowlist-candidates?platform=openai", nil)
 	router.ServeHTTP(rec, req)
 	require.Equal(t, http.StatusOK, rec.Code)
 	require.Contains(t, rec.Body.String(), "gpt-5.5")
