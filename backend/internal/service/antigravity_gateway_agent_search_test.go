@@ -304,3 +304,62 @@ func TestAgentSearchRestrictionsAreNotSilentlyDiscarded(t *testing.T) {
 		require.Error(t, err)
 	}
 }
+
+func TestAgentExternalWebAccessRequiresBoolean(t *testing.T) {
+	body, _, err := prepareAgentSearch([]byte(agentTestEnvelope), true)
+	require.NoError(t, err)
+	for _, kind := range []string{"web_search", "web_search_preview", "web_search_preview_2025_03_11"} {
+		for _, tc := range []struct {
+			name, value string
+			allowed     bool
+		}{
+			{"omitted", "", true},
+			{"true", "true", true},
+			{"true_whitespace", "\n true \t", true},
+			{"false", "false", false},
+			{"false_whitespace", "\n false \t", false},
+			{"string_false", `"false"`, false},
+			{"string_true", `"true"`, false},
+			{"null", "null", false},
+			{"number", "0", false},
+			{"object", "{}", false},
+			{"array", "[]", false},
+		} {
+			t.Run(kind+"/"+tc.name, func(t *testing.T) {
+				option := ""
+				if tc.value != "" {
+					option = `,"external_web_access":` + tc.value
+				}
+				original := []byte(`{"tools":[{"type":"` + kind + `"` + option + `}]}`)
+				_, active, err := configureAgentToolChoice(body, original)
+				if tc.allowed {
+					require.NoError(t, err)
+					require.True(t, active)
+				} else {
+					require.Error(t, err)
+					require.False(t, active)
+				}
+			})
+		}
+	}
+}
+
+func TestAgentExternalWebAccessRejectedBeforeUpstream(t *testing.T) {
+	t.Setenv("ANTIGRAVITY_AGENT_WEB_SEARCH_ENABLED", "true")
+	for _, value := range []string{"false", "\n false \t", `"false"`, `"true"`, "null", "0", "{}", "[]"} {
+		for _, mixed := range []bool{false, true} {
+			upstream := &queuedHTTPUpstreamStub{}
+			svc := newAntigravityCompatService(config.GatewayConfig{MaxLineSize: defaultMaxLineSize}, upstream)
+			clientTool := ""
+			if mixed {
+				clientTool = `,{"type":"function","name":"client_tool","parameters":{"type":"object"}}`
+			}
+			body := []byte(`{"model":"gemini-3.1-pro-high","input":"Example","tools":[{"type":"web_search","external_web_access":` + value + `}` + clientTool + `]}`)
+			c, recorder := newAntigravityCompatContext(http.MethodPost, "/v1/responses", body)
+			_, err := svc.ForwardAsResponses(context.Background(), c, newAntigravityCompatAccount(AccountTypeOAuth), body, nil)
+			require.Error(t, err)
+			require.Equal(t, http.StatusBadRequest, recorder.Code)
+			require.Zero(t, upstream.callCount)
+		}
+	}
+}

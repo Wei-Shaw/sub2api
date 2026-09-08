@@ -170,7 +170,16 @@ func configureAgentToolChoice(body, original []byte) ([]byte, bool, error) {
 		}
 		// Do not silently bypass client search restrictions that Google's
 		// native tool cannot represent through this bridge.
-		if tool["filters"] != nil || string(tool["external_web_access"]) == "false" || tool["user_location"] != nil {
+		if raw, present := tool["external_web_access"]; present {
+			var externalWebAccess *bool
+			if err := json.Unmarshal(raw, &externalWebAccess); err != nil || externalWebAccess == nil {
+				return nil, false, errors.New("external_web_access must be a boolean")
+			}
+			if !*externalWebAccess {
+				return nil, false, errors.New("unsupported Google Search restrictions")
+			}
+		}
+		if tool["filters"] != nil || tool["user_location"] != nil {
 			return nil, false, errors.New("unsupported Google Search restrictions")
 		}
 	}
