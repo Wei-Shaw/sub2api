@@ -387,6 +387,45 @@ func (s *OpenAIGatewayService) ClearAccountSchedulingBlock(accountID int64) {
 	s.openaiAccountRuntimeBlockGeneration.Store(accountID, s.openaiAccountRuntimeBlockSequence.Add(1))
 }
 
+// AccountSchedulingBlockGeneration returns the opaque generation for an
+// account-level runtime block. The generation changes whenever this process
+// installs or clears a block, allowing a quota probe to avoid clearing a newer
+// runtime state that raced with the probe.
+func (s *OpenAIGatewayService) AccountSchedulingBlockGeneration(accountID int64) uint64 {
+	if s == nil || accountID <= 0 {
+		return 0
+	}
+	mu := s.openAIAccountRuntimeBlockLock(accountID)
+	mu.Lock()
+	defer mu.Unlock()
+	raw, _ := s.openaiAccountRuntimeBlockGeneration.Load(accountID)
+	generation, _ := raw.(uint64)
+	return generation
+}
+
+// ClearAccountSchedulingBlockIfGeneration clears the process-local runtime
+// block only when no newer block or clear happened after the caller captured
+// observedGeneration. It deliberately leaves the independent same-account
+// transient-429 retry marker alone: a quota probe can observe an older
+// scheduling block while a newer transient 429 installs that marker, and the
+// probe must not erase the newer retry state.
+func (s *OpenAIGatewayService) ClearAccountSchedulingBlockIfGeneration(accountID int64, observedGeneration uint64) bool {
+	if s == nil || accountID <= 0 {
+		return false
+	}
+	mu := s.openAIAccountRuntimeBlockLock(accountID)
+	mu.Lock()
+	defer mu.Unlock()
+	raw, _ := s.openaiAccountRuntimeBlockGeneration.Load(accountID)
+	current, _ := raw.(uint64)
+	if current != observedGeneration {
+		return false
+	}
+	s.openaiAccountRuntimeBlockUntil.Delete(accountID)
+	s.openaiAccountRuntimeBlockGeneration.Store(accountID, s.openaiAccountRuntimeBlockSequence.Add(1))
+	return true
+}
+
 func (s *OpenAIGatewayService) isOpenAIAccountRuntimeBlocked(account *Account) bool {
 	if s == nil || !isOpenAIAccount(account) {
 		return false

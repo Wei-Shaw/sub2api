@@ -303,6 +303,7 @@ type AccountUsageService struct {
 	tlsFPProfileService     *TLSFingerprintProfileService
 	agentIdentityTaskMu     sync.Mutex
 	agentIdentityWS         agentIdentityWSConnectionInvalidator
+	runtimeBlocker          OpenAIRateLimitRecoveryRuntimeBlocker
 	// openAICodexSnapshotProbe is a test seam; nil uses the real upstream probe.
 	openAICodexSnapshotProbe func(context.Context, *Account) (map[string]any, error)
 }
@@ -743,6 +744,7 @@ func (s *AccountUsageService) getOpenAIUsage(ctx context.Context, account *Accou
 			}
 		} else {
 			observedRateLimit := observeOpenAIRateLimitGeneration(account)
+			observeOpenAIRateLimitRuntimeGeneration(observedRateLimit, s.runtimeBlocker)
 			if updates, err := s.runOpenAICodexSnapshotProbe(ctx, account); err == nil && len(updates) > 0 {
 				mergeAccountExtra(account, updates)
 				logOpenAIRateLimitRecoveryResult(

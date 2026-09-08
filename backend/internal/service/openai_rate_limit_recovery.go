@@ -15,13 +15,24 @@ import (
 // exact generation so a newer 429 that arrives while the probe is in flight
 // cannot be erased by a stale successful response.
 type openAIRateLimitGeneration struct {
-	accountID     int64
-	rateLimitedAt time.Time
-	resetAt       time.Time
+	accountID         int64
+	rateLimitedAt     time.Time
+	resetAt           time.Time
+	runtimeBlocker    OpenAIRateLimitRecoveryRuntimeBlocker
+	runtimeGeneration uint64
 }
 
 type openAIRateLimitRecoveryRepository interface {
 	ClearOpenAIRateLimitIfObserved(ctx context.Context, id int64, observedLimitedAt, observedResetAt time.Time) (bool, error)
+}
+
+// OpenAIRateLimitRecoveryRuntimeBlocker protects the process-local scheduler
+// fast path with the same optimistic-generation rule as the database CAS.
+// A newer 429 or an independent runtime clear must win over an older quota
+// probe that is finishing in the background.
+type OpenAIRateLimitRecoveryRuntimeBlocker interface {
+	AccountSchedulingBlockGeneration(accountID int64) uint64
+	ClearAccountSchedulingBlockIfGeneration(accountID int64, observedGeneration uint64) bool
 }
 
 // observeOpenAIRateLimitGeneration only observes ordinary OpenAI OAuth rows.
@@ -65,7 +76,25 @@ func clearObservedOpenAIRateLimitIfRecovered(
 	if !ok {
 		return false, nil
 	}
-	return recoveryRepo.ClearOpenAIRateLimitIfObserved(ctx, observed.accountID, observed.rateLimitedAt, observed.resetAt)
+	cleared, err := recoveryRepo.ClearOpenAIRateLimitIfObserved(ctx, observed.accountID, observed.rateLimitedAt, observed.resetAt)
+	if err != nil || !cleared || observed.runtimeBlocker == nil {
+		return cleared, err
+	}
+	if !observed.runtimeBlocker.ClearAccountSchedulingBlockIfGeneration(observed.accountID, observed.runtimeGeneration) {
+		slog.Info("openai_quota_rate_limit_runtime_clear_skipped_newer_state", "account_id", observed.accountID)
+	}
+	return cleared, nil
+}
+
+func observeOpenAIRateLimitRuntimeGeneration(
+	observed *openAIRateLimitGeneration,
+	runtimeBlocker OpenAIRateLimitRecoveryRuntimeBlocker,
+) {
+	if observed == nil || runtimeBlocker == nil {
+		return
+	}
+	observed.runtimeBlocker = runtimeBlocker
+	observed.runtimeGeneration = runtimeBlocker.AccountSchedulingBlockGeneration(observed.accountID)
 }
 
 func logOpenAIRateLimitRecoveryResult(
@@ -100,18 +129,10 @@ func openAIQuotaUsageRecovered(usage *OpenAIQuotaUsage, now time.Time) bool {
 	if usage == nil || usage.RateLimit == nil || !usage.RateLimit.Allowed || usage.RateLimit.LimitReached {
 		return false
 	}
-
-	seenWindow := false
-	for _, window := range []*OpenAIRateLimitWindow{usage.RateLimit.PrimaryWindow, usage.RateLimit.SecondaryWindow} {
-		if window == nil {
-			continue
-		}
-		seenWindow = true
-		if !openAIQuotaWindowRecovered(window, now) {
-			return false
-		}
+	if !openAIQuotaWindowRecovered(usage.RateLimit.PrimaryWindow, now) {
+		return false
 	}
-	return seenWindow
+	return usage.RateLimit.SecondaryWindow == nil || openAIQuotaWindowRecovered(usage.RateLimit.SecondaryWindow, now)
 }
 
 func openAIQuotaWindowRecovered(window *OpenAIRateLimitWindow, now time.Time) bool {
@@ -121,10 +142,19 @@ func openAIQuotaWindowRecovered(window *OpenAIRateLimitWindow, now time.Time) bo
 	if window.UsedPercent < 100 {
 		return true
 	}
-	if window.ResetAfterSeconds <= 0 {
-		return true
+	if window.ResetAt < 0 {
+		return false
 	}
-	return window.ResetAt > 0 && !time.Unix(window.ResetAt, 0).After(now)
+	if window.ResetAt > 0 {
+		// The absolute reset boundary is authoritative when present. This also
+		// accepts upstream snapshots that report a small negative relative
+		// value after the reset has already elapsed.
+		return !time.Unix(window.ResetAt, 0).After(now)
+	}
+	if window.ResetAfterSeconds < 0 {
+		return false
+	}
+	return window.ResetAfterSeconds == 0
 }
 
 // openAICodexProbeQuotaRecovered applies the same recovery rule to the
@@ -145,13 +175,16 @@ func openAICodexProbeWindowRecovered(updates map[string]any, prefix string, now 
 		return true
 	}
 
-	if resetAfter, ok := recoveryInt(updates, prefix+"_reset_after_seconds"); ok && resetAfter <= 0 {
-		return true
+	resetAtKey := prefix + "_reset_at"
+	if _, hasResetAt := updates[resetAtKey]; hasResetAt {
+		resetAt, ok := recoveryTime(updates, resetAtKey)
+		return ok && !resetAt.After(now)
 	}
-	if resetAt, ok := recoveryTime(updates, prefix+"_reset_at"); ok && !resetAt.After(now) {
-		return true
+	resetAfter, hasResetAfter := recoveryInt(updates, prefix+"_reset_after_seconds")
+	if hasResetAfter && resetAfter < 0 {
+		return false
 	}
-	return false
+	return hasResetAfter && resetAfter == 0
 }
 
 func recoveryFloat(values map[string]any, key string) (float64, bool) {
@@ -203,7 +236,7 @@ func recoveryInt(values map[string]any, key string) (int64, bool) {
 	case int32:
 		return int64(v), true
 	case float64:
-		if math.IsNaN(v) || math.IsInf(v, 0) {
+		if math.IsNaN(v) || math.IsInf(v, 0) || math.Trunc(v) != v {
 			return 0, false
 		}
 		return int64(v), true

@@ -676,6 +676,9 @@ func TestQueryUsageClearsObservedOpenAIRateLimitAfterAllowedQuota(t *testing.T) 
 		OpenAITokenCacheKey(account): "fake-token",
 	}}
 	tokenProvider := NewOpenAITokenProvider(repo, tokenCache, nil)
+	gateway := &OpenAIGatewayService{}
+	gateway.BlockAccountScheduling(account, resetAt, "429")
+	require.True(t, gateway.isOpenAIAccountRuntimeBlocked(account))
 
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("content-type", "application/json")
@@ -691,12 +694,14 @@ func TestQueryUsageClearsObservedOpenAIRateLimitAfterAllowedQuota(t *testing.T) 
 	defer srv.Close()
 
 	svc := NewOpenAIQuotaService(repo, nil, tokenProvider, newQuotaRedirectingFactory(srv))
+	svc.runtimeBlocker = gateway
 	_, err := svc.QueryUsage(ctx, account.ID)
 	require.NoError(t, err)
 	require.Equal(t, 1, repo.openAIRateLimitRecoveryCalls)
 	require.Equal(t, account.ID, repo.openAIRateLimitRecoveryID)
 	require.Equal(t, limitedAt, repo.openAIRateLimitObservedAt)
 	require.Equal(t, resetAt, repo.openAIRateLimitObservedReset)
+	require.False(t, gateway.isOpenAIAccountRuntimeBlocked(account))
 }
 
 func TestOpenAIQuotaUsageRecoveryRequiresAvailableWindows(t *testing.T) {
@@ -724,6 +729,22 @@ func TestOpenAIQuotaUsageRecoveryRequiresAvailableWindows(t *testing.T) {
 			recovered: true,
 		},
 		{
+			name: "optional secondary window may be absent",
+			usage: &OpenAIQuotaUsage{RateLimit: &OpenAIRateLimit{
+				Allowed: true, LimitReached: false,
+				PrimaryWindow: window(0, 3600, 0),
+			}},
+			recovered: true,
+		},
+		{
+			name: "primary window is required",
+			usage: &OpenAIQuotaUsage{RateLimit: &OpenAIRateLimit{
+				Allowed: true, LimitReached: false,
+				SecondaryWindow: window(0, 86400, 0),
+			}},
+			recovered: false,
+		},
+		{
 			name: "exhausted window with future reset is not recovered",
 			usage: &OpenAIQuotaUsage{RateLimit: &OpenAIRateLimit{
 				Allowed: true, LimitReached: false,
@@ -736,6 +757,30 @@ func TestOpenAIQuotaUsageRecoveryRequiresAvailableWindows(t *testing.T) {
 			usage: &OpenAIQuotaUsage{RateLimit: &OpenAIRateLimit{
 				Allowed: true, LimitReached: false,
 				PrimaryWindow: window(100, 0, 0), SecondaryWindow: window(100, 0, 0),
+			}},
+			recovered: true,
+		},
+		{
+			name: "zero reset-after does not override a future absolute reset",
+			usage: &OpenAIQuotaUsage{RateLimit: &OpenAIRateLimit{
+				Allowed: true, LimitReached: false,
+				PrimaryWindow: window(100, 0, now.Add(time.Hour).Unix()), SecondaryWindow: window(0, 86400, 0),
+			}},
+			recovered: false,
+		},
+		{
+			name: "negative reset-after without an absolute reset is invalid",
+			usage: &OpenAIQuotaUsage{RateLimit: &OpenAIRateLimit{
+				Allowed: true, LimitReached: false,
+				PrimaryWindow: window(100, -1, 0), SecondaryWindow: window(0, 86400, 0),
+			}},
+			recovered: false,
+		},
+		{
+			name: "past absolute reset wins over negative relative reset",
+			usage: &OpenAIQuotaUsage{RateLimit: &OpenAIRateLimit{
+				Allowed: true, LimitReached: false,
+				PrimaryWindow: window(100, -1, now.Add(-time.Second).Unix()), SecondaryWindow: window(0, 86400, 0),
 			}},
 			recovered: true,
 		},

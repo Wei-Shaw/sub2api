@@ -173,8 +173,12 @@ func TestGetOpenAIUsage_NormalOAuthProbeClearsRecoveredAccountRateLimit(t *testi
 		stubOpenAIAccountRepo:         stubOpenAIAccountRepo{accounts: []Account{*account}},
 		openAIRateLimitRecoveryResult: true,
 	}
+	gateway := &OpenAIGatewayService{}
+	gateway.BlockAccountScheduling(account, resetAt, "429")
+	require.True(t, gateway.isOpenAIAccountRuntimeBlocked(account))
 	svc := &AccountUsageService{
-		accountRepo: repo,
+		accountRepo:    repo,
+		runtimeBlocker: gateway,
 		openAICodexSnapshotProbe: func(context.Context, *Account) (map[string]any, error) {
 			return map[string]any{
 				"codex_5h_used_percent":        0.0,
@@ -191,6 +195,48 @@ func TestGetOpenAIUsage_NormalOAuthProbeClearsRecoveredAccountRateLimit(t *testi
 	require.Equal(t, account.ID, repo.openAIRateLimitRecoveryID)
 	require.Equal(t, limitedAt, repo.openAIRateLimitObservedAt)
 	require.Equal(t, resetAt, repo.openAIRateLimitObservedReset)
+	require.False(t, gateway.isOpenAIAccountRuntimeBlocked(account),
+		"the same observed runtime block must be released with the recovered database generation")
+}
+
+func TestGetOpenAIUsage_NormalOAuthProbePreservesNewerRuntimeBlock(t *testing.T) {
+	t.Parallel()
+
+	limitedAt := time.Date(2026, 9, 3, 7, 54, 0, 0, time.UTC)
+	resetAt := time.Date(2026, 9, 9, 1, 51, 0, 0, time.UTC)
+	account := &Account{
+		ID:               323,
+		Platform:         PlatformOpenAI,
+		Type:             AccountTypeOAuth,
+		Status:           StatusActive,
+		RateLimitedAt:    &limitedAt,
+		RateLimitResetAt: &resetAt,
+	}
+	repo := &accountUsageCodexProbeRepo{
+		stubOpenAIAccountRepo:         stubOpenAIAccountRepo{accounts: []Account{*account}},
+		openAIRateLimitRecoveryResult: true,
+	}
+	gateway := &OpenAIGatewayService{}
+	gateway.BlockAccountScheduling(account, resetAt, "429")
+	svc := &AccountUsageService{
+		accountRepo:    repo,
+		runtimeBlocker: gateway,
+		openAICodexSnapshotProbe: func(context.Context, *Account) (map[string]any, error) {
+			gateway.BlockAccountScheduling(account, time.Now().Add(2*time.Hour), "newer_429")
+			return map[string]any{
+				"codex_5h_used_percent":        0.0,
+				"codex_5h_reset_after_seconds": 3600,
+				"codex_7d_used_percent":        0.0,
+				"codex_7d_reset_after_seconds": 86400,
+			}, nil
+		},
+	}
+
+	_, err := svc.getOpenAIUsage(context.Background(), account, true)
+	require.NoError(t, err)
+	require.Equal(t, 1, repo.openAIRateLimitRecoveryCalls)
+	require.True(t, gateway.isOpenAIAccountRuntimeBlocked(account),
+		"a runtime block installed while the probe is in flight must win")
 }
 
 func TestGetOpenAIUsage_NormalOAuthProbeKeepsExhaustedAccountRateLimit(t *testing.T) {
@@ -249,6 +295,14 @@ func TestOpenAICodexProbeQuotaRecoveryRequiresBothWindows(t *testing.T) {
 	reset["codex_5h_reset_after_seconds"] = 0
 	delete(reset, "codex_5h_reset_at")
 	require.True(t, openAICodexProbeQuotaRecovered(reset, now))
+
+	inconsistent := cloneAnyMap(reset)
+	inconsistent["codex_5h_reset_at"] = now.Add(time.Hour).Format(time.RFC3339)
+	require.False(t, openAICodexProbeQuotaRecovered(inconsistent, now))
+
+	invalidReset := cloneAnyMap(reset)
+	invalidReset["codex_5h_reset_at"] = "not-a-time"
+	require.False(t, openAICodexProbeQuotaRecovered(invalidReset, now))
 
 	missing := cloneAnyMap(base)
 	delete(missing, "codex_7d_used_percent")

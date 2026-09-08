@@ -121,6 +121,7 @@ type OpenAIQuotaService struct {
 	privacyClientFactory PrivacyClientFactory
 	agentIdentityTaskMu  sync.Mutex
 	agentIdentityWS      agentIdentityWSConnectionInvalidator
+	runtimeBlocker       OpenAIRateLimitRecoveryRuntimeBlocker
 }
 
 // NewOpenAIQuotaService constructs a quota service. token provider is required —
@@ -149,6 +150,7 @@ func (s *OpenAIQuotaService) QueryUsage(ctx context.Context, accountID int64) (*
 		return nil, err
 	}
 	observedRateLimit := observeOpenAIRateLimitGenerationByID(ctx, s.accountRepo, accountID)
+	observeOpenAIRateLimitRuntimeGeneration(observedRateLimit, s.runtimeBlocker)
 
 	client, err := s.privacyClientFactory(proxyURL)
 	if err != nil {
