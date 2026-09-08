@@ -566,16 +566,10 @@ describe('PlazaModelPricingTable 长上下文阶梯', () => {
     expect(cells[6].text()).not.toContain('(1h')
   })
 
-  it('整单计价的档位标签带 tooltip;边际计价在模型名旁加徽章并换用边际说明', () => {
+  it('档位标签带整单计价 tooltip', () => {
     const whole = mountTable([ladderModel()], 1)
     const wholeLabels = whole.findAll('tbody td span[title="modelPlaza.table.tierHint"]')
     expect(wholeLabels.length).toBeGreaterThan(0)
-    expect(whole.text()).not.toContain('modelPlaza.table.marginalBadge')
-
-    const marginal = mountTable([ladderModel({ long_context_basis: 'marginal' })], 1)
-    const marginalLabels = marginal.findAll('tbody td span[title="modelPlaza.table.tierHintMarginal"]')
-    expect(marginalLabels.length).toBeGreaterThan(0)
-    expect(marginal.findAll('tbody td')[0].text()).toContain('modelPlaza.table.marginalBadge')
   })
 
   it('无标签的多档按区间生成统一形态(≤上限 / >下限),并按下限升序展示', () => {

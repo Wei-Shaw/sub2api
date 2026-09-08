@@ -9,8 +9,7 @@ import (
 	"time"
 )
 
-// ContextPricingBasis 阶梯的计价基准。当前只有整单口径；历史上的
-// Gemini 边际口径（"marginal"）已随平台旧规则一并移除。
+// ContextPricingBasis 阶梯的计价基准，只有整单口径。
 type ContextPricingBasis string
 
 // ContextPricingBasisWholeRequest 整单按所在档单价计价（目录阶梯、渠道区间）。

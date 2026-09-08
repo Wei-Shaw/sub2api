@@ -93,13 +93,6 @@
                 {{ billingModeLabel(m) }}
               </span>
               <span
-                v-if="m.long_context_basis === 'marginal'"
-                class="rounded-md bg-gray-100 px-1.5 py-0.5 text-[10px] font-medium text-gray-500 dark:bg-dark-700/70 dark:text-dark-300"
-                :title="t('modelPlaza.table.tierHintMarginal')"
-              >
-                {{ t('modelPlaza.table.marginalBadge') }}
-              </span>
-              <span
                 v-if="m.pricing?.max_reasoning_effort_multiplier"
                 class="rounded-md bg-amber-50 px-1.5 py-0.5 text-[10px] font-medium text-amber-700 dark:bg-amber-900/20 dark:text-amber-300"
                 :title="t('modelPlaza.table.maxReasoningMultiplierHint', { multiplier: m.pricing.max_reasoning_effort_multiplier })"
@@ -118,7 +111,7 @@
                   :key="idx"
                   class="whitespace-nowrap text-xs leading-5"
                 >
-                  <span class="mr-1 font-sans font-normal text-gray-400 dark:text-dark-500" :title="tierHint(m)">{{ tierLabel(iv) }}</span>
+                  <span class="mr-1 font-sans font-normal text-gray-400 dark:text-dark-500" :title="t('modelPlaza.table.tierHint')">{{ tierLabel(iv) }}</span>
                   {{ paidPerMillion(iv.input_price, period) }}
                 </div>
               </template>
@@ -130,7 +123,7 @@
                   v-for="(iv, idx) in tokenIntervals(m)"
                   :key="idx"
                   class="whitespace-nowrap text-xs leading-5"
-                  :title="tierHint(m)"
+                  :title="t('modelPlaza.table.tierHint')"
                 >
                   {{ paidPerMillion(iv.output_price, period) }}
                 </div>
@@ -143,7 +136,7 @@
                   v-for="(iv, idx) in tokenIntervals(m)"
                   :key="idx"
                   class="whitespace-nowrap font-mono text-xs leading-5 text-gray-800 dark:text-gray-200"
-                  :title="tierHint(m)"
+                  :title="t('modelPlaza.table.tierHint')"
                 >
                   <template v-if="iv.cache_write_price != null || iv.cache_write_1h_price != null || iv.cache_read_price != null">
                     <span class="font-sans font-normal text-gray-400 dark:text-dark-500">{{ t('modelPlaza.table.cacheWriteShort') }}</span>
@@ -500,14 +493,6 @@ function hasTierCachePricing(intervals: UserPricingInterval[]): boolean {
     iv.cache_write_multiplier != null || iv.cache_read_multiplier != null
   )
 }
-
-/** 档位说明:整单按档计价,或(平台旧规则)仅超出部分按档计价。 */
-function tierHint(m: PlazaModel): string {
-  return m.long_context_basis === 'marginal'
-    ? t('modelPlaza.table.tierHintMarginal')
-    : t('modelPlaza.table.tierHint')
-}
-
 
 /** 按次/按图模式的阶梯定价(仅保留配了按次价的档位)。 */
 function requestIntervals(m: PlazaModel): UserPricingInterval[] {

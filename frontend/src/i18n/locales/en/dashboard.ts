@@ -642,10 +642,8 @@ export default {
       cacheWriteShort: 'W',
       cacheReadShort: 'R',
       tierHint: 'The whole request is billed at the tier matching its total context (input + cache write + cache read)',
-      tierHintMarginal: 'Only the portion above the threshold is billed at this tier; output is unaffected',
       maxReasoningMultiplierBadge: 'Max ×{multiplier}',
       maxReasoningMultiplierHint: 'When the forwarded reasoning effort is max, billing and quota usage for the request are multiplied by {multiplier}',
-      marginalBadge: 'excess-only tiers',
       timePricingRowHint: 'Requests made within this period ({timezone} time) are billed at the prices in this row',
       timePricingRowHintWeekdays:
         'On weekdays (Mon–Fri) only, requests made within this period ({timezone} time) are billed at the prices in this row; weekends use the standard prices',
