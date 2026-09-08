@@ -222,6 +222,11 @@ export default {
         codexNoteWindows:
           '设置 $env:SUB2API_API_KEY，将 config.toml 保存到 %USERPROFILE%\\.codex。Composite 会按模型路由选择上游账号，不需要使用 OpenAI ChatGPT 登录。'
       },
+      routedCodex: {
+        description: '使用当前路由分组的完整模型目录配置 Codex。',
+        configTomlHint: '下载下方模型目录，将两个文件保存到 Codex 配置目录后重启 Codex。',
+        note: '启动 Codex 前先导出 SUB2API_API_KEY。下载的目录只包含模型元数据，不包含 API Key。'
+      },
       codexModelCatalog: {
         title: 'Codex 模型目录',
         description: '从当前 API 密钥对应的分组获取完整模型目录。下载后保存到下方路径；上面的 config.toml 已包含 model_catalog_json，重启 Codex 后即可在 /model 中看到目录里的模型。',

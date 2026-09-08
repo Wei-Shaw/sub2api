@@ -222,6 +222,12 @@ export default {
         codexNoteWindows:
           'Set $env:SUB2API_API_KEY and save config.toml under %USERPROFILE%\\.codex. Composite selects the upstream account from the model route; no OpenAI ChatGPT login is required.',
       },
+      routedCodex: {
+        description: 'Configure Codex with the complete model catalog for the current routed group.',
+        configTomlHint:
+          'Download the model catalog below, save both files under the Codex config directory, and restart Codex.',
+        note: 'Export SUB2API_API_KEY before starting Codex. The downloaded catalog contains model metadata only, not your API key.',
+      },
       codexModelCatalog: {
         title: 'Codex model catalog',
         description:
