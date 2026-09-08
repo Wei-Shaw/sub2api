@@ -2257,6 +2257,37 @@ func (r *accountRepository) ClearRateLimitIfObserved(ctx context.Context, id int
 	return true, nil
 }
 
+// ClearOpenAIRateLimitIfObserved clears exactly the OpenAI OAuth rate-limit
+// generation seen by a successful quota request. Keeping the platform/type
+// guard separate from the Grok recovery path prevents a stale request from
+// crossing an account retype while still allowing OpenAI quota probes to
+// reconcile their own stale account-level cooldown.
+func (r *accountRepository) ClearOpenAIRateLimitIfObserved(ctx context.Context, id int64, observedLimitedAt, observedResetAt time.Time) (bool, error) {
+	updated, err := r.client.Account.Update().
+		Where(
+			dbaccount.IDEQ(id),
+			dbaccount.PlatformEQ(service.PlatformOpenAI),
+			dbaccount.TypeEQ(service.AccountTypeOAuth),
+			dbaccount.RateLimitedAtEQ(observedLimitedAt),
+			dbaccount.RateLimitResetAtEQ(observedResetAt),
+		).
+		ClearRateLimitedAt().
+		ClearRateLimitResetAt().
+		Save(ctx)
+	if err != nil {
+		return false, err
+	}
+	if updated == 0 {
+		r.syncSchedulerAccountSnapshot(ctx, id)
+		return false, nil
+	}
+	if err := enqueueSchedulerOutbox(ctx, r.sql, service.SchedulerOutboxEventAccountChanged, &id, nil, nil); err != nil {
+		logger.LegacyPrintf("repository.account", "[SchedulerOutbox] enqueue OpenAI rate-limit clear failed: account=%d err=%v", id, err)
+	}
+	r.syncSchedulerAccountSnapshot(ctx, id)
+	return true, nil
+}
+
 func (r *accountRepository) SetModelRateLimit(ctx context.Context, id int64, scope string, resetAt time.Time, reason ...string) error {
 	if scope == "" {
 		return nil

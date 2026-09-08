@@ -123,6 +123,20 @@ type OpenAIQuotaService struct {
 	agentIdentityWS      agentIdentityWSConnectionInvalidator
 }
 
+// openAIRateLimitGeneration is the account-level cooldown observed immediately
+// before a quota request. Recovery is conditional on this exact generation so a
+// newer 429 that arrives while the request is in flight cannot be erased by a
+// stale successful quota response.
+type openAIRateLimitGeneration struct {
+	accountID     int64
+	rateLimitedAt time.Time
+	resetAt       time.Time
+}
+
+type openAIRateLimitRecoveryRepository interface {
+	ClearOpenAIRateLimitIfObserved(ctx context.Context, id int64, observedLimitedAt, observedResetAt time.Time) (bool, error)
+}
+
 // NewOpenAIQuotaService constructs a quota service. token provider is required —
 // it ensures we always invoke upstream with a valid (refreshed-if-needed)
 // access_token, sharing the same refresh/locking machinery used by the gateway.
@@ -148,6 +162,7 @@ func (s *OpenAIQuotaService) QueryUsage(ctx context.Context, accountID int64) (*
 	if err != nil {
 		return nil, err
 	}
+	observedRateLimit := s.observeOpenAIRateLimitGeneration(ctx, accountID)
 
 	client, err := s.privacyClientFactory(proxyURL)
 	if err != nil {
@@ -193,6 +208,7 @@ func (s *OpenAIQuotaService) QueryUsage(ctx context.Context, accountID int64) (*
 	}
 
 	payload.FetchedAt = time.Now().Unix()
+	s.clearRecoveredOpenAIRateLimit(ctx, observedRateLimit, &payload)
 	details := s.queryResetCreditDetails(callCtx, client, accessToken, chatGPTAccountID, fedRAMP, accountID)
 	if details != nil {
 		payload.autoResetCandidates = details.AutoResetCandidates
@@ -211,6 +227,48 @@ func (s *OpenAIQuotaService) QueryUsage(ctx context.Context, accountID int64) (*
 		}
 	}
 	return &payload, nil
+}
+
+func (s *OpenAIQuotaService) observeOpenAIRateLimitGeneration(ctx context.Context, accountID int64) *openAIRateLimitGeneration {
+	if s == nil || s.accountRepo == nil || accountID <= 0 {
+		return nil
+	}
+	account, err := s.accountRepo.GetByID(ctx, accountID)
+	if err != nil || account == nil {
+		return nil
+	}
+	if account.IsShadow() {
+		account, err = resolveCredentialAccount(ctx, s.accountRepo, account)
+		if err != nil || account == nil {
+			return nil
+		}
+	}
+	if account.RateLimitedAt == nil || account.RateLimitResetAt == nil {
+		return nil
+	}
+	return &openAIRateLimitGeneration{
+		accountID:     account.ID,
+		rateLimitedAt: *account.RateLimitedAt,
+		resetAt:       *account.RateLimitResetAt,
+	}
+}
+
+func (s *OpenAIQuotaService) clearRecoveredOpenAIRateLimit(ctx context.Context, observed *openAIRateLimitGeneration, usage *OpenAIQuotaUsage) {
+	if observed == nil || usage == nil || usage.RateLimit == nil || !usage.RateLimit.Allowed || usage.RateLimit.LimitReached {
+		return
+	}
+	recoveryRepo, ok := s.accountRepo.(openAIRateLimitRecoveryRepository)
+	if !ok {
+		return
+	}
+	cleared, err := recoveryRepo.ClearOpenAIRateLimitIfObserved(ctx, observed.accountID, observed.rateLimitedAt, observed.resetAt)
+	if err != nil {
+		slog.Warn("openai_quota_rate_limit_recovery_clear_failed", "account_id", observed.accountID, "error", err)
+		return
+	}
+	if cleared {
+		slog.Info("openai_quota_rate_limit_recovered", "account_id", observed.accountID, "reset_at", observed.resetAt.UTC())
+	}
 }
 
 // CacheResetCreditsSnapshot persists a complete reset-credit snapshot after an

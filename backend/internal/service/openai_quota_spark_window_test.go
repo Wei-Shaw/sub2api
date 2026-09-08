@@ -27,10 +27,15 @@ import (
 // stubQuotaAccountRepo 是多账号 AccountRepository stub，仅实现 GetByID。
 type stubQuotaAccountRepo struct {
 	AccountRepository
-	accounts         map[int64]*Account
-	extraUpdates     map[int64]map[string]any
-	extraUpdateCalls int
-	extraUpdateErr   error
+	accounts                      map[int64]*Account
+	extraUpdates                  map[int64]map[string]any
+	extraUpdateCalls              int
+	extraUpdateErr                error
+	openAIRateLimitRecoveryCalls  int
+	openAIRateLimitRecoveryID     int64
+	openAIRateLimitObservedAt     time.Time
+	openAIRateLimitObservedReset  time.Time
+	openAIRateLimitRecoveryResult bool
 }
 
 func (r *stubQuotaAccountRepo) GetByID(_ context.Context, id int64) (*Account, error) {
@@ -60,6 +65,14 @@ func (r *stubQuotaAccountRepo) UpdateExtra(_ context.Context, id int64, updates 
 	}
 	r.extraUpdates[id] = updates
 	return nil
+}
+
+func (r *stubQuotaAccountRepo) ClearOpenAIRateLimitIfObserved(_ context.Context, id int64, observedLimitedAt, observedResetAt time.Time) (bool, error) {
+	r.openAIRateLimitRecoveryCalls++
+	r.openAIRateLimitRecoveryID = id
+	r.openAIRateLimitObservedAt = observedLimitedAt
+	r.openAIRateLimitObservedReset = observedResetAt
+	return r.openAIRateLimitRecoveryResult, nil
 }
 
 // stubQuotaTokenCache 实现 OpenAITokenCache，返回预设静态 token。
@@ -638,6 +651,74 @@ func TestQueryUsageResetCreditDetails401NonFatal(t *testing.T) {
 	// never age it out), and the previous snapshot must survive untouched.
 	require.Error(t, svc.CacheResetCreditsSnapshot(ctx, 100, usage.RateLimitResetCredits))
 	require.Empty(t, repo.extraUpdates)
+}
+
+func TestQueryUsageClearsObservedOpenAIRateLimitAfterAllowedQuota(t *testing.T) {
+	ctx := context.Background()
+	limitedAt := time.Date(2026, 9, 3, 7, 54, 0, 0, time.UTC)
+	resetAt := time.Date(2026, 9, 9, 1, 51, 0, 0, time.UTC)
+	account := &Account{
+		ID:               101,
+		Platform:         PlatformOpenAI,
+		Type:             AccountTypeOAuth,
+		Status:           StatusActive,
+		RateLimitedAt:    &limitedAt,
+		RateLimitResetAt: &resetAt,
+		Credentials: map[string]any{
+			"chatgpt_account_id": "org-recovered",
+		},
+	}
+	repo := &stubQuotaAccountRepo{
+		accounts:                      map[int64]*Account{account.ID: account},
+		openAIRateLimitRecoveryResult: true,
+	}
+	tokenCache := &stubQuotaTokenCache{tokens: map[string]string{
+		OpenAITokenCacheKey(account): "fake-token",
+	}}
+	tokenProvider := NewOpenAITokenProvider(repo, tokenCache, nil)
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("content-type", "application/json")
+		switch r.URL.Path {
+		case "/backend-api/wham/usage":
+			_, _ = w.Write([]byte(`{"rate_limit":{"allowed":true,"limit_reached":false}}`))
+		case "/backend-api/wham/rate-limit-reset-credits":
+			_, _ = w.Write([]byte(`{}`))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer srv.Close()
+
+	svc := NewOpenAIQuotaService(repo, nil, tokenProvider, newQuotaRedirectingFactory(srv))
+	_, err := svc.QueryUsage(ctx, account.ID)
+	require.NoError(t, err)
+	require.Equal(t, 1, repo.openAIRateLimitRecoveryCalls)
+	require.Equal(t, account.ID, repo.openAIRateLimitRecoveryID)
+	require.Equal(t, limitedAt, repo.openAIRateLimitObservedAt)
+	require.Equal(t, resetAt, repo.openAIRateLimitObservedReset)
+}
+
+func TestClearRecoveredOpenAIRateLimitRequiresAllowedAccountQuota(t *testing.T) {
+	limitedAt := time.Date(2026, 9, 3, 7, 54, 0, 0, time.UTC)
+	resetAt := time.Date(2026, 9, 9, 1, 51, 0, 0, time.UTC)
+	observed := &openAIRateLimitGeneration{
+		accountID:     101,
+		rateLimitedAt: limitedAt,
+		resetAt:       resetAt,
+	}
+	repo := &stubQuotaAccountRepo{}
+	svc := &OpenAIQuotaService{accountRepo: repo}
+
+	svc.clearRecoveredOpenAIRateLimit(context.Background(), observed, &OpenAIQuotaUsage{
+		RateLimit: &OpenAIRateLimit{Allowed: false, LimitReached: true},
+	})
+	require.Zero(t, repo.openAIRateLimitRecoveryCalls)
+
+	svc.clearRecoveredOpenAIRateLimit(context.Background(), observed, &OpenAIQuotaUsage{
+		RateLimit: &OpenAIRateLimit{Allowed: true, LimitReached: true},
+	})
+	require.Zero(t, repo.openAIRateLimitRecoveryCalls)
 }
 
 func TestCacheResetCreditsSnapshot(t *testing.T) {
