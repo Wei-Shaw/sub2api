@@ -193,6 +193,48 @@ func (r *userRepository) GetByID(ctx context.Context, id int64) (*service.User, 
 	return out, nil
 }
 
+func (r *userRepository) GetLastImageAPIKeyID(ctx context.Context, userID int64) (*int64, error) {
+	user, err := r.client.User.Query().
+		Where(dbuser.IDEQ(userID)).
+		Select(dbuser.FieldLastImageAPIKeyID).
+		Only(ctx)
+	if err != nil {
+		return nil, translatePersistenceError(err, service.ErrUserNotFound, nil)
+	}
+	return user.LastImageAPIKeyID, nil
+}
+
+func (r *userRepository) SetLastImageAPIKeyID(ctx context.Context, userID int64, apiKeyID *int64) (*int64, error) {
+	client := clientFromContext(ctx, r.client)
+	if apiKeyID != nil {
+		exists, err := client.APIKey.Query().
+			Where(
+				apikey.IDEQ(*apiKeyID),
+				apikey.UserIDEQ(userID),
+				apikey.DeletedAtIsNil(),
+			).
+			Exist(ctx)
+		if err != nil {
+			return nil, err
+		}
+		if !exists {
+			return nil, service.ErrAPIKeyNotFound
+		}
+	}
+
+	update := client.User.UpdateOneID(userID)
+	if apiKeyID == nil {
+		update = update.ClearLastImageAPIKeyID()
+	} else {
+		update = update.SetLastImageAPIKeyID(*apiKeyID)
+	}
+	updated, err := update.Save(ctx)
+	if err != nil {
+		return nil, translatePersistenceError(err, service.ErrUserNotFound, nil)
+	}
+	return updated.LastImageAPIKeyID, nil
+}
+
 func (r *userRepository) GetByIDIncludeDeleted(ctx context.Context, id int64) (*service.User, error) {
 	ctx = mixins.SkipSoftDelete(ctx)
 	m, err := r.client.User.Query().Where(dbuser.IDEQ(id)).Only(ctx)
@@ -1535,6 +1577,7 @@ func applyUserEntityToService(dst *service.User, src *dbent.User) {
 	dst.SignupSource = src.SignupSource
 	dst.LastLoginAt = src.LastLoginAt
 	dst.LastActiveAt = src.LastActiveAt
+	dst.LastImageAPIKeyID = src.LastImageAPIKeyID
 	dst.CreatedAt = src.CreatedAt
 	dst.UpdatedAt = src.UpdatedAt
 }

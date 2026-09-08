@@ -65,6 +65,8 @@ const (
 	FieldTotalRecharged = "total_recharged"
 	// FieldRpmLimit holds the string denoting the rpm_limit field in the database.
 	FieldRpmLimit = "rpm_limit"
+	// FieldLastImageAPIKeyID holds the string denoting the last_image_api_key_id field in the database.
+	FieldLastImageAPIKeyID = "last_image_api_key_id"
 	// EdgeAPIKeys holds the string denoting the api_keys edge name in mutations.
 	EdgeAPIKeys = "api_keys"
 	// EdgeRedeemCodes holds the string denoting the redeem_codes edge name in mutations.
@@ -221,6 +223,7 @@ var Columns = []string{
 	FieldBalanceNotifyExtraEmails,
 	FieldTotalRecharged,
 	FieldRpmLimit,
+	FieldLastImageAPIKeyID,
 }
 
 var (
@@ -428,6 +431,11 @@ func ByTotalRecharged(opts ...sql.OrderTermOption) OrderOption {
 // ByRpmLimit orders the results by the rpm_limit field.
 func ByRpmLimit(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldRpmLimit, opts...).ToFunc()
+}
+
+// ByLastImageAPIKeyID orders the results by the last_image_api_key_id field.
+func ByLastImageAPIKeyID(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldLastImageAPIKeyID, opts...).ToFunc()
 }
 
 // ByAPIKeysCount orders the results by api_keys count.

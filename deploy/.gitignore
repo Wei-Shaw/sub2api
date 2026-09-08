@@ -6,14 +6,18 @@
 data/
 postgres_data/
 redis_data/
+minio_data/
 
 # Environment configuration (contains sensitive information)
 .env
+.remote
 
 # Backup files
 *.backup
 *.bak
 
 # Temporary files
+__pycache__/
 *.tmp
 *.log
+*.tar

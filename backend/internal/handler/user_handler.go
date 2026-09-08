@@ -2,6 +2,7 @@ package handler
 
 import (
 	"context"
+	"encoding/json"
 	"strings"
 	"time"
 
@@ -81,6 +82,61 @@ type UpdateProfileRequest struct {
 	AvatarURL              *string  `json:"avatar_url"`
 	BalanceNotifyEnabled   *bool    `json:"balance_notify_enabled"`
 	BalanceNotifyThreshold *float64 `json:"balance_notify_threshold"`
+}
+
+type imageGenerationPreferenceRequest struct {
+	LastAPIKeyID json.RawMessage `json:"last_api_key_id"`
+}
+
+type imageGenerationPreferenceResponse struct {
+	LastAPIKeyID *int64 `json:"last_api_key_id"`
+}
+
+// GetImageGenerationPreference returns the current user's selected image-generation API key.
+func (h *UserHandler) GetImageGenerationPreference(c *gin.Context) {
+	subject, ok := middleware2.GetAuthSubjectFromContext(c)
+	if !ok {
+		response.Unauthorized(c, "User not authenticated")
+		return
+	}
+
+	apiKeyID, err := h.userService.GetLastImageAPIKeyID(c.Request.Context(), subject.UserID)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, imageGenerationPreferenceResponse{LastAPIKeyID: apiKeyID})
+}
+
+// UpdateImageGenerationPreference stores the current user's selected image-generation API key.
+func (h *UserHandler) UpdateImageGenerationPreference(c *gin.Context) {
+	subject, ok := middleware2.GetAuthSubjectFromContext(c)
+	if !ok {
+		response.Unauthorized(c, "User not authenticated")
+		return
+	}
+
+	var req imageGenerationPreferenceRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "Invalid request: "+err.Error())
+		return
+	}
+	if req.LastAPIKeyID == nil {
+		response.BadRequest(c, "Invalid request: last_api_key_id is required")
+		return
+	}
+	var apiKeyID *int64
+	if err := json.Unmarshal(req.LastAPIKeyID, &apiKeyID); err != nil {
+		response.BadRequest(c, "Invalid request: "+err.Error())
+		return
+	}
+
+	updatedAPIKeyID, err := h.userService.SetLastImageAPIKeyID(c.Request.Context(), subject.UserID, apiKeyID)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, imageGenerationPreferenceResponse{LastAPIKeyID: updatedAPIKeyID})
 }
 
 type userProfileResponse struct {

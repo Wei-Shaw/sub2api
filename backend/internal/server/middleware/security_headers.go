@@ -53,9 +53,13 @@ var requiredCSPDirectiveValues = []struct {
 	directive string
 	value     string
 }{
-	// 插件配置 UI 使用同源 iframe；目标响应仍必须显式放开 X-Frame-Options，
-	// 因此这里只允许 'self' 不会使其他默认 DENY 的管理/API 页面可被嵌入。
+	// Plugin/custom-menu pages are embedded by the same-origin frontend.
+	// Keep same-origin frames available even when an older custom CSP policy
+	// omitted frame-src entirely.
 	{"frame-src", "'self'"},
+	// External https frames for custom-menu pages are injected dynamically by
+	// SettingService.GetFrameSrcOrigins from the configured menu/home/subscription
+	// URLs. No global https: catch-all is hardcoded here anymore.
 	{"script-src", CloudflareInsightsDomain},
 	{"script-src", TencentCaptchaDomain},
 	{"frame-src", TencentCaptchaDomain},
@@ -128,8 +132,17 @@ func SecurityHeaders(cfg config.CSPConfig, getFrameSrcOrigins func() []string) g
 		}
 
 		c.Header("X-Content-Type-Options", "nosniff")
-		c.Header("X-Frame-Options", "DENY")
 		c.Header("Referrer-Policy", "strict-origin-when-cross-origin")
+		// Responses proxied from the plugin service are intentionally embedded
+		// by /custom/:id pages. The upstream plugin response is responsible for
+		// its own frame policy; applying the main service's DENY header here
+		// makes every custom/plugin menu page blank.
+		if isPluginProxyRoutePath(c) {
+			c.Next()
+			return
+		}
+
+		c.Header("X-Frame-Options", "DENY")
 		if isAPIRoutePath(c) {
 			c.Next()
 			return
@@ -149,6 +162,13 @@ func SecurityHeaders(cfg config.CSPConfig, getFrameSrcOrigins func() []string) g
 		}
 		c.Next()
 	}
+}
+
+func isPluginProxyRoutePath(c *gin.Context) bool {
+	if c == nil || c.Request == nil || c.Request.URL == nil {
+		return false
+	}
+	return strings.HasPrefix(c.Request.URL.Path, "/plugins/")
 }
 
 func isAPIRoutePath(c *gin.Context) bool {

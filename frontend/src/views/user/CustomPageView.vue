@@ -107,6 +107,7 @@
           <iframe
             :src="embeddedUrl"
             class="custom-embed-frame"
+            allow="clipboard-read; clipboard-write; file-system; fullscreen"
             allowfullscreen
           ></iframe>
         </div>
@@ -125,7 +126,7 @@ import { useAdminSettingsStore } from '@/stores/adminSettings'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import Icon from '@/components/icons/Icon.vue'
 import { buildApiUrl } from '@/api/client'
-import { buildEmbeddedUrl, detectTheme } from '@/utils/embedded-url'
+import { buildCustomMenuEmbeddedUrl, detectTheme } from '@/utils/embedded-url'
 import { marked } from 'marked'
 import DOMPurify from 'dompurify'
 
@@ -175,7 +176,7 @@ const isMarkdownMode = computed(() => !!markdownSlug.value)
 
 const embeddedUrl = computed(() => {
   if (!menuItem.value || isMarkdownMode.value) return ''
-  return buildEmbeddedUrl(
+  return buildCustomMenuEmbeddedUrl(
     menuItem.value.url,
     authStore.user?.id,
     authStore.token,

@@ -198,6 +198,13 @@ type RedeemUserAdjustmentRepository interface {
 	ApplyRedeemConcurrencyAdjustment(ctx context.Context, id int64, delta int) error
 }
 
+// ImageGenerationPreferenceRepository narrows persistence access to the
+// image-generation preference flow.
+type ImageGenerationPreferenceRepository interface {
+	GetLastImageAPIKeyID(ctx context.Context, userID int64) (*int64, error)
+	SetLastImageAPIKeyID(ctx context.Context, userID int64, apiKeyID *int64) (*int64, error)
+}
+
 type UserAuthIdentityRecord struct {
 	ProviderType    string
 	ProviderKey     string
@@ -329,6 +336,22 @@ func (s *UserService) GetProfile(ctx context.Context, userID int64) (*User, erro
 		return nil, fmt.Errorf("get user avatar: %w", err)
 	}
 	return user, nil
+}
+
+func (s *UserService) GetLastImageAPIKeyID(ctx context.Context, userID int64) (*int64, error) {
+	repo, ok := s.userRepo.(ImageGenerationPreferenceRepository)
+	if !ok {
+		return nil, fmt.Errorf("image generation preferences are not supported by user repository")
+	}
+	return repo.GetLastImageAPIKeyID(ctx, userID)
+}
+
+func (s *UserService) SetLastImageAPIKeyID(ctx context.Context, userID int64, apiKeyID *int64) (*int64, error) {
+	repo, ok := s.userRepo.(ImageGenerationPreferenceRepository)
+	if !ok {
+		return nil, fmt.Errorf("image generation preferences are not supported by user repository")
+	}
+	return repo.SetLastImageAPIKeyID(ctx, userID, apiKeyID)
 }
 
 func (s *UserService) GetProfileIdentitySummaries(ctx context.Context, userID int64, user *User) (UserIdentitySummarySet, error) {

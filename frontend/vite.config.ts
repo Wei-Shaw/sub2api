@@ -79,7 +79,11 @@ function injectPublicSettings(backendUrl: string): Plugin {
 
 export default defineConfig(({ mode }) => {
   // 加载环境变量
-  const env = loadEnv(mode, process.cwd(), '')
+  const rootEnv = loadEnv(mode, resolve(__dirname, '..'), '')
+  const env = {
+    ...rootEnv,
+    ...loadEnv(mode, process.cwd(), ''),
+  }
   const backendUrl = env.VITE_DEV_PROXY_TARGET || 'http://localhost:8080'
   const devPort = Number(env.VITE_DEV_PORT || 3000)
 
@@ -165,6 +169,11 @@ export default defineConfig(({ mode }) => {
         '/v1': {
           target: backendUrl,
           changeOrigin: true
+        },
+        '/plugins': {
+          target: backendUrl,
+          changeOrigin: true,
+          xfwd: true
         },
         '/setup': {
           target: backendUrl,

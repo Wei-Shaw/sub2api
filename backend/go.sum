@@ -280,8 +280,8 @@ github.com/hashicorp/yamux v0.1.2 h1:XtB8kyFOyHXYVFnwT5C3+Bdo8gArse7j2AQ0DA0Uey8
 github.com/hashicorp/yamux v0.1.2/go.mod h1:C+zze2n6e/7wshOZep2A70/aQU6QBRWJO/G6FT1wIns=
 github.com/icholy/digest v1.1.0 h1:HfGg9Irj7i+IX1o1QAmPfIBNu/Q5A5Tu3n/MED9k9H4=
 github.com/icholy/digest v1.1.0/go.mod h1:QNrsSGQ5v7v9cReDI0+eyjsXGUoRSUZQHeQ5C4XLa0Y=
-github.com/imroc/req/v3 v3.59.0 h1:PqKhJHyBmJYob47LVuTHwRZE00ZO6icbLHe5Zra13jo=
-github.com/imroc/req/v3 v3.59.0/go.mod h1:cwLwwaE90Pq6ZMmKuHA9FivJbg3avnCH8/RA5lUUs74=
+ github.com/imroc/req/v3 v3.59.0 h1:PqKhJHyBmJYob47LVuTHwRZE00ZO6icbLHe5Zra13jo=
+ github.com/imroc/req/v3 v3.59.0/go.mod h1:cwLwwaE90Pq6ZMmKuHA9FivJbg3avnCH8/RA5lUUs74=
 github.com/jackc/pgpassfile v1.0.0 h1:/6Hmqy13Ss2zCq62VdNG8tM1wchn8zjSGOBJ6icpsIM=
 github.com/jackc/pgpassfile v1.0.0/go.mod h1:CEx0iS5ambNFdcRtxPj5JhEz+xB6uRky5eyVu/W2HEg=
 github.com/jackc/pgservicefile v0.0.0-20240606120523-5a60cdf6a761 h1:iCEnooe7UlwOQYpKFhBabPMi4aNAfoODPEFNiAnClxo=

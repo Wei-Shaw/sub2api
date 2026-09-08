@@ -132,7 +132,7 @@ func TestSecurityHeaders(t *testing.T) {
 		assert.Equal(t, 1, countDirectiveValue(csp, "worker-src", TencentCaptchaWorkerSource))
 	})
 
-	t.Run("old_custom_policy_dynamically_allows_same_origin_frames", func(t *testing.T) {
+	t.Run("old_custom_policy_dynamically_allows_same_origin_and_external_https_frames", func(t *testing.T) {
 		cfg := config.CSPConfig{
 			Enabled: true,
 			Policy:  "default-src 'self'; frame-src https://checkout.example.com",
@@ -148,6 +148,8 @@ func TestSecurityHeaders(t *testing.T) {
 		csp := w.Header().Get("Content-Security-Policy")
 		assert.Equal(t, 1, countDirectiveValue(csp, "frame-src", "'self'"))
 		assert.Equal(t, 1, countDirectiveValue(csp, "frame-src", "https://checkout.example.com"))
+		// External https custom-menu pages stay embeddable even after a host redirect.
+		assert.Equal(t, 1, countDirectiveValue(csp, "frame-src", "https:"))
 		assert.Equal(t, "DENY", w.Header().Get("X-Frame-Options"))
 	})
 
@@ -169,6 +171,33 @@ func TestSecurityHeaders(t *testing.T) {
 		assert.Equal(t, "strict-origin-when-cross-origin", w.Header().Get("Referrer-Policy"))
 		assert.Empty(t, w.Header().Get("Content-Security-Policy"))
 		assert.Empty(t, GetNonceFromContext(c))
+	})
+
+	t.Run("plugin_proxy_routes_skip_frame_blocking_headers", func(t *testing.T) {
+		cfg := config.CSPConfig{
+			Enabled: true,
+			Policy:  "default-src 'self'; script-src 'self' __CSP_NONCE__",
+		}
+		middleware := SecurityHeaders(cfg, nil)
+
+		for _, path := range []string{
+			"/plugins/image-generation",
+			"/plugins/image-generation/api/generate",
+		} {
+			t.Run(path, func(t *testing.T) {
+				w := httptest.NewRecorder()
+				c, _ := gin.CreateTestContext(w)
+				c.Request = httptest.NewRequest(http.MethodGet, path, nil)
+
+				middleware(c)
+
+				assert.Equal(t, "nosniff", w.Header().Get("X-Content-Type-Options"))
+				assert.Equal(t, "strict-origin-when-cross-origin", w.Header().Get("Referrer-Policy"))
+				assert.Empty(t, w.Header().Get("X-Frame-Options"))
+				assert.Empty(t, w.Header().Get("Content-Security-Policy"))
+				assert.Empty(t, GetNonceFromContext(c))
+			})
+		}
 	})
 
 	t.Run("csp_enabled_with_nonce_placeholder", func(t *testing.T) {
@@ -317,12 +346,14 @@ func TestEnhanceCSPPolicy(t *testing.T) {
 		assert.Contains(t, enhanced, CloudflareInsightsDomain)
 	})
 
-	t.Run("allows_only_same_origin_plugin_frames", func(t *testing.T) {
+	t.Run("keeps_same_origin_frames_and_allows_external_https_frames", func(t *testing.T) {
 		policy := "default-src 'self'; frame-src https://checkout.example.com"
 		enhanced := enhanceCSPPolicy(policy)
 
 		assert.Equal(t, 1, countDirectiveValue(enhanced, "frame-src", "'self'"))
 		assert.Equal(t, 1, countDirectiveValue(enhanced, "frame-src", "https://checkout.example.com"))
+		// External https custom-menu pages must remain embeddable after redirect.
+		assert.Equal(t, 1, countDirectiveValue(enhanced, "frame-src", "https:"))
 		assert.NotContains(t, enhanced, "frame-src *")
 	})
 
@@ -417,6 +448,13 @@ func TestEnhanceCSPPolicy(t *testing.T) {
 		assert.Contains(t, enhanced, AirwallexDemoCheckoutDomain)
 		assert.Contains(t, enhanced, "style-src 'self'")
 		assert.Contains(t, enhanced, "frame-src 'self'")
+	})
+
+	t.Run("allows_same_origin_iframes_for_plugin_proxy_pages", func(t *testing.T) {
+		policy := "default-src 'self'; script-src 'self' __CSP_NONCE__; frame-src https://example.com"
+		enhanced := enhanceCSPPolicy(policy)
+
+		assert.Equal(t, 1, countDirectiveValue(enhanced, "frame-src", "'self'"))
 	})
 
 	t.Run("does_not_duplicate_airwallex_domains", func(t *testing.T) {

@@ -38,9 +38,8 @@ services:
     volumes:
       # Local directory mapping for easy migration
       - ./data:/app/data:Z
-      # Optional: Mount custom config.yaml (uncomment and create the file first)
-      # Copy config.example.yaml to config.yaml, modify it, then uncomment:
-      # - ./config.yaml:/app/data/config.yaml
+      # Mount custom config.yaml (copy config.example.yaml to config.yaml, modify it)
+      - ./config.yaml:/app/data/config.yaml
     environment:
       # =======================================================================
       # Auto Setup (REQUIRED for Docker deployment)
@@ -66,6 +65,11 @@ services:
       - DATABASE_PASSWORD=${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
       - DATABASE_DBNAME=${POSTGRES_DB:-sub2api}
       - DATABASE_SSLMODE=disable
+      - MINIO_ENDPOINT=minio:9000
+      - MINIO_ACCESS_KEY=${MINIO_ROOT_USER:-sub2api-plugin}
+      - MINIO_SECRET_KEY=${MINIO_ROOT_PASSWORD:?MINIO_ROOT_PASSWORD is required}
+      - MINIO_BUCKET=${MINIO_BUCKET:-plugin-media}
+      - MINIO_USE_SSL=${MINIO_USE_SSL:-false}
       - DATABASE_MAX_OPEN_CONNS=${DATABASE_MAX_OPEN_CONNS:-50}
       - DATABASE_MAX_IDLE_CONNS=${DATABASE_MAX_IDLE_CONNS:-10}
       - DATABASE_CONN_MAX_LIFETIME_MINUTES=${DATABASE_CONN_MAX_LIFETIME_MINUTES:-30}
@@ -144,10 +148,10 @@ services:
       # =======================================================================
       # Enable URL allowlist validation (false to skip allowlist checks)
       - SECURITY_URL_ALLOWLIST_ENABLED=${SECURITY_URL_ALLOWLIST_ENABLED:-false}
-      # Allow insecure HTTP URLs when allowlist is disabled (default: true; set to false to require https)
-      - SECURITY_URL_ALLOWLIST_ALLOW_INSECURE_HTTP=${SECURITY_URL_ALLOWLIST_ALLOW_INSECURE_HTTP:-true}
-      # Allow private IP addresses for upstream/pricing/CRS (default: true; set to false to block private hosts)
-      - SECURITY_URL_ALLOWLIST_ALLOW_PRIVATE_HOSTS=${SECURITY_URL_ALLOWLIST_ALLOW_PRIVATE_HOSTS:-true}
+      # Allow insecure HTTP URLs when allowlist is disabled (default: false, requires https)
+      - SECURITY_URL_ALLOWLIST_ALLOW_INSECURE_HTTP=${SECURITY_URL_ALLOWLIST_ALLOW_INSECURE_HTTP:-false}
+      # Allow private IP addresses for upstream/pricing/CRS (for internal deployments)
+      - SECURITY_URL_ALLOWLIST_ALLOW_PRIVATE_HOSTS=${SECURITY_URL_ALLOWLIST_ALLOW_PRIVATE_HOSTS:-false}
       # Upstream hosts whitelist (comma-separated, only used when enabled=true)
       - SECURITY_URL_ALLOWLIST_UPSTREAM_HOSTS=${SECURITY_URL_ALLOWLIST_UPSTREAM_HOSTS:-}
 
@@ -159,14 +163,11 @@ services:
       - UPDATE_PROXY_URL=${UPDATE_PROXY_URL:-}
 
       # =======================================================================
-      # Gateway Upstream, Scheduling & Image Configuration
+      # Image Generation Stream & Concurrency
       # =======================================================================
-      # Gateway values come from Compose .env or the shell.
-      # Fallbacks mirror Sub2API backend defaults so omitted values preserve behavior.
-      - GATEWAY_FORCE_CODEX_CLI=${GATEWAY_FORCE_CODEX_CLI:-false}
-      - GATEWAY_OPENAI_COMPACT_MODEL=${GATEWAY_OPENAI_COMPACT_MODEL:-gpt-5.4}
+      # OpenAI HTTP upstream protocol/timeout
+      - GATEWAY_OPENAI_WS_MODE_ROUTER_V2_ENABLED=${GATEWAY_OPENAI_WS_MODE_ROUTER_V2_ENABLED:-false}
       - GATEWAY_OPENAI_RESPONSE_HEADER_TIMEOUT=${GATEWAY_OPENAI_RESPONSE_HEADER_TIMEOUT:-0}
-      - GATEWAY_OPENAI_WS_FORCE_HTTP=${GATEWAY_OPENAI_WS_FORCE_HTTP:-false}
       - GATEWAY_OPENAI_HTTP2_ENABLED=${GATEWAY_OPENAI_HTTP2_ENABLED:-true}
       - GATEWAY_OPENAI_HTTP2_ALLOW_PROXY_FALLBACK_TO_HTTP1=${GATEWAY_OPENAI_HTTP2_ALLOW_PROXY_FALLBACK_TO_HTTP1:-true}
       - GATEWAY_OPENAI_HTTP2_FALLBACK_ERROR_THRESHOLD=${GATEWAY_OPENAI_HTTP2_FALLBACK_ERROR_THRESHOLD:-2}
@@ -175,28 +176,8 @@ services:
       - GATEWAY_OPENAI_PROXY_STREAM_CIRCUIT_FAILURE_THRESHOLD=${GATEWAY_OPENAI_PROXY_STREAM_CIRCUIT_FAILURE_THRESHOLD:-2}
       - GATEWAY_OPENAI_PROXY_STREAM_CIRCUIT_WINDOW_SECONDS=${GATEWAY_OPENAI_PROXY_STREAM_CIRCUIT_WINDOW_SECONDS:-60}
       - GATEWAY_OPENAI_PROXY_STREAM_CIRCUIT_TTL_SECONDS=${GATEWAY_OPENAI_PROXY_STREAM_CIRCUIT_TTL_SECONDS:-600}
-      - GATEWAY_MAX_BODY_SIZE=${GATEWAY_MAX_BODY_SIZE:-268435456}
-      - GATEWAY_MAX_CONNS_PER_HOST=${GATEWAY_MAX_CONNS_PER_HOST:-1024}
-      - GATEWAY_MAX_IDLE_CONNS=${GATEWAY_MAX_IDLE_CONNS:-2560}
-      - GATEWAY_MAX_IDLE_CONNS_PER_HOST=${GATEWAY_MAX_IDLE_CONNS_PER_HOST:-120}
-      - GATEWAY_SCHEDULING_STICKY_SESSION_MAX_WAITING=${GATEWAY_SCHEDULING_STICKY_SESSION_MAX_WAITING:-3}
-      - GATEWAY_SCHEDULING_STICKY_SESSION_WAIT_TIMEOUT=${GATEWAY_SCHEDULING_STICKY_SESSION_WAIT_TIMEOUT:-120s}
-      - GATEWAY_SCHEDULING_FALLBACK_WAIT_TIMEOUT=${GATEWAY_SCHEDULING_FALLBACK_WAIT_TIMEOUT:-30s}
-      - GATEWAY_SCHEDULING_FALLBACK_MAX_WAITING=${GATEWAY_SCHEDULING_FALLBACK_MAX_WAITING:-100}
-      - GATEWAY_SCHEDULING_LOAD_BATCH_ENABLED=${GATEWAY_SCHEDULING_LOAD_BATCH_ENABLED:-true}
-      - GATEWAY_SCHEDULING_SLOT_CLEANUP_INTERVAL=${GATEWAY_SCHEDULING_SLOT_CLEANUP_INTERVAL:-30s}
-      - GATEWAY_SCHEDULING_DB_FALLBACK_ENABLED=${GATEWAY_SCHEDULING_DB_FALLBACK_ENABLED:-true}
-      - GATEWAY_SCHEDULING_DB_FALLBACK_TIMEOUT_SECONDS=${GATEWAY_SCHEDULING_DB_FALLBACK_TIMEOUT_SECONDS:-0}
-      - GATEWAY_SCHEDULING_DB_FALLBACK_MAX_QPS=${GATEWAY_SCHEDULING_DB_FALLBACK_MAX_QPS:-0}
-      - GATEWAY_SCHEDULING_OUTBOX_POLL_INTERVAL_SECONDS=${GATEWAY_SCHEDULING_OUTBOX_POLL_INTERVAL_SECONDS:-1}
-      - GATEWAY_SCHEDULING_OUTBOX_LAG_WARN_SECONDS=${GATEWAY_SCHEDULING_OUTBOX_LAG_WARN_SECONDS:-5}
-      - GATEWAY_SCHEDULING_OUTBOX_LAG_REBUILD_SECONDS=${GATEWAY_SCHEDULING_OUTBOX_LAG_REBUILD_SECONDS:-10}
-      - GATEWAY_SCHEDULING_OUTBOX_LAG_REBUILD_FAILURES=${GATEWAY_SCHEDULING_OUTBOX_LAG_REBUILD_FAILURES:-3}
-      - GATEWAY_SCHEDULING_OUTBOX_BACKLOG_REBUILD_ROWS=${GATEWAY_SCHEDULING_OUTBOX_BACKLOG_REBUILD_ROWS:-10000}
-      - GATEWAY_SCHEDULING_FULL_REBUILD_INTERVAL_SECONDS=${GATEWAY_SCHEDULING_FULL_REBUILD_INTERVAL_SECONDS:-300}
       - GATEWAY_IMAGE_STREAM_DATA_INTERVAL_TIMEOUT=${GATEWAY_IMAGE_STREAM_DATA_INTERVAL_TIMEOUT:-900}
       - GATEWAY_IMAGE_STREAM_KEEPALIVE_INTERVAL=${GATEWAY_IMAGE_STREAM_KEEPALIVE_INTERVAL:-10}
-      - GATEWAY_IMAGE_NONSTREAM_KEEPALIVE_INTERVAL=${GATEWAY_IMAGE_NONSTREAM_KEEPALIVE_INTERVAL:-0}
       - GATEWAY_IMAGE_CONCURRENCY_ENABLED=${GATEWAY_IMAGE_CONCURRENCY_ENABLED:-false}
       - GATEWAY_IMAGE_CONCURRENCY_MAX_CONCURRENT_REQUESTS=${GATEWAY_IMAGE_CONCURRENCY_MAX_CONCURRENT_REQUESTS:-0}
       - GATEWAY_IMAGE_CONCURRENCY_OVERFLOW_MODE=${GATEWAY_IMAGE_CONCURRENCY_OVERFLOW_MODE:-reject}
@@ -216,6 +197,75 @@ services:
       retries: 3
       start_period: 30s
 
+  sub2api-plugin-server:
+    image: ${PLUGIN_SERVER_IMAGE:-weishaw/sub2api-plugin-service:latest}
+    container_name: sub2api-plugin-server
+    restart: unless-stopped
+    ulimits:
+      nofile:
+        soft: 100000
+        hard: 100000
+    ports:
+      - "127.0.0.1:${PLUGIN_SERVER_PORT:-8091}:${PLUGIN_SERVER_PORT:-8091}"
+    environment:
+      - PLUGIN_SERVER_PORT=${PLUGIN_SERVER_PORT:-8091}
+      - PLUGIN_AI_RELAY_PUBLIC_BASE_URL=http://plugin-server:${PLUGIN_SERVER_PORT:-8091}
+      - PLUGIN_MAIN_SERVICE_BASE_URL=${PLUGIN_MAIN_SERVICE_BASE_URL:-http://sub2api:8080}
+      - DATABASE_URL=${DATABASE_URL:-}
+      - DATABASE_HOST=postgres
+      - DATABASE_PORT=5432
+      - DATABASE_USER=${POSTGRES_USER:-sub2api}
+      - DATABASE_PASSWORD=${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
+      - DATABASE_DBNAME=${POSTGRES_DB:-sub2api}
+      - DATABASE_SSLMODE=disable
+      - MINIO_ENDPOINT=minio:9000
+      - MINIO_ACCESS_KEY=${MINIO_ROOT_USER:-sub2api-plugin}
+      - MINIO_SECRET_KEY=${MINIO_ROOT_PASSWORD:?MINIO_ROOT_PASSWORD is required}
+      - MINIO_BUCKET=${MINIO_BUCKET:-plugin-media}
+      - MINIO_USE_SSL=${MINIO_USE_SSL:-false}
+    volumes:
+      - ./plugin_data:/app/data:Z
+    depends_on:
+      sub2api:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    networks:
+      sub2api-network:
+        aliases:
+          - plugin-server
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-T", "5", "-O", "/dev/null", "http://localhost:${PLUGIN_SERVER_PORT:-8091}/healthz"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+  minio:
+    image: minio/minio:RELEASE.2025-04-22T22-12-26Z
+    container_name: sub2api-minio
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    ports:
+      - "127.0.0.1:${MINIO_API_PORT:-9000}:9000"
+      - "127.0.0.1:${MINIO_CONSOLE_PORT:-9001}:9001"
+    environment:
+      - MINIO_ROOT_USER=${MINIO_ROOT_USER:-sub2api-plugin}
+      - MINIO_ROOT_PASSWORD=${MINIO_ROOT_PASSWORD:?MINIO_ROOT_PASSWORD is required}
+    volumes:
+      # Local directory mapping for easy migration (same as postgres/redis).
+      # The historical MinIO data lives in ./minio_data; do NOT switch back to
+      # a named volume or existing image-generation assets will return 404.
+      - ./minio_data:/data:Z
+    networks:
+      - sub2api-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+
   # ===========================================================================
   # PostgreSQL Database
   # ===========================================================================
@@ -227,6 +277,8 @@ services:
       nofile:
         soft: 100000
         hard: 100000
+    ports:
+      - "127.0.0.1:5432:5432"
     volumes:
       # Local directory mapping for easy migration
       - ./postgres_data:/var/lib/postgresql/data:Z
@@ -244,8 +296,7 @@ services:
       timeout: 5s
       retries: 5
       start_period: 10s
-    # 注意：不暴露端口到宿主机，应用通过内部网络连接
-    # 如需调试，可临时添加：ports: ["127.0.0.1:5433:5432"]
+    # 仅绑定到本机回环地址，方便宿主机直接连接调试
 
   # ===========================================================================
   # Redis Cache
@@ -258,6 +309,8 @@ services:
       nofile:
         soft: 100000
         hard: 100000
+    ports:
+      - "127.0.0.1:6379:6379"
     volumes:
       # Local directory mapping for easy migration
       - ./redis_data:/data:Z
@@ -278,6 +331,7 @@ services:
       - REDISCLI_AUTH=${REDIS_PASSWORD:-}
     networks:
       - sub2api-network
+
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 10s

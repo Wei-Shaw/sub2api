@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
+	"github.com/Wei-Shaw/sub2api/internal/pluginrelay"
 
 	"golang.org/x/net/http/httpguts"
 )
@@ -177,6 +178,11 @@ func (a *Account) ApplyHeaderOverrides(h http.Header) {
 	if h == nil {
 		return
 	}
+	var proxyID *int64
+	if a != nil {
+		proxyID = a.ProxyID
+	}
+	pluginrelay.SetProxyID(h, proxyID)
 	overrides := a.GetHeaderOverrides()
 	if len(overrides) == 0 {
 		return
