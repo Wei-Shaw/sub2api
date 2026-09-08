@@ -47,24 +47,40 @@ func accountHasOllamaCloudUsageExtra(account *Account) bool {
 	return false
 }
 
+// isOllamaCloudDeepSeekUpstream 判断本次出站是否命中 Ollama Cloud 上托管的
+// DeepSeek 模型：出站 base_url 是 Ollama Cloud（GetOpenAIBaseURL，与
+// clampOllamaCloudUpstreamMaxTokens 的取值一致）且映射后的出站模型是 DeepSeek 系。
+// 不看 platform / account.Type / responses-mode，不读 usage extra；同一分组内
+// 官方 DeepSeek 账号（api.deepseek.com）不命中，保持字节级透传。后续其它出站
+// 路径复用同一判定。nil account / 空模型返回 false。
+func isOllamaCloudDeepSeekUpstream(account *Account, upstreamModel string) bool {
+	if account == nil {
+		return false
+	}
+	if !isOllamaCloudBaseURL(account.GetOpenAIBaseURL()) {
+		return false
+	}
+	return isDeepSeekModel(upstreamModel)
+}
+
 // applyOllamaCloudRawChatCompletionsRequest 只做 Ollama Cloud reasoning 归一化；
 // max_tokens clamp 已解耦到独立钩子 clampOllamaCloudUpstreamMaxTokens，由出站方依次调用。
-func applyOllamaCloudRawChatCompletionsRequest(account *Account, body []byte) []byte {
-	if !isOllamaCloudRawChatCompletionsAccount(account) || len(body) == 0 {
+func applyOllamaCloudRawChatCompletionsRequest(account *Account, upstreamModel string, body []byte) []byte {
+	if !isOllamaCloudDeepSeekUpstream(account, upstreamModel) || len(body) == 0 {
 		return body
 	}
 	return normalizeOllamaCloudChatCompletionsRequest(body)
 }
 
-func applyOllamaCloudRawChatCompletionsResponse(account *Account, body []byte) []byte {
-	if !isOllamaCloudRawChatCompletionsAccount(account) || len(body) == 0 {
+func applyOllamaCloudRawChatCompletionsResponse(account *Account, upstreamModel string, body []byte) []byte {
+	if !isOllamaCloudDeepSeekUpstream(account, upstreamModel) || len(body) == 0 {
 		return body
 	}
 	return normalizeOllamaCloudChatCompletionsResponseJSON(body)
 }
 
-func applyOllamaCloudRawChatCompletionsSSELine(account *Account, line string) string {
-	if !isOllamaCloudRawChatCompletionsAccount(account) || line == "" {
+func applyOllamaCloudRawChatCompletionsSSELine(account *Account, upstreamModel string, line string) string {
+	if !isOllamaCloudDeepSeekUpstream(account, upstreamModel) || line == "" {
 		return line
 	}
 	return normalizeOllamaCloudChatCompletionsSSELine(line)
