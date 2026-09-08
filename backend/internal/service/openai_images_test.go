@@ -2231,3 +2231,11 @@ func TestOpenAIGatewayServiceForwardImages_OAuthStreamingDrainsAfterClientDiscon
 	require.Equal(t, 9, result.Usage.OutputTokens)
 	require.Equal(t, 4, result.Usage.ImageOutputTokens)
 }
+
+func TestOpenAIImagesResponsesMainModelValue(t *testing.T) {
+	t.Setenv(openAIImagesMainModelEnv, "")
+	require.Equal(t, openAIImagesResponsesMainModel, openAIImagesResponsesMainModelValue())
+
+	t.Setenv(openAIImagesMainModelEnv, " custom-images-model ")
+	require.Equal(t, "custom-images-model", openAIImagesResponsesMainModelValue())
+}
