@@ -100,6 +100,13 @@ func (s *OpenAIGatewayService) forwardAnthropicViaRawChatCompletions(
 	// so the converted Chat Completions body never contains one and the policy
 	// would always be a no-op on this path.
 
+	// Ollama Cloud → DeepSeek 出站（chatReq.Model 已是模型映射后的 upstreamModel）：
+	// 与 raw 路径同序——先归一化 request（历史 assistant 消息
+	// reasoning_content → reasoning）、再 clamp max_tokens（>65535 → 65535）。
+	// 官方 DeepSeek/glm 等未命中时字节级透传。
+	chatBody = applyOllamaCloudRawChatCompletionsRequest(account, upstreamModel, chatBody)
+	chatBody = clampOllamaCloudUpstreamMaxTokens(account, chatBody)
+
 	logger.L().Debug("openai messages: forwarding via raw chat completions",
 		zap.Int64("account_id", account.ID),
 		zap.String("original_model", originalModel),
@@ -135,14 +142,15 @@ func (s *OpenAIGatewayService) forwardAnthropicViaRawChatCompletions(
 
 	// 5. Convert response
 	if clientStream {
-		return s.streamChatCompletionsAsAnthropic(c, resp, originalModel, billingModel, upstreamModel, reasoningEffort, serviceTier, startTime)
+		return s.streamChatCompletionsAsAnthropic(c, resp, account, originalModel, billingModel, upstreamModel, reasoningEffort, serviceTier, startTime)
 	}
-	return s.bufferChatCompletionsAsAnthropic(c, resp, originalModel, billingModel, upstreamModel, reasoningEffort, serviceTier, startTime)
+	return s.bufferChatCompletionsAsAnthropic(c, resp, account, originalModel, billingModel, upstreamModel, reasoningEffort, serviceTier, startTime)
 }
 
 func (s *OpenAIGatewayService) bufferChatCompletionsAsAnthropic(
 	c *gin.Context,
 	resp *http.Response,
+	account *Account,
 	originalModel string,
 	billingModel string,
 	upstreamModel string,
@@ -151,7 +159,7 @@ func (s *OpenAIGatewayService) bufferChatCompletionsAsAnthropic(
 	startTime time.Time,
 ) (*OpenAIForwardResult, error) {
 	requestID := resp.Header.Get("x-request-id")
-	ccResp, usage, err := s.readCCUpstreamJSONResponse(c, resp, writeAnthropicError)
+	ccResp, usage, err := s.readCCUpstreamJSONResponse(c, resp, account, upstreamModel, writeAnthropicError)
 	if err != nil {
 		return nil, err
 	}
@@ -180,6 +188,7 @@ func (s *OpenAIGatewayService) bufferChatCompletionsAsAnthropic(
 func (s *OpenAIGatewayService) streamChatCompletionsAsAnthropic(
 	c *gin.Context,
 	resp *http.Response,
+	account *Account,
 	originalModel string,
 	billingModel string,
 	upstreamModel string,
@@ -217,7 +226,7 @@ func (s *OpenAIGatewayService) streamChatCompletionsAsAnthropic(
 		}
 	}
 
-	scan := s.scanCCStream(c, resp, "openai messages chat fallback", requestID, startTime, emitChunk)
+	scan := s.scanCCStream(c, resp, account, upstreamModel, "openai messages chat fallback", requestID, startTime, emitChunk)
 	usage := scan.Usage
 
 	if scan.Err != nil {
