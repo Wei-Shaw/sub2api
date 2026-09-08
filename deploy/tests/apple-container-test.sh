@@ -36,6 +36,11 @@ mkdir -p "${STATE_DIR}"
 "${SCRIPT}" init
 [[ "$(stat -f '%Lp' "${ENV_FILE}")" == "600" ]] || fail "init did not create a mode-600 env file"
 grep -q '^POSTGRES_PASSWORD=change_this_secure_password$' "${ENV_FILE}" && fail "init retained the placeholder password"
+cat >>"${ENV_FILE}" <<'EOF'
+REDIS_SAVE_SECONDS=900
+REDIS_SAVE_CHANGES=2
+REDIS_LATENCY_MONITOR_THRESHOLD_MS=100
+EOF
 
 chmod 644 "${ENV_FILE}"
 if "${SCRIPT}" up >/dev/null 2>&1; then
@@ -48,6 +53,11 @@ assert_exists "${STATE_DIR}/containers/sub2api-apple"
 assert_exists "${STATE_DIR}/containers/sub2api-apple-postgres"
 assert_exists "${STATE_DIR}/containers/sub2api-apple-redis"
 assert_exists "${STATE_DIR}/running/sub2api-apple"
+grep -q '^REDIS_SAVE_SECONDS=900$' "${STATE_DIR}/env-files/sub2api-apple-redis" || fail "Redis save interval was not propagated"
+grep -q '^REDIS_SAVE_CHANGES=2$' "${STATE_DIR}/env-files/sub2api-apple-redis" || fail "Redis save change threshold was not propagated"
+grep -q '^REDIS_LATENCY_MONITOR_THRESHOLD_MS=100$' "${STATE_DIR}/env-files/sub2api-apple-redis" || fail "Redis latency threshold was not propagated"
+grep -Fq '${REDIS_SAVE_SECONDS:-60}' "${STATE_DIR}/create-args/sub2api-apple-redis" || fail "Redis save interval is missing from the runtime command"
+grep -Fq '${REDIS_LATENCY_MONITOR_THRESHOLD_MS:-0}' "${STATE_DIR}/create-args/sub2api-apple-redis" || fail "Redis latency threshold is missing from the runtime command"
 "${SCRIPT}" status >/dev/null
 
 "${SCRIPT}" up --recreate

@@ -25,6 +25,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
+      - name: Check Compose deployment configs
+        run: /bin/bash deploy/tests/compose-config-test.sh
       - uses: actions/setup-go@v6
         with:
           go-version-file: backend/go.mod

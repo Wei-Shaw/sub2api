@@ -8,6 +8,8 @@ mkdir -p \
     "${STATE_DIR}/running" \
     "${STATE_DIR}/networks" \
     "${STATE_DIR}/volumes" \
+    "${STATE_DIR}/create-args" \
+    "${STATE_DIR}/env-files" \
     "${STATE_DIR}/unowned/container" \
     "${STATE_DIR}/unowned/network" \
     "${STATE_DIR}/unowned/volume"
@@ -108,13 +110,19 @@ case "${command}" in
         ;;
     create)
         name=""
+        env_file=""
+        original_arguments=("$@")
         while [[ $# -gt 0 ]]; do
             case "$1" in
                 --name)
                     name=$2
                     shift 2
                     ;;
-                --label|--network|--platform|--ulimit|--env-file|--volume|--entrypoint|--publish)
+                --env-file)
+                    env_file=$2
+                    shift 2
+                    ;;
+                --label|--network|--platform|--ulimit|--volume|--entrypoint|--publish)
                     shift 2
                     ;;
                 *)
@@ -123,6 +131,10 @@ case "${command}" in
             esac
         done
         [[ -n "${name}" ]]
+        printf '%s\n' "${original_arguments[@]}" >"${STATE_DIR}/create-args/${name}"
+        if [[ -n "${env_file}" ]]; then
+            cp "${env_file}" "${STATE_DIR}/env-files/${name}"
+        fi
         touch "${STATE_DIR}/containers/${name}"
         ;;
     inspect)
