@@ -1330,13 +1330,9 @@ func (s *PricingService) matchByModelFamily(model string) *LiteLLMModelPricing {
 		{name: "opus-4.7", match: []string{"claude-opus-4-7", "claude-opus-4.7"}, pricing: []string{"claude-opus-4-7", "claude-opus-4.7", "claude-opus-4-6"}},
 		{name: "opus-4.6", match: []string{"claude-opus-4-6", "claude-opus-4.6"}},
 		{name: "opus-4.5", match: []string{"claude-opus-4-5", "claude-opus-4.5"}},
-		{name: "opus-4", match: []string{"claude-opus-4", "claude-3-opus"}},
+		{name: "opus-4", match: []string{"claude-opus-4"}},
 		{name: "sonnet-4.5", match: []string{"claude-sonnet-4-5", "claude-sonnet-4.5"}},
-		{name: "sonnet-4", match: []string{"claude-sonnet-4", "claude-3-5-sonnet"}},
-		{name: "sonnet-3.5", match: []string{"claude-3-5-sonnet", "claude-3.5-sonnet"}},
-		{name: "sonnet-3", match: []string{"claude-3-sonnet"}},
-		{name: "haiku-3.5", match: []string{"claude-3-5-haiku", "claude-3.5-haiku"}},
-		{name: "haiku-3", match: []string{"claude-3-haiku"}},
+		{name: "sonnet-4", match: []string{"claude-sonnet-4"}},
 	}
 
 	// Phase 1: 按有序切片归类（最具体的系列优先匹配）
@@ -1377,17 +1373,8 @@ func (s *PricingService) matchByModelFamily(model string) *LiteLLMModelPricing {
 			switch {
 			case strings.Contains(model, "4.5") || strings.Contains(model, "4-5"):
 				fallbackName = "sonnet-4.5"
-			case strings.Contains(model, "3-5") || strings.Contains(model, "3.5"):
-				fallbackName = "sonnet-3.5"
 			default:
 				fallbackName = "sonnet-4"
-			}
-		case strings.Contains(model, "haiku"):
-			switch {
-			case strings.Contains(model, "3-5") || strings.Contains(model, "3.5"):
-				fallbackName = "haiku-3.5"
-			default:
-				fallbackName = "haiku-3"
 			}
 		}
 		if fallbackName != "" {
