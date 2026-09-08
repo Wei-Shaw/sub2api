@@ -633,8 +633,13 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 	// ollama.com 以 400 拒绝）。在 `!isCodexCLI` 归一化块之后独立调用：非 Codex 时
 	// 位于平台字段归一化之后，不跳过原有平台 switch（patch 按追加顺序应用，set 在
 	// 先前的 delete/set 之后生效）；Codex 请求不做归一化，直接按 body 现值判定。
-	if clampedCap, ok := ollamaCloudResponsesMaxOutputTokensClamp(account, upstreamModel, body); ok {
+	// 生效值来自 max_tokens（无 max_output_tokens 的非 openai 平台）时，
+	// markPatchDelete("max_tokens") 与第 601 行一样按追加顺序在 set 之后应用。
+	if clampedCap, ok, sourceField := ollamaCloudResponsesMaxOutputTokensClamp(account, upstreamModel, body); ok {
 		markPatchSet("max_output_tokens", clampedCap)
+		if sourceField == "max_tokens" {
+			markPatchDelete("max_tokens")
+		}
 	}
 	if wsDecision.Transport != OpenAIUpstreamTransportResponsesWebsocketV2 &&
 		!account.IsOpenAIApiKey() && gjson.GetBytes(body, "previous_response_id").Exists() {
