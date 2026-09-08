@@ -3,6 +3,8 @@ package service
 import (
 	"testing"
 
+	"github.com/Wei-Shaw/sub2api/internal/config"
+
 	"github.com/stretchr/testify/require"
 )
 
@@ -30,4 +32,28 @@ func newStubPricingServiceFromJSON(t *testing.T, body string) *PricingService {
 	require.NoError(t, err)
 	s.pricingData = data
 	return s
+}
+
+// testFallbackCatalogJSON 承载曾经硬编码在 BillingService 兜底表里、如今只由目录数据承担的
+// claude-sonnet-4 价卡，供只需要"有价可计"的夹具注入；值与官方价一致。
+const testFallbackCatalogJSON = `{
+	"claude-sonnet-4": {"litellm_provider": "anthropic", "mode": "chat",
+		"input_cost_per_token": 3e-06, "output_cost_per_token": 1.5e-05,
+		"cache_creation_input_token_cost": 3.75e-06, "cache_read_input_token_cost": 3e-07}
+}`
+
+// newFallbackCatalogPricingService 从 testFallbackCatalogJSON 构造目录 stub，供没有 *testing.T 的夹具使用。
+func newFallbackCatalogPricingService() *PricingService {
+	s := &PricingService{}
+	data, err := s.parsePricingData([]byte(testFallbackCatalogJSON))
+	if err != nil {
+		panic(err)
+	}
+	s.pricingData = data
+	return s
+}
+
+// newBillingServiceWithFallbackCatalog 构造带 testFallbackCatalogJSON 目录的计费服务。
+func newBillingServiceWithFallbackCatalog(cfg *config.Config) *BillingService {
+	return NewBillingService(cfg, newFallbackCatalogPricingService())
 }

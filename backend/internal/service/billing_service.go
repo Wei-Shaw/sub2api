@@ -340,51 +340,6 @@ func (s *BillingService) initFallbackPricing() {
 		SupportsCacheBreakdown:     false,
 	}
 
-	// Claude 4 Sonnet
-	s.fallbackPrices["claude-sonnet-4"] = &ModelPricing{
-		InputPricePerToken:         3e-6,    // $3 per MTok
-		OutputPricePerToken:        15e-6,   // $15 per MTok
-		CacheCreationPricePerToken: 3.75e-6, // $3.75 per MTok
-		CacheReadPricePerToken:     0.3e-6,  // $0.30 per MTok
-		SupportsCacheBreakdown:     false,
-	}
-
-	// Claude 3.5 Sonnet
-	s.fallbackPrices["claude-3-5-sonnet"] = &ModelPricing{
-		InputPricePerToken:         3e-6,    // $3 per MTok
-		OutputPricePerToken:        15e-6,   // $15 per MTok
-		CacheCreationPricePerToken: 3.75e-6, // $3.75 per MTok
-		CacheReadPricePerToken:     0.3e-6,  // $0.30 per MTok
-		SupportsCacheBreakdown:     false,
-	}
-
-	// Claude 3.5 Haiku
-	s.fallbackPrices["claude-3-5-haiku"] = &ModelPricing{
-		InputPricePerToken:         1e-6,    // $1 per MTok
-		OutputPricePerToken:        5e-6,    // $5 per MTok
-		CacheCreationPricePerToken: 1.25e-6, // $1.25 per MTok
-		CacheReadPricePerToken:     0.1e-6,  // $0.10 per MTok
-		SupportsCacheBreakdown:     false,
-	}
-
-	// Claude 3 Opus
-	s.fallbackPrices["claude-3-opus"] = &ModelPricing{
-		InputPricePerToken:         15e-6,    // $15 per MTok
-		OutputPricePerToken:        75e-6,    // $75 per MTok
-		CacheCreationPricePerToken: 18.75e-6, // $18.75 per MTok
-		CacheReadPricePerToken:     1.5e-6,   // $1.50 per MTok
-		SupportsCacheBreakdown:     false,
-	}
-
-	// Claude 3 Haiku
-	s.fallbackPrices["claude-3-haiku"] = &ModelPricing{
-		InputPricePerToken:         0.25e-6, // $0.25 per MTok
-		OutputPricePerToken:        1.25e-6, // $1.25 per MTok
-		CacheCreationPricePerToken: 0.3e-6,  // $0.30 per MTok
-		CacheReadPricePerToken:     0.03e-6, // $0.03 per MTok
-		SupportsCacheBreakdown:     false,
-	}
-
 	// Claude 4.6 Opus (与4.5同价)
 	s.fallbackPrices["claude-opus-4.6"] = s.fallbackPrices["claude-opus-4.5"]
 
@@ -392,7 +347,6 @@ func (s *BillingService) initFallbackPricing() {
 	s.fallbackPrices["claude-opus-4.7"] = s.fallbackPrices["claude-opus-4.6"]
 
 	// Claude 4.8 Opus / Claude Opus 5（标准 $5/$25，Fast $10/$50 per MTok）。
-	// 缺少这两条时 getFallbackPricing 会掉到 claude-3-opus（$15/$75），造成 3 倍超收。
 	s.fallbackPrices["claude-opus-4.8"] = pricingWithPriorityMultiplier(s.fallbackPrices["claude-opus-4.7"], 2)
 	s.fallbackPrices["claude-opus-5"] = pricingWithPriorityMultiplier(s.fallbackPrices["claude-opus-4.8"], 2)
 
@@ -535,17 +489,6 @@ func (s *BillingService) initFallbackPricing() {
 		CacheCreationPricePerToken:     1.75e-6,
 		CacheReadPricePerToken:         0.175e-6,
 		CacheReadPricePerTokenPriority: 0.35e-6,
-		SupportsCacheBreakdown:         false,
-	}
-	// Codex 族兜底统一按 GPT-5.3 Codex 价格计费
-	s.fallbackPrices["gpt-5.3-codex"] = &ModelPricing{
-		InputPricePerToken:             1.5e-6, // $1.5 per MTok
-		InputPricePerTokenPriority:     3e-6,   // $3 per MTok
-		OutputPricePerToken:            12e-6,  // $12 per MTok
-		OutputPricePerTokenPriority:    24e-6,  // $24 per MTok
-		CacheCreationPricePerToken:     1.5e-6, // $1.5 per MTok
-		CacheReadPricePerToken:         0.15e-6,
-		CacheReadPricePerTokenPriority: 0.3e-6,
 		SupportsCacheBreakdown:         false,
 	}
 
@@ -832,20 +775,6 @@ func (s *BillingService) initFallbackPricing() {
 		LongContextOutputMultiplier:   2,
 	}
 
-	// Keep legacy Grok 3 Mini requests on their own historical xAI price card;
-	// otherwise the generic Grok fallback bills them as Grok 4.5.
-	s.fallbackPrices["grok-3-mini"] = &ModelPricing{
-		InputPricePerToken:     0.30e-6,
-		OutputPricePerToken:    0.50e-6,
-		CacheReadPricePerToken: 0.075e-6,
-		SupportsCacheBreakdown: false,
-	}
-	s.fallbackPrices["grok-3-mini-fast"] = &ModelPricing{
-		InputPricePerToken:     0.60e-6,
-		OutputPricePerToken:    4e-6,
-		CacheReadPricePerToken: 0.15e-6,
-		SupportsCacheBreakdown: false,
-	}
 	// xAI Grok Build 0.1 (official docs: $1 input / $0.20 cached input /
 	// $2 output per MTok). Composer is available only through Grok Build and
 	// has no standalone public API rate card, so its aliases use this coding
@@ -890,23 +819,7 @@ func (s *BillingService) getFallbackPricing(model string) *ModelPricing {
 		if strings.Contains(modelLower, "4.5") || strings.Contains(modelLower, "4-5") {
 			return s.fallbackPrices["claude-opus-4.5"]
 		}
-		return s.fallbackPrices["claude-3-opus"]
-	}
-	if strings.Contains(modelLower, "sonnet") {
-		if strings.Contains(modelLower, "4") && !strings.Contains(modelLower, "3") {
-			return s.fallbackPrices["claude-sonnet-4"]
-		}
-		return s.fallbackPrices["claude-3-5-sonnet"]
-	}
-	if strings.Contains(modelLower, "haiku") {
-		if strings.Contains(modelLower, "3-5") || strings.Contains(modelLower, "3.5") {
-			return s.fallbackPrices["claude-3-5-haiku"]
-		}
-		return s.fallbackPrices["claude-3-haiku"]
-	}
-	// Claude 未知型号统一回退到 Sonnet，避免计费中断。
-	if strings.Contains(modelLower, "claude") {
-		return s.fallbackPrices["claude-sonnet-4"]
+		return nil
 	}
 	if strings.Contains(modelLower, "gemini-3.1-pro") || strings.Contains(modelLower, "gemini-3-1-pro") {
 		return s.fallbackPrices["gemini-3.1-pro"]
@@ -1066,8 +979,6 @@ func (s *BillingService) getFallbackPricing(model string) *ModelPricing {
 			return s.fallbackPrices["gpt-5.4"]
 		case "gpt-5.2":
 			return s.fallbackPrices["gpt-5.2"]
-		case "gpt-5.3-codex", "gpt-5.3-codex-spark":
-			return s.fallbackPrices["gpt-5.3-codex"]
 		}
 	}
 
@@ -1076,10 +987,6 @@ func (s *BillingService) getFallbackPricing(model string) *ModelPricing {
 		return s.fallbackPrices["grok-4.6"]
 	case "grok-4.5", "grok-4.5-latest":
 		return s.fallbackPrices["grok-4.5"]
-	case "grok-3-mini":
-		return s.fallbackPrices["grok-3-mini"]
-	case "grok-3-mini-fast":
-		return s.fallbackPrices["grok-3-mini-fast"]
 	case "grok-4.3":
 		return s.fallbackPrices["grok-4.3"]
 	case "grok-4.20-0309-reasoning",

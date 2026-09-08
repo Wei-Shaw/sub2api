@@ -566,16 +566,17 @@ func TestSyncPricingModels_ValidPlatform_EmptyService(t *testing.T) {
 	}
 }
 
-func setupModelDefaultPricingRouter() *gin.Engine {
+func setupModelDefaultPricingRouter(t *testing.T) *gin.Engine {
+	t.Helper()
 	gin.SetMode(gin.TestMode)
 	router := gin.New()
-	h := &ChannelHandler{billingService: service.NewBillingService(nil, nil)}
+	h := &ChannelHandler{billingService: newBillingServiceWithCatalog(t, nil, modelDefaultPricingCatalogJSON)}
 	router.GET("/channels/model-pricing", h.GetModelDefaultPricing)
 	return router
 }
 
 func TestGetModelDefaultPricing_ReturnsFable51CacheTTLs(t *testing.T) {
-	router := setupModelDefaultPricingRouter()
+	router := setupModelDefaultPricingRouter(t)
 	req := httptest.NewRequest(http.MethodGet, "/channels/model-pricing?model=claude-fable-5-1", nil)
 	w := httptest.NewRecorder()
 	router.ServeHTTP(w, req)
@@ -599,7 +600,7 @@ func TestGetModelDefaultPricing_ReturnsFable51CacheTTLs(t *testing.T) {
 }
 
 func TestGetModelDefaultPricing_OmitsUnsupportedCache1hPrice(t *testing.T) {
-	router := setupModelDefaultPricingRouter()
+	router := setupModelDefaultPricingRouter(t)
 	req := httptest.NewRequest(http.MethodGet, "/channels/model-pricing?model=claude-sonnet-4", nil)
 	w := httptest.NewRecorder()
 	router.ServeHTTP(w, req)

@@ -438,7 +438,7 @@ func TestListGroups_GroupTokenCardOverridesChannelPricing(t *testing.T) {
 		ID: 10, Name: "g", Platform: PlatformAnthropic, RateMultiplier: 1, LongContextPricingEnabled: true,
 		ModelPricing: []ChannelModelPricing{{Models: []string{"claude-sonnet-*"}, BillingMode: BillingModeToken, InputPrice: testPtrFloat64(1e-6)}},
 	}}
-	svc := newPlazaServiceWithBilling(channels, groups, map[int64]string{10: PlatformAnthropic}, nil)
+	svc := newPlazaServiceWithBilling(channels, groups, map[int64]string{10: PlatformAnthropic}, newFallbackCatalogPricingService())
 	out, err := svc.ListGroups(context.Background())
 	require.NoError(t, err)
 	m := out[0].Models[0]

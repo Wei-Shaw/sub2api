@@ -233,7 +233,7 @@ func newOpenAIRecordUsageServiceForTest(usageRepo UsageLogRepository, userRepo U
 		cfg,
 		nil,
 		nil,
-		NewBillingService(cfg, nil),
+		newBillingServiceWithFallbackCatalog(cfg),
 		nil,
 		&BillingCacheService{},
 		nil,
@@ -2802,7 +2802,7 @@ func newOpenAIImageChannelPricingResolverForTest(t *testing.T, groupID int64, mo
 	cache.loadedAt = time.Now()
 	cs := &ChannelService{}
 	cs.cache.Store(cache)
-	return NewModelPricingResolver(cs, NewBillingService(&config.Config{}, nil))
+	return NewModelPricingResolver(cs, newBillingServiceWithFallbackCatalog(&config.Config{}))
 }
 
 func newOpenAITokenImageChannelPricingResolverForTest(t *testing.T, groupID int64, model string) *ModelPricingResolver {
@@ -2822,7 +2822,7 @@ func newOpenAITokenImageChannelPricingResolverForTest(t *testing.T, groupID int6
 	cache.loadedAt = time.Now()
 	cs := &ChannelService{}
 	cs.cache.Store(cache)
-	return NewModelPricingResolver(cs, NewBillingService(&config.Config{}, nil))
+	return NewModelPricingResolver(cs, newBillingServiceWithFallbackCatalog(&config.Config{}))
 }
 
 func newOpenAITokenImageChannelPricingResolverWithTimeForTest(
@@ -2854,7 +2854,7 @@ func (s *openAIMediaPriceGroupRepoStub) GetByIDLite(context.Context, int64) (*Gr
 
 func TestGatewayServiceCalculateRecordUsageCost_ChannelImageBillingUsesImageCount(t *testing.T) {
 	groupID := int64(126)
-	billingService := NewBillingService(&config.Config{}, nil)
+	billingService := newBillingServiceWithFallbackCatalog(&config.Config{})
 	svc := &GatewayService{
 		billingService: billingService,
 		resolver:       newOpenAIImageChannelPricingResolverForTest(t, groupID, "gemini-image", 0.25),
@@ -2895,8 +2895,8 @@ func TestGatewayServiceCalculateRecordUsageCost_ChannelImageBillingUsesSizeTier(
 	channelService.cache.Store(cache)
 
 	svc := &GatewayService{
-		billingService: NewBillingService(&config.Config{}, nil),
-		resolver:       NewModelPricingResolver(channelService, NewBillingService(&config.Config{}, nil)),
+		billingService: newBillingServiceWithFallbackCatalog(&config.Config{}),
+		resolver:       NewModelPricingResolver(channelService, newBillingServiceWithFallbackCatalog(&config.Config{})),
 	}
 
 	cost := svc.calculateRecordUsageCost(
@@ -2921,7 +2921,7 @@ func TestGatewayServiceCalculateRecordUsageCost_GroupImagePriceOverridesChannelI
 	groupImagePrice2K := 0.021
 
 	svc := &GatewayService{
-		billingService: NewBillingService(&config.Config{}, nil),
+		billingService: newBillingServiceWithFallbackCatalog(&config.Config{}),
 		resolver:       newOpenAIImageChannelPricingResolverForTest(t, groupID, "gemini-image", channelPrice),
 	}
 
@@ -3016,8 +3016,8 @@ func TestGatewayServiceCalculateRecordUsageCost_ChannelImageBillingNormalizesMis
 	channelService.cache.Store(cache)
 
 	svc := &GatewayService{
-		billingService: NewBillingService(&config.Config{}, nil),
-		resolver:       NewModelPricingResolver(channelService, NewBillingService(&config.Config{}, nil)),
+		billingService: newBillingServiceWithFallbackCatalog(&config.Config{}),
+		resolver:       NewModelPricingResolver(channelService, newBillingServiceWithFallbackCatalog(&config.Config{})),
 	}
 
 	cost := svc.calculateRecordUsageCost(

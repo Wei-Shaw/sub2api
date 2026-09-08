@@ -454,13 +454,11 @@ func TestTryCustomRules_RuleMatchesButModelNot_ContinuesToNext(t *testing.T) {
 // tryModelFilePricing
 // ---------------------------------------------------------------------------
 
-// newTestBillingServiceWithPrices creates a BillingService with pre-populated
-// fallback prices for testing. No config or pricing service is needed.
-// The key must match what getFallbackPricing resolves to for a given model name.
-// E.g., model "claude-sonnet-4" resolves to key "claude-sonnet-4".
+// newTestBillingServiceWithPrices 把给定价卡作为目录条目注入（nil 条目跳过），兜底表为空。
 func newTestBillingServiceWithPrices(prices map[string]*ModelPricing) *BillingService {
 	return &BillingService{
-		fallbackPrices: prices,
+		pricingService: newPricingServiceFromModelPricing(prices),
+		fallbackPrices: map[string]*ModelPricing{},
 	}
 }
 
@@ -588,7 +586,7 @@ func TestTryModelFilePricing_PricingNotFound(t *testing.T) {
 }
 
 func TestTryModelFilePricing_NilFallback(t *testing.T) {
-	// getFallbackPricing returns nil when key maps to nil
+	// nil 条目不进入目录；目录无该模型且兜底表为空时返回 nil
 	bs := newTestBillingServiceWithPrices(map[string]*ModelPricing{
 		"claude-sonnet-4": nil,
 	})

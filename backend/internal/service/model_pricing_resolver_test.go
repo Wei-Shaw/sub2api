@@ -10,18 +10,19 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// newTestBillingServiceForResolver 把 claude-sonnet-4 作为目录条目注入，兜底表为空。
 func newTestBillingServiceForResolver() *BillingService {
-	bs := &BillingService{
-		fallbackPrices: make(map[string]*ModelPricing),
+	return &BillingService{
+		pricingService: newPricingServiceFromModelPricing(map[string]*ModelPricing{
+			"claude-sonnet-4": {
+				InputPricePerToken:         3e-6,
+				OutputPricePerToken:        15e-6,
+				CacheCreationPricePerToken: 3.75e-6,
+				CacheReadPricePerToken:     0.3e-6,
+			},
+		}),
+		fallbackPrices: map[string]*ModelPricing{},
 	}
-	bs.fallbackPrices["claude-sonnet-4"] = &ModelPricing{
-		InputPricePerToken:         3e-6,
-		OutputPricePerToken:        15e-6,
-		CacheCreationPricePerToken: 3.75e-6,
-		CacheReadPricePerToken:     0.3e-6,
-		SupportsCacheBreakdown:     false,
-	}
-	return bs
 }
 
 func TestResolve_NoGroupID(t *testing.T) {
@@ -810,11 +811,12 @@ func TestApplyTokenOverrides_FlatDoesNotPolluteFallbackPrices(t *testing.T) {
 	require.InDelta(t, 10e-6, resolved.BasePricing.InputPricePerToken, 1e-12)
 	require.InDelta(t, 50e-6, resolved.BasePricing.OutputPricePerToken, 1e-12)
 
-	// Global fallbackPrices must NOT be polluted
-	fp := r.billingService.fallbackPrices["claude-sonnet-4"]
-	require.InDelta(t, 3e-6, fp.InputPricePerToken, 1e-12, "fallback InputPricePerToken polluted")
-	require.InDelta(t, 15e-6, fp.OutputPricePerToken, 1e-12, "fallback OutputPricePerToken polluted")
-	require.False(t, fp.ImageOutputPriceExplicit, "fallback ImageOutputPriceExplicit polluted")
+	// 全局定价状态不得被污染：再次取基础价仍是原值
+	fp, err := r.billingService.GetModelPricing("claude-sonnet-4")
+	require.NoError(t, err)
+	require.InDelta(t, 3e-6, fp.InputPricePerToken, 1e-12, "base InputPricePerToken polluted")
+	require.InDelta(t, 15e-6, fp.OutputPricePerToken, 1e-12, "base OutputPricePerToken polluted")
+	require.False(t, fp.ImageOutputPriceExplicit, "base ImageOutputPriceExplicit polluted")
 }
 
 // TestApplyTokenOverrides_IntervalDoesNotPolluteFallbackPrices verifies that
@@ -837,11 +839,12 @@ func TestApplyTokenOverrides_IntervalDoesNotPolluteFallbackPrices(t *testing.T) 
 	require.NotNil(t, resolved)
 	require.True(t, resolved.BasePricing.ImageOutputPriceExplicit)
 
-	// Global fallbackPrices must NOT be polluted
-	fp := r.billingService.fallbackPrices["claude-sonnet-4"]
-	require.InDelta(t, 3e-6, fp.InputPricePerToken, 1e-12, "fallback InputPricePerToken polluted")
-	require.InDelta(t, 15e-6, fp.OutputPricePerToken, 1e-12, "fallback OutputPricePerToken polluted")
-	require.False(t, fp.ImageOutputPriceExplicit, "fallback ImageOutputPriceExplicit polluted")
+	// 全局定价状态不得被污染：再次取基础价仍是原值
+	fp, err := r.billingService.GetModelPricing("claude-sonnet-4")
+	require.NoError(t, err)
+	require.InDelta(t, 3e-6, fp.InputPricePerToken, 1e-12, "base InputPricePerToken polluted")
+	require.InDelta(t, 15e-6, fp.OutputPricePerToken, 1e-12, "base OutputPricePerToken polluted")
+	require.False(t, fp.ImageOutputPriceExplicit, "base ImageOutputPriceExplicit polluted")
 }
 
 func TestResolve_GroupPricingOverridesChannel(t *testing.T) {
@@ -862,10 +865,10 @@ func TestResolve_GroupPricingOverridesChannel(t *testing.T) {
 
 func TestResolve_GroupLongContextUsesPresetNotCustomIntervals(t *testing.T) {
 	bs := newTestBillingServiceForResolver()
-	bs.fallbackPrices["claude-sonnet-4"].LongContextInputThreshold = 200000
-	bs.fallbackPrices["claude-sonnet-4"].LongContextThresholdInclusive = true
-	bs.fallbackPrices["claude-sonnet-4"].LongContextInputMultiplier = 2
-	bs.fallbackPrices["claude-sonnet-4"].LongContextOutputMultiplier = 2
+	entry := bs.pricingService.pricingData["claude-sonnet-4"]
+	entry.LongContextInputTokenThreshold = 200000
+	entry.LongContextInputCostMultiplier = 2
+	entry.LongContextOutputCostMultiplier = 2
 	r := NewModelPricingResolver(nil, bs)
 	group := &Group{ID: 100, ModelPricing: []ChannelModelPricing{{
 		Models: []string{"claude-sonnet-4"}, BillingMode: BillingModeToken,

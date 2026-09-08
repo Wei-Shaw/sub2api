@@ -29,7 +29,12 @@ func captureStdLog(t *testing.T) *bytes.Buffer {
 	return &buf
 }
 
+// newTestBillingService 带 testFallbackCatalogJSON 目录；只测兜底表本身的用例用 newTestBillingServiceWithoutCatalog。
 func newTestBillingService() *BillingService {
+	return newBillingServiceWithFallbackCatalog(&config.Config{})
+}
+
+func newTestBillingServiceWithoutCatalog() *BillingService {
 	return NewBillingService(&config.Config{}, nil)
 }
 
@@ -95,25 +100,36 @@ func TestCalculateCost_RateMultiplier(t *testing.T) {
 	require.InDelta(t, cost1x.ActualCost*2, cost2x.ActualCost, 1e-10)
 }
 
+// 兜底表只保留在售的 Claude Opus 4.5+ 系列；已下线的 Claude 3.x / Sonnet 4 / Opus 4.x 没有兜底价卡。
 func TestGetModelPricing_FallbackMatchesByFamily(t *testing.T) {
-	svc := newTestBillingService()
+	svc := newTestBillingServiceWithoutCatalog()
 
 	tests := []struct {
 		model         string
 		expectedInput float64
 	}{
 		{"claude-opus-4.5-20250101", 5e-6},
-		{"claude-3-opus-20240229", 15e-6},
-		{"claude-sonnet-4-20250514", 3e-6},
-		{"claude-3-5-sonnet-20241022", 3e-6},
-		{"claude-3-5-haiku-20241022", 1e-6},
-		{"claude-3-haiku-20240307", 0.25e-6},
+		{"claude-opus-4-6-20260201", 5e-6},
+		{"claude-opus-4-8", 5e-6},
 	}
 
 	for _, tt := range tests {
 		pricing, err := svc.GetModelPricing(tt.model)
 		require.NoError(t, err, "模型 %s", tt.model)
 		require.InDelta(t, tt.expectedInput, pricing.InputPricePerToken, 1e-12, "模型 %s 输入价格", tt.model)
+	}
+
+	for _, model := range []string{
+		"claude-3-opus-20240229",
+		"claude-opus-4-1-20250805",
+		"claude-sonnet-4-20250514",
+		"claude-3-5-sonnet-20241022",
+		"claude-3-5-haiku-20241022",
+		"claude-3-haiku-20240307",
+	} {
+		pricing, err := svc.GetModelPricing(model)
+		require.ErrorIs(t, err, ErrModelPricingUnavailable, "模型 %s", model)
+		require.Nil(t, pricing)
 	}
 }
 
@@ -178,17 +194,17 @@ func TestGetModelPricing_GLM52UsesOwnPrice(t *testing.T) {
 	require.InDelta(t, 0.26e-6, got.CacheReadPricePerToken, 1e-12)
 }
 
-func TestGetModelPricing_UnknownClaudeModelFallsBackToSonnet(t *testing.T) {
-	svc := newTestBillingService()
+// 不含 Opus 系列关键字的 Claude 名字没有兜底价卡：目录不可用时 fail-closed。
+func TestGetModelPricing_UnknownClaudeModelReturnsError(t *testing.T) {
+	svc := newTestBillingServiceWithoutCatalog()
 
-	// 不包含 opus/sonnet/haiku 关键词的 Claude 模型会走默认 Sonnet 价格
 	pricing, err := svc.GetModelPricing("claude-unknown-model")
-	require.NoError(t, err)
-	require.InDelta(t, 3e-6, pricing.InputPricePerToken, 1e-12)
+	require.ErrorIs(t, err, ErrModelPricingUnavailable)
+	require.Nil(t, pricing)
 }
 
 func TestGetModelPricing_UnknownOpenAIModelReturnsError(t *testing.T) {
-	svc := newTestBillingService()
+	svc := newTestBillingServiceWithoutCatalog()
 
 	pricing, err := svc.GetModelPricing("gpt-unknown-model")
 	require.Error(t, err)
@@ -197,7 +213,7 @@ func TestGetModelPricing_UnknownOpenAIModelReturnsError(t *testing.T) {
 }
 
 func TestGetModelPricing_OpenAIGPT54Fallback(t *testing.T) {
-	svc := newTestBillingService()
+	svc := newTestBillingServiceWithoutCatalog()
 
 	pricing, err := svc.GetModelPricing("gpt-5.4")
 	require.NoError(t, err)
@@ -222,20 +238,29 @@ func TestGetModelPricing_CatalogAboveTierFieldsDriveLongContext(t *testing.T) {
 	require.False(t, pricing.LongContextThresholdInclusive, "openai 阈值语义为严格大于")
 }
 
-func TestGetModelPricing_OpenAICompactAliasesFallback(t *testing.T) {
-	svc := newTestBillingService()
+// 紧凑拼写别名（gpt5.5 / openai/gpt5.4 / gpt5.3codexspark）经拼写归一后命中目录条目。
+func TestGetModelPricing_OpenAICompactAliasesResolveCatalogEntries(t *testing.T) {
+	svc := NewBillingService(&config.Config{}, newStubPricingServiceFromJSON(t, `{
+		"gpt-5.5": {"litellm_provider": "openai", "mode": "chat",
+			"input_cost_per_token": 5e-06, "output_cost_per_token": 3e-05, "cache_read_input_token_cost": 5e-07},
+		"gpt-5.4": {"litellm_provider": "openai", "mode": "chat",
+			"input_cost_per_token": 2.5e-06, "output_cost_per_token": 1.5e-05, "cache_read_input_token_cost": 2.5e-07},
+		"gpt-5.4-mini": {"litellm_provider": "openai", "mode": "chat",
+			"input_cost_per_token": 7.5e-07, "output_cost_per_token": 4.5e-06, "cache_read_input_token_cost": 7.5e-08},
+		"gpt-5.3-codex-spark": {"litellm_provider": "openai", "mode": "chat",
+			"input_cost_per_token": 1.75e-06, "output_cost_per_token": 1.4e-05, "cache_read_input_token_cost": 1.75e-07}
+	}`))
 
 	tests := []struct {
 		model       string
 		inputPrice  float64
 		outputPrice float64
 		cacheRead   float64
-		longContext int
 	}{
-		{model: "gpt5.5", inputPrice: 5e-6, outputPrice: 30e-6, cacheRead: 0.5e-6, longContext: 0},
-		{model: "openai/gpt5.4", inputPrice: 2.5e-6, outputPrice: 15e-6, cacheRead: 0.25e-6, longContext: 0},
-		{model: "gpt5.4-mini", inputPrice: 7.5e-7, outputPrice: 4.5e-6, cacheRead: 7.5e-8, longContext: 0},
-		{model: "gpt5.3codexspark", inputPrice: 1.5e-6, outputPrice: 12e-6, cacheRead: 0.15e-6, longContext: 0},
+		{model: "gpt5.5", inputPrice: 5e-6, outputPrice: 30e-6, cacheRead: 0.5e-6},
+		{model: "openai/gpt5.4", inputPrice: 2.5e-6, outputPrice: 15e-6, cacheRead: 0.25e-6},
+		{model: "gpt5.4-mini", inputPrice: 7.5e-7, outputPrice: 4.5e-6, cacheRead: 7.5e-8},
+		{model: "gpt5.3codexspark", inputPrice: 1.75e-6, outputPrice: 14e-6, cacheRead: 0.175e-6},
 	}
 
 	for _, tt := range tests {
@@ -246,13 +271,13 @@ func TestGetModelPricing_OpenAICompactAliasesFallback(t *testing.T) {
 			require.InDelta(t, tt.inputPrice, pricing.InputPricePerToken, 1e-12)
 			require.InDelta(t, tt.outputPrice, pricing.OutputPricePerToken, 1e-12)
 			require.InDelta(t, tt.cacheRead, pricing.CacheReadPricePerToken, 1e-12)
-			require.Equal(t, tt.longContext, pricing.LongContextInputThreshold)
+			require.Zero(t, pricing.LongContextInputThreshold)
 		})
 	}
 }
 
 func TestGetModelPricing_OpenAIGPT54MiniFallback(t *testing.T) {
-	svc := newTestBillingService()
+	svc := newTestBillingServiceWithoutCatalog()
 
 	pricing, err := svc.GetModelPricing("gpt-5.4-mini")
 	require.NoError(t, err)
@@ -319,7 +344,7 @@ func TestCalculateCost_OpenAIGPT55ProUsesGPT55PricingPolicy(t *testing.T) {
 }
 
 func TestFallbackPricing_OpenAIGPT55UsesOfficialPrices(t *testing.T) {
-	svc := newTestBillingService()
+	svc := newTestBillingServiceWithoutCatalog()
 
 	pricing, err := svc.GetModelPricing("gpt-5.5")
 	require.NoError(t, err)
@@ -332,7 +357,7 @@ func TestFallbackPricing_OpenAIGPT55UsesOfficialPrices(t *testing.T) {
 }
 
 func TestFallbackPricing_OpenAIGPT55ProUsesOfficialPrices(t *testing.T) {
-	svc := newTestBillingService()
+	svc := newTestBillingServiceWithoutCatalog()
 
 	pricing, err := svc.GetModelPricing("gpt-5.5-pro")
 	require.NoError(t, err)
@@ -443,7 +468,7 @@ func TestCalculateCost_OpenAIGPT54NoLongContextKeepsCacheCreationAtBasePrice(t *
 func TestCalculateCost_LongContextAppliesMultiplierToCacheCreation5mAnd1h(t *testing.T) {
 	svc := &BillingService{
 		cfg: &config.Config{},
-		fallbackPrices: map[string]*ModelPricing{
+		pricingService: newPricingServiceFromModelPricing(map[string]*ModelPricing{
 			"claude-sonnet-4": {
 				InputPricePerToken:          3e-6,
 				OutputPricePerToken:         15e-6,
@@ -455,7 +480,8 @@ func TestCalculateCost_LongContextAppliesMultiplierToCacheCreation5mAnd1h(t *tes
 				LongContextInputMultiplier:  2.0,
 				LongContextOutputMultiplier: 1.5,
 			},
-		},
+		}),
+		fallbackPrices: map[string]*ModelPricing{},
 	}
 
 	// InputTokens + CacheReadTokens = 1000 + 300000 = 301000 > 272000 阈值
@@ -493,16 +519,23 @@ func TestGetFallbackPricing_FamilyMatching(t *testing.T) {
 		{name: "empty model", model: "   ", expectNilPricing: true},
 		{name: "claude opus 4.6", model: "claude-opus-4.6-20260201", expectedInput: 5e-6},
 		{name: "claude opus 4.5 alt separator", model: "claude-opus-4-5-20260101", expectedInput: 5e-6},
-		{name: "claude generic model fallback sonnet", model: "claude-foo-bar", expectedInput: 3e-6},
+		// Claude 3.x / Sonnet 4 价卡与 claude 通配分支已删除；不含 Opus 系列关键字的 claude-* 名字返回 nil。
+		{name: "claude generic model no fallback", model: "claude-foo-bar", expectNilPricing: true},
+		{name: "claude sonnet no fallback", model: "claude-sonnet-4-5", expectNilPricing: true},
+		{name: "claude haiku no fallback", model: "claude-3-5-haiku-20241022", expectNilPricing: true},
 		{name: "gemini explicit fallback", model: "gemini-3-1-pro", expectedInput: 2e-6},
 		{name: "gemini unknown no fallback", model: "gemini-2.0-pro", expectNilPricing: true},
+		{name: "openai gpt5.5", model: "gpt-5.5", expectedInput: 5e-6},
+		{name: "openai gpt5.6 sol", model: "gpt-5.6-sol", expectedInput: 5e-6},
 		{name: "openai gpt5.4", model: "gpt-5.4", expectedInput: 2.5e-6},
 		{name: "openai gpt5.4 mini", model: "gpt-5.4-mini", expectedInput: 7.5e-7},
-		{name: "openai gpt5.3 codex", model: "gpt-5.3-codex", expectedInput: 1.5e-6},
-		{name: "openai gpt5.3 codex spark", model: "gpt-5.3-codex-spark", expectedInput: 1.5e-6},
+		{name: "openai gpt5.2", model: "gpt-5.2", expectedInput: 1.75e-6},
 		{name: "openai legacy gpt5.1 falls back to gpt5.4", model: "gpt-5.1", expectedInput: 2.5e-6},
-		{name: "openai legacy gpt5.1 codex falls back to gpt5.3 codex", model: "gpt-5.1-codex", expectedInput: 1.5e-6},
-		{name: "openai legacy codex mini latest falls back to gpt5.3 codex", model: "codex-mini-latest", expectedInput: 1.5e-6},
+		// 已关停的 Codex 系型号不再归一化，兜底表返回 nil；spark 只按目录计价。
+		{name: "openai retired gpt5.3 codex no fallback", model: "gpt-5.3-codex", expectNilPricing: true},
+		{name: "openai retired gpt5.1 codex no fallback", model: "gpt-5.1-codex", expectNilPricing: true},
+		{name: "openai retired codex mini latest no fallback", model: "codex-mini-latest", expectNilPricing: true},
+		{name: "openai gpt5.3 codex spark no fallback", model: "gpt-5.3-codex-spark", expectNilPricing: true},
 		{name: "openai unknown no fallback", model: "gpt-unknown-model", expectNilPricing: true},
 		{
 			name:              "deepseek v4 pro",
@@ -1059,7 +1092,7 @@ func TestCalculateCost_ZeroTokens(t *testing.T) {
 func TestCalculateCostWithConfig(t *testing.T) {
 	cfg := &config.Config{}
 	cfg.Default.RateMultiplier = 1.5
-	svc := NewBillingService(cfg, nil)
+	svc := newBillingServiceWithFallbackCatalog(cfg)
 
 	tokens := UsageTokens{InputTokens: 1000, OutputTokens: 500}
 	cost, err := svc.CalculateCostWithConfig("claude-sonnet-4", tokens)
@@ -1072,7 +1105,7 @@ func TestCalculateCostWithConfig(t *testing.T) {
 func TestCalculateCostWithConfig_ZeroMultiplier(t *testing.T) {
 	cfg := &config.Config{}
 	cfg.Default.RateMultiplier = 0
-	svc := NewBillingService(cfg, nil)
+	svc := newBillingServiceWithFallbackCatalog(cfg)
 
 	tokens := UsageTokens{InputTokens: 1000}
 	cost, err := svc.CalculateCostWithConfig("claude-sonnet-4", tokens)
@@ -1108,7 +1141,7 @@ func TestGetPricingServiceStatus_NilService(t *testing.T) {
 }
 
 func TestForceUpdatePricing_NilService(t *testing.T) {
-	svc := newTestBillingService()
+	svc := newTestBillingServiceWithoutCatalog()
 
 	err := svc.ForceUpdatePricing()
 	require.Error(t, err)
@@ -1298,7 +1331,7 @@ func TestGetModelPricing_GrokCatalogFallbacks(t *testing.T) {
 func TestCalculateCost_SupportsCacheBreakdown(t *testing.T) {
 	svc := &BillingService{
 		cfg: &config.Config{},
-		fallbackPrices: map[string]*ModelPricing{
+		pricingService: newPricingServiceFromModelPricing(map[string]*ModelPricing{
 			"claude-sonnet-4": {
 				InputPricePerToken:     3e-6,
 				OutputPricePerToken:    15e-6,
@@ -1306,7 +1339,8 @@ func TestCalculateCost_SupportsCacheBreakdown(t *testing.T) {
 				CacheCreation5mPrice:   4e-6, // per token
 				CacheCreation1hPrice:   5e-6, // per token
 			},
-		},
+		}),
+		fallbackPrices: map[string]*ModelPricing{},
 	}
 
 	tokens := UsageTokens{
@@ -1469,10 +1503,10 @@ func TestCalculateCostWithServiceTier_OpenAIPriorityUsesPriorityPricing(t *testi
 	svc := newTestBillingService()
 	tokens := UsageTokens{InputTokens: 100, OutputTokens: 50, CacheReadTokens: 20}
 
-	baseCost, err := svc.CalculateCost("gpt-5.1-codex", tokens, 1.0)
+	baseCost, err := svc.CalculateCost("gpt-5.4", tokens, 1.0)
 	require.NoError(t, err)
 
-	priorityCost, err := svc.CalculateCostWithServiceTier("gpt-5.1-codex", tokens, 1.0, "priority")
+	priorityCost, err := svc.CalculateCostWithServiceTier("gpt-5.4", tokens, 1.0, "priority")
 	require.NoError(t, err)
 
 	require.InDelta(t, baseCost.InputCost*2, priorityCost.InputCost, 1e-10)
@@ -1582,7 +1616,7 @@ func TestBillingServiceGetModelPricing_UsesDynamicPriorityFields(t *testing.T) {
 }
 
 func TestBillingServiceGetModelPricing_OpenAIFallbackGpt52Variants(t *testing.T) {
-	svc := newTestBillingService()
+	svc := newTestBillingServiceWithoutCatalog()
 
 	gpt52, err := svc.GetModelPricing("gpt-5.2")
 	require.NoError(t, err)
@@ -1625,7 +1659,7 @@ func TestCalculateCostWithServiceTier_PriorityFallsBackToTierMultiplierWhenExpli
 }
 
 func TestGetModelPricing_OpenAIGpt52FallbacksExposePriorityPrices(t *testing.T) {
-	svc := newTestBillingService()
+	svc := newTestBillingServiceWithoutCatalog()
 
 	gpt52, err := svc.GetModelPricing("gpt-5.2")
 	require.NoError(t, err)

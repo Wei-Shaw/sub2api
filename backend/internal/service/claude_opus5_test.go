@@ -63,12 +63,10 @@ func TestClaudeOpus5_HardcodedFallbackPricing(t *testing.T) {
 	}{
 		{"claude-opus-5", opus5InputPricePerToken, opus5OutputPricePerToken},
 		{"us.anthropic.claude-opus-5-v1", opus5InputPricePerToken, opus5OutputPricePerToken},
-		// 4.8 与 5 同价；修复前兜底表缺失，会掉到 claude-3-opus 的 $15/$75
+		// 4.8 与 5 同价
 		{"claude-opus-4-8", opus5InputPricePerToken, opus5OutputPricePerToken},
 		// 相邻型号不能被 "opus-5" 误匹配
 		{"claude-opus-4-5-20251101", 5e-6, 25e-6},
-		{"claude-opus-4-1-20250805", 15e-6, 75e-6},
-		{"claude-3-opus-20240229", 15e-6, 75e-6},
 	}
 	for _, tt := range tests {
 		t.Run(tt.model, func(t *testing.T) {
@@ -77,6 +75,15 @@ func TestClaudeOpus5_HardcodedFallbackPricing(t *testing.T) {
 			require.NotNil(t, pricing)
 			assert.InDelta(t, tt.input, pricing.InputPricePerToken, 1e-12)
 			assert.InDelta(t, tt.output, pricing.OutputPricePerToken, 1e-12)
+		})
+	}
+
+	// Opus 4.1 / Claude 3 Opus 已下线：兜底表不持有其价卡，也不得被 Opus 4.5+ 分支误接。
+	for _, model := range []string{"claude-opus-4-1-20250805", "claude-3-opus-20240229"} {
+		t.Run(model, func(t *testing.T) {
+			pricing, err := svc.GetModelPricing(model)
+			require.ErrorIs(t, err, ErrModelPricingUnavailable)
+			require.Nil(t, pricing)
 		})
 	}
 

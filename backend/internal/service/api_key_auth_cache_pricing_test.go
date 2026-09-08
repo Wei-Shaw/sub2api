@@ -38,9 +38,12 @@ func TestAPIKeyAuthSnapshotGroupPricingRoundtrip(t *testing.T) {
 	require.True(t, materialized.Group.LongContextPricingEnabled)
 	require.Equal(t, apiKey.Group.ModelPricing, materialized.Group.ModelPricing)
 
-	billing := &BillingService{fallbackPrices: map[string]*ModelPricing{
-		"claude-sonnet-4": {InputPricePerToken: 3e-6, OutputPricePerToken: 15e-6},
-	}}
+	billing := &BillingService{
+		pricingService: &PricingService{pricingData: map[string]*LiteLLMModelPricing{
+			"claude-sonnet-4": {InputCostPerToken: 3e-6, OutputCostPerToken: 15e-6},
+		}},
+		fallbackPrices: map[string]*ModelPricing{},
+	}
 	resolver := NewModelPricingResolver(nil, billing)
 	resolved := resolver.Resolve(context.Background(), PricingInput{Model: "claude-sonnet-4", Group: materialized.Group})
 	require.Equal(t, PricingSourceGroup, resolved.Source)

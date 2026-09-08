@@ -16,7 +16,7 @@ import (
 // 家族模糊匹配错计（Opus 流量按 Sonnet 兜底价）。compositeBillableModel 要求别名必须
 // 有显式渠道定价才可参与计费，否则回退实际转发的具体模型。
 func TestCompositeBillableModel(t *testing.T) {
-	svc := &GatewayService{billingService: NewBillingService(&config.Config{}, nil)}
+	svc := &GatewayService{billingService: newBillingServiceWithFallbackCatalog(&config.Config{})}
 	apiKey := &APIKey{}
 	ctx := context.Background()
 
@@ -38,11 +38,11 @@ func TestCompositeBillableModel(t *testing.T) {
 // billableModelWithFallback 是通用安全网：选定计费模型查不到任何价格时回退到
 // 实际转发的具体模型；已定价流量（含家族兜底可解析的名字）不受影响。
 func TestBillableModelWithFallback(t *testing.T) {
-	svc := &GatewayService{billingService: NewBillingService(&config.Config{}, nil)}
+	svc := &GatewayService{billingService: newBillingServiceWithFallbackCatalog(&config.Config{})}
 	apiKey := &APIKey{}
 	ctx := context.Background()
 
-	// 完全无价的别名 → 回退到具体转发模型（claude-sonnet-4 有内置回退价格）
+	// 完全无价的别名 → 回退到具体转发模型（claude-sonnet-4 目录有价）
 	require.Equal(t, "claude-sonnet-4",
 		svc.billableModelWithFallback(ctx, apiKey, "team/best", "", "claude-sonnet-4"))
 
@@ -60,14 +60,14 @@ func TestBillableModelWithFallback(t *testing.T) {
 }
 
 func TestHasResolvableTokenPricing(t *testing.T) {
-	svc := &GatewayService{billingService: NewBillingService(&config.Config{}, nil)}
+	svc := &GatewayService{billingService: newBillingServiceWithFallbackCatalog(&config.Config{})}
 	apiKey := &APIKey{}
 	ctx := context.Background()
 
 	require.True(t, svc.hasResolvableTokenPricing(ctx, "claude-sonnet-4", apiKey))
-	// 注意：含家族词的名字（all/claude）会被价格表家族兜底解析为"有价"，
-	// 这正是 compositeBillableModel 必须先于通用兜底拦截别名的原因。
-	require.True(t, svc.hasResolvableTokenPricing(ctx, "all/claude", apiKey))
+	// 只含 claude 家族词、不含 opus/sonnet/haiku 的别名（all/claude）没有兜底价卡，不会被解析为"有价"；
+	// 含后三者的别名仍会被目录家族模糊匹配解析，故 compositeBillableModel 仍必须先于通用兜底拦截别名。
+	require.False(t, svc.hasResolvableTokenPricing(ctx, "all/claude", apiKey))
 	require.False(t, svc.hasResolvableTokenPricing(ctx, "team/best", apiKey))
 	require.False(t, svc.hasResolvableTokenPricing(ctx, "", apiKey))
 

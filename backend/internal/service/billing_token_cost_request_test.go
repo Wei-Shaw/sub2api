@@ -24,6 +24,9 @@ func newTokenCostTestEnv(t *testing.T, groupPlatform string, pricing []ChannelMo
 		},
 	}
 	cs := NewChannelService(repo, nil, nil, nil, nil)
+	if catalog == nil {
+		catalog = newFallbackCatalogPricingService()
+	}
 	bs := NewBillingService(&config.Config{}, catalog)
 	return bs, NewModelPricingResolver(cs, bs)
 }
@@ -208,7 +211,7 @@ func TestCalculateTokenCostForRequest_BuiltInPricingUsesUnifiedPath(t *testing.T
 }
 
 func TestCalculateTokenCostForRequest_NoResolverFallsBackToCatalog(t *testing.T) {
-	bs := NewBillingService(&config.Config{}, nil)
+	bs := newBillingServiceWithFallbackCatalog(&config.Config{})
 	tokens := UsageTokens{InputTokens: 1000, OutputTokens: 10}
 	got, err := bs.CalculateTokenCostForRequest(TokenCostRequest{Model: "gpt-5.4", Tokens: tokens, RateMultiplier: 1})
 	require.NoError(t, err)

@@ -192,7 +192,7 @@ func TestCalculateCostUnified_NonDeepseekDefaultCardNotScaledByPeak(t *testing.T
 	resolver := NewModelPricingResolver(nil, bs)
 
 	tokens := UsageTokens{InputTokens: 1000, OutputTokens: 500}
-	total := 1000*3e-6 + 500*15e-6 // claude-sonnet-4 fallback
+	total := 1000*3e-6 + 500*15e-6 // claude-sonnet-4 目录价
 
 	for _, pricingAt := range []time.Time{
 		time.Date(2026, 8, 24, 12, 0, 0, 0, time.UTC),

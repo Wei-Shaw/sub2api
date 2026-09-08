@@ -491,50 +491,22 @@ func TestPricingService_MergesFallbackOnlyModels(t *testing.T) {
 	require.InDelta(t, 0.034, merged["gemini-3.1-flash-lite-image"].OutputCostPerImage, 1e-12)
 }
 
-func TestGetModelPricing_Gpt53CodexSparkUsesGpt51CodexPricing(t *testing.T) {
-	sparkPricing := &LiteLLMModelPricing{InputCostPerToken: 1}
-	gpt53Pricing := &LiteLLMModelPricing{InputCostPerToken: 9}
-
-	svc := &PricingService{
-		pricingData: map[string]*LiteLLMModelPricing{
-			"gpt-5.1-codex": sparkPricing,
-			"gpt-5.3":       gpt53Pricing,
-		},
-	}
-
-	got := svc.GetModelPricing("gpt-5.3-codex-spark")
-	require.Same(t, sparkPricing, got)
-}
-
-func TestGetModelPricing_Gpt53CodexFallbackStillUsesGpt52Codex(t *testing.T) {
-	gpt52CodexPricing := &LiteLLMModelPricing{InputCostPerToken: 2}
-
-	svc := &PricingService{
-		pricingData: map[string]*LiteLLMModelPricing{
-			"gpt-5.2-codex": gpt52CodexPricing,
-		},
-	}
-
-	got := svc.GetModelPricing("gpt-5.3-codex")
-	require.Same(t, gpt52CodexPricing, got)
-}
-
 func TestGetModelPricing_OpenAIFallbackMatchedLoggedAsInfo(t *testing.T) {
 	logSink, restore := captureStructuredLog(t)
 	defer restore()
 
-	gpt52CodexPricing := &LiteLLMModelPricing{InputCostPerToken: 2}
+	gpt55Pricing := &LiteLLMModelPricing{InputCostPerToken: 2}
 	svc := &PricingService{
 		pricingData: map[string]*LiteLLMModelPricing{
-			"gpt-5.2-codex": gpt52CodexPricing,
+			"gpt-5.5": gpt55Pricing,
 		},
 	}
 
-	got := svc.GetModelPricing("gpt-5.3-codex")
-	require.Same(t, gpt52CodexPricing, got)
+	got := svc.GetModelPricing("gpt-5.5-mini")
+	require.Same(t, gpt55Pricing, got)
 
-	require.True(t, logSink.ContainsMessageAtLevel("[Pricing] OpenAI fallback matched gpt-5.3-codex -> gpt-5.2-codex", "info"))
-	require.False(t, logSink.ContainsMessageAtLevel("[Pricing] OpenAI fallback matched gpt-5.3-codex -> gpt-5.2-codex", "warn"))
+	require.True(t, logSink.ContainsMessageAtLevel("[Pricing] OpenAI fallback matched gpt-5.5-mini -> gpt-5.5", "info"))
+	require.False(t, logSink.ContainsMessageAtLevel("[Pricing] OpenAI fallback matched gpt-5.5-mini -> gpt-5.5", "warn"))
 }
 
 func TestGetModelPricing_Gpt54UsesStaticFallbackWhenRemoteMissing(t *testing.T) {
@@ -553,17 +525,33 @@ func TestGetModelPricing_Gpt54UsesStaticFallbackWhenRemoteMissing(t *testing.T) 
 	require.Zero(t, got.LongContextInputTokenThreshold)
 }
 
-func TestGetModelPricing_OpenAICompactAliasUsesStaticFallback(t *testing.T) {
+// 已关停的 gpt-5.3-codex 系没有代码侧静态价卡，也不再回退到 gpt-5.2-codex / gpt-5.1-codex：
+// 目录无条目时返回 nil（spark 只按目录计价）。
+func TestGetModelPricing_Gpt53CodexFamilyHasNoStaticFallback(t *testing.T) {
+	svc := &PricingService{pricingData: map[string]*LiteLLMModelPricing{
+		"gpt-5.1-codex": {InputCostPerToken: 1.25e-6},
+		"gpt-5.2-codex": {InputCostPerToken: 2e-6},
+	}}
+
+	for _, model := range []string{"gpt-5.3-codex", "gpt-5.3-codex-xhigh", "gpt-5.3-codex-spark"} {
+		t.Run(model, func(t *testing.T) {
+			require.Nil(t, svc.GetModelPricing(model))
+		})
+	}
+}
+func TestGetModelPricing_OpenAICompactAliasResolvesCatalogEntry(t *testing.T) {
+	gpt55 := &LiteLLMModelPricing{InputCostPerToken: 5e-6, OutputCostPerToken: 3e-5}
 	svc := &PricingService{
 		pricingData: map[string]*LiteLLMModelPricing{
-			"gpt-5.1-codex": {InputCostPerToken: 1.25e-6},
+			"gpt-5.5": gpt55,
 		},
 	}
 
-	got := svc.GetModelPricing("openai/gpt5.5")
-	require.NotNil(t, got)
-	require.InDelta(t, 2.5e-6, got.InputCostPerToken, 1e-12)
-	require.InDelta(t, 1.5e-5, got.OutputCostPerToken, 1e-12)
+	for _, alias := range []string{"openai/gpt5.5", "gpt5.5", "GPT-5.5"} {
+		t.Run(alias, func(t *testing.T) {
+			require.Same(t, gpt55, svc.GetModelPricing(alias))
+		})
+	}
 }
 
 func TestPricingService_GeminiFlashThinkingTiersUseBasePricing(t *testing.T) {

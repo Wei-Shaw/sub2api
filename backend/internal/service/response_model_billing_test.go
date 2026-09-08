@@ -15,8 +15,8 @@ import (
 //  2. 两者都能被 HasIdentifiedTokenPricing 确定性识别（即价格表里的精确条目），
 //     否则请求会先被"响应模型必须可识别"这道更靠前的门挡掉，成本比较根本走不到。
 //
-// claude-opus-4 / gpt-5.1 之类的名字不满足条件 2（前者不是 fallback 精确键，
-// 后者与 gpt-5.5 共用同一条 gpt-5.4 价格因而也不满足条件 1）。
+// claude-opus-4 / gpt-5.1 之类的名字不满足条件 2（都不是目录或兜底表的精确键，
+// 只能靠系列或变体回退查到价）。
 const (
 	anthropicCheapFixtureModel  = "claude-sonnet-4"
 	anthropicPriceyFixtureModel = "claude-opus-4.8"
@@ -364,7 +364,7 @@ func TestBillingServiceHasIdentifiedTokenPricing_RejectsFamilyGuesses(t *testing
 	require.True(t, billing.HasIdentifiedTokenPricing("  CLAUDE-SONNET-4  "), "识别应当忽略大小写与空白")
 	require.True(t, billing.HasIdentifiedTokenPricing("gpt-5.4-nano"))
 
-	const forged = "totally-made-up-haiku-v9"
+	const forged = "totally-made-up-sonnet-v9"
 	if _, err := billing.GetModelPricing(forged); err == nil {
 		// 这正是本函数存在的理由：宽松查价对编造的名字也会成功。
 		require.False(t, billing.HasIdentifiedTokenPricing(forged),
@@ -385,7 +385,7 @@ func TestGatewayServiceRecordUsage_ResponseModelRejectsUnidentifiedFamilyName(t 
 	userRepo := &openAIRecordUsageUserRepoStub{}
 	svc := newGatewayRecordUsageServiceForTest(usageRepo, userRepo, &openAIRecordUsageSubRepoStub{})
 	tokens := UsageTokens{InputTokens: 100, OutputTokens: 50}
-	const forged = "totally-made-up-haiku-v9"
+	const forged = "totally-made-up-sonnet-v9"
 
 	baselineCost, err := svc.billingService.CalculateCost(anthropicPriceyFixtureModel, tokens, 1.1)
 	require.NoError(t, err)
@@ -424,7 +424,7 @@ func TestOpenAIGatewayServiceRecordUsage_ResponseModelRejectsUnidentifiedFamilyN
 	userRepo := &openAIRecordUsageUserRepoStub{}
 	svc := newOpenAIRecordUsageServiceForTest(usageRepo, userRepo, &openAIRecordUsageSubRepoStub{}, nil)
 	tokens := UsageTokens{InputTokens: 20, OutputTokens: 10}
-	const forged = "totally-made-up-haiku-v9"
+	const forged = "totally-made-up-sonnet-v9"
 
 	baselineCost, err := svc.billingService.CalculateCost(openAIPriceyFixtureModel, tokens, 1.1)
 	require.NoError(t, err)
