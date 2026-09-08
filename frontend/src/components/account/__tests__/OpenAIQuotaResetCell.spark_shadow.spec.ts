@@ -411,6 +411,30 @@ describe('OpenAIQuotaResetCell 自动用卡运行态', () => {
     wrapper.unmount()
   })
 
+  // 查询阶段的失败不是用卡失败，标签要按错误码区分，避免误以为消耗了重置卡。
+  it.each([
+    ['RESET_CREDIT_QUERY_FAILED', 'queryFailed'],
+    ['RESET_CREDIT_DETAILS_UNAVAILABLE', 'queryFailed'],
+    ['OPENAI_AUTO_RESET_FAILED', 'failed'],
+  ] as const)('failed 状态按错误码 %s 区分查询失败与用卡失败', (errorCode, labelKey) => {
+    const account = makeAccount({
+      extra: {
+        auto_reset_credit_expiry_enabled: true,
+        codex_auto_reset_credit_state: {
+          status: 'failed',
+          available_count: 2,
+          checked_at: '2099-07-03T04:05:06Z',
+          error_code: errorCode,
+        },
+      },
+    })
+    const wrapper = mount(OpenAIQuotaResetCell, { props: { account } })
+    const state = wrapper.get('[data-testid="auto-reset-credit-state"]')
+    expect(state.text()).toContain(`admin.accounts.openaiQuotaReset.autoStatus.${labelKey}`)
+    expect(state.text()).toContain(errorCode)
+    wrapper.unmount()
+  })
+
   it('开关关闭时不显示历史运行态', () => {
     const account = makeAccount({
       extra: {

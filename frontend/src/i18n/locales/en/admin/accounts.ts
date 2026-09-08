@@ -1594,7 +1594,8 @@ export default {
           resetting: 'Auto-resetting',
           success: 'Auto-reset succeeded',
           noCredit: 'No credit',
-          failed: 'Auto-reset failed'
+          failed: 'Auto-reset failed',
+          queryFailed: 'Credit query failed'
         },
         confirmTitle: 'Confirm Weekly Limit Reset',
         confirmMessage: 'This will consume 1 reset credit to immediately restore the current window ({count} remaining). This action cannot be undone. Continue?'

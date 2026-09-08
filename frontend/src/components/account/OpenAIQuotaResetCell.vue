@@ -217,8 +217,20 @@ const autoResetState = computed<AutoResetCreditState | null>(() => {
   if (!state || typeof state !== 'object' || !visibleAutoResetStatuses.has(String(state.status))) return null
   return state
 })
+// 查询阶段的失败没有消耗重置卡，与用卡失败分开展示。
+const autoResetQueryFailureCodes = new Set([
+  'RESET_CREDIT_QUERY_FAILED',
+  'RESET_CREDIT_DETAILS_INCOMPLETE',
+  'RESET_CREDIT_DETAILS_UNAVAILABLE',
+  'USAGE_SNAPSHOT_WRITE_FAILED'
+])
+const autoResetQueryFailed = computed(() => {
+  const state = autoResetState.value
+  return state?.status === 'failed' && autoResetQueryFailureCodes.has(String(state.error_code ?? ''))
+})
 const autoResetStateLabel = computed(() => {
   if (!autoResetState.value?.status) return ''
+  if (autoResetQueryFailed.value) return t('admin.accounts.openaiQuotaReset.autoStatus.queryFailed')
   const keyByStatus: Record<string, string> = {
     resetting: 'resetting',
     success: 'success',
@@ -228,6 +240,9 @@ const autoResetStateLabel = computed(() => {
   return t(`admin.accounts.openaiQuotaReset.autoStatus.${keyByStatus[autoResetState.value.status]}`)
 })
 const autoResetStateClass = computed(() => {
+  if (autoResetQueryFailed.value) {
+    return 'bg-amber-50 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300'
+  }
   switch (autoResetState.value?.status) {
     case 'success':
       return 'bg-emerald-50 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300'

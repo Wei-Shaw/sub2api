@@ -510,7 +510,8 @@ export default {
           resetting: '自动重置中',
           success: '自动重置成功',
           noCredit: '无卡',
-          failed: '自动重置失败'
+          failed: '自动重置失败',
+          queryFailed: '次数查询失败'
         },
         confirmTitle: '确认重置周限',
         confirmMessage: '将消耗 1 次重置次数立即恢复当前窗口，剩余 {count} 次。此操作不可撤销，确定继续吗？'
