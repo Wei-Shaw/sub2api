@@ -201,9 +201,12 @@ func TestSettingHandler_UpdateSettings_PreservesOmittedAuthSourceDefaults(t *tes
 	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
 	data, ok := resp.Data.(map[string]any)
 	require.True(t, ok)
+	// PUT 响应只回传发送的字段（见 setting_handler_response_filter.go）：
+	// email_balance 这次发送了 → 回传终值；未发送的 concurrency /
+	// force_email_on_third_party_signup 不再出现在响应里。
 	require.Equal(t, 12.75, data["auth_source_default_email_balance"])
-	require.Equal(t, float64(8), data["auth_source_default_email_concurrency"])
-	require.Equal(t, true, data["force_email_on_third_party_signup"])
+	require.NotContains(t, data, "auth_source_default_email_concurrency")
+	require.NotContains(t, data, "force_email_on_third_party_signup")
 }
 
 func TestSettingHandler_UpdateSettings_PersistsPaymentVisibleMethodsAndAdvancedScheduler(t *testing.T) {

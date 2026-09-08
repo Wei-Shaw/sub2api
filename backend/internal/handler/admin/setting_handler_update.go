@@ -2398,7 +2398,10 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 	} else {
 		payload.DefaultPlatformQuotas = platformQuotas
 	}
-	response.Success(c, systemSettingsResponseData(payload, updatedAuthSourceDefaults))
+	// PUT 响应只回传本次发送的字段及其只读伴生键（见 setting_handler_response_filter.go），
+	// 客户端按「键存在才写」合并；整份文档由 GET 负责。
+	response.Success(c, filterSystemSettingsResponseForPut(
+		systemSettingsResponseData(payload, updatedAuthSourceDefaults), sentFields))
 }
 
 // hasPaymentFields returns true if any payment-related field was explicitly provided.

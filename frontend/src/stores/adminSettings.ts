@@ -109,6 +109,11 @@ export const useAdminSettingsStore = defineStore('adminSettings', () => {
     loaded.value = true
   }
 
+  function setCustomMenuItemsLocal(value: CustomMenuItem[]) {
+    customMenuItems.value = Array.isArray(value) ? value : []
+    loaded.value = true
+  }
+
   // Keep UI consistent if we learn that ops is disabled via feature-gated 404s.
   // (event is dispatched from the axios interceptor)
   let eventHandlerCleanup: (() => void) | null = null
@@ -145,6 +150,7 @@ export const useAdminSettingsStore = defineStore('adminSettings', () => {
     setOpsMonitoringEnabledLocal,
     setOpsRealtimeMonitoringEnabledLocal,
     setPaymentEnabledLocal,
-    setOpsQueryModeDefaultLocal
+    setOpsQueryModeDefaultLocal,
+    setCustomMenuItemsLocal
   }
 })
