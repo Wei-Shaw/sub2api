@@ -256,3 +256,38 @@ func TestBuildCodexUsageProgressFromExtra_ZerosExpiredWindow(t *testing.T) {
 		}
 	})
 }
+
+func TestBuildCodexUsageProgressFromExtra_UsesRealWindowLength(t *testing.T) {
+	t.Parallel()
+	now := time.Date(2026, 7, 12, 13, 0, 0, 0, time.FixedZone("CST", 8*60*60))
+
+	t.Run("zero minute placeholder is unavailable", func(t *testing.T) {
+		progress := buildCodexUsageProgressFromExtra(map[string]any{
+			"codex_5h_used_percent":   0,
+			"codex_5h_window_minutes": 0,
+			"codex_5h_reset_at":       now.Format(time.RFC3339),
+		}, "5h", now)
+		if progress != nil {
+			t.Fatalf("expected zero-minute placeholder to be ignored, got %#v", progress)
+		}
+	})
+
+	t.Run("30 day window controls stats start", func(t *testing.T) {
+		resetAt := time.Date(2026, 8, 11, 9, 5, 0, 0, now.Location())
+		progress := buildCodexUsageProgressFromExtra(map[string]any{
+			"codex_7d_used_percent":   88,
+			"codex_7d_window_minutes": 43800,
+			"codex_7d_reset_at":       resetAt.Format(time.RFC3339),
+		}, "7d", now)
+		if progress == nil {
+			t.Fatal("expected 30-day progress")
+		}
+		if progress.WindowMinutes != 43800 {
+			t.Fatalf("WindowMinutes = %d, want 43800", progress.WindowMinutes)
+		}
+		wantStart := resetAt.Add(-43800 * time.Minute)
+		if got := codexWindowStatsStart(progress, 7*24*time.Hour, now); !got.Equal(wantStart) {
+			t.Fatalf("stats start = %v, want %v", got, wantStart)
+		}
+	})
+}
