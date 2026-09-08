@@ -5,12 +5,19 @@ import (
 	"net/http"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/require"
 )
 
 type accountUsageCodexProbeRepo struct {
 	stubOpenAIAccountRepo
-	updateExtraCh chan map[string]any
-	rateLimitCh   chan time.Time
+	updateExtraCh                 chan map[string]any
+	rateLimitCh                   chan time.Time
+	openAIRateLimitRecoveryCalls  int
+	openAIRateLimitRecoveryID     int64
+	openAIRateLimitObservedAt     time.Time
+	openAIRateLimitObservedReset  time.Time
+	openAIRateLimitRecoveryResult bool
 }
 
 func (r *accountUsageCodexProbeRepo) UpdateExtra(_ context.Context, _ int64, updates map[string]any) error {
@@ -29,6 +36,14 @@ func (r *accountUsageCodexProbeRepo) SetRateLimited(_ context.Context, _ int64, 
 		r.rateLimitCh <- resetAt
 	}
 	return nil
+}
+
+func (r *accountUsageCodexProbeRepo) ClearOpenAIRateLimitIfObserved(_ context.Context, id int64, observedLimitedAt, observedResetAt time.Time) (bool, error) {
+	r.openAIRateLimitRecoveryCalls++
+	r.openAIRateLimitRecoveryID = id
+	r.openAIRateLimitObservedAt = observedLimitedAt
+	r.openAIRateLimitObservedReset = observedResetAt
+	return r.openAIRateLimitRecoveryResult, nil
 }
 
 func TestShouldRefreshOpenAICodexSnapshot(t *testing.T) {
@@ -139,6 +154,113 @@ func TestExtractOpenAICodexProbeUpdatesAccepts429WithCodexHeaders(t *testing.T) 
 	if got := updates["codex_7d_used_percent"]; got != 100.0 {
 		t.Fatalf("codex_7d_used_percent = %v, want 100", got)
 	}
+}
+
+func TestGetOpenAIUsage_NormalOAuthProbeClearsRecoveredAccountRateLimit(t *testing.T) {
+	t.Parallel()
+
+	limitedAt := time.Date(2026, 9, 3, 7, 54, 0, 0, time.UTC)
+	resetAt := time.Date(2026, 9, 9, 1, 51, 0, 0, time.UTC)
+	account := &Account{
+		ID:               321,
+		Platform:         PlatformOpenAI,
+		Type:             AccountTypeOAuth,
+		Status:           StatusActive,
+		RateLimitedAt:    &limitedAt,
+		RateLimitResetAt: &resetAt,
+	}
+	repo := &accountUsageCodexProbeRepo{
+		stubOpenAIAccountRepo:         stubOpenAIAccountRepo{accounts: []Account{*account}},
+		openAIRateLimitRecoveryResult: true,
+	}
+	svc := &AccountUsageService{
+		accountRepo: repo,
+		openAICodexSnapshotProbe: func(context.Context, *Account) (map[string]any, error) {
+			return map[string]any{
+				"codex_5h_used_percent":        0.0,
+				"codex_5h_reset_after_seconds": 3600,
+				"codex_7d_used_percent":        0.0,
+				"codex_7d_reset_after_seconds": 86400,
+			}, nil
+		},
+	}
+
+	_, err := svc.getOpenAIUsage(context.Background(), account, true)
+	require.NoError(t, err)
+	require.Equal(t, 1, repo.openAIRateLimitRecoveryCalls)
+	require.Equal(t, account.ID, repo.openAIRateLimitRecoveryID)
+	require.Equal(t, limitedAt, repo.openAIRateLimitObservedAt)
+	require.Equal(t, resetAt, repo.openAIRateLimitObservedReset)
+}
+
+func TestGetOpenAIUsage_NormalOAuthProbeKeepsExhaustedAccountRateLimit(t *testing.T) {
+	t.Parallel()
+
+	limitedAt := time.Date(2026, 9, 3, 7, 54, 0, 0, time.UTC)
+	resetAt := time.Date(2026, 9, 9, 1, 51, 0, 0, time.UTC)
+	account := &Account{
+		ID:               322,
+		Platform:         PlatformOpenAI,
+		Type:             AccountTypeOAuth,
+		Status:           StatusActive,
+		RateLimitedAt:    &limitedAt,
+		RateLimitResetAt: &resetAt,
+	}
+	repo := &accountUsageCodexProbeRepo{
+		stubOpenAIAccountRepo: stubOpenAIAccountRepo{accounts: []Account{*account}},
+	}
+	svc := &AccountUsageService{
+		accountRepo: repo,
+		openAICodexSnapshotProbe: func(context.Context, *Account) (map[string]any, error) {
+			return map[string]any{
+				"codex_5h_used_percent":        100.0,
+				"codex_5h_reset_after_seconds": 3600,
+				"codex_5h_reset_at":            time.Now().Add(time.Hour).UTC().Format(time.RFC3339),
+				"codex_7d_used_percent":        0.0,
+				"codex_7d_reset_after_seconds": 86400,
+			}, nil
+		},
+	}
+
+	_, err := svc.getOpenAIUsage(context.Background(), account, true)
+	require.NoError(t, err)
+	require.Zero(t, repo.openAIRateLimitRecoveryCalls,
+		"a probe showing an active exhausted window must not clear the account cooldown")
+}
+
+func TestOpenAICodexProbeQuotaRecoveryRequiresBothWindows(t *testing.T) {
+	now := time.Date(2026, 9, 9, 1, 51, 0, 0, time.UTC)
+	base := map[string]any{
+		"codex_5h_used_percent":        0.0,
+		"codex_5h_reset_after_seconds": 3600,
+		"codex_7d_used_percent":        0.0,
+		"codex_7d_reset_after_seconds": 86400,
+	}
+
+	require.True(t, openAICodexProbeQuotaRecovered(base, now))
+
+	exhausted := cloneAnyMap(base)
+	exhausted["codex_5h_used_percent"] = 100.0
+	exhausted["codex_5h_reset_after_seconds"] = 3600
+	exhausted["codex_5h_reset_at"] = now.Add(time.Hour).Format(time.RFC3339)
+	require.False(t, openAICodexProbeQuotaRecovered(exhausted, now))
+
+	reset := cloneAnyMap(exhausted)
+	reset["codex_5h_reset_after_seconds"] = 0
+	delete(reset, "codex_5h_reset_at")
+	require.True(t, openAICodexProbeQuotaRecovered(reset, now))
+
+	missing := cloneAnyMap(base)
+	delete(missing, "codex_7d_used_percent")
+	require.False(t, openAICodexProbeQuotaRecovered(missing, now))
+}
+
+func cloneAnyMap(src map[string]any) map[string]any {
+	dst := make(map[string]any, len(src))
+	for key, value := range src {
+		dst[key] = value
+	}
+	return dst
 }
 
 func TestAccountUsageService_PersistOpenAICodexProbeSnapshotOnlyUpdatesExtra(t *testing.T) {

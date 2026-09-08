@@ -681,7 +681,7 @@ func TestQueryUsageClearsObservedOpenAIRateLimitAfterAllowedQuota(t *testing.T) 
 		w.Header().Set("content-type", "application/json")
 		switch r.URL.Path {
 		case "/backend-api/wham/usage":
-			_, _ = w.Write([]byte(`{"rate_limit":{"allowed":true,"limit_reached":false}}`))
+			_, _ = w.Write([]byte(`{"rate_limit":{"allowed":true,"limit_reached":false,"primary_window":{"used_percent":0,"reset_after_seconds":3600},"secondary_window":{"used_percent":0,"reset_after_seconds":86400}}}`))
 		case "/backend-api/wham/rate-limit-reset-credits":
 			_, _ = w.Write([]byte(`{}`))
 		default:
@@ -699,26 +699,83 @@ func TestQueryUsageClearsObservedOpenAIRateLimitAfterAllowedQuota(t *testing.T) 
 	require.Equal(t, resetAt, repo.openAIRateLimitObservedReset)
 }
 
-func TestClearRecoveredOpenAIRateLimitRequiresAllowedAccountQuota(t *testing.T) {
+func TestOpenAIQuotaUsageRecoveryRequiresAvailableWindows(t *testing.T) {
+	now := time.Date(2026, 9, 9, 1, 51, 0, 0, time.UTC)
+	window := func(used float64, resetAfter, resetAt int64) *OpenAIRateLimitWindow {
+		return &OpenAIRateLimitWindow{
+			UsedPercent:        used,
+			ResetAfterSeconds:  resetAfter,
+			ResetAt:            resetAt,
+			LimitWindowSeconds: 300,
+		}
+	}
+
+	tests := []struct {
+		name      string
+		usage     *OpenAIQuotaUsage
+		recovered bool
+	}{
+		{
+			name: "both windows below exhaustion",
+			usage: &OpenAIQuotaUsage{RateLimit: &OpenAIRateLimit{
+				Allowed: true, LimitReached: false,
+				PrimaryWindow: window(0, 3600, 0), SecondaryWindow: window(12, 86400, 0),
+			}},
+			recovered: true,
+		},
+		{
+			name: "exhausted window with future reset is not recovered",
+			usage: &OpenAIQuotaUsage{RateLimit: &OpenAIRateLimit{
+				Allowed: true, LimitReached: false,
+				PrimaryWindow: window(100, 3600, now.Add(time.Hour).Unix()), SecondaryWindow: window(0, 86400, 0),
+			}},
+			recovered: false,
+		},
+		{
+			name: "exhausted window at reset boundary is recovered",
+			usage: &OpenAIQuotaUsage{RateLimit: &OpenAIRateLimit{
+				Allowed: true, LimitReached: false,
+				PrimaryWindow: window(100, 0, 0), SecondaryWindow: window(100, 0, 0),
+			}},
+			recovered: true,
+		},
+		{
+			name:      "flags alone are not enough",
+			usage:     &OpenAIQuotaUsage{RateLimit: &OpenAIRateLimit{Allowed: true, LimitReached: false}},
+			recovered: false,
+		},
+		{
+			name: "limit reached remains blocked",
+			usage: &OpenAIQuotaUsage{RateLimit: &OpenAIRateLimit{
+				Allowed: true, LimitReached: true,
+				PrimaryWindow: window(0, 0, 0), SecondaryWindow: window(0, 0, 0),
+			}},
+			recovered: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			require.Equal(t, tt.recovered, openAIQuotaUsageRecovered(tt.usage, now))
+		})
+	}
+}
+
+func TestObserveOpenAIRateLimitGenerationSkipsSparkShadow(t *testing.T) {
 	limitedAt := time.Date(2026, 9, 3, 7, 54, 0, 0, time.UTC)
 	resetAt := time.Date(2026, 9, 9, 1, 51, 0, 0, time.UTC)
-	observed := &openAIRateLimitGeneration{
-		accountID:     101,
-		rateLimitedAt: limitedAt,
-		resetAt:       resetAt,
+	parentID := int64(100)
+	shadow := &Account{
+		ID:               101,
+		Platform:         PlatformOpenAI,
+		Type:             AccountTypeOAuth,
+		ParentAccountID:  &parentID,
+		RateLimitedAt:    &limitedAt,
+		RateLimitResetAt: &resetAt,
 	}
-	repo := &stubQuotaAccountRepo{}
-	svc := &OpenAIQuotaService{accountRepo: repo}
 
-	svc.clearRecoveredOpenAIRateLimit(context.Background(), observed, &OpenAIQuotaUsage{
-		RateLimit: &OpenAIRateLimit{Allowed: false, LimitReached: true},
-	})
-	require.Zero(t, repo.openAIRateLimitRecoveryCalls)
-
-	svc.clearRecoveredOpenAIRateLimit(context.Background(), observed, &OpenAIQuotaUsage{
-		RateLimit: &OpenAIRateLimit{Allowed: true, LimitReached: true},
-	})
-	require.Zero(t, repo.openAIRateLimitRecoveryCalls)
+	require.Nil(t, observeOpenAIRateLimitGeneration(shadow),
+		"spark shadow recovery must not target the parent global cooldown")
 }
 
 func TestCacheResetCreditsSnapshot(t *testing.T) {

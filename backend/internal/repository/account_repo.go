@@ -2258,10 +2258,11 @@ func (r *accountRepository) ClearRateLimitIfObserved(ctx context.Context, id int
 }
 
 // ClearOpenAIRateLimitIfObserved clears exactly the OpenAI OAuth rate-limit
-// generation seen by a successful quota request. Keeping the platform/type
-// guard separate from the Grok recovery path prevents a stale request from
-// crossing an account retype while still allowing OpenAI quota probes to
-// reconcile their own stale account-level cooldown.
+// generation observed by a successful quota probe. The platform/type guard is
+// intentional: account-level cooldowns are global to ordinary OpenAI OAuth
+// rows, while Spark shadows use a separate quota dimension and must not clear a
+// parent's cooldown; it also prevents an in-flight OAuth probe from crossing a
+// concurrent account retype.
 func (r *accountRepository) ClearOpenAIRateLimitIfObserved(ctx context.Context, id int64, observedLimitedAt, observedResetAt time.Time) (bool, error) {
 	updated, err := r.client.Account.Update().
 		Where(
