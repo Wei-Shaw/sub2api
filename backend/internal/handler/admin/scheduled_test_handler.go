@@ -82,6 +82,16 @@ func (h *ScheduledTestHandler) Create(c *gin.Context) {
 	c.JSON(http.StatusOK, created)
 }
 
+// CreateMissingForAllAccounts POST /admin/scheduled-test-plans/bulk-create-missing
+func (h *ScheduledTestHandler) CreateMissingForAllAccounts(c *gin.Context) {
+	created, err := h.scheduledTestSvc.CreateMissingPlansForAllAccounts(c.Request.Context())
+	if err != nil {
+		response.InternalError(c, err.Error())
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"created": created})
+}
+
 // Update PUT /admin/scheduled-test-plans/:id
 func (h *ScheduledTestHandler) Update(c *gin.Context) {
 	planID, err := strconv.ParseInt(c.Param("id"), 10, 64)

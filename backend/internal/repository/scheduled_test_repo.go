@@ -3,6 +3,7 @@ package repository
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/service"
@@ -25,6 +26,57 @@ func (r *scheduledTestPlanRepository) Create(ctx context.Context, plan *service.
 		RETURNING id, account_id, model_id, cron_expression, enabled, max_results, auto_recover, last_run_at, next_run_at, created_at, updated_at
 	`, plan.AccountID, plan.ModelID, plan.CronExpression, plan.Enabled, plan.MaxResults, plan.AutoRecover, plan.NextRunAt)
 	return scanPlan(row)
+}
+
+func (r *scheduledTestPlanRepository) CreateMissingForAllAccounts(
+	ctx context.Context,
+	defaults service.ScheduledTestBulkDefaults,
+) (int64, error) {
+	modelByPlatform, err := json.Marshal(defaults.ModelByPlatform)
+	if err != nil {
+		return 0, err
+	}
+
+	result, err := r.db.ExecContext(ctx, `
+		WITH candidates AS (
+			SELECT
+				a.id,
+				a.platform,
+				ROW_NUMBER() OVER (ORDER BY a.id) AS position
+			FROM accounts a
+			WHERE NOT EXISTS (
+				SELECT 1
+				FROM scheduled_test_plans existing
+				WHERE existing.account_id = a.id
+			)
+		)
+		INSERT INTO scheduled_test_plans (
+			account_id,
+			model_id,
+			cron_expression,
+			enabled,
+			max_results,
+			auto_recover,
+			next_run_at,
+			created_at,
+			updated_at
+		)
+		SELECT
+			id,
+			COALESCE($1::jsonb ->> platform, ''),
+			$2,
+			true,
+			$3,
+			$4,
+			NOW() + (((position - 1) % $5::bigint)::double precision * INTERVAL '1 minute'),
+			NOW(),
+			NOW()
+		FROM candidates
+	`, string(modelByPlatform), defaults.CronExpression, defaults.MaxResults, defaults.AutoRecover, defaults.SpreadMinutes)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
 }
 
 func (r *scheduledTestPlanRepository) GetByID(ctx context.Context, id int64) (*service.ScheduledTestPlan, error) {
