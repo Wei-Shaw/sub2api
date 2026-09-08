@@ -292,7 +292,7 @@ func (s *OpenAIGatewayService) SelectAccountForTokenCount(
 // handler 调度入口仍需导出，保持导出名。）
 func NormalizeOpenAICompatiblePlatform(platform string) string {
 	switch platform {
-	case PlatformGemini, PlatformGrok, PlatformKimi, PlatformZhipu, PlatformDeepseek:
+	case PlatformGemini, PlatformGrok, PlatformKimi, PlatformZhipu, PlatformDeepseek, PlatformMiniMax:
 		return platform
 	default:
 		return PlatformOpenAI

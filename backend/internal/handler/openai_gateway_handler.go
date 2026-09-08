@@ -322,7 +322,7 @@ func allowOpenAICompatibleMessagesDispatch(c *gin.Context, apiKey *service.APIKe
 func openAICompatibleTextTargetAllowed(c *gin.Context, apiKey *service.APIKey, model string) bool {
 	return compositeTargetPlatformAllowed(c, apiKey, model,
 		service.PlatformOpenAI, service.PlatformGrok,
-		service.PlatformKimi, service.PlatformZhipu, service.PlatformDeepseek)
+		service.PlatformKimi, service.PlatformZhipu, service.PlatformDeepseek, service.PlatformMiniMax)
 }
 
 // isResponsesWebSocketCompositePlatform 限定 composite 分组在 Responses WebSocket
@@ -835,6 +835,22 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 			})
 		}
 		if err != nil {
+			if result != nil && result.ClientDisconnect {
+				reqLog.Info("openai.client_disconnected",
+					zap.Int64("account_id", account.ID),
+					zap.Error(err),
+				)
+				submitResponsesUsage(result)
+				return
+			}
+			if failoverClientGone(c) {
+				reqLog.Info("openai.client_disconnected",
+					zap.Int64("account_id", account.ID),
+					zap.Error(err),
+				)
+				submitResponsesUsage(result)
+				return
+			}
 			if result != nil && result.ImageCount > 0 {
 				reqLog.Warn("openai.forward_partial_error_with_image_result",
 					zap.Int64("account_id", account.ID),
@@ -3526,6 +3542,10 @@ func (h *OpenAIGatewayHandler) ensureOpenAIStreamReadErrorResponse(c *gin.Contex
 // ensureForwardErrorResponse 在 Forward 返回错误但尚未写响应时补写统一错误响应。
 func (h *OpenAIGatewayHandler) ensureForwardErrorResponse(c *gin.Context, streamStarted bool) bool {
 	if c == nil || c.Writer == nil {
+		return false
+	}
+	if c.Request != nil && errors.Is(c.Request.Context().Err(), context.Canceled) {
+		failoverClientGone(c)
 		return false
 	}
 	// 先停 compact 心跳再读 Writer 状态，避免与心跳 goroutine 竞争。

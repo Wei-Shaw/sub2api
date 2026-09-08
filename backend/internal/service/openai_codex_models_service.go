@@ -261,6 +261,7 @@ func loadCodexGroupCatalogAccounts(ctx context.Context, repo AccountRepository, 
 			PlatformKimi,
 			PlatformZhipu,
 			PlatformDeepseek,
+			PlatformMiniMax,
 		},
 		false,
 	)
