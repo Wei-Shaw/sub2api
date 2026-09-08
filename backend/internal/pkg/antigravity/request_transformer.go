@@ -150,15 +150,15 @@ func TransformClaudeToGeminiWithOptions(claudeReq *ClaudeRequest, projectID, map
 		SessionID: generateStableSessionID(contents),
 	}
 
-	// 针对 Gemini Reasoning 模型（如 gemini-3.1-pro-high等）过滤强制空 ToolConfig
-	isReasoning := IsGeminiReasoningModel(targetModel)
-	if !isReasoning || len(tools) > 0 {
-		// 总是设置 toolConfig，与官方客户端一致
-		innerRequest.ToolConfig = &GeminiToolConfig{
-			FunctionCallingConfig: &GeminiFunctionCallingConfig{
-				Mode: "VALIDATED",
-			},
-		}
+	// toolConfig must always be present: upstream rejects requests without it,
+	// including reasoning models called without any tools.
+	// 总是设置 toolConfig，与官方客户端一致。
+	// 注意：buildTools 会在客户端 function tools 存在时丢弃 googleSearch/codeExecution
+	// （issue #6464），因此这里不再注入 includeServerSideToolInvocations。
+	innerRequest.ToolConfig = &GeminiToolConfig{
+		FunctionCallingConfig: &GeminiFunctionCallingConfig{
+			Mode: "VALIDATED",
+		},
 	}
 
 	if systemInstruction != nil {
