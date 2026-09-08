@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"testing"
 
+	"github.com/Wei-Shaw/sub2api/internal/config"
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
 	"github.com/stretchr/testify/require"
@@ -89,6 +90,10 @@ func (s *groupRepoStubForAdmin) DeleteCascade(_ context.Context, _ int64) ([]int
 	panic("unexpected DeleteCascade call")
 }
 
+func (s *groupRepoStubForAdmin) DeleteCascadeIfEmpty(_ context.Context, _ int64) ([]int64, error) {
+	panic("unexpected DeleteCascadeIfEmpty call")
+}
+
 func (s *groupRepoStubForAdmin) List(_ context.Context, _ pagination.PaginationParams) ([]Group, *pagination.PaginationResult, error) {
 	panic("unexpected List call")
 }
@@ -115,6 +120,178 @@ func (s *groupRepoStubForAdmin) ListWithFilters(_ context.Context, params pagina
 	}
 
 	return s.listWithFiltersGroups, result, nil
+}
+
+func (s *groupRepoStubForAdmin) ListBindableWithFilters(ctx context.Context, params pagination.PaginationParams, platform, status, search string, isExclusive *bool) ([]Group, *pagination.PaginationResult, error) {
+	return s.ListWithFilters(ctx, params, platform, status, search, isExclusive)
+}
+
+func TestAdminServiceSimpleModeValidatesRequestedGroupIDsDirectly(t *testing.T) {
+	groups := make(map[int64]*Group, 1002)
+	for id := int64(1); id <= 1001; id++ {
+		groups[id] = &Group{ID: id, Platform: PlatformAnthropic}
+	}
+	groups[1002] = &Group{ID: 1002, Platform: PlatformComposite}
+	svc := &adminServiceImpl{cfg: &config.Config{RunMode: config.RunModeSimple}, groupRepo: &groupRepoStubForAdmin{getByIDByID: groups}}
+
+	require.Error(t, svc.ValidateAccountGroupBindings(context.Background(), []int64{1, 1002}))
+	require.ErrorIs(t, svc.ValidateAccountGroupBindings(context.Background(), []int64{1, 2000}), ErrGroupNotFound)
+	require.NoError(t, svc.ValidateAccountGroupBindings(context.Background(), []int64{1, 1001}))
+}
+
+func TestAdminServiceSimpleModeRejectsDirectCompositeGroupAccess(t *testing.T) {
+	repo := &groupRepoStubForAdmin{getByID: &Group{ID: 9, Platform: PlatformComposite}}
+	svc := &adminServiceImpl{cfg: &config.Config{RunMode: config.RunModeSimple}, groupRepo: repo, emptyGroupDeleteRepo: repo}
+
+	_, err := svc.GetGroup(context.Background(), 9)
+	require.Error(t, err)
+	_, err = svc.UpdateGroup(context.Background(), 9, &UpdateGroupInput{})
+	require.Error(t, err)
+	require.Nil(t, repo.updated)
+	require.Error(t, svc.DeleteGroupIfEmpty(context.Background(), 9))
+}
+
+func TestAdminServiceSimpleModeRejectsAccountListCompositeFilter(t *testing.T) {
+	repo := &groupRepoStubForAdmin{getByID: &Group{ID: 9, Platform: PlatformComposite}}
+	svc := &adminServiceImpl{cfg: &config.Config{RunMode: config.RunModeSimple}, groupRepo: repo}
+	_, _, err := svc.ListAccounts(context.Background(), 1, 20, "", "", "", "", 9, "", "", "")
+	require.Error(t, err)
+}
+
+func TestAdminServiceSimpleModeRejectsAdvancedGroupOperationsDirectly(t *testing.T) {
+	svc := &adminServiceImpl{cfg: &config.Config{RunMode: config.RunModeSimple}}
+	tests := []struct {
+		name string
+		call func() error
+	}{
+		{"duplicate", func() error { _, err := svc.DuplicateGroup(context.Background(), 1, "admin:1", "key"); return err }},
+		{"recover duplicate", func() error {
+			_, err := svc.RecoverDuplicateGroup(context.Background(), 1, "admin:1", "key")
+			return err
+		}},
+		{"list composite routes", func() error { _, err := svc.ListCompositeRoutes(context.Background(), 1); return err }},
+		{"create composite route", func() error {
+			_, err := svc.CreateCompositeRoute(context.Background(), 1, CompositeRouteInput{})
+			return err
+		}},
+		{"update composite route", func() error {
+			_, err := svc.UpdateCompositeRoute(context.Background(), 1, 2, CompositeRouteInput{})
+			return err
+		}},
+		{"delete composite route", func() error { return svc.DeleteCompositeRoute(context.Background(), 1, 2) }},
+		{"preview composite route", func() error {
+			_, err := svc.PreviewCompositeRoute(context.Background(), 1, CompositeRoutePreviewRequest{})
+			return err
+		}},
+		{"get multipliers", func() error { _, err := svc.GetGroupRateMultipliers(context.Background(), 1); return err }},
+		{"clear multipliers", func() error { return svc.ClearGroupRateMultipliers(context.Background(), 1) }},
+		{"set multipliers", func() error { return svc.BatchSetGroupRateMultipliers(context.Background(), 1, nil) }},
+		{"clear rpm overrides", func() error { return svc.ClearGroupRPMOverrides(context.Background(), 1) }},
+		{"set rpm overrides", func() error { return svc.BatchSetGroupRPMOverrides(context.Background(), 1, nil) }},
+		{"sort", func() error { return svc.UpdateGroupSortOrders(context.Background(), nil) }},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := tt.call()
+			require.Error(t, err)
+			require.Equal(t, "SIMPLE_MODE_OPERATION_UNSUPPORTED", infraerrors.Reason(err))
+		})
+	}
+}
+
+func TestAdminServiceSimpleModeRejectsCompositeCreateAndConversionDirectly(t *testing.T) {
+	svc := &adminServiceImpl{cfg: &config.Config{RunMode: config.RunModeSimple}}
+	_, err := svc.CreateGroup(context.Background(), &CreateGroupInput{Platform: PlatformComposite, RateMultiplier: 1})
+	require.Error(t, err)
+
+	repo := &groupRepoStubForAdmin{getByID: &Group{ID: 1, Platform: PlatformAnthropic}}
+	svc.groupRepo = repo
+	_, err = svc.UpdateGroup(context.Background(), 1, &UpdateGroupInput{Platform: PlatformComposite})
+	require.Error(t, err)
+	require.Nil(t, repo.updated)
+}
+
+func TestAdminServiceSimpleModeNormalizesAllUnsupportedCreateFieldsDirectly(t *testing.T) {
+	one := 1.0
+	fallbackID := int64(44)
+	input := &CreateGroupInput{
+		Name: "simple", Description: "allowed", Platform: PlatformAnthropic,
+		RateMultiplier: 9, IsExclusive: true, SubscriptionType: SubscriptionTypeSubscription,
+		DailyLimitUSD: &one, LongContextPricingEnabled: true,
+		ModelPricing:    []ChannelModelPricing{{Models: []string{"claude"}}},
+		PeakRateEnabled: true, PeakStart: "00:00", PeakEnd: "01:00", PeakRateMultiplier: &one,
+		ImageRateIndependent: true, ImageRateMultiplier: &one, VideoRateIndependent: true, VideoRateMultiplier: &one,
+		ImagePrice1K: &one, VideoPrice720P: &one, WebSearchPricePerCall: &one, SearchPricePer1k: &one,
+		AudioRealtimePricePerMin: &one, ClaudeCodeOnly: true, FallbackGroupID: &fallbackID,
+		ModelRouting: map[string][]int64{"claude": {1}}, ModelRoutingEnabled: true,
+		AllowMessagesDispatch: true, AllowLive: true, ForceOpenAIFast: true, RequireOAuthOnly: true,
+		RPMLimit: 99, MaxReasoningEffort: "high", ProfitControlEnabled: true, ProfitMinMargin: &one,
+		CopyAccountsFromGroupIDs: []int64{2},
+	}
+	repo := &groupRepoStubForAdmin{}
+	svc := &adminServiceImpl{cfg: &config.Config{RunMode: config.RunModeSimple}, groupRepo: repo}
+
+	created, err := svc.CreateGroup(context.Background(), input)
+	require.NoError(t, err)
+	require.Same(t, repo.created, created)
+	require.Equal(t, CreateGroupInput{
+		Name: "simple", Description: "allowed", Platform: PlatformAnthropic,
+		RateMultiplier: 1, SubscriptionType: SubscriptionTypeStandard,
+	}, *input)
+	require.Equal(t, 1.0, created.RateMultiplier)
+	require.Equal(t, SubscriptionTypeStandard, created.SubscriptionType)
+	require.False(t, created.IsExclusive)
+	require.Nil(t, created.FallbackGroupID)
+	require.Empty(t, created.ModelPricing)
+	require.Zero(t, created.RPMLimit)
+}
+
+func TestAdminServiceSimpleModeNormalizesAllUnsupportedUpdateFieldsDirectly(t *testing.T) {
+	one := 1.0
+	truth := true
+	status := "inactive"
+	description := "allowed"
+	fallbackID := int64(44)
+	pricing := []ChannelModelPricing{{Models: []string{"claude"}}}
+	input := &UpdateGroupInput{
+		Name: "renamed", Description: &description, Platform: PlatformOpenAI, Status: status,
+		RateMultiplier: &one, IsExclusive: &truth, SubscriptionType: SubscriptionTypeSubscription,
+		DailyLimitUSD: &one, LongContextPricingEnabled: &truth, ModelPricing: &pricing,
+		PeakRateEnabled: &truth, PeakRateMultiplier: &one, ImageRateIndependent: &truth,
+		ImageRateMultiplier: &one, VideoRateIndependent: &truth, VideoRateMultiplier: &one,
+		ImagePrice1K: &one, VideoPrice720P: &one, WebSearchPricePerCall: &one, SearchPricePer1k: &one,
+		AudioRealtimePricePerMin: &one, ClaudeCodeOnly: &truth, FallbackGroupID: &fallbackID,
+		ModelRouting: map[string][]int64{"claude": {1}}, ModelRoutingEnabled: &truth,
+		AllowMessagesDispatch: &truth, AllowLive: &truth, ForceOpenAIFast: &truth, RequireOAuthOnly: &truth,
+		RPMLimit: new(int), MaxReasoningEffort: ptrString("high"), ProfitControlEnabled: &truth,
+		ProfitMinMargin: &one, CopyAccountsFromGroupIDs: []int64{2},
+	}
+	existing := &Group{ID: 1, Name: "old", Description: "old description", Platform: PlatformAnthropic, Status: StatusActive, RateMultiplier: 3, RPMLimit: 8, FallbackGroupID: &fallbackID}
+	repo := &groupRepoStubForAdmin{getByID: existing}
+	svc := &adminServiceImpl{cfg: &config.Config{RunMode: config.RunModeSimple}, groupRepo: repo}
+
+	updated, err := svc.UpdateGroup(context.Background(), 1, input)
+	require.NoError(t, err)
+	require.Equal(t, UpdateGroupInput{Name: "renamed", Description: &description}, *input)
+	require.Equal(t, "renamed", updated.Name)
+	require.Equal(t, description, updated.Description)
+	require.Equal(t, PlatformAnthropic, updated.Platform)
+	require.Equal(t, StatusActive, updated.Status)
+	require.Equal(t, 3.0, updated.RateMultiplier)
+	require.Equal(t, 8, updated.RPMLimit)
+	require.Equal(t, &fallbackID, updated.FallbackGroupID)
+}
+
+func TestAdminServiceSimpleModeListUsesRepositoryFilteredTotal(t *testing.T) {
+	repo := &groupRepoStubForAdmin{
+		listWithFiltersGroups: []Group{{ID: 2, Platform: PlatformAnthropic}},
+		listWithFiltersResult: &pagination.PaginationResult{Total: 11, Page: 2, PageSize: 1},
+	}
+	svc := &adminServiceImpl{cfg: &config.Config{RunMode: config.RunModeSimple}, groupRepo: repo}
+	groups, total, err := svc.ListGroups(context.Background(), 2, 1, "", "", "", nil, "id", "asc")
+	require.NoError(t, err)
+	require.Len(t, groups, 1)
+	require.EqualValues(t, 11, total)
 }
 
 func (s *groupRepoStubForAdmin) ListActive(_ context.Context) ([]Group, error) {
