@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -268,6 +269,7 @@ type autoResetTestQuota struct {
 	queryCalls   atomic.Int32
 	cacheCalls   atomic.Int32
 	cacheErr     error
+	queryErr     error
 	resetEntered chan struct{}
 	releaseReset chan struct{}
 	enterOnce    sync.Once
@@ -278,6 +280,9 @@ type autoResetTestQuota struct {
 
 func (q *autoResetTestQuota) QueryUsage(context.Context, int64) (*OpenAIQuotaUsage, error) {
 	q.queryCalls.Add(1)
+	if q.queryErr != nil {
+		return nil, q.queryErr
+	}
 	copy := *q.usage
 	return &copy, nil
 }
@@ -615,6 +620,38 @@ func TestOpenAIQuotaAutoResetService_RefreshesCreditSnapshotDaily(t *testing.T) 
 	repo.mu.Unlock()
 	require.NoError(t, service.evaluateAccount(context.Background(), account.ID))
 	require.Equal(t, int32(2), quota.queryCalls.Load(), "启动错峰未轮到前，用量快照过期也不提前实查")
+}
+
+// 用量查询失败（如代理不通）后，下一次扫描必须继续重查：到期用卡有截止时间，
+// 每分钟重试是它的失败恢复路径，不能用长退避换日志安静。
+func TestOpenAIQuotaAutoResetService_QueryFailureRetriesOnNextScan(t *testing.T) {
+	now := time.Now().UTC()
+	account := newAutoResetLowUsageAccount(now, map[string]any{
+		"codex_usage_updated_at": now.Add(-time.Hour).Format(time.RFC3339),
+	})
+	repo := &autoResetTestAccountRepo{account: account}
+	quota := &autoResetTestQuota{
+		usage:    newAutoResetLowUsage(now, "credit-id", now.Add(10*24*time.Hour)),
+		queryErr: errors.New("proxy down"),
+	}
+	service := newAutoResetTestService(repo, quota)
+	service.refreshSchedulerLease(context.Background())
+	require.True(t, service.isSchedulerLeader())
+	service.fetchStates.Store(account.ID, openAIAutoResetFetchState{nextAt: now.Add(-time.Second), fetched: true})
+
+	require.Error(t, service.evaluateAccount(context.Background(), account.ID))
+	require.Equal(t, int32(1), quota.queryCalls.Load())
+	state := openAIAutoResetStateFromExtra(repo.account.Extra)
+	require.NotNil(t, state)
+	require.Equal(t, OpenAIAutoResetStatusFailed, state.Status)
+	require.Equal(t, "RESET_CREDIT_QUERY_FAILED", state.ErrorCode)
+
+	quota.queryErr = nil
+	require.NoError(t, service.evaluateAccount(context.Background(), account.ID))
+	require.Equal(t, int32(2), quota.queryCalls.Load(), "上游恢复后的下一次扫描应立即重查")
+	state = openAIAutoResetStateFromExtra(repo.account.Extra)
+	require.NotNil(t, state)
+	require.NotEqual(t, OpenAIAutoResetStatusFailed, state.Status, "重查成功后应脱离失败态")
 }
 
 func TestOpenAIQuotaAutoResetService_IncompleteCreditDetailsReportPreciseCode(t *testing.T) {
