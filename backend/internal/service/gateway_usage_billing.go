@@ -526,6 +526,9 @@ func detachStreamUpstreamContext(ctx context.Context, stream bool) (context.Cont
 	if ctx == nil {
 		return context.Background(), func() {}
 	}
+	if lease := codexDeviceConversationLeaseFromContext(ctx); lease != nil {
+		return lease.UpstreamContext(), func() {}
+	}
 	if !stream {
 		return ctx, func() {}
 	}
@@ -535,6 +538,9 @@ func detachStreamUpstreamContext(ctx context.Context, stream bool) (context.Cont
 func detachUpstreamContext(ctx context.Context) (context.Context, context.CancelFunc) {
 	if ctx == nil {
 		return context.Background(), func() {}
+	}
+	if lease := codexDeviceConversationLeaseFromContext(ctx); lease != nil {
+		return lease.UpstreamContext(), func() {}
 	}
 	return context.WithoutCancel(ctx), func() {}
 }

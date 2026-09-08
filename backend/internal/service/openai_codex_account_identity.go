@@ -36,6 +36,12 @@ func (s *OpenAIGatewayService) prepareCodexAccountIdentitySource(ctx context.Con
 }
 
 func codexAccountIdentitySource(c *gin.Context, fallback *Account) *Account {
+	// A Profile attempt already has a complete API-key/account/OS/slot identity
+	// plan. Applying the legacy credential namespace first would hash the
+	// client-visible values and make response restoration unable to recover them.
+	if stagedCodexIdentityAttemptPlan(c, fallback) != nil {
+		return nil
+	}
 	if c != nil {
 		if staged, ok := c.Get(codexAccountIdentitySourceContextKey); ok {
 			if source, ok := staged.(*Account); ok && source != nil {

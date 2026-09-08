@@ -589,6 +589,9 @@ func (c *schedulerCache) SetAccount(ctx context.Context, account *service.Accoun
 	if account == nil || account.ID <= 0 {
 		return nil
 	}
+	if !account.IsProvisioned() {
+		return c.DeleteAccount(ctx, account.ID)
+	}
 	accountIDs, err := c.writeAccountIDs(ctx, []service.Account{*account})
 	if err != nil {
 		return err
@@ -797,6 +800,9 @@ func (c *schedulerCache) writeAccountIDs(ctx context.Context, accounts []service
 	}
 
 	for _, account := range accounts {
+		if !account.IsProvisioned() {
+			continue
+		}
 		fullPayload, metaPayload, err := marshalSchedulerCacheAccount(account)
 		if err != nil {
 			slog.Warn("scheduler cache skips account with unencodable payload",
@@ -873,6 +879,8 @@ func buildSchedulerMetadataAccount(account service.Account) service.Account {
 		Priority:                account.Priority,
 		RateMultiplier:          account.RateMultiplier,
 		Status:                  account.Status,
+		ProvisioningState:       account.ProvisioningState,
+		CodexIdentityPolicy:     account.CodexIdentityPolicy,
 		LastUsedAt:              account.LastUsedAt,
 		ExpiresAt:               account.ExpiresAt,
 		AutoPauseOnExpired:      account.AutoPauseOnExpired,

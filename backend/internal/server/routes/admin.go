@@ -365,6 +365,8 @@ func registerAccountRoutes(admin *gin.RouterGroup, h *handler.Handlers, stepUpAu
 		accounts.GET("/ollama-cloud-usage/settings", h.Admin.Account.GetOllamaCloudUsageSettings)
 		accounts.PUT("/ollama-cloud-usage/settings", h.Admin.Account.UpdateOllamaCloudUsageSettings)
 		accounts.GET("/:id", h.Admin.Account.GetByID)
+		accounts.GET("/:id/codex-device-slots", h.Admin.Account.ListCodexDeviceSlots)
+		accounts.POST("/:id/codex-device-slots/finalize-draining", h.Admin.Account.FinalizeCodexDrainingSlots)
 		accounts.POST("", h.Admin.Account.Create)
 		accounts.POST("/:id/duplicate", h.Admin.Account.Duplicate)
 		accounts.POST("/check-mixed-channel", h.Admin.Account.CheckMixedChannel)
@@ -557,6 +559,14 @@ func registerSettingsRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 	{
 		adminSettings.GET("", h.Admin.Setting.GetSettings)
 		adminSettings.PUT("", h.Admin.Setting.UpdateSettings)
+		codexIdentityTemplates := adminSettings.Group("/codex-identity-templates")
+		{
+			codexIdentityTemplates.GET("", h.Admin.CodexIdentityTemplate.List)
+			codexIdentityTemplates.POST("", h.Admin.CodexIdentityTemplate.Create)
+			codexIdentityTemplates.GET("/:id", h.Admin.CodexIdentityTemplate.Get)
+			codexIdentityTemplates.PUT("/:id", h.Admin.CodexIdentityTemplate.Update)
+			codexIdentityTemplates.DELETE("/:id", h.Admin.CodexIdentityTemplate.Delete)
+		}
 		adminSettings.POST("/test-smtp", h.Admin.Setting.TestSMTPConnection)
 		adminSettings.POST("/send-test-email", h.Admin.Setting.SendTestEmail)
 		adminSettings.GET("/email-templates", h.Admin.Setting.ListEmailTemplates)

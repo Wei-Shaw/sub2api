@@ -36,6 +36,46 @@ func newSparkShadowRepoStub() *sparkShadowRepoStub {
 	}
 }
 
+func testCodexOSProfilePolicy() *CodexIdentityPolicySpec {
+	return &CodexIdentityPolicySpec{
+		Mode: CodexIdentityPolicyOSProfileDevicePool,
+		Profiles: []CodexOSProfilePolicy{{
+			OSClass: CodexOSLinux, CanonicalSurface: CodexSurfaceCLI,
+			Architecture: CodexArchX8664, SlotCount: 1,
+		}},
+	}
+}
+
+func TestCreateShadowRejectsCodexOSProfileParent(t *testing.T) {
+	repo := newSparkShadowRepoStub()
+	parent := &Account{
+		Platform: PlatformOpenAI, Type: AccountTypeOAuth, Status: StatusActive,
+		Credentials:         map[string]any{"access_token": "test-token"},
+		CodexIdentityPolicy: *testCodexOSProfilePolicy(),
+	}
+	require.NoError(t, repo.Create(context.Background(), parent))
+	_, err := (&adminServiceImpl{accountRepo: repo}).CreateShadow(context.Background(), parent.ID, ShadowOptions{})
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "Spark shadows are not supported")
+}
+
+func TestUpdateShadowRejectsDirectCodexOSProfileEnable(t *testing.T) {
+	repo := newSparkShadowRepoStub()
+	parent := &Account{Platform: PlatformOpenAI, Type: AccountTypeOAuth, Status: StatusActive}
+	require.NoError(t, repo.Create(context.Background(), parent))
+	shadow := &Account{
+		Platform: PlatformOpenAI, Type: AccountTypeOAuth, Status: StatusActive,
+		ParentAccountID: &parent.ID, QuotaDimension: QuotaDimensionSpark,
+		Credentials: map[string]any{}, Extra: map[string]any{},
+	}
+	require.NoError(t, repo.Create(context.Background(), shadow))
+	_, err := (&adminServiceImpl{accountRepo: repo}).UpdateAccount(context.Background(), shadow.ID, &UpdateAccountInput{
+		CodexIdentityPolicy: testCodexOSProfilePolicy(),
+	})
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "credential owner")
+}
+
 func (s *sparkShadowRepoStub) Create(_ context.Context, account *Account) error {
 	s.nextID++
 	account.ID = s.nextID

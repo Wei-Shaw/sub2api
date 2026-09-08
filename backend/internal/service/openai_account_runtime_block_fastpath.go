@@ -61,6 +61,22 @@ func classifyOpenAIOAuth429(headers http.Header, responseBody []byte) (openAIOAu
 			}
 		}
 	}
+	// A quota error without a reset timestamp is still a quota error. Explicit
+	// concurrency signals must not be reclassified from generic reset headers.
+	reason := ClassifyOpenAIRateLimitReason(headers, responseBody)
+	if reason == OpenAIRateLimitConcurrency {
+		return openAIOAuth429Transient, nil
+	}
+	if reason == OpenAIRateLimitQuota {
+		if resetAt := calculateOpenAI429ResetTime(headers); resetAt != nil {
+			return openAIOAuth429QuotaReset, resetAt
+		}
+		if resetUnix := parseOpenAIRateLimitResetTime(responseBody); resetUnix != nil {
+			resetAt := time.Unix(*resetUnix, 0)
+			return openAIOAuth429QuotaReset, &resetAt
+		}
+		return openAIOAuth429QuotaReset, nil
+	}
 	if resetAt := calculateOpenAI429ResetTime(headers); resetAt != nil {
 		return openAIOAuth429QuotaReset, resetAt
 	}

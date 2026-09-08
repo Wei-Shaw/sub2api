@@ -82,3 +82,19 @@ func TestGuardCRSShadowParentInvariant(t *testing.T) {
 	// 保持 OpenAI OAuth(重新同步母账号)放行,即便仍有影子。
 	require.NoError(t, guardCRSShadowParentInvariant(ctx, repo, mother, PlatformOpenAI, AccountTypeOAuth))
 }
+
+func TestGuardCRSShadowParentInvariantRejectsProfileEnabledCrossPlatformConversion(t *testing.T) {
+	ctx := context.Background()
+	repo := newSparkShadowRepoStub()
+	account := &Account{
+		Platform: PlatformOpenAI,
+		Type:     AccountTypeOAuth,
+		CodexIdentityPolicy: CodexIdentityPolicySpec{
+			Mode: CodexIdentityPolicyOSProfileDevicePool,
+		},
+	}
+	require.NoError(t, repo.Create(ctx, account))
+	err := guardCRSShadowParentInvariant(ctx, repo, account, PlatformAnthropic, AccountTypeOAuth)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "disable the identity policy first")
+}

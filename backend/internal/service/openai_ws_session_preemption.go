@@ -34,9 +34,10 @@ func NewOpenAIWSSessionPreemptedError() error {
 }
 
 type openAIWSSessionPreemptKey struct {
-	groupID     int64
-	apiKeyID    int64
-	sessionHash string
+	groupID      int64
+	apiKeyID     int64
+	sessionHash  string
+	profileScope string
 }
 
 type openAIWSSessionPreemptContextKey struct{}
@@ -84,23 +85,33 @@ func (s *OpenAIGatewayService) BeginOpenAIWSIngressSessionPreemption(
 	}
 	if preemptedPrevious {
 		if stateStore := s.getOpenAIWSStateStore(); stateStore != nil {
-			stateStore.DeleteSessionTurnState(preemptGroupID, preemptSessionHash)
-			stateStore.DeleteSessionConn(preemptGroupID, preemptSessionHash)
+			stateKey := scopedOpenAIWSStateKey(ctx, preemptSessionHash)
+			stateStore.DeleteSessionTurnState(preemptGroupID, stateKey)
+			stateStore.DeleteSessionConn(preemptGroupID, stateKey)
 		}
 	}
 	return context.WithValue(preemptCtx, openAIWSSessionPreemptContextKey{}, true), cleanup, true
 }
 
-func newOpenAIWSSessionPreemptKey(groupID, apiKeyID int64, sessionHash string) (openAIWSSessionPreemptKey, bool) {
+func newOpenAIWSSessionPreemptKeyWithProfile(groupID, apiKeyID int64, sessionHash, profileScope string) (openAIWSSessionPreemptKey, bool) {
 	sessionHash = strings.TrimSpace(sessionHash)
 	if groupID <= 0 || apiKeyID <= 0 || sessionHash == "" {
 		return openAIWSSessionPreemptKey{}, false
 	}
-	return openAIWSSessionPreemptKey{groupID: groupID, apiKeyID: apiKeyID, sessionHash: sessionHash}, true
+	return openAIWSSessionPreemptKey{
+		groupID: groupID, apiKeyID: apiKeyID, sessionHash: sessionHash, profileScope: strings.TrimSpace(profileScope),
+	}, true
 }
 
-func openAIWSSessionPreemptCacheHash(apiKeyID int64, sessionHash string) string {
-	return fmt.Sprintf("%s%d:%s", openAIWSSessionPreemptCachePrefix, apiKeyID, strings.TrimSpace(sessionHash))
+func openAIWSSessionPreemptCacheHash(apiKeyID int64, sessionHash string, profileScope ...string) string {
+	scope := ""
+	if len(profileScope) > 0 {
+		scope = strings.TrimSpace(profileScope[0])
+	}
+	if scope == "" {
+		return fmt.Sprintf("%s%d:%s", openAIWSSessionPreemptCachePrefix, apiKeyID, strings.TrimSpace(sessionHash))
+	}
+	return fmt.Sprintf("%s%d:%s:%s", openAIWSSessionPreemptCachePrefix, apiKeyID, scope, strings.TrimSpace(sessionHash))
 }
 
 type openAIWSSessionPreemptEntry struct {
@@ -153,19 +164,26 @@ func (s *OpenAIGatewayService) beginOpenAIWSSessionPreemptContext(
 	if s == nil || account == nil || account.Platform != PlatformOpenAI || account.Type != AccountTypeOAuth || httpIngressWSOneShot {
 		return ctx, func() {}, false, false
 	}
-	key, ok := newOpenAIWSSessionPreemptKey(groupID, apiKeyID, sessionHash)
+	profileScope := ""
+	if account.CodexIdentityPolicy.Mode == CodexIdentityPolicyOSProfileDevicePool {
+		if request, staged := codexProfileRequestFromContext(ctx); staged {
+			profileScope = fmt.Sprintf("%s/%s:v%d", request.Profile.OSClass, request.Profile.Surface, account.CodexIdentityPolicy.Version)
+		}
+	}
+	key, ok := newOpenAIWSSessionPreemptKeyWithProfile(groupID, apiKeyID, sessionHash, profileScope)
 	if !ok {
 		return ctx, func() {}, false, false
 	}
 
 	preemptCtx, cancel := context.WithCancelCause(ctx)
 	ownerToken := uuid.NewString()
+	stateSessionKey := scopedOpenAIWSStateKey(ctx, key.sessionHash)
 	var preemptOnce sync.Once
 	preempt := func() {
 		preemptOnce.Do(func() {
 			if stateStore := s.getOpenAIWSStateStore(); stateStore != nil {
-				stateStore.DeleteSessionTurnState(key.groupID, key.sessionHash)
-				stateStore.DeleteSessionConn(key.groupID, key.sessionHash)
+				stateStore.DeleteSessionTurnState(key.groupID, stateSessionKey)
+				stateStore.DeleteSessionConn(key.groupID, stateSessionKey)
 			}
 			cancel(errOpenAIWSSessionPreempted)
 		})
@@ -207,7 +225,7 @@ func (s *OpenAIGatewayService) claimOpenAIWSSessionPreemptOwner(ctx context.Cont
 	previous, err := cache.ClaimOpenAIResponsesSessionWindow(
 		cacheCtx,
 		key.groupID,
-		openAIWSSessionPreemptCacheHash(key.apiKeyID, key.sessionHash),
+		openAIWSSessionPreemptCacheHash(key.apiKeyID, key.sessionHash, key.profileScope),
 		[]byte(strings.TrimSpace(ownerToken)),
 		openAIWSSessionPreemptOwnerTTL,
 	)
@@ -227,7 +245,7 @@ func (s *OpenAIGatewayService) releaseOpenAIWSSessionPreemptOwner(ctx context.Co
 	_, _ = cache.CompareAndDeleteOpenAIResponsesSessionWindow(
 		cacheCtx,
 		key.groupID,
-		openAIWSSessionPreemptCacheHash(key.apiKeyID, key.sessionHash),
+		openAIWSSessionPreemptCacheHash(key.apiKeyID, key.sessionHash, key.profileScope),
 		[]byte(strings.TrimSpace(ownerToken)),
 	)
 }
@@ -253,7 +271,7 @@ func (s *OpenAIGatewayService) watchOpenAIWSSessionPreemptOwner(ctx context.Cont
 				owned, err := cache.CompareAndRefreshOpenAIResponsesSessionWindow(
 					cacheCtx,
 					key.groupID,
-					openAIWSSessionPreemptCacheHash(key.apiKeyID, key.sessionHash),
+					openAIWSSessionPreemptCacheHash(key.apiKeyID, key.sessionHash, key.profileScope),
 					[]byte(strings.TrimSpace(ownerToken)),
 					openAIWSSessionPreemptOwnerTTL,
 				)

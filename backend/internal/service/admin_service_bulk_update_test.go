@@ -52,6 +52,16 @@ type accountRepoStubForBulkUpdate struct {
 	}
 }
 
+type identityBulkGroupRepo struct{ GroupRepository }
+
+func (identityBulkGroupRepo) ExistsByIDs(_ context.Context, ids []int64) (map[int64]bool, error) {
+	result := make(map[int64]bool, len(ids))
+	for _, id := range ids {
+		result[id] = true
+	}
+	return result, nil
+}
+
 func (s *accountRepoStubForBulkUpdate) BulkUpdate(_ context.Context, ids []int64, updates AccountBulkUpdate) (int64, error) {
 	s.bulkUpdateCalls++
 	s.bulkUpdateIDs = append([]int64{}, ids...)
@@ -79,6 +89,24 @@ func (s *accountRepoStubForBulkUpdate) Create(_ context.Context, account *Accoun
 
 func (s *accountRepoStubForBulkUpdate) Update(_ context.Context, account *Account) error {
 	s.updatedAccounts = append(s.updatedAccounts, account)
+	return s.updateErr
+}
+
+func (s *accountRepoStubForBulkUpdate) ProvisionAccount(_ context.Context, spec *AccountProvisioningSpec) error {
+	s.createAccount = spec.Account
+	return s.createErr
+}
+
+func (s *accountRepoStubForBulkUpdate) UpdateProvisionedAccount(
+	_ context.Context,
+	spec *AccountProvisioningSpec,
+	_ *bool,
+	_ *bool,
+	_ *float64,
+) error {
+	spec.Account.CodexIdentityPolicy = *spec.Identity
+	spec.Account.GroupIDs = append([]int64(nil), spec.GroupIDs...)
+	s.updatedAccounts = append(s.updatedAccounts, spec.Account)
 	return s.updateErr
 }
 
@@ -317,6 +345,58 @@ func TestAdminServiceBulkUpdateAccounts_ResolvesIDsFromFilters(t *testing.T) {
 	require.Equal(t, 2, result.Success)
 	require.Equal(t, 0, result.Failed)
 	require.Equal(t, []int64{7, 11}, result.SuccessIDs)
+}
+
+func TestAdminServiceBulkUpdateCodexIdentityUsesPerAccountProvisioningTransactions(t *testing.T) {
+	accounts := []*Account{
+		{ID: 1, Name: "one", Platform: PlatformOpenAI, Type: AccountTypeOAuth, Status: StatusActive, Schedulable: true, Credentials: map[string]any{"access_token": "at-one"}, Extra: map[string]any{}},
+		{ID: 2, Name: "two", Platform: PlatformOpenAI, Type: AccountTypeOAuth, Status: StatusActive, Schedulable: true, Credentials: map[string]any{"access_token": "at-two"}, Extra: map[string]any{}},
+	}
+	repo := &accountRepoStubForBulkUpdate{
+		getByIDsAccounts: accounts,
+		getByIDAccounts:  map[int64]*Account{1: accounts[0], 2: accounts[1]},
+	}
+	policy := &CodexIdentityPolicySpec{
+		Mode: CodexIdentityPolicyOSProfileDevicePool,
+		Profiles: []CodexOSProfilePolicy{{
+			OSClass: CodexOSLinux, CanonicalSurface: CodexSurfaceCLI,
+			Architecture: CodexArchX8664, SlotCount: 1,
+		}},
+	}
+	result, err := (&adminServiceImpl{accountRepo: repo}).BulkUpdateAccounts(context.Background(), &BulkUpdateAccountsInput{
+		AccountIDs: []int64{1, 2}, CodexIdentityPolicy: policy,
+	})
+	require.NoError(t, err)
+	require.Equal(t, 2, result.Success)
+	require.Zero(t, repo.bulkUpdateCalls, "identity policy updates must not use the non-atomic bulk SQL path")
+	require.Len(t, repo.updatedAccounts, 2)
+	for _, account := range repo.updatedAccounts {
+		require.Equal(t, CodexIdentityPolicyOSProfileDevicePool, account.CodexIdentityPolicy.Mode)
+	}
+}
+
+func TestAdminServiceBulkUpdateCodexIdentityAndGroupsSharePerAccountTransaction(t *testing.T) {
+	account := &Account{ID: 3, Name: "three", Platform: PlatformOpenAI, Type: AccountTypeOAuth, Status: StatusActive, Schedulable: true, Credentials: map[string]any{"access_token": "at-three"}, Extra: map[string]any{}}
+	repo := &accountRepoStubForBulkUpdate{
+		getByIDsAccounts: []*Account{account},
+		getByIDAccounts:  map[int64]*Account{3: account},
+	}
+	groupIDs := []int64{9}
+	policy := &CodexIdentityPolicySpec{
+		Mode: CodexIdentityPolicyOSProfileDevicePool,
+		Profiles: []CodexOSProfilePolicy{{
+			OSClass: CodexOSWindows, CanonicalSurface: CodexSurfaceDesktop,
+			Architecture: CodexArchX8664, SlotCount: 1,
+		}},
+	}
+	result, err := (&adminServiceImpl{accountRepo: repo, groupRepo: identityBulkGroupRepo{}}).BulkUpdateAccounts(context.Background(), &BulkUpdateAccountsInput{
+		AccountIDs: []int64{3}, GroupIDs: &groupIDs, CodexIdentityPolicy: policy, SkipMixedChannelCheck: true,
+	})
+	require.NoError(t, err)
+	require.Equal(t, 1, result.Success)
+	require.Zero(t, repo.bulkUpdateCalls)
+	require.Len(t, repo.updatedAccounts, 1)
+	require.Equal(t, groupIDs, repo.updatedAccounts[0].GroupIDs)
 }
 
 func TestAdminServiceBulkUpdateAccounts_NormalizesOpenAISettings(t *testing.T) {

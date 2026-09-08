@@ -646,6 +646,11 @@ func (s *OpenAIGatewayService) handleStreamingResponseWithReasoning(ctx context.
 				streamEarlyErr = fmt.Errorf("restore OpenAI namespace response: %w", restoreErr)
 				return
 			}
+			restoredData, restoreErr = restoreStagedCodexIdentityJSON(c, account, restoredData)
+			if restoreErr != nil {
+				streamEarlyErr = fmt.Errorf("restore Codex response identity: %w", restoreErr)
+				return
+			}
 			restoredData = restoreCodexToolNamesFromSSEContext(c, restoredData, eventType)
 			if !bytes.Equal(restoredData, dataBytes) {
 				dataBytes = restoredData
@@ -1634,6 +1639,10 @@ func (s *OpenAIGatewayService) handleNonStreamingResponse(ctx context.Context, r
 	if err != nil {
 		return nil, fmt.Errorf("restore OpenAI namespace response: %w", err)
 	}
+	body, err = restoreStagedCodexIdentityJSON(c, account, body)
+	if err != nil {
+		return nil, fmt.Errorf("restore Codex response identity: %w", err)
+	}
 	body = restoreCodexToolNamesFromContext(c, body)
 	responseheaders.WriteFilteredHeaders(c.Writer.Header(), resp.Header, s.responseHeaderFilter)
 	// Codex 协议要求 /responses/compact JSON 响应携带 x-codex-turn-state
@@ -1734,6 +1743,10 @@ func (s *OpenAIGatewayService) handleSSEToJSON(resp *http.Response, c *gin.Conte
 		if restoreErr != nil {
 			return nil, fmt.Errorf("restore OpenAI namespace response: %w", restoreErr)
 		}
+		restoredBody, restoreErr = restoreStagedCodexIdentityJSON(c, account, restoredBody)
+		if restoreErr != nil {
+			return nil, fmt.Errorf("restore Codex response identity: %w", restoreErr)
+		}
 		restoredBody = restoreCodexToolNamesFromContext(c, restoredBody)
 		body = restoredBody
 	} else {
@@ -1741,6 +1754,11 @@ func (s *OpenAIGatewayService) handleSSEToJSON(resp *http.Response, c *gin.Conte
 			bodyText = s.replaceModelInSSEBody(bodyText, mappedModel, originalModel)
 		}
 		body = []byte(bodyText)
+		restoredSSE, restoreErr := restoreStagedCodexIdentitySSE(c, account, body)
+		if restoreErr != nil {
+			return nil, fmt.Errorf("restore Codex SSE identity: %w", restoreErr)
+		}
+		body = restoredSSE
 	}
 
 	responseheaders.WriteFilteredHeaders(c.Writer.Header(), resp.Header, s.responseHeaderFilter)

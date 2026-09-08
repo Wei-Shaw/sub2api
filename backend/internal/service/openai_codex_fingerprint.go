@@ -81,7 +81,11 @@ const (
 
 const (
 	codexFingerprintModeExtraKey = "codex_fingerprint_mode"
-	codexFingerprintSeedExtraKey = "codex_fingerprint_seed"
+	// CodexFingerprintSeedExtraKey is system-managed account identity state. It
+	// is persisted in accounts.extra but never accepted from or returned to
+	// ordinary account-management clients.
+	CodexFingerprintSeedExtraKey = "codex_fingerprint_seed"
+	codexFingerprintSeedExtraKey = CodexFingerprintSeedExtraKey
 )
 
 func canonicalCodexFingerprintSeed(value any) (string, bool) {
@@ -101,7 +105,9 @@ func newCodexFingerprintSeed() string {
 	return uuid.NewString()
 }
 
-func stripCodexFingerprintSeed(extra map[string]any) map[string]any {
+// StripCodexFingerprintSeed returns a shallow copy without the system-managed
+// fingerprint seed. The input map is never mutated.
+func StripCodexFingerprintSeed(extra map[string]any) map[string]any {
 	if extra == nil {
 		return nil
 	}
@@ -139,9 +145,16 @@ func codexFingerprintSeed(extra map[string]any) (string, bool) {
 	return canonicalCodexFingerprintSeed(extra[codexFingerprintSeedExtraKey])
 }
 
-func prepareCodexFingerprintExtraForCreate(platform, accountType string, extra map[string]any) map[string]any {
-	prepared := stripCodexFingerprintSeed(extra)
-	if platform != PlatformOpenAI || (accountType != AccountTypeOAuth && accountType != AccountTypeSetupToken) || !codexFingerprintModeRequiresSeed(codexFingerprintModeFromExtra(prepared)) {
+// PrepareCodexFingerprintExtraForCreate discards caller-provided seed material
+// and creates a fresh seed for every OpenAI OAuth account. Setup-token
+// accounts keep the legacy behavior and allocate a seed only when convergence
+// is enabled.
+func PrepareCodexFingerprintExtraForCreate(platform, accountType string, extra map[string]any) map[string]any {
+	prepared := StripCodexFingerprintSeed(extra)
+	if platform != PlatformOpenAI || (accountType != AccountTypeOAuth && accountType != AccountTypeSetupToken) {
+		return prepared
+	}
+	if accountType == AccountTypeSetupToken && !codexFingerprintModeRequiresSeed(codexFingerprintModeFromExtra(prepared)) {
 		return prepared
 	}
 	if prepared == nil {
@@ -151,28 +164,34 @@ func prepareCodexFingerprintExtraForCreate(platform, accountType string, extra m
 	return prepared
 }
 
-func prepareCodexFingerprintExtraForUpdate(account *Account, extra map[string]any) map[string]any {
-	prepared := stripCodexFingerprintSeed(extra)
-	if account == nil || !account.IsOpenAIOAuthLike() {
+// PrepareCodexFingerprintExtraForUpdate strips caller-provided seed material,
+// preserves the canonical database seed, and creates a replacement only when
+// the account type requires one.
+func PrepareCodexFingerprintExtraForUpdate(platform, accountType string, currentExtra, requestedExtra map[string]any) map[string]any {
+	prepared := StripCodexFingerprintSeed(requestedExtra)
+	if platform != PlatformOpenAI || (accountType != AccountTypeOAuth && accountType != AccountTypeSetupToken) {
 		return prepared
 	}
-	if seed, ok := codexFingerprintSeed(account.Extra); ok {
+	if seed, ok := codexFingerprintSeed(currentExtra); ok {
 		if prepared == nil {
 			prepared = make(map[string]any, 1)
 		}
 		prepared[codexFingerprintSeedExtraKey] = seed
 		return prepared
 	}
-	if codexFingerprintModeRequiresSeed(codexFingerprintModeFromExtra(prepared)) {
-		if prepared == nil {
-			prepared = make(map[string]any, 1)
-		}
-		prepared[codexFingerprintSeedExtraKey] = newCodexFingerprintSeed()
+	if accountType == AccountTypeSetupToken && !codexFingerprintModeRequiresSeed(codexFingerprintModeFromExtra(prepared)) {
+		return prepared
 	}
+	if prepared == nil {
+		prepared = make(map[string]any, 1)
+	}
+	prepared[codexFingerprintSeedExtraKey] = newCodexFingerprintSeed()
 	return prepared
 }
 
-func sanitizedCodexFingerprintExtraUpdates(updates map[string]any) map[string]any {
+// SanitizedCodexFingerprintExtraUpdates removes caller-controlled seed writes
+// without mutating the supplied update map.
+func SanitizedCodexFingerprintExtraUpdates(updates map[string]any) map[string]any {
 	if updates == nil {
 		return nil
 	}

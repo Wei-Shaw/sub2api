@@ -3227,9 +3227,27 @@
         </div>
       </div>
 
+      <div
+        v-if="form.platform === 'openai' && form.type === 'oauth'"
+        class="border-t border-gray-200 pt-4 dark:border-dark-600"
+      >
+        <CodexIdentityPolicyEditor
+          v-if="isLegacyCodexIdentityImportMethod"
+          v-model="codexIdentityPolicy"
+          :proxies="proxies"
+          :account-proxy-id="form.proxy_id"
+          id-prefix="create-codex-identity"
+        />
+        <CodexIdentityTemplateSelector
+          v-else
+          v-model="codexIdentityAssignment"
+          id-prefix="create-codex-template"
+        />
+      </div>
+
       <!-- Codex 指纹收敛模式（仅 OpenAI OAuth） -->
       <div
-        v-if="form.platform === 'openai' && accountCategory === 'oauth-based'"
+        v-if="form.platform === 'openai' && accountCategory === 'oauth-based' && !codexIdentityConfigurationEnabled"
         class="border-t border-gray-200 pt-4 dark:border-dark-600"
       >
         <div class="flex items-center justify-between gap-4">
@@ -3499,6 +3517,28 @@
         @import-sso="handleGrokImportSSO"
         @authorize-password="handleGrokAuthorizePassword"
       />
+
+      <div
+        v-if="isCodexSessionImportMethod"
+        class="rounded-lg border border-gray-200 px-4 py-3 dark:border-dark-600"
+      >
+        <label class="flex items-start gap-3 text-sm text-gray-700 dark:text-gray-300">
+          <input
+            v-model="overrideExistingCodexIdentityPolicy"
+            type="checkbox"
+            class="mt-0.5 rounded border-gray-300 dark:border-dark-600"
+            data-testid="codex-session-override-existing-identity"
+          />
+          <span class="min-w-0">
+            <span class="block font-medium">
+              {{ t('admin.accounts.oauth.openai.codexSessionOverrideExisting') }}
+            </span>
+            <span class="mt-1 block text-xs leading-5 text-gray-500 dark:text-gray-400">
+              {{ t('admin.accounts.oauth.openai.codexSessionOverrideExistingDesc') }}
+            </span>
+          </span>
+        </label>
+      </div>
 
     </div>
 
@@ -3818,7 +3858,7 @@
 import { ref, reactive, computed, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useAppStore } from '@/stores/app'
-
+import { extractI18nErrorMessage } from '@/utils/apiError'
 import {
   claudeModels,
   getPresetMappingsByPlatform,
@@ -3849,7 +3889,9 @@ import type {
   CodexSessionImportMessage,
   OpenAICompactMode,
   OpenAIResponsesMode,
-  OpenAIEndpointCapability
+  OpenAIEndpointCapability,
+  CodexIdentityAssignment,
+  CodexIdentityPolicy
 } from '@/types'
 import BaseDialog from '@/components/common/BaseDialog.vue'
 import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
@@ -3902,6 +3944,14 @@ import {
   type OpenAIWSMode
 } from '@/utils/openaiWsMode'
 import OAuthAuthorizationFlow from './OAuthAuthorizationFlow.vue'
+import { CodexIdentityPolicyEditor, CodexIdentityTemplateSelector } from './codex-identity'
+import {
+  createDefaultCodexIdentityPolicy,
+  availableCodexIdentityProxyIDs,
+  codexIdentityValidationMessageKey,
+  serializeCodexIdentityPolicy,
+  validateCodexIdentityPolicy
+} from '@/utils/codexIdentityValidation'
 
 // Type for exposed OAuthAuthorizationFlow component
 // Note: defineExpose automatically unwraps refs, so we use the unwrapped types
@@ -4312,6 +4362,15 @@ const codexCLIOnlyEnabled = ref(false)
 const codexCLIOnlyAppServerEnabled = ref(false)
 type CodexFingerprintMode = 'off' | 'device' | 'session' | 'full'
 const codexFingerprintMode = ref<CodexFingerprintMode>('off')
+const codexIdentityPolicy = ref<CodexIdentityPolicy>(createDefaultCodexIdentityPolicy())
+const codexIdentityAssignment = ref<CodexIdentityAssignment>({ enabled: false })
+const overrideExistingCodexIdentityPolicy = ref(false)
+watch(() => codexIdentityPolicy.value.mode, (mode) => {
+  if (mode === 'os_profile_device_pool') codexFingerprintMode.value = 'off'
+})
+watch(() => codexIdentityAssignment.value.enabled, (enabled) => {
+  if (enabled) codexFingerprintMode.value = 'off'
+})
 const codexFingerprintModeOptions = computed(() => [
   { value: 'off' as CodexFingerprintMode, label: t('admin.accounts.openai.codexFingerprintOff') },
   { value: 'device' as CodexFingerprintMode, label: t('admin.accounts.openai.codexFingerprintDevice') },
@@ -4620,6 +4679,21 @@ const isGrokSSOInputMethod = computed(() => form.platform === 'grok' && oauthFlo
 const isManualInputMethod = computed(() => {
   return oauthFlowRef.value?.inputMethod === 'manual'
 })
+
+const isCodexSessionImportMethod = computed(() =>
+  form.platform === 'openai' &&
+  (oauthFlowRef.value?.inputMethod === 'codex_session' || oauthFlowRef.value?.inputMethod === 'agent_identity')
+)
+
+const isLegacyCodexIdentityImportMethod = computed(() =>
+  isCodexSessionImportMethod.value ||
+  (form.platform === 'openai' && oauthFlowRef.value?.inputMethod === 'codex_pat')
+)
+const codexIdentityConfigurationEnabled = computed(() =>
+  isLegacyCodexIdentityImportMethod.value
+    ? codexIdentityPolicy.value.mode === 'os_profile_device_pool'
+    : codexIdentityAssignment.value.enabled,
+)
 
 const expiresAtInput = computed({
   get: () => formatDateTimeLocal(form.expires_at),
@@ -5077,6 +5151,34 @@ const withAntigravityConfirmFlag = (payload: CreateAccountRequest): CreateAccoun
   return cloned
 }
 
+const withCodexIdentityAssignment = (payload: CreateAccountRequest): CreateAccountRequest => {
+  if (payload.platform !== 'openai' || payload.type !== 'oauth') return payload
+  return {
+    ...payload,
+    codex_identity_assignment: { ...codexIdentityAssignment.value }
+  }
+}
+
+const validateCurrentCodexIdentityConfiguration = (): boolean => {
+  if (form.platform !== 'openai' || form.type !== 'oauth') return true
+  if (!isLegacyCodexIdentityImportMethod.value) {
+    const valid = !codexIdentityAssignment.value.enabled ||
+      Number.isInteger(codexIdentityAssignment.value.template_id) &&
+      Number(codexIdentityAssignment.value.template_id) > 0
+    if (!valid) appStore.showError(t('admin.accounts.codexIdentity.templateRequired'))
+    return valid
+  }
+  const result = validateCodexIdentityPolicy(codexIdentityPolicy.value, {
+    availableProxyIDs: availableCodexIdentityProxyIDs(props.proxies)
+  })
+  if (!result.valid) {
+    const issue = result.errors[0]
+    const key = issue ? codexIdentityValidationMessageKey(issue.code) : null
+    appStore.showError(key ? t(key) : issue?.message || t('admin.accounts.codexIdentity.fixErrors'))
+  }
+  return result.valid
+}
+
 const ensureAntigravityMixedChannelConfirmed = async (onConfirm: () => Promise<void>): Promise<boolean> => {
   if (!needsMixedChannelCheck(form.platform)) {
     return true
@@ -5102,7 +5204,12 @@ const ensureAntigravityMixedChannelConfirmed = async (onConfirm: () => Promise<v
     })
     return false
   } catch (error: any) {
-    appStore.showError(error.response?.data?.message || error.response?.data?.detail || t('admin.accounts.failedToCreate'))
+    appStore.showError(extractI18nErrorMessage(
+      error,
+      t,
+      'admin.accounts.codexIdentity.templateErrors',
+      error.response?.data?.message || error.response?.data?.detail || t('admin.accounts.failedToCreate'),
+    ))
     return false
   }
 }
@@ -5110,7 +5217,9 @@ const ensureAntigravityMixedChannelConfirmed = async (onConfirm: () => Promise<v
 const submitCreateAccount = async (payload: CreateAccountRequest) => {
   submitting.value = true
   try {
-    const account = await adminAPI.accounts.create(withAntigravityConfirmFlag(payload))
+    const account = await adminAPI.accounts.create(
+      withAntigravityConfirmFlag(withCodexIdentityAssignment(payload))
+    )
     const modelMapping = payload.credentials.model_mapping
     const hasConcreteMappedTarget = payload.type === 'apikey' &&
       typeof modelMapping === 'object' &&
@@ -5155,7 +5264,12 @@ const submitCreateAccount = async (payload: CreateAccountRequest) => {
       })
       return
     }
-    appStore.showError(error.response?.data?.message || error.response?.data?.detail || t('admin.accounts.failedToCreate'))
+    appStore.showError(extractI18nErrorMessage(
+      error,
+      t,
+      'admin.accounts.codexIdentity.templateErrors',
+      error.response?.data?.message || error.response?.data?.detail || error.message || t('admin.accounts.failedToCreate'),
+    ))
   } finally {
     submitting.value = false
   }
@@ -5229,6 +5343,9 @@ const resetForm = () => {
   codexCLIOnlyEnabled.value = false
   codexCLIOnlyAppServerEnabled.value = false
   codexFingerprintMode.value = 'off'
+  codexIdentityPolicy.value = createDefaultCodexIdentityPolicy()
+  codexIdentityAssignment.value = { enabled: false }
+  overrideExistingCodexIdentityPolicy.value = false
   anthropicPassthroughEnabled.value = false
   anthropicAPIKeyAuthScheme.value = 'x_api_key'
   webSearchEmulationMode.value = 'default'
@@ -5330,7 +5447,7 @@ const buildOpenAIExtra = (base?: Record<string, unknown>): Record<string, unknow
   }
   // 收敛是显式 opt-in：off 即默认值，不落键；device/session/full 必须显式写入，
   // 否则管理员的选择会被当成默认而丢失（#5610）。
-  if (codexFingerprintMode.value !== 'off') {
+  if (!codexIdentityConfigurationEnabled.value && codexFingerprintMode.value !== 'off') {
     extra.codex_fingerprint_mode = codexFingerprintMode.value
   } else {
     delete extra.codex_fingerprint_mode
@@ -5493,6 +5610,7 @@ const handleSubmit = async () => {
       appStore.showError(t('admin.accounts.pleaseEnterAccountName'))
       return
     }
+    if (!validateCurrentCodexIdentityConfiguration()) return
     const canContinue = await ensureAntigravityMixedChannelConfirmed(async () => {
       step.value = 2
     })
@@ -5741,6 +5859,7 @@ const handleSubmit = async () => {
 
 const goBackToBasicInfo = () => {
   step.value = 1
+  overrideExistingCodexIdentityPolicy.value = false
   oauth.resetState()
   openaiOAuth.resetState()
   geminiOAuth.resetState()
@@ -6147,6 +6266,7 @@ const handleGrokAuthorizePassword = async (emailPasswordInput: string) => {
 const handleOpenAIExchange = async (authCode: string) => {
   const oauthClient = openaiOAuth
   if (!authCode.trim() || !oauthClient.sessionId.value) return
+  if (!validateCurrentCodexIdentityConfiguration()) return
 
   oauthClient.loading.value = true
   oauthClient.error.value = ''
@@ -6206,7 +6326,8 @@ const handleOpenAIExchange = async (authCode: string) => {
         rate_multiplier: form.rate_multiplier,
         group_ids: form.group_ids,
         expires_at: form.expires_at,
-        auto_pause_on_expired: autoPauseOnExpired.value
+        auto_pause_on_expired: autoPauseOnExpired.value,
+        codex_identity_assignment: { ...codexIdentityAssignment.value }
       })
       appStore.showSuccess(t('admin.accounts.accountCreated'))
     }
@@ -6289,6 +6410,7 @@ const handleOpenAIImportCodexSession = async (content: string) => {
     oauthClient.error.value = t('admin.accounts.oauth.openai.agentIdentityInvalid')
     return
   }
+  if (!validateCurrentCodexIdentityConfiguration()) return
 
   const credentialExtras = buildOpenAICodexImportCredentialExtras()
   if (credentialExtras === null) {
@@ -6314,7 +6436,10 @@ const handleOpenAIImportCodexSession = async (content: string) => {
       auto_pause_on_expired: autoPauseOnExpired.value,
       credential_extras: Object.keys(credentialExtras).length > 0 ? credentialExtras : undefined,
       extra: withUpstreamRequestIdHeader(extra),
-      update_existing: true
+      update_existing: true,
+      override_existing_codex_identity_policy:
+        overrideExistingCodexIdentityPolicy.value || undefined,
+      codex_identity_policy: serializeCodexIdentityPolicy(codexIdentityPolicy.value)
     })
 
     const successCount = result.created + result.updated
@@ -6367,6 +6492,7 @@ const handleOpenAIImportCodexPAT = async (accessToken: string) => {
     oauthClient.error.value = t('admin.accounts.oauth.openai.codexPatEmpty')
     return
   }
+  if (!validateCurrentCodexIdentityConfiguration()) return
 
   const credentialExtras = buildOpenAICodexImportCredentialExtras()
   if (credentialExtras === null) {
@@ -6391,7 +6517,8 @@ const handleOpenAIImportCodexPAT = async (accessToken: string) => {
       expires_at: form.expires_at,
       auto_pause_on_expired: autoPauseOnExpired.value,
       credential_extras: Object.keys(credentialExtras).length > 0 ? credentialExtras : undefined,
-      extra: withUpstreamRequestIdHeader(extra)
+      extra: withUpstreamRequestIdHeader(extra),
+      codex_identity_policy: serializeCodexIdentityPolicy(codexIdentityPolicy.value)
     })
 
     appStore.showSuccess(t('admin.accounts.accountCreated'))
@@ -6423,6 +6550,7 @@ const handleOpenAIBatchRT = async (refreshTokenInput: string, clientId?: string)
     oauthClient.error.value = t('admin.accounts.oauth.openai.pleaseEnterRefreshToken')
     return
   }
+  if (!validateCurrentCodexIdentityConfiguration()) return
 
   oauthClient.loading.value = true
   oauthClient.error.value = ''
@@ -6487,7 +6615,8 @@ const handleOpenAIBatchRT = async (refreshTokenInput: string, clientId?: string)
             rate_multiplier: form.rate_multiplier,
             group_ids: form.group_ids,
             expires_at: form.expires_at,
-            auto_pause_on_expired: autoPauseOnExpired.value
+            auto_pause_on_expired: autoPauseOnExpired.value,
+            codex_identity_assignment: { ...codexIdentityAssignment.value }
           })
         }
 

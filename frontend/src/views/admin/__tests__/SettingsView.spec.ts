@@ -559,6 +559,9 @@ function mountView() {
         ProxySelector: true,
         ImageUpload: ImageUploadStub,
         BackupSettings: true,
+        CodexIdentityTemplatesSettings: {
+          template: '<div data-testid="codex-identity-templates-stub" />',
+        },
       },
     },
   });
@@ -591,6 +594,16 @@ async function openGatewayTab(wrapper: ReturnType<typeof mountView>) {
 
   expect(gatewayTabButton).toBeDefined();
   await gatewayTabButton?.trigger("click");
+  await flushPromises();
+}
+
+async function openCodexProfilesTab(wrapper: ReturnType<typeof mountView>) {
+  const tabButton = wrapper
+    .findAll("button")
+    .find((node) => node.text().includes("admin.settings.tabs.codexProfiles"));
+
+  expect(tabButton).toBeDefined();
+  await tabButton?.trigger("click");
   await flushPromises();
 }
 
@@ -628,6 +641,7 @@ describe("admin SettingsView email domain quota copy", () => {
 
 describe("admin SettingsView payment visible method controls", () => {
   beforeEach(() => {
+    window.history.replaceState({}, "", "/admin/settings");
     getSettings.mockReset();
     updateSettings.mockReset();
     getWebSearchEmulationConfig.mockReset();
@@ -734,6 +748,32 @@ describe("admin SettingsView payment visible method controls", () => {
     expect(updateSettings).toHaveBeenCalledWith(
       expect.objectContaining({ compact_home_enabled: true }),
     );
+  });
+
+  it("places the independently saved Codex template control plane after Gateway", async () => {
+    const wrapper = mountView();
+    await flushPromises();
+
+    const tabs = wrapper.findAll('[role="tab"]');
+    const gatewayIndex = tabs.findIndex((tab) => tab.text().includes('admin.settings.tabs.gateway'));
+    const codexIndex = tabs.findIndex((tab) => tab.text().includes('admin.settings.tabs.codexProfiles'));
+    const paymentIndex = tabs.findIndex((tab) => tab.text().includes('admin.settings.tabs.payment'));
+    expect(codexIndex).toBe(gatewayIndex + 1);
+    expect(paymentIndex).toBe(codexIndex + 1);
+
+    await openCodexProfilesTab(wrapper);
+    expect(wrapper.find('[data-testid="codex-identity-templates-stub"]').exists()).toBe(true);
+    expect(wrapper.text()).not.toContain('admin.settings.saveSettings');
+    expect(updateSettings).not.toHaveBeenCalled();
+  });
+
+  it("opens the Codex template control plane from a deep link", async () => {
+    window.history.replaceState({}, "", "/admin/settings?tab=codexProfiles");
+    const wrapper = mountView();
+    await flushPromises();
+
+    expect(wrapper.find('[data-testid="codex-identity-templates-stub"]').exists()).toBe(true);
+    expect(wrapper.text()).not.toContain("admin.settings.saveSettings");
   });
 
   it("renders panel rate limit card and saves settings", async () => {

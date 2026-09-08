@@ -58,6 +58,64 @@ func (r *upstreamBillingProbeAccountRepo) Update(_ context.Context, account *Acc
 	return nil
 }
 
+func (r *upstreamBillingProbeAccountRepo) ProvisionAccount(ctx context.Context, spec *AccountProvisioningSpec) error {
+	normalized, err := spec.NormalizeAndValidate()
+	if err != nil {
+		return err
+	}
+	normalized.Account.Status = normalized.FinalStatus
+	normalized.Account.Schedulable = normalized.Schedulable
+	normalized.Account.ProvisioningState = normalized.ProvisioningState
+	normalized.Account.CodexIdentityPolicy = *normalized.Identity
+	normalized.Account.GroupIDs = append([]int64(nil), normalized.GroupIDs...)
+	return r.Create(ctx, normalized.Account)
+}
+
+func (r *upstreamBillingProbeAccountRepo) UpdateProvisionedAccount(
+	ctx context.Context,
+	spec *AccountProvisioningSpec,
+	probeEnabled *bool,
+	rateSyncEnabled *bool,
+	rateMultiplier *float64,
+) error {
+	normalized, err := spec.NormalizeAndValidate()
+	if err != nil {
+		return err
+	}
+	account := normalized.Account
+	account.Status = normalized.FinalStatus
+	account.Schedulable = normalized.Schedulable
+	account.ProvisioningState = normalized.ProvisioningState
+	account.CodexIdentityPolicy = *normalized.Identity
+	account.GroupIDs = append([]int64(nil), normalized.GroupIDs...)
+	if account.Extra == nil {
+		account.Extra = make(map[string]any)
+	}
+	if probeEnabled != nil {
+		account.Extra[UpstreamBillingProbeEnabledExtraKey] = *probeEnabled
+	}
+	if rateSyncEnabled != nil {
+		account.Extra[UpstreamBillingRateSyncEnabledExtraKey] = *rateSyncEnabled
+	}
+	settings := make(map[string]any, 2)
+	if probeEnabled != nil {
+		settings[UpstreamBillingProbeEnabledExtraKey] = *probeEnabled
+	}
+	if rateSyncEnabled != nil {
+		settings[UpstreamBillingRateSyncEnabledExtraKey] = *rateSyncEnabled
+	}
+	if len(settings) > 0 {
+		if err := r.UpdateExtra(ctx, account.ID, settings); err != nil {
+			return err
+		}
+	}
+	if rateMultiplier != nil {
+		value := *rateMultiplier
+		account.RateMultiplier = &value
+	}
+	return r.Update(ctx, account)
+}
+
 func (r *upstreamBillingProbeAccountRepo) BulkUpdate(_ context.Context, ids []int64, updates AccountBulkUpdate) (int64, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()

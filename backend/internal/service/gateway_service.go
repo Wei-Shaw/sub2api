@@ -503,6 +503,21 @@ type GatewayCache interface {
 	GetReasoningContent(ctx context.Context, itemID string) (string, error)
 }
 
+// CodexProfileAffinityCache publishes the versioned Profile binding and its
+// unversioned lookup index as one cache transaction. Implementations must not
+// expose the new index unless the matching binding is already readable.
+type CodexProfileAffinityCache interface {
+	RebindCodexProfileAffinity(
+		ctx context.Context,
+		groupID int64,
+		oldBindingKey string,
+		newBindingKey string,
+		indexKey string,
+		accountID int64,
+		ttl time.Duration,
+	) error
+}
+
 // derefGroupID safely dereferences *int64 to int64, returning 0 if nil
 func derefGroupID(groupID *int64) int64 {
 	if groupID == nil {

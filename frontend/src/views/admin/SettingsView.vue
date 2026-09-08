@@ -7712,6 +7712,10 @@
 
         <!-- Tab: Email -->
         <!-- Tab: Payment -->
+        <div v-if="activeTab === 'codexProfiles'" class="space-y-6">
+          <CodexIdentityTemplatesSettings />
+        </div>
+
         <div v-show="activeTab === 'payment'" class="space-y-6">
           <!-- Payment System Settings -->
           <div class="card">
@@ -8690,7 +8694,7 @@
         </div>
 
         <!-- Save Button -->
-        <div v-show="activeTab !== 'backup'" class="flex justify-end">
+        <div v-if="activeTab !== 'backup' && activeTab !== 'codexProfiles'" class="flex justify-end">
           <button
             type="submit"
             :disabled="saving || loadFailed"
@@ -8813,6 +8817,7 @@ import ImageUpload from "@/components/common/ImageUpload.vue";
 import BackupSettings from "@/views/admin/BackupView.vue";
 import EmailTemplateEditor from "@/views/admin/settings/EmailTemplateEditor.vue";
 import OpenAIFastPolicyUserSelector from "@/views/admin/settings/OpenAIFastPolicyUserSelector.vue";
+import CodexIdentityTemplatesSettings from "@/views/admin/settings/CodexIdentityTemplatesSettings.vue";
 import { useClipboard } from "@/composables/useClipboard";
 import {
   useStepUp,
@@ -8869,10 +8874,10 @@ type SettingsTab =
   | "security"
   | "users"
   | "gateway"
+  | "codexProfiles"
   | "payment"
   | "email"
   | "backup";
-const activeTab = ref<SettingsTab>("general");
 const settingsTabs = [
   { key: "general" as SettingsTab, icon: "home" as const },
   { key: "agreement" as SettingsTab, icon: "document" as const },
@@ -8880,10 +8885,19 @@ const settingsTabs = [
   { key: "security" as SettingsTab, icon: "shield" as const },
   { key: "users" as SettingsTab, icon: "user" as const },
   { key: "gateway" as SettingsTab, icon: "server" as const },
+  { key: "codexProfiles" as SettingsTab, icon: "terminal" as const },
   { key: "payment" as SettingsTab, icon: "creditCard" as const },
   { key: "email" as SettingsTab, icon: "mail" as const },
   { key: "backup" as SettingsTab, icon: "database" as const },
 ];
+
+function initialSettingsTab(): SettingsTab {
+  if (typeof window === "undefined") return "general";
+  const candidate = new URLSearchParams(window.location.search).get("tab") as SettingsTab | null;
+  return candidate && settingsTabs.some((item) => item.key === candidate) ? candidate : "general";
+}
+
+const activeTab = ref<SettingsTab>(initialSettingsTab());
 
 const settingsTabKeyboardActions = {
   ArrowLeft: -1,
@@ -8896,6 +8910,11 @@ const settingsTabKeyboardActions = {
 
 function selectSettingsTab(tab: SettingsTab): void {
   activeTab.value = tab;
+  if (typeof window !== "undefined") {
+    const url = new URL(window.location.href);
+    url.searchParams.set("tab", tab);
+    window.history.replaceState(window.history.state, "", url);
+  }
 }
 
 function focusSettingsTab(tab: SettingsTab): void {

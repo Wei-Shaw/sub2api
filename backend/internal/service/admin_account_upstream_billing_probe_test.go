@@ -13,6 +13,21 @@ type upstreamBillingProbeAdminRepo struct {
 	*upstreamBillingProbeAccountRepo
 }
 
+type accountProvisioningProxyRepoStub struct {
+	ProxyRepository
+	proxies map[int64]Proxy
+}
+
+func (r *accountProvisioningProxyRepoStub) ListByIDs(_ context.Context, ids []int64) ([]Proxy, error) {
+	result := make([]Proxy, 0, len(ids))
+	for _, id := range ids {
+		if proxy, ok := r.proxies[id]; ok {
+			result = append(result, proxy)
+		}
+	}
+	return result, nil
+}
+
 func (r *upstreamBillingProbeAdminRepo) ListShadowsByParent(context.Context, int64) ([]*Account, error) {
 	return nil, nil
 }
@@ -66,6 +81,16 @@ func (r *accountBillingSettingsAdminRepo) UpdateWithAccountBillingSettings(
 	r.accounts[account.ID] = &updated
 	r.updateCalls++
 	return nil
+}
+
+func (r *accountBillingSettingsAdminRepo) UpdateProvisionedAccount(
+	ctx context.Context,
+	spec *AccountProvisioningSpec,
+	probeEnabled *bool,
+	rateSyncEnabled *bool,
+	rateMultiplier *float64,
+) error {
+	return r.UpdateWithAccountBillingSettings(ctx, spec.Account, probeEnabled, rateSyncEnabled, rateMultiplier)
 }
 
 func TestUpdateAccountRoutesRateIntentThroughAtomicBillingUpdater(t *testing.T) {
@@ -335,7 +360,11 @@ func TestUpdateAccountInvalidatesProbeSnapshotWhenProxyChanges(t *testing.T) {
 		},
 	}}
 
-	updated, err := (&adminServiceImpl{accountRepo: &upstreamBillingProbeAdminRepo{baseRepo}}).UpdateAccount(
+	proxyRepo := &accountProvisioningProxyRepoStub{proxies: map[int64]Proxy{
+		oldProxyID: {ID: oldProxyID, Status: StatusActive},
+		newProxyID: {ID: newProxyID, Status: StatusActive},
+	}}
+	updated, err := (&adminServiceImpl{accountRepo: &upstreamBillingProbeAdminRepo{baseRepo}, proxyRepo: proxyRepo}).UpdateAccount(
 		context.Background(),
 		accountID,
 		&UpdateAccountInput{ProxyID: &newProxyID},
@@ -365,7 +394,10 @@ func TestUpdateAccountPreservesProbeSnapshotWhenProxyIsUnchanged(t *testing.T) {
 		},
 	}}
 
-	updated, err := (&adminServiceImpl{accountRepo: &upstreamBillingProbeAdminRepo{baseRepo}}).UpdateAccount(
+	proxyRepo := &accountProvisioningProxyRepoStub{proxies: map[int64]Proxy{
+		existingProxyID: {ID: existingProxyID, Status: StatusActive},
+	}}
+	updated, err := (&adminServiceImpl{accountRepo: &upstreamBillingProbeAdminRepo{baseRepo}, proxyRepo: proxyRepo}).UpdateAccount(
 		context.Background(),
 		accountID,
 		&UpdateAccountInput{ProxyID: &unchangedProxyID},

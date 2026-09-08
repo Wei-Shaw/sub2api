@@ -35,15 +35,22 @@ type Account struct {
 	Priority                int
 	// RateMultiplier 账号计费倍率（>=0，允许 0 表示该账号计费为 0）。
 	// 使用指针用于兼容旧版本调度缓存（Redis）中缺字段的情况：nil 表示按 1.0 处理。
-	RateMultiplier     *float64
-	LoadFactor         *int // 调度负载因子；nil 表示使用 Concurrency
-	Status             string
-	ErrorMessage       string
-	LastUsedAt         *time.Time
-	ExpiresAt          *time.Time
-	AutoPauseOnExpired bool
-	CreatedAt          time.Time
-	UpdatedAt          time.Time
+	RateMultiplier *float64
+	LoadFactor     *int // 调度负载因子；nil 表示使用 Concurrency
+	Status         string
+	// ProvisioningState is independent from the operational status. Empty is
+	// accepted as active only for backward-compatible in-memory/Redis payloads
+	// created before the field existed; persisted rows are always explicit.
+	ProvisioningState                    AccountProvisioningState
+	CodexIdentityPolicy                  CodexIdentityPolicySpec
+	CodexIdentityTemplateID              *int64
+	CodexIdentityTemplateAppliedRevision *int64
+	ErrorMessage                         string
+	LastUsedAt                           *time.Time
+	ExpiresAt                            *time.Time
+	AutoPauseOnExpired                   bool
+	CreatedAt                            time.Time
+	UpdatedAt                            time.Time
 
 	Schedulable bool
 
@@ -139,6 +146,10 @@ func (a *Account) IsActive() bool {
 	return a.Status == StatusActive
 }
 
+func (a *Account) IsProvisioned() bool {
+	return a != nil && (a.ProvisioningState == "" || a.ProvisioningState == AccountProvisioningActive)
+}
+
 // IsSyntheticUITest reports whether the account belongs to an isolated UI load-test
 // dataset. Production accounts never receive this marker. It lets the dedicated
 // test instance exercise interactive quota and connection-test controls without
@@ -179,7 +190,7 @@ func (a *Account) EffectiveLoadFactor() int {
 }
 
 func (a *Account) IsSchedulable() bool {
-	if !a.IsActive() || !a.Schedulable {
+	if !a.IsProvisioned() || !a.IsActive() || !a.Schedulable {
 		return false
 	}
 	now := time.Now()
@@ -214,7 +225,7 @@ func (a *Account) IsSchedulable() bool {
 // 手动 Schedulable 开关:spark 影子拥有独立 spark 配额窗口,母账号 global 429(走 RateLimitResetAt)
 // 不应连坐 spark(否则重新耦合影子架构本应解耦的两条 429 道)。nil receiver 返回 false。
 func (a *Account) IsCredentialUsableForShadow() bool {
-	if a == nil || !a.IsActive() {
+	if a == nil || !a.IsProvisioned() || !a.IsActive() {
 		return false
 	}
 	now := time.Now()

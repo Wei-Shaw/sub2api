@@ -2,6 +2,8 @@ package service
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"math"
@@ -81,9 +83,14 @@ type openAIWSAcquireRequest struct {
 
 type openAIWSHandshakeCompatibilityKey struct {
 	betaFeatures        string
+	userAgent           string
+	originator          string
+	version             string
+	proxyIdentity       string
 	codexInstallationID string
 	sessionIDHyphen     string
 	sessionIDUnderscore string
+	conversationID      string
 	threadID            string
 	clientRequestID     string
 	codexWindowID       string
@@ -864,7 +871,7 @@ func (p *openAIWSConnPool) acquire(ctx context.Context, req openAIWSAcquireReque
 
 retryAcquire:
 	accountID := req.Account.ID
-	compatibility := normalizeOpenAIWSHandshakeCompatibility(req.Account, req.Headers)
+	compatibility := normalizeOpenAIWSHandshakeCompatibility(req.Account, req.Headers, req.ProxyURL)
 	routingAffinity := normalizeOpenAIWSRoutingAffinity(req.Headers)
 	effectiveMaxConns := p.effectiveMaxConnsByAccount(req.Account)
 	if effectiveMaxConns <= 0 {
@@ -1821,7 +1828,7 @@ func (p *openAIWSConnPool) dialConn(ctx context.Context, req openAIWSAcquireRequ
 	}
 	id := p.nextConnID(req.Account.ID)
 	pooledConn := newOpenAIWSConn(id, req.Account.ID, conn, handshakeHeaders)
-	pooledConn.handshakeCompatibility = normalizeOpenAIWSHandshakeCompatibility(req.Account, req.Headers)
+	pooledConn.handshakeCompatibility = normalizeOpenAIWSHandshakeCompatibility(req.Account, req.Headers, req.ProxyURL)
 	pooledConn.routingAffinity = normalizeOpenAIWSRoutingAffinity(req.Headers)
 	return pooledConn, nil
 }
@@ -2004,7 +2011,7 @@ func cloneOpenAIWSAcquireRequestPtr(req *openAIWSAcquireRequest) *openAIWSAcquir
 func sameOpenAIWSPrewarmTarget(a, b openAIWSAcquireRequest) bool {
 	return stringsTrim(a.WSURL) == stringsTrim(b.WSURL) &&
 		stringsTrim(a.ProxyURL) == stringsTrim(b.ProxyURL) &&
-		normalizeOpenAIWSHandshakeCompatibility(a.Account, a.Headers) == normalizeOpenAIWSHandshakeCompatibility(b.Account, b.Headers)
+		normalizeOpenAIWSHandshakeCompatibility(a.Account, a.Headers, a.ProxyURL) == normalizeOpenAIWSHandshakeCompatibility(b.Account, b.Headers, b.ProxyURL)
 }
 
 func normalizeOpenAIWSBetaFeatures(headers http.Header) string {
@@ -2032,9 +2039,26 @@ func normalizeOpenAIWSBetaFeatures(headers http.Header) string {
 	return strings.Join(normalized, ",")
 }
 
-func normalizeOpenAIWSHandshakeCompatibility(account *Account, headers http.Header) openAIWSHandshakeCompatibilityKey {
+func normalizeOpenAIWSHandshakeCompatibility(account *Account, headers http.Header, proxyURL ...string) openAIWSHandshakeCompatibilityKey {
 	key := openAIWSHandshakeCompatibilityKey{
 		betaFeatures: normalizeOpenAIWSBetaFeatures(headers),
+	}
+	if account != nil && account.CodexIdentityPolicy.Mode == CodexIdentityPolicyOSProfileDevicePool {
+		key.userAgent = normalizeOpenAIWSStableIdentityHeader(headers, "user-agent")
+		key.originator = normalizeOpenAIWSStableIdentityHeader(headers, "originator")
+		key.version = normalizeOpenAIWSStableIdentityHeader(headers, "version")
+		if len(proxyURL) > 0 && strings.TrimSpace(proxyURL[0]) != "" {
+			sum := sha256.Sum256([]byte(strings.TrimSpace(proxyURL[0])))
+			key.proxyIdentity = hex.EncodeToString(sum[:16])
+		}
+		key.codexInstallationID = normalizeOpenAIWSStableIdentityHeader(headers, "x-codex-installation-id")
+		key.sessionIDHyphen = normalizeOpenAIWSStableIdentityHeader(headers, "session-id")
+		key.sessionIDUnderscore = normalizeOpenAIWSStableIdentityHeader(headers, "session_id")
+		key.conversationID = normalizeOpenAIWSStableIdentityHeader(headers, "conversation_id")
+		key.threadID = normalizeOpenAIWSStableIdentityHeader(headers, "thread-id")
+		key.clientRequestID = normalizeOpenAIWSStableIdentityHeader(headers, "x-client-request-id")
+		key.codexWindowID = normalizeOpenAIWSStableIdentityHeader(headers, "x-codex-window-id")
+		return key
 	}
 	mode := activeCodexFingerprintMode(account)
 	if mode == codexFingerprintOff {

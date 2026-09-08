@@ -9,10 +9,12 @@ import (
 	"errors"
 	"os"
 	"strconv"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
 
+	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	"go.uber.org/zap"
 	"golang.org/x/sync/singleflight"
@@ -70,6 +72,19 @@ type OpenAIWSIngressLeaseCache interface {
 	ReleaseOpenAIWSIngressLease(ctx context.Context, apiKeyID int64, leaseID string) error
 }
 
+type CodexDeviceConversationLeaseCache interface {
+	AcquireCodexDeviceConversationLease(ctx context.Context, slotKey, leaseID string) (bool, error)
+	RefreshCodexDeviceConversationLease(ctx context.Context, slotKey, leaseID string) (bool, error)
+	ReleaseCodexDeviceConversationLease(ctx context.Context, slotKey, leaseID string) error
+}
+
+// CodexDeviceConversationCapacityCache extends legacy mutex caches without
+// weakening their behavior. Zero means no additional slot-specific limit.
+type CodexDeviceConversationCapacityCache interface {
+	CodexDeviceConversationLeaseCache
+	AcquireCodexDeviceConversationLeaseWithLimit(ctx context.Context, slotKey, leaseID string, maxConcurrency int) (bool, error)
+}
+
 const (
 	openAIWSIngressLeaseTTL             = 60 * time.Second
 	openAIWSIngressLeaseRefreshInterval = 20 * time.Second
@@ -77,6 +92,171 @@ const (
 )
 
 var ErrOpenAIWSIngressLeaseLost = errors.New("openai websocket ingress lease lost")
+
+var (
+	ErrCodexDeviceConversationLeaseLost = errors.New("codex device conversation lease lost")
+	ErrCodexDeviceSessionBusy           = infraerrors.TooManyRequests(
+		"CODEX_DEVICE_SESSION_BUSY",
+		"the selected Codex device slot is serving another conversation; retry shortly",
+	)
+)
+
+type CodexDeviceConversationLease struct {
+	affinityMu      sync.RWMutex
+	refreshAffinity func(context.Context) error
+	// ctx follows the client/attempt lifecycle and is exposed to gateway logic.
+	// The refresh and upstream contexts below deliberately outlive a client
+	// disconnect so detached HTTP/SSE draining cannot lose the slot lease.
+	ctx            context.Context
+	cancel         context.CancelCauseFunc
+	refreshCtx     context.Context
+	refreshCancel  context.CancelCauseFunc
+	upstreamCtx    context.Context
+	upstreamCancel context.CancelCauseFunc
+	cache          CodexDeviceConversationLeaseCache
+	slotKey        string
+	leaseID        string
+
+	stopOnce        sync.Once
+	stopCh          chan struct{}
+	refreshDone     chan struct{}
+	refreshInterval time.Duration
+	leaseTTL        time.Duration
+	operationTO     time.Duration
+}
+
+type codexDeviceConversationLeaseContextKey struct{}
+
+func withCodexDeviceConversationLeaseContext(ctx context.Context, lease *CodexDeviceConversationLease) context.Context {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if lease == nil {
+		return ctx
+	}
+	return context.WithValue(ctx, codexDeviceConversationLeaseContextKey{}, lease)
+}
+
+func codexDeviceConversationLeaseFromContext(ctx context.Context) *CodexDeviceConversationLease {
+	if ctx == nil {
+		return nil
+	}
+	lease, _ := ctx.Value(codexDeviceConversationLeaseContextKey{}).(*CodexDeviceConversationLease)
+	return lease
+}
+
+func (l *CodexDeviceConversationLease) Context() context.Context {
+	if l == nil || l.ctx == nil {
+		return context.Background()
+	}
+	return l.ctx
+}
+
+// UpstreamContext returns a context that preserves request values but is not
+// canceled merely because the downstream client disconnected. It is canceled
+// on explicit release or when Redis ownership is lost.
+func (l *CodexDeviceConversationLease) UpstreamContext() context.Context {
+	if l == nil || l.upstreamCtx == nil {
+		return context.Background()
+	}
+	return l.upstreamCtx
+}
+
+func (l *CodexDeviceConversationLease) Release() {
+	if l == nil {
+		return
+	}
+	l.stopOnce.Do(func() {
+		if l.stopCh != nil {
+			close(l.stopCh)
+		}
+		if l.refreshCancel != nil {
+			l.refreshCancel(nil)
+		}
+		if l.upstreamCancel != nil {
+			l.upstreamCancel(nil)
+		}
+		if l.cancel != nil {
+			l.cancel(nil)
+		}
+		if l.refreshDone != nil {
+			<-l.refreshDone
+		}
+		if l.cache == nil || l.slotKey == "" || l.leaseID == "" {
+			return
+		}
+		releaseCtx, releaseCancel := context.WithTimeout(context.Background(), openAIWSIngressLeaseOperationTO)
+		defer releaseCancel()
+		if err := l.cache.ReleaseCodexDeviceConversationLease(releaseCtx, l.slotKey, l.leaseID); err != nil {
+			logger.L().Warn("codex_device_conversation_lease_release_failed", zap.Error(err))
+		}
+	})
+}
+
+// keepAffinityAlive ties the database drain protection to the request lease,
+// including detached upstream draining after the client disconnects.
+func (l *CodexDeviceConversationLease) keepAffinityAlive(refresh func(context.Context) error) {
+	l.affinityMu.Lock()
+	l.refreshAffinity = refresh
+	l.affinityMu.Unlock()
+}
+
+func (l *CodexDeviceConversationLease) refreshLoop() {
+	defer close(l.refreshDone)
+	refreshInterval := l.refreshInterval
+	if refreshInterval <= 0 {
+		refreshInterval = openAIWSIngressLeaseRefreshInterval
+	}
+	leaseTTL := l.leaseTTL
+	if leaseTTL <= 0 {
+		leaseTTL = openAIWSIngressLeaseTTL
+	}
+	operationTO := l.operationTO
+	if operationTO <= 0 {
+		operationTO = openAIWSIngressLeaseOperationTO
+	}
+	refreshCtx := l.refreshCtx
+	if refreshCtx == nil {
+		refreshCtx = context.Background()
+	}
+	ticker := time.NewTicker(refreshInterval)
+	defer ticker.Stop()
+	lastConfirmedAt := time.Now()
+	for {
+		select {
+		case <-refreshCtx.Done():
+			return
+		case <-l.stopCh:
+			return
+		case <-ticker.C:
+			operationCtx, cancel := context.WithTimeout(context.Background(), operationTO)
+			owned, err := l.cache.RefreshCodexDeviceConversationLease(operationCtx, l.slotKey, l.leaseID)
+			l.affinityMu.RLock()
+			refreshAffinity := l.refreshAffinity
+			l.affinityMu.RUnlock()
+			if err == nil && owned && refreshAffinity != nil {
+				err = refreshAffinity(operationCtx)
+			}
+			cancel()
+			if err == nil && owned {
+				lastConfirmedAt = time.Now()
+				continue
+			}
+			if err == nil || time.Since(lastConfirmedAt) >= leaseTTL {
+				if l.upstreamCancel != nil {
+					l.upstreamCancel(ErrCodexDeviceConversationLeaseLost)
+				}
+				if l.cancel != nil {
+					l.cancel(ErrCodexDeviceConversationLeaseLost)
+				}
+				if l.refreshCancel != nil {
+					l.refreshCancel(ErrCodexDeviceConversationLeaseLost)
+				}
+				return
+			}
+		}
+	}
+}
 
 // OpenAIWSIngressLease keeps a Redis-backed ingress lease alive and cancels
 // its context if Redis cannot confirm ownership for a full lease lifetime.
@@ -288,6 +468,70 @@ func (s *ConcurrencyService) AcquireOpenAIWSIngressLease(ctx context.Context, ap
 		leaseID:     leaseID,
 		stopCh:      make(chan struct{}),
 		refreshDone: make(chan struct{}),
+	}
+	go lease.refreshLoop()
+	return lease, true, nil
+}
+
+func (s *ConcurrencyService) AcquireCodexDeviceConversationLease(
+	ctx context.Context,
+	slotKey string,
+	capacity ...int,
+) (*CodexDeviceConversationLease, bool, error) {
+	slotKey = strings.TrimSpace(slotKey)
+	if s == nil || s.cache == nil || slotKey == "" {
+		return nil, false, errors.New("codex device conversation lease cache is unavailable")
+	}
+	cache, ok := s.cache.(CodexDeviceConversationLeaseCache)
+	if !ok {
+		return nil, false, errors.New("codex device conversation lease cache is unsupported")
+	}
+	leaseID := generateRequestID()
+	baseCtx := context.Background()
+	if ctx != nil {
+		baseCtx = context.WithoutCancel(ctx)
+	}
+	acquireCtx, cancel := context.WithTimeout(baseCtx, openAIWSIngressLeaseOperationTO)
+	maxConcurrency := 1 // Preserve callers using the old mutex contract.
+	if len(capacity) > 0 {
+		maxConcurrency = capacity[0]
+	}
+	var acquired bool
+	var err error
+	if maxConcurrency < 0 || maxConcurrency > MaxCodexSlotConcurrency {
+		err = errors.New("invalid codex device slot concurrency limit")
+	} else if bounded, supported := cache.(CodexDeviceConversationCapacityCache); supported {
+		acquired, err = bounded.AcquireCodexDeviceConversationLeaseWithLimit(acquireCtx, slotKey, leaseID, maxConcurrency)
+	} else if maxConcurrency == 1 {
+		acquired, err = cache.AcquireCodexDeviceConversationLease(acquireCtx, slotKey, leaseID)
+	} else {
+		err = errors.New("codex device cache does not support configurable concurrency")
+	}
+	cancel()
+	if err != nil || !acquired {
+		return nil, acquired, err
+	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	leaseCtx, leaseCancel := context.WithCancelCause(ctx)
+	refreshCtx, refreshCancel := context.WithCancelCause(context.Background())
+	upstreamCtx, upstreamCancel := context.WithCancelCause(context.WithoutCancel(ctx))
+	lease := &CodexDeviceConversationLease{
+		ctx:             leaseCtx,
+		cancel:          leaseCancel,
+		refreshCtx:      refreshCtx,
+		refreshCancel:   refreshCancel,
+		upstreamCtx:     upstreamCtx,
+		upstreamCancel:  upstreamCancel,
+		cache:           cache,
+		slotKey:         slotKey,
+		leaseID:         leaseID,
+		stopCh:          make(chan struct{}),
+		refreshDone:     make(chan struct{}),
+		refreshInterval: openAIWSIngressLeaseRefreshInterval,
+		leaseTTL:        openAIWSIngressLeaseTTL,
+		operationTO:     openAIWSIngressLeaseOperationTO,
 	}
 	go lease.refreshLoop()
 	return lease, true, nil

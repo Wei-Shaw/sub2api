@@ -15,6 +15,11 @@ import (
 // 若请求携带 version 且低于该值，上游直接 404（issue #3901，2026-07 实测）。
 const codexUpstreamMinVersion = "0.144.0"
 
+// CodexUpstreamMinVersion is the lowest client version accepted by the
+// upstream Codex endpoint. It is exported so admin validation and runtime
+// diagnostics use the same compatibility floor.
+const CodexUpstreamMinVersion = codexUpstreamMinVersion
+
 // codexClientVersionMaxLen 官方版本号均为短 ASCII 串，远低于此上限。
 const codexClientVersionMaxLen = 64
 
@@ -30,6 +35,13 @@ func NormalizeCodexClientVersion(version string) string {
 		return ""
 	}
 	return version
+}
+
+// IsSupportedCodexClientVersion reports whether a version is syntactically
+// valid and meets the upstream compatibility floor.
+func IsSupportedCodexClientVersion(version string) bool {
+	normalized := NormalizeCodexClientVersion(version)
+	return normalized != "" && CompareVersions(normalized, codexUpstreamMinVersion) >= 0
 }
 
 // buildCodexCLIUserAgent 按版本号拼出规范 Codex TUI User-Agent。

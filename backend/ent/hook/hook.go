@@ -33,6 +33,54 @@ func (f AccountFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, err
 	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.AccountMutation", m)
 }
 
+// The AccountCodexDeviceBindingFunc type is an adapter to allow the use of ordinary
+// function as AccountCodexDeviceBinding mutator.
+type AccountCodexDeviceBindingFunc func(context.Context, *ent.AccountCodexDeviceBindingMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f AccountCodexDeviceBindingFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.AccountCodexDeviceBindingMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.AccountCodexDeviceBindingMutation", m)
+}
+
+// The AccountCodexDeviceSlotFunc type is an adapter to allow the use of ordinary
+// function as AccountCodexDeviceSlot mutator.
+type AccountCodexDeviceSlotFunc func(context.Context, *ent.AccountCodexDeviceSlotMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f AccountCodexDeviceSlotFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.AccountCodexDeviceSlotMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.AccountCodexDeviceSlotMutation", m)
+}
+
+// The AccountCodexIdentityPolicyFunc type is an adapter to allow the use of ordinary
+// function as AccountCodexIdentityPolicy mutator.
+type AccountCodexIdentityPolicyFunc func(context.Context, *ent.AccountCodexIdentityPolicyMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f AccountCodexIdentityPolicyFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.AccountCodexIdentityPolicyMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.AccountCodexIdentityPolicyMutation", m)
+}
+
+// The AccountCodexProfileFunc type is an adapter to allow the use of ordinary
+// function as AccountCodexProfile mutator.
+type AccountCodexProfileFunc func(context.Context, *ent.AccountCodexProfileMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f AccountCodexProfileFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.AccountCodexProfileMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.AccountCodexProfileMutation", m)
+}
+
 // The AccountGroupFunc type is an adapter to allow the use of ordinary
 // function as AccountGroup mutator.
 type AccountGroupFunc func(context.Context, *ent.AccountGroupMutation) (ent.Value, error)

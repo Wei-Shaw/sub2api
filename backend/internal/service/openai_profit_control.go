@@ -364,7 +364,10 @@ func (s *OpenAIGatewayService) BindStickySessionAfterProfitAdmission(ctx context
 	if !gatewayProfitControlGateActive(ctx) {
 		return s.BindStickySession(ctx, groupID, sessionHash, accountID)
 	}
-	existingAccountID, err := s.getStickySessionAccountID(ctx, groupID, sessionHash)
+	existingAccountID, handled, err := s.getCodexProfileAffinityAccountID(ctx, groupID, sessionHash)
+	if !handled {
+		existingAccountID, err = s.getStickySessionAccountID(ctx, groupID, sessionHash)
+	}
 	if err != nil && !errors.Is(err, ErrStickySessionNotFound) {
 		slog.Warn("profit_control_sticky_binding_read_failed", "group_id", derefGroupID(groupID), "account_id", accountID, "error", err)
 		return nil

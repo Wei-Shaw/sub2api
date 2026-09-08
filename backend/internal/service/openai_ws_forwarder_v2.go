@@ -70,7 +70,13 @@ func (s *OpenAIGatewayService) forwardOpenAIWSV2(
 		turnMetadata = strings.TrimSpace(c.GetHeader(openAIWSTurnMetadataHeader))
 	}
 	setOpenAIWSTurnMetadata(payload, turnMetadata)
-	applyStagedCodexFingerprintClientMetadata(c, account, payload)
+	if plan := stagedCodexIdentityAttemptPlan(c, account); plan != nil {
+		if _, profileErr := ApplyCodexIdentityPlanToMap(payload, plan); profileErr != nil {
+			return nil, fmt.Errorf("apply Codex WS profile identity: %w", profileErr)
+		}
+	} else {
+		applyStagedCodexFingerprintClientMetadata(c, account, payload)
+	}
 	previousResponseID := openAIWSPayloadString(payload, "previous_response_id")
 	previousResponseIDKind := ClassifyOpenAIPreviousResponseIDKind(previousResponseID)
 	promptCacheKey := strings.TrimSpace(clientPromptCacheKey)
@@ -495,6 +501,14 @@ func (s *OpenAIGatewayService) forwardOpenAIWSV2(
 				return nil, wrapOpenAIWSFallback("invalid_event_json", errors.New("upstream websocket returned malformed Responses event JSON"))
 			}
 			return nil, errors.New("upstream websocket returned malformed Responses event JSON after downstream output")
+		}
+		if readErr == nil {
+			restoredMessage, restoreErr := restoreStagedCodexIdentityJSON(c, account, message)
+			if restoreErr != nil {
+				lease.MarkBroken()
+				return nil, fmt.Errorf("restore Codex WS identity: %w", restoreErr)
+			}
+			message = restoredMessage
 		}
 		if readErr != nil {
 			lease.MarkBroken()

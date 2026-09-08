@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/service"
+	"github.com/stretchr/testify/require"
 )
 
 func TestParseCodexSessionImportEntriesSupportsRawTokenJSONAndArray(t *testing.T) {
@@ -721,6 +722,68 @@ func TestImportCodexSessionsAccessTokenOnlySameUserUpdatesExisting(t *testing.T)
 	if got := svc.updatedAccounts[0].input.Extra["openai_long_context_billing_enabled"]; got != false {
 		t.Fatalf("openai_long_context_billing_enabled = %v, want false", got)
 	}
+}
+
+func TestImportCodexSessionsScopesIdentityPolicyToNewAccountsUnlessExistingOverrideIsExplicit(t *testing.T) {
+	requested := service.DefaultCodexIdentityPolicySpec()
+	existingToken := buildCodexAccessToken(t, "workspace-policy", "user-policy", time.Now().Add(time.Hour))
+	newService := func() *codexImportMemoryAdminService {
+		return newCodexImportMemoryAdminService([]service.Account{{
+			ID: 21, Name: "existing", Platform: service.PlatformOpenAI, Type: service.AccountTypeOAuth,
+			Credentials: map[string]any{
+				"chatgpt_account_id": "workspace-policy",
+				"chatgpt_user_id":    "user-policy",
+				"access_token":       existingToken,
+			},
+		}})
+	}
+	entries := []codexImportEntry{{Index: 1, Value: map[string]any{"access_token": existingToken}}}
+
+	t.Run("default preserves the matched existing identity policy", func(t *testing.T) {
+		svc := newService()
+		handler := NewAccountHandler(svc, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+		result, err := handler.importCodexSessions(context.Background(), CodexSessionImportRequest{
+			SkipDefaultGroupBind: boolPtr(true),
+			CodexIdentityPolicy:  &requested,
+		}, entries)
+		require.NoError(t, err)
+		require.Equal(t, 1, result.Updated)
+		require.Nil(t, svc.updatedAccounts[0].input.CodexIdentityPolicy)
+	})
+
+	t.Run("explicit override forwards the reviewed policy to the matched account", func(t *testing.T) {
+		svc := newService()
+		handler := NewAccountHandler(svc, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+		result, err := handler.importCodexSessions(context.Background(), CodexSessionImportRequest{
+			SkipDefaultGroupBind:           boolPtr(true),
+			CodexIdentityPolicy:            &requested,
+			OverrideExistingIdentityPolicy: true,
+		}, entries)
+		require.NoError(t, err)
+		require.Equal(t, 1, result.Updated)
+		require.Equal(t, &requested, svc.updatedAccounts[0].input.CodexIdentityPolicy)
+	})
+
+	t.Run("new accounts always receive the reviewed policy", func(t *testing.T) {
+		svc := newCodexImportMemoryAdminService(nil)
+		handler := NewAccountHandler(svc, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+		newToken := buildCodexAccessToken(t, "workspace-new", "user-new", time.Now().Add(time.Hour))
+		result, err := handler.importCodexSessions(context.Background(), CodexSessionImportRequest{
+			SkipDefaultGroupBind: boolPtr(true),
+			CodexIdentityPolicy:  &requested,
+		}, []codexImportEntry{{Index: 1, Value: map[string]any{"access_token": newToken}}})
+		require.NoError(t, err)
+		require.Equal(t, 1, result.Created)
+		require.Equal(t, &requested, svc.createdAccounts[0].CodexIdentityPolicy)
+	})
+}
+
+func TestImportCodexSessionsRejectsExistingPolicyOverrideWithoutPolicy(t *testing.T) {
+	handler := NewAccountHandler(newCodexImportMemoryAdminService(nil), nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+	_, err := handler.importCodexSessions(context.Background(), CodexSessionImportRequest{
+		OverrideExistingIdentityPolicy: true,
+	}, nil)
+	require.EqualError(t, err, "codex_identity_policy is required when overriding existing identity policies")
 }
 
 func TestImportCodexSessionsUpgradesAccessTokenOnlyAccountWithRefreshToken(t *testing.T) {

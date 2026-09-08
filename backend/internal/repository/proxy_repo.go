@@ -472,7 +472,24 @@ func (r *proxyRepository) ExistsByHostPortAuth(ctx context.Context, host string,
 // CountAccountsByProxyID returns the number of accounts using a specific proxy
 func (r *proxyRepository) CountAccountsByProxyID(ctx context.Context, proxyID int64) (int64, error) {
 	var count int64
-	if err := scanSingleRow(ctx, r.sql, "SELECT COUNT(*) FROM accounts WHERE proxy_id = $1 AND deleted_at IS NULL", []any{proxyID}, &count); err != nil {
+	if err := scanSingleRow(ctx, r.sql, `
+		SELECT COUNT(DISTINCT refs.account_id)
+		FROM (
+			SELECT accounts.id AS account_id
+			FROM accounts
+			WHERE accounts.proxy_id=$1 AND accounts.deleted_at IS NULL
+			UNION ALL
+			SELECT profiles.account_id
+			FROM account_codex_profiles AS profiles
+			JOIN accounts ON accounts.id=profiles.account_id AND accounts.deleted_at IS NULL
+			WHERE profiles.proxy_mode='proxy' AND profiles.proxy_id=$1
+			UNION ALL
+			SELECT slots.account_id
+			FROM account_codex_device_slots AS slots
+			JOIN accounts ON accounts.id=slots.account_id AND accounts.deleted_at IS NULL
+			WHERE slots.proxy_mode='proxy' AND slots.proxy_id=$1
+		) AS refs
+	`, []any{proxyID}, &count); err != nil {
 		return 0, err
 	}
 	return count, nil
@@ -480,10 +497,20 @@ func (r *proxyRepository) CountAccountsByProxyID(ctx context.Context, proxyID in
 
 func (r *proxyRepository) ListAccountSummariesByProxyID(ctx context.Context, proxyID int64) ([]service.ProxyAccountSummary, error) {
 	rows, err := r.sql.QueryContext(ctx, `
-		SELECT id, name, platform, type, notes
+		SELECT accounts.id, accounts.name, accounts.platform, accounts.type, accounts.notes
 		FROM accounts
-		WHERE proxy_id = $1 AND deleted_at IS NULL
-		ORDER BY id DESC
+		WHERE accounts.deleted_at IS NULL
+		  AND accounts.id IN (
+			SELECT direct.id FROM accounts AS direct
+			WHERE direct.proxy_id=$1 AND direct.deleted_at IS NULL
+			UNION
+			SELECT profiles.account_id FROM account_codex_profiles AS profiles
+			WHERE profiles.proxy_mode='proxy' AND profiles.proxy_id=$1
+			UNION
+			SELECT slots.account_id FROM account_codex_device_slots AS slots
+			WHERE slots.proxy_mode='proxy' AND slots.proxy_id=$1
+		  )
+		ORDER BY accounts.id DESC
 	`, proxyID)
 	if err != nil {
 		return nil, err
@@ -522,7 +549,25 @@ func (r *proxyRepository) ListAccountSummariesByProxyID(ctx context.Context, pro
 
 // GetAccountCountsForProxies returns a map of proxy ID to account count for all proxies
 func (r *proxyRepository) GetAccountCountsForProxies(ctx context.Context) (counts map[int64]int64, err error) {
-	rows, err := r.sql.QueryContext(ctx, "SELECT proxy_id, COUNT(*) AS count FROM accounts WHERE proxy_id IS NOT NULL AND deleted_at IS NULL GROUP BY proxy_id")
+	rows, err := r.sql.QueryContext(ctx, `
+		SELECT refs.proxy_id, COUNT(DISTINCT refs.account_id) AS count
+		FROM (
+			SELECT accounts.proxy_id, accounts.id AS account_id
+			FROM accounts
+			WHERE accounts.proxy_id IS NOT NULL AND accounts.deleted_at IS NULL
+			UNION ALL
+			SELECT profiles.proxy_id, profiles.account_id
+			FROM account_codex_profiles AS profiles
+			JOIN accounts ON accounts.id=profiles.account_id AND accounts.deleted_at IS NULL
+			WHERE profiles.proxy_mode='proxy' AND profiles.proxy_id IS NOT NULL
+			UNION ALL
+			SELECT slots.proxy_id, slots.account_id
+			FROM account_codex_device_slots AS slots
+			JOIN accounts ON accounts.id=slots.account_id AND accounts.deleted_at IS NULL
+			WHERE slots.proxy_mode='proxy' AND slots.proxy_id IS NOT NULL
+		) AS refs
+		GROUP BY refs.proxy_id
+	`)
 	if err != nil {
 		return nil, err
 	}
@@ -704,12 +749,22 @@ func (r *proxyRepository) sweepOneExpiredProxy(ctx context.Context, proxyID int6
 			return nil, txErr
 		}
 		// 已在外层事务中（集成测试场景），直接用 r.sql 执行
-		return r.sweepOneExpiredProxyOnExec(ctx, r.sql, proxyID, target, change)
+		profileAccountIDs, err := r.transitionExpiredProxyCodexAccounts(ctx, r.client, r.sql, proxyID, target, change)
+		if err != nil {
+			return nil, err
+		}
+		legacyAccountIDs, err := r.sweepOneExpiredProxyOnExec(ctx, r.sql, proxyID, target, change)
+		return append(profileAccountIDs, legacyAccountIDs...), err
 	}
 
 	// 使用新事务执行
 	var accountIDs []int64
 	var err error
+	profileAccountIDs, transitionErr := r.transitionExpiredProxyCodexAccounts(ctx, tx.Client(), tx, proxyID, target, change)
+	if transitionErr != nil {
+		_ = tx.Rollback()
+		return nil, transitionErr
+	}
 	accountIDs, err = r.sweepOneExpiredProxyOnExec(ctx, tx, proxyID, target, change)
 	if err != nil {
 		_ = tx.Rollback()
@@ -718,7 +773,141 @@ func (r *proxyRepository) sweepOneExpiredProxy(ctx context.Context, proxyID int6
 	if commitErr := tx.Commit(); commitErr != nil {
 		return nil, commitErr
 	}
+	return append(profileAccountIDs, accountIDs...), nil
+}
+
+func (r *proxyRepository) transitionExpiredProxyCodexAccounts(
+	ctx context.Context,
+	client *dbent.Client,
+	exec sqlExecutor,
+	proxyID int64,
+	target *int64,
+	change bool,
+) ([]int64, error) {
+	if !change {
+		return nil, nil
+	}
+	rows, err := exec.QueryContext(ctx, `
+		SELECT accounts.id
+		FROM accounts
+		WHERE accounts.deleted_at IS NULL
+		  AND COALESCE(accounts.codex_identity_policy->>'mode', 'off')='os_profile_device_pool'
+		  AND (
+		      (accounts.proxy_id=$1 AND accounts.proxy_fallback_origin_id IS NULL)
+		      OR EXISTS (
+		          SELECT 1 FROM account_codex_profiles AS profiles
+		          WHERE profiles.account_id=accounts.id AND profiles.proxy_id=$1
+		      )
+		      OR EXISTS (
+		          SELECT 1 FROM account_codex_device_slots AS slots
+		          WHERE slots.account_id=accounts.id AND slots.proxy_id=$1
+		      )
+		  )
+		ORDER BY accounts.id
+		FOR UPDATE
+	`, proxyID)
+	if err != nil {
+		return nil, err
+	}
+	accountIDs := make([]int64, 0)
+	for rows.Next() {
+		var accountID int64
+		if err := rows.Scan(&accountID); err != nil {
+			_ = rows.Close()
+			return nil, err
+		}
+		accountIDs = append(accountIDs, accountID)
+	}
+	if err := rows.Err(); err != nil {
+		_ = rows.Close()
+		return nil, err
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+
+	accountRepo := newAccountRepositoryWithSQL(client, exec, nil)
+	for _, accountID := range accountIDs {
+		account, err := accountRepo.GetByID(ctx, accountID)
+		if err != nil {
+			return nil, err
+		}
+		accountDefaultChanged := account.ProxyID != nil && *account.ProxyID == proxyID
+		if accountDefaultChanged {
+			account.ProxyID = cloneOptionalInt64(target)
+		}
+		policy := account.CodexIdentityPolicy
+		policy.Profiles = append([]service.CodexOSProfilePolicy(nil), account.CodexIdentityPolicy.Profiles...)
+		for profileIndex := range policy.Profiles {
+			profile := &policy.Profiles[profileIndex]
+			profile.Slots = append([]service.CodexDeviceSlotPolicy(nil), account.CodexIdentityPolicy.Profiles[profileIndex].Slots...)
+			if profile.ProxyID != nil && *profile.ProxyID == proxyID {
+				setCodexProxyFallbackRoute(&profile.ProxyMode, &profile.ProxyID, target)
+			}
+			for slotIndex := range profile.Slots {
+				if profile.Slots[slotIndex].ProxyID != nil && *profile.Slots[slotIndex].ProxyID == proxyID {
+					setCodexProxyFallbackRoute(&profile.Slots[slotIndex].ProxyMode, &profile.Slots[slotIndex].ProxyID, target)
+				}
+			}
+		}
+		if err := accountRepo.updateProvisionedAccount(ctx, &service.AccountProvisioningSpec{
+			Account: account, GroupIDs: append([]int64(nil), account.GroupIDs...),
+			Identity: &policy, FinalStatus: account.Status,
+			Schedulable: account.Schedulable, ProvisioningState: service.AccountProvisioningActive,
+		}, nil, nil, account.RateMultiplier, false); err != nil {
+			return nil, err
+		}
+		if accountDefaultChanged {
+			if _, err := exec.ExecContext(ctx, `
+				UPDATE accounts SET proxy_fallback_origin_id=$1, updated_at=NOW()
+				WHERE id=$2 AND deleted_at IS NULL
+			`, proxyID, accountID); err != nil {
+				return nil, err
+			}
+		}
+		if _, err := exec.ExecContext(ctx, `
+			DELETE FROM account_codex_device_bindings AS bindings
+			USING account_codex_device_slots AS slots,
+			      account_codex_profiles AS profiles,
+			      accounts
+			WHERE bindings.slot_id=slots.id
+			  AND slots.profile_id=profiles.id
+			  AND bindings.account_id=accounts.id
+			  AND bindings.account_id=$1
+			  AND slots.state='draining'
+			  AND CASE
+			      WHEN slots.proxy_mode='direct' THEN NULL
+			      WHEN slots.proxy_mode='proxy' THEN slots.proxy_id
+			      WHEN profiles.proxy_mode='direct' THEN NULL
+			      WHEN profiles.proxy_mode='proxy' THEN profiles.proxy_id
+			      ELSE accounts.proxy_id
+			  END=$2
+		`, accountID, proxyID); err != nil {
+			return nil, err
+		}
+		if _, err := finalizeDrainedCodexDeviceSlots(ctx, client, accountID); err != nil {
+			return nil, err
+		}
+	}
 	return accountIDs, nil
+}
+
+func cloneOptionalInt64(value *int64) *int64 {
+	if value == nil {
+		return nil
+	}
+	cloned := *value
+	return &cloned
+}
+
+func setCodexProxyFallbackRoute(mode *service.CodexProxyMode, proxyID **int64, target *int64) {
+	if target == nil {
+		*mode = service.CodexProxyDirect
+		*proxyID = nil
+		return
+	}
+	*mode = service.CodexProxyExplicit
+	*proxyID = cloneOptionalInt64(target)
 }
 
 // sweepOneExpiredProxyOnExec 在给定的 sqlExecutor 上执行：标记 expired + 改投账号。

@@ -242,6 +242,22 @@ func (r *ollamaManagedExtraUpdateRepo) Update(_ context.Context, account *Accoun
 	return nil
 }
 
+func (r *ollamaManagedExtraUpdateRepo) ProvisionAccount(_ context.Context, spec *AccountProvisioningSpec) error {
+	r.updated = spec.Account
+	return nil
+}
+
+func (r *ollamaManagedExtraUpdateRepo) UpdateProvisionedAccount(
+	_ context.Context,
+	spec *AccountProvisioningSpec,
+	_ *bool,
+	_ *bool,
+	_ *float64,
+) error {
+	r.updated = spec.Account
+	return nil
+}
+
 func sameOllamaUsageTestIdentity(left, right *Account) bool {
 	return left != nil && right != nil && left.Platform == right.Platform && left.Type == right.Type &&
 		reflect.DeepEqual(left.Credentials, right.Credentials) && reflect.DeepEqual(left.ProxyID, right.ProxyID)

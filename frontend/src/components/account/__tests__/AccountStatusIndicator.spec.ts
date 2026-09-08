@@ -51,6 +51,18 @@ function makeAccount(overrides: Partial<Account>): Account {
 }
 
 describe('AccountStatusIndicator', () => {
+  it('优先显示 provisioning pending 且明确不可调度', () => {
+    const wrapper = mount(AccountStatusIndicator, {
+      props: {
+        account: makeAccount({ provisioning_state: 'pending' })
+      },
+      global: { stubs: { Icon: true } }
+    })
+
+    expect(wrapper.get('[role="status"]').text()).toContain('admin.accounts.status.provisioningPending')
+    expect(wrapper.text()).toContain('admin.accounts.status.provisioningPendingHint')
+  })
+
   it('Claude 5 模型限流时显示 Opus 和 Sonnet 的短别名', () => {
     const wrapper = mount(AccountStatusIndicator, {
       props: {

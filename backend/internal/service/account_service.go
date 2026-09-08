@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
@@ -174,33 +175,35 @@ type AccountBulkUpdate struct {
 
 // CreateAccountRequest 创建账号请求
 type CreateAccountRequest struct {
-	Name               string         `json:"name"`
-	Notes              *string        `json:"notes"`
-	Platform           string         `json:"platform"`
-	Type               string         `json:"type"`
-	Credentials        map[string]any `json:"credentials"`
-	Extra              map[string]any `json:"extra"`
-	ProxyID            *int64         `json:"proxy_id"`
-	Concurrency        int            `json:"concurrency"`
-	Priority           int            `json:"priority"`
-	GroupIDs           []int64        `json:"group_ids"`
-	ExpiresAt          *time.Time     `json:"expires_at"`
-	AutoPauseOnExpired *bool          `json:"auto_pause_on_expired"`
+	Name                string                   `json:"name"`
+	Notes               *string                  `json:"notes"`
+	Platform            string                   `json:"platform"`
+	Type                string                   `json:"type"`
+	Credentials         map[string]any           `json:"credentials"`
+	Extra               map[string]any           `json:"extra"`
+	ProxyID             *int64                   `json:"proxy_id"`
+	Concurrency         int                      `json:"concurrency"`
+	Priority            int                      `json:"priority"`
+	GroupIDs            []int64                  `json:"group_ids"`
+	ExpiresAt           *time.Time               `json:"expires_at"`
+	AutoPauseOnExpired  *bool                    `json:"auto_pause_on_expired"`
+	CodexIdentityPolicy *CodexIdentityPolicySpec `json:"codex_identity_policy,omitempty"`
 }
 
 // UpdateAccountRequest 更新账号请求
 type UpdateAccountRequest struct {
-	Name               *string         `json:"name"`
-	Notes              *string         `json:"notes"`
-	Credentials        *map[string]any `json:"credentials"`
-	Extra              *map[string]any `json:"extra"`
-	ProxyID            *int64          `json:"proxy_id"`
-	Concurrency        *int            `json:"concurrency"`
-	Priority           *int            `json:"priority"`
-	Status             *string         `json:"status"`
-	GroupIDs           *[]int64        `json:"group_ids"`
-	ExpiresAt          *time.Time      `json:"expires_at"`
-	AutoPauseOnExpired *bool           `json:"auto_pause_on_expired"`
+	Name                *string                  `json:"name"`
+	Notes               *string                  `json:"notes"`
+	Credentials         *map[string]any          `json:"credentials"`
+	Extra               *map[string]any          `json:"extra"`
+	ProxyID             *int64                   `json:"proxy_id"`
+	Concurrency         *int                     `json:"concurrency"`
+	Priority            *int                     `json:"priority"`
+	Status              *string                  `json:"status"`
+	GroupIDs            *[]int64                 `json:"group_ids"`
+	ExpiresAt           *time.Time               `json:"expires_at"`
+	AutoPauseOnExpired  *bool                    `json:"auto_pause_on_expired"`
+	CodexIdentityPolicy *CodexIdentityPolicySpec `json:"codex_identity_policy,omitempty"`
 }
 
 // AccountService 账号管理服务
@@ -231,27 +234,30 @@ func (s *AccountService) Create(ctx context.Context, req CreateAccountRequest) (
 	}
 
 	// 创建账号
+	identityPolicy := DefaultCodexIdentityPolicySpec()
+	if req.CodexIdentityPolicy != nil {
+		identityPolicy = *req.CodexIdentityPolicy
+	}
 	account := &Account{
-		Name:        req.Name,
-		Notes:       normalizeAccountNotes(req.Notes),
-		Platform:    req.Platform,
-		Type:        req.Type,
-		Credentials: SanitizeStoredCredentials(req.Platform, req.Credentials),
-		Extra:       prepareCodexFingerprintExtraForCreate(req.Platform, req.Type, req.Extra),
-		ProxyID:     req.ProxyID,
-		Concurrency: req.Concurrency,
-		Priority:    req.Priority,
-		Status:      StatusActive,
-		ExpiresAt:   req.ExpiresAt,
+		Name:                req.Name,
+		Notes:               normalizeAccountNotes(req.Notes),
+		Platform:            req.Platform,
+		Type:                req.Type,
+		Credentials:         SanitizeStoredCredentials(req.Platform, req.Credentials),
+		Extra:               PrepareCodexFingerprintExtraForCreate(req.Platform, req.Type, req.Extra),
+		ProxyID:             req.ProxyID,
+		Concurrency:         req.Concurrency,
+		Priority:            req.Priority,
+		Status:              StatusActive,
+		Schedulable:         true,
+		GroupIDs:            append([]int64(nil), req.GroupIDs...),
+		CodexIdentityPolicy: identityPolicy,
+		ExpiresAt:           req.ExpiresAt,
 	}
 	if req.AutoPauseOnExpired != nil {
 		account.AutoPauseOnExpired = *req.AutoPauseOnExpired
 	} else {
 		account.AutoPauseOnExpired = true
-	}
-
-	if err := s.accountRepo.Create(ctx, account); err != nil {
-		return nil, fmt.Errorf("create account: %w", err)
 	}
 
 	// require_oauth_only 检查：apikey 类型账号不可加入限制分组
@@ -267,8 +273,17 @@ func (s *AccountService) Create(ctx context.Context, req CreateAccountRequest) (
 		}
 	}
 
-	// 绑定分组
-	if len(req.GroupIDs) > 0 {
+	// The production repository provisions the account, groups, identity policy,
+	// slots, and scheduler outbox atomically.
+	_, hasProvisioning := s.accountRepo.(AccountProvisioningRepository)
+	atomicProvisioning := HasAtomicAccountProvisioning(s.accountRepo)
+	if identityPolicy.Mode == CodexIdentityPolicyOSProfileDevicePool && !hasProvisioning {
+		return nil, errors.New("account provisioning repository is not configured")
+	}
+	if err := s.accountRepo.Create(ctx, account); err != nil {
+		return nil, fmt.Errorf("create account: %w", err)
+	}
+	if !atomicProvisioning && len(req.GroupIDs) > 0 {
 		if err := s.accountRepo.BindGroups(ctx, account.ID, req.GroupIDs); err != nil {
 			return nil, fmt.Errorf("bind groups: %w", err)
 		}
@@ -340,9 +355,9 @@ func (s *AccountService) Update(ctx context.Context, id int64, req UpdateAccount
 		delete(extra, OllamaCloudUsageSessionExtraKey)
 		delete(extra, OllamaCloudUsageAutoRefreshExtraKey)
 		delete(extra, OllamaCloudUsageSnapshotExtraKey)
-		account.Extra = prepareCodexFingerprintExtraForUpdate(account, extra)
+		account.Extra = PrepareCodexFingerprintExtraForUpdate(account.Platform, account.Type, account.Extra, extra)
 	} else {
-		account.Extra = prepareCodexFingerprintExtraForUpdate(account, account.Extra)
+		account.Extra = PrepareCodexFingerprintExtraForUpdate(account.Platform, account.Type, account.Extra, account.Extra)
 	}
 
 	if req.ProxyID != nil {
@@ -374,11 +389,6 @@ func (s *AccountService) Update(ctx context.Context, id int64, req UpdateAccount
 		}
 	}
 
-	// 执行更新
-	if err := s.accountRepo.Update(ctx, account); err != nil {
-		return nil, fmt.Errorf("update account: %w", err)
-	}
-
 	// require_oauth_only 检查
 	if account.Type == AccountTypeAPIKey && req.GroupIDs != nil {
 		for _, gid := range *req.GroupIDs {
@@ -392,11 +402,39 @@ func (s *AccountService) Update(ctx context.Context, id int64, req UpdateAccount
 		}
 	}
 
-	// 绑定分组
+	groupIDs := append([]int64(nil), account.GroupIDs...)
 	if req.GroupIDs != nil {
-		if err := s.accountRepo.BindGroups(ctx, account.ID, *req.GroupIDs); err != nil {
-			return nil, fmt.Errorf("bind groups: %w", err)
+		groupIDs = append([]int64(nil), (*req.GroupIDs)...)
+	}
+	existingIdentityMode := account.CodexIdentityPolicy.Mode
+	identityPolicy := account.CodexIdentityPolicy
+	if req.CodexIdentityPolicy != nil {
+		identityPolicy = *req.CodexIdentityPolicy
+	}
+	provisioningRepo, ok := s.accountRepo.(AccountProvisioningRepository)
+	if !ok {
+		if existingIdentityMode == CodexIdentityPolicyOSProfileDevicePool || identityPolicy.Mode == CodexIdentityPolicyOSProfileDevicePool {
+			return nil, errors.New("account provisioning repository is not configured")
 		}
+		if err := s.accountRepo.Update(ctx, account); err != nil {
+			return nil, fmt.Errorf("update account: %w", err)
+		}
+		if req.GroupIDs != nil {
+			if err := s.accountRepo.BindGroups(ctx, account.ID, *req.GroupIDs); err != nil {
+				return nil, fmt.Errorf("bind groups: %w", err)
+			}
+		}
+		return account, nil
+	}
+	if err := provisioningRepo.UpdateProvisionedAccount(ctx, &AccountProvisioningSpec{
+		Account:           account,
+		GroupIDs:          groupIDs,
+		Identity:          &identityPolicy,
+		FinalStatus:       account.Status,
+		Schedulable:       account.Schedulable,
+		ProvisioningState: AccountProvisioningActive,
+	}, nil, nil, account.RateMultiplier); err != nil {
+		return nil, fmt.Errorf("update account: %w", err)
 	}
 
 	return account, nil

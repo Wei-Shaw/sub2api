@@ -18,6 +18,14 @@ type Tx struct {
 	APIKey *APIKeyClient
 	// Account is the client for interacting with the Account builders.
 	Account *AccountClient
+	// AccountCodexDeviceBinding is the client for interacting with the AccountCodexDeviceBinding builders.
+	AccountCodexDeviceBinding *AccountCodexDeviceBindingClient
+	// AccountCodexDeviceSlot is the client for interacting with the AccountCodexDeviceSlot builders.
+	AccountCodexDeviceSlot *AccountCodexDeviceSlotClient
+	// AccountCodexIdentityPolicy is the client for interacting with the AccountCodexIdentityPolicy builders.
+	AccountCodexIdentityPolicy *AccountCodexIdentityPolicyClient
+	// AccountCodexProfile is the client for interacting with the AccountCodexProfile builders.
+	AccountCodexProfile *AccountCodexProfileClient
 	// AccountGroup is the client for interacting with the AccountGroup builders.
 	AccountGroup *AccountGroupClient
 	// Announcement is the client for interacting with the Announcement builders.
@@ -225,6 +233,10 @@ func (tx *Tx) Client() *Client {
 func (tx *Tx) init() {
 	tx.APIKey = NewAPIKeyClient(tx.config)
 	tx.Account = NewAccountClient(tx.config)
+	tx.AccountCodexDeviceBinding = NewAccountCodexDeviceBindingClient(tx.config)
+	tx.AccountCodexDeviceSlot = NewAccountCodexDeviceSlotClient(tx.config)
+	tx.AccountCodexIdentityPolicy = NewAccountCodexIdentityPolicyClient(tx.config)
+	tx.AccountCodexProfile = NewAccountCodexProfileClient(tx.config)
 	tx.AccountGroup = NewAccountGroupClient(tx.config)
 	tx.Announcement = NewAnnouncementClient(tx.config)
 	tx.AnnouncementRead = NewAnnouncementReadClient(tx.config)

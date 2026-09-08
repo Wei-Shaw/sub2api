@@ -9,6 +9,10 @@ import (
 	"entgo.io/ent/dialect/sql"
 	"github.com/Wei-Shaw/sub2api/ent"
 	"github.com/Wei-Shaw/sub2api/ent/account"
+	"github.com/Wei-Shaw/sub2api/ent/accountcodexdevicebinding"
+	"github.com/Wei-Shaw/sub2api/ent/accountcodexdeviceslot"
+	"github.com/Wei-Shaw/sub2api/ent/accountcodexidentitypolicy"
+	"github.com/Wei-Shaw/sub2api/ent/accountcodexprofile"
 	"github.com/Wei-Shaw/sub2api/ent/accountgroup"
 	"github.com/Wei-Shaw/sub2api/ent/announcement"
 	"github.com/Wei-Shaw/sub2api/ent/announcementread"
@@ -158,6 +162,114 @@ func (f TraverseAccount) Traverse(ctx context.Context, q ent.Query) error {
 		return f(ctx, q)
 	}
 	return fmt.Errorf("unexpected query type %T. expect *ent.AccountQuery", q)
+}
+
+// The AccountCodexDeviceBindingFunc type is an adapter to allow the use of ordinary function as a Querier.
+type AccountCodexDeviceBindingFunc func(context.Context, *ent.AccountCodexDeviceBindingQuery) (ent.Value, error)
+
+// Query calls f(ctx, q).
+func (f AccountCodexDeviceBindingFunc) Query(ctx context.Context, q ent.Query) (ent.Value, error) {
+	if q, ok := q.(*ent.AccountCodexDeviceBindingQuery); ok {
+		return f(ctx, q)
+	}
+	return nil, fmt.Errorf("unexpected query type %T. expect *ent.AccountCodexDeviceBindingQuery", q)
+}
+
+// The TraverseAccountCodexDeviceBinding type is an adapter to allow the use of ordinary function as Traverser.
+type TraverseAccountCodexDeviceBinding func(context.Context, *ent.AccountCodexDeviceBindingQuery) error
+
+// Intercept is a dummy implementation of Intercept that returns the next Querier in the pipeline.
+func (f TraverseAccountCodexDeviceBinding) Intercept(next ent.Querier) ent.Querier {
+	return next
+}
+
+// Traverse calls f(ctx, q).
+func (f TraverseAccountCodexDeviceBinding) Traverse(ctx context.Context, q ent.Query) error {
+	if q, ok := q.(*ent.AccountCodexDeviceBindingQuery); ok {
+		return f(ctx, q)
+	}
+	return fmt.Errorf("unexpected query type %T. expect *ent.AccountCodexDeviceBindingQuery", q)
+}
+
+// The AccountCodexDeviceSlotFunc type is an adapter to allow the use of ordinary function as a Querier.
+type AccountCodexDeviceSlotFunc func(context.Context, *ent.AccountCodexDeviceSlotQuery) (ent.Value, error)
+
+// Query calls f(ctx, q).
+func (f AccountCodexDeviceSlotFunc) Query(ctx context.Context, q ent.Query) (ent.Value, error) {
+	if q, ok := q.(*ent.AccountCodexDeviceSlotQuery); ok {
+		return f(ctx, q)
+	}
+	return nil, fmt.Errorf("unexpected query type %T. expect *ent.AccountCodexDeviceSlotQuery", q)
+}
+
+// The TraverseAccountCodexDeviceSlot type is an adapter to allow the use of ordinary function as Traverser.
+type TraverseAccountCodexDeviceSlot func(context.Context, *ent.AccountCodexDeviceSlotQuery) error
+
+// Intercept is a dummy implementation of Intercept that returns the next Querier in the pipeline.
+func (f TraverseAccountCodexDeviceSlot) Intercept(next ent.Querier) ent.Querier {
+	return next
+}
+
+// Traverse calls f(ctx, q).
+func (f TraverseAccountCodexDeviceSlot) Traverse(ctx context.Context, q ent.Query) error {
+	if q, ok := q.(*ent.AccountCodexDeviceSlotQuery); ok {
+		return f(ctx, q)
+	}
+	return fmt.Errorf("unexpected query type %T. expect *ent.AccountCodexDeviceSlotQuery", q)
+}
+
+// The AccountCodexIdentityPolicyFunc type is an adapter to allow the use of ordinary function as a Querier.
+type AccountCodexIdentityPolicyFunc func(context.Context, *ent.AccountCodexIdentityPolicyQuery) (ent.Value, error)
+
+// Query calls f(ctx, q).
+func (f AccountCodexIdentityPolicyFunc) Query(ctx context.Context, q ent.Query) (ent.Value, error) {
+	if q, ok := q.(*ent.AccountCodexIdentityPolicyQuery); ok {
+		return f(ctx, q)
+	}
+	return nil, fmt.Errorf("unexpected query type %T. expect *ent.AccountCodexIdentityPolicyQuery", q)
+}
+
+// The TraverseAccountCodexIdentityPolicy type is an adapter to allow the use of ordinary function as Traverser.
+type TraverseAccountCodexIdentityPolicy func(context.Context, *ent.AccountCodexIdentityPolicyQuery) error
+
+// Intercept is a dummy implementation of Intercept that returns the next Querier in the pipeline.
+func (f TraverseAccountCodexIdentityPolicy) Intercept(next ent.Querier) ent.Querier {
+	return next
+}
+
+// Traverse calls f(ctx, q).
+func (f TraverseAccountCodexIdentityPolicy) Traverse(ctx context.Context, q ent.Query) error {
+	if q, ok := q.(*ent.AccountCodexIdentityPolicyQuery); ok {
+		return f(ctx, q)
+	}
+	return fmt.Errorf("unexpected query type %T. expect *ent.AccountCodexIdentityPolicyQuery", q)
+}
+
+// The AccountCodexProfileFunc type is an adapter to allow the use of ordinary function as a Querier.
+type AccountCodexProfileFunc func(context.Context, *ent.AccountCodexProfileQuery) (ent.Value, error)
+
+// Query calls f(ctx, q).
+func (f AccountCodexProfileFunc) Query(ctx context.Context, q ent.Query) (ent.Value, error) {
+	if q, ok := q.(*ent.AccountCodexProfileQuery); ok {
+		return f(ctx, q)
+	}
+	return nil, fmt.Errorf("unexpected query type %T. expect *ent.AccountCodexProfileQuery", q)
+}
+
+// The TraverseAccountCodexProfile type is an adapter to allow the use of ordinary function as Traverser.
+type TraverseAccountCodexProfile func(context.Context, *ent.AccountCodexProfileQuery) error
+
+// Intercept is a dummy implementation of Intercept that returns the next Querier in the pipeline.
+func (f TraverseAccountCodexProfile) Intercept(next ent.Querier) ent.Querier {
+	return next
+}
+
+// Traverse calls f(ctx, q).
+func (f TraverseAccountCodexProfile) Traverse(ctx context.Context, q ent.Query) error {
+	if q, ok := q.(*ent.AccountCodexProfileQuery); ok {
+		return f(ctx, q)
+	}
+	return fmt.Errorf("unexpected query type %T. expect *ent.AccountCodexProfileQuery", q)
 }
 
 // The AccountGroupFunc type is an adapter to allow the use of ordinary function as a Querier.
@@ -1166,6 +1278,14 @@ func NewQuery(q ent.Query) (Query, error) {
 		return &query[*ent.APIKeyQuery, predicate.APIKey, apikey.OrderOption]{typ: ent.TypeAPIKey, tq: q}, nil
 	case *ent.AccountQuery:
 		return &query[*ent.AccountQuery, predicate.Account, account.OrderOption]{typ: ent.TypeAccount, tq: q}, nil
+	case *ent.AccountCodexDeviceBindingQuery:
+		return &query[*ent.AccountCodexDeviceBindingQuery, predicate.AccountCodexDeviceBinding, accountcodexdevicebinding.OrderOption]{typ: ent.TypeAccountCodexDeviceBinding, tq: q}, nil
+	case *ent.AccountCodexDeviceSlotQuery:
+		return &query[*ent.AccountCodexDeviceSlotQuery, predicate.AccountCodexDeviceSlot, accountcodexdeviceslot.OrderOption]{typ: ent.TypeAccountCodexDeviceSlot, tq: q}, nil
+	case *ent.AccountCodexIdentityPolicyQuery:
+		return &query[*ent.AccountCodexIdentityPolicyQuery, predicate.AccountCodexIdentityPolicy, accountcodexidentitypolicy.OrderOption]{typ: ent.TypeAccountCodexIdentityPolicy, tq: q}, nil
+	case *ent.AccountCodexProfileQuery:
+		return &query[*ent.AccountCodexProfileQuery, predicate.AccountCodexProfile, accountcodexprofile.OrderOption]{typ: ent.TypeAccountCodexProfile, tq: q}, nil
 	case *ent.AccountGroupQuery:
 		return &query[*ent.AccountGroupQuery, predicate.AccountGroup, accountgroup.OrderOption]{typ: ent.TypeAccountGroup, tq: q}, nil
 	case *ent.AnnouncementQuery:
