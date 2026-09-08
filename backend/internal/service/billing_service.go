@@ -1707,26 +1707,6 @@ func (s *BillingService) CalculateCostWithConfig(model string, tokens UsageToken
 	return s.CalculateCost(model, tokens, multiplier)
 }
 
-// ListSupportedModels 列出所有支持的模型（现在总是返回true，因为有模糊匹配）
-func (s *BillingService) ListSupportedModels() []string {
-	models := make([]string, 0)
-	// 返回回退价格支持的模型系列
-	for model := range s.fallbackPrices {
-		models = append(models, model)
-	}
-	return models
-}
-
-// IsModelSupported 检查模型是否支持（现在总是返回true，因为有模糊匹配回退）
-func (s *BillingService) IsModelSupported(model string) bool {
-	// 所有Claude模型都有回退价格支持
-	modelLower := strings.ToLower(model)
-	return strings.Contains(modelLower, "claude") ||
-		strings.Contains(modelLower, "opus") ||
-		strings.Contains(modelLower, "sonnet") ||
-		strings.Contains(modelLower, "haiku")
-}
-
 // GetEstimatedCost 估算费用（用于前端展示）
 func (s *BillingService) GetEstimatedCost(model string, estimatedInputTokens, estimatedOutputTokens int) (float64, error) {
 	tokens := UsageTokens{

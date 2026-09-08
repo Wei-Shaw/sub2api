@@ -1070,16 +1070,6 @@ func TestCalculateGrokImagineVideoCostUsesDefaultRateCard(t *testing.T) {
 	require.InDelta(t, 0.25, video15_1080P.TotalCost, 1e-10)
 }
 
-func TestIsModelSupported(t *testing.T) {
-	svc := newTestBillingService()
-
-	require.True(t, svc.IsModelSupported("claude-sonnet-4"))
-	require.True(t, svc.IsModelSupported("Claude-Opus-4.5"))
-	require.True(t, svc.IsModelSupported("claude-3-haiku"))
-	require.False(t, svc.IsModelSupported("gpt-4o"))
-	require.False(t, svc.IsModelSupported("gemini-pro"))
-}
-
 func TestCalculateCost_ZeroTokens(t *testing.T) {
 	svc := newTestBillingService()
 
@@ -1124,16 +1114,8 @@ func TestGetEstimatedCost(t *testing.T) {
 	require.True(t, est > 0)
 }
 
-func TestListSupportedModels(t *testing.T) {
-	svc := newTestBillingService()
-
-	models := svc.ListSupportedModels()
-	require.NotEmpty(t, models)
-	require.GreaterOrEqual(t, len(models), 6)
-}
-
 func TestGetPricingServiceStatus_NilService(t *testing.T) {
-	svc := newTestBillingService()
+	svc := newTestBillingServiceWithoutCatalog()
 
 	status := svc.GetPricingServiceStatus()
 	require.NotNil(t, status)
