@@ -161,7 +161,7 @@
             Grok
           </button>
         </div>
-        <!-- CN providers row: Kimi / Zhipu GLM / DeepSeek -->
+        <!-- CN providers row: Kimi / Zhipu GLM / DeepSeek / Qwen -->
         <div class="mt-2 flex flex-wrap rounded-lg bg-gray-100 p-1 dark:bg-dark-700">
           <button
             type="button"
@@ -201,6 +201,19 @@
           >
             <PlatformIcon platform="deepseek" size="sm" />
             DeepSeek
+          </button>
+          <button
+            type="button"
+            @click="selectCNPlatform('qwen')"
+            :class="[
+              'flex flex-1 items-center justify-center gap-2 rounded-md px-4 py-2.5 text-sm font-medium transition-all',
+              form.platform === 'qwen'
+                ? 'bg-white text-sky-600 shadow-sm dark:bg-dark-600 dark:text-sky-400'
+                : 'text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-200'
+            ]"
+          >
+            <PlatformIcon platform="qwen" size="sm" />
+            Qwen / Alibaba
           </button>
         </div>
       </div>
@@ -453,7 +466,7 @@
         </div>
       </div>
 
-      <!-- Account Mode Selection (Kimi / Zhipu / DeepSeek) -->
+      <!-- Account Mode Selection (Kimi / Zhipu / DeepSeek / Qwen) -->
       <div v-if="isCNPlatform">
         <label class="input-label">{{ t('admin.accounts.cnProviders.accountMode.title') }}</label>
         <div class="mt-2 grid grid-cols-1 gap-3 sm:grid-cols-2" data-tour="account-form-mode">
@@ -483,9 +496,9 @@
               <span class="text-xs text-gray-500 dark:text-gray-400">{{ t('admin.accounts.cnProviders.accountMode.paygDesc') }}</span>
             </div>
           </button>
-          <!-- Coding Plan (kimi / zhipu only — DeepSeek has no coding plan) -->
+          <!-- Coding Plan (Kimi / Zhipu only) -->
           <button
-            v-if="form.platform !== 'deepseek'"
+            v-if="isCnCodingPlanPlatform(form.platform)"
             type="button"
             @click="accountMode = 'coding'"
             :class="[
@@ -508,6 +521,33 @@
             <div>
               <span class="block text-sm font-medium text-gray-900 dark:text-white">{{ t('admin.accounts.cnProviders.accountMode.coding') }}</span>
               <span class="text-xs text-gray-500 dark:text-gray-400">{{ t('admin.accounts.cnProviders.accountMode.codingDesc') }}</span>
+            </div>
+          </button>
+          <!-- Token Plan (Qwen only; one-time quota) -->
+          <button
+            v-if="isQwenPlatform(form.platform)"
+            type="button"
+            @click="accountMode = 'token_plan'"
+            :class="[
+              'flex items-center gap-3 rounded-lg border-2 p-3 text-left transition-all',
+              accountMode === 'token_plan'
+                ? cnAccentActiveClass
+                : 'border-gray-200 hover:border-gray-400 dark:border-dark-600 dark:hover:border-gray-600'
+            ]"
+          >
+            <div
+              :class="[
+                'flex h-8 w-8 shrink-0 items-center justify-center rounded-lg',
+                accountMode === 'token_plan'
+                  ? cnAccentIconClass
+                  : 'bg-gray-100 text-gray-500 dark:bg-dark-600 dark:text-gray-400'
+              ]"
+            >
+              <Icon name="chart" size="sm" />
+            </div>
+            <div>
+              <span class="block text-sm font-medium text-gray-900 dark:text-white">{{ t('admin.accounts.cnProviders.accountMode.tokenPlan') }}</span>
+              <span class="text-xs text-gray-500 dark:text-gray-400">{{ t('admin.accounts.cnProviders.accountMode.tokenPlanDesc') }}</span>
             </div>
           </button>
         </div>
@@ -3878,6 +3918,13 @@ import { createStableObjectKeyResolver } from '@/utils/stableObjectKey'
 import { getAccountExpiryTimestamp } from '@/components/account/accountExpiry'
 import { VERTEX_LOCATION_OPTIONS } from '@/constants/account'
 import {
+  isCnCodingPlanPlatform,
+  isCnProviderPlatform,
+  isQwenPlatform,
+  normalizeCnProviderPlatform,
+  type CanonicalCnProviderPlatform
+} from '@/constants/cnProviders'
+import {
   OPENAI_WS_MODE_CTX_POOL,
   OPENAI_WS_MODE_OFF,
   OPENAI_WS_MODE_PASSTHROUGH,
@@ -3969,6 +4016,8 @@ const apiKeyValuePlaceholder = computed(() => {
       return '<api-key>.<secret>'
     case 'deepseek':
       return 'sk-...'
+    case 'qwen':
+      return 'sk-...'
     default:
       return 'sk-ant-...'
   }
@@ -4057,7 +4106,7 @@ const apiKeyBaseUrl = ref('https://api.anthropic.com')
 const apiKeyValue = ref('')
 const upstreamBillingAutoProbeEnabled = ref(true)
 
-// ── 国产供应商（Kimi / Zhipu / DeepSeek）账号类型、API 协议与端点 ──
+// ── 国产供应商（Kimi / Zhipu / DeepSeek / Qwen）账号类型、API 协议与端点 ──
 const accountMode = ref<CnAccountMode>('payg')
 // API 协议决定转发端点与格式：cc=现有转换链，anthropic=原生直通（Claude Code），
 // responses=deepseek / kimi 原生 Responses 端点（Codex）。与账号类型正交。
@@ -4070,17 +4119,12 @@ const adaptiveBaseUrls = ref<Record<CnNativeApiProtocol, string>>({
   anthropic: '',
   responses: ''
 })
-const isCNPlatform = computed(
-  () => form.platform === 'kimi' || form.platform === 'zhipu' || form.platform === 'deepseek'
-)
+const isCNPlatform = computed(() => isCnProviderPlatform(form.platform))
 // CnBaseUrlPresets 的 platform prop 是平台字面量联合类型，模板里不能写
 // `as` 断言（其中的 `|` 会被 eslint 误判为 Vue2 filter 语法），经此 computed 传递。
-const cnPresetPlatform = computed<'kimi' | 'zhipu' | 'deepseek'>(() => {
-  if (form.platform === 'kimi' || form.platform === 'zhipu' || form.platform === 'deepseek') {
-    return form.platform
-  }
-  return 'kimi'
-})
+const cnPresetPlatform = computed<CanonicalCnProviderPlatform>(
+  () => normalizeCnProviderPlatform(form.platform) ?? 'kimi'
+)
 // 当前平台可选的协议档（responses 仅 deepseek / kimi）。
 const cnProtocolOptions = computed<Array<{ value: CnApiProtocol; labelKey: string }>>(() => {
   const opts: Array<{ value: CnApiProtocol; labelKey: string }> = [
@@ -4102,44 +4146,46 @@ const cnAdaptiveProtocolOptions = computed<Array<{ value: CnNativeApiProtocol; l
   return opts
 })
 
-function resetAdaptiveBaseUrls(platform: 'kimi' | 'zhipu' | 'deepseek', mode: CnAccountMode) {
+function resetAdaptiveBaseUrls(platform: CanonicalCnProviderPlatform, mode: CnAccountMode) {
   adaptiveBaseUrls.value = defaultCNAdaptiveBaseUrls(platform, mode)
 }
 // 当前选中平台的品牌色（选中卡片描边 / 图标底色），与 platformColors 取色一致。
 const cnAccentActiveClass = computed(() => {
-  switch (form.platform) {
+  switch (normalizeCnProviderPlatform(form.platform)) {
     case 'kimi':
       return 'border-pink-500 bg-pink-50 dark:bg-pink-900/20'
     case 'zhipu':
       return 'border-indigo-500 bg-indigo-50 dark:bg-indigo-900/20'
     case 'deepseek':
       return 'border-teal-500 bg-teal-50 dark:bg-teal-900/20'
+    case 'qwen':
+      return 'border-sky-500 bg-sky-50 dark:bg-sky-900/20'
     default:
       return 'border-primary-500 bg-primary-50 dark:bg-primary-900/20'
   }
 })
 const cnAccentIconClass = computed(() => {
-  switch (form.platform) {
+  switch (normalizeCnProviderPlatform(form.platform)) {
     case 'kimi':
       return 'bg-pink-500 text-white'
     case 'zhipu':
       return 'bg-indigo-500 text-white'
     case 'deepseek':
       return 'bg-teal-500 text-white'
+    case 'qwen':
+      return 'bg-sky-500 text-white'
     default:
       return 'bg-primary-500 text-white'
   }
 })
-// 切换国产供应商平台：强制 apikey 类型，deepseek 无 coding 套餐故锁定 payg，
-// 协议回落 adaptive，并把 base url 重置为该平台默认端点。
-function selectCNPlatform(platform: 'kimi' | 'zhipu' | 'deepseek') {
+// 切换国产供应商平台：强制 apikey 类型；Qwen 默认一次性 Token Plan，
+// 其余平台默认按量付费。协议回落 adaptive，并重置为该平台默认端点。
+function selectCNPlatform(platform: CanonicalCnProviderPlatform) {
   form.platform = platform
   form.type = 'apikey'
   accountCategory.value = 'apikey'
   apiProtocol.value = 'adaptive'
-  if (platform === 'deepseek') {
-    accountMode.value = 'payg'
-  }
+  accountMode.value = isQwenPlatform(platform) ? 'token_plan' : 'payg'
   apiKeyBaseUrl.value = defaultCNBaseUrl(platform, accountMode.value, apiProtocol.value)
   resetAdaptiveBaseUrls(platform, accountMode.value)
 }
@@ -4685,8 +4731,15 @@ watch(
   () => form.platform,
   (newPlatform) => {
     // Reset base URL based on platform
-    if (newPlatform === 'kimi' || newPlatform === 'zhipu' || newPlatform === 'deepseek') {
+    const normalizedCnPlatform = normalizeCnProviderPlatform(newPlatform)
+    if (normalizedCnPlatform) {
+      // Selecting a provider always starts from its supported default plan.
+      accountMode.value = normalizedCnPlatform === 'qwen' ? 'token_plan' : 'payg'
+      if (apiProtocol.value === 'responses' && normalizedCnPlatform !== 'deepseek') {
+        apiProtocol.value = 'adaptive'
+      }
       apiKeyBaseUrl.value = defaultCNBaseUrl(newPlatform, accountMode.value, apiProtocol.value)
+      resetAdaptiveBaseUrls(normalizedCnPlatform, accountMode.value)
     } else {
       apiKeyBaseUrl.value =
         (newPlatform === 'openai')
@@ -5635,7 +5688,7 @@ const handleSubmit = async () => {
   // 国产供应商：账号模式 + 协议 + 对应端点写入凭据；后端按 account_mode 路由
   // 额度/余额探测，按 api_protocol 路由转发端点与格式。注意 CN apikey 走本函数
   // 的通用路径（直接 doCreateAccount），不经过 createAccountAndFinish。
-  if (form.platform === 'kimi' || form.platform === 'zhipu' || form.platform === 'deepseek') {
+  if (isCNPlatform.value) {
     credentials.account_mode = accountMode.value
     credentials.api_protocol = apiProtocol.value
     if (apiProtocol.value === 'adaptive') {

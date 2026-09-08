@@ -214,11 +214,14 @@ func normalizeMonitorPrimaryModel(provider, checkMode, model string) string {
 //   - kimi/zhipu/deepseek coding：GetCodingPlanProvider 须识别为 kimi/zhipu
 //     （deepseek coding、自定义域名 kimi coding 无法路由额度端点）
 //   - kimi/zhipu/deepseek payg：仅 kimi/deepseek 有公开余额端点（zhipu payg 无）
+//   - qwen：无公开用量/余额端点（Token Plan 靠推理 429 停调）
 //   - anthropic：OAuth / Setup Token（API-Key 型无 usage 通道，永久 error）
 //   - openai：OAuth（API-Key 型无 usage 通道）
 //   - gemini/grok/antigravity：本地统计/值通道降级，不会永久 error，放行
 func monitorAccountQuotaCapability(account *Account) error {
 	switch account.Platform {
+	case PlatformQwen:
+		return ErrChannelMonitorAccountNotSupportable
 	case PlatformKimi, PlatformZhipu, PlatformDeepseek:
 		if account.IsCodingPlan() {
 			if p := account.GetCodingPlanProvider(); p != PlatformKimi && p != PlatformZhipu {

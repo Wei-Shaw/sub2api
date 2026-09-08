@@ -245,6 +245,21 @@ func TestQuotaFetcher_LoadsAccountOnceAndPassesItThrough(t *testing.T) {
 		require.Same(t, acc, cnBalance.lastAccount)
 		require.Equal(t, 1, cnBalance.calls)
 	})
+
+	t.Run("qwen token plan never probes", func(t *testing.T) {
+		fetcher, usage, cnQuota, cnBalance, accounts := newQuotaFetcherTestSetup(t)
+		acc := &Account{ID: 24, Platform: domain.PlatformQwen, Credentials: map[string]any{"account_mode": AccountModeTokenPlan}}
+		accounts.accounts[24] = acc
+
+		snapshot := fetcher.Fetch(context.Background(), 24)
+
+		require.False(t, snapshot.Success)
+		require.Contains(t, snapshot.Error, "does not support usage queries")
+		require.Equal(t, 1, accounts.calls)
+		require.Equal(t, 0, usage.getCalls())
+		require.Equal(t, 0, cnQuota.calls)
+		require.Equal(t, 0, cnBalance.calls)
+	})
 }
 
 // --- 失败路径（Fetch 永不返回 error） ---

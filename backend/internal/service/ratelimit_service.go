@@ -1152,8 +1152,9 @@ func (s *RateLimitService) handle429(ctx context.Context, account *Account, head
 		}
 		return
 	}
-	// 国产供应商（kimi/zhipu/deepseek）的 429 走专用可恢复路径：余额不足 → 临时停调，
-	// Coding Plan 窗口耗尽 → 冷却到快照重置点。未命中则继续默认 429 逻辑。
+	// 国产供应商的 429 走专用路径：Qwen Token Plan 额度耗尽 → 永久停调；
+	// 余额不足 → 临时停调；Coding Plan 窗口耗尽 → 冷却到快照重置点。
+	// 未命中则继续默认 429 逻辑（短冷却，不会永久停用）。
 	if account.IsCNProvider() {
 		if s.applyCNProviderReactive429(ctx, account, headers, responseBody) {
 			return

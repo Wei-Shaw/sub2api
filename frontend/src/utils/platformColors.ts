@@ -1,3 +1,5 @@
+import { normalizeCnProviderPlatform } from '@/constants/cnProviders'
+
 /**
  * Centralized platform color definitions.
  *
@@ -14,6 +16,7 @@ export type Platform =
   | 'kimi'
   | 'zhipu'
   | 'deepseek'
+  | 'qwen'
   | 'composite'
 
 // ── Badge (bg + text + border, for inline badges with border) ───────
@@ -26,6 +29,7 @@ const BADGE: Record<Platform, string> = {
   kimi: 'bg-pink-500/10 text-pink-600 border-pink-500/30 dark:text-pink-400',
   zhipu: 'bg-indigo-500/10 text-indigo-600 border-indigo-500/30 dark:text-indigo-400',
   deepseek: 'bg-teal-500/10 text-teal-600 border-teal-500/30 dark:text-teal-400',
+  qwen: 'bg-sky-500/10 text-sky-700 border-sky-500/30 dark:text-sky-300',
   composite: 'bg-cyan-500/10 text-cyan-700 border-cyan-500/30 dark:text-cyan-300',
 }
 const BADGE_DEFAULT = 'bg-slate-500/10 text-slate-600 border-slate-500/30 dark:text-slate-400'
@@ -40,6 +44,7 @@ const BADGE_LIGHT: Record<Platform, string> = {
   kimi: 'bg-pink-500/10 text-pink-600 dark:bg-pink-500/10 dark:text-pink-300',
   zhipu: 'bg-indigo-500/10 text-indigo-600 dark:bg-indigo-500/10 dark:text-indigo-300',
   deepseek: 'bg-teal-500/10 text-teal-600 dark:bg-teal-500/10 dark:text-teal-300',
+  qwen: 'bg-sky-500/10 text-sky-700 dark:bg-sky-500/10 dark:text-sky-300',
   composite: 'bg-cyan-500/10 text-cyan-700 dark:bg-cyan-500/10 dark:text-cyan-300',
 }
 
@@ -53,6 +58,7 @@ const BORDER: Record<Platform, string> = {
   kimi: 'border-pink-500/20 dark:border-pink-500/20',
   zhipu: 'border-indigo-500/20 dark:border-indigo-500/20',
   deepseek: 'border-teal-500/20 dark:border-teal-500/20',
+  qwen: 'border-sky-500/20 dark:border-sky-500/20',
   composite: 'border-cyan-500/20 dark:border-cyan-500/20',
 }
 const BORDER_DEFAULT = 'border-gray-200 dark:border-dark-700'
@@ -67,6 +73,7 @@ const BORDER_STRONG: Record<Platform, string> = {
   kimi: 'border-pink-500/35 dark:border-pink-500/30',
   zhipu: 'border-indigo-500/35 dark:border-indigo-500/30',
   deepseek: 'border-teal-500/35 dark:border-teal-500/30',
+  qwen: 'border-sky-500/35 dark:border-sky-500/30',
   composite: 'border-cyan-500/35 dark:border-cyan-500/30',
 }
 const BORDER_STRONG_DEFAULT = 'border-gray-300 dark:border-dark-600'
@@ -82,6 +89,7 @@ const ACCENT: Record<Platform, string> = {
   kimi: '#ec4899', // pink-500
   zhipu: '#6366f1', // indigo-500
   deepseek: '#14b8a6', // teal-500
+  qwen: '#0ea5e9', // sky-500
   composite: '#06b6d4', // cyan-500
 }
 const ACCENT_DEFAULT = '#14b8a6' // primary-500 (teal)
@@ -96,6 +104,7 @@ const ACCENT_BAR: Record<Platform, string> = {
   kimi: 'bg-gradient-to-r from-pink-400 to-pink-500',
   zhipu: 'bg-gradient-to-r from-indigo-400 to-indigo-500',
   deepseek: 'bg-gradient-to-r from-teal-400 to-teal-500',
+  qwen: 'bg-gradient-to-r from-sky-400 to-sky-500',
   composite: 'bg-gradient-to-r from-slate-500 to-cyan-500',
 }
 const ACCENT_BAR_DEFAULT = 'bg-gradient-to-r from-primary-400 to-primary-500'
@@ -110,6 +119,7 @@ const TEXT: Record<Platform, string> = {
   kimi: 'text-pink-600 dark:text-pink-400',
   zhipu: 'text-indigo-600 dark:text-indigo-400',
   deepseek: 'text-teal-600 dark:text-teal-400',
+  qwen: 'text-sky-700 dark:text-sky-300',
   composite: 'text-cyan-700 dark:text-cyan-300',
 }
 const TEXT_DEFAULT = 'text-primary-600 dark:text-primary-400'
@@ -124,6 +134,7 @@ const ICON: Record<Platform, string> = {
   kimi: 'text-pink-500 dark:text-pink-400',
   zhipu: 'text-indigo-500 dark:text-indigo-400',
   deepseek: 'text-teal-500 dark:text-teal-400',
+  qwen: 'text-sky-500 dark:text-sky-300',
   composite: 'text-cyan-600 dark:text-cyan-300',
 }
 const ICON_DEFAULT = 'text-primary-500 dark:text-primary-400'
@@ -138,6 +149,7 @@ const BUTTON: Record<Platform, string> = {
   kimi: 'bg-pink-500 text-white hover:bg-pink-600 active:bg-pink-700 dark:bg-pink-500/80 dark:hover:bg-pink-500',
   zhipu: 'bg-indigo-500 text-white hover:bg-indigo-600 active:bg-indigo-700 dark:bg-indigo-500/80 dark:hover:bg-indigo-500',
   deepseek: 'bg-teal-500 text-white hover:bg-teal-600 active:bg-teal-700 dark:bg-teal-500/80 dark:hover:bg-teal-500',
+  qwen: 'bg-sky-600 text-white hover:bg-sky-700 active:bg-sky-800 dark:bg-sky-600/80 dark:hover:bg-sky-600',
   composite: 'bg-cyan-700 text-white hover:bg-cyan-800 active:bg-cyan-900 dark:bg-cyan-600 dark:hover:bg-cyan-500',
 }
 const BUTTON_DEFAULT = 'bg-primary-500 text-white hover:bg-primary-600 dark:bg-primary-600 dark:hover:bg-primary-500'
@@ -152,6 +164,7 @@ const DISCOUNT: Record<Platform, string> = {
   kimi: 'bg-pink-100 text-pink-700 dark:bg-pink-900/40 dark:text-pink-300',
   zhipu: 'bg-indigo-100 text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-300',
   deepseek: 'bg-teal-100 text-teal-700 dark:bg-teal-900/40 dark:text-teal-300',
+  qwen: 'bg-sky-100 text-sky-700 dark:bg-sky-900/40 dark:text-sky-300',
   composite: 'bg-cyan-100 text-cyan-800 dark:bg-cyan-900/40 dark:text-cyan-300',
 }
 const DISCOUNT_DEFAULT = 'bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300'
@@ -166,6 +179,7 @@ const GRADIENT: Record<Platform, string> = {
   kimi: 'from-pink-500 to-pink-600',
   zhipu: 'from-indigo-500 to-indigo-600',
   deepseek: 'from-teal-500 to-teal-600',
+  qwen: 'from-sky-500 to-sky-600',
   composite: 'from-slate-600 to-cyan-600',
 }
 const GRADIENT_DEFAULT = 'from-primary-500 to-primary-600'
@@ -180,6 +194,7 @@ const GRADIENT_TEXT: Record<Platform, string> = {
   kimi: 'text-pink-100',
   zhipu: 'text-indigo-100',
   deepseek: 'text-teal-100',
+  qwen: 'text-sky-100',
   composite: 'text-cyan-100',
 }
 const GRADIENT_TEXT_DEFAULT = 'text-primary-100'
@@ -193,6 +208,7 @@ const GRADIENT_SUBTEXT: Record<Platform, string> = {
   kimi: 'text-pink-200',
   zhipu: 'text-indigo-200',
   deepseek: 'text-teal-200',
+  qwen: 'text-sky-200',
   composite: 'text-cyan-200',
 }
 const GRADIENT_SUBTEXT_DEFAULT = 'text-primary-200'
@@ -209,64 +225,84 @@ function isPlatform(p: string): p is Platform {
     p === 'kimi' ||
     p === 'zhipu' ||
     p === 'deepseek' ||
+    p === 'qwen' ||
     p === 'composite'
   )
 }
 
+function resolvePlatform(p: string): Platform | null {
+  const normalizedCnProvider = normalizeCnProviderPlatform(p)
+  const candidate = normalizedCnProvider ?? p
+  return isPlatform(candidate) ? candidate : null
+}
+
 export function platformBadgeClass(p: string): string {
-  return isPlatform(p) ? BADGE[p] : BADGE_DEFAULT
+  const platform = resolvePlatform(p)
+  return platform ? BADGE[platform] : BADGE_DEFAULT
 }
 
 export function platformBadgeLightClass(p: string): string {
-  return isPlatform(p) ? BADGE_LIGHT[p] : BADGE_DEFAULT
+  const platform = resolvePlatform(p)
+  return platform ? BADGE_LIGHT[platform] : BADGE_DEFAULT
 }
 
 export function platformBorderClass(p: string): string {
-  return isPlatform(p) ? BORDER[p] : BORDER_DEFAULT
+  const platform = resolvePlatform(p)
+  return platform ? BORDER[platform] : BORDER_DEFAULT
 }
 
 export function platformBorderStrongClass(p: string): string {
-  return isPlatform(p) ? BORDER_STRONG[p] : BORDER_STRONG_DEFAULT
+  const platform = resolvePlatform(p)
+  return platform ? BORDER_STRONG[platform] : BORDER_STRONG_DEFAULT
 }
 
 export function platformAccentColor(p: string): string {
-  return isPlatform(p) ? ACCENT[p] : ACCENT_DEFAULT
+  const platform = resolvePlatform(p)
+  return platform ? ACCENT[platform] : ACCENT_DEFAULT
 }
 
 export function platformAccentBarClass(p: string): string {
-  return isPlatform(p) ? ACCENT_BAR[p] : ACCENT_BAR_DEFAULT
+  const platform = resolvePlatform(p)
+  return platform ? ACCENT_BAR[platform] : ACCENT_BAR_DEFAULT
 }
 
 export function platformTextClass(p: string): string {
-  return isPlatform(p) ? TEXT[p] : TEXT_DEFAULT
+  const platform = resolvePlatform(p)
+  return platform ? TEXT[platform] : TEXT_DEFAULT
 }
 
 export function platformIconClass(p: string): string {
-  return isPlatform(p) ? ICON[p] : ICON_DEFAULT
+  const platform = resolvePlatform(p)
+  return platform ? ICON[platform] : ICON_DEFAULT
 }
 
 export function platformButtonClass(p: string): string {
-  return isPlatform(p) ? BUTTON[p] : BUTTON_DEFAULT
+  const platform = resolvePlatform(p)
+  return platform ? BUTTON[platform] : BUTTON_DEFAULT
 }
 
 export function platformDiscountClass(p: string): string {
-  return isPlatform(p) ? DISCOUNT[p] : DISCOUNT_DEFAULT
+  const platform = resolvePlatform(p)
+  return platform ? DISCOUNT[platform] : DISCOUNT_DEFAULT
 }
 
 export function platformGradientClass(p: string): string {
-  return isPlatform(p) ? GRADIENT[p] : GRADIENT_DEFAULT
+  const platform = resolvePlatform(p)
+  return platform ? GRADIENT[platform] : GRADIENT_DEFAULT
 }
 
 export function platformGradientTextClass(p: string): string {
-  return isPlatform(p) ? GRADIENT_TEXT[p] : GRADIENT_TEXT_DEFAULT
+  const platform = resolvePlatform(p)
+  return platform ? GRADIENT_TEXT[platform] : GRADIENT_TEXT_DEFAULT
 }
 
 export function platformGradientSubtextClass(p: string): string {
-  return isPlatform(p) ? GRADIENT_SUBTEXT[p] : GRADIENT_SUBTEXT_DEFAULT
+  const platform = resolvePlatform(p)
+  return platform ? GRADIENT_SUBTEXT[platform] : GRADIENT_SUBTEXT_DEFAULT
 }
 
 export function platformLabel(p: string): string {
-  switch (p) {
+  switch (resolvePlatform(p)) {
     case 'anthropic': return 'Anthropic'
     case 'openai': return 'OpenAI'
     case 'antigravity': return 'Antigravity'
@@ -275,6 +311,7 @@ export function platformLabel(p: string): string {
     case 'kimi': return 'Kimi'
     case 'zhipu': return 'Zhipu GLM'
     case 'deepseek': return 'DeepSeek'
+    case 'qwen': return 'Qwen / Alibaba'
     case 'composite': return 'Composite'
     default: return p || 'API'
   }

@@ -40,6 +40,14 @@ const account = {
   }
 } as Account
 
+const qwenAccount = {
+  id: 71,
+  platform: 'qwen',
+  type: 'apikey',
+  credentials: { account_mode: 'token_plan' },
+  extra: {}
+} as Account
+
 describe('CNProviderQuotaCell', () => {
   beforeEach(() => {
     queryQuota.mockReset()
@@ -101,5 +109,35 @@ describe('CNProviderQuotaCell', () => {
     await probeButton.trigger('click')
     await flushPromises()
     expect(queryQuota).toHaveBeenCalledWith(account.id)
+  })
+
+  it('never probes or renders usage tiers for a Qwen Token Plan account', async () => {
+    const wrapper = mount(CNProviderQuotaCell, { props: { account: qwenAccount } })
+    await flushPromises()
+
+    expect(queryQuota).not.toHaveBeenCalled()
+    expect(wrapper.find('[data-test="cn-provider-quota-probe"]').exists()).toBe(false)
+    expect(wrapper.findAll('[data-test="cn-provider-quota-tier"]')).toHaveLength(0)
+  })
+
+  it('shows a persisted Qwen Token Plan exhaustion warning without a probe control', async () => {
+    const exhaustedAccount = {
+      ...qwenAccount,
+      extra: {
+        qwen_token_plan_exhausted: true,
+        qwen_token_plan_exhausted_reason: 'Your token-plan quota has been exhausted.'
+      }
+    } as Account
+    const wrapper = mount(CNProviderQuotaCell, { props: { account: exhaustedAccount } })
+    await flushPromises()
+
+    expect(wrapper.get('[data-test="qwen-token-plan-exhausted"]').text()).toContain(
+      'admin.accounts.cnProviders.tokenPlanExhausted'
+    )
+    expect(wrapper.get('[data-test="qwen-token-plan-exhausted"]').attributes('title')).toBe(
+      'Your token-plan quota has been exhausted.'
+    )
+    expect(wrapper.find('[data-test="cn-provider-quota-probe"]').exists()).toBe(false)
+    expect(queryQuota).not.toHaveBeenCalled()
   })
 })

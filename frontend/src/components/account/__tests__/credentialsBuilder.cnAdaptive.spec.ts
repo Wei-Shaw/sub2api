@@ -45,4 +45,14 @@ describe('defaultCNAdaptiveBaseUrls', () => {
       responses: 'https://api.deepseek.com'
     })
   })
+
+  it('resolves Qwen Token Plan endpoints', () => {
+    const expected = {
+      chat_completions: 'https://token-plan.cn-beijing.maas.aliyuncs.com/compatible-mode/v1',
+      anthropic: 'https://token-plan.cn-beijing.maas.aliyuncs.com/apps/anthropic',
+      responses: ''
+    }
+
+    expect(defaultCNAdaptiveBaseUrls('qwen', 'token_plan')).toEqual(expected)
+  })
 })

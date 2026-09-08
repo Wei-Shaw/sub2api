@@ -8,13 +8,15 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-// CNProviderHandler 暴露国产供应商（kimi/zhipu/deepseek）的额度与余额查询端点。
+// CNProviderHandler 暴露国产供应商的额度与余额查询端点。
 //
-//   - GET /admin/cn-providers/accounts/:id/quota   Coding Plan 滚动窗口用量（kimi/zhipu）
+//   - GET /admin/cn-providers/accounts/:id/quota   Kimi/Zhipu Coding Plan 用量
 //   - GET /admin/cn-providers/accounts/:id/balance  payg 账号余额（kimi/deepseek）
 //
-// 智谱（zhipu）无余额端点，故同一账号仅 quota 或 balance 其一可用：服务端按账号
-// platform + account_mode 校验并返回明确错误（见 CNProvider*Service 的 load*Account）。
+// 智谱与 Qwen 无公开 payg 余额端点。Qwen Token Plan 无公开用量端点：
+// QueryQuota 必须返回 CN_QUOTA_NOT_SUPPORTED，不得向阿里云发送任何 usage 请求。
+// 服务端按账号 platform + account_mode 校验并返回明确错误（见
+// CNProvider*Service 的 load*Account）。
 type CNProviderHandler struct {
 	quotaService   *service.CNProviderQuotaService
 	balanceService *service.CNProviderBalanceService
@@ -30,7 +32,9 @@ func NewCNProviderHandler(
 	}
 }
 
-// QueryQuota 查询 Coding Plan 滚动窗口用量（5h + weekly）。
+// QueryQuota 查询 Kimi/Zhipu Coding Plan 滚动窗口用量。
+// Qwen Token Plan 没有可查询的用量接口；服务层在发起任何上游请求前返回
+// CN_QUOTA_NOT_SUPPORTED。
 func (h *CNProviderHandler) QueryQuota(c *gin.Context) {
 	accountID, err := strconv.ParseInt(c.Param("id"), 10, 64)
 	if err != nil {

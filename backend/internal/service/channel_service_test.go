@@ -2044,6 +2044,7 @@ func TestIsPlatformPricingMatch(t *testing.T) {
 		{"composite matches kimi pricing", PlatformComposite, PlatformKimi, true},
 		{"composite matches zhipu pricing", PlatformComposite, PlatformZhipu, true},
 		{"composite matches deepseek pricing", PlatformComposite, PlatformDeepseek, true},
+		{"composite matches qwen pricing", PlatformComposite, PlatformQwen, true},
 		{"empty string matches nothing", "", PlatformAnthropic, false},
 		{"empty string matches empty", "", "", true},
 	}
@@ -2069,7 +2070,7 @@ func TestMatchingPlatforms(t *testing.T) {
 		{"anthropic returns itself", PlatformAnthropic, []string{PlatformAnthropic}},
 		{"gemini returns itself", PlatformGemini, []string{PlatformGemini}},
 		{"openai returns itself", PlatformOpenAI, []string{PlatformOpenAI}},
-		{"composite returns concrete platforms", PlatformComposite, []string{PlatformAnthropic, PlatformGemini, PlatformOpenAI, PlatformAntigravity, PlatformGrok, PlatformKimi, PlatformZhipu, PlatformDeepseek}},
+		{"composite returns concrete platforms", PlatformComposite, []string{PlatformAnthropic, PlatformGemini, PlatformOpenAI, PlatformAntigravity, PlatformGrok, PlatformKimi, PlatformZhipu, PlatformDeepseek, PlatformQwen}},
 	}
 
 	for _, tt := range tests {

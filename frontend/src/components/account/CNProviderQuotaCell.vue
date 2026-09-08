@@ -4,9 +4,10 @@
     data-test="cn-provider-quota"
     class="min-w-[220px] space-y-1"
   >
-    <!-- Tier rows: 5h + weekly utilization bars (snapshot renders on mount).
-         复用账号页 UsageProgressBar：同阈值配色、同倒计时格式。 -->
-    <div v-if="data?.success && data.tiers?.length" class="space-y-1">
+    <!-- Coding Plan rolling-window tiers via UsageProgressBar.
+         Qwen Token Plan has no queryable usage snapshot, so it only renders
+         its persisted exhaustion state. -->
+    <div v-if="!isQwenTokenPlan && data?.success && data.tiers?.length" class="space-y-1">
       <UsageProgressBar
         v-for="tier in data.tiers"
         :key="tier.window"
@@ -18,11 +19,20 @@
       />
     </div>
 
+    <div
+      v-if="isTokenPlanExhausted"
+      data-test="qwen-token-plan-exhausted"
+      class="rounded border border-red-200 bg-red-50 px-2 py-1 text-[10px] leading-4 text-red-700 dark:border-red-900/60 dark:bg-red-950/30 dark:text-red-300"
+      :title="exhaustedReason || t('admin.accounts.cnProviders.tokenPlanExhausted')"
+    >
+      {{ t('admin.accounts.cnProviders.tokenPlanExhausted') }}
+    </div>
+
     <!-- Explicit refresh action (aligned with the OpenAI "Query" / Grok "Probe"
          buttons): a verb label tells users this chip is clickable. The previous
          noun label ("5h/weekly") read as a passive caption and users could not
          discover the manual refresh. -->
-    <div class="flex flex-wrap items-center gap-1.5">
+    <div v-if="!isQwenTokenPlan" class="flex flex-wrap items-center gap-1.5">
       <button
         type="button"
         data-test="cn-provider-quota-probe"
@@ -50,7 +60,7 @@
     </div>
 
     <div
-      v-if="error"
+      v-if="!isQwenTokenPlan && error"
       class="truncate text-[10px] leading-4 text-red-600 dark:text-red-400"
       :title="error"
     >
@@ -67,6 +77,7 @@ import type { CNProviderQuotaProbeResult } from '@/api/admin/cnProviders'
 import type { Account } from '@/types'
 import { cnQuotaCellVisible } from './credentialsBuilder'
 import UsageProgressBar from './UsageProgressBar.vue'
+import { isQwenPlatform } from '@/constants/cnProviders'
 
 const props = defineProps<{
   account: Account
@@ -80,6 +91,9 @@ const readMode = (): string => {
 }
 
 const visible = computed(() => cnQuotaCellVisible(props.account.platform, readMode()))
+const isQwenTokenPlan = computed(() =>
+  isQwenPlatform(props.account.platform) && readMode() === 'token_plan'
+)
 
 const loading = ref(false)
 const error = ref<string | null>(null)
@@ -103,25 +117,53 @@ const readExtraString = (key: string): string => {
   return typeof v === 'string' ? v : ''
 }
 
-// 从持久化快照构造展示数据（缺少 5h/weekly 两档键时返回 null）。
+const readExtraBoolean = (key: string): boolean => {
+  const v = (props.account.extra as Record<string, unknown> | undefined)?.[key]
+  return v === true
+}
+
+const snapshotPrefix = computed(() => props.account.platform)
+
+const readSnapshotNumber = (suffix: string): number | null =>
+  readExtraNumber(`${snapshotPrefix.value}_${suffix}`)
+
+const readSnapshotString = (suffix: string): string =>
+  readExtraString(`${snapshotPrefix.value}_${suffix}`)
+
+const readSnapshotBoolean = (suffix: string): boolean =>
+  readExtraBoolean(`${snapshotPrefix.value}_${suffix}`)
+
+const snapshotExhausted = computed(() =>
+  isQwenPlatform(props.account.platform) && readSnapshotBoolean('token_plan_exhausted')
+)
+
+const snapshotExhaustedReason = computed(() =>
+  readSnapshotString('token_plan_exhausted_reason')
+)
+
+// 从持久化快照构造 Coding Plan 展示数据（缺少 5h/weekly 两档键时返回 null）。
+// Qwen Token Plan 没有可验证的用量查询接口，不能将旧的 qwen_* 快照展示成
+// 实际额度；其唯一可展示状态是推理 429 后持久化的 exhausted 标记。
 const snapshotData = computed<CNProviderQuotaProbeResult | null>(() => {
-  const platform = props.account.platform
-  const used5h = readExtraNumber(`${platform}_5h_used_percent`)
-  const usedWeekly = readExtraNumber(`${platform}_weekly_used_percent`)
+  if (isQwenTokenPlan.value) return null
+
+  const used5h = readSnapshotNumber('5h_used_percent')
+  const usedWeekly = readSnapshotNumber('weekly_used_percent')
   if (used5h == null && usedWeekly == null) return null
   const tiers: CNProviderQuotaProbeResult['tiers'] = []
   if (used5h != null) {
-    tiers.push({ window: '5h', used_percent: used5h, reset_at: readExtraString(`${platform}_5h_reset_at`) || undefined })
+    tiers.push({ window: '5h', used_percent: used5h, reset_at: readSnapshotString('5h_reset_at') || undefined })
   }
   if (usedWeekly != null) {
-    tiers.push({ window: 'weekly', used_percent: usedWeekly, reset_at: readExtraString(`${platform}_weekly_reset_at`) || undefined })
+    tiers.push({ window: 'weekly', used_percent: usedWeekly, reset_at: readSnapshotString('weekly_reset_at') || undefined })
   }
   return { success: true, tiers } as CNProviderQuotaProbeResult
 })
 
 // 快照是否过期（无更新时间或超过 staleness 窗口）→ 挂载时需要自动探测。
 const snapshotIsStale = computed(() => {
-  const updatedAt = readExtraString(`${props.account.platform}_usage_updated_at`)
+  if (isQwenTokenPlan.value) return false
+  const updatedAt = readSnapshotString('usage_updated_at')
   if (!updatedAt) return true
   const ts = new Date(updatedAt).getTime()
   return Number.isNaN(ts) || Date.now() - ts > SNAPSHOT_STALE_MS
@@ -131,6 +173,7 @@ const snapshotIsStale = computed(() => {
 // 避免静默失败导致单元格空白无提示）。
 onMounted(() => {
   if (!visible.value) return
+  if (isQwenTokenPlan.value) return
   data.value = snapshotData.value
   if (!snapshotIsStale.value) return
   // 模块级去抖：列表页每行一个实例，翻页/筛选/刷新会重复挂载；同一账号
@@ -165,6 +208,15 @@ const windowLabel = (window: string) =>
   window === 'weekly'
     ? t('admin.accounts.cnProviders.windowWeekly')
     : t('admin.accounts.cnProviders.window5h')
+
+const isTokenPlanExhausted = computed(() =>
+  isQwenTokenPlan.value && snapshotExhausted.value
+)
+
+const exhaustedReason = computed(() =>
+  snapshotExhaustedReason.value
+)
+
 
 const handleProbe = async () => {
   if (loading.value) return

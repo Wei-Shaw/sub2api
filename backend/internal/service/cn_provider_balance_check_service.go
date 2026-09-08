@@ -97,7 +97,7 @@ func (s *CNProviderBalanceCheckService) Stop() {
 }
 
 func (s *CNProviderBalanceCheckService) runOnce() {
-	// 收集 coding 探测目标（kimi/deepseek + 智谱）与 payg 检查队列。
+	// 收集 Coding Plan 探测目标与 payg 检查队列。
 	// coding 探测统一在收集完成后按 4 并发执行：单账号探测 15-20s，串行 ×
 	// 多账号会耗尽整体预算（120s 上限），排在后面的账号快照会饥饿，
 	// 连锁影响阈值停调的新鲜度判定。
@@ -126,9 +126,9 @@ func (s *CNProviderBalanceCheckService) runOnce() {
 				quotaTargets = append(quotaTargets, quotaTarget{id: account.ID, platform: account.Platform})
 				continue
 			}
-			// payg 余额探测仅 kimi/deepseek（智谱无公开余额端点，payg 账号
-			// 依赖响应式 402/429 处理）。
-			if platform != PlatformZhipu && account.Schedulable {
+			// payg 余额探测仅 kimi/deepseek（智谱与 Qwen 无公开余额端点，payg
+			// 账号依赖响应式 402/429 处理）。
+			if (platform == PlatformKimi || platform == PlatformDeepseek) && account.Schedulable {
 				paygTargets = append(paygTargets, account)
 			}
 		}
@@ -141,7 +141,7 @@ func (s *CNProviderBalanceCheckService) runOnce() {
 		}
 		collect(platform, accounts)
 	}
-	// 智谱无余额端点，仅进额度探测。
+	// 智谱无余额端点，仅进 Coding Plan 额度探测。
 	if s.quotaService != nil {
 		accounts, err := s.accountRepo.ListByPlatform(context.Background(), PlatformZhipu)
 		if err != nil {
@@ -253,6 +253,8 @@ func (s *CNProviderBalanceCheckService) checkOne(ctx context.Context, account *A
 }
 
 func (s *CNProviderBalanceCheckService) platforms() []string {
+	// Qwen is intentionally omitted: Token Plan has no public usage endpoint
+	// and payg Qwen has no public balance endpoint.
 	return []string{PlatformKimi, PlatformDeepseek}
 }
 

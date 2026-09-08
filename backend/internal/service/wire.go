@@ -287,7 +287,7 @@ func ProvideGrokQuotaService(
 	return service
 }
 
-// ProvideCNProviderQuotaService 构造国产供应商 Coding Plan 额度探测服务。
+// ProvideCNProviderQuotaService 构造 Kimi/Zhipu Coding Plan 额度探测服务。
 func ProvideCNProviderQuotaService(
 	accountRepo AccountRepository,
 	proxyRepo ProxyRepository,
@@ -308,8 +308,9 @@ func ProvideCNProviderBalanceService(
 }
 
 // ProvideCNProviderBalanceCheckService 构造并启动周期余额/额度检测任务。
-// payg 账号探余额（低余额停调）；coding plan 账号探 5h/weekly 滚动窗口
-// （落 extra 快照供调度阈值评估自动停调）。
+// payg 账号探余额（低余额停调）；Kimi/Zhipu Coding Plan 账号探 5h/weekly
+// 滚动窗口（落 extra 快照供调度阈值评估自动停调）。Qwen Token Plan 无公开
+// 用量端点，仅在推理响应明确报告额度耗尽时永久关闭调度。
 // 间隔取自 gateway.cn_providers.balance_check_interval_minutes；<=0 或关闭时不启动。
 func ProvideCNProviderBalanceCheckService(
 	accountRepo AccountRepository,

@@ -27,6 +27,13 @@ func paygAccount(platform string) *Account {
 	}
 }
 
+func tokenPlanAccount(platform string) *Account {
+	return &Account{
+		ID: 8, Platform: platform, Type: AccountTypeAPIKey, Status: StatusActive,
+		Credentials: map[string]any{"account_mode": AccountModeTokenPlan, "api_key": "sk-test"},
+	}
+}
+
 func requireReason(t *testing.T, err error, reason string) {
 	t.Helper()
 	require.Error(t, err)
@@ -44,6 +51,7 @@ func TestValidateCodingPlanAccount_Matrix(t *testing.T) {
 		{name: "nil", account: nil, wantReason: "CN_QUOTA_ACCOUNT_NOT_FOUND"},
 		{name: "non cn provider", account: &Account{ID: 3, Platform: PlatformAnthropic}, wantReason: "CN_QUOTA_INVALID_PLATFORM"},
 		{name: "payg has no quota endpoint", account: paygAccount(PlatformKimi), wantReason: "CN_QUOTA_NOT_CODING_PLAN"},
+		{name: "qwen token plan has no quota endpoint", account: tokenPlanAccount(PlatformQwen), wantReason: "CN_QUOTA_NOT_SUPPORTED"},
 		{name: "kimi coding ok", account: codingAccount(PlatformKimi)},
 		{name: "zhipu coding ok", account: codingAccount(PlatformZhipu)},
 	}
@@ -68,6 +76,7 @@ func TestValidatePayGAccount_Matrix(t *testing.T) {
 		{name: "nil", account: nil, wantReason: "CN_BALANCE_ACCOUNT_NOT_FOUND"},
 		{name: "non cn provider", account: &Account{ID: 3, Platform: PlatformAnthropic}, wantReason: "CN_BALANCE_INVALID_PLATFORM"},
 		{name: "coding has no balance endpoint", account: codingAccount(PlatformKimi), wantReason: "CN_BALANCE_CODING_PLAN"},
+		{name: "qwen token plan has no balance endpoint", account: tokenPlanAccount(PlatformQwen), wantReason: "CN_BALANCE_TOKEN_PLAN"},
 		{name: "kimi payg ok", account: paygAccount(PlatformKimi)},
 		{name: "deepseek payg ok", account: paygAccount(PlatformDeepseek)},
 	}
@@ -91,6 +100,10 @@ func TestCNProviderQuotaService_QueryUsageForAccount_RejectsInvalidAccount(t *te
 
 	_, err := svc.QueryUsageForAccount(context.Background(), paygAccount(PlatformKimi))
 	requireReason(t, err, "CN_QUOTA_NOT_CODING_PLAN")
+	require.Zero(t, upstream.calls)
+
+	_, err = svc.QueryUsageForAccount(context.Background(), tokenPlanAccount(PlatformQwen))
+	requireReason(t, err, "CN_QUOTA_NOT_SUPPORTED")
 	require.Zero(t, upstream.calls)
 
 	_, err = svc.QueryUsageForAccount(context.Background(), nil)
@@ -121,5 +134,16 @@ func TestCNProviderServices_IDEntryAppliesSameValidation(t *testing.T) {
 
 	_, err := svc.QueryUsage(context.Background(), 2)
 	requireReason(t, err, "CN_QUOTA_NOT_CODING_PLAN")
+	require.Zero(t, upstream.calls)
+}
+
+func TestCNProviderQuotaService_QueryUsageRejectsQwenTokenPlanWithoutUpstreamCall(t *testing.T) {
+	account := tokenPlanAccount(PlatformQwen)
+	repo := &fakeCNProbeAccountRepo{account: account}
+	upstream := &recordingHTTPUpstream{}
+	svc := NewCNProviderQuotaService(repo, nil, upstream, nil)
+
+	_, err := svc.QueryUsage(context.Background(), account.ID)
+	requireReason(t, err, "CN_QUOTA_NOT_SUPPORTED")
 	require.Zero(t, upstream.calls)
 }

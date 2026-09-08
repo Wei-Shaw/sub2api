@@ -47,6 +47,7 @@ const (
 	PlatformKimi      = domain.PlatformKimi
 	PlatformZhipu     = domain.PlatformZhipu
 	PlatformDeepseek  = domain.PlatformDeepseek
+	PlatformQwen      = domain.PlatformQwen
 	PlatformComposite = domain.PlatformComposite
 	// PlatformKiro is retained for unsupported-platform threshold tests and legacy
 	// account rows. Scheduling-threshold evaluation never pauses kiro accounts.
@@ -55,8 +56,9 @@ const (
 
 // 账号接入模式（国产供应商）：按量付费 vs Coding Plan。
 const (
-	AccountModePayG   = domain.AccountModePayG
-	AccountModeCoding = domain.AccountModeCoding
+	AccountModePayG      = domain.AccountModePayG
+	AccountModeCoding    = domain.AccountModeCoding
+	AccountModeTokenPlan = domain.AccountModeTokenPlan
 )
 
 // 上游 API 协议（国产供应商）：决定转发端点与格式，与接入模式正交。
@@ -70,26 +72,30 @@ const (
 // 国产 OpenAI 兼容供应商各模式的默认 base_url。
 // 与前端 credentialsBuilder.ts 中的预设保持一致。
 const (
-	DefaultKimiPayGBaseURL    = "https://api.moonshot.cn/v1"
-	DefaultKimiCodingBaseURL  = "https://api.kimi.com/coding/v1"
-	DefaultZhipuPayGBaseURL   = "https://open.bigmodel.cn/api/paas/v4"
-	DefaultZhipuCodingBaseURL = "https://open.bigmodel.cn/api/coding/paas/v4"
-	DefaultDeepseekBaseURL    = "https://api.deepseek.com"
+	DefaultKimiPayGBaseURL      = "https://api.moonshot.cn/v1"
+	DefaultKimiCodingBaseURL    = "https://api.kimi.com/coding/v1"
+	DefaultZhipuPayGBaseURL     = "https://open.bigmodel.cn/api/paas/v4"
+	DefaultZhipuCodingBaseURL   = "https://open.bigmodel.cn/api/coding/paas/v4"
+	DefaultDeepseekBaseURL      = "https://api.deepseek.com"
+	DefaultQwenPayGBaseURL      = "https://dashscope.aliyuncs.com/compatible-mode/v1"
+	DefaultQwenTokenPlanBaseURL = "https://token-plan.cn-beijing.maas.aliyuncs.com/compatible-mode/v1"
 )
 
 // 国产供应商 Anthropic 协议端点的默认 base_url（上游路径为 {base}/v1/messages）。
 // 与前端 credentialsBuilder.ts 中的预设保持一致。
 const (
-	DefaultKimiPayGAnthropicBaseURL   = "https://api.moonshot.cn/anthropic"
-	DefaultKimiCodingAnthropicBaseURL = "https://api.kimi.com/coding"
-	DefaultZhipuAnthropicBaseURL      = "https://open.bigmodel.cn/api/anthropic"
-	DefaultDeepseekAnthropicBaseURL   = "https://api.deepseek.com/anthropic"
+	DefaultKimiPayGAnthropicBaseURL      = "https://api.moonshot.cn/anthropic"
+	DefaultKimiCodingAnthropicBaseURL    = "https://api.kimi.com/coding"
+	DefaultZhipuAnthropicBaseURL         = "https://open.bigmodel.cn/api/anthropic"
+	DefaultDeepseekAnthropicBaseURL      = "https://api.deepseek.com/anthropic"
+	DefaultQwenPayGAnthropicBaseURL      = "https://dashscope.aliyuncs.com/apps/anthropic"
+	DefaultQwenTokenPlanAnthropicBaseURL = "https://token-plan.cn-beijing.maas.aliyuncs.com/apps/anthropic"
 )
 
-// IsCNProvider 报告 platform 是否为国产 OpenAI 兼容供应商（kimi/zhipu/deepseek）。
+// IsCNProvider 报告 platform 是否为国产 OpenAI 兼容供应商。
 func IsCNProvider(platform string) bool {
 	switch platform {
-	case PlatformKimi, PlatformZhipu, PlatformDeepseek:
+	case PlatformKimi, PlatformZhipu, PlatformDeepseek, PlatformQwen:
 		return true
 	default:
 		return false
@@ -108,6 +114,7 @@ var AllowedQuotaPlatforms = []string{
 	PlatformKimi,
 	PlatformZhipu,
 	PlatformDeepseek,
+	PlatformQwen,
 }
 
 // AllowedSchedulingThresholdPlatforms 是允许设置账号自动停调阈值的平台列表。

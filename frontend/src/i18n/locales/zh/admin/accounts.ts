@@ -310,6 +310,7 @@ export default {
         kimi: 'Kimi',
         zhipu: 'Zhipu GLM',
         deepseek: 'DeepSeek',
+        qwen: 'Qwen / Alibaba',
       },
       cnProviders: {
         accountMode: {
@@ -318,6 +319,8 @@ export default {
           paygDesc: '消耗账户余额，按 Token 计费。余额不足自动冷却，充值后恢复。',
           coding: 'Coding Plan',
           codingDesc: '订阅制编程套餐，按 5 小时 / 每周滚动用量窗口限流。',
+          tokenPlan: 'Token Plan',
+          tokenPlanDesc: 'Qwen 一次性 Token 额度。额度耗尽后会永久关闭调度，获得新额度后需手动重新启用。',
         },
         apiProtocol: {
           title: 'API 协议',
@@ -351,11 +354,13 @@ export default {
         balance: '余额 --',
         window5h: '5h',
         windowWeekly: '7d',
+        tokenPlan: 'Token Plan',
         probe: '查询',
-        probeTooltip: '请求供应商额度端点，查询 5 小时 / 每周滚动窗口用量',
+        probeTooltip: '请求供应商额度端点，查询滚动或一次性额度用量',
         balanceProbeTooltip: '请求供应商余额端点，查询账户余额',
         balanceLow: '余额不足',
         noBalanceEndpoint: '该平台暂无余额查询接口',
+        tokenPlanExhausted: 'Token Plan 额度已耗尽。调度已永久关闭；获得新额度后请手动重新启用此账号。',
       },
       types: {
         oauth: 'OAuth',
