@@ -73,6 +73,19 @@ server:
     max_upload_buffer_per_stream: 524288
 
 # =============================================================================
+# Infinite Canvas SSO
+# =============================================================================
+# Keep this disabled until both values are set. The frontend only receives a
+# one-use launch code; the dashboard JWT is exchanged server-to-server.
+canvas:
+  # Exact Canvas browser origin, without a path.
+  origin: ""
+  # Must match Canvas BFF SUB2API_CANVAS_BFF_SECRET and be at least 32 chars.
+  bff_shared_secret: ""
+  # One-use launch-code lifetime in seconds (30-300).
+  launch_code_ttl_seconds: 60
+
+# =============================================================================
 # WebAuthn / Passkey Configuration
 # WebAuthn / Passkey 配置
 # =============================================================================

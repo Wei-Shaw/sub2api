@@ -24,6 +24,8 @@ func RegisterAuthRoutes(
 ) {
 	// 创建速率限制器
 	rateLimiter := middleware.NewRateLimiter(redisClient)
+	// Canvas BFF authenticates this exchange with its shared secret. The launch code itself is one-use.
+	v1.POST("/canvas/launch/exchange", h.Auth.ExchangeCanvasLaunch)
 
 	// 公开接口
 	auth := v1.Group("/auth")
@@ -264,6 +266,7 @@ func RegisterAuthRoutes(
 	authenticated.Use(panelRateLimiter.Global())
 	{
 		authenticated.GET("/auth/me", h.Auth.GetCurrentUser)
+		authenticated.POST("/canvas/launch", h.Auth.CreateCanvasLaunch)
 		// 撤销所有会话（需要认证）
 		authenticated.POST("/auth/revoke-all-sessions", h.Auth.RevokeAllSessions)
 		authenticated.POST("/auth/oauth/bind-token", h.Auth.PrepareOAuthBindAccessTokenCookie)
