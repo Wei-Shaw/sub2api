@@ -6,7 +6,6 @@
  */
 
 import { apiClient } from './client'
-import type { ApiResponse } from '@/types'
 
 export interface CpaConfigView {
   enabled: boolean
@@ -164,11 +163,12 @@ export interface CpaLogsResponse {
   [key: string]: unknown
 }
 
-const unwrap = <T>(response: { data: ApiResponse<T> }): T => response.data.data
-
+// apiClient 的响应拦截器已经把 { code, message, data } 解包成 data，
+// 所以这里直接取 axios 的 response.data 即为业务负载（与 src/api/admin/ops.ts 一致）。
 export const cpaApi = {
   async getConfig(): Promise<CpaConfigView> {
-    return unwrap(await apiClient.get<ApiResponse<CpaConfigView>>('/admin/cpa/config'))
+    const { data } = await apiClient.get<CpaConfigView>('/admin/cpa/config')
+    return data
   },
 
   async updateConfig(payload: {
@@ -176,51 +176,52 @@ export const cpaApi = {
     base_url: string
     management_key?: string | null
   }): Promise<CpaConfigView> {
-    return unwrap(await apiClient.put<ApiResponse<CpaConfigView>>('/admin/cpa/config', payload))
+    const { data } = await apiClient.put<CpaConfigView>('/admin/cpa/config', payload)
+    return data
   },
 
   async testConnection(): Promise<CpaVersionInfo> {
-    return unwrap(await apiClient.post<ApiResponse<CpaVersionInfo>>('/admin/cpa/test'))
+    const { data } = await apiClient.post<CpaVersionInfo>('/admin/cpa/test')
+    return data
   },
 
   async getOverview(): Promise<CpaOverview> {
-    return unwrap(await apiClient.get<ApiResponse<CpaOverview>>('/admin/cpa/overview'))
+    const { data } = await apiClient.get<CpaOverview>('/admin/cpa/overview')
+    return data
   },
 
   async listAuthFiles(): Promise<CpaAuthFileList> {
-    return unwrap(
-      await apiClient.get<ApiResponse<CpaAuthFileList>>('/admin/cpa/auth-files', {
-        timeout: 30000
-      })
-    )
+    const { data } = await apiClient.get<CpaAuthFileList>('/admin/cpa/auth-files', { timeout: 30000 })
+    return data
   },
 
   async getAuthFileQuota(authIndex: string): Promise<CpaCodexUsagePayload> {
-    return unwrap(
-      await apiClient.get<ApiResponse<CpaCodexUsagePayload>>('/admin/cpa/auth-files/quota', {
-        params: { auth_index: authIndex },
-        timeout: 30000
-      })
-    )
+    const { data } = await apiClient.get<CpaCodexUsagePayload>('/admin/cpa/auth-files/quota', {
+      params: { auth_index: authIndex },
+      timeout: 30000
+    })
+    return data
   },
 
   async getApiKeyUsage(): Promise<CpaApiKeyUsage> {
-    return unwrap(await apiClient.get<ApiResponse<CpaApiKeyUsage>>('/admin/cpa/api-key-usage'))
+    const { data } = await apiClient.get<CpaApiKeyUsage>('/admin/cpa/api-key-usage')
+    return data
   },
 
   async getLogs(params: { limit?: number; cursor?: string; after?: string } = {}): Promise<CpaLogsResponse> {
-    return unwrap(await apiClient.get<ApiResponse<CpaLogsResponse>>('/admin/cpa/logs', { params }))
+    const { data } = await apiClient.get<CpaLogsResponse>('/admin/cpa/logs', { params })
+    return data
   },
 
   async listErrorLogs(): Promise<CpaErrorLogList> {
-    return unwrap(await apiClient.get<ApiResponse<CpaErrorLogList>>('/admin/cpa/error-logs'))
+    const { data } = await apiClient.get<CpaErrorLogList>('/admin/cpa/error-logs')
+    return data
   },
 
   async getErrorLogContent(name: string): Promise<{ name: string; content: string }> {
-    return unwrap(
-      await apiClient.get<ApiResponse<{ name: string; content: string }>>(
-        `/admin/cpa/error-logs/${encodeURIComponent(name)}`
-      )
+    const { data } = await apiClient.get<{ name: string; content: string }>(
+      `/admin/cpa/error-logs/${encodeURIComponent(name)}`
     )
+    return data
   }
 }
