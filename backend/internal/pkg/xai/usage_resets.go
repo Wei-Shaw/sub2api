@@ -139,13 +139,13 @@ func ParseUsageResetResponse(resp *http.Response) ([]UsageResetCard, error) {
 		}
 	}
 	if !seenTrailers || status < 0 {
-		return nil, errors.New("Grok reset response has no final status")
+		return nil, errors.New("missing final status in Grok reset response")
 	}
 	if status != 0 {
 		return nil, &UsageResetRPCError{HTTPStatus: resp.StatusCode, GRPCStatus: status}
 	}
 	if !seenMessage {
-		return nil, errors.New("Grok reset response has no result")
+		return nil, errors.New("missing result in Grok reset response")
 	}
 	cards := make([]UsageResetCard, 0)
 	err = walkResetFields(message, 1, func(number protowire.Number, value []byte) error {
