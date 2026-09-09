@@ -40,11 +40,10 @@ func TestOpenAIProvisionDemandServiceMergesRecentCapacityDenials(t *testing.T) {
 	demand, err := svc.GetOpenAIProvisionDemand(context.Background(), time.Now().Add(-time.Hour), time.Now())
 	require.NoError(t, err)
 	require.Equal(t, OpenAIProvisionDemand{
-		ActiveUsers:            3,
-		Requests:               7,
-		Tokens:                 42,
-		CapacityDeniedUsers:    2,
-		CapacityDeniedRequests: 2,
+		ActiveUsers:         3,
+		Requests:            7,
+		Tokens:              42,
+		CapacityDeniedUsers: 2,
 	}, demand)
 
 	svc.RecordOpenAICapacityDenied(context.Background(), 19)

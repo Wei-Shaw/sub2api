@@ -960,6 +960,8 @@ func TestAPIContracts(t *testing.T) {
 					"openai_auto_provision_callback_secret_configured": false,
 					"openai_auto_provision_email_source": "",
 					"openai_auto_provision_workers": 3,
+					"openai_auto_provision_requests_per_account": 30,
+					"openai_auto_provision_tokens_per_account": 900000,
 					"openai_auto_reauthorization_enabled": false,
 					"openai_fast_policy_settings": {
 						"rules": []
@@ -1299,6 +1301,8 @@ func TestAPIContracts(t *testing.T) {
 					"openai_auto_provision_callback_secret_configured": false,
 					"openai_auto_provision_email_source": "",
 					"openai_auto_provision_workers": 3,
+					"openai_auto_provision_requests_per_account": 30,
+					"openai_auto_provision_tokens_per_account": 900000,
 					"openai_auto_reauthorization_enabled": false,
 					"openai_fast_policy_settings": {
 						"rules": []

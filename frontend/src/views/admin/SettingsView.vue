@@ -5261,6 +5261,14 @@
                     <input v-model.number="form.openai_auto_provision_workers" class="input mt-1" min="1" max="16" type="number" />
                   </label>
                   <label class="block">
+                    <span class="text-xs font-medium text-gray-600 dark:text-gray-300">{{ t("admin.settings.openaiAutoProvision.requestsPerAccountLabel") }}</span>
+                    <input v-model.number="form.openai_auto_provision_requests_per_account" class="input mt-1" min="1" type="number" />
+                  </label>
+                  <label class="block">
+                    <span class="text-xs font-medium text-gray-600 dark:text-gray-300">{{ t("admin.settings.openaiAutoProvision.tokensPerAccountLabel") }}</span>
+                    <input v-model.number="form.openai_auto_provision_tokens_per_account" class="input mt-1" min="1" type="number" />
+                  </label>
+                  <label class="block">
                     <span class="text-xs font-medium text-gray-600 dark:text-gray-300">{{ t("admin.settings.openaiAutoProvision.emailSourceLabel") }}</span>
                     <input v-model="form.openai_auto_provision_email_source" class="input mt-1" :placeholder="t('admin.settings.openaiAutoProvision.emailSourcePlaceholder')" type="text" />
                   </label>
@@ -9878,6 +9886,8 @@ type SettingsForm = Omit<
   openai_auto_provision_callback_secret_configured: boolean;
   openai_auto_provision_email_source: string;
   openai_auto_provision_workers: number;
+  openai_auto_provision_requests_per_account: number;
+  openai_auto_provision_tokens_per_account: number;
   openai_auto_reauthorization_enabled: boolean;
   openai_advanced_scheduler_enabled: boolean;
   openai_advanced_scheduler_sticky_weighted_enabled: boolean;
@@ -10141,6 +10151,8 @@ const form = reactive<SettingsForm>({
   openai_auto_provision_callback_secret_configured: false,
   openai_auto_provision_email_source: "",
   openai_auto_provision_workers: 3,
+  openai_auto_provision_requests_per_account: 30,
+  openai_auto_provision_tokens_per_account: 900000,
   openai_auto_reauthorization_enabled: false,
   openai_advanced_scheduler_enabled: false,
   openai_advanced_scheduler_sticky_weighted_enabled: false,
@@ -11949,6 +11961,8 @@ async function saveSettings() {
       openai_auto_provision_email_source:
         form.openai_auto_provision_email_source.trim(),
       openai_auto_provision_workers: Number(form.openai_auto_provision_workers),
+      openai_auto_provision_requests_per_account: Number(form.openai_auto_provision_requests_per_account),
+      openai_auto_provision_tokens_per_account: Number(form.openai_auto_provision_tokens_per_account),
       openai_auto_reauthorization_enabled:
         form.openai_auto_reauthorization_enabled,
       openai_advanced_scheduler_enabled: form.openai_advanced_scheduler_enabled,

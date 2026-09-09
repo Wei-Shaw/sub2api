@@ -8,6 +8,7 @@ Configure these values in the admin system settings:
 
 - Enable auto provisioning.
 - Set the healthy-account target, polling interval, worker count, and email source.
+- Set the five-hour request and token capacity per OAuth account. Calibrate both values from the actual account plan and observed provider quota; they are not inferred from percentage-only quota snapshots.
 - Set the Turb base URL and its WebUI `X-Auth-Code`.
 - Set the Sub2API callback URL, normally ending in `/api/v1/integrations/openai/auto-provision/callback`.
 - Set a callback secret. The same value must be set as `SUB2API_AUTOMATION_CALLBACK_SECRET` in Turb.
@@ -34,6 +35,6 @@ Registration callbacks contain only request status and counts. Reauthorization c
 
 Sub2API stores pending request IDs and processed event IDs in the settings repository. A request is not dispatched again while it is pending. Terminal callbacks are idempotent, and a failed registration batch is followed by a fresh deficit calculation on the next polling cycle.
 
-The coordinator reads successful OAuth usage from the most recent five hours. A failed-capacity signal is retained for five minutes and counts distinct users, but each polling cycle is capped to a one-account step-up so a sequential burst cannot trigger a full target-sized purchase. Recent meaningful token traffic (at least 10,000 tokens in the window) can prewarm one replacement when the known quota headroom is already inside the reserve; quota-exhausted accounts do not consume the target's provisionable-capacity ceiling. Ordinary traffic with usable quota never creates accounts. The signal is best-effort and is not allowed to delay or fail the user's gateway request.
+The coordinator reads successful OAuth usage from the most recent five hours. It calculates required capacity as `max(ceil(requests / configured_request_capacity), ceil(tokens / configured_token_capacity))`, then subtracts effective usable capacity. A capacity-denied user signal does not masquerade as a request count; it only reserves at least one additional slot when the measured usage has not yet exposed the shortage. The configured target is a hard ceiling, and each dispatch is still capped at 100 accounts; the next polling cycle continues after the terminal callback. Quota-exhausted accounts do not consume the target's provisionable-capacity ceiling. The signal is best-effort and is not allowed to delay or fail the user's gateway request.
 
 The worker callback secret must be configured before enabling the feature. Do not put OAuth codes, tokens, or callback secrets in logs, job metadata, or support messages.

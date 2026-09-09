@@ -286,6 +286,8 @@ type UpdateSettingsRequest struct {
 	OpenAIAutoProvisionCallbackSecret                  *string  `json:"openai_auto_provision_callback_secret"`
 	OpenAIAutoProvisionEmailSource                     *string  `json:"openai_auto_provision_email_source"`
 	OpenAIAutoProvisionWorkers                         *int     `json:"openai_auto_provision_workers"`
+	OpenAIAutoProvisionRequestsPerAccount              *int     `json:"openai_auto_provision_requests_per_account"`
+	OpenAIAutoProvisionTokensPerAccount                *int     `json:"openai_auto_provision_tokens_per_account"`
 	OpenAIReauthorizationEnabled                       *bool    `json:"openai_auto_reauthorization_enabled"`
 	OpenAIAdvancedSchedulerEnabled                     *bool    `json:"openai_advanced_scheduler_enabled"`
 	OpenAIAdvancedSchedulerStickyWeightedEnabled       *bool    `json:"openai_advanced_scheduler_sticky_weighted_enabled"`
@@ -1940,6 +1942,18 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 			}
 			return previousSettings.OpenAIAutoProvisionWorkers
 		}(),
+		OpenAIAutoProvisionRequestsPerAccount: func() int {
+			if req.OpenAIAutoProvisionRequestsPerAccount != nil {
+				return *req.OpenAIAutoProvisionRequestsPerAccount
+			}
+			return previousSettings.OpenAIAutoProvisionRequestsPerAccount
+		}(),
+		OpenAIAutoProvisionTokensPerAccount: func() int {
+			if req.OpenAIAutoProvisionTokensPerAccount != nil {
+				return *req.OpenAIAutoProvisionTokensPerAccount
+			}
+			return previousSettings.OpenAIAutoProvisionTokensPerAccount
+		}(),
 		OpenAIReauthorizationEnabled: func() bool {
 			if req.OpenAIReauthorizationEnabled != nil {
 				return *req.OpenAIReauthorizationEnabled
@@ -2552,6 +2566,8 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		OpenAIAutoProvisionCallbackSecretConfigured:            updatedSettings.OpenAIAutoProvisionCallbackSecretConfigured,
 		OpenAIAutoProvisionEmailSource:                         updatedSettings.OpenAIAutoProvisionEmailSource,
 		OpenAIAutoProvisionWorkers:                             updatedSettings.OpenAIAutoProvisionWorkers,
+		OpenAIAutoProvisionRequestsPerAccount:                  updatedSettings.OpenAIAutoProvisionRequestsPerAccount,
+		OpenAIAutoProvisionTokensPerAccount:                    updatedSettings.OpenAIAutoProvisionTokensPerAccount,
 		OpenAIReauthorizationEnabled:                           updatedSettings.OpenAIReauthorizationEnabled,
 		OpenAIAdvancedSchedulerEnabled:                         updatedSettings.OpenAIAdvancedSchedulerEnabled,
 		OpenAIAdvancedSchedulerStickyWeightedEnabled:           updatedSettings.OpenAIAdvancedSchedulerStickyWeightedEnabled,

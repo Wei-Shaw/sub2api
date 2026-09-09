@@ -141,6 +141,18 @@ func (s *SettingService) buildSystemSettingsUpdates(ctx context.Context, setting
 	if settings.OpenAIAutoProvisionWorkers < 1 || settings.OpenAIAutoProvisionWorkers > 16 {
 		return nil, infraerrors.BadRequest("INVALID_OPENAI_AUTO_PROVISION_WORKERS", "openai auto-provision workers must be between 1 and 16")
 	}
+	if settings.OpenAIAutoProvisionRequestsPerAccount == 0 {
+		settings.OpenAIAutoProvisionRequestsPerAccount = 30
+	}
+	if settings.OpenAIAutoProvisionRequestsPerAccount < 1 {
+		return nil, infraerrors.BadRequest("INVALID_OPENAI_AUTO_PROVISION_REQUEST_CAPACITY", "openai auto-provision requests per account must be positive")
+	}
+	if settings.OpenAIAutoProvisionTokensPerAccount == 0 {
+		settings.OpenAIAutoProvisionTokensPerAccount = 900000
+	}
+	if settings.OpenAIAutoProvisionTokensPerAccount < 1 {
+		return nil, infraerrors.BadRequest("INVALID_OPENAI_AUTO_PROVISION_TOKEN_CAPACITY", "openai auto-provision tokens per account must be positive")
+	}
 	if settings.OpenAIAutoProvisionTurbURL != "" {
 		if _, err := validatedAutomationBaseURL(settings.OpenAIAutoProvisionTurbURL); err != nil {
 			return nil, infraerrors.BadRequest("INVALID_OPENAI_AUTO_PROVISION_TURB_URL", err.Error())
@@ -549,6 +561,8 @@ func (s *SettingService) buildSystemSettingsUpdates(ctx context.Context, setting
 	}
 	updates[SettingKeyOpenAIAutoProvisionEmailSource] = strings.TrimSpace(settings.OpenAIAutoProvisionEmailSource)
 	updates[SettingKeyOpenAIAutoProvisionWorkers] = strconv.Itoa(settings.OpenAIAutoProvisionWorkers)
+	updates[SettingKeyOpenAIAutoProvisionRequestsPerAccount] = strconv.Itoa(settings.OpenAIAutoProvisionRequestsPerAccount)
+	updates[SettingKeyOpenAIAutoProvisionTokensPerAccount] = strconv.Itoa(settings.OpenAIAutoProvisionTokensPerAccount)
 	updates[SettingKeyOpenAIReauthorizationEnabled] = strconv.FormatBool(settings.OpenAIReauthorizationEnabled)
 	updates[openAIAdvancedSchedulerSettingKey] = strconv.FormatBool(settings.OpenAIAdvancedSchedulerEnabled)
 	updates[SettingKeyOpenAIAdvancedSchedulerStickyWeightedEnabled] = strconv.FormatBool(settings.OpenAIAdvancedSchedulerStickyWeightedEnabled)

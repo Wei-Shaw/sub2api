@@ -1327,6 +1327,8 @@ export default {
         targetLabel: '健康 OAuth 账号目标数',
         intervalLabel: '检查间隔（秒）',
         workersLabel: '注册并发数',
+        requestsPerAccountLabel: '每个 OAuth 账号五小时请求数',
+        tokensPerAccountLabel: '每个 OAuth 账号五小时 Token 数',
         emailSourceLabel: '邮箱来源覆盖',
         emailSourcePlaceholder: '使用 turb 默认配置',
         turbURLLabel: 'turb-gpt-free-register 地址',

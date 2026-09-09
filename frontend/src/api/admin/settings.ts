@@ -702,6 +702,8 @@ export interface SystemSettings {
   openai_auto_provision_callback_secret_configured?: boolean;
   openai_auto_provision_email_source?: string;
   openai_auto_provision_workers?: number;
+  openai_auto_provision_requests_per_account?: number;
+  openai_auto_provision_tokens_per_account?: number;
   openai_auto_reauthorization_enabled?: boolean;
   openai_advanced_scheduler_enabled?: boolean;
   openai_advanced_scheduler_sticky_weighted_enabled?: boolean;
@@ -1076,6 +1078,8 @@ export interface UpdateSettingsRequest {
   openai_auto_provision_callback_secret?: string;
   openai_auto_provision_email_source?: string;
   openai_auto_provision_workers?: number;
+  openai_auto_provision_requests_per_account?: number;
+  openai_auto_provision_tokens_per_account?: number;
   openai_auto_reauthorization_enabled?: boolean;
   openai_advanced_scheduler_enabled?: boolean;
   openai_advanced_scheduler_sticky_weighted_enabled?: boolean;

@@ -263,6 +263,8 @@ func (s *SettingService) InitializeDefaultSettings(ctx context.Context) error {
 		SettingKeyOpenAIAutoProvisionCallbackSecret:                  "",
 		SettingKeyOpenAIAutoProvisionEmailSource:                     "",
 		SettingKeyOpenAIAutoProvisionWorkers:                         "3",
+		SettingKeyOpenAIAutoProvisionRequestsPerAccount:              "30",
+		SettingKeyOpenAIAutoProvisionTokensPerAccount:                "900000",
 		SettingKeyOpenAIReauthorizationEnabled:                       "false",
 		SettingKeyEnableAnthropicCacheTTL1hInjection:                 "false",
 		SettingKeyRewriteMessageCacheControl:                         strconv.FormatBool(s.defaultRewriteMessageCacheControl()),
@@ -302,16 +304,18 @@ func (s *SettingService) InitializeDefaultSettings(ctx context.Context) error {
 
 func (s *SettingService) ensureOpenAIAutoProvisionDefaults(ctx context.Context) error {
 	defaults := map[string]string{
-		SettingKeyOpenAIAutoProvisionEnabled:         "false",
-		SettingKeyOpenAIAutoProvisionTarget:          "0",
-		SettingKeyOpenAIAutoProvisionIntervalSeconds: "60",
-		SettingKeyOpenAIAutoProvisionTurbURL:         "",
-		SettingKeyOpenAIAutoProvisionTurbAuthCode:    "",
-		SettingKeyOpenAIAutoProvisionCallbackURL:     "",
-		SettingKeyOpenAIAutoProvisionCallbackSecret:  "",
-		SettingKeyOpenAIAutoProvisionEmailSource:     "",
-		SettingKeyOpenAIAutoProvisionWorkers:         "3",
-		SettingKeyOpenAIReauthorizationEnabled:       "false",
+		SettingKeyOpenAIAutoProvisionEnabled:            "false",
+		SettingKeyOpenAIAutoProvisionTarget:             "0",
+		SettingKeyOpenAIAutoProvisionIntervalSeconds:    "60",
+		SettingKeyOpenAIAutoProvisionTurbURL:            "",
+		SettingKeyOpenAIAutoProvisionTurbAuthCode:       "",
+		SettingKeyOpenAIAutoProvisionCallbackURL:        "",
+		SettingKeyOpenAIAutoProvisionCallbackSecret:     "",
+		SettingKeyOpenAIAutoProvisionEmailSource:        "",
+		SettingKeyOpenAIAutoProvisionWorkers:            "3",
+		SettingKeyOpenAIAutoProvisionRequestsPerAccount: "30",
+		SettingKeyOpenAIAutoProvisionTokensPerAccount:   "900000",
+		SettingKeyOpenAIReauthorizationEnabled:          "false",
 	}
 	keys := make([]string, 0, len(defaults))
 	for key := range defaults {
@@ -1011,6 +1015,8 @@ func (s *SettingService) parseSettings(settings map[string]string) *SystemSettin
 	result.OpenAIAutoProvisionCallbackSecretConfigured = result.OpenAIAutoProvisionCallbackSecret != ""
 	result.OpenAIAutoProvisionEmailSource = strings.TrimSpace(settings[SettingKeyOpenAIAutoProvisionEmailSource])
 	result.OpenAIAutoProvisionWorkers = parsePositiveIntSetting(settings[SettingKeyOpenAIAutoProvisionWorkers], 3)
+	result.OpenAIAutoProvisionRequestsPerAccount = parsePositiveIntSetting(settings[SettingKeyOpenAIAutoProvisionRequestsPerAccount], 30)
+	result.OpenAIAutoProvisionTokensPerAccount = parsePositiveIntSetting(settings[SettingKeyOpenAIAutoProvisionTokensPerAccount], 900000)
 	result.OpenAIReauthorizationEnabled = settings[SettingKeyOpenAIReauthorizationEnabled] == "true"
 	result.OpenAIAdvancedSchedulerEnabled = settings[openAIAdvancedSchedulerSettingKey] == "true"
 	result.OpenAIAdvancedSchedulerStickyWeightedEnabled = settings[SettingKeyOpenAIAdvancedSchedulerStickyWeightedEnabled] == "true"

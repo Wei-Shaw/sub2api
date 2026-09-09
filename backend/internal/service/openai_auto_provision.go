@@ -79,16 +79,18 @@ func NewOpenAIAutoProvisionService(
 }
 
 type openAIAutoProvisionConfig struct {
-	enabled         bool
-	target          int
-	interval        time.Duration
-	turbURL         string
-	turbAuthCode    string
-	callbackURL     string
-	callbackSecret  string
-	emailSource     string
-	workers         int
-	reauthorization bool
+	enabled            bool
+	target             int
+	interval           time.Duration
+	turbURL            string
+	turbAuthCode       string
+	callbackURL        string
+	callbackSecret     string
+	emailSource        string
+	workers            int
+	requestsPerAccount int64
+	tokensPerAccount   int64
+	reauthorization    bool
 }
 
 func (s *OpenAIAutoProvisionService) config(ctx context.Context) (openAIAutoProvisionConfig, error) {
@@ -105,6 +107,8 @@ func (s *OpenAIAutoProvisionService) config(ctx context.Context) (openAIAutoProv
 		SettingKeyOpenAIAutoProvisionCallbackSecret,
 		SettingKeyOpenAIAutoProvisionEmailSource,
 		SettingKeyOpenAIAutoProvisionWorkers,
+		SettingKeyOpenAIAutoProvisionRequestsPerAccount,
+		SettingKeyOpenAIAutoProvisionTokensPerAccount,
 		SettingKeyOpenAIReauthorizationEnabled,
 	})
 	if err != nil {
@@ -128,17 +132,27 @@ func (s *OpenAIAutoProvisionService) config(ctx context.Context) (openAIAutoProv
 	if workers > 16 {
 		workers = 16
 	}
+	requestsPerAccount := int64(parseInt(SettingKeyOpenAIAutoProvisionRequestsPerAccount, 30))
+	if requestsPerAccount < 1 {
+		requestsPerAccount = 30
+	}
+	tokensPerAccount := int64(parseInt(SettingKeyOpenAIAutoProvisionTokensPerAccount, 900000))
+	if tokensPerAccount < 1 {
+		tokensPerAccount = 900000
+	}
 	return openAIAutoProvisionConfig{
-		enabled:         settings[SettingKeyOpenAIAutoProvisionEnabled] == "true",
-		target:          max(0, parseInt(SettingKeyOpenAIAutoProvisionTarget, 0)),
-		interval:        interval,
-		turbURL:         strings.TrimSpace(settings[SettingKeyOpenAIAutoProvisionTurbURL]),
-		turbAuthCode:    strings.TrimSpace(settings[SettingKeyOpenAIAutoProvisionTurbAuthCode]),
-		callbackURL:     strings.TrimSpace(settings[SettingKeyOpenAIAutoProvisionCallbackURL]),
-		callbackSecret:  strings.TrimSpace(settings[SettingKeyOpenAIAutoProvisionCallbackSecret]),
-		emailSource:     strings.TrimSpace(settings[SettingKeyOpenAIAutoProvisionEmailSource]),
-		workers:         workers,
-		reauthorization: settings[SettingKeyOpenAIReauthorizationEnabled] == "true",
+		enabled:            settings[SettingKeyOpenAIAutoProvisionEnabled] == "true",
+		target:             max(0, parseInt(SettingKeyOpenAIAutoProvisionTarget, 0)),
+		interval:           interval,
+		turbURL:            strings.TrimSpace(settings[SettingKeyOpenAIAutoProvisionTurbURL]),
+		turbAuthCode:       strings.TrimSpace(settings[SettingKeyOpenAIAutoProvisionTurbAuthCode]),
+		callbackURL:        strings.TrimSpace(settings[SettingKeyOpenAIAutoProvisionCallbackURL]),
+		callbackSecret:     strings.TrimSpace(settings[SettingKeyOpenAIAutoProvisionCallbackSecret]),
+		emailSource:        strings.TrimSpace(settings[SettingKeyOpenAIAutoProvisionEmailSource]),
+		workers:            workers,
+		requestsPerAccount: requestsPerAccount,
+		tokensPerAccount:   tokensPerAccount,
+		reauthorization:    settings[SettingKeyOpenAIReauthorizationEnabled] == "true",
 	}, nil
 }
 
@@ -266,7 +280,7 @@ func (s *OpenAIAutoProvisionService) RunOnce(ctx context.Context) error {
 			countProvisionableOpenAIOAuthAccounts(healthyAccounts, now),
 			openAIPoolEffectiveCapacity(healthyAccounts, now),
 			cfg.target,
-			now,
+			openAIProvisionCapacity{RequestsPerAccount: cfg.requestsPerAccount, TokensPerAccount: cfg.tokensPerAccount},
 		)
 		requestedCount = plan.RequestedCount
 	}

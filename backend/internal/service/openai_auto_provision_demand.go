@@ -11,12 +11,10 @@ import (
 const (
 	// Match the shortest Codex quota window so recent traffic drives
 	// replenishment decisions without carrying a full day's stale demand.
-	openAIProvisionDemandWindow         = 5 * time.Hour
-	openAIProvisionQuotaReserve         = 0.20
-	openAIProvisionMinimumPrewarmTokens = 10_000
-	openAIProvisionSignalWriteTimeout   = 250 * time.Millisecond
-	openAIProvisionSignalWriterLimit    = 64
-	openAIProvisionMaxImmediateAccounts = 1
+	openAIProvisionDemandWindow       = 5 * time.Hour
+	openAIProvisionQuotaReserve       = 0.20
+	openAIProvisionSignalWriteTimeout = 250 * time.Millisecond
+	openAIProvisionSignalWriterLimit  = 64
 	// OpenAIProvisionCapacitySignalWindow bounds the failed-capacity signal to
 	// requests recent enough to justify an immediate registration.
 	OpenAIProvisionCapacitySignalWindow = 5 * time.Minute
@@ -26,11 +24,10 @@ const (
 // coordinator. It intentionally contains aggregates only; no user identity or
 // credential data crosses the coordinator boundary.
 type OpenAIProvisionDemand struct {
-	ActiveUsers            int64
-	Requests               int64
-	Tokens                 int64
-	CapacityDeniedRequests int64
-	CapacityDeniedUsers    int64
+	ActiveUsers         int64
+	Requests            int64
+	Tokens              int64
+	CapacityDeniedUsers int64
 }
 
 // OpenAIProvisionDemandReader supplies usage aggregates for the OpenAI pool.
@@ -79,9 +76,6 @@ func (s *OpenAIProvisionDemandService) GetOpenAIProvisionDemand(ctx context.Cont
 			return OpenAIProvisionDemand{}, storeErr
 		}
 		demand.CapacityDeniedUsers = denied
-		if denied > 0 {
-			demand.CapacityDeniedRequests = denied
-		}
 	}
 	return demand, nil
 }
@@ -123,33 +117,31 @@ type openAIProvisionPlan struct {
 	RequiredCount   int
 }
 
-// calculateOpenAIProvisionPlan keeps the configured target as a hard ceiling,
-// while sizing the active pool from observed users and token demand. A
-// zero-demand window is a deliberate no-op: an account deficit alone must
-// never buy verification resources.
-func calculateOpenAIProvisionPlan(demand OpenAIProvisionDemand, healthy int, effectiveCapacity float64, target int, _ time.Time) openAIProvisionPlan {
+type openAIProvisionCapacity struct {
+	RequestsPerAccount int64
+	TokensPerAccount   int64
+}
+
+// calculateOpenAIProvisionPlan sizes the pool from recent demand and then
+// applies the configured target as a hard ceiling. A zero-demand window is a
+// deliberate no-op: an account deficit alone must never buy resources.
+func calculateOpenAIProvisionPlan(demand OpenAIProvisionDemand, healthy int, effectiveCapacity float64, target int, capacity openAIProvisionCapacity) openAIProvisionPlan {
 	if target <= 0 || healthy < 0 || effectiveCapacity < 0 {
 		return openAIProvisionPlan{}
 	}
-	if demand.Requests <= 0 && demand.CapacityDeniedRequests <= 0 {
+	if demand.Requests <= 0 && demand.Tokens <= 0 && demand.CapacityDeniedUsers <= 0 {
 		return openAIProvisionPlan{}
 	}
-	// A recent capacity denial is the strongest signal. When the quota snapshot
-	// is already inside the reserve, recent token-bearing traffic is enough to
-	// prewarm one replacement before the next request fails. Normal traffic with
-	// usable quota never buys credentials.
-	demandCapacity := 0.0
+	requiredCapacity := requiredOpenAIProvisionCapacity(demand, capacity)
 	if demand.CapacityDeniedUsers > 0 {
-		// Distinct denied users are a pressure signal, not a one-to-one account
-		// requirement. Bound each polling cycle to a small step-up; repeated
-		// denial windows will scale further only while pressure persists.
-		demandCapacity = math.Min(float64(demand.CapacityDeniedUsers), effectiveCapacity+openAIProvisionMaxImmediateAccounts)
-	} else if effectiveCapacity <= openAIProvisionQuotaReserve && demand.Requests > 0 && demand.Tokens >= openAIProvisionMinimumPrewarmTokens {
-		demandCapacity = 1
-	} else {
+		// A denial proves the currently usable pool is short, even when the
+		// sampled request/token aggregate has not yet filled a sizing bucket.
+		requiredCapacity = max(requiredCapacity, int(math.Floor(effectiveCapacity))+1)
+	}
+	if requiredCapacity <= 0 {
 		return openAIProvisionPlan{}
 	}
-	deficit := int(math.Ceil(demandCapacity - effectiveCapacity))
+	deficit := int(math.Ceil(float64(requiredCapacity) - effectiveCapacity))
 	if deficit <= 0 {
 		return openAIProvisionPlan{}
 	}
@@ -165,6 +157,27 @@ func calculateOpenAIProvisionPlan(demand OpenAIProvisionDemand, healthy int, eff
 		RequestedCount:  deficit,
 		RequiredCount:   healthy + deficit,
 	}
+}
+
+// requiredOpenAIProvisionCapacity converts the five-hour demand aggregates to
+// account slots. The highest traffic signal wins because either requests or
+// token volume can exhaust the pool independently.
+func requiredOpenAIProvisionCapacity(demand OpenAIProvisionDemand, capacity openAIProvisionCapacity) int {
+	return max(
+		ceilPositiveDemand(demand.Requests, capacity.RequestsPerAccount),
+		ceilPositiveDemand(demand.Tokens, capacity.TokensPerAccount),
+	)
+}
+
+func ceilPositiveDemand(value int64, bucket int64) int {
+	if value <= 0 || bucket <= 0 {
+		return 0
+	}
+	quotient := value / bucket
+	if value%bucket != 0 {
+		quotient++
+	}
+	return int(quotient)
 }
 
 func openAIAccountQuotaHeadroom(account *Account, now time.Time) float64 {

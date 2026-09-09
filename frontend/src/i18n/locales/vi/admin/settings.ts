@@ -1709,6 +1709,8 @@ export default mergeLocaleMessages(
       targetLabel: 'Số OAuth khỏe mạnh mục tiêu',
       intervalLabel: 'Chu kỳ kiểm tra (giây)',
       workersLabel: 'Số worker đăng ký',
+      requestsPerAccountLabel: 'Số request 5 giờ cho mỗi OAuth account',
+      tokensPerAccountLabel: 'Số token 5 giờ cho mỗi OAuth account',
       emailSourceLabel: 'Ghi đè nguồn email',
       emailSourcePlaceholder: 'Dùng cấu hình mặc định của turb',
       turbURLLabel: 'URL turb-gpt-free-register',
