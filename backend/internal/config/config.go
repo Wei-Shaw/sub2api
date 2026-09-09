@@ -106,6 +106,7 @@ type Config struct {
 	BatchImage              BatchImageConfig              `mapstructure:"batch_image"`
 	ImageStorage            ImageStorageConfig            `mapstructure:"image_storage"`
 	Plugins                 PluginConfig                  `mapstructure:"plugins"`
+	Canvas                  CanvasConfig                  `mapstructure:"canvas"`
 
 	// Enforce only API-key spending windows in simple mode.
 	SimpleModeKeyRateLimitEnabled bool `mapstructure:"simple_mode_key_rate_limit_enabled" yaml:"simple_mode_key_rate_limit_enabled"`
@@ -114,6 +115,13 @@ type Config struct {
 // SimpleModeConfig controls startup behavior in simple mode.
 type SimpleModeConfig struct {
 	AutoCreateDefaultGroups bool `mapstructure:"auto_create_default_groups" yaml:"auto_create_default_groups"`
+}
+
+// CanvasConfig configures the public Canvas launch-code bridge.
+type CanvasConfig struct {
+	Origin            string `mapstructure:"origin"`
+	BFFSharedSecret   string `mapstructure:"bff_shared_secret"`
+	LaunchCodeTTLSecs int    `mapstructure:"launch_code_ttl_seconds"`
 }
 
 // PluginConfig 控制管理员手动上传的本地进程插件。
@@ -2046,6 +2054,11 @@ func setDefaults() {
 	viper.SetDefault("server.max_header_bytes", 64*1024)
 	viper.SetDefault("server.idle_timeout", 120) // 120秒空闲超时
 	viper.SetDefault("server.max_request_body_size", int64(256*1024*1024))
+
+	// Infinite Canvas launch-code bridge.
+	viper.SetDefault("canvas.origin", "")
+	viper.SetDefault("canvas.bff_shared_secret", "")
+	viper.SetDefault("canvas.launch_code_ttl_seconds", 60)
 	// H2C 默认配置
 	viper.SetDefault("server.h2c.enabled", false)
 	viper.SetDefault("server.h2c.max_concurrent_streams", uint32(50))      // 50 个并发流
@@ -2714,6 +2727,35 @@ func (c *Config) Validate() error {
 		return fmt.Errorf("security.proxy_probe.urls: %w", err)
 	}
 	c.Security.ProxyProbe.URLs = proxyProbeURLs
+	c.Canvas.Origin = strings.TrimSpace(c.Canvas.Origin)
+	c.Canvas.BFFSharedSecret = strings.TrimSpace(c.Canvas.BFFSharedSecret)
+	if (c.Canvas.Origin == "") != (c.Canvas.BFFSharedSecret == "") {
+		return fmt.Errorf("canvas.origin and canvas.bff_shared_secret must be configured together")
+	}
+	if c.Canvas.LaunchCodeTTLSecs == 0 {
+		c.Canvas.LaunchCodeTTLSecs = 60
+	}
+	if c.Canvas.LaunchCodeTTLSecs < 30 || c.Canvas.LaunchCodeTTLSecs > 300 {
+		return fmt.Errorf("canvas.launch_code_ttl_seconds must be between 30 and 300")
+	}
+	if c.Canvas.Origin != "" {
+		if err := ValidateAbsoluteHTTPURL(c.Canvas.Origin); err != nil {
+			return fmt.Errorf("canvas.origin invalid: %w", err)
+		}
+		u, err := url.Parse(strings.TrimSpace(c.Canvas.Origin))
+		if err != nil || u.Path != "" || u.RawQuery != "" || u.Fragment != "" || u.User != nil {
+			return fmt.Errorf("canvas.origin must be an origin without path, query, fragment, or userinfo")
+		}
+		if strings.EqualFold(u.Scheme, "http") {
+			host := strings.ToLower(u.Hostname())
+			if host != "localhost" && host != "127.0.0.1" && host != "::1" {
+				return fmt.Errorf("canvas.origin must use HTTPS outside local development")
+			}
+		}
+	}
+	if c.Canvas.BFFSharedSecret != "" && len(c.Canvas.BFFSharedSecret) < 32 {
+		return fmt.Errorf("canvas.bff_shared_secret must be at least 32 characters")
+	}
 	if c.Plugins.MaxUploadBytes <= 0 || c.Plugins.MaxUploadBytes > 1024*1024*1024 {
 		return fmt.Errorf("plugins.max_upload_bytes must be between 1 and 1073741824")
 	}

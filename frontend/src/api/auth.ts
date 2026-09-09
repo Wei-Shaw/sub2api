@@ -115,6 +115,13 @@ export function getTokenExpiresAt(): number | null {
   return value ? parseInt(value, 10) : null
 }
 
+export async function createCanvasLaunch(canvasOrigin: string): Promise<{ launch_code: string; expires_in: number }> {
+  const { data } = await apiClient.post<{ launch_code: string; expires_in: number }>('/canvas/launch', {
+    canvas_origin: canvasOrigin,
+  })
+  return data
+}
+
 /**
  * Clear authentication token from localStorage
  */
@@ -720,6 +727,7 @@ export const authAPI = {
   getAuthToken,
   getRefreshToken,
   getTokenExpiresAt,
+  createCanvasLaunch,
   clearAuthToken,
   getPublicSettings,
   sendVerifyCode,

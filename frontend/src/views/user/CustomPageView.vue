@@ -115,7 +115,7 @@
             {{ t('customPage.openInNewTab') }}
           </a>
           <iframe
-            :src="embeddedUrl"
+            :src="finalEmbeddedUrl"
             class="custom-embed-frame"
             allowfullscreen
           ></iframe>
@@ -136,6 +136,7 @@ import { useAdminSettingsStore } from '@/stores/adminSettings'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import Icon from '@/components/icons/Icon.vue'
 import { buildApiUrl } from '@/api/client'
+import { authAPI } from '@/api'
 import { buildEmbeddedUrl, detectTheme } from '@/utils/embedded-url'
 import { marked } from 'marked'
 import DOMPurify from 'dompurify'
@@ -159,7 +160,9 @@ const markdownContainer = ref<HTMLElement | null>(null)
 const tocItems = ref<TocItem[]>([])
 const tocVisible = ref(typeof window !== 'undefined' ? window.innerWidth > 768 : true)
 const activeHeadingId = ref('')
+const canvasLaunchCode = ref('')
 let themeObserver: MutationObserver | null = null
+let canvasLaunchAttempt = 0
 
 const embedShell = ref<HTMLElement | null>(null)
 const openButton = ref<HTMLAnchorElement | null>(null)
@@ -241,20 +244,32 @@ const markdownSlug = computed(() => {
 
 const isMarkdownMode = computed(() => !!markdownSlug.value)
 
+const canvasOrigin = computed(() => String(import.meta.env.VITE_CANVAS_ORIGIN || '').trim().replace(/\/$/, ''))
+
+const isCanvasEmbed = computed(() => {
+  if (!canvasOrigin.value || !menuItem.value || isMarkdownMode.value) return false
+  try {
+    return new URL(menuItem.value.url).origin === canvasOrigin.value
+  } catch {
+    return false
+  }
+})
+
 const embeddedUrl = computed(() => {
   if (!menuItem.value || isMarkdownMode.value) return ''
-  return buildEmbeddedUrl(
-    menuItem.value.url,
-    authStore.user?.id,
-    authStore.token,
-    pageTheme.value,
-    locale.value,
-  )
+  return buildEmbeddedUrl(menuItem.value.url, isCanvasEmbed.value ? undefined : authStore.user?.id, pageTheme.value, locale.value)
+})
+
+const finalEmbeddedUrl = computed(() => {
+  if (!embeddedUrl.value || !isCanvasEmbed.value || !canvasLaunchCode.value) return embeddedUrl.value
+  const url = new URL(embeddedUrl.value)
+  url.searchParams.set('launch_code', canvasLaunchCode.value)
+  return url.toString()
 })
 
 const isValidUrl = computed(() => {
   if (isMarkdownMode.value) return false
-  const url = embeddedUrl.value
+  const url = finalEmbeddedUrl.value
   return url.startsWith('http://') || url.startsWith('https://')
 })
 
@@ -265,6 +280,18 @@ function generateHeadingId(text: string, index: number): string {
     .replace(/^-+|-+$/g, '')
   return base ? `${base}-${index}` : `heading-${index}`
 }
+
+watch([() => menuItem.value?.url, isCanvasEmbed, () => authStore.isAuthenticated], async () => {
+  const attempt = ++canvasLaunchAttempt
+  canvasLaunchCode.value = ''
+  if (!isCanvasEmbed.value || !authStore.isAuthenticated) return
+  try {
+    const launch = await authAPI.createCanvasLaunch(canvasOrigin.value)
+    if (attempt === canvasLaunchAttempt) canvasLaunchCode.value = launch.launch_code
+  } catch {
+    if (attempt === canvasLaunchAttempt) canvasLaunchCode.value = ''
+  }
+}, { immediate: true })
 
 function isRelativeMarkdownAsset(src: string): boolean {
   const trimmed = src.trim()

@@ -112,6 +112,21 @@ func TestLoadHTTPIngressSafetyDefaults(t *testing.T) {
 	require.Equal(t, 16384, cfg.APIKeyAuth.InvalidAbuse.Capacity)
 }
 
+func TestLoadCanvasSSORequiresPairedOriginAndSecret(t *testing.T) {
+	resetViperWithJWTSecret(t)
+	viper.Set("canvas.origin", "https://canvas.example.test")
+	_, err := Load()
+	require.ErrorContains(t, err, "canvas.origin and canvas.bff_shared_secret must be configured together")
+}
+
+func TestLoadCanvasSSORejectsNonLocalHTTPOrigin(t *testing.T) {
+	resetViperWithJWTSecret(t)
+	viper.Set("canvas.origin", "http://canvas.example.test")
+	viper.Set("canvas.bff_shared_secret", strings.Repeat("s", 32))
+	_, err := Load()
+	require.ErrorContains(t, err, "canvas.origin must use HTTPS outside local development")
+}
+
 func TestNormalizeForwardedClientIPHeaders(t *testing.T) {
 	headers, err := NormalizeForwardedClientIPHeaders([]string{
 		" x-cdn-client-ip ",
