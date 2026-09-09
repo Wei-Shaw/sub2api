@@ -8,7 +8,7 @@ vi.mock('@/api/client', () => ({
   apiClient: { post },
 }))
 
-import { authorizePassword, createFromSSO, getGrokSSOImportTimeout } from '@/api/admin/grok'
+import { authorizePassword, createFromSSO, getGrokSSOImportTimeout, queryUsageResetCards, redeemUsageResetCard } from '@/api/admin/grok'
 
 describe('admin Grok SSO import API', () => {
   beforeEach(() => {
@@ -49,5 +49,15 @@ describe('admin Grok SSO import API', () => {
       },
       { timeout: 120_000 },
     )
+  })
+
+  it('sends reset credentials only in POST bodies to the admin endpoints', async () => {
+    post.mockResolvedValue({ data: { cards: [] } })
+    await queryUsageResetCards(12, 'web-session-secret')
+    expect(post).toHaveBeenLastCalledWith('/admin/grok/accounts/12/reset-cards/query', { sso_token: 'web-session-secret' })
+    await redeemUsageResetCard(12, 'web-session-secret', 'card-one')
+    expect(post).toHaveBeenLastCalledWith('/admin/grok/accounts/12/reset-cards/redeem', {
+      sso_token: 'web-session-secret', token_id: 'card-one'
+    })
   })
 })
