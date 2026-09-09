@@ -146,6 +146,28 @@ When using Docker Compose with `AUTO_SETUP=true`:
    docker compose logs sub2api | grep "admin password"
    ```
 
+### Startup and Database Recovery
+
+Sub2API applies database migrations during application startup. PostgreSQL can
+remain in its recovery/startup phase briefly after a host or Docker daemon
+restart. The application retries transient PostgreSQL startup and connection
+errors with bounded exponential backoff, then starts automatically when the
+database becomes ready. Authentication errors, migration checksum mismatches,
+SQL errors, and other permanent configuration or data errors fail immediately.
+
+The Compose example also uses a PostgreSQL health check that verifies both
+server readiness and a simple SQL query. `depends_on: condition: service_healthy`
+controls dependency ordering for a fresh Compose start, but it is not a
+replacement for application-level retries when Docker restores existing
+containers after a host restart.
+
+For systemd deployments, keep `Restart=always` and `RestartSec` configured in
+`sub2api.service`; the application retry covers transient database startup,
+while systemd remains the supervisor for permanent process exits. For
+Kubernetes, use a PostgreSQL readiness probe and retain the Sub2API startup
+retry behavior; configure the application liveness probe separately so a
+database recovery period is not treated as a permanent process failure.
+
 ### Database Migration Notes (PostgreSQL)
 
 - Migrations are applied in lexicographic order (e.g. `001_...sql`, `002_...sql`).

@@ -151,6 +151,7 @@ func TestGroupUsageRollupTriggerSerializesInsertTransactionAcrossMidnight(t *tes
 
 	insertTx := beginGroupUsageRollupTriggerTestTx(t, ctx, schema)
 	defer func() { _ = insertTx.Rollback() }()
+	require.NoError(t, setGroupUsageRollupTriggerTimeZone(ctx, insertTx, "Asia/Shanghai"))
 	var insertBackendPID int
 	require.NoError(t, insertTx.QueryRowContext(ctx, "SELECT pg_backend_pid()").Scan(&insertBackendPID))
 
@@ -206,6 +207,7 @@ func TestGroupUsageRollupTriggerKeepsWatermarkForTodayInsert(t *testing.T) {
 
 	tx := beginGroupUsageRollupTriggerTestTx(t, ctx, schema)
 	defer func() { _ = tx.Rollback() }()
+	require.NoError(t, setGroupUsageRollupTriggerTimeZone(ctx, tx, "Asia/Shanghai"))
 	_, err := tx.ExecContext(ctx, `
 		INSERT INTO groups (id) VALUES (10);
 		INSERT INTO users (id) VALUES (1);
@@ -473,6 +475,11 @@ func beginGroupUsageRollupTriggerTestTx(t *testing.T, ctx context.Context, schem
 
 func setGroupUsageRollupTriggerSearchPath(ctx context.Context, tx *sql.Tx, quotedSchema string) error {
 	_, err := tx.ExecContext(ctx, "SET LOCAL search_path TO "+quotedSchema)
+	return err
+}
+
+func setGroupUsageRollupTriggerTimeZone(ctx context.Context, tx *sql.Tx, name string) error {
+	_, err := tx.ExecContext(ctx, "SET LOCAL TIME ZONE "+pq.QuoteLiteral(name))
 	return err
 }
 

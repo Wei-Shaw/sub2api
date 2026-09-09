@@ -3,35 +3,64 @@
        :class="isEmpty ? 'border-red-400 bg-red-50 dark:border-red-500 dark:bg-red-950/20' : 'border-gray-200 bg-white dark:border-dark-500 dark:bg-dark-700'">
     <!-- Token mode: context range + prices ($/MTok) -->
     <template v-if="mode === 'token'">
-      <div class="w-20">
-        <label class="text-xs text-gray-400">{{ t('admin.channels.form.minTokens') }}</label>
-        <input :value="interval.min_tokens" @input="emitField('min_tokens', toInt(($event.target as HTMLInputElement).value))"
-          type="number" min="0" class="input mt-0.5 text-xs" />
-      </div>
-      <div class="w-20">
-        <label class="text-xs text-gray-400">{{ t('admin.channels.form.maxTokens') }} <span class="text-gray-300">{{ t('admin.channels.form.inclusive') }}</span></label>
-        <input :value="interval.max_tokens ?? ''" @input="emitField('max_tokens', toIntOrNull(($event.target as HTMLInputElement).value))"
-          type="number" min="0" class="input mt-0.5 text-xs" :placeholder="'∞'" />
-      </div>
-      <div class="flex-1">
-        <label class="text-xs text-gray-400">{{ t('admin.channels.form.inputPrice') }} <span v-if="isEmpty" class="text-red-500">*</span> <span class="text-gray-300">$/M</span></label>
-        <input :value="interval.input_price" @input="emitField('input_price', ($event.target as HTMLInputElement).value)"
-          type="number" step="any" min="0" class="input mt-0.5 text-xs" />
-      </div>
-      <div class="flex-1">
-        <label class="text-xs text-gray-400">{{ t('admin.channels.form.outputPrice') }} <span v-if="isEmpty" class="text-red-500">*</span> <span class="text-gray-300">$/M</span></label>
-        <input :value="interval.output_price" @input="emitField('output_price', ($event.target as HTMLInputElement).value)"
-          type="number" step="any" min="0" class="input mt-0.5 text-xs" />
-      </div>
-      <div class="flex-1">
-        <label class="text-xs text-gray-400">{{ t('admin.channels.form.cacheWritePriceShort') }} <span class="text-gray-300">$/M</span></label>
-        <input :value="interval.cache_write_price" @input="emitField('cache_write_price', ($event.target as HTMLInputElement).value)"
-          type="number" step="any" min="0" class="input mt-0.5 text-xs" />
-      </div>
-      <div class="flex-1">
-        <label class="text-xs text-gray-400">{{ t('admin.channels.form.cacheReadPriceShort') }} <span class="text-gray-300">$/M</span></label>
-        <input :value="interval.cache_read_price" @input="emitField('cache_read_price', ($event.target as HTMLInputElement).value)"
-          type="number" step="any" min="0" class="input mt-0.5 text-xs" />
+      <div class="pricing-interval-grid grid min-w-0 flex-1 gap-2">
+        <div>
+          <label class="text-xs text-gray-400">{{ t('admin.channels.form.minTokens') }}</label>
+          <input :value="interval.min_tokens" @input="emitField('min_tokens', toInt(($event.target as HTMLInputElement).value))"
+            type="number" min="0" class="input mt-0.5 text-xs" />
+        </div>
+        <div>
+          <label class="text-xs text-gray-400">{{ t('admin.channels.form.maxTokens') }} <span class="text-gray-300">{{ t('admin.channels.form.inclusive') }}</span></label>
+          <input :value="interval.max_tokens ?? ''" @input="emitField('max_tokens', toIntOrNull(($event.target as HTMLInputElement).value))"
+            type="number" min="0" class="input mt-0.5 text-xs" :placeholder="'∞'" />
+        </div>
+        <div>
+          <label class="text-xs text-gray-400">{{ t('admin.channels.form.inputPrice') }} <span v-if="isEmpty" class="text-red-500">*</span> <span class="text-gray-300">$/M</span></label>
+          <input :value="interval.input_price" @input="emitField('input_price', ($event.target as HTMLInputElement).value)"
+            type="number" step="any" min="0" class="input mt-0.5 text-xs" />
+        </div>
+        <div>
+          <label class="text-xs text-gray-400">{{ t('admin.channels.form.outputPrice') }} <span v-if="isEmpty" class="text-red-500">*</span> <span class="text-gray-300">$/M</span></label>
+          <input :value="interval.output_price" @input="emitField('output_price', ($event.target as HTMLInputElement).value)"
+            type="number" step="any" min="0" class="input mt-0.5 text-xs" />
+        </div>
+        <div>
+          <label class="text-xs text-gray-400">{{ t('admin.channels.form.cacheWrite5mPriceShort') }} <span class="text-gray-300">$/M</span></label>
+          <input :value="interval.cache_write_price" @input="emitField('cache_write_price', ($event.target as HTMLInputElement).value)"
+            type="number" step="any" min="0" class="input mt-0.5 text-xs" />
+        </div>
+        <div>
+          <label class="text-xs text-gray-400">{{ t('admin.channels.form.cacheWrite1hPriceShort') }} <span class="text-gray-300">$/M</span></label>
+          <input :value="interval.cache_write_1h_price" @input="emitField('cache_write_1h_price', ($event.target as HTMLInputElement).value)"
+            type="number" step="any" min="0" class="input mt-0.5 text-xs" />
+        </div>
+        <div>
+          <label class="text-xs text-gray-400">{{ t('admin.channels.form.cacheReadPriceShort') }} <span class="text-gray-300">$/M</span></label>
+          <input :value="interval.cache_read_price" @input="emitField('cache_read_price', ($event.target as HTMLInputElement).value)"
+            type="number" step="any" min="0" class="input mt-0.5 text-xs" />
+        </div>
+        <template v-if="enableMultipliers">
+          <div>
+            <label class="text-xs text-gray-400">{{ t('admin.channels.form.inputMultiplier') }}</label>
+            <input :value="interval.input_multiplier" @input="emitField('input_multiplier', ($event.target as HTMLInputElement).value)"
+              type="number" step="any" min="0.000001" class="input mt-0.5 text-xs" />
+          </div>
+          <div>
+            <label class="text-xs text-gray-400">{{ t('admin.channels.form.outputMultiplier') }}</label>
+            <input :value="interval.output_multiplier" @input="emitField('output_multiplier', ($event.target as HTMLInputElement).value)"
+              type="number" step="any" min="0.000001" class="input mt-0.5 text-xs" />
+          </div>
+          <div>
+            <label class="text-xs text-gray-400">{{ t('admin.channels.form.cacheWriteMultiplier') }}</label>
+            <input :value="interval.cache_write_multiplier" @input="emitField('cache_write_multiplier', ($event.target as HTMLInputElement).value)"
+              type="number" step="any" min="0.000001" class="input mt-0.5 text-xs" />
+          </div>
+          <div>
+            <label class="text-xs text-gray-400">{{ t('admin.channels.form.cacheReadMultiplier') }}</label>
+            <input :value="interval.cache_read_multiplier" @input="emitField('cache_read_multiplier', ($event.target as HTMLInputElement).value)"
+              type="number" step="any" min="0.000001" class="input mt-0.5 text-xs" />
+          </div>
+        </template>
       </div>
     </template>
 
@@ -79,6 +108,7 @@ const { t } = useI18n()
 const props = defineProps<{
   interval: IntervalFormEntry
   mode: BillingMode
+  enableMultipliers?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -92,7 +122,12 @@ const isEmpty = computed(() => {
   return (iv.input_price == null || iv.input_price === '') &&
     (iv.output_price == null || iv.output_price === '') &&
     (iv.cache_write_price == null || iv.cache_write_price === '') &&
+    (iv.cache_write_1h_price == null || iv.cache_write_1h_price === '') &&
     (iv.cache_read_price == null || iv.cache_read_price === '') &&
+    (iv.input_multiplier == null || iv.input_multiplier === '') &&
+    (iv.output_multiplier == null || iv.output_multiplier === '') &&
+    (iv.cache_write_multiplier == null || iv.cache_write_multiplier === '') &&
+    (iv.cache_read_multiplier == null || iv.cache_read_multiplier === '') &&
     (iv.per_request_price == null || iv.per_request_price === '')
 })
 
@@ -111,3 +146,9 @@ function toIntOrNull(val: string): number | null {
   return isNaN(n) ? null : n
 }
 </script>
+
+<style scoped>
+.pricing-interval-grid {
+  grid-template-columns: repeat(auto-fit, minmax(7.5rem, 1fr));
+}
+</style>

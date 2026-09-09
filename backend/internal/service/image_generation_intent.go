@@ -293,8 +293,13 @@ func openAIRequestBodyImageGenerationToolNeedsNormalization(body []byte) bool {
 		if openAIJSONString(item.Get("type")) != "image_generation" {
 			return true
 		}
-		// 只有旧字段需要迁移时才进入 map 修改，纯计费读取保持 raw 路径。
+		// 只有旧字段或明确的模型不兼容字段需要修正时才进入 map 修改。
 		if item.Get("format").Exists() || item.Get("compression").Exists() {
+			needsNormalization = true
+			return false
+		}
+		imageModel := strings.ToLower(strings.TrimSpace(item.Get("model").String()))
+		if strings.HasPrefix(imageModel, "gpt-image-2") && item.Get("input_fidelity").Exists() {
 			needsNormalization = true
 			return false
 		}

@@ -42,6 +42,13 @@
         <Icon name="clock" size="xs" class="h-3 w-3" />
         {{ peakNote }}
       </p>
+      <p
+        v-if="longContextNote"
+        class="mt-1.5 flex items-center gap-1 text-xs text-gray-500 dark:text-dark-400"
+      >
+        <Icon name="infoCircle" size="xs" class="h-3 w-3" />
+        {{ longContextNote }}
+      </p>
     </header>
 
     <!-- 模型价格表:整行(含 hover 底色/分区底色)顶到卡片边缘,左右留白由表格首列/末列的 padding 提供 -->
@@ -54,6 +61,8 @@
         :user-rate-multiplier="group.user_rate_multiplier ?? null"
         :image-rate-independent="group.image_rate_independent"
         :image-rate-multiplier="group.image_rate_multiplier"
+        :peak-window="peakWindow"
+        :peak-rate-multiplier="group.peak_rate_multiplier"
       />
       <p v-else class="px-5 py-4 text-center text-sm text-gray-400 dark:text-dark-500">
         {{ t('modelPlaza.detail.noModels') }}
@@ -81,15 +90,32 @@ const props = defineProps<{
 const { t } = useI18n()
 const appStore = useAppStore()
 
-const peakNote = computed(() => {
+/** 高峰窗口描述(含倍率与服务器时区标注);分组未启用高峰为空串。 */
+const peakWindow = computed(() => {
   if (!hasPeakRate(props.group)) return ''
-  const window = formatPeakRateWindow(
+  return formatPeakRateWindow(
     props.group,
     serverTimezoneLabel(appStore.cachedPublicSettings?.server_utc_offset)
   )
+})
+
+const peakNote = computed(() => {
+  if (!peakWindow.value) return ''
   return t('modelPlaza.detail.peakNote', {
-    window,
+    window: peakWindow.value,
     multiplier: props.group.peak_rate_multiplier
   })
+})
+
+/**
+ * 分组关闭了长上下文阶梯、但组内有模型官方带阶梯时提示:实付列只展示基础档,
+ * 官方阶梯仅供参考。字段缺失(旧后端)不提示。
+ */
+const longContextNote = computed(() => {
+  if (props.group.long_context_pricing_enabled !== false) return ''
+  const hasOfficialLadder = props.group.models.some(
+    (m) => (m.official_pricing?.intervals?.length ?? 0) > 1
+  )
+  return hasOfficialLadder ? t('modelPlaza.detail.longContextDisabledNote') : ''
 })
 </script>

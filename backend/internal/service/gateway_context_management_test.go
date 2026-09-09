@@ -114,6 +114,23 @@ func TestSanitizeAnthropicBodyForBetaTokens_EmptyBody(t *testing.T) {
 	require.Empty(t, out)
 }
 
+func TestSanitizeAnthropicBodyForBetaTokens_ThinkingBlockBindingKeptWhenBetaPresent(t *testing.T) {
+	body := []byte(`{"model":"claude-fable-5-1","thinking":{"type":"adaptive","display":"summarized","block_binding":{"prefix_mismatch_behavior":"drop_block"}},"messages":[]}`)
+	out, changed := sanitizeAnthropicBodyForBetaTokens(body, claude.BetaThinkingBindingControls)
+	require.False(t, changed)
+	require.Equal(t, "drop_block",
+		gjson.GetBytes(out, "thinking.block_binding.prefix_mismatch_behavior").String())
+}
+
+func TestSanitizeAnthropicBodyForBetaTokens_ThinkingBlockBindingStrippedWhenBetaMissing(t *testing.T) {
+	body := []byte(`{"model":"claude-fable-5-1","thinking":{"type":"adaptive","display":"summarized","block_binding":{"prefix_mismatch_behavior":"drop_block"}},"messages":[]}`)
+	out, changed := sanitizeAnthropicBodyForBetaTokens(body, claude.BetaContextManagement)
+	require.True(t, changed)
+	require.False(t, gjson.GetBytes(out, "thinking.block_binding").Exists())
+	require.Equal(t, "adaptive", gjson.GetBytes(out, "thinking.type").String())
+	require.Equal(t, "summarized", gjson.GetBytes(out, "thinking.display").String())
+}
+
 // ★ 关键回归断言：能力维度 sanitize 解决了 "真 CC + haiku" 路径的过度删除问题。
 // 真实 Claude Code CLI 2.1.87+ 客户端 header 含 context-management beta；
 // 即使 model 是 haiku，sanitize 也不应剥离功能字段。
@@ -145,6 +162,8 @@ func TestComputeFinalAnthropicBeta_OAuthMimic_NonHaiku_IncludesContextManagement
 		"OAuth mimic non-haiku 必须注入完整 CC mimicry beta，含 context-management-2025-06-27")
 	require.True(t, anthropicBetaTokensContains(final, claude.BetaOAuth))
 	require.True(t, anthropicBetaTokensContains(final, claude.BetaClaudeCode))
+	require.True(t, anthropicBetaTokensContains(final, claude.BetaThinkingBindingControls),
+		"OAuth mimic 必须注入 thinking block binding 所需的 beta")
 }
 
 func TestComputeFinalAnthropicBeta_OAuthMimic_Haiku_IncludesFullClaudeCodeBetas(t *testing.T) {
@@ -356,6 +375,25 @@ func TestApplyClaudeCodeOAuthMimicryToBody_HaikuRewritesSystem(t *testing.T) {
 	require.Equal(t, claudeCodeSystemPrompt, system[1].Get("text").String())
 	require.Contains(t, gjson.GetBytes(out, "messages.0.content.0.text").String(), "Pi project instructions")
 	require.Equal(t, "claude-haiku-4-5-20251001", gjson.GetBytes(out, "model").String())
+}
+
+func TestApplyClaudeCodeOAuthMimicryToBody_FableOmitsRefusedExpansion(t *testing.T) {
+	account := &Account{ID: 406, Platform: PlatformAnthropic, Type: AccountTypeOAuth}
+	body := []byte(`{"model":"claude-fable-5","system":"Project instructions","messages":[{"role":"user","content":"hello"}]}`)
+	svc := &GatewayService{cfg: &config.Config{}}
+
+	out := svc.applyClaudeCodeOAuthMimicryToBody(
+		context.Background(), nil, account, body, "Project instructions", "claude-fable-5",
+	)
+
+	system := gjson.GetBytes(out, "system").Array()
+	require.Len(t, system, 2)
+	require.Contains(t, system[0].Get("text").String(), "x-anthropic-billing-header:")
+	require.Equal(t, claudeCodeSystemPrompt, system[1].Get("text").String())
+	require.NotContains(t, string(out), claudeCodeSystemPromptExpansion)
+	require.Contains(t, gjson.GetBytes(out, "messages.0.content.0.text").String(), "Project instructions")
+	require.Equal(t, "Understood. I will follow these instructions.", gjson.GetBytes(out, "messages.1.content.0.text").String())
+	require.Equal(t, "hello", gjson.GetBytes(out, "messages.2.content").String())
 }
 
 // ============================================================================

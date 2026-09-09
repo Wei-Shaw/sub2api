@@ -407,6 +407,79 @@ func TestChatCompletionsToResponses_WhitespaceOnlyBase64ImageURLSkipped(t *testi
 	assert.Equal(t, "Describe this", parts[0].Text)
 }
 
+func TestChatCompletionsToResponses_FilePartFileData(t *testing.T) {
+	content := `[{"type":"text","text":"Summarize the attached document"},{"type":"file","file":{"filename":"document.pdf","file_data":"data:application/pdf;base64,JVBERi0xLjQ="}}]`
+	req := &ChatCompletionsRequest{
+		Model: "gpt-4o",
+		Messages: []ChatMessage{
+			{Role: "user", Content: json.RawMessage(content)},
+		},
+	}
+	resp, err := ChatCompletionsToResponses(req)
+	require.NoError(t, err)
+
+	var items []ResponsesInputItem
+	require.NoError(t, json.Unmarshal(resp.Input, &items))
+	require.Len(t, items, 1)
+
+	var parts []ResponsesContentPart
+	require.NoError(t, json.Unmarshal(items[0].Content, &parts))
+	require.Len(t, parts, 2)
+	assert.Equal(t, "input_text", parts[0].Type)
+	assert.Equal(t, "Summarize the attached document", parts[0].Text)
+	assert.Equal(t, "input_file", parts[1].Type)
+	assert.Equal(t, "document.pdf", parts[1].Filename)
+	assert.Equal(t, "data:application/pdf;base64,JVBERi0xLjQ=", parts[1].FileData)
+	assert.Empty(t, parts[1].FileID)
+}
+
+func TestChatCompletionsToResponses_FilePartFileID(t *testing.T) {
+	content := `[{"type":"file","file":{"file_id":"file-abc123"}}]`
+	req := &ChatCompletionsRequest{
+		Model: "gpt-4o",
+		Messages: []ChatMessage{
+			{Role: "user", Content: json.RawMessage(content)},
+		},
+	}
+	resp, err := ChatCompletionsToResponses(req)
+	require.NoError(t, err)
+
+	var items []ResponsesInputItem
+	require.NoError(t, json.Unmarshal(resp.Input, &items))
+	require.Len(t, items, 1)
+
+	var parts []ResponsesContentPart
+	require.NoError(t, json.Unmarshal(items[0].Content, &parts))
+	require.Len(t, parts, 1)
+	assert.Equal(t, "input_file", parts[0].Type)
+	assert.Equal(t, "file-abc123", parts[0].FileID)
+	assert.Empty(t, parts[0].FileData)
+}
+
+func TestChatCompletionsToResponses_EmptyFilePartSkipped(t *testing.T) {
+	// A file part with neither file_data nor file_id carries nothing the
+	// Responses API can use; dropping it (like empty image URLs) avoids an
+	// upstream 400 on an empty input_file part.
+	content := `[{"type":"text","text":"Describe this"},{"type":"file","file":{"filename":"empty.pdf"}}]`
+	req := &ChatCompletionsRequest{
+		Model: "gpt-4o",
+		Messages: []ChatMessage{
+			{Role: "user", Content: json.RawMessage(content)},
+		},
+	}
+	resp, err := ChatCompletionsToResponses(req)
+	require.NoError(t, err)
+
+	var items []ResponsesInputItem
+	require.NoError(t, json.Unmarshal(resp.Input, &items))
+	require.Len(t, items, 1)
+
+	var parts []ResponsesContentPart
+	require.NoError(t, json.Unmarshal(items[0].Content, &parts))
+	require.Len(t, parts, 1)
+	assert.Equal(t, "input_text", parts[0].Type)
+}
+
 func TestChatCompletionsToResponses_EmptyContentNeverNull(t *testing.T) {
 	// Regression for #2515: the upstream Responses API rejects an input item
 	// whose content field is JSON null. Any chat-completions message that
@@ -459,7 +532,7 @@ func TestChatCompletionsResponseToResponses_DeepSeekReasoningOnlyFallsBackToMess
 		}},
 	}
 
-	out := ChatCompletionsResponseToResponses(resp, "deepseek-reasoner", nil, false, nil)
+	out := ChatCompletionsResponseToResponses(resp, "deepseek-reasoner", nil, nil, false, nil)
 
 	require.Len(t, out.Output, 2)
 	require.Equal(t, "reasoning", out.Output[0].Type)
@@ -493,7 +566,7 @@ func TestChatCompletionsResponseToResponses_DeepSeekReasoningToolCallDoesNotFall
 		}},
 	}
 
-	out := ChatCompletionsResponseToResponses(resp, "deepseek-reasoner", nil, false, nil)
+	out := ChatCompletionsResponseToResponses(resp, "deepseek-reasoner", nil, nil, false, nil)
 
 	require.Len(t, out.Output, 2)
 	require.Equal(t, "reasoning", out.Output[0].Type)
@@ -1546,6 +1619,108 @@ func TestBufferedResponseAccumulator_ToolCalls(t *testing.T) {
 	assert.Equal(t, "call_abc", output[0].CallID)
 	assert.Equal(t, "get_weather", output[0].Name)
 	assert.Equal(t, `{"city":"NYC"}`, output[0].Arguments)
+}
+
+func TestResponsesEventToChatChunks_FunctionArgumentsDoneWithoutDeltas(t *testing.T) {
+	state := NewResponsesEventToChatState()
+	state.Model = "gpt-5-codex"
+	state.SentRole = true
+
+	chunks := ResponsesEventToChatChunks(&ResponsesStreamEvent{
+		Type:        "response.output_item.added",
+		OutputIndex: 1,
+		Item: &ResponsesOutput{
+			Type:      "function_call",
+			CallID:    "call_lookup",
+			Name:      "lookup_item",
+			Arguments: "",
+		},
+	}, state)
+	require.Len(t, chunks, 1)
+
+	chunks = ResponsesEventToChatChunks(&ResponsesStreamEvent{
+		Type:        "response.function_call_arguments.done",
+		OutputIndex: 1,
+		CallID:      "call_lookup",
+		Name:        "lookup_item",
+		Arguments:   `{"id":1}`,
+	}, state)
+	require.Len(t, chunks, 1)
+	require.Len(t, chunks[0].Choices[0].Delta.ToolCalls, 1)
+	assert.Equal(t, `{"id":1}`, chunks[0].Choices[0].Delta.ToolCalls[0].Function.Arguments)
+}
+
+func TestResponsesEventToChatChunks_FunctionArgumentsDoneDoesNotDuplicateDeltas(t *testing.T) {
+	state := NewResponsesEventToChatState()
+	state.Model = "gpt-5-codex"
+	state.SentRole = true
+
+	ResponsesEventToChatChunks(&ResponsesStreamEvent{
+		Type:        "response.output_item.added",
+		OutputIndex: 0,
+		Item:        &ResponsesOutput{Type: "function_call", CallID: "call_lookup", Name: "lookup_item"},
+	}, state)
+	chunks := ResponsesEventToChatChunks(&ResponsesStreamEvent{
+		Type:        "response.function_call_arguments.delta",
+		OutputIndex: 0,
+		Delta:       `{"id":1}`,
+	}, state)
+	require.Len(t, chunks, 1)
+
+	chunks = ResponsesEventToChatChunks(&ResponsesStreamEvent{
+		Type:        "response.function_call_arguments.done",
+		OutputIndex: 0,
+		Arguments:   `{"id":1}`,
+	}, state)
+	assert.Empty(t, chunks)
+}
+
+func TestBufferedResponseAccumulator_FunctionArgumentsDoneWithoutDeltas(t *testing.T) {
+	acc := NewBufferedResponseAccumulator()
+	acc.ProcessEvent(&ResponsesStreamEvent{
+		Type:        "response.output_item.added",
+		OutputIndex: 1,
+		Item:        &ResponsesOutput{Type: "function_call", CallID: "call_lookup", Name: "lookup_item"},
+	})
+	acc.ProcessEvent(&ResponsesStreamEvent{
+		Type:        "response.function_call_arguments.done",
+		OutputIndex: 1,
+		Arguments:   `{"id":1}`,
+	})
+
+	resp := &ResponsesResponse{Output: []ResponsesOutput{{
+		Type:      "function_call",
+		CallID:    "call_lookup",
+		Name:      "lookup_item",
+		Arguments: "",
+	}}}
+	acc.SupplementResponseOutput(resp)
+
+	require.Len(t, resp.Output, 1)
+	assert.Equal(t, `{"id":1}`, resp.Output[0].Arguments)
+}
+
+func TestBufferedResponseAccumulator_FunctionArgumentsDoneReplacesDeltas(t *testing.T) {
+	acc := NewBufferedResponseAccumulator()
+	acc.ProcessEvent(&ResponsesStreamEvent{
+		Type:        "response.output_item.added",
+		OutputIndex: 0,
+		Item:        &ResponsesOutput{Type: "function_call", CallID: "call_lookup", Name: "lookup_item"},
+	})
+	acc.ProcessEvent(&ResponsesStreamEvent{
+		Type:        "response.function_call_arguments.delta",
+		OutputIndex: 0,
+		Delta:       `{"id":1}`,
+	})
+	acc.ProcessEvent(&ResponsesStreamEvent{
+		Type:        "response.function_call_arguments.done",
+		OutputIndex: 0,
+		Arguments:   `{"id":1}`,
+	})
+
+	output := acc.BuildOutput()
+	require.Len(t, output, 1)
+	assert.Equal(t, `{"id":1}`, output[0].Arguments)
 }
 
 func TestBufferedResponseAccumulator_Reasoning(t *testing.T) {

@@ -51,24 +51,25 @@ type Model struct {
 // DefaultTextModel is the built-in fallback for empty model fields and Grok
 // text aliases (e.g. "grok", "grok-latest"). Operators may override the runtime
 // default via settings key grok_default_text_model.
-const DefaultTextModel = "grok-4.5"
+const DefaultTextModel = "grok-4.6"
 
 // Official Imagine model IDs (https://docs.x.ai/docs/models).
 const (
 	DefaultImagineImageQualityModel  = "grok-imagine-image-quality"
 	DefaultImagineImageFastModel     = "grok-imagine-image"
+	DefaultImagineImage20Model       = "grok-imagine-image-2.0"
 	DefaultImagineVideoModel         = "grok-imagine-video"
-	DefaultImagineVideo15LegacyModel = "grok-imagine-video-1.5"
-	DefaultImagineVideo15Model       = "grok-imagine-video-1.5-preview"
+	DefaultImagineVideo15Model       = "grok-imagine-video-1.5"
+	DefaultImagineVideo15LegacyModel = "grok-imagine-video-1.5-preview"
 )
 
 // ModelMappingOptions controls optional expansions of the default mapping.
 // Cross-client wildcards (gpt-*/claude-*) default ON via settings
 // grok_cross_client_model_map_enabled so Codex/Claude clients keep working
-// against Grok groups (map to DefaultText / grok-4.5). Operators may disable.
+// against Grok groups (map to DefaultText / grok-4.6). Operators may disable.
 type ModelMappingOptions struct {
 	// DefaultText is the target for empty models and optional cross-client maps.
-	// Empty → DefaultTextModel (grok-4.5).
+	// Empty → DefaultTextModel (grok-4.6).
 	DefaultText string
 	// EnableCrossClientMap merges gpt-*/codex-*/o*/claude-* → DefaultText.
 	EnableCrossClientMap bool
@@ -86,8 +87,6 @@ var defaultModels = []Model{
 	{ID: "grok-4.6", Object: "model", Type: "model", OwnedBy: "xai", DisplayName: "Grok 4.6"},
 	{ID: "grok-4.5", Object: "model", Type: "model", OwnedBy: "xai", DisplayName: "Grok 4.5"},
 	{ID: "grok-4.3", Object: "model", Type: "model", OwnedBy: "xai", DisplayName: "Grok 4.3"},
-	{ID: "grok-3-mini", Object: "model", Type: "model", OwnedBy: "xai", DisplayName: "Grok 3 Mini"},
-	{ID: "grok-3-mini-fast", Object: "model", Type: "model", OwnedBy: "xai", DisplayName: "Grok 3 Mini Fast"},
 	{ID: "grok-build-0.1", Object: "model", Type: "model", OwnedBy: "xai", DisplayName: "Grok Build 0.1"},
 	{ID: "grok-composer-2.5-fast", Object: "model", Type: "model", OwnedBy: "xai", DisplayName: "Grok Composer 2.5 Fast"},
 	{ID: "grok-4.20-0309-reasoning", Object: "model", Type: "model", OwnedBy: "xai", DisplayName: "Grok 4.20 Reasoning"},
@@ -96,9 +95,9 @@ var defaultModels = []Model{
 	// Imagine
 	{ID: DefaultImagineImageQualityModel, Object: "model", Type: "model", OwnedBy: "xai", DisplayName: "Grok Imagine Image Quality"},
 	{ID: DefaultImagineImageFastModel, Object: "model", Type: "model", OwnedBy: "xai", DisplayName: "Grok Imagine Image"},
+	{ID: DefaultImagineImage20Model, Object: "model", Type: "model", OwnedBy: "xai", DisplayName: "Grok Imagine Image 2.0"},
 	{ID: DefaultImagineVideoModel, Object: "model", Type: "model", OwnedBy: "xai", DisplayName: "Grok Imagine Video"},
-	{ID: DefaultImagineVideo15Model, Object: "model", Type: "model", OwnedBy: "xai", DisplayName: "Grok Imagine Video 1.5 Preview"},
-	{ID: DefaultImagineVideo15LegacyModel, Object: "model", Type: "model", OwnedBy: "xai", DisplayName: "Grok Imagine Video 1.5 Legacy"},
+	{ID: DefaultImagineVideo15Model, Object: "model", Type: "model", OwnedBy: "xai", DisplayName: "Grok Imagine Video 1.5"},
 }
 
 // grokTextResponsesModelAliases is the source of truth for Grok text models
@@ -109,14 +108,14 @@ var grokTextResponsesModelAliases = map[string]string{
 	"grok-latest":                  DefaultTextModel,
 	"grok-4.6":                     "grok-4.6",
 	"grok-4.6-latest":              "grok-4.6",
-	"grok-4.5":                     DefaultTextModel,
-	"grok-4.5-latest":              DefaultTextModel,
+	"grok-4.5":                     "grok-4.5",
+	"grok-4.5-latest":              "grok-4.5",
 	"grok-4.3":                     "grok-4.3",
 	"grok-4.3-latest":              "grok-4.3",
 	"grok-3-mini":                  "grok-3-mini",
 	"grok-3-mini-fast":             "grok-3-mini-fast",
 	"grok-build":                   "grok-build-0.1",
-	"grok-build-latest":            DefaultTextModel,
+	"grok-build-latest":            "grok-build-0.1",
 	"grok-build-0.1":               "grok-build-0.1",
 	"grok-composer-2.5-fast":       "grok-composer-2.5-fast",
 	"grok-composer":                "grok-composer-2.5-fast",
@@ -162,7 +161,7 @@ func ModelMappingWithOptions(opts ModelMappingOptions) map[string]string {
 	}
 	for alias, canonical := range grokTextResponsesModelAliases {
 		// Remap aliases that pointed at DefaultTextModel constant to runtime default.
-		if canonical == DefaultTextModel {
+		if (alias == "grok" || alias == "grok-latest") && canonical == DefaultTextModel {
 			mapping[alias] = defaultText
 		} else {
 			mapping[alias] = canonical
@@ -179,7 +178,7 @@ func ModelMappingWithOptions(opts ModelMappingOptions) map[string]string {
 	// Keep official IDs as identity so client-requested model strings are not
 	// rewritten on the wire (pricing still canonicalizes 1.5* via CanonicalImagineVideoModel).
 	mapping["grok-imagine-video"] = DefaultImagineVideoModel
-	mapping["grok-imagine-video-1.5"] = DefaultImagineVideo15LegacyModel
+	mapping["grok-imagine-video-1.5"] = DefaultImagineVideo15Model
 	mapping["grok-imagine-video-1.5-preview"] = DefaultImagineVideo15Model
 	// Informal alias only:
 	mapping["grok-video-1.5"] = DefaultImagineVideo15Model
@@ -252,6 +251,30 @@ func IsGrokModelID(model string) bool {
 	return false
 }
 
+// IsGrokImagineModel reports whether model is a Grok Imagine image or video
+// model. These media models cannot act as the primary Codex agent model.
+func IsGrokImagineModel(model string) bool {
+	normalized := strings.ToLower(StripGrokProviderPrefix(model))
+	if normalized == "" {
+		return false
+	}
+	if strings.HasPrefix(normalized, "imagine") {
+		return true
+	}
+	switch {
+	case normalized == "grok-imagine",
+		normalized == "grok-imagine-1",
+		normalized == "grok-imagine-edit",
+		normalized == "grok-video-1.5":
+		return true
+	case strings.HasPrefix(normalized, "grok-imagine-image"),
+		strings.HasPrefix(normalized, "grok-imagine-video"):
+		return true
+	default:
+		return false
+	}
+}
+
 // IsGrokTextResponsesModelID reports whether model is a known Grok text model
 // for the Responses API. Imagine image/video and unknown custom ids return false.
 func IsGrokTextResponsesModelID(model string) bool {
@@ -273,7 +296,7 @@ func ResolveGrokTextResponsesModelID(model string, defaultText ...string) string
 	}
 	normalized := strings.ToLower(StripGrokProviderPrefix(trimmed))
 	if canonical, ok := grokTextResponsesModelAliases[normalized]; ok {
-		if canonical == DefaultTextModel {
+		if (normalized == "grok" || normalized == "grok-latest") && canonical == DefaultTextModel {
 			return fallback
 		}
 		return canonical

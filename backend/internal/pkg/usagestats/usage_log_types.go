@@ -186,12 +186,13 @@ type UserBreakdownDimension struct {
 	Endpoint     string // filter by endpoint value (non-empty to enable)
 	EndpointType string // "inbound", "upstream", or "path"
 	// Additional filter conditions
-	UserID      int64  // filter by user_id (>0 to enable)
-	APIKeyID    int64  // filter by api_key_id (>0 to enable)
-	AccountID   int64  // filter by account_id (>0 to enable)
-	RequestType *int16 // filter by request_type (non-nil to enable)
-	Stream      *bool  // filter by stream flag (non-nil to enable)
-	BillingType *int8  // filter by billing_type (non-nil to enable)
+	UserID             int64  // filter by user_id (>0 to enable)
+	APIKeyID           int64  // filter by api_key_id (>0 to enable)
+	AccountID          int64  // filter by account_id (>0 to enable)
+	RequestType        *int16 // filter by request_type (non-nil to enable)
+	Stream             *bool  // filter by stream flag (non-nil to enable)
+	NativeCompactionV2 *bool  // filter by native compaction v2 flag (non-nil to enable)
+	BillingType        *int8  // filter by billing_type (non-nil to enable)
 	// SortBy 指定排序列(空 = 默认按 actual_cost)。合法值由 repo 层 allowlist 校验。
 	SortBy string
 }
@@ -278,6 +279,7 @@ type UsageLogFilters struct {
 	ModelFilterSource     string
 	RequestType           *int16
 	Stream                *bool
+	NativeCompactionV2    *bool
 	BillingType           *int8
 	BillingMode           string
 	UpstreamModelMismatch *bool

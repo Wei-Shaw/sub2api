@@ -63,6 +63,32 @@
       </button>
     </div>
 
+    <div
+      v-if="autoResetState"
+      class="flex flex-wrap items-center gap-1 text-[10px]"
+      data-testid="auto-reset-credit-state"
+    >
+      <span
+        class="inline-flex items-center rounded px-1.5 py-0.5 font-medium"
+        :class="autoResetStateClass"
+      >
+        {{ autoResetStateLabel }}
+        <span v-if="autoResetState.trigger_window" class="ml-1 tabular-nums">
+          {{ autoResetState.trigger_window }}
+        </span>
+      </span>
+      <span v-if="autoResetState.checked_at" class="text-gray-500 dark:text-gray-400">
+        {{ formatResetCreditExpiry(autoResetState.checked_at, 'short') }}
+      </span>
+      <span
+        v-if="autoResetState.error_code"
+        class="max-w-full truncate text-red-600 dark:text-red-400"
+        :title="autoResetState.error_code"
+      >
+        {{ autoResetState.error_code }}
+      </span>
+    </div>
+
     <div v-if="primaryResetCreditExpiry" class="space-y-1">
       <div class="flex flex-wrap items-center gap-1">
         <span
@@ -171,6 +197,42 @@ const resetMessage = ref<string | null>(null)
 const resetWarning = ref<string | null>(null)
 const showResetConfirm = ref(false)
 const showResetCreditDetails = ref(false)
+
+type AutoResetCreditState = NonNullable<NonNullable<Account['extra']>['codex_auto_reset_credit_state']>
+const validAutoResetStatuses = new Set(['checking', 'available', 'resetting', 'success', 'no_credit', 'failed'])
+const autoResetState = computed<AutoResetCreditState | null>(() => {
+  if (props.account.extra?.auto_reset_credit_enabled !== true) return null
+  const state = props.account.extra?.codex_auto_reset_credit_state
+  if (!state || typeof state !== 'object' || !validAutoResetStatuses.has(String(state.status))) return null
+  return state
+})
+const autoResetStateLabel = computed(() => {
+  if (!autoResetState.value?.status) return ''
+  const keyByStatus: Record<string, string> = {
+    checking: 'checking',
+    available: 'available',
+    resetting: 'resetting',
+    success: 'success',
+    no_credit: 'noCredit',
+    failed: 'failed'
+  }
+  return t(`admin.accounts.openaiQuotaReset.autoStatus.${keyByStatus[autoResetState.value.status]}`)
+})
+const autoResetStateClass = computed(() => {
+  switch (autoResetState.value?.status) {
+    case 'available':
+      return 'bg-blue-50 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300'
+    case 'success':
+      return 'bg-emerald-50 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300'
+    case 'no_credit':
+    case 'failed':
+      return 'bg-red-50 text-red-700 dark:bg-red-900/30 dark:text-red-300'
+    case 'resetting':
+      return 'bg-orange-50 text-orange-700 dark:bg-orange-900/30 dark:text-orange-300'
+    default:
+      return 'bg-gray-100 text-gray-600 dark:bg-dark-800 dark:text-gray-300'
+  }
+})
 
 // Rehydrate the card from the persisted snapshot. Credits that already expired
 // are dropped and the count is clamped to what remains: the snapshot has no

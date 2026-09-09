@@ -58,10 +58,8 @@ func EvaluateAccountSchedulingThreshold(account *Account, thresholds map[string]
 		winner = pickLatestResetSchedulingCandidate(anthropicThresholdCandidates(account), threshold, now)
 	case PlatformGrok:
 		winner = pickLatestResetSchedulingCandidate(grokThresholdCandidates(account), threshold, now)
-	case PlatformKimi:
-		winner = pickLatestResetSchedulingCandidate(cnProviderThresholdCandidates(account, PlatformKimi), threshold, now)
-	case PlatformZhipu:
-		winner = pickLatestResetSchedulingCandidate(cnProviderThresholdCandidates(account, PlatformZhipu), threshold, now)
+	case PlatformKimi, PlatformZhipu, PlatformMiniMax:
+		winner = pickLatestResetSchedulingCandidate(cnProviderThresholdCandidates(account, decision.Platform), threshold, now)
 	default:
 		return decision
 	}
@@ -75,6 +73,32 @@ func EvaluateAccountSchedulingThreshold(account *Account, thresholds map[string]
 	decision.Scope = winner.scope
 	decision.UsedPercent = winner.usedPercent
 	decision.Until = winner.until
+	return decision
+}
+
+func evaluateAnthropicFableSchedulingThreshold(account *Account, thresholds map[string]int, now time.Time) AccountSchedulingThresholdDecision {
+	decision := AccountSchedulingThresholdDecision{}
+	if account == nil || !strings.EqualFold(strings.TrimSpace(account.Platform), PlatformAnthropic) {
+		return decision
+	}
+
+	decision.Platform = PlatformAnthropic
+	threshold, ok := resolveEffectiveAccountSchedulingThreshold(account, thresholds, PlatformAnthropic)
+	decision.ThresholdPercent = threshold
+	if !ok || threshold >= 100 {
+		return decision
+	}
+
+	candidate := anthropicFableThresholdCandidate(account)
+	if !candidateMatchesThreshold(candidate, threshold, now) {
+		return decision
+	}
+
+	decision.ShouldPause = true
+	decision.Window = candidate.window
+	decision.Scope = candidate.scope
+	decision.UsedPercent = candidate.usedPercent
+	decision.Until = candidate.until
 	return decision
 }
 
@@ -278,6 +302,22 @@ func anthropicThresholdCandidates(account *Account) []*accountSchedulingThreshol
 		})
 	}
 	return candidates
+}
+
+func anthropicFableThresholdCandidate(account *Account) *accountSchedulingThresholdCandidate {
+	if account == nil {
+		return nil
+	}
+	usedPercent := utilizationAsPercent(account.Extra["passive_usage_7d_oi_utilization"])
+	if usedPercent <= 0 {
+		return nil
+	}
+	return &accountSchedulingThresholdCandidate{
+		window:      "7d_oi",
+		scope:       anthropicFableRateLimitKey,
+		usedPercent: usedPercent,
+		until:       parseSchedulingResetAt(account.Extra["passive_usage_7d_oi_reset"]),
+	}
 }
 
 // NOTE: Gemini / Kiro / Antigravity are intentionally NOT threshold-pausing

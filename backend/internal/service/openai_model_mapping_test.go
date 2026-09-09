@@ -222,6 +222,126 @@ func TestResolveOpenAICompactForwardModel(t *testing.T) {
 	}
 }
 
+func TestResolveOpenAIForwardMappedModels_CompactMappingPrecedence(t *testing.T) {
+	conflictingMappings := map[string]any{
+		"model_mapping":         map[string]any{"gpt-5.5": "gpt-5.4"},
+		"compact_model_mapping": map[string]any{"gpt-5.5": "gpt-5.5-openai-compact"},
+	}
+	mappedOnlyCompact := map[string]any{
+		"model_mapping":         map[string]any{"gpt-5.5": "gpt-5.4"},
+		"compact_model_mapping": map[string]any{"gpt-5.4": "gpt-5.4-openai-compact"},
+	}
+	tests := []struct {
+		name           string
+		account        *Account
+		requireCompact bool
+		wantBilling    string
+		wantUpstream   string
+	}{
+		{
+			name: "compact uses client-visible model before ordinary mapping",
+			account: &Account{Platform: PlatformOpenAI, Type: AccountTypeOAuth,
+				Credentials: conflictingMappings},
+			requireCompact: true,
+			wantBilling:    "gpt-5.4",
+			wantUpstream:   "gpt-5.5-openai-compact",
+		},
+		{
+			name: "non-compact uses ordinary mapping",
+			account: &Account{Platform: PlatformOpenAI, Type: AccountTypeOAuth,
+				Credentials: conflictingMappings},
+			wantBilling:  "gpt-5.4",
+			wantUpstream: "gpt-5.4",
+		},
+		{
+			name: "compact falls back to ordinary mapped model",
+			account: &Account{Platform: PlatformOpenAI, Type: AccountTypeOAuth,
+				Credentials: mappedOnlyCompact},
+			requireCompact: true,
+			wantBilling:    "gpt-5.4",
+			wantUpstream:   "gpt-5.4-openai-compact",
+		},
+		{
+			name: "passthrough ignores ordinary mapping",
+			account: &Account{Platform: PlatformOpenAI, Type: AccountTypeOAuth,
+				Credentials: conflictingMappings, Extra: map[string]any{"openai_passthrough": true}},
+			requireCompact: true,
+			wantBilling:    "gpt-5.5",
+			wantUpstream:   "gpt-5.5-openai-compact",
+		},
+		{
+			name: "raw chat fallback never applies compact mapping",
+			account: &Account{Platform: PlatformOpenAI, Type: AccountTypeAPIKey,
+				Credentials: conflictingMappings, Extra: map[string]any{"openai_responses_supported": false}},
+			requireCompact: true,
+			wantBilling:    "gpt-5.4",
+			wantUpstream:   "gpt-5.4",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			billing, upstream := resolveOpenAIForwardMappedModels(tt.account, "gpt-5.5", tt.requireCompact)
+			if billing != tt.wantBilling {
+				t.Fatalf("billing model = %q, want %q", billing, tt.wantBilling)
+			}
+			if upstream != tt.wantUpstream {
+				t.Fatalf("upstream model = %q, want %q", upstream, tt.wantUpstream)
+			}
+			if scheduler := resolveOpenAIAccountUpstreamModelForRequest(tt.account, "gpt-5.5", tt.requireCompact); scheduler != upstream {
+				t.Fatalf("scheduler model %q disagrees with Forward model %q", scheduler, upstream)
+			}
+		})
+	}
+}
+
+func TestCanonicalOpenAIAccountSchedulingModelMatchesForwardSemantics(t *testing.T) {
+	tests := []struct {
+		name    string
+		account *Account
+		model   string
+		want    string
+	}{
+		{
+			name:    "OpenAI OAuth applies Codex alias normalization",
+			account: &Account{Platform: PlatformOpenAI, Type: AccountTypeOAuth},
+			model:   "gpt-5.6",
+			want:    "gpt-5.6-sol",
+		},
+		{
+			name: "OpenAI passthrough ignores ordinary account mapping",
+			account: &Account{Platform: PlatformOpenAI, Type: AccountTypeOAuth,
+				Credentials: map[string]any{"model_mapping": map[string]any{"public": "private"}},
+				Extra:       map[string]any{"openai_passthrough": true}},
+			model: "public",
+			want:  "public",
+		},
+		{
+			name:    "Grok OAuth does not inherit OpenAI Codex aliases",
+			account: &Account{Platform: PlatformGrok, Type: AccountTypeOAuth},
+			model:   "gpt-5.6",
+			want:    "gpt-5.6",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := canonicalOpenAIAccountSchedulingModel(tt.account, tt.model); got != tt.want {
+				t.Fatalf("canonical scheduling model = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestResolveOpenAIErrorSchedulingModelPrefersActualUpstreamModel(t *testing.T) {
+	if got := resolveOpenAIErrorSchedulingModel("gpt-5.4", "gpt-5.5-openai-compact"); got != "gpt-5.5-openai-compact" {
+		t.Fatalf("error scheduling model = %q, want compact upstream model", got)
+	}
+	if got := resolveOpenAIErrorSchedulingModel("gpt-5.4", ""); got != "gpt-5.4" {
+		t.Fatalf("empty upstream fallback = %q, want billing model", got)
+	}
+}
+
 func TestNormalizeCodexModel(t *testing.T) {
 	cases := map[string]string{
 		"gpt-5.3-codex-spark":       "gpt-5.3-codex-spark",

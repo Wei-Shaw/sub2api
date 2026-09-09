@@ -18,6 +18,7 @@ import (
 type gatewayForwardErrorPolicyRepoStub struct {
 	AccountRepository
 	tempCalls           int
+	overloadCalls       int
 	modelRateLimitCalls []gatewayForwardModelRateLimitCall
 }
 
@@ -36,6 +37,11 @@ func (r *gatewayForwardErrorPolicyRepoStub) SetModelRateLimit(_ context.Context,
 		accountID: id,
 		scope:     scope,
 	})
+	return nil
+}
+
+func (r *gatewayForwardErrorPolicyRepoStub) SetOverloaded(context.Context, int64, time.Time) error {
+	r.overloadCalls++
 	return nil
 }
 
@@ -250,9 +256,8 @@ func TestGatewayService_Forward_PreOutputSSEOverloadedErrorUsesSemantic529(t *te
 	require.ErrorAs(t, err, &failoverErr)
 	require.Equal(t, 529, failoverErr.StatusCode)
 	require.JSONEq(t, errorJSON, string(failoverErr.ResponseBody))
-	require.Len(t, repo.modelRateLimitCalls, 1, "synthetic 529 must participate in temp-unschedulable rules")
-	require.Equal(t, account.ID, repo.modelRateLimitCalls[0].accountID)
-	require.Equal(t, parsed.Model, repo.modelRateLimitCalls[0].scope)
+	require.Equal(t, 1, repo.overloadCalls, "synthetic 529 must apply global overload cooldown")
+	require.Empty(t, repo.modelRateLimitCalls, "global 529 cooldown must take precedence over custom model rules")
 	require.Empty(t, rec.Body.String(), "pre-output overload must remain eligible for account failover")
 }
 

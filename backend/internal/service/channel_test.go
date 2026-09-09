@@ -198,7 +198,8 @@ func TestChannelModelPricingClone(t *testing.T) {
 			{MinTokens: 0, TierLabel: "tier1"},
 		},
 		TimePricing: &ChannelTimePricing{
-			Timezone: "Asia/Shanghai",
+			Timezone:     "Asia/Shanghai",
+			WeekdaysOnly: true,
 			Periods: []ChannelTimePricingPeriod{{
 				StartTime:  "09:00",
 				EndTime:    "12:00",
@@ -217,9 +218,11 @@ func TestChannelModelPricingClone(t *testing.T) {
 	require.Equal(t, "tier1", original.Intervals[0].TierLabel)
 
 	cloned.TimePricing.Timezone = "America/New_York"
+	cloned.TimePricing.WeekdaysOnly = false
 	cloned.TimePricing.Periods[0].StartTime = "10:00"
 	cloned.TimePricing.Periods[0].Multiplier = 3
 	require.Equal(t, "Asia/Shanghai", original.TimePricing.Timezone)
+	require.True(t, original.TimePricing.WeekdaysOnly)
 	require.Equal(t, "09:00", original.TimePricing.Periods[0].StartTime)
 	require.Equal(t, 2.0, original.TimePricing.Periods[0].Multiplier)
 }

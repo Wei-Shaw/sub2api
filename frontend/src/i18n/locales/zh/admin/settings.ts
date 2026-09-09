@@ -34,6 +34,9 @@ export default {
           showQuota: '向用户展示渠道用量/余额',
           showQuotaHint:
             '开启后，配额模式的渠道监控会在用户端渠道状态页展示关联账号的用量滚动窗口/余额。默认关闭；管理员始终可见。',
+          hideUserRanking: '对用户隐藏用户排行',
+          hideUserRankingHint:
+            '开启后，用户端渠道监控 V2 不再显示「用户排行」页，用户 API 也不返回排行数据。管理员仍可查看。',
         },
         availableChannels: {
           title: '可用渠道',
@@ -51,6 +54,12 @@ export default {
           requireAuthHint: '开启后未登录访问将跳转登录页；关闭则公开可见，匿名访客仅展示非专属分组。',
           priceDescription: '价格说明（Markdown）',
           priceDescriptionHint: '展示在模型广场页面顶部，可用于说明计费规则、汇率、优惠活动等。',
+        },
+        pluginManagement: {
+          title: '插件管理',
+          description: '控制管理员侧边栏是否显示插件管理入口。此开关不控制插件运行状态。',
+          enabled: '显示插件管理菜单',
+          enabledHint: '关闭后仅隐藏侧边栏菜单；已加载或正在运行的插件不会因此停止。',
         },
         riskControl: {
           title: '风控中心',
@@ -452,7 +461,7 @@ export default {
         grokDefaultTextModel: '默认 Grok 文本模型',
         grokDefaultTextModelHint: '用于空模型值；仅在右侧开关开启时也用于其他客户端模型命名空间。允许填写自定义 Grok 模型 ID。',
         grokCrossClientMap: '映射其他客户端模型到 Grok',
-        grokCrossClientMapHint: '默认关闭。开启后，GPT、Codex、o 系列和 Claude 模型 ID 会路由到左侧默认 Grok 文本模型。',
+        grokCrossClientMapHint: '为兼容客户端，默认开启。GPT、Codex、o 系列和 Claude 模型 ID 会路由到左侧默认 Grok 文本模型；关闭后必须使用 Grok 模型 ID。',
         grokDefaultBaseURLMode: '默认 Grok 上游',
         grokDefaultBaseURLModeHint: '仅用于 Grok 账号未配置显式 base URL 的文本请求；媒体和语音仍使用官方 API 主机。',
         grokBaseURLModeCLI: 'CLI 聊天代理',
@@ -460,6 +469,10 @@ export default {
         grokBaseURLModeUSEast1: '区域 API（us-east-1）',
         grokBaseURLModeUSWest2: '区域 API（us-west-2）',
         grokBaseURLModeEUWest1: '区域 API（eu-west-1）',
+        openaiTTFTMode: 'OpenAI Responses 首 token 统计口径',
+        openaiTTFTModeSemantic: '历史兼容（语义事件）',
+        openaiTTFTModeVisible: '真实可见输出',
+        openaiTTFTModeHint: '默认使用历史兼容口径，首个非预置语义事件即记录 first_token_ms。选择真实可见输出后，仅在首个非空文本、工具参数或图片内容到达时记录。',
         fingerprintUnification: '指纹统一化',
         fingerprintUnificationHint: '统一共享同一 OAuth 账号的用户的 X-Stainless-* 请求头。关闭后透传客户端原始请求头。',
         metadataPassthrough: 'Metadata 透传',
@@ -1065,7 +1078,7 @@ export default {
       },
       openaiFastPolicy: {
         title: 'OpenAI Fast/Flex 策略',
-        description: '基于请求体 service_tier 字段拦截/过滤/透传 OpenAI fast(priority) 与 flex 请求；仅作用于 OpenAI 网关。',
+        description: '基于请求体 service_tier 字段拦截/过滤/透传 OpenAI fast(priority)、ultrafast 与 flex 请求；仅作用于 OpenAI 网关。',
         empty: '尚未配置任何规则。点击下方按钮新增。',
         ruleHeader: '规则 #{index}',
         removeRule: '删除规则',
@@ -1074,6 +1087,7 @@ export default {
         serviceTier: 'service_tier 匹配',
         tierAll: '全部 tier 值',
         tierPriority: 'priority（fast）',
+        tierUltrafast: 'ultrafast',
         tierFlex: 'flex',
         action: '处理方式',
         actionPass: '透传（保留 service_tier）',
