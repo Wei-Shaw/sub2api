@@ -19,9 +19,24 @@ export type OrderStatus =
   | 'REFUNDED'
   | 'REFUND_FAILED'
 
-export type PaymentType = 'alipay' | 'wxpay' | 'alipay_direct' | 'wxpay_direct' | 'stripe' | 'easypay' | 'airwallex'
+export type PaymentType = 'alipay' | 'wxpay' | 'alipay_direct' | 'wxpay_direct' | 'stripe' | 'paddle' | 'easypay' | 'airwallex' | 'sepay'
 
 export type OrderType = 'balance' | 'subscription'
+
+export type PaymentAmountMode = 'ledger' | 'payment'
+
+export interface CurrencyMeta {
+  minor_units: number
+  symbol: string
+}
+
+export interface PaymentFXStatus {
+  source: string
+  updated_at?: string
+  stale_after_seconds: number
+  stale: boolean
+  missing_currencies: string[]
+}
 
 // ==================== Configuration ====================
 
@@ -45,14 +60,26 @@ export interface PaymentConfig {
   help_image_url: string
   help_text: string
   stripe_publishable_key: string
+  paddle_client_token?: string
+  paddle_environment?: string
+  ledger_currency?: string
+  allowed_payment_currencies?: string[]
+  manual_fx_rates?: Record<string, number>
+  currency_meta?: Record<string, CurrencyMeta>
+  fx_status?: PaymentFXStatus
+  fx_auto_sync_enabled?: boolean
+  fx_auto_sync_provider?: string
+  fx_auto_sync_interval_seconds?: number
 }
 
 export interface MethodLimit {
   currency?: string
   display_name?: string
+  payment_type?: string
+  allowed_payment_currencies?: string[]
   daily_limit: number
-  daily_used: number
-  daily_remaining: number
+  daily_used?: number
+  daily_remaining?: number
   single_min: number
   single_max: number
   fee_rate: number
@@ -72,6 +99,7 @@ export interface CheckoutInfoResponse {
   global_min: number
   global_max: number
   plans: SubscriptionPlan[]
+  balance_packages?: BalancePackage[]
   balance_disabled: boolean
   balance_recharge_multiplier: number
   /** Subscription CNY conversion rate (1 USD = X CNY); 0 = disabled, plan price is charged as-is */
@@ -90,6 +118,13 @@ export interface CheckoutInfoResponse {
   alipay_force_qrcode?: boolean
   /** When true, official Alipay mobile orders use precreate plus an Alipay app deep link */
   alipay_mobile_precreate_deep_link?: boolean
+  paddle_client_token?: string
+  paddle_environment?: string
+  ledger_currency: string
+  allowed_payment_currencies: string[]
+  manual_fx_rates: Record<string, number>
+  currency_meta: Record<string, CurrencyMeta>
+  fx_status: PaymentFXStatus
 }
 
 // ==================== Orders ====================
@@ -100,6 +135,13 @@ export interface PaymentOrder {
   amount: number
   pay_amount: number
   currency?: string
+  payment_amount?: number
+  ledger_amount?: number
+  payment_currency?: string
+  ledger_currency?: string
+  fx_rate_payment_to_ledger?: number
+  fx_source?: string
+  fx_timestamp?: string
   fee_rate: number
   /** 充值赠送额度（USD），已计入 amount */
   bonus_amount?: number
@@ -118,6 +160,14 @@ export interface PaymentOrder {
   refund_request_reason?: string
   plan_id?: number
   provider_instance_id?: string
+  provider_snapshot?: {
+    provider_instance_id?: string
+    provider_key?: string
+    payment_mode?: string
+    currency?: string
+    schema_version?: number
+  }
+  device_code?: string
 }
 
 // ==================== Plans & Channels ====================
@@ -148,6 +198,29 @@ export interface SubscriptionPlan {
   features: string[]
   for_sale: boolean
   sort_order: number
+}
+
+export interface BalancePackage {
+  id: number
+  code: string
+  label: string
+  description: string
+  amount_ledger: number
+  credit_ledger: number
+  bonus_ledger: number
+  credit_multiplier: number
+  balance_group_id?: number | null
+  group_id?: number | null
+  group_name?: string
+  group_platform?: string
+  group_rate_multiplier?: number
+  group_subscription_type?: string
+  badge: string
+  popular: boolean
+  for_sale: boolean
+  sort_order: number
+  created_at?: string
+  updated_at?: string
 }
 
 export interface PaymentChannel {
@@ -182,14 +255,42 @@ export interface ProviderInstance {
 
 export interface CreateOrderRequest {
   amount: number
+  amount_mode?: PaymentAmountMode
+  payment_currency?: string
+  quote_id?: string
   payment_type: string
   order_type: string
   plan_id?: number
+  balance_package_id?: string
   return_url?: string
   payment_source?: string
   openid?: string
   wechat_resume_token?: string
   is_mobile?: boolean
+}
+
+export interface CreatePaymentQuoteRequest {
+  amount: number
+  amount_mode?: PaymentAmountMode
+  payment_currency?: string
+  payment_type: string
+  order_type: string
+  plan_id?: number
+  balance_package_id?: string
+}
+
+export interface PaymentQuoteResult {
+  quote_id: string
+  expires_at: string
+  amount: number
+  amount_mode: PaymentAmountMode
+  payment_amount: number
+  payment_currency: string
+  ledger_amount: number
+  ledger_currency: string
+  fx_rate: number
+  fx_source: string
+  fx_timestamp: string
 }
 
 export type CreateOrderResultType = 'order_created' | 'oauth_required' | 'jsapi_ready'
@@ -215,13 +316,23 @@ export interface WechatJSAPIPayload {
 export interface CreateOrderResult {
   order_id: number
   amount: number
+  payment_amount?: number
+  ledger_amount?: number
+  payment_currency?: string
+  ledger_currency?: string
+  fx_rate_payment_to_ledger?: number
+  fx_source?: string
+  fx_timestamp?: string
   pay_url?: string
   qr_code?: string
+  qr_code_img?: string
+  checkout_url?: string
   client_secret?: string
   intent_id?: string
   currency?: string
   country_code?: string
   payment_env?: string
+  checkout_id?: string
   pay_amount: number
   fee_rate: number
   bonus_amount?: number

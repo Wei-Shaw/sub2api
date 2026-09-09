@@ -81,7 +81,7 @@ func scopedAdminUsageLogResponse(record *service.UsageLog) gin.H {
 	}
 }
 
-func adminUsageLogResponses(c *gin.Context, records []service.UsageLog) any {
+func adminUsageLogResponses(c *gin.Context, usageService *service.UsageService, records []service.UsageLog) any {
 	if adminaccess.RestrictedFromContext(c.Request.Context()) != nil {
 		out := make([]gin.H, 0, len(records))
 		for i := range records {
@@ -93,5 +93,6 @@ func adminUsageLogResponses(c *gin.Context, records []service.UsageLog) any {
 	for i := range records {
 		out = append(out, *dto.UsageLogFromServiceAdmin(&records[i]))
 	}
+	enrichUsageLogsWithDeviceCode(c.Request.Context(), usageService, out)
 	return out
 }

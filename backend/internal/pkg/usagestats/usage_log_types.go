@@ -287,6 +287,8 @@ type UsageLogFilters struct {
 	EndTime               *time.Time
 	// ExactTotal requests exact COUNT(*) for pagination. Default false for fast large-table paging.
 	ExactTotal bool
+	// DeviceCode filters usage logs by device code (via user_devices relation).
+	DeviceCode string
 }
 
 // UsageStats represents usage statistics

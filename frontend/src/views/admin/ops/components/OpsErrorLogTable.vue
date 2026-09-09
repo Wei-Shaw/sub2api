@@ -100,6 +100,11 @@
           <span v-else class="text-sm text-gray-400 dark:text-gray-500">-</span>
         </template>
 
+        <template #cell-device_code="{ row }">
+          <span v-if="row.device_code" class="text-sm font-mono text-gray-700 dark:text-gray-300">{{ row.device_code }}</span>
+          <span v-else class="text-sm text-gray-400 dark:text-gray-500">-</span>
+        </template>
+
         <template #cell-category="{ row }">
           <span class="text-sm text-gray-900 dark:text-white">
             {{ t('usage.errors.categories.' + mapErrorCategory(row.phase, row.type)) }}
@@ -200,6 +205,7 @@ const allColumns = computed<Column[]>(() => [
   { key: 'user', label: t('admin.ops.errorLog.user') },
   { key: 'api_key', label: t('admin.ops.errorLog.apiKey') },
   { key: 'account', label: t('admin.ops.errorLog.account') },
+  { key: 'device_code', label: t('admin.ops.errorLog.deviceCode') },
   { key: 'platform', label: t('admin.ops.errorLog.platform') },
   { key: 'model', label: t('admin.ops.errorLog.model'), sortable: true },
   { key: 'endpoint', label: t('admin.ops.errorLog.endpoint') },

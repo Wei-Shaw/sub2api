@@ -1,11 +1,13 @@
 package admin
 
 import (
+	"context"
 	"net/http"
 	"strconv"
 	"strings"
 	"time"
 
+	dbent "github.com/Wei-Shaw/sub2api/ent"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/response"
 	"github.com/Wei-Shaw/sub2api/internal/server/middleware"
 	"github.com/Wei-Shaw/sub2api/internal/service"
@@ -96,6 +98,12 @@ func (h *OpsHandler) ListSystemLogs(c *gin.Context) {
 		response.ErrorFrom(c, err)
 		return
 	}
+
+	// Enrich with device_code from user_devices
+	if h.entClient != nil && len(result.Logs) > 0 {
+		enrichOpsSystemLogsWithDeviceCode(c.Request.Context(), h.entClient, result.Logs)
+	}
+
 	response.Paginated(c, result.Logs, int64(result.Total), result.Page, result.PageSize)
 }
 
@@ -188,4 +196,29 @@ func (h *OpsHandler) GetSystemLogIngestionHealth(c *gin.Context) {
 		return
 	}
 	response.Success(c, h.opsService.GetSystemLogSinkHealth())
+}
+
+// enrichOpsSystemLogsWithDeviceCode batch-resolves device_code for system log entries.
+func enrichOpsSystemLogsWithDeviceCode(ctx context.Context, entClient *dbent.Client, logs []*service.OpsSystemLog) {
+	userIDSet := make(map[int64]struct{})
+	for _, l := range logs {
+		if l.UserID != nil && *l.UserID > 0 {
+			userIDSet[*l.UserID] = struct{}{}
+		}
+	}
+	if len(userIDSet) == 0 {
+		return
+	}
+	userIDs := make([]int64, 0, len(userIDSet))
+	for id := range userIDSet {
+		userIDs = append(userIDs, id)
+	}
+	deviceCodes := service.LookupDeviceCodesByUserIDs(ctx, entClient, userIDs)
+	for _, l := range logs {
+		if l.UserID != nil {
+			if code, ok := deviceCodes[*l.UserID]; ok {
+				l.DeviceCode = code
+			}
+		}
+	}
 }
