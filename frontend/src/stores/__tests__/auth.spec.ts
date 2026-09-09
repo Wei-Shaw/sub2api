@@ -4,6 +4,8 @@ import { useAuthStore } from '@/stores/auth'
 
 // Mock authAPI
 const mockLogin = vi.fn()
+const mockRedeemLogin = vi.fn()
+const mockInviteLogin = vi.fn()
 const mockLogin2FA = vi.fn()
 const mockLogout = vi.fn()
 const mockGetCurrentUser = vi.fn()
@@ -13,6 +15,8 @@ const mockRefreshToken = vi.fn()
 vi.mock('@/api', () => ({
   authAPI: {
     login: (...args: any[]) => mockLogin(...args),
+    redeemLogin: (...args: any[]) => mockRedeemLogin(...args),
+    inviteLogin: (...args: any[]) => mockInviteLogin(...args),
     login2FA: (...args: any[]) => mockLogin2FA(...args),
     logout: (...args: any[]) => mockLogout(...args),
     getCurrentUser: (...args: any[]) => mockGetCurrentUser(...args),
@@ -125,14 +129,12 @@ describe('useAuthStore', () => {
 
       await store.inviteLogin({
         invitation_code: 'DLG-TEST-001',
-        client_kind: 'web',
         device_hash: 'device-hash',
         install_id: 'install-id'
       })
 
       expect(mockInviteLogin).toHaveBeenCalledWith({
         invitation_code: 'DLG-TEST-001',
-        client_kind: 'web',
         device_hash: 'device-hash',
         install_id: 'install-id'
       })
@@ -140,7 +142,6 @@ describe('useAuthStore', () => {
     })
   })
 
->>>>>>> 04d11b667 (fix(auth): support DLG web code login (#22))
   // --- login2FA ---
 
   describe('login2FA', () => {
