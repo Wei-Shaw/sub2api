@@ -137,6 +137,7 @@ onMounted(async () => {
 </script>
 
 <template>
+  <div class="custom-background-layer pointer-events-none" aria-hidden="true"></div>
   <NavigationProgress />
   <RouterView />
   <Toast />

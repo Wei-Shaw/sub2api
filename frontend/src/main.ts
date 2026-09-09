@@ -7,6 +7,7 @@ import { useAppStore } from '@/stores/app'
 import { updateFavicon } from '@/utils/branding'
 import { isIOSDevice } from '@/utils/device'
 import { initUiTheme } from '@/composables/useUiTheme'
+import { initCustomBackground } from '@/composables/useCustomBackground'
 import './style.css'
 import './styles/simple-theme.css'
 
@@ -36,6 +37,7 @@ async function bootstrap() {
   // Apply theme class globally before app mount to keep all routes consistent.
   initThemeClass()
   initUiTheme()
+  initCustomBackground()
   initIOSViewportZoomFix()
 
   const app = createApp(App)

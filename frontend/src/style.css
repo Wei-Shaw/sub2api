@@ -21,6 +21,103 @@
     @apply min-h-screen;
   }
 
+  .custom-background-layer {
+    position: fixed;
+    inset: 0;
+    z-index: 0;
+    background-image: var(--custom-background-image, none);
+    background-position: center;
+    background-size: cover;
+    background-repeat: no-repeat;
+    opacity: var(--custom-background-opacity, 0);
+    transition: opacity 180ms ease;
+  }
+
+  #app > :not(.custom-background-layer) {
+    position: relative;
+    z-index: 1;
+  }
+
+  html[data-custom-background='true'] body {
+    background: transparent !important;
+  }
+
+  html[data-custom-background='true'] #app,
+  html[data-custom-background='true'] .app-shell,
+  html[data-custom-background='true'] .home-shell {
+    background: transparent !important;
+  }
+
+  html[data-custom-background='true'] .app-shell-background,
+  html[data-custom-background='true'] .home-background-decoration {
+    opacity: 0;
+  }
+
+  html[data-custom-background='true'][data-custom-component-effect='frosted'] .app-header,
+  html[data-custom-background='true'][data-custom-component-effect='frosted'] .sidebar,
+  html[data-custom-background='true'][data-custom-component-effect='frosted'] .glass,
+  html[data-custom-background='true'][data-custom-component-effect='frosted'] .glass-card,
+  html[data-custom-background='true'][data-custom-component-effect='frosted'] .card,
+  html[data-custom-background='true'][data-custom-component-effect='frosted'] .card-glass,
+  html[data-custom-background='true'][data-custom-component-effect='frosted'] .stat-card,
+  html[data-custom-background='true'][data-custom-component-effect='frosted'] .table-container,
+  html[data-custom-background='true'][data-custom-component-effect='frosted'] .table-scroll-container,
+  html[data-custom-background='true'][data-custom-component-effect='frosted'] .card-header,
+  html[data-custom-background='true'][data-custom-component-effect='frosted'] .card-footer {
+    background-color: rgba(255, 255, 255, 0.58) !important;
+    border-color: rgba(255, 255, 255, 0.42) !important;
+    backdrop-filter: blur(18px) saturate(130%);
+    -webkit-backdrop-filter: blur(18px) saturate(130%);
+  }
+
+  html.dark[data-custom-background='true'][data-custom-component-effect='frosted'] .app-header,
+  html.dark[data-custom-background='true'][data-custom-component-effect='frosted'] .sidebar,
+  html.dark[data-custom-background='true'][data-custom-component-effect='frosted'] .glass,
+  html.dark[data-custom-background='true'][data-custom-component-effect='frosted'] .glass-card,
+  html.dark[data-custom-background='true'][data-custom-component-effect='frosted'] .card,
+  html.dark[data-custom-background='true'][data-custom-component-effect='frosted'] .card-glass,
+  html.dark[data-custom-background='true'][data-custom-component-effect='frosted'] .stat-card,
+  html.dark[data-custom-background='true'][data-custom-component-effect='frosted'] .table-container,
+  html.dark[data-custom-background='true'][data-custom-component-effect='frosted'] .table-scroll-container,
+  html.dark[data-custom-background='true'][data-custom-component-effect='frosted'] .card-header,
+  html.dark[data-custom-background='true'][data-custom-component-effect='frosted'] .card-footer {
+    background-color: rgba(15, 23, 42, 0.64) !important;
+    border-color: rgba(148, 163, 184, 0.24) !important;
+  }
+
+  html[data-custom-background='true'][data-custom-component-effect='transparent'] .app-header,
+  html[data-custom-background='true'][data-custom-component-effect='transparent'] .sidebar,
+  html[data-custom-background='true'][data-custom-component-effect='transparent'] .glass,
+  html[data-custom-background='true'][data-custom-component-effect='transparent'] .glass-card,
+  html[data-custom-background='true'][data-custom-component-effect='transparent'] .card,
+  html[data-custom-background='true'][data-custom-component-effect='transparent'] .card-glass,
+  html[data-custom-background='true'][data-custom-component-effect='transparent'] .stat-card,
+  html[data-custom-background='true'][data-custom-component-effect='transparent'] .table-container,
+  html[data-custom-background='true'][data-custom-component-effect='transparent'] .table-scroll-container,
+  html[data-custom-background='true'][data-custom-component-effect='transparent'] .card-header,
+  html[data-custom-background='true'][data-custom-component-effect='transparent'] .card-footer {
+    background-color: rgba(255, 255, 255, 0.16) !important;
+    border-color: rgba(255, 255, 255, 0.3) !important;
+    box-shadow: none !important;
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+  }
+
+  html.dark[data-custom-background='true'][data-custom-component-effect='transparent'] .app-header,
+  html.dark[data-custom-background='true'][data-custom-component-effect='transparent'] .sidebar,
+  html.dark[data-custom-background='true'][data-custom-component-effect='transparent'] .glass,
+  html.dark[data-custom-background='true'][data-custom-component-effect='transparent'] .glass-card,
+  html.dark[data-custom-background='true'][data-custom-component-effect='transparent'] .card,
+  html.dark[data-custom-background='true'][data-custom-component-effect='transparent'] .card-glass,
+  html.dark[data-custom-background='true'][data-custom-component-effect='transparent'] .stat-card,
+  html.dark[data-custom-background='true'][data-custom-component-effect='transparent'] .table-container,
+  html.dark[data-custom-background='true'][data-custom-component-effect='transparent'] .table-scroll-container,
+  html.dark[data-custom-background='true'][data-custom-component-effect='transparent'] .card-header,
+  html.dark[data-custom-background='true'][data-custom-component-effect='transparent'] .card-footer {
+    background-color: rgba(15, 23, 42, 0.22) !important;
+    border-color: rgba(148, 163, 184, 0.2) !important;
+  }
+
   /* 自定义滚动条 - 仅针对 Firefox，避免 Chrome 取消 webkit 的全局定制 */
   @supports (-moz-appearance:none) {
     * {

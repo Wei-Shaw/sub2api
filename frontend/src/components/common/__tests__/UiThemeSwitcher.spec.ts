@@ -25,9 +25,11 @@ describe('UiThemeSwitcher', () => {
     expect(buttons.map((button) => button.text())).toEqual([
       'nav.uiThemeOriginal',
       'nav.uiThemeSimple',
+      'nav.uiThemeCustom',
     ])
     expect(buttons[0].attributes('aria-pressed')).toBe('true')
     expect(buttons[1].attributes('aria-pressed')).toBe('false')
+    expect(buttons[2].attributes('aria-pressed')).toBe('false')
   })
 
   it('switches to the simple interface', async () => {
