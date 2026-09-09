@@ -45,7 +45,8 @@ func TestComputeEffective_FallbackToCfgWhenSettingsAbsent(t *testing.T) {
 
 	svc.computeEffectiveLocked(context.Background())
 
-	if svc.effective != base {
+	want := opsCleanupEffectiveConfig{OpsCleanupConfig: base, SystemLogRetentionDays: 30}
+	if svc.effective != want {
 		t.Fatalf("expected effective == cfg base, got %#v", svc.effective)
 	}
 }
@@ -70,12 +71,15 @@ func TestComputeEffective_SettingsOverridesAll(t *testing.T) {
 
 	svc.computeEffectiveLocked(context.Background())
 
-	want := config.OpsCleanupConfig{
-		Enabled:                    true,
-		Schedule:                   "0 * * * *",
-		ErrorLogRetentionDays:      0,
-		MinuteMetricsRetentionDays: 7,
-		HourlyMetricsRetentionDays: 14,
+	want := opsCleanupEffectiveConfig{
+		OpsCleanupConfig: config.OpsCleanupConfig{
+			Enabled:                    true,
+			Schedule:                   "0 * * * *",
+			ErrorLogRetentionDays:      0,
+			MinuteMetricsRetentionDays: 7,
+			HourlyMetricsRetentionDays: 14,
+		},
+		SystemLogRetentionDays: 30,
 	}
 	if svc.effective != want {
 		t.Fatalf("effective mismatch:\nwant %#v\n got %#v", want, svc.effective)
@@ -156,8 +160,69 @@ func TestComputeEffective_BadJSONFallsBackToCfg(t *testing.T) {
 
 	svc.computeEffectiveLocked(context.Background())
 
-	if svc.effective != base {
+	want := opsCleanupEffectiveConfig{OpsCleanupConfig: base, SystemLogRetentionDays: 30}
+	if svc.effective != want {
 		t.Fatalf("expected fallback to cfg on bad JSON, got %#v", svc.effective)
+	}
+}
+
+func TestComputeEffective_RuntimeConfigOwnsSystemLogRetention(t *testing.T) {
+	repo := newRuntimeSettingRepoStub()
+	writeAdvancedSettings(t, repo, OpsDataRetentionSettings{
+		CleanupEnabled:        true,
+		CleanupSchedule:       "0 2 * * *",
+		ErrorLogRetentionDays: 90,
+	})
+	repo.values[SettingKeyOpsRuntimeLogConfig] = `{"retention_days":7}`
+	svc := makeOverlayService(repo, config.OpsCleanupConfig{ErrorLogRetentionDays: 30})
+
+	svc.computeEffectiveLocked(context.Background())
+
+	if svc.effective.ErrorLogRetentionDays != 90 {
+		t.Fatalf("error log retention = %d, want 90", svc.effective.ErrorLogRetentionDays)
+	}
+	if svc.effective.SystemLogRetentionDays != 7 {
+		t.Fatalf("system log retention = %d, want 7", svc.effective.SystemLogRetentionDays)
+	}
+}
+
+func TestComputeEffective_InvalidRuntimeConfigDoesNotDiscardAdvancedSettings(t *testing.T) {
+	repo := newRuntimeSettingRepoStub()
+	writeAdvancedSettings(t, repo, OpsDataRetentionSettings{
+		CleanupEnabled:        true,
+		CleanupSchedule:       "0 * * * *",
+		ErrorLogRetentionDays: 14,
+	})
+	repo.values[SettingKeyOpsRuntimeLogConfig] = `{invalid-json}`
+	svc := makeOverlayService(repo, config.OpsCleanupConfig{ErrorLogRetentionDays: 30})
+
+	svc.computeEffectiveLocked(context.Background())
+
+	if !svc.effective.Enabled || svc.effective.ErrorLogRetentionDays != 14 {
+		t.Fatalf("advanced settings were discarded: %#v", svc.effective)
+	}
+	if svc.effective.SystemLogRetentionDays != 30 {
+		t.Fatalf("system log retention = %d, want default 30", svc.effective.SystemLogRetentionDays)
+	}
+}
+
+func TestComputeEffective_PartialAdvancedSettingsUseSafeDefaults(t *testing.T) {
+	repo := newRuntimeSettingRepoStub()
+	repo.values[SettingKeyOpsAdvancedSettings] = `{"data_retention":{"cleanup_enabled":true}}`
+	svc := makeOverlayService(repo, config.OpsCleanupConfig{
+		Schedule:                   "0 3 * * *",
+		ErrorLogRetentionDays:      90,
+		MinuteMetricsRetentionDays: 90,
+		HourlyMetricsRetentionDays: 90,
+	})
+
+	svc.computeEffectiveLocked(context.Background())
+
+	if svc.effective.Schedule != opsCleanupDefaultSchedule ||
+		svc.effective.ErrorLogRetentionDays != 30 ||
+		svc.effective.MinuteMetricsRetentionDays != 30 ||
+		svc.effective.HourlyMetricsRetentionDays != 30 {
+		t.Fatalf("partial settings did not use safe defaults: %#v", svc.effective)
 	}
 }
 

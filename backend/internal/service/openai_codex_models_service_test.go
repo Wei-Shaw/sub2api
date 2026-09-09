@@ -1038,6 +1038,7 @@ func TestBuildCodexModelsManifestForGroupLoadsAccountsOnce(t *testing.T) {
 	require.Contains(t, repo.platforms, PlatformOpenAI)
 	require.Contains(t, repo.platforms, PlatformGrok)
 	require.Contains(t, repo.platforms, PlatformDeepseek)
+	require.Contains(t, repo.platforms, PlatformMiniMax)
 	require.NotContains(t, repo.platforms, PlatformComposite)
 }
 
