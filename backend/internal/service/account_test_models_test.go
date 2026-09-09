@@ -19,12 +19,19 @@ func TestFetchOpenAIAccountModelsOAuthPopulatesPickerFields(t *testing.T) {
 	require.NoError(t, err)
 	models, err := svc.FetchOpenAIAccountModels(ctx, account)
 	require.NoError(t, err)
-	require.Len(t, models, 2)
+	require.Greater(t, len(models), 2)
 	for i, id := range []string{"new-oauth-model", "gpt-6-astra"} {
 		require.Equal(t, id, models[i].ID)
 		require.Equal(t, id, models[i].DisplayName)
 		require.Equal(t, "model", models[i].Type)
 	}
+	ids := make([]string, 0, len(models))
+	for _, model := range models {
+		ids = append(ids, model.ID)
+	}
+	require.Contains(t, ids, "gpt-image-2.5-flare")
+	require.Contains(t, ids, "gpt-image-2.5-sunburst")
+
 	after, err := gateway.FetchOpenAIModelsList(ctx, account)
 	require.NoError(t, err)
 	require.Equal(t, before.Body, after.Body, "picker fields must not change the shared catalog")
@@ -61,4 +68,19 @@ func TestFetchOpenAIAccountModelsPreservesEmptyCatalog(t *testing.T) {
 	models, err := svc.FetchOpenAIAccountModels(context.Background(), newCodexModelsAPIKeyTestAccount("https://models.example/v1"))
 	require.NoError(t, err)
 	require.Empty(t, models, "an empty upstream catalog must not become a static model list")
+}
+
+func TestFetchOpenAIAccountModelsOAuthRespectsImageAllowlist(t *testing.T) {
+	newCodexModelsOAuthCacheServer(t, `{"models":[{"slug":"gpt-6-astra"}]}`)
+	svc := &AccountTestService{openaiGatewayService: &OpenAIGatewayService{}}
+	account := newCodexModelsTestAccount()
+	account.Credentials["model_mapping"] = map[string]any{"gpt-image-2.5-flare": "gpt-image-2.5-flare"}
+	models, err := svc.FetchOpenAIAccountModels(context.Background(), account)
+	require.NoError(t, err)
+	ids := []string{}
+	for _, model := range models {
+		ids = append(ids, model.ID)
+	}
+	require.Contains(t, ids, "gpt-image-2.5-flare")
+	require.NotContains(t, ids, "gpt-image-2.5-sunburst")
 }
