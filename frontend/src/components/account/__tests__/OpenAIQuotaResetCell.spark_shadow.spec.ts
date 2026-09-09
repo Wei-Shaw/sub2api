@@ -269,6 +269,35 @@ describe('OpenAIQuotaResetCell — 外审 F6:影子禁用重置', () => {
     wrapper.unmount()
   })
 
+  it('查询成功后回传同步后的账号行以更新计划触发时刻', async () => {
+    const syncedAccount = makeAccount({
+      parent_account_id: null,
+      extra: { auto_reset_credit_expiry_enabled: true, codex_reset_credit_snapshot_at: '2026-09-05T01:02:03Z' },
+    })
+    vi.mocked(refreshOpenAIQuota).mockResolvedValue({
+      rate_limit_reset_credits: { available_count: 0, credits: [] },
+      fetched_at: 1770000000,
+      cache_persisted: true,
+      account: syncedAccount,
+    })
+    const account = makeAccount({
+      parent_account_id: null,
+      extra: {
+        auto_reset_credit_expiry_enabled: true,
+        codex_reset_credit_snapshot: { available_count: 1, credits: [{ expires_at: FUTURE_EXPIRY_EARLY }] },
+        codex_auto_reset_credit_expiry_at: '2099-07-02T04:05:06Z',
+      },
+    })
+    const wrapper = mount(OpenAIQuotaResetCell, { props: { account } })
+
+    await wrapper.findAll('button')[0].trigger('click')
+    await flushPromises()
+
+    expect(refreshOpenAIQuota).toHaveBeenCalledWith(1)
+    expect(wrapper.emitted('account-updated')).toEqual([[syncedAccount]])
+    wrapper.unmount()
+  })
+
   it('重置成功后直接使用响应中的最新缓存并回传恢复后的账号', async () => {
     const recoveredAccount = makeAccount({
       parent_account_id: null,

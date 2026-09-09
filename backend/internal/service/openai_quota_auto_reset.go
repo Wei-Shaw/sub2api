@@ -430,15 +430,24 @@ func (s *OpenAIQuotaAutoResetService) evaluateAccount(ctx context.Context, accou
 	state := openAIAutoResetStateFromExtra(account.Extra)
 	_, expiryDue := s.expiryDue.LoadAndDelete(accountID)
 	_, stateDue := s.stateDue.LoadAndDelete(accountID)
+	// 到期触发的评估失败后，卡已在提前窗口内排不出定时器，用量快照也可能刚刷新，
+	// 只能靠落库的失败状态在下一分钟扫描重试（重启后同样有效）；缓存快照里没有
+	// 未过期的卡时停止，避免明细长期缺失的账号每分钟打上游。
+	expiryRetryDue := config.ExpiryEnabled && state != nil && state.Status == OpenAIAutoResetStatusFailed &&
+		openAIAutoResetWindowHasExpiry(state.TriggerWindow) &&
+		openAIAutoResetCreditExpiring(openAIAutoResetCachedCreditExpirations(account.Extra), config.ExpiryLead, now)
+	expiryPending := expiryDue || expiryRetryDue
+	// 用量快照过期只驱动阈值路径重查；只开到期用卡的账号按 24 小时计划与定时器取卡。
 	// 计划内取卡只由领导实例做；错峰未轮到的账号也不因用量快照过期而提前实查，
 	// 避免重启时集中打上游。用量阈值触发不受此限。
-	needsQuery := (openAIAutoResetSnapshotStale(account.Extra, now) && (fetchState.fetched || refreshDue)) ||
-		assessment.thresholdReached || expiryDue || stateDue || refreshDue
+	needsQuery := (openAIAutoResetSnapshotStale(account.Extra, now) && fetchState.fetched && config.thresholdActive()) ||
+		assessment.thresholdReached || expiryPending || stateDue || refreshDue
 	if assessment.pauseReached && !assessment.resetReached {
 		needsQuery = needsQuery || state == nil || state.Status == OpenAIAutoResetStatusChecking || state.Status == OpenAIAutoResetStatusFailed || openAIAutoResetStateStale(state, now)
 	}
 	if !needsQuery {
-		if !assessment.pauseReached && state != nil && state.TriggerWindow != "" {
+		// 稳态整理只清理触发窗口残留，失败记录保留到下一次实查解决。
+		if !assessment.pauseReached && state != nil && state.Status != OpenAIAutoResetStatusFailed && state.TriggerWindow != "" {
 			state.TriggerWindow = ""
 			state.ErrorCode = ""
 			state.CheckedAt = now.UTC().Format(time.RFC3339)
@@ -452,9 +461,14 @@ func (s *OpenAIQuotaAutoResetService) evaluateAccount(ctx context.Context, accou
 		return nil
 	}
 
+	checkingWindow := assessment.triggerWindow
+	if expiryPending {
+		// 到期待处理时的查询失败也要按到期语义重试，把窗口写进状态供下一次扫描判定。
+		checkingWindow = openAIAutoResetWindowWithExpiry(checkingWindow)
+	}
 	checking := &OpenAIAutoResetCreditState{
 		Status:         OpenAIAutoResetStatusChecking,
-		TriggerWindow:  assessment.triggerWindow,
+		TriggerWindow:  checkingWindow,
 		AvailableCount: stateAvailableCount(state),
 		CheckedAt:      now.UTC().Format(time.RFC3339),
 	}
@@ -701,11 +715,7 @@ func (s *OpenAIQuotaAutoResetService) buildAssessment(account *Account, config O
 	assessment.resetReached = assessment.thresholdReached || expiryReached
 	assessment.triggerWindow = joinOpenAIAutoResetWindows(reset5h, reset7d)
 	if expiryReached {
-		if assessment.triggerWindow == "" {
-			assessment.triggerWindow = "expiry"
-		} else {
-			assessment.triggerWindow += "+expiry"
-		}
+		assessment.triggerWindow = openAIAutoResetWindowWithExpiry(assessment.triggerWindow)
 	}
 
 	pause5h, pause7d := resolveOpenAIQuotaAutoPauseThresholds(context.Background(), account)
@@ -722,6 +732,27 @@ func (s *OpenAIQuotaAutoResetService) buildAssessment(account *Account, config O
 		assessment.triggerWindow = joinOpenAIAutoResetWindows(pauseReached5h, pauseReached7d)
 	}
 	return assessment
+}
+
+const openAIAutoResetExpiryWindow = "expiry"
+
+func openAIAutoResetWindowWithExpiry(window string) string {
+	if openAIAutoResetWindowHasExpiry(window) {
+		return window
+	}
+	if window == "" {
+		return openAIAutoResetExpiryWindow
+	}
+	return window + "+" + openAIAutoResetExpiryWindow
+}
+
+func openAIAutoResetWindowHasExpiry(window string) bool {
+	for _, part := range strings.Split(window, "+") {
+		if part == openAIAutoResetExpiryWindow {
+			return true
+		}
+	}
+	return false
 }
 
 func joinOpenAIAutoResetWindows(fiveHour, sevenDay bool) string {
@@ -853,6 +884,24 @@ func openAIAutoResetSnapshotStale(extra map[string]any, now time.Time) bool {
 	}
 	updatedAt, err := parseTime(fmt.Sprint(raw))
 	return err != nil || now.Sub(updatedAt) >= openAIAutoResetSnapshotTTL
+}
+
+// openAIAutoResetCachedCreditExpirations 读取账号 extra 里缓存的卡明细快照；
+// 明细缺失时快照不会被覆盖，因此它能反映最后一次成功查询到的卡。
+func openAIAutoResetCachedCreditExpirations(extra map[string]any) []string {
+	raw, ok := extra[openaiQuotaResetCreditsKey]
+	if !ok || raw == nil {
+		return nil
+	}
+	encoded, err := json.Marshal(raw)
+	if err != nil {
+		return nil
+	}
+	var credits OpenAIRateLimitResetCredits
+	if err := json.Unmarshal(encoded, &credits); err != nil {
+		return nil
+	}
+	return openAIAutoResetCreditExpirations(&credits)
 }
 
 func openAIAutoResetCreditExpirations(credits *OpenAIRateLimitResetCredits) []string {

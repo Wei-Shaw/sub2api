@@ -43,6 +43,10 @@ func (c OpenAIAutoResetCreditConfig) Active() bool {
 	return c.Enabled || c.ExpiryEnabled
 }
 
+func (c OpenAIAutoResetCreditConfig) thresholdActive() bool {
+	return c.Enabled && (c.Threshold5h > 0 || c.Threshold7d > 0)
+}
+
 // ResolveOpenAIAutoResetCreditConfig 只接受 OpenAI OAuth 母账号；历史账号未配置时
 // 始终保持关闭，防止升级后产生意外消费。
 func ResolveOpenAIAutoResetCreditConfig(account *Account) OpenAIAutoResetCreditConfig {

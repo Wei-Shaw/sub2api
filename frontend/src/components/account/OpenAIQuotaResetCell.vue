@@ -427,6 +427,7 @@ const handleQuery = async () => {
     } else {
       resetWarning.value = t('admin.accounts.openaiQuotaReset.refreshCachePersistFailed')
     }
+    if (result.account) emit('account-updated', result.account)
   } catch (e) {
     error.value = extractErrorMessage(e)
   } finally {

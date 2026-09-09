@@ -1247,3 +1247,175 @@ func TestOpenAIQuotaAutoResetService_ManualCreditSyncCorrectsPauseDecision(t *te
 		require.Equal(t, int32(0), quota.queryCalls.Load(), "运行态已与实查一致，沿用手动路径的结果")
 	})
 }
+
+// 到期触发的消费失败后必须在下一分钟扫描重试：卡已进提前窗口排不出定时器，
+// 用量快照又刚被刷新，24 小时计划取卡赶不上卡过期。重试依据是落库的失败状态，
+// 重启后也能续上，并复用同一周期与卡指纹的幂等键。
+func TestOpenAIQuotaAutoResetService_ExpiryConsumeFailureRetriesOnNextScan(t *testing.T) {
+	now := time.Now().UTC()
+	account := newAutoResetExpiringCardAccount(now, map[string]any{OpenAIAutoResetCreditEnabledExtraKey: false})
+	repo := &autoResetTestAccountRepo{account: account}
+	quota := &autoResetTestQuota{failFirst: true, usage: newAutoResetLowUsage(now, "credit-expiring", now.Add(2*time.Hour))}
+	idempotencyConfig := DefaultIdempotencyConfig()
+	idempotencyConfig.ObserveOnly = false
+	idempotencyConfig.FailedRetryBackoff = 0
+	coordinator := NewIdempotencyCoordinator(newInMemoryIdempotencyRepo(), idempotencyConfig)
+	service := NewOpenAIQuotaAutoResetService(repo, quota, autoResetTestRecoverer{}, coordinator, nil, nil, nil)
+	t.Cleanup(service.Stop)
+	service.refreshSchedulerLease(context.Background())
+	require.True(t, service.isSchedulerLeader())
+
+	require.Error(t, service.evaluateAccount(context.Background(), account.ID), "首次消费超时")
+	require.Equal(t, int32(1), quota.resetCalls.Load())
+	state := openAIAutoResetStateFromExtra(repo.account.Extra)
+	require.NotNil(t, state)
+	require.Equal(t, OpenAIAutoResetStatusFailed, state.Status)
+	require.Equal(t, "expiry", state.TriggerWindow)
+	_, armed := service.expiryTimers.Load(account.ID)
+	require.False(t, armed, "卡已在提前窗口内，排不出定时器")
+
+	require.NoError(t, service.evaluateAccount(context.Background(), account.ID), "同一实例下一分钟扫描")
+	require.Equal(t, int32(3), quota.queryCalls.Load(), "失败后的下一次扫描应重查，用卡后再刷新一次额度")
+	require.Equal(t, int32(2), quota.resetCalls.Load(), "重查通过校验后应重试消费")
+	quota.mu.Lock()
+	args := append([][2]string(nil), quota.resetArgs...)
+	quota.mu.Unlock()
+	require.Equal(t, args[0], args[1], "重试必须复用原卡与原兑换请求 ID")
+	state = openAIAutoResetStateFromExtra(repo.account.Extra)
+	require.Equal(t, OpenAIAutoResetStatusSuccess, state.Status)
+}
+
+func TestOpenAIQuotaAutoResetService_ExpiryConsumeFailureRetriesAfterRestart(t *testing.T) {
+	now := time.Now().UTC()
+	account := newAutoResetExpiringCardAccount(now, map[string]any{OpenAIAutoResetCreditEnabledExtraKey: false})
+	repo := &autoResetTestAccountRepo{account: account}
+	quota := &autoResetTestQuota{failFirst: true, usage: newAutoResetLowUsage(now, "credit-expiring", now.Add(2*time.Hour))}
+	idempotencyConfig := DefaultIdempotencyConfig()
+	idempotencyConfig.ObserveOnly = false
+	idempotencyConfig.FailedRetryBackoff = 0
+	coordinator := NewIdempotencyCoordinator(newInMemoryIdempotencyRepo(), idempotencyConfig)
+	first := NewOpenAIQuotaAutoResetService(repo, quota, autoResetTestRecoverer{}, coordinator, nil, nil, nil)
+	t.Cleanup(first.Stop)
+	require.Error(t, first.evaluateAccount(context.Background(), account.ID), "首次消费超时")
+	require.Equal(t, int32(1), quota.resetCalls.Load())
+
+	// 新实例没有任何内存标记，首次评估重取卡信息后必须按落库的失败指纹续上同一张卡。
+	restarted := NewOpenAIQuotaAutoResetService(repo, quota, autoResetTestRecoverer{}, coordinator, nil, nil, nil)
+	t.Cleanup(restarted.Stop)
+	require.NoError(t, restarted.evaluateAccount(context.Background(), account.ID))
+	require.Equal(t, int32(2), quota.resetCalls.Load(), "重启后的实例应按落库的失败状态重试")
+	require.Equal(t, OpenAIAutoResetStatusSuccess, openAIAutoResetStateFromExtra(repo.account.Extra).Status)
+}
+
+// 缓存快照里已没有未过期的卡时停止重试，避免明细长期缺失的账号每分钟打上游。
+func TestOpenAIQuotaAutoResetService_ExpiryRetryStopsWhenCachedCreditExpired(t *testing.T) {
+	now := time.Now().UTC()
+	account := newAutoResetExpiringCardAccount(now, map[string]any{
+		OpenAIAutoResetCreditEnabledExtraKey: false,
+		openaiQuotaResetCreditsKey: map[string]any{
+			"available_count": 1,
+			"credits":         []any{map[string]any{"expires_at": now.Add(-time.Minute).Format(time.RFC3339)}},
+		},
+		OpenAIAutoResetCreditStateExtraKey: map[string]any{
+			"status": OpenAIAutoResetStatusFailed, "trigger_window": "expiry", "available_count": 1,
+			"checked_at": now.Format(time.RFC3339), "error_code": "OPENAI_AUTO_RESET_FAILED",
+		},
+	})
+	repo := &autoResetTestAccountRepo{account: account}
+	quota := &autoResetTestQuota{usage: newAutoResetLowUsage(now, "credit-expiring", now.Add(2*time.Hour))}
+	service := newAutoResetTestService(repo, quota)
+	t.Cleanup(service.Stop)
+	service.fetchStates.Store(account.ID, openAIAutoResetFetchState{nextAt: now.Add(23 * time.Hour), fetched: true, config: ResolveOpenAIAutoResetCreditConfig(account)})
+
+	require.NoError(t, service.evaluateAccount(context.Background(), account.ID))
+	require.Equal(t, int32(0), quota.queryCalls.Load(), "卡已过期，不再为它重查")
+	require.Equal(t, OpenAIAutoResetStatusFailed, openAIAutoResetStateFromExtra(repo.account.Extra).Status)
+}
+
+// 定时器到点后的用量查询失败也要下一分钟重查：只开到期用卡的账号没有阈值轮询兜底。
+func TestOpenAIQuotaAutoResetService_ExpiryQueryFailureRetriesOnNextScan(t *testing.T) {
+	now := time.Now().UTC()
+	account := newAutoResetExpiringCardAccount(now, map[string]any{OpenAIAutoResetCreditEnabledExtraKey: false})
+	repo := &autoResetTestAccountRepo{account: account}
+	quota := &autoResetTestQuota{
+		usage:    newAutoResetLowUsage(now, "credit-expiring", now.Add(2*time.Hour)),
+		queryErr: errors.New("proxy down"),
+	}
+	service := newAutoResetTestService(repo, quota)
+	t.Cleanup(service.Stop)
+	service.refreshSchedulerLease(context.Background())
+	require.True(t, service.isSchedulerLeader())
+	service.fetchStates.Store(account.ID, openAIAutoResetFetchState{nextAt: now.Add(23 * time.Hour), fetched: true, config: ResolveOpenAIAutoResetCreditConfig(account)})
+	service.expiryDue.Store(account.ID, struct{}{})
+
+	require.Error(t, service.evaluateAccount(context.Background(), account.ID))
+	require.Equal(t, int32(1), quota.queryCalls.Load())
+	state := openAIAutoResetStateFromExtra(repo.account.Extra)
+	require.NotNil(t, state)
+	require.Equal(t, OpenAIAutoResetStatusFailed, state.Status)
+	require.Equal(t, "RESET_CREDIT_QUERY_FAILED", state.ErrorCode)
+
+	quota.queryErr = nil
+	require.NoError(t, service.evaluateAccount(context.Background(), account.ID))
+	require.Equal(t, int32(3), quota.queryCalls.Load(), "到期待处理时查询失败，下一分钟必须重查，用卡后再刷新一次额度")
+	require.Equal(t, int32(1), quota.resetCalls.Load(), "重查通过最终校验后用卡")
+}
+
+// 阈值未达到时的稳态整理只清理触发窗口残留，不能把失败记录改写成"可用"。
+func TestOpenAIQuotaAutoResetService_SteadyStateKeepsFailedStatus(t *testing.T) {
+	now := time.Now().UTC()
+	account := newAutoResetLowUsageAccount(now, map[string]any{
+		"auto_pause_5h_disabled": true,
+		"auto_pause_7d_disabled": true,
+		OpenAIAutoResetCreditStateExtraKey: map[string]any{
+			"status": OpenAIAutoResetStatusFailed, "trigger_window": "5h", "available_count": 1,
+			"checked_at": now.Format(time.RFC3339), "error_code": "OPENAI_AUTO_RESET_FAILED",
+		},
+	})
+	repo := &autoResetTestAccountRepo{account: account}
+	quota := &autoResetTestQuota{usage: newAutoResetLowUsage(now, "credit-id", now.Add(10*24*time.Hour))}
+	service := newAutoResetTestService(repo, quota)
+	t.Cleanup(service.Stop)
+	service.fetchStates.Store(account.ID, openAIAutoResetFetchState{nextAt: now.Add(23 * time.Hour), fetched: true, config: ResolveOpenAIAutoResetCreditConfig(account)})
+
+	require.NoError(t, service.evaluateAccount(context.Background(), account.ID))
+	require.Equal(t, int32(0), quota.queryCalls.Load())
+	state := openAIAutoResetStateFromExtra(repo.account.Extra)
+	require.NotNil(t, state)
+	require.Equal(t, OpenAIAutoResetStatusFailed, state.Status, "失败记录应保留到下一次实查解决")
+	require.Equal(t, "OPENAI_AUTO_RESET_FAILED", state.ErrorCode)
+}
+
+// 用量快照过期只驱动阈值路径重查；只开到期用卡或阈值全为 0 的账号不因此每 10 分钟打上游。
+func TestOpenAIQuotaAutoResetService_UsageSnapshotPollOnlyForThresholdPath(t *testing.T) {
+	cases := []struct {
+		name  string
+		extra map[string]any
+		want  int32
+	}{
+		{name: "只开到期用卡", extra: map[string]any{OpenAIAutoResetCreditEnabledExtraKey: false, OpenAIAutoResetCreditExpiryEnabledExtraKey: true, OpenAIAutoResetCreditExpiryLeadMinutesExtraKey: 1440.0}, want: 1},
+		{name: "阈值开关开但阈值为 0", extra: map[string]any{OpenAIAutoResetCredit5hThresholdExtraKey: 0.0, OpenAIAutoResetCredit7dThresholdExtraKey: 0.0, OpenAIAutoResetCreditExpiryEnabledExtraKey: true, OpenAIAutoResetCreditExpiryLeadMinutesExtraKey: 1440.0}, want: 1},
+		{name: "阈值路径开启", extra: nil, want: 2},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			now := time.Now().UTC()
+			account := newAutoResetLowUsageAccount(now, tc.extra)
+			repo := &autoResetTestAccountRepo{account: account}
+			quota := &autoResetTestQuota{usage: newAutoResetLowUsage(now, "credit-id", now.Add(10*24*time.Hour))}
+			service := newAutoResetTestService(repo, quota)
+			t.Cleanup(service.Stop)
+			service.refreshSchedulerLease(context.Background())
+			require.True(t, service.isSchedulerLeader())
+
+			require.NoError(t, service.evaluateAccount(context.Background(), account.ID))
+			require.Equal(t, int32(1), quota.queryCalls.Load(), "首次评估取一次卡信息")
+
+			repo.mu.Lock()
+			repo.account.Extra["codex_usage_updated_at"] = now.Add(-11 * time.Minute).Format(time.RFC3339)
+			repo.mu.Unlock()
+			require.NoError(t, service.evaluateAccount(context.Background(), account.ID))
+			require.Equal(t, tc.want, quota.queryCalls.Load())
+		})
+	}
+}

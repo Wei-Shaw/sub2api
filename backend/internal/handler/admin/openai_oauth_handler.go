@@ -57,7 +57,8 @@ type openAIQuotaResetResponse struct {
 // failed display-cache write must never discard a successful upstream read.
 type openAIQuotaRefreshResponse struct {
 	service.OpenAIQuotaUsage
-	CachePersisted bool `json:"cache_persisted"`
+	Account        *dto.Account `json:"account,omitempty"`
+	CachePersisted bool         `json:"cache_persisted"`
 }
 
 // openAIQuotaResetPostProcessContext detaches the post-reset bookkeeping from the
@@ -532,6 +533,13 @@ func (h *OpenAIOAuthHandler) RefreshQuota(c *gin.Context) {
 	}
 	refreshResponse.CachePersisted = true
 	service.SyncOpenAIAutoResetCredit(c.Request.Context(), accountID, usage)
+	// The sync above may re-arm or cancel the expiry timer and rewrite the
+	// scheduled time on the account, so return the row for the list to catch up.
+	if h.adminService != nil {
+		if account, err := h.adminService.GetAccount(c.Request.Context(), accountID); err == nil && account != nil {
+			refreshResponse.Account = dto.AccountFromService(account)
+		}
+	}
 	response.Success(c, refreshResponse)
 }
 
