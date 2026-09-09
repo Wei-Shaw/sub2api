@@ -56,6 +56,7 @@ export default {
       quotaEmpty: 'No quota data returned',
       fiveHour: '5h window',
       weekly: 'Weekly window',
+      monthly: 'Monthly window',
       codeReview: 'Code review',
       additional: 'Additional limit: {name}',
       resetCredits: 'Reset credits',

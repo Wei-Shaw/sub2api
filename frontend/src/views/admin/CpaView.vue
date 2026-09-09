@@ -568,6 +568,20 @@ function windowResetISO(win: CpaCodexWindow | null): string | null {
   return null
 }
 
+/**
+ * Codex 的 primary/secondary 并不固定对应 5h/周：Pro 账号的 primary 可能就是
+ * 7 天窗口（实测 limit_window_seconds=604800）。因此按窗口时长判断标签。
+ */
+function windowLabel(win: CpaCodexWindow | null, fallback: string): string {
+  if (!win) return fallback
+  const seconds = normalizeNumber(win.limit_window_seconds ?? win.limitWindowSeconds)
+  if (seconds === null || seconds <= 0) return fallback
+  const hours = seconds / 3600
+  if (hours <= 6) return t('admin.cpa.authFiles.fiveHour')
+  if (hours <= 24 * 8) return t('admin.cpa.authFiles.weekly')
+  return t('admin.cpa.authFiles.monthly')
+}
+
 function quotaRows(payload: CpaCodexUsagePayload | undefined): Array<{
   key: string
   label: string
@@ -589,7 +603,7 @@ function quotaRows(payload: CpaCodexUsagePayload | undefined): Array<{
   if (primary) {
     rows.push({
       key: 'primary',
-      label: t('admin.cpa.authFiles.fiveHour'),
+      label: windowLabel(primary, t('admin.cpa.authFiles.fiveHour')),
       usedPercent: normalizeNumber(primary.used_percent ?? primary.usedPercent) ?? 0,
       resetsAt: windowResetISO(primary),
       color: 'indigo'
@@ -598,7 +612,7 @@ function quotaRows(payload: CpaCodexUsagePayload | undefined): Array<{
   if (secondary) {
     rows.push({
       key: 'secondary',
-      label: t('admin.cpa.authFiles.weekly'),
+      label: windowLabel(secondary, t('admin.cpa.authFiles.weekly')),
       usedPercent: normalizeNumber(secondary.used_percent ?? secondary.usedPercent) ?? 0,
       resetsAt: windowResetISO(secondary),
       color: 'emerald'

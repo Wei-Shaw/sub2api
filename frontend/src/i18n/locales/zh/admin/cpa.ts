@@ -56,6 +56,7 @@ export default {
       quotaEmpty: '未返回额度数据',
       fiveHour: '5 小时窗口',
       weekly: '每周窗口',
+      monthly: '每月窗口',
       codeReview: '代码审查',
       additional: '附加限额：{name}',
       resetCredits: '重置次数',
