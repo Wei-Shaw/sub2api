@@ -480,6 +480,11 @@ const PluginIcon = {
   render: () => h(Icon, { name: 'cube' })
 }
 
+// CPA（CLIProxyAPI）只读管理面板入口
+const CpaIcon = {
+  render: () => h(Icon, { name: 'key' })
+}
+
 const BellIcon = {
   render: () =>
     h(
@@ -763,6 +768,7 @@ const adminNavItems = computed((): NavItem[] => {
   const baseItems: NavItem[] = [
     { path: '/admin/dashboard', label: t('nav.dashboard'), icon: DashboardIcon },
     { path: '/admin/ops', label: t('nav.ops'), icon: ChartIcon, featureFlag: flagOpsMonitoring },
+    { path: '/admin/cpa', label: t('nav.cpa'), icon: CpaIcon },
     { path: '/admin/users', label: t('nav.users'), icon: UsersIcon, hideInSimpleMode: true },
     { path: '/admin/groups', label: t('nav.groups'), icon: FolderIcon },
     {

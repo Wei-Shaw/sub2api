@@ -85,6 +85,9 @@ func RegisterAdminRoutes(
 		// 运维监控（Ops）
 		registerOpsRoutes(admin, h)
 
+		// CPA（CLIProxyAPI）只读管理面板
+		registerCpaRoutes(admin, h)
+
 		// 系统管理
 		registerSystemRoutes(admin, h)
 
@@ -185,6 +188,27 @@ func registerAdminAPIKeyRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 	apiKeys := admin.Group("/api-keys")
 	{
 		apiKeys.PUT("/:id", h.Admin.APIKey.UpdateGroup)
+	}
+}
+
+// registerCpaRoutes 注册 CPA（CLIProxyAPI）只读管理面板路由。
+// 只暴露 GET 类数据接口 + 配置读写 + 连接测试，不代理任何 CPA 写操作。
+func registerCpaRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
+	cpa := admin.Group("/cpa")
+	{
+		cpa.GET("/config", h.Admin.Cpa.GetConfig)
+		cpa.PUT("/config", h.Admin.Cpa.UpdateConfig)
+		cpa.POST("/test", h.Admin.Cpa.TestConnection)
+		cpa.GET("/overview", h.Admin.Cpa.Overview)
+
+		cpa.GET("/auth-files", h.Admin.Cpa.ListAuthFiles)
+		cpa.GET("/auth-files/quota", h.Admin.Cpa.AuthFileQuota)
+
+		cpa.GET("/api-key-usage", h.Admin.Cpa.APIKeyUsage)
+
+		cpa.GET("/logs", h.Admin.Cpa.RequestLogs)
+		cpa.GET("/error-logs", h.Admin.Cpa.RequestErrorLogs)
+		cpa.GET("/error-logs/:name", h.Admin.Cpa.DownloadErrorLog)
 	}
 }
 

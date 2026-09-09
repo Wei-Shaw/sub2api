@@ -186,6 +186,7 @@ export default {
     proxies: 'Proxies',
     redeemCodes: 'Redeem Codes',
     ops: 'Ops',
+    cpa: 'CPA Panel',
     promoCodes: 'Promo Codes',
     settings: 'Settings',
     myAccount: 'My Account',

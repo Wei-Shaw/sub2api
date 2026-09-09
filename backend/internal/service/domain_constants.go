@@ -539,6 +539,21 @@ const (
 	SettingKeyOllamaCloudUsageSettings = "ollama_cloud_usage_settings"
 
 	// =========================
+	// CPA (CLIProxyAPI) 只读管理面板
+	// =========================
+
+	// SettingKeyCpaManagementEnabled toggles the read-only CPA panel and its sidebar entry.
+	SettingKeyCpaManagementEnabled = "cpa_management_enabled"
+
+	// SettingKeyCpaManagementBaseURL is the CPA base URL reachable from the Sub2API
+	// process, e.g. http://host.docker.internal:8317 for the Docker deployment.
+	SettingKeyCpaManagementBaseURL = "cpa_management_base_url"
+
+	// SettingKeyCpaManagementKey is the CPA management key (remote-management.secret-key
+	// plaintext). Write-only: the settings API never returns it, only a masked hint.
+	SettingKeyCpaManagementKey = "cpa_management_key"
+
+	// =========================
 	// Overload Cooldown (529)
 	// =========================
 
