@@ -380,6 +380,8 @@ func (h *SettingHandler) GetSettings(c *gin.Context) {
 		OpenAIAutoProvisionCallbackSecretConfigured:            settings.OpenAIAutoProvisionCallbackSecretConfigured,
 		OpenAIAutoProvisionEmailSource:                         settings.OpenAIAutoProvisionEmailSource,
 		OpenAIAutoProvisionWorkers:                             settings.OpenAIAutoProvisionWorkers,
+		OpenAIAutoProvisionRequestsPerAccount:                  settings.OpenAIAutoProvisionRequestsPerAccount,
+		OpenAIAutoProvisionTokensPerAccount:                    settings.OpenAIAutoProvisionTokensPerAccount,
 		OpenAIReauthorizationEnabled:                           settings.OpenAIReauthorizationEnabled,
 		OpenAIAdvancedSchedulerEnabled:                         settings.OpenAIAdvancedSchedulerEnabled,
 		OpenAIAdvancedSchedulerStickyWeightedEnabled:           settings.OpenAIAdvancedSchedulerStickyWeightedEnabled,

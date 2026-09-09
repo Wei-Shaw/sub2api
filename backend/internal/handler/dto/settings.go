@@ -250,6 +250,8 @@ type SystemSettings struct {
 	OpenAIAutoProvisionCallbackSecretConfigured            bool     `json:"openai_auto_provision_callback_secret_configured"`
 	OpenAIAutoProvisionEmailSource                         string   `json:"openai_auto_provision_email_source"`
 	OpenAIAutoProvisionWorkers                             int      `json:"openai_auto_provision_workers"`
+	OpenAIAutoProvisionRequestsPerAccount                  int      `json:"openai_auto_provision_requests_per_account"`
+	OpenAIAutoProvisionTokensPerAccount                    int      `json:"openai_auto_provision_tokens_per_account"`
 	OpenAIReauthorizationEnabled                           bool     `json:"openai_auto_reauthorization_enabled"`
 	OpenAIAdvancedSchedulerEnabled                         bool     `json:"openai_advanced_scheduler_enabled"`
 	OpenAIAdvancedSchedulerStickyWeightedEnabled           bool     `json:"openai_advanced_scheduler_sticky_weighted_enabled"`

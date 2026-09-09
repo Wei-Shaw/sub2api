@@ -5,8 +5,13 @@ import (
 	"time"
 )
 
+var testOpenAIProvisionCapacity = openAIProvisionCapacity{
+	RequestsPerAccount: 30,
+	TokensPerAccount:   900_000,
+}
+
 func TestOpenAIProvisionPlanDoesNotProvisionWithoutRecentDemand(t *testing.T) {
-	plan := calculateOpenAIProvisionPlan(OpenAIProvisionDemand{}, 1, 0, 100, time.Now().UTC())
+	plan := calculateOpenAIProvisionPlan(OpenAIProvisionDemand{}, 1, 0, 100, testOpenAIProvisionCapacity)
 	if plan.ShouldProvision {
 		t.Fatalf("idle pool should not provision: %#v", plan)
 	}
@@ -17,51 +22,117 @@ func TestOpenAIProvisionPlanDoesNotProvisionWithoutRecentDemand(t *testing.T) {
 
 func TestOpenAIProvisionPlanDoesNotFillForSequentialUsers(t *testing.T) {
 	demand := OpenAIProvisionDemand{ActiveUsers: 3, Requests: 30, Tokens: 900_000}
-	plan := calculateOpenAIProvisionPlan(demand, 1, 1, 100, time.Now().UTC())
+	plan := calculateOpenAIProvisionPlan(demand, 1, 1, 100, testOpenAIProvisionCapacity)
 	if plan.ShouldProvision {
 		t.Fatalf("one account with quota headroom should serve sequential users: %#v", plan)
 	}
 }
 
 func TestOpenAIProvisionPlanRespondsToCapacityDeniedUsers(t *testing.T) {
-	demand := OpenAIProvisionDemand{Requests: 2, CapacityDeniedUsers: 3, CapacityDeniedRequests: 6}
-	plan := calculateOpenAIProvisionPlan(demand, 1, 1, 100, time.Now().UTC())
+	demand := OpenAIProvisionDemand{Requests: 2, CapacityDeniedUsers: 3}
+	plan := calculateOpenAIProvisionPlan(demand, 1, 1, 100, testOpenAIProvisionCapacity)
 	if plan.RequestedCount != 1 {
-		t.Fatalf("requested %d accounts, want one conservative step-up for blocked users", plan.RequestedCount)
+		t.Fatalf("requested %d accounts, want demand-derived denial deficit", plan.RequestedCount)
+	}
+	if plan.RequiredCount != 2 {
+		t.Fatalf("required %d accounts, want demand-derived required capacity", plan.RequiredCount)
+	}
+}
+
+func TestOpenAIProvisionPlanDoesNotTreatDeniedUsersAsRequests(t *testing.T) {
+	plan := calculateOpenAIProvisionPlan(
+		OpenAIProvisionDemand{Requests: 1, CapacityDeniedUsers: 100},
+		1,
+		1,
+		100,
+		testOpenAIProvisionCapacity,
+	)
+	if plan.RequestedCount != 1 || plan.RequiredCount != 2 {
+		t.Fatalf("denied users should add one verified shortage slot, not request-sized capacity: %#v", plan)
 	}
 }
 
 func TestOpenAIProvisionPlanRespondsToNearExhaustedQuotaWithTraffic(t *testing.T) {
-	demand := OpenAIProvisionDemand{Requests: 4, Tokens: openAIProvisionMinimumPrewarmTokens}
-	plan := calculateOpenAIProvisionPlan(demand, 1, 0.15, 10, time.Now().UTC())
+	demand := OpenAIProvisionDemand{Requests: 4, Tokens: 10_000}
+	plan := calculateOpenAIProvisionPlan(demand, 1, 0.15, 10, testOpenAIProvisionCapacity)
 	if plan.RequestedCount != 1 {
-		t.Fatalf("requested %d accounts, want one prewarmed replacement for near-exhausted capacity", plan.RequestedCount)
+		t.Fatalf("requested %d accounts, want one account for near-exhausted demand capacity", plan.RequestedCount)
 	}
 }
 
-func TestOpenAIProvisionPlanIgnoresNegligibleNearExhaustedTraffic(t *testing.T) {
+func TestOpenAIProvisionPlanUsesAnyRecentDemandWhenNoCapacityIsUsable(t *testing.T) {
 	plan := calculateOpenAIProvisionPlan(
-		OpenAIProvisionDemand{Requests: 1, Tokens: openAIProvisionMinimumPrewarmTokens - 1},
+		OpenAIProvisionDemand{Requests: 1, Tokens: 1},
 		1,
-		0.15,
+		0,
 		10,
-		time.Now().UTC(),
+		testOpenAIProvisionCapacity,
 	)
-	if plan.ShouldProvision {
-		t.Fatalf("negligible near-exhausted traffic should not prewarm: %#v", plan)
+	if !plan.ShouldProvision || plan.RequestedCount != 1 {
+		t.Fatalf("one-slot demand with no usable capacity should request one account: %#v", plan)
 	}
 }
 
-func TestOpenAIProvisionPlanCapsBurstStepUp(t *testing.T) {
+func TestOpenAIProvisionPlanScalesWithCapacityDenials(t *testing.T) {
 	plan := calculateOpenAIProvisionPlan(
-		OpenAIProvisionDemand{Requests: 100, CapacityDeniedUsers: 100, CapacityDeniedRequests: 100},
+		OpenAIProvisionDemand{Requests: 100, CapacityDeniedUsers: 100},
 		1,
 		1,
 		100,
-		time.Now().UTC(),
+		testOpenAIProvisionCapacity,
 	)
-	if plan.RequestedCount != openAIProvisionMaxImmediateAccounts {
-		t.Fatalf("requested %d accounts, want capped step-up of %d", plan.RequestedCount, openAIProvisionMaxImmediateAccounts)
+	if plan.RequestedCount != 3 {
+		t.Fatalf("requested %d accounts, want the denial demand deficit", plan.RequestedCount)
+	}
+	if plan.RequiredCount != 4 {
+		t.Fatalf("required %d accounts, want the denial demand capacity", plan.RequiredCount)
+	}
+}
+
+func TestRequiredOpenAIProvisionCapacityUsesLargestLoadSignal(t *testing.T) {
+	for _, testCase := range []struct {
+		name   string
+		demand OpenAIProvisionDemand
+		want   int
+	}{
+		{name: "request load", demand: OpenAIProvisionDemand{Requests: 61}, want: 3},
+		{name: "token load", demand: OpenAIProvisionDemand{Tokens: 1_800_001}, want: 3},
+		{name: "largest signal", demand: OpenAIProvisionDemand{Requests: 31, Tokens: 2_700_001}, want: 4},
+	} {
+		t.Run(testCase.name, func(t *testing.T) {
+			if got := requiredOpenAIProvisionCapacity(testCase.demand, testOpenAIProvisionCapacity); got != testCase.want {
+				t.Fatalf("requiredOpenAIProvisionCapacity(%#v) = %d, want %d", testCase.demand, got, testCase.want)
+			}
+		})
+	}
+}
+
+func TestOpenAIProvisionPlanScalesWithRequestAndTokenUsage(t *testing.T) {
+	plan := calculateOpenAIProvisionPlan(
+		OpenAIProvisionDemand{Requests: 95, Tokens: 2_700_001},
+		1,
+		1,
+		100,
+		testOpenAIProvisionCapacity,
+	)
+	if plan.RequestedCount != 3 {
+		t.Fatalf("requested %d accounts, want demand capacity of four minus one usable account", plan.RequestedCount)
+	}
+	if plan.RequiredCount != 4 {
+		t.Fatalf("required %d accounts, want request/token-derived capacity", plan.RequiredCount)
+	}
+}
+
+func TestOpenAIProvisionPlanUsesConfiguredAccountCapacity(t *testing.T) {
+	plan := calculateOpenAIProvisionPlan(
+		OpenAIProvisionDemand{Requests: 95, Tokens: 2_700_001},
+		1,
+		1,
+		100,
+		openAIProvisionCapacity{RequestsPerAccount: 100, TokensPerAccount: 1_000_000},
+	)
+	if plan.RequestedCount != 2 || plan.RequiredCount != 3 {
+		t.Fatalf("configured token capacity should require three slots: %#v", plan)
 	}
 }
 
@@ -69,9 +140,9 @@ func TestOpenAIProvisionPlanDoesNotProvisionWithUsableQuotaHeadroom(t *testing.T
 	plan := calculateOpenAIProvisionPlan(
 		OpenAIProvisionDemand{ActiveUsers: 1, Requests: 1, Tokens: 100},
 		1,
-		0.80,
+		1,
 		10,
-		time.Now().UTC(),
+		testOpenAIProvisionCapacity,
 	)
 	if plan.ShouldProvision {
 		t.Fatalf("usable quota headroom should not provision: %#v", plan)

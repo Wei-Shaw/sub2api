@@ -1370,6 +1370,8 @@ export default {
         targetLabel: 'Healthy OAuth account target',
         intervalLabel: 'Check interval (seconds)',
         workersLabel: 'Registration workers',
+        requestsPerAccountLabel: 'Five-hour requests per OAuth account',
+        tokensPerAccountLabel: 'Five-hour tokens per OAuth account',
         emailSourceLabel: 'Email source override',
         emailSourcePlaceholder: 'Use turb default',
         turbURLLabel: 'turb-gpt-free-register URL',
