@@ -309,8 +309,9 @@ func (i *ResponsesInputItem) UnmarshalJSON(data []byte) error {
 
 // ResponsesContentPart is a typed content part in a Responses message.
 type ResponsesContentPart struct {
-	Type     string `json:"type"` // "input_text" | "output_text" | "input_image" | "input_file"
+	Type     string `json:"type"` // "input_text" | "output_text" | "refusal" | "input_image" | "input_file"
 	Text     string `json:"text,omitempty"`
+	Refusal  string `json:"refusal,omitempty"`
 	ImageURL string `json:"image_url,omitempty"` // data URI for input_image
 
 	// input_file fields.

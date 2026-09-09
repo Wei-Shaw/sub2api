@@ -287,9 +287,12 @@ func anthropicAssistantToResponses(raw json.RawMessage) ([]ResponsesInputItem, e
 			continue
 		}
 		sig := strings.TrimSpace(b.Signature)
-		// Only replay provider ciphertext. Skip GPT/Codex-style gAAAA blobs and
-		// empty placeholders — xAI returns 400 on decrypt for foreign signatures.
-		if sig == "" || strings.HasPrefix(sig, "gAAAA") {
+		// The signature is opaque provider state. Preserve it verbatim so a
+		// stateless Responses request can resume GPT/Codex reasoning after a
+		// gateway restart or continuation-cache miss. Provider switches that
+		// reject foreign ciphertext are recovered by the provider-specific
+		// invalid_encrypted_content retry in the gateway.
+		if sig == "" {
 			continue
 		}
 		items = append(items, ResponsesInputItem{
@@ -368,7 +371,7 @@ func anthropicImageToDataURI(src *AnthropicImageSource) string {
 // (the Responses API output field only accepts strings).
 func convertToolResultOutput(b AnthropicContentBlock) (string, []ResponsesContentPart) {
 	if len(b.Content) == 0 {
-		return "(empty)", nil
+		return formatAnthropicToolResultOutput("(empty)", b.IsError), nil
 	}
 
 	// Try plain string content.
@@ -377,13 +380,13 @@ func convertToolResultOutput(b AnthropicContentBlock) (string, []ResponsesConten
 		if s == "" {
 			s = "(empty)"
 		}
-		return s, nil
+		return formatAnthropicToolResultOutput(s, b.IsError), nil
 	}
 
 	// Array of content blocks — may contain text and/or images.
 	var inner []AnthropicContentBlock
 	if err := json.Unmarshal(b.Content, &inner); err != nil {
-		return "(empty)", nil
+		return formatAnthropicToolResultOutput("(empty)", b.IsError), nil
 	}
 
 	// Separate text (for function_call_output) from images (for user message).
@@ -406,7 +409,14 @@ func convertToolResultOutput(b AnthropicContentBlock) (string, []ResponsesConten
 	if text == "" {
 		text = "(empty)"
 	}
-	return text, imageParts
+	return formatAnthropicToolResultOutput(text, b.IsError), imageParts
+}
+
+func formatAnthropicToolResultOutput(text string, isError bool) string {
+	if !isError {
+		return text
+	}
+	return "Error: " + text
 }
 
 // extractAnthropicTextFromBlocks joins all text blocks, ignoring thinking/
