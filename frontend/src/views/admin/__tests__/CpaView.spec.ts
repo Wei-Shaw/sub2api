@@ -169,6 +169,27 @@ describe('CpaView', () => {
     expect(wrapper.text()).toContain('14')
   })
 
+  it('renders the redesigned card sections (stats, quota title, success rate)', async () => {
+    const wrapper = await mountView()
+
+    expect(wrapper.text()).toContain('Quota')
+    // 724 / (724 + 1) = 99.9%
+    expect(wrapper.text()).toContain('99.9%')
+    // 顶部状态色条按状态着色
+    expect(wrapper.find('.bg-emerald-400').exists()).toBe(true)
+    // 供应商图标容器
+    expect(wrapper.find('.bg-emerald-50').exists()).toBe(true)
+  })
+
+  it('shows a placeholder before the quota is fetched', async () => {
+    // 额度请求悬挂：既没有数据也没有错误，应显示占位提示
+    getAuthFileQuota.mockReturnValue(new Promise(() => {}) as never)
+
+    const wrapper = await mountView()
+
+    expect(wrapper.text()).toContain('Not fetched yet')
+  })
+
   it('surfaces a load failure instead of crashing', async () => {
     listAuthFiles.mockRejectedValueOnce(new Error('CPA is unreachable'))
 

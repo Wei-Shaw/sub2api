@@ -133,99 +133,195 @@
           {{ t('admin.cpa.authFiles.empty') }}
         </div>
 
-        <article v-for="file in authFiles" :key="file.auth_index || file.name" class="card">
-          <div class="card-header flex flex-wrap items-center justify-between gap-2">
-            <div class="min-w-0">
-              <h3 class="truncate text-sm font-semibold text-gray-900 dark:text-white" :title="file.name">
-                {{ file.name }}
-              </h3>
-              <div class="mt-1 flex flex-wrap items-center gap-2 text-xs text-gray-500 dark:text-gray-400">
-                <span class="badge badge-primary">{{ file.provider || file.type || '—' }}</span>
-                <span v-if="file.email">{{ file.email }}</span>
-                <span v-if="filePlanType(file)" class="badge badge-success">{{ filePlanType(file) }}</span>
-                <span v-if="file.priority != null">P{{ file.priority }}</span>
-                <span v-if="file.note">· {{ file.note }}</span>
+        <article
+          v-for="file in authFiles"
+          :key="file.auth_index || file.name"
+          class="card card-hover overflow-hidden"
+        >
+          <!-- 顶部状态色条 -->
+          <div class="h-1 w-full" :class="statusAccent(file)" />
+
+          <div class="p-5">
+            <!-- 头部：供应商图标 + 名称 + 状态 + 操作 -->
+            <div class="flex items-start gap-3">
+              <div class="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl" :class="providerIconClass(file)">
+                <Icon :name="providerIcon(file)" size="md" />
               </div>
-            </div>
-            <div class="flex flex-wrap items-center gap-2 text-xs">
-              <span class="badge" :class="statusClass(file)">{{ file.status || t('admin.cpa.common.unknown') }}</span>
-              <span class="text-emerald-600 dark:text-emerald-400">✓ {{ file.success ?? 0 }}</span>
-              <span class="text-red-500">✗ {{ file.failed ?? 0 }}</span>
+
+              <div class="min-w-0 flex-1">
+                <div class="flex flex-wrap items-center gap-2">
+                  <h3 class="truncate text-sm font-semibold text-gray-900 dark:text-white" :title="file.name">
+                    {{ file.name }}
+                  </h3>
+                  <span class="badge" :class="statusClass(file)">{{ statusLabel(file) }}</span>
+                  <span v-if="filePlanType(file)" class="badge badge-success">{{ filePlanType(file) }}</span>
+                  <span v-if="file.priority != null" class="badge badge-gray">P{{ file.priority }}</span>
+                </div>
+                <div class="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-gray-500 dark:text-gray-400">
+                  <span class="inline-flex items-center gap-1">
+                    <Icon name="cube" size="xs" />{{ file.provider || file.type || '—' }}
+                  </span>
+                  <span v-if="file.email" class="inline-flex min-w-0 items-center gap-1">
+                    <Icon name="mail" size="xs" /><span class="truncate" :title="file.email">{{ file.email }}</span>
+                  </span>
+                  <span v-if="file.note" class="truncate" :title="file.note">· {{ file.note }}</span>
+                </div>
+              </div>
+
               <button
-                class="btn btn-secondary btn-sm"
+                class="btn btn-secondary btn-sm shrink-0"
                 :disabled="quotaLoading[file.auth_index]"
                 @click="loadQuota(file)"
               >
-                {{ quotaLoading[file.auth_index] ? t('admin.cpa.authFiles.quotaLoading') : t('admin.cpa.authFiles.refreshQuota') }}
+                <Icon
+                  name="refresh"
+                  size="sm"
+                  class="mr-1"
+                  :class="quotaLoading[file.auth_index] ? 'animate-spin' : ''"
+                />
+                {{
+                  quotaLoading[file.auth_index]
+                    ? t('admin.cpa.authFiles.quotaLoading')
+                    : t('admin.cpa.authFiles.refreshQuota')
+                }}
               </button>
             </div>
-          </div>
 
-          <div class="card-body space-y-3">
-            <!-- 真实额度（api-call → chatgpt wham/usage） -->
-            <div v-if="quota[file.auth_index]">
-              <UsageProgressBar
-                v-for="row in quotaRows(quota[file.auth_index])"
-                :key="row.key"
-                :label="row.label"
-                :utilization="row.usedPercent"
-                :resets-at="row.resetsAt"
-                :color="row.color"
-                label-width="auto"
-              />
-              <p
-                v-if="quotaResetCredits(quota[file.auth_index])"
-                class="text-xs text-gray-500 dark:text-gray-400"
-              >
-                {{ t('admin.cpa.authFiles.resetCredits') }}: {{ quotaResetCredits(quota[file.auth_index]) }}
-              </p>
-            </div>
-            <p
-              v-else-if="quotaError[file.auth_index]"
-              class="text-xs text-red-500"
-            >
-              {{ t('admin.cpa.authFiles.quotaError', { message: quotaError[file.auth_index] }) }}
-            </p>
-
-            <!-- 被动额度信号 -->
-            <div class="text-xs">
-              <div class="mb-1 font-medium text-gray-600 dark:text-gray-300">
-                {{ t('admin.cpa.authFiles.passiveSignals') }}
+            <!-- 统计格子 -->
+            <div class="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-4">
+              <div class="rounded-xl bg-emerald-50 px-3 py-2 dark:bg-emerald-900/15">
+                <p class="text-[11px] font-medium text-emerald-700/80 dark:text-emerald-400/80">
+                  {{ t('admin.cpa.authFiles.success') }}
+                </p>
+                <p class="text-lg font-semibold leading-tight text-emerald-600 dark:text-emerald-400">
+                  {{ file.success ?? 0 }}
+                </p>
               </div>
-              <div v-if="signalRows(file).length" class="flex flex-wrap gap-x-4 gap-y-1">
-                <span v-for="signal in signalRows(file)" :key="signal.key" class="font-mono">
-                  <span class="text-gray-500 dark:text-gray-400">{{ signal.key }}=</span>{{ signal.value }}
+              <div class="rounded-xl bg-red-50 px-3 py-2 dark:bg-red-900/15">
+                <p class="text-[11px] font-medium text-red-700/80 dark:text-red-400/80">
+                  {{ t('admin.cpa.authFiles.failed') }}
+                </p>
+                <p class="text-lg font-semibold leading-tight text-red-600 dark:text-red-400">
+                  {{ file.failed ?? 0 }}
+                </p>
+              </div>
+              <div class="rounded-xl bg-gray-50 px-3 py-2 dark:bg-dark-700/60">
+                <p class="text-[11px] font-medium text-gray-500 dark:text-gray-400">
+                  {{ t('admin.cpa.authFiles.successRate') }}
+                </p>
+                <p class="text-lg font-semibold leading-tight text-gray-800 dark:text-gray-100">
+                  {{ successRate(file) }}
+                </p>
+              </div>
+              <div class="rounded-xl bg-gray-50 px-3 py-2 dark:bg-dark-700/60">
+                <p class="text-[11px] font-medium text-gray-500 dark:text-gray-400">
+                  {{ t('admin.cpa.authFiles.lastRefresh') }}
+                </p>
+                <p
+                  class="truncate text-sm font-medium leading-tight text-gray-800 dark:text-gray-100"
+                  :title="formatTime(file.last_refresh)"
+                >
+                  {{ relativeTime(file.last_refresh) }}
+                </p>
+              </div>
+            </div>
+
+            <!-- 额度（api-call → chatgpt wham/usage） -->
+            <div class="mt-4">
+              <div class="mb-2 flex items-center gap-2">
+                <Icon name="chartBar" size="sm" class="text-gray-400 dark:text-gray-500" />
+                <span class="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
+                  {{ t('admin.cpa.authFiles.quotaTitle') }}
+                </span>
+                <span
+                  v-if="quotaResetCredits(quota[file.auth_index]) !== null"
+                  class="badge badge-gray ml-auto"
+                >
+                  {{ t('admin.cpa.authFiles.resetCredits') }} {{ quotaResetCredits(quota[file.auth_index]) }}
                 </span>
               </div>
-              <span v-else class="text-gray-400 dark:text-gray-500">{{ t('admin.cpa.authFiles.noSignals') }}</span>
-              <div v-if="file.quota?.observed_at" class="mt-1 text-gray-400 dark:text-gray-500">
-                {{ t('admin.cpa.authFiles.observedAt', { time: formatTime(file.quota.observed_at) }) }}
-              </div>
-            </div>
 
-            <!-- 最近请求分桶 -->
-            <div class="flex items-end gap-1">
-              <div
-                v-for="(bucket, index) in file.recent_requests || []"
-                :key="index"
-                class="flex h-6 w-2.5 flex-col justify-end overflow-hidden rounded-sm bg-gray-100 dark:bg-dark-600"
-                :title="`${formatTime(bucket.time)} · ✓${bucket.success} ✗${bucket.failed}`"
-              >
-                <div
-                  class="w-full bg-emerald-500"
-                  :style="{ height: bucketHeight(bucket, file.recent_requests || []) }"
+              <div v-if="quota[file.auth_index]" class="space-y-2">
+                <UsageProgressBar
+                  v-for="row in quotaRows(quota[file.auth_index])"
+                  :key="row.key"
+                  :label="row.label"
+                  :utilization="row.usedPercent"
+                  :resets-at="row.resetsAt"
+                  :color="row.color"
+                  label-width="auto"
                 />
               </div>
-              <span class="ml-2 text-xs text-gray-500 dark:text-gray-400">
-                {{ t('admin.cpa.authFiles.recentRequests') }}
-              </span>
+              <p v-else-if="quotaError[file.auth_index]" class="text-xs text-red-500">
+                {{ t('admin.cpa.authFiles.quotaError', { message: quotaError[file.auth_index] }) }}
+              </p>
+              <p v-else class="text-xs text-gray-400 dark:text-gray-500">
+                {{ t('admin.cpa.authFiles.noQuotaYet') }}
+              </p>
+            </div>
+
+            <!-- 最近请求 + 被动信号 -->
+            <div class="mt-4 grid gap-4 border-t border-gray-100 pt-4 dark:border-dark-700 lg:grid-cols-2">
+              <div>
+                <div class="mb-2 flex items-baseline gap-2">
+                  <span class="text-xs font-medium text-gray-500 dark:text-gray-400">
+                    {{ t('admin.cpa.authFiles.recentRequests') }}
+                  </span>
+                  <span class="text-[11px] text-gray-400 dark:text-gray-500">{{ requestTotals(file) }}</span>
+                </div>
+                <div v-if="(file.recent_requests || []).length" class="flex h-8 items-end gap-1">
+                  <div
+                    v-for="(bucket, index) in file.recent_requests"
+                    :key="index"
+                    class="relative h-full flex-1 overflow-hidden rounded-sm bg-gray-100 dark:bg-dark-600"
+                    :title="`${formatTime(bucket.time)} · ✓${bucket.success} ✗${bucket.failed}`"
+                  >
+                    <div
+                      class="absolute bottom-0 w-full bg-emerald-500"
+                      :style="{ height: bucketSegments(bucket, bucketMax(file)).success }"
+                    />
+                    <div
+                      class="absolute w-full bg-red-400"
+                      :style="{
+                        bottom: bucketSegments(bucket, bucketMax(file)).success,
+                        height: bucketSegments(bucket, bucketMax(file)).failed
+                      }"
+                    />
+                  </div>
+                </div>
+                <p v-else class="text-xs text-gray-400 dark:text-gray-500">
+                  {{ t('admin.cpa.authFiles.noSignals') }}
+                </p>
+              </div>
+
+              <div>
+                <div class="mb-2 text-xs font-medium text-gray-500 dark:text-gray-400">
+                  {{ t('admin.cpa.authFiles.passiveSignals') }}
+                </div>
+                <div v-if="signalRows(file).length" class="flex flex-wrap gap-1.5">
+                  <span
+                    v-for="signal in signalRows(file)"
+                    :key="signal.key"
+                    class="inline-flex max-w-full items-center gap-1 rounded-lg bg-gray-100 px-2 py-0.5 text-[11px] dark:bg-dark-700"
+                  >
+                    <span class="truncate text-gray-500 dark:text-gray-400" :title="signal.key">{{ signal.key }}</span>
+                    <span class="font-semibold text-gray-800 dark:text-gray-100">{{ signal.value }}</span>
+                  </span>
+                </div>
+                <p v-else class="text-xs text-gray-400 dark:text-gray-500">
+                  {{ t('admin.cpa.authFiles.noSignals') }}
+                </p>
+                <p v-if="file.quota?.observed_at" class="mt-1 text-[11px] text-gray-400 dark:text-gray-500">
+                  {{ t('admin.cpa.authFiles.observedAt', { time: formatTime(file.quota.observed_at) }) }}
+                </p>
+              </div>
             </div>
 
             <!-- 元信息 -->
-            <div class="flex flex-wrap gap-x-5 gap-y-1 text-xs text-gray-500 dark:text-gray-400">
-              <span v-if="file.last_refresh">
-                {{ t('admin.cpa.authFiles.lastRefresh') }}: {{ formatTime(file.last_refresh) }}
-              </span>
+            <div
+              v-if="file.next_retry_after || file.status_message"
+              class="mt-3 flex flex-wrap gap-x-5 gap-y-1 text-[11px] text-gray-500 dark:text-gray-400"
+            >
               <span v-if="file.next_retry_after">
                 {{ t('admin.cpa.authFiles.nextRetry') }}: {{ formatTime(file.next_retry_after) }}
               </span>
@@ -346,6 +442,7 @@ import Toggle from '@/components/common/Toggle.vue'
 import Icon from '@/components/icons/Icon.vue'
 import UsageProgressBar from '@/components/account/UsageProgressBar.vue'
 import { useAppStore } from '@/stores'
+import { formatRelativeTime } from '@/utils/format'
 import { cpaApi } from '@/api/cpa'
 import type {
   CpaAuthFile,
@@ -525,6 +622,53 @@ function statusClass(file: CpaAuthFile): string {
   return 'badge-warning'
 }
 
+/** 卡片顶部 1px 状态色条。 */
+function statusAccent(file: CpaAuthFile): string {
+  if (file.unavailable) return 'bg-red-400'
+  if (file.disabled) return 'bg-amber-400'
+  const status = (file.status || '').toLowerCase()
+  if (status === 'active' || status === 'ready' || status === 'ok') return 'bg-emerald-400'
+  return 'bg-gray-300 dark:bg-dark-600'
+}
+
+function statusLabel(file: CpaAuthFile): string {
+  if (file.unavailable) return t('admin.cpa.authFiles.unavailable')
+  if (file.disabled) return t('admin.cpa.authFiles.disabled')
+  return file.status || t('admin.cpa.common.unknown')
+}
+
+/** 供应商图标：按 provider 挑一个语义接近的图标。 */
+function providerIcon(file: CpaAuthFile): 'sparkles' | 'brain' | 'cloud' | 'key' {
+  const provider = (file.provider || file.type || '').toLowerCase()
+  if (provider === 'codex' || provider === 'openai') return 'sparkles'
+  if (provider === 'claude' || provider === 'anthropic') return 'brain'
+  if (provider === 'gemini' || provider === 'google') return 'cloud'
+  return 'key'
+}
+
+function providerIconClass(file: CpaAuthFile): string {
+  if (file.unavailable) return 'bg-red-50 text-red-500 dark:bg-red-900/20 dark:text-red-400'
+  if (file.disabled) return 'bg-amber-50 text-amber-500 dark:bg-amber-900/20 dark:text-amber-400'
+  const status = (file.status || '').toLowerCase()
+  if (status === 'active' || status === 'ready' || status === 'ok') {
+    return 'bg-emerald-50 text-emerald-500 dark:bg-emerald-900/20 dark:text-emerald-400'
+  }
+  return 'bg-gray-100 text-gray-500 dark:bg-dark-700 dark:text-gray-400'
+}
+
+/** 成功率：没有请求样本时显示占位符而不是 0%。 */
+function successRate(file: CpaAuthFile): string {
+  const success = file.success ?? 0
+  const failed = file.failed ?? 0
+  const total = success + failed
+  if (total <= 0) return '—'
+  return `${((success / total) * 100).toFixed(1)}%`
+}
+
+function requestTotals(file: CpaAuthFile): string {
+  return `✓ ${file.success ?? 0} · ✗ ${file.failed ?? 0}`
+}
+
 function signalRows(file: CpaAuthFile): Array<{ key: string; value: string }> {
   const signals = file.quota?.signals || {}
   return Object.entries(signals)
@@ -532,10 +676,22 @@ function signalRows(file: CpaAuthFile): Array<{ key: string; value: string }> {
     .slice(0, 12)
 }
 
-function bucketHeight(bucket: CpaRecentRequestBucket, all: CpaRecentRequestBucket[]): string {
-  const max = Math.max(1, ...all.map((item) => item.success + item.failed))
-  const ratio = (bucket.success + bucket.failed) / max
-  return `${Math.max(bucket.success + bucket.failed > 0 ? 12 : 0, ratio * 100)}%`
+function bucketMax(file: CpaAuthFile): number {
+  const buckets = file.recent_requests || []
+  return Math.max(1, ...buckets.map((item) => item.success + item.failed))
+}
+
+/** 单桶堆叠高度：绿色=成功、红色=失败，均相对该凭据的最大桶。 */
+function bucketSegments(bucket: CpaRecentRequestBucket, max: number): { success: string; failed: string } {
+  const success = ((bucket.success || 0) / max) * 100
+  const failed = ((bucket.failed || 0) / max) * 100
+  return { success: `${success}%`, failed: `${failed}%` }
+}
+
+function relativeTime(value?: string | null): string {
+  if (!value) return '—'
+  const formatted = formatRelativeTime(value)
+  return formatted || '—'
 }
 
 function pickWindow(rateLimit: CpaCodexRateLimit | null | undefined, primary: boolean): CpaCodexWindow | null {
