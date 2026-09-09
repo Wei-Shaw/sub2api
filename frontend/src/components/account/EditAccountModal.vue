@@ -542,6 +542,57 @@
         </div>
       </div>
 
+      <!-- Grok OAuth media generation eligibility override -->
+      <div
+        v-if="isGrokOAuthAccount"
+        class="border-t border-gray-200 pt-4 dark:border-dark-600"
+        data-testid="grok-media-eligibility-card"
+      >
+        <div class="space-y-3">
+          <div>
+            <label class="input-label mb-0">{{ t('admin.accounts.grokMediaEligibility.title') }}</label>
+            <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+              {{ t('admin.accounts.grokMediaEligibility.hint') }}
+            </p>
+          </div>
+          <select
+            v-model="grokMediaEligibilityMode"
+            class="input"
+            data-testid="grok-media-eligibility-mode"
+            :disabled="grokMediaEligibilityLoading"
+          >
+            <option value="auto">{{ t('admin.accounts.grokMediaEligibility.auto') }}</option>
+            <option value="enabled">{{ t('admin.accounts.grokMediaEligibility.enabled') }}</option>
+            <option value="disabled">{{ t('admin.accounts.grokMediaEligibility.disabled') }}</option>
+          </select>
+          <p v-if="grokMediaEligibilityLoading" class="text-xs text-gray-500 dark:text-gray-400">
+            {{ t('admin.accounts.grokMediaEligibility.loading') }}
+          </p>
+          <p v-else-if="grokMediaEligibilityError" class="text-xs text-red-600 dark:text-red-400">
+            {{ grokMediaEligibilityError }}
+          </p>
+          <div v-else-if="grokMediaEligibilityState" class="rounded-lg bg-gray-50 p-3 text-xs dark:bg-dark-700">
+            <span class="font-medium">{{ t('admin.accounts.grokMediaEligibility.current') }}</span>
+            <span class="ml-1" data-testid="grok-media-eligibility-status">
+              {{ grokMediaEligibilityState.eligible ? t('admin.accounts.grokMediaEligibility.eligible') : t('admin.accounts.grokMediaEligibility.ineligible') }}
+              · {{ t(`admin.accounts.grokMediaEligibility.reasons.${grokMediaEligibilityState.reason}`) }}
+            </span>
+          </div>
+          <div
+            v-if="grokMediaEligibilityMode === 'enabled'"
+            class="rounded-lg bg-amber-50 p-3 dark:bg-amber-900/20"
+          >
+            <p class="text-xs text-amber-700 dark:text-amber-400">
+              <Icon name="exclamationTriangle" size="sm" class="mr-1 inline" :stroke-width="2" />
+              {{ t('admin.accounts.grokMediaEligibility.forceEnableWarning') }}
+            </p>
+          </div>
+          <p v-else-if="grokMediaEligibilityMode === 'auto'" class="text-xs text-gray-500 dark:text-gray-400">
+            {{ t('admin.accounts.grokMediaEligibility.autoHint') }}
+          </p>
+        </div>
+      </div>
+
       <!-- Grok OAuth Custom Upstream URL (仅改写转发端点，OAuth 授权/刷新不受影响) -->
       <div
         v-if="account.platform === 'grok' && account.type === 'oauth'"
@@ -2851,7 +2902,7 @@
       <!-- Group Selection - 仅标准模式显示 -->
       <GroupSelector
         v-model="form.group_ids"
-        :groups="groups"
+        :groups="selectableGroups"
         :platform="account?.platform"
         :mixed-scheduling="mixedScheduling"
         data-tour="account-form-groups"
@@ -2921,11 +2972,14 @@ import type {
   Account,
   Proxy,
   AdminGroup,
+  Group,
   CheckMixedChannelResponse,
   OpenAICompactMode,
   OpenAIResponsesMode,
   OpenAIEndpointCapability,
-  OllamaCloudUsageState
+  OllamaCloudUsageState,
+  GrokMediaEligibilityMode,
+  GrokMediaEligibilityState
 } from '@/types'
 import BaseDialog from '@/components/common/BaseDialog.vue'
 import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
@@ -2957,11 +3011,13 @@ import {
   cnSupportsNativeResponses,
   defaultCNAdaptiveBaseUrls,
   defaultCNBaseUrl,
+  isCNProviderPlatform,
   HEADER_OVERRIDE_ENABLED_CREDENTIAL_KEY,
   HEADER_OVERRIDES_CREDENTIAL_KEY,
   type CnAccountMode,
   type CnApiProtocol,
   type CnNativeApiProtocol,
+  type CnProviderPlatform,
   type HeaderOverrideRow
 } from '@/components/account/credentialsBuilder'
 import {
@@ -3009,6 +3065,17 @@ const { t } = useI18n()
 const appStore = useAppStore()
 const browserTimeZone = getBrowserTimeZone()
 
+const selectableGroups = computed(() => {
+  const groups = new Map<number, Group>(props.groups.map(group => [group.id, group]))
+  const assignedIds = new Set(props.account?.group_ids ?? [])
+  for (const group of props.account?.groups ?? []) {
+    if (assignedIds.has(group.id) && !groups.has(group.id)) {
+      groups.set(group.id, group)
+    }
+  }
+  return Array.from(groups.values())
+})
+
 // Spark 影子账号(parent_account_id 非空):代理恒继承母账号,不可独立编辑(外审 B/P1),
 // 故隐藏代理选择器。
 const isSparkShadow = computed(() => props.account?.parent_account_id != null)
@@ -3055,18 +3122,14 @@ const editApiKey = ref('')
 // account_mode 决定额度/余额监控路径，api_protocol 决定转发端点与格式；
 // 二者均可修正（早期创建的账号可能存错默认值），切换时重置 base_url 预置。
 const isCNApiKeyAccount = computed(
-  () =>
-    props.account?.type === 'apikey' &&
-    (props.account.platform === 'kimi' ||
-      props.account.platform === 'zhipu' ||
-      props.account.platform === 'deepseek')
+  () => props.account?.type === 'apikey' && isCNProviderPlatform(props.account.platform)
 )
 // CnBaseUrlPresets 的 platform prop 是平台字面量联合类型，模板里不能写
 // `as` 断言（其中的 `|` 会被 eslint 误判为 Vue2 filter 语法），经此 computed 传递。
-const cnPresetPlatform = computed<'kimi' | 'zhipu' | 'deepseek'>(() => {
+const cnPresetPlatform = computed<CnProviderPlatform>(() => {
   const platform = props.account?.platform
-  if (platform === 'kimi' || platform === 'zhipu' || platform === 'deepseek') {
-    return platform
+  if (isCNProviderPlatform(platform ?? '')) {
+    return platform as CnProviderPlatform
   }
   return 'kimi'
 })
@@ -3239,6 +3302,46 @@ const grokOAuthBaseUrl = ref('')
 // Grok Free OAuth accounts use client-tool prompt caching by default. Keep an
 // explicit false in the account extra as the opt-out signal.
 const grokClientToolCacheEnabled = ref(true)
+const isGrokOAuthAccount = computed(
+  () => props.account?.platform === 'grok' && props.account?.type === 'oauth'
+)
+const grokMediaEligibilityMode = ref<GrokMediaEligibilityMode>('auto')
+const grokMediaEligibilityInitialMode = ref<GrokMediaEligibilityMode>('auto')
+const grokMediaEligibilityState = ref<GrokMediaEligibilityState | null>(null)
+const grokMediaEligibilityLoading = ref(false)
+const grokMediaEligibilityError = ref('')
+let grokMediaEligibilityRequestVersion = 0
+
+const modeFromGrokMediaExtra = (extra: Record<string, unknown> | undefined): GrokMediaEligibilityMode => {
+  if (extra?.grok_media_eligible === true) return 'enabled'
+  if (extra?.grok_media_eligible === false) return 'disabled'
+  return 'auto'
+}
+
+const loadGrokMediaEligibility = async (accountID: number): Promise<GrokMediaEligibilityState | null> => {
+  if (!isGrokOAuthAccount.value || typeof adminAPI.accounts.getGrokMediaEligibility !== 'function') {
+    return null
+  }
+  const requestVersion = ++grokMediaEligibilityRequestVersion
+  grokMediaEligibilityLoading.value = true
+  grokMediaEligibilityError.value = ''
+  try {
+    const state = await adminAPI.accounts.getGrokMediaEligibility(accountID)
+    if (requestVersion !== grokMediaEligibilityRequestVersion) return null
+    grokMediaEligibilityState.value = state
+    grokMediaEligibilityMode.value = state.mode
+    grokMediaEligibilityInitialMode.value = state.mode
+    return state
+  } catch (error: any) {
+    if (requestVersion !== grokMediaEligibilityRequestVersion) return null
+    grokMediaEligibilityError.value = error?.message || t('admin.accounts.grokMediaEligibility.loadFailed')
+    return null
+  } finally {
+    if (requestVersion === grokMediaEligibilityRequestVersion) {
+      grokMediaEligibilityLoading.value = false
+    }
+  }
+}
 
 const interceptWarmupRequests = ref(false)
 const autoPauseOnExpired = ref(false)
@@ -3980,6 +4083,15 @@ const syncFormFromAccount = (newAccount: Account | null) => {
     newAccount.platform === 'grok' &&
     newAccount.type === 'oauth' &&
     (grokClientToolCacheSetting === undefined || grokClientToolCacheSetting === true)
+  grokMediaEligibilityMode.value = modeFromGrokMediaExtra(extra)
+  grokMediaEligibilityInitialMode.value = grokMediaEligibilityMode.value
+  grokMediaEligibilityState.value = null
+  grokMediaEligibilityError.value = ''
+  if (newAccount.platform === 'grok' && newAccount.type === 'oauth') {
+    void loadGrokMediaEligibility(newAccount.id)
+  } else {
+    grokMediaEligibilityRequestVersion++
+  }
   if (newAccount.platform === 'grok' && newAccount.type === 'oauth' && newAccount.credentials) {
     const grokCreds = newAccount.credentials as Record<string, unknown>
     if (isCustomGrokBaseUrl(grokCreds.base_url)) {
@@ -3993,7 +4105,7 @@ const syncFormFromAccount = (newAccount: Account | null) => {
     const credentials = newAccount.credentials as Record<string, unknown>
     // 国产供应商：读取 account_mode 与 api_protocol 作为可编辑初始值
     // （编辑弹窗允许修正两者，用于修复早期存错默认值的账号）。
-    if (newAccount.platform === 'kimi' || newAccount.platform === 'zhipu' || newAccount.platform === 'deepseek') {
+    if (isCNProviderPlatform(newAccount.platform)) {
       editAccountMode.value = credentials.account_mode === 'coding' ? 'coding' : 'payg'
       const storedProtocol = credentials.api_protocol
       editApiProtocol.value =
@@ -4671,10 +4783,48 @@ const handleClose = () => {
   emit('close')
 }
 
+const persistGrokMediaEligibility = async (accountID: number, updatedAccount: Account): Promise<Account> => {
+  if (
+    !isGrokOAuthAccount.value ||
+    grokMediaEligibilityMode.value === grokMediaEligibilityInitialMode.value ||
+    typeof adminAPI.accounts.updateGrokMediaEligibility !== 'function'
+  ) {
+    return updatedAccount
+  }
+
+  try {
+    const state = await adminAPI.accounts.updateGrokMediaEligibility(accountID, grokMediaEligibilityMode.value)
+    grokMediaEligibilityState.value = state
+    grokMediaEligibilityInitialMode.value = state.mode
+    const nextExtra = { ...((updatedAccount.extra as Record<string, unknown> | undefined) || {}) }
+    if (state.mode === 'auto') {
+      delete nextExtra.grok_media_eligible
+    } else {
+      nextExtra.grok_media_eligible = state.mode === 'enabled'
+    }
+    updatedAccount.extra = nextExtra
+  } catch (error: any) {
+    appStore.showError(t('admin.accounts.grokMediaEligibility.partialSave'))
+    try {
+      const state = await loadGrokMediaEligibility(accountID)
+      if (state) {
+        const nextExtra = { ...((updatedAccount.extra as Record<string, unknown> | undefined) || {}) }
+        if (state.mode === 'auto') delete nextExtra.grok_media_eligible
+        else nextExtra.grok_media_eligible = state.mode === 'enabled'
+        updatedAccount.extra = nextExtra
+      }
+    } catch {
+      // The original save result remains useful even when the refresh fails.
+    }
+  }
+  return updatedAccount
+}
+
 const submitUpdateAccount = async (accountID: number, updatePayload: Record<string, unknown>) => {
   submitting.value = true
   try {
-    const updatedAccount = await adminAPI.accounts.update(accountID, withAntigravityConfirmFlag(updatePayload))
+    let updatedAccount = await adminAPI.accounts.update(accountID, withAntigravityConfirmFlag(updatePayload))
+    updatedAccount = await persistGrokMediaEligibility(accountID, updatedAccount)
     appStore.showSuccess(t('admin.accounts.accountUpdated'))
     emit('updated', updatedAccount)
     handleClose()

@@ -10,5 +10,6 @@ describe('Composite channel platform options', () => {
     expect(declaration).toContain("'kimi'")
     expect(declaration).toContain("'zhipu'")
     expect(declaration).toContain("'deepseek'")
+    expect(declaration).toContain("'minimax'")
   })
 })

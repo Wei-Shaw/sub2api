@@ -7,6 +7,7 @@ mkdir -p \
     "${STATE_DIR}/containers" \
     "${STATE_DIR}/running" \
     "${STATE_DIR}/networks" \
+    "${STATE_DIR}/network-subnets" \
     "${STATE_DIR}/volumes" \
     "${STATE_DIR}/unowned/container" \
     "${STATE_DIR}/unowned/network" \
@@ -34,9 +35,18 @@ inspect_resource() {
     local resource_name=$2
     local label_value="apple-container"
     local address="192.168.65.4/24"
+    local subnet="192.168.65.0/24"
 
     if [[ -e "${STATE_DIR}/unowned/${resource_type}/${resource_name}" ]]; then
         label_value="other"
+    fi
+    if [[ "${resource_type}" == "network" ]]; then
+        if [[ -s "${STATE_DIR}/network-subnets/${resource_name}" ]]; then
+            subnet="$(<"${STATE_DIR}/network-subnets/${resource_name}")"
+        fi
+        printf '[{"configuration":{"ipv4Subnet":"%s","labels":{"org.sub2api.stack":"%s"}}}]\n' \
+            "${subnet}" "${label_value}"
+        return
     fi
     case "${resource_name}" in
         sub2api-apple-postgres) address="192.168.65.2/24" ;;
@@ -82,9 +92,26 @@ case "${command}" in
                 echo default
                 list_names "${STATE_DIR}/networks"
                 ;;
-            create) touch "${STATE_DIR}/networks/$(last_argument "$@")" ;;
+            create)
+                network_name="$(last_argument "$@")"
+                subnet=""
+                while [[ $# -gt 0 ]]; do
+                    case "$1" in
+                        --subnet)
+                            subnet=$2
+                            shift 2
+                            ;;
+                        *) shift ;;
+                    esac
+                done
+                touch "${STATE_DIR}/networks/${network_name}"
+                printf '%s' "${subnet}" >"${STATE_DIR}/network-subnets/${network_name}"
+                ;;
             inspect) inspect_resource network "${1}" ;;
-            delete) rm -f "${STATE_DIR}/networks/${1}" ;;
+            delete)
+                rm -f "${STATE_DIR}/networks/${1}"
+                rm -f "${STATE_DIR}/network-subnets/${1}"
+                ;;
             *) exit 1 ;;
         esac
         ;;

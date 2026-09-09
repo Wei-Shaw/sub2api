@@ -382,7 +382,7 @@ func buildOpenAIImagesResponsesRequest(parsed *OpenAIImagesRequest, toolModel st
 	}
 
 	req := []byte(`{"instructions":"","stream":true,"reasoning":{"effort":"medium","summary":"auto"},"parallel_tool_calls":true,"include":["reasoning.encrypted_content"],"model":"","store":false,"tool_choice":{"type":"image_generation"}}`)
-	req, _ = sjson.SetBytes(req, "model", openAIImagesResponsesMainModel)
+	req, _ = sjson.SetBytes(req, "model", openAIImagesResponsesMainModelValue())
 	req, _ = sjson.SetBytes(req, "instructions", openAIImagesVerbatimPromptInstructions)
 
 	input := []byte(`[{"type":"message","role":"user","content":[{"type":"input_text","text":""}]}]`)
@@ -978,6 +978,17 @@ func (s *OpenAIGatewayService) handleOpenAIImagesErrorResponse(
 		return nil, upErr
 	}
 
+	// A retired/configured Responses driver is not an image-model quota failure.
+	// Surface the actionable upstream error instead of cooling every image account
+	// and eventually hiding the configuration problem behind a generic 503.
+	if account.IsOpenAIOAuthLike() &&
+		isOpenAICodexPlanGatedModelError(resp.StatusCode, body) &&
+		strings.Contains(extractUpstreamErrorMessage(body), "'"+openAIImagesResponsesMainModelValue()+"'") {
+		upErr := openAIImagesUpstreamErrorFromHTTP(resp.StatusCode, resp.Header, body)
+		writeOpenAIImagesUpstreamErrorResponse(c, upErr)
+		return nil, upErr
+	}
+
 	// Track rate limits / decide whether to disable the account (secondary failover).
 	var modelForCooldown string
 	if len(requestedModel) > 0 {
@@ -1182,8 +1193,13 @@ func openAIImagesToolUsageFromGJSON(value gjson.Result) (OpenAIUsage, bool) {
 	if !inputOK || !outputOK || !imageOutputOK {
 		return OpenAIUsage{}, false
 	}
+	imageInputTokens, _ := boundedJSONNonNegativeInt(value.Get("input_tokens_details.image_tokens"))
+	if imageInputTokens > inputTokens {
+		imageInputTokens = inputTokens
+	}
 	return OpenAIUsage{
 		InputTokens:       inputTokens,
+		ImageInputTokens:  imageInputTokens,
 		OutputTokens:      outputTokens,
 		ImageOutputTokens: imageOutputTokens,
 	}, true
