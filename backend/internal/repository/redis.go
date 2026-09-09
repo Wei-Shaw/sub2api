@@ -20,8 +20,8 @@ import (
 // 1. PoolSize: 控制最大并发连接数（默认 128）
 // 2. MinIdleConns: 保持最小空闲连接，减少冷启动延迟（默认 10）
 // 3. DialTimeout/ReadTimeout/WriteTimeout: 精确控制各阶段超时
-func InitRedis(cfg *config.Config) *redis.Client {
-	client := redis.NewClient(buildRedisOptions(cfg))
+func InitRedis(cfg *config.Config) redis.UniversalClient {
+	client := redis.NewUniversalClient(buildRedisOptions(cfg))
 	if cfg.Server.EnableServerTiming {
 		client.AddHook(serverTimingRedisHook{})
 	}
@@ -30,17 +30,18 @@ func InitRedis(cfg *config.Config) *redis.Client {
 
 // buildRedisOptions 构建 Redis 连接选项
 // 从配置文件读取连接池和超时参数，支持生产环境调优
-func buildRedisOptions(cfg *config.Config) *redis.Options {
-	opts := &redis.Options{
-		Addr:         cfg.Redis.Address(),
-		Username:     cfg.Redis.Username,
-		Password:     cfg.Redis.Password,
-		DB:           cfg.Redis.DB,
-		DialTimeout:  time.Duration(cfg.Redis.DialTimeoutSeconds) * time.Second,  // 建连超时
-		ReadTimeout:  time.Duration(cfg.Redis.ReadTimeoutSeconds) * time.Second,  // 读取超时
-		WriteTimeout: time.Duration(cfg.Redis.WriteTimeoutSeconds) * time.Second, // 写入超时
-		PoolSize:     cfg.Redis.PoolSize,                                         // 连接池大小
-		MinIdleConns: cfg.Redis.MinIdleConns,                                     // 最小空闲连接
+func buildRedisOptions(cfg *config.Config) *redis.UniversalOptions {
+	opts := &redis.UniversalOptions{
+		Addrs:         cfg.Redis.ConnectionAddresses(),
+		IsClusterMode: cfg.Redis.IsCluster(),
+		Username:      cfg.Redis.Username,
+		Password:      cfg.Redis.Password,
+		DB:            cfg.Redis.DB,
+		DialTimeout:   time.Duration(cfg.Redis.DialTimeoutSeconds) * time.Second,  // 建连超时
+		ReadTimeout:   time.Duration(cfg.Redis.ReadTimeoutSeconds) * time.Second,  // 读取超时
+		WriteTimeout:  time.Duration(cfg.Redis.WriteTimeoutSeconds) * time.Second, // 写入超时
+		PoolSize:      cfg.Redis.PoolSize,                                         // 连接池大小
+		MinIdleConns:  cfg.Redis.MinIdleConns,                                     // 最小空闲连接
 	}
 
 	if cfg.Redis.EnableTLS {

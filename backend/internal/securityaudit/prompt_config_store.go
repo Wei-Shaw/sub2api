@@ -27,7 +27,7 @@ type activeConfigSnapshot struct {
 type ConfigManager struct {
 	db        *sql.DB
 	settings  service.SettingRepository
-	redis     *redis.Client
+	redis     redis.UniversalClient
 	encryptor SecretEncryptor
 	clock     Clock
 	// encryptionKeyConfigured mirrors cfg.Totp.EncryptionKeyConfigured. With an
@@ -58,7 +58,7 @@ type ConfigManager struct {
 	wg          sync.WaitGroup
 }
 
-func NewConfigManager(db *sql.DB, settings service.SettingRepository, redisClient *redis.Client, encryptor service.SecretEncryptor, cfg *config.Config) *ConfigManager {
+func NewConfigManager(db *sql.DB, settings service.SettingRepository, redisClient redis.UniversalClient, encryptor service.SecretEncryptor, cfg *config.Config) *ConfigManager {
 	return &ConfigManager{
 		db: db, settings: settings, redis: redisClient, encryptor: encryptor, clock: realClock{},
 		encryptionKeyConfigured: cfg != nil && cfg.Totp.EncryptionKeyConfigured,

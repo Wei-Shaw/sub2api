@@ -35,7 +35,7 @@ func SetupRouter(
 	settingService *service.SettingService,
 	compositeResolver *service.CompositeRouteResolver,
 	cfg *config.Config,
-	redisClient *redis.Client,
+	redisClient redis.UniversalClient,
 ) *gin.Engine {
 	middleware2.SetIngressRejectRecorder(opsService)
 	// 缓存 iframe 页面的 origin 列表，用于动态注入 CSP frame-src
@@ -111,7 +111,7 @@ func registerRoutes(
 	settingService *service.SettingService,
 	compositeResolver *service.CompositeRouteResolver,
 	cfg *config.Config,
-	redisClient *redis.Client,
+	redisClient redis.UniversalClient,
 ) {
 	// 通用路由（健康检查、状态等）
 	routes.RegisterCommonRoutes(r)

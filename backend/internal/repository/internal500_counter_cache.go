@@ -28,11 +28,11 @@ var internal500CounterIncrScript = redis.NewScript(`
 `)
 
 type internal500CounterCache struct {
-	rdb *redis.Client
+	rdb redis.UniversalClient
 }
 
 // NewInternal500CounterCache 创建 INTERNAL 500 连续失败计数器缓存实例
-func NewInternal500CounterCache(rdb *redis.Client) service.Internal500CounterCache {
+func NewInternal500CounterCache(rdb redis.UniversalClient) service.Internal500CounterCache {
 	return &internal500CounterCache{rdb: rdb}
 }
 

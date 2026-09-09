@@ -44,7 +44,7 @@ func TestAuthRegisterRateLimitThresholdHitReturns429(t *testing.T) {
 	}
 }
 
-func startAuthRouteRedis(t *testing.T, ctx context.Context) *redis.Client {
+func startAuthRouteRedis(t *testing.T, ctx context.Context) redis.UniversalClient {
 	t.Helper()
 	ensureAuthRouteDockerAvailable(t)
 

@@ -26,11 +26,11 @@ var timeoutCounterIncrScript = redis.NewScript(`
 `)
 
 type timeoutCounterCache struct {
-	rdb *redis.Client
+	rdb redis.UniversalClient
 }
 
 // NewTimeoutCounterCache 创建超时计数器缓存实例
-func NewTimeoutCounterCache(rdb *redis.Client) service.TimeoutCounterCache {
+func NewTimeoutCounterCache(rdb redis.UniversalClient) service.TimeoutCounterCache {
 	return &timeoutCounterCache{rdb: rdb}
 }
 

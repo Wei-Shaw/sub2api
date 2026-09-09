@@ -11,10 +11,10 @@ import (
 const updateCacheKey = "update:latest"
 
 type updateCache struct {
-	rdb *redis.Client
+	rdb redis.UniversalClient
 }
 
-func NewUpdateCache(rdb *redis.Client) service.UpdateCache {
+func NewUpdateCache(rdb redis.UniversalClient) service.UpdateCache {
 	return &updateCache{rdb: rdb}
 }
 

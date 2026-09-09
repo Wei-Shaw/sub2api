@@ -13,10 +13,10 @@ import (
 const imageTaskKeyPrefix = "image_task:"
 
 type imageTaskStore struct {
-	rdb *redis.Client
+	rdb redis.UniversalClient
 }
 
-func NewImageTaskStore(rdb *redis.Client) service.ImageTaskStore {
+func NewImageTaskStore(rdb redis.UniversalClient) service.ImageTaskStore {
 	return &imageTaskStore{rdb: rdb}
 }
 

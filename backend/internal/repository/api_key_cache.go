@@ -29,10 +29,10 @@ func apiKeyAuthCacheKey(key string) string {
 }
 
 type apiKeyCache struct {
-	rdb *redis.Client
+	rdb redis.UniversalClient
 }
 
-func NewAPIKeyCache(rdb *redis.Client) service.APIKeyCache {
+func NewAPIKeyCache(rdb redis.UniversalClient) service.APIKeyCache {
 	return &apiKeyCache{rdb: rdb}
 }
 

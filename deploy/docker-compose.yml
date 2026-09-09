@@ -71,6 +71,8 @@ services:
       # =======================================================================
       # Redis Configuration
       # =======================================================================
+      - REDIS_MODE=${REDIS_MODE:-standalone}
+      - REDIS_ADDRESSES=${REDIS_ADDRESSES:-}
       - REDIS_HOST=redis
       - REDIS_PORT=6379
       - REDIS_USERNAME=${REDIS_USERNAME:-}

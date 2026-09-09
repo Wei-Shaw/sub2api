@@ -28,6 +28,8 @@ export interface DatabaseConfig {
 }
 
 export interface RedisConfig {
+  mode?: 'standalone' | 'cluster'
+  addresses?: string[]
   host: string
   port: number
   username: string

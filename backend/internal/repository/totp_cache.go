@@ -21,11 +21,11 @@ const (
 
 // TotpCache implements service.TotpCache using Redis
 type TotpCache struct {
-	rdb *redis.Client
+	rdb redis.UniversalClient
 }
 
 // NewTotpCache creates a new TOTP cache
-func NewTotpCache(rdb *redis.Client) service.TotpCache {
+func NewTotpCache(rdb redis.UniversalClient) service.TotpCache {
 	return &TotpCache{rdb: rdb}
 }
 

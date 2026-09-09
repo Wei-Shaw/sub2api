@@ -15,18 +15,19 @@ import (
 )
 
 const (
-	schedulerBucketSetKey          = "sched:buckets"
-	schedulerOutboxWatermarkKey    = "sched:outbox:watermark"
-	schedulerAccountPrefix         = "sched:acc:"
-	schedulerAccountMetaPrefix     = "sched:meta:"
-	schedulerAccountLastUsedPrefix = "sched:acc:last_used:"
-	schedulerActivePrefix          = "sched:active:"
-	schedulerReadyPrefix           = "sched:ready:"
-	schedulerVersionPrefix         = "sched:ver:"
-	schedulerEpochPrefix           = "sched:epoch:"
-	schedulerRetiredPrefix         = "sched:retired:"
-	schedulerSnapshotPrefix        = "sched:"
-	schedulerLockPrefix            = "sched:lock:"
+	schedulerHashTag               = "{sub2api:scheduler}"
+	schedulerBucketSetKey          = "sched:" + schedulerHashTag + ":buckets"
+	schedulerOutboxWatermarkKey    = "sched:" + schedulerHashTag + ":outbox:watermark"
+	schedulerAccountPrefix         = "sched:" + schedulerHashTag + ":acc:"
+	schedulerAccountMetaPrefix     = "sched:" + schedulerHashTag + ":meta:"
+	schedulerAccountLastUsedPrefix = "sched:" + schedulerHashTag + ":acc:last_used:"
+	schedulerActivePrefix          = "sched:" + schedulerHashTag + ":active:"
+	schedulerReadyPrefix           = "sched:" + schedulerHashTag + ":ready:"
+	schedulerVersionPrefix         = "sched:" + schedulerHashTag + ":ver:"
+	schedulerEpochPrefix           = "sched:" + schedulerHashTag + ":epoch:"
+	schedulerRetiredPrefix         = "sched:" + schedulerHashTag + ":retired:"
+	schedulerSnapshotPrefix        = "sched:" + schedulerHashTag + ":"
+	schedulerLockPrefix            = "sched:" + schedulerHashTag + ":lock:"
 
 	defaultSchedulerSnapshotMGetChunkSize  = 128
 	defaultSchedulerSnapshotWriteChunkSize = 256
@@ -38,7 +39,7 @@ const (
 )
 
 const (
-	schedulerGroupLifecycleLockPrefix      = "sched:group:lifecycle-lock:"
+	schedulerGroupLifecycleLockPrefix      = "sched:" + schedulerHashTag + ":group:lifecycle-lock:"
 	schedulerGroupLifecycleOwnerTokenBytes = 16
 )
 
@@ -220,16 +221,16 @@ return 1
 )
 
 type schedulerCache struct {
-	rdb            *redis.Client
+	rdb            redis.UniversalClient
 	mgetChunkSize  int
 	writeChunkSize int
 }
 
-func NewSchedulerCache(rdb *redis.Client) service.SchedulerCache {
+func NewSchedulerCache(rdb redis.UniversalClient) service.SchedulerCache {
 	return newSchedulerCacheWithChunkSizes(rdb, defaultSchedulerSnapshotMGetChunkSize, defaultSchedulerSnapshotWriteChunkSize)
 }
 
-func newSchedulerCacheWithChunkSizes(rdb *redis.Client, mgetChunkSize, writeChunkSize int) service.SchedulerCache {
+func newSchedulerCacheWithChunkSizes(rdb redis.UniversalClient, mgetChunkSize, writeChunkSize int) service.SchedulerCache {
 	if mgetChunkSize <= 0 {
 		mgetChunkSize = defaultSchedulerSnapshotMGetChunkSize
 	}

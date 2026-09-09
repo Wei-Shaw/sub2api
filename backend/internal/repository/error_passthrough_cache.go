@@ -19,13 +19,13 @@ const (
 )
 
 type errorPassthroughCache struct {
-	rdb        *redis.Client
+	rdb        redis.UniversalClient
 	localCache []*model.ErrorPassthroughRule
 	localMu    sync.RWMutex
 }
 
 // NewErrorPassthroughCache 创建错误透传规则缓存
-func NewErrorPassthroughCache(rdb *redis.Client) service.ErrorPassthroughCache {
+func NewErrorPassthroughCache(rdb redis.UniversalClient) service.ErrorPassthroughCache {
 	return &errorPassthroughCache{
 		rdb: rdb,
 	}

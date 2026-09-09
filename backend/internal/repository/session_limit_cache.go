@@ -2,6 +2,7 @@ package repository
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log"
 	"strconv"
@@ -156,13 +157,13 @@ var (
 )
 
 type sessionLimitCache struct {
-	rdb                *redis.Client
+	rdb                redis.UniversalClient
 	defaultIdleTimeout time.Duration // 默认空闲超时（用于 GetActiveSessionCount）
 }
 
 // NewSessionLimitCache 创建会话限制缓存
 // defaultIdleTimeoutMinutes: 默认空闲超时时间（分钟），用于无参数查询
-func NewSessionLimitCache(rdb *redis.Client, defaultIdleTimeoutMinutes int) service.SessionLimitCache {
+func NewSessionLimitCache(rdb redis.UniversalClient, defaultIdleTimeoutMinutes int) service.SessionLimitCache {
 	if defaultIdleTimeoutMinutes <= 0 {
 		defaultIdleTimeoutMinutes = 5 // 默认 5 分钟
 	}
@@ -333,31 +334,26 @@ func (c *sessionLimitCache) GetWindowCostBatch(ctx context.Context, accountIDs [
 		return make(map[int64]float64), nil
 	}
 
-	// 构建批量查询的 keys
-	keys := make([]string, len(accountIDs))
+	pipe := c.rdb.Pipeline()
+	commands := make([]*redis.StringCmd, len(accountIDs))
 	for i, accountID := range accountIDs {
-		keys[i] = windowCostKey(accountID)
+		commands[i] = pipe.Get(ctx, windowCostKey(accountID))
 	}
-
-	// 使用 MGET 批量获取
-	vals, err := c.rdb.MGet(ctx, keys...).Result()
-	if err != nil {
+	if _, err := pipe.Exec(ctx); err != nil && !errors.Is(err, redis.Nil) {
 		return nil, err
 	}
 
 	results := make(map[int64]float64, len(accountIDs))
-	for i, val := range vals {
-		if val == nil {
+	for i, command := range commands {
+		val, err := command.Result()
+		if errors.Is(err, redis.Nil) {
 			continue // 缓存未命中
 		}
-		// 尝试解析为 float64
-		switch v := val.(type) {
-		case string:
-			if cost, err := strconv.ParseFloat(v, 64); err == nil {
-				results[accountIDs[i]] = cost
-			}
-		case float64:
-			results[accountIDs[i]] = v
+		if err != nil {
+			return nil, err
+		}
+		if cost, err := strconv.ParseFloat(val, 64); err == nil {
+			results[accountIDs[i]] = cost
 		}
 	}
 

@@ -2,13 +2,16 @@ package setup
 
 import (
 	"fmt"
+	"net"
 	"net/http"
 	"net/mail"
 	"regexp"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/response"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/sysutil"
 
@@ -176,12 +179,23 @@ func testDatabase(c *gin.Context) {
 
 // TestRedisRequest represents Redis test request
 type TestRedisRequest struct {
-	Host      string `json:"host" binding:"required"`
-	Port      int    `json:"port" binding:"required"`
-	Username  string `json:"username"`
-	Password  string `json:"password"`
-	DB        int    `json:"db"`
-	EnableTLS bool   `json:"enable_tls"`
+	Mode      string   `json:"mode"`
+	Addresses []string `json:"addresses"`
+	Host      string   `json:"host"`
+	Port      int      `json:"port"`
+	Username  string   `json:"username"`
+	Password  string   `json:"password"`
+	DB        int      `json:"db"`
+	EnableTLS bool     `json:"enable_tls"`
+}
+
+func validateRedisAddress(address string) bool {
+	host, portText, err := net.SplitHostPort(strings.TrimSpace(address))
+	if err != nil || !validateHostname(host) {
+		return false
+	}
+	port, err := strconv.Atoi(portText)
+	return err == nil && validatePort(port)
 }
 
 // testRedis tests Redis connection
@@ -193,16 +207,34 @@ func testRedis(c *gin.Context) {
 	}
 
 	// Security: Validate inputs
-	if !validateHostname(req.Host) {
-		response.Error(c, http.StatusBadRequest, "Invalid hostname format")
-		return
-	}
-	if !validatePort(req.Port) {
-		response.Error(c, http.StatusBadRequest, "Invalid port number")
-		return
+	clusterMode := strings.EqualFold(strings.TrimSpace(req.Mode), config.RedisModeCluster)
+	if clusterMode {
+		if len(req.Addresses) == 0 {
+			response.Error(c, http.StatusBadRequest, "At least one Redis cluster address is required")
+			return
+		}
+		for _, address := range req.Addresses {
+			if !validateRedisAddress(address) {
+				response.Error(c, http.StatusBadRequest, "Invalid Redis cluster address")
+				return
+			}
+		}
+	} else {
+		if !validateHostname(req.Host) {
+			response.Error(c, http.StatusBadRequest, "Invalid hostname format")
+			return
+		}
+		if !validatePort(req.Port) {
+			response.Error(c, http.StatusBadRequest, "Invalid port number")
+			return
+		}
 	}
 	if req.DB < 0 || req.DB > 15 {
 		response.Error(c, http.StatusBadRequest, "Invalid Redis database number (0-15)")
+		return
+	}
+	if clusterMode && req.DB != 0 {
+		response.Error(c, http.StatusBadRequest, "Redis database must be 0 in cluster mode")
 		return
 	}
 	req.Username = strings.TrimSpace(req.Username)
@@ -212,6 +244,8 @@ func testRedis(c *gin.Context) {
 	}
 
 	cfg := &RedisConfig{
+		Mode:      req.Mode,
+		Addresses: req.Addresses,
 		Host:      req.Host,
 		Port:      req.Port,
 		Username:  req.Username,

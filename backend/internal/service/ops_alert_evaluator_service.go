@@ -37,7 +37,7 @@ type OpsAlertEvaluatorService struct {
 	emailService *EmailService
 	proxyRepo    ProxyRepository
 
-	redisClient *redis.Client
+	redisClient redis.UniversalClient
 	cfg         *config.Config
 	instanceID  string
 
@@ -66,7 +66,7 @@ func NewOpsAlertEvaluatorService(
 	opsService *OpsService,
 	opsRepo OpsRepository,
 	emailService *EmailService,
-	redisClient *redis.Client,
+	redisClient redis.UniversalClient,
 	cfg *config.Config,
 	proxyRepo ProxyRepository,
 ) *OpsAlertEvaluatorService {

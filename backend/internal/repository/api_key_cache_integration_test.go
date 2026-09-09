@@ -20,11 +20,11 @@ type ApiKeyCacheSuite struct {
 func (s *ApiKeyCacheSuite) TestCreateAttemptCount() {
 	tests := []struct {
 		name string
-		fn   func(ctx context.Context, rdb *redis.Client, cache *apiKeyCache)
+		fn   func(ctx context.Context, rdb redis.UniversalClient, cache *apiKeyCache)
 	}{
 		{
 			name: "missing_key_returns_zero_nil",
-			fn: func(ctx context.Context, rdb *redis.Client, cache *apiKeyCache) {
+			fn: func(ctx context.Context, rdb redis.UniversalClient, cache *apiKeyCache) {
 				userID := int64(1)
 
 				count, err := cache.GetCreateAttemptCount(ctx, userID)
@@ -35,7 +35,7 @@ func (s *ApiKeyCacheSuite) TestCreateAttemptCount() {
 		},
 		{
 			name: "increment_increases_count_and_sets_ttl",
-			fn: func(ctx context.Context, rdb *redis.Client, cache *apiKeyCache) {
+			fn: func(ctx context.Context, rdb redis.UniversalClient, cache *apiKeyCache) {
 				userID := int64(1)
 				key := fmt.Sprintf("%s%d", apiKeyRateLimitKeyPrefix, userID)
 
@@ -53,7 +53,7 @@ func (s *ApiKeyCacheSuite) TestCreateAttemptCount() {
 		},
 		{
 			name: "delete_removes_key",
-			fn: func(ctx context.Context, rdb *redis.Client, cache *apiKeyCache) {
+			fn: func(ctx context.Context, rdb redis.UniversalClient, cache *apiKeyCache) {
 				userID := int64(1)
 
 				require.NoError(s.T(), cache.IncrementCreateAttemptCount(ctx, userID))
@@ -81,11 +81,11 @@ func (s *ApiKeyCacheSuite) TestCreateAttemptCount() {
 func (s *ApiKeyCacheSuite) TestDailyUsage() {
 	tests := []struct {
 		name string
-		fn   func(ctx context.Context, rdb *redis.Client, cache *apiKeyCache)
+		fn   func(ctx context.Context, rdb redis.UniversalClient, cache *apiKeyCache)
 	}{
 		{
 			name: "increment_increases_count",
-			fn: func(ctx context.Context, rdb *redis.Client, cache *apiKeyCache) {
+			fn: func(ctx context.Context, rdb redis.UniversalClient, cache *apiKeyCache) {
 				dailyKey := "daily:sk-test"
 
 				require.NoError(s.T(), cache.IncrementDailyUsage(ctx, dailyKey), "IncrementDailyUsage")
@@ -98,7 +98,7 @@ func (s *ApiKeyCacheSuite) TestDailyUsage() {
 		},
 		{
 			name: "set_expiry_sets_ttl",
-			fn: func(ctx context.Context, rdb *redis.Client, cache *apiKeyCache) {
+			fn: func(ctx context.Context, rdb redis.UniversalClient, cache *apiKeyCache) {
 				dailyKey := "daily:sk-test-expiry"
 
 				require.NoError(s.T(), cache.IncrementDailyUsage(ctx, dailyKey))

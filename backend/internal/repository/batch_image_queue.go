@@ -13,11 +13,12 @@ import (
 )
 
 const (
-	defaultBatchImageReadyKey       = "batch_image:queue:ready"
-	defaultBatchImageDelayedKey     = "batch_image:queue:delayed"
-	defaultBatchImageActiveKey      = "batch_image:queue:active"
-	defaultBatchImageInflightPrefix = "batch_image:queue:inflight:"
-	defaultBatchImageLockPrefix     = "batch_image:queue:lock:"
+	batchImageHashTag               = "{sub2api:batch-image}"
+	defaultBatchImageReadyKey       = "batch_image:" + batchImageHashTag + ":queue:ready"
+	defaultBatchImageDelayedKey     = "batch_image:" + batchImageHashTag + ":queue:delayed"
+	defaultBatchImageActiveKey      = "batch_image:" + batchImageHashTag + ":queue:active"
+	defaultBatchImageInflightPrefix = "batch_image:" + batchImageHashTag + ":queue:inflight:"
+	defaultBatchImageLockPrefix     = "batch_image:" + batchImageHashTag + ":queue:lock:"
 	defaultBatchImageInflightTTL    = 7 * 24 * time.Hour
 	defaultBatchImageJobLockTTL     = 5 * time.Minute
 
@@ -82,7 +83,7 @@ return 0
 `)
 
 type batchImageQueue struct {
-	rdb            *redis.Client
+	rdb            redis.UniversalClient
 	readyKey       string
 	delayedKey     string
 	activeKey      string
@@ -92,7 +93,7 @@ type batchImageQueue struct {
 	lockTTL        time.Duration
 }
 
-func NewBatchImageQueue(rdb *redis.Client, cfg *config.Config) service.BatchImageQueue {
+func NewBatchImageQueue(rdb redis.UniversalClient, cfg *config.Config) service.BatchImageQueue {
 	return newBatchImageQueueWithOptions(rdb, batchImageQueueOptionsFromConfig(cfg))
 }
 
@@ -106,7 +107,7 @@ type batchImageQueueOptions struct {
 	LockTTL        time.Duration
 }
 
-func newBatchImageQueueWithOptions(rdb *redis.Client, opts batchImageQueueOptions) *batchImageQueue {
+func newBatchImageQueueWithOptions(rdb redis.UniversalClient, opts batchImageQueueOptions) *batchImageQueue {
 	opts = normalizeBatchImageQueueOptions(opts)
 	return &batchImageQueue{
 		rdb:            rdb,
@@ -318,7 +319,7 @@ func (q *batchImageQueue) lockKey(batchID string) string {
 }
 
 type batchImageRedisJobLock struct {
-	rdb   *redis.Client
+	rdb   redis.UniversalClient
 	key   string
 	token string
 }

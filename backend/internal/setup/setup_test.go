@@ -6,6 +6,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/Wei-Shaw/sub2api/internal/config"
 )
 
 func TestDecideAdminBootstrap(t *testing.T) {
@@ -223,6 +225,30 @@ func TestWriteConfigFileIncludesRedisUsername(t *testing.T) {
 
 	if !strings.Contains(string(data), "username: app-user") {
 		t.Fatalf("config missing Redis username, got:\n%s", string(data))
+	}
+}
+
+func TestWriteConfigFileIncludesRedisClusterSettings(t *testing.T) {
+	t.Setenv("DATA_DIR", t.TempDir())
+
+	if err := writeConfigFile(&SetupConfig{
+		Redis: RedisConfig{
+			Mode:      config.RedisModeCluster,
+			Addresses: []string{"valkey-0:6379", "valkey-1:6379"},
+			DB:        0,
+		},
+	}); err != nil {
+		t.Fatalf("writeConfigFile() error = %v", err)
+	}
+
+	data, err := os.ReadFile(GetConfigFilePath())
+	if err != nil {
+		t.Fatalf("ReadFile() error = %v", err)
+	}
+
+	content := string(data)
+	if !strings.Contains(content, "mode: cluster") || !strings.Contains(content, "valkey-0:6379") {
+		t.Fatalf("config missing Redis cluster settings, got:\n%s", content)
 	}
 }
 

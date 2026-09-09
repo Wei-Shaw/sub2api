@@ -38,7 +38,7 @@ type PanelRateLimiter struct {
 }
 
 // NewPanelRateLimiter 创建面板限流器。
-func NewPanelRateLimiter(redisClient *redis.Client, settingService *service.SettingService) *PanelRateLimiter {
+func NewPanelRateLimiter(redisClient redis.UniversalClient, settingService *service.SettingService) *PanelRateLimiter {
 	return &PanelRateLimiter{
 		limiter:        middleware.NewRateLimiter(redisClient),
 		settingService: settingService,

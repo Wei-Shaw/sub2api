@@ -57,7 +57,7 @@ type OpsAggregationService struct {
 	cfg         *config.Config
 
 	db          *sql.DB
-	redisClient *redis.Client
+	redisClient redis.UniversalClient
 	instanceID  string
 
 	stopCh    chan struct{}
@@ -75,7 +75,7 @@ func NewOpsAggregationService(
 	opsRepo OpsRepository,
 	settingRepo SettingRepository,
 	db *sql.DB,
-	redisClient *redis.Client,
+	redisClient redis.UniversalClient,
 	cfg *config.Config,
 ) *OpsAggregationService {
 	return &OpsAggregationService{
