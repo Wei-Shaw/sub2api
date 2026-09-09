@@ -145,13 +145,8 @@ func convertAnthropicToolChoiceToResponses(raw json.RawMessage) (json.RawMessage
 	}
 }
 
-// convertAnthropicToResponsesInput builds the Responses API input items array
-// from the Anthropic system field and message list.
-func convertAnthropicToResponsesInput(system json.RawMessage, msgs []AnthropicMessage) ([]ResponsesInputItem, error) {
-	out, _, err := convertAnthropicToResponsesInputWithOptions(system, msgs, false)
-	return out, err
-}
-
+// convertAnthropicToResponsesInputWithOptions builds the Responses API input
+// items array from the Anthropic system field and message list.
 func convertAnthropicToResponsesInputWithOptions(
 	system json.RawMessage,
 	msgs []AnthropicMessage,
