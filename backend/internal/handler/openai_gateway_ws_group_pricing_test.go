@@ -143,6 +143,34 @@ func TestOpenAIResponsesWebSocket_GroupRateChangeReachesProfitGateOnNextTurn(t *
 	})
 }
 
+func TestOpenAIResponsesWebSocket_PostSlotProfitCheckUsesTurnBillingGroup(t *testing.T) {
+	for _, mode := range []string{service.OpenAIWSIngressModePassthrough, service.OpenAIWSIngressModeCtxPool} {
+		t.Run(mode, func(t *testing.T) {
+			repo := newWSGroupPricingAPIKeyRepoStub(3.0)
+			repo.group.ProfitControlEnabled = true
+			repo.group.ProfitMinMargin = 0.1
+			apiKeyService := newWSGroupPricingAPIKeyService(repo)
+			accountRate := 1.0
+			got := runOpenAIResponsesWebSocketUsageLogCase(t, openAIResponsesWSUsageLogCase{
+				firstPayload:          wsGroupPricingFirst,
+				secondPayload:         wsGroupPricingSecond,
+				ingressMode:           mode,
+				apiKeyService:         apiKeyService,
+				apiKeyCredential:      wsGroupPricingKey,
+				accountRateMultiplier: &accountRate,
+				afterFirstUpstreamRequest: func(*service.ChannelService) error {
+					accountRate = 4.0
+					return repo.adminUpdate(apiKeyService, func(_ *service.APIKey, group *service.Group) { group.RateMultiplier = 6.0 })
+				},
+			})
+
+			require.Len(t, got.logs, 2, "the updated account cost is below the new group's 5.4 threshold")
+			require.InDelta(t, 3.0, got.logs[0].RateMultiplier, 1e-12)
+			require.InDelta(t, 6.0, got.logs[1].RateMultiplier, 1e-12, "admission and billing must use the same refreshed group")
+		})
+	}
+}
+
 func TestOpenAIResponsesWebSocket_KeyMovedToAnotherGroupKeepsConnectionGroup(t *testing.T) {
 	repo := newWSGroupPricingAPIKeyRepoStub(3.0)
 	apiKeyService := newWSGroupPricingAPIKeyService(repo)

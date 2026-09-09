@@ -471,6 +471,9 @@ func TestLoadDefaultOpenAIWSConfig(t *testing.T) {
 	if cfg.Gateway.OpenAIWS.StickySessionTTLSeconds != 3600 {
 		t.Fatalf("Gateway.OpenAIWS.StickySessionTTLSeconds = %d, want 3600", cfg.Gateway.OpenAIWS.StickySessionTTLSeconds)
 	}
+	if cfg.Gateway.OpenAIWS.TurnSlotHoldSeconds != 10 {
+		t.Fatalf("Gateway.OpenAIWS.TurnSlotHoldSeconds = %d, want 10", cfg.Gateway.OpenAIWS.TurnSlotHoldSeconds)
+	}
 	if !cfg.Gateway.OpenAIScheduler.StickyEscapeEnabled {
 		t.Fatalf("Gateway.OpenAIScheduler.StickyEscapeEnabled = false, want true")
 	}
@@ -2334,6 +2337,11 @@ func TestValidateConfig_OpenAIWSRules(t *testing.T) {
 			name:    "sticky_session_ttl_seconds 必须为正数",
 			mutate:  func(c *Config) { c.Gateway.OpenAIWS.StickySessionTTLSeconds = 0 },
 			wantErr: "gateway.openai_ws.sticky_session_ttl_seconds",
+		},
+		{
+			name:    "turn_slot_hold_seconds 不能为负数",
+			mutate:  func(c *Config) { c.Gateway.OpenAIWS.TurnSlotHoldSeconds = -1 },
+			wantErr: "gateway.openai_ws.turn_slot_hold_seconds",
 		},
 		{
 			name: "sticky_response_id_ttl_seconds 必须为正数",

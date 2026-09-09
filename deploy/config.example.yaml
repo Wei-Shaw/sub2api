@@ -235,6 +235,15 @@ gateway:
   openai_first_output_timeout_seconds: 0
   # Optional high/xhigh/max override (seconds, 0=use the standard timeout)
   openai_high_effort_first_output_timeout_seconds: 0
+  # OpenAI transport failures without an HTTP status fail over (HTTP, ctx_pool dials and the HTTP bridge;
+  # the WS passthrough relay keeps its original handling). Durable proxy/DNS/routing faults
+  # immediately unschedule the account for 10 minutes; timeouts/EOF/resets do not add a cooldown.
+  # OpenAI 未收到 HTTP 状态码的传输失败可换号（HTTP、ctx_pool 拨号与 HTTP 桥接；WS 透传中继沿用原处理）；
+  # 代理认证失败、拒连、DNS 不存在及不可达首次即禁调度 10 分钟。
+  # 普通超时、EOF、连接重置只换号，不累计冷却；WS 透传中继的无状态码拨号失败与连接池内排队沿用原处理，既不换号也不冷却。
+  # OpenAI ctx_pool / passthrough 首次无续链依赖的握手拒绝，复用 HTTP Responses 的错误分类、账号状态与重试规则。
+  # 同账号重试状态码与次数沿用账号配置；后续轮重连、已输出后的恢复保持原有安全边界。
+  # OpenAI WS 可安全换号的首输出超时与 HTTP 共用最多换号 1 次的上限，仍受总换号预算约束；成功轮后重置。
   # Max request body size in bytes (default: 256MB)
   # 请求体最大字节数（默认 256MB）
   max_body_size: 268435456
@@ -402,6 +411,8 @@ gateway:
     # 调度与粘连参数
     lb_top_k: 7
     sticky_session_ttl_seconds: 3600
+    # WS 轮结束后账号槽保留秒数：续聊下一轮在保留期内直接取回并续租，不再重抢；0 关闭；仅 openai 平台
+    turn_slot_hold_seconds: 10
     # 会话哈希迁移兼容开关：新 key 未命中时回退读取旧 SHA-256 key
     session_hash_read_old_fallback: true
     # 会话哈希迁移兼容开关：写入时双写旧 SHA-256 key（短 TTL）
@@ -539,8 +550,15 @@ gateway:
   # Scheduling configuration
   # 调度配置
   scheduling:
+    # 有新会话等待时，每账号最多连续准入的续聊次数（仅 openai 平台，HTTP/WS 共用，含保槽复用）。
+    # 0 恢复续聊绝对优先；不影响 turn_slot_hold_seconds。修改后重启，各实例保持一致。
+    continuation_burst_limit: 2
+    # 每账号续聊等待容量（正整数，仅 openai 平台，HTTP/WS 共用，不含执行中的请求）。
+    # 独立于粘性分流阈值及连续准入次数；等待超时沿用 sticky_session_wait_timeout。
+    # 修改后重启，各实例保持一致；容量不保证入队后的请求一定获槽。
+    continuation_max_waiting: 100
     # Sticky session max waiting queue size
-    # 粘性会话最大排队长度
+    # 粘性会话最大排队长度；OpenAI 兼容入口用作既有选号路径的分流阈值。
     sticky_session_max_waiting: 3
     # Sticky session wait timeout (duration)
     # 粘性会话等待超时（时间段）

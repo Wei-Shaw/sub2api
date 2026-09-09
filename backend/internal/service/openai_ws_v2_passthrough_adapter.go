@@ -900,6 +900,13 @@ func (s *OpenAIGatewayService) proxyResponsesWebSocketV2Passthrough(
 			statusCode,
 			truncateOpenAIWSLogValue(err.Error(), openAIWSLogValueMaxLen),
 		)
+		if openAIWSHandshakeHTTPPolicyApplies(account, 1, requestPreviousResponseID, dialErr) {
+			handshakeErr := s.handleOpenAIWSHandshakeFailure(ctx, c, account, capturedSessionModel, dialErr, true)
+			if IsOpenAIWSHandshakeFailover(handshakeErr) {
+				return handshakeErr
+			}
+			return s.mapOpenAIWSPassthroughDialError(handshakeErr, statusCode, handshakeHeaders)
+		}
 		s.handleOpenAIWSDialTransientFailure(ctx, account, capturedSessionModel, dialErr)
 		if statusCode == http.StatusTooManyRequests {
 			s.persistOpenAIWSRateLimitSignal(ctx, account, handshakeHeaders, nil, "rate_limit_exceeded", "rate_limit_error", strings.TrimSpace(err.Error()), capturedSessionModel)
@@ -1136,6 +1143,12 @@ func (s *OpenAIGatewayService) proxyResponsesWebSocketV2Passthrough(
 	}
 	upstreamFirstMessageSent := false
 	firstWriteCtx, cancelFirstWrite := context.WithTimeout(ctx, s.openAIWSWriteTimeout())
+	if hooks != nil && hooks.RequestSending != nil {
+		if err := hooks.RequestSending(); err != nil {
+			cancelFirstWrite()
+			return err
+		}
+	}
 	firstWriteErr := relayUpstreamFrameConn.WriteFrame(firstWriteCtx, coderws.MessageText, firstClientMessage)
 	cancelFirstWrite()
 	if firstWriteErr != nil {

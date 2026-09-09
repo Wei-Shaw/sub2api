@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/tlsfingerprint"
 	"github.com/coder/websocket"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
@@ -104,6 +105,54 @@ func TestProxyOpenAIWSHTTPBridgeTurnLaterTurnDoesNotFailOverAfterDownstreamOutpu
 }
 
 func TestOpenAIWSHTTPBridgeLaterTurn429RetriesCurrentTurnOnReplacementAccount(t *testing.T) {
+	testOpenAIWSHTTPBridgeLaterTurnRetriesCurrentTurn(t, OpenAIWSIngressModeHTTPBridge, true, false)
+}
+
+func TestOpenAIWSHTTPBridgeLaterTurnTransportFailureRetriesCurrentTurnOnReplacementAccount(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		mode   string
+		router bool
+	}{
+		{name: "explicit_http_bridge", mode: OpenAIWSIngressModeHTTPBridge, router: true},
+		{name: "legacy_auto_bridge", mode: OpenAIWSIngressModeCtxPool, router: false},
+		{name: "ctx_pool_auto_bridge", mode: OpenAIWSIngressModeCtxPool, router: true},
+		{name: "passthrough_auto_bridge", mode: OpenAIWSIngressModePassthrough, router: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			testOpenAIWSHTTPBridgeLaterTurnRetriesCurrentTurn(t, tc.mode, tc.router, true)
+		})
+	}
+}
+
+type openAIWSBridgeSecondRequestTransportFailure struct {
+	*httpUpstreamRecorder
+	calls int
+}
+
+func (u *openAIWSBridgeSecondRequestTransportFailure) Do(
+	req *http.Request, proxyURL string, accountID int64, concurrency int,
+) (*http.Response, error) {
+	u.calls++
+	resp, err := u.httpUpstreamRecorder.Do(req, proxyURL, accountID, concurrency)
+	if u.calls != 2 {
+		return resp, err
+	}
+	if resp != nil && resp.Body != nil {
+		_ = resp.Body.Close()
+	}
+	return nil, errors.New("dial tcp: connection refused")
+}
+
+func (u *openAIWSBridgeSecondRequestTransportFailure) DoWithTLS(
+	req *http.Request, proxyURL string, accountID int64, concurrency int,
+	_ *tlsfingerprint.Profile,
+) (*http.Response, error) {
+	return u.Do(req, proxyURL, accountID, concurrency)
+}
+
+func testOpenAIWSHTTPBridgeLaterTurnRetriesCurrentTurn(t *testing.T, mode string, router, transportFailure bool) {
+	t.Helper()
 	gin.SetMode(gin.TestMode)
 
 	cfg := &config.Config{}
@@ -112,7 +161,12 @@ func TestOpenAIWSHTTPBridgeLaterTurn429RetriesCurrentTurnOnReplacementAccount(t 
 	cfg.Gateway.OpenAIWS.Enabled = true
 	cfg.Gateway.OpenAIWS.OAuthEnabled = true
 	cfg.Gateway.OpenAIWS.ResponsesWebsocketsV2 = true
-	cfg.Gateway.OpenAIWS.ModeRouterV2Enabled = true
+	cfg.Gateway.OpenAIWS.ModeRouterV2Enabled = router
+	cfg.Gateway.OpenAIWS.IngressModeDefault = OpenAIWSIngressModeCtxPool
+	if mode != OpenAIWSIngressModeHTTPBridge {
+		cfg.Gateway.OpenAIWS.HTTPBridgeEnabled = true
+		cfg.Gateway.OpenAIWS.HTTPBridgeThresholdBytes = 1
+	}
 	cfg.Gateway.OpenAIWS.ReadTimeoutSeconds = 3
 	cfg.Gateway.OpenAIWS.WriteTimeoutSeconds = 3
 
@@ -140,17 +194,30 @@ func TestOpenAIWSHTTPBridgeLaterTurn429RetriesCurrentTurnOnReplacementAccount(t 
 			)),
 		},
 	}}
+	transportFailureUpstream := &openAIWSBridgeSecondRequestTransportFailure{httpUpstreamRecorder: upstream}
+	dialer := &openAIWSFailingDialer{err: errors.New("unexpected native websocket dial")}
+	pool := newOpenAIWSConnPool(cfg)
+	pool.setClientDialerForTest(dialer)
+	defer pool.Close()
 	svc := &OpenAIGatewayService{
-		cfg:              cfg,
-		httpUpstream:     upstream,
-		cache:            &stubGatewayCache{},
-		openaiWSResolver: NewOpenAIWSProtocolResolver(cfg),
-		toolCorrector:    NewCodexToolCorrector(),
+		cfg:                       cfg,
+		httpUpstream:              upstream,
+		cache:                     &stubGatewayCache{},
+		openaiWSResolver:          NewOpenAIWSProtocolResolver(cfg),
+		toolCorrector:             NewCodexToolCorrector(),
+		openaiWSPool:              pool,
+		openaiWSPassthroughDialer: dialer,
+	}
+	if transportFailure {
+		svc.httpUpstream = transportFailureUpstream
 	}
 	account := &Account{
 		ID: 129, Name: "limited", Platform: PlatformOpenAI, Type: AccountTypeOAuth,
 		Status: StatusActive, Schedulable: true, Concurrency: 1,
-		Extra:       map[string]any{"openai_oauth_responses_websockets_v2_mode": OpenAIWSIngressModeHTTPBridge},
+		Extra: map[string]any{
+			"openai_oauth_responses_websockets_v2_mode":    mode,
+			"openai_oauth_responses_websockets_v2_enabled": true,
+		},
 		Credentials: map[string]any{"chatgpt_account_id": "account-a", "chatgpt_user_id": "user-a"},
 	}
 	nextAccount := *account
@@ -160,6 +227,7 @@ func TestOpenAIWSHTTPBridgeLaterTurn429RetriesCurrentTurnOnReplacementAccount(t 
 
 	serverErrCh := make(chan error, 1)
 	failoverCh := make(chan []byte, 1)
+	bridgeAttempts := make(chan bool, 2)
 	wsServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		conn, err := websocket.Accept(w, r, nil)
 		if err != nil {
@@ -179,6 +247,7 @@ func TestOpenAIWSHTTPBridgeLaterTurn429RetriesCurrentTurnOnReplacementAccount(t 
 			return
 		}
 		proxyErr := svc.ProxyResponsesWebSocketFromClient(r.Context(), ginCtx, conn, account, "access-token-a", firstMessage, nil)
+		bridgeAttempts <- ginCtx.GetBool("openai_ws_http_bridge")
 		var failoverErr *UpstreamFailoverError
 		if !errors.As(proxyErr, &failoverErr) {
 			serverErrCh <- proxyErr
@@ -190,9 +259,12 @@ func TestOpenAIWSHTTPBridgeLaterTurn429RetriesCurrentTurnOnReplacementAccount(t 
 			return
 		}
 		failoverCh <- retryPayload
-		serverErrCh <- svc.ProxyResponsesWebSocketFromClient(
+		ginCtx.Set("openai_ws_http_bridge", false)
+		proxyErr = svc.ProxyResponsesWebSocketFromClient(
 			r.Context(), ginCtx, conn, &nextAccount, "access-token-b", retryPayload, nil,
 		)
+		bridgeAttempts <- ginCtx.GetBool("openai_ws_http_bridge")
+		serverErrCh <- proxyErr
 	}))
 	defer wsServer.Close()
 
@@ -250,6 +322,19 @@ func TestOpenAIWSHTTPBridgeLaterTurn429RetriesCurrentTurnOnReplacementAccount(t 
 		require.NoError(t, proxyErr)
 	case <-time.After(5 * time.Second):
 		t.Fatal("timed out waiting for replacement-account completion")
+	}
+	for _, accountID := range []int64{account.ID, nextAccount.ID} {
+		select {
+		case bridged := <-bridgeAttempts:
+			require.True(t, bridged, "account %d must actually use HTTP bridge", accountID)
+			t.Logf("account_id=%d router=%t configured_mode=%s actual_http_bridge=%t", accountID, router, mode, bridged)
+		default:
+			t.Fatal("missing actual bridge attempt")
+		}
+	}
+	require.Zero(t, dialer.calls.Load())
+	if transportFailure {
+		require.Equal(t, 3, transportFailureUpstream.calls)
 	}
 	require.Len(t, upstream.bodies, 3)
 	require.Contains(t, string(upstream.bodies[0]), "first")

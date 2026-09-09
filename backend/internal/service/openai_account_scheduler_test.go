@@ -92,6 +92,7 @@ type schedulerTestConcurrencyCache struct {
 	loadMap         map[int64]*AccountLoadInfo
 	acquireResults  map[int64]bool
 	waitCounts      map[int64]int
+	contWaitCounts  map[int64]int
 	skipDefaultLoad bool
 	acquiredIDs     *[]int64
 	releasedIDs     *[]int64
@@ -150,9 +151,19 @@ func (c schedulerTestConcurrencyCache) GetAccountWaitingCount(ctx context.Contex
 	return 0, nil
 }
 
+func (c schedulerTestConcurrencyCache) GetAccountContinuationWaitingCount(ctx context.Context, accountID int64) (int, error) {
+	if c.contWaitCounts != nil {
+		if count, ok := c.contWaitCounts[accountID]; ok {
+			return count, nil
+		}
+	}
+	return 0, nil
+}
+
 type schedulerTestGatewayCache struct {
-	sessionBindings map[string]int64
-	deletedSessions map[string]int
+	sessionBindings   map[string]int64
+	deletedSessions   map[string]int
+	refreshedSessions map[string]int
 }
 
 func (c *schedulerTestGatewayCache) GetSessionAccountID(ctx context.Context, groupID int64, sessionHash string) (int64, error) {
@@ -171,6 +182,10 @@ func (c *schedulerTestGatewayCache) SetSessionAccountID(ctx context.Context, gro
 }
 
 func (c *schedulerTestGatewayCache) RefreshSessionTTL(ctx context.Context, groupID int64, sessionHash string, ttl time.Duration) error {
+	if c.refreshedSessions == nil {
+		c.refreshedSessions = make(map[string]int)
+	}
+	c.refreshedSessions[sessionHash]++
 	return nil
 }
 
@@ -214,6 +229,11 @@ func newSchedulerTestOpenAIWSV2Config() *config.Config {
 	cfg.Gateway.OpenAIWS.APIKeyEnabled = true
 	cfg.Gateway.OpenAIWS.ResponsesWebsocketsV2 = true
 	cfg.Gateway.OpenAIWS.StickyResponseIDTTLSeconds = 3600
+	cfg.Gateway.Scheduling.StickySessionWaitTimeout = 120 * time.Second
+	cfg.Gateway.Scheduling.ContinuationMaxWaiting = 100
+	cfg.Gateway.Scheduling.StickySessionMaxWaiting = 3
+	cfg.Gateway.Scheduling.FallbackWaitTimeout = 30 * time.Second
+	cfg.Gateway.Scheduling.FallbackMaxWaiting = 100
 	return cfg
 }
 
@@ -2297,8 +2317,8 @@ func TestOpenAIGatewayService_RecheckSelectedOpenAIAccountFromDB_SimpleModeUsesF
 	require.NotNil(t, standardSvc.recheckSelectedOpenAIAccountFromDB(context.Background(), &ungrouped, nil, PlatformOpenAI, "gpt-5.1", false, ""))
 }
 
-func TestOpenAIGatewayService_SelectAccountWithScheduler_PreviousResponseSticky(t *testing.T) {
-	ctx := context.Background()
+func newPreviousResponseSchedulerFixture(t *testing.T) (int64, Account, *config.Config) {
+	t.Helper()
 	groupID := int64(9)
 	account := Account{
 		ID:          1001,
@@ -2311,7 +2331,6 @@ func TestOpenAIGatewayService_SelectAccountWithScheduler_PreviousResponseSticky(
 			"openai_apikey_responses_websockets_v2_enabled": true,
 		},
 	}
-	cache := &schedulerTestGatewayCache{}
 	cfg := &config.Config{}
 	cfg.Gateway.OpenAIWS.Enabled = true
 	cfg.Gateway.OpenAIWS.OAuthEnabled = true
@@ -2319,6 +2338,18 @@ func TestOpenAIGatewayService_SelectAccountWithScheduler_PreviousResponseSticky(
 	cfg.Gateway.OpenAIWS.ResponsesWebsocketsV2 = true
 	cfg.Gateway.OpenAIWS.StickySessionTTLSeconds = 1800
 	cfg.Gateway.OpenAIWS.StickyResponseIDTTLSeconds = 3600
+	cfg.Gateway.Scheduling.StickySessionWaitTimeout = 120 * time.Second
+	cfg.Gateway.Scheduling.ContinuationMaxWaiting = 100
+	cfg.Gateway.Scheduling.StickySessionMaxWaiting = 3
+	cfg.Gateway.Scheduling.FallbackWaitTimeout = 30 * time.Second
+	cfg.Gateway.Scheduling.FallbackMaxWaiting = 100
+	return groupID, account, cfg
+}
+
+func TestOpenAIGatewayService_SelectAccountWithScheduler_PreviousResponseSticky(t *testing.T) {
+	ctx := context.Background()
+	groupID, account, cfg := newPreviousResponseSchedulerFixture(t)
+	cache := &schedulerTestGatewayCache{}
 
 	svc := &OpenAIGatewayService{
 		accountRepo:        schedulerTestOpenAIAccountRepo{accounts: []Account{account}},
@@ -2351,6 +2382,53 @@ func TestOpenAIGatewayService_SelectAccountWithScheduler_PreviousResponseSticky(
 	if selection.ReleaseFunc != nil {
 		selection.ReleaseFunc()
 	}
+}
+
+func TestOpenAIGatewayService_SelectAccountWithScheduler_PreviousResponsePlanIsContinuationClass(t *testing.T) {
+	ctx := context.Background()
+	groupID, account, cfg := newPreviousResponseSchedulerFixture(t)
+	svc := &OpenAIGatewayService{
+		accountRepo:        schedulerTestOpenAIAccountRepo{accounts: []Account{account}},
+		cache:              &schedulerTestGatewayCache{},
+		cfg:                cfg,
+		rateLimitService:   newOpenAIAdvancedSchedulerRateLimitService("true"),
+		concurrencyService: NewConcurrencyService(schedulerTestConcurrencyCache{acquireResults: map[int64]bool{1001: false}}),
+	}
+	require.NoError(t, svc.getOpenAIWSStateStore().BindResponseAccount(ctx, groupID, "resp_prev_class", account.ID, time.Hour))
+	selection, decision, err := svc.SelectAccountWithScheduler(ctx, &groupID, "resp_prev_class", "session_hash_prev_class", "gpt-5.1", nil, OpenAIUpstreamTransportAny, false)
+	require.NoError(t, err)
+	require.NotNil(t, selection)
+	require.False(t, selection.Acquired)
+	require.NotNil(t, selection.WaitPlan)
+	require.Equal(t, AccountWaitClassContinuation, selection.WaitPlan.Class)
+	require.True(t, decision.StickyPreviousHit)
+}
+
+func TestOpenAIGatewayService_SelectAccountWithScheduler_PreviousResponseIneligibleYields(t *testing.T) {
+	groupID, account, cfg := newPreviousResponseSchedulerFixture(t)
+	var acquired []int64
+	svc := &OpenAIGatewayService{
+		accountRepo:      schedulerTestOpenAIAccountRepo{accounts: []Account{account}},
+		cache:            &schedulerTestGatewayCache{},
+		cfg:              cfg,
+		rateLimitService: newOpenAIAdvancedSchedulerRateLimitService("true"),
+		concurrencyService: NewConcurrencyService(schedulerTestConcurrencyCache{
+			acquireResults: map[int64]bool{1001: true},
+			contWaitCounts: map[int64]int{1001: 1},
+			acquiredIDs:    &acquired,
+		}),
+	}
+	ctx := WithOpenAIAdmissionOptions(context.Background(), OpenAIAdmissionOptions{ContinuationEligible: false})
+	require.NoError(t, svc.getOpenAIWSStateStore().BindResponseAccount(ctx, groupID, "resp_prev_yield", account.ID, time.Hour))
+	selection, _, err := svc.SelectAccountWithScheduler(ctx, &groupID, "resp_prev_yield", "session_hash_prev_yield", "gpt-5.1", nil, OpenAIUpstreamTransportAny, false)
+	require.NoError(t, err)
+	require.NotNil(t, selection)
+	require.NotContains(t, acquired, int64(1001))
+	require.False(t, selection.Acquired)
+	require.NotNil(t, selection.WaitPlan)
+	require.Equal(t, AccountWaitClassNewSession, selection.WaitPlan.Class)
+	require.Equal(t, cfg.Gateway.Scheduling.FallbackWaitTimeout, selection.WaitPlan.Timeout)
+	require.Equal(t, cfg.Gateway.Scheduling.FallbackMaxWaiting, selection.WaitPlan.MaxWaiting)
 }
 
 func TestOpenAIGatewayService_SelectAccountWithScheduler_SessionSticky(t *testing.T) {
@@ -2400,8 +2478,9 @@ func TestOpenAIGatewayService_SelectAccountWithScheduler_SessionSticky(t *testin
 	}
 }
 
-func TestOpenAIGatewayService_SelectAccountWithScheduler_SessionStickyBusyKeepsSticky(t *testing.T) {
-	ctx := context.Background()
+// newStickyBusySchedulerFixture 构造粘性账号已满场景的共用账号、分组与调度配置。
+func newStickyBusySchedulerFixture(t *testing.T) (int64, []Account, *config.Config) {
+	t.Helper()
 	groupID := int64(10100)
 	accounts := []Account{
 		{
@@ -2425,14 +2504,12 @@ func TestOpenAIGatewayService_SelectAccountWithScheduler_SessionStickyBusyKeepsS
 			GroupIDs:    []int64{groupID},
 		},
 	}
-	cache := &schedulerTestGatewayCache{
-		sessionBindings: map[string]int64{
-			"openai:session_hash_sticky_busy": 21001,
-		},
-	}
 	cfg := &config.Config{}
+	cfg.Gateway.Scheduling.ContinuationMaxWaiting = 100
 	cfg.Gateway.Scheduling.StickySessionMaxWaiting = 2
 	cfg.Gateway.Scheduling.StickySessionWaitTimeout = 45 * time.Second
+	cfg.Gateway.Scheduling.FallbackWaitTimeout = 30 * time.Second
+	cfg.Gateway.Scheduling.FallbackMaxWaiting = 100
 	cfg.Gateway.OpenAIScheduler.StickyEscapeEnabled = false
 	cfg.Gateway.OpenAIScheduler.StickyEscapeTTFTMs = 15000
 	cfg.Gateway.OpenAIScheduler.StickyEscapeErrorRate = 0.5
@@ -2440,6 +2517,17 @@ func TestOpenAIGatewayService_SelectAccountWithScheduler_SessionStickyBusyKeepsS
 	cfg.Gateway.OpenAIWS.APIKeyEnabled = true
 	cfg.Gateway.OpenAIWS.OAuthEnabled = true
 	cfg.Gateway.OpenAIWS.ResponsesWebsocketsV2 = true
+	return groupID, accounts, cfg
+}
+
+func TestOpenAIGatewayService_SelectAccountWithScheduler_SessionStickyBusyKeepsSticky(t *testing.T) {
+	ctx := context.Background()
+	groupID, accounts, cfg := newStickyBusySchedulerFixture(t)
+	cache := &schedulerTestGatewayCache{
+		sessionBindings: map[string]int64{
+			"openai:session_hash_sticky_busy": 21001,
+		},
+	}
 
 	concurrencyCache := schedulerTestConcurrencyCache{
 		acquireResults: map[int64]bool{
@@ -2482,6 +2570,111 @@ func TestOpenAIGatewayService_SelectAccountWithScheduler_SessionStickyBusyKeepsS
 	require.Equal(t, int64(21001), selection.WaitPlan.AccountID)
 	require.Equal(t, openAIAccountScheduleLayerSessionSticky, decision.Layer)
 	require.True(t, decision.StickySessionHit)
+}
+
+func TestOpenAIGatewayService_SelectAccountWithScheduler_StickyPlanCarriesContinuationClass(t *testing.T) {
+	ctx := context.Background()
+	groupID, accounts, cfg := newStickyBusySchedulerFixture(t)
+	cache := &schedulerTestGatewayCache{sessionBindings: map[string]int64{"openai:session_hash_class": 21001}}
+	svc := &OpenAIGatewayService{
+		accountRepo:      schedulerTestOpenAIAccountRepo{accounts: accounts},
+		cache:            cache,
+		cfg:              cfg,
+		rateLimitService: newOpenAIAdvancedSchedulerRateLimitService("true"),
+		concurrencyService: NewConcurrencyService(schedulerTestConcurrencyCache{
+			acquireResults: map[int64]bool{21001: false, 21002: true},
+		}),
+	}
+	selection, decision, err := svc.SelectAccountWithScheduler(ctx, &groupID, "", "session_hash_class", "gpt-5.1", nil, OpenAIUpstreamTransportAny, false)
+	require.NoError(t, err)
+	require.NotNil(t, selection)
+	require.False(t, selection.Acquired)
+	require.NotNil(t, selection.WaitPlan)
+	require.Equal(t, AccountWaitClassContinuation, selection.WaitPlan.Class)
+	require.True(t, decision.StickySessionHit)
+}
+
+func TestOpenAIGatewayService_SelectAccountWithScheduler_IneligibleSessionYieldsToContinuationWaiters(t *testing.T) {
+	groupID, accounts, cfg := newStickyBusySchedulerFixture(t)
+	cache := &schedulerTestGatewayCache{sessionBindings: map[string]int64{"openai:session_hash_fallback": 21001}}
+	var acquired []int64
+	svc := &OpenAIGatewayService{
+		accountRepo:      schedulerTestOpenAIAccountRepo{accounts: accounts},
+		cache:            cache,
+		cfg:              cfg,
+		rateLimitService: newOpenAIAdvancedSchedulerRateLimitService("true"),
+		concurrencyService: NewConcurrencyService(schedulerTestConcurrencyCache{
+			acquireResults: map[int64]bool{21001: true, 21002: true},
+			contWaitCounts: map[int64]int{21001: 1},
+			acquiredIDs:    &acquired,
+		}),
+	}
+	ctx := WithOpenAIAdmissionOptions(context.Background(), OpenAIAdmissionOptions{ContinuationEligible: false})
+	selection, _, err := svc.SelectAccountWithScheduler(ctx, &groupID, "", "session_hash_fallback", "gpt-5.1", nil, OpenAIUpstreamTransportAny, false)
+	require.NoError(t, err)
+	require.NotNil(t, selection)
+	require.NotContains(t, acquired, int64(21001), "有续聊等待者时不合格请求不得在粘性账号快抢")
+	require.False(t, selection.Acquired)
+	require.NotNil(t, selection.WaitPlan)
+	require.Equal(t, int64(21001), selection.WaitPlan.AccountID)
+	require.Equal(t, AccountWaitClassNewSession, selection.WaitPlan.Class)
+	require.Equal(t, cfg.Gateway.Scheduling.FallbackWaitTimeout, selection.WaitPlan.Timeout, "新会话类用回退超时")
+	require.Equal(t, cfg.Gateway.Scheduling.FallbackMaxWaiting, selection.WaitPlan.MaxWaiting, "新会话类用回退上限")
+}
+
+func TestOpenAIGatewayService_SelectAccountWithScheduler_LoadBalanceSkipsAccountsWithContinuationWaiters(t *testing.T) {
+	ctx := context.Background()
+	groupID, accounts, cfg := newStickyBusySchedulerFixture(t)
+	svc := &OpenAIGatewayService{
+		accountRepo:      schedulerTestOpenAIAccountRepo{accounts: accounts},
+		cache:            &schedulerTestGatewayCache{},
+		cfg:              cfg,
+		rateLimitService: newOpenAIAdvancedSchedulerRateLimitService("true"),
+		concurrencyService: NewConcurrencyService(schedulerTestConcurrencyCache{
+			acquireResults: map[int64]bool{21001: true, 21002: true},
+			loadMap: map[int64]*AccountLoadInfo{
+				21001: {AccountID: 21001, LoadRate: 0, ContinuationWaiting: 1},
+				21002: {AccountID: 21002, LoadRate: 50},
+			},
+		}),
+	}
+	// 两账号 score 恒为 0（fixture 未设 SchedulerScoreWeights），选号在等权重时靠时间熵种子
+	// 做 50/50 随机抽签；跳过分支缺失时单次调用约有一半概率仍偶然选中 21002，需多次采样才能
+	// 稳定证明「有续聊等待者的账号对新会话不可见」。
+	for i := 0; i < 30; i++ {
+		selection, decision, err := svc.SelectAccountWithScheduler(ctx, &groupID, "", "", "gpt-5.1", nil, OpenAIUpstreamTransportAny, false)
+		require.NoError(t, err)
+		require.NotNil(t, selection)
+		require.True(t, selection.Acquired)
+		require.Equal(t, int64(21002), selection.Account.ID, "有续聊等待者的账号对新会话不可见，即使它负载更低、优先级更高")
+		if i == 0 {
+			require.Equal(t, openAIAccountScheduleLayerLoadBalance, decision.Layer)
+		}
+		if selection.ReleaseFunc != nil {
+			selection.ReleaseFunc()
+		}
+	}
+}
+
+func TestOpenAIGatewayService_SelectAccountWithScheduler_FallbackPlanIsNewSessionClass(t *testing.T) {
+	ctx := context.Background()
+	groupID, accounts, cfg := newStickyBusySchedulerFixture(t)
+	svc := &OpenAIGatewayService{
+		accountRepo:      schedulerTestOpenAIAccountRepo{accounts: accounts},
+		cache:            &schedulerTestGatewayCache{},
+		cfg:              cfg,
+		rateLimitService: newOpenAIAdvancedSchedulerRateLimitService("true"),
+		concurrencyService: NewConcurrencyService(schedulerTestConcurrencyCache{
+			acquireResults: map[int64]bool{21001: false, 21002: false},
+		}),
+	}
+	selection, _, err := svc.SelectAccountWithScheduler(ctx, &groupID, "", "", "gpt-5.1", nil, OpenAIUpstreamTransportAny, false)
+	require.NoError(t, err)
+	require.NotNil(t, selection)
+	require.False(t, selection.Acquired)
+	require.NotNil(t, selection.WaitPlan)
+	require.Equal(t, AccountWaitClassNewSession, selection.WaitPlan.Class)
+	require.Equal(t, cfg.Gateway.Scheduling.FallbackWaitTimeout, selection.WaitPlan.Timeout)
 }
 
 func TestOpenAIGatewayService_SelectAccountWithScheduler_SessionStickyEscapeByTTFT(t *testing.T) {
@@ -2619,6 +2812,7 @@ func TestOpenAIGatewayService_SelectAccountWithScheduler_SessionStickyBusyEscape
 	cfg.Gateway.OpenAIScheduler.StickyEscapeEnabled = true
 	cfg.Gateway.OpenAIScheduler.StickyEscapeTTFTMs = 15000
 	cfg.Gateway.OpenAIScheduler.StickyEscapeErrorRate = 0.5
+	cfg.Gateway.Scheduling.ContinuationMaxWaiting = 100
 	cfg.Gateway.Scheduling.StickySessionMaxWaiting = 2
 	cfg.Gateway.Scheduling.StickySessionWaitTimeout = 45 * time.Second
 	concurrencyCache := schedulerTestConcurrencyCache{
@@ -2662,6 +2856,7 @@ func TestOpenAIGatewayService_SelectAccountWithScheduler_SessionStickyEscapeDisa
 	cfg.Gateway.OpenAIScheduler.StickyEscapeEnabled = false
 	cfg.Gateway.OpenAIScheduler.StickyEscapeTTFTMs = 15000
 	cfg.Gateway.OpenAIScheduler.StickyEscapeErrorRate = 0.5
+	cfg.Gateway.Scheduling.ContinuationMaxWaiting = 100
 	cfg.Gateway.Scheduling.StickySessionMaxWaiting = 2
 	cfg.Gateway.Scheduling.StickySessionWaitTimeout = 45 * time.Second
 	concurrencyCache := schedulerTestConcurrencyCache{
@@ -4047,5 +4242,350 @@ func TestOpenAIGatewayService_SelectAccountWithScheduler_LegacyAccountModelRoute
 	require.Contains(t, acquiredIDs, dbBackup.ID)
 	if selection.ReleaseFunc != nil {
 		selection.ReleaseFunc()
+	}
+}
+
+func newStickyFullWaitsService(t *testing.T, accounts []Account, cfg *config.Config, cache *schedulerTestGatewayCache, concurrency schedulerTestConcurrencyCache) *OpenAIGatewayService {
+	t.Helper()
+	cfg.Gateway.OpenAIScheduler.StickyEscapeEnabled = true
+	return &OpenAIGatewayService{
+		accountRepo:        schedulerTestOpenAIAccountRepo{accounts: accounts},
+		cache:              cache,
+		cfg:                cfg,
+		rateLimitService:   newOpenAIAdvancedSchedulerRateLimitService("true"),
+		concurrencyService: NewConcurrencyService(concurrency),
+	}
+}
+
+func TestOpenAIGatewayService_SelectAccountWithScheduler_StickyFullWaitsReturnsPlanInsteadOfEscape(t *testing.T) {
+	groupID, accounts, cfg := newStickyBusySchedulerFixture(t)
+	cache := &schedulerTestGatewayCache{sessionBindings: map[string]int64{"openai:session_hash_full_waits": 21001}}
+	var acquired []int64
+	svc := newStickyFullWaitsService(t, accounts, cfg, cache, schedulerTestConcurrencyCache{
+		acquireResults: map[int64]bool{21001: false, 21002: true},
+		acquiredIDs:    &acquired,
+	})
+	ctx := WithOpenAIAdmissionOptions(context.Background(), OpenAIAdmissionOptions{ContinuationEligible: true, StickyFullWaits: true})
+	selection, decision, err := svc.SelectAccountWithScheduler(ctx, &groupID, "", "session_hash_full_waits", "gpt-5.1", nil, OpenAIUpstreamTransportAny, false)
+	require.NoError(t, err)
+	require.NotNil(t, selection)
+	require.False(t, selection.Acquired)
+	require.NotNil(t, selection.WaitPlan)
+	require.Equal(t, int64(21001), selection.WaitPlan.AccountID, "WS 续聊满槽不逃逸，排在原账号")
+	require.Equal(t, AccountWaitClassContinuation, selection.WaitPlan.Class)
+	require.True(t, decision.StickySessionHit)
+	require.NotContains(t, acquired, int64(21002))
+}
+
+func TestOpenAIGatewayService_SelectAccountWithScheduler_StickyFullWaitsSpillsAtStickyThreshold(t *testing.T) {
+	groupID, accounts, cfg := newStickyBusySchedulerFixture(t)
+	cache := &schedulerTestGatewayCache{sessionBindings: map[string]int64{"openai:session_hash_queue_full": 21001}}
+	svc := newStickyFullWaitsService(t, accounts, cfg, cache, schedulerTestConcurrencyCache{
+		acquireResults: map[int64]bool{21001: false, 21002: true},
+		contWaitCounts: map[int64]int{21001: 2},
+	})
+	ctx := WithOpenAIAdmissionOptions(context.Background(), OpenAIAdmissionOptions{ContinuationEligible: true, StickyFullWaits: true})
+	selection, decision, err := svc.SelectAccountWithScheduler(ctx, &groupID, "", "session_hash_queue_full", "gpt-5.1", nil, OpenAIUpstreamTransportAny, false)
+	require.NoError(t, err)
+	require.NotNil(t, selection)
+	require.True(t, selection.Acquired)
+	require.Equal(t, int64(21002), selection.Account.ID, "达到粘性分流阈值时溢出到负载层")
+	require.Equal(t, openAIAccountScheduleLayerLoadBalance, decision.Layer)
+	require.False(t, decision.StickySessionHit)
+	require.Equal(t, int64(21001), cache.sessionBindings["openai:session_hash_queue_full"], "溢出不改写绑定")
+}
+
+func TestOpenAIGatewayService_SelectAccountWithScheduler_HTTPDefaultStillEscapesOnFull(t *testing.T) {
+	groupID, accounts, cfg := newStickyBusySchedulerFixture(t)
+	cache := &schedulerTestGatewayCache{sessionBindings: map[string]int64{"openai:session_hash_http_escape": 21001}}
+	svc := newStickyFullWaitsService(t, accounts, cfg, cache, schedulerTestConcurrencyCache{
+		acquireResults: map[int64]bool{21001: false, 21002: true},
+	})
+	selection, decision, err := svc.SelectAccountWithScheduler(context.Background(), &groupID, "", "session_hash_http_escape", "gpt-5.1", nil, OpenAIUpstreamTransportAny, false)
+	require.NoError(t, err)
+	require.NotNil(t, selection)
+	require.True(t, selection.Acquired)
+	require.Equal(t, int64(21002), selection.Account.ID, "不带标志的 HTTP 请求沿用上游满槽逃逸")
+	require.Equal(t, openAIAccountScheduleLayerLoadBalance, decision.Layer)
+	require.Equal(t, int64(21001), cache.sessionBindings["openai:session_hash_http_escape"])
+}
+
+func TestSelectBySessionHash_StickyFullWaitsThresholdHonorsDisabledEscape(t *testing.T) {
+	groupID := int64(10130)
+	accounts := []Account{
+		{
+			ID:          21301,
+			Platform:    PlatformOpenAI,
+			Type:        AccountTypeAPIKey,
+			Status:      StatusActive,
+			Schedulable: true,
+			Concurrency: 1,
+			GroupIDs:    []int64{groupID},
+		},
+	}
+	cfg := newSchedulerTestOpenAIWSV2Config()
+	svc := &OpenAIGatewayService{
+		accountRepo: schedulerGroupAwareOpenAIAccountRepo{schedulerTestOpenAIAccountRepo{accounts: accounts}},
+		cache:       &schedulerTestGatewayCache{},
+		cfg:         cfg,
+		concurrencyService: NewConcurrencyService(schedulerTestConcurrencyCache{
+			acquireResults: map[int64]bool{21301: false},
+			contWaitCounts: map[int64]int{21301: cfg.Gateway.Scheduling.StickySessionMaxWaiting},
+		}),
+	}
+	scheduler := &defaultOpenAIAccountScheduler{service: svc, stats: newOpenAIAccountRuntimeStats()}
+	newRequest := func(disableEscape bool) OpenAIAccountScheduleRequest {
+		return OpenAIAccountScheduleRequest{
+			GroupID:               &groupID,
+			Platform:              PlatformOpenAI,
+			SessionHash:           "task-owner-session",
+			StickyAccountID:       21301,
+			PreserveStickyBinding: true,
+			DisableStickyEscape:   disableEscape,
+			StickyFullWaits:       true,
+			ContinuationEligible:  true,
+			RequestedModel:        "gpt-5.1",
+			RequiredTransport:     OpenAIUpstreamTransportAny,
+			RequiredCapability:    OpenAIEndpointCapabilityChatCompletions,
+		}
+	}
+
+	t.Run("escape disabled keeps waiting on the owner", func(t *testing.T) {
+		selection, escaped, err := scheduler.selectBySessionHash(context.Background(), newRequest(true))
+		require.NoError(t, err)
+		require.False(t, escaped, "任务属主锁定时达到粘性阈值也不得溢出")
+		require.NotNil(t, selection)
+		require.NotNil(t, selection.WaitPlan)
+		require.Equal(t, int64(21301), selection.WaitPlan.AccountID)
+		require.Equal(t, 100, selection.WaitPlan.MaxWaiting)
+		require.Equal(t, AccountWaitClassContinuation, selection.WaitPlan.Class)
+	})
+
+	t.Run("escape allowed still spills", func(t *testing.T) {
+		selection, escaped, err := scheduler.selectBySessionHash(context.Background(), newRequest(false))
+		require.NoError(t, err)
+		require.True(t, escaped)
+		require.Nil(t, selection)
+	})
+}
+
+func newStickyBindPreservedSchedulerFixture(stickyModelMapping bool) (int64, []Account, *config.Config) {
+	groupID := int64(10120)
+	sticky := Account{
+		ID:          21201,
+		Platform:    PlatformOpenAI,
+		Type:        AccountTypeAPIKey,
+		Status:      StatusActive,
+		Schedulable: true,
+		Concurrency: 1,
+		Priority:    0,
+		GroupIDs:    []int64{groupID},
+	}
+	if stickyModelMapping {
+		sticky.Credentials = map[string]any{"model_mapping": map[string]any{"gpt-4o": "gpt-4o"}}
+	}
+	other := Account{
+		ID:          21202,
+		Platform:    PlatformOpenAI,
+		Type:        AccountTypeAPIKey,
+		Status:      StatusActive,
+		Schedulable: true,
+		Concurrency: 1,
+		Priority:    9,
+		GroupIDs:    []int64{groupID},
+	}
+	return groupID, []Account{sticky, other}, newSchedulerTestOpenAIWSV2Config()
+}
+
+func TestOpenAIGatewayService_SelectAccountWithScheduler_IncompatibleStickyDoesNotPreserveBinding(t *testing.T) {
+	groupID, accounts, cfg := newStickyBindPreservedSchedulerFixture(true)
+	cache := &schedulerTestGatewayCache{sessionBindings: map[string]int64{"openai:session_hash_incompatible": 21201}}
+	svc := &OpenAIGatewayService{
+		accountRepo:        schedulerGroupAwareOpenAIAccountRepo{schedulerTestOpenAIAccountRepo{accounts: accounts}},
+		cache:              cache,
+		cfg:                cfg,
+		rateLimitService:   newOpenAIAdvancedSchedulerRateLimitService("true"),
+		concurrencyService: NewConcurrencyService(schedulerTestConcurrencyCache{acquireResults: map[int64]bool{21201: true, 21202: true}}),
+	}
+
+	selection, decision, err := svc.SelectAccountWithScheduler(context.Background(), &groupID, "", "session_hash_incompatible", "gpt-5.1", nil, OpenAIUpstreamTransportAny, false)
+	require.NoError(t, err)
+	require.NotNil(t, selection)
+	require.True(t, selection.Acquired)
+	if selection.ReleaseFunc != nil {
+		selection.ReleaseFunc()
+	}
+	require.Equal(t, int64(21202), selection.Account.ID, "绑定账号不支持本次模型，跳过后选中别的账号")
+	require.Equal(t, openAIAccountScheduleLayerLoadBalance, decision.Layer)
+	require.False(t, decision.StickyBindingPreserved, "跳过不兼容绑定不是保留绑定的选号，准入后必须能改写绑定")
+	require.False(t, selection.StickyBindingPreserved())
+}
+
+func TestOpenAIGatewayService_SelectAccountWithScheduler_EscapedStickyPreservesBinding(t *testing.T) {
+	groupID, accounts, cfg := newStickyBindPreservedSchedulerFixture(false)
+	cache := &schedulerTestGatewayCache{sessionBindings: map[string]int64{"openai:session_hash_escaped": 21201}}
+	svc := &OpenAIGatewayService{
+		accountRepo:        schedulerGroupAwareOpenAIAccountRepo{schedulerTestOpenAIAccountRepo{accounts: accounts}},
+		cache:              cache,
+		cfg:                cfg,
+		rateLimitService:   newOpenAIAdvancedSchedulerRateLimitService("true"),
+		concurrencyService: NewConcurrencyService(schedulerTestConcurrencyCache{acquireResults: map[int64]bool{21201: false, 21202: true}}),
+	}
+
+	selection, decision, err := svc.SelectAccountWithScheduler(context.Background(), &groupID, "", "session_hash_escaped", "gpt-5.1", nil, OpenAIUpstreamTransportAny, false)
+	require.NoError(t, err)
+	require.NotNil(t, selection)
+	require.True(t, selection.Acquired)
+	if selection.ReleaseFunc != nil {
+		selection.ReleaseFunc()
+	}
+	require.Equal(t, int64(21202), selection.Account.ID, "粘性账号满槽后逃逸到别的账号")
+	require.True(t, decision.StickyBindingPreserved, "逃逸保留绑定，准入后不得改写")
+	require.True(t, selection.StickyBindingPreserved(), "HTTP 准入只拿得到选号结果，保留标记必须随结果带出")
+}
+
+func TestOpenAIGatewayService_SelectAccountWithScheduler_WeightedDeferredBindingKeepsLiveBinding(t *testing.T) {
+	for _, tc := range []struct {
+		name        string
+		ctx         context.Context
+		wantBinding int64
+	}{
+		{"http_binds_during_selection", context.Background(), 21202},
+		{"ws_defers_to_post_admission", WithOpenAIAdmissionOptions(context.Background(), OpenAIAdmissionOptions{ContinuationEligible: true, StickyFullWaits: true, DeferStickyBinding: true}), 21201},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			groupID, accounts, cfg := newStickyBindPreservedSchedulerFixture(false)
+			cache := &schedulerTestGatewayCache{sessionBindings: map[string]int64{"openai:session_hash_weighted": 21201}}
+			svc := &OpenAIGatewayService{
+				accountRepo:        schedulerGroupAwareOpenAIAccountRepo{schedulerTestOpenAIAccountRepo{accounts: accounts}},
+				cache:              cache,
+				cfg:                cfg,
+				rateLimitService:   newOpenAIAdvancedSchedulerRateLimitService("true", "true"),
+				concurrencyService: NewConcurrencyService(schedulerTestConcurrencyCache{acquireResults: map[int64]bool{21201: false, 21202: true}}),
+			}
+
+			selection, _, err := svc.SelectAccountWithScheduler(tc.ctx, &groupID, "", "session_hash_weighted", "gpt-5.1", nil, OpenAIUpstreamTransportAny, false)
+			require.NoError(t, err)
+			require.NotNil(t, selection)
+			require.True(t, selection.Acquired)
+			if selection.ReleaseFunc != nil {
+				selection.ReleaseFunc()
+			}
+			require.Equal(t, int64(21202), selection.Account.ID, "加权粘性下绑定账号满槽，负载层选中别的账号")
+			require.Equal(t, tc.wantBinding, cache.sessionBindings["openai:session_hash_weighted"])
+		})
+	}
+}
+
+func TestTryFallbackToWeightedSticky_IneligibleYieldsToContinuationWaiters(t *testing.T) {
+	groupID := int64(10111)
+	accounts := []Account{
+		{
+			ID:          21102,
+			Platform:    PlatformOpenAI,
+			Type:        AccountTypeAPIKey,
+			Status:      StatusActive,
+			Schedulable: true,
+			Concurrency: 1,
+			GroupIDs:    []int64{groupID},
+		},
+	}
+	cfg := newSchedulerTestOpenAIWSV2Config()
+	for _, tc := range []struct {
+		name     string
+		eligible bool
+	}{
+		{"continuation acquires", true},
+		{"new session yields", false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var acquired []int64
+			svc := &OpenAIGatewayService{
+				accountRepo: schedulerGroupAwareOpenAIAccountRepo{schedulerTestOpenAIAccountRepo{accounts: accounts}},
+				cache:       &schedulerTestGatewayCache{},
+				cfg:         cfg,
+				concurrencyService: NewConcurrencyService(schedulerTestConcurrencyCache{
+					acquireResults: map[int64]bool{21102: true},
+					contWaitCounts: map[int64]int{21102: 1},
+					acquiredIDs:    &acquired,
+				}),
+			}
+			scheduler := &defaultOpenAIAccountScheduler{service: svc, stats: newOpenAIAccountRuntimeStats()}
+			selection, err := scheduler.tryFallbackToWeightedSticky(context.Background(), OpenAIAccountScheduleRequest{
+				GroupID:              &groupID,
+				Platform:             PlatformOpenAI,
+				StickyAccountID:      21102,
+				StickyWeighted:       true,
+				RequestedModel:       "gpt-5.1",
+				RequiredTransport:    OpenAIUpstreamTransportAny,
+				RequiredCapability:   OpenAIEndpointCapabilityChatCompletions,
+				ContinuationEligible: tc.eligible,
+			})
+			require.NoError(t, err)
+			require.NotNil(t, selection)
+			if tc.eligible {
+				require.True(t, selection.Acquired, "续聊命中绑定且有空槽时直接拿槽")
+				require.Contains(t, acquired, int64(21102))
+				return
+			}
+			require.False(t, selection.Acquired, "不合格请求在绑定账号有续聊等待者时不得抢槽")
+			require.NotContains(t, acquired, int64(21102), "加权粘性回退不能绕过入口让出")
+			require.NotNil(t, selection.WaitPlan)
+			require.Equal(t, AccountWaitClassNewSession, selection.WaitPlan.Class)
+		})
+	}
+}
+
+func TestTryFallbackToWeightedSticky_WaitPlanFollowsRequestEligibility(t *testing.T) {
+	groupID := int64(10110)
+	accounts := []Account{
+		{
+			ID:          21101,
+			Platform:    PlatformOpenAI,
+			Type:        AccountTypeAPIKey,
+			Status:      StatusActive,
+			Schedulable: true,
+			Concurrency: 1,
+			GroupIDs:    []int64{groupID},
+		},
+	}
+	cfg := newSchedulerTestOpenAIWSV2Config()
+	svc := &OpenAIGatewayService{
+		accountRepo:        schedulerGroupAwareOpenAIAccountRepo{schedulerTestOpenAIAccountRepo{accounts: accounts}},
+		cache:              &schedulerTestGatewayCache{},
+		cfg:                cfg,
+		concurrencyService: NewConcurrencyService(schedulerTestConcurrencyCache{acquireResults: map[int64]bool{21101: false}}),
+	}
+	scheduler := &defaultOpenAIAccountScheduler{service: svc, stats: newOpenAIAccountRuntimeStats()}
+
+	for _, tc := range []struct {
+		name           string
+		eligible       bool
+		wantClass      AccountWaitClass
+		wantTimeout    time.Duration
+		wantMaxWaiting int
+	}{
+		{"continuation", true, AccountWaitClassContinuation, cfg.Gateway.Scheduling.StickySessionWaitTimeout, cfg.Gateway.Scheduling.ContinuationMaxWaiting},
+		{"new session", false, AccountWaitClassNewSession, cfg.Gateway.Scheduling.FallbackWaitTimeout, cfg.Gateway.Scheduling.FallbackMaxWaiting},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			selection, err := scheduler.tryFallbackToWeightedSticky(context.Background(), OpenAIAccountScheduleRequest{
+				GroupID:              &groupID,
+				Platform:             PlatformOpenAI,
+				StickyAccountID:      21101,
+				StickyWeighted:       true,
+				RequestedModel:       "gpt-5.1",
+				RequiredTransport:    OpenAIUpstreamTransportAny,
+				RequiredCapability:   OpenAIEndpointCapabilityChatCompletions,
+				ContinuationEligible: tc.eligible,
+			})
+			require.NoError(t, err)
+			require.NotNil(t, selection)
+			require.NotNil(t, selection.WaitPlan)
+			require.Equal(t, int64(21101), selection.WaitPlan.AccountID)
+			require.Equal(t, tc.wantClass, selection.WaitPlan.Class, "回退计划的类别必须跟随请求的续聊资格")
+			require.Equal(t, tc.wantTimeout, selection.WaitPlan.Timeout)
+			require.Equal(t, tc.wantMaxWaiting, selection.WaitPlan.MaxWaiting)
+		})
 	}
 }

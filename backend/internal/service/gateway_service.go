@@ -568,20 +568,51 @@ func shouldClearStickySession(account *Account, requestedModel string) bool {
 	return false
 }
 
+// AccountWaitClass 是等待计划的准入类别。零值沿用旧行为：写旧计数键、不让出，
+// Anthropic / Gemini 等未设类别的路径行为不变。
+type AccountWaitClass int
+
+const (
+	AccountWaitClassLegacy AccountWaitClass = iota
+	// AccountWaitClassNewSession 走旧计数键与回退上限，续聊达到连续准入限额时优先。
+	AccountWaitClassNewSession
+	// AccountWaitClassContinuation 走续聊计数键与独立续聊容量，受账号连续准入限额约束。
+	AccountWaitClassContinuation
+)
+
+func (c AccountWaitClass) String() string {
+	switch c {
+	case AccountWaitClassNewSession:
+		return "new_session"
+	case AccountWaitClassContinuation:
+		return "continuation"
+	default:
+		return "legacy"
+	}
+}
+
 type AccountWaitPlan struct {
 	AccountID      int64
 	MaxConcurrency int
 	Timeout        time.Duration
 	MaxWaiting     int
+	Class          AccountWaitClass
 }
 
 type AccountSelectionResult struct {
 	Account     *Account
 	Acquired    bool
 	ReleaseFunc func()
-	WaitPlan    *AccountWaitPlan // nil means no wait allowed
+	// ReuseFunc 与 ReleaseFunc 同源，用于下一轮准入和续租；未抢槽时为 nil。
+	// 不限并发的账号（Concurrency <= 0）与未接并发服务（concurrencyService 为 nil）时
+	// 没有真实槽位，Acquired 为真但 ReuseFunc 仍为 nil。
+	ReuseFunc func(ctx context.Context) (bool, error)
+	WaitPlan  *AccountWaitPlan // nil means no wait allowed
 	// stickySessionHit 标记账号来自会话粘性绑定命中，供非高级调度路径回填决策标签。
 	stickySessionHit bool
+	// stickyBindingPreserved 标记本次选号保留了已有绑定（队满溢出、健康逃逸、guardian 父线程回退），
+	// 非高级调度路径据此回填决策标签，HTTP 与 WS 准入后据此不改写绑定。
+	stickyBindingPreserved bool
 	// profitGate 携带本次选号真实生效的利润门（无门为 nil）。门安装在调度栈的
 	// 局部 ctx 上，handler 必须经 ContextWithSelectionProfitGate 重放后才能在
 	// 调度栈之外做抢槽后终检与准入后粘性绑定。
@@ -591,6 +622,11 @@ type AccountSelectionResult struct {
 // ProfitGateActive 报告本次选号是否处于利润门之下。
 func (r *AccountSelectionResult) ProfitGateActive() bool {
 	return r != nil && r.profitGate != nil
+}
+
+// StickyBindingPreserved 报告调度器本次选号是否保留了已有绑定；为真时准入后不得改写绑定。
+func (r *AccountSelectionResult) StickyBindingPreserved() bool {
+	return r != nil && r.stickyBindingPreserved
 }
 
 // ClaudeUsage 表示Claude API返回的usage信息

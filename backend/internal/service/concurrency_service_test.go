@@ -34,6 +34,8 @@ type stubConcurrencyCacheForTest struct {
 	apiKeyReleaseErr     error
 	apiKeyConcurrency    map[int64]int
 	apiKeyConcurrencyErr error
+	refreshResult        bool
+	refreshErr           error
 
 	// 记录调用
 	releasedAccountIDs       []int64
@@ -43,6 +45,8 @@ type stubConcurrencyCacheForTest struct {
 	trackedAPIKeyRequestIDs  []string
 	releasedAPIKeyIDs        []int64
 	releasedAPIKeyRequestIDs []string
+	acquiredRequestIDs       []string
+	refreshedRequestIDs      []string
 }
 
 type ingressLeaseCacheForTest struct {
@@ -87,7 +91,8 @@ func (c *ingressLeaseCacheForTest) ReleaseOpenAIWSIngressLease(ctx context.Conte
 var _ ConcurrencyCache = (*stubConcurrencyCacheForTest)(nil)
 var _ OpenAIWSIngressLeaseCache = (*ingressLeaseCacheForTest)(nil)
 
-func (c *stubConcurrencyCacheForTest) AcquireAccountSlot(_ context.Context, _ int64, _ int, _ string) (bool, error) {
+func (c *stubConcurrencyCacheForTest) AcquireAccountSlot(_ context.Context, _ int64, _ int, requestID string) (bool, error) {
+	c.acquiredRequestIDs = append(c.acquiredRequestIDs, requestID)
 	return c.acquireResult, c.acquireErr
 }
 func (c *stubConcurrencyCacheForTest) ReleaseAccountSlot(_ context.Context, accountID int64, requestID string) error {
@@ -116,6 +121,19 @@ func (c *stubConcurrencyCacheForTest) DecrementAccountWaitCount(_ context.Contex
 }
 func (c *stubConcurrencyCacheForTest) GetAccountWaitingCount(_ context.Context, _ int64) (int, error) {
 	return c.waitCount, c.waitCountErr
+}
+func (c *stubConcurrencyCacheForTest) IncrementAccountContinuationWaitCount(_ context.Context, _ int64, _ int) (bool, error) {
+	return true, nil
+}
+func (c *stubConcurrencyCacheForTest) DecrementAccountContinuationWaitCount(_ context.Context, _ int64) error {
+	return nil
+}
+func (c *stubConcurrencyCacheForTest) GetAccountContinuationWaitingCount(_ context.Context, _ int64) (int, error) {
+	return 0, nil
+}
+func (c *stubConcurrencyCacheForTest) RefreshAccountSlot(_ context.Context, _ int64, requestID string) (bool, error) {
+	c.refreshedRequestIDs = append(c.refreshedRequestIDs, requestID)
+	return c.refreshResult, c.refreshErr
 }
 func (c *stubConcurrencyCacheForTest) AcquireUserSlot(_ context.Context, _ int64, _ int, _ string) (bool, error) {
 	return c.acquireResult, c.acquireErr
@@ -615,4 +633,29 @@ func TestIncrementAccountWaitCount_NilCache(t *testing.T) {
 	allowed, err := svc.IncrementAccountWaitCount(context.Background(), 1, 10)
 	require.NoError(t, err)
 	require.True(t, allowed)
+}
+
+func TestConcurrencyService_AcquireAccountSlot_ReuseFunc(t *testing.T) {
+	cache := &stubConcurrencyCacheForTest{acquireResult: true, refreshResult: true}
+	svc := NewConcurrencyService(cache)
+	ctx := context.Background()
+	result, err := svc.AcquireAccountSlot(ctx, 21, 1)
+	require.NoError(t, err)
+	require.True(t, result.Acquired)
+	require.NotNil(t, result.ReuseFunc)
+
+	ok, err := result.ReuseFunc(ctx)
+	require.NoError(t, err)
+	require.True(t, ok)
+	require.Len(t, cache.acquiredRequestIDs, 1)
+	require.Equal(t, cache.acquiredRequestIDs, cache.refreshedRequestIDs, "复用沿用抢槽时的同一个 requestID 续租")
+
+	cache.refreshResult = false
+	ok, err = result.ReuseFunc(ctx)
+	require.NoError(t, err)
+	require.False(t, ok)
+
+	unlimited, err := svc.AcquireAccountSlot(ctx, 22, 0)
+	require.NoError(t, err)
+	require.Nil(t, unlimited.ReuseFunc, "无限制账号没有槽位复用函数")
 }
