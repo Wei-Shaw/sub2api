@@ -117,6 +117,10 @@ type OpenAIQuotaAutoResetService struct {
 	stateDue        sync.Map
 	expiryTimers    sync.Map
 	schedulerLeader atomic.Bool
+	// 上游 Date 减本机时钟的偏移，进程内记录：它是实例属性而非账号属性，多实例各自的本机
+	// 时钟不同，落库共享会互相污染。没有实查结果时估算上游当前时间用它折算。
+	upstreamClockOffset atomic.Int64
+	upstreamClockKnown  atomic.Bool
 }
 
 // openAIAutoResetFetchState 只存进程内：nextAt 带单调时钟读数，重启后靠启动错峰重建。
@@ -431,11 +435,11 @@ func (s *OpenAIQuotaAutoResetService) evaluateAccount(ctx context.Context, accou
 	_, expiryDue := s.expiryDue.LoadAndDelete(accountID)
 	_, stateDue := s.stateDue.LoadAndDelete(accountID)
 	// 到期触发的评估失败后，卡已在提前窗口内排不出定时器，用量快照也可能刚刷新，
-	// 只能靠落库的失败状态在下一分钟扫描重试（重启后同样有效）；缓存快照里没有
-	// 未过期的卡时停止，避免明细长期缺失的账号每分钟打上游。
+	// 只能靠落库的失败状态在下一分钟扫描重试（重启后同样有效）；按上游时钟折算后
+	// 缓存快照里没有未过期的卡时停止，避免明细长期缺失的账号每分钟打上游。
 	expiryRetryDue := config.ExpiryEnabled && state != nil && state.Status == OpenAIAutoResetStatusFailed &&
 		openAIAutoResetWindowHasExpiry(state.TriggerWindow) &&
-		openAIAutoResetCreditExpiring(openAIAutoResetCachedCreditExpirations(account.Extra), config.ExpiryLead, now)
+		s.expiryRetryWithinCachedCredit(account.Extra, config.ExpiryLead, now)
 	expiryPending := expiryDue || expiryRetryDue
 	// 用量快照过期只驱动阈值路径重查；只开到期用卡的账号按 24 小时计划与定时器取卡。
 	// 计划内取卡只由领导实例做；错峰未轮到的账号也不因用量快照过期而提前实查，
@@ -652,6 +656,10 @@ func (s *OpenAIQuotaAutoResetService) evaluateAccount(ctx context.Context, accou
 	if err := s.persistState(ctx, accountID, success); err != nil {
 		return err
 	}
+	// 下一张卡已在提前窗口内时排不出定时器，打标记让后续扫描继续实查。
+	if s.markExpiryDueIfExpiring(accountID, config, post.Quota) {
+		s.Notify(accountID)
+	}
 	s.recordAudit(accountID, assessment, available, "success", consumeResult.WindowsReset, "")
 	slog.Info("openai_auto_reset_credit_success",
 		"account_id", accountID,
@@ -797,6 +805,7 @@ func buildOpenAIAutoResetUsageUpdates(usage *OpenAIQuotaUsage, now time.Time) ma
 }
 
 func (s *OpenAIQuotaAutoResetService) persistFreshUsage(ctx context.Context, accountID int64, usage *OpenAIQuotaUsage, now time.Time) error {
+	s.noteUpstreamClock(usage.upstreamTime, now)
 	updates := buildOpenAIAutoResetUsageUpdates(usage, now)
 	if len(updates) > 0 {
 		if err := s.accountRepo.UpdateExtra(ctx, accountID, updates); err != nil {
@@ -886,6 +895,32 @@ func openAIAutoResetSnapshotStale(extra map[string]any, now time.Time) bool {
 	return err != nil || now.Sub(updatedAt) >= openAIAutoResetSnapshotTTL
 }
 
+// noteUpstreamClock 记录上游 Date 与本机时钟的偏移；手动同步与调度实查都会调用。
+func (s *OpenAIQuotaAutoResetService) noteUpstreamClock(upstreamTime, now time.Time) {
+	if upstreamTime.IsZero() {
+		return
+	}
+	s.upstreamClockOffset.Store(int64(upstreamTime.Sub(now)))
+	s.upstreamClockKnown.Store(true)
+}
+
+func (s *OpenAIQuotaAutoResetService) upstreamNow(now time.Time) (time.Time, bool) {
+	if !s.upstreamClockKnown.Load() {
+		return time.Time{}, false
+	}
+	return now.Add(time.Duration(s.upstreamClockOffset.Load())), true
+}
+
+// expiryRetryWithinCachedCredit 判断缓存快照里是否还有值得重试的未过期卡。判定按上游时钟
+// 折算；尚无可靠的上游参考时间时不以本机时钟终止重试，交给实查裁决。
+func (s *OpenAIQuotaAutoResetService) expiryRetryWithinCachedCredit(extra map[string]any, lead time.Duration, now time.Time) bool {
+	upstreamNow, ok := s.upstreamNow(now)
+	if !ok {
+		return true
+	}
+	return openAIAutoResetCreditExpiring(openAIAutoResetCachedCreditExpirations(extra), lead, upstreamNow)
+}
+
 // openAIAutoResetCachedCreditExpirations 读取账号 extra 里缓存的卡明细快照；
 // 明细缺失时快照不会被覆盖，因此它能反映最后一次成功查询到的卡。
 func openAIAutoResetCachedCreditExpirations(extra map[string]any) []string {
@@ -956,6 +991,19 @@ func (s *OpenAIQuotaAutoResetService) armExpiryTimer(ctx context.Context, accoun
 		}
 	}
 	s.persistExpiryAt(ctx, accountID, expiryAt)
+}
+
+// markExpiryDueIfExpiring 处理已进入提前窗口、排不出定时器的卡：按到点语义打标记，
+// 是否用卡仍由实查后的最终校验决定。
+func (s *OpenAIQuotaAutoResetService) markExpiryDueIfExpiring(accountID int64, config OpenAIAutoResetCreditConfig, usage *OpenAIQuotaUsage) bool {
+	if usage == nil || usage.RateLimitResetCredits == nil || usage.upstreamTime.IsZero() || !config.ExpiryEnabled || config.ExpiryLead <= 0 {
+		return false
+	}
+	if !openAIAutoResetCreditExpiring(openAIAutoResetCreditExpirations(usage.RateLimitResetCredits), config.ExpiryLead, usage.upstreamTime) {
+		return false
+	}
+	s.expiryDue.Store(accountID, struct{}{})
+	return true
 }
 
 func (s *OpenAIQuotaAutoResetService) disarmExpiryTimer(accountID int64) bool {
@@ -1139,17 +1187,12 @@ func (s *OpenAIQuotaAutoResetService) syncCreditUsage(ctx context.Context, accou
 	if !config.Active() {
 		return
 	}
+	s.noteUpstreamClock(usage.upstreamTime, time.Now())
 	if s.isSchedulerLeader() {
 		s.fetchStates.Store(accountID, openAIAutoResetFetchState{nextAt: time.Now().Add(openAIAutoResetCreditRefreshInterval), fetched: true, config: config})
 		s.armExpiryTimer(ctx, accountID, config, usage)
 	}
-	notify := false
-	// 已进入提前窗口的卡排不了定时器，按到点语义打标记入队，是否用卡仍由实查后的最终校验决定。
-	if config.ExpiryEnabled && config.ExpiryLead > 0 &&
-		openAIAutoResetCreditExpiring(openAIAutoResetCreditExpirations(usage.RateLimitResetCredits), config.ExpiryLead, usage.upstreamTime) {
-		s.expiryDue.Store(accountID, struct{}{})
-		notify = true
-	}
+	notify := s.markExpiryDueIfExpiring(accountID, config, usage)
 	// 网关暂停决策读运行态里的卡数；与刚查到的不一致时让调度器立即实查校正，而不是等 24 小时。
 	if state := openAIAutoResetStateFromExtra(account.Extra); state != nil && state.AvailableCount != usage.RateLimitResetCredits.AvailableCount {
 		s.stateDue.Store(accountID, struct{}{})
