@@ -203,6 +203,26 @@ func (s *AccountTestService) FetchOpenAIAccountModels(ctx context.Context, accou
 			model.Type = "model"
 		}
 	}
+	// Codex discovery lists Responses drivers, not image_generation tool models.
+	// Add locally supported image choices only to the OAuth test picker; keep the
+	// shared upstream catalog and API-key discovery authoritative.
+	if account != nil && account.IsOpenAIOAuthLike() {
+		seen := make(map[string]bool, len(payload.Data))
+		for _, model := range payload.Data {
+			seen[model.ID] = true
+		}
+		for _, model := range openai.DefaultModels {
+			if IsGPTImageGenerationModel(model.ID) && account.IsModelSupported(model.ID) && !seen[model.ID] {
+				payload.Data = append(payload.Data, model)
+				seen[model.ID] = true
+			}
+		}
+		for model := range account.GetModelMapping() {
+			if IsGPTImageGenerationModel(model) && !strings.Contains(model, "*") && !seen[model] {
+				payload.Data = append(payload.Data, openai.Model{ID: model, Object: "model", Type: "model", OwnedBy: "openai", DisplayName: model})
+			}
+		}
+	}
 	return payload.Data, nil
 }
 
@@ -3031,6 +3051,8 @@ func (s *AccountTestService) testOpenAIImageOAuth(c *gin.Context, ctx context.Co
 	}
 	applyOpenAIImagesDefaults(parsed)
 
+	s.sendEvent(c, TestEvent{Type: "content", Text: fmt.Sprintf("Responses driver: %s; image model: %s\n", openAIImagesResponsesMainModelValue(), parsed.Model)})
+
 	responsesBody, err := buildOpenAIImagesResponsesRequest(parsed, parsed.Model)
 	if err != nil {
 		return s.sendErrorAndEnd(c, fmt.Sprintf("Failed to build image request: %s", err.Error()))
@@ -3104,6 +3126,12 @@ func (s *AccountTestService) testOpenAIImageOAuth(c *gin.Context, ctx context.Co
 		return s.sendErrorAndEnd(c, fmt.Sprintf("Failed to parse image response: %s", err.Error()))
 	}
 	if len(results) == 0 {
+		if upstreamErr := extractOpenAIImagesUpstreamError(body); upstreamErr != nil {
+			return s.sendErrorAndEnd(c, upstreamErr.clientMessage())
+		}
+		if textErr := openAIImagesTextFallbackError(body); textErr != nil {
+			return s.sendErrorAndEnd(c, textErr.clientMessage())
+		}
 		return s.sendErrorAndEnd(c, "No images returned from responses API")
 	}
 

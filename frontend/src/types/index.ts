@@ -273,6 +273,8 @@ export interface PublicSettings {
   channel_monitor_hide_throughput?: boolean
   /** When true, user monitor shows account quota/balance snapshots (default off). */
   channel_monitor_show_quota?: boolean
+  /** When true, user monitor hides the user ranking tab and /users payload. */
+  channel_monitor_hide_user_ranking?: boolean
   available_channels_enabled: boolean
   model_plaza_enabled: boolean
   model_plaza_require_auth: boolean
@@ -531,7 +533,7 @@ export interface PaginationConfig {
 
 // ==================== API Key & Group Types ====================
 
-export type GroupPlatform = 'anthropic' | 'openai' | 'gemini' | 'antigravity' | 'grok' | 'kimi' | 'zhipu' | 'deepseek' | 'composite'
+export type GroupPlatform = 'anthropic' | 'openai' | 'gemini' | 'antigravity' | 'grok' | 'kimi' | 'zhipu' | 'deepseek' | 'minimax' | 'composite'
 
 export type VideoModelPrices = Record<string, Record<string, number>>
 
@@ -911,7 +913,7 @@ export interface UpdateGroupRequest {
 
 // ==================== Account & Proxy Types ====================
 
-export type AccountPlatform = 'anthropic' | 'openai' | 'gemini' | 'antigravity' | 'grok' | 'kimi' | 'zhipu' | 'deepseek'
+export type AccountPlatform = 'anthropic' | 'openai' | 'gemini' | 'antigravity' | 'grok' | 'kimi' | 'zhipu' | 'deepseek' | 'minimax'
 export type AccountType = 'oauth' | 'setup-token' | 'apikey' | 'upstream' | 'bedrock' | 'service_account'
 export type OAuthAddMethod = 'oauth' | 'setup-token'
 export type ProxyProtocol = 'http' | 'https' | 'socks5' | 'socks5h'
@@ -1501,6 +1503,15 @@ export interface UpdateAccountRequest {
   upstream_billing_probe_enabled?: boolean
   upstream_billing_rate_sync_enabled?: boolean
   confirm_mixed_channel_risk?: boolean
+}
+
+export type GrokMediaEligibilityMode = 'auto' | 'enabled' | 'disabled'
+
+export interface GrokMediaEligibilityState {
+  account_id: number
+  mode: GrokMediaEligibilityMode
+  eligible: boolean
+  reason: string
 }
 
 export interface CheckMixedChannelRequest {

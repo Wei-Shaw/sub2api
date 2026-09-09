@@ -61,7 +61,7 @@ import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import GroupBadge from './GroupBadge.vue'
 import Icon from '@/components/icons/Icon.vue'
-import type { AdminGroup, GroupPlatform } from '@/types'
+import type { Group, GroupPlatform } from '@/types'
 import { useAuthStore } from '@/stores'
 
 const { t } = useI18n()
@@ -69,7 +69,7 @@ const authStore = useAuthStore()
 
 interface Props {
   modelValue: number[]
-  groups: AdminGroup[]
+  groups: (Group & { account_count?: number })[]
   platform?: GroupPlatform // Optional platform filter
   mixedScheduling?: boolean // For antigravity accounts: allow anthropic/gemini groups
   searchable?: boolean | 'auto'
@@ -91,7 +91,7 @@ const isSearchable = computed(() => {
 
 // Filter groups by platform if specified
 const filteredGroups = computed(() => {
-  let result: AdminGroup[] = authStore.isSimpleMode
+  let result = authStore.isSimpleMode
     ? props.groups.filter((g) => g.platform !== 'composite')
     : props.groups
   if (props.platform) {
