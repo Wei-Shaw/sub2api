@@ -53,6 +53,37 @@ func TestFetchOpenAIAccountModelsAPIKeyPopulatesPickerFields(t *testing.T) {
 	require.Equal(t, "named-model", models[2].ID)
 }
 
+func TestFetchOpenAIAccountModelsAPIKeyAppliesAccountModelMapping(t *testing.T) {
+	gateway := newCodexModelsAPIKeyTestService(&codexModelsHTTPUpstreamStub{do: func(_ *http.Request, _ string, _ int64, _ int) (*http.Response, error) {
+		return ordinaryModelsUpstreamResponse(`{"data":[
+			{"id":"upstream-target","owned_by":"provider","created":123},
+			{"id":"direct-model","owned_by":"provider"},
+			{"id":"unconfigured-model","owned_by":"provider"}
+		]}`), nil
+	}})
+	svc := &AccountTestService{openaiGatewayService: gateway}
+	account := newCodexModelsAPIKeyTestAccount("https://models.example/v1")
+	account.Credentials["model_mapping"] = map[string]any{
+		"configured-alias": "upstream-target",
+		"direct-model":     "direct-model",
+	}
+
+	models, err := svc.FetchOpenAIAccountModels(context.Background(), account)
+	require.NoError(t, err)
+	require.Len(t, models, 2)
+	ids := []string{models[0].ID, models[1].ID}
+	require.ElementsMatch(t, []string{"configured-alias", "direct-model"}, ids)
+	require.NotContains(t, ids, "unconfigured-model")
+	alias := models[0]
+	if alias.ID != "configured-alias" {
+		alias = models[1]
+	}
+	require.Equal(t, "configured-alias", alias.ID)
+	require.Equal(t, "configured-alias", alias.DisplayName)
+	require.Equal(t, "provider", alias.OwnedBy)
+	require.EqualValues(t, 123, alias.Created)
+}
+
 func TestFetchOpenAIAccountModelsPreservesEmptyCatalog(t *testing.T) {
 	gateway := newCodexModelsAPIKeyTestService(&codexModelsHTTPUpstreamStub{do: func(_ *http.Request, _ string, _ int64, _ int) (*http.Response, error) {
 		return ordinaryModelsUpstreamResponse(`{"data":[]}`), nil
