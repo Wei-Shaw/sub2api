@@ -185,6 +185,11 @@ type TopUsersByCurrency map[string][]TopUserStat
 
 // --- Service ---
 
+// GetDeviceCodesByUserIDs returns the primary DLG code for each user.
+func (s *PaymentService) GetDeviceCodesByUserIDs(ctx context.Context, userIDs []int64) map[int64]string {
+	return LookupDeviceCodesByUserIDs(ctx, s.entClient, userIDs)
+}
+
 type PaymentService struct {
 	providerMu               sync.Mutex
 	providersLoaded          bool

@@ -202,6 +202,7 @@ func (h *UsageHandler) List(c *gin.Context) {
 		BillingType:           billingType,
 		BillingMode:           billingMode,
 		UpstreamModelMismatch: upstreamModelMismatch,
+		DeviceCode:            strings.TrimSpace(c.Query("device_code")),
 		StartTime:             startTime,
 		EndTime:               endTime,
 		ExactTotal:            exactTotal,
@@ -217,6 +218,10 @@ func (h *UsageHandler) List(c *gin.Context) {
 	for i := range records {
 		out = append(out, *dto.UsageLogFromServiceAdmin(&records[i]))
 	}
+
+	// Enrich with device_code from user_devices
+	enrichUsageLogsWithDeviceCode(c.Request.Context(), h.usageService, out)
+
 	response.Paginated(c, out, result.Total, page, pageSize)
 }
 
@@ -647,4 +652,27 @@ func (h *UsageHandler) CancelCleanupTask(c *gin.Context) {
 	}
 	logger.LegacyPrintf("handler.admin.usage", "[UsageCleanup] 清理任务已取消: task=%d operator=%d", taskID, subject.UserID)
 	response.Success(c, gin.H{"id": taskID, "status": service.UsageCleanupStatusCanceled})
+}
+
+// enrichUsageLogsWithDeviceCode batch-resolves device_code for usage log entries.
+func enrichUsageLogsWithDeviceCode(ctx context.Context, usageService *service.UsageService, logs []dto.AdminUsageLog) {
+	if len(logs) == 0 {
+		return
+	}
+	userIDSet := make(map[int64]struct{}, len(logs))
+	for i := range logs {
+		if logs[i].UserID > 0 {
+			userIDSet[logs[i].UserID] = struct{}{}
+		}
+	}
+	userIDs := make([]int64, 0, len(userIDSet))
+	for id := range userIDSet {
+		userIDs = append(userIDs, id)
+	}
+	deviceCodes := usageService.GetDeviceCodesByUserIDs(ctx, userIDs)
+	for i := range logs {
+		if code, ok := deviceCodes[logs[i].UserID]; ok {
+			logs[i].DeviceCode = code
+		}
+	}
 }

@@ -72,6 +72,11 @@ func NewUsageService(usageRepo UsageLogRepository, userRepo UserRepository, entC
 	}
 }
 
+// GetDeviceCodesByUserIDs returns a map of userID -> device_code for the given user IDs.
+func (s *UsageService) GetDeviceCodesByUserIDs(ctx context.Context, userIDs []int64) map[int64]string {
+	return LookupDeviceCodesByUserIDs(ctx, s.entClient, userIDs)
+}
+
 // Create 创建使用日志
 func (s *UsageService) Create(ctx context.Context, req CreateUsageLogRequest) (*UsageLog, error) {
 	// 使用数据库事务保证「使用日志插入」与「扣费」的原子性，避免重复扣费或漏扣风险。
