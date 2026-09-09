@@ -9,6 +9,8 @@ import { authAPI, isTotp2FARequired, passkeyAPI, type LoginResponse } from '@/ap
 import type {
   User,
   LoginRequest,
+  InviteLoginRequest,
+  RedeemLoginRequest,
   RegisterRequest,
   AuthResponse,
   ActionCaptchaRequestProof
@@ -263,6 +265,28 @@ export const useAuthStore = defineStore('auth', () => {
     }
   }
 
+  async function redeemLogin(request: RedeemLoginRequest): Promise<User> {
+    try {
+      const response = await authAPI.redeemLogin(request)
+      setAuthFromResponse(response)
+      return user.value!
+    } catch (error) {
+      clearAuth({ preservePendingAuthSession: pendingAuthSession.value !== null })
+      throw error
+    }
+  }
+
+  async function inviteLogin(request: InviteLoginRequest): Promise<User> {
+    try {
+      const response = await authAPI.inviteLogin(request)
+      setAuthFromResponse(response)
+      return user.value!
+    } catch (error) {
+      clearAuth({ preservePendingAuthSession: pendingAuthSession.value !== null })
+      throw error
+    }
+  }
+
   /**
    * Complete login with 2FA code
    * @param tempToken - Temporary token from initial login
@@ -504,6 +528,8 @@ export const useAuthStore = defineStore('auth', () => {
     // Actions
     login,
     loginWithPasskey,
+    redeemLogin,
+    inviteLogin,
     login2FA,
     register,
     setToken,

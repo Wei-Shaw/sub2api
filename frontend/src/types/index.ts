@@ -105,6 +105,10 @@ export interface AdminUser extends User {
   // 管理员备注（普通用户接口不返回）
   notes: string
   last_used_at?: string | null
+  signup_source?: 'email' | 'invite' | 'admin' | string | null
+  primary_redeem_code?: string | null
+  primary_redeem_type?: string | null
+  has_device_binding?: boolean
   // 用户专属分组倍率配置 (group_id -> rate_multiplier)
   group_rates?: Record<number, number>
   // 为 true 时该用户仅可使用 allowed_groups 中列出的公开分组。
@@ -131,6 +135,16 @@ export interface TencentCaptchaRequestProof {
 // 腾讯填 tencent_captcha_*，阿里云的 captchaVerifyParam 复用 turnstile_token 字段
 export interface ActionCaptchaRequestProof extends Partial<TencentCaptchaRequestProof> {
   turnstile_token?: string
+}
+
+export interface InviteLoginRequest extends ActionCaptchaRequestProof {
+  invitation_code: string
+  device_hash?: string
+  install_id?: string
+}
+
+export interface RedeemLoginRequest extends ActionCaptchaRequestProof {
+  invitation_code: string
 }
 
 export interface RegisterRequest {
@@ -272,6 +286,8 @@ export interface PublicSettings {
   channel_monitor_default_interval_seconds: number
   /** When true, user monitor hides RPM/TPM so scale cannot be reverse-estimated. */
   channel_monitor_hide_throughput?: boolean
+  /** When true, user monitor shows account quota/balance snapshots (default off). */
+  channel_monitor_show_quota?: boolean
   available_channels_enabled: boolean
   /** When false, the whole user-facing subscription surface is hidden. Default true. */
   subscription_enabled: boolean
@@ -283,7 +299,6 @@ export interface PublicSettings {
   service_quota_enabled: boolean
   affiliate_enabled: boolean
   allow_user_view_error_requests?: boolean
-  device_auto_activation_aff_codes: string
 }
 
 export interface AuthResponse {
