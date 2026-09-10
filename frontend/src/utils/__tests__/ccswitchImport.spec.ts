@@ -17,7 +17,7 @@ describe('ccswitchImport utils', () => {
 
   const baseInput = {
     baseUrl: 'https://api.example.com',
-    providerName: '沃德AI',
+    providerName: '稳得AI',
     apiKey: 'sk-test',
     usageScript: 'return true'
   }

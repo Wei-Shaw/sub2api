@@ -99,7 +99,7 @@ describe("admin settings auth source defaults helpers", () => {
 
   it("appends auth source defaults back onto update payload", () => {
     const payload: UpdateSettingsRequest = {
-      site_name: "沃德AI",
+      site_name: "稳得AI",
     };
 
     appendAuthSourceDefaultsToUpdateRequest(payload, {
@@ -162,7 +162,7 @@ describe("admin settings auth source defaults helpers", () => {
     });
 
     expect(payload).toMatchObject({
-      site_name: "沃德AI",
+      site_name: "稳得AI",
       auth_source_default_email_balance: 1.25,
       auth_source_default_email_concurrency: 2,
       auth_source_default_email_subscriptions: [

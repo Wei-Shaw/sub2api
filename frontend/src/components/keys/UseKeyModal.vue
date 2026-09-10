@@ -789,7 +789,7 @@ model_reasoning_effort = "xhigh"
 model_context_window = 1000000
 
 [model_providers.wode_ai_grok]
-name = "沃德AI Grok"
+name = "稳得AI Grok"
 base_url = "${baseUrl}"
 env_key = "WODE_AI_API_KEY"
 wire_api = "responses"

@@ -1903,7 +1903,7 @@ const executeCcsImport = (row: ApiKey, clientType: CcSwitchClientType) => {
       };
     }
   })`
-  const providerName = (publicSettings.value?.site_name || '沃德AI').trim() || '沃德AI'
+  const providerName = (publicSettings.value?.site_name || '稳得AI').trim() || '稳得AI'
   const deeplink = buildCcSwitchImportDeeplink({
     baseUrl,
     platform,

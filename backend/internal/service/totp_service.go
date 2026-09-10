@@ -61,7 +61,7 @@ const (
 	totpLoginTTL    = 5 * time.Minute
 	totpAttemptsTTL = 15 * time.Minute
 	maxTotpAttempts = 5
-	totpIssuer      = "沃德AI"
+	totpIssuer      = "稳得AI"
 )
 
 // TotpService handles TOTP operations

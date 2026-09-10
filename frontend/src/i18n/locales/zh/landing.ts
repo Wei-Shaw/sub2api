@@ -191,8 +191,8 @@ export default {
 
   // Setup Wizard
   setup: {
-    title: '沃德AI 安装向导',
-    description: '配置您的 沃德AI 实例',
+    title: '稳得AI 安装向导',
+    description: '配置您的 稳得AI 实例',
     database: {
       title: '数据库配置',
       description: '连接到您的 PostgreSQL 数据库',

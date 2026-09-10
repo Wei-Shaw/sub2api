@@ -1,6 +1,6 @@
 # WendeAI Deployment and Operation Compliance Commitment
 
-Version: v2026.09.10
+Version: v2026.09.11
 
 This document applies to any individual, organization, or authorized representative that deploys, configures, manages, operates, or effectively controls a WendeAI instance. Before continuing to access or use console functions, the acknowledging party must read, understand, and accept this document in full.
 

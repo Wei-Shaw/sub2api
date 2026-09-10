@@ -24,7 +24,7 @@ const (
 	quotaDimWeekly = domain.QuotaDimWeekly
 	quotaDimTotal  = domain.QuotaDimTotal
 
-	defaultSiteName = "沃德AI"
+	defaultSiteName = "稳得AI"
 )
 
 // quotaDimLabels maps dimension names to display labels.

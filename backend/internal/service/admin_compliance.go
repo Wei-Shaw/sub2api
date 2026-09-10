@@ -14,7 +14,7 @@ import (
 )
 
 const (
-	AdminComplianceVersion        = "v2026.09.10"
+	AdminComplianceVersion        = "v2026.09.11"
 	AdminComplianceDocumentPathZH = "docs/legal/admin-compliance.zh.md"
 	AdminComplianceDocumentPathEN = "docs/legal/admin-compliance.en.md"
 	AdminComplianceDocumentURLZH  = "#"

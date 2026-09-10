@@ -51,7 +51,7 @@ func RunCLI() error {
 
 	fmt.Println()
 	fmt.Println("╔═══════════════════════════════════════════╗")
-	fmt.Println("║       沃德AI Installation Wizard         ║")
+	fmt.Println("║       稳得AI Installation Wizard         ║")
 	fmt.Println("╚═══════════════════════════════════════════╝")
 	fmt.Println()
 

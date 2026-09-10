@@ -1111,7 +1111,7 @@ func saveNotifyVerifyCode(ctx context.Context, cache EmailCache, email, code str
 
 // sendNotifyVerifyEmail builds and sends the verification email.
 func (s *UserService) sendNotifyVerifyEmail(ctx context.Context, emailService *EmailService, userID int64, email, code, locale string) error {
-	siteName := "沃德AI"
+	siteName := "稳得AI"
 	if s.settingRepo != nil {
 		if name, err := s.settingRepo.GetValue(ctx, SettingKeySiteName); err == nil && name != "" {
 			siteName = name

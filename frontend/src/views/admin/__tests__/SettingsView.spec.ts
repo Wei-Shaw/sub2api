@@ -343,7 +343,7 @@ const baseSettingsResponse = {
   default_balance: 0,
   default_concurrency: 1,
   default_subscriptions: [],
-  site_name: "沃德AI",
+  site_name: "稳得AI",
   site_logo: "",
   site_subtitle: "",
   api_base_url: "",
