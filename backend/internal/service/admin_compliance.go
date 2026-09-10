@@ -14,11 +14,11 @@ import (
 )
 
 const (
-	AdminComplianceVersion        = "v2026.06.10"
+	AdminComplianceVersion        = "v2026.09.10"
 	AdminComplianceDocumentPathZH = "docs/legal/admin-compliance.zh.md"
 	AdminComplianceDocumentPathEN = "docs/legal/admin-compliance.en.md"
-	AdminComplianceDocumentURLZH  = "https://github.com/Wei-Shaw/sub2api/blob/main/docs/legal/admin-compliance.zh.md"
-	AdminComplianceDocumentURLEN  = "https://github.com/Wei-Shaw/sub2api/blob/main/docs/legal/admin-compliance.en.md"
+	AdminComplianceDocumentURLZH  = "#"
+	AdminComplianceDocumentURLEN  = "#"
 	AdminComplianceAckPhraseZH    = "我已阅读、理解并同意本平台部署与运营合规承诺"
 	AdminComplianceAckPhraseEN    = "I have read, understood, and agree to this platform's Deployment and Operation Compliance Commitment"
 
