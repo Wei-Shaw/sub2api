@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"strings"
 	"time"
+	"unicode"
 
 	dbent "github.com/Wei-Shaw/sub2api/ent"
 	"github.com/Wei-Shaw/sub2api/internal/config"
@@ -362,6 +363,8 @@ func normalizeCreateGroupInputForSimpleMode(input *CreateGroupInput) {
 	*input = CreateGroupInput{
 		Name: input.Name, Description: input.Description, Platform: input.Platform,
 		RateMultiplier: 1, SubscriptionType: SubscriptionTypeStandard,
+		CodexConfigDefaultModel: input.CodexConfigDefaultModel,
+		CodexConfigReviewModel:  input.CodexConfigReviewModel,
 	}
 }
 
@@ -369,7 +372,32 @@ func normalizeUpdateGroupInputForSimpleMode(input *UpdateGroupInput) {
 	if input == nil {
 		return
 	}
-	*input = UpdateGroupInput{Name: input.Name, Description: input.Description}
+	*input = UpdateGroupInput{
+		Name: input.Name, Description: input.Description,
+		CodexConfigDefaultModel: input.CodexConfigDefaultModel,
+		CodexConfigReviewModel:  input.CodexConfigReviewModel,
+	}
+}
+
+const maxCodexConfigModelLength = 200
+
+func validateCodexConfigModel(value, fieldName string) error {
+	if len(value) > maxCodexConfigModelLength {
+		return infraerrors.Newf(http.StatusBadRequest, "INVALID_CODEX_CONFIG_MODEL", "%s must be at most %d bytes", fieldName, maxCodexConfigModelLength)
+	}
+	for _, r := range value {
+		if unicode.IsControl(r) {
+			return infraerrors.Newf(http.StatusBadRequest, "INVALID_CODEX_CONFIG_MODEL", "%s must not contain control characters", fieldName)
+		}
+	}
+	return nil
+}
+
+func validateCodexConfigModels(defaultModel, reviewModel string) error {
+	if err := validateCodexConfigModel(defaultModel, "codex_config_default_model"); err != nil {
+		return err
+	}
+	return validateCodexConfigModel(reviewModel, "codex_config_review_model")
 }
 
 func (s *adminServiceImpl) CreateGroup(ctx context.Context, input *CreateGroupInput) (*Group, error) {
@@ -378,6 +406,9 @@ func (s *adminServiceImpl) CreateGroup(ctx context.Context, input *CreateGroupIn
 	}
 	if s.cfg != nil && s.cfg.RunMode == config.RunModeSimple {
 		normalizeCreateGroupInputForSimpleMode(input)
+	}
+	if err := validateCodexConfigModels(input.CodexConfigDefaultModel, input.CodexConfigReviewModel); err != nil {
+		return nil, err
 	}
 	if input.RateMultiplier <= 0 {
 		return nil, errors.New("rate_multiplier must be > 0")
@@ -608,6 +639,8 @@ func (s *adminServiceImpl) CreateGroup(ctx context.Context, input *CreateGroupIn
 		// 固定账号 manifest 配置：账号绑定发生在分组创建之后，创建路径禁止开启，
 		// 成员关系无从校验（前端创建对话框也不展示）。
 		CodexModelsManifestConfig:   normalizeCodexModelsManifestConfig(platform, input.CodexModelsManifestConfig),
+		CodexConfigDefaultModel:     strings.TrimSpace(input.CodexConfigDefaultModel),
+		CodexConfigReviewModel:      strings.TrimSpace(input.CodexConfigReviewModel),
 		RPMLimit:                    input.RPMLimit,
 		MaxReasoningEffort:          maxReasoningEffort,
 		MaxReasoningEffortOverLimit: maxReasoningEffortOverLimit,
@@ -753,6 +786,16 @@ func (s *adminServiceImpl) UpdateGroup(ctx context.Context, id int64, input *Upd
 	}
 	if s.cfg != nil && s.cfg.RunMode == config.RunModeSimple {
 		normalizeUpdateGroupInputForSimpleMode(input)
+	}
+	if input.CodexConfigDefaultModel != nil {
+		if err := validateCodexConfigModel(*input.CodexConfigDefaultModel, "codex_config_default_model"); err != nil {
+			return nil, err
+		}
+	}
+	if input.CodexConfigReviewModel != nil {
+		if err := validateCodexConfigModel(*input.CodexConfigReviewModel, "codex_config_review_model"); err != nil {
+			return nil, err
+		}
 	}
 
 	// 渠道缓存里存了 groupID → platform 的映射，改了平台要让它失效（见函数末尾）
@@ -1003,6 +1046,12 @@ func (s *adminServiceImpl) UpdateGroup(ctx context.Context, id int64, input *Upd
 	}
 	if input.CodexModelsManifestConfig != nil {
 		group.CodexModelsManifestConfig = *input.CodexModelsManifestConfig
+	}
+	if input.CodexConfigDefaultModel != nil {
+		group.CodexConfigDefaultModel = strings.TrimSpace(*input.CodexConfigDefaultModel)
+	}
+	if input.CodexConfigReviewModel != nil {
+		group.CodexConfigReviewModel = strings.TrimSpace(*input.CodexConfigReviewModel)
 	}
 	if input.RPMLimit != nil {
 		group.RPMLimit = *input.RPMLimit

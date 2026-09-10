@@ -22166,6 +22166,8 @@ type GroupMutation struct {
 	messages_dispatch_model_config          *domain.OpenAIMessagesDispatchModelConfig
 	model_allowlist                         *domain.GroupModelAllowlist
 	codex_models_manifest_config            *domain.GroupCodexModelsManifestConfig
+	codex_config_default_model              *string
+	codex_config_review_model               *string
 	rpm_limit                               *int
 	addrpm_limit                            *int
 	max_reasoning_effort                    *string
@@ -25236,6 +25238,78 @@ func (m *GroupMutation) ResetCodexModelsManifestConfig() {
 	m.codex_models_manifest_config = nil
 }
 
+// SetCodexConfigDefaultModel sets the "codex_config_default_model" field.
+func (m *GroupMutation) SetCodexConfigDefaultModel(s string) {
+	m.codex_config_default_model = &s
+}
+
+// CodexConfigDefaultModel returns the value of the "codex_config_default_model" field in the mutation.
+func (m *GroupMutation) CodexConfigDefaultModel() (r string, exists bool) {
+	v := m.codex_config_default_model
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCodexConfigDefaultModel returns the old "codex_config_default_model" field's value of the Group entity.
+// If the Group object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *GroupMutation) OldCodexConfigDefaultModel(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCodexConfigDefaultModel is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCodexConfigDefaultModel requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCodexConfigDefaultModel: %w", err)
+	}
+	return oldValue.CodexConfigDefaultModel, nil
+}
+
+// ResetCodexConfigDefaultModel resets all changes to the "codex_config_default_model" field.
+func (m *GroupMutation) ResetCodexConfigDefaultModel() {
+	m.codex_config_default_model = nil
+}
+
+// SetCodexConfigReviewModel sets the "codex_config_review_model" field.
+func (m *GroupMutation) SetCodexConfigReviewModel(s string) {
+	m.codex_config_review_model = &s
+}
+
+// CodexConfigReviewModel returns the value of the "codex_config_review_model" field in the mutation.
+func (m *GroupMutation) CodexConfigReviewModel() (r string, exists bool) {
+	v := m.codex_config_review_model
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCodexConfigReviewModel returns the old "codex_config_review_model" field's value of the Group entity.
+// If the Group object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *GroupMutation) OldCodexConfigReviewModel(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCodexConfigReviewModel is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCodexConfigReviewModel requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCodexConfigReviewModel: %w", err)
+	}
+	return oldValue.CodexConfigReviewModel, nil
+}
+
+// ResetCodexConfigReviewModel resets all changes to the "codex_config_review_model" field.
+func (m *GroupMutation) ResetCodexConfigReviewModel() {
+	m.codex_config_review_model = nil
+}
+
 // SetRpmLimit sets the "rpm_limit" field.
 func (m *GroupMutation) SetRpmLimit(i int) {
 	m.rpm_limit = &i
@@ -25921,7 +25995,7 @@ func (m *GroupMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *GroupMutation) Fields() []string {
-	fields := make([]string, 0, 66)
+	fields := make([]string, 0, 68)
 	if m.created_at != nil {
 		fields = append(fields, group.FieldCreatedAt)
 	}
@@ -26099,6 +26173,12 @@ func (m *GroupMutation) Fields() []string {
 	if m.codex_models_manifest_config != nil {
 		fields = append(fields, group.FieldCodexModelsManifestConfig)
 	}
+	if m.codex_config_default_model != nil {
+		fields = append(fields, group.FieldCodexConfigDefaultModel)
+	}
+	if m.codex_config_review_model != nil {
+		fields = append(fields, group.FieldCodexConfigReviewModel)
+	}
 	if m.rpm_limit != nil {
 		fields = append(fields, group.FieldRpmLimit)
 	}
@@ -26246,6 +26326,10 @@ func (m *GroupMutation) Field(name string) (ent.Value, bool) {
 		return m.ModelAllowlist()
 	case group.FieldCodexModelsManifestConfig:
 		return m.CodexModelsManifestConfig()
+	case group.FieldCodexConfigDefaultModel:
+		return m.CodexConfigDefaultModel()
+	case group.FieldCodexConfigReviewModel:
+		return m.CodexConfigReviewModel()
 	case group.FieldRpmLimit:
 		return m.RpmLimit()
 	case group.FieldMaxReasoningEffort:
@@ -26387,6 +26471,10 @@ func (m *GroupMutation) OldField(ctx context.Context, name string) (ent.Value, e
 		return m.OldModelAllowlist(ctx)
 	case group.FieldCodexModelsManifestConfig:
 		return m.OldCodexModelsManifestConfig(ctx)
+	case group.FieldCodexConfigDefaultModel:
+		return m.OldCodexConfigDefaultModel(ctx)
+	case group.FieldCodexConfigReviewModel:
+		return m.OldCodexConfigReviewModel(ctx)
 	case group.FieldRpmLimit:
 		return m.OldRpmLimit(ctx)
 	case group.FieldMaxReasoningEffort:
@@ -26822,6 +26910,20 @@ func (m *GroupMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetCodexModelsManifestConfig(v)
+		return nil
+	case group.FieldCodexConfigDefaultModel:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCodexConfigDefaultModel(v)
+		return nil
+	case group.FieldCodexConfigReviewModel:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCodexConfigReviewModel(v)
 		return nil
 	case group.FieldRpmLimit:
 		v, ok := value.(int)
@@ -27559,6 +27661,12 @@ func (m *GroupMutation) ResetField(name string) error {
 		return nil
 	case group.FieldCodexModelsManifestConfig:
 		m.ResetCodexModelsManifestConfig()
+		return nil
+	case group.FieldCodexConfigDefaultModel:
+		m.ResetCodexConfigDefaultModel()
+		return nil
+	case group.FieldCodexConfigReviewModel:
+		m.ResetCodexConfigReviewModel()
 		return nil
 	case group.FieldRpmLimit:
 		m.ResetRpmLimit()

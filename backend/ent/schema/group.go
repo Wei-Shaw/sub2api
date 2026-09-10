@@ -270,6 +270,12 @@ func (Group) Fields() []ent.Field {
 			Default(domain.GroupCodexModelsManifestConfig{}).
 			SchemaType(map[string]string{dialect.Postgres: "jsonb"}).
 			Comment("固定账号获取 Codex Model Manifest 配置；开启后 /models 请求只用选定账号拉取（仅 openai 平台）"),
+		field.String("codex_config_default_model").
+			Default("").
+			Comment("使用密钥生成 Codex 配置时的分组首选模型；为空时使用平台默认模型"),
+		field.String("codex_config_review_model").
+			Default("").
+			Comment("使用密钥生成 Codex 配置时的分组 review 模型；为空时使用显式首选模型，首选模型也为空时使用硬编码平台默认，不随目录首项回退"),
 
 		// 分组级每分钟请求数上限（0 = 不限制）。设置后优先于用户级兜底生效。
 		field.Int("rpm_limit").

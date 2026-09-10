@@ -134,6 +134,10 @@ const (
 	FieldModelAllowlist = "model_allowlist"
 	// FieldCodexModelsManifestConfig holds the string denoting the codex_models_manifest_config field in the database.
 	FieldCodexModelsManifestConfig = "codex_models_manifest_config"
+	// FieldCodexConfigDefaultModel holds the string denoting the codex_config_default_model field in the database.
+	FieldCodexConfigDefaultModel = "codex_config_default_model"
+	// FieldCodexConfigReviewModel holds the string denoting the codex_config_review_model field in the database.
+	FieldCodexConfigReviewModel = "codex_config_review_model"
 	// FieldRpmLimit holds the string denoting the rpm_limit field in the database.
 	FieldRpmLimit = "rpm_limit"
 	// FieldMaxReasoningEffort holds the string denoting the max_reasoning_effort field in the database.
@@ -282,6 +286,8 @@ var Columns = []string{
 	FieldMessagesDispatchModelConfig,
 	FieldModelAllowlist,
 	FieldCodexModelsManifestConfig,
+	FieldCodexConfigDefaultModel,
+	FieldCodexConfigReviewModel,
 	FieldRpmLimit,
 	FieldMaxReasoningEffort,
 	FieldMaxReasoningEffortOverLimit,
@@ -416,6 +422,10 @@ var (
 	DefaultModelAllowlist domain.GroupModelAllowlist
 	// DefaultCodexModelsManifestConfig holds the default value on creation for the "codex_models_manifest_config" field.
 	DefaultCodexModelsManifestConfig domain.GroupCodexModelsManifestConfig
+	// DefaultCodexConfigDefaultModel holds the default value on creation for the "codex_config_default_model" field.
+	DefaultCodexConfigDefaultModel string
+	// DefaultCodexConfigReviewModel holds the default value on creation for the "codex_config_review_model" field.
+	DefaultCodexConfigReviewModel string
 	// DefaultRpmLimit holds the default value on creation for the "rpm_limit" field.
 	DefaultRpmLimit int
 	// DefaultMaxReasoningEffort holds the default value on creation for the "max_reasoning_effort" field.
@@ -702,6 +712,16 @@ func ByRequirePrivacySet(opts ...sql.OrderTermOption) OrderOption {
 // ByDefaultMappedModel orders the results by the default_mapped_model field.
 func ByDefaultMappedModel(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldDefaultMappedModel, opts...).ToFunc()
+}
+
+// ByCodexConfigDefaultModel orders the results by the codex_config_default_model field.
+func ByCodexConfigDefaultModel(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldCodexConfigDefaultModel, opts...).ToFunc()
+}
+
+// ByCodexConfigReviewModel orders the results by the codex_config_review_model field.
+func ByCodexConfigReviewModel(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldCodexConfigReviewModel, opts...).ToFunc()
 }
 
 // ByRpmLimit orders the results by the rpm_limit field.
