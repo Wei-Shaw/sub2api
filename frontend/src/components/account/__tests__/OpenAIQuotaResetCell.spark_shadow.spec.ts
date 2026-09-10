@@ -344,3 +344,45 @@ describe('OpenAIQuotaResetCell — 外审 F6:影子禁用重置', () => {
     wrapper.unmount()
   })
 })
+
+describe('OpenAIQuotaResetCell 自动用卡运行态', () => {
+  it.each([
+    ['checking', 'checking'],
+    ['available', 'available'],
+    ['resetting', 'resetting'],
+    ['success', 'success'],
+    ['no_credit', 'noCredit'],
+    ['failed', 'failed'],
+  ] as const)('展示 %s 状态且不需要暴露卡标识', (status, labelKey) => {
+    const account = makeAccount({
+      extra: {
+        auto_reset_credit_enabled: true,
+        codex_auto_reset_credit_state: {
+          status,
+          trigger_window: '5h',
+          available_count: 1,
+          checked_at: '2099-07-03T04:05:06Z',
+          error_code: status === 'failed' ? 'RESET_FAILED' : undefined,
+        },
+      },
+    })
+    const wrapper = mount(OpenAIQuotaResetCell, { props: { account } })
+    const state = wrapper.get('[data-testid="auto-reset-credit-state"]')
+    expect(state.text()).toContain(`admin.accounts.openaiQuotaReset.autoStatus.${labelKey}`)
+    expect(state.text()).toContain('5h')
+    expect(state.text()).not.toContain('credit_id')
+    wrapper.unmount()
+  })
+
+  it('开关关闭时不显示历史运行态', () => {
+    const account = makeAccount({
+      extra: {
+        auto_reset_credit_enabled: false,
+        codex_auto_reset_credit_state: { status: 'success', available_count: 1 },
+      },
+    })
+    const wrapper = mount(OpenAIQuotaResetCell, { props: { account } })
+    expect(wrapper.find('[data-testid="auto-reset-credit-state"]').exists()).toBe(false)
+    wrapper.unmount()
+  })
+})

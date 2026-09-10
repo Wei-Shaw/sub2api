@@ -565,3 +565,94 @@ func TestTransformClaudeToGeminiWithOptions_PreservesWebSearchAlongsideFunctions
 	require.Equal(t, "get_weather", req.Request.Tools[0].FunctionDeclarations[0].Name)
 	require.NotNil(t, req.Request.Tools[1].GoogleSearch)
 }
+
+func TestGeminiToolConfig_IncludeServerSideToolInvocations(t *testing.T) {
+	functionTool := ClaudeTool{
+		Name:        "get_weather",
+		Description: "Get weather information",
+		InputSchema: map[string]any{"type": "object"},
+	}
+	webSearchTool := ClaudeTool{
+		Type: "web_search_20250305",
+		Name: "web_search",
+	}
+
+	transform := func(t *testing.T, tools []ClaudeTool) (V1InternalRequest, string) {
+		t.Helper()
+		body, err := TransformClaudeToGeminiWithOptions(&ClaudeRequest{
+			Model: "claude-3-5-sonnet-latest",
+			Messages: []ClaudeMessage{
+				{
+					Role:    "user",
+					Content: json.RawMessage(`[{"type":"text","text":"hello"}]`),
+				},
+			},
+			Tools: tools,
+		}, "project-1", "gemini-2.5-flash", DefaultTransformOptions())
+		require.NoError(t, err)
+
+		var req V1InternalRequest
+		require.NoError(t, json.Unmarshal(body, &req))
+		return req, string(body)
+	}
+
+	t.Run("mixed builtin and function tools enable server-side tool invocations", func(t *testing.T) {
+		req, raw := transform(t, []ClaudeTool{functionTool, webSearchTool})
+
+		require.NotNil(t, req.Request.ToolConfig)
+		require.NotNil(t, req.Request.ToolConfig.IncludeServerSideToolInvocations)
+		require.True(t, *req.Request.ToolConfig.IncludeServerSideToolInvocations)
+		require.Contains(t, raw, `"includeServerSideToolInvocations":true`)
+	})
+
+	t.Run("function tools only leave the flag unset", func(t *testing.T) {
+		req, raw := transform(t, []ClaudeTool{functionTool})
+
+		require.NotNil(t, req.Request.ToolConfig)
+		require.Nil(t, req.Request.ToolConfig.IncludeServerSideToolInvocations)
+		require.NotContains(t, raw, "includeServerSideToolInvocations")
+	})
+
+	t.Run("web search only leaves the flag unset", func(t *testing.T) {
+		req, raw := transform(t, []ClaudeTool{webSearchTool})
+
+		require.NotNil(t, req.Request.ToolConfig)
+		require.Nil(t, req.Request.ToolConfig.IncludeServerSideToolInvocations)
+		require.NotContains(t, raw, "includeServerSideToolInvocations")
+	})
+}
+
+// TestToolConfigAlwaysPresent ensures toolConfig is always emitted, including for
+// reasoning models without any tools: upstream rejects requests that omit it.
+func TestToolConfigAlwaysPresent(t *testing.T) {
+	cases := []struct {
+		name  string
+		model string
+		tools []ClaudeTool
+	}{
+		{name: "reasoning model without tools", model: "gemini-3.1-pro-high"},
+		{name: "reasoning model with tools", model: "gemini-3.1-pro-high", tools: []ClaudeTool{{
+			Name:        "web_search",
+			Description: "Search the web",
+			InputSchema: map[string]any{"type": "object", "properties": map[string]any{}},
+		}}},
+		{name: "non-reasoning model without tools", model: "gemini-3.1-pro"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			claudeReq := &ClaudeRequest{
+				Model:    tc.model,
+				Messages: []ClaudeMessage{{Role: "user", Content: json.RawMessage(`"Hello"`)}},
+				Tools:    tc.tools,
+			}
+			body, err := TransformClaudeToGeminiWithOptions(claudeReq, "project-1", tc.model, DefaultTransformOptions())
+			require.NoError(t, err)
+
+			var req V1InternalRequest
+			require.NoError(t, json.Unmarshal(body, &req))
+			require.NotNil(t, req.Request.ToolConfig, "toolConfig must be present")
+			require.NotNil(t, req.Request.ToolConfig.FunctionCallingConfig)
+			require.Equal(t, "VALIDATED", req.Request.ToolConfig.FunctionCallingConfig.Mode)
+		})
+	}
+}

@@ -43,7 +43,20 @@ type openAICompactSSEKeepalive struct {
 // 响应构造都会先在心跳互斥锁下停拍，未被显式拦截的写回路径（如 Forward
 // 内部的本地拒绝）也不会与心跳 goroutine 产生数据竞争或字节交错。
 func StartOpenAICompactSSEKeepalive(c *gin.Context, interval time.Duration) func() {
-	if c == nil || c.Writer == nil || interval <= 0 || !openAICompactClientWantsStream(c) {
+	if !openAICompactClientWantsStream(c) {
+		return func() {}
+	}
+	return startOpenAISSEKeepalive(c, interval)
+}
+
+// startOpenAISSEKeepalive 是不检查 compact 标记的内部入口，供【已经确定处于
+// SSE 流式上下文】的调用方使用（例如 /v1/responses 透传：进入流式循环时上游
+// 已返回 text/event-stream，SSE 响应头也已设好）。
+//
+// 心跳字节由 OpenAICompactKeepaliveAdjustedWrittenSize 统一排除，因此不会污染
+// "是否已向客户端写出语义响应"的 failover 判定（见 #3887）。
+func startOpenAISSEKeepalive(c *gin.Context, interval time.Duration) func() {
+	if c == nil || c.Writer == nil || interval <= 0 {
 		return func() {}
 	}
 	originalWriter := c.Writer
@@ -161,21 +174,28 @@ func OpenAICompactKeepaliveAdjustedWrittenSize(c *gin.Context) int {
 	if c == nil || c.Writer == nil {
 		return -1
 	}
-	value, ok := c.Get(openAICompactSSEKeepaliveKey)
-	if !ok {
-		return c.Writer.Size()
+	streamKeepaliveBytes := 0
+	if value, ok := c.Get(openAIStreamKeepaliveBytesKey); ok {
+		streamKeepaliveBytes, _ = value.(int)
 	}
-	k, ok := value.(*openAICompactSSEKeepalive)
-	if !ok || k == nil {
-		return c.Writer.Size()
+	size := c.Writer.Size()
+	compactKeepaliveBytes := 0
+	if value, ok := c.Get(openAICompactSSEKeepaliveKey); ok {
+		if k, valid := value.(*openAICompactSSEKeepalive); valid && k != nil {
+			k.mu.Lock()
+			size = k.writer.Size()
+			compactKeepaliveBytes = k.bytes
+			k.mu.Unlock()
+		}
 	}
-	k.mu.Lock()
-	defer k.mu.Unlock()
-	size := k.writer.Size()
 	if size < 0 {
 		return size
 	}
-	if real := size - k.bytes; real > 0 {
+	keepaliveBytes := compactKeepaliveBytes + streamKeepaliveBytes
+	if keepaliveBytes <= 0 {
+		return size
+	}
+	if real := size - keepaliveBytes; real > 0 {
 		return real
 	}
 	return -1

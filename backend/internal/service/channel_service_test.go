@@ -5,8 +5,11 @@ package service
 import (
 	"context"
 	"errors"
+	"net/http"
+	"sync"
 	"testing"
 
+	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
 	"github.com/stretchr/testify/require"
 	"github.com/tidwall/gjson"
@@ -173,6 +176,27 @@ type mockChannelAuthCacheInvalidator struct {
 	invalidatedUserIDs  []int64
 }
 
+type mockChannelCachePubSub struct {
+	mu       sync.Mutex
+	handlers []func()
+}
+
+func (m *mockChannelCachePubSub) NotifyUpdate(context.Context) error {
+	m.mu.Lock()
+	handlers := append([]func(){}, m.handlers...)
+	m.mu.Unlock()
+	for _, handler := range handlers {
+		handler()
+	}
+	return nil
+}
+
+func (m *mockChannelCachePubSub) SubscribeUpdates(_ context.Context, handler func()) {
+	m.mu.Lock()
+	m.handlers = append(m.handlers, handler)
+	m.mu.Unlock()
+}
+
 func (m *mockChannelAuthCacheInvalidator) InvalidateAuthCacheByKey(_ context.Context, key string) {
 	m.invalidatedKeys = append(m.invalidatedKeys, key)
 }
@@ -190,11 +214,11 @@ func (m *mockChannelAuthCacheInvalidator) InvalidateAuthCacheByGroupID(_ context
 // ---------------------------------------------------------------------------
 
 func newTestChannelService(repo *mockChannelRepository) *ChannelService {
-	return NewChannelService(repo, nil, nil, nil)
+	return NewChannelService(repo, nil, nil, nil, nil)
 }
 
 func newTestChannelServiceWithAuth(repo *mockChannelRepository, auth *mockChannelAuthCacheInvalidator) *ChannelService {
-	return NewChannelService(repo, nil, auth, nil)
+	return NewChannelService(repo, nil, auth, nil, nil)
 }
 
 // makeStandardRepo returns a repo that serves one active channel with anthropic pricing
@@ -414,6 +438,44 @@ func TestValidateNoConflictingModels(t *testing.T) {
 			wantErr:     true,
 			errContains: "conflict",
 		},
+		// 以下三例：冲突检测必须与 normalizeChannelPricingModelName 用同一套归一化，
+		// 否则校验放行、写进缓存后键相同，后写的定价会静默覆盖前一条。
+		{
+			name: "claude_dot_and_hyphen_spelling_conflict",
+			pricingList: []ChannelModelPricing{
+				{Platform: "anthropic", Models: []string{"claude-sonnet-4.5"}},
+				{Platform: "anthropic", Models: []string{"claude-sonnet-4-5"}},
+			},
+			wantErr:     true,
+			errContains: "conflict",
+		},
+		{
+			name: "claude_dot_and_hyphen_spelling_conflict_wildcard",
+			pricingList: []ChannelModelPricing{
+				{Platform: "anthropic", Models: []string{"claude-sonnet-4.5*"}},
+				{Platform: "anthropic", Models: []string{"claude-sonnet-4-5-x"}},
+			},
+			wantErr:     true,
+			errContains: "conflict",
+		},
+		{
+			name: "surrounding_whitespace_conflict",
+			pricingList: []ChannelModelPricing{
+				{Platform: "openai", Models: []string{"gpt-5.6"}},
+				{Platform: "openai", Models: []string{" gpt-5.6 "}},
+			},
+			wantErr:     true,
+			errContains: "conflict",
+		},
+		{
+			// 只有 claude-* 前缀才做 "." → "-"，别把其它平台也一起归一化了
+			name: "non_claude_dot_spelling_is_not_normalized",
+			pricingList: []ChannelModelPricing{
+				{Platform: "openai", Models: []string{"gpt-5.6"}},
+				{Platform: "openai", Models: []string{"gpt-5-6"}},
+			},
+			wantErr: false,
+		},
 	}
 
 	for _, tt := range tests {
@@ -468,6 +530,16 @@ func TestValidateNoConflictingMappings(t *testing.T) {
 			},
 			wantErr:     true,
 			errContains: "conflict",
+		},
+		{
+			// 映射缓存（expandMappingToCache）只做 strings.ToLower，不做定价那套
+			// "." → "-"，所以这两个源模式在缓存里是两个不同的键、并不冲突。
+			// 这条用来卡住：定价侧的归一化修复不能顺手套到映射侧，否则会误报冲突。
+			name: "mapping keeps dot and hyphen spelling separate",
+			mapping: map[string]map[string]string{
+				"anthropic": {"claude-sonnet-4.5": "a", "claude-sonnet-4-5": "b"},
+			},
+			wantErr: false,
 		},
 		{
 			name: "wildcard vs exact conflict",
@@ -1334,6 +1406,42 @@ func TestInvalidateCache(t *testing.T) {
 	require.Equal(t, 2, callCount) // rebuilt
 }
 
+func TestInvalidateCachePublishesToOtherInstances(t *testing.T) {
+	cachePubSub := &mockChannelCachePubSub{}
+	publisher := NewChannelService(&mockChannelRepository{}, nil, nil, nil, cachePubSub)
+	updated := false
+	subscriberRepo := &mockChannelRepository{
+		listAllFn: func(_ context.Context) ([]Channel, error) {
+			model := "old-model"
+			if updated {
+				model = "new-model"
+			}
+			return []Channel{{
+				ID:       1,
+				Status:   StatusActive,
+				GroupIDs: []int64{10},
+				ModelPricing: []ChannelModelPricing{{
+					ID:       100,
+					Platform: PlatformAnthropic,
+					Models:   []string{model},
+				}},
+			}}, nil
+		},
+		getGroupPlatformsFn: func(_ context.Context, _ []int64) (map[int64]string, error) {
+			return map[int64]string{10: PlatformAnthropic}, nil
+		},
+	}
+	subscriber := NewChannelService(subscriberRepo, nil, nil, nil, cachePubSub)
+
+	require.NotNil(t, subscriber.GetChannelModelPricing(context.Background(), 10, "old-model"))
+	require.Nil(t, subscriber.GetChannelModelPricing(context.Background(), 10, "new-model"))
+
+	updated = true
+	publisher.invalidateCache()
+
+	require.NotNil(t, subscriber.GetChannelModelPricing(context.Background(), 10, "new-model"))
+}
+
 // ===========================================================================
 // 5. CRUD Methods
 // ===========================================================================
@@ -1991,6 +2099,9 @@ func TestIsPlatformPricingMatch(t *testing.T) {
 		{"gemini does NOT match anthropic", PlatformGemini, PlatformAnthropic, false},
 		{"composite matches openai pricing", PlatformComposite, PlatformOpenAI, true},
 		{"composite matches gemini pricing", PlatformComposite, PlatformGemini, true},
+		{"composite matches kimi pricing", PlatformComposite, PlatformKimi, true},
+		{"composite matches zhipu pricing", PlatformComposite, PlatformZhipu, true},
+		{"composite matches deepseek pricing", PlatformComposite, PlatformDeepseek, true},
 		{"empty string matches nothing", "", PlatformAnthropic, false},
 		{"empty string matches empty", "", "", true},
 	}
@@ -2016,7 +2127,7 @@ func TestMatchingPlatforms(t *testing.T) {
 		{"anthropic returns itself", PlatformAnthropic, []string{PlatformAnthropic}},
 		{"gemini returns itself", PlatformGemini, []string{PlatformGemini}},
 		{"openai returns itself", PlatformOpenAI, []string{PlatformOpenAI}},
-		{"composite returns concrete platforms", PlatformComposite, []string{PlatformAnthropic, PlatformGemini, PlatformOpenAI, PlatformAntigravity, PlatformGrok}},
+		{"composite returns concrete platforms", PlatformComposite, []string{PlatformAnthropic, PlatformGemini, PlatformOpenAI, PlatformAntigravity, PlatformGrok, PlatformKimi, PlatformZhipu, PlatformDeepseek, PlatformMiniMax}},
 	}
 
 	for _, tt := range tests {
@@ -2410,6 +2521,66 @@ func TestValidatePricingBillingMode(t *testing.T) {
 			}
 		})
 	}
+}
+
+func validTimePricingForTest() *ChannelTimePricing {
+	return &ChannelTimePricing{Timezone: "Asia/Shanghai", Periods: []ChannelTimePricingPeriod{
+		{StartTime: "09:00", EndTime: "12:00", Multiplier: 2},
+	}}
+}
+
+func TestValidatePricingTimePricing(t *testing.T) {
+	token := []ChannelModelPricing{{BillingMode: BillingModeToken, TimePricing: validTimePricingForTest()}}
+	require.NoError(t, validatePricingTimePricing(token))
+
+	implicitToken := []ChannelModelPricing{{TimePricing: validTimePricingForTest()}}
+	require.NoError(t, validatePricingTimePricing(implicitToken))
+
+	image := []ChannelModelPricing{{BillingMode: BillingModeImage, TimePricing: validTimePricingForTest()}}
+	modeErr := infraerrors.FromError(validatePricingTimePricing(image))
+	require.Equal(t, int32(http.StatusBadRequest), modeErr.Code)
+	require.Equal(t, "TIME_PRICING_UNSUPPORTED_MODE", modeErr.Reason)
+
+	invalid := []ChannelModelPricing{{
+		Platform:    PlatformOpenAI,
+		Models:      []string{"gpt-5"},
+		BillingMode: BillingModeToken,
+		TimePricing: &ChannelTimePricing{Timezone: "UTC+8", Periods: validTimePricingForTest().Periods},
+	}}
+	invalidErr := infraerrors.FromError(validatePricingTimePricing(invalid))
+	require.Equal(t, int32(http.StatusBadRequest), invalidErr.Code)
+	require.Equal(t, "INVALID_TIME_PRICING", invalidErr.Reason)
+	require.Contains(t, invalidErr.Message, "platform 'openai'")
+	require.Contains(t, invalidErr.Message, "models [gpt-5]")
+
+	invalidMultiplier := []ChannelModelPricing{{
+		Platform:    PlatformOpenAI,
+		Models:      []string{"gpt-5"},
+		BillingMode: BillingModeToken,
+		TimePricing: &ChannelTimePricing{Timezone: "Asia/Shanghai", Periods: []ChannelTimePricingPeriod{{
+			StartTime: "09:00", EndTime: "12:00", Multiplier: 1e-12,
+		}}},
+	}}
+	invalidMultiplierRawErr := validatePricingTimePricing(invalidMultiplier)
+	require.Error(t, invalidMultiplierRawErr)
+	invalidMultiplierErr := infraerrors.FromError(invalidMultiplierRawErr)
+	require.Equal(t, int32(http.StatusBadRequest), invalidMultiplierErr.Code)
+	require.Equal(t, "INVALID_TIME_PRICING", invalidMultiplierErr.Reason)
+
+	empty := []ChannelModelPricing{{BillingMode: BillingModeToken, TimePricing: &ChannelTimePricing{Timezone: "Asia/Shanghai"}}}
+	require.NoError(t, validatePricingTimePricing(empty))
+	require.Nil(t, empty[0].TimePricing)
+}
+
+func TestValidateAccountStatsPricingRulesRejectsTimePricing(t *testing.T) {
+	rules := []AccountStatsPricingRule{{Pricing: []ChannelModelPricing{{
+		BillingMode: BillingModeToken,
+		TimePricing: validTimePricingForTest(),
+	}}}}
+
+	appErr := infraerrors.FromError(validateAccountStatsPricingRules(rules))
+	require.Equal(t, int32(http.StatusBadRequest), appErr.Code)
+	require.Equal(t, "ACCOUNT_STATS_TIME_PRICING_UNSUPPORTED", appErr.Reason)
 }
 
 // ---------------------------------------------------------------------------

@@ -35,3 +35,10 @@ exceptions:
     mitigation: "Proxy configuration not user-controlled; upgrade when axios releases fix"
     expires_on: "2026-07-10"
     owner: "security@your-domain"
+  - package: nanoid
+    advisory: "GHSA-2v37-7h3g-55p8"
+    severity: high
+    reason: "Custom generator with size=0 not used; all nanoid calls use default size or positive values"
+    mitigation: "No zero-size custom generators in codebase; upgrade when nanoid releases fix"
+    expires_on: "2026-10-13"
+    owner: "security@your-domain"

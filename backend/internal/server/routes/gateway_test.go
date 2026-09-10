@@ -94,7 +94,7 @@ func TestGatewayRoutesOpenAIAlphaSearchPathsAreRegistered(t *testing.T) {
 	}
 }
 
-func TestGatewayRoutesAlphaSearchRejectsNonOpenAIGroup(t *testing.T) {
+func TestGatewayRoutesAlphaSearchRejectsUnsupportedGroup(t *testing.T) {
 	router := newGatewayRoutesTestRouter(service.PlatformGrok)
 	req := httptest.NewRequest(http.MethodPost, "/v1/alpha/search", strings.NewReader(`{"model":"gpt-5.6-sol"}`))
 	req.Header.Set("Content-Type", "application/json")
@@ -103,7 +103,7 @@ func TestGatewayRoutesAlphaSearchRejectsNonOpenAIGroup(t *testing.T) {
 	router.ServeHTTP(w, req)
 
 	require.Equal(t, http.StatusNotFound, w.Code)
-	require.Contains(t, w.Body.String(), "only available for OpenAI groups")
+	require.Contains(t, w.Body.String(), "only available for OpenAI and Composite groups")
 }
 
 func TestGatewayRoutesOpenAIImagesPathsAreRegistered(t *testing.T) {
@@ -152,6 +152,8 @@ func TestGatewayRoutesGrokImagesAndVideosPathsAreRegistered(t *testing.T) {
 		"/images/generations",
 		"/images/edits",
 		"/v1/videos/generations",
+		"/v1/videos",
+		"/videos",
 		"/videos/generations",
 		"/v1/videos/edits",
 		"/videos/edits",
@@ -170,8 +172,20 @@ func TestGatewayRoutesGrokImagesAndVideosPathsAreRegistered(t *testing.T) {
 	for _, path := range []string{
 		"/v1/videos/request-123",
 		"/videos/request-123",
+		"/v1/videos/generations/request-123",
+		"/videos/generations/request-123",
+		"/v1/videos/edits/request-123",
+		"/videos/edits/request-123",
+		"/v1/videos/extensions/request-123",
+		"/videos/extensions/request-123",
 		"/v1/videos/request-123/content",
 		"/videos/request-123/content",
+		"/v1/videos/generations/request-123/content",
+		"/videos/generations/request-123/content",
+		"/v1/videos/edits/request-123/content",
+		"/videos/edits/request-123/content",
+		"/v1/videos/extensions/request-123/content",
+		"/videos/extensions/request-123/content",
 	} {
 		req := httptest.NewRequest(http.MethodGet, path, nil)
 		w := httptest.NewRecorder()
@@ -179,6 +193,62 @@ func TestGatewayRoutesGrokImagesAndVideosPathsAreRegistered(t *testing.T) {
 		router.ServeHTTP(w, req)
 		require.NotEqual(t, http.StatusNotFound, w.Code, "path=%s should hit Grok video handler", path)
 		require.NotContains(t, w.Body.String(), "not supported for this platform")
+	}
+}
+
+func TestGatewayRoutesGrokCustomVoiceCRUDPathsAreRegistered(t *testing.T) {
+	router := newGatewayRoutesTestRouter(service.PlatformGrok)
+	registered := make(map[string]bool)
+	for _, route := range router.Routes() {
+		registered[route.Method+" "+route.Path] = true
+	}
+	for _, route := range []string{
+		"POST /v1/custom-voices",
+		"GET /v1/custom-voices",
+		"GET /v1/custom-voices/:voice_id",
+		"PATCH /v1/custom-voices/:voice_id",
+		"DELETE /v1/custom-voices/:voice_id",
+		"GET /v1/custom-voices/:voice_id/audio",
+		"POST /custom-voices",
+		"GET /custom-voices",
+		"GET /custom-voices/:voice_id",
+		"PATCH /custom-voices/:voice_id",
+		"DELETE /custom-voices/:voice_id",
+		"GET /custom-voices/:voice_id/audio",
+	} {
+		require.True(t, registered[route], "%s should be registered", route)
+	}
+}
+
+func TestGrokCustomVoiceEndpointUsesRouteTemplateNotRawPath(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	router := gin.New()
+	var got string
+	capture := func(c *gin.Context) {
+		got = grokCustomVoiceEndpoint(c)
+		c.Status(http.StatusOK)
+	}
+	router.GET("/v1/custom-voices/:voice_id/audio", capture)
+	router.GET("/v1/custom-voices/:voice_id", capture)
+
+	for _, tc := range []struct {
+		path string
+		want string
+	}{
+		{path: "/v1/custom-voices/voice-123", want: "custom-voices/voice-123"},
+		{path: "/v1/custom-voices/voice-123/audio", want: "custom-voices/voice-123/audio"},
+		// A voice literally named "audio" matches /:voice_id, not /:voice_id/audio.
+		// A raw-path suffix check would turn this profile lookup into an audio download.
+		{path: "/v1/custom-voices/audio", want: "custom-voices/audio"},
+		{path: "/v1/custom-voices/audio/audio", want: "custom-voices/audio/audio"},
+	} {
+		got = ""
+		req := httptest.NewRequest(http.MethodGet, tc.path, nil)
+		w := httptest.NewRecorder()
+
+		router.ServeHTTP(w, req)
+		require.Equal(t, http.StatusOK, w.Code, "path=%s", tc.path)
+		require.Equal(t, tc.want, got, "path=%s", tc.path)
 	}
 }
 
@@ -241,6 +311,8 @@ func TestGatewayRoutesNonGrokVideosAreRejectedAtPlatformGate(t *testing.T) {
 		body   string
 	}{
 		{http.MethodPost, "/v1/videos/generations", `{"model":"grok-imagine-video-1.5","prompt":"waves"}`},
+		{http.MethodPost, "/v1/videos", `{"model":"grok-imagine-video-1.5","prompt":"waves"}`},
+		{http.MethodPost, "/videos", `{"model":"grok-imagine-video-1.5","prompt":"waves"}`},
 		{http.MethodPost, "/videos/generations", `{"model":"grok-imagine-video-1.5","prompt":"waves"}`},
 		{http.MethodPost, "/v1/videos/edits", `{"model":"grok-imagine-video","prompt":"waves","video":{"url":"https://example.com/in.mp4"}}`},
 		{http.MethodPost, "/videos/edits", `{"model":"grok-imagine-video","prompt":"waves","video":{"url":"https://example.com/in.mp4"}}`},
@@ -248,8 +320,20 @@ func TestGatewayRoutesNonGrokVideosAreRejectedAtPlatformGate(t *testing.T) {
 		{http.MethodPost, "/videos/extensions", `{"model":"grok-imagine-video","prompt":"waves","video":{"url":"https://example.com/in.mp4"}}`},
 		{http.MethodGet, "/v1/videos/request-123", ""},
 		{http.MethodGet, "/videos/request-123", ""},
+		{http.MethodGet, "/v1/videos/generations/request-123", ""},
+		{http.MethodGet, "/videos/generations/request-123", ""},
+		{http.MethodGet, "/v1/videos/edits/request-123", ""},
+		{http.MethodGet, "/videos/edits/request-123", ""},
+		{http.MethodGet, "/v1/videos/extensions/request-123", ""},
+		{http.MethodGet, "/videos/extensions/request-123", ""},
 		{http.MethodGet, "/v1/videos/request-123/content", ""},
 		{http.MethodGet, "/videos/request-123/content", ""},
+		{http.MethodGet, "/v1/videos/generations/request-123/content", ""},
+		{http.MethodGet, "/videos/generations/request-123/content", ""},
+		{http.MethodGet, "/v1/videos/edits/request-123/content", ""},
+		{http.MethodGet, "/videos/edits/request-123/content", ""},
+		{http.MethodGet, "/v1/videos/extensions/request-123/content", ""},
+		{http.MethodGet, "/videos/extensions/request-123/content", ""},
 	} {
 		req := httptest.NewRequest(tc.method, tc.path, strings.NewReader(tc.body))
 		req.Header.Set("Content-Type", "application/json")
@@ -259,6 +343,18 @@ func TestGatewayRoutesNonGrokVideosAreRejectedAtPlatformGate(t *testing.T) {
 		require.Equal(t, http.StatusNotFound, w.Code, "method=%s path=%s", tc.method, tc.path)
 		require.Contains(t, w.Body.String(), "Videos API is not supported for this platform")
 	}
+}
+
+func TestGatewayRoutesCompositeVideoGenerationAllowed(t *testing.T) {
+	router := newGatewayRoutesTestRouter(service.PlatformComposite)
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/videos/generations", strings.NewReader(`{"model":"grok-imagine-video-1.5","prompt":"waves"}`))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+
+	router.ServeHTTP(w, req)
+	require.NotEqual(t, http.StatusNotFound, w.Code)
+	require.NotContains(t, w.Body.String(), "not supported")
 }
 
 func TestGatewayRoutesCompositeOpenAIOnlyEndpointsRequireOpenAITarget(t *testing.T) {

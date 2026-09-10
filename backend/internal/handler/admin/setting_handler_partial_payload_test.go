@@ -66,6 +66,18 @@ func TestUpdateSettingsSMTPFromAliasIsWritable(t *testing.T) {
 	require.Equal(t, "new@example.com", repo.values[service.SettingKeySMTPFrom])
 }
 
+func TestUpdateSettingsGrokDefaultBaseURLModeIsWritable(t *testing.T) {
+	h, repo := newStepUpSwitchTestHandler(t, map[string]string{
+		service.SettingKeyGrokDefaultBaseURLMode: service.GrokDefaultBaseURLModeCLI,
+	})
+
+	rec := doUpdateSettings(t, h, map[string]any{
+		"grok_default_base_url_mode": service.GrokDefaultBaseURLModeEUWest1,
+	}, nil)
+	require.Equal(t, http.StatusOK, rec.Code)
+	require.Equal(t, service.GrokDefaultBaseURLModeEUWest1, repo.values[service.SettingKeyGrokDefaultBaseURLMode])
+}
+
 func TestUpdateSettingsRejectsTwoCaptchaProviders(t *testing.T) {
 	h, _ := newStepUpSwitchTestHandler(t, map[string]string{
 		service.SettingKeyTurnstileEnabled:   "true",
@@ -119,6 +131,43 @@ func TestUpdateSettingsRetainsStoredTencentCaptchaCredentialsWhenInputsEmpty(t *
 	require.Equal(t, "stored-app-secret", repo.values[service.SettingKeyTencentCaptchaAppSecretKey])
 	require.Equal(t, "stored-cloud-secret-id", repo.values[service.SettingKeyTencentCaptchaCloudSecretID])
 	require.Equal(t, "stored-cloud-secret-key", repo.values[service.SettingKeyTencentCaptchaCloudSecretKey])
+}
+
+// 天御站点决定前端加载哪个 SDK 与服务端打哪个接入点，两端必须一致。
+// 部分载荷把它重置回中国站，会让已配国际站的部署在下一次任意保存后整体失效。
+func TestUpdateSettingsPartialPayloadKeepsTencentCaptchaRegion(t *testing.T) {
+	h, repo := newStepUpSwitchTestHandler(t, map[string]string{
+		service.SettingKeyTencentCaptchaRegion: service.TencentCaptchaRegionINTL,
+	})
+
+	rec := doUpdateSettings(t, h, map[string]any{"risk_control_enabled": true}, nil)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	require.Equal(t, service.TencentCaptchaRegionINTL,
+		repo.values[service.SettingKeyTencentCaptchaRegion])
+}
+
+func TestUpdateSettingsNormalizesUnknownTencentCaptchaRegion(t *testing.T) {
+	h, repo := newStepUpSwitchTestHandler(t, map[string]string{
+		service.SettingKeyTencentCaptchaRegion: service.TencentCaptchaRegionINTL,
+	})
+
+	rec := doUpdateSettings(t, h, map[string]any{"tencent_captcha_region": "sgp"}, nil)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	require.Equal(t, service.TencentCaptchaRegionCN,
+		repo.values[service.SettingKeyTencentCaptchaRegion],
+		"未知站点必须落回中国站，不能写入无法识别的值")
+}
+
+func TestUpdateSettingsWritesTencentCaptchaRegionWhenSent(t *testing.T) {
+	h, repo := newStepUpSwitchTestHandler(t, map[string]string{})
+
+	rec := doUpdateSettings(t, h, map[string]any{"tencent_captcha_region": "intl"}, nil)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	require.Equal(t, service.TencentCaptchaRegionINTL,
+		repo.values[service.SettingKeyTencentCaptchaRegion])
 }
 
 func TestUpdateSettingsValidatesTencentCaptchaAppIDWhenEnabledFlagIsOmitted(t *testing.T) {

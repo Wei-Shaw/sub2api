@@ -5,7 +5,8 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "vue-tsc -b && vite build",
+    "check:i18n": "vitest run src/i18n/__tests__/localeKeyCompleteness.spec.ts",
+    "build": "pnpm run check:i18n && vue-tsc -b && vite build",
     "preview": "vite preview",
     "lint": "eslint . --ext .vue,.js,.jsx,.cjs,.mjs,.ts,.tsx,.cts,.mts --fix",
     "lint:check": "eslint . --ext .vue,.js,.jsx,.cjs,.mjs,.ts,.tsx,.cts,.mts",
@@ -22,7 +23,7 @@
     "@vueuse/core": "^10.7.0",
     "axios": "^1.18.0",
     "chart.js": "^4.4.1",
-    "dompurify": "^3.3.1",
+    "dompurify": "^3.4.14",
     "driver.js": "^1.4.0",
     "file-saver": "^2.0.5",
     "marked": "^17.0.1",
@@ -63,7 +64,8 @@
     "overrides": {
       "js-cookie": "3.0.7",
       "form-data@<4.0.6": ">=4.0.6",
-      "postcss@<8.5.18": ">=8.5.18"
+      "postcss@<8.5.18": ">=8.5.18",
+      "dompurify@<3.4.14": ">=3.4.14"
     }
   }
 }

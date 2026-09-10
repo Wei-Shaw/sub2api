@@ -15,6 +15,8 @@ import (
 	"time"
 )
 
+const defaultFetchAvailableModelsBodyLimit int64 = 8 << 20
+
 // ---------------------------------------------------------------------------
 // NewAPIRequestWithURL
 // ---------------------------------------------------------------------------
@@ -1517,7 +1519,7 @@ func TestClient_FetchAvailableModels_Success_RealCall(t *testing.T) {
 	withMockBaseURLs(t, []string{server.URL})
 
 	client := mustNewClient(t, "")
-	resp, rawResp, err := client.FetchAvailableModels(context.Background(), "test-token", "project-abc")
+	resp, rawResp, err := client.FetchAvailableModels(context.Background(), "test-token", "project-abc", defaultFetchAvailableModelsBodyLimit)
 	if err != nil {
 		t.Fatalf("FetchAvailableModels 失败: %v", err)
 	}
@@ -1562,6 +1564,34 @@ func TestClient_FetchAvailableModels_Success_RealCall(t *testing.T) {
 	}
 }
 
+func TestClient_FetchAvailableModels_RejectsNonPositiveBodyLimit(t *testing.T) {
+	client := mustNewClient(t, "")
+	_, _, err := client.FetchAvailableModels(context.Background(), "token", "proj", 0)
+	if err == nil || !strings.Contains(err.Error(), "body limit must be positive") {
+		t.Fatalf("非正读取上限应返回调用错误: %v", err)
+	}
+}
+
+func TestClient_FetchAvailableModels_UsesConfiguredBodyLimit(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"models":{"model-a":{}}}`))
+	}))
+	defer server.Close()
+
+	withMockBaseURLs(t, []string{server.URL})
+
+	client := mustNewClient(t, "")
+	_, _, err := client.FetchAvailableModels(context.Background(), "token", "proj", 8)
+	if err == nil {
+		t.Fatal("响应超过配置上限时应返回错误")
+	}
+	if !strings.Contains(err.Error(), "响应超过 8 字节") {
+		t.Fatalf("错误应包含配置上限: %v", err)
+	}
+}
+
 func TestClient_FetchAvailableModels_HTTPError_RealCall(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusForbidden)
@@ -1572,7 +1602,7 @@ func TestClient_FetchAvailableModels_HTTPError_RealCall(t *testing.T) {
 	withMockBaseURLs(t, []string{server.URL})
 
 	client := mustNewClient(t, "")
-	_, _, err := client.FetchAvailableModels(context.Background(), "bad-token", "proj")
+	_, _, err := client.FetchAvailableModels(context.Background(), "bad-token", "proj", defaultFetchAvailableModelsBodyLimit)
 	if err == nil {
 		t.Fatal("服务器返回 403 时应返回错误")
 	}
@@ -1592,7 +1622,7 @@ func TestClient_FetchAvailableModels_InvalidJSON_RealCall(t *testing.T) {
 	withMockBaseURLs(t, []string{server.URL})
 
 	client := mustNewClient(t, "")
-	_, _, err := client.FetchAvailableModels(context.Background(), "token", "proj")
+	_, _, err := client.FetchAvailableModels(context.Background(), "token", "proj", defaultFetchAvailableModelsBodyLimit)
 	if err == nil {
 		t.Fatal("无效 JSON 响应应返回错误")
 	}
@@ -1622,7 +1652,7 @@ func TestClient_FetchAvailableModels_URLFallback_RealCall(t *testing.T) {
 	withMockBaseURLs(t, []string{server1.URL, server2.URL})
 
 	client := mustNewClient(t, "")
-	resp, _, err := client.FetchAvailableModels(context.Background(), "token", "proj")
+	resp, _, err := client.FetchAvailableModels(context.Background(), "token", "proj", defaultFetchAvailableModelsBodyLimit)
 	if err != nil {
 		t.Fatalf("FetchAvailableModels 应在 fallback 后成功: %v", err)
 	}
@@ -1650,7 +1680,7 @@ func TestClient_FetchAvailableModels_AllURLsFail_RealCall(t *testing.T) {
 	withMockBaseURLs(t, []string{server1.URL, server2.URL})
 
 	client := mustNewClient(t, "")
-	_, _, err := client.FetchAvailableModels(context.Background(), "token", "proj")
+	_, _, err := client.FetchAvailableModels(context.Background(), "token", "proj", defaultFetchAvailableModelsBodyLimit)
 	if err == nil {
 		t.Fatal("所有 URL 都失败时应返回错误")
 	}
@@ -1669,7 +1699,7 @@ func TestClient_FetchAvailableModels_ContextCanceled_RealCall(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 
-	_, _, err := client.FetchAvailableModels(ctx, "token", "proj")
+	_, _, err := client.FetchAvailableModels(ctx, "token", "proj", defaultFetchAvailableModelsBodyLimit)
 	if err == nil {
 		t.Fatal("context 取消时应返回错误")
 	}
@@ -1686,7 +1716,7 @@ func TestClient_FetchAvailableModels_EmptyModels_RealCall(t *testing.T) {
 	withMockBaseURLs(t, []string{server.URL})
 
 	client := mustNewClient(t, "")
-	resp, rawResp, err := client.FetchAvailableModels(context.Background(), "token", "proj")
+	resp, rawResp, err := client.FetchAvailableModels(context.Background(), "token", "proj", defaultFetchAvailableModelsBodyLimit)
 	if err != nil {
 		t.Fatalf("FetchAvailableModels 失败: %v", err)
 	}
@@ -1748,7 +1778,7 @@ func TestClient_FetchAvailableModels_404Fallback_RealCall(t *testing.T) {
 	withMockBaseURLs(t, []string{server1.URL, server2.URL})
 
 	client := mustNewClient(t, "")
-	resp, _, err := client.FetchAvailableModels(context.Background(), "token", "proj")
+	resp, _, err := client.FetchAvailableModels(context.Background(), "token", "proj", defaultFetchAvailableModelsBodyLimit)
 	if err != nil {
 		t.Fatalf("FetchAvailableModels 应在 404 fallback 后成功: %v", err)
 	}

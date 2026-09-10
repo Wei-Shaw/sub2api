@@ -42,6 +42,22 @@ func TestParseGatewayRequest_ThinkingAdaptiveEnabled(t *testing.T) {
 	require.True(t, parsed.ThinkingEnabled)
 }
 
+func TestParseGatewayRequest_AnthropicFastSpeed(t *testing.T) {
+	parsed, err := ParseGatewayRequest(
+		NewRequestBodyRef([]byte(`{"model":"claude-opus-4-8","speed":" FAST "}`)),
+		domain.PlatformAnthropic,
+	)
+	require.NoError(t, err)
+	require.Equal(t, "fast", parsed.Speed)
+
+	nonAnthropic, err := ParseGatewayRequest(
+		NewRequestBodyRef([]byte(`{"model":"gpt-5.4","speed":"fast"}`)),
+		"responses",
+	)
+	require.NoError(t, err)
+	require.Empty(t, nonAnthropic.Speed)
+}
+
 func TestParseGatewayRequest_MaxTokens(t *testing.T) {
 	body := []byte(`{"model":"claude-haiku-4-5","max_tokens":1}`)
 	parsed, err := ParseGatewayRequest(NewRequestBodyRef(body), "")
@@ -1590,12 +1606,27 @@ func TestNormalizeGLMOpenAIReasoningEffort(t *testing.T) {
 			wantValue:   "high",
 		},
 		{
+			name:        "glm 5.2 low maps to high",
+			model:       "glm-5.2",
+			input:       `{"model":"glm-5.2","reasoning_effort":"low","messages":[]}`,
+			wantApplied: true,
+			wantPath:    "reasoning_effort",
+			wantValue:   "high",
+		},
+		{
 			name:        "nested high case-normalizes",
 			model:       "glm-5.2",
 			input:       `{"model":"glm-5.2","reasoning":{"effort":"HIGH"},"messages":[]}`,
 			wantApplied: true,
 			wantPath:    "reasoning.effort",
 			wantValue:   "high",
+		},
+		{
+			name:          "glm 5.3 native low unchanged",
+			model:         "glm-5.3",
+			input:         `{"model":"glm-5.3","reasoning_effort":"low","messages":[]}`,
+			wantApplied:   false,
+			wantUnchanged: true,
 		},
 		{
 			name:          "native max unchanged",

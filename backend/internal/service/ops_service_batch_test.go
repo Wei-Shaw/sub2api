@@ -69,7 +69,7 @@ func TestOpsServiceRecordErrorBatch_SanitizesAndBatches(t *testing.T) {
 	require.False(t, second.CreatedAt.IsZero())
 }
 
-func TestOpsServiceRecordErrorBatch_FallsBackToSingleInsert(t *testing.T) {
+func TestOpsServiceRecordErrorBatch_DoesNotFallbackToSingleInsertsWhenBatchFails(t *testing.T) {
 	t.Parallel()
 
 	var (
@@ -92,9 +92,9 @@ func TestOpsServiceRecordErrorBatch_FallsBackToSingleInsert(t *testing.T) {
 		{ErrorMessage: "first"},
 		{ErrorMessage: "second"},
 	})
-	require.NoError(t, err)
+	require.Error(t, err)
 	require.Equal(t, 1, batchCalls)
-	require.Equal(t, 2, singleCalls)
+	require.Zero(t, singleCalls)
 }
 
 func TestOpsServiceRecordErrorPersistsExplicitAccountAuthStatusZero(t *testing.T) {

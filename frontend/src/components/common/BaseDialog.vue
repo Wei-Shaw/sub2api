@@ -28,7 +28,7 @@
           </div>
 
           <!-- Body -->
-          <div class="modal-body">
+          <div ref="modalBodyRef" class="modal-body">
             <slot></slot>
           </div>
 
@@ -52,6 +52,7 @@ const dialogId = `modal-title-${++dialogIdCounter}`
 
 // 焦点管理
 const dialogRef = ref<HTMLElement | null>(null)
+const modalBodyRef = ref<HTMLElement | null>(null)
 let previousActiveElement: HTMLElement | null = null
 
 type DialogWidth = 'narrow' | 'normal' | 'wide' | 'extra-wide' | 'full'
@@ -123,6 +124,9 @@ watch(
 
       // 等待DOM更新后设置焦点到对话框
       await nextTick()
+      if (modalBodyRef.value) {
+        modalBodyRef.value.scrollTop = 0
+      }
       if (dialogRef.value) {
         const firstFocusable = dialogRef.value.querySelector<HTMLElement>(
           'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'

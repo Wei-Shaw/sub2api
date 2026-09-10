@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"regexp"
+	"strconv"
 	"strings"
 
 	"github.com/gin-gonic/gin"
@@ -30,6 +32,46 @@ type noAccountErrorClassification struct {
 	ErrType       string
 	Message       string
 	ModelNotFound bool // true when this is a 404 model_not_found classification
+}
+
+var selectionModelRateLimitedPattern = regexp.MustCompile(`(?:model_rate_limited|rate_limited)=(\d+)`)
+
+// classifySelectionFailureError preserves the scheduler's compact reason when
+// every model-capable account is temporarily rate limited.
+func classifySelectionFailureError(err error, fallback noAccountErrorClassification) noAccountErrorClassification {
+	if err == nil {
+		return fallback
+	}
+	// A 404 model_not_found fallback is authoritative and must not be downgraded
+	// to a rate-limit verdict. classifyNoAccountError only reaches it through
+	// DiagnoseModelAvailabilityForPlatform, a dedicated database query over
+	// persistent eligibility (active + schedulable + model_mapping) that already
+	// established no account in the group can serve this model at all. A transient
+	// per-model cooldown on one of the remaining candidates does not make "all
+	// available accounts are rate-limited" true.
+	//
+	// Reporting 429 here is actively harmful: retrying can never succeed, and
+	// clients that treat 429 as a rate limit retry hard and swallow the body
+	// (Codex surfaces only "exceeded retry limit, last status: 429"), losing the
+	// one message that names the real problem. It also flips the ops attribution
+	// from a local model-configuration issue to routing capacity, because call
+	// sites gate markOpsRoutingCapacityLimitedIfNoAvailable on ModelNotFound.
+	if fallback.ModelNotFound {
+		return fallback
+	}
+	match := selectionModelRateLimitedPattern.FindStringSubmatch(strings.ToLower(err.Error()))
+	if len(match) != 2 {
+		return fallback
+	}
+	count, parseErr := strconv.Atoi(match[1])
+	if parseErr != nil || count <= 0 {
+		return fallback
+	}
+	return noAccountErrorClassification{
+		Status:  http.StatusTooManyRequests,
+		ErrType: "rate_limit_error",
+		Message: "All available accounts are currently rate-limited. Please retry later.",
+	}
 }
 
 // classifyNoAccountError decides between 404 model_not_found and 503
@@ -106,7 +148,11 @@ func classifyNoAccountErrorFromGin(
 	if c != nil && c.Request != nil {
 		ctx = c.Request.Context()
 	}
-	return classifyNoAccountError(ctx, diag, apiKey, routingModel, displayModel, platform)
+	classification := classifyNoAccountError(ctx, diag, apiKey, routingModel, displayModel, platform)
+	if classification.ModelNotFound {
+		service.MarkOpsClientBusinessLimited(c, service.OpsClientBusinessLimitedReasonLocalModelConfiguration)
+	}
+	return classification
 }
 
 func classifyOpenAICompatibleNoAccountErrorFromGin(

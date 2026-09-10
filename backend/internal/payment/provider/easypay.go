@@ -15,6 +15,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/Wei-Shaw/sub2api/internal/payment"
 )
@@ -201,7 +202,53 @@ func (e *EasyPay) createAPIPayment(ctx context.Context, req payment.CreatePaymen
 	if req.IsMobile && resp.PayURL2 != "" {
 		payURL = resp.PayURL2
 	}
-	return &payment.CreatePaymentResponse{TradeNo: resp.TradeNo, PayURL: payURL, QRCode: resp.QRCode}, nil
+	base := e.apiBase()
+	return &payment.CreatePaymentResponse{
+		TradeNo: resp.TradeNo,
+		PayURL:  resolveEasyPayReturnedRef(base, payURL),
+		QRCode:  resolveEasyPayReturnedRef(base, resp.QRCode),
+	}, nil
+}
+
+// resolveEasyPayReturnedRef absolutizes a payurl/payurl2/qrcode reference that
+// mapi.php returned, resolving it against the instance's configured apiBase.
+//
+// EasyPay-compatible upstreams disagree on this field: some answer with a full
+// checkout URL, others with a site-root-relative path such as
+// "/api/pay/toapp/<order>". createRedirectPayment already builds an absolute URL
+// itself (apiBase + "/submit.php?..."), but the mapi.php branch stored whatever
+// came back verbatim, and nothing downstream repairs it —
+// sanitizeCreatePaymentResponseDetails only strips NUL bytes before the value is
+// persisted to pay_url/qr_code. The frontend then feeds qr_code straight into
+// QRCode.toCanvas (PaymentQRCodeView.renderQR), so a relative path becomes a QR
+// whose payload is a bare path: WeChat renders it as text, and pay_url resolves
+// against the gateway's own domain and 404s.
+//
+// That is precisely the outcome the Alipay provider already refuses to produce —
+// "Setting it as QRCode would let the frontend render an unscannable image"
+// (createPagePayTrade) — so EasyPay is brought in line with the same rule.
+//
+// Only references beginning with "/" are resolved. Anything carrying a scheme is
+// already actionable and is returned untouched, which covers both absolute
+// https:// checkout URLs and app deep links (weixin://, wxp://, alipays://). A
+// reference without a leading slash is left alone as well: QR payloads are
+// frequently opaque tokens rather than paths, and rewriting "OrderToken123" into
+// "<apiBase>/OrderToken123" would break a payload that works today — strictly
+// worse than the bug this fixes.
+func resolveEasyPayReturnedRef(apiBase, ref string) string {
+	trimmed := strings.TrimSpace(ref)
+	if !strings.HasPrefix(trimmed, "/") {
+		return ref
+	}
+	base, err := url.Parse(strings.TrimSpace(apiBase))
+	if err != nil || base.Scheme == "" || base.Host == "" {
+		return ref
+	}
+	parsed, err := url.Parse(trimmed)
+	if err != nil || parsed.Scheme != "" {
+		return ref
+	}
+	return base.ResolveReference(parsed).String()
 }
 
 // resolveURLs returns (notifyURL, returnURL) preferring request values,
@@ -477,7 +524,11 @@ func summarizeEasyPayResponse(body []byte) string {
 		return "<empty>"
 	}
 	if len(summary) > maxEasypayErrorSummary {
-		return summary[:maxEasypayErrorSummary] + "..."
+		truncated := summary[:maxEasypayErrorSummary]
+		for len(truncated) > 0 && !utf8.ValidString(truncated) {
+			truncated = truncated[:len(truncated)-1]
+		}
+		return truncated + "..."
 	}
 	return summary
 }
