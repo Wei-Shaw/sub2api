@@ -126,9 +126,9 @@ func (s *CNProviderBalanceCheckService) runOnce() {
 				quotaTargets = append(quotaTargets, quotaTarget{id: account.ID, platform: account.Platform})
 				continue
 			}
-			// payg 余额探测仅 kimi/deepseek（智谱无公开余额端点，payg 账号
-			// 依赖响应式 402/429 处理）。
-			if platform != PlatformZhipu && account.Schedulable {
+			// payg 余额探测仅 kimi/deepseek（智谱 / MiniMax 无公开余额端点，
+			// payg 账号依赖响应式 402/429 处理）。
+			if platform != PlatformZhipu && platform != PlatformMiniMax && account.Schedulable {
 				paygTargets = append(paygTargets, account)
 			}
 		}
@@ -141,13 +141,15 @@ func (s *CNProviderBalanceCheckService) runOnce() {
 		}
 		collect(platform, accounts)
 	}
-	// 智谱无余额端点，仅进额度探测。
+	// 智谱 / MiniMax 无余额端点，仅进额度探测。
 	if s.quotaService != nil {
-		accounts, err := s.accountRepo.ListByPlatform(context.Background(), PlatformZhipu)
-		if err != nil {
-			log.Printf("[CNBalance] list %s accounts failed: %v", PlatformZhipu, err)
-		} else {
-			collect(PlatformZhipu, accounts)
+		for _, platform := range []string{PlatformZhipu, PlatformMiniMax} {
+			accounts, err := s.accountRepo.ListByPlatform(context.Background(), platform)
+			if err != nil {
+				log.Printf("[CNBalance] list %s accounts failed: %v", platform, err)
+				continue
+			}
+			collect(platform, accounts)
 		}
 	}
 
