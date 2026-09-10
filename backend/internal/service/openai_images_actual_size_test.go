@@ -42,8 +42,9 @@ func TestDetectOpenAIImageResultSize(t *testing.T) {
 func TestOpenAIGatewayServiceForwardImages_OAuthUsesDecodedOutputDimensions(t *testing.T) {
 	run := runOpenAIOAuthImageActualSizeTest(t, false)
 
-	require.Equal(t, "3840x2160", gjson.GetBytes(run.upstream.lastBody, "tools.0.size").String())
-	require.Equal(t, "low", gjson.GetBytes(run.upstream.lastBody, "tools.0.quality").String())
+	require.Equal(t, "gpt-image-2", gjson.GetBytes(run.upstream.lastBody, "model").String())
+	require.Equal(t, "3840x2160", gjson.GetBytes(run.upstream.lastBody, "size").String())
+	require.Equal(t, "low", gjson.GetBytes(run.upstream.lastBody, "quality").String())
 	require.Equal(t, "1672x941", gjson.Get(run.recorder.Body.String(), "size").String())
 	require.Equal(t, "auto", gjson.Get(run.recorder.Body.String(), "quality").String())
 	require.Equal(t, []string{"1672x941"}, run.result.ImageOutputSizes)
