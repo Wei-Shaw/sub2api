@@ -653,6 +653,51 @@ func TestLoadOpenAIResponseHeaderTimeoutFromEnv(t *testing.T) {
 	require.Equal(t, 1800, cfg.Gateway.OpenAIResponseHeaderTimeout)
 }
 
+func TestLoadImageResponseHeaderTimeout(t *testing.T) {
+	for _, tc := range []struct {
+		name      string
+		fileValue string
+		envValue  string
+		want      int
+		inherit   bool
+		invalid   bool
+	}{
+		{name: "omitted", inherit: true},
+		{name: "yaml_null", fileValue: "null", inherit: true},
+		{name: "yaml_override", fileValue: "600", want: 600},
+		{name: "env_override", envValue: "300", want: 300},
+		{name: "env_overrides_file", fileValue: "600", envValue: "300", want: 300},
+		{name: "empty_env_keeps_file", fileValue: "600", want: 600},
+		{name: "yaml_disabled", fileValue: "0", want: 0},
+		{name: "env_disabled", envValue: "0", want: 0},
+		{name: "reject_negative", envValue: "-1", invalid: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			resetViperWithJWTSecret(t)
+			t.Setenv("GATEWAY_OPENAI_RESPONSE_HEADER_TIMEOUT", "60")
+			t.Setenv("GATEWAY_IMAGE_RESPONSE_HEADER_TIMEOUT", tc.envValue)
+			if tc.fileValue != "" {
+				path := filepath.Join(t.TempDir(), "config.yaml")
+				require.NoError(t, os.WriteFile(path, []byte("gateway:\n  image_response_header_timeout: "+tc.fileValue+"\n"), 0o600))
+				t.Setenv("CONFIG_FILE", path)
+			}
+			cfg, err := Load()
+			if tc.invalid {
+				require.ErrorContains(t, err, "gateway.image_response_header_timeout")
+				return
+			}
+			require.NoError(t, err)
+			if tc.inherit {
+				require.Nil(t, cfg.Gateway.ImageResponseHeaderTimeout)
+			} else {
+				require.NotNil(t, cfg.Gateway.ImageResponseHeaderTimeout)
+				require.Equal(t, tc.want, *cfg.Gateway.ImageResponseHeaderTimeout)
+			}
+			require.Equal(t, 60, cfg.Gateway.OpenAIResponseHeaderTimeout)
+		})
+	}
+}
+
 func TestLoadImageNonstreamKeepaliveFromEnv(t *testing.T) {
 	resetViperWithJWTSecret(t)
 	t.Setenv("GATEWAY_IMAGE_NONSTREAM_KEEPALIVE_INTERVAL", "15")
@@ -1834,6 +1879,11 @@ func TestValidateConfigErrors(t *testing.T) {
 			name:    "gateway response header timeout",
 			mutate:  func(c *Config) { c.Gateway.ResponseHeaderTimeout = -1 },
 			wantErr: "gateway.response_header_timeout",
+		},
+		{
+			name:    "gateway image response header timeout",
+			mutate:  func(c *Config) { negative := -1; c.Gateway.ImageResponseHeaderTimeout = &negative },
+			wantErr: "gateway.image_response_header_timeout",
 		},
 		{
 			name:    "gateway openai response header timeout",

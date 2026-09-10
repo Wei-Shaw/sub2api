@@ -511,6 +511,9 @@ func (s *httpUpstreamService) getClientEntryWithTLS(proxyURL string, accountID i
 	settings = s.applyProfilePoolSettings(settings, upstreamProfile)
 	// TLS 指纹客户端使用独立的缓存键，加 "tls:" 前缀
 	cacheKey := "tls:" + buildCacheKey(isolation, proxyKey, accountID, upstreamProtocolModeDefault)
+	if s.hasImageHeaderTimeoutOverride(upstreamProfile) {
+		cacheKey += ":openai_images"
+	}
 	poolKey := buildPoolKey(settings, upstreamProtocolModeDefault) + ":tls"
 
 	now := time.Now()
@@ -674,6 +677,10 @@ func (s *httpUpstreamService) getClientEntry(proxyURL string, accountID int64, a
 	settings = s.applyProfilePoolSettings(settings, profile)
 	// 构建缓存键（根据隔离策略不同）
 	cacheKey := buildCacheKey(isolation, proxyKey, accountID, protocolMode)
+	// Keep the text pool reusable while the same account uses a different image timeout.
+	if s.hasImageHeaderTimeoutOverride(profile) {
+		cacheKey += ":openai_images"
+	}
 	// 构建连接池配置键（用于检测配置变更）
 	poolKey := buildPoolKey(settings, protocolMode)
 
@@ -915,12 +922,22 @@ func (s *httpUpstreamService) resolvePoolSettings(isolation string, accountConcu
 	return settings
 }
 
+func (s *httpUpstreamService) hasImageHeaderTimeoutOverride(profile service.HTTPUpstreamProfile) bool {
+	return profile == service.HTTPUpstreamProfileOpenAIImages && s != nil && s.cfg != nil && s.cfg.Gateway.ImageResponseHeaderTimeout != nil
+}
+
 func (s *httpUpstreamService) applyProfilePoolSettings(settings poolSettings, profile service.HTTPUpstreamProfile) poolSettings {
 	switch profile {
-	case service.HTTPUpstreamProfileOpenAI:
+	case service.HTTPUpstreamProfileOpenAI, service.HTTPUpstreamProfileOpenAIImages:
 		settings.responseHeaderTimeout = 0
-		if s != nil && s.cfg != nil && s.cfg.Gateway.OpenAIResponseHeaderTimeout > 0 {
-			settings.responseHeaderTimeout = time.Duration(s.cfg.Gateway.OpenAIResponseHeaderTimeout) * time.Second
+		if s != nil && s.cfg != nil {
+			seconds := s.cfg.Gateway.OpenAIResponseHeaderTimeout
+			if profile == service.HTTPUpstreamProfileOpenAIImages && s.cfg.Gateway.ImageResponseHeaderTimeout != nil {
+				seconds = *s.cfg.Gateway.ImageResponseHeaderTimeout
+			}
+			if seconds > 0 {
+				settings.responseHeaderTimeout = time.Duration(seconds) * time.Second
+			}
 		}
 	case service.HTTPUpstreamProfileGrok:
 		// Grok can stall before its first byte under capacity pressure. Keep the
@@ -1007,6 +1024,10 @@ func (s *httpUpstreamService) resolveOpenAIHTTP2Settings() openAIHTTP2Settings {
 	return settings
 }
 
+func isOpenAIHTTPUpstreamProfile(profile service.HTTPUpstreamProfile) bool {
+	return profile == service.HTTPUpstreamProfileOpenAI || profile == service.HTTPUpstreamProfileOpenAIImages
+}
+
 func (s *httpUpstreamService) resolveProtocolMode(profile service.HTTPUpstreamProfile, proxyKey string, parsedProxy *url.URL) string {
 	if profile == service.HTTPUpstreamProfileLongStream {
 		return upstreamProtocolModeLongStreamH2
@@ -1014,7 +1035,7 @@ func (s *httpUpstreamService) resolveProtocolMode(profile service.HTTPUpstreamPr
 	if profile == service.HTTPUpstreamProfileGrok {
 		return upstreamProtocolModeGrok
 	}
-	if profile != service.HTTPUpstreamProfileOpenAI {
+	if !isOpenAIHTTPUpstreamProfile(profile) {
 		return upstreamProtocolModeDefault
 	}
 	settings := s.resolveOpenAIHTTP2Settings()
@@ -1119,7 +1140,7 @@ func isUpstreamTimeoutError(err error) bool {
 }
 
 func (s *httpUpstreamService) recordOpenAIHTTP2Failure(profile service.HTTPUpstreamProfile, protocolMode, proxyKey string, err error) {
-	if profile != service.HTTPUpstreamProfileOpenAI || protocolMode != upstreamProtocolModeOpenAIH2 {
+	if !isOpenAIHTTPUpstreamProfile(profile) || protocolMode != upstreamProtocolModeOpenAIH2 {
 		return
 	}
 	settings := s.resolveOpenAIHTTP2Settings()
@@ -1139,7 +1160,7 @@ func (s *httpUpstreamService) recordOpenAIHTTP2Failure(profile service.HTTPUpstr
 }
 
 func (s *httpUpstreamService) recordOpenAIHTTP2Success(profile service.HTTPUpstreamProfile, protocolMode, proxyKey string) {
-	if profile != service.HTTPUpstreamProfileOpenAI || protocolMode != upstreamProtocolModeOpenAIH2 {
+	if !isOpenAIHTTPUpstreamProfile(profile) || protocolMode != upstreamProtocolModeOpenAIH2 {
 		return
 	}
 	if !isHTTPProxyKey(proxyKey) {
