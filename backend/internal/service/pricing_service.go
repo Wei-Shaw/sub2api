@@ -36,7 +36,18 @@ var (
 	// （cache_creation_input_token_cost_above_200k_tokens、cache_read_input_token_cost_above_272k_tokens_priority、
 	// cache_creation_input_token_cost_above_1hr_above_200k_tokens 等）。
 	// 组 1 为基础价字段名主干，组 2 为 1h 缓存时长段（可为空），组 3 为服务档后缀（可为空）。
-	cacheTierPricePattern      = regexp.MustCompile(`^(cache_(?:creation|read)_input_token_cost)(_above_1hr)?_above_\d+k_tokens((?:_[a-z]+)?)$`)
+	cacheTierPricePattern = regexp.MustCompile(`^(cache_(?:creation|read)_input_token_cost)(_above_1hr)?_above_\d+k_tokens((?:_[a-z]+)?)$`)
+	// Official GPT Image 2.5 token rates (2026-09-08):
+	// https://developers.openai.com/api/docs/pricing#image-generation-models
+	openAIGPTImage25FallbackPricing = &LiteLLMModelPricing{
+		InputCostPerToken:       5e-06,
+		CacheReadInputTokenCost: 1.25e-06,
+		InputCostPerImageToken:  8e-06,
+		OutputCostPerImageToken: 3e-05,
+		LiteLLMProvider:         "openai",
+		Mode:                    "image_generation",
+		SupportsPromptCaching:   true,
+	}
 	openAIGPT54FallbackPricing = &LiteLLMModelPricing{
 		InputCostPerToken:       2.5e-06, // $2.5 per MTok
 		OutputCostPerToken:      1.5e-05, // $15 per MTok
@@ -1207,7 +1218,7 @@ func (s *PricingService) buildModelLookupCandidates(modelLower string) []string 
 	normalized := normalizeModelNameForPricing(modelLower)
 
 	// A tier-specific entry should take precedence when the pricing catalog gains
-	// one later. Today Antigravity's Gemini 3.6 Flash tiers share the base rate,
+	// one later. Antigravity's Gemini Flash thinking tiers share the base rate,
 	// so the normalized base remains the fallback after the exact aliases.
 	candidates := rawCandidates
 	if normalizeGeminiThinkingTierAlias(lastSegment(modelLower)) != lastSegment(modelLower) {
@@ -1269,15 +1280,16 @@ func normalizeModelNameForPricing(model string) string {
 	return normalizeGeminiThinkingTierAlias(model)
 }
 
-// normalizeGeminiThinkingTierAlias maps Antigravity's Gemini 3.6 Flash
+// normalizeGeminiThinkingTierAlias maps Antigravity's Gemini Flash
 // thinking-tier model IDs to the public base model. The tier controls reasoning
 // behavior, not the published token rate, so this keeps -high/-low/-medium and
-// -tiered requests on the same price card as gemini-3.6-flash.
+// -tiered requests on the corresponding base model's price card.
 func normalizeGeminiThinkingTierAlias(model string) string {
-	const baseModel = "gemini-3.6-flash"
-	for _, tier := range []string{"-high", "-low", "-medium", "-tiered"} {
-		if model == baseModel+tier {
-			return baseModel
+	for _, baseModel := range []string{"gemini-3.6-flash", "gemini-3.7-flash", "gemini-3.8-flash"} {
+		for _, tier := range []string{"-high", "-low", "-medium", "-tiered"} {
+			if model == baseModel+tier {
+				return baseModel
+			}
 		}
 	}
 	return model
@@ -1505,6 +1517,13 @@ func (s *PricingService) matchOpenAIModel(model string) *LiteLLMModelPricing {
 		return openAIGPT54FallbackPricing
 	}
 
+	// Remote price mirrors can lag new releases. Never bill GPT Image 2.5
+	// using the older image model's rates when its entry is absent.
+	for _, imageModel := range []string{"gpt-image-2.5-flare", "gpt-image-2.5-sunburst"} {
+		if model == imageModel || model == imageModel+"-2026-09-08" {
+			return openAIGPTImage25FallbackPricing
+		}
+	}
 	if isOpenAIImageGenerationModel(model) {
 		for _, candidate := range []string{"gpt-image-2", "gpt-image-1.5", "gpt-image-1"} {
 			if pricing, ok := s.pricingData[candidate]; ok {

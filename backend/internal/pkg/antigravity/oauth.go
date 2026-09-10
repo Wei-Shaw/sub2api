@@ -34,7 +34,7 @@ const (
 	AntigravityUserAgentVersionEnv = "ANTIGRAVITY_USER_AGENT_VERSION"
 
 	// DefaultUserAgentVersion 是未通过环境变量或后台设置覆盖时使用的默认版本号。
-	DefaultUserAgentVersion = "1.23.2"
+	DefaultUserAgentVersion = "2.9.1"
 
 	// 固定的 redirect_uri（用户需手动复制 code）
 	RedirectURI = "http://localhost:8085/callback"

@@ -116,11 +116,12 @@ func TestUserPlatformQuotaRepository_BulkInsertInitial_CNProvidersAllowed(t *tes
 		{UserID: userID, Platform: "kimi", DailyLimitUSD: &daily},
 		{UserID: userID, Platform: "zhipu"},
 		{UserID: userID, Platform: "deepseek"},
+		{UserID: userID, Platform: "minimax"},
 	}
 	require.NoError(t, repo.BulkInsertInitial(txCtx, records),
-		"kimi/zhipu/deepseek 平台应可写入（迁移 224 后 CHECK 约束已含国产供应商）")
+		"kimi/zhipu/deepseek/minimax 平台应可写入（CHECK 约束已含国产供应商）")
 
-	for _, platform := range []string{"kimi", "zhipu", "deepseek"} {
+	for _, platform := range []string{"kimi", "zhipu", "deepseek", "minimax"} {
 		rec, err := repo.GetByUserPlatform(txCtx, userID, platform)
 		require.NoError(t, err)
 		require.NotNil(t, rec, "%s 配额行应已写入", platform)

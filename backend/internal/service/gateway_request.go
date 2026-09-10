@@ -912,6 +912,12 @@ const anthropicBetaContextManagementToken = "context-management-2025-06-27"
 //     FullClaudeCodeMimicryBetas 覆盖客户端 beta（该列表不含 fallback beta），
 //     若不 strip，body 字段与 header 不对称 → 所有模型 400
 //
+// thinking.block_binding 场景：
+//   - Claude Fable 5.1 的会话前缀绑定控制受
+//     `thinking-binding-controls-2026-08-01` beta 保护
+//   - 缺 token 时上游拒收：
+//     "thinking.adaptive.block_binding: Extra inputs are not permitted"
+//
 // 本函数按最终发送的 anthropic-beta header 决定是否保留 body 中的上述字段：
 // 缺对应 beta token → strip；客户端 header 已带对应 beta → 保留（不过度删除）。
 // 这将限制完全建立在 "能力维度" 上，与 model 名 / token type / mimicry 子路径无关。
@@ -931,6 +937,13 @@ func sanitizeAnthropicBodyForBetaTokens(body []byte, anthropicBetaHeader string)
 	// context_management：需要 context-management beta。
 	if b, deleted := stripAnthropicBodyFieldUnlessBeta(
 		body, "context_management", anthropicBetaHeader, anthropicBetaContextManagementToken,
+	); deleted {
+		body, changed = b, true
+	}
+
+	// thinking.block_binding：需要 thinking-binding-controls beta。
+	if b, deleted := stripAnthropicBodyFieldUnlessBeta(
+		body, "thinking.block_binding", anthropicBetaHeader, claude.BetaThinkingBindingControls,
 	); deleted {
 		body, changed = b, true
 	}

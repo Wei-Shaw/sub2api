@@ -58,10 +58,8 @@ func EvaluateAccountSchedulingThreshold(account *Account, thresholds map[string]
 		winner = pickLatestResetSchedulingCandidate(anthropicThresholdCandidates(account), threshold, now)
 	case PlatformGrok:
 		winner = pickLatestResetSchedulingCandidate(grokThresholdCandidates(account), threshold, now)
-	case PlatformKimi:
-		winner = pickLatestResetSchedulingCandidate(cnProviderThresholdCandidates(account, PlatformKimi), threshold, now)
-	case PlatformZhipu:
-		winner = pickLatestResetSchedulingCandidate(cnProviderThresholdCandidates(account, PlatformZhipu), threshold, now)
+	case PlatformKimi, PlatformZhipu, PlatformMiniMax:
+		winner = pickLatestResetSchedulingCandidate(cnProviderThresholdCandidates(account, decision.Platform), threshold, now)
 	default:
 		return decision
 	}

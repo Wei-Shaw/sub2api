@@ -590,7 +590,7 @@ func (s *OpenAIGatewayService) proxyOpenAIWSHTTPBridgeTurn(
 		if upstreamMsg == "" {
 			upstreamMsg = http.StatusText(resp.StatusCode)
 		}
-		shouldFailover := s.shouldFailoverOpenAIUpstreamResponse(resp.StatusCode, upstreamMsg, respBody)
+		shouldFailover := s.shouldFailoverOpenAIUpstreamResponse(account, resp.StatusCode, upstreamMsg, respBody)
 		if account.Platform == PlatformGrok {
 			shouldFailover = s.shouldFailoverGrokUpstreamError(resp.StatusCode, respBody)
 			s.handleGrokAccountUpstreamError(withGrokTeamRateLimitModel(ctx, resolveGrokWSUpstreamModel(account, body, originalModel)), account, resp.StatusCode, resp.Header, respBody)

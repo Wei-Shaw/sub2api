@@ -154,7 +154,7 @@ describe('AccountUsageCell', () => {
     expect(updatedAccount?.ollama_cloud_usage?.auto_refresh_enabled).toBe(false)
   })
 
-  it.each(['kimi', 'zhipu', 'deepseek'] as const)(
+  it.each(['kimi', 'zhipu', 'deepseek', 'minimax'] as const)(
     '%s apikey 账号 Ollama Cloud eligible 时渲染 Ollama 用量单元格并跳过 CN 子单元格',
     async (platform) => {
       const wrapper = mount(AccountUsageCell, {
@@ -439,6 +439,84 @@ describe('AccountUsageCell', () => {
     // 单一数据源：始终使用 /usage API 返回值，忽略 codex 快照
     expect(wrapper.text()).toContain('5h|18|900')
     expect(wrapper.text()).toContain('7d|36|900')
+  })
+
+  it('仅为 OpenAI OAuth 7d 窗口计算预计总费用', async () => {
+    getUsage.mockResolvedValue({
+      five_hour: {
+        utilization: 25,
+        resets_at: null,
+        remaining_seconds: 0,
+        window_stats: { requests: 1, tokens: 100, cost: 2 }
+      },
+      seven_day: {
+        utilization: 40,
+        resets_at: null,
+        remaining_seconds: 0,
+        window_stats: { requests: 2, tokens: 200, cost: 12 }
+      }
+    })
+
+    const wrapper = mount(AccountUsageCell, {
+      props: {
+        account: makeAccount({ id: 6752, platform: 'openai', type: 'oauth' })
+      },
+      global: {
+        stubs: {
+          UsageProgressBar: {
+            props: ['label', 'estimatedTotalCost'],
+            template: '<div class="usage-bar">{{ label }}|{{ estimatedTotalCost ?? "none" }}</div>'
+          },
+          AccountQuotaInfo: true
+        }
+      }
+    })
+
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('5h|none')
+    expect(wrapper.text()).toContain('7d|30')
+  })
+
+  it.each([
+    { id: 6801, utilization: 0, cost: 12 },
+    { id: 6802, utilization: -1, cost: 12 },
+    { id: 6803, utilization: Number.NaN, cost: 12 },
+    { id: 6804, utilization: 40, cost: 0 },
+    { id: 6805, utilization: 40, cost: Number.POSITIVE_INFINITY }
+  ])('OpenAI OAuth 7d 输入无效时不显示预计总费用 (%o)', async ({ id, utilization, cost }) => {
+    getUsage.mockResolvedValue({
+      seven_day: {
+        utilization,
+        resets_at: null,
+        remaining_seconds: 0,
+        window_stats: { requests: 1, tokens: 100, cost }
+      }
+    })
+
+    const wrapper = mount(AccountUsageCell, {
+      props: {
+        account: makeAccount({
+          id,
+          platform: 'openai',
+          type: 'oauth'
+        })
+      },
+      global: {
+        stubs: {
+          UsageProgressBar: {
+            props: ['label', 'estimatedTotalCost'],
+            template: '<div class="usage-bar">{{ label }}|{{ estimatedTotalCost ?? "none" }}</div>'
+          },
+          AccountQuotaInfo: true
+        }
+      }
+    })
+
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('7d|none')
+    expect(wrapper.text()).not.toMatch(/Infinity|NaN/)
   })
 
   it('OpenAI OAuth 有现成快照时，手动刷新信号会触发 usage 重拉', async () => {

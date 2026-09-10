@@ -22,12 +22,53 @@ const (
 	maxDecompressedBodySize = 64 << 20
 )
 
+// PrereadBody 回填已读取完成的请求体：作为 io.ReadCloser 可被再次顺序消费
+// （multipart 流式解析），同时暴露 Bytes() 让 ReadRequestBodyWithPrealloc
+// 直接返回原始切片，避免二次分配与复制。
+//
+// 注意：ReadRequestBodyWithPrealloc 对 PrereadBody 的快速路径不检查内部
+// reader 是否已被（部分）消费——包装的字节完整且不可变，即使 reader 已被
+// 流式消费过，Bytes() 也始终返回完整请求体。
+type PrereadBody struct {
+	body   []byte
+	reader *bytes.Reader
+}
+
+// NewPrereadBody 包装一段已读取的请求体。
+func NewPrereadBody(body []byte) *PrereadBody {
+	return &PrereadBody{body: body, reader: bytes.NewReader(body)}
+}
+
+// Read 实现 io.Reader（转发给内部 bytes.Reader）。
+func (p *PrereadBody) Read(b []byte) (int, error) {
+	if p == nil {
+		return 0, io.EOF
+	}
+	return p.reader.Read(b)
+}
+
+// Close 实现 io.Closer；请求体已在内存中，无需释放资源。
+func (p *PrereadBody) Close() error { return nil }
+
+// Bytes 返回完整的原始请求体切片。
+func (p *PrereadBody) Bytes() []byte {
+	if p == nil {
+		return nil
+	}
+	return p.body
+}
+
 // ReadRequestBodyWithPrealloc reads request body with preallocated buffer based
 // on content length, transparently decoding any Content-Encoding the upstream
 // client used to compress the body (zstd, gzip, deflate).
+// 已由 PrereadBody 回填的请求体直接返回其完整切片（零拷贝），不检查内部
+// reader 是否已被消费——见 PrereadBody 的文档说明。
 func ReadRequestBodyWithPrealloc(req *http.Request) ([]byte, error) {
 	if req == nil || req.Body == nil {
 		return nil, nil
+	}
+	if preread, ok := req.Body.(*PrereadBody); ok {
+		return preread.Bytes(), nil
 	}
 
 	capHint := requestBodyReadInitCap
