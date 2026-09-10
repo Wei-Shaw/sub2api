@@ -336,7 +336,39 @@ func (s *OpenAIGatewayService) BlockAccountScheduling(account *Account, until ti
 	mu := s.openAIAccountRuntimeBlockLock(account.ID)
 	mu.Lock()
 	defer mu.Unlock()
-	_, _ = s.blockAccountSchedulingLocked(account, until, reason)
+	blockUntil := until
+	if blockUntil.IsZero() || !blockUntil.After(time.Now()) {
+		blockUntil = time.Now().Add(openAIStopSchedulingBridgeCooldown)
+	}
+	if reason == openAIOAuthCapacityCooldownReason {
+		s.storeOpenAIOAuthCapacityRuntimeCooldownLocked(account.ID, blockUntil)
+	}
+	_, _ = s.blockAccountSchedulingLocked(account, blockUntil, reason)
+}
+
+func (s *OpenAIGatewayService) storeOpenAIOAuthCapacityRuntimeCooldownLocked(accountID int64, until time.Time) {
+	if current, ok := s.openaiOAuthCapacityRuntimeUntil.Load(accountID); ok {
+		if currentUntil, valid := current.(time.Time); valid && currentUntil.After(until) {
+			return
+		}
+	}
+	s.openaiOAuthCapacityRuntimeUntil.Store(accountID, until)
+}
+
+func (s *OpenAIGatewayService) openAIOAuthCapacityRuntimeCooldownActive(accountID int64, now time.Time) bool {
+	if s == nil || accountID <= 0 {
+		return false
+	}
+	mu := s.openAIAccountRuntimeBlockLock(accountID)
+	mu.Lock()
+	defer mu.Unlock()
+	value, ok := s.openaiOAuthCapacityRuntimeUntil.Load(accountID)
+	until, valid := value.(time.Time)
+	if !ok || !valid || until.IsZero() || !now.Before(until) {
+		s.openaiOAuthCapacityRuntimeUntil.Delete(accountID)
+		return false
+	}
+	return true
 }
 
 func (s *OpenAIGatewayService) openAIAccountRuntimeBlockLock(accountID int64) *sync.Mutex {

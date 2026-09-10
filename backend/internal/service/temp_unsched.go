@@ -36,8 +36,8 @@ type OpenAIAPIKeyHealthCache interface {
 type OpenAIOAuthCapacityFailureCache interface {
 	BeginOpenAIOAuthCapacityAttempt(ctx context.Context, accountID int64) (sequence int64, err error)
 	RecordOpenAIOAuthCapacityOutcome(ctx context.Context, accountID, sequence int64, failed bool, windowMinutes, threshold, cooldownMinutes int) (count, tripSequence int64, tripped bool, err error)
-	PrepareOpenAIOAuthCapacityCooldown(ctx context.Context, accountID, tripSequence int64, until time.Time) error
-	AcknowledgeOpenAIOAuthCapacityCooldown(ctx context.Context, accountID, tripSequence int64) error
+	PrepareOpenAIOAuthCapacityCooldown(ctx context.Context, accountID, tripSequence int64, until time.Time) (preparedUntil time.Time, publicationID string, owned bool, err error)
+	AcknowledgeOpenAIOAuthCapacityCooldown(ctx context.Context, accountID, tripSequence int64, preparedUntil time.Time, publicationID string) error
 	GetOpenAIOAuthCapacityCooldown(ctx context.Context, accountID int64) (tripSequence int64, until time.Time, ok bool, err error)
 }
 

@@ -737,7 +737,12 @@ func (s *SettingService) SetOverloadCooldownSettings(ctx context.Context, settin
 	if err != nil {
 		return fmt.Errorf("marshal overload cooldown settings: %w", err)
 	}
-	return s.settingRepo.Set(ctx, SettingKeyOverloadCooldownSettings, string(data))
+	if err := s.settingRepo.Set(ctx, SettingKeyOverloadCooldownSettings, string(data)); err != nil {
+		return err
+	}
+	s.openAIOAuthCapacitySettingsGeneration.Add(1)
+	s.storeOpenAIOAuthCapacitySettings(*settings, openAIOAuthCapacitySettingsCacheTTL)
+	return nil
 }
 
 // GetRateLimit429CooldownSettings 获取429默认回避配置

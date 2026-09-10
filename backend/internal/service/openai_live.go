@@ -197,6 +197,7 @@ func (s *OpenAIGatewayService) CreateLiveCall(
 
 		created, createErr := s.createUpstreamLiveCall(ctx, account, request, attestation)
 		selection.ReleaseFunc()
+		s.observeOpenAILiveCapacityOutcome(ctx, account, createErr)
 		if createErr != nil {
 			s.releaseLiveLease(account.ID, identity.UserID, identity.APIKeyID, leaseID)
 			if !s.shouldFailoverLiveCreateError(account, createErr) {
@@ -243,6 +244,20 @@ func (s *OpenAIGatewayService) CreateLiveCall(
 		return nil, lastErr
 	}
 	return nil, ErrLiveUnavailable
+}
+
+func (s *OpenAIGatewayService) observeOpenAILiveCapacityOutcome(ctx context.Context, account *Account, createErr error) {
+	if s == nil || s.rateLimitService == nil || account == nil {
+		return
+	}
+	if createErr != nil {
+		var upstreamErr *UpstreamFailoverError
+		if errors.As(createErr, &upstreamErr) && isOpenAIRequestScopedCapacityShed(upstreamErr.Error(), upstreamErr.ResponseBody) {
+			s.rateLimitService.ObserveOpenAIOAuthCapacityFailure(ctx, account, upstreamErr.StatusCode, upstreamErr.ResponseBody, upstreamErr.Error())
+			return
+		}
+	}
+	s.rateLimitService.ObserveOpenAIOAuthCapacityNonFailure(ctx, account)
 }
 
 func (s *OpenAIGatewayService) shouldFailoverLiveCreateError(account *Account, err error) bool {

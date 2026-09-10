@@ -44,8 +44,11 @@ func (s *OpenAIGatewayService) resolveOpenAIOAuthCapacityRetry(ctx context.Conte
 		return context.Background()
 	}
 	retry, ok := ctx.Value(openAIOAuthCapacityRetryContextKey{}).(openAIOAuthCapacityRetry)
-	if !ok || retry.accountID <= 0 || retry.attemptSequence <= 0 || s == nil || s.rateLimitService == nil || s.rateLimitService.openAIOAuthCapacityFailures == nil {
+	if !ok || retry.accountID <= 0 || retry.attemptSequence <= 0 || s == nil || s.rateLimitService == nil || s.rateLimitService.settingService == nil || s.rateLimitService.openAIOAuthCapacityFailures == nil {
 		return ctx
+	}
+	if !s.rateLimitService.settingService.GetOpenAIOAuthCapacitySettings(ctx).OpenAIOAuthCapacityEnabled {
+		return context.WithValue(ctx, openAIOAuthCapacityRetryContextKey{}, openAIOAuthCapacityRetry{})
 	}
 	tripSequence, until, active, err := s.rateLimitService.openAIOAuthCapacityFailures.GetOpenAIOAuthCapacityCooldown(ctx, retry.accountID)
 	if err != nil {
@@ -83,11 +86,8 @@ func (s *RateLimitService) beginOpenAIOAuthCapacityAttempt(ctx context.Context, 
 	if s == nil || s.openAIOAuthCapacityFailures == nil || s.settingService == nil || account == nil || !account.IsOpenAIOAuth() || account.ID <= 0 {
 		return 0
 	}
-	settings, err := s.settingService.GetOverloadCooldownSettings(ctx)
-	if err != nil || settings == nil || !settings.OpenAIOAuthCapacityEnabled {
-		if err != nil {
-			logger.L().Warn("openai.oauth_capacity_cooldown_settings_failed", zap.Int64("account_id", account.ID), zap.Error(err))
-		}
+	settings := s.settingService.GetOpenAIOAuthCapacitySettings(ctx)
+	if !settings.OpenAIOAuthCapacityEnabled {
 		return 0
 	}
 	sequence, err := s.openAIOAuthCapacityFailures.BeginOpenAIOAuthCapacityAttempt(ctx, account.ID)
@@ -126,7 +126,11 @@ func (h *OpenAIWSIngressHooks) openAIOAuthCapacityAttemptSequence() int64 {
 }
 
 func (s *OpenAIGatewayService) openAIOAuthCapacityCooldownActive(ctx context.Context, account *Account) bool {
-	if s == nil || s.rateLimitService == nil || account == nil || !account.IsOpenAIOAuth() {
+	if s == nil || s.rateLimitService == nil || s.rateLimitService.settingService == nil || account == nil || !account.IsOpenAIOAuth() {
+		return false
+	}
+	settings := s.rateLimitService.settingService.GetOpenAIOAuthCapacitySettings(ctx)
+	if !settings.OpenAIOAuthCapacityEnabled {
 		return false
 	}
 	cache := s.rateLimitService.openAIOAuthCapacityFailures
@@ -137,8 +141,7 @@ func (s *OpenAIGatewayService) openAIOAuthCapacityCooldownActive(ctx context.Con
 		}
 		logger.L().Warn("openai.oauth_capacity_cooldown_check_failed", zap.Int64("account_id", account.ID), zap.Error(err))
 	}
-	snapshot := s.peekOpenAIAccountRuntimeBlock(account)
-	return snapshot.blocked && snapshot.reason == openAIOAuthCapacityCooldownReason
+	return s.openAIOAuthCapacityRuntimeCooldownActive(account.ID, time.Now())
 }
 
 func (s *OpenAIGatewayService) withOpenAIOAuthCapacityTurnAttempts(ctx context.Context, account *Account, hooks *OpenAIWSIngressHooks) *OpenAIWSIngressHooks {
@@ -188,14 +191,11 @@ func (s *RateLimitService) observeOpenAIOAuthCapacityOutcome(ctx context.Context
 	if s == nil || s.openAIOAuthCapacityFailures == nil || s.settingService == nil || s.accountRepo == nil || account == nil || !account.IsOpenAIOAuth() || account.ID <= 0 {
 		return false
 	}
-	settings, err := s.settingService.GetOverloadCooldownSettings(ctx)
-	if err != nil {
-		logger.L().Warn("openai.oauth_capacity_cooldown_settings_failed", zap.Int64("account_id", account.ID), zap.Error(err))
+	settings := s.settingService.GetOpenAIOAuthCapacitySettings(ctx)
+	if !settings.OpenAIOAuthCapacityEnabled {
 		return false
 	}
-	if settings == nil || !settings.OpenAIOAuthCapacityEnabled {
-		return false
-	}
+	var err error
 	sequence := account.OpenAIOAuthCapacityAttemptSequence
 	if sequence <= 0 {
 		sequence, err = s.openAIOAuthCapacityFailures.BeginOpenAIOAuthCapacityAttempt(ctx, account.ID)
@@ -223,15 +223,20 @@ func (s *RateLimitService) observeOpenAIOAuthCapacityOutcome(ctx context.Context
 	}
 	persistCtx, cancel := context.WithTimeout(baseCtx, 3*time.Second)
 	defer cancel()
-	if err := s.openAIOAuthCapacityFailures.PrepareOpenAIOAuthCapacityCooldown(persistCtx, account.ID, tripSequence, desiredUntil); err != nil {
+	preparedUntil, publicationID, owned, err := s.openAIOAuthCapacityFailures.PrepareOpenAIOAuthCapacityCooldown(persistCtx, account.ID, tripSequence, desiredUntil)
+	if err != nil {
 		logger.L().Warn("openai.oauth_capacity_cooldown_prepare_failed", zap.Int64("account_id", account.ID), zap.Error(err))
 		return false
 	}
+	if !owned {
+		return false
+	}
+	desiredUntil = preparedUntil
 	if err := s.accountRepo.SetOverloaded(persistCtx, account.ID, desiredUntil); err != nil {
 		logger.L().Warn("openai.oauth_capacity_cooldown_persist_failed", zap.Int64("account_id", account.ID), zap.Error(err))
 		return false
 	}
-	if err := s.openAIOAuthCapacityFailures.AcknowledgeOpenAIOAuthCapacityCooldown(persistCtx, account.ID, tripSequence); err != nil {
+	if err := s.openAIOAuthCapacityFailures.AcknowledgeOpenAIOAuthCapacityCooldown(persistCtx, account.ID, tripSequence, desiredUntil, publicationID); err != nil {
 		logger.L().Warn("openai.oauth_capacity_cooldown_ack_failed", zap.Int64("account_id", account.ID), zap.Error(err))
 	}
 	actualUntil := desiredUntil
@@ -239,9 +244,7 @@ func (s *RateLimitService) observeOpenAIOAuthCapacityOutcome(ctx context.Context
 		actualUntil = *account.OverloadUntil
 	}
 	account.OverloadUntil = &actualUntil
-	if actualUntil.Equal(desiredUntil) {
-		s.notifyAccountSchedulingBlocked(account, desiredUntil, openAIOAuthCapacityCooldownReason)
-	}
+	s.notifyAccountSchedulingBlocked(account, desiredUntil, openAIOAuthCapacityCooldownReason)
 	logger.L().Warn("openai.oauth_capacity_cooldown_tripped",
 		zap.Int64("account_id", account.ID), zap.Int64("failure_count", count), zap.Int64("trip_sequence", tripSequence),
 		zap.Int("failure_threshold", settings.OpenAIOAuthCapacityFailureThreshold), zap.Int("window_minutes", settings.OpenAIOAuthCapacityWindowMinutes),

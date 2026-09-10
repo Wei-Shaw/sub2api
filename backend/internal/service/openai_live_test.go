@@ -224,6 +224,33 @@ func TestLiveCreateFailoverUsesExistingOpenAIPolicy(t *testing.T) {
 	require.True(t, service.shouldFailoverLiveCreateError(account, errors.New("transport failed")))
 }
 
+func TestLiveCreateCapacityOutcomesTripAndSuccessBreaksStreak(t *testing.T) {
+	rateLimits, cache, repo, blocker := newOpenAIOAuthCapacityRateLimitService(t, true, 2)
+	gateway := &OpenAIGatewayService{rateLimitService: rateLimits}
+	account := openAIOAuthCapacityAccount(42)
+	capacityErr := &UpstreamFailoverError{
+		StatusCode:   http.StatusServiceUnavailable,
+		ResponseBody: []byte("{\"error\":{\"code\":\"server_is_overloaded\",\"message\":\"overloaded\"}}"),
+	}
+
+	gateway.observeOpenAILiveCapacityOutcome(context.Background(), account, capacityErr)
+	require.Equal(t, 1, cache.recordCalls)
+	require.Zero(t, repo.setCalls)
+
+	account.OpenAIOAuthCapacityAttemptSequence = 0
+	gateway.observeOpenAILiveCapacityOutcome(context.Background(), account, nil)
+	account.OpenAIOAuthCapacityAttemptSequence = 0
+	gateway.observeOpenAILiveCapacityOutcome(context.Background(), account, capacityErr)
+	require.Equal(t, 3, cache.recordCalls)
+	require.Zero(t, repo.setCalls, "a successful Live create must break the capacity failure streak")
+
+	account.OpenAIOAuthCapacityAttemptSequence = 0
+	gateway.observeOpenAILiveCapacityOutcome(context.Background(), account, capacityErr)
+	require.Equal(t, 4, cache.recordCalls)
+	require.Equal(t, 1, repo.setCalls)
+	require.Equal(t, 1, blocker.calls)
+}
+
 func TestLiveCallIDFromLocation(t *testing.T) {
 	callID, err := liveCallIDFromLocation("https://chatgpt.com/backend-api/codex/call_123?intent=quicksilver")
 	require.NoError(t, err)

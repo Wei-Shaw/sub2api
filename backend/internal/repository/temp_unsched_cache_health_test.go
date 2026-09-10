@@ -145,8 +145,12 @@ func TestOpenAIOAuthCapacityCacheRetriesPendingTransitionAcrossInstances(t *test
 	require.NoError(t, err)
 	require.True(t, tripped)
 
-	until := time.Now().Add(5 * time.Minute).Round(0)
-	require.NoError(t, storeB.PrepareOpenAIOAuthCapacityCooldown(ctx, 42, tripSequence, until))
+	until := time.Now().Add(5 * time.Minute).Truncate(time.Microsecond)
+	preparedUntil, publicationID, owned, err := storeB.PrepareOpenAIOAuthCapacityCooldown(ctx, 42, tripSequence, until)
+	require.NoError(t, err)
+	require.True(t, owned)
+	require.NotEmpty(t, publicationID)
+	require.Equal(t, until, preparedUntil)
 	markerSequence, markerUntil, active, err := storeA.GetOpenAIOAuthCapacityCooldown(ctx, 42)
 	require.NoError(t, err)
 	require.True(t, active)
@@ -160,8 +164,49 @@ func TestOpenAIOAuthCapacityCacheRetriesPendingTransitionAcrossInstances(t *test
 	require.True(t, tripped, "pending publication must survive a later outcome")
 	require.Equal(t, tripSequence, retriedTrip)
 
-	require.NoError(t, storeA.AcknowledgeOpenAIOAuthCapacityCooldown(ctx, 42, tripSequence))
+	require.NoError(t, storeA.AcknowledgeOpenAIOAuthCapacityCooldown(ctx, 42, tripSequence, preparedUntil, publicationID))
 	_, _, tripped, err = storeB.RecordOpenAIOAuthCapacityOutcome(ctx, 42, first, true, 1, 2, 5)
 	require.NoError(t, err)
 	require.False(t, tripped, "acknowledged attempts must not recreate the transition")
+}
+
+func TestOpenAIOAuthCapacityPublicationRejectsLosingPublisher(t *testing.T) {
+	server := miniredis.RunT(t)
+	clientA := redis.NewClient(&redis.Options{Addr: server.Addr()})
+	clientB := redis.NewClient(&redis.Options{Addr: server.Addr()})
+	t.Cleanup(func() { _ = clientA.Close(); _ = clientB.Close() })
+	storeA := NewTempUnschedCache(clientA).(service.OpenAIOAuthCapacityFailureCache)
+	storeB := NewTempUnschedCache(clientB).(service.OpenAIOAuthCapacityFailureCache)
+	ctx := context.Background()
+
+	sequence, err := storeA.BeginOpenAIOAuthCapacityAttempt(ctx, 42)
+	require.NoError(t, err)
+	_, tripSequence, tripped, err := storeA.RecordOpenAIOAuthCapacityOutcome(ctx, 42, sequence, true, 1, 1, 5)
+	require.NoError(t, err)
+	require.True(t, tripped)
+
+	earlier := time.Now().Add(5 * time.Minute).Truncate(time.Microsecond)
+	later := earlier.Add(time.Minute)
+	preparedLater, winnerID, owned, err := storeB.PrepareOpenAIOAuthCapacityCooldown(ctx, 42, tripSequence, later)
+	require.NoError(t, err)
+	require.True(t, owned)
+	require.Equal(t, later, preparedLater)
+
+	canonical, loserID, owned, err := storeA.PrepareOpenAIOAuthCapacityCooldown(ctx, 42, tripSequence, earlier)
+	require.NoError(t, err)
+	require.False(t, owned)
+	require.Empty(t, loserID)
+	require.Equal(t, later, canonical)
+	require.Error(t, storeA.AcknowledgeOpenAIOAuthCapacityCooldown(ctx, 42, tripSequence, earlier, "loser"))
+	require.Equal(t, "pending", server.HGet(openAIOAuthCapacityKey(42)+":cooldown", "state"))
+
+	next, err := storeA.BeginOpenAIOAuthCapacityAttempt(ctx, 42)
+	require.NoError(t, err)
+	_, pendingTrip, tripped, err := storeA.RecordOpenAIOAuthCapacityOutcome(ctx, 42, next, false, 1, 1, 5)
+	require.NoError(t, err)
+	require.True(t, tripped, "the winning publisher's unacknowledged transition must remain retryable")
+	require.Equal(t, tripSequence, pendingTrip)
+
+	require.NoError(t, storeB.AcknowledgeOpenAIOAuthCapacityCooldown(ctx, 42, tripSequence, preparedLater, winnerID))
+	require.Equal(t, "published", server.HGet(openAIOAuthCapacityKey(42)+":cooldown", "state"))
 }

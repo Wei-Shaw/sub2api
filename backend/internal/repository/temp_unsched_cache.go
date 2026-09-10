@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/service"
+	"github.com/google/uuid"
 	"github.com/redis/go-redis/v9"
 )
 
@@ -78,16 +79,17 @@ var openAIOAuthCapacityOutcomeScript = redis.NewScript(`
 var openAIOAuthCapacityPrepareScript = redis.NewScript(`
 	local marker_key = KEYS[1]
 	local trip_sequence = tonumber(ARGV[1])
-	local until_nanos = tonumber(ARGV[2])
+	local until_micros = tonumber(ARGV[2])
 	local expires_at = tonumber(ARGV[3])
+	local publication_id = ARGV[4]
 	local existing_sequence = tonumber(redis.call('HGET', marker_key, 'trip_sequence') or '0')
-	local existing_until = tonumber(redis.call('HGET', marker_key, 'until_unix_nano') or '0')
-	if existing_sequence > trip_sequence or (existing_sequence == trip_sequence and existing_until > until_nanos) then
-		return 0
+	local existing_until = tonumber(redis.call('HGET', marker_key, 'until_unix_micro') or '0')
+	if existing_sequence > trip_sequence or (existing_sequence == trip_sequence and existing_until >= until_micros) then
+		return {0, existing_until, ''}
 	end
-	redis.call('HSET', marker_key, 'trip_sequence', trip_sequence, 'until_unix_nano', ARGV[2], 'state', 'pending')
+	redis.call('HSET', marker_key, 'trip_sequence', trip_sequence, 'until_unix_micro', ARGV[2], 'publication_id', publication_id, 'state', 'pending')
 	redis.call('EXPIREAT', marker_key, expires_at)
-	return 1
+	return {1, until_micros, publication_id}
 `)
 
 var openAIOAuthCapacityAcknowledgeScript = redis.NewScript(`
@@ -98,7 +100,15 @@ var openAIOAuthCapacityAcknowledgeScript = redis.NewScript(`
 	local acked_key = KEYS[5]
 	local marker_key = KEYS[6]
 	local trip_sequence = tonumber(ARGV[1])
-	local ttl = tonumber(ARGV[2])
+	local until_micros = tonumber(ARGV[2])
+	local publication_id = ARGV[3]
+	local ttl = tonumber(ARGV[4])
+	if tonumber(redis.call('HGET', marker_key, 'trip_sequence') or '0') ~= trip_sequence
+		or tonumber(redis.call('HGET', marker_key, 'until_unix_micro') or '0') ~= until_micros
+		or redis.call('HGET', marker_key, 'publication_id') ~= publication_id
+		or redis.call('HGET', marker_key, 'state') ~= 'pending' then
+		return 0
+	end
 	local completed = redis.call('ZRANGEBYSCORE', order_key, '-inf', trip_sequence)
 	for _, sequence in ipairs(completed) do
 		redis.call('HDEL', outcomes_key, sequence)
@@ -109,9 +119,7 @@ var openAIOAuthCapacityAcknowledgeScript = redis.NewScript(`
 	if trip_sequence > acked then redis.call('SET', acked_key, trip_sequence, 'EX', ttl) end
 	local pending = tonumber(redis.call('GET', pending_key) or '0')
 	if pending > 0 and pending <= trip_sequence then redis.call('DEL', pending_key) end
-	if tonumber(redis.call('HGET', marker_key, 'trip_sequence') or '0') == trip_sequence then
-		redis.call('HSET', marker_key, 'state', 'published')
-	end
+	redis.call('HSET', marker_key, 'state', 'published')
 	return 1
 `)
 
@@ -307,30 +315,47 @@ func (c *tempUnschedCache) RecordOpenAIOAuthCapacityOutcome(ctx context.Context,
 	return count, tripSequence, tripped == 1, nil
 }
 
-func (c *tempUnschedCache) PrepareOpenAIOAuthCapacityCooldown(ctx context.Context, accountID, tripSequence int64, until time.Time) error {
+func (c *tempUnschedCache) PrepareOpenAIOAuthCapacityCooldown(ctx context.Context, accountID, tripSequence int64, until time.Time) (time.Time, string, bool, error) {
 	if tripSequence <= 0 || until.IsZero() {
-		return fmt.Errorf("prepare OpenAI OAuth capacity cooldown: invalid transition")
+		return time.Time{}, "", false, fmt.Errorf("prepare OpenAI OAuth capacity cooldown: invalid transition")
 	}
+	until = until.Truncate(time.Microsecond)
+	publicationID := uuid.NewString()
 	base := openAIOAuthCapacityKey(accountID)
 	expiresAt := until.Add(time.Minute).Unix()
-	_, err := openAIOAuthCapacityPrepareScript.Run(ctx, c.rdb, []string{base + ":cooldown"}, tripSequence, until.UnixNano(), expiresAt).Result()
+	result, err := openAIOAuthCapacityPrepareScript.Run(ctx, c.rdb, []string{base + ":cooldown"}, tripSequence, until.UnixMicro(), expiresAt, publicationID).Slice()
 	if err != nil {
-		return fmt.Errorf("prepare OpenAI OAuth capacity cooldown: %w", err)
+		return time.Time{}, "", false, fmt.Errorf("prepare OpenAI OAuth capacity cooldown: %w", err)
 	}
-	return nil
+	if len(result) != 3 {
+		return time.Time{}, "", false, fmt.Errorf("prepare OpenAI OAuth capacity cooldown: unexpected result length %d", len(result))
+	}
+	owned, ownedOK := result[0].(int64)
+	preparedMicros, preparedOK := result[1].(int64)
+	preparedPublicationID, publicationOK := result[2].(string)
+	if !ownedOK || !preparedOK || !publicationOK || preparedMicros <= 0 {
+		return time.Time{}, "", false, fmt.Errorf("prepare OpenAI OAuth capacity cooldown: unexpected result types %T/%T/%T", result[0], result[1], result[2])
+	}
+	return time.UnixMicro(preparedMicros), preparedPublicationID, owned == 1, nil
 }
 
-func (c *tempUnschedCache) AcknowledgeOpenAIOAuthCapacityCooldown(ctx context.Context, accountID, tripSequence int64) error {
+func (c *tempUnschedCache) AcknowledgeOpenAIOAuthCapacityCooldown(ctx context.Context, accountID, tripSequence int64, preparedUntil time.Time, publicationID string) error {
+	if tripSequence <= 0 || preparedUntil.IsZero() || publicationID == "" {
+		return fmt.Errorf("acknowledge OpenAI OAuth capacity cooldown: invalid transition")
+	}
 	base := openAIOAuthCapacityKey(accountID)
-	_, err := openAIOAuthCapacityAcknowledgeScript.Run(ctx, c.rdb, []string{base + ":outcomes", base + ":order", base + ":expiry", base + ":pending", base + ":acked", base + ":cooldown"}, tripSequence, int64(openAIOAuthCapacityStateTTL/time.Second)).Result()
+	acknowledged, err := openAIOAuthCapacityAcknowledgeScript.Run(ctx, c.rdb, []string{base + ":outcomes", base + ":order", base + ":expiry", base + ":pending", base + ":acked", base + ":cooldown"}, tripSequence, preparedUntil.UnixMicro(), publicationID, int64(openAIOAuthCapacityStateTTL/time.Second)).Int64()
 	if err != nil {
 		return fmt.Errorf("acknowledge OpenAI OAuth capacity cooldown: %w", err)
+	}
+	if acknowledged != 1 {
+		return fmt.Errorf("acknowledge OpenAI OAuth capacity cooldown: publication ownership lost")
 	}
 	return nil
 }
 
 func (c *tempUnschedCache) GetOpenAIOAuthCapacityCooldown(ctx context.Context, accountID int64) (int64, time.Time, bool, error) {
-	values, err := c.rdb.HMGet(ctx, openAIOAuthCapacityKey(accountID)+":cooldown", "trip_sequence", "until_unix_nano").Result()
+	values, err := c.rdb.HMGet(ctx, openAIOAuthCapacityKey(accountID)+":cooldown", "trip_sequence", "until_unix_micro").Result()
 	if err != nil {
 		return 0, time.Time{}, false, fmt.Errorf("get OpenAI OAuth capacity cooldown: %w", err)
 	}
@@ -341,11 +366,11 @@ func (c *tempUnschedCache) GetOpenAIOAuthCapacityCooldown(ctx context.Context, a
 	if err != nil {
 		return 0, time.Time{}, false, fmt.Errorf("parse OpenAI OAuth capacity trip sequence: %w", err)
 	}
-	untilNanos, err := strconv.ParseInt(fmt.Sprint(values[1]), 10, 64)
+	untilMicros, err := strconv.ParseInt(fmt.Sprint(values[1]), 10, 64)
 	if err != nil {
 		return 0, time.Time{}, false, fmt.Errorf("parse OpenAI OAuth capacity deadline: %w", err)
 	}
-	until := time.Unix(0, untilNanos)
+	until := time.UnixMicro(untilMicros)
 	if !time.Now().Before(until) {
 		return 0, time.Time{}, false, nil
 	}

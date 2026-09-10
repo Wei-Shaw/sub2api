@@ -124,6 +124,11 @@ type cachedOpenAIQuotaAutoPauseSettings struct {
 	expiresAt int64
 }
 
+type cachedOpenAIOAuthCapacitySettings struct {
+	settings  OverloadCooldownSettings
+	expiresAt int64
+}
+
 const openAICodexUserAgentCacheTTL = 60 * time.Second
 const openAICodexUserAgentErrorTTL = 5 * time.Second
 const openAICodexUserAgentDBTimeout = 5 * time.Second
@@ -155,6 +160,11 @@ const openAIQuotaAutoPauseSettingsErrorTTL = 5 * time.Second
 const openAIQuotaAutoPauseSettingsDBTimeout = 5 * time.Second
 
 const openAIQuotaAutoPauseSettingsRefreshKey = "openai_quota_auto_pause_settings"
+
+const openAIOAuthCapacitySettingsCacheTTL = 60 * time.Second
+const openAIOAuthCapacitySettingsErrorTTL = 5 * time.Second
+const openAIOAuthCapacitySettingsDBTimeout = 5 * time.Second
+const openAIOAuthCapacitySettingsRefreshKey = "openai_oauth_capacity_settings"
 
 // GetCyberSessionBlockRuntime 返回 (开关, TTL)，进程内缓存 ~60s，
 // 供网关热路径读取时避免 DB 往返。
@@ -1051,5 +1061,77 @@ func (s *SettingService) SetOpenAIQuotaAutoPauseSettings(settings OpsOpenAIAccou
 	s.openAIQuotaAutoPauseSettingsCache.Store(&cachedOpenAIQuotaAutoPauseSettings{
 		settings:  settings,
 		expiresAt: time.Now().Add(openAIQuotaAutoPauseSettingsCacheTTL).UnixNano(),
+	})
+}
+
+// GetOpenAIOAuthCapacitySettings serves the OAuth capacity policy from an
+// in-process stale-while-revalidate cache. The scheduling and outcome hot paths
+// must never wait for the settings database.
+func (s *SettingService) GetOpenAIOAuthCapacitySettings(context.Context) OverloadCooldownSettings {
+	if s == nil {
+		return *DefaultOverloadCooldownSettings()
+	}
+	cached, _ := s.openAIOAuthCapacitySettingsCache.Load().(*cachedOpenAIOAuthCapacitySettings)
+	if cached != nil && time.Now().UnixNano() < cached.expiresAt {
+		return cached.settings
+	}
+	s.openAIOAuthCapacitySettingsSF.DoChan(openAIOAuthCapacitySettingsRefreshKey, func() (any, error) {
+		s.refreshOpenAIOAuthCapacitySettings(context.Background())
+		return nil, nil
+	})
+	if cached != nil {
+		return cached.settings
+	}
+	return *DefaultOverloadCooldownSettings()
+}
+
+// WarmOpenAIOAuthCapacitySettings synchronously populates the runtime cache.
+func (s *SettingService) WarmOpenAIOAuthCapacitySettings(ctx context.Context) OverloadCooldownSettings {
+	if s == nil {
+		return *DefaultOverloadCooldownSettings()
+	}
+	s.refreshOpenAIOAuthCapacitySettings(ctx)
+	cached, _ := s.openAIOAuthCapacitySettingsCache.Load().(*cachedOpenAIOAuthCapacitySettings)
+	if cached == nil {
+		return *DefaultOverloadCooldownSettings()
+	}
+	return cached.settings
+}
+
+func (s *SettingService) refreshOpenAIOAuthCapacitySettings(ctx context.Context) {
+	if s == nil || s.settingRepo == nil {
+		return
+	}
+	generation := s.openAIOAuthCapacitySettingsGeneration.Load()
+	baseCtx := context.Background()
+	if ctx != nil {
+		baseCtx = context.WithoutCancel(ctx)
+	}
+	dbCtx, cancel := context.WithTimeout(baseCtx, openAIOAuthCapacitySettingsDBTimeout)
+	defer cancel()
+
+	settings := *DefaultOverloadCooldownSettings()
+	ttl := openAIOAuthCapacitySettingsCacheTTL
+	loaded, err := s.GetOverloadCooldownSettings(dbCtx)
+	if err == nil && loaded != nil {
+		settings = *loaded
+	} else if err != nil {
+		if prior, _ := s.openAIOAuthCapacitySettingsCache.Load().(*cachedOpenAIOAuthCapacitySettings); prior != nil {
+			settings = prior.settings
+		}
+		ttl = openAIOAuthCapacitySettingsErrorTTL
+	}
+	if s.openAIOAuthCapacitySettingsGeneration.Load() == generation {
+		s.storeOpenAIOAuthCapacitySettings(settings, ttl)
+	}
+}
+
+func (s *SettingService) storeOpenAIOAuthCapacitySettings(settings OverloadCooldownSettings, ttl time.Duration) {
+	if s == nil {
+		return
+	}
+	s.openAIOAuthCapacitySettingsCache.Store(&cachedOpenAIOAuthCapacitySettings{
+		settings:  settings,
+		expiresAt: time.Now().Add(ttl).UnixNano(),
 	})
 }

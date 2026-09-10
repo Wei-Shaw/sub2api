@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -48,6 +50,8 @@ type openAIOAuthCapacityCacheStub struct {
 	recordCalls  int
 	prepareCalls int
 	ackCalls     int
+	getCalls     int
+	getErr       error
 	nextSequence int64
 	outcomes     map[int64]bool
 	pending      int64
@@ -86,14 +90,14 @@ func (c *openAIOAuthCapacityCacheStub) RecordOpenAIOAuthCapacityOutcome(_ contex
 	return count, 0, false, nil
 }
 
-func (c *openAIOAuthCapacityCacheStub) PrepareOpenAIOAuthCapacityCooldown(_ context.Context, _ int64, tripSequence int64, until time.Time) error {
+func (c *openAIOAuthCapacityCacheStub) PrepareOpenAIOAuthCapacityCooldown(_ context.Context, _ int64, tripSequence int64, until time.Time) (time.Time, string, bool, error) {
 	c.prepareCalls++
 	c.marker = tripSequence
 	c.markerUntil = until
-	return nil
+	return until, "test-publication", true, nil
 }
 
-func (c *openAIOAuthCapacityCacheStub) AcknowledgeOpenAIOAuthCapacityCooldown(_ context.Context, _ int64, tripSequence int64) error {
+func (c *openAIOAuthCapacityCacheStub) AcknowledgeOpenAIOAuthCapacityCooldown(_ context.Context, _ int64, tripSequence int64, _ time.Time, _ string) error {
 	c.ackCalls++
 	for sequence := range c.outcomes {
 		if sequence <= tripSequence {
@@ -107,7 +111,8 @@ func (c *openAIOAuthCapacityCacheStub) AcknowledgeOpenAIOAuthCapacityCooldown(_ 
 }
 
 func (c *openAIOAuthCapacityCacheStub) GetOpenAIOAuthCapacityCooldown(context.Context, int64) (int64, time.Time, bool, error) {
-	return c.marker, c.markerUntil, c.marker > 0 && time.Now().Before(c.markerUntil), nil
+	c.getCalls++
+	return c.marker, c.markerUntil, c.marker > 0 && time.Now().Before(c.markerUntil), c.getErr
 }
 
 type openAIOAuthCapacityRuntimeBlocker struct {
@@ -137,6 +142,7 @@ func newOpenAIOAuthCapacityRateLimitService(t *testing.T, enabled bool, threshol
 	require.NoError(t, err)
 
 	settings := NewSettingService(&openAIOAuthCapacitySettingRepo{value: string(encoded)}, &config.Config{})
+	settings.WarmOpenAIOAuthCapacitySettings(context.Background())
 	cache := &openAIOAuthCapacityCacheStub{}
 	repo := &openAIOAuthCapacityAccountRepo{}
 	blocker := &openAIOAuthCapacityRuntimeBlocker{}
@@ -306,7 +312,7 @@ func TestOpenAIOAuthCapacityCooldownDoesNotShortenExistingOverload(t *testing.T)
 	require.True(t, svc.ObserveOpenAIOAuthCapacityFailure(context.Background(), account, http.StatusServiceUnavailable, payload, ""))
 	require.True(t, repo.until.Before(later))
 	require.WithinDuration(t, later, *account.OverloadUntil, time.Second)
-	require.Zero(t, blocker.calls)
+	require.Equal(t, 1, blocker.calls)
 }
 
 func TestOpenAIOAuthCapacitySemantic529CountsOnce(t *testing.T) {
@@ -406,4 +412,145 @@ func TestOpenAIOAuthCapacitySplitThresholdPreservesInflightRetries(t *testing.T)
 
 	gatewayA.BlockAccountScheduling(accountA, cache.markerUntil, "unrelated_overload")
 	require.True(t, gatewayA.isOpenAIAccountRequestRuntimeBlockedForContext(resolvedA, accountA, "gpt-5.6-sol"))
+}
+
+type blockingOpenAIOAuthCapacitySettingRepo struct {
+	SettingRepository
+	mu        sync.Mutex
+	value     string
+	calls     atomic.Int64
+	started   chan struct{}
+	release   chan struct{}
+	startOnce sync.Once
+}
+
+func (r *blockingOpenAIOAuthCapacitySettingRepo) GetValue(ctx context.Context, _ string) (string, error) {
+	r.calls.Add(1)
+	r.mu.Lock()
+	value := r.value
+	r.mu.Unlock()
+	r.startOnce.Do(func() { close(r.started) })
+	select {
+	case <-r.release:
+	case <-ctx.Done():
+		return "", ctx.Err()
+	}
+	return value, nil
+}
+
+func (r *blockingOpenAIOAuthCapacitySettingRepo) Set(_ context.Context, _ string, value string) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.value = value
+	return nil
+}
+
+func TestOpenAIOAuthCapacitySettingsHotPathNeverBlocksOnDatabase(t *testing.T) {
+	enabled, err := json.Marshal(OverloadCooldownSettings{
+		CooldownMinutes:                     10,
+		OpenAIOAuthCapacityEnabled:          true,
+		OpenAIOAuthCapacityWindowMinutes:    2,
+		OpenAIOAuthCapacityFailureThreshold: 2,
+		OpenAIOAuthCapacityCooldownMinutes:  5,
+	})
+	require.NoError(t, err)
+	repo := &blockingOpenAIOAuthCapacitySettingRepo{
+		value: string(enabled), started: make(chan struct{}), release: make(chan struct{}),
+	}
+	settings := NewSettingService(repo, &config.Config{})
+
+	result := make(chan OverloadCooldownSettings, 1)
+	go func() { result <- settings.GetOpenAIOAuthCapacitySettings(context.Background()) }()
+	select {
+	case cold := <-result:
+		require.False(t, cold.OpenAIOAuthCapacityEnabled)
+	case <-time.After(250 * time.Millisecond):
+		t.Fatal("cold hot-path settings read blocked on the database")
+	}
+	select {
+	case <-repo.started:
+	case <-time.After(time.Second):
+		t.Fatal("background settings refresh did not start")
+	}
+	close(repo.release)
+	require.Eventually(t, func() bool {
+		return settings.GetOpenAIOAuthCapacitySettings(context.Background()).OpenAIOAuthCapacityEnabled
+	}, time.Second, 10*time.Millisecond)
+
+	for range 10 {
+		require.True(t, settings.GetOpenAIOAuthCapacitySettings(context.Background()).OpenAIOAuthCapacityEnabled)
+	}
+	require.EqualValues(t, 1, repo.calls.Load())
+
+	disabled := DefaultOverloadCooldownSettings()
+	require.NoError(t, settings.SetOverloadCooldownSettings(context.Background(), disabled))
+	require.False(t, settings.GetOpenAIOAuthCapacitySettings(context.Background()).OpenAIOAuthCapacityEnabled)
+	require.EqualValues(t, 1, repo.calls.Load())
+}
+
+func TestOpenAIOAuthCapacitySettingsWriteWinsAgainstInflightRefresh(t *testing.T) {
+	oldValue, err := json.Marshal(OverloadCooldownSettings{
+		CooldownMinutes:                     10,
+		OpenAIOAuthCapacityEnabled:          true,
+		OpenAIOAuthCapacityWindowMinutes:    2,
+		OpenAIOAuthCapacityFailureThreshold: 2,
+		OpenAIOAuthCapacityCooldownMinutes:  5,
+	})
+	require.NoError(t, err)
+	repo := &blockingOpenAIOAuthCapacitySettingRepo{
+		value: string(oldValue), started: make(chan struct{}), release: make(chan struct{}),
+	}
+	settings := NewSettingService(repo, &config.Config{})
+
+	require.False(t, settings.GetOpenAIOAuthCapacitySettings(context.Background()).OpenAIOAuthCapacityEnabled)
+	select {
+	case <-repo.started:
+	case <-time.After(time.Second):
+		t.Fatal("background settings refresh did not capture the old value")
+	}
+	disabled := DefaultOverloadCooldownSettings()
+	require.NoError(t, settings.SetOverloadCooldownSettings(context.Background(), disabled))
+	close(repo.release)
+	_, _, _ = settings.openAIOAuthCapacitySettingsSF.Do(openAIOAuthCapacitySettingsRefreshKey, func() (any, error) {
+		return nil, nil
+	})
+	require.False(t, settings.GetOpenAIOAuthCapacitySettings(context.Background()).OpenAIOAuthCapacityEnabled)
+	require.EqualValues(t, 1, repo.calls.Load())
+}
+
+func TestOpenAIOAuthCapacityCooldownDisabledSkipsDistributedLookup(t *testing.T) {
+	rateLimits, cache, _, _ := newOpenAIOAuthCapacityRateLimitService(t, false, 1)
+	gateway := &OpenAIGatewayService{rateLimitService: rateLimits}
+	account := openAIOAuthCapacityAccount(42)
+	until := time.Now().Add(5 * time.Minute)
+	account.OverloadUntil = &until
+	account.OpenAIOAuthCapacityAttemptSequence = 1
+
+	require.False(t, gateway.openAIOAuthCapacityCooldownActive(context.Background(), account))
+	resolved := gateway.resolveOpenAIOAuthCapacityRetry(WithOpenAIOAuthCapacityCooldownRetry(context.Background(), account))
+	_, bypassed := openAIOAuthCapacityRetryForAccount(resolved, account)
+	require.False(t, bypassed)
+	require.Zero(t, cache.getCalls)
+}
+
+func TestOpenAIOAuthCapacityCooldownFallbackTracksDedicatedDeadline(t *testing.T) {
+	rateLimits, cache, _, _ := newOpenAIOAuthCapacityRateLimitService(t, true, 1)
+	cache.getErr = errors.New("redis unavailable")
+	account := openAIOAuthCapacityAccount(42)
+	now := time.Now()
+
+	longCapacity := &OpenAIGatewayService{rateLimitService: rateLimits}
+	longCapacity.BlockAccountScheduling(account, now.Add(10*time.Minute), openAIOAuthCapacityCooldownReason)
+	longCapacity.BlockAccountScheduling(account, now.Add(5*time.Minute), "unrelated")
+	require.True(t, longCapacity.openAIOAuthCapacityCooldownActive(context.Background(), account))
+	require.True(t, longCapacity.openAIOAuthCapacityRuntimeCooldownActive(account.ID, now.Add(9*time.Minute)))
+
+	shortCapacity := &OpenAIGatewayService{rateLimitService: rateLimits}
+	shortCapacity.BlockAccountScheduling(account, now.Add(20*time.Minute), "unrelated")
+	shortCapacity.BlockAccountScheduling(account, now.Add(5*time.Minute), openAIOAuthCapacityCooldownReason)
+	require.False(t, shortCapacity.openAIOAuthCapacityRuntimeCooldownActive(account.ID, now.Add(6*time.Minute)))
+
+	longCapacity.ClearAccountSchedulingBlock(account.ID)
+	require.True(t, longCapacity.openAIOAuthCapacityRuntimeCooldownActive(account.ID, now))
+	require.False(t, longCapacity.openAIOAuthCapacityRuntimeCooldownActive(account.ID, now.Add(11*time.Minute)))
 }
