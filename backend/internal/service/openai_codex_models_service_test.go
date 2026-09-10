@@ -476,6 +476,32 @@ func TestBuildCodexModelsManifestKeepsKnownReasoningChoices(t *testing.T) {
 	require.NotEqual(t, "none", firstLevel["effort"])
 }
 
+func TestBuildCodexModelsManifestPrefersCanonicalPickerModels(t *testing.T) {
+	t.Parallel()
+
+	body, err := BuildCodexModelsManifest([]string{
+		"gpt-5.6",
+		"gpt-5.6-sol",
+		"gpt-5.6-luna",
+		"gpt-6",
+		"gpt-6-astra",
+	})
+	require.NoError(t, err)
+	require.Equal(t, []string{
+		"gpt-5.6-sol",
+		"gpt-5.6-luna",
+		"gpt-6-astra",
+	}, codexManifestModelSlugs(t, body))
+}
+
+func TestBuildCodexModelsManifestKeepsAliasWithoutCanonicalModel(t *testing.T) {
+	t.Parallel()
+
+	body, err := BuildCodexModelsManifest([]string{"gpt-5.6", "gpt-6"})
+	require.NoError(t, err)
+	require.Equal(t, []string{"gpt-5.6", "gpt-6"}, codexManifestModelSlugs(t, body))
+}
+
 // Scenario: 支持 Fast 的 GPT 型号在目录中声明 priority service tier。
 func TestBuildCodexModelsManifestAdvertisesPriorityServiceTierForFastGPTModels(t *testing.T) {
 	t.Parallel()
@@ -1129,6 +1155,19 @@ func TestMergeGroupConfiguredCodexModelsInjectsCurrentGroupAliases(t *testing.T)
 	require.Len(t, models[1]["supported_reasoning_levels"], 3)
 	require.NotContains(t, string(manifest.Body), "other-group-model")
 	require.Equal(t, codexModelsManifestBodyETag(manifest.Body), manifest.ETag)
+}
+
+func TestMergeConfiguredCodexModelsManifestPrefersCanonicalPickerModels(t *testing.T) {
+	t.Parallel()
+
+	body := []byte(`{"models":[{"slug":"gpt-5.6"},{"slug":"gpt-5.6-sol"},{"slug":"gpt-6"},{"slug":"gpt-6-astra"}],"metadata":{"version":1}}`)
+	merged, changed, err := mergeConfiguredCodexModelsManifest(body, nil, nil, false)
+	require.NoError(t, err)
+	require.True(t, changed)
+	require.Equal(t, []string{"gpt-5.6-sol", "gpt-6-astra"}, codexManifestModelSlugs(t, merged))
+	var envelope map[string]json.RawMessage
+	require.NoError(t, json.Unmarshal(merged, &envelope))
+	require.JSONEq(t, `{"version":1}`, string(envelope["metadata"]))
 }
 
 // Mixed groups retain configured metadata alongside defaults for unmapped accounts.
