@@ -1049,7 +1049,7 @@ function escapeTomlBasicString(value: string): string {
   return value
     .replace(/\\/g, '\\\\')
     .replace(/"/g, '\\"')
-    .replace(/\u0008/g, '\\b')
+    .split(String.fromCharCode(8)).join('\\b')
     .replace(/\t/g, '\\t')
     .replace(/\n/g, '\\n')
     .replace(/\f/g, '\\f')
