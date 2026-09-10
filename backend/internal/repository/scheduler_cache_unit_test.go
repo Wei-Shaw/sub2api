@@ -446,6 +446,18 @@ func TestBuildSchedulerMetadataAccount_KeepsQuotaAutoPauseFields(t *testing.T) {
 	require.Equal(t, false, got.Extra["auto_pause_7d_disabled"])
 }
 
+func TestBuildSchedulerMetadataAccount_KeepsOAuthRetryOverride(t *testing.T) {
+	for _, count := range []int{0, 1, 3} {
+		account := service.Account{
+			ID: 88, Type: service.AccountTypeOAuth, Platform: service.PlatformOpenAI,
+			Credentials: map[string]any{"pool_mode_retry_count": count, "access_token": "not-for-metadata"},
+		}
+		got := buildSchedulerMetadataAccount(account)
+		require.Equal(t, count, got.GetPoolModeRetryCount())
+		require.NotContains(t, got.Credentials, "access_token")
+	}
+}
+
 func TestBuildSchedulerMetadataAccount_KeepsQuotaStateForCachedAccounts(t *testing.T) {
 	now := time.Now().UTC()
 	activeStart := now.Add(-time.Hour).Format(time.RFC3339)

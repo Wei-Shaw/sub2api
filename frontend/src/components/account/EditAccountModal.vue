@@ -675,6 +675,22 @@
         </div>
       </div>
 
+      <div
+        v-if="account.platform === 'openai' && account.type === 'oauth' && !isSparkShadow"
+        class="border-t border-gray-200 pt-4 dark:border-dark-600"
+      >
+        <label for="oauth-same-account-retry-count" class="input-label">{{ t('admin.accounts.poolModeRetryCount') }}</label>
+        <input
+          id="oauth-same-account-retry-count"
+          v-model.number="oauthSameAccountRetryCount"
+          type="number"
+          min="0"
+          :max="MAX_POOL_MODE_RETRY_COUNT"
+          step="1"
+          class="input"
+        />
+      </div>
+
       <!-- OpenAI/Grok OAuth Model Mapping (OAuth 类型没有 apikey 容器，需要独立的模型映射区域) -->
       <div
         v-if="(account.platform === 'openai' || account.platform === 'grok') && account.type === 'oauth'"
@@ -3253,6 +3269,7 @@ const DEFAULT_POOL_MODE_RETRY_STATUS_CODES = [401, 403, 429]
 const GROK_CLIENT_TOOL_CACHE_EXTRA_KEY = 'grok_client_tool_cache_enabled'
 const poolModeEnabled = ref(false)
 const poolModeRetryCount = ref(DEFAULT_POOL_MODE_RETRY_COUNT)
+const oauthSameAccountRetryCount = ref<number | string>('')
 const poolModeRetryStatusCodesInput = ref('')
 
 function parsePoolModeRetryStatusCodes(input: string): number[] {
@@ -4253,6 +4270,10 @@ const syncFormFromAccount = (newAccount: Account | null) => {
     }
     poolModeEnabled.value = false
     poolModeRetryCount.value = DEFAULT_POOL_MODE_RETRY_COUNT
+    oauthSameAccountRetryCount.value = newAccount.platform === 'openai' && newAccount.type === 'oauth' &&
+      newAccount.credentials?.pool_mode_retry_count != null
+      ? normalizePoolModeRetryCount(Number(newAccount.credentials.pool_mode_retry_count))
+      : ''
     poolModeRetryStatusCodesInput.value = ''
     customErrorCodesEnabled.value = false
     selectedErrorCodes.value = []
@@ -5154,6 +5175,13 @@ const handleSubmit = async () => {
           ((props.account.credentials as Record<string, unknown>) || {})
       const newCredentials: Record<string, unknown> = { ...currentCredentials }
       if (props.account.platform === 'openai') {
+        if (!isSparkShadow.value) {
+          if (oauthSameAccountRetryCount.value === '') {
+            delete newCredentials.pool_mode_retry_count
+          } else {
+            newCredentials.pool_mode_retry_count = normalizePoolModeRetryCount(Number(oauthSameAccountRetryCount.value))
+          }
+        }
         applyOpenAIModelMappingCredentials(newCredentials)
       } else {
         const modelMapping = buildModelRestrictionMapping()

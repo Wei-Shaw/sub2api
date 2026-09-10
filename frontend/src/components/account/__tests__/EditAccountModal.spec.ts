@@ -330,6 +330,53 @@ describe('EditAccountModal', () => {
 
   afterEach(() => vi.useRealTimers())
 
+  it('loads, saves and reloads an OAuth same-account retry override without enabling pool mode', async () => {
+    const account = buildOpenAIOAuthParentAccount()
+    account.credentials.pool_mode_retry_count = 1
+    updateAccountMock.mockReset().mockResolvedValue(account)
+    const wrapper = mountModal(account)
+    const input = wrapper.get('#oauth-same-account-retry-count')
+    expect((input.element as HTMLInputElement).value).toBe('1')
+    await input.setValue(0)
+    await wrapper.find('form').trigger('submit.prevent')
+    await vi.waitFor(() => expect(updateAccountMock).toHaveBeenCalledTimes(1))
+    const credentials = updateAccountMock.mock.calls[0]?.[1]?.credentials
+    expect(credentials.pool_mode_retry_count).toBe(0)
+    expect(credentials.access_token).toBe('oauth-token')
+    expect(credentials.pool_mode).toBeUndefined()
+    await wrapper.setProps({ account: { ...account, credentials } })
+    expect((wrapper.get('#oauth-same-account-retry-count').element as HTMLInputElement).value).toBe('0')
+    wrapper.unmount()
+  })
+
+  it('preserves an unset OAuth retry override when saving unrelated changes', async () => {
+    const account = buildOpenAIOAuthParentAccount()
+    updateAccountMock.mockReset().mockResolvedValue(account)
+    const wrapper = mountModal(account)
+    expect((wrapper.get('#oauth-same-account-retry-count').element as HTMLInputElement).value).toBe('')
+    await wrapper.find('form').trigger('submit.prevent')
+    await vi.waitFor(() => expect(updateAccountMock).toHaveBeenCalledTimes(1))
+    expect(updateAccountMock.mock.calls[0]?.[1]?.credentials.pool_mode_retry_count).toBeUndefined()
+    wrapper.unmount()
+  })
+
+  it('allows an explicit default-sized OAuth override and clearing it', async () => {
+    const account = buildOpenAIOAuthParentAccount()
+    updateAccountMock.mockReset().mockResolvedValue(account)
+    const wrapper = mountModal(account)
+    await wrapper.get('#oauth-same-account-retry-count').setValue(3)
+    await wrapper.find('form').trigger('submit.prevent')
+    await vi.waitFor(() => expect(updateAccountMock).toHaveBeenCalledTimes(1))
+    const credentials = updateAccountMock.mock.calls[0]?.[1]?.credentials
+    expect(credentials.pool_mode_retry_count).toBe(3)
+    await wrapper.setProps({ account: { ...account, credentials } })
+    await wrapper.get('#oauth-same-account-retry-count').setValue('')
+    await wrapper.find('form').trigger('submit.prevent')
+    await vi.waitFor(() => expect(updateAccountMock).toHaveBeenCalledTimes(2))
+    expect(updateAccountMock.mock.calls[1]?.[1]?.credentials.pool_mode_retry_count).toBeUndefined()
+    wrapper.unmount()
+  })
+
   it('sets expiry presets from now instead of extending the saved expiry', async () => {
     vi.useFakeTimers({ toFake: ['Date'] })
     vi.setSystemTime(new Date('2028-02-29T12:34:00'))
