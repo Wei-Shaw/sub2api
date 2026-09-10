@@ -657,6 +657,8 @@ export default {
       balanceHistoryTip: '点击查看充值记录',
       columnAlwaysVisible: '该列固定显示，不可隐藏',
       // 平台用量明细（悬浮显示）
+      billedUsage: '计费：{requests} 次请求 · {tokens} Tokens',
+      billedUsageHint: '仅统计实际费用大于 0 的请求。Token 包含输入、输出、缓存写入和缓存读取。',
       platformBreakdown: '按平台拆分',
       platformBreakdownEmpty: '暂无平台明细',
       platformBreakdownHint: '悬浮查看各平台用量',

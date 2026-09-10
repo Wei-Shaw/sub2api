@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { flushPromises, mount } from '@vue/test-utils'
+import { flushPromises, mount, shallowMount } from '@vue/test-utils'
 
 import type { AdminUser } from '@/types'
 import UsersView from '../UsersView.vue'
@@ -50,7 +50,8 @@ vi.mock('vue-i18n', async () => {
   return {
     ...actual,
     useI18n: () => ({
-      t: (key: string) => key
+      t: (key: string, params?: Record<string, unknown>) =>
+        params ? `${key}: ${Object.values(params).join(' · ')}` : key
     })
   }
 })
@@ -98,6 +99,7 @@ const DataTableStub = {
       </template>
       <div v-for="row in data" :key="row.id">
         <slot name="cell-last_used_at" :value="row.last_used_at" :row="row" />
+        <div :data-test="'usage-' + row.id"><slot name="cell-usage" :row="row" /></div>
       </div>
     </div>
   `
@@ -145,6 +147,57 @@ describe('admin UsersView', () => {
 
   afterEach(() => {
     vi.useRealTimers()
+  })
+
+  it('shows today and 30-day requests and tokens from batch usage, including idle users', async () => {
+    vi.useFakeTimers()
+    localStorage.setItem('user-column-settings-version', '3')
+    localStorage.setItem('user-hidden-columns', JSON.stringify(['balance_platform_quota']))
+    listUsers.mockResolvedValue({
+      items: [createAdminUser(), createAdminUser({ id: 43, email: 'idle@example.com' })],
+      total: 2,
+      page: 1,
+      page_size: 20,
+      pages: 1
+    })
+    getBatchUsersUsage.mockResolvedValue({
+      stats: {
+        42: {
+          user_id: 42,
+          today_actual_cost: 0.5,
+          total_actual_cost: 2,
+          today_requests: 12,
+          total_requests: 45,
+          today_tokens: 1200,
+          total_tokens: 9200
+        }
+      }
+    })
+
+    const wrapper = shallowMount(UsersView, {
+      global: {
+        stubs: {
+          AppLayout: { template: '<div><slot /></div>' },
+          TablePageLayout: { template: '<div><slot name="table" /></div>' },
+          DataTable: DataTableStub,
+          PlatformUsageBreakdown: false
+        }
+      }
+    })
+    await flushPromises()
+    await vi.advanceTimersByTimeAsync(50)
+    await flushPromises()
+
+    expect(getBatchUsersUsage).toHaveBeenCalledWith([42, 43])
+    const usage = wrapper.get('[data-test="usage-42"]').text()
+    expect(usage).toContain('admin.users.today:$0.5000')
+    expect(usage).toContain('admin.users.billedUsage: 12 · 1,200')
+    expect(usage).toContain('admin.users.total:$2.0000')
+    expect(usage).toContain('admin.users.billedUsage: 45 · 9,200')
+    expect(wrapper.findAll('[data-test="usage-42"] [title="admin.users.billedUsageHint"]')).toHaveLength(2)
+    const idleUsage = wrapper.get('[data-test="usage-43"]').text()
+    expect(idleUsage.match(/admin.users.billedUsage: 0 · 0/g)).toHaveLength(2)
+    wrapper.unmount()
   })
 
   it('shows active, used, and created activity columns in order and requests last_used_at sort', async () => {

@@ -542,6 +542,10 @@
             <PlatformUsageBreakdown
               :today="usageStats[row.id]?.today_actual_cost ?? 0"
               :total="usageStats[row.id]?.total_actual_cost ?? 0"
+              :today-requests="usageStats[row.id]?.today_requests ?? 0"
+              :total-requests="usageStats[row.id]?.total_requests ?? 0"
+              :today-tokens="usageStats[row.id]?.today_tokens ?? 0"
+              :total-tokens="usageStats[row.id]?.total_tokens ?? 0"
               :by-platform="usageStats[row.id]?.by_platform"
             />
           </template>
