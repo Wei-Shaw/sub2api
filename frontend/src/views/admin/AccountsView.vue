@@ -2,29 +2,29 @@
   <AppLayout>
     <TablePageLayout>
       <template #filters>
-        <div class="account-platform-tabs mb-4 rounded-xl border border-gray-200 bg-white p-1 shadow-sm dark:border-dark-700 dark:bg-dark-800">
+        <div class="account-group-tabs mb-4 rounded-xl border border-gray-200 bg-white p-1 shadow-sm dark:border-dark-700 dark:bg-dark-800">
           <div
             class="flex gap-1 overflow-x-auto pb-px"
             role="tablist"
-            :aria-label="t('admin.accounts.platformTabsLabel')"
+            :aria-label="t('admin.accounts.groupTabsLabel')"
           >
             <button
-              v-for="tab in platformTabs"
-              :key="tab.value || 'all'"
+              v-for="tab in groupTabs"
+              :key="tab.value || 'all-groups'"
               type="button"
               role="tab"
-              :aria-selected="activePlatform === tab.value"
+              :aria-selected="activeGroup === tab.value"
               :class="[
                 'relative shrink-0 rounded-lg px-3 py-2 text-sm font-medium transition-colors',
-                activePlatform === tab.value
+                activeGroup === tab.value
                   ? 'bg-primary-50 text-primary-700 dark:bg-primary-900/30 dark:text-primary-300'
                   : 'text-gray-500 hover:bg-gray-50 hover:text-gray-700 dark:text-gray-400 dark:hover:bg-dark-700 dark:hover:text-gray-200'
               ]"
-              @click="selectPlatformTab(tab.value)"
+              @click="selectGroupTab(tab.value)"
             >
               {{ tab.label }}
               <span
-                v-if="activePlatform === tab.value && loading"
+                v-if="activeGroup === tab.value && loading"
                 class="ml-1.5 inline-block h-3 w-3 animate-spin rounded-full border-2 border-current border-r-transparent align-[-2px]"
                 aria-hidden="true"
               />
@@ -36,7 +36,8 @@
             v-model:searchQuery="params.search"
             :filters="params"
             :groups="groups"
-            :show-platform="false"
+            :show-platform="true"
+            :show-group="false"
             @update:filters="(newFilters) => Object.assign(params, newFilters)"
             @change="debouncedReload"
             @update:searchQuery="debouncedReload"
@@ -562,7 +563,6 @@ import { extractApiErrorMessage } from '@/utils/apiError'
 import { sanitizeUrl } from '@/utils/url'
 import { getFloatingPanelPosition } from '@/utils/floatingPanel'
 import { formatMultiplier } from '@/utils/formatters'
-import { CONCRETE_PLATFORM_OPTIONS } from '@/constants/platforms'
 import type { Account, AccountListItem, AccountPlatform, AccountSchedulerGroupScore, AccountType, AccountUsageInfo, Proxy as AccountProxy, AdminGroup, WindowStats, ClaudeModel, UpstreamBillingProbeSnapshot } from '@/types'
 
 const { t } = useI18n()
@@ -571,13 +571,15 @@ const authStore = useAuthStore()
 
 const proxies = ref<AccountProxy[]>([])
 const groups = ref<AdminGroup[]>([])
-const activePlatform = ref<AccountPlatform | ''>('')
-const platformTabs = computed(() => [
-  { value: '' as const, label: t('admin.accounts.allPlatforms') },
-  ...CONCRETE_PLATFORM_OPTIONS.map((platform) => ({
-    value: platform.value,
-    label: t(`admin.accounts.platforms.${platform.value}`)
-  }))
+const ACCOUNT_UNGROUPED_GROUP_QUERY_VALUE = 'ungrouped'
+const activeGroup = ref('')
+const groupTabs = computed(() => [
+  { value: '', label: t('admin.accounts.allGroups') },
+  ...groups.value.map((group) => ({
+    value: String(group.id),
+    label: group.name
+  })),
+  { value: ACCOUNT_UNGROUPED_GROUP_QUERY_VALUE, label: t('admin.accounts.ungroupedTab') }
 ])
 const groupsByID = computed(() => new Map(groups.value.map(group => [group.id, group])))
 const accountGroupsForRow = (account: Pick<AccountListItem, 'group_ids'>): AdminGroup[] => {
@@ -1226,17 +1228,17 @@ const buildUpstreamBillingRateFilters = () => {
   }
 }
 
-const selectPlatformTab = (platform: AccountPlatform | '') => {
-  if (activePlatform.value === platform) return
-  activePlatform.value = platform
-  params.platform = platform
+const selectGroupTab = (group: string) => {
+  if (activeGroup.value === group) return
+  activeGroup.value = group
+  params.group = group
   pagination.page = 1
   clearSelection()
   hasPendingListSync.value = false
   resetAutoRefreshCache()
   pendingTodayStatsRefresh.value = true
   load().catch((error) => {
-    console.error('Failed to load accounts for platform tab:', error)
+    console.error('Failed to load accounts for group tab:', error)
   })
 }
 
@@ -2175,7 +2177,6 @@ const handleBulkUpdated = () => {
   reload()
 }
 const handleDataImported = () => { showImportData.value = false; reload() }
-const ACCOUNT_UNGROUPED_GROUP_QUERY_VALUE = 'ungrouped'
 const ACCOUNT_PRIVACY_MODE_UNSET_QUERY_VALUE = '__unset__'
 const buildAccountQueryFilters = () => ({
   platform: params.platform || '',

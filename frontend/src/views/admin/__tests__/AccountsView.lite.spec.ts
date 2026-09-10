@@ -182,22 +182,22 @@ describe('admin AccountsView lite account list', () => {
     wrapper.unmount()
   })
 
-  it('loads a platform list only after its tab is activated', async () => {
+  it('loads a group list only after its tab is activated', async () => {
     const wrapper = mountView()
     await flushPromises()
 
     expect(listAccounts).toHaveBeenCalledTimes(1)
-    const openaiTab = wrapper.findAll('[role="tab"]')[2]
-    expect(openaiTab).toBeTruthy()
+    const groupTab = wrapper.findAll('[role="tab"]')[1]
+    expect(groupTab).toBeTruthy()
 
-    await openaiTab.trigger('click')
+    await groupTab.trigger('click')
     await flushPromises()
 
     expect(listAccounts).toHaveBeenCalledTimes(2)
     expect(listAccounts).toHaveBeenLastCalledWith(
       1,
       20,
-      expect.objectContaining({ platform: 'openai', lite: '1' }),
+      expect.objectContaining({ group: '7', lite: '1' }),
       expect.objectContaining({ signal: expect.any(AbortSignal) })
     )
     wrapper.unmount()

@@ -84,10 +84,12 @@ export default {
       // Filter options
       allPlatforms: '全部平台',
       platformTabsLabel: '按平台筛选账号',
+      groupTabsLabel: '按分组筛选账号',
       allTypes: '全部类型',
       allStatus: '全部状态',
       allGroups: '全部分组',
       ungroupedGroup: '未分配分组',
+      ungroupedTab: '无分组',
       oauthType: 'OAuth',
       // Schedulable toggle
       schedulable: '参与调度',

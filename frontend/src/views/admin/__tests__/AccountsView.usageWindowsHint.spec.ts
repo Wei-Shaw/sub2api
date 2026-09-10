@@ -102,8 +102,8 @@ function mountView() {
         ConfirmDialog: true,
         AccountTableActions: { template: '<div><slot name="beforeCreate" /><slot name="after" /></div>' },
         AccountTableFilters: {
-          props: ['groups'],
-          template: '<div data-test="account-filters" :data-group-count="groups.length"></div>'
+          props: ['groups', 'showPlatform', 'showGroup'],
+          template: '<div data-test="account-filters" :data-group-count="groups.length" :data-show-platform="String(showPlatform)" :data-show-group="String(showGroup)"></div>'
         },
         AccountBulkActionsBar: true,
         AccountActionMenu: true,
@@ -166,6 +166,15 @@ describe('admin AccountsView usage windows hint', () => {
     await flushPromises()
 
     expect(wrapper.get('[data-test="account-filters"]').attributes('data-group-count')).toBe('1')
+  })
+
+  it('puts platform filtering in the condition bar and keeps group filtering in the tabs', async () => {
+    const wrapper = mountView()
+    await flushPromises()
+
+    const filters = wrapper.get('[data-test="account-filters"]')
+    expect(filters.attributes('data-show-platform')).toBe('true')
+    expect(filters.attributes('data-show-group')).toBe('false')
   })
 
   it('renders an explanatory tooltip next to the usage windows column header', async () => {
