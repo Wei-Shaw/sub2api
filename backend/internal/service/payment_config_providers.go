@@ -112,7 +112,7 @@ var pendingOrderStatuses = []string{
 // stripe publishableKey) are returned in plaintext by the admin GET API.
 var providerSensitiveConfigFields = map[string]map[string]struct{}{
 	payment.TypeEasyPay:   {"pkey": {}},
-	payment.TypeAlipay:    {"privatekey": {}, "publickey": {}, "alipaypublickey": {}},
+	payment.TypeAlipay:    {"privatekey": {}, "publickey": {}, "alipaypublickey": {}, "appcertpublickey": {}, "alipaycertpublickey": {}, "alipayrootcert": {}},
 	payment.TypeWxpay:     {"privatekey": {}, "apiv3key": {}, "publickey": {}},
 	payment.TypeStripe:    {"secretkey": {}, "webhooksecret": {}},
 	payment.TypeAirwallex: {"apikey": {}, "webhooksecret": {}},
@@ -124,7 +124,7 @@ var providerSensitiveConfigFields = map[string]map[string]struct{}{
 // webhook/refund verification.
 var providerPendingOrderProtectedConfigFields = map[string]map[string]struct{}{
 	payment.TypeEasyPay:   {"pkey": {}, "pid": {}},
-	payment.TypeAlipay:    {"privatekey": {}, "publickey": {}, "alipaypublickey": {}, "appid": {}},
+	payment.TypeAlipay:    {"privatekey": {}, "publickey": {}, "alipaypublickey": {}, "appid": {}, "authmode": {}, "appcertpublickey": {}, "alipaycertpublickey": {}, "alipayrootcert": {}},
 	payment.TypeWxpay:     {"privatekey": {}, "apiv3key": {}, "publickey": {}, "appid": {}, "mpappid": {}, "mchid": {}, "publickeyid": {}, "certserial": {}},
 	payment.TypeStripe:    {"secretkey": {}, "webhooksecret": {}, "currency": {}},
 	payment.TypeAirwallex: {"clientid": {}, "apikey": {}, "webhooksecret": {}, "apibase": {}, "accountid": {}, "currency": {}},
@@ -145,11 +145,27 @@ func hasPendingOrderProtectedConfigChange(providerKey string, currentConfig, nex
 		return false
 	}
 	for fieldName := range fields {
-		if providerConfigFieldValue(currentConfig, fieldName) != providerConfigFieldValue(nextConfig, fieldName) {
+		currentValue := providerConfigFieldValue(currentConfig, fieldName)
+		nextValue := providerConfigFieldValue(nextConfig, fieldName)
+		if providerKey == payment.TypeAlipay && fieldName == "authmode" {
+			// Existing instances have no authMode. Saving the explicit default
+			// must not count as a credential change while orders are pending.
+			currentValue = normalizeAlipayAuthMode(currentValue)
+			nextValue = normalizeAlipayAuthMode(nextValue)
+		}
+		if currentValue != nextValue {
 			return true
 		}
 	}
 	return false
+}
+
+func normalizeAlipayAuthMode(value string) string {
+	value = strings.ToLower(strings.TrimSpace(value))
+	if value == "" {
+		return "public_key"
+	}
+	return value
 }
 
 func providerConfigFieldValue(config map[string]string, fieldName string) string {

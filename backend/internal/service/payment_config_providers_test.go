@@ -220,6 +220,10 @@ func TestIsSensitiveProviderConfigField(t *testing.T) {
 		{"alipay", "privateKey", true},
 		{"alipay", "publicKey", true},
 		{"alipay", "alipayPublicKey", true},
+		{"alipay", "appCertPublicKey", true},
+		{"alipay", "alipayCertPublicKey", true},
+		{"alipay", "alipayRootCert", true},
+		{"alipay", "authMode", false},
 		{"alipay", "appId", false},
 		{"alipay", "notifyUrl", false},
 
@@ -478,6 +482,26 @@ func TestUpdateProviderInstanceRejectsProtectedConfigChangesWhilePendingOrders(t
 			updateConfig:  map[string]string{"certSerial": "cert-serial-updated"},
 			fieldName:     "certSerial",
 			wantValue:     "cert-serial-test",
+		},
+		{
+			name: "alipay authMode", providerKey: payment.TypeAlipay,
+			createConfig: validAlipayProviderConfig, supportedType: []string{payment.TypeAlipay},
+			updateConfig: map[string]string{"authMode": "certificate"}, fieldName: "authMode", wantValue: "",
+		},
+		{
+			name: "alipay appCertPublicKey", providerKey: payment.TypeAlipay,
+			createConfig: validAlipayProviderConfig, supportedType: []string{payment.TypeAlipay},
+			updateConfig: map[string]string{"appCertPublicKey": "replacement-cert"}, fieldName: "appCertPublicKey", wantValue: "",
+		},
+		{
+			name: "alipay alipayCertPublicKey", providerKey: payment.TypeAlipay,
+			createConfig: validAlipayProviderConfig, supportedType: []string{payment.TypeAlipay},
+			updateConfig: map[string]string{"alipayCertPublicKey": "replacement-cert"}, fieldName: "alipayCertPublicKey", wantValue: "",
+		},
+		{
+			name: "alipay alipayRootCert", providerKey: payment.TypeAlipay,
+			createConfig: validAlipayProviderConfig, supportedType: []string{payment.TypeAlipay},
+			updateConfig: map[string]string{"alipayRootCert": "replacement-cert"}, fieldName: "alipayRootCert", wantValue: "",
 		},
 		{
 			name:          "alipay appId",
@@ -804,4 +828,47 @@ func validWxpayProviderConfigWithJSAPIAppID(t *testing.T) map[string]string {
 	cfg := validWxpayProviderConfig(t)
 	cfg["mpAppId"] = "wx-mp-app-test"
 	return cfg
+}
+
+func TestAlipayCertificatesAreMaskedAndPreservedOnEdit(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	svc := &PaymentConfigService{entClient: newPaymentConfigServiceTestClient(t), encryptionKey: []byte("0123456789abcdef0123456789abcdef")}
+	config := map[string]string{
+		"appId": "draft-app", "authMode": "certificate", "privateKey": "draft-private",
+		"appCertPublicKey": "draft-app-cert", "alipayCertPublicKey": "draft-alipay-cert", "alipayRootCert": "draft-roots",
+	}
+	// Disabled drafts may be incomplete; this exercises storage and editing without external calls.
+	inst, err := svc.CreateProviderInstance(ctx, CreateProviderInstanceRequest{
+		ProviderKey: payment.TypeAlipay, Name: "certificate-draft", Config: config,
+		SupportedTypes: []string{payment.TypeAlipay}, Enabled: false,
+	})
+	require.NoError(t, err)
+	masked, err := svc.decryptAndMaskConfig(payment.TypeAlipay, inst.Config)
+	require.NoError(t, err)
+	require.Equal(t, map[string]string{"appId": "draft-app", "authMode": "certificate"}, masked)
+	_, err = svc.UpdateProviderInstance(ctx, inst.ID, UpdateProviderInstanceRequest{
+		Config: map[string]string{"appCertPublicKey": "", "alipayCertPublicKey": "", "alipayRootCert": ""},
+	})
+	require.NoError(t, err)
+	stored, err := svc.entClient.PaymentProviderInstance.Get(ctx, inst.ID)
+	require.NoError(t, err)
+	decoded, err := svc.decryptConfig(stored.Config)
+	require.NoError(t, err)
+	require.Equal(t, config, decoded)
+}
+
+func TestAlipayExplicitDefaultModeDoesNotBlockPendingOrders(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	client := newPaymentConfigServiceTestClient(t)
+	svc := &PaymentConfigService{entClient: client, encryptionKey: []byte("0123456789abcdef0123456789abcdef")}
+	inst, err := svc.CreateProviderInstance(ctx, CreateProviderInstanceRequest{
+		ProviderKey: payment.TypeAlipay, Name: "legacy-alipay", Config: validAlipayProviderConfig(t),
+		SupportedTypes: []string{payment.TypeAlipay}, Enabled: true,
+	})
+	require.NoError(t, err)
+	createPendingProviderConfigOrder(t, ctx, client, inst)
+	_, err = svc.UpdateProviderInstance(ctx, inst.ID, UpdateProviderInstanceRequest{Config: map[string]string{"authMode": "public_key"}})
+	require.NoError(t, err)
 }
