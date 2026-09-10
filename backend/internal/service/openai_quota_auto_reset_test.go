@@ -18,7 +18,7 @@ func TestNormalizeOpenAIAutoResetCreditExtra(t *testing.T) {
 		account := &Account{Platform: PlatformOpenAI, Type: AccountTypeOAuth}
 		config := ResolveOpenAIAutoResetCreditConfig(account)
 		require.False(t, config.Enabled)
-		require.Equal(t, 0.0, config.Threshold5h, "5h 默认关闭")
+		require.Equal(t, 1.0, config.Threshold5h)
 		require.Equal(t, 1.0, config.Threshold7d)
 		require.False(t, config.ExpiryEnabled)
 		require.False(t, config.Active())
@@ -81,26 +81,19 @@ func TestNormalizeOpenAIAutoResetCreditExtra(t *testing.T) {
 		require.NotContains(t, stripped, OpenAIAutoResetCreditExpiryLeadMinutesExtraKey)
 	})
 
-	t.Run("开启时补齐默认阈值（5h 关闭、7d 百分百）并剥离运行态", func(t *testing.T) {
+	t.Run("开启时补齐两个百分百阈值并剥离运行态", func(t *testing.T) {
 		extra, err := normalizeOpenAIAutoResetCreditExtra(PlatformOpenAI, AccountTypeOAuth, false, map[string]any{
 			OpenAIAutoResetCreditEnabledExtraKey: true,
 			OpenAIAutoResetCreditStateExtraKey:   map[string]any{"status": "success"},
 		})
 		require.NoError(t, err)
-		require.Equal(t, 0.0, extra[OpenAIAutoResetCredit5hThresholdExtraKey])
+		require.Equal(t, 1.0, extra[OpenAIAutoResetCredit5hThresholdExtraKey])
 		require.Equal(t, 1.0, extra[OpenAIAutoResetCredit7dThresholdExtraKey])
 		require.NotContains(t, extra, OpenAIAutoResetCreditStateExtraKey)
 	})
 
 	t.Run("阈值和账号类型严格校验", func(t *testing.T) {
-		extra, err := normalizeOpenAIAutoResetCreditExtra(PlatformOpenAI, AccountTypeOAuth, false, map[string]any{
-			OpenAIAutoResetCreditEnabledExtraKey:     true,
-			OpenAIAutoResetCredit7dThresholdExtraKey: 0,
-		})
-		require.NoError(t, err, "0 表示该窗口不触发，是合法值")
-		require.Equal(t, 0.0, extra[OpenAIAutoResetCredit7dThresholdExtraKey])
-
-		_, err = normalizeOpenAIAutoResetCreditExtra(PlatformOpenAI, AccountTypeOAuth, false, map[string]any{
+		_, err := normalizeOpenAIAutoResetCreditExtra(PlatformOpenAI, AccountTypeOAuth, false, map[string]any{
 			OpenAIAutoResetCreditEnabledExtraKey:     true,
 			OpenAIAutoResetCredit5hThresholdExtraKey: 0.0009,
 		})
@@ -153,19 +146,6 @@ func TestShouldAutoPauseOpenAIAccountByQuota_AutoResetCreditStates(t *testing.T)
 		paused, decision := shouldAutoPauseOpenAIAccountByQuota(context.Background(), account)
 		require.True(t, paused)
 		require.Equal(t, "quota_auto_reset_pending_5h", decision.reason)
-	})
-
-	t.Run("5h 阈值为 0 时用满也不按待用卡暂停", func(t *testing.T) {
-		extra := cloneOpenAIAutoResetExtra(baseExtra)
-		extra[OpenAIAutoResetCredit5hThresholdExtraKey] = 0.0
-		extra["codex_5h_used_percent"] = 100.0
-		extra[OpenAIAutoResetCreditStateExtraKey] = OpenAIAutoResetCreditState{
-			Status: OpenAIAutoResetStatusAvailable, AvailableCount: 1, CheckedAt: now.Format(time.RFC3339),
-		}
-		account := &Account{ID: 5, Platform: PlatformOpenAI, Type: AccountTypeOAuth, Extra: extra}
-		paused, decision := shouldAutoPauseOpenAIAccountByQuota(context.Background(), account)
-		require.False(t, paused)
-		require.NotEqual(t, "quota_auto_reset_pending_5h", decision.reason)
 	})
 
 	t.Run("自然窗口重置后清除动态阻塞", func(t *testing.T) {
@@ -225,10 +205,6 @@ func TestOpenAIQuotaAutoResetService_AssessesIndependentWindows(t *testing.T) {
 			require.Equal(t, test.wantWindow, assessment.triggerWindow)
 		})
 	}
-
-	disabled5h := OpenAIAutoResetCreditConfig{Enabled: true, Threshold5h: 0, Threshold7d: 0.9}
-	assessment := service.buildAssessment(account, disabled5h, 1, 0.2, false)
-	require.False(t, assessment.resetReached, "5h 阈值为 0 时用满也不触发")
 }
 
 type autoResetTestAccountRepo struct {
@@ -1395,7 +1371,7 @@ func TestOpenAIQuotaAutoResetService_SteadyStateKeepsFailedStatus(t *testing.T) 
 	require.Equal(t, "OPENAI_AUTO_RESET_FAILED", state.ErrorCode)
 }
 
-// 用量快照过期只驱动阈值路径重查；只开到期用卡或阈值全为 0 的账号不因此每 10 分钟打上游。
+// 用量快照过期只驱动阈值路径重查；只开到期用卡的账号不因此每 10 分钟打上游。
 func TestOpenAIQuotaAutoResetService_UsageSnapshotPollOnlyForThresholdPath(t *testing.T) {
 	cases := []struct {
 		name  string
@@ -1403,7 +1379,6 @@ func TestOpenAIQuotaAutoResetService_UsageSnapshotPollOnlyForThresholdPath(t *te
 		want  int32
 	}{
 		{name: "只开到期用卡", extra: map[string]any{OpenAIAutoResetCreditEnabledExtraKey: false, OpenAIAutoResetCreditExpiryEnabledExtraKey: true, OpenAIAutoResetCreditExpiryLeadMinutesExtraKey: 1440.0}, want: 1},
-		{name: "阈值开关开但阈值为 0", extra: map[string]any{OpenAIAutoResetCredit5hThresholdExtraKey: 0.0, OpenAIAutoResetCredit7dThresholdExtraKey: 0.0, OpenAIAutoResetCreditExpiryEnabledExtraKey: true, OpenAIAutoResetCreditExpiryLeadMinutesExtraKey: 1440.0}, want: 1},
 		{name: "阈值路径开启", extra: nil, want: 2},
 	}
 	for _, tc := range cases {

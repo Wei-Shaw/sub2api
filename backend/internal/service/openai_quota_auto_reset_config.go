@@ -21,7 +21,6 @@ const (
 	OpenAIAutoResetCreditExpiryAtExtraKey          = "codex_auto_reset_credit_expiry_at"
 
 	openAIAutoResetCreditDefaultThreshold     = 1.0
-	openAIAutoResetCreditDefault5hThreshold   = 0.0
 	openAIAutoResetCreditMinimumThreshold     = 0.001
 	openAIAutoResetCreditMaxExpiryLeadMinutes = 366 * 24 * 60
 	openAIAutoResetCreditMinExpiryLeadMinutes = 10
@@ -43,15 +42,11 @@ func (c OpenAIAutoResetCreditConfig) Active() bool {
 	return c.Enabled || c.ExpiryEnabled
 }
 
-func (c OpenAIAutoResetCreditConfig) thresholdActive() bool {
-	return c.Enabled && (c.Threshold5h > 0 || c.Threshold7d > 0)
-}
-
 // ResolveOpenAIAutoResetCreditConfig 只接受 OpenAI OAuth 母账号；历史账号未配置时
 // 始终保持关闭，防止升级后产生意外消费。
 func ResolveOpenAIAutoResetCreditConfig(account *Account) OpenAIAutoResetCreditConfig {
 	config := OpenAIAutoResetCreditConfig{
-		Threshold5h: openAIAutoResetCreditDefault5hThreshold,
+		Threshold5h: openAIAutoResetCreditDefaultThreshold,
 		Threshold7d: openAIAutoResetCreditDefaultThreshold,
 		ExpiryLead:  openAIAutoResetCreditDefaultLeadMinutes * time.Minute,
 	}
@@ -114,19 +109,19 @@ func normalizeOpenAIAutoResetCreditExtra(platform, accountType string, isShadow 
 		}
 		expiryEnabled = value
 	}
-	for key, defaultValue := range map[string]float64{
-		OpenAIAutoResetCredit5hThresholdExtraKey: openAIAutoResetCreditDefault5hThreshold,
-		OpenAIAutoResetCredit7dThresholdExtraKey: openAIAutoResetCreditDefaultThreshold,
+	for key, present := range map[string]bool{
+		OpenAIAutoResetCredit5hThresholdExtraKey: has5h,
+		OpenAIAutoResetCredit7dThresholdExtraKey: has7d,
 	} {
-		if _, present := normalized[key]; !present {
+		if !present {
 			if enabled {
-				normalized[key] = defaultValue
+				normalized[key] = openAIAutoResetCreditDefaultThreshold
 			}
 			continue
 		}
 		value, ok := parseOpenAIAutoResetThreshold(normalized[key])
 		if !ok || !isValidOpenAIAutoResetThreshold(value) {
-			return nil, infraerrors.Newf(http.StatusBadRequest, "OPENAI_AUTO_RESET_CREDIT_THRESHOLD_INVALID", "%s must be 0 (disabled) or between 0.001 and 1.0", key)
+			return nil, infraerrors.Newf(http.StatusBadRequest, "OPENAI_AUTO_RESET_CREDIT_THRESHOLD_INVALID", "%s must be between 0.001 and 1.0", key)
 		}
 		normalized[key] = value
 	}
@@ -179,9 +174,8 @@ func parseOpenAIAutoResetThreshold(value any) (float64, bool) {
 	}
 }
 
-// 0 表示该窗口不参与阈值触发。
 func isValidOpenAIAutoResetThreshold(value float64) bool {
-	return value == 0 || (!math.IsNaN(value) && !math.IsInf(value, 0) && value >= openAIAutoResetCreditMinimumThreshold && value <= 1)
+	return !math.IsNaN(value) && !math.IsInf(value, 0) && value >= openAIAutoResetCreditMinimumThreshold && value <= 1
 }
 
 // 非零提前量不得短于取信息失败后的 10 分钟重试间隔，否则到点那次拿不到上游时间就可能错过卡。
