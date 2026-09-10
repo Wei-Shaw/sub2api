@@ -32,3 +32,8 @@ func TestDefaultModelsExcludeCodexAutoReviewButKeepUsageProbe(t *testing.T) {
 	require.Equal(t, "codex-auto-review", CodexUsageProbeModel)
 	require.NotContains(t, DefaultModelIDs(), CodexUsageProbeModel)
 }
+
+func TestDefaultModelsIncludeGPTImage25(t *testing.T) {
+	require.Contains(t, DefaultModelIDs(), "gpt-image-2.5-flare")
+	require.Contains(t, DefaultModelIDs(), "gpt-image-2.5-sunburst")
+}
