@@ -552,12 +552,20 @@ type BetaPolicySettings struct {
 	Rules []BetaPolicyRule `json:"rules"`
 }
 
-// OverloadCooldownSettings 529过载冷却配置
+// OverloadCooldownSettings controls upstream overload scheduling cooldowns.
 type OverloadCooldownSettings struct {
-	// Enabled 是否在收到529时暂停账号调度
+	// Enabled pauses account scheduling after an HTTP 529 response.
 	Enabled bool `json:"enabled"`
-	// CooldownMinutes 冷却时长（分钟）
+	// CooldownMinutes is the HTTP 529 cooldown duration.
 	CooldownMinutes int `json:"cooldown_minutes"`
+	// OpenAIOAuthCapacityEnabled enables rolling capacity-shed detection for OpenAI OAuth accounts.
+	OpenAIOAuthCapacityEnabled bool `json:"openai_oauth_capacity_enabled"`
+	// OpenAIOAuthCapacityWindowMinutes is the rolling failure-count window.
+	OpenAIOAuthCapacityWindowMinutes int `json:"openai_oauth_capacity_window_minutes"`
+	// OpenAIOAuthCapacityFailureThreshold is the number of capacity-shed events required to cool an account.
+	OpenAIOAuthCapacityFailureThreshold int `json:"openai_oauth_capacity_failure_threshold"`
+	// OpenAIOAuthCapacityCooldownMinutes is how long the affected account remains unschedulable.
+	OpenAIOAuthCapacityCooldownMinutes int `json:"openai_oauth_capacity_cooldown_minutes"`
 }
 
 // RateLimit429CooldownSettings 429默认回避配置
@@ -595,11 +603,15 @@ func DefaultOpenAIAPIKeyHealthBreakerSettings() *OpenAIAPIKeyHealthBreakerSettin
 	}
 }
 
-// DefaultOverloadCooldownSettings 返回默认的过载冷却配置（启用，10分钟）
+// DefaultOverloadCooldownSettings returns safe defaults. OAuth capacity cooldown remains opt-in.
 func DefaultOverloadCooldownSettings() *OverloadCooldownSettings {
 	return &OverloadCooldownSettings{
-		Enabled:         true,
-		CooldownMinutes: 10,
+		Enabled:                             true,
+		CooldownMinutes:                     10,
+		OpenAIOAuthCapacityEnabled:          false,
+		OpenAIOAuthCapacityWindowMinutes:    2,
+		OpenAIOAuthCapacityFailureThreshold: 2,
+		OpenAIOAuthCapacityCooldownMinutes:  5,
 	}
 }
 

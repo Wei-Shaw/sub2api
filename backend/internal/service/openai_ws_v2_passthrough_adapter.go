@@ -970,6 +970,7 @@ func (s *OpenAIGatewayService) proxyResponsesWebSocketV2Passthrough(
 			return restoreCodexToolNamesFromContext(c, payload)
 		},
 	}
+	var failureAccountSideEffectsApplied atomic.Bool
 	policyClientConn := &openAIWSPolicyEnforcingFrameConn{
 		inner: clientFrameConn,
 		// 注意线程安全：filter 仅在 runClientToUpstream 这一条
@@ -1116,6 +1117,7 @@ func (s *OpenAIGatewayService) proxyResponsesWebSocketV2Passthrough(
 				SetOpsUpstreamModel(c, actualModel)
 				responseCreateAtCopy := responseCreateAt
 				acceptedTurnStartedAt.Store(&responseCreateAtCopy)
+				failureAccountSideEffectsApplied.Store(false)
 				acceptedTurn = true
 			}
 			return out, blocked, policyErr
@@ -1166,7 +1168,6 @@ func (s *OpenAIGatewayService) proxyResponsesWebSocketV2Passthrough(
 	if hooks != nil {
 		firstTurnStartedAt = hooks.InitialTurnStartedAt
 	}
-	failureAccountSideEffectsApplied := false
 	relayResult, relayExit := openaiwsv2.RunEntry(openaiwsv2.EntryInput{
 		Ctx:                ctx,
 		ClientConn:         policyClientConn,
@@ -1212,20 +1213,21 @@ func (s *OpenAIGatewayService) proxyResponsesWebSocketV2Passthrough(
 						CacheReadInputTokens:     turn.Usage.CacheReadInputTokens,
 						ImageOutputTokens:        turn.Usage.ImageOutputTokens,
 					},
-					Model:                         turnRequestModel,
-					UpstreamModel:                 openAIWSDifferentModel(turnRequestModel, turnUpstreamModel),
-					UpstreamResponseModel:         turn.ResponseModel,
-					UpstreamResponseModelConflict: turn.ResponseModelConflict,
-					UpstreamResponseServiceTier:   normalizeObservedOpenAIServiceTier(turn.ResponseServiceTier),
-					ServiceTier:                   usageMeta.serviceTier.Load(),
-					ReasoningEffort:               usageMeta.reasoningEffort.Load(),
-					RequestedReasoningEffort:      usageMeta.requestedReasoningEffort.Load(),
-					Stream:                        true,
-					OpenAIWSMode:                  true,
-					UpstreamTerminalEvent:         normalizeOpenAIWSTerminalEvent(turn.TerminalEventType),
-					ResponseHeaders:               cloneHeader(handshakeHeaders),
-					Duration:                      turn.Duration,
-					FirstTokenMs:                  turn.FirstTokenMs,
+					Model:                              turnRequestModel,
+					UpstreamModel:                      openAIWSDifferentModel(turnRequestModel, turnUpstreamModel),
+					UpstreamResponseModel:              turn.ResponseModel,
+					UpstreamResponseModelConflict:      turn.ResponseModelConflict,
+					UpstreamResponseServiceTier:        normalizeObservedOpenAIServiceTier(turn.ResponseServiceTier),
+					ServiceTier:                        usageMeta.serviceTier.Load(),
+					ReasoningEffort:                    usageMeta.reasoningEffort.Load(),
+					RequestedReasoningEffort:           usageMeta.requestedReasoningEffort.Load(),
+					Stream:                             true,
+					OpenAIWSMode:                       true,
+					UpstreamTerminalEvent:              normalizeOpenAIWSTerminalEvent(turn.TerminalEventType),
+					OpenAIOAuthCapacityAttemptSequence: hooks.openAIOAuthCapacityAttemptSequence(),
+					ResponseHeaders:                    cloneHeader(handshakeHeaders),
+					Duration:                           turn.Duration,
+					FirstTokenMs:                       turn.FirstTokenMs,
 				}
 				logOpenAIWSV2Passthrough(
 					"relay_turn_completed account_id=%d turn=%d request_id=%s terminal_event=%s turn_requested_model=%s turn_upstream_model=%s duration_ms=%d first_token_ms=%d input_tokens=%d output_tokens=%d cache_read_tokens=%d",
@@ -1279,16 +1281,15 @@ func (s *OpenAIGatewayService) proxyResponsesWebSocketV2Passthrough(
 					return nil
 				}
 				eventType, _, _ := parseOpenAIWSEventEnvelope(payload)
-				if eventType == "response.created" {
-					failureAccountSideEffectsApplied = false
-				}
 				if (eventType == "error" || eventType == "response.failed") && markOpenAIWSV2PassthroughCyberPolicy(c, payload) {
 					return nil
 				}
 				errCodeRaw, errTypeRaw, errMsgRaw := parseOpenAIWSErrorEventFields(payload)
 				isPreOutputRateLimit := eventType == "error" && !wroteDownstream && isOpenAIWSRateLimitError(errCodeRaw, errTypeRaw, errMsgRaw)
-				if (eventType == "error" || eventType == "response.failed") && !failureAccountSideEffectsApplied && !isPreOutputRateLimit {
-					failureAccountSideEffectsApplied = s.handleOpenAIWSFailureAccountSideEffects(ctx, account, capturedSessionModel, handshakeHeaders, payload)
+				if (eventType == "error" || eventType == "response.failed") && !failureAccountSideEffectsApplied.Load() && !isPreOutputRateLimit {
+					if s.handleOpenAIWSFailureAccountSideEffects(ctx, hooks.openAIOAuthCapacityAccount(account), capturedSessionModel, handshakeHeaders, payload) {
+						failureAccountSideEffectsApplied.Store(true)
+					}
 				}
 				if eventType != "error" {
 					return nil
@@ -1353,20 +1354,21 @@ func (s *OpenAIGatewayService) proxyResponsesWebSocketV2Passthrough(
 			CacheReadInputTokens:     relayResult.Usage.CacheReadInputTokens,
 			ImageOutputTokens:        relayResult.Usage.ImageOutputTokens,
 		},
-		Model:                         resultRequestModel,
-		UpstreamModel:                 openAIWSDifferentModel(resultRequestModel, resultUpstreamModel),
-		UpstreamResponseModel:         relayResult.ResponseModel,
-		UpstreamResponseModelConflict: relayResult.ResponseModelConflict,
-		UpstreamResponseServiceTier:   normalizeObservedOpenAIServiceTier(relayResult.ResponseServiceTier),
-		ServiceTier:                   usageMeta.serviceTier.Load(),
-		ReasoningEffort:               usageMeta.reasoningEffort.Load(),
-		RequestedReasoningEffort:      usageMeta.requestedReasoningEffort.Load(),
-		Stream:                        true,
-		OpenAIWSMode:                  true,
-		UpstreamTerminalEvent:         normalizeOpenAIWSTerminalEvent(relayResult.TerminalEventType),
-		ResponseHeaders:               cloneHeader(handshakeHeaders),
-		Duration:                      relayResult.Duration,
-		FirstTokenMs:                  relayResult.FirstTokenMs,
+		Model:                              resultRequestModel,
+		UpstreamModel:                      openAIWSDifferentModel(resultRequestModel, resultUpstreamModel),
+		UpstreamResponseModel:              relayResult.ResponseModel,
+		UpstreamResponseModelConflict:      relayResult.ResponseModelConflict,
+		UpstreamResponseServiceTier:        normalizeObservedOpenAIServiceTier(relayResult.ResponseServiceTier),
+		ServiceTier:                        usageMeta.serviceTier.Load(),
+		ReasoningEffort:                    usageMeta.reasoningEffort.Load(),
+		RequestedReasoningEffort:           usageMeta.requestedReasoningEffort.Load(),
+		Stream:                             true,
+		OpenAIWSMode:                       true,
+		UpstreamTerminalEvent:              normalizeOpenAIWSTerminalEvent(relayResult.TerminalEventType),
+		OpenAIOAuthCapacityAttemptSequence: hooks.openAIOAuthCapacityAttemptSequence(),
+		ResponseHeaders:                    cloneHeader(handshakeHeaders),
+		Duration:                           relayResult.Duration,
+		FirstTokenMs:                       relayResult.FirstTokenMs,
 	}
 
 	turnCount := int(completedTurns.Load())

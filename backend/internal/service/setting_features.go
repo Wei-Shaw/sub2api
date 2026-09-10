@@ -664,7 +664,7 @@ func (s *SettingService) GetFallbackModel(ctx context.Context, platform string) 
 	return value
 }
 
-// GetOverloadCooldownSettings 获取529过载冷却配置
+// GetOverloadCooldownSettings returns normalized overload cooldown settings.
 func (s *SettingService) GetOverloadCooldownSettings(ctx context.Context) (*OverloadCooldownSettings, error) {
 	value, err := s.settingRepo.GetValue(ctx, SettingKeyOverloadCooldownSettings)
 	if err != nil {
@@ -682,36 +682,61 @@ func (s *SettingService) GetOverloadCooldownSettings(ctx context.Context) (*Over
 		return DefaultOverloadCooldownSettings(), nil
 	}
 
-	// 修正配置值范围
+	defaults := DefaultOverloadCooldownSettings()
 	if settings.CooldownMinutes < 1 {
 		settings.CooldownMinutes = 1
-	}
-	if settings.CooldownMinutes > 120 {
+	} else if settings.CooldownMinutes > 120 {
 		settings.CooldownMinutes = 120
 	}
-
+	settings.OpenAIOAuthCapacityWindowMinutes = clampIntWithDefault(settings.OpenAIOAuthCapacityWindowMinutes, 1, 60, defaults.OpenAIOAuthCapacityWindowMinutes)
+	settings.OpenAIOAuthCapacityFailureThreshold = clampIntWithDefault(settings.OpenAIOAuthCapacityFailureThreshold, 1, 10000, defaults.OpenAIOAuthCapacityFailureThreshold)
+	settings.OpenAIOAuthCapacityCooldownMinutes = clampIntWithDefault(settings.OpenAIOAuthCapacityCooldownMinutes, 1, 120, defaults.OpenAIOAuthCapacityCooldownMinutes)
 	return &settings, nil
 }
 
-// SetOverloadCooldownSettings 设置529过载冷却配置
+func clampIntWithDefault(value, minValue, maxValue, defaultValue int) int {
+	if value < minValue {
+		return defaultValue
+	}
+	if value > maxValue {
+		return maxValue
+	}
+	return value
+}
+
+// SetOverloadCooldownSettings persists validated overload cooldown settings.
 func (s *SettingService) SetOverloadCooldownSettings(ctx context.Context, settings *OverloadCooldownSettings) error {
 	if settings == nil {
 		return fmt.Errorf("settings cannot be nil")
 	}
 
-	// 禁用时修正为合法值即可，不拒绝请求
+	defaults := DefaultOverloadCooldownSettings()
 	if settings.CooldownMinutes < 1 || settings.CooldownMinutes > 120 {
 		if settings.Enabled {
 			return fmt.Errorf("cooldown_minutes must be between 1-120")
 		}
-		settings.CooldownMinutes = 10 // 禁用状态下归一化为默认值
+		settings.CooldownMinutes = defaults.CooldownMinutes
+	}
+	if settings.OpenAIOAuthCapacityEnabled {
+		if settings.OpenAIOAuthCapacityWindowMinutes < 1 || settings.OpenAIOAuthCapacityWindowMinutes > 60 {
+			return fmt.Errorf("openai_oauth_capacity_window_minutes must be between 1-60")
+		}
+		if settings.OpenAIOAuthCapacityFailureThreshold < 1 || settings.OpenAIOAuthCapacityFailureThreshold > 10000 {
+			return fmt.Errorf("openai_oauth_capacity_failure_threshold must be between 1-10000")
+		}
+		if settings.OpenAIOAuthCapacityCooldownMinutes < 1 || settings.OpenAIOAuthCapacityCooldownMinutes > 120 {
+			return fmt.Errorf("openai_oauth_capacity_cooldown_minutes must be between 1-120")
+		}
+	} else {
+		settings.OpenAIOAuthCapacityWindowMinutes = clampIntWithDefault(settings.OpenAIOAuthCapacityWindowMinutes, 1, 60, defaults.OpenAIOAuthCapacityWindowMinutes)
+		settings.OpenAIOAuthCapacityFailureThreshold = clampIntWithDefault(settings.OpenAIOAuthCapacityFailureThreshold, 1, 10000, defaults.OpenAIOAuthCapacityFailureThreshold)
+		settings.OpenAIOAuthCapacityCooldownMinutes = clampIntWithDefault(settings.OpenAIOAuthCapacityCooldownMinutes, 1, 120, defaults.OpenAIOAuthCapacityCooldownMinutes)
 	}
 
 	data, err := json.Marshal(settings)
 	if err != nil {
 		return fmt.Errorf("marshal overload cooldown settings: %w", err)
 	}
-
 	return s.settingRepo.Set(ctx, SettingKeyOverloadCooldownSettings, string(data))
 }
 

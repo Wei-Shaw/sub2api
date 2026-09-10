@@ -31,6 +31,16 @@ type OpenAIAPIKeyHealthCache interface {
 	RecordOpenAIAPIKeyHealthFailure(ctx context.Context, accountID int64, windowMinutes, threshold int) (count int64, tripped bool, err error)
 }
 
+// OpenAIOAuthCapacityFailureCache aggregates capacity-shed events across
+// gateway instances so every scheduler observes the same account cooldown.
+type OpenAIOAuthCapacityFailureCache interface {
+	BeginOpenAIOAuthCapacityAttempt(ctx context.Context, accountID int64) (sequence int64, err error)
+	RecordOpenAIOAuthCapacityOutcome(ctx context.Context, accountID, sequence int64, failed bool, windowMinutes, threshold, cooldownMinutes int) (count, tripSequence int64, tripped bool, err error)
+	PrepareOpenAIOAuthCapacityCooldown(ctx context.Context, accountID, tripSequence int64, until time.Time) error
+	AcknowledgeOpenAIOAuthCapacityCooldown(ctx context.Context, accountID, tripSequence int64) error
+	GetOpenAIOAuthCapacityCooldown(ctx context.Context, accountID int64) (tripSequence int64, until time.Time, ok bool, err error)
+}
+
 // TimeoutCounterCache 超时计数器缓存接口
 type TimeoutCounterCache interface {
 	// IncrementTimeoutCount 增加账户的超时计数，返回当前计数值

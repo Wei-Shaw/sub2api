@@ -83,6 +83,7 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 	if account == nil {
 		return errors.New("account is nil")
 	}
+	hooks = s.withOpenAIOAuthCapacityTurnAttempts(ctx, account, hooks)
 	// A handler may reuse the same gin context across account failover attempts.
 	// Never let an OAuth attempt's response aliases leak into the next account.
 	setCodexToolNameReverse(c, nil)
@@ -673,7 +674,7 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 			result, bridgeErr := s.proxyOpenAIWSHTTPBridgeTurn(
 				ctx,
 				c,
-				account,
+				hooks.openAIOAuthCapacityAccount(account),
 				token,
 				bridgePayloadRaw,
 				bridgePayloadBytes,
@@ -685,6 +686,9 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 				turn,
 				writeClientMessage,
 			)
+			if result != nil {
+				result.OpenAIOAuthCapacityAttemptSequence = hooks.openAIOAuthCapacityAttemptSequence()
+			}
 			if bridgeErr != nil && isOpenAIWSSessionPreempted(ctx) {
 				return errOpenAIWSSessionPreempted
 			}
@@ -947,6 +951,7 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 
 	var rejectedFieldRetryState *openAIResponsesRejectedFieldRetryState
 	sendAndRelay := func(turn int, lease *openAIWSConnLease, payload []byte, payloadBytes int, originalModel string, imageBillingModel string, imageSizeTier string, imageInputSize string, requestedReasoningEffort *string) (*OpenAIForwardResult, error) {
+		capacityAccount := hooks.openAIOAuthCapacityAccount(account)
 		responseModelObserver := &upstreamResponseModelObserver{}
 		if lease == nil {
 			return nil, errors.New("upstream websocket lease is nil")
@@ -974,6 +979,7 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 		usage := OpenAIUsage{}
 		imageCounter := newOpenAIImageOutputCounter()
 		var firstTokenMs *int
+		failureAccountSideEffectsApplied := false
 		reqStream := openAIWSPayloadBoolFromRaw(payload, "stream", true)
 		turnPreviousResponseID := openAIWSPayloadStringFromRaw(payload, "previous_response_id")
 		turnPreviousResponseIDKind := ClassifyOpenAIPreviousResponseIDKind(turnPreviousResponseID)
@@ -1033,7 +1039,13 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 				markOpenAICyberPolicyEvent(c, upstreamMessage, http.StatusOK, &usage)
 			}
 			if eventType == "error" {
-				s.handleOpenAIWSErrorEventTransientFailure(ctx, account, mappedModel, lease.HandshakeHeaders(), upstreamMessage)
+				if isOpenAIUpstreamCapacityShedEvent(upstreamMessage) {
+					if !failureAccountSideEffectsApplied {
+						failureAccountSideEffectsApplied = s.handleOpenAIWSFailureAccountSideEffects(ctx, capacityAccount, mappedModel, lease.HandshakeHeaders(), upstreamMessage)
+					}
+				} else {
+					s.handleOpenAIWSErrorEventTransientFailure(ctx, capacityAccount, mappedModel, lease.HandshakeHeaders(), upstreamMessage)
+				}
 				errCodeRaw, errTypeRaw, errMsgRaw := parseOpenAIWSErrorEventFields(upstreamMessage)
 				statusCode := openAIWSRejectedFieldRetryHTTPStatus(upstreamMessage)
 				if !wroteDownstream && statusCode == http.StatusBadRequest && rejectedFieldRetryState != nil {
@@ -1200,7 +1212,10 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 				}
 			}
 			if isTerminalEvent {
-				terminalEvent := s.handleOpenAIWSTerminalTransientFailure(ctx, account, mappedModel, lease.HandshakeHeaders(), upstreamMessage)
+				terminalEvent := normalizeOpenAIWSTerminalEvent(eventType)
+				if !failureAccountSideEffectsApplied {
+					terminalEvent = s.handleOpenAIWSTerminalTransientFailure(ctx, capacityAccount, mappedModel, lease.HandshakeHeaders(), upstreamMessage)
+				}
 				// 客户端已断连时，上游连接的 session 状态不可信，标记 broken 避免回池复用。
 				if clientDisconnected {
 					lease.MarkBroken()
@@ -1228,22 +1243,23 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 				}
 				imageCount := imageCounter.Count()
 				result := &OpenAIForwardResult{
-					RequestID:                     responseID,
-					Usage:                         usage,
-					Model:                         originalModel,
-					UpstreamModel:                 mappedModel,
-					UpstreamResponseModel:         responseModelObserver.Model(),
-					UpstreamResponseModelConflict: responseModelObserver.Conflict(),
-					UpstreamResponseServiceTier:   responseModelObserver.ServiceTier(),
-					ServiceTier:                   resolvedOpenAIUpstreamServiceTierFromObserver(responseModelObserver, extractOpenAIServiceTierFromBody(payload)),
-					ReasoningEffort:               ApplyThinkingEnabledFallback(extractOpenAIReasoningEffortFromBody(payload, mappedModel, originalModel), payload, mappedModel),
-					RequestedReasoningEffort:      requestedReasoningEffort,
-					Stream:                        reqStream,
-					OpenAIWSMode:                  true,
-					UpstreamTerminalEvent:         terminalEvent,
-					ResponseHeaders:               lease.HandshakeHeaders(),
-					Duration:                      time.Since(turnStart),
-					FirstTokenMs:                  firstTokenMs,
+					RequestID:                          responseID,
+					Usage:                              usage,
+					Model:                              originalModel,
+					UpstreamModel:                      mappedModel,
+					UpstreamResponseModel:              responseModelObserver.Model(),
+					UpstreamResponseModelConflict:      responseModelObserver.Conflict(),
+					UpstreamResponseServiceTier:        responseModelObserver.ServiceTier(),
+					ServiceTier:                        resolvedOpenAIUpstreamServiceTierFromObserver(responseModelObserver, extractOpenAIServiceTierFromBody(payload)),
+					ReasoningEffort:                    ApplyThinkingEnabledFallback(extractOpenAIReasoningEffortFromBody(payload, mappedModel, originalModel), payload, mappedModel),
+					RequestedReasoningEffort:           requestedReasoningEffort,
+					Stream:                             reqStream,
+					OpenAIWSMode:                       true,
+					UpstreamTerminalEvent:              terminalEvent,
+					OpenAIOAuthCapacityAttemptSequence: hooks.openAIOAuthCapacityAttemptSequence(),
+					ResponseHeaders:                    lease.HandshakeHeaders(),
+					Duration:                           time.Since(turnStart),
+					FirstTokenMs:                       firstTokenMs,
 				}
 				if replayInput := replayCollector.Items(); len(replayInput) > 0 {
 					result.wsReplayInput = replayInput

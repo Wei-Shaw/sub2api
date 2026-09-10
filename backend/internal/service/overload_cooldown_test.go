@@ -65,6 +65,10 @@ func TestGetOverloadCooldownSettings_DefaultsWhenNotSet(t *testing.T) {
 	require.NoError(t, err)
 	require.True(t, settings.Enabled)
 	require.Equal(t, 10, settings.CooldownMinutes)
+	require.False(t, settings.OpenAIOAuthCapacityEnabled)
+	require.Equal(t, 2, settings.OpenAIOAuthCapacityWindowMinutes)
+	require.Equal(t, 2, settings.OpenAIOAuthCapacityFailureThreshold)
+	require.Equal(t, 5, settings.OpenAIOAuthCapacityCooldownMinutes)
 }
 
 func TestGetOverloadCooldownSettings_ReadsFromDB(t *testing.T) {
@@ -187,6 +191,31 @@ func TestSetOverloadCooldownSettings_AcceptsBoundaries(t *testing.T) {
 			Enabled: true, CooldownMinutes: minutes,
 		})
 		require.NoError(t, err, "should accept cooldown_minutes=%d", minutes)
+	}
+}
+func TestSetOverloadCooldownSettings_ValidatesOpenAIOAuthCapacityPolicy(t *testing.T) {
+	repo := newMockSettingRepo()
+	svc := NewSettingService(repo, &config.Config{})
+	valid := &OverloadCooldownSettings{
+		Enabled:                             true,
+		CooldownMinutes:                     10,
+		OpenAIOAuthCapacityEnabled:          true,
+		OpenAIOAuthCapacityWindowMinutes:    3,
+		OpenAIOAuthCapacityFailureThreshold: 4,
+		OpenAIOAuthCapacityCooldownMinutes:  6,
+	}
+	require.NoError(t, svc.SetOverloadCooldownSettings(context.Background(), valid))
+	settings, err := svc.GetOverloadCooldownSettings(context.Background())
+	require.NoError(t, err)
+	require.Equal(t, valid, settings)
+
+	invalid := []*OverloadCooldownSettings{
+		{Enabled: true, CooldownMinutes: 10, OpenAIOAuthCapacityEnabled: true, OpenAIOAuthCapacityWindowMinutes: 0, OpenAIOAuthCapacityFailureThreshold: 2, OpenAIOAuthCapacityCooldownMinutes: 5},
+		{Enabled: true, CooldownMinutes: 10, OpenAIOAuthCapacityEnabled: true, OpenAIOAuthCapacityWindowMinutes: 2, OpenAIOAuthCapacityFailureThreshold: 0, OpenAIOAuthCapacityCooldownMinutes: 5},
+		{Enabled: true, CooldownMinutes: 10, OpenAIOAuthCapacityEnabled: true, OpenAIOAuthCapacityWindowMinutes: 2, OpenAIOAuthCapacityFailureThreshold: 2, OpenAIOAuthCapacityCooldownMinutes: 0},
+	}
+	for _, candidate := range invalid {
+		require.Error(t, svc.SetOverloadCooldownSettings(context.Background(), candidate))
 	}
 }
 

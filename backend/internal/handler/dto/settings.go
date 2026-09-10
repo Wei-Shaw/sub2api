@@ -439,10 +439,14 @@ type LoginAgreementDocument struct {
 	ContentMD string `json:"content_md"`
 }
 
-// OverloadCooldownSettings 529过载冷却配置 DTO
+// OverloadCooldownSettings exposes overload cooldown policy to administrators.
 type OverloadCooldownSettings struct {
-	Enabled         bool `json:"enabled"`
-	CooldownMinutes int  `json:"cooldown_minutes"`
+	Enabled                             bool `json:"enabled"`
+	CooldownMinutes                     int  `json:"cooldown_minutes"`
+	OpenAIOAuthCapacityEnabled          bool `json:"openai_oauth_capacity_enabled"`
+	OpenAIOAuthCapacityWindowMinutes    int  `json:"openai_oauth_capacity_window_minutes"`
+	OpenAIOAuthCapacityFailureThreshold int  `json:"openai_oauth_capacity_failure_threshold"`
+	OpenAIOAuthCapacityCooldownMinutes  int  `json:"openai_oauth_capacity_cooldown_minutes"`
 }
 
 // RateLimit429CooldownSettings 429默认回避配置 DTO

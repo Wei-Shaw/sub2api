@@ -264,12 +264,84 @@
                   </div>
                 </div>
 
+                <div class="space-y-4 border-t border-gray-100 pt-4 dark:border-dark-700">
+                  <div class="flex items-center justify-between gap-4">
+                    <div>
+                      <label class="font-medium text-gray-900 dark:text-white">
+                        {{ t("admin.settings.overloadCooldown.oauthCapacityEnabled") }}
+                      </label>
+                      <p class="text-sm text-gray-500 dark:text-gray-400">
+                        {{ t("admin.settings.overloadCooldown.oauthCapacityEnabledHint") }}
+                      </p>
+                    </div>
+                    <Toggle
+                      v-model="overloadCooldownForm.openai_oauth_capacity_enabled"
+                      data-testid="openai-oauth-capacity-enabled"
+                    />
+                  </div>
+
+                  <div
+                    v-if="overloadCooldownForm.openai_oauth_capacity_enabled"
+                    class="grid gap-4 md:grid-cols-3"
+                  >
+                    <div>
+                      <label class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
+                        {{ t("admin.settings.overloadCooldown.oauthCapacityWindowMinutes") }}
+                      </label>
+                      <input
+                        v-model.number="overloadCooldownForm.openai_oauth_capacity_window_minutes"
+                        data-testid="openai-oauth-capacity-window"
+                        type="number"
+                        min="1"
+                        max="60"
+                        class="input w-full"
+                      />
+                      <p class="mt-1.5 text-xs text-gray-500 dark:text-gray-400">
+                        {{ t("admin.settings.overloadCooldown.oauthCapacityWindowMinutesHint") }}
+                      </p>
+                    </div>
+                    <div>
+                      <label class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
+                        {{ t("admin.settings.overloadCooldown.oauthCapacityFailureThreshold") }}
+                      </label>
+                      <input
+                        v-model.number="overloadCooldownForm.openai_oauth_capacity_failure_threshold"
+                        data-testid="openai-oauth-capacity-threshold"
+                        type="number"
+                        min="1"
+                        max="10000"
+                        class="input w-full"
+                      />
+                      <p class="mt-1.5 text-xs text-gray-500 dark:text-gray-400">
+                        {{ t("admin.settings.overloadCooldown.oauthCapacityFailureThresholdHint") }}
+                      </p>
+                    </div>
+                    <div>
+                      <label class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
+                        {{ t("admin.settings.overloadCooldown.oauthCapacityCooldownMinutes") }}
+                      </label>
+                      <input
+                        v-model.number="overloadCooldownForm.openai_oauth_capacity_cooldown_minutes"
+                        data-testid="openai-oauth-capacity-cooldown"
+                        type="number"
+                        min="1"
+                        max="120"
+                        class="input w-full"
+                      />
+                      <p class="mt-1.5 text-xs text-gray-500 dark:text-gray-400">
+                        {{ t("admin.settings.overloadCooldown.oauthCapacityCooldownMinutesHint") }}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
                 <div
                   class="flex justify-end border-t border-gray-100 pt-4 dark:border-dark-700"
                 >
                   <button
                     type="button"
                     @click="saveOverloadCooldownSettings"
+                    data-testid="overload-cooldown-save"
                     :disabled="overloadCooldownSaving"
                     class="btn btn-primary btn-sm"
                   >
@@ -8992,6 +9064,10 @@ const overloadCooldownSaving = ref(false);
 const overloadCooldownForm = reactive({
   enabled: true,
   cooldown_minutes: 10,
+  openai_oauth_capacity_enabled: false,
+  openai_oauth_capacity_window_minutes: 2,
+  openai_oauth_capacity_failure_threshold: 2,
+  openai_oauth_capacity_cooldown_minutes: 5,
 });
 
 // Rate Limit Cooldown (429) 状态
@@ -11841,6 +11917,14 @@ async function saveOverloadCooldownSettings() {
     const updated = await adminAPI.settings.updateOverloadCooldownSettings({
       enabled: overloadCooldownForm.enabled,
       cooldown_minutes: overloadCooldownForm.cooldown_minutes,
+      openai_oauth_capacity_enabled:
+        overloadCooldownForm.openai_oauth_capacity_enabled,
+      openai_oauth_capacity_window_minutes:
+        overloadCooldownForm.openai_oauth_capacity_window_minutes,
+      openai_oauth_capacity_failure_threshold:
+        overloadCooldownForm.openai_oauth_capacity_failure_threshold,
+      openai_oauth_capacity_cooldown_minutes:
+        overloadCooldownForm.openai_oauth_capacity_cooldown_minutes,
     });
     Object.assign(overloadCooldownForm, updated);
     appStore.showSuccess(t("admin.settings.overloadCooldown.saved"));

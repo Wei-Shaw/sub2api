@@ -267,6 +267,12 @@ type OpenAIWSIngressHooks struct {
 	// that must be written into the upstream response.create frame.
 	MapRequestModel func(turn int, originalModel string) (string, error)
 	AfterTurn       func(turn int, result *OpenAIForwardResult, turnErr error)
+
+	// Capacity-attempt callbacks are installed by the gateway for OAuth
+	// WebSocket sessions. They stay internal so handler-owned hooks cannot
+	// accidentally replace the turn-ordering state.
+	openAIOAuthCapacityAccountForTurn  func(*Account) *Account
+	openAIOAuthCapacitySequenceForTurn func() int64
 }
 
 func (s *OpenAIGatewayService) getOpenAIWSConnPool() *openAIWSConnPool {

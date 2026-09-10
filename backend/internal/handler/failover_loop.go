@@ -101,6 +101,13 @@ func sameAccountRetryAllowed(failoverErr *service.UpstreamFailoverError, retryCo
 	}
 	return retryLimit > 0 && retryCount < retryLimit
 }
+func markOpenAIOAuthCapacitySameAccountRetry(c *gin.Context, account *service.Account, failoverErr *service.UpstreamFailoverError) {
+	if c == nil || c.Request == nil || account == nil || failoverErr == nil || !failoverErr.IsOpenAICapacityShed() {
+		return
+	}
+	ctx := service.WithOpenAIOAuthCapacityCooldownRetry(c.Request.Context(), account)
+	c.Request = c.Request.WithContext(ctx)
+}
 
 // sameAccountRetryDeadlineAllows prevents a retry from starting after the
 // service-provided same-account retry window has elapsed.

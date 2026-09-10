@@ -2311,12 +2311,27 @@ func (r *accountRepository) SetModelRateLimit(ctx context.Context, id int64, sco
 }
 
 func (r *accountRepository) SetOverloaded(ctx context.Context, id int64, until time.Time) error {
-	_, err := r.client.Account.Update().
-		Where(dbaccount.IDEQ(id)).
-		SetOverloadUntil(until).
-		Save(ctx)
+	result, err := r.sql.ExecContext(ctx, `
+		UPDATE accounts
+		SET overload_until = CASE
+				WHEN overload_until IS NULL OR overload_until < $1 THEN $1
+				ELSE overload_until
+			END,
+			updated_at = CASE
+				WHEN overload_until IS NULL OR overload_until < $1 THEN NOW()
+				ELSE updated_at
+			END
+		WHERE id = $2 AND deleted_at IS NULL
+	`, until, id)
 	if err != nil {
 		return err
+	}
+	affected, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if affected == 0 {
+		return service.ErrAccountNotFound
 	}
 	if err := enqueueSchedulerOutbox(ctx, r.sql, service.SchedulerOutboxEventAccountChanged, &id, nil, nil); err != nil {
 		logger.LegacyPrintf("repository.account", "[SchedulerOutbox] enqueue overload failed: account=%d err=%v", id, err)
@@ -2324,7 +2339,6 @@ func (r *accountRepository) SetOverloaded(ctx context.Context, id int64, until t
 	r.syncSchedulerAccountSnapshot(ctx, id)
 	return nil
 }
-
 func (r *accountRepository) SetTempUnschedulable(ctx context.Context, id int64, until time.Time, reason string) error {
 	result, err := r.sql.ExecContext(ctx, `
 		UPDATE accounts

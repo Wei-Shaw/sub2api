@@ -100,9 +100,15 @@ func (s *OpenAIGatewayService) handleOpenAIAccountUpstreamError(ctx context.Cont
 	if s != nil {
 		scheduleOllamaCloudUsageActivity(s.deferredService, account)
 	}
-	// Capacity shedding describes this request, not account health. Keep the
-	// account schedulable while the request-local retry budget handles recovery.
+	// Capacity shedding remains request-scoped for the current attempt. When the
+	// optional OAuth policy is enabled, record the event so only future requests
+	// avoid an account that repeatedly receives the same signal.
 	if account != nil && account.Platform == PlatformOpenAI && isOpenAIRequestScopedCapacityShed("", responseBody) {
+		if s != nil && s.rateLimitService != nil {
+			stateCtx, cancel := openAIAccountStateContext(ctx)
+			s.rateLimitService.ObserveOpenAIOAuthCapacityFailure(stateCtx, account, statusCode, responseBody, "")
+			cancel()
+		}
 		return false
 	}
 	stateCtx, cancel := openAIAccountStateContext(ctx)
@@ -343,9 +349,10 @@ func (s *OpenAIGatewayService) openAIAccountRuntimeBlockLock(accountID int64) *s
 	return mu
 }
 
-func (s *OpenAIGatewayService) blockAccountSchedulingLocked(account *Account, until time.Time, _ string) (uint64, bool) {
+func (s *OpenAIGatewayService) blockAccountSchedulingLocked(account *Account, until time.Time, reason string) (uint64, bool) {
 	generation := s.openaiAccountRuntimeBlockSequence.Add(1)
 	s.openaiAccountRuntimeBlockGeneration.Store(account.ID, generation)
+	s.openaiAccountRuntimeBlockReason.Store(account.ID, reason)
 	now := time.Now()
 	blockUntil := until
 	if blockUntil.IsZero() || !blockUntil.After(now) {
@@ -386,6 +393,7 @@ func (s *OpenAIGatewayService) ClearAccountSchedulingBlock(accountID int64) {
 	mu.Lock()
 	defer mu.Unlock()
 	s.openaiAccountRuntimeBlockUntil.Delete(accountID)
+	s.openaiAccountRuntimeBlockReason.Delete(accountID)
 	s.openaiOAuth429RetryStartedAt.Delete(accountID)
 	s.openaiAccountRuntimeBlockGeneration.Store(accountID, s.openaiAccountRuntimeBlockSequence.Add(1))
 }
@@ -404,6 +412,7 @@ func (s *OpenAIGatewayService) isOpenAIAccountRuntimeBlocked(account *Account) b
 	cooldownUntil, ok := value.(time.Time)
 	if !ok || cooldownUntil.IsZero() {
 		s.openaiAccountRuntimeBlockUntil.Delete(account.ID)
+		s.openaiAccountRuntimeBlockReason.Delete(account.ID)
 		s.openaiAccountRuntimeBlockGeneration.Store(account.ID, s.openaiAccountRuntimeBlockSequence.Add(1))
 		return false
 	}
@@ -411,6 +420,7 @@ func (s *OpenAIGatewayService) isOpenAIAccountRuntimeBlocked(account *Account) b
 		return true
 	}
 	s.openaiAccountRuntimeBlockUntil.Delete(account.ID)
+	s.openaiAccountRuntimeBlockReason.Delete(account.ID)
 	s.openaiAccountRuntimeBlockGeneration.Store(account.ID, s.openaiAccountRuntimeBlockSequence.Add(1))
 	return false
 }
@@ -496,6 +506,7 @@ func accountPersistedSchedulingCooldownActive(account *Account) bool {
 type openAIAccountRuntimeBlockSnapshot struct {
 	until      time.Time
 	generation uint64
+	reason     string
 	blocked    bool
 }
 
@@ -513,13 +524,16 @@ func (s *OpenAIGatewayService) peekOpenAIAccountRuntimeBlock(account *Account) o
 	until, isTime := value.(time.Time)
 	if !isTime || until.IsZero() || !time.Now().Before(until) {
 		s.openaiAccountRuntimeBlockUntil.Delete(account.ID)
+		s.openaiAccountRuntimeBlockReason.Delete(account.ID)
 		s.openaiOAuth429RetryStartedAt.Delete(account.ID)
 		s.openaiAccountRuntimeBlockGeneration.Store(account.ID, s.openaiAccountRuntimeBlockSequence.Add(1))
 		return openAIAccountRuntimeBlockSnapshot{}
 	}
 	generation, _ := s.openaiAccountRuntimeBlockGeneration.Load(account.ID)
 	gen, _ := generation.(uint64)
-	return openAIAccountRuntimeBlockSnapshot{until: until, generation: gen, blocked: true}
+	reasonValue, _ := s.openaiAccountRuntimeBlockReason.Load(account.ID)
+	reason, _ := reasonValue.(string)
+	return openAIAccountRuntimeBlockSnapshot{until: until, generation: gen, reason: reason, blocked: true}
 }
 
 // clearOpenAIAccountRuntimeBlockIfUnchanged deletes the in-process account block
@@ -542,6 +556,7 @@ func (s *OpenAIGatewayService) clearOpenAIAccountRuntimeBlockIfUnchanged(account
 		return
 	}
 	s.openaiAccountRuntimeBlockUntil.Delete(accountID)
+	s.openaiAccountRuntimeBlockReason.Delete(accountID)
 	s.openaiOAuth429RetryStartedAt.Delete(accountID)
 	s.openaiAccountRuntimeBlockGeneration.Store(accountID, s.openaiAccountRuntimeBlockSequence.Add(1))
 }
@@ -562,6 +577,17 @@ func (s *OpenAIGatewayService) isOpenAIAccountRequestRuntimeBlocked(account *Acc
 			return true
 		}
 		s.clearOpenAIAccountRuntimeBlockIfUnchanged(account.ID, snapshot)
+	}
+	return s.isOpenAIAccountModelRuntimeBlocked(account, requestedModel)
+}
+
+func (s *OpenAIGatewayService) isOpenAIAccountRequestRuntimeBlockedForContext(ctx context.Context, account *Account, requestedModel string) bool {
+	retry, retryingCapacity := openAIOAuthCapacityRetryForAccount(ctx, account)
+	if !retryingCapacity {
+		return s.isOpenAIAccountRequestRuntimeBlocked(account, requestedModel)
+	}
+	if snapshot := s.peekOpenAIAccountRuntimeBlock(account); snapshot.blocked && (snapshot.reason != openAIOAuthCapacityCooldownReason || !snapshot.until.Equal(retry.overloadUntil)) {
+		return true
 	}
 	return s.isOpenAIAccountModelRuntimeBlocked(account, requestedModel)
 }

@@ -1040,3 +1040,27 @@ func TestFailoverClientGone(t *testing.T) {
 		require.False(t, failoverClientGone(nil))
 	})
 }
+func TestMarkOpenAIOAuthCapacitySameAccountRetryPreservesCurrentAccount(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", nil)
+	until := time.Now().Add(5 * time.Minute)
+	account := &service.Account{
+		ID:                                 42,
+		Platform:                           service.PlatformOpenAI,
+		Type:                               service.AccountTypeOAuth,
+		Status:                             service.StatusActive,
+		Schedulable:                        true,
+		OverloadUntil:                      &until,
+		OpenAIOAuthCapacityAttemptSequence: 1,
+	}
+	failoverErr := &service.UpstreamFailoverError{
+		RequestScopedTransient: true,
+		ResponseBody:           []byte(`{"error":{"code":"server_is_overloaded"}}`),
+	}
+
+	require.False(t, account.IsSchedulableForModelWithContext(c.Request.Context(), "gpt-5.6-sol"))
+	markOpenAIOAuthCapacitySameAccountRetry(c, account, failoverErr)
+	require.True(t, account.IsSchedulableForModelWithContext(c.Request.Context(), "gpt-5.6-sol"))
+}

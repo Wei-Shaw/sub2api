@@ -15,6 +15,7 @@ const {
   updateWebSearchEmulationConfig,
   getAdminApiKey,
   getOverloadCooldownSettings,
+  updateOverloadCooldownSettings,
   getRateLimit429CooldownSettings,
   updateRateLimit429CooldownSettings,
   getPanelRateLimitSettings,
@@ -43,6 +44,7 @@ const {
   updateWebSearchEmulationConfig: vi.fn(),
   getAdminApiKey: vi.fn(),
   getOverloadCooldownSettings: vi.fn(),
+  updateOverloadCooldownSettings: vi.fn(),
   getRateLimit429CooldownSettings: vi.fn(),
   updateRateLimit429CooldownSettings: vi.fn(),
   getPanelRateLimitSettings: vi.fn().mockResolvedValue({
@@ -90,6 +92,7 @@ vi.mock("@/api", () => ({
       updateWebSearchEmulationConfig,
       getAdminApiKey,
       getOverloadCooldownSettings,
+      updateOverloadCooldownSettings,
       getRateLimit429CooldownSettings,
       updateRateLimit429CooldownSettings,
       getPanelRateLimitSettings,
@@ -634,6 +637,7 @@ describe("admin SettingsView payment visible method controls", () => {
     updateWebSearchEmulationConfig.mockReset();
     getAdminApiKey.mockReset();
     getOverloadCooldownSettings.mockReset();
+    updateOverloadCooldownSettings.mockReset();
     getRateLimit429CooldownSettings.mockReset();
     updateRateLimit429CooldownSettings.mockReset();
     getStreamTimeoutSettings.mockReset();
@@ -675,7 +679,12 @@ describe("admin SettingsView payment visible method controls", () => {
     getOverloadCooldownSettings.mockResolvedValue({
       enabled: true,
       cooldown_minutes: 10,
+      openai_oauth_capacity_enabled: false,
+      openai_oauth_capacity_window_minutes: 2,
+      openai_oauth_capacity_failure_threshold: 2,
+      openai_oauth_capacity_cooldown_minutes: 5,
     });
+    updateOverloadCooldownSettings.mockImplementation(async (payload) => payload);
     getRateLimit429CooldownSettings.mockResolvedValue({
       enabled: true,
       cooldown_seconds: 5,
@@ -770,6 +779,30 @@ describe("admin SettingsView payment visible method controls", () => {
       heavy_rpm: 60,
       exempt_admin: true,
       public_ip_rpm: 300,
+    });
+    expect(showSuccess).toHaveBeenCalled();
+  });
+
+  it("configures OpenAI OAuth capacity cooldown", async () => {
+    const wrapper = mountView();
+    await flushPromises();
+    await openGatewayTab(wrapper);
+
+    const toggle = wrapper.get('[data-testid="openai-oauth-capacity-enabled"]');
+    await toggle.setValue(true);
+    await wrapper.get('[data-testid="openai-oauth-capacity-window"]').setValue(3);
+    await wrapper.get('[data-testid="openai-oauth-capacity-threshold"]').setValue(4);
+    await wrapper.get('[data-testid="openai-oauth-capacity-cooldown"]').setValue(6);
+    await wrapper.get('[data-testid="overload-cooldown-save"]').trigger("click");
+    await flushPromises();
+
+    expect(updateOverloadCooldownSettings).toHaveBeenCalledWith({
+      enabled: true,
+      cooldown_minutes: 10,
+      openai_oauth_capacity_enabled: true,
+      openai_oauth_capacity_window_minutes: 3,
+      openai_oauth_capacity_failure_threshold: 4,
+      openai_oauth_capacity_cooldown_minutes: 6,
     });
     expect(showSuccess).toHaveBeenCalled();
   });

@@ -20,19 +20,20 @@ import (
 
 // RateLimitService 处理限流和过载状态管理
 type RateLimitService struct {
-	accountRepo           AccountRepository
-	usageRepo             UsageLogRepository
-	cfg                   *config.Config
-	geminiQuotaService    *GeminiQuotaService
-	tempUnschedCache      TempUnschedCache
-	openAIAPIKeyHealth    OpenAIAPIKeyHealthCache
-	timeoutCounterCache   TimeoutCounterCache
-	openAI403CounterCache OpenAI403CounterCache
-	settingService        *SettingService
-	tokenCacheInvalidator TokenCacheInvalidator
-	runtimeBlocker        AccountRuntimeBlocker
-	usageCacheMu          sync.RWMutex
-	usageCache            map[int64]*geminiUsageCacheEntry
+	accountRepo                 AccountRepository
+	usageRepo                   UsageLogRepository
+	cfg                         *config.Config
+	geminiQuotaService          *GeminiQuotaService
+	tempUnschedCache            TempUnschedCache
+	openAIAPIKeyHealth          OpenAIAPIKeyHealthCache
+	openAIOAuthCapacityFailures OpenAIOAuthCapacityFailureCache
+	timeoutCounterCache         TimeoutCounterCache
+	openAI403CounterCache       OpenAI403CounterCache
+	settingService              *SettingService
+	tokenCacheInvalidator       TokenCacheInvalidator
+	runtimeBlocker              AccountRuntimeBlocker
+	usageCacheMu                sync.RWMutex
+	usageCache                  map[int64]*geminiUsageCacheEntry
 
 	// OpenAI Team 联动熔断的进程内去重：teamID → 去重窗口截止时间
 	openaiTeamLinkedMu     sync.Mutex
@@ -110,6 +111,10 @@ func (s *RateLimitService) SetTimeoutCounterCache(cache TimeoutCounterCache) {
 
 func (s *RateLimitService) SetOpenAIAPIKeyHealthCache(cache OpenAIAPIKeyHealthCache) {
 	s.openAIAPIKeyHealth = cache
+}
+
+func (s *RateLimitService) SetOpenAIOAuthCapacityFailureCache(cache OpenAIOAuthCapacityFailureCache) {
+	s.openAIOAuthCapacityFailures = cache
 }
 
 // SetOpenAI403CounterCache 设置 OpenAI 403 连续失败计数器（可选依赖）

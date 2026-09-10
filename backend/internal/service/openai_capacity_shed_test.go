@@ -210,7 +210,8 @@ func TestOpenAIStreamCapacityShedErrorFramePrecedingFailedStillFailsOver(t *test
 	cfg := &config.Config{
 		Gateway: config.GatewayConfig{MaxLineSize: defaultMaxLineSize},
 	}
-	svc := &OpenAIGatewayService{cfg: cfg}
+	rateLimits, capacityCache, _, _ := newOpenAIOAuthCapacityRateLimitService(t, true, 2)
+	svc := &OpenAIGatewayService{cfg: cfg, rateLimitService: rateLimits}
 
 	rec := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(rec)
@@ -235,7 +236,9 @@ func TestOpenAIStreamCapacityShedErrorFramePrecedingFailedStillFailsOver(t *test
 		Header: http.Header{"X-Request-Id": []string{"rid-shed-error-then-failed"}},
 	}
 
-	_, err := svc.handleStreamingResponse(c.Request.Context(), resp, c, &Account{ID: 1, Platform: PlatformOpenAI, Type: AccountTypeOAuth, Name: "acc"}, time.Now(), "model", "model")
+	account := &Account{ID: 1, Platform: PlatformOpenAI, Type: AccountTypeOAuth, Name: "acc"}
+	account.OpenAIOAuthCapacityAttemptSequence = rateLimits.beginOpenAIOAuthCapacityAttempt(c.Request.Context(), account)
+	_, err := svc.handleStreamingResponse(c.Request.Context(), resp, c, account, time.Now(), "model", "model")
 	require.Error(t, err)
 	var failoverErr *UpstreamFailoverError
 	require.ErrorAs(t, err, &failoverErr)
@@ -243,6 +246,7 @@ func TestOpenAIStreamCapacityShedErrorFramePrecedingFailedStillFailsOver(t *test
 	require.True(t, failoverErr.RequestScopedTransient)
 	require.False(t, c.Writer.Written())
 	require.Empty(t, rec.Body.String())
+	require.Equal(t, 1, capacityCache.recordCalls)
 }
 
 // 流中途（已有真实输出）降载时无法再 failover，此时必须把降载码改写为客户端

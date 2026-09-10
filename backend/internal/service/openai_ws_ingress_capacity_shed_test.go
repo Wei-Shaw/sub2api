@@ -42,10 +42,11 @@ func TestProxyResponsesWebSocketFromClient_RewritesCapacityShedCodeForClient(t *
 	gin.SetMode(gin.TestMode)
 
 	tests := []struct {
-		name           string
-		upstreamEvents [][]byte
-		wantContains   []string
-		wantAbsent     []string
+		name                 string
+		upstreamEvents       [][]byte
+		wantContains         []string
+		wantAbsent           []string
+		wantCapacityOutcomes int
 	}{
 		{
 			name: "capacity_shed_error_and_failed_are_rewritten",
@@ -57,7 +58,8 @@ func TestProxyResponsesWebSocketFromClient_RewritesCapacityShedCodeForClient(t *
 				`"code":"server_error"`,
 				"Our servers are currently overloaded",
 			},
-			wantAbsent: []string{"server_is_overloaded"},
+			wantAbsent:           []string{"server_is_overloaded"},
+			wantCapacityOutcomes: 1,
 		},
 		{
 			name: "non_capacity_error_code_is_passed_through",
@@ -69,7 +71,8 @@ func TestProxyResponsesWebSocketFromClient_RewritesCapacityShedCodeForClient(t *
 				`"code":"workspace_suspended"`,
 				"workspace is suspended",
 			},
-			wantAbsent: []string{"server_error"},
+			wantAbsent:           []string{"server_error"},
+			wantCapacityOutcomes: 0,
 		},
 	}
 
@@ -98,17 +101,19 @@ func TestProxyResponsesWebSocketFromClient_RewritesCapacityShedCodeForClient(t *
 				ID:          5401,
 				Name:        "openai-ingress-capacity-shed",
 				Platform:    PlatformOpenAI,
-				Type:        AccountTypeAPIKey,
+				Type:        AccountTypeOAuth,
 				Status:      StatusActive,
 				Schedulable: true,
 				Concurrency: 1,
 				Credentials: map[string]any{"api_key": "sk-test"},
 				Extra:       map[string]any{"responses_websockets_v2_enabled": true},
 			}
+			rateLimits, capacityCache, _, _ := newOpenAIOAuthCapacityRateLimitService(t, true, 2)
+			account.OpenAIOAuthCapacityAttemptSequence = rateLimits.beginOpenAIOAuthCapacityAttempt(context.Background(), &account)
 			repo := &openAIWSIngressCapacityShedRepo{stubOpenAIAccountRepo: stubOpenAIAccountRepo{accounts: []Account{account}}}
 			svc := &OpenAIGatewayService{
 				accountRepo:      repo,
-				rateLimitService: &RateLimitService{accountRepo: repo},
+				rateLimitService: rateLimits,
 				httpUpstream:     &httpUpstreamRecorder{},
 				cache:            &stubGatewayCache{},
 				cfg:              cfg,
@@ -175,11 +180,151 @@ func TestProxyResponsesWebSocketFromClient_RewritesCapacityShedCodeForClient(t *
 			for _, absent := range tt.wantAbsent {
 				require.NotContains(t, joined, absent, "客户端收到的事件:\n%s", joined)
 			}
+			require.Equal(t, tt.wantCapacityOutcomes, capacityCache.recordCalls)
 
 			select {
 			case <-serverDone:
 			case <-time.After(5 * time.Second):
 				t.Fatal("等待 ingress websocket 结束超时")
+			}
+		})
+	}
+}
+
+func TestProxyResponsesWebSocketFromClient_TracksCapacityPerTurn(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	tests := []struct {
+		name           string
+		events         [][]byte
+		wantSetCalls   int
+		wantOutcomes   map[int64]bool
+		wantRejectNext bool
+	}{
+		{
+			name: "two_failed_turns_trip_cooldown",
+			events: [][]byte{
+				[]byte(`{"type":"response.failed","response":{"id":"resp_fail_1","status":"failed","error":{"code":"server_is_overloaded","message":"overloaded"}}}`),
+				[]byte(`{"type":"response.failed","response":{"id":"resp_fail_2","status":"failed","error":{"code":"slow_down","message":"slow down"}}}`),
+			},
+			wantSetCalls:   1,
+			wantRejectNext: true,
+		},
+		{
+			name: "successful_turn_breaks_failure_streak",
+			events: [][]byte{
+				[]byte(`{"type":"response.failed","response":{"id":"resp_fail_1","status":"failed","error":{"code":"server_is_overloaded","message":"overloaded"}}}`),
+				[]byte(`{"type":"response.completed","response":{"id":"resp_ok","status":"completed","usage":{"input_tokens":1,"output_tokens":1}}}`),
+				[]byte(`{"type":"response.failed","response":{"id":"resp_fail_2","status":"failed","error":{"code":"server_is_overloaded","message":"overloaded"}}}`),
+			},
+			wantOutcomes: map[int64]bool{1: true, 2: false, 3: true},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := newOpenAIWSV2TestConfig()
+			cfg.Security.URLAllowlist.Enabled = false
+			cfg.Security.URLAllowlist.AllowInsecureHTTP = true
+			cfg.Gateway.OpenAIWS.MaxConnsPerAccount = 1
+			cfg.Gateway.OpenAIWS.MinIdlePerAccount = 0
+			cfg.Gateway.OpenAIWS.MaxIdlePerAccount = 1
+			cfg.Gateway.OpenAIWS.QueueLimitPerConn = 8
+			cfg.Gateway.OpenAIWS.DialTimeoutSeconds = 3
+			cfg.Gateway.OpenAIWS.ReadTimeoutSeconds = 3
+			cfg.Gateway.OpenAIWS.WriteTimeoutSeconds = 3
+
+			captureConn := &openAIWSCaptureConn{events: tt.events}
+			pool := newOpenAIWSConnPool(cfg)
+			pool.setClientDialerForTest(&openAIWSCaptureDialer{conn: captureConn})
+			account := Account{
+				ID: 5403, Name: "openai-ingress-capacity-turns", Platform: PlatformOpenAI,
+				Type: AccountTypeOAuth, Status: StatusActive, Schedulable: true, Concurrency: 1,
+				Credentials: map[string]any{"api_key": "sk-test"},
+				Extra:       map[string]any{"responses_websockets_v2_enabled": true},
+			}
+			rateLimits, capacityCache, capacityRepo, _ := newOpenAIOAuthCapacityRateLimitService(t, true, 2)
+			account.OpenAIOAuthCapacityAttemptSequence = rateLimits.beginOpenAIOAuthCapacityAttempt(context.Background(), &account)
+			repo := &openAIWSIngressCapacityShedRepo{stubOpenAIAccountRepo: stubOpenAIAccountRepo{accounts: []Account{account}}}
+			svc := &OpenAIGatewayService{
+				accountRepo: repo, rateLimitService: rateLimits, httpUpstream: &httpUpstreamRecorder{},
+				cache: &stubGatewayCache{}, cfg: cfg, openaiWSResolver: NewOpenAIWSProtocolResolver(cfg),
+				toolCorrector: NewCodexToolCorrector(), openaiWSPool: pool,
+			}
+
+			serverDone := make(chan struct{})
+			var serverErr error
+			wsServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				defer close(serverDone)
+				conn, err := coderws.Accept(w, r, &coderws.AcceptOptions{CompressionMode: coderws.CompressionContextTakeover})
+				if err != nil {
+					return
+				}
+				defer func() { _ = conn.CloseNow() }()
+				readCtx, cancel := context.WithTimeout(r.Context(), 3*time.Second)
+				_, firstMessage, err := conn.Read(readCtx)
+				cancel()
+				if err != nil {
+					return
+				}
+				recorder := httptest.NewRecorder()
+				ginCtx, _ := gin.CreateTestContext(recorder)
+				ginCtx.Request = r.Clone(r.Context())
+				hooks := &OpenAIWSIngressHooks{AfterTurn: func(_ int, result *OpenAIForwardResult, turnErr error) {
+					if turnErr == nil && result != nil && result.UpstreamTerminalEvent == "response.completed" {
+						turnAccount := account
+						turnAccount.OpenAIOAuthCapacityAttemptSequence = result.OpenAIOAuthCapacityAttemptSequence
+						rateLimits.ObserveOpenAIOAuthCapacityNonFailure(r.Context(), &turnAccount)
+					}
+				}}
+				serverErr = svc.ProxyResponsesWebSocketFromClient(r.Context(), ginCtx, conn, &account, "sk-test", firstMessage, hooks)
+			}))
+			defer wsServer.Close()
+
+			dialCtx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+			clientConn, _, err := coderws.Dial(dialCtx, "ws"+strings.TrimPrefix(wsServer.URL, "http"), nil)
+			cancel()
+			require.NoError(t, err)
+			defer func() { _ = clientConn.CloseNow() }()
+
+			for range tt.events {
+				writeCtx, cancelWrite := context.WithTimeout(context.Background(), 3*time.Second)
+				err = clientConn.Write(writeCtx, coderws.MessageText, []byte(`{"type":"response.create","model":"gpt-5.1","stream":false}`))
+				cancelWrite()
+				require.NoError(t, err)
+
+				readCtx, cancelRead := context.WithTimeout(context.Background(), 3*time.Second)
+				_, _, err = clientConn.Read(readCtx)
+				cancelRead()
+				require.NoError(t, err)
+			}
+			if tt.wantRejectNext {
+				writeCtx, cancelWrite := context.WithTimeout(context.Background(), 3*time.Second)
+				err = clientConn.Write(writeCtx, coderws.MessageText, []byte(`{"type":"response.create","model":"gpt-5.1","stream":false}`))
+				cancelWrite()
+				require.NoError(t, err)
+			} else {
+				_ = clientConn.CloseNow()
+			}
+
+			select {
+			case <-serverDone:
+			case <-time.After(5 * time.Second):
+				t.Fatal("waiting for ingress websocket shutdown timed out")
+			}
+			require.Equal(t, int64(len(tt.events)), capacityCache.nextSequence)
+			require.Equal(t, tt.wantSetCalls, capacityRepo.setCalls)
+			captureConn.mu.Lock()
+			writeCount := len(captureConn.writes)
+			captureConn.mu.Unlock()
+			require.Equal(t, len(tt.events), writeCount, "a post-cooldown turn must not reach the pinned upstream account")
+			if tt.wantRejectNext {
+				var closeErr *OpenAIWSClientCloseError
+				require.ErrorAs(t, serverErr, &closeErr)
+				require.Equal(t, coderws.StatusTryAgainLater, closeErr.StatusCode())
+			}
+			if tt.wantOutcomes != nil {
+				require.Equal(t, tt.wantOutcomes, capacityCache.outcomes)
 			}
 		})
 	}

@@ -843,20 +843,24 @@ func (s *AccountRepoSuite) TestBulkUpdate_SyncSchedulerSnapshotOnDisabled() {
 
 func (s *AccountRepoSuite) TestSetOverloaded() {
 	account := mustCreateAccount(s.T(), s.client, &service.Account{Name: "acc-over"})
-	until := time.Date(2025, 6, 15, 12, 0, 0, 0, time.UTC)
+	later := time.Date(2025, 6, 15, 12, 0, 0, 0, time.UTC)
+	earlier := later.Add(-time.Hour)
 	cacheRecorder := &schedulerCacheRecorder{}
 	s.repo.schedulerCache = cacheRecorder
 
-	s.Require().NoError(s.repo.SetOverloaded(s.ctx, account.ID, until))
+	s.Require().NoError(s.repo.SetOverloaded(s.ctx, account.ID, later))
+	s.Require().NoError(s.repo.SetOverloaded(s.ctx, account.ID, earlier))
 
 	got, err := s.repo.GetByID(s.ctx, account.ID)
 	s.Require().NoError(err)
 	s.Require().NotNil(got.OverloadUntil)
-	s.Require().WithinDuration(until, *got.OverloadUntil, time.Second)
-	s.Require().Len(cacheRecorder.setAccounts, 1)
-	s.Require().Equal(account.ID, cacheRecorder.setAccounts[0].ID)
-	s.Require().NotNil(cacheRecorder.setAccounts[0].OverloadUntil)
-	s.Require().WithinDuration(until, *cacheRecorder.setAccounts[0].OverloadUntil, time.Second)
+	s.Require().WithinDuration(later, *got.OverloadUntil, time.Second)
+	s.Require().Len(cacheRecorder.setAccounts, 2)
+	for _, cached := range cacheRecorder.setAccounts {
+		s.Require().Equal(account.ID, cached.ID)
+		s.Require().NotNil(cached.OverloadUntil)
+		s.Require().WithinDuration(later, *cached.OverloadUntil, time.Second)
+	}
 }
 
 func (s *AccountRepoSuite) TestSetRateLimited() {

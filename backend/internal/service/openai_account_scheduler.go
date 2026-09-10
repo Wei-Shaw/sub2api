@@ -521,7 +521,7 @@ func (s *defaultOpenAIAccountScheduler) selectBySessionHash(
 		clearBinding()
 		return nil, false, nil
 	}
-	if shouldClearStickySession(account, req.RequestedModel) || account.Platform != NormalizeOpenAICompatiblePlatform(req.Platform) || !account.IsOpenAICompatible() || !account.IsSchedulable() {
+	if shouldClearStickySessionForContext(ctx, account, req.RequestedModel) || account.Platform != NormalizeOpenAICompatiblePlatform(req.Platform) || !account.IsOpenAICompatible() || !isOpenAIAccountSchedulableForContext(ctx, account) {
 		clearBinding()
 		return nil, false, nil
 	}
@@ -1439,7 +1439,7 @@ func (s *defaultOpenAIAccountScheduler) selectByLoadBalance(
 				continue
 			}
 		}
-		if !account.IsSchedulable() {
+		if !isOpenAIAccountSchedulableForContext(ctx, account) {
 			filterStats.exclude("not_schedulable")
 			continue
 		}
@@ -1447,7 +1447,7 @@ func (s *defaultOpenAIAccountScheduler) selectByLoadBalance(
 			filterStats.exclude("platform_mismatch")
 			continue
 		}
-		if s.service.isOpenAIAccountRequestRuntimeBlocked(account, req.RequestedModel) {
+		if s.service.isOpenAIAccountRequestRuntimeBlockedForContext(ctx, account, req.RequestedModel) {
 			filterStats.exclude("runtime_blocked")
 			continue
 		}
@@ -1769,7 +1769,7 @@ func (s *defaultOpenAIAccountScheduler) isAccountRequestCompatibleReason(ctx con
 	if req.RequirePrivacySet && !account.IsPrivacySet() {
 		return false, "privacy_not_set"
 	}
-	if s != nil && s.service != nil && s.service.isOpenAIAccountRequestRuntimeBlocked(account, req.RequestedModel) {
+	if s != nil && s.service != nil && s.service.isOpenAIAccountRequestRuntimeBlockedForContext(ctx, account, req.RequestedModel) {
 		return false, "runtime_blocked"
 	}
 	if s != nil && s.service != nil && s.service.isOpenAIProxyStreamQuarantined(ctx, account) {
@@ -2159,23 +2159,18 @@ func (s *OpenAIGatewayService) selectAccountWithScheduler(
 	previousResponseCanMove bool,
 	useUpstreamTokenCost bool,
 ) (*AccountSelectionResult, OpenAIAccountScheduleDecision, error) {
+	ctx = s.resolveOpenAIOAuthCapacityRetry(ctx)
 	selection, decision, err := s.selectAccountWithSchedulerOnce(ctx, groupID, previousResponseID, sessionHash, requestedModel, excludedIDs, requiredTransport, requiredCapability, requiredImageCapability, requireCompact, platform, previousResponseCanMove, useUpstreamTokenCost)
-	if err == nil || openAIProxyStreamQuarantineBypassed(ctx) {
-		return selection, decision, err
+	if err != nil && !openAIProxyStreamQuarantineBypassed(ctx) && (errors.Is(err, ErrNoAvailableAccounts) || errors.Is(err, ErrNoAvailableCompactAccounts)) && NormalizeOpenAICompatiblePlatform(platform) == PlatformOpenAI {
+		if blocked := s.getOpenAIProxyStreamCircuit().activeBlockCount(time.Now()); blocked > 0 {
+			s.logOpenAIProxyStreamQuarantineFailOpen(requestedModel, blocked)
+			selection, decision, err = s.selectAccountWithSchedulerOnce(withOpenAIProxyStreamQuarantineBypass(ctx), groupID, previousResponseID, sessionHash, requestedModel, excludedIDs, requiredTransport, requiredCapability, requiredImageCapability, requireCompact, platform, previousResponseCanMove, useUpstreamTokenCost)
+		}
 	}
-	if !errors.Is(err, ErrNoAvailableAccounts) && !errors.Is(err, ErrNoAvailableCompactAccounts) {
-		return selection, decision, err
+	if err == nil {
+		s.attachOpenAIOAuthCapacityAttempt(ctx, selection)
 	}
-	// The circuit only ever quarantines PlatformOpenAI accounts.
-	if NormalizeOpenAICompatiblePlatform(platform) != PlatformOpenAI {
-		return selection, decision, err
-	}
-	blocked := s.getOpenAIProxyStreamCircuit().activeBlockCount(time.Now())
-	if blocked == 0 {
-		return selection, decision, err
-	}
-	s.logOpenAIProxyStreamQuarantineFailOpen(requestedModel, blocked)
-	return s.selectAccountWithSchedulerOnce(withOpenAIProxyStreamQuarantineBypass(ctx), groupID, previousResponseID, sessionHash, requestedModel, excludedIDs, requiredTransport, requiredCapability, requiredImageCapability, requireCompact, platform, previousResponseCanMove, useUpstreamTokenCost)
+	return selection, decision, err
 }
 
 type openAIGroupPrivacyRequirementContextKey struct{}
@@ -2423,6 +2418,7 @@ func (s *OpenAIGatewayService) ReportOpenAIAccountScheduleResult(account *Accoun
 	accountID := account.ID
 	healthTripped := false
 	if s != nil && s.rateLimitService != nil {
+		s.rateLimitService.ObserveOpenAIOAuthCapacityNonFailure(context.Background(), account)
 		if success {
 			s.rateLimitService.ObserveOpenAIAPIKeyHealthSuccess(context.Background(), account)
 		} else if len(observedErr) > 0 && observedErr[0] != nil {

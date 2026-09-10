@@ -556,13 +556,17 @@ func prefetchedStickyAccountIDFromContext(ctx context.Context, groupID *int64) i
 // and the sticky session binding should be cleared.
 // Delegates to IsSchedulable() for account-level checks, plus model-level rate limiting.
 func shouldClearStickySession(account *Account, requestedModel string) bool {
+	return shouldClearStickySessionForContext(context.Background(), account, requestedModel)
+}
+
+func shouldClearStickySessionForContext(ctx context.Context, account *Account, requestedModel string) bool {
 	if account == nil {
 		return false
 	}
-	if !account.IsSchedulable() {
+	if !isOpenAIAccountSchedulableForContext(ctx, account) {
 		return true
 	}
-	if remaining := account.GetRateLimitRemainingTimeWithContext(context.Background(), requestedModel); remaining > 0 {
+	if remaining := account.GetRateLimitRemainingTimeWithContext(ctx, requestedModel); remaining > 0 {
 		return true
 	}
 	return false

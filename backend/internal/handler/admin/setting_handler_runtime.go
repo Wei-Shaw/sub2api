@@ -50,7 +50,7 @@ func (h *SettingHandler) DeleteAdminAPIKey(c *gin.Context) {
 	response.Success(c, gin.H{"message": "Admin API key deleted"})
 }
 
-// GetOverloadCooldownSettings 获取529过载冷却配置
+// GetOverloadCooldownSettings returns overload cooldown configuration.
 // GET /api/v1/admin/settings/overload-cooldown
 func (h *SettingHandler) GetOverloadCooldownSettings(c *gin.Context) {
 	settings, err := h.settingService.GetOverloadCooldownSettings(c.Request.Context())
@@ -59,19 +59,20 @@ func (h *SettingHandler) GetOverloadCooldownSettings(c *gin.Context) {
 		return
 	}
 
-	response.Success(c, dto.OverloadCooldownSettings{
-		Enabled:         settings.Enabled,
-		CooldownMinutes: settings.CooldownMinutes,
-	})
+	response.Success(c, overloadCooldownSettingsDTO(settings))
 }
 
-// UpdateOverloadCooldownSettingsRequest 更新529过载冷却配置请求
+// UpdateOverloadCooldownSettingsRequest updates overload cooldown configuration.
 type UpdateOverloadCooldownSettingsRequest struct {
-	Enabled         bool `json:"enabled"`
-	CooldownMinutes int  `json:"cooldown_minutes"`
+	Enabled                             bool  `json:"enabled"`
+	CooldownMinutes                     int   `json:"cooldown_minutes"`
+	OpenAIOAuthCapacityEnabled          *bool `json:"openai_oauth_capacity_enabled"`
+	OpenAIOAuthCapacityWindowMinutes    *int  `json:"openai_oauth_capacity_window_minutes"`
+	OpenAIOAuthCapacityFailureThreshold *int  `json:"openai_oauth_capacity_failure_threshold"`
+	OpenAIOAuthCapacityCooldownMinutes  *int  `json:"openai_oauth_capacity_cooldown_minutes"`
 }
 
-// UpdateOverloadCooldownSettings 更新529过载冷却配置
+// UpdateOverloadCooldownSettings updates overload cooldown configuration.
 // PUT /api/v1/admin/settings/overload-cooldown
 func (h *SettingHandler) UpdateOverloadCooldownSettings(c *gin.Context) {
 	var req UpdateOverloadCooldownSettingsRequest
@@ -80,11 +81,25 @@ func (h *SettingHandler) UpdateOverloadCooldownSettings(c *gin.Context) {
 		return
 	}
 
-	settings := &service.OverloadCooldownSettings{
-		Enabled:         req.Enabled,
-		CooldownMinutes: req.CooldownMinutes,
+	settings, err := h.settingService.GetOverloadCooldownSettings(c.Request.Context())
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
 	}
-
+	settings.Enabled = req.Enabled
+	settings.CooldownMinutes = req.CooldownMinutes
+	if req.OpenAIOAuthCapacityEnabled != nil {
+		settings.OpenAIOAuthCapacityEnabled = *req.OpenAIOAuthCapacityEnabled
+	}
+	if req.OpenAIOAuthCapacityWindowMinutes != nil {
+		settings.OpenAIOAuthCapacityWindowMinutes = *req.OpenAIOAuthCapacityWindowMinutes
+	}
+	if req.OpenAIOAuthCapacityFailureThreshold != nil {
+		settings.OpenAIOAuthCapacityFailureThreshold = *req.OpenAIOAuthCapacityFailureThreshold
+	}
+	if req.OpenAIOAuthCapacityCooldownMinutes != nil {
+		settings.OpenAIOAuthCapacityCooldownMinutes = *req.OpenAIOAuthCapacityCooldownMinutes
+	}
 	if err := h.settingService.SetOverloadCooldownSettings(c.Request.Context(), settings); err != nil {
 		response.BadRequest(c, err.Error())
 		return
@@ -95,14 +110,21 @@ func (h *SettingHandler) UpdateOverloadCooldownSettings(c *gin.Context) {
 		response.ErrorFrom(c, err)
 		return
 	}
-
-	response.Success(c, dto.OverloadCooldownSettings{
-		Enabled:         updatedSettings.Enabled,
-		CooldownMinutes: updatedSettings.CooldownMinutes,
-	})
+	response.Success(c, overloadCooldownSettingsDTO(updatedSettings))
 }
 
-// GetRateLimit429CooldownSettings 获取429默认回避配置
+func overloadCooldownSettingsDTO(settings *service.OverloadCooldownSettings) dto.OverloadCooldownSettings {
+	return dto.OverloadCooldownSettings{
+		Enabled:                             settings.Enabled,
+		CooldownMinutes:                     settings.CooldownMinutes,
+		OpenAIOAuthCapacityEnabled:          settings.OpenAIOAuthCapacityEnabled,
+		OpenAIOAuthCapacityWindowMinutes:    settings.OpenAIOAuthCapacityWindowMinutes,
+		OpenAIOAuthCapacityFailureThreshold: settings.OpenAIOAuthCapacityFailureThreshold,
+		OpenAIOAuthCapacityCooldownMinutes:  settings.OpenAIOAuthCapacityCooldownMinutes,
+	}
+}
+
+// GetRateLimit429CooldownSettings returns the default 429 cooldown configuration.
 // GET /api/v1/admin/settings/rate-limit-429-cooldown
 func (h *SettingHandler) GetRateLimit429CooldownSettings(c *gin.Context) {
 	settings, err := h.settingService.GetRateLimit429CooldownSettings(c.Request.Context())

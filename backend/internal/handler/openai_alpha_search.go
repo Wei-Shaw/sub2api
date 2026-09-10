@@ -220,6 +220,7 @@ func (h *OpenAIGatewayHandler) AlphaSearch(c *gin.Context) {
 			retryLimit := account.GetPoolModeRetryCount()
 			if sameAccountRetryAllowed(failoverErr, sameAccountRetryCount[account.ID], retryLimit) {
 				sameAccountRetryCount[account.ID]++
+				markOpenAIOAuthCapacitySameAccountRetry(c, account, failoverErr)
 				retryDelay := sameAccountRetryDelayFor(failoverErr, sameAccountRetryCount[account.ID])
 				reqLog.Warn("openai_alpha_search.same_account_retry",
 					zap.Int64("account_id", account.ID),

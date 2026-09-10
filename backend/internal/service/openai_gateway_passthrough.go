@@ -1611,6 +1611,10 @@ func (s *OpenAIGatewayService) handleOpenAIStreamTerminalAccountSideEffects(
 	canonicalModel ...string,
 ) (int, bool) {
 	statusCode := openAIStreamFailureStatus(payload, message)
+	ctx := context.Background()
+	if c != nil && c.Request != nil {
+		ctx = c.Request.Context()
+	}
 	switch statusCode {
 	case http.StatusForbidden:
 		if !openAIStream403AccountFailure(payload, message) {
@@ -1618,10 +1622,6 @@ func (s *OpenAIGatewayService) handleOpenAIStreamTerminalAccountSideEffects(
 		}
 		fallthrough
 	case http.StatusUnauthorized, http.StatusTooManyRequests, 529:
-		ctx := context.Background()
-		if c != nil && c.Request != nil {
-			ctx = c.Request.Context()
-		}
 		model := firstNonEmpty(canonicalModel...)
 		if model == "" {
 			model = firstNonEmpty(gjson.GetBytes(payload, "model").String(), gjson.GetBytes(payload, "response.model").String())
@@ -1634,6 +1634,11 @@ func (s *OpenAIGatewayService) handleOpenAIStreamTerminalAccountSideEffects(
 		}
 		return statusCode, s.handleOpenAIAccountUpstreamError(ctx, account, statusCode, accountHeaders, payload, model)
 	default:
+		if s != nil && s.rateLimitService != nil && isOpenAIRequestScopedCapacityShed(message, payload) {
+			stateCtx, cancel := openAIAccountStateContext(ctx)
+			s.rateLimitService.ObserveOpenAIOAuthCapacityFailure(stateCtx, account, statusCode, payload, message)
+			cancel()
+		}
 		return statusCode, false
 	}
 }

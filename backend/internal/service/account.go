@@ -51,6 +51,10 @@ type Account struct {
 	RateLimitResetAt *time.Time
 	OverloadUntil    *time.Time
 
+	// OpenAIOAuthCapacityAttemptSequence orders terminal outcomes across gateway
+	// instances. Scheduler selections receive a private copy before this is set.
+	OpenAIOAuthCapacityAttemptSequence int64
+
 	TempUnschedulableUntil  *time.Time
 	TempUnschedulableReason string
 
@@ -179,14 +183,17 @@ func (a *Account) EffectiveLoadFactor() int {
 }
 
 func (a *Account) IsSchedulable() bool {
+	return a != nil && a.isSchedulableAt(time.Now(), false)
+}
+
+func (a *Account) isSchedulableAt(now time.Time, ignoreOverload bool) bool {
 	if !a.IsActive() || !a.Schedulable {
 		return false
 	}
-	now := time.Now()
 	if a.AutoPauseOnExpired && a.ExpiresAt != nil && !now.Before(*a.ExpiresAt) {
 		return false
 	}
-	if a.OverloadUntil != nil && now.Before(*a.OverloadUntil) {
+	if !ignoreOverload && a.OverloadUntil != nil && now.Before(*a.OverloadUntil) {
 		return false
 	}
 	if a.RateLimitResetAt != nil && now.Before(*a.RateLimitResetAt) {

@@ -266,6 +266,70 @@ func TestPassthroughLifecycle_LaterTurnPreOutputRateLimitRequestsReconnect(t *te
 	}
 }
 
+func TestPassthroughLifecycle_CapacityFailuresAreScopedPerTurn(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	controlCtx, cancelControl := context.WithCancelCause(context.Background())
+	defer cancelControl(context.Canceled)
+	upstream := newStagedPassthroughConn()
+	cfg := passthroughLifecycleConfig()
+	cfg.Gateway.OpenAIWS.OAuthEnabled = true
+	svc := newPassthroughLifecycleService(cfg, upstream)
+	rateLimits, capacityCache, capacityRepo, _ := newOpenAIOAuthCapacityRateLimitService(t, true, 2)
+	svc.rateLimitService = rateLimits
+	rateLimits.SetAccountRuntimeBlocker(svc)
+	account := passthroughLifecycleAccount()
+	account.Type = AccountTypeOAuth
+	account.Credentials = map[string]any{"access_token": "oauth-token"}
+	account.Extra = map[string]any{"openai_oauth_responses_websockets_v2_mode": OpenAIWSIngressModePassthrough}
+	account.OpenAIOAuthCapacityAttemptSequence = rateLimits.beginOpenAIOAuthCapacityAttempt(controlCtx, account)
+
+	server, serverErr := startPassthroughLifecycleServer(t, controlCtx, svc, account)
+	defer server.Close()
+	clientConn := dialPassthroughLifecycleClient(t, server)
+	defer func() { _ = clientConn.CloseNow() }()
+	require.Equal(t, "response.create", gjson.GetBytes(requirePassthroughUpstreamWrite(t, upstream, time.Second), "type").String())
+
+	for turn := 1; turn <= 2; turn++ {
+		upstream.Send(fmt.Sprintf(`{"type":"error","error":{"code":"server_is_overloaded","message":"overloaded turn %d"}}`, turn))
+		upstream.Send(fmt.Sprintf(`{"type":"response.failed","response":{"id":"resp_fail_%d","status":"failed","error":{"code":"server_is_overloaded","message":"overloaded turn %d"}}}`, turn, turn))
+		for range 2 {
+			_, err := readPassthroughLifecycleFrame(t, clientConn, time.Second)
+			require.NoError(t, err)
+		}
+		if turn == 1 {
+			writeCtx, cancelWrite := context.WithTimeout(context.Background(), time.Second)
+			err := clientConn.Write(writeCtx, coderws.MessageText, []byte(`{"type":"response.create","model":"gpt-5.1","stream":false}`))
+			cancelWrite()
+			require.NoError(t, err)
+			require.Equal(t, "response.create", gjson.GetBytes(requirePassthroughUpstreamWrite(t, upstream, time.Second), "type").String())
+		}
+	}
+
+	require.Equal(t, int64(2), capacityCache.nextSequence)
+	require.Equal(t, 1, capacityRepo.setCalls)
+	writeCtx, cancelWrite := context.WithTimeout(context.Background(), time.Second)
+	err := clientConn.Write(writeCtx, coderws.MessageText, []byte(`{"type":"response.create","model":"gpt-5.1","stream":false}`))
+	cancelWrite()
+	require.NoError(t, err)
+	_, err = readPassthroughLifecycleFrame(t, clientConn, time.Second)
+	var websocketCloseErr coderws.CloseError
+	require.ErrorAs(t, err, &websocketCloseErr)
+	require.Equal(t, coderws.StatusTryAgainLater, websocketCloseErr.Code)
+	select {
+	case unexpected := <-upstream.writes:
+		t.Fatalf("post-cooldown turn reached pinned passthrough upstream: %s", unexpected)
+	default:
+	}
+	select {
+	case err := <-serverErr:
+		var closeErr *OpenAIWSClientCloseError
+		require.ErrorAs(t, err, &closeErr)
+		require.Equal(t, coderws.StatusTryAgainLater, closeErr.StatusCode())
+	case <-time.After(3 * time.Second):
+		t.Fatal("post-cooldown passthrough turn did not terminate")
+	}
+}
+
 func TestPassthroughLifecycle_CyberTerminalEventsMarkBeforeAfterTurn(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
