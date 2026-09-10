@@ -444,7 +444,7 @@ func (s *OpenAIQuotaAutoResetService) evaluateAccount(ctx context.Context, accou
 	// 用量快照过期只驱动阈值路径重查；只开到期用卡的账号按 24 小时计划与定时器取卡。
 	// 计划内取卡只由领导实例做；错峰未轮到的账号也不因用量快照过期而提前实查，
 	// 避免重启时集中打上游。用量阈值触发不受此限。
-	needsQuery := (openAIAutoResetSnapshotStale(account.Extra, now) && fetchState.fetched && config.thresholdActive()) ||
+	needsQuery := (openAIAutoResetSnapshotStale(account.Extra, now) && fetchState.fetched && config.Enabled) ||
 		assessment.thresholdReached || expiryPending || stateDue || refreshDue
 	if assessment.pauseReached && !assessment.resetReached {
 		needsQuery = needsQuery || state == nil || state.Status == OpenAIAutoResetStatusChecking || state.Status == OpenAIAutoResetStatusFailed || openAIAutoResetStateStale(state, now)
@@ -717,8 +717,8 @@ func (s *OpenAIQuotaAutoResetService) buildAssessment(account *Account, config O
 		threshold5h:   config.Threshold5h,
 		threshold7d:   config.Threshold7d,
 	}
-	reset5h := config.Enabled && config.Threshold5h > 0 && utilization5h >= config.Threshold5h
-	reset7d := config.Enabled && config.Threshold7d > 0 && utilization7d >= config.Threshold7d
+	reset5h := config.Enabled && utilization5h >= config.Threshold5h
+	reset7d := config.Enabled && utilization7d >= config.Threshold7d
 	assessment.thresholdReached = reset5h || reset7d
 	assessment.resetReached = assessment.thresholdReached || expiryReached
 	assessment.triggerWindow = joinOpenAIAutoResetWindows(reset5h, reset7d)
