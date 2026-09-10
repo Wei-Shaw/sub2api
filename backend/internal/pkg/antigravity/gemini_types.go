@@ -77,9 +77,14 @@ type GeminiImageConfig struct {
 }
 
 // GeminiThinkingConfig Gemini thinking 配置
+//
+// ThinkingLevel controls reasoning depth for Gemini 3.x models
+// ("low" / "medium" / "high"). Antigravity only returns thought summaries when
+// it is set; a positive ThinkingBudget suppresses them.
 type GeminiThinkingConfig struct {
-	IncludeThoughts bool `json:"includeThoughts"`
-	ThinkingBudget  int  `json:"thinkingBudget,omitempty"`
+	IncludeThoughts bool   `json:"includeThoughts"`
+	ThinkingBudget  int    `json:"thinkingBudget,omitempty"`
+	ThinkingLevel   string `json:"thinkingLevel,omitempty"`
 }
 
 // GeminiToolDeclaration Gemini 工具声明

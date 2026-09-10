@@ -618,6 +618,30 @@ func isAntigravityOpusHighTierModel(model string) bool {
 		strings.HasPrefix(lower, "claude-opus-4-8")
 }
 
+// antigravityGeminiThinkingLevelModel reports whether the model expresses its
+// reasoning depth through Antigravity's thinkingLevel field (Gemini 3.x)
+// instead of thinkingBudget.
+func antigravityGeminiThinkingLevelModel(model string) bool {
+	lower := strings.ToLower(strings.TrimPrefix(model, "models/"))
+	return strings.HasPrefix(lower, "gemini-3")
+}
+
+// antigravityGeminiThinkingLevel derives thinkingLevel from the model variant
+// suffix. Antigravity only returns thought summaries when thinkingLevel is set
+// (a positive thinkingBudget suppresses them); models without an explicit
+// low/medium/high suffix default to "high".
+func antigravityGeminiThinkingLevel(model string) string {
+	lower := strings.ToLower(model)
+	switch {
+	case strings.Contains(lower, "-low"):
+		return "low"
+	case strings.Contains(lower, "-medium"):
+		return "medium"
+	default:
+		return "high"
+	}
+}
+
 func buildGenerationConfig(req *ClaudeRequest) *GeminiGenerationConfig {
 	maxLimit := maxOutputTokensLimit(req.Model)
 	config := &GeminiGenerationConfig{
@@ -640,31 +664,38 @@ func buildGenerationConfig(req *ClaudeRequest) *GeminiGenerationConfig {
 			IncludeThoughts: true,
 		}
 
-		// - thinking.type=enabled：budget_tokens>0 用显式预算
-		// - thinking.type=adaptive：在 Antigravity 的高阶 Opus（4.6+）上覆写为 （24576）
-		budget := -1
-		if req.Thinking.BudgetTokens > 0 {
-			budget = req.Thinking.BudgetTokens
-		}
-		if req.Thinking.Type == "adaptive" && isAntigravityOpusHighTierModel(req.Model) {
-			budget = ClaudeAdaptiveHighThinkingBudgetTokens
-		}
-
-		// 正预算需要做上限与 max_tokens 约束；动态预算（-1）直接透传给上游。
-		if budget > 0 {
-			// gemini-2.5-flash 上限
-			if strings.Contains(req.Model, "gemini-2.5-flash") && budget > Gemini25FlashThinkingBudgetLimit {
-				budget = Gemini25FlashThinkingBudgetLimit
+		if antigravityGeminiThinkingLevelModel(req.Model) {
+			// Gemini 3.x on Antigravity addresses reasoning depth via
+			// thinkingLevel. A positive thinkingBudget suppresses the thought
+			// summary, so only thinkingLevel is emitted for these models.
+			config.ThinkingConfig.ThinkingLevel = antigravityGeminiThinkingLevel(req.Model)
+		} else {
+			// - thinking.type=enabled：budget_tokens>0 用显式预算
+			// - thinking.type=adaptive：在 Antigravity 的高阶 Opus（4.6+）上覆写为 （24576）
+			budget := -1
+			if req.Thinking.BudgetTokens > 0 {
+				budget = req.Thinking.BudgetTokens
+			}
+			if req.Thinking.Type == "adaptive" && isAntigravityOpusHighTierModel(req.Model) {
+				budget = ClaudeAdaptiveHighThinkingBudgetTokens
 			}
 
-			// 自动修正：max_tokens 必须大于 budget_tokens（Claude 上游要求）
-			if adjusted, ok := ensureMaxTokensGreaterThanBudget(config.MaxOutputTokens, budget); ok {
-				log.Printf("[Antigravity] Auto-adjusted max_tokens from %d to %d (must be > budget_tokens=%d)",
-					config.MaxOutputTokens, adjusted, budget)
-				config.MaxOutputTokens = adjusted
+			// 正预算需要做上限与 max_tokens 约束；动态预算（-1）直接透传给上游。
+			if budget > 0 {
+				// gemini-2.5-flash 上限
+				if strings.Contains(req.Model, "gemini-2.5-flash") && budget > Gemini25FlashThinkingBudgetLimit {
+					budget = Gemini25FlashThinkingBudgetLimit
+				}
+
+				// 自动修正：max_tokens 必须大于 budget_tokens（Claude 上游要求）
+				if adjusted, ok := ensureMaxTokensGreaterThanBudget(config.MaxOutputTokens, budget); ok {
+					log.Printf("[Antigravity] Auto-adjusted max_tokens from %d to %d (must be > budget_tokens=%d)",
+						config.MaxOutputTokens, adjusted, budget)
+					config.MaxOutputTokens = adjusted
+				}
 			}
+			config.ThinkingConfig.ThinkingBudget = budget
 		}
-		config.ThinkingConfig.ThinkingBudget = budget
 	}
 
 	if config.MaxOutputTokens > maxLimit {

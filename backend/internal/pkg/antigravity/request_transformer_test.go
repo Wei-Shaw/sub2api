@@ -376,6 +376,71 @@ func TestBuildGenerationConfig_ThinkingDynamicBudget(t *testing.T) {
 	}
 }
 
+func TestBuildGenerationConfig_GeminiThinkingLevel(t *testing.T) {
+	tests := []struct {
+		name       string
+		model      string
+		wantLevel  string
+		wantBudget int
+	}{
+		{
+			name:       "gemini-3.8 tiered uses thinkingLevel high and omits budget",
+			model:      "gemini-3.8-flash-tiered",
+			wantLevel:  "high",
+			wantBudget: 0,
+		},
+		{
+			name:       "gemini-3.8 high maps to high",
+			model:      "gemini-3.8-flash-high",
+			wantLevel:  "high",
+			wantBudget: 0,
+		},
+		{
+			name:       "gemini-3.8 medium maps to medium",
+			model:      "gemini-3.8-flash-medium",
+			wantLevel:  "medium",
+			wantBudget: 0,
+		},
+		{
+			name:       "gemini-3.8 low maps to low",
+			model:      "gemini-3.8-flash-low",
+			wantLevel:  "low",
+			wantBudget: 0,
+		},
+		{
+			name:       "gemini-3.1 pro low maps to low",
+			model:      "gemini-3.1-pro-low",
+			wantLevel:  "low",
+			wantBudget: 0,
+		},
+		{
+			name:       "gemini-2.5 flash keeps thinkingBudget and no level",
+			model:      "gemini-2.5-flash",
+			wantLevel:  "",
+			wantBudget: 4096,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			req := &ClaudeRequest{
+				Model:    tt.model,
+				Thinking: &ThinkingConfig{Type: "enabled", BudgetTokens: 4096},
+			}
+			cfg := buildGenerationConfig(req)
+			if cfg.ThinkingConfig == nil || !cfg.ThinkingConfig.IncludeThoughts {
+				t.Fatalf("expected includeThoughts=true")
+			}
+			if cfg.ThinkingConfig.ThinkingLevel != tt.wantLevel {
+				t.Fatalf("expected thinkingLevel=%q, got %q", tt.wantLevel, cfg.ThinkingConfig.ThinkingLevel)
+			}
+			if cfg.ThinkingConfig.ThinkingBudget != tt.wantBudget {
+				t.Fatalf("expected thinkingBudget=%d, got %d", tt.wantBudget, cfg.ThinkingConfig.ThinkingBudget)
+			}
+		})
+	}
+}
+
 func TestTransformClaudeToGeminiWithOptions_PreservesBillingHeaderSystemBlock(t *testing.T) {
 	tests := []struct {
 		name   string
