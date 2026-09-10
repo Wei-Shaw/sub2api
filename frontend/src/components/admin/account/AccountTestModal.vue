@@ -372,9 +372,8 @@ import Select from '@/components/common/Select.vue'
 import TextArea from '@/components/common/TextArea.vue'
 import { Icon } from '@/components/icons'
 import { useClipboard } from '@/composables/useClipboard'
-import { buildApiUrl } from '@/api/client'
+import { apiClient, buildApiUrl } from '@/api/client'
 import { ADMIN_UI_REQUEST_HEADER } from '@/api/adminUIRequest'
-import { adminAPI } from '@/api/admin'
 import type { Account, ClaudeModel } from '@/types'
 
 const { t } = useI18n()
@@ -390,10 +389,13 @@ interface PreviewMedia {
   mimeType?: string
 }
 
-const props = defineProps<{
+const props = withDefaults(defineProps<{
   show: boolean
   account: Account | null
-}>()
+  apiBase?: string
+}>(), {
+  apiBase: '/admin/accounts'
+})
 
 const emit = defineEmits<{
   (e: 'close'): void
@@ -766,7 +768,7 @@ const loadAvailableModels = async () => {
   loadingModels.value = true
   selectedModelId.value = '' // Reset selection before loading
   try {
-    const models = await adminAPI.accounts.getAvailableModels(props.account.id)
+    const { data: models } = await apiClient.get<ClaudeModel[]>(`${props.apiBase}/${props.account.id}/models`)
     availableModels.value = props.account.platform === 'gemini' || props.account.platform === 'antigravity'
       ? sortTestModels(models)
       : models
@@ -878,7 +880,7 @@ const startTest = async () => {
     }
 
     // Use the configured API base; EventSource does not support POST.
-    const url = buildApiUrl(`/admin/accounts/${props.account.id}/test`)
+    const url = buildApiUrl(`${props.apiBase}/${props.account.id}/test`)
 
     // Use fetch with streaming for SSE since EventSource doesn't support POST
     const response = await fetch(url, {

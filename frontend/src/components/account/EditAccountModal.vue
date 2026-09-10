@@ -2908,6 +2908,26 @@
         data-tour="account-form-groups"
       />
 
+      <div class="border-t border-gray-200 pt-4 dark:border-dark-600">
+        <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div class="min-w-0">
+            <label class="input-label mb-0">{{ t('admin.accounts.visibleUsers.fieldLabel') }}</label>
+            <p class="mt-1 text-xs leading-5 text-gray-500 dark:text-gray-400">
+              {{ t('admin.accounts.visibleUsers.fieldHint') }}
+            </p>
+          </div>
+          <button
+            type="button"
+            class="btn btn-secondary shrink-0"
+            data-testid="account-visible-users-button"
+            @click="showVisibleUsers = true"
+          >
+            <Icon name="users" size="sm" class="mr-1.5" />
+            {{ t('admin.accounts.visibleUsers.open') }}
+          </button>
+        </div>
+      </div>
+
     </form>
 
     <template #footer>
@@ -2947,6 +2967,12 @@
       </div>
     </template>
   </BaseDialog>
+
+  <AccountVisibleUsersModal
+    :show="showVisibleUsers"
+    :account="account"
+    @close="showVisibleUsers = false"
+  />
 
   <!-- Mixed Channel Warning Dialog -->
   <ConfirmDialog
@@ -2988,6 +3014,7 @@ import HelpTooltip from '@/components/common/HelpTooltip.vue'
 import UpstreamRequestIdHeaderField from '@/components/account/UpstreamRequestIdHeaderField.vue'
 import Toggle from '@/components/common/Toggle.vue'
 import Icon from '@/components/icons/Icon.vue'
+import AccountVisibleUsersModal from '@/components/account/AccountVisibleUsersModal.vue'
 import ProxySelector from '@/components/common/ProxySelector.vue'
 import ProxyAdBanner from '@/components/common/ProxyAdBanner.vue'
 import GroupSelector from '@/components/common/GroupSelector.vue'
@@ -3063,6 +3090,7 @@ const emit = defineEmits<{
 
 const { t } = useI18n()
 const appStore = useAppStore()
+const showVisibleUsers = ref(false)
 const browserTimeZone = getBrowserTimeZone()
 
 const selectableGroups = computed(() => {
@@ -4778,6 +4806,7 @@ const parseDateTimeLocal = parseDateTimeLocalInput
 
 // Methods
 const handleClose = () => {
+	showVisibleUsers.value = false
   antigravityMixedChannelConfirmed.value = false
   clearMixedChannelDialog()
   emit('close')

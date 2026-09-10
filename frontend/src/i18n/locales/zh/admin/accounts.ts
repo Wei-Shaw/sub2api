@@ -2,6 +2,20 @@ export default {
     accounts: {
       title: '账号管理',
       description: '管理 AI 平台账号和 Cookie',
+      visibleUsers: {
+        title: '可查看用户',
+        fieldLabel: '可查看用户',
+        fieldHint: '仅被选中的用户可以在自己的账号管理页面查看此账号。',
+        open: '选择用户',
+        description: '选择可以查看账号“{account}”的用户。此设置不会授予编辑权限。',
+        searchPlaceholder: '搜索邮箱或用户名',
+        selectedCount: '已选择 {count} 位用户',
+        noUsers: '没有找到符合条件的用户',
+        removeUser: '移除用户',
+        adminRole: '管理员',
+        userRole: '普通用户',
+        saved: '可查看用户已更新'
+      },
       createAccount: '添加账号',
       autoRefresh: '自动刷新',
       enableAutoRefresh: '启用自动刷新',
@@ -85,6 +99,7 @@ export default {
       allPlatforms: '全部平台',
       platformTabsLabel: '按平台筛选账号',
       groupTabsLabel: '按分组筛选账号',
+      reorderGroupTabs: '长按拖动以调整分组顺序',
       allTypes: '全部类型',
       allStatus: '全部状态',
       allGroups: '全部分组',

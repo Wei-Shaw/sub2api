@@ -31,6 +31,14 @@ import type {
   GrokMediaEligibilityState
 } from '@/types'
 
+export interface AccountVisibleUser {
+  id: number
+  email: string
+  username: string
+  role: string
+  status: string
+}
+
 /**
  * List all accounts with pagination
  * @param page - Page number (default: 1)
@@ -64,6 +72,18 @@ export async function list(
       ...filters
     },
     signal: options?.signal
+  })
+  return data
+}
+
+export async function listVisibleUsers(accountId: number): Promise<AccountVisibleUser[]> {
+  const { data } = await apiClient.get<AccountVisibleUser[]>(`/admin/accounts/${accountId}/visible-users`)
+  return data
+}
+
+export async function updateVisibleUsers(accountId: number, userIds: number[]): Promise<{ user_ids: number[] }> {
+  const { data } = await apiClient.put<{ user_ids: number[] }>(`/admin/accounts/${accountId}/visible-users`, {
+    user_ids: userIds
   })
   return data
 }
@@ -1068,6 +1088,8 @@ export async function refreshOllamaCloudUsage(id: number): Promise<OllamaCloudUs
 
 export const accountsAPI = {
   list,
+  listVisibleUsers,
+  updateVisibleUsers,
   listWithEtag,
   getUpstreamBillingRatesWithEtag,
   getById,

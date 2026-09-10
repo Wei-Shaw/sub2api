@@ -3,6 +3,7 @@ import common from './common'
 import dashboard from './dashboard'
 import channelMonitorV2 from './channelMonitorV2'
 import batchImage from './batchImage'
+import accountVisibility from './accountVisibility'
 import admin from './admin'
 import misc from './misc'
 
@@ -12,6 +13,7 @@ export default {
   ...dashboard,
   ...channelMonitorV2,
   ...batchImage,
+  ...accountVisibility,
   admin,
   ...misc,
 }

@@ -1,0 +1,53 @@
+export default {
+  visibleAccounts: {
+    title: 'Account Management',
+    description: 'View upstream accounts shared with you by an administrator',
+    searchPlaceholder: 'Search account names',
+    allPlatforms: 'All Platforms',
+    allTypes: 'All Types',
+    allStatuses: 'All Statuses',
+    allGroups: 'All Groups',
+    ungrouped: 'No Group',
+    refresh: 'Refresh',
+    autoRefresh: 'Auto Refresh',
+    enableAutoRefresh: 'Enable Auto Refresh',
+    autoRefreshCountdown: 'Auto refresh: {seconds}s',
+    refreshInterval5s: '5 seconds',
+    refreshInterval10s: '10 seconds',
+    refreshInterval15s: '15 seconds',
+    refreshInterval30s: '30 seconds',
+    moreActions: 'More Actions',
+    viewColumns: 'Columns',
+    emptyTitle: 'No visible accounts',
+    emptyDescription: 'No accounts have been shared with you, or no results match the current filters.',
+    columns: {
+      name: 'Account',
+      id: 'ID',
+      platformType: 'Platform and Type',
+      status: 'Status',
+      schedulable: 'Scheduling',
+      concurrency: 'Concurrency',
+      groups: 'Groups',
+      priority: 'Priority',
+      lastUsed: 'Last Used',
+      createdAt: 'Created At',
+      expiresAt: 'Expires At'
+    },
+    status: {
+      active: 'Active',
+      inactive: 'Inactive',
+      error: 'Error',
+      rateLimited: 'Rate Limited',
+      overloaded: 'Overloaded',
+      tempUnschedulable: 'Temporarily Unavailable',
+      unschedulable: 'Unschedulable'
+    },
+    schedulableYes: 'Schedulable',
+    schedulableNo: 'Unschedulable',
+    oauth: 'OAuth',
+    setupToken: 'Setup Token',
+    apiKey: 'API Key',
+    never: 'Never used',
+    noExpiry: 'No expiry'
+  }
+}

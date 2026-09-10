@@ -49,6 +49,33 @@ const getBodyText = () => document.body.textContent ?? ''
 const getBodyButtons = () => Array.from(document.body.querySelectorAll('button'))
 
 describe('AccountActionMenu — spark shadow 按钮可见性', () => {
+  it('只读模式仅保留连接测试和统计入口', () => {
+    const account = makeAccount({
+      platform: 'openai',
+      type: 'oauth',
+      parent_account_id: null,
+      status: 'error',
+      quota_limit: 100,
+    })
+    const wrapper = mount(AccountActionMenu, {
+      props: { show: true, account, anchorRect, readOnly: true },
+      attachTo: document.body,
+    })
+
+    const body = getBodyText()
+    expect(body).toContain('admin.accounts.testConnection')
+    expect(body).toContain('admin.accounts.viewStats')
+    expect(body).not.toContain('admin.scheduledTests.schedule')
+    expect(body).not.toContain('admin.accounts.duplicateAccount')
+    expect(body).not.toContain('admin.accounts.reAuthorize')
+    expect(body).not.toContain('admin.accounts.refreshToken')
+    expect(body).not.toContain('admin.accounts.createSparkShadow')
+    expect(body).not.toContain('admin.accounts.setPrivacy')
+    expect(body).not.toContain('admin.accounts.recoverState')
+    expect(body).not.toContain('admin.accounts.resetQuota')
+    wrapper.unmount()
+  })
+
   it('普通账号显示「复制账号」按钮', () => {
     const account = makeAccount({ platform: 'anthropic', type: 'apikey', parent_account_id: null })
     const wrapper = mount(AccountActionMenu, {

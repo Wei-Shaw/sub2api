@@ -25,6 +25,20 @@ func RegisterUserRoutes(
 	// 用户管理面变更类操作入审计（含 TOTP 启用/禁用、step-up 验证、密码修改等安全事件）
 	authenticated.Use(gin.HandlerFunc(auditLog))
 	{
+		// 用户可查看的上游账号列表及受限诊断操作
+		accounts := authenticated.Group("/accounts")
+		{
+			accounts.GET("", h.AccountVisibility.List)
+			accounts.GET("/groups", h.AccountVisibility.ListGroups)
+			visibleAccount := accounts.Group("/:id")
+			visibleAccount.Use(h.AccountVisibility.RequireVisibleAccount())
+			{
+				visibleAccount.POST("/test", panelRateLimiter.Heavy(), h.Admin.Account.Test)
+				visibleAccount.GET("/stats", panelRateLimiter.Heavy(), h.Admin.Account.GetStats)
+				visibleAccount.GET("/models", panelRateLimiter.Heavy(), h.Admin.Account.GetAvailableModels)
+			}
+		}
+
 		// 用户接口
 		user := authenticated.Group("/user")
 		{

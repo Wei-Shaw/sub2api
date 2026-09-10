@@ -88,6 +88,24 @@ const AccountStatsModalStub = defineComponent({
   template: '<div data-test="stats-account">{{ show ? account?.name : "" }}</div>'
 })
 
+const VueDraggableStub = defineComponent({
+  props: { modelValue: { type: Array, default: () => [] } },
+  emits: ['update:modelValue', 'start', 'end'],
+  methods: {
+    simulateReorder() {
+      this.$emit('start')
+      this.$emit('update:modelValue', [...this.modelValue].reverse())
+      this.$emit('end')
+    }
+  },
+  template: `
+    <div data-test="group-tabs-draggable">
+      <slot />
+      <button type="button" data-test="simulate-group-reorder" @click="simulateReorder" />
+    </div>
+  `
+})
+
 function mountView(stubActionMenu = true) {
   return mount(AccountsView, {
     attachTo: document.body,
@@ -123,6 +141,7 @@ function mountView(stubActionMenu = true) {
         UpstreamBillingRateCell: true,
         HelpTooltip: true,
         Icon: true,
+        VueDraggable: VueDraggableStub,
         Teleport: stubActionMenu
       }
     }
@@ -200,6 +219,50 @@ describe('admin AccountsView lite account list', () => {
       expect.objectContaining({ group: '7', lite: '1' }),
       expect.objectContaining({ signal: expect.any(AbortSignal) })
     )
+    wrapper.unmount()
+  })
+
+  it('restores the local group order while keeping boundary tabs fixed', async () => {
+    localStorage.setItem('account-group-tab-order', JSON.stringify([9, 7]))
+    getAllGroups.mockResolvedValue([
+      { id: 7, name: 'first', platform: 'openai' },
+      { id: 8, name: 'new', platform: 'openai' },
+      { id: 9, name: 'last', platform: 'openai' }
+    ])
+
+    const wrapper = mountView()
+    await flushPromises()
+
+    expect(wrapper.findAll('[role="tab"]').map((tab) => tab.text().trim())).toEqual([
+      'admin.accounts.allGroups',
+      'last',
+      'first',
+      'new',
+      'admin.accounts.ungroupedTab'
+    ])
+    wrapper.unmount()
+  })
+
+  it('persists a dragged group order while keeping boundary tabs fixed', async () => {
+    getAllGroups.mockResolvedValue([
+      { id: 7, name: 'first', platform: 'openai' },
+      { id: 8, name: 'middle', platform: 'openai' },
+      { id: 9, name: 'last', platform: 'openai' }
+    ])
+
+    const wrapper = mountView()
+    await flushPromises()
+    await wrapper.get('[data-test="simulate-group-reorder"]').trigger('click')
+    await flushPromises()
+
+    expect(wrapper.findAll('[role="tab"]').map((tab) => tab.text().trim())).toEqual([
+      'admin.accounts.allGroups',
+      'last',
+      'middle',
+      'first',
+      'admin.accounts.ungroupedTab'
+    ])
+    expect(JSON.parse(localStorage.getItem('account-group-tab-order') ?? '[]')).toEqual([9, 8, 7])
     wrapper.unmount()
   })
 

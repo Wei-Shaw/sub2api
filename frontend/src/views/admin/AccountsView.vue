@@ -9,22 +9,72 @@
             :aria-label="t('admin.accounts.groupTabsLabel')"
           >
             <button
-              v-for="tab in groupTabs"
-              :key="tab.value || 'all-groups'"
               type="button"
               role="tab"
-              :aria-selected="activeGroup === tab.value"
-              :class="[
-                'relative shrink-0 rounded-lg px-3 py-2 text-sm font-medium transition-colors',
-                activeGroup === tab.value
-                  ? 'bg-primary-50 text-primary-700 dark:bg-primary-900/30 dark:text-primary-300'
-                  : 'text-gray-500 hover:bg-gray-50 hover:text-gray-700 dark:text-gray-400 dark:hover:bg-dark-700 dark:hover:text-gray-200'
-              ]"
-              @click="selectGroupTab(tab.value)"
+              :aria-selected="activeGroup === allGroupsTab.value"
+              :class="groupTabClass(allGroupsTab.value)"
+              @click="selectGroupTab(allGroupsTab.value)"
             >
-              {{ tab.label }}
+              {{ allGroupsTab.label }}
               <span
-                v-if="activeGroup === tab.value && loading"
+                v-if="activeGroup === allGroupsTab.value && loading"
+                class="ml-1.5 inline-block h-3 w-3 animate-spin rounded-full border-2 border-current border-r-transparent align-[-2px]"
+                aria-hidden="true"
+              />
+            </button>
+
+            <VueDraggable
+              v-model="orderedGroupTabs"
+              tag="div"
+              class="flex shrink-0 gap-1"
+              :animation="180"
+              :delay="250"
+              :delay-on-touch-only="false"
+              :touch-start-threshold="3"
+              :fallback-tolerance="4"
+              :force-fallback="true"
+              direction="horizontal"
+              handle=".account-group-tab-drag-handle"
+              ghost-class="opacity-40"
+              chosen-class="cursor-grabbing"
+              @start="handleGroupTabDragStart"
+              @end="handleGroupTabDragEnd"
+            >
+              <button
+                v-for="tab in orderedGroupTabs"
+                :key="tab.value"
+                type="button"
+                role="tab"
+                :aria-selected="activeGroup === tab.value"
+                :class="[groupTabClass(tab.value), 'account-group-tab-drag-handle cursor-grab select-none touch-none active:cursor-grabbing']"
+                @click="handleGroupTabClick(tab.value)"
+              >
+                <span
+                  class="mr-1 inline-flex items-center text-current/50"
+                  :title="t('admin.accounts.reorderGroupTabs')"
+                  aria-hidden="true"
+                >
+                  <Icon name="menu" size="xs" />
+                </span>
+                {{ tab.label }}
+                <span
+                  v-if="activeGroup === tab.value && loading"
+                  class="ml-1.5 inline-block h-3 w-3 animate-spin rounded-full border-2 border-current border-r-transparent align-[-2px]"
+                  aria-hidden="true"
+                />
+              </button>
+            </VueDraggable>
+
+            <button
+              type="button"
+              role="tab"
+              :aria-selected="activeGroup === ungroupedTab.value"
+              :class="groupTabClass(ungroupedTab.value)"
+              @click="selectGroupTab(ungroupedTab.value)"
+            >
+              {{ ungroupedTab.label }}
+              <span
+                v-if="activeGroup === ungroupedTab.value && loading"
                 class="ml-1.5 inline-block h-3 w-3 animate-spin rounded-full border-2 border-current border-r-transparent align-[-2px]"
                 aria-hidden="true"
               />
@@ -519,6 +569,7 @@
 <script setup lang="ts">
 import { ref, reactive, computed, onMounted, onUnmounted, toRaw, watch } from 'vue'
 import { useIntervalFn } from '@vueuse/core'
+import { VueDraggable } from 'vue-draggable-plus'
 import { useI18n } from 'vue-i18n'
 import { useAppStore } from '@/stores/app'
 import { useAuthStore } from '@/stores/auth'
@@ -572,15 +623,71 @@ const authStore = useAuthStore()
 const proxies = ref<AccountProxy[]>([])
 const groups = ref<AdminGroup[]>([])
 const ACCOUNT_UNGROUPED_GROUP_QUERY_VALUE = 'ungrouped'
+const ACCOUNT_GROUP_TAB_ORDER_STORAGE_KEY = 'account-group-tab-order'
 const activeGroup = ref('')
-const groupTabs = computed(() => [
-  { value: '', label: t('admin.accounts.allGroups') },
-  ...groups.value.map((group) => ({
-    value: String(group.id),
-    label: group.name
-  })),
-  { value: ACCOUNT_UNGROUPED_GROUP_QUERY_VALUE, label: t('admin.accounts.ungroupedTab') }
-])
+type GroupTab = { value: string; label: string }
+const allGroupsTab = computed<GroupTab>(() => ({ value: '', label: t('admin.accounts.allGroups') }))
+const ungroupedTab = computed<GroupTab>(() => ({
+  value: ACCOUNT_UNGROUPED_GROUP_QUERY_VALUE,
+  label: t('admin.accounts.ungroupedTab')
+}))
+const groupTabOrder = ref<number[]>(loadStoredGroupTabOrder())
+const orderedGroupTabs = ref<GroupTab[]>([])
+const suppressNextGroupTabClick = ref(false)
+function loadStoredGroupTabOrder(): number[] {
+  if (typeof window === 'undefined') return []
+  try {
+    const parsed = JSON.parse(window.localStorage.getItem(ACCOUNT_GROUP_TAB_ORDER_STORAGE_KEY) ?? 'null')
+    return Array.isArray(parsed)
+      ? parsed.filter((value): value is number => Number.isInteger(value) && value > 0)
+      : []
+  } catch {
+    return []
+  }
+}
+function persistGroupTabOrder() {
+  if (typeof window === 'undefined') return
+  try {
+    window.localStorage.setItem(ACCOUNT_GROUP_TAB_ORDER_STORAGE_KEY, JSON.stringify(groupTabOrder.value))
+  } catch {
+    // Storage can be unavailable in private browsing or restricted environments.
+  }
+}
+function syncOrderedGroupTabs() {
+  const groupsById = new Map(groups.value.map((group) => [group.id, group]))
+  const orderedIds = [
+    ...groupTabOrder.value.filter((id) => groupsById.has(id)),
+    ...groups.value.map((group) => group.id).filter((id) => !groupTabOrder.value.includes(id))
+  ]
+  orderedGroupTabs.value = orderedIds.map((id) => {
+    const group = groupsById.get(id)!
+    return { value: String(group.id), label: group.name }
+  })
+  if (groups.value.length > 0) groupTabOrder.value = orderedIds
+}
+function handleGroupTabDragStart() {
+  suppressNextGroupTabClick.value = true
+}
+function handleGroupTabDragEnd() {
+  groupTabOrder.value = orderedGroupTabs.value
+    .map((tab) => Number(tab.value))
+    .filter((id) => Number.isInteger(id) && id > 0)
+  persistGroupTabOrder()
+  window.setTimeout(() => {
+    suppressNextGroupTabClick.value = false
+  }, 0)
+}
+function handleGroupTabClick(group: string) {
+  if (suppressNextGroupTabClick.value) return
+  selectGroupTab(group)
+}
+watch(groups, syncOrderedGroupTabs, { immediate: true })
+const groupTabClass = (value: string) => [
+  'relative shrink-0 rounded-lg px-3 py-2 text-sm font-medium transition-colors',
+  activeGroup.value === value
+    ? 'bg-primary-50 text-primary-700 dark:bg-primary-900/30 dark:text-primary-300'
+    : 'text-gray-500 hover:bg-gray-50 hover:text-gray-700 dark:text-gray-400 dark:hover:bg-dark-700 dark:hover:text-gray-200'
+]
 const groupsByID = computed(() => new Map(groups.value.map(group => [group.id, group])))
 const accountGroupsForRow = (account: Pick<AccountListItem, 'group_ids'>): AdminGroup[] => {
   const groupIDs = account.group_ids ?? []

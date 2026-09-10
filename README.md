@@ -18,6 +18,16 @@ English | [中文](README_CN.md) | [日本語](README_JA.md)
 
 </div>
 
+## 最新更新
+
+### 2026-09-11
+
+- 管理员可以为账号配置可查看用户，普通用户可以在账号管理中查看获授权的账号。
+- 普通用户账号列表支持筛选、列设置、自动刷新、排序记忆和分组选项卡拖动排序，并保留连接测试与统计查看入口。
+- 管理员账号分组选项卡支持长按拖动排序，“全部分组”和“无分组”固定在首尾，顺序仅保存在当前浏览器。
+
+[查看完整发布记录](docs/releases/release-notes.md)
+
 ## ⚠️ Important Notice
 
 Please read the following carefully before using this project:

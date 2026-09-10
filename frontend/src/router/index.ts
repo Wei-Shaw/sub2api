@@ -216,6 +216,18 @@ const routes: RouteRecordRaw[] = [
     }
   },
   {
+    path: '/accounts',
+    name: 'UserAccounts',
+    component: () => import('@/views/user/AccountsView.vue'),
+    meta: {
+      requiresAuth: true,
+      requiresAdmin: false,
+      title: 'Account Management',
+      titleKey: 'visibleAccounts.title',
+      descriptionKey: 'visibleAccounts.description'
+    }
+  },
+  {
     path: '/batch-image',
     name: 'BatchImageGuide',
     alias: '/docs/batch-image',

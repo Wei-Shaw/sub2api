@@ -1,0 +1,53 @@
+export default {
+  visibleAccounts: {
+    title: '账号管理',
+    description: '查看管理员授权给你的上游账号',
+    searchPlaceholder: '搜索账号名称',
+    allPlatforms: '全部平台',
+    allTypes: '全部类型',
+    allStatuses: '全部状态',
+    allGroups: '全部分组',
+    ungrouped: '无分组',
+    refresh: '刷新',
+    autoRefresh: '自动刷新',
+    enableAutoRefresh: '启用自动刷新',
+    autoRefreshCountdown: '自动刷新：{seconds}s',
+    refreshInterval5s: '5 秒',
+    refreshInterval10s: '10 秒',
+    refreshInterval15s: '15 秒',
+    refreshInterval30s: '30 秒',
+    moreActions: '更多操作',
+    viewColumns: '列显示',
+    emptyTitle: '暂无可查看账号',
+    emptyDescription: '管理员尚未向你开放任何账号，或当前筛选条件下没有结果。',
+    columns: {
+      name: '账号名称',
+      id: '编号',
+      platformType: '平台与类型',
+      status: '状态',
+      schedulable: '可调度',
+      concurrency: '并发上限',
+      groups: '所属分组',
+      priority: '优先级',
+      lastUsed: '最后使用',
+      createdAt: '创建时间',
+      expiresAt: '到期时间'
+    },
+    status: {
+      active: '正常',
+      inactive: '停用',
+      error: '异常',
+      rateLimited: '限流中',
+      overloaded: '过载中',
+      tempUnschedulable: '暂不可用',
+      unschedulable: '不可调度'
+    },
+    schedulableYes: '可调度',
+    schedulableNo: '不可调度',
+    oauth: 'OAuth',
+    setupToken: 'Setup Token',
+    apiKey: 'API 密钥',
+    never: '从未使用',
+    noExpiry: '长期有效'
+  }
+}

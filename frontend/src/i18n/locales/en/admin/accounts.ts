@@ -2,6 +2,20 @@ export default {
     accounts: {
       title: 'Account Management',
       description: 'Manage AI platform accounts and credentials',
+      visibleUsers: {
+        title: 'Visible Users',
+        fieldLabel: 'Visible Users',
+        fieldHint: 'Only selected users can view this account on their account management page.',
+        open: 'Select Users',
+        description: 'Select users who can view “{account}”. This setting does not grant edit access.',
+        searchPlaceholder: 'Search by email or username',
+        selectedCount: '{count} users selected',
+        noUsers: 'No matching users found',
+        removeUser: 'Remove user',
+        adminRole: 'Admin',
+        userRole: 'User',
+        saved: 'Visible users updated'
+      },
       createAccount: 'Create Account',
       autoRefresh: 'Auto Refresh',
       enableAutoRefresh: 'Enable auto refresh',
@@ -85,6 +99,7 @@ export default {
       allPlatforms: 'All Platforms',
       platformTabsLabel: 'Filter accounts by platform',
       groupTabsLabel: 'Filter accounts by group',
+      reorderGroupTabs: 'Press and hold to reorder groups',
       allTypes: 'All Types',
       allStatus: 'All Status',
       allGroups: 'All Groups',

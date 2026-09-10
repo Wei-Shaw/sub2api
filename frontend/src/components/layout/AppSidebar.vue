@@ -708,8 +708,11 @@ function buildSelfNavItems(withDashboard: boolean): NavItem[] {
   if (withDashboard) {
     items.push({ path: '/dashboard', label: t('nav.dashboard'), icon: DashboardIcon })
   }
+  items.push({ path: '/keys', label: t('nav.apiKeys'), icon: KeyIcon })
+  if (withDashboard) {
+    items.push({ path: '/accounts', label: t('nav.accounts'), icon: GlobeIcon })
+  }
   items.push(
-    { path: '/keys', label: t('nav.apiKeys'), icon: KeyIcon },
     { path: '/batch-image', label: t('nav.batchImage'), icon: BatchImageIcon, hideInSimpleMode: true, featureFlag: flagBatchImageAccess },
     { path: '/usage', label: t('nav.usage'), icon: ChartIcon, hideInSimpleMode: true },
     { path: '/available-channels', label: t('nav.availableChannels'), icon: ChannelIcon, hideInSimpleMode: true, featureFlag: flagAvailableChannels },
