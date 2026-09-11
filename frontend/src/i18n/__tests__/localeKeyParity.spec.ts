@@ -25,11 +25,17 @@ describe('locale key parity', () => {
     expect(missing).toEqual([])
   })
 
-  it('Vietnamese preserves English message placeholders', () => {
+  it('Vietnamese contains every English message key', () => {
     const enMessages = collectMessages(en)
     const viMessages = collectMessages(vi)
     const missing = Object.keys(enMessages).filter((key) => !(key in viMessages))
+
     expect(missing).toEqual([])
+  })
+
+  it('Vietnamese preserves English message placeholders', () => {
+    const enMessages = collectMessages(en)
+    const viMessages = collectMessages(vi)
     const mismatches = Object.keys(enMessages).filter(
       (key) => JSON.stringify(placeholders(enMessages[key])) !== JSON.stringify(placeholders(viMessages[key]))
     )

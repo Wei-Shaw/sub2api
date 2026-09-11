@@ -819,6 +819,14 @@ export default mergeLocaleMessages(
     subscriptionRestored: 'Đã khôi phục đăng ký thành công',
     failedToRestore: 'Không thể khôi phục đăng ký',
     restoreConfirm: 'Khôi phục đăng ký cho \'{user}\'? Nếu đăng ký ban đầu đã hết hạn, đăng ký đó sẽ được khôi phục dưới dạng đã hết hạn.',
-    }
+    },
+  },
+  {
+    channels: {
+      form: {
+        maxReasoningEffortMultiplier: 'Hệ số nhân Effort tối đa',
+        fable51DefaultMaxReasoningMultiplier: 'Mặc định: 3',
+      },
+    },
   },
 )

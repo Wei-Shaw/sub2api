@@ -623,6 +623,12 @@ export default mergeLocaleMessages(
         cost: 'Trị giá',
       },
     },
-    }
+    },
+  },
+  {
+    usage: {
+      upstreamRequestId: 'ID upstream',
+      upstreamRequestIdCopied: 'Đã sao chép ID upstream',
+    },
   },
 )
