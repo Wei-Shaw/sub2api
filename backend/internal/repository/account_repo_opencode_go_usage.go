@@ -13,15 +13,33 @@ import (
 
 const (
 	// 与 service.isOpenCodeGoBaseURL 对齐：Go 侧接受显式默认端口 :443（parsed.Host ==
-	// hostname+":443"），SQL 正则必须同样接受可选 :443，否则同一 base_url 在 Go 判定
-	// eligible 而 SQL 判定不 eligible，身份清理与组查询会漏行。只做 parity，不扩域名/路径。
-	opencodeGoBaseURLRegexSQL       = `^[hH][tT][tT][pP][sS]://[oO][pP][eE][nN][cC][oO][dD][eE]\.[aA][iI](:[4][4][3])?/[zZ][eE][nN]/[gG][oO]/[vV]1/?$`
+	// hostname+":443"）与两个官方基址变体（CC/Responses 的 /zen/go/v1 与 Anthropic
+	// 的 /zen/go），SQL 正则必须同样接受，否则同一 base_url 在 Go 判定 eligible 而
+	// SQL 判定不 eligible，身份清理与组查询会漏行。只做 parity，不扩域名/路径；
+	// Zen 基址（/zen、/zen/v1）必须拒绝。
+	opencodeGoBaseURLRegexSQL       = `^[hH][tT][tT][pP][sS]://[oO][pP][eE][nN][cC][oO][dD][eE]\.[aA][iI](:[4][4][3])?/[zZ][eE][nN]/[gG][oO](/[vV]1)?/?$`
 	opencodeGoBaseURLMatchSQLPrefix = "btrim("
 	opencodeGoBaseURLMatchSQLSuffix = ") ~ '" + opencodeGoBaseURLRegexSQL + "'"
-	opencodeGoUsageEligibleSQL      = `
-	platform = 'openai'
+	// opencodeGoUsageMountPlatformsSQL 是 service.isOpenCodeGoUsageMountPlatform 的
+	// SQL 镜像：OpenCode Go key 允许挂在 openai/anthropic 与国产 OpenAI 兼容平台
+	// 下复用，与 ollama 的 ollamaCloudUsagePlatformsSQL 完全一致。opencode_go
+	// 平台本身不在名单内——平台账号走下方 account_mode 分支。所有平台白名单 SQL
+	// 只允许引用本常量，不得各处重写字面量，防止漂移。
+	opencodeGoUsageMountPlatformsSQL = "'openai', 'anthropic', 'kimi', 'zhipu', 'deepseek', 'minimax'"
+	// opencodeGoUsageEligibleSQL 与 service.IsOpenCodeGoUsageAccount 互为镜像：
+	//   - opencode_go 平台：account_mode 存储于 credentials（domain/constants.go），
+	//     未设置/为 null/非 "zen" 一律视为 Go 订阅，与 GetOpenCodeAccountMode 的
+	//     默认兼容逻辑一致；COALESCE 把 <> 对 NULL 的结果归一为 true。不校验
+	//     base_url（平台字段已是权威来源）。
+	//   - 挂载白名单平台：base_url 必须匹配官方 OpenCode Go 基址正则。
+	opencodeGoUsageEligibleSQL = `
+	(
+		(platform = 'opencode_go'
+			AND COALESCE(btrim(credentials ->> 'account_mode') <> 'zen', true))
+		OR (platform IN (` + opencodeGoUsageMountPlatformsSQL + `)
+			AND ` + opencodeGoBaseURLMatchSQLPrefix + `credentials ->> 'base_url'` + opencodeGoBaseURLMatchSQLSuffix + `)
+	)
 	AND type = 'apikey'
-	AND ` + opencodeGoBaseURLMatchSQLPrefix + `credentials ->> 'base_url'` + opencodeGoBaseURLMatchSQLSuffix + `
 	AND jsonb_typeof(credentials -> 'api_key') = 'string'
 `
 )

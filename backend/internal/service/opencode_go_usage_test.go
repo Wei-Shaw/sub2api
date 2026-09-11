@@ -732,59 +732,115 @@ func TestOpenCodeGoUsageRunDueSkipsWhenDisabled(t *testing.T) {
 }
 
 func TestIsOpenCodeGoUsageAccount(t *testing.T) {
-	base := func() *Account {
+	mount := func() *Account {
 		return &Account{Platform: PlatformOpenAI, Type: AccountTypeAPIKey, Credentials: map[string]any{"base_url": "https://opencode.ai/zen/go/v1", "api_key": "k"}}
 	}
-	require.True(t, IsOpenCodeGoUsageAccount(base()))
+	require.True(t, IsOpenCodeGoUsageAccount(mount()))
 
 	// trailing slash on the path is allowed
-	account := base()
+	account := mount()
 	account.Credentials["base_url"] = "https://opencode.ai/zen/go/v1/"
 	require.True(t, IsOpenCodeGoUsageAccount(account))
 
-	// explicit default port :443 is allowed (parsed.Host == hostname+":443")
-	account = base()
+	// anthropic base URL variant (/zen/go) is allowed
+	account = mount()
+	account.Credentials["base_url"] = "https://opencode.ai/zen/go"
+	require.True(t, IsOpenCodeGoUsageAccount(account))
+	account = mount()
+	account.Credentials["base_url"] = "https://opencode.ai/zen/go/"
+	require.True(t, IsOpenCodeGoUsageAccount(account))
+
+	// explicit default port :443 is allowed for both path variants
+	account = mount()
 	account.Credentials["base_url"] = "https://opencode.ai:443/zen/go/v1"
+	require.True(t, IsOpenCodeGoUsageAccount(account))
+	account = mount()
+	account.Credentials["base_url"] = "https://opencode.ai:443/zen/go"
 	require.True(t, IsOpenCodeGoUsageAccount(account))
 
 	// non-default port is rejected
-	account = base()
+	account = mount()
 	account.Credentials["base_url"] = "https://opencode.ai:444/zen/go/v1"
 	require.False(t, IsOpenCodeGoUsageAccount(account))
 
 	// scheme/host/path are case-insensitive
-	account = base()
+	account = mount()
 	account.Credentials["base_url"] = "HTTPS://OPENCODE.AI/ZEN/GO/V1"
 	require.True(t, IsOpenCodeGoUsageAccount(account))
 
+	// zen paths are rejected (no subscription quota window)
+	for _, raw := range []string{
+		"https://opencode.ai/zen/v1", "https://opencode.ai/zen", "https://opencode.ai/zen/v1/",
+	} {
+		account = mount()
+		account.Credentials["base_url"] = raw
+		require.False(t, IsOpenCodeGoUsageAccount(account), raw)
+	}
+
 	// wrong path
-	account = base()
+	account = mount()
 	account.Credentials["base_url"] = "https://opencode.ai/v1"
 	require.False(t, IsOpenCodeGoUsageAccount(account))
 
 	// wrong host
-	account = base()
+	account = mount()
 	account.Credentials["base_url"] = "https://ollama.com/zen/go/v1"
 	require.False(t, IsOpenCodeGoUsageAccount(account))
 
-	// wrong platform
-	account = base()
-	account.Platform = PlatformAnthropic
-	require.False(t, IsOpenCodeGoUsageAccount(account))
-
-	// non-apikey type
-	account = base()
-	account.Type = "oauth"
-	require.False(t, IsOpenCodeGoUsageAccount(account))
-
 	// query string rejected
-	account = base()
+	account = mount()
 	account.Credentials["base_url"] = "https://opencode.ai/zen/go/v1?x=1"
 	require.False(t, IsOpenCodeGoUsageAccount(account))
 
 	// missing base_url
-	account = base()
+	account = mount()
 	account.Credentials = map[string]any{"api_key": "k"}
+	require.False(t, IsOpenCodeGoUsageAccount(account))
+
+	// non-apikey type
+	account = mount()
+	account.Type = "oauth"
+	require.False(t, IsOpenCodeGoUsageAccount(account))
+
+	// mount platforms: every whitelist platform qualifies with the official base URL
+	for _, platform := range []string{
+		PlatformOpenAI, PlatformAnthropic, PlatformKimi, PlatformZhipu, PlatformDeepseek, PlatformMiniMax,
+	} {
+		account = mount()
+		account.Platform = platform
+		require.True(t, IsOpenCodeGoUsageAccount(account), platform)
+	}
+
+	// non-whitelist platforms never qualify, even with the official base URL
+	for _, platform := range []string{PlatformGemini, PlatformGrok, PlatformAntigravity} {
+		account = mount()
+		account.Platform = platform
+		require.False(t, IsOpenCodeGoUsageAccount(account), platform)
+	}
+
+	// opencode_go platform: eligibility comes from platform + go mode, not base_url
+	platformAccount := func() *Account {
+		return &Account{Platform: PlatformOpenCodeGo, Type: AccountTypeAPIKey, Credentials: map[string]any{"api_key": "k"}}
+	}
+	require.True(t, IsOpenCodeGoUsageAccount(platformAccount())) // no base_url at all
+	account = platformAccount()
+	account.Credentials["base_url"] = "https://opencode.ai/zen/go" // anthropic variant
+	require.True(t, IsOpenCodeGoUsageAccount(account))
+	account = platformAccount()
+	account.Credentials["base_url"] = "https://relay.example.com/v1" // arbitrary relay
+	require.True(t, IsOpenCodeGoUsageAccount(account))
+	account = platformAccount()
+	account.Credentials["account_mode"] = AccountModeGo
+	require.True(t, IsOpenCodeGoUsageAccount(account))
+
+	// zen mode has no subscription quota window
+	account = platformAccount()
+	account.Credentials["account_mode"] = AccountModeZen
+	require.False(t, IsOpenCodeGoUsageAccount(account))
+
+	// opencode_go still requires the apikey type
+	account = platformAccount()
+	account.Type = "oauth"
 	require.False(t, IsOpenCodeGoUsageAccount(account))
 }
 
@@ -793,20 +849,33 @@ func TestOpenCodeGoUsageGroupFingerprint(t *testing.T) {
 	first.Credentials["api_key"] = "shared-key"
 	second := openCodeGoUsageAccount(2)
 	second.Credentials = map[string]any{"base_url": "HTTPS://OPENCODE.AI/ZEN/GO/V1/", "api_key": "shared-key"}
+	// 同一订阅 key 以 opencode_go 平台账号存在：与挂载平台账号必须同组（身份平台无关）
 	third := openCodeGoUsageAccount(3)
-	third.Credentials["api_key"] = "other-key"
+	third.Platform = PlatformOpenCodeGo
+	third.Credentials = map[string]any{"account_mode": AccountModeGo, "api_key": "shared-key"}
+	fourth := openCodeGoUsageAccount(4)
+	fourth.Credentials["api_key"] = "other-key"
+	// zen 模式的 opencode_go 账号不合格，无指纹
+	zen := openCodeGoUsageAccount(5)
+	zen.Platform = PlatformOpenCodeGo
+	zen.Credentials = map[string]any{"account_mode": AccountModeZen, "api_key": "shared-key"}
 
 	firstFP, firstOK := openCodeGoUsageGroupFingerprint(first)
 	secondFP, secondOK := openCodeGoUsageGroupFingerprint(second)
 	thirdFP, thirdOK := openCodeGoUsageGroupFingerprint(third)
+	fourthFP, fourthOK := openCodeGoUsageGroupFingerprint(fourth)
+	_, zenOK := openCodeGoUsageGroupFingerprint(zen)
 	require.True(t, firstOK)
 	require.True(t, secondOK)
 	require.True(t, thirdOK)
+	require.True(t, fourthOK)
+	require.False(t, zenOK)
 	require.Equal(t, firstFP, secondFP, "same api_key across base_url variants must share a group")
-	require.NotEqual(t, firstFP, thirdFP, "different api_key must not share a group")
+	require.Equal(t, firstFP, thirdFP, "same api_key across platforms must share a group")
+	require.NotEqual(t, firstFP, fourthFP, "different api_key must not share a group")
 
 	// ineligible accounts have no fingerprint
-	account := openCodeGoUsageAccount(4)
+	account := openCodeGoUsageAccount(6)
 	account.Credentials["base_url"] = "https://opencode.ai/v1"
 	_, ok := openCodeGoUsageGroupFingerprint(account)
 	require.False(t, ok)
@@ -891,7 +960,8 @@ func TestOpenCodeGoUsageStateFromAccount(t *testing.T) {
 	require.Equal(t, OpenCodeGoUsageStatusOK, state.Snapshot.Status)
 
 	// ineligible account exposes no managed state
-	account.Platform = PlatformAnthropic
+	// （anthropic 已是挂载白名单成员，改用非白名单平台验证不合格路径）
+	account.Platform = PlatformGemini
 	state = OpenCodeGoUsageStateFromAccount(account)
 	require.False(t, state.Eligible)
 	require.Nil(t, state.Snapshot)
