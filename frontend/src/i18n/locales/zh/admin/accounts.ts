@@ -100,6 +100,7 @@ export default {
       platformTabsLabel: '按平台筛选账号',
       groupTabsLabel: '按分组筛选账号',
       reorderGroupTabs: '长按拖动以调整分组顺序',
+      moreGroups: '更多分组',
       allTypes: '全部类型',
       allStatus: '全部状态',
       allGroups: '全部分组',

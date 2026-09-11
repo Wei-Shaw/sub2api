@@ -8,6 +8,7 @@ export default {
     allStatuses: '全部状态',
     allGroups: '全部分组',
     ungrouped: '无分组',
+    moreGroups: '更多分组',
     refresh: '刷新',
     autoRefresh: '自动刷新',
     enableAutoRefresh: '启用自动刷新',

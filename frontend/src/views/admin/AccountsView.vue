@@ -4,7 +4,8 @@
       <template #filters>
         <div class="account-group-tabs mb-4 rounded-xl border border-gray-200 bg-white p-1 shadow-sm dark:border-dark-700 dark:bg-dark-800">
           <div
-            class="flex gap-1 overflow-x-auto pb-px"
+            ref="groupTabsContainerRef"
+            class="flex min-w-0 items-center gap-1 overflow-hidden pb-px"
             role="tablist"
             :aria-label="t('admin.accounts.groupTabsLabel')"
           >
@@ -23,47 +24,82 @@
               />
             </button>
 
-            <VueDraggable
-              v-model="orderedGroupTabs"
-              tag="div"
-              class="flex shrink-0 gap-1"
-              :animation="180"
-              :delay="250"
-              :delay-on-touch-only="false"
-              :touch-start-threshold="3"
-              :fallback-tolerance="4"
-              :force-fallback="true"
-              direction="horizontal"
-              handle=".account-group-tab-drag-handle"
-              ghost-class="opacity-40"
-              chosen-class="cursor-grabbing"
-              @start="handleGroupTabDragStart"
-              @end="handleGroupTabDragEnd"
-            >
-              <button
-                v-for="tab in orderedGroupTabs"
-                :key="tab.value"
-                type="button"
-                role="tab"
-                :aria-selected="activeGroup === tab.value"
-                :class="[groupTabClass(tab.value), 'account-group-tab-drag-handle cursor-grab select-none touch-none active:cursor-grabbing']"
-                @click="handleGroupTabClick(tab.value)"
+            <div ref="groupTabsViewportRef" class="min-w-0 flex-1 overflow-hidden">
+              <VueDraggable
+                v-model="visibleGroupTabs"
+                tag="div"
+                class="flex min-w-0 gap-1"
+                :animation="180"
+                :delay="250"
+                :delay-on-touch-only="false"
+                :touch-start-threshold="3"
+                :fallback-tolerance="4"
+                :force-fallback="true"
+                direction="horizontal"
+                handle=".account-group-tab-drag-handle"
+                ghost-class="opacity-40"
+                chosen-class="cursor-grabbing"
+                @start="handleGroupTabDragStart"
+                @end="handleGroupTabDragEnd"
               >
-                <span
-                  class="mr-1 inline-flex items-center text-current/50"
-                  :title="t('admin.accounts.reorderGroupTabs')"
-                  aria-hidden="true"
+                <button
+                  v-for="tab in visibleGroupTabs"
+                  :key="tab.value"
+                  type="button"
+                  role="tab"
+                  :aria-selected="activeGroup === tab.value"
+                  :class="[groupTabClass(tab.value), 'account-group-tab-drag-handle cursor-grab select-none touch-none active:cursor-grabbing']"
+                  @click="handleGroupTabClick(tab.value)"
                 >
-                  <Icon name="menu" size="xs" />
-                </span>
-                {{ tab.label }}
-                <span
-                  v-if="activeGroup === tab.value && loading"
-                  class="ml-1.5 inline-block h-3 w-3 animate-spin rounded-full border-2 border-current border-r-transparent align-[-2px]"
-                  aria-hidden="true"
-                />
+                  <span
+                    class="mr-1 inline-flex items-center text-current/50"
+                    :title="t('admin.accounts.reorderGroupTabs')"
+                    aria-hidden="true"
+                  >
+                    <Icon name="menu" size="xs" />
+                  </span>
+                  {{ tab.label }}
+                  <span
+                    v-if="activeGroup === tab.value && loading"
+                    class="ml-1.5 inline-block h-3 w-3 animate-spin rounded-full border-2 border-current border-r-transparent align-[-2px]"
+                    aria-hidden="true"
+                  />
+                </button>
+              </VueDraggable>
+            </div>
+
+            <div v-if="overflowGroupTabs.length" ref="groupOverflowDropdownRef" class="relative shrink-0">
+              <button
+                type="button"
+                class="inline-flex min-h-10 shrink-0 items-center gap-1 rounded-lg px-3 py-2 text-sm font-medium text-gray-500 transition-colors hover:bg-gray-50 hover:text-gray-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 dark:text-gray-400 dark:hover:bg-dark-700 dark:hover:text-gray-200"
+                :class="{ 'bg-primary-50 text-primary-700 dark:bg-primary-900/30 dark:text-primary-300': overflowGroupTabs.some((tab) => activeGroup === tab.value) }"
+                :aria-expanded="showGroupOverflowDropdown"
+                :aria-label="t('admin.accounts.moreGroups')"
+                :title="t('admin.accounts.moreGroups')"
+                @click="showGroupOverflowDropdown = !showGroupOverflowDropdown"
+              >
+                <Icon name="more" size="sm" aria-hidden="true" />
+                <span class="hidden sm:inline">{{ t('admin.accounts.moreGroups') }}</span>
+                <Icon name="chevronDown" size="xs" aria-hidden="true" />
               </button>
-            </VueDraggable>
+              <div
+                v-if="showGroupOverflowDropdown"
+                class="absolute right-0 z-50 mt-2 max-h-72 w-56 overflow-y-auto rounded-md border border-gray-200 bg-white p-1 shadow-lg dark:border-dark-700 dark:bg-dark-800"
+              >
+                <button
+                  v-for="tab in overflowGroupTabs"
+                  :key="tab.value"
+                  type="button"
+                  role="tab"
+                  :aria-selected="activeGroup === tab.value"
+                  class="flex w-full items-center justify-between gap-2 rounded-md px-3 py-2 text-left text-sm text-gray-600 transition-colors hover:bg-gray-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 dark:text-gray-300 dark:hover:bg-dark-700"
+                  @click="handleOverflowGroupClick(tab.value)"
+                >
+                  <span class="truncate">{{ tab.label }}</span>
+                  <Icon v-if="activeGroup === tab.value" name="check" size="sm" class="shrink-0 text-primary-500" aria-hidden="true" />
+                </button>
+              </div>
+            </div>
 
             <button
               type="button"
@@ -633,7 +669,15 @@ const ungroupedTab = computed<GroupTab>(() => ({
 }))
 const groupTabOrder = ref<number[]>(loadStoredGroupTabOrder())
 const orderedGroupTabs = ref<GroupTab[]>([])
+const visibleGroupTabs = ref<GroupTab[]>([])
+const groupTabsViewportRef = ref<HTMLElement | null>(null)
+const groupOverflowDropdownRef = ref<HTMLElement | null>(null)
+const groupTabsMeasuredWidth = ref(0)
+const groupTabsMeasurementReady = ref(false)
+const showGroupOverflowDropdown = ref(false)
+let groupTabsResizeObserver: ResizeObserver | null = null
 const suppressNextGroupTabClick = ref(false)
+const GROUP_OVERFLOW_TRIGGER_WIDTH = 92
 function loadStoredGroupTabOrder(): number[] {
   if (typeof window === 'undefined') return []
   try {
@@ -665,14 +709,53 @@ function syncOrderedGroupTabs() {
   })
   if (groups.value.length > 0) groupTabOrder.value = orderedIds
 }
+function estimateGroupTabWidth(label: string) {
+  return Math.max(76, label.length * 14 + 40)
+}
+function calculateVisibleGroupCount() {
+  if (!groupTabsMeasurementReady.value) return orderedGroupTabs.value.length
+  if (groupTabsMeasuredWidth.value <= 0) {
+    // jsdom does not calculate layout widths; retain the full list in that environment.
+    return typeof window !== 'undefined' && window.innerWidth >= 768 ? orderedGroupTabs.value.length : 0
+  }
+  const fits = (availableWidth: number) => {
+    let used = 0
+    for (let index = 0; index < orderedGroupTabs.value.length; index += 1) {
+      used += estimateGroupTabWidth(orderedGroupTabs.value[index].label) + (index > 0 ? 4 : 0)
+      if (used > availableWidth) return index
+    }
+    return orderedGroupTabs.value.length
+  }
+  const firstPass = fits(groupTabsMeasuredWidth.value)
+  if (firstPass >= orderedGroupTabs.value.length) return firstPass
+  return fits(Math.max(0, groupTabsMeasuredWidth.value - GROUP_OVERFLOW_TRIGGER_WIDTH))
+}
+function syncVisibleGroupTabs() {
+  visibleGroupTabs.value = orderedGroupTabs.value.slice(0, calculateVisibleGroupCount())
+}
+const overflowGroupTabs = computed(() => orderedGroupTabs.value.slice(visibleGroupTabs.value.length))
+function updateGroupTabsMeasuredWidth() {
+  groupTabsMeasuredWidth.value = groupTabsViewportRef.value?.clientWidth ?? 0
+  groupTabsMeasurementReady.value = true
+}
+function setupGroupTabsResizeObserver() {
+  if (!groupTabsViewportRef.value || typeof ResizeObserver === 'undefined') return
+  groupTabsResizeObserver?.disconnect()
+  groupTabsResizeObserver = new ResizeObserver(updateGroupTabsMeasuredWidth)
+  groupTabsResizeObserver.observe(groupTabsViewportRef.value)
+  updateGroupTabsMeasuredWidth()
+}
 function handleGroupTabDragStart() {
   suppressNextGroupTabClick.value = true
 }
 function handleGroupTabDragEnd() {
+  const nextOrder = [...visibleGroupTabs.value, ...overflowGroupTabs.value]
+  orderedGroupTabs.value = nextOrder
   groupTabOrder.value = orderedGroupTabs.value
     .map((tab) => Number(tab.value))
     .filter((id) => Number.isInteger(id) && id > 0)
   persistGroupTabOrder()
+  syncVisibleGroupTabs()
   window.setTimeout(() => {
     suppressNextGroupTabClick.value = false
   }, 0)
@@ -681,7 +764,12 @@ function handleGroupTabClick(group: string) {
   if (suppressNextGroupTabClick.value) return
   selectGroupTab(group)
 }
+function handleOverflowGroupClick(group: string) {
+  showGroupOverflowDropdown.value = false
+  selectGroupTab(group)
+}
 watch(groups, syncOrderedGroupTabs, { immediate: true })
+watch([orderedGroupTabs, groupTabsMeasuredWidth], syncVisibleGroupTabs, { deep: true })
 const groupTabClass = (value: string) => [
   'relative shrink-0 rounded-lg px-3 py-2 text-sm font-medium transition-colors',
   activeGroup.value === value
@@ -2670,6 +2758,9 @@ const handleViewportResize = () => {
 // 点击外部关闭顶部下拉菜单
 const handleClickOutside = (event: MouseEvent) => {
   const target = event.target as HTMLElement
+  if (groupOverflowDropdownRef.value && !groupOverflowDropdownRef.value.contains(target)) {
+    showGroupOverflowDropdown.value = false
+  }
   if (accountToolsDropdownRef.value && !accountToolsDropdownRef.value.contains(target)) {
     showAccountToolsDropdown.value = false
   }
@@ -2679,6 +2770,7 @@ const handleClickOutside = (event: MouseEvent) => {
 }
 
 onMounted(async () => {
+  setupGroupTabsResizeObserver()
   if (typeof window !== 'undefined') {
     desktopViewportMediaQuery = window.matchMedia(desktopViewportQuery)
     isDesktopViewport.value = desktopViewportMediaQuery.matches
@@ -2721,6 +2813,8 @@ onMounted(async () => {
 })
 
 onUnmounted(() => {
+  groupTabsResizeObserver?.disconnect()
+  groupTabsResizeObserver = null
   upstreamBillingRateAbortController?.abort()
   if (usageBatchFlushTimer !== null) {
     clearTimeout(usageBatchFlushTimer)

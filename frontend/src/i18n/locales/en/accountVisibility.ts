@@ -8,6 +8,7 @@ export default {
     allStatuses: 'All Statuses',
     allGroups: 'All Groups',
     ungrouped: 'No Group',
+    moreGroups: 'More groups',
     refresh: 'Refresh',
     autoRefresh: 'Auto Refresh',
     enableAutoRefresh: 'Enable Auto Refresh',

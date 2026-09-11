@@ -3,15 +3,16 @@
     <TablePageLayout>
       <template #filters>
         <div class="mb-4 rounded-md border border-gray-200 bg-white p-1 shadow-sm dark:border-dark-700 dark:bg-dark-800">
-          <div class="flex gap-1 overflow-x-auto pb-px" role="tablist" :aria-label="t('admin.accounts.groupTabsLabel')">
+          <div ref="groupTabsContainerRef" class="flex min-w-0 items-center gap-1 overflow-hidden pb-px" role="tablist" :aria-label="t('admin.accounts.groupTabsLabel')">
             <button type="button" role="tab" :aria-selected="filters.group === allGroupsTab.value" :class="groupTabClass(allGroupsTab.value)" @click="selectGroup(allGroupsTab.value)">
               {{ allGroupsTab.label }}
             </button>
 
+            <div ref="groupTabsViewportRef" class="min-w-0 flex-1 overflow-hidden">
             <VueDraggable
-              v-model="orderedGroupTabs"
+              v-model="visibleGroupTabs"
               tag="div"
-              class="flex shrink-0 gap-1"
+              class="flex min-w-0 gap-1"
               :animation="180"
               :delay="250"
               :delay-on-touch-only="false"
@@ -26,7 +27,7 @@
               @end="handleGroupDragEnd"
             >
               <button
-                v-for="tab in orderedGroupTabs"
+                v-for="tab in visibleGroupTabs"
                 :key="tab.value"
                 type="button"
                 role="tab"
@@ -38,6 +39,37 @@
                 {{ tab.label }}
               </button>
             </VueDraggable>
+            </div>
+
+            <div v-if="overflowGroupTabs.length" ref="groupOverflowDropdownRef" class="relative shrink-0">
+              <button
+                type="button"
+                class="inline-flex min-h-10 shrink-0 items-center gap-1 rounded-md px-3 py-2 text-sm font-medium text-gray-500 transition-colors hover:bg-gray-50 hover:text-gray-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 dark:text-gray-400 dark:hover:bg-dark-700 dark:hover:text-gray-200"
+                :class="{ 'bg-primary-50 text-primary-700 dark:bg-primary-900/30 dark:text-primary-300': overflowGroupTabs.some((tab) => filters.group === tab.value) }"
+                :aria-expanded="showGroupOverflowDropdown"
+                :aria-label="t('visibleAccounts.moreGroups')"
+                :title="t('visibleAccounts.moreGroups')"
+                @click="showGroupOverflowDropdown = !showGroupOverflowDropdown"
+              >
+                <Icon name="more" size="sm" aria-hidden="true" />
+                <span class="hidden sm:inline">{{ t('visibleAccounts.moreGroups') }}</span>
+                <Icon name="chevronDown" size="xs" aria-hidden="true" />
+              </button>
+              <div v-if="showGroupOverflowDropdown" class="absolute right-0 z-50 mt-2 max-h-72 w-56 overflow-y-auto rounded-md border border-gray-200 bg-white p-1 shadow-lg dark:border-dark-700 dark:bg-dark-800">
+                <button
+                  v-for="tab in overflowGroupTabs"
+                  :key="tab.value"
+                  type="button"
+                  role="tab"
+                  :aria-selected="filters.group === tab.value"
+                  class="flex w-full items-center justify-between gap-2 rounded-md px-3 py-2 text-left text-sm text-gray-600 transition-colors hover:bg-gray-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 dark:text-gray-300 dark:hover:bg-dark-700"
+                  @click="handleOverflowGroupClick(tab.value)"
+                >
+                  <span class="truncate">{{ tab.label }}</span>
+                  <Icon v-if="filters.group === tab.value" name="check" size="sm" class="shrink-0 text-primary-500" aria-hidden="true" />
+                </button>
+              </div>
+            </div>
 
             <button type="button" role="tab" :aria-selected="filters.group === ungroupedTab.value" :class="groupTabClass(ungroupedTab.value)" @click="selectGroup(ungroupedTab.value)">
               {{ ungroupedTab.label }}
@@ -226,7 +258,15 @@ const allGroupsTab = computed<GroupTab>(() => ({ value: '', label: t('visibleAcc
 const ungroupedTab = computed<GroupTab>(() => ({ value: 'ungrouped', label: t('visibleAccounts.ungrouped') }))
 const groupTabOrder = ref<number[]>(loadStoredGroupOrder())
 const orderedGroupTabs = ref<GroupTab[]>([])
+const visibleGroupTabs = ref<GroupTab[]>([])
+const groupTabsViewportRef = ref<HTMLElement | null>(null)
+const groupOverflowDropdownRef = ref<HTMLElement | null>(null)
+const groupTabsMeasuredWidth = ref(0)
+const groupTabsMeasurementReady = ref(false)
+const showGroupOverflowDropdown = ref(false)
+let groupTabsResizeObserver: ResizeObserver | null = null
 const suppressNextGroupClick = ref(false)
+const GROUP_OVERFLOW_TRIGGER_WIDTH = 92
 
 function loadStoredGroupOrder(): number[] {
   try {
@@ -240,14 +280,58 @@ function syncOrderedGroupTabs() {
   orderedGroupTabs.value = orderedIds.map((id) => ({ value: String(id), label: groupsById.get(id)!.name }))
   if (groups.value.length > 0) groupTabOrder.value = orderedIds
 }
+function estimateGroupTabWidth(label: string) {
+  return Math.max(76, label.length * 14 + 40)
+}
+function calculateVisibleGroupCount() {
+  if (!groupTabsMeasurementReady.value) return orderedGroupTabs.value.length
+  if (groupTabsMeasuredWidth.value <= 0) {
+    // jsdom does not calculate layout widths; retain the full list in that environment.
+    return typeof window !== 'undefined' && window.innerWidth >= 768 ? orderedGroupTabs.value.length : 0
+  }
+  const fits = (availableWidth: number) => {
+    let used = 0
+    for (let index = 0; index < orderedGroupTabs.value.length; index += 1) {
+      used += estimateGroupTabWidth(orderedGroupTabs.value[index].label) + (index > 0 ? 4 : 0)
+      if (used > availableWidth) return index
+    }
+    return orderedGroupTabs.value.length
+  }
+  const firstPass = fits(groupTabsMeasuredWidth.value)
+  if (firstPass >= orderedGroupTabs.value.length) return firstPass
+  return fits(Math.max(0, groupTabsMeasuredWidth.value - GROUP_OVERFLOW_TRIGGER_WIDTH))
+}
+function syncVisibleGroupTabs() {
+  visibleGroupTabs.value = orderedGroupTabs.value.slice(0, calculateVisibleGroupCount())
+}
+const overflowGroupTabs = computed(() => orderedGroupTabs.value.slice(visibleGroupTabs.value.length))
+function updateGroupTabsMeasuredWidth() {
+  groupTabsMeasuredWidth.value = groupTabsViewportRef.value?.clientWidth ?? 0
+  groupTabsMeasurementReady.value = true
+}
+function setupGroupTabsResizeObserver() {
+  if (!groupTabsViewportRef.value || typeof ResizeObserver === 'undefined') return
+  groupTabsResizeObserver?.disconnect()
+  groupTabsResizeObserver = new ResizeObserver(updateGroupTabsMeasuredWidth)
+  groupTabsResizeObserver.observe(groupTabsViewportRef.value)
+  updateGroupTabsMeasuredWidth()
+}
 function handleGroupDragStart() { suppressNextGroupClick.value = true }
 function handleGroupDragEnd() {
+  const nextOrder = [...visibleGroupTabs.value, ...overflowGroupTabs.value]
+  orderedGroupTabs.value = nextOrder
   groupTabOrder.value = orderedGroupTabs.value.map((tab) => Number(tab.value)).filter((id) => Number.isInteger(id) && id > 0)
   try { localStorage.setItem(GROUP_ORDER_STORAGE_KEY, JSON.stringify(groupTabOrder.value)) } catch { /* Browser storage may be unavailable. */ }
+  syncVisibleGroupTabs()
   window.setTimeout(() => { suppressNextGroupClick.value = false }, 0)
 }
 function handleGroupClick(value: string) { if (!suppressNextGroupClick.value) selectGroup(value) }
+function handleOverflowGroupClick(value: string) {
+  showGroupOverflowDropdown.value = false
+  selectGroup(value)
+}
 watch(groups, syncOrderedGroupTabs, { immediate: true })
+watch([orderedGroupTabs, groupTabsMeasuredWidth], syncVisibleGroupTabs, { deep: true })
 
 const platformOptions = computed(() => [{ value: '', label: t('visibleAccounts.allPlatforms') }, ...CONCRETE_PLATFORM_OPTIONS])
 const typeOptions = computed(() => [
@@ -393,6 +477,7 @@ const closeTestModal = () => { showTest.value = false; selectedAccount.value = n
 const closeStatsModal = () => { showStats.value = false; selectedAccount.value = null }
 const handleClickOutside = (event: MouseEvent) => {
   const target = event.target as Node
+  if (groupOverflowDropdownRef.value && !groupOverflowDropdownRef.value.contains(target)) showGroupOverflowDropdown.value = false
   if (autoRefreshDropdownRef.value && !autoRefreshDropdownRef.value.contains(target)) showAutoRefreshDropdown.value = false
   if (columnDropdownRef.value && !columnDropdownRef.value.contains(target)) showColumnDropdown.value = false
 }
@@ -407,6 +492,7 @@ const debouncedSearch = useDebounceFn(reloadFromFirstPage, 300)
 watch(() => filters.search, debouncedSearch)
 
 onMounted(async () => {
+  setupGroupTabsResizeObserver()
   loadAutoRefreshSettings()
   document.addEventListener('click', handleClickOutside)
   const [groupsResult] = await Promise.allSettled([accountsAPI.listGroups(), loadAccounts()])
@@ -416,6 +502,8 @@ onMounted(async () => {
 })
 
 onUnmounted(() => {
+  groupTabsResizeObserver?.disconnect()
+  groupTabsResizeObserver = null
   abortController?.abort()
   pauseAutoRefresh()
   document.removeEventListener('click', handleClickOutside)

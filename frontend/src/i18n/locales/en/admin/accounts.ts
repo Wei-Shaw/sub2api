@@ -100,6 +100,7 @@ export default {
       platformTabsLabel: 'Filter accounts by platform',
       groupTabsLabel: 'Filter accounts by group',
       reorderGroupTabs: 'Press and hold to reorder groups',
+      moreGroups: 'More groups',
       allTypes: 'All Types',
       allStatus: 'All Status',
       allGroups: 'All Groups',
