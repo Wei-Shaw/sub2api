@@ -339,6 +339,8 @@ type UpdateSettingsRequest struct {
 	ChannelMonitorDingTalkWebhookClear   bool    `json:"channel_monitor_dingtalk_webhook_clear"`
 	ChannelMonitorDingTalkSecretClear    bool    `json:"channel_monitor_dingtalk_secret_clear"`
 	ChannelMonitorShowQuota              *bool   `json:"channel_monitor_show_quota"`
+	ChannelMonitorHideUserRanking        bool    `json:"channel_monitor_hide_user_ranking"`
+	ChannelMonitorHideUserRanking        *bool   `json:"channel_monitor_hide_user_ranking"`
 
 	// Grok model mapping policy
 	GrokDefaultTextModel           *string `json:"grok_default_text_model"`
@@ -1953,6 +1955,12 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 			}
 			return previousSettings.ChannelMonitorShowQuota
 		}(),
+		ChannelMonitorHideUserRanking: func() bool {
+			if req.ChannelMonitorHideUserRanking != nil {
+				return *req.ChannelMonitorHideUserRanking
+			}
+			return previousSettings.ChannelMonitorHideUserRanking
+		}(),
 		GrokDefaultTextModel: func() string {
 			if req.GrokDefaultTextModel != nil {
 				return *req.GrokDefaultTextModel
@@ -2416,6 +2424,14 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		ChannelMonitorDingTalkWebhookConfigured: updatedSettings.ChannelMonitorDingTalkWebhookConfigured,
 		ChannelMonitorDingTalkSecretConfigured:  updatedSettings.ChannelMonitorDingTalkSecretConfigured,
 		ChannelMonitorShowQuota:                 updatedSettings.ChannelMonitorShowQuota,
+		ChannelMonitorHideUserRanking:           updatedSettings.ChannelMonitorHideUserRanking,
+		ChannelMonitorEnabled:                   updatedSettings.ChannelMonitorEnabled,
+		ChannelMonitorMode:                      updatedSettings.ChannelMonitorMode,
+		ChannelMonitorDefaultIntervalSeconds:    updatedSettings.ChannelMonitorDefaultIntervalSeconds,
+		ChannelMonitorHideThroughput:            updatedSettings.ChannelMonitorHideThroughput,
+		ChannelMonitorShowQuota:                 updatedSettings.ChannelMonitorShowQuota,
+		ChannelMonitorHideUserRanking:           updatedSettings.ChannelMonitorHideUserRanking,
+		ChannelMonitorHideUserRanking:           updatedSettings.ChannelMonitorHideUserRanking,
 
 		GrokDefaultTextModel:           updatedSettings.GrokDefaultTextModel,
 		GrokCrossClientModelMapEnabled: updatedSettings.GrokCrossClientModelMapEnabled,

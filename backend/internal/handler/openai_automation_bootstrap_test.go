@@ -49,6 +49,20 @@ func TestNormalizeCodexAutomationBootstrapSupportedLastRunValues(t *testing.T) {
 	}
 }
 
+func TestNormalizeCodexAutomationBootstrapHeartbeat(t *testing.T) {
+	output := `<heartbeat><automation_id>wiki</automation_id></heartbeat>`
+	got, changed := normalizeCodexAutomationBootstrap(codexAutomationBootstrapBody(t, output, ""))
+	require.True(t, changed)
+	require.Equal(t, "message", gjson.GetBytes(got, "input.0.type").String())
+	require.Equal(t, "user", gjson.GetBytes(got, "input.0.role").String())
+	require.Equal(t, output, gjson.GetBytes(got, "input.0.content.0.text").String())
+	require.False(t, gjson.GetBytes(got, "input.0.call_id").Exists())
+
+	again, changedAgain := normalizeCodexAutomationBootstrap(got)
+	require.False(t, changedAgain)
+	require.Equal(t, got, again)
+}
+
 func TestNormalizeCodexAutomationBootstrapRejectsUnsafeShapes(t *testing.T) {
 	validOutput := codexAutomationBootstrap("wiki", "never", automationBootstrapPrompt)
 	tests := []struct {
@@ -74,10 +88,6 @@ func TestNormalizeCodexAutomationBootstrapRejectsUnsafeShapes(t *testing.T) {
 		{
 			name: "real call context",
 			body: []byte(`{"model":"gpt-5","input":[{"type":"function_call_output","namespace":"codex_app","name":"automation_update","output":` + mustJSON(t, validOutput) + `},{"type":"function_call","call_id":"call-1"}]}`),
-		},
-		{
-			name: "heartbeat output",
-			body: codexAutomationBootstrapBody(t, `<heartbeat><automation_id>wiki</automation_id></heartbeat>`, ""),
 		},
 		{
 			name: "mismatched memory id",
@@ -117,6 +127,31 @@ func TestNormalizeCodexAutomationBootstrapRejectsUnsafeShapes(t *testing.T) {
 	}
 }
 
+func TestNormalizeCodexAutomationBootstrapRejectsUnsafeHeartbeatShapes(t *testing.T) {
+	tests := []struct {
+		name   string
+		output string
+	}{
+		{name: "arbitrary tool output", output: `<result><automation_id>wiki</automation_id></result>`},
+		{name: "root attribute", output: `<heartbeat status="ok"><automation_id>wiki</automation_id></heartbeat>`},
+		{name: "namespaced root", output: `<heartbeat xmlns="urn:codex"><automation_id>wiki</automation_id></heartbeat>`},
+		{name: "extra child", output: `<heartbeat><automation_id>wiki</automation_id><status>ok</status></heartbeat>`},
+		{name: "nested id content", output: `<heartbeat><automation_id><value>wiki</value></automation_id></heartbeat>`},
+		{name: "padded id", output: `<heartbeat><automation_id> wiki </automation_id></heartbeat>`},
+		{name: "unsafe id", output: `<heartbeat><automation_id>../wiki</automation_id></heartbeat>`},
+		{name: "comment", output: `<heartbeat><!-- ok --><automation_id>wiki</automation_id></heartbeat>`},
+		{name: "trailing content", output: `<heartbeat><automation_id>wiki</automation_id></heartbeat>extra`},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			body := codexAutomationBootstrapBody(t, tt.output, "")
+			got, changed := normalizeCodexAutomationBootstrap(body)
+			require.False(t, changed)
+			require.Equal(t, body, got)
+		})
+	}
+}
+
 func TestNormalizeCodexAutomationBootstrapPreservesOrderAndIsIdempotent(t *testing.T) {
 	output := codexAutomationBootstrap("wiki", "never", automationBootstrapPrompt)
 	body := []byte(`{"model":"gpt-5","input":[{"type":"message","role":"user","content":"before"},{"type":"function_call_output","namespace":"codex_app","name":"automation_update","output":` + mustJSON(t, output) + `},{"type":"message","role":"user","content":"after"}]}`)
@@ -130,4 +165,45 @@ func TestNormalizeCodexAutomationBootstrapPreservesOrderAndIsIdempotent(t *testi
 	again, changedAgain := normalizeCodexAutomationBootstrap(got)
 	require.False(t, changedAgain)
 	require.Equal(t, got, again)
+}
+
+func TestNormalizeCodexAutomationBootstrapFullHeartbeat(t *testing.T) {
+	const output = `<heartbeat>
+  <automation_id>flutter</automation_id>
+  <current_time_iso>2026-09-09T00:33:34.775Z</current_time_iso>
+  <instructions>
+Read the reference index and report changes. Preserve A &amp; B and &lt;tags&gt;.
+  </instructions>
+</heartbeat>`
+	body := codexAutomationBootstrapBody(t, output, "")
+	got, changed := normalizeCodexAutomationBootstrap(body)
+	require.True(t, changed)
+	require.Equal(t, "user", gjson.GetBytes(got, "input.0.role").String())
+	require.Equal(t, output, gjson.GetBytes(got, "input.0.content.0.text").String())
+	again, changedAgain := normalizeCodexAutomationBootstrap(got)
+	require.False(t, changedAgain)
+	require.Equal(t, got, again)
+
+	for _, field := range []string{"automation_id", "current_time_iso", "instructions"} {
+		duplicate := strings.Replace(output, "</heartbeat>", "<"+field+">duplicate</"+field+"></heartbeat>", 1)
+		require.False(t, validCodexAutomationHeartbeat(duplicate), field)
+	}
+	for _, invalid := range []string{
+		strings.Replace(output, "2026-09-09T00:33:34.775Z", "yesterday", 1),
+		strings.Replace(output, "<current_time_iso>2026-09-09T00:33:34.775Z</current_time_iso>", "", 1),
+		strings.Replace(output, "Read the reference index and report changes. Preserve A &amp; B and &lt;tags&gt;.", " ", 1),
+		strings.Replace(output, "<instructions>", `<instructions source="other">`, 1),
+		strings.Replace(output, "<instructions>", "<instructions><nested/>", 1),
+	} {
+		require.False(t, validCodexAutomationHeartbeat(invalid))
+	}
+	for _, guarded := range [][]byte{
+		codexAutomationBootstrapBody(t, output, `,"call_id":"call-1"`),
+		[]byte(strings.Replace(string(body), `"model":"gpt-5"`, `"model":"gpt-5","previous_response_id":"resp-1"`, 1)),
+		[]byte(strings.Replace(string(body), `"namespace":"codex_app"`, `"namespace":"other"`, 1)),
+	} {
+		unchanged, normalized := normalizeCodexAutomationBootstrap(guarded)
+		require.False(t, normalized)
+		require.Equal(t, guarded, unchanged)
+	}
 }

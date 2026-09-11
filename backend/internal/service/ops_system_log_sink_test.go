@@ -32,9 +32,9 @@ func TestOpsSystemLogSink_ShouldIndex(t *testing.T) {
 			want:  true,
 		},
 		{
-			name:  "access component",
+			name:  "access component disabled by default",
 			event: &logger.LogEvent{Level: "info", Component: "http.access"},
-			want:  true,
+			want:  false,
 		},
 		{
 			name: "rejected access excluded from database sink",
@@ -46,13 +46,13 @@ func TestOpsSystemLogSink_ShouldIndex(t *testing.T) {
 			want: false,
 		},
 		{
-			name: "access component from fields (real zap path)",
+			name: "access component from fields disabled by default",
 			event: &logger.LogEvent{
 				Level:     "info",
 				Component: "",
 				Fields:    map[string]any{"component": "http.access"},
 			},
-			want: true,
+			want: false,
 		},
 		{
 			name:  "audit component",
@@ -79,6 +79,28 @@ func TestOpsSystemLogSink_ShouldIndex(t *testing.T) {
 		if got := sink.shouldIndex(tc.event); got != tc.want {
 			t.Fatalf("%s: shouldIndex()=%v, want %v", tc.name, got, tc.want)
 		}
+	}
+}
+
+func TestOpsSystemLogSink_ShouldIndexAccessLogsOnlyWhenEnabled(t *testing.T) {
+	sink := &OpsSystemLogSink{}
+	sink.SetPersistAccessLogs(true)
+
+	if !sink.shouldIndex(&logger.LogEvent{Level: "info", Component: "http.access"}) {
+		t.Fatal("access log should be indexed after explicit opt-in")
+	}
+	if !sink.shouldIndex(&logger.LogEvent{
+		Level:  "info",
+		Fields: map[string]any{"component": "http.access"},
+	}) {
+		t.Fatal("field-based access log should be indexed after explicit opt-in")
+	}
+	if sink.shouldIndex(&logger.LogEvent{
+		Level:     "info",
+		Component: "http.access",
+		Fields:    map[string]any{logger.OpsSystemLogSkipField: true},
+	}) {
+		t.Fatal("explicit skip marker must override access-log persistence")
 	}
 }
 

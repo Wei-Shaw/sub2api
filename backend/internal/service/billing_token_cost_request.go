@@ -7,14 +7,15 @@ import (
 
 // TokenCostRequest 通用网关 token 计费请求。
 type TokenCostRequest struct {
-	Ctx            context.Context
-	Model          string
-	Group          *Group
-	Tokens         UsageTokens
-	RateMultiplier float64
-	PricingAt      time.Time
-	ServiceTier    string
-	Resolver       *ModelPricingResolver
+	Ctx             context.Context
+	Model           string
+	Group           *Group
+	Tokens          UsageTokens
+	RateMultiplier  float64
+	PricingAt       time.Time
+	ServiceTier     string
+	ReasoningEffort string
+	Resolver        *ModelPricingResolver
 	// Resolved 为调用方预先解析的定价（Resolver.Resolve 的结果），nil 表示未解析。
 	Resolved *ResolvedPricing
 }
@@ -33,21 +34,25 @@ func (s *BillingService) CalculateTokenCostForRequest(req TokenCostRequest) (*Co
 	if req.Resolver != nil && req.Group != nil {
 		return s.CalculateCostUnified(s.tokenCostInput(req, resolved))
 	}
+	if req.ReasoningEffort != "" {
+		return s.CalculateCostUnified(s.tokenCostInput(req, resolved))
+	}
 	return s.CalculateCost(req.Model, req.Tokens, req.RateMultiplier)
 }
 
 func (s *BillingService) tokenCostInput(req TokenCostRequest, resolved *ResolvedPricing) CostInput {
 	input := CostInput{
-		Ctx:            req.Ctx,
-		Model:          req.Model,
-		Group:          req.Group,
-		Tokens:         req.Tokens,
-		RequestCount:   1,
-		RateMultiplier: req.RateMultiplier,
-		PricingAt:      req.PricingAt,
-		ServiceTier:    req.ServiceTier,
-		Resolver:       req.Resolver,
-		Resolved:       resolved,
+		Ctx:             req.Ctx,
+		Model:           req.Model,
+		Group:           req.Group,
+		Tokens:          req.Tokens,
+		RequestCount:    1,
+		RateMultiplier:  req.RateMultiplier,
+		PricingAt:       req.PricingAt,
+		ServiceTier:     req.ServiceTier,
+		ReasoningEffort: req.ReasoningEffort,
+		Resolver:        req.Resolver,
+		Resolved:        resolved,
 	}
 	if req.Group != nil {
 		gid := req.Group.ID

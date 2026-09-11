@@ -4,13 +4,18 @@ import {
   createReasoningEffortMappingPair,
   createReasoningEffortMappingRow,
   normalizeReasoningEffortForPlatform,
+  normalizeReasoningEffortSourceForPlatform,
   normalizeReasoningEffortMatchType,
   normalizeReasoningEffortOverLimit,
   reasoningEffortMappingsToAPI,
   reasoningEffortMappingsToRows,
   reasoningEffortOptionsForPlatform,
+  reasoningEffortSourceOptionsForPlatform,
+  reasoningEffortTargetOptionsForPlatform,
+  reasoningEffortMappingDeny,
   reasoningEffortOverLimitDeny,
   reasoningEffortOverLimitDowngrade,
+  normalizeReasoningEffortTargetForPlatform,
   supportsReasoningEffortPolicyPlatform,
   validateReasoningEffortMappings,
 } from "../groupsReasoningEffort";
@@ -31,15 +36,34 @@ describe("groupsReasoningEffort", () => {
           (option) => option.value,
         ),
       ).toEqual(expected);
+      expect(
+        reasoningEffortSourceOptionsForPlatform(platform).map(
+          (option) => option.value,
+        ),
+      ).toEqual(["none", ...expected]);
+      expect(
+        reasoningEffortTargetOptionsForPlatform(platform).map(
+          (option) => option.value,
+        ),
+      ).toEqual([...expected, reasoningEffortMappingDeny]);
       expect(supportsReasoningEffortPolicyPlatform(platform)).toBe(true);
     }
-    for (const platform of [
-      "anthropic",
-      "gemini",
-      "antigravity",
-      "grok",
-    ] as const) {
+    expect(
+      reasoningEffortOptionsForPlatform("anthropic").map(
+        (option) => option.value,
+      ),
+    ).toEqual(["low", "medium", "high", "xhigh", "max"]);
+    expect(
+      reasoningEffortTargetOptionsForPlatform("anthropic").map(
+        (option) => option.value,
+      ),
+    ).toEqual(["low", "medium", "high", "xhigh", "max", reasoningEffortMappingDeny]);
+    expect(supportsReasoningEffortPolicyPlatform("anthropic")).toBe(true);
+
+    for (const platform of ["gemini", "antigravity", "grok"] as const) {
       expect(reasoningEffortOptionsForPlatform(platform)).toEqual([]);
+      expect(reasoningEffortSourceOptionsForPlatform(platform)).toEqual([]);
+      expect(reasoningEffortTargetOptionsForPlatform(platform)).toEqual([]);
       expect(supportsReasoningEffortPolicyPlatform(platform)).toBe(false);
     }
   });
@@ -57,6 +81,51 @@ describe("groupsReasoningEffort", () => {
     expect(reasoningEffortMappingsToAPI(rows)).toEqual([
       { from: "max", to: "xhigh" },
     ]);
+  });
+
+  it("hydrates and validates none only as a mapping source", () => {
+    const rows = reasoningEffortMappingsToRows(
+      [{ from: " NONE ", to: "low" }],
+      "openai",
+    );
+    expect(reasoningEffortMappingsToAPI(rows)).toEqual([
+      { from: "none", to: "low" },
+    ]);
+    expect(validateReasoningEffortMappings(rows, "openai")).toEqual({});
+    expect(normalizeReasoningEffortSourceForPlatform("composite", " NONE ")).toBe("none");
+
+    const invalidTarget = createReasoningEffortMappingRow({
+      from: "low",
+      to: "none",
+    });
+    expect(validateReasoningEffortMappings([invalidTarget], "openai")).toEqual({
+      [invalidTarget.pairs[0].id]: { to: "unsupportedTo" },
+    });
+    expect(normalizeReasoningEffortForPlatform("openai", "none")).toBe("");
+  });
+
+  it("hydrates and validates deny only as a mapping target", () => {
+    const rows = reasoningEffortMappingsToRows(
+      [{ from: " xhigh ", to: " DENY " }],
+      "openai",
+    );
+    expect(reasoningEffortMappingsToAPI(rows)).toEqual([
+      { from: "xhigh", to: reasoningEffortMappingDeny },
+    ]);
+    expect(validateReasoningEffortMappings(rows, "openai")).toEqual({});
+    expect(normalizeReasoningEffortTargetForPlatform("openai", " Deny ")).toBe(
+      reasoningEffortMappingDeny,
+    );
+    expect(normalizeReasoningEffortForPlatform("openai", "deny")).toBe("");
+    expect(normalizeReasoningEffortSourceForPlatform("openai", "deny")).toBe("");
+
+    const invalidSource = createReasoningEffortMappingRow({
+      from: "deny",
+      to: "low",
+    });
+    expect(validateReasoningEffortMappings([invalidSource], "openai")).toEqual({
+      [invalidSource.pairs[0].id]: { from: "unsupportedFrom" },
+    });
   });
 
   it("hydrates model scoped mappings", () => {
@@ -128,6 +197,12 @@ describe("groupsReasoningEffort", () => {
     expect(normalizeReasoningEffortForPlatform("openai", " MAX ")).toBe("max");
     expect(normalizeReasoningEffortForPlatform("composite", " MAX ")).toBe(
       "max",
+    );
+    expect(normalizeReasoningEffortForPlatform("anthropic", "xhigh")).toBe(
+      "xhigh",
+    );
+    expect(normalizeReasoningEffortForPlatform("anthropic", "minimal")).toBe(
+      "",
     );
     expect(normalizeReasoningEffortForPlatform("grok", "max")).toBe("");
     expect(normalizeReasoningEffortForPlatform("openai", "none")).toBe("");

@@ -1063,22 +1063,27 @@ pricing:
   # Local data directory for caching
   # 本地数据缓存目录
   data_dir: "./data"
-  # Fallback pricing file
-  # 备用定价文件
+  # Fallback pricing file: fills in models missing from the catalog. Edits are
+  # detected by content hash at the next hash check and reloaded without restart.
+  # 备用定价文件：只补目录缺失的模型。修改后在下一次哈希检查时按内容哈希自动重载，无需重启。
   fallback_file: "./resources/model-pricing/model_prices_and_context_window.json"
   # Override patch file (optional, highest priority): entries are shallow-merged
   # field-by-field over catalog/fallback data; a null field value removes that field.
-  # Model names must match catalog keys exactly. Edits take effect on restart or
-  # the next catalog download.
+  # Model names must match catalog keys exactly. Edits are detected by content hash
+  # at the next hash check and reloaded without restart.
   # 覆盖补丁文件（可选，优先级最高）：条目按字段浅合并覆盖目录/回退数据，
   # 字段值为 null 表示删除该字段。模型名须与目录键完全一致。
-  # 修改后重启或下次目录下载时生效。
+  # 修改后在下一次哈希检查时按内容哈希自动重载，无需重启。
   # override_file: "./data/model_pricing_overrides.json"
   # Update interval in hours
   # 更新间隔（小时）
   update_interval_hours: 24
-  # Hash check interval in minutes
-  # 哈希检查间隔（分钟）
+  # Hash check interval in minutes. Each check compares the remote catalog hash and
+  # the local fallback/override file contents. Deleting a local file drops its
+  # entries at the next check; a present but non-JSON file keeps the previous data
+  # and is retried next check.
+  # 哈希检查间隔（分钟）。每次检查同时比对远程目录哈希与本地 fallback/override 文件内容；
+  # 删除本地文件会在下次检查时移除其条目，文件存在但不是 JSON 时保留旧数据、下次检查再试。
   hash_check_interval_minutes: 10
 
 # =============================================================================

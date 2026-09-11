@@ -10,7 +10,7 @@ const groupsViewSource = readFileSync(
   "utf8",
 );
 
-describe("groups models list layout", () => {
+describe("groups model allowlist layout", () => {
   it("keeps the toolbar outside of the scrolling list content", () => {
     expect(groupsViewSource).toContain("overflow-hidden rounded-lg border");
     expect(groupsViewSource).toContain("max-h-64 space-y-2 overflow-y-auto p-2");

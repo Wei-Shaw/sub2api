@@ -912,6 +912,12 @@ const anthropicBetaContextManagementToken = "context-management-2025-06-27"
 //     FullClaudeCodeMimicryBetas 覆盖客户端 beta（该列表不含 fallback beta），
 //     若不 strip，body 字段与 header 不对称 → 所有模型 400
 //
+// thinking.block_binding 场景：
+//   - Claude Fable 5.1 的会话前缀绑定控制受
+//     `thinking-binding-controls-2026-08-01` beta 保护
+//   - 缺 token 时上游拒收：
+//     "thinking.adaptive.block_binding: Extra inputs are not permitted"
+//
 // 本函数按最终发送的 anthropic-beta header 决定是否保留 body 中的上述字段：
 // 缺对应 beta token → strip；客户端 header 已带对应 beta → 保留（不过度删除）。
 // 这将限制完全建立在 "能力维度" 上，与 model 名 / token type / mimicry 子路径无关。
@@ -931,6 +937,13 @@ func sanitizeAnthropicBodyForBetaTokens(body []byte, anthropicBetaHeader string)
 	// context_management：需要 context-management beta。
 	if b, deleted := stripAnthropicBodyFieldUnlessBeta(
 		body, "context_management", anthropicBetaHeader, anthropicBetaContextManagementToken,
+	); deleted {
+		body, changed = b, true
+	}
+
+	// thinking.block_binding：需要 thinking-binding-controls beta。
+	if b, deleted := stripAnthropicBodyFieldUnlessBeta(
+		body, "thinking.block_binding", anthropicBetaHeader, claude.BetaThinkingBindingControls,
 	); deleted {
 		body, changed = b, true
 	}
@@ -1388,6 +1401,9 @@ func NormalizeGLMOpenAIReasoningEffort(body []byte, mappedModel string) ([]byte,
 	}
 
 	mapped := normalizeGLMOpenAIReasoningEffort(raw)
+	if isGLM53Model(mappedModel) && mapped == "high" && normalizeEffortToken(raw) == "low" {
+		mapped = "low"
+	}
 	if mapped == "" || mapped == raw {
 		return body, false
 	}
@@ -1399,12 +1415,20 @@ func NormalizeGLMOpenAIReasoningEffort(body []byte, mappedModel string) ([]byte,
 	return modified, true
 }
 
-func normalizeGLMOpenAIReasoningEffort(raw string) string {
+func normalizeEffortToken(raw string) string {
 	value := strings.ToLower(strings.TrimSpace(raw))
+	return strings.NewReplacer("-", "", "_", "", " ", "").Replace(value)
+}
+
+func isGLM53Model(model string) bool {
+	return strings.EqualFold(strings.TrimSpace(model), "glm-5.3")
+}
+
+func normalizeGLMOpenAIReasoningEffort(raw string) string {
+	value := normalizeEffortToken(raw)
 	if value == "" {
 		return ""
 	}
-	value = strings.NewReplacer("-", "", "_", "", " ", "").Replace(value)
 
 	switch value {
 	case "low", "medium", "high":
@@ -1414,6 +1438,42 @@ func normalizeGLMOpenAIReasoningEffort(raw string) string {
 	default:
 		return ""
 	}
+}
+
+// NormalizeGLM53AnthropicThinking maps explicit client thinking effort onto the
+// GLM-5.3 Anthropic-compatible scale. Requests without an effort or thinking
+// preference are left unchanged so the upstream default remains in effect.
+func NormalizeGLM53AnthropicThinking(body []byte, mappedModel string) ([]byte, bool) {
+	if !isGLM53Model(mappedModel) {
+		return body, false
+	}
+
+	raw := gjson.GetBytes(body, "output_config.effort").String()
+	if strings.TrimSpace(raw) == "" {
+		raw = gjson.GetBytes(body, "thinking.type").String()
+	}
+
+	var effort string
+	switch normalizeEffortToken(raw) {
+	case "disabled", "off", "none", "minimal", "low":
+		effort = "low"
+	case "enabled", "adaptive", "medium", "high":
+		effort = "high"
+	case "xhigh", "max", "ultra":
+		effort = "max"
+	default:
+		return body, false
+	}
+
+	modified, err := sjson.SetBytes(body, "thinking.type", "enabled")
+	if err != nil {
+		return body, false
+	}
+	modified, err = sjson.SetBytes(modified, "output_config.effort", effort)
+	if err != nil {
+		return body, false
+	}
+	return modified, true
 }
 
 // =========================

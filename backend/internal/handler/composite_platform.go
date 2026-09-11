@@ -64,13 +64,45 @@ func openAIReasoningEffortPolicyForRequest(c *gin.Context, apiKey *service.APIKe
 	if apiKey == nil || apiKey.Group == nil {
 		return "", nil, "", false
 	}
-	if apiKey.Group.Platform != service.PlatformOpenAI && apiKey.Group.Platform != service.PlatformComposite {
+	if apiKey.Group.Platform != service.PlatformAnthropic && apiKey.Group.Platform != service.PlatformOpenAI && apiKey.Group.Platform != service.PlatformComposite {
 		return "", nil, "", false
 	}
-	if effectiveAPIKeyPlatform(c, apiKey) != service.PlatformOpenAI {
+	effectivePlatform := effectiveAPIKeyPlatform(c, apiKey)
+	if effectivePlatform != service.PlatformAnthropic && effectivePlatform != service.PlatformOpenAI {
 		return "", nil, "", false
 	}
-	return apiKey.Group.MaxReasoningEffort, apiKey.Group.ReasoningEffortMappings, apiKey.Group.MaxReasoningEffortOverLimit, true
+	maxEffort, mappings := apiKey.Group.MaxReasoningEffort, apiKey.Group.ReasoningEffortMappings
+	if effectivePlatform == service.PlatformAnthropic {
+		maxEffort, mappings = anthropicCompatibleReasoningEffortPolicy(maxEffort, mappings)
+	}
+	return maxEffort, mappings, apiKey.Group.MaxReasoningEffortOverLimit, true
+}
+
+func anthropicReasoningEffortPolicyForRequest(c *gin.Context, apiKey *service.APIKey) (string, []service.ReasoningEffortMapping, string, bool) {
+	if apiKey == nil || apiKey.Group == nil {
+		return "", nil, "", false
+	}
+	if apiKey.Group.Platform != service.PlatformAnthropic && apiKey.Group.Platform != service.PlatformComposite {
+		return "", nil, "", false
+	}
+	if effectiveAPIKeyPlatform(c, apiKey) != service.PlatformAnthropic {
+		return "", nil, "", false
+	}
+	maxEffort, mappings := anthropicCompatibleReasoningEffortPolicy(apiKey.Group.MaxReasoningEffort, apiKey.Group.ReasoningEffortMappings)
+	return maxEffort, mappings, apiKey.Group.MaxReasoningEffortOverLimit, true
+}
+
+func anthropicCompatibleReasoningEffortPolicy(maxEffort string, mappings []service.ReasoningEffortMapping) (string, []service.ReasoningEffortMapping) {
+	if service.NormalizeMaxReasoningEffort(maxEffort) == "minimal" {
+		maxEffort = "low"
+	}
+	normalizedMappings := append([]service.ReasoningEffortMapping(nil), mappings...)
+	for i := range normalizedMappings {
+		if service.NormalizeMaxReasoningEffort(normalizedMappings[i].To) == "minimal" {
+			normalizedMappings[i].To = "low"
+		}
+	}
+	return maxEffort, normalizedMappings
 }
 
 func bindRequestedReasoningEffort(c *gin.Context, body []byte, model string) {
@@ -116,6 +148,14 @@ func respondOpenAIReasoningEffortPolicyError(c *gin.Context, err error, write fu
 	}
 	service.MarkOpsClientBusinessLimited(c, service.OpsClientBusinessLimitedReasonLocalPolicyDenied)
 	write(c, http.StatusForbidden, "permission_error", err.Error())
+}
+
+func applyAnthropicReasoningEffortPolicyForRequest(c *gin.Context, apiKey *service.APIKey, body []byte) ([]byte, bool, error) {
+	maxEffort, mappings, overLimit, ok := anthropicReasoningEffortPolicyForRequest(c, apiKey)
+	if !ok {
+		return body, false, nil
+	}
+	return service.ApplyReasoningEffortPolicy(body, maxEffort, mappings, overLimit)
 }
 
 func bindOpenAIReasoningEffortPolicyForMessagesRequest(c *gin.Context, apiKey *service.APIKey, body []byte) {

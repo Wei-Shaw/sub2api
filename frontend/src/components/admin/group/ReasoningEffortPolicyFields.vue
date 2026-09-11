@@ -136,7 +136,7 @@
               <Select
                 :id="`${idPrefix}-${pair.id}-from`"
                 :model-value="pair.from"
-                :options="reasoningEffortOptions"
+                :options="reasoningEffortSourceOptions"
                 :placeholder="t('admin.groups.form.reasoningEffortFromPlaceholder')"
                 :error="showValidation && !!pairErrors(pair.id).from"
                 :aria-label="t('admin.groups.form.reasoningEffortFrom')"
@@ -164,7 +164,7 @@
               <Select
                 :id="`${idPrefix}-${pair.id}-to`"
                 :model-value="pair.to"
-                :options="reasoningEffortOptions"
+                :options="reasoningEffortTargetOptions"
                 :placeholder="t('admin.groups.form.reasoningEffortToPlaceholder')"
                 :error="showValidation && !!pairErrors(pair.id).to"
                 :aria-label="t('admin.groups.form.reasoningEffortTo')"
@@ -217,6 +217,9 @@ import {
   createReasoningEffortMappingRow,
   normalizeReasoningEffortMatchType,
   reasoningEffortOptionsForPlatform,
+  reasoningEffortSourceOptionsForPlatform,
+  reasoningEffortTargetOptionsForPlatform,
+  reasoningEffortMappingDeny,
   reasoningEffortOverLimitDeny,
   reasoningEffortOverLimitDowngrade,
   validateReasoningEffortMappings,
@@ -242,6 +245,19 @@ const { t } = useI18n();
 const showValidation = ref(false);
 const reasoningEffortOptions = computed(() =>
   reasoningEffortOptionsForPlatform(props.platform),
+);
+const reasoningEffortSourceOptions = computed(() =>
+  reasoningEffortSourceOptionsForPlatform(props.platform),
+);
+const reasoningEffortTargetOptions = computed(() =>
+  reasoningEffortTargetOptionsForPlatform(props.platform).map((option) =>
+    option.value === reasoningEffortMappingDeny
+      ? {
+          ...option,
+          label: t("admin.groups.form.reasoningEffortToDeny"),
+        }
+      : option,
+  ),
 );
 const matchTypeOptions = computed(() => [
   {

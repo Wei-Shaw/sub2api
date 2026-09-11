@@ -173,6 +173,30 @@ func TestQuotaFetcher_CodingPlanAccountUsesCNQuota(t *testing.T) {
 	require.Equal(t, 0, cnBalance.calls)
 }
 
+func TestQuotaFetcher_MiniMaxCodingPlanUsesCNQuota(t *testing.T) {
+	fetcher, usage, cnQuota, cnBalance, accounts := newQuotaFetcherTestSetup(t)
+	accounts.accounts[19] = &Account{
+		ID:          19,
+		Platform:    domain.PlatformMiniMax,
+		Credentials: map[string]any{"account_mode": AccountModeCoding},
+	}
+	cnQuota.result = &CNProviderQuotaProbeResult{
+		Success:         true,
+		CredentialValid: true,
+		Tiers: []CNQuotaTier{
+			{Window: "5h", UsedPercent: 12},
+		},
+	}
+
+	snapshot := fetcher.Fetch(context.Background(), 19)
+
+	require.True(t, snapshot.Success)
+	require.Equal(t, "cn_quota", snapshot.Source)
+	require.Equal(t, 1, cnQuota.calls)
+	require.Equal(t, 0, cnBalance.calls)
+	require.Equal(t, 0, usage.getCalls())
+}
+
 func TestQuotaFetcher_PayGAccountUsesCNBalance(t *testing.T) {
 	fetcher, _, _, cnBalance, accounts := newQuotaFetcherTestSetup(t)
 	accounts.accounts[11] = &Account{
