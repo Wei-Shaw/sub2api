@@ -1407,7 +1407,7 @@ func (s *OpenAIGatewayService) buildUpstreamRequest(ctx context.Context, c *gin.
 	// Whitelist passthrough headers
 	for key, values := range c.Request.Header {
 		lowerKey := strings.ToLower(key)
-		if openaiAllowedHeaders[lowerKey] {
+		if openaiAllowedHeaders[lowerKey] && shouldCopyOpenAIInboundHeader(account, lowerKey) {
 			for _, v := range values {
 				req.Header.Add(key, v)
 			}
@@ -1427,7 +1427,9 @@ func (s *OpenAIGatewayService) buildUpstreamRequest(ctx context.Context, c *gin.
 			req.Header.Del("OpenAI-Beta")
 			req.Header.Del("originator")
 		} else {
-			req.Header.Set("originator", resolveOpenAIUpstreamOriginator(c, isCodexCLI))
+			// OAuth Codex upstream identity belongs to the gateway. The downstream
+			// caller's originator was used only for ingress compatibility detection.
+			req.Header.Set("originator", resolveCodexOutboundIdentity("").originator)
 		}
 		apiKeyID := getAPIKeyIDFromContext(c)
 		if isOpenAIResponsesCompactPath(c) {

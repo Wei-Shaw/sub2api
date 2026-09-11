@@ -14,7 +14,6 @@ import (
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
-	"github.com/Wei-Shaw/sub2api/internal/pkg/openai"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/xai"
 	"github.com/gin-gonic/gin"
 	"github.com/tidwall/gjson"
@@ -216,18 +215,6 @@ func (s *OpenAIGatewayService) GenerateSessionHashWithFallback(c *gin.Context, b
 	currentHash, legacyHash := deriveOpenAISessionHashes(seed)
 	attachOpenAILegacySessionHashToGin(c, legacyHash)
 	return currentHash
-}
-
-func resolveOpenAIUpstreamOriginator(c *gin.Context, isOfficialClient bool) string {
-	if c != nil {
-		if originator := strings.TrimSpace(c.GetHeader("originator")); originator != "" {
-			return originator
-		}
-	}
-	if isOfficialClient {
-		return openai.CodexDefaultOriginator
-	}
-	return "opencode"
 }
 
 // BindStickySession sets session -> account binding with standard TTL.

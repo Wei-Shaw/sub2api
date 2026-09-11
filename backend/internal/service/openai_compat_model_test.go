@@ -1145,6 +1145,7 @@ func TestForwardAsAnthropic_OAuthRestoresCodexIdentityHeaders(t *testing.T) {
 			c.Request.Header.Set("Content-Type", "application/json")
 			c.Request.Header.Set("User-Agent", tt.userAgent)
 			c.Request.Header.Set("originator", tt.originator)
+			c.Request.Header.Set("version", "0.0.1-downstream")
 
 			upstream := &httpUpstreamRecorder{resp: openAICompatSSECompletedResponse("resp_identity", "gpt-5.4")}
 			svc := &OpenAIGatewayService{

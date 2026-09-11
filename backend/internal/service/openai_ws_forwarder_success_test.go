@@ -893,6 +893,7 @@ func TestOpenAIGatewayService_Forward_WSv2_OAuthOriginatorCompatibility(t *testi
 			originator: "codex-tui",
 		},
 		{name: "official originator without ua", originator: "codex_vscode"},
+		{name: "third-party ua", userAgent: "curl/8.0", originator: "opencode"},
 	}
 
 	for _, tt := range tests {

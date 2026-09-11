@@ -18,6 +18,32 @@ func requireOpenAICodexProbeHeaders(t *testing.T, h http.Header) {
 	require.NotEmpty(t, h.Get("X-Codex-Window-ID"))
 }
 
+func TestDefaultCodexIdentityMatchesVerifiedLocalDesktop(t *testing.T) {
+	require.Equal(t,
+		"Codex Desktop/0.153.4 (Mac OS 15.6.0; arm64) unknown (Codex Desktop; 26.901.41600)",
+		codexCLIUserAgent,
+	)
+	require.Equal(t, "Codex Desktop", openai.CodexDefaultOriginator)
+	require.Equal(t, "0.153.4", codexCLIVersion)
+	require.Equal(t, "26.901.41600", codexDesktopVersion)
+}
+
+func TestOpenAICodexGatewayOwnedIdentityHeadersAreNotCopiedFromIngress(t *testing.T) {
+	oauth := &Account{Platform: PlatformOpenAI, Type: AccountTypeOAuth}
+	apiKey := &Account{Platform: PlatformOpenAI, Type: AccountTypeAPIKey}
+
+	for _, key := range []string{"User-Agent", "originator", "version"} {
+		require.True(t, isOpenAICodexGatewayOwnedIdentityHeader(key))
+		require.False(t, shouldCopyOpenAIInboundHeader(oauth, key), key)
+		require.True(t, shouldCopyOpenAIInboundHeader(apiKey, key), key)
+	}
+
+	// Session continuity is a separate input class: accepted as a seed and
+	// isolated/scoped later, rather than confused with static client identity.
+	require.True(t, shouldCopyOpenAIInboundHeader(oauth, "session_id"))
+	require.True(t, shouldCopyOpenAIInboundHeader(oauth, "x-codex-turn-state"))
+}
+
 // 强制统一出口：无论客户端自报什么身份，OAuth 出站的 User-Agent / originator / version
 // 一律是网关规范身份。上游在容量紧张时按客户端身份分优先级降载，统一出口确保没有请求
 // 带着第三方或陈旧身份出站。
@@ -178,6 +204,23 @@ func TestEnforceCodexIdentityHeadersWithAccountOverrideUA(t *testing.T) {
 		require.Equal(t, "codex-tui/0.200.1 (Mac OS X 14.0; arm64) iTerm", h.Get("user-agent"))
 		require.Equal(t, "0.200.1", h.Get("version"))
 	})
+
+	t.Run("Desktop 完整画像保留双版本元组", func(t *testing.T) {
+		SetCodexCanonicalUserAgentResolver(func() string {
+			return buildCodexCLIUserAgent("0.200.1")
+		})
+		t.Cleanup(func() { SetCodexCanonicalUserAgentResolver(nil) })
+
+		h := make(http.Header)
+		h.Set("originator", "codex-tui")
+		const desktopUA = "Codex Desktop/0.153.4 (Mac OS 15.6.0; arm64) unknown (Codex Desktop; 26.901.41600)"
+
+		enforceCodexIdentityHeadersWithUA(h, desktopUA)
+
+		require.Equal(t, "Codex Desktop", h.Get("originator"))
+		require.Equal(t, desktopUA, h.Get("user-agent"))
+		require.Equal(t, "0.153.4", h.Get("version"))
+	})
 }
 
 // 规范身份跟随注入的解析器（后台面板 UA / 自动同步版本号），无需重启或发版。
@@ -317,7 +360,10 @@ func TestNormalizeCodexClientVersion(t *testing.T) {
 }
 
 func TestBuildCodexCLIUserAgent(t *testing.T) {
-	require.Equal(t, openai.CodexDefaultOriginator+"/0.200.1"+codexCLIUserAgentSuffix, buildCodexCLIUserAgent("0.200.1"))
+	require.Equal(t,
+		openai.CodexTUIOriginator+"/0.200.1"+codexCLIUserAgentSuffix+" (codex-tui; 0.200.1)",
+		buildCodexCLIUserAgent("0.200.1"),
+	)
 	// 非法版本号必须回退到内置 UA，不能拼出畸形身份。
 	require.Equal(t, codexCLIUserAgent, buildCodexCLIUserAgent("bogus version"))
 	require.Equal(t, codexCLIUserAgent, buildCodexCLIUserAgent(""))

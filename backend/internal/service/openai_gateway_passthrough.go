@@ -619,7 +619,8 @@ func (s *OpenAIGatewayService) buildUpstreamRequestOpenAIPassthrough(
 	if c != nil && c.Request != nil {
 		for key, values := range c.Request.Header {
 			lower := strings.ToLower(strings.TrimSpace(key))
-			if !isOpenAIPassthroughAllowedRequestHeader(lower, allowTimeoutHeaders) {
+			if !isOpenAIPassthroughAllowedRequestHeader(lower, allowTimeoutHeaders) ||
+				!shouldCopyOpenAIInboundHeader(account, lower) {
 				continue
 			}
 			for _, v := range values {

@@ -84,3 +84,21 @@ func TestPairCodexClientIdentity(t *testing.T) {
 		})
 	}
 }
+
+func TestPairCodexClientIdentityRejectsInvalidHeaderBytes(t *testing.T) {
+	for name, ua := range map[string]string{
+		"crlf_suffix":        "codex-tui/0.153.4 (Linux)\r\nX-Injected: value",
+		"nul_suffix":         "codex-tui/0.153.4 (Linux\x00)",
+		"del_suffix":         "codex-tui/0.153.4 terminal\x7f",
+		"newline_prefix":     "\ncodex-tui/0.153.4",
+		"newline_suffix":     "codex-tui/0.153.4\n",
+		"control_in_trailer": "custom/0.153.4 bad\x01 (codex-tui; 0.153.4)",
+	} {
+		t.Run(name, func(t *testing.T) {
+			originator, paired, ok := PairCodexClientIdentity(ua)
+			require.False(t, ok)
+			require.Empty(t, originator)
+			require.Empty(t, paired)
+		})
+	}
+}

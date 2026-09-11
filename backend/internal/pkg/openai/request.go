@@ -3,6 +3,8 @@ package openai
 import (
 	"regexp"
 	"strings"
+
+	"golang.org/x/net/http/httpguts"
 )
 
 // CodexCLIUserAgentPrefixes matches Codex CLI User-Agent patterns
@@ -40,11 +42,11 @@ var codexOfficialClientUAPrefixes = []string{
 const codexOfficialClientFamilyPrefix = "codex "
 
 // codexOfficialClientOriginators：Codex 官方客户端家族 originator 精确集合。
-// app-server `initialize` 把 originator 设为 clientInfo.name 逐字值（codex-rs default_client.rs），
-// 故官方集合是这些确定字面量；镜像 is_first_party_originator / is_first_party_chat_originator
-// 并叠加 sub2api 已取证变体。用精确匹配而非「含 codex_/codex」的宽松兜底，避免 evil-codex_ 之类
-// 伪造绕过（gate 仍需 UA 双因子佐证）。新官方/合作客户端经 allowed_client.go 命名预设放行，
-// 或在 bump context/codex 时同步补入本集合。
+// originator 与 initialize.clientInfo 是两个输入：没有 override 时可以同名；
+// CODEX_INTERNAL_ORIGINATOR_OVERRIDE（Desktop 制品即如此）只决定 UA 前缀/HTTP originator，
+// clientInfo.name/version 仍独立写入 UA 尾部。故本集合只校验上游 originator，不要求它与
+// trailer 的 clientInfo.name 相等。用精确匹配而非「含 codex_/codex」的宽松兜底，避免
+// evil-codex_ 之类伪造绕过（gate 仍需 UA 双因子佐证）。
 var codexOfficialClientOriginators = map[string]bool{
 	"codex_cli_rs":          true, // CLI 默认 DEFAULT_ORIGINATOR
 	"codex-tui":             true, // 交互式 TUI（连字符，真实流量占比最高）
@@ -198,6 +200,11 @@ func matchCodexClientHeaderStrictPrefixes(value string, prefixes []string) bool 
 //     UA 首段后配对，保留真实版本/OS/终端指纹；
 //  3. 均不命中 → ok=false，调用方应整体回退为默认官方身份。
 func PairCodexClientIdentity(userAgent string) (originator string, pairedUA string, ok bool) {
+	// 必须在 TrimSpace 前校验。否则开头/结尾的 CRLF 可能先被裁掉，随后被误认成
+	// 合法 Codex 身份；中间的控制字节则可能被继续带到上游请求头。
+	if !validCodexUserAgentValue(userAgent) {
+		return "", "", false
+	}
 	ua := strings.TrimSpace(userAgent)
 	slash := strings.IndexByte(ua, '/')
 	if slash <= 0 {
@@ -215,6 +222,127 @@ func PairCodexClientIdentity(userAgent string) (originator string, pairedUA stri
 		return trailer, trailer + ua[slash:], true
 	}
 	return "", "", false
+}
+
+func validCodexUserAgentValue(value string) bool {
+	if !httpguts.ValidHeaderFieldValue(value) {
+		return false
+	}
+	// httpguts 兼容旧式 field-value 语法；User-Agent 不允许 obs-fold，显式拒绝 CR/LF。
+	return !strings.ContainsAny(value, "\r\n")
+}
+
+// CodexClientInfo is Sub2API's parsed projection of app-server's
+// initialize.params.clientInfo. codex-rs copies `{name}; {version}` into the
+// final User-Agent suffix; this type is not an additional HTTP header.
+type CodexClientInfo struct {
+	Name    string
+	Version string
+}
+
+// CodexWireProfile is the request-scoped Codex identity represented by a
+// codex-rs User-Agent. RuntimeDescriptor intentionally keeps the platform and
+// terminal section together: os_info names can contain spaces, so splitting an
+// arbitrary configured UA into OS name/version fields would be lossy.
+type CodexWireProfile struct {
+	Originator        string
+	CoreVersion       string
+	RuntimeDescriptor string
+	ClientInfo        *CodexClientInfo
+}
+
+// ParseCodexWireProfile parses and normalizes an official Codex UA. It also
+// repairs unrecognized override prefixes via PairCodexClientIdentity before
+// exposing the profile. Originator and clientInfo are intentionally independent:
+// official Desktop app-server binaries keep their compiled "Codex Desktop"
+// originator while an initialize caller can supply a different known clientInfo.
+func ParseCodexWireProfile(userAgent string) (CodexWireProfile, bool) {
+	originator, pairedUA, ok := PairCodexClientIdentity(userAgent)
+	if !ok {
+		return CodexWireProfile{}, false
+	}
+
+	slash := strings.IndexByte(pairedUA, '/')
+	if slash <= 0 {
+		return CodexWireProfile{}, false
+	}
+	rest := strings.TrimSpace(pairedUA[slash+1:])
+	if rest == "" {
+		return CodexWireProfile{}, false
+	}
+	coreVersion := rest
+	runtimeDescriptor := ""
+	if space := strings.IndexByte(rest, ' '); space >= 0 {
+		coreVersion = strings.TrimSpace(rest[:space])
+		runtimeDescriptor = strings.TrimSpace(rest[space+1:])
+	}
+	if coreVersion == "" {
+		return CodexWireProfile{}, false
+	}
+
+	profile := CodexWireProfile{
+		Originator:        originator,
+		CoreVersion:       coreVersion,
+		RuntimeDescriptor: runtimeDescriptor,
+	}
+	if name, version, prefix, trailerOK := codexUATrailer(runtimeDescriptor); trailerOK &&
+		isSaneCodexOriginator(name) && IsCodexOfficialClientOriginator(name) {
+		name = canonicalizeCodexOriginator(name)
+		profile.RuntimeDescriptor = strings.TrimSpace(prefix)
+		profile.ClientInfo = &CodexClientInfo{Name: name, Version: version}
+	}
+	return profile, true
+}
+
+// UserAgent renders the profile using the format emitted by codex-rs.
+func (p CodexWireProfile) UserAgent() string {
+	ua := strings.TrimSpace(p.Originator) + "/" + strings.TrimSpace(p.CoreVersion)
+	if runtime := strings.TrimSpace(p.RuntimeDescriptor); runtime != "" {
+		ua += " " + runtime
+	}
+	if p.ClientInfo != nil {
+		name := strings.TrimSpace(p.ClientInfo.Name)
+		version := strings.TrimSpace(p.ClientInfo.Version)
+		if name != "" && version != "" {
+			ua += " (" + name + "; " + version + ")"
+		}
+	}
+	return ua
+}
+
+// HasDistinctClientVersion only compares the two wire values. They may differ
+// for Desktop or a TUI connected to a remote app-server. Neither equality nor a
+// client name proves that frontend and Core belong to the same release artifact.
+// Callers must validate versions separately; this is not a provenance check.
+func (p CodexWireProfile) HasDistinctClientVersion() bool {
+	return p.ClientInfo != nil &&
+		strings.TrimSpace(p.ClientInfo.Version) != "" &&
+		strings.TrimSpace(p.ClientInfo.Version) != strings.TrimSpace(p.CoreVersion)
+}
+
+// codexUATrailer parses a final `(name; version)` group and returns the text
+// preceding it. The final group is considered a clientInfo trailer only when
+// it closes the complete runtime descriptor.
+func codexUATrailer(value string) (name, version, prefix string, ok bool) {
+	value = strings.TrimSpace(value)
+	if value == "" || !strings.HasSuffix(value, ")") {
+		return "", "", "", false
+	}
+	open := strings.LastIndex(value, "(")
+	if open < 0 {
+		return "", "", "", false
+	}
+	inner := value[open+1 : len(value)-1]
+	semi := strings.IndexByte(inner, ';')
+	if semi < 0 {
+		return "", "", "", false
+	}
+	name = strings.TrimSpace(inner[:semi])
+	version = strings.TrimSpace(inner[semi+1:])
+	if name == "" || version == "" {
+		return "", "", "", false
+	}
+	return name, version, strings.TrimSpace(value[:open]), true
 }
 
 // codexOriginatorMaxLen 官方 clientInfo.name 均为短 ASCII 标识，远低于此上限。
@@ -247,8 +375,12 @@ func canonicalizeCodexOriginator(name string) string {
 // CodexCLIOriginator 是 codex-rs 客户端的历史默认 originator，保留用于兼容识别。
 const CodexCLIOriginator = "codex_cli_rs"
 
-// CodexDefaultOriginator 是网关默认使用的 Codex TUI originator。
-const CodexDefaultOriginator = "codex-tui"
+// CodexTUIOriginator 是官方交互式 TUI 的 originator。
+const CodexTUIOriginator = "codex-tui"
+
+// CodexDefaultOriginator 是网关默认使用的 Codex Desktop originator。
+// 默认完整画像取自 2026-09-11 本机官方 Desktop 制品的直接抓包结果。
+const CodexDefaultOriginator = "Codex Desktop"
 
 // CodexUserAgentVersion 提取 Codex UA 的完整版本段，即 `{client}/{version} (...` 中的 version。
 // 与 ParseCodexEngineVersion 的区别：后者只取三段数字用于引擎版本比较（会丢掉 -alpha.4
@@ -271,10 +403,10 @@ func CodexUserAgentVersion(userAgent string) string {
 // （客户端名、OS / 架构 / 终端指纹）原样保留；UA 不是 `{client}/{version}` 形态时返回空串，
 // 由调用方决定整体回退。
 //
-// 尾部官方客户端标识组 `(name; version)` 与首段是同一个版本声明的两个出口
-// （CODEX_INTERNAL_ORIGINATOR_OVERRIDE 场景，如 `cccc/0.142.0 ... (codex-tui; 0.142.0)`），
-// 必须一并更新，否则会拼出首段声明新版本、尾部仍是旧版本的自相矛盾身份。
-// 仅在括号组确为官方客户端标识时才改写，避免误伤 OS 组（如 `(Ubuntu 22.4.0; x86_64)`）。
+// 沿用单版本模板策略：尾部官方客户端版本与原 Core 相等时一起更新。此策略不是
+// 对连接拓扑或同制品来源的推断。首尾不同（如 Desktop 或 remote TUI）时返回空串，
+// 由调用方校验并整体保留/替换，不能拿最新 CLI 版本局部改写。
+// 仅在括号组确为官方客户端标识时才处理，避免误伤 OS 组。
 func SetCodexUserAgentVersion(userAgent, version string) string {
 	ua := strings.TrimSpace(userAgent)
 	version = strings.TrimSpace(version)
@@ -290,19 +422,24 @@ func SetCodexUserAgentVersion(userAgent, version string) string {
 		return ""
 	}
 	rest := ua[slash+1:]
+	previousVersion := strings.TrimSpace(rest)
 	tail := ""
 	if space := strings.IndexByte(rest, ' '); space >= 0 {
+		previousVersion = strings.TrimSpace(rest[:space])
 		tail = rest[space:]
 	} else if strings.TrimSpace(rest) == "" {
 		// `client/` 没有版本段，不是可重建的 Codex 形态。
 		return ""
 	}
-	return rewriteCodexUATrailerVersion(client+"/"+version+tail, version)
+	if name, trailerVersion, _, ok := codexUATrailer(tail); ok &&
+		IsCodexOfficialClientOriginator(name) && trailerVersion != previousVersion {
+		return ""
+	}
+	return rewriteCodexUATrailerVersion(client+"/"+version+tail, previousVersion, version)
 }
 
-// rewriteCodexUATrailerVersion 把尾部官方客户端标识组 `(name; version)` 的版本改成 version。
-// 括号组缺少 `;` 分隔的版本、或 name 不是官方 originator 时原样返回。
-func rewriteCodexUATrailerVersion(ua, version string) string {
+// rewriteCodexUATrailerVersion 仅在尾部版本等于原 Core 版本时同步更新。
+func rewriteCodexUATrailerVersion(ua, previousVersion, version string) string {
 	open := strings.LastIndex(ua, "(")
 	if open < 0 {
 		return ua
@@ -318,6 +455,10 @@ func rewriteCodexUATrailerVersion(ua, version string) string {
 	}
 	name := strings.TrimSpace(inner[:semi])
 	if name == "" || !IsCodexOfficialClientOriginator(name) {
+		return ua
+	}
+	trailerVersion := strings.TrimSpace(inner[semi+1:])
+	if trailerVersion != previousVersion {
 		return ua
 	}
 	return ua[:open+1] + name + "; " + version + ua[open+1+closeIdx:]

@@ -151,7 +151,9 @@ func (s *OpenAIGatewayService) buildOpenAIWSHeaders(
 		if err := resolveAndSetOpenAIChatGPTAccountHeaders(ctx, s.accountRepo, headers, account); err != nil {
 			return nil, sessionResolution, fmt.Errorf("resolve chatgpt account headers: %w", err)
 		}
-		headers.Set("originator", resolveOpenAIUpstreamOriginator(c, isCodexCLI))
+		// Seed the gateway originator; final enforcement either keeps the
+		// configured identity or, when disabled, pairs it with the final UA.
+		headers.Set("originator", resolveCodexOutboundIdentity("").originator)
 	}
 
 	betaValue := openAIWSBetaV2Value
@@ -166,7 +168,7 @@ func (s *OpenAIGatewayService) buildOpenAIWSHeaders(
 	}
 	if strings.TrimSpace(customUA) != "" {
 		headers.Set("user-agent", customUA)
-	} else if c != nil {
+	} else if c != nil && shouldCopyOpenAIInboundHeader(account, "user-agent") {
 		if ua := strings.TrimSpace(c.GetHeader("User-Agent")); ua != "" {
 			headers.Set("user-agent", ua)
 		}

@@ -46,11 +46,11 @@ func (s *openaiOAuthService) ExchangeCode(ctx context.Context, code, codeVerifie
 
 	var tokenResp openai.TokenResponse
 
-	authUA, authOriginator := service.CodexCanonicalAuthIdentity()
 	resp, err := client.R().
 		SetContext(ctx).
-		SetHeader("User-Agent", authUA).
-		SetHeader("originator", authOriginator).
+		// Codex uses a raw auth client for the authorization-code exchange. An
+		// explicit empty value also suppresses req/v3's own default User-Agent.
+		SetHeader("User-Agent", "").
 		SetFormDataFromValues(formData).
 		SetSuccessResult(&tokenResp).
 		Post(s.tokenURL)

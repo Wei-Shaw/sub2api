@@ -1629,9 +1629,6 @@ func (s *OpenAIGatewayService) FetchCodexModelsManifest(ctx context.Context, acc
 	}
 
 	clientVersion = strings.TrimSpace(clientVersion)
-	if clientVersion == "" {
-		clientVersion = CodexCanonicalClientVersion()
-	}
 
 	requestEndpoint := chatgptCodexModelsURL
 	authToken := ""
@@ -1660,6 +1657,18 @@ func (s *OpenAIGatewayService) FetchCodexModelsManifest(ctx context.Context, acc
 		return nil, infraerrors.Newf(http.StatusBadGateway, "OPENAI_CODEX_MODELS_ACCOUNT_TYPE_UNSUPPORTED", "account type %q cannot fetch the Codex models manifest", credAccount.Type)
 	}
 
+	// OAuth 模型清单是 Codex Core 自己发出的请求。下游传入的 client_version 不能
+	// 穿透到 ChatGPT 上游，否则会出现 Desktop User-Agent 属于一个 Core、查询参数
+	// 和 version 头却属于另一个客户端的混合画像。三处版本必须从同一最终身份快照生成。
+	overrideUA := ""
+	if !useAPIKeyUpstream {
+		overrideUA = credAccount.GetOpenAIUserAgent()
+	}
+	identity := resolveCodexOutboundIdentity(overrideUA)
+	if !useAPIKeyUpstream || clientVersion == "" {
+		clientVersion = identity.version
+	}
+
 	requestURL, err := buildCodexModelsManifestURL(requestEndpoint, appendModelsPath, clientVersion)
 	if err != nil {
 		if useAPIKeyUpstream {
@@ -1685,17 +1694,10 @@ func (s *OpenAIGatewayService) FetchCodexModelsManifest(ctx context.Context, acc
 		setOpenAIChatGPTAccountHeaders(headers, credAccount)
 	}
 	headers.Set("Accept", "application/json")
-	overrideUA := ""
-	if !useAPIKeyUpstream {
-		overrideUA = credAccount.GetOpenAIUserAgent()
-	}
-	identity := resolveCodexOutboundIdentity(overrideUA)
 	headers.Set("Originator", identity.originator)
 	headers.Set("User-Agent", identity.userAgent)
-	// Version 头优先与 client_version 查询参数同源：客户端自报版本合法且不低于上游
-	// 门槛时原样使用；否则回退规范版本，避免陈旧 version 触发上游 404（issue #3901）。
-	// client_version 查询参数本身始终按客户端原值透传（内容协商语义，契约见
-	// TestFetchCodexModelsManifestPassthrough）。
+	// API-key 自定义上游继续按调用方指定版本协商；OAuth 已在上面把 clientVersion
+	// 收口为最终身份的 Core 版本，因此查询参数、version 头和 UA 前缀必然一致。
 	headerVersion := NormalizeCodexClientVersion(clientVersion)
 	if headerVersion == "" || CompareVersions(headerVersion, codexUpstreamMinVersion) < 0 {
 		headerVersion = identity.version
