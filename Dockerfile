@@ -116,6 +116,7 @@ LABEL org.opencontainers.image.source="https://github.com/Wei-Shaw/sub2api"
 RUN apk add --no-cache \
     ca-certificates \
     tzdata \
+    curl \
     su-exec \
     libpq \
     zstd-libs \
@@ -154,7 +155,7 @@ EXPOSE 8080
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=10s --retries=3 \
-    CMD wget -q -T 5 -O /dev/null http://localhost:${SERVER_PORT:-8080}/health || exit 1
+    CMD curl -f -s --max-time 5 http://localhost:${SERVER_PORT:-8080}/health || exit 1
 
 # Run the application (entrypoint fixes /app/data ownership then execs as sub2api)
 ENTRYPOINT ["/app/docker-entrypoint.sh"]
