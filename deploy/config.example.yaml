@@ -214,6 +214,11 @@ gateway:
   # OpenAI/Codex upstream response header timeout (seconds, 0=disabled)
   # OpenAI/Codex 等待上游响应头超时时间（秒，0=禁用本地响应头超时）
   openai_response_header_timeout: 0
+  # Optional native OpenAI image generation/edit response header timeout (seconds).
+  # Omitted/null inherits openai_response_header_timeout; 0 disables the header timeout.
+  # 可选生图独立响应头超时；省略/null沿用OpenAI配置，0禁用。API Key/原生OAuth适用，插件自行控制超时。
+  # Does not change streaming data-interval timeouts after response headers arrive.
+  # image_response_header_timeout: 600
   # Grok text Responses first-byte timeout (seconds, 0=disabled; default 120)
   # Grok 文本 Responses 首字节超时时间（秒，0=禁用；默认 120）
   grok_response_header_timeout: 120
