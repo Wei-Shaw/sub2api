@@ -270,7 +270,7 @@ func TestDatabaseConnectionUsesConfiguredTargetBeforeBootstrapDatabase(t *testin
 	if err != nil {
 		t.Fatalf("sqlmock.New() error = %v", err)
 	}
-	defer targetDB.Close()
+	defer func() { _ = targetDB.Close() }()
 
 	var opened []string
 	openDatabase := func(_ *DatabaseConfig, dbName string) (*sql.DB, error) {
@@ -292,12 +292,12 @@ func TestDatabaseConnectionUsesLegacyBootstrapOnlyForMissingTarget(t *testing.T)
 	if err != nil {
 		t.Fatalf("sqlmock.New() bootstrap error = %v", err)
 	}
-	defer bootstrapDB.Close()
+	defer func() { _ = bootstrapDB.Close() }()
 	targetDB, _, err := sqlmock.New()
 	if err != nil {
 		t.Fatalf("sqlmock.New() target error = %v", err)
 	}
-	defer targetDB.Close()
+	defer func() { _ = targetDB.Close() }()
 
 	bootstrapMock.ExpectQuery(`SELECT EXISTS\(SELECT 1 FROM pg_database WHERE datname = \$1\)`).
 		WithArgs(cfg.DBName).
