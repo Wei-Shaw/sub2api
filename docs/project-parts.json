@@ -1,0 +1,72 @@
+{
+  "repository_type": "multi-part",
+  "scan_level": "quick",
+  "generated_at": "2026-04-28T17:48:08+08:00",
+  "parts": [
+    {
+      "part_id": "backend",
+      "part_name": "Backend",
+      "root_path": "backend",
+      "project_type_id": "backend",
+      "primary_language": "Go",
+      "tech_stack": [
+        "Go 1.26.2",
+        "Gin 1.9.1",
+        "Ent 0.14.5",
+        "Wire 0.7.0",
+        "PostgreSQL",
+        "Redis"
+      ],
+      "entry_points": [
+        "backend/cmd/server/main.go",
+        "backend/cmd/jwtgen/main.go"
+      ],
+      "architecture_pattern": "HTTP handler -> service -> repository layered backend with generated Ent ORM and Wire dependency injection"
+    },
+    {
+      "part_id": "frontend",
+      "part_name": "Frontend",
+      "root_path": "frontend",
+      "project_type_id": "web",
+      "primary_language": "TypeScript",
+      "tech_stack": [
+        "Vue 3.5.26",
+        "Vite 5.4.21",
+        "TypeScript 5.6.3",
+        "Pinia 2.3.1",
+        "Vue Router 4.6.4",
+        "TailwindCSS 3.4.19",
+        "Vitest 2.1.9"
+      ],
+      "entry_points": [
+        "frontend/src/main.ts",
+        "frontend/src/router/index.ts",
+        "frontend/src/api/client.ts"
+      ],
+      "architecture_pattern": "Vue single page application with route-level views, domain components, Pinia stores, and Axios API modules"
+    }
+  ],
+  "integration_points": [
+    {
+      "from_part": "frontend",
+      "to_part": "backend",
+      "type": "HTTP API",
+      "path": "frontend/src/api/client.ts -> /api/v1",
+      "details": "Frontend API modules call backend JSON endpoints through the shared Axios client."
+    },
+    {
+      "from_part": "backend",
+      "to_part": "frontend",
+      "type": "Embedded static assets",
+      "path": "frontend build -> backend/internal/web/dist",
+      "details": "Vite build output is embedded into release binaries with the Go embed build tag."
+    },
+    {
+      "from_part": "external API clients",
+      "to_part": "backend",
+      "type": "Gateway protocol compatibility",
+      "path": "/v1, /v1beta, /responses, /backend-api/codex, /antigravity",
+      "details": "Backend exposes Claude/OpenAI/Gemini/Antigravity-compatible gateway routes guarded by API key middleware."
+    }
+  ]
+}
