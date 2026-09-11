@@ -558,6 +558,12 @@ func (h *AuthHandler) createOIDCOAuthChoicePendingSession(
 		suggestionEmail = canonicalEmail
 	}
 
+	trimmedCompatEmail := strings.TrimSpace(compatEmail)
+	if trimmedCompatEmail != "" && compatEmailUser == nil {
+		suggestionEmail = trimmedCompatEmail
+		canonicalEmail = trimmedCompatEmail
+	}
+
 	completionResponse := map[string]any{
 		"step":                      oauthPendingChoiceStep,
 		"adoption_required":         true,
@@ -570,8 +576,8 @@ func (h *AuthHandler) createOIDCOAuthChoicePendingSession(
 		"force_email_on_signup":     forceEmailOnSignup,
 		"choice_reason":             "third_party_signup",
 	}
-	if strings.TrimSpace(compatEmail) != "" {
-		completionResponse["compat_email"] = strings.TrimSpace(compatEmail)
+	if trimmedCompatEmail != "" {
+		completionResponse["compat_email"] = trimmedCompatEmail
 	}
 	if compatEmailUser != nil {
 		completionResponse["email"] = strings.TrimSpace(compatEmailUser.Email)
