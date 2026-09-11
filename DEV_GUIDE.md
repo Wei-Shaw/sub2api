@@ -310,6 +310,39 @@ go test -tags=integration ./...
 golangci-lint run ./...
 ```
 
+### Unified embeddings and rerank endpoints
+
+The gateway exposes OpenAI-compatible embeddings at `/v1/embeddings` and `/embeddings`. Support is capability-based:
+
+| Existing account | Embeddings | Rerank |
+| --- | --- | --- |
+| OpenAI API key | OpenAI-format `/embeddings` | OpenRouter only when the base URL is the official OpenRouter host |
+| Zhipu API key | Official `/api/paas/v4/embeddings` | Unsupported |
+| Gemini AI Studio API key | Native `embedContent` / `batchEmbedContents` | Unsupported |
+| Kimi, DeepSeek, Anthropic, Grok, Antigravity | Unsupported | Unsupported |
+
+Unsupported provider/account combinations return an explicit unsupported-endpoint error. OpenRouter is represented by an existing OpenAI API-key account configured with its official base URL; no provider platform is created.
+
+```bash
+curl http://localhost:8080/v1/embeddings \
+  -H 'Authorization: Bearer <sub2api-api-key>' \
+  -H 'Content-Type: application/json' \
+  -d '{"model":"text-embedding-3-small","input":["hello","world"]}'
+```
+
+`/embeddings` is an equivalent root alias. Rerank follows OpenRouter's request and response contract and is supported only for an existing OpenAI API-key account configured for OpenRouter:
+
+```bash
+curl http://localhost:8080/v1/rerank \
+  -H 'Authorization: Bearer <sub2api-api-key>' \
+  -H 'Content-Type: application/json' \
+  -d '{"model":"rerank-v1","query":"what is AI?","documents":["AI is useful","A sandwich is food"],"top_n":1}'
+```
+
+`/rerank` is an equivalent root alias. The implementation uses OpenRouter's official endpoints and Bearer authentication. Provider usage is recorded only when the response contains compatible usage fields.
+
+Official references: [OpenRouter embeddings](https://openrouter.ai/docs/api/api-reference/embeddings/submit-an-embedding-request), [OpenRouter rerank](https://openrouter.ai/docs/api/api-reference/rerank/submit-a-rerank-request), [Gemini embeddings](https://ai.google.dev/api/embeddings), and [Zhipu embeddings](https://docs.bigmodel.cn/api-reference/%E6%A8%A1%E5%9E%8B-api/%E6%96%87%E6%9C%AC%E5%B5%8C%E5%85%A5).
+
 ## 六、项目结构速览
 
 ```

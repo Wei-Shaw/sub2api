@@ -12,6 +12,8 @@ var geminiAIStudioActions = map[string]struct{}{
 	"generateContent":       {},
 	"streamGenerateContent": {},
 	"countTokens":           {},
+	"embedContent":          {},
+	"batchEmbedContents":    {},
 }
 
 // buildGeminiAIStudioModelActionURL 组装 AI Studio 的

@@ -333,6 +333,86 @@ describe('CreateAccountModal OpenAI long-context billing', () => {
     expect(createAccountMock.mock.calls[0]?.[0]?.extra?.images_url_to_b64_json).toBe(true)
   })
 
+  it('shows Rerank beside the OpenAI endpoint capabilities and persists an explicit selection', async () => {
+    const wrapper = mountModal()
+    await selectButtonByText(wrapper, 'OpenAI')
+    await selectButtonByText(wrapper, 'API Key')
+    await wrapper.get('form#create-account-form input[type="text"]').setValue('OpenRouter account')
+    await wrapper.get('form#create-account-form input[type="password"]').setValue('test-api-key')
+
+    const rerankCheckbox = wrapper.get<HTMLInputElement>(
+      '[data-testid="openai-endpoint-capability-rerank"]'
+    )
+    expect(rerankCheckbox.element.checked).toBe(false)
+
+    await rerankCheckbox.setValue(true)
+    await wrapper.get('form#create-account-form').trigger('submit.prevent')
+    await flushPromises()
+
+    expect(createAccountMock.mock.calls[0]?.[0]?.credentials?.openai_capabilities).toEqual([
+      'chat_completions',
+      'embeddings',
+      'rerank'
+    ])
+  })
+
+  it('shows Gemini API-key endpoint capabilities and persists the generic capability key', async () => {
+    const wrapper = mountModal()
+    await selectButtonByText(wrapper, 'Gemini')
+    await selectButtonByText(wrapper, 'admin.accounts.gemini.accountType.apiKeyTitle')
+    await wrapper.get('form#create-account-form input[type="text"]').setValue('Gemini API key')
+    await wrapper.get('form#create-account-form input[type="password"]').setValue('test-api-key')
+
+    const nativeCheckbox = wrapper.get<HTMLInputElement>(
+      '[data-testid="gemini-endpoint-capability-gemini_native"]'
+    )
+    const embeddingsCheckbox = wrapper.get<HTMLInputElement>(
+      '[data-testid="gemini-endpoint-capability-embeddings"]'
+    )
+    expect(nativeCheckbox.element.checked).toBe(true)
+    expect(embeddingsCheckbox.element.checked).toBe(true)
+
+    await embeddingsCheckbox.setValue(false)
+    await wrapper.get('form#create-account-form').trigger('submit.prevent')
+    await flushPromises()
+
+    expect(createAccountMock.mock.calls[0]?.[0]?.credentials?.endpoint_capabilities).toEqual([
+      'gemini_native'
+    ])
+  })
+
+  it('shows Gemini endpoint capabilities for OAuth accounts but disables Embeddings', async () => {
+    const wrapper = mountModal()
+    await selectButtonByText(wrapper, 'Gemini')
+
+    expect(wrapper.find('[data-testid="gemini-endpoint-capability-gemini_native"]').exists()).toBe(true)
+    expect(wrapper.get('[data-testid="gemini-endpoint-capability-embeddings"]').attributes('disabled')).toBeDefined()
+  })
+
+  it('shows Zhipu endpoint capabilities and persists the provider-neutral key', async () => {
+    const wrapper = mountModal()
+    await selectButtonByText(wrapper, 'Zhipu GLM')
+    await wrapper.get('form#create-account-form input[type="text"]').setValue('Zhipu account')
+    await wrapper.get('form#create-account-form input[type="password"]').setValue('zhipu-key')
+
+    const nativeCheckbox = wrapper.get<HTMLInputElement>(
+      '[data-testid="zhipu-endpoint-capability-chat_completions"]'
+    )
+    const embeddingsCheckbox = wrapper.get<HTMLInputElement>(
+      '[data-testid="zhipu-endpoint-capability-embeddings"]'
+    )
+    expect(nativeCheckbox.element.checked).toBe(true)
+    expect(embeddingsCheckbox.element.checked).toBe(true)
+
+    await embeddingsCheckbox.setValue(false)
+    await wrapper.get('form#create-account-form').trigger('submit.prevent')
+    await flushPromises()
+
+    expect(createAccountMock.mock.calls[0]?.[0]?.credentials?.endpoint_capabilities).toEqual([
+      'chat_completions'
+    ])
+  })
+
   it('persists upstream model metadata after creating an account from preview', async () => {
     const wrapper = mountModal()
     await selectButtonByText(wrapper, 'OpenAI')

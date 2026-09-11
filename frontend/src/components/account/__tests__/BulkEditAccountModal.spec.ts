@@ -492,7 +492,7 @@ describe('BulkEditAccountModal', () => {
     })
   })
 
-  it('端点能力默认值提交 null，表示恢复两个默认端点', async () => {
+  it('端点能力批量编辑会显式保存默认选择，避免覆盖 OpenRouter 的 Rerank 默认值', async () => {
     const wrapper = mountModal({
       selectedPlatforms: ['openai'],
       selectedTypes: ['apikey']
@@ -503,7 +503,66 @@ describe('BulkEditAccountModal', () => {
     await flushPromises()
 
     expect(adminAPI.accounts.bulkUpdate).toHaveBeenCalledWith([1, 2], {
-      credentials: { openai_capabilities: null }
+      credentials: { openai_capabilities: ['chat_completions', 'embeddings'] }
+    })
+  })
+
+  it('OpenAI API Key 批量编辑可显式保存 Rerank 能力', async () => {
+    const wrapper = mountModal({
+      selectedPlatforms: ['openai'],
+      selectedTypes: ['apikey']
+    })
+
+    await wrapper.get('#bulk-edit-openai-endpoint-capabilities-enabled').setValue(true)
+    await wrapper.get('[data-testid="bulk-edit-openai-endpoint-capability-embeddings"]').setValue(false)
+    await wrapper.get('[data-testid="bulk-edit-openai-endpoint-capability-rerank"]').setValue(true)
+    await wrapper.get('#bulk-edit-account-form').trigger('submit.prevent')
+    await flushPromises()
+
+    expect(adminAPI.accounts.bulkUpdate).toHaveBeenCalledWith([1, 2], {
+      credentials: { openai_capabilities: ['chat_completions', 'rerank'] }
+    })
+  })
+
+  it('Gemini API Key 批量编辑使用通用 endpoint_capabilities 键', async () => {
+    const wrapper = mountModal({
+      selectedPlatforms: ['gemini'],
+      selectedTypes: ['apikey']
+    })
+
+    await wrapper.get('#bulk-edit-gemini-endpoint-capabilities-enabled').setValue(true)
+    await wrapper.get('[data-testid="bulk-edit-gemini-endpoint-capability-embeddings"]').setValue(false)
+    await wrapper.get('#bulk-edit-account-form').trigger('submit.prevent')
+    await flushPromises()
+
+    expect(adminAPI.accounts.bulkUpdate).toHaveBeenCalledWith([1, 2], {
+      credentials: { endpoint_capabilities: ['gemini_native'] }
+    })
+  })
+
+  it('Gemini 非 API Key 批量编辑保留设置区但禁用 Embeddings', () => {
+    const wrapper = mountModal({
+      selectedPlatforms: ['gemini'],
+      selectedTypes: ['oauth']
+    })
+
+    expect(wrapper.find('#bulk-edit-gemini-endpoint-capabilities-enabled').exists()).toBe(true)
+    expect(wrapper.get('[data-testid="bulk-edit-gemini-endpoint-capability-embeddings"]').attributes('disabled')).toBeDefined()
+  })
+
+  it('Zhipu 批量编辑使用通用 endpoint_capabilities 键', async () => {
+    const wrapper = mountModal({
+      selectedPlatforms: ['zhipu'],
+      selectedTypes: ['apikey']
+    })
+
+    await wrapper.get('#bulk-edit-zhipu-endpoint-capabilities-enabled').setValue(true)
+    await wrapper.get('[data-testid="bulk-edit-zhipu-endpoint-capability-embeddings"]').setValue(false)
+    await wrapper.get('#bulk-edit-account-form').trigger('submit.prevent')
+    await flushPromises()
+
+    expect(adminAPI.accounts.bulkUpdate).toHaveBeenCalledWith([1, 2], {
+      credentials: { endpoint_capabilities: ['chat_completions'] }
     })
   })
 

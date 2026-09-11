@@ -4635,6 +4635,10 @@ const compositeRouteEndpointOptions = computed(() => [
     value: "embeddings",
     label: t("admin.groups.compositeRoutes.endpoints.embeddings"),
   },
+  {
+    value: "rerank",
+    label: t("admin.groups.compositeRoutes.endpoints.rerank"),
+  },
   { value: "images", label: t("admin.groups.compositeRoutes.endpoints.images") },
   { value: "gemini", label: t("admin.groups.compositeRoutes.endpoints.gemini") },
 ]);

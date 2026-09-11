@@ -35,6 +35,11 @@ func (h *OpenAIGatewayHandler) Embeddings(c *gin.Context) {
 		h.errorResponse(c, http.StatusInternalServerError, "api_error", "User context not found")
 		return
 	}
+	if apiKey.Group != nil && apiKey.Group.Platform != service.PlatformComposite && !isUnifiedEmbeddingsPlatform(apiKey.Group.Platform) {
+		service.MarkOpsClientBusinessLimited(c, service.OpsClientBusinessLimitedReasonLocalFeatureGate)
+		h.errorResponse(c, http.StatusNotFound, "not_found_error", "Embeddings API is not supported for this provider")
+		return
+	}
 	reqLog := requestLogger(
 		c,
 		"handler.openai_gateway.embeddings",
@@ -72,7 +77,16 @@ func (h *OpenAIGatewayHandler) Embeddings(c *gin.Context) {
 	}
 	reqModel := modelResult.String()
 	ensureCompositeTargetPlatform(c, apiKey, reqModel)
-	if !compositeTargetPlatformAllowed(c, apiKey, reqModel, service.PlatformOpenAI) {
+	routingPlatform := effectiveAPIKeyPlatform(c, apiKey)
+	if routingPlatform == "" {
+		routingPlatform = service.PlatformOpenAI
+	}
+	if !isUnifiedEmbeddingsPlatform(routingPlatform) {
+		service.MarkOpsClientBusinessLimited(c, service.OpsClientBusinessLimitedReasonLocalFeatureGate)
+		h.errorResponse(c, http.StatusNotFound, "not_found_error", "Embeddings API is not supported for this provider")
+		return
+	}
+	if !compositeTargetPlatformAllowed(c, apiKey, reqModel, routingPlatform) {
 		h.errorResponse(c, http.StatusBadRequest, "invalid_request_error", "Model is not supported by this OpenAI-compatible endpoint for composite groups")
 		return
 	}
@@ -135,6 +149,7 @@ func (h *OpenAIGatewayHandler) Embeddings(c *gin.Context) {
 			false,
 			false,
 			true,
+			routingPlatform,
 		)
 		if err != nil {
 			if failoverClientGone(c) {
@@ -146,7 +161,7 @@ func (h *OpenAIGatewayHandler) Embeddings(c *gin.Context) {
 				zap.Int("excluded_account_count", len(failedAccountIDs)),
 			)
 			if len(failedAccountIDs) == 0 {
-				cls := classifyNoAccountErrorFromGin(c, h.gatewayService, apiKey, reqModel, reqModel, service.PlatformOpenAI)
+				cls := classifyNoAccountErrorFromGin(c, h.gatewayService, apiKey, reqModel, reqModel, routingPlatform)
 				if !cls.ModelNotFound {
 					markOpsRoutingCapacityLimitedIfNoAvailable(c, err)
 				}
@@ -161,7 +176,7 @@ func (h *OpenAIGatewayHandler) Embeddings(c *gin.Context) {
 			return
 		}
 		if selection == nil || selection.Account == nil {
-			cls := classifyNoAccountErrorFromGin(c, h.gatewayService, apiKey, reqModel, reqModel, service.PlatformOpenAI)
+			cls := classifyNoAccountErrorFromGin(c, h.gatewayService, apiKey, reqModel, reqModel, routingPlatform)
 			if !cls.ModelNotFound {
 				markOpsRoutingCapacityLimited(c)
 			}
@@ -291,5 +306,14 @@ func (h *OpenAIGatewayHandler) Embeddings(c *gin.Context) {
 			zap.Int("switch_count", switchCount),
 		)
 		return
+	}
+}
+
+func isUnifiedEmbeddingsPlatform(platform string) bool {
+	switch platform {
+	case service.PlatformOpenAI, service.PlatformZhipu, service.PlatformGemini:
+		return true
+	default:
+		return false
 	}
 }

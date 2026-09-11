@@ -617,13 +617,14 @@ export default {
           'Only applies to non-streaming Images responses of OpenAI API Key accounts. When an upstream image item has a url but no b64_json, the gateway downloads the url and fills b64_json with its base64 content (url is kept) for clients built on the official API; the response is returned unchanged if the download fails.',
         endpointCapabilities: 'Endpoint capabilities',
         endpointCapabilitiesDesc:
-          'Used by account routing. The text endpoint follows the Responses API support setting above and is shown as Responses, Chat Completions, or auto mode; Embeddings independently controls /v1/embeddings.',
+          'Used by account routing. The text endpoint follows the Responses API support setting above and is shown as Responses, Chat Completions, or auto mode; Embeddings controls /v1/embeddings. OpenAI itself does not support Rerank; some other model providers offer Rerank. Rerank only routes through an explicitly selected official OpenRouter account.',
         capabilityResponses: 'Responses',
         capabilityTextAuto: 'Responses / Chat Completions (Auto)',
         capabilityResponsesAuto: 'Responses (auto probe)',
         capabilityChatCompletions: 'Chat Completions',
         capabilityChatCompletionsAuto: 'Chat Completions (auto probe)',
         capabilityEmbeddings: 'Embeddings',
+        capabilityRerank: 'Rerank',
         responsesStatusAutoSupported: 'Auto probe: Responses',
         responsesStatusAutoUnsupported: 'Auto probe: Chat Completions',
         responsesStatusAutoUnknown: 'Auto probe: unknown',
@@ -1308,6 +1309,11 @@ export default {
           'All model requests are forwarded directly to the Gemini API without model restrictions or mappings.',
         baseUrlHint: 'Leave default for official Gemini API',
         apiKeyHint: 'Your Gemini API Key (starts with AIza)',
+        endpointCapabilities: 'Endpoint capabilities',
+        endpointCapabilitiesDesc:
+          'Gemini Embeddings is supported only with an API key. Sub2API converts it to OpenAI-format calls. Native generation remains on Gemini native routes; Embeddings controls /v1/embeddings compatibility routing.',
+        capabilityNativeGeneration: 'Gemini native generation',
+        capabilityEmbeddings: 'Embeddings',
         tier: {
           label: 'Account Tier',
           hint: 'Tip: The system will try to auto-detect the tier first; if auto-detection is unavailable or fails, your selected tier is used as a fallback (simulated quota).',
@@ -1441,6 +1447,13 @@ export default {
           limited: 'Rate limited {time}',
           now: 'now'
         }
+      },
+      zhipu: {
+        endpointCapabilities: 'Endpoint capabilities',
+        endpointCapabilitiesDesc:
+          'Model generation controls the Zhipu generation route; Embeddings controls /v1/embeddings.',
+        capabilityGeneration: 'Model generation',
+        capabilityEmbeddings: 'Embeddings',
       },
       // Re-Auth Modal
       reAuthorizeAccount: 'Re-Authorize Account',

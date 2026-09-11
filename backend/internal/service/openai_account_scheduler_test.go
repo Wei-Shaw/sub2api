@@ -689,6 +689,55 @@ func TestOpenAIGatewayService_SelectAccountWithScheduler_DefaultDisabled_Embeddi
 	require.Equal(t, openAIAccountScheduleLayerLoadBalance, decision.Layer)
 }
 
+func TestOpenAIGatewayService_SelectAccountWithScheduler_RerankSkipsDisabledAndNonOpenRouterAccounts(t *testing.T) {
+	resetOpenAIAdvancedSchedulerSettingCacheForTest()
+
+	ctx := context.Background()
+	groupID := int64(10113)
+	accounts := []Account{
+		{
+			ID: 36041, Platform: PlatformOpenAI, Type: AccountTypeAPIKey,
+			Status: StatusActive, Schedulable: true, Concurrency: 1, Priority: 0,
+			Credentials: map[string]any{
+				"api_key": "sk-non-or", "base_url": "https://example.test/v1",
+				"openai_capabilities": []any{"rerank"},
+			},
+		},
+		{
+			ID: 36042, Platform: PlatformOpenAI, Type: AccountTypeAPIKey,
+			Status: StatusActive, Schedulable: true, Concurrency: 1, Priority: 5,
+			Credentials: map[string]any{
+				"api_key": "sk-or-disabled", "base_url": "https://openrouter.ai/api/v1",
+				"openai_capabilities": []any{"chat_completions", "embeddings"},
+			},
+		},
+		{
+			ID: 36043, Platform: PlatformOpenAI, Type: AccountTypeAPIKey,
+			Status: StatusActive, Schedulable: true, Concurrency: 1, Priority: 10,
+			Credentials: map[string]any{
+				"api_key": "sk-or-enabled", "base_url": "https://openrouter.ai/api/v1",
+				"openai_capabilities": []any{"rerank"},
+			},
+		},
+	}
+	svc := &OpenAIGatewayService{
+		accountRepo:        schedulerTestOpenAIAccountRepo{accounts: accounts},
+		cache:              &schedulerTestGatewayCache{},
+		cfg:                &config.Config{},
+		concurrencyService: NewConcurrencyService(schedulerTestConcurrencyCache{}),
+	}
+
+	selection, _, err := svc.SelectAccountWithSchedulerForCapability(
+		ctx, &groupID, "", "", "rerank-v1", nil,
+		OpenAIUpstreamTransportHTTPSSE, OpenAIEndpointCapabilityRerank,
+		false, false, true,
+	)
+	require.NoError(t, err)
+	require.NotNil(t, selection)
+	require.NotNil(t, selection.Account)
+	require.Equal(t, int64(36043), selection.Account.ID)
+}
+
 func TestOpenAIGatewayService_SelectAccountForTokenCount_DoesNotAcquireGenerationSlot(t *testing.T) {
 	ctx := context.Background()
 	groupID := int64(10115)

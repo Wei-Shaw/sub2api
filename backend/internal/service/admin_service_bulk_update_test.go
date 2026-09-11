@@ -342,7 +342,7 @@ func TestAdminServiceBulkUpdateAccounts_NormalizesOpenAISettings(t *testing.T) {
 	require.Zero(t, result.LongContextInheritedCount)
 	require.Equal(t, 1, repo.bulkUpdateCalls)
 	require.Contains(t, repo.lastBulkUpdate.Credentials, openAIEndpointCapabilitiesCredentialKey)
-	require.Nil(t, repo.lastBulkUpdate.Credentials[openAIEndpointCapabilitiesCredentialKey])
+	require.Equal(t, []string{"chat_completions", "embeddings"}, repo.lastBulkUpdate.Credentials[openAIEndpointCapabilitiesCredentialKey])
 	require.Equal(t, true, repo.lastBulkUpdate.Extra[openAILongContextBillingEnabledKey])
 	require.Contains(t, repo.lastBulkUpdate.Extra, "openai_responses_mode")
 	require.Nil(t, repo.lastBulkUpdate.Extra["openai_responses_mode"])
@@ -385,6 +385,60 @@ func TestAdminServiceBulkUpdateAccounts_EmbeddingsOnlyResetsResponsesMode(t *tes
 	require.Equal(t, []string{"embeddings"}, repo.lastBulkUpdate.Credentials[openAIEndpointCapabilitiesCredentialKey])
 	require.Contains(t, repo.lastBulkUpdate.Extra, "openai_responses_mode")
 	require.Nil(t, repo.lastBulkUpdate.Extra["openai_responses_mode"])
+}
+
+func TestAdminServiceBulkUpdateAccounts_GeminiEndpointCapabilitiesUseGenericCredentials(t *testing.T) {
+	repo := &accountRepoStubForBulkUpdate{getByIDsAccounts: []*Account{
+		{ID: 1, Platform: PlatformGemini, Type: AccountTypeAPIKey},
+	}}
+	svc := &adminServiceImpl{accountRepo: repo}
+
+	result, err := svc.BulkUpdateAccounts(context.Background(), &BulkUpdateAccountsInput{
+		AccountIDs: []int64{1},
+		Credentials: map[string]any{
+			endpointCapabilitiesCredentialKey: []any{"gemini_native"},
+		},
+	})
+
+	require.NoError(t, err)
+	require.Equal(t, 1, result.Success)
+	require.Equal(t, []string{"gemini_native"}, repo.lastBulkUpdate.Credentials[endpointCapabilitiesCredentialKey])
+}
+
+func TestAdminServiceBulkUpdateAccounts_SanitizesGeminiEmbeddingsForNonAPIKey(t *testing.T) {
+	repo := &accountRepoStubForBulkUpdate{getByIDsAccounts: []*Account{
+		{ID: 1, Platform: PlatformGemini, Type: AccountTypeOAuth},
+	}}
+	svc := &adminServiceImpl{accountRepo: repo}
+
+	result, err := svc.BulkUpdateAccounts(context.Background(), &BulkUpdateAccountsInput{
+		AccountIDs: []int64{1},
+		Credentials: map[string]any{
+			endpointCapabilitiesCredentialKey: []any{"gemini_native", "embeddings"},
+		},
+	})
+
+	require.NoError(t, err)
+	require.Equal(t, 1, result.Success)
+	require.Equal(t, []string{"gemini_native"}, repo.lastBulkUpdate.Credentials[endpointCapabilitiesCredentialKey])
+}
+
+func TestAdminServiceBulkUpdateAccounts_ZhipuEndpointCapabilitiesUseGenericCredentials(t *testing.T) {
+	repo := &accountRepoStubForBulkUpdate{getByIDsAccounts: []*Account{
+		{ID: 1, Platform: PlatformZhipu, Type: AccountTypeAPIKey},
+	}}
+	svc := &adminServiceImpl{accountRepo: repo}
+
+	result, err := svc.BulkUpdateAccounts(context.Background(), &BulkUpdateAccountsInput{
+		AccountIDs: []int64{1},
+		Credentials: map[string]any{
+			endpointCapabilitiesCredentialKey: []any{"chat_completions"},
+		},
+	})
+
+	require.NoError(t, err)
+	require.Equal(t, 1, result.Success)
+	require.Equal(t, []string{"chat_completions"}, repo.lastBulkUpdate.Credentials[endpointCapabilitiesCredentialKey])
 }
 
 func TestAdminServiceBulkUpdateAccounts_RejectsInvalidOpenAISettingValuesBeforeWrite(t *testing.T) {
