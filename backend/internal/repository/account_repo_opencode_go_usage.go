@@ -32,6 +32,11 @@ const (
 	//     默认兼容逻辑一致；COALESCE 把 <> 对 NULL 的结果归一为 true。不校验
 	//     base_url（平台字段已是权威来源）。
 	//   - 挂载白名单平台：base_url 必须匹配官方 OpenCode Go 基址正则。
+	//
+	// 已知且可接受的差异：btrim 只去空格，Go 侧 strings.TrimSpace 还会去
+	// \t\n\v\f\r 等空白；account_mode 等凭证字段实际不会出现这类空白，且改用
+	// btrim(x, E' \t\n\r\f\v') 会在 parity 关键的 SQL 字符串里引入转义脆弱性，
+	// 故保持现状不改行为。
 	opencodeGoUsageEligibleSQL = `
 	(
 		(platform = 'opencode_go'

@@ -445,3 +445,82 @@ func TestInvalidateProxyProbeSnapshotsClearsOpenCodeGoSnapshot(t *testing.T) {
 	require.Equal(t, []int64{17}, ids)
 	require.NoError(t, mock.ExpectationsWereMet())
 }
+
+// UpdateCredentials 的 CASE 求值顺序是正确性依赖而非防御：Ollama 分支的 WHEN 是
+// 宽守卫（NOT(ollamaMatch(old) AND ollamaMatch(new))，旧行不匹配 ollama.com 基址
+// 时恒真，且不含 opencode.ai 正则），而两侧平台白名单完全相同，因此挂载行
+// （白名单平台 + 官方 OpenCode Go 基址）会同时满足两分支的 WHEN。若把 Ollama
+// 分支前移，挂载行的 api_key 变化会先命中 Ollama 分支，OpenCode THEN 才清除的
+// opencode_go_usage_snapshot / opencode_go_usage_auto_refresh 残留，陈旧快照跟着
+// 新 api_key 走，跨 key 组污染。本测试用正则钉死 OpenCode 分支的 WHEN 标记
+// （platform = 'opencode_go'，只出现在 OpenCode 分支）文本上先于 Ollama 分支的
+// WHEN 标记（ollama.com 基址正则片段）。
+func TestUpdateCredentialsOpenCodeBranchPrecedesOllamaBranch(t *testing.T) {
+	client, mock := newOllamaCloudUsageRepositoryTestClient(t)
+	mock.ExpectBegin()
+	mock.ExpectExec(`(?s)UPDATE accounts.*platform = 'opencode_go'.*\[oO\]\[lL\]\[lL\]\[aA\]\[mM\]\[aA\]`).
+		WithArgs(`{"api_key":"new-key","base_url":"https://opencode.ai/zen/go/v1"}`, int64(17)).
+		WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectExec(regexp.QuoteMeta("INSERT INTO scheduler_outbox")).
+		WithArgs(service.SchedulerOutboxEventAccountChanged, int64(17), nil, nil, sqlmock.AnyArg()).
+		WillReturnResult(sqlmock.NewResult(1, 1))
+	mock.ExpectCommit()
+	repo := newAccountRepositoryWithSQL(client, nil, nil)
+
+	err := repo.UpdateCredentials(context.Background(), 17, map[string]any{
+		"api_key": "new-key", "base_url": "https://opencode.ai/zen/go/v1",
+	})
+
+	require.NoError(t, err)
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
+// SQL 侧「默认 Go」语义的常量级护栏：opencode_go 平台行 account_mode 缺失/为
+// JSON null 时，COALESCE 兜底必须落 true（视为 Go 订阅，与 GetOpenCodeAccountMode
+// 的默认兼容逻辑一致）。若误改成 false，存量 opencode_go 账号在 SQL 侧集体失去
+// 资格（组查询漏行、身份清理漏清、RunDue 自动刷新停摆），而 Go 侧仍判合格，
+// 两侧不一致；唯一的行为级覆盖在需要 Docker 的 integration 测试，无 Docker 的
+// unit 通道此前完全拦不住，这里以文本形态钉死该 COALESCE 表达式。
+func TestOpenCodeGoUsageEligibleSQLDefaultsMissingAccountModeToGo(t *testing.T) {
+	require.Contains(t, opencodeGoUsageEligibleSQL,
+		"COALESCE(btrim(credentials ->> 'account_mode') <> 'zen', true)")
+}
+
+// Go 侧「默认 Go」契约的表驱动钉死：account_mode 只有 trim 后恰好等于 "zen" 才是
+// Zen，其余取值一律判 Go。SQL 侧（opencodeGoUsageEligibleSQL）以
+// COALESCE(btrim(...) <> 'zen', true) 声明同一语义：btrim 只去空格，与本表全部
+// 取值在 Go 侧 strings.TrimSpace 下的结论一致（空白字符集差异见常量注释）。
+func TestOpenCodeAccountModeOnlyTrimmedZenIsZen(t *testing.T) {
+	tests := []struct {
+		name        string
+		accountMode func(map[string]any)
+		wantMode    string
+		wantGoPlan  bool
+	}{
+		{name: "键缺失", accountMode: func(map[string]any) {}, wantMode: service.AccountModeGo, wantGoPlan: true},
+		{name: "JSON null", accountMode: func(c map[string]any) { c["account_mode"] = nil }, wantMode: service.AccountModeGo, wantGoPlan: true},
+		{name: "空串", accountMode: func(c map[string]any) { c["account_mode"] = "" }, wantMode: service.AccountModeGo, wantGoPlan: true},
+		{name: "go", accountMode: func(c map[string]any) { c["account_mode"] = service.AccountModeGo }, wantMode: service.AccountModeGo, wantGoPlan: true},
+		{name: "zen", accountMode: func(c map[string]any) { c["account_mode"] = service.AccountModeZen }, wantMode: service.AccountModeZen, wantGoPlan: false},
+		{name: "前后空格的 zen", accountMode: func(c map[string]any) { c["account_mode"] = " zen " }, wantMode: service.AccountModeZen, wantGoPlan: false},
+		{name: "大小写不同的 ZEN", accountMode: func(c map[string]any) { c["account_mode"] = "ZEN" }, wantMode: service.AccountModeGo, wantGoPlan: true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			account := &service.Account{
+				ID:          17,
+				Platform:    service.PlatformOpenCodeGo,
+				Type:        service.AccountTypeAPIKey,
+				Credentials: map[string]any{"api_key": "key"},
+			}
+			tt.accountMode(account.Credentials)
+			require.Equal(t, tt.wantMode, account.GetOpenCodeAccountMode())
+			require.Equal(t, tt.wantGoPlan, account.IsOpenCodeGoPlan())
+			require.Equal(t, !tt.wantGoPlan, account.IsOpenCodeZen())
+			// opencode_go 平台行的用量资格即 Go 订阅判定，与 SQL 侧
+			// opencodeGoUsageEligibleSQL 的「默认 Go、仅 trim 后等于 zen 排除」
+			// 互为镜像。
+			require.Equal(t, tt.wantGoPlan, service.IsOpenCodeGoUsageAccount(account))
+		})
+	}
+}

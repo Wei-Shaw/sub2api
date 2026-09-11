@@ -887,7 +887,10 @@ func isOpenCodeGoUsageMountPlatform(platform string) bool {
 //   - platform == opencode_go：平台字段是权威来源，以 IsOpenCodeGoPlan 为准（必须是
 //     Go 订阅；Zen 按量付费无订阅配额窗口，上游 CN 配额链路同样排除）。此分支不要求
 //     base_url 匹配——opencode_go 账号的 base_url 可能是 CC/Responses 基址
-//     （/zen/go/v1）或 Anthropic 基址（/zen/go），甚至为空。
+//     （/zen/go/v1）或 Anthropic 基址（/zen/go），甚至为空。这是有意取舍：平台 +
+//     模式已是权威来源，且账号指向自建代理/中转时 key 仍是官方 OpenCode key，从
+//     官方端点取用量恰恰是正确数据源，强制要求官方 host 会破坏这类合法用法；
+//     前提假设是该账号的 api_key 为官方 OpenCode Go 订阅 key。
 //   - 其它平台：仅限挂载白名单（isOpenCodeGoUsageMountPlatform）内的 API Key 账号，
 //     以 base_url 严格指向官方 OpenCode Go 基址判定（见 isOpenCodeGoBaseURL）。
 //
