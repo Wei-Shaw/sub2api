@@ -52,6 +52,7 @@ function mountView() {
         SearchInput: true,
         Select: true,
         PlatformTypeBadge: true,
+        AccountUsageCell: true,
         Icon: true,
         VueDraggable: { template: '<div><slot /></div>' },
         AccountActionMenu: AccountActionMenuStub,
@@ -93,6 +94,7 @@ describe('user AccountsView', () => {
     await flushPromises()
 
     expect(wrapper.get('[data-test="account-table"]').attributes('data-columns')).toContain('actions')
+    expect(wrapper.get('[data-test="account-table"]').attributes('data-columns')).toContain('usage')
     expect(wrapper.text()).not.toContain('common.edit')
     expect(wrapper.text()).not.toContain('common.delete')
     expect(wrapper.text()).toContain('common.more')

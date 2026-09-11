@@ -35,6 +35,7 @@ func RegisterUserRoutes(
 			{
 				visibleAccount.POST("/test", panelRateLimiter.Heavy(), h.Admin.Account.Test)
 				visibleAccount.GET("/stats", panelRateLimiter.Heavy(), h.Admin.Account.GetStats)
+				visibleAccount.GET("/usage", panelRateLimiter.Heavy(), h.Admin.Account.GetUsage)
 				visibleAccount.GET("/models", panelRateLimiter.Heavy(), h.Admin.Account.GetAvailableModels)
 			}
 		}

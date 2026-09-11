@@ -28,6 +28,7 @@ export default {
       schedulable: 'Scheduling',
       concurrency: 'Concurrency',
       groups: 'Groups',
+      usageWindows: 'Usage Windows',
       priority: 'Priority',
       lastUsed: 'Last Used',
       createdAt: 'Created At',

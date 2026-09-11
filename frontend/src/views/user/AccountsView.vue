@@ -107,7 +107,7 @@
           :default-sort-key="filters.sort_by"
           :default-sort-order="filters.sort_order"
           :sort-storage-key="SORT_STORAGE_KEY"
-          :estimate-row-height="88"
+          :estimate-row-height="156"
           :overscan="5"
           :virtualize-threshold="50"
           @sort="handleSort"
@@ -127,6 +127,7 @@
             <span :class="row.schedulable ? 'text-emerald-600 dark:text-emerald-400' : 'text-gray-500 dark:text-gray-400'">{{ row.schedulable ? t('visibleAccounts.schedulableYes') : t('visibleAccounts.schedulableNo') }}</span>
           </template>
           <template #cell-concurrency="{ value }"><span class="tabular-nums">{{ value }}</span></template>
+          <template #cell-usage="{ row }"><AccountUsageCell :account="toUsageAccount(row)" api-base="/accounts" read-only /></template>
           <template #cell-priority="{ value }"><span class="tabular-nums">{{ value }}</span></template>
           <template #cell-groups="{ row }">
             <div v-if="row.groups.length" class="flex max-w-64 flex-wrap gap-1">
@@ -183,6 +184,7 @@ import Pagination from '@/components/common/Pagination.vue'
 import SearchInput from '@/components/common/SearchInput.vue'
 import Select from '@/components/common/Select.vue'
 import PlatformTypeBadge from '@/components/common/PlatformTypeBadge.vue'
+import AccountUsageCell from '@/components/account/AccountUsageCell.vue'
 import Icon from '@/components/icons/Icon.vue'
 import AccountActionMenu from '@/components/admin/account/AccountActionMenu.vue'
 import AccountTestModal from '@/components/admin/account/AccountTestModal.vue'
@@ -280,6 +282,7 @@ const allColumns = computed<Column[]>(() => [
   { key: 'schedulable', label: t('visibleAccounts.columns.schedulable'), sortable: true },
   { key: 'concurrency', label: t('visibleAccounts.columns.concurrency') },
   { key: 'groups', label: t('visibleAccounts.columns.groups') },
+  { key: 'usage', label: t('visibleAccounts.columns.usageWindows') },
   { key: 'priority', label: t('visibleAccounts.columns.priority'), sortable: true },
   { key: 'last_used_at', label: t('visibleAccounts.columns.lastUsed'), sortable: true },
   { key: 'created_at', label: t('visibleAccounts.columns.createdAt'), sortable: true },
@@ -317,6 +320,7 @@ const statusMeta = (account: VisibleAccount) => {
   if (!account.schedulable) return { label: t('visibleAccounts.status.unschedulable'), className: 'badge-secondary' }
   return { label: t('visibleAccounts.status.active'), className: 'badge-success' }
 }
+const toUsageAccount = (account: VisibleAccount) => account as unknown as Account
 
 const autoRefreshIntervals = [5, 10, 15, 30] as const
 const showAutoRefreshDropdown = ref(false)

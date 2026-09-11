@@ -86,6 +86,7 @@
             {{ t('admin.accounts.usageWindow.passiveSampled') }}
           </span>
           <button
+            v-if="!readOnly"
             type="button"
             class="inline-flex items-center gap-0.5 rounded px-1.5 py-0.5 text-[9px] font-medium text-blue-600 hover:bg-blue-50 dark:text-blue-400 dark:hover:bg-blue-900/30 transition-colors"
             :disabled="activeQueryLoading"
@@ -143,7 +144,7 @@
           refresh button is rendered via the pre-actions slot so the user sees a
           single row of related buttons instead of two stacked rows.
         -->
-        <OpenAIQuotaResetCell :account="account" @account-updated="handleQuotaResetAccountUpdated">
+        <OpenAIQuotaResetCell v-if="!readOnly" :account="account" @account-updated="handleQuotaResetAccountUpdated">
           <template #pre-actions>
             <button
               type="button"
@@ -186,6 +187,7 @@
         <div class="text-xs text-gray-400">-</div>
         <!-- Always allow on-demand upstream quota query, even before local data exists. -->
         <OpenAIQuotaResetCell
+          v-if="!readOnly"
           :account="account"
           class="mt-1"
           @account-updated="handleQuotaResetAccountUpdated"
@@ -422,11 +424,11 @@
         <div v-if="grokRetryAfterLabel" class="text-[10px] text-amber-600 dark:text-amber-400">
           {{ t('admin.accounts.usageWindow.grokRetryAfter', { time: grokRetryAfterLabel }) }}
         </div>
-        <GrokQuotaProbeCell :account="account" compact @probed="handleGrokProbed" />
+        <GrokQuotaProbeCell v-if="!readOnly" :account="account" compact @probed="handleGrokProbed" />
       </div>
       <div v-else class="space-y-1">
         <div class="text-xs text-gray-400">-</div>
-        <GrokQuotaProbeCell :account="account" compact @probed="handleGrokProbed" />
+        <GrokQuotaProbeCell v-if="!readOnly" :account="account" compact @probed="handleGrokProbed" />
       </div>
     </template>
 
@@ -437,7 +439,7 @@
            base_url 衍生，对 ollama.com 会被后端出站 URL 白名单拒绝，渲染出来只会
            给用户一行探测报错，因此不再渲染 CN 子单元格与占位符。 -->
       <OllamaCloudUsageCell
-        v-if="account.ollama_cloud_usage?.eligible"
+        v-if="!readOnly && account.ollama_cloud_usage?.eligible"
         :account="account"
         @updated="handleOllamaCloudUsageUpdated"
       />
@@ -445,12 +447,12 @@
         <!-- 子单元格各自按 模式×平台 判定可见；两者都不可见时（智谱 payg 无公开
              余额端点、coding 探测也不适用）才回落到占位符。 -->
         <div
-          v-if="!cnQuotaCellVisible && !cnBalanceCellVisible"
+          v-if="readOnly || (!cnQuotaCellVisible && !cnBalanceCellVisible)"
           class="text-xs text-gray-400"
           :title="t('admin.accounts.cnProviders.noBalanceEndpoint')"
         >-</div>
-        <CNProviderQuotaCell :account="account" />
-        <CNProviderBalanceCell :account="account" />
+        <CNProviderQuotaCell v-if="!readOnly" :account="account" />
+        <CNProviderBalanceCell v-if="!readOnly" :account="account" />
       </div>
     </template>
 
@@ -577,7 +579,7 @@
     <!-- Key/Bedrock accounts: show today stats + optional quota bars -->
     <div v-else class="space-y-1">
       <OllamaCloudUsageCell
-        v-if="account.ollama_cloud_usage?.eligible"
+        v-if="!readOnly && account.ollama_cloud_usage?.eligible"
         :account="account"
         @updated="handleOllamaCloudUsageUpdated"
       />
@@ -649,6 +651,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onBeforeUnmount, onUnmounted, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { apiClient } from '@/api/client'
 import { adminAPI } from '@/api/admin'
 import type { Account, AccountUsageInfo, GeminiCredentials, WindowStats } from '@/types'
 import { buildOpenAIUsageRefreshKey } from '@/utils/accountUsageRefresh'
@@ -677,6 +680,8 @@ const props = withDefaults(
     batchedUsageError?: string | null
     batchedUsageLoading?: boolean
     requestBatchedUsage?: ((account: Account, options?: { force?: boolean }) => void) | null
+    apiBase?: string | null
+    readOnly?: boolean
   }>(),
   {
     todayStats: null,
@@ -685,7 +690,9 @@ const props = withDefaults(
     batchedUsage: null,
     batchedUsageError: null,
     batchedUsageLoading: false,
-    requestBatchedUsage: null
+    requestBatchedUsage: null,
+    apiBase: null,
+    readOnly: false
   }
 )
 
@@ -695,6 +702,7 @@ const emit = defineEmits<{
 }>()
 
 const { t } = useI18n()
+const readOnly = computed(() => props.readOnly)
 const desktopViewportQuery = '(min-width: 768px)'
 
 const unmounted = ref(false)
@@ -1402,9 +1410,18 @@ const loadUsage = async (options?: { source?: 'passive' | 'active'; bypassCache?
   error.value = null
 
   try {
-		const fetchFn = () => options?.source
-			? adminAPI.accounts.getUsage(props.account.id, options.source, options.bypassCache === true)
-			: adminAPI.accounts.getUsage(props.account.id)
+    const fetchFn = async (): Promise<AccountUsageInfo> => {
+      if (props.apiBase) {
+        const params: Record<string, string> = {}
+        if (options?.source) params.source = options.source
+        if (options?.bypassCache) params.force = 'true'
+        const response = await apiClient.get<AccountUsageInfo>(`${props.apiBase}/${props.account.id}/usage`, { params })
+        return response.data
+      }
+      return options?.source
+        ? adminAPI.accounts.getUsage(props.account.id, options.source, options.bypassCache === true)
+        : adminAPI.accounts.getUsage(props.account.id)
+    }
     const result = await enqueueUsageRequest(props.account, fetchFn)
     if (!unmounted.value) {
       usageInfo.value = result
@@ -1471,6 +1488,7 @@ const attachVisibilityObserver = () => {
 }
 
 const loadActiveUsage = async () => {
+  if (props.readOnly) return
   activeQueryLoading.value = true
   try {
     usageInfo.value = await adminAPI.accounts.getUsage(props.account.id, 'active', true)

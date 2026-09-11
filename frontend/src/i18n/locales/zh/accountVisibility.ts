@@ -28,6 +28,7 @@ export default {
       schedulable: '可调度',
       concurrency: '并发上限',
       groups: '所属分组',
+      usageWindows: '用量窗口',
       priority: '优先级',
       lastUsed: '最后使用',
       createdAt: '创建时间',
