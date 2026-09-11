@@ -442,10 +442,14 @@
         @updated="handleOllamaCloudUsageUpdated"
       />
       <!-- 挂在 CN 平台下的 OpenCode Go 账号（资格由后端下发 eligible）：用量展示与
-           刷新由本分支的 OpenCode 用量窗口独占。与 ollama 同理，这类账号不是国产
-           厂商订阅，CN 的额度/余额探测端点由 base_url 衍生，对 opencode.ai 会被
-           后端出站 URL 白名单拒绝，渲染出来只会给用户一行探测报错，因此不再渲染
-           CN 子单元格与占位符（调度停调仍由上游 CN 触发各自驱动）。 -->
+           刷新由本分支的 OpenCode 用量窗口独占。对 platform=opencode_go：上游 CN
+           配额链路原生支持该平台（cnQuotaCellVisible 对它返回 true），但其探测
+           端点（base_url + "/usage"，默认 base 即官方 Go 基址）与本 cell 刷新的
+           是同一端点、同一份数据，抑制 CN 子单元格是为了避免同源双份探测与重复
+           展示。对挂载在 kimi/zhipu/deepseek/minimax 下的账号：CN 的额度/余额
+           探测端点由 base_url 衍生，对 opencode.ai 会被后端出站 URL 白名单拒绝，
+           渲染出来只会给用户一行探测报错。两种情况都不再渲染 CN 子单元格与
+           占位符（调度停调仍由上游 CN 触发各自驱动）。 -->
       <OpenCodeGoUsageCell
         v-else-if="account.opencode_go_usage?.eligible"
         :account="account"
@@ -591,8 +595,10 @@
         :account="account"
         @updated="handleOllamaCloudUsageUpdated"
       />
+      <!-- 与上方 CN 分支结构对齐：Ollama 与 OpenCode 用量身份互斥（基址 host 不同），
+           v-else-if 提供结构性互斥保证，不改变实际渲染结果。 -->
       <OpenCodeGoUsageCell
-        v-if="account.opencode_go_usage?.eligible"
+        v-else-if="account.opencode_go_usage?.eligible"
         :account="account"
         @updated="handleOpenCodeGoUsageUpdated"
       />

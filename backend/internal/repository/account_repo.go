@@ -866,10 +866,16 @@ func (r *accountRepository) UpdateCredentials(ctx context.Context, id int64, cre
 		SET
 			credentials = $1::jsonb,
 			extra = CASE
-				-- OpenCode 分支必须先于 Ollama 分支求值：Ollama 守卫对任意白名单平台的
-				-- apikey 行在 api_key/base_url 变化时都会命中，若排在前面会遮蔽 opencode
-				-- 行的清理。两分支互斥：opencode_go 不在 Ollama 白名单内，挂载行的
-				-- opencode.ai 基址与 ollama.com 基址正则互斥，旧行只会命中其中一个分支。
+				-- 正确性依赖（非防御）：OpenCode 分支必须先于 Ollama 分支求值。两分支
+				-- 的 WHEN 并不互斥：Ollama 分支的守卫是宽谓词——NOT(ollamaMatch(old)
+				-- AND ollamaMatch(new)) 在旧行不匹配 ollama.com 基址时恒真，且两侧
+				-- 平台白名单完全相同，因此挂载行（白名单平台 + 官方 OpenCode Go 基址）
+				-- 会同时满足两分支的 WHEN。若把 Ollama 分支前移，挂载行的 api_key 变化
+				-- 会先命中 Ollama 分支，opencode_go_usage_snapshot /
+				-- opencode_go_usage_auto_refresh 残留，陈旧快照跟着新 api_key 走，
+				-- 造成跨 key 组污染。互斥的只是两侧身份谓词（opencode.ai 基址正则 vs
+				-- ollama.com 基址正则）：Ollama 行不会被 OpenCode 分支遮蔽；
+				-- opencode_go 平台行不在 Ollama 白名单内，与 Ollama 分支真互斥。
 				WHEN type = 'apikey'
 					AND credentials IS DISTINCT FROM $1::jsonb
 					AND (
@@ -3092,9 +3098,16 @@ func (r *accountRepository) BulkUpdate(ctx context.Context, ids []int64, updates
 		// eligible 判定必须包含旧行 OpenCode 身份（opencode_go Go 订阅，或挂载
 		// 白名单平台 + opencode 基址）：否则白名单平台的 Ollama 行在代理变化时会
 		// 先命中 OpenCode 分支（CASE 按序求值）而遮蔽 Ollama 分支的快照清理。
-		// OpenCode 与 Ollama 两套分支互斥：opencode_go 不在 Ollama 白名单内；挂载行
-		// 的 opencode.ai 基址与 ollama.com 基址正则互斥（host 不同），同一旧行不可能
-		// 同时命中两分支，CASE 求值顺序因此只是防御而非正确性依赖。
+		// 注意 OpenCode 与 Ollama 两套分支的 WHEN 并不互斥：eligibleAccount 只看
+		// platform 白名单 + type='apikey'，根本不含 base_url，且与 OpenCode 挂载
+		// 白名单完全相同，因此挂载行（白名单平台 + 官方 OpenCode Go 基址）会同时
+		// 满足两套分支的 WHEN；互斥的只是两侧身份谓词（opencode.ai 基址正则 vs
+		// ollama.com 基址正则，host 不同）。因此下方 caseBranches 必须先拼 OpenCode
+		// 分支再拼 Ollama 分支——这是正确性要求而非防御：若 Ollama 分支在前，
+		// 挂载行的 api_key 变化会先命中 Ollama 分支，opencode_go_usage_snapshot /
+		// opencode_go_usage_auto_refresh 残留，陈旧快照跟着新 api_key 走，跨 key
+		// 组污染。反方向安全：Ollama 行（ollama.com 基址）不满足 OpenCode 身份
+		// 谓词；opencode_go 平台行不在 Ollama 白名单内，与 Ollama 分支真互斥。
 		opencodeEligibleAccount := "type = 'apikey' AND " + opencodeOldUsageIdentity
 		opencodeGroupIdentityChanged := ""
 		if len(opencodeGroupIdentityChanges) > 0 {
