@@ -571,10 +571,10 @@ func (s *defaultOpenAIAccountScheduler) selectBySessionHash(
 		}
 	}
 	result, acquireErr := s.service.tryAcquireAccountSlot(ctx, accountID, account.Concurrency)
-
 	if acquireErr != nil && req.DisableStickyEscape {
 		return nil, false, acquireErr
-	}	if acquireErr == nil && result != nil && result.Acquired {
+	}
+	if acquireErr == nil && result != nil && result.Acquired {
 		if !req.PreserveStickyBinding {
 			_ = s.service.refreshStickySessionTTL(ctx, req.GroupID, sessionHash, s.service.openAIWSSessionStickyTTL())
 		}
