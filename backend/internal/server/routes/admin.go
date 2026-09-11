@@ -125,11 +125,26 @@ func RegisterAdminRoutes(
 		// 独立提示词输入审计
 		registerPromptAuditRoutes(admin, h)
 
+		// 用户提示词调用记录
+		registerPromptRecordRoutes(admin, h)
+
 		// 邀请返利（专属用户管理）
 		registerAffiliateRoutes(admin, h)
 
 		// 操作审计日志
 		registerAuditLogRoutes(admin, h, stepUpAuth)
+	}
+}
+
+func registerPromptRecordRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
+	records := admin.Group("/prompt-records")
+	{
+		records.GET("", h.Admin.PromptAudit.ListPromptRecords)
+		records.GET("/recording", h.Admin.PromptAudit.GetPromptRecordingConfig)
+		records.PUT("/recording", h.Admin.PromptAudit.UpdatePromptRecordingConfig)
+		records.POST("/batch-delete", h.Admin.PromptAudit.BatchDeletePromptRecords)
+		records.GET("/:id", h.Admin.PromptAudit.GetPromptRecord)
+		records.DELETE("/:id", h.Admin.PromptAudit.DeletePromptRecord)
 	}
 }
 

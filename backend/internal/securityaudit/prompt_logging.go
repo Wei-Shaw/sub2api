@@ -7,34 +7,36 @@ import (
 )
 
 const (
-	EventConfigUpdated        = "prompt_audit.config_updated"
-	EventConfigLoaded         = "prompt_guard.config_loaded"
-	EventConfigReloadDegraded = "prompt_guard.config_reload_degraded"
-	EventConfigTokenInvalid   = "prompt_guard.config_token_invalid"
-	EventProbeStarted         = "prompt_audit.endpoint_probe_started"
-	EventProbeFinished        = "prompt_audit.endpoint_probe_finished"
-	EventProbeFailed          = "prompt_audit.endpoint_probe_failed"
-	EventJobEnqueued          = "prompt_audit.job_enqueued"
-	EventEnqueueSkipped       = "prompt_audit.enqueue_skipped"
-	EventEnqueueDropped       = "prompt_audit.enqueue_dropped"
-	EventAuditStarted         = "prompt_audit.started"
-	EventProcessingReclaimed  = "prompt_audit.processing_reclaimed"
-	EventProcessed            = "prompt_audit.processed"
-	EventProcessFailed        = "prompt_audit.process_failed"
-	EventFindingRecorded      = "prompt_audit.finding_recorded"
-	EventChunkStarted         = "prompt_audit.scan_chunk_started"
-	EventChunkCompleted       = "prompt_audit.scan_chunk_completed"
-	EventChunkFailed          = "prompt_audit.scan_chunk_failed"
-	EventChunksAggregated     = "prompt_audit.scan_chunks_aggregated"
-	EventEvaluationStarted    = "prompt_guard.evaluation_started"
-	EventGuardAllowed         = "prompt_guard.allowed"
-	EventGuardBlocked         = "prompt_guard.blocked"
-	EventGuardFailed          = "prompt_guard.failed"
-	EventResultRecordFailed   = "prompt_guard.result_record_failed"
-	EventEventDeleted         = "prompt_audit.event_deleted"
-	EventEventsDeleted        = "prompt_audit.events_deleted"
-	EventDeletePreviewed      = "prompt_audit.events_delete_previewed"
-	EventEventsFilterDeleted  = "prompt_audit.events_filter_deleted"
+	EventConfigUpdated             = "prompt_audit.config_updated"
+	EventConfigLoaded              = "prompt_guard.config_loaded"
+	EventConfigReloadDegraded      = "prompt_guard.config_reload_degraded"
+	EventConfigTokenInvalid        = "prompt_guard.config_token_invalid"
+	EventProbeStarted              = "prompt_audit.endpoint_probe_started"
+	EventProbeFinished             = "prompt_audit.endpoint_probe_finished"
+	EventProbeFailed               = "prompt_audit.endpoint_probe_failed"
+	EventJobEnqueued               = "prompt_audit.job_enqueued"
+	EventEnqueueSkipped            = "prompt_audit.enqueue_skipped"
+	EventEnqueueDropped            = "prompt_audit.enqueue_dropped"
+	EventAuditStarted              = "prompt_audit.started"
+	EventProcessingReclaimed       = "prompt_audit.processing_reclaimed"
+	EventProcessed                 = "prompt_audit.processed"
+	EventProcessFailed             = "prompt_audit.process_failed"
+	EventFindingRecorded           = "prompt_audit.finding_recorded"
+	EventChunkStarted              = "prompt_audit.scan_chunk_started"
+	EventChunkCompleted            = "prompt_audit.scan_chunk_completed"
+	EventChunkFailed               = "prompt_audit.scan_chunk_failed"
+	EventChunksAggregated          = "prompt_audit.scan_chunks_aggregated"
+	EventEvaluationStarted         = "prompt_guard.evaluation_started"
+	EventGuardAllowed              = "prompt_guard.allowed"
+	EventGuardBlocked              = "prompt_guard.blocked"
+	EventGuardFailed               = "prompt_guard.failed"
+	EventResultRecordFailed        = "prompt_guard.result_record_failed"
+	EventEventDeleted              = "prompt_audit.event_deleted"
+	EventEventsDeleted             = "prompt_audit.events_deleted"
+	EventDeletePreviewed           = "prompt_audit.events_delete_previewed"
+	EventEventsFilterDeleted       = "prompt_audit.events_filter_deleted"
+	EventPromptRecordDropped       = "prompt_record.enqueue_dropped"
+	EventPromptRecordPersistFailed = "prompt_record.persist_failed"
 )
 
 var knownLogEvents = map[string]struct{}{
@@ -45,6 +47,7 @@ var knownLogEvents = map[string]struct{}{
 	EventChunkStarted: {}, EventChunkCompleted: {}, EventChunkFailed: {}, EventChunksAggregated: {},
 	EventEvaluationStarted: {}, EventGuardAllowed: {}, EventGuardBlocked: {}, EventGuardFailed: {}, EventResultRecordFailed: {},
 	EventEventDeleted: {}, EventEventsDeleted: {}, EventDeletePreviewed: {}, EventEventsFilterDeleted: {},
+	EventPromptRecordDropped: {}, EventPromptRecordPersistFailed: {},
 }
 
 var allowedLogFields = map[string]struct{}{

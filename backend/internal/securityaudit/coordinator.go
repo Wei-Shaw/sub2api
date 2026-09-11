@@ -17,18 +17,30 @@ type PromptEngine interface {
 	Evaluate(ctx context.Context, req Request) (*PromptDecision, error)
 }
 
+type PromptRecordingState interface {
+	PromptRecordingEnabled() bool
+}
+
 type Coordinator struct {
 	legacy LegacyEngine
 	prompt PromptEngine
+	record PromptRecordRecorder
 }
 
-func NewCoordinator(legacy LegacyEngine, prompt PromptEngine) *Coordinator {
-	return &Coordinator{legacy: legacy, prompt: prompt}
+func NewCoordinator(legacy LegacyEngine, prompt PromptEngine, recorders ...PromptRecordRecorder) *Coordinator {
+	var record PromptRecordRecorder
+	if len(recorders) > 0 {
+		record = recorders[0]
+	}
+	return &Coordinator{legacy: legacy, prompt: prompt, record: record}
 }
 
 func (c *Coordinator) Check(ctx context.Context, req Request) Decision {
 	if c == nil {
 		return allowDecision(nil, nil)
+	}
+	if c.record != nil {
+		c.record.RecordPrompt(ctx, req)
 	}
 	mode := ModeOff
 	if c.prompt != nil {
@@ -47,6 +59,28 @@ func (c *Coordinator) Check(ctx context.Context, req Request) Decision {
 		legacy, _ := c.checkLegacy(ctx, req)
 		return prioritize(legacy, nil)
 	}
+}
+
+func (c *Coordinator) RecordResponse(ctx context.Context, req Request, response PromptResponse) {
+	if c == nil || c.record == nil {
+		return
+	}
+	recorder, ok := c.record.(PromptResponseRecorder)
+	if !ok {
+		return
+	}
+	recorder.RecordResponse(ctx, req, response)
+}
+
+func (c *Coordinator) PromptRecordingEnabled() bool {
+	if c == nil || c.record == nil {
+		return false
+	}
+	state, ok := c.record.(PromptRecordingState)
+	if !ok {
+		return true
+	}
+	return state.PromptRecordingEnabled()
 }
 
 func (c *Coordinator) checkBlocking(ctx context.Context, req Request) Decision {

@@ -23,12 +23,194 @@ type PromptAdminService interface {
 	DeleteEventsByIDs(context.Context, []int64) (*DeleteResult, error)
 	PreviewDelete(context.Context, EventFilter, int64) (*DeletePreview, error)
 	DeleteByFilter(context.Context, DeleteByFilterRequest, int64) (*DeleteResult, error)
+	GetPromptRecordingConfig() PromptRecordingConfig
+	SavePromptRecordingConfig(context.Context, bool) (PromptRecordingConfig, error)
 }
 
-type PromptAdminHandler struct{ service PromptAdminService }
+type promptRecordAdminService interface {
+	ListPromptRecords(context.Context, PromptRecordFilter, int, int) (*PromptRecordPage, error)
+	GetPromptRecord(context.Context, int64) (*PromptRecord, error)
+	DeletePromptRecord(context.Context, int64) error
+	DeletePromptRecords(context.Context, []int64) (int64, error)
+}
+
+type PromptAdminHandler struct {
+	service PromptAdminService
+	records promptRecordAdminService
+}
+
+type updatePromptRecordingRequest struct {
+	Enabled *bool `json:"enabled" binding:"required"`
+}
 
 func NewPromptAdminHandler(service PromptAdminService) *PromptAdminHandler {
-	return &PromptAdminHandler{service: service}
+	h := &PromptAdminHandler{service: service}
+	if records, ok := service.(promptRecordAdminService); ok {
+		h.records = records
+	}
+	return h
+}
+
+func (h *PromptAdminHandler) GetPromptRecordingConfig(c *gin.Context) {
+	if h.service == nil {
+		response.ErrorFrom(c, errors.New("prompt recording service unavailable"))
+		return
+	}
+	response.Success(c, h.service.GetPromptRecordingConfig())
+}
+
+func (h *PromptAdminHandler) UpdatePromptRecordingConfig(c *gin.Context) {
+	if h.service == nil {
+		response.ErrorFrom(c, errors.New("prompt recording service unavailable"))
+		return
+	}
+	var request updatePromptRecordingRequest
+	if err := c.ShouldBindJSON(&request); err != nil || request.Enabled == nil {
+		response.ErrorFrom(c, infraerrors.BadRequest("prompt_recording_invalid_request", "必须提供记录开关状态"))
+		return
+	}
+	config, err := h.service.SavePromptRecordingConfig(c.Request.Context(), *request.Enabled)
+	if err != nil {
+		setPromptAdminAudit(c, "failed", "prompt_recording_update_failed", map[string]any{"enabled": *request.Enabled})
+		response.ErrorFrom(c, err)
+		return
+	}
+	setPromptAdminAudit(c, "success", "", map[string]any{"enabled": config.Enabled})
+	response.Success(c, config)
+}
+
+func (h *PromptAdminHandler) ListPromptRecords(c *gin.Context) {
+	if h.records == nil {
+		response.ErrorFrom(c, errors.New("prompt record service unavailable"))
+		return
+	}
+	page, err := positiveIntQuery(c, "page", 1, 0)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	pageSize, err := positiveIntQuery(c, "page_size", 20, 100)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	filter := PromptRecordFilter{RequestID: strings.TrimSpace(c.Query("request_id")), Model: strings.TrimSpace(c.Query("model")), Stage: strings.TrimSpace(c.Query("stage"))}
+	if value := strings.TrimSpace(c.Query("user_id")); value != "" {
+		id, parseErr := strconv.ParseInt(value, 10, 64)
+		if parseErr != nil || id <= 0 {
+			response.ErrorFrom(c, infraerrors.BadRequest("prompt_record_invalid_user_id", "用户 ID 无效"))
+			return
+		}
+		filter.UserID = &id
+	}
+	if value := strings.TrimSpace(c.Query("api_key_id")); value != "" {
+		id, parseErr := strconv.ParseInt(value, 10, 64)
+		if parseErr != nil || id <= 0 {
+			response.ErrorFrom(c, infraerrors.BadRequest("prompt_record_invalid_api_key_id", "API 密钥 ID 无效"))
+			return
+		}
+		filter.APIKeyID = &id
+	}
+	if value := strings.TrimSpace(c.Query("start_at")); value != "" {
+		filter.StartAt = parseTimeQuery(value)
+		if filter.StartAt == nil {
+			response.ErrorFrom(c, infraerrors.BadRequest("prompt_record_invalid_time", "开始时间无效"))
+			return
+		}
+	}
+	if value := strings.TrimSpace(c.Query("end_at")); value != "" {
+		filter.EndAt = parseTimeQuery(value)
+		if filter.EndAt == nil {
+			response.ErrorFrom(c, infraerrors.BadRequest("prompt_record_invalid_time", "结束时间无效"))
+			return
+		}
+	}
+	if filter.StartAt != nil && filter.EndAt != nil && filter.StartAt.After(*filter.EndAt) {
+		response.ErrorFrom(c, infraerrors.BadRequest("prompt_record_invalid_time_range", "开始时间不能晚于结束时间"))
+		return
+	}
+	result, err := h.records.ListPromptRecords(c.Request.Context(), filter, page, pageSize)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, result)
+}
+
+func (h *PromptAdminHandler) GetPromptRecord(c *gin.Context) {
+	if h.records == nil {
+		response.ErrorFrom(c, errors.New("prompt record service unavailable"))
+		return
+	}
+	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil || id <= 0 {
+		response.ErrorFrom(c, infraerrors.BadRequest("prompt_record_invalid_id", "提示词记录 ID 无效"))
+		return
+	}
+	record, err := h.records.GetPromptRecord(c.Request.Context(), id)
+	if errors.Is(err, ErrPromptRecordNotFound) {
+		response.ErrorFrom(c, infraerrors.NotFound("prompt_record_not_found", "提示词记录不存在"))
+		return
+	}
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, record)
+}
+
+func (h *PromptAdminHandler) DeletePromptRecord(c *gin.Context) {
+	if h.records == nil {
+		response.ErrorFrom(c, errors.New("prompt record service unavailable"))
+		return
+	}
+	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil || id <= 0 {
+		response.ErrorFrom(c, infraerrors.BadRequest("prompt_record_invalid_id", "提示词记录 ID 无效"))
+		return
+	}
+	err = h.records.DeletePromptRecord(c.Request.Context(), id)
+	if errors.Is(err, ErrPromptRecordNotFound) {
+		response.ErrorFrom(c, infraerrors.NotFound("prompt_record_not_found", "提示词记录不存在"))
+		return
+	}
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, gin.H{"deleted": true})
+}
+
+func (h *PromptAdminHandler) BatchDeletePromptRecords(c *gin.Context) {
+	if h.records == nil {
+		response.ErrorFrom(c, errors.New("prompt record service unavailable"))
+		return
+	}
+	var request batchDeleteRequest
+	if err := c.ShouldBindJSON(&request); err != nil || len(request.IDs) == 0 || len(request.IDs) > 500 {
+		response.ErrorFrom(c, infraerrors.BadRequest("prompt_record_invalid_delete_batch", "批量删除必须包含 1-500 个提示词记录 ID"))
+		return
+	}
+	seen := make(map[int64]struct{}, len(request.IDs))
+	ids := make([]int64, 0, len(request.IDs))
+	for _, id := range request.IDs {
+		if id <= 0 {
+			response.ErrorFrom(c, infraerrors.BadRequest("prompt_record_invalid_id", "提示词记录 ID 无效"))
+			return
+		}
+		if _, exists := seen[id]; exists {
+			continue
+		}
+		seen[id] = struct{}{}
+		ids = append(ids, id)
+	}
+	deleted, err := h.records.DeletePromptRecords(c.Request.Context(), ids)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	setPromptAdminAudit(c, "success", "", map[string]any{"requested_count": len(ids), "deleted_count": deleted})
+	response.Success(c, gin.H{"deleted": deleted})
 }
 
 func (h *PromptAdminHandler) GetConfig(c *gin.Context) {

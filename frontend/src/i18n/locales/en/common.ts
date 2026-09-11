@@ -230,6 +230,7 @@ export default {
     securityAudit: 'Security Audit',
     contentModeration: 'Content Moderation',
     promptAudit: 'Prompt Audit',
+    promptRecords: 'Prompt Records',
     auditLogs: 'Audit Logs',
   },
 

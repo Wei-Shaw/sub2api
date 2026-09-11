@@ -1,9 +1,11 @@
 package handler
 
 import (
+	"bytes"
 	"crypto/sha256"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/securityaudit"
 	middleware2 "github.com/Wei-Shaw/sub2api/internal/server/middleware"
@@ -15,6 +17,8 @@ import (
 const securityAuditCompletedContextKey = "sub2api.security_audit.completed"
 const securityAuditWSTurnContextKey = "sub2api.security_audit.ws_turn"
 const securityAuditWSDedupeContextKey = "sub2api.security_audit.ws_dedupe"
+const securityAuditRequestContextKey = "sub2api.security_audit.request"
+const securityAuditResponseCaptureLimit = 2 * 1024 * 1024
 
 type securityAuditWSDedupeEntry struct {
 	stage    string
@@ -95,6 +99,7 @@ func runSecurityAudit(c *gin.Context, reqLog *zap.Logger, coordinator *securitya
 		return &decision
 	}
 	request := buildSecurityAuditRequest(c, apiKey, subject, protocol, model, body, stage)
+	c.Set(securityAuditRequestContextKey, request.Clone())
 	if isSecurityAuditWebSocketStage(request.Stage) {
 		if turnNo, ok := securityAuditWSTurn(c); ok {
 			bodyHash := sha256.Sum256(body)
@@ -124,6 +129,86 @@ func runSecurityAudit(c *gin.Context, reqLog *zap.Logger, coordinator *securitya
 	}
 	logSecurityAuditDone(reqLog, request, decision, false)
 	return &decision
+}
+
+type securityAuditResponseWriter struct {
+	gin.ResponseWriter
+	context   *gin.Context
+	body      bytes.Buffer
+	truncated bool
+}
+
+func (w *securityAuditResponseWriter) Write(data []byte) (int, error) {
+	w.capture(data)
+	return w.ResponseWriter.Write(data)
+}
+
+func (w *securityAuditResponseWriter) WriteString(data string) (int, error) {
+	w.capture([]byte(data))
+	return w.ResponseWriter.WriteString(data)
+}
+
+func (w *securityAuditResponseWriter) capture(data []byte) {
+	if w.context == nil {
+		return
+	}
+	if _, exists := w.context.Get(securityAuditRequestContextKey); !exists {
+		return
+	}
+	remaining := securityAuditResponseCaptureLimit - w.body.Len()
+	if remaining <= 0 {
+		w.truncated = true
+		return
+	}
+	if len(data) > remaining {
+		_, _ = w.body.Write(data[:remaining])
+		w.truncated = true
+		return
+	}
+	_, _ = w.body.Write(data)
+}
+
+func (h *Handlers) PromptResponseCaptureMiddleware() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		coordinator := h.promptResponseCoordinator()
+		if coordinator == nil || !coordinator.PromptRecordingEnabled() {
+			c.Next()
+			return
+		}
+		writer := &securityAuditResponseWriter{ResponseWriter: c.Writer, context: c}
+		c.Writer = writer
+		c.Next()
+
+		if c.Writer.Status() < http.StatusOK || c.Writer.Status() >= http.StatusMultipleChoices {
+			return
+		}
+		value, exists := c.Get(securityAuditRequestContextKey)
+		request, ok := value.(securityaudit.Request)
+		if !exists || !ok || isSecurityAuditWebSocketStage(request.Stage) {
+			return
+		}
+		extraction := securityaudit.ExtractResponseText(writer.body.Bytes(), writer.truncated)
+		if !extraction.Recognized {
+			return
+		}
+		coordinator.RecordResponse(c.Request.Context(), request, securityaudit.PromptResponse{
+			Text: extraction.Text, Length: extraction.Length, Truncated: extraction.Truncated,
+			CapturedAt: time.Now().UTC(),
+		})
+	}
+}
+
+func (h *Handlers) promptResponseCoordinator() *securityaudit.Coordinator {
+	if h == nil {
+		return nil
+	}
+	if h.OpenAIGateway != nil && h.OpenAIGateway.securityAuditCoordinator != nil {
+		return h.OpenAIGateway.securityAuditCoordinator
+	}
+	if h.Gateway != nil {
+		return h.Gateway.securityAuditCoordinator
+	}
+	return nil
 }
 
 func logSecurityAuditStart(reqLog *zap.Logger, request securityaudit.Request, bodyBytes int, cached bool) {
@@ -164,6 +249,9 @@ func buildSecurityAuditRequest(c *gin.Context, apiKey *service.APIKey, subject m
 		APIKeyID: legacy.APIKeyID, APIKeyName: legacy.APIKeyName, GroupID: cloneSecurityAuditGroupID(legacy.GroupID),
 		GroupName: legacy.GroupName, Provider: legacy.Provider, Endpoint: legacy.Endpoint,
 		Protocol: legacy.Protocol, Model: legacy.Model, Body: body, Stage: strings.TrimSpace(stage),
+	}
+	if turnNo, ok := securityAuditWSTurn(c); ok {
+		request.TurnNo = turnNo
 	}
 	if apiKey != nil && apiKey.User != nil {
 		request.Username = apiKey.User.Username

@@ -230,6 +230,7 @@ export default {
     securityAudit: '安全审计',
     contentModeration: '内容审核',
     promptAudit: '提示词审计',
+    promptRecords: '提示词记录',
     auditLogs: '操作日志',
   },
 

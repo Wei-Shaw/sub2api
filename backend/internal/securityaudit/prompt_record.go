@@ -1,0 +1,523 @@
+package securityaudit
+
+import (
+	"context"
+	"crypto/sha256"
+	"database/sql"
+	"encoding/hex"
+	"errors"
+	"fmt"
+	"strings"
+	"sync"
+	"sync/atomic"
+	"time"
+
+	"github.com/lib/pq"
+)
+
+const (
+	promptRecordQueueCapacity     = 256
+	promptRecordOverflowCapacity  = 2048
+	promptRecordWorkerCount       = 4
+	promptRecordPersistTimeout    = 5 * time.Second
+	promptResponsePersistAttempts = 10
+	promptResponsePersistDelay    = 50 * time.Millisecond
+)
+
+// PromptRecord is the retained user prompt. Risk fields are intentionally
+// independent from the prompt audit event model so a future risk service can
+// update them without changing request handling.
+type PromptRecord struct {
+	ID                 int64      `json:"id"`
+	RequestID          string     `json:"request_id"`
+	TurnNo             int        `json:"turn_no"`
+	Stage              string     `json:"stage"`
+	UserID             int64      `json:"user_id"`
+	Username           string     `json:"username"`
+	UserEmail          string     `json:"user_email"`
+	APIKeyID           int64      `json:"api_key_id"`
+	APIKeyName         string     `json:"api_key_name"`
+	GroupID            *int64     `json:"group_id,omitempty"`
+	GroupName          string     `json:"group_name"`
+	Provider           string     `json:"provider"`
+	Endpoint           string     `json:"endpoint"`
+	Protocol           string     `json:"protocol"`
+	Model              string     `json:"model"`
+	PromptHash         string     `json:"prompt_hash"`
+	PromptText         string     `json:"prompt_text"`
+	PromptLength       int        `json:"prompt_length"`
+	MessageCount       int        `json:"message_count"`
+	RiskStatus         string     `json:"risk_status"`
+	RiskResult         string     `json:"risk_result"`
+	RiskCheckedAt      *time.Time `json:"risk_checked_at,omitempty"`
+	ResponseText       string     `json:"response_text"`
+	ResponseLength     int        `json:"response_length"`
+	ResponseTruncated  bool       `json:"response_truncated"`
+	ResponseCapturedAt *time.Time `json:"response_captured_at,omitempty"`
+	CreatedAt          time.Time  `json:"created_at"`
+	ExpiresAt          *time.Time `json:"expires_at,omitempty"`
+}
+
+// PromptRecordSummary contains only call metadata. Full prompt text and risk
+// results are loaded through GetPromptRecord when an administrator opens a row.
+type PromptRecordSummary struct {
+	ID            int64      `json:"id"`
+	RequestID     string     `json:"request_id"`
+	TurnNo        int        `json:"turn_no"`
+	Stage         string     `json:"stage"`
+	UserID        int64      `json:"user_id"`
+	Username      string     `json:"username"`
+	UserEmail     string     `json:"user_email"`
+	APIKeyID      int64      `json:"api_key_id"`
+	APIKeyName    string     `json:"api_key_name"`
+	GroupID       *int64     `json:"group_id,omitempty"`
+	GroupName     string     `json:"group_name"`
+	Provider      string     `json:"provider"`
+	Endpoint      string     `json:"endpoint"`
+	Protocol      string     `json:"protocol"`
+	Model         string     `json:"model"`
+	PromptHash    string     `json:"prompt_hash"`
+	PromptLength  int        `json:"prompt_length"`
+	MessageCount  int        `json:"message_count"`
+	RiskStatus    string     `json:"risk_status"`
+	RiskCheckedAt *time.Time `json:"risk_checked_at,omitempty"`
+	CreatedAt     time.Time  `json:"created_at"`
+	ExpiresAt     *time.Time `json:"expires_at,omitempty"`
+}
+
+type PromptRecordFilter struct {
+	RequestID string
+	UserID    *int64
+	APIKeyID  *int64
+	Model     string
+	Stage     string
+	StartAt   *time.Time
+	EndAt     *time.Time
+}
+
+type PromptRecordPage struct {
+	Items      []*PromptRecordSummary `json:"items"`
+	Page       int                    `json:"page"`
+	PageSize   int                    `json:"page_size"`
+	Total      int64                  `json:"total"`
+	TotalPages int                    `json:"total_pages"`
+	Queue      PromptRecordQueueStats `json:"queue"`
+}
+
+type PromptRecordQueueStats struct {
+	QueueLength      int        `json:"queue_length"`
+	QueueCapacity    int        `json:"queue_capacity"`
+	OverflowLength   int        `json:"overflow_length"`
+	OverflowCapacity int        `json:"overflow_capacity"`
+	WorkerCount      int        `json:"worker_count"`
+	DroppedTotal     int64      `json:"dropped_total"`
+	PersistFailed    int64      `json:"persist_failed_total"`
+	LastDroppedAt    *time.Time `json:"last_dropped_at,omitempty"`
+}
+
+type PromptRecordRepository interface {
+	InsertPromptRecord(ctx context.Context, record *PromptRecord) error
+	UpdatePromptRecordResponse(ctx context.Context, request Request, promptHash string, response PromptResponse) (bool, error)
+	ListPromptRecords(ctx context.Context, filter PromptRecordFilter, page, pageSize int) (*PromptRecordPage, error)
+	GetPromptRecord(ctx context.Context, id int64) (*PromptRecord, error)
+	DeletePromptRecord(ctx context.Context, id int64) error
+	DeletePromptRecords(ctx context.Context, ids []int64) (int64, error)
+}
+
+type PromptResponse struct {
+	Text       string
+	Length     int
+	Truncated  bool
+	CapturedAt time.Time
+}
+
+func (r *PostgreSQLRepository) InsertPromptRecord(ctx context.Context, record *PromptRecord) error {
+	if r == nil || r.db == nil {
+		return errors.New("prompt record database unavailable")
+	}
+	if record == nil || strings.TrimSpace(record.PromptText) == "" {
+		return errors.New("prompt record is empty")
+	}
+	_, err := r.db.ExecContext(ctx, `
+		INSERT INTO prompt_records (
+			request_id, turn_no, stage, user_id, username_snapshot, user_email_snapshot,
+			api_key_id, api_key_name_snapshot, group_id, group_name, provider, endpoint,
+			protocol, model, prompt_hash, prompt_text, prompt_length, message_count,
+			risk_status, created_at, expires_at
+		) VALUES ($1,$2,$3,NULLIF($4,0),$5,$6,NULLIF($7,0),$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21)
+		ON CONFLICT DO NOTHING`,
+		record.RequestID, record.TurnNo, record.Stage, record.UserID, record.Username, record.UserEmail,
+		record.APIKeyID, record.APIKeyName, record.GroupID, record.GroupName, record.Provider, record.Endpoint,
+		record.Protocol, record.Model, record.PromptHash, record.PromptText, record.PromptLength, record.MessageCount,
+		ifEmpty(record.RiskStatus, "pending"), record.CreatedAt, record.ExpiresAt)
+	return err
+}
+
+func (r *PostgreSQLRepository) UpdatePromptRecordResponse(ctx context.Context, request Request, promptHash string, captured PromptResponse) (bool, error) {
+	if r == nil || r.db == nil {
+		return false, errors.New("prompt record database unavailable")
+	}
+	result, err := r.db.ExecContext(ctx, `UPDATE prompt_records
+		SET response_text=$1, response_length=$2, response_truncated=$3, response_captured_at=$4
+		WHERE request_id=$5 AND stage=$6 AND turn_no=$7 AND COALESCE(api_key_id,0)=$8 AND prompt_hash=$9`,
+		captured.Text, captured.Length, captured.Truncated, captured.CapturedAt,
+		request.RequestID, ifEmpty(request.Stage, "http"), request.TurnNo, request.APIKeyID, promptHash)
+	if err != nil {
+		return false, err
+	}
+	rows, err := result.RowsAffected()
+	return rows > 0, err
+}
+
+func (r *PostgreSQLRepository) ListPromptRecords(ctx context.Context, filter PromptRecordFilter, page, pageSize int) (*PromptRecordPage, error) {
+	if r == nil || r.db == nil {
+		return nil, errors.New("prompt record database unavailable")
+	}
+	if page < 1 {
+		page = 1
+	}
+	if pageSize < 1 || pageSize > 100 {
+		pageSize = 20
+	}
+	where := []string{"1=1"}
+	args := make([]any, 0, 5)
+	add := func(sqlText string, value any) {
+		args = append(args, value)
+		where = append(where, fmt.Sprintf(sqlText, len(args)))
+	}
+	if filter.RequestID != "" {
+		add("request_id = $%d", filter.RequestID)
+	}
+	if filter.UserID != nil {
+		add("user_id = $%d", *filter.UserID)
+	}
+	if filter.APIKeyID != nil {
+		add("api_key_id = $%d", *filter.APIKeyID)
+	}
+	if strings.TrimSpace(filter.Model) != "" {
+		add("model ILIKE $%d", "%"+strings.TrimSpace(filter.Model)+"%")
+	}
+	if strings.TrimSpace(filter.Stage) != "" {
+		add("stage = $%d", filter.Stage)
+	}
+	if filter.StartAt != nil {
+		add("created_at >= $%d", filter.StartAt.UTC())
+	}
+	if filter.EndAt != nil {
+		add("created_at <= $%d", filter.EndAt.UTC())
+	}
+	whereSQL := strings.Join(where, " AND ")
+	var total int64
+	if err := r.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM prompt_records WHERE "+whereSQL, args...).Scan(&total); err != nil {
+		return nil, err
+	}
+	args = append(args, pageSize, (page-1)*pageSize)
+	rows, err := r.db.QueryContext(ctx, `SELECT id, request_id, turn_no, stage, COALESCE(user_id,0), username_snapshot,
+		user_email_snapshot, COALESCE(api_key_id,0), api_key_name_snapshot, group_id, group_name, provider, endpoint,
+		protocol, model, prompt_hash, prompt_length, message_count, risk_status,
+		risk_checked_at, created_at, expires_at FROM prompt_records WHERE `+whereSQL+` ORDER BY created_at DESC, id DESC LIMIT $`+fmt.Sprint(len(args)-1)+` OFFSET $`+fmt.Sprint(len(args)), args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := make([]*PromptRecordSummary, 0, pageSize)
+	for rows.Next() {
+		item := new(PromptRecordSummary)
+		var groupID sql.NullInt64
+		var riskCheckedAt, expiresAt sql.NullTime
+		if err := rows.Scan(&item.ID, &item.RequestID, &item.TurnNo, &item.Stage, &item.UserID, &item.Username, &item.UserEmail, &item.APIKeyID, &item.APIKeyName, &groupID, &item.GroupName, &item.Provider, &item.Endpoint, &item.Protocol, &item.Model, &item.PromptHash, &item.PromptLength, &item.MessageCount, &item.RiskStatus, &riskCheckedAt, &item.CreatedAt, &expiresAt); err != nil {
+			return nil, err
+		}
+		if groupID.Valid {
+			item.GroupID = &groupID.Int64
+		}
+		if riskCheckedAt.Valid {
+			item.RiskCheckedAt = &riskCheckedAt.Time
+		}
+		if expiresAt.Valid {
+			item.ExpiresAt = &expiresAt.Time
+		}
+		items = append(items, item)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	totalPages := int((total + int64(pageSize) - 1) / int64(pageSize))
+	return &PromptRecordPage{Items: items, Page: page, PageSize: pageSize, Total: total, TotalPages: totalPages}, nil
+}
+
+func (r *PostgreSQLRepository) GetPromptRecord(ctx context.Context, id int64) (*PromptRecord, error) {
+	if r == nil || r.db == nil {
+		return nil, errors.New("prompt record database unavailable")
+	}
+	item := new(PromptRecord)
+	var groupID sql.NullInt64
+	var responseCapturedAt, riskCheckedAt, expiresAt sql.NullTime
+	err := r.db.QueryRowContext(ctx, `SELECT id, request_id, turn_no, stage, COALESCE(user_id,0), username_snapshot,
+		user_email_snapshot, COALESCE(api_key_id,0), api_key_name_snapshot, group_id, group_name, provider, endpoint,
+		protocol, model, prompt_hash, prompt_text, prompt_length, message_count, risk_status, risk_result::text,
+		response_text, response_length, response_truncated, response_captured_at,
+		risk_checked_at, created_at, expires_at FROM prompt_records WHERE id=$1`, id).Scan(&item.ID, &item.RequestID, &item.TurnNo, &item.Stage, &item.UserID, &item.Username, &item.UserEmail, &item.APIKeyID, &item.APIKeyName, &groupID, &item.GroupName, &item.Provider, &item.Endpoint, &item.Protocol, &item.Model, &item.PromptHash, &item.PromptText, &item.PromptLength, &item.MessageCount, &item.RiskStatus, &item.RiskResult, &item.ResponseText, &item.ResponseLength, &item.ResponseTruncated, &responseCapturedAt, &riskCheckedAt, &item.CreatedAt, &expiresAt)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, ErrPromptRecordNotFound
+	}
+	if err != nil {
+		return nil, err
+	}
+	if groupID.Valid {
+		item.GroupID = &groupID.Int64
+	}
+	if riskCheckedAt.Valid {
+		item.RiskCheckedAt = &riskCheckedAt.Time
+	}
+	if responseCapturedAt.Valid {
+		item.ResponseCapturedAt = &responseCapturedAt.Time
+	}
+	if expiresAt.Valid {
+		item.ExpiresAt = &expiresAt.Time
+	}
+	return item, nil
+}
+
+func (r *PostgreSQLRepository) DeletePromptRecord(ctx context.Context, id int64) error {
+	if r == nil || r.db == nil {
+		return errors.New("prompt record database unavailable")
+	}
+	result, err := r.db.ExecContext(ctx, "DELETE FROM prompt_records WHERE id=$1", id)
+	if err != nil {
+		return err
+	}
+	if n, _ := result.RowsAffected(); n == 0 {
+		return ErrPromptRecordNotFound
+	}
+	return nil
+}
+
+func (r *PostgreSQLRepository) DeletePromptRecords(ctx context.Context, ids []int64) (int64, error) {
+	if r == nil || r.db == nil {
+		return 0, errors.New("prompt record database unavailable")
+	}
+	if len(ids) == 0 {
+		return 0, nil
+	}
+	result, err := r.db.ExecContext(ctx, "DELETE FROM prompt_records WHERE id = ANY($1)", pq.Array(ids))
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
+var ErrPromptRecordNotFound = errors.New("prompt record not found")
+
+type PromptRecordRecorder interface {
+	RecordPrompt(context.Context, Request)
+}
+
+type PromptResponseRecorder interface {
+	RecordResponse(context.Context, Request, PromptResponse)
+}
+
+type promptRecordJob struct {
+	request  Request
+	response *PromptResponse
+}
+
+type PromptRecordService struct {
+	repo          PromptRecordRepository
+	queue         chan promptRecordJob
+	overflow      chan promptRecordJob
+	workers       int
+	once          sync.Once
+	dropped       atomic.Int64
+	persistFailed atomic.Int64
+	lastDroppedAt atomic.Pointer[time.Time]
+}
+
+func NewPromptRecordService(repo PromptRecordRepository) *PromptRecordService {
+	return newPromptRecordService(repo, promptRecordQueueCapacity, promptRecordOverflowCapacity, promptRecordWorkerCount)
+}
+
+func newPromptRecordService(repo PromptRecordRepository, queueCapacity, overflowCapacity, workers int) *PromptRecordService {
+	if queueCapacity < 1 {
+		queueCapacity = promptRecordQueueCapacity
+	}
+	if overflowCapacity < 1 {
+		overflowCapacity = promptRecordOverflowCapacity
+	}
+	if workers < 1 {
+		workers = promptRecordWorkerCount
+	}
+	return &PromptRecordService{
+		repo:     repo,
+		queue:    make(chan promptRecordJob, queueCapacity),
+		overflow: make(chan promptRecordJob, overflowCapacity),
+		workers:  workers,
+	}
+}
+
+func (s *PromptRecordService) start() {
+	s.once.Do(func() {
+		for i := 0; i < s.workers; i++ {
+			go s.worker()
+		}
+	})
+}
+
+func (s *PromptRecordService) worker() {
+	for {
+		select {
+		case job := <-s.queue:
+			s.persistJob(job)
+		case job := <-s.overflow:
+			s.persistJob(job)
+		}
+	}
+}
+
+func (s *PromptRecordService) persistJob(job promptRecordJob) {
+	if job.response != nil {
+		s.persistResponse(job.request, *job.response)
+		return
+	}
+	s.persist(job.request)
+}
+
+func (s *PromptRecordService) RecordPrompt(_ context.Context, req Request) {
+	if s == nil || s.repo == nil {
+		return
+	}
+	s.start()
+	s.enqueue(promptRecordJob{request: req.Clone()}, req)
+}
+
+func (s *PromptRecordService) RecordResponse(_ context.Context, req Request, captured PromptResponse) {
+	if s == nil || s.repo == nil {
+		return
+	}
+	s.start()
+	job := promptRecordJob{request: req.Clone(), response: &captured}
+	s.enqueue(job, req)
+}
+
+func (s *PromptRecordService) enqueue(job promptRecordJob, req Request) {
+	select {
+	case s.queue <- job:
+		return
+	default:
+	}
+	select {
+	case s.overflow <- job:
+	default:
+		dropped := s.dropped.Add(1)
+		now := time.Now().UTC()
+		s.lastDroppedAt.Store(&now)
+		if isPowerOfTwo(dropped) {
+			LogWarn(EventPromptRecordDropped, mergeLogFields(requestLogFields(req), map[string]any{
+				"status": "dropped", "error_code": "prompt_record_queue_full",
+				"queue_length":   len(s.queue) + len(s.overflow),
+				"queue_capacity": cap(s.queue) + cap(s.overflow),
+			}))
+		}
+	}
+}
+
+func (s *PromptRecordService) persist(req Request) {
+	snapshot, err := ExtractPromptSnapshot(req)
+	if err != nil || strings.TrimSpace(snapshot.FullPrompt) == "" {
+		return
+	}
+	hash := snapshot.PromptHash
+	if hash == "" {
+		sum := sha256.Sum256([]byte(snapshot.FullPrompt))
+		hash = hex.EncodeToString(sum[:])
+	}
+	record := &PromptRecord{RequestID: snapshot.RequestID, Stage: ifEmpty(snapshot.Stage, req.Stage), UserID: snapshot.UserID, Username: snapshot.UsernameSnapshot, UserEmail: snapshot.UserEmailSnapshot, APIKeyID: snapshot.APIKeyID, APIKeyName: snapshot.APIKeyNameSnapshot, GroupID: snapshot.GroupID, GroupName: snapshot.GroupName, Provider: snapshot.Provider, Endpoint: snapshot.Endpoint, Protocol: snapshot.Protocol, Model: snapshot.Model, PromptHash: hash, PromptText: snapshot.FullPrompt, PromptLength: snapshot.PromptLength, MessageCount: snapshot.MessageCount, RiskStatus: "pending", CreatedAt: time.Now()}
+	record.TurnNo = req.TurnNo
+	ctx, cancel := context.WithTimeout(context.Background(), promptRecordPersistTimeout)
+	defer cancel()
+	if err := s.repo.InsertPromptRecord(ctx, record); err != nil {
+		failed := s.persistFailed.Add(1)
+		if isPowerOfTwo(failed) {
+			LogError(EventPromptRecordPersistFailed, mergeLogFields(requestLogFields(req), map[string]any{
+				"status": "failed", "error_code": "prompt_record_insert_failed",
+			}))
+		}
+	}
+}
+
+func (s *PromptRecordService) persistResponse(req Request, captured PromptResponse) {
+	snapshot, err := ExtractPromptSnapshot(req)
+	if err != nil || strings.TrimSpace(snapshot.PromptHash) == "" {
+		return
+	}
+	for attempt := 0; attempt < promptResponsePersistAttempts; attempt++ {
+		ctx, cancel := context.WithTimeout(context.Background(), promptRecordPersistTimeout)
+		updated, updateErr := s.repo.UpdatePromptRecordResponse(ctx, req, snapshot.PromptHash, captured)
+		cancel()
+		if updateErr != nil {
+			s.recordPersistFailure(req, "prompt_record_response_update_failed")
+			return
+		}
+		if updated {
+			return
+		}
+		if attempt+1 < promptResponsePersistAttempts {
+			time.Sleep(promptResponsePersistDelay)
+		}
+	}
+	s.recordPersistFailure(req, "prompt_record_response_not_found")
+}
+
+func (s *PromptRecordService) recordPersistFailure(req Request, code string) {
+	failed := s.persistFailed.Add(1)
+	if isPowerOfTwo(failed) {
+		LogError(EventPromptRecordPersistFailed, mergeLogFields(requestLogFields(req), map[string]any{
+			"status": "failed", "error_code": code,
+		}))
+	}
+}
+
+func (s *PromptRecordService) ListPromptRecords(ctx context.Context, filter PromptRecordFilter, page, pageSize int) (*PromptRecordPage, error) {
+	result, err := s.repo.ListPromptRecords(ctx, filter, page, pageSize)
+	if err != nil || result == nil {
+		return result, err
+	}
+	result.Queue = s.QueueStats()
+	return result, nil
+}
+func (s *PromptRecordService) GetPromptRecord(ctx context.Context, id int64) (*PromptRecord, error) {
+	return s.repo.GetPromptRecord(ctx, id)
+}
+func (s *PromptRecordService) DeletePromptRecord(ctx context.Context, id int64) error {
+	return s.repo.DeletePromptRecord(ctx, id)
+}
+func (s *PromptRecordService) DeletePromptRecords(ctx context.Context, ids []int64) (int64, error) {
+	return s.repo.DeletePromptRecords(ctx, ids)
+}
+
+func (s *PromptRecordService) QueueStats() PromptRecordQueueStats {
+	if s == nil {
+		return PromptRecordQueueStats{}
+	}
+	stats := PromptRecordQueueStats{
+		QueueLength: len(s.queue), QueueCapacity: cap(s.queue),
+		OverflowLength: len(s.overflow), OverflowCapacity: cap(s.overflow),
+		WorkerCount: s.workers, DroppedTotal: s.dropped.Load(), PersistFailed: s.persistFailed.Load(),
+	}
+	if value := s.lastDroppedAt.Load(); value != nil {
+		lastDroppedAt := *value
+		stats.LastDroppedAt = &lastDroppedAt
+	}
+	return stats
+}
+
+func isPowerOfTwo(value int64) bool {
+	return value > 0 && value&(value-1) == 0
+}
+
+func ifEmpty(value, fallback string) string {
+	if strings.TrimSpace(value) == "" {
+		return fallback
+	}
+	return value
+}

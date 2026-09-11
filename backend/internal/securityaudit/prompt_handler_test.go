@@ -9,6 +9,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 	servermiddleware "github.com/Wei-Shaw/sub2api/internal/server/middleware"
@@ -17,16 +18,22 @@ import (
 )
 
 type fakePromptAdminService struct {
-	config       PublicConfig
-	save         func(context.Context, UpdateConfigRequest, int64) (PublicConfig, error)
-	probe        func(context.Context, ProbeRequest) ProbeResult
-	runtime      RuntimeSnapshot
-	list         func(context.Context, EventFilter, int, int) (*EventPage, error)
-	get          func(context.Context, int64) (*Event, error)
-	deleteOne    func(context.Context, int64) (*DeleteResult, error)
-	deleteIDs    func(context.Context, []int64) (*DeleteResult, error)
-	preview      func(context.Context, EventFilter, int64) (*DeletePreview, error)
-	deleteFilter func(context.Context, DeleteByFilterRequest, int64) (*DeleteResult, error)
+	config        PublicConfig
+	save          func(context.Context, UpdateConfigRequest, int64) (PublicConfig, error)
+	probe         func(context.Context, ProbeRequest) ProbeResult
+	runtime       RuntimeSnapshot
+	list          func(context.Context, EventFilter, int, int) (*EventPage, error)
+	get           func(context.Context, int64) (*Event, error)
+	deleteOne     func(context.Context, int64) (*DeleteResult, error)
+	deleteIDs     func(context.Context, []int64) (*DeleteResult, error)
+	preview       func(context.Context, EventFilter, int64) (*DeletePreview, error)
+	deleteFilter  func(context.Context, DeleteByFilterRequest, int64) (*DeleteResult, error)
+	listRecords   func(context.Context, PromptRecordFilter, int, int) (*PromptRecordPage, error)
+	getRecord     func(context.Context, int64) (*PromptRecord, error)
+	deleteRecord  func(context.Context, int64) error
+	deleteRecords func(context.Context, []int64) (int64, error)
+	recording     PromptRecordingConfig
+	saveRecording func(context.Context, bool) (PromptRecordingConfig, error)
 }
 
 func (s *fakePromptAdminService) GetConfig() (PublicConfig, error) {
@@ -81,6 +88,39 @@ func (s *fakePromptAdminService) DeleteByFilter(ctx context.Context, req DeleteB
 	}
 	return s.deleteFilter(ctx, req, actorID)
 }
+func (s *fakePromptAdminService) ListPromptRecords(ctx context.Context, filter PromptRecordFilter, page, pageSize int) (*PromptRecordPage, error) {
+	if s.listRecords == nil {
+		return &PromptRecordPage{}, nil
+	}
+	return s.listRecords(ctx, filter, page, pageSize)
+}
+func (s *fakePromptAdminService) GetPromptRecord(ctx context.Context, id int64) (*PromptRecord, error) {
+	if s.getRecord == nil {
+		return nil, ErrPromptRecordNotFound
+	}
+	return s.getRecord(ctx, id)
+}
+func (s *fakePromptAdminService) DeletePromptRecord(ctx context.Context, id int64) error {
+	if s.deleteRecord == nil {
+		return nil
+	}
+	return s.deleteRecord(ctx, id)
+}
+func (s *fakePromptAdminService) DeletePromptRecords(ctx context.Context, ids []int64) (int64, error) {
+	if s.deleteRecords == nil {
+		return int64(len(ids)), nil
+	}
+	return s.deleteRecords(ctx, ids)
+}
+func (s *fakePromptAdminService) GetPromptRecordingConfig() PromptRecordingConfig {
+	return s.recording
+}
+func (s *fakePromptAdminService) SavePromptRecordingConfig(ctx context.Context, enabled bool) (PromptRecordingConfig, error) {
+	if s.saveRecording == nil {
+		return PromptRecordingConfig{Enabled: enabled}, nil
+	}
+	return s.saveRecording(ctx, enabled)
+}
 
 func promptAdminRouter(service PromptAdminService) *gin.Engine {
 	gin.SetMode(gin.TestMode)
@@ -102,7 +142,37 @@ func promptAdminRouter(service PromptAdminService) *gin.Engine {
 	group.POST("/events/batch-delete", handler.BatchDelete)
 	group.POST("/events/delete-preview", handler.DeletePreview)
 	group.POST("/events/delete-by-filter", handler.DeleteByFilter)
+	records := router.Group("/admin/prompt-records")
+	records.GET("", handler.ListPromptRecords)
+	records.GET("/recording", handler.GetPromptRecordingConfig)
+	records.PUT("/recording", handler.UpdatePromptRecordingConfig)
+	records.GET("/:id", handler.GetPromptRecord)
+	records.DELETE("/:id", handler.DeletePromptRecord)
+	records.POST("/batch-delete", handler.BatchDeletePromptRecords)
 	return router
+}
+
+func TestPromptRecordingConfigEndpoints(t *testing.T) {
+	service := &fakePromptAdminService{
+		recording: PromptRecordingConfig{Enabled: true},
+		saveRecording: func(_ context.Context, enabled bool) (PromptRecordingConfig, error) {
+			require.False(t, enabled)
+			return PromptRecordingConfig{Enabled: false}, nil
+		},
+	}
+	router := promptAdminRouter(service)
+
+	getResponse := promptAdminRequest(t, router, http.MethodGet, "/admin/prompt-records/recording", nil)
+	require.Equal(t, http.StatusOK, getResponse.Code)
+	require.Contains(t, getResponse.Body.String(), `"enabled":true`)
+
+	updateResponse := promptAdminRequest(t, router, http.MethodPut, "/admin/prompt-records/recording", map[string]any{"enabled": false})
+	require.Equal(t, http.StatusOK, updateResponse.Code)
+	require.Contains(t, updateResponse.Body.String(), `"enabled":false`)
+
+	invalidResponse := promptAdminRequest(t, router, http.MethodPut, "/admin/prompt-records/recording", map[string]any{})
+	require.Equal(t, http.StatusBadRequest, invalidResponse.Code)
+	require.Contains(t, invalidResponse.Body.String(), "prompt_recording_invalid_request")
 }
 
 func promptAdminRequest(t *testing.T, router http.Handler, method, path string, body any) *httptest.ResponseRecorder {
@@ -246,4 +316,37 @@ func TestPromptAdminDeleteConfirmationErrorsStayGeneric(t *testing.T) {
 	require.Contains(t, response.Body.String(), "prompt_audit_delete_confirmation_invalid")
 	require.NotContains(t, response.Body.String(), "sensitive-token")
 	require.NotContains(t, response.Body.String(), "secret-confirmation")
+}
+
+func TestPromptRecordListParsesUserAndTimeFilters(t *testing.T) {
+	service := &fakePromptAdminService{listRecords: func(_ context.Context, filter PromptRecordFilter, page, pageSize int) (*PromptRecordPage, error) {
+		require.Equal(t, int64(7), *filter.UserID)
+		require.Equal(t, "gpt-test", filter.Model)
+		require.Equal(t, "2026-09-11T10:00:00Z", filter.StartAt.UTC().Format(time.RFC3339))
+		require.Equal(t, "2026-09-11T11:00:00Z", filter.EndAt.UTC().Format(time.RFC3339))
+		require.Equal(t, 2, page)
+		require.Equal(t, 25, pageSize)
+		return &PromptRecordPage{}, nil
+	}}
+	response := promptAdminRequest(t, promptAdminRouter(service), http.MethodGet,
+		"/admin/prompt-records?user_id=7&model=gpt-test&start_at=2026-09-11T10:00:00Z&end_at=2026-09-11T11:00:00Z&page=2&page_size=25", nil)
+	require.Equal(t, http.StatusOK, response.Code)
+}
+
+func TestPromptRecordListRejectsInvalidTimeRange(t *testing.T) {
+	response := promptAdminRequest(t, promptAdminRouter(&fakePromptAdminService{}), http.MethodGet,
+		"/admin/prompt-records?start_at=2026-09-11T12:00:00Z&end_at=2026-09-11T11:00:00Z", nil)
+	require.Equal(t, http.StatusBadRequest, response.Code)
+	require.Contains(t, response.Body.String(), "prompt_record_invalid_time_range")
+}
+
+func TestPromptRecordBatchDeleteDeduplicatesIDs(t *testing.T) {
+	service := &fakePromptAdminService{deleteRecords: func(_ context.Context, ids []int64) (int64, error) {
+		require.Equal(t, []int64{4, 8}, ids)
+		return 2, nil
+	}}
+	response := promptAdminRequest(t, promptAdminRouter(service), http.MethodPost,
+		"/admin/prompt-records/batch-delete", map[string]any{"ids": []int64{4, 4, 8}})
+	require.Equal(t, http.StatusOK, response.Code)
+	require.Contains(t, response.Body.String(), `"deleted":2`)
 }

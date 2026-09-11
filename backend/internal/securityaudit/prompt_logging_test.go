@@ -33,7 +33,14 @@ func TestPromptAuditLogAllowlistAndErrorsDoNotLeakCanarySecrets(t *testing.T) {
 	beforeUnknown := output.Len()
 	LogWarn("prompt_audit.typo_event", map[string]any{"status": "failed"})
 	require.Equal(t, beforeUnknown, output.Len(), "events outside the stable dictionary must not be emitted")
-	require.Len(t, knownLogEvents, 28)
+	require.Len(t, knownLogEvents, 30)
+
+	LogError(EventPromptRecordPersistFailed, map[string]any{
+		"request_id": "record-request", "error_code": "prompt_record_insert_failed",
+		"raw_prompt": canary, "error": "database rejected " + canary,
+	})
+	require.NotContains(t, output.String(), canary)
+	require.Contains(t, output.String(), EventPromptRecordPersistFailed)
 
 	_, err := NormalizeBaseURL("https://guard.example.test/path?token=" + canary)
 	require.Error(t, err)

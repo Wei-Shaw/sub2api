@@ -41,6 +41,9 @@ type ConfigManager struct {
 	// independently of whether endpoint credentials or the full config could be
 	// activated. A config version alone cannot distinguish async from blocking.
 	expectedBlocking atomic.Bool
+	// recordingState uses 0 for the legacy/default state (enabled), 1 for
+	// explicitly enabled and 2 for explicitly disabled.
+	recordingState atomic.Int32
 	// configUntrusted is set when a load/reload fails before a trustworthy
 	// snapshot is installed. Combined with expectedBlocking, EffectiveMode
 	// fails closed so a persisted blocking policy cannot be silently skipped
@@ -110,12 +113,13 @@ func (m *ConfigManager) Reload(ctx context.Context) error {
 		m.markUntrustedIfNoActiveSnapshot()
 		return errors.New("prompt audit setting repository unavailable")
 	}
-	values, err := m.settings.GetMultiple(ctx, []string{SettingKeyPromptAuditConfig, SettingKeyRiskControl})
+	values, err := m.settings.GetMultiple(ctx, []string{SettingKeyPromptAuditConfig, SettingKeyRiskControl, SettingKeyPromptRecording})
 	if err != nil {
 		m.recordLoadError(err)
 		m.markUntrustedIfNoActiveSnapshot()
 		return err
 	}
+	m.setPromptRecordingState(values[SettingKeyPromptRecording] != "false")
 	m.observeExpectedState(values[SettingKeyPromptAuditConfig], values[SettingKeyRiskControl] == "true")
 	storage, err := ParseStorageConfig(values[SettingKeyPromptAuditConfig])
 	if err != nil {
@@ -146,6 +150,46 @@ func (m *ConfigManager) Reload(ctx context.Context) error {
 		})
 	}
 	return nil
+}
+
+func (m *ConfigManager) PromptRecordingEnabled() bool {
+	return m == nil || m.recordingState.Load() != 2
+}
+
+func (m *ConfigManager) SavePromptRecordingEnabled(ctx context.Context, enabled bool) error {
+	if m == nil || m.settings == nil {
+		return errors.New("prompt recording setting repository unavailable")
+	}
+	if err := m.settings.Set(ctx, SettingKeyPromptRecording, strconv.FormatBool(enabled)); err != nil {
+		return err
+	}
+	m.setPromptRecordingState(enabled)
+	LogInfo(EventConfigUpdated, map[string]any{
+		"status": "updated", "prompt_recording_enabled": enabled,
+	})
+	if m.redis != nil {
+		version := m.expected.Load()
+		if version < 1 {
+			version = 1
+		}
+		if err := m.redis.Publish(ctx, ConfigInvalidationChannel, strconv.FormatInt(version, 10)).Err(); err != nil {
+			LogWarn(EventConfigReloadDegraded, map[string]any{
+				"config_version": version, "status": "degraded", "error_code": "prompt_recording_invalidation_publish_failed",
+			})
+		}
+	}
+	return nil
+}
+
+func (m *ConfigManager) setPromptRecordingState(enabled bool) {
+	if m == nil {
+		return
+	}
+	if enabled {
+		m.recordingState.Store(1)
+		return
+	}
+	m.recordingState.Store(2)
 }
 
 // shouldLogConfigLoaded reports whether a successful reload carries news: the

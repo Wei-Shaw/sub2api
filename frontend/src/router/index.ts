@@ -635,6 +635,12 @@ const routes: RouteRecordRaw[] = [
     }
   },
   {
+    path: '/admin/prompt-records',
+    name: 'AdminPromptRecords',
+    component: () => import('@/features/prompt-records/PromptRecordsView.vue'),
+    meta: { requiresAuth: true, requiresAdmin: true, title: 'Prompt Records', titleKey: 'admin.promptRecords.title', descriptionKey: 'admin.promptRecords.description' }
+  },
+  {
     path: '/admin/usage',
     name: 'AdminUsage',
     component: () => import('@/views/admin/UsageView.vue'),

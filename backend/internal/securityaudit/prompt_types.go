@@ -8,6 +8,7 @@ import (
 const (
 	SettingKeyPromptAuditConfig = "prompt_audit_config"
 	SettingKeyRiskControl       = "risk_control_enabled"
+	SettingKeyPromptRecording   = "prompt_recording_enabled"
 
 	ConfigInvalidationChannel = "sub2api:prompt_guard:config:invalidate"
 	PayloadKeyPrefix          = "sub2api:prompt_audit:payload:"
@@ -81,6 +82,7 @@ type Request struct {
 	Model      string
 	Body       []byte
 	Stage      string
+	TurnNo     int
 }
 
 func (r Request) Clone() Request {

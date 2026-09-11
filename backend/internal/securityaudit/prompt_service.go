@@ -30,7 +30,11 @@ type PromptService struct {
 	enqueueSlots chan struct{}
 	probeMu      sync.RWMutex
 	probes       map[string]ProbeResult
+	records      *PromptRecordService
 }
+
+var _ promptRecordAdminService = (*PromptService)(nil)
+var _ PromptResponseRecorder = (*PromptService)(nil)
 
 func NewPromptService(
 	config ConfigStore,
@@ -45,8 +49,84 @@ func NewPromptService(
 	return &PromptService{
 		config: config, repo: repo, payload: payload, scanner: scanner, metrics: metrics,
 		enqueuer: enqueuer, evaluator: evaluator, runner: runner, clock: realClock{},
-		enqueueSlots: make(chan struct{}, 128), probes: map[string]ProbeResult{},
+		enqueueSlots: make(chan struct{}, 128), probes: map[string]ProbeResult{}, records: NewPromptRecordService(repo),
 	}
+}
+
+func (s *PromptService) RecordPrompt(ctx context.Context, req Request) {
+	if s != nil && s.records != nil && s.PromptRecordingEnabled() {
+		s.records.RecordPrompt(ctx, req)
+	}
+}
+
+func (s *PromptService) RecordResponse(ctx context.Context, req Request, response PromptResponse) {
+	if s != nil && s.records != nil && s.PromptRecordingEnabled() {
+		s.records.RecordResponse(ctx, req, response)
+	}
+}
+
+type promptRecordingConfigStore interface {
+	PromptRecordingEnabled() bool
+	SavePromptRecordingEnabled(context.Context, bool) error
+}
+
+type PromptRecordingConfig struct {
+	Enabled bool `json:"enabled"`
+}
+
+func (s *PromptService) PromptRecordingEnabled() bool {
+	if s == nil {
+		return false
+	}
+	store, ok := s.config.(promptRecordingConfigStore)
+	if !ok {
+		return true
+	}
+	return store.PromptRecordingEnabled()
+}
+
+func (s *PromptService) GetPromptRecordingConfig() PromptRecordingConfig {
+	return PromptRecordingConfig{Enabled: s.PromptRecordingEnabled()}
+}
+
+func (s *PromptService) SavePromptRecordingConfig(ctx context.Context, enabled bool) (PromptRecordingConfig, error) {
+	if s == nil {
+		return PromptRecordingConfig{}, errors.New("prompt recording service unavailable")
+	}
+	store, ok := s.config.(promptRecordingConfigStore)
+	if !ok {
+		return PromptRecordingConfig{}, errors.New("prompt recording configuration unavailable")
+	}
+	if err := store.SavePromptRecordingEnabled(ctx, enabled); err != nil {
+		return PromptRecordingConfig{}, err
+	}
+	return PromptRecordingConfig{Enabled: store.PromptRecordingEnabled()}, nil
+}
+
+func (s *PromptService) ListPromptRecords(ctx context.Context, filter PromptRecordFilter, page, pageSize int) (*PromptRecordPage, error) {
+	if s == nil || s.records == nil {
+		return nil, errors.New("prompt record service unavailable")
+	}
+	return s.records.ListPromptRecords(ctx, filter, page, pageSize)
+}
+func (s *PromptService) GetPromptRecord(ctx context.Context, id int64) (*PromptRecord, error) {
+	if s == nil || s.records == nil {
+		return nil, errors.New("prompt record service unavailable")
+	}
+	return s.records.GetPromptRecord(ctx, id)
+}
+func (s *PromptService) DeletePromptRecord(ctx context.Context, id int64) error {
+	if s == nil || s.records == nil {
+		return errors.New("prompt record service unavailable")
+	}
+	return s.records.DeletePromptRecord(ctx, id)
+}
+
+func (s *PromptService) DeletePromptRecords(ctx context.Context, ids []int64) (int64, error) {
+	if s == nil || s.records == nil {
+		return 0, errors.New("prompt record service unavailable")
+	}
+	return s.records.DeletePromptRecords(ctx, ids)
 }
 
 func (s *PromptService) Start(ctx context.Context) error {
