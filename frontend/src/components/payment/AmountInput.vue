@@ -30,7 +30,7 @@
       </label>
       <div class="relative">
         <span class="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 dark:text-dark-500">
-          $
+          {{ accountCurrencySymbol }}
         </span>
         <input
           type="text"
@@ -48,6 +48,7 @@
 <script setup lang="ts">
 import { ref, computed, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { DEFAULT_PAYMENT_CURRENCY, currencySymbol } from '@/components/payment/currency'
 
 const props = withDefaults(defineProps<{
   amounts?: number[]
@@ -65,6 +66,7 @@ const emit = defineEmits<{
 }>()
 
 const { t } = useI18n()
+const accountCurrencySymbol = currencySymbol(DEFAULT_PAYMENT_CURRENCY)
 
 const customText = ref('')
 

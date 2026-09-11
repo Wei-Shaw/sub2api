@@ -81,10 +81,10 @@ describe("SubscriptionPlanCard", () => {
   it("uses the configured currency symbol while preserving USD for legacy plans", () => {
     const cnyPlan = mountPlanCard("openai", { currency: "CNY", original_price: 20 }).text();
 
-    expect(cnyPlan).toContain("¥10CNY");
-    expect(cnyPlan).toContain("¥20CNY");
+    expect(cnyPlan).toContain("￥10CNY");
+    expect(cnyPlan).toContain("￥20CNY");
     expect(mountPlanCard("openai", { currency: "USD" }).text()).toContain("$10USD");
-    expect(mountPlanCard("openai", { currency: "" }).text()).toContain("$10");
+    expect(mountPlanCard("openai", { currency: "" }).text()).toContain("￥10");
   });
 
   it.each([

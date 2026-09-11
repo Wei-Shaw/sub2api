@@ -35,7 +35,7 @@
         </template>
 
         <template #cell-balance="{ value }">
-          <span class="font-medium text-gray-900 dark:text-white">${{ Number(value ?? 0).toFixed(2) }}</span>
+          <span class="font-medium text-gray-900 dark:text-white">{{ accountCurrencySymbol }}{{ Number(value ?? 0).toFixed(2) }}</span>
         </template>
 
         <template #cell-eligible="{ value }">
@@ -83,9 +83,11 @@ import BaseDialog from '@/components/common/BaseDialog.vue'
 import DataTable from '@/components/common/DataTable.vue'
 import Pagination from '@/components/common/Pagination.vue'
 import Icon from '@/components/icons/Icon.vue'
+import { DEFAULT_PAYMENT_CURRENCY, currencySymbol } from '@/components/payment/currency'
 
 const { t } = useI18n()
 const appStore = useAppStore()
+const accountCurrencySymbol = currencySymbol(DEFAULT_PAYMENT_CURRENCY)
 
 const props = defineProps<{
   show: boolean

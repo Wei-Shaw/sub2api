@@ -185,6 +185,26 @@ const routes: RouteRecordRaw[] = [
       titleKey: 'modelPlaza.title'
     }
   },
+  {
+    path: '/experience',
+    name: 'Experience',
+    component: () => import('@/views/ExperienceView.vue'),
+    meta: {
+      requiresAuth: false,
+      title: 'Online Experience',
+      titleKey: 'product.experience.title'
+    }
+  },
+  {
+    path: '/pricing',
+    name: 'Pricing',
+    component: () => import('@/views/PricingView.vue'),
+    meta: {
+      requiresAuth: false,
+      title: 'Pricing',
+      titleKey: 'product.pricing.title'
+    }
+  },
 
   // ==================== User Routes ====================
   {
