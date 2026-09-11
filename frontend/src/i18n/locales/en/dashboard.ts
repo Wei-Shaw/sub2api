@@ -219,6 +219,8 @@ export default {
         download: 'Download catalog',
         modelsCount: '{count} models ready to download',
         errorDescription: 'The catalog could not be fetched with this API key.',
+        configuredModelMissing: 'The group-configured model “{model}” is not in this catalog. It will be kept and will not be replaced automatically.',
+        configuredReviewModelMissing: 'The group-configured review model “{model}” is not in this catalog. It will be kept and will not be replaced automatically.',
       },
       opencode: {
         title: 'OpenCode Example',

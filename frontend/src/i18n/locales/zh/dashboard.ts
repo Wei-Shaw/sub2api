@@ -222,7 +222,9 @@ export default {
         retry: '重试',
         download: '下载目录',
         modelsCount: '已获取 {count} 个模型',
-        errorDescription: '无法使用当前 API Key 获取模型目录。'
+        errorDescription: '无法使用当前 API Key 获取模型目录。',
+        configuredModelMissing: '分组指定的模型“{model}”不在当前目录中，仍将保留该模型，不会自动替换。',
+        configuredReviewModelMissing: '分组指定的审查模型“{model}”不在当前目录中，仍将保留该模型，不会自动替换。',
       },
       opencode: {
         title: 'OpenCode 配置示例',
