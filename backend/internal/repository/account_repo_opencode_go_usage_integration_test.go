@@ -220,6 +220,91 @@ func TestOpenCodeGoUsageEligibleSQLAcceptsDefaultPort443(t *testing.T) {
 	require.Equal(t, account.ID, groups[0].ID)
 }
 
+// 资格泛化回归：opencode_go 平台 Go 订阅账号（不依赖 base_url，未设置
+// account_mode 默认 Go）与 Anthropic 基址（/zen/go）挂载行都必须命中
+// opencodeGoUsageEligibleSQL；同 key 的 Zen 模式行必须被 SQL 排除。
+func TestOpenCodeGoUsageEligibleSQLOpencodePlatformAndAnthropicBaseURL(t *testing.T) {
+	ctx := context.Background()
+	tx := testEntTx(t)
+	repo := newAccountRepositoryWithSQL(tx.Client(), tx, nil)
+
+	platformGo := mustCreateAccount(t, tx.Client(), &service.Account{
+		Name: "opencode-platform-go", Platform: service.PlatformOpenCodeGo, Type: service.AccountTypeAPIKey,
+		Credentials: map[string]any{"api_key": "platform-key"}, // 无 base_url、无 account_mode（默认 Go）
+		Extra:       map[string]any{},
+	})
+	// 同 key 的 Zen 行：SQL 必须排除（account_mode = zen）。
+	platformZen := mustCreateAccount(t, tx.Client(), &service.Account{
+		Name: "opencode-platform-zen", Platform: service.PlatformOpenCodeGo, Type: service.AccountTypeAPIKey,
+		Credentials: map[string]any{"api_key": "platform-key", "account_mode": service.AccountModeZen},
+		Extra:       map[string]any{},
+	})
+	anthropicMount := mustCreateAccount(t, tx.Client(), &service.Account{
+		Name: "opencode-anthropic-mount", Platform: service.PlatformAnthropic, Type: service.AccountTypeAPIKey,
+		Credentials: map[string]any{"api_key": "mount-key", "base_url": "https://opencode.ai/zen/go"},
+		Extra:       map[string]any{},
+	})
+
+	groups, err := repo.ListOpenCodeGoUsageGroupAccounts(ctx, []*service.Account{platformGo, anthropicMount})
+	require.NoError(t, err)
+	require.Len(t, groups, 2)
+	ids := make(map[int64]struct{}, len(groups))
+	for _, account := range groups {
+		ids[account.ID] = struct{}{}
+	}
+	require.Contains(t, ids, platformGo.ID)
+	require.Contains(t, ids, anthropicMount.ID)
+	require.NotContains(t, ids, platformZen.ID, "同 key 的 Zen 模式行必须被 SQL 谓词排除")
+}
+
+// 资格泛化回归：UpdateCredentials 的 OpenCode 清理分支里，IS NOT TRUE 只能作用于
+// 新凭证的检查本身，平台条件必须在作用域外——否则挂载行 (FALSE AND …) IS NOT TRUE
+// 恒为 TRUE，仅添加无关凭证键也会误清受管键。两类行在 api_key/身份不变、凭证仅
+// 无关变化时都必须保留 OpenCode 受管键。
+func TestUpdateCredentialsOpenCodeGoUnrelatedCredentialChangeKeepsManagedState(t *testing.T) {
+	ctx := context.Background()
+	tx := testEntTx(t)
+	repo := newAccountRepositoryWithSQL(tx.Client(), tx, nil)
+	now := time.Now().UTC()
+
+	create := func(name, platform string, credentials map[string]any) *service.Account {
+		return mustCreateAccount(t, tx.Client(), &service.Account{
+			Name: name, Platform: platform, Type: service.AccountTypeAPIKey,
+			Credentials: credentials,
+			Extra: map[string]any{
+				service.OpenCodeGoUsageAutoRefreshExtraKey: true,
+				service.OpenCodeGoUsageSnapshotExtraKey: map[string]any{
+					"status": service.OpenCodeGoUsageStatusOK, "last_attempt_at": now, "next_refresh_at": now.Add(time.Hour),
+				},
+			},
+		})
+	}
+	anthropicMount := create("opencode-mount-unrelated", service.PlatformAnthropic, map[string]any{
+		"api_key": "mount-key", "base_url": "https://opencode.ai/zen/go",
+	})
+	platformGo := create("opencode-platform-unrelated", service.PlatformOpenCodeGo, map[string]any{
+		"api_key": "platform-key", "account_mode": service.AccountModeGo,
+	})
+
+	// 挂载行：api_key 与官方基址都未变，仅新增无关凭证键。
+	require.NoError(t, repo.UpdateCredentials(ctx, anthropicMount.ID, map[string]any{
+		"api_key": "mount-key", "base_url": "https://opencode.ai/zen/go", "remark": "unrelated",
+	}))
+	// opencode_go 行：api_key 未变、模式仍为 Go，仅新增无关凭证键。
+	require.NoError(t, repo.UpdateCredentials(ctx, platformGo.ID, map[string]any{
+		"api_key": "platform-key", "account_mode": service.AccountModeGo, "remark": "unrelated",
+	}))
+
+	for _, id := range []int64{anthropicMount.ID, platformGo.ID} {
+		loaded, err := repo.GetByID(ctx, id)
+		require.NoError(t, err)
+		require.Equal(t, true, loaded.Extra[service.OpenCodeGoUsageAutoRefreshExtraKey])
+		snapshot, ok := loaded.Extra[service.OpenCodeGoUsageSnapshotExtraKey].(map[string]any)
+		require.True(t, ok)
+		require.Equal(t, service.OpenCodeGoUsageStatusOK, snapshot["status"])
+	}
+}
+
 // F7：生产故障路径——前端脱敏普通编辑（incoming Extra 不含 OpenCode 受管键）经真实
 // repo.Update 走 lockAndMergeAccountProbeExtra 的 SELECT/Scan/UPDATE 后，custom 生效
 // 且两个受管键从锁定 DB 行回填；incoming Extra 伪造受管键时以锁定 DB 值为准。

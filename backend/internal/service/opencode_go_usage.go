@@ -59,7 +59,8 @@ var (
 		"OPENCODE_GO_USAGE_UNAVAILABLE", "OpenCode Go usage is unavailable",
 	)
 	ErrOpenCodeGoUsageAccountInvalid = infraerrors.BadRequest(
-		"OPENCODE_GO_USAGE_ACCOUNT_INVALID", "account must be an OpenAI API key account using https://opencode.ai/zen/go/v1",
+		"OPENCODE_GO_USAGE_ACCOUNT_INVALID",
+		"account must be an OpenCode Go platform subscription (go mode) account, or an API key account under openai/anthropic/kimi/zhipu/deepseek/minimax with base_url pointing at the official OpenCode Go base URLs",
 	)
 	ErrOpenCodeGoUsageIdentityChanged = infraerrors.Conflict(
 		"OPENCODE_GO_USAGE_IDENTITY_CHANGED", "account identity or proxy changed during refresh; retry",
@@ -868,8 +869,37 @@ func OpenCodeGoUsageStateFromAccount(account *Account) *OpenCodeGoUsageState {
 	return state
 }
 
+// isOpenCodeGoUsageMountPlatform 收敛允许以 base_url 挂载 OpenCode Go 用量身份的
+// 平台白名单，与 ollama 的 isOllamaCloudUsagePlatform 对齐。repository 侧 SQL
+// 白名单（opencodeGoUsageMountPlatformsSQL）是本列表的镜像，两侧必须同步修改。
+// opencode_go 平台本身不在名单内：平台账号走 IsOpenCodeGoPlan 判定，不依赖
+// base_url。
+func isOpenCodeGoUsageMountPlatform(platform string) bool {
+	switch platform {
+	case PlatformOpenAI, PlatformAnthropic, PlatformKimi, PlatformZhipu, PlatformDeepseek, PlatformMiniMax:
+		return true
+	default:
+		return false
+	}
+}
+
+// IsOpenCodeGoUsageAccount 判定账号是否参与 OpenCode Go 用量窗口，资格来源分派：
+//   - platform == opencode_go：平台字段是权威来源，以 IsOpenCodeGoPlan 为准（必须是
+//     Go 订阅；Zen 按量付费无订阅配额窗口，上游 CN 配额链路同样排除）。此分支不要求
+//     base_url 匹配——opencode_go 账号的 base_url 可能是 CC/Responses 基址
+//     （/zen/go/v1）或 Anthropic 基址（/zen/go），甚至为空。
+//   - 其它平台：仅限挂载白名单（isOpenCodeGoUsageMountPlatform）内的 API Key 账号，
+//     以 base_url 严格指向官方 OpenCode Go 基址判定（见 isOpenCodeGoBaseURL）。
+//
+// 两种情况都要求 account.Type == AccountTypeAPIKey。
 func IsOpenCodeGoUsageAccount(account *Account) bool {
-	if account == nil || account.Type != AccountTypeAPIKey || account.Platform != PlatformOpenAI {
+	if account == nil || account.Type != AccountTypeAPIKey {
+		return false
+	}
+	if account.IsOpenCodeGo() {
+		return account.IsOpenCodeGoPlan()
+	}
+	if !isOpenCodeGoUsageMountPlatform(account.Platform) {
 		return false
 	}
 	baseURL, _ := account.Credentials["base_url"].(string)
@@ -896,9 +926,16 @@ func isOpenCodeGoBaseURL(raw string) bool {
 	if parsed.RawPath != "" {
 		return false
 	}
-	return strings.EqualFold(strings.TrimSuffix(parsed.Path, "/"), "/zen/go/v1")
+	// 官方两个基址变体：CC/Responses 的 /zen/go/v1 与 Anthropic 的 /zen/go。
+	// TrimSuffix 归一尾斜杠后，Zen 基址（/zen、/zen/v1）自然被拒绝。
+	path := strings.TrimSuffix(parsed.Path, "/")
+	return strings.EqualFold(path, "/zen/go/v1") || strings.EqualFold(path, "/zen/go")
 }
 
+// openCodeGoUsageIdentity 返回 OpenCode Go 用量组的身份。host 固定为 opencode.ai、
+// 以 api_key 聚合是平台无关的有意设计：同一个 OpenCode Go 订阅 key 无论以
+// opencode_go 平台账号存在，还是挂在 openai/anthropic 等挂载平台下，都属于
+// 同一组、共享一次外呼与同一份快照。
 func openCodeGoUsageIdentity(account *Account) map[string]any {
 	if !IsOpenCodeGoUsageAccount(account) {
 		return nil
@@ -910,6 +947,9 @@ func openCodeGoUsageIdentity(account *Account) map[string]any {
 	return map[string]any{"host": "opencode.ai", "api_key": apiKey}
 }
 
+// openCodeGoUsageGroupFingerprint 是组身份的指纹（sha256("opencode.ai\x00"+apiKey)）。
+// 与 openCodeGoUsageIdentity 一样保持平台无关：同一订阅 key 跨平台（opencode_go
+// 平台账号与挂载平台账号）必须得到相同指纹，才会被归入同一刷新组。
 func openCodeGoUsageGroupFingerprint(account *Account) (string, bool) {
 	identity := openCodeGoUsageIdentity(account)
 	if identity == nil {

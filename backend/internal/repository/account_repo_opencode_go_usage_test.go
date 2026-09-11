@@ -286,8 +286,10 @@ func TestBulkUpdateOpenCodeGoIdentityCleanupIsValueConditional(t *testing.T) {
 	require.NoError(t, err)
 	require.NotEmpty(t, exec.execQueries)
 	query := normalizeSQLWhitespace(exec.execQueries[0])
-	// OpenCode 分支必须出现在 Ollama 分支之前，且只在旧行是 opencode base URL 时触发。
-	require.Contains(t, query, "platform = 'openai' AND type = 'apikey'")
+	// OpenCode 分支必须出现在 Ollama 分支之前，且 eligible 判定按新谓词同时覆盖
+	// opencode_go 平台（Go 订阅）与挂载白名单平台 + opencode 基址。
+	require.Contains(t, query, "platform = 'opencode_go'")
+	require.Contains(t, query, "platform IN ("+opencodeGoUsageMountPlatformsSQL+")")
 	require.Contains(t, query, "- 'opencode_go_usage_auto_refresh' - 'opencode_go_usage_snapshot'")
 	opencodeBranch := strings.Index(query, "opencode_go_usage_auto_refresh")
 	ollamaBranch := strings.Index(query, "ollama_cloud_usage_auto_refresh")
@@ -319,6 +321,9 @@ func TestBulkUpdateOpenCodeGoEligiblePredicateIncludesBaseURL(t *testing.T) {
 	require.NotEqual(t, -1, firstThen)
 	require.Less(t, caseStart, firstThen)
 	firstWhen := query[caseStart:firstThen]
+	// 第一个 WHEN 分支是 OpenCode 快照失效分支（代理变化），其 eligible 判定必须
+	// 覆盖 opencode_go 平台与挂载白名单的 opencode 基址，使 Ollama 行无法命中。
+	require.Contains(t, firstWhen, "platform = 'opencode_go'")
 	require.Contains(t, firstWhen, "[oO][pP][eE][nN][cC][oO][dD][eE]")
 	require.Contains(t, firstWhen, "credentials ->> 'base_url'")
 	require.NotContains(t, firstWhen, "[oO][lL][lL][aA][mM][aA]")
@@ -342,8 +347,9 @@ func TestBulkUpdateOpenCodeGoBaseURLClauseIsNullSafe(t *testing.T) {
 	require.NotContains(t, query, "AND NOT btrim(credentials ->> 'base_url')")
 }
 
-// F6 回归：SQL 正则与 service.isOpenCodeGoBaseURL 对齐，接受显式默认端口 :443。
-// 该正则同时用于 eligible 判定与身份清理，Go 侧接受而 SQL 侧拒绝会导致漏清/漏组。
+// F6 回归：SQL 正则与 service.isOpenCodeGoBaseURL 对齐，接受显式默认端口 :443 与
+// 两个官方基址变体（CC/Responses 的 /zen/go/v1、Anthropic 的 /zen/go）。该正则
+// 同时用于 eligible 判定与身份清理，Go 侧接受而 SQL 侧拒绝会导致漏清/漏组。
 func TestOpenCodeGoBaseURLRegexSQLAcceptsDefaultPort443(t *testing.T) {
 	re := regexp.MustCompile(opencodeGoBaseURLRegexSQL)
 	for _, url := range []string{
@@ -351,6 +357,9 @@ func TestOpenCodeGoBaseURLRegexSQLAcceptsDefaultPort443(t *testing.T) {
 		"https://opencode.ai/zen/go/v1/",
 		"https://opencode.ai:443/zen/go/v1",
 		"https://opencode.ai:443/zen/go/v1/",
+		"https://opencode.ai/zen/go",
+		"https://opencode.ai/zen/go/",
+		"https://opencode.ai:443/zen/go",
 		"HTTPS://OPENCODE.AI:443/ZEN/GO/V1",
 	} {
 		require.True(t, re.MatchString(url), "SQL regex must accept %s", url)
@@ -360,9 +369,52 @@ func TestOpenCodeGoBaseURLRegexSQLAcceptsDefaultPort443(t *testing.T) {
 		"https://opencode.ai/v1",
 		"https://ollama.com/zen/go/v1",
 		"https://opencode.ai/zen/go/v1?x=1",
+		// zen 基址必须拒绝：按量付费无订阅配额窗口
+		"https://opencode.ai/zen",
+		"https://opencode.ai/zen/",
+		"https://opencode.ai/zen/v1",
+		"https://opencode.ai/zen/v1/",
+		// 非官方 scheme / 子域 / 路径前缀拼接
+		"http://opencode.ai/zen/go/v1",
+		"https://www.opencode.ai/zen/go/v1",
+		"https://opencode.ai/zen/gov1",
 	} {
 		require.False(t, re.MatchString(url), "SQL regex must reject %s", url)
 	}
+}
+
+// SQL 挂载平台白名单常量与 service 判定必须互为镜像：对每个挂载候选平台，常量里
+// 的成员关系都要与 IsOpenCodeGoUsageAccount（apikey + 官方 OpenCode Go 基址）一致，
+// 防止两侧平台列表各自漂移。opencode_go 走平台 + Go 订阅分支而非挂载白名单：
+// 不得出现在白名单常量里，且其资格由 account_mode 决定，在此一并钉死。
+func TestOpenCodeGoUsagePlatformWhitelistMatchesServicePredicate(t *testing.T) {
+	matches := regexp.MustCompile(`'([^']+)'`).FindAllStringSubmatch(opencodeGoUsageMountPlatformsSQL, -1)
+	sqlPlatforms := make(map[string]struct{}, len(matches))
+	for _, match := range matches {
+		sqlPlatforms[match[1]] = struct{}{}
+	}
+	require.Len(t, sqlPlatforms, 6)
+	for _, platform := range []string{
+		service.PlatformOpenAI, service.PlatformAnthropic,
+		service.PlatformKimi, service.PlatformZhipu, service.PlatformDeepseek, service.PlatformMiniMax,
+		service.PlatformGemini, service.PlatformGrok, service.PlatformAntigravity,
+		service.PlatformComposite, "kiro",
+	} {
+		account := openCodeGoUsageRepositoryAccount()
+		account.Platform = platform
+		_, inSQL := sqlPlatforms[platform]
+		require.Equal(t, inSQL, service.IsOpenCodeGoUsageAccount(account), platform)
+	}
+	// opencode_go 不在挂载白名单里，资格来自平台 + Go 订阅分支。
+	_, opencodeInSQL := sqlPlatforms[service.PlatformOpenCodeGo]
+	require.False(t, opencodeInSQL)
+	goAccount := openCodeGoUsageRepositoryAccount()
+	goAccount.Platform = service.PlatformOpenCodeGo
+	require.True(t, service.IsOpenCodeGoUsageAccount(goAccount))
+	zenAccount := openCodeGoUsageRepositoryAccount()
+	zenAccount.Platform = service.PlatformOpenCodeGo
+	zenAccount.Credentials["account_mode"] = service.AccountModeZen
+	require.False(t, service.IsOpenCodeGoUsageAccount(zenAccount))
 }
 
 func TestBulkUpdateOpenCodeGoProxyChangeClearsSnapshotOnly(t *testing.T) {

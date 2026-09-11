@@ -648,13 +648,23 @@ func lockAndMergeAccountProbeExtra(
 			extra -> 'ollama_cloud_usage_auto_refresh',
 			extra -> 'ollama_cloud_usage_snapshot',
 			COALESCE(
-				platform = 'openai'
-				AND $2 = 'openai'
+				(
+					-- opencode_go 平台分支：新旧都是 opencode_go Go 订阅（account_mode
+					-- 未设置/非 zen 均为 Go，与 GetOpenCodeAccountMode 默认兼容一致），
+					-- 不校验 base_url。
+					(platform = 'opencode_go' AND $2 = 'opencode_go'
+						AND COALESCE(btrim(credentials ->> 'account_mode') <> 'zen', true)
+						AND COALESCE(btrim($4::jsonb ->> 'account_mode') <> 'zen', true))
+					-- 挂载白名单分支：新旧平台都在白名单内且 base_url 均为官方
+					-- OpenCode Go 基址（与 Ollama 同范式，允许白名单内跨平台）。
+					OR (platform IN (`+opencodeGoUsageMountPlatformsSQL+`)
+						AND $2 IN (`+opencodeGoUsageMountPlatformsSQL+`)
+						AND `+opencodeGoBaseURLMatchSQLPrefix+`credentials ->> 'base_url'`+opencodeGoBaseURLMatchSQLSuffix+`
+						AND `+opencodeGoBaseURLMatchSQLPrefix+`$4::jsonb ->> 'base_url'`+opencodeGoBaseURLMatchSQLSuffix+`)
+				)
 				AND type = 'apikey'
 				AND $3 = 'apikey'
-				AND credentials -> 'api_key' IS NOT DISTINCT FROM $4::jsonb -> 'api_key'
-				AND `+opencodeGoBaseURLMatchSQLPrefix+`credentials ->> 'base_url'`+opencodeGoBaseURLMatchSQLSuffix+`
-				AND `+opencodeGoBaseURLMatchSQLPrefix+`$4::jsonb ->> 'base_url'`+opencodeGoBaseURLMatchSQLSuffix+`,
+				AND credentials -> 'api_key' IS NOT DISTINCT FROM $4::jsonb -> 'api_key',
 				false
 			),
 			extra -> 'opencode_go_usage_auto_refresh',
@@ -795,9 +805,10 @@ func lockAndMergeAccountProbeExtra(
 			}
 		}
 	}
-	// OpenCode Go 受管状态与 Ollama 同范式：组身份（normalized opencode base URL +
-	// api_key）未变时从锁定的 DB 行回填，客户端 DTO 脱敏或并发 refresh 写入都无法
-	// 覆盖/丢失；身份改变或不再 eligible 时既不回填，写出的 extra 即清除旧状态。
+	// OpenCode Go 受管状态与 Ollama 同范式：组身份（opencode_go Go 订阅，或挂载
+	// 白名单平台 + 官方 OpenCode Go 基址，且 api_key 不变）未变时从锁定的 DB 行
+	// 回填，客户端 DTO 脱敏或并发 refresh 写入都无法覆盖/丢失；身份改变或不再
+	// eligible 时既不回填，写出的 extra 即清除旧状态。
 	// 代理不属于组身份，但 snapshot 外呼与 CAS 经代理，故代理变化时快照失效而开关保留。
 	if service.IsOpenCodeGoUsageAccount(account) && opencodeGroupIdentityUnchanged {
 		if value, ok, err := decodeAccountExtraJSON(currentOpenCodeAutoRefresh); err != nil {
@@ -855,17 +866,30 @@ func (r *accountRepository) UpdateCredentials(ctx context.Context, id int64, cre
 		SET
 			credentials = $1::jsonb,
 			extra = CASE
-				-- OpenCode Go 分支必须先于 Ollama 分支求值：Ollama 守卫对任意
-				-- openai/anthropic apikey 行在 api_key/base_url 变化时都会命中，
-				-- 若排在前面会遮蔽 opencode 行的清理。opencode 与 ollama base URL
-				-- 正则互斥，旧行只会命中其中一个分支。
-				WHEN platform = 'openai'
-					AND type = 'apikey'
+				-- OpenCode 分支必须先于 Ollama 分支求值：Ollama 守卫对任意白名单平台的
+				-- apikey 行在 api_key/base_url 变化时都会命中，若排在前面会遮蔽 opencode
+				-- 行的清理。两分支互斥：opencode_go 不在 Ollama 白名单内，挂载行的
+				-- opencode.ai 基址与 ollama.com 基址正则互斥，旧行只会命中其中一个分支。
+				WHEN type = 'apikey'
 					AND credentials IS DISTINCT FROM $1::jsonb
-					AND `+opencodeGoBaseURLMatchSQLPrefix+`credentials ->> 'base_url'`+opencodeGoBaseURLMatchSQLSuffix+`
+					AND (
+						-- 旧行按新谓词属于 OpenCode 用量身份
+						(platform = 'opencode_go'
+							AND COALESCE(btrim(credentials ->> 'account_mode') <> 'zen', true))
+						OR (platform IN (`+opencodeGoUsageMountPlatformsSQL+`)
+							AND `+opencodeGoBaseURLMatchSQLPrefix+`credentials ->> 'base_url'`+opencodeGoBaseURLMatchSQLSuffix+`)
+					)
 					AND (
 						credentials -> 'api_key' IS DISTINCT FROM $1::jsonb -> 'api_key'
-						OR (`+opencodeGoBaseURLMatchSQLPrefix+`$1::jsonb ->> 'base_url'`+opencodeGoBaseURLMatchSQLSuffix+`) IS NOT TRUE
+						-- 或组身份不再成立：opencode_go 转 Zen（COALESCE 恒非 NULL，
+						-- IS NOT TRUE 等价于判定为假；平台条件必须在 IS NOT TRUE 作用
+						-- 域之外，否则挂载行的 FALSE IS NOT TRUE 会误判为已变化）；
+						-- 挂载行 base_url 不再指向官方 Go 基址。NULL-safe：
+						-- regex(NULL) 为 NULL 时 IS NOT TRUE 把 NULL 视为不匹配。
+						OR (platform = 'opencode_go'
+							AND COALESCE(btrim($1::jsonb ->> 'account_mode') <> 'zen', true) IS NOT TRUE)
+						OR (platform IN (`+opencodeGoUsageMountPlatformsSQL+`)
+							AND (`+opencodeGoBaseURLMatchSQLPrefix+`$1::jsonb ->> 'base_url'`+opencodeGoBaseURLMatchSQLSuffix+`) IS NOT TRUE)
 					)
 				THEN COALESCE(extra, '{}'::jsonb)
 					- 'upstream_billing_probe'
@@ -3000,20 +3024,36 @@ func (r *accountRepository) BulkUpdate(ctx context.Context, ids []int64, updates
 				" AND "+ollamaCloudBaseURLMatchesSQL(credentialPlaceholder+"::jsonb ->> 'base_url'")+")")
 	}
 
-	// OpenCode Go 身份清理与 Ollama 同范式但更精确：仅当旧行是 opencode base URL
-	// 身份时才可能持有受管键，且只在该组身份（api_key / normalized base URL）真正
-	// 变化或不再 eligible 时清除，避免与 Ollama 分支交叉误清。
-	opencodeGroupIdentityChanges := make([]string, 0, 2)
+	// OpenCode Go 身份清理与 Ollama 同范式但更精确：仅当旧行按新谓词属于 OpenCode
+	// 用量身份（opencode_go Go 订阅，或挂载白名单平台 + 官方 OpenCode Go 基址）时
+	// 才可能持有受管键，且只在该组身份（api_key / normalized base URL /
+	// account_mode）真正变化或不再 eligible 时清除，避免与 Ollama 分支交叉误清。
+	opencodeGroupIdentityChanges := make([]string, 0, 3)
 	opencodeOldBaseURL := opencodeGoBaseURLMatchSQLPrefix + "credentials ->> 'base_url'" + opencodeGoBaseURLMatchSQLSuffix
+	// 旧行 OpenCode 用量身份谓词（与 opencodeGoUsageEligibleSQL 的行侧条件镜像；
+	// type 由 opencodeEligibleAccount 统一携带）。account_mode 未设置/为 null/非
+	// zen 均视为 Go 订阅，与 GetOpenCodeAccountMode 默认兼容一致。
+	opencodeOldUsageIdentity := "((platform = 'opencode_go' AND COALESCE(btrim(credentials ->> 'account_mode') <> 'zen', true))" +
+		" OR (platform IN (" + opencodeGoUsageMountPlatformsSQL + ") AND " + opencodeOldBaseURL + "))"
 	if _, ok := updates.Credentials["api_key"]; ok {
 		opencodeGroupIdentityChanges = append(opencodeGroupIdentityChanges,
-			opencodeOldBaseURL+" AND credentials -> 'api_key' IS DISTINCT FROM "+credentialPlaceholder+"::jsonb -> 'api_key'")
+			opencodeOldUsageIdentity+" AND credentials -> 'api_key' IS DISTINCT FROM "+credentialPlaceholder+"::jsonb -> 'api_key'")
 	}
 	if _, ok := updates.Credentials["base_url"]; ok {
-		// NULL-safe：新 base_url 缺失/为 null 时 regex(NULL) 为 NULL，NOT NULL 仍为
-		// NULL 会令 WHEN 不命中而残留 OpenCode 状态；IS NOT TRUE 把 NULL 视为不匹配。
+		// 仅挂载行身份钉在官方基址上（opencode_go 行的 base_url 不参与资格，两个
+		// 官方变体都合法，不由此子句清理）。NULL-safe：新 base_url 缺失/为 null 时
+		// regex(NULL) 为 NULL，NOT NULL 仍为 NULL 会令 WHEN 不命中而残留 OpenCode
+		// 状态；IS NOT TRUE 把 NULL 视为不匹配。
 		opencodeGroupIdentityChanges = append(opencodeGroupIdentityChanges,
-			opencodeOldBaseURL+" AND ("+opencodeGoBaseURLMatchSQLPrefix+credentialPlaceholder+"::jsonb ->> 'base_url'"+opencodeGoBaseURLMatchSQLSuffix+") IS NOT TRUE")
+			"platform IN ("+opencodeGoUsageMountPlatformsSQL+") AND "+opencodeOldBaseURL+
+				" AND ("+opencodeGoBaseURLMatchSQLPrefix+credentialPlaceholder+"::jsonb ->> 'base_url'"+opencodeGoBaseURLMatchSQLSuffix+") IS NOT TRUE")
+	}
+	if _, ok := updates.Credentials["account_mode"]; ok {
+		// 仅 opencode_go 行身份钉在 Go 订阅上（挂载行的 account_mode 与 OpenCode
+		// 资格无关，不由此子句清理）。模式转 Zen 即不再 eligible。
+		opencodeGroupIdentityChanges = append(opencodeGroupIdentityChanges,
+			"platform = 'opencode_go' AND COALESCE(btrim(credentials ->> 'account_mode') <> 'zen', true)"+
+				" AND COALESCE(btrim("+credentialPlaceholder+"::jsonb ->> 'account_mode') <> 'zen', true) IS NOT TRUE")
 	}
 
 	if len(updates.Extra) > 0 || len(ollamaGroupIdentityChanges) > 0 || len(opencodeGroupIdentityChanges) > 0 || ollamaProxyIdentityChanged != "" || updates.EnsureCodexFingerprintSeed {
@@ -3049,10 +3089,13 @@ func (r *accountRepository) BulkUpdate(ctx context.Context, ids []int64, updates
 		}
 		// 代理不属于 OpenCode 组身份，但 snapshot 外呼与 CAS 经代理：
 		// 组身份变化清除开关+快照，仅代理变化清除快照而保留开关。
-		// eligible 判定必须包含旧行 opencode base URL：否则 OpenAI+Ollama 行在
-		// 代理变化时会先命中 OpenCode 分支（CASE 按序求值）而遮蔽 Ollama 分支的
-		// 快照清理。opencode 与 ollama 正则互斥，带上 base URL 后两套分支互斥。
-		opencodeEligibleAccount := "platform = 'openai' AND type = 'apikey' AND " + opencodeOldBaseURL
+		// eligible 判定必须包含旧行 OpenCode 身份（opencode_go Go 订阅，或挂载
+		// 白名单平台 + opencode 基址）：否则白名单平台的 Ollama 行在代理变化时会
+		// 先命中 OpenCode 分支（CASE 按序求值）而遮蔽 Ollama 分支的快照清理。
+		// OpenCode 与 Ollama 两套分支互斥：opencode_go 不在 Ollama 白名单内；挂载行
+		// 的 opencode.ai 基址与 ollama.com 基址正则互斥（host 不同），同一旧行不可能
+		// 同时命中两分支，CASE 求值顺序因此只是防御而非正确性依赖。
+		opencodeEligibleAccount := "type = 'apikey' AND " + opencodeOldUsageIdentity
 		opencodeGroupIdentityChanged := ""
 		if len(opencodeGroupIdentityChanges) > 0 {
 			opencodeGroupIdentityChanged = "(" + opencodeEligibleAccount + " AND (" + joinClauses(opencodeGroupIdentityChanges, " OR ") + "))"
