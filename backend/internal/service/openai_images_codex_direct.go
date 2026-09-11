@@ -246,6 +246,9 @@ func buildOpenAICodexImagesRequestBody(parsed *OpenAIImagesRequest, imageModel s
 	if parsed.PartialImages != nil {
 		body, _ = sjson.SetBytes(body, "partial_images", *parsed.PartialImages)
 	}
+	if parsed.Stream {
+		body, _ = sjson.SetBytes(body, "stream", true)
+	}
 
 	if !parsed.IsEdits() {
 		return body, nil
@@ -368,20 +371,22 @@ func (s *OpenAIGatewayService) handleOpenAICodexImagesResponse(
 		replay := *resp
 		replay.Body = io.NopCloser(bytes.NewReader(body))
 		if parsed.Stream {
-			return s.handleOpenAIImagesOAuthStreamingResponse(
+			return s.handleOpenAIImagesOAuthStreamingResponseWithValidation(
 				&replay,
 				c,
 				time.Now(),
 				parsed.ResponseFormat,
 				openAIImagesStreamPrefix(parsed),
 				fallbackModel,
+				parsed,
 			)
 		}
-		usage, count, sizes, err := s.handleOpenAIImagesOAuthNonStreamingResponse(
+		usage, count, sizes, err := s.handleOpenAIImagesOAuthNonStreamingResponseWithValidation(
 			&replay,
 			c,
 			parsed.ResponseFormat,
 			fallbackModel,
+			parsed,
 		)
 		return usage, count, sizes, nil, err
 	}
@@ -415,6 +420,14 @@ func (s *OpenAIGatewayService) handleOpenAICodexImagesResponse(
 	}
 	if len(results) == 0 {
 		return OpenAIUsage{}, 0, nil, nil, fmt.Errorf("upstream did not return image output")
+	}
+	if mismatchErr := validateOpenAICodexImagesResponse(
+		parsed,
+		results,
+		collectOpenAICodexImagesObservedMeta(root),
+	); mismatchErr != nil {
+		reportOpenAICodexImagesResponseMismatch(c, mismatchErr)
+		return OpenAIUsage{}, 0, nil, nil, mismatchErr
 	}
 	firstMeta.Model = strings.TrimSpace(fallbackModel)
 	normalizeOpenAIResponsesImageClientModel(&firstMeta, fallbackModel)
@@ -573,6 +586,138 @@ func fillOpenAICodexImagesMeta(dst *openAIResponsesImageResult, fallback openAIR
 	if strings.TrimSpace(dst.Model) == "" {
 		dst.Model = strings.TrimSpace(fallback.Model)
 	}
+}
+
+func collectOpenAICodexImagesObservedMeta(root gjson.Result) []openAIResponsesImageResult {
+	observed := make([]openAIResponsesImageResult, 0, 2)
+	appendMeta := func(value gjson.Result) {
+		if !value.Exists() {
+			return
+		}
+		meta := openAIResponsesImageResult{
+			OutputFormat: strings.TrimSpace(value.Get("output_format").String()),
+			Size:         strings.TrimSpace(value.Get("size").String()),
+			Background:   strings.TrimSpace(value.Get("background").String()),
+			Quality:      strings.TrimSpace(value.Get("quality").String()),
+			Model:        strings.TrimSpace(value.Get("model").String()),
+		}
+		if meta.OutputFormat != "" || meta.Size != "" || meta.Background != "" || meta.Quality != "" || meta.Model != "" {
+			observed = append(observed, meta)
+		}
+	}
+	appendItems := func(items gjson.Result) {
+		if !items.IsArray() {
+			return
+		}
+		for _, item := range items.Array() {
+			appendMeta(item)
+		}
+	}
+
+	appendMeta(root)
+	appendItems(root.Get("data"))
+	appendItems(root.Get("output"))
+	appendItems(root.Get("response.output"))
+	return observed
+}
+
+func validateOpenAICodexImagesResponse(
+	parsed *OpenAIImagesRequest,
+	results []openAIResponsesImageResult,
+	observed []openAIResponsesImageResult,
+) *OpenAIImagesUpstreamError {
+	if parsed == nil {
+		return nil
+	}
+
+	requestedSize := strings.TrimSpace(parsed.Size)
+	if requestedSize != "" && !strings.EqualFold(requestedSize, "auto") {
+		for _, result := range results {
+			actualSize := detectOpenAIImageResultSize(result.Result)
+			if actualSize == "" {
+				continue
+			}
+			if !strings.EqualFold(actualSize, requestedSize) {
+				return newOpenAICodexImagesResponseMismatchError("size", requestedSize, actualSize)
+			}
+		}
+	}
+
+	requestedOptions := []struct {
+		param    string
+		request  string
+		observed func(openAIResponsesImageResult) string
+	}{
+		{
+			param:    "quality",
+			request:  parsed.Quality,
+			observed: func(meta openAIResponsesImageResult) string { return meta.Quality },
+		},
+		{
+			param:    "background",
+			request:  parsed.Background,
+			observed: func(meta openAIResponsesImageResult) string { return meta.Background },
+		},
+		{
+			param:   "output_format",
+			request: parsed.OutputFormat,
+			observed: func(meta openAIResponsesImageResult) string {
+				return meta.OutputFormat
+			},
+		},
+	}
+	for _, option := range requestedOptions {
+		requested := strings.TrimSpace(option.request)
+		if requested == "" {
+			continue
+		}
+		if strings.EqualFold(requested, "auto") {
+			continue
+		}
+		for _, meta := range observed {
+			seen := strings.TrimSpace(option.observed(meta))
+			if seen == "" {
+				continue
+			}
+			if !openAICodexImagesOptionsEqual(option.param, requested, seen) {
+				return newOpenAICodexImagesResponseMismatchError(option.param, requested, seen)
+			}
+		}
+	}
+	return nil
+}
+
+func openAICodexImagesOptionsEqual(param, requested, observed string) bool {
+	requested = strings.ToLower(strings.TrimSpace(requested))
+	observed = strings.ToLower(strings.TrimSpace(observed))
+	if param == "output_format" {
+		if requested == "jpg" {
+			requested = "jpeg"
+		}
+		if observed == "jpg" {
+			observed = "jpeg"
+		}
+	}
+	return requested == observed
+}
+
+func newOpenAICodexImagesResponseMismatchError(param, requested, observed string) *OpenAIImagesUpstreamError {
+	return &OpenAIImagesUpstreamError{
+		StatusCode:   http.StatusBadGateway,
+		ErrorType:    "upstream_response_mismatch",
+		Code:         "image_generation_parameters_mismatch",
+		Message:      fmt.Sprintf("upstream image response did not honor requested %s %q; observed %q", param, requested, observed),
+		Param:        param,
+		NonRetryable: true,
+	}
+}
+
+func reportOpenAICodexImagesResponseMismatch(c *gin.Context, err *OpenAIImagesUpstreamError) {
+	if err == nil {
+		return
+	}
+	setOpsUpstreamError(c, err.clientStatusCode(), err.clientMessage(), "")
+	writeOpenAIImagesUpstreamErrorResponse(c, err)
 }
 
 func (s *OpenAIGatewayService) writeOpenAICodexImagesSyntheticStreamResponse(

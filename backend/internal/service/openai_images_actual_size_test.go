@@ -39,43 +39,82 @@ func TestDetectOpenAIImageResultSize(t *testing.T) {
 	require.Empty(t, detectOpenAIImageResultSize("not-image-data"))
 }
 
-func TestOpenAIGatewayServiceForwardImages_OAuthUsesDecodedOutputDimensions(t *testing.T) {
+func TestOpenAIGatewayServiceForwardImages_OAuthRejectsMismatchedOutputDimensions(t *testing.T) {
 	run := runOpenAIOAuthImageActualSizeTest(t, false)
 
 	require.Equal(t, "gpt-image-2", gjson.GetBytes(run.upstream.lastBody, "model").String())
 	require.Equal(t, "3840x2160", gjson.GetBytes(run.upstream.lastBody, "size").String())
 	require.Equal(t, "low", gjson.GetBytes(run.upstream.lastBody, "quality").String())
-	require.Equal(t, "1672x941", gjson.Get(run.recorder.Body.String(), "size").String())
-	require.Equal(t, "auto", gjson.Get(run.recorder.Body.String(), "quality").String())
-	require.Equal(t, []string{"1672x941"}, run.result.ImageOutputSizes)
+	require.Nil(t, run.result)
+	require.Error(t, run.err)
+	require.Equal(t, "upstream_response_mismatch", gjson.Get(run.recorder.Body.String(), "error.type").String())
+	require.Equal(t, "image_generation_parameters_mismatch", gjson.Get(run.recorder.Body.String(), "error.code").String())
+	require.Equal(t, "size", gjson.Get(run.recorder.Body.String(), "error.param").String())
 
-	ApplyOpenAIImageBillingResolution(run.result)
-	require.Equal(t, ImageBillingSize2K, run.result.ImageSize)
-	require.Equal(t, "1672x941", run.result.ImageOutputSize)
-	require.Equal(t, ImageSizeSourceOutput, run.result.ImageSizeSource)
+	var upstreamErr *OpenAIImagesUpstreamError
+	require.ErrorAs(t, run.err, &upstreamErr)
+	require.True(t, upstreamErr.NonRetryable)
+	require.False(t, IsOpenAIImagesRetryableUpstreamError(upstreamErr))
 }
 
-func TestOpenAIGatewayServiceForwardImages_OAuthStreamingUsesDecodedOutputDimensions(t *testing.T) {
+func TestOpenAIGatewayServiceForwardImages_OAuthStreamingRejectsMismatchedOutputDimensions(t *testing.T) {
 	run := runOpenAIOAuthImageActualSizeTest(t, true)
 
-	events := parseOpenAIImageTestSSEEvents(run.recorder.Body.String())
-	completed, ok := findOpenAIImageTestSSEEvent(events, "image_generation.completed")
-	require.True(t, ok)
-	require.Equal(t, "1672x941", gjson.Get(completed.Data, "size").String())
-	require.Equal(t, "auto", gjson.Get(completed.Data, "quality").String())
-	require.Equal(t, []string{"1672x941"}, run.result.ImageOutputSizes)
+	require.Nil(t, run.result)
+	require.Error(t, run.err)
+	require.Contains(t, run.recorder.Body.String(), "event: error")
+	require.NotContains(t, run.recorder.Body.String(), "event: image_generation.completed")
+	require.NotContains(t, run.recorder.Body.String(), "event: image_generation.partial_image")
+	require.Contains(t, run.recorder.Body.String(), "image_generation_parameters_mismatch")
+
+	var upstreamErr *OpenAIImagesUpstreamError
+	require.ErrorAs(t, run.err, &upstreamErr)
+	require.True(t, upstreamErr.NonRetryable)
+	require.False(t, IsOpenAIImagesRetryableUpstreamError(upstreamErr))
+}
+
+func TestOpenAIGatewayServiceForwardImages_OAuthUsesDecodedOutputDimensionsWhenSizeAuto(t *testing.T) {
+	for _, stream := range []bool{false, true} {
+		t.Run(fmt.Sprintf("stream=%t", stream), func(t *testing.T) {
+			run := runOpenAIOAuthImageActualSizeTestWithSize(t, stream, "auto")
+
+			require.NoError(t, run.err)
+			require.NotNil(t, run.result)
+			if stream {
+				events := parseOpenAIImageTestSSEEvents(run.recorder.Body.String())
+				completed, ok := findOpenAIImageTestSSEEvent(events, "image_generation.completed")
+				require.True(t, ok)
+				require.Equal(t, "1672x941", gjson.Get(completed.Data, "size").String())
+				require.Equal(t, "low", gjson.Get(completed.Data, "quality").String())
+			} else {
+				require.Equal(t, "1672x941", gjson.Get(run.recorder.Body.String(), "size").String())
+				require.Equal(t, "low", gjson.Get(run.recorder.Body.String(), "quality").String())
+			}
+			require.Equal(t, []string{"1672x941"}, run.result.ImageOutputSizes)
+
+			ApplyOpenAIImageBillingResolution(run.result)
+			require.Equal(t, ImageBillingSize2K, run.result.ImageSize)
+			require.Equal(t, "1672x941", run.result.ImageOutputSize)
+			require.Equal(t, ImageSizeSourceOutput, run.result.ImageSizeSource)
+		})
+	}
 }
 
 type openAIOAuthImageActualSizeTestRun struct {
 	result   *OpenAIForwardResult
+	err      error
 	recorder *httptest.ResponseRecorder
 	upstream *httpUpstreamRecorder
 }
 
 func runOpenAIOAuthImageActualSizeTest(t *testing.T, stream bool) openAIOAuthImageActualSizeTestRun {
+	return runOpenAIOAuthImageActualSizeTestWithSize(t, stream, "3840x2160")
+}
+
+func runOpenAIOAuthImageActualSizeTestWithSize(t *testing.T, stream bool, size string) openAIOAuthImageActualSizeTestRun {
 	t.Helper()
 	gin.SetMode(gin.TestMode)
-	body := []byte(fmt.Sprintf(`{"model":"gpt-image-2","prompt":"draw a test chart","size":"3840x2160","quality":"low","output_format":"png","stream":%t}`, stream))
+	body := []byte(fmt.Sprintf(`{"model":"gpt-image-2","prompt":"draw a test chart","size":%q,"quality":"low","output_format":"png","stream":%t}`, size, stream))
 	req := httptest.NewRequest(http.MethodPost, "/v1/images/generations", bytes.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	rec := httptest.NewRecorder()
@@ -85,8 +124,8 @@ func runOpenAIOAuthImageActualSizeTest(t *testing.T, stream bool) openAIOAuthIma
 
 	encoded := encodeOpenAIImageTestPNG(t, 1672, 941)
 	upstreamBody := fmt.Sprintf(
-		"data: {\"type\":\"response.created\",\"response\":{\"created_at\":1710000000,\"tools\":[{\"type\":\"image_generation\",\"model\":\"gpt-image-2\",\"size\":\"auto\",\"quality\":\"auto\",\"output_format\":\"png\"}]}}\n\n"+
-			"data: {\"type\":\"response.completed\",\"response\":{\"created_at\":1710000000,\"tools\":[{\"type\":\"image_generation\",\"model\":\"gpt-image-2\",\"size\":\"auto\",\"quality\":\"auto\",\"output_format\":\"png\"}],\"output\":[{\"id\":\"ig_actual_size\",\"type\":\"image_generation_call\",\"result\":%q}]}}\n\n"+
+		"data: {\"type\":\"response.created\",\"response\":{\"created_at\":1710000000,\"tools\":[{\"type\":\"image_generation\",\"model\":\"gpt-image-2\",\"size\":\"auto\",\"quality\":\"low\",\"output_format\":\"png\"}]}}\n\n"+
+			"data: {\"type\":\"response.completed\",\"response\":{\"created_at\":1710000000,\"tools\":[{\"type\":\"image_generation\",\"model\":\"gpt-image-2\",\"size\":\"auto\",\"quality\":\"low\",\"output_format\":\"png\"}],\"output\":[{\"id\":\"ig_actual_size\",\"type\":\"image_generation_call\",\"result\":%q}]}}\n\n"+
 			"data: [DONE]\n\n",
 		encoded,
 	)
@@ -113,9 +152,7 @@ func runOpenAIOAuthImageActualSizeTest(t *testing.T, stream bool) openAIOAuthIma
 		},
 	}
 	result, err := svc.ForwardImages(context.Background(), c, account, body, parsed, "")
-	require.NoError(t, err)
-	require.NotNil(t, result)
-	return openAIOAuthImageActualSizeTestRun{result: result, recorder: rec, upstream: upstream}
+	return openAIOAuthImageActualSizeTestRun{result: result, err: err, recorder: rec, upstream: upstream}
 }
 
 func encodeOpenAIImageTestPNG(t *testing.T, width, height int) string {

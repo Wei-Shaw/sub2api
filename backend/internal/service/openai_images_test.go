@@ -921,7 +921,7 @@ func TestOpenAIGatewayServiceForwardImages_OAuthDirectPreservesRequestedModelAnd
 					"X-Request-Id": []string{"req_img_model_audit"},
 				},
 				Body: io.NopCloser(strings.NewReader(
-					`{"created":1710000011,"model":"gpt-image-2-codex","size":"auto","quality":"auto","data":[{"b64_json":"aW1hZ2U=","size":"auto","quality":"auto"}]}`,
+					`{"created":1710000011,"model":"gpt-image-2-codex","size":"3840x2160","quality":"high","data":[{"b64_json":"aW1hZ2U=","size":"3840x2160","quality":"high"}]}`,
 				)),
 			}}
 			svc := &OpenAIGatewayService{httpUpstream: upstream}
@@ -954,8 +954,8 @@ func TestOpenAIGatewayServiceForwardImages_OAuthDirectPreservesRequestedModelAnd
 			require.NotNil(t, mismatch)
 			require.True(t, *mismatch)
 			require.Equal(t, requestedModel, gjson.Get(rec.Body.String(), "model").String())
-			require.Equal(t, "auto", gjson.Get(rec.Body.String(), "size").String())
-			require.Equal(t, "auto", gjson.Get(rec.Body.String(), "quality").String())
+			require.Equal(t, "3840x2160", gjson.Get(rec.Body.String(), "size").String())
+			require.Equal(t, "high", gjson.Get(rec.Body.String(), "quality").String())
 		})
 	}
 }
