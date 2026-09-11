@@ -1,0 +1,131 @@
+# =============================================================================
+# Sub2API Caddy 反向代理配置 —— 非标端口 8443 + Cloudflare DNS-01 自动证书
+#
+# 使用场景：服务器 80/443 被封锁，只能使用非标端口对外提供 HTTPS 服务；
+#         域名托管在 Cloudflare 且不走橙云（DNS only 直连）。
+#
+# 注意事项：
+#   1. 把 YOUR_EMAIL@example.com 换成你的真实邮箱（Let's Encrypt 通知用）
+#   2. 把 api.example.com 换成你自己的域名（保留 :8443 端口）
+#   3. CLOUDFLARE_API_TOKEN 从 .env 文件通过环境变量传入，不要在此写明文
+# =============================================================================
+
+# -----------------------------------------------------------------------------
+# 全局配置
+# -----------------------------------------------------------------------------
+{
+    # ACME 账户联系邮箱，Let's Encrypt 用它发送证书到期提醒
+    email YOUR_EMAIL@example.com
+
+    # 关键配置：所有站点默认使用 Cloudflare DNS-01 挑战申请证书
+    # 当服务器 80/443 被封时，这是唯一可用的 ACME 验证方式
+    # {env.CLOUDFLARE_API_TOKEN} 会在 Caddy 启动时从环境变量读取
+    acme_dns cloudflare {env.CLOUDFLARE_API_TOKEN}
+}
+
+# -----------------------------------------------------------------------------
+# 站点配置：域名 + 端口必须同时指定
+# Caddy 依然会为 api.example.com 自动签发证书，即便对外端口不是标准 443
+# -----------------------------------------------------------------------------
+api.example.com:8443 {
+    # =========================================================================
+    # TLS 安全配置：仅允许 TLS 1.2 和 1.3
+    # =========================================================================
+    tls {
+        protocols tls1.2 tls1.3
+    }
+
+    # =========================================================================
+    # 静态资源长期缓存（高优先级，放在前面以优先匹配）
+    # 带 hash 的文件可以永久缓存，浏览器和 CDN 都会缓存
+    # =========================================================================
+    @static {
+        path /assets/*
+        path /logo.png
+        path /favicon.ico
+    }
+    header @static {
+        Cache-Control "public, max-age=31536000, immutable"
+        # 移除可能干扰缓存的头
+        -Pragma
+        -Expires
+    }
+
+    # =========================================================================
+    # 反向代理到 sub2api 容器
+    # 目标地址是容器名 sub2api + 内部端口 8080（不是宿主机端口）
+    # 两个容器在同一个 Docker network (sub2api-network) 内可通过名字解析
+    # =========================================================================
+    reverse_proxy sub2api:8080 {
+        # 健康检查：sub2api 在 /health 接口返回 200
+        health_uri /health
+        health_interval 30s
+        health_timeout 10s
+        health_status 200
+
+        # 传递真实客户端信息给后端
+        # sub2api 按 CF-Connecting-IP → X-Real-IP → X-Forwarded-For 的顺序获取真实 IP
+        header_up X-Real-IP {remote_host}
+        header_up X-Forwarded-For {remote_host}
+        header_up X-Forwarded-Proto {scheme}
+        header_up X-Forwarded-Host {host}
+
+        # 连接池优化（长连接、流式响应友好）
+        # Claude/OpenAI/Gemini 的流式响应都依赖持久连接
+        transport http {
+            keepalive 120s
+            keepalive_idle_conns 256
+            read_buffer 16KB
+            write_buffer 16KB
+            compression off
+        }
+
+        # 故障转移：连续失败 3 次则标记为不可用 30 秒
+        fail_duration 30s
+        max_fails 3
+        unhealthy_status 500 502 503 504
+    }
+
+    # =========================================================================
+    # 响应压缩
+    # =========================================================================
+    encode {
+        zstd
+        gzip 6
+        minimum_length 256
+        match {
+            header Content-Type text/*
+            header Content-Type application/json*
+            header Content-Type application/javascript*
+            header Content-Type application/xml*
+            header Content-Type image/svg+xml*
+        }
+    }
+
+    # =========================================================================
+    # 请求体大小限制（与 sub2api config.yaml 里的 gateway.max_body_size 保持一致）
+    # =========================================================================
+    request_body {
+        max_size 100MB
+    }
+
+    # =========================================================================
+    # 访问日志（JSON 格式，按大小滚动）
+    # =========================================================================
+    log {
+        output file /var/log/caddy/sub2api.log {
+            roll_size 50mb
+            roll_keep 10
+            roll_keep_for 720h
+        }
+        format json
+        level INFO
+    }
+
+    # =========================================================================
+    # 错误处理
+    # =========================================================================
+    handle_errors {
+        respond "{err.status_code} {err.status_text}"
+    }
+}

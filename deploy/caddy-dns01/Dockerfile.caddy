@@ -1,0 +1,11 @@
+# 构建一个带 Cloudflare DNS 插件的 Caddy 镜像
+# 官方 caddy 镜像不包含第三方 DNS 插件，必须自行编译
+
+# 第一阶段：用 builder 镜像编译出带插件的 caddy 二进制
+FROM caddy:2-builder AS builder
+RUN xcaddy build \
+    --with github.com/caddy-dns/cloudflare
+
+# 第二阶段：把编译好的二进制拷到干净的 runtime 镜像里
+FROM caddy:2
+COPY --from=builder /usr/bin/caddy /usr/bin/caddy
