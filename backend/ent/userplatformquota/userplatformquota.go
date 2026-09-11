@@ -41,6 +41,8 @@ const (
 	FieldDailyWindowStart = "daily_window_start"
 	// FieldWeeklyWindowStart holds the string denoting the weekly_window_start field in the database.
 	FieldWeeklyWindowStart = "weekly_window_start"
+	// FieldWeeklyWindowResetAt holds the string denoting the weekly_window_reset_at field in the database.
+	FieldWeeklyWindowResetAt = "weekly_window_reset_at"
 	// FieldMonthlyWindowStart holds the string denoting the monthly_window_start field in the database.
 	FieldMonthlyWindowStart = "monthly_window_start"
 	// EdgeUser holds the string denoting the user edge name in mutations.
@@ -72,6 +74,7 @@ var Columns = []string{
 	FieldMonthlyUsageUsd,
 	FieldDailyWindowStart,
 	FieldWeeklyWindowStart,
+	FieldWeeklyWindowResetAt,
 	FieldMonthlyWindowStart,
 }
 
@@ -180,6 +183,11 @@ func ByDailyWindowStart(opts ...sql.OrderTermOption) OrderOption {
 // ByWeeklyWindowStart orders the results by the weekly_window_start field.
 func ByWeeklyWindowStart(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldWeeklyWindowStart, opts...).ToFunc()
+}
+
+// ByWeeklyWindowResetAt orders the results by the weekly_window_reset_at field.
+func ByWeeklyWindowResetAt(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldWeeklyWindowResetAt, opts...).ToFunc()
 }
 
 // ByMonthlyWindowStart orders the results by the monthly_window_start field.

@@ -154,14 +154,15 @@ func (s *UserPlatformQuotaUsageFlusher) flushOneBatch(parentCtx context.Context)
 			continue
 		}
 		snaps = append(snaps, UserPlatformQuotaSnapshot{
-			UserID:             key.UserID,
-			Platform:           key.Platform,
-			DailyUsageUSD:      e.DailyUsageUSD,
-			WeeklyUsageUSD:     e.WeeklyUsageUSD,
-			MonthlyUsageUSD:    e.MonthlyUsageUSD,
-			DailyWindowStart:   *e.DailyWindowStart,
-			WeeklyWindowStart:  *e.WeeklyWindowStart,
-			MonthlyWindowStart: *e.MonthlyWindowStart,
+			UserID:              key.UserID,
+			Platform:            key.Platform,
+			DailyUsageUSD:       e.DailyUsageUSD,
+			WeeklyUsageUSD:      e.WeeklyUsageUSD,
+			MonthlyUsageUSD:     e.MonthlyUsageUSD,
+			DailyWindowStart:    *e.DailyWindowStart,
+			WeeklyWindowStart:   *e.WeeklyWindowStart,
+			WeeklyWindowResetAt: e.WeeklyWindowResetAt,
+			MonthlyWindowStart:  *e.MonthlyWindowStart,
 		})
 	}
 

@@ -189,6 +189,20 @@ func (_c *UserPlatformQuotaCreate) SetNillableWeeklyWindowStart(v *time.Time) *U
 	return _c
 }
 
+// SetWeeklyWindowResetAt sets the "weekly_window_reset_at" field.
+func (_c *UserPlatformQuotaCreate) SetWeeklyWindowResetAt(v time.Time) *UserPlatformQuotaCreate {
+	_c.mutation.SetWeeklyWindowResetAt(v)
+	return _c
+}
+
+// SetNillableWeeklyWindowResetAt sets the "weekly_window_reset_at" field if the given value is not nil.
+func (_c *UserPlatformQuotaCreate) SetNillableWeeklyWindowResetAt(v *time.Time) *UserPlatformQuotaCreate {
+	if v != nil {
+		_c.SetWeeklyWindowResetAt(*v)
+	}
+	return _c
+}
+
 // SetMonthlyWindowStart sets the "monthly_window_start" field.
 func (_c *UserPlatformQuotaCreate) SetMonthlyWindowStart(v time.Time) *UserPlatformQuotaCreate {
 	_c.mutation.SetMonthlyWindowStart(v)
@@ -379,6 +393,10 @@ func (_c *UserPlatformQuotaCreate) createSpec() (*UserPlatformQuota, *sqlgraph.C
 	if value, ok := _c.mutation.WeeklyWindowStart(); ok {
 		_spec.SetField(userplatformquota.FieldWeeklyWindowStart, field.TypeTime, value)
 		_node.WeeklyWindowStart = &value
+	}
+	if value, ok := _c.mutation.WeeklyWindowResetAt(); ok {
+		_spec.SetField(userplatformquota.FieldWeeklyWindowResetAt, field.TypeTime, value)
+		_node.WeeklyWindowResetAt = &value
 	}
 	if value, ok := _c.mutation.MonthlyWindowStart(); ok {
 		_spec.SetField(userplatformquota.FieldMonthlyWindowStart, field.TypeTime, value)
@@ -666,6 +684,24 @@ func (u *UserPlatformQuotaUpsert) UpdateWeeklyWindowStart() *UserPlatformQuotaUp
 // ClearWeeklyWindowStart clears the value of the "weekly_window_start" field.
 func (u *UserPlatformQuotaUpsert) ClearWeeklyWindowStart() *UserPlatformQuotaUpsert {
 	u.SetNull(userplatformquota.FieldWeeklyWindowStart)
+	return u
+}
+
+// SetWeeklyWindowResetAt sets the "weekly_window_reset_at" field.
+func (u *UserPlatformQuotaUpsert) SetWeeklyWindowResetAt(v time.Time) *UserPlatformQuotaUpsert {
+	u.Set(userplatformquota.FieldWeeklyWindowResetAt, v)
+	return u
+}
+
+// UpdateWeeklyWindowResetAt sets the "weekly_window_reset_at" field to the value that was provided on create.
+func (u *UserPlatformQuotaUpsert) UpdateWeeklyWindowResetAt() *UserPlatformQuotaUpsert {
+	u.SetExcluded(userplatformquota.FieldWeeklyWindowResetAt)
+	return u
+}
+
+// ClearWeeklyWindowResetAt clears the value of the "weekly_window_reset_at" field.
+func (u *UserPlatformQuotaUpsert) ClearWeeklyWindowResetAt() *UserPlatformQuotaUpsert {
+	u.SetNull(userplatformquota.FieldWeeklyWindowResetAt)
 	return u
 }
 
@@ -981,6 +1017,27 @@ func (u *UserPlatformQuotaUpsertOne) UpdateWeeklyWindowStart() *UserPlatformQuot
 func (u *UserPlatformQuotaUpsertOne) ClearWeeklyWindowStart() *UserPlatformQuotaUpsertOne {
 	return u.Update(func(s *UserPlatformQuotaUpsert) {
 		s.ClearWeeklyWindowStart()
+	})
+}
+
+// SetWeeklyWindowResetAt sets the "weekly_window_reset_at" field.
+func (u *UserPlatformQuotaUpsertOne) SetWeeklyWindowResetAt(v time.Time) *UserPlatformQuotaUpsertOne {
+	return u.Update(func(s *UserPlatformQuotaUpsert) {
+		s.SetWeeklyWindowResetAt(v)
+	})
+}
+
+// UpdateWeeklyWindowResetAt sets the "weekly_window_reset_at" field to the value that was provided on create.
+func (u *UserPlatformQuotaUpsertOne) UpdateWeeklyWindowResetAt() *UserPlatformQuotaUpsertOne {
+	return u.Update(func(s *UserPlatformQuotaUpsert) {
+		s.UpdateWeeklyWindowResetAt()
+	})
+}
+
+// ClearWeeklyWindowResetAt clears the value of the "weekly_window_reset_at" field.
+func (u *UserPlatformQuotaUpsertOne) ClearWeeklyWindowResetAt() *UserPlatformQuotaUpsertOne {
+	return u.Update(func(s *UserPlatformQuotaUpsert) {
+		s.ClearWeeklyWindowResetAt()
 	})
 }
 
@@ -1465,6 +1522,27 @@ func (u *UserPlatformQuotaUpsertBulk) UpdateWeeklyWindowStart() *UserPlatformQuo
 func (u *UserPlatformQuotaUpsertBulk) ClearWeeklyWindowStart() *UserPlatformQuotaUpsertBulk {
 	return u.Update(func(s *UserPlatformQuotaUpsert) {
 		s.ClearWeeklyWindowStart()
+	})
+}
+
+// SetWeeklyWindowResetAt sets the "weekly_window_reset_at" field.
+func (u *UserPlatformQuotaUpsertBulk) SetWeeklyWindowResetAt(v time.Time) *UserPlatformQuotaUpsertBulk {
+	return u.Update(func(s *UserPlatformQuotaUpsert) {
+		s.SetWeeklyWindowResetAt(v)
+	})
+}
+
+// UpdateWeeklyWindowResetAt sets the "weekly_window_reset_at" field to the value that was provided on create.
+func (u *UserPlatformQuotaUpsertBulk) UpdateWeeklyWindowResetAt() *UserPlatformQuotaUpsertBulk {
+	return u.Update(func(s *UserPlatformQuotaUpsert) {
+		s.UpdateWeeklyWindowResetAt()
+	})
+}
+
+// ClearWeeklyWindowResetAt clears the value of the "weekly_window_reset_at" field.
+func (u *UserPlatformQuotaUpsertBulk) ClearWeeklyWindowResetAt() *UserPlatformQuotaUpsertBulk {
+	return u.Update(func(s *UserPlatformQuotaUpsert) {
+		s.ClearWeeklyWindowResetAt()
 	})
 }
 
