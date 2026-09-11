@@ -48,13 +48,17 @@ func (s *OpenAIGatewayService) forwardOpenAIImagesOAuthDirect(
 	if err := validateOpenAIImagesModel(requestModel); err != nil {
 		return nil, err
 	}
+	upstreamModel := account.GetMappedModel(requestModel)
+	if err := validateOpenAIImagesModel(upstreamModel); err != nil {
+		return nil, err
+	}
 
 	targetEndpoint := openAICodexImagesGenerationsURL
 	if parsed.IsEdits() {
 		targetEndpoint = openAICodexImagesEditsURL
 	}
 	SetActualOpenAIUpstreamEndpoint(c, codexImagesEndpointPath(targetEndpoint))
-	SetOpsUpstreamModel(c, requestModel)
+	SetOpsUpstreamModel(c, upstreamModel)
 	logger.LegacyPrintf(
 		"service.openai_gateway",
 		"[OpenAI] Images request routing request_model=%s endpoint=%s account_type=%s oauth_transport=codex_images uploads=%d",
@@ -72,7 +76,7 @@ func (s *OpenAIGatewayService) forwardOpenAIImagesOAuthDirect(
 	if err != nil {
 		return nil, err
 	}
-	directBody, err := buildOpenAICodexImagesRequestBody(parsed, requestModel)
+	directBody, err := buildOpenAICodexImagesRequestBody(parsed, upstreamModel)
 	if err != nil {
 		return nil, err
 	}
@@ -120,6 +124,9 @@ func (s *OpenAIGatewayService) forwardOpenAIImagesOAuthDirect(
 		_ = resp.Body.Close()
 		resp.Body = io.NopCloser(bytes.NewReader(respBody))
 		upstreamMsg := sanitizeUpstreamErrorMessage(strings.TrimSpace(extractUpstreamErrorMessage(respBody)))
+		if resp.StatusCode == http.StatusNotFound || resp.StatusCode == http.StatusMethodNotAllowed {
+			return s.forwardOpenAIImagesOAuth(withOpenAIImagesForceResponses(ctx), c, account, parsed, channelMappedModel)
+		}
 		if s.shouldFailoverOpenAIUpstreamResponse(account, resp.StatusCode, upstreamMsg, respBody) {
 			appendOpsUpstreamError(c, OpsUpstreamErrorEvent{
 				ProxyID:            opsUpstreamProxyID(account),
@@ -133,7 +140,7 @@ func (s *OpenAIGatewayService) forwardOpenAIImagesOAuthDirect(
 				Kind:               "failover",
 				Message:            upstreamMsg,
 			})
-			shouldDisable := s.handleFailoverSideEffects(upstreamCtx, resp, account, respBody, requestModel)
+			shouldDisable := s.handleFailoverSideEffects(upstreamCtx, resp, account, respBody, upstreamModel)
 			return nil, s.newOpenAIAccountFailoverError(
 				account,
 				resp.StatusCode,
@@ -144,7 +151,7 @@ func (s *OpenAIGatewayService) forwardOpenAIImagesOAuthDirect(
 				!shouldDisable && account.IsPoolMode() && account.IsPoolModeRetryableStatus(resp.StatusCode),
 			)
 		}
-		return s.handleOpenAIImagesErrorResponse(upstreamCtx, resp, c, account, requestModel)
+		return s.handleOpenAIImagesErrorResponse(upstreamCtx, resp, c, account, upstreamModel)
 	}
 	defer func() { _ = resp.Body.Close() }()
 
@@ -154,16 +161,36 @@ func (s *OpenAIGatewayService) forwardOpenAIImagesOAuthDirect(
 		resp,
 		c,
 		parsed,
-		requestModel,
+		upstreamModel,
 		upstreamReq.Header,
 		proxyURL,
 	)
 	if err != nil {
+		if imageCount > 0 {
+			return &OpenAIForwardResult{
+				RequestID:                     resp.Header.Get("x-request-id"),
+				UpstreamHeaders:               resp.Header,
+				Usage:                         usage,
+				Model:                         requestModel,
+				UpstreamModel:                 upstreamModel,
+				UpstreamResponseModel:         observedUpstreamResponseModel(c),
+				UpstreamResponseModelConflict: observedUpstreamResponseModelConflict(c),
+				UpstreamEndpoint:              codexImagesEndpointPath(targetEndpoint),
+				Stream:                        parsed.Stream,
+				ResponseHeaders:               resp.Header.Clone(),
+				Duration:                      time.Since(startTime),
+				FirstTokenMs:                  firstTokenMs,
+				ImageCount:                    imageCount,
+				ImageSize:                     parsed.SizeTier,
+				ImageInputSize:                parsed.Size,
+				ImageOutputSizes:              imageOutputSizes,
+			}, err
+		}
 		return nil, s.handleOpenAIImagesOAuthResponseError(
 			upstreamCtx,
 			c,
 			account,
-			requestModel,
+			upstreamModel,
 			safeUpstreamURL(upstreamReq.URL.String()),
 			resp,
 			writerSizeBeforeResponse,
@@ -178,7 +205,7 @@ func (s *OpenAIGatewayService) forwardOpenAIImagesOAuthDirect(
 		UpstreamHeaders:               resp.Header.Clone(),
 		Usage:                         usage,
 		Model:                         requestModel,
-		UpstreamModel:                 requestModel,
+		UpstreamModel:                 upstreamModel,
 		UpstreamResponseModel:         observedUpstreamResponseModel(c),
 		UpstreamResponseModelConflict: observedUpstreamResponseModelConflict(c),
 		UpstreamEndpoint:              codexImagesEndpointPath(targetEndpoint),
@@ -207,6 +234,11 @@ func buildOpenAICodexImagesRequestBody(parsed *OpenAIImagesRequest, imageModel s
 	prompt := strings.TrimSpace(parsed.Prompt)
 	if prompt == "" {
 		return nil, fmt.Errorf("prompt is required")
+	}
+	if !parsed.Multipart && gjson.ValidBytes(parsed.Body) {
+		if rawPrompt := gjson.GetBytes(parsed.Body, "prompt").String(); rawPrompt != "" {
+			prompt = rawPrompt
+		}
 	}
 
 	body := []byte(`{"model":"","prompt":"","n":1,"output_format":"png"}`)
@@ -322,7 +354,11 @@ func (s *OpenAIGatewayService) buildOpenAICodexImagesRequest(
 	}
 
 	request.Header.Set("Content-Type", "application/json")
-	request.Header.Set("Accept", "application/json")
+	if gjson.GetBytes(body, "stream").Bool() {
+		request.Header.Set("Accept", "text/event-stream")
+	} else {
+		request.Header.Set("Accept", "application/json")
+	}
 	request.Header.Set("Connection", "Keep-Alive")
 	request.Header.Set("Originator", openAICodexImagesOriginator)
 	request.Header.Set("User-Agent", s.openAICodexImagesUserAgent(ctx, account))
@@ -370,6 +406,14 @@ func (s *OpenAIGatewayService) handleOpenAICodexImagesResponse(
 	if openAICodexImagesLooksLikeSSE(resp, body) {
 		replay := *resp
 		replay.Body = io.NopCloser(bytes.NewReader(body))
+		if parsed.Stream && isOpenAICodexNativeImageSSE(body) {
+			return s.handleOpenAIImagesStreamingResponse(
+				&replay,
+				c,
+				time.Now(),
+				parsed,
+			)
+		}
 		if parsed.Stream {
 			return s.handleOpenAIImagesOAuthStreamingResponseWithValidation(
 				&replay,
@@ -429,10 +473,16 @@ func (s *OpenAIGatewayService) handleOpenAICodexImagesResponse(
 		reportOpenAICodexImagesResponseMismatch(c, mismatchErr)
 		return OpenAIUsage{}, 0, nil, nil, mismatchErr
 	}
+	for i := range results {
+		normalizeOpenAIResponsesImageClientModel(&results[i], fallbackModel)
+	}
 	firstMeta.Model = strings.TrimSpace(fallbackModel)
 	normalizeOpenAIResponsesImageClientModel(&firstMeta, fallbackModel)
 
-	usage, _ := extractOpenAIUsageFromJSONBytes(body)
+	usage, ok := codexDirectImagesUsage(body)
+	if !ok {
+		usage, _ = extractOpenAIUsageFromJSONBytes(body)
+	}
 	var usageRaw []byte
 	if rawUsage := root.Get("usage"); rawUsage.Exists() && rawUsage.IsObject() {
 		usageRaw = []byte(rawUsage.Raw)
@@ -469,6 +519,11 @@ func openAICodexImagesLooksLikeSSE(resp *http.Response, body []byte) bool {
 	}
 	trimmed := bytes.TrimSpace(body)
 	return bytes.HasPrefix(trimmed, []byte("data:")) || bytes.Contains(trimmed, []byte("\ndata:"))
+}
+
+func isOpenAICodexNativeImageSSE(body []byte) bool {
+	return bytes.Contains(body, []byte(`"type":"image_generation.`)) ||
+		bytes.Contains(body, []byte(`"type":"image_edit.`))
 }
 
 func observeOpenAICodexImagesResponseModel(c *gin.Context, root gjson.Result) {

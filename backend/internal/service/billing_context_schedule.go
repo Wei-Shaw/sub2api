@@ -7,6 +7,8 @@ import (
 	"sort"
 	"strconv"
 	"time"
+
+	"github.com/Wei-Shaw/sub2api/internal/pkg/timezone"
 )
 
 // ContextPricingBasis 阶梯的计价基准。当前只有整单口径；历史上的
@@ -222,7 +224,10 @@ func (s *BillingService) contextPricingBreakpoints(resolver *ModelPricingResolve
 	if pricing == nil {
 		return plan
 	}
-	pricing = s.applyModelSpecificPricingPolicy(model, pricing)
+	// 该路径无既有计费时点（ContextPricingScheduleInput 无时间字段），显式传
+	// 当前时刻；此处 pricing 仅取 LongContextInputThreshold 等时间无关字段，
+	// DeepSeek pro→Flash 切换不影响断点结果。
+	pricing = s.applyModelSpecificPricingPolicyEx(model, pricing, true, timezone.Now())
 	if pricing.LongContextInputThreshold <= 0 {
 		return plan
 	}

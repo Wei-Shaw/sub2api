@@ -427,7 +427,7 @@ export default {
       workerActive: 'Processing an async audit or record task',
       workerIdle: 'Started, idle and ready',
       workerDisabled: 'Risk control or content audit is disabled',
-      processed: 'Processed',
+      processed: 'Async processed',
       droppedErrors: 'Dropped / Errors',
       autoRefresh: 'Auto refresh every 15s',
       lastCleanup: 'Last cleanup: {time}',

@@ -4,15 +4,19 @@ import { defineComponent } from 'vue'
 
 import SubscriptionsView from '../SubscriptionsView.vue'
 
-const { listSubscriptions, getAllGroups } = vi.hoisted(() => ({
+const { listSubscriptions, getAllGroups, listUsers, searchUsageUsers } = vi.hoisted(() => ({
   listSubscriptions: vi.fn(),
-  getAllGroups: vi.fn()
+  getAllGroups: vi.fn(),
+  listUsers: vi.fn(),
+  searchUsageUsers: vi.fn()
 }))
 
 vi.mock('@/api/admin', () => ({
   adminAPI: {
     subscriptions: { list: listSubscriptions },
-    groups: { getAll: getAllGroups }
+    groups: { getAll: getAllGroups },
+    users: { list: listUsers },
+    usage: { searchUsers: searchUsageUsers }
   }
 }))
 
@@ -51,7 +55,7 @@ const RouterLinkStub = defineComponent({
   template: '<a :href="`${to.path}?user_id=${to.query.user_id}`"><slot /></a>'
 })
 
-describe('admin subscription user usage link', () => {
+describe('admin subscription users', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     localStorage.clear()
@@ -77,17 +81,28 @@ describe('admin subscription user usage link', () => {
       pages: 1
     })
     getAllGroups.mockResolvedValue([])
+    listUsers.mockResolvedValue({
+      items: [{ id: 42, email: 'reader@example.com' }],
+      total: 1,
+      pages: 1
+    })
+    searchUsageUsers.mockResolvedValue([
+      { id: 14, email: 'deleted@example.com', deleted: true }
+    ])
   })
 
   const mountView = () => mount(SubscriptionsView, {
     global: {
       stubs: {
         AppLayout: { template: '<div><slot /></div>' },
-        TablePageLayout: { template: '<div><slot name="table" /></div>' },
+        TablePageLayout: { template: '<div><slot name="filters" /><slot name="table" /></div>' },
         DataTable: DataTableStub,
         RouterLink: RouterLinkStub,
         Pagination: true,
-        BaseDialog: true,
+        BaseDialog: {
+          props: ['show'],
+          template: '<div v-if="show"><slot /><slot name="footer" /></div>'
+        },
         ConfirmDialog: true,
         EmptyState: true,
         Select: true,
@@ -96,6 +111,60 @@ describe('admin subscription user usage link', () => {
         Icon: true,
         Teleport: true
       }
+    }
+  })
+
+  it('searches current users when assigning a subscription', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+    const wrapper = mountView()
+    try {
+      await flushPromises()
+      await wrapper.findAll('button')
+        .find((button) => button.text() === 'admin.subscriptions.assignSubscription')!
+        .trigger('click')
+      const search = wrapper.get('[data-assign-user-search] input')
+      await search.trigger('focus')
+      await search.setValue('  example.com  ')
+      await vi.advanceTimersByTimeAsync(300)
+      await flushPromises()
+
+      expect(listUsers).toHaveBeenCalledWith(1, 30, {
+        search: 'example.com', sort_by: 'email', sort_order: 'asc'
+      })
+      expect(searchUsageUsers).not.toHaveBeenCalled()
+      const picker = wrapper.get('[data-assign-user-search]')
+      expect(picker.text()).toContain('reader@example.com')
+      expect(picker.text()).not.toContain('deleted@example.com')
+      await picker.get('button').trigger('click')
+      expect((search.element as HTMLInputElement).value).toBe('reader@example.com')
+    } finally {
+      wrapper.unmount()
+      vi.useRealTimers()
+    }
+  })
+
+  it('keeps deleted users available when filtering subscription history', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+    const wrapper = mountView()
+    try {
+      await flushPromises()
+      const search = wrapper.get('[data-filter-user-search] input')
+      await search.trigger('focus')
+      await search.setValue('deleted')
+      await vi.advanceTimersByTimeAsync(300)
+      await flushPromises()
+
+      expect(searchUsageUsers).toHaveBeenCalledWith('deleted')
+      expect(listUsers).not.toHaveBeenCalled()
+      const picker = wrapper.get('[data-filter-user-search]')
+      expect(picker.text()).toContain('deleted@example.com')
+      await picker.get('button').trigger('click')
+      expect(listSubscriptions).toHaveBeenLastCalledWith(
+        1, expect.any(Number), expect.objectContaining({ user_id: 14 }), expect.any(Object)
+      )
+    } finally {
+      wrapper.unmount()
+      vi.useRealTimers()
     }
   })
 

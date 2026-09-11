@@ -127,12 +127,19 @@ func (s *RateLimitService) cnBalanceCooldownDuration() time.Duration {
 // 周期额度探测刷新快照后阈值评估会再次停调到正确的时间点。
 // 无快照或均已过期返回 nil。
 func cnProviderQuotaSnapshotReset(account *Account, now time.Time) *time.Time {
-	if account == nil || !account.IsCNProvider() || !account.IsCodingPlan() || len(account.Extra) == 0 {
+	if account == nil || len(account.Extra) == 0 {
+		return nil
+	}
+	if !account.IsOpenCodeGo() && (!account.IsCNProvider() || !account.IsCodingPlan()) {
 		return nil
 	}
 	provider := account.Platform
+	suffixes := []string{cnExtraSuffix5hReset, cnExtraSuffixWeeklyReset}
+	if account.IsOpenCodeGo() {
+		suffixes = append(suffixes, cnExtraSuffixMonthlyReset)
+	}
 	var earliest *time.Time
-	for _, suffix := range []string{cnExtraSuffix5hReset, cnExtraSuffixWeeklyReset} {
+	for _, suffix := range suffixes {
 		t := parseSchedulingResetAt(account.Extra[cnExtraKey(provider, suffix)])
 		if t == nil || !t.After(now) {
 			continue
@@ -152,6 +159,36 @@ func (s *RateLimitService) applyCNProviderReactive429(
 	headers http.Header,
 	responseBody []byte,
 ) bool {
+	if account.IsOpenCodeGo() {
+		if until := cnProviderQuotaSnapshotReset(account, time.Now()); until != nil {
+			s.notifyAccountSchedulingBlocked(account, *until, "429")
+			if err := s.accountRepo.SetRateLimited(ctx, account.ID, *until); err != nil {
+				slog.Warn("rate_limit_set_failed", "account_id", account.ID, "error", err)
+				return true
+			}
+			slog.Info("opencode_go_rate_limited",
+				"account_id", account.ID,
+				"platform", account.Platform,
+				"reset_at", *until,
+			)
+			return true
+		}
+		if resetAt := parseOpenAIRateLimitResetTime(responseBody); resetAt != nil {
+			resetTime := time.Unix(*resetAt, 0)
+			s.notifyAccountSchedulingBlocked(account, resetTime, "429")
+			if err := s.accountRepo.SetRateLimited(ctx, account.ID, resetTime); err != nil {
+				slog.Warn("rate_limit_set_failed", "account_id", account.ID, "error", err)
+				return true
+			}
+			slog.Info("opencode_go_rate_limited",
+				"account_id", account.ID,
+				"platform", account.Platform,
+				"reset_at", resetTime,
+			)
+			return true
+		}
+		return false
+	}
 	if !account.IsCNProvider() {
 		return false
 	}

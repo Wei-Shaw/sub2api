@@ -240,3 +240,72 @@ func TestSettingService_GetPublicSettings_FallsBackToConfigForWeChatOAuthCapabil
 	require.False(t, settings.WeChatOAuthMPEnabled)
 	require.False(t, settings.WeChatOAuthMobileEnabled)
 }
+
+// subscription_enabled gates the user-facing "My Subscriptions" sidebar entry and
+// is opt-out: only an explicit "false" hides it.
+func TestSettingService_GetPublicSettings_SubscriptionEnabledOnlyExplicitFalseDisables(t *testing.T) {
+	cases := []struct {
+		name   string
+		values map[string]string
+		want   bool
+	}{
+		{name: "missing key defaults to enabled", values: map[string]string{}, want: true},
+		{name: "empty value stays enabled", values: map[string]string{SettingKeySubscriptionEnabled: ""}, want: true},
+		{name: "explicit true", values: map[string]string{SettingKeySubscriptionEnabled: "true"}, want: true},
+		{name: "explicit false disables", values: map[string]string{SettingKeySubscriptionEnabled: "false"}, want: false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			svc := NewSettingService(&settingPublicRepoStub{values: tc.values}, &config.Config{})
+
+			settings, err := svc.GetPublicSettings(context.Background())
+			require.NoError(t, err)
+			require.Equal(t, tc.want, settings.SubscriptionEnabled)
+		})
+	}
+}
+
+// The SSR injection payload must mirror the switch so the opt-out flag does not
+// flicker off on first render before the async public-settings fetch resolves.
+func TestSettingService_GetPublicSettingsForInjection_MirrorsSubscriptionEnabled(t *testing.T) {
+	for _, value := range []string{"false", "true"} {
+		repo := &settingPublicRepoStub{values: map[string]string{SettingKeySubscriptionEnabled: value}}
+		svc := NewSettingService(repo, &config.Config{})
+
+		raw, err := svc.GetPublicSettingsForInjection(context.Background())
+		require.NoError(t, err)
+		payload, ok := raw.(*PublicSettingsInjectionPayload)
+		require.True(t, ok)
+		require.Equal(t, value == "true", payload.SubscriptionEnabled, "value=%q", value)
+	}
+}
+
+// payment_balance_disabled is exposed publicly so the user shell can derive the site
+// billing mode (recharge & subscription / recharge only / subscription only) before any
+// authenticated checkout call. Strict true, mirroring the payment-config parser.
+func TestSettingService_GetPublicSettings_PaymentBalanceDisabledStrictTrue(t *testing.T) {
+	cases := []struct {
+		name  string
+		value map[string]string
+		want  bool
+	}{
+		{name: "missing key stays enabled", value: map[string]string{}, want: false},
+		{name: "explicit false", value: map[string]string{SettingBalancePayDisabled: "false"}, want: false},
+		{name: "explicit true disables balance recharge", value: map[string]string{SettingBalancePayDisabled: "true"}, want: true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			svc := NewSettingService(&settingPublicRepoStub{values: tc.value}, &config.Config{})
+
+			settings, err := svc.GetPublicSettings(context.Background())
+			require.NoError(t, err)
+			require.Equal(t, tc.want, settings.PaymentBalanceDisabled)
+
+			raw, err := svc.GetPublicSettingsForInjection(context.Background())
+			require.NoError(t, err)
+			payload, ok := raw.(*PublicSettingsInjectionPayload)
+			require.True(t, ok)
+			require.Equal(t, tc.want, payload.PaymentBalanceDisabled)
+		})
+	}
+}
