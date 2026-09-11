@@ -6,6 +6,10 @@ import TokenUsageTrend from '../TokenUsageTrend.vue'
 const messages: Record<string, string> = {
   'admin.dashboard.tokenUsageTrend': 'Token Usage Trend',
   'admin.dashboard.noDataAvailable': 'No data available',
+  'dashboard.tokenUsageTrend': 'Token Usage Trend',
+  'dashboard.balanceUsageTrend': 'Balance Usage Trend',
+  'dashboard.balanceMode': 'Balance',
+  'dashboard.tokens': 'Tokens',
 }
 
 vi.mock('vue-i18n', async () => {
@@ -116,5 +120,36 @@ describe('TokenUsageTrend', () => {
     )
     // Hit rate = 500 / (200 + 500 + 300) * 100 = 50%
     expect(hitRateDataset.data[0]).toBe(50)
+  })
+
+  it('can show actual balance usage instead of token datasets', () => {
+    const wrapper = mount(TokenUsageTrend, {
+      props: {
+        metric: 'balance',
+        trendData: [
+          {
+            date: '2026-05-08',
+            requests: 1,
+            input_tokens: 200,
+            output_tokens: 50,
+            cache_creation_tokens: 0,
+            cache_read_tokens: 0,
+            total_tokens: 250,
+            cost: 0.02,
+            actual_cost: 0.013,
+          },
+        ],
+      },
+      global: {
+        stubs: {
+          LoadingSpinner: true,
+        },
+      },
+    })
+
+    const chartData = JSON.parse(wrapper.find('.chart-data').text())
+    expect(chartData.datasets).toHaveLength(1)
+    expect(chartData.datasets[0].label).toBe('Balance')
+    expect(chartData.datasets[0].data).toEqual([0.013])
   })
 })

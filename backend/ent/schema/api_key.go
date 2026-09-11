@@ -57,6 +57,12 @@ func (APIKey) Fields() []ent.Field {
 		field.JSON("ip_blacklist", []string{}).
 			Optional().
 			Comment("Blocked IPs/CIDRs"),
+		field.JSON("allowed_models", []string{}).
+			Default([]string{}).
+			Comment("Allowed models for this API key; empty means unrestricted"),
+		field.Bool("openai_default_fast_mode").
+			Default(false).
+			Comment("Default OpenAI text requests to the priority service tier"),
 
 		// ========== Quota fields ==========
 		// Quota limit in USD (0 = unlimited)

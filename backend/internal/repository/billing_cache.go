@@ -15,13 +15,14 @@ import (
 )
 
 const (
-	billingBalanceKeyPrefix   = "billing:balance:"
-	billingSubKeyPrefix       = "billing:sub:"
-	billingRateLimitKeyPrefix = "apikey:rate:"
-	subCacheInvalidateChannel = "subscription:cache:invalidate"
-	billingCacheTTL           = 5 * time.Minute
-	billingCacheJitter        = 30 * time.Second
-	rateLimitCacheTTL         = 7 * 24 * time.Hour // 7 days matches the longest window
+	billingBalanceKeyPrefix     = "billing:balance:"
+	billingBalanceDataKeyPrefix = "billing:balance:data:"
+	billingSubKeyPrefix         = "billing:sub:"
+	billingRateLimitKeyPrefix   = "apikey:rate:"
+	subCacheInvalidateChannel   = "subscription:cache:invalidate"
+	billingCacheTTL             = 5 * time.Minute
+	billingCacheJitter          = 30 * time.Second
+	rateLimitCacheTTL           = 7 * 24 * time.Hour // 7 days matches the longest window
 
 	// Rate limit window durations — must match service.RateLimitWindow* constants.
 	rateLimitWindow5h = 5 * time.Hour
@@ -43,6 +44,16 @@ func jitteredTTL() time.Duration {
 func billingBalanceKey(userID int64) string {
 	return fmt.Sprintf("%s%d", billingBalanceKeyPrefix, userID)
 }
+
+func billingBalanceDataKey(userID int64) string {
+	return fmt.Sprintf("%s%d", billingBalanceDataKeyPrefix, userID)
+}
+
+const (
+	balanceDataFieldBalance   = "balance"
+	balanceDataFieldTemporary = "temporary_balance"
+	balanceDataFieldExpiresAt = "temporary_balance_expires_at"
+)
 
 // billingSubKey generates the Redis key for subscription cache.
 func billingSubKey(userID, groupID int64) string {
@@ -74,13 +85,38 @@ const (
 
 var (
 	deductBalanceScript = redis.NewScript(`
-		local current = redis.call('GET', KEYS[1])
-		if current == false then
-			return 0
+		local amount = tonumber(ARGV[1])
+		local now = tonumber(ARGV[2])
+		local ttl = ARGV[3]
+		local data_key = KEYS[2]
+		local aggregate = nil
+		if redis.call('EXISTS', data_key) == 1 then
+			aggregate = tonumber(redis.call('HGET', data_key, 'balance') or 0)
+			local temporary = tonumber(redis.call('HGET', data_key, 'temporary_balance') or 0)
+			local expires = tonumber(redis.call('HGET', data_key, 'temporary_balance_expires_at') or 0)
+			if temporary > 0 and expires > 0 and expires <= now then
+				aggregate = aggregate - temporary
+				temporary = 0
+				redis.call('HSET', data_key, 'temporary_balance', '0')
+			end
+			if temporary > 0 then
+				local from_temporary = math.min(temporary, amount)
+				temporary = temporary - from_temporary
+				amount = amount - from_temporary
+				aggregate = aggregate - from_temporary
+				redis.call('HSET', data_key, 'temporary_balance', tostring(temporary))
+			end
+			aggregate = aggregate - amount
+			redis.call('HSET', data_key, 'balance', tostring(aggregate))
+			redis.call('EXPIRE', data_key, ttl)
 		end
-		local newVal = tonumber(current) - tonumber(ARGV[1])
-		redis.call('SET', KEYS[1], newVal)
-		redis.call('EXPIRE', KEYS[1], ARGV[2])
+		if redis.call('EXISTS', KEYS[1]) == 1 then
+			if aggregate == nil then
+				aggregate = tonumber(redis.call('GET', KEYS[1])) - amount
+			end
+			redis.call('SET', KEYS[1], tostring(aggregate))
+			redis.call('EXPIRE', KEYS[1], ttl)
+		end
 		return 1
 	`)
 
@@ -153,14 +189,79 @@ func (c *billingCache) GetUserBalance(ctx context.Context, userID int64) (float6
 	return strconv.ParseFloat(val, 64)
 }
 
+// GetUserBalanceData returns the expiry-aware aggregate cache snapshot. The
+// legacy string key remains available for rolling upgrades, but billing uses
+// this hash whenever the concrete cache supports the extension.
+func (c *billingCache) GetUserBalanceData(ctx context.Context, userID int64) (service.UserBalanceCacheData, error) {
+	values, err := c.rdb.HGetAll(ctx, billingBalanceDataKey(userID)).Result()
+	if err != nil {
+		return service.UserBalanceCacheData{}, err
+	}
+	if len(values) == 0 {
+		return service.UserBalanceCacheData{}, redis.Nil
+	}
+	balance, err := strconv.ParseFloat(values[balanceDataFieldBalance], 64)
+	if err != nil {
+		return service.UserBalanceCacheData{}, fmt.Errorf("invalid balance cache: %w", err)
+	}
+	data := service.UserBalanceCacheData{Balance: balance}
+	if raw, ok := values[balanceDataFieldTemporary]; ok {
+		data.TemporaryBalance, err = strconv.ParseFloat(raw, 64)
+		if err != nil {
+			return service.UserBalanceCacheData{}, fmt.Errorf("invalid temporary balance cache: %w", err)
+		}
+	}
+	if raw, ok := values[balanceDataFieldExpiresAt]; ok && raw != "" {
+		seconds, parseErr := strconv.ParseInt(raw, 10, 64)
+		if parseErr != nil {
+			return service.UserBalanceCacheData{}, fmt.Errorf("invalid temporary balance expiry cache: %w", parseErr)
+		}
+		expiresAt := time.Unix(seconds, 0).UTC()
+		data.TemporaryBalanceExpiresAt = &expiresAt
+		if !expiresAt.After(time.Now().UTC()) && data.TemporaryBalance > 0 {
+			data.Balance -= data.TemporaryBalance
+			data.TemporaryBalance = 0
+		}
+	}
+	return data, nil
+}
+
+// SetUserBalanceData writes both the expiry-aware hash and the legacy string
+// key so mixed-version instances never lose a balance snapshot during rollout.
+func (c *billingCache) SetUserBalanceData(ctx context.Context, userID int64, data service.UserBalanceCacheData) error {
+	ttl := jitteredTTL()
+	key := billingBalanceDataKey(userID)
+	legacyKey := billingBalanceKey(userID)
+	pipe := c.rdb.TxPipeline()
+	pipe.Set(ctx, legacyKey, data.Balance, ttl)
+	pipe.HSet(ctx, key, balanceDataFieldBalance, strconv.FormatFloat(data.Balance, 'f', -1, 64), balanceDataFieldTemporary, strconv.FormatFloat(data.TemporaryBalance, 'f', -1, 64))
+	if data.TemporaryBalanceExpiresAt != nil {
+		pipe.HSet(ctx, key, balanceDataFieldExpiresAt, strconv.FormatInt(data.TemporaryBalanceExpiresAt.UTC().Unix(), 10))
+	} else {
+		pipe.HDel(ctx, key, balanceDataFieldExpiresAt)
+	}
+	pipe.Expire(ctx, key, ttl)
+	_, err := pipe.Exec(ctx)
+	return err
+}
+
 func (c *billingCache) SetUserBalance(ctx context.Context, userID int64, balance float64) error {
+	// This legacy writer has no temporary-grant metadata. Clear the richer hash
+	// atomically so a mixed-version rollout cannot leave a stale expiry-aware
+	// snapshot behind after an older instance updates the aggregate balance.
 	key := billingBalanceKey(userID)
-	return c.rdb.Set(ctx, key, balance, jitteredTTL()).Err()
+	dataKey := billingBalanceDataKey(userID)
+	pipe := c.rdb.TxPipeline()
+	pipe.Set(ctx, key, balance, jitteredTTL())
+	pipe.Del(ctx, dataKey)
+	_, err := pipe.Exec(ctx)
+	return err
 }
 
 func (c *billingCache) DeductUserBalance(ctx context.Context, userID int64, amount float64) error {
-	key := billingBalanceKey(userID)
-	_, err := deductBalanceScript.Run(ctx, c.rdb, []string{key}, amount, int(jitteredTTL().Seconds())).Result()
+	legacyKey := billingBalanceKey(userID)
+	dataKey := billingBalanceDataKey(userID)
+	_, err := deductBalanceScript.Run(ctx, c.rdb, []string{legacyKey, dataKey}, amount, time.Now().UTC().Unix(), int(jitteredTTL().Seconds())).Result()
 	if err != nil && !errors.Is(err, redis.Nil) {
 		log.Printf("Warning: deduct balance cache failed for user %d: %v", userID, err)
 		return err
@@ -169,8 +270,7 @@ func (c *billingCache) DeductUserBalance(ctx context.Context, userID int64, amou
 }
 
 func (c *billingCache) InvalidateUserBalance(ctx context.Context, userID int64) error {
-	key := billingBalanceKey(userID)
-	return c.rdb.Del(ctx, key).Err()
+	return c.rdb.Del(ctx, billingBalanceKey(userID), billingBalanceDataKey(userID)).Err()
 }
 
 func (c *billingCache) GetSubscriptionCache(ctx context.Context, userID, groupID int64) (*service.SubscriptionCacheData, error) {

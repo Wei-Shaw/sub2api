@@ -91,6 +91,41 @@ type BillingCache interface {
 	BatchGetUserPlatformQuotaCache(ctx context.Context, keys []UserPlatformQuotaKey) ([]*UserPlatformQuotaCacheEntry, error)
 }
 
+// UserBalanceCacheData is the cache snapshot used by balance billing. The
+// temporary portion carries its expiry so a long-lived Redis entry can never
+// make an expired grant spendable after the database expiry boundary.
+type UserBalanceCacheData struct {
+	Balance                   float64
+	TemporaryBalance          float64
+	TemporaryBalanceExpiresAt *time.Time
+}
+
+// UserBalanceSnapshot is the atomic database view used to seed billing and
+// authentication caches. Balance is the permanent portion; ActiveTemporaryBalance
+// is spendable only while TemporaryBalanceExpiresAt is in the future.
+type UserBalanceSnapshot struct {
+	Balance                   float64
+	TemporaryBalance          float64
+	ActiveTemporaryBalance    float64
+	TemporaryBalanceExpiresAt *time.Time
+	AvailableBalance          float64
+}
+
+// UserBalanceSnapshotReader returns permanent, temporary and effective balance
+// values from one database snapshot. Implementations should issue a single SQL
+// statement so an expiry boundary cannot mix values from separate reads.
+type UserBalanceSnapshotReader interface {
+	GetUserBalanceSnapshot(ctx context.Context, userID int64) (UserBalanceSnapshot, error)
+}
+
+// ExpiringUserBalanceCache is an optional extension implemented by caches that
+// understand temporary balances. It deliberately remains optional so existing
+// BillingCache implementations keep the official interface.
+type ExpiringUserBalanceCache interface {
+	GetUserBalanceData(ctx context.Context, userID int64) (UserBalanceCacheData, error)
+	SetUserBalanceData(ctx context.Context, userID int64, data UserBalanceCacheData) error
+}
+
 // ModelPricing 模型价格配置（per-token价格，与LiteLLM格式一致）
 type ModelPricing struct {
 	InputPricePerToken                 float64  // 每token输入价格 (USD)

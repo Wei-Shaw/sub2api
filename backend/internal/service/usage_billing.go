@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"math"
 	"strings"
+	"time"
 
 	"github.com/shopspring/decimal"
 )
@@ -163,11 +164,14 @@ type AccountQuotaState struct {
 }
 
 type UsageBillingApplyResult struct {
-	Applied              bool
-	APIKeyQuotaExhausted bool
-	NewBalance           *float64           // post-deduction balance (nil = no balance deduction)
-	BalanceOverdrafted   bool               // true when the sufficient-balance guard missed and debt was still recorded
-	QuotaState           *AccountQuotaState // post-increment quota state (nil = no quota increment)
+	Applied                   bool
+	APIKeyQuotaExhausted      bool
+	NewBalance                *float64           // post-deduction available balance (nil = no balance deduction)
+	BalanceOverdrafted        bool               // true when the sufficient-balance guard missed and all available balance was consumed
+	QuotaState                *AccountQuotaState // post-increment quota state (nil = no quota increment)
+	BalanceCostApplied        float64            // amount deducted from permanent balance
+	TemporaryBalanceCost      float64            // amount deducted from temporary balance
+	TemporaryBalanceExpiresAt *time.Time         // expiry captured atomically with the temporary deduction
 }
 
 // BatchImageBalanceHoldCommand describes an idempotent balance hold operation.

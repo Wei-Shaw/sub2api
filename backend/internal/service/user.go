@@ -1,6 +1,7 @@
 package service
 
 import (
+	"context"
 	"time"
 
 	"golang.org/x/crypto/bcrypt"
@@ -19,10 +20,16 @@ type User struct {
 	PasswordHash   string
 	Role           string
 	Balance        float64
-	FrozenBalance  float64
-	Concurrency    int
-	Status         string
-	AllowedGroups  []int64
+	// TemporaryBalance is an administrator-granted, expiring balance. It is
+	// kept separate from Balance and is only included in available funds while
+	// TemporaryBalanceExpiresAt is in the future.
+	TemporaryBalance          float64
+	TemporaryBalanceExpiresAt *time.Time
+	ActiveTemporaryBalance    float64
+	FrozenBalance             float64
+	Concurrency               int
+	Status                    string
+	AllowedGroups             []int64
 	// RestrictPublicGroups narrows the public groups this user may bind to the
 	// ones listed in AllowedGroups. False keeps the default, where every public
 	// group is bindable.
@@ -66,6 +73,37 @@ type User struct {
 
 	APIKeys       []APIKey
 	Subscriptions []UserSubscription
+}
+
+// TemporaryBalanceGrant is the public view of a user's expiring balance.
+// Amount preserves the stored value for admin/audit displays while
+// ActiveAmount is the amount that can currently be spent.
+type TemporaryBalanceGrant struct {
+	UserID       int64
+	Amount       float64
+	ActiveAmount float64
+	ExpiresAt    *time.Time
+}
+
+// TemporaryBalanceRepository is an optional capability implemented by the
+// production user repository. Keeping it separate from UserRepository avoids
+// forcing unrelated test doubles and integrations to implement the feature.
+type TemporaryBalanceRepository interface {
+	GetTemporaryBalance(ctx context.Context, userID int64) (*TemporaryBalanceGrant, error)
+	GetTemporaryBalances(ctx context.Context, userIDs []int64) (map[int64]*TemporaryBalanceGrant, error)
+	GrantTemporaryBalance(ctx context.Context, userID int64, amount float64, expiresAt time.Time, actorAdminID int64, notes string) (*TemporaryBalanceGrant, error)
+	ClearExpiredTemporaryBalances(ctx context.Context, limit int) (int, error)
+}
+
+// TemporaryBalanceMaintenanceRepository is the narrow capability needed by
+// the scheduled expiry worker. It is separate from the admin command surface
+// so maintenance can run without granting any HTTP/admin privileges.
+type TemporaryBalanceMaintenanceRepository interface {
+	ClearExpiredTemporaryBalances(ctx context.Context, limit int) (int, error)
+}
+
+type temporaryBalanceCleanupUsers interface {
+	ClearExpiredTemporaryBalanceUsers(ctx context.Context, limit int) ([]int64, error)
 }
 
 func (u *User) IsAdmin() bool {

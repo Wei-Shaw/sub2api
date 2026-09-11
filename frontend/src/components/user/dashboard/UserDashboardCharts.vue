@@ -10,10 +10,34 @@
         <button @click="$emit('refresh')" :disabled="loading" class="btn btn-secondary">
           {{ t('common.refresh') }}
         </button>
-        <div class="ml-auto flex items-center gap-2">
-          <span class="text-sm font-medium text-gray-700 dark:text-gray-300">{{ t('dashboard.granularity') }}:</span>
-          <div class="w-28">
-            <Select :model-value="granularity" :options="[{value:'day', label:t('dashboard.day')}, {value:'hour', label:t('dashboard.hour')}]" @update:model-value="$emit('update:granularity', $event)" @change="$emit('granularityChange')" />
+        <div class="ml-auto flex flex-wrap items-center justify-end gap-3">
+          <div class="inline-flex rounded-lg border border-gray-200 bg-gray-50 p-0.5 dark:border-dark-700 dark:bg-dark-800">
+            <button
+              type="button"
+              class="rounded-md px-3 py-1.5 text-xs font-medium transition-colors"
+              :class="trendMetric === 'tokens'
+                ? 'bg-white text-gray-900 shadow-sm dark:bg-dark-700 dark:text-white'
+                : 'text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200'"
+              @click="trendMetric = 'tokens'"
+            >
+              {{ t('dashboard.tokensMode') }}
+            </button>
+            <button
+              type="button"
+              class="rounded-md px-3 py-1.5 text-xs font-medium transition-colors"
+              :class="trendMetric === 'balance'
+                ? 'bg-white text-gray-900 shadow-sm dark:bg-dark-700 dark:text-white'
+                : 'text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200'"
+              @click="trendMetric = 'balance'"
+            >
+              {{ t('dashboard.balanceMode') }}
+            </button>
+          </div>
+          <div class="flex items-center gap-2">
+            <span class="text-sm font-medium text-gray-700 dark:text-gray-300">{{ t('dashboard.granularity') }}:</span>
+            <div class="w-28">
+              <Select :model-value="granularity" :options="[{value:'day', label:t('dashboard.day')}, {value:'hour', label:t('dashboard.hour')}]" @update:model-value="$emit('update:granularity', $event)" @change="$emit('granularityChange')" />
+            </div>
           </div>
         </div>
       </div>
@@ -58,13 +82,13 @@
       </div>
 
       <!-- Token Usage Trend Chart -->
-      <TokenUsageTrend :trend-data="trend" :loading="loading" />
+      <TokenUsageTrend :trend-data="trend" :loading="loading" :metric="trendMetric" />
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import LoadingSpinner from '@/components/common/LoadingSpinner.vue'
 import DateRangePicker from '@/components/common/DateRangePicker.vue'
@@ -79,6 +103,7 @@ ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, ArcEleme
 const props = defineProps<{ loading: boolean, startDate: string, endDate: string, granularity: string, trend: TrendDataPoint[], models: ModelStat[] }>()
 defineEmits(['update:startDate', 'update:endDate', 'update:granularity', 'dateRangeChange', 'granularityChange', 'refresh'])
 const { t } = useI18n()
+const trendMetric = ref<'tokens' | 'balance'>('tokens')
 
 const modelData = computed(() => !props.models?.length ? null : {
   labels: props.models.map((m: ModelStat) => m.model),
