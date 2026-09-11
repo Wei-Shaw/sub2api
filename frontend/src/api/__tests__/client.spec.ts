@@ -310,6 +310,49 @@ describe('API Client', () => {
   // --- 401 Token 刷新 ---
 
   describe('401 Token 刷新', () => {
+    it.each([
+      ['INVALID_CREDENTIALS', '/auth/oauth/pending/bind-login', false],
+      ['INVALID_CREDENTIALS', '/auth/oauth/pending/bind-login', true],
+      ['PENDING_AUTH_SESSION_EXPIRED', '/auth/oauth/pending/bind-login?source=dingtalk', false],
+      ['PENDING_AUTH_BROWSER_MISMATCH', 'https://app.example/api/v1/auth/oauth/pending/bind-login', true],
+    ])('绑定失败 %s 保留回调页和现有会话 (%s, 已登录=%s)', async (code, url, signedIn) => {
+      sessionStorage.removeItem('auth_expired')
+      if (signedIn) {
+        localStorage.setItem('auth_token', 'existing-access')
+        localStorage.setItem('refresh_token', 'existing-refresh')
+        localStorage.setItem('auth_user', JSON.stringify({ id: 7 }))
+        localStorage.setItem('token_expires_at', '123456')
+      }
+      const originalLocation = window.location
+      Object.defineProperty(window, 'location', {
+        value: { ...originalLocation, pathname: '/auth/dingtalk/callback', href: '/auth/dingtalk/callback' },
+        writable: true,
+      })
+      const refresh = vi.spyOn(axios, 'post').mockRejectedValue(new Error('Unexpected token refresh'))
+      const adapter = vi.fn().mockRejectedValue({
+        response: { status: 401, data: { code, message: 'Binding failed' } },
+        config: { url, headers: {} },
+        code: 'ERR_BAD_REQUEST',
+      })
+      apiClient.defaults.adapter = adapter
+
+      try {
+        await expect(apiClient.post(url, { email: 'employee@example.com', password: 'wrong' }))
+          .rejects.toMatchObject({ status: 401, code, message: 'Binding failed' })
+
+        expect(window.location.href).toBe('/auth/dingtalk/callback')
+        expect(refresh).not.toHaveBeenCalled()
+        expect(adapter).toHaveBeenCalledTimes(1)
+        expect(localStorage.getItem('auth_token')).toBe(signedIn ? 'existing-access' : null)
+        expect(localStorage.getItem('refresh_token')).toBe(signedIn ? 'existing-refresh' : null)
+        expect(localStorage.getItem('auth_user')).toBe(signedIn ? JSON.stringify({ id: 7 }) : null)
+        expect(localStorage.getItem('token_expires_at')).toBe(signedIn ? '123456' : null)
+        expect(sessionStorage.getItem('auth_expired')).toBeNull()
+      } finally {
+        Object.defineProperty(window, 'location', { value: originalLocation, writable: true })
+      }
+    })
+
     it('无 refresh_token 时 401 清除 localStorage', async () => {
       localStorage.setItem('auth_token', 'expired-token')
       // 不设置 refresh_token

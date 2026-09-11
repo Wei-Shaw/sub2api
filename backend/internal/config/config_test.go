@@ -88,6 +88,25 @@ func TestLoadRedisUsernameFromEnvironment(t *testing.T) {
 	require.Equal(t, "app-user", cfg.Redis.Username)
 }
 
+func TestLoadDingTalkAutoRegister(t *testing.T) {
+	for _, scenario := range []string{"default", "config_file", "environment"} {
+		t.Run(scenario, func(t *testing.T) {
+			resetViperWithJWTSecret(t)
+			t.Setenv("DINGTALK_CONNECT_AUTO_REGISTER", "")
+			if scenario == "config_file" {
+				configFile := filepath.Join(t.TempDir(), "config.yaml")
+				require.NoError(t, os.WriteFile(configFile, []byte("dingtalk_connect:\n  auto_register: true\n"), 0o600))
+				t.Setenv("CONFIG_FILE", configFile)
+			} else if scenario == "environment" {
+				t.Setenv("DINGTALK_CONNECT_AUTO_REGISTER", "true")
+			}
+			cfg, err := Load()
+			require.NoError(t, err)
+			require.Equal(t, scenario != "default", cfg.DingTalk.AutoRegister)
+		})
+	}
+}
+
 func TestLoadHTTPIngressSafetyDefaults(t *testing.T) {
 	resetViperWithJWTSecret(t)
 	cfg, err := Load()

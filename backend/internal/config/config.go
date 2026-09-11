@@ -378,6 +378,7 @@ type DingTalkConnectConfig struct {
 	CorpRestrictionPolicy   string `mapstructure:"corp_restriction_policy"`
 	InternalCorpID          string `mapstructure:"internal_corp_id"`
 	BypassRegistration      bool   `mapstructure:"bypass_registration"`
+	AutoRegister            bool   `mapstructure:"auto_register"` // Enterprise-only, opt-in first-login provisioning.
 	SyncCorpEmail           bool   `mapstructure:"sync_corp_email"`
 	SyncDisplayName         bool   `mapstructure:"sync_display_name"`
 	SyncDept                bool   `mapstructure:"sync_dept"`
@@ -2150,6 +2151,7 @@ func setDefaults() {
 	viper.SetDefault("dingtalk_connect.app_type", "public")
 	viper.SetDefault("dingtalk_connect.corp_restriction_policy", "none")
 	viper.SetDefault("dingtalk_connect.require_email", true)
+	viper.SetDefault("dingtalk_connect.auto_register", false)
 	viper.SetDefault("dingtalk_connect.username_overwrite_policy", "if_empty")
 
 	// Database
