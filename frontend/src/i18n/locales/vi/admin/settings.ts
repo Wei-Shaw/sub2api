@@ -483,6 +483,7 @@ export default mergeLocaleMessages(
       namePlaceholder: 'Ví dụ: Trung tâm trợ giúp',
       url: 'URL trang',
       urlPlaceholder: 'https://example.com/page',
+      hideOpenButton: 'Ẩn nút "Mở trong tab mới"',
       iconSvg: 'Biểu tượng SVG',
       iconSvgPlaceholder: '<svg>...</svg>',
       iconPreview: 'Xem trước biểu tượng',
