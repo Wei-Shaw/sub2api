@@ -672,6 +672,7 @@ export default {
         namePlaceholder: '如：帮助中心',
         url: '页面 URL',
         urlPlaceholder: 'https://example.com/page',
+        hideOpenButton: '隐藏“新窗口打开”按钮',
         iconSvg: 'SVG 图标',
         iconSvgPlaceholder: '<svg>...</svg>',
         iconPreview: '图标预览',

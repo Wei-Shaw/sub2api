@@ -785,6 +785,81 @@ func TestBuildCodexModelsManifestForGroupUsesProviderImageCapabilities(t *testin
 	}
 }
 
+func TestBuildCodexModelsManifestForGroupUsesDeepSeekVisionCapabilities(t *testing.T) {
+	t.Parallel()
+
+	const visionModel = "deepseek-v4-flash-vision-exp"
+	newAccount := func(id int64, platform, model string, modalities []string) Account {
+		account := Account{
+			ID: id, Platform: platform, Type: AccountTypeAPIKey,
+			Credentials: map[string]any{"model_mapping": map[string]any{"vision-alias": model}},
+		}
+		if modalities != nil {
+			account.SetUpstreamModelMetadataSnapshot(UpstreamModelMetadataSnapshot{Models: map[string]UpstreamModelMetadata{
+				model: {ID: model, InputModalities: modalities},
+			}})
+		}
+		return account
+	}
+
+	tests := []struct {
+		name       string
+		platform   string
+		accounts   []Account
+		modalities []any
+	}{
+		{
+			name: "native DeepSeek", platform: PlatformDeepseek,
+			accounts:   []Account{newAccount(1, PlatformDeepseek, visionModel, nil)},
+			modalities: []any{"text", "image"},
+		},
+		{
+			name: "OpenAI-compatible DeepSeek", platform: PlatformOpenAI,
+			accounts:   []Account{newAccount(1, PlatformOpenAI, visionModel, nil)},
+			modalities: []any{"text", "image"},
+		},
+		{
+			name: "Composite DeepSeek alias", platform: PlatformComposite,
+			accounts:   []Account{newAccount(1, PlatformDeepseek, visionModel, nil)},
+			modalities: []any{"text", "image"},
+		},
+		{
+			name: "text-only DeepSeek Flash", platform: PlatformDeepseek,
+			accounts:   []Account{newAccount(1, PlatformDeepseek, "deepseek-v4-flash", nil)},
+			modalities: []any{"text"},
+		},
+		{
+			name: "explicit text-only metadata", platform: PlatformDeepseek,
+			accounts:   []Account{newAccount(1, PlatformDeepseek, visionModel, []string{"text"})},
+			modalities: []any{"text"},
+		},
+		{
+			name: "mixed vision and text-only alias", platform: PlatformDeepseek,
+			accounts: []Account{
+				newAccount(1, PlatformDeepseek, visionModel, nil),
+				newAccount(2, PlatformDeepseek, "deepseek-v4-flash", nil),
+			},
+			modalities: []any{"text"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			const groupID int64 = 790
+			svc := &GatewayService{accountRepo: codexModelsVisibilityAccountRepo{byGroup: map[int64][]Account{
+				groupID: tt.accounts,
+			}}}
+			body, err := svc.BuildCodexModelsManifestForGroup(context.Background(),
+				&Group{ID: groupID, Platform: tt.platform}, "", []string{"vision-alias"})
+			require.NoError(t, err)
+			models := decodeCodexManifestModels(t, body)
+			require.Len(t, models, 1)
+			require.Equal(t, tt.modalities, models[0]["input_modalities"])
+		})
+	}
+}
+
 func TestBuildCodexModelsManifestForGroupPrefersSyncedOpenAIImageCapabilities(t *testing.T) {
 	t.Parallel()
 

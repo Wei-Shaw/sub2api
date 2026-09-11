@@ -436,6 +436,13 @@ export default {
       title: 'User Management',
       description: 'Manage users and their permissions',
       createUser: 'Create User',
+      bulkDelete: {
+        action: 'Delete selected ({count})',
+        title: 'Delete selected users',
+        confirm: 'Delete the {count} selected users? This action cannot be undone. Administrator accounts cannot be deleted.',
+        success: 'Deleted {count} users',
+        failed: 'Failed to delete {count} users. They remain selected for retry.'
+      },
       bulkLimits: {
         action: 'Set limits ({count})',
         title: 'Set user limits',

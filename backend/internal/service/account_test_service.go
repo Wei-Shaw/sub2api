@@ -178,6 +178,8 @@ func (s *AccountTestService) SetOpenAIGatewayService(gateway *OpenAIGatewayServi
 }
 
 // FetchOpenAIAccountModels uses the shared cached discovery path for the test picker.
+// It only fills picker-only gaps (local display-name fallbacks, OAuth image choices)
+// on its own copy; the shared catalog and its cache stay untouched.
 func (s *AccountTestService) FetchOpenAIAccountModels(ctx context.Context, account *Account) ([]openai.Model, error) {
 	if s == nil || s.openaiGatewayService == nil {
 		return nil, errors.New("OpenAI model discovery service is unavailable")
@@ -192,12 +194,14 @@ func (s *AccountTestService) FetchOpenAIAccountModels(ctx context.Context, accou
 	if err := json.Unmarshal(response.Body, &payload); err != nil {
 		return nil, fmt.Errorf("decode OpenAI account models: %w", err)
 	}
-	// Standard model catalogs do not require the fields used by the admin picker.
-	// Populate them here without changing the shared discovery response or cache.
+	// Every entry in the picker is labelled by the same rule: the upstream display
+	// name when the catalog has one, otherwise the local catalog name for that model
+	// ID, otherwise the raw ID. Without this the picker mixes "GPT-5.6 Sol" with
+	// "gpt-5.6-sol" for the same catalog.
 	for i := range payload.Data {
 		model := &payload.Data[i]
 		if strings.TrimSpace(model.DisplayName) == "" {
-			model.DisplayName = model.ID
+			model.DisplayName = openaiCodexDisplayName(model.ID)
 		}
 		if strings.TrimSpace(model.Type) == "" {
 			model.Type = "model"
@@ -219,7 +223,7 @@ func (s *AccountTestService) FetchOpenAIAccountModels(ctx context.Context, accou
 		}
 		for model := range account.GetModelMapping() {
 			if IsGPTImageGenerationModel(model) && !strings.Contains(model, "*") && !seen[model] {
-				payload.Data = append(payload.Data, openai.Model{ID: model, Object: "model", Type: "model", OwnedBy: "openai", DisplayName: model})
+				payload.Data = append(payload.Data, openai.Model{ID: model, Object: "model", Type: "model", OwnedBy: "openai", DisplayName: openaiCodexDisplayName(model)})
 			}
 		}
 	}
