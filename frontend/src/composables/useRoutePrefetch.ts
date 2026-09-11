@@ -106,11 +106,8 @@ export function useRoutePrefetch(router?: Router) {
   const prefetchComponent = async (importFn: ComponentImportFn): Promise<void> => {
     try {
       await importFn()
-    } catch (error) {
-      // 静默处理预加载错误
-      if (import.meta.env.DEV) {
-        console.debug('[Prefetch] Failed to prefetch component:', error)
-      }
+    } catch {
+      // 静默处理预加载错误 (silently handle prefetch errors)
     }
   }
 
