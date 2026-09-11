@@ -227,6 +227,7 @@ func TestAdminServiceSimpleModeNormalizesAllUnsupportedCreateFieldsDirectly(t *t
 		AllowMessagesDispatch: true, AllowLive: true, ForceOpenAIFast: true, RequireOAuthOnly: true,
 		RPMLimit: 99, MaxReasoningEffort: "high", ProfitControlEnabled: true, ProfitMinMargin: &one,
 		CopyAccountsFromGroupIDs: []int64{2},
+		Scheduler:                GroupSchedulerConfig{Strategy: "unsupported", SelectionMode: "unsupported"},
 	}
 	repo := &groupRepoStubForAdmin{}
 	svc := &adminServiceImpl{cfg: &config.Config{RunMode: config.RunModeSimple}, groupRepo: repo}
@@ -237,6 +238,7 @@ func TestAdminServiceSimpleModeNormalizesAllUnsupportedCreateFieldsDirectly(t *t
 	require.Equal(t, CreateGroupInput{
 		Name: "simple", Description: "allowed", Platform: PlatformAnthropic,
 		RateMultiplier: 1, SubscriptionType: SubscriptionTypeStandard,
+		Scheduler: NormalizeGroupSchedulerConfig(GroupSchedulerConfig{}),
 	}, *input)
 	require.Equal(t, 1.0, created.RateMultiplier)
 	require.Equal(t, SubscriptionTypeStandard, created.SubscriptionType)
@@ -244,6 +246,7 @@ func TestAdminServiceSimpleModeNormalizesAllUnsupportedCreateFieldsDirectly(t *t
 	require.Nil(t, created.FallbackGroupID)
 	require.Empty(t, created.ModelPricing)
 	require.Zero(t, created.RPMLimit)
+	require.Equal(t, NormalizeGroupSchedulerConfig(GroupSchedulerConfig{}), created.Scheduler)
 }
 
 func TestAdminServiceSimpleModeNormalizesAllUnsupportedUpdateFieldsDirectly(t *testing.T) {
@@ -265,8 +268,10 @@ func TestAdminServiceSimpleModeNormalizesAllUnsupportedUpdateFieldsDirectly(t *t
 		AllowMessagesDispatch: &truth, AllowLive: &truth, ForceOpenAIFast: &truth, RequireOAuthOnly: &truth,
 		RPMLimit: new(int), MaxReasoningEffort: ptrString("high"), ProfitControlEnabled: &truth,
 		ProfitMinMargin: &one, CopyAccountsFromGroupIDs: []int64{2},
+		Scheduler: &GroupSchedulerConfig{Strategy: "unsupported", SelectionMode: "unsupported"},
 	}
 	existing := &Group{ID: 1, Name: "old", Description: "old description", Platform: PlatformAnthropic, Status: StatusActive, RateMultiplier: 3, RPMLimit: 8, FallbackGroupID: &fallbackID}
+	existing.Scheduler = NormalizeGroupSchedulerConfig(GroupSchedulerConfig{Strategy: "high_availability", SelectionMode: "strict_health"})
 	repo := &groupRepoStubForAdmin{getByID: existing}
 	svc := &adminServiceImpl{cfg: &config.Config{RunMode: config.RunModeSimple}, groupRepo: repo}
 
@@ -280,6 +285,8 @@ func TestAdminServiceSimpleModeNormalizesAllUnsupportedUpdateFieldsDirectly(t *t
 	require.Equal(t, 3.0, updated.RateMultiplier)
 	require.Equal(t, 8, updated.RPMLimit)
 	require.Equal(t, &fallbackID, updated.FallbackGroupID)
+	require.Equal(t, "high_availability", updated.Scheduler.Strategy)
+	require.Equal(t, "strict_health", updated.Scheduler.SelectionMode)
 }
 
 func TestAdminServiceSimpleModeListUsesRepositoryFilteredTotal(t *testing.T) {
@@ -2282,4 +2289,25 @@ func TestAdminService_CreateGroup_CodexModelsManifestConfigDisabledAccepted(t *t
 	require.NoError(t, err)
 	require.Equal(t, []int64{1, 2}, group.CodexModelsManifestConfig.AccountIDs)
 	require.False(t, repo.created.CodexModelsManifestConfig.Enabled)
+}
+
+func TestAdminServiceGroupSchedulerCreateAndUpdate(t *testing.T) {
+	ctx := context.Background()
+	repo := &groupRepoStubForAdmin{createID: 42}
+	svc := &adminServiceImpl{groupRepo: repo}
+	scheduler := NormalizeGroupSchedulerConfig(GroupSchedulerConfig{
+		Strategy: "high_availability", SelectionMode: "strict_health",
+		FirstByteFailover: true, MaxAccountSwitches: 3,
+	})
+	created, err := svc.CreateGroup(ctx, &CreateGroupInput{
+		Name: "ha", Platform: PlatformOpenAI, RateMultiplier: 1, Scheduler: scheduler,
+	})
+	require.NoError(t, err)
+	require.Equal(t, scheduler, repo.created.Scheduler)
+	repo.getByID = created
+	scheduler.SelectionMode = "weighted"
+	updated, err := svc.UpdateGroup(ctx, created.ID, &UpdateGroupInput{Scheduler: &scheduler})
+	require.NoError(t, err)
+	require.Equal(t, scheduler, updated.Scheduler)
+	require.Equal(t, scheduler, repo.updated.Scheduler)
 }

@@ -628,6 +628,12 @@ func (_c *GroupCreate) SetModelRouting(v map[string][]int64) *GroupCreate {
 	return _c
 }
 
+// SetSchedulerConfig sets the "scheduler_config" field.
+func (_c *GroupCreate) SetSchedulerConfig(v map[string]interface{}) *GroupCreate {
+	_c.mutation.SetSchedulerConfig(v)
+	return _c
+}
+
 // SetModelRoutingEnabled sets the "model_routing_enabled" field.
 func (_c *GroupCreate) SetModelRoutingEnabled(v bool) *GroupCreate {
 	_c.mutation.SetModelRoutingEnabled(v)
@@ -1624,6 +1630,10 @@ func (_c *GroupCreate) createSpec() (*Group, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.ModelRouting(); ok {
 		_spec.SetField(group.FieldModelRouting, field.TypeJSON, value)
 		_node.ModelRouting = value
+	}
+	if value, ok := _c.mutation.SchedulerConfig(); ok {
+		_spec.SetField(group.FieldSchedulerConfig, field.TypeJSON, value)
+		_node.SchedulerConfig = value
 	}
 	if value, ok := _c.mutation.ModelRoutingEnabled(); ok {
 		_spec.SetField(group.FieldModelRoutingEnabled, field.TypeBool, value)
@@ -2642,6 +2652,24 @@ func (u *GroupUpsert) UpdateModelRouting() *GroupUpsert {
 // ClearModelRouting clears the value of the "model_routing" field.
 func (u *GroupUpsert) ClearModelRouting() *GroupUpsert {
 	u.SetNull(group.FieldModelRouting)
+	return u
+}
+
+// SetSchedulerConfig sets the "scheduler_config" field.
+func (u *GroupUpsert) SetSchedulerConfig(v map[string]interface{}) *GroupUpsert {
+	u.Set(group.FieldSchedulerConfig, v)
+	return u
+}
+
+// UpdateSchedulerConfig sets the "scheduler_config" field to the value that was provided on create.
+func (u *GroupUpsert) UpdateSchedulerConfig() *GroupUpsert {
+	u.SetExcluded(group.FieldSchedulerConfig)
+	return u
+}
+
+// ClearSchedulerConfig clears the value of the "scheduler_config" field.
+func (u *GroupUpsert) ClearSchedulerConfig() *GroupUpsert {
+	u.SetNull(group.FieldSchedulerConfig)
 	return u
 }
 
@@ -3876,6 +3904,27 @@ func (u *GroupUpsertOne) UpdateModelRouting() *GroupUpsertOne {
 func (u *GroupUpsertOne) ClearModelRouting() *GroupUpsertOne {
 	return u.Update(func(s *GroupUpsert) {
 		s.ClearModelRouting()
+	})
+}
+
+// SetSchedulerConfig sets the "scheduler_config" field.
+func (u *GroupUpsertOne) SetSchedulerConfig(v map[string]interface{}) *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetSchedulerConfig(v)
+	})
+}
+
+// UpdateSchedulerConfig sets the "scheduler_config" field to the value that was provided on create.
+func (u *GroupUpsertOne) UpdateSchedulerConfig() *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateSchedulerConfig()
+	})
+}
+
+// ClearSchedulerConfig clears the value of the "scheduler_config" field.
+func (u *GroupUpsertOne) ClearSchedulerConfig() *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.ClearSchedulerConfig()
 	})
 }
 
@@ -5322,6 +5371,27 @@ func (u *GroupUpsertBulk) UpdateModelRouting() *GroupUpsertBulk {
 func (u *GroupUpsertBulk) ClearModelRouting() *GroupUpsertBulk {
 	return u.Update(func(s *GroupUpsert) {
 		s.ClearModelRouting()
+	})
+}
+
+// SetSchedulerConfig sets the "scheduler_config" field.
+func (u *GroupUpsertBulk) SetSchedulerConfig(v map[string]interface{}) *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetSchedulerConfig(v)
+	})
+}
+
+// UpdateSchedulerConfig sets the "scheduler_config" field to the value that was provided on create.
+func (u *GroupUpsertBulk) UpdateSchedulerConfig() *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateSchedulerConfig()
+	})
+}
+
+// ClearSchedulerConfig clears the value of the "scheduler_config" field.
+func (u *GroupUpsertBulk) ClearSchedulerConfig() *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.ClearSchedulerConfig()
 	})
 }
 

@@ -43,6 +43,106 @@ func (s *GatewayService) shouldRetryUpstreamError(account *Account, statusCode i
 	return !account.ShouldHandleErrorCode(statusCode)
 }
 
+// shouldRetryUpstreamErrorForRequest applies request-scoped high-availability
+// overrides without changing the legacy retry policy.  A 524 from an upstream
+// account is an account-level timeout: in HA mode a non-pool account should be
+// failed over immediately instead of spending the full same-account retry
+// budget before another eligible account is attempted.  Pool-mode accounts
+// retain their existing same-account retry semantics.
+func (s *GatewayService) shouldRetryUpstreamErrorForRequest(c *gin.Context, account *Account, statusCode int) bool {
+	const upstreamTimeout524 = 524 // Cloudflare/upstream timeout, not defined by net/http.
+	if statusCode == upstreamTimeout524 && account != nil && !account.IsPoolMode() {
+		if scheduler, ok := requestSchedulerConfig(c); ok && strings.EqualFold(scheduler.Strategy, "high_availability") && scheduler.FirstByteFailover {
+			return false
+		}
+		if c == nil && s != nil && s.cfg != nil && strings.EqualFold(strings.TrimSpace(s.cfg.Gateway.OpenAIScheduler.Strategy), "high_availability") {
+			return false
+		}
+	}
+	return s.shouldRetryUpstreamError(account, statusCode)
+}
+
+// shouldFailoverTransportErrorForRequest keeps legacy transport-error
+// handling intact while allowing HA non-pool requests to try another account
+// before writing a terminal 502 response.
+func (s *GatewayService) shouldFailoverTransportErrorForRequest(c *gin.Context, account *Account) bool {
+	if account == nil || account.IsPoolMode() {
+		return false
+	}
+	if scheduler, ok := requestSchedulerConfig(c); ok {
+		return strings.EqualFold(scheduler.Strategy, "high_availability") && scheduler.FirstByteFailover
+	}
+	return s.requestHighAvailabilityEnabled(c)
+}
+
+const requestHighAvailabilityKey = "sub2api.ha_scheduler_enabled"
+const requestSchedulerConfigKey = "sub2api.scheduler_config"
+
+func requestSchedulerConfig(c *gin.Context) (GroupSchedulerConfig, bool) {
+	if c == nil {
+		return GroupSchedulerConfig{}, false
+	}
+	v, exists := c.Get(requestSchedulerConfigKey)
+	if !exists {
+		return GroupSchedulerConfig{}, false
+	}
+	cfg, ok := v.(GroupSchedulerConfig)
+	return cfg, ok
+}
+
+func requestHighAvailabilityEnabled(c *gin.Context) (bool, bool) {
+	if c == nil {
+		return false, false
+	}
+	v, exists := c.Get(requestHighAvailabilityKey)
+	if !exists {
+		return false, false
+	}
+	enabled, ok := v.(bool)
+	return enabled, ok
+}
+
+func (s *GatewayService) requestHighAvailabilityEnabled(c *gin.Context) bool {
+	if enabled, ok := requestHighAvailabilityEnabled(c); ok {
+		return enabled
+	}
+	return s != nil && s.cfg != nil && strings.EqualFold(strings.TrimSpace(s.cfg.Gateway.OpenAIScheduler.Strategy), "high_availability")
+}
+
+func (s *GatewayService) highAvailabilityEnabledForGroup(ctx context.Context, account *Account, groupID *int64) bool {
+	return strings.EqualFold(s.schedulerConfigForGroup(ctx, account, groupID).Strategy, "high_availability")
+}
+
+func (s *GatewayService) schedulerConfigForGroup(ctx context.Context, account *Account, groupID *int64) GroupSchedulerConfig {
+	if s == nil {
+		return GroupSchedulerConfig{}
+	}
+	if s.groupRepo != nil && groupID != nil && *groupID > 0 {
+		cacheKey := fmt.Sprintf("group:%d", *groupID)
+		if s.groupSchedulerCache != nil {
+			if cached, ok := s.groupSchedulerCache.Get(cacheKey); ok {
+				if scheduler, ok := cached.(GroupSchedulerConfig); ok {
+					return scheduler
+				}
+			}
+		}
+		if group, err := s.groupRepo.GetByID(ctx, *groupID); err == nil && group != nil {
+			scheduler := NormalizeGroupSchedulerConfig(group.Scheduler)
+			if s.groupSchedulerCache != nil {
+				s.groupSchedulerCache.SetDefault(cacheKey, scheduler)
+			}
+			if strings.TrimSpace(group.Scheduler.Strategy) != "" {
+				return scheduler
+			}
+		}
+	}
+	// Compatibility fallback for old groups that have no scheduler_config.
+	if account != nil && account.Platform == PlatformOpenAI && s.cfg != nil && strings.EqualFold(strings.TrimSpace(s.cfg.Gateway.OpenAIScheduler.Strategy), "high_availability") {
+		return GroupSchedulerConfig{Strategy: "high_availability", FirstByteFailover: true}
+	}
+	return GroupSchedulerConfig{Strategy: "legacy"}
+}
+
 // shouldFailoverUpstreamError determines whether an upstream error should trigger account failover.
 func (s *GatewayService) shouldFailoverUpstreamError(statusCode int) bool {
 	switch statusCode {
@@ -92,6 +192,24 @@ func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *A
 	startTime := time.Now()
 	if parsed == nil {
 		return nil, fmt.Errorf("parse request: empty request")
+	}
+	defer func() {
+		if account == nil {
+			return
+		}
+		if err == nil && result != nil {
+			latencyMs := result.Duration.Milliseconds()
+			reportSharedAccountHealthWithLatency(account.ID, true, nil, latencyMs)
+			return
+		}
+		if err != nil {
+			reportSharedAccountHealth(account.ID, false, err)
+		}
+	}()
+	if c != nil {
+		scheduler := s.schedulerConfigForGroup(ctx, account, parsed.GroupID)
+		c.Set(requestSchedulerConfigKey, scheduler)
+		c.Set(requestHighAvailabilityKey, strings.EqualFold(scheduler.Strategy, "high_availability"))
 	}
 	// Anthropic Fast is requested with speed=fast rather than OpenAI's
 	// service_tier. Attach it at this shared boundary so passthrough, OAuth and
@@ -604,7 +722,7 @@ func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *A
 		}
 
 		// 检查是否需要通用重试（排除400，因为400已经在上面特殊处理过了）
-		if resp.StatusCode >= 400 && resp.StatusCode != 400 && s.shouldRetryUpstreamError(account, resp.StatusCode) {
+		if resp.StatusCode >= 400 && resp.StatusCode != 400 && s.shouldRetryUpstreamErrorForRequest(c, account, resp.StatusCode) {
 			if attempt < maxRetryAttempts {
 				elapsed := time.Since(retryStart)
 				if elapsed >= maxRetryElapsed {
@@ -667,7 +785,7 @@ func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *A
 	defer func() { _ = resp.Body.Close() }()
 
 	// 处理重试耗尽的情况
-	if resp.StatusCode >= 400 && s.shouldRetryUpstreamError(account, resp.StatusCode) {
+	if resp.StatusCode >= 400 && s.shouldRetryUpstreamErrorForRequest(c, account, resp.StatusCode) {
 		if s.shouldFailoverUpstreamError(resp.StatusCode) {
 			respBody, _ := s.readUpstreamErrorBody(resp)
 			_ = resp.Body.Close()

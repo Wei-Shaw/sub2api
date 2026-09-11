@@ -964,11 +964,20 @@ func groupEntityToService(g *dbent.Group) *service.Group {
 			modelPricing = nil
 		}
 	}
+	var scheduler service.GroupSchedulerConfig
+	if len(g.SchedulerConfig) > 0 {
+		if raw, err := json.Marshal(g.SchedulerConfig); err == nil {
+			if err := json.Unmarshal(raw, &scheduler); err != nil {
+				slog.Warn("group scheduler_config unmarshal failed; using legacy defaults", "group_id", g.ID, "error", err)
+			}
+		}
+	}
 	return &service.Group{
 		ID:                              g.ID,
 		Name:                            g.Name,
 		Description:                     derefString(g.Description),
 		Platform:                        g.Platform,
+		Scheduler:                       scheduler,
 		RateMultiplier:                  g.RateMultiplier,
 		IsExclusive:                     g.IsExclusive,
 		Status:                          g.Status,

@@ -107,6 +107,17 @@
               </p>
             </div>
           </div>
+          <div class="flex items-end">
+            <div>
+              <label class="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
+                <Toggle v-model="newPlan.include_in_health_samples" />
+                {{ t('admin.scheduledTests.includeInHealthSamples') }}
+              </label>
+              <p class="mt-0.5 text-xs text-gray-400 dark:text-gray-500">
+                {{ t('admin.scheduledTests.includeInHealthSamplesHelp') }}
+              </p>
+            </div>
+          </div>
         </div>
         <div class="mt-3 flex justify-end gap-2">
           <button
@@ -183,6 +194,12 @@
                 class="inline-flex items-center rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-medium text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-400"
               >
                 {{ t('admin.scheduledTests.autoRecover') }}
+              </span>
+              <span
+                v-if="plan.include_in_health_samples"
+                class="inline-flex items-center rounded-full bg-blue-100 px-2 py-0.5 text-xs font-medium text-blue-700 dark:bg-blue-500/20 dark:text-blue-400"
+              >
+                {{ t('admin.scheduledTests.healthSample') }}
               </span>
             </div>
 
@@ -314,6 +331,17 @@
                   </label>
                   <p class="mt-0.5 text-xs text-gray-400 dark:text-gray-500">
                     {{ t('admin.scheduledTests.autoRecoverHelp') }}
+                  </p>
+                </div>
+              </div>
+              <div class="flex items-end">
+                <div>
+                  <label class="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
+                    <Toggle v-model="editForm.include_in_health_samples" />
+                    {{ t('admin.scheduledTests.includeInHealthSamples') }}
+                  </label>
+                  <p class="mt-0.5 text-xs text-gray-400 dark:text-gray-500">
+                    {{ t('admin.scheduledTests.includeInHealthSamplesHelp') }}
                   </p>
                 </div>
               </div>
@@ -508,7 +536,8 @@ const editForm = reactive({
   cron_expression: '' as string,
   max_results: '100' as string,
   enabled: true,
-  auto_recover: false
+  auto_recover: false,
+  include_in_health_samples: false
 })
 
 const newPlan = reactive({
@@ -516,7 +545,8 @@ const newPlan = reactive({
   cron_expression: '' as string,
   max_results: '100' as string,
   enabled: true,
-  auto_recover: false
+  auto_recover: false,
+  include_in_health_samples: false
 })
 
 const resetNewPlan = () => {
@@ -525,6 +555,7 @@ const resetNewPlan = () => {
   newPlan.max_results = '100'
   newPlan.enabled = true
   newPlan.auto_recover = false
+  newPlan.include_in_health_samples = false
 }
 
 // Load plans when dialog opens
@@ -567,7 +598,8 @@ const handleCreate = async () => {
       cron_expression: newPlan.cron_expression,
       enabled: newPlan.enabled,
       max_results: maxResults,
-      auto_recover: newPlan.auto_recover
+      auto_recover: newPlan.auto_recover,
+      include_in_health_samples: newPlan.include_in_health_samples
     })
     appStore.showSuccess(t('admin.scheduledTests.createSuccess'))
     showAddForm.value = false
@@ -600,6 +632,7 @@ const startEdit = (plan: ScheduledTestPlan) => {
   editForm.max_results = String(plan.max_results)
   editForm.enabled = plan.enabled
   editForm.auto_recover = plan.auto_recover
+  editForm.include_in_health_samples = plan.include_in_health_samples
 }
 
 const cancelEdit = () => {
@@ -615,7 +648,8 @@ const handleEdit = async () => {
       cron_expression: editForm.cron_expression,
       max_results: Number(editForm.max_results) || 100,
       enabled: editForm.enabled,
-      auto_recover: editForm.auto_recover
+      auto_recover: editForm.auto_recover,
+      include_in_health_samples: editForm.include_in_health_samples
     })
     const index = plans.value.findIndex((p) => p.id === editingPlanId.value)
     if (index !== -1) {
