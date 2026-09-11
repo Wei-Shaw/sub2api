@@ -277,6 +277,19 @@ const isTempUnschedulable = computed(() => {
   return new Date(props.account.temp_unschedulable_until) > new Date()
 })
 
+const tempUnschedReason = computed(() => (props.account.temp_unschedulable_reason || '').toLowerCase())
+
+const isAuth401 = computed(() => {
+  if (!isTempUnschedulable.value) return false
+  return [
+    'status 401',
+    'authentication failed (401)',
+    'oauth 401',
+    'refresh_token_reused',
+    'token refresh retry exhausted'
+  ].some((marker) => tempUnschedReason.value.includes(marker))
+})
+
 // Computed: has error status
 const hasError = computed(() => {
   return props.account.status === 'error'
@@ -319,6 +332,9 @@ const statusClass = computed(() => {
   if (hasError.value) {
     return 'badge-danger'
   }
+  if (isAuth401.value) {
+    return 'badge-danger'
+  }
   if (isTempUnschedulable.value) {
     return 'badge-warning'
   }
@@ -338,6 +354,9 @@ const statusClass = computed(() => {
 const statusText = computed(() => {
   if (hasError.value) {
     return t('admin.accounts.status.error')
+  }
+  if (isAuth401.value) {
+    return '401'
   }
   if (isTempUnschedulable.value) {
     return t('admin.accounts.status.tempUnschedulable')
