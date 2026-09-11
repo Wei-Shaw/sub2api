@@ -907,6 +907,15 @@ export default mergeLocaleMessages(
       upstreamErrorRateMaxPercent: 'Tỷ lệ lỗi upstream tối đa (%)',
       upstreamErrorRateMaxPercentHint: 'Tỷ lệ lỗi upstream cao hơn giá trị này sẽ hiển thị màu đỏ (mặc định: 5%).',
     },
-    }
+    },
+  },
+  {
+    ops: {
+      systemLogs: {
+        retentionDaysHint: 'Được áp dụng bởi job dọn dẹp dữ liệu theo lịch.',
+        persistAccessLogs: 'Lưu access log vào database',
+        persistAccessLogsHint: 'Mặc định tắt vì access log tạo thêm một bản ghi database có index cho mỗi request. Log cảnh báo, lỗi và audit luôn được lưu.',
+      },
+    },
   },
 )

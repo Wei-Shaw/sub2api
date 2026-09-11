@@ -1728,6 +1728,19 @@ export default mergeLocaleMessages(
       label: 'Cho phép người dùng xem các yêu cầu lỗi của riêng họ',
       description: 'Khi được bật, người dùng có thể thấy chế độ xem đã được chỉnh sửa về các yêu cầu không thành công của họ trên trang sử dụng (không có chi tiết nội bộ/upstream). Yêu cầu kích hoạt giám sát hoạt động để có dữ liệu.',
     },
-    }
+    },
+  },
+  {
+    settings: {
+      features: {
+        channelMonitor: {
+          hideUserRanking: 'Ẩn bảng xếp hạng người dùng khỏi người dùng',
+          hideUserRankingHint: 'Khi bật, trang Channel Monitor V2 của người dùng sẽ ẩn tab xếp hạng và API người dùng không trả về các dòng xếp hạng. Quản trị viên vẫn xem được bảng xếp hạng.',
+        },
+      },
+      openaiFastPolicy: {
+        tierUltrafast: 'ultrafast',
+      },
+    },
   },
 )

@@ -1078,4 +1078,29 @@ const additionsA = {
   }
 }
 
-export default mergeLocaleMessages(base, additionsA)
+export default mergeLocaleMessages(base, additionsA, {
+  usage: {
+    serviceTierUltrafast: 'Ultrafast',
+  },
+  monitorCommon: {
+    providers: {
+      minimax: 'MiniMax',
+    },
+  },
+  modelPlaza: {
+    table: {
+      maxReasoningMultiplierBadge: 'Tối đa ×{multiplier}',
+      maxReasoningMultiplierHint: 'Khi reasoning effort được chuyển tiếp là max, chi phí và hạn ngạch của request sẽ được nhân với {multiplier}',
+    },
+  },
+  keys: {
+    useKeyModal: {
+      minimax: {
+        description: 'Cấu hình Claude Code, Codex hoặc OpenCode thông qua nhóm MiniMax hiện tại.',
+        codexDescription: 'Cấu hình Codex bằng xác thực API key thông qua nhóm MiniMax hiện tại.',
+        codexConfigTomlHint: 'Tải catalog model bên dưới, lưu cả hai file vào thư mục cấu hình Codex rồi khởi động lại Codex.',
+        codexNote: 'Export SUB2API_API_KEY trước khi khởi động Codex. Catalog đã tải chỉ chứa metadata model, không chứa API key của bạn.',
+      },
+    },
+  },
+})

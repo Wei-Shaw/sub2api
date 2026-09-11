@@ -612,6 +612,26 @@ export default mergeLocaleMessages(
     interceptWarmupRequests: 'Chặn request làm nóng',
     interceptWarmupRequestsDesc: 'Sau khi bật, các request làm nóng như tạo tiêu đề sẽ trả về response mock và không tiêu tốn token upstream',
     autoPauseOnExpired: 'Tự động tạm dừng điều phối khi hết hạn',
+    grokMediaEligibility: {
+      title: 'Đủ điều kiện tạo Media',
+      hint: 'Kiểm soát xem tài khoản Grok OAuth này có thể được chọn để tạo ảnh và video hay không.',
+      auto: 'Phát hiện tự động',
+      autoHint: 'Phát hiện tự động chỉ xóa ghi đè thủ công; nó không kích hoạt yêu cầu media.',
+      forceEnableWarning: 'Bật ép buộc bỏ qua kiểm tra đủ điều kiện tự động. Chỉ sử dụng cho các tài khoản được xác nhận hỗ trợ tạo ảnh/video.',
+      current: 'Quyết định hiện tại:',
+      eligible: 'Đủ điều kiện',
+      ineligible: 'Không đủ điều kiện',
+      partialSave: 'Các cài đặt tài khoản khác có thể đã được lưu, nhưng đủ điều kiện media chưa được cập nhật. Vui lòng thử lại.',
+      reasons: {
+        eligible: 'Quyền lợi trả phí đã được xác nhận',
+        billing_inconclusive: 'Thông tin thanh toán không rõ ràng',
+        billing_forbidden: 'Endpoint thanh toán bị cấm',
+        billing_free_tier: 'Tài khoản gói miễn phí',
+        billing_unobserved: 'Chưa quan sát thanh toán',
+        override_enabled: 'Bắt buộc bật thủ công',
+        override_disabled: 'Bắt buộc tắt thủ công'
+      }
+    },
     autoPauseOnExpiredDesc: 'Sau khi bật, tài khoản sẽ tự động tạm dừng điều phối khi hết hạn',
     // Quota control (Anthropic OAuth/SetupToken only)
     quotaControl: {
@@ -1239,8 +1259,16 @@ export default mergeLocaleMessages(
   },
   {
     accounts: {
-    syncUpstreamModelsMetadataIncomplete: 'ID model đã được đồng bộ, nhưng metadata khả năng chưa đầy đủ và không được cập nhật.',
-    fromModel: 'Model nguồn',
+      syncUpstreamModelsMetadataPartial: 'Một số khả năng model đã được cập nhật; các model còn lại vẫn chưa đầy đủ.',
+      upstreamRequestIdHeader: 'ID Upstream',
+      upstreamRequestIdHeaderPlaceholder: 'Để trống để không ghi lại',
+      upstreamRequestIdHeaderHelp: {
+        intro: 'Tên header response mà upstream trực tiếp khai báo request ID của nó. Giá trị sẽ được ghi lại trong cột "ID Upstream" của log sử dụng; để trống để không ghi lại.',
+        examplesTitle: 'Giá trị thông dụng',
+        sub2apiNote: 'Khớp với cột request ID trong log sử dụng của nó',
+      },
+      syncUpstreamModelsMetadataIncomplete: 'ID model đã được đồng bộ, nhưng metadata khả năng chưa đầy đủ và không được cập nhật.',
+      fromModel: 'Model nguồn',
     toModel: 'Model đích',
     messages: {
       accountCreated: 'Đã tạo tài khoản',
@@ -1727,6 +1755,30 @@ export default mergeLocaleMessages(
     audioReceived: 'Đã nhận được âm thanh thử nghiệm #{count}',
     videoPreview: 'Video đã tạo:',
     videoReceived: 'Đã nhận được video test #{count}',
-    }
+    },
+  },
+  {
+    accounts: {
+      platforms: {
+        minimax: 'MiniMax',
+      },
+      grokMediaEligibility: {
+        enabled: 'Bắt buộc bật',
+        disabled: 'Bắt buộc tắt',
+        loading: 'Đang tải trạng thái đủ điều kiện…',
+        loadFailed: 'Không thể tải trạng thái đủ điều kiện media',
+      },
+      openai: {
+        imagesUrlToB64Json: 'Chuyển URL kết quả ảnh sang base64',
+        imagesUrlToB64JsonDesc: 'Chỉ áp dụng cho response Images không streaming của tài khoản OpenAI API Key. Khi một item ảnh upstream có url nhưng không có b64_json, gateway sẽ tải url và điền b64_json bằng nội dung base64 (vẫn giữ url) cho các client dùng API chính thức; response được giữ nguyên nếu tải thất bại.',
+      },
+      upstreamRequestIdHeaderHelp: {
+        official: 'API chính thức của {platform}',
+      },
+      usageWindow: {
+        estimatedTotalCost: 'Tổng ước tính ${cost}',
+        estimatedTotalCostTooltip: 'Tổng chi phí ước tính khi sử dụng 100%, dựa trên chi phí cửa sổ và mức sử dụng hiện tại',
+      },
+    },
   },
 )

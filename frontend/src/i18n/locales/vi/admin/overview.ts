@@ -1344,6 +1344,47 @@ export default mergeLocaleMessages(
       concurrencyHint: 'Số yêu cầu tối đa chạy đồng thời cho người dùng này; 0 = không giới hạn.',
       concurrencyPlaceholder: '0 = không giới hạn',
     },
-    }
+    },
+  },
+  {
+    groups: {
+      form: {
+        reasoningEffortToDeny: 'Từ chối',
+      },
+      platforms: {
+        minimax: 'MiniMax',
+      },
+      modelAllowlist: {
+        title: 'Danh sách cho phép model',
+        hint: 'Khi bật, các model ngoài danh sách cho phép sẽ bị từ chối với lỗi 404 model_not_found và các endpoint liệt kê model chỉ hiển thị model được cho phép. Các mục hỗ trợ ID model chính xác và wildcard * ở cuối. Lưu ý: Claude Code dùng các model thuộc nhóm haiku để thăm dò tiêu đề/tóm tắt và /messages/count_tokens cũng chịu sự kiểm soát của danh sách cho phép, vì vậy hãy chọn cả các model nhỏ cần dùng.',
+        loading: 'Đang tải các model ứng viên...',
+        empty: 'Không có model ứng viên; hãy thêm mục tùy chỉnh bên dưới',
+        selectedSummary: 'Đã chọn {selected} / {total}',
+        selectAll: 'Chọn tất cả',
+        invertSelection: 'Đảo ngược',
+        wildcardTag: 'wildcard',
+        customPlaceholder: 'Mục tùy chỉnh, ví dụ claude-* hoặc gpt-5.5-codex',
+        addCustom: 'Thêm',
+        emptySelectionError: 'Danh sách cho phép model đang bật; hãy chọn hoặc thêm ít nhất một model',
+        errors: {
+          empty: 'Vui lòng nhập một mục model',
+          invalidWildcard: 'Wildcard * chỉ được phép ở cuối mục',
+          duplicate: 'Mục này đã tồn tại',
+        },
+      },
+      codexModelsManifest: {
+        title: 'Tài khoản ghim cho danh sách model',
+        hint: 'Khi bật, các danh sách model thông thường và Codex Model Manifest sẽ được lấy từ các tài khoản ghim trước, sau đó hợp nhất và lọc bằng ánh xạ tài khoản cùng danh sách model của nhóm. Các tài khoản ghim bị giới hạn tốc độ hoặc quá tải vẫn được sử dụng.',
+        enable: 'Lấy danh sách model bằng các tài khoản cụ thể',
+        enabledHint: 'Các tài khoản bị giới hạn ở tài khoản OpenAI liên kết với nhóm này, tối đa 10 tài khoản.',
+        disabledHint: 'Đã tắt: danh sách thông thường dùng ánh xạ cục bộ hoặc mặc định; Codex dùng catalog cục bộ nếu được cấu hình, nếu không sẽ dùng cơ chế khám phá của scheduler.',
+        accounts: 'Tài khoản ghim',
+        searchPlaceholder: 'Tìm tài khoản (tài khoản OpenAI trong nhóm này)',
+        searchEmpty: 'Không có tài khoản nào khớp',
+        fallback: 'Chuyển về scheduler khi tất cả tài khoản ghim không khả dụng',
+        fallbackHint: 'Tắt: trả về 503 / lỗi upstream. Bật: chuyển về luồng scheduler hiện có.',
+        selectAtLeastOne: 'Hãy chọn ít nhất một tài khoản sau khi bật tài khoản ghim',
+      },
+    },
   },
 )
