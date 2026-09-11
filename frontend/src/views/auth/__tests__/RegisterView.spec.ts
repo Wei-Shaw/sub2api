@@ -130,6 +130,7 @@ describe('RegisterView invitation layout', () => {
     await flushPromises()
     await wrapper.get('#email').setValue('first@custom.example')
     await wrapper.get('#password').setValue('secret-123')
+    await wrapper.get('#confirm_password').setValue('secret-123')
     await wrapper.get('form').trigger('submit.prevent')
     await flushPromises()
 
@@ -155,6 +156,7 @@ describe('RegisterView invitation layout', () => {
     await flushPromises()
     await wrapper.get('#email').setValue('second@custom.example')
     await wrapper.get('#password').setValue('secret-123')
+    await wrapper.get('#confirm_password').setValue('secret-123')
     await wrapper.get('form').trigger('submit.prevent')
     await flushPromises()
 
@@ -175,6 +177,7 @@ describe('RegisterView invitation layout', () => {
     await flushPromises()
     await wrapper.get('#email').setValue('first@custom.example')
     await wrapper.get('#password').setValue('secret-123')
+    await wrapper.get('#confirm_password').setValue('secret-123')
     await wrapper.get('form').trigger('submit.prevent')
     await flushPromises()
 
@@ -195,6 +198,7 @@ describe('RegisterView invitation layout', () => {
     await flushPromises()
     await wrapper.get('#email').setValue('user@allowed.com')
     await wrapper.get('#password').setValue('secret-123')
+    await wrapper.get('#confirm_password').setValue('secret-123')
     await wrapper.get('form').trigger('submit.prevent')
     await flushPromises()
 
@@ -202,5 +206,42 @@ describe('RegisterView invitation layout', () => {
       expect.objectContaining({ email: 'user@allowed.com' })
     )
     expect(showErrorMock).not.toHaveBeenCalled()
+  })
+
+  it('blocks registration when confirmation password does not match', async () => {
+    getPublicSettingsMock.mockResolvedValueOnce({
+      ...publicSettings,
+      turnstile_enabled: false
+    })
+
+    const wrapper = mountRegister()
+    await flushPromises()
+    await wrapper.get('#email').setValue('user@example.com')
+    await wrapper.get('#password').setValue('secret-123')
+    await wrapper.get('#confirm_password').setValue('secret-456')
+    await wrapper.get('form').trigger('submit.prevent')
+    await flushPromises()
+
+    expect(registerMock).not.toHaveBeenCalled()
+    expect(showErrorMock).toHaveBeenCalledWith('auth.passwordsDoNotMatch')
+    expect(wrapper.get('#confirm_password').classes()).toContain('input-error')
+  })
+
+  it('blocks registration when confirmation password is empty', async () => {
+    getPublicSettingsMock.mockResolvedValueOnce({
+      ...publicSettings,
+      turnstile_enabled: false
+    })
+
+    const wrapper = mountRegister()
+    await flushPromises()
+    await wrapper.get('#email').setValue('user@example.com')
+    await wrapper.get('#password').setValue('secret-123')
+    await wrapper.get('form').trigger('submit.prevent')
+    await flushPromises()
+
+    expect(registerMock).not.toHaveBeenCalled()
+    expect(showErrorMock).toHaveBeenCalledWith('auth.confirmPasswordRequired')
+    expect(wrapper.get('#confirm_password').classes()).toContain('input-error')
   })
 })

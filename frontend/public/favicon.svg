@@ -1,19 +1,6 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" fill="none">
-  <defs>
-    <radialGradient id="ambient" cx="50%" cy="43%" r="60%">
-      <stop offset="0" stop-color="#DDEBFF" stop-opacity=".7"/>
-      <stop offset=".64" stop-color="#F5F8FF" stop-opacity=".25"/>
-      <stop offset="1" stop-color="#FFFFFF" stop-opacity="0"/>
-    </radialGradient>
-    <linearGradient id="moduleGradient" x1="92" y1="112" x2="412" y2="412" gradientUnits="userSpaceOnUse">
-      <stop offset="0" stop-color="#000000" stop-opacity="1"/>
-      <stop offset=".34" stop-color="#000000" stop-opacity=".86"/>
-      <stop offset=".7" stop-color="#000000" stop-opacity=".54"/>
-      <stop offset="1" stop-color="#000000" stop-opacity=".22"/>
-    </linearGradient>
-  </defs>
-  <circle cx="256" cy="256" r="198" fill="url(#ambient)"/>
-  <g fill="url(#moduleGradient)">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" fill="none" style="background:#000000">
+  <rect x="0" y="0" width="512" height="512" fill="#000000"/>
+  <g fill="#FFFFFF">
     <!-- Reference-inspired layout: 5 / 5 / 5 / 4 / 3, with fixed centers -->
     <rect x="-29" y="-29" width="58" height="58" rx="18" transform="translate(120 140)"/>
     <rect x="-29" y="-29" width="58" height="58" rx="18" transform="translate(190 140)"/>

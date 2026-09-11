@@ -44,7 +44,7 @@
             inputmode="numeric"
             maxlength="6"
             :disabled="isLoading"
-            class="input py-3 text-center font-mono text-xl tracking-[0.5em]"
+            class="input border-gray-300 py-3 text-center font-mono text-xl tracking-[0.5em] transition-none focus:border-black focus:ring-4 focus:ring-gray-300/30 dark:border-dark-600 dark:focus:border-white dark:focus:ring-gray-300/20"
             :class="{ 'input-error': errors.code }"
             placeholder="000000"
           />
@@ -54,13 +54,13 @@
         <!-- Code Status -->
         <div
           v-if="codeSent"
-          class="rounded-xl border border-green-200 bg-green-50 p-4 dark:border-green-800/50 dark:bg-green-900/20"
+          class="rounded-xl border border-gray-200 bg-gray-50 p-4 dark:border-dark-700 dark:bg-dark-800"
         >
           <div class="flex items-start gap-3">
             <div class="flex-shrink-0">
-              <Icon name="checkCircle" size="md" class="text-green-500" />
+              <Icon name="checkCircle" size="md" class="text-black dark:text-white" />
             </div>
-            <p class="text-sm text-green-700 dark:text-green-400">
+            <p class="text-sm text-gray-700 dark:text-gray-300">
               {{ t('auth.codeSentSuccess') }}
             </p>
           </div>
@@ -109,7 +109,7 @@
         <button
           type="submit"
           :disabled="isLoading || !verifyCode || (pendingOAuthCreateTurnstileRequired && !createAccountTurnstileToken)"
-          class="btn btn-primary w-full"
+          class="btn w-full bg-black text-white shadow-md shadow-black/20 hover:bg-gray-800 hover:shadow-lg hover:shadow-black/30 dark:bg-white dark:text-black dark:hover:bg-gray-200"
         >
           <svg
             v-if="isLoading"
