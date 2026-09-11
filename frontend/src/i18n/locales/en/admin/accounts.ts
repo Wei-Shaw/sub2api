@@ -173,6 +173,31 @@ export default {
           restoreDefaults: 'Restore defaults',
           fallback: 'Unmatched models → Chat Completions (/v1/chat/completions)',
         },
+        title: 'OpenCode Go usage',
+        panelHint: 'Usage windows reported by the upstream OpenCode Go account. Refreshed on demand or automatically when enabled.',
+        notRefreshed: 'Not refreshed',
+        refreshNow: 'Refresh usage',
+        autoRefresh: 'Automatic usage refresh',
+        autoRefreshHint: 'Runs only when the account switch and the global switch are both enabled.',
+        rolling: '5 hour',
+        rollingShort: '5h',
+        weekly: 'Week',
+        weeklyShort: '7d',
+        monthly: 'Month',
+        monthlyShort: '1m',
+        status: 'Status',
+        updatedAt: 'Updated',
+        ok: 'Current',
+        unauthorized: 'Session expired',
+        failed: 'Refresh failed',
+        windowWithReset: '{percent} used, resets {reset}',
+        loadFailed: 'Failed to load OpenCode Go usage settings',
+        autoRefreshFailed: 'Failed to update automatic usage refresh',
+        refreshSuccess: 'OpenCode Go usage refreshed',
+        refreshFailed: 'Failed to refresh OpenCode Go usage',
+        errors: {
+          OPENCODE_GO_USAGE_REFRESH_RATE_LIMITED: 'Refresh is limited. Try again in {retry_after_seconds} seconds.'
+        }
       },
       types: {
         oauth: 'OAuth',
@@ -297,33 +322,6 @@ export default {
           response_too_large: 'Settings page exceeded the response limit',
           invalid_html: 'Settings page format was not recognized',
           OLLAMA_CLOUD_USAGE_REFRESH_RATE_LIMITED: 'Refresh is limited. Try again in {retry_after_seconds} seconds.'
-        }
-      },
-      opencodeGo: {
-        title: 'OpenCode Go usage',
-        panelHint: 'Usage windows reported by the upstream OpenCode Go account. Refreshed on demand or automatically when enabled.',
-        notRefreshed: 'Not refreshed',
-        refreshNow: 'Refresh usage',
-        autoRefresh: 'Automatic usage refresh',
-        autoRefreshHint: 'Runs only when the account switch and the global switch are both enabled.',
-        rolling: '5 hour',
-        rollingShort: '5h',
-        weekly: 'Week',
-        weeklyShort: '7d',
-        monthly: 'Month',
-        monthlyShort: '1m',
-        status: 'Status',
-        updatedAt: 'Updated',
-        ok: 'Current',
-        unauthorized: 'Session expired',
-        failed: 'Refresh failed',
-        windowWithReset: '{percent} used, resets {reset}',
-        loadFailed: 'Failed to load OpenCode Go usage settings',
-        autoRefreshFailed: 'Failed to update automatic usage refresh',
-        refreshSuccess: 'OpenCode Go usage refreshed',
-        refreshFailed: 'Failed to refresh OpenCode Go usage',
-        errors: {
-          OPENCODE_GO_USAGE_REFRESH_RATE_LIMITED: 'Refresh is limited. Try again in {retry_after_seconds} seconds.'
         }
       },
       upstreamBilling: {
