@@ -161,3 +161,42 @@ func TestStartOfWeek_Boundaries(t *testing.T) {
 		})
 	}
 }
+
+func TestEffectiveWeeklyWindowStart(t *testing.T) {
+	if err := Init("UTC"); err != nil {
+		t.Fatalf("Init: %v", err)
+	}
+
+	adminReset := time.Date(2026, 7, 26, 18, 30, 0, 0, time.UTC) // Sunday
+	nextMonday := time.Date(2026, 7, 27, 10, 0, 0, 0, time.UTC)
+	calendarMonday := StartOfWeek(nextMonday)
+
+	t.Run("admin reset survives the next calendar boundary", func(t *testing.T) {
+		start, needsReset := EffectiveWeeklyWindowStart(&adminReset, nextMonday)
+		if needsReset || !start.Equal(adminReset) {
+			t.Fatalf("start=%v needsReset=%v, want preserved start=%v", start, needsReset, adminReset)
+		}
+	})
+
+	t.Run("rolling window advances in seven day periods", func(t *testing.T) {
+		now := adminReset.Add(8 * 24 * time.Hour)
+		start, needsReset := EffectiveWeeklyWindowStart(&adminReset, now)
+		want := adminReset.Add(7 * 24 * time.Hour)
+		if !needsReset || !start.Equal(want) {
+			t.Fatalf("start=%v needsReset=%v, want advanced start=%v", start, needsReset, want)
+		}
+	})
+
+	t.Run("missing or future start falls back to calendar week", func(t *testing.T) {
+		start, needsReset := EffectiveWeeklyWindowStart(nil, nextMonday)
+		if !needsReset || !start.Equal(calendarMonday) {
+			t.Fatalf("nil start=%v needsReset=%v, want calendar start=%v", start, needsReset, calendarMonday)
+		}
+
+		future := nextMonday.Add(time.Hour)
+		start, needsReset = EffectiveWeeklyWindowStart(&future, nextMonday)
+		if !needsReset || !start.Equal(calendarMonday) {
+			t.Fatalf("future start=%v needsReset=%v, want calendar start=%v", start, needsReset, calendarMonday)
+		}
+	})
+}
