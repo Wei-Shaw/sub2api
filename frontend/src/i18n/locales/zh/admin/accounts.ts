@@ -310,6 +310,8 @@ export default {
         kimi: 'Kimi',
         zhipu: 'Zhipu GLM',
         deepseek: 'DeepSeek',
+        minimax: 'MiniMax',
+        opencode_go: 'OpenCode',
       },
       cnProviders: {
         accountMode: {
@@ -332,15 +334,48 @@ export default {
           responses: 'Responses',
           responsesDesc: '供应商原生 Responses 端点，适配 Codex。',
         },
+        zhipuTeam: {
+          title: '团队版组织 / 项目 ID',
+          organization: '组织 ID（团队版可选）',
+          organizationPlaceholder: '团队版 Coding Plan 的组织 ID',
+          project: '项目 ID（团队版可选）',
+          projectPlaceholder: '团队版 Coding Plan 的项目 ID',
+          hint: '仅团队版 GLM Coding Plan 需要填写，填写后用量查询走团队版端点；个人版留空即可。获取方式点击左侧问号查看教程。',
+          help: {
+            title: '如何获取组织 / 项目 ID',
+            step1: '用团队版账号登录智谱开放平台（bigmodel.cn），进入「Coding Plan → 团队版 → 我的套餐」页面。',
+            step2: '按 F12 打开浏览器开发者工具，切换到「Network / 网络」标签，然后刷新页面。',
+            step3: '在 Network 的筛选框中输入 /api/biz/v1/organization，点击命中的请求（如 api_keys）。',
+            step4: '请求 URL 中 org- 开头的一段即组织 ID、proj_ 开头的一段即项目 ID（也可在 Request Headers 中查看 bigmodel-organization / bigmodel-project 的值），分别填入上方输入框。',
+            example: '示例：…/organization/org-0610bE2D…/projects/proj_0798F20…/api_keys → org-0610bE2D… 填「组织 ID」，proj_0798F20… 填「项目 ID」',
+          },
+        },
         balance: '余额 --',
-        window5h: '5 小时窗口',
-        windowWeekly: '每周窗口',
+        window5h: '5h',
+        windowWeekly: '7d',
+        windowMonthly: '月',
         probe: '查询',
         probeTooltip: '请求供应商额度端点，查询 5 小时 / 每周滚动窗口用量',
         balanceProbeTooltip: '请求供应商余额端点，查询账户余额',
         balanceLow: '余额不足',
         noBalanceEndpoint: '该平台暂无余额查询接口',
-        resetSoon: '即将重置',
+      },
+      opencodeGo: {
+        accountMode: {
+          zen: 'Zen',
+          zenDesc: '按量付费网关，消耗账户余额，按 Token 计费。',
+          go: 'GO',
+          goDesc: '订阅制网关，按 5 小时 / 周 / 月滚动用量窗口限流。',
+        },
+        protocolRules: {
+          title: '模型协议分流',
+          hint: '自适应模式下按模型匹配上游协议。支持精确 ID 或末尾 * 通配（如 grok-*、qwen*）；自上而下第一条命中生效；未命中走 Chat Completions。',
+          patternPlaceholder: 'grok-* 或 deepseek-v4-flash',
+          add: '添加规则',
+          remove: '删除规则',
+          restoreDefaults: '恢复默认',
+          fallback: '未命中以上规则 → Chat Completions（/v1/chat/completions）',
+        },
       },
       types: {
         oauth: 'OAuth',
@@ -464,7 +499,9 @@ export default {
         grokLastProbe: '探测 {time}',
         grokLastHeadersSeen: '响应头 {time}',
         passiveSampled: '被动采样',
-        activeQuery: '查询'
+        activeQuery: '查询',
+        estimatedTotalCost: '预计总费用 ${cost}',
+        estimatedTotalCostTooltip: '根据当前窗口费用和使用率估算达到 100% 使用率时的总费用'
       },
       openaiQuotaReset: {
         count: '次数',
@@ -629,6 +666,14 @@ export default {
       apiKeyRequired: 'API Key *',
       apiKeyPlaceholder: 'sk-ant-api03-...',
       apiKeyHint: '您的 Claude Console API Key',
+      upstreamRequestIdHeader: '上游ID',
+      upstreamRequestIdHeaderPlaceholder: '留空不记录',
+      upstreamRequestIdHeaderHelp: {
+        intro: '填写直接上游在响应头中声明请求标识的头名，记录到用量明细的“上游ID”列；留空则不记录。',
+        examplesTitle: '常见取值',
+        sub2apiNote: '对应对方用量明细的请求ID列',
+        official: '{platform} 官方 API'
+      },
       // OpenAI specific hints
       openai: {
         baseUrlHint: '留空使用官方 OpenAI API',
@@ -669,6 +714,9 @@ export default {
         responsesModeForceResponses: '强制 Responses',
         responsesModeForceChatCompletions: '强制 Chat Completions',
         responsesModeTextDisabledHint: '未启用 Responses / Chat Completions 端点时，此设置不适用。',
+        imagesUrlToB64Json: '生图结果 URL 转 base64',
+        imagesUrlToB64JsonDesc:
+          '仅对 OpenAI API Key 的 Images 非流式响应生效。上游返回的图片缺少 b64_json 但带 url 时，网关下载该 url 并以 base64 回填 b64_json（url 保留），兼容按官方接口实现的客户端；下载失败则原样返回。',
         endpointCapabilities: '端点能力',
         endpointCapabilitiesDesc:
           '用于调度筛选。文本端点会跟随上方 Responses API 支持显示为 Responses、Chat Completions 或自动模式；Embeddings 独立控制 /v1/embeddings。',
@@ -799,6 +847,8 @@ export default {
       modelRestriction: '模型限制（可选）',
       modelWhitelist: '模型白名单',
       modelMapping: '模型映射',
+      fromModel: '请求模型',
+      toModel: '目标模型',
       selectAllowedModels: '选择允许的模型。留空则支持所有模型。',
       mapRequestModels: '将请求模型映射到实际模型。左边是请求的模型，右边是发送到 API 的实际模型。',
       selectedModels: '已选择 {count} 个模型',
@@ -819,6 +869,8 @@ export default {
       syncUpstreamModelsEmpty: '上游没有返回可同步的模型',
       syncUpstreamModelsFailed: '同步上游模型失败',
       syncUpstreamModelsError: '同步上游模型失败：{message}',
+      syncUpstreamModelsMetadataIncomplete: '模型 ID 已同步，但未能更新任何能力元数据。',
+      syncUpstreamModelsMetadataPartial: '已更新部分模型的能力元数据；其余模型能力仍不完整。',
       clearAllModels: '清除所有模型',
       customModelName: '自定义模型名称',
       enterCustomModelName: '输入自定义模型名称',
@@ -884,6 +936,30 @@ export default {
       grokClientToolCache: {
         title: '客户端工具缓存（可能改变自动工具选择）',
         hint: '仅对已识别为 Free 的 Grok OAuth 账号生效，默认会为 Codex、Trae 等客户端函数工具请求启用上游提示缓存；如不接受自动工具选择行为，可关闭此开关退出。'
+      },
+      grokMediaEligibility: {
+        title: '媒体生成资格',
+        hint: '控制该 Grok OAuth 账号是否可被图片和视频生成请求选中。',
+        auto: '自动判断',
+        enabled: '强制启用',
+        disabled: '强制禁用',
+        current: '当前判定：',
+        eligible: '可用',
+        ineligible: '不可用',
+        loading: '正在读取媒体资格…',
+        loadFailed: '无法读取媒体资格',
+        autoHint: '自动判断只会清除手工覆盖，不会主动触发媒体请求。',
+        forceEnableWarning: '强制启用会绕过自动资格检查，仅应对已确认支持生图/生视频的账号使用。',
+        partialSave: '账号其他配置可能已保存，但媒体资格未更新，请重试。',
+        reasons: {
+          eligible: '已确认付费资格',
+          billing_inconclusive: 'Billing 信息不明确',
+          billing_forbidden: 'Billing 接口拒绝访问',
+          billing_free_tier: 'Free 账号',
+          billing_unobserved: '尚未探测到 Billing',
+          override_enabled: '手工强制启用',
+          override_disabled: '手工强制禁用'
+        }
       },
       autoPauseOnExpired: '过期自动暂停调度',
       autoPauseOnExpiredDesc: '启用后，账号过期将自动暂停调度',
@@ -998,6 +1074,7 @@ export default {
       billingRateMultiplierHint: '0 表示不计费，仅影响账号计费',
       expiresAt: '过期时间',
       expiresAtHint: '留空表示不过期',
+      expiresAtTimezoneHint: '输入按浏览器本地时区（{timezone}）解释。',
       higherPriorityFirst: '数值越小优先级越高',
       mixedScheduling: '在 /v1/messages 中使用',
       mixedSchedulingHint: '启用后可参与 Anthropic/Gemini 分组的调度',

@@ -428,7 +428,8 @@ func convertChatToolsToResponses(tools []ChatTool, functions []ChatFunction) []R
 	var out []ResponsesTool
 
 	for _, t := range tools {
-		if strings.EqualFold(strings.TrimSpace(t.Type), "x_search") {
+		toolType := strings.ToLower(strings.TrimSpace(t.Type))
+		if toolType == "x_search" {
 			out = append(out, ResponsesTool{
 				Type:                     "x_search",
 				AllowedXHandles:          t.AllowedXHandles,
@@ -438,6 +439,10 @@ func convertChatToolsToResponses(tools []ChatTool, functions []ChatFunction) []R
 				EnableImageUnderstanding: t.EnableImageUnderstanding,
 				EnableVideoUnderstanding: t.EnableVideoUnderstanding,
 			})
+			continue
+		}
+		if toolType == "web_search" || toolType == "code_execution" {
+			out = append(out, ResponsesTool{Type: toolType})
 			continue
 		}
 		if t.Type != "function" || t.Function == nil {

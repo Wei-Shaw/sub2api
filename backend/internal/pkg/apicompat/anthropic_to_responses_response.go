@@ -5,7 +5,6 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
-	"strings"
 	"time"
 )
 
@@ -22,10 +21,13 @@ func AnthropicToResponsesResponse(resp *AnthropicResponse) *ResponsesResponse {
 		id = generateResponsesID()
 	}
 
+	// Anthropic responses carry no creation timestamp, so stamp now — the same
+	// synthesize-what-the-client-requires rule the generated id above follows.
 	out := &ResponsesResponse{
-		ID:     id,
-		Object: "response",
-		Model:  resp.Model,
+		ID:        id,
+		Object:    "response",
+		CreatedAt: time.Now().Unix(),
+		Model:     resp.Model,
 	}
 
 	var outputs []ResponsesOutput
@@ -64,20 +66,6 @@ func AnthropicToResponsesResponse(resp *AnthropicResponse) *ResponsesResponse {
 				Arguments: args,
 				Status:    "completed",
 			})
-		case "server_tool_use":
-			if block.Name != "web_search" {
-				continue
-			}
-			outputs = append(outputs, ResponsesOutput{
-				Type:   "web_search_call",
-				ID:     toResponsesWebSearchItemID(block.ID),
-				Status: "completed",
-				Action: anthropicWebSearchAction(block.Input),
-			})
-		case "web_search_tool_result":
-			// The hosted result is consumed by Anthropic itself. Responses exposes
-			// the lifecycle as one web_search_call item, so the paired result block
-			// does not become a second output item.
 		}
 	}
 
@@ -163,16 +151,7 @@ type AnthropicEventToResponsesState struct {
 	// Current output tracking
 	OutputIndex     int
 	CurrentItemID   string
-	CurrentItemType string // "message" | "function_call" | "reasoning" | "web_search_call"
-	// CurrentAnthropicBlockType distinguishes the server_tool_use block from
-	// its following web_search_tool_result block while they share one Responses
-	// web_search_call output item.
-	CurrentAnthropicBlockType string
-	// IgnoredContentBlockStops records late duplicate web_search_tool_result
-	// blocks by Anthropic content-block index. A single boolean is insufficient
-	// when multiple late results are interleaved with other blocks.
-	IgnoredContentBlockStops map[int]bool
-	IgnoredUnindexedStops    int
+	CurrentItemType string // "message" | "function_call" | "reasoning"
 
 	// For message output: accumulate text parts
 	ContentIndex int
@@ -301,7 +280,16 @@ func anthToResHandleContentBlockStart(evt *AnthropicStreamEvent, state *Anthropi
 
 	switch evt.ContentBlock.Type {
 	case "thinking":
+		// 开新 item 前必须先关掉在开的那个，与下面的 tool_use 分支一致。
+		// 一个 message item 在它的 text 块 content_block_stop 时是刻意保持打开的
+		// （同一 item 里可能还有后续 text 块），所以 thinking 块到来时它仍然开着：
+		// 不关就直接被 CurrentItemType/CurrentItemID 覆盖，累积在 CurrentContent
+		// 里的助手文本既不会进 state.Outputs，也拿不到 output_item.done，
+		// response.completed 于是只带 reasoning——客户端看到的是「成功但无输出」。
+		// 交错思考（interleaved-thinking，本仓库在 anthropic-beta 透传里明确支持）
+		// 会稳定产生 text → thinking 这个顺序。
 		events = append(events, closeCurrentResponsesItem(state)...)
+
 		state.CurrentItemID = generateItemID()
 		state.CurrentItemType = "reasoning"
 		state.ContentIndex = 0
@@ -317,7 +305,11 @@ func anthToResHandleContentBlockStart(evt *AnthropicStreamEvent, state *Anthropi
 	case "text":
 		// If we don't have an open message item, open one
 		if state.CurrentItemType != "message" {
+			// 走到这里时 CurrentItemType 只可能是 ""（前一个 reasoning/function_call
+			// 已在自己的 content_block_stop 里关闭）；保留这次关闭是为了让三个分支
+			// 的「开新 item 前先关旧的」保持同一条不变式，而不是留一个仅 text 例外。
 			events = append(events, closeCurrentResponsesItem(state)...)
+
 			state.CurrentItemID = generateItemID()
 			state.CurrentItemType = "message"
 			state.ContentIndex = 0
@@ -368,58 +360,6 @@ func anthToResHandleContentBlockStart(evt *AnthropicStreamEvent, state *Anthropi
 				Status: "in_progress",
 			},
 		}))
-
-	case "server_tool_use":
-		if evt.ContentBlock.Name != "web_search" {
-			return nil
-		}
-		events = append(events, closeCurrentResponsesItem(state)...)
-
-		state.CurrentItemID = toResponsesWebSearchItemID(evt.ContentBlock.ID)
-		state.CurrentItemType = "web_search_call"
-		state.CurrentAnthropicBlockType = "server_tool_use"
-		state.CurrentArgs = initialAnthropicWebSearchInput(evt.ContentBlock.Input)
-
-		events = append(events, makeResponsesEvent(state, "response.output_item.added", &ResponsesStreamEvent{
-			OutputIndex: state.OutputIndex,
-			Item: &ResponsesOutput{
-				Type:   "web_search_call",
-				ID:     state.CurrentItemID,
-				Status: "in_progress",
-			},
-		}))
-
-	case "web_search_tool_result":
-		searchID := toResponsesWebSearchItemID(evt.ContentBlock.ToolUseID)
-		// Anthropic-compatible upstreams may deliver the result after an
-		// interleaved thinking/text block has already closed the search item.
-		// The result belongs to that completed item; do not reopen a second
-		// web_search_call with the same id and an empty action.
-		if hasCompletedResponsesWebSearchItem(state, searchID) {
-			if evt.Index != nil {
-				if state.IgnoredContentBlockStops == nil {
-					state.IgnoredContentBlockStops = make(map[int]bool)
-				}
-				state.IgnoredContentBlockStops[*evt.Index] = true
-			} else {
-				state.IgnoredUnindexedStops++
-			}
-			return nil
-		}
-		if state.CurrentItemType != "web_search_call" {
-			events = append(events, closeCurrentResponsesItem(state)...)
-			state.CurrentItemID = searchID
-			state.CurrentItemType = "web_search_call"
-			events = append(events, makeResponsesEvent(state, "response.output_item.added", &ResponsesStreamEvent{
-				OutputIndex: state.OutputIndex,
-				Item: &ResponsesOutput{
-					Type:   "web_search_call",
-					ID:     state.CurrentItemID,
-					Status: "in_progress",
-				},
-			}))
-		}
-		state.CurrentAnthropicBlockType = "web_search_tool_result"
 	}
 
 	return events
@@ -459,13 +399,6 @@ func anthToResHandleContentBlockDelta(evt *AnthropicStreamEvent, state *Anthropi
 		if evt.Delta.PartialJSON == "" {
 			return nil
 		}
-		if state.CurrentItemType == "web_search_call" {
-			state.CurrentArgs = appendAnthropicWebSearchInput(state.CurrentArgs, evt.Delta.PartialJSON)
-			return nil
-		}
-		if state.CurrentItemType != "function_call" {
-			return nil
-		}
 		state.CurrentArgs += evt.Delta.PartialJSON
 		return []ResponsesStreamEvent{makeResponsesEvent(state, "response.function_call_arguments.delta", &ResponsesStreamEvent{
 			OutputIndex: state.OutputIndex,
@@ -484,14 +417,6 @@ func anthToResHandleContentBlockDelta(evt *AnthropicStreamEvent, state *Anthropi
 }
 
 func anthToResHandleContentBlockStop(evt *AnthropicStreamEvent, state *AnthropicEventToResponsesState) []ResponsesStreamEvent {
-	if evt.Index != nil && state.IgnoredContentBlockStops[*evt.Index] {
-		delete(state.IgnoredContentBlockStops, *evt.Index)
-		return nil
-	}
-	if evt.Index == nil && state.IgnoredUnindexedStops > 0 {
-		state.IgnoredUnindexedStops--
-		return nil
-	}
 	switch state.CurrentItemType {
 	case "reasoning":
 		// Emit reasoning summary done + output item done
@@ -524,31 +449,29 @@ func anthToResHandleContentBlockStop(evt *AnthropicStreamEvent, state *Anthropic
 		// item itself stays open since more blocks may follow.
 		text := state.TextAccum
 		state.TextAccum = ""
+		contentIndex := state.ContentIndex
 		state.CurrentContent = append(state.CurrentContent, ResponsesContentPart{Type: "output_text", Text: text})
+		// 关掉一个 part 就推进 content_index：上面那句注释说的「item 保持打开，
+		// 因为后面可能还有块」正是这里的触发条件。不推进的话，同一 item 里第二个
+		// text 块会再发一次 content_part.added(content_index=0)，与第一个 part 撞在
+		// 同一下标上——SDK 的累积式 stream helper 按 content[content_index] 写入，
+		// 后一个 part 直接覆盖前一个，可见文本丢失。
+		// 只在这里推进：新 item 的 content_index 由 closeCurrentResponsesItem 归 0。
+		state.ContentIndex++
 		return []ResponsesStreamEvent{
 			makeResponsesEvent(state, "response.output_text.done", &ResponsesStreamEvent{
 				OutputIndex:  state.OutputIndex,
-				ContentIndex: state.ContentIndex,
+				ContentIndex: contentIndex,
 				ItemID:       state.CurrentItemID,
 				Text:         text,
 			}),
 			makeResponsesEvent(state, "response.content_part.done", &ResponsesStreamEvent{
 				OutputIndex:  state.OutputIndex,
-				ContentIndex: state.ContentIndex,
+				ContentIndex: contentIndex,
 				ItemID:       state.CurrentItemID,
 				Part:         &ResponsesContentPart{Type: "output_text", Text: text},
 			}),
 		}
-
-	case "web_search_call":
-		// Anthropic emits server_tool_use and web_search_tool_result as two
-		// consecutive content blocks. Keep the Responses item open after the
-		// first block and complete it only after the result block (or at stream
-		// finalization if an upstream omits the result block).
-		if state.CurrentAnthropicBlockType == "server_tool_use" {
-			return nil
-		}
-		return closeCurrentResponsesItem(state)
 	}
 
 	return nil
@@ -626,8 +549,6 @@ func closeCurrentResponsesItem(state *AnthropicEventToResponsesState) []Response
 		if state.CurrentSummary != "" {
 			item.Summary = []ResponsesSummary{{Type: "summary_text", Text: state.CurrentSummary}}
 		}
-	case "web_search_call":
-		item.Action = anthropicWebSearchAction(json.RawMessage(state.CurrentArgs))
 	}
 	state.Outputs = append(state.Outputs, item)
 
@@ -636,7 +557,6 @@ func closeCurrentResponsesItem(state *AnthropicEventToResponsesState) []Response
 	state.CurrentItemID = ""
 	state.CurrentCallID = ""
 	state.CurrentName = ""
-	state.CurrentAnthropicBlockType = ""
 	state.CurrentContent = nil
 	state.CurrentArgs = ""
 	state.CurrentSummary = ""
@@ -650,18 +570,6 @@ func closeCurrentResponsesItem(state *AnthropicEventToResponsesState) []Response
 	})}
 }
 
-func hasCompletedResponsesWebSearchItem(state *AnthropicEventToResponsesState, id string) bool {
-	if state == nil || strings.TrimSpace(id) == "" {
-		return false
-	}
-	for _, output := range state.Outputs {
-		if output.Type == "web_search_call" && output.ID == id {
-			return true
-		}
-	}
-	return false
-}
-
 func makeResponsesCreatedEvent(state *AnthropicEventToResponsesState) ResponsesStreamEvent {
 	seq := state.SequenceNumber
 	state.SequenceNumber++
@@ -669,11 +577,12 @@ func makeResponsesCreatedEvent(state *AnthropicEventToResponsesState) ResponsesS
 		Type:           "response.created",
 		SequenceNumber: seq,
 		Response: &ResponsesResponse{
-			ID:     state.ResponseID,
-			Object: "response",
-			Model:  state.Model,
-			Status: "in_progress",
-			Output: []ResponsesOutput{},
+			ID:        state.ResponseID,
+			Object:    "response",
+			CreatedAt: state.Created,
+			Model:     state.Model,
+			Status:    "in_progress",
+			Output:    []ResponsesOutput{},
 		},
 	}
 }
@@ -720,6 +629,7 @@ func makeResponsesCompletedEvent(
 		Response: &ResponsesResponse{
 			ID:                state.ResponseID,
 			Object:            "response",
+			CreatedAt:         state.Created,
 			Model:             state.Model,
 			Status:            status,
 			Output:            outputs,
@@ -749,52 +659,4 @@ func generateItemID() string {
 	b := make([]byte, 12)
 	_, _ = rand.Read(b)
 	return "item_" + hex.EncodeToString(b)
-}
-
-func toResponsesWebSearchItemID(id string) string {
-	id = strings.TrimSpace(id)
-	if strings.HasPrefix(id, "ws_") {
-		return id
-	}
-	if id == "" {
-		b := make([]byte, 12)
-		_, _ = rand.Read(b)
-		return "ws_" + hex.EncodeToString(b)
-	}
-	return "ws_" + id
-}
-
-func anthropicWebSearchAction(input json.RawMessage) *WebSearchAction {
-	action := &WebSearchAction{Type: "search"}
-	if len(input) == 0 {
-		return action
-	}
-	var payload struct {
-		Query string `json:"query"`
-	}
-	if err := json.Unmarshal(input, &payload); err == nil {
-		action.Query = payload.Query
-	}
-	return action
-}
-
-func initialAnthropicWebSearchInput(input json.RawMessage) string {
-	trimmed := strings.TrimSpace(string(input))
-	if trimmed == "" || trimmed == "null" || trimmed == "{}" {
-		return ""
-	}
-	return trimmed
-}
-
-func appendAnthropicWebSearchInput(current, fragment string) string {
-	if strings.TrimSpace(fragment) == "" {
-		return current
-	}
-	if current == "" || current == "{}" {
-		return fragment
-	}
-	if action := anthropicWebSearchAction(json.RawMessage(current)); action.Query != "" {
-		return current
-	}
-	return current + fragment
 }

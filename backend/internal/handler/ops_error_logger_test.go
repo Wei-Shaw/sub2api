@@ -1244,6 +1244,15 @@ func TestClassifyOpsLocalBusinessLimitErrorsExcludedFromSLA(t *testing.T) {
 			wantPhase:   "request",
 		},
 		{
+			name:        "group reasoning effort over limit deny",
+			errType:     "permission_error",
+			message:     `reasoning effort "high" exceeds this group's limit of "low"`,
+			code:        "",
+			status:      http.StatusForbidden,
+			wantErrType: "permission_error",
+			wantPhase:   "request",
+		},
+		{
 			name:        "route token counting platform unsupported",
 			errType:     "not_found_error",
 			message:     "Token counting is not supported for this platform",
@@ -1501,6 +1510,12 @@ func TestClassifyOpsUpstreamAuthTextStillCountsForSLA(t *testing.T) {
 		{
 			name:    "provider feature gate shaped error",
 			message: "Image generation is not enabled for this group",
+			code:    "403",
+			status:  http.StatusForbidden,
+		},
+		{
+			name:    "provider reasoning effort over limit shaped error",
+			message: `reasoning effort "high" exceeds this group's limit of "low"`,
 			code:    "403",
 			status:  http.StatusForbidden,
 		},
@@ -1938,4 +1953,46 @@ func TestGetOpsAPIKeyPrefersPrimaryContextKey(t *testing.T) {
 	got := getOpsAPIKey(c)
 	require.NotNil(t, got)
 	require.Equal(t, int64(1), got.ID, "已鉴权请求应优先使用正式 api key")
+}
+
+// 分组模型白名单入口拒绝：业务限流原因复用 local_model_configuration，但
+// 携带 ingress 拒绝原因 model_not_allowed，阶段应保持自然分类（request /
+// client），不落到 routing。
+func TestClassifyOpsIngressModelNotAllowedKeepsRequestPhase(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	c, _ := gin.CreateTestContext(httptest.NewRecorder())
+	service.MarkOpsClientBusinessLimited(c, service.OpsClientBusinessLimitedReasonLocalModelConfiguration)
+	middleware2.MarkIngressRejected(c, middleware2.IngressRejectModelNotAllowed)
+
+	phase, isBusinessLimited, errorOwner, errorSource := classifyOpsErrorLog(
+		c,
+		"not_found_error",
+		`Model "gpt-4.1" is not available for this group`,
+		"model_not_found",
+		http.StatusNotFound,
+	)
+
+	require.Equal(t, "request", phase)
+	require.True(t, isBusinessLimited)
+	require.Equal(t, "client", errorOwner)
+	require.Equal(t, "client_request", errorSource)
+}
+
+// 调度阶段的账号模型映射拒绝（无 ingress 标记）仍归类为 routing。
+func TestClassifyOpsLocalModelConfigurationWithoutIngressMarkStaysRouting(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	c, _ := gin.CreateTestContext(httptest.NewRecorder())
+	service.MarkOpsClientBusinessLimited(c, service.OpsClientBusinessLimitedReasonLocalModelConfiguration)
+
+	phase, isBusinessLimited, errorOwner, _ := classifyOpsErrorLog(
+		c,
+		"model_not_found",
+		"Model \"gpt-missing\" is not supported by any configured account in this group",
+		"",
+		http.StatusNotFound,
+	)
+
+	require.Equal(t, "routing", phase)
+	require.True(t, isBusinessLimited)
+	require.Equal(t, "platform", errorOwner)
 }

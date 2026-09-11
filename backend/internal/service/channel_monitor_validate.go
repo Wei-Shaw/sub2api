@@ -120,8 +120,7 @@ func validateJitter(jitterSec, intervalSec int) error {
 
 // validateEndpoint 校验 endpoint：
 //   - scheme 强制 https（拒绝 http，避免明文凭证 + 部分 SSRF 利用面）
-//   - 必须为 origin（无 path/query/fragment），防止用户填 https://api.openai.com/v1
-//     导致 joinURL 拼出 /v1/v1/chat/completions
+//   - 允许上游路径前缀（如 /anthropic），不允许 query/fragment
 //   - hostname 不能是 localhost/metadata 等已知元数据 hostname
 //   - 解析所有 IP，任一落在 loopback/RFC1918/link-local/ULA 段即拒绝（防 SSRF）
 //
@@ -141,9 +140,6 @@ func validateEndpoint(ep string) error {
 	if u.Host == "" {
 		return ErrChannelMonitorInvalidEndpoint
 	}
-	if u.Path != "" && u.Path != "/" {
-		return ErrChannelMonitorEndpointPath
-	}
 	if u.RawQuery != "" || u.Fragment != "" {
 		return ErrChannelMonitorEndpointPath
 	}
@@ -161,8 +157,8 @@ func validateEndpoint(ep string) error {
 	return nil
 }
 
-// normalizeEndpoint 去除前后空白与末尾 `/`，保证存储统一为 origin。
-// validateEndpoint 已确保格式合法（仅 origin），这里只做最终归一化。
+// normalizeEndpoint 去除前后空白与末尾 `/`，保留上游路径前缀。
+// validateEndpoint 已确保格式合法，这里只做最终归一化。
 func normalizeEndpoint(ep string) string {
 	ep = strings.TrimSpace(ep)
 	ep = strings.TrimRight(ep, "/")
@@ -211,22 +207,24 @@ func normalizeMonitorPrimaryModel(provider, checkMode, model string) string {
 // monitorAccountQuotaCapability 校验关联账号能否充当配额数据源，与
 // fetchUncached 的路由一一对应（coding→CN 额度端点 / payg→CN 余额端点 /
 // 其余→AccountUsageService）。在创建/更新期拦截注定运行期永久 error 的组合：
-//   - kimi/zhipu/deepseek coding：GetCodingPlanProvider 须识别为 kimi/zhipu
-//     （deepseek coding、自定义域名 kimi coding 无法路由额度端点）
-//   - kimi/zhipu/deepseek payg：仅 kimi/deepseek 有公开余额端点（zhipu payg 无）
+//   - kimi/zhipu/deepseek/minimax coding：GetCodingPlanProvider 须识别官方域名
+//     （deepseek coding、自定义中转、minimax payg 无法路由额度端点）
+//   - kimi/zhipu/deepseek/minimax payg：仅 kimi/deepseek 有公开余额端点
 //   - anthropic：OAuth / Setup Token（API-Key 型无 usage 通道，永久 error）
 //   - openai：OAuth（API-Key 型无 usage 通道）
 //   - gemini/grok/antigravity：本地统计/值通道降级，不会永久 error，放行
 func monitorAccountQuotaCapability(account *Account) error {
 	switch account.Platform {
-	case PlatformKimi, PlatformZhipu, PlatformDeepseek:
+	case PlatformOpenCodeGo:
+		return nil
+	case PlatformKimi, PlatformZhipu, PlatformDeepseek, PlatformMiniMax:
 		if account.IsCodingPlan() {
-			if p := account.GetCodingPlanProvider(); p != PlatformKimi && p != PlatformZhipu {
+			if p := account.GetCodingPlanProvider(); p != PlatformKimi && p != PlatformZhipu && p != PlatformMiniMax {
 				return ErrChannelMonitorAccountNotSupportable
 			}
 			return nil
 		}
-		if account.Platform == PlatformZhipu {
+		if account.Platform == PlatformZhipu || account.Platform == PlatformMiniMax {
 			return ErrChannelMonitorAccountNotSupportable
 		}
 		return nil

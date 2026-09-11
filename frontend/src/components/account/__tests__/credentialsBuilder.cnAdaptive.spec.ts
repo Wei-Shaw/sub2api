@@ -1,18 +1,28 @@
 import { describe, expect, it } from 'vitest'
 
-import { defaultCNAdaptiveBaseUrls } from '../credentialsBuilder'
+import { cnSupportsNativeResponses, defaultCNAdaptiveBaseUrls } from '../credentialsBuilder'
+
+describe('cnSupportsNativeResponses', () => {
+  it('is true for DeepSeek, Kimi, and MiniMax', () => {
+    expect(cnSupportsNativeResponses('deepseek')).toBe(true)
+    expect(cnSupportsNativeResponses('kimi')).toBe(true)
+    expect(cnSupportsNativeResponses('minimax')).toBe(true)
+    expect(cnSupportsNativeResponses('zhipu')).toBe(false)
+    expect(cnSupportsNativeResponses('openai')).toBe(false)
+  })
+})
 
 describe('defaultCNAdaptiveBaseUrls', () => {
   it('resolves Kimi endpoints by account mode', () => {
     expect(defaultCNAdaptiveBaseUrls('kimi', 'payg')).toEqual({
       chat_completions: 'https://api.moonshot.cn/v1',
       anthropic: 'https://api.moonshot.cn/anthropic',
-      responses: ''
+      responses: 'https://api.moonshot.cn/v1'
     })
     expect(defaultCNAdaptiveBaseUrls('kimi', 'coding')).toEqual({
       chat_completions: 'https://api.kimi.com/coding/v1',
       anthropic: 'https://api.kimi.com/coding',
-      responses: ''
+      responses: 'https://api.kimi.com/coding/v1'
     })
   })
 
@@ -35,5 +45,15 @@ describe('defaultCNAdaptiveBaseUrls', () => {
       anthropic: 'https://api.deepseek.com/anthropic',
       responses: 'https://api.deepseek.com'
     })
+  })
+
+  it('uses the same MiniMax CN endpoints for payg and coding', () => {
+    const expected = {
+      chat_completions: 'https://api.minimaxi.com/v1',
+      anthropic: 'https://api.minimaxi.com/anthropic',
+      responses: 'https://api.minimaxi.com/v1'
+    }
+    expect(defaultCNAdaptiveBaseUrls('minimax', 'payg')).toEqual(expected)
+    expect(defaultCNAdaptiveBaseUrls('minimax', 'coding')).toEqual(expected)
   })
 })

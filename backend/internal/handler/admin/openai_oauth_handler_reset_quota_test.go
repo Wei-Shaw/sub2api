@@ -48,6 +48,12 @@ func (s *openAIQuotaWorkflowStub) CacheResetCreditsSnapshot(ctx context.Context,
 	return s.cacheErr
 }
 
+func (s *openAIQuotaWorkflowStub) CachePostResetSnapshot(ctx context.Context, _ int64, _ *service.OpenAIQuotaUsage) error {
+	s.cacheCalls++
+	s.cacheCtxErr = ctx.Err()
+	return s.cacheErr
+}
+
 type openAIAccountStateRecovererStub struct {
 	err         error
 	calls       int

@@ -1,326 +1,6 @@
 package apicompat
 
-import (
-	"encoding/json"
-	"testing"
-
-	"github.com/stretchr/testify/require"
-)
-
-func TestAnthropicToResponsesResponse_PreservesServerWebSearchCall(t *testing.T) {
-	resp := &AnthropicResponse{
-		ID:    "msg_search",
-		Model: "claude-sonnet-5",
-		Content: []AnthropicContentBlock{
-			{
-				Type:  "server_tool_use",
-				ID:    "srv_1",
-				Name:  "web_search",
-				Input: json.RawMessage(`{"query":"OpenCode Go pricing"}`),
-			},
-			{
-				Type:      "web_search_tool_result",
-				ToolUseID: "srv_1",
-				Content:   json.RawMessage(`[]`),
-			},
-			{Type: "text", Text: "The current price is $10/month."},
-		},
-		StopReason: AnthropicStopReasonPtr("end_turn"),
-	}
-
-	out := AnthropicToResponsesResponse(resp)
-	if len(out.Output) < 2 {
-		t.Fatalf("output = %+v, want web_search_call and message", out.Output)
-	}
-
-	search := out.Output[0]
-	if search.Type != "web_search_call" {
-		t.Fatalf("output[0].type = %q, want web_search_call", search.Type)
-	}
-	if search.Status != "completed" {
-		t.Errorf("search status = %q, want completed", search.Status)
-	}
-	if search.Action == nil || search.Action.Type != "search" || search.Action.Query != "OpenCode Go pricing" {
-		t.Errorf("search action = %+v, want search query", search.Action)
-	}
-}
-
-func TestAnthropicEventToResponses_ServerSearchDoesNotEmitFunctionArguments(t *testing.T) {
-	state := NewAnthropicEventToResponsesState()
-	var events []ResponsesStreamEvent
-	feed := func(evt *AnthropicStreamEvent) {
-		events = append(events, AnthropicEventToResponsesEvents(evt, state)...)
-	}
-
-	start := 0
-	feed(&AnthropicStreamEvent{Type: "message_start", Message: &AnthropicResponse{ID: "msg_search", Model: "claude-sonnet-5"}})
-	feed(&AnthropicStreamEvent{
-		Type: "content_block_start", Index: &start,
-		ContentBlock: &AnthropicContentBlock{
-			Type: "server_tool_use", ID: "srv_1", Name: "web_search",
-			Input: json.RawMessage(`{}`),
-		},
-	})
-	feed(&AnthropicStreamEvent{
-		Type: "content_block_delta", Index: &start,
-		Delta: &AnthropicDelta{Type: "input_json_delta", PartialJSON: `{"query":"OpenCode `},
-	})
-	feed(&AnthropicStreamEvent{
-		Type: "content_block_delta", Index: &start,
-		Delta: &AnthropicDelta{Type: "input_json_delta", PartialJSON: `Go pricing"}`},
-	})
-	feed(&AnthropicStreamEvent{Type: "content_block_stop", Index: &start})
-
-	result := 1
-	feed(&AnthropicStreamEvent{
-		Type: "content_block_start", Index: &result,
-		ContentBlock: &AnthropicContentBlock{Type: "web_search_tool_result", ToolUseID: "srv_1", Content: json.RawMessage(`[]`)},
-	})
-	feed(&AnthropicStreamEvent{Type: "content_block_stop", Index: &result})
-	feed(&AnthropicStreamEvent{Type: "message_stop"})
-
-	var sawAdded, sawDone, sawCompleted, sawFunctionDelta bool
-	for _, evt := range events {
-		switch evt.Type {
-		case "response.output_item.added":
-			if evt.Item != nil && evt.Item.Type == "web_search_call" {
-				sawAdded = true
-			}
-		case "response.output_item.done":
-			if evt.Item != nil && evt.Item.Type == "web_search_call" {
-				sawDone = true
-				if evt.Item.Action == nil || evt.Item.Action.Query != "OpenCode Go pricing" {
-					t.Errorf("completed search item = %+v, want query", evt.Item)
-				}
-			}
-		case "response.function_call_arguments.delta":
-			sawFunctionDelta = true
-		case "response.completed":
-			if evt.Response != nil && len(evt.Response.Output) == 1 && evt.Response.Output[0].Type == "web_search_call" {
-				sawCompleted = true
-			}
-		}
-	}
-	if !sawAdded || !sawDone {
-		t.Fatalf("events = %+v, want added/done web_search_call lifecycle", events)
-	}
-	if sawFunctionDelta {
-		t.Fatalf("events = %+v, server search must not emit function_call_arguments.delta", events)
-	}
-	if !sawCompleted {
-		t.Fatalf("events = %+v, response.completed must carry the web_search_call", events)
-	}
-}
-
-func TestAnthropicEventToResponses_ServerSearchWithoutResultClosesBeforeNextItem(t *testing.T) {
-	tests := []struct {
-		name         string
-		nextType     string
-		wantNextType string
-		delta        *AnthropicDelta
-	}{
-		{name: "text", nextType: "text", wantNextType: "message", delta: &AnthropicDelta{Type: "text_delta", Text: "answer"}},
-		{name: "thinking", nextType: "thinking", wantNextType: "reasoning", delta: &AnthropicDelta{Type: "thinking_delta", Thinking: "reason"}},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			state := NewAnthropicEventToResponsesState()
-			var events []ResponsesStreamEvent
-			feed := func(evt *AnthropicStreamEvent) {
-				events = append(events, AnthropicEventToResponsesEvents(evt, state)...)
-			}
-
-			searchIndex := 0
-			feed(&AnthropicStreamEvent{Type: "message_start", Message: &AnthropicResponse{ID: "msg_missing_result", Model: "claude-sonnet-5"}})
-			feed(&AnthropicStreamEvent{Type: "content_block_start", Index: &searchIndex, ContentBlock: &AnthropicContentBlock{
-				Type: "server_tool_use", ID: "srv_missing", Name: "web_search", Input: json.RawMessage(`{}`),
-			}})
-			feed(&AnthropicStreamEvent{Type: "content_block_delta", Index: &searchIndex, Delta: &AnthropicDelta{
-				Type: "input_json_delta", PartialJSON: `{"query":"missing result"}`,
-			}})
-			feed(&AnthropicStreamEvent{Type: "content_block_stop", Index: &searchIndex})
-
-			nextIndex := 1
-			feed(&AnthropicStreamEvent{Type: "content_block_start", Index: &nextIndex, ContentBlock: &AnthropicContentBlock{Type: tt.nextType}})
-			feed(&AnthropicStreamEvent{Type: "content_block_delta", Index: &nextIndex, Delta: tt.delta})
-			feed(&AnthropicStreamEvent{Type: "content_block_stop", Index: &nextIndex})
-			feed(&AnthropicStreamEvent{Type: "message_stop"})
-
-			var done []ResponsesStreamEvent
-			var completed *ResponsesResponse
-			for _, evt := range events {
-				if evt.Type == "response.output_item.done" {
-					done = append(done, evt)
-				}
-				if evt.Type == "response.completed" {
-					completed = evt.Response
-				}
-			}
-			require.Len(t, done, 2)
-			require.Equal(t, 0, done[0].OutputIndex)
-			require.Equal(t, "web_search_call", done[0].Item.Type)
-			require.Equal(t, "missing result", done[0].Item.Action.Query)
-			require.Equal(t, 1, done[1].OutputIndex)
-			require.Equal(t, tt.wantNextType, done[1].Item.Type)
-			require.NotNil(t, completed)
-			require.Len(t, completed.Output, 2)
-			require.Equal(t, "web_search_call", completed.Output[0].Type)
-			require.Equal(t, tt.wantNextType, completed.Output[1].Type)
-		})
-	}
-}
-
-func TestAnthropicEventToResponses_LateServerSearchResultDoesNotDuplicateClosedItem(t *testing.T) {
-	state := NewAnthropicEventToResponsesState()
-	var events []ResponsesStreamEvent
-	feed := func(evt *AnthropicStreamEvent) {
-		events = append(events, AnthropicEventToResponsesEvents(evt, state)...)
-	}
-
-	searchIndex := 0
-	feed(&AnthropicStreamEvent{Type: "message_start", Message: &AnthropicResponse{ID: "msg_late_result", Model: "claude-sonnet-5"}})
-	feed(&AnthropicStreamEvent{Type: "content_block_start", Index: &searchIndex, ContentBlock: &AnthropicContentBlock{
-		Type: "server_tool_use", ID: "srv_late", Name: "web_search", Input: json.RawMessage(`{}`),
-	}})
-	feed(&AnthropicStreamEvent{Type: "content_block_delta", Index: &searchIndex, Delta: &AnthropicDelta{
-		Type: "input_json_delta", PartialJSON: `{"query":"late result"}`,
-	}})
-	feed(&AnthropicStreamEvent{Type: "content_block_stop", Index: &searchIndex})
-
-	// Some Anthropic-compatible upstreams interleave a thinking block before the
-	// matching web_search_tool_result. Opening that block closes the pending
-	// Responses search item so the stream can continue.
-	thinkingIndex := 1
-	feed(&AnthropicStreamEvent{Type: "content_block_start", Index: &thinkingIndex, ContentBlock: &AnthropicContentBlock{Type: "thinking"}})
-	feed(&AnthropicStreamEvent{Type: "content_block_delta", Index: &thinkingIndex, Delta: &AnthropicDelta{Type: "thinking_delta", Thinking: "checking sources"}})
-	feed(&AnthropicStreamEvent{Type: "content_block_stop", Index: &thinkingIndex})
-
-	// The late result belongs to the already-closed search. It must not create a
-	// second web_search_call with the same id and an empty action.
-	resultIndex := 2
-	feed(&AnthropicStreamEvent{Type: "content_block_start", Index: &resultIndex, ContentBlock: &AnthropicContentBlock{
-		Type: "web_search_tool_result", ToolUseID: "srv_late", Content: json.RawMessage(`[]`),
-	}})
-	feed(&AnthropicStreamEvent{Type: "content_block_stop", Index: &resultIndex})
-
-	textIndex := 3
-	feed(&AnthropicStreamEvent{Type: "content_block_start", Index: &textIndex, ContentBlock: &AnthropicContentBlock{Type: "text"}})
-	feed(&AnthropicStreamEvent{Type: "content_block_delta", Index: &textIndex, Delta: &AnthropicDelta{Type: "text_delta", Text: "answer"}})
-	feed(&AnthropicStreamEvent{Type: "content_block_stop", Index: &textIndex})
-	feed(&AnthropicStreamEvent{Type: "message_stop"})
-
-	searchDone := 0
-	var completed *ResponsesResponse
-	for _, evt := range events {
-		if evt.Type == "response.output_item.done" && evt.Item != nil && evt.Item.Type == "web_search_call" {
-			searchDone++
-			require.NotNil(t, evt.Item.Action)
-			require.Equal(t, "late result", evt.Item.Action.Query)
-		}
-		if evt.Type == "response.completed" {
-			completed = evt.Response
-		}
-	}
-	require.Equal(t, 1, searchDone, "late result must not emit a duplicate web_search_call")
-	require.NotNil(t, completed)
-	completedSearches := 0
-	for _, output := range completed.Output {
-		if output.Type == "web_search_call" {
-			completedSearches++
-		}
-	}
-	require.Equal(t, 1, completedSearches)
-}
-
-func TestAnthropicEventToResponses_LateServerSearchResultDoesNotStopOpenMessage(t *testing.T) {
-	state := NewAnthropicEventToResponsesState()
-	var events []ResponsesStreamEvent
-	feed := func(evt *AnthropicStreamEvent) {
-		events = append(events, AnthropicEventToResponsesEvents(evt, state)...)
-	}
-
-	searchIndex := 0
-	feed(&AnthropicStreamEvent{Type: "message_start", Message: &AnthropicResponse{ID: "msg_open_message", Model: "claude-sonnet-5"}})
-	feed(&AnthropicStreamEvent{Type: "content_block_start", Index: &searchIndex, ContentBlock: &AnthropicContentBlock{
-		Type: "server_tool_use", ID: "srv_open_message", Name: "web_search", Input: json.RawMessage(`{}`),
-	}})
-	feed(&AnthropicStreamEvent{Type: "content_block_delta", Index: &searchIndex, Delta: &AnthropicDelta{
-		Type: "input_json_delta", PartialJSON: `{"query":"open message"}`,
-	}})
-	feed(&AnthropicStreamEvent{Type: "content_block_stop", Index: &searchIndex})
-
-	textIndex := 1
-	feed(&AnthropicStreamEvent{Type: "content_block_start", Index: &textIndex, ContentBlock: &AnthropicContentBlock{Type: "text"}})
-	feed(&AnthropicStreamEvent{Type: "content_block_delta", Index: &textIndex, Delta: &AnthropicDelta{Type: "text_delta", Text: "answer"}})
-	feed(&AnthropicStreamEvent{Type: "content_block_stop", Index: &textIndex})
-
-	// The message item remains open after a text block stop. A late duplicate
-	// search result must consume only its own stop event, not close the message.
-	resultIndex := 2
-	feed(&AnthropicStreamEvent{Type: "content_block_start", Index: &resultIndex, ContentBlock: &AnthropicContentBlock{
-		Type: "web_search_tool_result", ToolUseID: "srv_open_message", Content: json.RawMessage(`[]`),
-	}})
-	feed(&AnthropicStreamEvent{Type: "content_block_stop", Index: &resultIndex})
-	feed(&AnthropicStreamEvent{Type: "message_stop"})
-
-	var textDone []ResponsesStreamEvent
-	var completed *ResponsesResponse
-	for _, evt := range events {
-		if evt.Type == "response.output_text.done" {
-			textDone = append(textDone, evt)
-		}
-		if evt.Type == "response.completed" {
-			completed = evt.Response
-		}
-	}
-	require.Len(t, textDone, 1, "late result must not emit a second output_text.done")
-	require.Equal(t, "answer", textDone[0].Text)
-	require.NotNil(t, completed)
-	require.Len(t, completed.Output, 2)
-	require.Equal(t, "web_search_call", completed.Output[0].Type)
-	require.Equal(t, "message", completed.Output[1].Type)
-}
-
-func TestAnthropicEventToResponses_LateSearchStopMatchesItsBlockIndex(t *testing.T) {
-	state := NewAnthropicEventToResponsesState()
-	var events []ResponsesStreamEvent
-	feed := func(evt *AnthropicStreamEvent) {
-		events = append(events, AnthropicEventToResponsesEvents(evt, state)...)
-	}
-
-	searchIndex := 0
-	feed(&AnthropicStreamEvent{Type: "message_start", Message: &AnthropicResponse{ID: "msg_indexed_late", Model: "claude-sonnet-5"}})
-	feed(&AnthropicStreamEvent{Type: "content_block_start", Index: &searchIndex, ContentBlock: &AnthropicContentBlock{
-		Type: "server_tool_use", ID: "srv_indexed_late", Name: "web_search", Input: json.RawMessage(`{"query":"indexed late"}`),
-	}})
-	feed(&AnthropicStreamEvent{Type: "content_block_stop", Index: &searchIndex})
-
-	textIndex := 1
-	feed(&AnthropicStreamEvent{Type: "content_block_start", Index: &textIndex, ContentBlock: &AnthropicContentBlock{Type: "text"}})
-	feed(&AnthropicStreamEvent{Type: "content_block_delta", Index: &textIndex, Delta: &AnthropicDelta{Type: "text_delta", Text: "answer"}})
-	feed(&AnthropicStreamEvent{Type: "content_block_stop", Index: &textIndex})
-
-	lateIndex := 2
-	feed(&AnthropicStreamEvent{Type: "content_block_start", Index: &lateIndex, ContentBlock: &AnthropicContentBlock{
-		Type: "web_search_tool_result", ToolUseID: "srv_indexed_late", Content: json.RawMessage(`[]`),
-	}})
-	// An unrelated stop arrives first. It must not consume the late-result
-	// marker because its block index differs.
-	feed(&AnthropicStreamEvent{Type: "content_block_stop", Index: &textIndex})
-	feed(&AnthropicStreamEvent{Type: "content_block_stop", Index: &lateIndex})
-	feed(&AnthropicStreamEvent{Type: "message_stop"})
-
-	var textDone []ResponsesStreamEvent
-	for _, evt := range events {
-		if evt.Type == "response.output_text.done" {
-			textDone = append(textDone, evt)
-		}
-	}
-	require.Len(t, textDone, 2)
-	require.Equal(t, "answer", textDone[0].Text)
-	require.Equal(t, "", textDone[1].Text)
-}
+import "testing"
 
 // TestAnthropicEventToResponses_TextEmitsContentPart pins that a message text
 // stream emits response.content_part.added, and that it precedes the first
@@ -503,5 +183,214 @@ func TestAnthropicEventToResponses_ToolCallCompletedCarriesArguments(t *testing.
 	}
 	if fc.Name != "get_weather" {
 		t.Errorf("name = %q, want get_weather", fc.Name)
+	}
+}
+
+// TestAnthropicEventToResponses_ThinkingAfterTextKeepsMessageOutput pins that a
+// thinking block arriving after a text block closes the open message item
+// instead of silently replacing it.
+//
+// Why: a message item is deliberately left open when its text block stops
+// (more text blocks may follow in the same item). content_block_start therefore
+// has to close whatever is open before starting a new item — tool_use already
+// did, thinking did not, so it overwrote CurrentItemType/CurrentItemID and the
+// accumulated CurrentContent never reached state.Outputs. response.completed
+// then carried only the reasoning item and the client saw a successful response
+// with no assistant text. Interleaved thinking (anthropic-beta
+// interleaved-thinking-2025-05-14, forwarded by this gateway) produces exactly
+// this text → thinking ordering.
+func TestAnthropicEventToResponses_ThinkingAfterTextKeepsMessageOutput(t *testing.T) {
+	state := NewAnthropicEventToResponsesState()
+	state.Model = "claude-sonnet-4-5"
+
+	var events []ResponsesStreamEvent
+	feed := func(evt *AnthropicStreamEvent) {
+		events = append(events, AnthropicEventToResponsesEvents(evt, state)...)
+	}
+
+	i0, i1 := 0, 1
+	feed(&AnthropicStreamEvent{Type: "message_start", Message: &AnthropicResponse{ID: "msg_1"}})
+	feed(&AnthropicStreamEvent{Type: "content_block_start", Index: &i0, ContentBlock: &AnthropicContentBlock{Type: "text"}})
+	feed(&AnthropicStreamEvent{Type: "content_block_delta", Index: &i0, Delta: &AnthropicDelta{Type: "text_delta", Text: "answer"}})
+	feed(&AnthropicStreamEvent{Type: "content_block_stop", Index: &i0})
+	feed(&AnthropicStreamEvent{Type: "content_block_start", Index: &i1, ContentBlock: &AnthropicContentBlock{Type: "thinking"}})
+	feed(&AnthropicStreamEvent{Type: "content_block_delta", Index: &i1, Delta: &AnthropicDelta{Type: "thinking_delta", Thinking: "hmm"}})
+	feed(&AnthropicStreamEvent{Type: "content_block_stop", Index: &i1})
+	feed(&AnthropicStreamEvent{Type: "message_stop"})
+
+	var completed *ResponsesStreamEvent
+	for i := range events {
+		if events[i].Type == "response.completed" {
+			completed = &events[i]
+		}
+	}
+	if completed == nil || completed.Response == nil {
+		t.Fatalf("response.completed was not emitted")
+	}
+	outputs := completed.Response.Output
+	if len(outputs) != 2 {
+		t.Fatalf("response.completed carries %d output items, want 2 (message + reasoning): %+v", len(outputs), outputs)
+	}
+	if outputs[0].Type != "message" {
+		t.Fatalf("output[0].type = %q, want message", outputs[0].Type)
+	}
+	if len(outputs[0].Content) != 1 || outputs[0].Content[0].Text != "answer" {
+		t.Errorf("assistant text lost: output[0].content = %+v", outputs[0].Content)
+	}
+	if outputs[1].Type != "reasoning" {
+		t.Errorf("output[1].type = %q, want reasoning", outputs[1].Type)
+	}
+
+	// The two items must also occupy distinct output_index values; sharing one
+	// index is how the reasoning item used to land on top of the message item.
+	var addedIndexes []int
+	for _, evt := range events {
+		if evt.Type == "response.output_item.added" {
+			addedIndexes = append(addedIndexes, evt.OutputIndex)
+		}
+	}
+	if len(addedIndexes) != 2 || addedIndexes[0] == addedIndexes[1] {
+		t.Errorf("output_item.added indexes = %v, want two distinct values", addedIndexes)
+	}
+}
+
+// TestAnthropicEventToResponses_MultipleTextBlocksAdvanceContentIndex pins that
+// each text block within one message item gets its own content_index.
+//
+// Why: content_index was assigned when the item opened and never advanced, so a
+// second text block re-emitted content_part.added at index 0. The OpenAI SDK's
+// accumulating stream helper writes parts at output.content[content_index], so
+// the second part overwrote the first and the earlier text disappeared from the
+// accumulated response.
+func TestAnthropicEventToResponses_MultipleTextBlocksAdvanceContentIndex(t *testing.T) {
+	state := NewAnthropicEventToResponsesState()
+	state.Model = "claude-sonnet-4-5"
+
+	var events []ResponsesStreamEvent
+	feed := func(evt *AnthropicStreamEvent) {
+		events = append(events, AnthropicEventToResponsesEvents(evt, state)...)
+	}
+
+	i0, i1 := 0, 1
+	feed(&AnthropicStreamEvent{Type: "message_start", Message: &AnthropicResponse{ID: "msg_1"}})
+	feed(&AnthropicStreamEvent{Type: "content_block_start", Index: &i0, ContentBlock: &AnthropicContentBlock{Type: "text"}})
+	feed(&AnthropicStreamEvent{Type: "content_block_delta", Index: &i0, Delta: &AnthropicDelta{Type: "text_delta", Text: "first"}})
+	feed(&AnthropicStreamEvent{Type: "content_block_stop", Index: &i0})
+	feed(&AnthropicStreamEvent{Type: "content_block_start", Index: &i1, ContentBlock: &AnthropicContentBlock{Type: "text"}})
+	feed(&AnthropicStreamEvent{Type: "content_block_delta", Index: &i1, Delta: &AnthropicDelta{Type: "text_delta", Text: "second"}})
+	feed(&AnthropicStreamEvent{Type: "content_block_stop", Index: &i1})
+	feed(&AnthropicStreamEvent{Type: "message_stop"})
+
+	var partAdded []int
+	for _, evt := range events {
+		if evt.Type == "response.content_part.added" {
+			partAdded = append(partAdded, evt.ContentIndex)
+		}
+	}
+	if len(partAdded) != 2 {
+		t.Fatalf("content_part.added emitted %d times, want 2", len(partAdded))
+	}
+	if partAdded[0] != 0 || partAdded[1] != 1 {
+		t.Errorf("content_part.added indexes = %v, want [0 1]", partAdded)
+	}
+
+	// Every delta/done for a part must carry that part's index, otherwise the
+	// SDK appends the text to the wrong slot.
+	byIndex := map[int]string{}
+	for _, evt := range events {
+		if evt.Type == "response.output_text.delta" {
+			byIndex[evt.ContentIndex] += evt.Delta
+		}
+	}
+	if byIndex[0] != "first" || byIndex[1] != "second" {
+		t.Errorf("output_text.delta grouped by content_index = %v, want {0:first 1:second}", byIndex)
+	}
+}
+
+// TestAnthropicEventToResponses_ItemLifecycleIsBalanced is the invariant behind
+// both regressions above: the converter must never leave an item that was
+// announced with response.output_item.added without a matching
+// response.output_item.done, and the terminal event must carry one output entry
+// per announced item. Any future block type that forgets to close the open item
+// breaks this, whatever the symptom looks like.
+func TestAnthropicEventToResponses_ItemLifecycleIsBalanced(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		blocks []*AnthropicContentBlock
+	}{
+		{"text then thinking", []*AnthropicContentBlock{{Type: "text"}, {Type: "thinking"}}},
+		{"thinking then text", []*AnthropicContentBlock{{Type: "thinking"}, {Type: "text"}}},
+		{"text then tool_use", []*AnthropicContentBlock{{Type: "text"}, {Type: "tool_use", ID: "toolu_1", Name: "t"}}},
+		{"text thinking text", []*AnthropicContentBlock{{Type: "text"}, {Type: "thinking"}, {Type: "text"}}},
+		{"thinking text tool_use", []*AnthropicContentBlock{{Type: "thinking"}, {Type: "text"}, {Type: "tool_use", ID: "toolu_2", Name: "t"}}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			state := NewAnthropicEventToResponsesState()
+			state.Model = "claude-sonnet-4-5"
+
+			var events []ResponsesStreamEvent
+			feed := func(evt *AnthropicStreamEvent) {
+				events = append(events, AnthropicEventToResponsesEvents(evt, state)...)
+			}
+
+			feed(&AnthropicStreamEvent{Type: "message_start", Message: &AnthropicResponse{ID: "msg_1"}})
+			for i, block := range tc.blocks {
+				idx := i
+				feed(&AnthropicStreamEvent{Type: "content_block_start", Index: &idx, ContentBlock: block})
+				switch block.Type {
+				case "text":
+					feed(&AnthropicStreamEvent{Type: "content_block_delta", Index: &idx, Delta: &AnthropicDelta{Type: "text_delta", Text: "t"}})
+				case "thinking":
+					feed(&AnthropicStreamEvent{Type: "content_block_delta", Index: &idx, Delta: &AnthropicDelta{Type: "thinking_delta", Thinking: "r"}})
+				case "tool_use":
+					feed(&AnthropicStreamEvent{Type: "content_block_delta", Index: &idx, Delta: &AnthropicDelta{Type: "input_json_delta", PartialJSON: "{}"}})
+				}
+				feed(&AnthropicStreamEvent{Type: "content_block_stop", Index: &idx})
+			}
+			feed(&AnthropicStreamEvent{Type: "message_stop"})
+
+			openIDs := map[string]int{}
+			var order []string
+			for _, evt := range events {
+				switch evt.Type {
+				case "response.output_item.added":
+					if evt.Item == nil {
+						t.Fatalf("output_item.added without item")
+					}
+					openIDs[evt.Item.ID]++
+					order = append(order, evt.Item.ID)
+				case "response.output_item.done":
+					if evt.Item == nil {
+						t.Fatalf("output_item.done without item")
+					}
+					openIDs[evt.Item.ID]--
+				}
+			}
+			for id, n := range openIDs {
+				if n != 0 {
+					t.Errorf("item %s: output_item.added/done imbalance %+d", id, n)
+				}
+			}
+
+			var completed *ResponsesStreamEvent
+			for i := range events {
+				if events[i].Type == "response.completed" {
+					completed = &events[i]
+				}
+			}
+			if completed == nil || completed.Response == nil {
+				t.Fatalf("response.completed was not emitted")
+			}
+			if len(completed.Response.Output) != len(order) {
+				t.Fatalf("response.completed carries %d outputs, want %d (one per announced item)",
+					len(completed.Response.Output), len(order))
+			}
+			for i, id := range order {
+				if completed.Response.Output[i].ID != id {
+					t.Errorf("output[%d].id = %q, want %q (announcement order must be preserved)",
+						i, completed.Response.Output[i].ID, id)
+				}
+			}
+		})
 	}
 }

@@ -74,7 +74,7 @@ func (c *openAIImageOutputCounter) AddSSEData(data []byte) {
 		c.addImageOutputItem(root.Get("item"))
 	case "response.completed", "response.done":
 		c.addOutputArray(root.Get("response.output"))
-	case "image_generation.completed":
+	case "image_generation.completed", "image_edit.completed":
 		if item := root.Get("item"); item.Exists() {
 			c.addImageOutputItem(item)
 			return
@@ -138,7 +138,7 @@ func (c *openAIImageOutputCounter) addImageOutputItem(item gjson.Result) {
 		return
 	}
 	itemType := strings.TrimSpace(item.Get("type").String())
-	if itemType != "" && itemType != "image_generation_call" && itemType != "image_generation.completed" {
+	if itemType != "" && itemType != "image_generation_call" && itemType != "image_generation.completed" && itemType != "image_edit.completed" {
 		return
 	}
 	if strings.Contains(strings.ToLower(item.Raw), "partial_image") {

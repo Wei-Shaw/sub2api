@@ -2,103 +2,11 @@ package apicompat
 
 import (
 	"encoding/json"
-	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
 	"github.com/tidwall/gjson"
 )
-
-func TestRestoreResponsesClientToolPayload_CodeModeExecShellWrapperEscapesCommand(t *testing.T) {
-	command := "Write-Output \"a; b\"\nGet-Location"
-	arguments, err := json.Marshal(map[string]string{"input": command})
-	require.NoError(t, err)
-	payload, err := json.Marshal(map[string]any{
-		"output": []any{map[string]any{
-			"type": "function_call", "name": "exec", "arguments": string(arguments),
-		}},
-	})
-	require.NoError(t, err)
-
-	restored, changed, err := RestoreResponsesClientToolPayload(payload, ResponsesClientToolMapping{
-		CustomTools:       map[string]bool{"exec": true},
-		CodeModeExecTools: map[string]bool{"exec": true},
-	})
-	require.NoError(t, err)
-	require.True(t, changed)
-	input := gjson.GetBytes(restored, "output.0.input").String()
-
-	const prefix = "const result = await tools.exec_command({cmd: "
-	const suffix = "});\ntext(result.output);"
-	require.True(t, strings.HasPrefix(input, prefix))
-	require.True(t, strings.HasSuffix(input, suffix))
-	encodedCommand := strings.TrimSuffix(strings.TrimPrefix(input, prefix), suffix)
-	var decoded string
-	require.NoError(t, json.Unmarshal([]byte(encodedCommand), &decoded))
-	require.Equal(t, command, decoded)
-}
-
-func TestRestoreResponsesClientToolPayload_MapsClaudeWebSearchAliasToWebRun(t *testing.T) {
-	payload := []byte(`{"output":[{"type":"function_call","name":"web_search","call_id":"call_web","arguments":"{\"search_query\":[{\"q\":\"OpenCode Go\"}]}"}]}`)
-	mapping := ResponsesClientToolMapping{
-		NamespaceTools: map[string]ResponsesNamespaceName{
-			"web__run":   {Namespace: "web", Name: "run"},
-			"web_search": {Namespace: "web", Name: "run"},
-		},
-	}
-
-	restored, changed, err := RestoreResponsesClientToolPayload(payload, mapping)
-	require.NoError(t, err)
-	require.True(t, changed)
-	require.JSONEq(t,
-		`{"output":[{"type":"function_call","name":"run","namespace":"web","call_id":"call_web","arguments":"{\"search_query\":[{\"q\":\"OpenCode Go\"}]}"}]}`,
-		string(restored),
-	)
-}
-
-func TestAdaptResponsesClientTools_RegistersClaudeWebSearchAlias(t *testing.T) {
-	req := map[string]any{
-		"tools": []any{
-			map[string]any{
-				"type": "namespace", "name": "web",
-				"tools": []any{map[string]any{"type": "function", "name": "run"}},
-			},
-		},
-	}
-
-	mapping, changed, err := AdaptResponsesClientTools(req)
-	require.NoError(t, err)
-	require.True(t, changed)
-	require.Equal(t, ResponsesNamespaceName{Namespace: "web", Name: "run"}, mapping.NamespaceTools["web__run"])
-	require.Equal(t, ResponsesNamespaceName{Namespace: "web", Name: "run"}, mapping.NamespaceTools["web_search"])
-}
-
-func TestAdaptResponsesClientTools_DoesNotAliasDeclaredCustomWebSearch(t *testing.T) {
-	req := map[string]any{
-		"tools": []any{
-			map[string]any{"type": "custom", "name": "web_search"},
-			map[string]any{
-				"type": "namespace", "name": "web",
-				"tools": []any{map[string]any{"type": "function", "name": "run"}},
-			},
-		},
-	}
-
-	mapping, changed, err := AdaptResponsesClientTools(req)
-	require.NoError(t, err)
-	require.True(t, changed)
-	require.True(t, mapping.CustomTools["web_search"])
-	require.NotContains(t, mapping.NamespaceTools, "web_search")
-
-	payload := []byte(`{"output":[{"type":"function_call","name":"web_search","call_id":"call_web","arguments":"{\"input\":\"query\"}"}]}`)
-	restored, restoredChanged, err := RestoreResponsesClientToolPayload(payload, mapping)
-	require.NoError(t, err)
-	require.True(t, restoredChanged)
-	require.Equal(t, "custom_tool_call", gjson.GetBytes(restored, "output.0.type").String())
-	require.Equal(t, "web_search", gjson.GetBytes(restored, "output.0.name").String())
-	require.Equal(t, "query", gjson.GetBytes(restored, "output.0.input").String())
-	require.False(t, gjson.GetBytes(restored, "output.0.namespace").Exists())
-}
 
 func TestAdaptResponsesClientTools_LowersDeclarationsHistoryChoiceAndNamespaces(t *testing.T) {
 	req := map[string]any{
@@ -140,14 +48,14 @@ func TestAdaptResponsesClientTools_LowersDeclarationsHistoryChoiceAndNamespaces(
 	input := requireResponsesClientToolValue[[]any](t, req["input"])
 	customCall := requireResponsesClientToolValue[map[string]any](t, input[0])
 	require.Equal(t, "function_call", customCall["type"])
-	require.NotContains(t, customCall, "id")
+	require.Equal(t, "fc_client", customCall["id"])
 	require.JSONEq(t, `{"input":"dir"}`, requireResponsesClientToolValue[string](t, customCall["arguments"]))
 	customOutput := requireResponsesClientToolValue[map[string]any](t, input[1])
 	require.Equal(t, "function_call_output", customOutput["type"])
 	require.NotContains(t, customOutput, "id")
 	searchCall := requireResponsesClientToolValue[map[string]any](t, input[2])
 	require.Equal(t, "function_call", searchCall["type"])
-	require.NotContains(t, searchCall, "id")
+	require.Equal(t, "fc_client", searchCall["id"])
 	require.Equal(t, toolSearchProxyName, searchCall["name"])
 	require.JSONEq(t, `{"query":"git"}`, requireResponsesClientToolValue[string](t, searchCall["arguments"]))
 	searchOutput := requireResponsesClientToolValue[map[string]any](t, input[3])
@@ -183,23 +91,6 @@ func TestStripResponsesDeferredToolFlags_PreservesFlagsWithBuiltInToolSearch(t *
 
 	require.False(t, stripResponsesDeferredToolFlags(tools))
 	require.Equal(t, true, requireResponsesClientToolValue[map[string]any](t, tools[1])["defer_loading"])
-}
-
-func TestAdaptResponsesClientTools_RecordsFunctionNamesForAliasCollisionChecks(t *testing.T) {
-	req := map[string]any{
-		"tools": []any{
-			map[string]any{"type": "custom", "name": "exec"},
-			map[string]any{"type": "function", "name": "functions__exec"},
-			map[string]any{"type": "namespace", "name": "functions", "tools": []any{map[string]any{"type": "function", "name": "wait"}}},
-		},
-	}
-
-	mapping, changed, err := AdaptResponsesClientTools(req)
-	require.NoError(t, err)
-	require.True(t, changed)
-	require.True(t, mapping.CustomTools["exec"])
-	require.True(t, mapping.FunctionTools["functions__exec"])
-	require.Equal(t, ResponsesNamespaceName{Namespace: "functions", Name: "wait"}, mapping.NamespaceTools["functions__wait"])
 }
 
 func TestAdaptResponsesClientTools_LowersDiscoveredToolSearchOutput(t *testing.T) {
@@ -569,7 +460,55 @@ func TestAdaptResponsesClientToolsWithInheritedMapping_LowersFollowupHistoryWith
 	output := requireResponsesClientToolValue[map[string]any](t, items[1])
 	require.Equal(t, "function_call_output", output["type"])
 	require.NotContains(t, output, "id")
-	require.JSONEq(t, `[{"text":"ok","type":"input_text"}]`, requireResponsesClientToolValue[string](t, output["output"]))
+	require.Equal(t, []any{map[string]any{"type": "input_text", "text": "ok"}}, output["output"])
+}
+
+func TestAdaptResponsesClientTools_NormalizesCustomToolOutput(t *testing.T) {
+	tests := []struct {
+		name       string
+		output     any
+		wantOutput any
+	}{
+		{
+			name: "supported content parts remain an array",
+			output: []any{
+				map[string]any{"type": "input_text", "text": "ok"},
+				map[string]any{"type": "input_image", "image_url": "https://example.com/image.png"},
+				map[string]any{"type": "input_file", "file_id": "file_123"},
+			},
+			wantOutput: []any{
+				map[string]any{"type": "input_text", "text": "ok"},
+				map[string]any{"type": "input_image", "image_url": "https://example.com/image.png"},
+				map[string]any{"type": "input_file", "file_id": "file_123"},
+			},
+		},
+		{name: "ordinary object is stringified", output: map[string]any{"ok": true}, wantOutput: `{"ok":true}`},
+		{name: "arbitrary array is stringified", output: []any{"ok"}, wantOutput: `["ok"]`},
+		{name: "empty array is stringified", output: []any{}, wantOutput: `[]`},
+		{name: "mixed array is stringified", output: []any{map[string]any{"type": "input_text", "text": "ok"}, "bad"}, wantOutput: `[{"text":"ok","type":"input_text"},"bad"]`},
+		{name: "unknown content type is stringified", output: []any{map[string]any{"type": "output_text", "text": "bad"}}, wantOutput: `[{"text":"bad","type":"output_text"}]`},
+		{name: "whitespace-padded content type is stringified", output: []any{map[string]any{"type": " input_text ", "text": "bad"}}, wantOutput: `[{"text":"bad","type":" input_text "}]`},
+		{name: "missing content type is stringified", output: []any{map[string]any{"text": "bad"}}, wantOutput: `[{"text":"bad"}]`},
+		{name: "non-string content type is stringified", output: []any{map[string]any{"type": 1}}, wantOutput: `[{"type":1}]`},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			req := map[string]any{
+				"tools": []any{map[string]any{"type": "custom", "name": "exec"}},
+				"input": []any{map[string]any{
+					"type": "custom_tool_call_output", "call_id": "call_1", "output": tc.output,
+				}},
+			}
+
+			_, changed, err := AdaptResponsesClientTools(req)
+			require.NoError(t, err)
+			require.True(t, changed)
+			item := requireResponsesClientToolValue[map[string]any](t, requireResponsesClientToolValue[[]any](t, req["input"])[0])
+			require.Equal(t, "function_call_output", item["type"])
+			require.Equal(t, tc.wantOutput, item["output"])
+		})
+	}
 }
 
 func TestAdaptResponsesClientToolsWithInheritedMapping_PromotesOmittedToolsDiscoveryIntoEffectiveDeclarations(t *testing.T) {
@@ -669,91 +608,6 @@ func TestRestoreResponsesClientToolPayload_RestoresClientAndNamespaceCalls(t *te
 	require.JSONEq(t, `{"id":"resp","output":[{"type":"custom_tool_call","id":"i1","call_id":"c1","name":"exec","input":"dir"},{"type":"tool_search_call","id":"i2","call_id":"s1","execution":"client","arguments":{"query":"git"}},{"type":"function_call","id":"i3","call_id":"n1","name":"send","namespace":"team","arguments":"{}"}]}`, string(restored))
 }
 
-func TestRestoreResponsesClientToolPayload_FunctionsNamespaceAliasRestoresCustomTool(t *testing.T) {
-	mapping := ResponsesClientToolMapping{
-		CustomTools: map[string]bool{"exec": true},
-		NamespaceTools: map[string]ResponsesNamespaceName{
-			"functions__wait": {Namespace: "functions", Name: "wait"},
-		},
-	}
-	payload := []byte(`{"id":"resp","output":[{"type":"function_call","id":"i1","call_id":"c1","name":"functions__exec","arguments":"{\"input\":\"pwd\"}"},{"type":"function_call","id":"i2","call_id":"c2","name":"functions__missing","arguments":"{}"}]}`)
-
-	restored, changed, err := RestoreResponsesClientToolPayload(payload, mapping)
-	require.NoError(t, err)
-	require.True(t, changed)
-	require.Equal(t, "custom_tool_call", gjson.GetBytes(restored, "output.0.type").String())
-	require.Equal(t, "exec", gjson.GetBytes(restored, "output.0.name").String())
-	require.Equal(t, "c1", gjson.GetBytes(restored, "output.0.call_id").String())
-	require.Equal(t, "pwd", gjson.GetBytes(restored, "output.0.input").String())
-	require.Equal(t, "function_call", gjson.GetBytes(restored, "output.1.type").String())
-	require.Equal(t, "functions__missing", gjson.GetBytes(restored, "output.1.name").String())
-}
-
-func TestRestoreResponsesClientToolPayload_FunctionsNamespaceAliasKeepsNamespacePrecedence(t *testing.T) {
-	mapping := ResponsesClientToolMapping{
-		CustomTools: map[string]bool{"exec": true},
-		NamespaceTools: map[string]ResponsesNamespaceName{
-			"functions__exec": {Namespace: "functions", Name: "exec"},
-		},
-	}
-	payload := []byte(`{"output":[{"type":"function_call","id":"i1","call_id":"c1","name":"functions__exec","arguments":"{}"}]}`)
-
-	restored, changed, err := RestoreResponsesClientToolPayload(payload, mapping)
-	require.NoError(t, err)
-	require.True(t, changed)
-	require.Equal(t, "function_call", gjson.GetBytes(restored, "output.0.type").String())
-	require.Equal(t, "functions", gjson.GetBytes(restored, "output.0.namespace").String())
-	require.Equal(t, "exec", gjson.GetBytes(restored, "output.0.name").String())
-}
-
-func TestRestoreResponsesClientToolPayload_FunctionsNamespaceAliasRequiresDeclaredNamespace(t *testing.T) {
-	mapping := ResponsesClientToolMapping{CustomTools: map[string]bool{"exec": true}}
-	payload := []byte(`{"output":[{"type":"function_call","name":"functions__exec","arguments":"{\"input\":\"pwd\"}"}]}`)
-
-	restored, changed, err := RestoreResponsesClientToolPayload(payload, mapping)
-	require.NoError(t, err)
-	require.False(t, changed)
-	require.Equal(t, "function_call", gjson.GetBytes(restored, "output.0.type").String())
-	require.Equal(t, "functions__exec", gjson.GetBytes(restored, "output.0.name").String())
-}
-
-func TestRestoreResponsesClientToolPayload_FunctionsNamespaceAliasCollisionKeepsFunction(t *testing.T) {
-	mapping := ResponsesClientToolMapping{
-		CustomTools:   map[string]bool{"exec": true},
-		FunctionTools: map[string]bool{"functions__exec": true},
-		NamespaceTools: map[string]ResponsesNamespaceName{
-			"functions__wait": {Namespace: "functions", Name: "wait"},
-		},
-	}
-	payload := []byte(`{"output":[{"type":"function_call","id":"i1","call_id":"c1","name":"functions__exec","arguments":"{\"input\":\"pwd\"}"}]}`)
-
-	restored, changed, err := RestoreResponsesClientToolPayload(payload, mapping)
-	require.NoError(t, err)
-	require.False(t, changed)
-	require.Equal(t, "function_call", gjson.GetBytes(restored, "output.0.type").String())
-	require.Equal(t, "functions__exec", gjson.GetBytes(restored, "output.0.name").String())
-	require.Equal(t, `{"input":"pwd"}`, gjson.GetBytes(restored, "output.0.arguments").String())
-}
-
-func TestRestoreResponsesClientToolPayload_AmbiguousCustomAliasKeepsFunction(t *testing.T) {
-	mapping := ResponsesClientToolMapping{
-		CustomTools: map[string]bool{
-			"exec":            true,
-			"functions__exec": true,
-		},
-		NamespaceTools: map[string]ResponsesNamespaceName{
-			"functions__wait": {Namespace: "functions", Name: "wait"},
-		},
-	}
-	payload := []byte(`{"output":[{"type":"function_call","name":"functions__exec","arguments":"{\"input\":\"pwd\"}"}]}`)
-
-	restored, changed, err := RestoreResponsesClientToolPayload(payload, mapping)
-	require.NoError(t, err)
-	require.False(t, changed)
-	require.Equal(t, "function_call", gjson.GetBytes(restored, "output.0.type").String())
-	require.Equal(t, "functions__exec", gjson.GetBytes(restored, "output.0.name").String())
-}
-
 func TestResponsesClientToolStreamRestorer_CustomToolBuffersWrapperAndSequences(t *testing.T) {
 	restorer := NewResponsesClientToolStreamRestorer(ResponsesClientToolMapping{CustomTools: map[string]bool{"exec": true}})
 	added := restorer.Restore(ResponsesStreamEvent{Type: "response.output_item.added", SequenceNumber: 7, OutputIndex: 0, Item: &ResponsesOutput{Type: "function_call", ID: "i1", CallID: "c1", Name: "exec", Status: "in_progress"}})
@@ -773,67 +627,6 @@ func TestResponsesClientToolStreamRestorer_CustomToolBuffersWrapperAndSequences(
 	require.Equal(t, 10, closed[0].SequenceNumber)
 	require.Equal(t, "custom_tool_call", closed[0].Item.Type)
 	require.Equal(t, "dir", closed[0].Item.Input)
-}
-
-func TestResponsesClientToolStreamRestorer_FunctionsNamespaceAliasRestoresCustomTool(t *testing.T) {
-	restorer := NewResponsesClientToolStreamRestorer(ResponsesClientToolMapping{
-		CustomTools: map[string]bool{"exec": true},
-		NamespaceTools: map[string]ResponsesNamespaceName{
-			"functions__wait": {Namespace: "functions", Name: "wait"},
-		},
-	})
-
-	added, changed, err := restorer.RestoreEvent([]byte(`{"type":"response.output_item.added","sequence_number":7,"output_index":0,"item":{"type":"function_call","id":"i1","call_id":"c1","name":"functions__exec","arguments":"","status":"in_progress"}}`))
-	require.NoError(t, err)
-	require.True(t, changed)
-	require.Len(t, added, 1)
-	require.Equal(t, "custom_tool_call", gjson.GetBytes(added[0], "item.type").String())
-	require.Equal(t, "exec", gjson.GetBytes(added[0], "item.name").String())
-
-	delta, changed, err := restorer.RestoreEvent([]byte(`{"type":"response.function_call_arguments.delta","sequence_number":8,"output_index":0,"item_id":"i1","delta":"{\"input\":\"pwd\"}"}`))
-	require.NoError(t, err)
-	require.True(t, changed)
-	require.Empty(t, delta)
-
-	done, changed, err := restorer.RestoreEvent([]byte(`{"type":"response.function_call_arguments.done","sequence_number":9,"output_index":0,"item_id":"i1","call_id":"c1","name":"functions__exec","arguments":"{\"input\":\"pwd\"}"}`))
-	require.NoError(t, err)
-	require.True(t, changed)
-	require.Len(t, done, 2)
-	require.Equal(t, "response.custom_tool_call_input.done", gjson.GetBytes(done[1], "type").String())
-	require.Equal(t, "exec", gjson.GetBytes(done[1], "name").String())
-	require.Equal(t, "pwd", gjson.GetBytes(done[1], "input").String())
-
-	closed, changed, err := restorer.RestoreEvent([]byte(`{"type":"response.output_item.done","sequence_number":10,"output_index":0,"item":{"type":"function_call","id":"i1","call_id":"c1","name":"functions__exec","arguments":"{\"input\":\"pwd\"}","status":"completed"}}`))
-	require.NoError(t, err)
-	require.True(t, changed)
-	require.Len(t, closed, 1)
-	require.Equal(t, "custom_tool_call", gjson.GetBytes(closed[0], "item.type").String())
-	require.Equal(t, "exec", gjson.GetBytes(closed[0], "item.name").String())
-	require.Equal(t, "pwd", gjson.GetBytes(closed[0], "item.input").String())
-}
-
-func TestResponsesClientToolStreamRestorer_FunctionsNamespaceAliasCollisionKeepsFunction(t *testing.T) {
-	restorer := NewResponsesClientToolStreamRestorer(ResponsesClientToolMapping{
-		CustomTools:   map[string]bool{"exec": true},
-		FunctionTools: map[string]bool{"functions__exec": true},
-		NamespaceTools: map[string]ResponsesNamespaceName{
-			"functions__wait": {Namespace: "functions", Name: "wait"},
-		},
-	})
-
-	added, changed, err := restorer.RestoreEvent([]byte(`{"type":"response.output_item.added","sequence_number":7,"output_index":0,"item":{"type":"function_call","id":"i1","call_id":"c1","name":"functions__exec","arguments":"","status":"in_progress"}}`))
-	require.NoError(t, err)
-	require.False(t, changed)
-	require.Len(t, added, 1)
-	require.Equal(t, "function_call", gjson.GetBytes(added[0], "item.type").String())
-	require.Equal(t, "functions__exec", gjson.GetBytes(added[0], "item.name").String())
-
-	done, changed, err := restorer.RestoreEvent([]byte(`{"type":"response.output_item.done","sequence_number":8,"output_index":0,"item":{"type":"function_call","id":"i1","call_id":"c1","name":"functions__exec","arguments":"{\"input\":\"pwd\"}","status":"completed"}}`))
-	require.NoError(t, err)
-	require.False(t, changed)
-	require.Len(t, done, 1)
-	require.Equal(t, "function_call", gjson.GetBytes(done[0], "item.type").String())
-	require.Equal(t, "functions__exec", gjson.GetBytes(done[0], "item.name").String())
 }
 
 func TestResponsesClientToolStreamRestorer_ToolSearchAndFunction(t *testing.T) {
