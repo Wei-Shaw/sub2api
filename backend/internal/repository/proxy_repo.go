@@ -237,7 +237,8 @@ func invalidateProxyProbeSnapshots(ctx context.Context, exec sqlExecutor, proxyI
 				OR (platform IN (`+ollamaCloudUsagePlatformsSQL+`)
 					AND extra ? 'ollama_cloud_usage_snapshot'
 					AND extra -> 'ollama_cloud_usage_snapshot' <> 'null'::jsonb)
-				OR (platform = 'openai'
+				-- OpenCode 快照可能挂在 opencode_go 平台账号或挂载白名单平台账号上。
+				OR ((platform = 'opencode_go' OR platform IN (`+opencodeGoUsageMountPlatformsSQL+`))
 					AND extra ? 'opencode_go_usage_snapshot'
 					AND extra -> 'opencode_go_usage_snapshot' <> 'null'::jsonb)
 			)
