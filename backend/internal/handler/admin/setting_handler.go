@@ -383,17 +383,9 @@ func (h *SettingHandler) GetSettings(c *gin.Context) {
 		ChannelMonitorDingTalkSecretConfigured:  settings.ChannelMonitorDingTalkSecretConfigured,
 		ChannelMonitorShowQuota:                 settings.ChannelMonitorShowQuota,
 		ChannelMonitorHideUserRanking:           settings.ChannelMonitorHideUserRanking,
-		ChannelMonitorEnabled:                   settings.ChannelMonitorEnabled,
-		ChannelMonitorMode:                      settings.ChannelMonitorMode,
-		ChannelMonitorDefaultIntervalSeconds:    settings.ChannelMonitorDefaultIntervalSeconds,
-		ChannelMonitorHideThroughput:            settings.ChannelMonitorHideThroughput,
-		ChannelMonitorShowQuota:                 settings.ChannelMonitorShowQuota,
-		ChannelMonitorHideUserRanking:           settings.ChannelMonitorHideUserRanking,
-		ChannelMonitorHideUserRanking:           settings.ChannelMonitorHideUserRanking,
-
-		GrokDefaultTextModel:           settings.GrokDefaultTextModel,
-		GrokCrossClientModelMapEnabled: settings.GrokCrossClientModelMapEnabled,
-		GrokDefaultBaseURLMode:         settings.GrokDefaultBaseURLMode,
+		GrokDefaultTextModel:                    settings.GrokDefaultTextModel,
+		GrokCrossClientModelMapEnabled:          settings.GrokCrossClientModelMapEnabled,
+		GrokDefaultBaseURLMode:                  settings.GrokDefaultBaseURLMode,
 
 		AvailableChannelsEnabled: settings.AvailableChannelsEnabled,
 

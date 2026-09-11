@@ -339,7 +339,6 @@ type UpdateSettingsRequest struct {
 	ChannelMonitorDingTalkWebhookClear   bool    `json:"channel_monitor_dingtalk_webhook_clear"`
 	ChannelMonitorDingTalkSecretClear    bool    `json:"channel_monitor_dingtalk_secret_clear"`
 	ChannelMonitorShowQuota              *bool   `json:"channel_monitor_show_quota"`
-	ChannelMonitorHideUserRanking        bool    `json:"channel_monitor_hide_user_ranking"`
 	ChannelMonitorHideUserRanking        *bool   `json:"channel_monitor_hide_user_ranking"`
 
 	// Grok model mapping policy
@@ -2425,17 +2424,9 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		ChannelMonitorDingTalkSecretConfigured:  updatedSettings.ChannelMonitorDingTalkSecretConfigured,
 		ChannelMonitorShowQuota:                 updatedSettings.ChannelMonitorShowQuota,
 		ChannelMonitorHideUserRanking:           updatedSettings.ChannelMonitorHideUserRanking,
-		ChannelMonitorEnabled:                   updatedSettings.ChannelMonitorEnabled,
-		ChannelMonitorMode:                      updatedSettings.ChannelMonitorMode,
-		ChannelMonitorDefaultIntervalSeconds:    updatedSettings.ChannelMonitorDefaultIntervalSeconds,
-		ChannelMonitorHideThroughput:            updatedSettings.ChannelMonitorHideThroughput,
-		ChannelMonitorShowQuota:                 updatedSettings.ChannelMonitorShowQuota,
-		ChannelMonitorHideUserRanking:           updatedSettings.ChannelMonitorHideUserRanking,
-		ChannelMonitorHideUserRanking:           updatedSettings.ChannelMonitorHideUserRanking,
-
-		GrokDefaultTextModel:           updatedSettings.GrokDefaultTextModel,
-		GrokCrossClientModelMapEnabled: updatedSettings.GrokCrossClientModelMapEnabled,
-		GrokDefaultBaseURLMode:         updatedSettings.GrokDefaultBaseURLMode,
+		GrokDefaultTextModel:                    updatedSettings.GrokDefaultTextModel,
+		GrokCrossClientModelMapEnabled:          updatedSettings.GrokCrossClientModelMapEnabled,
+		GrokDefaultBaseURLMode:                  updatedSettings.GrokDefaultBaseURLMode,
 
 		AvailableChannelsEnabled: updatedSettings.AvailableChannelsEnabled,
 
