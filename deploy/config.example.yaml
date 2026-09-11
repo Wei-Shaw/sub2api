@@ -229,6 +229,10 @@ gateway:
   # Max request body size in bytes (default: 256MB)
   # 请求体最大字节数（默认 256MB）
   max_body_size: 268435456
+  # gzip/zstd/deflate 解压后正文上限（字节），默认 64 MiB；必须大于 0。
+  # 环境变量：GATEWAY_MAX_DECOMPRESSED_BODY_SIZE；超限返回 413，不返回截断正文。
+  # 有效上限取此值与对应路由 max_body_size/text_max_body_size 的较小值。
+  max_decompressed_body_size: 67108864
   # Pure-text endpoint body limit (embeddings and alpha/search), default 32 MiB.
   # 纯文本端点请求体上限（embeddings、alpha/search），默认 32 MiB。
   text_max_body_size: 33554432

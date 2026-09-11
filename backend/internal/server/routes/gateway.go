@@ -29,8 +29,17 @@ func RegisterGatewayRoutes(
 	compositeResolver *service.CompositeRouteResolver,
 	cfg *config.Config,
 ) {
-	bodyLimit := middleware.RequestBodyLimit(cfg.Gateway.MaxBodySize)
-	textBodyLimit := middleware.RequestBodyLimit(cfg.Gateway.TextMaxBodySize)
+	mediaBodyLimit := middleware.RequestBodyLimitWithDecompression(cfg.Gateway.MaxBodySize, cfg.Gateway.MaxDecompressedBodySize)
+	textBodyLimit := middleware.RequestBodyLimitWithDecompression(cfg.Gateway.TextMaxBodySize, cfg.Gateway.MaxDecompressedBodySize)
+	bodyLimit := func(c *gin.Context) {
+		// 分组中间件可能提前解压正文，因此纯文本限制必须在白名单和合成路由读体前生效。
+		switch c.FullPath() {
+		case "/v1/embeddings", "/v1/alpha/search", "/backend-api/codex/alpha/search":
+			textBodyLimit(c)
+		default:
+			mediaBodyLimit(c)
+		}
+	}
 	clientRequestID := middleware.ClientRequestID()
 	opsErrorLogger := handler.OpsErrorLoggerMiddleware(opsService)
 	endpointNorm := handler.InboundEndpointMiddleware()
