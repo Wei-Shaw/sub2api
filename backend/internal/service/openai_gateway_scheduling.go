@@ -820,6 +820,9 @@ func resolveOpenAIAccountUpstreamModelForRequest(account *Account, requestedMode
 		}
 		return upstreamModel
 	}
+	if account != nil && account.IsGrokPassthroughEnabled() {
+		return strings.TrimSpace(requestedModel)
+	}
 
 	// Compact mappings are keyed by the client-visible model. Prefer an exact
 	// compact rule before ordinary account mapping; otherwise a normal alias can
@@ -856,7 +859,7 @@ func ResolveOpenAIAccountUpstreamModelForRequest(account *Account, requestedMode
 // accounting, while upstreamModel is the model the scheduler has admitted.
 func resolveOpenAIForwardMappedModels(account *Account, requestedModel string, requireCompact bool) (billingModel, upstreamModel string) {
 	requestedModel = strings.TrimSpace(requestedModel)
-	if account != nil && account.IsOpenAIPassthroughEnabled() {
+	if account != nil && (account.IsOpenAIPassthroughEnabled() || account.IsGrokPassthroughEnabled()) {
 		billingModel = requestedModel
 	} else if account != nil {
 		billingModel = strings.TrimSpace(account.GetMappedModel(requestedModel))
