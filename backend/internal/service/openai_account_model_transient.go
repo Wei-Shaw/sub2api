@@ -77,6 +77,10 @@ func openAIAccountModelTransientKey(accountID int64, model string) (openAIAccoun
 }
 
 func (s *openAIAccountModelTransientState) recordFailure(accountID int64, model string, now time.Time) openAIAccountModelTransientDecision {
+	return s.recordFailureWithInitialCooldown(accountID, model, now, 0)
+}
+
+func (s *openAIAccountModelTransientState) recordFailureWithInitialCooldown(accountID int64, model string, now time.Time, initialCooldown time.Duration) openAIAccountModelTransientDecision {
 	key, ok := openAIAccountModelTransientKey(accountID, model)
 	if s == nil || !ok {
 		return openAIAccountModelTransientDecision{}
@@ -108,7 +112,7 @@ func (s *openAIAccountModelTransientState) recordFailure(accountID int64, model 
 	entry.lastFailure = now
 	entry.lastTouched = now
 
-	cooldown := time.Duration(0)
+	cooldown := initialCooldown
 	switch {
 	case entry.failureStreak >= 3:
 		cooldown = openAIModelTransientLongCooldown

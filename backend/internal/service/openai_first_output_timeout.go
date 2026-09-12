@@ -259,6 +259,7 @@ func (s *OpenAIGatewayService) newOpenAIFirstOutputTimeoutError(
 	timeout time.Duration,
 	phase string,
 	responseHeaders http.Header,
+	canonicalModel ...string,
 ) *UpstreamFailoverError {
 	elapsed := time.Since(startTime)
 	logger.LegacyPrintf(
@@ -275,8 +276,15 @@ func (s *OpenAIGatewayService) newOpenAIFirstOutputTimeoutError(
 		Kind: "first_output_timeout", Message: "OpenAI upstream produced no semantic output before the deadline",
 		Detail: fmt.Sprintf("phase=%s elapsed_ms=%d timeout_ms=%d", phase, elapsed.Milliseconds(), timeout.Milliseconds()),
 	})
-	if s.rateLimitService != nil {
-		s.rateLimitService.HandleStreamTimeout(ctx, account, originalModel)
+	if !s.openAIAPIKeyAvailabilityEnabled(account) || !openAIAvailabilityCallerGone(ctx, c, nil) {
+		if s.rateLimitService != nil {
+			s.rateLimitService.HandleStreamTimeout(ctx, account, originalModel)
+		}
+		model := canonicalOpenAIAccountSchedulingModel(account, originalModel)
+		if len(canonicalModel) > 0 && strings.TrimSpace(canonicalModel[0]) != "" {
+			model = canonicalModel[0]
+		}
+		s.recordOpenAIAvailabilityTransportFailure(ctx, c, account, model, context.DeadlineExceeded)
 	}
 	return &UpstreamFailoverError{
 		StatusCode:      http.StatusGatewayTimeout,
