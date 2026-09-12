@@ -41,10 +41,11 @@ const (
 // /wham/usage. The upstream returns an explicit `null` window when the slot
 // is unused, so consumers should treat a nil pointer as "no data".
 type OpenAIRateLimitWindow struct {
-	UsedPercent        float64 `json:"used_percent"`
-	LimitWindowSeconds int64   `json:"limit_window_seconds"`
-	ResetAfterSeconds  int64   `json:"reset_after_seconds"`
-	ResetAt            int64   `json:"reset_at"`
+	UsedPercent              float64 `json:"used_percent"`
+	LimitWindowSeconds       int64   `json:"limit_window_seconds"`
+	ResetAfterSeconds        int64   `json:"reset_after_seconds"`
+	ResetAt                  int64   `json:"reset_at"`
+	observationFieldsPresent bool
 }
 
 // OpenAIRateLimit is a rate-limit envelope (primary + optional secondary window).
@@ -144,6 +145,16 @@ func NewOpenAIQuotaService(
 // OAuth account. Returns infraerrors so the handler layer can map them to
 // stable error codes / HTTP statuses.
 func (s *OpenAIQuotaService) QueryUsage(ctx context.Context, accountID int64) (*OpenAIQuotaUsage, error) {
+	return s.queryUsage(ctx, accountID, true)
+}
+
+// QueryUsageSnapshot only reads usage. Background observation must neither
+// enumerate reset credits nor send a synthetic inference request.
+func (s *OpenAIQuotaService) QueryUsageSnapshot(ctx context.Context, accountID int64) (*OpenAIQuotaUsage, error) {
+	return s.queryUsage(ctx, accountID, false)
+}
+
+func (s *OpenAIQuotaService) queryUsage(ctx context.Context, accountID int64, includeCreditDetails bool) (*OpenAIQuotaUsage, error) {
 	accessToken, chatGPTAccountID, proxyURL, fedRAMP, err := s.prepareUpstreamCall(ctx, accountID)
 	if err != nil {
 		return nil, err
@@ -181,8 +192,12 @@ func (s *OpenAIQuotaService) QueryUsage(ctx context.Context, accountID int64) (*
 				continue
 			}
 			status := resp.StatusCode
-			if isOpenAIAutoResetContext(ctx) {
-				slog.Warn("openai_quota_query_failed", "account_id", accountID, "status", status, "source", "auto_reset")
+			if isOpenAIAutoResetContext(ctx) || !includeCreditDetails {
+				source := "auto_reset"
+				if !includeCreditDetails {
+					source = "quota_snapshot"
+				}
+				slog.Warn("openai_quota_query_failed", "account_id", accountID, "status", status, "source", source)
 				return nil, infraerrors.Newf(mapUpstreamStatus(status), "OPENAI_QUOTA_UPSTREAM_ERROR", "upstream returned %d", status)
 			}
 			body := truncate(s.redactQuotaErrorBody(ctx, accountID, resp.String()), 240)
@@ -193,6 +208,9 @@ func (s *OpenAIQuotaService) QueryUsage(ctx context.Context, accountID int64) (*
 	}
 
 	payload.FetchedAt = time.Now().Unix()
+	if !includeCreditDetails {
+		return &payload, nil
+	}
 	details := s.queryResetCreditDetails(callCtx, client, accessToken, chatGPTAccountID, fedRAMP, accountID)
 	if details != nil {
 		payload.autoResetCandidates = details.AutoResetCandidates
@@ -388,6 +406,25 @@ func (s *OpenAIQuotaService) resetCredit(ctx context.Context, accountID int64, c
 			return nil, infraerrors.Newf(mapUpstreamStatus(status), "OPENAI_QUOTA_RESET_UPSTREAM_ERROR", "upstream returned %d: %s", status, body)
 		}
 		break
+	}
+
+	if payload.WindowsReset > 0 {
+		resetAt := time.Now().UTC()
+		if payload.Credit != nil {
+			if parsed, err := time.Parse(time.RFC3339Nano, payload.Credit.RedeemedAt); err == nil {
+				resetAt = parsed
+			}
+		}
+		// The count records a reset fact, not a mapping to specific windows.
+		historyCtx, historyCancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+		err := s.accountRepo.UpdateExtra(historyCtx, accountID, map[string]any{
+			"codex_history_reset_at":      resetAt.Format(time.RFC3339Nano),
+			"codex_history_reset_windows": payload.WindowsReset,
+		})
+		historyCancel()
+		if err != nil {
+			slog.Warn("openai_quota_reset_history_failed", "account_id", accountID, "error", err)
+		}
 	}
 
 	slog.Info("openai_quota_reset_success",

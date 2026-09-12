@@ -389,6 +389,7 @@ func registerAccountRoutes(admin *gin.RouterGroup, h *handler.Handlers, stepUpAu
 		accounts.POST("/:id/set-privacy", h.Admin.Account.SetPrivacy)
 		accounts.POST("/:id/refresh-tier", h.Admin.Account.RefreshTier)
 		accounts.GET("/:id/stats", h.Admin.Account.GetStats)
+		accounts.GET("/:id/window-history", h.Admin.Account.GetWindowHistory)
 		accounts.POST("/:id/clear-error", h.Admin.Account.ClearError)
 		accounts.POST("/:id/revert-proxy-fallback", h.Admin.Account.RevertProxyFallback)
 		accounts.GET("/:id/usage", h.Admin.Account.GetUsage)
@@ -684,6 +685,9 @@ func registerSubscriptionRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 
 	// 分组下的订阅列表
 	admin.GET("/groups/:id/subscriptions", h.Admin.Subscription.ListByGroup)
+	admin.GET("/groups/:id/subscription-reset-policy", h.Admin.Subscription.GetResetPolicy)
+	admin.PUT("/groups/:id/subscription-reset-policy", h.Admin.Subscription.SaveResetPolicy)
+	admin.GET("/groups/:id/subscription-reset-status", h.Admin.Subscription.GetResetStatus)
 
 	// 用户下的订阅列表
 	admin.GET("/users/:id/subscriptions", h.Admin.Subscription.ListByUser)

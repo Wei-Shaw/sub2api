@@ -20,7 +20,7 @@
           <div>
             <div class="font-semibold text-gray-900 dark:text-gray-100">{{ account.name }}</div>
             <div class="text-xs text-gray-500 dark:text-gray-400">
-              {{ t('admin.accounts.last30DaysUsage') }}
+              {{ t(activeTab === 'quota' ? 'admin.accounts.quotaHistory.subtitle' : 'admin.accounts.last30DaysUsage') }}
             </div>
           </div>
         </div>
@@ -36,6 +36,27 @@
         </span>
       </div>
 
+      <div v-if="quotaHistoryEligible" class="flex gap-2 border-b border-gray-200 dark:border-dark-600" role="tablist" :aria-label="t('admin.accounts.usageStatistics')">
+        <button
+          v-for="tab in (['stats', 'quota'] as const)"
+          :id="`account-${tab}-tab`"
+          :key="tab"
+          type="button"
+          role="tab"
+          :aria-selected="activeTab === tab"
+          :aria-controls="`account-${tab}-panel`"
+          class="border-b-2 px-4 py-2 text-sm font-medium"
+          :class="activeTab === tab ? 'border-primary-500 text-primary-600 dark:text-primary-400' : 'border-transparent text-gray-500 dark:text-gray-400'"
+          @click="activeTab = tab"
+        >
+          {{ t(tab === 'stats' ? 'admin.accounts.quotaHistory.statsTab' : 'admin.accounts.quotaHistory.historyTab') }}
+        </button>
+      </div>
+
+      <div v-if="show && activeTab === 'quota' && quotaHistoryEligible && account" id="account-quota-panel" role="tabpanel" aria-labelledby="account-quota-tab">
+        <AccountQuotaHistoryPanel :key="account.id" :account-id="account.id" />
+      </div>
+      <div v-else id="account-stats-panel" :role="quotaHistoryEligible ? 'tabpanel' : undefined" :aria-labelledby="quotaHistoryEligible ? 'account-stats-tab' : undefined" class="space-y-6">
       <!-- Loading State -->
       <div v-if="loading" class="flex items-center justify-center py-12">
         <LoadingSpinner />
@@ -432,6 +453,7 @@
         <Icon name="chartBar" size="xl" class="mb-4 h-12 w-12" />
         <p class="text-sm">{{ t('admin.accounts.stats.noData') }}</p>
       </div>
+      </div>
     </div>
 
     <template #footer>
@@ -464,6 +486,7 @@ import {
 import { Line } from 'vue-chartjs'
 import BaseDialog from '@/components/common/BaseDialog.vue'
 import LoadingSpinner from '@/components/common/LoadingSpinner.vue'
+import AccountQuotaHistoryPanel from './AccountQuotaHistoryPanel.vue'
 import ModelDistributionChart from '@/components/charts/ModelDistributionChart.vue'
 import EndpointDistributionChart from '@/components/charts/EndpointDistributionChart.vue'
 import Icon from '@/components/icons/Icon.vue'
@@ -491,6 +514,21 @@ const props = defineProps<{
 const emit = defineEmits<{
   (e: 'close'): void
 }>()
+
+const activeTab = ref<'stats' | 'quota'>('stats')
+const quotaHistoryEligible = computed(() => {
+  const account = props.account
+  const dimension = account?.quota_dimension?.trim().toLowerCase() ?? ''
+  if (account?.platform !== 'openai' || account.type !== 'oauth'
+    || account.parent_account_id != null
+    || (dimension !== '' && dimension !== 'global')) return false
+
+  // Both credential keys are used by existing PAT / agent-identity imports.
+  return ![account.credentials?.auth_mode, account.credentials?.openai_auth_mode].some(value => {
+    const mode = typeof value === 'string' ? value.trim().toLowerCase() : ''
+    return mode === 'agent_identity' || mode === 'personalaccesstoken' || mode === 'personal_access_token'
+  })
+})
 
 const loading = ref(false)
 const stats = ref<AccountUsageStatsResponse | null>(null)
@@ -642,31 +680,37 @@ const lineChartOptions = computed(() => ({
   }
 }))
 
-// Load stats when modal opens
-watch(
-  () => props.show,
-  async (newVal) => {
-    if (newVal && props.account) {
-      await loadStats()
-    } else {
-      stats.value = null
-    }
-  }
-)
-
+// A closed dialog or another account invalidates any pending response.
+let statsRequest = 0
 const loadStats = async () => {
-  if (!props.account) return
-
+  const accountID = props.account?.id
+  if (!accountID) return
+  const request = ++statsRequest
   loading.value = true
   try {
-    stats.value = await adminAPI.accounts.getStats(props.account.id, 30)
+    const result = await adminAPI.accounts.getStats(accountID, 30)
+    if (request === statsRequest) stats.value = result
   } catch (error) {
-    console.error('Failed to load account stats:', error)
-    stats.value = null
+    if (request === statsRequest) {
+      console.error('Failed to load account stats:', error)
+      stats.value = null
+    }
   } finally {
-    loading.value = false
+    if (request === statsRequest) loading.value = false
   }
 }
+
+watch(
+  () => [props.show, props.account?.id] as const,
+  ([show, accountID]) => {
+    ++statsRequest
+    activeTab.value = 'stats'
+    stats.value = null
+    loading.value = false
+    if (show && accountID) void loadStats()
+  },
+  { immediate: true }
+)
 
 const handleClose = () => {
   emit('close')

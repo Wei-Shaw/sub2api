@@ -73,7 +73,10 @@ type openAIWSAcquireRequest struct {
 	// HeadersFactory is evaluated inside dialConn. It exists so credentials
 	// whose authorization is per-dial (Agent Identity) are never cached in
 	// lastAcquire or delayed prewarm state.
-	HeadersFactory  func(context.Context, http.Header) (http.Header, error)
+	HeadersFactory func(context.Context, http.Header) (http.Header, error)
+	// OnHandshake observes each successful dial, including background prewarm.
+	// It is never called when an existing connection is leased again.
+	OnHandshake     func(context.Context, *Account, http.Header)
 	ProxyURL        string
 	PreferredConnID string
 	// ForceNewConn: 强制本次获取新连接（避免复用导致连接内续链状态互相污染）。
@@ -2081,6 +2084,9 @@ func (p *openAIWSConnPool) dialConn(ctx context.Context, req openAIWSAcquireRequ
 			ResponseHeaders: cloneHeader(handshakeHeaders),
 			Err:             errors.New("openai ws dialer returned nil connection"),
 		}
+	}
+	if req.OnHandshake != nil {
+		req.OnHandshake(ctx, req.Account, handshakeHeaders)
 	}
 	id := p.nextConnID(req.Account.ID)
 	pooledConn := newOpenAIWSConn(id, req.Account.ID, conn, handshakeHeaders)
