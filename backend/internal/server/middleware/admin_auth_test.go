@@ -123,8 +123,37 @@ func TestAdminAuthJWTValidatesTokenVersion(t *testing.T) {
 	})
 }
 
+func TestAdminAuthAllowsConfiguredKeyFromXAPIKeyHeader(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	const adminKey = "admin-token-shop-1234567890"
+	admin := &service.User{ID: 1, Email: "admin@example.com", Role: service.RoleAdmin, Status: service.StatusActive}
+	userService := service.NewUserService(&stubUserRepo{
+		getFirstAdmin: func(context.Context) (*service.User, error) {
+			clone := *admin
+			return &clone, nil
+		},
+	}, nil, nil, nil)
+	settingService := service.NewSettingService(fakeSettingRepo{values: map[string]string{
+		service.SettingKeyAdminAPIKey: adminKey,
+	}}, nil)
+
+	router := gin.New()
+	router.Use(gin.HandlerFunc(NewAdminAuthMiddleware(nil, userService, settingService, nil)))
+	router.GET("/api/v1/admin/users/:id/api-keys", func(c *gin.Context) {
+		c.JSON(http.StatusOK, gin.H{"ok": true})
+	})
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/admin/users/1/api-keys", nil)
+	req.Header.Set("x-api-key", adminKey)
+	router.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+}
+
 type stubUserRepo struct {
-	getByID func(ctx context.Context, id int64) (*service.User, error)
+	getByID       func(ctx context.Context, id int64) (*service.User, error)
+	getFirstAdmin func(ctx context.Context) (*service.User, error)
 }
 
 func (s *stubUserRepo) Create(ctx context.Context, user *service.User) error {
@@ -147,6 +176,9 @@ func (s *stubUserRepo) GetByEmail(ctx context.Context, email string) (*service.U
 }
 
 func (s *stubUserRepo) GetFirstAdmin(ctx context.Context) (*service.User, error) {
+	if s.getFirstAdmin != nil {
+		return s.getFirstAdmin(ctx)
+	}
 	panic("unexpected GetFirstAdmin call")
 }
 
