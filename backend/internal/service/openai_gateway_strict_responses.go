@@ -357,6 +357,12 @@ func (s *OpenAIGatewayService) forwardOpenAIStrictResponses(
 		}
 	}
 	observer.finish()
+	// Record the strict protocol before publishing continuation ownership. If the
+	// durable binding cannot be saved, a later request must fail ownership checks
+	// rather than silently continue on a normal account in another process.
+	if err := s.getOpenAIWSStateStore().BindStrictHTTPResponseAccount(ctx, getOpenAIGroupIDFromContext(c), observer.responseID, account.ID, s.openAIWSResponseStickyTTL()); err != nil {
+		return resultWithObserver(false), fmt.Errorf("upstream response failed: bind strict Responses continuation: %w", err)
+	}
 	s.bindHTTPResponseAccount(ctx, c, account, observer.responseID)
 
 	result := resultWithObserver(false)

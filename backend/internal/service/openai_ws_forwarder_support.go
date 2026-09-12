@@ -520,6 +520,32 @@ func (s *OpenAIGatewayService) ResolveAccountIDByPreviousResponseIDForScheduler(
 	return accountID
 }
 
+// StrictHTTPContinuationAccount returns the strict protocol owner, independently
+// of scheduler eligibility. Older response bindings are recognized from their
+// account's mode until they expire.
+func (s *OpenAIGatewayService) StrictHTTPContinuationAccount(ctx context.Context, groupID *int64, responseID string) (int64, error) {
+	if s == nil || strings.TrimSpace(responseID) == "" {
+		return 0, nil
+	}
+	store := s.getOpenAIWSStateStore()
+	strictID, err := store.GetStrictHTTPResponseAccount(ctx, derefGroupID(groupID), responseID)
+	if err != nil || strictID > 0 {
+		return strictID, err
+	}
+	accountID, err := store.GetResponseAccount(ctx, derefGroupID(groupID), responseID)
+	if err != nil || accountID <= 0 || s.accountRepo == nil {
+		return 0, err
+	}
+	account, err := s.accountRepo.GetByID(ctx, accountID)
+	if err != nil {
+		return 0, err
+	}
+	if account != nil && account.IsOpenAIStrictResponsesPassthroughEnabled() {
+		return accountID, nil
+	}
+	return 0, nil
+}
+
 // IsOpenAIResponseBoundToAccount verifies the raw response-owner binding
 // without re-running scheduler eligibility filters. The caller must still
 // validate that the selected account is currently strict-capable and
