@@ -174,6 +174,11 @@ export default {
           fallback: 'Unmatched models → Chat Completions (/v1/chat/completions)',
         },
       },
+      zhipuMcp: {
+        title: 'MCP Passthrough',
+        hint: 'When enabled, MCP protocol requests are forwarded through this Zhipu account.',
+        paygDisabledHint: 'MCP passthrough is only available for Zhipu accounts on the Coding Plan subscription.',
+      },
       types: {
         oauth: 'OAuth',
         chatgptOauth: 'ChatGPT OAuth',
