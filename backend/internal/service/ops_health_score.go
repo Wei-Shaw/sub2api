@@ -5,16 +5,20 @@ import (
 	"time"
 )
 
-// computeDashboardHealthScore computes a 0-100 health score from the metrics returned by the dashboard overview.
+// computeDashboardHealthScoreWithThresholds computes a 0-100 health score from
+// the metrics returned by the dashboard overview.
 //
 // Design goals:
 // - Backend-owned scoring (UI only displays).
 // - Layered scoring: Business Health (70%) + Infrastructure Health (30%)
 // - Avoids double-counting (e.g., DB failure affects both infra and business metrics)
 // - Conservative + stable: penalize clear degradations; avoid overreacting to missing/idle data.
-func computeDashboardHealthScore(now time.Time, overview *OpsDashboardOverview) int {
+func computeDashboardHealthScoreWithThresholds(now time.Time, overview *OpsDashboardOverview, thresholds *OpsMetricThresholds) int {
 	if overview == nil {
 		return 0
+	}
+	if thresholds == nil {
+		thresholds = defaultOpsMetricThresholds()
 	}
 
 	// Idle/no-data: avoid showing a "bad" score when there is no traffic.
@@ -23,7 +27,7 @@ func computeDashboardHealthScore(now time.Time, overview *OpsDashboardOverview) 
 		return 100
 	}
 
-	businessHealth := computeBusinessHealth(overview)
+	businessHealth := computeBusinessHealth(overview, thresholds)
 	infraHealth := computeInfraHealth(now, overview)
 
 	// Weighted combination: 70% business + 30% infrastructure
@@ -32,38 +36,88 @@ func computeDashboardHealthScore(now time.Time, overview *OpsDashboardOverview) 
 }
 
 // computeBusinessHealth calculates business health score (0-100)
-// Components: Error Rate (50%) + TTFT (50%)
-func computeBusinessHealth(overview *OpsDashboardOverview) float64 {
-	// Error rate score: 1% → 100, 10% → 0 (linear)
-	// Combines request errors and upstream errors
-	errorScore := 100.0
+// Components: Error Rate (40%) + TTFT (40%) + SLA (20%)
+func computeBusinessHealth(overview *OpsDashboardOverview, thresholds *OpsMetricThresholds) float64 {
+	if thresholds == nil {
+		thresholds = defaultOpsMetricThresholds()
+	}
+	defaults := defaultOpsMetricThresholds()
+
+	// Error rate score scales with configured alert thresholds.
+	// With defaults (5%), this preserves the previous 1% → 100, 10% → 0 curve.
 	errorPct := clampFloat64(overview.ErrorRate*100, 0, 100)
 	upstreamPct := clampFloat64(overview.UpstreamErrorRate*100, 0, 100)
-	combinedErrorPct := math.Max(errorPct, upstreamPct) // Use worst case
-	if combinedErrorPct > 1.0 {
-		if combinedErrorPct <= 10.0 {
-			errorScore = (10.0 - combinedErrorPct) / 9.0 * 100
-		} else {
-			errorScore = 0
-		}
-	}
+	requestErrorThreshold := clampFloat64(
+		thresholdOrDefault(thresholds.RequestErrorRatePercentMax, defaults.RequestErrorRatePercentMax),
+		0,
+		100,
+	)
+	upstreamErrorThreshold := clampFloat64(
+		thresholdOrDefault(thresholds.UpstreamErrorRatePercentMax, defaults.UpstreamErrorRatePercentMax),
+		0,
+		100,
+	)
+	errorScore := math.Min(
+		scoreHighIsBad(errorPct, requestErrorThreshold*0.2, requestErrorThreshold*2),
+		scoreHighIsBad(upstreamPct, upstreamErrorThreshold*0.2, upstreamErrorThreshold*2),
+	)
 
-	// TTFT score: 1s → 100, 3s → 0 (linear)
-	// Time to first token is critical for user experience
+	// TTFT score scales with configured max threshold.
+	// With default (500ms), this preserves the previous 1s → 100, 3s → 0 curve.
 	ttftScore := 100.0
 	if overview.TTFT.P99 != nil {
 		p99 := float64(*overview.TTFT.P99)
-		if p99 > 1000 {
-			if p99 <= 3000 {
-				ttftScore = (3000 - p99) / 2000 * 100
-			} else {
-				ttftScore = 0
-			}
-		}
+		ttftThreshold := math.Max(0, thresholdOrDefault(thresholds.TTFTp99MsMax, defaults.TTFTp99MsMax))
+		ttftScore = scoreHighIsBad(p99, ttftThreshold*2, ttftThreshold*6)
 	}
 
-	// Weighted combination: 50% error rate + 50% TTFT
-	return errorScore*0.5 + ttftScore*0.5
+	slaScore := 100.0
+	hasSLASample := overview.RequestCountSLA > 0
+	if hasSLASample {
+		slaPercent := clampFloat64(overview.SLA*100, 0, 100)
+		slaThreshold := clampFloat64(
+			thresholdOrDefault(thresholds.SLAPercentMin, defaults.SLAPercentMin),
+			0,
+			100,
+		)
+		// Keep the configured boundary authoritative, while allowing the score
+		// to decay over a small deficit rather than dropping discontinuously.
+		slaZeroDeficit := math.Max(0.1, slaThreshold*0.02)
+		slaScore = scoreHighIsBad(slaThreshold-slaPercent, 0, slaZeroDeficit)
+	}
+
+	if !hasSLASample {
+		// Preserve the historical error/TTFT split when this window has no SLA
+		// sample; otherwise the mere absence of SLA data would rescale both.
+		return errorScore*0.5 + ttftScore*0.5
+	}
+	return errorScore*0.4 + ttftScore*0.4 + slaScore*0.2
+}
+
+func scoreHighIsBad(v float64, goodAtOrBelow float64, zeroAtOrAbove float64) float64 {
+	if zeroAtOrAbove <= goodAtOrBelow {
+		if v >= zeroAtOrAbove {
+			return 0
+		}
+		return 100
+	}
+	if v <= goodAtOrBelow {
+		return 100
+	}
+	if v >= zeroAtOrAbove {
+		return 0
+	}
+	return (zeroAtOrAbove - v) / (zeroAtOrAbove - goodAtOrBelow) * 100
+}
+
+func thresholdOrDefault(value *float64, fallback *float64) float64 {
+	if value != nil {
+		return *value
+	}
+	if fallback != nil {
+		return *fallback
+	}
+	return 0
 }
 
 // computeInfraHealth calculates infrastructure health score (0-100)
