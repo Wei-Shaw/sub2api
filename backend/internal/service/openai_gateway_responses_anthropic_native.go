@@ -74,6 +74,11 @@ func (s *OpenAIGatewayService) forwardResponsesViaNativeAnthropic(
 	billingModel := resolveOpenAIForwardModel(account, originalModel, defaultMappedModel)
 	upstreamModel := normalizeOpenAIModelForUpstream(account, billingModel)
 	anthropicReq.Model = upstreamModel
+	if responsesReq.Reasoning != nil {
+		apicompat.ReapplyResponsesReasoningToAnthropic(
+			anthropicReq, upstreamModel, responsesReq.Reasoning.Effort,
+		)
+	}
 
 	reasoningEffort := ExtractResponsesReasoningEffortFromBody(body, upstreamModel, billingModel, originalModel)
 	reasoningEffort = ApplyThinkingEnabledFallback(reasoningEffort, body, billingModel)

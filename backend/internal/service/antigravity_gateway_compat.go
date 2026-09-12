@@ -207,8 +207,8 @@ func (s *AntigravityGatewayService) prepareAntigravityCompatCall(
 	account *Account,
 	request antigravityCompatRequest,
 ) (*antigravityCompatUpstreamCall, error) {
-	var claudeRequest antigravity.ClaudeRequest
-	if json.Unmarshal(request.claudeBody, &claudeRequest) != nil {
+	var anthropicRequest apicompat.AnthropicRequest
+	if json.Unmarshal(request.claudeBody, &anthropicRequest) != nil {
 		return nil, s.writeAntigravityCompatError(c, http.StatusBadRequest, "invalid_request_error", "Invalid request body")
 	}
 
@@ -218,9 +218,25 @@ func (s *AntigravityGatewayService) prepareAntigravityCompatCall(
 		message := fmt.Sprintf("model %s not in whitelist", request.originalModel)
 		return nil, s.writeAntigravityCompatError(c, http.StatusForbidden, "permission_error", message)
 	}
-	thinkingEnabled := claudeRequest.Thinking != nil &&
-		(claudeRequest.Thinking.Type == "enabled" || claudeRequest.Thinking.Type == "adaptive")
+	if request.reasoningEffort != nil {
+		apicompat.ReapplyResponsesReasoningToAnthropic(
+			&anthropicRequest, mappedModel, *request.reasoningEffort,
+		)
+	}
+	thinkingEnabled := anthropicRequest.Thinking != nil &&
+		(anthropicRequest.Thinking.Type == "enabled" || anthropicRequest.Thinking.Type == "adaptive")
 	mappedModel = applyThinkingModelSuffix(mappedModel, thinkingEnabled)
+	if request.reasoningEffort != nil {
+		apicompat.ReapplyResponsesReasoningToAnthropic(
+			&anthropicRequest, mappedModel, *request.reasoningEffort,
+		)
+	}
+	request.claudeBody, _ = json.Marshal(&anthropicRequest)
+
+	var claudeRequest antigravity.ClaudeRequest
+	if json.Unmarshal(request.claudeBody, &claudeRequest) != nil {
+		return nil, s.writeAntigravityCompatError(c, http.StatusBadRequest, "invalid_request_error", "Invalid request body")
+	}
 
 	if s.tokenProvider == nil {
 		return nil, s.writeAntigravityCompatError(c, http.StatusBadGateway, "api_error", "Antigravity token provider not configured")
