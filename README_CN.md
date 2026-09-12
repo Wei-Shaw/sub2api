@@ -191,7 +191,7 @@ Sub2API 是一个 AI API 网关平台，用于分发和管理 AI 产品订阅的
 - **API Key 分发** - 为用户生成和管理 API Key
 - **精确计费** - Token 级别的用量追踪和成本计算
 - **智能调度** - 智能账号选择，支持粘性会话
-- **并发控制** - 用户级和账号级并发限制
+- **并发控制** - 用户级、账号级和 API Key 级并发限制，支持可配置的 Key 等待队列
 - **速率限制** - 可配置的请求和 Token 速率限制
 - **内置支付系统** - 支持 EasyPay 易支付、支付宝官方、微信官方、Stripe，用户自助充值，无需独立部署支付服务（[配置指南](docs/PAYMENT_CN.md)）
 - **管理后台** - Web 界面进行监控和管理
@@ -713,6 +713,34 @@ go generate ./cmd/server
 OAuth / Setup Token 图片请求使用 Responses 主控模型调用 `image_generation` 工具，默认主控为 `gpt-5.6-luna`。可设置 `SUB2API_IMAGES_MAIN_MODEL` 切换为账号支持的文本模型；Docker Compose 用户修改 `.env` 后执行 `docker compose up -d` 重建容器。该配置不会替换所选图片模型，也不会覆盖 `/v1/responses` 请求中已经提供的文本主控模型。
 
 升级后，无模型限制的账号自动支持新模型。已有显式账号映射或分组白名单需要加入两个 2.5 模型（日期快照按需加入）；升级不会自动扩大管理员设置的模型权限。新模型内置价格包含官方文本输入、图片输入和图片输出 token 费率，远端价格表尚未更新时使用内置 2.5 价格；实际按次或按 token 计费仍由既有分组/渠道配置决定。
+
+## API Key 并发等待队列
+
+当 API Key 设置了大于 `0` 的 `concurrency_limit`（并发上限）时，达到上限后的新请求会在原连接上等待空闲槽位，而不是立即拒绝。等待策略是全局配置，进程启动时读取：
+
+```yaml
+gateway:
+  api_key_queue:
+    # 每个受限 Key 允许额外等待的请求数；0 关闭 Key 排队。
+    max_waiting: 20
+    # 单个请求最长等待秒数，必须为正整数。
+    timeout_seconds: 30
+```
+
+| 环境变量 | 默认值 | 说明 |
+|----------|--------|------|
+| `GATEWAY_API_KEY_QUEUE_MAX_WAITING` | `20` | **每个** `concurrency_limit > 0` 的 Key 允许额外等待的请求数；`0` 关闭 Key 排队。 |
+| `GATEWAY_API_KEY_QUEUE_TIMEOUT_SECONDS` | `30` | 单个请求等待 Key 容量的最长秒数。必须为正整数；`0` 会在启动时被拒绝。 |
+
+- 等待名额按 Key 独立计算，不是全局共享池：`20` 表示每个受限 Key 最多 20 个等待请求；`concurrency_limit: 0` 的 Key 不进入队列。
+- 队列用于 HTTP/SSE 转发以及 OpenAI Responses WebSocket 每轮请求和 Live 创建的 Key 准入。不保证 FIFO，空出的槽位由竞争中的等待者获得。
+- 等待期间只复核当前请求实际使用的权限：分组名称、价格、路由调优等无关变更不会中断等待；Key/用户失效、当前模型或能力被撤销仍会拒绝；Key 换组、平台或计费模式变化返回可重试的 `503` / `API_KEY_GROUP_CHANGED`。WebSocket 上确定的鉴权/权限失败以 `1008` 关闭，容量与临时服务/配置错误以 `1013` 关闭。
+- `GATEWAY_API_KEY_QUEUE_MAX_WAITING=0` 时，达到 Key 并发上限立即返回 HTTP `429` 和错误码 `gateway_concurrency_limit`；等待名额已满返回 `429` / `api_key_queue_full`，等待超时返回 `429` / `api_key_queue_timeout`。
+- 两个值都必须是整数：负数、小数、非法字符串或超出范围会在启动时报配置错误；即使关闭排队，`timeout_seconds` 仍必须为正整数。
+- 配置在进程启动时读取一次。Docker Compose 部署请在 `.env` 中设置后重建 `sub2api` 容器（`docker compose up -d`）；仅重启保留旧环境变量的容器不会生效。
+- 调大 `timeout_seconds` 会延长请求占用连接的时间，请确认客户端和反向代理的首字节超时能覆盖等待时间。
+
+该队列与用户级、账号级等待限制相互独立。等待默认启用；升级后如需保持旧的立即拒绝行为，请将 `GATEWAY_API_KEY_QUEUE_MAX_WAITING` 设为 `0`。
 
 ## 简易模式
 

@@ -10,6 +10,7 @@ import (
 	"net/textproto"
 	"net/url"
 	"os"
+	"strconv"
 	"strings"
 	"sync/atomic"
 	"time"
@@ -944,6 +945,102 @@ const (
 	ImageConcurrencyOverflowModeWait   = "wait"
 )
 
+// APIKeyQueueConfig 是 Key 级并发等待队列的全局只读策略。
+//
+// 与逐 Key 的 concurrency_limit 相互独立：Key 上限为 0 时不进入队列；
+// MaxWaiting 为 0 时关闭 Key 排队但保留并发上限。
+type APIKeyQueueConfig struct {
+	// MaxWaiting 是每个受限 Key 允许额外等待的请求数，0 表示关闭 Key 排队。
+	MaxWaiting int `mapstructure:"max_waiting"`
+	// TimeoutSeconds 是单个请求等待 Key 容量的最长秒数，必须为正整数。
+	TimeoutSeconds int `mapstructure:"timeout_seconds"`
+}
+
+// Timeout 返回已校验的等待预算。仅在配置通过校验后调用。
+func (c APIKeyQueueConfig) Timeout() time.Duration {
+	return time.Duration(c.TimeoutSeconds) * time.Second
+}
+
+const (
+	// APIKeyQueueMaxWaitingEnv / APIKeyQueueTimeoutSecondsEnv 是部署环境变量名。
+	APIKeyQueueMaxWaitingEnv     = "GATEWAY_API_KEY_QUEUE_MAX_WAITING"
+	APIKeyQueueTimeoutSecondsEnv = "GATEWAY_API_KEY_QUEUE_TIMEOUT_SECONDS"
+
+	defaultAPIKeyQueueMaxWaiting     = 20
+	defaultAPIKeyQueueTimeoutSeconds = 30
+	// Keep seconds*time.Second and seconds*1000 inside int64/float64 exact range.
+	maxAPIKeyQueueTimeoutSeconds = math.MaxInt64 / int64(time.Second)
+)
+
+// loadAPIKeyQueueConfig 从严解析两个全局参数：拒绝负数、小数、非法字符串和溢出，
+// 即使关闭排队也要求时长为正数。
+func loadAPIKeyQueueConfig() (APIKeyQueueConfig, error) {
+	maxWaiting, err := strictConfigInt(viper.Get("gateway.api_key_queue.max_waiting"))
+	if err != nil {
+		return APIKeyQueueConfig{}, fmt.Errorf("gateway.api_key_queue.max_waiting: %w", err)
+	}
+	if maxWaiting < 0 {
+		return APIKeyQueueConfig{}, fmt.Errorf("gateway.api_key_queue.max_waiting must be non-negative")
+	}
+	timeoutSeconds, err := strictConfigInt(viper.Get("gateway.api_key_queue.timeout_seconds"))
+	if err != nil {
+		return APIKeyQueueConfig{}, fmt.Errorf("gateway.api_key_queue.timeout_seconds: %w", err)
+	}
+	if timeoutSeconds <= 0 {
+		return APIKeyQueueConfig{}, fmt.Errorf("gateway.api_key_queue.timeout_seconds must be a positive integer")
+	}
+	if int64(timeoutSeconds) > maxAPIKeyQueueTimeoutSeconds {
+		return APIKeyQueueConfig{}, fmt.Errorf("gateway.api_key_queue.timeout_seconds exceeds the supported duration range")
+	}
+	return APIKeyQueueConfig{MaxWaiting: maxWaiting, TimeoutSeconds: timeoutSeconds}, nil
+}
+
+// strictConfigInt 只接受整数语义的值：环境变量是字符串，配置文件可能是 int 或 float。
+// 显式拒绝小数，避免 20.9 被静默截断为 20。
+func strictConfigInt(value any) (int, error) {
+	switch v := value.(type) {
+	case int:
+		return v, nil
+	case int32:
+		return int(v), nil
+	case int64:
+		if v < math.MinInt || v > math.MaxInt {
+			return 0, fmt.Errorf("value %d overflows int", v)
+		}
+		return int(v), nil
+	case uint:
+		if uint64(v) > uint64(math.MaxInt) {
+			return 0, fmt.Errorf("value %d overflows int", v)
+		}
+		return int(v), nil
+	case uint64:
+		if v > uint64(math.MaxInt) {
+			return 0, fmt.Errorf("value %d overflows int", v)
+		}
+		return int(v), nil
+	case float64:
+		if math.IsNaN(v) || math.IsInf(v, 0) || v != math.Trunc(v) {
+			return 0, fmt.Errorf("must be a whole number, got %v", v)
+		}
+		if v < float64(math.MinInt) || v > float64(math.MaxInt) {
+			return 0, fmt.Errorf("value %v overflows int", v)
+		}
+		return int(v), nil
+	case string:
+		trimmed := strings.TrimSpace(v)
+		if trimmed == "" {
+			return 0, fmt.Errorf("must be an integer")
+		}
+		n, err := strconv.ParseInt(trimmed, 10, strconv.IntSize)
+		if err != nil {
+			return 0, fmt.Errorf("must be an integer, got %q", v)
+		}
+		return int(n), nil
+	default:
+		return 0, fmt.Errorf("unsupported value type %T", value)
+	}
+}
+
 // GatewayConfig API网关相关配置
 type GatewayConfig struct {
 	// 等待上游响应头的超时时间（秒），0表示无超时
@@ -1016,6 +1113,8 @@ type GatewayConfig struct {
 	OpenAIProxyStreamCircuit GatewayOpenAIProxyStreamCircuitConfig `mapstructure:"openai_proxy_stream_circuit"`
 	// ImageConcurrency: 图片生成独立并发限制配置（默认关闭）
 	ImageConcurrency ImageConcurrencyConfig `mapstructure:"image_concurrency"`
+	// APIKeyQueue: Key 级并发等待队列的全局策略（仅环境变量/配置文件，无数据库字段）
+	APIKeyQueue APIKeyQueueConfig `mapstructure:"api_key_queue"`
 
 	// HTTP 上游连接池配置（性能优化：支持高并发场景调优）
 	// MaxIdleConns: 所有主机的最大空闲连接总数
@@ -1835,6 +1934,14 @@ func load(allowMissingJWTSecret bool) (*Config, error) {
 		cfg.Gateway.OpenAIScheduler.StickyEscapeEnabled = true
 	}
 
+	// 从严解析 Key 等待队列参数：环境变量/配置文件的小数、负数、非法字符串
+	// 或溢出必须在启动时失败，不能被 viper 静默截断。
+	apiKeyQueueConfig, err := loadAPIKeyQueueConfig()
+	if err != nil {
+		return nil, fmt.Errorf("validate config error: %w", err)
+	}
+	cfg.Gateway.APIKeyQueue = apiKeyQueueConfig
+
 	cfg.RunMode = NormalizeRunMode(cfg.RunMode)
 	cfg.Server.Mode = strings.ToLower(strings.TrimSpace(cfg.Server.Mode))
 	if cfg.Server.Mode == "" {
@@ -2371,6 +2478,8 @@ func setDefaults() {
 	viper.SetDefault("gateway.failover_on_400", false)
 	viper.SetDefault("gateway.max_account_switches", 10)
 	viper.SetDefault("gateway.max_account_switches_gemini", 3)
+	viper.SetDefault("gateway.api_key_queue.max_waiting", defaultAPIKeyQueueMaxWaiting)
+	viper.SetDefault("gateway.api_key_queue.timeout_seconds", defaultAPIKeyQueueTimeoutSeconds)
 	viper.SetDefault("gateway.force_codex_cli", false)
 	viper.SetDefault("gateway.disable_codex_identity_enforcement", false)
 	viper.SetDefault("gateway.disable_codex_originator_normalization", false)

@@ -504,6 +504,15 @@ gateway:
     # Max image requests waiting in this process when overflow_mode=wait, 0=unlimited
     # wait 模式当前进程允许排队等待的图片请求数，0=不限制
     max_waiting_requests: 100
+  # API Key concurrency wait queue. Global policy; no per-key database field.
+  # API Key 并发等待队列（全局策略，无逐 Key 数据库字段；进程启动时读取）。
+  api_key_queue:
+    # Extra waiting requests per API key with concurrency_limit>0; 0 disables key queueing.
+    # 每个受限 Key 允许额外等待的请求数；0 关闭 Key 排队（仍保留并发上限）。
+    max_waiting: 20
+    # Max wait budget per request in seconds (positive integer; 0 is rejected).
+    # 单个请求等待 Key 容量的最长秒数（正整数，0 会被拒绝）。
+    timeout_seconds: 30
   # SSE max line size in bytes (default: 40MB)
   # SSE 单行最大字节数（默认 40MB）
   max_line_size: 41943040

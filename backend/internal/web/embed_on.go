@@ -149,17 +149,20 @@ func (s *FrontendServer) serveIndexHTML(c *gin.Context) {
 	// Check cache first
 	cached := s.cache.Get()
 	if cached != nil {
-		// Check If-None-Match for 304 response
-		if match := c.GetHeader("If-None-Match"); match == cached.ETag {
-			c.Status(http.StatusNotModified)
-			c.Abort()
-			return
+		// A fresh CSP nonce requires a fresh body: a 304 would pair the new
+		// policy with the browser's cached script nonce and block settings injection.
+		if nonce == "" {
+			c.Header("ETag", cached.ETag)
+			if match := c.GetHeader("If-None-Match"); match == cached.ETag {
+				c.Status(http.StatusNotModified)
+				c.Abort()
+				return
+			}
 		}
 
 		// Replace nonce placeholder with actual nonce before serving
 		content := replaceNoncePlaceholder(cached.Content, nonce)
 
-		c.Header("ETag", cached.ETag)
 		c.Header("Cache-Control", "no-cache") // Must revalidate
 		c.Data(http.StatusOK, "text/html; charset=utf-8", content)
 		c.Abort()
@@ -193,7 +196,7 @@ func (s *FrontendServer) serveIndexHTML(c *gin.Context) {
 	content := replaceNoncePlaceholder(rendered, nonce)
 
 	cached = s.cache.Get()
-	if cached != nil {
+	if cached != nil && nonce == "" {
 		c.Header("ETag", cached.ETag)
 	}
 	c.Header("Cache-Control", "no-cache")

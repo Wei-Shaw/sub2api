@@ -9,6 +9,8 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/openai"
@@ -17,6 +19,497 @@ import (
 	"github.com/tidwall/gjson"
 	"github.com/tidwall/sjson"
 )
+
+const openAIWSUsageDrainTimeout = 1200 * time.Millisecond
+
+var errOpenAIWSUsageDrainExpired = errors.New("websocket client usage drain expired")
+
+type openAIWSClientRead struct {
+	messageType coderws.MessageType
+	payload     []byte
+}
+
+// openAIWSIngressReaderFrameLimit bounds both the socket read-ahead channel and
+// the frames preserved while a turn waits for key admission. They share one
+// budget instead of copying an unbounded temporary queue.
+const openAIWSIngressReaderFrameLimit = 8
+
+// One reader belongs to the downstream connection, including upstream retries.
+// The handler closes that connection when the session ends.
+type openAIWSIngressReader struct {
+	conn   *coderws.Conn
+	frames chan openAIWSClientRead
+	done   chan struct{}
+	err    error // published by closing done
+
+	// waitFrames preserves non-control client frames consumed while one turn
+	// waits for key admission. read() drains them first.
+	waitMu     sync.Mutex
+	waitFrames []openAIWSClientRead
+	// waitFrameMode is set per upstream attempt before its relay starts. The
+	// first key wait runs before any account (and therefore ingress mode) is
+	// chosen, so it stays unknown there: only a cancel for the pending turn is
+	// consumed, because that request was never forwarded upstream.
+	waitFrameMode atomic.Int32
+}
+
+// openAIWSWaitFrameMode selects how a key-waiting turn treats application
+// frames. Unknown is the first-turn state before an account is chosen; only a
+// recognized cancel for the pending turn ends the wait. Plain is the
+// established native/bridge state, which keeps only disconnect observation.
+// Passthrough additionally rejects an overlapping response.create.
+type openAIWSWaitFrameMode int32
+
+const (
+	openAIWSWaitFrameModeUnknown openAIWSWaitFrameMode = iota
+	openAIWSWaitFrameModePlain
+	openAIWSWaitFrameModePassthrough
+)
+
+type openAIWSDisconnectKey struct{}
+
+const openAIWSIngressReaderKey = "openai_ws_ingress_reader"
+
+// errOpenAIWSClientGone marks a peer that left before its turn was admitted.
+// It never counts against an upstream account.
+var errOpenAIWSClientGone = errors.New("websocket client disconnected before key admission")
+
+type openAIWSClientGoneError struct{ err error }
+
+func (e *openAIWSClientGoneError) Error() string {
+	cause := ""
+	if e != nil && e.err != nil {
+		cause = ": " + e.err.Error()
+	}
+	return errOpenAIWSClientGone.Error() + cause
+}
+
+func (e *openAIWSClientGoneError) Unwrap() []error {
+	if e == nil || e.err == nil {
+		return []error{errOpenAIWSClientGone}
+	}
+	return []error{errOpenAIWSClientGone, e.err}
+}
+
+// IsOpenAIWSClientGoneError reports a peer disconnect observed while waiting
+// for admission, including when the underlying close error is wrapped.
+func IsOpenAIWSClientGoneError(err error) bool {
+	return errors.Is(err, errOpenAIWSClientGone)
+}
+
+// EnsureOpenAIWSIngressReader starts the single shared client reader before the
+// first key queue wait. The ingress service and every account retry reuse it,
+// so a disconnected peer is observed while admission is still running.
+func EnsureOpenAIWSIngressReader(c *gin.Context, conn *coderws.Conn) {
+	if c == nil || conn == nil {
+		return
+	}
+	openAIWSGetIngressReader(c, conn)
+}
+
+func openAIWSIngressReaderFromContext(c *gin.Context) *openAIWSIngressReader {
+	if c == nil {
+		return nil
+	}
+	if value, ok := c.Get(openAIWSIngressReaderKey); ok {
+		if reader, valid := value.(*openAIWSIngressReader); valid && reader != nil {
+			return reader
+		}
+	}
+	return nil
+}
+
+func (r *openAIWSIngressReader) setWaitFrameMode(passthrough bool) {
+	if r == nil {
+		return
+	}
+	mode := openAIWSWaitFrameModePlain
+	if passthrough {
+		mode = openAIWSWaitFrameModePassthrough
+	}
+	r.waitFrameMode.Store(int32(mode))
+}
+
+func (r *openAIWSIngressReader) currentWaitFrameMode() openAIWSWaitFrameMode {
+	if r == nil {
+		return openAIWSWaitFrameModeUnknown
+	}
+	return openAIWSWaitFrameMode(r.waitFrameMode.Load())
+}
+
+func (r *openAIWSIngressReader) isDone() bool {
+	if r == nil {
+		return true
+	}
+	select {
+	case <-r.done:
+		return true
+	default:
+		return false
+	}
+}
+
+func (r *openAIWSIngressReader) preserveWaitFrame(frame openAIWSClientRead) bool {
+	if r == nil {
+		return false
+	}
+	r.waitMu.Lock()
+	defer r.waitMu.Unlock()
+	if len(r.waitFrames) >= openAIWSIngressReaderFrameLimit {
+		return false
+	}
+	r.waitFrames = append(r.waitFrames, frame)
+	return true
+}
+
+func (r *openAIWSIngressReader) popWaitFrame() (openAIWSClientRead, bool) {
+	if r == nil {
+		return openAIWSClientRead{}, false
+	}
+	r.waitMu.Lock()
+	defer r.waitMu.Unlock()
+	if len(r.waitFrames) == 0 {
+		return openAIWSClientRead{}, false
+	}
+	frame := r.waitFrames[0]
+	r.waitFrames = r.waitFrames[1:]
+	return frame, true
+}
+
+// admissionStopError maps the reader's terminal state to the admission waiter
+// error: local typed closes stay typed, anything else is treated as peer gone.
+func (r *openAIWSIngressReader) admissionStopError() error {
+	if r == nil {
+		return &openAIWSClientGoneError{}
+	}
+	var localClose *OpenAIWSClientCloseError
+	if errors.As(r.err, &localClose) {
+		return r.err
+	}
+	return &openAIWSClientGoneError{err: r.err}
+}
+
+type openAIWSAdmissionFrameAction int
+
+const (
+	openAIWSAdmissionFramePreserve openAIWSAdmissionFrameAction = iota
+	openAIWSAdmissionFrameCancel
+	openAIWSAdmissionFrameOverlap
+)
+
+// openAIWSAdmissionWaitFrame classifies a client frame seen while a turn waits
+// for key admission. A cancel aimed at the pending turn (no response_id) is
+// consumed in every state where the gate reads frames: the request was not
+// forwarded yet, so this is a local cancellation, not an upstream protocol
+// action. A late/old response_id must not cancel the new pending turn. An
+// overlapping response.create keeps the passthrough protocol rejection; other
+// frames wait in the bounded preserve queue for the normal relay consumer.
+func openAIWSAdmissionWaitFrame(mode openAIWSWaitFrameMode, frame openAIWSClientRead) openAIWSAdmissionFrameAction {
+	if frame.messageType != coderws.MessageText && frame.messageType != coderws.MessageBinary {
+		return openAIWSAdmissionFramePreserve
+	}
+	switch strings.TrimSpace(gjson.GetBytes(frame.payload, "type").String()) {
+	case "response.cancel":
+		if strings.TrimSpace(gjson.GetBytes(frame.payload, "response_id").String()) != "" {
+			return openAIWSAdmissionFramePreserve
+		}
+		return openAIWSAdmissionFrameCancel
+	case "response.create":
+		if mode == openAIWSWaitFrameModePassthrough {
+			return openAIWSAdmissionFrameOverlap
+		}
+		return openAIWSAdmissionFramePreserve
+	default:
+		return openAIWSAdmissionFramePreserve
+	}
+}
+
+// WaitOpenAIWSKeyAdmission runs one key-slot admission on a worker while the
+// calling goroutine remains the connection's single frame consumer. The gate
+// listens to the request control context and the shared reader, so a peer that
+// leaves during the wait stops admission promptly. The gate consumes frames
+// whenever the wait is not in the established plain state: before a mode is
+// chosen (first turn) it consumes only a pending response.cancel, and
+// passthrough additionally consumes a pending cancel and rejects an overlapping
+// response.create with the existing protocol close. Everything else is
+// preserved so the bounded backlog never grows a second queue. A grant is only
+// handed over when neither control nor the reader ended first; otherwise it is
+// released because no upstream work started.
+func WaitOpenAIWSKeyAdmission(
+	ctx context.Context,
+	c *gin.Context,
+	acquire func(context.Context) (*APIKeySlotReservation, error),
+) (*APIKeySlotReservation, error) {
+	if acquire == nil {
+		return nil, errors.New("missing API key admission function")
+	}
+	reader := openAIWSIngressReaderFromContext(c)
+	if reader == nil {
+		// Non-WS or direct callers keep the plain synchronous contract.
+		return acquire(ctx)
+	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	waitFrameMode := reader.currentWaitFrameMode()
+	type admissionResult struct {
+		reservation *APIKeySlotReservation
+		err         error
+	}
+	gateCtx, cancelGate := context.WithCancelCause(ctx)
+	defer cancelGate(context.Canceled)
+	resultCh := make(chan admissionResult, 1)
+	go func() {
+		reservation, err := acquire(gateCtx)
+		resultCh <- admissionResult{reservation: reservation, err: err}
+	}()
+
+	controlErr := func() error {
+		if ctx.Err() == nil {
+			return nil
+		}
+		cause := context.Cause(ctx)
+		if cause == nil {
+			cause = ctx.Err()
+		}
+		if errors.Is(cause, errOpenAIWSSessionPreempted) {
+			return errOpenAIWSSessionPreempted
+		}
+		if errors.Is(cause, ErrOpenAIWSIngressLeaseLost) {
+			// Keep the exact retryable close the ingress lease uses elsewhere.
+			return NewOpenAIWSClientCloseError(
+				coderws.StatusTryAgainLater,
+				"websocket ingress capacity lease lost; please reconnect",
+				cause,
+			)
+		}
+		return cause
+	}
+	settleCancel := func(cause error) (*APIKeySlotReservation, error) {
+		cancelGate(cause)
+		result := <-resultCh
+		if result.reservation != nil {
+			// Cancelled before any upstream write: a late grant is not handed on.
+			result.reservation.Release()
+		}
+		return nil, cause
+	}
+	stopForReader := func() (*APIKeySlotReservation, error) {
+		cancelGate(errOpenAIWSClientGone)
+		result := <-resultCh
+		if result.reservation != nil {
+			result.reservation.Release()
+		}
+		return nil, reader.admissionStopError()
+	}
+
+	var frames <-chan openAIWSClientRead
+	if waitFrameMode != openAIWSWaitFrameModePlain {
+		// Unknown (first turn, no mode yet) and passthrough both consume
+		// frames, so the socket read-ahead stays drained while the key wait
+		// runs. Established native/bridge keeps its existing behavior.
+		frames = reader.frames
+	}
+	for {
+		if err := controlErr(); err != nil {
+			return settleCancel(err)
+		}
+		select {
+		case <-ctx.Done():
+			return settleCancel(controlErr())
+		case <-reader.done:
+			// A known control cause must win over the reader state.
+			if err := controlErr(); err != nil {
+				return settleCancel(err)
+			}
+			return stopForReader()
+		case result := <-resultCh:
+			if err := controlErr(); err != nil {
+				if result.reservation != nil {
+					result.reservation.Release()
+				}
+				return nil, err
+			}
+			if reader.isDone() {
+				if result.reservation != nil {
+					result.reservation.Release()
+				}
+				return nil, reader.admissionStopError()
+			}
+			if result.err != nil {
+				return nil, result.err
+			}
+			return result.reservation, nil
+		case frame := <-frames:
+			switch openAIWSAdmissionWaitFrame(waitFrameMode, frame) {
+			case openAIWSAdmissionFrameCancel:
+				return settleCancel(NewOpenAIWSClientCloseError(
+					coderws.StatusNormalClosure,
+					"pending response canceled while waiting for API key concurrency slot",
+					nil,
+				))
+			case openAIWSAdmissionFrameOverlap:
+				return settleCancel(NewOpenAIWSClientCloseError(
+					coderws.StatusPolicyViolation,
+					"overlapping response.create is not supported",
+					nil,
+				))
+			default:
+				if !reader.preserveWaitFrame(frame) {
+					// Bounded backlog: stop consuming; overflow policy then ends
+					// the connection instead of growing another queue.
+					frames = nil
+				}
+			}
+		}
+	}
+}
+
+// OpenAIWSIngressCanFailover gates new account attempts without discarding the
+// upstream error/cooldown evidence from an attempt whose client has departed.
+func OpenAIWSIngressCanFailover(ctx context.Context, c *gin.Context) bool {
+	if ctx.Err() != nil {
+		return false
+	}
+	if value, ok := c.Get(openAIWSIngressReaderKey); ok {
+		reader, valid := value.(*openAIWSIngressReader)
+		if !valid || reader == nil {
+			return false
+		}
+		select {
+		case <-reader.done:
+			return false
+		default:
+		}
+	}
+	return true
+}
+
+func openAIWSGetIngressReader(c *gin.Context, conn *coderws.Conn) *openAIWSIngressReader {
+	if value, ok := c.Get(openAIWSIngressReaderKey); ok {
+		if reader, valid := value.(*openAIWSIngressReader); valid && reader != nil {
+			return reader
+		}
+		// Do not start a second connection reader when cached state is invalid.
+		reader := &openAIWSIngressReader{conn: conn, done: make(chan struct{}), err: NewOpenAIWSClientCloseError(coderws.StatusInternalError, "invalid websocket ingress reader state", nil)}
+		close(reader.done)
+		c.Set(openAIWSIngressReaderKey, reader)
+		return reader
+	}
+	r := &openAIWSIngressReader{conn: conn, frames: make(chan openAIWSClientRead, openAIWSIngressReaderFrameLimit), done: make(chan struct{})}
+	c.Set(openAIWSIngressReaderKey, r)
+	go func() {
+		defer close(r.done)
+		for {
+			kind, payload, err := conn.Read(context.Background())
+			if err != nil {
+				r.err = err
+				return
+			}
+			select {
+			case r.frames <- openAIWSClientRead{kind, payload}:
+			default:
+				// Blocking on this queue would stop reading close frames while
+				// upstream/audit work is stalled. Bound the backlog and send an
+				// explicit policy close; Close owns the handshake read here.
+				r.err = NewOpenAIWSClientCloseError(coderws.StatusPolicyViolation, "too many pending websocket requests", nil)
+				_ = conn.Close(coderws.StatusPolicyViolation, "too many pending websocket requests")
+				_ = conn.CloseNow()
+				return
+			}
+		}
+	}()
+	return r
+}
+
+func (r *openAIWSIngressReader) closeAndJoin(status coderws.StatusCode, reason string, cause error) error {
+	_ = r.conn.Close(status, reason)
+	_ = r.conn.CloseNow()
+	<-r.done
+	return NewOpenAIWSClientCloseError(status, reason, cause)
+}
+
+func (r *openAIWSIngressReader) closeForControl(ctx context.Context) error {
+	cause := context.Cause(ctx)
+	if errors.Is(cause, ErrOpenAIWSIngressLeaseLost) || errors.Is(cause, ErrAPIKeySlotLeaseLost) {
+		return r.closeAndJoin(coderws.StatusTryAgainLater, "websocket ingress capacity lease lost; please reconnect", cause)
+	}
+	return r.closeAndJoin(coderws.StatusGoingAway, "websocket request canceled", cause)
+}
+
+func (r *openAIWSIngressReader) disconnected() bool {
+	select {
+	case <-r.done:
+		return isOpenAIWSClientReadDisconnect(r.err)
+	default:
+		return false
+	}
+}
+
+// Classify the returned read error, not the reader's eventual close echo:
+// local idle/control closes must retain their typed error and cause.
+func isOpenAIWSClientReadDisconnect(err error) bool {
+	var localClose *OpenAIWSClientCloseError
+	if errors.As(err, &localClose) {
+		return false
+	}
+	return coderws.CloseStatus(err) != -1 || isOpenAIWSClientDisconnectError(err)
+}
+
+func (r *openAIWSIngressReader) read(ctx context.Context) (coderws.MessageType, []byte, error) {
+	for {
+		// Frames preserved during a key wait keep their original order.
+		if frame, ok := r.popWaitFrame(); ok {
+			return frame.messageType, frame.payload, nil
+		}
+		select {
+		case <-r.done:
+			return 0, nil, r.err
+		default:
+		}
+		select {
+		case <-ctx.Done():
+			return 0, nil, ctx.Err()
+		case <-r.done:
+			return 0, nil, r.err
+		case frame := <-r.frames:
+			return frame.messageType, frame.payload, nil
+		}
+	}
+}
+
+// Disconnect starts an absolute usage-drain window; activity cannot extend it.
+// Control-plane cancellation remains immediate. Cleanup joins the watchdog.
+func openAIWSDrainContext(ctx context.Context) (context.Context, func(), func()) {
+	turnCtx, cancel := context.WithCancelCause(context.WithoutCancel(ctx))
+	disconnected, _ := ctx.Value(openAIWSDisconnectKey{}).(<-chan struct{})
+	drain := make(chan struct{})
+	var once sync.Once
+	startDrain := func() { once.Do(func() { close(drain) }) }
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		select {
+		case <-ctx.Done():
+			cancel(context.Cause(ctx))
+			return
+		case <-turnCtx.Done():
+			return
+		case <-disconnected:
+		case <-drain:
+		}
+		timer := time.NewTimer(openAIWSUsageDrainTimeout)
+		defer timer.Stop()
+		select {
+		case <-ctx.Done():
+			cancel(context.Cause(ctx))
+		case <-timer.C:
+			cancel(errOpenAIWSUsageDrainExpired)
+		case <-turnCtx.Done():
+		}
+	}()
+	return turnCtx, startDrain, func() { cancel(context.Canceled); <-done }
+}
 
 type openAIWSRejectedFieldRetryError struct {
 	body   []byte
@@ -115,6 +608,14 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 	}
 
 	wsDecision := s.getOpenAIWSProtocolResolver().Resolve(account)
+	// One reader owns the downstream socket for the whole connection. A
+	// passthrough attempt consumes cancel/overlap frames through it, established
+	// native/bridge only needs its disconnect signal, and the first-turn wait
+	// before any mode is known consumes a pending cancel locally. Reset the
+	// per-attempt mode here so a passthrough attempt cannot leak semantics into
+	// a later bridge/ctx_pool account retry.
+	ingressReader := openAIWSGetIngressReader(c, clientConn)
+	ingressReader.setWaitFrameMode(false)
 	forceHTTPBridge := account.Platform == PlatformGrok ||
 		(s.pluginManager != nil && s.pluginManager.ShouldRouteOpenAIOAuth(account))
 	modeRouterV2Enabled := s != nil && s.cfg != nil && s.cfg.Gateway.OpenAIWS.ModeRouterV2Enabled
@@ -140,6 +641,9 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 			// 首轮准入由握手路径完成；后续 response.create 会在写入上游前
 			// 依次回调 BeforeRequest 和 BeforeTurn，并在终止或失败时回调
 			// AfterTurn，从而覆盖 turn 级利润复核、定价冻结和并发槽位释放。
+			// Passthrough additionally lets the waiting turn consume its own
+			// response.cancel/overlap frames through the same reader.
+			ingressReader.setWaitFrameMode(true)
 			return s.proxyResponsesWebSocketV2Passthrough(
 				ctx,
 				c,
@@ -166,6 +670,32 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 		return fmt.Errorf("websocket ingress requires ws_v2 transport, got=%s", wsDecision.Transport)
 	}
 	dedicatedMode := modeRouterV2Enabled && ingressMode == OpenAIWSIngressModeDedicated
+	if hooks != nil {
+		originalHooks := hooks
+		wrapped := *hooks
+		activeTurn := 0
+		wrapped.BeforeTurn = func(turn int) error {
+			if originalHooks.BeforeTurn != nil {
+				if err := originalHooks.BeforeTurn(turn); err != nil {
+					return err
+				}
+			}
+			activeTurn = turn
+			return nil
+		}
+		wrapped.AfterTurn = func(turn int, result *OpenAIForwardResult, err error) {
+			activeTurn = 0
+			if originalHooks.AfterTurn != nil {
+				originalHooks.AfterTurn(turn, result, err)
+			}
+		}
+		hooks = &wrapped
+		defer func() {
+			if activeTurn != 0 && originalHooks.AfterTurn != nil {
+				originalHooks.AfterTurn(activeTurn, nil, errors.New("websocket turn ended before terminal event"))
+			}
+		}()
+	}
 
 	wsURL := ""
 	wsHost := "-"
@@ -339,7 +869,7 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 			normalized = litePayload
 		}
 		apiKey := getAPIKeyFromContext(c)
-		imageGenerationAllowed := GroupAllowsImageGeneration(apiKeyGroup(apiKey))
+		imageGenerationAllowed := GroupAllowsImageGenerationLatest(ctx, apiKeyGroup(apiKey))
 		codexImageGenerationExplicitToolPolicy := codexImageGenerationExplicitToolPolicyAllow
 		if isCodexCLI {
 			codexImageGenerationExplicitToolPolicy = account.CodexImageGenerationExplicitToolPolicy()
@@ -483,6 +1013,21 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 		}, nil
 	}
 
+	// preflightFollowupPayload runs the frame's permission preflight before the
+	// parser applies permission-dependent rejection or transformation. It uses
+	// the same effective-model fallback the parser will use, so permissions are
+	// judged for the current frame rather than the previous model.
+	preflightFollowupPayload := func(turn int, raw []byte) error {
+		if hooks == nil || hooks.BeforePayloadParse == nil {
+			return nil
+		}
+		effectiveModel := strings.TrimSpace(gjson.GetBytes(raw, "model").String())
+		if effectiveModel == "" {
+			effectiveModel = ingressSessionOriginalModel
+		}
+		return hooks.BeforePayloadParse(turn, raw, effectiveModel)
+	}
+
 	writeClientMessage := func(message []byte) error {
 		writeCtx, cancel := newOpenAIWSDownstreamWriteContext(ctx, hooks, s.openAIWSWriteTimeout())
 		defer cancel()
@@ -490,15 +1035,26 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 		return clientConn.Write(writeCtx, coderws.MessageText, message)
 	}
 
+	clientReader := openAIWSGetIngressReader(c, clientConn)
+	ctx = context.WithValue(ctx, openAIWSDisconnectKey{}, (<-chan struct{})(clientReader.done))
 	readClientMessage := func() ([]byte, error) {
 		idleTimeout := s.openAIWSIngressInterTurnIdleTimeout()
-		msgType, payload, readErr := ReadOpenAIWSClientMessage(
-			ctx,
-			clientConn,
-			idleTimeout,
-			coderws.StatusNormalClosure,
-			"websocket idle timeout",
-		)
+		readCtx := ctx
+		if idleTimeout > 0 {
+			var cancel context.CancelFunc
+			readCtx, cancel = context.WithTimeout(ctx, idleTimeout)
+			defer cancel()
+		}
+		msgType, payload, readErr := clientReader.read(readCtx)
+		if isOpenAIWSSessionPreempted(ctx) {
+			return nil, errOpenAIWSSessionPreempted
+		}
+		if ctx.Err() != nil {
+			return nil, clientReader.closeForControl(ctx)
+		}
+		if errors.Is(readErr, context.DeadlineExceeded) {
+			readErr = clientReader.closeAndJoin(coderws.StatusNormalClosure, "websocket idle timeout", readErr)
+		}
 		if readErr != nil {
 			var closeErr *OpenAIWSClientCloseError
 			if errors.As(readErr, &closeErr) && closeErr.StatusCode() == coderws.StatusNormalClosure {
@@ -694,6 +1250,23 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 			if bridgeErr != nil && isOpenAIWSSessionPreempted(ctx) {
 				return errOpenAIWSSessionPreempted
 			}
+			if bridgeErr != nil && ctx.Err() != nil {
+				bridgeErr = clientReader.closeForControl(ctx)
+			} else if errors.Is(bridgeErr, errOpenAIWSUsageDrainExpired) && clientReader.disconnected() {
+				if hooks != nil && hooks.AfterTurn != nil {
+					hooks.AfterTurn(turn, nil, nil)
+				}
+				return nil
+			} else if errors.Is(bridgeErr, errOpenAIWSUsageDrainExpired) {
+				select {
+				case <-clientReader.done:
+					var closeErr *OpenAIWSClientCloseError
+					if errors.As(clientReader.err, &closeErr) {
+						bridgeErr = closeErr
+					}
+				default:
+				}
+			}
 			if hooks != nil && hooks.AfterTurn != nil {
 				hooks.AfterTurn(turn, result, bridgeErr)
 			}
@@ -751,7 +1324,7 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 				if isOpenAIWSSessionPreempted(ctx) {
 					return errOpenAIWSSessionPreempted
 				}
-				if isOpenAIWSClientDisconnectError(readErr) {
+				if ctx.Err() == nil && isOpenAIWSClientReadDisconnect(readErr) {
 					closeStatus, closeReason := summarizeOpenAIWSReadCloseError(readErr)
 					logOpenAIWSModeInfo(
 						"ingress_ws_http_bridge_client_closed account_id=%d close_status=%s close_reason=%s",
@@ -762,6 +1335,9 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 					return nil
 				}
 				return fmt.Errorf("read client websocket request: %w", readErr)
+			}
+			if err := preflightFollowupPayload(turn+1, nextClientMessage); err != nil {
+				return err
 			}
 			nextPayload, parseErr := parseClientPayload(turn+1, nextClientMessage)
 			if parseErr != nil {
@@ -962,6 +1538,9 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 			return nil, errors.New("upstream websocket lease is nil")
 		}
 		turnStart := time.Now()
+		turnCtx, startDrain, finishDrain := openAIWSDrainContext(ctx)
+		defer finishDrain()
+		ctx := turnCtx
 		wroteDownstream := false
 		if err := lease.WriteJSONWithContextTimeout(ctx, json.RawMessage(payload), s.openAIWSWriteTimeout()); err != nil {
 			return nil, wrapOpenAIWSIngressTurnError(
@@ -1014,6 +1593,9 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 			upstreamMessage, readErr := lease.ReadMessageWithContextTimeout(ctx, s.openAIWSReadTimeout())
 			if readErr != nil {
 				lease.MarkBroken()
+				if errors.Is(readErr, context.Canceled) && errors.Is(context.Cause(ctx), errOpenAIWSUsageDrainExpired) {
+					return nil, errOpenAIWSUsageDrainExpired
+				}
 				return nil, wrapOpenAIWSIngressTurnError(
 					"read_upstream",
 					fmt.Errorf("read upstream websocket event: %w", readErr),
@@ -1188,6 +1770,7 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 				if err := writeClientMessage(clientMessage); err != nil {
 					if isOpenAIWSClientDisconnectError(err) {
 						clientDisconnected = true
+						startDrain()
 						closeStatus, closeReason := summarizeOpenAIWSReadCloseError(err)
 						logOpenAIWSModeInfo(
 							"ingress_ws_client_disconnected_drain account_id=%d turn=%d conn_id=%s close_status=%s close_reason=%s",
@@ -1787,6 +2370,34 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 				sessionLease.MarkBroken()
 				return errOpenAIWSSessionPreempted
 			}
+			if ctx.Err() != nil {
+				sessionLease.MarkBroken()
+				controlErr := clientReader.closeForControl(ctx)
+				if hooks != nil && hooks.AfterTurn != nil {
+					hooks.AfterTurn(turn, nil, controlErr)
+				}
+				return controlErr
+			}
+			if errors.Is(relayErr, errOpenAIWSUsageDrainExpired) && clientReader.disconnected() {
+				sessionLease.MarkBroken()
+				if hooks != nil && hooks.AfterTurn != nil {
+					hooks.AfterTurn(turn, nil, nil)
+				}
+				return nil
+			}
+			select {
+			case <-clientReader.done:
+				sessionLease.MarkBroken()
+				var closeErr *OpenAIWSClientCloseError
+				if errors.As(clientReader.err, &closeErr) {
+					relayErr = closeErr
+				}
+				if hooks != nil && hooks.AfterTurn != nil {
+					hooks.AfterTurn(turn, nil, relayErr)
+				}
+				return relayErr
+			default:
+			}
 			var rejectedFieldErr *openAIWSRejectedFieldRetryError
 			if errors.As(relayErr, &rejectedFieldErr) && rejectedFieldErr != nil && len(rejectedFieldErr.body) > 0 {
 				currentPayload = append([]byte(nil), rejectedFieldErr.body...)
@@ -1804,10 +2415,10 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 			if unwrapped := errors.Unwrap(relayErr); unwrapped != nil {
 				finalErr = unwrapped
 			}
+			sessionLease.MarkBroken()
 			if hooks != nil && hooks.AfterTurn != nil {
 				hooks.AfterTurn(turn, nil, finalErr)
 			}
-			sessionLease.MarkBroken()
 			return finalErr
 		}
 		turnRetry = 0
@@ -1864,7 +2475,7 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 			if isOpenAIWSSessionPreempted(ctx) {
 				return errOpenAIWSSessionPreempted
 			}
-			if isOpenAIWSClientDisconnectError(readErr) {
+			if ctx.Err() == nil && isOpenAIWSClientReadDisconnect(readErr) {
 				closeStatus, closeReason := summarizeOpenAIWSReadCloseError(readErr)
 				logOpenAIWSModeInfo(
 					"ingress_ws_client_closed account_id=%d conn_id=%s close_status=%s close_reason=%s",
@@ -1878,6 +2489,9 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 			return fmt.Errorf("read client websocket request: %w", readErr)
 		}
 
+		if err := preflightFollowupPayload(turn+1, nextClientMessage); err != nil {
+			return err
+		}
 		nextPayload, parseErr := parseClientPayload(turn+1, nextClientMessage)
 		if parseErr != nil {
 			return parseErr

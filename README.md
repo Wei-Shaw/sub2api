@@ -188,7 +188,7 @@ Sub2API is an AI API gateway platform designed to distribute and manage API quot
 - **API Key Distribution** - Generate and manage API Keys for users
 - **Precise Billing** - Token-level usage tracking and cost calculation
 - **Smart Scheduling** - Intelligent account selection with sticky sessions
-- **Concurrency Control** - Per-user and per-account concurrency limits
+- **Concurrency Control** - Per-user, per-account, and per-API-key concurrency limits, with a configurable API-key wait queue
 - **Rate Limiting** - Configurable request and token rate limits
 - **Built-in Payment System** - Supports EasyPay, Alipay, WeChat Pay, and Stripe for user self-service top-up, no separate payment service needed ([Configuration Guide](docs/PAYMENT.md))
 - **Admin Dashboard** - Web interface for monitoring and management
@@ -725,6 +725,59 @@ cd backend
 go generate ./ent
 go generate ./cmd/server
 ```
+
+---
+
+## API Key Concurrency Wait Queue
+
+When an API key has a per-key `concurrency_limit` greater than `0`, requests
+that arrive while that key is at its limit wait for a free slot instead of
+being rejected immediately. The wait policy is server-wide (not per-key) and
+read at process startup:
+
+```yaml
+gateway:
+  api_key_queue:
+    # Extra waiting requests per limited API key; 0 disables key queueing.
+    max_waiting: 20
+    # Longest wait per request, in seconds; must be a positive integer.
+    timeout_seconds: 30
+```
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `GATEWAY_API_KEY_QUEUE_MAX_WAITING` | `20` | Extra waiting requests allowed for **each** key with `concurrency_limit > 0`; `0` disables key queueing. |
+| `GATEWAY_API_KEY_QUEUE_TIMEOUT_SECONDS` | `30` | Longest time one request may wait for key capacity, in seconds. Must be a positive integer; `0` is rejected at startup. |
+
+- Waiting slots are per API key, not a global pool: `20` means up to 20 waiters
+  for every key that enforces a concurrency limit. Keys with
+  `concurrency_limit: 0` are not queued.
+- The queue applies to key admission for HTTP/SSE forwarding and OpenAI
+  Responses WebSocket turns and Live creation. It is not FIFO: a freed slot is
+  taken by whichever waiter wins the race.
+- While a request waits, only the permissions that request actually uses are
+  re-checked: unrelated group edits (name, pricing, routing) do not interrupt
+  the wait; a disabled/expired key or user and a revoked model/capability are
+  still rejected; a changed key binding, platform or charging mode returns a
+  retryable `503` / `API_KEY_GROUP_CHANGED`. On WebSocket, definite
+  auth/permission failures close with `1008`, while capacity and temporary
+  service/configuration errors close with `1013`.
+- With `GATEWAY_API_KEY_QUEUE_MAX_WAITING=0`, reaching a key's limit fails fast
+  with HTTP `429` and error code `gateway_concurrency_limit`; a full queue
+  returns `429` / `api_key_queue_full`, and an expired wait returns `429` /
+  `api_key_queue_timeout`.
+- Both values must be whole numbers. Negative, decimal, non-numeric, or
+  out-of-range values stop startup with a configuration error; even when
+  queueing is disabled, `timeout_seconds` must still be positive.
+- Values are read once at startup. For Docker Compose, set them in `.env` and
+  recreate the `sub2api` container (`docker compose up -d`); restarting a
+  container that keeps its old environment does not apply changes.
+- Raising `timeout_seconds` keeps client connections open longer while
+  waiting, so verify client and reverse-proxy first-byte timeouts.
+
+This queue is separate from the per-user and per-account wait limits. Waiting
+is enabled by default, so to keep the previous immediate-rejection behavior
+after upgrading, set `GATEWAY_API_KEY_QUEUE_MAX_WAITING=0`.
 
 ---
 
