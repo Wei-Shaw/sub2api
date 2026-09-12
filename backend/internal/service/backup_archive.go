@@ -104,3 +104,17 @@ func cleanupBackupFiles(paths ...string) error {
 	}
 	return errors.Join(errs...)
 }
+
+// fileSHA256 计算文件 SHA256 十六进制摘要。
+func fileSHA256(path string) (string, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return "", err
+	}
+	defer func() { _ = f.Close() }()
+	h := sha256.New()
+	if _, err := io.Copy(h, f); err != nil {
+		return "", err
+	}
+	return hex.EncodeToString(h.Sum(nil)), nil
+}
