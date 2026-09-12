@@ -56,7 +56,7 @@ function mountHome(settings: Record<string, unknown> = {}) {
 }
 
 function compactDestination(wrapper: ReturnType<typeof mountHome>) {
-  return wrapper.get('[data-testid="compact-home"]').findComponent(RouterLinkStub).props('to')
+  return wrapper.getComponent('[data-testid="compact-home-cta"]').props('to')
 }
 
 function modelPlazaDestination(wrapper: ReturnType<typeof mountHome>) {
@@ -108,7 +108,13 @@ describe('HomeView compact mode', () => {
     const wrapper = mountHome(settings)
 
     expect(wrapper.find('[data-testid="compact-home"]').exists()).toBe(false)
-    expect(wrapper.find('.terminal-container').exists()).toBe(true)
+    expect(wrapper.find('.mac-home').exists()).toBe(true)
+  })
+
+  it('links the compact brand back to the current site home route', () => {
+    const wrapper = mountHome({ compact_home_enabled: true })
+
+    expect(wrapper.getComponent('[data-testid="compact-home-brand"]').props('to')).toBe('/home')
   })
 
   it('links unauthenticated visitors to login', () => {

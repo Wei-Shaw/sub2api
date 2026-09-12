@@ -14,6 +14,45 @@ export default {
     login: '登录',
     getStarted: '立即开始',
     goToDashboard: '进入控制台',
+    nav: {
+      capabilities: '核心能力',
+      models: '模型生态',
+      menu: '打开导航菜单',
+      closeMenu: '关闭导航菜单',
+      backHome: '返回主页'
+    },
+    macosHero: {
+      eyebrow: '面向 AI 应用的统一入口',
+      description: '把多个 AI 服务整合成一个稳定、清晰、可观测的 API 入口，让密钥、路由与用量管理回到同一处。',
+      windowTitle: 'Sub2API Gateway',
+      request: '请求',
+      response: '响应',
+      connected: '网关已连接',
+      providerDockLabel: '已接入的 AI 服务',
+      endpointLabel: 'API 端点'
+    },
+    macosCapabilities: {
+      eyebrow: '为真实工作流而设计',
+      title: '少一些切换，多一些创造',
+      description: '保留你熟悉的客户端与调用方式，由 Sub2API 负责统一入口、上游调度和清晰的用量视图。',
+      modelsEyebrow: '模型生态',
+      modelsTitle: '一个入口，连接主流 AI',
+      modelsDescription: '通过兼容接口使用当前平台已经接入的服务，具体可用模型以控制台配置为准。',
+      workflowEyebrow: '工作流',
+      workflowTitle: '从密钥到调用，只需三步',
+      workflowDescription: '不改变你的工具习惯，把接入和观察集中在同一个平台。',
+      steps: {
+        keyTitle: '获取密钥',
+        keyDesc: '登录后创建 API 密钥，并按团队或场景配置使用范围。',
+        connectTitle: '连接客户端',
+        connectDesc: '使用平台提供的兼容端点接入现有 AI 客户端与开发工具。',
+        observeTitle: '查看用量',
+        observeDesc: '在控制台查看请求、额度与消费明细，及时掌握使用状态。'
+      },
+      ctaEyebrow: '开始构建',
+      ctaTitle: '让 AI 接入变得简单而稳定',
+      ctaDescription: '进入控制台管理你的密钥与服务，或先登录开始使用。'
+    },
     // 新增：面向用户的价值主张
     heroSubtitle: '一个密钥，畅用多个 AI 模型',
     heroDescription: '无需管理多个订阅账号，一站式接入 Claude、GPT、Gemini 等主流 AI 服务',
