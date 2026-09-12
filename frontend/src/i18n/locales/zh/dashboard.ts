@@ -1013,6 +1013,9 @@ export default {
     custom: '自定义',
     startDate: '开始日期',
     endDate: '结束日期',
+    startTime: '开始时间',
+    endTime: '结束时间（不含）',
+    invalidRange: '请选择有效时间，结束时间须晚于开始时间',
     apply: '应用',
     selectDateRange: '选择日期范围'
   },

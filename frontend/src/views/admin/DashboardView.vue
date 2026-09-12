@@ -273,7 +273,7 @@
                 <span class="text-sm font-medium text-gray-700 dark:text-gray-300"
                   >{{ t('admin.dashboard.timeRange') }}:</span
                 >
-                <DateRangePicker
+                <DateRangePicker enable-time :preset="selectedPreset"
                   v-model:start-date="startDate"
                   v-model:end-date="endDate"
                   @change="onDateRangeChange"
@@ -341,6 +341,7 @@
 </template>
 
 <script setup lang="ts">
+import { getLast24HourRange as getLast24HoursRangeDates, getDatePresetRange, getGranularityForRange } from '@/utils/dateRange'
 import { ref, computed, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
@@ -410,22 +411,10 @@ let usersTrendLoadSeq = 0
 let rankingLoadSeq = 0
 const rankingLimit = 12
 
-// Helper function to format date in local timezone
-const formatLocalDate = (date: Date): string => {
-  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
-}
-
-const getLast24HoursRangeDates = (): { start: string; end: string } => {
-  const end = new Date()
-  const start = new Date(end.getTime() - 24 * 60 * 60 * 1000)
-  return {
-    start: formatLocalDate(start),
-    end: formatLocalDate(end)
-  }
-}
 
 // Date range
 const granularity = ref<'day' | 'hour'>('hour')
+const selectedPreset = ref<string | null>('last24Hours')
 const defaultRange = getLast24HoursRangeDates()
 const startDate = ref(defaultRange.start)
 const endDate = ref(defaultRange.end)
@@ -628,18 +617,10 @@ const onDateRangeChange = (range: {
   endDate: string
   preset: string | null
 }) => {
-  // Auto-select granularity based on date range
-  const start = new Date(range.startDate)
-  const end = new Date(range.endDate)
-  const daysDiff = Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24))
-
-  // If range is 1 day, use hourly granularity
-  if (daysDiff <= 1) {
-    granularity.value = 'hour'
-  } else {
-    granularity.value = 'day'
-  }
-
+  selectedPreset.value = range.preset
+  startDate.value = range.startDate
+  endDate.value = range.endDate
+  granularity.value = getGranularityForRange(range.startDate, range.endDate)
   loadChartData()
 }
 
@@ -733,6 +714,8 @@ const loadUserSpendingRanking = async () => {
 }
 
 const loadDashboardStats = async () => {
+  const range = selectedPreset.value ? getDatePresetRange(selectedPreset.value) : null
+  if (range) { startDate.value = range.start; endDate.value = range.end }
   await Promise.all([
     loadDashboardSnapshot(true),
     loadUsersTrend(),

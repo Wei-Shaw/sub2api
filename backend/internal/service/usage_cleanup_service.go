@@ -53,6 +53,9 @@ func describeUsageCleanupFilters(filters UsageCleanupFilters) string {
 	var parts []string
 	parts = append(parts, "start="+filters.StartTime.UTC().Format(time.RFC3339))
 	parts = append(parts, "end="+filters.EndTime.UTC().Format(time.RFC3339))
+	if filters.EndExclusive {
+		parts = append(parts, "end_exclusive=true")
+	}
 	if filters.UserID != nil {
 		parts = append(parts, fmt.Sprintf("user_id=%d", *filters.UserID))
 	}
@@ -292,7 +295,7 @@ func (s *UsageCleanupService) validateFilters(filters UsageCleanupFilters) error
 	if filters.StartTime.IsZero() || filters.EndTime.IsZero() {
 		return infraerrors.BadRequest("USAGE_CLEANUP_MISSING_RANGE", "start_date and end_date are required")
 	}
-	if filters.EndTime.Before(filters.StartTime) {
+	if filters.EndTime.Before(filters.StartTime) || (filters.EndExclusive && filters.EndTime.Equal(filters.StartTime)) {
 		return infraerrors.BadRequest("USAGE_CLEANUP_INVALID_RANGE", "end_date must be after start_date")
 	}
 	maxDays := s.maxRangeDays()

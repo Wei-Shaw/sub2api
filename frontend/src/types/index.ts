@@ -1909,6 +1909,8 @@ export interface DashboardStats {
 }
 
 export interface UsageStatsResponse {
+  start_time?: string
+  end_time?: string
   period?: string
   total_requests: number
   total_input_tokens: number

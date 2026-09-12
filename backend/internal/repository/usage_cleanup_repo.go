@@ -395,7 +395,11 @@ func buildUsageCleanupWhere(filters service.UsageCleanupFilters) (string, []any)
 		idx++
 	}
 	if !filters.EndTime.IsZero() {
-		conditions = append(conditions, fmt.Sprintf("created_at <= $%d", idx))
+		op := "<="
+		if filters.EndExclusive {
+			op = "<"
+		}
+		conditions = append(conditions, fmt.Sprintf("created_at %s $%d", op, idx))
 		args = append(args, filters.EndTime)
 		idx++
 	}

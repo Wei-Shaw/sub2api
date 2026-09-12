@@ -1,6 +1,7 @@
 package admin
 
 import (
+	"container/list"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -18,10 +19,16 @@ type snapshotCacheEntry struct {
 }
 
 type snapshotCache struct {
-	mu    sync.RWMutex
-	ttl   time.Duration
-	items map[string]snapshotCacheEntry
-	sf    singleflight.Group
+	mu         sync.Mutex
+	ttl        time.Duration
+	items      map[string]snapshotCacheEntry
+	sf         singleflight.Group
+	order      *list.List
+	positions  map[string]*list.Element
+	costs      map[string]int
+	cost       int
+	maxEntries int
+	maxCost    int
 }
 
 type snapshotCacheLoadResult struct {
@@ -34,8 +41,13 @@ func newSnapshotCache(ttl time.Duration) *snapshotCache {
 		ttl = 30 * time.Second
 	}
 	return &snapshotCache{
-		ttl:   ttl,
-		items: make(map[string]snapshotCacheEntry),
+		ttl:        ttl,
+		items:      make(map[string]snapshotCacheEntry),
+		order:      list.New(),
+		positions:  make(map[string]*list.Element),
+		costs:      make(map[string]int),
+		maxEntries: 256,
+		maxCost:    16 << 20,
 	}
 }
 
@@ -43,18 +55,14 @@ func (c *snapshotCache) Get(key string) (snapshotCacheEntry, bool) {
 	if c == nil || key == "" {
 		return snapshotCacheEntry{}, false
 	}
-	now := time.Now()
-
-	c.mu.RLock()
+	c.mu.Lock()
+	defer c.mu.Unlock()
 	entry, ok := c.items[key]
-	c.mu.RUnlock()
 	if !ok {
 		return snapshotCacheEntry{}, false
 	}
-	if now.After(entry.ExpiresAt) {
-		c.mu.Lock()
-		delete(c.items, key)
-		c.mu.Unlock()
+	if !time.Now().Before(entry.ExpiresAt) {
+		c.remove(key)
 		return snapshotCacheEntry{}, false
 	}
 	return entry, true
@@ -64,18 +72,55 @@ func (c *snapshotCache) Set(key string, payload any) snapshotCacheEntry {
 	if c == nil {
 		return snapshotCacheEntry{}
 	}
+	raw, err := json.Marshal(payload)
 	entry := snapshotCacheEntry{
-		ETag:      buildETagFromAny(payload),
-		Payload:   payload,
-		ExpiresAt: time.Now().Add(c.ttl),
+		Payload: payload,
+	}
+	if err == nil {
+		sum := sha256.Sum256(raw)
+		entry.ETag = "\"" + hex.EncodeToString(sum[:]) + "\""
 	}
 	if key == "" {
 		return entry
 	}
 	c.mu.Lock()
+	defer c.mu.Unlock()
+	entry.ExpiresAt = time.Now().Add(c.ttl)
+	c.remove(key)
+	cost := len(raw) + len(key)
+	if err != nil || cost > c.maxCost || c.maxEntries <= 0 {
+		return entry
+	}
+	// FIFO order also orders expiry because TTL is fixed. Evict only as needed,
+	// without scanning the map or retaining an unbounded expiry queue.
+	for oldest := c.order.Front(); oldest != nil; oldest = c.order.Front() {
+		oldKey, ok := oldest.Value.(string)
+		if !ok {
+			// Set only inserts strings; discard a corrupt queue node defensively.
+			c.order.Remove(oldest)
+			continue
+		}
+		if len(c.items) < c.maxEntries && c.cost+cost <= c.maxCost && time.Now().Before(c.items[oldKey].ExpiresAt) {
+			break
+		}
+		c.remove(oldKey)
+	}
 	c.items[key] = entry
-	c.mu.Unlock()
+	c.positions[key] = c.order.PushBack(key)
+	c.costs[key] = cost
+	c.cost += cost
 	return entry
+}
+
+// remove requires mu to be held; lookup and expired deletion share that lock.
+func (c *snapshotCache) remove(key string) {
+	if element, ok := c.positions[key]; ok {
+		c.order.Remove(element)
+		delete(c.positions, key)
+		c.cost -= c.costs[key]
+		delete(c.costs, key)
+		delete(c.items, key)
+	}
 }
 
 func (c *snapshotCache) GetOrLoad(key string, load func() (any, error)) (snapshotCacheEntry, bool, error) {
@@ -111,15 +156,6 @@ func (c *snapshotCache) GetOrLoad(key string, load func() (any, error)) (snapsho
 		return snapshotCacheEntry{}, false, nil
 	}
 	return result.Entry, result.Hit, nil
-}
-
-func buildETagFromAny(payload any) string {
-	raw, err := json.Marshal(payload)
-	if err != nil {
-		return ""
-	}
-	sum := sha256.Sum256(raw)
-	return "\"" + hex.EncodeToString(sum[:]) + "\""
 }
 
 func parseBoolQueryWithDefault(raw string, def bool) bool {

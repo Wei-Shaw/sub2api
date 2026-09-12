@@ -64,6 +64,8 @@ export interface TrendResponse {
   trend: TrendDataPoint[]
   start_date: string
   end_date: string
+  start_time?: string
+  end_time?: string
   granularity: string
 }
 
@@ -97,6 +99,8 @@ export interface ModelStatsResponse {
   models: ModelStat[]
   start_date: string
   end_date: string
+  start_time?: string
+  end_time?: string
 }
 
 /**
@@ -127,6 +131,8 @@ export interface GroupStatsResponse {
   groups: GroupStat[]
   start_date: string
   end_date: string
+  start_time?: string
+  end_time?: string
 }
 
 export interface DashboardSnapshotV2Params extends TrendParams {
@@ -146,6 +152,8 @@ export interface DashboardSnapshotV2Response {
   generated_at: string
   start_date: string
   end_date: string
+  start_time?: string
+  end_time?: string
   granularity: string
   stats?: DashboardSnapshotV2Stats
   trend?: TrendDataPoint[]
@@ -189,6 +197,8 @@ export interface UserBreakdownResponse {
   users: UserBreakdownItem[]
   start_date: string
   end_date: string
+  start_time?: string
+  end_time?: string
 }
 
 export async function getUserBreakdown(params: UserBreakdownParams): Promise<UserBreakdownResponse> {
@@ -216,6 +226,8 @@ export interface ApiKeyTrendResponse {
   trend: ApiKeyUsageTrendPoint[]
   start_date: string
   end_date: string
+  start_time?: string
+  end_time?: string
   granularity: string
 }
 
@@ -241,6 +253,8 @@ export interface UserTrendResponse {
   trend: UserUsageTrendPoint[]
   start_date: string
   end_date: string
+  start_time?: string
+  end_time?: string
   granularity: string
 }
 

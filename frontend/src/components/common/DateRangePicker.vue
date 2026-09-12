@@ -21,7 +21,7 @@
     </button>
 
     <Transition name="date-picker-dropdown">
-      <div v-if="isOpen" class="date-picker-dropdown">
+      <div v-if="isOpen" class="date-picker-dropdown" :style="dropdownStyle">
         <!-- Quick presets -->
         <div class="date-picker-presets">
           <button
@@ -39,34 +39,39 @@
         <!-- Custom date range inputs -->
         <div class="date-picker-custom">
           <div class="date-picker-field">
-            <label class="date-picker-label">{{ t('dates.startDate') }}</label>
+            <label :for="`${inputId}-start`" class="date-picker-label">{{ t(enableTime ? 'dates.startTime' : 'dates.startDate') }}</label>
             <input
-              type="date"
-              v-model="localStartDate"
-              :max="localEndDate || tomorrow"
+              :id="`${inputId}-start`"
+              :type="enableTime ? 'datetime-local' : 'date'"
+              :step="enableTime ? 60 : undefined"
+              v-model="startInput"
+              :max="endInput || undefined"
+              :aria-invalid="!validRange"
               class="date-picker-input"
-              @change="onDateChange"
             />
           </div>
           <div class="date-picker-separator">
             <Icon name="arrowRight" size="sm" class="text-gray-400" />
           </div>
           <div class="date-picker-field">
-            <label class="date-picker-label">{{ t('dates.endDate') }}</label>
+            <label :for="`${inputId}-end`" class="date-picker-label">{{ t(enableTime ? 'dates.endTime' : 'dates.endDate') }}</label>
             <input
-              type="date"
-              v-model="localEndDate"
-              :min="localStartDate"
-              :max="tomorrow"
+              :id="`${inputId}-end`"
+              :type="enableTime ? 'datetime-local' : 'date'"
+              :step="enableTime ? 60 : undefined"
+              v-model="endInput"
+              :min="startInput || undefined"
+              :aria-invalid="!validRange"
               class="date-picker-input"
-              @change="onDateChange"
             />
           </div>
         </div>
 
+        <p v-if="!validRange" role="alert" class="px-3 pb-2 text-xs text-red-600">{{ t('dates.invalidRange') }}</p>
+
         <!-- Apply button -->
         <div class="date-picker-actions">
-          <button @click="apply" class="date-picker-apply">
+          <button @click="apply" :disabled="!validRange" class="date-picker-apply">
             {{ t('dates.apply') }}
           </button>
         </div>
@@ -76,19 +81,17 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
+import { ref, computed, watch, onMounted, onUnmounted, useId } from 'vue'
+import type { CSSProperties } from 'vue'
 import { useI18n } from 'vue-i18n'
 import Icon from '@/components/icons/Icon.vue'
-
-interface DatePreset {
-  labelKey: string
-  value: string
-  getRange: () => { start: string; end: string }
-}
+import { formatLocalDate, formatLocalMinute, getDatePresetRange, parseDateBoundary, parseLocalMinute } from '@/utils/dateRange'
 
 interface Props {
   startDate: string
   endDate: string
+  enableTime?: boolean
+  preset?: string | null
 }
 
 interface Emits {
@@ -99,229 +102,151 @@ interface Emits {
 
 const props = defineProps<Props>()
 const emit = defineEmits<Emits>()
-
 const { t, locale } = useI18n()
-
+const inputId = useId()
 const isOpen = ref(false)
 const containerRef = ref<HTMLElement | null>(null)
 const localStartDate = ref(props.startDate)
 const localEndDate = ref(props.endDate)
-const activePreset = ref<string | null>('last24Hours')
+const activePreset = ref<string | null>(null)
+const dropdownStyle = ref<CSSProperties>({})
 
-const today = computed(() => {
-  // Use local timezone to avoid UTC timezone issues
-  const now = new Date()
-  const year = now.getFullYear()
-  const month = String(now.getMonth() + 1).padStart(2, '0')
-  const day = String(now.getDate()).padStart(2, '0')
-  return `${year}-${month}-${day}`
-})
-
-// Tomorrow's date - used for max date to handle timezone differences
-// When user is in a timezone behind the server, "today" on server might be "tomorrow" locally
-const tomorrow = computed(() => {
-  const d = new Date()
-  d.setDate(d.getDate() + 1)
-  return formatDateToString(d)
-})
-
-// Helper function to format date to YYYY-MM-DD using local timezone
-const formatDateToString = (date: Date): string => {
-  const year = date.getFullYear()
-  const month = String(date.getMonth() + 1).padStart(2, '0')
-  const day = String(date.getDate()).padStart(2, '0')
-  return `${year}-${month}-${day}`
-}
-
-const presets: DatePreset[] = [
-  {
-    labelKey: 'dates.today',
-    value: 'today',
-    getRange: () => {
-      const t = today.value
-      return { start: t, end: t }
-    }
-  },
-  {
-    labelKey: 'dates.yesterday',
-    value: 'yesterday',
-    getRange: () => {
-      const d = new Date()
-      d.setDate(d.getDate() - 1)
-      const yesterday = formatDateToString(d)
-      return { start: yesterday, end: yesterday }
-    }
-  },
-  {
-    labelKey: 'dates.last24Hours',
-    value: 'last24Hours',
-    getRange: () => {
-      const end = new Date()
-      const start = new Date(end.getTime() - 24 * 60 * 60 * 1000)
-      return {
-        start: formatDateToString(start),
-        end: formatDateToString(end)
-      }
-    }
-  },
-  {
-    labelKey: 'dates.last7Days',
-    value: '7days',
-    getRange: () => {
-      const end = today.value
-      const d = new Date()
-      d.setDate(d.getDate() - 6)
-      const start = formatDateToString(d)
-      return { start, end }
-    }
-  },
-  {
-    labelKey: 'dates.last14Days',
-    value: '14days',
-    getRange: () => {
-      const end = today.value
-      const d = new Date()
-      d.setDate(d.getDate() - 13)
-      const start = formatDateToString(d)
-      return { start, end }
-    }
-  },
-  {
-    labelKey: 'dates.last30Days',
-    value: '30days',
-    getRange: () => {
-      const end = today.value
-      const d = new Date()
-      d.setDate(d.getDate() - 29)
-      const start = formatDateToString(d)
-      return { start, end }
-    }
-  },
-  {
-    labelKey: 'dates.thisMonth',
-    value: 'thisMonth',
-    getRange: () => {
-      const now = new Date()
-      const start = formatDateToString(new Date(now.getFullYear(), now.getMonth(), 1))
-      return { start, end: today.value }
-    }
-  },
-  {
-    labelKey: 'dates.lastMonth',
-    value: 'lastMonth',
-    getRange: () => {
-      const now = new Date()
-      const start = formatDateToString(new Date(now.getFullYear(), now.getMonth() - 1, 1))
-      const end = formatDateToString(new Date(now.getFullYear(), now.getMonth(), 0))
-      return { start, end }
-    }
-  }
+const presets = [
+  { value: 'today', labelKey: 'dates.today' },
+  { value: 'yesterday', labelKey: 'dates.yesterday' },
+  { value: 'last24Hours', labelKey: 'dates.last24Hours' },
+  { value: '7days', labelKey: 'dates.last7Days' },
+  { value: '14days', labelKey: 'dates.last14Days' },
+  { value: '30days', labelKey: 'dates.last30Days' },
+  { value: 'thisMonth', labelKey: 'dates.thisMonth' },
+  { value: 'lastMonth', labelKey: 'dates.lastMonth' }
 ]
 
-const displayValue = computed(() => {
-  if (activePreset.value) {
-    const preset = presets.find((p) => p.value === activePreset.value)
-    if (preset) return t(preset.labelKey)
+const presetRange = (preset: string) => {
+  const range = getDatePresetRange(preset)!
+  // Date-only consumers retain their original API contract.
+  if (!props.enableTime && preset === 'last24Hours') {
+    const now = new Date()
+    return { start: formatLocalDate(new Date(now.getTime() - 86400000)), end: formatLocalDate(now) }
   }
+  return range
+}
 
-  if (localStartDate.value && localEndDate.value) {
-    if (localStartDate.value === localEndDate.value) {
-      return formatDate(localStartDate.value)
-    }
-    return `${formatDate(localStartDate.value)} - ${formatDate(localEndDate.value)}`
+const detectPreset = () => {
+  if (props.preset !== undefined) return props.preset
+  // Explicit timestamps are fixed ranges unless the parent identifies a preset.
+  if (props.startDate.includes('T') || props.endDate.includes('T')) return null
+  return presets.find((p) => {
+    const range = presetRange(p.value)
+    return range.start === props.startDate && range.end === props.endDate
+  })?.value ?? null
+}
+
+const syncDraft = () => {
+  localStartDate.value = props.startDate
+  localEndDate.value = props.endDate
+  activePreset.value = detectPreset()
+}
+
+const inputValue = (value: string, end: boolean): string => {
+  if (!value) return ''
+  if (!props.enableTime) return value.includes('T') ? formatLocalDate(new Date(value)) : value
+  // An unfinished/invalid local input must remain invalid rather than normalize.
+  if (value.includes('T') && !/(?:[zZ]|[+-]\d{2}:\d{2})$/.test(value)) return value
+  const date = parseDateBoundary(value, end)
+  return Number.isFinite(date.getTime()) ? formatLocalMinute(date) : ''
+}
+
+const editBoundary = (value: string, end: boolean) => {
+  const other = end ? localStartDate : localEndDate
+  if (props.enableTime && other.value && !other.value.includes('T')) {
+    other.value = parseDateBoundary(other.value, !end).toISOString()
   }
+  const date = props.enableTime ? parseLocalMinute(value) : null
+  ;(end ? localEndDate : localStartDate).value = date ? date.toISOString() : value
+  activePreset.value = null
+}
+const startInput = computed({ get: () => inputValue(localStartDate.value, false), set: (v: string) => editBoundary(v, false) })
+const endInput = computed({ get: () => inputValue(localEndDate.value, true), set: (v: string) => editBoundary(v, true) })
 
-  return t('dates.selectDateRange')
+const validRange = computed(() => {
+  if (!localStartDate.value || !localEndDate.value) return false
+  if (props.enableTime && (!parseLocalMinute(startInput.value) || !parseLocalMinute(endInput.value))) return false
+  const start = parseDateBoundary(localStartDate.value).getTime()
+  const end = parseDateBoundary(localEndDate.value, true).getTime()
+  return Number.isFinite(start) && Number.isFinite(end) && start < end
 })
 
-const formatDate = (dateStr: string): string => {
-  const date = new Date(dateStr + 'T00:00:00')
-  const dateLocale = locale.value === 'zh' ? 'zh-CN' : 'en-US'
-  return date.toLocaleDateString(dateLocale, { month: 'short', day: 'numeric' })
+const formatDate = (value: string) => {
+  const date = parseDateBoundary(value)
+  return date.toLocaleString(locale.value === 'zh' ? 'zh-CN' : 'en-US', {
+    year: 'numeric', month: 'short', day: 'numeric',
+    ...(props.enableTime && value.includes('T') ? { hour: '2-digit', minute: '2-digit', hour12: false } : {})
+  })
 }
+const displayValue = computed(() => {
+  const preset = presets.find((p) => p.value === detectPreset())
+  if (preset) return t(preset.labelKey)
+  if (!props.startDate || !props.endDate) return t('dates.selectDateRange')
+  return props.startDate === props.endDate ? formatDate(props.startDate) : `${formatDate(props.startDate)} - ${formatDate(props.endDate)}`
+})
 
-const isPresetActive = (preset: DatePreset): boolean => {
-  return activePreset.value === preset.value
-}
-
-const selectPreset = (preset: DatePreset) => {
-  const range = preset.getRange()
+const isPresetActive = (preset: { value: string }) => activePreset.value === preset.value
+const selectPreset = (preset: { value: string }) => {
+  const range = presetRange(preset.value)
   localStartDate.value = range.start
   localEndDate.value = range.end
   activePreset.value = preset.value
 }
-
-const onDateChange = () => {
-  // Check if current dates match any preset
-  activePreset.value = null
-  for (const preset of presets) {
-    const range = preset.getRange()
-    if (range.start === localStartDate.value && range.end === localEndDate.value) {
-      activePreset.value = preset.value
-      break
-    }
+const positionDropdown = () => {
+  const rect = containerRef.value?.getBoundingClientRect()
+  if (!rect) return
+  const width = Math.min(props.enableTime ? 520 : 360, window.innerWidth - 24)
+  const below = window.innerHeight - rect.bottom - 16
+  const above = rect.top - 16
+  const showAbove = below < 320 && above > below
+  dropdownStyle.value = {
+    width: `${width}px`,
+    left: `${Math.max(12, Math.min(rect.left, window.innerWidth - width - 12))}px`,
+    ...(showAbove ? { bottom: `${window.innerHeight - rect.top + 8}px` } : { top: `${rect.bottom + 8}px` }),
+    maxHeight: `${Math.max(120, showAbove ? above : below)}px`
   }
 }
-
 const toggle = () => {
+  if (!isOpen.value) { syncDraft(); positionDropdown() }
   isOpen.value = !isOpen.value
 }
-
 const apply = () => {
+  if (!validRange.value) return
+  if (activePreset.value) selectPreset({ value: activePreset.value })
   emit('update:startDate', localStartDate.value)
   emit('update:endDate', localEndDate.value)
-  emit('change', {
-    startDate: localStartDate.value,
-    endDate: localEndDate.value,
-    preset: activePreset.value
-  })
+  emit('change', { startDate: localStartDate.value, endDate: localEndDate.value, preset: activePreset.value })
   isOpen.value = false
 }
-
 const handleClickOutside = (event: MouseEvent) => {
-  if (containerRef.value && !containerRef.value.contains(event.target as Node)) {
-    isOpen.value = false
-  }
+  if (containerRef.value && !containerRef.value.contains(event.target as Node)) isOpen.value = false
 }
-
-const handleEscape = (event: KeyboardEvent) => {
-  if (event.key === 'Escape' && isOpen.value) {
-    isOpen.value = false
-  }
-}
-
-// Sync local state with props
-watch(
-  () => props.startDate,
-  (val) => {
-    localStartDate.value = val
-    onDateChange()
-  }
-)
-
-watch(
-  () => props.endDate,
-  (val) => {
-    localEndDate.value = val
-    onDateChange()
-  }
-)
-
+const handleEscape = (event: KeyboardEvent) => { if (event.key === 'Escape') isOpen.value = false }
+watch(() => [props.startDate, props.endDate, props.preset], () => { if (!isOpen.value) syncDraft() })
 onMounted(() => {
+  syncDraft()
   document.addEventListener('click', handleClickOutside)
   document.addEventListener('keydown', handleEscape)
-  // Initialize active preset detection
-  onDateChange()
+  window.addEventListener('resize', positionDropdown)
+  window.addEventListener('scroll', positionDropdown, true)
 })
-
 onUnmounted(() => {
   document.removeEventListener('click', handleClickOutside)
   document.removeEventListener('keydown', handleEscape)
+  window.removeEventListener('resize', positionDropdown)
+  window.removeEventListener('scroll', positionDropdown, true)
 })
 </script>
 
 <style scoped>
 .date-picker-trigger {
+  max-width: 100%;
   @apply flex items-center gap-2;
   @apply rounded-lg px-3 py-2 text-sm;
   @apply bg-white dark:bg-dark-800;
@@ -342,7 +267,7 @@ onUnmounted(() => {
 }
 
 .date-picker-value {
-  @apply font-medium;
+  @apply min-w-0 break-words font-medium;
 }
 
 .date-picker-chevron {
@@ -350,13 +275,13 @@ onUnmounted(() => {
 }
 
 .date-picker-dropdown {
-  @apply absolute left-0 z-[100] mt-2;
+  @apply fixed z-[100];
   @apply bg-white dark:bg-dark-800;
   @apply rounded-xl;
   @apply border border-gray-200 dark:border-dark-700;
   @apply shadow-lg shadow-black/10 dark:shadow-black/30;
   @apply overflow-hidden;
-  @apply min-w-[320px];
+  @apply overflow-y-auto;
 }
 
 .date-picker-presets {
@@ -380,11 +305,11 @@ onUnmounted(() => {
 }
 
 .date-picker-custom {
-  @apply flex items-end gap-2 p-3;
+  @apply flex flex-col items-stretch gap-2 p-3 sm:flex-row sm:items-end;
 }
 
 .date-picker-field {
-  @apply flex-1;
+  @apply min-w-0 flex-1;
 }
 
 .date-picker-label {
@@ -409,12 +334,14 @@ onUnmounted(() => {
 }
 
 .date-picker-separator {
-  @apply flex items-center justify-center pb-1;
+  @apply hidden items-center justify-center pb-1 sm:flex;
 }
 
 .date-picker-actions {
   @apply flex justify-end p-2 pt-0;
 }
+
+.date-picker-apply:disabled { opacity: 0.5; cursor: not-allowed; }
 
 .date-picker-apply {
   @apply rounded-lg px-4 py-1.5 text-sm font-medium;

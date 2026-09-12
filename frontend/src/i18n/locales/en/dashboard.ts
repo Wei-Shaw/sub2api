@@ -1009,6 +1009,9 @@ export default {
     custom: 'Custom',
     startDate: 'Start Date',
     endDate: 'End Date',
+    startTime: 'Start Time',
+    endTime: 'End Time (Exclusive)',
+    invalidRange: 'Choose valid times with the end after the start',
     apply: 'Apply',
     selectDateRange: 'Select date range'
   },
