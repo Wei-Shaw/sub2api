@@ -2,7 +2,7 @@
   <BaseDialog :show="show" :title="t(`${prefix}.title`, { group: groupName })" width="wide" :close-on-escape="!saving" :show-close-button="!saving" @close="emit('close')">
     <div class="space-y-5">
       <p class="rounded-xl bg-blue-50 p-4 text-sm leading-6 text-blue-800 dark:bg-blue-900/20 dark:text-blue-200">
-        {{ t(`${prefix}.observationOnly`) }}
+        {{ t(`${prefix}.${form.mode === 'auto' ? 'automaticHint' : 'observationOnly'}`) }}
       </p>
       <div v-if="loading" class="flex justify-center py-10" role="status">
         <LoadingSpinner /><span class="sr-only">{{ t('common.loading') }}</span>
@@ -24,6 +24,7 @@
                 <select v-model="form.mode" class="input mt-2 w-full" data-test="mode">
                   <option value="off">{{ t(`${prefix}.off`) }}</option>
                   <option value="observe">{{ t(`${prefix}.observe`) }}</option>
+                  <option value="auto">{{ t(`${prefix}.auto`) }}</option>
                 </select>
               </label>
               <div class="text-sm text-gray-700 dark:text-gray-200">
@@ -64,20 +65,26 @@
             </div>
             <p class="text-xs leading-5 text-gray-500 dark:text-gray-400">{{ t(`${prefix}.quorumHint`) }}</p>
             <section class="rounded-xl border border-gray-200 p-4 dark:border-dark-600">
-              <h4 class="text-sm font-semibold text-gray-900 dark:text-white">{{ t(`${prefix}.dimensions`) }}</h4>
+              <label class="flex items-center gap-3 text-sm font-medium text-gray-900 dark:text-white">
+                <input v-model="form.allow_early_resets" type="checkbox" data-test="allow-early-resets" class="rounded border-gray-300 text-primary-600 focus:ring-primary-500" />{{ t(`${prefix}.allowEarlyResets`) }}
+              </label>
+              <p class="mt-2 text-xs leading-5 text-gray-500 dark:text-gray-400">{{ t(`${prefix}.earlyResetHint`) }}</p>
+            </section>
+            <section class="rounded-xl border border-gray-200 p-4 dark:border-dark-600">
+              <h4 class="text-sm font-semibold text-gray-900 dark:text-white">{{ t(`${prefix}.${form.mode === 'auto' ? 'autoDimensions' : 'dimensions'}`) }}</h4>
               <div class="mt-3 flex flex-wrap gap-5">
                 <label v-for="dimension in dimensions" :key="dimension" class="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-200">
                   <input v-model="form.reset_dimensions" type="checkbox" :value="dimension" :data-test="`dimension-${dimension}`" class="rounded border-gray-300 text-primary-600 focus:ring-primary-500" />{{ t(`admin.subscriptions.${dimension}`) }}
                 </label>
               </div>
-              <p class="mt-3 text-xs leading-5 text-gray-500 dark:text-gray-400">{{ t(`${prefix}.dimensionHint`) }}</p>
-              <p v-if="form.reset_dimensions.includes('monthly')" class="mt-2 text-xs leading-5 text-amber-700 dark:text-amber-300" data-test="monthly-preview">{{ t(`${prefix}.monthlyPreview`) }}</p>
+              <p class="mt-3 text-xs leading-5 text-gray-500 dark:text-gray-400">{{ t(`${prefix}.${form.mode === 'auto' ? 'autoDimensionHint' : 'dimensionHint'}`) }}</p>
+              <p v-if="form.reset_dimensions.includes('monthly')" class="mt-2 text-xs leading-5 text-amber-700 dark:text-amber-300" data-test="monthly-preview">{{ t(`${prefix}.${form.mode === 'auto' ? 'monthlyAuto' : 'monthlyPreview'}`) }}</p>
             </section>
           </fieldset>
           <p v-if="validationError" role="alert" class="text-sm text-red-600 dark:text-red-400">{{ validationError }}</p>
           <p v-if="saveFailed" role="alert" class="text-sm text-red-600 dark:text-red-400">{{ t(`${prefix}.${saveConflict ? 'saveConflict' : 'saveFailed'}`) }}</p>
           <button v-if="saveConflict" type="button" class="text-sm underline" @click="load">{{ t(`${prefix}.reloadPolicy`) }}</button>
-          <p v-if="saved" role="status" class="text-sm text-green-700 dark:text-green-400">{{ t(`${prefix}.saved`) }}</p>
+          <p v-if="saved" role="status" class="text-sm text-green-700 dark:text-green-400">{{ t(`${prefix}.${form.mode === 'auto' ? 'autoSaved' : 'saved'}`) }}</p>
         </form>
 
         <div v-else class="space-y-5" data-test="observations">
@@ -118,11 +125,18 @@
               </summary>
               <p class="mt-3 text-xs leading-5 text-gray-500 dark:text-gray-400">{{ t(`${prefix}.batchDetail`, { version: event.policy_version, required: event.required_count, deadline: formatTime(event.deadline_at) }) }}</p>
               <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ t(`${prefix}.batchSource`, { kind: t(`${prefix}.kinds.${event.kind}`), dimensions: event.reset_dimensions.map(d => t(`admin.subscriptions.${d}`)).join(' / ') }) }}</p>
+              <p v-if="event.confirmed_kind" class="mt-2 text-xs text-gray-500 dark:text-gray-400">{{ t(`${prefix}.confirmedKind`, { kind: t(`${prefix}.confirmedKinds.${event.confirmed_kind}`) }) }}</p>
+              <div v-if="event.status === 'applied'" class="mt-3 rounded-lg bg-green-50 p-3 text-sm text-green-800 dark:bg-green-900/20 dark:text-green-200" data-test="execution-result">
+                <p>{{ t(`${prefix}.executionResult`, { time: event.executed_at ? formatTime(event.executed_at) : '—', count: event.affected_subscriptions ?? '—' }) }}</p>
+                <p v-if="event.group_revision != null" class="mt-1 text-xs">{{ t(`${prefix}.groupRevision`, { revision: event.group_revision }) }}</p>
+              </div>
+              <p v-else-if="event.status === 'execution_expired'" class="mt-3 text-xs text-amber-700 dark:text-amber-300">{{ t(`${prefix}.executionExpiredHint`) }}</p>
               <p v-if="event.reason" class="mt-2 text-xs text-gray-500 dark:text-gray-400">{{ reasonText(event.reason) }}</p>
               <ul class="mt-3 space-y-2">
                 <li v-for="(member, index) in event.members" :key="index" class="rounded-lg bg-gray-50 p-2 text-xs dark:bg-dark-700">
                   <div class="flex flex-wrap justify-between gap-2"><span class="text-gray-700 dark:text-gray-200">{{ member.account_ids.map(accountName).join(', ') }}</span><span class="text-gray-500 dark:text-gray-400">{{ t(`${prefix}.${member.confirmed ? 'memberConfirmed' : 'memberUnconfirmed'}`) }}</span></div>
                   <p v-if="member.reason" class="mt-1 text-gray-500 dark:text-gray-400">{{ reasonText(member.reason) }}</p>
+                  <p v-if="member.old_used_percent != null && member.new_used_percent != null" class="mt-1 text-gray-500 dark:text-gray-400">{{ t(`${prefix}.memberEvidence`, { before: member.old_used_percent.toFixed(1), after: member.new_used_percent.toFixed(1), count: member.confirmation_samples }) }}</p>
                 </li>
               </ul>
             </details>
@@ -156,7 +170,7 @@ const prefix = 'admin.subscriptions.resetObserver'
 const tabs = ['settings', 'observations'] as const
 const tab = ref<typeof tabs[number]>('settings')
 const dimensions: SubscriptionResetDimension[] = ['daily', 'weekly', 'monthly']
-const form = reactive<SubscriptionResetPolicyInput>({ mode: 'off', source: '7d', account_ids: [], quorum_percent: 80, aggregation_minutes: 10, reset_dimensions: [...dimensions], allow_single_subject: false, version: 0 })
+const form = reactive<SubscriptionResetPolicyInput>({ mode: 'off', source: '7d', account_ids: [], quorum_percent: 80, aggregation_minutes: 10, reset_dimensions: [...dimensions], allow_single_subject: false, allow_early_resets: false, version: 0 })
 const accounts = ref<AccountListItem[]>([])
 const status = ref<SubscriptionResetStatus | null>(null)
 const loading = ref(false)
@@ -216,7 +230,7 @@ function reasonText(reason: string, failed = false): string {
   return te(key) ? t(key) : t(`${prefix}.${failed ? 'probeFailed' : 'evidencePending'}`)
 }
 function applyPolicy(policy: SubscriptionResetPolicy) {
-  Object.assign(form, { mode: policy.mode, source: '7d', account_ids: [...(policy.account_ids ?? [])], quorum_percent: policy.quorum_percent, aggregation_minutes: policy.aggregation_minutes, reset_dimensions: [...(policy.reset_dimensions ?? [])], allow_single_subject: policy.allow_single_subject, version: policy.version })
+  Object.assign(form, { mode: policy.mode, source: '7d', account_ids: [...(policy.account_ids ?? [])], quorum_percent: policy.quorum_percent, aggregation_minutes: policy.aggregation_minutes, reset_dimensions: [...(policy.reset_dimensions ?? [])], allow_single_subject: policy.allow_single_subject, allow_early_resets: policy.allow_early_resets ?? false, version: policy.version })
 }
 
 async function loadAccounts(groupId: number, signal: AbortSignal): Promise<AccountListItem[]> {
@@ -281,7 +295,7 @@ async function save() {
   saved.value = false
   saveFailed.value = false
   saveConflict.value = false
-  if (form.mode === 'observe' && (form.account_ids.length < (form.allow_single_subject ? 1 : 2) || missingSelectedIDs.value.length)) {
+  if (form.mode !== 'off' && (form.account_ids.length < (form.allow_single_subject ? 1 : 2) || missingSelectedIDs.value.length)) {
     validationError.value = t(`${prefix}.invalidReferences`)
     return
   }

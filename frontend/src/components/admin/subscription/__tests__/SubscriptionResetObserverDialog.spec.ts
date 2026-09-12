@@ -22,7 +22,7 @@ vi.mock('vue-i18n', async () => {
 })
 
 function policy(overrides: Partial<SubscriptionResetPolicy> = {}): SubscriptionResetPolicy {
-  return { group_id: 1, mode: 'off', source: '7d', account_ids: [], quorum_percent: 80, aggregation_minutes: 10, reset_dimensions: ['daily', 'weekly', 'monthly'], allow_single_subject: false, version: 0, updated_at: '2026-09-12T08:00:00Z', ...overrides }
+  return { group_id: 1, mode: 'off', source: '7d', account_ids: [], quorum_percent: 80, aggregation_minutes: 10, reset_dimensions: ['daily', 'weekly', 'monthly'], allow_single_subject: false, allow_early_resets: false, version: 0, updated_at: '2026-09-12T08:00:00Z', ...overrides }
 }
 function state(overrides: Partial<SubscriptionResetStatus> = {}): SubscriptionResetStatus {
   return { policy: policy(), accounts: [], subject_count: 0, verified_subject_count: 0, ready: false, active_event: null, events: [], last_observed_at: null, observation_only: true, ...overrides }
@@ -48,10 +48,12 @@ describe('SubscriptionResetObserverDialog', () => {
     updatePolicy.mockReset().mockImplementation(async (_id, input) => policy({ ...input, version: input.version + 1 }))
   })
 
-  it('defaults to off, 7d, 80%, 10 minutes and all preview dimensions without exposing automatic execution', async () => {
+  it('defaults to off, 7d, 80%, 10 minutes and all preview dimensions with early resets disabled', async () => {
     const wrapper = dialog()
     await flushPromises()
-    expect(wrapper.findAll('[data-test="mode"] option').map(o => o.attributes('value'))).toEqual(['off', 'observe'])
+    expect(wrapper.findAll('[data-test="mode"] option').map(o => o.attributes('value'))).toEqual(['off', 'observe', 'auto'])
+    expect((wrapper.get('[data-test="mode"]').element as HTMLSelectElement).value).toBe('off')
+    expect((wrapper.get('[data-test="allow-early-resets"]').element as HTMLInputElement).checked).toBe(false)
     expect((wrapper.get('[data-test="quorum"]').element as HTMLInputElement).value).toBe('80')
     expect((wrapper.get('[data-test="aggregation"]').element as HTMLInputElement).value).toBe('10')
     for (const dimension of ['daily', 'weekly', 'monthly']) expect((wrapper.get(`[data-test="dimension-${dimension}"]`).element as HTMLInputElement).checked).toBe(true)
@@ -86,7 +88,7 @@ describe('SubscriptionResetObserverDialog', () => {
     await wrapper.get('[data-test="dimension-monthly"]').setValue(false)
     await wrapper.get('form').trigger('submit')
     await flushPromises()
-    expect(updatePolicy).toHaveBeenCalledWith(1, { mode: 'observe', source: '7d', account_ids: [1, 2], quorum_percent: 80, aggregation_minutes: 10, reset_dimensions: ['daily', 'weekly'], allow_single_subject: false, version: 4 })
+    expect(updatePolicy).toHaveBeenCalledWith(1, { mode: 'observe', source: '7d', account_ids: [1, 2], quorum_percent: 80, aggregation_minutes: 10, reset_dimensions: ['daily', 'weekly'], allow_single_subject: false, allow_early_resets: false, version: 4 })
     expect(wrapper.text()).toContain('No subscription quota was reset')
     wrapper.unmount()
   })
@@ -176,6 +178,62 @@ describe('SubscriptionResetObserverDialog', () => {
     await wrapper.get('form').trigger('submit')
     await flushPromises()
     expect(updatePolicy).toHaveBeenCalledWith(2, expect.objectContaining({ version: 8, quorum_percent: 95 }))
+    wrapper.unmount()
+  })
+
+  it('requires explicit auto selection and explains monthly refills without applying historical review batches', async () => {
+    getStatus.mockResolvedValue(state({ policy: policy({ account_ids: [1, 2], version: 4 }), events: [{ ...batch(), kind: 'early_drop', status: 'needs_review' }] }))
+    const wrapper = dialog()
+    await flushPromises()
+    await wrapper.get('[data-test="mode"]').setValue('auto')
+    expect(wrapper.text()).toContain('only future reset batches confirmed under this policy')
+    expect(wrapper.text()).toContain('does not apply historical batches')
+    expect(wrapper.text()).toContain('upgrade every instance and wait for in-flight requests and pending settlements to finish')
+    expect(wrapper.text()).toContain('Turning following off retains cycle accounting')
+    expect(wrapper.text()).toContain('effective execution time')
+    expect(wrapper.text()).toContain('expired, revoked, suspended, and future subscriptions are not reactivated')
+    expect(wrapper.get('[data-test="monthly-preview"]').text()).toContain('every upstream week')
+    expect(wrapper.text()).not.toContain('No quota is refilled in observation mode')
+    await wrapper.get('[data-test="allow-early-resets"]').setValue(true)
+    expect(wrapper.text()).toContain('at least 20% usage to at most 5%')
+    expect(wrapper.text()).toContain('at least 30 seconds apart')
+    await wrapper.get('form').trigger('submit')
+    await flushPromises()
+    expect(updatePolicy).toHaveBeenCalledWith(1, expect.objectContaining({ mode: 'auto', allow_early_resets: true, version: 4, reset_dimensions: ['daily', 'weekly', 'monthly'] }))
+    expect(wrapper.text()).toContain('A fresh baseline is required')
+    await wrapper.get('[data-test="tab-observations"]').trigger('click')
+    expect(wrapper.get('[data-test="event"]').text()).toContain('Needs review')
+    expect(wrapper.find('[data-test="execution-result"]').exists()).toBe(false)
+    expect(wrapper.findAll('button').some(b => /apply|refill|reset quota/i.test(b.text()))).toBe(false)
+    wrapper.unmount()
+  })
+
+  it('validates reference accounts for auto mode too', async () => {
+    const wrapper = dialog()
+    await flushPromises()
+    await wrapper.get('[data-test="mode"]').setValue('auto')
+    await wrapper.get('form').trigger('submit')
+    expect(updatePolicy).not.toHaveBeenCalled()
+    expect(wrapper.text()).toContain('at least 2 eligible reference accounts')
+    wrapper.unmount()
+  })
+
+  it('shows applied execution facts and zero affected subscriptions without claiming an expired event was applied', async () => {
+    getStatus.mockResolvedValue(state({ policy: policy({ mode: 'auto' }), observation_only: false, events: [
+      { ...batch(), status: 'applied', reason: 'quota_replenished', confirmed_kind: 'early', executed_at: '2026-09-12T08:05:00Z', affected_subscriptions: 0, group_revision: 7, members: [{ ...batch().members[0], old_used_percent: 45, new_used_percent: 2, confirmation_samples: 2 }] },
+      { ...batch(), id: 'expired-batch', status: 'execution_expired', reason: 'confirmation_no_longer_fresh', confirmed_kind: 'natural' }
+    ] }))
+    const wrapper = dialog()
+    await flushPromises()
+    await wrapper.get('[data-test="tab-observations"]').trigger('click')
+    expect(wrapper.findAll('[data-test="execution-result"]')).toHaveLength(1)
+    expect(wrapper.get('[data-test="execution-result"]').text()).toContain('0 subscriptions affected')
+    expect(wrapper.get('[data-test="execution-result"]').text()).toContain('Group quota revision: 7')
+    expect(wrapper.text()).toContain('Confirmed source: Early bulk reset')
+    expect(wrapper.text()).toContain('Usage 45.0% → 2.0% · 2 confirming samples')
+    expect(wrapper.text()).toContain('not applied because its execution window expired')
+    expect(wrapper.text()).toContain('The selected subscription quotas were refilled')
+    expect(wrapper.text()).toContain('The confirmation is no longer fresh enough to apply')
     wrapper.unmount()
   })
 })
