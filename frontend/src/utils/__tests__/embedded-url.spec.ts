@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { buildEmbeddedUrl, detectTheme } from '../embedded-url'
+import { buildEmbeddedUrl, detectTheme, resolveCanvasOrigin } from '../embedded-url'
 
 describe('embedded-url', () => {
   const originalLocation = window.location
@@ -57,6 +57,11 @@ describe('embedded-url', () => {
 
   it('returns original string for invalid url input', () => {
     expect(buildEmbeddedUrl('not a url', 1, 'light')).toBe('not a url')
+  })
+
+  it('uses the public Canvas origin when the build override is empty', () => {
+    expect(resolveCanvasOrigin('', 'https://canvas.example.test/')).toBe('https://canvas.example.test')
+    expect(resolveCanvasOrigin('https://local-canvas.test/', 'https://canvas.example.test/')).toBe('https://local-canvas.test')
   })
 
   it('detects dark mode from document root class', () => {
