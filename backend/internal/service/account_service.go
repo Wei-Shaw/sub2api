@@ -328,6 +328,11 @@ func (s *AccountService) Update(ctx context.Context, id int64, req UpdateAccount
 		return nil, fmt.Errorf("get account: %w", err)
 	}
 
+	// B2-③ 保存期无价门禁的触发判定快照：必须在应用本次请求的变更之前采集。
+	prevPlatform := account.Platform
+	prevOutboundSet := append([]string(nil), ollamaCloudOutboundModelNames(account)...)
+	prevSchedulable := ollamaCloudSchedulableBySave(account)
+
 	// 更新字段
 	if req.Name != nil {
 		account.Name = *req.Name
@@ -383,8 +388,13 @@ func (s *AccountService) Update(ctx context.Context, id int64, req UpdateAccount
 	}
 
 	// B2-③ 保存期无价门禁：ollama_cloud 账号的可出站模型名必须全部可定价。
-	if err := validateOllamaCloudAccountModelPricingGate(s.billingService, account); err != nil {
-		return nil, err
+	// 只在可能改变可出站模型集合（platform / model_mapping / allowed_models）
+	// 或影响调度准入（启用）的更新上重验；name、notes、并发数、状态等维护性
+	// 更新放行，避免锁死缺 mapping/清单的存量账号。
+	if ollamaCloudPricingGateRevalidationNeeded(prevPlatform, prevOutboundSet, prevSchedulable, account) {
+		if err := validateOllamaCloudAccountModelPricingGate(s.billingService, account); err != nil {
+			return nil, err
+		}
 	}
 
 	// 执行更新

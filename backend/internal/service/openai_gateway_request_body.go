@@ -171,8 +171,13 @@ func (e *openAIResponsesStatelessFieldError) Error() string {
 // respondOpenAIStatelessFieldError 按 stripOpenAIResponsesInputNamespaces 的先例
 // 把无状态端点不支持的字段应答为 400 invalid_request_error（由服务层写出响应，
 // handler 侧 ensureForwardErrorResponse 检测到响应已提交便不再追加 fallback）。
+// 写前 MarkResponseCommitted 与 cyber_policy / grok content 拒绝及 ollama_cloud
+// 定价预检 400 同款：本 400 的错误消息（"%s is not supported ..."）不在
+// openAIForwardErrorAlreadyCommunicated 识别的消息前缀里，不置位的话 handler 会因
+// Writer 已写出而向 JSON body 尾部追加 SSE 终止帧，污染响应体。
 func respondOpenAIStatelessFieldError(c *gin.Context, statelessErr *openAIResponsesStatelessFieldError) {
 	setOpsUpstreamError(c, http.StatusBadRequest, statelessErr.Error(), "")
+	MarkResponseCommitted(c)
 	c.JSON(http.StatusBadRequest, gin.H{"error": gin.H{
 		"type":    "invalid_request_error",
 		"message": statelessErr.Error(),

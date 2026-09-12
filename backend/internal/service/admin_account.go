@@ -578,6 +578,10 @@ func (s *adminServiceImpl) UpdateAccount(ctx context.Context, id int64, input *U
 	if err != nil {
 		return nil, err
 	}
+	// B2-③ 保存期无价门禁的触发判定快照：必须在应用本次请求的变更之前采集。
+	prevPlatform := account.Platform
+	prevOutboundSet := append([]string(nil), ollamaCloudOutboundModelNames(account)...)
+	prevSchedulable := ollamaCloudSchedulableBySave(account)
 	var normalizedExtra map[string]any
 	if input.Extra != nil {
 		normalizedExtra, err = normalizeOpenAILongContextBillingUpdateExtra(account, input)
@@ -844,8 +848,14 @@ func (s *adminServiceImpl) UpdateAccount(ctx context.Context, id int64, input *U
 	// B2-③ 保存期无价门禁：ollama_cloud 账号的可出站模型名必须全部可定价。
 	// 放在全部字段/Extra 变更应用完、任何写操作之前，credentials（含
 	// model_mapping）与 extra（含 allowed_models）读到的都是本次请求生效后的状态。
-	if err := validateOllamaCloudAccountModelPricingGate(s.billingService, account); err != nil {
-		return nil, err
+	// 只在可能改变可出站模型集合（platform / model_mapping / allowed_models）
+	// 或影响调度准入（启用）的更新上重验；name、notes、并发数、状态等维护性
+	// 更新放行，避免锁死缺 mapping/清单的存量账号（全对象 PUT 编辑会原样带回
+	// credentials/extra，集合未变时不重验）。
+	if ollamaCloudPricingGateRevalidationNeeded(prevPlatform, prevOutboundSet, prevSchedulable, account) {
+		if err := validateOllamaCloudAccountModelPricingGate(s.billingService, account); err != nil {
+			return nil, err
+		}
 	}
 
 	billingSettingsAppliedAtomically := false
