@@ -645,6 +645,8 @@ func TestGetAPIProtocol(t *testing.T) {
 	require.Equal(t, APIProtocolChatCompletions, (&Account{Platform: PlatformOpenAI, Type: AccountTypeAPIKey}).GetAPIProtocol(), "非 CN 供应商恒为默认")
 	require.Equal(t, APIProtocolAdaptive, mk(PlatformOpenCodeGo, "").GetAPIProtocol(), "opencode go 默认 adaptive")
 	require.Equal(t, APIProtocolResponses, mk(PlatformOpenCodeGo, APIProtocolResponses).GetAPIProtocol())
+	require.Equal(t, APIProtocolAdaptive, mk(PlatformOllamaCloud, "").GetAPIProtocol(), "ollama cloud 默认 adaptive")
+	require.Equal(t, APIProtocolResponses, mk(PlatformOllamaCloud, APIProtocolResponses).GetAPIProtocol(), "ollama cloud 原生 Responses 端点，显式 responses 不被吞成 adaptive")
 }
 
 func TestSupportsNativeCNResponses(t *testing.T) {
@@ -654,6 +656,7 @@ func TestSupportsNativeCNResponses(t *testing.T) {
 	require.True(t, (&Account{Platform: PlatformKimi, Credentials: map[string]any{"account_mode": AccountModeCoding}}).SupportsNativeCNResponses())
 	require.True(t, (&Account{Platform: PlatformMiniMax}).SupportsNativeCNResponses())
 	require.True(t, (&Account{Platform: PlatformOpenCodeGo}).SupportsNativeCNResponses())
+	require.True(t, (&Account{Platform: PlatformOllamaCloud, Type: AccountTypeAPIKey}).SupportsNativeCNResponses(), "ollama cloud 有原生 /v1/responses 端点")
 	require.False(t, (&Account{Platform: PlatformZhipu}).SupportsNativeCNResponses())
 	require.False(t, (&Account{Platform: PlatformOpenAI}).SupportsNativeCNResponses())
 }
@@ -815,7 +818,8 @@ func TestBuildOpenAIResponsesURLForPlatform(t *testing.T) {
 }
 
 // TestNormalizeDeepSeekResponsesRequestBody 无状态适配：强制 store=false、
-// 清除 previous_response_id；非原生 CN Responses 协议原样返回。
+// 清除 previous_response_id；携带 conversation 显式报错且不改写 body；
+// 非原生 CN Responses 协议原样返回（conversation 也不拦）。
 func TestNormalizeDeepSeekResponsesRequestBody(t *testing.T) {
 	t.Parallel()
 
@@ -824,7 +828,8 @@ func TestNormalizeDeepSeekResponsesRequestBody(t *testing.T) {
 		Credentials: map[string]any{"api_protocol": APIProtocolResponses},
 	}
 	body := []byte(`{"model":"deepseek-v4-pro","store":true,"previous_response_id":"resp_123","input":"hi"}`)
-	normalized := normalizeDeepSeekResponsesRequestBody(deepseekResponses, body)
+	normalized, err := normalizeDeepSeekResponsesRequestBody(deepseekResponses, body)
+	require.NoError(t, err)
 	require.False(t, gjson.GetBytes(normalized, "store").Bool())
 	require.False(t, gjson.GetBytes(normalized, "previous_response_id").Exists())
 	require.Equal(t, "deepseek-v4-pro", gjson.GetBytes(normalized, "model").String())
@@ -833,19 +838,23 @@ func TestNormalizeDeepSeekResponsesRequestBody(t *testing.T) {
 		Platform: PlatformDeepseek, Type: AccountTypeAPIKey,
 		Credentials: map[string]any{"api_protocol": APIProtocolAdaptive},
 	}
-	adaptiveNormalized := normalizeDeepSeekResponsesRequestBody(deepseekAdaptive, body)
+	adaptiveNormalized, err := normalizeDeepSeekResponsesRequestBody(deepseekAdaptive, body)
+	require.NoError(t, err)
 	require.False(t, gjson.GetBytes(adaptiveNormalized, "store").Bool())
 	require.False(t, gjson.GetBytes(adaptiveNormalized, "previous_response_id").Exists())
 
 	// 非 responses 协议（deepseek CC 账号）原样返回
 	deepseekCC := &Account{Platform: PlatformDeepseek, Type: AccountTypeAPIKey}
-	require.Equal(t, string(body), string(normalizeDeepSeekResponsesRequestBody(deepseekCC, body)))
+	untouched, err := normalizeDeepSeekResponsesRequestBody(deepseekCC, body)
+	require.NoError(t, err)
+	require.Equal(t, string(body), string(untouched))
 
 	kimiResponses := &Account{
 		Platform: PlatformKimi, Type: AccountTypeAPIKey,
 		Credentials: map[string]any{"api_protocol": APIProtocolResponses},
 	}
-	kimiNormalized := normalizeDeepSeekResponsesRequestBody(kimiResponses, body)
+	kimiNormalized, err := normalizeDeepSeekResponsesRequestBody(kimiResponses, body)
+	require.NoError(t, err)
 	require.False(t, gjson.GetBytes(kimiNormalized, "store").Bool())
 	require.False(t, gjson.GetBytes(kimiNormalized, "previous_response_id").Exists())
 
@@ -853,13 +862,55 @@ func TestNormalizeDeepSeekResponsesRequestBody(t *testing.T) {
 		Platform: PlatformKimi, Type: AccountTypeAPIKey,
 		Credentials: map[string]any{"api_protocol": APIProtocolAdaptive, "account_mode": AccountModeCoding},
 	}
-	kimiCodingNormalized := normalizeDeepSeekResponsesRequestBody(kimiCodingAdaptive, body)
+	kimiCodingNormalized, err := normalizeDeepSeekResponsesRequestBody(kimiCodingAdaptive, body)
+	require.NoError(t, err)
 	require.False(t, gjson.GetBytes(kimiCodingNormalized, "store").Bool())
 	require.False(t, gjson.GetBytes(kimiCodingNormalized, "previous_response_id").Exists())
 
 	// openai 账号原样返回
 	openai := &Account{Platform: PlatformOpenAI, Type: AccountTypeAPIKey}
-	require.Equal(t, string(body), string(normalizeDeepSeekResponsesRequestBody(openai, body)))
+	untouched, err = normalizeDeepSeekResponsesRequestBody(openai, body)
+	require.NoError(t, err)
+	require.Equal(t, string(body), string(untouched))
+
+	// ollama cloud adaptive（原生 non-stateful /v1/responses）：
+	// store=false + 剥离 previous_response_id。
+	ollamaAdaptive := &Account{
+		Platform: PlatformOllamaCloud, Type: AccountTypeAPIKey,
+		Credentials: map[string]any{"api_protocol": APIProtocolAdaptive},
+	}
+	ollamaNormalized, err := normalizeDeepSeekResponsesRequestBody(ollamaAdaptive, body)
+	require.NoError(t, err)
+	require.False(t, gjson.GetBytes(ollamaNormalized, "store").Bool())
+	require.False(t, gjson.GetBytes(ollamaNormalized, "previous_response_id").Exists())
+
+	// ollama cloud + conversation：显式报错（无状态端点不支持服务端状态字段），
+	// body 必须保持原样——不是静默剥离。
+	conversationBody := []byte(`{"model":"gpt-oss:120b-cloud","conversation":"conv_x","input":"hi"}`)
+	rejected, err := normalizeDeepSeekResponsesRequestBody(ollamaAdaptive, conversationBody)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "conversation")
+	require.Equal(t, string(conversationBody), string(rejected), "conversation 字段不得被剥离")
+
+	// conversation 与 previous_response_id 并存时同样报错，不做部分清洗。
+	mixed := []byte(`{"model":"deepseek-v4-pro","store":true,"previous_response_id":"resp_1","conversation":"conv_x","input":"hi"}`)
+	rejected, err = normalizeDeepSeekResponsesRequestBody(deepseekResponses, mixed)
+	require.Error(t, err)
+	require.Equal(t, string(mixed), string(rejected))
+
+	// 无 conversation 时 err 恒为 nil（存量剥离语义不受签名变化影响）。
+	_, err = normalizeDeepSeekResponsesRequestBody(deepseekAdaptive, body)
+	require.NoError(t, err)
+
+	// 门禁只对原生 Responses 账号生效：zhipu（无 Responses 端点）带
+	// conversation 原样返回、无错误。
+	zhipu := &Account{
+		Platform: PlatformZhipu, Type: AccountTypeAPIKey,
+		Credentials: map[string]any{"api_protocol": APIProtocolAdaptive},
+	}
+	untouched, err = normalizeDeepSeekResponsesRequestBody(zhipu, conversationBody)
+	require.NoError(t, err)
+	require.Equal(t, string(conversationBody), string(untouched))
 }
 
 // TestGetAnthropicAPIKeyAuthScheme_CNProvider CN 账号可经 extra 覆写鉴权方案，

@@ -178,10 +178,11 @@ func TestShouldForwardOpenAIResponsesViaRawChatCompletions_OllamaCloud(t *testin
 
 	require.True(t, shouldForwardOpenAIResponsesViaRawChatCompletions(account(APIProtocolChatCompletions)))
 	require.False(t, shouldForwardOpenAIResponsesViaRawChatCompletions(account(APIProtocolAnthropic)))
-	// adaptive / responses 的取值跟随 SupportsNativeCNResponses()（该谓词的 ollama
-	// 分支属增量 3，本增量按现状断言结构一致）。
-	require.Equal(t, !account(APIProtocolAdaptive).SupportsNativeCNResponses(),
-		shouldForwardOpenAIResponsesViaRawChatCompletions(account(APIProtocolAdaptive)))
+	// C31 落地后 SupportsNativeCNResponses() 对 ollama 为 true：adaptive / responses
+	// 不再降级 raw CC，改走平台原生 /v1/responses（连锁验证见
+	// TestAdaptiveProtocolRoutesOllamaCloudResponsesToNativeResponses）。
+	require.False(t, shouldForwardOpenAIResponsesViaRawChatCompletions(account(APIProtocolAdaptive)))
+	require.False(t, shouldForwardOpenAIResponsesViaRawChatCompletions(account(APIProtocolResponses)))
 }
 
 // TestForwardCountTokensAsAnthropic_OllamaCloudEstimatesLocally 覆盖 ⑨ findings B1：

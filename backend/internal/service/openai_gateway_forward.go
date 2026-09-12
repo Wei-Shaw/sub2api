@@ -1422,9 +1422,16 @@ func (s *OpenAIGatewayService) buildUpstreamRequest(ctx context.Context, c *gin.
 	}
 	targetURL = appendOpenAIResponsesRequestPathSuffix(targetURL, openAIResponsesRequestPathSuffix(c))
 
-	// DeepSeek / Kimi 原生 Responses 端点为无状态实现：强制 store=false、清除
-	// previous_response_id，避免携带状态字段被上游拒绝。
-	body = normalizeDeepSeekResponsesRequestBody(account, body)
+	// DeepSeek / Kimi / Ollama Cloud 原生 Responses 端点为无状态实现：强制
+	// store=false、清除 previous_response_id；携带 conversation 时显式 400。
+	body, err := normalizeDeepSeekResponsesRequestBody(account, body)
+	if err != nil {
+		var statelessErr *openAIResponsesStatelessFieldError
+		if errors.As(err, &statelessErr) {
+			respondOpenAIStatelessFieldError(c, statelessErr)
+		}
+		return nil, err
+	}
 
 	req, err := http.NewRequestWithContext(ctx, "POST", targetURL, bytes.NewReader(body))
 	if err != nil {
