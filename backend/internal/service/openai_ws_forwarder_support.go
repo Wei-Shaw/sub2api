@@ -520,6 +520,21 @@ func (s *OpenAIGatewayService) ResolveAccountIDByPreviousResponseIDForScheduler(
 	return accountID
 }
 
+// openAICompositePoolHTTPResponsesOwner 报告账号是否可作为 composite account_pool
+// 请求的 native HTTP Responses previous_response_id 归属账号。判定口径（已核对
+// 实际方法而非名称推论）：池上下文 + OpenAI 兼容族（IsOpenAICompatible = 7 族
+// 全集 openai/grok/kimi/zhipu/deepseek/minimax/opencode_go，含 grok——
+// IsMultiProtocolAPIKeyProvider 不含 grok，不可用）+ APIKey 类型。
+// 这些平台的 HTTP Responses 归属本就经 bindHTTPResponseAccount 写入同一 store；
+// 本次请求池外成员与 OpenAI 平台同权——resolve 放行、由 scheduler.Select 的池
+// 成员/claims/组复检拒绝并保留绑定，避免绑定仅因非 OpenAI 被误删。
+// OAuth/SetupToken 续链状态属 WSv2 session，不在此列；WS 入口不写 active pool
+// ctx、单平台无池，范围天然受限。required capability 等门在后续原位校验。
+func openAICompositePoolHTTPResponsesOwner(ctx context.Context, account *Account) bool {
+	return openAICompositePoolActive(ctx) && account != nil &&
+		account.Type == AccountTypeAPIKey && account.IsOpenAICompatible()
+}
+
 func (s *OpenAIGatewayService) resolveAccountByPreviousResponseIDForCapability(
 	ctx context.Context,
 	groupID *int64,
@@ -560,10 +575,14 @@ func (s *OpenAIGatewayService) resolveAccountByPreviousResponseIDForCapability(
 	// survive an HTTP fallback. Official API-key Responses HTTP requests are
 	// different: previous_response_id is supported by the provider and scoped to
 	// the selected key/project, so the response-id binding must retain that key.
-	if !account.IsOpenAIApiKey() && s.getOpenAIWSProtocolResolver().Resolve(account).Transport != OpenAIUpstreamTransportResponsesWebsocketV2 {
+	// composite account_pool 例外：池上下文中的 CN/OpenCode APIKey 账号经
+	// bindHTTPResponseAccount 持有同 key 的真实 HTTP 归属，与 OpenAI APIKey 同权。
+	if !openAICompositePoolHTTPResponsesOwner(ctx, account) && !account.IsOpenAIApiKey() &&
+		s.getOpenAIWSProtocolResolver().Resolve(account).Transport != OpenAIUpstreamTransportResponsesWebsocketV2 {
 		return 0, nil, "", nil
 	}
-	if shouldClearStickySession(account, requestedModel) || !account.IsOpenAI() || !account.IsSchedulable() {
+	if shouldClearStickySession(account, requestedModel) ||
+		(!account.IsOpenAI() && !openAICompositePoolHTTPResponsesOwner(ctx, account)) || !account.IsSchedulable() {
 		_ = store.DeleteResponseAccount(ctx, derefGroupID(groupID), responseID)
 		return 0, nil, "", nil
 	}
@@ -571,7 +590,7 @@ func (s *OpenAIGatewayService) resolveAccountByPreviousResponseIDForCapability(
 		_ = store.DeleteResponseAccount(ctx, derefGroupID(groupID), responseID)
 		return 0, nil, "", nil
 	}
-	if requestedModel != "" && !account.IsModelSupported(requestedModel) {
+	if requestedModel != "" && !openAISchedulingModelSupported(ctx, account, requestedModel) {
 		return 0, nil, "", nil
 	}
 	if !account.SupportsOpenAIEndpointCapability(requiredCapability) {
@@ -596,7 +615,8 @@ func (s *OpenAIGatewayService) resolveAccountByPreviousResponseIDForCapability(
 			_ = store.DeleteResponseAccount(ctx, derefGroupID(groupID), responseID)
 			return 0, nil, "", nil
 		}
-		if shouldClearStickySession(latest, requestedModel) || !latest.IsOpenAI() || !latest.IsSchedulable() {
+		if shouldClearStickySession(latest, requestedModel) ||
+			(!latest.IsOpenAI() && !openAICompositePoolHTTPResponsesOwner(ctx, latest)) || !latest.IsSchedulable() {
 			_ = store.DeleteResponseAccount(ctx, derefGroupID(groupID), responseID)
 			return 0, nil, "", nil
 		}
@@ -610,7 +630,7 @@ func (s *OpenAIGatewayService) resolveAccountByPreviousResponseIDForCapability(
 			_ = store.DeleteResponseAccount(ctx, derefGroupID(groupID), responseID)
 			return 0, nil, "", nil
 		}
-		if requestedModel != "" && !latest.IsModelSupported(requestedModel) {
+		if requestedModel != "" && !openAISchedulingModelSupported(ctx, latest, requestedModel) {
 			return 0, nil, "", nil
 		}
 		if !latest.SupportsOpenAIEndpointCapability(requiredCapability) {
