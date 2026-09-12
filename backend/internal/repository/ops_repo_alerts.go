@@ -30,6 +30,7 @@ SELECT
   sustained_minutes,
   cooldown_minutes,
   COALESCE(notify_email, true),
+  COALESCE(notify_wecom, false),
   filters,
   last_triggered_at,
   created_at,
@@ -61,6 +62,7 @@ ORDER BY id DESC`
 			&rule.SustainedMinutes,
 			&rule.CooldownMinutes,
 			&rule.NotifyEmail,
+			&rule.NotifyWeCom,
 			&filtersRaw,
 			&lastTriggeredAt,
 			&rule.CreatedAt,
@@ -112,11 +114,12 @@ INSERT INTO ops_alert_rules (
   sustained_minutes,
   cooldown_minutes,
   notify_email,
+  notify_wecom,
   filters,
   created_at,
   updated_at
 ) VALUES (
-  $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,NOW(),NOW()
+  $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,NOW(),NOW()
 )
 RETURNING
   id,
@@ -131,6 +134,7 @@ RETURNING
   sustained_minutes,
   cooldown_minutes,
   COALESCE(notify_email, true),
+  COALESCE(notify_wecom, false),
   filters,
   last_triggered_at,
   created_at,
@@ -154,6 +158,7 @@ RETURNING
 		input.SustainedMinutes,
 		input.CooldownMinutes,
 		input.NotifyEmail,
+		input.NotifyWeCom,
 		filtersArg,
 	).Scan(
 		&out.ID,
@@ -168,6 +173,7 @@ RETURNING
 		&out.SustainedMinutes,
 		&out.CooldownMinutes,
 		&out.NotifyEmail,
+		&out.NotifyWeCom,
 		&filtersRaw,
 		&lastTriggeredAt,
 		&out.CreatedAt,
@@ -219,7 +225,8 @@ SET
   sustained_minutes = $10,
   cooldown_minutes = $11,
   notify_email = $12,
-  filters = $13,
+  notify_wecom = $13,
+  filters = $14,
   updated_at = NOW()
 WHERE id = $1
 RETURNING
@@ -235,6 +242,7 @@ RETURNING
   sustained_minutes,
   cooldown_minutes,
   COALESCE(notify_email, true),
+  COALESCE(notify_wecom, false),
   filters,
   last_triggered_at,
   created_at,
@@ -259,6 +267,7 @@ RETURNING
 		input.SustainedMinutes,
 		input.CooldownMinutes,
 		input.NotifyEmail,
+		input.NotifyWeCom,
 		filtersArg,
 	).Scan(
 		&out.ID,
@@ -273,6 +282,7 @@ RETURNING
 		&out.SustainedMinutes,
 		&out.CooldownMinutes,
 		&out.NotifyEmail,
+		&out.NotifyWeCom,
 		&filtersRaw,
 		&lastTriggeredAt,
 		&out.CreatedAt,
@@ -351,6 +361,7 @@ SELECT
   fired_at,
   resolved_at,
   email_sent,
+  COALESCE(wecom_sent, false),
   created_at
 FROM ops_alert_events
 ` + where + `
@@ -383,6 +394,7 @@ LIMIT ` + limitArg
 			&ev.FiredAt,
 			&resolvedAt,
 			&ev.EmailSent,
+			&ev.WeComSent,
 			&ev.CreatedAt,
 		); err != nil {
 			return nil, err
@@ -435,6 +447,7 @@ SELECT
   fired_at,
   resolved_at,
   email_sent,
+  COALESCE(wecom_sent, false),
   created_at
 FROM ops_alert_events
 WHERE id = $1`
@@ -472,6 +485,7 @@ SELECT
   fired_at,
   resolved_at,
   email_sent,
+  COALESCE(wecom_sent, false),
   created_at
 FROM ops_alert_events
 WHERE rule_id = $1 AND status = $2
@@ -511,6 +525,7 @@ SELECT
   fired_at,
   resolved_at,
   email_sent,
+  COALESCE(wecom_sent, false),
   created_at
 FROM ops_alert_events
 WHERE rule_id = $1
@@ -554,9 +569,10 @@ INSERT INTO ops_alert_events (
   fired_at,
   resolved_at,
   email_sent,
+  wecom_sent,
   created_at
 ) VALUES (
-  $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,NOW()
+  $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,NOW()
 )
 RETURNING
   id,
@@ -571,6 +587,7 @@ RETURNING
   fired_at,
   resolved_at,
   email_sent,
+  COALESCE(wecom_sent, false),
   created_at`
 
 	row := r.db.QueryRowContext(
@@ -587,6 +604,7 @@ RETURNING
 		event.FiredAt,
 		opsNullTime(event.ResolvedAt),
 		event.EmailSent,
+		event.WeComSent,
 	)
 	return scanOpsAlertEvent(row)
 }
@@ -621,6 +639,18 @@ func (r *opsRepository) UpdateAlertEventEmailSent(ctx context.Context, eventID i
 	}
 
 	_, err := r.db.ExecContext(ctx, "UPDATE ops_alert_events SET email_sent = $2 WHERE id = $1", eventID, emailSent)
+	return err
+}
+
+func (r *opsRepository) UpdateAlertEventWeComSent(ctx context.Context, eventID int64, weComSent bool) error {
+	if r == nil || r.db == nil {
+		return fmt.Errorf("nil ops repository")
+	}
+	if eventID <= 0 {
+		return fmt.Errorf("invalid event id")
+	}
+
+	_, err := r.db.ExecContext(ctx, "UPDATE ops_alert_events SET wecom_sent = $2 WHERE id = $1", eventID, weComSent)
 	return err
 }
 
@@ -763,6 +793,7 @@ func scanOpsAlertEvent(row opsAlertEventRow) (*service.OpsAlertEvent, error) {
 		&ev.FiredAt,
 		&resolvedAt,
 		&ev.EmailSent,
+		&ev.WeComSent,
 		&ev.CreatedAt,
 	); err != nil {
 		return nil, err
@@ -807,6 +838,10 @@ func buildOpsAlertEventsWhere(filter *service.OpsAlertEventFilter) (string, []an
 	if filter.EmailSent != nil {
 		args = append(args, *filter.EmailSent)
 		clauses = append(clauses, "email_sent = $"+itoa(len(args)))
+	}
+	if filter.WeComSent != nil {
+		args = append(args, *filter.WeComSent)
+		clauses = append(clauses, "wecom_sent = $"+itoa(len(args)))
 	}
 	if filter.StartTime != nil && !filter.StartTime.IsZero() {
 		args = append(args, *filter.StartTime)

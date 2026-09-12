@@ -50,6 +50,7 @@ type OpsAlertEvaluatorService struct {
 	ruleStates map[int64]*opsAlertRuleState
 
 	emailLimiter *slidingWindowLimiter
+	weComLimiter *slidingWindowLimiter
 
 	skipLogMu sync.Mutex
 	skipLogAt time.Time
@@ -80,6 +81,7 @@ func NewOpsAlertEvaluatorService(
 		instanceID:   uuid.NewString(),
 		ruleStates:   map[int64]*opsAlertRuleState{},
 		emailLimiter: newSlidingWindowLimiter(0, time.Hour),
+		weComLimiter: newSlidingWindowLimiter(0, time.Hour),
 	}
 }
 
@@ -199,6 +201,7 @@ func (s *OpsAlertEvaluatorService) evaluateOnce(interval time.Duration) {
 	eventsCreated := 0
 	eventsResolved := 0
 	emailsSent := 0
+	weComSent := 0
 
 	now := time.Now().UTC()
 	safeEnd := now.Truncate(time.Minute)
@@ -295,6 +298,9 @@ func (s *OpsAlertEvaluatorService) evaluateOnce(interval time.Duration) {
 				if s.maybeSendAlertEmail(ctx, runtimeCfg, rule, created) {
 					emailsSent++
 				}
+				if s.maybeSendAlertWeCom(ctx, runtimeCfg, rule, created) {
+					weComSent++
+				}
 			}
 			continue
 		}
@@ -306,11 +312,16 @@ func (s *OpsAlertEvaluatorService) evaluateOnce(interval time.Duration) {
 				logger.LegacyPrintf("service.ops_alert_evaluator", "[OpsAlertEvaluator] resolve event failed (event=%d): %v", activeEvent.ID, err)
 			} else {
 				eventsResolved++
+				activeEvent.Status = OpsAlertStatusResolved
+				activeEvent.ResolvedAt = &resolvedAt
+				if s.maybeSendAlertWeCom(ctx, runtimeCfg, rule, activeEvent) {
+					weComSent++
+				}
 			}
 		}
 	}
 
-	result := truncateString(fmt.Sprintf("rules=%d enabled=%d evaluated=%d created=%d resolved=%d emails_sent=%d", rulesTotal, rulesEnabled, rulesEvaluated, eventsCreated, eventsResolved, emailsSent), 2048)
+	result := truncateString(fmt.Sprintf("rules=%d enabled=%d evaluated=%d created=%d resolved=%d emails_sent=%d wecom_sent=%d", rulesTotal, rulesEnabled, rulesEvaluated, eventsCreated, eventsResolved, emailsSent, weComSent), 2048)
 	s.recordHeartbeatSuccess(runAt, time.Since(startedAt), result)
 }
 
@@ -745,6 +756,82 @@ func (s *OpsAlertEvaluatorService) maybeSendAlertEmail(ctx context.Context, runt
 		_ = s.opsRepo.UpdateAlertEventEmailSent(context.Background(), event.ID, true)
 	}
 	return anySent
+}
+
+func (s *OpsAlertEvaluatorService) maybeSendAlertWeCom(ctx context.Context, runtimeCfg *OpsAlertRuntimeSettings, rule *OpsAlertRule, event *OpsAlertEvent) bool {
+	if s == nil || s.opsService == nil || s.opsService.weComNotifier == nil || s.opsRepo == nil || event == nil || rule == nil {
+		return false
+	}
+	isResolved := event.Status == OpsAlertStatusResolved || event.Status == OpsAlertStatusManualResolved
+	if !isResolved && event.WeComSent {
+		return false
+	}
+	if !rule.NotifyWeCom {
+		return false
+	}
+	cfg, err := s.opsService.GetWeComNotificationConfig(ctx)
+	if err != nil || cfg == nil || !cfg.Enabled || strings.TrimSpace(cfg.WebhookURL) == "" {
+		return false
+	}
+	if isResolved && !cfg.IncludeResolvedAlerts {
+		return false
+	}
+	if !shouldSendOpsAlertWeComByMinSeverity(cfg.MinSeverity, rule.Severity) {
+		return false
+	}
+	if runtimeCfg != nil && runtimeCfg.Silencing.Enabled && isOpsAlertSilenced(time.Now().UTC(), rule, event, runtimeCfg.Silencing) {
+		return false
+	}
+	s.weComLimiter.SetLimit(cfg.RateLimitPerHour)
+	if !s.weComLimiter.Allow(time.Now().UTC()) {
+		return false
+	}
+	if err := s.opsService.weComNotifier.SendMarkdown(ctx, cfg.WebhookURL, buildOpsAlertWeComMarkdown(rule, event)); err != nil {
+		logger.LegacyPrintf("service.ops_alert_evaluator", "[OpsAlertEvaluator] send WeCom notification failed (event=%d): %v", event.ID, err)
+		return false
+	}
+	event.WeComSent = true
+	if updater, ok := s.opsRepo.(interface {
+		UpdateAlertEventWeComSent(context.Context, int64, bool) error
+	}); ok {
+		_ = updater.UpdateAlertEventWeComSent(context.Background(), event.ID, true)
+	}
+	return true
+}
+
+func shouldSendOpsAlertWeComByMinSeverity(minSeverity, severity string) bool {
+	minSeverity = strings.ToUpper(strings.TrimSpace(minSeverity))
+	severity = strings.ToUpper(strings.TrimSpace(severity))
+	if minSeverity == "" {
+		return true
+	}
+	rank := map[string]int{"P0": 0, "P1": 1, "P2": 2, "P3": 3}
+	minRank, minOK := rank[minSeverity]
+	severityRank, severityOK := rank[severity]
+	return minOK && severityOK && severityRank <= minRank
+}
+
+func buildOpsAlertWeComMarkdown(rule *OpsAlertRule, event *OpsAlertEvent) string {
+	status := "触发"
+	if event != nil && (event.Status == OpsAlertStatusResolved || event.Status == OpsAlertStatusManualResolved) {
+		status = "恢复"
+	}
+	name, severity, description := "-", "-", "-"
+	if rule != nil {
+		name = strings.TrimSpace(rule.Name)
+		severity = strings.TrimSpace(rule.Severity)
+	}
+	if event != nil && strings.TrimSpace(event.Description) != "" {
+		description = strings.TrimSpace(event.Description)
+	}
+	content := fmt.Sprintf("## Sub2API 运维预警%s\n> 级别：**%s**\n> 规则：%s\n> 详情：%s", status, severity, name, description)
+	if event != nil && !event.FiredAt.IsZero() {
+		content += "\n> 触发时间：" + event.FiredAt.UTC().Format(time.RFC3339)
+	}
+	if event != nil && event.ResolvedAt != nil {
+		content += "\n> 恢复时间：" + event.ResolvedAt.UTC().Format(time.RFC3339)
+	}
+	return content
 }
 
 func opsAlertEmailVariables(rule *OpsAlertRule, event *OpsAlertEvent) map[string]string {
