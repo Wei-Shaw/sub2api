@@ -176,6 +176,10 @@ var providerAdapters = map[string]providerAdapter{
 	MonitorProviderZhipu:    providerZhipuChatAdapter,
 	MonitorProviderDeepseek: providerDeepseekChatAdapter,
 	MonitorProviderMiniMax:  providerMiniMaxChatAdapter,
+	// ollama_cloud：官方 OpenAI 兼容 Chat Completions（/v1/chat/completions），
+	// 与国产 3 家同构；api_mode 仍只支持 chat_completions（responses 探活
+	// 仅 openai，见 validateAPIMode）。
+	MonitorProviderOllamaCloud: providerOllamaCloudChatAdapter,
 	MonitorProviderAnthropic: {
 		buildPath: func(string) string { return providerAnthropicPath },
 		buildBody: func(model, prompt string) ([]byte, error) {
@@ -229,6 +233,9 @@ var providerDeepseekChatAdapter = newOpenAICompatibleChatAdapter(providerOpenAIP
 
 //nolint:gochecknoglobals // 适配器表是只读静态数据，初始化后不变更。
 var providerMiniMaxChatAdapter = newOpenAICompatibleChatAdapter(providerOpenAIPath)
+
+//nolint:gochecknoglobals // 适配器表是只读静态数据，初始化后不变更。
+var providerOllamaCloudChatAdapter = newOpenAICompatibleChatAdapter(providerOpenAIPath)
 
 func newOpenAICompatibleChatAdapter(path string) providerAdapter {
 	return providerAdapter{
@@ -463,6 +470,8 @@ var bodyMergeKeyDenyList = map[string]map[string]bool{
 	MonitorProviderZhipu:    {"model": true, "messages": true, "stream": true},
 	MonitorProviderDeepseek: {"model": true, "messages": true, "stream": true},
 	MonitorProviderMiniMax:  {"model": true, "messages": true, "stream": true},
+	// ollama_cloud 同为 OpenAI Chat Completions 同构。
+	MonitorProviderOllamaCloud: {"model": true, "messages": true, "stream": true},
 }
 
 func checkAPIMode(opts *CheckOptions) string {
