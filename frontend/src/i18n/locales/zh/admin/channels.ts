@@ -141,7 +141,7 @@ export default {
         fastMultiplier: 'Fast 倍率',
         flexMultiplier: 'Flex 倍率',
         maxReasoningEffortMultiplier: 'Max 推理倍率',
-        fable51DefaultMaxReasoningMultiplier: '默认 3',
+        fable51DefaultMaxReasoningMultiplier: '默认 1',
         multiplierPlaceholder: '未配置',
         multiplierPositive: 'Fast/Flex/Max 推理倍率必须大于 0',
         inputMultiplier: '输入倍率',
