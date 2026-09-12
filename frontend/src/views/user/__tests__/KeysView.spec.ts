@@ -153,7 +153,7 @@ const TablePageLayoutStub = {
 
 const DataTableStub = {
   name: 'DataTable',
-  props: ['columns', 'data'],
+  props: ['columns', 'data', 'loading'],
   emits: ['sort'],
   template: `
     <div>
@@ -172,6 +172,9 @@ const DataTableStub = {
         <slot name="cell-name" :value="row.name" :row="row" />
         <div data-test="current-concurrency">
           <slot name="cell-current_concurrency" :value="row.current_concurrency" :row="row" />
+        </div>
+        <div data-test="usage">
+          <slot name="cell-usage" :value="row.usage" :row="row" />
         </div>
         <div
           v-if="columns.some((col) => col.key === 'last_used_ip')"
@@ -392,6 +395,33 @@ describe('user KeysView column settings', () => {
     const wrapper = await mountView()
 
     expect(wrapper.get('[data-test="current-concurrency"]').text()).toBe('3')
+  })
+
+  it('renders API keys without waiting for usage stats', async () => {
+    let resolveUsage!: (value: {
+      stats: Record<string, { api_key_id: number; today_actual_cost: number; total_actual_cost: number }>
+    }) => void
+    getDashboardApiKeysUsage.mockReturnValueOnce(new Promise((resolve) => {
+      resolveUsage = resolve
+    }))
+
+    const wrapper = await mountView()
+
+    expect(wrapper.findComponent({ name: 'DataTable' }).props('loading')).toBe(false)
+    expect(wrapper.get('[data-test="current-concurrency"]').text()).toBe('3')
+    expect(wrapper.get('[data-test="usage-loading"]').exists()).toBe(true)
+
+    resolveUsage({
+      stats: {
+        '1': { api_key_id: 1, today_actual_cost: 1.25, total_actual_cost: 12.5 },
+      },
+    })
+    await flushPromises()
+    await nextTick()
+
+    expect(wrapper.find('[data-test="usage-loading"]').exists()).toBe(false)
+    expect(wrapper.get('[data-test="usage"]').text()).toContain('$1.2500')
+    expect(wrapper.get('[data-test="usage"]').text()).toContain('$12.5000')
   })
 
   it('marks current concurrency as sortable', async () => {
