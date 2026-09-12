@@ -182,10 +182,10 @@ func TestSimpleCompositeHTTPFlowPreservesBasicGroups(t *testing.T) {
 	require.Equal(t, 1.0, groups.rows[2].RateMultiplier)
 	require.Equal(t, service.SubscriptionTypeStandard, groups.rows[2].SubscriptionType)
 	require.Nil(t, groups.rows[2].DailyLimitUSD)
-	listed := request("GET", "/groups?page_size=1&page=2", "", 200)["data"].(map[string]any)
+	listed := simpleFlowObject(t, request("GET", "/groups?page_size=1&page=2", "", 200)["data"])
 	require.Equal(t, float64(2), listed["total"])
-	require.Equal(t, "composite", listed["items"].([]any)[0].(map[string]any)["platform"])
-	require.Len(t, request("GET", "/groups/all", "", 200)["data"].([]any), 2)
+	require.Equal(t, "composite", simpleFlowObject(t, simpleFlowArray(t, listed["items"])[0])["platform"])
+	require.Len(t, simpleFlowArray(t, request("GET", "/groups/all", "", 200)["data"]), 2)
 	request("PUT", "/groups/1", `{"name":"basic preserved"}`, 200)
 	require.Equal(t, "openai", groups.rows[1].Platform)
 	request("PUT", "/groups/2", `{"name":"routing renamed","rate_multiplier":9}`, 200)
@@ -193,20 +193,34 @@ func TestSimpleCompositeHTTPFlowPreservesBasicGroups(t *testing.T) {
 	request("GET", "/groups/2", "", 200)
 	route := `{"public_model":"team-model","target_platform":"openai","upstream_model":"gpt-5.2","endpoint":"responses","enabled":true}`
 	request("POST", "/groups/2/composite-routes", route, 201)
-	require.Len(t, request("GET", "/groups/2/composite-routes", "", 200)["data"].([]any), 1)
-	preview := request("POST", "/groups/2/composite-routes/preview", `{"model":"team-model","endpoint":"responses"}`, 200)["data"].(map[string]any)
+	require.Len(t, simpleFlowArray(t, request("GET", "/groups/2/composite-routes", "", 200)["data"]), 1)
+	preview := simpleFlowObject(t, request("POST", "/groups/2/composite-routes/preview", `{"model":"team-model","endpoint":"responses"}`, 200)["data"])
 	require.Equal(t, true, preview["matched"])
 	require.Equal(t, "gpt-5.2", preview["upstream_model"])
 	request("PUT", "/groups/2/composite-routes/1", strings.ReplaceAll(route, "gpt-5.2", "gpt-5.1"), 200)
 	decision, err := resolver.Resolve(context.Background(), 2, "team-model", "responses")
 	require.NoError(t, err)
 	require.Equal(t, "gpt-5.1", decision.UpstreamModel)
-	require.Len(t, request("GET", "/available-groups", "", 200)["data"].([]any), 2)
+	require.Len(t, simpleFlowArray(t, request("GET", "/available-groups", "", 200)["data"]), 2)
 	request("POST", "/keys", `{"name":"composite client","group_id":2}`, 200)
 	require.NotNil(t, keys.key.GroupID)
 	require.Equal(t, int64(2), *keys.key.GroupID)
 	request("GET", "/groups/2/rate-multipliers", "", 403)
 	request("DELETE", "/groups/2/composite-routes/1", "", 200)
-	preview = request("POST", "/groups/2/composite-routes/preview", `{"model":"team-model","endpoint":"responses"}`, 200)["data"].(map[string]any)
+	preview = simpleFlowObject(t, request("POST", "/groups/2/composite-routes/preview", `{"model":"team-model","endpoint":"responses"}`, 200)["data"])
 	require.Equal(t, false, preview["matched"], "unknown alias fails closed after route deletion")
+}
+
+func simpleFlowObject(t *testing.T, value any) map[string]any {
+	t.Helper()
+	result, ok := value.(map[string]any)
+	require.True(t, ok, "expected a JSON object, got %T", value)
+	return result
+}
+
+func simpleFlowArray(t *testing.T, value any) []any {
+	t.Helper()
+	result, ok := value.([]any)
+	require.True(t, ok, "expected a JSON array, got %T", value)
+	return result
 }
