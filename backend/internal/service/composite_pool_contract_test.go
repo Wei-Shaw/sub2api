@@ -63,8 +63,9 @@ func TestCompositePoolOwnershipDualPlatformExplicitAlias(t *testing.T) {
 	require.Equal(t, []string{PlatformDeepseek, PlatformOpenAI, PlatformZhipu}, ownership.CandidatePlatforms)
 }
 
-// b. 官方 deepseek 空 mapping（规则B，强声明）+ opencode 显式 mapping（规则A
-// 精确，强声明）→ 双平台 pool；空 mapping 的无关 openai/zhipu 账号不入池。
+// b. 官方 deepseek 空 mapping（规则B，强声明，使用受支持的 DeepSeek 模型名）
+// + opencode 显式 mapping（规则A 精确，强声明）→ 双平台 pool；空 mapping 的
+// 无关 openai/zhipu 账号不入池。
 func TestCompositePoolOwnershipDeepseekNativePlusOpenCodeMapping(t *testing.T) {
 	groupID := int64(7)
 	repo := compositePoolOwnershipRepo([]Account{
@@ -73,7 +74,7 @@ func TestCompositePoolOwnershipDeepseekNativePlusOpenCodeMapping(t *testing.T) {
 			ID:       2,
 			Platform: PlatformOpenCodeGo,
 			Credentials: map[string]any{
-				"model_mapping": map[string]any{"deepseek-chat": "deepseek-chat"},
+				"model_mapping": map[string]any{"deepseek-flash": "deepseek-flash"},
 			},
 		},
 		{ID: 3, Platform: PlatformOpenAI},
@@ -81,14 +82,14 @@ func TestCompositePoolOwnershipDeepseekNativePlusOpenCodeMapping(t *testing.T) {
 	})
 	svc := &GatewayService{accountRepo: repo}
 
-	ownership, err := svc.resolveCompositeModelOwnership(context.Background(), groupID, "deepseek-chat")
+	ownership, err := svc.resolveCompositeModelOwnership(context.Background(), groupID, "deepseek-flash")
 	require.NoError(t, err)
 	require.True(t, ownership.Matched)
 	require.Empty(t, ownership.TargetPlatform)
 	require.Equal(t, []string{PlatformDeepseek, PlatformOpenCodeGo}, ownership.CandidatePlatforms)
 
 	// 仅 deepseek 空 mapping 声明时保持 single（既有语义）。
-	single, err := svc.resolveCompositeModelOwnership(context.Background(), groupID, "deepseek-reasoner")
+	single, err := svc.resolveCompositeModelOwnership(context.Background(), groupID, "deepseek-v4-pro")
 	require.NoError(t, err)
 	require.Equal(t, CompositeModelOwnership{TargetPlatform: PlatformDeepseek, Matched: true}, single)
 }
