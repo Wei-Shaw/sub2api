@@ -1369,6 +1369,18 @@ func shouldForwardOpenAIResponsesViaRawChatCompletions(account *Account) bool {
 			return false
 		}
 	}
+	if account.IsOllamaCloud() {
+		// Ollama Cloud 无 protocol_rules：显式 CC 锁 CC，adaptive / responses
+		// 走平台原生 Responses 端点（探针 Extra 不得把协议决策带偏）。
+		switch account.GetAPIProtocol() {
+		case APIProtocolChatCompletions:
+			return true
+		case APIProtocolAdaptive, APIProtocolResponses:
+			return !account.SupportsNativeCNResponses()
+		default:
+			return false
+		}
+	}
 	return !openai_compat.ShouldUseResponsesAPI(account.Extra)
 }
 
@@ -1392,6 +1404,11 @@ func (s *OpenAIGatewayService) buildUpstreamRequest(ctx context.Context, c *gin.
 			baseURL = account.GetCNProtocolBaseURL(APIProtocolResponses)
 		}
 		if baseURL == "" {
+			if account.IsMultiProtocolAPIKey() {
+				// 多协议网关缺 base 时必须显式失败：回落官方域名会把第三方 key
+				// 明文发到 api.openai.com。
+				return nil, fmt.Errorf("account %d has no openai responses base url", account.ID)
+			}
 			targetURL = openaiPlatformAPIURL
 		} else {
 			validatedURL, err := s.validateUpstreamBaseURL(baseURL)

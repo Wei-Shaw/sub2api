@@ -601,6 +601,10 @@ func (s *OpenAIGatewayService) buildUpstreamRequestOpenAIPassthrough(
 				return nil, err
 			}
 			targetURL = buildOpenAIResponsesURLForPlatform(account.Platform, validatedURL)
+		} else if account.IsMultiProtocolAPIKey() {
+			// 多协议网关缺 base 时必须显式失败：targetURL 初值即官方域名，
+			// 回落它会把第三方 key 明文发到 api.openai.com。
+			return nil, fmt.Errorf("account %d has no openai responses base url", account.ID)
 		}
 	}
 	targetURL = appendOpenAIResponsesRequestPathSuffix(targetURL, openAIResponsesRequestPathSuffix(c))
