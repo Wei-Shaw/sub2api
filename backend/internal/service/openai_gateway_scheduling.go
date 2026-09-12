@@ -1011,7 +1011,9 @@ func (s *OpenAIGatewayService) tryStickySessionHit(ctx context.Context, groupID 
 	}
 
 	account, err := s.getSchedulableAccount(ctx, accountID)
-	if err != nil {
+	// (nil, nil) 合法（snapshot miss / 调度阈值暂停 / grok 额度耗尽）：
+	// 跳过 sticky 尝试、保留绑定，回落正常选号。
+	if err != nil || account == nil {
 		return nil
 	}
 	// composite pool denied 平台：sticky 账号只是暂时排除——不 delete（绑定保留），
@@ -1251,7 +1253,8 @@ func (s *OpenAIGatewayService) selectAccountWithLoadAwareness(ctx context.Contex
 		accountID := stickyAccountID
 		if accountID > 0 && !isExcluded(accountID) {
 			account, err := s.getSchedulableAccount(ctx, accountID)
-			if err == nil && !compositePoolPlatformDenied(ctx, account.Platform) {
+			// 保持旧 nil 降级语义：(nil, nil) 与 sticky miss 等价，直接落 Layer 2。
+			if err == nil && account != nil && !compositePoolPlatformDenied(ctx, account.Platform) {
 				// composite pool denied 平台：sticky 账号暂时排除——不 delete、
 				// 不计 spillover，直接落 Layer 2。
 				clearSticky := shouldClearStickySession(account, requestedModel)
