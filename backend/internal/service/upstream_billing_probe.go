@@ -1035,9 +1035,11 @@ func isUpstreamBillingProbeAccount(account *Account) bool {
 // relays (the only targets that can answer /v1/sub2api/billing) always do
 // probe. OpenAI-platform accounts never reach this check: they keep the
 // upstream-official behavior of probing api.openai.com.
-// ollama.com is a first-class configuration here (Ollama Cloud accounts are
-// platform openai/anthropic with base_url https://ollama.com/v1), and it is
-// an official provider API just like the rest, so it belongs on this list.
+// ollama.com is a first-class configuration here (it is the official Ollama
+// Cloud API base: platform ollama_cloud accounts use https://ollama.com/v1,
+// and legacy openai/anthropic-platform accounts may still point at the same
+// host), and it is an official provider API just like the rest, so it belongs
+// on this list.
 // CN provider domains (moonshot.cn / kimi.com / bigmodel.cn / deepseek.com)
 // serve the same role: official APIs that can never host /v1/sub2api/billing,
 // so their accounts short-circuit to "unsupported" without a request.

@@ -566,6 +566,35 @@ func TestSyncPricingModels_ValidPlatform_EmptyService(t *testing.T) {
 	}
 }
 
+// C24：ollama_cloud 故意不进 platformToLiteLLMProvider（LiteLLM 目录无 ollama
+// 条目，加映射只会返回空列表 = 静默空池），必须保持 400 UNSUPPORTED_PLATFORM；
+// 其余平台不受影响。
+func TestSyncPricingModels_OllamaCloudUnsupported(t *testing.T) {
+	svc := service.NewPricingService(nil, nil)
+	router := setupSyncPricingModelsRouter(svc)
+
+	req := httptest.NewRequest(http.MethodGet, "/channels/pricing/sync-models?platform="+service.PlatformOllamaCloud, nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	require.Equal(t, http.StatusBadRequest, w.Code)
+	var body struct {
+		Code   int    `json:"code"`
+		Reason string `json:"reason"`
+	}
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &body))
+	require.Equal(t, http.StatusBadRequest, body.Code)
+	require.Equal(t, "UNSUPPORTED_PLATFORM", body.Reason)
+
+	// 非回归：其它平台照常 200。
+	for _, platform := range []string{"anthropic", "openai", service.PlatformOpenCodeGo} {
+		req := httptest.NewRequest(http.MethodGet, "/channels/pricing/sync-models?platform="+platform, nil)
+		w := httptest.NewRecorder()
+		router.ServeHTTP(w, req)
+		require.Equal(t, http.StatusOK, w.Code, "platform=%s", platform)
+	}
+}
+
 func setupModelDefaultPricingRouter() *gin.Engine {
 	gin.SetMode(gin.TestMode)
 	router := gin.New()

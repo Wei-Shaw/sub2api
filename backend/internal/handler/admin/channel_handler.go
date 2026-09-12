@@ -634,6 +634,11 @@ func (h *ChannelHandler) GetModelDefaultPricing(c *gin.Context) {
 
 // platformToLiteLLMProvider maps a channel platform name to the corresponding
 // LiteLLM provider string used as the key in the pricing catalog.
+//
+// ollama_cloud 故意不在本表（C24）：LiteLLM 目录没有 ollama 条目，加了映射只会
+// 绕过 SyncPricingModels 的 unsupported 分支返回空列表（静默空池）。保持缺席，
+// 让 sync-models?platform=ollama_cloud 显式返回 400 UNSUPPORTED_PLATFORM；
+// ollama 定价走 billing_service.go fallbackPrices 的 ollama 条目（B2-② 落点）。
 var platformToLiteLLMProvider = map[string]string{
 	service.PlatformAnthropic:   "anthropic",
 	service.PlatformOpenAI:      "openai",
