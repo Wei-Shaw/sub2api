@@ -1622,6 +1622,42 @@ func TestOpenAIGatewayServiceRecordUsage_UsesRequestedModelAndUpstreamModelMetad
 	require.Equal(t, 1, userRepo.deductCalls)
 }
 
+func TestOpenAIGatewayServiceRecordUsage_PersistsImageUpstreamModelMismatch(t *testing.T) {
+	usageRepo := &openAIRecordUsageLogRepoStub{inserted: true}
+	userRepo := &openAIRecordUsageUserRepoStub{}
+	subRepo := &openAIRecordUsageSubRepoStub{}
+	svc := newOpenAIRecordUsageServiceForTest(usageRepo, userRepo, subRepo, nil)
+
+	err := svc.RecordUsage(context.Background(), &OpenAIRecordUsageInput{
+		Result: &OpenAIForwardResult{
+			RequestID:             "img_model_mismatch",
+			Model:                 "gpt-image-2.5-flare",
+			UpstreamModel:         "gpt-image-2.5-flare",
+			UpstreamResponseModel: "gpt-image-2-codex",
+			ImageCount:            1,
+			ImageSize:             "4K",
+			Usage: OpenAIUsage{
+				InputTokens:       10,
+				OutputTokens:      20,
+				ImageOutputTokens: 30,
+			},
+			Duration: time.Second,
+		},
+		APIKey:  &APIKey{ID: 101},
+		User:    &User{ID: 201},
+		Account: &Account{ID: 301, Platform: PlatformOpenAI, Type: AccountTypeOAuth},
+	})
+
+	require.NoError(t, err)
+	require.NotNil(t, usageRepo.lastLog)
+	require.NotNil(t, usageRepo.lastLog.UpstreamModel)
+	require.Equal(t, "gpt-image-2.5-flare", *usageRepo.lastLog.UpstreamModel)
+	require.NotNil(t, usageRepo.lastLog.UpstreamResponseModel)
+	require.Equal(t, "gpt-image-2-codex", *usageRepo.lastLog.UpstreamResponseModel)
+	require.NotNil(t, usageRepo.lastLog.UpstreamModelMismatch)
+	require.True(t, *usageRepo.lastLog.UpstreamModelMismatch)
+}
+
 func TestOpenAIGatewayServiceRecordUsage_PersistsRequestedReasoningEffort(t *testing.T) {
 	usageRepo := &openAIRecordUsageLogRepoStub{inserted: true}
 	userRepo := &openAIRecordUsageUserRepoStub{}

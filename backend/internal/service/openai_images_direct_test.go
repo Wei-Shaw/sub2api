@@ -111,15 +111,17 @@ func TestCodexDirectImagesHTTPErrorFallbacksOnlyWhenEndpointUnavailable(t *testi
 	}
 }
 
-func TestCodexDirectImagesStreamRejectsPlainJSON(t *testing.T) {
+func TestCodexDirectImagesStreamConvertsPlainJSON(t *testing.T) {
 	body := []byte(`{"model":"gpt-image-2","prompt":"draw","stream":true}`)
-	c, _ := newOpenAIImagesTestContext(t, body)
+	c, rec := newOpenAIImagesTestContext(t, body)
 	svc := newOpenAIImagesTestService(&httpUpstreamRecorder{resp: openAIImagesJSONResponse()})
 	parsed, err := svc.ParseOpenAIImagesRequest(c, body)
 	require.NoError(t, err)
 	result, err := svc.ForwardImages(context.Background(), c, directImagesTestAccount(), body, parsed, "")
-	require.Error(t, err, "未收到 SSE 完成事件，不能把未转发的 JSON 当作成功")
-	require.Nil(t, result)
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.Equal(t, 1, result.ImageCount)
+	require.Contains(t, rec.Body.String(), "event: image_generation.completed")
 }
 
 func TestCodexDirectImagesMultipleOutputs(t *testing.T) {

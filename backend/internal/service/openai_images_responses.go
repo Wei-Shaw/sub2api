@@ -38,6 +38,7 @@ type OpenAIImagesUpstreamError struct {
 	Message           string
 	Param             string
 	UpstreamRequestID string
+	NonRetryable      bool
 
 	// SynthesizedFromModelText marks an error the gateway inferred from the
 	// model's plain-text output instead of reading it off a structured upstream
@@ -104,7 +105,7 @@ func (e *OpenAIImagesUpstreamError) clientMessage() string {
 // IsOpenAIImagesRetryableUpstreamError reports whether an Images error is an
 // upstream server failure that may be retried on another account.
 func IsOpenAIImagesRetryableUpstreamError(err *OpenAIImagesUpstreamError) bool {
-	return err != nil && err.StatusCode >= http.StatusInternalServerError
+	return err != nil && err.StatusCode >= http.StatusInternalServerError && !err.NonRetryable
 }
 
 func openAIImagesSSEErrorStatus(errType, code string) int {
@@ -188,6 +189,21 @@ func mergeOpenAIResponsesImageMeta(dst *openAIResponsesImageResult, src openAIRe
 	}
 	if trimmed := strings.TrimSpace(src.Model); trimmed != "" {
 		dst.Model = trimmed
+	}
+}
+
+func normalizeOpenAIResponsesImageClientModel(meta *openAIResponsesImageResult, requestedModel string) {
+	if meta == nil {
+		return
+	}
+	if requestedModel = strings.TrimSpace(requestedModel); requestedModel != "" {
+		meta.Model = requestedModel
+	}
+}
+
+func observeOpenAIResponsesImageModel(c *gin.Context, model string, terminal bool) {
+	if observer := upstreamResponseModelObserverFromContext(c); observer != nil {
+		observer.Observe(model, terminal)
 	}
 }
 
@@ -336,9 +352,10 @@ func openAIImageUploadToDataURL(upload OpenAIImagesUpload) (string, error) {
 	return "data:" + contentType + ";base64," + base64.StdEncoding.EncodeToString(upload.Data), nil
 }
 
-// openAIImagesSelfBuiltRequestContextKey marks a request whose upstream body was
-// fully constructed by buildOpenAIImagesResponsesRequest, i.e. tool_choice and the
-// matching image_generation tool are always both present and never client-controlled.
+// openAIImagesSelfBuiltRequestContextKey marks a request whose image upstream
+// body was fully constructed by the gateway and is not client-controlled.
+// This covers both the legacy Responses bridge and the native Codex Images
+// transport, so capability-loss handling remains consistent across transports.
 type openAIImagesSelfBuiltRequestContextKey struct{}
 
 func withOpenAIImagesSelfBuiltRequest(ctx context.Context) context.Context {
@@ -1336,6 +1353,22 @@ func (s *OpenAIGatewayService) handleOpenAIImagesOAuthNonStreamingResponse(
 	responseFormat string,
 	fallbackModel string,
 ) (OpenAIUsage, int, []string, error) {
+	return s.handleOpenAIImagesOAuthNonStreamingResponseWithValidation(
+		resp,
+		c,
+		responseFormat,
+		fallbackModel,
+		nil,
+	)
+}
+
+func (s *OpenAIGatewayService) handleOpenAIImagesOAuthNonStreamingResponseWithValidation(
+	resp *http.Response,
+	c *gin.Context,
+	responseFormat string,
+	fallbackModel string,
+	validationRequest *OpenAIImagesRequest,
+) (OpenAIUsage, int, []string, error) {
 	body, err := ReadUpstreamResponseBody(resp.Body, s.cfg, c, openAITooLargeError)
 	if err != nil {
 		if shouldClassifyOpenAIUpstreamStreamReadError(err, c.Request.Context()) {
@@ -1380,8 +1413,16 @@ func (s *OpenAIGatewayService) handleOpenAIImagesOAuthNonStreamingResponse(
 			RetryableOnSameAccount: true,
 		}
 	}
+	observeOpenAIResponsesImageModel(c, firstMeta.Model, true)
 	if strings.TrimSpace(firstMeta.Model) == "" {
 		firstMeta.Model = strings.TrimSpace(fallbackModel)
+	}
+	normalizeOpenAIResponsesImageClientModel(&firstMeta, fallbackModel)
+	if validationRequest != nil {
+		observed := append([]openAIResponsesImageResult{firstMeta}, results...)
+		if mismatchErr := validateOpenAICodexImagesResponse(validationRequest, results, observed); mismatchErr != nil {
+			auditOpenAICodexImagesResponseMismatch(mismatchErr)
+		}
 	}
 
 	responseBody, err := buildOpenAIImagesAPIResponse(results, createdAt, usageRaw, firstMeta, responseFormat)
@@ -1400,6 +1441,26 @@ func (s *OpenAIGatewayService) handleOpenAIImagesOAuthStreamingResponse(
 	responseFormat string,
 	streamPrefix string,
 	fallbackModel string,
+) (OpenAIUsage, int, []string, *int, error) {
+	return s.handleOpenAIImagesOAuthStreamingResponseWithValidation(
+		resp,
+		c,
+		startTime,
+		responseFormat,
+		streamPrefix,
+		fallbackModel,
+		nil,
+	)
+}
+
+func (s *OpenAIGatewayService) handleOpenAIImagesOAuthStreamingResponseWithValidation(
+	resp *http.Response,
+	c *gin.Context,
+	startTime time.Time,
+	responseFormat string,
+	streamPrefix string,
+	fallbackModel string,
+	validationRequest *OpenAIImagesRequest,
 ) (OpenAIUsage, int, []string, *int, error) {
 	responseheaders.WriteFilteredHeaders(c.Writer.Header(), resp.Header, s.responseHeaderFilter)
 	c.Header("Content-Type", "text/event-stream")
@@ -1424,6 +1485,12 @@ func (s *OpenAIGatewayService) handleOpenAIImagesOAuthStreamingResponse(
 	emitted := make(map[string]struct{})
 	pendingResults := make([]openAIResponsesImageResult, 0, 1)
 	pendingSeen := make(map[string]struct{})
+	type pendingPartialImage struct {
+		b64   string
+		index int64
+		meta  openAIResponsesImageResult
+	}
+	pendingPartialImages := make([]pendingPartialImage, 0, 1)
 	streamMeta := openAIResponsesImageResult{Model: strings.TrimSpace(fallbackModel)}
 	var fallbackText strings.Builder
 	appendFallbackText := func(text string) {
@@ -1444,6 +1511,40 @@ func (s *OpenAIGatewayService) handleOpenAIImagesOAuthStreamingResponse(
 	processDataDone := false
 	writerSizeBeforeResponse := OpenAIImagesJSONKeepaliveAdjustedWrittenSize(c)
 
+	validateStreamResults := func(results []openAIResponsesImageResult, observed ...openAIResponsesImageResult) error {
+		if validationRequest == nil {
+			return nil
+		}
+		mismatchErr := validateOpenAICodexImagesResponse(validationRequest, results, observed)
+		if mismatchErr == nil {
+			return nil
+		}
+		auditOpenAICodexImagesResponseMismatch(mismatchErr)
+		return nil
+	}
+
+	emitPendingPartialImages := func() {
+		for _, partial := range pendingPartialImages {
+			eventName := streamPrefix + ".partial_image"
+			s.tryWriteOpenAIImagesStreamEvent(
+				c,
+				flusher,
+				&clientDisconnected,
+				&lastDownstreamWriteAt,
+				eventName,
+				buildOpenAIImagesStreamPartialPayload(
+					eventName,
+					partial.b64,
+					partial.index,
+					format,
+					createdAt,
+					partial.meta,
+				),
+			)
+		}
+		pendingPartialImages = nil
+	}
+
 	processData := func(dataBytes []byte) {
 		if processDataDone || processDataErr != nil {
 			return
@@ -1457,7 +1558,10 @@ func (s *OpenAIGatewayService) handleOpenAIImagesOAuthStreamingResponse(
 			return
 		}
 		if meta, eventCreatedAt, ok := extractOpenAIResponsesImageMetaFromLifecycleEvent(dataBytes); ok {
+			eventType := gjson.GetBytes(dataBytes, "type").String()
+			observeOpenAIResponsesImageModel(c, meta.Model, eventType == "response.completed")
 			mergeOpenAIResponsesImageMeta(&streamMeta, meta)
+			normalizeOpenAIResponsesImageClientModel(&streamMeta, fallbackModel)
 			if eventCreatedAt > 0 {
 				createdAt = eventCreatedAt
 			}
@@ -1477,15 +1581,23 @@ func (s *OpenAIGatewayService) handleOpenAIImagesOAuthStreamingResponse(
 				OutputFormat: strings.TrimSpace(gjson.GetBytes(dataBytes, "output_format").String()),
 				Background:   strings.TrimSpace(gjson.GetBytes(dataBytes, "background").String()),
 			})
-			payload := buildOpenAIImagesStreamPartialPayload(
-				eventName,
-				b64,
-				gjson.GetBytes(dataBytes, "partial_image_index").Int(),
-				format,
-				createdAt,
-				partialMeta,
-			)
-			s.tryWriteOpenAIImagesStreamEvent(c, flusher, &clientDisconnected, &lastDownstreamWriteAt, eventName, payload)
+			if validationRequest != nil {
+				pendingPartialImages = append(pendingPartialImages, pendingPartialImage{
+					b64:   b64,
+					index: gjson.GetBytes(dataBytes, "partial_image_index").Int(),
+					meta:  partialMeta,
+				})
+			} else {
+				payload := buildOpenAIImagesStreamPartialPayload(
+					eventName,
+					b64,
+					gjson.GetBytes(dataBytes, "partial_image_index").Int(),
+					format,
+					createdAt,
+					partialMeta,
+				)
+				s.tryWriteOpenAIImagesStreamEvent(c, flusher, &clientDisconnected, &lastDownstreamWriteAt, eventName, payload)
+			}
 		case "response.output_item.done":
 			img, itemID, ok, extractErr := extractOpenAIImageFromResponsesOutputItemDone(dataBytes)
 			if extractErr != nil {
@@ -1517,6 +1629,7 @@ func (s *OpenAIGatewayService) handleOpenAIImagesOAuthStreamingResponse(
 				return
 			}
 			mergeOpenAIResponsesImageMeta(&streamMeta, firstMeta)
+			normalizeOpenAIResponsesImageClientModel(&streamMeta, fallbackModel)
 			finalResults := make([]openAIResponsesImageResult, 0, len(results)+len(pendingResults))
 			finalSeen := make(map[string]struct{})
 			for _, img := range results {
@@ -1550,6 +1663,16 @@ func (s *OpenAIGatewayService) handleOpenAIImagesOAuthStreamingResponse(
 				processDataDone = true
 				return
 			}
+			if mismatchErr := validateStreamResults(
+				finalResults,
+				streamMeta,
+				firstMeta,
+			); mismatchErr != nil {
+				processDataErr = mismatchErr
+				processDataDone = true
+				return
+			}
+			emitPendingPartialImages()
 			eventName := streamPrefix + ".completed"
 			for _, img := range finalResults {
 				key := openAIResponsesImageResultKey("", img)
@@ -1564,6 +1687,11 @@ func (s *OpenAIGatewayService) handleOpenAIImagesOAuthStreamingResponse(
 			imageOutputSizes = openAIResponsesImageResultSizes(finalResults)
 			processDataDone = true
 		case "error", "response.failed":
+			// Partial images are still valid output when the upstream itself
+			// terminates with an error. Preserve the existing streaming
+			// behavior here; strict parameter validation only gates a
+			// successful completed image.
+			emitPendingPartialImages()
 			if upstreamErr := openAIImagesUpstreamErrorFromSSEPayload(dataBytes); upstreamErr != nil {
 				retryable := IsOpenAIImagesRetryableUpstreamError(upstreamErr)
 				if !clientDisconnected && (!retryable || c.Writer.Size() != writerSizeBeforeResponse) {
@@ -1605,8 +1733,13 @@ func (s *OpenAIGatewayService) handleOpenAIImagesOAuthStreamingResponse(
 			finalResults := append([]openAIResponsesImageResult(nil), pendingResults...)
 			for i := range finalResults {
 				mergeOpenAIResponsesImageMeta(&finalResults[i], streamMeta)
+				normalizeOpenAIResponsesImageClientModel(&finalResults[i], fallbackModel)
 			}
 			reconcileOpenAIResponsesImageResultSizes(finalResults, nil)
+			if mismatchErr := validateStreamResults(finalResults, streamMeta); mismatchErr != nil {
+				return mismatchErr
+			}
+			emitPendingPartialImages()
 			for _, img := range finalResults {
 				key := openAIResponsesImageResultKey("", img)
 				if _, exists := emitted[key]; exists {
