@@ -14,6 +14,11 @@ func TestClaudeTokenRefresher_NeedsRefresh(t *testing.T) {
 	refresher := &ClaudeTokenRefresher{}
 	refreshWindow := 30 * time.Minute
 
+	// 毫秒级时间戳：Claude Code 的 ~/.claude/.credentials.json 用毫秒记录 expiresAt，
+	// 导入凭据时可能被原样写入 credentials。
+	expiredMillis := strconv.FormatInt(time.Now().Add(-1*time.Hour).UnixMilli(), 10)
+	futureMillis := strconv.FormatInt(time.Now().Add(12*time.Hour).UnixMilli(), 10)
+
 	tests := []struct {
 		name        string
 		credentials map[string]any
@@ -22,61 +27,97 @@ func TestClaudeTokenRefresher_NeedsRefresh(t *testing.T) {
 		{
 			name: "expires_at as string - expired",
 			credentials: map[string]any{
-				"expires_at": "1000", // 1970-01-01 00:16:40 UTC, 已过期
+				"refresh_token": "rt-test",
+				"expires_at":    "1000", // 1970-01-01 00:16:40 UTC, 已过期
 			},
 			wantRefresh: true,
 		},
 		{
 			name: "expires_at as float64 - expired",
 			credentials: map[string]any{
-				"expires_at": float64(1000), // 数字类型，已过期
+				"refresh_token": "rt-test",
+				"expires_at":    float64(1000), // 数字类型，已过期
 			},
 			wantRefresh: true,
 		},
 		{
 			name: "expires_at as RFC3339 - expired",
 			credentials: map[string]any{
-				"expires_at": "1970-01-01T00:00:00Z", // RFC3339 格式，已过期
+				"refresh_token": "rt-test",
+				"expires_at":    "1970-01-01T00:00:00Z", // RFC3339 格式，已过期
 			},
 			wantRefresh: true,
 		},
 		{
 			name: "expires_at as string - far future",
 			credentials: map[string]any{
-				"expires_at": "9999999999", // 远未来
+				"refresh_token": "rt-test",
+				"expires_at":    "9999999999", // 远未来
 			},
 			wantRefresh: false,
 		},
 		{
 			name: "expires_at as float64 - far future",
 			credentials: map[string]any{
-				"expires_at": float64(9999999999), // 远未来，数字类型
+				"refresh_token": "rt-test",
+				"expires_at":    float64(9999999999), // 远未来，数字类型
 			},
 			wantRefresh: false,
 		},
 		{
 			name: "expires_at as RFC3339 - far future",
 			credentials: map[string]any{
-				"expires_at": "2099-12-31T23:59:59Z", // RFC3339 格式，远未来
+				"refresh_token": "rt-test",
+				"expires_at":    "2099-12-31T23:59:59Z", // RFC3339 格式，远未来
 			},
 			wantRefresh: false,
 		},
 		{
-			name:        "expires_at missing",
-			credentials: map[string]any{},
-			wantRefresh: false,
+			// 过期时间未知时刷新一次，避免旧 access_token 静默失效后只能拿到上游 401
+			name: "expires_at missing - refresh to establish known state",
+			credentials: map[string]any{
+				"refresh_token": "rt-test",
+			},
+			wantRefresh: true,
 		},
 		{
-			name: "expires_at is nil",
+			name: "expires_at is nil - refresh to establish known state",
 			credentials: map[string]any{
-				"expires_at": nil,
+				"refresh_token": "rt-test",
+				"expires_at":    nil,
+			},
+			wantRefresh: true,
+		},
+		{
+			name: "expires_at is invalid string - refresh to establish known state",
+			credentials: map[string]any{
+				"refresh_token": "rt-test",
+				"expires_at":    "invalid",
+			},
+			wantRefresh: true,
+		},
+		{
+			// 毫秒时间戳按秒解析会落到公元 5000 年之后，导致 token 永不刷新
+			name: "expires_at as unix millis - expired",
+			credentials: map[string]any{
+				"refresh_token": "rt-test",
+				"expires_at":    expiredMillis,
+			},
+			wantRefresh: true,
+		},
+		{
+			name: "expires_at as unix millis - outside window",
+			credentials: map[string]any{
+				"refresh_token": "rt-test",
+				"expires_at":    futureMillis,
 			},
 			wantRefresh: false,
 		},
 		{
-			name: "expires_at is invalid string",
+			// 没有 refresh_token 就无从刷新，与 Grok/OpenAI 刷新器保持一致
+			name: "no refresh_token - skipped even when expired",
 			credentials: map[string]any{
-				"expires_at": "invalid",
+				"expires_at": "1000",
 			},
 			wantRefresh: false,
 		},
@@ -115,13 +156,15 @@ func TestClaudeTokenRefresher_NeedsRefresh_WithinWindow(t *testing.T) {
 		{
 			name: "string type - within refresh window",
 			credentials: map[string]any{
-				"expires_at": strconv.FormatInt(expiresAt, 10),
+				"refresh_token": "rt-test",
+				"expires_at":    strconv.FormatInt(expiresAt, 10),
 			},
 		},
 		{
 			name: "float64 type - within refresh window",
 			credentials: map[string]any{
-				"expires_at": float64(expiresAt),
+				"refresh_token": "rt-test",
+				"expires_at":    float64(expiresAt),
 			},
 		},
 	}
@@ -154,13 +197,15 @@ func TestClaudeTokenRefresher_NeedsRefresh_OutsideWindow(t *testing.T) {
 		{
 			name: "string type - outside refresh window",
 			credentials: map[string]any{
-				"expires_at": strconv.FormatInt(expiresAt, 10),
+				"refresh_token": "rt-test",
+				"expires_at":    strconv.FormatInt(expiresAt, 10),
 			},
 		},
 		{
 			name: "float64 type - outside refresh window",
 			credentials: map[string]any{
-				"expires_at": float64(expiresAt),
+				"refresh_token": "rt-test",
+				"expires_at":    float64(expiresAt),
 			},
 		},
 	}
