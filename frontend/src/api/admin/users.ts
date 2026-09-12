@@ -5,6 +5,7 @@
 
 import { apiClient } from '../client'
 import type { AdminUser, UpdateUserRequest, PaginatedResponse, ApiKey } from '@/types'
+import type { PlatformType } from './settings'
 
 export interface AdminBindAuthIdentityChannelRequest {
   channel: string
@@ -330,7 +331,9 @@ export async function bindUserAuthIdentity(
 /**
  * Platform quota types
  */
-export type PlatformQuotaPlatform = 'anthropic' | 'openai' | 'gemini' | 'antigravity' | 'grok'
+// 与后端 AllowedQuotaPlatforms 对齐；单一来源为 settings.ts 的 QUOTA_PLATFORMS
+// （后端用户平台配额 PUT 是整体替换语义，前端列表缺平台 = 保存即静默删行）。
+export type PlatformQuotaPlatform = PlatformType
 export type PlatformQuotaWindow = 'daily' | 'weekly' | 'monthly'
 
 export interface PlatformQuotaItem {
