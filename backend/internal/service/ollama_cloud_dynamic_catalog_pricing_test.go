@@ -93,3 +93,60 @@ func TestGetModelPricing_OpenAIChainUnaffectedByOllamaExclusion(t *testing.T) {
 		})
 	}
 }
+
+// TestGetModelPricing_GptOssExclusionNarrowedToColonNamespace 回归护栏：gpt-oss 的
+// OpenAI 链排除只覆盖冒号命名空间（ollama 命名形态），不得误伤连字符形态。
+//
+//   - ollama 侧（"gpt-oss:120b" / "gpt-oss:20b" / "gpt-oss:120b-cloud"）：仍被排除出
+//     OpenAI 回退链（PricingService 返回 nil），经 BillingService fallbackPrices 命中
+//     ollama 专属价卡（$0.15/$0.60 与 $0.07/$0.30 per MTok）。
+//   - Antigravity 侧（"gpt-oss-120b-medium"，domain/constants.go 默认模型映射目标名）：
+//     不在排除内，恢复进 OpenAI 链的既有行为 —— 经 matchOpenAIModel 末端 catch-all
+//     解析到 DefaultTestModel("gpt-5.4") 的目录卡 $2.5/$15 per MTok。收窄前该名被
+//     全局前缀排除拦下，非 Ollama 路径 fail-open 成 0 元记账。
+func TestGetModelPricing_GptOssExclusionNarrowedToColonNamespace(t *testing.T) {
+	bs := newTestBillingServiceWithOpenAILadderCatalog(t)
+
+	t.Run("ollama colon names still on ollama cards", func(t *testing.T) {
+		tests := []struct {
+			model     string
+			wantInput float64
+			wantOut   float64
+		}{
+			{"gpt-oss:120b", 0.15e-6, 0.60e-6},
+			{"gpt-oss:20b", 0.07e-6, 0.30e-6},
+			{"gpt-oss:120b-cloud", 0.15e-6, 0.60e-6},
+		}
+		for _, tt := range tests {
+			t.Run(tt.model, func(t *testing.T) {
+				// 排除生效：PricingService 层对冒号形态仍返回 nil。
+				require.Nil(t, bs.pricingService.GetModelPricing(tt.model),
+					"colon-form gpt-oss name must stay excluded from the OpenAI fallback chain")
+				pricing, err := bs.getModelPricingAt(tt.model, ollamaPricingAt)
+				require.NoError(t, err)
+				require.NotNil(t, pricing)
+				require.InDelta(t, tt.wantInput, pricing.InputPricePerToken, 1e-12,
+					"model %s must bill at its ollama card", tt.model)
+				require.InDelta(t, tt.wantOut, pricing.OutputPricePerToken, 1e-12,
+					"model %s must bill at its ollama card", tt.model)
+			})
+		}
+	})
+
+	t.Run("hyphen form back on the OpenAI chain", func(t *testing.T) {
+		const antigravityModel = "gpt-oss-120b-medium"
+		// PricingService 层直接命中 OpenAI 链 catch-all 的 gpt-5.4 目录卡。
+		ps := bs.pricingService.GetModelPricing(antigravityModel)
+		require.NotNil(t, ps, "hyphen-form name must re-enter the OpenAI fallback chain")
+		require.InDelta(t, 2.5e-6, ps.InputCostPerToken, 1e-12)
+		require.InDelta(t, 1.5e-5, ps.OutputCostPerToken, 1e-12)
+
+		pricing, err := bs.getModelPricingAt(antigravityModel, ollamaPricingAt)
+		require.NoError(t, err)
+		require.NotNil(t, pricing)
+		require.InDelta(t, 2.5e-6, pricing.InputPricePerToken, 1e-12,
+			"antigravity hyphen-form name must resolve via the OpenAI catch-all (gpt-5.4), not fail open")
+		require.InDelta(t, 1.5e-5, pricing.OutputPricePerToken, 1e-12,
+			"antigravity hyphen-form name must resolve via the OpenAI catch-all (gpt-5.4), not fail open")
+	})
+}

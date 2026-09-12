@@ -2,6 +2,7 @@ package service
 
 import (
 	"fmt"
+	"slices"
 	"strings"
 
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
@@ -60,6 +61,41 @@ func validateOllamaCloudAccountModelPricingGate(lookup accountModelPricingLookup
 				OllamaCloudAllowedModelsExtraKey, strings.Join(unpriced, ", ")))
 	}
 	return nil
+}
+
+// ollamaCloudPricingGateRevalidationNeeded 报告一次账号更新是否需要重跑保存期无价门禁。
+//
+// 门禁只拦「可能改变可出站模型集合或影响调度准入」的更新：
+//   - platform 变化（可出站模型集合的判定语义随平台切换）；
+//   - 可出站模型集合的实际输入变化（prevOutboundSet 是更新前
+//     ollamaCloudOutboundModelNames 的快照，覆盖 credentials.model_mapping 与
+//     extra.allowed_models 两条来源）；
+//   - 从不可调度改为可调度（启用）：存量 legacy 账号（无 mapping/清单）的维护性
+//     编辑平时放行，但启用调度前必须补齐并通过门禁。
+//
+// name、notes、并发数、优先级、状态停用等维护性更新放行 —— 否则迁移过来的存量
+// 账号连改备注都会被 MODEL_PRICING_MISSING 锁死。调用方必须在应用本次请求的
+// 字段变更**之前**采集 prevPlatform / prevOutboundSet / prevSchedulable 快照。
+func ollamaCloudPricingGateRevalidationNeeded(prevPlatform string, prevOutboundSet []string, prevSchedulable bool, next *Account) bool {
+	if next == nil || !next.IsOllamaCloud() {
+		return false
+	}
+	if prevPlatform != next.Platform {
+		return true
+	}
+	nextSet := append([]string(nil), ollamaCloudOutboundModelNames(next)...)
+	slices.Sort(prevOutboundSet)
+	slices.Sort(nextSet)
+	if !slices.Equal(prevOutboundSet, nextSet) {
+		return true
+	}
+	return !prevSchedulable && ollamaCloudSchedulableBySave(next)
+}
+
+// ollamaCloudSchedulableBySave 只看保存路径能改变的两个调度准入开关
+// （status 是否 active、手动 Schedulable 开关），不含时间窗等运行态。
+func ollamaCloudSchedulableBySave(a *Account) bool {
+	return a != nil && a.IsActive() && a.Schedulable
 }
 
 // ollamaCloudOutboundModelNames 收集 ollama_cloud 账号的可出站模型名集合
