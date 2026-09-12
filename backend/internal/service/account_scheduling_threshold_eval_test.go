@@ -471,3 +471,147 @@ func TestEvaluateAccountSchedulingThreshold_GrokUsesOnlyHeaderQuotaWindow(t *tes
 	require.NotNil(t, decision.Until)
 	require.True(t, headerUntil.Equal(*decision.Until))
 }
+
+// ollamaCloudSnapshotExtra 构造 account.Extra 里 ollama_cloud 用量快照的测试夹具，
+// 形状与 DB JSONB 反序列化后的嵌套 map 一致（decodeOllamaCloudUsageSnapshot 走
+// marshal/unmarshal 往返，map 形式即生产读取路径）。
+func ollamaCloudSnapshotExtra(status string, data map[string]any) map[string]any {
+	snapshot := map[string]any{"status": status}
+	if data != nil {
+		snapshot["data"] = data
+	}
+	return map[string]any{OllamaCloudUsageSnapshotExtraKey: snapshot}
+}
+
+func ollamaCloudUsageWindowFixture(usedPercent float64, resetAt time.Time) map[string]any {
+	return map[string]any{
+		"used_percent": usedPercent,
+		"reset_at":     resetAt.Format(time.RFC3339),
+	}
+}
+
+func TestEvaluateAccountSchedulingThreshold_OllamaCloud(t *testing.T) {
+	t.Parallel()
+
+	now := time.Date(2026, 6, 3, 12, 0, 0, 0, time.UTC)
+	fiveHourReset := now.Add(2 * time.Hour)
+	sevenDayReset := now.Add(5 * 24 * time.Hour)
+	newSnapshotAccount := func(mode string, extra map[string]any) *Account {
+		account := &Account{
+			Platform: PlatformOllamaCloud,
+			Type:     AccountTypeAPIKey,
+			Extra:    extra,
+		}
+		if mode != "" {
+			account.Credentials = map[string]any{"account_mode": mode}
+		}
+		return account
+	}
+	okExtra := ollamaCloudSnapshotExtra(OllamaCloudUsageStatusOK, map[string]any{
+		"five_hour": ollamaCloudUsageWindowFixture(95, fiveHourReset),
+		"seven_day": ollamaCloudUsageWindowFixture(40, sevenDayReset),
+	})
+
+	cases := []struct {
+		name        string
+		account     *Account
+		shouldPause bool
+		wantWindow  string
+		wantUntil   time.Time
+	}{
+		{
+			name:        "legacy pauses at exhausted five hour window",
+			account:     newSnapshotAccount("ollama_legacy", okExtra),
+			shouldPause: true,
+			wantWindow:  "5h",
+			wantUntil:   fiveHourReset,
+		},
+		{
+			name:        "mode unset defaults to legacy and pauses",
+			account:     newSnapshotAccount("", okExtra),
+			shouldPause: true,
+			wantWindow:  "5h",
+			wantUntil:   fiveHourReset,
+		},
+		{
+			name:        "unknown mode value falls back to legacy and pauses",
+			account:     newSnapshotAccount("bogus", okExtra),
+			shouldPause: true,
+			wantWindow:  "5h",
+			wantUntil:   fiveHourReset,
+		},
+		{
+			// 防回归护栏：credits 型是月度美元信用池、没有滚动窗口 reset，
+			// 即使快照里解析出 5h/7d 数据也绝不停调。
+			name:        "credits never pauses despite fully populated snapshot",
+			account:     newSnapshotAccount("ollama_credits", okExtra),
+			shouldPause: false,
+		},
+		{
+			name:        "failed snapshot does not pause",
+			account:     newSnapshotAccount("ollama_legacy", ollamaCloudSnapshotExtra(OllamaCloudUsageStatusFailed, nil)),
+			shouldPause: false,
+		},
+		{
+			name:        "ok snapshot without window data does not pause",
+			account:     newSnapshotAccount("ollama_legacy", ollamaCloudSnapshotExtra(OllamaCloudUsageStatusOK, map[string]any{})),
+			shouldPause: false,
+		},
+		{
+			// 防回归护栏：A6 纳入白名单后，无快照的账号同样不得停调。
+			name:        "missing snapshot does not pause",
+			account:     newSnapshotAccount("ollama_legacy", map[string]any{}),
+			shouldPause: false,
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			decision := EvaluateAccountSchedulingThreshold(tc.account, map[string]int{
+				PlatformOllamaCloud: 80,
+			}, now)
+
+			require.Equal(t, tc.shouldPause, decision.ShouldPause)
+			if !tc.shouldPause {
+				return
+			}
+			require.Equal(t, PlatformOllamaCloud, decision.Platform)
+			require.Equal(t, tc.wantWindow, decision.Window)
+			require.Equal(t, PlatformOllamaCloud, decision.Scope)
+			require.NotNil(t, decision.Until)
+			require.True(t, tc.wantUntil.Equal(*decision.Until))
+		})
+	}
+}
+
+func TestEvaluateAccountSchedulingThreshold_OllamaCloudPicksLatestResetWindow(t *testing.T) {
+	t.Parallel()
+
+	// 与 openai/anthropic/kimi 同类取最晚 reset（不是 CN 供应商的最早 reset）。
+	now := time.Date(2026, 6, 3, 12, 0, 0, 0, time.UTC)
+	fiveHourReset := now.Add(2 * time.Hour)
+	sevenDayReset := now.Add(5 * 24 * time.Hour)
+	account := &Account{
+		Platform: PlatformOllamaCloud,
+		Type:     AccountTypeAPIKey,
+		Credentials: map[string]any{
+			"account_mode": "ollama_legacy",
+		},
+		Extra: ollamaCloudSnapshotExtra(OllamaCloudUsageStatusOK, map[string]any{
+			"five_hour": ollamaCloudUsageWindowFixture(95, fiveHourReset),
+			"seven_day": ollamaCloudUsageWindowFixture(90, sevenDayReset),
+		}),
+	}
+
+	decision := EvaluateAccountSchedulingThreshold(account, map[string]int{
+		PlatformOllamaCloud: 80,
+	}, now)
+
+	require.True(t, decision.ShouldPause)
+	require.Equal(t, "weekly", decision.Window)
+	require.Equal(t, PlatformOllamaCloud, decision.Scope)
+	require.NotNil(t, decision.Until)
+	require.True(t, sevenDayReset.Equal(*decision.Until))
+}
