@@ -94,6 +94,13 @@
           <!-- Right: Actions -->
           <div class="ml-auto flex flex-wrap items-center justify-end gap-3">
             <button
+              v-if="resetObserverGroup"
+              type="button"
+              class="btn btn-secondary"
+              data-test="reset-observer-entry"
+              @click="showResetObserver = true"
+            >{{ t('admin.subscriptions.resetObserver.entry') }}</button>
+            <button
               @click="loadSubscriptions"
               :disabled="loading"
               class="btn btn-secondary"
@@ -761,6 +768,13 @@
         </div>
       </transition>
     </teleport>
+    <SubscriptionResetObserverDialog
+      v-if="showResetObserver && resetObserverGroup"
+      :show="showResetObserver"
+      :group-id="resetObserverGroup.id"
+      :group-name="resetObserverGroup.name"
+      @close="showResetObserver = false"
+    />
   </AppLayout>
 </template>
 
@@ -779,6 +793,7 @@ import TablePageLayout from '@/components/layout/TablePageLayout.vue'
 import DataTable from '@/components/common/DataTable.vue'
 import Pagination from '@/components/common/Pagination.vue'
 import BaseDialog from '@/components/common/BaseDialog.vue'
+import SubscriptionResetObserverDialog from '@/components/admin/subscription/SubscriptionResetObserverDialog.vue'
 import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
 import EmptyState from '@/components/common/EmptyState.vue'
 import Select from '@/components/common/Select.vue'
@@ -807,6 +822,10 @@ interface GroupOption {
 
 // Guide modal state
 const showGuideModal = ref(false)
+const showResetObserver = ref(false)
+const resetObserverGroup = computed(() => groups.value.find(group =>
+  group.id === Number(filters.group_id) && group.subscription_type === 'subscription' && group.platform === 'openai'
+))
 
 const guideActionRows = computed(() => [
   { action: t('admin.subscriptions.guide.actions.adjust'), desc: t('admin.subscriptions.guide.actions.adjustDesc') },

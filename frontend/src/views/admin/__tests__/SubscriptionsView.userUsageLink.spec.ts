@@ -3,6 +3,7 @@ import { flushPromises, mount } from '@vue/test-utils'
 import { defineComponent } from 'vue'
 
 import SubscriptionsView from '../SubscriptionsView.vue'
+import Select from '@/components/common/Select.vue'
 
 const { listSubscriptions, getAllGroups, listUsers, searchUsageUsers } = vi.hoisted(() => ({
   listSubscriptions: vi.fn(),
@@ -112,6 +113,24 @@ describe('admin subscription users', () => {
         Teleport: true
       }
     }
+  })
+
+  it('shows the observer entry only for a selected OpenAI subscription group', async () => {
+    getAllGroups.mockResolvedValue([
+      { id: 1, name: 'OpenAI subscription', platform: 'openai', subscription_type: 'subscription' },
+      { id: 2, name: 'Claude subscription', platform: 'anthropic', subscription_type: 'subscription' },
+      { id: 3, name: 'OpenAI standard', platform: 'openai', subscription_type: 'standard' }
+    ])
+    const wrapper = mountView()
+    await flushPromises()
+    expect(wrapper.find('[data-test="reset-observer-entry"]').exists()).toBe(false)
+    const groupSelect = wrapper.findAllComponents(Select).find(select => select.props('placeholder') === 'admin.subscriptions.allGroups')!
+    for (const [id, visible] of [['1', true], ['2', false], ['3', false], ['', false]] as const) {
+      groupSelect.vm.$emit('update:modelValue', id)
+      await flushPromises()
+      expect(wrapper.find('[data-test="reset-observer-entry"]').exists()).toBe(visible)
+    }
+    wrapper.unmount()
   })
 
   it('searches current users when assigning a subscription', async () => {

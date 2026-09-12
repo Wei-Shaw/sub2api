@@ -899,6 +899,8 @@ var ProviderSet = wire.NewSet(
 	NewTencentCaptchaService,
 	NewAliyunCaptchaService,
 	NewSubscriptionService,
+	NewAdminSubscriptionResetService,
+	ProvideSubscriptionResetMonitor,
 	wire.Bind(new(DefaultSubscriptionAssigner), new(*SubscriptionService)),
 	ProvideConcurrencyService,
 	ProvideUserMessageQueueService,
