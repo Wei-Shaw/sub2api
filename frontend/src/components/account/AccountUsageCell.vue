@@ -723,6 +723,10 @@ let visibilityObserver: IntersectionObserver | null = null
 const showUsageWindows = computed(() => {
   // Gemini: we can always compute local usage windows from DB logs (simulated quotas).
   if (props.account.platform === 'gemini') return true
+  // Ollama Cloud（apikey）：不进本根分支——由下方 apikey 根分支渲染
+  // OllamaCloudUsageCell（数据随账号 payload 下发 + 专用刷新端点，还带
+  // today-stats 行）。eligibility 由后端下发的 ollama_cloud_usage.eligible 决定。
+  if (props.account.platform === 'ollama_cloud' && props.account.type === 'apikey') return false
   // CN providers: apikey 账号也有滚动用量窗口（coding plan）或余额（payg），
   // 由 CNProviderQuotaCell / CNProviderBalanceCell 自行探测与展示。
   if (
@@ -753,6 +757,9 @@ const shouldFetchUsage = computed(() => {
   if (props.account.platform === 'openai') {
     return props.account.type === 'oauth'
   }
+  // ollama_cloud 与 CN 平台同构：/usage API 对 apikey 账号一律拒绝（后端只
+  // 支持 oauth/setup-token 查询）；Ollama Cloud 用量数据随账号 payload 下发、
+  // 由 OllamaCloudUsageCell 专用刷新端点更新——不拉取通用 /usage。
   return false
 })
 

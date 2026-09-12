@@ -240,6 +240,58 @@ describe('AccountUsageCell', () => {
     expect(wrapper.find('[data-test="embedded-ollama"]').exists()).toBe(false)
   })
 
+  // ollama_cloud 本体平台：eligible 由后端下发，api key 账号走通用 apikey 根
+  // 分支（OllamaCloudUsageCell + today-stats），不进滚动用量窗口根分支，也不
+  // 拉取通用 /usage（后端对 apikey 账号一律拒绝）。
+  it('ollama_cloud apikey eligible 渲染 OllamaCloudUsageCell 且不经 /usage 拉取', async () => {
+    const wrapper = mount(AccountUsageCell, {
+      props: {
+        account: makeAccount({
+          id: 9100,
+          platform: 'ollama_cloud',
+          type: 'apikey',
+          ollama_cloud_usage: makeOllamaUsage(9100)
+        })
+      },
+      global: {
+        stubs: { ...cnUsageCellStubs, UsageProgressBar: true, AccountQuotaInfo: true }
+      }
+    })
+
+    await flushPromises()
+
+    expect(wrapper.find('[data-test="embedded-ollama"]').exists()).toBe(true)
+    expect(wrapper.find('[data-test="cn-quota-cell"]').exists()).toBe(false)
+    expect(wrapper.find('[data-test="cn-balance-cell"]').exists()).toBe(false)
+    expect(getUsage).not.toHaveBeenCalled()
+  })
+
+  it.each([
+    { name: '无 ollama_cloud_usage', usage: undefined },
+    { name: 'eligible=false', usage: makeOllamaUsage(9101, { eligible: false }) }
+  ])('ollama_cloud apikey 账号（$name）渲染占位而非 CN quota 格', async ({ usage }) => {
+    const wrapper = mount(AccountUsageCell, {
+      props: {
+        account: makeAccount({
+          id: 9101,
+          platform: 'ollama_cloud',
+          type: 'apikey',
+          ollama_cloud_usage: usage
+        })
+      },
+      global: {
+        stubs: { ...cnUsageCellStubs, UsageProgressBar: true, AccountQuotaInfo: true }
+      }
+    })
+
+    await flushPromises()
+
+    expect(wrapper.find('[data-test="embedded-ollama"]').exists()).toBe(false)
+    expect(wrapper.find('[data-test="cn-quota-cell"]').exists()).toBe(false)
+    expect(wrapper.find('[data-test="cn-balance-cell"]').exists()).toBe(false)
+    expect(getUsage).not.toHaveBeenCalled()
+  })
+
   it('Antigravity 图片用量会聚合新旧 image 模型', async () => {
     getUsage.mockResolvedValue({
       antigravity_quota: {
