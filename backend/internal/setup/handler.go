@@ -78,8 +78,8 @@ func validateDBName(name string) bool {
 
 // validateUsername checks if username is safe
 func validateUsername(name string) bool {
-	// Allow only alphanumeric and underscores
-	validName := regexp.MustCompile(`^[a-zA-Z0-9_]+$`)
+	// Allow safe unquoted connection-string values, including Supabase pooler users like postgres.<project-ref>.
+	validName := regexp.MustCompile(`^[a-zA-Z0-9_.]+$`)
 	return validName.MatchString(name) && len(name) <= 63
 }
 
