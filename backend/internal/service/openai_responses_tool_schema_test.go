@@ -270,7 +270,7 @@ func TestSanitizeOpenAIResponsesToolSchemasForPlatform_ReplayBoundary(t *testing
 	// A malformed tool definition may be replayed after account failover. Every
 	// compatible account must repair it, while non-OpenAI providers retain their
 	// supported regex semantics.
-	for _, platform := range []string{PlatformAnthropic, PlatformGrok, PlatformKimi, PlatformZhipu, PlatformDeepseek} {
+	for _, platform := range []string{PlatformAnthropic, PlatformGrok, PlatformKimi, PlatformZhipu, PlatformDeepseek, PlatformMiniMax} {
 		t.Run(platform, func(t *testing.T) {
 			for attempt := 0; attempt < 2; attempt++ {
 				normalized, changed, err := sanitizeOpenAIResponsesToolSchemasForPlatform(body, platform)

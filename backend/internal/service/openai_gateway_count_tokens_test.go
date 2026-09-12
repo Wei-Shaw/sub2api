@@ -4,8 +4,10 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -363,9 +365,13 @@ func TestEstimateOpenAIInputTokens_CompareWithOpenAIAPI(t *testing.T) {
 
 			actual, err := callOpenAIInputTokensAPIForTest(client, apiKey, prepared.Request)
 			if err != nil {
-				// Live-API comparison only; invalid/expired local keys should skip, not fail CI.
-				if strings.Contains(err.Error(), "status=401") || strings.Contains(err.Error(), "invalid_api_key") {
-					t.Skipf("OPENAI_API_KEY rejected by OpenAI: %v", err)
+				// This is an optional live-API comparison. Credential and transient
+				// network failures must not make the deterministic unit suite fail.
+				var netErr net.Error
+				if strings.Contains(err.Error(), "status=401") ||
+					strings.Contains(err.Error(), "invalid_api_key") ||
+					errors.As(err, &netErr) {
+					t.Skipf("OpenAI live comparison unavailable: %v", err)
 				}
 				require.NoError(t, err)
 			}

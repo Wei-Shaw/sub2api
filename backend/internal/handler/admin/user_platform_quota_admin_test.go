@@ -113,13 +113,58 @@ func TestUpdateUserPlatformQuotas_Success(t *testing.T) {
 	if len(repo.upsertCalls) != 1 {
 		t.Fatalf("UpsertForUser should be called once, got %d", len(repo.upsertCalls))
 	}
-	// upsert 记录数 = 请求体中给出的平台数（未给出的平台不落库）。
-	if repo.upsertCalls[0].userID != 42 || len(repo.upsertCalls[0].records) != 6 {
+	// upsert 记录数 = 请求体中至少配置了一档限额的平台数；三档全空的平台不落库，
+	// 由 UpsertForUser 的"不在列表里就软删"分支处理。
+	if repo.upsertCalls[0].userID != 42 || len(repo.upsertCalls[0].records) != 2 {
 		t.Errorf("unexpected upsert call: %+v", repo.upsertCalls[0])
+	}
+	for _, r := range repo.upsertCalls[0].records {
+		if r.Platform != "anthropic" && r.Platform != "openai" {
+			t.Errorf("platform %q has no configured limit and must not be upserted", r.Platform)
+		}
 	}
 	// 缓存失效：按全部允许平台统一失效（含 kimi/zhipu/deepseek）。
 	if len(cache.deleteCalls) != len(service.AllowedQuotaPlatforms) {
 		t.Errorf("expected %d cache delete calls, got %d: %+v", len(service.AllowedQuotaPlatforms), len(cache.deleteCalls), cache.deleteCalls)
+	}
+}
+
+// TestUpdateUserPlatformQuotas_AllUnlimitedClearsRows 锁定：全部平台三档全空等价于清空，
+// UpsertForUser 收到空列表（软删该用户所有活跃行），且 0 = 显式禁用仍算已配置。
+func TestUpdateUserPlatformQuotas_AllUnlimitedClearsRows(t *testing.T) {
+	repo := &upsertCapturingQuotaRepo{}
+	cache := &billingCacheStub{}
+	h := buildTestHandler(repo, cache)
+
+	body := `{"quotas":[
+		{"platform":"anthropic","daily_limit_usd":null,"weekly_limit_usd":null,"monthly_limit_usd":null},
+		{"platform":"openai"}
+	]}`
+	c, w := putReq(t, body)
+	h.UpdateUserPlatformQuotas(c)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	if len(repo.upsertCalls) != 1 {
+		t.Fatalf("UpsertForUser should be called once, got %d", len(repo.upsertCalls))
+	}
+	if len(repo.upsertCalls[0].records) != 0 {
+		t.Errorf("all-unlimited input must upsert zero records, got %+v", repo.upsertCalls[0].records)
+	}
+
+	repo = &upsertCapturingQuotaRepo{}
+	h = buildTestHandler(repo, &billingCacheStub{})
+	c, w = putReq(t, `{"quotas":[{"platform":"gemini","daily_limit_usd":0}]}`)
+	h.UpdateUserPlatformQuotas(c)
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	if len(repo.upsertCalls) != 1 || len(repo.upsertCalls[0].records) != 1 {
+		t.Fatalf("zero limit is a configured limit and must be upserted: %+v", repo.upsertCalls)
+	}
+	if r := repo.upsertCalls[0].records[0]; r.Platform != "gemini" || r.DailyLimitUSD == nil || *r.DailyLimitUSD != 0 {
+		t.Errorf("unexpected record: %+v", r)
 	}
 }
 

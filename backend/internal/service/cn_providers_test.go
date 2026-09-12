@@ -177,6 +177,34 @@ func TestCNQuotaExtraUpdates(t *testing.T) {
 	require.Equal(t, now.Format(time.RFC3339), updates["kimi_usage_updated_at"])
 }
 
+func TestParseOpenCodeGoUsageTiers(t *testing.T) {
+	t.Parallel()
+	body := []byte(`{
+		"usage": {
+			"rolling": {"percent": 12.5, "resetsAt": "2026-09-07T12:00:00Z"},
+			"weekly": {"percent": 40, "resetsAt": "2026-09-10T00:00:00Z"},
+			"monthly": {"percent": 22.2, "resetsAt": "2026-10-01T00:00:00Z"}
+		}
+	}`)
+	tiers := parseOpenCodeGoUsageTiers(body)
+	require.Len(t, tiers, 3)
+	require.Equal(t, "5h", tiers[0].Window)
+	require.Equal(t, 12.5, tiers[0].UsedPercent)
+	require.Equal(t, "2026-09-07T12:00:00Z", tiers[0].ResetAt)
+	require.Equal(t, "weekly", tiers[1].Window)
+	require.Equal(t, 40.0, tiers[1].UsedPercent)
+	require.Equal(t, "monthly", tiers[2].Window)
+	require.InDelta(t, 22.2, tiers[2].UsedPercent, 0.001)
+
+	updates := cnQuotaExtraUpdates(PlatformOpenCodeGo, tiers, time.Date(2026, 9, 7, 0, 0, 0, 0, time.UTC))
+	require.Equal(t, 12.5, updates["opencode_go_5h_used_percent"])
+	require.Equal(t, 40.0, updates["opencode_go_weekly_used_percent"])
+	require.Equal(t, 22.2, updates["opencode_go_monthly_used_percent"])
+	require.Equal(t, "2026-10-01T00:00:00Z", updates["opencode_go_monthly_reset_at"])
+
+	require.Empty(t, parseOpenCodeGoUsageTiers([]byte(`{"ok":true}`)))
+}
+
 // TestCNProviderResponseIndicatesInsufficientBalance 覆盖中英文余额不足文案与否定用例。
 func TestCNProviderResponseIndicatesInsufficientBalance(t *testing.T) {
 	t.Parallel()
@@ -227,6 +255,88 @@ func TestKimiQuotaURL(t *testing.T) {
 	require.Equal(t, "https://api.kimi.com/coding/v1/usages", kimiQuotaURL("https://api.kimi.com/coding"))
 	require.Equal(t, "https://api.kimi.com/coding/v1/usages", kimiQuotaURL("https://api.kimi.com/coding/"))
 	require.Equal(t, "https://api.kimi.com/coding/v1/usages", kimiQuotaURL("https://api.kimi.com/coding/v1/"))
+}
+
+func TestMiniMaxQuotaURL(t *testing.T) {
+	t.Parallel()
+	require.Equal(t, "https://api.minimax.io/v1/api/openplatform/coding_plan/remains",
+		minimaxQuotaURL("https://api.minimax.io/v1"))
+	require.Equal(t, "https://api.minimax.io/v1/api/openplatform/coding_plan/remains",
+		minimaxQuotaURL("https://api.minimax.io/anthropic"))
+	require.Equal(t, "https://api.minimaxi.com/v1/api/openplatform/coding_plan/remains",
+		minimaxQuotaURL("https://api.minimaxi.com/v1"))
+	require.Equal(t, "https://api.minimaxi.com/v1/api/openplatform/coding_plan/remains",
+		minimaxQuotaURL("https://api.minimax.com/v1"))
+	require.Equal(t, "https://api.minimaxi.com/v1/api/openplatform/coding_plan/remains",
+		minimaxQuotaURL("https://custom.example.com"))
+}
+
+func TestParseMiniMaxUsageTiers(t *testing.T) {
+	t.Parallel()
+	endMs := int64(1_700_000_000_000)
+	weeklyEndMs := endMs + 7*24*60*60*1000
+	body := []byte(`{
+		"base_resp": {"status_code": 0},
+		"current_subscribe_title": "Max",
+		"model_remains": [
+			{"model_name": "video", "current_interval_remaining_percent": 10},
+			{
+				"model_name": "general",
+				"current_interval_remaining_percent": 25,
+				"end_time": 1700000000000,
+				"current_weekly_status": 1,
+				"current_weekly_remaining_percent": 40,
+				"weekly_end_time": 1700604800000
+			}
+		]
+	}`)
+	tiers := parseMiniMaxUsageTiers(body)
+	require.Len(t, tiers, 2)
+	require.Equal(t, "5h", tiers[0].Window)
+	require.InDelta(t, 75, tiers[0].UsedPercent, 1e-9)
+	require.Equal(t, time.UnixMilli(endMs).UTC().Format(time.RFC3339), tiers[0].ResetAt)
+	require.Equal(t, "weekly", tiers[1].Window)
+	require.InDelta(t, 60, tiers[1].UsedPercent, 1e-9)
+	require.Equal(t, time.UnixMilli(weeklyEndMs).UTC().Format(time.RFC3339), tiers[1].ResetAt)
+
+	noWeekly := parseMiniMaxUsageTiers([]byte(`{
+		"model_remains": [{
+			"model_name": "general",
+			"current_interval_remaining_percent": 80,
+			"end_time": 1700000000000,
+			"current_weekly_status": 3,
+			"current_weekly_remaining_percent": 10
+		}]
+	}`))
+	require.Len(t, noWeekly, 1)
+	require.Equal(t, "5h", noWeekly[0].Window)
+	require.InDelta(t, 20, noWeekly[0].UsedPercent, 1e-9)
+
+	require.Nil(t, parseMiniMaxUsageTiers([]byte(`{"model_remains":[{"model_name":"video","current_interval_remaining_percent":5}]}`)))
+}
+
+func TestGetCodingPlanProvider_MiniMax(t *testing.T) {
+	t.Parallel()
+	coding := &Account{Platform: PlatformMiniMax, Type: AccountTypeAPIKey, Credentials: map[string]any{
+		"account_mode": AccountModeCoding,
+		"base_url":     "https://api.minimaxi.com/v1",
+	}}
+	require.Equal(t, PlatformMiniMax, coding.GetCodingPlanProvider())
+	intl := &Account{Platform: PlatformMiniMax, Type: AccountTypeAPIKey, Credentials: map[string]any{
+		"account_mode": AccountModeCoding,
+		"base_url":     "https://api.minimax.io/anthropic",
+	}}
+	require.Equal(t, PlatformMiniMax, intl.GetCodingPlanProvider())
+	// 未配 base_url 时走国内站默认域名，仍能识别官方额度端点。
+	require.Equal(t, PlatformMiniMax, (&Account{Platform: PlatformMiniMax, Type: AccountTypeAPIKey, Credentials: map[string]any{
+		"account_mode": AccountModeCoding,
+	}}).GetCodingPlanProvider())
+	require.Empty(t, (&Account{Platform: PlatformMiniMax, Credentials: map[string]any{"account_mode": AccountModePayG}}).GetCodingPlanProvider())
+	// 自定义中转不得把第三方 Key 发往官方额度端点。
+	require.Empty(t, (&Account{Platform: PlatformMiniMax, Type: AccountTypeAPIKey, Credentials: map[string]any{
+		"account_mode": AccountModeCoding,
+		"base_url":     "https://relay.example.com/v1",
+	}}).GetCodingPlanProvider())
 }
 
 // TestCNBalanceURL Kimi 固定端点；DeepSeek 基于 base_url 拼接。
@@ -303,6 +413,28 @@ func TestEvaluateAccountSchedulingThreshold_KimiCodingPlan(t *testing.T) {
 	decision := EvaluateAccountSchedulingThreshold(account, map[string]int{PlatformKimi: 80}, now)
 	require.True(t, decision.ShouldPause)
 	require.Equal(t, PlatformKimi, decision.Platform)
+	require.Equal(t, "5h", decision.Window)
+	require.InDelta(t, 90.0, decision.UsedPercent, 1e-9)
+	require.NotNil(t, decision.Until)
+	require.True(t, reset.Equal(*decision.Until))
+}
+
+func TestEvaluateAccountSchedulingThreshold_MiniMaxCodingPlan(t *testing.T) {
+	t.Parallel()
+	now := time.Date(2026, 8, 14, 12, 0, 0, 0, time.UTC)
+	reset := now.Add(3 * time.Hour)
+	account := &Account{
+		Platform: PlatformMiniMax,
+		Extra: map[string]any{
+			"minimax_5h_used_percent":     90.0,
+			"minimax_5h_reset_at":         reset.Format(time.RFC3339),
+			"minimax_weekly_used_percent": 30.0,
+			"minimax_weekly_reset_at":     now.Add(7 * 24 * time.Hour).Format(time.RFC3339),
+		},
+	}
+	decision := EvaluateAccountSchedulingThreshold(account, map[string]int{PlatformMiniMax: 80}, now)
+	require.True(t, decision.ShouldPause)
+	require.Equal(t, PlatformMiniMax, decision.Platform)
 	require.Equal(t, "5h", decision.Window)
 	require.InDelta(t, 90.0, decision.UsedPercent, 1e-9)
 	require.NotNil(t, decision.Until)
@@ -398,6 +530,7 @@ func TestNormalizeOpenAICompatiblePlatform_SchedulerExactMatch(t *testing.T) {
 	require.Equal(t, PlatformKimi, NormalizeOpenAICompatiblePlatform(PlatformKimi))
 	require.Equal(t, PlatformZhipu, NormalizeOpenAICompatiblePlatform(PlatformZhipu))
 	require.Equal(t, PlatformDeepseek, NormalizeOpenAICompatiblePlatform(PlatformDeepseek))
+	require.Equal(t, PlatformOpenCodeGo, NormalizeOpenAICompatiblePlatform(PlatformOpenCodeGo))
 	// 其他平台（含空、anthropic、未知）一律归一为 openai。
 	require.Equal(t, PlatformOpenAI, NormalizeOpenAICompatiblePlatform(""))
 	require.Equal(t, PlatformOpenAI, NormalizeOpenAICompatiblePlatform(PlatformAnthropic))
@@ -432,6 +565,14 @@ func TestGetOpenAIProtocolAPIKey_CNProviders(t *testing.T) {
 		Credentials: map[string]any{"api_key": "sk-openai"},
 	}
 	require.Equal(t, "sk-openai", openai.GetOpenAIProtocolAPIKey())
+
+	openCodeGo := &Account{
+		Platform:    PlatformOpenCodeGo,
+		Type:        AccountTypeAPIKey,
+		Credentials: map[string]any{"api_key": "sk-opencode-go"},
+	}
+	require.Equal(t, "sk-opencode-go", openCodeGo.GetOpenAIProtocolAPIKey())
+	require.False(t, openCodeGo.IsOpenAIApiKey())
 }
 
 // TestBuildUpstreamModelsRequest_CNProviders 验证“同步上游支持的模型”对国产供应商可用：
@@ -451,6 +592,10 @@ func TestBuildUpstreamModelsRequest_CNProviders(t *testing.T) {
 		{"zhipu default", PlatformZhipu, "", "https://open.bigmodel.cn/api/paas/v4/models"},
 		{"zhipu coding", PlatformZhipu, AccountModeCoding, "https://open.bigmodel.cn/api/coding/paas/v4/models"},
 		{"deepseek", PlatformDeepseek, "", "https://api.deepseek.com/v1/models"},
+		{"minimax default", PlatformMiniMax, "", "https://api.minimaxi.com/v1/models"},
+		{"minimax coding", PlatformMiniMax, AccountModeCoding, "https://api.minimaxi.com/v1/models"},
+		{"opencode go", PlatformOpenCodeGo, AccountModeGo, "https://opencode.ai/zen/go/v1/models"},
+		{"opencode zen", PlatformOpenCodeGo, AccountModeZen, "https://opencode.ai/zen/v1/models"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -487,12 +632,16 @@ func TestGetAPIProtocol(t *testing.T) {
 	require.Equal(t, APIProtocolAnthropic, mk(PlatformDeepseek, APIProtocolAnthropic).GetAPIProtocol())
 	require.Equal(t, APIProtocolResponses, mk(PlatformDeepseek, APIProtocolResponses).GetAPIProtocol())
 	require.Equal(t, APIProtocolResponses, mk(PlatformKimi, APIProtocolResponses).GetAPIProtocol())
+	require.Equal(t, APIProtocolResponses, mk(PlatformMiniMax, APIProtocolResponses).GetAPIProtocol())
 	require.Equal(t, APIProtocolAdaptive, mk(PlatformKimi, APIProtocolAdaptive).GetAPIProtocol())
+	require.Equal(t, APIProtocolAdaptive, mk(PlatformMiniMax, APIProtocolAdaptive).GetAPIProtocol())
 	require.Equal(t, APIProtocolAdaptive, mk(PlatformZhipu, APIProtocolAdaptive).GetAPIProtocol())
 	require.Equal(t, APIProtocolAdaptive, mk(PlatformDeepseek, APIProtocolAdaptive).GetAPIProtocol())
 	require.Equal(t, APIProtocolChatCompletions, mk(PlatformZhipu, APIProtocolResponses).GetAPIProtocol(), "zhipu 无 responses 端点")
 	require.Equal(t, APIProtocolChatCompletions, mk(PlatformKimi, "bogus").GetAPIProtocol(), "非法值回退默认")
 	require.Equal(t, APIProtocolChatCompletions, (&Account{Platform: PlatformOpenAI, Type: AccountTypeAPIKey}).GetAPIProtocol(), "非 CN 供应商恒为默认")
+	require.Equal(t, APIProtocolAdaptive, mk(PlatformOpenCodeGo, "").GetAPIProtocol(), "opencode go 默认 adaptive")
+	require.Equal(t, APIProtocolResponses, mk(PlatformOpenCodeGo, APIProtocolResponses).GetAPIProtocol())
 }
 
 func TestSupportsNativeCNResponses(t *testing.T) {
@@ -500,6 +649,8 @@ func TestSupportsNativeCNResponses(t *testing.T) {
 	require.True(t, (&Account{Platform: PlatformDeepseek}).SupportsNativeCNResponses())
 	require.True(t, (&Account{Platform: PlatformKimi}).SupportsNativeCNResponses())
 	require.True(t, (&Account{Platform: PlatformKimi, Credentials: map[string]any{"account_mode": AccountModeCoding}}).SupportsNativeCNResponses())
+	require.True(t, (&Account{Platform: PlatformMiniMax}).SupportsNativeCNResponses())
+	require.True(t, (&Account{Platform: PlatformOpenCodeGo}).SupportsNativeCNResponses())
 	require.False(t, (&Account{Platform: PlatformZhipu}).SupportsNativeCNResponses())
 	require.False(t, (&Account{Platform: PlatformOpenAI}).SupportsNativeCNResponses())
 }
@@ -520,6 +671,10 @@ func TestAdaptiveProtocolBaseURLs(t *testing.T) {
 		{"zhipu payg", PlatformZhipu, AccountModePayG, DefaultZhipuPayGBaseURL, DefaultZhipuAnthropicBaseURL, DefaultZhipuPayGBaseURL},
 		{"zhipu coding", PlatformZhipu, AccountModeCoding, DefaultZhipuCodingBaseURL, DefaultZhipuAnthropicBaseURL, DefaultZhipuCodingBaseURL},
 		{"deepseek", PlatformDeepseek, AccountModePayG, DefaultDeepseekBaseURL, DefaultDeepseekAnthropicBaseURL, DefaultDeepseekBaseURL},
+		{"minimax payg", PlatformMiniMax, AccountModePayG, DefaultMiniMaxBaseURL, DefaultMiniMaxAnthropicBaseURL, DefaultMiniMaxBaseURL},
+		{"minimax coding", PlatformMiniMax, AccountModeCoding, DefaultMiniMaxBaseURL, DefaultMiniMaxAnthropicBaseURL, DefaultMiniMaxBaseURL},
+		{"opencode go", PlatformOpenCodeGo, AccountModeGo, DefaultOpenCodeGoBaseURL, DefaultOpenCodeGoAnthropicBaseURL, DefaultOpenCodeGoBaseURL},
+		{"opencode zen", PlatformOpenCodeGo, AccountModeZen, DefaultOpenCodeZenBaseURL, DefaultOpenCodeZenAnthropicBaseURL, DefaultOpenCodeZenBaseURL},
 	}
 
 	for _, tc := range cases {
@@ -575,6 +730,10 @@ func TestAnthropicProtocolBaseURL(t *testing.T) {
 	}).GetAnthropicProtocolBaseURL())
 	require.Equal(t, "https://api.deepseek.com/anthropic", (&Account{
 		Platform: PlatformDeepseek, Type: AccountTypeAPIKey,
+		Credentials: map[string]any{"api_protocol": APIProtocolAnthropic},
+	}).GetAnthropicProtocolBaseURL())
+	require.Equal(t, "https://api.minimaxi.com/anthropic", (&Account{
+		Platform: PlatformMiniMax, Type: AccountTypeAPIKey,
 		Credentials: map[string]any{"api_protocol": APIProtocolAnthropic},
 	}).GetAnthropicProtocolBaseURL())
 
