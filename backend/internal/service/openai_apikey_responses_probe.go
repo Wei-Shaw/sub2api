@@ -135,17 +135,35 @@ func (s *AccountTestService) ProbeOpenAIAPIKeyResponsesSupport(ctx context.Conte
 		// （/v1/responses，non-stateful），adaptive / responses 协议直接落标
 		// force_responses，无需网络探测（探测的 2xx/404 判定对它无意义）；
 		// 显式 chat_completions 锁 CC，重置为 auto 防残留强制模式。
+		// 落标失败必须结构化告警（openai_responses_probe_marker_persist_failed）：
+		// 静默吞掉会让旧 marker 残留且无任何可观测信号，与运维预期相悖。
 		if account.UsesNativeCNResponses() {
-			_ = s.accountRepo.UpdateExtra(ctx, account.ID, map[string]any{
+			if err := s.accountRepo.UpdateExtra(ctx, account.ID, map[string]any{
 				openai_compat.ExtraKeyResponsesMode:      string(openai_compat.ResponsesSupportModeForceResponses),
 				openai_compat.ExtraKeyResponsesSupported: true,
-			})
+			}); err != nil {
+				slog.Warn("openai_responses_probe_marker_persist_failed",
+					"account_id", account.ID,
+					"account_name", account.Name,
+					"platform", account.Platform,
+					"responses_mode", string(openai_compat.ResponsesSupportModeForceResponses),
+					"err", err,
+				)
+			}
 			return
 		}
-		_ = s.accountRepo.UpdateExtra(ctx, account.ID, map[string]any{
+		if err := s.accountRepo.UpdateExtra(ctx, account.ID, map[string]any{
 			openai_compat.ExtraKeyResponsesMode:      string(openai_compat.ResponsesSupportModeAuto),
 			openai_compat.ExtraKeyResponsesSupported: false,
-		})
+		}); err != nil {
+			slog.Warn("openai_responses_probe_marker_persist_failed",
+				"account_id", account.ID,
+				"account_name", account.Name,
+				"platform", account.Platform,
+				"responses_mode", string(openai_compat.ResponsesSupportModeAuto),
+				"err", err,
+			)
+		}
 		return
 	}
 	if account.Platform != PlatformOpenAI {
