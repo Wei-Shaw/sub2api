@@ -1258,6 +1258,13 @@ func (h *GatewayHandler) Models(c *gin.Context) {
 		return
 	}
 
+	// ollama_cloud 无静态默认模型列表（defaultModelIDsForPlatform 返回空）：
+	// 账号侧清单缺失时返回空列表，不得回落 Claude 默认模型。
+	if platform == service.PlatformOllamaCloud {
+		writeModelsListResponse(c, []claude.Model{})
+		return
+	}
+
 	writeModelsListResponse(c, claude.DefaultModels)
 }
 
@@ -1525,6 +1532,11 @@ func defaultModelIDsForPlatform(platform string) []string {
 		return xai.DefaultModelIDs()
 	case service.PlatformOpenCodeGo:
 		return service.DefaultOpenCodeGoModelIDs()
+	case service.PlatformOllamaCloud:
+		// ollama_cloud 没有静态默认模型列表：可服务模型完全来自账号侧的
+		// model_mapping / extra.allowed_models（缺失时 IsModelSupported 为
+		// deny-all）。default 分支的 Claude 列表对它只会造成虚假广告。
+		return nil
 	case service.PlatformComposite:
 		ids := make([]string, 0)
 		seen := make(map[string]struct{})
