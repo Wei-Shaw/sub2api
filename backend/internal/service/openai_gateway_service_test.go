@@ -1250,19 +1250,19 @@ func TestOpenAISelectAccountWithLoadAwareness_StickyCapacitySpilloverKeepsBindin
 	}
 }
 
-func TestOpenAISelectAccountWithLoadAwareness_PrefersLowerLoad(t *testing.T) {
+func TestOpenAISelectAccountWithLoadAwareness_PrefersLowerLoadBand(t *testing.T) {
 	groupID := int64(1)
 	repo := stubOpenAIAccountRepo{
 		accounts: []Account{
-			{ID: 1, Platform: PlatformOpenAI, Status: StatusActive, Schedulable: true, Concurrency: 1, Priority: 1},
-			{ID: 2, Platform: PlatformOpenAI, Status: StatusActive, Schedulable: true, Concurrency: 1, Priority: 1},
+			{ID: 1, Platform: PlatformOpenAI, Status: StatusActive, Schedulable: true, Concurrency: 10, LoadFactor: new(1), Priority: 1},
+			{ID: 2, Platform: PlatformOpenAI, Status: StatusActive, Schedulable: true, Concurrency: 10, LoadFactor: new(1), Priority: 1},
 		},
 	}
 	cache := &stubGatewayCache{}
 	concurrencyCache := stubConcurrencyCache{
 		loadMap: map[int64]*AccountLoadInfo{
-			1: {AccountID: 1, LoadRate: 80},
-			2: {AccountID: 2, LoadRate: 10},
+			1: {AccountID: 1, CurrentConcurrency: 8, LoadRate: 800},
+			2: {AccountID: 2, CurrentConcurrency: 1, LoadRate: 100},
 		},
 	}
 
@@ -1394,7 +1394,7 @@ func TestOpenAISelectAccountWithLoadAwareness_AllFullWaitPlan(t *testing.T) {
 	cache := &stubGatewayCache{}
 	concurrencyCache := stubConcurrencyCache{
 		loadMap: map[int64]*AccountLoadInfo{
-			1: {AccountID: 1, LoadRate: 100},
+			1: {AccountID: 1, CurrentConcurrency: 1, LoadRate: 100},
 		},
 	}
 
@@ -1452,7 +1452,7 @@ func TestOpenAISelectAccountWithLoadAwareness_MissingLoadInfo(t *testing.T) {
 	cache := &stubGatewayCache{}
 	concurrencyCache := stubConcurrencyCache{
 		loadMap: map[int64]*AccountLoadInfo{
-			1: {AccountID: 1, LoadRate: 50},
+			1: {AccountID: 1, CurrentConcurrency: 1, LoadRate: 100},
 		},
 		skipDefaultLoad: true,
 	}
@@ -1497,7 +1497,7 @@ func TestOpenAISelectAccountForModelWithExclusions_LeastRecentlyUsed(t *testing.
 	}
 }
 
-func TestOpenAISelectAccountWithLoadAwareness_PreferNeverUsed(t *testing.T) {
+func TestOpenAISelectAccountWithLoadAwareness_SamplesUsedAndNeverUsed(t *testing.T) {
 	groupID := int64(1)
 	lastUsed := time.Now().Add(-1 * time.Hour)
 	repo := stubOpenAIAccountRepo{
@@ -1520,13 +1520,18 @@ func TestOpenAISelectAccountWithLoadAwareness_PreferNeverUsed(t *testing.T) {
 		concurrencyService: NewConcurrencyService(concurrencyCache),
 	}
 
-	selection, err := svc.SelectAccountWithLoadAwareness(context.Background(), &groupID, "", "gpt-4", nil)
-	if err != nil {
-		t.Fatalf("SelectAccountWithLoadAwareness error: %v", err)
+	seen := map[int64]bool{}
+	for range 100 {
+		selection, err := svc.SelectAccountWithLoadAwareness(context.Background(), &groupID, "", "gpt-4", nil)
+		if err != nil {
+			t.Fatalf("SelectAccountWithLoadAwareness error: %v", err)
+		}
+		require.NotNil(t, selection)
+		require.NotNil(t, selection.Account)
+		seen[selection.Account.ID] = true
+		selection.ReleaseFunc()
 	}
-	if selection == nil || selection.Account == nil || selection.Account.ID != 2 {
-		t.Fatalf("expected account 2")
-	}
+	require.Len(t, seen, 2, "last-used time must not override weighted selection")
 }
 
 func TestOpenAIStreamingTimeout(t *testing.T) {

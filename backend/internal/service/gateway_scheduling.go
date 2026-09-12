@@ -8,6 +8,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"math"
 	mathrand "math/rand"
 	"sort"
 	"strings"
@@ -450,33 +451,14 @@ func (s *GatewayService) SelectAccountWithLoadAwareness(ctx context.Context, gro
 				if loadInfo == nil {
 					loadInfo = &AccountLoadInfo{AccountID: acc.ID}
 				}
-				if loadInfo.LoadRate < 100 {
+				if acc.Concurrency <= 0 || loadInfo.CurrentConcurrency < acc.Concurrency {
 					routingAvailable = append(routingAvailable, accountWithLoad{account: acc, loadInfo: loadInfo})
 				}
 			}
 
 			if len(routingAvailable) > 0 {
-				// 排序：优先级 > 负载率 > 最后使用时间
-				sort.SliceStable(routingAvailable, func(i, j int) bool {
-					a, b := routingAvailable[i], routingAvailable[j]
-					if a.account.Priority != b.account.Priority {
-						return a.account.Priority < b.account.Priority
-					}
-					if a.loadInfo.LoadRate != b.loadInfo.LoadRate {
-						return a.loadInfo.LoadRate < b.loadInfo.LoadRate
-					}
-					switch {
-					case a.account.LastUsedAt == nil && b.account.LastUsedAt != nil:
-						return true
-					case a.account.LastUsedAt != nil && b.account.LastUsedAt == nil:
-						return false
-					case a.account.LastUsedAt == nil && b.account.LastUsedAt == nil:
-						return false
-					default:
-						return a.account.LastUsedAt.Before(*b.account.LastUsedAt)
-					}
-				})
-				shuffleWithinSortGroups(routingAvailable)
+				// 优先级 > 负载档位 > 同档位按负载因子加权随机
+				orderAccountsByLoadBand(routingAvailable, false, nil)
 
 				// 4. 尝试获取槽位
 				for _, item := range routingAvailable {
@@ -497,7 +479,7 @@ func (s *GatewayService) SelectAccountWithLoadAwareness(ctx context.Context, gro
 					}
 				}
 
-				// 5. 所有路由账号槽位满，尝试返回等待计划（选择负载最低的）
+				// 5. 所有路由账号槽位满，尝试返回等待计划（按负载档位和权重顺序）
 				// 遍历找到第一个满足会话限制的账号
 				for _, item := range routingAvailable {
 					if !s.checkAndRegisterSession(ctx, item.account, sessionHash) {
@@ -515,7 +497,7 @@ func (s *GatewayService) SelectAccountWithLoadAwareness(ctx context.Context, gro
 				}
 				// 所有路由账号会话限制都已满，继续到 Layer 2 回退
 			}
-			// 路由列表中的账号都不可用（负载率 >= 100），继续到 Layer 2 回退
+			// 路由列表中的账号都不可用（并发槽位已满等），继续到 Layer 2 回退
 			logger.LegacyPrintf("service.gateway", "[ModelRouting] All routed accounts unavailable for model=%s, falling back to normal selection", requestedModel)
 		}
 	}
@@ -727,7 +709,7 @@ func (s *GatewayService) SelectAccountWithLoadAwareness(ctx context.Context, gro
 			if loadInfo == nil {
 				loadInfo = &AccountLoadInfo{AccountID: acc.ID}
 			}
-			if loadInfo.LoadRate < 100 {
+			if acc.Concurrency <= 0 || loadInfo.CurrentConcurrency < acc.Concurrency {
 				available = append(available, accountWithLoad{
 					account:  acc,
 					loadInfo: loadInfo,
@@ -735,7 +717,7 @@ func (s *GatewayService) SelectAccountWithLoadAwareness(ctx context.Context, gro
 			}
 		}
 
-		// 分层过滤选择：优先级 →（可选）最早重置 → 负载率 → LRU
+		// 分层过滤选择：优先级 →（可选）最早重置 → 负载档位 → 加权随机
 		for len(available) > 0 {
 			// 1. 取优先级最小的集合
 			candidates := filterByMinPriority(available)
@@ -743,13 +725,12 @@ func (s *GatewayService) SelectAccountWithLoadAwareness(ctx context.Context, gro
 			if cfg.PreferSoonestReset {
 				candidates = filterBySoonestReset(candidates)
 			}
-			// 3. 取负载率最低的集合
-			candidates = filterByMinLoadRate(candidates)
-			// 4. LRU 选择最久未用的账号
-			selected := selectByLRU(candidates, preferOAuth)
-			if selected == nil {
+			// 3. 选择最低负载档位，同档位按负载因子加权随机
+			orderAccountsByLoadBand(candidates, preferOAuth, nil)
+			if len(candidates) == 0 {
 				break
 			}
+			selected := &candidates[0]
 
 			result, err := s.tryAcquireAccountSlot(ctx, selected.account.ID, selected.account.Concurrency)
 			if err == nil && result.Acquired {
@@ -1585,6 +1566,33 @@ func (s *GatewayService) newSelectionResult(ctx context.Context, account *Accoun
 	}), nil
 }
 
+// orderAccountsByLoadBand 按优先级、floor(负载 / 负载因子)、加权随机排序。
+// 随机键只生成一次；-log(1-U)/权重使同档位账号按权重概率排在首位。
+func orderAccountsByLoadBand(accounts []accountWithLoad, preferOAuth bool, randomFloat func() float64) {
+	if randomFloat == nil {
+		randomFloat = mathrand.Float64
+	}
+	keys := make(map[int64]float64, len(accounts))
+	for _, item := range accounts {
+		keys[item.account.ID] = -math.Log1p(-randomFloat()) / float64(item.account.EffectiveLoadFactor())
+	}
+	sort.SliceStable(accounts, func(i, j int) bool {
+		a, b := accounts[i], accounts[j]
+		if a.account.Priority != b.account.Priority {
+			return a.account.Priority < b.account.Priority
+		}
+		aBand := (a.loadInfo.CurrentConcurrency + a.loadInfo.WaitingCount) / a.account.EffectiveLoadFactor()
+		bBand := (b.loadInfo.CurrentConcurrency + b.loadInfo.WaitingCount) / b.account.EffectiveLoadFactor()
+		if aBand != bBand {
+			return aBand < bBand
+		}
+		if preferOAuth && (a.account.Type == AccountTypeOAuth) != (b.account.Type == AccountTypeOAuth) {
+			return a.account.Type == AccountTypeOAuth
+		}
+		return keys[a.account.ID] < keys[b.account.ID]
+	})
+}
+
 // filterByMinPriority 过滤出优先级最小的账号集合
 func filterByMinPriority(accounts []accountWithLoad) []accountWithLoad {
 	if len(accounts) == 0 {
@@ -1628,7 +1636,7 @@ func filterByMinLoadRate(accounts []accountWithLoad) []accountWithLoad {
 // filterBySoonestReset 过滤出「会话窗口最早重置」的账号集合（use-it-or-lose-it）。
 // 仅保留拥有未来重置时间（SessionWindowEnd 在当前时间之后）且最早的账号；
 // 窗口为空或已过期的账号视为无活跃窗口、优先级最低。
-// 当所有账号都没有活跃窗口时，返回原集合（不改变后续 LRU 选择）。
+// 当所有账号都没有活跃窗口时，返回原集合（保留后续选择顺序）。
 func filterBySoonestReset(accounts []accountWithLoad) []accountWithLoad {
 	if len(accounts) <= 1 {
 		return accounts
