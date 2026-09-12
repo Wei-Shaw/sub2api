@@ -243,6 +243,15 @@ func TestNewWxpay(t *testing.T) {
 			wantErr: false,
 		},
 		{
+			name: "api v2 merchant config succeeds",
+			config: map[string]string{
+				"appId":    "wx1234567890",
+				"mchId":    "1234567890",
+				"apiV3Key": "12345678901234567890123456789012",
+			},
+			wantErr: false,
+		},
+		{
 			name:      "missing appId",
 			config:    withOverride(map[string]string{"appId": ""}),
 			wantErr:   true,
@@ -255,10 +264,9 @@ func TestNewWxpay(t *testing.T) {
 			errSubstr: "mchId",
 		},
 		{
-			name:      "missing privateKey",
-			config:    withOverride(map[string]string{"privateKey": ""}),
-			wantErr:   true,
-			errSubstr: "privateKey",
+			name:    "missing privateKey",
+			config:  withOverride(map[string]string{"privateKey": ""}),
+			wantErr: false,
 		},
 		{
 			name:      "missing apiV3Key",
@@ -267,22 +275,19 @@ func TestNewWxpay(t *testing.T) {
 			errSubstr: "apiV3Key",
 		},
 		{
-			name:      "missing certSerial",
-			config:    withOverride(map[string]string{"certSerial": ""}),
-			wantErr:   true,
-			errSubstr: "certSerial",
+			name:    "missing certSerial",
+			config:  withOverride(map[string]string{"certSerial": ""}),
+			wantErr: false,
 		},
 		{
-			name:      "missing publicKey",
-			config:    withOverride(map[string]string{"publicKey": ""}),
-			wantErr:   true,
-			errSubstr: "publicKey",
+			name:    "missing publicKey",
+			config:  withOverride(map[string]string{"publicKey": ""}),
+			wantErr: false,
 		},
 		{
-			name:      "missing publicKeyId",
-			config:    withOverride(map[string]string{"publicKeyId": ""}),
-			wantErr:   true,
-			errSubstr: "publicKeyId",
+			name:    "missing publicKeyId",
+			config:  withOverride(map[string]string{"publicKeyId": ""}),
+			wantErr: false,
 		},
 		{
 			name:      "malformed privateKey PEM",
@@ -363,6 +368,122 @@ func TestBuildWxpayResultURLPreservesResumeToken(t *testing.T) {
 	}
 	if query.Get("out_trade_no") != "sub2_42" {
 		t.Fatalf("out_trade_no = %q, want %q", query.Get("out_trade_no"), "sub2_42")
+	}
+}
+
+func TestVerifyAPIv2Notification(t *testing.T) {
+	t.Parallel()
+
+	provider := &Wxpay{config: map[string]string{
+		"appId":    "wx123",
+		"mchId":    "mch123",
+		"apiV3Key": "12345678901234567890123456789012",
+	}}
+	fields := map[string]string{
+		"return_code":    "SUCCESS",
+		"result_code":    "SUCCESS",
+		"appid":          "wx123",
+		"mch_id":         "mch123",
+		"out_trade_no":   "sub2_88",
+		"transaction_id": "4200000000000000000",
+		"total_fee":      "6688",
+	}
+	raw := wxpayAPIv2BuildSignedXML(fields, provider.config["apiV3Key"])
+
+	notification, err := provider.VerifyNotification(context.Background(), raw, nil)
+	if err != nil {
+		t.Fatalf("VerifyNotification returned error: %v", err)
+	}
+	if notification == nil {
+		t.Fatal("expected notification, got nil")
+	}
+	if notification.OrderID != "sub2_88" {
+		t.Fatalf("order id = %q, want %q", notification.OrderID, "sub2_88")
+	}
+	if notification.TradeNo != "4200000000000000000" {
+		t.Fatalf("trade no = %q, want %q", notification.TradeNo, "4200000000000000000")
+	}
+	if notification.Amount != 66.88 {
+		t.Fatalf("amount = %v, want 66.88", notification.Amount)
+	}
+	if notification.Status != payment.ProviderStatusSuccess {
+		t.Fatalf("status = %q, want %q", notification.Status, payment.ProviderStatusSuccess)
+	}
+}
+
+func TestCreateAPIv2NativePaymentWithoutPrivateKey(t *testing.T) {
+	origPost := wxpayAPIv2Post
+	t.Cleanup(func() {
+		wxpayAPIv2Post = origPost
+	})
+
+	const apiKey = "12345678901234567890123456789012"
+	provider := &Wxpay{config: map[string]string{
+		"appId":     "wx123",
+		"mchId":     "mch123",
+		"apiV3Key":  apiKey,
+		"notifyUrl": "https://app.example.com/api/v1/payment/webhook/wxpay",
+	}}
+
+	wxpayAPIv2Post = func(ctx context.Context, endpoint string, payload string) ([]byte, error) {
+		if endpoint != "https://api.mch.weixin.qq.com/pay/unifiedorder" {
+			t.Fatalf("endpoint = %q", endpoint)
+		}
+		for _, want := range []string{
+			"<appid>wx123</appid>",
+			"<mch_id>mch123</mch_id>",
+			"<out_trade_no>order-88</out_trade_no>",
+			"<total_fee>550</total_fee>",
+			"<trade_type>NATIVE</trade_type>",
+			"<sign>",
+		} {
+			if !strings.Contains(payload, want) {
+				t.Fatalf("payload missing %s:\n%s", want, payload)
+			}
+		}
+		return []byte(`<xml><return_code>SUCCESS</return_code><result_code>SUCCESS</result_code><code_url>weixin://wxpay/bizpayurl?pr=test</code_url></xml>`), nil
+	}
+
+	resp, err := provider.CreatePayment(context.Background(), payment.CreatePaymentRequest{
+		OrderID:  "order-88",
+		Subject:  "Sub2API",
+		Amount:   "5.50",
+		ClientIP: "203.0.113.9",
+	})
+	if err != nil {
+		t.Fatalf("CreatePayment returned error: %v", err)
+	}
+	if resp.QRCode != "weixin://wxpay/bizpayurl?pr=test" {
+		t.Fatalf("QRCode = %q", resp.QRCode)
+	}
+}
+
+func TestBuildWxpayAPIv2JSAPIPayload(t *testing.T) {
+	t.Parallel()
+
+	const apiKey = "12345678901234567890123456789012"
+	payload := buildWxpayAPIv2JSAPIPayload("wx123", "wx-prepay-id", apiKey)
+	if payload.AppID != "wx123" {
+		t.Fatalf("AppID = %q", payload.AppID)
+	}
+	if payload.Package != "prepay_id=wx-prepay-id" {
+		t.Fatalf("Package = %q", payload.Package)
+	}
+	if payload.SignType != "MD5" {
+		t.Fatalf("SignType = %q", payload.SignType)
+	}
+	if payload.TimeStamp == "" || payload.NonceStr == "" || payload.PaySign == "" {
+		t.Fatalf("payload has empty signing fields: %+v", payload)
+	}
+	wantSign := wxpayAPIv2Sign(map[string]string{
+		"appId":     payload.AppID,
+		"timeStamp": payload.TimeStamp,
+		"nonceStr":  payload.NonceStr,
+		"package":   payload.Package,
+		"signType":  payload.SignType,
+	}, apiKey)
+	if payload.PaySign != wantSign {
+		t.Fatalf("PaySign = %q, want %q", payload.PaySign, wantSign)
 	}
 }
 
