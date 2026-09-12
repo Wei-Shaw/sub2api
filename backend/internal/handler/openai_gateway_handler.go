@@ -650,7 +650,12 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 	// 该判断已排除 Codex 被动 image_gen namespace，避免 CC-only 账号被误过滤（#4476）。
 	needsResponses := nativeV2 || legacyCompact
 	requiredCapability := openAIResponsesRequiredCapabilityForRequest(imageIntent, needsResponses, requestPlatform)
-	if previousResponseID != "" {
+	strictContinuationAccountID, strictOwnerErr := h.gatewayService.StrictHTTPContinuationAccount(c.Request.Context(), apiKey.GroupID, previousResponseID)
+	if strictOwnerErr != nil {
+		h.handleStreamingAwareError(c, http.StatusServiceUnavailable, "api_error", "Unable to verify the Responses continuation owner", streamStarted)
+		return
+	}
+	if strictContinuationAccountID > 0 {
 		requiredCapability = service.OpenAIEndpointCapabilityStrictResponses
 	}
 
@@ -693,7 +698,7 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 				zap.Error(openAICompatibleSelectionErrorForLog(err, requestPlatform)),
 				zap.Int("excluded_account_count", len(failedAccountIDs)),
 			)
-			if previousResponseID != "" {
+			if strictContinuationAccountID > 0 {
 				h.handleStreamingAwareError(c, http.StatusConflict, "invalid_request_error", "No available strict Responses account owns this continuation", streamStarted)
 				return
 			}
@@ -719,7 +724,7 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 			return
 		}
 		if selection == nil || selection.Account == nil {
-			if previousResponseID != "" {
+			if strictContinuationAccountID > 0 {
 				h.handleStreamingAwareError(c, http.StatusConflict, "invalid_request_error", "No available strict Responses account owns this continuation", streamStarted)
 				return
 			}
@@ -743,6 +748,13 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 			zap.Float64("load_skew", scheduleDecision.LoadSkew),
 		)
 		account := selection.Account
+		if strictContinuationAccountID > 0 && (account.ID != strictContinuationAccountID || !account.IsOpenAIStrictResponsesPassthroughEnabled()) {
+			if selection.ReleaseFunc != nil {
+				selection.ReleaseFunc()
+			}
+			h.handleStreamingAwareError(c, http.StatusConflict, "invalid_request_error", "The strict Responses continuation owner is unavailable", streamStarted)
+			return
+		}
 		if previousResponseID != "" && requestPlatform == service.PlatformOpenAI && !account.IsOpenAIApiKey() {
 			// The public Responses HTTP API supports previous_response_id on API-key
 			// accounts. OAuth/SetupToken upstreams do not, so keep searching instead
