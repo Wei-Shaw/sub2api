@@ -467,6 +467,15 @@ type BulkAssignResult struct {
 	Statuses      map[int64]string
 }
 
+// BulkResetSubscriptionQuotaResult summarizes a group quota reset operation.
+type BulkResetSubscriptionQuotaResult struct {
+	TotalCount            int
+	SuccessCount          int
+	FailedCount           int
+	FailedSubscriptionIDs []int64
+	Errors                []string
+}
+
 // BulkAssignSubscription 批量分配订阅
 func (s *SubscriptionService) BulkAssignSubscription(ctx context.Context, input *BulkAssignSubscriptionInput) (*BulkAssignResult, error) {
 	result := &BulkAssignResult{
@@ -890,6 +899,66 @@ func (s *SubscriptionService) AdminResetQuota(ctx context.Context, subscriptionI
 	}
 	// Return the refreshed subscription from DB
 	return s.userSubRepo.GetByID(ctx, subscriptionID)
+}
+
+// AdminResetGroupQuota applies the existing per-subscription quota reset to
+// every currently active subscription in a subscription group.
+func (s *SubscriptionService) AdminResetGroupQuota(ctx context.Context, groupID int64, resetDaily, resetWeekly, resetMonthly bool) (*BulkResetSubscriptionQuotaResult, error) {
+	if !resetDaily && !resetWeekly && !resetMonthly {
+		return nil, ErrInvalidInput
+	}
+	group, err := s.groupRepo.GetByIDLite(ctx, groupID)
+	if err != nil {
+		return nil, err
+	}
+	if !group.IsSubscriptionType() {
+		return nil, ErrGroupNotSubscriptionType
+	}
+
+	const pageSize = 1000
+	now := s.now()
+	targetIDs := make([]int64, 0)
+	seen := make(map[int64]struct{})
+	for page := 1; ; page++ {
+		subs, pag, listErr := s.userSubRepo.ListByGroupID(ctx, groupID, pagination.PaginationParams{
+			Page:     page,
+			PageSize: pageSize,
+		})
+		if listErr != nil {
+			return nil, listErr
+		}
+		for i := range subs {
+			sub := &subs[i]
+			if sub.Status != SubscriptionStatusActive || !sub.ExpiresAt.After(now) {
+				continue
+			}
+			if _, ok := seen[sub.ID]; ok {
+				continue
+			}
+			seen[sub.ID] = struct{}{}
+			targetIDs = append(targetIDs, sub.ID)
+		}
+		if pag == nil || page >= pag.Pages {
+			break
+		}
+	}
+
+	result := &BulkResetSubscriptionQuotaResult{
+		TotalCount:            len(targetIDs),
+		FailedSubscriptionIDs: make([]int64, 0),
+		Errors:                make([]string, 0),
+	}
+	for _, subscriptionID := range targetIDs {
+		if _, resetErr := s.AdminResetQuota(ctx, subscriptionID, resetDaily, resetWeekly, resetMonthly); resetErr != nil {
+			result.FailedCount++
+			result.FailedSubscriptionIDs = append(result.FailedSubscriptionIDs, subscriptionID)
+			result.Errors = append(result.Errors, fmt.Sprintf("subscription %d: %v", subscriptionID, resetErr))
+			continue
+		}
+		result.SuccessCount++
+	}
+
+	return result, nil
 }
 
 // CheckAndResetWindows 检查并重置过期的窗口
