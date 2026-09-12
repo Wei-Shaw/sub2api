@@ -41,11 +41,13 @@ export type SchedulingThresholdPlatformType =
   | "zhipu"
   | "minimax"
   | "opencode_go"
+  | "ollama_cloud"
 
 export type AccountSchedulingThresholdsMap = Record<SchedulingThresholdPlatformType, number>
 
 // 与后端 AllowedSchedulingThresholdPlatforms 保持一致（deepseek 为余额型，
-// 走余额检测而非用量阈值；minimax Coding/Token Plan 与 OpenCode GO 有滚动窗口）。
+// 走余额检测而非用量阈值；minimax Coding/Token Plan 与 OpenCode GO 有滚动窗口；
+// ollama_cloud 仅 legacy 账号有 5h/7d 滚动窗口，credits 型月度信用池无窗口不停调）。
 export const SCHEDULING_THRESHOLD_PLATFORMS: SchedulingThresholdPlatformType[] = [
   "openai",
   "anthropic",
@@ -54,6 +56,7 @@ export const SCHEDULING_THRESHOLD_PLATFORMS: SchedulingThresholdPlatformType[] =
   "zhipu",
   "minimax",
   "opencode_go",
+  "ollama_cloud",
 ]
 
 export function normalizeAccountSchedulingThresholdsMap(
