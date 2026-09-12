@@ -40,8 +40,9 @@ func (h *ChannelMonitorUserHandler) featureEnabled(c *gin.Context) bool {
 	return runtime.Enabled && runtime.Mode == service.ChannelMonitorModeV1
 }
 
-// quotaVisible 返回用户端是否展示配额/余额快照（channel_monitor_show_quota，
-// fail-closed：未配置/非 "true" 一律视为关闭）。settingService 为 nil 时 fail-closed。
+// quotaVisible 返回用户端是否展示完整配额/余额快照（channel_monitor_show_quota，
+// fail-closed：未配置/非 "true" 一律视为关闭）。关闭时仍会下发组级账号计数。
+// settingService 为 nil 时 fail-closed。
 func (h *ChannelMonitorUserHandler) quotaVisible(c *gin.Context) bool {
 	if h.settingService == nil {
 		return false
@@ -61,10 +62,12 @@ type channelMonitorUserListItem struct {
 	PrimaryLatencyMs     *int                                 `json:"primary_latency_ms"`
 	PrimaryPingLatencyMs *int                                 `json:"primary_ping_latency_ms"`
 	Availability7d       float64                              `json:"availability_7d"`
+	CheckMode            string                               `json:"check_mode"`
 	ExtraModels          []dto.ChannelMonitorExtraModelStatus `json:"extra_models"`
 	Timeline             []channelMonitorUserTimelinePoint    `json:"timeline"`
-	// LatestQuota 主模型最近配额快照；channel_monitor_show_quota=false 时
-	// 由 userMonitorViewToItem 的调用方传入 false 剥离（服务端脱敏，非仅前端隐藏）。
+	// LatestQuota 主模型最近配额快照。
+	// channel_monitor_show_quota=true 时原样下发；关闭时单账号快照剥离，
+	// 组级快照只留账号计数（见 redactUserQuotaSnapshot）。
 	LatestQuota *domain.MonitorQuotaSnapshot `json:"latest_quota,omitempty"`
 }
 
@@ -123,13 +126,37 @@ func userMonitorViewToItem(v *service.UserMonitorView, includeQuota bool) channe
 		PrimaryLatencyMs:     v.PrimaryLatencyMs,
 		PrimaryPingLatencyMs: v.PrimaryPingLatencyMs,
 		Availability7d:       v.Availability7d,
+		CheckMode:            v.CheckMode,
 		ExtraModels:          extras,
 		Timeline:             timeline,
-	}
-	if includeQuota {
-		item.LatestQuota = v.LatestQuota
+		LatestQuota:          redactUserQuotaSnapshot(v.LatestQuota, includeQuota),
 	}
 	return item
+}
+
+// redactUserQuotaSnapshot 控制用户端能看到哪些配额字段。
+//
+// 全量开：原样下发。
+// 全量关：单账号快照剥离（accounts_total==0）；组级快照只留账号计数，
+// 不含 tier / 余额 / 套餐 / 错误细节。这样用户页能看到「还有几个号有额度」，
+// 不必把 channel_monitor_show_quota 默认打开。
+func redactUserQuotaSnapshot(snapshot *domain.MonitorQuotaSnapshot, includeFull bool) *domain.MonitorQuotaSnapshot {
+	if snapshot == nil {
+		return nil
+	}
+	if includeFull {
+		return snapshot
+	}
+	if snapshot.AccountsTotal <= 0 {
+		return nil
+	}
+	return &domain.MonitorQuotaSnapshot{
+		Success:           snapshot.Success,
+		FetchedAt:         snapshot.FetchedAt,
+		AccountsTotal:     snapshot.AccountsTotal,
+		AccountsHealthy:   snapshot.AccountsHealthy,
+		AccountsExhausted: snapshot.AccountsExhausted,
+	}
 }
 
 func userMonitorDetailToResponse(d *service.UserMonitorDetail) *channelMonitorUserDetailResponse {
