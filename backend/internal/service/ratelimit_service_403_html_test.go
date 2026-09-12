@@ -151,6 +151,20 @@ func TestHandleUpstreamError_HTML403OnOtherPlatformsUnchanged(t *testing.T) {
 	}
 }
 
+// ollama_cloud 迁到独立 platform 后必须继续命中 HTML 403 豁免：与 openai/
+// 国产/opencode_go 同为多协议 API Key 网关，链路级 403 同样不构成账号失效
+// 证据；漏加会在迁移后掉进默认 SetError 永久禁号路径。
+func TestHandleUpstreamError_OllamaCloudHTML403DoesNotPenalizeAccount(t *testing.T) {
+	h := newOpenAI403TestHarness(t, 507, 1)
+	h.account.Platform = PlatformOllamaCloud
+	h.account.Type = AccountTypeAPIKey
+
+	shouldDisable := h.handle(openAI403HTMLBody)
+
+	require.False(t, shouldDisable, "ollama_cloud 的 HTML 403 不得判定账号应下线")
+	h.requireNoAccountPenalty(t)
+}
+
 func TestIsHTMLResponse(t *testing.T) {
 	cases := []struct {
 		name string
