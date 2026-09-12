@@ -45,6 +45,12 @@ const (
 
 	openAIWSIngressStagePreviousResponseNotFound = "previous_response_not_found"
 	openAIWSMaxPrevResponseIDDeletePasses        = 8
+	// A transient proxy path can leave several pooled sockets stale at once and
+	// briefly fail fresh handshakes as well. Keep these retries inside the
+	// server-side retry budget so the client does not need to reconnect once per
+	// stale socket. The initial attempt plus four retries matches the Codex
+	// client's recovery window without allowing an unbounded replay loop.
+	openAIWSIngressTurnRetryMax = 4
 )
 
 var openAIWSLogValueReplacer = strings.NewReplacer(
