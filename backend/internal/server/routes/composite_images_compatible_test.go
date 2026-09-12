@@ -47,6 +47,10 @@ func (r compatibleImagesAccounts) ListSchedulableByGroupIDAndPlatform(context.Co
 	return r.accounts, nil
 }
 
+func (r compatibleImagesAccounts) ListModelAvailabilityCandidates(context.Context, *int64, []string, bool) ([]service.Account, error) {
+	return r.accounts, nil
+}
+
 type compatibleImagesUpstream struct {
 	service.HTTPUpstream
 	accountIDs []int64
@@ -139,9 +143,10 @@ func TestCompositeCompatibleImagesEndToEnd(t *testing.T) {
 			rec := httptest.NewRecorder()
 			router.ServeHTTP(rec, req)
 			if scenario == "disabled" || scenario == "native_only" || scenario == "restricted" {
-				require.GreaterOrEqual(t, rec.Code, 400, rec.Body.String())
 				if scenario == "disabled" {
 					require.Equal(t, http.StatusForbidden, rec.Code)
+				} else {
+					require.Equal(t, http.StatusServiceUnavailable, rec.Code, rec.Body.String())
 				}
 				require.Empty(t, upstream.accountIDs)
 				require.Empty(t, usage.logs)
