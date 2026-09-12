@@ -663,6 +663,8 @@ export default {
       balanceHistoryTip: 'Click to open recharge history',
       columnAlwaysVisible: 'This column is always visible',
       // Per-platform usage breakdown (hover tooltip)
+      billedUsage: 'Billed: {requests} requests · {tokens} tokens',
+      billedUsageHint: 'Only requests with a positive actual cost. Tokens include input, output, cache writes and cache reads.',
       platformBreakdown: 'Per-platform breakdown',
       platformBreakdownEmpty: 'No platform usage yet',
       platformBreakdownHint: 'Hover for per-platform usage',
