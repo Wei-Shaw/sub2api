@@ -163,9 +163,7 @@ func (s *GeminiMessagesCompatService) forwardClaudeBodyAsChatCompletions(
 				}
 				break
 			}
-			if resp.StatusCode == http.StatusTooManyRequests {
-				s.handleGeminiUpstreamError(ctx, account, resp.StatusCode, resp.Header, respBody)
-			}
+			// 429 不在重试循环内持久化账号限流，理由同 Forward：留到最终结果确定后再写。
 			if attempt < geminiMaxRetries {
 				upstreamReqID := resp.Header.Get(requestIDHeader)
 				if upstreamReqID == "" {
