@@ -1613,26 +1613,6 @@ func filterByMinPriority(accounts []accountWithLoad) []accountWithLoad {
 	return result
 }
 
-// filterByMinLoadRate 过滤出负载率最低的账号集合
-func filterByMinLoadRate(accounts []accountWithLoad) []accountWithLoad {
-	if len(accounts) == 0 {
-		return accounts
-	}
-	minLoadRate := accounts[0].loadInfo.LoadRate
-	for _, acc := range accounts[1:] {
-		if acc.loadInfo.LoadRate < minLoadRate {
-			minLoadRate = acc.loadInfo.LoadRate
-		}
-	}
-	result := make([]accountWithLoad, 0, len(accounts))
-	for _, acc := range accounts {
-		if acc.loadInfo.LoadRate == minLoadRate {
-			result = append(result, acc)
-		}
-	}
-	return result
-}
-
 // filterBySoonestReset 过滤出「会话窗口最早重置」的账号集合（use-it-or-lose-it）。
 // 仅保留拥有未来重置时间（SessionWindowEnd 在当前时间之后）且最早的账号；
 // 窗口为空或已过期的账号视为无活跃窗口、优先级最低。
@@ -1666,66 +1646,6 @@ func filterBySoonestReset(accounts []accountWithLoad) []accountWithLoad {
 	return result
 }
 
-// selectByLRU 从集合中选择最久未用的账号
-// 如果有多个账号具有相同的最小 LastUsedAt，则随机选择一个
-func selectByLRU(accounts []accountWithLoad, preferOAuth bool) *accountWithLoad {
-	if len(accounts) == 0 {
-		return nil
-	}
-	if len(accounts) == 1 {
-		return &accounts[0]
-	}
-
-	// 1. 找到最小的 LastUsedAt（nil 被视为最小）
-	var minTime *time.Time
-	hasNil := false
-	for _, acc := range accounts {
-		if acc.account.LastUsedAt == nil {
-			hasNil = true
-			break
-		}
-		if minTime == nil || acc.account.LastUsedAt.Before(*minTime) {
-			minTime = acc.account.LastUsedAt
-		}
-	}
-
-	// 2. 收集所有具有最小 LastUsedAt 的账号索引
-	var candidateIdxs []int
-	for i, acc := range accounts {
-		if hasNil {
-			if acc.account.LastUsedAt == nil {
-				candidateIdxs = append(candidateIdxs, i)
-			}
-		} else {
-			if acc.account.LastUsedAt != nil && acc.account.LastUsedAt.Equal(*minTime) {
-				candidateIdxs = append(candidateIdxs, i)
-			}
-		}
-	}
-
-	// 3. 如果只有一个候选，直接返回
-	if len(candidateIdxs) == 1 {
-		return &accounts[candidateIdxs[0]]
-	}
-
-	// 4. 如果有多个候选且 preferOAuth，优先选择 OAuth 类型
-	if preferOAuth {
-		var oauthIdxs []int
-		for _, idx := range candidateIdxs {
-			if accounts[idx].account.Type == AccountTypeOAuth {
-				oauthIdxs = append(oauthIdxs, idx)
-			}
-		}
-		if len(oauthIdxs) > 0 {
-			candidateIdxs = oauthIdxs
-		}
-	}
-
-	// 5. 随机选择一个
-	selectedIdx := candidateIdxs[mathrand.Intn(len(candidateIdxs))]
-	return &accounts[selectedIdx]
-}
-
 func sortAccountsByPriorityAndLastUsed(accounts []*Account, preferOAuth bool) {
 	sort.SliceStable(accounts, func(i, j int) bool {
 		a, b := accounts[i], accounts[j]
@@ -1747,38 +1667,6 @@ func sortAccountsByPriorityAndLastUsed(accounts []*Account, preferOAuth bool) {
 		}
 	})
 	shuffleWithinPriorityAndLastUsed(accounts, preferOAuth)
-}
-
-// shuffleWithinSortGroups 对排序后的 accountWithLoad 切片，按 (Priority, LoadRate, LastUsedAt) 分组后组内随机打乱。
-// 防止并发请求读取同一快照时，确定性排序导致所有请求命中相同账号。
-func shuffleWithinSortGroups(accounts []accountWithLoad) {
-	if len(accounts) <= 1 {
-		return
-	}
-	i := 0
-	for i < len(accounts) {
-		j := i + 1
-		for j < len(accounts) && sameAccountWithLoadGroup(accounts[i], accounts[j]) {
-			j++
-		}
-		if j-i > 1 {
-			mathrand.Shuffle(j-i, func(a, b int) {
-				accounts[i+a], accounts[i+b] = accounts[i+b], accounts[i+a]
-			})
-		}
-		i = j
-	}
-}
-
-// sameAccountWithLoadGroup 判断两个 accountWithLoad 是否属于同一排序组
-func sameAccountWithLoadGroup(a, b accountWithLoad) bool {
-	if a.account.Priority != b.account.Priority {
-		return false
-	}
-	if a.loadInfo.LoadRate != b.loadInfo.LoadRate {
-		return false
-	}
-	return sameLastUsedAt(a.account.LastUsedAt, b.account.LastUsedAt)
 }
 
 // shuffleWithinPriorityAndLastUsed 对排序后的 []*Account 切片，按 (Priority, LastUsedAt) 分组后组内随机打乱。
