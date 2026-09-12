@@ -16,7 +16,7 @@ func TestPresetFilterEnvelopesAndInteraction(t *testing.T) {
 	for _, tc := range []struct{ name, protocol, body, want string }{
 		{"responses", "responses", `{"instructions":"preset","tools":[{"description":"preset"}],"input":[{"role":"developer","content":"preset"},{"role":"user","id":"u","content":"keep","internal_chat_message_metadata_passthrough":{"secret":"drop"}},{"type":"function_call_output","output":"drop tool data"}],"seed":9007199254740993}`, `{"input":[{"role":"user","content":"keep"}]}`},
 		{"websocket", "responses_websocket", `{"type":"response.create","client_metadata":{"drop":true},"response":{"instructions":"preset","input":[{"role":"system","content":"preset"},{"role":"user","content":"keep"}]}}`, `{"type":"response.create","response":{"input":[{"role":"user","content":"keep"}]}}`},
-		{"claude", "anthropic_messages", `{"system":"You are Claude Code","messages":[{"role":"user","content":[{"type":"text","text":"<system-reminder>preset</system-reminder>\nkeep","cache_control":{"type":"ephemeral"}},{"type":"tool_result","tool_use_id":"x","content":"drop tool data"}]},{"role":"assistant","content":"keep reply","id":"a"}]}`, `{"messages":[{"role":"user","content":[{"type":"text","text":"keep"}]},{"role":"assistant","content":"keep reply"}]}`},
+		{"claude", "anthropic_messages", `{"system":"You are Claude Code","messages":[{"role":"user","content":[{"type":"text","text":"<system-reminder>preset</system-reminder>\nkeep","cache_control":{"type":"ephemeral"}},{"type":"tool_result","tool_use_id":"x","content":"drop tool data"}]},{"role":"assistant","content":[{"type":"thinking","thinking":"internal reasoning","signature":"long opaque signature"},{"type":"redacted_thinking","data":"opaque reasoning"},{"type":"text","text":"keep reply"}],"id":"a"}]}`, `{"messages":[{"role":"user","content":[{"type":"text","text":"keep"}]},{"role":"assistant","content":[{"text":"keep reply","type":"text"}]}]}`},
 		{"codex", "responses", `{"input":[{"role":"developer","content":"You are Codex"},{"role":"user","content":"# AGENTS.md instructions\n<INSTRUCTIONS>preset</INSTRUCTIONS>\n<environment_context>preset</environment_context>\nkeep"},{"type":"reasoning","encrypted_content":"drop"}]}`, `{"input":[{"role":"user","content":"keep"}]}`},
 		{"gemini batch", "gemini", `{"requests":[{"systemInstruction":{"parts":[{"text":"preset"}]},"contents":[{"role":"model","parts":[{"text":"reply","thoughtSignature":"drop"}]},{"role":"user","parts":[{"text":"keep","metadata":"drop"}]}]}]}`, `{"requests":[{"contents":[{"role":"model","parts":[{"text":"reply"}]},{"role":"user","parts":[{"text":"keep"}]}]}]}`},
 		{"unknown agent", "openai_chat", `{"messages":[{"role":"system","content":"preset"},{"role":"user","content":"<system-reminder>actual user data</system-reminder>"}]}`, `{"messages":[{"role":"user","content":"<system-reminder>actual user data</system-reminder>"}]}`},
@@ -76,7 +76,11 @@ func TestPresetFilterProductionRequestFixtures(t *testing.T) {
 				"tools":  []any{map[string]any{"name": "tool", "description": preset}},
 				"messages": []any{
 					map[string]any{"role": "user", "content": []any{map[string]any{"type": "text", "text": "<system-reminder>" + preset + "</system-reminder>\n当前环境", "cache_control": map[string]any{"type": "ephemeral"}}}},
-					map[string]any{"role": "assistant", "content": []any{map[string]any{"type": "tool_use", "name": "drop", "input": preset}}},
+					map[string]any{"role": "assistant", "content": []any{
+						map[string]any{"type": "thinking", "thinking": preset, "signature": preset},
+						map[string]any{"type": "redacted_thinking", "data": preset},
+						map[string]any{"type": "tool_use", "name": "drop", "input": preset},
+					}},
 				},
 			}),
 			mustContain: []string{"当前环境"}, maxPercentOfRaw: 10, wantRoot: "messages", wantRoles: []string{"user"},
@@ -87,7 +91,7 @@ func TestPresetFilterProductionRequestFixtures(t *testing.T) {
 			for _, expected := range tc.mustContain {
 				require.Contains(t, string(filtered), expected)
 			}
-			for _, omitted := range []string{"additional_tools", `"role":"developer"`, `"type":"reasoning"`, "encrypted_content", "client_metadata", "internal_chat_message_metadata_passthrough", "prompt_cache_key", "# AGENTS.md instructions"} {
+			for _, omitted := range []string{"additional_tools", `"role":"developer"`, `"type":"reasoning"`, `"type":"thinking"`, "redacted_thinking", "signature", "encrypted_content", "client_metadata", "internal_chat_message_metadata_passthrough", "prompt_cache_key", "# AGENTS.md instructions"} {
 				require.NotContains(t, string(filtered), omitted)
 			}
 			require.LessOrEqual(t, len(filtered)*100, len(tc.body)*tc.maxPercentOfRaw)
@@ -189,6 +193,26 @@ func TestPresetFilterSubcategoriesRemainIndependent(t *testing.T) {
 	require.Contains(t, string(skillsRetained), "REGISTERED_SKILL")
 
 	require.Equal(t, body, filterPresetRequestBody("responses", body, promptRecordFilterOptions{}))
+}
+
+func TestPresetFilterAlwaysDropsInternalReasoning(t *testing.T) {
+	body := []byte(`{"messages":[{"role":"assistant","content":[{"type":"thinking","thinking":"private chain","signature":"opaque signature"},{"type":"redacted_thinking","data":"opaque redaction"},{"type":"text","text":"visible reply"}]}]}`)
+
+	for _, options := range []promptRecordFilterOptions{
+		{Enabled: true},
+		{Enabled: true, AgentPreset: true},
+		{Enabled: true, Skills: true},
+		allPromptRecordFilters,
+	} {
+		filtered := string(filterPresetRequestBody("anthropic_messages", body, options))
+		require.NotContains(t, filtered, "thinking")
+		require.NotContains(t, filtered, "signature")
+		require.NotContains(t, filtered, "private chain")
+		require.NotContains(t, filtered, "opaque redaction")
+		require.Contains(t, filtered, "visible reply")
+	}
+
+	require.Equal(t, body, filterPresetRequestBody("anthropic_messages", body, promptRecordFilterOptions{}))
 }
 
 func TestMultimodalPayloadsAreRemovedFromStoredBody(t *testing.T) {

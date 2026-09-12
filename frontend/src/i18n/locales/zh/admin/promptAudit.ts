@@ -2,6 +2,7 @@ export default {
   promptRecords: {
     retentionDays: '记录保留天数',
     retentionHelp: '0 表示永久保留，最多为 3650 天。只影响新记录；已有记录的到期时间保持不变。',
+    retentionCompactHelp: '0 表示永久',
     invalidRetention: '保留天数必须是 0 至 3650 之间的整数。',
     responseScope: '响应保存支持 HTTP JSON 和 SSE。WebSocket 目前仅保存各轮请求。',
     websocketResponseUnsupported: '此记录来自 WebSocket；当前版本尚未采集该协议的响应。',
@@ -26,7 +27,7 @@ export default {
     filterSkills: 'SKILLS',
     requestBody: '完整请求体',
     recordingContentHelp: '默认保存请求头、提示词和响应。关闭“响应”后不会缓存或提取响应文本；图片、音频、视频和文件内容不会写入记录。设置仅影响新记录，不改变发送给模型的请求。',
-    presetFilterHelp: '开启的子项会从新记录中移除；AGENT预设对应用户的 AGENTS.md 或 CLAUDE.md 内容，SKILLS 对应已注册技能信息。',
+    presetFilterHelp: '开启的子项会从新记录中移除；AGENT预设对应用户的 AGENTS.md 或 CLAUDE.md 内容，SKILLS 对应已注册技能信息。内部推理及其签名始终随预设过滤移除。',
     recordingContentSaved: '已更新记录内容设置。',
     requestContentUnavailable: '该记录未保存此内容。',
     copyRequestBody: '复制完整请求体',

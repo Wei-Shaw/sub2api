@@ -1,7 +1,7 @@
 <template>
   <AppLayout>
-    <div class="space-y-6">
-      <div class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+    <div class="space-y-4">
+      <div class="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
         <div class="min-w-0">
           <h1 class="text-xl font-semibold text-gray-900 dark:text-white">
             {{ t('admin.promptRecords.title') }}
@@ -10,37 +10,76 @@
             {{ t('admin.promptRecords.description') }}
           </p>
         </div>
-        <div class="flex w-full items-center justify-between gap-3 sm:w-auto sm:justify-end">
-          <div class="sm:text-right">
-            <p class="text-sm font-medium text-gray-800 dark:text-gray-200">
-              {{ t('admin.promptRecords.recordingLabel') }}
-            </p>
-            <p class="mt-0.5 text-xs text-gray-500 dark:text-gray-400" role="status">
-              {{ recordingStatusText }}
-            </p>
-          </div>
-          <button
-            type="button"
-            role="switch"
-            class="relative inline-flex h-11 w-12 shrink-0 items-center justify-center rounded-lg focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60 dark:focus-visible:ring-offset-dark-900"
-            :aria-checked="recordingEnabled === true"
-            :aria-label="t('admin.promptRecords.recordingToggle')"
-            :aria-busy="recordingLoading || recordingSaving"
-            :disabled="recordingLoading || recordingSaving || recordingEnabled === null"
-            data-test="prompt-recording-toggle"
-            @click="toggleRecording"
-          >
-            <span
-              aria-hidden="true"
-              class="relative inline-flex h-6 w-11 items-center rounded-full border-2 border-transparent transition-colors duration-200 motion-reduce:transition-none"
-              :class="recordingEnabled ? 'bg-primary-600' : 'bg-gray-300 dark:bg-dark-600'"
+        <div
+          class="flex w-full flex-col gap-3 sm:flex-row sm:items-start sm:justify-between lg:w-auto lg:justify-end"
+          data-test="prompt-recording-toolbar"
+        >
+          <div class="flex w-full items-center justify-between gap-3 sm:w-auto sm:justify-start">
+            <div class="sm:text-right">
+              <p class="text-sm font-medium text-gray-800 dark:text-gray-200">
+                {{ t('admin.promptRecords.recordingLabel') }}
+              </p>
+              <p class="mt-0.5 text-xs text-gray-500 dark:text-gray-400" role="status">
+                {{ recordingStatusText }}
+              </p>
+            </div>
+            <button
+              type="button"
+              role="switch"
+              class="relative inline-flex h-11 w-12 shrink-0 items-center justify-center rounded-lg focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60 dark:focus-visible:ring-offset-dark-900"
+              :aria-checked="recordingEnabled === true"
+              :aria-label="t('admin.promptRecords.recordingToggle')"
+              :aria-busy="recordingLoading || recordingSaving"
+              :disabled="recordingLoading || recordingSaving || recordingEnabled === null"
+              data-test="prompt-recording-toggle"
+              @click="toggleRecording"
             >
               <span
-                class="pointer-events-none inline-block h-5 w-5 rounded-full bg-white shadow transition-transform duration-200 motion-reduce:transition-none"
-                :class="recordingEnabled ? 'translate-x-5' : 'translate-x-0'"
-              />
-            </span>
-          </button>
+                aria-hidden="true"
+                class="relative inline-flex h-6 w-11 items-center rounded-full border-2 border-transparent transition-colors duration-200 motion-reduce:transition-none"
+                :class="recordingEnabled ? 'bg-primary-600' : 'bg-gray-300 dark:bg-dark-600'"
+              >
+                <span
+                  class="pointer-events-none inline-block h-5 w-5 rounded-full bg-white shadow transition-transform duration-200 motion-reduce:transition-none"
+                  :class="recordingEnabled ? 'translate-x-5' : 'translate-x-0'"
+                />
+              </span>
+            </button>
+          </div>
+          <form
+            class="grid w-full min-w-0 grid-cols-[minmax(0,1fr)_auto] items-end gap-x-2 gap-y-1 border-gray-200 sm:w-64 sm:border-l sm:pl-4 dark:border-dark-700"
+            data-test="prompt-record-retention-form"
+            @submit.prevent="saveRetention"
+          >
+            <label for="prompt-record-retention" class="input-label col-span-2">
+              {{ t('admin.promptRecords.retentionDays') }}
+              <span class="ml-1 font-normal text-gray-500 dark:text-gray-400">
+                {{ t('admin.promptRecords.retentionCompactHelp') }}
+              </span>
+            </label>
+            <input
+              id="prompt-record-retention"
+              v-model.number="retentionDays"
+              type="number"
+              min="0"
+              max="3650"
+              step="1"
+              required
+              class="input h-10 w-full min-w-0"
+              aria-describedby="prompt-record-retention-help"
+              :disabled="recordingLoading || recordingSaving"
+            />
+            <button
+              class="btn btn-secondary h-10 px-3"
+              type="submit"
+              :disabled="recordingLoading || recordingSaving"
+            >
+              {{ t('common.save') }}
+            </button>
+            <p id="prompt-record-retention-help" class="sr-only">
+              {{ t('admin.promptRecords.retentionHelp') }}
+            </p>
+          </form>
         </div>
       </div>
 
@@ -114,18 +153,10 @@
             {{ t('admin.promptRecords.presetFilterHelp') }}
           </p>
         </div>
-	        <p class="text-xs text-gray-500 dark:text-gray-400">
+        <p class="text-xs text-gray-500 dark:text-gray-400">
           {{ t('admin.promptRecords.recordingContentHelp') }}
         </p>
-		<p class="text-xs text-gray-500 dark:text-gray-400">{{ t('admin.promptRecords.responseScope') }}</p>
-		<form class="flex flex-wrap items-end gap-3" @submit.prevent="saveRetention">
-			<div>
-				<label for="prompt-record-retention" class="input-label">{{ t('admin.promptRecords.retentionDays') }}</label>
-				<input id="prompt-record-retention" v-model.number="retentionDays" type="number" min="0" max="3650" step="1" required class="input w-36" :disabled="recordingLoading || recordingSaving" />
-			</div>
-			<button class="btn btn-secondary" type="submit" :disabled="recordingLoading || recordingSaving">{{ t('common.save') }}</button>
-			<p class="w-full text-xs text-gray-500 dark:text-gray-400">{{ t('admin.promptRecords.retentionHelp') }}</p>
-		</form>
+        <p class="text-xs text-gray-500 dark:text-gray-400">{{ t('admin.promptRecords.responseScope') }}</p>
 		<details v-if="queueStats" class="rounded-lg border border-gray-200 p-3 text-xs text-gray-600 dark:border-dark-700 dark:text-gray-400" data-test="record-queue-stats">
 			<summary class="cursor-pointer py-1">{{ t('admin.promptRecords.queueStatus') }}</summary>
 			<div class="mt-3 grid gap-2 sm:grid-cols-2">

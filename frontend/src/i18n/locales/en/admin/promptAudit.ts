@@ -2,6 +2,7 @@ export default {
   promptRecords: {
     retentionDays: 'Record retention days',
     retentionHelp: '0 retains records indefinitely; the maximum is 3650 days. Applies to new records only. Existing expiry dates remain unchanged.',
+    retentionCompactHelp: '0 means forever',
     invalidRetention: 'Retention must be a whole number between 0 and 3650.',
     responseScope: 'Response capture supports HTTP JSON and SSE. WebSocket currently retains requests for each turn only.',
     websocketResponseUnsupported: 'This is a WebSocket record. This version does not capture responses for that protocol.',
@@ -26,7 +27,7 @@ export default {
     filterSkills: 'SKILLS',
     requestBody: 'Full request body',
     recordingContentHelp: 'Headers, prompts, and responses are saved by default. Turning off Response prevents response buffering and text extraction. Image, audio, video, and file content is never written to records. Changes apply only to new records and do not change requests sent to models.',
-    presetFilterHelp: 'Enabled subfilters are removed from new records. AGENT preset covers user AGENTS.md or CLAUDE.md content; SKILLS covers registered skill information.',
+    presetFilterHelp: 'Enabled subfilters are removed from new records. AGENT preset covers user AGENTS.md or CLAUDE.md content; SKILLS covers registered skill information. Internal reasoning and its signatures are always removed with preset filtering.',
     recordingContentSaved: 'Recording content settings updated.',
     requestContentUnavailable: 'This content was not saved for this record.',
     copyRequestBody: 'Copy full request body',

@@ -161,6 +161,12 @@ describe('PromptRecordsView', () => {
     mocks.updatePromptRecordingConfig.mockResolvedValueOnce({ retention_days: 30 })
     const wrapper = mount(PromptRecordsView, { global: { stubs: { AppLayout: { template: '<div><slot /></div>' } } } })
     await flushPromises()
+    const toolbar = wrapper.get('[data-test="prompt-recording-toolbar"]')
+    expect(toolbar.find('[data-test="prompt-record-retention-form"]').exists()).toBe(true)
+    expect(toolbar.element.textContent).toContain('admin.promptRecords.retentionDays')
+    expect(toolbar.element.innerHTML.indexOf('prompt-recording-toggle')).toBeLessThan(
+      toolbar.element.innerHTML.indexOf('prompt-record-retention'),
+    )
     await wrapper.get('#prompt-record-retention').setValue(30)
     await wrapper.get('form').trigger('submit')
     await flushPromises()

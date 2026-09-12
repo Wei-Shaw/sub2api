@@ -80,7 +80,7 @@ func nonInteractionType(kind string) bool {
 		return false
 	}
 	switch kind {
-	case "additional_tools", "reasoning", "item_reference", "computer_initialize_state", "computer_screenshot":
+	case "additional_tools", "reasoning", "thinking", "redacted_thinking", "item_reference", "computer_initialize_state", "computer_screenshot":
 		return true
 	}
 	return strings.Contains(kind, "tool") || strings.HasSuffix(kind, "_call") || strings.HasSuffix(kind, "_call_output")
