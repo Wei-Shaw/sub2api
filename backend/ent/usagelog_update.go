@@ -561,6 +561,45 @@ func (_u *UsageLogUpdate) AddActualCost(v float64) *UsageLogUpdate {
 	return _u
 }
 
+// SetAPIReferenceCost sets the "api_reference_cost" field.
+func (_u *UsageLogUpdate) SetAPIReferenceCost(v float64) *UsageLogUpdate {
+	_u.mutation.ResetAPIReferenceCost()
+	_u.mutation.SetAPIReferenceCost(v)
+	return _u
+}
+
+// SetNillableAPIReferenceCost sets the "api_reference_cost" field if the given value is not nil.
+func (_u *UsageLogUpdate) SetNillableAPIReferenceCost(v *float64) *UsageLogUpdate {
+	if v != nil {
+		_u.SetAPIReferenceCost(*v)
+	}
+	return _u
+}
+
+// AddAPIReferenceCost adds value to the "api_reference_cost" field.
+func (_u *UsageLogUpdate) AddAPIReferenceCost(v float64) *UsageLogUpdate {
+	_u.mutation.AddAPIReferenceCost(v)
+	return _u
+}
+
+// ClearAPIReferenceCost clears the value of the "api_reference_cost" field.
+func (_u *UsageLogUpdate) ClearAPIReferenceCost() *UsageLogUpdate {
+	_u.mutation.ClearAPIReferenceCost()
+	return _u
+}
+
+// SetAPIReferencePricing sets the "api_reference_pricing" field.
+func (_u *UsageLogUpdate) SetAPIReferencePricing(v map[string]interface{}) *UsageLogUpdate {
+	_u.mutation.SetAPIReferencePricing(v)
+	return _u
+}
+
+// ClearAPIReferencePricing clears the value of the "api_reference_pricing" field.
+func (_u *UsageLogUpdate) ClearAPIReferencePricing() *UsageLogUpdate {
+	_u.mutation.ClearAPIReferencePricing()
+	return _u
+}
+
 // SetRateMultiplier sets the "rate_multiplier" field.
 func (_u *UsageLogUpdate) SetRateMultiplier(v float64) *UsageLogUpdate {
 	_u.mutation.ResetRateMultiplier()
@@ -1263,6 +1302,21 @@ func (_u *UsageLogUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	}
 	if value, ok := _u.mutation.AddedActualCost(); ok {
 		_spec.AddField(usagelog.FieldActualCost, field.TypeFloat64, value)
+	}
+	if value, ok := _u.mutation.APIReferenceCost(); ok {
+		_spec.SetField(usagelog.FieldAPIReferenceCost, field.TypeFloat64, value)
+	}
+	if value, ok := _u.mutation.AddedAPIReferenceCost(); ok {
+		_spec.AddField(usagelog.FieldAPIReferenceCost, field.TypeFloat64, value)
+	}
+	if _u.mutation.APIReferenceCostCleared() {
+		_spec.ClearField(usagelog.FieldAPIReferenceCost, field.TypeFloat64)
+	}
+	if value, ok := _u.mutation.APIReferencePricing(); ok {
+		_spec.SetField(usagelog.FieldAPIReferencePricing, field.TypeJSON, value)
+	}
+	if _u.mutation.APIReferencePricingCleared() {
+		_spec.ClearField(usagelog.FieldAPIReferencePricing, field.TypeJSON)
 	}
 	if value, ok := _u.mutation.RateMultiplier(); ok {
 		_spec.SetField(usagelog.FieldRateMultiplier, field.TypeFloat64, value)
@@ -2075,6 +2129,45 @@ func (_u *UsageLogUpdateOne) AddActualCost(v float64) *UsageLogUpdateOne {
 	return _u
 }
 
+// SetAPIReferenceCost sets the "api_reference_cost" field.
+func (_u *UsageLogUpdateOne) SetAPIReferenceCost(v float64) *UsageLogUpdateOne {
+	_u.mutation.ResetAPIReferenceCost()
+	_u.mutation.SetAPIReferenceCost(v)
+	return _u
+}
+
+// SetNillableAPIReferenceCost sets the "api_reference_cost" field if the given value is not nil.
+func (_u *UsageLogUpdateOne) SetNillableAPIReferenceCost(v *float64) *UsageLogUpdateOne {
+	if v != nil {
+		_u.SetAPIReferenceCost(*v)
+	}
+	return _u
+}
+
+// AddAPIReferenceCost adds value to the "api_reference_cost" field.
+func (_u *UsageLogUpdateOne) AddAPIReferenceCost(v float64) *UsageLogUpdateOne {
+	_u.mutation.AddAPIReferenceCost(v)
+	return _u
+}
+
+// ClearAPIReferenceCost clears the value of the "api_reference_cost" field.
+func (_u *UsageLogUpdateOne) ClearAPIReferenceCost() *UsageLogUpdateOne {
+	_u.mutation.ClearAPIReferenceCost()
+	return _u
+}
+
+// SetAPIReferencePricing sets the "api_reference_pricing" field.
+func (_u *UsageLogUpdateOne) SetAPIReferencePricing(v map[string]interface{}) *UsageLogUpdateOne {
+	_u.mutation.SetAPIReferencePricing(v)
+	return _u
+}
+
+// ClearAPIReferencePricing clears the value of the "api_reference_pricing" field.
+func (_u *UsageLogUpdateOne) ClearAPIReferencePricing() *UsageLogUpdateOne {
+	_u.mutation.ClearAPIReferencePricing()
+	return _u
+}
+
 // SetRateMultiplier sets the "rate_multiplier" field.
 func (_u *UsageLogUpdateOne) SetRateMultiplier(v float64) *UsageLogUpdateOne {
 	_u.mutation.ResetRateMultiplier()
@@ -2807,6 +2900,21 @@ func (_u *UsageLogUpdateOne) sqlSave(ctx context.Context) (_node *UsageLog, err 
 	}
 	if value, ok := _u.mutation.AddedActualCost(); ok {
 		_spec.AddField(usagelog.FieldActualCost, field.TypeFloat64, value)
+	}
+	if value, ok := _u.mutation.APIReferenceCost(); ok {
+		_spec.SetField(usagelog.FieldAPIReferenceCost, field.TypeFloat64, value)
+	}
+	if value, ok := _u.mutation.AddedAPIReferenceCost(); ok {
+		_spec.AddField(usagelog.FieldAPIReferenceCost, field.TypeFloat64, value)
+	}
+	if _u.mutation.APIReferenceCostCleared() {
+		_spec.ClearField(usagelog.FieldAPIReferenceCost, field.TypeFloat64)
+	}
+	if value, ok := _u.mutation.APIReferencePricing(); ok {
+		_spec.SetField(usagelog.FieldAPIReferencePricing, field.TypeJSON, value)
+	}
+	if _u.mutation.APIReferencePricingCleared() {
+		_spec.ClearField(usagelog.FieldAPIReferencePricing, field.TypeJSON)
 	}
 	if value, ok := _u.mutation.RateMultiplier(); ok {
 		_spec.SetField(usagelog.FieldRateMultiplier, field.TypeFloat64, value)
