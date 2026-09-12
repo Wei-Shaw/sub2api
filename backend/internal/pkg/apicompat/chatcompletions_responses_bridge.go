@@ -207,6 +207,7 @@ func FunctionToolNames(tools []ResponsesTool) map[string]bool {
 type NamespacedToolName struct {
 	Namespace string
 	Name      string
+	Custom    bool
 }
 
 // NamespaceToolNames 收集 Responses 请求中 namespace 子工具的摊平名 →（namespace,
@@ -235,6 +236,7 @@ func NamespaceToolNames(tools []ResponsesTool) map[string]NamespacedToolName {
 			out[flattenNamespaceToolName(tool.Name, child.Name)] = NamespacedToolName{
 				Namespace: tool.Name,
 				Name:      child.Name,
+				Custom:    child.Type == "custom",
 			}
 		}
 	}
