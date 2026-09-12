@@ -828,11 +828,11 @@ func TestPolicyEnforcingFrameConn_SessionUpdateRotatesCapturedModel(t *testing.T
 	require.NoError(t, err)
 	require.Contains(t, string(payload1), `"service_tier"`, "frame1: gpt-4o miss whitelist → pass keeps service_tier")
 
-	// Frame 2: session.update — not response.create, untouched, but its
-	// side effect updates capturedSessionModel to gpt-5.5.
+	// Frame 2: session.update — not response.create; its side effect updates
+	// capturedSessionModel while nested prompt-cache fields are sanitized.
 	_, payload2, err := wrapper.ReadFrame(context.Background())
 	require.NoError(t, err)
-	require.Equal(t, string(rotate), string(payload2), "session.update frame is forwarded verbatim")
+	require.Equal(t, "gpt-5.5", gjson.GetBytes(payload2, "session.model").String())
 	require.Equal(t, "gpt-5.5", capturedSessionModel, "fix1: session.update must rotate capturedSessionModel")
 
 	// Frame 3: empty model + new captured gpt-5.5 → matches whitelist → filter.

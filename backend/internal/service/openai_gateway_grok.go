@@ -52,6 +52,11 @@ func (s *OpenAIGatewayService) forwardGrokResponses(
 	// account has no model_mapping, matching the Chat Completions path and xAI's
 	// actual Responses model IDs.
 	upstreamModel = xai.ResolveGrokTextResponsesModelID(upstreamModel, grokDefaultResponsesModel)
+	if openAIPromptCacheFieldsPresent(body) {
+		if normalized, changed, sanitizeErr := normalizeOpenAIPromptCacheFieldsRaw(body, account, upstreamModel); sanitizeErr == nil && changed {
+			body = normalized
+		}
+	}
 	if isGrokImageGenerationModel(upstreamModel) {
 		return nil, fmt.Errorf("model %s is an image model and is not available on the Responses endpoint; use /v1/images/generations instead", upstreamModel)
 	}

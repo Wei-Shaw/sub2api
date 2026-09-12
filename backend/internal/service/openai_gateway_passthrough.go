@@ -607,6 +607,11 @@ func (s *OpenAIGatewayService) buildUpstreamRequestOpenAIPassthrough(
 
 	// DeepSeek / Kimi 原生 Responses 端点为无状态实现（见 normalizeDeepSeekResponsesRequestBody）。
 	body = normalizeDeepSeekResponsesRequestBody(account, body)
+	if openAIPromptCacheFieldsPresent(body) {
+		if normalized, changed, sanitizeErr := normalizeOpenAIPromptCacheFieldsRaw(body, account, gjson.GetBytes(body, "model").String()); sanitizeErr == nil && changed {
+			body = normalized
+		}
+	}
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, targetURL, bytes.NewReader(body))
 	if err != nil {
