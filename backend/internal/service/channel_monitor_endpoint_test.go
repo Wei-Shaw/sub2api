@@ -57,6 +57,47 @@ func TestNormalizeMonitorEndpoint_PreservesBasePath(t *testing.T) {
 		normalizeEndpoint("https://relay.example/tenant%2Fone/anthropic/v1/"))
 }
 
+func TestIsZhipuOfficialEndpoint(t *testing.T) {
+	for _, tc := range []struct {
+		endpoint string
+		want     bool
+	}{
+		{"https://open.bigmodel.cn", true},
+		{"https://open.bigmodel.cn/api/paas/v4", true},
+		{"https://OPEN.BIGMODEL.CN/api/coding/paas/v4", true},
+		{"https://relay.example.com", false},
+		{"https://not-open.bigmodel.cn", false},
+		{"https://open.bigmodel.cn.evil.com", false},
+		{"://bad", true}, // url.Parse 失败时保守当作官方域名，保留旧行为
+	} {
+		t.Run(tc.endpoint, func(t *testing.T) {
+			require.Equal(t, tc.want, isZhipuOfficialEndpoint(tc.endpoint))
+		})
+	}
+}
+
+func TestProviderAdapterFor_ZhipuPathSelection(t *testing.T) {
+	// 官方域名（含 Coding 计划的 base path）：走官方原生路径，行为不变。
+	for _, endpoint := range []string{"https://open.bigmodel.cn", "https://open.bigmodel.cn/api/paas/v4", "https://open.bigmodel.cn/api/coding/paas/v4"} {
+		t.Run("official/"+endpoint, func(t *testing.T) {
+			adapter, apiMode, ok := providerAdapterFor(MonitorProviderZhipu, "", endpoint)
+			require.True(t, ok)
+			require.Equal(t, MonitorAPIModeChatCompletions, apiMode)
+			require.Equal(t, providerZhipuPath, adapter.buildPath("glm-5.3-flash"))
+		})
+	}
+
+	// 第三方中转站：回退到通用兼容路径，修复 404。
+	for _, endpoint := range []string{"https://relay.example.com", "https://api.opkaa.com"} {
+		t.Run("third-party/"+endpoint, func(t *testing.T) {
+			adapter, apiMode, ok := providerAdapterFor(MonitorProviderZhipu, "", endpoint)
+			require.True(t, ok)
+			require.Equal(t, MonitorAPIModeChatCompletions, apiMode)
+			require.Equal(t, providerOpenAIPath, adapter.buildPath("glm-5.3-flash"))
+		})
+	}
+}
+
 func TestCallProvider_BasePath(t *testing.T) {
 	swapMonitorHTTPClient(t)
 	requests := make(chan string, 1)
@@ -83,7 +124,9 @@ func TestCallProvider_BasePath(t *testing.T) {
 		{"openai chat version", MonitorProviderOpenAI, "", "/relay/v1/", "/relay/v1/chat/completions"},
 		{"openai responses version", MonitorProviderOpenAI, MonitorAPIModeResponses, "/relay/v1", "/relay/v1/responses"},
 		{"gemini version", MonitorProviderGemini, "", "/relay/v1beta", "/relay/v1beta/models/test-model:generateContent"},
-		{"zhipu version", MonitorProviderZhipu, "", "/api/paas/v4", "/api/paas/v4/chat/completions"},
+		// httptest server 的地址不是官方域名 open.bigmodel.cn，所以按当前行为
+		// （见 isZhipuOfficialEndpoint）应该回退到通用兼容路径，而不是官方原生路径。
+		{"zhipu third-party relay", MonitorProviderZhipu, "", "", "/v1/chat/completions"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			_, _, status, err := callProvider(context.Background(), tc.provider,

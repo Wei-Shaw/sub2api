@@ -224,6 +224,13 @@ var providerKimiChatAdapter = newOpenAICompatibleChatAdapter(providerOpenAIPath)
 //nolint:gochecknoglobals // 适配器表是只读静态数据，初始化后不变更。
 var providerZhipuChatAdapter = newOpenAICompatibleChatAdapter(providerZhipuPath)
 
+// providerZhipuCompatibleChatAdapter 供非官方域名的 zhipu 监控使用：第三方 OpenAI
+// 兼容中转站通常只实现通用的 /v1/chat/completions，不支持智谱官方原生路径
+// （/api/paas/v4/chat/completions）。见 isZhipuOfficialEndpoint。
+//
+//nolint:gochecknoglobals // 适配器表是只读静态数据，初始化后不变更。
+var providerZhipuCompatibleChatAdapter = newOpenAICompatibleChatAdapter(providerOpenAIPath)
+
 //nolint:gochecknoglobals // 适配器表是只读静态数据，初始化后不变更。
 var providerDeepseekChatAdapter = newOpenAICompatibleChatAdapter(providerOpenAIPath)
 
@@ -266,10 +273,30 @@ var providerOpenAIResponsesAdapter = providerAdapter{
 	textPath: "output.0.content.0.text",
 }
 
-// providerAdapterFor 按 provider + api_mode 选择具体 adapter。
-func providerAdapterFor(provider, apiMode string) (providerAdapter, string, bool) {
+// zhipuOfficialHost 智谱官方 API 域名。官方原生路径
+// （/api/paas/v4/chat/completions，即 providerZhipuPath）只有这个域名才实现；
+// 任何其它域名都是第三方中转站，只保证支持通用的 /v1/chat/completions。
+const zhipuOfficialHost = "open.bigmodel.cn"
+
+// isZhipuOfficialEndpoint 判断 endpoint 是否指向智谱官方域名。
+// 解析失败时保守地当作官方域名，保留一直以来的默认行为——真正畸形的
+// endpoint 会在 validateEndpoint 阶段被拦下，走不到这里。
+func isZhipuOfficialEndpoint(endpoint string) bool {
+	u, err := url.Parse(endpoint)
+	if err != nil {
+		return true
+	}
+	return strings.EqualFold(u.Hostname(), zhipuOfficialHost)
+}
+
+// providerAdapterFor 按 provider + api_mode 选择具体 adapter；zhipu 额外按 endpoint
+// 是否为官方域名在原生路径 / 通用兼容路径间切换（见 isZhipuOfficialEndpoint）。
+func providerAdapterFor(provider, apiMode, endpoint string) (providerAdapter, string, bool) {
 	if provider == MonitorProviderOpenAI && defaultAPIMode(apiMode) == MonitorAPIModeResponses {
 		return providerOpenAIResponsesAdapter, MonitorAPIModeResponses, true
+	}
+	if provider == MonitorProviderZhipu && !isZhipuOfficialEndpoint(endpoint) {
+		return providerZhipuCompatibleChatAdapter, MonitorAPIModeChatCompletions, true
 	}
 	adapter, ok := providerAdapters[provider]
 	return adapter, MonitorAPIModeChatCompletions, ok
@@ -288,7 +315,7 @@ func callProvider(ctx context.Context, provider, endpoint, apiKey, model, prompt
 	if err := validateAPIMode(provider, requestedAPIMode); err != nil {
 		return "", "", 0, err
 	}
-	adapter, apiMode, ok := providerAdapterFor(provider, requestedAPIMode)
+	adapter, apiMode, ok := providerAdapterFor(provider, requestedAPIMode, endpoint)
 	if !ok {
 		return "", "", 0, fmt.Errorf("unsupported provider %q", provider)
 	}
