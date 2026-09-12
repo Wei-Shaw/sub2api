@@ -448,7 +448,7 @@ func (s *defaultOpenAIAccountScheduler) Select(
 		}
 	}
 
-	if !req.StickyWeighted {
+	if !req.StickyWeighted || openAIStickyRequestRequiresBoundedWait(req) {
 		selection, escapedSticky, err := s.selectBySessionHash(ctx, req)
 		if err != nil {
 			return nil, decision, err
@@ -558,14 +558,17 @@ func (s *defaultOpenAIAccountScheduler) selectBySessionHash(
 		return nil, false, nil
 	}
 	escapeCfg := s.service.openAIStickyEscapeConfig()
-	if reason, errorRate, ttft, shouldEscape := s.shouldEscapeStickyAccount(accountID, escapeCfg); shouldEscape && !req.DisableStickyEscape {
-		slog.Info("sticky_escape_triggered",
-			"account_id", accountID,
-			"reason", reason,
-			"error_rate", errorRate,
-			"ttft", ttft,
-		)
-		return nil, true, nil
+	stickyRequiresBoundedWait := openAIStickyRequestRequiresBoundedWait(req)
+	if !stickyRequiresBoundedWait {
+		if reason, errorRate, ttft, shouldEscape := s.shouldEscapeStickyAccount(accountID, escapeCfg); shouldEscape && !req.DisableStickyEscape {
+			slog.Info("sticky_escape_triggered",
+				"account_id", accountID,
+				"reason", reason,
+				"error_rate", errorRate,
+				"ttft", ttft,
+			)
+			return nil, true, nil
+		}
 	}
 	result, acquireErr := s.service.tryAcquireAccountSlot(ctx, accountID, account.Concurrency)
 	if acquireErr != nil && req.DisableStickyEscape {
@@ -585,6 +588,17 @@ func (s *defaultOpenAIAccountScheduler) selectBySessionHash(
 	cfg := s.service.schedulingConfig()
 	// WaitPlan.MaxConcurrency 使用 Concurrency（非 EffectiveLoadFactor），因为 WaitPlan 控制的是 Redis 实际并发槽位等待。
 	if s.service.concurrencyService != nil {
+		if stickyRequiresBoundedWait {
+			return attachSelectionProfitGate(ctx, &AccountSelectionResult{
+				Account: account,
+				WaitPlan: &AccountWaitPlan{
+					AccountID:      accountID,
+					MaxConcurrency: account.Concurrency,
+					Timeout:        cfg.StickySessionWaitTimeout,
+					MaxWaiting:     cfg.StickySessionMaxWaiting,
+				},
+			}), false, nil
+		}
 		if escapeCfg.enabled && !req.DisableStickyEscape && acquireErr == nil && result != nil && !result.Acquired {
 			errorRate, ttft, _ := s.stats.snapshot(accountID)
 			slog.Info("sticky_escape_triggered",
@@ -595,17 +609,23 @@ func (s *defaultOpenAIAccountScheduler) selectBySessionHash(
 			)
 			return nil, true, nil
 		}
-		return attachSelectionProfitGate(ctx, &AccountSelectionResult{
-			Account: account,
-			WaitPlan: &AccountWaitPlan{
-				AccountID:      accountID,
-				MaxConcurrency: account.Concurrency,
-				Timeout:        cfg.StickySessionWaitTimeout,
-				MaxWaiting:     cfg.StickySessionMaxWaiting,
-			},
-		}), false, nil
+		return nil, true, nil
 	}
 	return nil, false, nil
+}
+
+func openAIStickyRequestRequiresBoundedWait(req OpenAIAccountScheduleRequest) bool {
+	if req.PreserveStickyBinding {
+		return true
+	}
+	switch req.RequiredTransport {
+	case OpenAIUpstreamTransportResponsesWebsocket,
+		OpenAIUpstreamTransportResponsesWebsocketV2,
+		OpenAIUpstreamTransportResponsesWebsocketV2Ingress:
+		return true
+	default:
+		return false
+	}
 }
 
 func openAIStickyAccountMatchesGroup(account *Account, groupID *int64) bool {
@@ -1056,6 +1076,9 @@ func (s *defaultOpenAIAccountScheduler) buildOpenAISelectionOrder(
 			return nil
 		}
 		groupTopK := plan.topK
+		if req.PreserveStickyBinding {
+			groupTopK = len(pool)
+		}
 		if groupTopK > len(pool) {
 			groupTopK = len(pool)
 		}
@@ -1475,7 +1498,7 @@ func (s *defaultOpenAIAccountScheduler) selectByLoadBalance(
 		filtered = append(filtered, account)
 		loadReq = append(loadReq, AccountWithConcurrency{
 			ID:             account.ID,
-			MaxConcurrency: account.EffectiveLoadFactor(),
+			MaxConcurrency: openAIAccountLoadCapacity(account),
 		})
 	}
 	if len(filtered) == 0 {
@@ -1655,7 +1678,7 @@ func buildOpenAIAccountLoadRequest(accounts []*Account) []AccountWithConcurrency
 		}
 		loadReq = append(loadReq, AccountWithConcurrency{
 			ID:             account.ID,
-			MaxConcurrency: account.EffectiveLoadFactor(),
+			MaxConcurrency: openAIAccountLoadCapacity(account),
 		})
 	}
 	return loadReq
