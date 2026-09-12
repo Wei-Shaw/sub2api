@@ -13,7 +13,10 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/service"
 )
 
-type subscriptionResetObserverRepository struct{ db *sql.DB }
+type subscriptionResetObserverRepository struct {
+	db    *sql.DB
+	quota service.SubscriptionQuotaRepository
+}
 
 func NewSubscriptionResetObserverRepository(db *sql.DB) service.SubscriptionResetObserverRepository {
 	return &subscriptionResetObserverRepository{db: db}
@@ -77,7 +80,7 @@ func (r *subscriptionResetObserverRepository) SavePolicy(ctx context.Context, in
 	if p.Version != version {
 		return nil, service.ErrSubscriptionResetPolicyConflict
 	}
-	if p.Mode == "observe" {
+	if p.Mode != "off" {
 		for _, accountID := range p.AccountIDs {
 			var eligible bool
 			err = tx.QueryRowContext(ctx, `SELECT (`+subscriptionResetEligibleAccountSQL+`) FROM accounts a JOIN account_groups ag ON ag.account_id=a.id AND ag.group_id=$2 WHERE a.id=$1 FOR SHARE OF a,ag`, accountID, p.GroupID).Scan(&eligible)
@@ -91,6 +94,14 @@ func (r *subscriptionResetObserverRepository) SavePolicy(ctx context.Context, in
 	}
 	if err := tx.QueryRowContext(ctx, `SELECT clock_timestamp()`).Scan(&p.UpdatedAt); err != nil {
 		return nil, err
+	}
+	if p.Mode == "auto" {
+		if r.quota == nil {
+			return nil, service.ErrSubscriptionQuotaUnavailable
+		}
+		if _, err := r.quota.EnableGroupQuota(WithSubscriptionQuotaSQLTx(ctx, tx), p.GroupID, p.UpdatedAt); err != nil {
+			return nil, err
+		}
 	}
 	p.Version = version + 1
 	policyJSON, err := json.Marshal(&p)
@@ -120,7 +131,7 @@ func (r *subscriptionResetObserverRepository) SavePolicy(ctx context.Context, in
 }
 
 func (r *subscriptionResetObserverRepository) ListEnabled(ctx context.Context) ([]*service.SubscriptionResetPolicy, error) {
-	rows, err := r.db.QueryContext(ctx, `SELECT p.policy FROM subscription_reset_policies p JOIN groups g ON g.id=p.group_id WHERE p.mode='observe' AND g.deleted_at IS NULL AND g.subscription_type='subscription' AND g.platform='openai' ORDER BY p.group_id`)
+	rows, err := r.db.QueryContext(ctx, `SELECT p.policy FROM subscription_reset_policies p JOIN groups g ON g.id=p.group_id WHERE p.mode IN ('observe','auto') AND g.deleted_at IS NULL AND g.subscription_type='subscription' AND g.platform='openai' ORDER BY p.group_id`)
 	if err != nil {
 		return nil, err
 	}
@@ -177,7 +188,7 @@ func (r *subscriptionResetObserverRepository) RecordSample(ctx context.Context, 
 	if err := json.Unmarshal(rawState, state); err != nil {
 		return err
 	}
-	if policy.Mode != "observe" {
+	if policy.Mode == "off" {
 		return nil
 	}
 	selected := false

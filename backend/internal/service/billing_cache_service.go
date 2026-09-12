@@ -104,15 +104,16 @@ type subscriptionCacheInvalidationPubSub interface {
 // BillingCacheService 计费缓存服务
 // 负责余额和订阅数据的缓存管理，提供高性能的计费资格检查
 type BillingCacheService struct {
-	cache                 BillingCache
-	userRepo              UserRepository
-	subRepo               UserSubscriptionRepository
-	apiKeyRateLimitLoader apiKeyRateLimitLoader
-	userRPMCache          UserRPMCache
-	userGroupRateRepo     UserGroupRateRepository
-	cfg                   *config.Config
-	circuitBreaker        *billingCircuitBreaker
-	userPlatformQuotaRepo UserPlatformQuotaRepository
+	cache                      BillingCache
+	userRepo                   UserRepository
+	subRepo                    UserSubscriptionRepository
+	apiKeyRateLimitLoader      apiKeyRateLimitLoader
+	userRPMCache               UserRPMCache
+	userGroupRateRepo          UserGroupRateRepository
+	cfg                        *config.Config
+	circuitBreaker             *billingCircuitBreaker
+	userPlatformQuotaRepo      UserPlatformQuotaRepository
+	subscriptionQuotaAdmission func(context.Context, int64, *Group) (*UserSubscription, error)
 
 	cacheWriteChan     chan cacheWriteTask
 	cacheWriteWg       sync.WaitGroup
@@ -898,6 +899,9 @@ func (s *BillingCacheService) checkBalanceEligibility(ctx context.Context, userI
 
 // checkSubscriptionEligibility 检查订阅模式资格
 func (s *BillingCacheService) checkSubscriptionEligibility(ctx context.Context, userID int64, group *Group, subscription *UserSubscription) error {
+	if s.subscriptionQuotaAdmission != nil {
+		return s.RefreshSubscriptionQuotaAdmission(ctx, userID, group, subscription)
+	}
 	// 获取订阅缓存数据
 	subData, err := s.GetSubscriptionStatus(ctx, userID, group.ID)
 	if err != nil {

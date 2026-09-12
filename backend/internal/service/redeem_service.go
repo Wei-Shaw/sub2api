@@ -697,6 +697,15 @@ func (s *RedeemService) GetUserHistory(ctx context.Context, userID int64, limit 
 
 // reduceOrCancelSubscription 缩短订阅天数，剩余天数 <= 0 时取消订阅
 func (s *RedeemService) reduceOrCancelSubscription(ctx context.Context, userID, groupID int64, reduceDays int, code string) error {
+	if s.subscriptionService.quotaRepo != nil && !subscriptionGroupTxHeld(ctx) {
+		sub, err := s.subscriptionService.userSubRepo.GetByUserIDAndGroupID(ctx, userID, groupID)
+		if err != nil {
+			return ErrSubscriptionNotFound
+		}
+		return s.subscriptionService.withSubscriptionGroupTx(ctx, sub.ID, func(txCtx context.Context) error {
+			return s.reduceOrCancelSubscription(txCtx, userID, groupID, reduceDays, code)
+		})
+	}
 	sub, err := s.subscriptionService.userSubRepo.GetByUserIDAndGroupID(ctx, userID, groupID)
 	if err != nil {
 		return ErrSubscriptionNotFound

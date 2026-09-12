@@ -15,7 +15,9 @@ import (
 const (
 	subscriptionResetJitter       = 2 * time.Second
 	subscriptionResetPeriod       = 7 * 24 * time.Hour
-	subscriptionResetEarlyDrop    = 10.0
+	subscriptionResetEarlyHigh    = 20.0
+	subscriptionResetEarlyLow     = 5.0
+	subscriptionResetRepeatDelay  = 30 * time.Second
 	subscriptionResetRecentEvents = 32
 )
 
@@ -42,7 +44,7 @@ func subscriptionResetSubjectKey(subject *SubscriptionResetQuotaSubject) string 
 
 // AdvanceSubscriptionResetObserver is deterministic: all clocks and provider
 // observations are inputs. Its caller persists state and changed audit events in
-// the same transaction. Early drops remain review-only, regardless of quorum.
+// the same transaction. Early drops require opt-in and repeated low evidence.
 func AdvanceSubscriptionResetObserver(p *SubscriptionResetPolicy, state *SubscriptionResetObserverState, sample *SubscriptionResetSample, now time.Time) ([]*SubscriptionResetEvent, error) {
 	if err := p.Validate(); err != nil {
 		return nil, err
@@ -50,7 +52,7 @@ func AdvanceSubscriptionResetObserver(p *SubscriptionResetPolicy, state *Subscri
 	if state == nil {
 		return nil, fmt.Errorf("subscription reset observer state is required")
 	}
-	if p.Mode != "observe" {
+	if p.Mode == "off" {
 		return nil, nil
 	}
 	changed := map[string]*SubscriptionResetEvent{}
@@ -131,6 +133,7 @@ func AdvanceSubscriptionResetObserver(p *SubscriptionResetPolicy, state *Subscri
 	current := &SubscriptionResetEvidence{ObservedAt: at, SubjectKey: key, Used: used, ResetAt: reset, PlanType: account.PlanType}
 	account.State, account.Reason = "observing", "baseline_ready"
 	if sample.LocalResetAt != nil && sample.LocalResetAt.After(at.Add(subscriptionResetJitter)) && !sample.LocalResetAt.After(now.Add(subscriptionResetJitter)) {
+		invalidateSubscriptionResetEarlyEvidence(state, key, "local_reset_excluded", now, changed)
 		account.State, account.Reason, account.Baseline = "local_reset", "local_reset_excluded", nil
 		return finish()
 	}
@@ -138,6 +141,9 @@ func AdvanceSubscriptionResetObserver(p *SubscriptionResetPolicy, state *Subscri
 		account.ReviewReason = "subject_or_plan_changed"
 	}
 	if account.ReviewReason != "" {
+		if previous != nil {
+			invalidateSubscriptionResetEarlyEvidence(state, previous.SubjectKey, account.ReviewReason, now, changed)
+		}
 		account.State, account.Reason = "needs_review", account.ReviewReason
 		account.Baseline = current
 		return finish()
@@ -150,6 +156,7 @@ func AdvanceSubscriptionResetObserver(p *SubscriptionResetPolicy, state *Subscri
 		return finish()
 	}
 	if sample.LocalResetAt != nil && !sample.LocalResetAt.After(at.Add(subscriptionResetJitter)) && (sample.LocalResetAt.After(previous.ObservedAt) || at.Sub(*sample.LocalResetAt) <= subscriptionResetFreshness(p)) {
+		invalidateSubscriptionResetEarlyEvidence(state, key, "local_reset_excluded", now, changed)
 		account.State, account.Reason, account.Baseline = "local_reset", "local_reset_excluded", current
 		return finish()
 	}
@@ -164,6 +171,7 @@ func AdvanceSubscriptionResetObserver(p *SubscriptionResetPolicy, state *Subscri
 		reset = previous.ResetAt
 	}
 	account.Baseline = current
+	advanceSubscriptionResetEarlyEvidence(p, state, current, now, changed)
 	// An opted-in single subject needs two distinct fresh observations of the
 	// same new window, separated in time; duplicate imports cannot provide them.
 	for _, event := range state.Events {
@@ -171,7 +179,7 @@ func AdvanceSubscriptionResetObserver(p *SubscriptionResetPolicy, state *Subscri
 			continue
 		}
 		member := &event.Members[0]
-		if member.SubjectKey == key && member.NewResetAt != nil && member.LastEvidenceAt != nil && at.Sub(*member.LastEvidenceAt) >= 30*time.Second && absSubscriptionResetDuration(current.ResetAt.Sub(*member.NewResetAt)) <= subscriptionResetJitter {
+		if member.SubjectKey == key && member.NewResetAt != nil && member.LastEvidenceAt != nil && at.Sub(*member.LastEvidenceAt) >= subscriptionResetRepeatDelay && absSubscriptionResetDuration(current.ResetAt.Sub(*member.NewResetAt)) <= subscriptionResetJitter {
 			member.ConfirmationSamples++
 			member.LastEvidenceAt, member.ConfirmedAt, member.Confirmed = &at, &at, true
 			member.State, member.Reason = "confirmed", "repeated_fresh_sample"
@@ -184,10 +192,12 @@ func AdvanceSubscriptionResetObserver(p *SubscriptionResetPolicy, state *Subscri
 		nearNextPeriod := absSubscriptionResetDuration(resetDelta-subscriptionResetPeriod) <= time.Duration(p.AggregationMinutes)*time.Minute+subscriptionResetJitter
 		if !at.Before(previous.ResetAt.Add(-subscriptionResetJitter)) && nearNextPeriod {
 			kind = "natural_reset"
-		} else {
+		} else if previous.Used >= subscriptionResetEarlyHigh && current.Used <= subscriptionResetEarlyLow {
 			kind = "early_drop"
+		} else {
+			account.State, account.Reason = "needs_review", "early_reset_threshold_not_met"
 		}
-	} else if previous.Used-current.Used >= subscriptionResetEarlyDrop {
+	} else if previous.Used >= subscriptionResetEarlyHigh && current.Used <= subscriptionResetEarlyLow {
 		kind = "early_drop"
 	}
 	if kind == "" {
@@ -195,33 +205,32 @@ func AdvanceSubscriptionResetObserver(p *SubscriptionResetPolicy, state *Subscri
 	}
 	if kind == "early_drop" {
 		account.State, account.Reason = "needs_review", "early_reset_unverified"
+		if p.AllowEarlyResets {
+			account.State, account.Reason = "observing", "early_repeat_sample_required"
+		}
 	}
 	var event *SubscriptionResetEvent
-	for i := len(state.Events) - 1; i >= 0; i-- {
-		candidate := state.Events[i]
-		if candidate.PolicyVersion == p.Version && candidate.Kind == kind && absSubscriptionResetDuration(candidate.SourceResetAt.Sub(previous.ResetAt)) <= time.Duration(p.AggregationMinutes)*time.Minute+subscriptionResetJitter {
-			newSequence := false
-			if kind == "early_drop" {
-				for _, member := range candidate.Members {
-					if member.SubjectKey == key && member.LastEvidenceAt != nil && member.NewUsedPercent != nil && !previous.ObservedAt.Before(*member.LastEvidenceAt) && current.ObservedAt.After(*member.LastEvidenceAt) && (previous.ObservedAt.After(*member.LastEvidenceAt) || *member.NewUsedPercent-current.Used >= subscriptionResetEarlyDrop) {
-						newSequence = true
-						break
-					}
-				}
-			}
-			if newSequence {
+	previousEventID, ambiguous := "", false
+	if kind == "early_drop" {
+		event, previousEventID, ambiguous = findSubscriptionResetEarlyEvent(p, state, previous, now)
+	} else {
+		for i := len(state.Events) - 1; i >= 0; i-- {
+			candidate := state.Events[i]
+			if candidate.PolicyVersion == p.Version && candidate.Kind == kind && absSubscriptionResetDuration(candidate.SourceResetAt.Sub(previous.ResetAt)) <= time.Duration(p.AggregationMinutes)*time.Minute+subscriptionResetJitter {
+				event = candidate
 				break
 			}
-			event = candidate
-			break
 		}
 	}
 	if event == nil {
 		event = newSubscriptionResetEvent(p, state, previous, current, kind, now)
-		state.Events = append(state.Events, event)
-		if len(state.Events) > subscriptionResetRecentEvents {
-			state.Events = append([]*SubscriptionResetEvent{}, state.Events[len(state.Events)-subscriptionResetRecentEvents:]...)
+		event.PreviousEventID = previousEventID
+		if ambiguous {
+			event.Status, event.Reason = "needs_review", "ambiguous_early_batch"
+			account.State, account.Reason = "needs_review", "ambiguous_early_batch"
 		}
+		state.Events = append(state.Events, event)
+		trimSubscriptionResetEvents(p, state, now)
 	}
 	for i := range event.Members {
 		member := &event.Members[i]
@@ -232,9 +241,14 @@ func AdvanceSubscriptionResetObserver(p *SubscriptionResetPolicy, state *Subscri
 		oldReset, newReset := previous.ResetAt, current.ResetAt
 		oldUsed, newUsed := previous.Used, current.Used
 		member.OldResetAt, member.NewResetAt, member.LastEvidenceAt = &oldReset, &newReset, &at
+		baselineAt := previous.ObservedAt
+		member.FirstEvidenceAt, member.BaselineObservedAt, member.PlanType = &at, &baselineAt, current.PlanType
 		member.OldUsedPercent, member.NewUsedPercent = &oldUsed, &newUsed
 		member.ConfirmationSamples = 1
 		member.State, member.Reason = "needs_review", "early_reset_unverified"
+		if kind == "early_drop" && p.AllowEarlyResets && event.Status != "needs_review" {
+			member.State, member.Reason = "pending", "repeat_low_sample_required"
+		}
 		if kind == "natural_reset" {
 			member.Confirmed = event.Denominator > 1
 			member.State, member.Reason = "pending", "repeat_sample_required"
@@ -277,7 +291,7 @@ func newSubscriptionResetEvent(p *SubscriptionResetPolicy, state *SubscriptionRe
 	if event.Denominator > 1 && event.RequiredCount < 2 {
 		event.RequiredCount = 2
 	}
-	if kind == "early_drop" {
+	if kind == "early_drop" && !p.AllowEarlyResets {
 		event.Status, event.Reason = "needs_review", "early_reset_unverified"
 	} else if event.Denominator == 1 && !p.AllowSingleSubject {
 		event.Status, event.Reason = "needs_review", "single_subject_requires_opt_in"
@@ -303,6 +317,132 @@ func updateSubscriptionResetQuorum(event *SubscriptionResetEvent, p *Subscriptio
 	if event.ConfirmedCount >= event.RequiredCount && (event.Denominator > 1 || p.AllowSingleSubject) {
 		confirmed := now.UTC()
 		event.Status, event.Reason, event.ConfirmedAt = "confirmed", "observation_quorum_met", &confirmed
+		event.ConfirmedKind = "natural"
+		if event.Kind == "early_drop" {
+			event.ConfirmedKind = "early"
+		}
+	}
+}
+
+// Each early batch names its predecessor. Matching the subject's own observed
+// transition chain prevents a delayed first reset joining a later batch merely
+// because both share the same upstream reset_at value.
+func findSubscriptionResetEarlyEvent(p *SubscriptionResetPolicy, state *SubscriptionResetObserverState, previous *SubscriptionResetEvidence, now time.Time) (*SubscriptionResetEvent, string, bool) {
+	previousID := ""
+	var latestAt time.Time
+	ambiguous := false
+	for _, event := range state.Events {
+		if event.PolicyVersion != p.Version || event.Kind != "early_drop" {
+			continue
+		}
+		for _, member := range event.Members {
+			if member.SubjectKey != previous.SubjectKey || member.FirstEvidenceAt == nil || member.NewResetAt == nil || absSubscriptionResetDuration(member.NewResetAt.Sub(previous.ResetAt)) > subscriptionResetJitter {
+				continue
+			}
+			if previous.ObservedAt.Equal(*member.FirstEvidenceAt) {
+				ambiguous = true
+			}
+			if previous.ObservedAt.After(*member.FirstEvidenceAt) && member.FirstEvidenceAt.After(latestAt) {
+				previousID, latestAt = event.ID, *member.FirstEvidenceAt
+			}
+		}
+	}
+	var found *SubscriptionResetEvent
+	if previousID == "" && state.EarlyHistoryTruncatedUntil != nil && !now.After(*state.EarlyHistoryTruncatedUntil) {
+		ambiguous = true
+	}
+	for _, event := range state.Events {
+		if event.PolicyVersion != p.Version || event.Kind != "early_drop" || event.PreviousEventID != previousID || absSubscriptionResetDuration(event.SourceResetAt.Sub(previous.ResetAt)) > time.Duration(p.AggregationMinutes)*time.Minute+subscriptionResetJitter {
+			continue
+		}
+		memberExists := false
+		for _, member := range event.Members {
+			memberExists = memberExists || member.SubjectKey == previous.SubjectKey
+		}
+		if !memberExists || found != nil {
+			ambiguous = true
+		}
+		found = event
+	}
+	if ambiguous {
+		return nil, previousID, true
+	}
+	return found, previousID, false
+}
+
+func trimSubscriptionResetEvents(p *SubscriptionResetPolicy, state *SubscriptionResetObserverState, now time.Time) {
+	if len(state.Events) <= subscriptionResetRecentEvents {
+		return
+	}
+	cut := len(state.Events) - subscriptionResetRecentEvents
+	retained := make([]*SubscriptionResetEvent, 0, subscriptionResetRecentEvents+2)
+	for i, event := range state.Events {
+		// A still-fresh baseline can report this same natural boundary later.
+		// Retain its identity even when early review events fill the recent list.
+		retention := subscriptionResetFreshness(p) + time.Duration(p.AggregationMinutes)*time.Minute + subscriptionResetJitter
+		if i >= cut || (event.Kind == "natural_reset" && !now.After(event.SourceResetAt.Add(retention))) {
+			retained = append(retained, event)
+			continue
+		}
+		if event.Kind == "early_drop" {
+			until := event.SourceResetAt.Add(retention)
+			if state.EarlyHistoryTruncatedUntil == nil || until.After(*state.EarlyHistoryTruncatedUntil) {
+				state.EarlyHistoryTruncatedUntil = &until
+			}
+		}
+	}
+	state.Events = retained
+}
+
+func advanceSubscriptionResetEarlyEvidence(p *SubscriptionResetPolicy, state *SubscriptionResetObserverState, current *SubscriptionResetEvidence, now time.Time, changed map[string]*SubscriptionResetEvent) {
+	if !p.AllowEarlyResets {
+		return
+	}
+	for _, event := range state.Events {
+		if event.PolicyVersion != p.Version || event.Kind != "early_drop" || event.Status == "needs_review" || event.Status == "config_changed" {
+			continue
+		}
+		for i := range event.Members {
+			member := &event.Members[i]
+			if member.SubjectKey != current.SubjectKey || member.Confirmed || member.State != "pending" || member.FirstEvidenceAt == nil || member.NewResetAt == nil || !current.ObservedAt.After(*member.FirstEvidenceAt) {
+				continue
+			}
+			if current.Used > subscriptionResetEarlyLow || member.PlanType != current.PlanType || absSubscriptionResetDuration(current.ResetAt.Sub(*member.NewResetAt)) > subscriptionResetJitter || current.ObservedAt.Sub(*member.FirstEvidenceAt) > subscriptionResetFreshness(p) {
+				member.State, member.Reason = "needs_review", "early_low_samples_interrupted"
+				changed[event.ID] = event
+				continue
+			}
+			if current.ObservedAt.Sub(*member.FirstEvidenceAt) < subscriptionResetRepeatDelay {
+				continue
+			}
+			at := current.ObservedAt
+			member.ConfirmationSamples++
+			member.LastEvidenceAt, member.ConfirmedAt, member.Confirmed = &at, &at, true
+			member.State, member.Reason = "confirmed", "repeated_fresh_low_sample"
+			if at.After(event.DeadlineAt) {
+				member.State, member.Reason = "late_confirmed", "outside_aggregation_window"
+			}
+			changed[event.ID] = event
+		}
+		if changed[event.ID] != nil {
+			updateSubscriptionResetQuorum(event, p, now)
+		}
+	}
+}
+
+func invalidateSubscriptionResetEarlyEvidence(state *SubscriptionResetObserverState, subjectKey, reason string, now time.Time, changed map[string]*SubscriptionResetEvent) {
+	for _, event := range state.Events {
+		if event.Kind != "early_drop" {
+			continue
+		}
+		for i := range event.Members {
+			member := &event.Members[i]
+			if member.SubjectKey == subjectKey && member.State == "pending" && member.FirstEvidenceAt != nil && !member.Confirmed {
+				member.State, member.Reason = "needs_review", reason
+				event.UpdatedAt = now
+				changed[event.ID] = event
+			}
+		}
 	}
 }
 

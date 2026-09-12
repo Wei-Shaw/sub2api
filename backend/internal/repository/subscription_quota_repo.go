@@ -105,6 +105,10 @@ func (r *subscriptionQuotaRepository) GetGroupQuotaState(ctx context.Context, gr
 	return readGroupQuotaState(ctx, r.executor(ctx), groupID)
 }
 
+func (r *subscriptionQuotaRepository) QuotaNow(ctx context.Context) (time.Time, error) {
+	return quotaDatabaseTime(ctx, r.executor(ctx), time.Time{})
+}
+
 func readGroupQuotaState(ctx context.Context, exec quotaSQL, groupID int64) (*service.SubscriptionGroupQuotaState, error) {
 	state := &service.SubscriptionGroupQuotaState{GroupID: groupID}
 	err := quotaQueryOne(ctx, exec, `SELECT enabled_at,revision FROM subscription_group_quota_state WHERE group_id=$1`, []any{groupID}, &state.EnabledAt, &state.Revision)
@@ -246,6 +250,9 @@ func (r *subscriptionQuotaRepository) RotateSubscriptionQuota(ctx context.Contex
 	if input.NewTerm && (!input.Dimensions.Daily || !input.Dimensions.Weekly || !input.Dimensions.Monthly || input.TermStartsAt.IsZero()) {
 		return nil, service.ErrInvalidInput
 	}
+	if input.PreserveUsage && (input.NewTerm || input.Reason != "first_use") {
+		return nil, service.ErrInvalidInput
+	}
 	groupID, err := r.subscriptionGroupID(ctx, input.SubscriptionID)
 	if err != nil {
 		return nil, err
@@ -281,9 +288,9 @@ func (r *subscriptionQuotaRepository) RotateSubscriptionQuota(ctx context.Contex
 			termStart = input.TermStartsAt
 		}
 		_, err = exec.ExecContext(txCtx, `WITH inserted AS (
- INSERT INTO subscription_usage_buckets(subscription_id,dimension,term_epoch,group_revision,reason,window_start,term_starts_at,created_at)
- SELECT $1,d.dimension,$2,$3,$4,d.window_start,$5,$6
- FROM (VALUES ('daily',$7::boolean,$10::timestamptz),('weekly',$8::boolean,$11::timestamptz),('monthly',$9::boolean,$12::timestamptz)) d(dimension,selected,window_start)
+ INSERT INTO subscription_usage_buckets(subscription_id,dimension,term_epoch,group_revision,reason,window_start,term_starts_at,created_at,used_usd)
+ SELECT $1,d.dimension,$2,$3,$4,d.window_start,$5,$6,CASE WHEN $13 THEN d.used_usd ELSE 0 END
+ FROM (VALUES ('daily',$7::boolean,$10::timestamptz,$14::numeric),('weekly',$8::boolean,$11::timestamptz,$15::numeric),('monthly',$9::boolean,$12::timestamptz,$16::numeric)) d(dimension,selected,window_start,used_usd)
  WHERE d.selected RETURNING id,dimension
  ), changed AS (
  UPDATE subscription_quota_state SET term_epoch=$2,state_version=nextval('subscription_quota_state_version'),
@@ -292,14 +299,14 @@ func (r *subscriptionQuotaRepository) RotateSubscriptionQuota(ctx context.Contex
  monthly_bucket_id=COALESCE((SELECT id FROM inserted WHERE dimension='monthly'),monthly_bucket_id)
  WHERE subscription_id=$1 RETURNING subscription_id
  ) UPDATE user_subscriptions SET
- daily_usage_usd=CASE WHEN $7 THEN 0 ELSE daily_usage_usd END,
- weekly_usage_usd=CASE WHEN $8 THEN 0 ELSE weekly_usage_usd END,
- monthly_usage_usd=CASE WHEN $9 THEN 0 ELSE monthly_usage_usd END,
+ daily_usage_usd=CASE WHEN $7 AND NOT $13 THEN 0 ELSE daily_usage_usd END,
+ weekly_usage_usd=CASE WHEN $8 AND NOT $13 THEN 0 ELSE weekly_usage_usd END,
+ monthly_usage_usd=CASE WHEN $9 AND NOT $13 THEN 0 ELSE monthly_usage_usd END,
  daily_window_start=CASE WHEN $7 THEN $10 ELSE daily_window_start END,
  weekly_window_start=CASE WHEN $8 THEN $11 ELSE weekly_window_start END,
  monthly_window_start=CASE WHEN $9 THEN $12 ELSE monthly_window_start END,updated_at=$6
  WHERE id IN (SELECT subscription_id FROM changed)`, input.SubscriptionID, termEpoch, state.GroupRevision, input.Reason, termStart, at,
-			input.Dimensions.Daily, input.Dimensions.Weekly, input.Dimensions.Monthly, input.DailyWindowStart, input.WeeklyWindowStart, input.MonthlyWindowStart)
+			input.Dimensions.Daily, input.Dimensions.Weekly, input.Dimensions.Monthly, input.DailyWindowStart, input.WeeklyWindowStart, input.MonthlyWindowStart, input.PreserveUsage, state.DailyUsageUSD, state.WeeklyUsageUSD, state.MonthlyUsageUSD)
 		if err != nil {
 			return err
 		}

@@ -13,8 +13,8 @@ const SubscriptionResetMaxAccounts = 200
 
 var ErrSubscriptionResetPolicyConflict = infraerrors.Conflict("SUBSCRIPTION_RESET_POLICY_CONFLICT", "subscription reset policy changed; reload before saving")
 
-// Observe is intentionally the only enabled mode. No observer operation writes
-// subscription usage, expiry dates, billing commands, or reset-credit balances.
+// Observation never writes quota. Auto mode additionally allows the separate
+// transactional executor to publish a confirmed batch.
 type SubscriptionResetPolicy struct {
 	GroupID            int64     `json:"group_id"`
 	Mode               string    `json:"mode"`
@@ -24,6 +24,7 @@ type SubscriptionResetPolicy struct {
 	AggregationMinutes int       `json:"aggregation_minutes"`
 	ResetDimensions    []string  `json:"reset_dimensions"`
 	AllowSingleSubject bool      `json:"allow_single_subject"`
+	AllowEarlyResets   bool      `json:"allow_early_resets"`
 	Version            int64     `json:"version"`
 	UpdatedAt          time.Time `json:"updated_at"`
 }
@@ -39,14 +40,14 @@ func (p *SubscriptionResetPolicy) Validate() error {
 	if p == nil || p.GroupID <= 0 || p.Version < 0 {
 		return invalid("group_id and policy version are invalid")
 	}
-	if p.Mode != "off" && p.Mode != "observe" {
-		return invalid("mode must be off or observe; automatic execution is not supported")
+	if p.Mode != "off" && p.Mode != "observe" && p.Mode != "auto" {
+		return invalid("mode must be off, observe, or auto")
 	}
 	if p.Source != "7d" || p.QuorumPercent < 1 || p.QuorumPercent > 100 || p.AggregationMinutes < 1 || p.AggregationMinutes > 60 {
 		return invalid("source must be 7d, quorum_percent 1..100, and aggregation_minutes 1..60")
 	}
-	if len(p.AccountIDs) > SubscriptionResetMaxAccounts || (p.Mode == "observe" && len(p.AccountIDs) == 0) {
-		return invalid("observe mode requires 1..200 explicitly selected accounts")
+	if len(p.AccountIDs) > SubscriptionResetMaxAccounts || (p.Mode != "off" && len(p.AccountIDs) == 0) {
+		return invalid("enabled mode requires 1..200 explicitly selected accounts")
 	}
 	seen := make(map[int64]bool, len(p.AccountIDs))
 	for _, id := range p.AccountIDs {
@@ -117,26 +118,34 @@ type SubscriptionResetEventMember struct {
 	NewUsedPercent      *float64   `json:"new_used_percent,omitempty"`
 	ConfirmationSamples int        `json:"confirmation_samples"`
 	LastEvidenceAt      *time.Time `json:"last_evidence_at,omitempty"`
+	FirstEvidenceAt     *time.Time `json:"first_evidence_at,omitempty"`
+	BaselineObservedAt  *time.Time `json:"baseline_observed_at,omitempty"`
+	PlanType            string     `json:"plan_type,omitempty"`
 }
 
 type SubscriptionResetEvent struct {
-	ID              string                         `json:"id"`
-	GroupID         int64                          `json:"group_id"`
-	PolicyVersion   int64                          `json:"policy_version"`
-	Source          string                         `json:"source"`
-	Kind            string                         `json:"kind"`
-	Status          string                         `json:"status"`
-	Reason          string                         `json:"reason"`
-	OpenedAt        time.Time                      `json:"opened_at"`
-	DeadlineAt      time.Time                      `json:"deadline_at"`
-	ConfirmedAt     *time.Time                     `json:"confirmed_at"`
-	UpdatedAt       time.Time                      `json:"updated_at"`
-	SourceResetAt   time.Time                      `json:"source_reset_at"`
-	ResetDimensions []string                       `json:"reset_dimensions"`
-	Denominator     int                            `json:"denominator"`
-	ConfirmedCount  int                            `json:"confirmed_count"`
-	RequiredCount   int                            `json:"required_count"`
-	Members         []SubscriptionResetEventMember `json:"members"`
+	ID                    string                         `json:"id"`
+	GroupID               int64                          `json:"group_id"`
+	PolicyVersion         int64                          `json:"policy_version"`
+	Source                string                         `json:"source"`
+	Kind                  string                         `json:"kind"`
+	ConfirmedKind         string                         `json:"confirmed_kind,omitempty"`
+	PreviousEventID       string                         `json:"previous_event_id,omitempty"`
+	Status                string                         `json:"status"`
+	Reason                string                         `json:"reason"`
+	OpenedAt              time.Time                      `json:"opened_at"`
+	DeadlineAt            time.Time                      `json:"deadline_at"`
+	ConfirmedAt           *time.Time                     `json:"confirmed_at"`
+	ExecutedAt            *time.Time                     `json:"executed_at,omitempty"`
+	AffectedSubscriptions *int64                         `json:"affected_subscriptions,omitempty"`
+	GroupRevision         *int64                         `json:"group_revision,omitempty"`
+	UpdatedAt             time.Time                      `json:"updated_at"`
+	SourceResetAt         time.Time                      `json:"source_reset_at"`
+	ResetDimensions       []string                       `json:"reset_dimensions"`
+	Denominator           int                            `json:"denominator"`
+	ConfirmedCount        int                            `json:"confirmed_count"`
+	RequiredCount         int                            `json:"required_count"`
+	Members               []SubscriptionResetEventMember `json:"members"`
 }
 
 type SubscriptionResetStatus struct {
@@ -162,9 +171,10 @@ type SubscriptionResetObserverRepository interface {
 // Persisted JSON under the policy row lock. Events also have their own durable
 // audit rows; the bounded recent list associates late evidence with its batch.
 type SubscriptionResetObserverState struct {
-	Accounts       map[int64]*SubscriptionResetObserverAccount `json:"accounts"`
-	Events         []*SubscriptionResetEvent                   `json:"events"`
-	LastObservedAt *time.Time                                  `json:"last_observed_at"`
+	Accounts                   map[int64]*SubscriptionResetObserverAccount `json:"accounts"`
+	Events                     []*SubscriptionResetEvent                   `json:"events"`
+	LastObservedAt             *time.Time                                  `json:"last_observed_at"`
+	EarlyHistoryTruncatedUntil *time.Time                                  `json:"early_history_truncated_until,omitempty"`
 }
 
 type SubscriptionResetObserverAccount struct {
@@ -188,7 +198,7 @@ func NewSubscriptionResetObserverState() *SubscriptionResetObserverState {
 // Snapshot projection shares freshness rules with the engine; missing or stale
 // observations remain unknown and never reduce a candidate's frozen denominator.
 func SubscriptionResetObserverStatus(p *SubscriptionResetPolicy, s *SubscriptionResetObserverState, events []*SubscriptionResetEvent, now time.Time) *SubscriptionResetStatus {
-	out := &SubscriptionResetStatus{Policy: p, Accounts: []SubscriptionResetAccountState{}, Events: events, ObservationOnly: true}
+	out := &SubscriptionResetStatus{Policy: p, Accounts: []SubscriptionResetAccountState{}, Events: events, ObservationOnly: p.Mode != "auto"}
 	if out.Events == nil {
 		out.Events = []*SubscriptionResetEvent{}
 	}
@@ -232,7 +242,7 @@ func SubscriptionResetObserverStatus(p *SubscriptionResetPolicy, s *Subscription
 		out.Accounts = append(out.Accounts, a)
 	}
 	out.VerifiedSubjectCount = len(verified)
-	out.Ready = p.Mode == "observe" && out.SubjectCount > 0 && len(verified) == out.SubjectCount && (out.SubjectCount > 1 || p.AllowSingleSubject)
+	out.Ready = p.Mode != "off" && out.SubjectCount > 0 && len(verified) == out.SubjectCount && (out.SubjectCount > 1 || p.AllowSingleSubject)
 	for _, event := range out.Events {
 		if event.PolicyVersion == p.Version && (event.Status == "pending" || event.Status == "needs_review") {
 			copy := *event

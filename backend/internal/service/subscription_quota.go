@@ -88,6 +88,8 @@ type RotateSubscriptionQuotaInput struct {
 	Expected     *SubscriptionQuotaSnapshot
 	NewTerm      bool
 	TermStartsAt time.Time
+	// First-use activation assigns anchors without forgiving existing usage.
+	PreserveUsage bool
 }
 
 type RotateGroupQuotaInput struct {
@@ -106,6 +108,9 @@ type RotateGroupQuotaResult struct {
 }
 
 type SubscriptionQuotaRepository interface {
+	// QuotaNow uses the database clock after the caller has acquired its group
+	// lock, keeping legacy admission tokens ordered with first enablement.
+	QuotaNow(context.Context) (time.Time, error)
 	// Group lock precedes subscription locks. Existing Ent transactions are
 	// joined, allowing lifecycle mutations and observer audit/outbox to commit
 	// with bucket switches. Do not upgrade a shared lock inside the callback.

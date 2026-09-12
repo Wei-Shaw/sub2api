@@ -843,9 +843,23 @@ func (s *UserSubscriptionRepoSuite) TestUpdate_NilInput() {
 // --- 并发用量更新测试 ---
 
 func (s *UserSubscriptionRepoSuite) TestIncrementUsage_Concurrent() {
-	user := s.mustCreateUser("concurrent@test.com", service.RoleUser)
-	group := s.mustCreateGroup("g-concurrent")
-	sub := s.mustCreateSubscription(user.ID, group.ID, nil)
+	// Concurrent mutations must use independent database transactions. Sharing
+	// the suite's single Ent transaction across goroutines cannot exercise row
+	// locking and is unsupported by the PostgreSQL connection driver.
+	client := testEntClient(s.T())
+	suffix := fmt.Sprintf("%d", time.Now().UnixNano())
+	user := mustCreateUser(s.T(), client, &service.User{Email: "concurrent-" + suffix + "@test.com"})
+	group := mustCreateGroup(s.T(), client, &service.Group{Name: "g-concurrent-" + suffix})
+	sub := mustCreateSubscription(s.T(), client, &service.UserSubscription{UserID: user.ID, GroupID: group.ID})
+	repo := NewUserSubscriptionRepository(client)
+	s.T().Cleanup(func() {
+		_, err := integrationDB.Exec(`DELETE FROM user_subscriptions WHERE id=$1`, sub.ID)
+		s.Require().NoError(err)
+		_, err = integrationDB.Exec(`DELETE FROM groups WHERE id=$1`, group.ID)
+		s.Require().NoError(err)
+		_, err = integrationDB.Exec(`DELETE FROM users WHERE id=$1`, user.ID)
+		s.Require().NoError(err)
+	})
 
 	const numGoroutines = 10
 	const incrementPerGoroutine = 1.5
@@ -854,7 +868,7 @@ func (s *UserSubscriptionRepoSuite) TestIncrementUsage_Concurrent() {
 	errCh := make(chan error, numGoroutines)
 	for i := 0; i < numGoroutines; i++ {
 		go func() {
-			errCh <- s.repo.IncrementUsage(s.ctx, sub.ID, incrementPerGoroutine)
+			errCh <- repo.IncrementUsage(s.ctx, sub.ID, incrementPerGoroutine)
 		}()
 	}
 
@@ -865,7 +879,7 @@ func (s *UserSubscriptionRepoSuite) TestIncrementUsage_Concurrent() {
 	}
 
 	// 验证累加结果正确
-	got, err := s.repo.GetByID(s.ctx, sub.ID)
+	got, err := repo.GetByID(s.ctx, sub.ID)
 	s.Require().NoError(err)
 	expectedUsage := float64(numGoroutines) * incrementPerGoroutine
 	s.Require().InDelta(expectedUsage, got.DailyUsageUSD, 1e-6, "daily usage should be correctly accumulated")

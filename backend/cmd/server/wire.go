@@ -123,6 +123,7 @@ func provideCleanup(
 	channelMonitorV2Aggregator *service.ChannelMonitorV2Aggregator,
 	accountWindowUsageIngester *service.AccountWindowUsageIngester,
 	subscriptionResetMonitor *service.SubscriptionResetMonitor,
+	subscriptionResetExecutor *service.SubscriptionResetExecutor,
 	quotaFlusher *service.UserPlatformQuotaUsageFlusher,
 	upstreamBillingProbe *service.UpstreamBillingProbeService,
 	ollamaCloudUsage *service.OllamaCloudUsageService,
@@ -373,6 +374,12 @@ func provideCleanup(
 			{"SubscriptionResetMonitor", func() error {
 				if subscriptionResetMonitor != nil {
 					subscriptionResetMonitor.Stop()
+				}
+				return nil
+			}},
+			{"SubscriptionResetExecutor", func() error {
+				if subscriptionResetExecutor != nil {
+					subscriptionResetExecutor.Stop()
 				}
 				return nil
 			}},

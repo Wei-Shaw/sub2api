@@ -270,7 +270,7 @@ func apiKeyAuthWithSubscription(apiKeyService *service.APIKeyService, subscripti
 		// ── 7. 设置上下文 → Next ─────────────────────────────────────
 
 		if subscription != nil {
-			c.Set(string(ContextKeySubscription), subscription)
+			c.Set(string(ContextKeySubscription), service.CloneSubscriptionForRequest(subscription))
 		}
 		c.Set(string(ContextKeyAPIKey), apiKey)
 		c.Set(string(ContextKeyUser), AuthSubject{

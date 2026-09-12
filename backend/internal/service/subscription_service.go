@@ -48,6 +48,7 @@ type SubscriptionService struct {
 	userSubRepo         UserSubscriptionRepository
 	billingCacheService *BillingCacheService
 	entClient           *dbent.Client
+	quotaRepo           SubscriptionQuotaRepository
 
 	// L1 缓存：加速中间件热路径的订阅查询
 	subCacheL1     *ristretto.Cache
@@ -294,7 +295,7 @@ func (s *SubscriptionService) updateExistingSubscriptionTerm(
 	notes string,
 	assignmentSemantics bool,
 ) error {
-	return s.withSubscriptionUpdateTx(ctx, func(txCtx context.Context) error {
+	return s.withSubscriptionGroupTx(ctx, subscriptionID, func(txCtx context.Context) error {
 		existingSub, err := s.userSubRepo.GetByIDForUpdate(txCtx, subscriptionID)
 		if err != nil {
 			return fmt.Errorf("lock subscription for renewal: %w", err)
@@ -324,7 +325,15 @@ func (s *SubscriptionService) updateExistingSubscriptionTerm(
 		}
 
 		if isExpired {
+			if s.quotaRepo != nil {
+				if _, err := s.quotaRepo.EnsureSubscriptionQuotaState(txCtx, existingSub.ID); err != nil {
+					return err
+				}
+			}
 			renewed := renewedSubscriptionTerm(existingSub, notes, now, newExpiresAt)
+			if err := s.rotateRenewedSubscriptionQuota(txCtx, renewed, now); err != nil {
+				return err
+			}
 			if err := s.userSubRepo.Update(txCtx, renewed); err != nil {
 				return fmt.Errorf("renew expired subscription: %w", err)
 			}
@@ -409,6 +418,15 @@ func appendSubscriptionNotes(existingNotes, newNotes string) string {
 
 // createSubscription 创建新订阅（内部方法）
 func (s *SubscriptionService) createSubscription(ctx context.Context, input *AssignSubscriptionInput) (*UserSubscription, error) {
+	if s.quotaRepo != nil && !subscriptionGroupTxHeld(ctx) {
+		var result *UserSubscription
+		err := s.withKnownSubscriptionGroupTx(ctx, input.GroupID, func(txCtx context.Context) error {
+			var err error
+			result, err = s.createSubscription(txCtx, input)
+			return err
+		})
+		return result, err
+	}
 	validityDays := input.ValidityDays
 	if validityDays <= 0 {
 		validityDays = 30
@@ -441,6 +459,11 @@ func (s *SubscriptionService) createSubscription(ctx context.Context, input *Ass
 
 	if err := s.userSubRepo.Create(ctx, sub); err != nil {
 		return nil, err
+	}
+	if s.quotaRepo != nil {
+		if _, err := s.quotaRepo.EnsureSubscriptionQuotaState(ctx, sub.ID); err != nil {
+			return nil, err
+		}
 	}
 
 	// 重新获取完整订阅信息（包含关联）
@@ -598,6 +621,9 @@ func normalizeAssignValidityDays(days int) int {
 
 // RevokeSubscription 撤销订阅
 func (s *SubscriptionService) RevokeSubscription(ctx context.Context, subscriptionID int64) error {
+	if s.quotaRepo != nil && !subscriptionGroupTxHeld(ctx) {
+		return s.withSubscriptionGroupTx(ctx, subscriptionID, func(txCtx context.Context) error { return s.RevokeSubscription(txCtx, subscriptionID) })
+	}
 	// 先获取订阅信息用于失效缓存
 	sub, err := s.userSubRepo.GetByID(ctx, subscriptionID)
 	if err != nil {
@@ -617,6 +643,15 @@ func (s *SubscriptionService) RevokeSubscription(ctx context.Context, subscripti
 
 // RestoreSubscription 恢复已撤销订阅
 func (s *SubscriptionService) RestoreSubscription(ctx context.Context, subscriptionID int64) (*UserSubscription, error) {
+	if s.quotaRepo != nil && !subscriptionGroupTxHeld(ctx) {
+		var result *UserSubscription
+		err := s.withSubscriptionGroupTx(ctx, subscriptionID, func(txCtx context.Context) error {
+			var err error
+			result, err = s.RestoreSubscription(txCtx, subscriptionID)
+			return err
+		})
+		return result, err
+	}
 	sub, err := s.userSubRepo.GetByIDIncludeDeleted(ctx, subscriptionID)
 	if err != nil {
 		return nil, err
@@ -652,6 +687,15 @@ func (s *SubscriptionService) RestoreSubscription(ctx context.Context, subscript
 
 // ExtendSubscription 调整订阅时长（正数延长，负数缩短）
 func (s *SubscriptionService) ExtendSubscription(ctx context.Context, subscriptionID int64, days int) (*UserSubscription, error) {
+	if s.quotaRepo != nil && !subscriptionGroupTxHeld(ctx) {
+		var result *UserSubscription
+		err := s.withSubscriptionGroupTx(ctx, subscriptionID, func(txCtx context.Context) error {
+			var err error
+			result, err = s.ExtendSubscription(txCtx, subscriptionID, days)
+			return err
+		})
+		return result, err
+	}
 	sub, err := s.userSubRepo.GetByID(ctx, subscriptionID)
 	if err != nil {
 		return nil, ErrSubscriptionNotFound
@@ -692,7 +736,18 @@ func (s *SubscriptionService) ExtendSubscription(ctx context.Context, subscripti
 		return nil, ErrAdjustWouldExpire
 	}
 
-	if err := s.userSubRepo.ExtendExpiry(ctx, subscriptionID, newExpiresAt); err != nil {
+	if isExpired && s.quotaRepo != nil {
+		if _, err := s.quotaRepo.EnsureSubscriptionQuotaState(ctx, sub.ID); err != nil {
+			return nil, err
+		}
+		renewed := renewedSubscriptionTerm(sub, "", now, newExpiresAt)
+		if err := s.rotateRenewedSubscriptionQuota(ctx, renewed, now); err != nil {
+			return nil, err
+		}
+		if err := s.userSubRepo.Update(ctx, renewed); err != nil {
+			return nil, err
+		}
+	} else if err := s.userSubRepo.ExtendExpiry(ctx, subscriptionID, newExpiresAt); err != nil {
 		return nil, err
 	}
 
@@ -726,6 +781,15 @@ func (s *SubscriptionService) GetByID(ctx context.Context, id int64) (*UserSubsc
 // 使用 L1 缓存 + singleflight 加速中间件热路径。
 // 返回缓存对象的浅拷贝，调用方可安全修改字段而不会污染缓存或触发 data race。
 func (s *SubscriptionService) GetActiveSubscription(ctx context.Context, userID, groupID int64) (*UserSubscription, error) {
+	if s.quotaRepo != nil {
+		state, err := s.quotaRepo.GetGroupQuotaState(ctx, groupID)
+		if err != nil {
+			return nil, err
+		}
+		if state != nil {
+			return s.userSubRepo.GetActiveByUserIDAndGroupID(ctx, userID, groupID)
+		}
+	}
 	key := subCacheKey(userID, groupID)
 
 	// L1 缓存命中：返回浅拷贝
@@ -857,6 +921,13 @@ func (s *SubscriptionService) CheckAndActivateWindow(ctx context.Context, sub *U
 }
 
 func (s *SubscriptionService) checkAndActivateWindowAt(ctx context.Context, sub *UserSubscription, now time.Time) error {
+	if s.quotaRepo != nil && !subscriptionGroupTxHeld(ctx) {
+		fresh, err := s.maintainSubscriptionQuota(ctx, sub.ID, now, true)
+		if err == nil {
+			*sub = *fresh
+		}
+		return err
+	}
 	if sub.IsWindowActivated() {
 		return nil
 	}
@@ -870,6 +941,9 @@ func (s *SubscriptionService) checkAndActivateWindowAt(ctx context.Context, sub 
 func (s *SubscriptionService) AdminResetQuota(ctx context.Context, subscriptionID int64, resetDaily, resetWeekly, resetMonthly bool) (*UserSubscription, error) {
 	if !resetDaily && !resetWeekly && !resetMonthly {
 		return nil, ErrInvalidInput
+	}
+	if s.quotaRepo != nil {
+		return s.adminResetSubscriptionQuota(ctx, subscriptionID, SubscriptionQuotaDimensions{Daily: resetDaily, Weekly: resetWeekly, Monthly: resetMonthly})
 	}
 	sub, err := s.userSubRepo.GetByID(ctx, subscriptionID)
 	if err != nil {
@@ -894,6 +968,13 @@ func (s *SubscriptionService) AdminResetQuota(ctx context.Context, subscriptionI
 
 // CheckAndResetWindows 检查并重置过期的窗口
 func (s *SubscriptionService) CheckAndResetWindows(ctx context.Context, sub *UserSubscription) error {
+	if s.quotaRepo != nil && !subscriptionGroupTxHeld(ctx) {
+		fresh, err := s.maintainSubscriptionQuota(ctx, sub.ID, s.now(), false)
+		if err == nil {
+			*sub = *fresh
+		}
+		return err
+	}
 	now := s.now()
 	needsInvalidateCache := false
 
@@ -947,6 +1028,9 @@ func (s *SubscriptionService) CheckAndResetWindows(ctx context.Context, sub *Use
 func (s *SubscriptionService) EnsureWindowMaintenance(ctx context.Context, sub *UserSubscription) (*UserSubscription, error) {
 	if sub == nil {
 		return nil, ErrSubscriptionNilInput
+	}
+	if s.quotaRepo != nil {
+		return s.maintainSubscriptionQuota(ctx, sub.ID, s.now(), true)
 	}
 	if !sub.IsWindowActivated() {
 		if err := s.CheckAndActivateWindow(ctx, sub); err != nil {
@@ -1240,8 +1324,8 @@ func (s *SubscriptionService) ValidateSubscription(ctx context.Context, sub *Use
 		return ErrSubscriptionSuspended
 	}
 	if sub.IsExpired() {
-		// 更新状态
-		_ = s.userSubRepo.UpdateStatus(ctx, sub.ID, SubscriptionStatusExpired)
+		// Expiry persistence is owned by the conditional maintenance worker. A
+		// stale request must not overwrite a concurrently renewed active term.
 		return ErrSubscriptionExpired
 	}
 	return nil
