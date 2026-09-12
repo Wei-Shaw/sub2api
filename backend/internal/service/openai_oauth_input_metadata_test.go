@@ -78,5 +78,7 @@ func TestOAuthInputInternalMetadataCompatibility(t *testing.T) {
 	var req map[string]any
 	require.NoError(t, json.Unmarshal(body, &req))
 	require.True(t, normalizeOpenAIOAuthResponsesCompatibilityFields(req))
-	require.NotContains(t, req["input"].([]any)[0], "internal_chat_message_metadata_passthrough")
+	input, ok := req["input"].([]any)
+	require.True(t, ok)
+	require.NotContains(t, input[0], "internal_chat_message_metadata_passthrough")
 }
