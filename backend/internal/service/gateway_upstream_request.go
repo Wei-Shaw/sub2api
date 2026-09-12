@@ -215,6 +215,12 @@ func (s *GatewayService) buildUpstreamRequest(ctx context.Context, c *gin.Contex
 		logClaudeMimicDebug(req, body, account, tokenType, mimicClaudeCode)
 	}
 
+	// 发送前记录本次实际出站端点与最终映射模型：Do 之后即使 404/500 等失败
+	// 没有 ForwardResult，错误日志也能报告真实上游路径（含错误拼接，如
+	// /v1/v1/messages），而不是按入站路径推导的值。仅记录 URL path，不含
+	// query（?beta=true）/userinfo/凭证。
+	SetOpsUpstreamRequestTarget(c, req, modelID)
+
 	return req, body, nil
 }
 
@@ -339,6 +345,9 @@ func (s *GatewayService) buildUpstreamRequestAnthropicVertex(
 		"model":      modelID,
 		"stream":     strconv.FormatBool(reqStream),
 	})
+
+	// 与直连路径一致：发送前记录实际出站端点与最终模型，失败也保留。
+	SetOpsUpstreamRequestTarget(c, req, modelID)
 
 	return req, nil
 }

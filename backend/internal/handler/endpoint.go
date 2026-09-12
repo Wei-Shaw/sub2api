@@ -311,11 +311,24 @@ func GetInboundEndpoint(c *gin.Context) string {
 // GetUpstreamEndpoint derives the upstream endpoint from the context
 // and the account platform. Handlers call this after scheduling an
 // account, passing account.Platform.
+//
+// 优先级：真实出站记录 > 平台运行时端点 > 入站推导兜底。
+// 显式记录的端点（service.SetOpsUpstreamEndpoint，由实际 forwarder 在发送前
+// 写入）优先于任何 group/platform 推导——即使 group 平台是 composite；
+// 仅在没有任何实际出站记录时才回退到 DeriveUpstreamEndpoint，且推导值只是
+// 兜底，不代表真实出站。
 func GetUpstreamEndpoint(c *gin.Context, platform string) string {
+	// 实际 forwarder 在发送前写入的端点拥有最高优先级，对所有平台生效
+	// （含 composite 组与 api_protocol adaptive 的真实 path）。
+	if endpoint := service.GetOpsUpstreamEndpoint(c); endpoint != "" {
+		return endpoint
+	}
 	// OpenAI 转发服务维护独立的运行时端点上下文，覆盖普通入站推导。
 	// 这对 force_chat_completions 的错误路径尤为重要：此时可能没有
 	// ForwardResult，不能把入站 /v1/responses 误报成上游端点。
-	if platform == service.PlatformOpenAI || platform == service.PlatformGrok || service.IsMultiProtocolAPIKeyProvider(platform) {
+	// composite 组经 OpenAI handler 转发兼容池账号时同样适用：此时
+	// group 平台是 composite，若不读取该记录会错误回退到入站推导。
+	if platform == service.PlatformOpenAI || platform == service.PlatformGrok || platform == service.PlatformComposite || service.IsMultiProtocolAPIKeyProvider(platform) {
 		if endpoint := service.GetActualOpenAIUpstreamEndpoint(c); endpoint != "" {
 			return endpoint
 		}

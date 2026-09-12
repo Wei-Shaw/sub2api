@@ -155,6 +155,7 @@ func (s *GatewayService) ForwardAsChatCompletions(
 				AccountName:        account.Name,
 				UpstreamStatusCode: resp.StatusCode,
 				UpstreamRequestID:  resp.Header.Get("x-request-id"),
+				UpstreamURL:        safeUpstreamURL(upstreamReq.URL.String()),
 				Kind:               "failover",
 				Message:            upstreamMsg,
 			})

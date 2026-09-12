@@ -468,7 +468,11 @@ func setOpsSelectedAccount(c *gin.Context, accountID int64, platform ...string) 
 	if c == nil || accountID <= 0 {
 		return
 	}
+	// 尝试级元数据随账号切换重置：Handler 在账号 failover 间复用同一个 Gin
+	// context，上一账号的实际出站端点/模型不得泄漏到下一账号的失败日志。
 	service.ClearOpsUpstreamModel(c)
+	service.ClearOpsUpstreamEndpoint(c)
+	service.ClearActualOpenAIUpstreamEndpoint(c)
 	c.Set(opsAccountIDKey, accountID)
 	if c.Request != nil {
 		ctx := context.WithValue(c.Request.Context(), ctxkey.AccountID, accountID)

@@ -56,6 +56,11 @@ func (s *GatewayService) SelectAccountForModelWithExclusions(ctx context.Context
 			if !ok {
 				return nil, fmt.Errorf("%w supporting model: %s (composite target platform unknown)", ErrNoAvailableAccounts, requestedModel)
 			}
+			if isCompositePoolDecision(decision) {
+				// 多平台候选池由统一 OpenAI 兼容 selector 选择（openai_gateway_scheduling
+				// 链路）；generic 调度器不消费池，显式失败避免以空平台误调度。
+				return nil, fmt.Errorf("%w supporting model: %s (composite candidate pool %s)", ErrNoAvailableAccounts, requestedModel, strings.Join(decision.CandidatePlatforms, ","))
+			}
 			platform = decision.TargetPlatform
 			requestedModel = decision.UpstreamModel
 			ctx = WithCompositeRouteDecision(ctx, decision)
@@ -987,6 +992,9 @@ func (s *GatewayService) resolvePlatform(ctx context.Context, groupID *int64, gr
 			if !ok {
 				return "", false, fmt.Errorf("%w supporting model: %s (composite target platform unknown)", ErrNoAvailableAccounts, requestedModel)
 			}
+			if isCompositePoolDecision(decision) {
+				return "", false, fmt.Errorf("%w supporting model: %s (composite candidate pool %s)", ErrNoAvailableAccounts, requestedModel, strings.Join(decision.CandidatePlatforms, ","))
+			}
 			return decision.TargetPlatform, false, nil
 		}
 		return group.Platform, false, nil
@@ -1003,6 +1011,9 @@ func (s *GatewayService) resolvePlatform(ctx context.Context, groupID *int64, gr
 			}
 			if !ok {
 				return "", false, fmt.Errorf("%w supporting model: %s (composite target platform unknown)", ErrNoAvailableAccounts, requestedModel)
+			}
+			if isCompositePoolDecision(decision) {
+				return "", false, fmt.Errorf("%w supporting model: %s (composite candidate pool %s)", ErrNoAvailableAccounts, requestedModel, strings.Join(decision.CandidatePlatforms, ","))
 			}
 			return decision.TargetPlatform, false, nil
 		}
@@ -2609,7 +2620,7 @@ func summarizeSelectionFailureStats(stats selectionFailureStats) string {
 // 对于 Antigravity 平台，会先获取映射后的最终模型名（包括 thinking 后缀）再检查支持
 func (s *GatewayService) isModelSupportedByAccountWithContext(ctx context.Context, account *Account, requestedModel string) bool {
 	if source, ok := CompositeRouteSourceFromContext(ctx); ok && source == CompositeRouteSourceAccount {
-		if publicModel, modelOK := RequestedPublicModelFromContext(ctx); modelOK && !explicitModelMappingClaims(*account, publicModel) {
+		if publicModel, modelOK := RequestedPublicModelFromContext(ctx); modelOK && !CompositeAccountClaimsModel(account, publicModel) {
 			return false
 		}
 	}

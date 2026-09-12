@@ -494,9 +494,15 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 
 	// Async usage billing runs outside the original request context, so it
 	// cannot recover ForcePlatform there. Fall back for internal/test callers.
+	// fallback 与 generic 路径（gateway_usage_billing.go）同语义：composite 分组
+	// 请求缺省时回退到选中账号自己的平台——composite/openai 组默认值不是实际
+	// user×platform 配额维度，真正的 pool 请求必须按选中 account.Platform 扣减。
 	quotaPlatform := input.QuotaPlatform
 	if quotaPlatform == "" {
 		quotaPlatform = PlatformFromAPIKey(apiKey)
+		if quotaPlatform == PlatformComposite && account != nil {
+			quotaPlatform = account.Platform
+		}
 	}
 
 	billingErr := func() error {

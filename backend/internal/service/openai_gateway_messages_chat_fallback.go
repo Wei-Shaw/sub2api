@@ -113,6 +113,9 @@ func (s *OpenAIGatewayService) forwardAnthropicViaRawChatCompletions(
 	if err != nil {
 		return nil, err
 	}
+	// 发送前记录最终映射模型（端点由 sendCCUpstreamRequest 统一记录），
+	// 失败路径的错误日志才能带上真实的 account-mapped model。
+	SetOpsUpstreamModel(c, upstreamModel)
 	resp, err := s.sendCCUpstreamRequest(ctx, c, account, targetURL, chatBody, clientStream, apiKey, account.GetOpenAIUserAgent(), "")
 	if err != nil {
 		return nil, err
