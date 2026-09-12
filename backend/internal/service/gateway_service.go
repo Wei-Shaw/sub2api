@@ -1428,6 +1428,16 @@ func (s *GatewayService) GetAvailableModels(ctx context.Context, groupID *int64,
 			for model := range mapping {
 				modelSet[model] = struct{}{}
 			}
+		} else if acc.IsOllamaCloud() {
+			// ollama_cloud 空 mapping：extra.allowed_models 清单即公开模型
+			// 列表（空映射下公开名=出站名）；无清单（deny-all）账号不贡献
+			// 任何模型名，与 IsModelSupported 的运行时白名单语义一致。
+			if allowed := ollamaCloudOutboundModelNames(&acc); len(allowed) > 0 {
+				hasAnyMapping = true
+				for _, model := range allowed {
+					modelSet[model] = struct{}{}
+				}
+			}
 		}
 	}
 
