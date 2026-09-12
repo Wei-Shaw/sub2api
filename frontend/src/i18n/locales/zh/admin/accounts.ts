@@ -319,6 +319,7 @@ export default {
         minimax: 'MiniMax',
         opencode_go: 'OpenCode',
         typesafe: 'TypeSafe / Jev',
+        ollama_cloud: 'Ollama Cloud',
       },
       cnProviders: {
         accountMode: {
