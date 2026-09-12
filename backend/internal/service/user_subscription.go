@@ -33,6 +33,9 @@ type UserSubscription struct {
 	UpdatedAt time.Time
 	DeletedAt *time.Time
 
+	// Quota is an immutable final-admission token, not a reusable cached admission.
+	Quota *SubscriptionQuotaSnapshot
+
 	User           *User
 	Group          *Group
 	AssignedByUser *User

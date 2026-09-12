@@ -173,9 +173,11 @@ func (r *usageBillingRepository) applyBatchImageBalanceHold(
 
 func (r *usageBillingRepository) applyUsageBillingEffects(ctx context.Context, tx *sql.Tx, cmd *service.UsageBillingCommand, result *service.UsageBillingApplyResult) error {
 	if cmd.SubscriptionCost > 0 && cmd.SubscriptionID != nil {
-		if err := incrementUsageBillingSubscription(ctx, tx, *cmd.SubscriptionID, cmd.SubscriptionCost); err != nil {
+		state, err := applySubscriptionQuotaCharge(ctx, tx, cmd)
+		if err != nil {
 			return err
 		}
+		result.SubscriptionQuotaState = state
 	}
 
 	if cmd.BalanceCost > 0 {

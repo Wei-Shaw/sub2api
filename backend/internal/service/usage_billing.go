@@ -25,6 +25,7 @@ type UsageBillingCommand struct {
 	UserID              int64
 	AccountID           int64
 	SubscriptionID      *int64
+	SubscriptionQuota   *SubscriptionQuotaSnapshot
 	AccountType         string
 	Model               string
 	ServiceTier         string
@@ -132,6 +133,11 @@ func buildUsageBillingFingerprint(c *UsageBillingCommand) string {
 	if payloadHash := strings.TrimSpace(c.RequestPayloadHash); payloadHash != "" {
 		raw += "|" + payloadHash
 	}
+	// Preserve legacy fingerprints across rollout. A managed request's frozen
+	// bucket identity is part of its idempotency contract.
+	if quota := c.SubscriptionQuota; quota != nil && !quota.IsLegacy() {
+		raw += fmt.Sprintf("|quota:%d:%d:%d", quota.DailyBucketID, quota.WeeklyBucketID, quota.MonthlyBucketID)
+	}
 	sum := sha256.Sum256([]byte(raw))
 	return hex.EncodeToString(sum[:])
 }
@@ -163,11 +169,12 @@ type AccountQuotaState struct {
 }
 
 type UsageBillingApplyResult struct {
-	Applied              bool
-	APIKeyQuotaExhausted bool
-	NewBalance           *float64           // post-deduction balance (nil = no balance deduction)
-	BalanceOverdrafted   bool               // true when the sufficient-balance guard missed and debt was still recorded
-	QuotaState           *AccountQuotaState // post-increment quota state (nil = no quota increment)
+	Applied                bool
+	APIKeyQuotaExhausted   bool
+	NewBalance             *float64                // post-deduction balance (nil = no balance deduction)
+	BalanceOverdrafted     bool                    // true when the sufficient-balance guard missed and debt was still recorded
+	QuotaState             *AccountQuotaState      // post-increment quota state (nil = no quota increment)
+	SubscriptionQuotaState *SubscriptionQuotaState // current absolute projection, never an unversioned delta
 }
 
 // BatchImageBalanceHoldCommand describes an idempotent balance hold operation.
