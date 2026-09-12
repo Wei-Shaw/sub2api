@@ -9,7 +9,7 @@
     fill="currentColor"
     fill-rule="evenodd"
   >
-    <path v-for="(p, idx) in iconInfo.paths" :key="idx" :d="p" :fill="iconInfo.color" />
+    <path v-for="(p, idx) in iconInfo.paths" :key="idx" :d="p" :fill="iconColor" />
   </svg>
   <span v-else class="model-icon-fallback" :style="{ width: size, height: size, fontSize: `calc(${size} * 0.5)` }">
     {{ fallbackText }}
@@ -22,8 +22,10 @@ import { computed } from 'vue'
 const props = withDefaults(defineProps<{
   model: string
   size?: string
+  themeAware?: boolean
 }>(), {
-  size: '18px'
+  size: '18px',
+  themeAware: false
 })
 
 interface IconData {
@@ -259,6 +261,12 @@ const iconKey = computed(() => {
 })
 
 const iconInfo = computed(() => iconKey.value ? iconData[iconKey.value] : null)
+const themeAwareIconKeys = new Set(['openai', 'xai', 'moonshot'])
+const iconColor = computed(() =>
+  props.themeAware && iconKey.value && themeAwareIconKeys.has(iconKey.value)
+    ? 'currentColor'
+    : iconInfo.value?.color
+)
 </script>
 
 <style scoped>
