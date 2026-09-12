@@ -15,6 +15,7 @@ import (
 )
 
 type customDomainMiddlewareRepoStub struct {
+	service.CustomDomainRepository
 	byID   map[int64]*service.CustomDomain
 	byHost map[string]int64
 }
