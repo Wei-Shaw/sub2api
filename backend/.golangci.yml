@@ -11,13 +11,6 @@ linters:
     - staticcheck
     - unused
 
-  exclusions:
-    rules:
-      - path: _test\.go
-        linters:
-          - staticcheck
-        text: "SA5011"
-
   settings:
     depguard:
       rules:
@@ -130,6 +123,10 @@ linters:
 
   exclusions:
     rules:
+      - path: _test\.go
+        linters:
+          - staticcheck
+        text: "SA5011"
       # G703/G704 污点分析在测试文件中只会命中 httptest mock 与测试者自设的
       # 环境变量路径，不构成攻击面；且该分析跨环境结果不稳定（本地/CI 报告的
       # 位置集合不同），逐点 nolint 无法收敛，故按路径豁免。生产代码不豁免，

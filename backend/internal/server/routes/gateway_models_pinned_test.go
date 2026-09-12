@@ -66,7 +66,7 @@ func TestGatewayRoutesPinnedModelsDispatchesOrdinaryAndCodexRequests(t *testing.
 	RegisterGatewayRoutes(router, h, servermiddleware.APIKeyAuthMiddleware(func(c *gin.Context) {
 		c.Set(string(servermiddleware.ContextKeyAPIKey), &service.APIKey{GroupID: &group.ID, Group: group})
 		c.Next()
-	}), nil, nil, nil, nil, nil, cfg)
+	}), nil, nil, nil, nil, nil, nil, cfg)
 	for _, path := range []string{"/v1/models", "/models", "/v1/models?client_version=", "/models?client_version="} {
 		w := httptest.NewRecorder()
 		router.ServeHTTP(w, httptest.NewRequest(http.MethodGet, path, nil))
@@ -119,7 +119,7 @@ func TestGatewayRoutesRetrievePinnedModel(t *testing.T) {
 		}
 		c.Set(string(servermiddleware.ContextKeyAPIKey), &service.APIKey{GroupID: &group.ID, Group: group})
 		c.Next()
-	}), nil, nil, nil, nil, nil, cfg)
+	}), nil, nil, nil, nil, nil, nil, cfg)
 	request := func(path, key, etag string) *httptest.ResponseRecorder {
 		w := httptest.NewRecorder()
 		req := httptest.NewRequest(http.MethodGet, path, nil)

@@ -190,8 +190,8 @@ type UsageLog struct {
 	// extra.upstream_request_id_header 指定的头；账户未指定头名、WS 轮次
 	// 与上游没有该头的路径为 nil。
 	UpstreamRequestID *string
-	CustomDomainID *int64
-	CustomDomain *string
+	CustomDomainID    *int64
+	CustomDomain      *string
 
 	// Cache TTL Override 标记（管理员强制替换了缓存 TTL 计费）
 	CacheTTLOverridden bool
