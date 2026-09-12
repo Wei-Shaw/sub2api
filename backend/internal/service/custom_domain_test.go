@@ -101,6 +101,30 @@ func (r *customDomainRepoStub) Update(ctx context.Context, domain *CustomDomain)
 	return cloneCustomDomain(&cp), nil
 }
 
+func (r *customDomainRepoStub) UpdateVerification(ctx context.Context, domain *CustomDomain) (*CustomDomain, error) {
+	current, err := r.GetByID(ctx, domain.ID)
+	if err != nil {
+		return nil, err
+	}
+	if current.Status == CustomDomainStatusDisabled {
+		return nil, ErrCustomDomainInactive
+	}
+	current.Status, current.LastError = domain.Status, domain.LastError
+	current.LastCheckedAt, current.VerifiedAt = domain.LastCheckedAt, domain.VerifiedAt
+	return r.Update(ctx, current)
+}
+
+func (r *customDomainRepoStub) DeleteIfNotDisabled(ctx context.Context, id int64) error {
+	current, err := r.GetByID(ctx, id)
+	if err != nil {
+		return err
+	}
+	if current.Status == CustomDomainStatusDisabled {
+		return ErrCustomDomainInactive
+	}
+	return r.Delete(ctx, id)
+}
+
 func (r *customDomainRepoStub) Delete(ctx context.Context, id int64) error {
 	domain, ok := r.byID[id]
 	if !ok {
