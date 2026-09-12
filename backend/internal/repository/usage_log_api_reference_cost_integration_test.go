@@ -14,8 +14,11 @@ import (
 
 func TestUsageLogAPIReferenceCostPersistence(t *testing.T) {
 	ctx := context.Background()
-	client := testEntClient(t)
-	repo := newUsageLogRepositoryWithSQL(client, integrationDB)
+	// Dashboard integration tests aggregate across the shared database. Keep
+	// these request fixtures inside a transaction that the harness rolls back.
+	tx := testEntTx(t)
+	client := tx.Client()
+	repo := newUsageLogRepositoryWithSQL(client, tx)
 	user := mustCreateUser(t, client, &service.User{Email: "reference-" + uuid.NewString() + "@example.com"})
 	key := mustCreateApiKey(t, client, &service.APIKey{UserID: user.ID, Key: "sk-reference-" + uuid.NewString(), Name: "reference"})
 	account := mustCreateAccount(t, client, &service.Account{Name: "reference-" + uuid.NewString()})
