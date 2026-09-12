@@ -65,7 +65,9 @@ func TestSubscriptionResetMonitorSharesQueryAndKeepsLocalMarker(t *testing.T) {
 	m, r, q := resetMonitorFixture(t)
 	defer m.Stop()
 	marker := m.now().Add(-time.Minute)
-	m.accounts.(*resetMonitorAccountsStub).account.Extra = map[string]any{"codex_history_reset_at": marker.Format(time.RFC3339)}
+	accounts, ok := m.accounts.(*resetMonitorAccountsStub)
+	require.True(t, ok)
+	accounts.account.Extra = map[string]any{"codex_history_reset_at": marker.Format(time.RFC3339)}
 	m.runOnce(context.Background())
 	require.Equal(t, 1, q.calls)
 	for _, groupID := range []int64{1, 2} {
@@ -95,7 +97,9 @@ func TestSubscriptionResetMonitorFailuresRemainObservations(t *testing.T) {
 func TestSubscriptionResetMonitorRemovedMemberCannotVote(t *testing.T) {
 	m, r, _ := resetMonitorFixture(t)
 	defer m.Stop()
-	m.accounts.(*resetMonitorAccountsStub).account.GroupIDs = []int64{1}
+	accounts, ok := m.accounts.(*resetMonitorAccountsStub)
+	require.True(t, ok)
+	accounts.account.GroupIDs = []int64{1}
 	m.runOnce(context.Background())
 	require.Empty(t, r.samples[1][0].Error)
 	require.Equal(t, "account_not_in_group", r.samples[2][0].Error)
