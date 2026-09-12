@@ -388,6 +388,12 @@ func TestEnhanceCSPPolicy(t *testing.T) {
 		}
 	})
 
+	t.Run("default_policy_allows_media_src_for_account_test_preview", func(t *testing.T) {
+		// 账号测试连接返回的 video/audio 预览可能是 data: URL 或上游 https:// 直链，
+		// 若缺少 media-src 会回退到 default-src 'self'，导致预览被 CSP 静默拦截且无可见报错
+		assert.Contains(t, config.DefaultCSPPolicy, "media-src 'self' data: blob: https:;")
+	})
+
 	t.Run("handles_policy_without_script_src", func(t *testing.T) {
 		policy := "default-src 'self'"
 		enhanced := enhanceCSPPolicy(policy)
