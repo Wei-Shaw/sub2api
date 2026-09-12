@@ -49,6 +49,7 @@ func initializeApplication(buildInfo handler.BuildInfo) (*Application, error) {
 
 		// Privacy client factory for OpenAI training opt-out
 		providePrivacyClientFactory,
+		provideChatGPTUploadClientFactory,
 
 		// BuildInfo provider
 		provideServiceBuildInfo,
@@ -61,6 +62,10 @@ func initializeApplication(buildInfo handler.BuildInfo) (*Application, error) {
 		wire.Struct(new(Application), "Server", "PromptAudit", "PluginManager", "Cleanup"),
 	)
 	return nil, nil
+}
+
+func provideChatGPTUploadClientFactory() service.ChatGPTUploadClientFactory {
+	return repository.CreateChatGPTUploadReqClient
 }
 
 func providePrivacyClientFactory() service.PrivacyClientFactory {

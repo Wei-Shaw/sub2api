@@ -287,6 +287,7 @@ type CreateGroupInput struct {
 	// OpenAI Messages 调度配置（仅 openai 平台使用）
 	AllowMessagesDispatch       bool
 	AllowLive                   bool
+	AllowAudioTranscription     bool
 	ForceOpenAIFast             bool
 	FreeOpenAIFast              bool
 	DefaultMappedModel          string
@@ -368,6 +369,7 @@ type UpdateGroupInput struct {
 	// OpenAI Messages 调度配置（仅 openai 平台使用）
 	AllowMessagesDispatch       *bool
 	AllowLive                   *bool
+	AllowAudioTranscription     *bool
 	ForceOpenAIFast             *bool
 	FreeOpenAIFast              *bool
 	DefaultMappedModel          *string

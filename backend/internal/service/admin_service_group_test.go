@@ -1299,13 +1299,14 @@ func TestAdminService_CreateGroup_ClearsMessagesDispatchFieldsForNonOpenAIPlatfo
 	svc := &adminServiceImpl{groupRepo: repo}
 
 	group, err := svc.CreateGroup(context.Background(), &CreateGroupInput{
-		Name:                  "anthropic-group",
-		Description:           "non-openai",
-		Platform:              PlatformAnthropic,
-		RateMultiplier:        1.0,
-		AllowMessagesDispatch: true,
-		AllowLive:             true,
-		DefaultMappedModel:    "gpt-5.4",
+		Name:                    "anthropic-group",
+		Description:             "non-openai",
+		Platform:                PlatformAnthropic,
+		RateMultiplier:          1.0,
+		AllowMessagesDispatch:   true,
+		AllowLive:               true,
+		AllowAudioTranscription: true,
+		DefaultMappedModel:      "gpt-5.4",
 		MessagesDispatchModelConfig: OpenAIMessagesDispatchModelConfig{
 			OpusMappedModel: "gpt-5.4",
 		},
@@ -1315,6 +1316,7 @@ func TestAdminService_CreateGroup_ClearsMessagesDispatchFieldsForNonOpenAIPlatfo
 	require.NotNil(t, repo.created)
 	require.False(t, repo.created.AllowMessagesDispatch)
 	require.False(t, repo.created.AllowLive)
+	require.False(t, repo.created.AllowAudioTranscription)
 	require.Empty(t, repo.created.DefaultMappedModel)
 	require.Equal(t, OpenAIMessagesDispatchModelConfig{}, repo.created.MessagesDispatchModelConfig)
 }
@@ -1324,16 +1326,18 @@ func TestAdminService_CreateCompositeGroupPreservesLive(t *testing.T) {
 	svc := &adminServiceImpl{groupRepo: repo}
 
 	group, err := svc.CreateGroup(context.Background(), &CreateGroupInput{
-		Name:           "composite-group",
-		Platform:       PlatformComposite,
-		RateMultiplier: 1.0,
-		AllowLive:      true,
+		Name:                    "composite-group",
+		Platform:                PlatformComposite,
+		RateMultiplier:          1.0,
+		AllowLive:               true,
+		AllowAudioTranscription: true,
 	})
 
 	require.NoError(t, err)
 	require.NotNil(t, group)
 	require.NotNil(t, repo.created)
 	require.True(t, repo.created.AllowLive)
+	require.True(t, repo.created.AllowAudioTranscription)
 }
 
 func TestAdminService_CreateGroup_NormalizesForceOpenAIFastByPlatform(t *testing.T) {
@@ -1412,24 +1416,27 @@ func TestAdminService_UpdateCompositeGroupPreservesLive(t *testing.T) {
 	allowLive := true
 
 	group, err := svc.UpdateGroup(context.Background(), existingGroup.ID, &UpdateGroupInput{
-		AllowLive: &allowLive,
+		AllowLive:               &allowLive,
+		AllowAudioTranscription: &allowLive,
 	})
 
 	require.NoError(t, err)
 	require.NotNil(t, group)
 	require.NotNil(t, repo.updated)
 	require.True(t, repo.updated.AllowLive)
+	require.True(t, repo.updated.AllowAudioTranscription)
 }
 
 func TestAdminService_UpdateGroup_ClearsMessagesDispatchFieldsWhenPlatformChangesAwayFromOpenAI(t *testing.T) {
 	existingGroup := &Group{
-		ID:                    1,
-		Name:                  "existing-openai-group",
-		Platform:              PlatformOpenAI,
-		Status:                StatusActive,
-		AllowMessagesDispatch: true,
-		AllowLive:             true,
-		DefaultMappedModel:    "gpt-5.4",
+		ID:                      1,
+		Name:                    "existing-openai-group",
+		Platform:                PlatformOpenAI,
+		Status:                  StatusActive,
+		AllowMessagesDispatch:   true,
+		AllowLive:               true,
+		AllowAudioTranscription: true,
+		DefaultMappedModel:      "gpt-5.4",
 		MessagesDispatchModelConfig: OpenAIMessagesDispatchModelConfig{
 			SonnetMappedModel: "gpt-5.3-codex",
 		},
@@ -1446,6 +1453,7 @@ func TestAdminService_UpdateGroup_ClearsMessagesDispatchFieldsWhenPlatformChange
 	require.Equal(t, PlatformAnthropic, repo.updated.Platform)
 	require.False(t, repo.updated.AllowMessagesDispatch)
 	require.False(t, repo.updated.AllowLive)
+	require.False(t, repo.updated.AllowAudioTranscription)
 	require.Empty(t, repo.updated.DefaultMappedModel)
 	require.Equal(t, OpenAIMessagesDispatchModelConfig{}, repo.updated.MessagesDispatchModelConfig)
 }

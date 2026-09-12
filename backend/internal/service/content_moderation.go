@@ -51,11 +51,12 @@ const (
 	ContentModerationModelFilterInclude = "include"
 	ContentModerationModelFilterExclude = "exclude"
 
-	ContentModerationProtocolAnthropicMessages = "anthropic_messages"
-	ContentModerationProtocolOpenAIResponses   = "openai_responses"
-	ContentModerationProtocolOpenAIChat        = "openai_chat_completions"
-	ContentModerationProtocolGemini            = "gemini"
-	ContentModerationProtocolOpenAIImages      = "openai_images"
+	ContentModerationProtocolAnthropicMessages        = "anthropic_messages"
+	ContentModerationProtocolOpenAIResponses          = "openai_responses"
+	ContentModerationProtocolOpenAIChat               = "openai_chat_completions"
+	ContentModerationProtocolGemini                   = "gemini"
+	ContentModerationProtocolOpenAIImages             = "openai_images"
+	ContentModerationProtocolOpenAIAudioTranscription = "openai_audio_transcription"
 
 	defaultContentModerationBaseURL   = "https://api.openai.com"
 	defaultContentModerationModel     = "omni-moderation-latest"

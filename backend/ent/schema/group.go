@@ -242,6 +242,9 @@ func (Group) Fields() []ent.Field {
 		field.Bool("allow_live").
 			Default(false).
 			Comment("是否允许此 OpenAI 分组访问 Live 接口"),
+		field.Bool("allow_audio_transcription").
+			Default(false).
+			Comment("是否允许此 OpenAI 分组访问 /v1/audio/transcriptions"),
 		field.Bool("force_openai_fast").
 			Default(false).
 			Comment("是否强制此 OpenAI/Composite 分组请求使用 service_tier=priority"),
