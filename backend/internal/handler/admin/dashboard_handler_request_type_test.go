@@ -28,6 +28,11 @@ type dashboardUsageRepoCapture struct {
 	rankingLimit          int
 	ranking               []usagestats.UserSpendingRankingItem
 	rankingTotal          float64
+	keyRankingLimit       int
+	keyRankingSortBy      string
+	keyRankingUserID      int64
+	keyRanking            []usagestats.APIKeyUsageRankingItem
+	keyRankingTotal       float64
 }
 
 func (s *dashboardUsageRepoCapture) GetUsageTrendWithUsageFilters(
@@ -108,6 +113,25 @@ func (s *dashboardUsageRepoCapture) GetUserSpendingRanking(
 	}, nil
 }
 
+func (s *dashboardUsageRepoCapture) GetAPIKeyUsageRanking(
+	ctx context.Context,
+	startTime, endTime time.Time,
+	limit int,
+	sortBy string,
+	userID int64,
+) (*usagestats.APIKeyUsageRankingResponse, error) {
+	s.keyRankingLimit = limit
+	s.keyRankingSortBy = sortBy
+	s.keyRankingUserID = userID
+	return &usagestats.APIKeyUsageRankingResponse{
+		Ranking:         s.keyRanking,
+		TotalActualCost: s.keyRankingTotal,
+		TotalRequests:   55,
+		TotalTokens:     4321,
+		TotalKeys:       3,
+	}, nil
+}
+
 func newDashboardRequestTypeTestRouter(repo *dashboardUsageRepoCapture) *gin.Engine {
 	gin.SetMode(gin.TestMode)
 	dashboardSvc := service.NewDashboardService(repo, nil, nil, nil)
@@ -117,6 +141,7 @@ func newDashboardRequestTypeTestRouter(repo *dashboardUsageRepoCapture) *gin.Eng
 	router.GET("/admin/dashboard/models", handler.GetModelStats)
 	router.GET("/admin/dashboard/groups", handler.GetGroupStats)
 	router.GET("/admin/dashboard/users-ranking", handler.GetUserSpendingRanking)
+	router.GET("/admin/dashboard/api-keys-ranking", handler.GetAPIKeyUsageRanking)
 	return router
 }
 
@@ -323,4 +348,46 @@ func TestDashboardUsersRankingLimitAndCache(t *testing.T) {
 
 	require.Equal(t, http.StatusOK, rec2.Code)
 	require.Equal(t, "hit", rec2.Header().Get("X-Snapshot-Cache"))
+}
+
+func TestDashboardAPIKeysRankingParamsAndCache(t *testing.T) {
+	dashboardAPIKeysRankingCache = newSnapshotCache(5 * time.Minute)
+	repo := &dashboardUsageRepoCapture{
+		keyRanking: []usagestats.APIKeyUsageRankingItem{
+			{APIKeyID: 11, KeyName: "prod-main", UserID: 7, Email: "rank@example.com", ActualCost: 10.5, Requests: 3, TotalTokens: 300},
+		},
+		keyRankingTotal: 66.6,
+	}
+	router := newDashboardRequestTypeTestRouter(repo)
+
+	req := httptest.NewRequest(http.MethodGet, "/admin/dashboard/api-keys-ranking?limit=100&sort_by=total_tokens&user_id=7&start_date=2025-01-01&end_date=2025-01-02", nil)
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	require.Equal(t, 100, repo.keyRankingLimit)
+	require.Equal(t, "total_tokens", repo.keyRankingSortBy)
+	require.Equal(t, int64(7), repo.keyRankingUserID)
+	require.Contains(t, rec.Body.String(), "\"total_actual_cost\":66.6")
+	require.Contains(t, rec.Body.String(), "\"total_keys\":3")
+	require.Contains(t, rec.Body.String(), "\"key_name\":\"prod-main\"")
+	require.Equal(t, "miss", rec.Header().Get("X-Snapshot-Cache"))
+
+	req2 := httptest.NewRequest(http.MethodGet, "/admin/dashboard/api-keys-ranking?limit=100&sort_by=total_tokens&user_id=7&start_date=2025-01-01&end_date=2025-01-02", nil)
+	rec2 := httptest.NewRecorder()
+	router.ServeHTTP(rec2, req2)
+
+	require.Equal(t, http.StatusOK, rec2.Code)
+	require.Equal(t, "hit", rec2.Header().Get("X-Snapshot-Cache"))
+
+	// 超出上限(>200)与缺省都回落默认 12;不同参数不会命中上一条缓存。
+	req3 := httptest.NewRequest(http.MethodGet, "/admin/dashboard/api-keys-ranking?limit=201&start_date=2025-01-01&end_date=2025-01-02", nil)
+	rec3 := httptest.NewRecorder()
+	router.ServeHTTP(rec3, req3)
+
+	require.Equal(t, http.StatusOK, rec3.Code)
+	require.Equal(t, 12, repo.keyRankingLimit)
+	require.Equal(t, "", repo.keyRankingSortBy)
+	require.Equal(t, int64(0), repo.keyRankingUserID)
+	require.Equal(t, "miss", rec3.Header().Get("X-Snapshot-Cache"))
 }

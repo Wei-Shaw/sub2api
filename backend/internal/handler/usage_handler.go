@@ -153,10 +153,38 @@ func (h *UsageHandler) parseUserUsageFilters(c *gin.Context, requireRange bool) 
 		return nil, false
 	}
 
+	startPtr, endPtr, ok := parseUserUsageTimeRange(c, requireRange)
+	if !ok {
+		return nil, false
+	}
+
+	return &userUsageFilters{
+		Filters: usagestats.UsageLogFilters{
+			UserID:             subject.UserID,
+			APIKeyID:           apiKeyID,
+			GroupID:            groupID,
+			Model:              strings.TrimSpace(c.Query("model")),
+			ModelFilterSource:  usagestats.ModelSourceRequested,
+			RequestType:        requestType,
+			Stream:             stream,
+			NativeCompactionV2: nativeCompactionV2,
+			BillingType:        billingType,
+			BillingMode:        billingMode,
+			StartTime:          startPtr,
+			EndTime:            endPtr,
+		},
+		StartTime: derefTime(startPtr),
+		EndTime:   derefTime(endPtr),
+	}, true
+}
+
+// parseUserUsageTimeRange 解析用户端的 timezone/start_date/end_date(/period) 时间范围。
+// requireRange 为 true 时按 period 补默认范围(默认近 7 天)，end 为排他边界。
+// 解析失败会直接写入 400 响应并返回 ok=false。
+func parseUserUsageTimeRange(c *gin.Context, requireRange bool) (startPtr, endPtr *time.Time, ok bool) {
 	userTZ := c.Query("timezone")
 	now := timezone.NowInUserLocation(userTZ)
 	var startTime, endTime time.Time
-	var startPtr, endPtr *time.Time
 	startDateStr := strings.TrimSpace(c.Query("start_date"))
 	endDateStr := strings.TrimSpace(c.Query("end_date"))
 
@@ -164,7 +192,7 @@ func (h *UsageHandler) parseUserUsageFilters(c *gin.Context, requireRange bool) 
 		t, err := timezone.ParseInUserLocation("2006-01-02", startDateStr, userTZ)
 		if err != nil {
 			response.BadRequest(c, "Invalid start_date format, use YYYY-MM-DD")
-			return nil, false
+			return nil, nil, false
 		}
 		startTime = t
 		startPtr = &startTime
@@ -173,7 +201,7 @@ func (h *UsageHandler) parseUserUsageFilters(c *gin.Context, requireRange bool) 
 		t, err := timezone.ParseInUserLocation("2006-01-02", endDateStr, userTZ)
 		if err != nil {
 			response.BadRequest(c, "Invalid end_date format, use YYYY-MM-DD")
-			return nil, false
+			return nil, nil, false
 		}
 		endTime = t.AddDate(0, 0, 1)
 		endPtr = &endTime
@@ -203,24 +231,7 @@ func (h *UsageHandler) parseUserUsageFilters(c *gin.Context, requireRange bool) 
 		}
 	}
 
-	return &userUsageFilters{
-		Filters: usagestats.UsageLogFilters{
-			UserID:             subject.UserID,
-			APIKeyID:           apiKeyID,
-			GroupID:            groupID,
-			Model:              strings.TrimSpace(c.Query("model")),
-			ModelFilterSource:  usagestats.ModelSourceRequested,
-			RequestType:        requestType,
-			Stream:             stream,
-			NativeCompactionV2: nativeCompactionV2,
-			BillingType:        billingType,
-			BillingMode:        billingMode,
-			StartTime:          startPtr,
-			EndTime:            endPtr,
-		},
-		StartTime: derefTime(startPtr),
-		EndTime:   derefTime(endPtr),
-	}, true
+	return startPtr, endPtr, true
 }
 
 func derefTime(value *time.Time) time.Time {
@@ -669,6 +680,56 @@ func (h *UsageHandler) DashboardAPIKeysUsage(c *gin.Context) {
 	}
 
 	response.Success(c, gin.H{"stats": stats})
+}
+
+// DashboardAPIKeysRanking returns per-API-key usage ranking scoped to the current user.
+// GET /api/v1/usage/dashboard/api-keys-ranking
+// Query params: start_date, end_date, timezone, limit, sort_by
+// 刻意不走 parseUserUsageFilters：本接口不支持 api_key_id/model 等过滤，
+// 只解析实际生效的参数，避免"校验了却不生效"的误导(以及 api_key_id 的多余 DB 查询)。
+func (h *UsageHandler) DashboardAPIKeysRanking(c *gin.Context) {
+	subject, ok := middleware2.GetAuthSubjectFromContext(c)
+	if !ok {
+		response.Unauthorized(c, "User not authenticated")
+		return
+	}
+
+	startPtr, endPtr, ok := parseUserUsageTimeRange(c, true)
+	if !ok {
+		return
+	}
+	startTime := derefTime(startPtr)
+	endTime := derefTime(endPtr)
+
+	// 饼图默认 Top 12;排行表最多 200(与管理端 api-keys-ranking 一致)。
+	limit := 12
+	if v := c.Query("limit"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n > 0 && n <= 200 {
+			limit = n
+		}
+	}
+
+	// sort_by 由 repo 层 allowlist 校验;非法值静默回退默认排序(actual_cost)。
+	sortBy := strings.TrimSpace(c.Query("sort_by"))
+
+	// user_id 强制取认证上下文，不接受请求参数。
+	ranking, err := h.usageService.GetMyAPIKeyUsageRanking(
+		c.Request.Context(), subject.UserID, startTime, endTime, limit, sortBy,
+	)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+
+	response.Success(c, gin.H{
+		"ranking":           ranking.Ranking,
+		"total_actual_cost": ranking.TotalActualCost,
+		"total_requests":    ranking.TotalRequests,
+		"total_tokens":      ranking.TotalTokens,
+		"total_keys":        ranking.TotalKeys,
+		"start_date":        startTime.Format("2006-01-02"),
+		"end_date":          endTime.Add(-24 * time.Hour).Format("2006-01-02"),
+	})
 }
 
 // GetMyAPIKeyDailyUsage handles getting daily usage details for the current user's API key.

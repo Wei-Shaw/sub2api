@@ -571,6 +571,20 @@ export default {
           cost: 'Cost'
         }
       },
+      keyRanking: {
+        subtitle: 'Per-API-key usage for the current time range (only the user filter applies)',
+        rowHint: "Click to view this key's usage details",
+        keyCount: '{count} keys',
+        columns: {
+          key: 'API Key',
+          requests: 'Requests',
+          inputTokens: 'Input Tokens',
+          outputTokens: 'Output Tokens',
+          cacheTokens: 'Cache Tokens',
+          totalTokens: 'Total Tokens',
+          cost: 'Cost'
+        }
+      },
       cleanup: {
         button: 'Cleanup',
         title: 'Cleanup Usage Records',

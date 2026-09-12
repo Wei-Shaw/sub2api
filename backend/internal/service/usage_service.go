@@ -402,6 +402,16 @@ func (s *UsageService) GetAPIKeyModelStats(ctx context.Context, apiKeyID int64, 
 	return stats, nil
 }
 
+// GetMyAPIKeyUsageRanking returns per-API-key usage ranking scoped to one user.
+// userID 必须来自认证上下文，调用方不得透传请求参数。
+func (s *UsageService) GetMyAPIKeyUsageRanking(ctx context.Context, userID int64, startTime, endTime time.Time, limit int, sortBy string) (*usagestats.APIKeyUsageRankingResponse, error) {
+	ranking, err := s.usageRepo.GetAPIKeyUsageRanking(ctx, startTime, endTime, limit, sortBy, userID)
+	if err != nil {
+		return nil, fmt.Errorf("get my api key usage ranking: %w", err)
+	}
+	return ranking, nil
+}
+
 // GetAPIKeyDailyUsage returns daily usage stats for a user's API key.
 func (s *UsageService) GetAPIKeyDailyUsage(ctx context.Context, userID, apiKeyID int64, startTime, endTime time.Time) ([]usagestats.APIKeyDailyUsagePoint, error) {
 	trend, err := s.usageRepo.GetUsageTrendWithFilters(ctx, startTime, endTime, "day", userID, apiKeyID, 0, 0, "", nil, nil, nil)

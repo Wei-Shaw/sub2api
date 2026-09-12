@@ -26,6 +26,10 @@ type userUsageRepoCapture struct {
 	stats        *usagestats.UsageStats
 	modelStats   []usagestats.ModelStat
 	groupStats   []usagestats.GroupStat
+
+	keyRankingUserID int64
+	keyRankingLimit  int
+	keyRankingSortBy string
 }
 
 func (s *userUsageRepoCapture) ListWithFilters(ctx context.Context, params pagination.PaginationParams, filters usagestats.UsageLogFilters) ([]service.UsageLog, *pagination.PaginationResult, error) {
@@ -78,6 +82,16 @@ func (s *userUsageRepoCapture) GetGroupStatsWithFilters(ctx context.Context, sta
 	return s.groupStats, nil
 }
 
+func (s *userUsageRepoCapture) GetAPIKeyUsageRanking(ctx context.Context, startTime, endTime time.Time, limit int, sortBy string, userID int64) (*usagestats.APIKeyUsageRankingResponse, error) {
+	s.keyRankingUserID = userID
+	s.keyRankingLimit = limit
+	s.keyRankingSortBy = sortBy
+	return &usagestats.APIKeyUsageRankingResponse{
+		Ranking:   []usagestats.APIKeyUsageRankingItem{},
+		TotalKeys: 2,
+	}, nil
+}
+
 func newUserUsageRequestTypeTestRouter(repo *userUsageRepoCapture) *gin.Engine {
 	gin.SetMode(gin.TestMode)
 	usageSvc := service.NewUsageService(repo, nil, nil, nil)
@@ -91,7 +105,24 @@ func newUserUsageRequestTypeTestRouter(repo *userUsageRepoCapture) *gin.Engine {
 	router.GET("/usage/stats", handler.Stats)
 	router.GET("/usage/dashboard/models", handler.DashboardModels)
 	router.GET("/usage/dashboard/snapshot-v2", handler.DashboardSnapshotV2)
+	router.GET("/usage/dashboard/api-keys-ranking", handler.DashboardAPIKeysRanking)
 	return router
+}
+
+func TestUserUsageAPIKeysRankingScopedToAuthUser(t *testing.T) {
+	repo := &userUsageRepoCapture{}
+	router := newUserUsageRequestTypeTestRouter(repo)
+
+	// user_id 试图通过查询参数伪造为 7，必须被忽略，强制取认证上下文的 42。
+	req := httptest.NewRequest(http.MethodGet, "/usage/dashboard/api-keys-ranking?user_id=7&limit=100&sort_by=total_tokens&start_date=2025-01-01&end_date=2025-01-02", nil)
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	require.Equal(t, int64(42), repo.keyRankingUserID)
+	require.Equal(t, 100, repo.keyRankingLimit)
+	require.Equal(t, "total_tokens", repo.keyRankingSortBy)
+	require.Contains(t, rec.Body.String(), "\"total_keys\":2")
 }
 
 func TestUserUsageListRequestTypePriority(t *testing.T) {

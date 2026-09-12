@@ -10,6 +10,7 @@ import type {
   ModelStat,
   GroupStat,
   ApiKeyUsageTrendPoint,
+  ApiKeyUsageRankingResponse,
   UserUsageTrendPoint,
   UserSpendingRankingResponse,
   UserBreakdownItem,
@@ -275,6 +276,29 @@ export async function getUserSpendingRanking(
   return data
 }
 
+export interface ApiKeyUsageRankingParams
+  extends Pick<TrendParams, 'start_date' | 'end_date'> {
+  limit?: number
+  // Sort column for the ranking (allowlisted server-side; falls back to actual_cost)
+  sort_by?: 'total_tokens' | 'input_tokens' | 'output_tokens' | 'cache_tokens' | 'requests' | 'cost' | 'actual_cost'
+  user_id?: number
+}
+
+/**
+ * Get per-API-key usage ranking data
+ * @param params - Query parameters for filtering
+ * @returns API key usage ranking data with window totals
+ */
+export async function getApiKeysRanking(
+  params?: ApiKeyUsageRankingParams
+): Promise<ApiKeyUsageRankingResponse> {
+  const { data } = await apiClient.get<ApiKeyUsageRankingResponse>(
+    '/admin/dashboard/api-keys-ranking',
+    { params }
+  )
+  return data
+}
+
 export interface PlatformUsage {
   platform: string
   today_actual_cost: number
@@ -341,6 +365,7 @@ export const dashboardAPI = {
   getApiKeyUsageTrend,
   getUserUsageTrend,
   getUserSpendingRanking,
+  getApiKeysRanking,
   getBatchUsersUsage,
   getBatchApiKeysUsage
 }
