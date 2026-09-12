@@ -37,6 +37,14 @@ type accountModelPricingLookup interface {
 // openai_gateway_usage.go 的 pricing_missing_record_zero_cost 分支）。
 // lookup 为 nil 时跳过（生产 wire 必然注入 *BillingService；仅直接构造
 // struct 的单元测试/内部调用会出现）。
+//
+// 与请求期转发前预检的刻意不对称（设计限制，非缺陷）：请求期预检走完整定价
+// 解析链（Group → Channel → LiteLLM → fallback），「只有渠道价/分组价」的模型
+// 运行时允许出站；本门禁只查全局基础价（GetModelPricing，LiteLLM → fallback），
+// 因此仅在渠道/分组层配置定价的模型会在保存时被 MODEL_PRICING_MISSING 拒绝。
+// 这是刻意比运行时更严格的策略：账号与分组是多对多，保存时拿不到确定的
+// channel/group 上下文，「门禁查渠道价」在语义上不成立；而 ollama 的真实模型
+// 全部有全局基础价，实践中不会误拒。
 func validateOllamaCloudAccountModelPricingGate(lookup accountModelPricingLookup, account *Account) error {
 	if lookup == nil || account == nil || !account.IsOllamaCloud() {
 		return nil
@@ -57,7 +65,7 @@ func validateOllamaCloudAccountModelPricingGate(lookup accountModelPricingLookup
 	}
 	if len(unpriced) > 0 {
 		return infraerrors.BadRequest("MODEL_PRICING_MISSING",
-			fmt.Sprintf("以下 ollama_cloud 模型缺少定价，无法保证计费（请先补价或调整 model_mapping/%s）: %s",
+			fmt.Sprintf("以下 ollama_cloud 模型缺少全局基础定价，无法保证计费。此校验要求每个可出站模型都有全局基础价（LiteLLM 或内置 fallback），仅在渠道/分组层配置的定价不会被接受：请先在全局模型定价中补价，或调整 model_mapping/extra.%s。缺价模型: %s",
 				OllamaCloudAllowedModelsExtraKey, strings.Join(unpriced, ", ")))
 	}
 	return nil
