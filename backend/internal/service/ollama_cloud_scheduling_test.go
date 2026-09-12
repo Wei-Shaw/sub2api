@@ -70,6 +70,9 @@ func TestOllamaCloudPlatform_EntersOpenAISchedulerCandidatePool(t *testing.T) {
 			Schedulable: true,
 			Concurrency: 1,
 			Credentials: map[string]any{"api_key": "ollama-key", "base_url": "https://ollama.com/v1"},
+			// 运行时白名单生效后，空 mapping 且无清单的 ollama_cloud 账号是
+			// deny-all（保存期门禁本就拒绝该配置），夹具必须声明清单才能入选。
+			Extra: map[string]any{OllamaCloudAllowedModelsExtraKey: []any{"gpt-oss:120b"}},
 		},
 		{
 			ID:          77022,
