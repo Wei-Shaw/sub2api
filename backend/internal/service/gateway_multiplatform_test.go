@@ -3527,8 +3527,11 @@ func TestModelRoutingAppliesToPlatform(t *testing.T) {
 		{"openai group", PlatformOpenAI, PlatformOpenAI, true},
 		{"composite group resolved to anthropic", PlatformAnthropic, PlatformComposite, true},
 		{"composite group resolved to openai", PlatformOpenAI, PlatformComposite, true},
-		{"target platform outside the allowed set", PlatformGemini, PlatformGemini, false},
-		{"composite group resolved outside the allowed set", PlatformGemini, PlatformComposite, false},
+		{"gemini group", PlatformGemini, PlatformGemini, true},
+		{"antigravity group", PlatformAntigravity, PlatformAntigravity, true},
+		{"composite group resolved to gemini", PlatformGemini, PlatformComposite, true},
+		{"target platform outside the allowed set", PlatformKimi, PlatformKimi, false},
+		{"composite group resolved outside the allowed set", PlatformKimi, PlatformComposite, false},
 		{"group platform does not match target", PlatformOpenAI, PlatformAnthropic, false},
 		{"empty target platform", "", PlatformOpenAI, false},
 	} {

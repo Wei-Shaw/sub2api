@@ -60,6 +60,37 @@ func ResolvedUpstreamModelFromContext(ctx context.Context) (string, bool) {
 	return model, true
 }
 
+// WithRequestedPublicModel 记录客户端原始请求中的公开模型名。
+//
+// composite 请求由 WithCompositeRouteDecision 一并写入；非 composite 请求需要网关
+// handler 在做渠道映射之前显式记录，否则调度只能看到映射后的上游模型名，按公开别名
+// 配置的分组模型路由就会漏配（见 openai_model_routing.go 的匹配阶段说明）。
+func WithRequestedPublicModel(ctx context.Context, model string) context.Context {
+	if ctx == nil {
+		return ctx
+	}
+	model = strings.TrimSpace(model)
+	if model == "" {
+		return ctx
+	}
+	return context.WithValue(ctx, ctxkey.RequestedPublicModel, model)
+}
+
+// WithRequestedPublicModelIfAbsent 仅在尚未记录时写入公开模型名。
+//
+// composite 中间件在解析前就记录了真正的公开名，而此后 handler 手里的模型变量往往
+// 已经是解析出的上游模型（Gemini 入口就会把 modelName 换成 composite 的目标模型）。
+// 无条件覆盖会把 composite 的公开名冲掉，规则反而漏配，因此补写必须让位于已有值。
+func WithRequestedPublicModelIfAbsent(ctx context.Context, model string) context.Context {
+	if ctx == nil {
+		return ctx
+	}
+	if _, ok := RequestedPublicModelFromContext(ctx); ok {
+		return ctx
+	}
+	return WithRequestedPublicModel(ctx, model)
+}
+
 func RequestedPublicModelFromContext(ctx context.Context) (string, bool) {
 	if ctx == nil {
 		return "", false

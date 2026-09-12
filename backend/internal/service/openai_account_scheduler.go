@@ -92,6 +92,9 @@ type OpenAIAccountScheduleRequest struct {
 	// and compact_model_mapping; native remote compaction v2 leaves it false.
 	RequireCompact bool
 	ExcludedIDs    map[int64]struct{}
+	// RoutedAccountIDs 是分组模型路由为本次模型命中的优先账号集合（可为空）。
+	// 它只在候选与普通粘性层表达偏好，不放宽任何资格门，见 openai_model_routing.go。
+	RoutedAccountIDs []int64
 }
 
 type OpenAIAccountScheduleDecision struct {
@@ -448,7 +451,11 @@ func (s *defaultOpenAIAccountScheduler) Select(
 		}
 	}
 
-	if !req.StickyWeighted {
+	// 普通会话粘性不得压过有效路由：绑定落在路由集合之外时跳过这一层，让候选
+	// 过滤把请求交给路由账号。上面的 previous_response_id 与 guardian parent 层
+	// 是会话正确性约束，不受此限制。
+	stickyBlockedByRouting := s.service.openAIStickyBindingBlockedByRouting(ctx, req.RoutedAccountIDs, req.StickyAccountID)
+	if !req.StickyWeighted && !stickyBlockedByRouting {
 		selection, escapedSticky, err := s.selectBySessionHash(ctx, req)
 		if err != nil {
 			return nil, decision, err
@@ -1273,6 +1280,13 @@ func (s *defaultOpenAIAccountScheduler) tryFallbackToWeightedSticky(
 		if accountID <= 0 {
 			continue
 		}
+		// 这条兜底直接按绑定取账号，绕开了负载均衡的候选过滤，因此必须自行遵守
+		// 分组模型路由：普通会话粘性落在路由集合之外时跳过。previous_response
+		// 绑定是续话约束而非调度偏好，不受此限制（两者同号时按后者处理）。
+		if accountID == req.StickyAccountID && accountID != req.StickyPreviousAccountID &&
+			s.service.openAIStickyBindingBlockedByRouting(ctx, req.RoutedAccountIDs, accountID) {
+			continue
+		}
 		if req.ExcludedIDs != nil {
 			if _, excluded := req.ExcludedIDs[accountID]; excluded {
 				continue
@@ -1436,7 +1450,6 @@ func (s *defaultOpenAIAccountScheduler) selectByLoadBalance(
 
 	filterStats := openAISelectionFilterStats{pool: len(accounts)}
 	filtered := make([]*Account, 0, len(accounts))
-	loadReq := make([]AccountWithConcurrency, 0, len(accounts))
 	for i := range accounts {
 		account := &accounts[i]
 		if req.ExcludedIDs != nil {
@@ -1473,13 +1486,47 @@ func (s *defaultOpenAIAccountScheduler) selectByLoadBalance(
 			continue
 		}
 		filtered = append(filtered, account)
+	}
+	if len(filtered) == 0 {
+		return nil, 0, 0, 0, noAvailableOpenAISelectionError(req.RequestedModel, false, filterStats.summary(""))
+	}
+
+	// 分组模型路由：先只用路由候选跑一轮完整选择。收敛不能只做一次替换——compact
+	// 过滤、数据库终检和槽位获取都发生在这之后，路由账号在那些环节全军覆没时必须
+	// 回落普通候选，否则健康的备用账号会被一并丢掉、请求直接报无可用账号。
+	//
+	// 槽位占满是另一回事：第一轮会返回等待计划（result 非 nil），那属于"路由账号
+	// 可用但忙"，保持等待以维持账号亲和，与 Anthropic 侧一致，不改判到空闲的非路由
+	// 账号。
+	if routed := openAIRoutedAccountSubset(filtered, req.RoutedAccountIDs); len(routed) > 0 {
+		result, candidateCount, topK, loadSkew, err := s.selectByLoadBalanceFromPool(ctx, req, routed, filterStats, budget, true)
+		if err == nil && result != nil {
+			return result, candidateCount, topK, loadSkew, nil
+		}
+	}
+	return s.selectByLoadBalanceFromPool(ctx, req, filtered, filterStats, budget, false)
+}
+
+// selectByLoadBalanceFromPool 在给定候选池上完成负载评估、订阅优先分池、槽位获取与
+// 等待计划兜底。抽出来是为了让模型路由可以先在路由池上跑一轮、失败后原样重跑普通池。
+func (s *defaultOpenAIAccountScheduler) selectByLoadBalanceFromPool(
+	ctx context.Context,
+	req OpenAIAccountScheduleRequest,
+	filtered []*Account,
+	filterStats openAISelectionFilterStats,
+	budget *openAISelectionProbeBudget,
+	routedRound bool,
+) (*AccountSelectionResult, int, int, float64, error) {
+	if len(filtered) == 0 {
+		return nil, 0, 0, 0, noAvailableOpenAISelectionError(req.RequestedModel, false, filterStats.summary(""))
+	}
+
+	loadReq := make([]AccountWithConcurrency, 0, len(filtered))
+	for _, account := range filtered {
 		loadReq = append(loadReq, AccountWithConcurrency{
 			ID:             account.ID,
 			MaxConcurrency: account.EffectiveLoadFactor(),
 		})
-	}
-	if len(filtered) == 0 {
-		return nil, 0, 0, 0, noAvailableOpenAISelectionError(req.RequestedModel, false, filterStats.summary(""))
 	}
 
 	loadMap := map[int64]*AccountLoadInfo{}
@@ -1487,6 +1534,12 @@ func (s *defaultOpenAIAccountScheduler) selectByLoadBalance(
 		if batchLoad, loadErr := s.service.concurrencyService.GetAccountsLoadBatch(ctx, loadReq); loadErr == nil {
 			loadMap = batchLoad
 		}
+	}
+
+	// 路由优先轮遇上"路由账号全部占满"时让位给普通候选：继续走下去只会返回一个等待
+	// 计划，把请求排在满载账号后面，而空闲的备用账号就在旁边。
+	if routedRound && openAIAllAccountsAtCapacity(filtered, loadMap) {
+		return nil, 0, 0, 0, noAvailableOpenAISelectionError(req.RequestedModel, false, filterStats.summary("routed_accounts_at_capacity"))
 	}
 
 	if req.SubscriptionPriority {
@@ -2243,6 +2296,12 @@ func (s *OpenAIGatewayService) selectAccountWithSchedulerOnce(
 		ctx = s.withOpenAIProfitControlGate(ctx, groupID)
 	}
 	platform = NormalizeOpenAICompatiblePlatform(platform)
+	ctx = s.WithOpenAIModelRouting(ctx, groupID, platform, requestedModel)
+	// legacy 调度没有独立的续话层，不可迁移的 previous_response 绑定只能靠粘性承载，
+	// 打标让路由的粘性让位规则跳过它。
+	if strings.TrimSpace(previousResponseID) != "" && !previousResponseCanMove {
+		ctx = withOpenAINonMovableContinuation(ctx)
+	}
 	decision := OpenAIAccountScheduleDecision{}
 	preserveGuardianParentBinding := preserveOpenAIGuardianParentBinding(ctx, sessionHash)
 	guardianParentAccountID := int64(0)
@@ -2378,6 +2437,7 @@ func (s *OpenAIGatewayService) selectAccountWithSchedulerOnce(
 		RequiredImageCapability: requiredImageCapability,
 		RequireCompact:          requireCompact,
 		ExcludedIDs:             excludedIDs,
+		RoutedAccountIDs:        s.openAIRoutedAccountIDs(ctx, groupID, platform, requestedModel),
 	})
 }
 

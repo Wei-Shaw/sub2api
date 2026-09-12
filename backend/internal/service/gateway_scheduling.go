@@ -254,7 +254,7 @@ func (s *GatewayService) SelectAccountWithLoadAwareness(ctx context.Context, gro
 	var routingAccountIDs []int64
 	if group != nil && requestedModel != "" &&
 		modelRoutingAppliesToPlatform(platform, group.Platform) {
-		routingAccountIDs = group.GetRoutingAccountIDs(requestedModel)
+		routingAccountIDs = group.GetRoutingAccountIDs(modelRoutingLookupModel(ctx, requestedModel))
 		if s.debugModelRoutingEnabled() {
 			logger.LegacyPrintf("service.gateway", "[ModelRoutingDebug] context group routing: group_id=%d model=%s enabled=%v rules=%d matched_ids=%v session=%s sticky_account=%d",
 				group.ID, requestedModel, group.ModelRoutingEnabled, len(group.ModelRouting), routingAccountIDs, shortSessionHash(sessionHash), stickyAccountID)
@@ -870,7 +870,12 @@ func (s *GatewayService) ResolveGroupByID(ctx context.Context, groupID int64) (*
 // 路由规则的存储与查表（Group.ModelRouting / GetRoutingAccountIDs）本身与平台无关，
 // 早期只有 Anthropic 目标平台会读取它。OpenAI 分组同样存在“同一个公开别名由不同账号
 // 映射到不同上游模型”的故障转移写法，需要显式路由来指定谁是主、谁是备，因此这里把
-// Anthropic 与 OpenAI 一并放行。
+// Anthropic 与 OpenAI 一并放行。Gemini 与 Antigravity 的生成入口走同一套通用调度
+// （见 handler.GeminiV1BetaModels → SelectAccountWithLoadAwareness），同样按此放行。
+//
+// 注意本函数只覆盖通用网关。openai / grok / kimi / zhipu / deepseek 分组的
+// Responses、Chat 与 Messages 由 OpenAIGatewayService 独立调度，其路由接线见
+// openai_model_routing.go。
 //
 // targetPlatform 是请求解析后的目标平台；groupPlatform 是分组自身的平台。composite
 // 分组不限定自身平台，只要目标平台落在放行集合内即可复用其规则。
@@ -885,7 +890,7 @@ func modelRoutingAppliesToPlatform(targetPlatform, groupPlatform string) bool {
 // 在只知道目标平台、还没取到分组的位置（调试日志、取分组前的短路）单独判定用。
 func modelRoutingAppliesToTargetPlatform(targetPlatform string) bool {
 	switch targetPlatform {
-	case PlatformAnthropic, PlatformOpenAI:
+	case PlatformAnthropic, PlatformOpenAI, PlatformGemini, PlatformAntigravity:
 		return true
 	default:
 		return false
@@ -911,7 +916,7 @@ func (s *GatewayService) routingAccountIDsForRequest(ctx context.Context, groupI
 		}
 		return nil
 	}
-	ids := group.GetRoutingAccountIDs(requestedModel)
+	ids := group.GetRoutingAccountIDs(modelRoutingLookupModel(ctx, requestedModel))
 	if s.debugModelRoutingEnabled() {
 		logger.LegacyPrintf("service.gateway", "[ModelRoutingDebug] routing lookup: group_id=%d model=%s enabled=%v rules=%d matched_ids=%v",
 			group.ID, requestedModel, group.ModelRoutingEnabled, len(group.ModelRouting), ids)
