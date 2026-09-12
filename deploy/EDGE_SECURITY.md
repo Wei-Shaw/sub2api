@@ -29,8 +29,11 @@ the application's responsibility.
 
 ## Trusted client IPs
 
-`security.trust_forwarded_ip_for_api_key_acl` is enabled by default for upgrade
-compatibility. While enabled, raw forwarding headers take over client-IP
+New installations default `security.trust_forwarded_ip_for_api_key_acl` to
+`false`, so Gin's explicit `server.trusted_proxies` chain is authoritative.
+Completed V2 migrations keep their persisted choice; pre-V2 settings still run
+the one-time compatibility migration described below.
+While the switch is enabled, raw forwarding headers take over client-IP
 resolution for logs and security-sensitive paths. Custom headers from
 `security.forwarded_client_ip_headers` are checked in configured order before
 the built-in `CF-Connecting-IP`, `X-Real-IP`, and `X-Forwarded-For` fallback.
@@ -49,10 +52,12 @@ headers are ignored completely when the switch is disabled. In that mode Gin's
 CIDR/IP addresses that connect directly to Sub2API. An explicit empty list
 trusts no forwarded client IPs.
 
-On the first upgrade to this mode, a legacy `false` value is changed to `true`
-only when `server.trusted_proxies` was not explicitly configured; explicit
-proxy policies remain in secure mode. New installations persist the configured
-custom header list during database initialization. Existing installations
+On the first upgrade to this mode, a pre-migration `false` value is changed to
+`true` only when `server.trusted_proxies` was not explicitly configured; this
+preserves the old installation's effective behavior. Explicit proxy policies
+remain in secure mode. New installations persist `false` together with the
+migration marker and the configured custom header list during database
+initialization. Existing installations
 backfill a missing database value from the YAML configuration. A hidden
 migration marker prevents later administrator changes from being overwritten.
 If settings cannot be read or the persisted custom-header list is malformed,
@@ -114,6 +119,9 @@ server {
         limit_req zone=sub2api_api burst=60 nodelay;
         proxy_http_version 1.1;
         proxy_set_header Host $host;
+        # Also clear or overwrite every header configured in
+        # security.forwarded_client_ip_headers.
+        proxy_set_header CF-Connecting-IP "";
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $remote_addr;
         proxy_set_header X-Forwarded-Proto $scheme;
@@ -148,8 +156,9 @@ processing is restricted to explicit trusted proxy CIDRs.
 ## Caddy and CDN
 
 The bundled `deploy/Caddyfile` sets a 64 KiB header limit, a 10-second header
-timeout, a 256 MiB absolute body limit, and overwrites forwarded addresses from
-the TCP peer. It is therefore a direct-to-Caddy baseline. Do not use its
+timeout, a 256 MiB absolute body limit, removes incoming `CF-Connecting-IP`,
+and overwrites forwarded addresses from the TCP peer. It is therefore a
+direct-to-Caddy baseline. Do not use its
 `{remote_host}` forwarding lines unchanged behind a CDN: all clients would be
 attributed to a CDN egress address, collapsing rejection aggregation and the
 invalid-auth limiter onto unrelated users.
