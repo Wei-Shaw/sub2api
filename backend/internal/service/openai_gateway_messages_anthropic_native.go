@@ -139,11 +139,10 @@ func (s *OpenAIGatewayService) nativeAnthropicTargetURL(account *Account) (strin
 	if err != nil {
 		return "", fmt.Errorf("invalid base_url: %w", err)
 	}
-	if account.IsOpenCodeGo() {
-		// OpenCode Go 的 Chat Completions base 带 /v1；用版本感知拼接避免 /v1/v1/messages。
-		return buildOpenAIEndpointURL(validatedURL, "/v1/messages"), nil
-	}
-	return strings.TrimRight(validatedURL, "/") + "/v1/messages", nil
+	// 版本感知拼接：base 已带 /v1 时不再追加，避免拼出 /v1/v1/messages
+	//（OpenCode Go 的 Chat Completions base 带 /v1，Ollama Cloud 的 anthropic
+	// 默认 base 不带）。
+	return buildOpenAIEndpointURL(validatedURL, "/v1/messages"), nil
 }
 
 func resolveOpenCodeGoMappedModel(account *Account, body []byte, defaultMappedModel string) string {
