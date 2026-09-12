@@ -266,6 +266,149 @@ describe('admin AccountsView lite account list', () => {
     wrapper.unmount()
   })
 
+  it('uses measured tab widths and opens overflow groups from an arrow-only trigger', async () => {
+    getAllGroups.mockResolvedValue([
+      { id: 7, name: 'first', platform: 'openai' },
+      { id: 8, name: 'middle', platform: 'openai' },
+      { id: 9, name: 'last', platform: 'openai' }
+    ])
+    vi.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockImplementation(function () {
+      return (this as HTMLElement).dataset.test === 'account-group-tabs' ? 400 : 0
+    })
+    vi.spyOn(HTMLElement.prototype, 'offsetWidth', 'get').mockImplementation(function () {
+      const testID = (this as HTMLElement).dataset.test
+      if (testID === 'account-group-tab-all') return 96
+      if (testID === 'account-group-tab-ungrouped') return 80
+      if (testID === 'account-group-tab-measurement') return 80
+      if (testID === 'account-group-overflow-trigger') return 44
+      return 0
+    })
+
+    const wrapper = mountView()
+    await flushPromises()
+
+    const visibleTabs = wrapper.get('[data-test="group-tabs-draggable"]')
+    expect(visibleTabs.text()).toContain('first')
+    expect(visibleTabs.text()).toContain('middle')
+    expect(visibleTabs.text()).not.toContain('last')
+
+    const trigger = wrapper.get('[data-test="account-group-overflow-trigger"]')
+    expect(trigger.text()).toBe('')
+    await trigger.trigger('click')
+
+    expect(wrapper.get('[data-test="account-group-overflow-menu"]').text()).toContain('last')
+    expect(wrapper.get('[data-test="account-group-tabs"]').classes()).not.toContain('overflow-hidden')
+    wrapper.unmount()
+  })
+
+  it('persists overflow drag order without selecting a group and restores it after remount', async () => {
+    getAllGroups.mockResolvedValue([
+      { id: 7, name: 'first', platform: 'openai' },
+      { id: 8, name: 'middle', platform: 'openai' },
+      { id: 9, name: 'last', platform: 'openai' }
+    ])
+    vi.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockImplementation(function () {
+      return (this as HTMLElement).dataset.test === 'account-group-tabs' ? 320 : 0
+    })
+    vi.spyOn(HTMLElement.prototype, 'offsetWidth', 'get').mockImplementation(function () {
+      const testID = (this as HTMLElement).dataset.test
+      if (testID === 'account-group-tab-all') return 96
+      if (testID === 'account-group-tab-ungrouped') return 80
+      if (testID === 'account-group-tab-measurement') return 80
+      if (testID === 'account-group-overflow-trigger') return 44
+      return 0
+    })
+
+    const wrapper = mountView()
+    await flushPromises()
+    await wrapper.get('[data-test="account-group-overflow-trigger"]').trigger('click')
+    const menu = wrapper.get('[data-test="account-group-overflow-menu"]')
+    await menu.get('[data-test="simulate-group-reorder"]').trigger('click')
+    await menu.get('[role="tab"]').trigger('click')
+    await flushPromises()
+
+    expect(menu.findAll('[role="tab"]').map((tab) => tab.text())).toEqual(['last', 'middle'])
+    expect(JSON.parse(localStorage.getItem('account-group-tab-order') ?? '[]')).toEqual([7, 9, 8])
+    expect(wrapper.find('[data-test="account-group-overflow-menu"]').exists()).toBe(true)
+    expect(listAccounts).toHaveBeenCalledTimes(1)
+    wrapper.unmount()
+
+    const restored = mountView()
+    await flushPromises()
+    await restored.get('[data-test="account-group-overflow-trigger"]').trigger('click')
+    const restoredMenu = restored.get('[data-test="account-group-overflow-menu"]')
+    expect(restoredMenu.findAll('[role="tab"]').map((tab) => tab.text())).toEqual(['last', 'middle'])
+    await restoredMenu.get('[role="tab"]').trigger('click')
+    await flushPromises()
+    expect(restored.find('[data-test="account-group-overflow-menu"]').exists()).toBe(false)
+    expect(listAccounts).toHaveBeenLastCalledWith(
+      1, 20, expect.objectContaining({ group: '9' }), expect.anything()
+    )
+    restored.unmount()
+  })
+
+  it.each(['to-tabs', 'to-overflow'])('shares drag order across both lists: %s', async (direction) => {
+    getAllGroups.mockResolvedValue([
+      { id: 7, name: 'first', platform: 'openai' },
+      { id: 8, name: 'middle', platform: 'openai' },
+      { id: 9, name: 'last', platform: 'openai' }
+    ])
+    vi.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockImplementation(function () {
+      return (this as HTMLElement).dataset.test === 'account-group-tabs' ? 400 : 0
+    })
+    vi.spyOn(HTMLElement.prototype, 'offsetWidth', 'get').mockImplementation(function () {
+      const testID = (this as HTMLElement).dataset.test
+      if (testID === 'account-group-tab-all') return 96
+      if (testID === 'account-group-tab-ungrouped') return 80
+      if (testID === 'account-group-tab-measurement') return 80
+      if (testID === 'account-group-overflow-trigger') return 44
+      return 0
+    })
+
+    const wrapper = mountView()
+    await flushPromises()
+    const tabs = wrapper.findAllComponents(VueDraggableStub)[0]
+    // Starting a drag exposes the other drop target without an extra click.
+    tabs.vm.$emit('start')
+    await flushPromises()
+    const menu = wrapper.findAllComponents(VueDraggableStub)[1]
+    expect(tabs.attributes('group')).toBe('account-group-tabs')
+    expect(menu.attributes('group')).toBe(tabs.attributes('group'))
+    expect(menu.attributes('handle')).toBe(tabs.attributes('handle'))
+    const visible = [...tabs.props('modelValue')]
+    const overflow = [...menu.props('modelValue')]
+    const source = direction === 'to-tabs' ? menu : tabs
+    const target = direction === 'to-tabs' ? tabs : menu
+    if (source === menu) source.vm.$emit('start')
+
+    // Sortable emits the destination add before the source remove.
+    target.vm.$emit('update:modelValue', direction === 'to-tabs'
+      ? [overflow[0], ...visible]
+      : [...overflow, visible[0]])
+    await flushPromises()
+    source.vm.$emit('update:modelValue', direction === 'to-tabs' ? [] : visible.slice(1))
+    await flushPromises()
+    // An empty source must remain mounted until the end event commits the order.
+    expect(wrapper.findAllComponents(VueDraggableStub)).toHaveLength(2)
+    source.vm.$emit('end')
+    await flushPromises()
+
+    const expected = direction === 'to-tabs' ? [9, 7, 8] : [8, 9, 7]
+    expect(JSON.parse(localStorage.getItem('account-group-tab-order') ?? '[]')).toEqual(expected)
+    expect(tabs.props('modelValue').map((tab: { value: string }) => Number(tab.value))).toEqual(expected.slice(0, 2))
+    expect(menu.props('modelValue').map((tab: { value: string }) => Number(tab.value))).toEqual(expected.slice(2))
+    expect(listAccounts).toHaveBeenCalledTimes(1)
+    wrapper.unmount()
+
+    const restored = mountView()
+    await flushPromises()
+    await restored.get('[data-test="account-group-overflow-trigger"]').trigger('click')
+    expect(restored.findAllComponents(VueDraggableStub).flatMap((list) =>
+      list.props('modelValue').map((tab: { value: string }) => Number(tab.value))
+    )).toEqual(expected)
+    restored.unmount()
+  })
+
   it('maps group_ids through the group catalog for the table cell', async () => {
     const wrapper = mountView()
     await flushPromises()

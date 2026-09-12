@@ -2,18 +2,21 @@
   <AppLayout>
     <TablePageLayout>
       <template #filters>
-        <div class="account-group-tabs mb-4 rounded-xl border border-gray-200 bg-white p-1 shadow-sm dark:border-dark-700 dark:bg-dark-800">
+        <div class="account-group-tabs relative mb-4 rounded-xl border border-gray-200 bg-white p-1 shadow-sm dark:border-dark-700 dark:bg-dark-800">
           <div
             ref="groupTabsContainerRef"
-            class="flex min-w-0 items-center gap-1 overflow-hidden pb-px"
+            class="flex min-w-0 items-center gap-1 pb-px"
             role="tablist"
             :aria-label="t('admin.accounts.groupTabsLabel')"
+            data-test="account-group-tabs"
           >
             <button
+              ref="allGroupsTabRef"
               type="button"
               role="tab"
               :aria-selected="activeGroup === allGroupsTab.value"
               :class="groupTabClass(allGroupsTab.value)"
+              data-test="account-group-tab-all"
               @click="selectGroupTab(allGroupsTab.value)"
             >
               {{ allGroupsTab.label }}
@@ -24,17 +27,19 @@
               />
             </button>
 
-            <div ref="groupTabsViewportRef" class="min-w-0 flex-1 overflow-hidden">
+            <div class="min-w-0 flex-1 overflow-hidden">
               <VueDraggable
                 v-model="visibleGroupTabs"
                 tag="div"
-                class="flex min-w-0 gap-1"
+                class="flex min-h-11 min-w-0 gap-1"
+                group="account-group-tabs"
                 :animation="180"
                 :delay="250"
                 :delay-on-touch-only="false"
                 :touch-start-threshold="3"
                 :fallback-tolerance="4"
                 :force-fallback="true"
+                :fallback-on-body="true"
                 direction="horizontal"
                 handle=".account-group-tab-drag-handle"
                 ghost-class="opacity-40"
@@ -68,23 +73,48 @@
               </VueDraggable>
             </div>
 
-            <div v-if="overflowGroupTabs.length" ref="groupOverflowDropdownRef" class="relative shrink-0">
+            <div v-if="overflowGroupTabs.length || isGroupTabDragging" ref="groupOverflowDropdownRef" class="relative shrink-0">
               <button
+                ref="groupOverflowTriggerRef"
                 type="button"
-                class="inline-flex min-h-10 shrink-0 items-center gap-1 rounded-lg px-3 py-2 text-sm font-medium text-gray-500 transition-colors hover:bg-gray-50 hover:text-gray-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 dark:text-gray-400 dark:hover:bg-dark-700 dark:hover:text-gray-200"
+                class="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-lg text-gray-500 transition-colors hover:bg-gray-50 hover:text-gray-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 dark:text-gray-400 dark:hover:bg-dark-700 dark:hover:text-gray-200"
                 :class="{ 'bg-primary-50 text-primary-700 dark:bg-primary-900/30 dark:text-primary-300': overflowGroupTabs.some((tab) => activeGroup === tab.value) }"
                 :aria-expanded="showGroupOverflowDropdown"
                 :aria-label="t('admin.accounts.moreGroups')"
                 :title="t('admin.accounts.moreGroups')"
-                @click="showGroupOverflowDropdown = !showGroupOverflowDropdown"
+                aria-haspopup="true"
+                data-test="account-group-overflow-trigger"
+                @click.stop="showGroupOverflowDropdown = !showGroupOverflowDropdown"
               >
-                <Icon name="more" size="sm" aria-hidden="true" />
-                <span class="hidden sm:inline">{{ t('admin.accounts.moreGroups') }}</span>
-                <Icon name="chevronDown" size="xs" aria-hidden="true" />
+                <Icon
+                  name="chevronDown"
+                  size="sm"
+                  class="transition-transform"
+                  :class="{ 'rotate-180': showGroupOverflowDropdown }"
+                  aria-hidden="true"
+                />
               </button>
-              <div
+              <VueDraggable
                 v-if="showGroupOverflowDropdown"
-                class="absolute right-0 z-50 mt-2 max-h-72 w-56 overflow-y-auto rounded-md border border-gray-200 bg-white p-1 shadow-lg dark:border-dark-700 dark:bg-dark-800"
+                v-model="overflowGroupTabs"
+                tag="div"
+                group="account-group-tabs"
+                :animation="180"
+                :delay="250"
+                :delay-on-touch-only="false"
+                :touch-start-threshold="3"
+                :fallback-tolerance="4"
+                :force-fallback="true"
+                :fallback-on-body="true"
+                direction="vertical"
+                handle=".account-group-tab-drag-handle"
+                ghost-class="opacity-40"
+                chosen-class="cursor-grabbing"
+                class="absolute right-0 top-full z-50 mt-2 min-h-11 max-h-72 w-56 overflow-y-auto rounded-md border border-gray-200 bg-white p-1 shadow-lg dark:border-dark-700 dark:bg-dark-800"
+                data-test="account-group-overflow-menu"
+                @start="handleGroupTabDragStart"
+                @end="handleGroupTabDragEnd"
+                @click.stop
               >
                 <button
                   v-for="tab in overflowGroupTabs"
@@ -92,20 +122,24 @@
                   type="button"
                   role="tab"
                   :aria-selected="activeGroup === tab.value"
-                  class="flex w-full items-center justify-between gap-2 rounded-md px-3 py-2 text-left text-sm text-gray-600 transition-colors hover:bg-gray-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 dark:text-gray-300 dark:hover:bg-dark-700"
+                  class="account-group-tab-drag-handle account-group-overflow-drag-handle flex min-h-11 w-full cursor-grab select-none touch-none items-center gap-2 rounded-md px-3 py-2 text-left text-sm text-gray-600 transition-colors hover:bg-gray-100 active:cursor-grabbing focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 dark:text-gray-300 dark:hover:bg-dark-700"
+                  :title="t('admin.accounts.reorderGroupTabs')"
                   @click="handleOverflowGroupClick(tab.value)"
                 >
-                  <span class="truncate">{{ tab.label }}</span>
+                  <Icon name="menu" size="xs" class="shrink-0 text-current/50" aria-hidden="true" />
+                  <span class="min-w-0 flex-1 truncate">{{ tab.label }}</span>
                   <Icon v-if="activeGroup === tab.value" name="check" size="sm" class="shrink-0 text-primary-500" aria-hidden="true" />
                 </button>
-              </div>
+              </VueDraggable>
             </div>
 
             <button
+              ref="ungroupedTabRef"
               type="button"
               role="tab"
               :aria-selected="activeGroup === ungroupedTab.value"
               :class="groupTabClass(ungroupedTab.value)"
+              data-test="account-group-tab-ungrouped"
               @click="selectGroupTab(ungroupedTab.value)"
             >
               {{ ungroupedTab.label }}
@@ -114,6 +148,25 @@
                 class="ml-1.5 inline-block h-3 w-3 animate-spin rounded-full border-2 border-current border-r-transparent align-[-2px]"
                 aria-hidden="true"
               />
+            </button>
+          </div>
+          <div
+            ref="groupTabsMeasurementRef"
+            class="pointer-events-none absolute left-0 top-0 flex h-0 w-0 gap-1 overflow-hidden invisible"
+            aria-hidden="true"
+          >
+            <button
+              v-for="tab in orderedGroupTabs"
+              :key="tab.value"
+              type="button"
+              tabindex="-1"
+              :class="[groupTabClass(tab.value), 'account-group-tab-drag-handle cursor-grab select-none touch-none']"
+              data-test="account-group-tab-measurement"
+            >
+              <span class="mr-1 inline-flex items-center text-current/50" aria-hidden="true">
+                <Icon name="menu" size="xs" />
+              </span>
+              {{ tab.label }}
             </button>
           </div>
         </div>
@@ -603,7 +656,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, computed, onMounted, onUnmounted, toRaw, watch } from 'vue'
+import { ref, reactive, computed, nextTick, onMounted, onUnmounted, toRaw, watch } from 'vue'
 import { useIntervalFn } from '@vueuse/core'
 import { VueDraggable } from 'vue-draggable-plus'
 import { useI18n } from 'vue-i18n'
@@ -670,14 +723,19 @@ const ungroupedTab = computed<GroupTab>(() => ({
 const groupTabOrder = ref<number[]>(loadStoredGroupTabOrder())
 const orderedGroupTabs = ref<GroupTab[]>([])
 const visibleGroupTabs = ref<GroupTab[]>([])
-const groupTabsViewportRef = ref<HTMLElement | null>(null)
+const overflowGroupTabs = ref<GroupTab[]>([])
+const isGroupTabDragging = ref(false)
+const groupTabsContainerRef = ref<HTMLElement | null>(null)
+const allGroupsTabRef = ref<HTMLElement | null>(null)
+const ungroupedTabRef = ref<HTMLElement | null>(null)
+const groupTabsMeasurementRef = ref<HTMLElement | null>(null)
+const groupOverflowTriggerRef = ref<HTMLElement | null>(null)
 const groupOverflowDropdownRef = ref<HTMLElement | null>(null)
-const groupTabsMeasuredWidth = ref(0)
-const groupTabsMeasurementReady = ref(false)
 const showGroupOverflowDropdown = ref(false)
 let groupTabsResizeObserver: ResizeObserver | null = null
 const suppressNextGroupTabClick = ref(false)
-const GROUP_OVERFLOW_TRIGGER_WIDTH = 92
+const GROUP_TAB_GAP = 4
+const GROUP_OVERFLOW_TRIGGER_WIDTH = 44
 function loadStoredGroupTabOrder(): number[] {
   if (typeof window === 'undefined') return []
   try {
@@ -709,43 +767,83 @@ function syncOrderedGroupTabs() {
   })
   if (groups.value.length > 0) groupTabOrder.value = orderedIds
 }
-function estimateGroupTabWidth(label: string) {
-  return Math.max(76, label.length * 14 + 40)
-}
 function calculateVisibleGroupCount() {
-  if (!groupTabsMeasurementReady.value) return orderedGroupTabs.value.length
-  if (groupTabsMeasuredWidth.value <= 0) {
-    // jsdom does not calculate layout widths; retain the full list in that environment.
-    return typeof window !== 'undefined' && window.innerWidth >= 768 ? orderedGroupTabs.value.length : 0
-  }
-  const fits = (availableWidth: number) => {
-    let used = 0
-    for (let index = 0; index < orderedGroupTabs.value.length; index += 1) {
-      used += estimateGroupTabWidth(orderedGroupTabs.value[index].label) + (index > 0 ? 4 : 0)
-      if (used > availableWidth) return index
-    }
+  const containerWidth = groupTabsContainerRef.value?.clientWidth ?? 0
+  const elementWidth = (element: HTMLElement | null) => (
+    element ? element.getBoundingClientRect().width || element.offsetWidth : 0
+  )
+  const allGroupsWidth = elementWidth(allGroupsTabRef.value)
+  const ungroupedWidth = elementWidth(ungroupedTabRef.value)
+  const measuredTabs = Array.from(groupTabsMeasurementRef.value?.children ?? []) as HTMLElement[]
+  const tabWidths = measuredTabs.map(elementWidth)
+
+  // jsdom does not calculate layout widths; retain the full list in that environment.
+  if (
+    containerWidth <= 0 ||
+    allGroupsWidth <= 0 ||
+    ungroupedWidth <= 0 ||
+    tabWidths.length !== orderedGroupTabs.value.length ||
+    tabWidths.some((width) => width <= 0)
+  ) {
     return orderedGroupTabs.value.length
   }
-  const firstPass = fits(groupTabsMeasuredWidth.value)
+
+  const fits = (availableWidth: number, limit = tabWidths.length) => {
+    let used = 0
+    for (let index = 0; index < limit; index += 1) {
+      used += tabWidths[index] + (index > 0 ? GROUP_TAB_GAP : 0)
+      if (used > availableWidth) return index
+    }
+    return limit
+  }
+
+  const boundaryWidth = allGroupsWidth + ungroupedWidth
+  const availableWithoutOverflow = Math.max(0, containerWidth - boundaryWidth - GROUP_TAB_GAP * 2)
+  const firstPass = fits(availableWithoutOverflow)
   if (firstPass >= orderedGroupTabs.value.length) return firstPass
-  return fits(Math.max(0, groupTabsMeasuredWidth.value - GROUP_OVERFLOW_TRIGGER_WIDTH))
+
+  const overflowTriggerWidth = elementWidth(groupOverflowTriggerRef.value) || GROUP_OVERFLOW_TRIGGER_WIDTH
+  const availableWithOverflow = Math.max(
+    0,
+    containerWidth - boundaryWidth - overflowTriggerWidth - GROUP_TAB_GAP * 3
+  )
+  return fits(availableWithOverflow)
 }
 function syncVisibleGroupTabs() {
-  visibleGroupTabs.value = orderedGroupTabs.value.slice(0, calculateVisibleGroupCount())
+  // Keep both drop targets stable until Sortable has added and removed the item.
+  if (isGroupTabDragging.value) return
+  const visibleCount = calculateVisibleGroupCount()
+  visibleGroupTabs.value = orderedGroupTabs.value.slice(0, visibleCount)
+  overflowGroupTabs.value = orderedGroupTabs.value.slice(visibleCount)
 }
-const overflowGroupTabs = computed(() => orderedGroupTabs.value.slice(visibleGroupTabs.value.length))
-function updateGroupTabsMeasuredWidth() {
-  groupTabsMeasuredWidth.value = groupTabsViewportRef.value?.clientWidth ?? 0
-  groupTabsMeasurementReady.value = true
+function scheduleGroupTabsLayout() {
+  void nextTick(() => {
+    observeGroupTabMeasurements()
+    syncVisibleGroupTabs()
+  })
+}
+function observeGroupTabMeasurements() {
+  if (!groupTabsResizeObserver) return
+  const targets = [
+    groupTabsContainerRef.value,
+    allGroupsTabRef.value,
+    ungroupedTabRef.value,
+    ...Array.from(groupTabsMeasurementRef.value?.children ?? [])
+  ]
+  targets.forEach((target) => {
+    if (target instanceof Element) groupTabsResizeObserver?.observe(target)
+  })
 }
 function setupGroupTabsResizeObserver() {
-  if (!groupTabsViewportRef.value || typeof ResizeObserver === 'undefined') return
+  if (!groupTabsContainerRef.value || typeof ResizeObserver === 'undefined') return
   groupTabsResizeObserver?.disconnect()
-  groupTabsResizeObserver = new ResizeObserver(updateGroupTabsMeasuredWidth)
-  groupTabsResizeObserver.observe(groupTabsViewportRef.value)
-  updateGroupTabsMeasuredWidth()
+  groupTabsResizeObserver = new ResizeObserver(syncVisibleGroupTabs)
+  observeGroupTabMeasurements()
+  syncVisibleGroupTabs()
 }
 function handleGroupTabDragStart() {
+  isGroupTabDragging.value = true
+  showGroupOverflowDropdown.value = true
   suppressNextGroupTabClick.value = true
 }
 function handleGroupTabDragEnd() {
@@ -755,7 +853,11 @@ function handleGroupTabDragEnd() {
     .map((tab) => Number(tab.value))
     .filter((id) => Number.isInteger(id) && id > 0)
   persistGroupTabOrder()
-  syncVisibleGroupTabs()
+  // Measure the reordered labels after Vue has updated the measurement elements.
+  void nextTick(() => {
+    isGroupTabDragging.value = false
+    syncVisibleGroupTabs()
+  })
   window.setTimeout(() => {
     suppressNextGroupTabClick.value = false
   }, 0)
@@ -765,11 +867,13 @@ function handleGroupTabClick(group: string) {
   selectGroupTab(group)
 }
 function handleOverflowGroupClick(group: string) {
+  if (suppressNextGroupTabClick.value) return
   showGroupOverflowDropdown.value = false
   selectGroupTab(group)
 }
 watch(groups, syncOrderedGroupTabs, { immediate: true })
-watch([orderedGroupTabs, groupTabsMeasuredWidth], syncVisibleGroupTabs, { deep: true })
+watch(orderedGroupTabs, scheduleGroupTabsLayout, { deep: true })
+watch([allGroupsTab, ungroupedTab], scheduleGroupTabsLayout)
 const groupTabClass = (value: string) => [
   'relative shrink-0 rounded-lg px-3 py-2 text-sm font-medium transition-colors',
   activeGroup.value === value
