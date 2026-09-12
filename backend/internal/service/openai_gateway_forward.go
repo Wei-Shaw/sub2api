@@ -1433,6 +1433,12 @@ func (s *OpenAIGatewayService) buildUpstreamRequest(ctx context.Context, c *gin.
 		return nil, err
 	}
 
+	// Ollama Cloud 请求期定价预检：未定价模型在构造上游请求（即任何上游 I/O）之前
+	// 显式 400，且 400 已由 helper 写出。非 UpstreamFailoverError ⇒ 不换号、不写账号处置。
+	if err := s.enforceOllamaCloudRequestPricingPreflight(ctx, c, account, body); err != nil {
+		return nil, err
+	}
+
 	req, err := http.NewRequestWithContext(ctx, "POST", targetURL, bytes.NewReader(body))
 	if err != nil {
 		return nil, err
