@@ -1403,7 +1403,9 @@ func TestOpenAIGatewayService_Forward_WSv2_TurnStateAndMetadataReplayOnReconnect
 	require.NoError(t, err)
 	require.NotNil(t, result1)
 
-	sessionHash := svc.GenerateSessionHash(c1, reqBody)
+	// 会话级状态按执行作用域取键（显式 session_id 也在其中），不再是原会话哈希。
+	sessionHash, _ := resolveOpenAIWSExecutionScope(c1, reqBody, getAPIKeyIDFromContext(c1))
+	require.NotEmpty(t, sessionHash)
 	store := svc.getOpenAIWSStateStore()
 	turnState, ok := store.GetSessionTurnState(0, sessionHash)
 	require.True(t, ok)

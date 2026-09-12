@@ -322,6 +322,180 @@ func TestOpenAIWSConnPool_AcquireQueueWaitMetrics(t *testing.T) {
 	require.GreaterOrEqual(t, metrics.ConnPickTotal, int64(1))
 }
 
+func TestOpenAIWSConnPool_AcquireAtCapacityWakesWhenAnotherConnReleases(t *testing.T) {
+	cfg := &config.Config{}
+	cfg.Gateway.OpenAIWS.MaxConnsPerAccount = 2
+	cfg.Gateway.OpenAIWS.MinIdlePerAccount = 0
+	cfg.Gateway.OpenAIWS.QueueLimitPerConn = 4
+
+	pool := newOpenAIWSConnPool(cfg)
+	accountID := int64(993)
+	account := &Account{ID: accountID, Platform: PlatformOpenAI, Type: AccountTypeAPIKey}
+	req := openAIWSAcquireRequest{Account: account, WSURL: "wss://example.com/v1/responses"}
+	target := newOpenAIWSConn("target", accountID, &openAIWSFakeConn{}, nil)
+	other := newOpenAIWSConn("other", accountID, &openAIWSFakeConn{}, nil)
+	require.True(t, target.tryAcquire())
+	require.True(t, other.tryAcquire())
+	// other 上已有一个等待者，新来的等待者会挂到 target 上。
+	other.waiters.Add(1)
+
+	ap := pool.ensureAccountPoolLocked(accountID)
+	ap.mu.Lock()
+	ap.conns[target.id] = target
+	ap.conns[other.id] = other
+	ap.lastAcquire = &req
+	ap.mu.Unlock()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	type result struct {
+		lease *openAIWSConnLease
+		err   error
+	}
+	resultCh := make(chan result, 1)
+	go func() {
+		lease, err := pool.Acquire(ctx, req)
+		resultCh <- result{lease: lease, err: err}
+	}()
+	require.Eventually(t, func() bool { return target.waiters.Load() == 1 }, time.Second, 5*time.Millisecond)
+
+	time.Sleep(40 * time.Millisecond)
+	otherLease := &openAIWSConnLease{pool: pool, accountID: accountID, conn: other}
+	otherLease.Release()
+
+	select {
+	case got := <-resultCh:
+		require.NoError(t, got.err)
+		require.NotNil(t, got.lease)
+		require.Equal(t, other.id, got.lease.ConnID())
+		require.True(t, got.lease.Reused())
+		require.GreaterOrEqual(t, got.lease.QueueWaitDuration(), 30*time.Millisecond, "queue wait accumulated before the wake-up must be carried into the lease")
+		got.lease.Release()
+	case <-time.After(500 * time.Millisecond):
+		t.Fatal("waiter queued on a busy connection must be woken when another connection is released")
+	}
+	require.Equal(t, int32(0), target.waiters.Load())
+	metrics := pool.SnapshotMetrics()
+	require.Equal(t, int64(1), metrics.AcquireQueueWaitTotal)
+	require.GreaterOrEqual(t, metrics.AcquireQueueWaitMsTotal, int64(30))
+}
+
+func TestOpenAIWSConnPool_AcquireAtCapacityWakesWhenCapacityFreedByEviction(t *testing.T) {
+	cfg := &config.Config{}
+	cfg.Gateway.OpenAIWS.MaxConnsPerAccount = 2
+	cfg.Gateway.OpenAIWS.MinIdlePerAccount = 0
+	cfg.Gateway.OpenAIWS.QueueLimitPerConn = 4
+
+	pool := newOpenAIWSConnPool(cfg)
+	dialer := &openAIWSCountingDialer{}
+	pool.setClientDialerForTest(dialer)
+	accountID := int64(994)
+	account := &Account{ID: accountID, Platform: PlatformOpenAI, Type: AccountTypeAPIKey}
+	req := openAIWSAcquireRequest{Account: account, WSURL: "wss://example.com/v1/responses"}
+	target := newOpenAIWSConn("target", accountID, &openAIWSFakeConn{}, nil)
+	other := newOpenAIWSConn("other", accountID, &openAIWSFakeConn{}, nil)
+	require.True(t, target.tryAcquire())
+	require.True(t, other.tryAcquire())
+	other.waiters.Add(1)
+
+	ap := pool.ensureAccountPoolLocked(accountID)
+	ap.mu.Lock()
+	ap.conns[target.id] = target
+	ap.conns[other.id] = other
+	ap.lastAcquire = &req
+	ap.mu.Unlock()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	type result struct {
+		lease *openAIWSConnLease
+		err   error
+	}
+	resultCh := make(chan result, 1)
+	go func() {
+		lease, err := pool.Acquire(ctx, req)
+		resultCh <- result{lease: lease, err: err}
+	}()
+	require.Eventually(t, func() bool { return target.waiters.Load() == 1 }, time.Second, 5*time.Millisecond)
+
+	// 剔除另一条连接腾出名额，等待者应重新选择并新拨号，而不是继续等 target。
+	time.Sleep(40 * time.Millisecond)
+	pool.evictConn(accountID, other.id)
+
+	select {
+	case got := <-resultCh:
+		require.NoError(t, got.err)
+		require.NotNil(t, got.lease)
+		require.False(t, got.lease.Reused())
+		require.NotEqual(t, target.id, got.lease.ConnID())
+		require.GreaterOrEqual(t, got.lease.QueueWaitDuration(), 30*time.Millisecond, "queue wait must be carried into a lease obtained by dialing after the wake-up")
+		got.lease.Release()
+	case <-time.After(500 * time.Millisecond):
+		t.Fatal("waiter queued on a busy connection must be woken when pool capacity is freed")
+	}
+	require.Equal(t, 1, dialer.DialCount())
+	require.Equal(t, int32(0), target.waiters.Load())
+	metrics := pool.SnapshotMetrics()
+	require.Equal(t, int64(1), metrics.AcquireQueueWaitTotal)
+	require.GreaterOrEqual(t, metrics.AcquireQueueWaitMsTotal, int64(30))
+}
+
+func TestOpenAIWSConnPool_AcquireAtCapacityCanceledWaiterDoesNotTakeReleasedConn(t *testing.T) {
+	cfg := &config.Config{}
+	cfg.Gateway.OpenAIWS.MaxConnsPerAccount = 2
+	cfg.Gateway.OpenAIWS.MinIdlePerAccount = 0
+	cfg.Gateway.OpenAIWS.QueueLimitPerConn = 4
+
+	accountID := int64(995)
+	account := &Account{ID: accountID, Platform: PlatformOpenAI, Type: AccountTypeAPIKey}
+	req := openAIWSAcquireRequest{Account: account, WSURL: "wss://example.com/v1/responses"}
+	pool := newOpenAIWSConnPool(cfg)
+	target := newOpenAIWSConn("target", accountID, &openAIWSFakeConn{}, nil)
+	other := newOpenAIWSConn("other", accountID, &openAIWSFakeConn{}, nil)
+	require.True(t, target.tryAcquire())
+	require.True(t, other.tryAcquire())
+	other.waiters.Add(1)
+
+	ap := pool.ensureAccountPoolLocked(accountID)
+	ap.mu.Lock()
+	ap.conns[target.id] = target
+	ap.conns[other.id] = other
+	ap.lastAcquire = &req
+	ap.mu.Unlock()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	type result struct {
+		lease *openAIWSConnLease
+		err   error
+	}
+	resultCh := make(chan result, 1)
+	go func() {
+		lease, err := pool.Acquire(ctx, req)
+		resultCh <- result{lease: lease, err: err}
+	}()
+	require.Eventually(t, func() bool { return target.waiters.Load() == 1 }, time.Second, 5*time.Millisecond)
+
+	// 持锁广播：等待者被唤醒后卡在重新取锁上，此时取消请求并归还 other 的令牌，
+	// 解锁后重选会看到一条空闲连接，但请求已经取消，不能带着租约返回。
+	ap.mu.Lock()
+	ap.signalChangedLocked()
+	cancel()
+	other.release()
+	ap.mu.Unlock()
+
+	select {
+	case got := <-resultCh:
+		require.ErrorIs(t, got.err, context.Canceled)
+		require.Nil(t, got.lease, "a canceled waiter must not come back with a lease after a pool change wake-up")
+	case <-time.After(500 * time.Millisecond):
+		t.Fatal("canceled waiter must return promptly")
+	}
+	require.True(t, other.tryAcquire(), "the released token must stay available to other acquirers")
+	other.release()
+	require.Equal(t, int32(0), target.waiters.Load())
+}
+
 func TestOpenAIWSConnPool_DialSuccessWakesTopologyWaiterAndCanceledWaiterDoesNotLoseLease(t *testing.T) {
 	cfg := &config.Config{}
 	cfg.Gateway.OpenAIWS.MaxConnsPerAccount = 1
@@ -1164,21 +1338,95 @@ func TestOpenAIWSConnPool_EffectiveMaxConnsDisabledFallbackHardCap(t *testing.T)
 	require.Equal(t, 8, pool.effectiveMaxConnsByAccount(account), "关闭动态模式后应保持旧行为")
 }
 
-func TestOpenAIWSConnPool_EffectiveMaxConnsByAccount_ModeRouterV2RespectsHardCap(t *testing.T) {
-	cfg := &config.Config{}
-	cfg.Gateway.OpenAIWS.ModeRouterV2Enabled = true
-	cfg.Gateway.OpenAIWS.MaxConnsPerAccount = 8
-	cfg.Gateway.OpenAIWS.DynamicMaxConnsByAccountConcurrencyEnabled = true
-	cfg.Gateway.OpenAIWS.OAuthMaxConnsFactor = 0.3
-	cfg.Gateway.OpenAIWS.APIKeyMaxConnsFactor = 0.6
+func TestOpenAIWSConnPool_EffectiveMaxConnsByAccount_ModeRouterV2(t *testing.T) {
+	tests := []struct {
+		name        string
+		accountType string
+		concurrency int
+		factor      float64
+		dynamic     bool
+		want        int
+	}{
+		{name: "oauth expansion", accountType: AccountTypeOAuth, concurrency: 1, factor: 5, dynamic: true, want: 5},
+		{name: "apikey expansion", accountType: AccountTypeAPIKey, concurrency: 1, factor: 5, dynamic: true, want: 5},
+		{name: "oauth fraction", accountType: AccountTypeOAuth, concurrency: 20, factor: 0.3, dynamic: true, want: 6},
+		{name: "apikey rounding", accountType: AccountTypeAPIKey, concurrency: 3, factor: 0.6, dynamic: true, want: 2},
+		{name: "minimum one", accountType: AccountTypeOAuth, concurrency: 1, factor: 0.3, dynamic: true, want: 1},
+		{name: "hard cap", accountType: AccountTypeOAuth, concurrency: 3, factor: 5, dynamic: true, want: 8},
+		{name: "dynamic disabled", accountType: AccountTypeAPIKey, concurrency: 2, factor: 0.6, want: 8},
+		{name: "zero concurrency", accountType: AccountTypeOAuth, factor: 5, dynamic: true, want: 0},
+		{name: "negative concurrency", accountType: AccountTypeAPIKey, concurrency: -1, factor: 5, dynamic: true, want: 0},
+		{name: "zero concurrency dynamic disabled", accountType: AccountTypeOAuth, factor: 5, want: 0},
+		{name: "negative concurrency dynamic disabled", accountType: AccountTypeAPIKey, concurrency: -1, factor: 5, want: 0},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := &config.Config{}
+			cfg.Gateway.OpenAIWS.ModeRouterV2Enabled = true
+			cfg.Gateway.OpenAIWS.MaxConnsPerAccount = 8
+			cfg.Gateway.OpenAIWS.DynamicMaxConnsByAccountConcurrencyEnabled = tt.dynamic
+			cfg.Gateway.OpenAIWS.OAuthMaxConnsFactor = 1
+			cfg.Gateway.OpenAIWS.APIKeyMaxConnsFactor = 1
+			if tt.accountType == AccountTypeOAuth {
+				cfg.Gateway.OpenAIWS.OAuthMaxConnsFactor = tt.factor
+			} else {
+				cfg.Gateway.OpenAIWS.APIKeyMaxConnsFactor = tt.factor
+			}
+			pool := newOpenAIWSConnPool(cfg)
+			t.Cleanup(pool.Close)
+			account := &Account{Platform: PlatformOpenAI, Type: tt.accountType, Concurrency: tt.concurrency}
+			require.Equal(t, tt.want, pool.effectiveMaxConnsByAccount(account))
+			require.Equal(t, 8, pool.effectiveMaxConnsByAccount(nil))
+		})
+	}
+}
 
-	pool := newOpenAIWSConnPool(cfg)
+func TestOpenAIWSConnPool_AcquireRetainedSessionsUsesScaledCapacity(t *testing.T) {
+	for _, mode := range []struct {
+		name string
+		v2   bool
+	}{
+		{name: "legacy"},
+		{name: "mode router v2", v2: true},
+	} {
+		t.Run(mode.name, func(t *testing.T) {
+			cfg := &config.Config{}
+			cfg.Gateway.OpenAIWS.ModeRouterV2Enabled = mode.v2
+			cfg.Gateway.OpenAIWS.MaxConnsPerAccount = 3
+			cfg.Gateway.OpenAIWS.MaxIdlePerAccount = 3
+			cfg.Gateway.OpenAIWS.PoolTargetUtilization = 1
+			cfg.Gateway.OpenAIWS.DynamicMaxConnsByAccountConcurrencyEnabled = true
+			cfg.Gateway.OpenAIWS.OAuthMaxConnsFactor = 2
+			pool := newOpenAIWSConnPool(cfg)
+			pool.setClientDialerForTest(&openAIWSFakeDialer{})
+			t.Cleanup(pool.Close)
+			req := openAIWSAcquireRequest{
+				Account: &Account{ID: 902, Platform: PlatformOpenAI, Type: AccountTypeOAuth, Concurrency: 2},
+				WSURL:   "wss://example.com/v1/responses",
+			}
+			ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+			defer cancel()
+			leases := make([]*openAIWSConnLease, 0, 3)
+			for range 3 {
+				lease, err := pool.Acquire(ctx, req)
+				require.NoError(t, err, "轮次之间仍持有连接的会话应可使用系数扩出的容量")
+				t.Cleanup(lease.Release)
+				leases = append(leases, lease)
+			}
 
-	high := &Account{Platform: PlatformOpenAI, Type: AccountTypeOAuth, Concurrency: 20}
-	require.Equal(t, 8, pool.effectiveMaxConnsByAccount(high), "v2 路径也必须受连接池硬上限约束")
+			fullCtx, fullCancel := context.WithTimeout(context.Background(), 30*time.Millisecond)
+			defer fullCancel()
+			_, err := pool.Acquire(fullCtx, req)
+			require.ErrorIs(t, err, context.DeadlineExceeded, "扩容后仍必须受全局硬上限约束")
 
-	nonPositive := &Account{Platform: PlatformOpenAI, Type: AccountTypeAPIKey, Concurrency: 0}
-	require.Equal(t, 0, pool.effectiveMaxConnsByAccount(nonPositive), "并发数<=0 时应不可调度")
+			leases[0].Release()
+			reused, err := pool.Acquire(ctx, req)
+			require.NoError(t, err)
+			defer reused.Release()
+			require.Equal(t, leases[0].ConnID(), reused.ConnID())
+			require.True(t, reused.Reused())
+		})
+	}
 }
 
 func TestOpenAIWSConnPool_AcquireRejectsWhenEffectiveMaxConnsIsZero(t *testing.T) {

@@ -6,7 +6,7 @@
  * request/error/token counts in user-facing surfaces.
  */
 
-import type { HealthScoreBand, MonitorHealth } from '@/api/channelMonitorV2'
+import type { HealthScoreBand, HealthState, MonitorHealth } from '@/api/channelMonitorV2'
 import { formatCompactNumber } from '@/utils/format'
 
 export function monitorIntlLocale(): string {
@@ -114,20 +114,34 @@ export function healthScoreClass(
   requestCount: number,
 ): string {
   const score = healthModeScore(health, mode)
+  // Sync-only traffic has no first-token samples. Never paint TTFT as red/empty-fail.
+  if (mode === 'ttft' && score == null) return 'health-unknown'
   if (score == null) {
     if (requestCount <= 0) return 'health-unknown'
     // Fall back to coarse state when score is absent (older payloads).
     const coarse =
       mode === 'success'
         ? health.error_rate
-        : mode === 'ttft'
-          ? health.ttft
-          : mode === 'cache'
-            ? health.cache
-            : health.overall
+        : mode === 'cache'
+          ? health.cache
+          : health.overall
     return healthStateClass(coarse)
   }
   return `health-${scoreToBand(score)}`
+}
+
+/** Missing first-token samples are "not applicable", not a failed latency budget. */
+export function isTtftUnavailable(ttft?: { p50_ms?: number | null; sample_count?: number } | null): boolean {
+  if (ttft == null) return true
+  return ttft.p50_ms == null
+}
+
+export function ttftDisplayState(
+  state: HealthState | undefined,
+  ttft?: { p50_ms?: number | null; sample_count?: number } | null,
+): HealthState | undefined {
+  if (isTtftUnavailable(ttft)) return 'unknown'
+  return state
 }
 
 export function healthStateClass(state: string | undefined): string {

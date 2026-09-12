@@ -15,7 +15,7 @@ import (
 // 广场路由挂 OptionalJWT 中间件：匿名可访问（除非 require_auth 开启），带 token 则
 // 识别用户。可见性规则（橱窗语义，与「可用渠道」的可绑定语义不同）：
 //   - 匿名：仅非专属分组（订阅型照常展示）；
-//   - 登录：非专属分组 + user_allowed_groups 授权的专属分组（不检查订阅有效性）；
+//   - 登录：非专属分组 + user_allowed_groups 授权或持有有效订阅的专属分组；
 //     若该用户开启了公开分组限制，则公开分组同样需要落在授权集合内。
 type ModelPlazaHandler struct {
 	plazaService   *service.ModelPlazaService
@@ -160,7 +160,7 @@ func (h *ModelPlazaHandler) Get(c *gin.Context) {
 }
 
 // filterPlazaVisibleGroups 按登录态裁剪分组可见性。
-// allowedGroups == nil 表示匿名（仅非专属）；非 nil 表示登录（非专属 + 授权专属）。
+// allowedGroups == nil 表示匿名（仅非专属）；非 nil 包含普通授权及有效订阅分组。
 // restrictPublicGroups 为 true 时，公开分组也必须落在 allowedGroups 内，否则用户会
 // 在广场看到自己实际绑定不了的分组。
 func filterPlazaVisibleGroups(

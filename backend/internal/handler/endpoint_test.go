@@ -233,6 +233,18 @@ func TestResolveOpenAIUpstreamEndpointPrefersForwardResult(t *testing.T) {
 			result:  &service.OpenAIForwardResult{},
 			want:    EndpointResponses,
 		},
+		{
+			name:    "opencode go conversion result reports responses",
+			account: &service.Account{Platform: service.PlatformOpenCodeGo, Type: service.AccountTypeAPIKey},
+			result:  &service.OpenAIForwardResult{UpstreamEndpoint: EndpointResponses},
+			want:    EndpointResponses,
+		},
+		{
+			name:    "opencode go empty result without runtime stays inbound",
+			account: &service.Account{Platform: service.PlatformOpenCodeGo, Type: service.AccountTypeAPIKey},
+			result:  &service.OpenAIForwardResult{},
+			want:    EndpointChatCompletions,
+		},
 	}
 
 	for _, tt := range tests {

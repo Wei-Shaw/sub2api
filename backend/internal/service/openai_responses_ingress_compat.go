@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/apicompat"
+	"github.com/tidwall/gjson"
 )
 
 // normalizeOpenAIResponsesLegacyIngress accepts the Chat Completions-shaped
@@ -14,6 +15,22 @@ import (
 func normalizeOpenAIResponsesLegacyIngress(body []byte) ([]byte, bool, error) {
 	if len(body) == 0 {
 		return body, false, nil
+	}
+	// Native requests can contain large image data URLs. Decode the full object
+	// only when a legacy top-level field needs compatibility handling.
+	view := parseRawJSONView(body)
+	if view.IsObject() && gjson.ValidBytes(body) {
+		hasLegacyField := false
+		view.ForEach(func(key, _ gjson.Result) bool {
+			switch key.Str {
+			case "messages", "prompt", "commands":
+				hasLegacyField = true
+			}
+			return !hasLegacyField
+		})
+		if !hasLegacyField {
+			return body, false, nil
+		}
 	}
 
 	var request map[string]any

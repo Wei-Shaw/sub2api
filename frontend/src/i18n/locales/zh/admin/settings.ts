@@ -34,6 +34,9 @@ export default {
           showQuota: '向用户展示渠道用量/余额',
           showQuotaHint:
             '开启后，配额模式的渠道监控会在用户端渠道状态页展示关联账号的用量滚动窗口/余额。默认关闭；管理员始终可见。',
+          hideUserRanking: '对用户隐藏用户排行',
+          hideUserRankingHint:
+            '开启后，用户端渠道监控 V2 不再显示「用户排行」页，用户 API 也不返回排行数据。管理员仍可查看。',
         },
         availableChannels: {
           title: '可用渠道',
@@ -41,6 +44,21 @@ export default {
           configureLink: '前往 渠道管理 > 渠道定价 配置模型价格',
           enabled: '启用可用渠道',
           enabledHint: '关闭后用户端侧边栏入口隐藏，接口返回空数组。',
+        },
+        siteBillingMode: {
+          title: '站点类型',
+          description: '决定用户端提供哪些购买方式。默认「充值 & 订阅」。',
+          label: '购买方式',
+          options: {
+            rechargeAndSubscription: '充值 & 订阅',
+            rechargeOnly: '仅充值',
+            subscriptionOnly: '仅订阅',
+          },
+          hints: {
+            rechargeAndSubscription: '用户端同时提供余额充值与订阅套餐。',
+            rechargeOnly: '用户端隐藏「我的订阅」、购买页订阅套餐、顶栏订阅进度与用量页「计费类型」筛选，直接访问「我的订阅」会跳回仪表盘；管理端侧边栏同时隐藏「订阅管理」入口（页面仍可通过地址访问）。已有订阅的计费与兑换码发放的订阅不受影响。',
+            subscriptionOnly: '用户端购买页只保留订阅套餐，侧边栏入口显示为「订阅」，余额充值下单会被拒绝；兑换码、返利等余额入账不受影响。',
+          },
         },
         modelPlaza: {
           title: '模型广场',
@@ -399,7 +417,7 @@ export default {
         subscriptionGroup: '订阅分组',
         subscriptionValidityDays: '有效期（天）',
         defaultPlatformQuotas: '默认平台限额（注册时分配）',
-        defaultPlatformQuotasHint: '新用户注册时自动写入平台限额记录；已有用户不受影响。留空 = 该平台该窗口不限制。',
+        defaultPlatformQuotasHint: '新用户注册时自动获得这里配置的限额；已有用户不受影响。留空 = 该平台该窗口不限制。',
         platformQuotaNotice: '月限额为 30 天滚动窗口，非自然月',
       },
       platformQuota: {
@@ -458,7 +476,7 @@ export default {
         grokDefaultTextModel: '默认 Grok 文本模型',
         grokDefaultTextModelHint: '用于空模型值；仅在右侧开关开启时也用于其他客户端模型命名空间。允许填写自定义 Grok 模型 ID。',
         grokCrossClientMap: '映射其他客户端模型到 Grok',
-        grokCrossClientMapHint: '默认关闭。开启后，GPT、Codex、o 系列和 Claude 模型 ID 会路由到左侧默认 Grok 文本模型。',
+        grokCrossClientMapHint: '为兼容客户端，默认开启。GPT、Codex、o 系列和 Claude 模型 ID 会路由到左侧默认 Grok 文本模型；关闭后必须使用 Grok 模型 ID。',
         grokDefaultBaseURLMode: '默认 Grok 上游',
         grokDefaultBaseURLModeHint: '仅用于 Grok 账号未配置显式 base URL 的文本请求；媒体和语音仍使用官方 API 主机。',
         grokBaseURLModeCLI: 'CLI 聊天代理',
@@ -669,6 +687,7 @@ export default {
         namePlaceholder: '如：帮助中心',
         url: '页面 URL',
         urlPlaceholder: 'https://example.com/page',
+        hideOpenButton: '隐藏“新窗口打开”按钮',
         iconSvg: 'SVG 图标',
         iconSvgPlaceholder: '<svg>...</svg>',
         iconPreview: '图标预览',
@@ -750,7 +769,7 @@ export default {
         validationFieldRequired: '{field} 不能为空',
         validationEasyPayCustomMethodRequired: '每个易支付自定义方式都必须填写支付方式和上游 type',
         validationEasyPayCustomMethodTypeInvalid: '易支付自定义支付方式只能包含小写字母、数字、下划线和短横线',
-        validationEasyPayCustomMethodUpstreamTypeInvalid: '易支付上游 type 只能包含小写字母、数字、下划线和短横线',
+        validationEasyPayCustomMethodUpstreamTypeInvalid: '易支付上游 type 只能包含小写字母、数字、点号、下划线和短横线',
         validationEasyPayCustomMethodReserved: '易支付自定义支付方式不能使用内置的 alipay 或 wxpay',
         validationEasyPayCustomMethodPrefixReserved: '易支付自定义支付方式不能以 alipay 或 wxpay 开头',
         validationEasyPayCustomMethodDuplicate: '易支付自定义支付方式不能重复',
@@ -1075,7 +1094,7 @@ export default {
       },
       openaiFastPolicy: {
         title: 'OpenAI Fast/Flex 策略',
-        description: '基于请求体 service_tier 字段拦截/过滤/透传 OpenAI fast(priority)、ultrafast 与 flex 请求；仅作用于 OpenAI 网关。',
+        description: '基于请求体 service_tier 字段拦截/过滤/透传 OpenAI fast(priority)、ultrafast 与 flex 请求；仅作用于 OpenAI 网关。“全部 tier 值”仅包含显式传入的 tier。',
         empty: '尚未配置任何规则。点击下方按钮新增。',
         ruleHeader: '规则 #{index}',
         removeRule: '删除规则',
@@ -1083,6 +1102,7 @@ export default {
         saveHint: '保存时随系统设置一起提交（点击页面底部「保存」按钮）。',
         serviceTier: 'service_tier 匹配',
         tierAll: '全部 tier 值',
+        tierMissing: '省略 tier',
         tierPriority: 'priority（fast）',
         tierUltrafast: 'ultrafast',
         tierFlex: 'flex',

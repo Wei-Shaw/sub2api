@@ -129,6 +129,23 @@ func TestValidateEasyPayCustomMethods(t *testing.T) {
 			supportedTypes: "alipay,wxpay,ldc",
 		},
 		{
+			name:           "upstream type allows periods",
+			config:         map[string]string{"customMethods": `[{"type":"usdt_trc20","upstreamType":"usdt.trc20"}]`},
+			supportedTypes: "alipay,wxpay,usdt_trc20",
+		},
+		{
+			name:           "custom type still rejects periods",
+			config:         map[string]string{"customMethods": `[{"type":"usdt.trc20","upstreamType":"usdt.trc20"}]`},
+			supportedTypes: "alipay,wxpay,usdt.trc20",
+			wantErr:        "customMethods type may only contain lowercase letters",
+		},
+		{
+			name:           "upstream type still rejects slashes",
+			config:         map[string]string{"customMethods": `[{"type":"usdt_trc20","upstreamType":"usdt/trc20"}]`},
+			supportedTypes: "alipay,wxpay,usdt_trc20",
+			wantErr:        "customMethods upstreamType may only contain lowercase letters",
+		},
+		{
 			name:           "malformed custom methods json",
 			config:         map[string]string{"customMethods": `not-json`},
 			supportedTypes: "alipay,wxpay,ldc",
