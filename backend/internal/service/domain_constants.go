@@ -63,6 +63,9 @@ const (
 	AccountModeCoding = domain.AccountModeCoding
 	AccountModeZen    = domain.AccountModeZen
 	AccountModeGo     = domain.AccountModeGo
+
+	AccountModeOllamaLegacy  = domain.AccountModeOllamaLegacy  // Ollama Cloud legacy：5h / 7d 滚动窗口
+	AccountModeOllamaCredits = domain.AccountModeOllamaCredits // Ollama Cloud 月度美元信用池
 )
 
 // 上游 API 协议（国产供应商）：决定转发端点与格式，与接入模式正交。
@@ -152,6 +155,8 @@ var AllowedQuotaPlatforms = []string{
 // AllowedSchedulingThresholdPlatforms 是允许设置账号自动停调阈值的平台列表。
 // openai/anthropic/grok 有原生用量窗口；kimi/zhipu/minimax 的 Coding Plan 同样暴露
 // 5h/weekly 滚动窗口，纳入阈值评估。deepseek 为余额型，走余额检测而非阈值。
+// ollama_cloud 仅 legacy 账号有 5h/7d 滚动窗口可等 reset；credits 型是月度美元
+// 信用池、没有窗口 reset，评估器候选恒空（见 ollamaCloudThresholdCandidates）。
 var AllowedSchedulingThresholdPlatforms = []string{
 	PlatformOpenAI,
 	PlatformAnthropic,
@@ -160,6 +165,7 @@ var AllowedSchedulingThresholdPlatforms = []string{
 	PlatformZhipu,
 	PlatformMiniMax,
 	PlatformOpenCodeGo,
+	PlatformOllamaCloud,
 }
 
 // IsAllowedQuotaPlatform 报告 s 是否为合法的 quota platform 标识。

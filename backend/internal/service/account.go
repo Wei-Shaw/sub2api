@@ -299,6 +299,21 @@ func (a *Account) IsOllamaCloud() bool {
 	return a != nil && IsOllamaCloud(a.Platform)
 }
 
+// GetOllamaCloudAccountMode 返回 Ollama Cloud 账号的额度模式
+// （AccountModeOllamaLegacy / AccountModeOllamaCredits）。非 ollama_cloud 平台
+// 或非 apikey 类型返回空串；credentials 未设置或值不认识时默认 legacy
+// （保守：legacy 有 5h/7d 滚动窗口 → 受阈值停调保护，默认 credits 会让存量
+// legacy 账号失去保护）。与 GetAccountMode（国产 payg/coding 白名单）互不影响。
+func (a *Account) GetOllamaCloudAccountMode() string {
+	if a == nil || !a.IsOllamaCloud() || a.Type != AccountTypeAPIKey {
+		return ""
+	}
+	if strings.TrimSpace(a.GetCredential("account_mode")) == AccountModeOllamaCredits {
+		return AccountModeOllamaCredits
+	}
+	return AccountModeOllamaLegacy
+}
+
 // IsOpenAICompatible 报告账号是否走 OpenAI 网关（OpenAI 协议族）。
 // openai/grok 原生走 OpenAI 网关；国产供应商同为 OpenAI Chat Completions
 // 兼容上游，也经 OpenAI 网关转发。OpenCode 与 Ollama Cloud 同样经 OpenAI
