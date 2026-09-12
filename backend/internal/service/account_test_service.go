@@ -389,6 +389,10 @@ func (s *AccountTestService) TestAccountConnection(c *gin.Context, accountID int
 		return s.testOpenCodeGoAccountConnection(c, account, modelID, prompt)
 	}
 
+	if account.IsOllamaCloud() {
+		return s.testOllamaCloudAccountConnection(c, account, modelID, prompt)
+	}
+
 	return s.testClaudeAccountConnection(c, account, modelID)
 }
 
@@ -415,13 +419,16 @@ func (s *AccountTestService) testOpenCodeGoAccountConnection(c *gin.Context, acc
 	case APIProtocolAnthropic:
 		return s.testCNProviderAnthropicConnection(c, account, testModelID)
 	case APIProtocolResponses:
-		return s.testOpenCodeGoResponsesConnection(c, account, testModelID)
+		return s.testNativeResponsesConnection(c, account, testModelID)
 	default:
 		return s.testCNProviderChatCompletionsConnection(c, account, testModelID, prompt)
 	}
 }
 
-func (s *AccountTestService) testOpenCodeGoResponsesConnection(c *gin.Context, account *Account, testModelID string) error {
+// testNativeResponsesConnection probes a multi-protocol API-key account's
+// native Responses endpoint (the same probe the adaptive path uses, including
+// the stateless body normalization). Shared by OpenCode Go and Ollama Cloud.
+func (s *AccountTestService) testNativeResponsesConnection(c *gin.Context, account *Account, testModelID string) error {
 	authToken := strings.TrimSpace(account.GetOpenAIProtocolAPIKey())
 	if authToken == "" {
 		return s.sendErrorAndEnd(c, "No API key available")
@@ -433,6 +440,43 @@ func (s *AccountTestService) testOpenCodeGoResponsesConnection(c *gin.Context, a
 	c.Writer.Flush()
 	s.sendEvent(c, TestEvent{Type: "test_start", Model: testModelID})
 	return s.testCNProviderAdaptiveResponsesConnection(c, account, testModelID, authToken)
+}
+
+// testOllamaCloudAccountConnection probes an Ollama Cloud account's native
+// endpoints per GetAPIProtocol. Falling through to the generic Claude tester
+// sent Claude Code payloads to {base}/v1/messages?beta=true, so ollama accounts
+// always failed the connection test regardless of account health. Adaptive
+// (the default protocol for ollama_cloud) probes Chat Completions + Anthropic
+// + native Responses in sequence; a pinned protocol probes that single endpoint.
+func (s *AccountTestService) testOllamaCloudAccountConnection(c *gin.Context, account *Account, modelID string, prompt string) error {
+	testModelID := strings.TrimSpace(modelID)
+	if testModelID == "" {
+		// 无静态目录：默认探测账号自身的第一个可出站模型（保存期门禁保证
+		// mapping 或 allowed_models 至少其一非空）。
+		testModelID = defaultOllamaCloudTestModel(account)
+	}
+	switch account.GetAPIProtocol() {
+	case APIProtocolAdaptive:
+		// 复用 CN adaptive 三端点探针：base_url 解析、Anthropic Bearer 头与
+		// Responses 无状态归一化均已按 ollama_cloud 适配。
+		return s.testCNProviderAdaptiveConnection(c, account, testModelID, prompt)
+	case APIProtocolAnthropic:
+		return s.testCNProviderAnthropicConnection(c, account, testModelID)
+	case APIProtocolResponses:
+		return s.testNativeResponsesConnection(c, account, testModelID)
+	default:
+		return s.testCNProviderChatCompletionsConnection(c, account, testModelID, prompt)
+	}
+}
+
+// defaultOllamaCloudTestModel 返回 ollama_cloud 账号连接测试的默认模型：
+// model_mapping 目标优先，其次 extra.allowed_models 首项；两者皆空时退回
+// OpenAI 测试模型（仅出现在未过保存期门禁的账号上，由上游报错暴露）。
+func defaultOllamaCloudTestModel(account *Account) string {
+	if models := ollamaCloudOutboundModelNames(account); len(models) > 0 {
+		return models[0]
+	}
+	return openai.DefaultTestModel
 }
 
 func (s *AccountTestService) testCNProviderChatCompletionsConnection(c *gin.Context, account *Account, modelID string, prompt string) error {
