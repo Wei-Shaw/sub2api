@@ -371,7 +371,13 @@ func finalizePostUsageBilling(ctx context.Context, p *postUsageBillingParams, de
 	}
 
 	if p.IsSubscriptionBill {
-		if p.Cost.ActualCost > 0 && p.User != nil && p.APIKey != nil && p.APIKey.GroupID != nil {
+		if result != nil && result.SubscriptionQuotaState != nil {
+			// Managed requests read authoritative quota at admission. Never apply
+			// an old bucket's delta to the unversioned subscription Redis key.
+			if deps.billingCacheService != nil && p.User != nil && p.APIKey != nil && p.APIKey.GroupID != nil {
+				_ = deps.billingCacheService.InvalidateSubscription(ctx, p.User.ID, *p.APIKey.GroupID)
+			}
+		} else if p.Cost.ActualCost > 0 && p.User != nil && p.APIKey != nil && p.APIKey.GroupID != nil {
 			deps.billingCacheService.QueueUpdateSubscriptionUsage(p.User.ID, *p.APIKey.GroupID, p.Cost.ActualCost)
 		}
 	} else if p.Cost.ActualCost > 0 && p.User != nil {
