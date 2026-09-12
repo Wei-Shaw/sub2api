@@ -471,6 +471,12 @@ func TestIsOllamaCloudUsageAccountStrictOfficialHost(t *testing.T) {
 		{"https://ollama.com", PlatformKimi, true},
 		{"https://www.ollama.com/v1", PlatformZhipu, true},
 		{"https://ollama.com:443", PlatformDeepseek, true},
+		// platform=ollama_cloud 本体：官方 host 通过。
+		{"https://ollama.com", PlatformOllamaCloud, true},
+		{"https://www.ollama.com/v1", PlatformOllamaCloud, true},
+		// platform=ollama_cloud 但 base_url 是反代域名：host 门禁不变，仍不合格。
+		{"https://ollama.example.test", PlatformOllamaCloud, false},
+		{"https://api.ollama-cloud.test/v1", PlatformOllamaCloud, false},
 		// 用量窗口不随 base_url 放开到其余平台。
 		{"https://ollama.com", PlatformGemini, false},
 		{"https://ollama.com", PlatformGrok, false},
@@ -497,12 +503,79 @@ func TestIsOllamaCloudUsageAccountStrictOfficialHost(t *testing.T) {
 
 // oauth 类型账号即使平台与 base_url 都命中也不进用量窗口（仅 apikey 账号）。
 func TestIsOllamaCloudUsageAccountRejectsOAuthType(t *testing.T) {
-	for _, platform := range []string{PlatformOpenAI, PlatformAnthropic, PlatformKimi, PlatformZhipu, PlatformDeepseek, PlatformMiniMax} {
+	for _, platform := range []string{PlatformOllamaCloud, PlatformOpenAI, PlatformAnthropic, PlatformKimi, PlatformZhipu, PlatformDeepseek, PlatformMiniMax} {
 		account := ollamaUsageAccount(1)
 		account.Platform = platform
 		account.Type = AccountTypeOAuth
 		require.False(t, IsOllamaCloudUsageAccount(account), platform)
 	}
+}
+
+// OllamaCloudUsageState.EligibleReason：三种不合格各自返回对应原因码，合格时
+// 原因为空；与 IsOllamaCloudUsageAccount 判定保持一致。
+func TestOllamaCloudUsageStateEligibleReason(t *testing.T) {
+	tests := []struct {
+		name   string
+		mutate func(account *Account)
+		// eligible 期望值；reason 为 "" 时断言合格且原因码为空。
+		reason string
+	}{
+		{
+			name:   "platform 不在白名单",
+			mutate: func(account *Account) { account.Platform = PlatformGemini },
+			reason: "platform_not_eligible",
+		},
+		{
+			name:   "oauth 类型",
+			mutate: func(account *Account) { account.Type = AccountTypeOAuth },
+			reason: "wrong_account_type",
+		},
+		{
+			name:   "反代 base_url",
+			mutate: func(account *Account) { account.Credentials["base_url"] = "https://ollama.example.test" },
+			reason: "unsupported_base_url",
+		},
+		{
+			name: "platform=ollama_cloud + 官方 host 合格",
+			mutate: func(account *Account) {
+				account.Platform = PlatformOllamaCloud
+				account.Extra[OllamaCloudUsageSessionExtraKey] = "cipher:wos-session=secret"
+			},
+			reason: "",
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			account := ollamaUsageAccount(1)
+			account.Platform = PlatformOllamaCloud
+			test.mutate(account)
+
+			state := OllamaCloudUsageStateFromAccount(account)
+			require.Equal(t, state.EligibleReason == "", state.Eligible)
+			require.Equal(t, test.reason, state.EligibleReason)
+			require.Equal(t, test.reason == "", IsOllamaCloudUsageAccount(account))
+			if test.reason == "" {
+				require.True(t, state.Configured)
+			}
+		})
+	}
+
+	// nil 账号保持既有行为：空 state、不合格、无原因码。
+	state := OllamaCloudUsageStateFromAccount(nil)
+	require.False(t, state.Eligible)
+	require.Empty(t, state.EligibleReason)
+}
+
+// 错误文案由平台白名单派生（D2）：platform 化后必须包含 ollama_cloud，不再
+// 残留「OpenAI or Anthropic」旧文案；错误码是对外契约，保持不变。
+func TestOllamaCloudUsageAccountInvalidMessageDerivedFromWhitelist(t *testing.T) {
+	message := ErrOllamaCloudUsageAccountInvalid.Error()
+	require.Contains(t, message, "OLLAMA_CLOUD_USAGE_ACCOUNT_INVALID")
+	require.Contains(t, message, "ollama_cloud")
+	for _, platform := range OllamaCloudUsagePlatforms {
+		require.Contains(t, message, platform)
+	}
+	require.NotContains(t, message, "OpenAI or Anthropic")
 }
 
 func TestNormalizeOllamaCloudUsageCookieAllowlist(t *testing.T) {
