@@ -392,3 +392,282 @@ func TestAdminUpdateAccountOllamaCloudPricingGateOnlyOnModelSetOrSchedulingChang
 		requireModelPricingMissing(t, err)
 	})
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 评审收口回归：三条此前绕过门禁的 admin 写路径（BulkUpdateAccounts /
+// DuplicateAccount / SetAccountSchedulable）。定位是「门禁不可绕过」的一致性——
+// 运行时白名单与转发前定价预检已兜底最坏情形，本组测试锁的是保存期拦截行为
+// 本身：不合规整批拒绝且不落库、错误点名账号、维护性更新与非 ollama 平台放行。
+// ─────────────────────────────────────────────────────────────────────────────
+
+// ollamaGateSchedulableCall 记录一次 SetSchedulable 调用，用于断言「拒绝时未触达 DB」。
+type ollamaGateSchedulableCall struct {
+	accountID   int64
+	schedulable bool
+}
+
+// ollamaGateAdminRepoStub 在 upstreamBillingProbeAccountRepo 之上补齐本组回归所需的
+// 两个写入口：SetSchedulable（记录调用）与 CreateWithAccountGroups（复制路径的原子创建）。
+type ollamaGateAdminRepoStub struct {
+	*upstreamBillingProbeAccountRepo
+	schedulableCalls []ollamaGateSchedulableCall
+}
+
+func newOllamaGateAdminRepoStub() *ollamaGateAdminRepoStub {
+	return &ollamaGateAdminRepoStub{
+		upstreamBillingProbeAccountRepo: &upstreamBillingProbeAccountRepo{accounts: make(map[int64]*Account)},
+	}
+}
+
+func (r *ollamaGateAdminRepoStub) SetSchedulable(_ context.Context, id int64, schedulable bool) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if account := r.accounts[id]; account != nil {
+		account.Schedulable = schedulable
+	}
+	r.schedulableCalls = append(r.schedulableCalls, ollamaGateSchedulableCall{accountID: id, schedulable: schedulable})
+	return nil
+}
+
+func (r *ollamaGateAdminRepoStub) CreateWithAccountGroups(ctx context.Context, account *Account, _ []AccountGroup) error {
+	return r.Create(ctx, account)
+}
+
+// seedOllamaGateAccount 直接经 repo 落库一个账号（绕过 Create 路径门禁），
+// 用于模拟「门禁上线前迁移过来的存量账号」。
+func seedOllamaGateAccount(t *testing.T, repo *ollamaGateAdminRepoStub, mutate func(*Account)) *Account {
+	t.Helper()
+	account := &Account{
+		Platform:    PlatformOllamaCloud,
+		Type:        AccountTypeAPIKey,
+		Name:        "ollama-gate-seed",
+		Status:      StatusActive,
+		Schedulable: false,
+		Credentials: map[string]any{"api_key": "k"},
+	}
+	if mutate != nil {
+		mutate(account)
+	}
+	require.NoError(t, repo.Create(context.Background(), account))
+	return account
+}
+
+func TestAdminBulkUpdateAccountsOllamaCloudPricingGate(t *testing.T) {
+	ctx := context.Background()
+	newSvc := func(t *testing.T) (*ollamaGateAdminRepoStub, *adminServiceImpl) {
+		t.Helper()
+		repo := newOllamaGateAdminRepoStub()
+		svc := &adminServiceImpl{accountRepo: repo, billingService: NewBillingService(&config.Config{}, nil)}
+		return repo, svc
+	}
+
+	t.Run("bulk写入未定价mapping_整批拒绝点名账号且不落库", func(t *testing.T) {
+		repo, svc := newSvc(t)
+		first := seedOllamaGateAccount(t, repo, func(a *Account) { a.Name = "ollama-bulk-a" })
+		second := seedOllamaGateAccount(t, repo, func(a *Account) {
+			a.Name = "ollama-bulk-b"
+			a.Extra = map[string]any{OllamaCloudAllowedModelsExtraKey: []any{"gpt-oss:120b-cloud"}}
+		})
+		_, err := svc.BulkUpdateAccounts(ctx, &BulkUpdateAccountsInput{
+			AccountIDs:  []int64{first.ID, second.ID},
+			Credentials: map[string]any{"api_key": "k", "model_mapping": map[string]any{"alias": "totally-unpriced-model"}},
+		})
+		requireModelPricingMissing(t, err, "totally-unpriced-model")
+		// 批量操作要能定位：错误信息必须点名每个不合规账号。
+		require.Contains(t, infraerrors.Message(err), first.Name)
+		require.Contains(t, infraerrors.Message(err), second.Name)
+		// 整批拒绝：任何账号都不得写入。
+		require.Empty(t, repo.bulkUpdates, "被拒绝的批量更新不得触达 DB")
+	})
+
+	t.Run("bulk写入已定价mapping_通过", func(t *testing.T) {
+		repo, svc := newSvc(t)
+		account := seedOllamaGateAccount(t, repo, nil)
+		_, err := svc.BulkUpdateAccounts(ctx, &BulkUpdateAccountsInput{
+			AccountIDs:  []int64{account.ID},
+			Credentials: map[string]any{"api_key": "k", "model_mapping": map[string]any{"big": "gpt-oss:120b"}},
+		})
+		require.NoError(t, err)
+		require.Len(t, repo.bulkUpdates, 1)
+	})
+
+	t.Run("bulk启用legacy无配置账号_拒绝且不落库", func(t *testing.T) {
+		repo, svc := newSvc(t)
+		first := seedOllamaGateAccount(t, repo, func(a *Account) { a.Name = "ollama-bulk-legacy-a" })
+		second := seedOllamaGateAccount(t, repo, func(a *Account) { a.Name = "ollama-bulk-legacy-b" })
+		_, err := svc.BulkUpdateAccounts(ctx, &BulkUpdateAccountsInput{
+			AccountIDs:  []int64{first.ID, second.ID},
+			Schedulable: boolPtr(true),
+		})
+		requireModelPricingMissing(t, err)
+		require.Contains(t, infraerrors.Message(err), first.Name)
+		require.Contains(t, infraerrors.Message(err), second.Name)
+		require.Empty(t, repo.bulkUpdates)
+	})
+
+	t.Run("bulk停用_放行", func(t *testing.T) {
+		repo, svc := newSvc(t)
+		account := seedOllamaGateAccount(t, repo, func(a *Account) {
+			a.Name = "ollama-bulk-disable"
+			a.Schedulable = true
+		})
+		_, err := svc.BulkUpdateAccounts(ctx, &BulkUpdateAccountsInput{
+			AccountIDs:  []int64{account.ID},
+			Schedulable: boolPtr(false),
+		})
+		require.NoError(t, err, "停用（退出调度准入）属于维护性更新，不得被拦截")
+		require.Len(t, repo.bulkUpdates, 1)
+	})
+
+	t.Run("bulk仅改name_legacy账号放行", func(t *testing.T) {
+		repo, svc := newSvc(t)
+		account := seedOllamaGateAccount(t, repo, func(a *Account) { a.Name = "ollama-bulk-legacy" })
+		_, err := svc.BulkUpdateAccounts(ctx, &BulkUpdateAccountsInput{
+			AccountIDs: []int64{account.ID},
+			Name:       "ollama-bulk-legacy-renamed",
+		})
+		require.NoError(t, err, "维护性更新（仅改 name）不得被 MODEL_PRICING_MISSING 锁死")
+		require.Len(t, repo.bulkUpdates, 1)
+	})
+
+	t.Run("非ollama平台bulk不受影响_回归", func(t *testing.T) {
+		repo, svc := newSvc(t)
+		account := seedOllamaGateAccount(t, repo, func(a *Account) {
+			a.Name = "kimi-bulk"
+			a.Platform = PlatformKimi
+			a.Schedulable = false
+		})
+		_, err := svc.BulkUpdateAccounts(ctx, &BulkUpdateAccountsInput{
+			AccountIDs: []int64{account.ID},
+			Credentials: map[string]any{
+				"api_key":       "k",
+				"model_mapping": map[string]any{"k2": "totally-unpriced-model"},
+			},
+			Schedulable: boolPtr(true),
+		})
+		require.NoError(t, err, "非 ollama 平台的批量更新行为必须保持不变")
+		require.Len(t, repo.bulkUpdates, 1)
+	})
+}
+
+func TestAdminDuplicateAccountOllamaCloudPricingGate(t *testing.T) {
+	ctx := context.Background()
+	newSvc := func(t *testing.T) (*ollamaGateAdminRepoStub, *adminServiceImpl) {
+		t.Helper()
+		repo := newOllamaGateAdminRepoStub()
+		svc := &adminServiceImpl{accountRepo: repo, accountDuplicateRepo: repo, billingService: NewBillingService(&config.Config{}, nil)}
+		return repo, svc
+	}
+
+	t.Run("复制不合规账号_拒绝且不落库", func(t *testing.T) {
+		repo, svc := newSvc(t)
+		source := seedOllamaGateAccount(t, repo, func(a *Account) {
+			a.Name = "ollama-dup-bad"
+			a.Credentials = map[string]any{"api_key": "k", "model_mapping": map[string]any{"alias": "totally-unpriced-model"}}
+		})
+		_, err := svc.DuplicateAccount(ctx, source.ID, "", "")
+		requireModelPricingMissing(t, err, "totally-unpriced-model")
+		require.Len(t, repo.accounts, 1, "被拒绝的复制不得落库")
+	})
+
+	t.Run("复制无配置legacy账号_拒绝", func(t *testing.T) {
+		repo, svc := newSvc(t)
+		source := seedOllamaGateAccount(t, repo, func(a *Account) { a.Name = "ollama-dup-legacy" })
+		_, err := svc.DuplicateAccount(ctx, source.ID, "", "")
+		requireModelPricingMissing(t, err)
+		require.Len(t, repo.accounts, 1)
+	})
+
+	t.Run("复制已配置清单账号_通过且保持暂停", func(t *testing.T) {
+		repo, svc := newSvc(t)
+		source := seedOllamaGateAccount(t, repo, func(a *Account) {
+			a.Name = "ollama-dup-good"
+			a.Extra = map[string]any{OllamaCloudAllowedModelsExtraKey: []any{"gpt-oss:120b-cloud"}}
+		})
+		duplicate, err := svc.DuplicateAccount(ctx, source.ID, "", "")
+		require.NoError(t, err)
+		require.NotNil(t, duplicate)
+		require.Len(t, repo.accounts, 2)
+		require.False(t, duplicate.Schedulable, "复制产物必须保持暂停，等人工复核后再启用")
+	})
+
+	t.Run("非ollama平台复制不受影响_回归", func(t *testing.T) {
+		repo, svc := newSvc(t)
+		source := seedOllamaGateAccount(t, repo, func(a *Account) {
+			a.Name = "kimi-dup"
+			a.Platform = PlatformKimi
+			a.Credentials = map[string]any{"api_key": "k", "model_mapping": map[string]any{"k2": "totally-unpriced-model"}}
+		})
+		duplicate, err := svc.DuplicateAccount(ctx, source.ID, "", "")
+		require.NoError(t, err, "非 ollama 平台的复制行为必须保持不变")
+		require.NotNil(t, duplicate)
+		require.Len(t, repo.accounts, 2)
+	})
+}
+
+func TestAdminSetAccountSchedulableOllamaCloudPricingGate(t *testing.T) {
+	ctx := context.Background()
+	newSvc := func(t *testing.T) (*ollamaGateAdminRepoStub, *adminServiceImpl) {
+		t.Helper()
+		repo := newOllamaGateAdminRepoStub()
+		svc := &adminServiceImpl{accountRepo: repo, billingService: NewBillingService(&config.Config{}, nil)}
+		return repo, svc
+	}
+
+	t.Run("启用无配置legacy账号_拒绝且不落库", func(t *testing.T) {
+		repo, svc := newSvc(t)
+		account := seedOllamaGateAccount(t, repo, func(a *Account) { a.Name = "ollama-enable-legacy" })
+		_, err := svc.SetAccountSchedulable(ctx, account.ID, true)
+		requireModelPricingMissing(t, err)
+		require.Empty(t, repo.schedulableCalls, "被拒绝的启用不得触达 DB")
+	})
+
+	t.Run("停用_放行", func(t *testing.T) {
+		repo, svc := newSvc(t)
+		account := seedOllamaGateAccount(t, repo, func(a *Account) {
+			a.Name = "ollama-disable"
+			a.Schedulable = true
+		})
+		updated, err := svc.SetAccountSchedulable(ctx, account.ID, false)
+		require.NoError(t, err, "停用（true→false）属于维护性操作，不得被拦截")
+		require.NotNil(t, updated)
+		require.Len(t, repo.schedulableCalls, 1)
+		require.False(t, repo.schedulableCalls[0].schedulable)
+	})
+
+	t.Run("启用未定价mapping账号_拒绝", func(t *testing.T) {
+		repo, svc := newSvc(t)
+		account := seedOllamaGateAccount(t, repo, func(a *Account) {
+			a.Name = "ollama-enable-unpriced"
+			a.Credentials = map[string]any{"api_key": "k", "model_mapping": map[string]any{"alias": "totally-unpriced-model"}}
+		})
+		_, err := svc.SetAccountSchedulable(ctx, account.ID, true)
+		requireModelPricingMissing(t, err, "totally-unpriced-model")
+		require.Empty(t, repo.schedulableCalls)
+	})
+
+	t.Run("启用已定价账号_通过", func(t *testing.T) {
+		repo, svc := newSvc(t)
+		account := seedOllamaGateAccount(t, repo, func(a *Account) {
+			a.Name = "ollama-enable-priced"
+			a.Extra = map[string]any{OllamaCloudAllowedModelsExtraKey: []any{"gpt-oss:120b-cloud"}}
+		})
+		updated, err := svc.SetAccountSchedulable(ctx, account.ID, true)
+		require.NoError(t, err)
+		require.NotNil(t, updated)
+		require.Len(t, repo.schedulableCalls, 1)
+	})
+
+	t.Run("非ollama平台启用不受影响_回归", func(t *testing.T) {
+		repo, svc := newSvc(t)
+		account := seedOllamaGateAccount(t, repo, func(a *Account) {
+			a.Name = "kimi-enable"
+			a.Platform = PlatformKimi
+			a.Credentials = map[string]any{"api_key": "k", "model_mapping": map[string]any{"k2": "totally-unpriced-model"}}
+		})
+		updated, err := svc.SetAccountSchedulable(ctx, account.ID, true)
+		require.NoError(t, err, "非 ollama 平台的手动启用行为必须保持不变")
+		require.NotNil(t, updated)
+		require.Len(t, repo.schedulableCalls, 1)
+	})
+}
