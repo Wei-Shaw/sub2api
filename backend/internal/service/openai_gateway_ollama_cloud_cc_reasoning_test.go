@@ -33,61 +33,9 @@ func ollamaCloudRawChatCompletionsTestAccount() *Account {
 	}
 }
 
-func TestIsOllamaCloudRawChatCompletionsAccount(t *testing.T) {
-	t.Parallel()
-
-	t.Run("ollama.com + force_chat_completions", func(t *testing.T) {
-		t.Parallel()
-		require.True(t, isOllamaCloudRawChatCompletionsAccount(ollamaCloudRawChatCompletionsTestAccount()))
-	})
-
-	t.Run("extra usage signal without ollama host", func(t *testing.T) {
-		t.Parallel()
-		account := rawChatCompletionsTestAccount()
-		account.Credentials["base_url"] = "https://example.invalid/v1"
-		account.Extra = map[string]any{
-			openai_compat.ExtraKeyResponsesMode: string(openai_compat.ResponsesSupportModeForceChatCompletions),
-			OllamaCloudUsageSnapshotExtraKey:    map[string]any{"status": "ok"},
-		}
-		require.True(t, isOllamaCloudRawChatCompletionsAccount(account))
-	})
-
-	t.Run("official DeepSeek", func(t *testing.T) {
-		t.Parallel()
-		account := rawChatCompletionsTestAccount()
-		account.Name = "DeepSeek"
-		account.Credentials["base_url"] = "https://api.deepseek.com"
-		account.Extra = map[string]any{
-			openai_compat.ExtraKeyResponsesMode: string(openai_compat.ResponsesSupportModeForceChatCompletions),
-		}
-		require.False(t, isOllamaCloudRawChatCompletionsAccount(account))
-	})
-
-	t.Run("OpenCode Go extra", func(t *testing.T) {
-		t.Parallel()
-		account := rawChatCompletionsTestAccount()
-		account.Credentials["base_url"] = "https://opencode.ai/zen/go/v1"
-		account.Extra = map[string]any{
-			openai_compat.ExtraKeyResponsesMode: string(openai_compat.ResponsesSupportModeForceChatCompletions),
-			"opencode_go_usage_auto_refresh":    true,
-		}
-		require.False(t, isOllamaCloudRawChatCompletionsAccount(account))
-	})
-
-	t.Run("ollama.com without force_chat_completions", func(t *testing.T) {
-		t.Parallel()
-		account := ollamaCloudRawChatCompletionsTestAccount()
-		account.Extra = nil
-		require.False(t, isOllamaCloudRawChatCompletionsAccount(account))
-	})
-
-	t.Run("anthropic ollama.com", func(t *testing.T) {
-		t.Parallel()
-		account := ollamaCloudRawChatCompletionsTestAccount()
-		account.Platform = PlatformAnthropic
-		require.False(t, isOllamaCloudRawChatCompletionsAccount(account))
-	})
-}
+// TestIsOllamaCloudRawChatCompletionsAccount 已随谓词删除：reasoning 修复把 CC 钩子
+// 换成按 host + 模型判定的 isOllamaCloudDeepSeekUpstream（见下方同名测试），D1′ 又
+// 移除了 clamp 侧最后一个引用，平台 + responses_mode 双门禁判定退出仓库。
 
 func TestNormalizeOllamaCloudChatCompletionsResponseJSON(t *testing.T) {
 	t.Parallel()

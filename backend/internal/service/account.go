@@ -1451,13 +1451,14 @@ func (a *Account) GetAPIProtocol() string {
 
 // SupportsNativeCNResponses 报告该国产供应商是否提供原生 Responses 端点。
 // DeepSeek 官方为 /responses（无 /v1）；Kimi 按量付费与 Coding Plan 均为
-// /v1/responses（moonshot.cn / kimi.com/coding）；MiniMax 为 /v1/responses。
+// /v1/responses（moonshot.cn / kimi.com/coding）；MiniMax 为 /v1/responses；
+// Ollama Cloud 为 /v1/responses（non-stateful，见 normalizeDeepSeekResponsesRequestBody）。
 func (a *Account) SupportsNativeCNResponses() bool {
 	if a == nil {
 		return false
 	}
 	switch a.Platform {
-	case PlatformDeepseek, PlatformKimi, PlatformMiniMax, PlatformOpenCodeGo:
+	case PlatformDeepseek, PlatformKimi, PlatformMiniMax, PlatformOpenCodeGo, PlatformOllamaCloud:
 		return true
 	default:
 		return false
