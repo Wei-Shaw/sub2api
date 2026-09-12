@@ -121,6 +121,7 @@ type OpenAIQuotaService struct {
 	privacyClientFactory PrivacyClientFactory
 	agentIdentityTaskMu  sync.Mutex
 	agentIdentityWS      agentIdentityWSConnectionInvalidator
+	runtimeBlocker       OpenAIRateLimitRecoveryRuntimeBlocker
 }
 
 // NewOpenAIQuotaService constructs a quota service. token provider is required —
@@ -148,6 +149,8 @@ func (s *OpenAIQuotaService) QueryUsage(ctx context.Context, accountID int64) (*
 	if err != nil {
 		return nil, err
 	}
+	observedRateLimit := observeOpenAIRateLimitGenerationByID(ctx, s.accountRepo, accountID)
+	observeOpenAIRateLimitRuntimeGeneration(observedRateLimit, s.runtimeBlocker)
 
 	client, err := s.privacyClientFactory(proxyURL)
 	if err != nil {
@@ -193,6 +196,13 @@ func (s *OpenAIQuotaService) QueryUsage(ctx context.Context, accountID int64) (*
 	}
 
 	payload.FetchedAt = time.Now().Unix()
+	logOpenAIRateLimitRecoveryResult(
+		ctx,
+		s.accountRepo,
+		observedRateLimit,
+		openAIQuotaUsageRecovered(&payload, time.Now()),
+		"wham_usage",
+	)
 	details := s.queryResetCreditDetails(callCtx, client, accessToken, chatGPTAccountID, fedRAMP, accountID)
 	if details != nil {
 		payload.autoResetCandidates = details.AutoResetCandidates
