@@ -3,6 +3,7 @@ package securityaudit
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"strings"
 	"testing"
 	"time"
@@ -10,6 +11,40 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/stretchr/testify/require"
 )
+
+func TestPromptServiceAppliesModelScopeAndGuardFailurePolicy(t *testing.T) {
+	endpoint := ActiveEndpoint{ID: "guard-1", Name: "Guard", Protocol: "openai_compatible", BaseURL: "http://127.0.0.1:8080", Model: DefaultGuardModel, TimeoutMS: 1000, InputLimit: 1000, Enabled: true}
+	config := ActiveConfig{RiskControlEnabled: true, Enabled: true, BlockingEnabled: true,
+		AllGroups: true, ModelFilter: PromptAuditModelFilter{Type: ModelFilterInclude, Models: []string{"gpt-5"}}, Endpoints: []ActiveEndpoint{endpoint}}
+	failureCode := ErrorCodeUnavailable
+	scanner := PromptScannerFunc(func(context.Context, ActiveEndpoint, string, []string) (*NormalizedResult, error) {
+		return nil, &GuardError{Code: failureCode, Cause: errors.New("guard failure")}
+	})
+	service := &PromptService{config: &fakeConfigStore{active: true, cfg: config}, evaluator: NewGuardEvaluator(scanner, nil, nil)}
+	request := Request{Model: "gpt-4", Protocol: "openai_chat_completions", Body: []byte(`{"messages":[{"role":"user","content":"hello"}]}`)}
+
+	decision, err := service.Evaluate(context.Background(), request)
+	require.NoError(t, err)
+	require.Equal(t, DecisionAllow, decision.Kind)
+
+	request.Model = "GPT-5"
+	decision, err = service.Evaluate(context.Background(), request)
+	require.Error(t, err)
+	require.Nil(t, decision)
+
+	config.ContinueOnGuardFailure = true
+	service.config = &fakeConfigStore{active: true, cfg: config}
+	decision, err = service.Evaluate(context.Background(), request)
+	require.NoError(t, err)
+	require.Equal(t, DecisionUnavailable, decision.Kind)
+	require.True(t, decision.AllowNextStage)
+
+	failureCode = ErrorCodeInvalidResponse
+	decision, err = service.Evaluate(context.Background(), request)
+	require.NoError(t, err)
+	require.Equal(t, DecisionInvalid, decision.Kind)
+	require.True(t, decision.AllowNextStage)
+}
 
 type staticSettingRepository struct {
 	values map[string]string

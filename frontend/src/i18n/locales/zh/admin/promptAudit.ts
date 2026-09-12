@@ -53,9 +53,12 @@ export default {
     policy: {
       title: '审计策略', description: '配置适用分组、九类输入风险、Worker 与队列边界。', scope: '适用范围', allGroups: '全部分组', selectedGroups: '指定分组',
       searchGroups: '搜索分组', noGroups: '没有匹配分组', missingGroups: '配置中包含已删除的分组 ID', selectedCount: '已选择 {count} 个分组',
+      modelFilter: '模型范围', modelFilterHint: '按客户端请求的模型名决定是否执行提示词审计。', modelFilterAll: '所有模型', modelFilterAllDesc: '所有模型请求都会进入提示词审计。',
+      modelFilterInclude: '仅指定模型', modelFilterIncludeDesc: '只有列表中的模型会执行提示词审计。', modelFilterExclude: '排除指定模型', modelFilterExcludeDesc: '列表中的模型跳过提示词审计，其余模型执行审计。',
+      modelFilterModels: '模型列表', modelFilterModelCount: '已配置 {count} 个模型',
       scanners: 'Qwen3Guard 输入风险分类', workerCount: 'Worker 数量', queueCapacity: '持久队列容量', strategy: '节点策略', strategyHint: '按配置顺序优先尝试，必要时故障切换。',
     },
-    saveBar: { enabled: '启用提示词审计', blocking: '同步阻止', blockingLatestTurnOnly: '仅审最新输入和上一轮输出', storePass: '保存安全事件', dirty: '有未保存的更改', synced: '配置已同步' },
+    saveBar: { enabled: '启用提示词审计', blocking: '同步阻止', blockingLatestTurnOnly: '仅审最新输入和上一轮输出', continueOnGuardFailure: 'Guard 超时/失败时继续请求', storePass: '保存安全事件', dirty: '有未保存的更改', synced: '配置已同步' },
     blockingConfirm: {
       title: '开启同步阻止？',
       message: '适用请求会在账号选择、计费和访问上游之前等待 Guard。命中 Block、Guard 不可用或响应非法时，请求都不会访问上游。',
