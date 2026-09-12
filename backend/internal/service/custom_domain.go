@@ -81,6 +81,8 @@ type CustomDomainRepository interface {
 	ListAll(ctx context.Context, filters CustomDomainListFilters) ([]CustomDomain, error)
 	SetAccess(ctx context.Context, id int64, allUsers bool, userIDs []int64) (*CustomDomain, error)
 	Update(ctx context.Context, domain *CustomDomain) (*CustomDomain, error)
+	UpdateVerification(ctx context.Context, domain *CustomDomain) (*CustomDomain, error)
+	DeleteIfNotDisabled(ctx context.Context, id int64) error
 	Delete(ctx context.Context, id int64) error
 }
 
@@ -304,7 +306,7 @@ func (s *CustomDomainService) DeleteForUser(ctx context.Context, userID, id int6
 	if err != nil {
 		return err
 	}
-	if err := s.repo.Delete(ctx, domain.ID); err != nil {
+	if err := s.repo.DeleteIfNotDisabled(ctx, domain.ID); err != nil {
 		return err
 	}
 	s.clearResolvedDomainCache()
@@ -441,16 +443,18 @@ func (s *CustomDomainService) verify(ctx context.Context, userID, id int64) (*Cu
 		return nil, ErrCustomDomainNotFound
 	}
 
+	if domain.Status == CustomDomainStatusDisabled {
+		return nil, ErrCustomDomainInactive
+	}
+
 	now := s.now().UTC()
 	domain.LastCheckedAt = &now
-	domain.DisabledAt = nil
-	domain.DisabledReason = nil
 
 	if err := s.verifyDNS(ctx, domain); err != nil {
 		msg := err.Error()
 		domain.Status = CustomDomainStatusPendingDNS
 		domain.LastError = &msg
-		updated, updateErr := s.repo.Update(ctx, domain)
+		updated, updateErr := s.repo.UpdateVerification(ctx, domain)
 		if updateErr != nil {
 			return nil, updateErr
 		}
@@ -461,7 +465,7 @@ func (s *CustomDomainService) verify(ctx context.Context, userID, id int64) (*Cu
 	domain.Status = CustomDomainStatusActive
 	domain.VerifiedAt = &now
 	domain.LastError = nil
-	updated, err := s.repo.Update(ctx, domain)
+	updated, err := s.repo.UpdateVerification(ctx, domain)
 	if err != nil {
 		return nil, err
 	}

@@ -219,6 +219,49 @@ func (r *customDomainRepository) Update(ctx context.Context, domain *service.Cus
 	return r.GetByID(ctx, updated.ID)
 }
 
+// UpdateVerification only writes DNS-verification fields. The status predicate
+// makes a concurrent administrative disable authoritative at the database boundary.
+func (r *customDomainRepository) UpdateVerification(ctx context.Context, domain *service.CustomDomain) (*service.CustomDomain, error) {
+	update := r.client.CustomDomain.Update().Where(
+		dbcustomdomain.IDEQ(domain.ID),
+		dbcustomdomain.StatusNEQ(service.CustomDomainStatusDisabled),
+	).SetStatus(domain.Status).SetUpdatedAt(time.Now())
+	if domain.LastCheckedAt != nil {
+		update.SetLastCheckedAt(*domain.LastCheckedAt)
+	}
+	if domain.VerifiedAt != nil {
+		update.SetVerifiedAt(*domain.VerifiedAt)
+	}
+	if domain.LastError != nil {
+		update.SetLastError(*domain.LastError)
+	} else {
+		update.ClearLastError()
+	}
+	n, err := update.Save(ctx)
+	if err != nil {
+		return nil, translateCustomDomainError(err)
+	}
+	if n == 0 {
+		return nil, service.ErrCustomDomainInactive
+	}
+	return r.GetByID(ctx, domain.ID)
+}
+
+// Keep disabled records reserved until an administrator explicitly releases them;
+// otherwise an owner could delete and re-register a disabled hostname.
+func (r *customDomainRepository) DeleteIfNotDisabled(ctx context.Context, id int64) error {
+	n, err := r.client.CustomDomain.Delete().Where(
+		dbcustomdomain.IDEQ(id), dbcustomdomain.StatusNEQ(service.CustomDomainStatusDisabled),
+	).Exec(ctx)
+	if err != nil {
+		return translateCustomDomainError(err)
+	}
+	if n == 0 {
+		return service.ErrCustomDomainInactive
+	}
+	return nil
+}
+
 func (r *customDomainRepository) Delete(ctx context.Context, id int64) error {
 	if err := r.client.CustomDomain.DeleteOneID(id).Exec(ctx); err != nil {
 		return translateCustomDomainError(err)

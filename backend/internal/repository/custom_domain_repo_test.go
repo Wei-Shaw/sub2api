@@ -66,3 +66,52 @@ func TestCustomDomainRepositorySetAccessRollsBackOnGrantSyncFailure(t *testing.T
 	require.True(t, got.AllUsers, "failed grant sync should not partially persist all_users=false")
 	require.Empty(t, got.UserIDs)
 }
+
+func TestCustomDomainRepositoryVerificationCannotOverwriteDisable(t *testing.T) {
+	ctx := context.Background()
+	client := newCustomDomainRepoTestClient(t)
+	repo := NewCustomDomainRepository(client)
+	owner, err := client.User.Create().SetEmail("disabled@example.com").SetPasswordHash("hash").Save(ctx)
+	require.NoError(t, err)
+	created, err := repo.Create(ctx, &service.CustomDomain{
+		UserID: owner.ID, Domain: "disabled.example.com", Status: service.CustomDomainStatusPendingDNS,
+		VerificationToken: "token", VerificationTXTName: "_sub2api-verify.disabled.example.com", VerificationTXTValue: "token",
+	})
+	require.NoError(t, err)
+	stale := *created
+	disabled := *created
+	disabled.Status = service.CustomDomainStatusDisabled
+	reason := "operator hold"
+	disabled.DisabledReason = &reason
+	_, err = repo.Update(ctx, &disabled)
+	require.NoError(t, err)
+	stale.Status = service.CustomDomainStatusActive
+	_, err = repo.UpdateVerification(ctx, &stale)
+	require.ErrorIs(t, err, service.ErrCustomDomainInactive)
+	require.ErrorIs(t, repo.DeleteIfNotDisabled(ctx, created.ID), service.ErrCustomDomainInactive)
+	stored, err := repo.GetByID(ctx, created.ID)
+	require.NoError(t, err)
+	require.Equal(t, service.CustomDomainStatusDisabled, stored.Status)
+	require.Equal(t, reason, *stored.DisabledReason)
+	require.NoError(t, repo.Delete(ctx, created.ID), "administrator may explicitly release a disabled domain")
+}
+
+func TestCustomDomainRepositoryVerificationPreservesConcurrentAccessUpdate(t *testing.T) {
+	ctx := context.Background()
+	client := newCustomDomainRepoTestClient(t)
+	repo := NewCustomDomainRepository(client)
+	owner, err := client.User.Create().SetEmail("access@example.com").SetPasswordHash("hash").Save(ctx)
+	require.NoError(t, err)
+	domain, err := repo.Create(ctx, &service.CustomDomain{
+		UserID: owner.ID, Domain: "access.example.com", Status: service.CustomDomainStatusPendingDNS,
+		VerificationToken: "token", VerificationTXTName: "_sub2api-verify.access.example.com", VerificationTXTValue: "token",
+	})
+	require.NoError(t, err)
+	_, err = repo.SetAccess(ctx, domain.ID, true, nil)
+	require.NoError(t, err)
+	domain.Status = service.CustomDomainStatusActive
+	verified, err := repo.UpdateVerification(ctx, domain)
+	require.NoError(t, err)
+	require.True(t, verified.AllUsers)
+	require.Equal(t, service.CustomDomainStatusActive, verified.Status)
+}
