@@ -103,9 +103,9 @@ func applySubscriptionQuotaCharge(ctx context.Context, tx *sql.Tx, cmd *service.
 		return nil, err
 	}
 	if _, err := tx.ExecContext(ctx, `UPDATE user_subscriptions us SET
- daily_usage_usd=us.daily_usage_usd+CASE WHEN s.daily_bucket_id=$3 THEN $2 ELSE 0 END,
- weekly_usage_usd=us.weekly_usage_usd+CASE WHEN s.weekly_bucket_id=$4 THEN $2 ELSE 0 END,
- monthly_usage_usd=us.monthly_usage_usd+CASE WHEN s.monthly_bucket_id=$5 THEN $2 ELSE 0 END,updated_at=NOW()
+ daily_usage_usd=us.daily_usage_usd+CASE WHEN s.daily_bucket_id=$3 THEN $2::numeric ELSE 0 END,
+ weekly_usage_usd=us.weekly_usage_usd+CASE WHEN s.weekly_bucket_id=$4 THEN $2::numeric ELSE 0 END,
+ monthly_usage_usd=us.monthly_usage_usd+CASE WHEN s.monthly_bucket_id=$5 THEN $2::numeric ELSE 0 END,updated_at=NOW()
  FROM subscription_quota_state s WHERE us.id=$1 AND s.subscription_id=us.id
  AND (s.daily_bucket_id=$3 OR s.weekly_bucket_id=$4 OR s.monthly_bucket_id=$5)`, id, cmd.SubscriptionCost, ids[0], ids[1], ids[2]); err != nil {
 		return nil, err
