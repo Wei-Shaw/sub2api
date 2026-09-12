@@ -45,10 +45,17 @@ func ResponsesToAnthropic(resp *ResponsesResponse, model string) *AnthropicRespo
 			}
 		case "message":
 			for _, part := range item.Content {
-				if part.Type == "output_text" && part.Text != "" {
+				text := ""
+				switch part.Type {
+				case "output_text":
+					text = part.Text
+				case "refusal":
+					text = visibleOpenAIRefusal(part.Refusal)
+				}
+				if text != "" {
 					blocks = append(blocks, AnthropicContentBlock{
 						Type: "text",
-						Text: part.Text,
+						Text: text,
 					})
 				}
 			}
@@ -223,6 +230,13 @@ func ResponsesEventToAnthropicEvents(
 		return resToAnthHandleTextDelta(evt, state)
 	case "response.output_text.done":
 		return resToAnthHandleBlockDone(state)
+	case "response.refusal.delta":
+		if evt.Delta != "" {
+			evt.Delta = visibleOpenAIRefusal(evt.Delta)
+		}
+		return resToAnthHandleTextDelta(evt, state)
+	case "response.refusal.done":
+		return resToAnthHandleBlockDone(state)
 	case "response.function_call_arguments.delta",
 		// custom/freeform 工具的输入增量与 function_call 参数增量同形。
 		"response.custom_tool_call_input.delta":
@@ -247,6 +261,14 @@ func ResponsesEventToAnthropicEvents(
 	default:
 		return nil
 	}
+}
+
+func visibleOpenAIRefusal(text string) string {
+	text = strings.TrimSpace(text)
+	if text == "" {
+		return ""
+	}
+	return "Refusal: " + text
 }
 
 // FinalizeResponsesAnthropicStream emits synthetic termination events if the
