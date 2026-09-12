@@ -46,6 +46,8 @@ function mountTable(
   extraProps?: {
     imageRateIndependent?: boolean
     imageRateMultiplier?: number | null
+    videoRateIndependent?: boolean
+    videoRateMultiplier?: number | null
     peakWindow?: string
     peakRateMultiplier?: number | null
   }
@@ -402,6 +404,69 @@ describe('PlazaModelPricingTable', () => {
     expect(text).toContain('$0.02')
     const rateCell = wrapper.findAll('tbody tr td').at(-1)!
     expect(rateCell.text()).toBe('0.1x')
+  })
+
+  it('视频独立倍率开启时,按视频价格 × 独立倍率,不乘分组倍率;倍率列展示独立倍率', () => {
+    const model = tokenModel({
+      name: 'grok-video',
+      pricing: {
+        billing_mode: 'video',
+        input_price: null,
+        output_price: null,
+        cache_write_price: null,
+        cache_read_price: null,
+        image_input_price: null,
+        image_output_price: null,
+        per_request_price: null,
+        intervals: [
+          {
+            min_tokens: 0,
+            max_tokens: null,
+            tier_label: '480p',
+            input_price: null,
+            output_price: null,
+            cache_write_price: null,
+            cache_read_price: null,
+            per_request_price: 0.1
+          }
+        ]
+      },
+      official_pricing: null
+    })
+    const wrapper = mountTable([model], 0.15, null, {
+      videoRateIndependent: true,
+      videoRateMultiplier: 1
+    })
+    const text = wrapper.text()
+    // 0.1 × 1(独立倍率),而非 0.1 × 0.15
+    expect(text).toContain('$0.1')
+    expect(text).not.toContain('$0.015')
+    // 倍率列展示独立倍率 1x,而非分组倍率 0.15x
+    const rateCell = wrapper.findAll('tbody tr td').at(-1)!
+    expect(rateCell.text()).toBe('1x')
+  })
+
+  it('视频独立倍率关闭时,按视频价格仍乘分组/专属生效倍率', () => {
+    const model = tokenModel({
+      name: 'grok-video',
+      pricing: {
+        billing_mode: 'video',
+        input_price: null,
+        output_price: null,
+        cache_write_price: null,
+        cache_read_price: null,
+        image_input_price: null,
+        image_output_price: null,
+        per_request_price: 0.2,
+        intervals: []
+      },
+      official_pricing: null
+    })
+    const wrapper = mountTable([model], 0.15, null, { videoRateIndependent: false })
+    const text = wrapper.text()
+    expect(text).toContain('$0.03')
+    const rateCell = wrapper.findAll('tbody tr td').at(-1)!
+    expect(rateCell.text()).toBe('0.15x')
   })
 
   it('按图模型主行展示阶梯芯片,不把 image_output_price(每 token)当按次价', () => {

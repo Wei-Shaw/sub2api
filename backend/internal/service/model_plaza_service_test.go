@@ -324,6 +324,42 @@ func TestListPlazaGroups_GroupImagePriceIgnoredForNonImageModes(t *testing.T) {
 	require.Nil(t, p.PerRequestPrice)
 }
 
+func TestListPlazaGroups_VideoRateIndependentPassthrough(t *testing.T) {
+	// 分组开启视频独立倍率时，PlazaGroup 应透传 VideoRateIndependent/VideoRateMultiplier，
+	// 与图片独立倍率字段的透传方式一致（对应 model_plaza_service.go 曾遗漏的字段）。
+	perSecond := 0.1
+	channels := []Channel{{
+		ID: 1, Name: "video-ch", Status: StatusActive, GroupIDs: []int64{10, 20},
+		ModelPricing: []ChannelModelPricing{{
+			Platform:        "grok",
+			Models:          []string{"grok-video"},
+			BillingMode:     BillingModeVideo,
+			PerRequestPrice: &perSecond,
+		}},
+	}}
+	groups := []Group{
+		{ID: 10, Name: "g-video", Platform: "grok", RateMultiplier: 0.15,
+			VideoRateIndependent: true, VideoRateMultiplier: 1},
+		{ID: 20, Name: "g-plain", Platform: "grok", RateMultiplier: 0.1},
+	}
+	svc := newPlazaService(channels, groups, nil)
+	out, err := svc.ListGroups(context.Background())
+	require.NoError(t, err)
+	require.Len(t, out, 2)
+	byName := map[string]PlazaGroup{}
+	for _, g := range out {
+		byName[g.Name] = g
+	}
+
+	video := byName["g-video"]
+	require.True(t, video.VideoRateIndependent)
+	require.InDelta(t, 1.0, video.VideoRateMultiplier, 1e-9)
+
+	plain := byName["g-plain"]
+	require.False(t, plain.VideoRateIndependent)
+	require.InDelta(t, 0.0, plain.VideoRateMultiplier, 1e-9)
+}
+
 func TestListPlazaGroups_RepoErrorsPropagate(t *testing.T) {
 	sentinel := errors.New("boom")
 	repo := &mockChannelRepository{

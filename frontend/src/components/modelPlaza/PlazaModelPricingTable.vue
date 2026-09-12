@@ -287,7 +287,7 @@
               >{{ periodRate(period) }}x</span
             >
             <span
-              v-else-if="usesIndependentImageRate(m)"
+              v-else-if="usesIndependentRequestRate(m)"
               class="font-bold text-gray-700 dark:text-gray-300"
               >{{ requestRate(m) }}x</span
             >
@@ -311,6 +311,7 @@ import { platformAccentColor, platformBadgeLightClass, platformLabel } from '@/u
 import {
   BILLING_MODE_TOKEN,
   BILLING_MODE_IMAGE,
+  BILLING_MODE_VIDEO,
   type BillingMode
 } from '@/constants/channel'
 import type { PlazaModel, PlazaTimePricingPeriod } from '@/api/modelPlaza'
@@ -327,6 +328,9 @@ const props = defineProps<{
   /** 生图独立倍率:true 时图片计费模型的实付倍率取 imageRateMultiplier,不取分组/专属倍率。 */
   imageRateIndependent?: boolean
   imageRateMultiplier?: number | null
+  /** 生视频独立倍率:true 时视频计费模型的实付倍率取 videoRateMultiplier,不取分组/专属倍率。 */
+  videoRateIndependent?: boolean
+  videoRateMultiplier?: number | null
   /**
    * 高峰窗口描述(含倍率与服务器时区标注),空串/缺省 = 分组未启用高峰。
    * 表格所有价格均为不含高峰因子的口径,该窗口仅用于分时时段行的 tooltip 披露:
@@ -412,14 +416,18 @@ function paidPerMillion(value: number | null | undefined, period: PlazaTimePrici
   return formatScaled(value * rate, PER_MILLION, MIN_DECIMALS)
 }
 
-/** 图片计费模型且分组开启生图独立倍率:实付倍率取独立倍率,与计费口径一致。 */
-function usesIndependentImageRate(m: PlazaModel): boolean {
-  return billingMode(m) === BILLING_MODE_IMAGE && props.imageRateIndependent === true
+/** 图片/视频计费模型且分组开启对应独立倍率:实付倍率取独立倍率,与计费口径一致。 */
+function usesIndependentRequestRate(m: PlazaModel): boolean {
+  const mode = billingMode(m)
+  if (mode === BILLING_MODE_IMAGE) return props.imageRateIndependent === true
+  if (mode === BILLING_MODE_VIDEO) return props.videoRateIndependent === true
+  return false
 }
 
-/** 按次/按图片行的生效倍率。 */
+/** 按次/按图片/按视频行的生效倍率。 */
 function requestRate(m: PlazaModel): number {
-  return usesIndependentImageRate(m) ? (props.imageRateMultiplier ?? 1) : effectiveRate.value
+  if (!usesIndependentRequestRate(m)) return effectiveRate.value
+  return billingMode(m) === BILLING_MODE_VIDEO ? (props.videoRateMultiplier ?? 1) : (props.imageRateMultiplier ?? 1)
 }
 
 /** 按次 / 按图片单价(乘该行生效倍率,不换算 1M)。 */
