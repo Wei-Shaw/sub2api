@@ -97,18 +97,17 @@ guessing a provider.
 
 ### Simple Mode
 
-In Simple mode, **Composite Routing** is available from the admin navigation as
-a focused configuration surface:
+Simple mode's **Groups** page supports both basic provider groups and Composite
+routing groups. Choose the Composite platform when creating a group, then use
+its route action to create, edit, delete and preview explicit model aliases.
+An active Composite group is available through the existing API-key group selector.
 
-- The page lists and creates only `composite` groups.
-- An API key can bind to one Composite group, and the group's explicit routes
-  select the concrete provider and upstream model.
-- Provider accounts continue to use Simple mode's global account pool; a
-  Composite group does not isolate or copy provider accounts in this mode.
-- Subscription, quota, rate-multiplier, and other SaaS billing controls are not
-  exposed or enforced in Simple mode. Request usage logging remains available.
-- Unknown or ambiguous models still fail closed. Use route preview to verify an
-  alias before assigning the Composite group to a key.
+Provider accounts continue to use Simple mode's global account pool; Composite
+groups do not isolate or copy provider accounts. Basic account grouping remains
+available. Commercial configuration, account copying, and other advanced group
+operations remain unavailable in Simple mode. Request usage logging is retained.
+Unknown or ambiguous model aliases fail closed; use route preview before binding
+the group to an API key.
 
 Standard mode keeps the full group-management workflow described below.
 

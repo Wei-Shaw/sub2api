@@ -3,27 +3,6 @@
     <TablePageLayout>
       <template #filters>
         <div
-          v-if="isSimpleMode"
-          class="mb-4 rounded-lg border border-cyan-200 bg-cyan-50 p-4 dark:border-cyan-900/60 dark:bg-cyan-950/30"
-          data-testid="simple-composite-banner"
-        >
-          <div class="flex gap-3">
-            <Icon
-              name="swap"
-              size="md"
-              class="mt-0.5 text-cyan-600 dark:text-cyan-400"
-            />
-            <div>
-              <h2 class="font-medium text-cyan-900 dark:text-cyan-100">
-                {{ t("admin.groups.simpleMode.bannerTitle") }}
-              </h2>
-              <p class="mt-1 text-sm text-cyan-800 dark:text-cyan-200">
-                {{ t("admin.groups.simpleMode.bannerDescription") }}
-              </p>
-            </div>
-          </div>
-        </div>
-        <div
           class="flex flex-col justify-between gap-4 lg:flex-row lg:items-start"
         >
           <!-- Left: fuzzy search + filters (can wrap to multiple lines) -->
@@ -43,7 +22,6 @@
               />
             </div>
             <Select
-              v-if="!isSimpleMode"
               v-model="filters.platform"
               :options="platformFilterOptions"
               :placeholder="t('admin.groups.allPlatforms')"
@@ -51,7 +29,6 @@
               @change="loadGroups"
             />
             <Select
-              v-if="!isSimpleMode"
               v-model="filters.status"
               :options="statusOptions"
               :placeholder="t('admin.groups.allStatus')"
@@ -59,7 +36,7 @@
               @change="loadGroups"
             />
             <Select
-              v-if="!isSimpleMode"
+              v-if="!authStore.isSimpleMode"
               v-model="filters.is_exclusive"
               :options="exclusiveOptions"
               :placeholder="t('admin.groups.allGroups')"
@@ -84,7 +61,7 @@
                 :class="loading ? 'animate-spin' : ''"
               />
             </button>
-            <div v-if="!isSimpleMode" class="relative" ref="columnDropdownRef">
+            <div class="relative" ref="columnDropdownRef">
               <button
                 @click="showColumnDropdown = !showColumnDropdown"
                 class="btn btn-secondary"
@@ -117,7 +94,7 @@
               </div>
             </div>
             <button
-              v-if="!isSimpleMode"
+              v-if="!authStore.isSimpleMode"
               @click="openSortModal"
               class="btn btn-secondary"
               :title="t('admin.groups.sortOrder')"
@@ -131,11 +108,7 @@
               data-tour="groups-create-btn"
             >
               <Icon name="plus" size="md" class="mr-2" />
-              {{
-                isSimpleMode
-                  ? t("admin.groups.simpleMode.create")
-                  : t("admin.groups.createGroup")
-              }}
+              {{ t("admin.groups.createGroup") }}
             </button>
           </div>
         </div>
@@ -416,7 +389,7 @@
                 <span class="text-xs">{{ t("common.edit") }}</span>
               </button>
               <button
-                v-if="!isSimpleMode"
+                v-if="!authStore.isSimpleMode"
                 data-testid="group-duplicate"
                 :title="
                   duplicatingGroupIds.has(row.id)
@@ -448,7 +421,7 @@
                 }}</span>
               </button>
               <button
-                v-if="!isSimpleMode"
+                v-if="!authStore.isSimpleMode"
                 data-testid="group-rate-multipliers"
                 @click="handleRateMultipliers(row)"
                 class="flex flex-col items-center gap-0.5 rounded-lg p-1.5 text-gray-500 transition-colors hover:bg-gray-100 hover:text-purple-600 dark:hover:bg-dark-700 dark:hover:text-purple-400"
@@ -459,7 +432,7 @@
                 }}</span>
               </button>
               <button
-                v-if="!isSimpleMode"
+                v-if="!authStore.isSimpleMode"
                 data-testid="group-rpm-overrides"
                 @click="handleRPMOverrides(row)"
                 class="flex flex-col items-center gap-0.5 rounded-lg p-1.5 text-gray-500 transition-colors hover:bg-gray-100 hover:text-orange-600 dark:hover:bg-dark-700 dark:hover:text-orange-400"
@@ -481,21 +454,9 @@
 
           <template #empty>
             <EmptyState
-              :title="
-                isSimpleMode
-                  ? t('admin.groups.simpleMode.emptyTitle')
-                  : t('admin.groups.noGroupsYet')
-              "
-              :description="
-                isSimpleMode
-                  ? t('admin.groups.simpleMode.emptyDescription')
-                  : t('admin.groups.createFirstGroup')
-              "
-              :action-text="
-                isSimpleMode
-                  ? t('admin.groups.simpleMode.create')
-                  : t('admin.groups.createGroup')
-              "
+              :title="t('admin.groups.noGroupsYet')"
+              :description="t('admin.groups.createFirstGroup')"
+              :action-text="t('admin.groups.createGroup')"
               @action="openCreateModal"
             />
           </template>
@@ -517,12 +478,8 @@
     <!-- Create Group Modal -->
     <BaseDialog
       :show="showCreateModal"
-      :title="
-        isSimpleMode
-          ? t('admin.groups.simpleMode.create')
-          : t('admin.groups.createGroup')
-      "
-      :width="isSimpleMode ? 'normal' : 'wide'"
+      :title="t('admin.groups.createGroup')"
+      width="wide"
       @close="closeCreateModal"
     >
       <form
@@ -530,45 +487,6 @@
         @submit.prevent="handleCreateGroup"
         class="space-y-5"
       >
-        <template v-if="isSimpleMode">
-          <div>
-            <label class="input-label">{{ t("admin.groups.form.name") }}</label>
-            <input
-              v-model="createForm.name"
-              type="text"
-              required
-              class="input"
-              :placeholder="t('admin.groups.enterGroupName')"
-              data-tour="group-form-name"
-            />
-          </div>
-          <div>
-            <label class="input-label">{{ t("admin.groups.form.description") }}</label>
-            <textarea
-              v-model="createForm.description"
-              rows="3"
-              class="input"
-              :placeholder="t('admin.groups.optionalDescription')"
-            ></textarea>
-          </div>
-          <div>
-            <label class="input-label">{{ t("admin.groups.simpleMode.platformLabel") }}</label>
-            <div class="flex items-center gap-2 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 dark:border-dark-600 dark:bg-dark-800">
-              <PlatformIcon platform="composite" size="sm" />
-              <span class="font-medium text-gray-900 dark:text-white">Composite</span>
-            </div>
-            <p class="input-hint">{{ t("admin.groups.simpleMode.platformDescription") }}</p>
-          </div>
-          <ReasoningEffortPolicyFields
-            ref="createReasoningEffortPolicyRef"
-            id-prefix="create-simple-composite-reasoning"
-            :platform="createForm.platform"
-            v-model:max-effort="createForm.max_reasoning_effort"
-            v-model:over-limit="createForm.max_reasoning_effort_over_limit"
-            v-model:mappings="createForm.reasoning_effort_mappings"
-          />
-        </template>
-        <template v-else>
         <div>
           <label class="input-label">{{ t("admin.groups.form.name") }}</label>
           <input
@@ -692,6 +610,7 @@
           </select>
           <p class="input-hint">{{ t("admin.groups.copyAccounts.hint") }}</p>
         </div>
+        <template v-if="!authStore.isSimpleMode">
         <div>
           <label class="input-label">{{
             t("admin.groups.form.rateMultiplier")
@@ -2207,43 +2126,6 @@
         @submit.prevent="handleUpdateGroup"
         class="space-y-5"
       >
-        <template v-if="isSimpleMode">
-          <div>
-            <label class="input-label">{{ t("admin.groups.form.name") }}</label>
-            <input
-              v-model="editForm.name"
-              type="text"
-              required
-              class="input"
-              data-tour="edit-group-form-name"
-            />
-          </div>
-          <div>
-            <label class="input-label">{{ t("admin.groups.form.description") }}</label>
-            <textarea v-model="editForm.description" rows="3" class="input"></textarea>
-          </div>
-          <div>
-            <label class="input-label">{{ t("admin.groups.simpleMode.platformLabel") }}</label>
-            <div class="flex items-center gap-2 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 dark:border-dark-600 dark:bg-dark-800">
-              <PlatformIcon platform="composite" size="sm" />
-              <span class="font-medium text-gray-900 dark:text-white">Composite</span>
-            </div>
-            <p class="input-hint">{{ t("admin.groups.simpleMode.platformDescription") }}</p>
-          </div>
-          <div>
-            <label class="input-label">{{ t("admin.groups.form.status") }}</label>
-            <Select v-model="editForm.status" :options="statusOptions" />
-          </div>
-          <ReasoningEffortPolicyFields
-            ref="editReasoningEffortPolicyRef"
-            id-prefix="edit-simple-composite-reasoning"
-            :platform="editForm.platform"
-            v-model:max-effort="editForm.max_reasoning_effort"
-            v-model:over-limit="editForm.max_reasoning_effort_over_limit"
-            v-model:mappings="editForm.reasoning_effort_mappings"
-          />
-        </template>
-        <template v-else>
         <div>
           <label class="input-label">{{ t("admin.groups.form.name") }}</label>
           <input
@@ -2276,6 +2158,7 @@
           />
           <p class="input-hint">{{ t("admin.groups.platformNotEditable") }}</p>
         </div>
+        <template v-if="!authStore.isSimpleMode">
         <!-- 从分组复制账号（编辑时） -->
         <div v-if="copyAccountsGroupOptionsForEdit.length > 0">
           <div class="mb-1.5 flex items-center gap-1">
@@ -4560,7 +4443,6 @@ const { t } = useI18n();
 const appStore = useAppStore();
 const authStore = useAuthStore();
 const onboardingStore = useOnboardingStore();
-const isSimpleMode = computed(() => authStore.isSimpleMode);
 
 const ALWAYS_VISIBLE_COLUMNS = new Set(["name", "actions"]);
 // Default hidden columns (hidden on first load / after schema bumps).
@@ -4574,62 +4456,24 @@ const VERSION_NEW_HIDDEN_COLUMNS: Record<number, string[]> = {
 };
 
 const allColumns = computed<Column[]>(() => {
-  const identityColumns: Column[] = [
+  const basic: Column[] = [
     { key: "name", label: t("admin.groups.columns.name"), sortable: true },
     { key: "id", label: t("admin.groups.columns.id"), sortable: true },
-    {
-      key: "platform",
-      label: t("admin.groups.columns.platform"),
-      sortable: true,
-    },
-  ];
-
-  if (isSimpleMode.value) {
-    return [
-      ...identityColumns,
-      { key: "status", label: t("admin.groups.columns.status"), sortable: true },
-      {
-        key: "actions",
-        label: t("admin.groups.columns.actions"),
-        sortable: false,
-      },
-    ];
-  }
-
-  return [
-    ...identityColumns,
-    {
-      key: "billing_type",
-      label: t("admin.groups.columns.billingType"),
-      sortable: true,
-    },
-    {
-      key: "rate_multiplier",
-      label: t("admin.groups.columns.rateMultiplier"),
-      sortable: true,
-    },
-    {
-      key: "is_exclusive",
-      label: t("admin.groups.columns.type"),
-      sortable: true,
-    },
-    {
-      key: "account_count",
-      label: t("admin.groups.columns.accounts"),
-      sortable: true,
-    },
-    {
-      key: "capacity",
-      label: t("admin.groups.columns.capacity"),
-      sortable: false,
-    },
-    { key: "usage", label: t("admin.groups.columns.usage"), sortable: false },
+    { key: "platform", label: t("admin.groups.columns.platform"), sortable: true },
+    { key: "account_count", label: t("admin.groups.columns.accounts"), sortable: true },
     { key: "status", label: t("admin.groups.columns.status"), sortable: true },
-    {
-      key: "actions",
-      label: t("admin.groups.columns.actions"),
-      sortable: false,
-    },
+    { key: "actions", label: t("admin.groups.columns.actions"), sortable: false },
+  ];
+  if (authStore.isSimpleMode) return basic;
+  return [
+    ...basic.slice(0, 3),
+    { key: "billing_type", label: t("admin.groups.columns.billingType"), sortable: true },
+    { key: "rate_multiplier", label: t("admin.groups.columns.rateMultiplier"), sortable: true },
+    { key: "is_exclusive", label: t("admin.groups.columns.type"), sortable: true },
+    basic[3],
+    { key: "capacity", label: t("admin.groups.columns.capacity"), sortable: false },
+    { key: "usage", label: t("admin.groups.columns.usage"), sortable: false },
+    ...basic.slice(4),
   ];
 });
 
@@ -4711,13 +4555,9 @@ const saveColumnsToStorage = () => {
 
 const isColumnVisible = (key: string) => !hiddenColumns.has(key);
 const hasVisibleUsageSummaryConsumer = computed(
-  () =>
-    !isSimpleMode.value &&
-    (isColumnVisible("usage") || isColumnVisible("billing_type")),
+  () => !authStore.isSimpleMode && (isColumnVisible("usage") || isColumnVisible("billing_type")),
 );
-const hasVisibleCapacityColumn = computed(
-  () => !isSimpleMode.value && isColumnVisible("capacity"),
-);
+const hasVisibleCapacityColumn = computed(() => !authStore.isSimpleMode && isColumnVisible("capacity"));
 
 const toggleColumn = (key: string) => {
   const validKeys = getValidHiddenColumnKeys();
@@ -4762,11 +4602,7 @@ const exclusiveOptions = computed(() => [
   { value: "false", label: t("admin.groups.nonExclusive") },
 ]);
 
-const platformOptions = computed(() =>
-  GROUP_PLATFORM_OPTIONS.filter(
-    (option) => !authStore.isSimpleMode || option.value !== "composite",
-  ),
-);
+const platformOptions = computed(() => [...GROUP_PLATFORM_OPTIONS]);
 
 const platformFilterOptions = computed(() => [
   { value: "", label: t("admin.groups.allPlatforms") },
@@ -5755,15 +5591,11 @@ const loadGroups = async () => {
       pagination.page,
       pagination.page_size,
       {
-        platform: isSimpleMode.value
-          ? "composite"
-          : (filters.platform as GroupPlatform) || undefined,
-        status: isSimpleMode.value ? undefined : (filters.status as any),
-        is_exclusive: isSimpleMode.value
-          ? undefined
-          : filters.is_exclusive
-            ? filters.is_exclusive === "true"
-            : undefined,
+        platform: (filters.platform as GroupPlatform) || undefined,
+        status: filters.status as any,
+        is_exclusive: !authStore.isSimpleMode && filters.is_exclusive
+          ? filters.is_exclusive === "true"
+          : undefined,
         search: searchQuery.value.trim() || undefined,
         sort_by: sortState.sort_by,
         sort_order: sortState.sort_order,
@@ -5910,13 +5742,8 @@ const handleSort = (key: string, order: 'asc' | 'desc') => {
 };
 
 const openCreateModal = () => {
-  if (isSimpleMode.value) {
-    createForm.platform = "composite";
-  }
   showCreateModal.value = true;
-  if (!isSimpleMode.value) {
-    loadModelAllowlistCandidates("create", 0, createForm.platform);
-  }
+  loadModelAllowlistCandidates("create", 0, createForm.platform);
 };
 
 const closeCreateModal = () => {
@@ -5927,7 +5754,7 @@ const closeCreateModal = () => {
   clearAllAccountSearchState();
   createForm.name = "";
   createForm.description = "";
-  createForm.platform = isSimpleMode.value ? "composite" : "anthropic";
+  createForm.platform = "anthropic";
   createForm.rate_multiplier = 1.0;
   createForm.is_exclusive = false;
   createForm.subscription_type = "standard";
@@ -6038,7 +5865,7 @@ const handleCreateGroup = async () => {
   ) {
     return;
   }
-  if (!isSimpleMode.value && !validateProfitControlForm(createForm)) {
+  if (!validateProfitControlForm(createForm)) {
     return;
   }
   // 模型白名单：开启且没有任何条目时阻止提交，与后端 400 对齐。
@@ -6051,25 +5878,6 @@ const handleCreateGroup = async () => {
   }
   submitting.value = true;
   try {
-    if (isSimpleMode.value) {
-      await adminAPI.groups.create({
-        name: createForm.name.trim(),
-        description: createForm.description.trim() || null,
-        platform: "composite",
-        rate_multiplier: 1,
-        is_exclusive: false,
-        subscription_type: "standard",
-        max_reasoning_effort: createForm.max_reasoning_effort,
-        max_reasoning_effort_over_limit: createForm.max_reasoning_effort_over_limit,
-        reasoning_effort_mappings: reasoningEffortMappingsToAPI(
-          createForm.reasoning_effort_mappings,
-        ),
-      });
-      appStore.showSuccess(t("admin.groups.groupCreated"));
-      closeCreateModal();
-      loadGroups();
-      return;
-    }
     const {
       video_model_prices: _createFormVideoModelPrices,
       ...createGroupForm
@@ -6301,7 +6109,7 @@ const handleEdit = async (group: AdminGroup) => {
     group.reasoning_effort_mappings,
     group.platform,
   );
-  if (isSimpleMode.value) {
+  if (authStore.isSimpleMode) {
     showEditModal.value = true;
     return;
   }
@@ -6392,7 +6200,7 @@ const handleUpdateGroup = async () => {
   ) {
     return;
   }
-  if (!isSimpleMode.value && !validateProfitControlForm(editForm)) {
+  if (!validateProfitControlForm(editForm)) {
     return;
   }
   // 模型白名单：开启且没有任何条目时阻止提交，与后端 400 对齐。
@@ -6416,23 +6224,6 @@ const handleUpdateGroup = async () => {
 
   submitting.value = true;
   try {
-    if (isSimpleMode.value) {
-      await adminAPI.groups.update(editingGroup.value.id, {
-        name: editForm.name.trim(),
-        description: editForm.description.trim() || null,
-        platform: "composite",
-        status: editForm.status,
-        max_reasoning_effort: editForm.max_reasoning_effort,
-        max_reasoning_effort_over_limit: editForm.max_reasoning_effort_over_limit,
-        reasoning_effort_mappings: reasoningEffortMappingsToAPI(
-          editForm.reasoning_effort_mappings,
-        ),
-      });
-      appStore.showSuccess(t("admin.groups.groupUpdated"));
-      closeEditModal();
-      loadGroups();
-      return;
-    }
     // 转换 fallback_group_id: null -> 0 (后端使用 0 表示清除)
     const payload = {
       ...editForm,
@@ -6901,9 +6692,7 @@ watch(
     }
     resetDisabledBatchImagePricing(createForm);
     resetModelAllowlistState(createModelAllowlistState);
-    if (!isSimpleMode.value) {
-      loadModelAllowlistCandidates("create", 0, newVal);
-    }
+    loadModelAllowlistCandidates("create", 0, newVal);
   },
 );
 
@@ -6959,7 +6748,7 @@ watch(
       editForm.require_privacy_set = false;
     }
     resetDisabledBatchImagePricing(editForm);
-    if (editingGroup.value && !isSimpleMode.value) {
+    if (editingGroup.value && !authStore.isSimpleMode) {
       resetModelAllowlistState(editModelAllowlistState, editForm.platform === editingGroup.value.platform ? editingGroup.value.model_allowlist : undefined);
       loadModelAllowlistCandidates("edit", editingGroup.value.id, newVal);
     }
@@ -7055,11 +6844,8 @@ const saveSortOrder = async () => {
 };
 
 onMounted(() => {
-  if (isSimpleMode.value) {
-    createForm.platform = "composite";
-  }
   loadGroups();
-  if (!isSimpleMode.value) {
+  if (!authStore.isSimpleMode) {
     void loadLiveCapability();
     loadModelAllowlistCandidates("create", 0, createForm.platform);
   }
