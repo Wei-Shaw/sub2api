@@ -490,6 +490,8 @@ func registerGrokOAuthRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 		grok.POST("/accounts/:id/refresh", h.Admin.GrokOAuth.RefreshAccountToken)
 		grok.GET("/accounts/:id/quota", h.Admin.GrokOAuth.QueryQuota)
 		grok.POST("/accounts/:id/reset-quota", h.Admin.GrokOAuth.ResetQuota)
+		grok.POST("/accounts/:id/reset-cards/query", h.Admin.GrokOAuth.QueryUsageResetCards)
+		grok.POST("/accounts/:id/reset-cards/redeem", h.Admin.GrokOAuth.RedeemUsageResetCard)
 		grok.GET("/runtime-sanity", h.Admin.GrokOAuth.RuntimeSanity)
 	}
 }

@@ -33,6 +33,34 @@ func TestDeriveAuditAction(t *testing.T) {
 	}
 }
 
+func TestGrokUsageResetAuditOmitsWebSessionBodies(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	repository := &auditCaptureRepository{}
+	auditService := service.NewAuditLogService(repository, nil)
+	auditService.Start()
+	router := gin.New()
+	router.Use(gin.HandlerFunc(NewAuditLogMiddleware(auditService)))
+	for _, operation := range []string{"query", "redeem"} {
+		router.POST("/api/v1/admin/grok/accounts/:id/reset-cards/"+operation, func(c *gin.Context) {
+			var input map[string]string
+			require.NoError(t, c.ShouldBindJSON(&input))
+			require.Equal(t, "web-session-canary", input["sso_token"])
+			c.Status(http.StatusOK)
+		})
+		request := httptest.NewRequest(http.MethodPost, "/api/v1/admin/grok/accounts/12/reset-cards/"+operation,
+			bytes.NewBufferString(`{"sso_token":"web-session-canary","token_id":"card-canary","extra":"web-session-canary"}`))
+		request.Header.Set("Content-Type", "application/json")
+		router.ServeHTTP(httptest.NewRecorder(), request)
+	}
+	auditService.Stop()
+	repository.mu.Lock()
+	defer repository.mu.Unlock()
+	require.Len(t, repository.logs, 2)
+	for _, entry := range repository.logs {
+		require.Equal(t, "<credential-bearing body omitted>", entry.RequestBody)
+	}
+}
+
 type auditCaptureRepository struct {
 	mu   sync.Mutex
 	logs []*service.AuditLog

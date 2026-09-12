@@ -24,7 +24,16 @@
         </svg>
         {{ t('admin.accounts.usageWindow.grokProbe') }}
       </button>
+      <button
+        type="button"
+        class="rounded px-1.5 py-0.5 text-[10px] font-medium text-cyan-700 hover:bg-cyan-50 dark:text-cyan-300 dark:hover:bg-cyan-900/30"
+        @click="showResetCards = true"
+      >
+        {{ t('admin.accounts.grokReset.title') }}
+      </button>
     </div>
+
+    <GrokUsageResetDialog v-if="showResetCards" :show="showResetCards" :account="account" @close="showResetCards = false" />
 
     <!-- Compact mode: parent already shows 7d/30d/prepaid or 24h — only surface errors. -->
     <div
@@ -40,11 +49,13 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, defineAsyncComponent, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { adminAPI } from '@/api/admin'
 import type { GrokQuotaProbeResult } from '@/api/admin/grok'
 import type { Account } from '@/types'
+
+const GrokUsageResetDialog = defineAsyncComponent(() => import('./GrokUsageResetDialog.vue'))
 
 const props = withDefaults(
   defineProps<{
@@ -61,6 +72,7 @@ const { t } = useI18n()
 
 const visible = computed(() => props.account.platform === 'grok' && props.account.type === 'oauth')
 const loading = ref(false)
+const showResetCards = ref(false)
 const error = ref<string | null>(null)
 const data = ref<GrokQuotaProbeResult | null>(null)
 
@@ -114,6 +126,7 @@ const handleProbe = async () => {
 watch(
   () => props.account.id,
   () => {
+    showResetCards.value = false
     data.value = null
     error.value = null
     loading.value = false
