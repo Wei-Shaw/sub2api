@@ -159,58 +159,166 @@ func (_c *AccountWindowUsageHistoryCreate) SetNillableTokensTotal(v *int64) *Acc
 	return _c
 }
 
-// SetTokensInput sets the "tokens_input" field.
-func (_c *AccountWindowUsageHistoryCreate) SetTokensInput(v int64) *AccountWindowUsageHistoryCreate {
-	_c.mutation.SetTokensInput(v)
+// SetResetAt sets the "reset_at" field.
+func (_c *AccountWindowUsageHistoryCreate) SetResetAt(v time.Time) *AccountWindowUsageHistoryCreate {
+	_c.mutation.SetResetAt(v)
 	return _c
 }
 
-// SetNillableTokensInput sets the "tokens_input" field if the given value is not nil.
-func (_c *AccountWindowUsageHistoryCreate) SetNillableTokensInput(v *int64) *AccountWindowUsageHistoryCreate {
+// SetDurationMinutes sets the "duration_minutes" field.
+func (_c *AccountWindowUsageHistoryCreate) SetDurationMinutes(v int) *AccountWindowUsageHistoryCreate {
+	_c.mutation.SetDurationMinutes(v)
+	return _c
+}
+
+// SetFirstObservedAt sets the "first_observed_at" field.
+func (_c *AccountWindowUsageHistoryCreate) SetFirstObservedAt(v time.Time) *AccountWindowUsageHistoryCreate {
+	_c.mutation.SetFirstObservedAt(v)
+	return _c
+}
+
+// SetLastObservationID sets the "last_observation_id" field.
+func (_c *AccountWindowUsageHistoryCreate) SetLastObservationID(v int64) *AccountWindowUsageHistoryCreate {
+	_c.mutation.SetLastObservationID(v)
+	return _c
+}
+
+// SetNillableLastObservationID sets the "last_observation_id" field if the given value is not nil.
+func (_c *AccountWindowUsageHistoryCreate) SetNillableLastObservationID(v *int64) *AccountWindowUsageHistoryCreate {
 	if v != nil {
-		_c.SetTokensInput(*v)
+		_c.SetLastObservationID(*v)
 	}
 	return _c
 }
 
-// SetTokensOutput sets the "tokens_output" field.
-func (_c *AccountWindowUsageHistoryCreate) SetTokensOutput(v int64) *AccountWindowUsageHistoryCreate {
-	_c.mutation.SetTokensOutput(v)
+// SetAPIReferenceCost sets the "api_reference_cost" field.
+func (_c *AccountWindowUsageHistoryCreate) SetAPIReferenceCost(v float64) *AccountWindowUsageHistoryCreate {
+	_c.mutation.SetAPIReferenceCost(v)
 	return _c
 }
 
-// SetNillableTokensOutput sets the "tokens_output" field if the given value is not nil.
-func (_c *AccountWindowUsageHistoryCreate) SetNillableTokensOutput(v *int64) *AccountWindowUsageHistoryCreate {
+// SetNillableAPIReferenceCost sets the "api_reference_cost" field if the given value is not nil.
+func (_c *AccountWindowUsageHistoryCreate) SetNillableAPIReferenceCost(v *float64) *AccountWindowUsageHistoryCreate {
 	if v != nil {
-		_c.SetTokensOutput(*v)
+		_c.SetAPIReferenceCost(*v)
 	}
 	return _c
 }
 
-// SetTokensCacheCreation sets the "tokens_cache_creation" field.
-func (_c *AccountWindowUsageHistoryCreate) SetTokensCacheCreation(v int64) *AccountWindowUsageHistoryCreate {
-	_c.mutation.SetTokensCacheCreation(v)
+// SetPricedRequests sets the "priced_requests" field.
+func (_c *AccountWindowUsageHistoryCreate) SetPricedRequests(v int64) *AccountWindowUsageHistoryCreate {
+	_c.mutation.SetPricedRequests(v)
 	return _c
 }
 
-// SetNillableTokensCacheCreation sets the "tokens_cache_creation" field if the given value is not nil.
-func (_c *AccountWindowUsageHistoryCreate) SetNillableTokensCacheCreation(v *int64) *AccountWindowUsageHistoryCreate {
+// SetNillablePricedRequests sets the "priced_requests" field if the given value is not nil.
+func (_c *AccountWindowUsageHistoryCreate) SetNillablePricedRequests(v *int64) *AccountWindowUsageHistoryCreate {
 	if v != nil {
-		_c.SetTokensCacheCreation(*v)
+		_c.SetPricedRequests(*v)
 	}
 	return _c
 }
 
-// SetTokensCacheRead sets the "tokens_cache_read" field.
-func (_c *AccountWindowUsageHistoryCreate) SetTokensCacheRead(v int64) *AccountWindowUsageHistoryCreate {
-	_c.mutation.SetTokensCacheRead(v)
+// SetMissingPricingRequests sets the "missing_pricing_requests" field.
+func (_c *AccountWindowUsageHistoryCreate) SetMissingPricingRequests(v int64) *AccountWindowUsageHistoryCreate {
+	_c.mutation.SetMissingPricingRequests(v)
 	return _c
 }
 
-// SetNillableTokensCacheRead sets the "tokens_cache_read" field if the given value is not nil.
-func (_c *AccountWindowUsageHistoryCreate) SetNillableTokensCacheRead(v *int64) *AccountWindowUsageHistoryCreate {
+// SetNillableMissingPricingRequests sets the "missing_pricing_requests" field if the given value is not nil.
+func (_c *AccountWindowUsageHistoryCreate) SetNillableMissingPricingRequests(v *int64) *AccountWindowUsageHistoryCreate {
 	if v != nil {
-		_c.SetTokensCacheRead(*v)
+		_c.SetMissingPricingRequests(*v)
+	}
+	return _c
+}
+
+// SetEstimatedReferenceLimit sets the "estimated_reference_limit" field.
+func (_c *AccountWindowUsageHistoryCreate) SetEstimatedReferenceLimit(v float64) *AccountWindowUsageHistoryCreate {
+	_c.mutation.SetEstimatedReferenceLimit(v)
+	return _c
+}
+
+// SetNillableEstimatedReferenceLimit sets the "estimated_reference_limit" field if the given value is not nil.
+func (_c *AccountWindowUsageHistoryCreate) SetNillableEstimatedReferenceLimit(v *float64) *AccountWindowUsageHistoryCreate {
+	if v != nil {
+		_c.SetEstimatedReferenceLimit(*v)
+	}
+	return _c
+}
+
+// SetEstimateReferenceCost sets the "estimate_reference_cost" field.
+func (_c *AccountWindowUsageHistoryCreate) SetEstimateReferenceCost(v float64) *AccountWindowUsageHistoryCreate {
+	_c.mutation.SetEstimateReferenceCost(v)
+	return _c
+}
+
+// SetNillableEstimateReferenceCost sets the "estimate_reference_cost" field if the given value is not nil.
+func (_c *AccountWindowUsageHistoryCreate) SetNillableEstimateReferenceCost(v *float64) *AccountWindowUsageHistoryCreate {
+	if v != nil {
+		_c.SetEstimateReferenceCost(*v)
+	}
+	return _c
+}
+
+// SetEstimateUsedPercent sets the "estimate_used_percent" field.
+func (_c *AccountWindowUsageHistoryCreate) SetEstimateUsedPercent(v float64) *AccountWindowUsageHistoryCreate {
+	_c.mutation.SetEstimateUsedPercent(v)
+	return _c
+}
+
+// SetNillableEstimateUsedPercent sets the "estimate_used_percent" field if the given value is not nil.
+func (_c *AccountWindowUsageHistoryCreate) SetNillableEstimateUsedPercent(v *float64) *AccountWindowUsageHistoryCreate {
+	if v != nil {
+		_c.SetEstimateUsedPercent(*v)
+	}
+	return _c
+}
+
+// SetEstimateObservedAt sets the "estimate_observed_at" field.
+func (_c *AccountWindowUsageHistoryCreate) SetEstimateObservedAt(v time.Time) *AccountWindowUsageHistoryCreate {
+	_c.mutation.SetEstimateObservedAt(v)
+	return _c
+}
+
+// SetNillableEstimateObservedAt sets the "estimate_observed_at" field if the given value is not nil.
+func (_c *AccountWindowUsageHistoryCreate) SetNillableEstimateObservedAt(v *time.Time) *AccountWindowUsageHistoryCreate {
+	if v != nil {
+		_c.SetEstimateObservedAt(*v)
+	}
+	return _c
+}
+
+// SetQualityFlags sets the "quality_flags" field.
+func (_c *AccountWindowUsageHistoryCreate) SetQualityFlags(v []string) *AccountWindowUsageHistoryCreate {
+	_c.mutation.SetQualityFlags(v)
+	return _c
+}
+
+// SetEndReason sets the "end_reason" field.
+func (_c *AccountWindowUsageHistoryCreate) SetEndReason(v string) *AccountWindowUsageHistoryCreate {
+	_c.mutation.SetEndReason(v)
+	return _c
+}
+
+// SetNillableEndReason sets the "end_reason" field if the given value is not nil.
+func (_c *AccountWindowUsageHistoryCreate) SetNillableEndReason(v *string) *AccountWindowUsageHistoryCreate {
+	if v != nil {
+		_c.SetEndReason(*v)
+	}
+	return _c
+}
+
+// SetStatsFinalizedAt sets the "stats_finalized_at" field.
+func (_c *AccountWindowUsageHistoryCreate) SetStatsFinalizedAt(v time.Time) *AccountWindowUsageHistoryCreate {
+	_c.mutation.SetStatsFinalizedAt(v)
+	return _c
+}
+
+// SetNillableStatsFinalizedAt sets the "stats_finalized_at" field if the given value is not nil.
+func (_c *AccountWindowUsageHistoryCreate) SetNillableStatsFinalizedAt(v *time.Time) *AccountWindowUsageHistoryCreate {
+	if v != nil {
+		_c.SetStatsFinalizedAt(*v)
 	}
 	return _c
 }
@@ -289,6 +397,30 @@ func (_c *AccountWindowUsageHistoryCreate) defaults() {
 		v := accountwindowusagehistory.DefaultSampleCount
 		_c.mutation.SetSampleCount(v)
 	}
+	if _, ok := _c.mutation.Requests(); !ok {
+		v := accountwindowusagehistory.DefaultRequests
+		_c.mutation.SetRequests(v)
+	}
+	if _, ok := _c.mutation.TokensTotal(); !ok {
+		v := accountwindowusagehistory.DefaultTokensTotal
+		_c.mutation.SetTokensTotal(v)
+	}
+	if _, ok := _c.mutation.LastObservationID(); !ok {
+		v := accountwindowusagehistory.DefaultLastObservationID
+		_c.mutation.SetLastObservationID(v)
+	}
+	if _, ok := _c.mutation.PricedRequests(); !ok {
+		v := accountwindowusagehistory.DefaultPricedRequests
+		_c.mutation.SetPricedRequests(v)
+	}
+	if _, ok := _c.mutation.MissingPricingRequests(); !ok {
+		v := accountwindowusagehistory.DefaultMissingPricingRequests
+		_c.mutation.SetMissingPricingRequests(v)
+	}
+	if _, ok := _c.mutation.QualityFlags(); !ok {
+		v := accountwindowusagehistory.DefaultQualityFlags
+		_c.mutation.SetQualityFlags(v)
+	}
 }
 
 // check runs all checks and user-defined validators on the builder.
@@ -324,6 +456,38 @@ func (_c *AccountWindowUsageHistoryCreate) check() error {
 	}
 	if _, ok := _c.mutation.SampleCount(); !ok {
 		return &ValidationError{Name: "sample_count", err: errors.New(`ent: missing required field "AccountWindowUsageHistory.sample_count"`)}
+	}
+	if _, ok := _c.mutation.Requests(); !ok {
+		return &ValidationError{Name: "requests", err: errors.New(`ent: missing required field "AccountWindowUsageHistory.requests"`)}
+	}
+	if _, ok := _c.mutation.TokensTotal(); !ok {
+		return &ValidationError{Name: "tokens_total", err: errors.New(`ent: missing required field "AccountWindowUsageHistory.tokens_total"`)}
+	}
+	if _, ok := _c.mutation.ResetAt(); !ok {
+		return &ValidationError{Name: "reset_at", err: errors.New(`ent: missing required field "AccountWindowUsageHistory.reset_at"`)}
+	}
+	if _, ok := _c.mutation.DurationMinutes(); !ok {
+		return &ValidationError{Name: "duration_minutes", err: errors.New(`ent: missing required field "AccountWindowUsageHistory.duration_minutes"`)}
+	}
+	if _, ok := _c.mutation.FirstObservedAt(); !ok {
+		return &ValidationError{Name: "first_observed_at", err: errors.New(`ent: missing required field "AccountWindowUsageHistory.first_observed_at"`)}
+	}
+	if _, ok := _c.mutation.LastObservationID(); !ok {
+		return &ValidationError{Name: "last_observation_id", err: errors.New(`ent: missing required field "AccountWindowUsageHistory.last_observation_id"`)}
+	}
+	if _, ok := _c.mutation.PricedRequests(); !ok {
+		return &ValidationError{Name: "priced_requests", err: errors.New(`ent: missing required field "AccountWindowUsageHistory.priced_requests"`)}
+	}
+	if _, ok := _c.mutation.MissingPricingRequests(); !ok {
+		return &ValidationError{Name: "missing_pricing_requests", err: errors.New(`ent: missing required field "AccountWindowUsageHistory.missing_pricing_requests"`)}
+	}
+	if _, ok := _c.mutation.QualityFlags(); !ok {
+		return &ValidationError{Name: "quality_flags", err: errors.New(`ent: missing required field "AccountWindowUsageHistory.quality_flags"`)}
+	}
+	if v, ok := _c.mutation.EndReason(); ok {
+		if err := accountwindowusagehistory.EndReasonValidator(v); err != nil {
+			return &ValidationError{Name: "end_reason", err: fmt.Errorf(`ent: validator failed for field "AccountWindowUsageHistory.end_reason": %w`, err)}
+		}
 	}
 	if len(_c.mutation.AccountIDs()) == 0 {
 		return &ValidationError{Name: "account", err: errors.New(`ent: missing required edge "AccountWindowUsageHistory.account"`)}
@@ -393,27 +557,67 @@ func (_c *AccountWindowUsageHistoryCreate) createSpec() (*AccountWindowUsageHist
 	}
 	if value, ok := _c.mutation.Requests(); ok {
 		_spec.SetField(accountwindowusagehistory.FieldRequests, field.TypeInt64, value)
-		_node.Requests = &value
+		_node.Requests = value
 	}
 	if value, ok := _c.mutation.TokensTotal(); ok {
 		_spec.SetField(accountwindowusagehistory.FieldTokensTotal, field.TypeInt64, value)
-		_node.TokensTotal = &value
+		_node.TokensTotal = value
 	}
-	if value, ok := _c.mutation.TokensInput(); ok {
-		_spec.SetField(accountwindowusagehistory.FieldTokensInput, field.TypeInt64, value)
-		_node.TokensInput = &value
+	if value, ok := _c.mutation.ResetAt(); ok {
+		_spec.SetField(accountwindowusagehistory.FieldResetAt, field.TypeTime, value)
+		_node.ResetAt = value
 	}
-	if value, ok := _c.mutation.TokensOutput(); ok {
-		_spec.SetField(accountwindowusagehistory.FieldTokensOutput, field.TypeInt64, value)
-		_node.TokensOutput = &value
+	if value, ok := _c.mutation.DurationMinutes(); ok {
+		_spec.SetField(accountwindowusagehistory.FieldDurationMinutes, field.TypeInt, value)
+		_node.DurationMinutes = value
 	}
-	if value, ok := _c.mutation.TokensCacheCreation(); ok {
-		_spec.SetField(accountwindowusagehistory.FieldTokensCacheCreation, field.TypeInt64, value)
-		_node.TokensCacheCreation = &value
+	if value, ok := _c.mutation.FirstObservedAt(); ok {
+		_spec.SetField(accountwindowusagehistory.FieldFirstObservedAt, field.TypeTime, value)
+		_node.FirstObservedAt = value
 	}
-	if value, ok := _c.mutation.TokensCacheRead(); ok {
-		_spec.SetField(accountwindowusagehistory.FieldTokensCacheRead, field.TypeInt64, value)
-		_node.TokensCacheRead = &value
+	if value, ok := _c.mutation.LastObservationID(); ok {
+		_spec.SetField(accountwindowusagehistory.FieldLastObservationID, field.TypeInt64, value)
+		_node.LastObservationID = value
+	}
+	if value, ok := _c.mutation.APIReferenceCost(); ok {
+		_spec.SetField(accountwindowusagehistory.FieldAPIReferenceCost, field.TypeFloat64, value)
+		_node.APIReferenceCost = &value
+	}
+	if value, ok := _c.mutation.PricedRequests(); ok {
+		_spec.SetField(accountwindowusagehistory.FieldPricedRequests, field.TypeInt64, value)
+		_node.PricedRequests = value
+	}
+	if value, ok := _c.mutation.MissingPricingRequests(); ok {
+		_spec.SetField(accountwindowusagehistory.FieldMissingPricingRequests, field.TypeInt64, value)
+		_node.MissingPricingRequests = value
+	}
+	if value, ok := _c.mutation.EstimatedReferenceLimit(); ok {
+		_spec.SetField(accountwindowusagehistory.FieldEstimatedReferenceLimit, field.TypeFloat64, value)
+		_node.EstimatedReferenceLimit = &value
+	}
+	if value, ok := _c.mutation.EstimateReferenceCost(); ok {
+		_spec.SetField(accountwindowusagehistory.FieldEstimateReferenceCost, field.TypeFloat64, value)
+		_node.EstimateReferenceCost = &value
+	}
+	if value, ok := _c.mutation.EstimateUsedPercent(); ok {
+		_spec.SetField(accountwindowusagehistory.FieldEstimateUsedPercent, field.TypeFloat64, value)
+		_node.EstimateUsedPercent = &value
+	}
+	if value, ok := _c.mutation.EstimateObservedAt(); ok {
+		_spec.SetField(accountwindowusagehistory.FieldEstimateObservedAt, field.TypeTime, value)
+		_node.EstimateObservedAt = &value
+	}
+	if value, ok := _c.mutation.QualityFlags(); ok {
+		_spec.SetField(accountwindowusagehistory.FieldQualityFlags, field.TypeJSON, value)
+		_node.QualityFlags = value
+	}
+	if value, ok := _c.mutation.EndReason(); ok {
+		_spec.SetField(accountwindowusagehistory.FieldEndReason, field.TypeString, value)
+		_node.EndReason = &value
+	}
+	if value, ok := _c.mutation.StatsFinalizedAt(); ok {
+		_spec.SetField(accountwindowusagehistory.FieldStatsFinalizedAt, field.TypeTime, value)
+		_node.StatsFinalizedAt = &value
 	}
 	if value, ok := _c.mutation.FinalizedAt(); ok {
 		_spec.SetField(accountwindowusagehistory.FieldFinalizedAt, field.TypeTime, value)
@@ -638,12 +842,6 @@ func (u *AccountWindowUsageHistoryUpsert) AddRequests(v int64) *AccountWindowUsa
 	return u
 }
 
-// ClearRequests clears the value of the "requests" field.
-func (u *AccountWindowUsageHistoryUpsert) ClearRequests() *AccountWindowUsageHistoryUpsert {
-	u.SetNull(accountwindowusagehistory.FieldRequests)
-	return u
-}
-
 // SetTokensTotal sets the "tokens_total" field.
 func (u *AccountWindowUsageHistoryUpsert) SetTokensTotal(v int64) *AccountWindowUsageHistoryUpsert {
 	u.Set(accountwindowusagehistory.FieldTokensTotal, v)
@@ -662,105 +860,261 @@ func (u *AccountWindowUsageHistoryUpsert) AddTokensTotal(v int64) *AccountWindow
 	return u
 }
 
-// ClearTokensTotal clears the value of the "tokens_total" field.
-func (u *AccountWindowUsageHistoryUpsert) ClearTokensTotal() *AccountWindowUsageHistoryUpsert {
-	u.SetNull(accountwindowusagehistory.FieldTokensTotal)
+// SetResetAt sets the "reset_at" field.
+func (u *AccountWindowUsageHistoryUpsert) SetResetAt(v time.Time) *AccountWindowUsageHistoryUpsert {
+	u.Set(accountwindowusagehistory.FieldResetAt, v)
 	return u
 }
 
-// SetTokensInput sets the "tokens_input" field.
-func (u *AccountWindowUsageHistoryUpsert) SetTokensInput(v int64) *AccountWindowUsageHistoryUpsert {
-	u.Set(accountwindowusagehistory.FieldTokensInput, v)
+// UpdateResetAt sets the "reset_at" field to the value that was provided on create.
+func (u *AccountWindowUsageHistoryUpsert) UpdateResetAt() *AccountWindowUsageHistoryUpsert {
+	u.SetExcluded(accountwindowusagehistory.FieldResetAt)
 	return u
 }
 
-// UpdateTokensInput sets the "tokens_input" field to the value that was provided on create.
-func (u *AccountWindowUsageHistoryUpsert) UpdateTokensInput() *AccountWindowUsageHistoryUpsert {
-	u.SetExcluded(accountwindowusagehistory.FieldTokensInput)
+// SetDurationMinutes sets the "duration_minutes" field.
+func (u *AccountWindowUsageHistoryUpsert) SetDurationMinutes(v int) *AccountWindowUsageHistoryUpsert {
+	u.Set(accountwindowusagehistory.FieldDurationMinutes, v)
 	return u
 }
 
-// AddTokensInput adds v to the "tokens_input" field.
-func (u *AccountWindowUsageHistoryUpsert) AddTokensInput(v int64) *AccountWindowUsageHistoryUpsert {
-	u.Add(accountwindowusagehistory.FieldTokensInput, v)
+// UpdateDurationMinutes sets the "duration_minutes" field to the value that was provided on create.
+func (u *AccountWindowUsageHistoryUpsert) UpdateDurationMinutes() *AccountWindowUsageHistoryUpsert {
+	u.SetExcluded(accountwindowusagehistory.FieldDurationMinutes)
 	return u
 }
 
-// ClearTokensInput clears the value of the "tokens_input" field.
-func (u *AccountWindowUsageHistoryUpsert) ClearTokensInput() *AccountWindowUsageHistoryUpsert {
-	u.SetNull(accountwindowusagehistory.FieldTokensInput)
+// AddDurationMinutes adds v to the "duration_minutes" field.
+func (u *AccountWindowUsageHistoryUpsert) AddDurationMinutes(v int) *AccountWindowUsageHistoryUpsert {
+	u.Add(accountwindowusagehistory.FieldDurationMinutes, v)
 	return u
 }
 
-// SetTokensOutput sets the "tokens_output" field.
-func (u *AccountWindowUsageHistoryUpsert) SetTokensOutput(v int64) *AccountWindowUsageHistoryUpsert {
-	u.Set(accountwindowusagehistory.FieldTokensOutput, v)
+// SetFirstObservedAt sets the "first_observed_at" field.
+func (u *AccountWindowUsageHistoryUpsert) SetFirstObservedAt(v time.Time) *AccountWindowUsageHistoryUpsert {
+	u.Set(accountwindowusagehistory.FieldFirstObservedAt, v)
 	return u
 }
 
-// UpdateTokensOutput sets the "tokens_output" field to the value that was provided on create.
-func (u *AccountWindowUsageHistoryUpsert) UpdateTokensOutput() *AccountWindowUsageHistoryUpsert {
-	u.SetExcluded(accountwindowusagehistory.FieldTokensOutput)
+// UpdateFirstObservedAt sets the "first_observed_at" field to the value that was provided on create.
+func (u *AccountWindowUsageHistoryUpsert) UpdateFirstObservedAt() *AccountWindowUsageHistoryUpsert {
+	u.SetExcluded(accountwindowusagehistory.FieldFirstObservedAt)
 	return u
 }
 
-// AddTokensOutput adds v to the "tokens_output" field.
-func (u *AccountWindowUsageHistoryUpsert) AddTokensOutput(v int64) *AccountWindowUsageHistoryUpsert {
-	u.Add(accountwindowusagehistory.FieldTokensOutput, v)
+// SetLastObservationID sets the "last_observation_id" field.
+func (u *AccountWindowUsageHistoryUpsert) SetLastObservationID(v int64) *AccountWindowUsageHistoryUpsert {
+	u.Set(accountwindowusagehistory.FieldLastObservationID, v)
 	return u
 }
 
-// ClearTokensOutput clears the value of the "tokens_output" field.
-func (u *AccountWindowUsageHistoryUpsert) ClearTokensOutput() *AccountWindowUsageHistoryUpsert {
-	u.SetNull(accountwindowusagehistory.FieldTokensOutput)
+// UpdateLastObservationID sets the "last_observation_id" field to the value that was provided on create.
+func (u *AccountWindowUsageHistoryUpsert) UpdateLastObservationID() *AccountWindowUsageHistoryUpsert {
+	u.SetExcluded(accountwindowusagehistory.FieldLastObservationID)
 	return u
 }
 
-// SetTokensCacheCreation sets the "tokens_cache_creation" field.
-func (u *AccountWindowUsageHistoryUpsert) SetTokensCacheCreation(v int64) *AccountWindowUsageHistoryUpsert {
-	u.Set(accountwindowusagehistory.FieldTokensCacheCreation, v)
+// AddLastObservationID adds v to the "last_observation_id" field.
+func (u *AccountWindowUsageHistoryUpsert) AddLastObservationID(v int64) *AccountWindowUsageHistoryUpsert {
+	u.Add(accountwindowusagehistory.FieldLastObservationID, v)
 	return u
 }
 
-// UpdateTokensCacheCreation sets the "tokens_cache_creation" field to the value that was provided on create.
-func (u *AccountWindowUsageHistoryUpsert) UpdateTokensCacheCreation() *AccountWindowUsageHistoryUpsert {
-	u.SetExcluded(accountwindowusagehistory.FieldTokensCacheCreation)
+// SetAPIReferenceCost sets the "api_reference_cost" field.
+func (u *AccountWindowUsageHistoryUpsert) SetAPIReferenceCost(v float64) *AccountWindowUsageHistoryUpsert {
+	u.Set(accountwindowusagehistory.FieldAPIReferenceCost, v)
 	return u
 }
 
-// AddTokensCacheCreation adds v to the "tokens_cache_creation" field.
-func (u *AccountWindowUsageHistoryUpsert) AddTokensCacheCreation(v int64) *AccountWindowUsageHistoryUpsert {
-	u.Add(accountwindowusagehistory.FieldTokensCacheCreation, v)
+// UpdateAPIReferenceCost sets the "api_reference_cost" field to the value that was provided on create.
+func (u *AccountWindowUsageHistoryUpsert) UpdateAPIReferenceCost() *AccountWindowUsageHistoryUpsert {
+	u.SetExcluded(accountwindowusagehistory.FieldAPIReferenceCost)
 	return u
 }
 
-// ClearTokensCacheCreation clears the value of the "tokens_cache_creation" field.
-func (u *AccountWindowUsageHistoryUpsert) ClearTokensCacheCreation() *AccountWindowUsageHistoryUpsert {
-	u.SetNull(accountwindowusagehistory.FieldTokensCacheCreation)
+// AddAPIReferenceCost adds v to the "api_reference_cost" field.
+func (u *AccountWindowUsageHistoryUpsert) AddAPIReferenceCost(v float64) *AccountWindowUsageHistoryUpsert {
+	u.Add(accountwindowusagehistory.FieldAPIReferenceCost, v)
 	return u
 }
 
-// SetTokensCacheRead sets the "tokens_cache_read" field.
-func (u *AccountWindowUsageHistoryUpsert) SetTokensCacheRead(v int64) *AccountWindowUsageHistoryUpsert {
-	u.Set(accountwindowusagehistory.FieldTokensCacheRead, v)
+// ClearAPIReferenceCost clears the value of the "api_reference_cost" field.
+func (u *AccountWindowUsageHistoryUpsert) ClearAPIReferenceCost() *AccountWindowUsageHistoryUpsert {
+	u.SetNull(accountwindowusagehistory.FieldAPIReferenceCost)
 	return u
 }
 
-// UpdateTokensCacheRead sets the "tokens_cache_read" field to the value that was provided on create.
-func (u *AccountWindowUsageHistoryUpsert) UpdateTokensCacheRead() *AccountWindowUsageHistoryUpsert {
-	u.SetExcluded(accountwindowusagehistory.FieldTokensCacheRead)
+// SetPricedRequests sets the "priced_requests" field.
+func (u *AccountWindowUsageHistoryUpsert) SetPricedRequests(v int64) *AccountWindowUsageHistoryUpsert {
+	u.Set(accountwindowusagehistory.FieldPricedRequests, v)
 	return u
 }
 
-// AddTokensCacheRead adds v to the "tokens_cache_read" field.
-func (u *AccountWindowUsageHistoryUpsert) AddTokensCacheRead(v int64) *AccountWindowUsageHistoryUpsert {
-	u.Add(accountwindowusagehistory.FieldTokensCacheRead, v)
+// UpdatePricedRequests sets the "priced_requests" field to the value that was provided on create.
+func (u *AccountWindowUsageHistoryUpsert) UpdatePricedRequests() *AccountWindowUsageHistoryUpsert {
+	u.SetExcluded(accountwindowusagehistory.FieldPricedRequests)
 	return u
 }
 
-// ClearTokensCacheRead clears the value of the "tokens_cache_read" field.
-func (u *AccountWindowUsageHistoryUpsert) ClearTokensCacheRead() *AccountWindowUsageHistoryUpsert {
-	u.SetNull(accountwindowusagehistory.FieldTokensCacheRead)
+// AddPricedRequests adds v to the "priced_requests" field.
+func (u *AccountWindowUsageHistoryUpsert) AddPricedRequests(v int64) *AccountWindowUsageHistoryUpsert {
+	u.Add(accountwindowusagehistory.FieldPricedRequests, v)
+	return u
+}
+
+// SetMissingPricingRequests sets the "missing_pricing_requests" field.
+func (u *AccountWindowUsageHistoryUpsert) SetMissingPricingRequests(v int64) *AccountWindowUsageHistoryUpsert {
+	u.Set(accountwindowusagehistory.FieldMissingPricingRequests, v)
+	return u
+}
+
+// UpdateMissingPricingRequests sets the "missing_pricing_requests" field to the value that was provided on create.
+func (u *AccountWindowUsageHistoryUpsert) UpdateMissingPricingRequests() *AccountWindowUsageHistoryUpsert {
+	u.SetExcluded(accountwindowusagehistory.FieldMissingPricingRequests)
+	return u
+}
+
+// AddMissingPricingRequests adds v to the "missing_pricing_requests" field.
+func (u *AccountWindowUsageHistoryUpsert) AddMissingPricingRequests(v int64) *AccountWindowUsageHistoryUpsert {
+	u.Add(accountwindowusagehistory.FieldMissingPricingRequests, v)
+	return u
+}
+
+// SetEstimatedReferenceLimit sets the "estimated_reference_limit" field.
+func (u *AccountWindowUsageHistoryUpsert) SetEstimatedReferenceLimit(v float64) *AccountWindowUsageHistoryUpsert {
+	u.Set(accountwindowusagehistory.FieldEstimatedReferenceLimit, v)
+	return u
+}
+
+// UpdateEstimatedReferenceLimit sets the "estimated_reference_limit" field to the value that was provided on create.
+func (u *AccountWindowUsageHistoryUpsert) UpdateEstimatedReferenceLimit() *AccountWindowUsageHistoryUpsert {
+	u.SetExcluded(accountwindowusagehistory.FieldEstimatedReferenceLimit)
+	return u
+}
+
+// AddEstimatedReferenceLimit adds v to the "estimated_reference_limit" field.
+func (u *AccountWindowUsageHistoryUpsert) AddEstimatedReferenceLimit(v float64) *AccountWindowUsageHistoryUpsert {
+	u.Add(accountwindowusagehistory.FieldEstimatedReferenceLimit, v)
+	return u
+}
+
+// ClearEstimatedReferenceLimit clears the value of the "estimated_reference_limit" field.
+func (u *AccountWindowUsageHistoryUpsert) ClearEstimatedReferenceLimit() *AccountWindowUsageHistoryUpsert {
+	u.SetNull(accountwindowusagehistory.FieldEstimatedReferenceLimit)
+	return u
+}
+
+// SetEstimateReferenceCost sets the "estimate_reference_cost" field.
+func (u *AccountWindowUsageHistoryUpsert) SetEstimateReferenceCost(v float64) *AccountWindowUsageHistoryUpsert {
+	u.Set(accountwindowusagehistory.FieldEstimateReferenceCost, v)
+	return u
+}
+
+// UpdateEstimateReferenceCost sets the "estimate_reference_cost" field to the value that was provided on create.
+func (u *AccountWindowUsageHistoryUpsert) UpdateEstimateReferenceCost() *AccountWindowUsageHistoryUpsert {
+	u.SetExcluded(accountwindowusagehistory.FieldEstimateReferenceCost)
+	return u
+}
+
+// AddEstimateReferenceCost adds v to the "estimate_reference_cost" field.
+func (u *AccountWindowUsageHistoryUpsert) AddEstimateReferenceCost(v float64) *AccountWindowUsageHistoryUpsert {
+	u.Add(accountwindowusagehistory.FieldEstimateReferenceCost, v)
+	return u
+}
+
+// ClearEstimateReferenceCost clears the value of the "estimate_reference_cost" field.
+func (u *AccountWindowUsageHistoryUpsert) ClearEstimateReferenceCost() *AccountWindowUsageHistoryUpsert {
+	u.SetNull(accountwindowusagehistory.FieldEstimateReferenceCost)
+	return u
+}
+
+// SetEstimateUsedPercent sets the "estimate_used_percent" field.
+func (u *AccountWindowUsageHistoryUpsert) SetEstimateUsedPercent(v float64) *AccountWindowUsageHistoryUpsert {
+	u.Set(accountwindowusagehistory.FieldEstimateUsedPercent, v)
+	return u
+}
+
+// UpdateEstimateUsedPercent sets the "estimate_used_percent" field to the value that was provided on create.
+func (u *AccountWindowUsageHistoryUpsert) UpdateEstimateUsedPercent() *AccountWindowUsageHistoryUpsert {
+	u.SetExcluded(accountwindowusagehistory.FieldEstimateUsedPercent)
+	return u
+}
+
+// AddEstimateUsedPercent adds v to the "estimate_used_percent" field.
+func (u *AccountWindowUsageHistoryUpsert) AddEstimateUsedPercent(v float64) *AccountWindowUsageHistoryUpsert {
+	u.Add(accountwindowusagehistory.FieldEstimateUsedPercent, v)
+	return u
+}
+
+// ClearEstimateUsedPercent clears the value of the "estimate_used_percent" field.
+func (u *AccountWindowUsageHistoryUpsert) ClearEstimateUsedPercent() *AccountWindowUsageHistoryUpsert {
+	u.SetNull(accountwindowusagehistory.FieldEstimateUsedPercent)
+	return u
+}
+
+// SetEstimateObservedAt sets the "estimate_observed_at" field.
+func (u *AccountWindowUsageHistoryUpsert) SetEstimateObservedAt(v time.Time) *AccountWindowUsageHistoryUpsert {
+	u.Set(accountwindowusagehistory.FieldEstimateObservedAt, v)
+	return u
+}
+
+// UpdateEstimateObservedAt sets the "estimate_observed_at" field to the value that was provided on create.
+func (u *AccountWindowUsageHistoryUpsert) UpdateEstimateObservedAt() *AccountWindowUsageHistoryUpsert {
+	u.SetExcluded(accountwindowusagehistory.FieldEstimateObservedAt)
+	return u
+}
+
+// ClearEstimateObservedAt clears the value of the "estimate_observed_at" field.
+func (u *AccountWindowUsageHistoryUpsert) ClearEstimateObservedAt() *AccountWindowUsageHistoryUpsert {
+	u.SetNull(accountwindowusagehistory.FieldEstimateObservedAt)
+	return u
+}
+
+// SetQualityFlags sets the "quality_flags" field.
+func (u *AccountWindowUsageHistoryUpsert) SetQualityFlags(v []string) *AccountWindowUsageHistoryUpsert {
+	u.Set(accountwindowusagehistory.FieldQualityFlags, v)
+	return u
+}
+
+// UpdateQualityFlags sets the "quality_flags" field to the value that was provided on create.
+func (u *AccountWindowUsageHistoryUpsert) UpdateQualityFlags() *AccountWindowUsageHistoryUpsert {
+	u.SetExcluded(accountwindowusagehistory.FieldQualityFlags)
+	return u
+}
+
+// SetEndReason sets the "end_reason" field.
+func (u *AccountWindowUsageHistoryUpsert) SetEndReason(v string) *AccountWindowUsageHistoryUpsert {
+	u.Set(accountwindowusagehistory.FieldEndReason, v)
+	return u
+}
+
+// UpdateEndReason sets the "end_reason" field to the value that was provided on create.
+func (u *AccountWindowUsageHistoryUpsert) UpdateEndReason() *AccountWindowUsageHistoryUpsert {
+	u.SetExcluded(accountwindowusagehistory.FieldEndReason)
+	return u
+}
+
+// ClearEndReason clears the value of the "end_reason" field.
+func (u *AccountWindowUsageHistoryUpsert) ClearEndReason() *AccountWindowUsageHistoryUpsert {
+	u.SetNull(accountwindowusagehistory.FieldEndReason)
+	return u
+}
+
+// SetStatsFinalizedAt sets the "stats_finalized_at" field.
+func (u *AccountWindowUsageHistoryUpsert) SetStatsFinalizedAt(v time.Time) *AccountWindowUsageHistoryUpsert {
+	u.Set(accountwindowusagehistory.FieldStatsFinalizedAt, v)
+	return u
+}
+
+// UpdateStatsFinalizedAt sets the "stats_finalized_at" field to the value that was provided on create.
+func (u *AccountWindowUsageHistoryUpsert) UpdateStatsFinalizedAt() *AccountWindowUsageHistoryUpsert {
+	u.SetExcluded(accountwindowusagehistory.FieldStatsFinalizedAt)
+	return u
+}
+
+// ClearStatsFinalizedAt clears the value of the "stats_finalized_at" field.
+func (u *AccountWindowUsageHistoryUpsert) ClearStatsFinalizedAt() *AccountWindowUsageHistoryUpsert {
+	u.SetNull(accountwindowusagehistory.FieldStatsFinalizedAt)
 	return u
 }
 
@@ -1002,13 +1356,6 @@ func (u *AccountWindowUsageHistoryUpsertOne) UpdateRequests() *AccountWindowUsag
 	})
 }
 
-// ClearRequests clears the value of the "requests" field.
-func (u *AccountWindowUsageHistoryUpsertOne) ClearRequests() *AccountWindowUsageHistoryUpsertOne {
-	return u.Update(func(s *AccountWindowUsageHistoryUpsert) {
-		s.ClearRequests()
-	})
-}
-
 // SetTokensTotal sets the "tokens_total" field.
 func (u *AccountWindowUsageHistoryUpsertOne) SetTokensTotal(v int64) *AccountWindowUsageHistoryUpsertOne {
 	return u.Update(func(s *AccountWindowUsageHistoryUpsert) {
@@ -1030,122 +1377,304 @@ func (u *AccountWindowUsageHistoryUpsertOne) UpdateTokensTotal() *AccountWindowU
 	})
 }
 
-// ClearTokensTotal clears the value of the "tokens_total" field.
-func (u *AccountWindowUsageHistoryUpsertOne) ClearTokensTotal() *AccountWindowUsageHistoryUpsertOne {
+// SetResetAt sets the "reset_at" field.
+func (u *AccountWindowUsageHistoryUpsertOne) SetResetAt(v time.Time) *AccountWindowUsageHistoryUpsertOne {
 	return u.Update(func(s *AccountWindowUsageHistoryUpsert) {
-		s.ClearTokensTotal()
+		s.SetResetAt(v)
 	})
 }
 
-// SetTokensInput sets the "tokens_input" field.
-func (u *AccountWindowUsageHistoryUpsertOne) SetTokensInput(v int64) *AccountWindowUsageHistoryUpsertOne {
+// UpdateResetAt sets the "reset_at" field to the value that was provided on create.
+func (u *AccountWindowUsageHistoryUpsertOne) UpdateResetAt() *AccountWindowUsageHistoryUpsertOne {
 	return u.Update(func(s *AccountWindowUsageHistoryUpsert) {
-		s.SetTokensInput(v)
+		s.UpdateResetAt()
 	})
 }
 
-// AddTokensInput adds v to the "tokens_input" field.
-func (u *AccountWindowUsageHistoryUpsertOne) AddTokensInput(v int64) *AccountWindowUsageHistoryUpsertOne {
+// SetDurationMinutes sets the "duration_minutes" field.
+func (u *AccountWindowUsageHistoryUpsertOne) SetDurationMinutes(v int) *AccountWindowUsageHistoryUpsertOne {
 	return u.Update(func(s *AccountWindowUsageHistoryUpsert) {
-		s.AddTokensInput(v)
+		s.SetDurationMinutes(v)
 	})
 }
 
-// UpdateTokensInput sets the "tokens_input" field to the value that was provided on create.
-func (u *AccountWindowUsageHistoryUpsertOne) UpdateTokensInput() *AccountWindowUsageHistoryUpsertOne {
+// AddDurationMinutes adds v to the "duration_minutes" field.
+func (u *AccountWindowUsageHistoryUpsertOne) AddDurationMinutes(v int) *AccountWindowUsageHistoryUpsertOne {
 	return u.Update(func(s *AccountWindowUsageHistoryUpsert) {
-		s.UpdateTokensInput()
+		s.AddDurationMinutes(v)
 	})
 }
 
-// ClearTokensInput clears the value of the "tokens_input" field.
-func (u *AccountWindowUsageHistoryUpsertOne) ClearTokensInput() *AccountWindowUsageHistoryUpsertOne {
+// UpdateDurationMinutes sets the "duration_minutes" field to the value that was provided on create.
+func (u *AccountWindowUsageHistoryUpsertOne) UpdateDurationMinutes() *AccountWindowUsageHistoryUpsertOne {
 	return u.Update(func(s *AccountWindowUsageHistoryUpsert) {
-		s.ClearTokensInput()
+		s.UpdateDurationMinutes()
 	})
 }
 
-// SetTokensOutput sets the "tokens_output" field.
-func (u *AccountWindowUsageHistoryUpsertOne) SetTokensOutput(v int64) *AccountWindowUsageHistoryUpsertOne {
+// SetFirstObservedAt sets the "first_observed_at" field.
+func (u *AccountWindowUsageHistoryUpsertOne) SetFirstObservedAt(v time.Time) *AccountWindowUsageHistoryUpsertOne {
 	return u.Update(func(s *AccountWindowUsageHistoryUpsert) {
-		s.SetTokensOutput(v)
+		s.SetFirstObservedAt(v)
 	})
 }
 
-// AddTokensOutput adds v to the "tokens_output" field.
-func (u *AccountWindowUsageHistoryUpsertOne) AddTokensOutput(v int64) *AccountWindowUsageHistoryUpsertOne {
+// UpdateFirstObservedAt sets the "first_observed_at" field to the value that was provided on create.
+func (u *AccountWindowUsageHistoryUpsertOne) UpdateFirstObservedAt() *AccountWindowUsageHistoryUpsertOne {
 	return u.Update(func(s *AccountWindowUsageHistoryUpsert) {
-		s.AddTokensOutput(v)
+		s.UpdateFirstObservedAt()
 	})
 }
 
-// UpdateTokensOutput sets the "tokens_output" field to the value that was provided on create.
-func (u *AccountWindowUsageHistoryUpsertOne) UpdateTokensOutput() *AccountWindowUsageHistoryUpsertOne {
+// SetLastObservationID sets the "last_observation_id" field.
+func (u *AccountWindowUsageHistoryUpsertOne) SetLastObservationID(v int64) *AccountWindowUsageHistoryUpsertOne {
 	return u.Update(func(s *AccountWindowUsageHistoryUpsert) {
-		s.UpdateTokensOutput()
+		s.SetLastObservationID(v)
 	})
 }
 
-// ClearTokensOutput clears the value of the "tokens_output" field.
-func (u *AccountWindowUsageHistoryUpsertOne) ClearTokensOutput() *AccountWindowUsageHistoryUpsertOne {
+// AddLastObservationID adds v to the "last_observation_id" field.
+func (u *AccountWindowUsageHistoryUpsertOne) AddLastObservationID(v int64) *AccountWindowUsageHistoryUpsertOne {
 	return u.Update(func(s *AccountWindowUsageHistoryUpsert) {
-		s.ClearTokensOutput()
+		s.AddLastObservationID(v)
 	})
 }
 
-// SetTokensCacheCreation sets the "tokens_cache_creation" field.
-func (u *AccountWindowUsageHistoryUpsertOne) SetTokensCacheCreation(v int64) *AccountWindowUsageHistoryUpsertOne {
+// UpdateLastObservationID sets the "last_observation_id" field to the value that was provided on create.
+func (u *AccountWindowUsageHistoryUpsertOne) UpdateLastObservationID() *AccountWindowUsageHistoryUpsertOne {
 	return u.Update(func(s *AccountWindowUsageHistoryUpsert) {
-		s.SetTokensCacheCreation(v)
+		s.UpdateLastObservationID()
 	})
 }
 
-// AddTokensCacheCreation adds v to the "tokens_cache_creation" field.
-func (u *AccountWindowUsageHistoryUpsertOne) AddTokensCacheCreation(v int64) *AccountWindowUsageHistoryUpsertOne {
+// SetAPIReferenceCost sets the "api_reference_cost" field.
+func (u *AccountWindowUsageHistoryUpsertOne) SetAPIReferenceCost(v float64) *AccountWindowUsageHistoryUpsertOne {
 	return u.Update(func(s *AccountWindowUsageHistoryUpsert) {
-		s.AddTokensCacheCreation(v)
+		s.SetAPIReferenceCost(v)
 	})
 }
 
-// UpdateTokensCacheCreation sets the "tokens_cache_creation" field to the value that was provided on create.
-func (u *AccountWindowUsageHistoryUpsertOne) UpdateTokensCacheCreation() *AccountWindowUsageHistoryUpsertOne {
+// AddAPIReferenceCost adds v to the "api_reference_cost" field.
+func (u *AccountWindowUsageHistoryUpsertOne) AddAPIReferenceCost(v float64) *AccountWindowUsageHistoryUpsertOne {
 	return u.Update(func(s *AccountWindowUsageHistoryUpsert) {
-		s.UpdateTokensCacheCreation()
+		s.AddAPIReferenceCost(v)
 	})
 }
 
-// ClearTokensCacheCreation clears the value of the "tokens_cache_creation" field.
-func (u *AccountWindowUsageHistoryUpsertOne) ClearTokensCacheCreation() *AccountWindowUsageHistoryUpsertOne {
+// UpdateAPIReferenceCost sets the "api_reference_cost" field to the value that was provided on create.
+func (u *AccountWindowUsageHistoryUpsertOne) UpdateAPIReferenceCost() *AccountWindowUsageHistoryUpsertOne {
 	return u.Update(func(s *AccountWindowUsageHistoryUpsert) {
-		s.ClearTokensCacheCreation()
+		s.UpdateAPIReferenceCost()
 	})
 }
 
-// SetTokensCacheRead sets the "tokens_cache_read" field.
-func (u *AccountWindowUsageHistoryUpsertOne) SetTokensCacheRead(v int64) *AccountWindowUsageHistoryUpsertOne {
+// ClearAPIReferenceCost clears the value of the "api_reference_cost" field.
+func (u *AccountWindowUsageHistoryUpsertOne) ClearAPIReferenceCost() *AccountWindowUsageHistoryUpsertOne {
 	return u.Update(func(s *AccountWindowUsageHistoryUpsert) {
-		s.SetTokensCacheRead(v)
+		s.ClearAPIReferenceCost()
 	})
 }
 
-// AddTokensCacheRead adds v to the "tokens_cache_read" field.
-func (u *AccountWindowUsageHistoryUpsertOne) AddTokensCacheRead(v int64) *AccountWindowUsageHistoryUpsertOne {
+// SetPricedRequests sets the "priced_requests" field.
+func (u *AccountWindowUsageHistoryUpsertOne) SetPricedRequests(v int64) *AccountWindowUsageHistoryUpsertOne {
 	return u.Update(func(s *AccountWindowUsageHistoryUpsert) {
-		s.AddTokensCacheRead(v)
+		s.SetPricedRequests(v)
 	})
 }
 
-// UpdateTokensCacheRead sets the "tokens_cache_read" field to the value that was provided on create.
-func (u *AccountWindowUsageHistoryUpsertOne) UpdateTokensCacheRead() *AccountWindowUsageHistoryUpsertOne {
+// AddPricedRequests adds v to the "priced_requests" field.
+func (u *AccountWindowUsageHistoryUpsertOne) AddPricedRequests(v int64) *AccountWindowUsageHistoryUpsertOne {
 	return u.Update(func(s *AccountWindowUsageHistoryUpsert) {
-		s.UpdateTokensCacheRead()
+		s.AddPricedRequests(v)
 	})
 }
 
-// ClearTokensCacheRead clears the value of the "tokens_cache_read" field.
-func (u *AccountWindowUsageHistoryUpsertOne) ClearTokensCacheRead() *AccountWindowUsageHistoryUpsertOne {
+// UpdatePricedRequests sets the "priced_requests" field to the value that was provided on create.
+func (u *AccountWindowUsageHistoryUpsertOne) UpdatePricedRequests() *AccountWindowUsageHistoryUpsertOne {
 	return u.Update(func(s *AccountWindowUsageHistoryUpsert) {
-		s.ClearTokensCacheRead()
+		s.UpdatePricedRequests()
+	})
+}
+
+// SetMissingPricingRequests sets the "missing_pricing_requests" field.
+func (u *AccountWindowUsageHistoryUpsertOne) SetMissingPricingRequests(v int64) *AccountWindowUsageHistoryUpsertOne {
+	return u.Update(func(s *AccountWindowUsageHistoryUpsert) {
+		s.SetMissingPricingRequests(v)
+	})
+}
+
+// AddMissingPricingRequests adds v to the "missing_pricing_requests" field.
+func (u *AccountWindowUsageHistoryUpsertOne) AddMissingPricingRequests(v int64) *AccountWindowUsageHistoryUpsertOne {
+	return u.Update(func(s *AccountWindowUsageHistoryUpsert) {
+		s.AddMissingPricingRequests(v)
+	})
+}
+
+// UpdateMissingPricingRequests sets the "missing_pricing_requests" field to the value that was provided on create.
+func (u *AccountWindowUsageHistoryUpsertOne) UpdateMissingPricingRequests() *AccountWindowUsageHistoryUpsertOne {
+	return u.Update(func(s *AccountWindowUsageHistoryUpsert) {
+		s.UpdateMissingPricingRequests()
+	})
+}
+
+// SetEstimatedReferenceLimit sets the "estimated_reference_limit" field.
+func (u *AccountWindowUsageHistoryUpsertOne) SetEstimatedReferenceLimit(v float64) *AccountWindowUsageHistoryUpsertOne {
+	return u.Update(func(s *AccountWindowUsageHistoryUpsert) {
+		s.SetEstimatedReferenceLimit(v)
+	})
+}
+
+// AddEstimatedReferenceLimit adds v to the "estimated_reference_limit" field.
+func (u *AccountWindowUsageHistoryUpsertOne) AddEstimatedReferenceLimit(v float64) *AccountWindowUsageHistoryUpsertOne {
+	return u.Update(func(s *AccountWindowUsageHistoryUpsert) {
+		s.AddEstimatedReferenceLimit(v)
+	})
+}
+
+// UpdateEstimatedReferenceLimit sets the "estimated_reference_limit" field to the value that was provided on create.
+func (u *AccountWindowUsageHistoryUpsertOne) UpdateEstimatedReferenceLimit() *AccountWindowUsageHistoryUpsertOne {
+	return u.Update(func(s *AccountWindowUsageHistoryUpsert) {
+		s.UpdateEstimatedReferenceLimit()
+	})
+}
+
+// ClearEstimatedReferenceLimit clears the value of the "estimated_reference_limit" field.
+func (u *AccountWindowUsageHistoryUpsertOne) ClearEstimatedReferenceLimit() *AccountWindowUsageHistoryUpsertOne {
+	return u.Update(func(s *AccountWindowUsageHistoryUpsert) {
+		s.ClearEstimatedReferenceLimit()
+	})
+}
+
+// SetEstimateReferenceCost sets the "estimate_reference_cost" field.
+func (u *AccountWindowUsageHistoryUpsertOne) SetEstimateReferenceCost(v float64) *AccountWindowUsageHistoryUpsertOne {
+	return u.Update(func(s *AccountWindowUsageHistoryUpsert) {
+		s.SetEstimateReferenceCost(v)
+	})
+}
+
+// AddEstimateReferenceCost adds v to the "estimate_reference_cost" field.
+func (u *AccountWindowUsageHistoryUpsertOne) AddEstimateReferenceCost(v float64) *AccountWindowUsageHistoryUpsertOne {
+	return u.Update(func(s *AccountWindowUsageHistoryUpsert) {
+		s.AddEstimateReferenceCost(v)
+	})
+}
+
+// UpdateEstimateReferenceCost sets the "estimate_reference_cost" field to the value that was provided on create.
+func (u *AccountWindowUsageHistoryUpsertOne) UpdateEstimateReferenceCost() *AccountWindowUsageHistoryUpsertOne {
+	return u.Update(func(s *AccountWindowUsageHistoryUpsert) {
+		s.UpdateEstimateReferenceCost()
+	})
+}
+
+// ClearEstimateReferenceCost clears the value of the "estimate_reference_cost" field.
+func (u *AccountWindowUsageHistoryUpsertOne) ClearEstimateReferenceCost() *AccountWindowUsageHistoryUpsertOne {
+	return u.Update(func(s *AccountWindowUsageHistoryUpsert) {
+		s.ClearEstimateReferenceCost()
+	})
+}
+
+// SetEstimateUsedPercent sets the "estimate_used_percent" field.
+func (u *AccountWindowUsageHistoryUpsertOne) SetEstimateUsedPercent(v float64) *AccountWindowUsageHistoryUpsertOne {
+	return u.Update(func(s *AccountWindowUsageHistoryUpsert) {
+		s.SetEstimateUsedPercent(v)
+	})
+}
+
+// AddEstimateUsedPercent adds v to the "estimate_used_percent" field.
+func (u *AccountWindowUsageHistoryUpsertOne) AddEstimateUsedPercent(v float64) *AccountWindowUsageHistoryUpsertOne {
+	return u.Update(func(s *AccountWindowUsageHistoryUpsert) {
+		s.AddEstimateUsedPercent(v)
+	})
+}
+
+// UpdateEstimateUsedPercent sets the "estimate_used_percent" field to the value that was provided on create.
+func (u *AccountWindowUsageHistoryUpsertOne) UpdateEstimateUsedPercent() *AccountWindowUsageHistoryUpsertOne {
+	return u.Update(func(s *AccountWindowUsageHistoryUpsert) {
+		s.UpdateEstimateUsedPercent()
+	})
+}
+
+// ClearEstimateUsedPercent clears the value of the "estimate_used_percent" field.
+func (u *AccountWindowUsageHistoryUpsertOne) ClearEstimateUsedPercent() *AccountWindowUsageHistoryUpsertOne {
+	return u.Update(func(s *AccountWindowUsageHistoryUpsert) {
+		s.ClearEstimateUsedPercent()
+	})
+}
+
+// SetEstimateObservedAt sets the "estimate_observed_at" field.
+func (u *AccountWindowUsageHistoryUpsertOne) SetEstimateObservedAt(v time.Time) *AccountWindowUsageHistoryUpsertOne {
+	return u.Update(func(s *AccountWindowUsageHistoryUpsert) {
+		s.SetEstimateObservedAt(v)
+	})
+}
+
+// UpdateEstimateObservedAt sets the "estimate_observed_at" field to the value that was provided on create.
+func (u *AccountWindowUsageHistoryUpsertOne) UpdateEstimateObservedAt() *AccountWindowUsageHistoryUpsertOne {
+	return u.Update(func(s *AccountWindowUsageHistoryUpsert) {
+		s.UpdateEstimateObservedAt()
+	})
+}
+
+// ClearEstimateObservedAt clears the value of the "estimate_observed_at" field.
+func (u *AccountWindowUsageHistoryUpsertOne) ClearEstimateObservedAt() *AccountWindowUsageHistoryUpsertOne {
+	return u.Update(func(s *AccountWindowUsageHistoryUpsert) {
+		s.ClearEstimateObservedAt()
+	})
+}
+
+// SetQualityFlags sets the "quality_flags" field.
+func (u *AccountWindowUsageHistoryUpsertOne) SetQualityFlags(v []string) *AccountWindowUsageHistoryUpsertOne {
+	return u.Update(func(s *AccountWindowUsageHistoryUpsert) {
+		s.SetQualityFlags(v)
+	})
+}
+
+// UpdateQualityFlags sets the "quality_flags" field to the value that was provided on create.
+func (u *AccountWindowUsageHistoryUpsertOne) UpdateQualityFlags() *AccountWindowUsageHistoryUpsertOne {
+	return u.Update(func(s *AccountWindowUsageHistoryUpsert) {
+		s.UpdateQualityFlags()
+	})
+}
+
+// SetEndReason sets the "end_reason" field.
+func (u *AccountWindowUsageHistoryUpsertOne) SetEndReason(v string) *AccountWindowUsageHistoryUpsertOne {
+	return u.Update(func(s *AccountWindowUsageHistoryUpsert) {
+		s.SetEndReason(v)
+	})
+}
+
+// UpdateEndReason sets the "end_reason" field to the value that was provided on create.
+func (u *AccountWindowUsageHistoryUpsertOne) UpdateEndReason() *AccountWindowUsageHistoryUpsertOne {
+	return u.Update(func(s *AccountWindowUsageHistoryUpsert) {
+		s.UpdateEndReason()
+	})
+}
+
+// ClearEndReason clears the value of the "end_reason" field.
+func (u *AccountWindowUsageHistoryUpsertOne) ClearEndReason() *AccountWindowUsageHistoryUpsertOne {
+	return u.Update(func(s *AccountWindowUsageHistoryUpsert) {
+		s.ClearEndReason()
+	})
+}
+
+// SetStatsFinalizedAt sets the "stats_finalized_at" field.
+func (u *AccountWindowUsageHistoryUpsertOne) SetStatsFinalizedAt(v time.Time) *AccountWindowUsageHistoryUpsertOne {
+	return u.Update(func(s *AccountWindowUsageHistoryUpsert) {
+		s.SetStatsFinalizedAt(v)
+	})
+}
+
+// UpdateStatsFinalizedAt sets the "stats_finalized_at" field to the value that was provided on create.
+func (u *AccountWindowUsageHistoryUpsertOne) UpdateStatsFinalizedAt() *AccountWindowUsageHistoryUpsertOne {
+	return u.Update(func(s *AccountWindowUsageHistoryUpsert) {
+		s.UpdateStatsFinalizedAt()
+	})
+}
+
+// ClearStatsFinalizedAt clears the value of the "stats_finalized_at" field.
+func (u *AccountWindowUsageHistoryUpsertOne) ClearStatsFinalizedAt() *AccountWindowUsageHistoryUpsertOne {
+	return u.Update(func(s *AccountWindowUsageHistoryUpsert) {
+		s.ClearStatsFinalizedAt()
 	})
 }
 
@@ -1556,13 +2085,6 @@ func (u *AccountWindowUsageHistoryUpsertBulk) UpdateRequests() *AccountWindowUsa
 	})
 }
 
-// ClearRequests clears the value of the "requests" field.
-func (u *AccountWindowUsageHistoryUpsertBulk) ClearRequests() *AccountWindowUsageHistoryUpsertBulk {
-	return u.Update(func(s *AccountWindowUsageHistoryUpsert) {
-		s.ClearRequests()
-	})
-}
-
 // SetTokensTotal sets the "tokens_total" field.
 func (u *AccountWindowUsageHistoryUpsertBulk) SetTokensTotal(v int64) *AccountWindowUsageHistoryUpsertBulk {
 	return u.Update(func(s *AccountWindowUsageHistoryUpsert) {
@@ -1584,122 +2106,304 @@ func (u *AccountWindowUsageHistoryUpsertBulk) UpdateTokensTotal() *AccountWindow
 	})
 }
 
-// ClearTokensTotal clears the value of the "tokens_total" field.
-func (u *AccountWindowUsageHistoryUpsertBulk) ClearTokensTotal() *AccountWindowUsageHistoryUpsertBulk {
+// SetResetAt sets the "reset_at" field.
+func (u *AccountWindowUsageHistoryUpsertBulk) SetResetAt(v time.Time) *AccountWindowUsageHistoryUpsertBulk {
 	return u.Update(func(s *AccountWindowUsageHistoryUpsert) {
-		s.ClearTokensTotal()
+		s.SetResetAt(v)
 	})
 }
 
-// SetTokensInput sets the "tokens_input" field.
-func (u *AccountWindowUsageHistoryUpsertBulk) SetTokensInput(v int64) *AccountWindowUsageHistoryUpsertBulk {
+// UpdateResetAt sets the "reset_at" field to the value that was provided on create.
+func (u *AccountWindowUsageHistoryUpsertBulk) UpdateResetAt() *AccountWindowUsageHistoryUpsertBulk {
 	return u.Update(func(s *AccountWindowUsageHistoryUpsert) {
-		s.SetTokensInput(v)
+		s.UpdateResetAt()
 	})
 }
 
-// AddTokensInput adds v to the "tokens_input" field.
-func (u *AccountWindowUsageHistoryUpsertBulk) AddTokensInput(v int64) *AccountWindowUsageHistoryUpsertBulk {
+// SetDurationMinutes sets the "duration_minutes" field.
+func (u *AccountWindowUsageHistoryUpsertBulk) SetDurationMinutes(v int) *AccountWindowUsageHistoryUpsertBulk {
 	return u.Update(func(s *AccountWindowUsageHistoryUpsert) {
-		s.AddTokensInput(v)
+		s.SetDurationMinutes(v)
 	})
 }
 
-// UpdateTokensInput sets the "tokens_input" field to the value that was provided on create.
-func (u *AccountWindowUsageHistoryUpsertBulk) UpdateTokensInput() *AccountWindowUsageHistoryUpsertBulk {
+// AddDurationMinutes adds v to the "duration_minutes" field.
+func (u *AccountWindowUsageHistoryUpsertBulk) AddDurationMinutes(v int) *AccountWindowUsageHistoryUpsertBulk {
 	return u.Update(func(s *AccountWindowUsageHistoryUpsert) {
-		s.UpdateTokensInput()
+		s.AddDurationMinutes(v)
 	})
 }
 
-// ClearTokensInput clears the value of the "tokens_input" field.
-func (u *AccountWindowUsageHistoryUpsertBulk) ClearTokensInput() *AccountWindowUsageHistoryUpsertBulk {
+// UpdateDurationMinutes sets the "duration_minutes" field to the value that was provided on create.
+func (u *AccountWindowUsageHistoryUpsertBulk) UpdateDurationMinutes() *AccountWindowUsageHistoryUpsertBulk {
 	return u.Update(func(s *AccountWindowUsageHistoryUpsert) {
-		s.ClearTokensInput()
+		s.UpdateDurationMinutes()
 	})
 }
 
-// SetTokensOutput sets the "tokens_output" field.
-func (u *AccountWindowUsageHistoryUpsertBulk) SetTokensOutput(v int64) *AccountWindowUsageHistoryUpsertBulk {
+// SetFirstObservedAt sets the "first_observed_at" field.
+func (u *AccountWindowUsageHistoryUpsertBulk) SetFirstObservedAt(v time.Time) *AccountWindowUsageHistoryUpsertBulk {
 	return u.Update(func(s *AccountWindowUsageHistoryUpsert) {
-		s.SetTokensOutput(v)
+		s.SetFirstObservedAt(v)
 	})
 }
 
-// AddTokensOutput adds v to the "tokens_output" field.
-func (u *AccountWindowUsageHistoryUpsertBulk) AddTokensOutput(v int64) *AccountWindowUsageHistoryUpsertBulk {
+// UpdateFirstObservedAt sets the "first_observed_at" field to the value that was provided on create.
+func (u *AccountWindowUsageHistoryUpsertBulk) UpdateFirstObservedAt() *AccountWindowUsageHistoryUpsertBulk {
 	return u.Update(func(s *AccountWindowUsageHistoryUpsert) {
-		s.AddTokensOutput(v)
+		s.UpdateFirstObservedAt()
 	})
 }
 
-// UpdateTokensOutput sets the "tokens_output" field to the value that was provided on create.
-func (u *AccountWindowUsageHistoryUpsertBulk) UpdateTokensOutput() *AccountWindowUsageHistoryUpsertBulk {
+// SetLastObservationID sets the "last_observation_id" field.
+func (u *AccountWindowUsageHistoryUpsertBulk) SetLastObservationID(v int64) *AccountWindowUsageHistoryUpsertBulk {
 	return u.Update(func(s *AccountWindowUsageHistoryUpsert) {
-		s.UpdateTokensOutput()
+		s.SetLastObservationID(v)
 	})
 }
 
-// ClearTokensOutput clears the value of the "tokens_output" field.
-func (u *AccountWindowUsageHistoryUpsertBulk) ClearTokensOutput() *AccountWindowUsageHistoryUpsertBulk {
+// AddLastObservationID adds v to the "last_observation_id" field.
+func (u *AccountWindowUsageHistoryUpsertBulk) AddLastObservationID(v int64) *AccountWindowUsageHistoryUpsertBulk {
 	return u.Update(func(s *AccountWindowUsageHistoryUpsert) {
-		s.ClearTokensOutput()
+		s.AddLastObservationID(v)
 	})
 }
 
-// SetTokensCacheCreation sets the "tokens_cache_creation" field.
-func (u *AccountWindowUsageHistoryUpsertBulk) SetTokensCacheCreation(v int64) *AccountWindowUsageHistoryUpsertBulk {
+// UpdateLastObservationID sets the "last_observation_id" field to the value that was provided on create.
+func (u *AccountWindowUsageHistoryUpsertBulk) UpdateLastObservationID() *AccountWindowUsageHistoryUpsertBulk {
 	return u.Update(func(s *AccountWindowUsageHistoryUpsert) {
-		s.SetTokensCacheCreation(v)
+		s.UpdateLastObservationID()
 	})
 }
 
-// AddTokensCacheCreation adds v to the "tokens_cache_creation" field.
-func (u *AccountWindowUsageHistoryUpsertBulk) AddTokensCacheCreation(v int64) *AccountWindowUsageHistoryUpsertBulk {
+// SetAPIReferenceCost sets the "api_reference_cost" field.
+func (u *AccountWindowUsageHistoryUpsertBulk) SetAPIReferenceCost(v float64) *AccountWindowUsageHistoryUpsertBulk {
 	return u.Update(func(s *AccountWindowUsageHistoryUpsert) {
-		s.AddTokensCacheCreation(v)
+		s.SetAPIReferenceCost(v)
 	})
 }
 
-// UpdateTokensCacheCreation sets the "tokens_cache_creation" field to the value that was provided on create.
-func (u *AccountWindowUsageHistoryUpsertBulk) UpdateTokensCacheCreation() *AccountWindowUsageHistoryUpsertBulk {
+// AddAPIReferenceCost adds v to the "api_reference_cost" field.
+func (u *AccountWindowUsageHistoryUpsertBulk) AddAPIReferenceCost(v float64) *AccountWindowUsageHistoryUpsertBulk {
 	return u.Update(func(s *AccountWindowUsageHistoryUpsert) {
-		s.UpdateTokensCacheCreation()
+		s.AddAPIReferenceCost(v)
 	})
 }
 
-// ClearTokensCacheCreation clears the value of the "tokens_cache_creation" field.
-func (u *AccountWindowUsageHistoryUpsertBulk) ClearTokensCacheCreation() *AccountWindowUsageHistoryUpsertBulk {
+// UpdateAPIReferenceCost sets the "api_reference_cost" field to the value that was provided on create.
+func (u *AccountWindowUsageHistoryUpsertBulk) UpdateAPIReferenceCost() *AccountWindowUsageHistoryUpsertBulk {
 	return u.Update(func(s *AccountWindowUsageHistoryUpsert) {
-		s.ClearTokensCacheCreation()
+		s.UpdateAPIReferenceCost()
 	})
 }
 
-// SetTokensCacheRead sets the "tokens_cache_read" field.
-func (u *AccountWindowUsageHistoryUpsertBulk) SetTokensCacheRead(v int64) *AccountWindowUsageHistoryUpsertBulk {
+// ClearAPIReferenceCost clears the value of the "api_reference_cost" field.
+func (u *AccountWindowUsageHistoryUpsertBulk) ClearAPIReferenceCost() *AccountWindowUsageHistoryUpsertBulk {
 	return u.Update(func(s *AccountWindowUsageHistoryUpsert) {
-		s.SetTokensCacheRead(v)
+		s.ClearAPIReferenceCost()
 	})
 }
 
-// AddTokensCacheRead adds v to the "tokens_cache_read" field.
-func (u *AccountWindowUsageHistoryUpsertBulk) AddTokensCacheRead(v int64) *AccountWindowUsageHistoryUpsertBulk {
+// SetPricedRequests sets the "priced_requests" field.
+func (u *AccountWindowUsageHistoryUpsertBulk) SetPricedRequests(v int64) *AccountWindowUsageHistoryUpsertBulk {
 	return u.Update(func(s *AccountWindowUsageHistoryUpsert) {
-		s.AddTokensCacheRead(v)
+		s.SetPricedRequests(v)
 	})
 }
 
-// UpdateTokensCacheRead sets the "tokens_cache_read" field to the value that was provided on create.
-func (u *AccountWindowUsageHistoryUpsertBulk) UpdateTokensCacheRead() *AccountWindowUsageHistoryUpsertBulk {
+// AddPricedRequests adds v to the "priced_requests" field.
+func (u *AccountWindowUsageHistoryUpsertBulk) AddPricedRequests(v int64) *AccountWindowUsageHistoryUpsertBulk {
 	return u.Update(func(s *AccountWindowUsageHistoryUpsert) {
-		s.UpdateTokensCacheRead()
+		s.AddPricedRequests(v)
 	})
 }
 
-// ClearTokensCacheRead clears the value of the "tokens_cache_read" field.
-func (u *AccountWindowUsageHistoryUpsertBulk) ClearTokensCacheRead() *AccountWindowUsageHistoryUpsertBulk {
+// UpdatePricedRequests sets the "priced_requests" field to the value that was provided on create.
+func (u *AccountWindowUsageHistoryUpsertBulk) UpdatePricedRequests() *AccountWindowUsageHistoryUpsertBulk {
 	return u.Update(func(s *AccountWindowUsageHistoryUpsert) {
-		s.ClearTokensCacheRead()
+		s.UpdatePricedRequests()
+	})
+}
+
+// SetMissingPricingRequests sets the "missing_pricing_requests" field.
+func (u *AccountWindowUsageHistoryUpsertBulk) SetMissingPricingRequests(v int64) *AccountWindowUsageHistoryUpsertBulk {
+	return u.Update(func(s *AccountWindowUsageHistoryUpsert) {
+		s.SetMissingPricingRequests(v)
+	})
+}
+
+// AddMissingPricingRequests adds v to the "missing_pricing_requests" field.
+func (u *AccountWindowUsageHistoryUpsertBulk) AddMissingPricingRequests(v int64) *AccountWindowUsageHistoryUpsertBulk {
+	return u.Update(func(s *AccountWindowUsageHistoryUpsert) {
+		s.AddMissingPricingRequests(v)
+	})
+}
+
+// UpdateMissingPricingRequests sets the "missing_pricing_requests" field to the value that was provided on create.
+func (u *AccountWindowUsageHistoryUpsertBulk) UpdateMissingPricingRequests() *AccountWindowUsageHistoryUpsertBulk {
+	return u.Update(func(s *AccountWindowUsageHistoryUpsert) {
+		s.UpdateMissingPricingRequests()
+	})
+}
+
+// SetEstimatedReferenceLimit sets the "estimated_reference_limit" field.
+func (u *AccountWindowUsageHistoryUpsertBulk) SetEstimatedReferenceLimit(v float64) *AccountWindowUsageHistoryUpsertBulk {
+	return u.Update(func(s *AccountWindowUsageHistoryUpsert) {
+		s.SetEstimatedReferenceLimit(v)
+	})
+}
+
+// AddEstimatedReferenceLimit adds v to the "estimated_reference_limit" field.
+func (u *AccountWindowUsageHistoryUpsertBulk) AddEstimatedReferenceLimit(v float64) *AccountWindowUsageHistoryUpsertBulk {
+	return u.Update(func(s *AccountWindowUsageHistoryUpsert) {
+		s.AddEstimatedReferenceLimit(v)
+	})
+}
+
+// UpdateEstimatedReferenceLimit sets the "estimated_reference_limit" field to the value that was provided on create.
+func (u *AccountWindowUsageHistoryUpsertBulk) UpdateEstimatedReferenceLimit() *AccountWindowUsageHistoryUpsertBulk {
+	return u.Update(func(s *AccountWindowUsageHistoryUpsert) {
+		s.UpdateEstimatedReferenceLimit()
+	})
+}
+
+// ClearEstimatedReferenceLimit clears the value of the "estimated_reference_limit" field.
+func (u *AccountWindowUsageHistoryUpsertBulk) ClearEstimatedReferenceLimit() *AccountWindowUsageHistoryUpsertBulk {
+	return u.Update(func(s *AccountWindowUsageHistoryUpsert) {
+		s.ClearEstimatedReferenceLimit()
+	})
+}
+
+// SetEstimateReferenceCost sets the "estimate_reference_cost" field.
+func (u *AccountWindowUsageHistoryUpsertBulk) SetEstimateReferenceCost(v float64) *AccountWindowUsageHistoryUpsertBulk {
+	return u.Update(func(s *AccountWindowUsageHistoryUpsert) {
+		s.SetEstimateReferenceCost(v)
+	})
+}
+
+// AddEstimateReferenceCost adds v to the "estimate_reference_cost" field.
+func (u *AccountWindowUsageHistoryUpsertBulk) AddEstimateReferenceCost(v float64) *AccountWindowUsageHistoryUpsertBulk {
+	return u.Update(func(s *AccountWindowUsageHistoryUpsert) {
+		s.AddEstimateReferenceCost(v)
+	})
+}
+
+// UpdateEstimateReferenceCost sets the "estimate_reference_cost" field to the value that was provided on create.
+func (u *AccountWindowUsageHistoryUpsertBulk) UpdateEstimateReferenceCost() *AccountWindowUsageHistoryUpsertBulk {
+	return u.Update(func(s *AccountWindowUsageHistoryUpsert) {
+		s.UpdateEstimateReferenceCost()
+	})
+}
+
+// ClearEstimateReferenceCost clears the value of the "estimate_reference_cost" field.
+func (u *AccountWindowUsageHistoryUpsertBulk) ClearEstimateReferenceCost() *AccountWindowUsageHistoryUpsertBulk {
+	return u.Update(func(s *AccountWindowUsageHistoryUpsert) {
+		s.ClearEstimateReferenceCost()
+	})
+}
+
+// SetEstimateUsedPercent sets the "estimate_used_percent" field.
+func (u *AccountWindowUsageHistoryUpsertBulk) SetEstimateUsedPercent(v float64) *AccountWindowUsageHistoryUpsertBulk {
+	return u.Update(func(s *AccountWindowUsageHistoryUpsert) {
+		s.SetEstimateUsedPercent(v)
+	})
+}
+
+// AddEstimateUsedPercent adds v to the "estimate_used_percent" field.
+func (u *AccountWindowUsageHistoryUpsertBulk) AddEstimateUsedPercent(v float64) *AccountWindowUsageHistoryUpsertBulk {
+	return u.Update(func(s *AccountWindowUsageHistoryUpsert) {
+		s.AddEstimateUsedPercent(v)
+	})
+}
+
+// UpdateEstimateUsedPercent sets the "estimate_used_percent" field to the value that was provided on create.
+func (u *AccountWindowUsageHistoryUpsertBulk) UpdateEstimateUsedPercent() *AccountWindowUsageHistoryUpsertBulk {
+	return u.Update(func(s *AccountWindowUsageHistoryUpsert) {
+		s.UpdateEstimateUsedPercent()
+	})
+}
+
+// ClearEstimateUsedPercent clears the value of the "estimate_used_percent" field.
+func (u *AccountWindowUsageHistoryUpsertBulk) ClearEstimateUsedPercent() *AccountWindowUsageHistoryUpsertBulk {
+	return u.Update(func(s *AccountWindowUsageHistoryUpsert) {
+		s.ClearEstimateUsedPercent()
+	})
+}
+
+// SetEstimateObservedAt sets the "estimate_observed_at" field.
+func (u *AccountWindowUsageHistoryUpsertBulk) SetEstimateObservedAt(v time.Time) *AccountWindowUsageHistoryUpsertBulk {
+	return u.Update(func(s *AccountWindowUsageHistoryUpsert) {
+		s.SetEstimateObservedAt(v)
+	})
+}
+
+// UpdateEstimateObservedAt sets the "estimate_observed_at" field to the value that was provided on create.
+func (u *AccountWindowUsageHistoryUpsertBulk) UpdateEstimateObservedAt() *AccountWindowUsageHistoryUpsertBulk {
+	return u.Update(func(s *AccountWindowUsageHistoryUpsert) {
+		s.UpdateEstimateObservedAt()
+	})
+}
+
+// ClearEstimateObservedAt clears the value of the "estimate_observed_at" field.
+func (u *AccountWindowUsageHistoryUpsertBulk) ClearEstimateObservedAt() *AccountWindowUsageHistoryUpsertBulk {
+	return u.Update(func(s *AccountWindowUsageHistoryUpsert) {
+		s.ClearEstimateObservedAt()
+	})
+}
+
+// SetQualityFlags sets the "quality_flags" field.
+func (u *AccountWindowUsageHistoryUpsertBulk) SetQualityFlags(v []string) *AccountWindowUsageHistoryUpsertBulk {
+	return u.Update(func(s *AccountWindowUsageHistoryUpsert) {
+		s.SetQualityFlags(v)
+	})
+}
+
+// UpdateQualityFlags sets the "quality_flags" field to the value that was provided on create.
+func (u *AccountWindowUsageHistoryUpsertBulk) UpdateQualityFlags() *AccountWindowUsageHistoryUpsertBulk {
+	return u.Update(func(s *AccountWindowUsageHistoryUpsert) {
+		s.UpdateQualityFlags()
+	})
+}
+
+// SetEndReason sets the "end_reason" field.
+func (u *AccountWindowUsageHistoryUpsertBulk) SetEndReason(v string) *AccountWindowUsageHistoryUpsertBulk {
+	return u.Update(func(s *AccountWindowUsageHistoryUpsert) {
+		s.SetEndReason(v)
+	})
+}
+
+// UpdateEndReason sets the "end_reason" field to the value that was provided on create.
+func (u *AccountWindowUsageHistoryUpsertBulk) UpdateEndReason() *AccountWindowUsageHistoryUpsertBulk {
+	return u.Update(func(s *AccountWindowUsageHistoryUpsert) {
+		s.UpdateEndReason()
+	})
+}
+
+// ClearEndReason clears the value of the "end_reason" field.
+func (u *AccountWindowUsageHistoryUpsertBulk) ClearEndReason() *AccountWindowUsageHistoryUpsertBulk {
+	return u.Update(func(s *AccountWindowUsageHistoryUpsert) {
+		s.ClearEndReason()
+	})
+}
+
+// SetStatsFinalizedAt sets the "stats_finalized_at" field.
+func (u *AccountWindowUsageHistoryUpsertBulk) SetStatsFinalizedAt(v time.Time) *AccountWindowUsageHistoryUpsertBulk {
+	return u.Update(func(s *AccountWindowUsageHistoryUpsert) {
+		s.SetStatsFinalizedAt(v)
+	})
+}
+
+// UpdateStatsFinalizedAt sets the "stats_finalized_at" field to the value that was provided on create.
+func (u *AccountWindowUsageHistoryUpsertBulk) UpdateStatsFinalizedAt() *AccountWindowUsageHistoryUpsertBulk {
+	return u.Update(func(s *AccountWindowUsageHistoryUpsert) {
+		s.UpdateStatsFinalizedAt()
+	})
+}
+
+// ClearStatsFinalizedAt clears the value of the "stats_finalized_at" field.
+func (u *AccountWindowUsageHistoryUpsertBulk) ClearStatsFinalizedAt() *AccountWindowUsageHistoryUpsertBulk {
+	return u.Update(func(s *AccountWindowUsageHistoryUpsert) {
+		s.ClearStatsFinalizedAt()
 	})
 }
 

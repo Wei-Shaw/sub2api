@@ -115,24 +115,69 @@ func TokensTotal(v int64) predicate.AccountWindowUsageHistory {
 	return predicate.AccountWindowUsageHistory(sql.FieldEQ(FieldTokensTotal, v))
 }
 
-// TokensInput applies equality check predicate on the "tokens_input" field. It's identical to TokensInputEQ.
-func TokensInput(v int64) predicate.AccountWindowUsageHistory {
-	return predicate.AccountWindowUsageHistory(sql.FieldEQ(FieldTokensInput, v))
+// ResetAt applies equality check predicate on the "reset_at" field. It's identical to ResetAtEQ.
+func ResetAt(v time.Time) predicate.AccountWindowUsageHistory {
+	return predicate.AccountWindowUsageHistory(sql.FieldEQ(FieldResetAt, v))
 }
 
-// TokensOutput applies equality check predicate on the "tokens_output" field. It's identical to TokensOutputEQ.
-func TokensOutput(v int64) predicate.AccountWindowUsageHistory {
-	return predicate.AccountWindowUsageHistory(sql.FieldEQ(FieldTokensOutput, v))
+// DurationMinutes applies equality check predicate on the "duration_minutes" field. It's identical to DurationMinutesEQ.
+func DurationMinutes(v int) predicate.AccountWindowUsageHistory {
+	return predicate.AccountWindowUsageHistory(sql.FieldEQ(FieldDurationMinutes, v))
 }
 
-// TokensCacheCreation applies equality check predicate on the "tokens_cache_creation" field. It's identical to TokensCacheCreationEQ.
-func TokensCacheCreation(v int64) predicate.AccountWindowUsageHistory {
-	return predicate.AccountWindowUsageHistory(sql.FieldEQ(FieldTokensCacheCreation, v))
+// FirstObservedAt applies equality check predicate on the "first_observed_at" field. It's identical to FirstObservedAtEQ.
+func FirstObservedAt(v time.Time) predicate.AccountWindowUsageHistory {
+	return predicate.AccountWindowUsageHistory(sql.FieldEQ(FieldFirstObservedAt, v))
 }
 
-// TokensCacheRead applies equality check predicate on the "tokens_cache_read" field. It's identical to TokensCacheReadEQ.
-func TokensCacheRead(v int64) predicate.AccountWindowUsageHistory {
-	return predicate.AccountWindowUsageHistory(sql.FieldEQ(FieldTokensCacheRead, v))
+// LastObservationID applies equality check predicate on the "last_observation_id" field. It's identical to LastObservationIDEQ.
+func LastObservationID(v int64) predicate.AccountWindowUsageHistory {
+	return predicate.AccountWindowUsageHistory(sql.FieldEQ(FieldLastObservationID, v))
+}
+
+// APIReferenceCost applies equality check predicate on the "api_reference_cost" field. It's identical to APIReferenceCostEQ.
+func APIReferenceCost(v float64) predicate.AccountWindowUsageHistory {
+	return predicate.AccountWindowUsageHistory(sql.FieldEQ(FieldAPIReferenceCost, v))
+}
+
+// PricedRequests applies equality check predicate on the "priced_requests" field. It's identical to PricedRequestsEQ.
+func PricedRequests(v int64) predicate.AccountWindowUsageHistory {
+	return predicate.AccountWindowUsageHistory(sql.FieldEQ(FieldPricedRequests, v))
+}
+
+// MissingPricingRequests applies equality check predicate on the "missing_pricing_requests" field. It's identical to MissingPricingRequestsEQ.
+func MissingPricingRequests(v int64) predicate.AccountWindowUsageHistory {
+	return predicate.AccountWindowUsageHistory(sql.FieldEQ(FieldMissingPricingRequests, v))
+}
+
+// EstimatedReferenceLimit applies equality check predicate on the "estimated_reference_limit" field. It's identical to EstimatedReferenceLimitEQ.
+func EstimatedReferenceLimit(v float64) predicate.AccountWindowUsageHistory {
+	return predicate.AccountWindowUsageHistory(sql.FieldEQ(FieldEstimatedReferenceLimit, v))
+}
+
+// EstimateReferenceCost applies equality check predicate on the "estimate_reference_cost" field. It's identical to EstimateReferenceCostEQ.
+func EstimateReferenceCost(v float64) predicate.AccountWindowUsageHistory {
+	return predicate.AccountWindowUsageHistory(sql.FieldEQ(FieldEstimateReferenceCost, v))
+}
+
+// EstimateUsedPercent applies equality check predicate on the "estimate_used_percent" field. It's identical to EstimateUsedPercentEQ.
+func EstimateUsedPercent(v float64) predicate.AccountWindowUsageHistory {
+	return predicate.AccountWindowUsageHistory(sql.FieldEQ(FieldEstimateUsedPercent, v))
+}
+
+// EstimateObservedAt applies equality check predicate on the "estimate_observed_at" field. It's identical to EstimateObservedAtEQ.
+func EstimateObservedAt(v time.Time) predicate.AccountWindowUsageHistory {
+	return predicate.AccountWindowUsageHistory(sql.FieldEQ(FieldEstimateObservedAt, v))
+}
+
+// EndReason applies equality check predicate on the "end_reason" field. It's identical to EndReasonEQ.
+func EndReason(v string) predicate.AccountWindowUsageHistory {
+	return predicate.AccountWindowUsageHistory(sql.FieldEQ(FieldEndReason, v))
+}
+
+// StatsFinalizedAt applies equality check predicate on the "stats_finalized_at" field. It's identical to StatsFinalizedAtEQ.
+func StatsFinalizedAt(v time.Time) predicate.AccountWindowUsageHistory {
+	return predicate.AccountWindowUsageHistory(sql.FieldEQ(FieldStatsFinalizedAt, v))
 }
 
 // FinalizedAt applies equality check predicate on the "finalized_at" field. It's identical to FinalizedAtEQ.
@@ -595,16 +640,6 @@ func RequestsLTE(v int64) predicate.AccountWindowUsageHistory {
 	return predicate.AccountWindowUsageHistory(sql.FieldLTE(FieldRequests, v))
 }
 
-// RequestsIsNil applies the IsNil predicate on the "requests" field.
-func RequestsIsNil() predicate.AccountWindowUsageHistory {
-	return predicate.AccountWindowUsageHistory(sql.FieldIsNull(FieldRequests))
-}
-
-// RequestsNotNil applies the NotNil predicate on the "requests" field.
-func RequestsNotNil() predicate.AccountWindowUsageHistory {
-	return predicate.AccountWindowUsageHistory(sql.FieldNotNull(FieldRequests))
-}
-
 // TokensTotalEQ applies the EQ predicate on the "tokens_total" field.
 func TokensTotalEQ(v int64) predicate.AccountWindowUsageHistory {
 	return predicate.AccountWindowUsageHistory(sql.FieldEQ(FieldTokensTotal, v))
@@ -645,214 +680,619 @@ func TokensTotalLTE(v int64) predicate.AccountWindowUsageHistory {
 	return predicate.AccountWindowUsageHistory(sql.FieldLTE(FieldTokensTotal, v))
 }
 
-// TokensTotalIsNil applies the IsNil predicate on the "tokens_total" field.
-func TokensTotalIsNil() predicate.AccountWindowUsageHistory {
-	return predicate.AccountWindowUsageHistory(sql.FieldIsNull(FieldTokensTotal))
+// ResetAtEQ applies the EQ predicate on the "reset_at" field.
+func ResetAtEQ(v time.Time) predicate.AccountWindowUsageHistory {
+	return predicate.AccountWindowUsageHistory(sql.FieldEQ(FieldResetAt, v))
 }
 
-// TokensTotalNotNil applies the NotNil predicate on the "tokens_total" field.
-func TokensTotalNotNil() predicate.AccountWindowUsageHistory {
-	return predicate.AccountWindowUsageHistory(sql.FieldNotNull(FieldTokensTotal))
+// ResetAtNEQ applies the NEQ predicate on the "reset_at" field.
+func ResetAtNEQ(v time.Time) predicate.AccountWindowUsageHistory {
+	return predicate.AccountWindowUsageHistory(sql.FieldNEQ(FieldResetAt, v))
 }
 
-// TokensInputEQ applies the EQ predicate on the "tokens_input" field.
-func TokensInputEQ(v int64) predicate.AccountWindowUsageHistory {
-	return predicate.AccountWindowUsageHistory(sql.FieldEQ(FieldTokensInput, v))
+// ResetAtIn applies the In predicate on the "reset_at" field.
+func ResetAtIn(vs ...time.Time) predicate.AccountWindowUsageHistory {
+	return predicate.AccountWindowUsageHistory(sql.FieldIn(FieldResetAt, vs...))
 }
 
-// TokensInputNEQ applies the NEQ predicate on the "tokens_input" field.
-func TokensInputNEQ(v int64) predicate.AccountWindowUsageHistory {
-	return predicate.AccountWindowUsageHistory(sql.FieldNEQ(FieldTokensInput, v))
+// ResetAtNotIn applies the NotIn predicate on the "reset_at" field.
+func ResetAtNotIn(vs ...time.Time) predicate.AccountWindowUsageHistory {
+	return predicate.AccountWindowUsageHistory(sql.FieldNotIn(FieldResetAt, vs...))
 }
 
-// TokensInputIn applies the In predicate on the "tokens_input" field.
-func TokensInputIn(vs ...int64) predicate.AccountWindowUsageHistory {
-	return predicate.AccountWindowUsageHistory(sql.FieldIn(FieldTokensInput, vs...))
+// ResetAtGT applies the GT predicate on the "reset_at" field.
+func ResetAtGT(v time.Time) predicate.AccountWindowUsageHistory {
+	return predicate.AccountWindowUsageHistory(sql.FieldGT(FieldResetAt, v))
 }
 
-// TokensInputNotIn applies the NotIn predicate on the "tokens_input" field.
-func TokensInputNotIn(vs ...int64) predicate.AccountWindowUsageHistory {
-	return predicate.AccountWindowUsageHistory(sql.FieldNotIn(FieldTokensInput, vs...))
+// ResetAtGTE applies the GTE predicate on the "reset_at" field.
+func ResetAtGTE(v time.Time) predicate.AccountWindowUsageHistory {
+	return predicate.AccountWindowUsageHistory(sql.FieldGTE(FieldResetAt, v))
 }
 
-// TokensInputGT applies the GT predicate on the "tokens_input" field.
-func TokensInputGT(v int64) predicate.AccountWindowUsageHistory {
-	return predicate.AccountWindowUsageHistory(sql.FieldGT(FieldTokensInput, v))
+// ResetAtLT applies the LT predicate on the "reset_at" field.
+func ResetAtLT(v time.Time) predicate.AccountWindowUsageHistory {
+	return predicate.AccountWindowUsageHistory(sql.FieldLT(FieldResetAt, v))
 }
 
-// TokensInputGTE applies the GTE predicate on the "tokens_input" field.
-func TokensInputGTE(v int64) predicate.AccountWindowUsageHistory {
-	return predicate.AccountWindowUsageHistory(sql.FieldGTE(FieldTokensInput, v))
+// ResetAtLTE applies the LTE predicate on the "reset_at" field.
+func ResetAtLTE(v time.Time) predicate.AccountWindowUsageHistory {
+	return predicate.AccountWindowUsageHistory(sql.FieldLTE(FieldResetAt, v))
 }
 
-// TokensInputLT applies the LT predicate on the "tokens_input" field.
-func TokensInputLT(v int64) predicate.AccountWindowUsageHistory {
-	return predicate.AccountWindowUsageHistory(sql.FieldLT(FieldTokensInput, v))
+// DurationMinutesEQ applies the EQ predicate on the "duration_minutes" field.
+func DurationMinutesEQ(v int) predicate.AccountWindowUsageHistory {
+	return predicate.AccountWindowUsageHistory(sql.FieldEQ(FieldDurationMinutes, v))
 }
 
-// TokensInputLTE applies the LTE predicate on the "tokens_input" field.
-func TokensInputLTE(v int64) predicate.AccountWindowUsageHistory {
-	return predicate.AccountWindowUsageHistory(sql.FieldLTE(FieldTokensInput, v))
+// DurationMinutesNEQ applies the NEQ predicate on the "duration_minutes" field.
+func DurationMinutesNEQ(v int) predicate.AccountWindowUsageHistory {
+	return predicate.AccountWindowUsageHistory(sql.FieldNEQ(FieldDurationMinutes, v))
 }
 
-// TokensInputIsNil applies the IsNil predicate on the "tokens_input" field.
-func TokensInputIsNil() predicate.AccountWindowUsageHistory {
-	return predicate.AccountWindowUsageHistory(sql.FieldIsNull(FieldTokensInput))
+// DurationMinutesIn applies the In predicate on the "duration_minutes" field.
+func DurationMinutesIn(vs ...int) predicate.AccountWindowUsageHistory {
+	return predicate.AccountWindowUsageHistory(sql.FieldIn(FieldDurationMinutes, vs...))
 }
 
-// TokensInputNotNil applies the NotNil predicate on the "tokens_input" field.
-func TokensInputNotNil() predicate.AccountWindowUsageHistory {
-	return predicate.AccountWindowUsageHistory(sql.FieldNotNull(FieldTokensInput))
+// DurationMinutesNotIn applies the NotIn predicate on the "duration_minutes" field.
+func DurationMinutesNotIn(vs ...int) predicate.AccountWindowUsageHistory {
+	return predicate.AccountWindowUsageHistory(sql.FieldNotIn(FieldDurationMinutes, vs...))
 }
 
-// TokensOutputEQ applies the EQ predicate on the "tokens_output" field.
-func TokensOutputEQ(v int64) predicate.AccountWindowUsageHistory {
-	return predicate.AccountWindowUsageHistory(sql.FieldEQ(FieldTokensOutput, v))
+// DurationMinutesGT applies the GT predicate on the "duration_minutes" field.
+func DurationMinutesGT(v int) predicate.AccountWindowUsageHistory {
+	return predicate.AccountWindowUsageHistory(sql.FieldGT(FieldDurationMinutes, v))
 }
 
-// TokensOutputNEQ applies the NEQ predicate on the "tokens_output" field.
-func TokensOutputNEQ(v int64) predicate.AccountWindowUsageHistory {
-	return predicate.AccountWindowUsageHistory(sql.FieldNEQ(FieldTokensOutput, v))
+// DurationMinutesGTE applies the GTE predicate on the "duration_minutes" field.
+func DurationMinutesGTE(v int) predicate.AccountWindowUsageHistory {
+	return predicate.AccountWindowUsageHistory(sql.FieldGTE(FieldDurationMinutes, v))
 }
 
-// TokensOutputIn applies the In predicate on the "tokens_output" field.
-func TokensOutputIn(vs ...int64) predicate.AccountWindowUsageHistory {
-	return predicate.AccountWindowUsageHistory(sql.FieldIn(FieldTokensOutput, vs...))
+// DurationMinutesLT applies the LT predicate on the "duration_minutes" field.
+func DurationMinutesLT(v int) predicate.AccountWindowUsageHistory {
+	return predicate.AccountWindowUsageHistory(sql.FieldLT(FieldDurationMinutes, v))
 }
 
-// TokensOutputNotIn applies the NotIn predicate on the "tokens_output" field.
-func TokensOutputNotIn(vs ...int64) predicate.AccountWindowUsageHistory {
-	return predicate.AccountWindowUsageHistory(sql.FieldNotIn(FieldTokensOutput, vs...))
+// DurationMinutesLTE applies the LTE predicate on the "duration_minutes" field.
+func DurationMinutesLTE(v int) predicate.AccountWindowUsageHistory {
+	return predicate.AccountWindowUsageHistory(sql.FieldLTE(FieldDurationMinutes, v))
 }
 
-// TokensOutputGT applies the GT predicate on the "tokens_output" field.
-func TokensOutputGT(v int64) predicate.AccountWindowUsageHistory {
-	return predicate.AccountWindowUsageHistory(sql.FieldGT(FieldTokensOutput, v))
+// FirstObservedAtEQ applies the EQ predicate on the "first_observed_at" field.
+func FirstObservedAtEQ(v time.Time) predicate.AccountWindowUsageHistory {
+	return predicate.AccountWindowUsageHistory(sql.FieldEQ(FieldFirstObservedAt, v))
 }
 
-// TokensOutputGTE applies the GTE predicate on the "tokens_output" field.
-func TokensOutputGTE(v int64) predicate.AccountWindowUsageHistory {
-	return predicate.AccountWindowUsageHistory(sql.FieldGTE(FieldTokensOutput, v))
+// FirstObservedAtNEQ applies the NEQ predicate on the "first_observed_at" field.
+func FirstObservedAtNEQ(v time.Time) predicate.AccountWindowUsageHistory {
+	return predicate.AccountWindowUsageHistory(sql.FieldNEQ(FieldFirstObservedAt, v))
 }
 
-// TokensOutputLT applies the LT predicate on the "tokens_output" field.
-func TokensOutputLT(v int64) predicate.AccountWindowUsageHistory {
-	return predicate.AccountWindowUsageHistory(sql.FieldLT(FieldTokensOutput, v))
+// FirstObservedAtIn applies the In predicate on the "first_observed_at" field.
+func FirstObservedAtIn(vs ...time.Time) predicate.AccountWindowUsageHistory {
+	return predicate.AccountWindowUsageHistory(sql.FieldIn(FieldFirstObservedAt, vs...))
 }
 
-// TokensOutputLTE applies the LTE predicate on the "tokens_output" field.
-func TokensOutputLTE(v int64) predicate.AccountWindowUsageHistory {
-	return predicate.AccountWindowUsageHistory(sql.FieldLTE(FieldTokensOutput, v))
+// FirstObservedAtNotIn applies the NotIn predicate on the "first_observed_at" field.
+func FirstObservedAtNotIn(vs ...time.Time) predicate.AccountWindowUsageHistory {
+	return predicate.AccountWindowUsageHistory(sql.FieldNotIn(FieldFirstObservedAt, vs...))
 }
 
-// TokensOutputIsNil applies the IsNil predicate on the "tokens_output" field.
-func TokensOutputIsNil() predicate.AccountWindowUsageHistory {
-	return predicate.AccountWindowUsageHistory(sql.FieldIsNull(FieldTokensOutput))
+// FirstObservedAtGT applies the GT predicate on the "first_observed_at" field.
+func FirstObservedAtGT(v time.Time) predicate.AccountWindowUsageHistory {
+	return predicate.AccountWindowUsageHistory(sql.FieldGT(FieldFirstObservedAt, v))
 }
 
-// TokensOutputNotNil applies the NotNil predicate on the "tokens_output" field.
-func TokensOutputNotNil() predicate.AccountWindowUsageHistory {
-	return predicate.AccountWindowUsageHistory(sql.FieldNotNull(FieldTokensOutput))
+// FirstObservedAtGTE applies the GTE predicate on the "first_observed_at" field.
+func FirstObservedAtGTE(v time.Time) predicate.AccountWindowUsageHistory {
+	return predicate.AccountWindowUsageHistory(sql.FieldGTE(FieldFirstObservedAt, v))
 }
 
-// TokensCacheCreationEQ applies the EQ predicate on the "tokens_cache_creation" field.
-func TokensCacheCreationEQ(v int64) predicate.AccountWindowUsageHistory {
-	return predicate.AccountWindowUsageHistory(sql.FieldEQ(FieldTokensCacheCreation, v))
+// FirstObservedAtLT applies the LT predicate on the "first_observed_at" field.
+func FirstObservedAtLT(v time.Time) predicate.AccountWindowUsageHistory {
+	return predicate.AccountWindowUsageHistory(sql.FieldLT(FieldFirstObservedAt, v))
 }
 
-// TokensCacheCreationNEQ applies the NEQ predicate on the "tokens_cache_creation" field.
-func TokensCacheCreationNEQ(v int64) predicate.AccountWindowUsageHistory {
-	return predicate.AccountWindowUsageHistory(sql.FieldNEQ(FieldTokensCacheCreation, v))
+// FirstObservedAtLTE applies the LTE predicate on the "first_observed_at" field.
+func FirstObservedAtLTE(v time.Time) predicate.AccountWindowUsageHistory {
+	return predicate.AccountWindowUsageHistory(sql.FieldLTE(FieldFirstObservedAt, v))
 }
 
-// TokensCacheCreationIn applies the In predicate on the "tokens_cache_creation" field.
-func TokensCacheCreationIn(vs ...int64) predicate.AccountWindowUsageHistory {
-	return predicate.AccountWindowUsageHistory(sql.FieldIn(FieldTokensCacheCreation, vs...))
+// LastObservationIDEQ applies the EQ predicate on the "last_observation_id" field.
+func LastObservationIDEQ(v int64) predicate.AccountWindowUsageHistory {
+	return predicate.AccountWindowUsageHistory(sql.FieldEQ(FieldLastObservationID, v))
 }
 
-// TokensCacheCreationNotIn applies the NotIn predicate on the "tokens_cache_creation" field.
-func TokensCacheCreationNotIn(vs ...int64) predicate.AccountWindowUsageHistory {
-	return predicate.AccountWindowUsageHistory(sql.FieldNotIn(FieldTokensCacheCreation, vs...))
+// LastObservationIDNEQ applies the NEQ predicate on the "last_observation_id" field.
+func LastObservationIDNEQ(v int64) predicate.AccountWindowUsageHistory {
+	return predicate.AccountWindowUsageHistory(sql.FieldNEQ(FieldLastObservationID, v))
 }
 
-// TokensCacheCreationGT applies the GT predicate on the "tokens_cache_creation" field.
-func TokensCacheCreationGT(v int64) predicate.AccountWindowUsageHistory {
-	return predicate.AccountWindowUsageHistory(sql.FieldGT(FieldTokensCacheCreation, v))
+// LastObservationIDIn applies the In predicate on the "last_observation_id" field.
+func LastObservationIDIn(vs ...int64) predicate.AccountWindowUsageHistory {
+	return predicate.AccountWindowUsageHistory(sql.FieldIn(FieldLastObservationID, vs...))
 }
 
-// TokensCacheCreationGTE applies the GTE predicate on the "tokens_cache_creation" field.
-func TokensCacheCreationGTE(v int64) predicate.AccountWindowUsageHistory {
-	return predicate.AccountWindowUsageHistory(sql.FieldGTE(FieldTokensCacheCreation, v))
+// LastObservationIDNotIn applies the NotIn predicate on the "last_observation_id" field.
+func LastObservationIDNotIn(vs ...int64) predicate.AccountWindowUsageHistory {
+	return predicate.AccountWindowUsageHistory(sql.FieldNotIn(FieldLastObservationID, vs...))
 }
 
-// TokensCacheCreationLT applies the LT predicate on the "tokens_cache_creation" field.
-func TokensCacheCreationLT(v int64) predicate.AccountWindowUsageHistory {
-	return predicate.AccountWindowUsageHistory(sql.FieldLT(FieldTokensCacheCreation, v))
+// LastObservationIDGT applies the GT predicate on the "last_observation_id" field.
+func LastObservationIDGT(v int64) predicate.AccountWindowUsageHistory {
+	return predicate.AccountWindowUsageHistory(sql.FieldGT(FieldLastObservationID, v))
 }
 
-// TokensCacheCreationLTE applies the LTE predicate on the "tokens_cache_creation" field.
-func TokensCacheCreationLTE(v int64) predicate.AccountWindowUsageHistory {
-	return predicate.AccountWindowUsageHistory(sql.FieldLTE(FieldTokensCacheCreation, v))
+// LastObservationIDGTE applies the GTE predicate on the "last_observation_id" field.
+func LastObservationIDGTE(v int64) predicate.AccountWindowUsageHistory {
+	return predicate.AccountWindowUsageHistory(sql.FieldGTE(FieldLastObservationID, v))
 }
 
-// TokensCacheCreationIsNil applies the IsNil predicate on the "tokens_cache_creation" field.
-func TokensCacheCreationIsNil() predicate.AccountWindowUsageHistory {
-	return predicate.AccountWindowUsageHistory(sql.FieldIsNull(FieldTokensCacheCreation))
+// LastObservationIDLT applies the LT predicate on the "last_observation_id" field.
+func LastObservationIDLT(v int64) predicate.AccountWindowUsageHistory {
+	return predicate.AccountWindowUsageHistory(sql.FieldLT(FieldLastObservationID, v))
 }
 
-// TokensCacheCreationNotNil applies the NotNil predicate on the "tokens_cache_creation" field.
-func TokensCacheCreationNotNil() predicate.AccountWindowUsageHistory {
-	return predicate.AccountWindowUsageHistory(sql.FieldNotNull(FieldTokensCacheCreation))
+// LastObservationIDLTE applies the LTE predicate on the "last_observation_id" field.
+func LastObservationIDLTE(v int64) predicate.AccountWindowUsageHistory {
+	return predicate.AccountWindowUsageHistory(sql.FieldLTE(FieldLastObservationID, v))
 }
 
-// TokensCacheReadEQ applies the EQ predicate on the "tokens_cache_read" field.
-func TokensCacheReadEQ(v int64) predicate.AccountWindowUsageHistory {
-	return predicate.AccountWindowUsageHistory(sql.FieldEQ(FieldTokensCacheRead, v))
+// APIReferenceCostEQ applies the EQ predicate on the "api_reference_cost" field.
+func APIReferenceCostEQ(v float64) predicate.AccountWindowUsageHistory {
+	return predicate.AccountWindowUsageHistory(sql.FieldEQ(FieldAPIReferenceCost, v))
 }
 
-// TokensCacheReadNEQ applies the NEQ predicate on the "tokens_cache_read" field.
-func TokensCacheReadNEQ(v int64) predicate.AccountWindowUsageHistory {
-	return predicate.AccountWindowUsageHistory(sql.FieldNEQ(FieldTokensCacheRead, v))
+// APIReferenceCostNEQ applies the NEQ predicate on the "api_reference_cost" field.
+func APIReferenceCostNEQ(v float64) predicate.AccountWindowUsageHistory {
+	return predicate.AccountWindowUsageHistory(sql.FieldNEQ(FieldAPIReferenceCost, v))
 }
 
-// TokensCacheReadIn applies the In predicate on the "tokens_cache_read" field.
-func TokensCacheReadIn(vs ...int64) predicate.AccountWindowUsageHistory {
-	return predicate.AccountWindowUsageHistory(sql.FieldIn(FieldTokensCacheRead, vs...))
+// APIReferenceCostIn applies the In predicate on the "api_reference_cost" field.
+func APIReferenceCostIn(vs ...float64) predicate.AccountWindowUsageHistory {
+	return predicate.AccountWindowUsageHistory(sql.FieldIn(FieldAPIReferenceCost, vs...))
 }
 
-// TokensCacheReadNotIn applies the NotIn predicate on the "tokens_cache_read" field.
-func TokensCacheReadNotIn(vs ...int64) predicate.AccountWindowUsageHistory {
-	return predicate.AccountWindowUsageHistory(sql.FieldNotIn(FieldTokensCacheRead, vs...))
+// APIReferenceCostNotIn applies the NotIn predicate on the "api_reference_cost" field.
+func APIReferenceCostNotIn(vs ...float64) predicate.AccountWindowUsageHistory {
+	return predicate.AccountWindowUsageHistory(sql.FieldNotIn(FieldAPIReferenceCost, vs...))
 }
 
-// TokensCacheReadGT applies the GT predicate on the "tokens_cache_read" field.
-func TokensCacheReadGT(v int64) predicate.AccountWindowUsageHistory {
-	return predicate.AccountWindowUsageHistory(sql.FieldGT(FieldTokensCacheRead, v))
+// APIReferenceCostGT applies the GT predicate on the "api_reference_cost" field.
+func APIReferenceCostGT(v float64) predicate.AccountWindowUsageHistory {
+	return predicate.AccountWindowUsageHistory(sql.FieldGT(FieldAPIReferenceCost, v))
 }
 
-// TokensCacheReadGTE applies the GTE predicate on the "tokens_cache_read" field.
-func TokensCacheReadGTE(v int64) predicate.AccountWindowUsageHistory {
-	return predicate.AccountWindowUsageHistory(sql.FieldGTE(FieldTokensCacheRead, v))
+// APIReferenceCostGTE applies the GTE predicate on the "api_reference_cost" field.
+func APIReferenceCostGTE(v float64) predicate.AccountWindowUsageHistory {
+	return predicate.AccountWindowUsageHistory(sql.FieldGTE(FieldAPIReferenceCost, v))
 }
 
-// TokensCacheReadLT applies the LT predicate on the "tokens_cache_read" field.
-func TokensCacheReadLT(v int64) predicate.AccountWindowUsageHistory {
-	return predicate.AccountWindowUsageHistory(sql.FieldLT(FieldTokensCacheRead, v))
+// APIReferenceCostLT applies the LT predicate on the "api_reference_cost" field.
+func APIReferenceCostLT(v float64) predicate.AccountWindowUsageHistory {
+	return predicate.AccountWindowUsageHistory(sql.FieldLT(FieldAPIReferenceCost, v))
 }
 
-// TokensCacheReadLTE applies the LTE predicate on the "tokens_cache_read" field.
-func TokensCacheReadLTE(v int64) predicate.AccountWindowUsageHistory {
-	return predicate.AccountWindowUsageHistory(sql.FieldLTE(FieldTokensCacheRead, v))
+// APIReferenceCostLTE applies the LTE predicate on the "api_reference_cost" field.
+func APIReferenceCostLTE(v float64) predicate.AccountWindowUsageHistory {
+	return predicate.AccountWindowUsageHistory(sql.FieldLTE(FieldAPIReferenceCost, v))
 }
 
-// TokensCacheReadIsNil applies the IsNil predicate on the "tokens_cache_read" field.
-func TokensCacheReadIsNil() predicate.AccountWindowUsageHistory {
-	return predicate.AccountWindowUsageHistory(sql.FieldIsNull(FieldTokensCacheRead))
+// APIReferenceCostIsNil applies the IsNil predicate on the "api_reference_cost" field.
+func APIReferenceCostIsNil() predicate.AccountWindowUsageHistory {
+	return predicate.AccountWindowUsageHistory(sql.FieldIsNull(FieldAPIReferenceCost))
 }
 
-// TokensCacheReadNotNil applies the NotNil predicate on the "tokens_cache_read" field.
-func TokensCacheReadNotNil() predicate.AccountWindowUsageHistory {
-	return predicate.AccountWindowUsageHistory(sql.FieldNotNull(FieldTokensCacheRead))
+// APIReferenceCostNotNil applies the NotNil predicate on the "api_reference_cost" field.
+func APIReferenceCostNotNil() predicate.AccountWindowUsageHistory {
+	return predicate.AccountWindowUsageHistory(sql.FieldNotNull(FieldAPIReferenceCost))
+}
+
+// PricedRequestsEQ applies the EQ predicate on the "priced_requests" field.
+func PricedRequestsEQ(v int64) predicate.AccountWindowUsageHistory {
+	return predicate.AccountWindowUsageHistory(sql.FieldEQ(FieldPricedRequests, v))
+}
+
+// PricedRequestsNEQ applies the NEQ predicate on the "priced_requests" field.
+func PricedRequestsNEQ(v int64) predicate.AccountWindowUsageHistory {
+	return predicate.AccountWindowUsageHistory(sql.FieldNEQ(FieldPricedRequests, v))
+}
+
+// PricedRequestsIn applies the In predicate on the "priced_requests" field.
+func PricedRequestsIn(vs ...int64) predicate.AccountWindowUsageHistory {
+	return predicate.AccountWindowUsageHistory(sql.FieldIn(FieldPricedRequests, vs...))
+}
+
+// PricedRequestsNotIn applies the NotIn predicate on the "priced_requests" field.
+func PricedRequestsNotIn(vs ...int64) predicate.AccountWindowUsageHistory {
+	return predicate.AccountWindowUsageHistory(sql.FieldNotIn(FieldPricedRequests, vs...))
+}
+
+// PricedRequestsGT applies the GT predicate on the "priced_requests" field.
+func PricedRequestsGT(v int64) predicate.AccountWindowUsageHistory {
+	return predicate.AccountWindowUsageHistory(sql.FieldGT(FieldPricedRequests, v))
+}
+
+// PricedRequestsGTE applies the GTE predicate on the "priced_requests" field.
+func PricedRequestsGTE(v int64) predicate.AccountWindowUsageHistory {
+	return predicate.AccountWindowUsageHistory(sql.FieldGTE(FieldPricedRequests, v))
+}
+
+// PricedRequestsLT applies the LT predicate on the "priced_requests" field.
+func PricedRequestsLT(v int64) predicate.AccountWindowUsageHistory {
+	return predicate.AccountWindowUsageHistory(sql.FieldLT(FieldPricedRequests, v))
+}
+
+// PricedRequestsLTE applies the LTE predicate on the "priced_requests" field.
+func PricedRequestsLTE(v int64) predicate.AccountWindowUsageHistory {
+	return predicate.AccountWindowUsageHistory(sql.FieldLTE(FieldPricedRequests, v))
+}
+
+// MissingPricingRequestsEQ applies the EQ predicate on the "missing_pricing_requests" field.
+func MissingPricingRequestsEQ(v int64) predicate.AccountWindowUsageHistory {
+	return predicate.AccountWindowUsageHistory(sql.FieldEQ(FieldMissingPricingRequests, v))
+}
+
+// MissingPricingRequestsNEQ applies the NEQ predicate on the "missing_pricing_requests" field.
+func MissingPricingRequestsNEQ(v int64) predicate.AccountWindowUsageHistory {
+	return predicate.AccountWindowUsageHistory(sql.FieldNEQ(FieldMissingPricingRequests, v))
+}
+
+// MissingPricingRequestsIn applies the In predicate on the "missing_pricing_requests" field.
+func MissingPricingRequestsIn(vs ...int64) predicate.AccountWindowUsageHistory {
+	return predicate.AccountWindowUsageHistory(sql.FieldIn(FieldMissingPricingRequests, vs...))
+}
+
+// MissingPricingRequestsNotIn applies the NotIn predicate on the "missing_pricing_requests" field.
+func MissingPricingRequestsNotIn(vs ...int64) predicate.AccountWindowUsageHistory {
+	return predicate.AccountWindowUsageHistory(sql.FieldNotIn(FieldMissingPricingRequests, vs...))
+}
+
+// MissingPricingRequestsGT applies the GT predicate on the "missing_pricing_requests" field.
+func MissingPricingRequestsGT(v int64) predicate.AccountWindowUsageHistory {
+	return predicate.AccountWindowUsageHistory(sql.FieldGT(FieldMissingPricingRequests, v))
+}
+
+// MissingPricingRequestsGTE applies the GTE predicate on the "missing_pricing_requests" field.
+func MissingPricingRequestsGTE(v int64) predicate.AccountWindowUsageHistory {
+	return predicate.AccountWindowUsageHistory(sql.FieldGTE(FieldMissingPricingRequests, v))
+}
+
+// MissingPricingRequestsLT applies the LT predicate on the "missing_pricing_requests" field.
+func MissingPricingRequestsLT(v int64) predicate.AccountWindowUsageHistory {
+	return predicate.AccountWindowUsageHistory(sql.FieldLT(FieldMissingPricingRequests, v))
+}
+
+// MissingPricingRequestsLTE applies the LTE predicate on the "missing_pricing_requests" field.
+func MissingPricingRequestsLTE(v int64) predicate.AccountWindowUsageHistory {
+	return predicate.AccountWindowUsageHistory(sql.FieldLTE(FieldMissingPricingRequests, v))
+}
+
+// EstimatedReferenceLimitEQ applies the EQ predicate on the "estimated_reference_limit" field.
+func EstimatedReferenceLimitEQ(v float64) predicate.AccountWindowUsageHistory {
+	return predicate.AccountWindowUsageHistory(sql.FieldEQ(FieldEstimatedReferenceLimit, v))
+}
+
+// EstimatedReferenceLimitNEQ applies the NEQ predicate on the "estimated_reference_limit" field.
+func EstimatedReferenceLimitNEQ(v float64) predicate.AccountWindowUsageHistory {
+	return predicate.AccountWindowUsageHistory(sql.FieldNEQ(FieldEstimatedReferenceLimit, v))
+}
+
+// EstimatedReferenceLimitIn applies the In predicate on the "estimated_reference_limit" field.
+func EstimatedReferenceLimitIn(vs ...float64) predicate.AccountWindowUsageHistory {
+	return predicate.AccountWindowUsageHistory(sql.FieldIn(FieldEstimatedReferenceLimit, vs...))
+}
+
+// EstimatedReferenceLimitNotIn applies the NotIn predicate on the "estimated_reference_limit" field.
+func EstimatedReferenceLimitNotIn(vs ...float64) predicate.AccountWindowUsageHistory {
+	return predicate.AccountWindowUsageHistory(sql.FieldNotIn(FieldEstimatedReferenceLimit, vs...))
+}
+
+// EstimatedReferenceLimitGT applies the GT predicate on the "estimated_reference_limit" field.
+func EstimatedReferenceLimitGT(v float64) predicate.AccountWindowUsageHistory {
+	return predicate.AccountWindowUsageHistory(sql.FieldGT(FieldEstimatedReferenceLimit, v))
+}
+
+// EstimatedReferenceLimitGTE applies the GTE predicate on the "estimated_reference_limit" field.
+func EstimatedReferenceLimitGTE(v float64) predicate.AccountWindowUsageHistory {
+	return predicate.AccountWindowUsageHistory(sql.FieldGTE(FieldEstimatedReferenceLimit, v))
+}
+
+// EstimatedReferenceLimitLT applies the LT predicate on the "estimated_reference_limit" field.
+func EstimatedReferenceLimitLT(v float64) predicate.AccountWindowUsageHistory {
+	return predicate.AccountWindowUsageHistory(sql.FieldLT(FieldEstimatedReferenceLimit, v))
+}
+
+// EstimatedReferenceLimitLTE applies the LTE predicate on the "estimated_reference_limit" field.
+func EstimatedReferenceLimitLTE(v float64) predicate.AccountWindowUsageHistory {
+	return predicate.AccountWindowUsageHistory(sql.FieldLTE(FieldEstimatedReferenceLimit, v))
+}
+
+// EstimatedReferenceLimitIsNil applies the IsNil predicate on the "estimated_reference_limit" field.
+func EstimatedReferenceLimitIsNil() predicate.AccountWindowUsageHistory {
+	return predicate.AccountWindowUsageHistory(sql.FieldIsNull(FieldEstimatedReferenceLimit))
+}
+
+// EstimatedReferenceLimitNotNil applies the NotNil predicate on the "estimated_reference_limit" field.
+func EstimatedReferenceLimitNotNil() predicate.AccountWindowUsageHistory {
+	return predicate.AccountWindowUsageHistory(sql.FieldNotNull(FieldEstimatedReferenceLimit))
+}
+
+// EstimateReferenceCostEQ applies the EQ predicate on the "estimate_reference_cost" field.
+func EstimateReferenceCostEQ(v float64) predicate.AccountWindowUsageHistory {
+	return predicate.AccountWindowUsageHistory(sql.FieldEQ(FieldEstimateReferenceCost, v))
+}
+
+// EstimateReferenceCostNEQ applies the NEQ predicate on the "estimate_reference_cost" field.
+func EstimateReferenceCostNEQ(v float64) predicate.AccountWindowUsageHistory {
+	return predicate.AccountWindowUsageHistory(sql.FieldNEQ(FieldEstimateReferenceCost, v))
+}
+
+// EstimateReferenceCostIn applies the In predicate on the "estimate_reference_cost" field.
+func EstimateReferenceCostIn(vs ...float64) predicate.AccountWindowUsageHistory {
+	return predicate.AccountWindowUsageHistory(sql.FieldIn(FieldEstimateReferenceCost, vs...))
+}
+
+// EstimateReferenceCostNotIn applies the NotIn predicate on the "estimate_reference_cost" field.
+func EstimateReferenceCostNotIn(vs ...float64) predicate.AccountWindowUsageHistory {
+	return predicate.AccountWindowUsageHistory(sql.FieldNotIn(FieldEstimateReferenceCost, vs...))
+}
+
+// EstimateReferenceCostGT applies the GT predicate on the "estimate_reference_cost" field.
+func EstimateReferenceCostGT(v float64) predicate.AccountWindowUsageHistory {
+	return predicate.AccountWindowUsageHistory(sql.FieldGT(FieldEstimateReferenceCost, v))
+}
+
+// EstimateReferenceCostGTE applies the GTE predicate on the "estimate_reference_cost" field.
+func EstimateReferenceCostGTE(v float64) predicate.AccountWindowUsageHistory {
+	return predicate.AccountWindowUsageHistory(sql.FieldGTE(FieldEstimateReferenceCost, v))
+}
+
+// EstimateReferenceCostLT applies the LT predicate on the "estimate_reference_cost" field.
+func EstimateReferenceCostLT(v float64) predicate.AccountWindowUsageHistory {
+	return predicate.AccountWindowUsageHistory(sql.FieldLT(FieldEstimateReferenceCost, v))
+}
+
+// EstimateReferenceCostLTE applies the LTE predicate on the "estimate_reference_cost" field.
+func EstimateReferenceCostLTE(v float64) predicate.AccountWindowUsageHistory {
+	return predicate.AccountWindowUsageHistory(sql.FieldLTE(FieldEstimateReferenceCost, v))
+}
+
+// EstimateReferenceCostIsNil applies the IsNil predicate on the "estimate_reference_cost" field.
+func EstimateReferenceCostIsNil() predicate.AccountWindowUsageHistory {
+	return predicate.AccountWindowUsageHistory(sql.FieldIsNull(FieldEstimateReferenceCost))
+}
+
+// EstimateReferenceCostNotNil applies the NotNil predicate on the "estimate_reference_cost" field.
+func EstimateReferenceCostNotNil() predicate.AccountWindowUsageHistory {
+	return predicate.AccountWindowUsageHistory(sql.FieldNotNull(FieldEstimateReferenceCost))
+}
+
+// EstimateUsedPercentEQ applies the EQ predicate on the "estimate_used_percent" field.
+func EstimateUsedPercentEQ(v float64) predicate.AccountWindowUsageHistory {
+	return predicate.AccountWindowUsageHistory(sql.FieldEQ(FieldEstimateUsedPercent, v))
+}
+
+// EstimateUsedPercentNEQ applies the NEQ predicate on the "estimate_used_percent" field.
+func EstimateUsedPercentNEQ(v float64) predicate.AccountWindowUsageHistory {
+	return predicate.AccountWindowUsageHistory(sql.FieldNEQ(FieldEstimateUsedPercent, v))
+}
+
+// EstimateUsedPercentIn applies the In predicate on the "estimate_used_percent" field.
+func EstimateUsedPercentIn(vs ...float64) predicate.AccountWindowUsageHistory {
+	return predicate.AccountWindowUsageHistory(sql.FieldIn(FieldEstimateUsedPercent, vs...))
+}
+
+// EstimateUsedPercentNotIn applies the NotIn predicate on the "estimate_used_percent" field.
+func EstimateUsedPercentNotIn(vs ...float64) predicate.AccountWindowUsageHistory {
+	return predicate.AccountWindowUsageHistory(sql.FieldNotIn(FieldEstimateUsedPercent, vs...))
+}
+
+// EstimateUsedPercentGT applies the GT predicate on the "estimate_used_percent" field.
+func EstimateUsedPercentGT(v float64) predicate.AccountWindowUsageHistory {
+	return predicate.AccountWindowUsageHistory(sql.FieldGT(FieldEstimateUsedPercent, v))
+}
+
+// EstimateUsedPercentGTE applies the GTE predicate on the "estimate_used_percent" field.
+func EstimateUsedPercentGTE(v float64) predicate.AccountWindowUsageHistory {
+	return predicate.AccountWindowUsageHistory(sql.FieldGTE(FieldEstimateUsedPercent, v))
+}
+
+// EstimateUsedPercentLT applies the LT predicate on the "estimate_used_percent" field.
+func EstimateUsedPercentLT(v float64) predicate.AccountWindowUsageHistory {
+	return predicate.AccountWindowUsageHistory(sql.FieldLT(FieldEstimateUsedPercent, v))
+}
+
+// EstimateUsedPercentLTE applies the LTE predicate on the "estimate_used_percent" field.
+func EstimateUsedPercentLTE(v float64) predicate.AccountWindowUsageHistory {
+	return predicate.AccountWindowUsageHistory(sql.FieldLTE(FieldEstimateUsedPercent, v))
+}
+
+// EstimateUsedPercentIsNil applies the IsNil predicate on the "estimate_used_percent" field.
+func EstimateUsedPercentIsNil() predicate.AccountWindowUsageHistory {
+	return predicate.AccountWindowUsageHistory(sql.FieldIsNull(FieldEstimateUsedPercent))
+}
+
+// EstimateUsedPercentNotNil applies the NotNil predicate on the "estimate_used_percent" field.
+func EstimateUsedPercentNotNil() predicate.AccountWindowUsageHistory {
+	return predicate.AccountWindowUsageHistory(sql.FieldNotNull(FieldEstimateUsedPercent))
+}
+
+// EstimateObservedAtEQ applies the EQ predicate on the "estimate_observed_at" field.
+func EstimateObservedAtEQ(v time.Time) predicate.AccountWindowUsageHistory {
+	return predicate.AccountWindowUsageHistory(sql.FieldEQ(FieldEstimateObservedAt, v))
+}
+
+// EstimateObservedAtNEQ applies the NEQ predicate on the "estimate_observed_at" field.
+func EstimateObservedAtNEQ(v time.Time) predicate.AccountWindowUsageHistory {
+	return predicate.AccountWindowUsageHistory(sql.FieldNEQ(FieldEstimateObservedAt, v))
+}
+
+// EstimateObservedAtIn applies the In predicate on the "estimate_observed_at" field.
+func EstimateObservedAtIn(vs ...time.Time) predicate.AccountWindowUsageHistory {
+	return predicate.AccountWindowUsageHistory(sql.FieldIn(FieldEstimateObservedAt, vs...))
+}
+
+// EstimateObservedAtNotIn applies the NotIn predicate on the "estimate_observed_at" field.
+func EstimateObservedAtNotIn(vs ...time.Time) predicate.AccountWindowUsageHistory {
+	return predicate.AccountWindowUsageHistory(sql.FieldNotIn(FieldEstimateObservedAt, vs...))
+}
+
+// EstimateObservedAtGT applies the GT predicate on the "estimate_observed_at" field.
+func EstimateObservedAtGT(v time.Time) predicate.AccountWindowUsageHistory {
+	return predicate.AccountWindowUsageHistory(sql.FieldGT(FieldEstimateObservedAt, v))
+}
+
+// EstimateObservedAtGTE applies the GTE predicate on the "estimate_observed_at" field.
+func EstimateObservedAtGTE(v time.Time) predicate.AccountWindowUsageHistory {
+	return predicate.AccountWindowUsageHistory(sql.FieldGTE(FieldEstimateObservedAt, v))
+}
+
+// EstimateObservedAtLT applies the LT predicate on the "estimate_observed_at" field.
+func EstimateObservedAtLT(v time.Time) predicate.AccountWindowUsageHistory {
+	return predicate.AccountWindowUsageHistory(sql.FieldLT(FieldEstimateObservedAt, v))
+}
+
+// EstimateObservedAtLTE applies the LTE predicate on the "estimate_observed_at" field.
+func EstimateObservedAtLTE(v time.Time) predicate.AccountWindowUsageHistory {
+	return predicate.AccountWindowUsageHistory(sql.FieldLTE(FieldEstimateObservedAt, v))
+}
+
+// EstimateObservedAtIsNil applies the IsNil predicate on the "estimate_observed_at" field.
+func EstimateObservedAtIsNil() predicate.AccountWindowUsageHistory {
+	return predicate.AccountWindowUsageHistory(sql.FieldIsNull(FieldEstimateObservedAt))
+}
+
+// EstimateObservedAtNotNil applies the NotNil predicate on the "estimate_observed_at" field.
+func EstimateObservedAtNotNil() predicate.AccountWindowUsageHistory {
+	return predicate.AccountWindowUsageHistory(sql.FieldNotNull(FieldEstimateObservedAt))
+}
+
+// EndReasonEQ applies the EQ predicate on the "end_reason" field.
+func EndReasonEQ(v string) predicate.AccountWindowUsageHistory {
+	return predicate.AccountWindowUsageHistory(sql.FieldEQ(FieldEndReason, v))
+}
+
+// EndReasonNEQ applies the NEQ predicate on the "end_reason" field.
+func EndReasonNEQ(v string) predicate.AccountWindowUsageHistory {
+	return predicate.AccountWindowUsageHistory(sql.FieldNEQ(FieldEndReason, v))
+}
+
+// EndReasonIn applies the In predicate on the "end_reason" field.
+func EndReasonIn(vs ...string) predicate.AccountWindowUsageHistory {
+	return predicate.AccountWindowUsageHistory(sql.FieldIn(FieldEndReason, vs...))
+}
+
+// EndReasonNotIn applies the NotIn predicate on the "end_reason" field.
+func EndReasonNotIn(vs ...string) predicate.AccountWindowUsageHistory {
+	return predicate.AccountWindowUsageHistory(sql.FieldNotIn(FieldEndReason, vs...))
+}
+
+// EndReasonGT applies the GT predicate on the "end_reason" field.
+func EndReasonGT(v string) predicate.AccountWindowUsageHistory {
+	return predicate.AccountWindowUsageHistory(sql.FieldGT(FieldEndReason, v))
+}
+
+// EndReasonGTE applies the GTE predicate on the "end_reason" field.
+func EndReasonGTE(v string) predicate.AccountWindowUsageHistory {
+	return predicate.AccountWindowUsageHistory(sql.FieldGTE(FieldEndReason, v))
+}
+
+// EndReasonLT applies the LT predicate on the "end_reason" field.
+func EndReasonLT(v string) predicate.AccountWindowUsageHistory {
+	return predicate.AccountWindowUsageHistory(sql.FieldLT(FieldEndReason, v))
+}
+
+// EndReasonLTE applies the LTE predicate on the "end_reason" field.
+func EndReasonLTE(v string) predicate.AccountWindowUsageHistory {
+	return predicate.AccountWindowUsageHistory(sql.FieldLTE(FieldEndReason, v))
+}
+
+// EndReasonContains applies the Contains predicate on the "end_reason" field.
+func EndReasonContains(v string) predicate.AccountWindowUsageHistory {
+	return predicate.AccountWindowUsageHistory(sql.FieldContains(FieldEndReason, v))
+}
+
+// EndReasonHasPrefix applies the HasPrefix predicate on the "end_reason" field.
+func EndReasonHasPrefix(v string) predicate.AccountWindowUsageHistory {
+	return predicate.AccountWindowUsageHistory(sql.FieldHasPrefix(FieldEndReason, v))
+}
+
+// EndReasonHasSuffix applies the HasSuffix predicate on the "end_reason" field.
+func EndReasonHasSuffix(v string) predicate.AccountWindowUsageHistory {
+	return predicate.AccountWindowUsageHistory(sql.FieldHasSuffix(FieldEndReason, v))
+}
+
+// EndReasonIsNil applies the IsNil predicate on the "end_reason" field.
+func EndReasonIsNil() predicate.AccountWindowUsageHistory {
+	return predicate.AccountWindowUsageHistory(sql.FieldIsNull(FieldEndReason))
+}
+
+// EndReasonNotNil applies the NotNil predicate on the "end_reason" field.
+func EndReasonNotNil() predicate.AccountWindowUsageHistory {
+	return predicate.AccountWindowUsageHistory(sql.FieldNotNull(FieldEndReason))
+}
+
+// EndReasonEqualFold applies the EqualFold predicate on the "end_reason" field.
+func EndReasonEqualFold(v string) predicate.AccountWindowUsageHistory {
+	return predicate.AccountWindowUsageHistory(sql.FieldEqualFold(FieldEndReason, v))
+}
+
+// EndReasonContainsFold applies the ContainsFold predicate on the "end_reason" field.
+func EndReasonContainsFold(v string) predicate.AccountWindowUsageHistory {
+	return predicate.AccountWindowUsageHistory(sql.FieldContainsFold(FieldEndReason, v))
+}
+
+// StatsFinalizedAtEQ applies the EQ predicate on the "stats_finalized_at" field.
+func StatsFinalizedAtEQ(v time.Time) predicate.AccountWindowUsageHistory {
+	return predicate.AccountWindowUsageHistory(sql.FieldEQ(FieldStatsFinalizedAt, v))
+}
+
+// StatsFinalizedAtNEQ applies the NEQ predicate on the "stats_finalized_at" field.
+func StatsFinalizedAtNEQ(v time.Time) predicate.AccountWindowUsageHistory {
+	return predicate.AccountWindowUsageHistory(sql.FieldNEQ(FieldStatsFinalizedAt, v))
+}
+
+// StatsFinalizedAtIn applies the In predicate on the "stats_finalized_at" field.
+func StatsFinalizedAtIn(vs ...time.Time) predicate.AccountWindowUsageHistory {
+	return predicate.AccountWindowUsageHistory(sql.FieldIn(FieldStatsFinalizedAt, vs...))
+}
+
+// StatsFinalizedAtNotIn applies the NotIn predicate on the "stats_finalized_at" field.
+func StatsFinalizedAtNotIn(vs ...time.Time) predicate.AccountWindowUsageHistory {
+	return predicate.AccountWindowUsageHistory(sql.FieldNotIn(FieldStatsFinalizedAt, vs...))
+}
+
+// StatsFinalizedAtGT applies the GT predicate on the "stats_finalized_at" field.
+func StatsFinalizedAtGT(v time.Time) predicate.AccountWindowUsageHistory {
+	return predicate.AccountWindowUsageHistory(sql.FieldGT(FieldStatsFinalizedAt, v))
+}
+
+// StatsFinalizedAtGTE applies the GTE predicate on the "stats_finalized_at" field.
+func StatsFinalizedAtGTE(v time.Time) predicate.AccountWindowUsageHistory {
+	return predicate.AccountWindowUsageHistory(sql.FieldGTE(FieldStatsFinalizedAt, v))
+}
+
+// StatsFinalizedAtLT applies the LT predicate on the "stats_finalized_at" field.
+func StatsFinalizedAtLT(v time.Time) predicate.AccountWindowUsageHistory {
+	return predicate.AccountWindowUsageHistory(sql.FieldLT(FieldStatsFinalizedAt, v))
+}
+
+// StatsFinalizedAtLTE applies the LTE predicate on the "stats_finalized_at" field.
+func StatsFinalizedAtLTE(v time.Time) predicate.AccountWindowUsageHistory {
+	return predicate.AccountWindowUsageHistory(sql.FieldLTE(FieldStatsFinalizedAt, v))
+}
+
+// StatsFinalizedAtIsNil applies the IsNil predicate on the "stats_finalized_at" field.
+func StatsFinalizedAtIsNil() predicate.AccountWindowUsageHistory {
+	return predicate.AccountWindowUsageHistory(sql.FieldIsNull(FieldStatsFinalizedAt))
+}
+
+// StatsFinalizedAtNotNil applies the NotNil predicate on the "stats_finalized_at" field.
+func StatsFinalizedAtNotNil() predicate.AccountWindowUsageHistory {
+	return predicate.AccountWindowUsageHistory(sql.FieldNotNull(FieldStatsFinalizedAt))
 }
 
 // FinalizedAtEQ applies the EQ predicate on the "finalized_at" field.

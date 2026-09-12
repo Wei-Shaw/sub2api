@@ -1028,9 +1028,8 @@ func ProvideChannelMonitorRunner(
 // Stop 由 cmd/server 的 cleanup function 调用。
 func ProvideAccountWindowUsageIngester(
 	windowRepo AccountWindowUsageRepository,
-	usageLogRepo UsageLogRepository,
 ) *AccountWindowUsageIngester {
-	g := NewAccountWindowUsageIngester(windowRepo, usageLogRepo)
+	g := NewAccountWindowUsageIngester(windowRepo)
 	g.Start()
 	return g
 }

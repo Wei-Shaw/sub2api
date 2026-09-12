@@ -14,6 +14,7 @@ import type {
   WindowStats,
   ClaudeModel,
   AccountUsageStatsResponse,
+  AccountWindowHistoryResponse,
   TempUnschedulableStatus,
   AdminDataPayload,
   AdminDataImportResult,
@@ -349,6 +350,15 @@ export async function applyOAuthCredentials(
 export async function getStats(id: number, days: number = 30): Promise<AccountUsageStatsResponse> {
   const { data } = await apiClient.get<AccountUsageStatsResponse>(`/admin/accounts/${id}/stats`, {
     params: { days }
+  })
+  return data
+}
+
+/** Read persisted quota history without querying the upstream account. */
+export async function getWindowHistory(id: number, days = 90, signal?: AbortSignal): Promise<AccountWindowHistoryResponse> {
+  const { data } = await apiClient.get<AccountWindowHistoryResponse>(`/admin/accounts/${id}/window-history`, {
+    params: { days },
+    signal
   })
   return data
 }
@@ -1083,6 +1093,7 @@ export const accountsAPI = {
   refreshCredentials,
   applyOAuthCredentials,
   getStats,
+  getWindowHistory,
   clearError,
   getUsage,
   getBatchUsage,

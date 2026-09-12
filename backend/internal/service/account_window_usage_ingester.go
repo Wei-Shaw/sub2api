@@ -1,388 +1,428 @@
 package service
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"log/slog"
+	"math"
+	"strconv"
 	"sync"
 	"time"
-
-	"github.com/Wei-Shaw/sub2api/internal/domain"
 )
 
-// AccountWindowUsageIngester 账号滚动窗口用量采集器（纯被动）。
-//
-// 不做任何主动探测：只按水位回放两条既有观测流，并维护开放行状态机：
-//   - 被动源①：渠道监控明细历史（channel_monitor_histories 持久化的按账号
-//     配额快照，quota/quota_probe 模式）——覆盖配置了监控的 Anthropic /
-//     国产 coding plan 账号
-//   - 被动源②：OpenAI/Codex 真实流量响应头归一化落库的 accounts.extra
-//     快照（网关侧按账号 30s 节流写入）——覆盖全部有流量的 openai 账号
-//   - finalize：window_end 过后 finalizeGrace 仍未被新观测推进的开放行，
-//     用 usage_logs 在 [window_start, window_end) 内聚合回填 token 明细并关闭
-//
-// 调度形态：单 goroutine 循环（ingesterTickInterval），每轮读取两个被动源
-// 的新增观测（限量）、逐条 ApplySnapshot、再做 finalize 扫描。全部操作是
-// DB 读写，不触碰上游；服务重启后从 DB 行与水位回放窗口恢复。
-//
-// 水位为进程内状态，初始值为 now - ingesterBackfillWindow：重启（或多副本）
-// 会重扫回填窗口内的观测并重新应用——upsert 按 last_sample_at 去重，同一
-// 观测重复回放恰好计数一次，幂等无害。渠道监控明细保留 30 天，回填窗口
-// 取 7 天：首次部署即可重建近一周的窗口历史，同时避免重启时全量重放。
-//
-// 多副本部署下每个副本都会运行本采集器：观测回放的原子 upsert 与 finalize
-// 的 finalized_at IS NULL 守卫使重复写入幂等，最坏情况是重复的 DB 读。
-type AccountWindowUsageIngester struct {
-	windowRepo   AccountWindowUsageRepository
-	usageLogRepo UsageLogRepository
-
-	parentCtx    context.Context
-	parentCancel context.CancelFunc
-
-	wg      sync.WaitGroup
-	started bool
-	stopped bool
-	mu      sync.Mutex
-
-	// monitorWM/codexWM 两个被动源各自已回放的观测时刻水位（进程内）
-	monitorWM time.Time
-	codexWM   time.Time
-	wmMu      sync.Mutex
-}
-
-// 采集器节奏与守卫常量。
 const (
-	// ingesterTickInterval 循环粒度：驱动被动源水位读取与 finalize 扫描
-	ingesterTickInterval = 15 * time.Second
-	// ingesterFinalizeGrace window_end 过后的收敛等待（容忍迟到 usage_logs 写入）
-	ingesterFinalizeGrace = 5 * time.Minute
-	// ingesterSweepLimit 单轮被动源读取/finalize 扫描的行数上限
-	ingesterSweepLimit = 500
-	// ingesterBackfillWindow 水位初始回看窗口：重启/首启重放的观测范围
-	ingesterBackfillWindow = 7 * 24 * time.Hour
-	// ingesterResetEpsilon 两次观测的 reset_at 视为同一窗口的容差
-	// （供应商时间戳存在秒级抖动）
-	ingesterResetEpsilon = 2 * time.Second
-	// windowHistoryRetentionDays 已关闭窗口历史的保留天数
-	windowHistoryRetentionDays = 90
-	// windowStaleOpenRetentionDays 僵尸开放行的保留天数（账号软删/数据源消失兜底）
+	ingesterTickInterval         = 15 * time.Second
+	ingesterObservationGrace     = 30 * time.Second
+	ingesterFinalizeGrace        = 5 * time.Minute
+	ingesterSweepLimit           = 500
+	ingesterResetEpsilon         = 2 * time.Second
+	windowHistoryRetentionDays   = 90
 	windowStaleOpenRetentionDays = 14
+	minimumEstimateUtilization   = 5.0
 )
 
-// NewAccountWindowUsageIngester 构造采集器。
-func NewAccountWindowUsageIngester(
-	windowRepo AccountWindowUsageRepository,
-	usageLogRepo UsageLogRepository,
-) *AccountWindowUsageIngester {
-	ctx, cancel := context.WithCancel(context.Background())
-	backfillFrom := time.Now().Add(-ingesterBackfillWindow)
-	return &AccountWindowUsageIngester{
-		windowRepo:   windowRepo,
-		usageLogRepo: usageLogRepo,
-		parentCtx:    ctx,
-		parentCancel: cancel,
-		monitorWM:    backfillFrom,
-		codexWM:      backfillFrom,
-	}
+type AccountWindowUsageIngester struct {
+	windowRepo AccountWindowUsageRepository
+	ctx        context.Context
+	cancel     context.CancelFunc
+	mu         sync.Mutex
+	started    bool
+	stopped    bool
+	wg         sync.WaitGroup
+	now        func() time.Time
 }
 
-// Start 启动采集器循环。调用方需保证只调一次（wire provider 内调用）。
+func NewAccountWindowUsageIngester(repo AccountWindowUsageRepository) *AccountWindowUsageIngester {
+	ctx, cancel := context.WithCancel(context.Background())
+	return &AccountWindowUsageIngester{windowRepo: repo, ctx: ctx, cancel: cancel, now: time.Now}
+}
 func (g *AccountWindowUsageIngester) Start() {
-	if g == nil || g.windowRepo == nil || g.usageLogRepo == nil {
+	if g == nil || g.windowRepo == nil {
 		return
 	}
 	g.mu.Lock()
+	defer g.mu.Unlock()
 	if g.started || g.stopped {
-		g.mu.Unlock()
 		return
 	}
 	g.started = true
-	g.mu.Unlock()
-
 	g.wg.Add(1)
-	go g.runLoop()
-	slog.Info("account_window_usage: ingester started",
-		"backfill_window", ingesterBackfillWindow.String())
+	go func() {
+		defer g.wg.Done()
+		ticker := time.NewTicker(ingesterTickInterval)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-g.ctx.Done():
+				return
+			case <-ticker.C:
+				g.runOnce(g.ctx)
+			}
+		}
+	}()
 }
-
-// Stop 优雅停止：取消循环并等待在飞任务结束。
 func (g *AccountWindowUsageIngester) Stop() {
 	if g == nil {
 		return
 	}
 	g.mu.Lock()
-	if g.stopped {
-		g.mu.Unlock()
-		return
-	}
 	g.stopped = true
-	g.parentCancel()
+	g.cancel()
 	g.mu.Unlock()
-
 	g.wg.Wait()
 }
-
-// RunDailyMaintenance 每日维护：保留期清理（OpsCleanupService cron 驱动，
-// 复用 leader lock）。
+func (g *AccountWindowUsageIngester) runOnce(ctx context.Context) {
+	defer func() {
+		if p := recover(); p != nil {
+			slog.Error("account_window_usage: tick panic", "panic", p)
+		}
+	}()
+	ctx, cancel := context.WithTimeout(ctx, ingesterTickInterval)
+	defer cancel()
+	now := g.now()
+	for i := 0; i < ingesterSweepLimit; i++ {
+		ok, err := g.windowRepo.ConsumeNextObservation(ctx, now.Add(-ingesterObservationGrace), g.ApplyObservation)
+		if err != nil {
+			slog.Warn("account_window_usage: observation remains pending", "error", err)
+			break
+		}
+		if !ok {
+			break
+		}
+	}
+	for i := 0; i < ingesterSweepLimit; i++ {
+		ok, err := g.windowRepo.ReconcileNextWindow(ctx, now.Add(-ingesterFinalizeGrace), func(ctx context.Context, row *AccountWindowUsageRecord) error {
+			if err := g.refreshStats(ctx, row, row.WindowEnd); err != nil {
+				return err
+			}
+			if row.FinalizedAt == nil {
+				row.FinalizedAt = &now
+				reason := "expired"
+				row.EndReason = &reason
+			}
+			row.StatsFinalizedAt = &now
+			row.QualityFlags = withoutFlag(row.QualityFlags, "pending_usage")
+			return g.windowRepo.SaveWindow(ctx, row)
+		})
+		if err != nil {
+			slog.Warn("account_window_usage: reconciliation remains pending", "error", err)
+			break
+		}
+		if !ok {
+			break
+		}
+	}
+}
 func (g *AccountWindowUsageIngester) RunDailyMaintenance(ctx context.Context) {
 	if g == nil || g.windowRepo == nil {
 		return
 	}
-
-	finalizedCutoff := time.Now().AddDate(0, 0, -windowHistoryRetentionDays)
-	if deleted, err := g.windowRepo.PruneFinalizedBefore(ctx, finalizedCutoff); err != nil {
-		slog.Warn("account_window_usage: prune finalized failed", "error", err)
-	} else if deleted > 0 {
-		slog.Info("account_window_usage: pruned finalized rows", "deleted", deleted)
-	}
-
-	staleCutoff := time.Now().AddDate(0, 0, -windowStaleOpenRetentionDays)
-	if deleted, err := g.windowRepo.PruneStaleOpenBefore(ctx, staleCutoff); err != nil {
-		slog.Warn("account_window_usage: prune stale open rows failed", "error", err)
-	} else if deleted > 0 {
-		slog.Info("account_window_usage: pruned stale open rows", "deleted", deleted)
+	now := g.now()
+	if err := g.windowRepo.PruneHistory(ctx, now.AddDate(0, 0, -windowHistoryRetentionDays), now.AddDate(0, 0, -windowStaleOpenRetentionDays)); err != nil {
+		slog.Warn("account_window_usage: retention cleanup failed", "error", err)
 	}
 }
 
-// runLoop 主循环：每 tick 回放被动源新增观测，再做 finalize 扫描。
-func (g *AccountWindowUsageIngester) runLoop() {
-	defer g.wg.Done()
-
-	ticker := time.NewTicker(ingesterTickInterval)
-	defer ticker.Stop()
-	for {
-		select {
-		case <-g.parentCtx.Done():
-			return
-		case <-ticker.C:
-			g.runOnce(g.parentCtx)
-		}
-	}
-}
-
-// runOnce 单轮调度。errors 只记日志：单轮失败不影响下一轮。
-func (g *AccountWindowUsageIngester) runOnce(ctx context.Context) {
-	// ticker goroutine 的 panic 兜底，否则一次 panic 会静默杀死该进程余生的采集循环
-	defer func() {
-		if rec := recover(); rec != nil {
-			slog.Error("account_window_usage: scheduler tick panic", "panic", rec)
-		}
-	}()
-
-	// 单轮整体封顶一个 tick：被动源积压（重启回填）时按限量跨轮排空，
-	// 不阻塞下一轮的 finalize 调度
-	fctx, cancel := context.WithTimeout(ctx, ingesterTickInterval)
-	defer cancel()
-
-	now := time.Now()
-	g.ingestMonitorHistory(fctx)
-	g.ingestCodexUsageUpdates(fctx)
-	g.finalizeExpired(fctx, now)
-}
-
-// ingestMonitorHistory 回放被动源①：渠道监控明细历史的新增快照。
-func (g *AccountWindowUsageIngester) ingestMonitorHistory(ctx context.Context) {
-	observations, err := g.windowRepo.ListMonitorQuotaHistorySince(ctx, g.currentWM(&g.monitorWM), ingesterSweepLimit)
-	if err != nil {
-		slog.Warn("account_window_usage: list monitor quota history failed", "error", err)
-		return
-	}
-	if len(observations) == 0 {
-		return
-	}
-
-	applied := 0
-	for _, obs := range observations {
-		if err := g.ApplyObservation(ctx, obs); err != nil {
-			slog.Warn("account_window_usage: apply monitor observation failed",
-				"account_id", obs.AccountID, "error", err)
-			continue
-		}
-		applied++
-	}
-	g.advanceWM(&g.monitorWM, observations[len(observations)-1].Snapshot.FetchedAt)
-	if n := len(observations); n == ingesterSweepLimit {
-		slog.Info("account_window_usage: monitor history backlog draining", "rows", n, "applied", applied)
-	}
-}
-
-// ingestCodexUsageUpdates 回放被动源②：openai 账号 extra 快照的新增更新。
-func (g *AccountWindowUsageIngester) ingestCodexUsageUpdates(ctx context.Context) {
-	observations, err := g.windowRepo.ListCodexUsageUpdatesSince(ctx, g.currentWM(&g.codexWM), ingesterSweepLimit)
-	if err != nil {
-		slog.Warn("account_window_usage: list codex usage updates failed", "error", err)
-		return
-	}
-	if len(observations) == 0 {
-		return
-	}
-
-	for _, obs := range observations {
-		if err := g.ApplyObservation(ctx, obs); err != nil {
-			slog.Warn("account_window_usage: apply codex observation failed",
-				"account_id", obs.AccountID, "error", err)
-		}
-	}
-	g.advanceWM(&g.codexWM, observations[len(observations)-1].Snapshot.FetchedAt)
-}
-
-// ApplyObservation 把一次按账号的配额观测交给状态机（独立导出便于单元测试）。
+// ApplyObservation is called only inside the journal transaction. Unlike polling
+// accounts.extra, this keeps observations that are overwritten before a tick.
 func (g *AccountWindowUsageIngester) ApplyObservation(ctx context.Context, obs *AccountQuotaObservation) error {
 	if obs == nil {
 		return nil
 	}
-	return g.ApplySnapshot(ctx, obs.AccountID, obs.Snapshot)
-}
-
-// ApplySnapshot 把一次配额快照的各窗口 tier 合并进开放行（状态机核心）。
-//
-// 单个 tier 的迁移：
-//
-//	无开放行                → 插入（start = reset - duration）
-//	|reset - windowEnd| ≤ ε → 同窗口：peak=max(peak, used%)、last=used%、计数+1
-//	reset 前移 && 旧 end>now → 滚动窗口滑动：更新指标 + 重算 start/end
-//	旧 windowEnd ≤ now      → 旧窗口关闭（回填 token）+ 插入新窗口
-//	reset 后移（上游抖动）   → 只更新指标，绝不回退 window_end
-//
-// 同一观测重复回放（多副本/重启回填）由 last_sample_at 去重：观测时刻不晚于
-// 行内已见时刻时直接跳过。
-func (g *AccountWindowUsageIngester) ApplySnapshot(ctx context.Context, accountID int64, snapshot *domain.MonitorQuotaSnapshot) error {
-	if snapshot == nil || !snapshot.Success {
+	var payload map[string]json.RawMessage
+	if err := json.Unmarshal(obs.Payload, &payload); err != nil {
 		return nil
 	}
-	now := time.Now()
-
-	// 单个 tier 失败不阻断其余窗口：记录首个错误，处理完所有 tier 后返回
-	var firstErr error
-	for _, tier := range snapshot.Tiers {
-		if err := g.applyTier(ctx, accountID, tier, snapshot.FetchedAt, now); err != nil && firstErr == nil {
-			firstErr = err
+	// Reset credits report a count, not a window bitmask. The marker is durable in
+	// the journal; infer its scope only from each window's subsequent observation.
+	for _, kind := range []string{"5h", "7d"} {
+		prefix := "codex_" + kind
+		used, ok := historyNumber(payload[prefix+"_used_percent"])
+		if !ok || used < 0 {
+			continue
+		}
+		var resetString string
+		if json.Unmarshal(payload[prefix+"_reset_at"], &resetString) != nil {
+			continue
+		}
+		reset, err := time.Parse(time.RFC3339Nano, resetString)
+		if err != nil {
+			continue
+		}
+		minutes, hasMinutes := historyNumber(payload[prefix+"_window_minutes"])
+		expected := int(windowTypeDuration[kind] / time.Minute)
+		// Missing duration uses the established canonical key semantics; an explicit
+		// other duration is never silently labelled 5h/7d (e.g. free monthly windows).
+		if hasMinutes && minutes != float64(expected) {
+			continue
+		}
+		if err := g.applyWindow(ctx, obs, kind, used, reset, expected); err != nil {
+			return err
 		}
 	}
-	return firstErr
+	return nil
 }
-
-// applyTier 处理单个窗口 tier 的状态迁移。
-func (g *AccountWindowUsageIngester) applyTier(ctx context.Context, accountID int64, tier domain.MonitorQuotaTier, fetchedAt, now time.Time) error {
-	if !recordedWindow(tier.Window) || tier.ResetAt == "" {
+func historyNumber(raw json.RawMessage) (float64, bool) {
+	if len(raw) == 0 || bytes.Equal(bytes.TrimSpace(raw), []byte("null")) {
+		return 0, false
+	}
+	var n float64
+	if json.Unmarshal(raw, &n) != nil {
+		var s string
+		if json.Unmarshal(raw, &s) != nil {
+			return 0, false
+		}
+		var err error
+		n, err = strconv.ParseFloat(s, 64)
+		if err != nil {
+			return 0, false
+		}
+	}
+	return n, !math.IsNaN(n) && !math.IsInf(n, 0)
+}
+func (g *AccountWindowUsageIngester) applyWindow(ctx context.Context, obs *AccountQuotaObservation, kind string, used float64, reset time.Time, minutes int) error {
+	if reset.Before(obs.ObservedAt.Add(-ingesterResetEpsilon)) {
 		return nil
 	}
-	resetAt, err := time.Parse(time.RFC3339, tier.ResetAt)
-	if err != nil {
-		return nil // 未知格式的时间戳跳过，不阻断其他 tier
-	}
-	windowType := tier.Window
-	duration := windowTypeDuration[windowType]
-
-	open, err := g.windowRepo.GetOpenWindow(ctx, accountID, windowType)
+	row, err := g.windowRepo.GetOpenWindow(ctx, obs.AccountID, kind)
 	if err != nil {
 		return err
 	}
-
-	// 重复观测去重：观测时刻不晚于行内已见时刻（同刻或乱序到达）→ 跳过。
-	// 这与 upsert 里的 CASE 条件双保险：进程内先挡掉绝大多数重复，
-	// SQL 层兜底并发竞态（两个副本同时回放同一观测时恰好计数一次）。
-	if open != nil && open.LastSampleAt != nil && !fetchedAt.After(*open.LastSampleAt) {
-		return nil
-	}
-
-	// 陈旧快照守卫：其他副本（或本副本的回填重放）可能仍持有上一窗口实例
-	// 的观测。这类快照若落入「reset 后移」分支，上一窗口的峰值会经 GREATEST
-	// 永久写进新窗口（peak 单调无自愈路径）；若落入「旧窗口过期」分支则会按
-	// 旧边界重开重复行。抓取时间早于当前开放行的窗口起点 → 属于上一窗口
-	// 实例，丢弃（容时钟秒级偏差）。
-	if open != nil && fetchedAt.Before(open.WindowStart.Add(-ingesterResetEpsilon)) {
-		return nil
-	}
-
-	// 构造本次采样的指标增量（sample_count 语义：插入时为 1，合并时累加 1）
-	buildRow := func(start, end time.Time) *AccountWindowUsageRecord {
-		sampledAt := fetchedAt
-		return &AccountWindowUsageRecord{
-			AccountID:       accountID,
-			WindowType:      windowType,
-			WindowStart:     start,
-			WindowEnd:       end,
-			PeakUsedPercent: tier.UsedPercent,
-			LastUsedPercent: tier.UsedPercent,
-			SampleCount:     1,
-			LastSampleAt:    &sampledAt,
-		}
-	}
-
-	// 分支 1：无开放行 → 直接插入。reset_at 已过的快照是陈旧数据（或旧行
-	// 已被并发 finalize）：此时新开的行 window_end 在过去，finalize 扫描会
-	// 再关一次，产生同一窗口的重复历史行——仅容忍秒级时钟偏差
-	if open == nil {
-		if !resetAt.After(now.Add(-ingesterResetEpsilon)) {
-			return nil
-		}
-		return g.windowRepo.UpsertOpenWindow(ctx, buildRow(resetAt.Add(-duration), resetAt))
-	}
-
-	sameWindow := resetAt.Sub(open.WindowEnd) <= ingesterResetEpsilon &&
-		resetAt.Sub(open.WindowEnd) >= -ingesterResetEpsilon
-	windowExpired := !open.WindowEnd.After(now)
-
-	switch {
-	// 分支 2：同一窗口（reset 抖动在容差内）→ 合并指标
-	case sameWindow:
-		return g.windowRepo.UpsertOpenWindow(ctx, buildRow(open.WindowStart, open.WindowEnd))
-
-	// 分支 3：旧窗口已过期 → 关闭旧行（回填 token）+ 写入新窗口行
-	case windowExpired:
-		stats, err := g.usageLogRepo.GetAccountWindowStatsRange(ctx, accountID, open.WindowStart, open.WindowEnd)
+	// A different replica can commit an older terminal observation after the
+	// next period has already opened. Route by the actual reset identity and
+	// observation time, rather than dropping it or merging it into the new row.
+	if row == nil || (row.LastSampleAt != nil && obs.ObservedAt.Before(*row.LastSampleAt)) || absDuration(reset.Sub(row.ResetAt)) > ingesterResetEpsilon {
+		closed, err := g.windowRepo.GetClosedWindow(ctx, obs.AccountID, kind, reset, obs.ObservedAt)
 		if err != nil {
 			return err
 		}
-		return g.windowRepo.ReplaceOpenWindow(ctx, open.ID, stats, buildRow(resetAt.Add(-duration), resetAt), now)
-
-	// 分支 4：reset 前移且旧 end 仍在未来 → 滚动窗口滑动，整体前移
-	case resetAt.After(open.WindowEnd):
-		return g.windowRepo.UpsertOpenWindow(ctx, buildRow(resetAt.Add(-duration), resetAt))
-
-	// 分支 5：reset 后移（上游抖动）→ 只更新指标，保留原窗口边界
-	default:
-		return g.windowRepo.UpsertOpenWindow(ctx, buildRow(open.WindowStart, open.WindowEnd))
+		if closed != nil {
+			return g.applyLateClosedObservation(ctx, closed, obs, used)
+		}
 	}
-}
-
-// finalizeExpired 关闭已过期（window_end + grace 已过）的开放行并回填 token 明细。
-func (g *AccountWindowUsageIngester) finalizeExpired(ctx context.Context, now time.Time) {
-	cutoff := now.Add(-ingesterFinalizeGrace)
-	rows, err := g.windowRepo.ListExpiredOpenWindows(ctx, cutoff, ingesterSweepLimit)
-	if err != nil {
-		slog.Warn("account_window_usage: list expired open windows failed", "error", err)
-		return
+	if row != nil && absDuration(reset.Sub(row.ResetAt)) <= ingesterResetEpsilon && duplicateWindowObservation(row, obs, used) {
+		return nil
 	}
-	for _, rec := range rows {
-		stats, err := g.usageLogRepo.GetAccountWindowStatsRange(ctx, rec.AccountID, rec.WindowStart, rec.WindowEnd)
+	if row != nil && (obs.ID <= row.LastObservationID || (row.LastSampleAt != nil && obs.ObservedAt.Before(*row.LastSampleAt))) {
+		return nil
+	}
+	if row != nil {
+		oldReset := row.ResetAt
+		different := absDuration(reset.Sub(oldReset)) > ingesterResetEpsilon
+		markerSince := row.FirstObservedAt
+		if row.LastSampleAt != nil {
+			markerSince = *row.LastSampleAt
+		}
+		marker, err := g.windowRepo.LatestResetMarker(ctx, obs.AccountID, markerSince, obs.ObservedAt)
 		if err != nil {
-			slog.Warn("account_window_usage: aggregate window usage failed",
-				"account_id", rec.AccountID, "window_type", rec.WindowType, "error", err)
-			continue
+			return err
 		}
-		if _, err := g.windowRepo.FinalizeWindow(ctx, rec.ID, stats, now); err != nil {
-			slog.Warn("account_window_usage: finalize window failed",
-				"account_id", rec.AccountID, "window_type", rec.WindowType, "error", err)
+		switch {
+		case marker != nil && marker.Before(oldReset) && (different || used+5 < row.LastUsedPercent):
+			// The reset marker provides the cut point; the new observation identifies
+			// the affected window. Freeze its previous estimate before changing bounds.
+			end := *marker
+			if end.Before(row.WindowStart) {
+				end = row.WindowStart
+			}
+			if end.After(row.WindowStart) {
+				row.WindowEnd = end
+				reason := "early_reset"
+				row.EndReason = &reason
+				row.FinalizedAt = &obs.ObservedAt
+				addFlag(row, "pending_usage")
+				if err := g.windowRepo.SaveWindow(ctx, row); err != nil {
+					return err
+				}
+				row = nil
+			}
+		case different && !obs.ObservedAt.Before(oldReset.Add(-ingesterResetEpsilon)):
+			reason := "expired"
+			row.EndReason = &reason
+			row.FinalizedAt = &obs.ObservedAt
+			addFlag(row, "pending_usage")
+			if err := g.windowRepo.SaveWindow(ctx, row); err != nil {
+				return err
+			}
+			row = nil
+		case different:
+			// A boundary move before expiry can mean an early reset or a provider
+			// correction. Without a reset marker, do not blend two windows' costs.
+			row.WindowEnd = obs.ObservedAt
+			if !row.WindowEnd.After(row.WindowStart) {
+				return nil
+			}
+			reason := "window_changed"
+			row.EndReason = &reason
+			row.FinalizedAt = &obs.ObservedAt
+			addFlag(row, "ambiguous_reset")
+			addFlag(row, "pending_usage")
+			if err := g.windowRepo.SaveWindow(ctx, row); err != nil {
+				return err
+			}
+			row = nil
+		case marker != nil:
+			// A used reset credit did not conclusively change this particular window.
+			addFlag(row, "ambiguous_reset")
+		}
+	}
+	if row == nil {
+		previous, err := g.windowRepo.GetLatestWindow(ctx, obs.AccountID, kind)
+		if err != nil {
+			return err
+		}
+		// Never re-open a sealed window because an out-of-order/duplicate sample
+		// arrived after reconciliation. Past observations remain journaled evidence.
+		if previous != nil && (obs.ID <= previous.LastObservationID || obs.ObservedAt.Before(previous.WindowEnd) || (absDuration(previous.ResetAt.Sub(reset)) <= ingesterResetEpsilon && previous.EndReason != nil && *previous.EndReason == "expired")) {
+			return nil
+		}
+		start := reset.Add(-time.Duration(minutes) * time.Minute)
+		row = &AccountWindowUsageRecord{AccountID: obs.AccountID, WindowType: kind, ResetAt: reset, DurationMinutes: minutes, AccountWindowUsageEntry: AccountWindowUsageEntry{WindowStart: start, WindowEnd: reset, FirstObservedAt: obs.ObservedAt, QualityFlags: []string{}}}
+		if previous != nil && previous.WindowEnd.After(start) {
+			row.WindowStart = previous.WindowEnd
+			if previous.EndReason != nil && *previous.EndReason != "early_reset" {
+				addFlag(row, "ambiguous_reset")
+			}
+		}
+		if !row.WindowEnd.After(row.WindowStart) {
+			return nil
+		}
+		// We can observe a low initial percentage, but cannot prove all prior local
+		// traffic exists. Keep the amount visible and disclose partial capture.
+		if obs.ObservedAt.After(row.WindowStart.Add(time.Minute)) {
+			addFlag(row, "partial_start")
+		}
+		if previous != nil && row.WindowStart.Sub(previous.WindowEnd) > time.Minute {
+			addFlag(row, "observation_gap")
+		}
+	}
+	row.SampleCount++
+	row.LastObservationID = obs.ID
+	row.LastSampleAt = &obs.ObservedAt
+	row.LastUsedPercent = used
+	if used > row.PeakUsedPercent {
+		row.PeakUsedPercent = used
+	}
+	statsEnd := obs.ObservedAt
+	if statsEnd.After(row.WindowEnd) {
+		statsEnd = row.WindowEnd
+	}
+	if err := g.refreshStats(ctx, row, statsEnd); err != nil {
+		return err
+	}
+	g.updateEstimate(row, used, obs.ObservedAt)
+	return g.windowRepo.SaveWindow(ctx, row)
+}
+func (g *AccountWindowUsageIngester) updateEstimate(row *AccountWindowUsageRecord, used float64, observedAt time.Time) {
+	row.QualityFlags = withoutFlag(row.QualityFlags, "low_utilization")
+	if used < minimumEstimateUtilization {
+		addFlag(row, "low_utilization")
+	} else if used <= 100 && row.APIReferenceCost != nil && row.MissingPricingRequests == 0 && row.PricedRequests > 0 && !historyCoverageIncomplete(row) {
+		// Only complete observed boundaries and fully priced local records may
+		// produce a new estimate. An older usable estimate keeps its own basis.
+		estimate := *row.APIReferenceCost * 100 / used
+		if !math.IsNaN(estimate) && !math.IsInf(estimate, 0) {
+			basis := *row.APIReferenceCost
+			row.EstimatedReferenceLimit = &estimate
+			row.EstimateReferenceCost = &basis
+			v := used
+			row.EstimateUsedPercent = &v
+			at := observedAt
+			row.EstimateObservedAt = &at
 		}
 	}
 }
-
-// currentWM 读取指定水位（调用方持锁语义由 wmMu 保证）。
-func (g *AccountWindowUsageIngester) currentWM(wm *time.Time) time.Time {
-	g.wmMu.Lock()
-	defer g.wmMu.Unlock()
-	return *wm
+func (g *AccountWindowUsageIngester) applyLateClosedObservation(ctx context.Context, row *AccountWindowUsageRecord, obs *AccountQuotaObservation, used float64) error {
+	if duplicateWindowObservation(row, obs, used) {
+		return nil
+	}
+	if obs.ID <= row.LastObservationID || (row.LastSampleAt != nil && obs.ObservedAt.Before(*row.LastSampleAt)) {
+		return nil
+	}
+	row.LastObservationID = obs.ID
+	row.LastSampleAt = &obs.ObservedAt
+	row.SampleCount++
+	row.LastUsedPercent = used
+	if used > row.PeakUsedPercent {
+		row.PeakUsedPercent = used
+	}
+	// Calculate the late sample's numerator at its original time. Do not replace
+	// the separately finalized full-period accumulated amount with this subtotal.
+	basis := *row
+	end := obs.ObservedAt
+	if end.After(row.WindowEnd) {
+		end = row.WindowEnd
+	}
+	if err := g.refreshStats(ctx, &basis, end); err != nil {
+		return err
+	}
+	g.updateEstimate(&basis, used, obs.ObservedAt)
+	row.EstimatedReferenceLimit = basis.EstimatedReferenceLimit
+	row.EstimateReferenceCost = basis.EstimateReferenceCost
+	row.EstimateUsedPercent = basis.EstimateUsedPercent
+	row.EstimateObservedAt = basis.EstimateObservedAt
+	row.QualityFlags = withoutFlag(row.QualityFlags, "low_utilization")
+	if used < minimumEstimateUtilization {
+		addFlag(row, "low_utilization")
+	}
+	return g.windowRepo.SaveWindow(ctx, row)
 }
 
-// advanceWM 前移水位（只进不退：读取失败/空结果不动）。
-func (g *AccountWindowUsageIngester) advanceWM(wm *time.Time, to time.Time) {
-	if to.IsZero() {
-		return
+func (g *AccountWindowUsageIngester) refreshStats(ctx context.Context, row *AccountWindowUsageRecord, end time.Time) error {
+	stats, err := g.windowRepo.AggregateReferenceUsage(ctx, row.AccountID, row.WindowStart, end)
+	if err != nil {
+		return err
 	}
-	g.wmMu.Lock()
-	defer g.wmMu.Unlock()
-	if to.After(*wm) {
-		*wm = to
+	row.Requests = stats.Requests
+	row.TokensTotal = stats.TokensTotal
+	row.APIReferenceCost = stats.ReferenceCost
+	row.PricedRequests = stats.PricedRequests
+	row.MissingPricingRequests = stats.MissingPricingRequests
+	row.QualityFlags = withoutFlag(row.QualityFlags, "missing_pricing")
+	if stats.MissingPricingRequests > 0 {
+		addFlag(row, "missing_pricing")
 	}
+	return nil
+}
+func addFlag(row *AccountWindowUsageRecord, flag string) {
+	for _, v := range row.QualityFlags {
+		if v == flag {
+			return
+		}
+	}
+	row.QualityFlags = append(row.QualityFlags, flag)
+}
+func withoutFlag(flags []string, flag string) []string {
+	out := make([]string, 0, len(flags))
+	for _, v := range flags {
+		if v != flag {
+			out = append(out, v)
+		}
+	}
+	return out
+}
+func absDuration(v time.Duration) time.Duration {
+	if v < 0 {
+		return -v
+	}
+	return v
+}
+
+func historyCoverageIncomplete(row *AccountWindowUsageRecord) bool {
+	for _, flag := range row.QualityFlags {
+		switch flag {
+		case "partial_start", "ambiguous_reset", "observation_gap":
+			return true
+		}
+	}
+	return false
+}
+
+// A producer can retry after the database committed but its acknowledgement was
+// lost. Distinct journal ids with the same window sample are equivalent; a
+// different percentage at the same timestamp remains a distinct observation.
+// The caller has already matched the window reset identity.
+func duplicateWindowObservation(row *AccountWindowUsageRecord, obs *AccountQuotaObservation, used float64) bool {
+	return row.LastSampleAt != nil && row.LastSampleAt.Equal(obs.ObservedAt) && row.LastUsedPercent == used
 }

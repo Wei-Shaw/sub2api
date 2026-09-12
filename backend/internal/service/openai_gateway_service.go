@@ -232,8 +232,10 @@ type OpenAIUsage struct {
 
 // OpenAIForwardResult represents the result of forwarding
 type OpenAIForwardResult struct {
-	RequestID  string
-	ResponseID string
+	// CodexUsageCaptured prevents re-observing quota headers after a body or WS turn completes.
+	CodexUsageCaptured bool
+	RequestID          string
+	ResponseID         string
 	// UpstreamHeaders 是直接上游的响应头，用于按账户配置解析上游请求标识。
 	UpstreamHeaders http.Header
 	Usage           OpenAIUsage
@@ -499,6 +501,7 @@ type OpenAIGatewayService struct {
 	openaiWSRetryMetrics                openAIWSRetryMetrics
 	responseHeaderFilter                *responseheaders.CompiledHeaderFilter
 	codexSnapshotThrottle               *accountWriteThrottle
+	codexObservationGate                codexObservationGate
 	openAIModelsCache                   openAIModelsCache
 	openaiCompatSessionResponses        sync.Map
 	openaiCompatAnthropicDigestSessions sync.Map
@@ -696,7 +699,11 @@ func (s *OpenAIGatewayService) billingDeps() *billingDeps {
 // CloseOpenAIWSPool 关闭 OpenAI WebSocket 连接池的后台 worker 和空闲连接。
 // 应在应用优雅关闭时调用。
 func (s *OpenAIGatewayService) CloseOpenAIWSPool() {
-	if s != nil && s.openaiWSPool != nil {
+	if s == nil {
+		return
+	}
+	s.codexObservationGate.close()
+	if s.openaiWSPool != nil {
 		s.openaiWSPool.Close()
 	}
 }

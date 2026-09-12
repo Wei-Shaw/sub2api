@@ -271,12 +271,22 @@ var (
 		{Name: "last_used_percent", Type: field.TypeFloat64, Default: 0},
 		{Name: "sample_count", Type: field.TypeInt, Default: 0},
 		{Name: "last_sample_at", Type: field.TypeTime, Nullable: true, SchemaType: map[string]string{"postgres": "timestamptz"}},
-		{Name: "requests", Type: field.TypeInt64, Nullable: true},
-		{Name: "tokens_total", Type: field.TypeInt64, Nullable: true},
-		{Name: "tokens_input", Type: field.TypeInt64, Nullable: true},
-		{Name: "tokens_output", Type: field.TypeInt64, Nullable: true},
-		{Name: "tokens_cache_creation", Type: field.TypeInt64, Nullable: true},
-		{Name: "tokens_cache_read", Type: field.TypeInt64, Nullable: true},
+		{Name: "requests", Type: field.TypeInt64, Default: 0},
+		{Name: "tokens_total", Type: field.TypeInt64, Default: 0},
+		{Name: "reset_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "duration_minutes", Type: field.TypeInt},
+		{Name: "first_observed_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "last_observation_id", Type: field.TypeInt64, Default: 0},
+		{Name: "api_reference_cost", Type: field.TypeFloat64, Nullable: true, SchemaType: map[string]string{"postgres": "numeric(20,10)"}},
+		{Name: "priced_requests", Type: field.TypeInt64, Default: 0},
+		{Name: "missing_pricing_requests", Type: field.TypeInt64, Default: 0},
+		{Name: "estimated_reference_limit", Type: field.TypeFloat64, Nullable: true, SchemaType: map[string]string{"postgres": "numeric(20,10)"}},
+		{Name: "estimate_reference_cost", Type: field.TypeFloat64, Nullable: true, SchemaType: map[string]string{"postgres": "numeric(20,10)"}},
+		{Name: "estimate_used_percent", Type: field.TypeFloat64, Nullable: true},
+		{Name: "estimate_observed_at", Type: field.TypeTime, Nullable: true, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "quality_flags", Type: field.TypeJSON},
+		{Name: "end_reason", Type: field.TypeString, Nullable: true, Size: 32},
+		{Name: "stats_finalized_at", Type: field.TypeTime, Nullable: true, SchemaType: map[string]string{"postgres": "timestamptz"}},
 		{Name: "finalized_at", Type: field.TypeTime, Nullable: true, SchemaType: map[string]string{"postgres": "timestamptz"}},
 		{Name: "account_id", Type: field.TypeInt64},
 	}
@@ -288,7 +298,7 @@ var (
 		ForeignKeys: []*schema.ForeignKey{
 			{
 				Symbol:     "account_window_usage_histories_accounts_window_usage_histories",
-				Columns:    []*schema.Column{AccountWindowUsageHistoriesColumns[17]},
+				Columns:    []*schema.Column{AccountWindowUsageHistoriesColumns[27]},
 				RefColumns: []*schema.Column{AccountsColumns[0]},
 				OnDelete:   schema.NoAction,
 			},
@@ -297,7 +307,7 @@ var (
 			{
 				Name:    "accountwindowusagehistory_account_id_window_type",
 				Unique:  true,
-				Columns: []*schema.Column{AccountWindowUsageHistoriesColumns[17], AccountWindowUsageHistoriesColumns[3]},
+				Columns: []*schema.Column{AccountWindowUsageHistoriesColumns[27], AccountWindowUsageHistoriesColumns[3]},
 				Annotation: &entsql.IndexAnnotation{
 					Where: "finalized_at IS NULL",
 				},
@@ -305,7 +315,7 @@ var (
 			{
 				Name:    "accountwindowusagehistory_account_id_window_type_window_end",
 				Unique:  false,
-				Columns: []*schema.Column{AccountWindowUsageHistoriesColumns[17], AccountWindowUsageHistoriesColumns[3], AccountWindowUsageHistoriesColumns[5]},
+				Columns: []*schema.Column{AccountWindowUsageHistoriesColumns[27], AccountWindowUsageHistoriesColumns[3], AccountWindowUsageHistoriesColumns[5]},
 			},
 			{
 				Name:    "accountwindowusagehistory_window_end",

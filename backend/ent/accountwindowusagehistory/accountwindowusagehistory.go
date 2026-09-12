@@ -38,14 +38,34 @@ const (
 	FieldRequests = "requests"
 	// FieldTokensTotal holds the string denoting the tokens_total field in the database.
 	FieldTokensTotal = "tokens_total"
-	// FieldTokensInput holds the string denoting the tokens_input field in the database.
-	FieldTokensInput = "tokens_input"
-	// FieldTokensOutput holds the string denoting the tokens_output field in the database.
-	FieldTokensOutput = "tokens_output"
-	// FieldTokensCacheCreation holds the string denoting the tokens_cache_creation field in the database.
-	FieldTokensCacheCreation = "tokens_cache_creation"
-	// FieldTokensCacheRead holds the string denoting the tokens_cache_read field in the database.
-	FieldTokensCacheRead = "tokens_cache_read"
+	// FieldResetAt holds the string denoting the reset_at field in the database.
+	FieldResetAt = "reset_at"
+	// FieldDurationMinutes holds the string denoting the duration_minutes field in the database.
+	FieldDurationMinutes = "duration_minutes"
+	// FieldFirstObservedAt holds the string denoting the first_observed_at field in the database.
+	FieldFirstObservedAt = "first_observed_at"
+	// FieldLastObservationID holds the string denoting the last_observation_id field in the database.
+	FieldLastObservationID = "last_observation_id"
+	// FieldAPIReferenceCost holds the string denoting the api_reference_cost field in the database.
+	FieldAPIReferenceCost = "api_reference_cost"
+	// FieldPricedRequests holds the string denoting the priced_requests field in the database.
+	FieldPricedRequests = "priced_requests"
+	// FieldMissingPricingRequests holds the string denoting the missing_pricing_requests field in the database.
+	FieldMissingPricingRequests = "missing_pricing_requests"
+	// FieldEstimatedReferenceLimit holds the string denoting the estimated_reference_limit field in the database.
+	FieldEstimatedReferenceLimit = "estimated_reference_limit"
+	// FieldEstimateReferenceCost holds the string denoting the estimate_reference_cost field in the database.
+	FieldEstimateReferenceCost = "estimate_reference_cost"
+	// FieldEstimateUsedPercent holds the string denoting the estimate_used_percent field in the database.
+	FieldEstimateUsedPercent = "estimate_used_percent"
+	// FieldEstimateObservedAt holds the string denoting the estimate_observed_at field in the database.
+	FieldEstimateObservedAt = "estimate_observed_at"
+	// FieldQualityFlags holds the string denoting the quality_flags field in the database.
+	FieldQualityFlags = "quality_flags"
+	// FieldEndReason holds the string denoting the end_reason field in the database.
+	FieldEndReason = "end_reason"
+	// FieldStatsFinalizedAt holds the string denoting the stats_finalized_at field in the database.
+	FieldStatsFinalizedAt = "stats_finalized_at"
 	// FieldFinalizedAt holds the string denoting the finalized_at field in the database.
 	FieldFinalizedAt = "finalized_at"
 	// EdgeAccount holds the string denoting the account edge name in mutations.
@@ -76,10 +96,20 @@ var Columns = []string{
 	FieldLastSampleAt,
 	FieldRequests,
 	FieldTokensTotal,
-	FieldTokensInput,
-	FieldTokensOutput,
-	FieldTokensCacheCreation,
-	FieldTokensCacheRead,
+	FieldResetAt,
+	FieldDurationMinutes,
+	FieldFirstObservedAt,
+	FieldLastObservationID,
+	FieldAPIReferenceCost,
+	FieldPricedRequests,
+	FieldMissingPricingRequests,
+	FieldEstimatedReferenceLimit,
+	FieldEstimateReferenceCost,
+	FieldEstimateUsedPercent,
+	FieldEstimateObservedAt,
+	FieldQualityFlags,
+	FieldEndReason,
+	FieldStatsFinalizedAt,
 	FieldFinalizedAt,
 }
 
@@ -108,6 +138,20 @@ var (
 	DefaultLastUsedPercent float64
 	// DefaultSampleCount holds the default value on creation for the "sample_count" field.
 	DefaultSampleCount int
+	// DefaultRequests holds the default value on creation for the "requests" field.
+	DefaultRequests int64
+	// DefaultTokensTotal holds the default value on creation for the "tokens_total" field.
+	DefaultTokensTotal int64
+	// DefaultLastObservationID holds the default value on creation for the "last_observation_id" field.
+	DefaultLastObservationID int64
+	// DefaultPricedRequests holds the default value on creation for the "priced_requests" field.
+	DefaultPricedRequests int64
+	// DefaultMissingPricingRequests holds the default value on creation for the "missing_pricing_requests" field.
+	DefaultMissingPricingRequests int64
+	// DefaultQualityFlags holds the default value on creation for the "quality_flags" field.
+	DefaultQualityFlags []string
+	// EndReasonValidator is a validator for the "end_reason" field. It is called by the builders before save.
+	EndReasonValidator func(string) error
 )
 
 // OrderOption defines the ordering options for the AccountWindowUsageHistory queries.
@@ -178,24 +222,69 @@ func ByTokensTotal(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldTokensTotal, opts...).ToFunc()
 }
 
-// ByTokensInput orders the results by the tokens_input field.
-func ByTokensInput(opts ...sql.OrderTermOption) OrderOption {
-	return sql.OrderByField(FieldTokensInput, opts...).ToFunc()
+// ByResetAt orders the results by the reset_at field.
+func ByResetAt(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldResetAt, opts...).ToFunc()
 }
 
-// ByTokensOutput orders the results by the tokens_output field.
-func ByTokensOutput(opts ...sql.OrderTermOption) OrderOption {
-	return sql.OrderByField(FieldTokensOutput, opts...).ToFunc()
+// ByDurationMinutes orders the results by the duration_minutes field.
+func ByDurationMinutes(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldDurationMinutes, opts...).ToFunc()
 }
 
-// ByTokensCacheCreation orders the results by the tokens_cache_creation field.
-func ByTokensCacheCreation(opts ...sql.OrderTermOption) OrderOption {
-	return sql.OrderByField(FieldTokensCacheCreation, opts...).ToFunc()
+// ByFirstObservedAt orders the results by the first_observed_at field.
+func ByFirstObservedAt(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldFirstObservedAt, opts...).ToFunc()
 }
 
-// ByTokensCacheRead orders the results by the tokens_cache_read field.
-func ByTokensCacheRead(opts ...sql.OrderTermOption) OrderOption {
-	return sql.OrderByField(FieldTokensCacheRead, opts...).ToFunc()
+// ByLastObservationID orders the results by the last_observation_id field.
+func ByLastObservationID(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldLastObservationID, opts...).ToFunc()
+}
+
+// ByAPIReferenceCost orders the results by the api_reference_cost field.
+func ByAPIReferenceCost(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldAPIReferenceCost, opts...).ToFunc()
+}
+
+// ByPricedRequests orders the results by the priced_requests field.
+func ByPricedRequests(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldPricedRequests, opts...).ToFunc()
+}
+
+// ByMissingPricingRequests orders the results by the missing_pricing_requests field.
+func ByMissingPricingRequests(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldMissingPricingRequests, opts...).ToFunc()
+}
+
+// ByEstimatedReferenceLimit orders the results by the estimated_reference_limit field.
+func ByEstimatedReferenceLimit(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldEstimatedReferenceLimit, opts...).ToFunc()
+}
+
+// ByEstimateReferenceCost orders the results by the estimate_reference_cost field.
+func ByEstimateReferenceCost(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldEstimateReferenceCost, opts...).ToFunc()
+}
+
+// ByEstimateUsedPercent orders the results by the estimate_used_percent field.
+func ByEstimateUsedPercent(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldEstimateUsedPercent, opts...).ToFunc()
+}
+
+// ByEstimateObservedAt orders the results by the estimate_observed_at field.
+func ByEstimateObservedAt(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldEstimateObservedAt, opts...).ToFunc()
+}
+
+// ByEndReason orders the results by the end_reason field.
+func ByEndReason(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldEndReason, opts...).ToFunc()
+}
+
+// ByStatsFinalizedAt orders the results by the stats_finalized_at field.
+func ByStatsFinalizedAt(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldStatsFinalizedAt, opts...).ToFunc()
 }
 
 // ByFinalizedAt orders the results by the finalized_at field.

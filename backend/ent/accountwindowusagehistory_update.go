@@ -10,6 +10,7 @@ import (
 
 	"entgo.io/ent/dialect/sql"
 	"entgo.io/ent/dialect/sql/sqlgraph"
+	"entgo.io/ent/dialect/sql/sqljson"
 	"entgo.io/ent/schema/field"
 	"github.com/Wei-Shaw/sub2api/ent/account"
 	"github.com/Wei-Shaw/sub2api/ent/accountwindowusagehistory"
@@ -195,12 +196,6 @@ func (_u *AccountWindowUsageHistoryUpdate) AddRequests(v int64) *AccountWindowUs
 	return _u
 }
 
-// ClearRequests clears the value of the "requests" field.
-func (_u *AccountWindowUsageHistoryUpdate) ClearRequests() *AccountWindowUsageHistoryUpdate {
-	_u.mutation.ClearRequests()
-	return _u
-}
-
 // SetTokensTotal sets the "tokens_total" field.
 func (_u *AccountWindowUsageHistoryUpdate) SetTokensTotal(v int64) *AccountWindowUsageHistoryUpdate {
 	_u.mutation.ResetTokensTotal()
@@ -222,117 +217,295 @@ func (_u *AccountWindowUsageHistoryUpdate) AddTokensTotal(v int64) *AccountWindo
 	return _u
 }
 
-// ClearTokensTotal clears the value of the "tokens_total" field.
-func (_u *AccountWindowUsageHistoryUpdate) ClearTokensTotal() *AccountWindowUsageHistoryUpdate {
-	_u.mutation.ClearTokensTotal()
+// SetResetAt sets the "reset_at" field.
+func (_u *AccountWindowUsageHistoryUpdate) SetResetAt(v time.Time) *AccountWindowUsageHistoryUpdate {
+	_u.mutation.SetResetAt(v)
 	return _u
 }
 
-// SetTokensInput sets the "tokens_input" field.
-func (_u *AccountWindowUsageHistoryUpdate) SetTokensInput(v int64) *AccountWindowUsageHistoryUpdate {
-	_u.mutation.ResetTokensInput()
-	_u.mutation.SetTokensInput(v)
-	return _u
-}
-
-// SetNillableTokensInput sets the "tokens_input" field if the given value is not nil.
-func (_u *AccountWindowUsageHistoryUpdate) SetNillableTokensInput(v *int64) *AccountWindowUsageHistoryUpdate {
+// SetNillableResetAt sets the "reset_at" field if the given value is not nil.
+func (_u *AccountWindowUsageHistoryUpdate) SetNillableResetAt(v *time.Time) *AccountWindowUsageHistoryUpdate {
 	if v != nil {
-		_u.SetTokensInput(*v)
+		_u.SetResetAt(*v)
 	}
 	return _u
 }
 
-// AddTokensInput adds value to the "tokens_input" field.
-func (_u *AccountWindowUsageHistoryUpdate) AddTokensInput(v int64) *AccountWindowUsageHistoryUpdate {
-	_u.mutation.AddTokensInput(v)
+// SetDurationMinutes sets the "duration_minutes" field.
+func (_u *AccountWindowUsageHistoryUpdate) SetDurationMinutes(v int) *AccountWindowUsageHistoryUpdate {
+	_u.mutation.ResetDurationMinutes()
+	_u.mutation.SetDurationMinutes(v)
 	return _u
 }
 
-// ClearTokensInput clears the value of the "tokens_input" field.
-func (_u *AccountWindowUsageHistoryUpdate) ClearTokensInput() *AccountWindowUsageHistoryUpdate {
-	_u.mutation.ClearTokensInput()
-	return _u
-}
-
-// SetTokensOutput sets the "tokens_output" field.
-func (_u *AccountWindowUsageHistoryUpdate) SetTokensOutput(v int64) *AccountWindowUsageHistoryUpdate {
-	_u.mutation.ResetTokensOutput()
-	_u.mutation.SetTokensOutput(v)
-	return _u
-}
-
-// SetNillableTokensOutput sets the "tokens_output" field if the given value is not nil.
-func (_u *AccountWindowUsageHistoryUpdate) SetNillableTokensOutput(v *int64) *AccountWindowUsageHistoryUpdate {
+// SetNillableDurationMinutes sets the "duration_minutes" field if the given value is not nil.
+func (_u *AccountWindowUsageHistoryUpdate) SetNillableDurationMinutes(v *int) *AccountWindowUsageHistoryUpdate {
 	if v != nil {
-		_u.SetTokensOutput(*v)
+		_u.SetDurationMinutes(*v)
 	}
 	return _u
 }
 
-// AddTokensOutput adds value to the "tokens_output" field.
-func (_u *AccountWindowUsageHistoryUpdate) AddTokensOutput(v int64) *AccountWindowUsageHistoryUpdate {
-	_u.mutation.AddTokensOutput(v)
+// AddDurationMinutes adds value to the "duration_minutes" field.
+func (_u *AccountWindowUsageHistoryUpdate) AddDurationMinutes(v int) *AccountWindowUsageHistoryUpdate {
+	_u.mutation.AddDurationMinutes(v)
 	return _u
 }
 
-// ClearTokensOutput clears the value of the "tokens_output" field.
-func (_u *AccountWindowUsageHistoryUpdate) ClearTokensOutput() *AccountWindowUsageHistoryUpdate {
-	_u.mutation.ClearTokensOutput()
+// SetFirstObservedAt sets the "first_observed_at" field.
+func (_u *AccountWindowUsageHistoryUpdate) SetFirstObservedAt(v time.Time) *AccountWindowUsageHistoryUpdate {
+	_u.mutation.SetFirstObservedAt(v)
 	return _u
 }
 
-// SetTokensCacheCreation sets the "tokens_cache_creation" field.
-func (_u *AccountWindowUsageHistoryUpdate) SetTokensCacheCreation(v int64) *AccountWindowUsageHistoryUpdate {
-	_u.mutation.ResetTokensCacheCreation()
-	_u.mutation.SetTokensCacheCreation(v)
-	return _u
-}
-
-// SetNillableTokensCacheCreation sets the "tokens_cache_creation" field if the given value is not nil.
-func (_u *AccountWindowUsageHistoryUpdate) SetNillableTokensCacheCreation(v *int64) *AccountWindowUsageHistoryUpdate {
+// SetNillableFirstObservedAt sets the "first_observed_at" field if the given value is not nil.
+func (_u *AccountWindowUsageHistoryUpdate) SetNillableFirstObservedAt(v *time.Time) *AccountWindowUsageHistoryUpdate {
 	if v != nil {
-		_u.SetTokensCacheCreation(*v)
+		_u.SetFirstObservedAt(*v)
 	}
 	return _u
 }
 
-// AddTokensCacheCreation adds value to the "tokens_cache_creation" field.
-func (_u *AccountWindowUsageHistoryUpdate) AddTokensCacheCreation(v int64) *AccountWindowUsageHistoryUpdate {
-	_u.mutation.AddTokensCacheCreation(v)
+// SetLastObservationID sets the "last_observation_id" field.
+func (_u *AccountWindowUsageHistoryUpdate) SetLastObservationID(v int64) *AccountWindowUsageHistoryUpdate {
+	_u.mutation.ResetLastObservationID()
+	_u.mutation.SetLastObservationID(v)
 	return _u
 }
 
-// ClearTokensCacheCreation clears the value of the "tokens_cache_creation" field.
-func (_u *AccountWindowUsageHistoryUpdate) ClearTokensCacheCreation() *AccountWindowUsageHistoryUpdate {
-	_u.mutation.ClearTokensCacheCreation()
-	return _u
-}
-
-// SetTokensCacheRead sets the "tokens_cache_read" field.
-func (_u *AccountWindowUsageHistoryUpdate) SetTokensCacheRead(v int64) *AccountWindowUsageHistoryUpdate {
-	_u.mutation.ResetTokensCacheRead()
-	_u.mutation.SetTokensCacheRead(v)
-	return _u
-}
-
-// SetNillableTokensCacheRead sets the "tokens_cache_read" field if the given value is not nil.
-func (_u *AccountWindowUsageHistoryUpdate) SetNillableTokensCacheRead(v *int64) *AccountWindowUsageHistoryUpdate {
+// SetNillableLastObservationID sets the "last_observation_id" field if the given value is not nil.
+func (_u *AccountWindowUsageHistoryUpdate) SetNillableLastObservationID(v *int64) *AccountWindowUsageHistoryUpdate {
 	if v != nil {
-		_u.SetTokensCacheRead(*v)
+		_u.SetLastObservationID(*v)
 	}
 	return _u
 }
 
-// AddTokensCacheRead adds value to the "tokens_cache_read" field.
-func (_u *AccountWindowUsageHistoryUpdate) AddTokensCacheRead(v int64) *AccountWindowUsageHistoryUpdate {
-	_u.mutation.AddTokensCacheRead(v)
+// AddLastObservationID adds value to the "last_observation_id" field.
+func (_u *AccountWindowUsageHistoryUpdate) AddLastObservationID(v int64) *AccountWindowUsageHistoryUpdate {
+	_u.mutation.AddLastObservationID(v)
 	return _u
 }
 
-// ClearTokensCacheRead clears the value of the "tokens_cache_read" field.
-func (_u *AccountWindowUsageHistoryUpdate) ClearTokensCacheRead() *AccountWindowUsageHistoryUpdate {
-	_u.mutation.ClearTokensCacheRead()
+// SetAPIReferenceCost sets the "api_reference_cost" field.
+func (_u *AccountWindowUsageHistoryUpdate) SetAPIReferenceCost(v float64) *AccountWindowUsageHistoryUpdate {
+	_u.mutation.ResetAPIReferenceCost()
+	_u.mutation.SetAPIReferenceCost(v)
+	return _u
+}
+
+// SetNillableAPIReferenceCost sets the "api_reference_cost" field if the given value is not nil.
+func (_u *AccountWindowUsageHistoryUpdate) SetNillableAPIReferenceCost(v *float64) *AccountWindowUsageHistoryUpdate {
+	if v != nil {
+		_u.SetAPIReferenceCost(*v)
+	}
+	return _u
+}
+
+// AddAPIReferenceCost adds value to the "api_reference_cost" field.
+func (_u *AccountWindowUsageHistoryUpdate) AddAPIReferenceCost(v float64) *AccountWindowUsageHistoryUpdate {
+	_u.mutation.AddAPIReferenceCost(v)
+	return _u
+}
+
+// ClearAPIReferenceCost clears the value of the "api_reference_cost" field.
+func (_u *AccountWindowUsageHistoryUpdate) ClearAPIReferenceCost() *AccountWindowUsageHistoryUpdate {
+	_u.mutation.ClearAPIReferenceCost()
+	return _u
+}
+
+// SetPricedRequests sets the "priced_requests" field.
+func (_u *AccountWindowUsageHistoryUpdate) SetPricedRequests(v int64) *AccountWindowUsageHistoryUpdate {
+	_u.mutation.ResetPricedRequests()
+	_u.mutation.SetPricedRequests(v)
+	return _u
+}
+
+// SetNillablePricedRequests sets the "priced_requests" field if the given value is not nil.
+func (_u *AccountWindowUsageHistoryUpdate) SetNillablePricedRequests(v *int64) *AccountWindowUsageHistoryUpdate {
+	if v != nil {
+		_u.SetPricedRequests(*v)
+	}
+	return _u
+}
+
+// AddPricedRequests adds value to the "priced_requests" field.
+func (_u *AccountWindowUsageHistoryUpdate) AddPricedRequests(v int64) *AccountWindowUsageHistoryUpdate {
+	_u.mutation.AddPricedRequests(v)
+	return _u
+}
+
+// SetMissingPricingRequests sets the "missing_pricing_requests" field.
+func (_u *AccountWindowUsageHistoryUpdate) SetMissingPricingRequests(v int64) *AccountWindowUsageHistoryUpdate {
+	_u.mutation.ResetMissingPricingRequests()
+	_u.mutation.SetMissingPricingRequests(v)
+	return _u
+}
+
+// SetNillableMissingPricingRequests sets the "missing_pricing_requests" field if the given value is not nil.
+func (_u *AccountWindowUsageHistoryUpdate) SetNillableMissingPricingRequests(v *int64) *AccountWindowUsageHistoryUpdate {
+	if v != nil {
+		_u.SetMissingPricingRequests(*v)
+	}
+	return _u
+}
+
+// AddMissingPricingRequests adds value to the "missing_pricing_requests" field.
+func (_u *AccountWindowUsageHistoryUpdate) AddMissingPricingRequests(v int64) *AccountWindowUsageHistoryUpdate {
+	_u.mutation.AddMissingPricingRequests(v)
+	return _u
+}
+
+// SetEstimatedReferenceLimit sets the "estimated_reference_limit" field.
+func (_u *AccountWindowUsageHistoryUpdate) SetEstimatedReferenceLimit(v float64) *AccountWindowUsageHistoryUpdate {
+	_u.mutation.ResetEstimatedReferenceLimit()
+	_u.mutation.SetEstimatedReferenceLimit(v)
+	return _u
+}
+
+// SetNillableEstimatedReferenceLimit sets the "estimated_reference_limit" field if the given value is not nil.
+func (_u *AccountWindowUsageHistoryUpdate) SetNillableEstimatedReferenceLimit(v *float64) *AccountWindowUsageHistoryUpdate {
+	if v != nil {
+		_u.SetEstimatedReferenceLimit(*v)
+	}
+	return _u
+}
+
+// AddEstimatedReferenceLimit adds value to the "estimated_reference_limit" field.
+func (_u *AccountWindowUsageHistoryUpdate) AddEstimatedReferenceLimit(v float64) *AccountWindowUsageHistoryUpdate {
+	_u.mutation.AddEstimatedReferenceLimit(v)
+	return _u
+}
+
+// ClearEstimatedReferenceLimit clears the value of the "estimated_reference_limit" field.
+func (_u *AccountWindowUsageHistoryUpdate) ClearEstimatedReferenceLimit() *AccountWindowUsageHistoryUpdate {
+	_u.mutation.ClearEstimatedReferenceLimit()
+	return _u
+}
+
+// SetEstimateReferenceCost sets the "estimate_reference_cost" field.
+func (_u *AccountWindowUsageHistoryUpdate) SetEstimateReferenceCost(v float64) *AccountWindowUsageHistoryUpdate {
+	_u.mutation.ResetEstimateReferenceCost()
+	_u.mutation.SetEstimateReferenceCost(v)
+	return _u
+}
+
+// SetNillableEstimateReferenceCost sets the "estimate_reference_cost" field if the given value is not nil.
+func (_u *AccountWindowUsageHistoryUpdate) SetNillableEstimateReferenceCost(v *float64) *AccountWindowUsageHistoryUpdate {
+	if v != nil {
+		_u.SetEstimateReferenceCost(*v)
+	}
+	return _u
+}
+
+// AddEstimateReferenceCost adds value to the "estimate_reference_cost" field.
+func (_u *AccountWindowUsageHistoryUpdate) AddEstimateReferenceCost(v float64) *AccountWindowUsageHistoryUpdate {
+	_u.mutation.AddEstimateReferenceCost(v)
+	return _u
+}
+
+// ClearEstimateReferenceCost clears the value of the "estimate_reference_cost" field.
+func (_u *AccountWindowUsageHistoryUpdate) ClearEstimateReferenceCost() *AccountWindowUsageHistoryUpdate {
+	_u.mutation.ClearEstimateReferenceCost()
+	return _u
+}
+
+// SetEstimateUsedPercent sets the "estimate_used_percent" field.
+func (_u *AccountWindowUsageHistoryUpdate) SetEstimateUsedPercent(v float64) *AccountWindowUsageHistoryUpdate {
+	_u.mutation.ResetEstimateUsedPercent()
+	_u.mutation.SetEstimateUsedPercent(v)
+	return _u
+}
+
+// SetNillableEstimateUsedPercent sets the "estimate_used_percent" field if the given value is not nil.
+func (_u *AccountWindowUsageHistoryUpdate) SetNillableEstimateUsedPercent(v *float64) *AccountWindowUsageHistoryUpdate {
+	if v != nil {
+		_u.SetEstimateUsedPercent(*v)
+	}
+	return _u
+}
+
+// AddEstimateUsedPercent adds value to the "estimate_used_percent" field.
+func (_u *AccountWindowUsageHistoryUpdate) AddEstimateUsedPercent(v float64) *AccountWindowUsageHistoryUpdate {
+	_u.mutation.AddEstimateUsedPercent(v)
+	return _u
+}
+
+// ClearEstimateUsedPercent clears the value of the "estimate_used_percent" field.
+func (_u *AccountWindowUsageHistoryUpdate) ClearEstimateUsedPercent() *AccountWindowUsageHistoryUpdate {
+	_u.mutation.ClearEstimateUsedPercent()
+	return _u
+}
+
+// SetEstimateObservedAt sets the "estimate_observed_at" field.
+func (_u *AccountWindowUsageHistoryUpdate) SetEstimateObservedAt(v time.Time) *AccountWindowUsageHistoryUpdate {
+	_u.mutation.SetEstimateObservedAt(v)
+	return _u
+}
+
+// SetNillableEstimateObservedAt sets the "estimate_observed_at" field if the given value is not nil.
+func (_u *AccountWindowUsageHistoryUpdate) SetNillableEstimateObservedAt(v *time.Time) *AccountWindowUsageHistoryUpdate {
+	if v != nil {
+		_u.SetEstimateObservedAt(*v)
+	}
+	return _u
+}
+
+// ClearEstimateObservedAt clears the value of the "estimate_observed_at" field.
+func (_u *AccountWindowUsageHistoryUpdate) ClearEstimateObservedAt() *AccountWindowUsageHistoryUpdate {
+	_u.mutation.ClearEstimateObservedAt()
+	return _u
+}
+
+// SetQualityFlags sets the "quality_flags" field.
+func (_u *AccountWindowUsageHistoryUpdate) SetQualityFlags(v []string) *AccountWindowUsageHistoryUpdate {
+	_u.mutation.SetQualityFlags(v)
+	return _u
+}
+
+// AppendQualityFlags appends value to the "quality_flags" field.
+func (_u *AccountWindowUsageHistoryUpdate) AppendQualityFlags(v []string) *AccountWindowUsageHistoryUpdate {
+	_u.mutation.AppendQualityFlags(v)
+	return _u
+}
+
+// SetEndReason sets the "end_reason" field.
+func (_u *AccountWindowUsageHistoryUpdate) SetEndReason(v string) *AccountWindowUsageHistoryUpdate {
+	_u.mutation.SetEndReason(v)
+	return _u
+}
+
+// SetNillableEndReason sets the "end_reason" field if the given value is not nil.
+func (_u *AccountWindowUsageHistoryUpdate) SetNillableEndReason(v *string) *AccountWindowUsageHistoryUpdate {
+	if v != nil {
+		_u.SetEndReason(*v)
+	}
+	return _u
+}
+
+// ClearEndReason clears the value of the "end_reason" field.
+func (_u *AccountWindowUsageHistoryUpdate) ClearEndReason() *AccountWindowUsageHistoryUpdate {
+	_u.mutation.ClearEndReason()
+	return _u
+}
+
+// SetStatsFinalizedAt sets the "stats_finalized_at" field.
+func (_u *AccountWindowUsageHistoryUpdate) SetStatsFinalizedAt(v time.Time) *AccountWindowUsageHistoryUpdate {
+	_u.mutation.SetStatsFinalizedAt(v)
+	return _u
+}
+
+// SetNillableStatsFinalizedAt sets the "stats_finalized_at" field if the given value is not nil.
+func (_u *AccountWindowUsageHistoryUpdate) SetNillableStatsFinalizedAt(v *time.Time) *AccountWindowUsageHistoryUpdate {
+	if v != nil {
+		_u.SetStatsFinalizedAt(*v)
+	}
+	return _u
+}
+
+// ClearStatsFinalizedAt clears the value of the "stats_finalized_at" field.
+func (_u *AccountWindowUsageHistoryUpdate) ClearStatsFinalizedAt() *AccountWindowUsageHistoryUpdate {
+	_u.mutation.ClearStatsFinalizedAt()
 	return _u
 }
 
@@ -415,6 +588,11 @@ func (_u *AccountWindowUsageHistoryUpdate) check() error {
 			return &ValidationError{Name: "window_type", err: fmt.Errorf(`ent: validator failed for field "AccountWindowUsageHistory.window_type": %w`, err)}
 		}
 	}
+	if v, ok := _u.mutation.EndReason(); ok {
+		if err := accountwindowusagehistory.EndReasonValidator(v); err != nil {
+			return &ValidationError{Name: "end_reason", err: fmt.Errorf(`ent: validator failed for field "AccountWindowUsageHistory.end_reason": %w`, err)}
+		}
+	}
 	if _u.mutation.AccountCleared() && len(_u.mutation.AccountIDs()) > 0 {
 		return errors.New(`ent: clearing a required unique edge "AccountWindowUsageHistory.account"`)
 	}
@@ -475,53 +653,103 @@ func (_u *AccountWindowUsageHistoryUpdate) sqlSave(ctx context.Context) (_node i
 	if value, ok := _u.mutation.AddedRequests(); ok {
 		_spec.AddField(accountwindowusagehistory.FieldRequests, field.TypeInt64, value)
 	}
-	if _u.mutation.RequestsCleared() {
-		_spec.ClearField(accountwindowusagehistory.FieldRequests, field.TypeInt64)
-	}
 	if value, ok := _u.mutation.TokensTotal(); ok {
 		_spec.SetField(accountwindowusagehistory.FieldTokensTotal, field.TypeInt64, value)
 	}
 	if value, ok := _u.mutation.AddedTokensTotal(); ok {
 		_spec.AddField(accountwindowusagehistory.FieldTokensTotal, field.TypeInt64, value)
 	}
-	if _u.mutation.TokensTotalCleared() {
-		_spec.ClearField(accountwindowusagehistory.FieldTokensTotal, field.TypeInt64)
+	if value, ok := _u.mutation.ResetAt(); ok {
+		_spec.SetField(accountwindowusagehistory.FieldResetAt, field.TypeTime, value)
 	}
-	if value, ok := _u.mutation.TokensInput(); ok {
-		_spec.SetField(accountwindowusagehistory.FieldTokensInput, field.TypeInt64, value)
+	if value, ok := _u.mutation.DurationMinutes(); ok {
+		_spec.SetField(accountwindowusagehistory.FieldDurationMinutes, field.TypeInt, value)
 	}
-	if value, ok := _u.mutation.AddedTokensInput(); ok {
-		_spec.AddField(accountwindowusagehistory.FieldTokensInput, field.TypeInt64, value)
+	if value, ok := _u.mutation.AddedDurationMinutes(); ok {
+		_spec.AddField(accountwindowusagehistory.FieldDurationMinutes, field.TypeInt, value)
 	}
-	if _u.mutation.TokensInputCleared() {
-		_spec.ClearField(accountwindowusagehistory.FieldTokensInput, field.TypeInt64)
+	if value, ok := _u.mutation.FirstObservedAt(); ok {
+		_spec.SetField(accountwindowusagehistory.FieldFirstObservedAt, field.TypeTime, value)
 	}
-	if value, ok := _u.mutation.TokensOutput(); ok {
-		_spec.SetField(accountwindowusagehistory.FieldTokensOutput, field.TypeInt64, value)
+	if value, ok := _u.mutation.LastObservationID(); ok {
+		_spec.SetField(accountwindowusagehistory.FieldLastObservationID, field.TypeInt64, value)
 	}
-	if value, ok := _u.mutation.AddedTokensOutput(); ok {
-		_spec.AddField(accountwindowusagehistory.FieldTokensOutput, field.TypeInt64, value)
+	if value, ok := _u.mutation.AddedLastObservationID(); ok {
+		_spec.AddField(accountwindowusagehistory.FieldLastObservationID, field.TypeInt64, value)
 	}
-	if _u.mutation.TokensOutputCleared() {
-		_spec.ClearField(accountwindowusagehistory.FieldTokensOutput, field.TypeInt64)
+	if value, ok := _u.mutation.APIReferenceCost(); ok {
+		_spec.SetField(accountwindowusagehistory.FieldAPIReferenceCost, field.TypeFloat64, value)
 	}
-	if value, ok := _u.mutation.TokensCacheCreation(); ok {
-		_spec.SetField(accountwindowusagehistory.FieldTokensCacheCreation, field.TypeInt64, value)
+	if value, ok := _u.mutation.AddedAPIReferenceCost(); ok {
+		_spec.AddField(accountwindowusagehistory.FieldAPIReferenceCost, field.TypeFloat64, value)
 	}
-	if value, ok := _u.mutation.AddedTokensCacheCreation(); ok {
-		_spec.AddField(accountwindowusagehistory.FieldTokensCacheCreation, field.TypeInt64, value)
+	if _u.mutation.APIReferenceCostCleared() {
+		_spec.ClearField(accountwindowusagehistory.FieldAPIReferenceCost, field.TypeFloat64)
 	}
-	if _u.mutation.TokensCacheCreationCleared() {
-		_spec.ClearField(accountwindowusagehistory.FieldTokensCacheCreation, field.TypeInt64)
+	if value, ok := _u.mutation.PricedRequests(); ok {
+		_spec.SetField(accountwindowusagehistory.FieldPricedRequests, field.TypeInt64, value)
 	}
-	if value, ok := _u.mutation.TokensCacheRead(); ok {
-		_spec.SetField(accountwindowusagehistory.FieldTokensCacheRead, field.TypeInt64, value)
+	if value, ok := _u.mutation.AddedPricedRequests(); ok {
+		_spec.AddField(accountwindowusagehistory.FieldPricedRequests, field.TypeInt64, value)
 	}
-	if value, ok := _u.mutation.AddedTokensCacheRead(); ok {
-		_spec.AddField(accountwindowusagehistory.FieldTokensCacheRead, field.TypeInt64, value)
+	if value, ok := _u.mutation.MissingPricingRequests(); ok {
+		_spec.SetField(accountwindowusagehistory.FieldMissingPricingRequests, field.TypeInt64, value)
 	}
-	if _u.mutation.TokensCacheReadCleared() {
-		_spec.ClearField(accountwindowusagehistory.FieldTokensCacheRead, field.TypeInt64)
+	if value, ok := _u.mutation.AddedMissingPricingRequests(); ok {
+		_spec.AddField(accountwindowusagehistory.FieldMissingPricingRequests, field.TypeInt64, value)
+	}
+	if value, ok := _u.mutation.EstimatedReferenceLimit(); ok {
+		_spec.SetField(accountwindowusagehistory.FieldEstimatedReferenceLimit, field.TypeFloat64, value)
+	}
+	if value, ok := _u.mutation.AddedEstimatedReferenceLimit(); ok {
+		_spec.AddField(accountwindowusagehistory.FieldEstimatedReferenceLimit, field.TypeFloat64, value)
+	}
+	if _u.mutation.EstimatedReferenceLimitCleared() {
+		_spec.ClearField(accountwindowusagehistory.FieldEstimatedReferenceLimit, field.TypeFloat64)
+	}
+	if value, ok := _u.mutation.EstimateReferenceCost(); ok {
+		_spec.SetField(accountwindowusagehistory.FieldEstimateReferenceCost, field.TypeFloat64, value)
+	}
+	if value, ok := _u.mutation.AddedEstimateReferenceCost(); ok {
+		_spec.AddField(accountwindowusagehistory.FieldEstimateReferenceCost, field.TypeFloat64, value)
+	}
+	if _u.mutation.EstimateReferenceCostCleared() {
+		_spec.ClearField(accountwindowusagehistory.FieldEstimateReferenceCost, field.TypeFloat64)
+	}
+	if value, ok := _u.mutation.EstimateUsedPercent(); ok {
+		_spec.SetField(accountwindowusagehistory.FieldEstimateUsedPercent, field.TypeFloat64, value)
+	}
+	if value, ok := _u.mutation.AddedEstimateUsedPercent(); ok {
+		_spec.AddField(accountwindowusagehistory.FieldEstimateUsedPercent, field.TypeFloat64, value)
+	}
+	if _u.mutation.EstimateUsedPercentCleared() {
+		_spec.ClearField(accountwindowusagehistory.FieldEstimateUsedPercent, field.TypeFloat64)
+	}
+	if value, ok := _u.mutation.EstimateObservedAt(); ok {
+		_spec.SetField(accountwindowusagehistory.FieldEstimateObservedAt, field.TypeTime, value)
+	}
+	if _u.mutation.EstimateObservedAtCleared() {
+		_spec.ClearField(accountwindowusagehistory.FieldEstimateObservedAt, field.TypeTime)
+	}
+	if value, ok := _u.mutation.QualityFlags(); ok {
+		_spec.SetField(accountwindowusagehistory.FieldQualityFlags, field.TypeJSON, value)
+	}
+	if value, ok := _u.mutation.AppendedQualityFlags(); ok {
+		_spec.AddModifier(func(u *sql.UpdateBuilder) {
+			sqljson.Append(u, accountwindowusagehistory.FieldQualityFlags, value)
+		})
+	}
+	if value, ok := _u.mutation.EndReason(); ok {
+		_spec.SetField(accountwindowusagehistory.FieldEndReason, field.TypeString, value)
+	}
+	if _u.mutation.EndReasonCleared() {
+		_spec.ClearField(accountwindowusagehistory.FieldEndReason, field.TypeString)
+	}
+	if value, ok := _u.mutation.StatsFinalizedAt(); ok {
+		_spec.SetField(accountwindowusagehistory.FieldStatsFinalizedAt, field.TypeTime, value)
+	}
+	if _u.mutation.StatsFinalizedAtCleared() {
+		_spec.ClearField(accountwindowusagehistory.FieldStatsFinalizedAt, field.TypeTime)
 	}
 	if value, ok := _u.mutation.FinalizedAt(); ok {
 		_spec.SetField(accountwindowusagehistory.FieldFinalizedAt, field.TypeTime, value)
@@ -744,12 +972,6 @@ func (_u *AccountWindowUsageHistoryUpdateOne) AddRequests(v int64) *AccountWindo
 	return _u
 }
 
-// ClearRequests clears the value of the "requests" field.
-func (_u *AccountWindowUsageHistoryUpdateOne) ClearRequests() *AccountWindowUsageHistoryUpdateOne {
-	_u.mutation.ClearRequests()
-	return _u
-}
-
 // SetTokensTotal sets the "tokens_total" field.
 func (_u *AccountWindowUsageHistoryUpdateOne) SetTokensTotal(v int64) *AccountWindowUsageHistoryUpdateOne {
 	_u.mutation.ResetTokensTotal()
@@ -771,117 +993,295 @@ func (_u *AccountWindowUsageHistoryUpdateOne) AddTokensTotal(v int64) *AccountWi
 	return _u
 }
 
-// ClearTokensTotal clears the value of the "tokens_total" field.
-func (_u *AccountWindowUsageHistoryUpdateOne) ClearTokensTotal() *AccountWindowUsageHistoryUpdateOne {
-	_u.mutation.ClearTokensTotal()
+// SetResetAt sets the "reset_at" field.
+func (_u *AccountWindowUsageHistoryUpdateOne) SetResetAt(v time.Time) *AccountWindowUsageHistoryUpdateOne {
+	_u.mutation.SetResetAt(v)
 	return _u
 }
 
-// SetTokensInput sets the "tokens_input" field.
-func (_u *AccountWindowUsageHistoryUpdateOne) SetTokensInput(v int64) *AccountWindowUsageHistoryUpdateOne {
-	_u.mutation.ResetTokensInput()
-	_u.mutation.SetTokensInput(v)
-	return _u
-}
-
-// SetNillableTokensInput sets the "tokens_input" field if the given value is not nil.
-func (_u *AccountWindowUsageHistoryUpdateOne) SetNillableTokensInput(v *int64) *AccountWindowUsageHistoryUpdateOne {
+// SetNillableResetAt sets the "reset_at" field if the given value is not nil.
+func (_u *AccountWindowUsageHistoryUpdateOne) SetNillableResetAt(v *time.Time) *AccountWindowUsageHistoryUpdateOne {
 	if v != nil {
-		_u.SetTokensInput(*v)
+		_u.SetResetAt(*v)
 	}
 	return _u
 }
 
-// AddTokensInput adds value to the "tokens_input" field.
-func (_u *AccountWindowUsageHistoryUpdateOne) AddTokensInput(v int64) *AccountWindowUsageHistoryUpdateOne {
-	_u.mutation.AddTokensInput(v)
+// SetDurationMinutes sets the "duration_minutes" field.
+func (_u *AccountWindowUsageHistoryUpdateOne) SetDurationMinutes(v int) *AccountWindowUsageHistoryUpdateOne {
+	_u.mutation.ResetDurationMinutes()
+	_u.mutation.SetDurationMinutes(v)
 	return _u
 }
 
-// ClearTokensInput clears the value of the "tokens_input" field.
-func (_u *AccountWindowUsageHistoryUpdateOne) ClearTokensInput() *AccountWindowUsageHistoryUpdateOne {
-	_u.mutation.ClearTokensInput()
-	return _u
-}
-
-// SetTokensOutput sets the "tokens_output" field.
-func (_u *AccountWindowUsageHistoryUpdateOne) SetTokensOutput(v int64) *AccountWindowUsageHistoryUpdateOne {
-	_u.mutation.ResetTokensOutput()
-	_u.mutation.SetTokensOutput(v)
-	return _u
-}
-
-// SetNillableTokensOutput sets the "tokens_output" field if the given value is not nil.
-func (_u *AccountWindowUsageHistoryUpdateOne) SetNillableTokensOutput(v *int64) *AccountWindowUsageHistoryUpdateOne {
+// SetNillableDurationMinutes sets the "duration_minutes" field if the given value is not nil.
+func (_u *AccountWindowUsageHistoryUpdateOne) SetNillableDurationMinutes(v *int) *AccountWindowUsageHistoryUpdateOne {
 	if v != nil {
-		_u.SetTokensOutput(*v)
+		_u.SetDurationMinutes(*v)
 	}
 	return _u
 }
 
-// AddTokensOutput adds value to the "tokens_output" field.
-func (_u *AccountWindowUsageHistoryUpdateOne) AddTokensOutput(v int64) *AccountWindowUsageHistoryUpdateOne {
-	_u.mutation.AddTokensOutput(v)
+// AddDurationMinutes adds value to the "duration_minutes" field.
+func (_u *AccountWindowUsageHistoryUpdateOne) AddDurationMinutes(v int) *AccountWindowUsageHistoryUpdateOne {
+	_u.mutation.AddDurationMinutes(v)
 	return _u
 }
 
-// ClearTokensOutput clears the value of the "tokens_output" field.
-func (_u *AccountWindowUsageHistoryUpdateOne) ClearTokensOutput() *AccountWindowUsageHistoryUpdateOne {
-	_u.mutation.ClearTokensOutput()
+// SetFirstObservedAt sets the "first_observed_at" field.
+func (_u *AccountWindowUsageHistoryUpdateOne) SetFirstObservedAt(v time.Time) *AccountWindowUsageHistoryUpdateOne {
+	_u.mutation.SetFirstObservedAt(v)
 	return _u
 }
 
-// SetTokensCacheCreation sets the "tokens_cache_creation" field.
-func (_u *AccountWindowUsageHistoryUpdateOne) SetTokensCacheCreation(v int64) *AccountWindowUsageHistoryUpdateOne {
-	_u.mutation.ResetTokensCacheCreation()
-	_u.mutation.SetTokensCacheCreation(v)
-	return _u
-}
-
-// SetNillableTokensCacheCreation sets the "tokens_cache_creation" field if the given value is not nil.
-func (_u *AccountWindowUsageHistoryUpdateOne) SetNillableTokensCacheCreation(v *int64) *AccountWindowUsageHistoryUpdateOne {
+// SetNillableFirstObservedAt sets the "first_observed_at" field if the given value is not nil.
+func (_u *AccountWindowUsageHistoryUpdateOne) SetNillableFirstObservedAt(v *time.Time) *AccountWindowUsageHistoryUpdateOne {
 	if v != nil {
-		_u.SetTokensCacheCreation(*v)
+		_u.SetFirstObservedAt(*v)
 	}
 	return _u
 }
 
-// AddTokensCacheCreation adds value to the "tokens_cache_creation" field.
-func (_u *AccountWindowUsageHistoryUpdateOne) AddTokensCacheCreation(v int64) *AccountWindowUsageHistoryUpdateOne {
-	_u.mutation.AddTokensCacheCreation(v)
+// SetLastObservationID sets the "last_observation_id" field.
+func (_u *AccountWindowUsageHistoryUpdateOne) SetLastObservationID(v int64) *AccountWindowUsageHistoryUpdateOne {
+	_u.mutation.ResetLastObservationID()
+	_u.mutation.SetLastObservationID(v)
 	return _u
 }
 
-// ClearTokensCacheCreation clears the value of the "tokens_cache_creation" field.
-func (_u *AccountWindowUsageHistoryUpdateOne) ClearTokensCacheCreation() *AccountWindowUsageHistoryUpdateOne {
-	_u.mutation.ClearTokensCacheCreation()
-	return _u
-}
-
-// SetTokensCacheRead sets the "tokens_cache_read" field.
-func (_u *AccountWindowUsageHistoryUpdateOne) SetTokensCacheRead(v int64) *AccountWindowUsageHistoryUpdateOne {
-	_u.mutation.ResetTokensCacheRead()
-	_u.mutation.SetTokensCacheRead(v)
-	return _u
-}
-
-// SetNillableTokensCacheRead sets the "tokens_cache_read" field if the given value is not nil.
-func (_u *AccountWindowUsageHistoryUpdateOne) SetNillableTokensCacheRead(v *int64) *AccountWindowUsageHistoryUpdateOne {
+// SetNillableLastObservationID sets the "last_observation_id" field if the given value is not nil.
+func (_u *AccountWindowUsageHistoryUpdateOne) SetNillableLastObservationID(v *int64) *AccountWindowUsageHistoryUpdateOne {
 	if v != nil {
-		_u.SetTokensCacheRead(*v)
+		_u.SetLastObservationID(*v)
 	}
 	return _u
 }
 
-// AddTokensCacheRead adds value to the "tokens_cache_read" field.
-func (_u *AccountWindowUsageHistoryUpdateOne) AddTokensCacheRead(v int64) *AccountWindowUsageHistoryUpdateOne {
-	_u.mutation.AddTokensCacheRead(v)
+// AddLastObservationID adds value to the "last_observation_id" field.
+func (_u *AccountWindowUsageHistoryUpdateOne) AddLastObservationID(v int64) *AccountWindowUsageHistoryUpdateOne {
+	_u.mutation.AddLastObservationID(v)
 	return _u
 }
 
-// ClearTokensCacheRead clears the value of the "tokens_cache_read" field.
-func (_u *AccountWindowUsageHistoryUpdateOne) ClearTokensCacheRead() *AccountWindowUsageHistoryUpdateOne {
-	_u.mutation.ClearTokensCacheRead()
+// SetAPIReferenceCost sets the "api_reference_cost" field.
+func (_u *AccountWindowUsageHistoryUpdateOne) SetAPIReferenceCost(v float64) *AccountWindowUsageHistoryUpdateOne {
+	_u.mutation.ResetAPIReferenceCost()
+	_u.mutation.SetAPIReferenceCost(v)
+	return _u
+}
+
+// SetNillableAPIReferenceCost sets the "api_reference_cost" field if the given value is not nil.
+func (_u *AccountWindowUsageHistoryUpdateOne) SetNillableAPIReferenceCost(v *float64) *AccountWindowUsageHistoryUpdateOne {
+	if v != nil {
+		_u.SetAPIReferenceCost(*v)
+	}
+	return _u
+}
+
+// AddAPIReferenceCost adds value to the "api_reference_cost" field.
+func (_u *AccountWindowUsageHistoryUpdateOne) AddAPIReferenceCost(v float64) *AccountWindowUsageHistoryUpdateOne {
+	_u.mutation.AddAPIReferenceCost(v)
+	return _u
+}
+
+// ClearAPIReferenceCost clears the value of the "api_reference_cost" field.
+func (_u *AccountWindowUsageHistoryUpdateOne) ClearAPIReferenceCost() *AccountWindowUsageHistoryUpdateOne {
+	_u.mutation.ClearAPIReferenceCost()
+	return _u
+}
+
+// SetPricedRequests sets the "priced_requests" field.
+func (_u *AccountWindowUsageHistoryUpdateOne) SetPricedRequests(v int64) *AccountWindowUsageHistoryUpdateOne {
+	_u.mutation.ResetPricedRequests()
+	_u.mutation.SetPricedRequests(v)
+	return _u
+}
+
+// SetNillablePricedRequests sets the "priced_requests" field if the given value is not nil.
+func (_u *AccountWindowUsageHistoryUpdateOne) SetNillablePricedRequests(v *int64) *AccountWindowUsageHistoryUpdateOne {
+	if v != nil {
+		_u.SetPricedRequests(*v)
+	}
+	return _u
+}
+
+// AddPricedRequests adds value to the "priced_requests" field.
+func (_u *AccountWindowUsageHistoryUpdateOne) AddPricedRequests(v int64) *AccountWindowUsageHistoryUpdateOne {
+	_u.mutation.AddPricedRequests(v)
+	return _u
+}
+
+// SetMissingPricingRequests sets the "missing_pricing_requests" field.
+func (_u *AccountWindowUsageHistoryUpdateOne) SetMissingPricingRequests(v int64) *AccountWindowUsageHistoryUpdateOne {
+	_u.mutation.ResetMissingPricingRequests()
+	_u.mutation.SetMissingPricingRequests(v)
+	return _u
+}
+
+// SetNillableMissingPricingRequests sets the "missing_pricing_requests" field if the given value is not nil.
+func (_u *AccountWindowUsageHistoryUpdateOne) SetNillableMissingPricingRequests(v *int64) *AccountWindowUsageHistoryUpdateOne {
+	if v != nil {
+		_u.SetMissingPricingRequests(*v)
+	}
+	return _u
+}
+
+// AddMissingPricingRequests adds value to the "missing_pricing_requests" field.
+func (_u *AccountWindowUsageHistoryUpdateOne) AddMissingPricingRequests(v int64) *AccountWindowUsageHistoryUpdateOne {
+	_u.mutation.AddMissingPricingRequests(v)
+	return _u
+}
+
+// SetEstimatedReferenceLimit sets the "estimated_reference_limit" field.
+func (_u *AccountWindowUsageHistoryUpdateOne) SetEstimatedReferenceLimit(v float64) *AccountWindowUsageHistoryUpdateOne {
+	_u.mutation.ResetEstimatedReferenceLimit()
+	_u.mutation.SetEstimatedReferenceLimit(v)
+	return _u
+}
+
+// SetNillableEstimatedReferenceLimit sets the "estimated_reference_limit" field if the given value is not nil.
+func (_u *AccountWindowUsageHistoryUpdateOne) SetNillableEstimatedReferenceLimit(v *float64) *AccountWindowUsageHistoryUpdateOne {
+	if v != nil {
+		_u.SetEstimatedReferenceLimit(*v)
+	}
+	return _u
+}
+
+// AddEstimatedReferenceLimit adds value to the "estimated_reference_limit" field.
+func (_u *AccountWindowUsageHistoryUpdateOne) AddEstimatedReferenceLimit(v float64) *AccountWindowUsageHistoryUpdateOne {
+	_u.mutation.AddEstimatedReferenceLimit(v)
+	return _u
+}
+
+// ClearEstimatedReferenceLimit clears the value of the "estimated_reference_limit" field.
+func (_u *AccountWindowUsageHistoryUpdateOne) ClearEstimatedReferenceLimit() *AccountWindowUsageHistoryUpdateOne {
+	_u.mutation.ClearEstimatedReferenceLimit()
+	return _u
+}
+
+// SetEstimateReferenceCost sets the "estimate_reference_cost" field.
+func (_u *AccountWindowUsageHistoryUpdateOne) SetEstimateReferenceCost(v float64) *AccountWindowUsageHistoryUpdateOne {
+	_u.mutation.ResetEstimateReferenceCost()
+	_u.mutation.SetEstimateReferenceCost(v)
+	return _u
+}
+
+// SetNillableEstimateReferenceCost sets the "estimate_reference_cost" field if the given value is not nil.
+func (_u *AccountWindowUsageHistoryUpdateOne) SetNillableEstimateReferenceCost(v *float64) *AccountWindowUsageHistoryUpdateOne {
+	if v != nil {
+		_u.SetEstimateReferenceCost(*v)
+	}
+	return _u
+}
+
+// AddEstimateReferenceCost adds value to the "estimate_reference_cost" field.
+func (_u *AccountWindowUsageHistoryUpdateOne) AddEstimateReferenceCost(v float64) *AccountWindowUsageHistoryUpdateOne {
+	_u.mutation.AddEstimateReferenceCost(v)
+	return _u
+}
+
+// ClearEstimateReferenceCost clears the value of the "estimate_reference_cost" field.
+func (_u *AccountWindowUsageHistoryUpdateOne) ClearEstimateReferenceCost() *AccountWindowUsageHistoryUpdateOne {
+	_u.mutation.ClearEstimateReferenceCost()
+	return _u
+}
+
+// SetEstimateUsedPercent sets the "estimate_used_percent" field.
+func (_u *AccountWindowUsageHistoryUpdateOne) SetEstimateUsedPercent(v float64) *AccountWindowUsageHistoryUpdateOne {
+	_u.mutation.ResetEstimateUsedPercent()
+	_u.mutation.SetEstimateUsedPercent(v)
+	return _u
+}
+
+// SetNillableEstimateUsedPercent sets the "estimate_used_percent" field if the given value is not nil.
+func (_u *AccountWindowUsageHistoryUpdateOne) SetNillableEstimateUsedPercent(v *float64) *AccountWindowUsageHistoryUpdateOne {
+	if v != nil {
+		_u.SetEstimateUsedPercent(*v)
+	}
+	return _u
+}
+
+// AddEstimateUsedPercent adds value to the "estimate_used_percent" field.
+func (_u *AccountWindowUsageHistoryUpdateOne) AddEstimateUsedPercent(v float64) *AccountWindowUsageHistoryUpdateOne {
+	_u.mutation.AddEstimateUsedPercent(v)
+	return _u
+}
+
+// ClearEstimateUsedPercent clears the value of the "estimate_used_percent" field.
+func (_u *AccountWindowUsageHistoryUpdateOne) ClearEstimateUsedPercent() *AccountWindowUsageHistoryUpdateOne {
+	_u.mutation.ClearEstimateUsedPercent()
+	return _u
+}
+
+// SetEstimateObservedAt sets the "estimate_observed_at" field.
+func (_u *AccountWindowUsageHistoryUpdateOne) SetEstimateObservedAt(v time.Time) *AccountWindowUsageHistoryUpdateOne {
+	_u.mutation.SetEstimateObservedAt(v)
+	return _u
+}
+
+// SetNillableEstimateObservedAt sets the "estimate_observed_at" field if the given value is not nil.
+func (_u *AccountWindowUsageHistoryUpdateOne) SetNillableEstimateObservedAt(v *time.Time) *AccountWindowUsageHistoryUpdateOne {
+	if v != nil {
+		_u.SetEstimateObservedAt(*v)
+	}
+	return _u
+}
+
+// ClearEstimateObservedAt clears the value of the "estimate_observed_at" field.
+func (_u *AccountWindowUsageHistoryUpdateOne) ClearEstimateObservedAt() *AccountWindowUsageHistoryUpdateOne {
+	_u.mutation.ClearEstimateObservedAt()
+	return _u
+}
+
+// SetQualityFlags sets the "quality_flags" field.
+func (_u *AccountWindowUsageHistoryUpdateOne) SetQualityFlags(v []string) *AccountWindowUsageHistoryUpdateOne {
+	_u.mutation.SetQualityFlags(v)
+	return _u
+}
+
+// AppendQualityFlags appends value to the "quality_flags" field.
+func (_u *AccountWindowUsageHistoryUpdateOne) AppendQualityFlags(v []string) *AccountWindowUsageHistoryUpdateOne {
+	_u.mutation.AppendQualityFlags(v)
+	return _u
+}
+
+// SetEndReason sets the "end_reason" field.
+func (_u *AccountWindowUsageHistoryUpdateOne) SetEndReason(v string) *AccountWindowUsageHistoryUpdateOne {
+	_u.mutation.SetEndReason(v)
+	return _u
+}
+
+// SetNillableEndReason sets the "end_reason" field if the given value is not nil.
+func (_u *AccountWindowUsageHistoryUpdateOne) SetNillableEndReason(v *string) *AccountWindowUsageHistoryUpdateOne {
+	if v != nil {
+		_u.SetEndReason(*v)
+	}
+	return _u
+}
+
+// ClearEndReason clears the value of the "end_reason" field.
+func (_u *AccountWindowUsageHistoryUpdateOne) ClearEndReason() *AccountWindowUsageHistoryUpdateOne {
+	_u.mutation.ClearEndReason()
+	return _u
+}
+
+// SetStatsFinalizedAt sets the "stats_finalized_at" field.
+func (_u *AccountWindowUsageHistoryUpdateOne) SetStatsFinalizedAt(v time.Time) *AccountWindowUsageHistoryUpdateOne {
+	_u.mutation.SetStatsFinalizedAt(v)
+	return _u
+}
+
+// SetNillableStatsFinalizedAt sets the "stats_finalized_at" field if the given value is not nil.
+func (_u *AccountWindowUsageHistoryUpdateOne) SetNillableStatsFinalizedAt(v *time.Time) *AccountWindowUsageHistoryUpdateOne {
+	if v != nil {
+		_u.SetStatsFinalizedAt(*v)
+	}
+	return _u
+}
+
+// ClearStatsFinalizedAt clears the value of the "stats_finalized_at" field.
+func (_u *AccountWindowUsageHistoryUpdateOne) ClearStatsFinalizedAt() *AccountWindowUsageHistoryUpdateOne {
+	_u.mutation.ClearStatsFinalizedAt()
 	return _u
 }
 
@@ -977,6 +1377,11 @@ func (_u *AccountWindowUsageHistoryUpdateOne) check() error {
 			return &ValidationError{Name: "window_type", err: fmt.Errorf(`ent: validator failed for field "AccountWindowUsageHistory.window_type": %w`, err)}
 		}
 	}
+	if v, ok := _u.mutation.EndReason(); ok {
+		if err := accountwindowusagehistory.EndReasonValidator(v); err != nil {
+			return &ValidationError{Name: "end_reason", err: fmt.Errorf(`ent: validator failed for field "AccountWindowUsageHistory.end_reason": %w`, err)}
+		}
+	}
 	if _u.mutation.AccountCleared() && len(_u.mutation.AccountIDs()) > 0 {
 		return errors.New(`ent: clearing a required unique edge "AccountWindowUsageHistory.account"`)
 	}
@@ -1054,53 +1459,103 @@ func (_u *AccountWindowUsageHistoryUpdateOne) sqlSave(ctx context.Context) (_nod
 	if value, ok := _u.mutation.AddedRequests(); ok {
 		_spec.AddField(accountwindowusagehistory.FieldRequests, field.TypeInt64, value)
 	}
-	if _u.mutation.RequestsCleared() {
-		_spec.ClearField(accountwindowusagehistory.FieldRequests, field.TypeInt64)
-	}
 	if value, ok := _u.mutation.TokensTotal(); ok {
 		_spec.SetField(accountwindowusagehistory.FieldTokensTotal, field.TypeInt64, value)
 	}
 	if value, ok := _u.mutation.AddedTokensTotal(); ok {
 		_spec.AddField(accountwindowusagehistory.FieldTokensTotal, field.TypeInt64, value)
 	}
-	if _u.mutation.TokensTotalCleared() {
-		_spec.ClearField(accountwindowusagehistory.FieldTokensTotal, field.TypeInt64)
+	if value, ok := _u.mutation.ResetAt(); ok {
+		_spec.SetField(accountwindowusagehistory.FieldResetAt, field.TypeTime, value)
 	}
-	if value, ok := _u.mutation.TokensInput(); ok {
-		_spec.SetField(accountwindowusagehistory.FieldTokensInput, field.TypeInt64, value)
+	if value, ok := _u.mutation.DurationMinutes(); ok {
+		_spec.SetField(accountwindowusagehistory.FieldDurationMinutes, field.TypeInt, value)
 	}
-	if value, ok := _u.mutation.AddedTokensInput(); ok {
-		_spec.AddField(accountwindowusagehistory.FieldTokensInput, field.TypeInt64, value)
+	if value, ok := _u.mutation.AddedDurationMinutes(); ok {
+		_spec.AddField(accountwindowusagehistory.FieldDurationMinutes, field.TypeInt, value)
 	}
-	if _u.mutation.TokensInputCleared() {
-		_spec.ClearField(accountwindowusagehistory.FieldTokensInput, field.TypeInt64)
+	if value, ok := _u.mutation.FirstObservedAt(); ok {
+		_spec.SetField(accountwindowusagehistory.FieldFirstObservedAt, field.TypeTime, value)
 	}
-	if value, ok := _u.mutation.TokensOutput(); ok {
-		_spec.SetField(accountwindowusagehistory.FieldTokensOutput, field.TypeInt64, value)
+	if value, ok := _u.mutation.LastObservationID(); ok {
+		_spec.SetField(accountwindowusagehistory.FieldLastObservationID, field.TypeInt64, value)
 	}
-	if value, ok := _u.mutation.AddedTokensOutput(); ok {
-		_spec.AddField(accountwindowusagehistory.FieldTokensOutput, field.TypeInt64, value)
+	if value, ok := _u.mutation.AddedLastObservationID(); ok {
+		_spec.AddField(accountwindowusagehistory.FieldLastObservationID, field.TypeInt64, value)
 	}
-	if _u.mutation.TokensOutputCleared() {
-		_spec.ClearField(accountwindowusagehistory.FieldTokensOutput, field.TypeInt64)
+	if value, ok := _u.mutation.APIReferenceCost(); ok {
+		_spec.SetField(accountwindowusagehistory.FieldAPIReferenceCost, field.TypeFloat64, value)
 	}
-	if value, ok := _u.mutation.TokensCacheCreation(); ok {
-		_spec.SetField(accountwindowusagehistory.FieldTokensCacheCreation, field.TypeInt64, value)
+	if value, ok := _u.mutation.AddedAPIReferenceCost(); ok {
+		_spec.AddField(accountwindowusagehistory.FieldAPIReferenceCost, field.TypeFloat64, value)
 	}
-	if value, ok := _u.mutation.AddedTokensCacheCreation(); ok {
-		_spec.AddField(accountwindowusagehistory.FieldTokensCacheCreation, field.TypeInt64, value)
+	if _u.mutation.APIReferenceCostCleared() {
+		_spec.ClearField(accountwindowusagehistory.FieldAPIReferenceCost, field.TypeFloat64)
 	}
-	if _u.mutation.TokensCacheCreationCleared() {
-		_spec.ClearField(accountwindowusagehistory.FieldTokensCacheCreation, field.TypeInt64)
+	if value, ok := _u.mutation.PricedRequests(); ok {
+		_spec.SetField(accountwindowusagehistory.FieldPricedRequests, field.TypeInt64, value)
 	}
-	if value, ok := _u.mutation.TokensCacheRead(); ok {
-		_spec.SetField(accountwindowusagehistory.FieldTokensCacheRead, field.TypeInt64, value)
+	if value, ok := _u.mutation.AddedPricedRequests(); ok {
+		_spec.AddField(accountwindowusagehistory.FieldPricedRequests, field.TypeInt64, value)
 	}
-	if value, ok := _u.mutation.AddedTokensCacheRead(); ok {
-		_spec.AddField(accountwindowusagehistory.FieldTokensCacheRead, field.TypeInt64, value)
+	if value, ok := _u.mutation.MissingPricingRequests(); ok {
+		_spec.SetField(accountwindowusagehistory.FieldMissingPricingRequests, field.TypeInt64, value)
 	}
-	if _u.mutation.TokensCacheReadCleared() {
-		_spec.ClearField(accountwindowusagehistory.FieldTokensCacheRead, field.TypeInt64)
+	if value, ok := _u.mutation.AddedMissingPricingRequests(); ok {
+		_spec.AddField(accountwindowusagehistory.FieldMissingPricingRequests, field.TypeInt64, value)
+	}
+	if value, ok := _u.mutation.EstimatedReferenceLimit(); ok {
+		_spec.SetField(accountwindowusagehistory.FieldEstimatedReferenceLimit, field.TypeFloat64, value)
+	}
+	if value, ok := _u.mutation.AddedEstimatedReferenceLimit(); ok {
+		_spec.AddField(accountwindowusagehistory.FieldEstimatedReferenceLimit, field.TypeFloat64, value)
+	}
+	if _u.mutation.EstimatedReferenceLimitCleared() {
+		_spec.ClearField(accountwindowusagehistory.FieldEstimatedReferenceLimit, field.TypeFloat64)
+	}
+	if value, ok := _u.mutation.EstimateReferenceCost(); ok {
+		_spec.SetField(accountwindowusagehistory.FieldEstimateReferenceCost, field.TypeFloat64, value)
+	}
+	if value, ok := _u.mutation.AddedEstimateReferenceCost(); ok {
+		_spec.AddField(accountwindowusagehistory.FieldEstimateReferenceCost, field.TypeFloat64, value)
+	}
+	if _u.mutation.EstimateReferenceCostCleared() {
+		_spec.ClearField(accountwindowusagehistory.FieldEstimateReferenceCost, field.TypeFloat64)
+	}
+	if value, ok := _u.mutation.EstimateUsedPercent(); ok {
+		_spec.SetField(accountwindowusagehistory.FieldEstimateUsedPercent, field.TypeFloat64, value)
+	}
+	if value, ok := _u.mutation.AddedEstimateUsedPercent(); ok {
+		_spec.AddField(accountwindowusagehistory.FieldEstimateUsedPercent, field.TypeFloat64, value)
+	}
+	if _u.mutation.EstimateUsedPercentCleared() {
+		_spec.ClearField(accountwindowusagehistory.FieldEstimateUsedPercent, field.TypeFloat64)
+	}
+	if value, ok := _u.mutation.EstimateObservedAt(); ok {
+		_spec.SetField(accountwindowusagehistory.FieldEstimateObservedAt, field.TypeTime, value)
+	}
+	if _u.mutation.EstimateObservedAtCleared() {
+		_spec.ClearField(accountwindowusagehistory.FieldEstimateObservedAt, field.TypeTime)
+	}
+	if value, ok := _u.mutation.QualityFlags(); ok {
+		_spec.SetField(accountwindowusagehistory.FieldQualityFlags, field.TypeJSON, value)
+	}
+	if value, ok := _u.mutation.AppendedQualityFlags(); ok {
+		_spec.AddModifier(func(u *sql.UpdateBuilder) {
+			sqljson.Append(u, accountwindowusagehistory.FieldQualityFlags, value)
+		})
+	}
+	if value, ok := _u.mutation.EndReason(); ok {
+		_spec.SetField(accountwindowusagehistory.FieldEndReason, field.TypeString, value)
+	}
+	if _u.mutation.EndReasonCleared() {
+		_spec.ClearField(accountwindowusagehistory.FieldEndReason, field.TypeString)
+	}
+	if value, ok := _u.mutation.StatsFinalizedAt(); ok {
+		_spec.SetField(accountwindowusagehistory.FieldStatsFinalizedAt, field.TypeTime, value)
+	}
+	if _u.mutation.StatsFinalizedAtCleared() {
+		_spec.ClearField(accountwindowusagehistory.FieldStatsFinalizedAt, field.TypeTime)
 	}
 	if value, ok := _u.mutation.FinalizedAt(); ok {
 		_spec.SetField(accountwindowusagehistory.FieldFinalizedAt, field.TypeTime, value)

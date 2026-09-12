@@ -964,7 +964,7 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 		}
 		if result != nil {
 			// 排除 spark 影子:其 codex_* 仅由 QueryUsage(/wham/usage bengalfox)更新(外审第7轮 P1)。
-			if account.Type == service.AccountTypeOAuth && !account.IsShadow() {
+			if account.Type == service.AccountTypeOAuth && !account.IsShadow() && !result.CodexUsageCaptured {
 				h.gatewayService.UpdateCodexUsageSnapshotFromHeaders(c.Request.Context(), account.ID, result.ResponseHeaders)
 			}
 			h.gatewayService.ReportOpenAIAccountScheduleResult(account, openAIAccountScheduleModel(c, account, forwardModel, requireCompact, result), openAIForwardSucceededForScheduling(result), result.FirstTokenMs)
@@ -2959,7 +2959,7 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 					zap.String("billing_model", result.BillingModel),
 				)
 				// 排除 spark 影子:其 codex_* 仅由 QueryUsage(/wham/usage bengalfox)更新(外审第7轮 P1)。
-				if account.Type == service.AccountTypeOAuth && !account.IsShadow() {
+				if account.Type == service.AccountTypeOAuth && !account.IsShadow() && !result.CodexUsageCaptured {
 					h.gatewayService.UpdateCodexUsageSnapshotFromHeaders(ctx, account.ID, result.ResponseHeaders)
 				}
 				scheduleModel := turnUpstreamModel

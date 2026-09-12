@@ -312,6 +312,34 @@ func init() {
 	accountwindowusagehistoryDescSampleCount := accountwindowusagehistoryFields[6].Descriptor()
 	// accountwindowusagehistory.DefaultSampleCount holds the default value on creation for the sample_count field.
 	accountwindowusagehistory.DefaultSampleCount = accountwindowusagehistoryDescSampleCount.Default.(int)
+	// accountwindowusagehistoryDescRequests is the schema descriptor for requests field.
+	accountwindowusagehistoryDescRequests := accountwindowusagehistoryFields[8].Descriptor()
+	// accountwindowusagehistory.DefaultRequests holds the default value on creation for the requests field.
+	accountwindowusagehistory.DefaultRequests = accountwindowusagehistoryDescRequests.Default.(int64)
+	// accountwindowusagehistoryDescTokensTotal is the schema descriptor for tokens_total field.
+	accountwindowusagehistoryDescTokensTotal := accountwindowusagehistoryFields[9].Descriptor()
+	// accountwindowusagehistory.DefaultTokensTotal holds the default value on creation for the tokens_total field.
+	accountwindowusagehistory.DefaultTokensTotal = accountwindowusagehistoryDescTokensTotal.Default.(int64)
+	// accountwindowusagehistoryDescLastObservationID is the schema descriptor for last_observation_id field.
+	accountwindowusagehistoryDescLastObservationID := accountwindowusagehistoryFields[13].Descriptor()
+	// accountwindowusagehistory.DefaultLastObservationID holds the default value on creation for the last_observation_id field.
+	accountwindowusagehistory.DefaultLastObservationID = accountwindowusagehistoryDescLastObservationID.Default.(int64)
+	// accountwindowusagehistoryDescPricedRequests is the schema descriptor for priced_requests field.
+	accountwindowusagehistoryDescPricedRequests := accountwindowusagehistoryFields[15].Descriptor()
+	// accountwindowusagehistory.DefaultPricedRequests holds the default value on creation for the priced_requests field.
+	accountwindowusagehistory.DefaultPricedRequests = accountwindowusagehistoryDescPricedRequests.Default.(int64)
+	// accountwindowusagehistoryDescMissingPricingRequests is the schema descriptor for missing_pricing_requests field.
+	accountwindowusagehistoryDescMissingPricingRequests := accountwindowusagehistoryFields[16].Descriptor()
+	// accountwindowusagehistory.DefaultMissingPricingRequests holds the default value on creation for the missing_pricing_requests field.
+	accountwindowusagehistory.DefaultMissingPricingRequests = accountwindowusagehistoryDescMissingPricingRequests.Default.(int64)
+	// accountwindowusagehistoryDescQualityFlags is the schema descriptor for quality_flags field.
+	accountwindowusagehistoryDescQualityFlags := accountwindowusagehistoryFields[21].Descriptor()
+	// accountwindowusagehistory.DefaultQualityFlags holds the default value on creation for the quality_flags field.
+	accountwindowusagehistory.DefaultQualityFlags = accountwindowusagehistoryDescQualityFlags.Default.([]string)
+	// accountwindowusagehistoryDescEndReason is the schema descriptor for end_reason field.
+	accountwindowusagehistoryDescEndReason := accountwindowusagehistoryFields[22].Descriptor()
+	// accountwindowusagehistory.EndReasonValidator is a validator for the "end_reason" field. It is called by the builders before save.
+	accountwindowusagehistory.EndReasonValidator = accountwindowusagehistoryDescEndReason.Validators[0].(func(string) error)
 	announcementFields := schema.Announcement{}.Fields()
 	_ = announcementFields
 	// announcementDescTitle is the schema descriptor for title field.

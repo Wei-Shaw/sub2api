@@ -1714,33 +1714,27 @@ func (h *AccountHandler) GetStats(c *gin.Context) {
 // GET /api/v1/admin/accounts/:id/window-history
 func (h *AccountHandler) GetWindowHistory(c *gin.Context) {
 	accountID, err := strconv.ParseInt(c.Param("id"), 10, 64)
-	if err != nil {
+	if err != nil || accountID <= 0 {
 		response.BadRequest(c, "Invalid account ID")
 		return
 	}
-
-	// Parse days parameter (default 30; invalid or out of the 1-90 range falls back to 30)
 	days := 30
-	if daysStr := c.Query("days"); daysStr != "" {
-		if d, err := strconv.Atoi(daysStr); err == nil && d > 0 && d <= 90 {
-			days = d
+	if raw := c.Query("days"); raw != "" {
+		days, err = strconv.Atoi(raw)
+		if err != nil || days < 1 || days > 90 {
+			response.BadRequest(c, "days must be between 1 and 90")
+			return
 		}
 	}
-
 	if h.windowUsageHistory == nil {
-		// 服务未注入（极端裁剪部署）：按宽松语义返回空数据而非 500
-		response.Success(c, &service.AccountWindowHistoryResponse{
-			Windows: map[string][]*service.AccountWindowUsageEntry{},
-		})
+		response.Error(c, http.StatusServiceUnavailable, "Window history service unavailable")
 		return
 	}
-
 	history, err := h.windowUsageHistory.GetWindowHistory(c.Request.Context(), accountID, days)
 	if err != nil {
 		response.ErrorFrom(c, err)
 		return
 	}
-
 	response.Success(c, history)
 }
 

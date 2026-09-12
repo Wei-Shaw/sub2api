@@ -3,6 +3,7 @@
 package ent
 
 import (
+	"encoding/json"
 	"fmt"
 	"strings"
 	"time"
@@ -39,17 +40,37 @@ type AccountWindowUsageHistory struct {
 	// LastSampleAt holds the value of the "last_sample_at" field.
 	LastSampleAt *time.Time `json:"last_sample_at,omitempty"`
 	// Requests holds the value of the "requests" field.
-	Requests *int64 `json:"requests,omitempty"`
+	Requests int64 `json:"requests,omitempty"`
 	// TokensTotal holds the value of the "tokens_total" field.
-	TokensTotal *int64 `json:"tokens_total,omitempty"`
-	// TokensInput holds the value of the "tokens_input" field.
-	TokensInput *int64 `json:"tokens_input,omitempty"`
-	// TokensOutput holds the value of the "tokens_output" field.
-	TokensOutput *int64 `json:"tokens_output,omitempty"`
-	// TokensCacheCreation holds the value of the "tokens_cache_creation" field.
-	TokensCacheCreation *int64 `json:"tokens_cache_creation,omitempty"`
-	// TokensCacheRead holds the value of the "tokens_cache_read" field.
-	TokensCacheRead *int64 `json:"tokens_cache_read,omitempty"`
+	TokensTotal int64 `json:"tokens_total,omitempty"`
+	// ResetAt holds the value of the "reset_at" field.
+	ResetAt time.Time `json:"reset_at,omitempty"`
+	// DurationMinutes holds the value of the "duration_minutes" field.
+	DurationMinutes int `json:"duration_minutes,omitempty"`
+	// FirstObservedAt holds the value of the "first_observed_at" field.
+	FirstObservedAt time.Time `json:"first_observed_at,omitempty"`
+	// LastObservationID holds the value of the "last_observation_id" field.
+	LastObservationID int64 `json:"last_observation_id,omitempty"`
+	// APIReferenceCost holds the value of the "api_reference_cost" field.
+	APIReferenceCost *float64 `json:"api_reference_cost,omitempty"`
+	// PricedRequests holds the value of the "priced_requests" field.
+	PricedRequests int64 `json:"priced_requests,omitempty"`
+	// MissingPricingRequests holds the value of the "missing_pricing_requests" field.
+	MissingPricingRequests int64 `json:"missing_pricing_requests,omitempty"`
+	// EstimatedReferenceLimit holds the value of the "estimated_reference_limit" field.
+	EstimatedReferenceLimit *float64 `json:"estimated_reference_limit,omitempty"`
+	// EstimateReferenceCost holds the value of the "estimate_reference_cost" field.
+	EstimateReferenceCost *float64 `json:"estimate_reference_cost,omitempty"`
+	// EstimateUsedPercent holds the value of the "estimate_used_percent" field.
+	EstimateUsedPercent *float64 `json:"estimate_used_percent,omitempty"`
+	// EstimateObservedAt holds the value of the "estimate_observed_at" field.
+	EstimateObservedAt *time.Time `json:"estimate_observed_at,omitempty"`
+	// QualityFlags holds the value of the "quality_flags" field.
+	QualityFlags []string `json:"quality_flags,omitempty"`
+	// EndReason holds the value of the "end_reason" field.
+	EndReason *string `json:"end_reason,omitempty"`
+	// StatsFinalizedAt holds the value of the "stats_finalized_at" field.
+	StatsFinalizedAt *time.Time `json:"stats_finalized_at,omitempty"`
 	// FinalizedAt holds the value of the "finalized_at" field.
 	FinalizedAt *time.Time `json:"finalized_at,omitempty"`
 	// Edges holds the relations/edges for other nodes in the graph.
@@ -83,13 +104,15 @@ func (*AccountWindowUsageHistory) scanValues(columns []string) ([]any, error) {
 	values := make([]any, len(columns))
 	for i := range columns {
 		switch columns[i] {
-		case accountwindowusagehistory.FieldPeakUsedPercent, accountwindowusagehistory.FieldLastUsedPercent:
+		case accountwindowusagehistory.FieldQualityFlags:
+			values[i] = new([]byte)
+		case accountwindowusagehistory.FieldPeakUsedPercent, accountwindowusagehistory.FieldLastUsedPercent, accountwindowusagehistory.FieldAPIReferenceCost, accountwindowusagehistory.FieldEstimatedReferenceLimit, accountwindowusagehistory.FieldEstimateReferenceCost, accountwindowusagehistory.FieldEstimateUsedPercent:
 			values[i] = new(sql.NullFloat64)
-		case accountwindowusagehistory.FieldID, accountwindowusagehistory.FieldAccountID, accountwindowusagehistory.FieldSampleCount, accountwindowusagehistory.FieldRequests, accountwindowusagehistory.FieldTokensTotal, accountwindowusagehistory.FieldTokensInput, accountwindowusagehistory.FieldTokensOutput, accountwindowusagehistory.FieldTokensCacheCreation, accountwindowusagehistory.FieldTokensCacheRead:
+		case accountwindowusagehistory.FieldID, accountwindowusagehistory.FieldAccountID, accountwindowusagehistory.FieldSampleCount, accountwindowusagehistory.FieldRequests, accountwindowusagehistory.FieldTokensTotal, accountwindowusagehistory.FieldDurationMinutes, accountwindowusagehistory.FieldLastObservationID, accountwindowusagehistory.FieldPricedRequests, accountwindowusagehistory.FieldMissingPricingRequests:
 			values[i] = new(sql.NullInt64)
-		case accountwindowusagehistory.FieldWindowType:
+		case accountwindowusagehistory.FieldWindowType, accountwindowusagehistory.FieldEndReason:
 			values[i] = new(sql.NullString)
-		case accountwindowusagehistory.FieldCreatedAt, accountwindowusagehistory.FieldUpdatedAt, accountwindowusagehistory.FieldWindowStart, accountwindowusagehistory.FieldWindowEnd, accountwindowusagehistory.FieldLastSampleAt, accountwindowusagehistory.FieldFinalizedAt:
+		case accountwindowusagehistory.FieldCreatedAt, accountwindowusagehistory.FieldUpdatedAt, accountwindowusagehistory.FieldWindowStart, accountwindowusagehistory.FieldWindowEnd, accountwindowusagehistory.FieldLastSampleAt, accountwindowusagehistory.FieldResetAt, accountwindowusagehistory.FieldFirstObservedAt, accountwindowusagehistory.FieldEstimateObservedAt, accountwindowusagehistory.FieldStatsFinalizedAt, accountwindowusagehistory.FieldFinalizedAt:
 			values[i] = new(sql.NullTime)
 		default:
 			values[i] = new(sql.UnknownType)
@@ -177,43 +200,106 @@ func (_m *AccountWindowUsageHistory) assignValues(columns []string, values []any
 			if value, ok := values[i].(*sql.NullInt64); !ok {
 				return fmt.Errorf("unexpected type %T for field requests", values[i])
 			} else if value.Valid {
-				_m.Requests = new(int64)
-				*_m.Requests = value.Int64
+				_m.Requests = value.Int64
 			}
 		case accountwindowusagehistory.FieldTokensTotal:
 			if value, ok := values[i].(*sql.NullInt64); !ok {
 				return fmt.Errorf("unexpected type %T for field tokens_total", values[i])
 			} else if value.Valid {
-				_m.TokensTotal = new(int64)
-				*_m.TokensTotal = value.Int64
+				_m.TokensTotal = value.Int64
 			}
-		case accountwindowusagehistory.FieldTokensInput:
-			if value, ok := values[i].(*sql.NullInt64); !ok {
-				return fmt.Errorf("unexpected type %T for field tokens_input", values[i])
+		case accountwindowusagehistory.FieldResetAt:
+			if value, ok := values[i].(*sql.NullTime); !ok {
+				return fmt.Errorf("unexpected type %T for field reset_at", values[i])
 			} else if value.Valid {
-				_m.TokensInput = new(int64)
-				*_m.TokensInput = value.Int64
+				_m.ResetAt = value.Time
 			}
-		case accountwindowusagehistory.FieldTokensOutput:
+		case accountwindowusagehistory.FieldDurationMinutes:
 			if value, ok := values[i].(*sql.NullInt64); !ok {
-				return fmt.Errorf("unexpected type %T for field tokens_output", values[i])
+				return fmt.Errorf("unexpected type %T for field duration_minutes", values[i])
 			} else if value.Valid {
-				_m.TokensOutput = new(int64)
-				*_m.TokensOutput = value.Int64
+				_m.DurationMinutes = int(value.Int64)
 			}
-		case accountwindowusagehistory.FieldTokensCacheCreation:
-			if value, ok := values[i].(*sql.NullInt64); !ok {
-				return fmt.Errorf("unexpected type %T for field tokens_cache_creation", values[i])
+		case accountwindowusagehistory.FieldFirstObservedAt:
+			if value, ok := values[i].(*sql.NullTime); !ok {
+				return fmt.Errorf("unexpected type %T for field first_observed_at", values[i])
 			} else if value.Valid {
-				_m.TokensCacheCreation = new(int64)
-				*_m.TokensCacheCreation = value.Int64
+				_m.FirstObservedAt = value.Time
 			}
-		case accountwindowusagehistory.FieldTokensCacheRead:
+		case accountwindowusagehistory.FieldLastObservationID:
 			if value, ok := values[i].(*sql.NullInt64); !ok {
-				return fmt.Errorf("unexpected type %T for field tokens_cache_read", values[i])
+				return fmt.Errorf("unexpected type %T for field last_observation_id", values[i])
 			} else if value.Valid {
-				_m.TokensCacheRead = new(int64)
-				*_m.TokensCacheRead = value.Int64
+				_m.LastObservationID = value.Int64
+			}
+		case accountwindowusagehistory.FieldAPIReferenceCost:
+			if value, ok := values[i].(*sql.NullFloat64); !ok {
+				return fmt.Errorf("unexpected type %T for field api_reference_cost", values[i])
+			} else if value.Valid {
+				_m.APIReferenceCost = new(float64)
+				*_m.APIReferenceCost = value.Float64
+			}
+		case accountwindowusagehistory.FieldPricedRequests:
+			if value, ok := values[i].(*sql.NullInt64); !ok {
+				return fmt.Errorf("unexpected type %T for field priced_requests", values[i])
+			} else if value.Valid {
+				_m.PricedRequests = value.Int64
+			}
+		case accountwindowusagehistory.FieldMissingPricingRequests:
+			if value, ok := values[i].(*sql.NullInt64); !ok {
+				return fmt.Errorf("unexpected type %T for field missing_pricing_requests", values[i])
+			} else if value.Valid {
+				_m.MissingPricingRequests = value.Int64
+			}
+		case accountwindowusagehistory.FieldEstimatedReferenceLimit:
+			if value, ok := values[i].(*sql.NullFloat64); !ok {
+				return fmt.Errorf("unexpected type %T for field estimated_reference_limit", values[i])
+			} else if value.Valid {
+				_m.EstimatedReferenceLimit = new(float64)
+				*_m.EstimatedReferenceLimit = value.Float64
+			}
+		case accountwindowusagehistory.FieldEstimateReferenceCost:
+			if value, ok := values[i].(*sql.NullFloat64); !ok {
+				return fmt.Errorf("unexpected type %T for field estimate_reference_cost", values[i])
+			} else if value.Valid {
+				_m.EstimateReferenceCost = new(float64)
+				*_m.EstimateReferenceCost = value.Float64
+			}
+		case accountwindowusagehistory.FieldEstimateUsedPercent:
+			if value, ok := values[i].(*sql.NullFloat64); !ok {
+				return fmt.Errorf("unexpected type %T for field estimate_used_percent", values[i])
+			} else if value.Valid {
+				_m.EstimateUsedPercent = new(float64)
+				*_m.EstimateUsedPercent = value.Float64
+			}
+		case accountwindowusagehistory.FieldEstimateObservedAt:
+			if value, ok := values[i].(*sql.NullTime); !ok {
+				return fmt.Errorf("unexpected type %T for field estimate_observed_at", values[i])
+			} else if value.Valid {
+				_m.EstimateObservedAt = new(time.Time)
+				*_m.EstimateObservedAt = value.Time
+			}
+		case accountwindowusagehistory.FieldQualityFlags:
+			if value, ok := values[i].(*[]byte); !ok {
+				return fmt.Errorf("unexpected type %T for field quality_flags", values[i])
+			} else if value != nil && len(*value) > 0 {
+				if err := json.Unmarshal(*value, &_m.QualityFlags); err != nil {
+					return fmt.Errorf("unmarshal field quality_flags: %w", err)
+				}
+			}
+		case accountwindowusagehistory.FieldEndReason:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field end_reason", values[i])
+			} else if value.Valid {
+				_m.EndReason = new(string)
+				*_m.EndReason = value.String
+			}
+		case accountwindowusagehistory.FieldStatsFinalizedAt:
+			if value, ok := values[i].(*sql.NullTime); !ok {
+				return fmt.Errorf("unexpected type %T for field stats_finalized_at", values[i])
+			} else if value.Valid {
+				_m.StatsFinalizedAt = new(time.Time)
+				*_m.StatsFinalizedAt = value.Time
 			}
 		case accountwindowusagehistory.FieldFinalizedAt:
 			if value, ok := values[i].(*sql.NullTime); !ok {
@@ -295,34 +381,66 @@ func (_m *AccountWindowUsageHistory) String() string {
 		builder.WriteString(v.Format(time.ANSIC))
 	}
 	builder.WriteString(", ")
-	if v := _m.Requests; v != nil {
-		builder.WriteString("requests=")
+	builder.WriteString("requests=")
+	builder.WriteString(fmt.Sprintf("%v", _m.Requests))
+	builder.WriteString(", ")
+	builder.WriteString("tokens_total=")
+	builder.WriteString(fmt.Sprintf("%v", _m.TokensTotal))
+	builder.WriteString(", ")
+	builder.WriteString("reset_at=")
+	builder.WriteString(_m.ResetAt.Format(time.ANSIC))
+	builder.WriteString(", ")
+	builder.WriteString("duration_minutes=")
+	builder.WriteString(fmt.Sprintf("%v", _m.DurationMinutes))
+	builder.WriteString(", ")
+	builder.WriteString("first_observed_at=")
+	builder.WriteString(_m.FirstObservedAt.Format(time.ANSIC))
+	builder.WriteString(", ")
+	builder.WriteString("last_observation_id=")
+	builder.WriteString(fmt.Sprintf("%v", _m.LastObservationID))
+	builder.WriteString(", ")
+	if v := _m.APIReferenceCost; v != nil {
+		builder.WriteString("api_reference_cost=")
 		builder.WriteString(fmt.Sprintf("%v", *v))
 	}
 	builder.WriteString(", ")
-	if v := _m.TokensTotal; v != nil {
-		builder.WriteString("tokens_total=")
+	builder.WriteString("priced_requests=")
+	builder.WriteString(fmt.Sprintf("%v", _m.PricedRequests))
+	builder.WriteString(", ")
+	builder.WriteString("missing_pricing_requests=")
+	builder.WriteString(fmt.Sprintf("%v", _m.MissingPricingRequests))
+	builder.WriteString(", ")
+	if v := _m.EstimatedReferenceLimit; v != nil {
+		builder.WriteString("estimated_reference_limit=")
 		builder.WriteString(fmt.Sprintf("%v", *v))
 	}
 	builder.WriteString(", ")
-	if v := _m.TokensInput; v != nil {
-		builder.WriteString("tokens_input=")
+	if v := _m.EstimateReferenceCost; v != nil {
+		builder.WriteString("estimate_reference_cost=")
 		builder.WriteString(fmt.Sprintf("%v", *v))
 	}
 	builder.WriteString(", ")
-	if v := _m.TokensOutput; v != nil {
-		builder.WriteString("tokens_output=")
+	if v := _m.EstimateUsedPercent; v != nil {
+		builder.WriteString("estimate_used_percent=")
 		builder.WriteString(fmt.Sprintf("%v", *v))
 	}
 	builder.WriteString(", ")
-	if v := _m.TokensCacheCreation; v != nil {
-		builder.WriteString("tokens_cache_creation=")
-		builder.WriteString(fmt.Sprintf("%v", *v))
+	if v := _m.EstimateObservedAt; v != nil {
+		builder.WriteString("estimate_observed_at=")
+		builder.WriteString(v.Format(time.ANSIC))
 	}
 	builder.WriteString(", ")
-	if v := _m.TokensCacheRead; v != nil {
-		builder.WriteString("tokens_cache_read=")
-		builder.WriteString(fmt.Sprintf("%v", *v))
+	builder.WriteString("quality_flags=")
+	builder.WriteString(fmt.Sprintf("%v", _m.QualityFlags))
+	builder.WriteString(", ")
+	if v := _m.EndReason; v != nil {
+		builder.WriteString("end_reason=")
+		builder.WriteString(*v)
+	}
+	builder.WriteString(", ")
+	if v := _m.StatsFinalizedAt; v != nil {
+		builder.WriteString("stats_finalized_at=")
+		builder.WriteString(v.Format(time.ANSIC))
 	}
 	builder.WriteString(", ")
 	if v := _m.FinalizedAt; v != nil {

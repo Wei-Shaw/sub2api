@@ -390,6 +390,25 @@ func (s *OpenAIQuotaService) resetCredit(ctx context.Context, accountID int64, c
 		break
 	}
 
+	if payload.WindowsReset > 0 {
+		resetAt := time.Now().UTC()
+		if payload.Credit != nil {
+			if parsed, err := time.Parse(time.RFC3339Nano, payload.Credit.RedeemedAt); err == nil {
+				resetAt = parsed
+			}
+		}
+		// The count records a reset fact, not a mapping to specific windows.
+		historyCtx, historyCancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+		err := s.accountRepo.UpdateExtra(historyCtx, accountID, map[string]any{
+			"codex_history_reset_at":      resetAt.Format(time.RFC3339Nano),
+			"codex_history_reset_windows": payload.WindowsReset,
+		})
+		historyCancel()
+		if err != nil {
+			slog.Warn("openai_quota_reset_history_failed", "account_id", accountID, "error", err)
+		}
+	}
+
 	slog.Info("openai_quota_reset_success",
 		"account_id", accountID,
 		"code", payload.Code,

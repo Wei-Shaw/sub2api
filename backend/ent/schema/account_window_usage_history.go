@@ -12,13 +12,8 @@ import (
 	"entgo.io/ent/schema/index"
 )
 
-// AccountWindowUsageHistory holds the schema definition for the AccountWindowUsageHistory entity.
-// 账号滚动窗口用量历史：纯被动统计每个账号各滚动窗口（5h/7d/7d-sonnet/7d-fable/weekly）
-// 的使用率曲线——观测全部来自既有数据流（Codex 流量头快照、渠道监控明细历史），
-// 不产生任何主动探测。窗口关闭（finalized_at 非空）后由 usage_logs 重建该窗口的
-// token 明细。每账号每窗口类型至多一行未关闭记录，由局部唯一索引
-// (account_id, window_type) WHERE finalized_at IS NULL 保证（upsert 冲突目标）。
-// 明细按保留期物理删除（日志类表，不用软删除）。
+// AccountWindowUsageHistory retains observed OpenAI OAuth quota periods and local
+// API-price comparisons. Its journal is SQL-managed and consumed transactionally.
 type AccountWindowUsageHistory struct {
 	ent.Schema
 }
@@ -40,13 +35,12 @@ func (AccountWindowUsageHistory) Mixin() []ent.Mixin {
 func (AccountWindowUsageHistory) Fields() []ent.Field {
 	return []ent.Field{
 		field.Int64("account_id"),
-		// window_type: 滚动窗口类型 token，复用 domain.MonitorQuotaTier.Window 取值
-		// （"5h" / "7d" / "7d-sonnet" / "7d-fable" / "weekly"）
+		// Only ordinary OpenAI 5h / 7d quota windows are recorded.
 		field.String("window_type").
 			NotEmpty().
 			MaxLen(32),
-		// window_end: 最后观测到的 reset_at（滚动窗口会向前滑动，关闭时定格）；
-		// window_start = window_end - duration(window_type)，随滑动同步重算
+		// window_end is the observed reset boundary, or an early-reset cut point.
+		// reset_at separately retains the provider boundary used for late samples.
 		field.Time("window_start").
 			SchemaType(map[string]string{dialect.Postgres: "timestamptz"}),
 		field.Time("window_end").
@@ -57,8 +51,8 @@ func (AccountWindowUsageHistory) Fields() []ent.Field {
 			Default(0),
 		field.Float("last_used_percent").
 			Default(0),
-		// sample_count: 累计采样次数；同一观测（last_sample_at 相同或更早）
-		// 重复回放时恰好计数一次（多副本 / 重启回填幂等）
+		// Each journal id is processed exactly once under the account row lock.
+		// Distinct observations may legitimately share the same timestamp.
 		field.Int("sample_count").
 			Default(0),
 		// last_sample_at: 行内最新采样的观测时刻（快照抓取时间），单调前移
@@ -66,26 +60,24 @@ func (AccountWindowUsageHistory) Fields() []ent.Field {
 			Optional().
 			Nillable().
 			SchemaType(map[string]string{dialect.Postgres: "timestamptz"}),
-		// requests / tokens_*: 窗口关闭后由 usage_logs 在 [window_start, window_end)
-		// 内聚合回填；finalized_at 为空时均为 NULL
-		field.Int64("requests").
-			Optional().
-			Nillable(),
-		field.Int64("tokens_total").
-			Optional().
-			Nillable(),
-		field.Int64("tokens_input").
-			Optional().
-			Nillable(),
-		field.Int64("tokens_output").
-			Optional().
-			Nillable(),
-		field.Int64("tokens_cache_creation").
-			Optional().
-			Nillable(),
-		field.Int64("tokens_cache_read").
-			Optional().
-			Nillable(),
+		// Locally recorded cumulative usage at the latest sample; refreshed once
+		// more after the closed period's late-write grace interval.
+		field.Int64("requests").Default(0),
+		field.Int64("tokens_total").Default(0),
+		field.Time("reset_at").SchemaType(map[string]string{dialect.Postgres: "timestamptz"}),
+		field.Int("duration_minutes"),
+		field.Time("first_observed_at").SchemaType(map[string]string{dialect.Postgres: "timestamptz"}),
+		field.Int64("last_observation_id").Default(0),
+		field.Float("api_reference_cost").Optional().Nillable().SchemaType(map[string]string{dialect.Postgres: "numeric(20,10)"}),
+		field.Int64("priced_requests").Default(0),
+		field.Int64("missing_pricing_requests").Default(0),
+		field.Float("estimated_reference_limit").Optional().Nillable().SchemaType(map[string]string{dialect.Postgres: "numeric(20,10)"}),
+		field.Float("estimate_reference_cost").Optional().Nillable().SchemaType(map[string]string{dialect.Postgres: "numeric(20,10)"}),
+		field.Float("estimate_used_percent").Optional().Nillable(),
+		field.Time("estimate_observed_at").Optional().Nillable().SchemaType(map[string]string{dialect.Postgres: "timestamptz"}),
+		field.JSON("quality_flags", []string{}).Default([]string{}),
+		field.String("end_reason").MaxLen(32).Optional().Nillable(),
+		field.Time("stats_finalized_at").Optional().Nillable().SchemaType(map[string]string{dialect.Postgres: "timestamptz"}),
 		// finalized_at: 窗口关闭时间；NULL = 开放行（当前窗口）
 		field.Time("finalized_at").
 			Optional().

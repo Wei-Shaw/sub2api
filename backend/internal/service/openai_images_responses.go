@@ -990,7 +990,7 @@ func (s *OpenAIGatewayService) handleOpenAIImagesErrorResponse(
 	if len(requestedModel) > 0 {
 		modelForCooldown = strings.TrimSpace(requestedModel[0])
 	}
-	shouldDisable := s.handleOpenAIAccountUpstreamError(ctx, account, resp.StatusCode, resp.Header, body, modelForCooldown)
+	shouldDisable := s.handleOpenAIResponseUpstreamError(ctx, account, resp, body, modelForCooldown)
 	failoverErr := s.newOpenAIAccountFailoverError(
 		account,
 		resp.StatusCode,
@@ -1952,6 +1952,7 @@ func (s *OpenAIGatewayService) forwardOpenAIImagesOAuth(
 					UpstreamResponseModel:         observedUpstreamResponseModel(c),
 					UpstreamResponseModelConflict: observedUpstreamResponseModelConflict(c),
 					Stream:                        parsed.Stream,
+					CodexUsageCaptured:            codexObservationFromResponse(resp) != nil,
 					ResponseHeaders:               resp.Header.Clone(),
 					Duration:                      time.Since(startTime),
 					FirstTokenMs:                  firstTokenMs,
@@ -2004,6 +2005,7 @@ func (s *OpenAIGatewayService) forwardOpenAIImagesOAuth(
 		UpstreamResponseModel:         observedUpstreamResponseModel(c),
 		UpstreamResponseModelConflict: observedUpstreamResponseModelConflict(c),
 		Stream:                        parsed.Stream,
+		CodexUsageCaptured:            codexObservationFromResponse(resp) != nil,
 		ResponseHeaders:               resp.Header.Clone(),
 		Duration:                      time.Since(startTime),
 		FirstTokenMs:                  firstTokenMs,
@@ -2072,6 +2074,7 @@ func (s *OpenAIGatewayService) handleOpenAIImagesOAuthResponseError(
 	writerSizeBeforeResponse int,
 	err error,
 ) error {
+	ctx = codexObservationResponseContext(ctx, resp)
 	responseWritten := c != nil && c.Writer != nil && OpenAIImagesJSONKeepaliveAdjustedWrittenSize(c) != writerSizeBeforeResponse
 	if code, message, ok := OpenAIUpstreamStreamReadErrorDetails(err); ok {
 		// A body transport failure after a successful HTTP status is retryable only
