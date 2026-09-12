@@ -4,7 +4,6 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/Wei-Shaw/sub2api/internal/pkg/openai_compat"
 	"github.com/tidwall/gjson"
 	"github.com/tidwall/sjson"
 )
@@ -12,40 +11,6 @@ import (
 // Ollama Cloud 的 OpenAI 兼容 /v1/chat/completions 把思维放在 reasoning / thinking，
 // 而 DeepSeek/OpenAI 客户端只认 reasoning_content。仅在 raw CC 直转路径上做 wire JSON
 // 双向补齐，不改 CC↔Responses / Anthropic / Grok 桥。
-
-func isOllamaCloudRawChatCompletionsAccount(account *Account) bool {
-	if account == nil || account.Platform != PlatformOpenAI || account.Type != AccountTypeAPIKey {
-		return false
-	}
-	mode, _ := account.Extra[openai_compat.ExtraKeyResponsesMode].(string)
-	if openai_compat.NormalizeResponsesSupportMode(mode) != openai_compat.ResponsesSupportModeForceChatCompletions {
-		return false
-	}
-	if accountHasOllamaCloudUsageExtra(account) {
-		return true
-	}
-	if account.Credentials == nil {
-		return false
-	}
-	baseURL, _ := account.Credentials["base_url"].(string)
-	return isOllamaCloudBaseURL(baseURL)
-}
-
-func accountHasOllamaCloudUsageExtra(account *Account) bool {
-	if account == nil || account.Extra == nil {
-		return false
-	}
-	for _, key := range []string{
-		OllamaCloudUsageSessionExtraKey,
-		OllamaCloudUsageAutoRefreshExtraKey,
-		OllamaCloudUsageSnapshotExtraKey,
-	} {
-		if _, ok := account.Extra[key]; ok {
-			return true
-		}
-	}
-	return false
-}
 
 // isOllamaCloudDeepSeekUpstream 判断本次出站是否命中 Ollama Cloud 上托管的
 // DeepSeek 模型：出站 base_url 是 Ollama Cloud（GetOpenAIBaseURL，与

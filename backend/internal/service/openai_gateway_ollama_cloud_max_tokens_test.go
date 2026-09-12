@@ -230,18 +230,27 @@ func TestClampOllamaCloudUpstreamMaxTokens(t *testing.T) {
 			want:    `{"model":"deepseek-v4-flash","max_completion_tokens":65535}`,
 		},
 		{
-			// 新增范围只限 DeepSeek 系模型：kimi/zhipu 平台挂 ollama.com 跑非
-			// DeepSeek 模型的请求保持不变。
-			name:    "kimi platform non-deepseek model untouched",
+			// D1′ 后 host 命中即钳制、不按模型家族过滤：kimi/zhipu 平台挂
+			// ollama.com 跑非 DeepSeek 模型同样被 clamp（上游对 >65535 一律 400，
+			// 与模型无关；这些用例此前钉住的是「仅 DeepSeek 系 clamp」的旧行为）。
+			name:    "kimi platform non-deepseek model is clamped",
 			account: ollamaUpstreamTestAccount(PlatformKimi, 302),
 			body:    `{"model":"k3-256k","max_tokens":256000}`,
-			want:    `{"model":"k3-256k","max_tokens":256000}`,
+			want:    `{"model":"k3-256k","max_tokens":65535}`,
 		},
 		{
-			name:    "zhipu platform non-deepseek model untouched",
+			name:    "zhipu platform non-deepseek model is clamped",
 			account: ollamaUpstreamTestAccount(PlatformZhipu, 302),
 			body:    `{"model":"glm-4.7","max_tokens":256000}`,
-			want:    `{"model":"glm-4.7","max_tokens":256000}`,
+			want:    `{"model":"glm-4.7","max_tokens":65535}`,
+		},
+		{
+			// platform=ollama_cloud + 非 DeepSeek 模型（真实名形态含 tag）：
+			// D1′ 的目标场景，此前不 clamp 会被上游 400。
+			name:    "ollama_cloud platform non-deepseek tagged model is clamped",
+			account: ollamaUpstreamTestAccount(PlatformOllamaCloud, 306),
+			body:    `{"model":"gpt-oss:120b-cloud","max_tokens":256000}`,
+			want:    `{"model":"gpt-oss:120b-cloud","max_tokens":65535}`,
 		},
 		{
 			// 既有 openai 平台 Ollama 账号对 DeepSeek 模型的 clamp 幂等保持。
@@ -251,23 +260,24 @@ func TestClampOllamaCloudUpstreamMaxTokens(t *testing.T) {
 			want:    `{"model":"deepseek-v4-flash","max_tokens":65535}`,
 		},
 		{
-			// 既有 openai 平台 Ollama（真实 ollama.com + force_chat_completions）对
-			// 非 DeepSeek 模型的 clamp 保留。
-			name:    "openai platform ollama.com non-deepseek model keeps legacy clamp",
+			// 既有 openai 平台 Ollama（真实 ollama.com）对非 DeepSeek 模型的 clamp
+			// 保持（现按 host 判定命中，不再依赖 force_chat_completions extra）。
+			name:    "openai platform ollama.com non-deepseek model keeps clamp",
 			account: ollamaCloudRawChatCompletionsTestAccount(),
 			body:    `{"model":"gpt-oss:120b-cloud","max_tokens":70000}`,
 			want:    `{"model":"gpt-oss:120b-cloud","max_tokens":65535}`,
 		},
 		{
-			// 非 DeepSeek 模型不扩展到其它平台。
-			name: "openai platform ollama.com non-deepseek model without force_cc untouched",
+			// 非 DeepSeek 模型不再豁免：openai 平台 + 无 force_cc extra 同样按
+			// host 判定 clamp（旧行为「无 force_cc 不 clamp」已随 D1′ 移除）。
+			name: "openai platform ollama.com non-deepseek model without force_cc is clamped",
 			account: func() *Account {
 				account := ollamaUpstreamTestAccount(PlatformOpenAI, 303)
 				account.Extra = nil
 				return account
 			}(),
 			body: `{"model":"gpt-oss:120b-cloud","max_tokens":70000}`,
-			want: `{"model":"gpt-oss:120b-cloud","max_tokens":70000}`,
+			want: `{"model":"gpt-oss:120b-cloud","max_tokens":65535}`,
 		},
 		{
 			// 残留 usage extra 不得把非 Ollama host 变成 Ollama（旧 reasoning 钩子内的
@@ -396,6 +406,17 @@ func TestForwardResponsesClampsOllamaCloudMaxOutputTokens(t *testing.T) {
 		account.Extra[openai_compat.ExtraKeyResponsesMode] = string(openai_compat.ResponsesSupportModeForceResponses)
 		upstream, err := run(account, responsesBody)
 		require.Error(t, err)
+		require.Equal(t, int64(65535), gjson.GetBytes(upstream.lastBody, "max_output_tokens").Int())
+	})
+
+	// D1′：原生 Responses 路径不再按模型家族过滤，非 DeepSeek 模型同样 clamp。
+	t.Run("non-deepseek model on native responses is clamped", func(t *testing.T) {
+		account := ollamaUpstreamTestAccount(PlatformOllamaCloud, 338)
+		account.Credentials["api_protocol"] = APIProtocolResponses
+		nonDeepSeekBody := []byte(`{"model":"gpt-oss:120b-cloud","input":"Reply with exactly OK and nothing else.","max_output_tokens":256000,"stream":false}`)
+		upstream, err := run(account, nonDeepSeekBody)
+		require.Error(t, err)
+		require.Equal(t, "https://ollama.com/v1/responses", upstream.lastReq.URL.String())
 		require.Equal(t, int64(65535), gjson.GetBytes(upstream.lastBody, "max_output_tokens").Int())
 	})
 
@@ -668,10 +689,12 @@ func TestForwardAsAnthropic_DeepseekOllamaCloudClampsMaxOutputTokens(t *testing.
 	})
 }
 
-// TestResponsesPathNotClampedForOfficialDeepseekOrNonDeepSeekModel 对照用例（问题 1/2）：
-// 官方 deepseek（api.deepseek.com）与 ollama.com + 非 DeepSeek 模型的账号，同一判据不
-// 命中——三个出站入口的出站 body 保持 256000、不做任何改写。
-func TestResponsesPathNotClampedForOfficialDeepseekOrNonDeepSeekModel(t *testing.T) {
+// TestResponsesPathNotClampedForOfficialDeepseek 对照用例（问题 1/2）：官方
+// deepseek（api.deepseek.com）的账号同一判据不命中——三个出站入口的出站 body 保持
+// 256000、不做任何改写。（D1′ 后非 DeepSeek 模型在 ollama host 上同样 clamp，
+// 对照只保留非 Ollama 上游场景；非 DeepSeek 的 clamp 断言见
+// TestForwardResponsesClampsOllamaCloudMaxOutputTokens 与 raw CC 表驱动用例。）
+func TestResponsesPathNotClampedForOfficialDeepseek(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
 	type entry struct {
@@ -727,26 +750,6 @@ func TestResponsesPathNotClampedForOfficialDeepseekOrNonDeepSeekModel(t *testing
 				require.Equal(t, "https://api.deepseek.com/responses", upstream.lastReq.URL.String())
 				// 原生 Responses 入站只发 max_tokens 时保持原样（无 max_output_tokens）；
 				// 转换路径经转换器生成 max_output_tokens=256000，均不做 clamp。
-				if out := gjson.GetBytes(upstream.lastBody, "max_output_tokens"); out.Exists() {
-					require.Equal(t, int64(256000), out.Int())
-				} else {
-					require.Equal(t, int64(256000), gjson.GetBytes(upstream.lastBody, "max_tokens").Int())
-				}
-			})
-		}
-	})
-
-	t.Run("ollama account with non-deepseek model keeps 256000", func(t *testing.T) {
-		account := ollamaUpstreamTestAccount(PlatformDeepseek, 382)
-		account.Credentials["api_protocol"] = APIProtocolResponses
-		glmEntries := entries
-		glmEntries[0].body = []byte(`{"model":"glm-5.3-flash","input":"Reply with exactly OK and nothing else.","max_tokens":256000,"stream":false}`)
-		glmEntries[1].body = []byte(`{"model":"glm-5.3-flash","max_tokens":256000,"messages":[{"role":"user","content":"hi"}],"stream":false}`)
-		glmEntries[2].body = []byte(`{"model":"glm-5.3-flash","max_tokens":256000,"messages":[{"role":"user","content":"hi"}],"stream":false}`)
-		for _, e := range glmEntries {
-			t.Run(e.name, func(t *testing.T) {
-				upstream := run(account, e)
-				require.Equal(t, "https://ollama.com/v1/responses", upstream.lastReq.URL.String())
 				if out := gjson.GetBytes(upstream.lastBody, "max_output_tokens"); out.Exists() {
 					require.Equal(t, int64(256000), out.Int())
 				} else {

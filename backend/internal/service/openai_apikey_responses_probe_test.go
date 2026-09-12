@@ -90,6 +90,53 @@ func TestProbeOpenAIAPIKeyResponsesSupportCNProviders(t *testing.T) {
 	}
 }
 
+// TestProbeOpenAIAPIKeyResponsesSupportOllamaCloud 验证 C39：ollama_cloud 账号与
+// CN 分支同款按协议直接落标，不走网络探测（C31 后 ollama 有原生 /v1/responses，
+// 探测的 2xx/404 判定对它无意义）；显式 CC 重置为 auto 防残留强制模式。
+func TestProbeOpenAIAPIKeyResponsesSupportOllamaCloud(t *testing.T) {
+	tests := []struct {
+		name        string
+		id          int64
+		protocol    string
+		wantMode    string
+		wantSupport bool
+	}{
+		{name: "adaptive marks force_responses", id: 221, protocol: APIProtocolAdaptive, wantMode: string(openai_compat.ResponsesSupportModeForceResponses), wantSupport: true},
+		{name: "responses protocol marks force_responses", id: 222, protocol: APIProtocolResponses, wantMode: string(openai_compat.ResponsesSupportModeForceResponses), wantSupport: true},
+		{name: "chat completions resets to auto", id: 223, protocol: APIProtocolChatCompletions, wantMode: string(openai_compat.ResponsesSupportModeAuto), wantSupport: false},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			updateCalls := make(chan map[string]any, 1)
+			account := Account{
+				ID: tc.id, Platform: PlatformOllamaCloud, Type: AccountTypeAPIKey,
+				Credentials: map[string]any{"api_key": "sk-test", "api_protocol": tc.protocol},
+				Extra: map[string]any{
+					// 预置与目标相反的残留标记，验证落标会覆盖。
+					openai_compat.ExtraKeyResponsesMode:      string(openai_compat.ResponsesSupportModeAuto),
+					openai_compat.ExtraKeyResponsesSupported: false,
+				},
+			}
+			repo := &snapshotUpdateAccountRepo{
+				stubOpenAIAccountRepo: stubOpenAIAccountRepo{accounts: []Account{account}},
+				updateExtraCalls:      updateCalls,
+			}
+			upstream := &httpUpstreamRecorder{}
+			svc := &AccountTestService{accountRepo: repo, httpUpstream: upstream}
+
+			svc.ProbeOpenAIAPIKeyResponsesSupport(context.Background(), account.ID)
+
+			updates := <-updateCalls
+			require.Equal(t, tc.wantSupport, updates[openai_compat.ExtraKeyResponsesSupported])
+			require.Equal(t, tc.wantMode, updates[openai_compat.ExtraKeyResponsesMode])
+			// 不发任何网络探测请求。
+			require.Nil(t, upstream.lastReq)
+			require.Empty(t, upstream.requests)
+		})
+	}
+}
+
 func TestDecideResponsesProbeSupport(t *testing.T) {
 	fnCall := []byte(`{"output":[{"type":"reasoning"},{"type":"function_call","name":"probe_ping"}]}`)
 	reasoningOnly := []byte(`{"output":[{"type":"reasoning"}]}`)
