@@ -51159,6 +51159,7 @@ type UserMutation struct {
 	signup_source                    *string
 	last_login_at                    *time.Time
 	last_active_at                   *time.Time
+	restrict_public_groups           *bool
 	balance_notify_enabled           *bool
 	balance_notify_threshold_type    *string
 	balance_notify_threshold         *float64
@@ -51217,7 +51218,6 @@ type UserMutation struct {
 	done                             bool
 	oldValue                         func(context.Context) (*User, error)
 	predicates                       []predicate.User
-	restrict_public_groups *bool
 }
 
 var _ ent.Mutation = (*UserMutation)(nil)
