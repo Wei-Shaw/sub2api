@@ -19,6 +19,7 @@ export const PROVIDER_ZHIPU: Provider = 'zhipu'
 export const PROVIDER_DEEPSEEK: Provider = 'deepseek'
 export const PROVIDER_MINIMAX: Provider = 'minimax'
 export const PROVIDER_OPENCODE_GO: Provider = 'opencode_go'
+export const PROVIDER_OLLAMA_CLOUD: Provider = 'ollama_cloud'
 
 export const DEFAULT_GROK_ENDPOINT = 'https://api.x.ai'
 export const DEFAULT_GROK_MODEL = 'grok-4.5'
@@ -29,6 +30,9 @@ export const DEFAULT_ZHIPU_ENDPOINT = 'https://open.bigmodel.cn'
 export const DEFAULT_DEEPSEEK_ENDPOINT = 'https://api.deepseek.com'
 export const DEFAULT_MINIMAX_ENDPOINT = 'https://api.minimaxi.com'
 export const DEFAULT_OPENCODE_GO_ENDPOINT = 'https://opencode.ai/zen/go/v1'
+// ollama_cloud 官方 OpenAI 兼容端点：探活 adapter 追加 /v1/chat/completions，
+// 与后端 DefaultOllamaCloudBaseURL (https://ollama.com/v1) 同源。
+export const DEFAULT_OLLAMA_CLOUD_ENDPOINT = 'https://ollama.com'
 
 export const CHECK_MODE_PROBE: CheckMode = 'probe'
 export const CHECK_MODE_QUOTA: CheckMode = 'quota'
@@ -48,6 +52,7 @@ export const PROVIDERS: readonly Provider[] = [
   PROVIDER_DEEPSEEK,
   PROVIDER_MINIMAX,
   PROVIDER_OPENCODE_GO,
+  PROVIDER_OLLAMA_CLOUD,
 ]
 
 /** 仅支持配额模式（无探活 adapter）的 provider。 */
