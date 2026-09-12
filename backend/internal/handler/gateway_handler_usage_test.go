@@ -49,3 +49,29 @@ func TestUsageUnrestrictedIncludesWeeklyWindowStart(t *testing.T) {
 	require.NotNil(t, response.Subscription.WeeklyWindowStart)
 	require.True(t, weeklyWindowStart.Equal(*response.Subscription.WeeklyWindowStart))
 }
+
+func TestUsageLogsRequiresAPIKeyContext(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	c.Request = httptest.NewRequest(http.MethodGet, "/v1/usage/logs", nil)
+
+	handler := &GatewayHandler{}
+	handler.UsageLogs(c)
+
+	require.Equal(t, http.StatusUnauthorized, recorder.Code)
+}
+
+func TestUsageLogsRejectsInvalidDateParams(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	c.Request = httptest.NewRequest(http.MethodGet, "/v1/usage/logs?start_date=bad-date", nil)
+	c.Set(string(middleware.ContextKeyAPIKey), &service.APIKey{ID: 1, UserID: 2})
+	c.Set(string(middleware.ContextKeyUser), middleware.AuthSubject{UserID: 2})
+
+	handler := &GatewayHandler{usageService: &service.UsageService{}}
+	handler.UsageLogs(c)
+
+	require.Equal(t, http.StatusBadRequest, recorder.Code)
+}
