@@ -229,6 +229,8 @@ Nginx drops headers containing underscores by default (e.g. `session_id`), which
 
 ## Deployment
 
+After deployment, follow the [post-deployment quick start (中文)](docs/POST_DEPLOYMENT_CN.md) to configure a group, an upstream account, and an API key, then make your first request.
+
 ### Method 1: Script Installation (Recommended)
 
 One-click installation script that downloads pre-built binaries from GitHub Releases.
