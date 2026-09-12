@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import { mount } from '@vue/test-utils'
+import { flushPromises, mount } from '@vue/test-utils'
 import { nextTick } from 'vue'
 import PaymentProviderDialog from '@/components/payment/PaymentProviderDialog.vue'
 import { STRIPE_SDK_API_VERSION } from '@/components/payment/providerConfig'
@@ -22,6 +22,9 @@ const messages: Record<string, string> = {
   'admin.settings.payment.stripeWebhookApiVersionHint': 'Use Stripe API version {version}.',
   'admin.settings.payment.airwallexWebhookHint': 'Select payment_intent.succeeded and use the latest stable API version.',
 }
+
+const showError = vi.hoisted(() => vi.fn())
+vi.mock('@/stores', () => ({ useAppStore: () => ({ showError }) }))
 
 vi.mock('vue-i18n', () => ({
   useI18n: () => ({
@@ -84,6 +87,7 @@ function mountDialog(options: { editing?: ProviderInstance | null } = {}) {
           template: '<div><slot /><slot name="footer" /></div>',
         },
         Select: {
+          name: 'Select',
           props: ['modelValue', 'options', 'disabled'],
           template: '<div />',
         },
@@ -245,5 +249,87 @@ describe('PaymentProviderDialog payment guide', () => {
     await wrapper.find('form').trigger('submit.prevent')
 
     expect(wrapper.emitted('save')).toBeUndefined()
+  })
+})
+
+describe('Alipay authentication modes', () => {
+  function editAlipay(authMode?: string) {
+    const provider = providerFactory({
+      provider_key: 'alipay', name: 'Alipay', supported_types: ['alipay'],
+      config: { appId: 'test-app', ...(authMode ? { authMode } : {}) },
+    })
+    const wrapper = mountDialog({ editing: provider })
+    ;(wrapper.vm as unknown as { loadProvider: (provider: ProviderInstance) => void }).loadProvider(provider)
+    return wrapper
+  }
+
+  async function selectMode(wrapper: ReturnType<typeof mountDialog>, mode: string) {
+    const selector = wrapper.findAllComponents({ name: 'Select' })
+      .find(component => component.props('options')?.some((option: { value: string }) => option.value === 'certificate'))
+    if (!selector) throw new Error('Alipay authentication mode selector not found')
+    selector.vm.$emit('update:modelValue', mode)
+    await nextTick()
+  }
+
+  it('keeps existing public-key instances editable without re-entering credentials', async () => {
+    const wrapper = editAlipay()
+    await nextTick()
+    expect(wrapper.findAll('textarea')).toHaveLength(2)
+    expect(wrapper.text()).not.toContain('admin.settings.payment.field_appCertPublicKey')
+    await wrapper.find('form').trigger('submit.prevent')
+    const payload = wrapper.emitted('save')?.[0]?.[0] as { config: Record<string, string> }
+    expect(payload.config).toMatchObject({ appId: 'test-app', authMode: 'public_key' })
+    expect(payload.config).not.toHaveProperty('privateKey')
+    expect(payload.config).not.toHaveProperty('publicKey')
+  })
+
+  it('requires and submits all three certificates when switching from public-key mode', async () => {
+    const wrapper = editAlipay()
+    await nextTick()
+    await selectMode(wrapper, 'certificate')
+    expect(wrapper.findAll('textarea')).toHaveLength(4)
+    expect(wrapper.text()).not.toContain('admin.settings.payment.field_alipayPublicKey')
+    await wrapper.find('form').trigger('submit.prevent')
+    await flushPromises()
+    expect(wrapper.emitted('save')).toBeUndefined()
+    expect(showError).toHaveBeenCalled()
+    const inputs = wrapper.findAll('textarea')
+    await inputs[1].setValue('application certificate')
+    await inputs[2].setValue('alipay certificate')
+    await inputs[3].setValue('root certificate bundle')
+    await wrapper.find('form').trigger('submit.prevent')
+    const payload = wrapper.emitted('save')?.[0]?.[0] as { config: Record<string, string> }
+    expect(payload.config).toMatchObject({
+      authMode: 'certificate', appCertPublicKey: 'application certificate',
+      alipayCertPublicKey: 'alipay certificate', alipayRootCert: 'root certificate bundle',
+    })
+    expect(payload.config).not.toHaveProperty('publicKey')
+    expect(payload.config).not.toHaveProperty('privateKey')
+  })
+
+  it('preserves masked certificates when editing an existing certificate instance', async () => {
+    const wrapper = editAlipay('certificate')
+    await nextTick()
+    expect(wrapper.findAll('textarea')).toHaveLength(4)
+    await wrapper.find('form').trigger('submit.prevent')
+    const payload = wrapper.emitted('save')?.[0]?.[0] as { config: Record<string, string> }
+    expect(payload.config.authMode).toBe('certificate')
+    expect(payload.config).not.toHaveProperty('appCertPublicKey')
+    expect(payload.config).not.toHaveProperty('alipayCertPublicKey')
+    expect(payload.config).not.toHaveProperty('alipayRootCert')
+  })
+
+  it('requires an ordinary Alipay public key when switching back and omits inactive certificates', async () => {
+    const wrapper = editAlipay('certificate')
+    await nextTick()
+    await wrapper.findAll('textarea')[1].setValue('unsaved application certificate')
+    await selectMode(wrapper, 'public_key')
+    await wrapper.find('form').trigger('submit.prevent')
+    expect(wrapper.emitted('save')).toBeUndefined()
+    await wrapper.findAll('textarea')[1].setValue('ordinary alipay public key')
+    await wrapper.find('form').trigger('submit.prevent')
+    const payload = wrapper.emitted('save')?.[0]?.[0] as { config: Record<string, string> }
+    expect(payload.config.publicKey).toBe('ordinary alipay public key')
+    expect(payload.config).not.toHaveProperty('appCertPublicKey')
   })
 })
