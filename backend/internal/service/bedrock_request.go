@@ -270,17 +270,21 @@ func ResolveBedrockBetaTokens(betaHeader string, body []byte, modelID string) []
 	return filterBedrockBetaTokens(betaTokens)
 }
 
-// convertOutputFormatToInlineSchema 将 output_format 中的 JSON schema 内联到最后一条 user message
+// convertOutputFormatToInlineSchema 将结构化输出的 JSON schema 内联到最后一条 user message。
 // Bedrock Invoke 不支持 output_format 参数，litellm 的做法是将 schema 追加到用户消息中
 // 参考: litellm AmazonAnthropicClaudeMessagesConfig._convert_output_format_to_inline_schema()
 func convertOutputFormatToInlineSchema(body []byte) []byte {
-	outputFormat := gjson.GetBytes(body, "output_format")
+	outputFormat := gjson.GetBytes(body, "output_config.format")
+	if !outputFormat.Exists() {
+		outputFormat = gjson.GetBytes(body, "output_format")
+	}
 	if !outputFormat.Exists() || !outputFormat.IsObject() {
 		return body
 	}
 
-	// 先从请求体中移除 output_format
+	// 先从请求体中移除两个版本的结构化输出字段。
 	body, _ = sjson.DeleteBytes(body, "output_format")
+	body, _ = sjson.DeleteBytes(body, "output_config.format")
 
 	schema := outputFormat.Get("schema")
 	if !schema.Exists() {

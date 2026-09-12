@@ -117,6 +117,67 @@ func TestGeminiForwardAsChatCompletions_OAuthRoutesToGeminiAndReturnsChatFormat(
 	require.Equal(t, float64(10), usage["total_tokens"])
 }
 
+func TestGeminiForwardAsChatCompletions_PreservesStructuredOutput(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	httpStub := &geminiCompatHTTPUpstreamStub{
+		response: &http.Response{
+			StatusCode: http.StatusOK,
+			Header:     http.Header{"Content-Type": []string{"text/event-stream"}},
+			Body: io.NopCloser(strings.NewReader(
+				`data: {"response":{"candidates":[{"content":{"parts":[{"text":"{\"cities\":[]}"}]},"finishReason":"STOP"}],"usageMetadata":{"promptTokenCount":7,"candidatesTokenCount":3}}}` + "\n\n" +
+					"data: [DONE]\n\n",
+			)),
+		},
+	}
+	svc := &GeminiMessagesCompatService{
+		tokenProvider: &GeminiTokenProvider{},
+		httpUpstream:  httpStub,
+		cfg:           &config.Config{},
+	}
+	account := &Account{
+		ID:       103,
+		Platform: PlatformGemini,
+		Type:     AccountTypeOAuth,
+		Credentials: map[string]any{
+			"access_token": "ya29.test-token",
+			"project_id":   "project-1",
+		},
+		Concurrency: 1,
+	}
+
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	body := []byte(`{"model":"gemini-2.5-flash","messages":[{"role":"user","content":"List cities"}],"response_format":{"type":"json_schema","json_schema":{"name":"cities","strict":true,"schema":{"type":"object","properties":{"cities":{"type":"array","items":{"type":"object","properties":{"name":{"type":"string"}},"additionalProperties":false}}},"required":["cities"],"additionalProperties":false}}}}`)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/chat/completions", bytes.NewReader(body))
+
+	_, err := svc.ForwardAsChatCompletions(context.Background(), c, account, body)
+	require.NoError(t, err)
+	require.NotNil(t, httpStub.lastReq)
+
+	var sent map[string]any
+	sentBody, err := io.ReadAll(httpStub.lastReq.Body)
+	require.NoError(t, err)
+	require.NoError(t, json.Unmarshal(sentBody, &sent))
+	request, ok := sent["request"].(map[string]any)
+	require.True(t, ok)
+	generationConfig, ok := request["generationConfig"].(map[string]any)
+	require.True(t, ok)
+	require.Equal(t, "application/json", generationConfig["responseMimeType"])
+
+	schema, ok := generationConfig["responseSchema"].(map[string]any)
+	require.True(t, ok)
+	require.Equal(t, "OBJECT", schema["type"])
+	require.NotContains(t, schema, "additionalProperties")
+	cities, ok := schema["properties"].(map[string]any)["cities"].(map[string]any)
+	require.True(t, ok)
+	require.Equal(t, "ARRAY", cities["type"])
+	items, ok := cities["items"].(map[string]any)
+	require.True(t, ok)
+	require.Equal(t, "OBJECT", items["type"])
+	require.NotContains(t, items, "additionalProperties")
+}
+
 func TestGeminiForwardAsChatCompletions_StreamsOpenAIChunksFromGeminiSSE(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
