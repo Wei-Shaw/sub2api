@@ -269,6 +269,9 @@ type ResponsesInputItem struct {
 
 	// type=reasoning (multi-turn replay of encrypted reasoning)
 	EncryptedContent string `json:"encrypted_content,omitempty"`
+	// Summary is required by the Responses API on replayed reasoning items;
+	// an empty array satisfies upstreams that reject a missing field.
+	Summary json.RawMessage `json:"summary,omitempty"`
 
 	// type=function_call
 	CallID    string `json:"call_id,omitempty"`
