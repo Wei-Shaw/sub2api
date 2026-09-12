@@ -177,7 +177,6 @@ export default {
     profile: 'Profile',
     users: 'Users',
     groups: 'Groups',
-    compositeRouting: 'Composite Routing',
     channels: 'Channels',
     availableChannels: 'Available Channels',
     modelPlaza: 'Model Plaza',

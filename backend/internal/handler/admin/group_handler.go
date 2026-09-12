@@ -386,9 +386,7 @@ func (h *GroupHandler) List(c *gin.Context) {
 	if h.isSimpleMode() {
 		simpleGroups := make([]simpleModeGroupResponse, 0, len(groups))
 		for i := range groups {
-			if service.IsGroupBindableInSimpleMode(&groups[i]) {
-				simpleGroups = append(simpleGroups, *groupForSimpleMode(&groups[i]))
-			}
+			simpleGroups = append(simpleGroups, *groupForSimpleMode(&groups[i]))
 		}
 		response.Paginated(c, simpleGroups, total, page, pageSize)
 		return
@@ -403,7 +401,7 @@ func (h *GroupHandler) List(c *gin.Context) {
 // ListCompositeRoutes handles listing composite model routes for one group.
 // GET /api/v1/admin/groups/:id/composite-routes
 func (h *GroupHandler) ListCompositeRoutes(c *gin.Context) {
-	if h.rejectUnsupportedSimpleModeOperation(c, "advanced") {
+	if h.rejectUnsupportedSimpleModeOperation(c, simpleModeGroupOperation(service.AdminGroupOperationCompositeRoute)) {
 		return
 	}
 	groupID, ok := parsePositiveIDParam(c, "id")
@@ -421,7 +419,7 @@ func (h *GroupHandler) ListCompositeRoutes(c *gin.Context) {
 // CreateCompositeRoute handles creating one composite model route.
 // POST /api/v1/admin/groups/:id/composite-routes
 func (h *GroupHandler) CreateCompositeRoute(c *gin.Context) {
-	if h.rejectUnsupportedSimpleModeOperation(c, "advanced") {
+	if h.rejectUnsupportedSimpleModeOperation(c, simpleModeGroupOperation(service.AdminGroupOperationCompositeRoute)) {
 		return
 	}
 	groupID, ok := parsePositiveIDParam(c, "id")
@@ -444,7 +442,7 @@ func (h *GroupHandler) CreateCompositeRoute(c *gin.Context) {
 // UpdateCompositeRoute handles replacing one composite model route.
 // PUT /api/v1/admin/groups/:id/composite-routes/:route_id
 func (h *GroupHandler) UpdateCompositeRoute(c *gin.Context) {
-	if h.rejectUnsupportedSimpleModeOperation(c, "advanced") {
+	if h.rejectUnsupportedSimpleModeOperation(c, simpleModeGroupOperation(service.AdminGroupOperationCompositeRoute)) {
 		return
 	}
 	groupID, ok := parsePositiveIDParam(c, "id")
@@ -471,7 +469,7 @@ func (h *GroupHandler) UpdateCompositeRoute(c *gin.Context) {
 // DeleteCompositeRoute handles deleting one composite model route.
 // DELETE /api/v1/admin/groups/:id/composite-routes/:route_id
 func (h *GroupHandler) DeleteCompositeRoute(c *gin.Context) {
-	if h.rejectUnsupportedSimpleModeOperation(c, "advanced") {
+	if h.rejectUnsupportedSimpleModeOperation(c, simpleModeGroupOperation(service.AdminGroupOperationCompositeRoute)) {
 		return
 	}
 	groupID, ok := parsePositiveIDParam(c, "id")
@@ -492,7 +490,7 @@ func (h *GroupHandler) DeleteCompositeRoute(c *gin.Context) {
 // PreviewCompositeRoute resolves a model without mutating routes.
 // POST /api/v1/admin/groups/:id/composite-routes/preview
 func (h *GroupHandler) PreviewCompositeRoute(c *gin.Context) {
-	if h.rejectUnsupportedSimpleModeOperation(c, "advanced") {
+	if h.rejectUnsupportedSimpleModeOperation(c, simpleModeGroupOperation(service.AdminGroupOperationCompositeRoute)) {
 		return
 	}
 	groupID, ok := parsePositiveIDParam(c, "id")
@@ -573,9 +571,7 @@ func (h *GroupHandler) GetAll(c *gin.Context) {
 	if h.isSimpleMode() {
 		simpleGroups := make([]simpleModeGroupResponse, 0, len(groups))
 		for i := range groups {
-			if service.IsGroupBindableInSimpleMode(&groups[i]) {
-				simpleGroups = append(simpleGroups, *groupForSimpleMode(&groups[i]))
-			}
+			simpleGroups = append(simpleGroups, *groupForSimpleMode(&groups[i]))
 		}
 		response.Success(c, simpleGroups)
 		return
@@ -646,10 +642,6 @@ func (h *GroupHandler) Create(c *gin.Context) {
 	var req CreateGroupRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		response.BadRequest(c, "Invalid request: "+err.Error())
-		return
-	}
-	if h.isSimpleMode() && req.Platform == service.PlatformComposite {
-		response.BadRequest(c, "Platform is not supported in simple mode")
 		return
 	}
 	if h.isSimpleMode() {
