@@ -49,6 +49,8 @@ type antigravityCompatUpstreamCall struct {
 	proxyURL     string
 	accessToken  string
 	geminiBody   []byte
+	agentSearch  bool
+	agentResult  *antigravityAgentSearchResult
 }
 
 // ForwardAsChatCompletions 使用 Antigravity 原生 OAuth 账号转发 Chat Completions 请求。
@@ -198,7 +200,17 @@ func (s *AntigravityGatewayService) forwardAntigravityCompat(
 		return nil, s.handleAntigravityCompatTransportError(c, err)
 	}
 
-	return s.consumeAntigravityCompatResponse(ctx, c, account, call, result.resp)
+	resp := result.resp
+	if call.agentSearch {
+		resp, err = s.runAntigravityWebSearchAgentLoop(ctx, c, account, call, resp)
+		if err != nil {
+			if _, ok := IsAntigravityAccountSwitchError(err); ok {
+				return nil, s.handleAntigravityCompatTransportError(c, err)
+			}
+			return nil, s.mapAntigravityCompatCollectionError(c, err)
+		}
+	}
+	return s.consumeAntigravityCompatResponse(ctx, c, account, call, resp)
 }
 
 func (s *AntigravityGatewayService) prepareAntigravityCompatCall(
@@ -243,6 +255,16 @@ func (s *AntigravityGatewayService) prepareAntigravityCompatCall(
 		return nil, s.writeAntigravityCompatError(c, http.StatusBadRequest, "invalid_request_error", "Invalid request")
 	}
 
+	agentSearch := false
+	if request.protocol == antigravityCompatResponses && strings.HasPrefix(strings.ToLower(mappedModel), "gemini-") {
+		geminiBody, agentSearch, err = prepareAgentSearch(geminiBody, s.antigravityAgentWebSearchEnabled(ctx))
+		if err == nil && agentSearch {
+			geminiBody, agentSearch, err = configureAgentToolChoice(geminiBody, request.originalBody)
+		}
+		if err != nil {
+			return nil, s.writeAntigravityCompatError(c, http.StatusBadRequest, "invalid_request_error", "Invalid Google Search tool configuration")
+		}
+	}
 	request.reasoningEffort = ApplyThinkingEnabledFallback(request.reasoningEffort, request.originalBody, mappedModel)
 	return &antigravityCompatUpstreamCall{
 		request:      request,
@@ -251,6 +273,7 @@ func (s *AntigravityGatewayService) prepareAntigravityCompatCall(
 		proxyURL:     antigravityCompatProxyURL(account),
 		accessToken:  accessToken,
 		geminiBody:   geminiBody,
+		agentSearch:  agentSearch,
 	}, nil
 }
 
@@ -383,6 +406,9 @@ func (s *AntigravityGatewayService) consumeAntigravityCompatSuccess(
 	call *antigravityCompatUpstreamCall,
 	resp *http.Response,
 ) (*antigravityStreamResult, error) {
+	if call.agentResult != nil {
+		return s.consumeAntigravityAgentResponses(c, call, resp)
+	}
 	if call.request.clientStream {
 		if call.request.protocol == antigravityCompatChatCompletions {
 			return s.handleChatCompletionsStreamingFromAntigravity(
