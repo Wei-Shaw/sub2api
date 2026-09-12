@@ -41,10 +41,25 @@ type usageLogWindowBatchRepoStub struct {
 	batchResult map[int64]*usagestats.AccountStats
 	batchErr    error
 	batchCalls  atomic.Int64
+	stateCalls  atomic.Int64
 
 	singleResult map[int64]*usagestats.AccountStats
 	singleErr    error
 	singleCalls  atomic.Int64
+}
+
+func (s *usageLogWindowBatchRepoStub) GetAccountWindowCostsBatch(ctx context.Context, accountIDs []int64, startTime time.Time) (map[int64]float64, error) {
+	s.stateCalls.Add(1)
+	if s.batchErr != nil {
+		return nil, s.batchErr
+	}
+	out := make(map[int64]float64, len(accountIDs))
+	for _, id := range accountIDs {
+		if stats, ok := s.batchResult[id]; ok && stats != nil {
+			out[id] = stats.StandardCost
+		}
+	}
+	return out, nil
 }
 
 func (s *usageLogWindowBatchRepoStub) GetAccountWindowStatsBatch(ctx context.Context, accountIDs []int64, startTime time.Time) (map[int64]*usagestats.AccountStats, error) {
@@ -193,7 +208,6 @@ func resetGatewayHotpathStatsForTest() {
 	windowCostPrefetchCacheHitTotal.Store(0)
 	windowCostPrefetchCacheMissTotal.Store(0)
 	windowCostPrefetchBatchSQLTotal.Store(0)
-	windowCostPrefetchFallbackTotal.Store(0)
 	windowCostPrefetchErrorTotal.Store(0)
 
 	userGroupRateCacheHitTotal.Store(0)
@@ -387,14 +401,14 @@ func TestWithWindowCostPrefetch_BatchReadAndContextReuse(t *testing.T) {
 	_, ok3 := windowCostFromPrefetchContext(outCtx, 3)
 	require.False(t, ok3)
 
-	require.Equal(t, int64(1), repo.batchCalls.Load())
+	require.Equal(t, int64(1), repo.stateCalls.Load())
+	require.Equal(t, int64(0), repo.batchCalls.Load())
 	require.Equal(t, 22.0, cache.setData[2])
 
-	hit, miss, batchSQL, fallback, errCount := GatewayWindowCostPrefetchStats()
+	hit, miss, batchSQL, errCount := GatewayWindowCostPrefetchStats()
 	require.Equal(t, int64(1), hit)
 	require.Equal(t, int64(1), miss)
 	require.Equal(t, int64(1), batchSQL)
-	require.Equal(t, int64(0), fallback)
 	require.Equal(t, int64(0), errCount)
 }
 
@@ -442,17 +456,17 @@ func TestWithWindowCostPrefetch_AllHitNoSQL(t *testing.T) {
 	require.Equal(t, 11.0, cost1)
 	require.Equal(t, 22.0, cost2)
 	require.Equal(t, int64(0), repo.batchCalls.Load())
+	require.Equal(t, int64(0), repo.stateCalls.Load())
 	require.Equal(t, int64(0), repo.singleCalls.Load())
 
-	hit, miss, batchSQL, fallback, errCount := GatewayWindowCostPrefetchStats()
+	hit, miss, batchSQL, errCount := GatewayWindowCostPrefetchStats()
 	require.Equal(t, int64(2), hit)
 	require.Equal(t, int64(0), miss)
 	require.Equal(t, int64(0), batchSQL)
-	require.Equal(t, int64(0), fallback)
 	require.Equal(t, int64(0), errCount)
 }
 
-func TestWithWindowCostPrefetch_BatchErrorFallbackSingleQuery(t *testing.T) {
+func TestWithWindowCostPrefetch_StateErrorFailsOpenWithoutSingleQuery(t *testing.T) {
 	resetGatewayHotpathStatsForTest()
 
 	windowStart := time.Now().Add(-30 * time.Minute).Truncate(time.Hour)
@@ -483,13 +497,35 @@ func TestWithWindowCostPrefetch_BatchErrorFallbackSingleQuery(t *testing.T) {
 	outCtx := svc.withWindowCostPrefetch(context.Background(), accounts)
 	cost, ok := windowCostFromPrefetchContext(outCtx, 2)
 	require.True(t, ok)
-	require.Equal(t, 33.0, cost)
-	require.Equal(t, int64(1), repo.batchCalls.Load())
-	require.Equal(t, int64(1), repo.singleCalls.Load())
+	require.Zero(t, cost)
+	require.Equal(t, int64(1), repo.stateCalls.Load())
+	require.Equal(t, int64(0), repo.batchCalls.Load())
+	require.Equal(t, int64(0), repo.singleCalls.Load())
 
-	_, _, _, fallback, errCount := GatewayWindowCostPrefetchStats()
-	require.Equal(t, int64(1), fallback)
+	_, _, _, errCount := GatewayWindowCostPrefetchStats()
 	require.Equal(t, int64(1), errCount)
+}
+
+func TestIsAccountSchedulableForWindowCost_StateErrorDoesNotScanUsageLogs(t *testing.T) {
+	windowStart := time.Now().Add(-30 * time.Minute).Truncate(time.Hour)
+	windowEnd := windowStart.Add(5 * time.Hour)
+	account := &Account{
+		ID:                 2,
+		Platform:           PlatformAnthropic,
+		Type:               AccountTypeSetupToken,
+		Extra:              map[string]any{"window_cost_limit": 10.0},
+		SessionWindowStart: &windowStart,
+		SessionWindowEnd:   &windowEnd,
+	}
+	repo := &usageLogWindowBatchRepoStub{
+		batchErr:     errors.New("state unavailable"),
+		singleResult: map[int64]*usagestats.AccountStats{2: {StandardCost: 999}},
+	}
+	svc := &GatewayService{usageLogRepo: repo}
+
+	require.True(t, svc.isAccountSchedulableForWindowCost(context.Background(), account, false))
+	require.Equal(t, int64(1), repo.stateCalls.Load())
+	require.Equal(t, int64(0), repo.singleCalls.Load())
 }
 
 func TestGetAvailableModels_UsesShortCacheAndSupportsInvalidation(t *testing.T) {

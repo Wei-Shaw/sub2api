@@ -92,7 +92,6 @@ var (
 	windowCostPrefetchCacheHitTotal  atomic.Int64
 	windowCostPrefetchCacheMissTotal atomic.Int64
 	windowCostPrefetchBatchSQLTotal  atomic.Int64
-	windowCostPrefetchFallbackTotal  atomic.Int64
 	windowCostPrefetchErrorTotal     atomic.Int64
 
 	userGroupRateCacheHitTotal      atomic.Int64
@@ -121,11 +120,10 @@ var (
 	userPlatformQuotaSentinelSetCacheErrorTotal atomic.Int64
 )
 
-func GatewayWindowCostPrefetchStats() (cacheHit, cacheMiss, batchSQL, fallback, errCount int64) {
+func GatewayWindowCostPrefetchStats() (cacheHit, cacheMiss, batchSQL, errCount int64) {
 	return windowCostPrefetchCacheHitTotal.Load(),
 		windowCostPrefetchCacheMissTotal.Load(),
 		windowCostPrefetchBatchSQLTotal.Load(),
-		windowCostPrefetchFallbackTotal.Load(),
 		windowCostPrefetchErrorTotal.Load()
 }
 
