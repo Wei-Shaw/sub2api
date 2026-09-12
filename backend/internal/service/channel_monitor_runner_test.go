@@ -4,11 +4,52 @@ package service
 
 import (
 	"context"
+	"errors"
 	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
 )
+
+type stubChannelMonitorAlertNotifier struct {
+	mu     sync.Mutex
+	alerts []channelMonitorFailureAlert
+	sent   bool
+	err    error
+}
+
+type blockingChannelMonitorAlertNotifier struct {
+	started  chan struct{}
+	release  chan struct{}
+	finished chan struct{}
+}
+
+func (n *blockingChannelMonitorAlertNotifier) NotifyFailure(_ context.Context, _ channelMonitorFailureAlert) (bool, error) {
+	close(n.started)
+	<-n.release
+	close(n.finished)
+	return true, nil
+}
+
+func (n *stubChannelMonitorAlertNotifier) NotifyFailure(_ context.Context, alert channelMonitorFailureAlert) (bool, error) {
+	n.mu.Lock()
+	defer n.mu.Unlock()
+	n.alerts = append(n.alerts, alert)
+	return n.sent, n.err
+}
+
+func (n *stubChannelMonitorAlertNotifier) callCount() int {
+	n.mu.Lock()
+	defer n.mu.Unlock()
+	return len(n.alerts)
+}
+
+func waitForNotifierCalls(t *testing.T, notifier *stubChannelMonitorAlertNotifier, want int) {
+	t.Helper()
+	waitFor(t, time.Second, "notifier call count", func() bool {
+		return notifier.callCount() >= want
+	})
+}
 
 // stubMonitorSvc 实现 monitorRunnerSvc，用于隔离 runner 与真实 service/repo。
 type stubMonitorSvc struct {
@@ -341,6 +382,140 @@ func TestInFlight_AcquireReleaseSymmetric(t *testing.T) {
 		t.Fatal("acquire after release should succeed")
 	}
 	r.releaseInFlight(42)
+}
+
+func TestHandleCheckResults_AlertsOnceAfterThreeFailuresAndResetsOnRecovery(t *testing.T) {
+	notifier := &stubChannelMonitorAlertNotifier{sent: true}
+	r := newRunnerForTest(&stubMonitorSvc{})
+	r.alertNotifier = notifier
+	failed := []*CheckResult{{Model: "model-a", Status: MonitorStatusFailed, Message: "upstream unavailable", CheckedAt: time.Now()}}
+
+	r.handleCheckResults(context.Background(), 7, "channel-a", failed)
+	r.handleCheckResults(context.Background(), 7, "channel-a", failed)
+	if got := notifier.callCount(); got != 0 {
+		t.Fatalf("expected no alert before threshold, got %d", got)
+	}
+	r.handleCheckResults(context.Background(), 7, "channel-a", failed)
+	waitForNotifierCalls(t, notifier, 1)
+	r.handleCheckResults(context.Background(), 7, "channel-a", failed)
+	if got := notifier.callCount(); got != 1 {
+		t.Fatalf("expected one alert for the failure episode, got %d", got)
+	}
+
+	r.handleCheckResults(context.Background(), 7, "channel-a", []*CheckResult{{Model: "model-a", Status: MonitorStatusDegraded}})
+	for i := 0; i < channelMonitorAlertThreshold; i++ {
+		r.handleCheckResults(context.Background(), 7, "channel-a", failed)
+	}
+	waitForNotifierCalls(t, notifier, 2)
+	if got := notifier.callCount(); got != 2 {
+		t.Fatalf("expected a new alert after recovery and another failure episode, got %d", got)
+	}
+}
+
+func TestHandleCheckResults_RetriesAlertAfterDeliveryFailure(t *testing.T) {
+	notifier := &stubChannelMonitorAlertNotifier{err: errors.New("temporary failure")}
+	r := newRunnerForTest(&stubMonitorSvc{})
+	r.alertNotifier = notifier
+	failed := []*CheckResult{{Model: "model-a", Status: MonitorStatusError}}
+
+	for i := 0; i < channelMonitorAlertThreshold; i++ {
+		r.handleCheckResults(context.Background(), 8, "channel-b", failed)
+	}
+	waitForNotifierCalls(t, notifier, 1)
+	if got := notifier.callCount(); got != 1 {
+		t.Fatalf("expected first delivery attempt at threshold, got %d", got)
+	}
+	notifier.mu.Lock()
+	notifier.err = nil
+	notifier.sent = true
+	notifier.mu.Unlock()
+	r.handleCheckResults(context.Background(), 8, "channel-b", failed)
+	waitForNotifierCalls(t, notifier, 2)
+	r.handleCheckResults(context.Background(), 8, "channel-b", failed)
+	if got := notifier.callCount(); got != 2 {
+		t.Fatalf("expected one retry followed by suppression, got %d calls", got)
+	}
+}
+
+func TestHandleCheckResults_RetriesWhenNotifierSkipsAndUsesOnlyPrimaryResult(t *testing.T) {
+	notifier := &stubChannelMonitorAlertNotifier{sent: false}
+	r := newRunnerForTest(&stubMonitorSvc{})
+	r.alertNotifier = notifier
+	failed := []*CheckResult{{Status: MonitorStatusFailed}}
+
+	for i := 0; i < channelMonitorAlertThreshold; i++ {
+		r.handleCheckResults(context.Background(), 9, "channel-primary", failed)
+	}
+	waitForNotifierCalls(t, notifier, 1)
+	r.handleCheckResults(context.Background(), 9, "channel-primary", failed)
+	waitForNotifierCalls(t, notifier, 2)
+	if got := notifier.callCount(); got != 2 {
+		t.Fatalf("expected a skipped notification to retry, got %d calls", got)
+	}
+
+	r.handleCheckResults(context.Background(), 10, "channel-secondary", []*CheckResult{
+		{Status: MonitorStatusOperational},
+		{Status: MonitorStatusFailed},
+	})
+	r.handleCheckResults(context.Background(), 10, "channel-secondary", []*CheckResult{nil})
+	r.failureMu.Lock()
+	_, exists := r.failureStates[10]
+	r.failureMu.Unlock()
+	if exists {
+		t.Fatal("secondary or nil results unexpectedly changed the failure state")
+	}
+}
+
+func TestHandleCheckResults_SuppressesWhenNotifierIsNil(t *testing.T) {
+	r := newRunnerForTest(&stubMonitorSvc{})
+	failed := []*CheckResult{{Status: MonitorStatusFailed}}
+	for i := 0; i < channelMonitorAlertThreshold; i++ {
+		r.handleCheckResults(context.Background(), 11, "channel-no-notifier", failed)
+	}
+	r.failureMu.Lock()
+	state := r.failureStates[11]
+	r.failureMu.Unlock()
+	if state.consecutive != channelMonitorAlertThreshold || state.alerted {
+		t.Fatalf("unexpected state with nil notifier: %+v", state)
+	}
+}
+
+func TestStopClearsChannelMonitorFailureState(t *testing.T) {
+	r := newRunnerForTest(&stubMonitorSvc{})
+	r.failureStates[12] = channelMonitorFailureState{consecutive: channelMonitorAlertThreshold}
+	r.Stop()
+	r.failureMu.Lock()
+	defer r.failureMu.Unlock()
+	if r.failureStates != nil {
+		t.Fatal("expected Stop to clear failure state")
+	}
+}
+
+func TestHandleCheckResults_DoesNotRestoreFailureStateAfterUnschedule(t *testing.T) {
+	notifier := &blockingChannelMonitorAlertNotifier{
+		started:  make(chan struct{}),
+		release:  make(chan struct{}),
+		finished: make(chan struct{}),
+	}
+	r := newRunnerForTest(&stubMonitorSvc{})
+	r.alertNotifier = notifier
+	failed := []*CheckResult{{Model: "model-a", Status: MonitorStatusFailed}}
+
+	for i := 1; i < channelMonitorAlertThreshold; i++ {
+		r.handleCheckResults(context.Background(), 42, "channel-c", failed)
+	}
+	r.handleCheckResults(context.Background(), 42, "channel-c", failed)
+	<-notifier.started
+	r.Unschedule(42)
+	close(notifier.release)
+	<-notifier.finished
+
+	r.failureMu.Lock()
+	_, exists := r.failureStates[42]
+	r.failureMu.Unlock()
+	if exists {
+		t.Fatal("failure state was restored after the monitor was unscheduled")
+	}
 }
 
 // stoppedWithin 在 timeout 内并行调用 Stop，超时则 Fatal。验证 Stop 不会阻塞。
