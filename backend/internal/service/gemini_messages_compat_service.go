@@ -3098,6 +3098,20 @@ func (s *GeminiMessagesCompatService) handleGeminiUpstreamError(ctx context.Cont
 
 	resetAt := ParseGeminiRateLimitResetTime(body)
 	if resetAt == nil {
+		// Vertex AI may return transient RESOURCE_EXHAUSTED responses without a
+		// quota reset timestamp. Do not treat those as AI Studio daily quota
+		// exhaustion and park the whole service account until PST midnight.
+		if account.Type == AccountTypeServiceAccount {
+			if s.rateLimitService != nil {
+				s.rateLimitService.apply429FallbackRateLimit(ctx, account, "gemini_vertex_no_reset_time")
+				return
+			}
+			ra := time.Now().Add(time.Duration(defaultRateLimit429CooldownSeconds) * time.Second)
+			logger.LegacyPrintf("service.gemini_messages_compat", "[Gemini 429] Account %d (Vertex Service Account) rate limited, fallback cooldown=%v", account.ID, time.Until(ra).Truncate(time.Second))
+			_ = s.accountRepo.SetRateLimited(ctx, account.ID, ra)
+			return
+		}
+
 		// 根据账号类型使用不同的默认重置时间
 		var ra time.Time
 		if isCodeAssist || oauthType == "google_one" {
@@ -3144,10 +3158,13 @@ func ParseGeminiRateLimitResetTime(body []byte) *int64 {
 		}
 	}
 
-	// 遍历 error.details 查找 quotaResetDelay
+	// 遍历 error.details 查找 quotaResetDelay 或标准 RetryInfo.retryDelay。
 	var found *int64
 	gjson.GetBytes(body, "error.details").ForEach(func(_, detail gjson.Result) bool {
 		v := detail.Get("metadata.quotaResetDelay").String()
+		if v == "" {
+			v = detail.Get("retryDelay").String()
+		}
 		if v == "" {
 			return true
 		}
