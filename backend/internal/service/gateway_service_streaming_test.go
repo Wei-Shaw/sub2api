@@ -175,13 +175,26 @@ func TestGatewayService_StreamingKeepaliveKeepsPingForOlderClaudeCodeVersion(t *
 	require.NotContains(t, body, `"delta":{"type":"text_delta","text":""}`)
 }
 
-func TestDetachUpstreamContextIgnoresClientCancel(t *testing.T) {
+func TestDetachUpstreamContextAllowsBoundedDrainAfterClientCancel(t *testing.T) {
 	parent, cancel := context.WithCancel(context.WithValue(context.Background(), upstreamContextTestKey("test-key"), "test-value"))
-	upstreamCtx, release := detachUpstreamContext(parent)
+	upstreamCtx, release := detachUpstreamContextWithDrainGrace(parent, 20*time.Millisecond)
 	defer release()
 
 	cancel()
 
 	require.NoError(t, upstreamCtx.Err())
 	require.Equal(t, "test-value", upstreamCtx.Value(upstreamContextTestKey("test-key")))
+	require.Eventually(t, func() bool {
+		return upstreamCtx.Err() != nil
+	}, time.Second, 10*time.Millisecond)
+	require.ErrorIs(t, upstreamCtx.Err(), context.Canceled)
+}
+
+func TestFinishDetachedUpstreamContextCancelsImmediately(t *testing.T) {
+	upstreamCtx, release := detachUpstreamContextWithDrainGrace(context.Background(), time.Minute)
+	defer release()
+
+	FinishDetachedUpstreamContext(upstreamCtx)
+
+	require.ErrorIs(t, upstreamCtx.Err(), context.Canceled)
 }
