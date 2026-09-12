@@ -234,7 +234,7 @@ func TestCompositeGroupSchedulerHasAllCanonicalPlatformBuckets(t *testing.T) {
 		platforms = append(platforms, platform)
 	}
 	require.ElementsMatch(t,
-		[]string{PlatformAnthropic, PlatformGemini, PlatformOpenAI, PlatformAntigravity, PlatformGrok, PlatformKimi, PlatformZhipu, PlatformDeepseek, PlatformMiniMax, PlatformOpenCodeGo, PlatformTypeSafe},
+		[]string{PlatformAnthropic, PlatformGemini, PlatformOpenAI, PlatformAntigravity, PlatformGrok, PlatformKimi, PlatformZhipu, PlatformDeepseek, PlatformMiniMax, PlatformOpenCodeGo, PlatformTypeSafe, PlatformOllamaCloud},
 		platforms,
 	)
 }
@@ -244,4 +244,18 @@ func TestCompositeConcretePlatformsIncludeCNProviders(t *testing.T) {
 		require.True(t, isConcreteRequestPlatform(platform))
 		require.True(t, canCopyAccountsFromGroupPlatform(PlatformComposite, platform))
 	}
+}
+
+// 组合路由准入：ollama_cloud 必须被视为具体请求平台，组合路由才能指向它
+// （迁移 239 已放宽 DB CHECK；代码侧缺这一条会出现「数据库允许、代码不放行」）。
+func TestCompositeConcretePlatformsIncludeOllamaCloud(t *testing.T) {
+	require.True(t, isConcreteRequestPlatform(PlatformOllamaCloud))
+	require.True(t, canCopyAccountsFromGroupPlatform(PlatformComposite, PlatformOllamaCloud))
+
+	route, err := compositeRouteFromInput(101, CompositeRouteInput{
+		PublicModel:    "qwen3-coder",
+		TargetPlatform: PlatformOllamaCloud,
+	})
+	require.NoError(t, err)
+	require.Equal(t, PlatformOllamaCloud, route.TargetPlatform)
 }
