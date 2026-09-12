@@ -2248,7 +2248,7 @@ func init() {
 	// usagelog.IPAddressValidator is a validator for the "ip_address" field. It is called by the builders before save.
 	usagelog.IPAddressValidator = usagelogDescIPAddress.Validators[0].(func(string) error)
 	// usagelogDescCustomDomain is the schema descriptor for custom_domain field.
-	usagelogDescCustomDomain := usagelogFields[35].Descriptor()
+	usagelogDescCustomDomain := usagelogFields[37].Descriptor()
 	// usagelog.CustomDomainValidator is a validator for the "custom_domain" field. It is called by the builders before save.
 	usagelog.CustomDomainValidator = usagelogDescCustomDomain.Validators[0].(func(string) error)
 	// usagelogDescImageCount is the schema descriptor for image_count field.
