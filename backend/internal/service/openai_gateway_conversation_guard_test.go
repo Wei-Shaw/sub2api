@@ -81,3 +81,45 @@ func TestForwardConversationFieldRejectedWithBadRequest(t *testing.T) {
 		require.False(t, gjson.GetBytes(upstream.lastBody, "store").Bool())
 	})
 }
+
+// TestForwardConversationNullTreatedAsStateless 是 conversation 门禁的兼容性回归：
+// gjson 的 Exists() 对 JSON null 也返回 true，若据此判定会把「客户端把可选字段
+// 序列化成 null」这一常见形态误拒为 400。conversation: null 语义上与省略字段
+// 等价，必须按无会话依赖正常出站；非 null 值仍 400 且不出站（对照，门禁对
+// 显式会话依赖的拒绝语义不放松）。
+func TestForwardConversationNullTreatedAsStateless(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	t.Run("conversation null is forwarded like an omitted field", func(t *testing.T) {
+		upstream := &httpUpstreamRecorder{err: errors.New("stop after capture")}
+		svc := &OpenAIGatewayService{cfg: rawChatCompletionsTestConfig(), httpUpstream: upstream}
+		account := adaptiveProtocolTestAccount(PlatformOllamaCloud, nil)
+
+		body := []byte(`{"model":"gpt-oss:120b-cloud","conversation":null,"input":"full standalone input","stream":false}`)
+		recorder := newConversationGuardRecorder("/v1/responses", body)
+		_, err := svc.Forward(context.Background(), recorder.c, account, body)
+		require.Error(t, err)
+		var statelessErr *openAIResponsesStatelessFieldError
+		require.NotErrorAs(t, err, &statelessErr, "conversation:null 不得触发无状态字段 400")
+		require.NotNil(t, upstream.lastReq, "conversation:null 必须正常出站")
+		require.Equal(t, "https://ollama.com/v1/responses", upstream.lastReq.URL.String())
+		require.False(t, gjson.GetBytes(upstream.lastBody, "store").Bool())
+		require.NotEqual(t, http.StatusBadRequest, recorder.rec.Code, "client-visible 状态码不得是 400")
+	})
+
+	t.Run("non-null conversation still gets 400 and no upstream call", func(t *testing.T) {
+		upstream := &httpUpstreamRecorder{err: errors.New("must not reach upstream")}
+		svc := &OpenAIGatewayService{cfg: rawChatCompletionsTestConfig(), httpUpstream: upstream}
+		account := adaptiveProtocolTestAccount(PlatformOllamaCloud, nil)
+
+		body := []byte(`{"model":"gpt-oss:120b-cloud","conversation":"conv_x","input":"hi","stream":false}`)
+		recorder := newConversationGuardRecorder("/v1/responses", body)
+		_, err := svc.Forward(context.Background(), recorder.c, account, body)
+		require.Error(t, err)
+		var statelessErr *openAIResponsesStatelessFieldError
+		require.ErrorAs(t, err, &statelessErr)
+		require.Nil(t, upstream.lastReq, "非 null conversation 请求不得出站")
+		require.Equal(t, http.StatusBadRequest, recorder.rec.Code, "client-visible 状态码必须是 400")
+		require.Contains(t, gjson.Get(recorder.rec.Body.String(), "error.type").String(), "invalid_request_error")
+	})
+}

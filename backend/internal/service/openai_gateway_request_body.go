@@ -131,17 +131,21 @@ func deleteOpenAIResponsesNoneReasoningEffortFromObject(account *Account, body m
 // 官方 Responses 均不支持服务端状态存储，携带这些字段会被拒绝）。
 // 非原生 Responses 协议账号原样返回。
 //
-// 请求体携带 conversation 时返回 *openAIResponsesStatelessFieldError 且不改写
-// body：一律 400 是产品选择——显式失败优于静默丢上下文——不是该用法不存在。
-// 依赖 conversation 的客户端把历史存在服务端、通常不重发 input，静默剥离等于
-// 静默丢上下文（回答质量下降且零错误信号）。已知代价是 conversation + 完整
+// 请求体携带非 null 的 conversation 时返回 *openAIResponsesStatelessFieldError
+// 且不改写 body：一律 400 是产品选择——显式失败优于静默丢上下文——不是该用法
+// 不存在。依赖 conversation 的客户端把历史存在服务端、通常不重发 input，静默剥离
+// 等于静默丢上下文（回答质量下降且零错误信号）。已知代价是 conversation + 完整
 // input 的 non-stream 用法被误伤；出现真实此类客户端时按平台/账号开关显式
 // 放行，不得回退静默剥离。
+//
+// 判定用 Type != gjson.Null 而非 Exists()：gjson 对 JSON null 也返回
+// Exists()==true（Raw 非空），而 conversation: null 语义上与「省略该字段」等价
+// （很多客户端会把可选字段序列化成 null），必须按无会话依赖正常出站。
 func normalizeDeepSeekResponsesRequestBody(account *Account, body []byte) ([]byte, error) {
 	if account == nil || !account.UsesNativeCNResponses() {
 		return body, nil
 	}
-	if gjson.GetBytes(body, "conversation").Exists() {
+	if gjson.GetBytes(body, "conversation").Type != gjson.Null {
 		return body, &openAIResponsesStatelessFieldError{field: "conversation"}
 	}
 	normalized, err := sjson.SetBytes(body, "store", false)
