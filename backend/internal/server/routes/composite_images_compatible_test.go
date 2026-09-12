@@ -154,7 +154,7 @@ func TestCompositeCompatibleImagesEndToEnd(t *testing.T) {
 			require.Len(t, usage.logs, 1, "the image must reach usage recording, not just return HTTP 200")
 			require.Equal(t, 1, usage.logs[0].ImageCount)
 			require.InDelta(t, price, usage.logs[0].ActualCost, 1e-9)
-			require.Equal(t, publicModel, usage.logs[0].OriginalModel)
+			require.Equal(t, publicModel, usage.logs[0].RequestedModel)
 		})
 	}
 }
