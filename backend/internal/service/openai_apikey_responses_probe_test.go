@@ -1,8 +1,11 @@
 package service
 
 import (
+	"bytes"
 	"context"
+	"errors"
 	"io"
+	"log/slog"
 	"net/http"
 	"strings"
 	"testing"
@@ -133,6 +136,60 @@ func TestProbeOpenAIAPIKeyResponsesSupportOllamaCloud(t *testing.T) {
 			// 不发任何网络探测请求。
 			require.Nil(t, upstream.lastReq)
 			require.Empty(t, upstream.requests)
+		})
+	}
+}
+
+// failingMarkerRepo 使协议 marker 落标（UpdateExtra）返回错误，用于断言失败会产生
+// 可观测信号。
+type failingMarkerRepo struct {
+	stubOpenAIAccountRepo
+	err error
+}
+
+func (r *failingMarkerRepo) UpdateExtra(_ context.Context, _ int64, _ map[string]any) error {
+	return r.err
+}
+
+// TestProbeOpenAIAPIKeyResponsesSupportMarkerPersistFailureLogsWarning 评审证伪回归：
+// 协议 marker 落标失败必须有可观测信号。此前 _ = UpdateExtra 把错误完全吞掉——
+// 协议更新「成功」而旧 force_responses / auto marker 静默残留，且没有任何日志。
+// 注意：ollama_cloud / CN 的请求路由以 credentials.api_protocol 为权威（探针 Extra
+// 不得带偏协议决策），因此本修复锁的是可观测性，不是路由正确性。
+func TestProbeOpenAIAPIKeyResponsesSupportMarkerPersistFailureLogsWarning(t *testing.T) {
+	for _, tc := range []struct {
+		name     string
+		protocol string
+	}{
+		{name: "force_responses落标失败_告警", protocol: APIProtocolAdaptive},
+		{name: "重置auto落标失败_告警", protocol: APIProtocolChatCompletions},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var logs bytes.Buffer
+			previousLogger := slog.Default()
+			slog.SetDefault(slog.New(slog.NewTextHandler(&logs, nil)))
+			defer slog.SetDefault(previousLogger)
+
+			account := Account{
+				ID:          231,
+				Platform:    PlatformOllamaCloud,
+				Type:        AccountTypeAPIKey,
+				Name:        "ollama-marker-fail",
+				Credentials: map[string]any{"api_key": "sk-test", "api_protocol": tc.protocol},
+			}
+			repo := &failingMarkerRepo{
+				stubOpenAIAccountRepo: stubOpenAIAccountRepo{accounts: []Account{account}},
+				err:                   errors.New("db write failed"),
+			}
+			svc := &AccountTestService{accountRepo: repo}
+
+			svc.ProbeOpenAIAPIKeyResponsesSupport(context.Background(), account.ID)
+
+			output := logs.String()
+			require.Contains(t, output, "openai_responses_probe_marker_persist_failed",
+				"UpdateExtra 失败必须产生结构化告警")
+			require.Contains(t, output, "account_id=231")
+			require.Contains(t, output, "db write failed")
 		})
 	}
 }
