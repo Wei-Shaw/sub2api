@@ -252,3 +252,143 @@ func TestOllamaCloudOutboundModelNames(t *testing.T) {
 	account = &Account{Platform: PlatformOpenAI}
 	require.Nil(t, ollamaCloudOutboundModelNames(account))
 }
+
+// 门禁触发收窄回归：缺 mapping/清单的存量 legacy 账号不得被维护性更新锁死，
+// 只有可能改变「可出站模型集合」或影响调度准入的更新才重验。
+func TestAccountServiceUpdateOllamaCloudPricingGateOnlyOnModelSetOrSchedulingChange(t *testing.T) {
+	ctx := context.Background()
+
+	seedLegacyAccount := func(t *testing.T) (*upstreamBillingProbeAccountRepo, *AccountService, *Account) {
+		t.Helper()
+		repo := &upstreamBillingProbeAccountRepo{accounts: make(map[int64]*Account)}
+		svc := newOllamaGateAccountService(repo)
+		// legacy 形态：无 model_mapping、无 allowed_models 清单。Create 路径有门禁，
+		// 直接经 repo 落库模拟迁移过来的存量账号。
+		account := &Account{
+			Platform:    PlatformOllamaCloud,
+			Type:        AccountTypeAPIKey,
+			Name:        "ollama-legacy",
+			Status:      StatusActive,
+			Schedulable: true,
+			Credentials: map[string]any{"api_key": "k"},
+		}
+		require.NoError(t, repo.Create(ctx, account))
+		return repo, svc, account
+	}
+
+	t.Run("legacy账号仅改name_必须成功", func(t *testing.T) {
+		_, svc, account := seedLegacyAccount(t)
+		updated, err := svc.Update(ctx, account.ID, UpdateAccountRequest{Name: strPtr("ollama-legacy-renamed")})
+		require.NoError(t, err, "维护性更新（仅改 name）不得被 MODEL_PRICING_MISSING 拦截")
+		require.Equal(t, "ollama-legacy-renamed", updated.Name)
+	})
+
+	t.Run("legacy账号改notes与并发数_放行", func(t *testing.T) {
+		_, svc, account := seedLegacyAccount(t)
+		concurrency := 5
+		updated, err := svc.Update(ctx, account.ID, UpdateAccountRequest{
+			Notes:       strPtr("migrated account"),
+			Concurrency: &concurrency,
+		})
+		require.NoError(t, err)
+		require.Equal(t, "migrated account", *updated.Notes)
+		require.Equal(t, 5, updated.Concurrency)
+	})
+
+	t.Run("legacy账号加未定价mapping_仍400", func(t *testing.T) {
+		_, svc, account := seedLegacyAccount(t)
+		_, err := svc.Update(ctx, account.ID, UpdateAccountRequest{
+			Credentials: &map[string]any{"api_key": "k", "model_mapping": map[string]any{"big": "totally-unpriced-model"}},
+		})
+		requireModelPricingMissing(t, err, "totally-unpriced-model")
+	})
+
+	t.Run("legacy账号加未定价清单_仍400", func(t *testing.T) {
+		_, svc, account := seedLegacyAccount(t)
+		_, err := svc.Update(ctx, account.ID, UpdateAccountRequest{
+			Extra: &map[string]any{OllamaCloudAllowedModelsExtraKey: []any{"totally-unpriced-model"}},
+		})
+		requireModelPricingMissing(t, err, "totally-unpriced-model")
+	})
+
+	t.Run("不可调度改可调度_必须校验", func(t *testing.T) {
+		repo, svc, account := seedLegacyAccount(t)
+		// 停用态（手动开关仍开）：经 Update 把 status 改回 active 即「启用」，
+		// 必须先通过门禁。
+		repo.accounts[account.ID].Status = StatusDisabled
+		_, err := svc.Update(ctx, account.ID, UpdateAccountRequest{Status: strPtr(StatusActive)})
+		requireModelPricingMissing(t, err)
+	})
+
+	t.Run("停用legacy账号_放行", func(t *testing.T) {
+		_, svc, account := seedLegacyAccount(t)
+		updated, err := svc.Update(ctx, account.ID, UpdateAccountRequest{Status: strPtr(StatusDisabled)})
+		require.NoError(t, err, "停用（退出调度准入）属于维护性更新，不得被拦截")
+		require.Equal(t, StatusDisabled, updated.Status)
+	})
+
+	t.Run("非ollama平台行为不变_回归", func(t *testing.T) {
+		repo := &upstreamBillingProbeAccountRepo{accounts: make(map[int64]*Account)}
+		svc := newOllamaGateAccountService(repo)
+		created, err := svc.Create(ctx, CreateAccountRequest{
+			Name:        "kimi-legacy-update",
+			Platform:    PlatformKimi,
+			Type:        AccountTypeAPIKey,
+			Credentials: map[string]any{"api_key": "k"},
+		})
+		require.NoError(t, err)
+		updated, err := svc.Update(ctx, created.ID, UpdateAccountRequest{
+			Name:  strPtr("kimi-renamed"),
+			Notes: strPtr("notes only"),
+		})
+		require.NoError(t, err, "非 ollama 平台的维护性更新行为必须保持不变")
+		require.Equal(t, "kimi-renamed", updated.Name)
+	})
+}
+
+// 门禁触发收窄在生产 admin handler 路径（adminServiceImpl.UpdateAccount）同样生效：
+// 全对象 PUT 编辑会原样带回 credentials/extra，集合未变时不得重验锁死 legacy 账号。
+func TestAdminUpdateAccountOllamaCloudPricingGateOnlyOnModelSetOrSchedulingChange(t *testing.T) {
+	ctx := context.Background()
+	repo := &upstreamBillingProbeAccountRepo{accounts: make(map[int64]*Account)}
+	svc := &adminServiceImpl{accountRepo: repo, billingService: NewBillingService(&config.Config{}, nil)}
+
+	account := &Account{
+		Platform:    PlatformOllamaCloud,
+		Type:        AccountTypeAPIKey,
+		Name:        "ollama-admin-legacy",
+		Status:      StatusActive,
+		Schedulable: true,
+		Credentials: map[string]any{"api_key": "k"},
+	}
+	require.NoError(t, repo.Create(ctx, account))
+
+	t.Run("仅改name_必须成功", func(t *testing.T) {
+		updated, err := svc.UpdateAccount(ctx, account.ID, &UpdateAccountInput{Name: "ollama-admin-legacy-renamed"})
+		require.NoError(t, err, "admin 路径维护性更新（仅改 name）不得被拦截")
+		require.Equal(t, "ollama-admin-legacy-renamed", updated.Name)
+	})
+
+	t.Run("全对象PUT带回原credentials与extra_不重验放行", func(t *testing.T) {
+		updated, err := svc.UpdateAccount(ctx, account.ID, &UpdateAccountInput{
+			Name:        "ollama-admin-legacy",
+			Credentials: map[string]any{"api_key": "k"},
+			Extra:       map[string]any{"remark": "unchanged set"},
+		})
+		require.NoError(t, err, "可出站集合未变的全对象 PUT 不得触发门禁")
+		require.NotNil(t, updated)
+	})
+
+	t.Run("加未定价mapping_仍400", func(t *testing.T) {
+		_, err := svc.UpdateAccount(ctx, account.ID, &UpdateAccountInput{
+			Credentials: map[string]any{"api_key": "k", "model_mapping": map[string]any{"alias": "totally-unpriced-model"}},
+		})
+		requireModelPricingMissing(t, err, "totally-unpriced-model")
+	})
+
+	t.Run("不可调度改可调度_必须校验", func(t *testing.T) {
+		repo.accounts[account.ID].Status = StatusDisabled
+		_, err := svc.UpdateAccount(ctx, account.ID, &UpdateAccountInput{Status: StatusActive})
+		requireModelPricingMissing(t, err)
+	})
+}
