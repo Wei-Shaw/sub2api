@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { cnSupportsNativeResponses, defaultCNAdaptiveBaseUrls } from '../credentialsBuilder'
+import { cnSupportsNativeResponses, defaultCNAdaptiveBaseUrls, defaultCNBaseUrl, isMultiProtocolApiKeyPlatform } from '../credentialsBuilder'
 
 describe('cnSupportsNativeResponses', () => {
   it('is true for DeepSeek, Kimi, and MiniMax', () => {
@@ -55,5 +55,40 @@ describe('defaultCNAdaptiveBaseUrls', () => {
     }
     expect(defaultCNAdaptiveBaseUrls('minimax', 'payg')).toEqual(expected)
     expect(defaultCNAdaptiveBaseUrls('minimax', 'coding')).toEqual(expected)
+  })
+})
+
+describe('ollama_cloud base url presets (E11 + E12)', () => {
+  it('advertises native responses support', () => {
+    expect(cnSupportsNativeResponses('ollama_cloud')).toBe(true)
+  })
+
+  it('is recognized as a multi-protocol apikey platform', () => {
+    expect(isMultiProtocolApiKeyPlatform('ollama_cloud')).toBe(true)
+  })
+
+  // anthropic 预设不带 /v1：出站由后端拼 /v1/messages，预设带 /v1 会拼成
+  // /v1/v1/messages 静默 404（本分支早前修过的真实缺陷）。
+  it.each([
+    ['anthropic', 'https://ollama.com'],
+    ['chat_completions', 'https://ollama.com/v1'],
+    ['responses', 'https://ollama.com/v1']
+  ])('resolves the %s preset without depending on account mode', (protocol, expected) => {
+    expect(defaultCNBaseUrl('ollama_cloud', 'payg', protocol)).toBe(expected)
+    expect(defaultCNBaseUrl('ollama_cloud', 'coding', protocol)).toBe(expected)
+  })
+
+  it('keeps the anthropic preset free of the /v1 suffix', () => {
+    const anthropicPreset = defaultCNBaseUrl('ollama_cloud', 'payg', 'anthropic')
+    expect(anthropicPreset).toBe('https://ollama.com')
+    expect(anthropicPreset.includes('/v1')).toBe(false)
+  })
+
+  it('fills all three native endpoints for adaptive mode', () => {
+    expect(defaultCNAdaptiveBaseUrls('ollama_cloud', 'payg')).toEqual({
+      chat_completions: 'https://ollama.com/v1',
+      anthropic: 'https://ollama.com',
+      responses: 'https://ollama.com/v1'
+    })
   })
 })

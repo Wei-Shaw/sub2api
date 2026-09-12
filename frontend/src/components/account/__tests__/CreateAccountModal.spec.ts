@@ -712,3 +712,124 @@ describe('CreateAccountModal OpenAI long-context billing', () => {
     expect(createOpenAICodexPATMock.mock.calls[0]?.[0]?.extra?.openai_long_context_billing_enabled).toBe(false)
   })
 })
+
+describe('CreateAccountModal Ollama Cloud protocol and quota mode', () => {
+  beforeEach(() => {
+    createAccountMock.mockReset().mockResolvedValue({ id: 42, platform: 'ollama_cloud', type: 'apikey' })
+  })
+
+  afterEach(() => {
+    vi.clearAllMocks()
+  })
+
+  async function selectOllamaCloudPlatform(wrapper: ReturnType<typeof mountModal>) {
+    await selectButtonByText(wrapper, 'Ollama')
+  }
+
+  it('shows the protocol selector with adaptive defaults when Ollama Cloud is selected', async () => {
+    const wrapper = mountModal()
+    await selectOllamaCloudPlatform(wrapper)
+
+    // 协议选择器出现且默认 adaptive（adaptive 区渲染三个原生端点输入框）
+    expect(wrapper.findAll('button').some((b) => b.text().includes('admin.accounts.cnProviders.apiProtocol.adaptive'))).toBe(true)
+    expect(wrapper.find('[data-testid="cn-adaptive-base-url-chat_completions"]').exists()).toBe(true)
+    expect((wrapper.get('[data-testid="cn-adaptive-base-url-chat_completions"]').element as HTMLInputElement).value).toBe('https://ollama.com/v1')
+    // anthropic 端点预设不带 /v1（/v1/v1 静默 404 坑）
+    const anthropicUrl = (wrapper.get('[data-testid="cn-adaptive-base-url-anthropic"]').element as HTMLInputElement).value
+    expect(anthropicUrl).toBe('https://ollama.com')
+    expect(anthropicUrl.includes('/v1')).toBe(false)
+    expect((wrapper.get('[data-testid="cn-adaptive-base-url-responses"]').element as HTMLInputElement).value).toBe('https://ollama.com/v1')
+  })
+
+  it('submits adaptive ollama_cloud credentials with api_protocol and api_base_urls', async () => {
+    const wrapper = mountModal()
+    await selectOllamaCloudPlatform(wrapper)
+    await wrapper.get('form#create-account-form input[type="text"]').setValue('ollama cloud')
+    await wrapper.get('form#create-account-form input[type="password"]').setValue('sk-ollama')
+    await wrapper.get('form#create-account-form').trigger('submit.prevent')
+    await flushPromises()
+
+    expect(createAccountMock).toHaveBeenCalledTimes(1)
+    const credentials = createAccountMock.mock.calls[0]?.[0]?.credentials
+    expect(credentials).toMatchObject({
+      account_mode: 'ollama_legacy',
+      api_protocol: 'adaptive',
+      base_url: 'https://ollama.com/v1',
+      api_base_urls: {
+        chat_completions: 'https://ollama.com/v1',
+        anthropic: 'https://ollama.com',
+        responses: 'https://ollama.com/v1'
+      }
+    })
+    expect('monthly_credit_usd' in credentials).toBe(false)
+  })
+
+  it('prefills the locked anthropic protocol endpoint without the /v1 suffix', async () => {
+    const wrapper = mountModal()
+    await selectOllamaCloudPlatform(wrapper)
+    await selectButtonByText(wrapper, 'admin.accounts.cnProviders.apiProtocol.anthropic')
+
+    const baseUrlInput = wrapper
+      .findAll('form#create-account-form input[type="text"]')
+      .map((input) => input.element as HTMLInputElement)
+      .find((input) => input.value.startsWith('https://ollama.com'))
+    expect(baseUrlInput).toBeDefined()
+    expect(baseUrlInput?.value).toBe('https://ollama.com')
+    expect(baseUrlInput?.value.includes('/v1')).toBe(false)
+  })
+
+  it('submits ollama_credits mode with the monthly credit amount', async () => {
+    const wrapper = mountModal()
+    await selectOllamaCloudPlatform(wrapper)
+    await selectButtonByText(wrapper, 'admin.accounts.ollamaCloud.accountMode.credits')
+    await wrapper.get('form#create-account-form input[type="text"]').setValue('ollama credits')
+    await wrapper.get('form#create-account-form input[type="password"]').setValue('sk-ollama')
+    await wrapper.get('form#create-account-form').trigger('submit.prevent')
+    await flushPromises()
+
+    expect(createAccountMock).toHaveBeenCalledTimes(1)
+    const credentials = createAccountMock.mock.calls[0]?.[0]?.credentials
+    expect(credentials).toMatchObject({
+      account_mode: 'ollama_credits',
+      api_protocol: 'adaptive',
+      monthly_credit_usd: 60
+    })
+  })
+
+  it('applies the 300 USD quick preset to the monthly credit input', async () => {
+    const wrapper = mountModal()
+    await selectOllamaCloudPlatform(wrapper)
+    await selectButtonByText(wrapper, 'admin.accounts.ollamaCloud.accountMode.credits')
+    await wrapper.get('[data-testid="ollama-credit-preset-300"]').trigger('click')
+    await wrapper.get('form#create-account-form input[type="text"]').setValue('ollama credits 300')
+    await wrapper.get('form#create-account-form input[type="password"]').setValue('sk-ollama')
+    await wrapper.get('form#create-account-form').trigger('submit.prevent')
+    await flushPromises()
+
+    const credentials = createAccountMock.mock.calls[0]?.[0]?.credentials
+    expect(credentials).toMatchObject({
+      account_mode: 'ollama_credits',
+      monthly_credit_usd: 300
+    })
+  })
+
+  it('submits a locked protocol with the legacy mode and no credit field', async () => {
+    const wrapper = mountModal()
+    await selectOllamaCloudPlatform(wrapper)
+    await selectButtonByText(wrapper, 'admin.accounts.cnProviders.apiProtocol.chatCompletions')
+    await wrapper.get('form#create-account-form input[type="text"]').setValue('ollama cc')
+    await wrapper.get('form#create-account-form input[type="password"]').setValue('sk-ollama')
+    await wrapper.get('form#create-account-form').trigger('submit.prevent')
+    await flushPromises()
+
+    expect(createAccountMock).toHaveBeenCalledTimes(1)
+    const credentials = createAccountMock.mock.calls[0]?.[0]?.credentials
+    expect(credentials).toMatchObject({
+      account_mode: 'ollama_legacy',
+      api_protocol: 'chat_completions',
+      base_url: 'https://ollama.com/v1'
+    })
+    expect('monthly_credit_usd' in credentials).toBe(false)
+    expect('api_base_urls' in credentials).toBe(false)
+  })
+})
