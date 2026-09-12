@@ -51,26 +51,54 @@ func ollamaCloudResponsesUpstreamBaseURL(account *Account) string {
 // ollamaCloudResponsesMaxOutputTokensClamp 是原生 /v1/responses 路径的 clamp：在
 // 平台字段归一化之后独立调用，不改写原有的 max_output_tokens 平台 switch。判定：
 // 实际 Responses 上游（ollamaCloudResponsesUpstreamBaseURL）为 ollama.com 的
-// APIKey 账号 + 映射后的出站模型是 DeepSeek 系；openai 平台 max_tokens 刚被归一化
-// patch 到 max_output_tokens 时取 max_tokens 为生效值。未命中返回 ok=false。
+// APIKey 账号 + 映射后的出站模型是 DeepSeek 系；body 无 max_output_tokens 时回退读
+// max_tokens 为生效值（不限定平台——客户端按 Chat Completions 习惯只发 max_tokens
+// 时，任何平台的 ollama+deepseek 命中判据都要 clamp）。返回 (cap, ok, sourceField)，
+// sourceField 为生效字段名（"max_tokens" / ""），供调用方在值来自 max_tokens 时清除
+// 残留的 max_tokens。未命中返回 ok=false。
 // 实测：ollama.com/v1/responses max_output_tokens=256000 被上游以 "max_tokens
 // (256000) exceeds model's maximum output tokens (65536)" 400 拒绝（DeepSeek 模型）。
-func ollamaCloudResponsesMaxOutputTokensClamp(account *Account, upstreamModel string, body []byte) (int64, bool) {
+func ollamaCloudResponsesMaxOutputTokensClamp(account *Account, upstreamModel string, body []byte) (int64, bool, string) {
 	if account == nil || account.Type != AccountTypeAPIKey || !isDeepSeekModel(upstreamModel) {
-		return 0, false
+		return 0, false, ""
 	}
 	if !isOllamaCloudBaseURL(ollamaCloudResponsesUpstreamBaseURL(account)) {
-		return 0, false
+		return 0, false, ""
 	}
 	value := gjson.GetBytes(body, "max_output_tokens")
-	if !value.Exists() && account.Platform == PlatformOpenAI {
-		value = gjson.GetBytes(body, "max_tokens")
+	sourceField := ""
+	if !value.Exists() {
+		if fallback := gjson.GetBytes(body, "max_tokens"); fallback.Exists() {
+			value = fallback
+			sourceField = "max_tokens"
+		}
 	}
 	cap := ollamaCloudMaxTokensCap(account)
 	if cap <= 0 || !value.Exists() || value.Type != gjson.Number || value.Int() <= cap {
-		return 0, false
+		return 0, false, ""
 	}
-	return cap, true
+	return cap, true, sourceField
+}
+
+// ollamaCloudClampResponsesMaxOutputTokensBody 是原生 /v1/responses 出站 body 的
+// 字节级 clamp 应用（供 CC→Responses、Messages→Responses 转换路径使用）：命中
+// ollama.com + DeepSeek 时把 max_output_tokens 改写为 cap，生效值来自 max_tokens 时
+// 一并清除残留的 max_tokens。未命中或改写失败时原样返回。
+func ollamaCloudClampResponsesMaxOutputTokensBody(account *Account, upstreamModel string, body []byte) []byte {
+	cap, ok, sourceField := ollamaCloudResponsesMaxOutputTokensClamp(account, upstreamModel, body)
+	if !ok {
+		return body
+	}
+	out, err := sjson.SetBytes(body, "max_output_tokens", cap)
+	if err != nil {
+		return body
+	}
+	if sourceField == "max_tokens" {
+		if stripped, err := sjson.DeleteBytes(out, "max_tokens"); err == nil {
+			out = stripped
+		}
+	}
+	return out
 }
 
 // ollamaCloudMaxTokensCap 返回账号配置的 max_tokens 上限。账号为 nil 或 extra 中
