@@ -889,6 +889,26 @@ func (a *Account) IsModelSupported(requestedModel string) bool {
 		if a.Platform == PlatformDeepseek {
 			return isDeepseekServableModel(requestedModel)
 		}
+		// ollama_cloud 运行时白名单：空映射时 extra.allowed_models 清单就是
+		// 唯一可出站白名单；既无映射也无清单则 deny-all（不支持任何模型）。
+		// 与保存期门禁 validateOllamaCloudAccountModelPricingGate 的「mapping
+		// 或清单至少其一」语义对齐。空映射下请求的公开模型名即出站名
+		// （ResolveMappedModel 原样透传），清单项又是按出站名断言过定价的，
+		// 因此对公开名做精确匹配即可；保存期门禁已确保清单不含通配符
+		// （通配符串无法解析到定价，保存即被拒）。
+		if a.IsOllamaCloud() {
+			allowed := ollamaCloudOutboundModelNames(a)
+			if len(allowed) == 0 {
+				return false
+			}
+			trimmed := strings.TrimSpace(requestedModel)
+			for _, model := range allowed {
+				if model == trimmed {
+					return true
+				}
+			}
+			return false
+		}
 		return true // 无映射 = 允许所有
 	}
 	if mappingSupportsRequestedModel(mapping, requestedModel) {
