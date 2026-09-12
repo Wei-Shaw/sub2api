@@ -270,6 +270,7 @@ func (s *SettingService) buildSystemSettingsUpdates(ctx context.Context, setting
 	// Generic OIDC OAuth 登录
 	updates[SettingKeyOIDCConnectEnabled] = strconv.FormatBool(settings.OIDCConnectEnabled)
 	updates[SettingKeyOIDCConnectProviderName] = settings.OIDCConnectProviderName
+	updates[SettingKeyOIDCConnectLogoutURL] = settings.OIDCConnectLogoutURL
 	updates[SettingKeyOIDCConnectClientID] = settings.OIDCConnectClientID
 	updates[SettingKeyOIDCConnectIssuerURL] = settings.OIDCConnectIssuerURL
 	updates[SettingKeyOIDCConnectDiscoveryURL] = settings.OIDCConnectDiscoveryURL

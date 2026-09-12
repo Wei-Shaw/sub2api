@@ -180,6 +180,25 @@ func TestSettingService_GetPublicSettings_ExposesAllowUserViewErrorRequests(t *t
 	require.True(t, settings.AllowUserViewErrorRequests)
 }
 
+func TestSettingService_GetPublicSettings_ExposesOIDCLogoutURLOnlyWhenEnabled(t *testing.T) {
+	repo := &settingPublicRepoStub{
+		values: map[string]string{
+			SettingKeyOIDCConnectEnabled:   "true",
+			SettingKeyOIDCConnectLogoutURL: "  https://sso.example.com/logout  ",
+		},
+	}
+	svc := NewSettingService(repo, &config.Config{})
+
+	settings, err := svc.GetPublicSettings(context.Background())
+	require.NoError(t, err)
+	require.Equal(t, "https://sso.example.com/logout", settings.OIDCOAuthLogoutURL)
+
+	repo.values[SettingKeyOIDCConnectEnabled] = "false"
+	settings, err = svc.GetPublicSettings(context.Background())
+	require.NoError(t, err)
+	require.Empty(t, settings.OIDCOAuthLogoutURL)
+}
+
 func TestSettingService_GetPublicSettings_ExposesWeChatOAuthModeCapabilities(t *testing.T) {
 	svc := NewSettingService(&settingPublicRepoStub{
 		values: map[string]string{

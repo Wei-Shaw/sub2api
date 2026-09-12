@@ -3537,6 +3537,23 @@
                     <label
                       class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300"
                     >
+                      {{ t("admin.settings.oidc.logoutUrl") }}
+                    </label>
+                    <input
+                      v-model="form.oidc_connect_logout_url"
+                      type="url"
+                      class="input font-mono text-sm"
+                      :placeholder="t('admin.settings.oidc.logoutUrlPlaceholder')"
+                    />
+                    <p class="mt-1.5 text-xs text-gray-500 dark:text-gray-400">
+                      {{ t("admin.settings.oidc.logoutUrlHint") }}
+                    </p>
+                  </div>
+
+                  <div>
+                    <label
+                      class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300"
+                    >
                       {{ t("admin.settings.oidc.authorizeUrl") }}
                     </label>
                     <input
@@ -9751,6 +9768,7 @@ const form = reactive<SettingsForm>({
   // Generic OIDC OAuth 登录
   oidc_connect_enabled: false,
   oidc_connect_provider_name: "OIDC",
+  oidc_connect_logout_url: "",
   oidc_connect_client_id: "",
   oidc_connect_client_secret: "",
   oidc_connect_client_secret_configured: false,
@@ -11370,6 +11388,7 @@ async function saveSettings() {
         form.wechat_connect_frontend_redirect_url,
       oidc_connect_enabled: form.oidc_connect_enabled,
       oidc_connect_provider_name: form.oidc_connect_provider_name,
+      oidc_connect_logout_url: form.oidc_connect_logout_url,
       oidc_connect_client_id: form.oidc_connect_client_id,
       oidc_connect_client_secret: form.oidc_connect_client_secret || undefined,
       oidc_connect_issuer_url: form.oidc_connect_issuer_url,

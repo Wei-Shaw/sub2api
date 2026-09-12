@@ -342,6 +342,7 @@ const (
 	// Generic OIDC OAuth 登录设置
 	SettingKeyOIDCConnectEnabled              = "oidc_connect_enabled"
 	SettingKeyOIDCConnectProviderName         = "oidc_connect_provider_name"
+	SettingKeyOIDCConnectLogoutURL            = "oidc_connect_logout_url"
 	SettingKeyOIDCConnectClientID             = "oidc_connect_client_id"
 	SettingKeyOIDCConnectClientSecret         = "oidc_connect_client_secret"
 	SettingKeyOIDCConnectIssuerURL            = "oidc_connect_issuer_url"

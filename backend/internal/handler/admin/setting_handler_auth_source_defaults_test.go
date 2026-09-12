@@ -130,6 +130,7 @@ func TestSettingHandler_GetSettings_InjectsAuthSourceDefaults(t *testing.T) {
 		values: map[string]string{
 			service.SettingKeyRegistrationEnabled:                 "true",
 			service.SettingKeyPromoCodeEnabled:                    "true",
+			service.SettingKeyOIDCConnectLogoutURL:                "https://sso.example.com/logout",
 			service.SettingKeyAuthSourceDefaultEmailBalance:       "9.5",
 			service.SettingKeyAuthSourceDefaultEmailConcurrency:   "8",
 			service.SettingKeyAuthSourceDefaultEmailSubscriptions: `[{"group_id":31,"validity_days":15}]`,
@@ -153,6 +154,7 @@ func TestSettingHandler_GetSettings_InjectsAuthSourceDefaults(t *testing.T) {
 	require.Equal(t, 9.5, data["auth_source_default_email_balance"])
 	require.Equal(t, float64(8), data["auth_source_default_email_concurrency"])
 	require.Equal(t, true, data["force_email_on_third_party_signup"])
+	require.Equal(t, "https://sso.example.com/logout", data["oidc_connect_logout_url"])
 
 	subscriptions, ok := data["auth_source_default_email_subscriptions"].([]any)
 	require.True(t, ok)
@@ -344,6 +346,76 @@ func TestSettingHandler_UpdateSettings_PersistsExplicitFalseOIDCCompatibilityFla
 	require.True(t, ok)
 	require.Equal(t, false, data["oidc_connect_use_pkce"])
 	require.Equal(t, false, data["oidc_connect_validate_id_token"])
+}
+
+func TestSettingHandler_UpdateSettings_PersistsAndClearsOIDCLogoutURL(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	repo := &settingHandlerRepoStub{
+		values: map[string]string{
+			service.SettingKeyPromoCodeEnabled:               "true",
+			service.SettingKeyOIDCConnectEnabled:             "true",
+			service.SettingKeyOIDCConnectProviderName:        "OIDC",
+			service.SettingKeyOIDCConnectClientID:            "oidc-client",
+			service.SettingKeyOIDCConnectClientSecret:        "oidc-secret",
+			service.SettingKeyOIDCConnectIssuerURL:           "https://issuer.example.com",
+			service.SettingKeyOIDCConnectAuthorizeURL:        "https://issuer.example.com/auth",
+			service.SettingKeyOIDCConnectTokenURL:            "https://issuer.example.com/token",
+			service.SettingKeyOIDCConnectUserInfoURL:         "https://issuer.example.com/userinfo",
+			service.SettingKeyOIDCConnectJWKSURL:             "https://issuer.example.com/jwks",
+			service.SettingKeyOIDCConnectScopes:              "openid email profile",
+			service.SettingKeyOIDCConnectRedirectURL:         "https://example.com/api/v1/auth/oauth/oidc/callback",
+			service.SettingKeyOIDCConnectFrontendRedirectURL: "/auth/oidc/callback",
+			service.SettingKeyOIDCConnectTokenAuthMethod:     "client_secret_post",
+			service.SettingKeyOIDCConnectAllowedSigningAlgs:  "RS256",
+			service.SettingKeyOIDCConnectClockSkewSeconds:    "120",
+			service.SettingKeyOIDCConnectLogoutURL:           "https://old.example.com/logout",
+		},
+	}
+	svc := service.NewSettingService(repo, &config.Config{Default: config.DefaultConfig{UserConcurrency: 5}})
+	handler := NewSettingHandler(svc, nil, nil, nil, nil, nil, nil)
+
+	putSettings := func(body map[string]any) map[string]any {
+		rawBody, err := json.Marshal(body)
+		require.NoError(t, err)
+		rec := httptest.NewRecorder()
+		c, _ := gin.CreateTestContext(rec)
+		c.Request = httptest.NewRequest(http.MethodPut, "/api/v1/admin/settings", bytes.NewReader(rawBody))
+		c.Request.Header.Set("Content-Type", "application/json")
+
+		handler.UpdateSettings(c)
+		require.Equal(t, http.StatusOK, rec.Code)
+		var resp response.Response
+		require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
+		data, ok := resp.Data.(map[string]any)
+		require.True(t, ok)
+		return data
+	}
+
+	data := putSettings(map[string]any{
+		"promo_code_enabled":      true,
+		"oidc_connect_enabled":    true,
+		"oidc_connect_logout_url": "  https://new.example.com/logout  ",
+	})
+	require.Equal(t, "https://new.example.com/logout", repo.values[service.SettingKeyOIDCConnectLogoutURL])
+	require.Equal(t, "https://new.example.com/logout", data["oidc_connect_logout_url"])
+
+	putSettings(map[string]any{
+		"promo_code_enabled":      true,
+		"oidc_connect_enabled":    true,
+		"oidc_connect_logout_url": "",
+	})
+	require.Empty(t, repo.values[service.SettingKeyOIDCConnectLogoutURL])
+
+	putSettings(map[string]any{
+		"promo_code_enabled":      true,
+		"oidc_connect_enabled":    true,
+		"oidc_connect_logout_url": "https://kept.example.com/logout",
+	})
+	putSettings(map[string]any{
+		"promo_code_enabled":   true,
+		"oidc_connect_enabled": true,
+	})
+	require.Equal(t, "https://kept.example.com/logout", repo.values[service.SettingKeyOIDCConnectLogoutURL])
 }
 
 func TestSettingHandler_UpdateSettings_DoesNotSolidifyImplicitOIDCSecurityDefaultsOnLegacyUpgrade(t *testing.T) {

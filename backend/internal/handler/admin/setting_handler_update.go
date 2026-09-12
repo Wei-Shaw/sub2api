@@ -118,28 +118,29 @@ type UpdateSettingsRequest struct {
 	WeChatConnectFrontendRedirectURL string `json:"wechat_connect_frontend_redirect_url"`
 
 	// Generic OIDC OAuth 登录
-	OIDCConnectEnabled              bool   `json:"oidc_connect_enabled"`
-	OIDCConnectProviderName         string `json:"oidc_connect_provider_name"`
-	OIDCConnectClientID             string `json:"oidc_connect_client_id"`
-	OIDCConnectClientSecret         string `json:"oidc_connect_client_secret"`
-	OIDCConnectIssuerURL            string `json:"oidc_connect_issuer_url"`
-	OIDCConnectDiscoveryURL         string `json:"oidc_connect_discovery_url"`
-	OIDCConnectAuthorizeURL         string `json:"oidc_connect_authorize_url"`
-	OIDCConnectTokenURL             string `json:"oidc_connect_token_url"`
-	OIDCConnectUserInfoURL          string `json:"oidc_connect_userinfo_url"`
-	OIDCConnectJWKSURL              string `json:"oidc_connect_jwks_url"`
-	OIDCConnectScopes               string `json:"oidc_connect_scopes"`
-	OIDCConnectRedirectURL          string `json:"oidc_connect_redirect_url"`
-	OIDCConnectFrontendRedirectURL  string `json:"oidc_connect_frontend_redirect_url"`
-	OIDCConnectTokenAuthMethod      string `json:"oidc_connect_token_auth_method"`
-	OIDCConnectUsePKCE              *bool  `json:"oidc_connect_use_pkce"`
-	OIDCConnectValidateIDToken      *bool  `json:"oidc_connect_validate_id_token"`
-	OIDCConnectAllowedSigningAlgs   string `json:"oidc_connect_allowed_signing_algs"`
-	OIDCConnectClockSkewSeconds     int    `json:"oidc_connect_clock_skew_seconds"`
-	OIDCConnectRequireEmailVerified bool   `json:"oidc_connect_require_email_verified"`
-	OIDCConnectUserInfoEmailPath    string `json:"oidc_connect_userinfo_email_path"`
-	OIDCConnectUserInfoIDPath       string `json:"oidc_connect_userinfo_id_path"`
-	OIDCConnectUserInfoUsernamePath string `json:"oidc_connect_userinfo_username_path"`
+	OIDCConnectEnabled              bool    `json:"oidc_connect_enabled"`
+	OIDCConnectProviderName         string  `json:"oidc_connect_provider_name"`
+	OIDCConnectClientID             string  `json:"oidc_connect_client_id"`
+	OIDCConnectClientSecret         string  `json:"oidc_connect_client_secret"`
+	OIDCConnectIssuerURL            string  `json:"oidc_connect_issuer_url"`
+	OIDCConnectDiscoveryURL         string  `json:"oidc_connect_discovery_url"`
+	OIDCConnectAuthorizeURL         string  `json:"oidc_connect_authorize_url"`
+	OIDCConnectTokenURL             string  `json:"oidc_connect_token_url"`
+	OIDCConnectUserInfoURL          string  `json:"oidc_connect_userinfo_url"`
+	OIDCConnectJWKSURL              string  `json:"oidc_connect_jwks_url"`
+	OIDCConnectScopes               string  `json:"oidc_connect_scopes"`
+	OIDCConnectRedirectURL          string  `json:"oidc_connect_redirect_url"`
+	OIDCConnectFrontendRedirectURL  string  `json:"oidc_connect_frontend_redirect_url"`
+	OIDCConnectTokenAuthMethod      string  `json:"oidc_connect_token_auth_method"`
+	OIDCConnectUsePKCE              *bool   `json:"oidc_connect_use_pkce"`
+	OIDCConnectValidateIDToken      *bool   `json:"oidc_connect_validate_id_token"`
+	OIDCConnectAllowedSigningAlgs   string  `json:"oidc_connect_allowed_signing_algs"`
+	OIDCConnectClockSkewSeconds     int     `json:"oidc_connect_clock_skew_seconds"`
+	OIDCConnectRequireEmailVerified bool    `json:"oidc_connect_require_email_verified"`
+	OIDCConnectUserInfoEmailPath    string  `json:"oidc_connect_userinfo_email_path"`
+	OIDCConnectUserInfoIDPath       string  `json:"oidc_connect_userinfo_id_path"`
+	OIDCConnectUserInfoUsernamePath string  `json:"oidc_connect_userinfo_username_path"`
+	OIDCConnectLogoutURL            *string `json:"oidc_connect_logout_url"`
 
 	GitHubOAuthEnabled             bool   `json:"github_oauth_enabled"`
 	GitHubOAuthClientID            string `json:"github_oauth_client_id"`
@@ -1087,6 +1088,10 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		response.ErrorFrom(c, err)
 		return
 	}
+	oidcLogoutURL := strings.TrimSpace(previousSettings.OIDCConnectLogoutURL)
+	if req.OIDCConnectLogoutURL != nil {
+		oidcLogoutURL = strings.TrimSpace(*req.OIDCConnectLogoutURL)
+	}
 	if req.OIDCConnectEnabled {
 		req.OIDCConnectProviderName = strings.TrimSpace(req.OIDCConnectProviderName)
 		req.OIDCConnectClientID = strings.TrimSpace(req.OIDCConnectClientID)
@@ -1149,6 +1154,12 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		if req.OIDCConnectDiscoveryURL != "" {
 			if err := config.ValidateAbsoluteHTTPURL(req.OIDCConnectDiscoveryURL); err != nil {
 				response.BadRequest(c, "OIDC Discovery URL must be an absolute http(s) URL")
+				return
+			}
+		}
+		if oidcLogoutURL != "" {
+			if err := config.ValidateAbsoluteHTTPURL(oidcLogoutURL); err != nil {
+				response.BadRequest(c, "OIDC Logout URL must be an absolute http(s) URL")
 				return
 			}
 		}
@@ -1587,6 +1598,7 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		WeChatConnectFrontendRedirectURL:       req.WeChatConnectFrontendRedirectURL,
 		OIDCConnectEnabled:                     req.OIDCConnectEnabled,
 		OIDCConnectProviderName:                req.OIDCConnectProviderName,
+		OIDCConnectLogoutURL:                   oidcLogoutURL,
 		OIDCConnectClientID:                    req.OIDCConnectClientID,
 		OIDCConnectClientSecret:                req.OIDCConnectClientSecret,
 		OIDCConnectIssuerURL:                   req.OIDCConnectIssuerURL,
@@ -2227,6 +2239,7 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		WeChatConnectFrontendRedirectURL:                       updatedSettings.WeChatConnectFrontendRedirectURL,
 		OIDCConnectEnabled:                                     updatedSettings.OIDCConnectEnabled,
 		OIDCConnectProviderName:                                updatedSettings.OIDCConnectProviderName,
+		OIDCConnectLogoutURL:                                   updatedSettings.OIDCConnectLogoutURL,
 		OIDCConnectClientID:                                    updatedSettings.OIDCConnectClientID,
 		OIDCConnectClientSecretConfigured:                      updatedSettings.OIDCConnectClientSecretConfigured,
 		OIDCConnectIssuerURL:                                   updatedSettings.OIDCConnectIssuerURL,

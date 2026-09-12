@@ -428,6 +428,7 @@ const baseSettingsResponse = {
   wechat_connect_frontend_redirect_url: "/auth/wechat/callback",
   oidc_connect_enabled: false,
   oidc_connect_provider_name: "OIDC",
+  oidc_connect_logout_url: "",
   oidc_connect_client_id: "",
   oidc_connect_client_secret_configured: false,
   oidc_connect_issuer_url: "",
@@ -1821,6 +1822,43 @@ describe("admin SettingsView wechat connect controls", () => {
       expect.objectContaining({
         oidc_connect_use_pkce: false,
         oidc_connect_validate_id_token: false,
+      }),
+    );
+  });
+
+  it("loads and saves the configured OIDC logout URL", async () => {
+    getSettings.mockResolvedValueOnce({
+      ...baseSettingsResponse,
+      oidc_connect_enabled: true,
+      oidc_connect_logout_url: "https://old.example.com/logout",
+    });
+    updateSettings.mockImplementationOnce(async (payload) => ({
+      ...baseSettingsResponse,
+      ...payload,
+    }));
+
+    const wrapper = mountView();
+
+    await flushPromises();
+    await openSecurityTab(wrapper);
+
+    const logoutInput = wrapper.findAll('input').find(
+      (input) =>
+        (input.element as HTMLInputElement).value ===
+        "https://old.example.com/logout",
+    );
+    expect(logoutInput).toBeDefined();
+    const logoutInputWrapper = logoutInput!;
+    const logoutInputElement = logoutInputWrapper.element as HTMLInputElement;
+    expect(logoutInputElement.value).toBe("https://old.example.com/logout");
+
+    await logoutInputWrapper.setValue("https://new.example.com/logout");
+    await wrapper.find("form").trigger("submit.prevent");
+    await flushPromises();
+
+    expect(updateSettings).toHaveBeenCalledWith(
+      expect.objectContaining({
+        oidc_connect_logout_url: "https://new.example.com/logout",
       }),
     );
   });
