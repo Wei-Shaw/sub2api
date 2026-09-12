@@ -160,6 +160,18 @@ type AntigravityModelQuota struct {
 	ResetTime   string `json:"reset_time"`  // 重置时间 ISO8601
 }
 
+// AntigravityQuotaWindow Antigravity 按模型族聚合的独立额度窗口。
+// map key 使用上游 bucketId，例如 gemini-weekly、gemini-5h、3p-weekly、3p-5h。
+type AntigravityQuotaWindow struct {
+	GroupName         string     `json:"group_name,omitempty"`
+	DisplayName       string     `json:"display_name,omitempty"`
+	Window            string     `json:"window,omitempty"`
+	RemainingFraction float64    `json:"remaining_fraction"`
+	Utilization       float64    `json:"utilization"`
+	ResetsAt          *time.Time `json:"resets_at,omitempty"`
+	Description       string     `json:"description,omitempty"`
+}
+
 // AntigravityModelDetail Antigravity 单个模型的详细能力信息
 type AntigravityModelDetail struct {
 	DisplayName        string          `json:"display_name,omitempty"`
@@ -196,6 +208,8 @@ type UsageInfo struct {
 
 	// Antigravity 多模型配额
 	AntigravityQuota map[string]*AntigravityModelQuota `json:"antigravity_quota,omitempty"`
+	// Antigravity 5h/weekly 聚合额度（Gemini 与 Claude/GPT 两个模型族）
+	AntigravityQuotaSummary map[string]*AntigravityQuotaWindow `json:"antigravity_quota_summary,omitempty"`
 
 	// Grok / xAI 被动额度快照
 	GrokRequestQuota       *xai.QuotaWindow `json:"grok_request_quota,omitempty"`

@@ -425,6 +425,54 @@ func TestFetchQuotaUsesConfiguredModelsListBodyLimit(t *testing.T) {
 	require.ErrorContains(t, err, "响应超过 8 字节")
 }
 
+func TestApplyAntigravityQuotaSummary(t *testing.T) {
+	weeklyRemaining := 0.7887
+	fiveHourRemaining := 0.9661
+	thirdPartyRemaining := 1.0
+	info := &UsageInfo{}
+	summary := &antigravity.RetrieveUserQuotaSummaryResponse{
+		Groups: []antigravity.QuotaSummaryGroup{
+			{
+				DisplayName: "Gemini Models",
+				Buckets: []antigravity.QuotaSummaryBucket{
+					{
+						BucketID:          "gemini-weekly",
+						Window:            "weekly",
+						RemainingFraction: &weeklyRemaining,
+						ResetTime:         "08/29/2026 14:25:41",
+					},
+					{
+						BucketID:          "gemini-5h",
+						Window:            "5h",
+						RemainingFraction: &fiveHourRemaining,
+						ResetTime:         "2026-08-24T20:03:40Z",
+					},
+				},
+			},
+			{
+				DisplayName: "Claude and GPT models",
+				Buckets: []antigravity.QuotaSummaryBucket{
+					{
+						BucketID:          "3p-weekly",
+						Window:            "weekly",
+						RemainingFraction: &thirdPartyRemaining,
+					},
+				},
+			},
+		},
+	}
+
+	applyAntigravityQuotaSummary(info, summary)
+
+	require.Len(t, info.AntigravityQuotaSummary, 3)
+	require.InDelta(t, 21.13, info.AntigravityQuotaSummary["gemini-weekly"].Utilization, 0.001)
+	require.Equal(t, "Gemini Models", info.AntigravityQuotaSummary["gemini-weekly"].GroupName)
+	require.Equal(t, time.Date(2026, 8, 29, 14, 25, 41, 0, time.UTC), *info.AntigravityQuotaSummary["gemini-weekly"].ResetsAt)
+	require.InDelta(t, 3.39, info.FiveHour.Utilization, 0.001)
+	require.Equal(t, time.Date(2026, 8, 24, 20, 3, 40, 0, time.UTC), *info.FiveHour.ResetsAt)
+	require.Zero(t, info.AntigravityQuotaSummary["3p-weekly"].Utilization)
+}
+
 func TestFetchQuota_ForbiddenReturnsIsForbidden(t *testing.T) {
 	// 模拟 FetchQuota 遇到 403 时的行为：
 	// FetchAvailableModels 返回 ForbiddenError → FetchQuota 应返回 is_forbidden=true
