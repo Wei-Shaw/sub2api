@@ -228,6 +228,19 @@
             <PlatformIcon platform="opencode_go" size="sm" />
             OpenCode
           </button>
+          <button
+            type="button"
+            @click="selectOllamaCloudPlatform()"
+            :class="[
+              'flex flex-1 items-center justify-center gap-2 rounded-md px-3 py-2.5 text-sm font-medium transition-all',
+              form.platform === 'ollama_cloud'
+                ? 'bg-white text-stone-700 shadow-sm dark:bg-dark-600 dark:text-stone-300'
+                : 'text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-200'
+            ]"
+          >
+            <PlatformIcon platform="ollama_cloud" size="sm" />
+            Ollama
+          </button>
         </div>
       </div>
 
@@ -529,6 +542,94 @@
               <span class="text-xs text-gray-500 dark:text-gray-400">{{ t('admin.accounts.opencodeGo.accountMode.goDesc') }}</span>
             </div>
           </button>
+        </div>
+      </div>
+
+      <!-- Ollama Cloud Account Mode (legacy window vs monthly credits) -->
+      <div v-if="form.platform === 'ollama_cloud'">
+        <label class="input-label">{{ t('admin.accounts.ollamaCloud.accountMode.title') }}</label>
+        <div class="mt-2 grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <button
+            type="button"
+            @click="ollamaAccountMode = 'ollama_legacy'"
+            :class="[
+              'flex items-center gap-3 rounded-lg border-2 p-3 text-left transition-all',
+              ollamaAccountMode === 'ollama_legacy'
+                ? cnAccentActiveClass
+                : 'border-gray-200 hover:border-gray-400 dark:border-dark-600 dark:hover:border-gray-600'
+            ]"
+          >
+            <div
+              :class="[
+                'flex h-8 w-8 shrink-0 items-center justify-center rounded-lg',
+                ollamaAccountMode === 'ollama_legacy'
+                  ? cnAccentIconClass
+                  : 'bg-gray-100 text-gray-500 dark:bg-dark-600 dark:text-gray-400'
+              ]"
+            >
+              <Icon name="bolt" size="sm" />
+            </div>
+            <div>
+              <span class="block text-sm font-medium text-gray-900 dark:text-white">{{ t('admin.accounts.ollamaCloud.accountMode.legacy') }}</span>
+              <span class="text-xs text-gray-500 dark:text-gray-400">{{ t('admin.accounts.ollamaCloud.accountMode.legacyDesc') }}</span>
+            </div>
+          </button>
+          <button
+            type="button"
+            @click="ollamaAccountMode = 'ollama_credits'"
+            :class="[
+              'flex items-center gap-3 rounded-lg border-2 p-3 text-left transition-all',
+              ollamaAccountMode === 'ollama_credits'
+                ? cnAccentActiveClass
+                : 'border-gray-200 hover:border-gray-400 dark:border-dark-600 dark:hover:border-gray-600'
+            ]"
+          >
+            <div
+              :class="[
+                'flex h-8 w-8 shrink-0 items-center justify-center rounded-lg',
+                ollamaAccountMode === 'ollama_credits'
+                  ? cnAccentIconClass
+                  : 'bg-gray-100 text-gray-500 dark:bg-dark-600 dark:text-gray-400'
+              ]"
+            >
+              <Icon name="creditCard" size="sm" />
+            </div>
+            <div>
+              <span class="block text-sm font-medium text-gray-900 dark:text-white">{{ t('admin.accounts.ollamaCloud.accountMode.credits') }}</span>
+              <span class="text-xs text-gray-500 dark:text-gray-400">{{ t('admin.accounts.ollamaCloud.accountMode.creditsDesc') }}</span>
+            </div>
+          </button>
+        </div>
+        <!-- credits 模式的月度信用额度（USD）：额度分母，告警与面板按此派生百分比 -->
+        <div v-if="ollamaAccountMode === 'ollama_credits'" class="mt-3">
+          <label class="input-label">{{ t('admin.accounts.ollamaCloud.accountMode.monthlyCreditUsd') }}</label>
+          <input
+            v-model="ollamaMonthlyCreditUsdInput"
+            type="number"
+            min="0"
+            step="1"
+            class="input"
+            :placeholder="t('admin.accounts.ollamaCloud.accountMode.monthlyCreditUsdPlaceholder')"
+            data-testid="ollama-monthly-credit-usd"
+          />
+          <div class="mt-2 flex gap-2">
+            <button
+              type="button"
+              class="rounded-md border border-gray-200 px-3 py-1 text-xs font-medium text-gray-600 transition-all hover:border-stone-400 hover:text-stone-600 dark:border-dark-600 dark:text-gray-400 dark:hover:border-stone-500 dark:hover:text-stone-300"
+              data-testid="ollama-credit-preset-60"
+              @click="ollamaMonthlyCreditUsdInput = '60'"
+            >
+              60
+            </button>
+            <button
+              type="button"
+              class="rounded-md border border-gray-200 px-3 py-1 text-xs font-medium text-gray-600 transition-all hover:border-stone-400 hover:text-stone-600 dark:border-dark-600 dark:text-gray-400 dark:hover:border-stone-500 dark:hover:text-stone-300"
+              data-testid="ollama-credit-preset-300"
+              @click="ollamaMonthlyCreditUsdInput = '300'"
+            >
+              300
+            </button>
+          </div>
         </div>
       </div>
 
@@ -3958,6 +4059,7 @@ import {
   type CnNativeApiProtocol,
   type CnProviderPlatform,
   type HeaderOverrideRow,
+  type OllamaCloudAccountMode,
   type OpenCodeAccountMode,
   type OpenCodeGoProtocolRule
 } from '@/components/account/credentialsBuilder'
@@ -4156,6 +4258,10 @@ const upstreamBillingAutoProbeEnabled = ref(true)
 // ── 国产供应商（Kimi / Zhipu / DeepSeek）账号类型、API 协议与端点 ──
 const accountMode = ref<CnAccountMode>('payg')
 const openCodeAccountMode = ref<OpenCodeAccountMode>('zen')
+// Ollama Cloud 双额度模式：legacy（5h/7d 滚动窗口）/ credits（月度美元信用池）。
+const ollamaAccountMode = ref<OllamaCloudAccountMode>('ollama_legacy')
+// credits 模式的月度信用额度录入（USD）；提交时解析，仅 credits 模式写入凭据。
+const ollamaMonthlyCreditUsdInput = ref('60')
 // API 协议决定转发端点与格式：cc=现有转换链，anthropic=原生直通（Claude Code），
 // responses=deepseek / kimi 原生 Responses 端点（Codex）。与账号类型正交。
 const apiProtocol = ref<CnApiProtocol>('adaptive')
@@ -4172,7 +4278,7 @@ const adaptiveBaseUrls = ref<Record<CnNativeApiProtocol, string>>({
 })
 const isCNPlatform = computed(() => isCNProviderPlatform(form.platform))
 const isOpenCodeGoPlatform = computed(() => form.platform === 'opencode_go')
-const isMultiProtocolPlatform = computed(() => isCNPlatform.value || isOpenCodeGoPlatform.value)
+const isMultiProtocolPlatform = computed(() => isCNPlatform.value || isOpenCodeGoPlatform.value || form.platform === 'ollama_cloud')
 function currentOpenCodeOrCNMode(): CnAccountMode | OpenCodeAccountMode {
   return isOpenCodeGoPlatform.value ? openCodeAccountMode.value : accountMode.value
 }
@@ -4184,8 +4290,9 @@ const cnPresetPlatform = computed<CnProviderPlatform>(() => {
   }
   return 'kimi'
 })
-const adaptivePresetPlatform = computed<CnProviderPlatform | 'opencode_go'>(() => {
+const adaptivePresetPlatform = computed<CnProviderPlatform | 'opencode_go' | 'ollama_cloud'>(() => {
   if (form.platform === 'opencode_go') return 'opencode_go'
+  if (form.platform === 'ollama_cloud') return 'ollama_cloud'
   return cnPresetPlatform.value
 })
 // 当前平台可选的协议档（responses 仅 deepseek / kimi）。
@@ -4210,7 +4317,7 @@ const cnAdaptiveProtocolOptions = computed<Array<{ value: CnNativeApiProtocol; l
 })
 
 function resetAdaptiveBaseUrls(
-  platform: CnProviderPlatform | 'opencode_go',
+  platform: CnProviderPlatform | 'opencode_go' | 'ollama_cloud',
   mode: CnAccountMode | OpenCodeAccountMode
 ) {
   adaptiveBaseUrls.value = defaultCNAdaptiveBaseUrls(platform, mode)
@@ -4228,6 +4335,8 @@ const cnAccentActiveClass = computed(() => {
       return 'border-rose-500 bg-rose-50 dark:bg-rose-900/20'
     case 'opencode_go':
       return 'border-amber-500 bg-amber-50 dark:bg-amber-900/20'
+    case 'ollama_cloud':
+      return 'border-stone-500 bg-stone-50 dark:bg-stone-900/20'
     default:
       return 'border-primary-500 bg-primary-50 dark:bg-primary-900/20'
   }
@@ -4244,6 +4353,8 @@ const cnAccentIconClass = computed(() => {
       return 'bg-rose-500 text-white'
     case 'opencode_go':
       return 'bg-amber-500 text-white'
+    case 'ollama_cloud':
+      return 'bg-stone-500 text-white'
     default:
       return 'bg-primary-500 text-white'
   }
@@ -4270,6 +4381,17 @@ function selectOpenCodeGoPlatform() {
   apiKeyBaseUrl.value = defaultCNBaseUrl('opencode_go', openCodeAccountMode.value, 'adaptive')
   resetAdaptiveBaseUrls('opencode_go', openCodeAccountMode.value)
   openCodeGoProtocolRules.value = cloneOpenCodeGoProtocolRules(defaultOpenCodeProtocolRules(openCodeAccountMode.value))
+}
+// 切换到 Ollama Cloud：强制 apikey 类型，账号模式回落 legacy，协议回落 adaptive，
+// 端点重置为平台默认（ollama 的 base url 预设不区分账号模式，mode 参数仅为满足签名）。
+function selectOllamaCloudPlatform() {
+  form.platform = 'ollama_cloud'
+  form.type = 'apikey'
+  accountCategory.value = 'apikey'
+  apiProtocol.value = 'adaptive'
+  ollamaAccountMode.value = 'ollama_legacy'
+  apiKeyBaseUrl.value = defaultCNBaseUrl('ollama_cloud', accountMode.value, 'adaptive')
+  resetAdaptiveBaseUrls('ollama_cloud', accountMode.value)
 }
 // 账号类型 / 协议变更时同步默认 base url。
 watch(openCodeAccountMode, (mode, previousMode) => {
@@ -5309,6 +5431,8 @@ const resetForm = () => {
   addMethod.value = 'oauth'
   accountMode.value = 'payg'
   openCodeAccountMode.value = 'zen'
+  ollamaAccountMode.value = 'ollama_legacy'
+  ollamaMonthlyCreditUsdInput.value = '60'
   apiProtocol.value = 'adaptive'
   openCodeGoProtocolRules.value = cloneOpenCodeGoProtocolRules(defaultOpenCodeProtocolRules('zen'))
   adaptiveBaseUrls.value = { chat_completions: '', anthropic: '', responses: '' }
@@ -5782,11 +5906,22 @@ const handleSubmit = async () => {
     credentials.tier_id = geminiTierAIStudio.value
   }
 
-  // 国产供应商：账号模式 + 协议 + 对应端点写入凭据；后端按 account_mode 路由
-  // 额度/余额探测，按 api_protocol 路由转发端点与格式。注意 CN apikey 走本函数
-  // 的通用路径（直接 doCreateAccount），不经过 createAccountAndFinish。
-  if (isCNProviderPlatform(form.platform) || form.platform === 'opencode_go') {
-    credentials.account_mode = form.platform === 'opencode_go' ? openCodeAccountMode.value : accountMode.value
+  // 国产供应商 / OpenCode / Ollama Cloud：账号模式 + 协议 + 对应端点写入凭据；后端按
+  // account_mode 路由额度/余额探测，按 api_protocol 路由转发端点与格式。注意这些 apikey
+  // 平台走本函数的通用路径（直接 doCreateAccount），不经过 createAccountAndFinish。
+  if (isCNProviderPlatform(form.platform) || form.platform === 'opencode_go' || form.platform === 'ollama_cloud') {
+    if (form.platform === 'ollama_cloud') {
+      // Ollama Cloud 双额度模式：credits 需同时录入月度信用额度（USD）作为分母。
+      credentials.account_mode = ollamaAccountMode.value
+      if (ollamaAccountMode.value === 'ollama_credits') {
+        const monthlyCreditUsd = Number.parseFloat(ollamaMonthlyCreditUsdInput.value)
+        if (Number.isFinite(monthlyCreditUsd) && monthlyCreditUsd > 0) {
+          credentials.monthly_credit_usd = monthlyCreditUsd
+        }
+      }
+    } else {
+      credentials.account_mode = form.platform === 'opencode_go' ? openCodeAccountMode.value : accountMode.value
+    }
     credentials.api_protocol = apiProtocol.value
     if (apiProtocol.value === 'adaptive') {
       const defaults = defaultCNAdaptiveBaseUrls(

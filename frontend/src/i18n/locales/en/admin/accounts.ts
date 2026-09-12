@@ -253,6 +253,15 @@ export default {
       usageWindowsHint: '"5h / 7d" are the upstream account\'s official rolling usage windows (e.g. OpenAI ChatGPT, Claude). They are imposed by the upstream provider on the account itself — not configured by sub2api, and unrelated to the models you map. Usage resets automatically once each window rolls over, and the limit cannot be lifted from within sub2api.',
       ollamaCloud: {
         title: 'Ollama Cloud usage',
+        accountMode: {
+          title: 'Account mode',
+          legacy: 'Legacy (rolling window)',
+          legacyDesc: 'Metered and monitored via the official 5h / 7d rolling windows',
+          credits: 'Credits (monthly pool)',
+          creditsDesc: 'Metered and monitored via a monthly USD credit pool',
+          monthlyCreditUsd: 'Monthly credit (USD)',
+          monthlyCreditUsdPlaceholder: 'e.g. 60'
+        },
         sessionSecurityHint: 'The browser session is encrypted at rest and sent only to the fixed official settings URL.',
         configured: 'Configured',
         notConfigured: 'Not configured',
