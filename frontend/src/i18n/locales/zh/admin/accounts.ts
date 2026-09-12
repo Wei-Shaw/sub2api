@@ -425,7 +425,7 @@ export default {
       tempUnschedulable: {
         title: '临时不可调度',
         statusTitle: '临时不可调度状态',
-        hint: '当错误码与关键词同时匹配时，账号会在指定时间内被临时禁用。',
+        hint: '错误码与关键词同时匹配即触发一次临时暂停。OpenAI 已知上游模型仅暂停该账号的当前模型；模型未知时暂停账号。池模式无需开启自定义错误码，已启用的错误码忽略策略仍优先。',
         notice: '规则按顺序匹配，需同时满足错误码与关键词。',
         addRule: '添加规则',
         ruleOrder: '规则序号',
@@ -461,6 +461,8 @@ export default {
         remainingHours: '约 {hours} 小时',
         remainingHoursMinutes: '约 {hours} 小时 {minutes} 分钟',
         presets: {
+          capacityLabel: '503 容量过载',
+          capacityDesc: '容量过载 - 暂避当前模型 2 分钟',
           overloadLabel: '529 过载',
           overloadDesc: '服务过载 - 暂停 60 分钟',
           rateLimitLabel: '429 限流',

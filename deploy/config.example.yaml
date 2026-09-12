@@ -36,6 +36,10 @@ server:
   # Keep-alive idle timeout in seconds.
   # Keep-Alive 空闲连接超时（秒）。
   idle_timeout: 120
+  # Wait for active HTTP requests during shutdown; container stop grace must be longer.
+  # 停机时等待在途 HTTP 请求；容器 stop_grace_period 必须更长。0 回退到 5 秒。
+  # WebSocket/hijacked connections still require an external drain before shutdown.
+  shutdown_timeout_seconds: 5
   # Trusted proxies used when security.trust_forwarded_ip_for_api_key_acl is false.
   # List only the exact proxy addresses that connect directly to Sub2API.
   # Set [] explicitly to disable forwarded-IP trust in high-security mode.

@@ -16,6 +16,8 @@ import (
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
+	"go.uber.org/zap"
 	"golang.org/x/sync/singleflight"
 )
 
@@ -1024,7 +1026,7 @@ func (s *defaultOpenAIAccountScheduler) buildOpenAIAccountLoadPlan(
 			weights.Reset*resetFactor +
 			weights.QuotaHeadroom*quotaHeadroomFactor +
 			weights.UpstreamCost*(upstreamCostFactor-openAIUpstreamCostNeutralFactor)
-		if req.StickyWeighted {
+		if req.StickyWeighted && !s.shouldEscapeWeightedStickyAccount(req, item.account.ID) {
 			if req.PreviousResponseCanMove && req.StickyPreviousAccountID > 0 && item.account.ID == req.StickyPreviousAccountID {
 				item.score += weights.Previous
 			}
@@ -1055,6 +1057,22 @@ func (s *defaultOpenAIAccountScheduler) buildOpenAISelectionOrder(
 		if len(pool) == 0 || plan.topK <= 0 {
 			return nil
 		}
+		var escaped []openAIAccountCandidateScore
+		if req.StickyWeighted {
+			preferred := make([]openAIAccountCandidateScore, 0, len(pool))
+			for _, candidate := range pool {
+				if s.shouldEscapeWeightedStickyAccount(req, candidate.account.ID) {
+					escaped = append(escaped, candidate)
+				} else {
+					preferred = append(preferred, candidate)
+				}
+			}
+			if len(preferred) > 0 {
+				pool = preferred
+			} else {
+				escaped = nil
+			}
+		}
 		groupTopK := plan.topK
 		if groupTopK > len(pool) {
 			groupTopK = len(pool)
@@ -1063,7 +1081,7 @@ func (s *defaultOpenAIAccountScheduler) buildOpenAISelectionOrder(
 		var primary []openAIAccountCandidateScore
 		if req.StickyWeighted {
 			for _, stickyID := range []int64{req.StickyPreviousAccountID, req.StickyAccountID} {
-				if stickyID <= 0 {
+				if stickyID <= 0 || s.shouldEscapeWeightedStickyAccount(req, stickyID) {
 					continue
 				}
 				for i, candidate := range ranked {
@@ -1082,7 +1100,7 @@ func (s *defaultOpenAIAccountScheduler) buildOpenAISelectionOrder(
 			primary = buildOpenAIWeightedSelectionOrder(ranked, req)
 		}
 		if !plan.includeOverflowFallback || groupTopK >= len(pool) {
-			return primary
+			return append(primary, escaped...)
 		}
 
 		selected := make(map[int64]struct{}, len(primary))
@@ -1098,7 +1116,7 @@ func (s *defaultOpenAIAccountScheduler) buildOpenAISelectionOrder(
 		sort.Slice(overflow, func(i, j int) bool {
 			return isOpenAIAccountCandidateBetter(overflow[i], overflow[j])
 		})
-		return append(primary, overflow...)
+		return append(append(primary, overflow...), escaped...)
 	}
 
 	if req.RequireCompact {
@@ -1122,6 +1140,15 @@ func (s *defaultOpenAIAccountScheduler) buildOpenAISelectionOrder(
 	}
 
 	return buildSelectionOrder(plan.candidates)
+}
+
+func (s *defaultOpenAIAccountScheduler) shouldEscapeWeightedStickyAccount(req OpenAIAccountScheduleRequest, accountID int64) bool {
+	if !req.StickyWeighted || s.service == nil ||
+		(accountID != req.StickyAccountID && (!req.PreviousResponseCanMove || accountID != req.StickyPreviousAccountID)) {
+		return false
+	}
+	_, _, _, escape := s.shouldEscapeStickyAccount(accountID, s.service.openAIStickyEscapeConfig())
+	return escape
 }
 
 func sortOpenAICompactRetryCandidates(pool []openAIAccountCandidateScore) []openAIAccountCandidateScore {
@@ -2346,7 +2373,9 @@ func (s *OpenAIGatewayService) selectAccountWithSchedulerOnce(
 	}
 
 	var stickyAccountID int64
-	if sessionHash != "" && s.cache != nil {
+	if state := openAIStickySuccessFromContext(ctx); state != nil && state.groupID == derefGroupID(groupID) && state.sessionHash == sessionHash && state.model == strings.TrimSpace(requestedModel) {
+		stickyAccountID = state.originalID
+	} else if sessionHash != "" && s.cache != nil {
 		if accountID, err := s.getStickySessionAccountID(ctx, groupID, sessionHash); err == nil && accountID > 0 {
 			stickyAccountID = accountID
 		}
@@ -2358,7 +2387,7 @@ func (s *OpenAIGatewayService) selectAccountWithSchedulerOnce(
 		stickyPreviousAccountID = s.ResolveAccountIDByPreviousResponseIDForScheduler(ctx, groupID, previousResponseID, requestedModel, excludedIDs, requiredCapability, requireCompact)
 	}
 
-	return scheduler.Select(ctx, OpenAIAccountScheduleRequest{
+	selection, decision, err := scheduler.Select(ctx, OpenAIAccountScheduleRequest{
 		GroupID:                 groupID,
 		Platform:                platform,
 		SessionHash:             sessionHash,
@@ -2379,6 +2408,20 @@ func (s *OpenAIGatewayService) selectAccountWithSchedulerOnce(
 		RequireCompact:          requireCompact,
 		ExcludedIDs:             excludedIDs,
 	})
+	if state := openAIStickySuccessFromContext(ctx); state != nil && selection != nil && selection.Account != nil {
+		reason := ""
+		var errorRate, ttft float64
+		if active, ok := scheduler.(*defaultOpenAIAccountScheduler); ok {
+			reason, errorRate, ttft, _ = active.shouldEscapeStickyAccount(stickyAccountID, s.openAIStickyEscapeConfig())
+		}
+		logger.FromContext(ctx).Info("openai.sticky_selection",
+			zap.Int64("group_id", derefGroupID(groupID)), zap.String("model", requestedModel),
+			zap.Int64("sticky_account_id", stickyAccountID), zap.Int64("account_id", selection.Account.ID),
+			zap.Bool("success_preference", state.expected.AccountID > 0),
+			zap.Bool("sticky_hit", stickyAccountID == selection.Account.ID), zap.String("layer", decision.Layer),
+			zap.String("escape_reason", reason), zap.Float64("sticky_error_rate", errorRate), zap.Float64("sticky_ttft_ms", ttft))
+	}
+	return selection, decision, err
 }
 
 func accountSupportsOpenAICapabilities(account *Account, requiredCapability OpenAIEndpointCapability, requiredImageCapability OpenAIImagesCapability) bool {

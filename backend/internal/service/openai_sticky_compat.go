@@ -200,6 +200,11 @@ func (s *OpenAIGatewayService) refreshStickySessionTTL(ctx context.Context, grou
 }
 
 func (s *OpenAIGatewayService) deleteStickySessionAccountID(ctx context.Context, groupID *int64, sessionHash string) error {
+	if state := openAIStickySuccessFromContext(ctx); state != nil && state.expected.AccountID > 0 && state.groupID == derefGroupID(groupID) && state.sessionHash == sessionHash {
+		// The selected preference belongs to one model, not the legacy binding.
+		// Keep its revision until a successful replacement commits with CAS.
+		return nil
+	}
 	if s == nil || s.cache == nil {
 		return nil
 	}

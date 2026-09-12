@@ -8,6 +8,10 @@ import zhCommon from "@/i18n/locales/zh/common";
 import zhSettings from "@/i18n/locales/zh/admin/settings";
 import SettingsView from "../SettingsView.vue";
 
+vi.mock("../settings/OpenAIAPIKeyHealthSettings.vue", () => ({
+  default: { template: '<section data-testid="openai-health-settings" />' },
+}));
+
 const {
   getSettings,
   updateSettings,

@@ -102,6 +102,11 @@ func sameAccountRetryAllowed(failoverErr *service.UpstreamFailoverError, retryCo
 	return retryLimit > 0 && retryCount < retryLimit
 }
 
+func shouldReportOpenAIFailoverAttempt(account *service.Account, err *service.UpstreamFailoverError, retryCount int) bool {
+	return err != nil && err.ShouldReportAccountScheduleFailure() &&
+		(!err.ShouldRetryNextAccount() || !sameAccountRetryAllowed(err, retryCount, effectiveSameAccountRetryLimit(err, account)))
+}
+
 // sameAccountRetryDeadlineAllows prevents a retry from starting after the
 // service-provided same-account retry window has elapsed.
 func sameAccountRetryDeadlineAllows(failoverErr *service.UpstreamFailoverError) bool {
@@ -324,6 +329,8 @@ func needForceCacheBilling(hasBoundSession bool, failoverErr *service.UpstreamFa
 	return (hasBoundSession && !sameAccountRetry) || (failoverErr != nil && failoverErr.ForceCacheBilling)
 }
 
+const opsClientDisconnectedKey = "ops_client_disconnected"
+
 // failoverClientGone 判断下游客户端是否已断开（请求 context 已取消）。
 // 客户端断开后 failover 必须静默终止：用已取消的 context 重新选号只会得到
 // context.Canceled，并被误报成账号耗尽（通用 502）；上游 detach 的在途请求
@@ -333,6 +340,7 @@ func failoverClientGone(c *gin.Context) bool {
 	if c == nil || c.Request == nil || c.Request.Context().Err() == nil {
 		return false
 	}
+	c.Set(opsClientDisconnectedKey, true)
 	// 先停 compact 心跳（接管 ResponseWriter，建立 happens-before），与
 	// handleStreamingAwareError/errorResponse 等终结路径对齐，避免心跳
 	// goroutine 与下面的状态标记并发触碰同一 writer。心跳已提交 200 时

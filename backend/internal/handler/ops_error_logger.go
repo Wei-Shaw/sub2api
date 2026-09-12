@@ -1120,6 +1120,11 @@ func OpsErrorLoggerMiddleware(ops *service.OpsService) gin.HandlerFunc {
 		if status < 400 {
 			if parsed.StreamFailure {
 				status = inferStreamFailureStatus(c, parsed)
+			} else if c.GetBool(opsClientDisconnectedKey) && len(service.GetOpsStreamErrors(c)) == 0 {
+				// A heartbeat may have committed 200 before the client left. It is
+				// not evidence that any recorded upstream attempt recovered.
+				status = statusClientClosedRequest
+				parsed.Message = "Client disconnected before request completion"
 			} else {
 				// A marked in-band error is a visible request failure even though its
 				// wire status is already 200. Otherwise retain recovered attempts as a

@@ -1073,6 +1073,31 @@ func (s *AccountRepoSuite) TestSetTempUnschedulableSkipsOutboxWhenWindowDoesNotE
 	s.Require().WithinDuration(until, *got.TempUnschedulableUntil, time.Second)
 }
 
+func (s *AccountRepoSuite) TestModelRateLimitNeverShortensExistingPause() {
+	account := mustCreateAccount(s.T(), s.client, &service.Account{
+		Name: "model-cooldown-preserves-quota", Platform: service.PlatformOpenAI,
+		Type: service.AccountTypeAPIKey, Status: service.StatusActive, Schedulable: true,
+	})
+	cache := &schedulerCacheRecorder{}
+	s.repo.schedulerCache = cache
+	quotaUntil := time.Now().Add(4 * time.Hour).UTC().Truncate(time.Second)
+	s.Require().NoError(s.repo.SetModelRateLimit(s.ctx, account.ID, "gpt-5.1", quotaUntil, "quota"))
+	s.Require().NoError(s.repo.SetModelRateLimit(s.ctx, account.ID, "gpt-5.1", time.Now().Add(2*time.Minute), "capacity"))
+	got, err := s.repo.GetByID(s.ctx, account.ID)
+	s.Require().NoError(err)
+	state := got.Extra["model_rate_limits"].(map[string]any)["gpt-5.1"].(map[string]any)
+	s.Require().Equal(quotaUntil.Format(time.RFC3339), state["rate_limit_reset_at"])
+	s.Require().Equal("quota", state["reason"])
+	s.Require().False(got.IsSchedulableForModelWithContext(s.ctx, "gpt-5.1"))
+	s.Require().True(got.IsSchedulableForModelWithContext(s.ctx, "gpt-5.2"))
+	s.Require().Equal(got.Extra, cache.accounts[account.ID].Extra)
+	later := quotaUntil.Add(time.Hour)
+	s.Require().NoError(s.repo.SetModelRateLimit(s.ctx, account.ID, "gpt-5.1", later, "extended"))
+	state = cache.accounts[account.ID].Extra["model_rate_limits"].(map[string]any)["gpt-5.1"].(map[string]any)
+	s.Require().Equal(later.Format(time.RFC3339), state["rate_limit_reset_at"])
+	s.Require().Equal("extended", state["reason"])
+}
+
 func (s *AccountRepoSuite) TestClearModelRateLimits_SyncsSchedulerSnapshot() {
 	account := mustCreateAccount(s.T(), s.client, &service.Account{
 		Name: "acc-clear-model-rate",

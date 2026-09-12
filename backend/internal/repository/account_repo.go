@@ -2283,7 +2283,11 @@ func (r *accountRepository) SetModelRateLimit(ctx context.Context, id int64, sco
 			extra = jsonb_set(
 				jsonb_set(COALESCE(extra, '{}'::jsonb), '{model_rate_limits}'::text[], COALESCE(extra->'model_rate_limits', '{}'::jsonb), true),
 				ARRAY['model_rate_limits', $1]::text[],
-				$2::jsonb,
+				CASE
+					WHEN NULLIF(extra #>> ARRAY['model_rate_limits', $1, 'rate_limit_reset_at'], '')::timestamptz > $4
+					THEN extra #> ARRAY['model_rate_limits', $1]
+					ELSE $2::jsonb
+				END,
 				true
 			),
 			updated_at = NOW()
@@ -2291,6 +2295,7 @@ func (r *accountRepository) SetModelRateLimit(ctx context.Context, id int64, sco
 		scope,
 		raw,
 		id,
+		resetAt,
 	)
 	if err != nil {
 		return err

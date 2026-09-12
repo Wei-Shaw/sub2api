@@ -26,6 +26,13 @@ func classifyOpenAIAPIKeyHealthFailure(err error) (int, []byte, bool) {
 
 	var failoverErr *UpstreamFailoverError
 	if errors.As(err, &failoverErr) {
+		if failoverErr.AccountHealthHandled {
+			return failoverErr.StatusCode, failoverErr.ResponseBody, false
+		}
+		if !failoverErr.IsCredentialFailure() && failoverErr.Scope != GatewayFailureScopeProvider &&
+			isOpenAICapacityHealthPayload(failoverErr.ResponseBody) {
+			return http.StatusServiceUnavailable, failoverErr.ResponseBody, true
+		}
 		// These failures already have dedicated recovery/state handling or are not
 		// attributable to the selected account.
 		if failoverErr.IsCredentialFailure() ||
@@ -39,6 +46,11 @@ func classifyOpenAIAPIKeyHealthFailure(err error) (int, []byte, bool) {
 			return failoverErr.StatusCode, failoverErr.ResponseBody, true
 		}
 		return failoverErr.StatusCode, failoverErr.ResponseBody, false
+	}
+	var streamErr *OpenAIStreamTerminalError
+	if errors.As(err, &streamErr) {
+		return streamErr.StatusCode, streamErr.ResponseBody, !streamErr.healthHandled &&
+			isOpenAICapacityHealthPayload(streamErr.ResponseBody)
 	}
 
 	var imageErr *OpenAIImagesUpstreamError
@@ -55,9 +67,12 @@ func (s *RateLimitService) ObserveOpenAIAPIKeyHealthFailure(ctx context.Context,
 		return false
 	}
 	statusCode, responseBody, eligible := classifyOpenAIAPIKeyHealthFailure(upstreamErr)
-	if !eligible {
+	if !eligible || !account.ShouldHandleErrorCode(statusCode) {
 		return false
 	}
+	markOpenAIHealthHandled(upstreamErr)
+	ctx, cancel := openAIAccountStateContext(ctx)
+	defer cancel()
 	settings, err := s.settingService.GetOpenAIAPIKeyHealthBreakerSettings(ctx)
 	if err != nil {
 		logger.L().Warn("openai.apikey_health_breaker_settings_failed", zap.Int64("account_id", account.ID), zap.Error(err))
@@ -72,6 +87,10 @@ func (s *RateLimitService) ObserveOpenAIAPIKeyHealthFailure(ctx context.Context,
 		logger.L().Warn("openai.apikey_health_breaker_record_failed", zap.Int64("account_id", account.ID), zap.Error(err))
 		return false
 	}
+	logger.FromContext(ctx).Info("openai.apikey_health_failure_observed",
+		zap.Int64("account_id", account.ID), zap.Int64("failure_count", count),
+		zap.Int("failure_threshold", settings.FailureThreshold), zap.Int("window_minutes", settings.WindowMinutes),
+		zap.Int("upstream_status", statusCode), zap.Bool("tripped", tripped))
 	if !tripped {
 		return false
 	}

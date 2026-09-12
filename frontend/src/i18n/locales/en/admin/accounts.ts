@@ -377,7 +377,7 @@ export default {
       tempUnschedulable: {
         title: 'Temp Unschedulable',
         statusTitle: 'Temp Unschedulable Status',
-        hint: 'Disable accounts temporarily when error code and keyword both match.',
+        hint: 'One matching status and keyword triggers a temporary pause. For OpenAI, a known upstream model pauses only that model on this account; unknown models pause the account. Pool mode does not require custom error codes; an enabled error-code ignore policy still takes precedence.',
         notice: 'Rules are evaluated in order and require both error code and keyword match.',
         addRule: 'Add Rule',
         ruleOrder: 'Rule Order',
@@ -413,6 +413,8 @@ export default {
         remainingHours: 'About {hours} hours',
         remainingHoursMinutes: 'About {hours} hours {minutes} minutes',
         presets: {
+          capacityLabel: '503 Capacity overload',
+          capacityDesc: 'Capacity overload - avoid the current model for 2 minutes',
           overloadLabel: '529 Overloaded',
           overloadDesc: 'Overloaded - pause 60 minutes',
           rateLimitLabel: '429 Rate Limit',
