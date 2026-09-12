@@ -13,7 +13,6 @@ import (
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
-	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/timezone"
 	"go.uber.org/zap"
@@ -170,8 +169,10 @@ func groupBillsOpenAIFastAtStandard(apiKey *APIKey, account *Account, serviceTie
 //	  AND COALESCE(a.credentials->'model_mapping','{}'::jsonb) = '{}'::jsonb;
 //
 // 上线后观察断言：日志中 `openai_usage.pricing_missing_record_zero_cost` 出现
-// 次数必须为 0（出现即回滚放量）；ollama_cloud 的定价缺失会走上方 B2-④ 的
-// MODEL_PRICING_MISSING 显式拒绝而非零成本落账。
+// 次数必须为 0（出现即回滚放量）。定价门禁已前移到上游 I/O 之前的请求期预检
+// （openai_gateway_ollama_cloud_pricing_preflight.go，未定价直接 400，不发上游）；
+// 记账阶段不再拒绝——这里只保留零成本落账 + 本告警作为「预检漏放」的兜底观测，
+// 两者不互相遮蔽：告警出现即说明有请求绕过了预检，需要排查而不是靠记账阶段补拒。
 //
 // RecordUsage records usage and deducts balance
 func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRecordUsageInput) error {
@@ -277,16 +278,11 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 		if !isUsagePricingUnavailableError(err) {
 			return err
 		}
-		// B2-④ 平台收窄断言：ollama_cloud 的计费是白名单语义（fallbackPrices
-		// 未列出的模型名显式拒绝计费），定价缺失说明配置漏了——静默零成本落账
-		// 等于免费送量。这里显式拒绝（400，message 列出候选模型名），不落入下方
-		// 的零成本路径；其余平台保持既有全平台 fail-open 设计不变。此时 usage
-		// 记录尚未写库（下方才建 UsageLog），提前返回即整条拒绝、无部分入账。
-		if account.IsOllamaCloud() {
-			return infraerrors.BadRequest("MODEL_PRICING_MISSING",
-				fmt.Sprintf("ollama cloud model pricing missing for billing models: %s (requested: %s)",
-					strings.Join(billingModels, ", "), input.OriginalModel))
-		}
+		// 定价缺失回到既有的全平台 fail-open 设计：零成本落账 + Warn 告警。
+		// ollama_cloud 的请求期拒绝已前移到上游 I/O 之前的定价预检（见
+		// openai_gateway_ollama_cloud_pricing_preflight.go）；记账阶段拒绝会在
+		// 上游已调用、响应已写给客户端之后连 usage 记录一起丢掉，比零成本记录
+		// 更难发现，故不再在此拒绝——本告警是「预检漏放」的观测依据。
 		logger.L().With(
 			zap.String("component", "service.openai_gateway"),
 			zap.Strings("billing_models", billingModels),
