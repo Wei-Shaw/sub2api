@@ -179,6 +179,13 @@ func (s *OpenAIGatewayService) buildNativeAnthropicUpstreamRequest(
 	// 地址而非 CC/Responses 地址），详见 helper 注释。
 	body = clampOllamaCloudAnthropicMessagesMaxTokens(account, account.GetAnthropicProtocolBaseURL(), body)
 
+	// Ollama Cloud 请求期定价预检（api_protocol=anthropic 的独立构造器，覆盖
+	// messages / responses / chat_completions 三条 anthropic 原生直通入站）：未定价
+	// 模型在任何上游 I/O 之前显式 400，且 400 已由 helper 写出。
+	if err := s.enforceOllamaCloudRequestPricingPreflight(ctx, c, account, body); err != nil {
+		return nil, nil, err
+	}
+
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, targetURL, bytes.NewReader(body))
 	if err != nil {
 		return nil, nil, err
