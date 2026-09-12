@@ -332,6 +332,12 @@ func (s *adminServiceImpl) DuplicateAccount(ctx context.Context, id int64, actor
 	}
 	// A copied credential must be reviewed before it can share live traffic with its source.
 	duplicate.Schedulable = false
+	// B2-③ 保存期无价门禁：复制是创建路径的变体，产物与手工创建同样必须过门禁
+	// （评审收口）——否则不合规的存量账号可以被无限复制放大。用「将要创建的账号」
+	// 校验，credentials/extra 此时已是深拷贝后的最终形态。
+	if err := validateOllamaCloudAccountModelPricingGate(s.billingService, duplicate); err != nil {
+		return nil, err
+	}
 	if s.accountDuplicateRepo == nil {
 		return nil, errors.New("account duplicate repository is not configured")
 	}
@@ -991,9 +997,11 @@ func (s *adminServiceImpl) BulkUpdateAccounts(ctx context.Context, input *BulkUp
 
 	needMixedChannelCheck := input.GroupIDs != nil && !input.SkipMixedChannelCheck
 
-	// 预取所有目标账号，供凭据守卫/代理守卫/混合渠道检查共用，避免多次 DB 查询。
+	// 预取所有目标账号，供凭据守卫/代理守卫/混合渠道检查/ollama_cloud 保存期门禁共用，
+	// 避免多次 DB 查询。ollama_cloud 门禁需要读到「变更后状态」（credentials/extra 合并、
+	// status/schedulable 切换），所以携带这些输入时也必须预取。
 	var cachedTargets []*Account
-	if len(input.Credentials) > 0 || input.ProxyID != nil || needMixedChannelCheck || openAISettings.any() || input.ProbeEnabled != nil || input.RateMultiplier != nil {
+	if len(input.Credentials) > 0 || input.ProxyID != nil || needMixedChannelCheck || openAISettings.any() || input.ProbeEnabled != nil || input.RateMultiplier != nil || input.Schedulable != nil || input.Status != "" || len(input.Extra) > 0 {
 		loaded, err := s.accountRepo.GetByIDs(ctx, input.AccountIDs)
 		if err != nil {
 			return nil, err
@@ -1159,6 +1167,15 @@ func (s *adminServiceImpl) BulkUpdateAccounts(ctx context.Context, input *BulkUp
 		repoUpdates.Schedulable = input.Schedulable
 	}
 
+	// B2-③ 保存期无价门禁：批量路径同样不可绕过（评审收口）。先按仓库的同款合并
+	// 语义（JSONB 顶层 key 合并 + 列覆盖）算出每个受影响 ollama_cloud 账号「本次
+	// 请求生效后的状态」，再复用与单账号 UpdateAccount 相同的门禁与触发收窄判定。
+	// 任何账号不合规即整批拒绝、不落库，错误信息点名账号与未定价模型，便于批量
+	// 操作定位。
+	if err := s.validateOllamaCloudPricingGateForBulkUpdate(input.AccountIDs, targetsByID, repoUpdates); err != nil {
+		return nil, err
+	}
+
 	// Run bulk update for column/jsonb fields first.
 	if _, err := s.accountRepo.BulkUpdate(ctx, input.AccountIDs, repoUpdates); err != nil {
 		return nil, err
@@ -1199,6 +1216,48 @@ func (s *adminServiceImpl) BulkUpdateAccounts(ctx context.Context, input *BulkUp
 	}
 
 	return result, nil
+}
+
+// validateOllamaCloudPricingGateForBulkUpdate 把保存期无价门禁应用到批量更新：
+// 对每个受影响的 ollama_cloud 账号，先把 AccountBulkUpdate 按仓库 BulkUpdate 的
+// 实际生效方式模拟到「变更后的账号」上（credentials/extra 顶层 key 合并，status/
+// schedulable 列覆盖），再复用 ollamaCloudPricingGateRevalidationNeeded + 门禁本体，
+// 与单账号 UpdateAccount 保持同一判定，不另写一份规则。命中不合规时收集全部
+// 违规项，由调用方整批拒绝（不产生任何写入）。
+func (s *adminServiceImpl) validateOllamaCloudPricingGateForBulkUpdate(accountIDs []int64, targetsByID map[int64]*Account, updates AccountBulkUpdate) error {
+	var failures []string
+	for _, id := range accountIDs {
+		current, ok := targetsByID[id]
+		if !ok || !current.IsOllamaCloud() {
+			continue
+		}
+		next := *current
+		next.Credentials = mergeMap(nil, current.Credentials)
+		for key, value := range updates.Credentials {
+			next.Credentials[key] = value
+		}
+		next.Extra = mergeMap(nil, current.Extra)
+		for key, value := range updates.Extra {
+			next.Extra[key] = value
+		}
+		if updates.Status != nil {
+			next.Status = *updates.Status
+		}
+		if updates.Schedulable != nil {
+			next.Schedulable = *updates.Schedulable
+		}
+		if !ollamaCloudPricingGateRevalidationNeeded(current.Platform, ollamaCloudOutboundModelNames(current), ollamaCloudSchedulableBySave(current), &next) {
+			continue
+		}
+		if err := validateOllamaCloudAccountModelPricingGate(s.billingService, &next); err != nil {
+			failures = append(failures, fmt.Sprintf("#%d(%s): %s", id, current.Name, infraerrors.Message(err)))
+		}
+	}
+	if len(failures) == 0 {
+		return nil
+	}
+	return infraerrors.BadRequest("MODEL_PRICING_MISSING",
+		fmt.Sprintf("批量更新被 ollama_cloud 保存期门禁拒绝，整批未写入（不合规账号: %s）", strings.Join(failures, "; ")))
 }
 
 func updatesUpstreamBillingProbeIdentity(credentials map[string]any) bool {
@@ -1328,6 +1387,21 @@ func (s *adminServiceImpl) SetAccountError(ctx context.Context, id int64, errorM
 }
 
 func (s *adminServiceImpl) SetAccountSchedulable(ctx context.Context, id int64, schedulable bool) (*Account, error) {
+	// B2-③ 保存期无价门禁：手动启用调度（false→true）与保存路径的「启用」是同一
+	// 调度准入开关，ollama_cloud 账号必须先过门禁，否则存量不合规账号可被一键放量
+	// （评审收口）。判定复用 ollamaCloudSchedulableBySave（active + Schedulable），
+	// 与单账号 Update 的启用语义一致；停用（true→false）属维护性操作，放行不校验。
+	if schedulable {
+		account, err := s.accountRepo.GetByID(ctx, id)
+		if err != nil {
+			return nil, err
+		}
+		if account.IsOllamaCloud() && !ollamaCloudSchedulableBySave(account) {
+			if err := validateOllamaCloudAccountModelPricingGate(s.billingService, account); err != nil {
+				return nil, err
+			}
+		}
+	}
 	if err := s.accountRepo.SetSchedulable(ctx, id, schedulable); err != nil {
 		return nil, err
 	}
