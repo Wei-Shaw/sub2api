@@ -49323,7 +49323,7 @@ func (m *UsageLogMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *UsageLogMutation) Fields() []string {
-	fields := make([]string, 0, 47)
+	fields := make([]string, 0, 49)
 	if m.user != nil {
 		fields = append(fields, usagelog.FieldUserID)
 	}
@@ -50823,6 +50823,7 @@ type UserMutation struct {
 	signup_source                    *string
 	last_login_at                    *time.Time
 	last_active_at                   *time.Time
+	restrict_public_groups           *bool
 	balance_notify_enabled           *bool
 	balance_notify_threshold_type    *string
 	balance_notify_threshold         *float64
@@ -50881,7 +50882,6 @@ type UserMutation struct {
 	done                             bool
 	oldValue                         func(context.Context) (*User, error)
 	predicates                       []predicate.User
-	restrict_public_groups *bool
 }
 
 var _ ent.Mutation = (*UserMutation)(nil)
