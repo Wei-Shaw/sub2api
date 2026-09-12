@@ -343,6 +343,10 @@ func (s *SettingService) buildSystemSettingsUpdates(ctx context.Context, setting
 	updates[SettingKeyContactInfo] = settings.ContactInfo
 	updates[SettingKeyDocURL] = settings.DocURL
 	updates[SettingKeyHomeContent] = settings.HomeContent
+	updates[SettingKeyFooterIcpNumber] = strings.TrimSpace(settings.FooterIcpNumber)
+	updates[SettingKeyFooterIcpURL] = strings.TrimSpace(settings.FooterIcpURL)
+	updates[SettingKeyFooterPsbNumber] = strings.TrimSpace(settings.FooterPsbNumber)
+	updates[SettingKeyFooterPsbURL] = strings.TrimSpace(settings.FooterPsbURL)
 	updates[SettingKeyCompactHomeEnabled] = strconv.FormatBool(settings.CompactHomeEnabled)
 	updates[SettingKeyHideCcsImportButton] = strconv.FormatBool(settings.HideCcsImportButton)
 	updates[SettingKeyPurchaseSubscriptionEnabled] = strconv.FormatBool(settings.PurchaseSubscriptionEnabled)
