@@ -50,7 +50,9 @@ const (
 	PlatformMiniMax    = domain.PlatformMiniMax
 	PlatformTypeSafe   = domain.PlatformTypeSafe
 	PlatformOpenCodeGo = domain.PlatformOpenCodeGo
-	PlatformComposite  = domain.PlatformComposite
+	// PlatformOllamaCloud 是 Ollama Cloud 订阅制聚合上游。
+	PlatformOllamaCloud = domain.PlatformOllamaCloud
+	PlatformComposite   = domain.PlatformComposite
 	// PlatformKiro is retained for unsupported-platform threshold tests and legacy
 	// account rows. Scheduling-threshold evaluation never pauses kiro accounts.
 	PlatformKiro = "kiro"
@@ -137,6 +139,7 @@ var AllowedQuotaPlatforms = []string{
 	PlatformMiniMax,
 	PlatformOpenCodeGo,
 	PlatformTypeSafe,
+	PlatformOllamaCloud,
 }
 
 // AllowedSchedulingThresholdPlatforms 是允许设置账号自动停调阈值的平台列表。

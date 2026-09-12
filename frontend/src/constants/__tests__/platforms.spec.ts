@@ -12,7 +12,8 @@ const concretePlatforms = [
   'deepseek',
   'minimax',
   'opencode_go',
-  'typesafe'
+  'typesafe',
+  'ollama_cloud'
 ]
 
 describe('platform option catalogs', () => {
