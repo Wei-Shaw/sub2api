@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { flushPromises, mount } from '@vue/test-utils'
 
 import UsageView from '../UsageView.vue'
@@ -89,10 +89,16 @@ vi.mock('@/api', () => ({
   },
 }))
 
+const appStoreState = vi.hoisted(() => ({
+  cachedPublicSettings: { allow_user_view_error_requests: true } as Record<string, unknown>,
+}))
+
 vi.mock('@/stores/app', () => ({
   useAppStore: () => ({
     showError, showWarning, showSuccess, showInfo,
-    cachedPublicSettings: { allow_user_view_error_requests: true },
+    get cachedPublicSettings() {
+      return appStoreState.cachedPublicSettings
+    },
   }),
 }))
 
@@ -458,5 +464,37 @@ describe('user UsageView', () => {
     window.URL.revokeObjectURL = originalRevokeObjectURL
     vi.unstubAllGlobals()
     clickSpy.mockRestore()
+  })
+})
+
+describe('UsageView subscription feature flag', () => {
+  afterEach(() => {
+    appStoreState.cachedPublicSettings = { allow_user_view_error_requests: true }
+  })
+
+  function billingTypeSelect(wrapper: ReturnType<typeof mountUsageView>) {
+    return wrapper.findAllComponents(Select).find((select) =>
+      select.props('options').some((option: SelectOption) => option.label === 'Subscription')
+    )
+  }
+
+  it('offers the balance / subscription billing-type filter by default', async () => {
+    const wrapper = mountUsageView()
+    await flushPromises()
+
+    expect(billingTypeSelect(wrapper)).toBeDefined()
+    expect(wrapper.text()).toContain('Billing type')
+    wrapper.unmount()
+  })
+
+  it('hides the billing-type filter entirely when subscriptions are disabled', async () => {
+    appStoreState.cachedPublicSettings = { allow_user_view_error_requests: true, subscription_enabled: false }
+
+    const wrapper = mountUsageView()
+    await flushPromises()
+
+    expect(billingTypeSelect(wrapper)).toBeUndefined()
+    expect(wrapper.text()).not.toContain('Billing type')
+    wrapper.unmount()
   })
 })

@@ -427,7 +427,7 @@ export default {
       workerActive: '正在处理异步审计或记录任务',
       workerIdle: '已启动，当前空闲可用',
       workerDisabled: '风控或内容审计未启用',
-      processed: '已处理',
+      processed: '异步已处理',
       droppedErrors: '丢弃/异常',
       autoRefresh: '每 15 秒自动刷新',
       lastCleanup: '上次清理：{time}',

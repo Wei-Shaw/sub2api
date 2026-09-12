@@ -450,10 +450,14 @@ func TestBuildSchedulerMetadataAccount_KeepsOAuthRetryOverride(t *testing.T) {
 	for _, count := range []int{0, 1, 3} {
 		account := service.Account{
 			ID: 88, Type: service.AccountTypeOAuth, Platform: service.PlatformOpenAI,
-			Credentials: map[string]any{"pool_mode_retry_count": count, "access_token": "not-for-metadata"},
+			Credentials: map[string]any{
+				"pool_mode_retry_count": count, "access_token": "not-for-metadata",
+				"account_scheduling_threshold": 90,
+			},
 		}
 		got := buildSchedulerMetadataAccount(account)
 		require.Equal(t, count, got.GetPoolModeRetryCount())
+		require.Equal(t, 90, got.Credentials["account_scheduling_threshold"])
 		require.NotContains(t, got.Credentials, "access_token")
 	}
 }

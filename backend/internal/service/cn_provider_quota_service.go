@@ -35,6 +35,8 @@ const (
 	cnExtraSuffix5hReset      = "5h_reset_at"
 	cnExtraSuffixWeeklyUsed   = "weekly_used_percent"
 	cnExtraSuffixWeeklyReset  = "weekly_reset_at"
+	cnExtraSuffixMonthlyUsed  = "monthly_used_percent"
+	cnExtraSuffixMonthlyReset = "monthly_reset_at"
 	cnExtraSuffixUsageUpdated = "usage_updated_at"
 )
 
@@ -43,7 +45,7 @@ func cnExtraKey(provider, suffix string) string { return provider + "_" + suffix
 
 // CNQuotaTier 表示一个滚动用量窗口档位（5h / weekly）。
 type CNQuotaTier struct {
-	Window      string  `json:"window"`             // "5h" | "weekly"
+	Window      string  `json:"window"`             // "5h" | "weekly" | "monthly"
 	UsedPercent float64 `json:"used_percent"`       // 已用百分比（0-100+，不做裁剪）
 	ResetAt     string  `json:"reset_at,omitempty"` // RFC3339，空表示无重置时间
 }
@@ -129,8 +131,8 @@ func (s *CNProviderQuotaService) QueryUsageForAccount(ctx context.Context, accou
 
 func (s *CNProviderQuotaService) queryUsageForAccount(ctx context.Context, account *Account) (*CNProviderQuotaProbeResult, error) {
 	provider := account.GetCodingPlanProvider()
-	if provider != PlatformKimi && provider != PlatformZhipu && provider != PlatformMiniMax {
-		return nil, infraerrors.New(http.StatusBadRequest, "CN_QUOTA_NOT_CODING_PLAN", "account is not a kimi/zhipu/minimax coding plan account")
+	if provider != PlatformKimi && provider != PlatformZhipu && provider != PlatformMiniMax && provider != PlatformOpenCodeGo {
+		return nil, infraerrors.New(http.StatusBadRequest, "CN_QUOTA_NOT_CODING_PLAN", "account is not a kimi/zhipu/minimax coding plan or opencode go account")
 	}
 
 	apiKey := strings.TrimSpace(account.GetCNAPIKey())
@@ -147,6 +149,9 @@ func (s *CNProviderQuotaService) queryUsageForAccount(ctx context.Context, accou
 	switch provider {
 	case PlatformKimi:
 		targetURL = kimiQuotaURL(baseURL)
+		authHeader = "Bearer " + apiKey
+	case PlatformOpenCodeGo:
+		targetURL = openCodeGoQuotaURL(baseURL)
 		authHeader = "Bearer " + apiKey
 	case PlatformZhipu:
 		targetURL = zhipuQuotaURL(baseURL)
@@ -234,6 +239,9 @@ func (s *CNProviderQuotaService) queryUsageForAccount(ctx context.Context, accou
 	switch provider {
 	case PlatformKimi:
 		tiers = parseKimiUsageTiers(bodyBytes)
+	case PlatformOpenCodeGo:
+		tiers = parseOpenCodeGoUsageTiers(bodyBytes)
+		result.PlanLevel = "OpenCode Go"
 	case PlatformZhipu:
 		tiers = parseZhipuTokenTiers(gjson.GetBytes(bodyBytes, "data"))
 		result.PlanLevel = strings.TrimSpace(gjson.GetBytes(bodyBytes, "data.level").String())
@@ -278,6 +286,12 @@ func (s *CNProviderQuotaService) loadCodingPlanAccount(ctx context.Context, acco
 func validateCodingPlanAccount(account *Account) error {
 	if account == nil {
 		return infraerrors.New(http.StatusNotFound, "CN_QUOTA_ACCOUNT_NOT_FOUND", "account not found")
+	}
+	if account.IsOpenCodeGoPlan() {
+		return nil
+	}
+	if account.IsOpenCodeGo() {
+		return infraerrors.New(http.StatusBadRequest, "CN_QUOTA_NOT_CODING_PLAN", "opencode zen accounts have no subscription quota window")
 	}
 	if !account.IsCNProvider() {
 		return infraerrors.New(http.StatusBadRequest, "CN_QUOTA_INVALID_PLATFORM", "account is not a CN provider account")
@@ -614,9 +628,59 @@ func cnQuotaExtraUpdates(provider string, tiers []CNQuotaTier, now time.Time) ma
 			if t.ResetAt != "" {
 				updates[cnExtraKey(provider, cnExtraSuffixWeeklyReset)] = t.ResetAt
 			}
+		case "monthly":
+			updates[cnExtraKey(provider, cnExtraSuffixMonthlyUsed)] = t.UsedPercent
+			if t.ResetAt != "" {
+				updates[cnExtraKey(provider, cnExtraSuffixMonthlyReset)] = t.ResetAt
+			}
 		}
 	}
 	return updates
+}
+
+// parseOpenCodeGoUsageTiers 解析 OpenCode Go GET /usage 响应。
+//
+// 结构对齐 cc-switch extractor：
+//
+//	{ "usage": { "rolling": {percent, resetsAt}, "weekly": {...}, "monthly": {...} } }
+//
+// percent 为已用百分比（0-100）；rolling 映射为 5h 窗口。
+func parseOpenCodeGoUsageTiers(body []byte) []CNQuotaTier {
+	usage := gjson.GetBytes(body, "usage")
+	if !usage.Exists() {
+		return nil
+	}
+	var tiers []CNQuotaTier
+	for _, item := range []struct {
+		key    string
+		window string
+	}{
+		{key: "rolling", window: "5h"},
+		{key: "weekly", window: "weekly"},
+		{key: "monthly", window: "monthly"},
+	} {
+		node := usage.Get(item.key)
+		if !node.Exists() {
+			continue
+		}
+		percentNode := node.Get("percent")
+		if !percentNode.Exists() {
+			continue
+		}
+		used, ok := cnParseF64(percentNode.Value())
+		if !ok {
+			continue
+		}
+		if used < 0 {
+			used = 0
+		}
+		tiers = append(tiers, CNQuotaTier{
+			Window:      item.window,
+			UsedPercent: used,
+			ResetAt:     cnNormalizeResetTime(node.Get("resetsAt").Value()),
+		})
+	}
+	return tiers
 }
 
 // cnParseF64 把 JSON 数值或字符串解析为 float64（兼容 "100" 与 100）。

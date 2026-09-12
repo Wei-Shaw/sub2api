@@ -83,11 +83,10 @@ func ReadRequestBodyWithPrealloc(req *http.Request) ([]byte, error) {
 		}
 	}
 
-	buf := bytes.NewBuffer(make([]byte, 0, capHint))
-	if _, err := io.Copy(buf, req.Body); err != nil {
+	raw, err := readRequestBodyChunks(req.Body, capHint, req.ContentLength)
+	if err != nil {
 		return nil, err
 	}
-	raw := buf.Bytes()
 
 	enc := strings.ToLower(strings.TrimSpace(req.Header.Get("Content-Encoding")))
 	if enc == "" || enc == "identity" {
@@ -104,6 +103,56 @@ func ReadRequestBodyWithPrealloc(req *http.Request) ([]byte, error) {
 	req.ContentLength = int64(len(decoded))
 
 	return decoded, nil
+}
+
+// Read bounded chunks as bytes arrive, then assemble the exact-size result.
+// This avoids doubling large buffers or eagerly allocating an untrusted
+// Content-Length before the corresponding bytes have arrived.
+func readRequestBodyChunks(reader io.Reader, initialCapacity int, contentLength int64) ([]byte, error) {
+	capacity := initialCapacity
+	var chunks [][]byte
+	total := 0
+	for {
+		chunkCapacity := capacity
+		if remaining := contentLength - int64(total); remaining >= 0 && remaining < int64(chunkCapacity) {
+			chunkCapacity = int(remaining) + 1
+		}
+		chunk := make([]byte, chunkCapacity)
+		n := 0
+		var err error
+		for n < len(chunk) && err == nil {
+			var read int
+			read, err = reader.Read(chunk[n:])
+			n += read
+		}
+		if err != nil && err != io.EOF {
+			return nil, err
+		}
+		if n > 0 {
+			chunks = append(chunks, chunk[:n])
+			total += n
+		}
+		if err != nil {
+			if len(chunks) == 0 {
+				return chunk[:0], nil
+			}
+			if len(chunks) == 1 {
+				return chunks[0], nil
+			}
+			body := make([]byte, total)
+			offset := 0
+			for _, part := range chunks {
+				offset += copy(body[offset:], part)
+			}
+			return body, nil
+		}
+		if capacity < requestBodyReadMaxInitCap {
+			capacity *= 2
+			if capacity > requestBodyReadMaxInitCap {
+				capacity = requestBodyReadMaxInitCap
+			}
+		}
+	}
 }
 
 // ReadLenientJSONRequestBodyWithPrealloc reads a request body and normalizes
