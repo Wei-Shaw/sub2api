@@ -220,6 +220,32 @@ export async function update(id: number, updates: UpdateGroupRequest): Promise<A
   return data
 }
 
+export interface BulkUpdateGroupsResult {
+  succeededIds: number[]
+  failures: Array<{ id: number; error: unknown }>
+}
+
+/** Keep existing per-group validation and cache invalidation, with bounded concurrency. */
+export async function bulkUpdate(
+  ids: number[],
+  updates: UpdateGroupRequest
+): Promise<BulkUpdateGroupsResult> {
+  const uniqueIds = [...new Set(ids)]
+  const result: BulkUpdateGroupsResult = { succeededIds: [], failures: [] }
+  for (let offset = 0; offset < uniqueIds.length; offset += 5) {
+    const batch = uniqueIds.slice(offset, offset + 5)
+    const responses = await Promise.allSettled(batch.map((id) => update(id, updates)))
+    responses.forEach((response, index) => {
+      if (response.status === 'fulfilled') {
+        result.succeededIds.push(batch[index])
+      } else {
+        result.failures.push({ id: batch[index], error: response.reason })
+      }
+    })
+  }
+  return result
+}
+
 /**
  * Delete group
  * @param id - Group ID
@@ -481,6 +507,7 @@ export const groupsAPI = {
   create,
   duplicate,
   update,
+  bulkUpdate,
   delete: deleteGroup,
   toggleStatus,
   getStats,
