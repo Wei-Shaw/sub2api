@@ -490,3 +490,21 @@ func TestNewOpenAIOAuthHandlerKeepsNilQuotaCapabilitiesGuarded(t *testing.T) {
 		require.Equal(t, http.StatusBadRequest, recorder.Code, "%s %s", tc.method, tc.path)
 	}
 }
+
+// 查询接口在同步调度器之后回传账号行，前端据此更新计划触发时刻标签。
+func TestOpenAIRefreshQuota_ReturnsSyncedAccount(t *testing.T) {
+	quota := successfulOpenAIQuotaWorkflowStub()
+	adminService := recoveredAccountStub()
+	handler := &OpenAIOAuthHandler{
+		adminService: adminService,
+		quotaService: quota,
+	}
+
+	status, envelope := performOpenAIQuotaRefreshRequest(t, handler)
+
+	require.Equal(t, http.StatusOK, status)
+	require.True(t, envelope.Data.CachePersisted)
+	require.NotNil(t, envelope.Data.Account)
+	require.Equal(t, int64(42), envelope.Data.Account.ID)
+	require.Equal(t, 1, adminService.calls)
+}

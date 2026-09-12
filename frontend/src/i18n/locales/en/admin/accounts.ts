@@ -903,7 +903,12 @@ export default {
 	    threshold5h: '5h auto-reset threshold (%)',
 	    threshold7d: '7d auto-reset threshold (%)',
 	    thresholdHint: 'Each window is evaluated independently. Enter 0.1–100; both default to 100.',
-	    thresholdInvalid: 'Automatic reset-credit thresholds must be between 0.1% and 100%.'
+	    thresholdInvalid: 'Automatic reset-credit thresholds must be between 0.1% and 100%.',
+	    expiryTitle: 'Use reset credits before they expire',
+	    expiryHint: 'Independent of the threshold switch above. Credit details are fetched immediately when this is enabled or changed and once a day afterwards, and a timer is armed for the earliest-expiring credit; when it fires the upstream is re-checked and the credit is used regardless of usage only if it is still there with no more than N minutes left. All timing uses the upstream clock, never the local one.',
+	    expiryLeadMinutes: 'Use unconditionally N minutes before expiry',
+	    expiryLeadHint: 'Defaults to 10 minutes, which is also the minimum allowed.',
+	    expiryLeadInvalid: 'The expiry lead must be a whole number of minutes between 10 and 527040.'
 	  },
       // Quota control (Anthropic OAuth/SetupToken only)
       quotaControl: {
@@ -1596,6 +1601,8 @@ export default {
         expandExpirations: 'Expand the other {count} reset credit expiration(s)',
         collapseExpirations: 'Collapse reset credit expirations',
         expirationDetails: 'Reset credit expiration details',
+        expiryResetAt: 'Auto-reset at {time}',
+        expiryResetAtFull: 'Scheduled expiry auto-reset: {time}',
         noCreditsAvailable: 'No reset credits available',
         resetSuccess: 'Reset {windows} window(s); credits and account state updated',
         resetCacheRefreshFailed: 'The window was reset and account state recovered, but the reset-credit count could not be read back. Query it again.',
@@ -1603,12 +1610,11 @@ export default {
         resetAccountRefreshFailed: 'The window, account state, and reset-credit cache were updated, but the latest account display could not be loaded.',
         refreshCachePersistFailed: 'Showing the live count, but its expiration details were unavailable, so the cached details were kept.',
         autoStatus: {
-          checking: 'Checking',
-          available: 'Credit available',
           resetting: 'Auto-resetting',
           success: 'Auto-reset succeeded',
           noCredit: 'No credit',
-          failed: 'Auto-reset failed'
+          failed: 'Auto-reset failed',
+          queryFailed: 'Credit query failed'
         },
         confirmTitle: 'Confirm Weekly Limit Reset',
         confirmMessage: 'This will consume 1 reset credit to immediately restore the current window ({count} remaining). This action cannot be undone. Continue?'

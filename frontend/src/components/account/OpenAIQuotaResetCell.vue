@@ -89,13 +89,22 @@
       </span>
     </div>
 
-    <div v-if="primaryResetCreditExpiry" class="space-y-1">
+    <div v-if="primaryResetCreditExpiry || expiryResetAt" class="space-y-1">
       <div class="flex flex-wrap items-center gap-1">
         <span
+          v-if="primaryResetCreditExpiry"
           class="inline-flex max-w-full items-center rounded bg-gray-100 px-1.5 py-0.5 text-[10px] leading-4 text-gray-600 tabular-nums dark:bg-dark-800 dark:text-gray-300"
           :title="t('admin.accounts.openaiQuotaReset.expiresAtFull', { time: formatResetCreditExpiry(primaryResetCreditExpiry, 'full') })"
         >
           {{ t('admin.accounts.openaiQuotaReset.expiresAt', { time: formatResetCreditExpiry(primaryResetCreditExpiry, 'short') }) }}
+        </span>
+        <span
+          v-if="expiryResetAt"
+          data-testid="expiry-reset-at"
+          class="inline-flex max-w-full items-center rounded bg-amber-50 px-1.5 py-0.5 text-[10px] leading-4 text-amber-700 tabular-nums dark:bg-amber-900/30 dark:text-amber-300"
+          :title="t('admin.accounts.openaiQuotaReset.expiryResetAtFull', { time: formatResetCreditExpiry(expiryResetAt, 'full') })"
+        >
+          {{ t('admin.accounts.openaiQuotaReset.expiryResetAt', { time: formatResetCreditExpiry(expiryResetAt, 'short') }) }}
         </span>
         <button
           v-if="hiddenResetCreditCount > 0"
@@ -199,18 +208,30 @@ const showResetConfirm = ref(false)
 const showResetCreditDetails = ref(false)
 
 type AutoResetCreditState = NonNullable<NonNullable<Account['extra']>['codex_auto_reset_credit_state']>
-const validAutoResetStatuses = new Set(['checking', 'available', 'resetting', 'success', 'no_credit', 'failed'])
+// 卡可用、检测中属于稳态，张数与到期时刻已有独立标签，只展示需要人介入或已执行过的状态。
+const visibleAutoResetStatuses = new Set(['resetting', 'success', 'no_credit', 'failed'])
 const autoResetState = computed<AutoResetCreditState | null>(() => {
-  if (props.account.extra?.auto_reset_credit_enabled !== true) return null
+  const extra = props.account.extra
+  if (extra?.auto_reset_credit_enabled !== true && extra?.auto_reset_credit_expiry_enabled !== true) return null
   const state = props.account.extra?.codex_auto_reset_credit_state
-  if (!state || typeof state !== 'object' || !validAutoResetStatuses.has(String(state.status))) return null
+  if (!state || typeof state !== 'object' || !visibleAutoResetStatuses.has(String(state.status))) return null
   return state
+})
+// 查询阶段的失败没有消耗重置卡，与用卡失败分开展示。
+const autoResetQueryFailureCodes = new Set([
+  'RESET_CREDIT_QUERY_FAILED',
+  'RESET_CREDIT_DETAILS_INCOMPLETE',
+  'RESET_CREDIT_DETAILS_UNAVAILABLE',
+  'USAGE_SNAPSHOT_WRITE_FAILED'
+])
+const autoResetQueryFailed = computed(() => {
+  const state = autoResetState.value
+  return state?.status === 'failed' && autoResetQueryFailureCodes.has(String(state.error_code ?? ''))
 })
 const autoResetStateLabel = computed(() => {
   if (!autoResetState.value?.status) return ''
+  if (autoResetQueryFailed.value) return t('admin.accounts.openaiQuotaReset.autoStatus.queryFailed')
   const keyByStatus: Record<string, string> = {
-    checking: 'checking',
-    available: 'available',
     resetting: 'resetting',
     success: 'success',
     no_credit: 'noCredit',
@@ -219,9 +240,10 @@ const autoResetStateLabel = computed(() => {
   return t(`admin.accounts.openaiQuotaReset.autoStatus.${keyByStatus[autoResetState.value.status]}`)
 })
 const autoResetStateClass = computed(() => {
+  if (autoResetQueryFailed.value) {
+    return 'bg-amber-50 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300'
+  }
   switch (autoResetState.value?.status) {
-    case 'available':
-      return 'bg-blue-50 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300'
     case 'success':
       return 'bg-emerald-50 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300'
     case 'no_credit':
@@ -294,6 +316,11 @@ const resetCreditExpirations = computed(() =>
     .sort(compareResetCreditExpiry)
 )
 const primaryResetCreditExpiry = computed(() => resetCreditExpirations.value[0] ?? '')
+// 只在后端为该账号排了到期重置定时器时存在，撤销定时器即清空。
+const expiryResetAt = computed(() => {
+  const value = props.account.extra?.codex_auto_reset_credit_expiry_at
+  return typeof value === 'string' && !Number.isNaN(new Date(value).getTime()) ? value : ''
+})
 const hiddenResetCreditCount = computed(() => Math.max(resetCreditExpirations.value.length - 1, 0))
 const canReset = computed(() => availableResetCount.value > 0 && !isShadow.value)
 
@@ -400,6 +427,7 @@ const handleQuery = async () => {
     } else {
       resetWarning.value = t('admin.accounts.openaiQuotaReset.refreshCachePersistFailed')
     }
+    if (result.account) emit('account-updated', result.account)
   } catch (e) {
     error.value = extractErrorMessage(e)
   } finally {

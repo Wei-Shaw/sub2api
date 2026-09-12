@@ -517,6 +517,8 @@ export default {
         expandExpirations: '展开其余 {count} 张重置次数到期时间',
         collapseExpirations: '收起重置次数到期时间',
         expirationDetails: '重置次数到期明细',
+        expiryResetAt: '到期自动重置 {time}',
+        expiryResetAtFull: '到期自动使用重置卡的时间点: {time}',
         noCreditsAvailable: '没有可用的重置次数',
         resetSuccess: '已重置 {windows} 个窗口，次数和账号状态已更新',
         resetCacheRefreshFailed: '窗口已重置、账号状态已恢复，但重置次数未能回读，请重新查询次数。',
@@ -524,12 +526,11 @@ export default {
         resetAccountRefreshFailed: '窗口、账号状态和重置次数缓存已更新，但无法加载最新账号显示。',
         refreshCachePersistFailed: '已显示实时次数，但到期明细获取失败，仍保留原有缓存明细。',
         autoStatus: {
-          checking: '检测中',
-          available: '卡可用',
           resetting: '自动重置中',
           success: '自动重置成功',
           noCredit: '无卡',
-          failed: '自动重置失败'
+          failed: '自动重置失败',
+          queryFailed: '次数查询失败'
         },
         confirmTitle: '确认重置周限',
         confirmMessage: '将消耗 1 次重置次数立即恢复当前窗口，剩余 {count} 次。此操作不可撤销，确定继续吗？'
@@ -975,7 +976,12 @@ export default {
 	    threshold5h: '5h 自动用卡阈值(%)',
 	    threshold7d: '7d 自动用卡阈值(%)',
 	    thresholdHint: '两个窗口独立判断，任一达到自身阈值即触发。可填写 0.1–100，默认均为 100。',
-	    thresholdInvalid: '自动使用重置卡阈值必须在 0.1% 到 100% 之间。'
+	    thresholdInvalid: '自动使用重置卡阈值必须在 0.1% 到 100% 之间。',
+	    expiryTitle: '到期前自动用卡',
+	    expiryHint: '与上面的阈值用卡相互独立。开启或修改配置时立即取一次卡明细，之后每天一次，并按最早到期的卡设定时器；到点时实查上游核对，卡仍在且剩余有效期不超过 N 分钟才不看用量直接使用。时间判定一律以上游返回的时间为准，不依赖本机时钟。',
+	    expiryLeadMinutes: '到期前 N 分钟无条件用卡',
+	    expiryLeadHint: '默认 10 分钟，也是允许的最小值。',
+	    expiryLeadInvalid: '到期提前量必须是 10 到 527040 之间的整数分钟。'
 	  },
       // Quota control (Anthropic OAuth/SetupToken only)
       quotaControl: {
