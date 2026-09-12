@@ -2,12 +2,15 @@
 
 package service
 
-// B2-④（请求期 ollama_cloud 定价缺失显式拒绝）与 S1（计费候选过滤纳入
-// ollama_cloud）的回归测试。
+// S1（计费候选过滤纳入 ollama_cloud）与定价缺失兜底路径的回归测试。
 //
 // 关键顺序约束的实证：S1 只在「定价已就位」的前提下才安全——若过滤把候选滤空
 // 而定价缺失，会从误计变全零计费。本文件用真实 fallbackPrices（含 ollama 价卡）
 // 证明：ollama 真实模型名（不含 claude-*）永不被过滤，候选不会滤空。
+//
+// 未定价的主门在请求期定价预检（openai_gateway_ollama_cloud_pricing_preflight.go，
+// 上游 I/O 之前 400）；记账阶段的零成本落账 + 告警是预检漏放的兜底观测，本文件
+// 一并钉住该兜底不被回归吃掉。
 
 import (
 	"context"
@@ -52,10 +55,12 @@ func TestFilterCNProviderBillingModelCandidates_OllamaCloud(t *testing.T) {
 		"显式渠道定价的 claude-* 候选必须保留（既有豁免语义）")
 }
 
-// B2-④ 主断言：ollama_cloud + 未定价模型 → 400 MODEL_PRICING_MISSING、
-// 不落零成本记录（usage/billing 均不写库、日志无 pricing_missing_record_zero_cost
-// 对应的落账路径）。
-func TestOpenAIGatewayRecordUsage_OllamaCloudUnpricedModelRejected(t *testing.T) {
+// 请求期定价预检（openai_gateway_ollama_cloud_pricing_preflight.go）成为 ollama_cloud
+// 未定价模型的主门之后，记账阶段回到全平台统一的 fail-open：定价缺失 → 零成本落账
+// + `openai_usage.pricing_missing_record_zero_cost` 告警。原 B2-④ 在记账阶段显式拒绝
+// 的用例改写为「兜底观测路径保持可用」的回归：拒绝阶段（异步）连 usage 记录都不写，
+// 比零成本记录更难发现，且会吃掉放量观察所依赖的告警。
+func TestOpenAIGatewayRecordUsage_OllamaCloudUnpricedModelZeroCostObserved(t *testing.T) {
 	usageRepo := &openAIRecordUsageLogRepoStub{inserted: true}
 	billingRepo := &openAIRecordUsageBillingRepoStub{result: &UsageBillingApplyResult{Applied: true}}
 	svc := newOpenAIRecordUsageServiceWithBillingRepoForTest(usageRepo, billingRepo, &openAIRecordUsageUserRepoStub{}, &openAIRecordUsageSubRepoStub{}, nil)
@@ -74,14 +79,16 @@ func TestOpenAIGatewayRecordUsage_OllamaCloudUnpricedModelRejected(t *testing.T)
 		User:    &User{ID: 2},
 		Account: &Account{ID: 3, Platform: PlatformOllamaCloud},
 	})
-	requireModelPricingMissing(t, err, "totally-unpriced-model")
-	require.Zero(t, usageRepo.calls, "拒绝路径不得写 usage log（零成本落账被收窄掉）")
-	require.Zero(t, billingRepo.calls, "拒绝路径不得触发计费入账")
+	require.NoError(t, err, "记账阶段不再拒绝：未定价模型回退零成本落账（主门在请求期预检）")
+	require.Equal(t, 1, usageRepo.calls, "零成本记录必须落账，作为 pricing_missing_record_zero_cost 告警的观测依据")
+	require.NotNil(t, usageRepo.lastLog)
+	require.Equal(t, 0.0, usageRepo.lastLog.ActualCost)
 }
 
 // claude-* 请求打到 ollama_cloud：候选被 S1 滤空 → ErrModelPricingUnavailable →
-// B2-④ 显式拒绝。这是「按 Anthropic 价静默误计」被修复后的目标行为。
-func TestOpenAIGatewayRecordUsage_OllamaCloudClaudeNameRejected(t *testing.T) {
+// 与其他平台一致的零成本落账。请求期该模型若未定价会先被预检 400（不发上游）；
+// 记账阶段不再有第二条拒绝路径。
+func TestOpenAIGatewayRecordUsage_OllamaCloudClaudeNameZeroCostObserved(t *testing.T) {
 	usageRepo := &openAIRecordUsageLogRepoStub{inserted: true}
 	billingRepo := &openAIRecordUsageBillingRepoStub{result: &UsageBillingApplyResult{Applied: true}}
 	svc := newOpenAIRecordUsageServiceWithBillingRepoForTest(usageRepo, billingRepo, &openAIRecordUsageUserRepoStub{}, &openAIRecordUsageSubRepoStub{}, nil)
@@ -100,8 +107,10 @@ func TestOpenAIGatewayRecordUsage_OllamaCloudClaudeNameRejected(t *testing.T) {
 		User:    &User{ID: 2},
 		Account: &Account{ID: 3, Platform: PlatformOllamaCloud},
 	})
-	requireModelPricingMissing(t, err)
-	require.Zero(t, usageRepo.calls)
+	require.NoError(t, err)
+	require.Equal(t, 1, usageRepo.calls)
+	require.NotNil(t, usageRepo.lastLog)
+	require.Equal(t, 0.0, usageRepo.lastLog.ActualCost)
 }
 
 // 已定价模型（真实 :tag 请求形态）→ 正常落账且 actual_cost > 0：
