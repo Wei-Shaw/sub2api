@@ -46,6 +46,8 @@ func RegisterGatewayRoutes(
 	// 保证校验发生在合成路由改写与调度之前，且只看客户端书写的模型名。
 	groupModelAllowlist := middleware.GroupModelAllowlist()
 
+	// 单目标与账号池统一走 dispatcher：池候选全属 OpenAI 兼容族进 OpenAI
+	// CountTokens，其余（跨族池 / 非兼容族单目标）落通用网关。
 	countTokensHandler := func(c *gin.Context) {
 		dispatchOpenAICompatibleCountTokens(c, h.OpenAIGateway.CountTokens, h.OpenAIGateway.GrokCountTokens, h.Gateway.CountTokens)
 	}
@@ -504,7 +506,7 @@ func isOpenAICompatibleGatewayFamilyPlatform(platform string) bool {
 	switch platform {
 	case service.PlatformOpenAI, service.PlatformGrok,
 		service.PlatformKimi, service.PlatformZhipu, service.PlatformDeepseek,
-		service.PlatformMiniMax, service.PlatformOpenCodeGo:
+		service.PlatformMiniMax, service.PlatformOpenCodeGo, service.PlatformOllamaCloud:
 		// 国产 OpenAI 兼容供应商与 openai/grok 一样经 OpenAI 网关转发。
 		return true
 	default:
@@ -603,7 +605,7 @@ func dispatchOpenAICompatibleCountTokens(c *gin.Context, compatibleHandler, grok
 		return
 	}
 	switch getGroupPlatform(c) {
-	case service.PlatformOpenAI, service.PlatformKimi, service.PlatformZhipu, service.PlatformDeepseek, service.PlatformMiniMax, service.PlatformOpenCodeGo:
+	case service.PlatformOpenAI, service.PlatformKimi, service.PlatformZhipu, service.PlatformDeepseek, service.PlatformMiniMax, service.PlatformOpenCodeGo, service.PlatformOllamaCloud:
 		compatibleHandler(c)
 	case service.PlatformGrok:
 		grokHandler(c)
