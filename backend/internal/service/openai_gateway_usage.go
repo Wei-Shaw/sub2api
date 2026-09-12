@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
+	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/timezone"
 	"go.uber.org/zap"
@@ -150,6 +151,28 @@ func groupBillsOpenAIFastAtStandard(apiKey *APIKey, account *Account, serviceTie
 	}
 }
 
+// 运营 preflight SQL（B2-④，上线/放量前人工执行；是一次性运营检查，不是迁移，
+// 不要放进 migrations/）。用于在放量前扫出「保存期门禁（B2-③）生效前就已存在、
+// 或绕过门禁写入」的无价 ollama_cloud 账号；两条都期望 0 行：
+//
+//	-- 1) model_mapping 目标值必须全部有价（<已定价模型名集合> 取
+//	--    billing_service.go fallbackPrices 的 ollama 条目 + 复用同名条目的模型；
+//	--    注意 :tag 名靠两级查价 fallback 命中，集合里放裸名即可）；期望 0 行
+//	SELECT a.id, kv.value AS target_model FROM accounts a,
+//	  jsonb_each_text(COALESCE(a.credentials->'model_mapping','{}'::jsonb)) AS kv
+//	WHERE a.deleted_at IS NULL AND a.platform = 'ollama_cloud'
+//	  AND kv.value NOT IN (<已定价模型名集合>);
+//
+//	-- 2) 空 mapping 账号（jsonb_each_text 展开为 0 行，第 1 条扫不到）；期望 0 行
+//	--    （B2-③ 之后新账号必须带 extra.allowed_models 清单；此处命中的只能是
+//	--    门禁上线前的存量账号，需人工补 mapping/清单或下线）
+//	SELECT a.id FROM accounts a WHERE a.deleted_at IS NULL AND a.platform = 'ollama_cloud'
+//	  AND COALESCE(a.credentials->'model_mapping','{}'::jsonb) = '{}'::jsonb;
+//
+// 上线后观察断言：日志中 `openai_usage.pricing_missing_record_zero_cost` 出现
+// 次数必须为 0（出现即回滚放量）；ollama_cloud 的定价缺失会走上方 B2-④ 的
+// MODEL_PRICING_MISSING 显式拒绝而非零成本落账。
+//
 // RecordUsage records usage and deducts balance
 func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRecordUsageInput) error {
 	if input == nil {
@@ -253,6 +276,16 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 	if err != nil {
 		if !isUsagePricingUnavailableError(err) {
 			return err
+		}
+		// B2-④ 平台收窄断言：ollama_cloud 的计费是白名单语义（fallbackPrices
+		// 未列出的模型名显式拒绝计费），定价缺失说明配置漏了——静默零成本落账
+		// 等于免费送量。这里显式拒绝（400，message 列出候选模型名），不落入下方
+		// 的零成本路径；其余平台保持既有全平台 fail-open 设计不变。此时 usage
+		// 记录尚未写库（下方才建 UsageLog），提前返回即整条拒绝、无部分入账。
+		if account.IsOllamaCloud() {
+			return infraerrors.BadRequest("MODEL_PRICING_MISSING",
+				fmt.Sprintf("ollama cloud model pricing missing for billing models: %s (requested: %s)",
+					strings.Join(billingModels, ", "), input.OriginalModel))
 		}
 		logger.L().With(
 			zap.String("component", "service.openai_gateway"),
@@ -921,19 +954,22 @@ func groupMediaPricingLooksIncomplete(group *Group) bool {
 		group.VideoPrice480P == nil && group.VideoPrice720P == nil && group.VideoPrice1080P == nil
 }
 
-// filterCNProviderBillingModelCandidates 过滤国产供应商（kimi/zhipu/deepseek）
-// 账号的计费候选模型名：claude-* 候选仅在运营者显式配置了分组/渠道定价时保留。
+// filterCNProviderBillingModelCandidates 过滤 CN/类 CN 平台（kimi/zhipu/deepseek/
+// opencode_go/ollama_cloud）账号的计费候选模型名：claude-* 候选仅在运营者显式
+// 配置了分组/渠道定价时保留。
 //
 // 背景：候选链的兜底候选含客户端请求的原始模型名。CN 上游的 Anthropic 兼容端点
 // 接受 claude-* 模型名但从不真正服务 Claude 模型；若放行，目录里的 Claude 价卡
 // 与 getFallbackPricing 的 "claude"→Sonnet 统一兜底会把 CN 流量按 Claude 原价
 // （数倍～数十倍）静默误计，且 usage 日志显示的正是 claude-* 名，无从察觉。
+// ollama_cloud 同理：它服务的是自家托管模型（qwen3.5/gpt-oss/nemotron 等），
+// 请求里的 claude-* 名不会真的被 Claude 服务，放行即按 Anthropic 价误计。
 // 候选全部落空时走既有的零成本+告警路径（openai_usage.pricing_missing_record_
-// zero_cost），与定价层「未知型号不回退以避免误计价」的既有设计意图一致；
-// 运营者的修复手段是配置账号级 model_mapping（映射到已定价的 CN 模型）或
-// 分组/渠道显式定价。
+// zero_cost；ollama_cloud 已由 B2-④ 收窄为显式拒绝），与定价层「未知型号不回退
+// 以避免误计价」的既有设计意图一致；运营者的修复手段是配置账号级 model_mapping
+// （映射到已定价的 CN/ollama 模型）或分组/渠道显式定价。
 func (s *OpenAIGatewayService) filterCNProviderBillingModelCandidates(ctx context.Context, account *Account, apiKey *APIKey, candidates []string) []string {
-	if account == nil || (!account.IsCNProvider() && !account.IsOpenCodeGo()) {
+	if account == nil || (!account.IsCNProvider() && !account.IsOpenCodeGo() && !account.IsOllamaCloud()) {
 		return candidates
 	}
 	out := make([]string, 0, len(candidates))

@@ -527,6 +527,10 @@ func (s *adminServiceImpl) CreateAccount(ctx context.Context, input *CreateAccou
 	if err != nil {
 		return nil, err
 	}
+	// B2-③ 保存期无价门禁：ollama_cloud 账号的可出站模型名必须全部可定价。
+	if err := validateOllamaCloudAccountModelPricingGate(s.billingService, account); err != nil {
+		return nil, err
+	}
 	if err := s.ValidateAccountGroupBindings(ctx, groupIDs); err != nil {
 		return nil, err
 	}
@@ -835,6 +839,13 @@ func (s *adminServiceImpl) UpdateAccount(ctx context.Context, id int64, input *U
 				return nil, err
 			}
 		}
+	}
+
+	// B2-③ 保存期无价门禁：ollama_cloud 账号的可出站模型名必须全部可定价。
+	// 放在全部字段/Extra 变更应用完、任何写操作之前，credentials（含
+	// model_mapping）与 extra（含 allowed_models）读到的都是本次请求生效后的状态。
+	if err := validateOllamaCloudAccountModelPricingGate(s.billingService, account); err != nil {
+		return nil, err
 	}
 
 	billingSettingsAppliedAtomically := false
