@@ -1,0 +1,32 @@
+/******** QUERY *********/
+EXPLAIN (ANALYZE,BUFFERS) SELECT id,request_id,turn_no,stage,COALESCE(user_id,0),username_snapshot,user_email_snapshot,COALESCE(api_key_id,0),api_key_name_snapshot,group_id,group_name,provider,endpoint,protocol,model,prompt_hash,prompt_length,message_count,risk_status,risk_checked_at,created_at,expires_at FROM prompt_records ORDER BY created_at DESC,id DESC LIMIT 20 OFFSET 100000;
+/************************/
+
+                                                                               QUERY PLAN
+------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Limit  (cost=14057.39..14060.20 rows=20 width=192) (actual time=19.347..19.353 rows=20.00 loops=1)
+   Buffers: shared hit=5149
+   ->  Index Scan using idx_prompt_records_created_at on prompt_records  (cost=0.42..28114.36 rows=200000 width=192) (actual time=0.024..17.261 rows=100020.00 loops=1)
+         Index Searches: 1
+         Buffers: shared hit=5149
+ Planning:
+   Buffers: shared hit=300 read=1
+ Planning Time: 1.660 ms
+ Execution Time: 19.420 ms
+(9 rows)
+
+/******** QUERY *********/
+EXPLAIN (ANALYZE,BUFFERS) SELECT id,request_id,turn_no,stage,COALESCE(user_id,0),username_snapshot,user_email_snapshot,COALESCE(api_key_id,0),api_key_name_snapshot,group_id,group_name,provider,endpoint,protocol,model,prompt_hash,prompt_length,message_count,risk_status,risk_checked_at,created_at,expires_at FROM prompt_records WHERE (created_at,id) < ('2026-09-11 08:13:20+00'::timestamptz,100000) ORDER BY created_at DESC,id DESC LIMIT 20;
+/************************/
+
+                                                                            QUERY PLAN
+------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Limit  (cost=0.42..4.98 rows=20 width=192) (actual time=0.031..0.037 rows=20.00 loops=1)
+   Buffers: shared hit=5
+   ->  Index Scan using idx_prompt_records_created_at on prompt_records  (cost=0.42..22590.36 rows=99100 width=192) (actual time=0.030..0.034 rows=20.00 loops=1)
+         Index Cond: (ROW(created_at, id) < ROW('2026-09-11 08:13:20+00'::timestamp with time zone, 100000))
+         Index Searches: 1
+         Buffers: shared hit=5
+ Planning Time: 0.105 ms
+ Execution Time: 0.091 ms
+(8 rows)

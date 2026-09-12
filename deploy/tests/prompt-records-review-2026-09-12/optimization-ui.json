@@ -1,0 +1,33 @@
+{
+  "results": [
+    {
+      "width": 320,
+      "pageOverflow": false,
+      "pagination": true,
+      "retentionSave": true,
+      "websocketStatus": true
+    },
+    {
+      "width": 375,
+      "pageOverflow": false,
+      "pagination": true,
+      "retentionSave": true,
+      "websocketStatus": true
+    },
+    {
+      "width": 768,
+      "pageOverflow": false,
+      "pagination": true,
+      "retentionSave": true,
+      "websocketStatus": true
+    },
+    {
+      "width": 1440,
+      "pageOverflow": false,
+      "pagination": true,
+      "retentionSave": true,
+      "websocketStatus": true
+    }
+  ],
+  "errors": []
+}

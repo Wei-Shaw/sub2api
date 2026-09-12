@@ -10,6 +10,8 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+var allPromptRecordFilters = promptRecordFilterOptions{Enabled: true, AgentPreset: true, Skills: true}
+
 func TestPresetFilterEnvelopesAndInteraction(t *testing.T) {
 	for _, tc := range []struct{ name, protocol, body, want string }{
 		{"responses", "responses", `{"instructions":"preset","tools":[{"description":"preset"}],"input":[{"role":"developer","content":"preset"},{"role":"user","id":"u","content":"keep","internal_chat_message_metadata_passthrough":{"secret":"drop"}},{"type":"function_call_output","output":"drop tool data"}],"seed":9007199254740993}`, `{"input":[{"role":"user","content":"keep"}]}`},
@@ -19,18 +21,18 @@ func TestPresetFilterEnvelopesAndInteraction(t *testing.T) {
 		{"gemini batch", "gemini", `{"requests":[{"systemInstruction":{"parts":[{"text":"preset"}]},"contents":[{"role":"model","parts":[{"text":"reply","thoughtSignature":"drop"}]},{"role":"user","parts":[{"text":"keep","metadata":"drop"}]}]}]}`, `{"requests":[{"contents":[{"role":"model","parts":[{"text":"reply"}]},{"role":"user","parts":[{"text":"keep"}]}]}]}`},
 		{"unknown agent", "openai_chat", `{"messages":[{"role":"system","content":"preset"},{"role":"user","content":"<system-reminder>actual user data</system-reminder>"}]}`, `{"messages":[{"role":"user","content":"<system-reminder>actual user data</system-reminder>"}]}`},
 		{"quoted", "anthropic_messages", `{"system":"You are Claude Code","messages":[{"role":"user","content":"Explain this: <system-reminder>keep</system-reminder>"}]}`, `{"messages":[{"role":"user","content":"Explain this: <system-reminder>keep</system-reminder>"}]}`},
-		{"multimodal", "openai_chat", `{"model":"drop","messages":[{"role":"system","content":"preset"},{"role":"user","content":[{"type":"input_text","text":"keep","metadata":"drop"},{"type":"image_url","image_url":{"url":"data:image/png;base64,abcd"}}]}]}`, `{"messages":[{"role":"user","content":[{"type":"input_text","text":"keep"},{"type":"image_url","image_url":{"url":"data:image/png;base64,abcd"}}]}]}`},
+		{"multimodal", "openai_chat", `{"model":"drop","messages":[{"role":"system","content":"preset"},{"role":"user","content":[{"type":"input_text","text":"keep","metadata":"drop"},{"type":"image_url","image_url":{"url":"data:image/png;base64,abcd"}}]}]}`, `{"messages":[{"role":"user","content":[{"type":"input_text","text":"keep"}]}]}`},
 		{"media prompts", "grok_media", `{"model":"drop","prompt":"draw a lighthouse","image":"data:image/png;base64,IMAGE","input":{"negative_prompt":"no fog","image_prompt":"https://example.test/input.png"},"request":{"lyrics":"ocean song","seed":42}}`, `{"input":{"negative_prompt":"no fog"},"prompt":"draw a lighthouse","request":{"lyrics":"ocean song"}}`},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			body := []byte(tc.body)
-			require.JSONEq(t, tc.want, string(filterPresetRequestBody(tc.protocol, body, true)))
+			require.JSONEq(t, tc.want, string(filterPresetRequestBody(tc.protocol, body, allPromptRecordFilters)))
 			require.Equal(t, tc.body, string(body))
-			require.Equal(t, tc.body, string(filterPresetRequestBody(tc.protocol, body, false)))
+			require.Equal(t, tc.body, string(filterPresetRequestBody(tc.protocol, body, promptRecordFilterOptions{})))
 		})
 	}
 	for _, body := range []string{"invalid", "null", `"plain text"`} {
-		require.Equal(t, body, string(filterPresetRequestBody("", []byte(body), true)))
+		require.Equal(t, body, string(filterPresetRequestBody("", []byte(body), allPromptRecordFilters)))
 	}
 }
 
@@ -81,7 +83,7 @@ func TestPresetFilterProductionRequestFixtures(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			filtered := filterPresetRequestBody("openai_responses", tc.body, true)
+			filtered := filterPresetRequestBody("openai_responses", tc.body, allPromptRecordFilters)
 			for _, expected := range tc.mustContain {
 				require.Contains(t, string(filtered), expected)
 			}
@@ -115,8 +117,11 @@ func TestPresetRecordingKeepsResponseIdentityAndAuditInput(t *testing.T) {
 	ctx := context.Background()
 	require.NoError(t, manager.Reload(ctx))
 	require.False(t, manager.PromptRecordingFilterPreset())
+	agentPreset, skills := manager.PromptRecordingPresetFilters()
+	require.True(t, agentPreset)
+	require.True(t, skills)
 	enabled := true
-	require.NoError(t, manager.SavePromptRecordingSettings(ctx, nil, nil, nil, &enabled))
+	require.NoError(t, manager.SavePromptRecordingSettings(ctx, PromptRecordingSettingsUpdate{FilterPreset: &enabled}))
 	require.NoError(t, manager.Reload(ctx))
 	require.True(t, manager.PromptRecordingFilterPreset())
 	for _, body := range []string{`{"messages":[{"role":"system","content":"preset"},{"role":"user","content":"keep"}]}`, `{"system":"preset"}`} {
@@ -124,13 +129,14 @@ func TestPresetRecordingKeepsResponseIdentityAndAuditInput(t *testing.T) {
 		records := newPromptRecordService(repo, 1, 1, 1)
 		service := &PromptService{config: manager, records: records}
 		req := Request{RequestID: "filter-response", Protocol: "anthropic_messages", Body: []byte(body)}
-		service.RecordPrompt(ctx, req)
+		recordRequest, responseReference := newPromptRecordingRequestPair(req)
+		service.RecordPrompt(ctx, recordRequest)
 		select {
 		case record := <-repo.records:
 			require.NotContains(t, record.RequestBody, "preset")
 			require.NotContains(t, record.PromptText, "preset")
 			require.Contains(t, promptRecordSnapshot(req).FullPrompt, "preset")
-			records.persistResponse(req, PromptResponse{Text: "response", CapturedAt: time.Now()})
+			records.persistResponse(responseReference, PromptResponse{Text: "response", CapturedAt: time.Now()})
 			require.Equal(t, record.PromptHash, repo.responseHash)
 		case <-time.After(3 * time.Second):
 			t.Fatal("record not persisted")
@@ -139,7 +145,10 @@ func TestPresetRecordingKeepsResponseIdentityAndAuditInput(t *testing.T) {
 }
 
 func TestPresetRecordingEndpoint(t *testing.T) {
-	service := &fakePromptAdminService{recording: PromptRecordingConfig{Enabled: true, HeadersEnabled: true, PromptEnabled: true}}
+	service := &fakePromptAdminService{recording: PromptRecordingConfig{
+		Enabled: true, HeadersEnabled: true, PromptEnabled: true, ResponseEnabled: true,
+		FilterAgentPreset: true, FilterSkills: true,
+	}}
 	router := promptAdminRouter(service)
 	for _, value := range []bool{true, false} {
 		result := promptAdminRequest(t, router, "PUT", "/admin/prompt-records/recording", map[string]any{"filter_preset": value})
@@ -147,13 +156,68 @@ func TestPresetRecordingEndpoint(t *testing.T) {
 		require.Equal(t, value, service.recording.FilterPreset)
 		require.True(t, service.recording.HeadersEnabled)
 		require.True(t, service.recording.PromptEnabled)
+		require.True(t, service.recording.ResponseEnabled)
+		require.True(t, service.recording.FilterAgentPreset)
+		require.True(t, service.recording.FilterSkills)
 	}
 }
 
 func TestPresetFilterSingleInputs(t *testing.T) {
 	for _, input := range []string{`"<environment_context>preset</environment_context>\nkeep"`, `{"role":"user","content":"<environment_context>preset</environment_context>\nkeep"}`} {
-		filtered := filterPresetRequestBody("responses", []byte(`{"instructions":"You are Codex","input":`+input+`}`), true)
+		filtered := filterPresetRequestBody("responses", []byte(`{"instructions":"You are Codex","input":`+input+`}`), allPromptRecordFilters)
 		require.NotContains(t, string(filtered), "preset")
 		require.Contains(t, string(filtered), "keep")
+	}
+}
+
+func TestPresetFilterSubcategoriesRemainIndependent(t *testing.T) {
+	body := []byte(`{"instructions":"You are Codex\n# AGENTS.md instructions\n<INSTRUCTIONS>SYSTEM_AGENT_FILE</INSTRUCTIONS>","input":[{"role":"developer","content":"<skills_instructions>REGISTERED_SKILL</skills_instructions>"},{"role":"user","content":"# AGENTS.md instructions\n<INSTRUCTIONS>AGENT_FILE</INSTRUCTIONS>\nkeep"}]}`)
+
+	filtered := filterPresetRequestBody("responses", body, allPromptRecordFilters)
+	require.NotContains(t, string(filtered), "AGENT_FILE")
+	require.NotContains(t, string(filtered), "SYSTEM_AGENT_FILE")
+	require.NotContains(t, string(filtered), "REGISTERED_SKILL")
+	require.Contains(t, string(filtered), "keep")
+
+	agentRetained := filterPresetRequestBody("responses", body, promptRecordFilterOptions{Enabled: true, Skills: true})
+	require.Contains(t, string(agentRetained), "AGENT_FILE")
+	require.Contains(t, string(agentRetained), "SYSTEM_AGENT_FILE")
+	require.NotContains(t, string(agentRetained), "REGISTERED_SKILL")
+
+	skillsRetained := filterPresetRequestBody("responses", body, promptRecordFilterOptions{Enabled: true, AgentPreset: true})
+	require.NotContains(t, string(skillsRetained), "AGENT_FILE")
+	require.Contains(t, string(skillsRetained), "REGISTERED_SKILL")
+
+	require.Equal(t, body, filterPresetRequestBody("responses", body, promptRecordFilterOptions{}))
+}
+
+func TestMultimodalPayloadsAreRemovedFromStoredBody(t *testing.T) {
+	body := []byte(`{
+		"description":"keep root prompt",
+		"image":"data:image/png;base64,ROOT_IMAGE",
+		"audio":{"mime_type":"audio/mpeg","data":"ROOT_AUDIO"},
+		"reference_images":[{"url":"https://example.test/reference.png"}],
+		"mask":{"image_url":"https://example.test/mask.png"},
+		"attachments":[{"name":"secret.bin","data":"FILE_BYTES"}],
+		"nullable":null,
+		"messages":[{"role":"user","content":[
+			{"type":"text","text":"keep user text"},
+			{"type":"image_url","image_url":{"url":"https://example.test/private.png"}},
+			{"type":"input_audio","input_audio":{"data":"AUDIO_BYTES"}},
+			{"type":"input_video","video_url":"data:video/mp4;base64,VIDEO_BYTES"},
+			{"text":"keep gemini text","inlineData":{"mimeType":"image/png","data":"INLINE_IMAGE"}}
+		]}]
+	}`)
+
+	for _, options := range []promptRecordFilterOptions{{}, allPromptRecordFilters} {
+		stored := string(sanitizePromptRecordBody("openai_chat", body, options))
+		for _, omitted := range []string{"ROOT_IMAGE", "ROOT_AUDIO", "FILE_BYTES", "reference.png", "mask.png", "private.png", "AUDIO_BYTES", "VIDEO_BYTES", "INLINE_IMAGE", "image_url", "input_audio", "input_video", "inlineData", "reference_images", "mask", "attachments"} {
+			require.NotContains(t, stored, omitted)
+		}
+		require.Contains(t, stored, "keep user text")
+		require.Contains(t, stored, "keep gemini text")
+		if !options.Enabled {
+			require.Contains(t, stored, `"nullable":null`)
+		}
 	}
 }

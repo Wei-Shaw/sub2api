@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>提示词记录优化回归预览</title></head>
+<body><div id="app"></div><script type="module">
+import { createApp } from 'vue'
+import { createPinia } from 'pinia'
+import { createRouter, createMemoryHistory } from 'vue-router'
+import View from './src/features/prompt-records/PromptRecordsView.vue'
+import i18n, { setLocale } from './src/i18n'
+import { apiClient } from './src/api/client'
+import { useAuthStore } from './src/stores/auth'
+import { setUiTheme } from './src/composables/useUiTheme'
+import './src/style.css'
+import './src/styles/simple-theme.css'
+const config = { enabled:true, headers_enabled:true, prompt_enabled:true, response_enabled:true, filter_preset:true, filter_agent_preset:true, filter_skills:true, retention_days:30 }
+const item = { id:7, request_id:'synthetic-preview-request', turn_no:1, stage:'subsequent_turn', user_id:2, username:'回归测试用户', user_email:'preview@example.test', api_key_id:3, api_key_name:'合成测试密钥', group_name:'测试分组', provider:'openai', endpoint:'/v1/responses', protocol:'responses_websocket', model:'synthetic-model', prompt_hash:'a'.repeat(64), prompt_length:20, message_count:1, risk_status:'pending', created_at:'2026-09-12T12:00:00Z', request_body:'{"input":"请解释提示词记录的数据流转。"}', request_headers:'{"X-Test":["synthetic"]}' }
+const queue = { in_flight_bytes:2097152, byte_capacity:67108864, pending_responses:2, request_dropped_total:1, response_dropped_total:0, request_failed_total:0, response_failed_total:0, expired_deleted_total:1000, cleanup_failed_total:0, cleanup_backlog:true }
+// Every network response is synthetic. This preview never reaches an API.
+apiClient.defaults.adapter = async request => {
+  let data = {}
+  if (request.url?.includes('/prompt-records/recording')) {
+    if (request.method === 'put') {
+      Object.assign(config, JSON.parse(request.data))
+      window.previewRetentionSaved = config.retention_days
+    }
+    data = { ...config }
+  } else if (/\/prompt-records\/\d+$/.test(request.url || '')) data = item
+  else if (request.url?.includes('/prompt-records')) data = {items:[item], has_more:!request.params?.cursor, next_cursor:request.params?.cursor ? undefined : 'synthetic-cursor', queue}
+  return { data:{code:0,data}, status:200, statusText:'OK', headers:{}, config:request }
+}
+const app = createApp(View)
+setUiTheme('simple')
+localStorage.setItem('admin_guide_0_admin_v4_interactive','true')
+app.use(createPinia())
+useAuthStore().user = {id:0,role:'admin',email:'preview@example.test',username:'回归预览'}
+const router = createRouter({history:createMemoryHistory(),routes:[{path:'/:pathMatch(.*)*',component:{template:'<div />'}}]})
+app.use(router)
+await setLocale('zh')
+app.use(i18n)
+await router.isReady()
+app.mount('#app')
+</script></body></html>

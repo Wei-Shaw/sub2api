@@ -1,0 +1,27 @@
+File: audit-profile.test
+Build ID: b838095bc6d4b3516b7299899338d53491f734a7
+Type: cpu
+Time: 2026-09-12 13:51:47 UTC
+Duration: 1.87s, Total samples = 2.01s (107.65%)
+Showing nodes accounting for 1.89s, 94.03% of 2.01s total
+Dropped 49 nodes (cum <= 0.01s)
+Showing top 18 nodes out of 65
+      flat  flat%   sum%        cum   cum%
+     0.67s 33.33% 33.33%      0.78s 38.81%  regexp.(*machine).add
+     0.50s 24.88% 58.21%      0.90s 44.78%  regexp.(*machine).step
+     0.24s 11.94% 70.15%      1.70s 84.58%  regexp.(*machine).match
+     0.15s  7.46% 77.61%      0.15s  7.46%  runtime.memmove
+     0.12s  5.97% 83.58%      0.12s  5.97%  regexp/syntax.(*Inst).MatchRunePos
+     0.04s  1.99% 85.57%      0.05s  2.49%  runtime.stringtoslicerune
+     0.03s  1.49% 87.06%      0.04s  1.99%  regexp.(*inputString).step
+     0.03s  1.49% 88.56%      0.03s  1.49%  regexp.lazyFlag.match
+     0.03s  1.49% 90.05%      0.03s  1.49%  runtime.futex
+     0.02s     1% 91.04%      0.02s     1%  crypto/internal/fips140/sha256.blockSHANI
+     0.02s     1% 92.04%      0.02s     1%  encoding/json/internal/jsonwire.ConsumeStringResumable.func1 (inline)
+     0.02s     1% 93.03%      0.02s     1%  runtime.procyieldAsm
+     0.01s   0.5% 93.53%      0.13s  6.47%  regexp/syntax.(*Inst).MatchRune (inline)
+     0.01s   0.5% 94.03%      0.02s     1%  runtime.tryDeferToSpanScan
+         0     0% 94.03%      0.02s     1%  crypto/internal/fips140/sha256.(*Digest).Write
+         0     0% 94.03%      0.02s     1%  crypto/internal/fips140/sha256.block
+         0     0% 94.03%      0.02s     1%  crypto/sha256.Sum256
+         0     0% 94.03%      0.06s  2.99%  encoding/json.(*Decoder).Decode

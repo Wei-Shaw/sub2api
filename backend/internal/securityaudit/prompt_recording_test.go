@@ -52,6 +52,13 @@ func TestPromptRecordingConfigDefaultsEnabledAndPersistsChanges(t *testing.T) {
 	manager := NewConfigManager(nil, repository, nil, prefixEncryptor{}, testTotpKeyConfig())
 	require.NoError(t, manager.Reload(context.Background()))
 	require.True(t, manager.PromptRecordingEnabled())
+	headers, prompt, response := manager.PromptRecordingContent()
+	require.True(t, headers)
+	require.True(t, prompt)
+	require.True(t, response)
+	agentPreset, skills := manager.PromptRecordingPresetFilters()
+	require.True(t, agentPreset)
+	require.True(t, skills)
 
 	require.NoError(t, manager.SavePromptRecordingEnabled(context.Background(), false))
 	require.False(t, manager.PromptRecordingEnabled())
@@ -66,26 +73,33 @@ func TestPromptRecordingContentPersistsIndependentSwitches(t *testing.T) {
 	manager := NewConfigManager(nil, repository, nil, prefixEncryptor{}, testTotpKeyConfig())
 	ctx := context.Background()
 	require.NoError(t, manager.Reload(ctx))
-	headers, prompt := manager.PromptRecordingContent()
+	headers, prompt, response := manager.PromptRecordingContent()
 	require.True(t, headers)
 	require.True(t, prompt)
+	require.True(t, response)
 	disabled := false
-	require.NoError(t, manager.SavePromptRecordingSettings(ctx, nil, &disabled, nil, nil))
+	require.NoError(t, manager.SavePromptRecordingSettings(ctx, PromptRecordingSettingsUpdate{HeadersEnabled: &disabled}))
 	require.NoError(t, manager.Reload(ctx))
-	headers, prompt = manager.PromptRecordingContent()
+	headers, prompt, response = manager.PromptRecordingContent()
 	require.False(t, headers)
 	require.True(t, prompt)
-	require.NoError(t, manager.SavePromptRecordingSettings(ctx, nil, nil, &disabled, nil))
+	require.True(t, response)
+	require.NoError(t, manager.SavePromptRecordingSettings(ctx, PromptRecordingSettingsUpdate{PromptEnabled: &disabled, ResponseEnabled: &disabled, FilterAgentPreset: &disabled, FilterSkills: &disabled}))
 	require.NoError(t, manager.Reload(ctx))
-	headers, prompt = manager.PromptRecordingContent()
+	headers, prompt, response = manager.PromptRecordingContent()
 	require.False(t, headers)
 	require.False(t, prompt)
+	require.False(t, response)
+	agentPreset, skills := manager.PromptRecordingPresetFilters()
+	require.False(t, agentPreset)
+	require.False(t, skills)
 	repository.writeError = errors.New("database unavailable")
 	enabled := true
-	require.Error(t, manager.SavePromptRecordingSettings(ctx, nil, &enabled, &enabled, nil))
-	headers, prompt = manager.PromptRecordingContent()
+	require.Error(t, manager.SavePromptRecordingSettings(ctx, PromptRecordingSettingsUpdate{HeadersEnabled: &enabled, PromptEnabled: &enabled, ResponseEnabled: &enabled}))
+	headers, prompt, response = manager.PromptRecordingContent()
 	require.False(t, headers)
 	require.False(t, prompt)
+	require.False(t, response)
 }
 
 type capturedRequestRepository struct {
@@ -99,8 +113,8 @@ func (r *capturedRequestRepository) InsertPromptRecord(_ context.Context, record
 	return nil
 }
 
-func (r *capturedRequestRepository) UpdatePromptRecordResponse(_ context.Context, _ Request, hash string, _ PromptResponse) (bool, error) {
-	r.responseHash = hash
+func (r *capturedRequestRepository) UpdatePromptRecordResponse(_ context.Context, key PromptRecordKey, _ PromptResponse) (bool, error) {
+	r.responseHash = key.PromptHash
 	return true, nil
 }
 
@@ -110,7 +124,7 @@ func TestPromptRecordingContentCombinationsRetainFullRequest(t *testing.T) {
 		for _, promptEnabled := range []bool{false, true} {
 			repository := &promptRecordingSettingRepository{}
 			manager := NewConfigManager(nil, repository, nil, prefixEncryptor{}, testTotpKeyConfig())
-			require.NoError(t, manager.SavePromptRecordingSettings(context.Background(), nil, &headersEnabled, &promptEnabled, nil))
+			require.NoError(t, manager.SavePromptRecordingSettings(context.Background(), PromptRecordingSettingsUpdate{HeadersEnabled: &headersEnabled, PromptEnabled: &promptEnabled}))
 			repo := &capturedRequestRepository{records: make(chan *PromptRecord, 1)}
 			service := &PromptService{config: manager, records: newPromptRecordService(repo, 1, 1, 1)}
 			req := Request{RequestID: "full-request", Body: []byte(body), Headers: http.Header{"X-Test": {"first", "second"}}}
@@ -119,7 +133,7 @@ func TestPromptRecordingContentCombinationsRetainFullRequest(t *testing.T) {
 			req.Body[0] = '!'
 			req.Headers.Set("X-Test", "changed")
 			oppositeHeaders, oppositePrompt := !headersEnabled, !promptEnabled
-			require.NoError(t, manager.SavePromptRecordingSettings(context.Background(), nil, &oppositeHeaders, &oppositePrompt, nil))
+			require.NoError(t, manager.SavePromptRecordingSettings(context.Background(), PromptRecordingSettingsUpdate{HeadersEnabled: &oppositeHeaders, PromptEnabled: &oppositePrompt}))
 			select {
 			case record := <-repo.records:
 				if headersEnabled {
@@ -128,8 +142,9 @@ func TestPromptRecordingContentCombinationsRetainFullRequest(t *testing.T) {
 					require.Empty(t, record.RequestHeaders)
 				}
 				if promptEnabled {
-					require.Equal(t, body, record.RequestBody)
-					require.NotEmpty(t, record.PromptText)
+					require.JSONEq(t, body, record.RequestBody)
+					require.Empty(t, record.PromptText, "new records retain one canonical request document")
+					require.Positive(t, record.PromptLength)
 				} else {
 					require.Empty(t, record.RequestBody)
 					require.Empty(t, record.PromptText)
@@ -146,13 +161,47 @@ func TestPromptRecordingRetainsRequestsWithoutTextAndMatchesResponse(t *testing.
 	repo := &capturedRequestRepository{records: make(chan *PromptRecord, 1)}
 	service := newPromptRecordService(repo, 1, 1, 1)
 	req := Request{RequestID: "image-only", Protocol: "openai_chat_completions", Body: []byte(`{"messages":[{"role":"user","content":[{"type":"image_url","image_url":{"url":"data:image/png;base64,abcd"}}]}]}`)}
-	service.persist(req)
+	recordRequest, responseReference := newPromptRecordingRequestPair(req)
+	service.persist(recordRequest)
 	record := <-repo.records
-	require.Equal(t, string(req.Body), record.RequestBody)
+	require.NotContains(t, record.RequestBody, "image_url")
+	require.NotContains(t, record.RequestBody, "abcd")
 	require.Equal(t, "image-only", record.RequestID)
-	service.persistResponse(req, PromptResponse{Text: "image response", CapturedAt: time.Now()})
+	service.persistResponse(responseReference, PromptResponse{Text: "image response", CapturedAt: time.Now()})
 	require.NotEmpty(t, record.PromptHash)
 	require.Equal(t, record.PromptHash, repo.responseHash)
+}
+
+func TestPreparePromptRecordReturnsStoredBodyTextAndOriginalHash(t *testing.T) {
+	body := []byte(`{"model":"test","seed":9007199254740993,"messages":[{"role":"system","content":"You are Codex"},{"role":"user","content":[{"type":"text","text":"keep"},{"type":"image_url","image_url":{"url":"data:image/png;base64,IMAGE"}}]}]}`)
+	req := Request{RequestID: "prepared", Protocol: "openai_chat", Body: body}
+	original := promptRecordSnapshot(req)
+
+	prepared, err := preparePromptRecord(req)
+	require.NoError(t, err)
+	require.Equal(t, original.PromptHash, prepared.OriginalPromptHash)
+	require.Contains(t, string(prepared.StoredBody), `"seed":9007199254740993`)
+	require.NotContains(t, string(prepared.StoredBody), "IMAGE")
+	require.NotContains(t, string(prepared.StoredBody), "image_url")
+	require.Contains(t, prepared.StoredSnapshot.FullPrompt, "keep")
+	require.Equal(t, body, req.Body)
+}
+
+func TestPromptServiceDoesNotQueueResponseWhenResponseRecordingDisabled(t *testing.T) {
+	repository := &promptRecordingSettingRepository{}
+	manager := NewConfigManager(nil, repository, nil, prefixEncryptor{}, testTotpKeyConfig())
+	disabled := false
+	require.NoError(t, manager.SavePromptRecordingSettings(context.Background(), PromptRecordingSettingsUpdate{ResponseEnabled: &disabled}))
+	recordStore := &blockingPromptRecordRepository{started: make(chan struct{}, 1), release: make(chan struct{})}
+	close(recordStore.release)
+	service := &PromptService{config: manager, records: newPromptRecordService(recordStore, 1, 1, 1)}
+
+	service.RecordResponse(context.Background(), Request{RequestID: "response-disabled"}, PromptResponse{Text: "private response"})
+	time.Sleep(20 * time.Millisecond)
+
+	require.Zero(t, recordStore.inserted.Load())
+	require.Zero(t, service.records.QueueStats().QueueLength)
+	require.Zero(t, service.records.QueueStats().OverflowLength)
 }
 
 type disabledPromptRecordingStore struct {

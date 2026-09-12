@@ -43,10 +43,14 @@ type ConfigManager struct {
 	expectedBlocking atomic.Bool
 	// recordingState uses 0 for the legacy/default state (enabled), 1 for
 	// explicitly enabled and 2 for explicitly disabled.
-	recordingState           atomic.Int32
-	recordingHeadersDisabled atomic.Bool
-	recordingPromptDisabled  atomic.Bool
-	recordingFilterPreset    atomic.Bool
+	recordingState                atomic.Int32
+	recordingHeadersDisabled      atomic.Bool
+	recordingPromptDisabled       atomic.Bool
+	recordingResponseDisabled     atomic.Bool
+	recordingFilterPreset         atomic.Bool
+	recordingFilterAgentDisabled  atomic.Bool
+	recordingFilterSkillsDisabled atomic.Bool
+	recordingRetentionDays        atomic.Int64
 	// configUntrusted is set when a load/reload fails before a trustworthy
 	// snapshot is installed. Combined with expectedBlocking, EffectiveMode
 	// fails closed so a persisted blocking policy cannot be silently skipped
@@ -116,7 +120,12 @@ func (m *ConfigManager) Reload(ctx context.Context) error {
 		m.markUntrustedIfNoActiveSnapshot()
 		return errors.New("prompt audit setting repository unavailable")
 	}
-	values, err := m.settings.GetMultiple(ctx, []string{SettingKeyPromptAuditConfig, SettingKeyRiskControl, SettingKeyPromptRecording, SettingKeyPromptRecordingHeaders, SettingKeyPromptRecordingPrompt, SettingKeyPromptRecordingFilterPreset})
+	values, err := m.settings.GetMultiple(ctx, []string{
+		SettingKeyPromptAuditConfig, SettingKeyRiskControl, SettingKeyPromptRecording,
+		SettingKeyPromptRecordingHeaders, SettingKeyPromptRecordingPrompt, SettingKeyPromptRecordingResponse,
+		SettingKeyPromptRecordingFilterPreset, SettingKeyPromptRecordingFilterAgent, SettingKeyPromptRecordingFilterSkills,
+		SettingKeyPromptRecordingRetention,
+	})
 	if err != nil {
 		m.recordLoadError(err)
 		m.markUntrustedIfNoActiveSnapshot()
@@ -125,7 +134,15 @@ func (m *ConfigManager) Reload(ctx context.Context) error {
 	m.setPromptRecordingState(values[SettingKeyPromptRecording] != "false")
 	m.recordingHeadersDisabled.Store(values[SettingKeyPromptRecordingHeaders] == "false")
 	m.recordingPromptDisabled.Store(values[SettingKeyPromptRecordingPrompt] == "false")
+	m.recordingResponseDisabled.Store(values[SettingKeyPromptRecordingResponse] == "false")
 	m.recordingFilterPreset.Store(values[SettingKeyPromptRecordingFilterPreset] == "true")
+	m.recordingFilterAgentDisabled.Store(values[SettingKeyPromptRecordingFilterAgent] == "false")
+	m.recordingFilterSkillsDisabled.Store(values[SettingKeyPromptRecordingFilterSkills] == "false")
+	retention, err := strconv.Atoi(values[SettingKeyPromptRecordingRetention])
+	if err != nil || retention < 0 || retention > 3650 {
+		retention = 0
+	}
+	m.recordingRetentionDays.Store(int64(retention))
 	m.observeExpectedState(values[SettingKeyPromptAuditConfig], values[SettingKeyRiskControl] == "true")
 	storage, err := ParseStorageConfig(values[SettingKeyPromptAuditConfig])
 	if err != nil {
@@ -162,45 +179,89 @@ func (m *ConfigManager) PromptRecordingEnabled() bool {
 	return m == nil || m.recordingState.Load() != 2
 }
 
-func (m *ConfigManager) PromptRecordingContent() (bool, bool) {
-	return !m.recordingHeadersDisabled.Load(), !m.recordingPromptDisabled.Load()
+func (m *ConfigManager) PromptRecordingContent() (bool, bool, bool) {
+	if m == nil {
+		return true, true, true
+	}
+	return !m.recordingHeadersDisabled.Load(), !m.recordingPromptDisabled.Load(), !m.recordingResponseDisabled.Load()
 }
 
 func (m *ConfigManager) PromptRecordingFilterPreset() bool {
 	return m != nil && m.recordingFilterPreset.Load()
 }
 
-func (m *ConfigManager) SavePromptRecordingSettings(ctx context.Context, enabled, headers, prompt, filterPreset *bool) error {
+func (m *ConfigManager) PromptRecordingPresetFilters() (bool, bool) {
+	if m == nil {
+		return true, true
+	}
+	return !m.recordingFilterAgentDisabled.Load(), !m.recordingFilterSkillsDisabled.Load()
+}
+
+func (m *ConfigManager) PromptRecordingRetentionDays() int {
+	if m == nil {
+		return 0
+	}
+	return int(m.recordingRetentionDays.Load())
+}
+
+func (m *ConfigManager) SavePromptRecordingSettings(ctx context.Context, update PromptRecordingSettingsUpdate) error {
 	if m == nil || m.settings == nil {
 		return errors.New("prompt recording setting repository unavailable")
 	}
 	updates := map[string]string{}
-	if enabled != nil {
-		updates[SettingKeyPromptRecording] = strconv.FormatBool(*enabled)
+	if update.RetentionDays != nil {
+		if *update.RetentionDays < 0 || *update.RetentionDays > 3650 {
+			return errors.New("retention_days must be between 0 and 3650")
+		}
+		updates[SettingKeyPromptRecordingRetention] = strconv.Itoa(*update.RetentionDays)
 	}
-	if headers != nil {
-		updates[SettingKeyPromptRecordingHeaders] = strconv.FormatBool(*headers)
+	if update.Enabled != nil {
+		updates[SettingKeyPromptRecording] = strconv.FormatBool(*update.Enabled)
 	}
-	if prompt != nil {
-		updates[SettingKeyPromptRecordingPrompt] = strconv.FormatBool(*prompt)
+	if update.HeadersEnabled != nil {
+		updates[SettingKeyPromptRecordingHeaders] = strconv.FormatBool(*update.HeadersEnabled)
 	}
-	if filterPreset != nil {
-		updates[SettingKeyPromptRecordingFilterPreset] = strconv.FormatBool(*filterPreset)
+	if update.PromptEnabled != nil {
+		updates[SettingKeyPromptRecordingPrompt] = strconv.FormatBool(*update.PromptEnabled)
+	}
+	if update.ResponseEnabled != nil {
+		updates[SettingKeyPromptRecordingResponse] = strconv.FormatBool(*update.ResponseEnabled)
+	}
+	if update.FilterPreset != nil {
+		updates[SettingKeyPromptRecordingFilterPreset] = strconv.FormatBool(*update.FilterPreset)
+	}
+	if update.FilterAgentPreset != nil {
+		updates[SettingKeyPromptRecordingFilterAgent] = strconv.FormatBool(*update.FilterAgentPreset)
+	}
+	if update.FilterSkills != nil {
+		updates[SettingKeyPromptRecordingFilterSkills] = strconv.FormatBool(*update.FilterSkills)
 	}
 	if err := m.settings.SetMultiple(ctx, updates); err != nil {
 		return err
 	}
-	if enabled != nil {
-		m.setPromptRecordingState(*enabled)
+	if update.RetentionDays != nil {
+		m.recordingRetentionDays.Store(int64(*update.RetentionDays))
 	}
-	if headers != nil {
-		m.recordingHeadersDisabled.Store(!*headers)
+	if update.Enabled != nil {
+		m.setPromptRecordingState(*update.Enabled)
 	}
-	if prompt != nil {
-		m.recordingPromptDisabled.Store(!*prompt)
+	if update.HeadersEnabled != nil {
+		m.recordingHeadersDisabled.Store(!*update.HeadersEnabled)
 	}
-	if filterPreset != nil {
-		m.recordingFilterPreset.Store(*filterPreset)
+	if update.PromptEnabled != nil {
+		m.recordingPromptDisabled.Store(!*update.PromptEnabled)
+	}
+	if update.ResponseEnabled != nil {
+		m.recordingResponseDisabled.Store(!*update.ResponseEnabled)
+	}
+	if update.FilterPreset != nil {
+		m.recordingFilterPreset.Store(*update.FilterPreset)
+	}
+	if update.FilterAgentPreset != nil {
+		m.recordingFilterAgentDisabled.Store(!*update.FilterAgentPreset)
+	}
+	if update.FilterSkills != nil {
+		m.recordingFilterSkillsDisabled.Store(!*update.FilterSkills)
 	}
 	if m.redis != nil {
 		version := m.expected.Load()

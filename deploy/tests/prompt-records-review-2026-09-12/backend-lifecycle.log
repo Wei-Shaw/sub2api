@@ -1,0 +1,12 @@
+=== RUN   TestAuditObservationLateRequestLosesResponse
+2026/09/12 13:51:20 ERROR prompt_record.persist_failed user_id=0 api_key_id=0 model="" error_code=prompt_record_response_identity_unavailable group_id=0 provider="" protocol="" endpoint="" stage="" status=failed request_id=late-record
+    zz_prompt_record_audit_test.go:95: Observed: after five seconds waiting for request persistence, the response is discarded even if the request subsequently succeeds.
+--- PASS: TestAuditObservationLateRequestLosesResponse (5.00s)
+=== RUN   TestAuditObservationShutdownDoesNotDrainRecords
+    zz_prompt_record_audit_test.go:112: Observed: Shutdown returns success while record insertion remains blocked.
+--- PASS: TestAuditObservationShutdownDoesNotDrainRecords (0.00s)
+=== RUN   TestAuditRecordRepositoryRoundTrip
+    zz_prompt_record_audit_test.go:144: Verified: actual PostgreSQL insertion, deduplication, filtering, response correlation, detail lookup and deletion.
+--- PASS: TestAuditRecordRepositoryRoundTrip (0.02s)
+PASS
+ok  	github.com/Wei-Shaw/sub2api/internal/securityaudit	5.038s

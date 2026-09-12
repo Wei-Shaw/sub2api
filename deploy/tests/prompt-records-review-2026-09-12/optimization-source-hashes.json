@@ -1,0 +1,54 @@
+[
+  {
+    "path": "backend/internal/securityaudit/prompt_record.go",
+    "sha256": "E293E2B94FDAD37A0AE3FD332EF00088C0078349F91693FEE5626D3C659FDF73"
+  },
+  {
+    "path": "backend/internal/securityaudit/prompt_record_queue.go",
+    "sha256": "041FFBAE04CCE333DA4276378D0F88AD0D5074565005CAEC6E7E8090868E2BC3"
+  },
+  {
+    "path": "backend/internal/securityaudit/prompt_record_prepare.go",
+    "sha256": "F3AADA85FE9CA0A2C0222F657E28134EA2979616F112A6B2D3FE1ACD39B50351"
+  },
+  {
+    "path": "backend/internal/securityaudit/prompt_response.go",
+    "sha256": "69A135FE2C53539C41D1EE7A7B8DC4B3423C7338DBD3B8B87158C6E3F3B4EB7D"
+  },
+  {
+    "path": "backend/internal/securityaudit/prompt_preset_filter.go",
+    "sha256": "F0B592A0E4371E0D36CBABFD42EC8C015DF2E26ADFC3BD59D0833219566C466B"
+  },
+  {
+    "path": "backend/internal/securityaudit/prompt_service.go",
+    "sha256": "756621C55EA4599640B13B4FFE2D0C5E5F4DA358757D25BA5A26E52632E98C0E"
+  },
+  {
+    "path": "backend/internal/securityaudit/prompt_config_store.go",
+    "sha256": "28BCA678F99370159965CDD62E1F89723EAE3F6E3ECBBF4C96A2014E551B0237"
+  },
+  {
+    "path": "backend/internal/securityaudit/prompt_handler.go",
+    "sha256": "DC95CDBB9CD936A6298AD179B323BC857098B681605C5179E4673E84E2CB75C6"
+  },
+  {
+    "path": "backend/internal/securityaudit/prompt_types.go",
+    "sha256": "13344E1E09A790C555AAB1807E98C58A28B96F6F604D89D03BE2E2AD0DB4C3A8"
+  },
+  {
+    "path": "backend/migrations/242_prompt_record_search_extension.sql",
+    "sha256": "0D476548C0362DB36A3718C50CA2D72F5A67DB720E14B352E0B857A64447D4A9"
+  },
+  {
+    "path": "backend/migrations/243_prompt_record_search_cleanup_indexes_notx.sql",
+    "sha256": "D0DC3AEE5F5DAEBB2EDBBDD482E682F7921DBADD3A7800AD63B882EFFAECA68C"
+  },
+  {
+    "path": "frontend/src/features/prompt-records/PromptRecordsView.vue",
+    "sha256": "36E270716F4640E5F010DAC09D0C63613517838A18267857005994A39A2814D5"
+  },
+  {
+    "path": "frontend/src/features/prompt-records/api.ts",
+    "sha256": "51E441CC76FD0D40429DE4594E4060CA85F1AC8CDFDBDBD563429DF60D95A827"
+  }
+]

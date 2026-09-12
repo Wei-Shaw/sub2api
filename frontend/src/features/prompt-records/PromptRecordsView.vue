@@ -44,26 +44,100 @@
         </div>
       </div>
 
-      <div class="flex flex-wrap items-center gap-x-6 gap-y-2">
-        <label v-for="option in contentOptions" :key="option.key" class="flex min-h-11 cursor-pointer items-center gap-3 text-sm text-gray-800">
-          <span>{{ t(option.label) }}</span>
-          <button
-            type="button"
-            role="switch"
-            class="relative inline-flex h-11 w-12 shrink-0 items-center justify-center rounded-lg focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60"
-            :aria-label="t(option.label)"
-            :aria-checked="recordingContent[option.key]"
-            :aria-busy="recordingLoading || recordingSaving"
-            :disabled="recordingLoading || recordingSaving || recordingEnabled !== true"
-            :data-test="`prompt-recording-${option.key}`"
-            @click="toggleRecordingContent(option.key)"
+      <div class="space-y-3">
+        <div class="flex flex-wrap items-center gap-x-6 gap-y-2">
+          <div
+            v-for="option in contentOptions"
+            :key="option.key"
+            class="flex min-h-11 items-center gap-3 text-sm text-gray-800 dark:text-gray-200"
           >
-            <span aria-hidden="true" class="relative inline-flex h-6 w-11 items-center rounded-full border-2 border-transparent transition-colors motion-reduce:transition-none" :class="recordingContent[option.key] ? 'bg-primary-600' : 'bg-gray-300'">
-              <span class="pointer-events-none inline-block h-5 w-5 rounded-full bg-white shadow transition-transform motion-reduce:transition-none" :class="recordingContent[option.key] ? 'translate-x-5' : 'translate-x-0'" />
-            </span>
-          </button>
-        </label>
-        <p class="w-full text-xs text-gray-500">{{ t('admin.promptRecords.recordingContentHelp') }}</p>
+            <span>{{ t(option.label) }}</span>
+            <button
+              type="button"
+              role="switch"
+              class="relative inline-flex h-11 w-12 shrink-0 items-center justify-center rounded-lg focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60 dark:focus-visible:ring-offset-dark-900"
+              :aria-label="t(option.label)"
+              :aria-checked="recordingContent[option.key]"
+              :aria-busy="recordingLoading || recordingSaving"
+              :disabled="recordingLoading || recordingSaving || recordingEnabled !== true"
+              :data-test="`prompt-recording-${option.key}`"
+              @click="toggleRecordingContent(option.key)"
+            >
+              <span
+                aria-hidden="true"
+                class="relative inline-flex h-6 w-11 items-center rounded-full border-2 border-transparent transition-colors motion-reduce:transition-none"
+                :class="recordingContent[option.key] ? 'bg-primary-600' : 'bg-gray-300 dark:bg-dark-600'"
+              >
+                <span
+                  class="pointer-events-none inline-block h-5 w-5 rounded-full bg-white shadow transition-transform motion-reduce:transition-none"
+                  :class="recordingContent[option.key] ? 'translate-x-5' : 'translate-x-0'"
+                />
+              </span>
+            </button>
+          </div>
+        </div>
+        <div
+          v-if="recordingContent.filter_preset"
+          class="flex flex-wrap items-center gap-x-6 gap-y-2 border-l-2 border-primary-100 pl-4 dark:border-primary-900/50"
+          data-test="prompt-recording-preset-options"
+        >
+          <div
+            v-for="option in presetFilterOptions"
+            :key="option.key"
+            class="flex min-h-11 items-center gap-3 text-sm text-gray-800 dark:text-gray-200"
+          >
+            <span>{{ t(option.label) }}</span>
+            <button
+              type="button"
+              role="switch"
+              class="relative inline-flex h-11 w-12 shrink-0 items-center justify-center rounded-lg focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60 dark:focus-visible:ring-offset-dark-900"
+              :aria-label="t(option.label)"
+              :aria-checked="recordingContent[option.key]"
+              :aria-busy="recordingLoading || recordingSaving"
+              :disabled="recordingLoading || recordingSaving || recordingEnabled !== true || !recordingContent.filter_preset"
+              :data-test="`prompt-recording-${option.key}`"
+              @click="toggleRecordingContent(option.key)"
+            >
+              <span
+                aria-hidden="true"
+                class="relative inline-flex h-6 w-11 items-center rounded-full border-2 border-transparent transition-colors motion-reduce:transition-none"
+                :class="recordingContent[option.key] ? 'bg-primary-600' : 'bg-gray-300 dark:bg-dark-600'"
+              >
+                <span
+                  class="pointer-events-none inline-block h-5 w-5 rounded-full bg-white shadow transition-transform motion-reduce:transition-none"
+                  :class="recordingContent[option.key] ? 'translate-x-5' : 'translate-x-0'"
+                />
+              </span>
+            </button>
+          </div>
+          <p class="w-full text-xs text-gray-500 dark:text-gray-400">
+            {{ t('admin.promptRecords.presetFilterHelp') }}
+          </p>
+        </div>
+	        <p class="text-xs text-gray-500 dark:text-gray-400">
+          {{ t('admin.promptRecords.recordingContentHelp') }}
+        </p>
+		<p class="text-xs text-gray-500 dark:text-gray-400">{{ t('admin.promptRecords.responseScope') }}</p>
+		<form class="flex flex-wrap items-end gap-3" @submit.prevent="saveRetention">
+			<div>
+				<label for="prompt-record-retention" class="input-label">{{ t('admin.promptRecords.retentionDays') }}</label>
+				<input id="prompt-record-retention" v-model.number="retentionDays" type="number" min="0" max="3650" step="1" required class="input w-36" :disabled="recordingLoading || recordingSaving" />
+			</div>
+			<button class="btn btn-secondary" type="submit" :disabled="recordingLoading || recordingSaving">{{ t('common.save') }}</button>
+			<p class="w-full text-xs text-gray-500 dark:text-gray-400">{{ t('admin.promptRecords.retentionHelp') }}</p>
+		</form>
+		<details v-if="queueStats" class="rounded-lg border border-gray-200 p-3 text-xs text-gray-600 dark:border-dark-700 dark:text-gray-400" data-test="record-queue-stats">
+			<summary class="cursor-pointer py-1">{{ t('admin.promptRecords.queueStatus') }}</summary>
+			<div class="mt-3 grid gap-2 sm:grid-cols-2">
+				<p>{{ t('admin.promptRecords.queueMemory', { used: formatMiB(queueStats.in_flight_bytes), limit: formatMiB(queueStats.byte_capacity) }) }}</p>
+				<p>{{ t('admin.promptRecords.pendingResponses', { count: queueStats.pending_responses ?? 0 }) }}</p>
+				<p>{{ t('admin.promptRecords.requestFailures', { dropped: queueStats.request_dropped_total ?? 0, failed: queueStats.request_failed_total ?? 0 }) }}</p>
+				<p>{{ t('admin.promptRecords.responseFailures', { dropped: queueStats.response_dropped_total ?? 0, failed: queueStats.response_failed_total ?? 0 }) }}</p>
+				<p>{{ t('admin.promptRecords.cleanupStats', { deleted: queueStats.expired_deleted_total ?? 0, failed: queueStats.cleanup_failed_total ?? 0 }) }}</p>
+				<p v-if="queueStats.cleanup_backlog">{{ t('admin.promptRecords.cleanupBacklog') }}</p>
+				<p class="sm:col-span-2">{{ t('admin.promptRecords.queueStatsHelp') }}</p>
+			</div>
+		</details>
       </div>
 
       <div class="card overflow-hidden">
@@ -300,14 +374,19 @@
               <EmptyState :message="t('admin.promptRecords.empty')" />
             </template>
           </DataTable>
-          <Pagination
-            v-if="pagination.total > 0"
-            :page="pagination.page"
-            :total="pagination.total"
-            :page-size="pagination.pageSize"
-            @update:page="handlePageChange"
-            @update:page-size="handlePageSizeChange"
-          />
+			<div class="flex flex-wrap items-center justify-between gap-3 border-t border-gray-100 p-4 dark:border-dark-700">
+				<label class="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-400">
+					{{ t('admin.promptRecords.pageSize') }}
+					<select class="input w-20" :value="pagination.pageSize" :disabled="loading" data-test="record-page-size" @change="handlePageSizeChange(Number(($event.target as HTMLSelectElement).value))">
+						<option v-for="size in [10, 20, 50, 100]" :key="size" :value="size">{{ size }}</option>
+					</select>
+				</label>
+				<div class="flex flex-wrap items-center gap-3">
+					<span class="text-sm text-gray-500">{{ t('admin.promptRecords.currentPage', { page: pagination.page }) }}</span>
+					<button type="button" class="btn btn-secondary" :disabled="loading || pagination.page === 1" data-test="record-previous" @click="handlePageChange(pagination.page - 1)">{{ t('admin.promptRecords.previousPage') }}</button>
+					<button type="button" class="btn btn-secondary" :disabled="loading || !hasMore" data-test="record-next" @click="handlePageChange(pagination.page + 1)">{{ t('admin.promptRecords.nextPage') }}</button>
+				</div>
+			</div>
         </div>
       </div>
     </div>
@@ -352,16 +431,29 @@
           <h4 class="text-sm font-semibold text-gray-900 dark:text-white">
             {{ t(detail.request_body ? 'admin.promptRecords.requestBody' : 'admin.promptRecords.promptText') }}
           </h4>
-          <span class="text-xs text-gray-500 dark:text-gray-400">
-            {{ t('admin.promptRecords.promptSummary', { messages: formatNumber(detail.message_count), characters: formatNumber(detail.prompt_length) }) }}
-          </span>
+          <div class="flex items-center gap-2">
+            <span class="text-xs text-gray-500 dark:text-gray-400">
+              {{ t('admin.promptRecords.promptSummary', { messages: formatNumber(detail.message_count), characters: formatNumber(detail.prompt_length) }) }}
+            </span>
+            <button
+              v-if="detail.request_body"
+              type="button"
+              class="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-lg text-primary-600 transition-colors hover:bg-primary-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-500/30 focus-visible:ring-offset-2 dark:text-primary-400 dark:hover:bg-primary-900/30 dark:focus-visible:ring-offset-dark-900"
+              :aria-label="t('admin.promptRecords.copyRequestBody')"
+              :title="t('admin.promptRecords.copyRequestBody')"
+              data-test="prompt-record-copy-request-body"
+              @click="copyRequestBody"
+            >
+              <Icon name="copy" size="sm" />
+            </button>
+          </div>
         </div>
         <pre class="mt-3 max-h-[48vh] overflow-auto whitespace-pre-wrap break-words rounded-lg border border-gray-200 bg-gray-50 p-4 text-sm leading-6 text-gray-800 dark:border-dark-700 dark:bg-dark-900 dark:text-gray-200">{{ formatRequestContent(detail.request_body || detail.prompt_text) }}</pre>
       </section>
 
       <section>
-        <h4 class="text-sm font-semibold text-gray-900">{{ t('admin.promptRecords.requestHeaders') }}</h4>
-        <pre class="mt-3 max-h-[32vh] overflow-auto whitespace-pre-wrap break-words rounded-lg border border-gray-200 bg-gray-50 p-4 text-sm leading-6 text-gray-800">{{ formatRequestContent(detail.request_headers) }}</pre>
+        <h4 class="text-sm font-semibold text-gray-900 dark:text-white">{{ t('admin.promptRecords.requestHeaders') }}</h4>
+        <pre class="mt-3 max-h-[32vh] overflow-auto whitespace-pre-wrap break-words rounded-lg border border-gray-200 bg-gray-50 p-4 text-sm leading-6 text-gray-800 dark:border-dark-700 dark:bg-dark-900 dark:text-gray-200">{{ formatRequestContent(detail.request_headers) }}</pre>
       </section>
 
       <section>
@@ -376,7 +468,7 @@
             </span>
           </span>
         </div>
-        <pre class="mt-3 max-h-[48vh] overflow-auto whitespace-pre-wrap break-words rounded-lg border border-gray-200 bg-gray-50 p-4 text-sm leading-6 text-gray-800 dark:border-dark-700 dark:bg-dark-900 dark:text-gray-200">{{ detail.response_captured_at ? (detail.response_text || t('admin.promptRecords.emptyResponse')) : t('admin.promptRecords.responseUnavailable') }}</pre>
+		<pre class="mt-3 max-h-[48vh] overflow-auto whitespace-pre-wrap break-words rounded-lg border border-gray-200 bg-gray-50 p-4 text-sm leading-6 text-gray-800 dark:border-dark-700 dark:bg-dark-900 dark:text-gray-200">{{ responseDisplayText }}</pre>
       </section>
     </div>
   </BaseDialog>
@@ -400,32 +492,64 @@ import BaseDialog from '@/components/common/BaseDialog.vue'
 import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
 import DataTable from '@/components/common/DataTable.vue'
 import EmptyState from '@/components/common/EmptyState.vue'
-import Pagination from '@/components/common/Pagination.vue'
 import Icon from '@/components/icons/Icon.vue'
 import type { Column } from '@/components/common/types'
-import { getPersistedPageSize } from '@/composables/usePersistedPageSize'
+import { getPersistedPageSize, setPersistedPageSize } from '@/composables/usePersistedPageSize'
+import { useClipboard } from '@/composables/useClipboard'
 import { useAppStore } from '@/stores/app'
 import { adminUsageAPI, type SimpleUser } from '@/api/admin/usage'
 import { formatDateTime } from '@/utils/format'
 import {
-	batchDeletePromptRecords,
-	deletePromptRecord,
-	getPromptRecordingConfig,
-	getPromptRecord,
-	listPromptRecords,
-	updatePromptRecordingConfig,
+  batchDeletePromptRecords,
+  deletePromptRecord,
+  getPromptRecordingConfig,
+  getPromptRecord,
+  listPromptRecords,
+  updatePromptRecordingConfig,
   type PromptRecord,
   type PromptRecordSummary,
+  type PromptRecordQueueStats,
 } from './api'
 
 const { t } = useI18n()
 const appStore = useAppStore()
+const { copyToClipboard } = useClipboard()
 const recordingEnabled = ref<boolean | null>(null)
-const recordingContent = reactive({ headers_enabled: true, prompt_enabled: true, filter_preset: false })
+const retentionDays = ref(0)
+const savedRetentionDays = ref(0)
+async function saveRetention() {
+  if (recordingLoading.value || recordingSaving.value) return
+  if (!Number.isInteger(retentionDays.value) || retentionDays.value < 0 || retentionDays.value > 3650) {
+    appStore.showError(t('admin.promptRecords.invalidRetention'))
+    return
+  }
+  recordingSaving.value = true
+  try {
+    const config = await updatePromptRecordingConfig({ retention_days: retentionDays.value })
+    savedRetentionDays.value = retentionDays.value = config.retention_days
+    appStore.showSuccess(t('admin.promptRecords.recordingContentSaved'))
+  } catch {
+    retentionDays.value = savedRetentionDays.value
+    appStore.showError(t('admin.promptRecords.recordingUpdateFailed'))
+  } finally { recordingSaving.value = false }
+}
+const recordingContent = reactive({
+  headers_enabled: true,
+  prompt_enabled: true,
+  response_enabled: true,
+  filter_preset: false,
+  filter_agent_preset: true,
+  filter_skills: true,
+})
 const contentOptions = [
   { key: 'headers_enabled' as const, label: 'admin.promptRecords.requestHeaders' },
   { key: 'prompt_enabled' as const, label: 'admin.promptRecords.recordingPrompt' },
+  { key: 'response_enabled' as const, label: 'admin.promptRecords.recordingResponse' },
   { key: 'filter_preset' as const, label: 'admin.promptRecords.filterPreset' },
+]
+const presetFilterOptions = [
+  { key: 'filter_agent_preset' as const, label: 'admin.promptRecords.filterAgentPreset' },
+  { key: 'filter_skills' as const, label: 'admin.promptRecords.filterSkills' },
 ]
 
 function formatRequestContent(value?: string) {
@@ -440,7 +564,10 @@ async function toggleRecordingContent(key: keyof typeof recordingContent) {
     const config = await updatePromptRecordingConfig({ [key]: !recordingContent[key] })
     recordingContent.headers_enabled = config.headers_enabled
     recordingContent.prompt_enabled = config.prompt_enabled
+    recordingContent.response_enabled = config.response_enabled ?? true
     recordingContent.filter_preset = config.filter_preset ?? false
+    recordingContent.filter_agent_preset = config.filter_agent_preset ?? true
+    recordingContent.filter_skills = config.filter_skills ?? true
     appStore.showSuccess(t('admin.promptRecords.recordingContentSaved'))
   } catch {
     appStore.showError(t('admin.promptRecords.recordingUpdateFailed'))
@@ -466,7 +593,12 @@ let userSearchTimer: ReturnType<typeof setTimeout> | null = null
 let userSearchSequence = 0
 const records = ref<PromptRecordSummary[]>([])
 const selectedKeys = ref<Array<string | number>>([])
-const pagination = reactive({ page: 1, pageSize: getPersistedPageSize(), total: 0 })
+const pagination = reactive({ page: 1, pageSize: Math.min(100, getPersistedPageSize()) })
+const hasMore = ref(false)
+const nextCursor = ref('')
+const cursors = ref<string[]>([''])
+const queueStats = ref<PromptRecordQueueStats | null>(null)
+let activeFilters: Record<string, string | number | undefined> = {}
 let listController: AbortController | null = null
 
 const showDetail = ref(false)
@@ -518,8 +650,27 @@ const detailFields = computed(() => {
   ]
 })
 
+const responseDisplayText = computed(() => {
+  const record = detail.value
+  if (!record) return ''
+  if (record.response_captured_at) {
+    return record.response_text || t(record.response_truncated ? 'admin.promptRecords.incompleteResponse' : 'admin.promptRecords.emptyResponse')
+  }
+  return t(['first_turn', 'subsequent_turn'].includes(record.stage) ? 'admin.promptRecords.websocketResponseUnsupported' : 'admin.promptRecords.responseUnavailable')
+})
+
+function formatMiB(bytes = 0) { return (bytes / (1024 * 1024)).toFixed(1) }
+
 async function loadRecords(resetPage = false) {
-  if (resetPage) pagination.page = 1
+  if (resetPage) {
+    pagination.page = 1
+    cursors.value = ['']
+    activeFilters = {
+      model: model.value || undefined, request_id: requestId.value || undefined,
+      user_id: selectedUserID.value || undefined,
+      start_at: toRFC3339(startAt.value), end_at: toRFC3339(endAt.value),
+    }
+  }
   listController?.abort()
   const controller = new AbortController()
   listController = controller
@@ -527,19 +678,19 @@ async function loadRecords(resetPage = false) {
   listError.value = false
   try {
     const result = await listPromptRecords({
+      ...activeFilters,
+      pagination: 'cursor',
+      cursor: cursors.value[pagination.page - 1] || undefined,
       page: pagination.page,
       page_size: pagination.pageSize,
-      model: model.value || undefined,
-      request_id: requestId.value || undefined,
-      user_id: selectedUserID.value || undefined,
-      start_at: toRFC3339(startAt.value),
-      end_at: toRFC3339(endAt.value),
-    })
-    if (controller.signal.aborted) return
+    }, controller.signal)
+    if (controller.signal.aborted || listController !== controller) return
     records.value = result.items
-    pagination.total = result.total
+    hasMore.value = result.has_more && !!result.next_cursor
+    nextCursor.value = result.next_cursor || ''
+    queueStats.value = result.queue
   } catch (error: any) {
-    if (error?.name === 'AbortError') return
+    if (controller.signal.aborted || listController !== controller || error?.name === 'AbortError' || error?.code === 'ERR_CANCELED') return
     console.error('[PromptRecordsView] Failed to load prompt records:', error)
     listError.value = true
     appStore.showError(t('admin.promptRecords.loadFailed'))
@@ -552,40 +703,47 @@ async function loadRecords(resetPage = false) {
 }
 
 async function loadRecordingConfig() {
-	recordingLoading.value = true
-	try {
-		const config = await getPromptRecordingConfig()
-		recordingEnabled.value = config.enabled
-		recordingContent.headers_enabled = config.headers_enabled ?? true
-		recordingContent.prompt_enabled = config.prompt_enabled ?? true
-		recordingContent.filter_preset = config.filter_preset ?? false
-	} catch (error) {
-		console.error('[PromptRecordsView] Failed to load prompt recording config:', error)
-		appStore.showError(t('admin.promptRecords.recordingLoadFailed'))
-	} finally {
-		recordingLoading.value = false
-	}
+  recordingLoading.value = true
+  try {
+    const config = await getPromptRecordingConfig()
+    recordingEnabled.value = config.enabled
+    savedRetentionDays.value = retentionDays.value = config.retention_days ?? 0
+    recordingContent.headers_enabled = config.headers_enabled ?? true
+    recordingContent.prompt_enabled = config.prompt_enabled ?? true
+    recordingContent.response_enabled = config.response_enabled ?? true
+    recordingContent.filter_preset = config.filter_preset ?? false
+    recordingContent.filter_agent_preset = config.filter_agent_preset ?? true
+    recordingContent.filter_skills = config.filter_skills ?? true
+  } catch (error) {
+    console.error('[PromptRecordsView] Failed to load prompt recording config:', error)
+    appStore.showError(t('admin.promptRecords.recordingLoadFailed'))
+  } finally {
+    recordingLoading.value = false
+  }
 }
 
 async function toggleRecording() {
-	if (recordingEnabled.value === null || recordingLoading.value || recordingSaving.value) return
-	recordingSaving.value = true
-	const nextEnabled = !recordingEnabled.value
-	try {
-		const config = await updatePromptRecordingConfig(nextEnabled)
-		recordingEnabled.value = config.enabled
-		recordingContent.headers_enabled = config.headers_enabled ?? recordingContent.headers_enabled
-			recordingContent.prompt_enabled = config.prompt_enabled ?? recordingContent.prompt_enabled
-			recordingContent.filter_preset = config.filter_preset ?? recordingContent.filter_preset
-		appStore.showSuccess(t(config.enabled
-			? 'admin.promptRecords.recordingEnabledSuccess'
-			: 'admin.promptRecords.recordingDisabledSuccess'))
-	} catch (error) {
-		console.error('[PromptRecordsView] Failed to update prompt recording config:', error)
-		appStore.showError(t('admin.promptRecords.recordingUpdateFailed'))
-	} finally {
-		recordingSaving.value = false
-	}
+  if (recordingEnabled.value === null || recordingLoading.value || recordingSaving.value) return
+  recordingSaving.value = true
+  const nextEnabled = !recordingEnabled.value
+  try {
+    const config = await updatePromptRecordingConfig(nextEnabled)
+    recordingEnabled.value = config.enabled
+    recordingContent.headers_enabled = config.headers_enabled ?? recordingContent.headers_enabled
+    recordingContent.prompt_enabled = config.prompt_enabled ?? recordingContent.prompt_enabled
+    recordingContent.response_enabled = config.response_enabled ?? recordingContent.response_enabled
+    recordingContent.filter_preset = config.filter_preset ?? recordingContent.filter_preset
+    recordingContent.filter_agent_preset = config.filter_agent_preset ?? recordingContent.filter_agent_preset
+    recordingContent.filter_skills = config.filter_skills ?? recordingContent.filter_skills
+    appStore.showSuccess(t(config.enabled
+      ? 'admin.promptRecords.recordingEnabledSuccess'
+      : 'admin.promptRecords.recordingDisabledSuccess'))
+  } catch (error) {
+    console.error('[PromptRecordsView] Failed to update prompt recording config:', error)
+    appStore.showError(t('admin.promptRecords.recordingUpdateFailed'))
+  } finally {
+    recordingSaving.value = false
+  }
 }
 
 function applyFilters() {
@@ -602,16 +760,22 @@ function resetFilters() {
 }
 
 function refreshRecords() {
-  void loadRecords()
+  void loadRecords(true)
 }
 
 function handlePageChange(page: number) {
+  if (page < 1 || loading.value) return
+  if (page > pagination.page) {
+    if (!hasMore.value) return
+    cursors.value[page - 1] = nextCursor.value
+  }
   pagination.page = page
   void loadRecords()
 }
 
 function handlePageSizeChange(pageSize: number) {
   pagination.pageSize = pageSize
+  setPersistedPageSize(pageSize)
   void loadRecords(true)
 }
 
@@ -634,6 +798,11 @@ async function openDetail(id: number) {
   } finally {
     if (sequence === detailRequestSequence) detailLoading.value = false
   }
+}
+
+async function copyRequestBody() {
+  if (!detail.value?.request_body) return
+  await copyToClipboard(detail.value.request_body, t('admin.promptRecords.requestBodyCopied'))
 }
 
 function closeDetail() {
@@ -782,7 +951,7 @@ function formatIdentity(username: string, email: string, id: number) {
 onMounted(() => {
 	document.addEventListener('click', onDocumentClick)
 	void loadRecordingConfig()
-	void loadRecords()
+		void loadRecords(true)
 })
 onUnmounted(() => {
   listController?.abort()

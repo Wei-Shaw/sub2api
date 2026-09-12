@@ -37,6 +37,16 @@ export interface PromptRecord extends PromptRecordSummary {
 }
 
 export interface PromptRecordQueueStats {
+	in_flight_bytes?: number
+	byte_capacity?: number
+	pending_responses?: number
+	request_dropped_total?: number
+	response_dropped_total?: number
+	request_failed_total?: number
+	response_failed_total?: number
+	expired_deleted_total?: number
+	cleanup_failed_total?: number
+	cleanup_backlog?: boolean
   queue_length: number
   queue_capacity: number
   overflow_length: number
@@ -48,6 +58,8 @@ export interface PromptRecordQueueStats {
 }
 
 export interface PromptRecordPage {
+	has_more: boolean
+	next_cursor?: string
 	items: PromptRecordSummary[]
   page: number
   page_size: number
@@ -57,10 +69,14 @@ export interface PromptRecordPage {
 }
 
 export interface PromptRecordingConfig {
+	retention_days: number
 	enabled: boolean
 	headers_enabled: boolean
 	prompt_enabled: boolean
+	response_enabled: boolean
 	filter_preset: boolean
+	filter_agent_preset: boolean
+	filter_skills: boolean
 }
 
 export async function getPromptRecordingConfig() {
@@ -73,8 +89,8 @@ export async function updatePromptRecordingConfig(update: boolean | Partial<Prom
 	return data
 }
 
-export async function listPromptRecords(params: Record<string, string | number | undefined>) {
-  const { data } = await apiClient.get<PromptRecordPage>('/admin/prompt-records', { params })
+export async function listPromptRecords(params: Record<string, string | number | undefined>, signal?: AbortSignal) {
+  const { data } = await apiClient.get<PromptRecordPage>('/admin/prompt-records', { params, signal })
   return data
 }
 

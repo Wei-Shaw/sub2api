@@ -1,0 +1,37 @@
+{
+  "user_id": 4,
+  "api_key_id": 13,
+  "login_status": 200,
+  "original_config": {
+    "enabled": true,
+    "headers_enabled": true,
+    "prompt_enabled": true,
+    "filter_preset": false
+  },
+  "results": [
+    {
+      "agent": "codex",
+      "filter_preset": false,
+      "record_id": 17,
+      "response_linked": true
+    },
+    {
+      "agent": "claude",
+      "filter_preset": false,
+      "record_id": 18,
+      "response_linked": true
+    },
+    {
+      "agent": "codex",
+      "filter_preset": true,
+      "record_id": 19,
+      "response_linked": true
+    },
+    {
+      "agent": "claude",
+      "filter_preset": true,
+      "record_id": 20,
+      "response_linked": true
+    }
+  ]
+}

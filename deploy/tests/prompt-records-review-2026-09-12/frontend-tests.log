@@ -1,0 +1,17 @@
+
+> sub2api-frontend@1.0.0 test:run /app/frontend
+> vitest run src/features/prompt-records/__tests__/PromptRecordsView.spec.ts src/features/prompt-audit/__tests__/PromptAuditView.spec.ts
+
+
+ RUN  v2.1.9 /app/frontend
+
+Browserslist: browsers data (caniuse-lite) is 9 months old. Please run:
+  npx update-browserslist-db@latest
+  Why you should do it regularly: https://github.com/browserslist/update-db#readme
+ ✓ src/features/prompt-audit/__tests__/PromptAuditView.spec.ts (8 tests) 207ms
+ ✓ src/features/prompt-records/__tests__/PromptRecordsView.spec.ts (7 tests) 376ms
+
+ Test Files  2 passed (2)
+      Tests  15 passed (15)
+   Start at  13:47:23
+   Duration  2.88s (transform 1.57s, setup 139ms, collect 3.11s, tests 582ms, environment 652ms, prepare 131ms)

@@ -1,0 +1,4 @@
+ok  	github.com/Wei-Shaw/sub2api/internal/securityaudit	5.616s
+ok  	github.com/Wei-Shaw/sub2api/internal/handler	37.635s
+ok  	github.com/Wei-Shaw/sub2api/internal/server/routes	8.615s
+ok  	github.com/Wei-Shaw/sub2api/migrations	0.004s

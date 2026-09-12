@@ -99,7 +99,8 @@ func runSecurityAudit(c *gin.Context, reqLog *zap.Logger, coordinator *securitya
 		return &decision
 	}
 	request := buildSecurityAuditRequest(c, apiKey, subject, protocol, model, body, stage)
-	c.Set(securityAuditRequestContextKey, request.Clone())
+	request, responseReference := coordinator.PreparePromptRecording(request)
+	c.Set(securityAuditRequestContextKey, responseReference)
 	if isSecurityAuditWebSocketStage(request.Stage) {
 		if turnNo, ok := securityAuditWSTurn(c); ok {
 			bodyHash := sha256.Sum256(body)
@@ -149,6 +150,9 @@ func (w *securityAuditResponseWriter) WriteString(data string) (int, error) {
 }
 
 func (w *securityAuditResponseWriter) capture(data []byte) {
+	defer func() {
+		_ = recover()
+	}()
 	if w.context == nil {
 		return
 	}
@@ -171,7 +175,7 @@ func (w *securityAuditResponseWriter) capture(data []byte) {
 func (h *Handlers) PromptResponseCaptureMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		coordinator := h.promptResponseCoordinator()
-		if coordinator == nil || !coordinator.PromptRecordingEnabled() {
+		if coordinator == nil || !coordinator.PromptResponseRecordingEnabled() {
 			c.Next()
 			return
 		}
@@ -179,23 +183,33 @@ func (h *Handlers) PromptResponseCaptureMiddleware() gin.HandlerFunc {
 		c.Writer = writer
 		c.Next()
 
+		if !coordinator.PromptResponseRecordingEnabled() {
+			return
+		}
 		if c.Writer.Status() < http.StatusOK || c.Writer.Status() >= http.StatusMultipleChoices {
 			return
 		}
-		value, exists := c.Get(securityAuditRequestContextKey)
-		request, ok := value.(securityaudit.Request)
-		if !exists || !ok || isSecurityAuditWebSocketStage(request.Stage) {
-			return
-		}
-		extraction := securityaudit.ExtractResponseText(writer.body.Bytes(), writer.truncated)
-		if !extraction.Recognized {
-			return
-		}
-		coordinator.RecordResponse(c.Request.Context(), request, securityaudit.PromptResponse{
-			Text: extraction.Text, Length: extraction.Length, Truncated: extraction.Truncated,
-			CapturedAt: time.Now().UTC(),
-		})
+		recordCapturedPromptResponse(c, coordinator, writer)
 	}
+}
+
+func recordCapturedPromptResponse(c *gin.Context, coordinator *securityaudit.Coordinator, writer *securityAuditResponseWriter) {
+	defer func() {
+		_ = recover()
+	}()
+	value, exists := c.Get(securityAuditRequestContextKey)
+	request, ok := value.(securityaudit.Request)
+	if !exists || !ok || isSecurityAuditWebSocketStage(request.Stage) {
+		return
+	}
+	extraction := securityaudit.ExtractResponseText(writer.body.Bytes(), writer.truncated)
+	if !extraction.Recognized {
+		return
+	}
+	coordinator.RecordResponse(c.Request.Context(), request, securityaudit.PromptResponse{
+		Text: extraction.Text, Length: extraction.Length, Truncated: extraction.Truncated,
+		CapturedAt: time.Now().UTC(),
+	})
 }
 
 func (h *Handlers) promptResponseCoordinator() *securityaudit.Coordinator {

@@ -26,27 +26,38 @@ func ExtractResponseText(body []byte, captureTruncated bool) ResponseTextExtract
 	}
 	var text string
 	var recognized bool
+	var incomplete bool
 	if bytes.HasPrefix(trimmed, []byte("data:")) || bytes.Contains(trimmed, []byte("\ndata:")) {
-		text, recognized = extractSSEResponseText(trimmed)
+		text, recognized, incomplete = extractSSEResponseText(trimmed)
 	} else {
 		var payload any
 		if json.Unmarshal(trimmed, &payload) == nil {
 			text, recognized = extractJSONResponseText(payload)
+		} else if captureTruncated {
+			// Only close the captured prefix structurally. No response text is
+			// invented, and a recovered prefix is always marked incomplete.
+			if prefix := completeResponseJSONPrefix(trimmed); json.Unmarshal(prefix, &payload) == nil {
+				text, recognized = extractJSONResponseText(payload)
+			}
+			incomplete = true
+		} else if trimmed[0] == '{' || trimmed[0] == '[' {
+			incomplete = true
 		}
 	}
 	originalLength := utf8.RuneCountInString(text)
 	text, textTruncated := truncateUTF8(text, PromptResponseTextLimit)
 	return ResponseTextExtraction{
-		Text: text, Length: originalLength, Recognized: recognized,
-		Truncated: captureTruncated || textTruncated,
+		Text: text, Length: originalLength, Recognized: recognized || captureTruncated || incomplete,
+		Truncated: captureTruncated || textTruncated || incomplete,
 	}
 }
 
-func extractSSEResponseText(body []byte) (string, bool) {
+func extractSSEResponseText(body []byte) (string, bool, bool) {
 	scanner := bufio.NewScanner(bytes.NewReader(body))
-	scanner.Buffer(make([]byte, 64*1024), 1024*1024)
+	scanner.Buffer(make([]byte, 64*1024), len(body)+1)
 	var deltas, final []string
 	recognized := false
+	incomplete := false
 	for scanner.Scan() {
 		line := strings.TrimSpace(scanner.Text())
 		if !strings.HasPrefix(line, "data:") {
@@ -58,7 +69,10 @@ func extractSSEResponseText(body []byte) (string, bool) {
 		}
 		var payload any
 		if json.Unmarshal([]byte(data), &payload) != nil {
-			continue
+			incomplete = true
+			if json.Unmarshal(completeResponseJSONPrefix([]byte(data)), &payload) != nil {
+				continue
+			}
 		}
 		parts, ok := extractStreamingDelta(payload)
 		if ok {
@@ -73,9 +87,79 @@ func extractSSEResponseText(body []byte) (string, bool) {
 		}
 	}
 	if len(deltas) > 0 {
-		return strings.Join(deltas, ""), true
+		return strings.Join(deltas, ""), true, incomplete || scanner.Err() != nil
 	}
-	return strings.Join(final, ""), recognized
+	return strings.Join(final, ""), recognized, incomplete || scanner.Err() != nil
+}
+
+// completeResponseJSONPrefix recovers a bounded JSON capture cut inside a text
+// value. Invalid prefixes remain invalid; callers store an incomplete status.
+func completeResponseJSONPrefix(body []byte) []byte {
+	closers := make([]byte, 0, 16)
+	inString, escaped, stringStart := false, false, 0
+	for i, b := range body {
+		if inString {
+			if escaped {
+				escaped = false
+				continue
+			}
+			if b == '\\' {
+				escaped = true
+			} else if b == '"' {
+				inString = false
+			}
+			continue
+		}
+		switch b {
+		case '"':
+			inString, stringStart = true, i
+		case '{':
+			closers = append(closers, '}')
+		case '[':
+			closers = append(closers, ']')
+		case '}', ']':
+			if len(closers) == 0 || closers[len(closers)-1] != b {
+				return nil
+			}
+			closers = closers[:len(closers)-1]
+		}
+		if len(closers) > 256 {
+			return nil
+		}
+	}
+	prefix := append([]byte(nil), body...)
+	if inString {
+		// Remove an unfinished escape (including a partial Unicode escape).
+		for i := stringStart + 1; i < len(prefix); i++ {
+			if prefix[i] != '\\' {
+				continue
+			}
+			if i+1 >= len(prefix) || (prefix[i+1] == 'u' && i+6 > len(prefix)) {
+				prefix = prefix[:i]
+				break
+			}
+			if prefix[i+1] == 'u' {
+				i += 5
+			} else {
+				i++
+			}
+		}
+		for len(prefix) > stringStart+1 && !utf8.Valid(prefix[stringStart+1:]) {
+			prefix = prefix[:len(prefix)-1]
+		}
+		prefix = append(prefix, '"')
+	}
+	prefix = bytes.TrimSpace(prefix)
+	if len(prefix) > 0 && prefix[len(prefix)-1] == ',' {
+		prefix = bytes.TrimSpace(prefix[:len(prefix)-1])
+	}
+	if len(prefix) > 0 && prefix[len(prefix)-1] == ':' {
+		prefix = append(prefix, "null"...)
+	}
+	for i := len(closers) - 1; i >= 0; i-- {
+		prefix = append(prefix, closers[i])
+	}
+	return prefix
 }
 
 func extractStreamingDelta(payload any) ([]string, bool) {

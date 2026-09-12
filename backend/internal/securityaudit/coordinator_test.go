@@ -30,6 +30,17 @@ type fakePromptEngine struct {
 	evaluates atomic.Int64
 }
 
+type panickingPromptRecorder struct{}
+
+func (*panickingPromptRecorder) RecordPrompt(context.Context, Request) {
+	panic("prompt recording failed")
+}
+func (*panickingPromptRecorder) RecordResponse(context.Context, Request, PromptResponse) {
+	panic("response recording failed")
+}
+func (*panickingPromptRecorder) PromptRecordingEnabled() bool         { return true }
+func (*panickingPromptRecorder) PromptResponseRecordingEnabled() bool { return true }
+
 func (f *fakePromptEngine) EffectiveMode() Mode { return f.mode }
 func (f *fakePromptEngine) Enqueue(context.Context, Request) error {
 	f.enqueues.Add(1)
@@ -81,6 +92,22 @@ func TestCoordinatorDoesNotMutateRequestBody(t *testing.T) {
 	decision := NewCoordinator(&fakeLegacyEngine{}, prompt).Check(context.Background(), Request{Body: body})
 	require.True(t, decision.AllowNextStage)
 	require.Equal(t, original, body)
+}
+
+func TestCoordinatorIsolatesPromptRecordingPanics(t *testing.T) {
+	coordinator := NewCoordinator(&fakeLegacyEngine{decision: &LegacyDecision{Allowed: true}}, nil, &panickingPromptRecorder{})
+	request, responseReference := coordinator.PreparePromptRecording(Request{
+		RequestID: "isolated", Body: []byte(`{"messages":[{"role":"user","content":"hello"}]}`),
+	})
+	require.Empty(t, responseReference.Body)
+	require.Nil(t, responseReference.Headers)
+
+	decision := coordinator.Check(context.Background(), request)
+	require.True(t, decision.AllowNextStage)
+	require.Equal(t, DecisionAllow, decision.Kind)
+	require.NotPanics(t, func() {
+		coordinator.RecordResponse(context.Background(), responseReference, PromptResponse{Text: "unchanged"})
+	})
 }
 
 func TestCoordinatorBlockingPriorityCoversBothEngineDecisionMatrix(t *testing.T) {

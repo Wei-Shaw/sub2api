@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>提示词记录回归预览</title></head>
+<body><div id="app"></div><script type="module">
+import { createApp } from 'vue'
+import { createPinia } from 'pinia'
+import { createRouter, createMemoryHistory } from 'vue-router'
+import View from './src/features/prompt-records/PromptRecordsView.vue'
+import i18n, { initI18n } from './src/i18n'
+import { apiClient } from './src/api/client'
+import { useAuthStore } from './src/stores/auth'
+import './src/style.css'
+import './src/styles/simple-theme.css'
+// This isolated preview never connects to the real API or stores credentials.
+const config = { enabled:true, headers_enabled:true, prompt_enabled:true, filter_preset:false }
+apiClient.defaults.adapter = async request => {
+  let data = {}
+  if (request.url?.includes('/prompt-records/recording')) {
+    if (request.method === 'put') Object.assign(config, JSON.parse(request.data))
+    data = { ...config }
+  } else if (request.url?.includes('/prompt-records')) data = { items:[], total:0, page:1, page_size:20, total_pages:0 }
+  return { data:{code:0,data}, status:200, statusText:'OK', headers:{}, config:request }
+}
+const app = createApp(View)
+app.use(createPinia())
+useAuthStore().user = {id:0,role:'admin',email:'preview@example.test',username:'回归预览'}
+const router = createRouter({history:createMemoryHistory(),routes:[{path:'/:pathMatch(.*)*',component:{template:'<div />'}}]})
+app.use(router)
+await initI18n()
+i18n.global.locale.value = 'zh'
+app.use(i18n)
+await router.isReady()
+app.mount('#app')
+</script></body></html>

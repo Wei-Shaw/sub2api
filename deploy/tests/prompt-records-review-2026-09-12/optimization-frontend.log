@@ -1,0 +1,23 @@
+
+> sub2api-frontend@1.0.0 test:run /app/frontend
+> vitest run src/features/prompt-records/__tests__ src/features/prompt-audit/__tests__ src/i18n/__tests__/localeKeyCompleteness.spec.ts
+
+
+ RUN  v2.1.9 /app/frontend
+
+ ✓ src/features/prompt-audit/__tests__/viewModel.spec.ts (6 tests) 5ms
+ ✓ src/features/prompt-records/__tests__/api.spec.ts (1 test) 5ms
+ ✓ src/features/prompt-audit/__tests__/api.spec.ts (3 tests) 6ms
+Browserslist: browsers data (caniuse-lite) is 9 months old. Please run:
+  npx update-browserslist-db@latest
+  Why you should do it regularly: https://github.com/browserslist/update-db#readme
+ ✓ src/features/prompt-audit/__tests__/components.spec.ts (10 tests) 189ms
+ ✓ src/features/prompt-audit/__tests__/integrationSurface.spec.ts (3 tests) 20ms
+ ✓ src/features/prompt-audit/__tests__/PromptAuditView.spec.ts (8 tests) 224ms
+ ✓ src/features/prompt-records/__tests__/PromptRecordsView.spec.ts (11 tests) 453ms
+ ✓ src/i18n/__tests__/localeKeyCompleteness.spec.ts (3 tests) 25ms
+
+ Test Files  8 passed (8)
+      Tests  45 passed (45)
+   Start at  14:45:43
+   Duration  22.12s (transform 39.70s, setup 768ms, collect 62.63s, tests 926ms, environment 3.11s, prepare 849ms)

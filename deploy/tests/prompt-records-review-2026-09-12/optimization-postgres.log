@@ -1,0 +1,5 @@
+=== RUN   TestRecordOptimizationPostgres
+    prompt_record_optimization_integration_test.go:106: Verified migrations, tied-timestamp cursors, concurrent insertion, substring filters, expiry visibility, bounded cleanup and legacy detail compatibility.
+--- PASS: TestRecordOptimizationPostgres (0.11s)
+PASS
+ok  	github.com/Wei-Shaw/sub2api/internal/securityaudit	0.130s

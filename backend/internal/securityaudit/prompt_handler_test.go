@@ -116,35 +116,53 @@ func (s *fakePromptAdminService) GetPromptRecordingConfig() PromptRecordingConfi
 	return s.recording
 }
 
-func (s *fakePromptAdminService) SavePromptRecordingSettings(_ context.Context, enabled, headers, prompt, filterPreset *bool) (PromptRecordingConfig, error) {
-	if enabled != nil {
-		s.recording.Enabled = *enabled
+func (s *fakePromptAdminService) SavePromptRecordingSettings(_ context.Context, update PromptRecordingSettingsUpdate) (PromptRecordingConfig, error) {
+	if update.Enabled != nil {
+		s.recording.Enabled = *update.Enabled
 	}
-	if headers != nil {
-		s.recording.HeadersEnabled = *headers
+	if update.HeadersEnabled != nil {
+		s.recording.HeadersEnabled = *update.HeadersEnabled
 	}
-	if prompt != nil {
-		s.recording.PromptEnabled = *prompt
+	if update.PromptEnabled != nil {
+		s.recording.PromptEnabled = *update.PromptEnabled
 	}
-	if filterPreset != nil {
-		s.recording.FilterPreset = *filterPreset
+	if update.ResponseEnabled != nil {
+		s.recording.ResponseEnabled = *update.ResponseEnabled
+	}
+	if update.FilterPreset != nil {
+		s.recording.FilterPreset = *update.FilterPreset
+	}
+	if update.FilterAgentPreset != nil {
+		s.recording.FilterAgentPreset = *update.FilterAgentPreset
+	}
+	if update.FilterSkills != nil {
+		s.recording.FilterSkills = *update.FilterSkills
 	}
 	return s.recording, nil
 }
 
 func TestPromptRecordingContentEndpoints(t *testing.T) {
-	service := &fakePromptAdminService{recording: PromptRecordingConfig{Enabled: true, HeadersEnabled: true, PromptEnabled: true}}
+	service := &fakePromptAdminService{recording: PromptRecordingConfig{
+		Enabled: true, HeadersEnabled: true, PromptEnabled: true, ResponseEnabled: true,
+		FilterAgentPreset: true, FilterSkills: true,
+	}}
 	router := promptAdminRouter(service)
-	for _, key := range []string{"headers_enabled", "prompt_enabled"} {
+	for _, key := range []string{"headers_enabled", "prompt_enabled", "response_enabled", "filter_agent_preset", "filter_skills"} {
 		result := promptAdminRequest(t, router, http.MethodPut, "/admin/prompt-records/recording", map[string]any{key: false})
 		require.Equal(t, http.StatusOK, result.Code)
 		require.Contains(t, result.Body.String(), `"`+key+`":false`)
 		require.Contains(t, result.Body.String(), `"enabled":true`)
 	}
-	combined := promptAdminRequest(t, router, http.MethodPut, "/admin/prompt-records/recording", map[string]any{"enabled": false, "headers_enabled": true, "prompt_enabled": true})
+	combined := promptAdminRequest(t, router, http.MethodPut, "/admin/prompt-records/recording", map[string]any{
+		"enabled": false, "headers_enabled": true, "prompt_enabled": true, "response_enabled": true,
+		"filter_preset": true, "filter_agent_preset": true, "filter_skills": true,
+	})
 	require.Equal(t, http.StatusOK, combined.Code)
-	require.Equal(t, PromptRecordingConfig{Enabled: false, HeadersEnabled: true, PromptEnabled: true}, service.recording)
-	for _, payload := range []map[string]any{{"headers_enabled": "false"}, {"prompt_enabled": nil}} {
+	require.Equal(t, PromptRecordingConfig{
+		Enabled: false, HeadersEnabled: true, PromptEnabled: true, ResponseEnabled: true,
+		FilterPreset: true, FilterAgentPreset: true, FilterSkills: true,
+	}, service.recording)
+	for _, payload := range []map[string]any{{"headers_enabled": "false"}, {"prompt_enabled": nil}, {"response_enabled": "false"}, {"filter_skills": nil}} {
 		result := promptAdminRequest(t, router, http.MethodPut, "/admin/prompt-records/recording", payload)
 		require.Equal(t, http.StatusBadRequest, result.Code)
 	}

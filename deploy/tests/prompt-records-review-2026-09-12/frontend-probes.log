@@ -1,0 +1,29 @@
+
+> sub2api-frontend@1.0.0 test:run /app/frontend
+> vitest run src/features/prompt-records/__tests__/audit-probes.spec.ts
+
+
+ RUN  v2.1.9 /app/frontend
+
+Browserslist: browsers data (caniuse-lite) is 9 months old. Please run:
+  npx update-browserslist-db@latest
+  Why you should do it regularly: https://github.com/browserslist/update-db#readme
+stderr | src/features/prompt-records/__tests__/audit-probes.spec.ts > observes an obsolete request failure overriding a successful newer page
+[PromptRecordsView] Failed to load prompt records: Error: synthetic obsolete request failure
+    at /app/frontend/src/features/prompt-records/__tests__/audit-probes.spec.ts:60:13
+    at file:///app/frontend/node_modules/.pnpm/@vitest+runner@2.1.9/node_modules/@vitest/runner/dist/index.js:533:5
+    at runTest (file:///app/frontend/node_modules/.pnpm/@vitest+runner@2.1.9/node_modules/@vitest/runner/dist/index.js:1056:11)
+    at runSuite (file:///app/frontend/node_modules/.pnpm/@vitest+runner@2.1.9/node_modules/@vitest/runner/dist/index.js:1205:15)
+    at runFiles (file:///app/frontend/node_modules/.pnpm/@vitest+runner@2.1.9/node_modules/@vitest/runner/dist/index.js:1262:5)
+    at startTests (file:///app/frontend/node_modules/.pnpm/@vitest+runner@2.1.9/node_modules/@vitest/runner/dist/index.js:1271:3)
+    at file:///app/frontend/node_modules/.pnpm/vitest@2.1.9_@types+node@20.19.27_jsdom@24.1.3/node_modules/vitest/dist/chunks/runBaseTests.3qpJUEJM.js:126:11
+    at withEnv (file:///app/frontend/node_modules/.pnpm/vitest@2.1.9_@types+node@20.19.27_jsdom@24.1.3/node_modules/vitest/dist/chunks/runBaseTests.3qpJUEJM.js:90:5)
+    at run (file:///app/frontend/node_modules/.pnpm/vitest@2.1.9_@types+node@20.19.27_jsdom@24.1.3/node_modules/vitest/dist/chunks/runBaseTests.3qpJUEJM.js:112:3)
+    at runBaseTests (file:///app/frontend/node_modules/.pnpm/vitest@2.1.9_@types+node@20.19.27_jsdom@24.1.3/node_modules/vitest/dist/chunks/base.BZZh4cSm.js:29:3)
+
+ ✓ src/features/prompt-records/__tests__/audit-probes.spec.ts (2 tests) 198ms
+
+ Test Files  1 passed (1)
+      Tests  2 passed (2)
+   Start at  13:53:18
+   Duration  2.47s (transform 1.18s, setup 76ms, collect 1.43s, tests 198ms, environment 297ms, prepare 70ms)

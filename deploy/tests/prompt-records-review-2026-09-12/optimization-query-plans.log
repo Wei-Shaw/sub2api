@@ -1,0 +1,42 @@
+Timing is on.
+INSERT 0 200000
+Time: 4349.121 ms (00:04.349)
+VACUUM
+Time: 366.237 ms
+                                                                       QUERY PLAN
+--------------------------------------------------------------------------------------------------------------------------------------------------------
+ Aggregate  (cost=10458.38..10458.39 rows=1 width=8) (actual time=28.833..28.836 rows=1.00 loops=1)
+   Buffers: shared hit=3638 read=5918 written=4308
+   ->  Bitmap Heap Scan on prompt_records  (cost=438.37..10434.81 rows=9427 width=0) (actual time=3.141..28.481 rows=10006.00 loops=1)
+         Recheck Cond: ((model)::text ~~* '%target%'::text)
+         Filter: ((expires_at IS NULL) OR (expires_at > now()))
+         Heap Blocks: exact=9525
+         Buffers: shared hit=3638 read=5918 written=4308
+         ->  Bitmap Index Scan on idx_prompt_records_model_trgm  (cost=0.00..436.01 rows=9427 width=0) (actual time=2.044..2.045 rows=10007.00 loops=1)
+               Index Cond: ((model)::text ~~* '%target%'::text)
+               Index Searches: 1
+               Buffers: shared hit=27 read=4
+ Planning:
+   Buffers: shared hit=69 read=4
+ Planning Time: 0.402 ms
+ Execution Time: 28.943 ms
+(15 rows)
+
+Time: 30.506 ms
+Time: 5.882 ms
+                                                                            QUERY PLAN
+------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Limit  (cost=0.42..5.29 rows=21 width=191) (actual time=0.017..0.023 rows=21.00 loops=1)
+   Buffers: shared hit=5
+   ->  Index Scan using idx_prompt_records_created_at on prompt_records  (cost=0.42..23132.55 rows=99764 width=191) (actual time=0.016..0.020 rows=21.00 loops=1)
+         Index Cond: (ROW(created_at, id) < ROW('2026-09-11 08:13:26+00'::timestamp with time zone, 100001))
+         Filter: ((expires_at IS NULL) OR (expires_at > now()))
+         Index Searches: 1
+         Buffers: shared hit=5
+ Planning:
+   Buffers: shared hit=50 read=1 written=1
+ Planning Time: 0.363 ms
+ Execution Time: 0.076 ms
+(11 rows)
+
+Time: 0.921 ms

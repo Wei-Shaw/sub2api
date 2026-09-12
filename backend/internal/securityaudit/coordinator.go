@@ -21,6 +21,10 @@ type PromptRecordingState interface {
 	PromptRecordingEnabled() bool
 }
 
+type PromptResponseRecordingState interface {
+	PromptResponseRecordingEnabled() bool
+}
+
 type Coordinator struct {
 	legacy LegacyEngine
 	prompt PromptEngine
@@ -40,7 +44,7 @@ func (c *Coordinator) Check(ctx context.Context, req Request) Decision {
 		return allowDecision(nil, nil)
 	}
 	if c.record != nil {
-		c.record.RecordPrompt(ctx, req)
+		c.recordPromptSafely(ctx, req)
 	}
 	mode := ModeOff
 	if c.prompt != nil {
@@ -69,10 +73,48 @@ func (c *Coordinator) RecordResponse(ctx context.Context, req Request, response 
 	if !ok {
 		return
 	}
-	recorder.RecordResponse(ctx, req, response)
+	func() {
+		defer func() {
+			if recover() != nil {
+				LogError(EventPromptRecordPersistFailed, mergeLogFields(requestLogFields(req), map[string]any{
+					"status": "failed", "error_code": "prompt_record_response_callback_panic",
+				}))
+			}
+		}()
+		recorder.RecordResponse(ctx, req, response)
+	}()
 }
 
-func (c *Coordinator) PromptRecordingEnabled() bool {
+func (c *Coordinator) PreparePromptRecording(req Request) (Request, Request) {
+	responseReference := req
+	responseReference.Body = nil
+	responseReference.Headers = nil
+	if c == nil || !c.PromptResponseRecordingEnabled() {
+		return req, responseReference
+	}
+	return newPromptRecordingRequestPair(req)
+}
+
+func (c *Coordinator) recordPromptSafely(ctx context.Context, req Request) {
+	defer func() {
+		if recover() != nil {
+			if req.recordingCorrelation != nil {
+				req.recordingCorrelation.complete(PromptRecordKey{}, false)
+			}
+			LogError(EventPromptRecordPersistFailed, mergeLogFields(requestLogFields(req), map[string]any{
+				"status": "failed", "error_code": "prompt_record_callback_panic",
+			}))
+		}
+	}()
+	c.record.RecordPrompt(ctx, req)
+}
+
+func (c *Coordinator) PromptRecordingEnabled() (enabled bool) {
+	defer func() {
+		if recover() != nil {
+			enabled = false
+		}
+	}()
 	if c == nil || c.record == nil {
 		return false
 	}
@@ -81,6 +123,22 @@ func (c *Coordinator) PromptRecordingEnabled() bool {
 		return true
 	}
 	return state.PromptRecordingEnabled()
+}
+
+func (c *Coordinator) PromptResponseRecordingEnabled() (enabled bool) {
+	defer func() {
+		if recover() != nil {
+			enabled = false
+		}
+	}()
+	if !c.PromptRecordingEnabled() {
+		return false
+	}
+	state, ok := c.record.(PromptResponseRecordingState)
+	if !ok {
+		return true
+	}
+	return state.PromptResponseRecordingEnabled()
 }
 
 func (c *Coordinator) checkBlocking(ctx context.Context, req Request) Decision {

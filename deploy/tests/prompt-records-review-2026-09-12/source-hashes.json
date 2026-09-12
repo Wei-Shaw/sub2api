@@ -1,0 +1,74 @@
+[
+  {
+    "Path": "D:\\project\\ai\\git\\sub2api-new-ui\\backend\\internal\\securityaudit\\prompt_record.go",
+    "Hash": "76C4ED50EABA8EEA888BB96EADB2C10D5E7501E4E0DB28B908777CD8FB11E175"
+  },
+  {
+    "Path": "D:\\project\\ai\\git\\sub2api-new-ui\\backend\\internal\\securityaudit\\prompt_record_prepare.go",
+    "Hash": "A468DEEAEC33332DCC7EDD183848615FCB7F6E1FC7C2B077084255AEA8F0DF2C"
+  },
+  {
+    "Path": "D:\\project\\ai\\git\\sub2api-new-ui\\backend\\internal\\securityaudit\\prompt_record_document.go",
+    "Hash": "F5A26450A9FFA7032085C6B258C6E7983AB1FD7ED6B43DBE2083413ABEAF7BB4"
+  },
+  {
+    "Path": "D:\\project\\ai\\git\\sub2api-new-ui\\backend\\internal\\securityaudit\\prompt_snapshot.go",
+    "Hash": "74F3A3B2972A0AA1F271381EB7D938F7640793C11580152020886F9367C1A67D"
+  },
+  {
+    "Path": "D:\\project\\ai\\git\\sub2api-new-ui\\backend\\internal\\securityaudit\\prompt_preset_filter.go",
+    "Hash": "D1FAFB74CE9A0D109FA4B607A74FD7A43C831E07270D47D62F486540D854A5D2"
+  },
+  {
+    "Path": "D:\\project\\ai\\git\\sub2api-new-ui\\backend\\internal\\securityaudit\\prompt_response.go",
+    "Hash": "91B17144986D5D803F382DAC16E723211D58DB66D5E1FE289D072436CBEA2C75"
+  },
+  {
+    "Path": "D:\\project\\ai\\git\\sub2api-new-ui\\backend\\internal\\securityaudit\\prompt_service.go",
+    "Hash": "EDDCBD0C42B3CEA98A3E6FB1D73AD0B63242D40D96591C7A83C85070572F5594"
+  },
+  {
+    "Path": "D:\\project\\ai\\git\\sub2api-new-ui\\backend\\internal\\securityaudit\\prompt_types.go",
+    "Hash": "6BF17BD830EB4CC03A9CEF73DA34C94D6E54D2BE8B5B8F3C9C911B4729C8FBC1"
+  },
+  {
+    "Path": "D:\\project\\ai\\git\\sub2api-new-ui\\backend\\internal\\securityaudit\\prompt_config_store.go",
+    "Hash": "5B7CB38B0FCA6CBCC8959EA149A49E4E820A179950C0890646AB348D2E31F488"
+  },
+  {
+    "Path": "D:\\project\\ai\\git\\sub2api-new-ui\\backend\\internal\\securityaudit\\prompt_handler.go",
+    "Hash": "3FC27FB15023D71357C871BFA7F00F917E9BEABE8D5710E4BC6A188F3F14DDBF"
+  },
+  {
+    "Path": "D:\\project\\ai\\git\\sub2api-new-ui\\backend\\internal\\handler\\security_audit_helper.go",
+    "Hash": "5CCC0EBAA62239F47EF997B439DF9E12C8A953A225A5F145F3E87A579BC621F8"
+  },
+  {
+    "Path": "D:\\project\\ai\\git\\sub2api-new-ui\\backend\\internal\\server\\middleware\\audit_log.go",
+    "Hash": "80AC1F99512D6D3E8DE000DD5B37B5AF54B84BD8A2C3FC3EC8744388C543F700"
+  },
+  {
+    "Path": "D:\\project\\ai\\git\\sub2api-new-ui\\backend\\internal\\server\\routes\\admin.go",
+    "Hash": "0CEB204CB7F28D393FE9789880EFA8A64AD1FCE2765C08701C2F12C4539D68E4"
+  },
+  {
+    "Path": "D:\\project\\ai\\git\\sub2api-new-ui\\frontend\\src\\features\\prompt-records\\PromptRecordsView.vue",
+    "Hash": "FF72BDEB14F064A8B0164FEC7BC77535F6B5BE82C6783A36AABFAB5A9F78A58B"
+  },
+  {
+    "Path": "D:\\project\\ai\\git\\sub2api-new-ui\\frontend\\src\\features\\prompt-records\\api.ts",
+    "Hash": "B9C19204B17292785A140D0AEFB6010B6DAE5F46B6C178950A9A42CD10D662BD"
+  },
+  {
+    "Path": "D:\\project\\ai\\git\\sub2api-new-ui\\backend\\migrations\\239_prompt_records.sql",
+    "Hash": "8384BC41A37CBF71319614549C4E8471A70254EDE6365116FDAC1BC3965CA5BC"
+  },
+  {
+    "Path": "D:\\project\\ai\\git\\sub2api-new-ui\\backend\\migrations\\240_prompt_record_responses.sql",
+    "Hash": "96FF80C7272D6911ABA0609ADB2055C93D236618EADE5C1A927FCCBFCFCC2D3F"
+  },
+  {
+    "Path": "D:\\project\\ai\\git\\sub2api-new-ui\\backend\\migrations\\241_prompt_record_requests.sql",
+    "Hash": "B7D00AE1EE799D59FFD995261E4113DFBC3FE12853572F8F24ECB6460463CB34"
+  }
+]

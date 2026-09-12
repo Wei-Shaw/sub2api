@@ -13,9 +13,10 @@ import (
 )
 
 type blockingPromptRecordRepository struct {
-	started  chan struct{}
-	release  chan struct{}
-	inserted atomic.Int64
+	started         chan struct{}
+	release         chan struct{}
+	responseUpdated chan PromptRecordKey
+	inserted        atomic.Int64
 }
 
 func (r *blockingPromptRecordRepository) InsertPromptRecord(context.Context, *PromptRecord) error {
@@ -27,7 +28,10 @@ func (r *blockingPromptRecordRepository) InsertPromptRecord(context.Context, *Pr
 	<-r.release
 	return nil
 }
-func (*blockingPromptRecordRepository) UpdatePromptRecordResponse(context.Context, Request, string, PromptResponse) (bool, error) {
+func (r *blockingPromptRecordRepository) UpdatePromptRecordResponse(_ context.Context, key PromptRecordKey, _ PromptResponse) (bool, error) {
+	if r.responseUpdated != nil {
+		r.responseUpdated <- key
+	}
 	return true, nil
 }
 
@@ -75,6 +79,62 @@ func TestPromptRecordServiceUsesBoundedQueuesWhenSaturated(t *testing.T) {
 	require.Equal(t, int64(3), repo.inserted.Load())
 }
 
+func TestPromptRecordResponseQueueIsIndependentFromBlockedRequestWrites(t *testing.T) {
+	repo := &blockingPromptRecordRepository{
+		started: make(chan struct{}, 1), release: make(chan struct{}), responseUpdated: make(chan PromptRecordKey, 1),
+	}
+	service := newPromptRecordService(repo, 1, 1, 1)
+	service.RecordPrompt(context.Background(), Request{
+		RequestID: "blocked-write", Protocol: "openai_chat", Body: []byte(`{"messages":[{"role":"user","content":"hello"}]}`),
+	})
+	select {
+	case <-repo.started:
+	case <-time.After(time.Second):
+		t.Fatal("record worker did not start")
+	}
+
+	_, responseReference := newPromptRecordingRequestPair(Request{RequestID: "response", Stage: "http", APIKeyID: 7})
+	key := PromptRecordKey{RequestID: "response", Stage: "http", APIKeyID: 7, PromptHash: "hash"}
+	responseReference.recordingCorrelation.complete(key, true)
+	service.RecordResponse(context.Background(), responseReference, PromptResponse{Text: "ok", CapturedAt: time.Now()})
+
+	select {
+	case updated := <-repo.responseUpdated:
+		require.Equal(t, key, updated)
+	case <-time.After(time.Second):
+		t.Fatal("response update was blocked by the request record worker")
+	}
+	close(repo.release)
+}
+
+type recoveringPromptRecordRepository struct {
+	blockingPromptRecordRepository
+	calls atomic.Int64
+	done  chan struct{}
+}
+
+func (r *recoveringPromptRecordRepository) InsertPromptRecord(context.Context, *PromptRecord) error {
+	if r.calls.Add(1) == 1 {
+		panic("record storage panic")
+	}
+	r.done <- struct{}{}
+	return nil
+}
+
+func TestPromptRecordWorkerRecoversFromStoragePanic(t *testing.T) {
+	repo := &recoveringPromptRecordRepository{done: make(chan struct{}, 1)}
+	service := newPromptRecordService(repo, 2, 1, 1)
+	request := Request{Protocol: "openai_chat", Body: []byte(`{"messages":[{"role":"user","content":"hello"}]}`)}
+	service.RecordPrompt(context.Background(), request)
+	service.RecordPrompt(context.Background(), request)
+	select {
+	case <-repo.done:
+	case <-time.After(time.Second):
+		t.Fatal("record worker stopped after a storage panic")
+	}
+	require.GreaterOrEqual(t, service.QueueStats().PersistFailed, int64(1))
+}
+
 func TestListPromptRecordsReturnsCallMetadataWithoutPromptText(t *testing.T) {
 	db, mock, err := sqlmock.New()
 	require.NoError(t, err)
@@ -82,9 +142,9 @@ func TestListPromptRecordsReturnsCallMetadataWithoutPromptText(t *testing.T) {
 	repository := NewPostgreSQLRepository(db)
 	createdAt := time.Date(2026, time.September, 11, 12, 0, 0, 0, time.UTC)
 
-	mock.ExpectQuery(regexp.QuoteMeta("SELECT COUNT(*) FROM prompt_records WHERE 1=1")).
+	mock.ExpectQuery(regexp.QuoteMeta("SELECT COUNT(*) FROM prompt_records WHERE (expires_at IS NULL OR expires_at > NOW())")).
 		WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(1))
-	mock.ExpectQuery("SELECT id, request_id, turn_no, stage.*FROM prompt_records WHERE 1=1 ORDER BY created_at DESC, id DESC").
+	mock.ExpectQuery("SELECT id, request_id, turn_no, stage.*FROM prompt_records WHERE .*expires_at.* ORDER BY created_at DESC, id DESC").
 		WithArgs(20, 0).
 		WillReturnRows(sqlmock.NewRows([]string{
 			"id", "request_id", "turn_no", "stage", "user_id", "username_snapshot", "user_email_snapshot",

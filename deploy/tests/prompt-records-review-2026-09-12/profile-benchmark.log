@@ -1,0 +1,7 @@
+goos: linux
+goarch: amd64
+pkg: github.com/Wei-Shaw/sub2api/internal/securityaudit
+cpu: Intel(R) Core(TM) Ultra 7 255H
+BenchmarkAuditPreparePromptRecord/enabled/1MiB-16         	      10	 166694831 ns/op	   6.29 MB/s	47537046 B/op	     181 allocs/op
+PASS
+ok  	github.com/Wei-Shaw/sub2api/internal/securityaudit	1.907s

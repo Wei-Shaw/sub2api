@@ -1,0 +1,206 @@
+/******** QUERY *********/
+CREATE TABLE IF NOT EXISTS prompt_records (
+    id BIGSERIAL PRIMARY KEY,
+    request_id VARCHAR(128) NOT NULL DEFAULT '',
+    turn_no INTEGER NOT NULL DEFAULT 0,
+    stage VARCHAR(32) NOT NULL DEFAULT 'http',
+    user_id BIGINT,
+    username_snapshot VARCHAR(255) NOT NULL DEFAULT '',
+    user_email_snapshot VARCHAR(320) NOT NULL DEFAULT '',
+    api_key_id BIGINT,
+    api_key_name_snapshot VARCHAR(255) NOT NULL DEFAULT '',
+    group_id BIGINT,
+    group_name VARCHAR(255) NOT NULL DEFAULT '',
+    provider VARCHAR(64) NOT NULL DEFAULT '',
+    endpoint VARCHAR(128) NOT NULL DEFAULT '',
+    protocol VARCHAR(64) NOT NULL DEFAULT '',
+    model VARCHAR(255) NOT NULL DEFAULT '',
+    prompt_hash CHAR(64) NOT NULL DEFAULT '',
+    prompt_text TEXT NOT NULL DEFAULT '',
+    prompt_length INTEGER NOT NULL DEFAULT 0,
+    message_count INTEGER NOT NULL DEFAULT 0,
+    risk_status VARCHAR(32) NOT NULL DEFAULT 'pending',
+    risk_result JSONB NOT NULL DEFAULT '{}'::jsonb,
+    risk_checked_at TIMESTAMPTZ,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    expires_at TIMESTAMPTZ
+);
+/************************/
+
+CREATE TABLE
+/******** QUERY *********/
+CREATE INDEX IF NOT EXISTS idx_prompt_records_created_at ON prompt_records (created_at DESC, id DESC);
+/************************/
+
+CREATE INDEX
+/******** QUERY *********/
+CREATE INDEX IF NOT EXISTS idx_prompt_records_user_created ON prompt_records (user_id, created_at DESC, id DESC);
+/************************/
+
+CREATE INDEX
+/******** QUERY *********/
+CREATE INDEX IF NOT EXISTS idx_prompt_records_api_key_created ON prompt_records (api_key_id, created_at DESC, id DESC);
+/************************/
+
+CREATE INDEX
+/******** QUERY *********/
+CREATE INDEX IF NOT EXISTS idx_prompt_records_hash ON prompt_records (prompt_hash);
+/************************/
+
+CREATE INDEX
+/******** QUERY *********/
+CREATE UNIQUE INDEX IF NOT EXISTS uq_prompt_records_dedupe
+    ON prompt_records (request_id, stage, turn_no, prompt_hash, COALESCE(api_key_id, 0));
+/************************/
+
+CREATE INDEX
+/******** QUERY *********/
+ALTER TABLE prompt_records
+    ADD COLUMN IF NOT EXISTS response_text TEXT NOT NULL DEFAULT '',
+    ADD COLUMN IF NOT EXISTS response_length INTEGER NOT NULL DEFAULT 0,
+    ADD COLUMN IF NOT EXISTS response_truncated BOOLEAN NOT NULL DEFAULT FALSE,
+    ADD COLUMN IF NOT EXISTS response_captured_at TIMESTAMPTZ;
+/************************/
+
+ALTER TABLE
+/******** QUERY *********/
+ALTER TABLE prompt_records
+    ADD COLUMN IF NOT EXISTS request_body TEXT NOT NULL DEFAULT '',
+    ADD COLUMN IF NOT EXISTS request_headers TEXT NOT NULL DEFAULT '';
+/************************/
+
+ALTER TABLE
+/******** QUERY *********/
+INSERT INTO prompt_records (request_id, user_id, api_key_id, model, stage, prompt_hash, prompt_text, request_body, created_at)
+SELECT 'synthetic-' || n, n % 100 + 1, n % 1000 + 1,
+       CASE WHEN n % 20 = 0 THEN 'synthetic-target-model' ELSE 'synthetic-common-model' END,
+       'http', md5(n::text) || md5(n::text), repeat('synthetic text ', 8), '{"input":"synthetic text"}',
+       TIMESTAMPTZ '2026-09-12 12:00:00+00' - n * INTERVAL '1 second'
+FROM generate_series(1, 200000) AS n;
+/************************/
+
+INSERT 0 200000
+/******** QUERY *********/
+VACUUM ANALYZE prompt_records;
+/************************/
+
+VACUUM
+/******** QUERY *********/
+SELECT count(*) AS synthetic_records, pg_size_pretty(pg_total_relation_size('prompt_records')) AS total_disk FROM prompt_records;
+/************************/
+
+ synthetic_records | total_disk
+-------------------+------------
+            200000 | 174 MB
+(1 row)
+
+/******** QUERY *********/
+EXPLAIN (ANALYZE, BUFFERS) SELECT COUNT(*) FROM prompt_records WHERE 1=1;
+/************************/
+
+                                                                                    QUERY PLAN
+----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Finalize Aggregate  (cost=5246.30..5246.31 rows=1 width=8) (actual time=8.961..11.425 rows=1.00 loops=1)
+   Buffers: shared hit=552
+   ->  Gather  (cost=5246.09..5246.30 rows=2 width=8) (actual time=8.836..11.418 rows=3.00 loops=1)
+         Workers Planned: 2
+         Workers Launched: 2
+         Buffers: shared hit=552
+         ->  Partial Aggregate  (cost=4246.09..4246.10 rows=1 width=8) (actual time=6.270..6.271 rows=1.00 loops=3)
+               Buffers: shared hit=552
+               ->  Parallel Index Only Scan using prompt_records_pkey on prompt_records  (cost=0.42..4037.75 rows=83333 width=0) (actual time=0.068..4.322 rows=66666.67 loops=3)
+                     Heap Fetches: 0
+                     Index Searches: 1
+                     Buffers: shared hit=552
+ Planning Time: 0.098 ms
+ Execution Time: 11.458 ms
+(14 rows)
+
+/******** QUERY *********/
+EXPLAIN (ANALYZE, BUFFERS) SELECT COUNT(*) FROM prompt_records WHERE 1=1 AND model ILIKE '%target%';
+/************************/
+
+                                                                   QUERY PLAN
+-------------------------------------------------------------------------------------------------------------------------------------------------
+ Finalize Aggregate  (cost=11576.34..11576.35 rows=1 width=8) (actual time=50.716..55.055 rows=1.00 loops=1)
+   Buffers: shared hit=6396 read=3128 written=260
+   ->  Gather  (cost=11576.12..11576.33 rows=2 width=8) (actual time=50.425..55.042 rows=3.00 loops=1)
+         Workers Planned: 2
+         Workers Launched: 2
+         Buffers: shared hit=6396 read=3128 written=260
+         ->  Partial Aggregate  (cost=10576.12..10576.13 rows=1 width=8) (actual time=46.201..46.204 rows=1.00 loops=3)
+               Buffers: shared hit=6396 read=3128 written=260
+               ->  Parallel Seq Scan on prompt_records  (cost=0.00..10565.67 rows=4183 width=0) (actual time=0.726..46.062 rows=3333.33 loops=3)
+                     Filter: ((model)::text ~~* '%target%'::text)
+                     Rows Removed by Filter: 63333
+                     Buffers: shared hit=6396 read=3128 written=260
+ Planning:
+   Buffers: shared hit=3
+ Planning Time: 0.172 ms
+ Execution Time: 55.096 ms
+(16 rows)
+
+/******** QUERY *********/
+EXPLAIN (ANALYZE, BUFFERS)
+SELECT id, request_id, turn_no, stage, COALESCE(user_id,0), username_snapshot,
+user_email_snapshot, COALESCE(api_key_id,0), api_key_name_snapshot, group_id, group_name, provider, endpoint,
+protocol, model, prompt_hash, prompt_length, message_count, risk_status, risk_checked_at, created_at, expires_at
+FROM prompt_records WHERE 1=1 ORDER BY created_at DESC, id DESC LIMIT 20 OFFSET 0;
+/************************/
+
+                                                                            QUERY PLAN
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Limit  (cost=0.42..3.23 rows=20 width=192) (actual time=0.666..0.670 rows=20.00 loops=1)
+   Buffers: shared hit=1 read=3 written=3
+   ->  Index Scan using idx_prompt_records_created_at on prompt_records  (cost=0.42..28114.36 rows=200000 width=192) (actual time=0.665..0.668 rows=20.00 loops=1)
+         Index Searches: 1
+         Buffers: shared hit=1 read=3 written=3
+ Planning:
+   Buffers: shared hit=86 read=3 written=3
+ Planning Time: 2.074 ms
+ Execution Time: 0.692 ms
+(9 rows)
+
+/******** QUERY *********/
+EXPLAIN (ANALYZE, BUFFERS)
+SELECT id, request_id, turn_no, stage, COALESCE(user_id,0), username_snapshot,
+user_email_snapshot, COALESCE(api_key_id,0), api_key_name_snapshot, group_id, group_name, provider, endpoint,
+protocol, model, prompt_hash, prompt_length, message_count, risk_status, risk_checked_at, created_at, expires_at
+FROM prompt_records WHERE 1=1 ORDER BY created_at DESC, id DESC LIMIT 20 OFFSET 100000;
+/************************/
+
+                                                                               QUERY PLAN
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Limit  (cost=14057.39..14060.20 rows=20 width=192) (actual time=353.468..353.546 rows=20.00 loops=1)
+   Buffers: shared hit=1303 read=3846 written=3652
+   ->  Index Scan using idx_prompt_records_created_at on prompt_records  (cost=0.42..28114.36 rows=200000 width=192) (actual time=0.017..350.859 rows=100020.00 loops=1)
+         Index Searches: 1
+         Buffers: shared hit=1303 read=3846 written=3652
+ Planning Time: 0.042 ms
+ Execution Time: 353.589 ms
+(7 rows)
+
+/******** QUERY *********/
+SELECT created_at AS cursor_created_at, id AS cursor_id FROM prompt_records ORDER BY created_at DESC, id DESC OFFSET 99999 LIMIT 1
+/************************/
+
+/******** QUERY *********/
+EXPLAIN (ANALYZE, BUFFERS)
+SELECT id, request_id, turn_no, stage, COALESCE(user_id,0), username_snapshot,
+user_email_snapshot, COALESCE(api_key_id,0), api_key_name_snapshot, group_id, group_name, provider, endpoint,
+protocol, model, prompt_hash, prompt_length, message_count, risk_status, risk_checked_at, created_at, expires_at
+FROM prompt_records WHERE (created_at,id) < ('2026-09-11 08:13:20+00'::timestamptz, 100000)
+ORDER BY created_at DESC, id DESC LIMIT 20;
+/************************/
+
+                                                                            QUERY PLAN
+------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Limit  (cost=0.42..4.98 rows=20 width=192) (actual time=0.019..0.024 rows=20.00 loops=1)
+   Buffers: shared hit=5
+   ->  Index Scan using idx_prompt_records_created_at on prompt_records  (cost=0.42..22590.36 rows=99100 width=192) (actual time=0.018..0.022 rows=20.00 loops=1)
+         Index Cond: (ROW(created_at, id) < ROW('2026-09-11 08:13:20+00'::timestamp with time zone, 100000))
+         Index Searches: 1
+         Buffers: shared hit=5
+ Planning Time: 0.118 ms
+ Execution Time: 0.087 ms
+(8 rows)

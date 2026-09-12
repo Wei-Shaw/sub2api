@@ -1,0 +1,23 @@
+File: audit-profile.test
+Build ID: b838095bc6d4b3516b7299899338d53491f734a7
+Type: alloc_space
+Time: 2026-09-12 13:51:48 UTC
+Showing nodes accounting for 544.16MB, 98.53% of 552.27MB total
+Dropped 71 nodes (cum <= 2.76MB)
+Showing top 15 nodes out of 53
+      flat  flat%   sum%        cum   cum%
+  180.35MB 32.66% 32.66%   180.35MB 32.66%  github.com/Wei-Shaw/sub2api/internal/securityaudit.TrimRunes (inline)
+  108.71MB 19.68% 52.34%   109.21MB 19.78%  regexp.(*Regexp).replaceAll
+   92.52MB 16.75% 69.09%   179.76MB 32.55%  regexp.(*Regexp).ReplaceAllString
+   42.59MB  7.71% 76.80%    42.59MB  7.71%  encoding/json/jsontext.(*decoderState).fetch
+   28.81MB  5.22% 82.02%    28.81MB  5.22%  bytes.Clone (inline)
+   21.97MB  3.98% 86.00%    43.95MB  7.96%  regexp.(*Regexp).ReplaceAllStringFunc
+   20.82MB  3.77% 89.77%   424.87MB 76.93%  github.com/Wei-Shaw/sub2api/internal/securityaudit.extractPromptSnapshotDocument
+   20.80MB  3.77% 93.54%    20.80MB  3.77%  slices.Grow[go.shape.[]uint8,go.shape.uint8] (inline)
+   17.16MB  3.11% 96.64%    17.16MB  3.11%  internal/bytealg.MakeNoZero
+    6.94MB  1.26% 97.90%     6.94MB  1.26%  encoding/json/v2.makeString
+    3.51MB  0.63% 98.53%     3.51MB  0.63%  runtime.mallocgc
+         0     0% 98.53%    49.53MB  8.97%  encoding/json.(*Decoder).Decode
+         0     0% 98.53%    49.60MB  8.98%  encoding/json.Marshal
+         0     0% 98.53%    20.80MB  3.77%  encoding/json/internal/jsonwire.AppendQuote
+         0     0% 98.53%    42.59MB  7.71%  encoding/json/jsontext.(*Decoder).ReadValue (inline)

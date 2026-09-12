@@ -54,17 +54,22 @@ func NewPromptService(
 }
 
 func (s *PromptService) RecordPrompt(ctx context.Context, req Request) {
-	if s != nil && s.records != nil && s.PromptRecordingEnabled() {
-		config := s.GetPromptRecordingConfig()
-		req.recordingSkipHeaders = !config.HeadersEnabled
-		req.recordingSkipPrompt = !config.PromptEnabled
-		req.recordingFilterPreset = config.FilterPreset
-		s.records.RecordPrompt(ctx, req)
+	if s == nil || s.records == nil || !s.PromptRecordingEnabled() {
+		req.recordingCorrelation.complete(PromptRecordKey{}, false)
+		return
 	}
+	config := s.GetPromptRecordingConfig()
+	req.recordingSkipHeaders = !config.HeadersEnabled
+	req.recordingSkipPrompt = !config.PromptEnabled
+	req.recordingFilterPreset = config.FilterPreset
+	req.recordingFilterAgent = config.FilterAgentPreset
+	req.recordingFilterSkills = config.FilterSkills
+	req.recordingRetentionDays = config.RetentionDays
+	s.records.RecordPrompt(ctx, req)
 }
 
 func (s *PromptService) RecordResponse(ctx context.Context, req Request, response PromptResponse) {
-	if s != nil && s.records != nil && s.PromptRecordingEnabled() {
+	if s != nil && s.records != nil && s.PromptResponseRecordingEnabled() {
 		s.records.RecordResponse(ctx, req, response)
 	}
 }
@@ -75,19 +80,45 @@ type promptRecordingConfigStore interface {
 }
 
 type PromptRecordingConfig struct {
-	Enabled        bool `json:"enabled"`
-	HeadersEnabled bool `json:"headers_enabled"`
-	PromptEnabled  bool `json:"prompt_enabled"`
-	FilterPreset   bool `json:"filter_preset"`
+	RetentionDays     int  `json:"retention_days"`
+	Enabled           bool `json:"enabled"`
+	HeadersEnabled    bool `json:"headers_enabled"`
+	PromptEnabled     bool `json:"prompt_enabled"`
+	ResponseEnabled   bool `json:"response_enabled"`
+	FilterPreset      bool `json:"filter_preset"`
+	FilterAgentPreset bool `json:"filter_agent_preset"`
+	FilterSkills      bool `json:"filter_skills"`
+}
+
+type PromptRecordingSettingsUpdate struct {
+	RetentionDays     *int  `json:"retention_days"`
+	Enabled           *bool `json:"enabled"`
+	HeadersEnabled    *bool `json:"headers_enabled"`
+	PromptEnabled     *bool `json:"prompt_enabled"`
+	ResponseEnabled   *bool `json:"response_enabled"`
+	FilterPreset      *bool `json:"filter_preset"`
+	FilterAgentPreset *bool `json:"filter_agent_preset"`
+	FilterSkills      *bool `json:"filter_skills"`
+}
+
+func (u PromptRecordingSettingsUpdate) Empty() bool {
+	return u.Enabled == nil && u.HeadersEnabled == nil && u.PromptEnabled == nil && u.ResponseEnabled == nil &&
+		u.FilterPreset == nil && u.FilterAgentPreset == nil && u.FilterSkills == nil && u.RetentionDays == nil
+}
+
+func (u PromptRecordingSettingsUpdate) OnlyEnabled() bool {
+	return u.Enabled != nil && u.HeadersEnabled == nil && u.PromptEnabled == nil && u.ResponseEnabled == nil &&
+		u.FilterPreset == nil && u.FilterAgentPreset == nil && u.FilterSkills == nil && u.RetentionDays == nil
 }
 
 type promptRecordingContentStore interface {
-	PromptRecordingContent() (bool, bool)
+	PromptRecordingContent() (bool, bool, bool)
 	PromptRecordingFilterPreset() bool
-	SavePromptRecordingSettings(context.Context, *bool, *bool, *bool, *bool) error
+	PromptRecordingPresetFilters() (bool, bool)
+	SavePromptRecordingSettings(context.Context, PromptRecordingSettingsUpdate) error
 }
 
-func (s *PromptService) SavePromptRecordingSettings(ctx context.Context, enabled, headers, prompt, filterPreset *bool) (PromptRecordingConfig, error) {
+func (s *PromptService) SavePromptRecordingSettings(ctx context.Context, update PromptRecordingSettingsUpdate) (PromptRecordingConfig, error) {
 	if s == nil {
 		return PromptRecordingConfig{}, errors.New("prompt recording service unavailable")
 	}
@@ -95,7 +126,7 @@ func (s *PromptService) SavePromptRecordingSettings(ctx context.Context, enabled
 	if !ok {
 		return PromptRecordingConfig{}, errors.New("prompt recording configuration unavailable")
 	}
-	if err := store.SavePromptRecordingSettings(ctx, enabled, headers, prompt, filterPreset); err != nil {
+	if err := store.SavePromptRecordingSettings(ctx, update); err != nil {
 		return PromptRecordingConfig{}, err
 	}
 	return s.GetPromptRecordingConfig(), nil
@@ -112,12 +143,23 @@ func (s *PromptService) PromptRecordingEnabled() bool {
 	return store.PromptRecordingEnabled()
 }
 
+func (s *PromptService) PromptResponseRecordingEnabled() bool {
+	return s != nil && s.PromptRecordingEnabled() && s.GetPromptRecordingConfig().ResponseEnabled
+}
+
 func (s *PromptService) GetPromptRecordingConfig() PromptRecordingConfig {
-	config := PromptRecordingConfig{Enabled: s.PromptRecordingEnabled(), HeadersEnabled: true, PromptEnabled: true}
+	config := PromptRecordingConfig{
+		Enabled: s.PromptRecordingEnabled(), HeadersEnabled: true, PromptEnabled: true, ResponseEnabled: true,
+		FilterAgentPreset: true, FilterSkills: true,
+	}
 	if s != nil {
+		if store, ok := s.config.(interface{ PromptRecordingRetentionDays() int }); ok {
+			config.RetentionDays = store.PromptRecordingRetentionDays()
+		}
 		if store, ok := s.config.(promptRecordingContentStore); ok {
-			config.HeadersEnabled, config.PromptEnabled = store.PromptRecordingContent()
+			config.HeadersEnabled, config.PromptEnabled, config.ResponseEnabled = store.PromptRecordingContent()
 			config.FilterPreset = store.PromptRecordingFilterPreset()
+			config.FilterAgentPreset, config.FilterSkills = store.PromptRecordingPresetFilters()
 		}
 	}
 	return config
@@ -177,6 +219,9 @@ func (s *PromptService) Start(ctx context.Context) error {
 	s.lifecycleMu.Unlock()
 	configErr := s.config.Start(background)
 	workerErr := s.runner.Start(background)
+	if s.records != nil {
+		s.records.start()
+	}
 	return errors.Join(configErr, workerErr)
 }
 
@@ -190,6 +235,10 @@ func (s *PromptService) Shutdown(ctx context.Context) error {
 	s.lifecycleMu.Unlock()
 	if cancel != nil {
 		cancel()
+	}
+	var recordErr error
+	if s.records != nil {
+		recordErr = s.records.Shutdown(ctx)
 	}
 	var workerErr error
 	if s.runner != nil {
@@ -208,10 +257,7 @@ func (s *PromptService) Shutdown(ctx context.Context) error {
 	if s.config != nil {
 		configErr = s.config.Shutdown(ctx)
 	}
-	if workerErr != nil {
-		return workerErr
-	}
-	return configErr
+	return errors.Join(recordErr, workerErr, configErr)
 }
 
 func (s *PromptService) EffectiveMode() Mode {

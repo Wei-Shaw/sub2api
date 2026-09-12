@@ -1,10 +1,12 @@
 package securityaudit
 
 import (
+	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"io"
 	"regexp"
 	"sort"
 	"strings"
@@ -41,10 +43,31 @@ func ExtractBlockingPromptSnapshot(req Request, latestTurnOnly bool) (PromptSnap
 }
 
 func extractPromptSnapshot(req Request, latestTurnOnly bool) (PromptSnapshot, error) {
-	var document any
-	if err := json.Unmarshal(req.Body, &document); err != nil {
+	document, err := decodePromptDocument(req.Body)
+	if err != nil {
 		return PromptSnapshot{}, errors.New("prompt audit request JSON is invalid")
 	}
+	return extractPromptSnapshotDocument(req, document, latestTurnOnly)
+}
+
+func decodePromptDocument(body []byte) (any, error) {
+	decoder := json.NewDecoder(bytes.NewReader(body))
+	decoder.UseNumber()
+	var document any
+	if err := decoder.Decode(&document); err != nil {
+		return nil, err
+	}
+	var extra any
+	if err := decoder.Decode(&extra); !errors.Is(err, io.EOF) {
+		if err == nil {
+			return nil, errors.New("prompt audit request contains multiple JSON values")
+		}
+		return nil, err
+	}
+	return document, nil
+}
+
+func extractPromptSnapshotDocument(req Request, document any, latestTurnOnly bool) (PromptSnapshot, error) {
 	extracted := extractProtocolSegments(req.Protocol, document)
 	segments := normalizeSegmentsLatestUserFirst(extracted)
 	if latestTurnOnly {

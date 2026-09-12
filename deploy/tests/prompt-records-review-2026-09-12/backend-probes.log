@@ -1,0 +1,40 @@
+=== RUN   TestAuditObservationCredentialsRetained
+    zz_prompt_record_audit_test.go:26: Observed: authentication headers are retained verbatim and ExpiresAt is nil.
+--- PASS: TestAuditObservationCredentialsRetained (0.00s)
+=== RUN   TestAuditObservationAgentPresetWithPath
+    zz_prompt_record_audit_test.go:35: Observed: AGENTS.md instructions for <path> survives enabled preset filtering.
+--- PASS: TestAuditObservationAgentPresetWithPath (0.00s)
+=== RUN   TestAuditObservationSSEScannerFailureUnmarked
+    zz_prompt_record_audit_test.go:46: Observed: an oversized SSE line drops the remaining output without a truncation marker.
+--- PASS: TestAuditObservationSSEScannerFailureUnmarked (0.00s)
+=== RUN   TestAuditObservationTruncatedJSONResponseLost
+    zz_prompt_record_audit_test.go:55: Observed: a successful JSON response exceeding the capture limit becomes unrecognized and is skipped.
+--- PASS: TestAuditObservationTruncatedJSONResponseLost (0.01s)
+=== RUN   TestAuditObservationResponseQueueHeadOfLineBlocking
+2026/09/12 13:47:43 ERROR prompt_record.persist_failed user_id=0 provider="" protocol="" group_id=0 stage="" error_code=prompt_record_response_identity_unavailable api_key_id=0 endpoint="" model="" request_id=slow-first status=failed
+    zz_prompt_record_audit_test.go:78: Observed: an already persisted record cannot receive its response while the only response worker waits for another request.
+--- PASS: TestAuditObservationResponseQueueHeadOfLineBlocking (0.15s)
+goos: linux
+goarch: amd64
+pkg: github.com/Wei-Shaw/sub2api/internal/securityaudit
+cpu: Intel(R) Core(TM) Ultra 7 255H
+BenchmarkAuditPreparePromptRecord
+BenchmarkAuditPreparePromptRecord/enabled/1KiB
+BenchmarkAuditPreparePromptRecord/enabled/1KiB-16         	       3	    153780 ns/op	   6.74 MB/s	   51725 B/op	      94 allocs/op
+BenchmarkAuditPreparePromptRecord/prompt_disabled/1KiB
+BenchmarkAuditPreparePromptRecord/prompt_disabled/1KiB-16 	       3	    102995 ns/op	  10.06 MB/s	   56298 B/op	      56 allocs/op
+BenchmarkAuditPreparePromptRecord/enabled/1MiB
+BenchmarkAuditPreparePromptRecord/enabled/1MiB-16         	       3	 168521790 ns/op	   6.22 MB/s	47536938 B/op	     188 allocs/op
+BenchmarkAuditPreparePromptRecord/prompt_disabled/1MiB
+BenchmarkAuditPreparePromptRecord/prompt_disabled/1MiB-16 	       3	  86643455 ns/op	  12.10 MB/s	25336077 B/op	     105 allocs/op
+BenchmarkAuditPreparePromptRecord/enabled/8MiB
+BenchmarkAuditPreparePromptRecord/enabled/8MiB-16         	       3	1362227487 ns/op	   6.16 MB/s	377846301 B/op	     202 allocs/op
+BenchmarkAuditPreparePromptRecord/prompt_disabled/8MiB
+BenchmarkAuditPreparePromptRecord/prompt_disabled/8MiB-16 	       3	 703624950 ns/op	  11.92 MB/s	201505405 B/op	     117 allocs/op
+BenchmarkAuditSaturatedQueueClone
+2026/09/12 13:47:52 WARN prompt_record.enqueue_dropped queue_length=2 provider="" stage="" error_code=prompt_record_queue_full queue_capacity=4 status=dropped request_id="" group_id=0 endpoint="" user_id=0 api_key_id=0 protocol=responses model=""
+2026/09/12 13:47:52 WARN prompt_record.enqueue_dropped protocol=responses endpoint="" model="" error_code=prompt_record_queue_full queue_capacity=4 stage="" api_key_id=0 group_id=0 user_id=0 status=dropped queue_length=2 request_id="" provider=""
+2026/09/12 13:47:52 WARN prompt_record.enqueue_dropped status=dropped api_key_id=0 provider="" endpoint="" protocol=responses stage="" error_code=prompt_record_queue_full user_id=0 model="" request_id="" group_id=0 queue_length=2 queue_capacity=4
+BenchmarkAuditSaturatedQueueClone-16                      	       3	    299581 ns/op	3500.18 MB/s	 1060728 B/op	      15 allocs/op
+PASS
+ok  	github.com/Wei-Shaw/sub2api/internal/securityaudit	9.521s

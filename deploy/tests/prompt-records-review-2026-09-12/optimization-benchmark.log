@@ -1,0 +1,16 @@
+2026/09/12 14:52:00 WARN prompt_record.enqueue_dropped provider="" endpoint="" stage="" model="" api_key_id=0 protocol="" error_code=prompt_record_queue_full status=dropped request_id="" user_id=0 group_id=0
+goos: linux
+goarch: amd64
+pkg: github.com/Wei-Shaw/sub2api/internal/securityaudit
+cpu: Intel(R) Core(TM) Ultra 7 255H
+BenchmarkRecordRejectedBeforeClone-16    	2026/09/12 14:52:00 WARN prompt_record.enqueue_dropped endpoint="" model="" stage="" request_id="" status=dropped error_code=prompt_record_queue_full user_id=0 group_id=0 protocol="" provider="" api_key_id=0
+2026/09/12 14:52:00 WARN prompt_record.enqueue_dropped request_id="" user_id=0 error_code=prompt_record_queue_full protocol="" stage="" group_id=0 provider="" endpoint="" model="" api_key_id=0 status=dropped
+       3	    273813 ns/op	    3477 B/op	      13 allocs/op
+BenchmarkAuditPreparePromptRecord/enabled/1KiB-16         	       3	     47262 ns/op	  21.92 MB/s	   15896 B/op	      60 allocs/op
+BenchmarkAuditPreparePromptRecord/prompt_disabled/1KiB-16 	       3	     60434 ns/op	  17.14 MB/s	    9882 B/op	      31 allocs/op
+BenchmarkAuditPreparePromptRecord/enabled/1MiB-16         	       3	   6353435 ns/op	 165.04 MB/s	 9753504 B/op	      97 allocs/op
+BenchmarkAuditPreparePromptRecord/prompt_disabled/1MiB-16 	       3	   3098932 ns/op	 338.37 MB/s	 6300213 B/op	      46 allocs/op
+BenchmarkAuditPreparePromptRecord/enabled/8MiB-16         	       3	  52602408 ns/op	 159.47 MB/s	75813829 B/op	     101 allocs/op
+BenchmarkAuditPreparePromptRecord/prompt_disabled/8MiB-16 	       3	  25122333 ns/op	 333.91 MB/s	50340256 B/op	      49 allocs/op
+PASS
+ok  	github.com/Wei-Shaw/sub2api/internal/securityaudit	0.460s

@@ -2,9 +2,11 @@ package securityaudit
 
 import (
 	"context"
+	"encoding/base64"
 	"errors"
 	"strconv"
 	"strings"
+	"time"
 
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/response"
@@ -39,13 +41,6 @@ type PromptAdminHandler struct {
 	records promptRecordAdminService
 }
 
-type updatePromptRecordingRequest struct {
-	Enabled        *bool `json:"enabled"`
-	HeadersEnabled *bool `json:"headers_enabled"`
-	PromptEnabled  *bool `json:"prompt_enabled"`
-	FilterPreset   *bool `json:"filter_preset"`
-}
-
 func NewPromptAdminHandler(service PromptAdminService) *PromptAdminHandler {
 	h := &PromptAdminHandler{service: service}
 	if records, ok := service.(promptRecordAdminService); ok {
@@ -67,19 +62,23 @@ func (h *PromptAdminHandler) UpdatePromptRecordingConfig(c *gin.Context) {
 		response.ErrorFrom(c, errors.New("prompt recording service unavailable"))
 		return
 	}
-	var request updatePromptRecordingRequest
-	if err := c.ShouldBindJSON(&request); err != nil || (request.Enabled == nil && request.HeadersEnabled == nil && request.PromptEnabled == nil && request.FilterPreset == nil) {
+	var request PromptRecordingSettingsUpdate
+	if err := c.ShouldBindJSON(&request); err != nil || request.Empty() {
 		response.ErrorFrom(c, infraerrors.BadRequest("prompt_recording_invalid_request", "必须提供记录开关状态"))
 		return
 	}
 	var config PromptRecordingConfig
+	if request.RetentionDays != nil && (*request.RetentionDays < 0 || *request.RetentionDays > 3650) {
+		response.ErrorFrom(c, infraerrors.BadRequest("prompt_recording_invalid_retention", "保留天数必须在 0 至 3650 之间"))
+		return
+	}
 	var err error
-	if request.HeadersEnabled == nil && request.PromptEnabled == nil && request.FilterPreset == nil {
+	if request.OnlyEnabled() {
 		config, err = h.service.SavePromptRecordingConfig(c.Request.Context(), *request.Enabled)
 	} else if service, ok := h.service.(interface {
-		SavePromptRecordingSettings(context.Context, *bool, *bool, *bool, *bool) (PromptRecordingConfig, error)
+		SavePromptRecordingSettings(context.Context, PromptRecordingSettingsUpdate) (PromptRecordingConfig, error)
 	}); ok {
-		config, err = service.SavePromptRecordingSettings(c.Request.Context(), request.Enabled, request.HeadersEnabled, request.PromptEnabled, request.FilterPreset)
+		config, err = service.SavePromptRecordingSettings(c.Request.Context(), request)
 	} else {
 		err = errors.New("prompt recording configuration unavailable")
 	}
@@ -88,7 +87,11 @@ func (h *PromptAdminHandler) UpdatePromptRecordingConfig(c *gin.Context) {
 		response.ErrorFrom(c, err)
 		return
 	}
-	setPromptAdminAudit(c, "success", "", map[string]any{"enabled": config.Enabled, "headers_enabled": config.HeadersEnabled, "prompt_enabled": config.PromptEnabled, "filter_preset": config.FilterPreset})
+	setPromptAdminAudit(c, "success", "", map[string]any{
+		"enabled": config.Enabled, "headers_enabled": config.HeadersEnabled, "prompt_enabled": config.PromptEnabled,
+		"response_enabled": config.ResponseEnabled, "filter_preset": config.FilterPreset,
+		"filter_agent_preset": config.FilterAgentPreset, "filter_skills": config.FilterSkills,
+	})
 	response.Success(c, config)
 }
 
@@ -108,6 +111,22 @@ func (h *PromptAdminHandler) ListPromptRecords(c *gin.Context) {
 		return
 	}
 	filter := PromptRecordFilter{RequestID: strings.TrimSpace(c.Query("request_id")), Model: strings.TrimSpace(c.Query("model")), Stage: strings.TrimSpace(c.Query("stage"))}
+	filter.CursorMode = c.Query("pagination") == "cursor"
+	if cursor := c.Query("cursor"); cursor != "" {
+		decoded, decodeErr := base64.RawURLEncoding.DecodeString(cursor)
+		parts := strings.Split(string(decoded), "|")
+		if decodeErr != nil || len(parts) != 2 || !filter.CursorMode || len(cursor) > 128 {
+			response.ErrorFrom(c, infraerrors.BadRequest("prompt_record_invalid_cursor", "分页游标无效"))
+			return
+		}
+		createdAt, timeErr := time.Parse(time.RFC3339Nano, parts[0])
+		id, idErr := strconv.ParseInt(parts[1], 10, 64)
+		if timeErr != nil || idErr != nil || id <= 0 {
+			response.ErrorFrom(c, infraerrors.BadRequest("prompt_record_invalid_cursor", "分页游标无效"))
+			return
+		}
+		filter.CursorCreatedAt, filter.CursorID = &createdAt, id
+	}
 	if value := strings.TrimSpace(c.Query("user_id")); value != "" {
 		id, parseErr := strconv.ParseInt(value, 10, 64)
 		if parseErr != nil || id <= 0 {

@@ -1,0 +1,45 @@
+{
+  "user_id": 6,
+  "api_key_id": 15,
+  "login_status": 200,
+  "original_config": {
+    "enabled": true,
+    "headers_enabled": true,
+    "prompt_enabled": true,
+    "filter_preset": false
+  },
+  "results": [
+    {
+      "agent": "codex",
+      "filter_preset": false,
+      "record_id": 25,
+      "response_linked": true,
+      "request_bytes": 433,
+      "stored_bytes": 433
+    },
+    {
+      "agent": "claude",
+      "filter_preset": false,
+      "record_id": 26,
+      "response_linked": true,
+      "request_bytes": 332,
+      "stored_bytes": 332
+    },
+    {
+      "agent": "codex",
+      "filter_preset": true,
+      "record_id": 27,
+      "response_linked": true,
+      "request_bytes": 429,
+      "stored_bytes": 95
+    },
+    {
+      "agent": "claude",
+      "filter_preset": true,
+      "record_id": 28,
+      "response_linked": true,
+      "request_bytes": 329,
+      "stored_bytes": 96
+    }
+  ]
+}
