@@ -1,8 +1,9 @@
-import { onMounted, onUnmounted, nextTick } from 'vue'
+import { onMounted, onUnmounted, nextTick, watch } from 'vue'
 import { driver, type Driver, type DriveStep } from 'driver.js'
 import 'driver.js/dist/driver.css'
 import { useAuthStore as useUserStore } from '@/stores/auth'
 import { useOnboardingStore } from '@/stores/onboarding'
+import { useAdminComplianceStore } from '@/stores/adminCompliance'
 import { useI18n } from 'vue-i18n'
 import { getAdminSteps, getUserSteps } from '@/components/Guide/steps'
 
@@ -15,6 +16,7 @@ export function useOnboardingTour(options: OnboardingOptions) {
   const { t } = useI18n()
   const userStore = useUserStore()
   const onboardingStore = useOnboardingStore()
+  const adminComplianceStore = useAdminComplianceStore()
   const storageVersion = 'v4_interactive' // Bump version for new tour type
 
   // Timing constants for better maintainability
@@ -55,6 +57,7 @@ export function useOnboardingTour(options: OnboardingOptions) {
     eventTypes?: string[] // Track which event types were added
   } | null = null
   let autoStartTimer: ReturnType<typeof setTimeout> | null = null
+  let stopAutoStartWatch: (() => void) | null = null
   let globalKeyboardHandler: ((e: KeyboardEvent) => void) | null = null
 
   const getStorageKey = () => {
@@ -74,6 +77,44 @@ export function useOnboardingTour(options: OnboardingOptions) {
 
   const clearSeen = () => {
     localStorage.removeItem(getStorageKey())
+  }
+
+  const clearAutoStartTimer = () => {
+    if (!autoStartTimer) return
+    clearTimeout(autoStartTimer)
+    autoStartTimer = null
+  }
+
+  const canAutoStart = () => {
+    if (!options.autoStart || hasSeen()) {
+      return false
+    }
+    if (onboardingStore.isDriverActive() || userStore.isSimpleMode) {
+      return false
+    }
+    if (userStore.user?.role !== 'admin') {
+      return false
+    }
+    if (!adminComplianceStore.initialized || adminComplianceStore.shouldShow) {
+      return false
+    }
+    return true
+  }
+
+  const scheduleAutoStart = () => {
+    if (!canAutoStart()) {
+      clearAutoStartTimer()
+      return
+    }
+    if (autoStartTimer) {
+      return
+    }
+    autoStartTimer = setTimeout(() => {
+      autoStartTimer = null
+      if (canAutoStart()) {
+        void startTour()
+      }
+    }, TIMING.AUTO_START_DELAY_MS)
   }
 
   /**
@@ -542,16 +583,23 @@ export function useOnboardingTour(options: OnboardingOptions) {
       return
     }
 
-    if (!options.autoStart || hasSeen()) return
-    autoStartTimer = setTimeout(() => {
-      void startTour()
-    }, TIMING.AUTO_START_DELAY_MS)
+    stopAutoStartWatch = watch(
+      () => [
+        adminComplianceStore.initialized,
+        adminComplianceStore.shouldShow,
+        userStore.user?.role,
+        userStore.isSimpleMode,
+      ],
+      scheduleAutoStart,
+      { immediate: true },
+    )
   })
 
   onUnmounted(() => {
-    if (autoStartTimer) {
-      clearTimeout(autoStartTimer)
-      autoStartTimer = null
+    clearAutoStartTimer()
+    if (stopAutoStartWatch) {
+      stopAutoStartWatch()
+      stopAutoStartWatch = null
     }
     // 关键修复：不再此处清理 globalKeyboardHandler，交由 driver.onDestroyed 管理
     onboardingStore.clearControlMethods()
