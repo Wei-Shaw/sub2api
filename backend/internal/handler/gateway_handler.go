@@ -205,6 +205,19 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 		return
 	}
 
+	// 非 haiku 模型的 Claude Code 探测（max_tokens=1，不带 system；切换模型时的模型校验、
+	// 网关模式下的配额探测）在这里本地应答。这类请求此前会被 claude_code_only 校验拒绝（503），
+	// #6838 放行后若继续上行，会被订阅账号的风控判为 429 并把账号推进冷却。haiku 探测沿用
+	// 原有路径（选号后按账号级"拦截预热请求"开关决定是否 mock），行为不变。
+	if isNonHaikuClaudeCodeProbe(isClaudeCodeClient, reqModel, parsedReq.MaxTokens) {
+		if reqStream {
+			sendMockInterceptStream(c, reqModel, InterceptTypeMaxTokensOneHaiku)
+		} else {
+			sendMockInterceptResponse(c, reqModel, InterceptTypeMaxTokensOneHaiku)
+		}
+		return
+	}
+
 	// 在请求上下文中记录 thinking 状态，供 Antigravity 最终模型 key 推导/模型维度限流使用
 	c.Request = c.Request.WithContext(service.WithThinkingEnabled(c.Request.Context(), parsedReq.ThinkingEnabled, h.metadataBridgeEnabled()))
 
@@ -2205,6 +2218,12 @@ func isHaikuModel(model string) bool {
 // 条件：max_tokens == 1 且 model 包含 "haiku"
 func isMaxTokensOneHaikuRequest(model string, maxTokens int) bool {
 	return maxTokens == 1 && isHaikuModel(model)
+}
+
+// isNonHaikuClaudeCodeProbe 判定已通过 Claude Code 客户端校验、打到非 haiku 模型的 max_tokens=1 探测。
+// 这是 #6838 之后唯一会从校验门放行却没有任何拦截兜底的探测形态，由 Messages 入口在选号前本地应答。
+func isNonHaikuClaudeCodeProbe(isClaudeCodeClient bool, model string, maxTokens int) bool {
+	return isClaudeCodeClient && maxTokens == 1 && !isHaikuModel(model)
 }
 
 // detectInterceptType 检测请求是否需要拦截，返回拦截类型
