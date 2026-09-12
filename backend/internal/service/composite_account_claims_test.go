@@ -52,13 +52,14 @@ func TestCompositeAccountClaimsModel_NormalizedLookupHit(t *testing.T) {
 // 规则B：空 mapping 仅当 detector 平台一致且 IsModelSupported 通过。
 func TestCompositeAccountClaimsModel_EmptyMappingNativeOnly(t *testing.T) {
 	deepseek := &Account{Platform: PlatformDeepseek}
-	require.True(t, CompositeAccountClaimsModel(deepseek, "deepseek-chat"))
+	// 使用受支持的 DeepSeek 模型名（空 mapping native claim 受官方白名单约束）。
+	require.True(t, CompositeAccountClaimsModel(deepseek, "deepseek-flash"))
 
 	// detector 平台不一致的空 mapping 账号不得冒领（测试 b 的谓词面）。
 	openAI := &Account{Platform: PlatformOpenAI}
-	require.False(t, CompositeAccountClaimsModel(openAI, "deepseek-chat"))
+	require.False(t, CompositeAccountClaimsModel(openAI, "deepseek-flash"))
 	zhipu := &Account{Platform: PlatformZhipu}
-	require.False(t, CompositeAccountClaimsModel(zhipu, "deepseek-chat"))
+	require.False(t, CompositeAccountClaimsModel(zhipu, "deepseek-flash"))
 
 	// detector 不认识的模型，空 mapping 任何平台都不得 claim。
 	require.False(t, CompositeAccountClaimsModel(deepseek, "unknown-alias"))
@@ -144,9 +145,9 @@ func TestCompositeAccountClaimStrength(t *testing.T) {
 	}
 	require.Equal(t, CompositeClaimNone, CompositeAccountClaimStrength(emptyTarget, "empty-alias"))
 
-	// 受控 native 空 mapping 与精确同强等级。
+	// 受控 native 空 mapping 与精确同强等级（模型名须在 deepseek 官方白名单内）。
 	native := &Account{Platform: PlatformDeepseek}
-	require.Equal(t, CompositeClaimExplicit, CompositeAccountClaimStrength(native, "deepseek-chat"))
+	require.Equal(t, CompositeClaimExplicit, CompositeAccountClaimStrength(native, "deepseek-flash"))
 	// detector 不认识的模型无声明。
 	require.Equal(t, CompositeClaimNone, CompositeAccountClaimStrength(native, "unknown-alias"))
 	require.Equal(t, CompositeClaimNone, CompositeAccountClaimStrength(nil, "gpt-5"))
@@ -176,5 +177,5 @@ func TestCompositeAccountClaimsModel_IgnoresTransientState(t *testing.T) {
 		RateLimitResetAt: &now,
 		OverloadUntil:    &now,
 	}
-	require.True(t, CompositeAccountClaimsModel(account, "deepseek-chat"))
+	require.True(t, CompositeAccountClaimsModel(account, "deepseek-flash"))
 }
