@@ -12,6 +12,12 @@ const EMBEDDED_UI_MODE_VALUE = 'embedded'
 const EMBEDDED_SRC_HOST_QUERY_KEY = 'src_host'
 const EMBEDDED_SRC_QUERY_KEY = 'src_url'
 
+export function resolveCanvasOrigin(buildOrigin: unknown, publicOrigin: unknown): string {
+  const configured = typeof buildOrigin === 'string' ? buildOrigin : ''
+  const published = typeof publicOrigin === 'string' ? publicOrigin : ''
+  return (configured || published).trim().replace(/\/$/, '')
+}
+
 export function buildEmbeddedUrl(
   baseUrl: string,
   userId?: number,

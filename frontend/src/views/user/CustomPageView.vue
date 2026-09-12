@@ -137,7 +137,7 @@ import AppLayout from '@/components/layout/AppLayout.vue'
 import Icon from '@/components/icons/Icon.vue'
 import { buildApiUrl } from '@/api/client'
 import { authAPI } from '@/api'
-import { buildEmbeddedUrl, detectTheme } from '@/utils/embedded-url'
+import { buildEmbeddedUrl, detectTheme, resolveCanvasOrigin } from '@/utils/embedded-url'
 import { marked } from 'marked'
 import DOMPurify from 'dompurify'
 
@@ -244,7 +244,7 @@ const markdownSlug = computed(() => {
 
 const isMarkdownMode = computed(() => !!markdownSlug.value)
 
-const canvasOrigin = computed(() => String(import.meta.env.VITE_CANVAS_ORIGIN || '').trim().replace(/\/$/, ''))
+const canvasOrigin = computed(() => resolveCanvasOrigin(import.meta.env.VITE_CANVAS_ORIGIN, appStore.cachedPublicSettings?.canvas_origin))
 
 const isCanvasEmbed = computed(() => {
   if (!canvasOrigin.value || !menuItem.value || isMarkdownMode.value) return false
