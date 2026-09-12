@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"encoding/base64"
-	"errors"
 	"fmt"
 	"image"
 	"image/color"
@@ -20,21 +19,21 @@ import (
 	"github.com/tidwall/gjson"
 )
 
-func TestOpenAIGatewayServiceForwardImages_OAuthRejectsMismatchedNativeImageParameters(t *testing.T) {
+func TestOpenAIGatewayServiceForwardImages_OAuthReturnsImageWhenUpstreamNormalizesNativeImageParameters(t *testing.T) {
 	tests := []struct {
 		name        string
 		requestBody string
 		response    string
-		param       string
+		outputSize  string
 	}{
 		{
 			name:        "actual size",
 			requestBody: `{"model":"gpt-image-2.5-sunburst","prompt":"draw a chart","size":"1024x1024"}`,
 			response: fmt.Sprintf(
-				`{"model":"gpt-image-2.5-sunburst","size":"1370x1148","data":[{"b64_json":%q,"size":"1370x1148"}]}`,
-				encodeOpenAIImageTestPNG(t, 1370, 1148),
+				`{"model":"gpt-image-2.5-sunburst","size":"1254x1254","data":[{"b64_json":%q,"size":"1254x1254"}]}`,
+				encodeOpenAIImageTestPNG(t, 1254, 1254),
 			),
-			param: "size",
+			outputSize: "1254x1254",
 		},
 		{
 			name:        "quality",
@@ -43,7 +42,6 @@ func TestOpenAIGatewayServiceForwardImages_OAuthRejectsMismatchedNativeImagePara
 				`{"model":"gpt-image-2.5-sunburst","quality":"medium","data":[{"b64_json":%q,"quality":"medium"}]}`,
 				encodeOpenAIImageTestPNG(t, 1024, 1024),
 			),
-			param: "quality",
 		},
 		{
 			name:        "transparent background",
@@ -52,7 +50,6 @@ func TestOpenAIGatewayServiceForwardImages_OAuthRejectsMismatchedNativeImagePara
 				`{"model":"gpt-image-2.5-sunburst","background":"opaque","output_format":"png","data":[{"b64_json":%q,"background":"opaque","output_format":"png"}]}`,
 				encodeOpenAIImageTestPNG(t, 1024, 1024),
 			),
-			param: "background",
 		},
 		{
 			name:        "output format",
@@ -61,7 +58,6 @@ func TestOpenAIGatewayServiceForwardImages_OAuthRejectsMismatchedNativeImagePara
 				`{"model":"gpt-image-2.5-sunburst","output_format":"webp","data":[{"b64_json":%q,"output_format":"webp"}]}`,
 				encodeOpenAIImageTestPNG(t, 1024, 1024),
 			),
-			param: "output_format",
 		},
 	}
 
@@ -69,19 +65,15 @@ func TestOpenAIGatewayServiceForwardImages_OAuthRejectsMismatchedNativeImagePara
 		t.Run(tt.name, func(t *testing.T) {
 			run := runOpenAIOAuthDirectJSONImageValidationTest(t, tt.requestBody, tt.response)
 
-			require.Nil(t, run.result)
-			require.Error(t, run.err)
-			require.Equal(t, http.StatusBadGateway, run.recorder.Code)
-			require.Equal(t, "upstream_response_mismatch", gjson.Get(run.recorder.Body.String(), "error.type").String())
-			require.Equal(t, "image_generation_parameters_mismatch", gjson.Get(run.recorder.Body.String(), "error.code").String())
-			require.Equal(t, tt.param, gjson.Get(run.recorder.Body.String(), "error.param").String())
-
-			var upstreamErr *OpenAIImagesUpstreamError
-			require.ErrorAs(t, run.err, &upstreamErr)
-			require.True(t, upstreamErr.NonRetryable)
-			require.False(t, IsOpenAIImagesRetryableUpstreamError(upstreamErr))
-			var failoverErr *UpstreamFailoverError
-			require.False(t, errors.As(run.err, &failoverErr))
+			require.NoError(t, run.err)
+			require.NotNil(t, run.result)
+			require.Equal(t, http.StatusOK, run.recorder.Code)
+			require.NotEmpty(t, gjson.Get(run.recorder.Body.String(), "data.0.b64_json").String())
+			require.Empty(t, gjson.Get(run.recorder.Body.String(), "error").String())
+			if tt.outputSize != "" {
+				require.Equal(t, "1024x1024", gjson.GetBytes(run.upstream.lastBody, "size").String())
+				require.Equal(t, tt.outputSize, gjson.Get(run.recorder.Body.String(), "size").String())
+			}
 		})
 	}
 }
@@ -110,14 +102,13 @@ func TestOpenAIGatewayServiceForwardImages_OAuthPreservesImage25TransparentBackg
 	require.Equal(t, encoded, gjson.Get(run.recorder.Body.String(), "data.0.b64_json").String())
 }
 
-func TestOpenAIGatewayServiceForwardImages_OAuthStreamingRejectsMismatchedNativeImageParameters(t *testing.T) {
+func TestOpenAIGatewayServiceForwardImages_OAuthStreamingReturnsImageWhenUpstreamNormalizesNativeImageParameters(t *testing.T) {
 	tests := []struct {
 		name            string
 		requestFields   string
 		observedFields  string
 		resultPNGWidth  int
 		resultPNGHeight int
-		param           string
 	}{
 		{
 			name:            "actual size",
@@ -125,7 +116,6 @@ func TestOpenAIGatewayServiceForwardImages_OAuthStreamingRejectsMismatchedNative
 			observedFields:  `"size":"1370x1148"`,
 			resultPNGWidth:  1370,
 			resultPNGHeight: 1148,
-			param:           "size",
 		},
 		{
 			name:            "quality",
@@ -133,7 +123,6 @@ func TestOpenAIGatewayServiceForwardImages_OAuthStreamingRejectsMismatchedNative
 			observedFields:  `"quality":"medium"`,
 			resultPNGWidth:  1024,
 			resultPNGHeight: 1024,
-			param:           "quality",
 		},
 		{
 			name:            "transparent background",
@@ -141,7 +130,6 @@ func TestOpenAIGatewayServiceForwardImages_OAuthStreamingRejectsMismatchedNative
 			observedFields:  `"background":"opaque"`,
 			resultPNGWidth:  1024,
 			resultPNGHeight: 1024,
-			param:           "background",
 		},
 		{
 			name:            "output format",
@@ -149,7 +137,6 @@ func TestOpenAIGatewayServiceForwardImages_OAuthStreamingRejectsMismatchedNative
 			observedFields:  `"output_format":"webp"`,
 			resultPNGWidth:  1024,
 			resultPNGHeight: 1024,
-			param:           "output_format",
 		},
 	}
 
@@ -173,22 +160,14 @@ func TestOpenAIGatewayServiceForwardImages_OAuthStreamingRejectsMismatchedNative
 			)
 
 			run := runOpenAIOAuthStreamingImageValidationTest(t, request, response)
-			require.Nil(t, run.result)
-			require.Error(t, run.err)
-			require.Contains(t, run.recorder.Body.String(), "event: error")
-			require.NotContains(t, run.recorder.Body.String(), "event: image_generation.partial_image")
-			require.NotContains(t, run.recorder.Body.String(), "event: image_generation.completed")
+			require.NoError(t, run.err)
+			require.NotNil(t, run.result)
+			require.Contains(t, run.recorder.Body.String(), "event: image_generation.completed")
 			events := parseOpenAIImageTestSSEEvents(run.recorder.Body.String())
-			errorEvent, ok := findOpenAIImageTestSSEEvent(events, "error")
+			completedEvent, ok := findOpenAIImageTestSSEEvent(events, "image_generation.completed")
 			require.True(t, ok)
-			require.Equal(t, "upstream_response_mismatch", gjson.Get(errorEvent.Data, "error.type").String())
-			require.Equal(t, "image_generation_parameters_mismatch", gjson.Get(errorEvent.Data, "error.code").String())
-			require.Equal(t, tt.param, gjson.Get(errorEvent.Data, "error.param").String())
-
-			var upstreamErr *OpenAIImagesUpstreamError
-			require.ErrorAs(t, run.err, &upstreamErr)
-			require.True(t, upstreamErr.NonRetryable)
-			require.False(t, IsOpenAIImagesRetryableUpstreamError(upstreamErr))
+			require.NotEmpty(t, gjson.Get(completedEvent.Data, "b64_json").String())
+			require.NotContains(t, run.recorder.Body.String(), `"type":"upstream_response_mismatch"`)
 		})
 	}
 }

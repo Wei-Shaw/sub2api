@@ -1421,8 +1421,7 @@ func (s *OpenAIGatewayService) handleOpenAIImagesOAuthNonStreamingResponseWithVa
 	if validationRequest != nil {
 		observed := append([]openAIResponsesImageResult{firstMeta}, results...)
 		if mismatchErr := validateOpenAICodexImagesResponse(validationRequest, results, observed); mismatchErr != nil {
-			reportOpenAICodexImagesResponseMismatch(c, mismatchErr)
-			return OpenAIUsage{}, 0, nil, mismatchErr
+			auditOpenAICodexImagesResponseMismatch(mismatchErr)
 		}
 	}
 
@@ -1520,18 +1519,8 @@ func (s *OpenAIGatewayService) handleOpenAIImagesOAuthStreamingResponseWithValid
 		if mismatchErr == nil {
 			return nil
 		}
-		setOpsUpstreamError(c, mismatchErr.clientStatusCode(), mismatchErr.clientMessage(), "")
-		if !clientDisconnected {
-			s.tryWriteOpenAIImagesStreamEvent(
-				c,
-				flusher,
-				&clientDisconnected,
-				&lastDownstreamWriteAt,
-				"error",
-				buildOpenAIImagesStreamErrorBodyFromUpstream(mismatchErr),
-			)
-		}
-		return mismatchErr
+		auditOpenAICodexImagesResponseMismatch(mismatchErr)
+		return nil
 	}
 
 	emitPendingPartialImages := func() {

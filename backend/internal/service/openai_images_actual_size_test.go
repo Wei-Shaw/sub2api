@@ -39,38 +39,30 @@ func TestDetectOpenAIImageResultSize(t *testing.T) {
 	require.Empty(t, detectOpenAIImageResultSize("not-image-data"))
 }
 
-func TestOpenAIGatewayServiceForwardImages_OAuthRejectsMismatchedOutputDimensions(t *testing.T) {
+func TestOpenAIGatewayServiceForwardImages_OAuthReturnsImageWithActualOutputDimensions(t *testing.T) {
 	run := runOpenAIOAuthImageActualSizeTest(t, false)
 
 	require.Equal(t, "gpt-image-2", gjson.GetBytes(run.upstream.lastBody, "model").String())
 	require.Equal(t, "3840x2160", gjson.GetBytes(run.upstream.lastBody, "size").String())
 	require.Equal(t, "low", gjson.GetBytes(run.upstream.lastBody, "quality").String())
-	require.Nil(t, run.result)
-	require.Error(t, run.err)
-	require.Equal(t, "upstream_response_mismatch", gjson.Get(run.recorder.Body.String(), "error.type").String())
-	require.Equal(t, "image_generation_parameters_mismatch", gjson.Get(run.recorder.Body.String(), "error.code").String())
-	require.Equal(t, "size", gjson.Get(run.recorder.Body.String(), "error.param").String())
-
-	var upstreamErr *OpenAIImagesUpstreamError
-	require.ErrorAs(t, run.err, &upstreamErr)
-	require.True(t, upstreamErr.NonRetryable)
-	require.False(t, IsOpenAIImagesRetryableUpstreamError(upstreamErr))
+	require.NoError(t, run.err)
+	require.NotNil(t, run.result)
+	require.Equal(t, "1672x941", gjson.Get(run.recorder.Body.String(), "size").String())
+	require.NotEmpty(t, gjson.Get(run.recorder.Body.String(), "data.0.b64_json").String())
 }
 
-func TestOpenAIGatewayServiceForwardImages_OAuthStreamingRejectsMismatchedOutputDimensions(t *testing.T) {
+func TestOpenAIGatewayServiceForwardImages_OAuthStreamingReturnsImageWithActualOutputDimensions(t *testing.T) {
 	run := runOpenAIOAuthImageActualSizeTest(t, true)
 
-	require.Nil(t, run.result)
-	require.Error(t, run.err)
-	require.Contains(t, run.recorder.Body.String(), "event: error")
-	require.NotContains(t, run.recorder.Body.String(), "event: image_generation.completed")
-	require.NotContains(t, run.recorder.Body.String(), "event: image_generation.partial_image")
-	require.Contains(t, run.recorder.Body.String(), "image_generation_parameters_mismatch")
-
-	var upstreamErr *OpenAIImagesUpstreamError
-	require.ErrorAs(t, run.err, &upstreamErr)
-	require.True(t, upstreamErr.NonRetryable)
-	require.False(t, IsOpenAIImagesRetryableUpstreamError(upstreamErr))
+	require.NoError(t, run.err)
+	require.NotNil(t, run.result)
+	require.Contains(t, run.recorder.Body.String(), "event: image_generation.completed")
+	require.NotContains(t, run.recorder.Body.String(), `"type":"upstream_response_mismatch"`)
+	events := parseOpenAIImageTestSSEEvents(run.recorder.Body.String())
+	completed, ok := findOpenAIImageTestSSEEvent(events, "image_generation.completed")
+	require.True(t, ok)
+	require.Equal(t, "1672x941", gjson.Get(completed.Data, "size").String())
+	require.NotEmpty(t, gjson.Get(completed.Data, "b64_json").String())
 }
 
 func TestOpenAIGatewayServiceForwardImages_OAuthUsesDecodedOutputDimensionsWhenSizeAuto(t *testing.T) {
