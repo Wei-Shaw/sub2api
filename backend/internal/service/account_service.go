@@ -207,6 +207,8 @@ type UpdateAccountRequest struct {
 type AccountService struct {
 	accountRepo AccountRepository
 	groupRepo   GroupRepository
+	// B2-③ 保存期无价门禁用：ollama_cloud 账号保存时断言可出站模型名全部可定价。
+	billingService *BillingService
 }
 
 type groupExistenceBatchChecker interface {
@@ -214,10 +216,11 @@ type groupExistenceBatchChecker interface {
 }
 
 // NewAccountService 创建账号服务实例
-func NewAccountService(accountRepo AccountRepository, groupRepo GroupRepository) *AccountService {
+func NewAccountService(accountRepo AccountRepository, groupRepo GroupRepository, billingService *BillingService) *AccountService {
 	return &AccountService{
-		accountRepo: accountRepo,
-		groupRepo:   groupRepo,
+		accountRepo:    accountRepo,
+		groupRepo:      groupRepo,
+		billingService: billingService,
 	}
 }
 
@@ -248,6 +251,11 @@ func (s *AccountService) Create(ctx context.Context, req CreateAccountRequest) (
 		account.AutoPauseOnExpired = *req.AutoPauseOnExpired
 	} else {
 		account.AutoPauseOnExpired = true
+	}
+
+	// B2-③ 保存期无价门禁：ollama_cloud 账号的可出站模型名必须全部可定价。
+	if err := validateOllamaCloudAccountModelPricingGate(s.billingService, account); err != nil {
+		return nil, err
 	}
 
 	if err := s.accountRepo.Create(ctx, account); err != nil {
@@ -372,6 +380,11 @@ func (s *AccountService) Update(ctx context.Context, id int64, req UpdateAccount
 		if err := s.validateGroupIDsExist(ctx, *req.GroupIDs); err != nil {
 			return nil, err
 		}
+	}
+
+	// B2-③ 保存期无价门禁：ollama_cloud 账号的可出站模型名必须全部可定价。
+	if err := validateOllamaCloudAccountModelPricingGate(s.billingService, account); err != nil {
+		return nil, err
 	}
 
 	// 执行更新

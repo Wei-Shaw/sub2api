@@ -739,7 +739,7 @@ func TestAccountServiceUpdateStripsOllamaManagedExtra(t *testing.T) {
 		OllamaCloudUsageSnapshotExtraKey:    map[string]any{"status": OllamaCloudUsageStatusOK},
 	}
 	repo := &ollamaManagedExtraUpdateRepo{account: account}
-	svc := NewAccountService(repo, nil)
+	svc := NewAccountService(repo, nil, nil)
 	requestedExtra := map[string]any{
 		"note":                              "preserved",
 		OllamaCloudUsageSessionExtraKey:     "forged-ciphertext",
