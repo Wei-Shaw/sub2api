@@ -1840,3 +1840,125 @@ func TestMessageStartSSE_StopReasonIsJSONNull(t *testing.T) {
 	require.Contains(t, sse, `"stop_reason":null`)
 	require.NotContains(t, sse, `"stop_reason":""`)
 }
+
+func TestAnthropicToResponses_WebSearchServerToolNoFunctionCall(t *testing.T) {
+	req := &AnthropicRequest{
+		Model:     "gpt-5.2",
+		MaxTokens: 1024,
+		Messages: []AnthropicMessage{
+			{Role: "user", Content: json.RawMessage(`"Search the latest Go release"`)},
+			{Role: "assistant", Content: json.RawMessage(`[{"type":"server_tool_use","id":"srvtoolu_1","name":"web_search","input":{"query":"Go 1.25 release"}}]`)},
+			{Role: "user", Content: json.RawMessage(`[{"type":"web_search_tool_result","tool_use_id":"srvtoolu_1","content":[]}]`)},
+		},
+		Tools: []AnthropicTool{
+			{Type: "web_search_20250305", Name: "web_search"},
+		},
+	}
+
+	resp, err := AnthropicToResponses(req)
+	require.NoError(t, err)
+
+	require.NotEmpty(t, resp.Tools)
+	hosted := 0
+	for _, tool := range resp.Tools {
+		if tool.Type == "function" && tool.Name == "web_search" {
+			t.Fatalf("tools must not declare a function named web_search: %+v", tool)
+		}
+		if tool.Type == "web_search" {
+			hosted++
+		}
+	}
+	require.Equal(t, 1, hosted)
+
+	var items []ResponsesInputItem
+	require.NoError(t, json.Unmarshal(resp.Input, &items))
+	var calls []ResponsesInputItem
+	for _, item := range items {
+		if item.Type == "function_call" && item.Name == "web_search" {
+			t.Fatalf("history must not replay web_search as function_call: %+v", item)
+		}
+		if item.Type == "function_call_output" && item.CallID == "srvtoolu_1" {
+			t.Fatalf("hosted web_search must not emit function_call_output: %+v", item)
+		}
+		if item.Type == "web_search_call" {
+			calls = append(calls, item)
+		}
+	}
+	require.Len(t, calls, 1)
+	assert.Equal(t, "srvtoolu_1", calls[0].ID)
+}
+
+func TestAnthropicToResponses_WebSearchToolUseHistoryIssue5533(t *testing.T) {
+	req := &AnthropicRequest{
+		Model:     "gpt-5.2",
+		MaxTokens: 1024,
+		Messages: []AnthropicMessage{
+			{Role: "user", Content: json.RawMessage(`"what is the weather in tokyo"`)},
+			{Role: "assistant", Content: json.RawMessage(`[{"type":"tool_use","id":"toolu_ws","name":"web_search","input":{"query":"tokyo weather"}}]`)},
+			{Role: "user", Content: json.RawMessage(`[{"type":"tool_result","tool_use_id":"toolu_ws","content":"sunny"}]`)},
+		},
+		Tools: []AnthropicTool{
+			{Type: "web_search_20250305", Name: "web_search"},
+			{Name: "get_weather", Description: "Get weather", InputSchema: json.RawMessage(`{"type":"object","properties":{}}`)},
+		},
+	}
+
+	resp, err := AnthropicToResponses(req)
+	require.NoError(t, err)
+
+	for _, tool := range resp.Tools {
+		if tool.Type == "function" && tool.Name == "web_search" {
+			t.Fatalf("must not add function web_search: %+v", tool)
+		}
+	}
+
+	var items []ResponsesInputItem
+	require.NoError(t, json.Unmarshal(resp.Input, &items))
+	foundHosted := false
+	for _, item := range items {
+		if item.Type == "function_call" && item.Name == "web_search" {
+			t.Fatalf("issue 5533 regression: function_call named web_search: %+v", item)
+		}
+		if item.Type == "function_call_output" && item.CallID == "toolu_ws" {
+			t.Fatalf("hosted web_search result replayed as function_call_output: %+v", item)
+		}
+		if item.Type == "web_search_call" {
+			foundHosted = true
+			assert.Equal(t, "toolu_ws", item.ID)
+		}
+	}
+	require.True(t, foundHosted)
+}
+
+func TestAnthropicToResponses_CustomWebSearchFunctionPreserved(t *testing.T) {
+	req := &AnthropicRequest{
+		Model:     "gpt-5.2",
+		MaxTokens: 128,
+		Messages: []AnthropicMessage{
+			{Role: "user", Content: json.RawMessage(`"search docs"`)},
+			{Role: "assistant", Content: json.RawMessage(`[{"type":"tool_use","id":"call_1","name":"web_search","input":{"q":"docs"}}]`)},
+		},
+		Tools: []AnthropicTool{
+			{Name: "web_search", Description: "Search our docs", InputSchema: json.RawMessage(`{"type":"object","properties":{"q":{"type":"string"}}}`)},
+		},
+	}
+
+	resp, err := AnthropicToResponses(req)
+	require.NoError(t, err)
+	require.Len(t, resp.Tools, 1)
+	assert.Equal(t, "function", resp.Tools[0].Type)
+	assert.Equal(t, "web_search", resp.Tools[0].Name)
+
+	var items []ResponsesInputItem
+	require.NoError(t, json.Unmarshal(resp.Input, &items))
+	foundFn := false
+	for _, item := range items {
+		if item.Type == "function_call" && item.Name == "web_search" {
+			foundFn = true
+		}
+		if item.Type == "web_search_call" {
+			t.Fatalf("custom function named web_search must stay a function_call: %+v", item)
+		}
+	}
+	require.True(t, foundFn)
+}

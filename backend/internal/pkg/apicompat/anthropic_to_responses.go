@@ -16,14 +16,8 @@ func AnthropicToResponses(req *AnthropicRequest) (*ResponsesRequest, error) {
 		return nil, err
 	}
 
-	inputJSON, err := json.Marshal(input)
-	if err != nil {
-		return nil, err
-	}
-
 	out := &ResponsesRequest{
 		Model:   req.Model,
-		Input:   inputJSON,
 		Stream:  req.Stream,
 		Include: []string{"reasoning.encrypted_content"},
 	}
@@ -54,6 +48,13 @@ func AnthropicToResponses(req *AnthropicRequest) (*ResponsesRequest, error) {
 	if len(req.Tools) > 0 {
 		out.Tools = convertAnthropicToolsToResponses(req.Tools)
 	}
+
+	input = reconcileResponsesWebSearch(out, input)
+	inputJSON, err := json.Marshal(input)
+	if err != nil {
+		return nil, err
+	}
+	out.Input = inputJSON
 
 	// Determine reasoning effort: only output_config.effort controls the
 	// level; thinking.type is ignored. Default follows Codex CLI / airgate's
@@ -310,8 +311,10 @@ func anthropicAssistantToResponses(raw json.RawMessage) ([]ResponsesInputItem, e
 	}
 
 	// tool_use → function_call items.
+	// server_tool_use / hosted web_search → web_search_call so Codex does not
+	// see a function_call named web_search without a matching function tool.
 	for _, b := range blocks {
-		if b.Type != "tool_use" {
+		if b.Type != "tool_use" && b.Type != "server_tool_use" {
 			continue
 		}
 		args := "{}"
@@ -319,6 +322,16 @@ func anthropicAssistantToResponses(raw json.RawMessage) ([]ResponsesInputItem, e
 			args = string(b.Input)
 		}
 		fcID := toResponsesCallID(b.ID)
+		if b.Type == "server_tool_use" && isAnthropicHostedWebSearchName(b.Name) {
+			items = append(items, ResponsesInputItem{
+				Type:      "web_search_call",
+				ID:        fcID,
+				CallID:    fcID,
+				Name:      b.Name,
+				Arguments: args,
+			})
+			continue
+		}
 		items = append(items, ResponsesInputItem{
 			Type:      "function_call",
 			CallID:    fcID,
@@ -439,6 +452,77 @@ func mapAnthropicEffortToResponses(effort string) string {
 	return effort // low→low, medium→medium, high→high, unknown→passthrough
 }
 
+func isAnthropicHostedWebSearchName(name string) bool {
+	n := strings.ToLower(strings.TrimSpace(name))
+	return n == "web_search" || strings.HasPrefix(n, "web_search_")
+}
+
+func isAnthropicHostedWebSearchTool(t AnthropicTool) bool {
+	return strings.HasPrefix(t.Type, "web_search")
+}
+
+// reconcileResponsesWebSearch keeps hosted web_search tool calls consistent
+// with the tools list. OpenAI Responses returns 400 if input contains a
+// function_call named web_search but tools has no function with that name
+// (issue #5533: Anthropic server web_search was replayed as a function_call).
+func reconcileResponsesWebSearch(out *ResponsesRequest, input []ResponsesInputItem) []ResponsesInputItem {
+	functionNames := make(map[string]bool)
+	hasHostedWebSearch := false
+	for _, t := range out.Tools {
+		if t.Type == "function" && t.Name != "" {
+			functionNames[t.Name] = true
+		}
+		if t.Type == "web_search" || strings.HasPrefix(t.Type, "web_search") {
+			hasHostedWebSearch = true
+		}
+	}
+
+	hostedCallIDs := make(map[string]bool)
+	next := make([]ResponsesInputItem, 0, len(input))
+	for _, item := range input {
+		if item.Type == "function_call" && isAnthropicHostedWebSearchName(item.Name) && !functionNames[item.Name] {
+			item.Type = "web_search_call"
+			if item.ID == "" {
+				item.ID = item.CallID
+			}
+			hostedCallIDs[item.CallID] = true
+			if item.ID != "" {
+				hostedCallIDs[item.ID] = true
+			}
+			hasHostedWebSearch = true
+			next = append(next, item)
+			continue
+		}
+		if item.Type == "web_search_call" {
+			if item.CallID != "" {
+				hostedCallIDs[item.CallID] = true
+			}
+			if item.ID != "" {
+				hostedCallIDs[item.ID] = true
+			}
+			hasHostedWebSearch = true
+		}
+		if item.Type == "function_call_output" && hostedCallIDs[item.CallID] {
+			continue
+		}
+		next = append(next, item)
+	}
+
+	if hasHostedWebSearch {
+		found := false
+		for _, t := range out.Tools {
+			if t.Type == "web_search" {
+				found = true
+				break
+			}
+		}
+		if !found {
+			out.Tools = append(out.Tools, ResponsesTool{Type: "web_search"})
+		}
+	}
+	return next
+}
+
 // convertAnthropicToolsToResponses maps Anthropic tool definitions to
 // Responses API tools. Server-side tools like web_search are mapped to their
 // OpenAI equivalents; regular tools become function tools.
@@ -446,7 +530,7 @@ func convertAnthropicToolsToResponses(tools []AnthropicTool) []ResponsesTool {
 	var out []ResponsesTool
 	for _, t := range tools {
 		// Anthropic server tools like "web_search_20250305" → OpenAI {"type":"web_search"}
-		if strings.HasPrefix(t.Type, "web_search") {
+		if isAnthropicHostedWebSearchTool(t) {
 			out = append(out, ResponsesTool{Type: "web_search"})
 			continue
 		}
