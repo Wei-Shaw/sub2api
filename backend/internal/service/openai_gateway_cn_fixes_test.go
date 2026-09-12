@@ -24,7 +24,7 @@ import (
 )
 
 func TestResolveMessagesDispatchModel_CNProvidersNoDispatchMapping(t *testing.T) {
-	for _, platform := range []string{PlatformKimi, PlatformZhipu, PlatformDeepseek} {
+	for _, platform := range []string{PlatformKimi, PlatformZhipu, PlatformDeepseek, PlatformMiniMax, PlatformOpenCodeGo} {
 		g := &Group{Platform: platform}
 		require.Empty(t, g.ResolveMessagesDispatchModel("claude-sonnet-4-5"),
 			"CN 分组(%s)不得返回调度级映射模型（openai 默认值会发给 CN 上游）", platform)
@@ -57,6 +57,12 @@ func TestFilterCNProviderBillingModelCandidates(t *testing.T) {
 	require.Equal(t, []string{"claude-sonnet-4-5", "gpt-5.4"}, passthrough)
 
 	require.Nil(t, svc.filterCNProviderBillingModelCandidates(context.Background(), nil, apiKey, nil))
+
+	openCodeAccount := &Account{ID: 3, Platform: PlatformOpenCodeGo}
+	openCodeFiltered := svc.filterCNProviderBillingModelCandidates(context.Background(), openCodeAccount, apiKey,
+		[]string{"claude-sonnet-4-5", "muse-spark-1.3-contributor-free"})
+	require.Equal(t, []string{"muse-spark-1.3-contributor-free"}, openCodeFiltered,
+		"OpenCode 无显式定价时不得按 Claude 原价计费 claude-*")
 }
 
 func TestCalculateOpenAIRecordUsageCost_EmptyCandidatesIsPricingUnavailable(t *testing.T) {
@@ -104,7 +110,7 @@ func TestResponsesStreamingFromNativeAnthropic_ClientDisconnectDrainsUsage(t *te
 }
 
 func TestHandle403_CNProviderHTMLBodySkipsAccountPenalty(t *testing.T) {
-	for _, platform := range []string{PlatformKimi, PlatformZhipu, PlatformDeepseek} {
+	for _, platform := range []string{PlatformKimi, PlatformZhipu, PlatformDeepseek, PlatformMiniMax} {
 		repo := &rateLimitAccountRepoStub{}
 		service := NewRateLimitService(repo, nil, &config.Config{}, nil, nil)
 		account := &Account{ID: 401, Platform: platform, Type: AccountTypeAPIKey}

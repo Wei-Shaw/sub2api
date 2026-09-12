@@ -54,3 +54,17 @@ describe('useAntigravityOAuth.buildCredentials', () => {
     expect(credentials.refresh_token).toBe('rotated-refresh-token')
   })
 })
+
+// This builder is shared by OAuth creation, refresh-token import and reauthorization.
+describe('Antigravity subscription metadata', () => {
+  it.each(['pro', 'ultra', 'free'])('preserves the upstream %s plan when saving credentials', (plan) => {
+    const oauth = useAntigravityOAuth()
+    const credentials = oauth.buildCredentials({ plan_type: plan })
+    expect(credentials.plan_type).toBe(plan)
+  })
+
+  it('does not invent a plan when subscription discovery is unavailable', () => {
+    const credentials = useAntigravityOAuth().buildCredentials({})
+    expect(credentials).not.toHaveProperty('plan_type')
+  })
+})

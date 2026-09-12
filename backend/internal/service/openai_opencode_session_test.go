@@ -92,7 +92,13 @@ func TestApplyOpenCodeSessionHeaderTrustBoundary(t *testing.T) {
 			incoming:  "conversation-123",
 		},
 		{
-			name:      "missing caller value",
+			name:      "missing caller value generates session on go endpoint",
+			account:   openCodeSessionTestAccount("https://opencode.ai/zen/go/v1"),
+			targetURL: "https://opencode.ai/zen/go/v1/responses",
+			want:      "<generated>",
+		},
+		{
+			name:      "zen endpoint does not invent a session",
 			account:   openCodeSessionTestAccount("https://opencode.ai/zen/v1"),
 			targetURL: "https://opencode.ai/zen/v1/responses",
 		},
@@ -108,9 +114,114 @@ func TestApplyOpenCodeSessionHeaderTrustBoundary(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			headers := make(http.Header)
 			applyOpenCodeSessionHeader(newOpenCodeSessionTestContext(t, tt.incoming), tt.account, tt.targetURL, headers)
-			require.Equal(t, tt.want, headers.Get(openCodeSessionHeader))
+			got := headers.Get(openCodeSessionHeader)
+			if tt.want == "<generated>" {
+				require.NotEmpty(t, got)
+				return
+			}
+			require.Equal(t, tt.want, got)
 		})
 	}
+}
+
+func TestApplyOpenCodeSessionHeaderOpenCodeGoAlwaysSetsSession(t *testing.T) {
+	account := &Account{
+		ID:       4,
+		Platform: PlatformOpenCodeGo,
+		Type:     AccountTypeAPIKey,
+		Credentials: map[string]any{
+			"base_url": "https://relay.example.com/v1",
+		},
+	}
+	headers := make(http.Header)
+	applyOpenCodeSessionHeader(newOpenCodeSessionTestContext(t, ""), account, "https://relay.example.com/v1/chat/completions", headers)
+	require.NotEmpty(t, headers.Get(openCodeSessionHeader))
+}
+
+func TestApplyOpenCodeSessionHeaderMapsCallerSessionID(t *testing.T) {
+	account := &Account{Platform: PlatformOpenCodeGo, Type: AccountTypeAPIKey}
+	c := newOpenCodeSessionTestContext(t, "")
+	c.Request.Header.Set("session_id", "conv-from-client")
+	headers := make(http.Header)
+	applyOpenCodeSessionHeader(c, account, "https://opencode.ai/zen/go/v1/chat/completions", headers)
+	require.Equal(t, "conv-from-client", headers.Get(openCodeSessionHeader))
+}
+
+func TestApplyOpenCodeSessionHeaderRejectsControlCharsInPromptCacheKey(t *testing.T) {
+	account := &Account{Platform: PlatformOpenCodeGo, Type: AccountTypeAPIKey}
+	body := []byte("{\"model\":\"glm-5.3\",\"prompt_cache_key\":\"a\\nb\",\"input\":\"hello\"}")
+	headers := make(http.Header)
+	applyOpenCodeSessionHeader(newOpenCodeSessionTestContext(t, ""), account, "https://opencode.ai/zen/go/v1/responses", headers, body)
+	got := headers.Get(openCodeSessionHeader)
+	require.NotEmpty(t, got)
+	require.NotContains(t, got, "\n")
+	require.NotEqual(t, "a\nb", got)
+}
+
+func TestApplyOpenCodeSessionHeaderUsesPromptCacheKeyInsteadOfRandomUUID(t *testing.T) {
+	account := &Account{Platform: PlatformOpenCodeGo, Type: AccountTypeAPIKey}
+	body := []byte(`{"model":"grok-4.6","prompt_cache_key":"kimi-session-42","input":"hello"}`)
+	headers := make(http.Header)
+	applyOpenCodeSessionHeader(newOpenCodeSessionTestContext(t, ""), account, "https://opencode.ai/zen/go/v1/responses", headers, body)
+	require.Equal(t, "kimi-session-42", headers.Get(openCodeSessionHeader))
+
+	headers2 := make(http.Header)
+	laterTurn := []byte(`{"model":"grok-4.6","prompt_cache_key":"kimi-session-42","input":"follow up"}`)
+	applyOpenCodeSessionHeader(newOpenCodeSessionTestContext(t, ""), account, "https://opencode.ai/zen/go/v1/responses", headers2, laterTurn)
+	require.Equal(t, headers.Get(openCodeSessionHeader), headers2.Get(openCodeSessionHeader))
+}
+
+func TestApplyOpenCodeSessionHeaderUsesAnthropicMetadataUserID(t *testing.T) {
+	account := &Account{Platform: PlatformOpenCodeGo, Type: AccountTypeAPIKey}
+	body := []byte(`{"model":"minimax-m3","metadata":{"user_id":"coding-agent-session"},"messages":[{"role":"user","content":"hi"}]}`)
+	headers := make(http.Header)
+	applyOpenCodeSessionHeader(newOpenCodeSessionTestContext(t, ""), account, "https://opencode.ai/zen/go/v1/messages", headers, body)
+	require.Equal(t, "coding-agent-session", headers.Get(openCodeSessionHeader))
+}
+
+func TestApplyOpenCodeSessionHeaderUnwrapsClaudeCodeMetadataSessionJSON(t *testing.T) {
+	account := &Account{Platform: PlatformOpenCodeGo, Type: AccountTypeAPIKey}
+	body := []byte(`{"model":"claude-sonnet-4","metadata":{"user_id":"{\"session_id\":\"meta-session-xyz\"}"},"messages":[]}`)
+	headers := make(http.Header)
+	applyOpenCodeSessionHeader(newOpenCodeSessionTestContext(t, ""), account, "https://opencode.ai/zen/go/v1/messages", headers, body)
+	require.Equal(t, "meta-session-xyz", headers.Get(openCodeSessionHeader))
+}
+
+func TestApplyOpenCodeSessionHeaderBodyBeatsGeneratedUUIDAndLosesToCallerHeader(t *testing.T) {
+	account := &Account{Platform: PlatformOpenCodeGo, Type: AccountTypeAPIKey}
+	body := []byte(`{"prompt_cache_key":"from-body"}`)
+
+	headers := make(http.Header)
+	applyOpenCodeSessionHeader(newOpenCodeSessionTestContext(t, "from-header"), account, "https://opencode.ai/zen/go/v1/responses", headers, body)
+	require.Equal(t, "from-header", headers.Get(openCodeSessionHeader))
+
+	converted := []byte(`{"model":"minimax-m3","messages":[]}`)
+	headers2 := make(http.Header)
+	applyOpenCodeSessionHeader(newOpenCodeSessionTestContext(t, ""), account, "https://opencode.ai/zen/go/v1/messages", headers2, converted, body)
+	require.Equal(t, "from-body", headers2.Get(openCodeSessionHeader))
+}
+
+func TestApplyOpenCodeSessionHeaderUsesRememberedInboundBodyAfterConversion(t *testing.T) {
+	account := &Account{Platform: PlatformOpenCodeGo, Type: AccountTypeAPIKey}
+
+	c := newOpenCodeSessionTestContext(t, "")
+	rememberOpenCodeInboundBody(c, []byte(`{"model":"gpt-5","prompt_cache_key":"inbound-responses-session","input":"hello"}`))
+	headers := make(http.Header)
+	convertedCC := []byte(`{"model":"deepseek-v4-flash","messages":[{"role":"user","content":"hello"}]}`)
+	applyOpenCodeSessionHeader(c, account, "https://opencode.ai/zen/go/v1/chat/completions", headers, convertedCC)
+	require.Equal(t, "inbound-responses-session", headers.Get(openCodeSessionHeader))
+
+	c2 := newOpenCodeSessionTestContext(t, "")
+	rememberOpenCodeInboundBody(c2, []byte(`{"model":"grok-4.6","metadata":{"user_id":"inbound-messages-session"},"messages":[{"role":"user","content":"hi"}]}`))
+	headers2 := make(http.Header)
+	convertedResponses := []byte(`{"model":"grok-4.6","input":"hi"}`)
+	applyOpenCodeSessionHeader(c2, account, "https://opencode.ai/zen/go/v1/responses", headers2, convertedResponses)
+	require.Equal(t, "inbound-messages-session", headers2.Get(openCodeSessionHeader))
+}
+
+func TestOpenCodeSessionIDFromPayloadIgnoresEmptyBody(t *testing.T) {
+	require.Empty(t, openCodeSessionIDFromPayload(nil))
+	require.Empty(t, openCodeSessionIDFromPayload([]byte(`{"model":"gpt-5"}`)))
 }
 
 func TestOpenCodeSessionForwardedByResponsesBuildersAfterAccountOverride(t *testing.T) {
@@ -145,6 +256,24 @@ func TestOpenCodeSessionForwardedByResponsesBuildersAfterAccountOverride(t *test
 			requireSingleOpenCodeSessionHeader(t, req.Header, "conversation-456")
 		})
 	}
+}
+
+func TestOpenCodeSessionForwardedFromPromptCacheKeyWithoutCallerHeader(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	svc := openCodeSessionTestService()
+	account := &Account{
+		ID:       1,
+		Platform: PlatformOpenCodeGo,
+		Type:     AccountTypeAPIKey,
+		Credentials: map[string]any{
+			"base_url": "https://opencode.ai/zen/go/v1",
+		},
+	}
+	c := newOpenCodeSessionTestContext(t, "")
+	body := []byte(`{"model":"gpt-5","prompt_cache_key":"stable-cache-key","input":"hello"}`)
+	req, err := svc.buildUpstreamRequest(context.Background(), c, account, body, "token", false, "", false)
+	require.NoError(t, err)
+	requireSingleOpenCodeSessionHeader(t, req.Header, "stable-cache-key")
 }
 
 func TestOpenCodeSessionMissingCallerValueKeepsExistingOverrideBehavior(t *testing.T) {

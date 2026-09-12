@@ -202,6 +202,7 @@ export default {
     usedQuota: '已用额度',
     resetNow: '即将重置',
     subscriptionType: '订阅类型',
+    billingType: '计费方式',
     subscriptionExpires: '订阅到期',
     // Usage stat cells
     todayRequests: '今日请求',

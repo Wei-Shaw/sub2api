@@ -523,6 +523,21 @@ func buildChatMessagesFromItems(messages []ChatMessage, rawItems []json.RawMessa
 			})
 			pendingReasoning = ""
 			continue
+		case "agent_message":
+			// Codex multi_agent_v2 用 agent_message 在父线程与子智能体之间传递任务和回复：
+			// input_text 是信封（消息类型、任务名、发送者），正文放在 encrypted_content 片段里
+			// （自定义 provider 下为明文）。chat 上游没有对应条目，按原顺序拼成一条 user 消息，
+			// 否则子智能体收不到任务却仍返回 200。
+			text := agentMessageText(item["content"])
+			if text == "" {
+				pendingReasoning = ""
+				continue
+			}
+			content, _ := json.Marshal(text)
+			messages = append(messages, ChatMessage{Role: "user", Content: content})
+			pendingReasoning = ""
+			lastTurnReasoning = ""
+			continue
 		case "input_text", "text":
 			content, _ := json.Marshal(rawString(item["text"]))
 			messages = append(messages, ChatMessage{Role: "user", Content: content})
@@ -580,6 +595,32 @@ func buildChatMessagesFromItems(messages []ChatMessage, rawItems []json.RawMessa
 	}
 
 	return messages, mediaByCallID, nil
+}
+
+// agentMessageText 按原顺序拼接 agent_message 里 input_text 与 encrypted_content 片段的文本。
+func agentMessageText(raw json.RawMessage) string {
+	raw = bytesTrimSpace(raw)
+	if len(raw) == 0 || string(raw) == "null" {
+		return ""
+	}
+	var text string
+	if err := json.Unmarshal(raw, &text); err == nil {
+		return text
+	}
+	var parts []map[string]json.RawMessage
+	if err := json.Unmarshal(raw, &parts); err != nil {
+		return ""
+	}
+	var b strings.Builder
+	for _, part := range parts {
+		switch rawString(part["type"]) {
+		case "input_text", "text":
+			_, _ = b.WriteString(rawString(part["text"]))
+		case "encrypted_content":
+			_, _ = b.WriteString(rawString(part["encrypted_content"]))
+		}
+	}
+	return b.String()
 }
 
 // extractToolOutputMedia rewrites only recognized image nodes. Media-free

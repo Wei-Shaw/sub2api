@@ -18,7 +18,7 @@ const (
 	// ollamaCloudUsagePlatformsSQL 是 service.isOllamaCloudUsagePlatform 的 SQL
 	// 镜像：Ollama Cloud key 允许挂在 openai/anthropic 与国产 OpenAI 兼容平台
 	// 下复用。所有平台白名单 SQL 只允许引用本常量，不得各处重写字面量，防止漂移。
-	ollamaCloudUsagePlatformsSQL = "'openai', 'anthropic', 'kimi', 'zhipu', 'deepseek'"
+	ollamaCloudUsagePlatformsSQL = "'openai', 'anthropic', 'kimi', 'zhipu', 'deepseek', 'minimax'"
 	ollamaCloudUsageEligibleSQL  = `
 	platform IN (` + ollamaCloudUsagePlatformsSQL + `)
 	AND type = 'apikey'
