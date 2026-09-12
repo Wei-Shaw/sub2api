@@ -1540,6 +1540,41 @@ func (s *AccountRepoSuite) TestUpdateExtra_SchedulerNeutralSkipsOutboxAndSyncsFr
 	s.Require().Equal("2026-03-11T10:00:00Z", cacheRecorder.accounts[account.ID].Extra["codex_usage_updated_at"])
 }
 
+// Exercise the complete UpdateExtra -> PostgreSQL -> Redis metadata -> admission
+// path. A recorder-only cache would miss fields discarded by the slim projection.
+func (s *AccountRepoSuite) TestUpdateExtra_AnthropicThresholdRefreshesCandidateSnapshot() {
+	now := time.Now().UTC().Truncate(time.Second)
+	end := now.Add(time.Hour)
+	account := mustCreateAccount(s.T(), s.client, &service.Account{
+		Name: "threshold-refresh", Platform: service.PlatformAnthropic, Type: service.AccountTypeOAuth,
+		Credentials: map[string]any{"account_scheduling_threshold": 60},
+		Extra:       map[string]any{"passive_usage_7d_utilization": .59, "passive_usage_7d_reset": end.Unix()},
+	})
+	cache := NewSchedulerCache(testRedis(s.T()))
+	s.repo.schedulerCache = cache
+	bucket := service.SchedulerBucket{GroupID: account.ID, Platform: service.PlatformAnthropic, Mode: service.SchedulerModeSingle}
+	token, err := cache.CaptureBucketWriteToken(s.ctx, bucket)
+	s.Require().NoError(err)
+	s.Require().NoError(cache.SetSnapshot(s.ctx, bucket, token, []service.Account{*account}))
+	for _, step := range []struct {
+		used   float64
+		reset  time.Time
+		paused bool
+	}{
+		{.59, end, false}, {.66, end, true}, {.66, now.Add(-time.Hour), false}, {.10, end, false},
+	} {
+		s.Require().NoError(s.repo.UpdateExtra(s.ctx, account.ID, map[string]any{
+			"passive_usage_7d_utilization": step.used, "passive_usage_7d_reset": step.reset.Unix(),
+		}))
+		candidates, hit, err := cache.GetSnapshot(s.ctx, bucket)
+		s.Require().NoError(err)
+		s.Require().True(hit)
+		s.Require().Len(candidates, 1)
+		decision := service.EvaluateAccountSchedulingThreshold(candidates[0], map[string]int{service.PlatformAnthropic: 100}, now)
+		s.Require().Equal(step.paused, decision.ShouldPause)
+	}
+}
+
 func (s *AccountRepoSuite) TestUpdateExtra_ExhaustedCodexSnapshotSyncsSchedulerCache() {
 	account := mustCreateAccount(s.T(), s.client, &service.Account{
 		Name:     "acc-extra-codex-exhausted",

@@ -20,6 +20,19 @@ describe('MetricCell', () => {
     expect(wrapper.find('strong').classes().join(' ')).toMatch(/emerald/)
   })
 
+  it('does not paint missing first-token dash as critical red', () => {
+    const wrapper = mount(MetricCell, {
+      props: {
+        label: '首 Token P50',
+        value: '-',
+        detail: '-',
+        state: 'critical',
+      },
+    })
+    expect(wrapper.find('strong').classes().join(' ')).not.toMatch(/red/)
+    expect(wrapper.find('strong').classes().join(' ')).toMatch(/gray|dark/)
+  })
+
   it('maps warning and critical health states to distinct colors', () => {
     const warning = mount(MetricCell, {
       props: { label: '错误', value: '10%', detail: '1 次', state: 'warning' },

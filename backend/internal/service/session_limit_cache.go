@@ -33,6 +33,12 @@ type SessionLimitCache interface {
 	// 用于活跃会话保持活动状态
 	RefreshSession(ctx context.Context, accountID int64, sessionUUID string, idleTimeout time.Duration) error
 
+	// UnregisterSession 立即移除会话注册（不等待空闲超时）
+	// 用于请求最终失败的场景：上游从未真正服务该会话，不应继续占用会话槽，
+	// 否则 max_sessions 受限的账号会被失败请求的 session hash 卡满整个空闲窗口，
+	// 导致后续新会话在超时窗口内全部被拒
+	UnregisterSession(ctx context.Context, accountID int64, sessionUUID string) error
+
 	// GetActiveSessionCount 获取当前活跃会话数
 	// 返回未过期的会话数量
 	GetActiveSessionCount(ctx context.Context, accountID int64) (int, error)

@@ -226,6 +226,34 @@ describe('PaymentStatusPanel', () => {
     if (originalHidden) Object.defineProperty(document, 'hidden', originalHidden)
   })
 
+  it('actively verifies a pending desktop Alipay order', async () => {
+    pollOrderStatus.mockResolvedValue(orderFactory('PENDING'))
+    verifyOrder.mockResolvedValue({ data: orderFactory('COMPLETED') })
+
+    const wrapper = mount(PaymentStatusPanel, {
+      props: {
+        orderId: 42,
+        amount: 88,
+        payAmount: 88,
+        qrCode: 'https://qr.alipay.com/desktop-order-42',
+        expiresAt: '2099-01-01T12:30:00Z',
+        paymentType: 'alipay',
+        orderType: 'balance',
+        outTradeNo: 'sub2_20260420abcd1234',
+      },
+      global: { stubs: { Icon: true } },
+    })
+
+    await flushPromises()
+    await vi.advanceTimersByTimeAsync(3000)
+    await flushPromises()
+
+    expect(verifyOrder).toHaveBeenCalledWith('sub2_20260420abcd1234')
+    expect(wrapper.emitted('success')).toHaveLength(1)
+
+    wrapper.unmount()
+  })
+
   it('keeps the QR fallback hidden until the Alipay app launch times out', async () => {
     const originalLocation = window.location
     const originalHidden = Object.getOwnPropertyDescriptor(document, 'hidden')

@@ -34,7 +34,7 @@ func TestResolveGroupEffectiveModelsUsesAccountMappings(t *testing.T) {
 func TestResolveGroupEffectiveModelsAppliesCustomGroupList(t *testing.T) {
 	group := &Group{
 		Platform: PlatformOpenAI,
-		ModelsListConfig: GroupModelsListConfig{
+		ModelAllowlist: GroupModelAllowlist{
 			Enabled: true,
 			Models:  []string{"gpt-5.4"},
 		},

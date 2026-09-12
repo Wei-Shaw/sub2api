@@ -230,7 +230,10 @@ func newResolverWithPlatformChannel(t *testing.T, platform string, pricing []Cha
 			return map[int64]string{groupID: platform}, nil
 		},
 	}
-	cs := NewChannelService(repo, nil, nil, nil)
+	cs := NewChannelService(repo, nil, nil, nil, nil)
+	// 这里必须用真实 BillingService：fork 的 Kiro 用例断言没有渠道价时回落到
+	// LiteLLM 价目表（PricingSourceLiteLLM），stub 版只带一条 claude-sonnet-4
+	// 兜底价，会让 gpt-5.6-* 落到 PricingSourceFallback。
 	bs := NewBillingService(nil, nil)
 	return NewModelPricingResolver(cs, bs)
 }
@@ -616,7 +619,7 @@ func TestResolve_WithChannelOverride_CacheError(t *testing.T) {
 			return nil, errors.New("database unavailable")
 		},
 	}
-	cs := NewChannelService(repo, nil, nil, nil)
+	cs := NewChannelService(repo, nil, nil, nil, nil)
 	bs := newTestBillingServiceForResolver()
 	r := NewModelPricingResolver(cs, bs)
 

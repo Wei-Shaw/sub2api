@@ -96,7 +96,11 @@ const PLATFORM_LABELS: Record<string, string> = {
   gemini: 'Gemini',
   antigravity: 'Antigravity',
   kiro: 'Kiro',
-  grok: 'Grok'
+  grok: 'Grok',
+  kimi: 'Kimi',
+  zhipu: 'Zhipu GLM',
+  deepseek: 'DeepSeek',
+  minimax: 'MiniMax',
 }
 
 function platformLabel(platform: string): string {

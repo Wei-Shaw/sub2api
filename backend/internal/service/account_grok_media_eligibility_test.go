@@ -46,6 +46,7 @@ func TestGrokMediaGenerationEligibility(t *testing.T) {
 		{name: "non grok account", account: &Account{Platform: PlatformOpenAI}, want: false, wantReason: "not_grok"},
 		{name: "non oauth grok account stays eligible", account: &Account{Platform: PlatformGrok, Type: AccountTypeAPIKey}, want: true, wantReason: "non_oauth"},
 		{name: "unobserved oauth fails closed", account: &Account{Platform: PlatformGrok, Type: AccountTypeOAuth}, want: false, wantReason: "billing_unobserved"},
+		{name: "inconclusive successful billing remains eligible", account: &Account{Platform: PlatformGrok, Type: AccountTypeOAuth, Extra: map[string]any{grokBillingExtraKey: &xai.BillingSummary{StatusCode: http.StatusOK, Partial: true}}}, want: true, wantReason: "billing_inconclusive"},
 		{name: "weekly paid usage is eligible without inferring from period type", account: &Account{Platform: PlatformGrok, Type: AccountTypeOAuth, Extra: map[string]any{grokBillingExtraKey: weeklyAllowance}}, want: true, wantReason: "eligible"},
 		{name: "billing forbidden is rejected", account: &Account{Platform: PlatformGrok, Type: AccountTypeOAuth, Extra: map[string]any{grokBillingExtraKey: forbiddenBilling}}, want: false, wantReason: "billing_forbidden"},
 		{name: "weekly billing forbidden is rejected after partial success", account: &Account{Platform: PlatformGrok, Type: AccountTypeOAuth, Extra: map[string]any{grokBillingExtraKey: weeklyForbidden}}, want: false, wantReason: "billing_forbidden"},
@@ -65,7 +66,7 @@ func TestGrokMediaGenerationEligibility(t *testing.T) {
 	}
 }
 
-func TestGrokMediaCapabilityKeepsOnlyUnobservedOAuthAsProbeCandidate(t *testing.T) {
+func TestGrokMediaCapabilityKeepsUnobservedAndInconclusiveOAuthAsCandidates(t *testing.T) {
 	unobserved := &Account{Platform: PlatformGrok, Type: AccountTypeOAuth}
 	eligible, reason := unobserved.GrokMediaGenerationEligibility()
 	require.False(t, eligible)
@@ -80,7 +81,10 @@ func TestGrokMediaCapabilityKeepsOnlyUnobservedOAuthAsProbeCandidate(t *testing.
 			Partial:    true,
 		}},
 	}
-	require.False(t, inconclusive.SupportsOpenAIEndpointCapability(OpenAIEndpointCapabilityGrokMediaGeneration))
+	eligible, reason = inconclusive.GrokMediaGenerationEligibility()
+	require.True(t, eligible)
+	require.Equal(t, "billing_inconclusive", reason)
+	require.True(t, inconclusive.SupportsOpenAIEndpointCapability(OpenAIEndpointCapabilityGrokMediaGeneration))
 }
 
 func TestGrokMediaCapabilityFiltersOnlyGeneration(t *testing.T) {

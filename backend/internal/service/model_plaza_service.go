@@ -231,7 +231,7 @@ func (s *ModelPlazaService) fillDisplayPricing(ctx context.Context, m *PlazaMode
 			Platform: m.Platform,
 		})
 		if err == nil && sched != nil && len(sched.Tiers) > 0 {
-			m.Pricing = plazaPricingFromSchedule(m.Pricing, sched)
+			m.Pricing = withDefaultMaxReasoningEffortMultiplier(plazaPricingFromSchedule(m.Pricing, sched), m.Name)
 			if len(sched.Tiers) > 1 {
 				m.LongContextBasis = sched.Basis
 			}
@@ -239,7 +239,20 @@ func (s *ModelPlazaService) fillDisplayPricing(ctx context.Context, m *PlazaMode
 			return
 		}
 	}
-	m.Pricing = plazaImageDisplayPricing(m.Pricing, g)
+	m.Pricing = withDefaultMaxReasoningEffortMultiplier(plazaImageDisplayPricing(m.Pricing, g), m.Name)
+}
+
+func withDefaultMaxReasoningEffortMultiplier(pricing *ChannelModelPricing, model string) *ChannelModelPricing {
+	if pricing == nil || pricing.MaxReasoningEffortMultiplier != nil {
+		return pricing
+	}
+	multiplier := defaultMaxReasoningEffortMultiplier(model)
+	if multiplier == nil {
+		return pricing
+	}
+	cloned := pricing.Clone()
+	cloned.MaxReasoningEffortMultiplier = multiplier
+	return &cloned
 }
 
 // plazaPricingFromSchedule 把阶梯表压成展示用的 ChannelModelPricing：
@@ -250,11 +263,13 @@ func plazaPricingFromSchedule(raw *ChannelModelPricing, sched *ContextPricingSch
 		out.ImageInputPrice = raw.ImageInputPrice
 		out.ImageOutputPrice = raw.ImageOutputPrice
 		out.PerRequestPrice = raw.PerRequestPrice
+		out.MaxReasoningEffortMultiplier = raw.MaxReasoningEffortMultiplier
 	}
 	first := sched.Tiers[0]
 	out.InputPrice = first.Input
 	out.OutputPrice = first.Output
 	out.CacheWritePrice = first.CacheWrite
+	out.CacheWrite1hPrice = first.CacheWrite1h
 	out.CacheReadPrice = first.CacheRead
 	if len(sched.Tiers) > 1 {
 		out.Intervals = plazaIntervalsFromTiers(sched.Tiers)
@@ -266,14 +281,15 @@ func plazaIntervalsFromTiers(tiers []ContextPricingTier) []PricingInterval {
 	intervals := make([]PricingInterval, 0, len(tiers))
 	for i, t := range tiers {
 		intervals = append(intervals, PricingInterval{
-			MinTokens:       t.MinTokens,
-			MaxTokens:       t.MaxTokens,
-			TierLabel:       t.Label,
-			InputPrice:      t.Input,
-			OutputPrice:     t.Output,
-			CacheWritePrice: t.CacheWrite,
-			CacheReadPrice:  t.CacheRead,
-			SortOrder:       i,
+			MinTokens:         t.MinTokens,
+			MaxTokens:         t.MaxTokens,
+			TierLabel:         t.Label,
+			InputPrice:        t.Input,
+			OutputPrice:       t.Output,
+			CacheWritePrice:   t.CacheWrite,
+			CacheWrite1hPrice: t.CacheWrite1h,
+			CacheReadPrice:    t.CacheRead,
+			SortOrder:         i,
 		})
 	}
 	return intervals
