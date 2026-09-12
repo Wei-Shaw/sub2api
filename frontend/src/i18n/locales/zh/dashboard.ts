@@ -127,6 +127,19 @@ export default {
     lastUsedAt: '上次使用时间',
     lastUsedIP: '最近使用 IP',
     useKey: '使用密钥',
+    models: '模型',
+    modelsModal: {
+      title: '可用模型 - {name}',
+      description: '实时读取此 API 密钥的 /v1/models 结果，与客户端实际看到的模型列表一致。',
+      loading: '正在加载模型...',
+      searchPlaceholder: '搜索模型 ID...',
+      count: '共 {count} 个模型',
+      copy: '复制模型 ID',
+      empty: '当前密钥没有返回可用模型',
+      noMatches: '没有匹配的模型',
+      failedToLoad: '无法加载模型列表，请确认密钥已启用并已绑定有效分组。',
+      retry: '重试'
+    },
     useKeyModal: {
       title: '使用 API 密钥',
       description: '将以下环境变量添加到您的终端配置文件或直接在终端中运行。',
