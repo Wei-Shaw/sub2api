@@ -128,6 +128,9 @@ func (userSubRepoNoop) Update(context.Context, *UserSubscription) error {
 	panic("unexpected Update call")
 }
 func (userSubRepoNoop) Delete(context.Context, int64) error { panic("unexpected Delete call") }
+func (userSubRepoNoop) HardDelete(context.Context, int64) error {
+	panic("unexpected HardDelete call")
+}
 func (userSubRepoNoop) Restore(context.Context, int64, string) (*UserSubscription, error) {
 	panic("unexpected Restore call")
 }

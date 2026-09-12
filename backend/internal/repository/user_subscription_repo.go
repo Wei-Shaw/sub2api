@@ -168,6 +168,33 @@ func (r *userSubscriptionRepository) Delete(ctx context.Context, id int64) error
 	return err
 }
 
+func (r *userSubscriptionRepository) HardDelete(ctx context.Context, id int64) error {
+	client := clientFromContext(ctx, r.client)
+	queryCtx := mixins.SkipSoftDelete(ctx)
+	deleted, err := client.UserSubscription.Delete().
+		Where(
+			usersubscription.IDEQ(id),
+			usersubscription.DeletedAtNotNil(),
+		).
+		Exec(queryCtx)
+	if err != nil {
+		return translatePersistenceError(err, service.ErrSubscriptionNotFound, nil)
+	}
+	if deleted == 0 {
+		exists, err := client.UserSubscription.Query().
+			Where(usersubscription.IDEQ(id)).
+			Exist(queryCtx)
+		if err != nil {
+			return translatePersistenceError(err, service.ErrSubscriptionNotFound, nil)
+		}
+		if exists {
+			return service.ErrSubscriptionNotRevoked
+		}
+		return service.ErrSubscriptionNotFound
+	}
+	return nil
+}
+
 func (r *userSubscriptionRepository) Restore(ctx context.Context, subscriptionID int64, restoredStatus string) (*service.UserSubscription, error) {
 	client := clientFromContext(ctx, r.client)
 	queryCtx := mixins.SkipSoftDelete(ctx)
