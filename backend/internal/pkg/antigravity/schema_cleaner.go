@@ -120,16 +120,21 @@ func cleanJSONSchemaRecursive(value any) any {
 	mergeAllOf(schemaMap)
 
 	// 0.5 [FIX] 处理 Draft 2020-12 的 prefixItems (元组定义)
-	if prefixItems, ok := schemaMap["prefixItems"].([]any); ok && len(prefixItems) > 0 {
-		itemsVal, hasItems := schemaMap["items"]
-		_, itemsIsBool := itemsVal.(bool)
-		if !hasItems || itemsVal == nil || itemsIsBool {
-			best := extractBestSchemaFromUnion(prefixItems)
-			if best == nil {
-				best = map[string]any{"type": "string"}
+	if prefixItemsVal, hasPrefix := schemaMap["prefixItems"]; hasPrefix {
+		if prefixItems, ok := prefixItemsVal.([]any); ok && len(prefixItems) > 0 {
+			itemsVal, hasItems := schemaMap["items"]
+			_, itemsIsBool := itemsVal.(bool)
+			// 如果没有 items，或者 items 为 nil，或者 items 是布尔值（如 Draft 2020-12 中表示元组闭合的 items: false），
+			// 用选出的最佳元组项填充 items，以满足 Gemini 对 array.items 必须为合法 Schema 对象的规范。
+			if !hasItems || itemsVal == nil || itemsIsBool {
+				best := extractBestSchemaFromUnion(prefixItems)
+				if best == nil {
+					best = map[string]any{"type": "string"}
+				}
+				schemaMap["items"] = best
 			}
-			schemaMap["items"] = best
 		}
+		// 无论 prefixItems 是否为空数组，都彻底删除 prefixItems 关键字以防 Gemini 400
 		delete(schemaMap, "prefixItems")
 	}
 
@@ -219,6 +224,18 @@ func cleanJSONSchemaRecursive(value any) any {
 						schemaMap[k] = deepCopy(v)
 					}
 				}
+				// 清除已合并的 union 关键字
+				delete(schemaMap, "anyOf")
+				delete(schemaMap, "oneOf")
+				// 对合并进来的新属性和 items 进行深度递归清洗，确保合并进来的子结构（如 prefixItems）也能被处理
+				if props, ok := schemaMap["properties"].(map[string]any); ok {
+					for _, pv := range props {
+						cleanJSONSchemaRecursive(pv)
+					}
+				}
+				if items, ok := schemaMap["items"]; ok {
+					cleanJSONSchemaRecursive(items)
+				}
 			}
 		}
 	}
@@ -228,13 +245,36 @@ func cleanJSONSchemaRecursive(value any) any {
 		hasKey(schemaMap, "properties") ||
 		hasKey(schemaMap, "items") ||
 		hasKey(schemaMap, "enum") ||
+		hasKey(schemaMap, "const") ||
 		hasKey(schemaMap, "anyOf") ||
 		hasKey(schemaMap, "oneOf") ||
 		hasKey(schemaMap, "allOf")
 
 	if looksLikeSchema {
-		// 4. [ROBUST] 约束迁移
+		// 4. [ROBUST] 约束迁移与 const 规范化
 		migrateConstraints(schemaMap)
+
+		// 规范化 const 关键字 (Draft 6+ 转换为 Gemini 兼容的 enum: [const])
+		if constVal, exists := schemaMap["const"]; exists {
+			if _, hasEnum := schemaMap["enum"]; !hasEnum {
+				schemaMap["enum"] = []any{constVal}
+			}
+			if _, hasType := schemaMap["type"]; !hasType {
+				switch constVal.(type) {
+				case string:
+					schemaMap["type"] = "string"
+				case int, int32, int64:
+					schemaMap["type"] = "integer"
+				case float32, float64:
+					schemaMap["type"] = "number"
+				case bool:
+					schemaMap["type"] = "boolean"
+				default:
+					schemaMap["type"] = "string"
+				}
+			}
+			delete(schemaMap, "const")
+		}
 
 		// 5. [CRITICAL] 白名单过滤
 		allowedFields := map[string]bool{
@@ -283,11 +323,25 @@ func cleanJSONSchemaRecursive(value any) any {
 			}
 			schemaMap["type"] = selectedType
 		} else {
-			// 如果没有 type，但有 properties/items，推断并补全
+			// 如果没有 type，但有 properties/items/enum，推断并补全
 			if hasKey(schemaMap, "properties") {
 				schemaMap["type"] = "object"
 			} else if hasKey(schemaMap, "items") {
 				schemaMap["type"] = "array"
+			} else if enumArr, ok := schemaMap["enum"].([]any); ok && len(enumArr) > 0 {
+				// [FIX] 针对仅含 enum 的 schema，按其元素类型推断标量类型，避免被误判为 object 并注入 reason 属性
+				switch enumArr[0].(type) {
+				case int, int32, int64:
+					schemaMap["type"] = "integer"
+				case float32, float64:
+					schemaMap["type"] = "number"
+				case bool:
+					schemaMap["type"] = "boolean"
+				default:
+					schemaMap["type"] = "string"
+				}
+			} else if hasKey(schemaMap, "enum") {
+				schemaMap["type"] = "string"
 			} else {
 				schemaMap["type"] = "object"
 			}
@@ -524,6 +578,9 @@ func scoreSchemaOption(val any) int {
 	}
 	if hasKey(m, "items") || typeStr == "array" {
 		return 2
+	}
+	if hasKey(m, "enum") || hasKey(m, "const") {
+		return 1
 	}
 	if typeStr != "" && typeStr != "null" {
 		return 1
