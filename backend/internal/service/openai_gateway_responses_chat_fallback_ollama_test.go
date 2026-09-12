@@ -137,12 +137,15 @@ func TestResponsesChatFallback_OfficialDeepSeek_Untouched(t *testing.T) {
 	require.Equal(t, "final answer", gjson.Get(rec.Body.String(), "output.0.content.0.text").String())
 }
 
-func TestResponsesChatFallback_OllamaGLM_Untouched(t *testing.T) {
+// TestResponsesChatFallback_OllamaGLM_ClampsMaxTokens 验证 D1′ 后非 DeepSeek 模型
+// （glm-5.3-flash）在 ollama host 的 Responses→CC 降级桥上同样被 clamp；reasoning
+// 钩子仍按模型判定，非 DeepSeek 模型不做归一化。
+func TestResponsesChatFallback_OllamaGLM_ClampsMaxTokens(t *testing.T) {
 	account := ollamaUpstreamTestAccount(PlatformDeepseek, 605)
 	body := []byte(`{"model":"glm-5.3-flash","input":"hello","max_output_tokens":256000,"stream":false}`)
 	upstreamJSON := `{"id":"chatcmpl_ollama","object":"chat.completion","model":"glm-5.3-flash","choices":[{"index":0,"message":{"role":"assistant","thinking":"abc","content":"final answer"},"finish_reason":"stop"}],"usage":{"prompt_tokens":3,"completion_tokens":5,"total_tokens":8}}`
 	rec, upstream := runOllamaResponsesChatFallback(t, account, body, upstreamJSON, false)
-	require.Equal(t, int64(256000), gjson.GetBytes(upstream.lastBody, "max_completion_tokens").Int())
+	require.Equal(t, int64(65535), gjson.GetBytes(upstream.lastBody, "max_completion_tokens").Int())
 	require.NotContains(t, rec.Body.String(), `"type":"reasoning"`)
 	require.Equal(t, "final answer", gjson.Get(rec.Body.String(), "output.0.content.0.text").String())
 }

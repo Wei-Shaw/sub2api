@@ -609,8 +609,16 @@ func (s *OpenAIGatewayService) buildUpstreamRequestOpenAIPassthrough(
 	}
 	targetURL = appendOpenAIResponsesRequestPathSuffix(targetURL, openAIResponsesRequestPathSuffix(c))
 
-	// DeepSeek / Kimi 原生 Responses 端点为无状态实现（见 normalizeDeepSeekResponsesRequestBody）。
-	body = normalizeDeepSeekResponsesRequestBody(account, body)
+	// DeepSeek / Kimi / Ollama Cloud 原生 Responses 端点为无状态实现
+	// （见 normalizeDeepSeekResponsesRequestBody）；conversation 显式 400。
+	body, normalizeErr := normalizeDeepSeekResponsesRequestBody(account, body)
+	if normalizeErr != nil {
+		var statelessErr *openAIResponsesStatelessFieldError
+		if errors.As(normalizeErr, &statelessErr) {
+			respondOpenAIStatelessFieldError(c, statelessErr)
+		}
+		return nil, normalizeErr
+	}
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, targetURL, bytes.NewReader(body))
 	if err != nil {
