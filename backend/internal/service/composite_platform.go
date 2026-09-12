@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"slices"
 	"strings"
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/ctxkey"
@@ -31,8 +32,69 @@ func ResolvedTargetPlatformFromContext(ctx context.Context) (string, bool) {
 	return platform, true
 }
 
+// normalizeCompositeCandidatePlatforms 归一化候选平台集合：去空白、去空项、
+// 去重并按升序排列；输入为空时返回 nil。池集合在写入 ctx / decision 前必须
+// 经过该函数，保证「稳定候选契约」:同一候选集在请求生命周期内表现一致。
+func normalizeCompositeCandidatePlatforms(platforms []string) []string {
+	normalized := make([]string, 0, len(platforms))
+	for _, platform := range platforms {
+		platform = strings.TrimSpace(platform)
+		if platform == "" {
+			continue
+		}
+		if slices.Contains(normalized, platform) {
+			continue
+		}
+		normalized = append(normalized, platform)
+	}
+	if len(normalized) == 0 {
+		return nil
+	}
+	slices.Sort(normalized)
+	return normalized
+}
+
+// WithCompositeCandidatePlatforms 在 ctx 上携带 composite 多平台候选池。输入
+// 会被归一化（去重升序），存入 ctx 的是内部副本；空集合不写入。
+func WithCompositeCandidatePlatforms(ctx context.Context, platforms []string) context.Context {
+	if ctx == nil {
+		return ctx
+	}
+	normalized := normalizeCompositeCandidatePlatforms(platforms)
+	if len(normalized) == 0 {
+		return ctx
+	}
+	return context.WithValue(ctx, ctxkey.CompositeCandidatePlatforms, normalized)
+}
+
+// CompositeCandidatePlatformsFromContext 返回当前请求的候选池快照（去重升序）。
+// 返回值为副本，调用方修改不会影响 ctx；未携带池时返回 nil。
+func CompositeCandidatePlatformsFromContext(ctx context.Context) []string {
+	if ctx == nil {
+		return nil
+	}
+	platforms, ok := ctx.Value(ctxkey.CompositeCandidatePlatforms).([]string)
+	if !ok || len(platforms) == 0 {
+		return nil
+	}
+	return slices.Clone(platforms)
+}
+
 func WithCompositeRouteDecision(ctx context.Context, decision CompositeRouteDecision) context.Context {
 	if ctx == nil || !decision.Matched {
+		return ctx
+	}
+	if isCompositePoolDecision(decision) {
+		// pool 决策：只携带候选集合与公开模型/来源，不写 ResolvedTargetPlatform /
+		// ResolvedUpstreamModel——最终平台由 selector 选定，选号/重试期间不得被
+		// 单一账号平台覆盖，池请求也不改写 body 模型。
+		ctx = WithCompositeCandidatePlatforms(ctx, decision.CandidatePlatforms)
+		if model := strings.TrimSpace(decision.PublicModel); model != "" {
+			ctx = context.WithValue(ctx, ctxkey.RequestedPublicModel, model)
+		}
+		if source := strings.TrimSpace(decision.Source); source != "" {
+			ctx = context.WithValue(ctx, ctxkey.CompositeRouteSource, source)
+		}
 		return ctx
 	}
 	ctx = WithResolvedTargetPlatform(ctx, decision.TargetPlatform)
@@ -190,6 +252,23 @@ func (s *GatewayService) resolveCompositeRouteDecision(ctx context.Context, grou
 			TargetPlatform: platform,
 			UpstreamModel:  upstreamModel,
 			Endpoint:       normalizeCompositeRouteEndpoint(endpoint),
+		}, true, nil
+	}
+	// 已解析的池决策优先于重新解析：避免因 TargetPlatform 为空被误报 unknown
+	// 或折叠成 detector 单平台。显式 pin（ResolvedTargetPlatform）仍优先于池，
+	// 保持既有 single 行为（如 gemini 端点 fallback pin）。
+	if candidates := CompositeCandidatePlatformsFromContext(ctx); len(candidates) > 0 {
+		source := CompositeRouteSourceAccountPool
+		if resolvedSource, sourceOK := CompositeRouteSourceFromContext(ctx); sourceOK && resolvedSource != "" {
+			source = resolvedSource
+		}
+		return CompositeRouteDecision{
+			Matched:            true,
+			Source:             source,
+			GroupID:            group.ID,
+			PublicModel:        requestedModel,
+			CandidatePlatforms: candidates,
+			Endpoint:           normalizeCompositeRouteEndpoint(endpoint),
 		}, true, nil
 	}
 	decision, err := s.compositeResolver.Resolve(ctx, group.ID, requestedModel, endpoint)

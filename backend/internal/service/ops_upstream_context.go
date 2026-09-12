@@ -3,6 +3,7 @@ package service
 import (
 	"encoding/json"
 	"errors"
+	"net/http"
 	"strconv"
 	"strings"
 	"time"
@@ -21,6 +22,12 @@ const (
 	OpsUpstreamErrorDetailKey  = "ops_upstream_error_detail"
 	OpsUpstreamErrorsKey       = "ops_upstream_errors"
 	OpsUpstreamModelKey        = "ops_upstream_model"
+
+	// OpsUpstreamEndpointKey 保存最近一次真实出站尝试的端点路径。由各实际
+	// forwarder 在发送前写入；GetUpstreamEndpoint（handler）优先消费它，
+	// 使失败日志报告真实上游路径而不是按 group/platform 推导的入站路径
+	// （例如 composite 组 inbound=/v1/chat/completions 实际打到 /v1/messages）。
+	OpsUpstreamEndpointKey = "ops_upstream_endpoint"
 
 	// Optional stage latencies (milliseconds) for troubleshooting and alerting.
 	OpsAuthLatencyMsKey      = "ops_auth_latency_ms"
@@ -98,6 +105,54 @@ func ClearOpsUpstreamModel(c *gin.Context) {
 		return
 	}
 	c.Set(OpsUpstreamModelKey, "")
+}
+
+// SetOpsUpstreamEndpoint records the endpoint path of the current outbound
+// attempt. Call it immediately before the request is dispatched so that error
+// paths (404/500, transport failures) still report the real upstream target.
+// Only the URL path is stored — never query strings, userinfo or credentials.
+func SetOpsUpstreamEndpoint(c *gin.Context, endpoint string) {
+	if c == nil {
+		return
+	}
+	if endpoint = strings.TrimSpace(endpoint); endpoint != "" {
+		c.Set(OpsUpstreamEndpointKey, endpoint)
+	}
+}
+
+// GetOpsUpstreamEndpoint returns the endpoint recorded by the latest outbound
+// attempt in this request, or "" when no attempt was recorded.
+func GetOpsUpstreamEndpoint(c *gin.Context) string {
+	if c == nil {
+		return ""
+	}
+	value, exists := c.Get(OpsUpstreamEndpointKey)
+	if !exists {
+		return ""
+	}
+	endpoint, _ := value.(string)
+	return strings.TrimSpace(endpoint)
+}
+
+// ClearOpsUpstreamEndpoint invalidates attempt-scoped endpoint attribution
+// before a newly selected account starts its forward attempt.
+func ClearOpsUpstreamEndpoint(c *gin.Context) {
+	if c == nil {
+		return
+	}
+	c.Set(OpsUpstreamEndpointKey, "")
+}
+
+// SetOpsUpstreamRequestTarget snapshots the actual outbound request target and
+// the final mapped model immediately before dispatch. It is called by real
+// forwarders once the http.Request is built; a request that later fails still
+// keeps the metadata for ops error attribution.
+func SetOpsUpstreamRequestTarget(c *gin.Context, req *http.Request, model string) {
+	if c == nil || req == nil || req.URL == nil {
+		return
+	}
+	SetOpsUpstreamEndpoint(c, req.URL.Path)
+	SetOpsUpstreamModel(c, model)
 }
 
 func MarkOpsClientBusinessLimited(c *gin.Context, reason string) {

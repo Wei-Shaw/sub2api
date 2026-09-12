@@ -389,6 +389,9 @@ func (s *OpenAIGatewayService) ForwardAsAnthropic(
 	if account.ProxyID != nil && account.Proxy != nil {
 		proxyURL = account.Proxy.URL()
 	}
+	// Codex transform 等可能在初始映射后再归一模型；发送前记录最终 slug
+	// （端点已在步骤 6 前按实际分流记录），失败路径的错误日志保留真实模型。
+	SetOpsUpstreamModel(c, upstreamModel)
 	// Grok may reject encrypted reasoning replayed under a different OAuth
 	// account/cache identity. Match forwardGrokResponses: one strip+retry before
 	// treating the 400 as a hard failure / failover trigger.

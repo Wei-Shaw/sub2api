@@ -1369,3 +1369,30 @@ func (s *BillingCacheService) HasUserPlatformQuotaLimit(ctx context.Context, use
 	}
 	return entry.DailyLimitUSD != nil || entry.WeeklyLimitUSD != nil || entry.MonthlyLimitUSD != nil
 }
+
+// CheckUserPlatformQuotaEligibilityForRequest 是 checkUserPlatformQuotaEligibility
+// 的导出薄包装，供 composite 账号池在账号选定后按实际 platform 补做 user×platform
+// 配额预检（准入 CheckBillingEligibility 时池请求还没有 resolved 平台，传空跳过了
+// 该维度），不得只后扣不预检。
+//
+// 语义约束：
+//   - 纯检查 + cache 回填：不写 RPM 计数、不触碰熔断器、不扣费、不写任何请求持久
+//     状态。调用方绝不能用 CheckBillingEligibility 代替本检查——那会二次计数 RPM。
+//   - 豁免条件与 CheckBillingEligibility 完全一致：simple 模式跳过；订阅分组且
+//     subscription 非 nil 跳过（user×platform quota 仅在 standard 余额模式生效）。
+//   - platform 为空或 repo 未装配时放行（与内部实现同一守卫）。
+func (s *BillingCacheService) CheckUserPlatformQuotaEligibilityForRequest(ctx context.Context, user *User, group *Group, subscription *UserSubscription, platform string) error {
+	if s == nil {
+		return nil
+	}
+	if s.cfg.RunMode == config.RunModeSimple {
+		return nil
+	}
+	if group != nil && group.IsSubscriptionType() && subscription != nil {
+		return nil
+	}
+	if user == nil {
+		return nil
+	}
+	return s.checkUserPlatformQuotaEligibility(ctx, user.ID, platform)
+}

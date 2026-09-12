@@ -71,9 +71,8 @@ const (
 )
 
 const (
-	cacheTTLTarget5m                   = "5m"
-	cacheTTLTarget1h                   = "1h"
-	compositeModelOwnershipCachePrefix = "composite-owner|"
+	cacheTTLTarget5m = "5m"
+	cacheTTLTarget1h = "1h"
 )
 
 // ForceCacheBillingContextKey 强制缓存计费上下文键
@@ -527,10 +526,6 @@ func resolveModelsListCacheTTL(cfg *config.Config) time.Duration {
 
 func modelsListCacheKey(groupID *int64, platform string) string {
 	return fmt.Sprintf("%d|%s", derefGroupID(groupID), strings.TrimSpace(platform))
-}
-
-func compositeModelOwnershipCacheKey(groupID int64, model string) string {
-	return fmt.Sprintf("%s%d|%s", compositeModelOwnershipCachePrefix, groupID, strings.TrimSpace(model))
 }
 
 func prefetchedStickyGroupIDFromContext(ctx context.Context) (int64, bool) {
@@ -1463,57 +1458,80 @@ func (s *GatewayService) GetAvailableModels(ctx context.Context, groupID *int64,
 	return cloneStringSlice(models)
 }
 
+// compositeOwnershipQueryPlatforms 返回 ownership 候选扫描的平台全集。
+// ListModelAvailabilityCandidates 要求显式传入平台列表（空列表返回空结果），
+// 这里传入全部可承接请求的具体平台，与旧 ListSchedulableByGroupID 的扫描范围
+// 保持一致，组隔离由该查询的 groupID 维度保证。
+func compositeOwnershipQueryPlatforms() []string {
+	return []string{
+		PlatformAnthropic, PlatformOpenAI, PlatformGemini, PlatformAntigravity, PlatformGrok,
+		PlatformKimi, PlatformZhipu, PlatformDeepseek, PlatformMiniMax, PlatformOpenCodeGo,
+	}
+}
+
+// resolveCompositeModelOwnership 基于持久化配置判断一个公开模型由组内哪些平台
+// 提供。数据源是 ListModelAvailabilityCandidates（active + schedulable，显式
+// 忽略限流/过载/临时不可调度等瞬态状态），能力谓词是统一共享的
+// CompositeAccountClaimStrength。刻意不经过 modelsListCache：旧 TTL 缓存会把
+// 「带瞬态过滤的旧健康列表」喂给池，全部候选 rate-limited 时能力会凭空消失；
+// 移除后每次解析即反映最新配置（含 mapping 移除），代价是每次一次配置态查询。
+//
+// 声明强度分层：精确 mapping 命中与受控 native 空映射同为强声明；通配命中仅
+// 为弱声明（fallback）。存在强声明平台时仅强声明平台构成池/单平台，完全无强
+// 声明才回退通配命中平台集合，避免通配 catch-all 账号与显式声明平台混池。
+//
+// 返回：0 候选 → 零值（调用方回退 detector / unknown）；1 候选 → 单平台
+// （既有语义）；>1 → Matched=true + CandidatePlatforms（去重升序）的池。
 func (s *GatewayService) resolveCompositeModelOwnership(ctx context.Context, groupID int64, model string) (CompositeModelOwnership, error) {
 	model = strings.TrimSpace(model)
 	if s == nil || s.accountRepo == nil || groupID <= 0 || model == "" {
 		return CompositeModelOwnership{}, nil
 	}
 
-	cacheKey := compositeModelOwnershipCacheKey(groupID, model)
-	if s.modelsListCache != nil {
-		if cached, found := s.modelsListCache.Get(cacheKey); found {
-			if ownership, ok := cached.(CompositeModelOwnership); ok {
-				return ownership, nil
-			}
-		}
-	}
-
-	accounts, err := s.accountRepo.ListSchedulableByGroupID(ctx, groupID)
+	accounts, err := s.accountRepo.ListModelAvailabilityCandidates(ctx, &groupID, compositeOwnershipQueryPlatforms(), true)
 	if err != nil {
 		return CompositeModelOwnership{}, err
 	}
 
-	platforms := make(map[string]struct{})
-	for _, account := range accounts {
+	strongPlatforms := make(map[string]struct{})
+	wildcardPlatforms := make(map[string]struct{})
+	for i := range accounts {
+		account := &accounts[i]
 		platform := strings.TrimSpace(account.Platform)
-		if !isConcreteRequestPlatform(platform) || !explicitModelMappingClaims(account, model) {
+		if !isConcreteRequestPlatform(platform) {
 			continue
 		}
-		platforms[platform] = struct{}{}
+		switch CompositeAccountClaimStrength(account, model) {
+		case CompositeClaimExplicit:
+			strongPlatforms[platform] = struct{}{}
+		case CompositeClaimWildcard:
+			wildcardPlatforms[platform] = struct{}{}
+		}
+	}
+
+	claimedPlatforms := strongPlatforms
+	if len(claimedPlatforms) == 0 {
+		claimedPlatforms = wildcardPlatforms
 	}
 
 	ownership := CompositeModelOwnership{}
-	if len(platforms) == 1 {
-		for platform := range platforms {
+	switch len(claimedPlatforms) {
+	case 1:
+		for platform := range claimedPlatforms {
 			ownership.TargetPlatform = platform
 		}
 		ownership.Matched = true
-	} else if len(platforms) > 1 {
-		ownership.Ambiguous = true
-	}
-
-	if s.modelsListCache != nil {
-		s.modelsListCache.Set(cacheKey, ownership, s.modelsListCacheTTL)
+	default:
+		if len(claimedPlatforms) > 1 {
+			candidates := make([]string, 0, len(claimedPlatforms))
+			for platform := range claimedPlatforms {
+				candidates = append(candidates, platform)
+			}
+			ownership.Matched = true
+			ownership.CandidatePlatforms = normalizeCompositeCandidatePlatforms(candidates)
+		}
 	}
 	return ownership, nil
-}
-
-func explicitModelMappingClaims(account Account, model string) bool {
-	if account.Credentials == nil || model == "" {
-		return false
-	}
-	mapped, ok := stringMappingFromRaw(account.Credentials["model_mapping"])[model]
-	return ok && strings.TrimSpace(mapped) != ""
 }
 
 // GetSchedulablePlatforms returns the concrete platforms that currently have
@@ -1548,7 +1566,6 @@ func (s *GatewayService) InvalidateAvailableModelsCache(groupID *int64, platform
 	if s == nil || s.modelsListCache == nil {
 		return
 	}
-	s.invalidateCompositeModelOwnershipCache(groupID)
 
 	normalizedPlatform := strings.TrimSpace(platform)
 	// 完整匹配时精准失效；否则按维度批量失效。
@@ -1574,26 +1591,6 @@ func (s *GatewayService) InvalidateAvailableModelsCache(groupID *int64, platform
 			continue
 		}
 		s.modelsListCache.Delete(key)
-	}
-}
-
-func (s *GatewayService) invalidateCompositeModelOwnershipCache(groupID *int64) {
-	for key := range s.modelsListCache.Items() {
-		if !strings.HasPrefix(key, compositeModelOwnershipCachePrefix) {
-			continue
-		}
-		if groupID == nil {
-			s.modelsListCache.Delete(key)
-			continue
-		}
-		parts := strings.SplitN(strings.TrimPrefix(key, compositeModelOwnershipCachePrefix), "|", 2)
-		if len(parts) != 2 {
-			continue
-		}
-		cachedGroupID, err := strconv.ParseInt(parts[0], 10, 64)
-		if err == nil && cachedGroupID == *groupID {
-			s.modelsListCache.Delete(key)
-		}
 	}
 }
 

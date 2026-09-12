@@ -20,6 +20,11 @@ const (
 	// CompositeRouteSource 标识 composite 解析结果来自显式路由还是内置模型探测。
 	CompositeRouteSource Key = "ctx_composite_route_source"
 
+	// CompositeCandidatePlatforms 是 composite 多平台候选池（account_pool 决策）
+	// 的参与平台集合（去重升序）。与 ResolvedTargetPlatform 互斥写入：池决策不
+	// 固定单一目标平台，选号期间不得被最终账号平台覆盖。
+	CompositeCandidatePlatforms Key = "ctx_composite_candidate_platforms"
+
 	// RequestID 为服务端生成/透传的请求 ID。
 	RequestID Key = "ctx_request_id"
 

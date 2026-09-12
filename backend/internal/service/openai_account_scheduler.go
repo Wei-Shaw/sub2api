@@ -375,6 +375,61 @@ func newDefaultOpenAIAccountScheduler(service *OpenAIGatewayService, stats *open
 	}
 }
 
+// attemptPreviousResponseLayer 尝试 previous_response_id 归属层：高级调度器
+// Select 与 legacy+active composite pool 两条路径共用同一套 pin 选择与
+// 兼容/transport/group/model/profit 复检。attempted=true 表示本层已执行（无论
+// 是否命中）；selection 非 nil 即命中（含 owner WaitPlan），decision 已置
+// StickyPreviousHit 与层名。
+func (s *defaultOpenAIAccountScheduler) attemptPreviousResponseLayer(
+	ctx context.Context,
+	req OpenAIAccountScheduleRequest,
+	decision *OpenAIAccountScheduleDecision,
+) (*AccountSelectionResult, bool, error) {
+	previousResponseID := strings.TrimSpace(req.PreviousResponseID)
+	if previousResponseID == "" || NormalizeOpenAICompatiblePlatform(req.Platform) != PlatformOpenAI ||
+		(req.StickyWeighted && req.PreviousResponseCanMove) {
+		return nil, false, nil
+	}
+	selection, err := s.service.selectAccountByPreviousResponseIDForCapability(
+		ctx,
+		req.GroupID,
+		previousResponseID,
+		req.RequestedModel,
+		req.ExcludedIDs,
+		req.RequiredCapability,
+		req.RequireCompact,
+	)
+	if err != nil {
+		return nil, true, err
+	}
+	if selection != nil && selection.Account != nil {
+		compatible, _ := s.isAccountRequestCompatibleReason(ctx, selection.Account, req)
+		hasGroupMetadata := len(selection.Account.GroupIDs) > 0 || len(selection.Account.AccountGroups) > 0
+		groupCompatible := !hasGroupMetadata || openAIStickyAccountMatchesGroup(selection.Account, req.GroupID)
+		if hasGroupMetadata && s.service != nil {
+			groupCompatible = s.service.openAIAccountMatchesSchedulingGroup(selection.Account, req.GroupID)
+		}
+		if !groupCompatible ||
+			!compatible || !s.isAccountTransportCompatible(selection.Account, req.RequiredTransport) {
+			if selection.ReleaseFunc != nil {
+				selection.ReleaseFunc()
+			}
+			selection = nil
+		}
+	}
+	if selection != nil && selection.Account != nil {
+		decision.Layer = openAIAccountScheduleLayerPreviousResponse
+		decision.StickyPreviousHit = true
+		decision.SelectedAccountID = selection.Account.ID
+		decision.SelectedAccountType = selection.Account.Type
+		if req.SessionHash != "" {
+			_ = s.service.bindOpenAIStickySessionDuringSelection(ctx, req.GroupID, req.SessionHash, selection.Account.ID)
+		}
+		return selection, true, nil
+	}
+	return nil, true, nil
+}
+
 func (s *defaultOpenAIAccountScheduler) Select(
 	ctx context.Context,
 	req OpenAIAccountScheduleRequest,
@@ -389,46 +444,12 @@ func (s *defaultOpenAIAccountScheduler) Select(
 		s.metrics.recordSelect(decision)
 	}()
 
-	previousResponseID := strings.TrimSpace(req.PreviousResponseID)
-	if previousResponseID != "" && NormalizeOpenAICompatiblePlatform(req.Platform) == PlatformOpenAI &&
-		(!req.StickyWeighted || !req.PreviousResponseCanMove) {
-		selection, err := s.service.selectAccountByPreviousResponseIDForCapability(
-			ctx,
-			req.GroupID,
-			previousResponseID,
-			req.RequestedModel,
-			req.ExcludedIDs,
-			req.RequiredCapability,
-			req.RequireCompact,
-		)
-		if err != nil {
-			return nil, decision, err
-		}
-		if selection != nil && selection.Account != nil {
-			compatible, _ := s.isAccountRequestCompatibleReason(ctx, selection.Account, req)
-			hasGroupMetadata := len(selection.Account.GroupIDs) > 0 || len(selection.Account.AccountGroups) > 0
-			groupCompatible := !hasGroupMetadata || openAIStickyAccountMatchesGroup(selection.Account, req.GroupID)
-			if hasGroupMetadata && s.service != nil {
-				groupCompatible = s.service.openAIAccountMatchesSchedulingGroup(selection.Account, req.GroupID)
-			}
-			if !groupCompatible ||
-				!compatible || !s.isAccountTransportCompatible(selection.Account, req.RequiredTransport) {
-				if selection.ReleaseFunc != nil {
-					selection.ReleaseFunc()
-				}
-				selection = nil
-			}
-		}
-		if selection != nil && selection.Account != nil {
-			decision.Layer = openAIAccountScheduleLayerPreviousResponse
-			decision.StickyPreviousHit = true
-			decision.SelectedAccountID = selection.Account.ID
-			decision.SelectedAccountType = selection.Account.Type
-			if req.SessionHash != "" {
-				_ = s.service.bindOpenAIStickySessionDuringSelection(ctx, req.GroupID, req.SessionHash, selection.Account.ID)
-			}
-			return selection, decision, nil
-		}
+	selection, attempted, err := s.attemptPreviousResponseLayer(ctx, req, &decision)
+	if err != nil {
+		return nil, decision, err
+	}
+	if attempted && selection != nil {
+		return selection, decision, nil
 	}
 
 	if req.GuardianParentAccountID > 0 {
@@ -524,7 +545,13 @@ func (s *defaultOpenAIAccountScheduler) selectBySessionHash(
 		clearBinding()
 		return nil, false, nil
 	}
-	if shouldClearStickySession(account, req.RequestedModel) || account.Platform != NormalizeOpenAICompatiblePlatform(req.Platform) || !account.IsOpenAICompatible() || !account.IsSchedulable() {
+	// composite pool denied 平台：sticky 账号只是暂时排除——必须在
+	// shouldClearStickySession / recheck 等会 clearBinding 的分支之前跳过，
+	// 保留绑定回落其它候选。
+	if compositePoolPlatformDenied(ctx, account.Platform) {
+		return nil, false, nil
+	}
+	if shouldClearStickySession(account, req.RequestedModel) || !openAISchedulingPlatformMatchesAccount(ctx, account, req.Platform) || !account.IsOpenAICompatible() || !account.IsSchedulable() {
 		clearBinding()
 		return nil, false, nil
 	}
@@ -1282,6 +1309,11 @@ func (s *defaultOpenAIAccountScheduler) tryFallbackToWeightedSticky(
 		if err != nil || account == nil {
 			continue
 		}
+		// composite pool denied 平台：weighted sticky 回落同样不得回到被暂时
+		// 排除的平台（不 delete，仅跳过）。
+		if compositePoolPlatformDenied(ctx, account.Platform) {
+			continue
+		}
 		if !s.isAccountRequestCompatible(ctx, account, req) || !s.isAccountTransportCompatible(account, req.RequiredTransport) {
 			continue
 		}
@@ -1449,7 +1481,7 @@ func (s *defaultOpenAIAccountScheduler) selectByLoadBalance(
 			filterStats.exclude("not_schedulable")
 			continue
 		}
-		if account.Platform != NormalizeOpenAICompatiblePlatform(req.Platform) || !account.IsOpenAICompatible() {
+		if !openAISchedulingPlatformMatchesAccount(ctx, account, req.Platform) || !account.IsOpenAICompatible() {
 			filterStats.exclude("platform_mismatch")
 			continue
 		}
@@ -1775,6 +1807,11 @@ func (s *defaultOpenAIAccountScheduler) isAccountRequestCompatibleReason(ctx con
 	if req.RequirePrivacySet && !account.IsPrivacySet() {
 		return false, "privacy_not_set"
 	}
+	// composite account_pool：候选池 immutable，粘性/previous_response_id/抢槽后
+	// 复检都必须重新校验池成员资格，防止池外账号经复检路径混入（池塌缩）。
+	if openAICompositePoolActive(ctx) && !openAICompositePoolAllowsAccount(ctx, account) {
+		return false, "platform_mismatch"
+	}
 	if s != nil && s.service != nil && s.service.isOpenAIAccountRequestRuntimeBlocked(account, req.RequestedModel) {
 		return false, "runtime_blocked"
 	}
@@ -1803,7 +1840,7 @@ func (s *defaultOpenAIAccountScheduler) isAccountRequestCompatibleReason(ctx con
 	}) {
 		return false, "shadow_parent_unhealthy"
 	}
-	if req.RequestedModel != "" && !account.IsModelSupported(req.RequestedModel) {
+	if req.RequestedModel != "" && !openAISchedulingModelSupported(ctx, account, req.RequestedModel) {
 		return false, "model_not_supported"
 	}
 	if req.GroupID != nil && s != nil && s.service != nil &&
@@ -2280,6 +2317,33 @@ func (s *OpenAIGatewayService) selectAccountWithSchedulerOnce(
 				decision.SelectedAccountID = selection.Account.ID
 				decision.SelectedAccountType = selection.Account.Type
 				return selection, decision, nil
+			}
+		}
+		// composite account_pool：legacy 调度的 previous_response_id 归属层。
+		// 高级调度器关闭时 legacy 分支原本完全忽略 prevID；仅对「active pool +
+		// 非空 prevID」复用与高级调度器相同的 pin 选择与兼容/transport/group/
+		// model/profit 复检，命中或 owner WaitPlan 均置 StickyPreviousHit。
+		// 非池请求（含普通 legacy OpenAI）不进入本层，行为不变。
+		if strings.TrimSpace(previousResponseID) != "" && openAICompositePoolActive(ctx) {
+			legacyScheduler := &defaultOpenAIAccountScheduler{service: s, stats: newOpenAIAccountRuntimeStats()}
+			pinSelection, attempted, pinErr := legacyScheduler.attemptPreviousResponseLayer(ctx, OpenAIAccountScheduleRequest{
+				GroupID:                 groupID,
+				Platform:                platform,
+				SessionHash:             sessionHash,
+				RequestedModel:          requestedModel,
+				RequiredTransport:       requiredTransport,
+				RequiredCapability:      requiredCapability,
+				RequiredImageCapability: requiredImageCapability,
+				RequireCompact:          requireCompact,
+				ExcludedIDs:             excludedIDs,
+				RequirePrivacySet:       s.openAIGroupRequiresPrivacySet(ctx, groupID),
+				PreviousResponseID:      previousResponseID,
+			}, &decision)
+			if pinErr != nil {
+				return nil, decision, pinErr
+			}
+			if attempted && pinSelection != nil && pinSelection.Account != nil {
+				return pinSelection, decision, nil
 			}
 		}
 		legacySessionHash := sessionHash

@@ -100,6 +100,12 @@ func (s *OpenAIGatewayService) forwardAnthropicViaNativeAnthropicEndpoint(
 		return nil, err
 	}
 
+	// adaptive/anthropic 协议账号的真实出站端点是供应商原生 /v1/messages（非
+	// Responses）。发送前记录实际端点与最终映射模型，404/500 等失败没有
+	// OpenAIForwardResult 时错误日志仍能报告真实值。
+	SetOpsUpstreamEndpoint(c, "/v1/messages")
+	SetOpsUpstreamModel(c, upstreamModel)
+
 	resp, err := s.doOpenAIUpstream(upstreamReq, proxyURL, account)
 	if err != nil {
 		return nil, s.handleOpenAIUpstreamTransportError(ctx, c, account, err, true)

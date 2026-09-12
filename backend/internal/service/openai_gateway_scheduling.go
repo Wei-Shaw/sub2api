@@ -299,6 +299,69 @@ func NormalizeOpenAICompatiblePlatform(platform string) string {
 	}
 }
 
+// ---- composite account_pool 契约接入点（增量2A） ----
+//
+// 池上下文与模型能力谓词的所有权在增量1（composite_platform.go /
+// composite_account_claims.go）：WithCompositeCandidatePlatforms /
+// CompositeCandidatePlatformsFromContext 携带 immutable 候选池，
+// CompositeAccountClaimsModel 是构池与选号共用的能力谓词。以下辅助函数直接调用
+// 契约函数：池请求（ctx 携带候选池）在 OpenAI 兼容族内做跨平台调度，无池请求
+// 行为与增量2A 之前一致。
+
+// openAICompositePoolActive 报告当前请求是否按「composite account_pool」调度。
+// 显式 force/单 target 路由（ctx 已带 ResolvedTargetPlatform，含 Gemini pin 语义）
+// 优先于池：resolved 平台不允许被池成员资格绕过；此时即使 ctx 残留候选池也按
+// 单平台旧行为调度，选号/重试不得写 resolved 把池缩小（池 immutable）。
+func openAICompositePoolActive(ctx context.Context) bool {
+	if _, resolved := ResolvedTargetPlatformFromContext(ctx); resolved {
+		return false
+	}
+	return len(CompositeCandidatePlatformsFromContext(ctx)) > 0
+}
+
+// openAICompositePoolAllowsAccount 判定账号是否属于本次请求的候选池。
+// 无池时恒为 false，调用方据此保持原平台相等门行为。
+func openAICompositePoolAllowsAccount(ctx context.Context, account *Account) bool {
+	if account == nil || !account.IsOpenAICompatible() {
+		return false
+	}
+	for _, platform := range CompositeCandidatePlatformsFromContext(ctx) {
+		if platform == account.Platform {
+			return true
+		}
+	}
+	return false
+}
+
+// openAISchedulingPlatformMatchesAccount 是调度选号/sticky 的账号平台门：
+// 单平台请求保持原 NormalizeOpenAICompatiblePlatform 相等语义；
+// 池请求改为候选池成员校验（池 immutable，选号/重试不塌缩）。
+func openAISchedulingPlatformMatchesAccount(ctx context.Context, account *Account, platform string) bool {
+	if openAICompositePoolActive(ctx) {
+		return openAICompositePoolAllowsAccount(ctx, account)
+	}
+	return account != nil && account.Platform == NormalizeOpenAICompatiblePlatform(platform)
+}
+
+// openAISchedulingModelSupported 是选号/sticky 的模型能力门：
+// 池请求使用契约共享谓词（非空 mapping 精确/通配命中，空 mapping 仅 native
+// 平台命中），单平台请求保持 IsModelSupported 原语义。
+//
+// 选号期 passthrough 例外：passthrough 账号只替换认证、模型语义交由上游决定，
+// credentials 残留旧的非空 mapping 未命中时不得误踢出候选（#4936 语义在池路径
+// 的等价保留）。该例外仅在池成员资格已另行验证的「选号期」生效；构池/ownership
+// 谓词 CompositeAccountClaimsModel 保持严格——passthrough 不得据此在构建候选池
+// 时 claim 所有模型。
+func openAISchedulingModelSupported(ctx context.Context, account *Account, requestedModel string) bool {
+	if account == nil || requestedModel == "" {
+		return true
+	}
+	if openAICompositePoolActive(ctx) {
+		return CompositeAccountClaimsModel(account, requestedModel) || account.IsOpenAIPassthroughEnabled()
+	}
+	return account.IsModelSupported(requestedModel)
+}
+
 // noAvailableOpenAISelectionError builds the standard "no account available" error
 // while preserving the legacy /responses/compact error when applicable.
 // details carries an optional machine-parseable exclusion summary (e.g.
@@ -392,7 +455,7 @@ func openAICompatibleAccountEligibilityFailureReasonBeforeProfit(ctx context.Con
 	if account == nil {
 		return "account_nil"
 	}
-	if account.Platform != platform || !account.IsOpenAICompatible() {
+	if !account.IsOpenAICompatible() || !openAISchedulingPlatformMatchesAccount(ctx, account, platform) {
 		return "platform_mismatch"
 	}
 	if !account.IsSchedulableForModelWithContext(ctx, requestedModel) {
@@ -431,7 +494,7 @@ func openAICompatibleAccountEligibilityFailureReasonBeforeProfit(ctx context.Con
 			return "quota_auto_pause"
 		}
 	}
-	if requestedModel != "" && !account.IsModelSupported(requestedModel) {
+	if requestedModel != "" && !openAISchedulingModelSupported(ctx, account, requestedModel) {
 		return "model_not_supported"
 	}
 	if !account.SupportsOpenAIEndpointCapability(requiredCapability) {
@@ -951,6 +1014,11 @@ func (s *OpenAIGatewayService) tryStickySessionHit(ctx context.Context, groupID 
 	if err != nil {
 		return nil
 	}
+	// composite pool denied 平台：sticky 账号只是暂时排除——不 delete（绑定保留），
+	// 不进入下方任何会清绑定的分支，直接回落其它候选。
+	if compositePoolPlatformDenied(ctx, account.Platform) {
+		return nil
+	}
 
 	// 检查账号是否需要清理粘性会话
 	// Check if sticky session should be cleared
@@ -1183,7 +1251,9 @@ func (s *OpenAIGatewayService) selectAccountWithLoadAwareness(ctx context.Contex
 		accountID := stickyAccountID
 		if accountID > 0 && !isExcluded(accountID) {
 			account, err := s.getSchedulableAccount(ctx, accountID)
-			if err == nil {
+			if err == nil && !compositePoolPlatformDenied(ctx, account.Platform) {
+				// composite pool denied 平台：sticky 账号暂时排除——不 delete、
+				// 不计 spillover，直接落 Layer 2。
 				clearSticky := shouldClearStickySession(account, requestedModel)
 				if clearSticky {
 					_ = s.deleteStickySessionAccountID(ctx, groupID, sessionHash)
@@ -1470,7 +1540,47 @@ func (s *OpenAIGatewayService) selectAccountWithLoadAwareness(ctx context.Contex
 }
 
 func (s *OpenAIGatewayService) listSchedulableAccounts(ctx context.Context, groupID *int64, platform string) ([]Account, error) {
+	if openAICompositePoolActive(ctx) {
+		return s.listSchedulableAccountsForCompositePool(ctx, groupID, CompositeCandidatePlatformsFromContext(ctx))
+	}
+	return s.listSchedulableAccountsSinglePlatform(ctx, groupID, platform)
+}
+
+// listSchedulableAccountsForCompositePool 逐候选 platform 读取既有单平台桶并把
+// 结果复制进新 slice、按账号 ID 去重。每个桶经独立的 snapshot→DB fallback 链路，
+// 语义与单平台完全等价；池本身 immutable，这里不就地修改任何共享缓存元素，也
+// 不对桶做排序（priority/load/LRU 排序留给下游既有选号算法）。
+// excludedIDs 由调用方按账号 ID 传递，跨平台天然通用；所有候选健康但均不合格时
+// 由下游 filter 产出无容量错误（ErrNoAvailableAccounts），不升级为 UnsupportedModel。
+func (s *OpenAIGatewayService) listSchedulableAccountsForCompositePool(ctx context.Context, groupID *int64, platforms []string) ([]Account, error) {
+	merged := make([]Account, 0, len(platforms)*4)
+	seen := make(map[int64]struct{}, len(platforms)*4)
+	for _, platform := range platforms {
+		// 本次请求被策略 deny 的平台：整平台跳过（候选池本身不变）。
+		if compositePoolPlatformDenied(ctx, platform) {
+			continue
+		}
+		bucket, err := s.listSchedulableAccountsSinglePlatform(ctx, groupID, platform)
+		if err != nil {
+			return nil, err
+		}
+		for i := range bucket {
+			if _, duplicate := seen[bucket[i].ID]; duplicate {
+				continue
+			}
+			seen[bucket[i].ID] = struct{}{}
+			merged = append(merged, bucket[i])
+		}
+	}
+	return merged, nil
+}
+
+func (s *OpenAIGatewayService) listSchedulableAccountsSinglePlatform(ctx context.Context, groupID *int64, platform string) ([]Account, error) {
 	platform = NormalizeOpenAICompatiblePlatform(platform)
+	// 单平台请求的 attempt ctx 若携带 denied 平台：临时排除，空桶返回。
+	if compositePoolPlatformDenied(ctx, platform) {
+		return nil, nil
+	}
 	if s.schedulerSnapshot != nil {
 		accounts, _, err := s.schedulerSnapshot.ListSchedulableAccounts(ctx, groupID, platform, false)
 		if err != nil {
