@@ -40,7 +40,9 @@ func TestQuotaObservationSurvivesExtraOverwrite(t *testing.T) {
 		require.NoError(t, rows.Scan(&raw))
 		var payload map[string]any
 		require.NoError(t, json.Unmarshal(raw, &payload))
-		percentages = append(percentages, payload["codex_5h_used_percent"].(float64))
+		used, ok := payload["codex_5h_used_percent"].(float64)
+		require.True(t, ok)
+		percentages = append(percentages, used)
 	}
 	require.NoError(t, rows.Err())
 	require.Equal(t, []float64{100, 0}, percentages)

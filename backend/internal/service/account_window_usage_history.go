@@ -15,7 +15,7 @@ const (
 	windowTypeSevenDay = "7d"
 )
 
-var windowTypeDuration = map[string]time.Duration{"5h": 5 * time.Hour, "7d": 7 * 24 * time.Hour}
+var windowTypeDuration = map[string]time.Duration{windowTypeFiveHour: 5 * time.Hour, windowTypeSevenDay: 7 * 24 * time.Hour}
 
 func recordedWindow(kind string) bool { _, ok := windowTypeDuration[kind]; return ok }
 

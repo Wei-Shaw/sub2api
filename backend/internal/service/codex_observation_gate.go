@@ -16,7 +16,7 @@ const (
 	codexObservationEnqueueWait = 100 * time.Millisecond
 )
 
-var errCodexObservationQueueFull = errors.New("Codex observation queue is full")
+var errCodexObservationQueueFull = errors.New("codex observation queue is full")
 
 type codexObservationState struct {
 	at     time.Time

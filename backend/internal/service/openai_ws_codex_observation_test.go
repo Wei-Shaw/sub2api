@@ -74,7 +74,9 @@ func requireWSHandshakeObservation(t *testing.T, repo *snapshotUpdateAccountRepo
 	t.Helper()
 	select {
 	case updates := <-repo.updateExtraCalls:
-		observedAt, err := time.Parse(time.RFC3339Nano, updates["codex_usage_updated_at"].(string))
+		stamp, ok := updates["codex_usage_updated_at"].(string)
+		require.True(t, ok)
+		observedAt, err := time.Parse(time.RFC3339Nano, stamp)
 		require.NoError(t, err)
 		require.Equal(t, observedAt.Add(600*time.Second).UTC().Format(time.RFC3339), updates["codex_5h_reset_at"])
 		return updates

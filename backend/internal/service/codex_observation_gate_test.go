@@ -106,7 +106,10 @@ func TestCodexObservationWriterKeepsExhaustionBeforeReset(t *testing.T) {
 	release := make(chan struct{})
 	persisted := make(chan float64, 2)
 	repo := &quotaOrderedWriterRepo{write: func(ctx context.Context, updates map[string]any) error {
-		used := updates["codex_5h_used_percent"].(float64)
+		used, ok := updates["codex_5h_used_percent"].(float64)
+		if !ok {
+			return errors.New("missing quota percentage")
+		}
 		if used == 100 {
 			close(entered)
 			select {
@@ -156,7 +159,11 @@ func TestCodexObservationWriterRetriesCriticalBeforeReset(t *testing.T) {
 		if attempts.Add(1) == 1 {
 			return errors.New("temporary database error")
 		}
-		persisted <- updates["codex_5h_used_percent"].(float64)
+		used, ok := updates["codex_5h_used_percent"].(float64)
+		if !ok {
+			return errors.New("missing quota percentage")
+		}
+		persisted <- used
 		return nil
 	}}
 	svc := &OpenAIGatewayService{accountRepo: repo, codexSnapshotThrottle: newAccountWriteThrottle(time.Hour)}
@@ -248,7 +255,11 @@ func TestCodexObservationWriterRetriesAfterSkippedExhaustion(t *testing.T) {
 		if attempt <= 3 {
 			return errors.New("temporary database error")
 		}
-		persisted <- updates["codex_5h_used_percent"].(float64)
+		used, ok := updates["codex_5h_used_percent"].(float64)
+		if !ok {
+			return errors.New("missing quota percentage")
+		}
+		persisted <- used
 		return nil
 	}}
 	svc := &OpenAIGatewayService{accountRepo: repo, codexSnapshotThrottle: newAccountWriteThrottle(time.Hour)}

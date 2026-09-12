@@ -21,11 +21,16 @@ func TestQuotaObservationWriteSanitizesAndKeepsPartialFields(t *testing.T) {
 		t.Fatalf("unexpected args: %d", len(args))
 	}
 	wantAt, _ := time.Parse(time.RFC3339Nano, stamp)
-	if !args[2].(time.Time).Equal(wantAt) {
+	gotAt, ok := args[2].(time.Time)
+	if !ok || !gotAt.Equal(wantAt) {
 		t.Fatal("observation timestamp was changed")
 	}
 	var payload map[string]any
-	if err := json.Unmarshal([]byte(args[3].(string)), &payload); err != nil {
+	encoded, ok := args[3].(string)
+	if !ok {
+		t.Fatal("journal payload must be encoded JSON")
+	}
+	if err := json.Unmarshal([]byte(encoded), &payload); err != nil {
 		t.Fatal(err)
 	}
 	if len(payload) != 2 || payload["codex_5h_used_percent"] != 100.0 {

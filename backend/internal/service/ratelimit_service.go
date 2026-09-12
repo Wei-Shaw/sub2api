@@ -1164,7 +1164,13 @@ func (s *RateLimitService) handle429(ctx context.Context, account *Account, head
 		persistOpenAI429PlanType(ctx, s.accountRepo, account, responseBody)
 		s.persistOpenAICodexSnapshot(ctx, account, headers)
 		notifyOpenAIAutoReset(account.ID)
-		if resetAt := calculateOpenAI429ResetTimeFromSnapshot(codexRateLimitSnapshot(ctx, account.ID, headers)); resetAt != nil {
+		var resetAt *time.Time
+		if snapshot := capturedCodexSnapshot(ctx, account.ID); snapshot != nil {
+			resetAt = calculateOpenAI429ResetTimeFromSnapshot(snapshot)
+		} else {
+			resetAt = s.calculateOpenAI429ResetTime(headers)
+		}
+		if resetAt != nil {
 			s.notifyAccountSchedulingBlocked(account, *resetAt, "429")
 			if err := s.accountRepo.SetRateLimited(ctx, account.ID, *resetAt); err != nil {
 				slog.Warn("rate_limit_set_failed", "account_id", account.ID, "error", err)

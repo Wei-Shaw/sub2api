@@ -68,7 +68,9 @@ func TestAlphaSearchCapturesQuotaOnceBeforeSlowBody(t *testing.T) {
 	waitCodexObservationWrites(t, svc)
 	select {
 	case update := <-repo.updateExtraCalls:
-		observedAt, err := time.Parse(time.RFC3339Nano, update["codex_usage_updated_at"].(string))
+		stamp, ok := update["codex_usage_updated_at"].(string)
+		require.True(t, ok)
+		observedAt, err := time.Parse(time.RFC3339Nano, stamp)
 		require.NoError(t, err)
 		require.Greater(t, time.Since(observedAt), 2*time.Second)
 		require.Equal(t, observedAt.Add(600*time.Second).UTC().Format(time.RFC3339), update["codex_5h_reset_at"])
