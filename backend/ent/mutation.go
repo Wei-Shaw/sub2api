@@ -14,6 +14,7 @@ import (
 	"entgo.io/ent/dialect/sql"
 	"github.com/Wei-Shaw/sub2api/ent/account"
 	"github.com/Wei-Shaw/sub2api/ent/accountgroup"
+	"github.com/Wei-Shaw/sub2api/ent/accountwindowusagehistory"
 	"github.com/Wei-Shaw/sub2api/ent/announcement"
 	"github.com/Wei-Shaw/sub2api/ent/announcementread"
 	"github.com/Wei-Shaw/sub2api/ent/apikey"
@@ -67,6 +68,7 @@ const (
 	TypeAPIKey                        = "APIKey"
 	TypeAccount                       = "Account"
 	TypeAccountGroup                  = "AccountGroup"
+	TypeAccountWindowUsageHistory     = "AccountWindowUsageHistory"
 	TypeAnnouncement                  = "Announcement"
 	TypeAnnouncementRead              = "AnnouncementRead"
 	TypeAuthIdentity                  = "AuthIdentity"
@@ -2282,60 +2284,63 @@ func (m *APIKeyMutation) ResetEdge(name string) error {
 // AccountMutation represents an operation that mutates the Account nodes in the graph.
 type AccountMutation struct {
 	config
-	op                          Op
-	typ                         string
-	id                          *int64
-	created_at                  *time.Time
-	updated_at                  *time.Time
-	deleted_at                  *time.Time
-	name                        *string
-	notes                       *string
-	platform                    *string
-	_type                       *string
-	credentials                 *map[string]interface{}
-	extra                       *map[string]interface{}
-	proxy_fallback_origin_id    *int64
-	addproxy_fallback_origin_id *int64
-	concurrency                 *int
-	addconcurrency              *int
-	load_factor                 *int
-	addload_factor              *int
-	priority                    *int
-	addpriority                 *int
-	rate_multiplier             *float64
-	addrate_multiplier          *float64
-	status                      *string
-	error_message               *string
-	last_used_at                *time.Time
-	expires_at                  *time.Time
-	auto_pause_on_expired       *bool
-	schedulable                 *bool
-	rate_limited_at             *time.Time
-	rate_limit_reset_at         *time.Time
-	overload_until              *time.Time
-	temp_unschedulable_until    *time.Time
-	temp_unschedulable_reason   *string
-	session_window_start        *time.Time
-	session_window_end          *time.Time
-	session_window_status       *string
-	quota_dimension             *account.QuotaDimension
-	clearedFields               map[string]struct{}
-	groups                      map[int64]struct{}
-	removedgroups               map[int64]struct{}
-	clearedgroups               bool
-	proxy                       *int64
-	clearedproxy                bool
-	parent                      *int64
-	clearedparent               bool
-	children                    map[int64]struct{}
-	removedchildren             map[int64]struct{}
-	clearedchildren             bool
-	usage_logs                  map[int64]struct{}
-	removedusage_logs           map[int64]struct{}
-	clearedusage_logs           bool
-	done                        bool
-	oldValue                    func(context.Context) (*Account, error)
-	predicates                  []predicate.Account
+	op                            Op
+	typ                           string
+	id                            *int64
+	created_at                    *time.Time
+	updated_at                    *time.Time
+	deleted_at                    *time.Time
+	name                          *string
+	notes                         *string
+	platform                      *string
+	_type                         *string
+	credentials                   *map[string]interface{}
+	extra                         *map[string]interface{}
+	proxy_fallback_origin_id      *int64
+	addproxy_fallback_origin_id   *int64
+	concurrency                   *int
+	addconcurrency                *int
+	load_factor                   *int
+	addload_factor                *int
+	priority                      *int
+	addpriority                   *int
+	rate_multiplier               *float64
+	addrate_multiplier            *float64
+	status                        *string
+	error_message                 *string
+	last_used_at                  *time.Time
+	expires_at                    *time.Time
+	auto_pause_on_expired         *bool
+	schedulable                   *bool
+	rate_limited_at               *time.Time
+	rate_limit_reset_at           *time.Time
+	overload_until                *time.Time
+	temp_unschedulable_until      *time.Time
+	temp_unschedulable_reason     *string
+	session_window_start          *time.Time
+	session_window_end            *time.Time
+	session_window_status         *string
+	quota_dimension               *account.QuotaDimension
+	clearedFields                 map[string]struct{}
+	groups                        map[int64]struct{}
+	removedgroups                 map[int64]struct{}
+	clearedgroups                 bool
+	proxy                         *int64
+	clearedproxy                  bool
+	parent                        *int64
+	clearedparent                 bool
+	children                      map[int64]struct{}
+	removedchildren               map[int64]struct{}
+	clearedchildren               bool
+	usage_logs                    map[int64]struct{}
+	removedusage_logs             map[int64]struct{}
+	clearedusage_logs             bool
+	window_usage_histories        map[int64]struct{}
+	removedwindow_usage_histories map[int64]struct{}
+	clearedwindow_usage_histories bool
+	done                          bool
+	oldValue                      func(context.Context) (*Account, error)
+	predicates                    []predicate.Account
 }
 
 var _ ent.Mutation = (*AccountMutation)(nil)
@@ -4104,6 +4109,60 @@ func (m *AccountMutation) ResetUsageLogs() {
 	m.removedusage_logs = nil
 }
 
+// AddWindowUsageHistoryIDs adds the "window_usage_histories" edge to the AccountWindowUsageHistory entity by ids.
+func (m *AccountMutation) AddWindowUsageHistoryIDs(ids ...int64) {
+	if m.window_usage_histories == nil {
+		m.window_usage_histories = make(map[int64]struct{})
+	}
+	for i := range ids {
+		m.window_usage_histories[ids[i]] = struct{}{}
+	}
+}
+
+// ClearWindowUsageHistories clears the "window_usage_histories" edge to the AccountWindowUsageHistory entity.
+func (m *AccountMutation) ClearWindowUsageHistories() {
+	m.clearedwindow_usage_histories = true
+}
+
+// WindowUsageHistoriesCleared reports if the "window_usage_histories" edge to the AccountWindowUsageHistory entity was cleared.
+func (m *AccountMutation) WindowUsageHistoriesCleared() bool {
+	return m.clearedwindow_usage_histories
+}
+
+// RemoveWindowUsageHistoryIDs removes the "window_usage_histories" edge to the AccountWindowUsageHistory entity by IDs.
+func (m *AccountMutation) RemoveWindowUsageHistoryIDs(ids ...int64) {
+	if m.removedwindow_usage_histories == nil {
+		m.removedwindow_usage_histories = make(map[int64]struct{})
+	}
+	for i := range ids {
+		delete(m.window_usage_histories, ids[i])
+		m.removedwindow_usage_histories[ids[i]] = struct{}{}
+	}
+}
+
+// RemovedWindowUsageHistories returns the removed IDs of the "window_usage_histories" edge to the AccountWindowUsageHistory entity.
+func (m *AccountMutation) RemovedWindowUsageHistoriesIDs() (ids []int64) {
+	for id := range m.removedwindow_usage_histories {
+		ids = append(ids, id)
+	}
+	return
+}
+
+// WindowUsageHistoriesIDs returns the "window_usage_histories" edge IDs in the mutation.
+func (m *AccountMutation) WindowUsageHistoriesIDs() (ids []int64) {
+	for id := range m.window_usage_histories {
+		ids = append(ids, id)
+	}
+	return
+}
+
+// ResetWindowUsageHistories resets all changes to the "window_usage_histories" edge.
+func (m *AccountMutation) ResetWindowUsageHistories() {
+	m.window_usage_histories = nil
+	m.clearedwindow_usage_histories = false
+	m.removedwindow_usage_histories = nil
+}
+
 // Where appends a list predicates to the AccountMutation builder.
 func (m *AccountMutation) Where(ps ...predicate.Account) {
 	m.predicates = append(m.predicates, ps...)
@@ -4915,7 +4974,7 @@ func (m *AccountMutation) ResetField(name string) error {
 
 // AddedEdges returns all edge names that were set/added in this mutation.
 func (m *AccountMutation) AddedEdges() []string {
-	edges := make([]string, 0, 5)
+	edges := make([]string, 0, 6)
 	if m.groups != nil {
 		edges = append(edges, account.EdgeGroups)
 	}
@@ -4930,6 +4989,9 @@ func (m *AccountMutation) AddedEdges() []string {
 	}
 	if m.usage_logs != nil {
 		edges = append(edges, account.EdgeUsageLogs)
+	}
+	if m.window_usage_histories != nil {
+		edges = append(edges, account.EdgeWindowUsageHistories)
 	}
 	return edges
 }
@@ -4964,13 +5026,19 @@ func (m *AccountMutation) AddedIDs(name string) []ent.Value {
 			ids = append(ids, id)
 		}
 		return ids
+	case account.EdgeWindowUsageHistories:
+		ids := make([]ent.Value, 0, len(m.window_usage_histories))
+		for id := range m.window_usage_histories {
+			ids = append(ids, id)
+		}
+		return ids
 	}
 	return nil
 }
 
 // RemovedEdges returns all edge names that were removed in this mutation.
 func (m *AccountMutation) RemovedEdges() []string {
-	edges := make([]string, 0, 5)
+	edges := make([]string, 0, 6)
 	if m.removedgroups != nil {
 		edges = append(edges, account.EdgeGroups)
 	}
@@ -4979,6 +5047,9 @@ func (m *AccountMutation) RemovedEdges() []string {
 	}
 	if m.removedusage_logs != nil {
 		edges = append(edges, account.EdgeUsageLogs)
+	}
+	if m.removedwindow_usage_histories != nil {
+		edges = append(edges, account.EdgeWindowUsageHistories)
 	}
 	return edges
 }
@@ -5005,13 +5076,19 @@ func (m *AccountMutation) RemovedIDs(name string) []ent.Value {
 			ids = append(ids, id)
 		}
 		return ids
+	case account.EdgeWindowUsageHistories:
+		ids := make([]ent.Value, 0, len(m.removedwindow_usage_histories))
+		for id := range m.removedwindow_usage_histories {
+			ids = append(ids, id)
+		}
+		return ids
 	}
 	return nil
 }
 
 // ClearedEdges returns all edge names that were cleared in this mutation.
 func (m *AccountMutation) ClearedEdges() []string {
-	edges := make([]string, 0, 5)
+	edges := make([]string, 0, 6)
 	if m.clearedgroups {
 		edges = append(edges, account.EdgeGroups)
 	}
@@ -5026,6 +5103,9 @@ func (m *AccountMutation) ClearedEdges() []string {
 	}
 	if m.clearedusage_logs {
 		edges = append(edges, account.EdgeUsageLogs)
+	}
+	if m.clearedwindow_usage_histories {
+		edges = append(edges, account.EdgeWindowUsageHistories)
 	}
 	return edges
 }
@@ -5044,6 +5124,8 @@ func (m *AccountMutation) EdgeCleared(name string) bool {
 		return m.clearedchildren
 	case account.EdgeUsageLogs:
 		return m.clearedusage_logs
+	case account.EdgeWindowUsageHistories:
+		return m.clearedwindow_usage_histories
 	}
 	return false
 }
@@ -5080,6 +5162,9 @@ func (m *AccountMutation) ResetEdge(name string) error {
 		return nil
 	case account.EdgeUsageLogs:
 		m.ResetUsageLogs()
+		return nil
+	case account.EdgeWindowUsageHistories:
+		m.ResetWindowUsageHistories()
 		return nil
 	}
 	return fmt.Errorf("unknown Account edge %s", name)
@@ -5568,6 +5653,2416 @@ func (m *AccountGroupMutation) ResetEdge(name string) error {
 		return nil
 	}
 	return fmt.Errorf("unknown AccountGroup edge %s", name)
+}
+
+// AccountWindowUsageHistoryMutation represents an operation that mutates the AccountWindowUsageHistory nodes in the graph.
+type AccountWindowUsageHistoryMutation struct {
+	config
+	op                           Op
+	typ                          string
+	id                           *int64
+	created_at                   *time.Time
+	updated_at                   *time.Time
+	window_type                  *string
+	window_start                 *time.Time
+	window_end                   *time.Time
+	peak_used_percent            *float64
+	addpeak_used_percent         *float64
+	last_used_percent            *float64
+	addlast_used_percent         *float64
+	sample_count                 *int
+	addsample_count              *int
+	last_sample_at               *time.Time
+	requests                     *int64
+	addrequests                  *int64
+	tokens_total                 *int64
+	addtokens_total              *int64
+	reset_at                     *time.Time
+	duration_minutes             *int
+	addduration_minutes          *int
+	first_observed_at            *time.Time
+	last_observation_id          *int64
+	addlast_observation_id       *int64
+	api_reference_cost           *float64
+	addapi_reference_cost        *float64
+	priced_requests              *int64
+	addpriced_requests           *int64
+	missing_pricing_requests     *int64
+	addmissing_pricing_requests  *int64
+	estimated_reference_limit    *float64
+	addestimated_reference_limit *float64
+	estimate_reference_cost      *float64
+	addestimate_reference_cost   *float64
+	estimate_used_percent        *float64
+	addestimate_used_percent     *float64
+	estimate_observed_at         *time.Time
+	quality_flags                *[]string
+	appendquality_flags          []string
+	end_reason                   *string
+	stats_finalized_at           *time.Time
+	finalized_at                 *time.Time
+	clearedFields                map[string]struct{}
+	account                      *int64
+	clearedaccount               bool
+	done                         bool
+	oldValue                     func(context.Context) (*AccountWindowUsageHistory, error)
+	predicates                   []predicate.AccountWindowUsageHistory
+}
+
+var _ ent.Mutation = (*AccountWindowUsageHistoryMutation)(nil)
+
+// accountwindowusagehistoryOption allows management of the mutation configuration using functional options.
+type accountwindowusagehistoryOption func(*AccountWindowUsageHistoryMutation)
+
+// newAccountWindowUsageHistoryMutation creates new mutation for the AccountWindowUsageHistory entity.
+func newAccountWindowUsageHistoryMutation(c config, op Op, opts ...accountwindowusagehistoryOption) *AccountWindowUsageHistoryMutation {
+	m := &AccountWindowUsageHistoryMutation{
+		config:        c,
+		op:            op,
+		typ:           TypeAccountWindowUsageHistory,
+		clearedFields: make(map[string]struct{}),
+	}
+	for _, opt := range opts {
+		opt(m)
+	}
+	return m
+}
+
+// withAccountWindowUsageHistoryID sets the ID field of the mutation.
+func withAccountWindowUsageHistoryID(id int64) accountwindowusagehistoryOption {
+	return func(m *AccountWindowUsageHistoryMutation) {
+		var (
+			err   error
+			once  sync.Once
+			value *AccountWindowUsageHistory
+		)
+		m.oldValue = func(ctx context.Context) (*AccountWindowUsageHistory, error) {
+			once.Do(func() {
+				if m.done {
+					err = errors.New("querying old values post mutation is not allowed")
+				} else {
+					value, err = m.Client().AccountWindowUsageHistory.Get(ctx, id)
+				}
+			})
+			return value, err
+		}
+		m.id = &id
+	}
+}
+
+// withAccountWindowUsageHistory sets the old AccountWindowUsageHistory of the mutation.
+func withAccountWindowUsageHistory(node *AccountWindowUsageHistory) accountwindowusagehistoryOption {
+	return func(m *AccountWindowUsageHistoryMutation) {
+		m.oldValue = func(context.Context) (*AccountWindowUsageHistory, error) {
+			return node, nil
+		}
+		m.id = &node.ID
+	}
+}
+
+// Client returns a new `ent.Client` from the mutation. If the mutation was
+// executed in a transaction (ent.Tx), a transactional client is returned.
+func (m AccountWindowUsageHistoryMutation) Client() *Client {
+	client := &Client{config: m.config}
+	client.init()
+	return client
+}
+
+// Tx returns an `ent.Tx` for mutations that were executed in transactions;
+// it returns an error otherwise.
+func (m AccountWindowUsageHistoryMutation) Tx() (*Tx, error) {
+	if _, ok := m.driver.(*txDriver); !ok {
+		return nil, errors.New("ent: mutation is not running in a transaction")
+	}
+	tx := &Tx{config: m.config}
+	tx.init()
+	return tx, nil
+}
+
+// ID returns the ID value in the mutation. Note that the ID is only available
+// if it was provided to the builder or after it was returned from the database.
+func (m *AccountWindowUsageHistoryMutation) ID() (id int64, exists bool) {
+	if m.id == nil {
+		return
+	}
+	return *m.id, true
+}
+
+// IDs queries the database and returns the entity ids that match the mutation's predicate.
+// That means, if the mutation is applied within a transaction with an isolation level such
+// as sql.LevelSerializable, the returned ids match the ids of the rows that will be updated
+// or updated by the mutation.
+func (m *AccountWindowUsageHistoryMutation) IDs(ctx context.Context) ([]int64, error) {
+	switch {
+	case m.op.Is(OpUpdateOne | OpDeleteOne):
+		id, exists := m.ID()
+		if exists {
+			return []int64{id}, nil
+		}
+		fallthrough
+	case m.op.Is(OpUpdate | OpDelete):
+		return m.Client().AccountWindowUsageHistory.Query().Where(m.predicates...).IDs(ctx)
+	default:
+		return nil, fmt.Errorf("IDs is not allowed on %s operations", m.op)
+	}
+}
+
+// SetCreatedAt sets the "created_at" field.
+func (m *AccountWindowUsageHistoryMutation) SetCreatedAt(t time.Time) {
+	m.created_at = &t
+}
+
+// CreatedAt returns the value of the "created_at" field in the mutation.
+func (m *AccountWindowUsageHistoryMutation) CreatedAt() (r time.Time, exists bool) {
+	v := m.created_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCreatedAt returns the old "created_at" field's value of the AccountWindowUsageHistory entity.
+// If the AccountWindowUsageHistory object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *AccountWindowUsageHistoryMutation) OldCreatedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCreatedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCreatedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCreatedAt: %w", err)
+	}
+	return oldValue.CreatedAt, nil
+}
+
+// ResetCreatedAt resets all changes to the "created_at" field.
+func (m *AccountWindowUsageHistoryMutation) ResetCreatedAt() {
+	m.created_at = nil
+}
+
+// SetUpdatedAt sets the "updated_at" field.
+func (m *AccountWindowUsageHistoryMutation) SetUpdatedAt(t time.Time) {
+	m.updated_at = &t
+}
+
+// UpdatedAt returns the value of the "updated_at" field in the mutation.
+func (m *AccountWindowUsageHistoryMutation) UpdatedAt() (r time.Time, exists bool) {
+	v := m.updated_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldUpdatedAt returns the old "updated_at" field's value of the AccountWindowUsageHistory entity.
+// If the AccountWindowUsageHistory object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *AccountWindowUsageHistoryMutation) OldUpdatedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldUpdatedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldUpdatedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldUpdatedAt: %w", err)
+	}
+	return oldValue.UpdatedAt, nil
+}
+
+// ResetUpdatedAt resets all changes to the "updated_at" field.
+func (m *AccountWindowUsageHistoryMutation) ResetUpdatedAt() {
+	m.updated_at = nil
+}
+
+// SetAccountID sets the "account_id" field.
+func (m *AccountWindowUsageHistoryMutation) SetAccountID(i int64) {
+	m.account = &i
+}
+
+// AccountID returns the value of the "account_id" field in the mutation.
+func (m *AccountWindowUsageHistoryMutation) AccountID() (r int64, exists bool) {
+	v := m.account
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldAccountID returns the old "account_id" field's value of the AccountWindowUsageHistory entity.
+// If the AccountWindowUsageHistory object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *AccountWindowUsageHistoryMutation) OldAccountID(ctx context.Context) (v int64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldAccountID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldAccountID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldAccountID: %w", err)
+	}
+	return oldValue.AccountID, nil
+}
+
+// ResetAccountID resets all changes to the "account_id" field.
+func (m *AccountWindowUsageHistoryMutation) ResetAccountID() {
+	m.account = nil
+}
+
+// SetWindowType sets the "window_type" field.
+func (m *AccountWindowUsageHistoryMutation) SetWindowType(s string) {
+	m.window_type = &s
+}
+
+// WindowType returns the value of the "window_type" field in the mutation.
+func (m *AccountWindowUsageHistoryMutation) WindowType() (r string, exists bool) {
+	v := m.window_type
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldWindowType returns the old "window_type" field's value of the AccountWindowUsageHistory entity.
+// If the AccountWindowUsageHistory object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *AccountWindowUsageHistoryMutation) OldWindowType(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldWindowType is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldWindowType requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldWindowType: %w", err)
+	}
+	return oldValue.WindowType, nil
+}
+
+// ResetWindowType resets all changes to the "window_type" field.
+func (m *AccountWindowUsageHistoryMutation) ResetWindowType() {
+	m.window_type = nil
+}
+
+// SetWindowStart sets the "window_start" field.
+func (m *AccountWindowUsageHistoryMutation) SetWindowStart(t time.Time) {
+	m.window_start = &t
+}
+
+// WindowStart returns the value of the "window_start" field in the mutation.
+func (m *AccountWindowUsageHistoryMutation) WindowStart() (r time.Time, exists bool) {
+	v := m.window_start
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldWindowStart returns the old "window_start" field's value of the AccountWindowUsageHistory entity.
+// If the AccountWindowUsageHistory object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *AccountWindowUsageHistoryMutation) OldWindowStart(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldWindowStart is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldWindowStart requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldWindowStart: %w", err)
+	}
+	return oldValue.WindowStart, nil
+}
+
+// ResetWindowStart resets all changes to the "window_start" field.
+func (m *AccountWindowUsageHistoryMutation) ResetWindowStart() {
+	m.window_start = nil
+}
+
+// SetWindowEnd sets the "window_end" field.
+func (m *AccountWindowUsageHistoryMutation) SetWindowEnd(t time.Time) {
+	m.window_end = &t
+}
+
+// WindowEnd returns the value of the "window_end" field in the mutation.
+func (m *AccountWindowUsageHistoryMutation) WindowEnd() (r time.Time, exists bool) {
+	v := m.window_end
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldWindowEnd returns the old "window_end" field's value of the AccountWindowUsageHistory entity.
+// If the AccountWindowUsageHistory object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *AccountWindowUsageHistoryMutation) OldWindowEnd(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldWindowEnd is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldWindowEnd requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldWindowEnd: %w", err)
+	}
+	return oldValue.WindowEnd, nil
+}
+
+// ResetWindowEnd resets all changes to the "window_end" field.
+func (m *AccountWindowUsageHistoryMutation) ResetWindowEnd() {
+	m.window_end = nil
+}
+
+// SetPeakUsedPercent sets the "peak_used_percent" field.
+func (m *AccountWindowUsageHistoryMutation) SetPeakUsedPercent(f float64) {
+	m.peak_used_percent = &f
+	m.addpeak_used_percent = nil
+}
+
+// PeakUsedPercent returns the value of the "peak_used_percent" field in the mutation.
+func (m *AccountWindowUsageHistoryMutation) PeakUsedPercent() (r float64, exists bool) {
+	v := m.peak_used_percent
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldPeakUsedPercent returns the old "peak_used_percent" field's value of the AccountWindowUsageHistory entity.
+// If the AccountWindowUsageHistory object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *AccountWindowUsageHistoryMutation) OldPeakUsedPercent(ctx context.Context) (v float64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldPeakUsedPercent is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldPeakUsedPercent requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldPeakUsedPercent: %w", err)
+	}
+	return oldValue.PeakUsedPercent, nil
+}
+
+// AddPeakUsedPercent adds f to the "peak_used_percent" field.
+func (m *AccountWindowUsageHistoryMutation) AddPeakUsedPercent(f float64) {
+	if m.addpeak_used_percent != nil {
+		*m.addpeak_used_percent += f
+	} else {
+		m.addpeak_used_percent = &f
+	}
+}
+
+// AddedPeakUsedPercent returns the value that was added to the "peak_used_percent" field in this mutation.
+func (m *AccountWindowUsageHistoryMutation) AddedPeakUsedPercent() (r float64, exists bool) {
+	v := m.addpeak_used_percent
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetPeakUsedPercent resets all changes to the "peak_used_percent" field.
+func (m *AccountWindowUsageHistoryMutation) ResetPeakUsedPercent() {
+	m.peak_used_percent = nil
+	m.addpeak_used_percent = nil
+}
+
+// SetLastUsedPercent sets the "last_used_percent" field.
+func (m *AccountWindowUsageHistoryMutation) SetLastUsedPercent(f float64) {
+	m.last_used_percent = &f
+	m.addlast_used_percent = nil
+}
+
+// LastUsedPercent returns the value of the "last_used_percent" field in the mutation.
+func (m *AccountWindowUsageHistoryMutation) LastUsedPercent() (r float64, exists bool) {
+	v := m.last_used_percent
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldLastUsedPercent returns the old "last_used_percent" field's value of the AccountWindowUsageHistory entity.
+// If the AccountWindowUsageHistory object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *AccountWindowUsageHistoryMutation) OldLastUsedPercent(ctx context.Context) (v float64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldLastUsedPercent is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldLastUsedPercent requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldLastUsedPercent: %w", err)
+	}
+	return oldValue.LastUsedPercent, nil
+}
+
+// AddLastUsedPercent adds f to the "last_used_percent" field.
+func (m *AccountWindowUsageHistoryMutation) AddLastUsedPercent(f float64) {
+	if m.addlast_used_percent != nil {
+		*m.addlast_used_percent += f
+	} else {
+		m.addlast_used_percent = &f
+	}
+}
+
+// AddedLastUsedPercent returns the value that was added to the "last_used_percent" field in this mutation.
+func (m *AccountWindowUsageHistoryMutation) AddedLastUsedPercent() (r float64, exists bool) {
+	v := m.addlast_used_percent
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetLastUsedPercent resets all changes to the "last_used_percent" field.
+func (m *AccountWindowUsageHistoryMutation) ResetLastUsedPercent() {
+	m.last_used_percent = nil
+	m.addlast_used_percent = nil
+}
+
+// SetSampleCount sets the "sample_count" field.
+func (m *AccountWindowUsageHistoryMutation) SetSampleCount(i int) {
+	m.sample_count = &i
+	m.addsample_count = nil
+}
+
+// SampleCount returns the value of the "sample_count" field in the mutation.
+func (m *AccountWindowUsageHistoryMutation) SampleCount() (r int, exists bool) {
+	v := m.sample_count
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldSampleCount returns the old "sample_count" field's value of the AccountWindowUsageHistory entity.
+// If the AccountWindowUsageHistory object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *AccountWindowUsageHistoryMutation) OldSampleCount(ctx context.Context) (v int, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldSampleCount is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldSampleCount requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldSampleCount: %w", err)
+	}
+	return oldValue.SampleCount, nil
+}
+
+// AddSampleCount adds i to the "sample_count" field.
+func (m *AccountWindowUsageHistoryMutation) AddSampleCount(i int) {
+	if m.addsample_count != nil {
+		*m.addsample_count += i
+	} else {
+		m.addsample_count = &i
+	}
+}
+
+// AddedSampleCount returns the value that was added to the "sample_count" field in this mutation.
+func (m *AccountWindowUsageHistoryMutation) AddedSampleCount() (r int, exists bool) {
+	v := m.addsample_count
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetSampleCount resets all changes to the "sample_count" field.
+func (m *AccountWindowUsageHistoryMutation) ResetSampleCount() {
+	m.sample_count = nil
+	m.addsample_count = nil
+}
+
+// SetLastSampleAt sets the "last_sample_at" field.
+func (m *AccountWindowUsageHistoryMutation) SetLastSampleAt(t time.Time) {
+	m.last_sample_at = &t
+}
+
+// LastSampleAt returns the value of the "last_sample_at" field in the mutation.
+func (m *AccountWindowUsageHistoryMutation) LastSampleAt() (r time.Time, exists bool) {
+	v := m.last_sample_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldLastSampleAt returns the old "last_sample_at" field's value of the AccountWindowUsageHistory entity.
+// If the AccountWindowUsageHistory object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *AccountWindowUsageHistoryMutation) OldLastSampleAt(ctx context.Context) (v *time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldLastSampleAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldLastSampleAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldLastSampleAt: %w", err)
+	}
+	return oldValue.LastSampleAt, nil
+}
+
+// ClearLastSampleAt clears the value of the "last_sample_at" field.
+func (m *AccountWindowUsageHistoryMutation) ClearLastSampleAt() {
+	m.last_sample_at = nil
+	m.clearedFields[accountwindowusagehistory.FieldLastSampleAt] = struct{}{}
+}
+
+// LastSampleAtCleared returns if the "last_sample_at" field was cleared in this mutation.
+func (m *AccountWindowUsageHistoryMutation) LastSampleAtCleared() bool {
+	_, ok := m.clearedFields[accountwindowusagehistory.FieldLastSampleAt]
+	return ok
+}
+
+// ResetLastSampleAt resets all changes to the "last_sample_at" field.
+func (m *AccountWindowUsageHistoryMutation) ResetLastSampleAt() {
+	m.last_sample_at = nil
+	delete(m.clearedFields, accountwindowusagehistory.FieldLastSampleAt)
+}
+
+// SetRequests sets the "requests" field.
+func (m *AccountWindowUsageHistoryMutation) SetRequests(i int64) {
+	m.requests = &i
+	m.addrequests = nil
+}
+
+// Requests returns the value of the "requests" field in the mutation.
+func (m *AccountWindowUsageHistoryMutation) Requests() (r int64, exists bool) {
+	v := m.requests
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldRequests returns the old "requests" field's value of the AccountWindowUsageHistory entity.
+// If the AccountWindowUsageHistory object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *AccountWindowUsageHistoryMutation) OldRequests(ctx context.Context) (v int64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldRequests is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldRequests requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldRequests: %w", err)
+	}
+	return oldValue.Requests, nil
+}
+
+// AddRequests adds i to the "requests" field.
+func (m *AccountWindowUsageHistoryMutation) AddRequests(i int64) {
+	if m.addrequests != nil {
+		*m.addrequests += i
+	} else {
+		m.addrequests = &i
+	}
+}
+
+// AddedRequests returns the value that was added to the "requests" field in this mutation.
+func (m *AccountWindowUsageHistoryMutation) AddedRequests() (r int64, exists bool) {
+	v := m.addrequests
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetRequests resets all changes to the "requests" field.
+func (m *AccountWindowUsageHistoryMutation) ResetRequests() {
+	m.requests = nil
+	m.addrequests = nil
+}
+
+// SetTokensTotal sets the "tokens_total" field.
+func (m *AccountWindowUsageHistoryMutation) SetTokensTotal(i int64) {
+	m.tokens_total = &i
+	m.addtokens_total = nil
+}
+
+// TokensTotal returns the value of the "tokens_total" field in the mutation.
+func (m *AccountWindowUsageHistoryMutation) TokensTotal() (r int64, exists bool) {
+	v := m.tokens_total
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldTokensTotal returns the old "tokens_total" field's value of the AccountWindowUsageHistory entity.
+// If the AccountWindowUsageHistory object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *AccountWindowUsageHistoryMutation) OldTokensTotal(ctx context.Context) (v int64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldTokensTotal is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldTokensTotal requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldTokensTotal: %w", err)
+	}
+	return oldValue.TokensTotal, nil
+}
+
+// AddTokensTotal adds i to the "tokens_total" field.
+func (m *AccountWindowUsageHistoryMutation) AddTokensTotal(i int64) {
+	if m.addtokens_total != nil {
+		*m.addtokens_total += i
+	} else {
+		m.addtokens_total = &i
+	}
+}
+
+// AddedTokensTotal returns the value that was added to the "tokens_total" field in this mutation.
+func (m *AccountWindowUsageHistoryMutation) AddedTokensTotal() (r int64, exists bool) {
+	v := m.addtokens_total
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetTokensTotal resets all changes to the "tokens_total" field.
+func (m *AccountWindowUsageHistoryMutation) ResetTokensTotal() {
+	m.tokens_total = nil
+	m.addtokens_total = nil
+}
+
+// SetResetAt sets the "reset_at" field.
+func (m *AccountWindowUsageHistoryMutation) SetResetAt(t time.Time) {
+	m.reset_at = &t
+}
+
+// ResetAt returns the value of the "reset_at" field in the mutation.
+func (m *AccountWindowUsageHistoryMutation) ResetAt() (r time.Time, exists bool) {
+	v := m.reset_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldResetAt returns the old "reset_at" field's value of the AccountWindowUsageHistory entity.
+// If the AccountWindowUsageHistory object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *AccountWindowUsageHistoryMutation) OldResetAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldResetAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldResetAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldResetAt: %w", err)
+	}
+	return oldValue.ResetAt, nil
+}
+
+// ResetResetAt resets all changes to the "reset_at" field.
+func (m *AccountWindowUsageHistoryMutation) ResetResetAt() {
+	m.reset_at = nil
+}
+
+// SetDurationMinutes sets the "duration_minutes" field.
+func (m *AccountWindowUsageHistoryMutation) SetDurationMinutes(i int) {
+	m.duration_minutes = &i
+	m.addduration_minutes = nil
+}
+
+// DurationMinutes returns the value of the "duration_minutes" field in the mutation.
+func (m *AccountWindowUsageHistoryMutation) DurationMinutes() (r int, exists bool) {
+	v := m.duration_minutes
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldDurationMinutes returns the old "duration_minutes" field's value of the AccountWindowUsageHistory entity.
+// If the AccountWindowUsageHistory object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *AccountWindowUsageHistoryMutation) OldDurationMinutes(ctx context.Context) (v int, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldDurationMinutes is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldDurationMinutes requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldDurationMinutes: %w", err)
+	}
+	return oldValue.DurationMinutes, nil
+}
+
+// AddDurationMinutes adds i to the "duration_minutes" field.
+func (m *AccountWindowUsageHistoryMutation) AddDurationMinutes(i int) {
+	if m.addduration_minutes != nil {
+		*m.addduration_minutes += i
+	} else {
+		m.addduration_minutes = &i
+	}
+}
+
+// AddedDurationMinutes returns the value that was added to the "duration_minutes" field in this mutation.
+func (m *AccountWindowUsageHistoryMutation) AddedDurationMinutes() (r int, exists bool) {
+	v := m.addduration_minutes
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetDurationMinutes resets all changes to the "duration_minutes" field.
+func (m *AccountWindowUsageHistoryMutation) ResetDurationMinutes() {
+	m.duration_minutes = nil
+	m.addduration_minutes = nil
+}
+
+// SetFirstObservedAt sets the "first_observed_at" field.
+func (m *AccountWindowUsageHistoryMutation) SetFirstObservedAt(t time.Time) {
+	m.first_observed_at = &t
+}
+
+// FirstObservedAt returns the value of the "first_observed_at" field in the mutation.
+func (m *AccountWindowUsageHistoryMutation) FirstObservedAt() (r time.Time, exists bool) {
+	v := m.first_observed_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldFirstObservedAt returns the old "first_observed_at" field's value of the AccountWindowUsageHistory entity.
+// If the AccountWindowUsageHistory object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *AccountWindowUsageHistoryMutation) OldFirstObservedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldFirstObservedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldFirstObservedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldFirstObservedAt: %w", err)
+	}
+	return oldValue.FirstObservedAt, nil
+}
+
+// ResetFirstObservedAt resets all changes to the "first_observed_at" field.
+func (m *AccountWindowUsageHistoryMutation) ResetFirstObservedAt() {
+	m.first_observed_at = nil
+}
+
+// SetLastObservationID sets the "last_observation_id" field.
+func (m *AccountWindowUsageHistoryMutation) SetLastObservationID(i int64) {
+	m.last_observation_id = &i
+	m.addlast_observation_id = nil
+}
+
+// LastObservationID returns the value of the "last_observation_id" field in the mutation.
+func (m *AccountWindowUsageHistoryMutation) LastObservationID() (r int64, exists bool) {
+	v := m.last_observation_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldLastObservationID returns the old "last_observation_id" field's value of the AccountWindowUsageHistory entity.
+// If the AccountWindowUsageHistory object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *AccountWindowUsageHistoryMutation) OldLastObservationID(ctx context.Context) (v int64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldLastObservationID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldLastObservationID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldLastObservationID: %w", err)
+	}
+	return oldValue.LastObservationID, nil
+}
+
+// AddLastObservationID adds i to the "last_observation_id" field.
+func (m *AccountWindowUsageHistoryMutation) AddLastObservationID(i int64) {
+	if m.addlast_observation_id != nil {
+		*m.addlast_observation_id += i
+	} else {
+		m.addlast_observation_id = &i
+	}
+}
+
+// AddedLastObservationID returns the value that was added to the "last_observation_id" field in this mutation.
+func (m *AccountWindowUsageHistoryMutation) AddedLastObservationID() (r int64, exists bool) {
+	v := m.addlast_observation_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetLastObservationID resets all changes to the "last_observation_id" field.
+func (m *AccountWindowUsageHistoryMutation) ResetLastObservationID() {
+	m.last_observation_id = nil
+	m.addlast_observation_id = nil
+}
+
+// SetAPIReferenceCost sets the "api_reference_cost" field.
+func (m *AccountWindowUsageHistoryMutation) SetAPIReferenceCost(f float64) {
+	m.api_reference_cost = &f
+	m.addapi_reference_cost = nil
+}
+
+// APIReferenceCost returns the value of the "api_reference_cost" field in the mutation.
+func (m *AccountWindowUsageHistoryMutation) APIReferenceCost() (r float64, exists bool) {
+	v := m.api_reference_cost
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldAPIReferenceCost returns the old "api_reference_cost" field's value of the AccountWindowUsageHistory entity.
+// If the AccountWindowUsageHistory object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *AccountWindowUsageHistoryMutation) OldAPIReferenceCost(ctx context.Context) (v *float64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldAPIReferenceCost is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldAPIReferenceCost requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldAPIReferenceCost: %w", err)
+	}
+	return oldValue.APIReferenceCost, nil
+}
+
+// AddAPIReferenceCost adds f to the "api_reference_cost" field.
+func (m *AccountWindowUsageHistoryMutation) AddAPIReferenceCost(f float64) {
+	if m.addapi_reference_cost != nil {
+		*m.addapi_reference_cost += f
+	} else {
+		m.addapi_reference_cost = &f
+	}
+}
+
+// AddedAPIReferenceCost returns the value that was added to the "api_reference_cost" field in this mutation.
+func (m *AccountWindowUsageHistoryMutation) AddedAPIReferenceCost() (r float64, exists bool) {
+	v := m.addapi_reference_cost
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ClearAPIReferenceCost clears the value of the "api_reference_cost" field.
+func (m *AccountWindowUsageHistoryMutation) ClearAPIReferenceCost() {
+	m.api_reference_cost = nil
+	m.addapi_reference_cost = nil
+	m.clearedFields[accountwindowusagehistory.FieldAPIReferenceCost] = struct{}{}
+}
+
+// APIReferenceCostCleared returns if the "api_reference_cost" field was cleared in this mutation.
+func (m *AccountWindowUsageHistoryMutation) APIReferenceCostCleared() bool {
+	_, ok := m.clearedFields[accountwindowusagehistory.FieldAPIReferenceCost]
+	return ok
+}
+
+// ResetAPIReferenceCost resets all changes to the "api_reference_cost" field.
+func (m *AccountWindowUsageHistoryMutation) ResetAPIReferenceCost() {
+	m.api_reference_cost = nil
+	m.addapi_reference_cost = nil
+	delete(m.clearedFields, accountwindowusagehistory.FieldAPIReferenceCost)
+}
+
+// SetPricedRequests sets the "priced_requests" field.
+func (m *AccountWindowUsageHistoryMutation) SetPricedRequests(i int64) {
+	m.priced_requests = &i
+	m.addpriced_requests = nil
+}
+
+// PricedRequests returns the value of the "priced_requests" field in the mutation.
+func (m *AccountWindowUsageHistoryMutation) PricedRequests() (r int64, exists bool) {
+	v := m.priced_requests
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldPricedRequests returns the old "priced_requests" field's value of the AccountWindowUsageHistory entity.
+// If the AccountWindowUsageHistory object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *AccountWindowUsageHistoryMutation) OldPricedRequests(ctx context.Context) (v int64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldPricedRequests is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldPricedRequests requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldPricedRequests: %w", err)
+	}
+	return oldValue.PricedRequests, nil
+}
+
+// AddPricedRequests adds i to the "priced_requests" field.
+func (m *AccountWindowUsageHistoryMutation) AddPricedRequests(i int64) {
+	if m.addpriced_requests != nil {
+		*m.addpriced_requests += i
+	} else {
+		m.addpriced_requests = &i
+	}
+}
+
+// AddedPricedRequests returns the value that was added to the "priced_requests" field in this mutation.
+func (m *AccountWindowUsageHistoryMutation) AddedPricedRequests() (r int64, exists bool) {
+	v := m.addpriced_requests
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetPricedRequests resets all changes to the "priced_requests" field.
+func (m *AccountWindowUsageHistoryMutation) ResetPricedRequests() {
+	m.priced_requests = nil
+	m.addpriced_requests = nil
+}
+
+// SetMissingPricingRequests sets the "missing_pricing_requests" field.
+func (m *AccountWindowUsageHistoryMutation) SetMissingPricingRequests(i int64) {
+	m.missing_pricing_requests = &i
+	m.addmissing_pricing_requests = nil
+}
+
+// MissingPricingRequests returns the value of the "missing_pricing_requests" field in the mutation.
+func (m *AccountWindowUsageHistoryMutation) MissingPricingRequests() (r int64, exists bool) {
+	v := m.missing_pricing_requests
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldMissingPricingRequests returns the old "missing_pricing_requests" field's value of the AccountWindowUsageHistory entity.
+// If the AccountWindowUsageHistory object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *AccountWindowUsageHistoryMutation) OldMissingPricingRequests(ctx context.Context) (v int64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldMissingPricingRequests is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldMissingPricingRequests requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldMissingPricingRequests: %w", err)
+	}
+	return oldValue.MissingPricingRequests, nil
+}
+
+// AddMissingPricingRequests adds i to the "missing_pricing_requests" field.
+func (m *AccountWindowUsageHistoryMutation) AddMissingPricingRequests(i int64) {
+	if m.addmissing_pricing_requests != nil {
+		*m.addmissing_pricing_requests += i
+	} else {
+		m.addmissing_pricing_requests = &i
+	}
+}
+
+// AddedMissingPricingRequests returns the value that was added to the "missing_pricing_requests" field in this mutation.
+func (m *AccountWindowUsageHistoryMutation) AddedMissingPricingRequests() (r int64, exists bool) {
+	v := m.addmissing_pricing_requests
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetMissingPricingRequests resets all changes to the "missing_pricing_requests" field.
+func (m *AccountWindowUsageHistoryMutation) ResetMissingPricingRequests() {
+	m.missing_pricing_requests = nil
+	m.addmissing_pricing_requests = nil
+}
+
+// SetEstimatedReferenceLimit sets the "estimated_reference_limit" field.
+func (m *AccountWindowUsageHistoryMutation) SetEstimatedReferenceLimit(f float64) {
+	m.estimated_reference_limit = &f
+	m.addestimated_reference_limit = nil
+}
+
+// EstimatedReferenceLimit returns the value of the "estimated_reference_limit" field in the mutation.
+func (m *AccountWindowUsageHistoryMutation) EstimatedReferenceLimit() (r float64, exists bool) {
+	v := m.estimated_reference_limit
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldEstimatedReferenceLimit returns the old "estimated_reference_limit" field's value of the AccountWindowUsageHistory entity.
+// If the AccountWindowUsageHistory object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *AccountWindowUsageHistoryMutation) OldEstimatedReferenceLimit(ctx context.Context) (v *float64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldEstimatedReferenceLimit is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldEstimatedReferenceLimit requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldEstimatedReferenceLimit: %w", err)
+	}
+	return oldValue.EstimatedReferenceLimit, nil
+}
+
+// AddEstimatedReferenceLimit adds f to the "estimated_reference_limit" field.
+func (m *AccountWindowUsageHistoryMutation) AddEstimatedReferenceLimit(f float64) {
+	if m.addestimated_reference_limit != nil {
+		*m.addestimated_reference_limit += f
+	} else {
+		m.addestimated_reference_limit = &f
+	}
+}
+
+// AddedEstimatedReferenceLimit returns the value that was added to the "estimated_reference_limit" field in this mutation.
+func (m *AccountWindowUsageHistoryMutation) AddedEstimatedReferenceLimit() (r float64, exists bool) {
+	v := m.addestimated_reference_limit
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ClearEstimatedReferenceLimit clears the value of the "estimated_reference_limit" field.
+func (m *AccountWindowUsageHistoryMutation) ClearEstimatedReferenceLimit() {
+	m.estimated_reference_limit = nil
+	m.addestimated_reference_limit = nil
+	m.clearedFields[accountwindowusagehistory.FieldEstimatedReferenceLimit] = struct{}{}
+}
+
+// EstimatedReferenceLimitCleared returns if the "estimated_reference_limit" field was cleared in this mutation.
+func (m *AccountWindowUsageHistoryMutation) EstimatedReferenceLimitCleared() bool {
+	_, ok := m.clearedFields[accountwindowusagehistory.FieldEstimatedReferenceLimit]
+	return ok
+}
+
+// ResetEstimatedReferenceLimit resets all changes to the "estimated_reference_limit" field.
+func (m *AccountWindowUsageHistoryMutation) ResetEstimatedReferenceLimit() {
+	m.estimated_reference_limit = nil
+	m.addestimated_reference_limit = nil
+	delete(m.clearedFields, accountwindowusagehistory.FieldEstimatedReferenceLimit)
+}
+
+// SetEstimateReferenceCost sets the "estimate_reference_cost" field.
+func (m *AccountWindowUsageHistoryMutation) SetEstimateReferenceCost(f float64) {
+	m.estimate_reference_cost = &f
+	m.addestimate_reference_cost = nil
+}
+
+// EstimateReferenceCost returns the value of the "estimate_reference_cost" field in the mutation.
+func (m *AccountWindowUsageHistoryMutation) EstimateReferenceCost() (r float64, exists bool) {
+	v := m.estimate_reference_cost
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldEstimateReferenceCost returns the old "estimate_reference_cost" field's value of the AccountWindowUsageHistory entity.
+// If the AccountWindowUsageHistory object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *AccountWindowUsageHistoryMutation) OldEstimateReferenceCost(ctx context.Context) (v *float64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldEstimateReferenceCost is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldEstimateReferenceCost requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldEstimateReferenceCost: %w", err)
+	}
+	return oldValue.EstimateReferenceCost, nil
+}
+
+// AddEstimateReferenceCost adds f to the "estimate_reference_cost" field.
+func (m *AccountWindowUsageHistoryMutation) AddEstimateReferenceCost(f float64) {
+	if m.addestimate_reference_cost != nil {
+		*m.addestimate_reference_cost += f
+	} else {
+		m.addestimate_reference_cost = &f
+	}
+}
+
+// AddedEstimateReferenceCost returns the value that was added to the "estimate_reference_cost" field in this mutation.
+func (m *AccountWindowUsageHistoryMutation) AddedEstimateReferenceCost() (r float64, exists bool) {
+	v := m.addestimate_reference_cost
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ClearEstimateReferenceCost clears the value of the "estimate_reference_cost" field.
+func (m *AccountWindowUsageHistoryMutation) ClearEstimateReferenceCost() {
+	m.estimate_reference_cost = nil
+	m.addestimate_reference_cost = nil
+	m.clearedFields[accountwindowusagehistory.FieldEstimateReferenceCost] = struct{}{}
+}
+
+// EstimateReferenceCostCleared returns if the "estimate_reference_cost" field was cleared in this mutation.
+func (m *AccountWindowUsageHistoryMutation) EstimateReferenceCostCleared() bool {
+	_, ok := m.clearedFields[accountwindowusagehistory.FieldEstimateReferenceCost]
+	return ok
+}
+
+// ResetEstimateReferenceCost resets all changes to the "estimate_reference_cost" field.
+func (m *AccountWindowUsageHistoryMutation) ResetEstimateReferenceCost() {
+	m.estimate_reference_cost = nil
+	m.addestimate_reference_cost = nil
+	delete(m.clearedFields, accountwindowusagehistory.FieldEstimateReferenceCost)
+}
+
+// SetEstimateUsedPercent sets the "estimate_used_percent" field.
+func (m *AccountWindowUsageHistoryMutation) SetEstimateUsedPercent(f float64) {
+	m.estimate_used_percent = &f
+	m.addestimate_used_percent = nil
+}
+
+// EstimateUsedPercent returns the value of the "estimate_used_percent" field in the mutation.
+func (m *AccountWindowUsageHistoryMutation) EstimateUsedPercent() (r float64, exists bool) {
+	v := m.estimate_used_percent
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldEstimateUsedPercent returns the old "estimate_used_percent" field's value of the AccountWindowUsageHistory entity.
+// If the AccountWindowUsageHistory object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *AccountWindowUsageHistoryMutation) OldEstimateUsedPercent(ctx context.Context) (v *float64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldEstimateUsedPercent is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldEstimateUsedPercent requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldEstimateUsedPercent: %w", err)
+	}
+	return oldValue.EstimateUsedPercent, nil
+}
+
+// AddEstimateUsedPercent adds f to the "estimate_used_percent" field.
+func (m *AccountWindowUsageHistoryMutation) AddEstimateUsedPercent(f float64) {
+	if m.addestimate_used_percent != nil {
+		*m.addestimate_used_percent += f
+	} else {
+		m.addestimate_used_percent = &f
+	}
+}
+
+// AddedEstimateUsedPercent returns the value that was added to the "estimate_used_percent" field in this mutation.
+func (m *AccountWindowUsageHistoryMutation) AddedEstimateUsedPercent() (r float64, exists bool) {
+	v := m.addestimate_used_percent
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ClearEstimateUsedPercent clears the value of the "estimate_used_percent" field.
+func (m *AccountWindowUsageHistoryMutation) ClearEstimateUsedPercent() {
+	m.estimate_used_percent = nil
+	m.addestimate_used_percent = nil
+	m.clearedFields[accountwindowusagehistory.FieldEstimateUsedPercent] = struct{}{}
+}
+
+// EstimateUsedPercentCleared returns if the "estimate_used_percent" field was cleared in this mutation.
+func (m *AccountWindowUsageHistoryMutation) EstimateUsedPercentCleared() bool {
+	_, ok := m.clearedFields[accountwindowusagehistory.FieldEstimateUsedPercent]
+	return ok
+}
+
+// ResetEstimateUsedPercent resets all changes to the "estimate_used_percent" field.
+func (m *AccountWindowUsageHistoryMutation) ResetEstimateUsedPercent() {
+	m.estimate_used_percent = nil
+	m.addestimate_used_percent = nil
+	delete(m.clearedFields, accountwindowusagehistory.FieldEstimateUsedPercent)
+}
+
+// SetEstimateObservedAt sets the "estimate_observed_at" field.
+func (m *AccountWindowUsageHistoryMutation) SetEstimateObservedAt(t time.Time) {
+	m.estimate_observed_at = &t
+}
+
+// EstimateObservedAt returns the value of the "estimate_observed_at" field in the mutation.
+func (m *AccountWindowUsageHistoryMutation) EstimateObservedAt() (r time.Time, exists bool) {
+	v := m.estimate_observed_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldEstimateObservedAt returns the old "estimate_observed_at" field's value of the AccountWindowUsageHistory entity.
+// If the AccountWindowUsageHistory object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *AccountWindowUsageHistoryMutation) OldEstimateObservedAt(ctx context.Context) (v *time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldEstimateObservedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldEstimateObservedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldEstimateObservedAt: %w", err)
+	}
+	return oldValue.EstimateObservedAt, nil
+}
+
+// ClearEstimateObservedAt clears the value of the "estimate_observed_at" field.
+func (m *AccountWindowUsageHistoryMutation) ClearEstimateObservedAt() {
+	m.estimate_observed_at = nil
+	m.clearedFields[accountwindowusagehistory.FieldEstimateObservedAt] = struct{}{}
+}
+
+// EstimateObservedAtCleared returns if the "estimate_observed_at" field was cleared in this mutation.
+func (m *AccountWindowUsageHistoryMutation) EstimateObservedAtCleared() bool {
+	_, ok := m.clearedFields[accountwindowusagehistory.FieldEstimateObservedAt]
+	return ok
+}
+
+// ResetEstimateObservedAt resets all changes to the "estimate_observed_at" field.
+func (m *AccountWindowUsageHistoryMutation) ResetEstimateObservedAt() {
+	m.estimate_observed_at = nil
+	delete(m.clearedFields, accountwindowusagehistory.FieldEstimateObservedAt)
+}
+
+// SetQualityFlags sets the "quality_flags" field.
+func (m *AccountWindowUsageHistoryMutation) SetQualityFlags(s []string) {
+	m.quality_flags = &s
+	m.appendquality_flags = nil
+}
+
+// QualityFlags returns the value of the "quality_flags" field in the mutation.
+func (m *AccountWindowUsageHistoryMutation) QualityFlags() (r []string, exists bool) {
+	v := m.quality_flags
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldQualityFlags returns the old "quality_flags" field's value of the AccountWindowUsageHistory entity.
+// If the AccountWindowUsageHistory object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *AccountWindowUsageHistoryMutation) OldQualityFlags(ctx context.Context) (v []string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldQualityFlags is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldQualityFlags requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldQualityFlags: %w", err)
+	}
+	return oldValue.QualityFlags, nil
+}
+
+// AppendQualityFlags adds s to the "quality_flags" field.
+func (m *AccountWindowUsageHistoryMutation) AppendQualityFlags(s []string) {
+	m.appendquality_flags = append(m.appendquality_flags, s...)
+}
+
+// AppendedQualityFlags returns the list of values that were appended to the "quality_flags" field in this mutation.
+func (m *AccountWindowUsageHistoryMutation) AppendedQualityFlags() ([]string, bool) {
+	if len(m.appendquality_flags) == 0 {
+		return nil, false
+	}
+	return m.appendquality_flags, true
+}
+
+// ResetQualityFlags resets all changes to the "quality_flags" field.
+func (m *AccountWindowUsageHistoryMutation) ResetQualityFlags() {
+	m.quality_flags = nil
+	m.appendquality_flags = nil
+}
+
+// SetEndReason sets the "end_reason" field.
+func (m *AccountWindowUsageHistoryMutation) SetEndReason(s string) {
+	m.end_reason = &s
+}
+
+// EndReason returns the value of the "end_reason" field in the mutation.
+func (m *AccountWindowUsageHistoryMutation) EndReason() (r string, exists bool) {
+	v := m.end_reason
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldEndReason returns the old "end_reason" field's value of the AccountWindowUsageHistory entity.
+// If the AccountWindowUsageHistory object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *AccountWindowUsageHistoryMutation) OldEndReason(ctx context.Context) (v *string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldEndReason is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldEndReason requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldEndReason: %w", err)
+	}
+	return oldValue.EndReason, nil
+}
+
+// ClearEndReason clears the value of the "end_reason" field.
+func (m *AccountWindowUsageHistoryMutation) ClearEndReason() {
+	m.end_reason = nil
+	m.clearedFields[accountwindowusagehistory.FieldEndReason] = struct{}{}
+}
+
+// EndReasonCleared returns if the "end_reason" field was cleared in this mutation.
+func (m *AccountWindowUsageHistoryMutation) EndReasonCleared() bool {
+	_, ok := m.clearedFields[accountwindowusagehistory.FieldEndReason]
+	return ok
+}
+
+// ResetEndReason resets all changes to the "end_reason" field.
+func (m *AccountWindowUsageHistoryMutation) ResetEndReason() {
+	m.end_reason = nil
+	delete(m.clearedFields, accountwindowusagehistory.FieldEndReason)
+}
+
+// SetStatsFinalizedAt sets the "stats_finalized_at" field.
+func (m *AccountWindowUsageHistoryMutation) SetStatsFinalizedAt(t time.Time) {
+	m.stats_finalized_at = &t
+}
+
+// StatsFinalizedAt returns the value of the "stats_finalized_at" field in the mutation.
+func (m *AccountWindowUsageHistoryMutation) StatsFinalizedAt() (r time.Time, exists bool) {
+	v := m.stats_finalized_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldStatsFinalizedAt returns the old "stats_finalized_at" field's value of the AccountWindowUsageHistory entity.
+// If the AccountWindowUsageHistory object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *AccountWindowUsageHistoryMutation) OldStatsFinalizedAt(ctx context.Context) (v *time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldStatsFinalizedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldStatsFinalizedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldStatsFinalizedAt: %w", err)
+	}
+	return oldValue.StatsFinalizedAt, nil
+}
+
+// ClearStatsFinalizedAt clears the value of the "stats_finalized_at" field.
+func (m *AccountWindowUsageHistoryMutation) ClearStatsFinalizedAt() {
+	m.stats_finalized_at = nil
+	m.clearedFields[accountwindowusagehistory.FieldStatsFinalizedAt] = struct{}{}
+}
+
+// StatsFinalizedAtCleared returns if the "stats_finalized_at" field was cleared in this mutation.
+func (m *AccountWindowUsageHistoryMutation) StatsFinalizedAtCleared() bool {
+	_, ok := m.clearedFields[accountwindowusagehistory.FieldStatsFinalizedAt]
+	return ok
+}
+
+// ResetStatsFinalizedAt resets all changes to the "stats_finalized_at" field.
+func (m *AccountWindowUsageHistoryMutation) ResetStatsFinalizedAt() {
+	m.stats_finalized_at = nil
+	delete(m.clearedFields, accountwindowusagehistory.FieldStatsFinalizedAt)
+}
+
+// SetFinalizedAt sets the "finalized_at" field.
+func (m *AccountWindowUsageHistoryMutation) SetFinalizedAt(t time.Time) {
+	m.finalized_at = &t
+}
+
+// FinalizedAt returns the value of the "finalized_at" field in the mutation.
+func (m *AccountWindowUsageHistoryMutation) FinalizedAt() (r time.Time, exists bool) {
+	v := m.finalized_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldFinalizedAt returns the old "finalized_at" field's value of the AccountWindowUsageHistory entity.
+// If the AccountWindowUsageHistory object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *AccountWindowUsageHistoryMutation) OldFinalizedAt(ctx context.Context) (v *time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldFinalizedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldFinalizedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldFinalizedAt: %w", err)
+	}
+	return oldValue.FinalizedAt, nil
+}
+
+// ClearFinalizedAt clears the value of the "finalized_at" field.
+func (m *AccountWindowUsageHistoryMutation) ClearFinalizedAt() {
+	m.finalized_at = nil
+	m.clearedFields[accountwindowusagehistory.FieldFinalizedAt] = struct{}{}
+}
+
+// FinalizedAtCleared returns if the "finalized_at" field was cleared in this mutation.
+func (m *AccountWindowUsageHistoryMutation) FinalizedAtCleared() bool {
+	_, ok := m.clearedFields[accountwindowusagehistory.FieldFinalizedAt]
+	return ok
+}
+
+// ResetFinalizedAt resets all changes to the "finalized_at" field.
+func (m *AccountWindowUsageHistoryMutation) ResetFinalizedAt() {
+	m.finalized_at = nil
+	delete(m.clearedFields, accountwindowusagehistory.FieldFinalizedAt)
+}
+
+// ClearAccount clears the "account" edge to the Account entity.
+func (m *AccountWindowUsageHistoryMutation) ClearAccount() {
+	m.clearedaccount = true
+	m.clearedFields[accountwindowusagehistory.FieldAccountID] = struct{}{}
+}
+
+// AccountCleared reports if the "account" edge to the Account entity was cleared.
+func (m *AccountWindowUsageHistoryMutation) AccountCleared() bool {
+	return m.clearedaccount
+}
+
+// AccountIDs returns the "account" edge IDs in the mutation.
+// Note that IDs always returns len(IDs) <= 1 for unique edges, and you should use
+// AccountID instead. It exists only for internal usage by the builders.
+func (m *AccountWindowUsageHistoryMutation) AccountIDs() (ids []int64) {
+	if id := m.account; id != nil {
+		ids = append(ids, *id)
+	}
+	return
+}
+
+// ResetAccount resets all changes to the "account" edge.
+func (m *AccountWindowUsageHistoryMutation) ResetAccount() {
+	m.account = nil
+	m.clearedaccount = false
+}
+
+// Where appends a list predicates to the AccountWindowUsageHistoryMutation builder.
+func (m *AccountWindowUsageHistoryMutation) Where(ps ...predicate.AccountWindowUsageHistory) {
+	m.predicates = append(m.predicates, ps...)
+}
+
+// WhereP appends storage-level predicates to the AccountWindowUsageHistoryMutation builder. Using this method,
+// users can use type-assertion to append predicates that do not depend on any generated package.
+func (m *AccountWindowUsageHistoryMutation) WhereP(ps ...func(*sql.Selector)) {
+	p := make([]predicate.AccountWindowUsageHistory, len(ps))
+	for i := range ps {
+		p[i] = ps[i]
+	}
+	m.Where(p...)
+}
+
+// Op returns the operation name.
+func (m *AccountWindowUsageHistoryMutation) Op() Op {
+	return m.op
+}
+
+// SetOp allows setting the mutation operation.
+func (m *AccountWindowUsageHistoryMutation) SetOp(op Op) {
+	m.op = op
+}
+
+// Type returns the node type of this mutation (AccountWindowUsageHistory).
+func (m *AccountWindowUsageHistoryMutation) Type() string {
+	return m.typ
+}
+
+// Fields returns all fields that were changed during this mutation. Note that in
+// order to get all numeric fields that were incremented/decremented, call
+// AddedFields().
+func (m *AccountWindowUsageHistoryMutation) Fields() []string {
+	fields := make([]string, 0, 27)
+	if m.created_at != nil {
+		fields = append(fields, accountwindowusagehistory.FieldCreatedAt)
+	}
+	if m.updated_at != nil {
+		fields = append(fields, accountwindowusagehistory.FieldUpdatedAt)
+	}
+	if m.account != nil {
+		fields = append(fields, accountwindowusagehistory.FieldAccountID)
+	}
+	if m.window_type != nil {
+		fields = append(fields, accountwindowusagehistory.FieldWindowType)
+	}
+	if m.window_start != nil {
+		fields = append(fields, accountwindowusagehistory.FieldWindowStart)
+	}
+	if m.window_end != nil {
+		fields = append(fields, accountwindowusagehistory.FieldWindowEnd)
+	}
+	if m.peak_used_percent != nil {
+		fields = append(fields, accountwindowusagehistory.FieldPeakUsedPercent)
+	}
+	if m.last_used_percent != nil {
+		fields = append(fields, accountwindowusagehistory.FieldLastUsedPercent)
+	}
+	if m.sample_count != nil {
+		fields = append(fields, accountwindowusagehistory.FieldSampleCount)
+	}
+	if m.last_sample_at != nil {
+		fields = append(fields, accountwindowusagehistory.FieldLastSampleAt)
+	}
+	if m.requests != nil {
+		fields = append(fields, accountwindowusagehistory.FieldRequests)
+	}
+	if m.tokens_total != nil {
+		fields = append(fields, accountwindowusagehistory.FieldTokensTotal)
+	}
+	if m.reset_at != nil {
+		fields = append(fields, accountwindowusagehistory.FieldResetAt)
+	}
+	if m.duration_minutes != nil {
+		fields = append(fields, accountwindowusagehistory.FieldDurationMinutes)
+	}
+	if m.first_observed_at != nil {
+		fields = append(fields, accountwindowusagehistory.FieldFirstObservedAt)
+	}
+	if m.last_observation_id != nil {
+		fields = append(fields, accountwindowusagehistory.FieldLastObservationID)
+	}
+	if m.api_reference_cost != nil {
+		fields = append(fields, accountwindowusagehistory.FieldAPIReferenceCost)
+	}
+	if m.priced_requests != nil {
+		fields = append(fields, accountwindowusagehistory.FieldPricedRequests)
+	}
+	if m.missing_pricing_requests != nil {
+		fields = append(fields, accountwindowusagehistory.FieldMissingPricingRequests)
+	}
+	if m.estimated_reference_limit != nil {
+		fields = append(fields, accountwindowusagehistory.FieldEstimatedReferenceLimit)
+	}
+	if m.estimate_reference_cost != nil {
+		fields = append(fields, accountwindowusagehistory.FieldEstimateReferenceCost)
+	}
+	if m.estimate_used_percent != nil {
+		fields = append(fields, accountwindowusagehistory.FieldEstimateUsedPercent)
+	}
+	if m.estimate_observed_at != nil {
+		fields = append(fields, accountwindowusagehistory.FieldEstimateObservedAt)
+	}
+	if m.quality_flags != nil {
+		fields = append(fields, accountwindowusagehistory.FieldQualityFlags)
+	}
+	if m.end_reason != nil {
+		fields = append(fields, accountwindowusagehistory.FieldEndReason)
+	}
+	if m.stats_finalized_at != nil {
+		fields = append(fields, accountwindowusagehistory.FieldStatsFinalizedAt)
+	}
+	if m.finalized_at != nil {
+		fields = append(fields, accountwindowusagehistory.FieldFinalizedAt)
+	}
+	return fields
+}
+
+// Field returns the value of a field with the given name. The second boolean
+// return value indicates that this field was not set, or was not defined in the
+// schema.
+func (m *AccountWindowUsageHistoryMutation) Field(name string) (ent.Value, bool) {
+	switch name {
+	case accountwindowusagehistory.FieldCreatedAt:
+		return m.CreatedAt()
+	case accountwindowusagehistory.FieldUpdatedAt:
+		return m.UpdatedAt()
+	case accountwindowusagehistory.FieldAccountID:
+		return m.AccountID()
+	case accountwindowusagehistory.FieldWindowType:
+		return m.WindowType()
+	case accountwindowusagehistory.FieldWindowStart:
+		return m.WindowStart()
+	case accountwindowusagehistory.FieldWindowEnd:
+		return m.WindowEnd()
+	case accountwindowusagehistory.FieldPeakUsedPercent:
+		return m.PeakUsedPercent()
+	case accountwindowusagehistory.FieldLastUsedPercent:
+		return m.LastUsedPercent()
+	case accountwindowusagehistory.FieldSampleCount:
+		return m.SampleCount()
+	case accountwindowusagehistory.FieldLastSampleAt:
+		return m.LastSampleAt()
+	case accountwindowusagehistory.FieldRequests:
+		return m.Requests()
+	case accountwindowusagehistory.FieldTokensTotal:
+		return m.TokensTotal()
+	case accountwindowusagehistory.FieldResetAt:
+		return m.ResetAt()
+	case accountwindowusagehistory.FieldDurationMinutes:
+		return m.DurationMinutes()
+	case accountwindowusagehistory.FieldFirstObservedAt:
+		return m.FirstObservedAt()
+	case accountwindowusagehistory.FieldLastObservationID:
+		return m.LastObservationID()
+	case accountwindowusagehistory.FieldAPIReferenceCost:
+		return m.APIReferenceCost()
+	case accountwindowusagehistory.FieldPricedRequests:
+		return m.PricedRequests()
+	case accountwindowusagehistory.FieldMissingPricingRequests:
+		return m.MissingPricingRequests()
+	case accountwindowusagehistory.FieldEstimatedReferenceLimit:
+		return m.EstimatedReferenceLimit()
+	case accountwindowusagehistory.FieldEstimateReferenceCost:
+		return m.EstimateReferenceCost()
+	case accountwindowusagehistory.FieldEstimateUsedPercent:
+		return m.EstimateUsedPercent()
+	case accountwindowusagehistory.FieldEstimateObservedAt:
+		return m.EstimateObservedAt()
+	case accountwindowusagehistory.FieldQualityFlags:
+		return m.QualityFlags()
+	case accountwindowusagehistory.FieldEndReason:
+		return m.EndReason()
+	case accountwindowusagehistory.FieldStatsFinalizedAt:
+		return m.StatsFinalizedAt()
+	case accountwindowusagehistory.FieldFinalizedAt:
+		return m.FinalizedAt()
+	}
+	return nil, false
+}
+
+// OldField returns the old value of the field from the database. An error is
+// returned if the mutation operation is not UpdateOne, or the query to the
+// database failed.
+func (m *AccountWindowUsageHistoryMutation) OldField(ctx context.Context, name string) (ent.Value, error) {
+	switch name {
+	case accountwindowusagehistory.FieldCreatedAt:
+		return m.OldCreatedAt(ctx)
+	case accountwindowusagehistory.FieldUpdatedAt:
+		return m.OldUpdatedAt(ctx)
+	case accountwindowusagehistory.FieldAccountID:
+		return m.OldAccountID(ctx)
+	case accountwindowusagehistory.FieldWindowType:
+		return m.OldWindowType(ctx)
+	case accountwindowusagehistory.FieldWindowStart:
+		return m.OldWindowStart(ctx)
+	case accountwindowusagehistory.FieldWindowEnd:
+		return m.OldWindowEnd(ctx)
+	case accountwindowusagehistory.FieldPeakUsedPercent:
+		return m.OldPeakUsedPercent(ctx)
+	case accountwindowusagehistory.FieldLastUsedPercent:
+		return m.OldLastUsedPercent(ctx)
+	case accountwindowusagehistory.FieldSampleCount:
+		return m.OldSampleCount(ctx)
+	case accountwindowusagehistory.FieldLastSampleAt:
+		return m.OldLastSampleAt(ctx)
+	case accountwindowusagehistory.FieldRequests:
+		return m.OldRequests(ctx)
+	case accountwindowusagehistory.FieldTokensTotal:
+		return m.OldTokensTotal(ctx)
+	case accountwindowusagehistory.FieldResetAt:
+		return m.OldResetAt(ctx)
+	case accountwindowusagehistory.FieldDurationMinutes:
+		return m.OldDurationMinutes(ctx)
+	case accountwindowusagehistory.FieldFirstObservedAt:
+		return m.OldFirstObservedAt(ctx)
+	case accountwindowusagehistory.FieldLastObservationID:
+		return m.OldLastObservationID(ctx)
+	case accountwindowusagehistory.FieldAPIReferenceCost:
+		return m.OldAPIReferenceCost(ctx)
+	case accountwindowusagehistory.FieldPricedRequests:
+		return m.OldPricedRequests(ctx)
+	case accountwindowusagehistory.FieldMissingPricingRequests:
+		return m.OldMissingPricingRequests(ctx)
+	case accountwindowusagehistory.FieldEstimatedReferenceLimit:
+		return m.OldEstimatedReferenceLimit(ctx)
+	case accountwindowusagehistory.FieldEstimateReferenceCost:
+		return m.OldEstimateReferenceCost(ctx)
+	case accountwindowusagehistory.FieldEstimateUsedPercent:
+		return m.OldEstimateUsedPercent(ctx)
+	case accountwindowusagehistory.FieldEstimateObservedAt:
+		return m.OldEstimateObservedAt(ctx)
+	case accountwindowusagehistory.FieldQualityFlags:
+		return m.OldQualityFlags(ctx)
+	case accountwindowusagehistory.FieldEndReason:
+		return m.OldEndReason(ctx)
+	case accountwindowusagehistory.FieldStatsFinalizedAt:
+		return m.OldStatsFinalizedAt(ctx)
+	case accountwindowusagehistory.FieldFinalizedAt:
+		return m.OldFinalizedAt(ctx)
+	}
+	return nil, fmt.Errorf("unknown AccountWindowUsageHistory field %s", name)
+}
+
+// SetField sets the value of a field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *AccountWindowUsageHistoryMutation) SetField(name string, value ent.Value) error {
+	switch name {
+	case accountwindowusagehistory.FieldCreatedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCreatedAt(v)
+		return nil
+	case accountwindowusagehistory.FieldUpdatedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetUpdatedAt(v)
+		return nil
+	case accountwindowusagehistory.FieldAccountID:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetAccountID(v)
+		return nil
+	case accountwindowusagehistory.FieldWindowType:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetWindowType(v)
+		return nil
+	case accountwindowusagehistory.FieldWindowStart:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetWindowStart(v)
+		return nil
+	case accountwindowusagehistory.FieldWindowEnd:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetWindowEnd(v)
+		return nil
+	case accountwindowusagehistory.FieldPeakUsedPercent:
+		v, ok := value.(float64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetPeakUsedPercent(v)
+		return nil
+	case accountwindowusagehistory.FieldLastUsedPercent:
+		v, ok := value.(float64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetLastUsedPercent(v)
+		return nil
+	case accountwindowusagehistory.FieldSampleCount:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetSampleCount(v)
+		return nil
+	case accountwindowusagehistory.FieldLastSampleAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetLastSampleAt(v)
+		return nil
+	case accountwindowusagehistory.FieldRequests:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetRequests(v)
+		return nil
+	case accountwindowusagehistory.FieldTokensTotal:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetTokensTotal(v)
+		return nil
+	case accountwindowusagehistory.FieldResetAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetResetAt(v)
+		return nil
+	case accountwindowusagehistory.FieldDurationMinutes:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetDurationMinutes(v)
+		return nil
+	case accountwindowusagehistory.FieldFirstObservedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetFirstObservedAt(v)
+		return nil
+	case accountwindowusagehistory.FieldLastObservationID:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetLastObservationID(v)
+		return nil
+	case accountwindowusagehistory.FieldAPIReferenceCost:
+		v, ok := value.(float64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetAPIReferenceCost(v)
+		return nil
+	case accountwindowusagehistory.FieldPricedRequests:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetPricedRequests(v)
+		return nil
+	case accountwindowusagehistory.FieldMissingPricingRequests:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetMissingPricingRequests(v)
+		return nil
+	case accountwindowusagehistory.FieldEstimatedReferenceLimit:
+		v, ok := value.(float64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetEstimatedReferenceLimit(v)
+		return nil
+	case accountwindowusagehistory.FieldEstimateReferenceCost:
+		v, ok := value.(float64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetEstimateReferenceCost(v)
+		return nil
+	case accountwindowusagehistory.FieldEstimateUsedPercent:
+		v, ok := value.(float64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetEstimateUsedPercent(v)
+		return nil
+	case accountwindowusagehistory.FieldEstimateObservedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetEstimateObservedAt(v)
+		return nil
+	case accountwindowusagehistory.FieldQualityFlags:
+		v, ok := value.([]string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetQualityFlags(v)
+		return nil
+	case accountwindowusagehistory.FieldEndReason:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetEndReason(v)
+		return nil
+	case accountwindowusagehistory.FieldStatsFinalizedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetStatsFinalizedAt(v)
+		return nil
+	case accountwindowusagehistory.FieldFinalizedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetFinalizedAt(v)
+		return nil
+	}
+	return fmt.Errorf("unknown AccountWindowUsageHistory field %s", name)
+}
+
+// AddedFields returns all numeric fields that were incremented/decremented during
+// this mutation.
+func (m *AccountWindowUsageHistoryMutation) AddedFields() []string {
+	var fields []string
+	if m.addpeak_used_percent != nil {
+		fields = append(fields, accountwindowusagehistory.FieldPeakUsedPercent)
+	}
+	if m.addlast_used_percent != nil {
+		fields = append(fields, accountwindowusagehistory.FieldLastUsedPercent)
+	}
+	if m.addsample_count != nil {
+		fields = append(fields, accountwindowusagehistory.FieldSampleCount)
+	}
+	if m.addrequests != nil {
+		fields = append(fields, accountwindowusagehistory.FieldRequests)
+	}
+	if m.addtokens_total != nil {
+		fields = append(fields, accountwindowusagehistory.FieldTokensTotal)
+	}
+	if m.addduration_minutes != nil {
+		fields = append(fields, accountwindowusagehistory.FieldDurationMinutes)
+	}
+	if m.addlast_observation_id != nil {
+		fields = append(fields, accountwindowusagehistory.FieldLastObservationID)
+	}
+	if m.addapi_reference_cost != nil {
+		fields = append(fields, accountwindowusagehistory.FieldAPIReferenceCost)
+	}
+	if m.addpriced_requests != nil {
+		fields = append(fields, accountwindowusagehistory.FieldPricedRequests)
+	}
+	if m.addmissing_pricing_requests != nil {
+		fields = append(fields, accountwindowusagehistory.FieldMissingPricingRequests)
+	}
+	if m.addestimated_reference_limit != nil {
+		fields = append(fields, accountwindowusagehistory.FieldEstimatedReferenceLimit)
+	}
+	if m.addestimate_reference_cost != nil {
+		fields = append(fields, accountwindowusagehistory.FieldEstimateReferenceCost)
+	}
+	if m.addestimate_used_percent != nil {
+		fields = append(fields, accountwindowusagehistory.FieldEstimateUsedPercent)
+	}
+	return fields
+}
+
+// AddedField returns the numeric value that was incremented/decremented on a field
+// with the given name. The second boolean return value indicates that this field
+// was not set, or was not defined in the schema.
+func (m *AccountWindowUsageHistoryMutation) AddedField(name string) (ent.Value, bool) {
+	switch name {
+	case accountwindowusagehistory.FieldPeakUsedPercent:
+		return m.AddedPeakUsedPercent()
+	case accountwindowusagehistory.FieldLastUsedPercent:
+		return m.AddedLastUsedPercent()
+	case accountwindowusagehistory.FieldSampleCount:
+		return m.AddedSampleCount()
+	case accountwindowusagehistory.FieldRequests:
+		return m.AddedRequests()
+	case accountwindowusagehistory.FieldTokensTotal:
+		return m.AddedTokensTotal()
+	case accountwindowusagehistory.FieldDurationMinutes:
+		return m.AddedDurationMinutes()
+	case accountwindowusagehistory.FieldLastObservationID:
+		return m.AddedLastObservationID()
+	case accountwindowusagehistory.FieldAPIReferenceCost:
+		return m.AddedAPIReferenceCost()
+	case accountwindowusagehistory.FieldPricedRequests:
+		return m.AddedPricedRequests()
+	case accountwindowusagehistory.FieldMissingPricingRequests:
+		return m.AddedMissingPricingRequests()
+	case accountwindowusagehistory.FieldEstimatedReferenceLimit:
+		return m.AddedEstimatedReferenceLimit()
+	case accountwindowusagehistory.FieldEstimateReferenceCost:
+		return m.AddedEstimateReferenceCost()
+	case accountwindowusagehistory.FieldEstimateUsedPercent:
+		return m.AddedEstimateUsedPercent()
+	}
+	return nil, false
+}
+
+// AddField adds the value to the field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *AccountWindowUsageHistoryMutation) AddField(name string, value ent.Value) error {
+	switch name {
+	case accountwindowusagehistory.FieldPeakUsedPercent:
+		v, ok := value.(float64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddPeakUsedPercent(v)
+		return nil
+	case accountwindowusagehistory.FieldLastUsedPercent:
+		v, ok := value.(float64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddLastUsedPercent(v)
+		return nil
+	case accountwindowusagehistory.FieldSampleCount:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddSampleCount(v)
+		return nil
+	case accountwindowusagehistory.FieldRequests:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddRequests(v)
+		return nil
+	case accountwindowusagehistory.FieldTokensTotal:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddTokensTotal(v)
+		return nil
+	case accountwindowusagehistory.FieldDurationMinutes:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddDurationMinutes(v)
+		return nil
+	case accountwindowusagehistory.FieldLastObservationID:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddLastObservationID(v)
+		return nil
+	case accountwindowusagehistory.FieldAPIReferenceCost:
+		v, ok := value.(float64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddAPIReferenceCost(v)
+		return nil
+	case accountwindowusagehistory.FieldPricedRequests:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddPricedRequests(v)
+		return nil
+	case accountwindowusagehistory.FieldMissingPricingRequests:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddMissingPricingRequests(v)
+		return nil
+	case accountwindowusagehistory.FieldEstimatedReferenceLimit:
+		v, ok := value.(float64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddEstimatedReferenceLimit(v)
+		return nil
+	case accountwindowusagehistory.FieldEstimateReferenceCost:
+		v, ok := value.(float64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddEstimateReferenceCost(v)
+		return nil
+	case accountwindowusagehistory.FieldEstimateUsedPercent:
+		v, ok := value.(float64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddEstimateUsedPercent(v)
+		return nil
+	}
+	return fmt.Errorf("unknown AccountWindowUsageHistory numeric field %s", name)
+}
+
+// ClearedFields returns all nullable fields that were cleared during this
+// mutation.
+func (m *AccountWindowUsageHistoryMutation) ClearedFields() []string {
+	var fields []string
+	if m.FieldCleared(accountwindowusagehistory.FieldLastSampleAt) {
+		fields = append(fields, accountwindowusagehistory.FieldLastSampleAt)
+	}
+	if m.FieldCleared(accountwindowusagehistory.FieldAPIReferenceCost) {
+		fields = append(fields, accountwindowusagehistory.FieldAPIReferenceCost)
+	}
+	if m.FieldCleared(accountwindowusagehistory.FieldEstimatedReferenceLimit) {
+		fields = append(fields, accountwindowusagehistory.FieldEstimatedReferenceLimit)
+	}
+	if m.FieldCleared(accountwindowusagehistory.FieldEstimateReferenceCost) {
+		fields = append(fields, accountwindowusagehistory.FieldEstimateReferenceCost)
+	}
+	if m.FieldCleared(accountwindowusagehistory.FieldEstimateUsedPercent) {
+		fields = append(fields, accountwindowusagehistory.FieldEstimateUsedPercent)
+	}
+	if m.FieldCleared(accountwindowusagehistory.FieldEstimateObservedAt) {
+		fields = append(fields, accountwindowusagehistory.FieldEstimateObservedAt)
+	}
+	if m.FieldCleared(accountwindowusagehistory.FieldEndReason) {
+		fields = append(fields, accountwindowusagehistory.FieldEndReason)
+	}
+	if m.FieldCleared(accountwindowusagehistory.FieldStatsFinalizedAt) {
+		fields = append(fields, accountwindowusagehistory.FieldStatsFinalizedAt)
+	}
+	if m.FieldCleared(accountwindowusagehistory.FieldFinalizedAt) {
+		fields = append(fields, accountwindowusagehistory.FieldFinalizedAt)
+	}
+	return fields
+}
+
+// FieldCleared returns a boolean indicating if a field with the given name was
+// cleared in this mutation.
+func (m *AccountWindowUsageHistoryMutation) FieldCleared(name string) bool {
+	_, ok := m.clearedFields[name]
+	return ok
+}
+
+// ClearField clears the value of the field with the given name. It returns an
+// error if the field is not defined in the schema.
+func (m *AccountWindowUsageHistoryMutation) ClearField(name string) error {
+	switch name {
+	case accountwindowusagehistory.FieldLastSampleAt:
+		m.ClearLastSampleAt()
+		return nil
+	case accountwindowusagehistory.FieldAPIReferenceCost:
+		m.ClearAPIReferenceCost()
+		return nil
+	case accountwindowusagehistory.FieldEstimatedReferenceLimit:
+		m.ClearEstimatedReferenceLimit()
+		return nil
+	case accountwindowusagehistory.FieldEstimateReferenceCost:
+		m.ClearEstimateReferenceCost()
+		return nil
+	case accountwindowusagehistory.FieldEstimateUsedPercent:
+		m.ClearEstimateUsedPercent()
+		return nil
+	case accountwindowusagehistory.FieldEstimateObservedAt:
+		m.ClearEstimateObservedAt()
+		return nil
+	case accountwindowusagehistory.FieldEndReason:
+		m.ClearEndReason()
+		return nil
+	case accountwindowusagehistory.FieldStatsFinalizedAt:
+		m.ClearStatsFinalizedAt()
+		return nil
+	case accountwindowusagehistory.FieldFinalizedAt:
+		m.ClearFinalizedAt()
+		return nil
+	}
+	return fmt.Errorf("unknown AccountWindowUsageHistory nullable field %s", name)
+}
+
+// ResetField resets all changes in the mutation for the field with the given name.
+// It returns an error if the field is not defined in the schema.
+func (m *AccountWindowUsageHistoryMutation) ResetField(name string) error {
+	switch name {
+	case accountwindowusagehistory.FieldCreatedAt:
+		m.ResetCreatedAt()
+		return nil
+	case accountwindowusagehistory.FieldUpdatedAt:
+		m.ResetUpdatedAt()
+		return nil
+	case accountwindowusagehistory.FieldAccountID:
+		m.ResetAccountID()
+		return nil
+	case accountwindowusagehistory.FieldWindowType:
+		m.ResetWindowType()
+		return nil
+	case accountwindowusagehistory.FieldWindowStart:
+		m.ResetWindowStart()
+		return nil
+	case accountwindowusagehistory.FieldWindowEnd:
+		m.ResetWindowEnd()
+		return nil
+	case accountwindowusagehistory.FieldPeakUsedPercent:
+		m.ResetPeakUsedPercent()
+		return nil
+	case accountwindowusagehistory.FieldLastUsedPercent:
+		m.ResetLastUsedPercent()
+		return nil
+	case accountwindowusagehistory.FieldSampleCount:
+		m.ResetSampleCount()
+		return nil
+	case accountwindowusagehistory.FieldLastSampleAt:
+		m.ResetLastSampleAt()
+		return nil
+	case accountwindowusagehistory.FieldRequests:
+		m.ResetRequests()
+		return nil
+	case accountwindowusagehistory.FieldTokensTotal:
+		m.ResetTokensTotal()
+		return nil
+	case accountwindowusagehistory.FieldResetAt:
+		m.ResetResetAt()
+		return nil
+	case accountwindowusagehistory.FieldDurationMinutes:
+		m.ResetDurationMinutes()
+		return nil
+	case accountwindowusagehistory.FieldFirstObservedAt:
+		m.ResetFirstObservedAt()
+		return nil
+	case accountwindowusagehistory.FieldLastObservationID:
+		m.ResetLastObservationID()
+		return nil
+	case accountwindowusagehistory.FieldAPIReferenceCost:
+		m.ResetAPIReferenceCost()
+		return nil
+	case accountwindowusagehistory.FieldPricedRequests:
+		m.ResetPricedRequests()
+		return nil
+	case accountwindowusagehistory.FieldMissingPricingRequests:
+		m.ResetMissingPricingRequests()
+		return nil
+	case accountwindowusagehistory.FieldEstimatedReferenceLimit:
+		m.ResetEstimatedReferenceLimit()
+		return nil
+	case accountwindowusagehistory.FieldEstimateReferenceCost:
+		m.ResetEstimateReferenceCost()
+		return nil
+	case accountwindowusagehistory.FieldEstimateUsedPercent:
+		m.ResetEstimateUsedPercent()
+		return nil
+	case accountwindowusagehistory.FieldEstimateObservedAt:
+		m.ResetEstimateObservedAt()
+		return nil
+	case accountwindowusagehistory.FieldQualityFlags:
+		m.ResetQualityFlags()
+		return nil
+	case accountwindowusagehistory.FieldEndReason:
+		m.ResetEndReason()
+		return nil
+	case accountwindowusagehistory.FieldStatsFinalizedAt:
+		m.ResetStatsFinalizedAt()
+		return nil
+	case accountwindowusagehistory.FieldFinalizedAt:
+		m.ResetFinalizedAt()
+		return nil
+	}
+	return fmt.Errorf("unknown AccountWindowUsageHistory field %s", name)
+}
+
+// AddedEdges returns all edge names that were set/added in this mutation.
+func (m *AccountWindowUsageHistoryMutation) AddedEdges() []string {
+	edges := make([]string, 0, 1)
+	if m.account != nil {
+		edges = append(edges, accountwindowusagehistory.EdgeAccount)
+	}
+	return edges
+}
+
+// AddedIDs returns all IDs (to other nodes) that were added for the given edge
+// name in this mutation.
+func (m *AccountWindowUsageHistoryMutation) AddedIDs(name string) []ent.Value {
+	switch name {
+	case accountwindowusagehistory.EdgeAccount:
+		if id := m.account; id != nil {
+			return []ent.Value{*id}
+		}
+	}
+	return nil
+}
+
+// RemovedEdges returns all edge names that were removed in this mutation.
+func (m *AccountWindowUsageHistoryMutation) RemovedEdges() []string {
+	edges := make([]string, 0, 1)
+	return edges
+}
+
+// RemovedIDs returns all IDs (to other nodes) that were removed for the edge with
+// the given name in this mutation.
+func (m *AccountWindowUsageHistoryMutation) RemovedIDs(name string) []ent.Value {
+	return nil
+}
+
+// ClearedEdges returns all edge names that were cleared in this mutation.
+func (m *AccountWindowUsageHistoryMutation) ClearedEdges() []string {
+	edges := make([]string, 0, 1)
+	if m.clearedaccount {
+		edges = append(edges, accountwindowusagehistory.EdgeAccount)
+	}
+	return edges
+}
+
+// EdgeCleared returns a boolean which indicates if the edge with the given name
+// was cleared in this mutation.
+func (m *AccountWindowUsageHistoryMutation) EdgeCleared(name string) bool {
+	switch name {
+	case accountwindowusagehistory.EdgeAccount:
+		return m.clearedaccount
+	}
+	return false
+}
+
+// ClearEdge clears the value of the edge with the given name. It returns an error
+// if that edge is not defined in the schema.
+func (m *AccountWindowUsageHistoryMutation) ClearEdge(name string) error {
+	switch name {
+	case accountwindowusagehistory.EdgeAccount:
+		m.ClearAccount()
+		return nil
+	}
+	return fmt.Errorf("unknown AccountWindowUsageHistory unique edge %s", name)
+}
+
+// ResetEdge resets all changes to the edge with the given name in this mutation.
+// It returns an error if the edge is not defined in the schema.
+func (m *AccountWindowUsageHistoryMutation) ResetEdge(name string) error {
+	switch name {
+	case accountwindowusagehistory.EdgeAccount:
+		m.ResetAccount()
+		return nil
+	}
+	return fmt.Errorf("unknown AccountWindowUsageHistory edge %s", name)
 }
 
 // AnnouncementMutation represents an operation that mutates the Announcement nodes in the graph.
@@ -44565,6 +47060,9 @@ type UsageLogMutation struct {
 	addtotal_cost                *float64
 	actual_cost                  *float64
 	addactual_cost               *float64
+	api_reference_cost           *float64
+	addapi_reference_cost        *float64
+	api_reference_pricing        *map[string]interface{}
 	rate_multiplier              *float64
 	addrate_multiplier           *float64
 	long_context_billing_applied *bool
@@ -46070,6 +48568,125 @@ func (m *UsageLogMutation) ResetActualCost() {
 	m.addactual_cost = nil
 }
 
+// SetAPIReferenceCost sets the "api_reference_cost" field.
+func (m *UsageLogMutation) SetAPIReferenceCost(f float64) {
+	m.api_reference_cost = &f
+	m.addapi_reference_cost = nil
+}
+
+// APIReferenceCost returns the value of the "api_reference_cost" field in the mutation.
+func (m *UsageLogMutation) APIReferenceCost() (r float64, exists bool) {
+	v := m.api_reference_cost
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldAPIReferenceCost returns the old "api_reference_cost" field's value of the UsageLog entity.
+// If the UsageLog object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *UsageLogMutation) OldAPIReferenceCost(ctx context.Context) (v *float64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldAPIReferenceCost is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldAPIReferenceCost requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldAPIReferenceCost: %w", err)
+	}
+	return oldValue.APIReferenceCost, nil
+}
+
+// AddAPIReferenceCost adds f to the "api_reference_cost" field.
+func (m *UsageLogMutation) AddAPIReferenceCost(f float64) {
+	if m.addapi_reference_cost != nil {
+		*m.addapi_reference_cost += f
+	} else {
+		m.addapi_reference_cost = &f
+	}
+}
+
+// AddedAPIReferenceCost returns the value that was added to the "api_reference_cost" field in this mutation.
+func (m *UsageLogMutation) AddedAPIReferenceCost() (r float64, exists bool) {
+	v := m.addapi_reference_cost
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ClearAPIReferenceCost clears the value of the "api_reference_cost" field.
+func (m *UsageLogMutation) ClearAPIReferenceCost() {
+	m.api_reference_cost = nil
+	m.addapi_reference_cost = nil
+	m.clearedFields[usagelog.FieldAPIReferenceCost] = struct{}{}
+}
+
+// APIReferenceCostCleared returns if the "api_reference_cost" field was cleared in this mutation.
+func (m *UsageLogMutation) APIReferenceCostCleared() bool {
+	_, ok := m.clearedFields[usagelog.FieldAPIReferenceCost]
+	return ok
+}
+
+// ResetAPIReferenceCost resets all changes to the "api_reference_cost" field.
+func (m *UsageLogMutation) ResetAPIReferenceCost() {
+	m.api_reference_cost = nil
+	m.addapi_reference_cost = nil
+	delete(m.clearedFields, usagelog.FieldAPIReferenceCost)
+}
+
+// SetAPIReferencePricing sets the "api_reference_pricing" field.
+func (m *UsageLogMutation) SetAPIReferencePricing(value map[string]interface{}) {
+	m.api_reference_pricing = &value
+}
+
+// APIReferencePricing returns the value of the "api_reference_pricing" field in the mutation.
+func (m *UsageLogMutation) APIReferencePricing() (r map[string]interface{}, exists bool) {
+	v := m.api_reference_pricing
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldAPIReferencePricing returns the old "api_reference_pricing" field's value of the UsageLog entity.
+// If the UsageLog object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *UsageLogMutation) OldAPIReferencePricing(ctx context.Context) (v map[string]interface{}, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldAPIReferencePricing is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldAPIReferencePricing requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldAPIReferencePricing: %w", err)
+	}
+	return oldValue.APIReferencePricing, nil
+}
+
+// ClearAPIReferencePricing clears the value of the "api_reference_pricing" field.
+func (m *UsageLogMutation) ClearAPIReferencePricing() {
+	m.api_reference_pricing = nil
+	m.clearedFields[usagelog.FieldAPIReferencePricing] = struct{}{}
+}
+
+// APIReferencePricingCleared returns if the "api_reference_pricing" field was cleared in this mutation.
+func (m *UsageLogMutation) APIReferencePricingCleared() bool {
+	_, ok := m.clearedFields[usagelog.FieldAPIReferencePricing]
+	return ok
+}
+
+// ResetAPIReferencePricing resets all changes to the "api_reference_pricing" field.
+func (m *UsageLogMutation) ResetAPIReferencePricing() {
+	m.api_reference_pricing = nil
+	delete(m.clearedFields, usagelog.FieldAPIReferencePricing)
+}
+
 // SetRateMultiplier sets the "rate_multiplier" field.
 func (m *UsageLogMutation) SetRateMultiplier(f float64) {
 	m.rate_multiplier = &f
@@ -47279,7 +49896,7 @@ func (m *UsageLogMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *UsageLogMutation) Fields() []string {
-	fields := make([]string, 0, 47)
+	fields := make([]string, 0, 49)
 	if m.user != nil {
 		fields = append(fields, usagelog.FieldUserID)
 	}
@@ -47360,6 +49977,12 @@ func (m *UsageLogMutation) Fields() []string {
 	}
 	if m.actual_cost != nil {
 		fields = append(fields, usagelog.FieldActualCost)
+	}
+	if m.api_reference_cost != nil {
+		fields = append(fields, usagelog.FieldAPIReferenceCost)
+	}
+	if m.api_reference_pricing != nil {
+		fields = append(fields, usagelog.FieldAPIReferencePricing)
 	}
 	if m.rate_multiplier != nil {
 		fields = append(fields, usagelog.FieldRateMultiplier)
@@ -47483,6 +50106,10 @@ func (m *UsageLogMutation) Field(name string) (ent.Value, bool) {
 		return m.TotalCost()
 	case usagelog.FieldActualCost:
 		return m.ActualCost()
+	case usagelog.FieldAPIReferenceCost:
+		return m.APIReferenceCost()
+	case usagelog.FieldAPIReferencePricing:
+		return m.APIReferencePricing()
 	case usagelog.FieldRateMultiplier:
 		return m.RateMultiplier()
 	case usagelog.FieldLongContextBillingApplied:
@@ -47586,6 +50213,10 @@ func (m *UsageLogMutation) OldField(ctx context.Context, name string) (ent.Value
 		return m.OldTotalCost(ctx)
 	case usagelog.FieldActualCost:
 		return m.OldActualCost(ctx)
+	case usagelog.FieldAPIReferenceCost:
+		return m.OldAPIReferenceCost(ctx)
+	case usagelog.FieldAPIReferencePricing:
+		return m.OldAPIReferencePricing(ctx)
 	case usagelog.FieldRateMultiplier:
 		return m.OldRateMultiplier(ctx)
 	case usagelog.FieldLongContextBillingApplied:
@@ -47824,6 +50455,20 @@ func (m *UsageLogMutation) SetField(name string, value ent.Value) error {
 		}
 		m.SetActualCost(v)
 		return nil
+	case usagelog.FieldAPIReferenceCost:
+		v, ok := value.(float64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetAPIReferenceCost(v)
+		return nil
+	case usagelog.FieldAPIReferencePricing:
+		v, ok := value.(map[string]interface{})
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetAPIReferencePricing(v)
+		return nil
 	case usagelog.FieldRateMultiplier:
 		v, ok := value.(float64)
 		if !ok {
@@ -48011,6 +50656,9 @@ func (m *UsageLogMutation) AddedFields() []string {
 	if m.addactual_cost != nil {
 		fields = append(fields, usagelog.FieldActualCost)
 	}
+	if m.addapi_reference_cost != nil {
+		fields = append(fields, usagelog.FieldAPIReferenceCost)
+	}
 	if m.addrate_multiplier != nil {
 		fields = append(fields, usagelog.FieldRateMultiplier)
 	}
@@ -48069,6 +50717,8 @@ func (m *UsageLogMutation) AddedField(name string) (ent.Value, bool) {
 		return m.AddedTotalCost()
 	case usagelog.FieldActualCost:
 		return m.AddedActualCost()
+	case usagelog.FieldAPIReferenceCost:
+		return m.AddedAPIReferenceCost()
 	case usagelog.FieldRateMultiplier:
 		return m.AddedRateMultiplier()
 	case usagelog.FieldAccountRateMultiplier:
@@ -48185,6 +50835,13 @@ func (m *UsageLogMutation) AddField(name string, value ent.Value) error {
 		}
 		m.AddActualCost(v)
 		return nil
+	case usagelog.FieldAPIReferenceCost:
+		v, ok := value.(float64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddAPIReferenceCost(v)
+		return nil
 	case usagelog.FieldRateMultiplier:
 		v, ok := value.(float64)
 		if !ok {
@@ -48279,6 +50936,12 @@ func (m *UsageLogMutation) ClearedFields() []string {
 	if m.FieldCleared(usagelog.FieldSubscriptionID) {
 		fields = append(fields, usagelog.FieldSubscriptionID)
 	}
+	if m.FieldCleared(usagelog.FieldAPIReferenceCost) {
+		fields = append(fields, usagelog.FieldAPIReferenceCost)
+	}
+	if m.FieldCleared(usagelog.FieldAPIReferencePricing) {
+		fields = append(fields, usagelog.FieldAPIReferencePricing)
+	}
 	if m.FieldCleared(usagelog.FieldAccountRateMultiplier) {
 		fields = append(fields, usagelog.FieldAccountRateMultiplier)
 	}
@@ -48358,6 +51021,12 @@ func (m *UsageLogMutation) ClearField(name string) error {
 		return nil
 	case usagelog.FieldSubscriptionID:
 		m.ClearSubscriptionID()
+		return nil
+	case usagelog.FieldAPIReferenceCost:
+		m.ClearAPIReferenceCost()
+		return nil
+	case usagelog.FieldAPIReferencePricing:
+		m.ClearAPIReferencePricing()
 		return nil
 	case usagelog.FieldAccountRateMultiplier:
 		m.ClearAccountRateMultiplier()
@@ -48483,6 +51152,12 @@ func (m *UsageLogMutation) ResetField(name string) error {
 		return nil
 	case usagelog.FieldActualCost:
 		m.ResetActualCost()
+		return nil
+	case usagelog.FieldAPIReferenceCost:
+		m.ResetAPIReferenceCost()
+		return nil
+	case usagelog.FieldAPIReferencePricing:
+		m.ResetAPIReferencePricing()
 		return nil
 	case usagelog.FieldRateMultiplier:
 		m.ResetRateMultiplier()

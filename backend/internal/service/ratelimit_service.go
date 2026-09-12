@@ -1164,7 +1164,13 @@ func (s *RateLimitService) handle429(ctx context.Context, account *Account, head
 		persistOpenAI429PlanType(ctx, s.accountRepo, account, responseBody)
 		s.persistOpenAICodexSnapshot(ctx, account, headers)
 		notifyOpenAIAutoReset(account.ID)
-		if resetAt := s.calculateOpenAI429ResetTime(headers); resetAt != nil {
+		var resetAt *time.Time
+		if snapshot := capturedCodexSnapshot(ctx, account.ID); snapshot != nil {
+			resetAt = calculateOpenAI429ResetTimeFromSnapshot(snapshot)
+		} else {
+			resetAt = s.calculateOpenAI429ResetTime(headers)
+		}
+		if resetAt != nil {
 			s.notifyAccountSchedulingBlocked(account, *resetAt, "429")
 			if err := s.accountRepo.SetRateLimited(ctx, account.ID, *resetAt); err != nil {
 				slog.Warn("rate_limit_set_failed", "account_id", account.ID, "error", err)
@@ -1320,7 +1326,10 @@ func clampRateLimit429CooldownSeconds(seconds int) int {
 // calculateOpenAI429ResetTime 从 OpenAI 429 响应头计算正确的重置时间
 // 返回 nil 表示无法从响应头中确定重置时间
 func calculateOpenAI429ResetTime(headers http.Header) *time.Time {
-	snapshot := ParseCodexRateLimitHeaders(headers)
+	return calculateOpenAI429ResetTimeFromSnapshot(ParseCodexRateLimitHeaders(headers))
+}
+
+func calculateOpenAI429ResetTimeFromSnapshot(snapshot *OpenAICodexUsageSnapshot) *time.Time {
 	if snapshot == nil {
 		return nil
 	}
@@ -1330,7 +1339,7 @@ func calculateOpenAI429ResetTime(headers http.Header) *time.Time {
 		return nil
 	}
 
-	now := time.Now()
+	now := codexSnapshotBaseTime(snapshot, time.Now())
 
 	// 判断哪个限制被触发（used_percent >= 100）
 	is7dExhausted := normalized.Used7dPercent != nil && *normalized.Used7dPercent >= 100
@@ -1707,6 +1716,11 @@ func (s *RateLimitService) persistOpenAICodexSnapshot(ctx context.Context, accou
 	// spark 影子的 codex_* 仅由 QueryUsage(/wham/usage bengalfox 道)更新,不能被 /responses 的
 	// x-codex-* 全局头快照污染(外审第7轮 P1,与 updateCodexUsageSnapshot 同口径)。
 	if account.IsShadow() {
+		return
+	}
+	// HTTP responses captured at header arrival already belong to the ordered
+	// gateway writer. Do not reparse or bypass that writer after reading the body.
+	if capturedCodexSnapshot(ctx, account.ID) != nil {
 		return
 	}
 	snapshot := ParseCodexRateLimitHeaders(headers)
