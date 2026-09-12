@@ -31,7 +31,9 @@ const (
 	// PlatformOpenCodeGo 是 OpenCode 平台（账号类型 Zen 按量 / Go 订阅）。
 	// 值保持 opencode_go 以兼容已落库的分组、配额与 Composite 路由 CHECK。
 	PlatformOpenCodeGo = "opencode_go"
-	PlatformComposite  = "composite"
+	// PlatformOllamaCloud 是 Ollama Cloud 订阅制聚合上游（多协议 API Key 网关）。
+	PlatformOllamaCloud = "ollama_cloud"
+	PlatformComposite   = "composite"
 )
 
 // Account mode constants 区分国产供应商的「按量付费（余额）」与「Coding Plan」两种接入方式。
