@@ -425,7 +425,8 @@ func TestOpenAICompositePool_ClaimsPredicateGatesPoolMembership(t *testing.T) {
 	opencodeMapped := compositePoolTestAccount(35003, PlatformOpenCodeGo, 22007, 0, map[string]any{"my-model": "deepseek-chat"})
 
 	// 官方 deepseek 空 mapping：native detector 命中 → 可 claim。
-	require.True(t, openAISchedulingModelSupported(poolCtx, &deepseekAccount, "deepseek-chat"))
+	// 使用受支持的 DeepSeek 模型名（空 mapping native claim 受官方白名单约束）。
+	require.True(t, openAISchedulingModelSupported(poolCtx, &deepseekAccount, "deepseek-flash"))
 	// 无关平台空 mapping：不得凭 IsModelSupported 的 allow-all 冒领。
 	require.False(t, openAISchedulingModelSupported(poolCtx, &kimiAccount, "deepseek-chat"))
 	require.True(t, kimiAccount.IsModelSupported("deepseek-chat"), "旧语义 allow-all 仍成立，池路径必须改用 claims 谓词")
@@ -444,7 +445,7 @@ func TestOpenAICompositePool_ClaimsPredicateGatesPoolMembership(t *testing.T) {
 	repo := &compositePoolTestRepo{accounts: []Account{deepseekAccount, kimiAccount}}
 	cache := &compositePoolTestCache{}
 	svc := newCompositePoolTestService(repo.accounts, cache)
-	selection, err := svc.SelectAccountForModelWithExclusions(poolCtx, &groupID, "", "deepseek-chat", nil)
+	selection, err := svc.SelectAccountForModelWithExclusions(poolCtx, &groupID, "", "deepseek-flash", nil)
 	require.NoError(t, err)
 	require.EqualValues(t, 35001, selection.ID)
 }
