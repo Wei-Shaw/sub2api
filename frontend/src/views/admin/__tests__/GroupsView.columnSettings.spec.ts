@@ -280,7 +280,7 @@ describe('admin GroupsView column settings', () => {
       expect.objectContaining({ is_exclusive: undefined }),
       expect.anything(),
     )
-    expect(wrapper.findAll('select').some(select => select.text().includes('admin.groups.allGroups'))).toBe(false)
+    expect(wrapper.find('select').text()).not.toContain('admin.groups.allGroups')
   })
 
   afterEach(() => {

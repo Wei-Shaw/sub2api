@@ -156,7 +156,11 @@ const mountView = () =>
         Pagination: true,
         ConfirmDialog: true,
         EmptyState: true,
-        Select: true,
+        Select: defineComponent({
+          props: ['modelValue', 'options'],
+          emits: ['update:modelValue', 'change'],
+          template: `<select :value="modelValue" @change="$emit('update:modelValue', $event.target.value); $emit('change', $event.target.value)"><option v-for="option in options" :key="option.value" :value="option.value">{{ option.label }}</option></select>`,
+        }),
         PlatformIcon: true,
         Icon: true,
         GroupCapacityBadge: true,
@@ -193,7 +197,7 @@ describe('GroupsView in Simple mode', () => {
     updateGroup.mockResolvedValue(compositeGroup)
   })
 
-  it('loads only Composite groups and omits SaaS summary requests', async () => {
+  it('preserves basic group browsing alongside Composite routing', async () => {
     const wrapper = mountView()
     await flushPromises()
 
@@ -201,41 +205,35 @@ describe('GroupsView in Simple mode', () => {
       1,
       20,
       expect.objectContaining({
-        platform: 'composite',
-        status: undefined,
+        platform: undefined,
         is_exclusive: undefined,
       }),
       expect.any(Object),
     )
-    expect(wrapper.get('[data-testid="simple-composite-banner"]').exists()).toBe(true)
-    expect(wrapper.get('[data-testid="columns"]').text()).toBe('name,platform,status,actions')
+    expect(wrapper.get('[data-testid="columns"]').text()).toBe('name,platform,account_count,status,actions')
     expect(getModelAllowlistCandidates).not.toHaveBeenCalled()
     expect(getUsageSummary).not.toHaveBeenCalled()
     expect(getCapacitySummary).not.toHaveBeenCalled()
     expect(wrapper.find('[data-testid="group-duplicate"]').exists()).toBe(false)
+    expect(wrapper.find('[data-testid="group-composite-routes"]').exists()).toBe(true)
     wrapper.unmount()
   })
 
-  it('creates a fixed Composite group without commercial configuration', async () => {
+  it('allows choosing Composite without replacing basic group creation', async () => {
     const wrapper = mountView()
     await flushPromises()
 
     await wrapper.get('[data-tour="groups-create-btn"]').trigger('click')
     await wrapper.get('[data-tour="group-form-name"]').setValue('Public Models')
+    expect(wrapper.get('[data-tour="group-form-platform"]').findAll('option').map(option => option.attributes('value'))).toEqual(expect.arrayContaining(['openai', 'anthropic', 'composite']))
+    await wrapper.get('[data-tour="group-form-platform"]').setValue('composite')
     await wrapper.get('#create-group-form').trigger('submit')
     await flushPromises()
 
-    expect(createGroup).toHaveBeenCalledWith({
-      name: 'Public Models',
-      description: null,
-      platform: 'composite',
-      rate_multiplier: 1,
-      is_exclusive: false,
-      subscription_type: 'standard',
-      max_reasoning_effort: '',
-      max_reasoning_effort_over_limit: 'downgrade',
-      reasoning_effort_mappings: [],
-    })
+    expect(createGroup).toHaveBeenCalledWith(expect.objectContaining({
+      name: 'Public Models', platform: 'composite',
+    }))
+    expect(getModelAllowlistCandidates).not.toHaveBeenCalled()
     expect(showSuccess).toHaveBeenCalledWith('admin.groups.groupCreated')
     wrapper.unmount()
   })
@@ -253,15 +251,10 @@ describe('GroupsView in Simple mode', () => {
     await wrapper.get('#edit-group-form').trigger('submit')
     await flushPromises()
 
-    expect(updateGroup).toHaveBeenCalledWith(52, {
-      name: 'Unified Public Models',
-      description: 'Public aliases',
-      platform: 'composite',
-      status: 'active',
-      max_reasoning_effort: '',
-      max_reasoning_effort_over_limit: 'downgrade',
-      reasoning_effort_mappings: [],
-    })
+    expect(updateGroup).toHaveBeenCalledWith(52, expect.objectContaining({
+      name: 'Unified Public Models', description: 'Public aliases',
+    }))
+    expect(getModelAllowlistCandidates).not.toHaveBeenCalled()
     expect(showSuccess).toHaveBeenCalledWith('admin.groups.groupUpdated')
     wrapper.unmount()
   })
