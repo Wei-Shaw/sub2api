@@ -44,6 +44,28 @@
         </div>
       </div>
 
+      <div class="flex flex-wrap items-center gap-x-6 gap-y-2">
+        <label v-for="option in contentOptions" :key="option.key" class="flex min-h-11 cursor-pointer items-center gap-3 text-sm text-gray-800">
+          <span>{{ t(option.label) }}</span>
+          <button
+            type="button"
+            role="switch"
+            class="relative inline-flex h-11 w-12 shrink-0 items-center justify-center rounded-lg focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60"
+            :aria-label="t(option.label)"
+            :aria-checked="recordingContent[option.key]"
+            :aria-busy="recordingLoading || recordingSaving"
+            :disabled="recordingLoading || recordingSaving || recordingEnabled !== true"
+            :data-test="`prompt-recording-${option.key}`"
+            @click="toggleRecordingContent(option.key)"
+          >
+            <span aria-hidden="true" class="relative inline-flex h-6 w-11 items-center rounded-full border-2 border-transparent transition-colors motion-reduce:transition-none" :class="recordingContent[option.key] ? 'bg-primary-600' : 'bg-gray-300'">
+              <span class="pointer-events-none inline-block h-5 w-5 rounded-full bg-white shadow transition-transform motion-reduce:transition-none" :class="recordingContent[option.key] ? 'translate-x-5' : 'translate-x-0'" />
+            </span>
+          </button>
+        </label>
+        <p class="w-full text-xs text-gray-500">{{ t('admin.promptRecords.recordingContentHelp') }}</p>
+      </div>
+
       <div class="card overflow-hidden">
         <form
           class="flex flex-wrap items-end justify-between gap-4 border-b border-gray-100 p-4 dark:border-dark-700 sm:p-6"
@@ -328,13 +350,18 @@
       <section>
         <div class="flex flex-wrap items-center justify-between gap-2">
           <h4 class="text-sm font-semibold text-gray-900 dark:text-white">
-            {{ t('admin.promptRecords.promptText') }}
+            {{ t(detail.request_body ? 'admin.promptRecords.requestBody' : 'admin.promptRecords.promptText') }}
           </h4>
           <span class="text-xs text-gray-500 dark:text-gray-400">
             {{ t('admin.promptRecords.promptSummary', { messages: formatNumber(detail.message_count), characters: formatNumber(detail.prompt_length) }) }}
           </span>
         </div>
-        <pre class="mt-3 max-h-[48vh] overflow-auto whitespace-pre-wrap break-words rounded-lg border border-gray-200 bg-gray-50 p-4 text-sm leading-6 text-gray-800 dark:border-dark-700 dark:bg-dark-900 dark:text-gray-200">{{ detail.prompt_text || '-' }}</pre>
+        <pre class="mt-3 max-h-[48vh] overflow-auto whitespace-pre-wrap break-words rounded-lg border border-gray-200 bg-gray-50 p-4 text-sm leading-6 text-gray-800 dark:border-dark-700 dark:bg-dark-900 dark:text-gray-200">{{ formatRequestContent(detail.request_body || detail.prompt_text) }}</pre>
+      </section>
+
+      <section>
+        <h4 class="text-sm font-semibold text-gray-900">{{ t('admin.promptRecords.requestHeaders') }}</h4>
+        <pre class="mt-3 max-h-[32vh] overflow-auto whitespace-pre-wrap break-words rounded-lg border border-gray-200 bg-gray-50 p-4 text-sm leading-6 text-gray-800">{{ formatRequestContent(detail.request_headers) }}</pre>
       </section>
 
       <section>
@@ -394,6 +421,33 @@ import {
 const { t } = useI18n()
 const appStore = useAppStore()
 const recordingEnabled = ref<boolean | null>(null)
+const recordingContent = reactive({ headers_enabled: true, prompt_enabled: true, filter_preset: false })
+const contentOptions = [
+  { key: 'headers_enabled' as const, label: 'admin.promptRecords.requestHeaders' },
+  { key: 'prompt_enabled' as const, label: 'admin.promptRecords.recordingPrompt' },
+  { key: 'filter_preset' as const, label: 'admin.promptRecords.filterPreset' },
+]
+
+function formatRequestContent(value?: string) {
+  if (!value) return t('admin.promptRecords.requestContentUnavailable')
+  try { return JSON.stringify(JSON.parse(value), null, 2) } catch { return value }
+}
+
+async function toggleRecordingContent(key: keyof typeof recordingContent) {
+  if (recordingLoading.value || recordingSaving.value || recordingEnabled.value !== true) return
+  recordingSaving.value = true
+  try {
+    const config = await updatePromptRecordingConfig({ [key]: !recordingContent[key] })
+    recordingContent.headers_enabled = config.headers_enabled
+    recordingContent.prompt_enabled = config.prompt_enabled
+    recordingContent.filter_preset = config.filter_preset ?? false
+    appStore.showSuccess(t('admin.promptRecords.recordingContentSaved'))
+  } catch {
+    appStore.showError(t('admin.promptRecords.recordingUpdateFailed'))
+  } finally {
+    recordingSaving.value = false
+  }
+}
 const recordingLoading = ref(true)
 const recordingSaving = ref(false)
 const loading = ref(false)
@@ -502,6 +556,9 @@ async function loadRecordingConfig() {
 	try {
 		const config = await getPromptRecordingConfig()
 		recordingEnabled.value = config.enabled
+		recordingContent.headers_enabled = config.headers_enabled ?? true
+		recordingContent.prompt_enabled = config.prompt_enabled ?? true
+		recordingContent.filter_preset = config.filter_preset ?? false
 	} catch (error) {
 		console.error('[PromptRecordsView] Failed to load prompt recording config:', error)
 		appStore.showError(t('admin.promptRecords.recordingLoadFailed'))
@@ -517,6 +574,9 @@ async function toggleRecording() {
 	try {
 		const config = await updatePromptRecordingConfig(nextEnabled)
 		recordingEnabled.value = config.enabled
+		recordingContent.headers_enabled = config.headers_enabled ?? recordingContent.headers_enabled
+			recordingContent.prompt_enabled = config.prompt_enabled ?? recordingContent.prompt_enabled
+			recordingContent.filter_preset = config.filter_preset ?? recordingContent.filter_preset
 		appStore.showSuccess(t(config.enabled
 			? 'admin.promptRecords.recordingEnabledSuccess'
 			: 'admin.promptRecords.recordingDisabledSuccess'))

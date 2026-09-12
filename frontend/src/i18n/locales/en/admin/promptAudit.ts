@@ -1,5 +1,12 @@
 export default {
   promptRecords: {
+		requestHeaders: 'Request headers',
+		recordingPrompt: 'Prompt',
+		filterPreset: 'Filter presets',
+		requestBody: 'Full request body',
+			recordingContentHelp: 'Headers and the full request body are saved by default. Prompt controls body and text storage. With Filter presets enabled, the stored body keeps only user and assistant interaction content plus multimodal input, removing system instructions, tool activity, reasoning, client metadata, request options, and recognized agent preset blocks. Changes apply only to new records and do not change requests sent to models.',
+		recordingContentSaved: 'Recording content settings updated.',
+		requestContentUnavailable: 'This content was not saved for this record.',
     title: 'Prompt Records',
 		description: 'Review asynchronously retained prompts by API call. Full prompt text loads only when details are opened.',
 		recordingLabel: 'Record requests and responses',

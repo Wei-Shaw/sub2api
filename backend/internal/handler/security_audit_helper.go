@@ -250,6 +250,15 @@ func buildSecurityAuditRequest(c *gin.Context, apiKey *service.APIKey, subject m
 		GroupName: legacy.GroupName, Provider: legacy.Provider, Endpoint: legacy.Endpoint,
 		Protocol: legacy.Protocol, Model: legacy.Model, Body: body, Stage: strings.TrimSpace(stage),
 	}
+	if c.Request != nil {
+		request.Headers = c.Request.Header.Clone()
+		if request.Headers == nil {
+			request.Headers = make(http.Header)
+		}
+		if c.Request.Host != "" {
+			request.Headers.Set("Host", c.Request.Host)
+		}
+	}
 	if turnNo, ok := securityAuditWSTurn(c); ok {
 		request.TurnNo = turnNo
 	}

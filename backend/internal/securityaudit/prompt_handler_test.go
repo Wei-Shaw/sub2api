@@ -115,6 +115,40 @@ func (s *fakePromptAdminService) DeletePromptRecords(ctx context.Context, ids []
 func (s *fakePromptAdminService) GetPromptRecordingConfig() PromptRecordingConfig {
 	return s.recording
 }
+
+func (s *fakePromptAdminService) SavePromptRecordingSettings(_ context.Context, enabled, headers, prompt, filterPreset *bool) (PromptRecordingConfig, error) {
+	if enabled != nil {
+		s.recording.Enabled = *enabled
+	}
+	if headers != nil {
+		s.recording.HeadersEnabled = *headers
+	}
+	if prompt != nil {
+		s.recording.PromptEnabled = *prompt
+	}
+	if filterPreset != nil {
+		s.recording.FilterPreset = *filterPreset
+	}
+	return s.recording, nil
+}
+
+func TestPromptRecordingContentEndpoints(t *testing.T) {
+	service := &fakePromptAdminService{recording: PromptRecordingConfig{Enabled: true, HeadersEnabled: true, PromptEnabled: true}}
+	router := promptAdminRouter(service)
+	for _, key := range []string{"headers_enabled", "prompt_enabled"} {
+		result := promptAdminRequest(t, router, http.MethodPut, "/admin/prompt-records/recording", map[string]any{key: false})
+		require.Equal(t, http.StatusOK, result.Code)
+		require.Contains(t, result.Body.String(), `"`+key+`":false`)
+		require.Contains(t, result.Body.String(), `"enabled":true`)
+	}
+	combined := promptAdminRequest(t, router, http.MethodPut, "/admin/prompt-records/recording", map[string]any{"enabled": false, "headers_enabled": true, "prompt_enabled": true})
+	require.Equal(t, http.StatusOK, combined.Code)
+	require.Equal(t, PromptRecordingConfig{Enabled: false, HeadersEnabled: true, PromptEnabled: true}, service.recording)
+	for _, payload := range []map[string]any{{"headers_enabled": "false"}, {"prompt_enabled": nil}} {
+		result := promptAdminRequest(t, router, http.MethodPut, "/admin/prompt-records/recording", payload)
+		require.Equal(t, http.StatusBadRequest, result.Code)
+	}
+}
 func (s *fakePromptAdminService) SavePromptRecordingConfig(ctx context.Context, enabled bool) (PromptRecordingConfig, error) {
 	if s.saveRecording == nil {
 		return PromptRecordingConfig{Enabled: enabled}, nil

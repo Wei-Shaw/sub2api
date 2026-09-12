@@ -2,13 +2,17 @@ package securityaudit
 
 import (
 	"context"
+	"net/http"
 	"time"
 )
 
 const (
-	SettingKeyPromptAuditConfig = "prompt_audit_config"
-	SettingKeyRiskControl       = "risk_control_enabled"
-	SettingKeyPromptRecording   = "prompt_recording_enabled"
+	SettingKeyPromptAuditConfig           = "prompt_audit_config"
+	SettingKeyRiskControl                 = "risk_control_enabled"
+	SettingKeyPromptRecording             = "prompt_recording_enabled"
+	SettingKeyPromptRecordingHeaders      = "prompt_recording_headers_enabled"
+	SettingKeyPromptRecordingPrompt       = "prompt_recording_prompt_enabled"
+	SettingKeyPromptRecordingFilterPreset = "prompt_recording_filter_preset_enabled"
 
 	ConfigInvalidationChannel = "sub2api:prompt_guard:config:invalidate"
 	PayloadKeyPrefix          = "sub2api:prompt_audit:payload:"
@@ -81,12 +85,18 @@ type Request struct {
 	Protocol   string
 	Model      string
 	Body       []byte
-	Stage      string
-	TurnNo     int
+	Headers    http.Header
+	// Recording exclusions are captured before queueing and do not affect auditing.
+	recordingSkipHeaders  bool
+	recordingSkipPrompt   bool
+	recordingFilterPreset bool
+	Stage                 string
+	TurnNo                int
 }
 
 func (r Request) Clone() Request {
 	r.Body = append([]byte(nil), r.Body...)
+	r.Headers = r.Headers.Clone()
 	if r.GroupID != nil {
 		id := *r.GroupID
 		r.GroupID = &id

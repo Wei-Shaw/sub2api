@@ -1,5 +1,12 @@
 export default {
   promptRecords: {
+		requestHeaders: '请求头',
+		recordingPrompt: '提示词',
+		filterPreset: '过滤预设',
+		requestBody: '完整请求体',
+			recordingContentHelp: '默认保存请求头和完整请求体。“提示词”控制请求体及正文的保存；开启“过滤预设”后，请求体仅保留用户与助手的交互内容及多模态输入，并移除系统指令、工具过程、推理、客户端元数据、请求参数和可识别的代理预设区块。设置仅影响新记录，不改变发送给模型的请求。',
+		recordingContentSaved: '已更新记录内容设置。',
+		requestContentUnavailable: '该记录未保存此内容。',
     title: '提示词调用记录',
 		description: '按调用查看网关异步保存的提示词记录，完整正文仅在打开详情时加载。',
 		recordingLabel: '记录请求与响应',

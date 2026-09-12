@@ -40,7 +40,10 @@ type PromptAdminHandler struct {
 }
 
 type updatePromptRecordingRequest struct {
-	Enabled *bool `json:"enabled" binding:"required"`
+	Enabled        *bool `json:"enabled"`
+	HeadersEnabled *bool `json:"headers_enabled"`
+	PromptEnabled  *bool `json:"prompt_enabled"`
+	FilterPreset   *bool `json:"filter_preset"`
 }
 
 func NewPromptAdminHandler(service PromptAdminService) *PromptAdminHandler {
@@ -65,17 +68,27 @@ func (h *PromptAdminHandler) UpdatePromptRecordingConfig(c *gin.Context) {
 		return
 	}
 	var request updatePromptRecordingRequest
-	if err := c.ShouldBindJSON(&request); err != nil || request.Enabled == nil {
+	if err := c.ShouldBindJSON(&request); err != nil || (request.Enabled == nil && request.HeadersEnabled == nil && request.PromptEnabled == nil && request.FilterPreset == nil) {
 		response.ErrorFrom(c, infraerrors.BadRequest("prompt_recording_invalid_request", "必须提供记录开关状态"))
 		return
 	}
-	config, err := h.service.SavePromptRecordingConfig(c.Request.Context(), *request.Enabled)
+	var config PromptRecordingConfig
+	var err error
+	if request.HeadersEnabled == nil && request.PromptEnabled == nil && request.FilterPreset == nil {
+		config, err = h.service.SavePromptRecordingConfig(c.Request.Context(), *request.Enabled)
+	} else if service, ok := h.service.(interface {
+		SavePromptRecordingSettings(context.Context, *bool, *bool, *bool, *bool) (PromptRecordingConfig, error)
+	}); ok {
+		config, err = service.SavePromptRecordingSettings(c.Request.Context(), request.Enabled, request.HeadersEnabled, request.PromptEnabled, request.FilterPreset)
+	} else {
+		err = errors.New("prompt recording configuration unavailable")
+	}
 	if err != nil {
-		setPromptAdminAudit(c, "failed", "prompt_recording_update_failed", map[string]any{"enabled": *request.Enabled})
+		setPromptAdminAudit(c, "failed", "prompt_recording_update_failed", nil)
 		response.ErrorFrom(c, err)
 		return
 	}
-	setPromptAdminAudit(c, "success", "", map[string]any{"enabled": config.Enabled})
+	setPromptAdminAudit(c, "success", "", map[string]any{"enabled": config.Enabled, "headers_enabled": config.HeadersEnabled, "prompt_enabled": config.PromptEnabled, "filter_preset": config.FilterPreset})
 	response.Success(c, config)
 }
 

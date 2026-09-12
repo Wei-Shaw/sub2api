@@ -1,0 +1,3 @@
+ALTER TABLE prompt_records
+    ADD COLUMN IF NOT EXISTS request_body TEXT NOT NULL DEFAULT '',
+    ADD COLUMN IF NOT EXISTS request_headers TEXT NOT NULL DEFAULT '';

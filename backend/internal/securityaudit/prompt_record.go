@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"database/sql"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
@@ -45,6 +46,8 @@ type PromptRecord struct {
 	Model              string     `json:"model"`
 	PromptHash         string     `json:"prompt_hash"`
 	PromptText         string     `json:"prompt_text"`
+	RequestBody        string     `json:"request_body"`
+	RequestHeaders     string     `json:"request_headers"`
 	PromptLength       int        `json:"prompt_length"`
 	MessageCount       int        `json:"message_count"`
 	RiskStatus         string     `json:"risk_status"`
@@ -135,7 +138,7 @@ func (r *PostgreSQLRepository) InsertPromptRecord(ctx context.Context, record *P
 	if r == nil || r.db == nil {
 		return errors.New("prompt record database unavailable")
 	}
-	if record == nil || strings.TrimSpace(record.PromptText) == "" {
+	if record == nil {
 		return errors.New("prompt record is empty")
 	}
 	_, err := r.db.ExecContext(ctx, `
@@ -143,13 +146,13 @@ func (r *PostgreSQLRepository) InsertPromptRecord(ctx context.Context, record *P
 			request_id, turn_no, stage, user_id, username_snapshot, user_email_snapshot,
 			api_key_id, api_key_name_snapshot, group_id, group_name, provider, endpoint,
 			protocol, model, prompt_hash, prompt_text, prompt_length, message_count,
-			risk_status, created_at, expires_at
-		) VALUES ($1,$2,$3,NULLIF($4,0),$5,$6,NULLIF($7,0),$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21)
+			risk_status, created_at, expires_at, request_body, request_headers
+		) VALUES ($1,$2,$3,NULLIF($4,0),$5,$6,NULLIF($7,0),$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23)
 		ON CONFLICT DO NOTHING`,
 		record.RequestID, record.TurnNo, record.Stage, record.UserID, record.Username, record.UserEmail,
 		record.APIKeyID, record.APIKeyName, record.GroupID, record.GroupName, record.Provider, record.Endpoint,
 		record.Protocol, record.Model, record.PromptHash, record.PromptText, record.PromptLength, record.MessageCount,
-		ifEmpty(record.RiskStatus, "pending"), record.CreatedAt, record.ExpiresAt)
+		ifEmpty(record.RiskStatus, "pending"), record.CreatedAt, record.ExpiresAt, record.RequestBody, record.RequestHeaders)
 	return err
 }
 
@@ -257,7 +260,7 @@ func (r *PostgreSQLRepository) GetPromptRecord(ctx context.Context, id int64) (*
 		user_email_snapshot, COALESCE(api_key_id,0), api_key_name_snapshot, group_id, group_name, provider, endpoint,
 		protocol, model, prompt_hash, prompt_text, prompt_length, message_count, risk_status, risk_result::text,
 		response_text, response_length, response_truncated, response_captured_at,
-		risk_checked_at, created_at, expires_at FROM prompt_records WHERE id=$1`, id).Scan(&item.ID, &item.RequestID, &item.TurnNo, &item.Stage, &item.UserID, &item.Username, &item.UserEmail, &item.APIKeyID, &item.APIKeyName, &groupID, &item.GroupName, &item.Provider, &item.Endpoint, &item.Protocol, &item.Model, &item.PromptHash, &item.PromptText, &item.PromptLength, &item.MessageCount, &item.RiskStatus, &item.RiskResult, &item.ResponseText, &item.ResponseLength, &item.ResponseTruncated, &responseCapturedAt, &riskCheckedAt, &item.CreatedAt, &expiresAt)
+		risk_checked_at, created_at, expires_at, request_body, request_headers FROM prompt_records WHERE id=$1`, id).Scan(&item.ID, &item.RequestID, &item.TurnNo, &item.Stage, &item.UserID, &item.Username, &item.UserEmail, &item.APIKeyID, &item.APIKeyName, &groupID, &item.GroupName, &item.Provider, &item.Endpoint, &item.Protocol, &item.Model, &item.PromptHash, &item.PromptText, &item.PromptLength, &item.MessageCount, &item.RiskStatus, &item.RiskResult, &item.ResponseText, &item.ResponseLength, &item.ResponseTruncated, &responseCapturedAt, &riskCheckedAt, &item.CreatedAt, &expiresAt, &item.RequestBody, &item.RequestHeaders)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrPromptRecordNotFound
 	}
@@ -422,17 +425,38 @@ func (s *PromptRecordService) enqueue(job promptRecordJob, req Request) {
 }
 
 func (s *PromptRecordService) persist(req Request) {
-	snapshot, err := ExtractPromptSnapshot(req)
-	if err != nil || strings.TrimSpace(snapshot.FullPrompt) == "" {
-		return
-	}
-	hash := snapshot.PromptHash
+	// Keep the original identity for response matching, even if the setting changes
+	// while the upstream request is in flight. Only the retained copy is filtered.
+	original := promptRecordSnapshot(req)
+	stored := req
+	stored.Body = filterPresetRequestBody(req.Protocol, req.Body, req.recordingFilterPreset)
+	snapshot := promptRecordSnapshot(stored)
+	hash := original.PromptHash
 	if hash == "" {
 		sum := sha256.Sum256([]byte(snapshot.FullPrompt))
 		hash = hex.EncodeToString(sum[:])
 	}
 	record := &PromptRecord{RequestID: snapshot.RequestID, Stage: ifEmpty(snapshot.Stage, req.Stage), UserID: snapshot.UserID, Username: snapshot.UsernameSnapshot, UserEmail: snapshot.UserEmailSnapshot, APIKeyID: snapshot.APIKeyID, APIKeyName: snapshot.APIKeyNameSnapshot, GroupID: snapshot.GroupID, GroupName: snapshot.GroupName, Provider: snapshot.Provider, Endpoint: snapshot.Endpoint, Protocol: snapshot.Protocol, Model: snapshot.Model, PromptHash: hash, PromptText: snapshot.FullPrompt, PromptLength: snapshot.PromptLength, MessageCount: snapshot.MessageCount, RiskStatus: "pending", CreatedAt: time.Now()}
 	record.TurnNo = req.TurnNo
+	if !req.recordingSkipPrompt {
+		record.RequestBody = string(stored.Body)
+	} else {
+		record.PromptText = ""
+		record.PromptLength = 0
+		record.MessageCount = 0
+	}
+	if !req.recordingSkipHeaders {
+		headers := req.Headers
+		if headers == nil {
+			headers = make(map[string][]string)
+		}
+		encoded, err := json.Marshal(headers)
+		if err != nil {
+			s.recordPersistFailure(req, "prompt_record_headers_encode_failed")
+			return
+		}
+		record.RequestHeaders = string(encoded)
+	}
 	ctx, cancel := context.WithTimeout(context.Background(), promptRecordPersistTimeout)
 	defer cancel()
 	if err := s.repo.InsertPromptRecord(ctx, record); err != nil {
@@ -446,10 +470,7 @@ func (s *PromptRecordService) persist(req Request) {
 }
 
 func (s *PromptRecordService) persistResponse(req Request, captured PromptResponse) {
-	snapshot, err := ExtractPromptSnapshot(req)
-	if err != nil || strings.TrimSpace(snapshot.PromptHash) == "" {
-		return
-	}
+	snapshot := promptRecordSnapshot(req)
 	for attempt := 0; attempt < promptResponsePersistAttempts; attempt++ {
 		ctx, cancel := context.WithTimeout(context.Background(), promptRecordPersistTimeout)
 		updated, updateErr := s.repo.UpdatePromptRecordResponse(ctx, req, snapshot.PromptHash, captured)
@@ -466,6 +487,23 @@ func (s *PromptRecordService) persistResponse(req Request, captured PromptRespon
 		}
 	}
 	s.recordPersistFailure(req, "prompt_record_response_not_found")
+}
+
+// Requests without extractable text (including tool-only and multimodal requests)
+// still retain their full body and use the same identity for the response update.
+func promptRecordSnapshot(req Request) PromptSnapshot {
+	snapshot, err := ExtractPromptSnapshot(req)
+	if err == nil {
+		return snapshot
+	}
+	sum := sha256.Sum256(req.Body)
+	return PromptSnapshot{
+		RequestID: req.RequestID, UserID: req.UserID, UsernameSnapshot: req.Username,
+		UserEmailSnapshot: req.UserEmail, APIKeyID: req.APIKeyID, APIKeyNameSnapshot: req.APIKeyName,
+		GroupID: req.GroupID, GroupName: req.GroupName, Provider: req.Provider,
+		Endpoint: req.Endpoint, Protocol: req.Protocol, Model: req.Model,
+		Stage: ifEmpty(req.Stage, "http"), PromptHash: hex.EncodeToString(sum[:]),
+	}
 }
 
 func (s *PromptRecordService) recordPersistFailure(req Request, code string) {

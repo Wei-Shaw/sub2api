@@ -55,6 +55,10 @@ func NewPromptService(
 
 func (s *PromptService) RecordPrompt(ctx context.Context, req Request) {
 	if s != nil && s.records != nil && s.PromptRecordingEnabled() {
+		config := s.GetPromptRecordingConfig()
+		req.recordingSkipHeaders = !config.HeadersEnabled
+		req.recordingSkipPrompt = !config.PromptEnabled
+		req.recordingFilterPreset = config.FilterPreset
 		s.records.RecordPrompt(ctx, req)
 	}
 }
@@ -71,7 +75,30 @@ type promptRecordingConfigStore interface {
 }
 
 type PromptRecordingConfig struct {
-	Enabled bool `json:"enabled"`
+	Enabled        bool `json:"enabled"`
+	HeadersEnabled bool `json:"headers_enabled"`
+	PromptEnabled  bool `json:"prompt_enabled"`
+	FilterPreset   bool `json:"filter_preset"`
+}
+
+type promptRecordingContentStore interface {
+	PromptRecordingContent() (bool, bool)
+	PromptRecordingFilterPreset() bool
+	SavePromptRecordingSettings(context.Context, *bool, *bool, *bool, *bool) error
+}
+
+func (s *PromptService) SavePromptRecordingSettings(ctx context.Context, enabled, headers, prompt, filterPreset *bool) (PromptRecordingConfig, error) {
+	if s == nil {
+		return PromptRecordingConfig{}, errors.New("prompt recording service unavailable")
+	}
+	store, ok := s.config.(promptRecordingContentStore)
+	if !ok {
+		return PromptRecordingConfig{}, errors.New("prompt recording configuration unavailable")
+	}
+	if err := store.SavePromptRecordingSettings(ctx, enabled, headers, prompt, filterPreset); err != nil {
+		return PromptRecordingConfig{}, err
+	}
+	return s.GetPromptRecordingConfig(), nil
 }
 
 func (s *PromptService) PromptRecordingEnabled() bool {
@@ -86,7 +113,14 @@ func (s *PromptService) PromptRecordingEnabled() bool {
 }
 
 func (s *PromptService) GetPromptRecordingConfig() PromptRecordingConfig {
-	return PromptRecordingConfig{Enabled: s.PromptRecordingEnabled()}
+	config := PromptRecordingConfig{Enabled: s.PromptRecordingEnabled(), HeadersEnabled: true, PromptEnabled: true}
+	if s != nil {
+		if store, ok := s.config.(promptRecordingContentStore); ok {
+			config.HeadersEnabled, config.PromptEnabled = store.PromptRecordingContent()
+			config.FilterPreset = store.PromptRecordingFilterPreset()
+		}
+	}
+	return config
 }
 
 func (s *PromptService) SavePromptRecordingConfig(ctx context.Context, enabled bool) (PromptRecordingConfig, error) {
@@ -100,7 +134,7 @@ func (s *PromptService) SavePromptRecordingConfig(ctx context.Context, enabled b
 	if err := store.SavePromptRecordingEnabled(ctx, enabled); err != nil {
 		return PromptRecordingConfig{}, err
 	}
-	return PromptRecordingConfig{Enabled: store.PromptRecordingEnabled()}, nil
+	return s.GetPromptRecordingConfig(), nil
 }
 
 func (s *PromptService) ListPromptRecords(ctx context.Context, filter PromptRecordFilter, page, pageSize int) (*PromptRecordPage, error) {

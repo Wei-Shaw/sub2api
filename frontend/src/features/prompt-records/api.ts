@@ -27,6 +27,8 @@ export interface PromptRecordSummary {
 
 export interface PromptRecord extends PromptRecordSummary {
 	prompt_text: string
+	request_body?: string
+	request_headers?: string
 	risk_result: string
 	response_text: string
 	response_length: number
@@ -56,6 +58,9 @@ export interface PromptRecordPage {
 
 export interface PromptRecordingConfig {
 	enabled: boolean
+	headers_enabled: boolean
+	prompt_enabled: boolean
+	filter_preset: boolean
 }
 
 export async function getPromptRecordingConfig() {
@@ -63,8 +68,8 @@ export async function getPromptRecordingConfig() {
 	return data
 }
 
-export async function updatePromptRecordingConfig(enabled: boolean) {
-	const { data } = await apiClient.put<PromptRecordingConfig>('/admin/prompt-records/recording', { enabled })
+export async function updatePromptRecordingConfig(update: boolean | Partial<PromptRecordingConfig>) {
+	const { data } = await apiClient.put<PromptRecordingConfig>('/admin/prompt-records/recording', typeof update === 'boolean' ? { enabled: update } : update)
 	return data
 }
 

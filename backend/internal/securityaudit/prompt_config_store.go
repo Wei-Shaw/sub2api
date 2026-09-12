@@ -43,7 +43,10 @@ type ConfigManager struct {
 	expectedBlocking atomic.Bool
 	// recordingState uses 0 for the legacy/default state (enabled), 1 for
 	// explicitly enabled and 2 for explicitly disabled.
-	recordingState atomic.Int32
+	recordingState           atomic.Int32
+	recordingHeadersDisabled atomic.Bool
+	recordingPromptDisabled  atomic.Bool
+	recordingFilterPreset    atomic.Bool
 	// configUntrusted is set when a load/reload fails before a trustworthy
 	// snapshot is installed. Combined with expectedBlocking, EffectiveMode
 	// fails closed so a persisted blocking policy cannot be silently skipped
@@ -113,13 +116,16 @@ func (m *ConfigManager) Reload(ctx context.Context) error {
 		m.markUntrustedIfNoActiveSnapshot()
 		return errors.New("prompt audit setting repository unavailable")
 	}
-	values, err := m.settings.GetMultiple(ctx, []string{SettingKeyPromptAuditConfig, SettingKeyRiskControl, SettingKeyPromptRecording})
+	values, err := m.settings.GetMultiple(ctx, []string{SettingKeyPromptAuditConfig, SettingKeyRiskControl, SettingKeyPromptRecording, SettingKeyPromptRecordingHeaders, SettingKeyPromptRecordingPrompt, SettingKeyPromptRecordingFilterPreset})
 	if err != nil {
 		m.recordLoadError(err)
 		m.markUntrustedIfNoActiveSnapshot()
 		return err
 	}
 	m.setPromptRecordingState(values[SettingKeyPromptRecording] != "false")
+	m.recordingHeadersDisabled.Store(values[SettingKeyPromptRecordingHeaders] == "false")
+	m.recordingPromptDisabled.Store(values[SettingKeyPromptRecordingPrompt] == "false")
+	m.recordingFilterPreset.Store(values[SettingKeyPromptRecordingFilterPreset] == "true")
 	m.observeExpectedState(values[SettingKeyPromptAuditConfig], values[SettingKeyRiskControl] == "true")
 	storage, err := ParseStorageConfig(values[SettingKeyPromptAuditConfig])
 	if err != nil {
@@ -154,6 +160,58 @@ func (m *ConfigManager) Reload(ctx context.Context) error {
 
 func (m *ConfigManager) PromptRecordingEnabled() bool {
 	return m == nil || m.recordingState.Load() != 2
+}
+
+func (m *ConfigManager) PromptRecordingContent() (bool, bool) {
+	return !m.recordingHeadersDisabled.Load(), !m.recordingPromptDisabled.Load()
+}
+
+func (m *ConfigManager) PromptRecordingFilterPreset() bool {
+	return m != nil && m.recordingFilterPreset.Load()
+}
+
+func (m *ConfigManager) SavePromptRecordingSettings(ctx context.Context, enabled, headers, prompt, filterPreset *bool) error {
+	if m == nil || m.settings == nil {
+		return errors.New("prompt recording setting repository unavailable")
+	}
+	updates := map[string]string{}
+	if enabled != nil {
+		updates[SettingKeyPromptRecording] = strconv.FormatBool(*enabled)
+	}
+	if headers != nil {
+		updates[SettingKeyPromptRecordingHeaders] = strconv.FormatBool(*headers)
+	}
+	if prompt != nil {
+		updates[SettingKeyPromptRecordingPrompt] = strconv.FormatBool(*prompt)
+	}
+	if filterPreset != nil {
+		updates[SettingKeyPromptRecordingFilterPreset] = strconv.FormatBool(*filterPreset)
+	}
+	if err := m.settings.SetMultiple(ctx, updates); err != nil {
+		return err
+	}
+	if enabled != nil {
+		m.setPromptRecordingState(*enabled)
+	}
+	if headers != nil {
+		m.recordingHeadersDisabled.Store(!*headers)
+	}
+	if prompt != nil {
+		m.recordingPromptDisabled.Store(!*prompt)
+	}
+	if filterPreset != nil {
+		m.recordingFilterPreset.Store(*filterPreset)
+	}
+	if m.redis != nil {
+		version := m.expected.Load()
+		if version < 1 {
+			version = 1
+		}
+		if err := m.redis.Publish(ctx, ConfigInvalidationChannel, strconv.FormatInt(version, 10)).Err(); err != nil {
+			LogWarn(EventConfigReloadDegraded, map[string]any{"config_version": version, "status": "degraded", "error_code": "prompt_recording_invalidation_publish_failed"})
+		}
+	}
+	return nil
 }
 
 func (m *ConfigManager) SavePromptRecordingEnabled(ctx context.Context, enabled bool) error {
