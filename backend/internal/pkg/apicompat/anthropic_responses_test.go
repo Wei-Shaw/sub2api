@@ -106,6 +106,161 @@ func TestAnthropicToResponses_SystemPrompt(t *testing.T) {
 	})
 }
 
+func TestAnthropicToResponsesWithOptions_ConvertsSupportedCacheControlBlocks(t *testing.T) {
+	req := &AnthropicRequest{
+		Model:     "gpt-5.6-luna",
+		MaxTokens: 100,
+		System: json.RawMessage(`[
+			{"type":"text","text":"stable system prefix","cache_control":{"type":"ephemeral"}},
+			{"type":"text","text":"uncached system suffix"}
+		]`),
+		Messages: []AnthropicMessage{{
+			Role: "user",
+			Content: json.RawMessage(`[
+				{"type":"text","text":"stable user prefix","cache_control":{"type":"ephemeral","ttl":"1h"}},
+				{"type":"text","text":"uncached user suffix"}
+			]`),
+		}},
+	}
+
+	resp, err := AnthropicToResponsesWithOptions(req, AnthropicToResponsesOptions{
+		EnablePromptCacheBreakpoints: true,
+	})
+	require.NoError(t, err)
+	require.NotNil(t, resp.PromptCacheOptions)
+	require.Equal(t, "explicit", resp.PromptCacheOptions.Mode)
+
+	var items []ResponsesInputItem
+	require.NoError(t, json.Unmarshal(resp.Input, &items))
+	require.Len(t, items, 2)
+
+	var systemParts []ResponsesContentPart
+	require.NoError(t, json.Unmarshal(items[0].Content, &systemParts))
+	require.Len(t, systemParts, 2)
+	require.NotNil(t, systemParts[0].PromptCacheBreakpoint)
+	require.Equal(t, "explicit", systemParts[0].PromptCacheBreakpoint.Mode)
+	require.Nil(t, systemParts[1].PromptCacheBreakpoint)
+
+	var userParts []ResponsesContentPart
+	require.NoError(t, json.Unmarshal(items[1].Content, &userParts))
+	require.Len(t, userParts, 2)
+	require.NotNil(t, userParts[0].PromptCacheBreakpoint)
+	require.Equal(t, "explicit", userParts[0].PromptCacheBreakpoint.Mode)
+	require.Nil(t, userParts[1].PromptCacheBreakpoint)
+
+	wire, err := json.Marshal(resp)
+	require.NoError(t, err)
+	require.NotContains(t, string(wire), `"ttl"`)
+}
+
+func TestAnthropicToResponsesWithOptions_DoesNotEnableExplicitModeWithoutConvertedBreakpoint(t *testing.T) {
+	tests := []struct {
+		name string
+		req  *AnthropicRequest
+	}{
+		{
+			name: "no cache control",
+			req: &AnthropicRequest{
+				Model:     "gpt-5.6-luna",
+				MaxTokens: 100,
+				Messages:  []AnthropicMessage{{Role: "user", Content: json.RawMessage(`"hello"`)}},
+			},
+		},
+		{
+			name: "unsupported cache control type",
+			req: &AnthropicRequest{
+				Model:     "gpt-5.6-luna",
+				MaxTokens: 100,
+				System:    json.RawMessage(`[{"type":"text","text":"prefix","cache_control":{"type":"persistent"}}]`),
+				Messages:  []AnthropicMessage{{Role: "user", Content: json.RawMessage(`"hello"`)}},
+			},
+		},
+		{
+			name: "assistant output marker",
+			req: &AnthropicRequest{
+				Model:     "gpt-5.6-luna",
+				MaxTokens: 100,
+				Messages: []AnthropicMessage{
+					{Role: "assistant", Content: json.RawMessage(`[{"type":"text","text":"history","cache_control":{"type":"ephemeral"}}]`)},
+					{Role: "user", Content: json.RawMessage(`"hello"`)},
+				},
+			},
+		},
+		{
+			name: "tool definition marker",
+			req: &AnthropicRequest{
+				Model:     "gpt-5.6-luna",
+				MaxTokens: 100,
+				Messages:  []AnthropicMessage{{Role: "user", Content: json.RawMessage(`"hello"`)}},
+				Tools: []AnthropicTool{{
+					Name:         "shell",
+					InputSchema:  json.RawMessage(`{"type":"object"}`),
+					CacheControl: &AnthropicCacheControl{Type: "ephemeral"},
+				}},
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			resp, err := AnthropicToResponsesWithOptions(tt.req, AnthropicToResponsesOptions{
+				EnablePromptCacheBreakpoints: true,
+			})
+			require.NoError(t, err)
+			require.Nil(t, resp.PromptCacheOptions)
+			wire, err := json.Marshal(resp)
+			require.NoError(t, err)
+			require.NotContains(t, string(wire), "prompt_cache_breakpoint")
+		})
+	}
+}
+
+func TestAnthropicToResponses_DefaultConversionDoesNotAssumeModelCapabilities(t *testing.T) {
+	req := &AnthropicRequest{
+		Model:     "gpt-5.6-luna",
+		MaxTokens: 100,
+		System:    json.RawMessage(`[{"type":"text","text":"prefix","cache_control":{"type":"ephemeral"}}]`),
+		Messages:  []AnthropicMessage{{Role: "user", Content: json.RawMessage(`"hello"`)}},
+	}
+
+	resp, err := AnthropicToResponses(req)
+	require.NoError(t, err)
+	require.Nil(t, resp.PromptCacheOptions)
+	wire, err := json.Marshal(resp)
+	require.NoError(t, err)
+	require.NotContains(t, string(wire), "prompt_cache_breakpoint")
+}
+
+func TestAnthropicToResponsesWithOptions_ConvertsInputImageCacheControl(t *testing.T) {
+	req := &AnthropicRequest{
+		Model:     "gpt-5.6-luna",
+		MaxTokens: 100,
+		Messages: []AnthropicMessage{{
+			Role: "user",
+			Content: json.RawMessage(`[
+				{"type":"image","source":{"type":"base64","media_type":"image/png","data":"aGVsbG8="},"cache_control":{"type":"ephemeral"}}
+			]`),
+		}},
+	}
+
+	resp, err := AnthropicToResponsesWithOptions(req, AnthropicToResponsesOptions{
+		EnablePromptCacheBreakpoints: true,
+	})
+	require.NoError(t, err)
+	require.NotNil(t, resp.PromptCacheOptions)
+
+	var items []ResponsesInputItem
+	require.NoError(t, json.Unmarshal(resp.Input, &items))
+	require.Len(t, items, 1)
+	var parts []ResponsesContentPart
+	require.NoError(t, json.Unmarshal(items[0].Content, &parts))
+	require.Len(t, parts, 1)
+	require.Equal(t, "input_image", parts[0].Type)
+	require.Equal(t, "data:image/png;base64,aGVsbG8=", parts[0].ImageURL)
+	require.NotNil(t, parts[0].PromptCacheBreakpoint)
+	require.Equal(t, "explicit", parts[0].PromptCacheBreakpoint.Mode)
+}
+
 func TestAnthropicToResponses_ToolUse(t *testing.T) {
 	req := &AnthropicRequest{
 		Model:     "gpt-5.2",
