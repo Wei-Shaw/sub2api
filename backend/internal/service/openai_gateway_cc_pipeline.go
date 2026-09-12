@@ -142,6 +142,11 @@ func (s *OpenAIGatewayService) failoverOpenAIUpstreamHTTPError(
 func (s *OpenAIGatewayService) openAIChatCompletionsTargetURL(account *Account) (string, error) {
 	baseURL := account.GetOpenAIBaseURL()
 	if baseURL == "" {
+		if account.IsMultiProtocolAPIKey() {
+			// 多协议网关缺 base 时必须显式失败：回落官方域名会把第三方 key
+			// 明文发到 api.openai.com。
+			return "", fmt.Errorf("account %d has no openai base url", account.ID)
+		}
 		baseURL = "https://api.openai.com"
 	}
 	validatedURL, err := s.validateUpstreamBaseURL(baseURL)
