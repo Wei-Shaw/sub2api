@@ -19,6 +19,28 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+type localeSettingRepoStub struct {
+	service.SettingRepository
+	values map[string]string
+}
+
+func newLocaleSettingRepoStub() *localeSettingRepoStub {
+	return &localeSettingRepoStub{values: make(map[string]string)}
+}
+
+func (s *localeSettingRepoStub) GetValue(_ context.Context, key string) (string, error) {
+	value, ok := s.values[key]
+	if !ok {
+		return "", service.ErrSettingNotFound
+	}
+	return value, nil
+}
+
+func (s *localeSettingRepoStub) Set(_ context.Context, key, value string) error {
+	s.values[key] = value
+	return nil
+}
+
 type userHandlerRepoStub struct {
 	user       *service.User
 	identities []service.UserAuthIdentityRecord
@@ -192,6 +214,68 @@ func TestUserHandlerUpdateProfileReturnsAvatarURL(t *testing.T) {
 	require.Equal(t, 0, resp.Code)
 	require.Equal(t, "https://cdn.example.com/avatar.png", resp.Data.AvatarURL)
 	require.Equal(t, "handler-avatar", resp.Data.Username)
+}
+
+func TestUserHandlerUpdateNotificationEmailLocaleOverwritesPreference(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	repo := &userHandlerRepoStub{user: &service.User{
+		ID:     11,
+		Email:  "locale@example.com",
+		Role:   service.RoleUser,
+		Status: service.StatusActive,
+	}}
+	settingRepo := newLocaleSettingRepoStub()
+	settingRepo.values["notification_email_locale:user:11"] = "en"
+	handler := NewUserHandler(service.NewUserService(repo, settingRepo, nil, nil), nil, nil, nil, nil, nil)
+
+	body := []byte(`{"locale":"zh"}`)
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	c.Request = httptest.NewRequest(http.MethodPut, "/api/v1/user/notification-email-locale", bytes.NewReader(body))
+	c.Request.Header.Set("Content-Type", "application/json")
+	c.Set(string(middleware2.ContextKeyUser), middleware2.AuthSubject{UserID: 11})
+
+	handler.UpdateNotificationEmailLocale(c)
+
+	require.Equal(t, http.StatusOK, recorder.Code)
+	require.Equal(t, "zh", settingRepo.values["notification_email_locale:user:11"])
+}
+
+func TestUserHandlerInitializeNotificationEmailLocalePreservesPreference(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	repo := &userHandlerRepoStub{user: &service.User{
+		ID:     11,
+		Email:  "locale@example.com",
+		Role:   service.RoleUser,
+		Status: service.StatusActive,
+	}}
+	settingRepo := newLocaleSettingRepoStub()
+	settingRepo.values["notification_email_locale:user:11"] = "en"
+	handler := NewUserHandler(service.NewUserService(repo, settingRepo, nil, nil), nil, nil, nil, nil, nil)
+
+	body := []byte(`{"locale":"zh"}`)
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	c.Request = httptest.NewRequest(http.MethodPut, "/api/v1/user/notification-email-locale/initialize", bytes.NewReader(body))
+	c.Request.Header.Set("Content-Type", "application/json")
+	c.Set(string(middleware2.ContextKeyUser), middleware2.AuthSubject{UserID: 11})
+
+	handler.InitializeNotificationEmailLocale(c)
+
+	require.Equal(t, http.StatusOK, recorder.Code)
+	require.Equal(t, "en", settingRepo.values["notification_email_locale:user:11"])
+
+	var resp struct {
+		Code int `json:"code"`
+		Data struct {
+			Initialized bool `json:"initialized"`
+		} `json:"data"`
+	}
+	require.NoError(t, json.Unmarshal(recorder.Body.Bytes(), &resp))
+	require.Equal(t, 0, resp.Code)
+	require.False(t, resp.Data.Initialized)
 }
 
 func TestUserHandlerGetProfileReturnsIdentitySummaries(t *testing.T) {
