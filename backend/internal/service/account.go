@@ -1621,6 +1621,11 @@ func (a *Account) GetAnthropicProtocolBaseURL() string {
 		return DefaultMiniMaxAnthropicBaseURL
 	case PlatformOpenCodeGo:
 		return a.openCodeDefaultAnthropicBaseURL()
+	case PlatformOllamaCloud:
+		// 与 adaptive 分支（defaultCNProtocolBaseURL）同源：官方 Anthropic
+		// 兼容端点不带 /v1 前缀。缺失时 pinned-anthropic 的 ollama_cloud 账号
+		// 会拿到空 base，转发与连接测试都报「no anthropic protocol base url」。
+		return DefaultOllamaCloudAnthropicBaseURL
 	default:
 		return ""
 	}
