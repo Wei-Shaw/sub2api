@@ -3,8 +3,61 @@
  * Handles CRUD operations for user API keys
  */
 
-import { apiClient } from './client'
+import { apiClient, buildGatewayUrl } from './client'
 import type { ApiKey, CreateApiKeyRequest, UpdateApiKeyRequest, PaginatedResponse } from '@/types'
+
+export interface AvailableModelsResponse {
+  models: string[]
+}
+
+export interface AvailableModelsRequestOptions {
+  signal?: AbortSignal
+}
+
+async function parseAvailableModelsError(response: Response): Promise<Error> {
+  try {
+    const body = await response.json()
+    const message = body?.error?.message || body?.message || response.statusText
+    const error = new Error(message || `HTTP ${response.status}`)
+    ;(error as any).status = response.status
+    ;(error as any).code = body?.error?.code || body?.code || response.status
+    return error
+  } catch {
+    const error = new Error(response.statusText || `HTTP ${response.status}`)
+    ;(error as any).status = response.status
+    ;(error as any).code = response.status
+    return error
+  }
+}
+
+/**
+ * Fetch live models from all schedulable upstream accounts in the key's group.
+ * This request deliberately uses the selected API key instead of the panel JWT.
+ */
+export async function getAvailableModels(
+  apiKey: string,
+  options?: AvailableModelsRequestOptions,
+): Promise<string[]> {
+  const response = await fetch(buildGatewayUrl('/v1/models/available'), {
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      Accept: 'application/json',
+    },
+    signal: options?.signal,
+  })
+  if (!response.ok) {
+    throw await parseAvailableModelsError(response)
+  }
+
+  const payload = (await response.json()) as AvailableModelsResponse
+  return Array.from(
+    new Set(
+      (Array.isArray(payload?.models) ? payload.models : [])
+        .map((model) => String(model).trim())
+        .filter(Boolean),
+    ),
+  )
+}
 
 /**
  * List all API keys for current user
@@ -137,7 +190,8 @@ export const keysAPI = {
   create,
   update,
   delete: deleteKey,
-  toggleStatus
+  toggleStatus,
+  getAvailableModels,
 }
 
 export default keysAPI

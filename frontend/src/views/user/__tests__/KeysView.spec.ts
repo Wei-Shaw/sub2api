@@ -11,6 +11,7 @@ const {
   getDashboardApiKeysUsage,
   getAvailableGroups,
   getUserGroupRates,
+  getAvailableModels,
   showError,
   showSuccess,
   copyToClipboard,
@@ -22,6 +23,7 @@ const {
   getDashboardApiKeysUsage: vi.fn(),
   getAvailableGroups: vi.fn(),
   getUserGroupRates: vi.fn(),
+  getAvailableModels: vi.fn(),
   showError: vi.fn(),
   showSuccess: vi.fn(),
   copyToClipboard: vi.fn(),
@@ -44,6 +46,7 @@ const messages: Record<string, string> = {
   'keys.group': 'Group',
   'keys.id': 'ID',
   'keys.currentConcurrency': 'Current Concurrency',
+  'keys.availableModels': 'View Available Models',
   'keys.lastUsedAt': 'Last Used',
   'keys.lastUsedIP': 'Last Used IP',
   'keys.rateLimitColumn': 'Rate Limit',
@@ -62,6 +65,7 @@ vi.mock('@/api', () => ({
     update: vi.fn(),
     delete: vi.fn(),
     toggleStatus: vi.fn(),
+    getAvailableModels,
   },
   authAPI: {
     getPublicSettings,
@@ -173,6 +177,9 @@ const DataTableStub = {
         <div data-test="current-concurrency">
           <slot name="cell-current_concurrency" :value="row.current_concurrency" :row="row" />
         </div>
+        <div data-test="actions">
+          <slot name="cell-actions" :value="row.actions" :row="row" />
+        </div>
         <div
           v-if="columns.some((col) => col.key === 'last_used_ip')"
           data-test="last-used-ip"
@@ -215,6 +222,12 @@ const IconStub = {
   template: '<span data-test="icon">{{ name }}</span>',
 }
 
+const AvailableModelsModalStub = {
+  name: 'AvailableModelsModal',
+  props: ['show', 'models', 'loading', 'error'],
+  template: '<div data-test="available-models-modal" :data-show="show ? \'true\' : \'false\'">{{ models.join(\',\') }}</div>',
+}
+
 const mountView = async () => {
   const wrapper = mount(KeysView, {
     global: {
@@ -230,6 +243,7 @@ const mountView = async () => {
         SearchInput: SearchInputStub,
         Icon: IconStub,
         UseKeyModal: true,
+        AvailableModelsModal: AvailableModelsModalStub,
         EndpointPopover: true,
         GroupBadge: true,
         GroupOptionItem: true,
@@ -265,6 +279,7 @@ describe('user KeysView column settings', () => {
     getDashboardApiKeysUsage.mockReset()
     getAvailableGroups.mockReset()
     getUserGroupRates.mockReset()
+    getAvailableModels.mockReset()
     showError.mockReset()
     showSuccess.mockReset()
     copyToClipboard.mockReset()
@@ -282,7 +297,16 @@ describe('user KeysView column settings', () => {
     getDashboardApiKeysUsage.mockResolvedValue({ stats: {} })
     getAvailableGroups.mockResolvedValue([])
     getUserGroupRates.mockResolvedValue({})
+    getAvailableModels.mockResolvedValue(['gpt-5', 'shared-model'])
     isCurrentStep.mockReturnValue(false)
+  })
+
+  it('hides the available models action when disabled by public settings', async () => {
+    getPublicSettings.mockResolvedValueOnce({ available_models_enabled: false })
+
+    const wrapper = await mountView()
+
+    expect(wrapper.get('[data-test="actions"]').text()).not.toContain('View Available Models')
   })
 
   it('uses the default API key columns with low-frequency columns hidden', async () => {
@@ -392,6 +416,84 @@ describe('user KeysView column settings', () => {
     const wrapper = await mountView()
 
     expect(wrapper.get('[data-test="current-concurrency"]').text()).toBe('3')
+  })
+
+  it('loads available models with the selected API key from the actions area', async () => {
+    const wrapper = await mountView()
+
+    const button = getButtonByText(wrapper, 'View Available Models')
+    await button.trigger('click')
+    await flushPromises()
+
+    expect(getAvailableModels).toHaveBeenCalledWith(
+      'sk-test-key',
+      expect.objectContaining({ signal: expect.any(AbortSignal) }),
+    )
+    expect(wrapper.get('[data-test="available-models-modal"]').attributes('data-show')).toBe('true')
+    expect(wrapper.get('[data-test="available-models-modal"]').text()).toBe('gpt-5,shared-model')
+  })
+
+  it('ignores available models from an older request after switching API keys', async () => {
+    const firstKey = createApiKey()
+    const secondKey = { ...createApiKey(), id: 2, key: 'sk-second-key', name: 'second-key' }
+    listKeys.mockResolvedValueOnce({
+      items: [firstKey, secondKey],
+      total: 2,
+      page: 1,
+      page_size: 20,
+      pages: 1,
+    })
+
+    let resolveFirst: (models: string[]) => void = () => undefined
+    let resolveSecond: (models: string[]) => void = () => undefined
+    getAvailableModels.mockImplementation((key: string) => new Promise((resolve) => {
+      if (key === firstKey.key) {
+        resolveFirst = resolve
+      } else {
+        resolveSecond = resolve
+      }
+    }))
+
+    const wrapper = await mountView()
+    const buttons = wrapper.findAll('button').filter((button) => button.text().includes('View Available Models'))
+
+    void buttons[0].trigger('click')
+    await nextTick()
+    void buttons[1].trigger('click')
+    await nextTick()
+
+    resolveFirst(['stale-model'])
+    await flushPromises()
+    expect(wrapper.get('[data-test="available-models-modal"]').text()).not.toContain('stale-model')
+
+    resolveSecond(['current-model'])
+    await flushPromises()
+    expect(wrapper.get('[data-test="available-models-modal"]').text()).toBe('current-model')
+  })
+
+  it('aborts the available models request when the page is unmounted', async () => {
+    let requestSignal: AbortSignal | undefined
+    getAvailableModels.mockImplementationOnce((_key: string, options?: { signal?: AbortSignal }) => (
+      new Promise((_resolve, reject) => {
+        requestSignal = options?.signal
+        options?.signal?.addEventListener(
+          'abort',
+          () => reject(new DOMException('Request aborted', 'AbortError')),
+          { once: true },
+        )
+      })
+    ))
+
+    const wrapper = await mountView()
+    void getButtonByText(wrapper, 'View Available Models').trigger('click')
+    await nextTick()
+
+    expect(requestSignal).toBeDefined()
+    expect(requestSignal?.aborted).toBe(false)
+
+    wrapper.unmount()
+
+    expect(requestSignal?.aborted).toBe(true)
   })
 
   it('marks current concurrency as sortable', async () => {

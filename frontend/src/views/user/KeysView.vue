@@ -371,6 +371,17 @@
 
           <template #cell-actions="{ row }">
             <div class="flex items-center gap-1">
+              <!-- Available Models Button -->
+              <button
+                v-if="publicSettings?.available_models_enabled !== false"
+                type="button"
+                @click.stop="openAvailableModelsModal(row)"
+                class="flex flex-col items-center gap-0.5 rounded-lg p-1.5 text-gray-500 transition-colors hover:bg-primary-50 hover:text-primary-600 dark:hover:bg-primary-900/20 dark:hover:text-primary-400"
+                :title="t('keys.availableModels')"
+              >
+                <Icon name="eye" size="sm" />
+                <span class="text-xs">{{ t('keys.availableModels') }}</span>
+              </button>
               <!-- Use Key Button -->
               <button
                 @click="openUseKeyModal(row)"
@@ -998,6 +1009,16 @@
       @close="closeUseKeyModal"
     />
 
+    <!-- Live upstream model inspection modal -->
+    <AvailableModelsModal
+      :show="showAvailableModelsModal"
+      :models="availableModels"
+      :loading="loadingAvailableModels"
+      :error="availableModelsError"
+      @close="closeAvailableModelsModal"
+      @retry="retryAvailableModels"
+    />
+
     <!-- CCS Client Selection Dialog for Antigravity -->
     <BaseDialog
       :show="showCcsClientSelect"
@@ -1137,6 +1158,7 @@ import TablePageLayout from '@/components/layout/TablePageLayout.vue'
 	import SearchInput from '@/components/common/SearchInput.vue'
 	import Icon from '@/components/icons/Icon.vue'
 	import UseKeyModal from '@/components/keys/UseKeyModal.vue'
+	import AvailableModelsModal from '@/components/keys/AvailableModelsModal.vue'
 	import EndpointPopover from '@/components/keys/EndpointPopover.vue'
 	import GroupBadge from '@/components/common/GroupBadge.vue'
 	import GroupOptionItem from '@/components/common/GroupOptionItem.vue'
@@ -1300,10 +1322,15 @@ const showDeleteDialog = ref(false)
 const showResetQuotaDialog = ref(false)
 const showResetRateLimitDialog = ref(false)
 const showUseKeyModal = ref(false)
+const showAvailableModelsModal = ref(false)
 const showCcsClientSelect = ref(false)
 const showColumnDropdown = ref(false)
 const pendingCcsRow = ref<ApiKey | null>(null)
 const selectedKey = ref<ApiKey | null>(null)
+const selectedAvailableModelsKey = ref<ApiKey | null>(null)
+const availableModels = ref<string[]>([])
+const loadingAvailableModels = ref(false)
+const availableModelsError = ref('')
 const copiedKeyId = ref<number | null>(null)
 const groupSelectorKeyId = ref<number | null>(null)
 const publicSettings = ref<PublicSettings | null>(null)
@@ -1312,6 +1339,8 @@ const columnDropdownRef = ref<HTMLElement | null>(null)
 const dropdownPosition = ref<{ top?: number; bottom?: number; left: number } | null>(null)
 const groupButtonRefs = ref<Map<number, HTMLElement>>(new Map())
 let abortController: AbortController | null = null
+let availableModelsRequestId = 0
+let availableModelsAbortController: AbortController | null = null
 
 // Get the currently selected key for group change
 const selectedKeyForGroup = computed(() => {
@@ -1537,6 +1566,54 @@ const openUseKeyModal = (key: ApiKey) => {
 const closeUseKeyModal = () => {
   showUseKeyModal.value = false
   selectedKey.value = null
+}
+
+const loadAvailableModels = async (key: ApiKey) => {
+  const requestId = ++availableModelsRequestId
+  availableModelsAbortController?.abort()
+  const controller = new AbortController()
+  availableModelsAbortController = controller
+
+  loadingAvailableModels.value = true
+  availableModelsError.value = ''
+  try {
+    const models = await keysAPI.getAvailableModels(key.key, { signal: controller.signal })
+    if (requestId !== availableModelsRequestId || controller.signal.aborted) return
+    availableModels.value = models
+  } catch (error) {
+    if (controller.signal.aborted || requestId !== availableModelsRequestId) return
+    availableModels.value = []
+    availableModelsError.value = error instanceof Error ? error.message : t('keys.availableModelsError')
+  } finally {
+    if (requestId === availableModelsRequestId) {
+      loadingAvailableModels.value = false
+      availableModelsAbortController = null
+    }
+  }
+}
+
+const openAvailableModelsModal = async (key: ApiKey) => {
+  selectedAvailableModelsKey.value = key
+  availableModels.value = []
+  showAvailableModelsModal.value = true
+  await loadAvailableModels(key)
+}
+
+const retryAvailableModels = async () => {
+  if (selectedAvailableModelsKey.value) {
+    await loadAvailableModels(selectedAvailableModelsKey.value)
+  }
+}
+
+const closeAvailableModelsModal = () => {
+  availableModelsRequestId += 1
+  availableModelsAbortController?.abort()
+  availableModelsAbortController = null
+  loadingAvailableModels.value = false
+  showAvailableModelsModal.value = false
+  selectedAvailableModelsKey.value = null
+  availableModels.value = []
+  availableModelsError.value = ''
 }
 
 const handlePageChange = (page: number) => {
@@ -1964,6 +2041,7 @@ onMounted(() => {
 })
 
 onUnmounted(() => {
+  closeAvailableModelsModal()
   document.removeEventListener('click', closeGroupSelector)
   if (resetTimer) clearInterval(resetTimer)
 })

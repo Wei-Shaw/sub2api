@@ -101,6 +101,25 @@ func TestSettingService_GetPublicSettings_ExposesCompactHomeEnabled(t *testing.T
 	require.False(t, missingSettings.CompactHomeEnabled)
 }
 
+func TestSettingService_GetPublicSettings_AvailableModelsEnabledDefaultsToTrue(t *testing.T) {
+	enabled, err := NewSettingService(&settingPublicRepoStub{values: map[string]string{
+		SettingKeyAvailableModelsEnabled: "true",
+	}}, &config.Config{}).GetPublicSettings(context.Background())
+	require.NoError(t, err)
+	require.True(t, enabled.AvailableModelsEnabled)
+
+	disabled, err := NewSettingService(&settingPublicRepoStub{values: map[string]string{
+		SettingKeyAvailableModelsEnabled: "false",
+	}}, &config.Config{}).GetPublicSettings(context.Background())
+	require.NoError(t, err)
+	require.False(t, disabled.AvailableModelsEnabled)
+
+	missing, err := NewSettingService(&settingPublicRepoStub{values: map[string]string{}}, &config.Config{}).
+		GetPublicSettings(context.Background())
+	require.NoError(t, err)
+	require.True(t, missing.AvailableModelsEnabled)
+}
+
 func TestSettingService_ChannelMonitorHideThroughputDefaultsToPrivate(t *testing.T) {
 	missing := NewSettingService(&settingPublicRepoStub{values: map[string]string{}}, &config.Config{}).GetChannelMonitorRuntime(context.Background())
 	require.True(t, missing.HideThroughput)

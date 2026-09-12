@@ -47,6 +47,7 @@ type GatewayHandler struct {
 	billingCacheService       *service.BillingCacheService
 	usageService              *service.UsageService
 	apiKeyService             *service.APIKeyService
+	accountTestService        *service.AccountTestService
 	usageRecordWorkerPool     *service.UsageRecordWorkerPool
 	errorPassthroughService   *service.ErrorPassthroughService
 	contentModerationService  *service.ContentModerationService
@@ -114,6 +115,14 @@ func NewGatewayHandler(
 		maxAccountSwitchesGemini:  maxAccountSwitchesGemini,
 		cfg:                       cfg,
 		settingService:            settingService,
+	}
+}
+
+// SetAccountTestService injects the live upstream model discovery service used
+// by the API-key model inspection endpoint.
+func (h *GatewayHandler) SetAccountTestService(accountTestService *service.AccountTestService) {
+	if h != nil {
+		h.accountTestService = accountTestService
 	}
 }
 
@@ -1187,6 +1196,48 @@ func (h *GatewayHandler) Models(c *gin.Context) {
 	}
 
 	writeModelsListResponse(c, claude.DefaultModels)
+}
+
+// AvailableModels returns model IDs for the API key's group by probing each
+// schedulable upstream account. Unlike Models, this bypasses the local
+// model-mapping cache used by /v1/models. When an account's live /models
+// endpoint is unsupported (HTTP 404/405), concrete model_mapping targets are
+// used as a fallback so providers without a catalog still appear.
+// GET /v1/models/available
+func (h *GatewayHandler) AvailableModels(c *gin.Context) {
+	apiKey, ok := middleware2.GetAPIKeyFromContext(c)
+	if !ok || apiKey == nil || apiKey.Group == nil {
+		h.errorResponse(c, http.StatusUnauthorized, "authentication_error", "API key group is required")
+		return
+	}
+	if h.accountTestService == nil {
+		h.errorResponse(c, http.StatusInternalServerError, "api_error", "Account test service is not configured")
+		return
+	}
+
+	models, err := h.accountTestService.FetchGroupUpstreamModels(
+		c.Request.Context(),
+		apiKey.Group.ID,
+		apiKey.Group.Platform,
+	)
+	if err != nil {
+		var syncErr *service.UpstreamModelSyncError
+		if errors.As(err, &syncErr) {
+			switch syncErr.Kind {
+			case service.UpstreamModelSyncErrorConfiguration, service.UpstreamModelSyncErrorUnsupported:
+				h.errorResponse(c, http.StatusBadRequest, "invalid_request_error", syncErr.SafeMessage())
+			case service.UpstreamModelSyncErrorInternal:
+				h.errorResponse(c, http.StatusInternalServerError, "api_error", syncErr.SafeMessage())
+			default:
+				h.errorResponse(c, http.StatusBadGateway, "upstream_error", syncErr.SafeMessage())
+			}
+			return
+		}
+		h.errorResponse(c, http.StatusBadGateway, "upstream_error", "Failed to fetch available models from upstream")
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"models": models})
 }
 
 // CodexModels returns the effective group model list using the manifest shape

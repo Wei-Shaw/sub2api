@@ -182,6 +182,15 @@ func RegisterGatewayRoutes(
 		}
 	}
 
+	// Model inspection is an API-key-authenticated diagnostic endpoint. It must
+	// not inherit the normal /models model allowlist or platform dispatch chain,
+	// because its purpose is to probe and display the raw upstream model union.
+	availableModelsRoute := func(path string) {
+		r.GET(path, bodyLimit, clientRequestID, opsErrorLogger, endpointNorm, gin.HandlerFunc(apiKeyAuth), h.Gateway.AvailableModels)
+	}
+	availableModelsRoute("/v1/models/available")
+	availableModelsRoute("/models/available")
+
 	// API网关（Claude API兼容）
 	gateway := r.Group("/v1")
 	gateway.Use(bodyLimit)
