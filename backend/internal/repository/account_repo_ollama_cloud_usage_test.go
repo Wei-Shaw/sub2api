@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"regexp"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -179,7 +180,7 @@ func TestListOllamaCloudUsageGroupAccountsUsesOneStrictBatchQuery(t *testing.T) 
 	require.Empty(t, accounts)
 	query := normalizeSQLWhitespace(capturedSQL)
 	require.Contains(t, query, "credentials ->> 'api_key' = ANY($1)")
-	require.Contains(t, query, "platform IN ('openai', 'anthropic', 'kimi', 'zhipu', 'deepseek', 'minimax')")
+	require.Contains(t, query, "platform IN ("+ollamaCloudUsagePlatformsSQL+")")
 	require.Contains(t, query, "jsonb_typeof(credentials -> 'api_key') = 'string'")
 	require.Contains(t, query, ollamaCloudBaseURLMatchesSQL("credentials ->> 'base_url'"))
 	require.NotContains(t, query, "~*")
@@ -207,7 +208,7 @@ func TestListDueOllamaCloudUsageAccountsFiltersOrdersAndLimits(t *testing.T) {
 	for _, clause := range []string{
 		"deleted_at IS NULL",
 		"status = 'active'",
-		"platform IN ('openai', 'anthropic', 'kimi', 'zhipu', 'deepseek', 'minimax')",
+		"platform IN (" + ollamaCloudUsagePlatformsSQL + ")",
 		"type = 'apikey'",
 		ollamaCloudBaseURLMatchesSQL("credentials ->> 'base_url'"),
 		"jsonb_typeof(extra -> 'ollama_cloud_usage_session') = 'string'",
@@ -251,7 +252,7 @@ func TestBulkUpdateOllamaIdentityCleanupIsValueConditional(t *testing.T) {
 	require.Contains(t, query, "NOT ("+ollamaCloudBaseURLMatchesSQL("credentials ->> 'base_url'"))
 	require.Contains(t, query, ollamaCloudBaseURLMatchesSQL("$1::jsonb ->> 'base_url'"))
 	require.NotContains(t, query, "~*")
-	require.Contains(t, query, "platform IN ('openai', 'anthropic', 'kimi', 'zhipu', 'deepseek', 'minimax') AND type = 'apikey'")
+	require.Contains(t, query, "platform IN ("+ollamaCloudUsagePlatformsSQL+") AND type = 'apikey'")
 	require.Contains(t, query, "- 'ollama_cloud_usage_session' - 'ollama_cloud_usage_auto_refresh' - 'ollama_cloud_usage_snapshot'")
 	payload, ok := exec.execArgs[0][0].([]byte)
 	require.True(t, ok)
@@ -317,7 +318,7 @@ func TestUpdateCredentialsCleanupBranchRequiresChangedCredentials(t *testing.T) 
 	require.NoError(t, mock.ExpectationsWereMet())
 }
 
-// SQL 平台白名单常量与 service 判定必须互为镜像：对每个已知平台，常量里的
+// SQL 平台白名单与 service 判定必须互为镜像：对每个已知平台，常量里的
 // 成员关系都要与 IsOllamaCloudUsageAccount（apikey + 官方 ollama.com）一致，
 // 防止两侧平台列表各自漂移。
 func TestOllamaCloudUsagePlatformWhitelistMatchesServicePredicate(t *testing.T) {
@@ -326,17 +327,33 @@ func TestOllamaCloudUsagePlatformWhitelistMatchesServicePredicate(t *testing.T) 
 	for _, match := range matches {
 		sqlPlatforms[match[1]] = struct{}{}
 	}
-	require.Len(t, sqlPlatforms, 6)
-	for _, platform := range []string{
-		service.PlatformOpenAI, service.PlatformAnthropic,
-		service.PlatformKimi, service.PlatformZhipu, service.PlatformDeepseek, service.PlatformMiniMax,
+	require.Len(t, sqlPlatforms, len(service.OllamaCloudUsagePlatforms))
+	for _, platform := range append(slices.Clone(service.OllamaCloudUsagePlatforms),
 		service.PlatformGemini, service.PlatformGrok, service.PlatformAntigravity,
 		service.PlatformComposite, "kiro",
-	} {
+	) {
 		account := ollamaCloudUsageRepositoryAccount()
 		account.Platform = platform
 		_, inSQL := sqlPlatforms[platform]
 		require.Equal(t, inSQL, service.IsOllamaCloudUsageAccount(account), platform)
+	}
+}
+
+// TestOllamaCloudUsagePlatformsMirror 锁定 SQL 平台白名单由 service 权威列表
+// （OllamaCloudUsagePlatforms，含 ollama_cloud 本体）派生这一事实：字面量可
+// 完整解析、成员一致、eligible 拼接结果包含全部平台项。若有人把派生改回手工
+// 字面量并漏掉/多写平台，本测试立即红。
+func TestOllamaCloudUsagePlatformsMirror(t *testing.T) {
+	matches := regexp.MustCompile(`'([^']+)'`).FindAllStringSubmatch(ollamaCloudUsagePlatformsSQL, -1)
+	sqlPlatforms := make([]string, 0, len(matches))
+	for _, match := range matches {
+		sqlPlatforms = append(sqlPlatforms, match[1])
+	}
+	require.Len(t, matches, len(service.OllamaCloudUsagePlatforms), "SQL 字面量解析出的平台项数量必须与权威列表一致")
+	require.ElementsMatch(t, service.OllamaCloudUsagePlatforms, sqlPlatforms)
+	require.Contains(t, sqlPlatforms, service.PlatformOllamaCloud)
+	for _, platform := range service.OllamaCloudUsagePlatforms {
+		require.Contains(t, ollamaCloudUsageEligibleSQL, "'"+platform+"'")
 	}
 }
 
@@ -373,7 +390,7 @@ func TestUpdateCredentialsPlainCNAPIKeyAccountCleanupStaysSemanticallyEquivalent
 	require.NoError(t, err)
 	query := normalizeSQLWhitespace(capturedSQL)
 	require.Contains(t, query,
-		"platform IN ('openai', 'anthropic', 'kimi', 'zhipu', 'deepseek', 'minimax') AND type = 'apikey' AND credentials IS DISTINCT FROM $1::jsonb")
+		"platform IN ("+ollamaCloudUsagePlatformsSQL+") AND type = 'apikey' AND credentials IS DISTINCT FROM $1::jsonb")
 	require.Contains(t, query,
 		"THEN COALESCE(extra, '{}'::jsonb) - 'upstream_billing_probe' - 'ollama_cloud_usage_session' - 'ollama_cloud_usage_auto_refresh' - 'ollama_cloud_usage_snapshot'")
 	require.NotContains(t, query, "- 'upstream_billing_probe_enabled'")
