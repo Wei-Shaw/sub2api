@@ -99,11 +99,13 @@ type AccountEdges struct {
 	Children []*Account `json:"children,omitempty"`
 	// UsageLogs holds the value of the usage_logs edge.
 	UsageLogs []*UsageLog `json:"usage_logs,omitempty"`
+	// WindowUsageHistories holds the value of the window_usage_histories edge.
+	WindowUsageHistories []*AccountWindowUsageHistory `json:"window_usage_histories,omitempty"`
 	// AccountGroups holds the value of the account_groups edge.
 	AccountGroups []*AccountGroup `json:"account_groups,omitempty"`
 	// loadedTypes holds the information for reporting if a
 	// type was loaded (or requested) in eager-loading or not.
-	loadedTypes [6]bool
+	loadedTypes [7]bool
 }
 
 // GroupsOrErr returns the Groups value or an error if the edge
@@ -155,10 +157,19 @@ func (e AccountEdges) UsageLogsOrErr() ([]*UsageLog, error) {
 	return nil, &NotLoadedError{edge: "usage_logs"}
 }
 
+// WindowUsageHistoriesOrErr returns the WindowUsageHistories value or an error if the edge
+// was not loaded in eager-loading.
+func (e AccountEdges) WindowUsageHistoriesOrErr() ([]*AccountWindowUsageHistory, error) {
+	if e.loadedTypes[5] {
+		return e.WindowUsageHistories, nil
+	}
+	return nil, &NotLoadedError{edge: "window_usage_histories"}
+}
+
 // AccountGroupsOrErr returns the AccountGroups value or an error if the edge
 // was not loaded in eager-loading.
 func (e AccountEdges) AccountGroupsOrErr() ([]*AccountGroup, error) {
-	if e.loadedTypes[5] {
+	if e.loadedTypes[6] {
 		return e.AccountGroups, nil
 	}
 	return nil, &NotLoadedError{edge: "account_groups"}
@@ -445,6 +456,11 @@ func (_m *Account) QueryChildren() *AccountQuery {
 // QueryUsageLogs queries the "usage_logs" edge of the Account entity.
 func (_m *Account) QueryUsageLogs() *UsageLogQuery {
 	return NewAccountClient(_m.config).QueryUsageLogs(_m)
+}
+
+// QueryWindowUsageHistories queries the "window_usage_histories" edge of the Account entity.
+func (_m *Account) QueryWindowUsageHistories() *AccountWindowUsageHistoryQuery {
+	return NewAccountClient(_m.config).QueryWindowUsageHistories(_m)
 }
 
 // QueryAccountGroups queries the "account_groups" edge of the Account entity.

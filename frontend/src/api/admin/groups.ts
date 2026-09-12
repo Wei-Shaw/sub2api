@@ -5,6 +5,11 @@
 
 import { apiClient } from '../client'
 import type {
+  SubscriptionResetPolicy,
+  SubscriptionResetPolicyInput,
+  SubscriptionResetStatus
+} from '@/types/subscriptionResetObserver'
+import type {
   AdminGroup,
   GroupPlatform,
   CompositeModelRoute,
@@ -470,7 +475,25 @@ export async function getCapacitySummary(): Promise<
   return data
 }
 
+export async function getSubscriptionResetPolicy(id: number, signal?: AbortSignal): Promise<SubscriptionResetPolicy> {
+  const { data } = await apiClient.get<SubscriptionResetPolicy>(`/admin/groups/${id}/subscription-reset-policy`, { signal })
+  return data
+}
+
+export async function updateSubscriptionResetPolicy(id: number, policy: SubscriptionResetPolicyInput): Promise<SubscriptionResetPolicy> {
+  const { data } = await apiClient.put<SubscriptionResetPolicy>(`/admin/groups/${id}/subscription-reset-policy`, policy)
+  return data
+}
+
+export async function getSubscriptionResetStatus(id: number, signal?: AbortSignal): Promise<SubscriptionResetStatus> {
+  const { data } = await apiClient.get<SubscriptionResetStatus>(`/admin/groups/${id}/subscription-reset-status`, { signal })
+  return data
+}
+
 export const groupsAPI = {
+  getSubscriptionResetPolicy,
+  updateSubscriptionResetPolicy,
+  getSubscriptionResetStatus,
   list,
   getAll,
   getByPlatform,

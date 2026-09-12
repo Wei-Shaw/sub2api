@@ -172,6 +172,10 @@ type UsageLog struct {
 	AccountRateMultiplier *float64
 	// AccountStatsCost 账号统计定价预计算费用（nil = 使用默认公式 total_cost × account_rate_multiplier）
 	AccountStatsCost *float64
+	// APIReferenceCost is the immutable model-catalog USD comparison amount.
+	// Nil means not recorded/unsupported/missing pricing, distinct from zero.
+	APIReferenceCost    *float64
+	APIReferencePricing *APIReferencePricingSnapshot
 
 	BillingType        int8
 	RequestType        RequestType
