@@ -181,6 +181,66 @@ func (h *SettingHandler) UpdateOpenAIImagesOAuthUnavailableCooldownSettings(c *g
 	response.Success(c, dto.OpenAIImagesOAuthUnavailableCooldownSettings{CooldownMinutes: settings.CooldownMinutes})
 }
 
+// GetOpenAI403CooldownSettings 获取 OpenAI 403 临时冷却配置
+// GET /api/v1/admin/settings/openai-403-cooldown
+func (h *SettingHandler) GetOpenAI403CooldownSettings(c *gin.Context) {
+	settings, err := h.settingService.GetOpenAI403CooldownSettings(c.Request.Context())
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+
+	response.Success(c, dto.OpenAI403CooldownSettings{
+		Enabled:          settings.Enabled,
+		CooldownMinutes:  settings.CooldownMinutes,
+		DisableThreshold: settings.DisableThreshold,
+		WindowMinutes:    settings.WindowMinutes,
+	})
+}
+
+// UpdateOpenAI403CooldownSettingsRequest 更新 OpenAI 403 临时冷却配置请求
+type UpdateOpenAI403CooldownSettingsRequest struct {
+	Enabled          bool `json:"enabled"`
+	CooldownMinutes  int  `json:"cooldown_minutes"`
+	DisableThreshold int  `json:"disable_threshold"`
+	WindowMinutes    int  `json:"window_minutes"`
+}
+
+// UpdateOpenAI403CooldownSettings 更新 OpenAI 403 临时冷却配置
+// PUT /api/v1/admin/settings/openai-403-cooldown
+func (h *SettingHandler) UpdateOpenAI403CooldownSettings(c *gin.Context) {
+	var req UpdateOpenAI403CooldownSettingsRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "Invalid request: "+err.Error())
+		return
+	}
+
+	settings := &service.OpenAI403CooldownSettings{
+		Enabled:          req.Enabled,
+		CooldownMinutes:  req.CooldownMinutes,
+		DisableThreshold: req.DisableThreshold,
+		WindowMinutes:    req.WindowMinutes,
+	}
+
+	if err := h.settingService.SetOpenAI403CooldownSettings(c.Request.Context(), settings); err != nil {
+		response.BadRequest(c, err.Error())
+		return
+	}
+
+	updatedSettings, err := h.settingService.GetOpenAI403CooldownSettings(c.Request.Context())
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+
+	response.Success(c, dto.OpenAI403CooldownSettings{
+		Enabled:          updatedSettings.Enabled,
+		CooldownMinutes:  updatedSettings.CooldownMinutes,
+		DisableThreshold: updatedSettings.DisableThreshold,
+		WindowMinutes:    updatedSettings.WindowMinutes,
+	})
+}
+
 // GetPanelRateLimitSettings 获取面板 API 限流配置
 // GET /api/v1/admin/settings/panel-rate-limit
 func (h *SettingHandler) GetPanelRateLimitSettings(c *gin.Context) {
