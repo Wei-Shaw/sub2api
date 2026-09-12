@@ -46355,6 +46355,9 @@ type UsageLogMutation struct {
 	addtotal_cost                *float64
 	actual_cost                  *float64
 	addactual_cost               *float64
+	api_reference_cost           *float64
+	addapi_reference_cost        *float64
+	api_reference_pricing        *map[string]interface{}
 	rate_multiplier              *float64
 	addrate_multiplier           *float64
 	long_context_billing_applied *bool
@@ -47860,6 +47863,125 @@ func (m *UsageLogMutation) ResetActualCost() {
 	m.addactual_cost = nil
 }
 
+// SetAPIReferenceCost sets the "api_reference_cost" field.
+func (m *UsageLogMutation) SetAPIReferenceCost(f float64) {
+	m.api_reference_cost = &f
+	m.addapi_reference_cost = nil
+}
+
+// APIReferenceCost returns the value of the "api_reference_cost" field in the mutation.
+func (m *UsageLogMutation) APIReferenceCost() (r float64, exists bool) {
+	v := m.api_reference_cost
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldAPIReferenceCost returns the old "api_reference_cost" field's value of the UsageLog entity.
+// If the UsageLog object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *UsageLogMutation) OldAPIReferenceCost(ctx context.Context) (v *float64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldAPIReferenceCost is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldAPIReferenceCost requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldAPIReferenceCost: %w", err)
+	}
+	return oldValue.APIReferenceCost, nil
+}
+
+// AddAPIReferenceCost adds f to the "api_reference_cost" field.
+func (m *UsageLogMutation) AddAPIReferenceCost(f float64) {
+	if m.addapi_reference_cost != nil {
+		*m.addapi_reference_cost += f
+	} else {
+		m.addapi_reference_cost = &f
+	}
+}
+
+// AddedAPIReferenceCost returns the value that was added to the "api_reference_cost" field in this mutation.
+func (m *UsageLogMutation) AddedAPIReferenceCost() (r float64, exists bool) {
+	v := m.addapi_reference_cost
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ClearAPIReferenceCost clears the value of the "api_reference_cost" field.
+func (m *UsageLogMutation) ClearAPIReferenceCost() {
+	m.api_reference_cost = nil
+	m.addapi_reference_cost = nil
+	m.clearedFields[usagelog.FieldAPIReferenceCost] = struct{}{}
+}
+
+// APIReferenceCostCleared returns if the "api_reference_cost" field was cleared in this mutation.
+func (m *UsageLogMutation) APIReferenceCostCleared() bool {
+	_, ok := m.clearedFields[usagelog.FieldAPIReferenceCost]
+	return ok
+}
+
+// ResetAPIReferenceCost resets all changes to the "api_reference_cost" field.
+func (m *UsageLogMutation) ResetAPIReferenceCost() {
+	m.api_reference_cost = nil
+	m.addapi_reference_cost = nil
+	delete(m.clearedFields, usagelog.FieldAPIReferenceCost)
+}
+
+// SetAPIReferencePricing sets the "api_reference_pricing" field.
+func (m *UsageLogMutation) SetAPIReferencePricing(value map[string]interface{}) {
+	m.api_reference_pricing = &value
+}
+
+// APIReferencePricing returns the value of the "api_reference_pricing" field in the mutation.
+func (m *UsageLogMutation) APIReferencePricing() (r map[string]interface{}, exists bool) {
+	v := m.api_reference_pricing
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldAPIReferencePricing returns the old "api_reference_pricing" field's value of the UsageLog entity.
+// If the UsageLog object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *UsageLogMutation) OldAPIReferencePricing(ctx context.Context) (v map[string]interface{}, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldAPIReferencePricing is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldAPIReferencePricing requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldAPIReferencePricing: %w", err)
+	}
+	return oldValue.APIReferencePricing, nil
+}
+
+// ClearAPIReferencePricing clears the value of the "api_reference_pricing" field.
+func (m *UsageLogMutation) ClearAPIReferencePricing() {
+	m.api_reference_pricing = nil
+	m.clearedFields[usagelog.FieldAPIReferencePricing] = struct{}{}
+}
+
+// APIReferencePricingCleared returns if the "api_reference_pricing" field was cleared in this mutation.
+func (m *UsageLogMutation) APIReferencePricingCleared() bool {
+	_, ok := m.clearedFields[usagelog.FieldAPIReferencePricing]
+	return ok
+}
+
+// ResetAPIReferencePricing resets all changes to the "api_reference_pricing" field.
+func (m *UsageLogMutation) ResetAPIReferencePricing() {
+	m.api_reference_pricing = nil
+	delete(m.clearedFields, usagelog.FieldAPIReferencePricing)
+}
+
 // SetRateMultiplier sets the "rate_multiplier" field.
 func (m *UsageLogMutation) SetRateMultiplier(f float64) {
 	m.rate_multiplier = &f
@@ -49069,7 +49191,7 @@ func (m *UsageLogMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *UsageLogMutation) Fields() []string {
-	fields := make([]string, 0, 47)
+	fields := make([]string, 0, 49)
 	if m.user != nil {
 		fields = append(fields, usagelog.FieldUserID)
 	}
@@ -49150,6 +49272,12 @@ func (m *UsageLogMutation) Fields() []string {
 	}
 	if m.actual_cost != nil {
 		fields = append(fields, usagelog.FieldActualCost)
+	}
+	if m.api_reference_cost != nil {
+		fields = append(fields, usagelog.FieldAPIReferenceCost)
+	}
+	if m.api_reference_pricing != nil {
+		fields = append(fields, usagelog.FieldAPIReferencePricing)
 	}
 	if m.rate_multiplier != nil {
 		fields = append(fields, usagelog.FieldRateMultiplier)
@@ -49273,6 +49401,10 @@ func (m *UsageLogMutation) Field(name string) (ent.Value, bool) {
 		return m.TotalCost()
 	case usagelog.FieldActualCost:
 		return m.ActualCost()
+	case usagelog.FieldAPIReferenceCost:
+		return m.APIReferenceCost()
+	case usagelog.FieldAPIReferencePricing:
+		return m.APIReferencePricing()
 	case usagelog.FieldRateMultiplier:
 		return m.RateMultiplier()
 	case usagelog.FieldLongContextBillingApplied:
@@ -49376,6 +49508,10 @@ func (m *UsageLogMutation) OldField(ctx context.Context, name string) (ent.Value
 		return m.OldTotalCost(ctx)
 	case usagelog.FieldActualCost:
 		return m.OldActualCost(ctx)
+	case usagelog.FieldAPIReferenceCost:
+		return m.OldAPIReferenceCost(ctx)
+	case usagelog.FieldAPIReferencePricing:
+		return m.OldAPIReferencePricing(ctx)
 	case usagelog.FieldRateMultiplier:
 		return m.OldRateMultiplier(ctx)
 	case usagelog.FieldLongContextBillingApplied:
@@ -49614,6 +49750,20 @@ func (m *UsageLogMutation) SetField(name string, value ent.Value) error {
 		}
 		m.SetActualCost(v)
 		return nil
+	case usagelog.FieldAPIReferenceCost:
+		v, ok := value.(float64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetAPIReferenceCost(v)
+		return nil
+	case usagelog.FieldAPIReferencePricing:
+		v, ok := value.(map[string]interface{})
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetAPIReferencePricing(v)
+		return nil
 	case usagelog.FieldRateMultiplier:
 		v, ok := value.(float64)
 		if !ok {
@@ -49801,6 +49951,9 @@ func (m *UsageLogMutation) AddedFields() []string {
 	if m.addactual_cost != nil {
 		fields = append(fields, usagelog.FieldActualCost)
 	}
+	if m.addapi_reference_cost != nil {
+		fields = append(fields, usagelog.FieldAPIReferenceCost)
+	}
 	if m.addrate_multiplier != nil {
 		fields = append(fields, usagelog.FieldRateMultiplier)
 	}
@@ -49859,6 +50012,8 @@ func (m *UsageLogMutation) AddedField(name string) (ent.Value, bool) {
 		return m.AddedTotalCost()
 	case usagelog.FieldActualCost:
 		return m.AddedActualCost()
+	case usagelog.FieldAPIReferenceCost:
+		return m.AddedAPIReferenceCost()
 	case usagelog.FieldRateMultiplier:
 		return m.AddedRateMultiplier()
 	case usagelog.FieldAccountRateMultiplier:
@@ -49975,6 +50130,13 @@ func (m *UsageLogMutation) AddField(name string, value ent.Value) error {
 		}
 		m.AddActualCost(v)
 		return nil
+	case usagelog.FieldAPIReferenceCost:
+		v, ok := value.(float64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddAPIReferenceCost(v)
+		return nil
 	case usagelog.FieldRateMultiplier:
 		v, ok := value.(float64)
 		if !ok {
@@ -50069,6 +50231,12 @@ func (m *UsageLogMutation) ClearedFields() []string {
 	if m.FieldCleared(usagelog.FieldSubscriptionID) {
 		fields = append(fields, usagelog.FieldSubscriptionID)
 	}
+	if m.FieldCleared(usagelog.FieldAPIReferenceCost) {
+		fields = append(fields, usagelog.FieldAPIReferenceCost)
+	}
+	if m.FieldCleared(usagelog.FieldAPIReferencePricing) {
+		fields = append(fields, usagelog.FieldAPIReferencePricing)
+	}
 	if m.FieldCleared(usagelog.FieldAccountRateMultiplier) {
 		fields = append(fields, usagelog.FieldAccountRateMultiplier)
 	}
@@ -50148,6 +50316,12 @@ func (m *UsageLogMutation) ClearField(name string) error {
 		return nil
 	case usagelog.FieldSubscriptionID:
 		m.ClearSubscriptionID()
+		return nil
+	case usagelog.FieldAPIReferenceCost:
+		m.ClearAPIReferenceCost()
+		return nil
+	case usagelog.FieldAPIReferencePricing:
+		m.ClearAPIReferencePricing()
 		return nil
 	case usagelog.FieldAccountRateMultiplier:
 		m.ClearAccountRateMultiplier()
@@ -50273,6 +50447,12 @@ func (m *UsageLogMutation) ResetField(name string) error {
 		return nil
 	case usagelog.FieldActualCost:
 		m.ResetActualCost()
+		return nil
+	case usagelog.FieldAPIReferenceCost:
+		m.ResetAPIReferenceCost()
+		return nil
+	case usagelog.FieldAPIReferencePricing:
+		m.ResetAPIReferencePricing()
 		return nil
 	case usagelog.FieldRateMultiplier:
 		m.ResetRateMultiplier()
