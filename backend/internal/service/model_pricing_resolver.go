@@ -143,10 +143,40 @@ func (r *ModelPricingResolver) resolveConfiguredPricing(config *ChannelModelPric
 	return resolved
 }
 
+// normalizePricingModelNameForLookup 返回模型名的第二级查价备选：剥掉最后一个
+// ":tag" 后缀（如 "deepseek-v4-flash:0731" → "deepseek-v4-flash"）。ok=false 表示
+// 没有可用备选（不含 ":"、":" 在首/末位或剥后为空）。
+//
+// 只作字面名 miss 后的第二级 fallback，调用方必须先完成字面查找；严禁把本函数
+// 接入 normalizeChannelPricingModelName 之类的 cache key 归一化——bedrock 的
+// canonical key（如 us.anthropic.claude-sonnet-4-5-20250929-v1:0）本身含 ":0"，
+// 字面名与剥 tag 名塌缩成同一 cache key 会静默互覆渠道定价。
+func normalizePricingModelNameForLookup(model string) (string, bool) {
+	trimmed := strings.TrimSpace(model)
+	idx := strings.LastIndex(trimmed, ":")
+	if idx <= 0 || idx == len(trimmed)-1 {
+		return "", false
+	}
+	return trimmed[:idx], true
+}
+
 func matchGroupModelPricing(group *Group, model string) *ChannelModelPricing {
 	if group == nil {
 		return nil
 	}
+	if cp := matchGroupModelPricingOnce(group, model); cp != nil {
+		return cp
+	}
+	// 字面名（含 ":tag"）未命中时按剥 tag 名再跑一轮。通配 "prefix*" 本就能
+	// 前缀命中带 tag 名，仅 exact 需要补；字面优先，配置名本身带 tag（如
+	// bedrock 的 "-v1:0"）时字面即命中，不会走到这里。
+	if stripped, ok := normalizePricingModelNameForLookup(model); ok {
+		return matchGroupModelPricingOnce(group, stripped)
+	}
+	return nil
+}
+
+func matchGroupModelPricingOnce(group *Group, model string) *ChannelModelPricing {
 	model = normalizeChannelPricingModelName(model)
 	var wildcard *ChannelModelPricing
 	for i := range group.ModelPricing {
@@ -187,6 +217,11 @@ func (r *ModelPricingResolver) resolveBasePricing(model string) (*ModelPricing, 
 //
 // 字面名优先，保证管理员对具体变体的显式配价不被基名覆盖；非 OpenAI 模型
 // normalizeKnownOpenAICodexModel 返回空串，此处天然 no-op。
+//
+// 重试顺序钉死为：字面 → Codex 归一 → 剥 ":tag"。Codex 归一是官方兜底价已
+// 承认的变体名形状，优先级高于剥 tag；剥 tag 只作最后一级（ollama 的
+// /v1/models 返回名可带 tag，如 deepseek-v4-flash:0731）。字面命中时绝不剥：
+// bedrock canonical key（us.anthropic.…-v1:0）本身含 ":0"，字面第一步即返回。
 func (r *ModelPricingResolver) lookupChannelPricingNormalized(ctx context.Context, groupID int64, model string) *ChannelModelPricing {
 	if r.channelService == nil {
 		return nil
@@ -194,11 +229,18 @@ func (r *ModelPricingResolver) lookupChannelPricingNormalized(ctx context.Contex
 	if pricing := r.channelService.GetChannelModelPricing(ctx, groupID, model); pricing != nil {
 		return pricing
 	}
+	// 第二级：OpenAI/Codex 归一重试（issue #5256，行为不变）。
 	normalized := normalizeKnownOpenAICodexModel(model)
-	if normalized == "" || strings.EqualFold(normalized, strings.TrimSpace(model)) {
-		return nil
+	if normalized != "" && !strings.EqualFold(normalized, strings.TrimSpace(model)) {
+		if pricing := r.channelService.GetChannelModelPricing(ctx, groupID, normalized); pricing != nil {
+			return pricing
+		}
 	}
-	return r.channelService.GetChannelModelPricing(ctx, groupID, normalized)
+	// 第三级：剥 ":tag" 重试（剥后名必与字面名不同，无需再去重）。
+	if stripped, ok := normalizePricingModelNameForLookup(model); ok {
+		return r.channelService.GetChannelModelPricing(ctx, groupID, stripped)
+	}
+	return nil
 }
 
 // applyChannelOverrides 应用渠道定价覆盖
