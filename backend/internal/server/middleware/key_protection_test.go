@@ -57,114 +57,145 @@ func protectionRouter(settings *protectionSettingsStub, h gin.HandlerFunc) *gin.
 }
 
 func TestKeyProtectionHTTPRoundTripAuditRetryAndLogs(t *testing.T) {
-	secret := "ghp_" + strings.Repeat("A", 36)
-	for _, protocol := range []string{"chat", "responses", "messages"} {
-		t.Run(protocol, func(t *testing.T) {
-			cfg := keyprotection.DefaultConfig()
-			cfg.Enabled = true
-			settings := &protectionSettingsStub{config: cfg}
-			path := "/v1/chat/completions"
-			auditProtocol := "openai_chat_completions"
-			input := map[string]any{"model": "fake-model", "messages": []any{map[string]any{"role": "user", "content": "请用 " + secret + " 查询仓库，再使用 " + secret}}, "stream": false}
-			if protocol == "responses" {
-				path = "/v1/responses"
-				auditProtocol = "responses"
-				delete(input, "messages")
-				input["input"] = "请用 " + secret + " 查询仓库，再使用 " + secret
-			}
-			if protocol == "messages" {
-				path = "/v1/messages"
-				auditProtocol = "messages"
-				input["max_tokens"] = 100
-			}
-			var upstreamBodies [][]byte
-			var attempts atomic.Int32
-			upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				body, err := io.ReadAll(r.Body)
-				require.NoError(t, err)
-				upstreamBodies = append(upstreamBodies, body)
-				require.NotContains(t, string(body), secret)
-				require.Contains(t, string(body), "keyx_")
-				if attempts.Add(1) == 1 {
-					w.WriteHeader(503)
-					_, _ = w.Write([]byte(`{"error":{"message":"retry fake"}}`))
-					return
-				}
-				var root map[string]any
-				require.NoError(t, json.Unmarshal(body, &root))
-				text := ""
+	const privateKey = "-----BEGIN OPENSSH PRIVATE KEY-----\nZmFrZS1zdWIyYXBpLXNzaC1wcml2YXRlLWtleS1maXh0dXJl\nZmFrZS1wYXlsb2FkLW5vdC1hLXZhbGlkLWtleQ==\n-----END OPENSSH PRIVATE KEY-----"
+	for _, fixture := range []struct{ name, secret string }{{"token", "ghp_" + strings.Repeat("A", 36)}, {"ssh_lf", privateKey}, {"ssh_crlf", strings.ReplaceAll(privateKey, "\n", "\r\n")}} {
+		secret := fixture.secret
+		probe := secret
+		if strings.Contains(secret, "\n") {
+			probe = strings.TrimSpace(strings.Split(secret, "\n")[1])
+		}
+		for _, protocol := range []string{"chat", "responses", "messages"} {
+			t.Run(fixture.name+"/"+protocol, func(t *testing.T) {
+				cfg := keyprotection.DefaultConfig()
+				cfg.Enabled = true
+				settings := &protectionSettingsStub{config: cfg}
+				path := "/v1/chat/completions"
+				auditProtocol := "openai_chat_completions"
+				input := map[string]any{"model": "fake-model", "messages": []any{map[string]any{"role": "user", "content": "请用 " + secret + " 查询仓库，再使用 " + secret}}, "stream": false}
 				if protocol == "responses" {
-					text = root["input"].(string)
-				} else {
-					text = root["messages"].([]any)[0].(map[string]any)["content"].(string)
+					path = "/v1/responses"
+					auditProtocol = "responses"
+					delete(input, "messages")
+					input["input"] = "请用 " + secret + " 查询仓库，再使用 " + secret
 				}
-				args, _ := json.Marshal(map[string]string{"command": text, "escaped": "quotes \" and slash \\\n" + text})
-				var reply any
+				if protocol == "messages" {
+					path = "/v1/messages"
+					auditProtocol = "messages"
+					input["max_tokens"] = 100
+				}
+				var upstreamBodies [][]byte
+				var attempts atomic.Int32
+				upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+					body, err := io.ReadAll(r.Body)
+					require.NoError(t, err)
+					upstreamBodies = append(upstreamBodies, body)
+					require.NotContains(t, string(body), probe)
+					require.NotContains(t, string(body), "PRIVATE KEY")
+					require.Contains(t, string(body), "keyx_")
+					if attempts.Add(1) == 1 {
+						w.WriteHeader(503)
+						_, _ = w.Write([]byte(`{"error":{"message":"retry fake"}}`))
+						return
+					}
+					var root map[string]any
+					require.NoError(t, json.Unmarshal(body, &root))
+					text := ""
+					if protocol == "responses" {
+						text = root["input"].(string)
+					} else {
+						text = root["messages"].([]any)[0].(map[string]any)["content"].(string)
+					}
+					args, _ := json.Marshal(map[string]string{"command": text, "escaped": "quotes \" and slash \\\n" + text})
+					var reply any
+					switch protocol {
+					case "chat":
+						reply = map[string]any{"id": "chat_fake", "choices": []any{map[string]any{"index": 0, "message": map[string]any{"role": "assistant", "content": text, "tool_calls": []any{map[string]any{"id": "call_1", "type": "function", "function": map[string]any{"name": "query", "arguments": string(args)}}}}}}, "usage": map[string]int{"prompt_tokens": 33, "completion_tokens": 9}}
+					case "responses":
+						reply = map[string]any{"id": "resp_fake", "output": []any{map[string]any{"type": "message", "content": []any{map[string]any{"type": "output_text", "text": text}}}, map[string]any{"type": "function_call", "name": "query", "call_id": "call_1", "arguments": string(args)}}, "usage": map[string]int{"input_tokens": 33, "output_tokens": 9}}
+					case "messages":
+						var toolInput any
+						require.NoError(t, json.Unmarshal(args, &toolInput))
+						reply = map[string]any{"id": "msg_fake", "type": "message", "content": []any{map[string]any{"type": "text", "text": text}, map[string]any{"type": "tool_use", "id": "call_1", "name": "query", "input": toolInput}}, "usage": map[string]int{"input_tokens": 33, "output_tokens": 9}}
+					}
+					w.Header().Set("Content-Type", "application/json")
+					require.NoError(t, json.NewEncoder(w).Encode(reply))
+				}))
+				defer upstream.Close()
+				core, observed := observer.New(zap.InfoLevel)
+				router := protectionRouter(settings, func(c *gin.Context) {
+					body, err := httputil.ReadRequestBodyWithPrealloc(c.Request)
+					require.NoError(t, err)
+					snapshot, err := securityaudit.ExtractPromptSnapshot(securityaudit.Request{Protocol: auditProtocol, Body: body})
+					require.NoError(t, err)
+					require.NotContains(t, snapshot.FullPrompt, probe)
+					require.NotContains(t, snapshot.ScanText, probe)
+					require.Contains(t, snapshot.ScanText, "keyx_")
+					cached, ok := c.Get(gin.BodyBytesKey)
+					require.True(t, ok)
+					require.Equal(t, body, cached)
+					// Both simulated failover attempts use the HTTP reread hook.
+					for i := 0; i < 2; i++ {
+						retryBody, err := c.Request.GetBody()
+						require.NoError(t, err)
+						req, err := http.NewRequestWithContext(c.Request.Context(), http.MethodPost, upstream.URL, retryBody)
+						require.NoError(t, err)
+						resp, err := http.DefaultClient.Do(req)
+						require.NoError(t, err)
+						data, err := io.ReadAll(resp.Body)
+						require.NoError(t, err)
+						_ = resp.Body.Close()
+						if resp.StatusCode == 503 {
+							continue
+						}
+						c.Data(resp.StatusCode, "application/json", data)
+					}
+				})
+				body, err := json.Marshal(input)
+				require.NoError(t, err)
+				req := httptest.NewRequest(http.MethodPost, path, bytes.NewReader(body))
+				req.Header.Set("Content-Type", "application/json")
+				req = req.WithContext(logger.IntoContext(req.Context(), zap.New(core)))
+				w := httptest.NewRecorder()
+				router.ServeHTTP(w, req)
+				require.Equal(t, 200, w.Code, w.Body.String())
+				var reply map[string]any
+				require.NoError(t, json.Unmarshal(w.Body.Bytes(), &reply))
+				var clientText, arguments string
+				var toolInput map[string]any
 				switch protocol {
 				case "chat":
-					reply = map[string]any{"id": "chat_fake", "choices": []any{map[string]any{"index": 0, "message": map[string]any{"role": "assistant", "content": text, "tool_calls": []any{map[string]any{"id": "call_1", "type": "function", "function": map[string]any{"name": "query", "arguments": string(args)}}}}}}, "usage": map[string]int{"prompt_tokens": 33, "completion_tokens": 9}}
+					message := reply["choices"].([]any)[0].(map[string]any)["message"].(map[string]any)
+					clientText = message["content"].(string)
+					arguments = message["tool_calls"].([]any)[0].(map[string]any)["function"].(map[string]any)["arguments"].(string)
 				case "responses":
-					reply = map[string]any{"id": "resp_fake", "output": []any{map[string]any{"type": "message", "content": []any{map[string]any{"type": "output_text", "text": text}}}, map[string]any{"type": "function_call", "name": "query", "call_id": "call_1", "arguments": string(args)}}, "usage": map[string]int{"input_tokens": 33, "output_tokens": 9}}
+					output := reply["output"].([]any)
+					clientText = output[0].(map[string]any)["content"].([]any)[0].(map[string]any)["text"].(string)
+					arguments = output[1].(map[string]any)["arguments"].(string)
 				case "messages":
-					var toolInput any
-					require.NoError(t, json.Unmarshal(args, &toolInput))
-					reply = map[string]any{"id": "msg_fake", "type": "message", "content": []any{map[string]any{"type": "text", "text": text}, map[string]any{"type": "tool_use", "id": "call_1", "name": "query", "input": toolInput}}, "usage": map[string]int{"input_tokens": 33, "output_tokens": 9}}
+					content := reply["content"].([]any)
+					clientText = content[0].(map[string]any)["text"].(string)
+					toolInput = content[1].(map[string]any)["input"].(map[string]any)
 				}
-				w.Header().Set("Content-Type", "application/json")
-				require.NoError(t, json.NewEncoder(w).Encode(reply))
-			}))
-			defer upstream.Close()
-			core, observed := observer.New(zap.InfoLevel)
-			router := protectionRouter(settings, func(c *gin.Context) {
-				body, err := httputil.ReadRequestBodyWithPrealloc(c.Request)
-				require.NoError(t, err)
-				snapshot, err := securityaudit.ExtractPromptSnapshot(securityaudit.Request{Protocol: auditProtocol, Body: body})
-				require.NoError(t, err)
-				require.NotContains(t, snapshot.FullPrompt, secret)
-				require.NotContains(t, snapshot.ScanText, secret)
-				require.Contains(t, snapshot.ScanText, "keyx_")
-				cached, ok := c.Get(gin.BodyBytesKey)
-				require.True(t, ok)
-				require.Equal(t, body, cached)
-				// Both simulated failover attempts use the HTTP reread hook.
-				for i := 0; i < 2; i++ {
-					retryBody, err := c.Request.GetBody()
-					require.NoError(t, err)
-					req, err := http.NewRequestWithContext(c.Request.Context(), http.MethodPost, upstream.URL, retryBody)
-					require.NoError(t, err)
-					resp, err := http.DefaultClient.Do(req)
-					require.NoError(t, err)
-					data, err := io.ReadAll(resp.Body)
-					require.NoError(t, err)
-					_ = resp.Body.Close()
-					if resp.StatusCode == 503 {
-						continue
-					}
-					c.Data(resp.StatusCode, "application/json", data)
+				if arguments != "" {
+					require.NoError(t, json.Unmarshal([]byte(arguments), &toolInput))
+				}
+				require.Equal(t, "请用 "+secret+" 查询仓库，再使用 "+secret, clientText)
+				require.Equal(t, clientText, toolInput["command"])
+				require.Equal(t, "quotes \" and slash \\\n"+clientText, toolInput["escaped"])
+				require.NotContains(t, w.Body.String(), "keyx_")
+				require.Contains(t, w.Body.String(), `33`)
+				require.Contains(t, w.Body.String(), `9`)
+				require.True(t, json.Valid(w.Body.Bytes()))
+				require.Len(t, upstreamBodies, 2)
+				require.Equal(t, upstreamBodies[0], upstreamBodies[1])
+				require.ElementsMatch(t, []string{"no-store", "private"}, strings.Split(w.Header().Get("Cache-Control"), ", "))
+				for _, entry := range observed.All() {
+					serialized, _ := json.Marshal(entry.ContextMap())
+					require.NotContains(t, string(serialized), probe)
+					require.NotContains(t, entry.Message, probe)
 				}
 			})
-			body, err := json.Marshal(input)
-			require.NoError(t, err)
-			req := httptest.NewRequest(http.MethodPost, path, bytes.NewReader(body))
-			req.Header.Set("Content-Type", "application/json")
-			req = req.WithContext(logger.IntoContext(req.Context(), zap.New(core)))
-			w := httptest.NewRecorder()
-			router.ServeHTTP(w, req)
-			require.Equal(t, 200, w.Code, w.Body.String())
-			require.Contains(t, w.Body.String(), secret)
-			require.NotContains(t, w.Body.String(), "keyx_")
-			require.Contains(t, w.Body.String(), `33`)
-			require.Contains(t, w.Body.String(), `9`)
-			require.True(t, json.Valid(w.Body.Bytes()))
-			require.Len(t, upstreamBodies, 2)
-			require.Equal(t, upstreamBodies[0], upstreamBodies[1])
-			require.ElementsMatch(t, []string{"no-store", "private"}, strings.Split(w.Header().Get("Cache-Control"), ", "))
-			for _, entry := range observed.All() {
-				serialized, _ := json.Marshal(entry.ContextMap())
-				require.NotContains(t, string(serialized), secret)
-				require.NotContains(t, entry.Message, secret)
-			}
-		})
+		}
 	}
 }
 

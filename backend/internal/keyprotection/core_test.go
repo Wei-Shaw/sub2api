@@ -13,6 +13,79 @@ import (
 const fictionalKey = "ghp_AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
 const fictionalToken = "keyx_49e7237e11464693589bca95fe317f2fde5793bb7d70da9749f55641a5fff406"
 
+func TestPrivateKeyBlocks(t *testing.T) {
+	const payload = "ZmFrZS1wcml2YXRlLWtleS1ub3QtYS1yZWFsLWNyZWRlbnRpYWw="
+	for _, label := range []string{"OPENSSH PRIVATE KEY", "RSA PRIVATE KEY", "EC PRIVATE KEY", "DSA PRIVATE KEY", "PRIVATE KEY", "ENCRYPTED PRIVATE KEY"} {
+		for _, newline := range []string{"\n", "\r\n"} {
+			t.Run(label+fmt.Sprintf("/%q", newline), func(t *testing.T) {
+				secret := "-----BEGIN " + label + "-----" + newline + payload + newline + "-----END " + label + "-----"
+				input := "before\n```\n" + secret + "\n```\nafter: " + secret + "\n"
+				state := testState(t, DefaultConfig())
+				protected, err := state.ProtectText(input)
+				token := fmt.Sprintf("keyx_%x", sha256.Sum256([]byte(secret)))
+				if err != nil || strings.Contains(protected, payload) || strings.Contains(protected, "PRIVATE KEY") || strings.Count(protected, token) != 2 {
+					t.Fatal("private block not replaced as one stable token")
+				}
+				if state.RestoreText(protected) != input || state.Counts()["private_key"] != 2 {
+					t.Fatal("private key line endings, surroundings or counts changed")
+				}
+			})
+		}
+	}
+	// Traditional encrypted PEM has headers before its base64 body.
+	encrypted := "-----BEGIN RSA PRIVATE KEY-----\r\nProc-Type: 4,ENCRYPTED\r\nDEK-Info: AES-256-CBC,0123456789ABCDEF0123456789ABCDEF\r\n\r\n" + payload + "\r\n-----END RSA PRIVATE KEY-----"
+	state := testState(t, DefaultConfig())
+	protected, err := state.ProtectText(encrypted)
+	if err != nil || !IsPlaceholderToken(protected) || state.RestoreText(protected) != encrypted {
+		t.Fatal("legacy encrypted PEM did not round trip")
+	}
+}
+
+func TestPrivateKeyMalformedAndPublicMaterial(t *testing.T) {
+	const begin = "-----BEGIN OPENSSH PRIVATE KEY-----"
+	const payload = "ZmFrZS1wcml2YXRlLWtleS1ub3QtYS1yZWFsLWNyZWRlbnRpYWw="
+	const valid = begin + "\n" + payload + "\n-----END OPENSSH PRIVATE KEY-----"
+	for _, input := range []string{
+		begin, begin + "\n" + payload, begin + payload,
+		begin + "\n" + payload + "\n-----END RSA PRIVATE KEY-----",
+		begin + "\n" + valid + "\n-----END OPENSSH PRIVATE KEY-----",
+		begin + "\n" + payload + "\n" + valid,
+		"sk-proj-" + strings.Repeat("A", 20) + valid,
+		"prefix" + valid, valid + "suffix",
+		"-----BEGIN PGP PRIVATE KEY BLOCK-----\n" + payload,
+		"-----BEGIN UNKNOWN PRIVATE KEY-----\n" + payload,
+		"PuTTY-User-Key-File-3: ssh-ed25519\nPrivate-Lines: 1\n" + payload,
+	} {
+		state := testState(t, DefaultConfig())
+		if result, err := state.ProtectText(input); !errors.Is(err, ErrContent) || result != "" {
+			t.Fatal("incomplete or unsupported private key was allowed through")
+		}
+		// Unknown extensions must not bypass the same detection.
+		body, _ := json.Marshal(map[string]any{"messages": []any{}, "extension": input})
+		if _, err := state.ProtectJSON(body, "chat"); !errors.Is(err, ErrUnsupported) {
+			t.Fatal("unprocessed private-key marker bypassed protection")
+		}
+	}
+	for _, key := range []string{begin + "\n" + payload, valid} {
+		coveredHeader := testState(t, Config{CustomRules: []Rule{{Name: "overlap", Pattern: regexp.QuoteMeta("wrapper\n" + begin)}}})
+		if _, err := coveredHeader.ProtectText("wrapper\n" + key); !errors.Is(err, ErrContent) {
+			t.Fatal("another rule hid a private-key marker while leaving its payload exposed")
+		}
+	}
+	for _, input := range []string{"ssh-ed25519 " + payload + " fixture@example.invalid", "ssh-rsa " + payload, "SHA256:fictional-fingerprint", "-----BEGIN PUBLIC KEY-----\n" + payload + "\n-----END PUBLIC KEY-----", "-----BEGIN CERTIFICATE-----\n" + payload + "\n-----END CERTIFICATE-----"} {
+		if result, err := testState(t, DefaultConfig()).ProtectText(input); err != nil || result != input {
+			t.Fatal("public material was modified")
+		}
+	}
+	disabled := testState(t, Config{Rules: []string{"github"}})
+	if result, err := disabled.ProtectText(valid + begin); err != nil || result != valid+begin {
+		t.Fatal("private-key whitelist opt-out ignored")
+	}
+	if _, err := testState(t, DefaultConfig()).ProtectText(begin + "\n" + strings.Repeat("A", MaxSecretBytes) + "\n-----END OPENSSH PRIVATE KEY-----"); !errors.Is(err, ErrCapacity) {
+		t.Fatal("private key bypassed the existing size limit")
+	}
+}
+
 func TestDeterministicSHA256Placeholders(t *testing.T) {
 	first := testState(t, DefaultConfig())
 	second := testState(t, DefaultConfig())

@@ -31,12 +31,20 @@ The existing settings store holds this non-secret policy; no schema migration is
 }
 ```
 
-- `rules`: an empty list enables all built-in rules. A nonempty list is a whitelist; omit a rule to disable it. Built-ins: `openai`, `anthropic`, `github`, `gitlab`, `google`, `stripe`, `slack`, `huggingface`, `groq`, `npm`.
+- `rules`: an empty list enables all built-in rules. A nonempty list is a whitelist; omit a rule to disable it. Built-ins: `openai`, `anthropic`, `github`, `gitlab`, `google`, `stripe`, `slack`, `huggingface`, `groq`, `npm`, `private_key`.
 - `custom_rules`: editable/deletable Go/RE2 regex rules. Example: `[{"name":"demo","pattern":"demo_[A-Za-z0-9]{32}"}]`. The complete match is replaced. Names must be unique, 1–48 lowercase letters/digits/underscores, starting with a letter. Maximum 32 custom rules; patterns are limited to 2,048 bytes and must not match empty strings. Backend validation rejects invalid rules without logging their text.
 - Both ordinary reply text and tool arguments are restored. There are no masking-only, tools-only, retention, storage or mapping-cleanup controls in this version.
 - Fixed limits: 256 distinct credentials, 1 MiB per credential and 8 MiB of mapping data per request; existing body limits also apply. Exceeding a limit fails before forwarding.
 
 The policy is snapshotted per request. Disabled/unselected requests retain their original body processing. The current implementation still reads settings on each request; an unavailable or invalid policy returns a protection error rather than silently disabling an enabled policy.
+
+## SSH and PEM private keys
+
+The default `private_key` rule replaces complete `OPENSSH PRIVATE KEY`, `RSA PRIVATE KEY`, `EC PRIVATE KEY`, `DSA PRIVATE KEY`, PKCS#8 `PRIVATE KEY` and `ENCRYPTED PRIVATE KEY` blocks with one placeholder. It preserves the BEGIN/END labels, base64 text, LF/CRLF inside the block, and legacy encrypted PEM headers such as `Proc-Type` / `DEK-Info`. Whitespace outside the block remains ordinary context; normal key-file writing should retain a final newline.
+
+No key is decrypted, validated against a server or loaded from the filesystem. Public keys, fingerprints and certificates are unchanged. Known private-key headers with truncated, mismatched, malformed or unsafe overlapping content fail closed. PuTTY `.ppk`, PGP private-key blocks and other recognized `-----BEGIN ... PRIVATE KEY-----` labels are explicitly rejected when this rule applies; unlabelled binary/DER/base64 data is not detected by this rule. To opt in from an existing nonempty whitelist, add `private_key`; an empty whitelist already includes it.
+
+Format references: [OpenSSH private-key format](https://github.com/openssh/openssh-portable/blob/master/PROTOCOL.key), [PKCS#8 textual encodings](https://www.rfc-editor.org/rfc/rfc7468.html#section-10). Encrypting a PEM file does not change its treatment as user-supplied text; opaque encrypted protocol-history fields remain unsupported.
 
 ## Supported paths and limitations
 
@@ -85,3 +93,5 @@ Tests cover SHA256 stability, duplicate/multiple keys, request/user isolation, f
 Local acceptance additionally runs the built gateway with PostgreSQL/Redis and an actual OpenCode client against a deterministic local model mock. Redis remains a normal Sub2API dependency, not a credential-map store. No real provider key or paid model is used. Acceptance scripts and credential-bearing local artifacts are excluded from this feature branch.
 
 Verified locally on 2026-09-13: 24 gateway acceptance checks (including 204 SSE split cases), four audit checks, three actual OpenCode protocol runs with tool execution and full-history continuation, and eight browser checks passed. Related Go package suites, vet, frontend tests/type checks and the embedded application build also passed.
+
+SSH/PEM extension verified on 2026-09-14: core/middleware suites and existing SSE split/tool matrices with LF/CRLF private-key fixtures passed, as did 21 live JSON format/protocol round trips and five unsafe-input rejections. Actual OpenCode passed all three protocols using a newly generated, never-authorized local Ed25519 fixture; restored files matched the original bytes and derived the same public key via `ssh-keygen` after applying private-file permissions. No SSH server connection was made. Frontend build/type/i18n checks and Go vet/build passed.

@@ -11,7 +11,7 @@ export default {
         advanced: 'Detection rules',
         rules: 'Built-in rule IDs (comma separated; empty = all defaults)',
         customRules: 'Additional rules (JSON array of name / pattern objects)',
-        rulesHint: 'List the built-in rules to keep; remove custom objects to delete them. Built-in IDs: openai, anthropic, github, gitlab, google, stripe, slack, huggingface, groq, npm. Custom patterns use Go regular expressions; the whole match is replaced.',
+        rulesHint: 'List the built-in rules to keep; remove custom objects to delete them. Built-in IDs: openai, anthropic, github, gitlab, google, stripe, slack, huggingface, groq, npm, private_key (OpenSSH/PEM private keys). Custom patterns use Go regular expressions; the whole match is replaced.',
         save: 'Save key protection settings',
         saved: 'Key protection settings saved',
         loadFailed: 'Could not load key protection settings. Saving is unavailable until the policy can be read.',

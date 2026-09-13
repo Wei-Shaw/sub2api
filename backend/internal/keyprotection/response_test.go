@@ -17,15 +17,25 @@ var writerToken = fmt.Sprintf("keyx_%x", sha256.Sum256([]byte(writerSecret)))
 
 const writerSecret = "fictional-secret-\"quote\\slash\nnewline"
 
-func writerState(t *testing.T) *State {
+const writerPrivateKey = "-----BEGIN OPENSSH PRIVATE KEY-----\nZmFrZS1zdWIyYXBpLXNzaC1wcml2YXRlLWtleS1maXh0dXJl\nZmFrZS1wYXlsb2FkLW5vdC1hLXZhbGlkLWtleQ==\n-----END OPENSSH PRIVATE KEY-----"
+
+func writerState(t *testing.T, fixtures ...string) *State {
 	t.Helper()
-	return testState(t, Config{CustomRules: []Rule{{Name: "quoted_fixture", Pattern: regexp.QuoteMeta(writerSecret)}}}, writerSecret)
+	secret := writerSecret
+	if len(fixtures) > 0 {
+		secret = fixtures[0]
+	}
+	config := DefaultConfig()
+	if secret == writerSecret {
+		config.CustomRules = []Rule{{Name: "quoted_fixture", Pattern: regexp.QuoteMeta(secret)}}
+	}
+	return testState(t, config, secret)
 }
-func testWriter(t *testing.T, protocol string, stream bool) (*ResponseWriter, *httptest.ResponseRecorder) {
+func testWriter(t *testing.T, protocol string, stream bool, fixtures ...string) (*ResponseWriter, *httptest.ResponseRecorder) {
 	t.Helper()
 	recorder := httptest.NewRecorder()
 	ctx, _ := gin.CreateTestContext(recorder)
-	w := NewResponseWriter(ctx.Writer, writerState(t), protocol)
+	w := NewResponseWriter(ctx.Writer, writerState(t, fixtures...), protocol)
 	if stream {
 		w.Header().Set("Content-Type", "text/event-stream")
 	} else {
@@ -114,37 +124,41 @@ func TestProtectedWriterJSONProtocols(t *testing.T) {
 }
 
 func TestProtectedWriterTextEveryPlaceholderAndNetworkSplit(t *testing.T) {
-	for _, protocol := range []string{"chat", "responses", "messages"} {
-		for split := 0; split <= len(writerToken); split++ {
-			w, recorder := testWriter(t, protocol, true)
-			parts := []string{"hello " + writerToken[:split], writerToken[split:] + " 世界"}
-			var input string
-			for _, part := range parts {
+	for _, secret := range []string{writerSecret, writerPrivateKey, strings.ReplaceAll(writerPrivateKey, "\n", "\r\n")} {
+		writerToken := fmt.Sprintf("keyx_%x", sha256.Sum256([]byte(secret)))
+		for _, protocol := range []string{"chat", "responses", "messages"} {
+			for split := 0; split <= len(writerToken); split++ {
+				w, recorder := testWriter(t, protocol, true, secret)
+				parts := []string{"hello " + writerToken[:split], writerToken[split:] + " 世界"}
+				var input string
+				for _, part := range parts {
+					switch protocol {
+					case "chat":
+						input += chatDelta(0, "content", part)
+					case "responses":
+						input += frame("response.output_text.delta", map[string]any{"type": "response.output_text.delta", "output_index": 0, "content_index": 0, "delta": part})
+					case "messages":
+						input += frame("content_block_delta", map[string]any{"type": "content_block_delta", "index": 0, "delta": map[string]any{"type": "text_delta", "text": part}})
+					}
+				}
 				switch protocol {
 				case "chat":
-					input += chatDelta(0, "content", part)
+					input += finishChat()
 				case "responses":
-					input += frame("response.output_text.delta", map[string]any{"type": "response.output_text.delta", "output_index": 0, "content_index": 0, "delta": part})
+					input += frame("response.completed", map[string]any{"type": "response.completed", "response": map[string]any{"id": "resp_test", "output": []any{}}})
 				case "messages":
-					input += frame("content_block_delta", map[string]any{"type": "content_block_delta", "index": 0, "delta": map[string]any{"type": "text_delta", "text": part}})
+					input += frame("message_stop", map[string]any{"type": "message_stop"})
 				}
+				// Byte-at-a-time delivery splits every SSE field, JSON escape and UTF-8 sequence.
+				for i := range []byte(input) {
+					_, err := w.Write([]byte{input[i]})
+					require.NoError(t, err, "%s split %d", protocol, split)
+				}
+				require.NoError(t, w.Finish())
+				require.Equal(t, "hello "+secret+" 世界", joinedText(t, recorder.Body.String(), protocol), "%s split %d", protocol, split)
 			}
-			switch protocol {
-			case "chat":
-				input += finishChat()
-			case "responses":
-				input += frame("response.completed", map[string]any{"type": "response.completed", "response": map[string]any{"id": "resp_test", "output": []any{}}})
-			case "messages":
-				input += frame("message_stop", map[string]any{"type": "message_stop"})
-			}
-			// Byte-at-a-time delivery splits every SSE field, JSON escape and UTF-8 sequence.
-			for i := range []byte(input) {
-				_, err := w.Write([]byte{input[i]})
-				require.NoError(t, err, "%s split %d", protocol, split)
-			}
-			require.NoError(t, w.Finish())
-			require.Equal(t, "hello "+writerSecret+" 世界", joinedText(t, recorder.Body.String(), protocol), "%s split %d", protocol, split)
 		}
+
 	}
 }
 
@@ -161,39 +175,43 @@ func TestProtectedWriterPlaceholderBoundariesAndForgery(t *testing.T) {
 }
 
 func TestProtectedWriterInterleavedToolArguments(t *testing.T) {
-	w, recorder := testWriter(t, "chat", true)
-	tool := func(index int, arg string) string {
-		return chatDelta(0, "tool_calls", []any{map[string]any{"index": index, "function": map[string]any{"arguments": arg}}})
-	}
-	_, err := w.WriteString(tool(0, `{"key":"`+writerToken[:13]) + tool(1, `{"other":"`+writerToken) + chatDelta(1, "content", "independent text"))
-	require.NoError(t, err)
-	require.Contains(t, recorder.Body.String(), "independent text")
-	require.NotContains(t, recorder.Body.String(), "fictional-secret")
-	_, err = w.WriteString(tool(0, writerToken[13:]+`","n":9007199254740993}`) + tool(1, `"}`) + finishChat())
-	require.NoError(t, err)
-	require.NoError(t, w.Finish())
-	arguments := map[string]string{}
-	for _, obj := range events(t, recorder.Body.String()) {
-		for _, raw := range obj["choices"].([]any) {
-			delta := raw.(map[string]any)["delta"].(map[string]any)
-			calls, _ := delta["tool_calls"].([]any)
-			for _, rawCall := range calls {
-				call := rawCall.(map[string]any)
-				arguments[idx(call["index"])] += str(call["function"].(map[string]any)["arguments"])
+	for _, secret := range []string{writerSecret, writerPrivateKey, strings.ReplaceAll(writerPrivateKey, "\n", "\r\n")} {
+		writerToken := fmt.Sprintf("keyx_%x", sha256.Sum256([]byte(secret)))
+		w, recorder := testWriter(t, "chat", true, secret)
+		tool := func(index int, arg string) string {
+			return chatDelta(0, "tool_calls", []any{map[string]any{"index": index, "function": map[string]any{"arguments": arg}}})
+		}
+		_, err := w.WriteString(tool(0, `{"key":"`+writerToken[:13]) + tool(1, `{"other":"`+writerToken) + chatDelta(1, "content", "independent text"))
+		require.NoError(t, err)
+		require.Contains(t, recorder.Body.String(), "independent text")
+		require.NotContains(t, recorder.Body.String(), "fictional-secret")
+		_, err = w.WriteString(tool(0, writerToken[13:]+`","n":9007199254740993}`) + tool(1, `"}`) + finishChat())
+		require.NoError(t, err)
+		require.NoError(t, w.Finish())
+		arguments := map[string]string{}
+		for _, obj := range events(t, recorder.Body.String()) {
+			for _, raw := range obj["choices"].([]any) {
+				delta := raw.(map[string]any)["delta"].(map[string]any)
+				calls, _ := delta["tool_calls"].([]any)
+				for _, rawCall := range calls {
+					call := rawCall.(map[string]any)
+					arguments[idx(call["index"])] += str(call["function"].(map[string]any)["arguments"])
+				}
 			}
 		}
-	}
-	for _, value := range arguments {
-		obj, err := decodeObject([]byte(value))
-		require.NoError(t, err)
-		if key, ok := obj["key"]; ok {
-			require.Equal(t, writerSecret, key)
-			require.Equal(t, json.Number("9007199254740993"), obj["n"])
-		} else {
-			require.Equal(t, writerSecret, obj["other"])
+		for _, value := range arguments {
+			obj, err := decodeObject([]byte(value))
+			require.NoError(t, err)
+			if key, ok := obj["key"]; ok {
+				require.Equal(t, secret, key)
+				require.Equal(t, json.Number("9007199254740993"), obj["n"])
+			} else {
+				require.Equal(t, secret, obj["other"])
+			}
 		}
+		require.Len(t, arguments, 2)
+
 	}
-	require.Len(t, arguments, 2)
 }
 
 func TestProtectedWriterBoundedTailAndCancellation(t *testing.T) {
@@ -232,47 +250,51 @@ func TestProtectedWriterFailureIsFixedAndNoUncheckedTail(t *testing.T) {
 }
 
 func TestProtectedWriterResponsesAndMessagesToolsEverySplit(t *testing.T) {
-	arguments := `{"key":"` + writerToken + `","quoted":"a\\b\"c","n":9007199254740993}`
-	for _, protocol := range []string{"responses", "messages"} {
-		for split := 0; split <= len(arguments); split++ {
-			w, recorder := testWriter(t, protocol, true)
-			var input string
-			for _, part := range []string{arguments[:split], arguments[split:]} {
-				if protocol == "responses" {
-					input += frame("response.function_call_arguments.delta", map[string]any{"type": "response.function_call_arguments.delta", "item_id": "call_1", "output_index": 1, "delta": part})
-				} else {
-					input += frame("content_block_delta", map[string]any{"type": "content_block_delta", "index": 1, "delta": map[string]any{"type": "input_json_delta", "partial_json": part}})
-				}
-			}
-			if protocol == "responses" {
-				input += frame("response.function_call_arguments.done", map[string]any{"type": "response.function_call_arguments.done", "item_id": "call_1", "output_index": 1, "arguments": arguments})
-				input += frame("response.completed", map[string]any{"type": "response.completed", "response": map[string]any{"id": "response_1", "output": []any{map[string]any{"type": "function_call", "arguments": arguments}}}}) + "data: [DONE]\n\n"
-			} else {
-				input += frame("content_block_stop", map[string]any{"type": "content_block_stop", "index": 1}) + frame("message_stop", map[string]any{"type": "message_stop"})
-			}
-			_, err := w.WriteString(input)
-			require.NoError(t, err, "%s split %d", protocol, split)
-			require.NoError(t, w.Finish())
-			var got string
-			for _, obj := range events(t, recorder.Body.String()) {
-				if protocol == "responses" {
-					switch str(obj["type"]) {
-					case "response.function_call_arguments.delta":
-						got += str(obj["delta"])
-					case "response.function_call_arguments.done":
-						require.Equal(t, got, str(obj["arguments"]))
-					case "response.completed":
-						require.Equal(t, got, str(obj["response"].(map[string]any)["output"].([]any)[0].(map[string]any)["arguments"]))
+	for _, secret := range []string{writerSecret, writerPrivateKey, strings.ReplaceAll(writerPrivateKey, "\n", "\r\n")} {
+		writerToken := fmt.Sprintf("keyx_%x", sha256.Sum256([]byte(secret)))
+		arguments := `{"key":"` + writerToken + `","quoted":"a\\b\"c","n":9007199254740993}`
+		for _, protocol := range []string{"responses", "messages"} {
+			for split := 0; split <= len(arguments); split++ {
+				w, recorder := testWriter(t, protocol, true, secret)
+				var input string
+				for _, part := range []string{arguments[:split], arguments[split:]} {
+					if protocol == "responses" {
+						input += frame("response.function_call_arguments.delta", map[string]any{"type": "response.function_call_arguments.delta", "item_id": "call_1", "output_index": 1, "delta": part})
+					} else {
+						input += frame("content_block_delta", map[string]any{"type": "content_block_delta", "index": 1, "delta": map[string]any{"type": "input_json_delta", "partial_json": part}})
 					}
-				} else if delta, ok := obj["delta"].(map[string]any); ok {
-					got += str(delta["partial_json"])
 				}
+				if protocol == "responses" {
+					input += frame("response.function_call_arguments.done", map[string]any{"type": "response.function_call_arguments.done", "item_id": "call_1", "output_index": 1, "arguments": arguments})
+					input += frame("response.completed", map[string]any{"type": "response.completed", "response": map[string]any{"id": "response_1", "output": []any{map[string]any{"type": "function_call", "arguments": arguments}}}}) + "data: [DONE]\n\n"
+				} else {
+					input += frame("content_block_stop", map[string]any{"type": "content_block_stop", "index": 1}) + frame("message_stop", map[string]any{"type": "message_stop"})
+				}
+				_, err := w.WriteString(input)
+				require.NoError(t, err, "%s split %d", protocol, split)
+				require.NoError(t, w.Finish())
+				var got string
+				for _, obj := range events(t, recorder.Body.String()) {
+					if protocol == "responses" {
+						switch str(obj["type"]) {
+						case "response.function_call_arguments.delta":
+							got += str(obj["delta"])
+						case "response.function_call_arguments.done":
+							require.Equal(t, got, str(obj["arguments"]))
+						case "response.completed":
+							require.Equal(t, got, str(obj["response"].(map[string]any)["output"].([]any)[0].(map[string]any)["arguments"]))
+						}
+					} else if delta, ok := obj["delta"].(map[string]any); ok {
+						got += str(delta["partial_json"])
+					}
+				}
+				obj, err := decodeObject([]byte(got))
+				require.NoError(t, err)
+				require.Equal(t, secret, obj["key"])
+				require.Equal(t, json.Number("9007199254740993"), obj["n"])
 			}
-			obj, err := decodeObject([]byte(got))
-			require.NoError(t, err)
-			require.Equal(t, writerSecret, obj["key"])
-			require.Equal(t, json.Number("9007199254740993"), obj["n"])
 		}
+
 	}
 }
 

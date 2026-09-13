@@ -163,10 +163,18 @@ func (s *State) ProtectText(text string) (string, error) {
 	var out strings.Builder
 	last := 0
 	for _, found := range matches {
+		secret := text[found.start:found.end]
+		// The private-key rule also recognizes bare BEGIN markers so a damaged
+		// or truncated block fails closed instead of leaking its remaining body.
+		if found.rule == "private_key" && (!strings.Contains(secret, "\n") || !bounded(text, found.start, found.end)) {
+			return "", ErrContent
+		}
 		if found.start < last {
+			if found.end > last {
+				return "", ErrContent
+			}
 			continue
 		}
-		secret := text[found.start:found.end]
 		if len(secret) > MaxSecretBytes {
 			return "", ErrCapacity
 		}
@@ -244,6 +252,19 @@ var builtinRules = []Rule{
 	{Name: "huggingface", Pattern: `hf_[A-Za-z0-9]{34}`},
 	{Name: "groq", Pattern: `gsk_[A-Za-z0-9]{52}`},
 	{Name: "npm", Pattern: `npm_[A-Za-z0-9]{36}`},
+	{Name: "private_key", Pattern: privateKeyPattern()},
+}
+
+func privateKeyPattern() string {
+	var patterns []string
+	for _, label := range []string{"OPENSSH PRIVATE KEY", "RSA PRIVATE KEY", "EC PRIVATE KEY", "DSA PRIVATE KEY", "PRIVATE KEY", "ENCRYPTED PRIVATE KEY"} {
+		// Match the same BEGIN/END label without RE2 backreferences. PEM headers
+		// include legacy Proc-Type/DEK-Info; preserve their text and line endings.
+		patterns = append(patterns, "-----BEGIN "+label+`-----[ \t]*\r?\n(?:[A-Za-z0-9-]+:[^\r\n]*\r?\n)*[ \t\r\n]*[A-Za-z0-9+/=][A-Za-z0-9+/= \t\r\n]*\r?\n[ \t]*-----END `+label+"-----")
+	}
+	// Keep the incomplete-header alternative last: complete blocks win, while
+	// unmatched headers remain detectable in both normal and unknown fields.
+	return strings.Join(patterns, "|") + `|-----BEGIN (?:[A-Z0-9-]+ )*PRIVATE KEY(?: BLOCK)?-----|PuTTY-User-Key-File-[23]:`
 }
 
 func BuiltinRuleNames() []string {
@@ -292,7 +313,7 @@ func (s *State) matches(text string) []match {
 	var found []match
 	for _, rule := range s.rules {
 		for _, span := range rule.expression.FindAllStringIndex(text, -1) {
-			if span[0] != span[1] && bounded(text, span[0], span[1]) && !IsPlaceholderToken(text[span[0]:span[1]]) {
+			if span[0] != span[1] && (rule.name == "private_key" || bounded(text, span[0], span[1])) && !IsPlaceholderToken(text[span[0]:span[1]]) {
 				found = append(found, match{span[0], span[1], rule.name})
 			}
 		}

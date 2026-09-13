@@ -11,7 +11,7 @@ export default {
         advanced: '识别规则',
         rules: '内置规则编号（逗号分隔，留空使用全部默认规则）',
         customRules: '附加规则（含 name / pattern 的 JSON 对象数组）',
-        rulesHint: '填写需要保留的内置规则；删除附加规则对象即可停用。内置编号：openai、anthropic、github、gitlab、google、stripe、slack、huggingface、groq、npm。自定义模式使用 Go 正则表达式，替换整个匹配结果。',
+        rulesHint: '填写需要保留的内置规则；删除附加规则对象即可停用。内置编号：openai、anthropic、github、gitlab、google、stripe、slack、huggingface、groq、npm、private_key（OpenSSH/PEM 私钥）。自定义模式使用 Go 正则表达式，替换整个匹配结果。',
         save: '保存密钥保护设置',
         saved: '密钥保护设置已保存',
         loadFailed: '无法读取密钥保护设置。在成功读取前不可保存。',
