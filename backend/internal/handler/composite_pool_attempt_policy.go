@@ -217,3 +217,96 @@ func respondCompositePoolAttemptPolicyFailure(c *gin.Context, failure compositeP
 	}
 	write(c, http.StatusServiceUnavailable, "api_error", "Service temporarily unavailable")
 }
+
+// compositePoolAccountDelegatesToOpenAI 报告池请求选中的账号是否需要委派 OpenAI
+// 网关的 /v1/messages 兼容链转发。generic（Anthropic 原生）转发路径覆盖：
+// anthropic 原生、gemini / antigravity 既有调度平台，以及能解析出 Anthropic 协议
+// 上游 base 的 anthropic-协议 / adaptive 多协议账号（service 层已按账号协议化
+// 上游 base）；其余纯 OpenAI 族账号（openai/grok/国产供应商/OpenCode Go，无
+// Anthropic 协议能力）由委派链完成协议转换。仅池激活时调用。
+func compositePoolAccountDelegatesToOpenAI(account *service.Account) bool {
+	if account == nil {
+		return false
+	}
+	switch account.Platform {
+	case service.PlatformAnthropic, service.PlatformGemini, service.PlatformAntigravity:
+		return false
+	}
+	if account.IsAnthropicProtocol() || account.IsAdaptiveAPIProtocol() {
+		// 多协议账号走既有 generic Forward（servable 门已保证 Anthropic 协议
+		// base 非空）；不应停留在 Chat Completions 协议上被误委派。
+		return false
+	}
+	return true
+}
+
+// compositePoolAccountDelegatesResponsesToOpenAI 报告池请求选中的账号在入站
+// /v1/responses 时是否委派 OpenAI 网关 Responses 链（OpenAIGatewayService.Forward）
+// 转发。入站同族优先（零或近零转换）：纯 OpenAI 族账号（openai/grok/国产 CC 固定/
+// OpenCode Go）与具备原生 Responses 端点的国产账号（UsesNativeCNResponses，含
+// fixed responses 与 adaptive）交该链按账号协议直连或轻量转换；anthropic 原生 /
+// gemini / antigravity / anthropic-协议 / 无原生 Responses 的 adaptive 账号走
+// 既有 generic Responses→Anthropic 转换。仅池激活时调用。
+func compositePoolAccountDelegatesResponsesToOpenAI(account *service.Account) bool {
+	if account == nil {
+		return false
+	}
+	return compositePoolAccountDelegatesToOpenAI(account) || account.UsesNativeCNResponses()
+}
+
+// compositePoolAccountDelegatesChatCompletionsToOpenAI 报告池请求选中的账号在入站
+// /v1/chat/completions 时是否委派 OpenAI 网关 CC 链（OpenAIGatewayService.
+// ForwardAsChatCompletions）转发。入站同族优先（零转换）：OpenAI 兼容族账号交该链，
+// 其中 adaptive 国产账号由该链直转供应商原生 CC 端点（forwardAsChatCompletions 的
+// adaptive 分支，与其在纯 OpenAI 族池中的行为一致）；anthropic-协议 / gemini /
+// antigravity 走既有 generic CC→Anthropic 转换。仅池激活时调用。
+func compositePoolAccountDelegatesChatCompletionsToOpenAI(account *service.Account) bool {
+	if account == nil {
+		return false
+	}
+	return account.IsOpenAICompatible() && !account.IsAnthropicProtocol()
+}
+
+// adaptOpenAIForwardResultToForwardResult 把委派链（OpenAIGatewayService 转发方法）
+// 的转发结果适配进 generic 计费链的 ForwardResult：usage token 计数、模型、请求
+// 元数据与图片/搜索计费字段逐字段映射，经既有 usage 提交流入账，计费不丢。
+// nil 安全；错误路径携带的部分结果（流中断排水 usage）同样适配。
+func adaptOpenAIForwardResultToForwardResult(src *service.OpenAIForwardResult) *service.ForwardResult {
+	if src == nil {
+		return nil
+	}
+	return &service.ForwardResult{
+		RequestID:       src.RequestID,
+		UpstreamHeaders: src.UpstreamHeaders,
+		Usage: service.ClaudeUsage{
+			InputTokens:              src.Usage.InputTokens,
+			OutputTokens:             src.Usage.OutputTokens,
+			CacheCreationInputTokens: src.Usage.CacheCreationInputTokens,
+			CacheReadInputTokens:     src.Usage.CacheReadInputTokens,
+			ImageOutputTokens:        src.Usage.ImageOutputTokens,
+		},
+		Model:                         src.Model,
+		UpstreamModel:                 src.UpstreamModel,
+		UpstreamResponseModel:         src.UpstreamResponseModel,
+		UpstreamResponseModelConflict: src.UpstreamResponseModelConflict,
+		UpstreamResponseServiceTier:   src.UpstreamResponseServiceTier,
+		Stream:                        src.Stream,
+		Duration:                      src.Duration,
+		FirstTokenMs:                  src.FirstTokenMs,
+		ClientDisconnect:              src.ClientDisconnect,
+		ReasoningEffort:               src.ReasoningEffort,
+		RequestedReasoningEffort:      src.RequestedReasoningEffort,
+		ServiceTier:                   src.ServiceTier,
+		SearchCount:                   src.SearchCount,
+		AudioUsage:                    src.AudioUsage,
+		// 生图计费字段：/v1/responses 是 token+图片混合计费端点，委派链产出的
+		// 图片尺寸/数量必须随 usage 进入 generic 计费链（B2 扩展）。
+		ImageCount:         src.ImageCount,
+		ImageSize:          src.ImageSize,
+		ImageInputSize:     src.ImageInputSize,
+		ImageOutputSize:    src.ImageOutputSize,
+		ImageOutputSizes:   src.ImageOutputSizes,
+		ImageSizeSource:    src.ImageSizeSource,
+		ImageSizeBreakdown: src.ImageSizeBreakdown,
+	}
+}

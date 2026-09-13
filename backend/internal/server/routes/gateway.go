@@ -559,8 +559,8 @@ func isCompositeOpenAIFamilyPool(candidates []string) bool {
 
 // isOpenAIResponsesCompatibleGatewayPlatform 报告请求是否应进入 OpenAI 兼容族
 // handler。账号池请求没有单一目标平台：池候选全部属于兼容族才进入，混入其他
-// 族时返回 false，由 dispatchOpenAICompatibleGateway 显式拒绝，不允许按池大小
-// 或猜测选族。
+// 族的池返回 false 落通用网关（generic handler 按选中账号的协议能力分发，
+// 不再显式拒绝），不允许按池大小或猜测选族。
 func isOpenAIResponsesCompatibleGatewayPlatform(c *gin.Context) bool {
 	if candidates, ok := compositePoolCandidatePlatforms(c); ok {
 		return isCompositeOpenAIFamilyPool(candidates)
@@ -570,15 +570,16 @@ func isOpenAIResponsesCompatibleGatewayPlatform(c *gin.Context) bool {
 
 // dispatchOpenAICompatibleGateway 把文本端点（messages/responses/chat
 // completions）路由进 OpenAI 兼容族：账号池候选全部属于兼容族 → OpenAI 网关；
-// 跨族池 → 显式 400（点名候选，不落入通用网关的错误协议）；单目标沿用既有族
-// 判断落通用网关。
+// 其余（跨族池 / 全原生协议族池）落通用网关——generic handler 在池激活时按
+// 选中账号的协议能力分发转发，不信任「一定有 anthropic 能力」；单目标沿用
+// 既有族判断落通用网关。
 func dispatchOpenAICompatibleGateway(c *gin.Context, openAIHandler, genericHandler gin.HandlerFunc) {
 	if candidates, ok := compositePoolCandidatePlatforms(c); ok {
 		if isCompositeOpenAIFamilyPool(candidates) {
 			openAIHandler(c)
 			return
 		}
-		rejectCompositeCrossFamilyPool(c, candidates)
+		genericHandler(c)
 		return
 	}
 	if isOpenAICompatibleGatewayFamilyPlatform(getGroupPlatform(c)) {
@@ -590,15 +591,15 @@ func dispatchOpenAICompatibleGateway(c *gin.Context, openAIHandler, genericHandl
 
 // dispatchOpenAICompatibleCountTokens 沿用 count_tokens 的既有语义：openai 与
 // 国产兼容供应商走 OpenAI CountTokens，grok 走本地估算；账号池候选全部属于
-// 兼容族时进入 OpenAI CountTokens（沿用其原有端点能力/不支持语义），跨族池
-// 明确拒绝。
+// 兼容族时进入 OpenAI CountTokens（沿用其原有端点能力/不支持语义），其余池落
+// 通用 CountTokens（generic 链路对不可计数账号按排除重选处理）。
 func dispatchOpenAICompatibleCountTokens(c *gin.Context, compatibleHandler, grokHandler, genericHandler gin.HandlerFunc) {
 	if candidates, ok := compositePoolCandidatePlatforms(c); ok {
 		if isCompositeOpenAIFamilyPool(candidates) {
 			compatibleHandler(c)
 			return
 		}
-		rejectCompositeCrossFamilyPool(c, candidates)
+		genericHandler(c)
 		return
 	}
 	switch getGroupPlatform(c) {
@@ -609,23 +610,6 @@ func dispatchOpenAICompatibleCountTokens(c *gin.Context, compatibleHandler, grok
 	default:
 		genericHandler(c)
 	}
-}
-
-// rejectCompositeCrossFamilyPool 对混入非兼容族候选（或全部为原生协议族）的
-// 账号池写显式 400 并点名候选平台：这类请求没有统一的 handler 家族，
-// 猜测单个平台或落入通用网关都会产生误导性错误。
-func rejectCompositeCrossFamilyPool(c *gin.Context, candidates []string) {
-	foreign := make([]string, 0, len(candidates))
-	for _, platform := range candidates {
-		if !isOpenAICompatibleGatewayFamilyPlatform(platform) {
-			foreign = append(foreign, platform)
-		}
-	}
-	writeCompositeRouteAdmissionError(c, http.StatusBadRequest, fmt.Sprintf(
-		"Composite account pool for this model spans multiple protocol families (candidates: %s; unsupported for OpenAI-compatible endpoints: %s)",
-		strings.Join(candidates, ", "),
-		strings.Join(foreign, ", "),
-	))
 }
 
 func compositeTargetPlatformMiddleware(resolver *service.CompositeRouteResolver) gin.HandlerFunc {

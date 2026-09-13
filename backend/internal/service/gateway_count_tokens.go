@@ -377,14 +377,19 @@ func (s *GatewayService) buildCountTokensRequestAnthropicAPIKeyPassthrough(
 	token string,
 ) (*http.Request, error) {
 	body = stripDeferredToolCacheControl(body)
+	// 与 buildUpstreamRequestAnthropicAPIKeyPassthrough 同源的 base 协议化：
+	// CN/多协议账号按协议 base 拼 /v1/messages/count_tokens（无 ?beta=true）；
+	// classic anthropic 保持 GetBaseURL()+"/v1/messages/count_tokens?beta=true"。
 	targetURL := claudeAPICountTokensURL
-	baseURL := account.GetBaseURL()
-	if baseURL != "" {
-		validatedURL, err := s.validateUpstreamBaseURL(baseURL)
+	anthropicBase := anthropicUpstreamBaseForAuth(account)
+	if account.Type == AccountTypeAPIKey {
+		protocolTargetURL, err := s.anthropicUpstreamTargetURL(account, "/v1/messages/count_tokens")
 		if err != nil {
 			return nil, err
 		}
-		targetURL = validatedURL + "/v1/messages/count_tokens?beta=true"
+		if protocolTargetURL != "" {
+			targetURL = protocolTargetURL
+		}
 	}
 	body = sanitizeCountTokensRequestBody(body)
 
@@ -424,8 +429,8 @@ func (s *GatewayService) buildCountTokensRequestAnthropicAPIKeyPassthrough(
 	req.Header.Del("x-goog-api-key")
 	req.Header.Del("cookie")
 	// Ollama Cloud Anthropic 兼容端点按实际 base_url 强制 Bearer（同上方
-	// targetURL 的 base 取值），其余保持 extra/default 行为。
-	setAnthropicAPIKeyAuthHeader(req.Header, account, token, account.GetBaseURL())
+	// targetURL 的协议化 base 取值），其余保持 extra/default 行为。
+	setAnthropicAPIKeyAuthHeader(req.Header, account, token, anthropicBase)
 
 	if req.Header.Get("content-type") == "" {
 		req.Header.Set("content-type", "application/json")
@@ -443,16 +448,19 @@ func (s *GatewayService) buildCountTokensRequestAnthropicAPIKeyPassthrough(
 // buildCountTokensRequest 构建 count_tokens 上游请求
 func (s *GatewayService) buildCountTokensRequest(ctx context.Context, c *gin.Context, account *Account, body []byte, token, tokenType, modelID string, mimicClaudeCode bool) (*http.Request, []byte, error) {
 	body = stripDeferredToolCacheControl(body)
-	// 确定目标 URL
+	// 确定目标 URL。base 协议化与 buildUpstreamRequest 同源：CN/多协议账号
+	//（api_protocol=anthropic/adaptive）按 {base}/v1/messages/count_tokens 拼、
+	// 不带 ?beta=true；classic anthropic 保持 GetBaseURL()+...?beta=true。认证与
+	// 本次实际选用的 base 同源（anthropicUpstreamBaseForAuth）。
 	targetURL := claudeAPICountTokensURL
+	anthropicBase := anthropicUpstreamBaseForAuth(account)
 	if account.Type == AccountTypeAPIKey {
-		baseURL := account.GetBaseURL()
-		if baseURL != "" {
-			validatedURL, err := s.validateUpstreamBaseURL(baseURL)
-			if err != nil {
-				return nil, nil, err
-			}
-			targetURL = validatedURL + "/v1/messages/count_tokens?beta=true"
+		protocolTargetURL, err := s.anthropicUpstreamTargetURL(account, "/v1/messages/count_tokens")
+		if err != nil {
+			return nil, nil, err
+		}
+		if protocolTargetURL != "" {
+			targetURL = protocolTargetURL
 		}
 	} else if account.IsCustomBaseURLEnabled() {
 		customURL := account.GetCustomBaseURL()
@@ -531,8 +539,8 @@ func (s *GatewayService) buildCountTokensRequest(ctx context.Context, c *gin.Con
 		setHeaderRaw(req.Header, "authorization", "Bearer "+token)
 	} else {
 		// Ollama Cloud Anthropic 兼容端点按实际 base_url 强制 Bearer（同上方
-		// targetURL 的 base 取值），其余保持 extra/default 行为。
-		setAnthropicAPIKeyAuthHeader(req.Header, account, token, account.GetBaseURL())
+		// targetURL 的协议化 base 取值），其余保持 extra/default 行为。
+		setAnthropicAPIKeyAuthHeader(req.Header, account, token, anthropicBase)
 	}
 
 	// 白名单透传 headers（恢复真实 wire casing）
