@@ -438,6 +438,36 @@ func (a *Account) GetCredentialAsInt64(key string) int64 {
 	return 0
 }
 
+// GetCredentialAsFloat64 返回浮点型凭据值，缺失或无法解析时返回 0。与
+// GetCredentialAsInt64 同样的类型容忍（JSONB 数字为 float64/json.Number，
+// 运营也可能手写成字符串），供 Ollama Cloud monthly_credit_usd 等金额键读取。
+func (a *Account) GetCredentialAsFloat64(key string) float64 {
+	if a == nil || a.Credentials == nil {
+		return 0
+	}
+	val, ok := a.Credentials[key]
+	if !ok || val == nil {
+		return 0
+	}
+	switch v := val.(type) {
+	case float64:
+		return v
+	case int64:
+		return float64(v)
+	case int:
+		return float64(v)
+	case json.Number:
+		if f, err := v.Float64(); err == nil {
+			return f
+		}
+	case string:
+		if f, err := strconv.ParseFloat(strings.TrimSpace(v), 64); err == nil {
+			return f
+		}
+	}
+	return 0
+}
+
 func (a *Account) IsTempUnschedulableEnabled() bool {
 	if a.Credentials == nil {
 		return false

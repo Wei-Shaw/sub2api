@@ -576,8 +576,11 @@
     <AccountQuotaInfo v-if="account.platform === 'gemini'" :account="account" />
     <!-- Key/Bedrock accounts: show today stats + optional quota bars -->
     <div v-else class="space-y-1">
+      <!-- 按 state 存在与否挂载（不再要求 eligible）：ollama_cloud 本体平台
+           不合格时后端也下发 state（带 eligible_reason），cell 负责展示可解释
+           提示；legacy 宿主平台仍是仅 eligible 下发，行为不变。 -->
       <OllamaCloudUsageCell
-        v-if="account.ollama_cloud_usage?.eligible"
+        v-if="account.ollama_cloud_usage"
         :account="account"
         @updated="handleOllamaCloudUsageUpdated"
       />
@@ -639,7 +642,7 @@
 
       <!-- No data at all -->
       <div
-        v-if="!todayStats && !todayStatsLoading && !hasApiKeyQuota && !account.ollama_cloud_usage?.eligible"
+        v-if="!todayStats && !todayStatsLoading && !hasApiKeyQuota && !account.ollama_cloud_usage"
         class="text-xs text-gray-400"
       >-</div>
     </div>

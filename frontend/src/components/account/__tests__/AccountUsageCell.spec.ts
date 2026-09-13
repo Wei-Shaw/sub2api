@@ -266,17 +266,14 @@ describe('AccountUsageCell', () => {
     expect(getUsage).not.toHaveBeenCalled()
   })
 
-  it.each([
-    { name: '无 ollama_cloud_usage', usage: undefined },
-    { name: 'eligible=false', usage: makeOllamaUsage(9101, { eligible: false }) }
-  ])('ollama_cloud apikey 账号（$name）渲染占位而非 CN quota 格', async ({ usage }) => {
+  it('ollama_cloud apikey 账号（无 ollama_cloud_usage）渲染占位而非 CN quota 格', async () => {
     const wrapper = mount(AccountUsageCell, {
       props: {
         account: makeAccount({
           id: 9101,
           platform: 'ollama_cloud',
           type: 'apikey',
-          ollama_cloud_usage: usage
+          ollama_cloud_usage: undefined
         })
       },
       global: {
@@ -289,6 +286,32 @@ describe('AccountUsageCell', () => {
     expect(wrapper.find('[data-test="embedded-ollama"]').exists()).toBe(false)
     expect(wrapper.find('[data-test="cn-quota-cell"]').exists()).toBe(false)
     expect(wrapper.find('[data-test="cn-balance-cell"]').exists()).toBe(false)
+    expect(getUsage).not.toHaveBeenCalled()
+  })
+
+  // 不合格（如反代 base_url）：后端也下发 state（带 eligible_reason），cell
+  // 照常挂载以展示可解释提示，而不是空白占位。
+  it('ollama_cloud apikey 账号（eligible=false）仍渲染 OllamaCloudUsageCell 展示原因', async () => {
+    const wrapper = mount(AccountUsageCell, {
+      props: {
+        account: makeAccount({
+          id: 9102,
+          platform: 'ollama_cloud',
+          type: 'apikey',
+          ollama_cloud_usage: makeOllamaUsage(9102, {
+            eligible: false,
+            eligible_reason: 'unsupported_base_url'
+          })
+        })
+      },
+      global: {
+        stubs: { ...cnUsageCellStubs, UsageProgressBar: true, AccountQuotaInfo: true }
+      }
+    })
+
+    await flushPromises()
+
+    expect(wrapper.find('[data-test="embedded-ollama"]').exists()).toBe(true)
     expect(getUsage).not.toHaveBeenCalled()
   })
 

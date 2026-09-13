@@ -4,22 +4,50 @@
     class="min-w-0 max-w-full space-y-1"
     data-testid="ollama-cloud-usage-cell"
   >
+    <!-- legacy 模式：官方 5h / 7d 滚动窗口。credits 账号的官方 settings 页也会
+         夹带窗口数据，但与月度信用池语义不符，按 mode 不渲染以免误导运营。 -->
+    <template v-if="!isCredits">
+      <UsageProgressBar
+        v-if="snapshot?.data?.five_hour"
+        label="5h"
+        :utilization="snapshot.data.five_hour.used_percent"
+        :resets-at="snapshot.data.five_hour.reset_at"
+        color="indigo"
+        data-testid="ollama-cloud-five-hour"
+      />
+      <UsageProgressBar
+        v-if="snapshot?.data?.seven_day"
+        label="7d"
+        :utilization="snapshot.data.seven_day.used_percent"
+        :resets-at="snapshot.data.seven_day.reset_at"
+        color="emerald"
+        data-testid="ollama-cloud-seven-day"
+      />
+    </template>
+    <!-- credits 模式：月度信用池已用进度（(pool-balance)/pool，clamp 0-100）。
+         monthly_credit_usd 未录入或余额解析失败时不渲染，只显示原始余额文本。 -->
     <UsageProgressBar
-      v-if="snapshot?.data?.five_hour"
-      label="5h"
-      :utilization="snapshot.data.five_hour.used_percent"
-      :resets-at="snapshot.data.five_hour.reset_at"
-      color="indigo"
-      data-testid="ollama-cloud-five-hour"
+      v-if="creditsPoolUtilization !== null"
+      :label="t('admin.accounts.ollamaCloud.monthlyPoolShort')"
+      :utilization="creditsPoolUtilization"
+      color="amber"
+      data-testid="ollama-cloud-monthly-pool"
     />
-    <UsageProgressBar
-      v-if="snapshot?.data?.seven_day"
-      label="7d"
-      :utilization="snapshot.data.seven_day.used_percent"
-      :resets-at="snapshot.data.seven_day.reset_at"
-      color="emerald"
-      data-testid="ollama-cloud-seven-day"
-    />
+    <div
+      v-if="balanceText"
+      class="truncate text-[10px] text-gray-500 dark:text-gray-400"
+      data-testid="ollama-cloud-balance"
+    >
+      {{ balanceLabel }}
+    </div>
+    <!-- credits 模式标注快照新鲜度（余额是采样值，不是实时值）。 -->
+    <div
+      v-if="isCredits && snapshotTimeLabel"
+      class="truncate text-[10px] text-gray-400 dark:text-dark-500"
+      data-testid="ollama-cloud-snapshot-time"
+    >
+      {{ snapshotTimeLabel }}
+    </div>
     <div v-if="state.configured" class="flex items-center pt-0.5">
       <button
         type="button"
@@ -46,6 +74,13 @@
       </button>
     </div>
   </div>
+  <!-- 不合格：展示后端原因码的可解释提示，而不是空白占位。 -->
+  <span
+    v-else-if="eligibleReasonLabel"
+    class="inline-block max-w-full truncate text-[10px] text-amber-600 dark:text-amber-400"
+    :title="eligibleReasonLabel"
+    data-testid="ollama-cloud-usage-ineligible"
+  >{{ eligibleReasonLabel }}</span>
   <span v-else class="text-sm text-gray-400 dark:text-dark-500">-</span>
 </template>
 
@@ -62,6 +97,44 @@ const { t } = useI18n()
 const state = ref(props.account.ollama_cloud_usage)
 const refreshing = ref(false)
 const snapshot = computed(() => state.value?.snapshot)
+const isCredits = computed(() => state.value?.mode === 'ollama_credits')
+
+// balance 是官方文本（如 "$12.00"），派生池进度需要数值：剥掉货币符号与
+// 千分位后 parseFloat；解析不了返回 null（回落为只显示原始文本）。
+const balanceNumber = computed<number | null>(() => {
+  const raw = snapshot.value?.data?.balance
+  if (!raw) return null
+  const parsed = Number.parseFloat(raw.replace(/[^0-9.]/g, ''))
+  return Number.isFinite(parsed) ? parsed : null
+})
+
+// credits 模式的月度信用池已用百分比：(pool - balance) / pool，clamp 0-100。
+const creditsPoolUtilization = computed<number | null>(() => {
+  const pool = state.value?.monthly_credit_usd
+  if (!isCredits.value || !pool || pool <= 0 || balanceNumber.value === null) return null
+  const used = ((pool - balanceNumber.value) / pool) * 100
+  return Math.min(Math.max(used, 0), 100)
+})
+
+const balanceText = computed(() => snapshot.value?.data?.balance ?? '')
+const balanceLabel = computed(() => {
+  const prefix = `${t('admin.accounts.ollamaCloud.balance')}: ${balanceText.value}`
+  const pool = state.value?.monthly_credit_usd
+  return isCredits.value && pool && pool > 0 ? `${prefix} / $${pool}` : prefix
+})
+
+const eligibleReasonLabel = computed(() => {
+  const reason = state.value?.eligible_reason
+  return reason ? t(`admin.accounts.ollamaCloud.eligibleReason.${reason}`) : ''
+})
+
+const snapshotTimeLabel = computed(() => {
+  const raw = snapshot.value?.fetched_at
+  if (!raw) return ''
+  const date = new Date(raw)
+  const formatted = Number.isNaN(date.getTime()) ? raw : date.toLocaleString()
+  return `${t('admin.accounts.ollamaCloud.updatedAt')}: ${formatted}`
+})
 
 watch(() => props.account.ollama_cloud_usage, (next) => {
   state.value = next

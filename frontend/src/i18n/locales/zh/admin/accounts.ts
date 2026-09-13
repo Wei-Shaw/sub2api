@@ -156,6 +156,7 @@ export default {
         sevenDay: '7 天',
         sevenDayShort: '7d',
         balance: '余额',
+        monthlyPoolShort: '月池',
         models: '模型',
         status: '状态',
         updatedAt: '更新时间',
@@ -163,6 +164,11 @@ export default {
         unauthorized: '会话已过期',
         failed: '刷新失败',
         windowWithReset: '已用 {percent}，{reset} 重置',
+        eligibleReason: {
+          platform_not_eligible: '平台不在 Ollama Cloud 用量白名单内',
+          wrong_account_type: '仅 API Key 账号支持用量查询',
+          unsupported_base_url: 'base_url 非官方 ollama.com，无法查询用量'
+        },
         loadFailed: '加载 Ollama Cloud 用量设置失败',
         sessionSaved: 'Ollama 浏览器会话已保存',
         sessionSaveFailed: '保存 Ollama 浏览器会话失败',
