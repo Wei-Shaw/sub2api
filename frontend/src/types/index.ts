@@ -2215,6 +2215,36 @@ export interface AccountUsageSummary {
   } | null
 }
 
+// Persisted OpenAI OAuth quota observations, valued with API reference prices.
+export type AccountQuotaWindow = '5h' | '7d'
+
+export interface AccountWindowUsageEntry {
+  window_start: string
+  window_end: string
+  first_observed_at: string
+  last_sample_at: string | null
+  peak_used_percent: number
+  last_used_percent: number
+  final_used_percent: number | null
+  sample_count: number
+  finalized: boolean
+  end_reason: 'expired' | 'early_reset' | 'window_changed' | 'reset_observed' | null
+  requests: number
+  tokens_total: number
+  api_reference_cost: number | null
+  priced_requests: number
+  missing_pricing_requests: number
+  estimated_reference_limit: number | null
+  estimate_reference_cost: number | null
+  estimate_used_percent: number | null
+  estimate_observed_at: string | null
+  quality_flags: string[]
+}
+
+export interface AccountWindowHistoryResponse {
+  windows: Partial<Record<AccountQuotaWindow, AccountWindowUsageEntry[]>>
+}
+
 export interface AccountUsageStatsResponse {
   history: AccountUsageHistory[]
   summary: AccountUsageSummary

@@ -40,11 +40,15 @@ const (
 // classifyOpenAIOAuth429 区分账号配额耗尽信号与普通瞬时 429。只有窗口达到
 // 100% 或响应体明确给出 reset 时间时，才视为配额限流信号。
 func classifyOpenAIOAuth429(headers http.Header, responseBody []byte) (openAIOAuth429Disposition, *time.Time) {
-	if snapshot := ParseCodexRateLimitHeaders(headers); snapshot != nil {
+	return classifyOpenAIOAuth429Snapshot(ParseCodexRateLimitHeaders(headers), responseBody)
+}
+
+func classifyOpenAIOAuth429Snapshot(snapshot *OpenAICodexUsageSnapshot, responseBody []byte) (openAIOAuth429Disposition, *time.Time) {
+	if snapshot != nil {
 		if normalized := snapshot.Normalize(); normalized != nil {
 			if normalized.Used7dPercent != nil && *normalized.Used7dPercent >= 100 {
 				if normalized.Reset7dSeconds != nil {
-					now := time.Now()
+					now := codexSnapshotBaseTime(snapshot, time.Now())
 					resetAt := now.Add(time.Duration(*normalized.Reset7dSeconds) * time.Second)
 					return openAIOAuth429Quota7d, &resetAt
 				}
@@ -52,7 +56,7 @@ func classifyOpenAIOAuth429(headers http.Header, responseBody []byte) (openAIOAu
 			}
 			if normalized.Used5hPercent != nil && *normalized.Used5hPercent >= 100 {
 				if normalized.Reset5hSeconds != nil {
-					now := time.Now()
+					now := codexSnapshotBaseTime(snapshot, time.Now())
 					resetAt := now.Add(time.Duration(*normalized.Reset5hSeconds) * time.Second)
 					return openAIOAuth429Quota5h, &resetAt
 				}
@@ -60,7 +64,7 @@ func classifyOpenAIOAuth429(headers http.Header, responseBody []byte) (openAIOAu
 			}
 		}
 	}
-	if resetAt := calculateOpenAI429ResetTime(headers); resetAt != nil {
+	if resetAt := calculateOpenAI429ResetTimeFromSnapshot(snapshot); resetAt != nil {
 		return openAIOAuth429QuotaReset, resetAt
 	}
 	if resetUnix := parseOpenAIRateLimitResetTime(responseBody); resetUnix != nil {
@@ -222,7 +226,7 @@ func (s *OpenAIGatewayService) markOpenAIOAuth429RateLimited(ctx context.Context
 		return
 	}
 	s.recordOpenAIOAuth429()
-	disposition, resetAt := classifyOpenAIOAuth429(headers, responseBody)
+	disposition, resetAt := classifyOpenAIOAuth429Snapshot(codexRateLimitSnapshot(ctx, account.ID, headers), responseBody)
 	if disposition == openAIOAuth429Transient && s.openAIOAuth429RetryWindowActive(account) {
 		return
 	}

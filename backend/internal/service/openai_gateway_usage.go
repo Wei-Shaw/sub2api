@@ -174,7 +174,12 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 	if !isGrokVideoUsageResult(result, nil) {
 		ApplyOpenAIImageBillingResolution(result)
 	}
-	logServiceTierBillingDowngrade("service.openai_gateway", account, result.RequestID, ApplyOpenAIServiceTierBillingResolution(billingAccount, result))
+	tierResolution := ApplyOpenAIServiceTierBillingResolution(billingAccount, result)
+	logServiceTierBillingDowngrade("service.openai_gateway", account, result.RequestID, tierResolution)
+	// Use the protocol's effective tier, independently of customer discounts.
+	// Codex can report "default" for Fast turns; its outbound tier remains the
+	// authoritative reference in that case (see ResolveOpenAIServiceTierBilling).
+	referenceServiceTier := tierResolution.Billing
 
 	// OpenAI input_tokens 是总输入，包含缓存读取和缓存写入明细。
 	// 将三类 token 拆成互斥桶，避免缓存写入同时按普通输入和 cache_write 重复计费。
@@ -484,6 +489,8 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 			tokens, cost.TotalCost, pricingAt,
 		)
 	}
+
+	s.applyOpenAIAPIReferenceCost(ctx, usageLog, account, result, tokens, referenceServiceTier, pricingAt)
 
 	if s.cfg != nil && s.cfg.RunMode == config.RunModeSimple {
 		writeUsageLogBestEffort(ctx, s.usageLogRepo, usageLog, "service.openai_gateway")
@@ -1021,7 +1028,7 @@ func ParseCodexRateLimitHeaders(headers http.Header) *OpenAICodexUsageSnapshot {
 		return nil
 	}
 
-	snapshot.UpdatedAt = time.Now().Format(time.RFC3339)
+	snapshot.UpdatedAt = time.Now().UTC().Format(time.RFC3339Nano)
 	return snapshot
 }
 
@@ -1081,7 +1088,7 @@ func buildCodexUsageExtraUpdates(snapshot *OpenAICodexUsageSnapshot, fallbackNow
 	if snapshot.PrimaryOverSecondaryPercent != nil {
 		updates["codex_primary_over_secondary_percent"] = *snapshot.PrimaryOverSecondaryPercent
 	}
-	updates["codex_usage_updated_at"] = baseTime.Format(time.RFC3339)
+	updates["codex_usage_updated_at"] = baseTime.UTC().Format(time.RFC3339Nano)
 
 	// 归一化到 5h/7d 规范字段
 	if normalized := snapshot.Normalize(); normalized != nil {
@@ -1132,17 +1139,17 @@ func (s *OpenAIGatewayService) updateCodexUsageSnapshot(ctx context.Context, acc
 	if len(updates) == 0 {
 		return
 	}
-	if !s.getCodexSnapshotThrottle().Allow(accountID, now) {
-		return
-	}
-
-	go func() {
-		updateCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		defer cancel()
-		if err := s.accountRepo.UpdateExtra(updateCtx, accountID, updates); err == nil {
+	// Admission and writes are ordered per account; overload and terminal write
+	// failures are reported by the bounded writer instead of silently discarded.
+	_ = s.codexObservationGate.enqueue(ctx, accountID, snapshot, now, updates,
+		func() bool { return s.getCodexSnapshotThrottle().Allow(accountID, now) },
+		func(writeCtx context.Context, queued map[string]any) error {
+			if err := s.accountRepo.UpdateExtra(writeCtx, accountID, queued); err != nil {
+				return err
+			}
 			notifyOpenAIAutoReset(accountID)
-		}
-	}()
+			return nil
+		})
 }
 
 func (s *OpenAIGatewayService) UpdateCodexUsageSnapshotFromHeaders(ctx context.Context, accountID int64, headers http.Header) {

@@ -1720,6 +1720,29 @@ func HasUsageLogsWith(preds ...predicate.UsageLog) predicate.Account {
 	})
 }
 
+// HasWindowUsageHistories applies the HasEdge predicate on the "window_usage_histories" edge.
+func HasWindowUsageHistories() predicate.Account {
+	return predicate.Account(func(s *sql.Selector) {
+		step := sqlgraph.NewStep(
+			sqlgraph.From(Table, FieldID),
+			sqlgraph.Edge(sqlgraph.O2M, false, WindowUsageHistoriesTable, WindowUsageHistoriesColumn),
+		)
+		sqlgraph.HasNeighbors(s, step)
+	})
+}
+
+// HasWindowUsageHistoriesWith applies the HasEdge predicate on the "window_usage_histories" edge with a given conditions (other predicates).
+func HasWindowUsageHistoriesWith(preds ...predicate.AccountWindowUsageHistory) predicate.Account {
+	return predicate.Account(func(s *sql.Selector) {
+		step := newWindowUsageHistoriesStep()
+		sqlgraph.HasNeighborsWith(s, step, func(s *sql.Selector) {
+			for _, p := range preds {
+				p(s)
+			}
+		})
+	})
+}
+
 // HasAccountGroups applies the HasEdge predicate on the "account_groups" edge.
 func HasAccountGroups() predicate.Account {
 	return predicate.Account(func(s *sql.Selector) {

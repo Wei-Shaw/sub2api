@@ -800,7 +800,9 @@ func TestOpenAIGatewayServiceForwardImages_OAuthPassesNAndReturnsAllImages(t *te
 	c.Request = req
 	c.Set("api_key", &APIKey{ID: 42})
 
-	svc := &OpenAIGatewayService{}
+	repo := &snapshotUpdateAccountRepo{updateExtraCalls: make(chan map[string]any, 4)}
+	svc := &OpenAIGatewayService{accountRepo: repo}
+	t.Cleanup(svc.codexObservationGate.close)
 	parsed, err := svc.ParseOpenAIImagesRequest(c, body)
 	require.NoError(t, err)
 
@@ -818,6 +820,9 @@ func TestOpenAIGatewayServiceForwardImages_OAuthPassesNAndReturnsAllImages(t *te
 		},
 	}
 	svc.httpUpstream = upstream
+	upstream.resp.Header.Set("X-Codex-Primary-Used-Percent", "80")
+	upstream.resp.Header.Set("X-Codex-Primary-Window-Minutes", "300")
+	upstream.resp.Header.Set("X-Codex-Primary-Reset-After-Seconds", "600")
 
 	account := &Account{
 		ID:       1,
@@ -833,6 +838,7 @@ func TestOpenAIGatewayServiceForwardImages_OAuthPassesNAndReturnsAllImages(t *te
 	result, err := svc.ForwardImages(context.Background(), c, account, body, parsed, "")
 	require.NoError(t, err)
 	require.NotNil(t, result)
+	require.True(t, result.CodexUsageCaptured, "the handler must not resample HTTP image quota after body completion")
 	require.Equal(t, "gpt-image-1", result.Model)
 	require.Equal(t, "gpt-image-1", result.UpstreamModel)
 	require.Equal(t, 3, result.ImageCount)

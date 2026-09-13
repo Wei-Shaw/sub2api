@@ -879,6 +879,7 @@ func (s *OpenAIGatewayService) proxyResponsesWebSocketV2Passthrough(
 		upstreamConn, statusCode, handshakeHeaders, err = dialer.Dial(dialCtx, wsURL, headers, proxyURL)
 		cancelDial()
 		if err == nil {
+			s.captureOpenAIWSHandshakeQuota(ctx, account, handshakeHeaders)
 			break
 		}
 		var handshakeErr *openAIWSHandshakeError
@@ -1224,6 +1225,7 @@ func (s *OpenAIGatewayService) proxyResponsesWebSocketV2Passthrough(
 					OpenAIWSMode:                  true,
 					UpstreamTerminalEvent:         normalizeOpenAIWSTerminalEvent(turn.TerminalEventType),
 					ResponseHeaders:               cloneHeader(handshakeHeaders),
+					CodexUsageCaptured:            true,
 					Duration:                      turn.Duration,
 					FirstTokenMs:                  turn.FirstTokenMs,
 				}
@@ -1365,6 +1367,7 @@ func (s *OpenAIGatewayService) proxyResponsesWebSocketV2Passthrough(
 		OpenAIWSMode:                  true,
 		UpstreamTerminalEvent:         normalizeOpenAIWSTerminalEvent(relayResult.TerminalEventType),
 		ResponseHeaders:               cloneHeader(handshakeHeaders),
+		CodexUsageCaptured:            true,
 		Duration:                      relayResult.Duration,
 		FirstTokenMs:                  relayResult.FirstTokenMs,
 	}

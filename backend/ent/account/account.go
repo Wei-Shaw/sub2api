@@ -88,6 +88,8 @@ const (
 	EdgeChildren = "children"
 	// EdgeUsageLogs holds the string denoting the usage_logs edge name in mutations.
 	EdgeUsageLogs = "usage_logs"
+	// EdgeWindowUsageHistories holds the string denoting the window_usage_histories edge name in mutations.
+	EdgeWindowUsageHistories = "window_usage_histories"
 	// EdgeAccountGroups holds the string denoting the account_groups edge name in mutations.
 	EdgeAccountGroups = "account_groups"
 	// Table holds the table name of the account in the database.
@@ -119,6 +121,13 @@ const (
 	UsageLogsInverseTable = "usage_logs"
 	// UsageLogsColumn is the table column denoting the usage_logs relation/edge.
 	UsageLogsColumn = "account_id"
+	// WindowUsageHistoriesTable is the table that holds the window_usage_histories relation/edge.
+	WindowUsageHistoriesTable = "account_window_usage_histories"
+	// WindowUsageHistoriesInverseTable is the table name for the AccountWindowUsageHistory entity.
+	// It exists in this package in order to avoid circular dependency with the "accountwindowusagehistory" package.
+	WindowUsageHistoriesInverseTable = "account_window_usage_histories"
+	// WindowUsageHistoriesColumn is the table column denoting the window_usage_histories relation/edge.
+	WindowUsageHistoriesColumn = "account_id"
 	// AccountGroupsTable is the table that holds the account_groups relation/edge.
 	AccountGroupsTable = "account_groups"
 	// AccountGroupsInverseTable is the table name for the AccountGroup entity.
@@ -457,6 +466,20 @@ func ByUsageLogs(term sql.OrderTerm, terms ...sql.OrderTerm) OrderOption {
 	}
 }
 
+// ByWindowUsageHistoriesCount orders the results by window_usage_histories count.
+func ByWindowUsageHistoriesCount(opts ...sql.OrderTermOption) OrderOption {
+	return func(s *sql.Selector) {
+		sqlgraph.OrderByNeighborsCount(s, newWindowUsageHistoriesStep(), opts...)
+	}
+}
+
+// ByWindowUsageHistories orders the results by window_usage_histories terms.
+func ByWindowUsageHistories(term sql.OrderTerm, terms ...sql.OrderTerm) OrderOption {
+	return func(s *sql.Selector) {
+		sqlgraph.OrderByNeighborTerms(s, newWindowUsageHistoriesStep(), append([]sql.OrderTerm{term}, terms...)...)
+	}
+}
+
 // ByAccountGroupsCount orders the results by account_groups count.
 func ByAccountGroupsCount(opts ...sql.OrderTermOption) OrderOption {
 	return func(s *sql.Selector) {
@@ -503,6 +526,13 @@ func newUsageLogsStep() *sqlgraph.Step {
 		sqlgraph.From(Table, FieldID),
 		sqlgraph.To(UsageLogsInverseTable, FieldID),
 		sqlgraph.Edge(sqlgraph.O2M, false, UsageLogsTable, UsageLogsColumn),
+	)
+}
+func newWindowUsageHistoriesStep() *sqlgraph.Step {
+	return sqlgraph.NewStep(
+		sqlgraph.From(Table, FieldID),
+		sqlgraph.To(WindowUsageHistoriesInverseTable, FieldID),
+		sqlgraph.Edge(sqlgraph.O2M, false, WindowUsageHistoriesTable, WindowUsageHistoriesColumn),
 	)
 }
 func newAccountGroupsStep() *sqlgraph.Step {

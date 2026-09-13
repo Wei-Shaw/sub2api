@@ -57,6 +57,7 @@ var schedulerNeutralExtraKeyPrefixes = []string{
 	"codex_5h_",
 	"codex_7d_",
 	"codex_reset_credit_",
+	"codex_history_",
 	"passive_usage_",
 	"upstream_billing_probe",
 	"upstream_billing_rate_sync",
@@ -2614,11 +2615,9 @@ func (r *accountRepository) UpdateExtra(ctx context.Context, id int64, updates m
 	if service.ShouldEnsureCodexFingerprintSeedForExtraUpdates(updates) {
 		extraExpression = ensureCodexFingerprintSeedSQL(extraExpression)
 	}
-	result, err := client.ExecContext(
-		ctx,
-		"UPDATE accounts SET extra = "+extraExpression+", updated_at = NOW() WHERE id = $2 AND deleted_at IS NULL",
-		string(payload), id,
-	)
+	query := "UPDATE accounts SET extra = " + extraExpression + ", updated_at = NOW() WHERE id = $2 AND deleted_at IS NULL"
+	query, args := quotaObservationWrite(query, []any{string(payload), id}, updates)
+	result, err := client.ExecContext(ctx, query, args...)
 
 	if err != nil {
 		return err

@@ -66,6 +66,7 @@ type AccountHandler struct {
 	upstreamBillingProbe    *service.UpstreamBillingProbeService
 	ollamaCloudUsage        *service.OllamaCloudUsageService
 	cfg                     *config.Config
+	windowUsageHistory      *service.AccountWindowUsageHistoryService
 }
 
 // SetUpstreamBillingProbeService attaches the optional remote billing probe service.
@@ -75,6 +76,11 @@ func (h *AccountHandler) SetUpstreamBillingProbeService(probe *service.UpstreamB
 
 func (h *AccountHandler) SetOllamaCloudUsageService(usage *service.OllamaCloudUsageService) {
 	h.ollamaCloudUsage = usage
+}
+
+// SetWindowUsageHistoryService attaches the optional rolling-window usage history service.
+func (h *AccountHandler) SetWindowUsageHistoryService(svc *service.AccountWindowUsageHistoryService) {
+	h.windowUsageHistory = svc
 }
 
 // NewAccountHandler creates a new admin account handler
@@ -1702,6 +1708,34 @@ func (h *AccountHandler) GetStats(c *gin.Context) {
 	}
 
 	response.Success(c, stats)
+}
+
+// GetWindowHistory handles getting rolling-window usage history
+// GET /api/v1/admin/accounts/:id/window-history
+func (h *AccountHandler) GetWindowHistory(c *gin.Context) {
+	accountID, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil || accountID <= 0 {
+		response.BadRequest(c, "Invalid account ID")
+		return
+	}
+	days := 30
+	if raw := c.Query("days"); raw != "" {
+		days, err = strconv.Atoi(raw)
+		if err != nil || days < 1 || days > 90 {
+			response.BadRequest(c, "days must be between 1 and 90")
+			return
+		}
+	}
+	if h.windowUsageHistory == nil {
+		response.Error(c, http.StatusServiceUnavailable, "Window history service unavailable")
+		return
+	}
+	history, err := h.windowUsageHistory.GetWindowHistory(c.Request.Context(), accountID, days)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, history)
 }
 
 // ClearError handles clearing account error
