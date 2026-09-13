@@ -8,6 +8,8 @@ import (
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/handler"
+	"github.com/Wei-Shaw/sub2api/internal/keyprotection"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/response"
 	middleware2 "github.com/Wei-Shaw/sub2api/internal/server/middleware"
 	"github.com/Wei-Shaw/sub2api/internal/server/routes"
 	"github.com/Wei-Shaw/sub2api/internal/service"
@@ -128,7 +130,19 @@ func registerRoutes(
 	routes.RegisterUserRoutes(v1, h, jwtAuth, auditLog, settingService, panelRateLimiter)
 	routes.RegisterModelPlazaRoutes(v1, h, optionalJWTAuth, settingService, panelRateLimiter)
 	routes.RegisterAdminRoutes(v1, h, adminAuth, auditLog, stepUpAuth, settingService, panelRateLimiter)
-	routes.RegisterGatewayRoutes(r, h, apiKeyAuth, apiKeyService, subscriptionService, opsService, settingService, compositeResolver, cfg)
+	protectionMaster := ""
+	if cfg.Totp.EncryptionKeyConfigured {
+		protectionMaster = cfg.Totp.EncryptionKey
+	}
+	protectionStore := keyprotection.NewRedisStore(redisClient, protectionMaster)
+	routes.RegisterGatewayRoutes(r, h, apiKeyAuth, apiKeyService, subscriptionService, opsService, settingService, compositeResolver, cfg, protectionStore)
+	v1.DELETE("/admin/settings/key-protection/mappings", gin.HandlerFunc(adminAuth), panelRateLimiter.Global(), gin.HandlerFunc(auditLog), middleware2.AdminComplianceGuard(settingService), func(c *gin.Context) {
+		if err := protectionStore.Purge(c.Request.Context()); err != nil {
+			response.InternalError(c, "Failed to clear key protection mappings")
+			return
+		}
+		response.Success(c, gin.H{"cleared": true})
+	})
 	routes.RegisterPaymentRoutes(v1, h.Payment, h.PaymentWebhook, h.Admin.Payment, jwtAuth, adminAuth, auditLog, settingService, panelRateLimiter)
 
 	handler.RegisterPageRoutes(v1, cfg.Pricing.DataDir, gin.HandlerFunc(jwtAuth), gin.HandlerFunc(adminAuth), settingService)

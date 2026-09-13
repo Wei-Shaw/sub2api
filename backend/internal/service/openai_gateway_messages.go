@@ -12,6 +12,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/keyprotection"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/apicompat"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/claude"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
@@ -121,8 +122,8 @@ func (s *OpenAIGatewayService) ForwardAsAnthropic(
 		compatPromptCacheInjected = promptCacheKey != ""
 	}
 	compatReplayTrimmed := false
-	compatReplayGuardEnabled := shouldAutoInjectPromptCacheKeyForCompat(upstreamModel)
-	compatContinuationEnabled := openAICompatContinuationEnabled(account, upstreamModel)
+	compatReplayGuardEnabled := shouldAutoInjectPromptCacheKeyForCompat(upstreamModel) && !keyprotection.IsProtected(ctx)
+	compatContinuationEnabled := openAICompatContinuationEnabled(account, upstreamModel) && !keyprotection.IsProtected(ctx)
 	previousResponseID := ""
 	if compatContinuationEnabled {
 		previousResponseID = s.getOpenAICompatSessionResponseID(ctx, c, account, promptCacheKey)
