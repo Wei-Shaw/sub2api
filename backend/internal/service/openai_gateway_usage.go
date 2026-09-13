@@ -152,21 +152,63 @@ func groupBillsOpenAIFastAtStandard(apiKey *APIKey, account *Account, serviceTie
 
 // 运营 preflight SQL（B2-④，上线/放量前人工执行；是一次性运营检查，不是迁移，
 // 不要放进 migrations/）。用于在放量前扫出「保存期门禁（B2-③）生效前就已存在、
-// 或绕过门禁写入」的无价 ollama_cloud 账号；两条都期望 0 行：
+// 或绕过门禁写入」的无价 ollama_cloud 账号；三条都期望 0 行，均为可直接执行的
+// 完整语句，在【业务主库】accounts 表跑；命中处置与存量盘点（第 0 条）见完整
+// 迁移手册（运营文档）。已定价模型集合（22 名）取自 billing_service.go
+// fallbackPrices 的 ollama 条目：18 条字面名 + 家族兜底可计费的
+// kimi-k2.7-code / deepseek-v4.1-flash；查询里 regexp_replace 剥 :tag 的二级
+// 比对与两级查价同源。
 //
-//	-- 1) model_mapping 目标值必须全部有价（<已定价模型名集合> 取
-//	--    billing_service.go fallbackPrices 的 ollama 条目 + 复用同名条目的模型；
-//	--    注意 :tag 名靠两级查价 fallback 命中，集合里放裸名即可）；期望 0 行
-//	SELECT a.id, kv.value AS target_model FROM accounts a,
+//	-- 1) model_mapping 目标值必须全部有价；期望 0 行（命中先甄别家族兜底
+//	--    误报，再补价或改 mapping）
+//	WITH priced(model) AS (VALUES
+//	  ('nemotron-3-super'),('glm-5.3'),('gpt-oss:120b'),('glm-5.3-flash'),
+//	  ('kimi-k2.6'),('kimi-k3'),('deepseek-v4.1-flash'),('minimax-m2.7'),
+//	  ('mistral-large-3:675b'),('glm-5.1'),('glm-5.2'),('gpt-oss:20b'),
+//	  ('qwen3.5:397b'),('kimi-k2.7-code'),('nemotron-3-nano:30b'),('minimax-m3'),
+//	  ('gemma4:31b'),('nemotron-3-ultra'),('deepseek-v4-flash:0731'),
+//	  ('deepseek-v4-pro:0813'),('deepseek-v4-flash'),('deepseek-v4-pro'))
+//	SELECT a.id, a.name, kv.key AS source_model, kv.value AS target_model
+//	FROM accounts a,
 //	  jsonb_each_text(COALESCE(a.credentials->'model_mapping','{}'::jsonb)) AS kv
 //	WHERE a.deleted_at IS NULL AND a.platform = 'ollama_cloud'
-//	  AND kv.value NOT IN (<已定价模型名集合>);
+//	  AND btrim(kv.value) <> ''
+//	  AND lower(btrim(kv.value)) NOT IN (SELECT model FROM priced)
+//	  AND lower(regexp_replace(btrim(kv.value), ':.*$', '')) NOT IN (SELECT model FROM priced);
 //
-//	-- 2) 空 mapping 账号（jsonb_each_text 展开为 0 行，第 1 条扫不到）；期望 0 行
-//	--    （B2-③ 之后新账号必须带 extra.allowed_models 清单；此处命中的只能是
-//	--    门禁上线前的存量账号，需人工补 mapping/清单或下线）
-//	SELECT a.id FROM accounts a WHERE a.deleted_at IS NULL AND a.platform = 'ollama_cloud'
-//	  AND COALESCE(a.credentials->'model_mapping','{}'::jsonb) = '{}'::jsonb;
+//	-- 1b) extra.allowed_models 清单值必须全部有价（清单存 accounts.extra，不在
+//	--    credentials；与 model_mapping 是同地位的两条可出站来源）；期望 0 行
+//	WITH priced(model) AS (VALUES
+//	  ('nemotron-3-super'),('glm-5.3'),('gpt-oss:120b'),('glm-5.3-flash'),
+//	  ('kimi-k2.6'),('kimi-k3'),('deepseek-v4.1-flash'),('minimax-m2.7'),
+//	  ('mistral-large-3:675b'),('glm-5.1'),('glm-5.2'),('gpt-oss:20b'),
+//	  ('qwen3.5:397b'),('kimi-k2.7-code'),('nemotron-3-nano:30b'),('minimax-m3'),
+//	  ('gemma4:31b'),('nemotron-3-ultra'),('deepseek-v4-flash:0731'),
+//	  ('deepseek-v4-pro:0813'),('deepseek-v4-flash'),('deepseek-v4-pro'))
+//	SELECT a.id, a.name, btrim(m.value) AS allowed_model
+//	FROM accounts a, jsonb_array_elements_text(a.extra->'allowed_models') AS m
+//	WHERE a.deleted_at IS NULL AND a.platform = 'ollama_cloud'
+//	  AND jsonb_typeof(a.extra->'allowed_models') = 'array'
+//	  AND btrim(m.value) <> ''
+//	  AND lower(btrim(m.value)) NOT IN (SELECT model FROM priced)
+//	  AND lower(regexp_replace(btrim(m.value), ':.*$', '')) NOT IN (SELECT model FROM priced);
+//
+//	-- 2) 空 mapping 账号必须有「有效清单」（非空字符串数组）；期望 0 行
+//	--    （空 mapping + 合法清单是合规形态，不算命中；此处命中的是既无 mapping
+//	--    又无有效清单的账号——运行时 deny-all，需补 allowed_models/mapping 或下线）
+//	SELECT a.id, a.name, a.status, a.schedulable,
+//	  CASE WHEN NOT (a.extra ? 'allowed_models') THEN 'no_allowed_models_key'
+//	    WHEN jsonb_typeof(a.extra->'allowed_models') <> 'array' THEN 'allowed_models_not_array'
+//	    WHEN NOT EXISTS (SELECT 1 FROM jsonb_array_elements_text(a.extra->'allowed_models')
+//	                     WHERE btrim(value) <> '') THEN 'allowed_models_empty'
+//	  END AS reason
+//	FROM accounts a
+//	WHERE a.deleted_at IS NULL AND a.platform = 'ollama_cloud'
+//	  AND COALESCE(a.credentials->'model_mapping','{}'::jsonb) = '{}'::jsonb
+//	  AND (NOT (a.extra ? 'allowed_models')
+//	    OR jsonb_typeof(a.extra->'allowed_models') <> 'array'
+//	    OR NOT EXISTS (SELECT 1 FROM jsonb_array_elements_text(a.extra->'allowed_models')
+//	                   WHERE btrim(value) <> ''));
 //
 // 上线后观察断言：日志中 `openai_usage.pricing_missing_record_zero_cost` 出现
 // 次数必须为 0（出现即回滚放量）。定价门禁已前移到上游 I/O 之前的请求期预检
