@@ -1287,10 +1287,10 @@ func (h *GatewayHandler) Models(c *gin.Context) {
 		return
 	}
 
-	// ollama_cloud 无静态默认模型列表（defaultModelIDsForPlatform 返回空）：
-	// 账号侧清单缺失时返回空列表，不得回落 Claude 默认模型。
+	// ollama_cloud 账号侧清单缺失时回落实测默认目录（DefaultOllamaCloudModelIDs），
+	// 不得回落 Claude 默认模型。
 	if platform == service.PlatformOllamaCloud {
-		writeModelsListResponse(c, []claude.Model{})
+		writeModelsList(c, platform, service.DefaultOllamaCloudModelIDs())
 		return
 	}
 
@@ -1570,17 +1570,14 @@ func defaultModelIDsForPlatform(platform string) []string {
 	case service.PlatformTypeSafe:
 		return []string{"jev-latest"}
 	case service.PlatformOllamaCloud:
-		// ollama_cloud 没有静态默认模型列表：可服务模型完全来自账号侧的
-		// model_mapping / extra.allowed_models（缺失时 IsModelSupported 为
-		// deny-all）。default 分支的 Claude 列表对它只会造成虚假广告。
-		return nil
+		return service.DefaultOllamaCloudModelIDs()
 	case service.PlatformComposite:
 		ids := make([]string, 0)
 		seen := make(map[string]struct{})
 		// TypeSafe is deliberately absent: jev-latest only works through
 		// /v1/systemone, so the static fallback never advertises it to LLM
 		// clients. compositeAvailableModels lists it when the group can serve it.
-		for _, concretePlatform := range []string{service.PlatformAnthropic, service.PlatformGemini, service.PlatformOpenAI, service.PlatformAntigravity, service.PlatformGrok, service.PlatformKimi, service.PlatformZhipu, service.PlatformDeepseek, service.PlatformMiniMax, service.PlatformOpenCodeGo} {
+		for _, concretePlatform := range []string{service.PlatformAnthropic, service.PlatformGemini, service.PlatformOpenAI, service.PlatformAntigravity, service.PlatformGrok, service.PlatformKimi, service.PlatformZhipu, service.PlatformDeepseek, service.PlatformMiniMax, service.PlatformOpenCodeGo, service.PlatformOllamaCloud} {
 			for _, id := range defaultModelIDsForPlatform(concretePlatform) {
 				if _, ok := seen[id]; ok {
 					continue

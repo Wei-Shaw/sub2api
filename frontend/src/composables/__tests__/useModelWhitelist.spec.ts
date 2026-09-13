@@ -4,9 +4,51 @@ vi.mock('@/api/admin/accounts', () => ({
   getAntigravityDefaultModelMapping: vi.fn()
 }))
 
-import { buildModelMappingObject, getModelsByPlatform, getPresetMappingsByPlatform, splitModelMappingObject } from '../useModelWhitelist'
+import { buildModelMappingObject, claudeModels, getModelsByPlatform, getPresetMappingsByPlatform, splitModelMappingObject } from '../useModelWhitelist'
 
 describe('useModelWhitelist', () => {
+  // ollama_cloud 与后端同源静态表（backend/internal/service/ollama_cloud_models.go
+  // DefaultOllamaCloudModelIDs()，/v1/models 实测目录）——集合必须与后端一致，
+  // 两侧各有测试钉住（对侧：ollama_cloud_models_test.go），改任一侧须同步另一侧。
+  const ollamaCloudBackendCatalog = [
+    'nemotron-3-super',
+    'glm-5.3',
+    'gpt-oss:120b',
+    'glm-5.3-flash',
+    'kimi-k2.6',
+    'kimi-k3',
+    'deepseek-v4.1-flash',
+    'minimax-m2.7',
+    'mistral-large-3:675b',
+    'glm-5.1',
+    'glm-5.2',
+    'gpt-oss:20b',
+    'qwen3.5:397b',
+    'kimi-k2.7-code',
+    'nemotron-3-nano:30b',
+    'minimax-m3',
+    'gemma4:31b',
+    'nemotron-3-ultra',
+    'deepseek-v4-flash:0731',
+    'deepseek-v4-pro:0813'
+  ]
+
+  it('ollama_cloud 模型列表与后端 DefaultOllamaCloudModelIDs 同一集合', () => {
+    const models = getModelsByPlatform('ollama_cloud')
+
+    expect(models).toEqual(ollamaCloudBackendCatalog)
+  })
+
+  it('ollama_cloud 模型列表不是 Claude 列表且不含 claude 模型', () => {
+    const models = getModelsByPlatform('ollama_cloud')
+
+    expect(models).not.toBe(claudeModels)
+    expect(models).not.toEqual(claudeModels)
+    for (const model of models) {
+      expect(model).not.toContain('claude')
+    }
+  })
+
   it('openai 模型列表包含 GPT-5.4 官方快照', () => {
     const models = getModelsByPlatform('openai')
 
