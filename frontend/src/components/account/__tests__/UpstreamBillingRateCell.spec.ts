@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { flushPromises, mount } from '@vue/test-utils'
 import UpstreamBillingRateCell from '../UpstreamBillingRateCell.vue'
 import HelpTooltip from '@/components/common/HelpTooltip.vue'
-import type { Account } from '@/types'
+import type { Account, DeepSeekUpstreamBillingData } from '@/types'
 
 vi.mock('vue-i18n', async () => {
   const actual = await vi.importActual<typeof import('vue-i18n')>('vue-i18n')
@@ -58,6 +58,27 @@ const billingData = {
   observed_at: '2026-07-13T00:00:00Z'
 }
 
+const deepSeekData: DeepSeekUpstreamBillingData = {
+  object: 'deepseek.user_balance',
+  schema_version: 1,
+  provider: 'deepseek',
+  is_available: true,
+  balance_infos: [
+    {
+      currency: 'CNY',
+      total_balance: '40.2400',
+      granted_balance: '0.00',
+      topped_up_balance: '40.2400'
+    },
+    {
+      currency: 'USD',
+      total_balance: '5.10',
+      granted_balance: '1.10',
+      topped_up_balance: '4.00'
+    }
+  ]
+}
+
 describe('UpstreamBillingRateCell', () => {
   beforeEach(() => {
     vi.useFakeTimers()
@@ -66,6 +87,81 @@ describe('UpstreamBillingRateCell', () => {
 
   afterEach(() => {
     vi.useRealTimers()
+  })
+
+  it('shows official DeepSeek balances beside the locally configured rate', async () => {
+    const snapshot = {
+      status: 'ok' as const,
+      data: deepSeekData,
+      received_at: '2026-07-13T00:00:00Z',
+      fresh_until: '2026-07-13T01:00:00Z',
+      last_attempt_at: '2026-07-13T00:00:00Z',
+      next_probe_at: '2026-07-13T00:30:00Z'
+    }
+    const wrapper = mount(UpstreamBillingRateCell, {
+      attachTo: document.body,
+      props: {
+        account: makeAccount({
+          rate_multiplier: 0.75,
+          extra: {
+            upstream_billing_probe_enabled: true,
+            upstream_billing_probe: snapshot
+          }
+        }),
+        now: Date.now()
+      }
+    })
+
+    expect(wrapper.get('[data-testid="upstream-billing-rate"]').text()).toBe('0.75x')
+    expect(wrapper.get('[data-testid="upstream-billing-balance"]').text()).toBe('CNY 40.2400 +1')
+
+    await wrapper.get('[data-testid="upstream-billing-details"]').trigger('mouseenter')
+    await flushPromises()
+    const tooltips = document.body.querySelectorAll('[role="tooltip"]')
+    const tooltip = tooltips[tooltips.length - 1] as HTMLElement
+    expect(tooltip.textContent).toContain('admin.accounts.upstreamBilling.configuredRate:0.75')
+    expect(tooltip.textContent).toContain('admin.accounts.upstreamBilling.deepSeekAvailable')
+    expect(tooltip.textContent).toContain('admin.accounts.upstreamBilling.deepSeekTotalBalance:CNY,40.2400')
+    expect(tooltip.textContent).toContain('admin.accounts.upstreamBilling.deepSeekTotalBalance:USD,5.10')
+
+    await wrapper.setProps({
+      account: makeAccount({
+        rate_multiplier: 0.5,
+        extra: {
+          upstream_billing_probe_enabled: true,
+          upstream_billing_probe: snapshot
+        }
+      })
+    })
+    expect(wrapper.get('[data-testid="upstream-billing-rate"]').text()).toBe('0.50x')
+    wrapper.unmount()
+  })
+
+  it('renders an unavailable DeepSeek balance as a valid red balance state', () => {
+    const wrapper = mount(UpstreamBillingRateCell, {
+      props: {
+        account: makeAccount({
+          extra: {
+            upstream_billing_probe: {
+              status: 'ok',
+              data: { ...deepSeekData, is_available: false, balance_infos: [] },
+              received_at: '2026-07-13T00:00:00Z',
+              fresh_until: '2026-07-13T01:00:00Z',
+              last_attempt_at: '2026-07-13T00:00:00Z',
+              next_probe_at: '2026-07-13T00:30:00Z'
+            }
+          }
+        }),
+        now: Date.now()
+      }
+    })
+
+    expect(wrapper.get('[data-testid="upstream-billing-rate"]').text()).toBe('1.00x')
+    expect(wrapper.get('[data-testid="upstream-billing-balance"]').text()).toBe(
+      'admin.accounts.upstreamBilling.deepSeekUnavailableShort'
+    )
+    expect(wrapper.get('[data-testid="upstream-billing-balance"]').classes()).toContain('text-red-600')
+    expect(wrapper.text()).not.toContain('admin.accounts.upstreamBilling.failed')
   })
 
   it('recomputes the current effective rate and keeps the icon-only probe action', async () => {
