@@ -149,6 +149,12 @@ func CompositeRouteSourceFromContext(ctx context.Context) (string, bool) {
 // DetectModelPlatform maps common public model IDs to the concrete provider
 // platform used by sub2api. It intentionally returns false for ambiguous model
 // names so composite groups fail closed instead of guessing.
+//
+// ollama_cloud（与 opencode_go 同理）刻意不在本表：本函数只有模型名入参、没有
+// host 入参，而 ollama 转售的模型家族（gpt-oss / kimi-k2 / glm / deepseek /
+// qwen）与上方前缀规则直接冲突（如 gpt- 已映射 openai）——在这里加 ollama
+// 分支等于按名字前缀静默错投。ollama_cloud 进入 composite 只走显式 route 与
+// ownership resolver（账号目录），不要给本函数加 ollama 分支。
 func DetectModelPlatform(model string) (string, bool) {
 	normalized := strings.ToLower(strings.TrimSpace(model))
 	if normalized == "" {
