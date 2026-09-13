@@ -465,6 +465,31 @@ export function getModelsByPlatform(platform: string): string[] {
       'qwen3.8-max', 'qwen3.8-flash', 'qwen3.7-max', 'qwen3.7-plus', 'qwen3.6-plus',
       'hy4-preview', 'hy3', 'omen-alpha'
     ]
+    // 与后端同源静态表：backend/internal/service/ollama_cloud_models.go 的
+    // DefaultOllamaCloudModelIDs()（/v1/models 实测目录）——两侧集合必须一致，
+    // 各有测试钉住（对侧：ollama_cloud_models_test.go），改任一侧须同步另一侧。
+    case 'ollama_cloud': return [
+      'nemotron-3-super',
+      'glm-5.3',
+      'gpt-oss:120b',
+      'glm-5.3-flash',
+      'kimi-k2.6',
+      'kimi-k3',
+      'deepseek-v4.1-flash',
+      'minimax-m2.7',
+      'mistral-large-3:675b',
+      'glm-5.1',
+      'glm-5.2',
+      'gpt-oss:20b',
+      'qwen3.5:397b',
+      'kimi-k2.7-code',
+      'nemotron-3-nano:30b',
+      'minimax-m3',
+      'gemma4:31b',
+      'nemotron-3-ultra',
+      'deepseek-v4-flash:0731',
+      'deepseek-v4-pro:0813'
+    ]
     case 'doubao': return doubaoModels
     case 'minimax': return minimaxModels
     case 'baidu': return baiduModels
