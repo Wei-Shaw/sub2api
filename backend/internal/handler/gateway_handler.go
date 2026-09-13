@@ -616,6 +616,12 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 	}
 	fallbackUsed := false
 
+	// composite 账号池请求状态（B1：generic Messages 循环池化）。池激活判定与
+	// generic 调度器共用同一谓词（ctx 携带候选池且无 resolved 平台）；非池请求
+	// poolDenials 恒为空、attempt 策略不生效，整条路径零变化。
+	isPoolRequest := service.GenericCompositePoolActive(c.Request.Context())
+	poolDenials := newCompositePoolPlatformDenials()
+
 	// 单账号分组提前设置 SingleAccountRetry 标记，让 Service 层首次 503 就不设模型限流标记。
 	// 避免单账号分组收到 503 (MODEL_CAPACITY_EXHAUSTED) 时设 29s 限流，导致后续请求连续快速失败。
 	if h.gatewayService.IsSingleAntigravityAccountGroup(c.Request.Context(), currentAPIKey.GroupID) {
@@ -658,7 +664,16 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 				zap.Bool("has_bound_session", hasBoundSession),
 				zap.Int("failed_account_count", len(fs.FailedAccountIDs)),
 			)
-			selection, err := h.gatewayService.SelectAccountWithLoadAwareness(c.Request.Context(), currentAPIKey.GroupID, sessionKey, reqModel, fs.FailedAccountIDs, parsedReq.MetadataUserID, subject.UserID)
+			// 池请求把业务限制 deny 过的平台按 deniedPlatforms 整平台 mask 后重选
+			//（候选池 immutable，mask 只叠加在当前请求 ctx 之上）；无 deny 时
+			// 返回原 ctx，非池请求不经此分支，选号 ctx 与原行为一致。
+			selectCtx := c.Request.Context()
+			if isPoolRequest {
+				if maskedCtx, ok := compositePoolSelectionRetryContext(selectCtx, poolDenials); ok {
+					selectCtx = maskedCtx
+				}
+			}
+			selection, err := h.gatewayService.SelectAccountWithLoadAwareness(selectCtx, currentAPIKey.GroupID, sessionKey, reqModel, fs.FailedAccountIDs, parsedReq.MetadataUserID, subject.UserID)
 			if err != nil {
 				if len(fs.FailedAccountIDs) == 0 {
 					cls := classifyNoAccountErrorFromGin(c, h.gatewayService, currentAPIKey, reqModel, reqModel, platform)
@@ -710,6 +725,36 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 				zap.Int64("sticky_bound_account_id", sessionBoundAccountID),
 				zap.Bool("sticky_honored", sessionBoundAccountID > 0 && sessionBoundAccountID == account.ID),
 			)
+
+			// composite 账号池 per-attempt 平台策略：对实际选中平台补做 user×platform
+			// 配额预检与渠道映射/限制（准入 CheckBillingEligibility 时池没有 resolved
+			// 平台、这两个维度被跳过；不得只后扣不预检）。检查为纯读，不写 RPM/计数，
+			// 放在槽位获取前：deny 不占并发槽。generic 循环无 previous_response_id，
+			// 无 pinned 分支；deny 记入 poolDenials 后按 masked 候选池整平台重选，
+			// 候选全部被业务限制时按原语义终止，不误报 model unsupported。
+			attemptPolicy := compositePoolAttemptPolicy{AttemptCtx: c.Request.Context(), Mapping: channelMapping}
+			isPoolAttempt := false
+			if isPoolRequest && compositePoolAttemptPolicyApplies(c, apiKey) {
+				attemptPolicy = evaluateCompositePoolAttemptPolicy(
+					c.Request.Context(), h.billingCacheService, h.openAIGatewayService, apiKey, subscription, account, reqModel, false)
+				isPoolAttempt = true
+				if attemptPolicy.Failure.denied() {
+					releaseCompositePoolSelection(selection)
+					// 选号链可能已为该账号注册会话槽：排除前释放，镜像 profit-veto 分支。
+					h.gatewayService.ReleaseAccountSession(context.Background(), account, sessionKey)
+					poolDenials.deny(account.Platform)
+					fs.FailedAccountIDs[account.ID] = struct{}{}
+					// 候选全部被业务限制：按 deny 原因明确终止（后续重选不再尝试）。
+					if _, ok := compositePoolSelectionRetryContext(c.Request.Context(), poolDenials); !ok {
+						streamAwareWrite := func(cc *gin.Context, status int, code, message string) {
+							h.handleStreamingAwareError(cc, status, code, message, streamStarted)
+						}
+						respondCompositePoolAttemptPolicyFailure(c, attemptPolicy.Failure, streamAwareWrite)
+						return
+					}
+					continue
+				}
+			}
 
 			// 检查请求拦截（预热请求、SUGGESTION MODE等）
 			if account.IsInterceptWarmupEnabled() {
@@ -865,9 +910,15 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 			// ===== 用户消息串行队列 END =====
 
 			// 渠道模型映射只作用于本次账号尝试，避免 failover 后污染原始 ParsedRequest。
-			if channelMapping.Mapped {
-				attemptParsedReq.Model = channelMapping.MappedModel
-				if err := attemptParsedReq.ReplaceBody(h.gatewayService.ReplaceModelInBody(attemptParsedReq.Body.Bytes(), channelMapping.MappedModel)); err != nil {
+			// 池请求按选中平台的渠道映射（attempt 策略产出，platform-scoped）派生，
+			// 不用 composite 作用域的请求级映射（无 resolved 平台时跨平台行匹配不可靠）。
+			attemptChannelMapping := channelMapping
+			if isPoolAttempt {
+				attemptChannelMapping = attemptPolicy.Mapping
+			}
+			if attemptChannelMapping.Mapped {
+				attemptParsedReq.Model = attemptChannelMapping.MappedModel
+				if err := attemptParsedReq.ReplaceBody(h.gatewayService.ReplaceModelInBody(attemptParsedReq.Body.Bytes(), attemptChannelMapping.MappedModel)); err != nil {
 					h.errorResponse(c, http.StatusBadRequest, "invalid_request_error", "Failed to parse request body")
 					return
 				}
@@ -889,10 +940,26 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 			if fs.ForceCacheBilling {
 				requestCtx = service.WithForceCacheBilling(requestCtx)
 			}
+			// 池请求的 attempt 局部 ctx 携带选中平台（不写回 c.Request）：forward 内的
+			// 渠道定价作用域与计费 QuotaPlatform 跟随实际平台，对齐 OpenAI 池 attempt 语义。
+			if isPoolRequest {
+				requestCtx = compositePoolAttemptContext(requestCtx, account)
+			}
 			// 记录 Forward 前已写入字节数，Forward 后若增加则说明 SSE 内容已发，禁止 failover
 			writerSizeBeforeForward := c.Writer.Size()
 			if account.Platform == service.PlatformAntigravity && account.Type != service.AccountTypeAPIKey {
 				result, err = h.antigravityGatewayService.Forward(requestCtx, c, account, attemptBody, hasBoundSession)
+			} else if isPoolRequest && compositePoolAccountDelegatesToOpenAI(account) {
+				// 纯 OpenAI 族账号（无 Anthropic 协议能力）在池激活时委派 OpenAI 网关的
+				// /v1/messages 兼容链：Anthropic → Responses/CC 协议转换、响应写回与
+				// failover 错误信封都由该链完成，错误信封已是 Anthropic 风格，不再二次包装。
+				// promptCacheKey 传 ""（内部按 cache_control / metadata 会话种子兜底）；
+				// defaultMappedModel 与 OpenAI handler Messages 路径同源。
+				openAIResult, delegateErr := h.openAIGatewayService.ForwardAsAnthropic(
+					requestCtx, c, account, attemptBody, "",
+					strings.TrimSpace(resolveOpenAIMessagesDispatchMappedModel(c, apiKey, reqModel)))
+				result = adaptOpenAIForwardResultToForwardResult(openAIResult)
+				err = delegateErr
 			} else {
 				result, err = h.gatewayService.Forward(requestCtx, c, account, attemptParsedReq)
 			}
@@ -935,7 +1002,12 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 				// 使用量记录通过有界 worker 池提交，避免请求热路径创建无界 goroutine。
 				// ForceCacheBilling 提前拍成标量，避免 worker 闭包保活 failover 状态里的响应体。
 				forceCacheBilling := fs.ForceCacheBilling
+				// 池请求按选中平台计量 user×platform 配额（attempt ctx 携带 resolved
+				// 平台）；非池保持准入语义不变。
 				quotaPlatform := service.QuotaPlatform(c.Request.Context(), currentAPIKey)
+				if isPoolAttempt {
+					quotaPlatform = service.QuotaPlatform(attemptPolicy.AttemptCtx, currentAPIKey)
+				}
 				sessionID := service.ExtractClientSessionID(c)
 				h.submitUsageRecordTask(c.Request.Context(), func(ctx context.Context) {
 					if err := h.gatewayService.RecordUsage(ctx, &service.RecordUsageInput{
@@ -954,7 +1026,7 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 						RequestPayloadHash: requestPayloadHash,
 						ForceCacheBilling:  forceCacheBilling,
 						APIKeyService:      h.apiKeyService,
-						ChannelUsageFields: clientRequestedUsageFields(c, channelMapping, reqModel, result.UpstreamModel),
+						ChannelUsageFields: clientRequestedUsageFields(c, attemptChannelMapping, reqModel, result.UpstreamModel),
 					}); err != nil {
 						logger.L().With(
 							zap.String("component", "handler.gateway.messages"),
@@ -2162,16 +2234,36 @@ func (h *GatewayHandler) CountTokens(c *gin.Context) {
 	}
 	sessionHash := h.gatewayService.GenerateSessionHash(parsedReq)
 
-	// 选择支持该模型的账号
-	account, err := h.gatewayService.SelectAccountForModel(c.Request.Context(), apiKey.GroupID, sessionHash, parsedReq.Model)
-	if err != nil {
-		reqLog.Warn("gateway.count_tokens_select_account_failed", zap.Error(err))
-		cls := classifyNoAccountErrorFromGin(c, h.gatewayService, apiKey, parsedReq.Model, parsedReq.Model, service.PlatformAnthropic)
-		if !cls.ModelNotFound {
-			markOpsRoutingCapacityLimitedIfNoAvailable(c, err)
+	// 选择支持该模型的账号。池请求（B1：generic CountTokens 最小池化）选中纯
+	// OpenAI 族账号时该账号不可计数：跳过（记入排除集重选）而不是对
+	// /v1/messages/count_tokens 报 500；可计数账号与单目标请求按既有语义直接转发。
+	isPoolRequest := service.GenericCompositePoolActive(c.Request.Context())
+	var excludedAccountIDs map[int64]struct{}
+	var account *service.Account
+	for {
+		account, err = h.gatewayService.SelectAccountForModelWithExclusions(c.Request.Context(), apiKey.GroupID, sessionHash, parsedReq.Model, excludedAccountIDs)
+		if err != nil {
+			reqLog.Warn("gateway.count_tokens_select_account_failed", zap.Error(err))
+			cls := classifyNoAccountErrorFromGin(c, h.gatewayService, apiKey, parsedReq.Model, parsedReq.Model, service.PlatformAnthropic)
+			if !cls.ModelNotFound {
+				markOpsRoutingCapacityLimitedIfNoAvailable(c, err)
+			}
+			h.errorResponse(c, cls.Status, cls.ErrType, cls.Message)
+			return
 		}
-		h.errorResponse(c, cls.Status, cls.ErrType, cls.Message)
-		return
+		if !isPoolRequest || service.GenericCompositePoolCountableAccount(account) {
+			break
+		}
+		reqLog.Info("gateway.count_tokens_pool_skip_uncountable_account",
+			zap.Int64("account_id", account.ID),
+			zap.String("account_platform", account.Platform),
+		)
+		// 选号链可能已为该账号注册会话槽：排除前释放，再用排除集重选。
+		h.gatewayService.ReleaseAccountSession(context.Background(), account, sessionHash)
+		if excludedAccountIDs == nil {
+			excludedAccountIDs = make(map[int64]struct{})
+		}
+		excludedAccountIDs[account.ID] = struct{}{}
 	}
 	setOpsSelectedAccount(c, account.ID, account.Platform)
 

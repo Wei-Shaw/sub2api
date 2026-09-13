@@ -25,16 +25,21 @@ func (s *GatewayService) buildUpstreamRequest(ctx context.Context, c *gin.Contex
 		return req, body, err
 	}
 
-	// 确定目标URL
+	// 确定目标URL。Anthropic 上游 base 协议化（仅 APIKey 账号有自定义 base 语义）：
+	// CN/多协议账号（api_protocol=anthropic/adaptive）用 GetAnthropicProtocolBaseURL
+	// 拼 {base}/v1/messages，不带 ?beta=true（第三方端点不接受该参数，与 OpenAI 族
+	// nativeAnthropicTargetURL 对齐）；classic anthropic 账号保持
+	// GetBaseURL()+"/v1/messages?beta=true" 现状。认证 / max_tokens clamp 与本次
+	// 实际选用的 base 同源（anthropicUpstreamBaseForAuth）。
 	targetURL := claudeAPIURL
+	anthropicBase := anthropicUpstreamBaseForAuth(account)
 	if account.Type == AccountTypeAPIKey {
-		baseURL := account.GetBaseURL()
-		if baseURL != "" {
-			validatedURL, err := s.validateUpstreamBaseURL(baseURL)
-			if err != nil {
-				return nil, nil, err
-			}
-			targetURL = validatedURL + "/v1/messages?beta=true"
+		protocolTargetURL, err := s.anthropicUpstreamTargetURL(account, "/v1/messages")
+		if err != nil {
+			return nil, nil, err
+		}
+		if protocolTargetURL != "" {
+			targetURL = protocolTargetURL
 		}
 	} else if account.IsCustomBaseURLEnabled() {
 		customURL := account.GetCustomBaseURL()
@@ -118,9 +123,9 @@ func (s *GatewayService) buildUpstreamRequest(ctx context.Context, c *gin.Contex
 	}
 
 	// Ollama Cloud DeepSeek 出站 max_tokens clamp：判定与上方 targetURL 的
-	// base 取值同源（GetBaseURL），仅实际上游为 ollama.com 且映射后出站模型
-	// 为 DeepSeek 系时压到 cap，详见 helper 注释。
-	body = clampOllamaCloudAnthropicMessagesMaxTokens(account, account.GetBaseURL(), body)
+	// base 取值同源（GetAnthropicProtocolBaseURL / GetBaseURL 协议化解析），仅
+	// 实际上游为 ollama.com 且映射后出站模型为 DeepSeek 系时压到 cap，详见 helper 注释。
+	body = clampOllamaCloudAnthropicMessagesMaxTokens(account, anthropicBase, body)
 
 	req, err := http.NewRequestWithContext(ctx, "POST", targetURL, bytes.NewReader(body))
 	if err != nil {
@@ -132,8 +137,8 @@ func (s *GatewayService) buildUpstreamRequest(ctx context.Context, c *gin.Contex
 		setHeaderRaw(req.Header, "authorization", "Bearer "+token)
 	} else {
 		// Ollama Cloud Anthropic 兼容端点按实际 base_url 强制 Bearer（同上方
-		// targetURL 的 base 取值），其余保持 extra/default 行为。
-		setAnthropicAPIKeyAuthHeader(req.Header, account, token, account.GetBaseURL())
+		// targetURL 的协议化 base 取值），其余保持 extra/default 行为。
+		setAnthropicAPIKeyAuthHeader(req.Header, account, token, anthropicBase)
 	}
 
 	// 白名单透传 headers
@@ -933,4 +938,43 @@ func (s *GatewayService) validateUpstreamBaseURL(raw string) (string, error) {
 		return "", fmt.Errorf("invalid base_url: %w", err)
 	}
 	return normalized, nil
+}
+
+// anthropicUpstreamBaseForAuth 返回账号本次实际选用的 Anthropic 上游 base（与出站
+// URL 组装、认证强制 Bearer 判定、max_tokens clamp 判定同源）：CN/多协议账号
+// （api_protocol=anthropic/adaptive）取 GetAnthropicProtocolBaseURL（含
+// api_base_urls.anthropic 与供应商×模式默认端点），classic anthropic / 官方默认
+// 账号取 GetBaseURL（OAuth 等无 base 语义时为空串）。认证与 clamp 必须使用本
+// 返回值而非各自再取 base，保证与真实出站 URL 判定一致。
+func anthropicUpstreamBaseForAuth(account *Account) string {
+	if base := strings.TrimSpace(account.GetAnthropicProtocolBaseURL()); base != "" {
+		return base
+	}
+	return account.GetBaseURL()
+}
+
+// anthropicUpstreamTargetURL 组装 Anthropic 上游端点（path 以 "/" 开头，如
+// "/v1/messages"、"/v1/messages/count_tokens"）。CN/多协议账号（
+// GetAnthropicProtocolBaseURL 非空）按 {base}{path} 朴素拼接、不附加 ?beta=true
+// （第三方端点不接受该参数，与 OpenAI 族 nativeAnthropicTargetURL 对齐）；
+// classic anthropic 账号保持 {base}{path}?beta=true 现状。返回空串表示无自定义
+// base（走官方默认 claudeAPIURL / claudeAPICountTokensURL），由调用方保持默认。
+func (s *GatewayService) anthropicUpstreamTargetURL(account *Account, path string) (string, error) {
+	protocolBase := strings.TrimSpace(account.GetAnthropicProtocolBaseURL())
+	if protocolBase != "" {
+		validatedURL, err := s.validateUpstreamBaseURL(protocolBase)
+		if err != nil {
+			return "", err
+		}
+		return strings.TrimRight(validatedURL, "/") + path, nil
+	}
+	baseURL := account.GetBaseURL()
+	if baseURL == "" {
+		return "", nil
+	}
+	validatedURL, err := s.validateUpstreamBaseURL(baseURL)
+	if err != nil {
+		return "", err
+	}
+	return validatedURL + path + "?beta=true", nil
 }
