@@ -1,0 +1,83 @@
+name: Build Custom Docker Image
+
+on:
+  push:
+    tags:
+      - 'custom-*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Custom image version (without the custom- prefix)'
+        required: true
+        type: string
+        default: '0.2.4-custom.20260913.1'
+
+permissions:
+  contents: read
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to DockerHub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Resolve image version and commit
+        id: vars
+        shell: bash
+        env:
+          CUSTOM_VERSION_INPUT: ${{ inputs.version }}
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            VERSION="${CUSTOM_VERSION_INPUT}"
+          else
+            VERSION="${GITHUB_REF#refs/tags/custom-}"
+          fi
+          VERSION="${VERSION#custom-}"
+          if [[ ! "$VERSION" =~ ^[0-9A-Za-z][0-9A-Za-z._-]*$ ]]; then
+            echo "Version must be non-empty and contain only letters, digits, '.', '_' or '-'" >&2
+            exit 1
+          fi
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "commit=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+      - name: Build and push custom image
+        id: build
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./Dockerfile
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: |
+            docker.io/tanyimin/sub2api-custom:${{ steps.vars.outputs.version }}
+            docker.io/tanyimin/sub2api-custom:custom-latest
+          build-args: |
+            VERSION=${{ steps.vars.outputs.version }}
+            COMMIT=${{ steps.vars.outputs.commit }}
+
+      - name: Output image digest
+        run: |
+          echo "digest=${{ steps.build.outputs.digest }}"
+          {
+            echo "## Custom image published"
+            echo
+            echo '- Image: `docker.io/tanyimin/sub2api-custom`'
+            echo '- Version: `${{ steps.vars.outputs.version }}`'
+            echo '- Commit: `${{ steps.vars.outputs.commit }}`'
+            echo '- Digest: `${{ steps.build.outputs.digest }}`'
+          } >> "$GITHUB_STEP_SUMMARY"
