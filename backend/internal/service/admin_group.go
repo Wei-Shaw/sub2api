@@ -297,11 +297,7 @@ func defaultModelsListCandidateIDs(platform string) []string {
 	case PlatformOpenCodeGo:
 		return DefaultOpenCodeGoModelIDs()
 	case PlatformOllamaCloud:
-		// ollama_cloud 没有静态默认模型列表：可服务模型完全来自账号侧的
-		// model_mapping / extra.allowed_models（缺失时 IsModelSupported 为
-		// deny-all）。default 分支的 Claude 列表对它只会造成虚假广告；
-		// 显式返回空，与 gateway_handler.defaultModelIDsForPlatform 对齐。
-		return nil
+		return DefaultOllamaCloudModelIDs()
 	case PlatformComposite:
 		return compositeDefaultModelsListCandidateIDs()
 	default:
@@ -322,7 +318,7 @@ func defaultAllowImageGenerationForPlatform(platform string) bool {
 func compositeDefaultModelsListCandidateIDs() []string {
 	seen := make(map[string]struct{})
 	ids := make([]string, 0)
-	for _, platform := range []string{PlatformAnthropic, PlatformGemini, PlatformOpenAI, PlatformAntigravity, PlatformGrok, PlatformKimi, PlatformZhipu, PlatformDeepseek, PlatformMiniMax, PlatformOpenCodeGo} {
+	for _, platform := range []string{PlatformAnthropic, PlatformGemini, PlatformOpenAI, PlatformAntigravity, PlatformGrok, PlatformKimi, PlatformZhipu, PlatformDeepseek, PlatformMiniMax, PlatformOpenCodeGo, PlatformOllamaCloud} {
 		for _, id := range defaultModelsListCandidateIDs(platform) {
 			if _, ok := seen[id]; ok {
 				continue
