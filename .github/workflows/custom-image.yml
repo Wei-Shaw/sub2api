@@ -10,7 +10,7 @@ on:
         description: 'Custom image version (without the custom- prefix)'
         required: true
         type: string
-        default: '0.2.4-custom.20260913.1'
+        default: '0.2.4'
 
 permissions:
   contents: read
