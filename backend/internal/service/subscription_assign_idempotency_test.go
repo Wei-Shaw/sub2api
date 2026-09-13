@@ -152,6 +152,9 @@ func (userSubRepoNoop) ExistsActiveByUserIDAndGroupID(context.Context, int64, in
 func (userSubRepoNoop) ApplyWeeklyAdvance(context.Context, int64, time.Time, time.Time, *time.Time, float64) error {
 	panic("unexpected ApplyWeeklyAdvance call")
 }
+func (userSubRepoNoop) ApplyMonthlyAdvance(context.Context, int64, time.Time, time.Time, *time.Time, float64) error {
+	panic("unexpected ApplyMonthlyAdvance call")
+}
 
 func (userSubRepoNoop) ExtendExpiry(context.Context, int64, time.Time) error {
 	panic("unexpected ExtendExpiry call")

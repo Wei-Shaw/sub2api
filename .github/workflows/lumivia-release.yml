@@ -31,13 +31,19 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          tests=$(go test -tags=unit ./internal/service -list 'TestWeeklyAdvance|TestLumivia')
+          tests=$(go test -tags=unit ./internal/service -list 'TestWeeklyAdvance|TestMonthlyAdvance|TestLumivia')
           grep -q '^TestWeeklyAdvanceCalculation$' <<< "$tests"
           grep -q '^TestWeeklyAdvanceAutomaticRechecksStoredOptIn$' <<< "$tests"
           grep -q '^TestWeeklyAdvanceMonthlyLimitAfterShift$' <<< "$tests"
           grep -q '^TestWeeklyAdvanceRepeatedMonthlyShift$' <<< "$tests"
+          grep -q '^TestMonthlyAdvanceCalculation$' <<< "$tests"
+          grep -q '^TestMonthlyAdvanceEligibility$' <<< "$tests"
+          grep -q '^TestMonthlyAdvanceOwnershipAndReplay$' <<< "$tests"
+          grep -q '^TestMonthlyAdvanceWeeklyClock$' <<< "$tests"
           grep -q '^TestLumiviaUpdatesUseFork$' <<< "$tests"
-          go test -tags=unit ./internal/service -run 'TestWeeklyAdvance|TestValidateAndCheckLimits|TestLumivia|TestUpdateService' -count=1
+          go test -tags=unit ./internal/service -run 'TestWeeklyAdvance|TestMonthlyAdvance|TestValidateAndCheckLimits|TestLumivia|TestUpdateService' -count=1
+          go test -tags=unit ./internal/handler -run '^TestMonthlyAdvanceHandler' -count=1
+          go test -tags=unit ./internal/handler/dto -run '^TestUserSubscriptionFromServiceMonthlyResetAt$' -count=1
           go test -tags=unit ./internal/server -run '^TestAPIContracts$' -count=1
           go test -tags=unit ./internal/repository -run '^TestUserSubscriptionGetByIDForUpdateLocksRow$' -count=1
       - uses: pnpm/action-setup@v6
@@ -50,7 +56,10 @@ jobs:
           cache-dependency-path: frontend/pnpm-lock.yaml
       - name: Build frontend
         working-directory: frontend
-        run: pnpm install --frozen-lockfile && pnpm run build
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm exec vitest run src/views/user/__tests__/SubscriptionsView.advanceMonth.spec.ts
+          pnpm run build
 
   publish:
     needs: verify

@@ -111,6 +111,15 @@ export default {
 
   // User Subscriptions Page
   userSubscriptions: {
+    advanceMonth: {
+      action: 'Reset monthly quota',
+      hint: 'Resetting deducts the time left in this month.',
+      title: 'Reset monthly quota and shorten subscription',
+      description: 'Unused monthly quota will be forfeited. Monthly usage resets to zero and a new one-month quota period starts when you confirm.',
+      warning: 'Expiry moves earlier by the same duration. The weekly quota clock advances too; weekly usage clears only when a weekly reset boundary is crossed. Daily usage is unchanged. Deducted time cannot be recovered. The exact deduction is the time left in this month when you confirm.',
+      success: 'Monthly quota reset and expiry updated',
+      failed: 'Cannot reset monthly quota now. Refresh and try again. Monthly usage and a following subscription period are required.'
+    },
     advanceWeek: {
       autoLabel: "Automatically start next week when quota runs out",
       autoShortLabel: "Auto reset",

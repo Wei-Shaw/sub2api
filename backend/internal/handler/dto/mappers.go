@@ -891,6 +891,7 @@ func userSubscriptionFromServiceBase(sub *service.UserSubscription) UserSubscrip
 		DailyWindowStart:   sub.DailyWindowStart,
 		WeeklyWindowStart:  sub.WeeklyWindowStart,
 		MonthlyWindowStart: sub.MonthlyWindowStart,
+		MonthlyResetAt:     sub.MonthlyResetTime(),
 		DailyUsageUSD:      sub.DailyUsageUSD,
 		WeeklyUsageUSD:     sub.WeeklyUsageUSD,
 		AutoAdvanceWeek:    sub.AutoAdvanceWeek,

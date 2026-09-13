@@ -2055,6 +2055,7 @@ export interface UserSubscription {
   daily_window_start: string | null
   weekly_window_start: string | null
   monthly_window_start: string | null
+  monthly_reset_at?: string | null
   created_at: string
   updated_at: string
   revoked_at?: string | null
