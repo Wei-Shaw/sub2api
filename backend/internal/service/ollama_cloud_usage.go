@@ -163,7 +163,17 @@ type OllamaCloudUsageState struct {
 	// EligibleReason 说明 eligible=false 的具体原因（"" 表示合格）：
 	// platform_not_eligible / wrong_account_type / unsupported_base_url，
 	// 供管理端区分「平台不合规 / 类型不对 / base_url 反代」。
-	EligibleReason          string                    `json:"eligible_reason,omitempty"`
+	EligibleReason string `json:"eligible_reason,omitempty"`
+	// Mode 是 Ollama Cloud 双额度模式：ollama_legacy（5h/7d 滚动窗口）/
+	// ollama_credits（月度美元信用池），由 GetOllamaCloudAccountMode 解析
+	// credentials.account_mode，未设置或值不认识时保守默认 legacy。
+	// 非 ollama_cloud 平台（含用量白名单里的 legacy 宿主平台）留空。
+	Mode string `json:"mode,omitempty"`
+	// MonthlyCreditUSD 是 credits 模式的月度信用池分母（USD），读
+	// credentials.monthly_credit_usd（建号表单录入）。凭据缺失、无法解析或
+	// 非正数时为 nil——表示「无该字段」，不报错也不填假值，前端回落为只
+	// 展示原始余额文本。
+	MonthlyCreditUSD        *float64                  `json:"monthly_credit_usd,omitempty"`
 	Configured              bool                      `json:"configured"`
 	AutoRefreshEnabled      bool                      `json:"auto_refresh_enabled"`
 	EncryptionKeyConfigured bool                      `json:"encryption_key_configured"`
@@ -1024,6 +1034,14 @@ func OllamaCloudUsageStateFromAccount(account *Account) *OllamaCloudUsageState {
 		return state
 	}
 	state.AccountID = account.ID
+	// mode / monthly credit 在资格判定之前填充：不合格的 ollama_cloud 账号
+	// （反代 base_url、oauth 类型）同样带着额度模式与原因码下发，供管理端
+	// 解释「为什么没有窗口/余额」。GetOllamaCloudAccountMode 对非
+	// ollama_cloud 平台返回空串，Mode 随 omitempty 留空。
+	state.Mode = account.GetOllamaCloudAccountMode()
+	if credit := account.GetCredentialAsFloat64("monthly_credit_usd"); credit > 0 {
+		state.MonthlyCreditUSD = &credit
+	}
 	state.EligibleReason = ollamaCloudUsageEligibilityReason(account)
 	state.Eligible = state.EligibleReason == ""
 	if !state.Eligible {
