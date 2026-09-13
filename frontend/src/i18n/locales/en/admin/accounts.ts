@@ -281,6 +281,7 @@ export default {
         sevenDay: '7 day',
         sevenDayShort: '7d',
         balance: 'Balance',
+        monthlyPoolShort: 'Pool',
         models: 'Models',
         status: 'Status',
         updatedAt: 'Updated',
@@ -288,6 +289,11 @@ export default {
         unauthorized: 'Session expired',
         failed: 'Refresh failed',
         windowWithReset: '{percent} used, resets {reset}',
+        eligibleReason: {
+          platform_not_eligible: 'Platform is not in the Ollama Cloud usage allowlist',
+          wrong_account_type: 'Only API key accounts support usage queries',
+          unsupported_base_url: 'base_url is not the official ollama.com host; usage is unavailable'
+        },
         loadFailed: 'Failed to load Ollama Cloud usage settings',
         sessionSaved: 'Ollama browser session saved',
         sessionSaveFailed: 'Failed to save Ollama browser session',

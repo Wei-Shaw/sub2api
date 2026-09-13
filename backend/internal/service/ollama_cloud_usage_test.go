@@ -566,6 +566,97 @@ func TestOllamaCloudUsageStateEligibleReason(t *testing.T) {
 	require.Empty(t, state.EligibleReason)
 }
 
+// OllamaCloudUsageState 的双额度字段（D7）：mode 由 GetOllamaCloudAccountMode
+// 解析（缺省/不认识 → legacy，非 ollama_cloud 平台留空），monthly_credit_usd
+// 缺失或非法时为 nil（无该字段语义，不报错不填假值）。
+func TestOllamaCloudUsageStateModeAndMonthlyCredit(t *testing.T) {
+	tests := []struct {
+		name              string
+		credentials       map[string]any
+		wantMode          string
+		wantMonthlyCredit *float64
+	}{
+		{
+			name:        "未设置 account_mode 默认 legacy，无月度信用池",
+			credentials: map[string]any{},
+			wantMode:    AccountModeOllamaLegacy,
+		},
+		{
+			name:        "显式 legacy",
+			credentials: map[string]any{"account_mode": AccountModeOllamaLegacy},
+			wantMode:    AccountModeOllamaLegacy,
+		},
+		{
+			name:              "credits + 月度信用池 60（JSONB 数字为 float64）",
+			credentials:       map[string]any{"account_mode": AccountModeOllamaCredits, "monthly_credit_usd": float64(60)},
+			wantMode:          AccountModeOllamaCredits,
+			wantMonthlyCredit: float64Ptr(60),
+		},
+		{
+			name:              "月度信用池手写字符串也可解析",
+			credentials:       map[string]any{"account_mode": AccountModeOllamaCredits, "monthly_credit_usd": "300"},
+			wantMode:          AccountModeOllamaCredits,
+			wantMonthlyCredit: float64Ptr(300),
+		},
+		{
+			name:        "credits 但信用池缺失 → 只透出 mode",
+			credentials: map[string]any{"account_mode": AccountModeOllamaCredits},
+			wantMode:    AccountModeOllamaCredits,
+		},
+		{
+			name:        "信用池为 0 / 负数 / 垃圾值 → 视为无该字段",
+			credentials: map[string]any{"account_mode": AccountModeOllamaCredits, "monthly_credit_usd": float64(0)},
+			wantMode:    AccountModeOllamaCredits,
+		},
+		{
+			name:        "不认识的 mode 值保守回落 legacy",
+			credentials: map[string]any{"account_mode": "ollama_turbo"},
+			wantMode:    AccountModeOllamaLegacy,
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			account := ollamaUsageAccount(1)
+			account.Platform = PlatformOllamaCloud
+			account.Credentials = map[string]any{"base_url": "https://ollama.com", "api_key": "key-1"}
+			for key, value := range test.credentials {
+				account.Credentials[key] = value
+			}
+
+			state := OllamaCloudUsageStateFromAccount(account)
+			require.True(t, state.Eligible)
+			require.Equal(t, test.wantMode, state.Mode)
+			if test.wantMonthlyCredit == nil {
+				require.Nil(t, state.MonthlyCreditUSD)
+			} else {
+				require.NotNil(t, state.MonthlyCreditUSD)
+				require.InDelta(t, *test.wantMonthlyCredit, *state.MonthlyCreditUSD, 1e-9)
+			}
+		})
+	}
+
+	// 非 ollama_cloud 平台（legacy 宿主平台）mode 留空，JSON 随 omitempty 缺省。
+	hostAccount := ollamaUsageAccount(2)
+	hostAccount.Credentials["account_mode"] = AccountModeOllamaCredits
+	hostState := OllamaCloudUsageStateFromAccount(hostAccount)
+	require.Empty(t, hostState.Mode)
+
+	payload, err := json.Marshal(hostState)
+	require.NoError(t, err)
+	require.NotContains(t, string(payload), `"mode"`)
+
+	// credits 账号的 JSON 形状：mode + monthly_credit_usd 均按 tag 透出。
+	creditsAccount := ollamaUsageAccount(3)
+	creditsAccount.Platform = PlatformOllamaCloud
+	creditsAccount.Credentials["account_mode"] = AccountModeOllamaCredits
+	creditsAccount.Credentials["monthly_credit_usd"] = float64(60)
+	creditsState := OllamaCloudUsageStateFromAccount(creditsAccount)
+	payload, err = json.Marshal(creditsState)
+	require.NoError(t, err)
+	require.Contains(t, string(payload), `"mode":"ollama_credits"`)
+	require.Contains(t, string(payload), `"monthly_credit_usd":60`)
+}
+
 // 错误文案由平台白名单派生（D2）：platform 化后必须包含 ollama_cloud，不再
 // 残留「OpenAI or Anthropic」旧文案；错误码是对外契约，保持不变。
 func TestOllamaCloudUsageAccountInvalidMessageDerivedFromWhitelist(t *testing.T) {
