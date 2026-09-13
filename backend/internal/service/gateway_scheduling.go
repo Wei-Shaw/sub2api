@@ -57,13 +57,17 @@ func (s *GatewayService) SelectAccountForModelWithExclusions(ctx context.Context
 				return nil, fmt.Errorf("%w supporting model: %s (composite target platform unknown)", ErrNoAvailableAccounts, requestedModel)
 			}
 			if isCompositePoolDecision(decision) {
-				// 多平台候选池由统一 OpenAI 兼容 selector 选择（openai_gateway_scheduling
-				// 链路）；generic 调度器不消费池，显式失败避免以空平台误调度。
-				return nil, fmt.Errorf("%w supporting model: %s (composite candidate pool %s)", ErrNoAvailableAccounts, requestedModel, strings.Join(decision.CandidatePlatforms, ","))
+				// 多平台候选池：generic 网关成为统一池执行器，按候选平台跨平台选号。
+				// 平台保持 composite 哨兵（仅用于日志/诊断，下游门按 ctx 候选池判定）；
+				// 池不改写请求体模型，最终平台由选号结果决定。候选池写回 ctx
+				//（immutable），供 listSchedulableAccounts 与 sticky/模型门使用。
+				ctx = WithCompositeRouteDecision(ctx, decision)
+				platform = PlatformComposite
+			} else {
+				platform = decision.TargetPlatform
+				requestedModel = decision.UpstreamModel
+				ctx = WithCompositeRouteDecision(ctx, decision)
 			}
-			platform = decision.TargetPlatform
-			requestedModel = decision.UpstreamModel
-			ctx = WithCompositeRouteDecision(ctx, decision)
 		}
 	} else {
 		// 无分组时只使用原生 anthropic 平台
@@ -216,7 +220,7 @@ func (s *GatewayService) SelectAccountWithLoadAwareness(ctx context.Context, gro
 		}
 	}
 
-	platform, hasForcePlatform, err := s.resolvePlatform(ctx, groupID, group, requestedModel)
+	ctx, platform, hasForcePlatform, err := s.resolvePlatform(ctx, groupID, group, requestedModel)
 	if err != nil {
 		return nil, err
 	}
@@ -301,11 +305,11 @@ func (s *GatewayService) SelectAccountWithLoadAwareness(ctx context.Context, gro
 			if !s.isGatewayAccountProfitEligible(ctx, account) {
 				continue
 			}
-			if !s.isAccountAllowedForPlatform(account, platform, useMixed) {
+			if !s.gatewaySchedulingPlatformMatchesAccount(ctx, account, platform, useMixed) {
 				filteredPlatform++
 				continue
 			}
-			if requestedModel != "" && !s.isModelSupportedByAccountWithContext(ctx, account, requestedModel) {
+			if requestedModel != "" && !s.gatewaySchedulingModelSupported(ctx, account, requestedModel) {
 				filteredModelMapping++
 				continue
 			}
@@ -361,8 +365,8 @@ func (s *GatewayService) SelectAccountWithLoadAwareness(ctx context.Context, gro
 
 						gatePass := s.isAccountSchedulableForSelection(stickyAccount) &&
 							s.isGatewayAccountProfitEligible(ctx, stickyAccount) &&
-							s.isAccountAllowedForPlatform(stickyAccount, platform, useMixed) &&
-							(requestedModel == "" || s.isModelSupportedByAccountWithContext(ctx, stickyAccount, requestedModel)) &&
+							s.gatewaySchedulingPlatformMatchesAccount(ctx, stickyAccount, platform, useMixed) &&
+							(requestedModel == "" || s.gatewaySchedulingModelSupported(ctx, stickyAccount, requestedModel)) &&
 							!isChannelRestricted(stickyAccount) &&
 							s.isAccountSchedulableForModelSelection(ctx, stickyAccount, requestedModel) &&
 							s.isAccountSchedulableForQuota(stickyAccount) &&
@@ -545,9 +549,9 @@ func (s *GatewayService) SelectAccountWithLoadAwareness(ctx context.Context, gro
 				// 注意：不再检查 isAccountInGroup，因为 accountByID 已经从按分组过滤的
 				// accounts 列表构建，账号一定在分组内。而 scheduler snapshot 缓存
 				// 反序列化后 AccountGroups 字段为空，导致 isAccountInGroup 永远返回 false。
-				platformOK := s.isAccountAllowedForPlatform(account, platform, useMixed)
+				platformOK := s.gatewaySchedulingPlatformMatchesAccount(ctx, account, platform, useMixed)
 				profitOK := s.isGatewayAccountProfitEligible(ctx, account)
-				modelSupported := requestedModel == "" || s.isModelSupportedByAccountWithContext(ctx, account, requestedModel)
+				modelSupported := requestedModel == "" || s.gatewaySchedulingModelSupported(ctx, account, requestedModel)
 				channelOK := !isChannelRestricted(account)
 				modelSchedulable := s.isAccountSchedulableForModelSelection(ctx, account, requestedModel)
 				quotaOK := s.isAccountSchedulableForQuota(account)
@@ -670,10 +674,10 @@ func (s *GatewayService) SelectAccountWithLoadAwareness(ctx context.Context, gro
 		if !s.isGatewayAccountProfitEligible(ctx, acc) {
 			continue
 		}
-		if !s.isAccountAllowedForPlatform(acc, platform, useMixed) {
+		if !s.gatewaySchedulingPlatformMatchesAccount(ctx, acc, platform, useMixed) {
 			continue
 		}
-		if requestedModel != "" && !s.isModelSupportedByAccountWithContext(ctx, acc, requestedModel) {
+		if requestedModel != "" && !s.gatewaySchedulingModelSupported(ctx, acc, requestedModel) {
 			continue
 		}
 		if isChannelRestricted(acc) {
@@ -975,54 +979,68 @@ func (s *GatewayService) checkClaudeCodeRestriction(ctx context.Context, groupID
 	return group, resolvedID, nil
 }
 
-func (s *GatewayService) resolvePlatform(ctx context.Context, groupID *int64, group *Group, requestedModel string) (string, bool, error) {
+// resolvePlatform 解析本次请求的调度平台。返回值携带可能被池决策写回的 ctx：
+// composite account_pool 决策在此把 immutable 候选池写入 ctx（供 listSchedulableAccounts
+// 与 sticky/模型门使用），平台返回 composite 哨兵（仅用于日志/诊断）；单平台请求
+// 保持原语义，不写任何池值。
+func (s *GatewayService) resolvePlatform(ctx context.Context, groupID *int64, group *Group, requestedModel string) (context.Context, string, bool, error) {
 	forcePlatform, hasForcePlatform := ctx.Value(ctxkey.ForcePlatform).(string)
 	if hasForcePlatform && forcePlatform != "" {
-		return forcePlatform, true, nil
+		return ctx, forcePlatform, true, nil
 	}
 	if platform, ok := ResolvedTargetPlatformFromContext(ctx); ok {
-		return platform, false, nil
+		return ctx, platform, false, nil
 	}
 	if group != nil {
 		if group.Platform == PlatformComposite {
 			decision, ok, err := s.resolveCompositeRouteDecision(ctx, group, requestedModel, CompositeRouteEndpointAny)
 			if err != nil {
-				return "", false, err
+				return ctx, "", false, err
 			}
 			if !ok {
-				return "", false, fmt.Errorf("%w supporting model: %s (composite target platform unknown)", ErrNoAvailableAccounts, requestedModel)
+				return ctx, "", false, fmt.Errorf("%w supporting model: %s (composite target platform unknown)", ErrNoAvailableAccounts, requestedModel)
 			}
 			if isCompositePoolDecision(decision) {
-				return "", false, fmt.Errorf("%w supporting model: %s (composite candidate pool %s)", ErrNoAvailableAccounts, requestedModel, strings.Join(decision.CandidatePlatforms, ","))
+				// 池决策写回 ctx（immutable 候选池），平台保持 composite 哨兵用于日志。
+				return WithCompositeRouteDecision(ctx, decision), PlatformComposite, false, nil
 			}
-			return decision.TargetPlatform, false, nil
+			return ctx, decision.TargetPlatform, false, nil
 		}
-		return group.Platform, false, nil
+		return ctx, group.Platform, false, nil
 	}
 	if groupID != nil {
 		group, err := s.resolveGroupByID(ctx, *groupID)
 		if err != nil {
-			return "", false, err
+			return ctx, "", false, err
 		}
 		if group.Platform == PlatformComposite {
 			decision, ok, err := s.resolveCompositeRouteDecision(ctx, group, requestedModel, CompositeRouteEndpointAny)
 			if err != nil {
-				return "", false, err
+				return ctx, "", false, err
 			}
 			if !ok {
-				return "", false, fmt.Errorf("%w supporting model: %s (composite target platform unknown)", ErrNoAvailableAccounts, requestedModel)
+				return ctx, "", false, fmt.Errorf("%w supporting model: %s (composite target platform unknown)", ErrNoAvailableAccounts, requestedModel)
 			}
 			if isCompositePoolDecision(decision) {
-				return "", false, fmt.Errorf("%w supporting model: %s (composite candidate pool %s)", ErrNoAvailableAccounts, requestedModel, strings.Join(decision.CandidatePlatforms, ","))
+				// 池决策写回 ctx（immutable 候选池），平台保持 composite 哨兵用于日志。
+				return WithCompositeRouteDecision(ctx, decision), PlatformComposite, false, nil
 			}
-			return decision.TargetPlatform, false, nil
+			return ctx, decision.TargetPlatform, false, nil
 		}
-		return group.Platform, false, nil
+		return ctx, group.Platform, false, nil
 	}
-	return PlatformAnthropic, false, nil
+	return ctx, PlatformAnthropic, false, nil
 }
 
 func (s *GatewayService) listSchedulableAccounts(ctx context.Context, groupID *int64, platform string, hasForcePlatform bool) ([]Account, bool, error) {
+	// composite account_pool：跨候选平台逐平台查询合并去重（镜像 OpenAI 族
+	// listSchedulableAccountsForCompositePool）。池请求不走 composite 哨兵平台的
+	// snapshot/repo 查询（该桶不存在）；池请求不做混合调度展开，候选平台各自的
+	// 账号经独立桶进入既有选号算法。
+	if GenericCompositePoolActive(ctx) {
+		accounts, err := s.listSchedulableAccountsForCompositePool(ctx, groupID, CompositeCandidatePlatformsFromContext(ctx))
+		return accounts, false, err
+	}
 	if s.schedulerSnapshot != nil {
 		accounts, useMixed, err := s.schedulerSnapshot.ListSchedulableAccounts(ctx, groupID, platform, hasForcePlatform)
 		if err == nil {
@@ -1094,16 +1112,7 @@ func (s *GatewayService) listSchedulableAccounts(ctx context.Context, groupID *i
 		return s.filterAccountsBySchedulingThreshold(ctx, filtered), useMixed, nil
 	}
 
-	var accounts []Account
-	var err error
-	if s.cfg != nil && s.cfg.RunMode == config.RunModeSimple {
-		accounts, err = s.accountRepo.ListSchedulableByPlatform(ctx, platform)
-	} else if groupID != nil {
-		accounts, err = s.accountRepo.ListSchedulableByGroupIDAndPlatform(ctx, *groupID, platform)
-		// 分组内无账号则返回空列表，由上层处理错误，不再回退到全平台查询
-	} else {
-		accounts, err = s.accountRepo.ListSchedulableUngroupedByPlatform(ctx, platform)
-	}
+	accounts, err := s.listSchedulableAccountsSinglePlatform(ctx, groupID, platform, hasForcePlatform)
 	if err != nil {
 		slog.Debug("account_scheduling_list_failed",
 			"group_id", derefGroupID(groupID),
@@ -1126,11 +1135,74 @@ func (s *GatewayService) listSchedulableAccounts(ctx context.Context, groupID *i
 				"tls_fingerprint", acc.IsTLSFingerprintEnabled())
 		}
 	}
+	return accounts, useMixed, nil
+}
+
+// listSchedulableAccountsForCompositePool 逐候选 platform 读取既有单平台桶并把结果
+// 复制进新 slice、按账号 ID 去重（镜像 OpenAI 族同名做法）。每个桶经独立的
+// snapshot→DB fallback 链路，语义与单平台完全等价；池 immutable，这里不就地修改
+// 任何共享缓存元素，也不对桶做排序（priority/load/LRU 排序留给下游既有选号算法）。
+// excludedIDs 由调用方按账号 ID 传递，跨平台天然通用；所有候选健康但均不合格时
+// 由下游 filter 产出无容量错误（ErrNoAvailableAccounts）。
+func (s *GatewayService) listSchedulableAccountsForCompositePool(ctx context.Context, groupID *int64, platforms []string) ([]Account, error) {
+	merged := make([]Account, 0, len(platforms)*4)
+	seen := make(map[int64]struct{}, len(platforms)*4)
+	for _, platform := range platforms {
+		// 本次请求被策略 deny 的平台：整平台跳过（候选池本身不变）。
+		if compositePoolPlatformDenied(ctx, platform) {
+			continue
+		}
+		// 池桶强制单平台语义（hasForcePlatform=true）：避免 snapshot 把 anthropic
+		// 候选桶展开成 mixed 桶、混入非候选平台的 antigravity 账号。
+		bucket, err := s.listSchedulableAccountsSinglePlatform(ctx, groupID, platform, true)
+		if err != nil {
+			return nil, err
+		}
+		for i := range bucket {
+			if _, duplicate := seen[bucket[i].ID]; duplicate {
+				continue
+			}
+			seen[bucket[i].ID] = struct{}{}
+			merged = append(merged, bucket[i])
+		}
+	}
+	return merged, nil
+}
+
+// listSchedulableAccountsSinglePlatform 单平台可调度桶：snapshot → DB fallback，
+// 附调度阈值过滤与 grok 免费配额过滤。与 listSchedulableAccounts 的非混合分支
+// 同源，供其与 composite 池桶（listSchedulableAccountsForCompositePool）复用。
+func (s *GatewayService) listSchedulableAccountsSinglePlatform(ctx context.Context, groupID *int64, platform string, hasForcePlatform bool) ([]Account, error) {
+	if s.schedulerSnapshot != nil {
+		accounts, _, err := s.schedulerSnapshot.ListSchedulableAccounts(ctx, groupID, platform, hasForcePlatform)
+		if err != nil {
+			return accounts, err
+		}
+		accounts = s.filterAccountsBySchedulingThreshold(ctx, accounts)
+		if platform == PlatformGrok || strings.EqualFold(platform, PlatformGrok) {
+			accounts = s.filterGrokFreeQuotaAccountsForGateway(ctx, accounts)
+		}
+		return accounts, nil
+	}
+	var accounts []Account
+	var err error
+	if s.cfg != nil && s.cfg.RunMode == config.RunModeSimple {
+		accounts, err = s.accountRepo.ListSchedulableByPlatform(ctx, platform)
+	} else if groupID != nil {
+		accounts, err = s.accountRepo.ListSchedulableByGroupIDAndPlatform(ctx, *groupID, platform)
+		// 分组内无账号则返回空列表，由上层处理错误，不再回退到全平台查询
+	} else {
+		accounts, err = s.accountRepo.ListSchedulableUngroupedByPlatform(ctx, platform)
+	}
+	if err != nil {
+		// 保持原样返回原始错误（调用方按 debug 日志记录），不额外包装。
+		return nil, err
+	}
 	accounts = s.filterAccountsBySchedulingThreshold(ctx, accounts)
 	if platform == PlatformGrok || strings.EqualFold(platform, PlatformGrok) {
 		accounts = s.filterGrokFreeQuotaAccountsForGateway(ctx, accounts)
 	}
-	return accounts, useMixed, nil
+	return accounts, nil
 }
 
 // IsSingleAntigravityAccountGroup 检查指定分组是否只有一个 antigravity 平台的可调度账号。
@@ -1155,6 +1227,31 @@ func (s *GatewayService) isAccountAllowedForPlatform(account *Account, platform 
 		return account.Platform == PlatformAntigravity && account.IsMixedSchedulingEnabled()
 	}
 	return account.Platform == platform
+}
+
+// gatewaySchedulingPlatformMatchesAccount 是 generic 调度选号/sticky/抢槽后复检的
+// 账号平台门：composite account_pool 激活时改用候选池成员校验（池 immutable，
+// 防止 sticky 命中池外账号导致池塌缩），单平台请求保持
+// isAccountAllowedForPlatform 原语义（含混合调度展开）。
+func (s *GatewayService) gatewaySchedulingPlatformMatchesAccount(ctx context.Context, account *Account, platform string, useMixed bool) bool {
+	if GenericCompositePoolActive(ctx) {
+		return genericCompositePoolAllowsAccount(ctx, account)
+	}
+	return s.isAccountAllowedForPlatform(account, platform, useMixed)
+}
+
+// gatewaySchedulingModelSupported 是 generic 调度选号/sticky 的模型能力门：
+// 池请求使用契约共享谓词 CompositeAccountClaimsModel（与构池一致，任意强度命中
+// 均算，防 IsModelSupported 的 allow-all 语义冒领其他平台模型），单平台请求保持
+// isModelSupportedByAccountWithContext 原语义不变。
+func (s *GatewayService) gatewaySchedulingModelSupported(ctx context.Context, account *Account, requestedModel string) bool {
+	if account == nil || requestedModel == "" {
+		return true
+	}
+	if GenericCompositePoolActive(ctx) {
+		return CompositeAccountClaimsModel(account, requestedModel)
+	}
+	return s.isModelSupportedByAccountWithContext(ctx, account, requestedModel)
 }
 
 func (s *GatewayService) isAccountSchedulableForSelection(account *Account) bool {
@@ -1933,7 +2030,7 @@ func (s *GatewayService) selectAccountForModelWithPlatform(ctx context.Context, 
 						if clearSticky {
 							_ = s.cache.DeleteSessionAccountID(ctx, derefGroupID(groupID), sessionHash)
 						}
-						if !clearSticky && s.isGatewayAccountProfitEligible(ctx, account) && s.isAccountInGroup(account, groupID) && account.Platform == platform && (requestedModel == "" || s.isModelSupportedByAccountWithContext(ctx, account, requestedModel)) && s.isAccountSchedulableForModelSelection(ctx, account, requestedModel) && s.isAccountSchedulableForQuota(account) && s.isAccountSchedulableForWindowCost(ctx, account, true) && s.isAccountSchedulableForRPM(ctx, account, true) && !s.isStickyAccountUpstreamRestricted(ctx, groupID, account, requestedModel) {
+						if !clearSticky && s.isGatewayAccountProfitEligible(ctx, account) && s.isAccountInGroup(account, groupID) && s.gatewaySchedulingPlatformMatchesAccount(ctx, account, platform, false) && (requestedModel == "" || s.gatewaySchedulingModelSupported(ctx, account, requestedModel)) && s.isAccountSchedulableForModelSelection(ctx, account, requestedModel) && s.isAccountSchedulableForQuota(account) && s.isAccountSchedulableForWindowCost(ctx, account, true) && s.isAccountSchedulableForRPM(ctx, account, true) && !s.isStickyAccountUpstreamRestricted(ctx, groupID, account, requestedModel) {
 							if s.debugModelRoutingEnabled() {
 								logger.LegacyPrintf("service.gateway", "[ModelRoutingDebug] legacy routed sticky hit: group_id=%v model=%s session=%s account=%d", derefGroupID(groupID), requestedModel, shortSessionHash(sessionHash), accountID)
 							}
@@ -1990,7 +2087,7 @@ func (s *GatewayService) selectAccountForModelWithPlatform(ctx context.Context, 
 					fmt.Sprintf("Privacy not set, required by group [%s]", schedGroup.Name))
 				continue
 			}
-			if requestedModel != "" && !s.isModelSupportedByAccountWithContext(ctx, acc, requestedModel) {
+			if requestedModel != "" && !s.gatewaySchedulingModelSupported(ctx, acc, requestedModel) {
 				continue
 			}
 			if !s.isAccountSchedulableForModelSelection(ctx, acc, requestedModel) {
@@ -2055,7 +2152,7 @@ func (s *GatewayService) selectAccountForModelWithPlatform(ctx context.Context, 
 					if clearSticky {
 						_ = s.cache.DeleteSessionAccountID(ctx, derefGroupID(groupID), sessionHash)
 					}
-					if !clearSticky && s.isGatewayAccountProfitEligible(ctx, account) && s.isAccountInGroup(account, groupID) && account.Platform == platform && (requestedModel == "" || s.isModelSupportedByAccountWithContext(ctx, account, requestedModel)) && s.isAccountSchedulableForModelSelection(ctx, account, requestedModel) && s.isAccountSchedulableForQuota(account) && s.isAccountSchedulableForWindowCost(ctx, account, true) && s.isAccountSchedulableForRPM(ctx, account, true) {
+					if !clearSticky && s.isGatewayAccountProfitEligible(ctx, account) && s.isAccountInGroup(account, groupID) && s.gatewaySchedulingPlatformMatchesAccount(ctx, account, platform, false) && (requestedModel == "" || s.gatewaySchedulingModelSupported(ctx, account, requestedModel)) && s.isAccountSchedulableForModelSelection(ctx, account, requestedModel) && s.isAccountSchedulableForQuota(account) && s.isAccountSchedulableForWindowCost(ctx, account, true) && s.isAccountSchedulableForRPM(ctx, account, true) {
 						return account, nil
 					}
 				}
@@ -2104,7 +2201,7 @@ func (s *GatewayService) selectAccountForModelWithPlatform(ctx context.Context, 
 				fmt.Sprintf("Privacy not set, required by group [%s]", schedGroup.Name))
 			continue
 		}
-		if requestedModel != "" && !s.isModelSupportedByAccountWithContext(ctx, acc, requestedModel) {
+		if requestedModel != "" && !s.gatewaySchedulingModelSupported(ctx, acc, requestedModel) {
 			continue
 		}
 		if needsUpstreamCheck && s.isUpstreamModelRestrictedByChannel(ctx, *groupID, acc, requestedModel) {
