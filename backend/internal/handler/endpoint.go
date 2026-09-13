@@ -229,6 +229,9 @@ func DeriveUpstreamEndpoint(inbound, rawRequestPath, platform string) string {
 			return EndpointGeminiModels
 		}
 		return EndpointMessages
+
+	case service.PlatformCursor, service.PlatformDevin:
+		return inbound
 	}
 
 	// Unknown platform — fall back to inbound.

@@ -5,6 +5,23 @@
 import { config } from '@vue/test-utils'
 import { vi } from 'vitest'
 
+// CI runs Node 20, which does not provide Promise.withResolvers natively.
+if (!('withResolvers' in Promise)) {
+  Object.defineProperty(Promise, 'withResolvers', {
+    configurable: true,
+    writable: true,
+    value: function withResolvers<T>(this: PromiseConstructor) {
+      let resolve!: (value: T | PromiseLike<T>) => void
+      let reject!: (reason?: unknown) => void
+      const promise = new this<T>((resolvePromise, rejectPromise) => {
+        resolve = resolvePromise
+        reject = rejectPromise
+      })
+      return { promise, resolve, reject }
+    }
+  })
+}
+
 function createMemoryStorage(): Storage {
   const values = new Map<string, string>()
 

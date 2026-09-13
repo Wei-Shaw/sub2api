@@ -88,6 +88,16 @@ const PROVIDER_ICONS: Record<Provider, IconData> = {
       'M16 6H8v12h8V6zm4 16H4V2h16v20z',
     ],
   },
+  cursor: {
+    paths: [
+      'M4 4h7.2L20 20h-7.2L4 4zm8.8 0H20v7.2L12.8 4zM4 12.8V20h7.2L4 12.8z',
+    ],
+  },
+  devin: {
+    paths: [
+      'M5 4h8.2c3.6 0 5.8 2.1 5.8 5.4 0 2.2-1.1 3.8-2.8 4.7L20 20h-3.4l-3.6-5.3H8.2V20H5V4zm3.2 2.6v5.5h4.4c1.8 0 2.9-1 2.9-2.7s-1.1-2.8-2.9-2.8H8.2z',
+    ],
+  },
 }
 
 const props = withDefaults(defineProps<{

@@ -142,6 +142,17 @@ const metaModels = [
   'codellama-70b-instruct', 'codellama-34b-instruct', 'codellama-13b-instruct'
 ]
 
+const cursorModels = [
+  'claude-4.6-opus-high',
+  'claude-4.6-sonnet-medium',
+  'gpt-5.3'
+]
+
+const devinModels = [
+  'swe-1-6',
+  'swe-1-6-fast'
+]
+
 // xAI Grok
 const xaiModels = [
   'grok-4.6',
@@ -260,6 +271,8 @@ const allModelsList: string[] = [
   ...mistralModels,
   ...metaModels,
   ...xaiModels,
+  ...cursorModels,
+  ...devinModels,
   ...cohereModels,
   ...yiModels,
   ...moonshotModels,
@@ -471,6 +484,8 @@ export function getModelsByPlatform(platform: string): string[] {
     case 'spark': return sparkModels
     case 'hunyuan': return hunyuanModels
     case 'perplexity': return perplexityModels
+    case 'cursor': return cursorModels
+    case 'devin': return devinModels
     default: return claudeModels
   }
 }

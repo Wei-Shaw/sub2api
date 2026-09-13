@@ -49,6 +49,8 @@ const (
 	PlatformDeepseek   = domain.PlatformDeepseek
 	PlatformMiniMax    = domain.PlatformMiniMax
 	PlatformOpenCodeGo = domain.PlatformOpenCodeGo
+	PlatformCursor     = domain.PlatformCursor
+	PlatformDevin      = domain.PlatformDevin
 	PlatformComposite  = domain.PlatformComposite
 	// PlatformKiro is retained for unsupported-platform threshold tests and legacy
 	// account rows. Scheduling-threshold evaluation never pauses kiro accounts.
@@ -135,6 +137,8 @@ var AllowedQuotaPlatforms = []string{
 	PlatformDeepseek,
 	PlatformMiniMax,
 	PlatformOpenCodeGo,
+	PlatformCursor,
+	PlatformDevin,
 }
 
 // AllowedSchedulingThresholdPlatforms 是允许设置账号自动停调阈值的平台列表。

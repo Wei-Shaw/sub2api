@@ -130,12 +130,12 @@
         :show-help="isAnthropic"
         :show-proxy-warning="isAnthropic"
         :show-cookie-option="isAnthropic"
-        :show-refresh-token-option="isOpenAI || isAntigravity || isGrok"
+        :show-refresh-token-option="isOpenAI || isAntigravity || isGrok || isCursor || isDevin"
         :show-sso-option="isGrok"
         :show-email-password-option="false"
         :allow-multiple="false"
         :method-label="t('admin.accounts.inputMethod')"
-        :platform="isOpenAI ? 'openai' : isGemini ? 'gemini' : isAntigravity ? 'antigravity' : isGrok ? 'grok' : 'anthropic'"
+        :platform="isOpenAI ? 'openai' : isGemini ? 'gemini' : isAntigravity ? 'antigravity' : isGrok ? 'grok' : isCursor ? 'cursor' : isDevin ? 'devin' : 'anthropic'"
         :show-project-id="isGemini && geminiOAuthType === 'code_assist'"
         :initial-input-method="grokInitialInputMethod"
         @generate-url="handleGenerateUrl"
@@ -190,10 +190,11 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch } from 'vue'
+import { ref, computed, watch, onBeforeUnmount } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useAppStore } from '@/stores/app'
 import { adminAPI } from '@/api/admin'
+import { extractApiErrorMessage } from '@/utils/apiError'
 import {
   useAccountOAuth,
   type AddMethod,
@@ -203,6 +204,8 @@ import { useOpenAIOAuth } from '@/composables/useOpenAIOAuth'
 import { useGeminiOAuth } from '@/composables/useGeminiOAuth'
 import { useAntigravityOAuth } from '@/composables/useAntigravityOAuth'
 import { useGrokOAuth } from '@/composables/useGrokOAuth'
+import { useCursorOAuth } from '@/composables/useCursorOAuth'
+import { useDevinOAuth } from '@/composables/useDevinOAuth'
 import type { Account } from '@/types'
 import BaseDialog from '@/components/common/BaseDialog.vue'
 import Icon from '@/components/icons/Icon.vue'
@@ -239,6 +242,8 @@ const openaiOAuth = useOpenAIOAuth()
 const geminiOAuth = useGeminiOAuth()
 const antigravityOAuth = useAntigravityOAuth()
 const grokOAuth = useGrokOAuth()
+const cursorOAuth = useCursorOAuth()
+const devinOAuth = useDevinOAuth()
 
 // Refs
 const oauthFlowRef = ref<OAuthFlowExposed | null>(null)
@@ -246,6 +251,8 @@ const oauthFlowRef = ref<OAuthFlowExposed | null>(null)
 // State
 const addMethod = ref<AddMethod>('oauth')
 const geminiOAuthType = ref<'code_assist' | 'google_one' | 'ai_studio'>('code_assist')
+const agentSaving = ref(false)
+let reauthGeneration = 0
 
 // Computed - check platform
 const isOpenAI = computed(() => props.account?.platform === 'openai')
@@ -254,6 +261,8 @@ const isGemini = computed(() => props.account?.platform === 'gemini')
 const isAnthropic = computed(() => props.account?.platform === 'anthropic')
 const isAntigravity = computed(() => props.account?.platform === 'antigravity')
 const isGrok = computed(() => props.account?.platform === 'grok')
+const isCursor = computed(() => props.account?.platform === 'cursor')
+const isDevin = computed(() => props.account?.platform === 'devin')
 
 /**
  * Grok reauth default tab (password auth is hidden):
@@ -276,6 +285,8 @@ const currentAuthUrl = computed(() => {
   if (isGemini.value) return geminiOAuth.authUrl.value
   if (isAntigravity.value) return antigravityOAuth.authUrl.value
   if (isGrok.value) return grokOAuth.authUrl.value
+  if (isCursor.value) return cursorOAuth.authUrl.value
+  if (isDevin.value) return devinOAuth.authUrl.value
   return claudeOAuth.authUrl.value
 })
 const currentSessionId = computed(() => {
@@ -283,13 +294,18 @@ const currentSessionId = computed(() => {
   if (isGemini.value) return geminiOAuth.sessionId.value
   if (isAntigravity.value) return antigravityOAuth.sessionId.value
   if (isGrok.value) return grokOAuth.sessionId.value
+  if (isCursor.value) return cursorOAuth.sessionId.value
+  if (isDevin.value) return devinOAuth.sessionId.value
   return claudeOAuth.sessionId.value
 })
 const currentLoading = computed(() => {
+  if (agentSaving.value) return true
   if (isOpenAILike.value) return openaiOAuth.loading.value
   if (isGemini.value) return geminiOAuth.loading.value
   if (isAntigravity.value) return antigravityOAuth.loading.value
   if (isGrok.value) return grokOAuth.loading.value
+  if (isCursor.value) return cursorOAuth.loading.value
+  if (isDevin.value) return devinOAuth.loading.value
   return claudeOAuth.loading.value
 })
 const currentError = computed(() => {
@@ -297,6 +313,8 @@ const currentError = computed(() => {
   if (isGemini.value) return geminiOAuth.error.value
   if (isAntigravity.value) return antigravityOAuth.error.value
   if (isGrok.value) return grokOAuth.error.value
+  if (isCursor.value) return cursorOAuth.error.value
+  if (isDevin.value) return devinOAuth.error.value
   return claudeOAuth.error.value
 })
 
@@ -312,6 +330,8 @@ const isManualInputMethod = computed(() => {
     isGemini.value ||
     isAntigravity.value ||
     isGrok.value ||
+    isCursor.value ||
+    isDevin.value ||
     method === 'manual'
   )
 })
@@ -320,38 +340,16 @@ const canExchangeCode = computed(() => {
   const authCode = oauthFlowRef.value?.authCode || ''
   const sessionId = currentSessionId.value
   const loading = currentLoading.value
+  if (isCursor.value) {
+    return !!sessionId && !loading
+  }
   return authCode.trim() && sessionId && !loading
 })
 
-// Watchers
-watch(
-  () => props.show,
-  (newVal) => {
-    if (newVal && props.account) {
-      // Initialize addMethod based on current account type (Claude only)
-      if (
-        isAnthropic.value &&
-        (props.account.type === 'oauth' || props.account.type === 'setup-token')
-      ) {
-        addMethod.value = props.account.type as AddMethod
-      }
-      if (isGemini.value) {
-        const creds = (props.account.credentials || {}) as Record<string, unknown>
-        geminiOAuthType.value =
-          creds.oauth_type === 'google_one'
-            ? 'google_one'
-            : creds.oauth_type === 'ai_studio'
-              ? 'ai_studio'
-              : 'code_assist'
-      }
-    } else {
-      resetState()
-    }
-  }
-)
-
 // Methods
 const resetState = () => {
+  reauthGeneration++
+  agentSaving.value = false
   addMethod.value = 'oauth'
   geminiOAuthType.value = 'code_assist'
   claudeOAuth.resetState()
@@ -359,10 +357,33 @@ const resetState = () => {
   geminiOAuth.resetState()
   antigravityOAuth.resetState()
   grokOAuth.resetState()
+  cursorOAuth.resetState()
+  devinOAuth.resetState()
   oauthFlowRef.value?.reset()
 }
 
+// Reset the previous attempt before restoring this account's saved choices.
+// Same-ID metadata refreshes must not reset an active authorization attempt.
+watch(
+  [() => props.show, () => props.account?.id],
+  ([show]) => {
+    resetState()
+    const account = props.account
+    if (!show || !account) return
+    if (account.platform === 'anthropic' && (account.type === 'oauth' || account.type === 'setup-token')) {
+      addMethod.value = account.type
+    }
+    if (account.platform === 'gemini') {
+      const oauthType = account.credentials?.oauth_type
+      geminiOAuthType.value = oauthType === 'google_one' || oauthType === 'ai_studio' ? oauthType : 'code_assist'
+    }
+  },
+  { immediate: true }
+)
+onBeforeUnmount(resetState)
+
 const handleClose = () => {
+  resetState()
   emit('close')
 }
 
@@ -380,6 +401,10 @@ const handleGenerateUrl = async () => {
     await antigravityOAuth.generateAuthUrl(props.account.proxy_id)
   } else if (isGrok.value) {
     await grokOAuth.generateAuthUrl(props.account.proxy_id)
+  } else if (isCursor.value) {
+    await cursorOAuth.generateAuthUrl(props.account.proxy_id)
+  } else if (isDevin.value) {
+    await devinOAuth.generateAuthUrl(props.account.proxy_id)
   } else {
     await claudeOAuth.generateAuthUrl(addMethod.value, props.account.proxy_id)
   }
@@ -389,7 +414,7 @@ const handleExchangeCode = async () => {
   if (!props.account) return
 
   const authCode = oauthFlowRef.value?.authCode || ''
-  if (!authCode.trim()) return
+  if (!isCursor.value && !authCode.trim()) return
 
   if (isOpenAILike.value) {
     // OpenAI OAuth flow
@@ -527,6 +552,47 @@ const handleExchangeCode = async () => {
       grokOAuth.error.value = error.response?.data?.detail || t('admin.accounts.oauth.authFailed')
       appStore.showError(grokOAuth.error.value)
     }
+  } else if (isCursor.value) {
+    const tokenInfo = await cursorOAuth.pollUntilReady(props.account.proxy_id)
+    if (!tokenInfo) return
+    const credentials = cursorOAuth.buildCredentials(tokenInfo)
+    const extra = cursorOAuth.buildExtraInfo(tokenInfo)
+    try {
+      const updatedAccount = await adminAPI.accounts.applyOAuthCredentials(props.account.id, {
+        type: 'oauth',
+        credentials,
+        extra
+      })
+      appStore.showSuccess(t('admin.accounts.reAuthorizedSuccess'))
+      emit('reauthorized', updatedAccount)
+      handleClose()
+    } catch (error: any) {
+      cursorOAuth.error.value = error.response?.data?.detail || t('admin.accounts.oauth.authFailed')
+      appStore.showError(cursorOAuth.error.value)
+    }
+  } else if (isDevin.value) {
+    const sessionId = devinOAuth.sessionId.value
+    if (!sessionId) return
+    const tokenInfo = await devinOAuth.exchangeAuthCode({
+      code: authCode.trim(),
+      sessionId,
+      state: oauthFlowRef.value?.oauthState || devinOAuth.state.value,
+      proxyId: props.account.proxy_id
+    })
+    if (!tokenInfo) return
+    const credentials = devinOAuth.buildCredentials(tokenInfo)
+    try {
+      const updatedAccount = await adminAPI.accounts.applyOAuthCredentials(props.account.id, {
+        type: 'oauth',
+        credentials
+      })
+      appStore.showSuccess(t('admin.accounts.reAuthorizedSuccess'))
+      emit('reauthorized', updatedAccount)
+      handleClose()
+    } catch (error: any) {
+      devinOAuth.error.value = error.response?.data?.detail || t('admin.accounts.oauth.authFailed')
+      appStore.showError(devinOAuth.error.value)
+    }
   } else {
     // Claude OAuth flow
     const sessionId = claudeOAuth.sessionId.value
@@ -633,12 +699,42 @@ const handleValidateRefreshToken = async (refreshTokenInput: string) => {
     await handleGrokValidateRefreshToken(refreshTokenInput)
     return
   }
-
   const refreshToken = refreshTokenInput
     .split('\n')
     .map((line) => line.trim())
     .filter(Boolean)[0]
   if (!refreshToken) return
+  if (isCursor.value || isDevin.value) {
+    if (agentSaving.value) return
+    const account = props.account
+    const attempt = reauthGeneration
+    const oauthClient = isCursor.value ? cursorOAuth : devinOAuth
+    agentSaving.value = true
+    oauthClient.error.value = ''
+    try {
+      const tokenInfo = account.platform === 'cursor'
+        ? await cursorOAuth.validateRefreshToken(refreshToken, account.proxy_id)
+        : await devinOAuth.importSessionToken(refreshToken)
+      if (!tokenInfo || attempt !== reauthGeneration || !props.show || props.account?.id !== account.id) return
+      const updatedAccount = await adminAPI.accounts.applyOAuthCredentials(account.id, {
+        type: 'oauth',
+        credentials: oauthClient.buildCredentials(tokenInfo),
+        extra: oauthClient.buildExtraInfo(tokenInfo)
+      })
+      if (attempt !== reauthGeneration) return
+      appStore.showSuccess(t('admin.accounts.reAuthorizedSuccess'))
+      emit('reauthorized', updatedAccount)
+      handleClose()
+    } catch (error: unknown) {
+      if (attempt !== reauthGeneration) return
+      oauthClient.error.value = extractApiErrorMessage(error, t('admin.accounts.oauth.authFailed'))
+      appStore.showError(oauthClient.error.value)
+    } finally {
+      if (attempt === reauthGeneration) agentSaving.value = false
+    }
+    return
+  }
+
 
   if (isOpenAILike.value) {
     openaiOAuth.loading.value = true

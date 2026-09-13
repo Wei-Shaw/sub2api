@@ -255,6 +255,8 @@ import {
   PROVIDER_DEEPSEEK,
   PROVIDER_MINIMAX,
   PROVIDER_OPENCODE_GO,
+  PROVIDER_CURSOR,
+  PROVIDER_DEVIN,
   PROVIDERS,
   API_MODE_CHAT_COMPLETIONS,
   API_MODE_RESPONSES,
@@ -282,6 +284,8 @@ const providerTabs = computed<{ value: Provider; label: string }[]>(() => [
   { value: PROVIDER_DEEPSEEK, label: t('monitorCommon.providers.deepseek') },
   { value: PROVIDER_MINIMAX, label: t('monitorCommon.providers.minimax') },
   { value: PROVIDER_OPENCODE_GO, label: t('monitorCommon.providers.opencode_go') },
+  { value: PROVIDER_CURSOR, label: t('monitorCommon.providers.cursor') },
+  { value: PROVIDER_DEVIN, label: t('monitorCommon.providers.devin') },
 ])
 
 const activeProvider = ref<Provider>(PROVIDER_ANTHROPIC)

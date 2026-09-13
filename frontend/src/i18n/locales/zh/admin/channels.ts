@@ -554,6 +554,7 @@ export default {
         checkModeProbeHint: '向上游发送轻量 LLM 请求，检测可用性与延迟',
         checkModeQuota: '配额',
         checkModeQuotaHint: '只查询关联账号的用量滚动窗口/余额，不发送探活请求',
+        activeQuotaUnsupported: 'Cursor 和 Devin 不支持主动配额检查，请使用被动监控。',
         checkModeQuotaProbe: '探活 + 配额',
         checkModeQuotaProbeHint: '探活的同时查询配额，用量快照附加在主模型结果上',
         linkedAccount: '关联账号',

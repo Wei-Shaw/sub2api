@@ -366,6 +366,8 @@ func TestNormalizeMonitorPrimaryModel_QuotaDefault(t *testing.T) {
 
 func TestProviderProbeCapabilityMatrix(t *testing.T) {
 	require.False(t, providerSupportsProbe(MonitorProviderAntigravity))
+	require.False(t, providerSupportsProbe(MonitorProviderCursor))
+	require.False(t, providerSupportsProbe(MonitorProviderDevin))
 	for _, p := range []string{
 		MonitorProviderOpenAI, MonitorProviderAnthropic, MonitorProviderGemini,
 		MonitorProviderGrok, MonitorProviderKimi, MonitorProviderZhipu, MonitorProviderDeepseek,
@@ -376,6 +378,7 @@ func TestProviderProbeCapabilityMatrix(t *testing.T) {
 		MonitorProviderOpenAI, MonitorProviderAnthropic, MonitorProviderGemini,
 		MonitorProviderGrok, MonitorProviderAntigravity,
 		MonitorProviderKimi, MonitorProviderZhipu, MonitorProviderDeepseek,
+		MonitorProviderCursor, MonitorProviderDevin,
 	} {
 		require.NoError(t, validateProvider(p), p)
 	}
@@ -520,6 +523,16 @@ func TestMonitorAccountQuotaCapability_Matrix(t *testing.T) {
 		{
 			name:    "antigravity ok",
 			account: &Account{ID: 15, Platform: domain.PlatformAntigravity},
+		},
+		{
+			name:    "cursor oauth has no quota data source",
+			account: &Account{ID: 16, Platform: PlatformCursor, Type: AccountTypeOAuth},
+			wantErr: ErrChannelMonitorAccountNotSupportable,
+		},
+		{
+			name:    "devin oauth has no quota data source",
+			account: &Account{ID: 17, Platform: PlatformDevin, Type: AccountTypeOAuth},
+			wantErr: ErrChannelMonitorAccountNotSupportable,
 		},
 	}
 	for _, tc := range cases {

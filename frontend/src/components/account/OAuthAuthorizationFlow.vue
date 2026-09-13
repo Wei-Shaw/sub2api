@@ -981,7 +981,9 @@ const emailPasswordOptionEnabled = computed(
   () => props.showEmailPasswordOption && props.platform === 'grok' && passwordAuthEnabled.value
 )
 
-const showLocalCallbackNotice = computed(() => props.platform === 'openai' || props.platform === 'grok')
+const showLocalCallbackNotice = computed(
+  () => props.platform === 'openai' || props.platform === 'grok' || props.platform === 'devin'
+)
 
 // Get translation key based on platform
 const getOAuthKey = (key: string) => {
@@ -989,6 +991,8 @@ const getOAuthKey = (key: string) => {
   if (props.platform === 'gemini') return `admin.accounts.oauth.gemini.${key}`
   if (props.platform === 'antigravity') return `admin.accounts.oauth.antigravity.${key}`
   if (props.platform === 'grok') return `admin.accounts.oauth.grok.${key}`
+  if (props.platform === 'cursor') return `admin.accounts.oauth.cursor.${key}`
+  if (props.platform === 'devin') return `admin.accounts.oauth.devin.${key}`
   return `admin.accounts.oauth.${key}`
 }
 
@@ -1008,6 +1012,8 @@ const oauthImportantNotice = computed(() => {
   if (props.platform === 'openai') return t('admin.accounts.oauth.openai.importantNotice')
   if (props.platform === 'antigravity') return t('admin.accounts.oauth.antigravity.importantNotice')
   if (props.platform === 'grok') return t('admin.accounts.oauth.grok.importantNotice')
+  if (props.platform === 'cursor') return t('admin.accounts.oauth.cursor.importantNotice')
+  if (props.platform === 'devin') return t('admin.accounts.oauth.devin.importantNotice')
   return ''
 })
 

@@ -272,6 +272,43 @@ func (a *Account) IsGrokOAuth() bool {
 	return a.IsGrok() && a.Type == AccountTypeOAuth
 }
 
+func (a *Account) IsCursor() bool {
+	return a != nil && a.Platform == PlatformCursor
+}
+
+func (a *Account) IsCursorOAuth() bool {
+	return a.IsCursor() && a.Type == AccountTypeOAuth
+}
+
+func (a *Account) IsDevin() bool {
+	return a != nil && a.Platform == PlatformDevin
+}
+
+func (a *Account) IsDevinOAuth() bool {
+	return a.IsDevin() && a.Type == AccountTypeOAuth
+}
+
+func (a *Account) GetCursorAccessToken() string {
+	if !a.IsCursor() {
+		return ""
+	}
+	return a.GetCredential("access_token")
+}
+
+func (a *Account) GetCursorRefreshToken() string {
+	if !a.IsCursorOAuth() {
+		return ""
+	}
+	return a.GetCredential("refresh_token")
+}
+
+func (a *Account) GetDevinAccessToken() string {
+	if !a.IsDevin() {
+		return ""
+	}
+	return a.GetCredential("access_token")
+}
+
 // IsKimi / IsZhipu / IsDeepseek 标识国产 OpenAI 兼容供应商账号。
 func (a *Account) IsKimi() bool {
 	return a.Platform == PlatformKimi
@@ -334,8 +371,10 @@ func (a *Account) IsGeminiGoogleOne() bool {
 	return a.Platform == PlatformGemini && a.Type == AccountTypeOAuth && a.GeminiOAuthType() == "google_one"
 }
 
+// CanGetUsage reports whether the account can call Anthropic's OAuth usage API.
+// Other providers must use their own usage implementations.
 func (a *Account) CanGetUsage() bool {
-	return a.Type == AccountTypeOAuth
+	return a.Platform == PlatformAnthropic && a.Type == AccountTypeOAuth
 }
 
 func (a *Account) GetCredential(key string) string {

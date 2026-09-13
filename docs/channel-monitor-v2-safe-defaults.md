@@ -28,6 +28,11 @@
 - Frontend Settings form default and public feature flag fallback → v1 when missing/invalid.
 - Nil settings on V1 `RunCheck` path remains **fail-closed** (no probes) for test safety — independent of product default.
 
+## Agent OAuth quota safety
+
+- Cursor and Devin OAuth accounts are not active quota-monitor data sources. Create/update validation rejects these linked accounts, and existing monitors return an unsupported-query result without forwarding credentials to Anthropic's usage API.
+- The active-monitor form disables these providers with an explanation. Passive V2 monitoring remains available; adding provider labels or request templates does not enable active quota queries.
+
 ## Gentle backfill (low-resource phases)
 
 ### Hard gates (all servers)

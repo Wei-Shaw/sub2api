@@ -125,6 +125,7 @@ func ProvideTokenRefreshService(
 	geminiOAuthService *GeminiOAuthService,
 	antigravityOAuthService *AntigravityOAuthService,
 	grokOAuthService *GrokOAuthService,
+	cursorOAuthService *CursorOAuthService,
 	cacheInvalidator TokenCacheInvalidator,
 	schedulerCache SchedulerCache,
 	cfg *config.Config,
@@ -135,6 +136,7 @@ func ProvideTokenRefreshService(
 	runtimeBlocker AccountRuntimeBlocker,
 ) *TokenRefreshService {
 	svc := NewTokenRefreshService(accountRepo, oauthService, openaiOAuthService, geminiOAuthService, antigravityOAuthService, cacheInvalidator, schedulerCache, cfg, tempUnschedCache, grokOAuthService)
+	svc.RegisterOAuthPlatform(PlatformCursor, NewCursorTokenRefresher(cursorOAuthService))
 	// 注入 OpenAI privacy opt-out 依赖
 	svc.SetPrivacyDeps(privacyClientFactory, proxyRepo)
 	// 注入统一 OAuth 刷新 API（消除 TokenRefreshService 与 TokenProvider 之间的竞争条件）
@@ -369,6 +371,17 @@ func ProvideGrokTokenProvider(
 	p.SetRefreshAPI(refreshAPI, executor)
 	p.SetRefreshPolicy(GrokProviderRefreshPolicy())
 	p.SetTempUnschedCache(tempUnschedCache)
+	return p
+}
+
+func ProvideCursorTokenProvider(
+	accountRepo AccountRepository,
+	tokenCache GeminiTokenCache,
+	cursorOAuthService *CursorOAuthService,
+	refreshAPI *OAuthRefreshAPI,
+) *CursorTokenProvider {
+	p := NewCursorTokenProvider(accountRepo, tokenCache)
+	p.SetRefreshAPI(refreshAPI, NewCursorTokenRefresher(cursorOAuthService))
 	return p
 }
 
@@ -859,6 +872,9 @@ var ProviderSet = wire.NewSet(
 	NewCompositeTokenCacheInvalidator,
 	wire.Bind(new(TokenCacheInvalidator), new(*CompositeTokenCacheInvalidator)),
 	NewAntigravityOAuthService,
+	NewCursorOAuthService,
+	NewDevinOAuthService,
+	ProvideCursorTokenProvider,
 	ProvideOAuthRefreshAPI,
 	ProvideGeminiTokenProvider,
 	NewGeminiMessagesCompatService,
@@ -873,6 +889,7 @@ var ProviderSet = wire.NewSet(
 	ProvideCNProviderBalanceCheckService,
 	ProvideClaudeTokenProvider,
 	NewAntigravityGatewayService,
+	NewAgentCompatGatewayService,
 	ProvideRateLimitService,
 	ProvideAccountUsageService,
 	ProvideAccountTestService,

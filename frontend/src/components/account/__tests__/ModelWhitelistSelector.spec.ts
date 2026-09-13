@@ -118,6 +118,17 @@ describe('ModelWhitelistSelector', () => {
     expect(copyToClipboard).not.toHaveBeenCalled()
   })
 
+  it.each([
+    ['cursor', 'claude-4.6-opus-high'],
+    ['devin', 'swe-1-6'],
+  ])('lets %s accounts select a supported model', async (platform, model) => {
+    const wrapper = mountSelector({ platform })
+    await wrapper.get('div.cursor-pointer').trigger('click')
+    await findModelRow(wrapper, model).get('[data-testid="select-model"]').trigger('click')
+    expect(wrapper.emitted('update:modelValue')).toEqual([[[model]]])
+    wrapper.unmount()
+  })
+
   it('warns when model IDs sync but capability metadata is incomplete', async () => {
     syncUpstreamModels.mockResolvedValue({
       models: ['x-preview-f-free'],

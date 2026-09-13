@@ -984,6 +984,8 @@ export default {
         deepseek: 'DeepSeek',
         minimax: 'MiniMax',
         opencode_go: 'OpenCode',
+        cursor: 'Cursor',
+        devin: 'Devin',
         composite: 'Composite',
       },
       deleteConfirm:

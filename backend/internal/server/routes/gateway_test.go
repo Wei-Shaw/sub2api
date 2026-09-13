@@ -456,6 +456,27 @@ func TestGatewayRoutesResponsesSubpathRejectsNonConformingSubpaths(t *testing.T)
 	}
 }
 
+func TestGatewayRoutesCursorDevinCountTokensUsesLocalEstimate(t *testing.T) {
+	for _, platform := range []string{service.PlatformCursor, service.PlatformDevin} {
+		router := newGatewayRoutesTestRouterWithConfig(&config.Config{
+			Gateway: config.GatewayConfig{MaxBodySize: 1024 * 1024},
+		}, platform)
+		for _, path := range []string{"/v1/messages/count_tokens", "/messages/count_tokens"} {
+			req := httptest.NewRequest(http.MethodPost, path, strings.NewReader(`{"model":"claude-4.6-opus-high","messages":[{"role":"user","content":"hi"}]}`))
+			req.Header.Set("Content-Type", "application/json")
+			w := httptest.NewRecorder()
+
+			router.ServeHTTP(w, req)
+			require.Equal(t, http.StatusOK, w.Code, "platform=%s path=%s", platform, path)
+			var response struct {
+				InputTokens int `json:"input_tokens"`
+			}
+			require.NoError(t, json.Unmarshal(w.Body.Bytes(), &response), "platform=%s path=%s", platform, path)
+			require.Positive(t, response.InputTokens, "platform=%s path=%s", platform, path)
+		}
+	}
+}
+
 func TestGatewayRoutesOpenAICountTokensPathIsRegistered(t *testing.T) {
 	router := newGatewayRoutesTestRouter(service.PlatformOpenAI)
 

@@ -90,6 +90,83 @@ func newGatewayModelsHandlerForTest(repo service.AccountRepository) *GatewayHand
 	}
 }
 
+func TestDefaultModelIDsForPlatform_CursorDevin(t *testing.T) {
+	require.Equal(t, []string{"claude-4.6-opus-high", "claude-4.6-sonnet-medium", "gpt-5.3"}, defaultModelIDsForPlatform(service.PlatformCursor))
+	require.Equal(t, []string{"swe-1-6", "swe-1-6-fast"}, defaultModelIDsForPlatform(service.PlatformDevin))
+}
+
+func TestGatewayModels_AgentCompositeDiscovery(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	const groupID int64 = 130
+	for _, provider := range []struct {
+		platform string
+		native   string
+		defaults []string
+	}{
+		{service.PlatformCursor, "claude-4.6-opus-high", []string{"claude-4.6-opus-high", "claude-4.6-sonnet-medium", "gpt-5.3"}},
+		{service.PlatformDevin, "swe-1-6", []string{"swe-1-6", "swe-1-6-fast"}},
+	} {
+		for _, scenario := range []string{"unmapped only", "unmapped mixed", "explicit mapping", "dedicated"} {
+			t.Run(provider.platform+"/"+scenario, func(t *testing.T) {
+				account := service.Account{ID: 1, Platform: provider.platform, Type: service.AccountTypeOAuth, Status: service.StatusActive, Schedulable: true}
+				const alias = "team-agent"
+				if scenario == "explicit mapping" {
+					account.Credentials = map[string]any{"model_mapping": map[string]any{alias: provider.native, provider.native: provider.native}}
+				}
+				accounts := []service.Account{account}
+				if scenario == "unmapped mixed" {
+					accounts = append(accounts, service.Account{
+						ID: 2, Platform: service.PlatformGrok, Type: service.AccountTypeAPIKey, Status: service.StatusActive, Schedulable: true,
+						Credentials: map[string]any{"model_mapping": map[string]any{"grok-4.6": "grok-4.6"}},
+					})
+				}
+				h := newGatewayModelsHandlerForTest(&gatewayModelsAccountRepoStub{byGroup: map[int64][]service.Account{groupID: accounts}})
+				group := &service.Group{ID: groupID, Platform: service.PlatformComposite}
+				if scenario == "dedicated" {
+					group.Platform = provider.platform
+				}
+				if scenario == "unmapped only" {
+					id := int64(groupID)
+					require.Empty(t, h.compositeAvailableModels(context.Background(), &id))
+				}
+				for _, codex := range []bool{false, true} {
+					rec := httptest.NewRecorder()
+					c, _ := gin.CreateTestContext(rec)
+					c.Request = httptest.NewRequest(http.MethodGet, "/v1/models", nil)
+					c.Set(string(middleware2.ContextKeyAPIKey), &service.APIKey{Group: group})
+					var ids []string
+					if codex {
+						h.CodexModels(c)
+						var got codexModelsResponseForTest
+						require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &got))
+						ids = codexModelSlugsForTest(got.Models)
+					} else {
+						h.Models(c)
+						var got gatewayModelsResponseForTest
+						require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &got))
+						ids = modelIDsForTest(got.Data)
+					}
+					require.Equal(t, http.StatusOK, rec.Code)
+					switch scenario {
+					case "explicit mapping":
+						require.ElementsMatch(t, []string{alias, provider.native}, ids)
+					case "dedicated":
+						require.ElementsMatch(t, provider.defaults, ids)
+					case "unmapped mixed":
+						require.Equal(t, []string{"grok-4.6"}, ids)
+					case "unmapped only":
+						// Empty-group fallback must not reintroduce agent-only defaults.
+						require.NotContains(t, ids, "claude-4.6-opus-high")
+						require.NotContains(t, ids, "claude-4.6-sonnet-medium")
+						require.NotContains(t, ids, "swe-1-6")
+						require.NotContains(t, ids, "swe-1-6-fast")
+					}
+				}
+			})
+		}
+	}
+}
+
 func TestDefaultModelIDsForCompositeIncludesAntigravityDefaults(t *testing.T) {
 	antigravityIDs := defaultModelIDsForPlatform(service.PlatformAntigravity)
 	require.NotEmpty(t, antigravityIDs)
