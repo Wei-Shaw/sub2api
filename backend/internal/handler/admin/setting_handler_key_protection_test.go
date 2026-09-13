@@ -24,40 +24,13 @@ func newKeyProtectionTestHandler(t *testing.T, stored map[string]string) (*Setti
 	t.Helper()
 	gin.SetMode(gin.TestMode)
 	repo := &keyProtectionAdminRepo{settingHandlerRepoStub{values: stored}}
-	platformConfig := &config.Config{}
-	platformConfig.Totp.EncryptionKeyConfigured = true
-	return NewSettingHandler(service.NewSettingService(repo, platformConfig), nil, nil, nil, nil, nil, nil), repo
-}
-
-func TestUpdateKeyProtectionConfigRequiresConfiguredPlatformKey(t *testing.T) {
-	for _, test := range []struct {
-		body   string
-		status int
-	}{
-		{`{"enabled":true,"mode":"reversible"}`, http.StatusBadRequest},
-		{`{"enabled":false,"mode":"reversible"}`, http.StatusOK},
-		{`{"enabled":true,"mode":"redact"}`, http.StatusOK},
-	} {
-		t.Run(test.body, func(t *testing.T) {
-			repo := &keyProtectionAdminRepo{settingHandlerRepoStub{values: map[string]string{}}}
-			h := NewSettingHandler(service.NewSettingService(repo, &config.Config{}), nil, nil, nil, nil, nil, nil)
-			rec := httptest.NewRecorder()
-			c, _ := gin.CreateTestContext(rec)
-			c.Request = httptest.NewRequest(http.MethodPut, "/api/v1/admin/settings/key-protection", strings.NewReader(test.body))
-			h.UpdateKeyProtectionConfig(c)
-			require.Equal(t, test.status, rec.Code)
-			if test.status == http.StatusBadRequest {
-				require.Contains(t, rec.Body.String(), "KEY_PROTECTION_PLATFORM_KEY_REQUIRED")
-				require.Empty(t, repo.values)
-			}
-		})
-	}
+	return NewSettingHandler(service.NewSettingService(repo, &config.Config{}), nil, nil, nil, nil, nil, nil), repo
 }
 
 func TestUpdateKeyProtectionConfigRejectsInvalidDocumentWithoutReplacingPolicy(t *testing.T) {
 	for _, body := range []string{
 		"null", "[]", "{broken", `{"enabled":true} {}`, `{"enabeld":true}`,
-		`{"enabled":true,"mode":"unknown"}`, `{"custom_rules":[{"name":"example","pattern":"["}]}`,
+		`{"enabled":true,"rules":["unknown"]}`, `{"custom_rules":[{"name":"example","pattern":"["}]}`,
 		`{"enabled":true,"user_ids":[-1]}`, `{"custom_rules":[{"name":"example","pattern":"` + strings.Repeat("a", 65<<10) + `"}]}`,
 	} {
 		t.Run(body[:min(len(body), 40)], func(t *testing.T) {
@@ -76,12 +49,12 @@ func TestKeyProtectionConfigAdminRoundTrip(t *testing.T) {
 	h, repo := newKeyProtectionTestHandler(t, map[string]string{})
 	rec := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(rec)
-	c.Request = httptest.NewRequest(http.MethodPut, "/api/v1/admin/settings/key-protection", strings.NewReader(`{"enabled":true,"group_ids":[7],"restore_scope":"tools_only"}`))
+	c.Request = httptest.NewRequest(http.MethodPut, "/api/v1/admin/settings/key-protection", strings.NewReader(`{"enabled":true,"group_ids":[7],"rules":["github"],"custom_rules":[{"name":"fictional","pattern":"fictional_[a-z]{20}"}]}`))
 	h.UpdateKeyProtectionConfig(c)
 	require.Equal(t, http.StatusOK, rec.Code)
 	require.Contains(t, repo.values[service.SettingKeyKeyProtection], `"enabled":true`)
-	require.Contains(t, rec.Body.String(), `"mode":"reversible"`)
-	require.Contains(t, rec.Body.String(), `"restore_scope":"tools_only"`)
+	require.Contains(t, rec.Body.String(), `"rules":["github"]`)
+	require.Contains(t, rec.Body.String(), `"name":"fictional"`)
 
 	read := httptest.NewRecorder()
 	get, _ := gin.CreateTestContext(read)

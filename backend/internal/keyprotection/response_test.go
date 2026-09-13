@@ -1,9 +1,11 @@
 package keyprotection
 
 import (
+	"crypto/sha256"
 	"encoding/json"
-	"errors"
+	"fmt"
 	"net/http/httptest"
+	"regexp"
 	"strings"
 	"testing"
 
@@ -11,23 +13,19 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-var writerToken = "keyx_" + strings.Repeat("0123456789abcdef", (PlaceholderLength-5)/16)
+var writerToken = fmt.Sprintf("keyx_%x", sha256.Sum256([]byte(writerSecret)))
 
 const writerSecret = "fictional-secret-\"quote\\slash\nnewline"
 
-func writerState(t *testing.T, scope string) *State {
+func writerState(t *testing.T) *State {
 	t.Helper()
-	config := DefaultConfig()
-	config.RestoreScope = scope
-	state, err := NewState(config, map[string]string{writerToken: writerSecret})
-	require.NoError(t, err)
-	return state
+	return testState(t, Config{CustomRules: []Rule{{Name: "quoted_fixture", Pattern: regexp.QuoteMeta(writerSecret)}}}, writerSecret)
 }
 func testWriter(t *testing.T, protocol string, stream bool) (*ResponseWriter, *httptest.ResponseRecorder) {
 	t.Helper()
 	recorder := httptest.NewRecorder()
 	ctx, _ := gin.CreateTestContext(recorder)
-	w := NewResponseWriter(ctx.Writer, writerState(t, ScopeTextAndTools), protocol, nil)
+	w := NewResponseWriter(ctx.Writer, writerState(t), protocol)
 	if stream {
 		w.Header().Set("Content-Type", "text/event-stream")
 	} else {
@@ -85,15 +83,10 @@ func joinedText(t *testing.T, body, protocol string) string {
 	return out.String()
 }
 
-func TestProtectedWriterJSONProtocolsAndIDHook(t *testing.T) {
+func TestProtectedWriterJSONProtocols(t *testing.T) {
 	for _, protocol := range []string{"chat", "responses", "messages"} {
 		t.Run(protocol, func(t *testing.T) {
 			w, recorder := testWriter(t, protocol, false)
-			w.onResponseID = func(id string) error {
-				require.Empty(t, recorder.Body.String())
-				require.Equal(t, "response_test", id)
-				return nil
-			}
 			var body any
 			switch protocol {
 			case "chat":
@@ -203,15 +196,9 @@ func TestProtectedWriterInterleavedToolArguments(t *testing.T) {
 	require.Len(t, arguments, 2)
 }
 
-func TestProtectedWriterToolsOnlyAndBoundedTail(t *testing.T) {
+func TestProtectedWriterBoundedTailAndCancellation(t *testing.T) {
 	w, recorder := testWriter(t, "chat", true)
-	w.state = writerState(t, ScopeToolsOnly)
-	_, err := w.WriteString(chatDelta(0, "content", writerToken) + finishChat())
-	require.NoError(t, err)
-	require.NoError(t, w.Finish())
-	require.Equal(t, writerToken, joinedText(t, recorder.Body.String(), "chat"))
-	w, recorder = testWriter(t, "chat", true)
-	_, err = w.WriteString(chatDelta(0, "content", strings.Repeat("normal ", 1000)+writerToken))
+	_, err := w.WriteString(chatDelta(0, "content", strings.Repeat("normal ", 1000)+writerToken))
 	require.NoError(t, err)
 	require.Contains(t, recorder.Body.String(), "normal ")
 	require.LessOrEqual(t, len(w.stream.channels["chat:0:content"].pending), PlaceholderLength)
@@ -237,13 +224,6 @@ func TestProtectedWriterFailureIsFixedAndNoUncheckedTail(t *testing.T) {
 	require.Error(t, err)
 	require.Equal(t, 502, recorder.Code)
 	require.NotContains(t, recorder.Body.String(), "compressed-secret")
-	w, recorder = testWriter(t, "responses", false)
-	w.onResponseID = func(string) error { return errors.New("private-store-error") }
-	_, err = w.WriteString(`{"id":"must-not-expose","output":[]}`)
-	require.NoError(t, err)
-	require.Error(t, w.Finish())
-	require.NotContains(t, recorder.Body.String(), "must-not-expose")
-	require.NotContains(t, recorder.Body.String(), "private-store-error")
 	w, recorder = testWriter(t, "chat", true)
 	_, err = w.WriteString(chatDelta(0, "content", writerToken))
 	require.NoError(t, err)
@@ -352,11 +332,10 @@ func TestProtectedWriterAnthropicStartTextContinuesAcrossDelta(t *testing.T) {
 	require.Equal(t, writerSecret, joinedText(t, recorder.Body.String(), "messages"))
 }
 
-func TestProtectedWriterCustomToolsEverySplitAndToolsOnly(t *testing.T) {
+func TestProtectedWriterCustomToolsEverySplit(t *testing.T) {
 	for _, protocol := range []string{"chat", "responses"} {
 		for split := 0; split <= len(writerToken); split++ {
 			w, recorder := testWriter(t, protocol, true)
-			w.state = writerState(t, ScopeToolsOnly)
 			var input string
 			for _, part := range []string{"curl " + writerToken[:split], writerToken[split:]} {
 				if protocol == "chat" {
@@ -422,10 +401,11 @@ func TestProtectedWriterRejectsConflictingFinalAndUnknownDelta(t *testing.T) {
 
 func TestProtectedWriterChecksExpansionBeforeRestoration(t *testing.T) {
 	w, recorder := testWriter(t, "chat", false)
-	state, err := NewState(DefaultConfig(), map[string]string{writerToken: strings.Repeat("fake", 256*1024)})
+	state := testState(t, Config{CustomRules: []Rule{{Name: "large_fixture", Pattern: `(?:fake)+`}}})
+	token, err := state.ProtectText(strings.Repeat("fake", 256*1024))
 	require.NoError(t, err)
 	w.state = state
-	body := map[string]any{"choices": []any{map[string]any{"message": map[string]any{"content": strings.Repeat(writerToken+" ", 100)}}}}
+	body := map[string]any{"choices": []any{map[string]any{"message": map[string]any{"content": strings.Repeat(token+" ", 100)}}}}
 	data, _ := json.Marshal(body)
 	_, err = w.Write(data)
 	require.NoError(t, err)

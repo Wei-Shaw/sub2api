@@ -2,23 +2,21 @@ import { flushPromises, mount } from '@vue/test-utils'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import KeyProtectionSettings from '../KeyProtectionSettings.vue'
 
-const { getConfig, updateConfig, clearMappings, getGroups, showSuccess } = vi.hoisted(() => ({
-  getConfig: vi.fn(), updateConfig: vi.fn(), clearMappings: vi.fn(), getGroups: vi.fn(), showSuccess: vi.fn(),
+const { getConfig, updateConfig, getGroups, showSuccess } = vi.hoisted(() => ({
+  getConfig: vi.fn(), updateConfig: vi.fn(), getGroups: vi.fn(), showSuccess: vi.fn(),
 }))
 
 vi.mock('vue-i18n', () => ({ useI18n: () => ({ t: (key: string) => key }) }))
 vi.mock('@/api/admin/keyProtection', () => ({
   getKeyProtectionConfig: getConfig,
   updateKeyProtectionConfig: updateConfig,
-  clearKeyProtectionMappings: clearMappings,
 }))
 vi.mock('@/api/admin/groups', () => ({ getAllIncludingInactive: getGroups }))
 vi.mock('@/api/admin', () => ({ adminAPI: {} }))
 vi.mock('@/stores', () => ({ useAppStore: () => ({ showSuccess }) }))
 
 const defaults = {
-  enabled: false, user_ids: [], group_ids: [], mode: 'reversible', restore_scope: 'text_and_tools',
-  rules: [], custom_rules: [], ttl_seconds: 3600, max_mappings: 256, max_sessions: 10000,
+  enabled: false, user_ids: [], group_ids: [], rules: [], custom_rules: [],
 }
 
 function mountCard() {
@@ -65,25 +63,30 @@ describe('KeyProtectionSettings', () => {
     expect(wrapper.get('[role="alert"]').text()).toContain('invalidRules')
   })
 
-  it('requires explicit confirmation before clearing all users mappings', async () => {
+  it('saves a built-in allowlist and adds or deletes custom rules', async () => {
     const wrapper = mountCard()
     await flushPromises()
-    const clear = wrapper.findAll('button').find(button => button.text().includes('clearMappings'))!
-    await clear.trigger('click')
-    expect(clearMappings).not.toHaveBeenCalled()
-    await wrapper.findAll('button').find(button => button.text().includes('confirmClear'))!.trigger('click')
+    const rule = { name: 'fictional', pattern: 'fictional_[a-z]{20}' }
+    await wrapper.get('[data-testid="protection-rules"]').setValue('github, anthropic')
+    await wrapper.get('[data-testid="protection-custom-rules"]').setValue(JSON.stringify([rule]))
+    await wrapper.get('[data-testid="protection-save"]').trigger('click')
     await flushPromises()
-    expect(clearMappings).toHaveBeenCalledOnce()
+    expect(updateConfig).toHaveBeenLastCalledWith({ ...defaults, rules: ['github', 'anthropic'], custom_rules: [rule] })
+    await wrapper.get('[data-testid="protection-custom-rules"]').setValue('[]')
+    await wrapper.get('[data-testid="protection-save"]').trigger('click')
+    await flushPromises()
+    expect(updateConfig).toHaveBeenLastCalledWith({ ...defaults, rules: ['github', 'anthropic'] })
   })
 
-  it('explains the deployment key requirement when reversible mode cannot be enabled', async () => {
-    updateConfig.mockRejectedValue({ reason: 'KEY_PROTECTION_PLATFORM_KEY_REQUIRED' })
+  it('keeps edited settings when saving fails', async () => {
+    updateConfig.mockRejectedValue(new Error('unavailable'))
     const wrapper = mountCard()
     await flushPromises()
     await wrapper.get('[role="switch"]').trigger('click')
     await wrapper.get('[data-testid="protection-save"]').trigger('click')
     await flushPromises()
-    expect(wrapper.get('[role="alert"]').text()).toContain('platformKeyRequired')
+    expect(wrapper.get('[role="alert"]').text()).toContain('saveFailed')
+    expect(wrapper.get('[role="switch"]').attributes('aria-checked')).toBe('true')
     expect(showSuccess).not.toHaveBeenCalled()
   })
 })

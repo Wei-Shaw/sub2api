@@ -25,14 +25,9 @@ func (s *SettingService) GetKeyProtectionConfig(ctx context.Context) (keyprotect
 	if err != nil {
 		return keyprotection.Config{}, errors.New("read key protection settings failed")
 	}
-	// Start with defaults so additive settings remain compatible with older
-	// policy documents, but reject null/empty documents rather than disabling.
 	cfg := keyprotection.DefaultConfig()
-	var object map[string]json.RawMessage
-	if err := json.Unmarshal([]byte(value), &object); err != nil || object == nil {
-		return keyprotection.Config{}, errors.New("invalid key protection settings document")
-	}
-	if err := json.Unmarshal([]byte(value), &cfg); err != nil {
+	document := &cfg
+	if err := json.Unmarshal([]byte(value), &document); err != nil || document == nil {
 		return keyprotection.Config{}, errors.New("invalid key protection settings document")
 	}
 	cfg = cfg.Normalized()

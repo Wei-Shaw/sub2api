@@ -2,11 +2,9 @@ package middleware
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"io"
 	"net/http"
-	"regexp"
 	"strings"
 	"time"
 
@@ -24,7 +22,7 @@ type KeyProtectionSettings interface {
 // KeyProtection runs immediately after authentication and before any body
 // reader, audit, routing, retry or asynchronous submission. Its writer sits
 // after provider conversion and never supplies restored data back to handlers.
-func KeyProtection(settings KeyProtectionSettings, store *keyprotection.RedisStore, maxBody int64) gin.HandlerFunc {
+func KeyProtection(settings KeyProtectionSettings, maxBody int64) gin.HandlerFunc {
 	if maxBody <= 0 {
 		maxBody = 16 << 20
 	}
@@ -90,58 +88,18 @@ func KeyProtection(settings KeyProtectionSettings, store *keyprotection.RedisSto
 			protectionFailure(c, status, "invalid_or_oversized_body")
 			return
 		}
-		// Parse continuation independently; scanner validates full structure and
-		// duplicates before any downstream body becomes available.
-		var envelope map[string]json.RawMessage
-		if json.Unmarshal(body, &envelope) != nil || envelope == nil {
-			protectionFailure(c, http.StatusBadRequest, "invalid_json")
-			return
-		}
-		previous := ""
-		if v, exists := envelope["previous_response_id"]; exists && string(v) != "null" {
-			if json.Unmarshal(v, &previous) != nil || len(previous) > 512 || (previous != "" && protocol != "responses") {
-				protectionFailure(c, http.StatusBadRequest, "invalid_continuation")
-				return
-			}
-		}
-		session := protectionSession(c, envelope)
-		if len(session) > 512 {
-			protectionFailure(c, http.StatusBadRequest, "invalid_session")
-			return
-		}
-		scope := keyprotection.Scope{UserID: key.UserID, APIKeyID: key.ID, GroupID: groupID}
+		// Every request rebuilds its own map from the supplied content. No
+		// session identifier or shared store can grant access to other mappings.
 		var protected []byte
-		var state *keyprotection.State
-		persistent := cfg.Mode == "reversible" && (session != "" || previous != "" || protocol == "responses")
-		if persistent {
-			protected, state, err = store.Protect(c.Request.Context(), scope, session, previous, cfg, body, protocol)
-		} else {
-			if previous != "" {
-				protectionFailure(c, http.StatusBadRequest, "continuation_requires_reversible_mode")
-				return
-			}
-			if cfg.Mode == keyprotection.ModeReversible && store != nil {
-				var seed []byte
-				seed, err = store.Seed(scope, session)
-				if err == nil {
-					state, err = keyprotection.NewStateWithSeed(cfg, nil, seed)
-				}
-			} else {
-				state, err = keyprotection.NewState(cfg, nil)
-			}
-			if err == nil {
-				protected, err = state.ProtectJSON(body, protocol)
-			}
+		state, err := keyprotection.NewState(cfg)
+		if err == nil {
+			protected, err = state.ProtectJSON(body, protocol)
 		}
 		if err != nil {
 			reason := "input_protection_failed"
 			status := http.StatusBadRequest
-			if errors.Is(err, keyprotection.ErrExpired) {
-				reason = "continuation_mapping_missing_or_expired_resend_full_history"
-			}
-			if errors.Is(err, keyprotection.ErrStore) {
-				reason = "mapping_storage_unavailable"
-				status = http.StatusServiceUnavailable
+			if errors.Is(err, keyprotection.ErrUnsupported) {
+				reason = "unsupported_content_or_continuation_resend_full_history"
 			}
 			if errors.Is(err, keyprotection.ErrCapacity) {
 				reason = "mapping_capacity_exceeded"
@@ -160,14 +118,10 @@ func KeyProtection(settings KeyProtectionSettings, store *keyprotection.RedisSto
 		c.Set(gin.BodyBytesKey, protected)
 		// Downstream/reverse-proxy result caches must not store restored bodies.
 		c.Header("Cache-Control", "no-store, private")
-		logger.FromContext(c.Request.Context()).Info("key protection input scanned", zap.String("mode", cfg.Mode), zap.Any("rule_counts", state.Counts()), zap.Int64("transform_us", time.Since(start).Microseconds()))
+		logger.FromContext(c.Request.Context()).Info("key protection input scanned", zap.Any("rule_counts", state.Counts()), zap.Int64("transform_us", time.Since(start).Microseconds()))
 		body = nil
 		original := c.Writer
-		var saveID func(string) error
-		if cfg.Mode == "reversible" && protocol == "responses" {
-			saveID = func(id string) error { return store.SaveResponse(c.Request.Context(), scope, id, state) }
-		}
-		writer := keyprotection.NewResponseWriter(original, state, protocol, saveID)
+		writer := keyprotection.NewResponseWriter(original, state, protocol)
 		c.Writer = writer
 		defer func() { c.Writer = original }()
 		c.Next()
@@ -176,7 +130,7 @@ func KeyProtection(settings KeyProtectionSettings, store *keyprotection.RedisSto
 			return
 		}
 		if err := writer.Finish(); err != nil {
-			logger.FromContext(c.Request.Context()).Warn("key protection output failed", zap.String("reason", "invalid_response_or_mapping_storage"))
+			logger.FromContext(c.Request.Context()).Warn("key protection output failed", zap.String("reason", "invalid_response"))
 		}
 	}
 }
@@ -210,26 +164,4 @@ func protectedProtocol(c *gin.Context) (string, bool) {
 		return "messages", false
 	}
 	return "", false
-}
-
-var protectionClaudeSession = regexp.MustCompile(`_session_([a-fA-F0-9-]{16,64})$`)
-
-func protectionSession(c *gin.Context, root map[string]json.RawMessage) string {
-	for _, header := range []string{"X-Sub2API-Session-ID", "X-Claude-Code-Session-ID", "session-id", "session_id", "conversation_id", "X-Session-Affinity", "X-Session-Id", "X-OpenCode-Session", "X-Conversation-ID"} {
-		if value := strings.TrimSpace(c.GetHeader(header)); value != "" {
-			return value
-		}
-	}
-	var metadata map[string]json.RawMessage
-	_ = json.Unmarshal(root["metadata"], &metadata)
-	var userID string
-	_ = json.Unmarshal(metadata["user_id"], &userID)
-	if match := protectionClaudeSession.FindStringSubmatch(userID); len(match) == 2 {
-		return match[1]
-	}
-	var embedded struct {
-		SessionID string `json:"session_id"`
-	}
-	_ = json.Unmarshal([]byte(userID), &embedded)
-	return embedded.SessionID
 }

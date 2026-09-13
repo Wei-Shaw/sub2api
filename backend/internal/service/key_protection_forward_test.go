@@ -42,13 +42,12 @@ func TestKeyProtectionActualGatewayForwarding(t *testing.T) {
 					path = "/v1/messages"
 					body = `{"model":"gpt-5.4","max_tokens":256,"stream":` + streamText + `,"messages":[{"role":"user","content":"Use ` + secret + `"}]}`
 				}
-				state, err := keyprotection.NewState(keyprotection.DefaultConfig(), nil)
+				state, err := keyprotection.NewState(keyprotection.DefaultConfig())
 				require.NoError(t, err)
 				protected, err := state.ProtectJSON([]byte(body), protocol)
 				require.NoError(t, err)
-				var token string
-				for token = range state.Entries() {
-				}
+				token, err := state.ProtectText(secret)
+				require.NoError(t, err)
 				require.NotEmpty(t, token)
 				response := `{"id":"chatcmpl_fixture","object":"chat.completion","model":"gpt-5.4","choices":[{"index":0,"message":{"role":"assistant","content":"Use ` + token + `","tool_calls":[{"id":"call_fixture","type":"function","function":{"name":"lookup","arguments":"{\"key\":\"` + token + `\"}"}}]},"finish_reason":"tool_calls"}],"usage":{"prompt_tokens":11,"completion_tokens":7,"total_tokens":18}}`
 				contentType := "application/json"
@@ -67,7 +66,7 @@ func TestKeyProtectionActualGatewayForwarding(t *testing.T) {
 				c.Request = httptest.NewRequest(http.MethodPost, path, bytes.NewReader(protected)).WithContext(ctx)
 				c.Request.Header.Set("Content-Type", "application/json")
 				c.Set(keyprotection.ProtectedGinKey, true)
-				writer := keyprotection.NewResponseWriter(c.Writer, state, protocol, nil)
+				writer := keyprotection.NewResponseWriter(c.Writer, state, protocol)
 				c.Writer = writer
 				var result *OpenAIForwardResult
 				switch protocol {
@@ -96,13 +95,12 @@ func TestKeyProtectionActualGatewayForwarding(t *testing.T) {
 func TestKeyProtectionForcesHTTPForWSConfiguredAccount(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	const secret = "ghp_BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB"
-	state, err := keyprotection.NewState(keyprotection.DefaultConfig(), nil)
+	state, err := keyprotection.NewState(keyprotection.DefaultConfig())
 	require.NoError(t, err)
 	body, err := state.ProtectJSON([]byte(`{"model":"gpt-5.4","input":"`+secret+`","stream":false}`), "responses")
 	require.NoError(t, err)
-	var token string
-	for token = range state.Entries() {
-	}
+	token, err := state.ProtectText(secret)
+	require.NoError(t, err)
 	upstream := &httpUpstreamRecorder{resp: &http.Response{StatusCode: http.StatusOK, Header: http.Header{"Content-Type": []string{"application/json"}}, Body: io.NopCloser(strings.NewReader(`{"id":"resp_protected_http","object":"response","status":"completed","model":"gpt-5.4","output":[{"id":"msg_fixture","type":"message","role":"assistant","content":[{"type":"output_text","text":"` + token + `"}]}],"usage":{"input_tokens":11,"output_tokens":7,"total_tokens":18}}`))}}
 	cfg := rawChatCompletionsTestConfig()
 	cfg.Gateway.OpenAIWS.Enabled = true
@@ -115,7 +113,7 @@ func TestKeyProtectionForcesHTTPForWSConfiguredAccount(t *testing.T) {
 	c, _ := gin.CreateTestContext(recorder)
 	ctx := keyprotection.WithProtected(context.Background())
 	c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", bytes.NewReader(body)).WithContext(ctx)
-	writer := keyprotection.NewResponseWriter(c.Writer, state, "responses", nil)
+	writer := keyprotection.NewResponseWriter(c.Writer, state, "responses")
 	c.Writer = writer
 	result, err := svc.Forward(ctx, c, account, body)
 	require.NoError(t, err)

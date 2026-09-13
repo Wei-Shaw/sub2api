@@ -17,23 +17,6 @@
           <label for="key-protection-enabled" class="font-medium">{{ t('admin.settings.keyProtection.enabled') }}</label>
           <Toggle id="key-protection-enabled" v-model="config.enabled" :aria-label="t('admin.settings.keyProtection.enabled')" />
         </div>
-        <div class="grid gap-4 md:grid-cols-2">
-          <label class="space-y-1 text-sm">
-            <span>{{ t('admin.settings.keyProtection.mode') }}</span>
-            <select v-model="config.mode" class="input w-full" data-testid="protection-mode">
-              <option value="reversible">{{ t('admin.settings.keyProtection.reversible') }}</option>
-              <option value="redact">{{ t('admin.settings.keyProtection.redact') }}</option>
-            </select>
-          </label>
-          <label v-if="config.mode === 'reversible'" class="space-y-1 text-sm">
-            <span>{{ t('admin.settings.keyProtection.scope') }}</span>
-            <select v-model="config.restore_scope" class="input w-full" data-testid="protection-scope">
-              <option value="text_and_tools">{{ t('admin.settings.keyProtection.textAndTools') }}</option>
-              <option value="tools_only">{{ t('admin.settings.keyProtection.toolsOnly') }}</option>
-            </select>
-          </label>
-        </div>
-        <p class="text-sm text-gray-500 dark:text-gray-400">{{ t('admin.settings.keyProtection.modeHint') }}</p>
         <div class="space-y-2">
           <p class="text-sm font-medium">{{ t('admin.settings.keyProtection.users') }}</p>
           <OpenAIFastPolicyUserSelector v-model="config.user_ids" />
@@ -50,39 +33,15 @@
         </p>
         <details class="space-y-3 rounded-lg border border-gray-200 p-3 dark:border-dark-600">
           <summary class="cursor-pointer text-sm font-medium">{{ t('admin.settings.keyProtection.advanced') }}</summary>
-          <div class="grid gap-3 md:grid-cols-3">
-            <label class="space-y-1 text-sm">
-              <span>{{ t('admin.settings.keyProtection.ttl') }}</span>
-              <input v-model.number="config.ttl_seconds" type="number" min="60" class="input w-full" />
-            </label>
-            <label class="space-y-1 text-sm">
-              <span>{{ t('admin.settings.keyProtection.maxMappings') }}</span>
-              <input v-model.number="config.max_mappings" type="number" min="1" class="input w-full" />
-            </label>
-            <label class="space-y-1 text-sm">
-              <span>{{ t('admin.settings.keyProtection.maxSessions') }}</span>
-              <input v-model.number="config.max_sessions" type="number" min="1" class="input w-full" />
-            </label>
-          </div>
           <label class="block space-y-1 text-sm">
             <span>{{ t('admin.settings.keyProtection.rules') }}</span>
-            <input v-model="ruleNames" type="text" class="input w-full" autocomplete="off" />
+            <input v-model="ruleNames" type="text" class="input w-full" autocomplete="off" data-testid="protection-rules" />
           </label>
           <label class="block space-y-1 text-sm">
             <span>{{ t('admin.settings.keyProtection.customRules') }}</span>
             <textarea v-model="customRulesJSON" rows="4" class="input w-full font-mono text-xs" spellcheck="false" data-testid="protection-custom-rules" />
           </label>
-          <p class="text-xs text-gray-500 dark:text-gray-400">{{ t('admin.settings.keyProtection.storageHint') }}</p>
-          <div class="space-y-2 border-t border-gray-200 pt-3 dark:border-dark-600">
-            <p class="text-sm text-gray-500 dark:text-gray-400">{{ t('admin.settings.keyProtection.clearHint') }}</p>
-            <button v-if="!confirmClear" type="button" class="btn btn-secondary" @click="confirmClear = true">
-              {{ t('admin.settings.keyProtection.clearMappings') }}
-            </button>
-            <div v-else class="flex gap-2">
-              <button type="button" class="btn btn-danger" :disabled="clearing" @click="clearMappings">{{ t('admin.settings.keyProtection.confirmClear') }}</button>
-              <button type="button" class="btn btn-secondary" :disabled="clearing" @click="confirmClear = false">{{ t('common.cancel') }}</button>
-            </div>
-          </div>
+          <p class="text-xs text-gray-500 dark:text-gray-400">{{ t('admin.settings.keyProtection.rulesHint') }}</p>
         </details>
         <p v-if="errorMessage" role="alert" class="text-sm text-red-600">{{ errorMessage }}</p>
         <button type="button" class="btn btn-primary" :disabled="saving" data-testid="protection-save" @click="save">
@@ -97,7 +56,7 @@
 import { computed, onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { getAllIncludingInactive } from '@/api/admin/groups'
-import { clearKeyProtectionMappings, getKeyProtectionConfig, updateKeyProtectionConfig, type KeyProtectionConfig } from '@/api/admin/keyProtection'
+import { getKeyProtectionConfig, updateKeyProtectionConfig, type KeyProtectionConfig } from '@/api/admin/keyProtection'
 import Toggle from '@/components/common/Toggle.vue'
 import { useAppStore } from '@/stores'
 import OpenAIFastPolicyUserSelector from './OpenAIFastPolicyUserSelector.vue'
@@ -108,8 +67,6 @@ const config = ref<KeyProtectionConfig | null>(null)
 const groups = ref<{ id: number; name: string }[]>([])
 const loading = ref(true)
 const saving = ref(false)
-const clearing = ref(false)
-const confirmClear = ref(false)
 const errorMessage = ref('')
 const ruleNames = ref('')
 const customRulesJSON = ref('[]')
@@ -160,26 +117,10 @@ async function save() {
       custom_rules: customRules,
     }))
     appStore.showSuccess(t('admin.settings.keyProtection.saved'))
-  } catch (error) {
-    errorMessage.value = t(error && typeof error === 'object' && 'reason' in error && error.reason === 'KEY_PROTECTION_PLATFORM_KEY_REQUIRED'
-      ? 'admin.settings.keyProtection.platformKeyRequired'
-      : 'admin.settings.keyProtection.saveFailed')
+  } catch {
+    errorMessage.value = t('admin.settings.keyProtection.saveFailed')
   } finally {
     saving.value = false
-  }
-}
-
-async function clearMappings() {
-  clearing.value = true
-  errorMessage.value = ''
-  try {
-    await clearKeyProtectionMappings()
-    confirmClear.value = false
-    appStore.showSuccess(t('admin.settings.keyProtection.cleared'))
-  } catch {
-    errorMessage.value = t('admin.settings.keyProtection.clearFailed')
-  } finally {
-    clearing.value = false
   }
 }
 

@@ -39,13 +39,7 @@ func (h *SettingHandler) UpdateKeyProtectionConfig(c *gin.Context) {
 	}
 	cfg = cfg.Normalized()
 	if err := cfg.Validate(); err != nil {
-		response.BadRequest(c, "Invalid key protection policy: check mode, scope, rules, IDs and limits")
-		return
-	}
-	if cfg.Enabled && cfg.Mode == keyprotection.ModeReversible && !h.settingService.IsTotpEncryptionKeyConfigured() {
-		response.ErrorWithDetails(c, http.StatusBadRequest,
-			"A deployment administrator must configure a fixed TOTP_ENCRYPTION_KEY before enabling reversible key protection; use the same existing platform key on every instance.",
-			"KEY_PROTECTION_PLATFORM_KEY_REQUIRED", nil)
+		response.BadRequest(c, "Invalid key protection policy: check rules and user/group IDs")
 		return
 	}
 	if err := h.settingService.SetKeyProtectionConfig(c.Request.Context(), cfg); err != nil {
@@ -55,7 +49,6 @@ func (h *SettingHandler) UpdateKeyProtectionConfig(c *gin.Context) {
 	subject, _ := middleware.GetAuthSubjectFromContext(c)
 	role, _ := middleware.GetUserRoleFromContext(c)
 	slog.Info("key protection settings updated", "audit", true,
-		"user_id", subject.UserID, "role", role, "enabled", cfg.Enabled,
-		"mode", cfg.Mode, "restore_scope", cfg.RestoreScope)
+		"user_id", subject.UserID, "role", role, "enabled", cfg.Enabled)
 	response.Success(c, cfg)
 }

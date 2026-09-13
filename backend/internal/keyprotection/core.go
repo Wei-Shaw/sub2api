@@ -4,8 +4,6 @@ package keyprotection
 
 import (
 	"context"
-	"crypto/hmac"
-	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
@@ -13,13 +11,6 @@ import (
 	"regexp"
 	"sort"
 	"strings"
-)
-
-const (
-	ModeReversible    = "reversible"
-	ModeRedact        = "redact"
-	ScopeTextAndTools = "text_and_tools"
-	ScopeToolsOnly    = "tools_only"
 )
 
 // Rule defines an administrator-supplied RE2 pattern. The complete match is
@@ -30,42 +21,17 @@ type Rule struct {
 }
 
 type Config struct {
-	Enabled      bool     `json:"enabled"`
-	UserIDs      []int64  `json:"user_ids"`
-	GroupIDs     []int64  `json:"group_ids"`
-	Mode         string   `json:"mode"`
-	RestoreScope string   `json:"restore_scope"`
-	Rules        []string `json:"rules"`
-	CustomRules  []Rule   `json:"custom_rules"`
-	TTLSeconds   int      `json:"ttl_seconds"`
-	MaxMappings  int      `json:"max_mappings"`
-	MaxSessions  int      `json:"max_sessions"`
+	Enabled     bool     `json:"enabled"`
+	UserIDs     []int64  `json:"user_ids"`
+	GroupIDs    []int64  `json:"group_ids"`
+	Rules       []string `json:"rules"`
+	CustomRules []Rule   `json:"custom_rules"`
 }
 
-func DefaultConfig() Config {
-	return Config{Mode: ModeReversible, RestoreScope: ScopeTextAndTools, TTLSeconds: 3600, MaxMappings: 256, MaxSessions: 10000}
-}
+func DefaultConfig() Config { return Config{} }
 
-// Normalized returns a detached configuration with defaults for omitted fields.
-func (c Config) Normalized() Config { return c.normalized() }
-
-func (c Config) normalized() Config {
-	d := DefaultConfig()
-	if c.Mode == "" {
-		c.Mode = d.Mode
-	}
-	if c.RestoreScope == "" {
-		c.RestoreScope = d.RestoreScope
-	}
-	if c.TTLSeconds == 0 {
-		c.TTLSeconds = d.TTLSeconds
-	}
-	if c.MaxMappings == 0 {
-		c.MaxMappings = d.MaxMappings
-	}
-	if c.MaxSessions == 0 {
-		c.MaxSessions = d.MaxSessions
-	}
+// Normalized returns a detached configuration for the settings API.
+func (c Config) Normalized() Config {
 	c.UserIDs = append([]int64(nil), c.UserIDs...)
 	c.GroupIDs = append([]int64(nil), c.GroupIDs...)
 	c.Rules = append([]string(nil), c.Rules...)
@@ -74,22 +40,6 @@ func (c Config) normalized() Config {
 }
 
 func (c Config) Validate() error {
-	c = c.normalized()
-	if c.Mode != ModeReversible && c.Mode != ModeRedact {
-		return errors.New("invalid key protection mode")
-	}
-	if c.RestoreScope != ScopeTextAndTools && c.RestoreScope != ScopeToolsOnly {
-		return errors.New("invalid key protection restore scope")
-	}
-	if c.TTLSeconds < 60 || c.TTLSeconds > 30*24*60*60 {
-		return errors.New("key protection TTL must be between 60 and 2592000 seconds")
-	}
-	if c.MaxMappings < 1 || c.MaxMappings > 10000 {
-		return errors.New("key protection mapping limit must be between 1 and 10000")
-	}
-	if c.MaxSessions < 1 || c.MaxSessions > 1000000 {
-		return errors.New("key protection session limit must be between 1 and 1000000")
-	}
 	if len(c.UserIDs)+len(c.GroupIDs) > 100000 {
 		return errors.New("too many key protection scope entries")
 	}
@@ -152,7 +102,7 @@ func (c Config) Applies(userID, groupID int64) bool {
 }
 
 const PlaceholderLength = 69
-const RedactedMarker = "[REDACTED]"
+const MaxMappings = 256
 const MaxSecretBytes = 1 << 20
 const MaxMappingBytes = 8 << 20
 
@@ -162,67 +112,27 @@ var (
 	ErrUnsupported = errors.New("key protection does not support this content or protocol")
 )
 
-// State is fixed for one request, including retries. Its configuration is copied,
-// and Entries returns a copy to prevent callers mutating an active mapping.
+// State holds compiled rules and mappings for one request, including retries.
 // State is not safe for concurrent mutation; finish input protection before use
 // by concurrent model/response branches, which may read it concurrently.
 type State struct {
-	config       Config
 	rules        []compiledRule
 	entries      map[string]string
-	reverse      map[string]string
 	counts       map[string]int
-	seed         []byte
 	mappingBytes int
 }
 
 // Safe formatting prevents ordinary diagnostics from exposing private state.
 func (s State) String() string {
-	return fmt.Sprintf("keyprotection.State{mode:%s,mappings:%d}", s.config.Mode, len(s.entries))
+	return fmt.Sprintf("keyprotection.State{mappings:%d}", len(s.entries))
 }
 func (s State) GoString() string { return s.String() }
 
-func NewState(config Config, entries map[string]string) (*State, error) {
-	seed := make([]byte, 32)
-	if _, err := rand.Read(seed); err != nil {
-		return nil, errors.New("key protection random source failed")
-	}
-	return NewStateWithSeed(config, entries, seed)
-}
-
-// NewStateWithSeed uses a purpose- and authenticated-scope-derived platform seed
-// for deterministic HMAC placeholders. Only an authorized mapping permits output
-// restoration; the digest itself never grants access to a stored credential.
-func NewStateWithSeed(config Config, entries map[string]string, seed []byte) (*State, error) {
+func NewState(config Config) (*State, error) {
 	if err := config.Validate(); err != nil {
 		return nil, err
 	}
-	config = config.normalized()
-	if len(seed) < 32 {
-		return nil, errors.New("key protection seed must contain at least 32 bytes")
-	}
-	if len(entries) > config.MaxMappings {
-		return nil, ErrCapacity
-	}
-	s := &State{config: config, rules: compileRules(config), entries: make(map[string]string), reverse: make(map[string]string), counts: make(map[string]int), seed: append([]byte(nil), seed...)}
-	if config.Mode == ModeRedact {
-		return s, nil
-	}
-	for token, secret := range entries {
-		if !IsPlaceholderToken(token) || secret == "" || len(secret) > MaxSecretBytes || IsPlaceholderToken(secret) {
-			return nil, errors.New("invalid key protection mapping")
-		}
-		if _, exists := s.reverse[secret]; exists {
-			return nil, errors.New("duplicate key protection mapping")
-		}
-		if s.mappingBytes+len(token)+len(secret) > MaxMappingBytes {
-			return nil, ErrCapacity
-		}
-		s.entries[token] = secret
-		s.reverse[secret] = token
-		s.mappingBytes += len(token) + len(secret)
-	}
-	return s, nil
+	return &State{rules: compileRules(config), entries: make(map[string]string), counts: make(map[string]int)}, nil
 }
 
 func IsPlaceholderToken(token string) bool {
@@ -235,16 +145,6 @@ func IsPlaceholderToken(token string) bool {
 		}
 	}
 	return true
-}
-
-func (s *State) Config() Config { return s.config.normalized() }
-
-func (s *State) Entries() map[string]string {
-	entries := make(map[string]string, len(s.entries))
-	for token, secret := range s.entries {
-		entries[token] = secret
-	}
-	return entries
 }
 
 func (s *State) Counts() map[string]int {
@@ -270,24 +170,21 @@ func (s *State) ProtectText(text string) (string, error) {
 		if len(secret) > MaxSecretBytes {
 			return "", ErrCapacity
 		}
-		replacement := RedactedMarker
-		if s.config.Mode == ModeReversible {
-			var ok bool
-			replacement, ok = s.reverse[secret]
-			if !ok {
-				if len(s.entries) >= s.config.MaxMappings || s.mappingBytes+PlaceholderLength+len(secret) > MaxMappingBytes {
-					return "", ErrCapacity
-				}
-				digest := hmac.New(sha256.New, s.seed)
-				_, _ = digest.Write([]byte(secret))
-				replacement = "keyx_" + hex.EncodeToString(digest.Sum(nil))
-				if previous, collision := s.entries[replacement]; collision && previous != secret {
-					return "", errors.New("key protection mapping collision")
-				}
-				s.entries[replacement] = secret
-				s.reverse[secret] = replacement
-				s.mappingBytes += PlaceholderLength + len(secret)
+		// Stable hashes preserve identical protected prompts across requests.
+		// Restoration still requires a key scanned in this request; hashes are
+		// never looked up in another user's state or a shared store.
+		digest := sha256.Sum256([]byte(secret))
+		replacement := "keyx_" + hex.EncodeToString(digest[:])
+		if previous, exists := s.entries[replacement]; exists {
+			if previous != secret {
+				return "", errors.New("key protection mapping collision")
 			}
+		} else {
+			if len(s.entries) >= MaxMappings || s.mappingBytes+PlaceholderLength+len(secret) > MaxMappingBytes {
+				return "", ErrCapacity
+			}
+			s.entries[replacement] = secret
+			s.mappingBytes += PlaceholderLength + len(secret)
 		}
 		out.WriteString(text[last:found.start])
 		out.WriteString(replacement)
@@ -300,9 +197,9 @@ func (s *State) ProtectText(text string) (string, error) {
 
 // RestoreText only restores exact, complete tokens owned by this state. It does
 // not consult storage or other sessions and never treats a malformed token as a
-// lookup. Callers enforce the text/tool restore policy at protocol field level.
+// lookup. Callers restrict restoration to response content and tool arguments.
 func (s *State) RestoreText(text string) string {
-	if s.config.Mode != ModeReversible || len(s.entries) == 0 {
+	if len(s.entries) == 0 {
 		return text
 	}
 	var out strings.Builder

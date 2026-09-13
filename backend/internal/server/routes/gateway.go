@@ -7,7 +7,6 @@ import (
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/handler"
-	"github.com/Wei-Shaw/sub2api/internal/keyprotection"
 	pkghttputil "github.com/Wei-Shaw/sub2api/internal/pkg/httputil"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/requestmodel"
 	"github.com/Wei-Shaw/sub2api/internal/server/middleware"
@@ -29,17 +28,12 @@ func RegisterGatewayRoutes(
 	settingService *service.SettingService,
 	compositeResolver *service.CompositeRouteResolver,
 	cfg *config.Config,
-	protectionStores ...*keyprotection.RedisStore,
 ) {
-	var protectionStore *keyprotection.RedisStore
-	if len(protectionStores) > 0 {
-		protectionStore = protectionStores[0]
-	}
 	var protectionSettings middleware.KeyProtectionSettings
 	if settingService != nil {
 		protectionSettings = settingService
 	}
-	keyProtection := middleware.KeyProtection(protectionSettings, protectionStore, cfg.Gateway.MaxBodySize)
+	keyProtection := middleware.KeyProtection(protectionSettings, cfg.Gateway.MaxBodySize)
 	bodyLimit := middleware.RequestBodyLimit(cfg.Gateway.MaxBodySize)
 	textBodyLimit := middleware.RequestBodyLimit(cfg.Gateway.TextMaxBodySize)
 	clientRequestID := middleware.ClientRequestID()

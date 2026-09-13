@@ -29,8 +29,6 @@ type ResponseWriter struct {
 	gin.ResponseWriter
 	state                                           *State
 	protocol                                        string
-	onResponseID                                    func(string) error
-	ids                                             map[string]bool
 	status, size                                    int
 	started, prepared, streaming, finished, aborted bool
 	err                                             error
@@ -38,8 +36,8 @@ type ResponseWriter struct {
 	stream                                          *responseStream
 }
 
-func NewResponseWriter(dst gin.ResponseWriter, state *State, protocol string, onResponseID func(string) error) *ResponseWriter {
-	w := &ResponseWriter{ResponseWriter: dst, state: state, protocol: protocol, onResponseID: onResponseID, ids: make(map[string]bool), status: http.StatusOK, size: -1}
+func NewResponseWriter(dst gin.ResponseWriter, state *State, protocol string) *ResponseWriter {
+	w := &ResponseWriter{ResponseWriter: dst, state: state, protocol: protocol, status: http.StatusOK, size: -1}
 	w.stream = newResponseStream(w)
 	return w
 }
@@ -121,21 +119,6 @@ func (w *ResponseWriter) Hijack() (net.Conn, *bufio.ReadWriter, error) {
 	return nil, nil, ErrResponseProtection
 }
 
-func (w *ResponseWriter) recordID(id string) error {
-	if id == "" || w.ids[id] {
-		return nil
-	}
-	if len(id) > 512 || len(w.ids) >= 32 {
-		return ErrResponseProtection
-	}
-	if w.onResponseID != nil {
-		if err := w.onResponseID(id); err != nil {
-			return ErrResponseProtection
-		}
-	}
-	w.ids[id] = true
-	return nil
-}
 func (w *ResponseWriter) emit(p []byte) error {
 	if w.aborted || w.err != nil {
 		return ErrResponseProtection
@@ -178,14 +161,8 @@ func (w *ResponseWriter) Finish() error {
 		if decodeErr != nil || !w.boundedRestoration(object) {
 			return w.fail()
 		}
-		var envelope struct {
-			ID string `json:"id"`
-		}
-		if json.Unmarshal(body, &envelope) != nil {
-			return w.fail()
-		}
 		out, err := w.state.RestoreJSON(body, w.protocol)
-		if err != nil || len(out) > maxProtectedResponse || w.recordID(envelope.ID) != nil {
+		if err != nil || len(out) > maxProtectedResponse {
 			return w.fail()
 		}
 		if w.emit(out) != nil {
@@ -212,7 +189,7 @@ func (w *ResponseWriter) fail() error {
 	if w.aborted {
 		return w.err
 	}
-	// Emit a fixed protocol error; never serialize an underlying parser/store error.
+	// Emit a fixed protocol error; never serialize an underlying parser error.
 	message := `{"error":{"type":"key_protection_failed","code":"key_protection_failed","message":"Automatic key protection could not safely process the response."}}`
 	if !w.ResponseWriter.Written() {
 		w.Header().Del("Content-Encoding")
@@ -431,21 +408,6 @@ func (s *responseStream) processFrame(frame []byte) error {
 	if typ := str(event.obj["type"]); s.w.protocol != "chat" && event.name != "" && typ != "" && typ != event.name {
 		return ErrResponseProtection
 	}
-	if s.w.protocol == "responses" {
-		if response, ok := event.obj["response"].(map[string]any); ok {
-			if err := s.w.recordID(str(response["id"])); err != nil {
-				return err
-			}
-		}
-	} else if s.w.protocol == "messages" {
-		if message, ok := event.obj["message"].(map[string]any); ok {
-			if err := s.w.recordID(str(message["id"])); err != nil {
-				return err
-			}
-		}
-	} else if err := s.w.recordID(str(event.obj["id"])); err != nil {
-		return err
-	}
 	switch s.w.protocol {
 	case "chat":
 		err = s.chat(event)
@@ -621,9 +583,6 @@ func (s *responseStream) scan(channel *outputChannel, delta string, final bool) 
 	return out.String()
 }
 func (s *responseStream) feed(key string, delta string, tool bool, template *sseEvent, path []any, rawTool ...bool) (string, error) {
-	if !tool && s.w.state.Config().RestoreScope == ScopeToolsOnly {
-		return delta, nil
-	}
 	channel := s.channels[key]
 	bufferTool := tool && !(len(rawTool) > 0 && rawTool[0])
 	if channel == nil {
@@ -920,11 +879,9 @@ func (s *responseStream) responses(event *sseEvent) error {
 		if err := s.flushPrefix(contentKey + strings.TrimSuffix(typ, ".done")); err != nil {
 			return err
 		}
-		if s.w.state.Config().RestoreScope != ScopeToolsOnly {
-			for _, field := range []string{"text", "refusal"} {
-				if text, ok := event.obj[field].(string); ok {
-					event.obj[field] = s.w.state.RestoreText(text)
-				}
+		for _, field := range []string{"text", "refusal"} {
+			if text, ok := event.obj[field].(string); ok {
+				event.obj[field] = s.w.state.RestoreText(text)
 			}
 		}
 	case "response.output_item.done", "response.output_item.added":
@@ -967,7 +924,7 @@ func (s *responseStream) responses(event *sseEvent) error {
 		}
 		fallthrough
 	case "response.content_part.added", "response.reasoning_summary_part.added":
-		if part, ok := event.obj["part"].(map[string]any); ok && s.w.state.Config().RestoreScope != ScopeToolsOnly {
+		if part, ok := event.obj["part"].(map[string]any); ok {
 			for _, field := range []string{"text", "refusal"} {
 				if text, ok := part[field].(string); ok {
 					if strings.HasSuffix(typ, ".added") {

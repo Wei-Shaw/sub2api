@@ -18,7 +18,7 @@ func TestKeyProtectionSettingsUnsetDisabled(t *testing.T) {
 }
 
 func TestKeyProtectionSettingsFailureDoesNotDisableProtection(t *testing.T) {
-	for _, value := range []string{"", "null", "[]", "{broken", `{"enabled":true,"mode":"unknown"}`, `{"enabled":true,"ttl_seconds":-1}`} {
+	for _, value := range []string{"", "null", "[]", "{broken", `{"enabled":true,"rules":["unknown"]}`, `{"enabled":true,"user_ids":[-1]}`} {
 		t.Run(value, func(t *testing.T) {
 			svc := newPanelRateLimitTestService(&panelRateLimitSettingRepo{values: map[string]string{SettingKeyKeyProtection: value}})
 			_, err := svc.GetKeyProtectionConfig(context.Background())
@@ -62,7 +62,7 @@ func TestKeyProtectionSettingsRoundTripAndIsolation(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, cfg, read)
 	invalid := cfg
-	invalid.Mode = "typo"
+	invalid.Rules = []string{"typo"}
 	require.Error(t, svc.SetKeyProtectionConfig(context.Background(), invalid))
 	read, err = svc.GetKeyProtectionConfig(context.Background())
 	require.NoError(t, err)

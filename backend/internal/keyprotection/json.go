@@ -101,17 +101,14 @@ type transformer struct {
 	restore bool
 }
 
-func (t transformer) text(value string, tool bool) (string, error) {
+func (t transformer) text(value string) (string, error) {
 	if !t.restore {
 		return t.state.ProtectText(value)
 	}
-	if tool || t.state.config.RestoreScope == ScopeTextAndTools {
-		return t.state.RestoreText(value), nil
-	}
-	return value, nil
+	return t.state.RestoreText(value), nil
 }
 
-func (t transformer) field(object map[string]any, name string, tool bool) error {
+func (t transformer) field(object map[string]any, name string) error {
 	value, exists := object[name]
 	if !exists || value == nil {
 		return nil
@@ -120,7 +117,7 @@ func (t transformer) field(object map[string]any, name string, tool bool) error 
 	if !ok {
 		return ErrContent
 	}
-	result, err := t.text(text, tool)
+	result, err := t.text(text)
 	if err != nil {
 		return err
 	}
@@ -130,16 +127,16 @@ func (t transformer) field(object map[string]any, name string, tool bool) error 
 
 // values handles user-owned arbitrary JSON (tool inputs/outputs), where field
 // names such as "name" or "id" are user data rather than protocol identifiers.
-func (t transformer) values(value any, tool bool, depth int) (any, error) {
+func (t transformer) values(value any, depth int) (any, error) {
 	if depth > maxContentDepth {
 		return nil, ErrContent
 	}
 	switch v := value.(type) {
 	case string:
-		return t.text(v, tool)
+		return t.text(v)
 	case []any:
 		for i, child := range v {
-			transformed, err := t.values(child, tool, depth+1)
+			transformed, err := t.values(child, depth+1)
 			if err != nil {
 				return nil, err
 			}
@@ -147,7 +144,7 @@ func (t transformer) values(value any, tool bool, depth int) (any, error) {
 		}
 	case map[string]any:
 		for key, child := range v {
-			transformed, err := t.values(child, tool, depth+1)
+			transformed, err := t.values(child, depth+1)
 			if err != nil {
 				return nil, err
 			}
@@ -167,7 +164,7 @@ func (t transformer) arguments(arguments string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	value, err = t.values(value, true, 0)
+	value, err = t.values(value, 0)
 	if err != nil {
 		return "", err
 	}
@@ -199,7 +196,7 @@ func (t transformer) argumentField(object map[string]any, name string, serialize
 		object[name] = result
 		return nil
 	}
-	result, err := t.values(value, true, 0)
+	result, err := t.values(value, 0)
 	if err != nil {
 		return err
 	}
@@ -219,7 +216,7 @@ func (t transformer) content(value any, depth int) (any, error) {
 	case nil:
 		return nil, nil
 	case string:
-		return t.text(v, false)
+		return t.text(v)
 	case []any:
 		for i, child := range v {
 			result, err := t.content(child, depth+1)
@@ -253,7 +250,7 @@ func (t transformer) content(value any, depth int) (any, error) {
 		switch kind {
 		case "text", "input_text", "output_text", "summary_text", "refusal", "thinking":
 			for _, key := range []string{"text", "refusal", "thinking"} {
-				if err := t.field(v, key, false); err != nil {
+				if err := t.field(v, key); err != nil {
 					return nil, err
 				}
 			}
@@ -266,7 +263,7 @@ func (t transformer) content(value any, depth int) (any, error) {
 				return nil, err
 			}
 		case "custom_tool_call":
-			if err := t.field(v, "input", true); err != nil {
+			if err := t.field(v, "input"); err != nil {
 				return nil, err
 			}
 		case "tool_result", "function_call_output", "custom_tool_call_output":
@@ -278,7 +275,7 @@ func (t transformer) content(value any, depth int) (any, error) {
 					if key == "content" {
 						result, err = t.content(child, depth+1)
 					} else {
-						result, err = t.values(child, false, depth+1)
+						result, err = t.values(child, depth+1)
 					}
 					if err != nil {
 						return nil, err
@@ -298,18 +295,18 @@ func (t transformer) content(value any, depth int) (any, error) {
 			}
 		case "image", "image_url", "input_image", "input_audio", "audio", "input_file", "file":
 			// This feature makes no claim about credentials embedded in media.
-			if err := t.field(v, "transcript", false); err != nil {
+			if err := t.field(v, "transcript"); err != nil {
 				return nil, err
 			}
 		case "document":
 			for _, key := range []string{"title", "context"} {
-				if err := t.field(v, key, false); err != nil {
+				if err := t.field(v, key); err != nil {
 					return nil, err
 				}
 			}
 			if source, ok := v["source"].(map[string]any); ok {
 				if source["type"] == "text" {
-					if err := t.field(source, "data", false); err != nil {
+					if err := t.field(source, "data"); err != nil {
 						return nil, err
 					}
 				}
@@ -373,7 +370,7 @@ func (t transformer) messages(value any) error {
 			message["content"] = result
 		}
 		for _, key := range []string{"reasoning_content", "reasoning", "refusal"} {
-			if err := t.field(message, key, false); err != nil {
+			if err := t.field(message, key); err != nil {
 				return err
 			}
 		}
@@ -451,7 +448,7 @@ func (t transformer) chatTools(message map[string]any) error {
 				}
 			}
 			if custom, ok := call["custom"].(map[string]any); ok {
-				if err := t.field(custom, "input", true); err != nil {
+				if err := t.field(custom, "input"); err != nil {
 					return err
 				}
 			}
@@ -466,7 +463,7 @@ func (t transformer) definitions(value any, depth int) (any, error) {
 	}
 	switch v := value.(type) {
 	case string:
-		return t.text(v, false)
+		return t.text(v)
 	case []any:
 		for i, child := range v {
 			result, err := t.definitions(child, depth+1)
@@ -503,11 +500,19 @@ func (s *State) ProtectJSON(body []byte, protocol string) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	if background, exists := root["background"]; exists && background != false && background != nil {
-		return nil, ErrUnsupported
-	}
-	if nonempty(root["conversation"]) {
-		return nil, ErrUnsupported
+	// Only a complete client-supplied history can rebuild request-local maps.
+	// Match the case-insensitive aliases accepted by downstream JSON decoders.
+	for key, value := range root {
+		switch strings.ToLower(key) {
+		case "background":
+			if value != false && value != nil {
+				return nil, ErrUnsupported
+			}
+		case "previous_response_id", "conversation":
+			if nonempty(value) {
+				return nil, ErrUnsupported
+			}
+		}
 	}
 	t := transformer{state: s}
 	processed := map[string]bool{"system": true, "instructions": true, "tools": true, "functions": true, "response_format": true, "text": true}
@@ -617,7 +622,7 @@ func (s *State) RestoreJSON(body []byte, protocol string) ([]byte, error) {
 						}
 					}
 				}
-				if err := t.field(choice, "text", false); err != nil {
+				if err := t.field(choice, "text"); err != nil {
 					return nil, err
 				}
 			}
@@ -630,7 +635,7 @@ func (s *State) RestoreJSON(body []byte, protocol string) ([]byte, error) {
 			}
 			root["output"] = result
 		}
-		if err := t.field(root, "output_text", false); err != nil {
+		if err := t.field(root, "output_text"); err != nil {
 			return nil, err
 		}
 	case "messages":

@@ -13,7 +13,6 @@ import (
 	"strings"
 	"sync/atomic"
 	"testing"
-	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/handler"
 	"github.com/Wei-Shaw/sub2api/internal/keyprotection"
@@ -22,9 +21,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/securityaudit"
 	"github.com/Wei-Shaw/sub2api/internal/server/middleware"
 	"github.com/Wei-Shaw/sub2api/internal/service"
-	"github.com/alicebob/miniredis/v2"
 	"github.com/gin-gonic/gin"
-	"github.com/redis/go-redis/v9"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zaptest/observer"
@@ -38,14 +35,7 @@ type protectionSettingsStub struct {
 func (s *protectionSettingsStub) GetKeyProtectionConfig(context.Context) (keyprotection.Config, error) {
 	return s.config, s.err
 }
-func protectedTestStore(t *testing.T) (*keyprotection.RedisStore, *miniredis.Miniredis) {
-	t.Helper()
-	mr := miniredis.RunT(t)
-	client := redis.NewClient(&redis.Options{Addr: mr.Addr(), MaxRetries: -1})
-	t.Cleanup(func() { _ = client.Close() })
-	return keyprotection.NewRedisStore(client, strings.Repeat("42", 32)), mr
-}
-func protectionRouter(settings *protectionSettingsStub, store *keyprotection.RedisStore, h gin.HandlerFunc) *gin.Engine {
+func protectionRouter(settings *protectionSettingsStub, h gin.HandlerFunc) *gin.Engine {
 	gin.SetMode(gin.TestMode)
 	r := gin.New()
 	r.Use(handler.OpsErrorLoggerMiddleware(nil))
@@ -58,7 +48,7 @@ func protectionRouter(settings *protectionSettingsStub, store *keyprotection.Red
 		c.Set(string(middleware.ContextKeyAPIKey), &service.APIKey{ID: 7, UserID: user, GroupID: &group})
 		c.Next()
 	})
-	r.Use(middleware.KeyProtection(settings, store, 1<<20))
+	r.Use(middleware.KeyProtection(settings, 1<<20))
 	for _, path := range []string{"/v1/chat/completions", "/v1/responses", "/v1/messages", "/v1/embeddings", "/v1/images/generations", "/v1beta/models/*action"} {
 		r.POST(path, h)
 	}
@@ -70,7 +60,6 @@ func TestKeyProtectionHTTPRoundTripAuditRetryAndLogs(t *testing.T) {
 	secret := "ghp_" + strings.Repeat("A", 36)
 	for _, protocol := range []string{"chat", "responses", "messages"} {
 		t.Run(protocol, func(t *testing.T) {
-			store, _ := protectedTestStore(t)
 			cfg := keyprotection.DefaultConfig()
 			cfg.Enabled = true
 			settings := &protectionSettingsStub{config: cfg}
@@ -126,7 +115,7 @@ func TestKeyProtectionHTTPRoundTripAuditRetryAndLogs(t *testing.T) {
 			}))
 			defer upstream.Close()
 			core, observed := observer.New(zap.InfoLevel)
-			router := protectionRouter(settings, store, func(c *gin.Context) {
+			router := protectionRouter(settings, func(c *gin.Context) {
 				body, err := httputil.ReadRequestBodyWithPrealloc(c.Request)
 				require.NoError(t, err)
 				snapshot, err := securityaudit.ExtractPromptSnapshot(securityaudit.Request{Protocol: auditProtocol, Body: body})
@@ -179,24 +168,20 @@ func TestKeyProtectionHTTPRoundTripAuditRetryAndLogs(t *testing.T) {
 	}
 }
 
-func TestKeyProtectionContinuationAndMultiRoundEcho(t *testing.T) {
-	store, mr := protectedTestStore(t)
+func TestKeyProtectionRequestLocalMappingAndFullHistory(t *testing.T) {
 	cfg := keyprotection.DefaultConfig()
 	cfg.Enabled = true
 	var calls int
 	var firstToken string
-	router := protectionRouter(&protectionSettingsStub{config: cfg}, store, func(c *gin.Context) {
+	router := protectionRouter(&protectionSettingsStub{config: cfg}, func(c *gin.Context) {
 		calls++
 		body, err := io.ReadAll(c.Request.Body)
 		require.NoError(t, err)
 		var root map[string]any
 		require.NoError(t, json.Unmarshal(body, &root))
 		text := root["input"].(string)
-		if calls == 1 {
+		if firstToken == "" {
 			firstToken = text
-		}
-		if calls == 2 {
-			require.Equal(t, firstToken, text)
 		}
 		c.JSON(200, gin.H{"id": fmt.Sprintf("resp_%d", calls), "output": []any{gin.H{"type": "message", "content": []any{gin.H{"type": "output_text", "text": firstToken}}}}})
 	})
@@ -209,36 +194,39 @@ func TestKeyProtectionContinuationAndMultiRoundEcho(t *testing.T) {
 		data, _ := json.Marshal(payload)
 		req := httptest.NewRequest("POST", "/v1/responses", bytes.NewReader(data))
 		req.Header.Set("X-Test-Principal", user)
+		req.Header.Set("X-Sub2API-Session-ID", "same-client-session")
 		w := httptest.NewRecorder()
 		router.ServeHTTP(w, req)
 		return w
 	}
-	w := request(secret, "", "")
-	require.Equal(t, 200, w.Code)
-	require.Contains(t, w.Body.String(), secret)
-	w = request(secret, "", "")
-	require.Equal(t, 200, w.Code)
-	require.Contains(t, w.Body.String(), secret)
-	w = request("continue", "resp_1", "")
-	require.Equal(t, 200, w.Code)
-	require.Contains(t, w.Body.String(), secret)
-	w = request("continue", "resp_1", "two")
-	require.Equal(t, 400, w.Code)
-	require.Equal(t, 3, calls)
-	mr.FastForward(time.Duration(cfg.TTLSeconds+1) * time.Second)
-	w = request("continue", "resp_1", "")
-	require.Equal(t, 400, w.Code)
-	require.Equal(t, 3, calls)
-	require.NotContains(t, w.Body.String(), secret)
+	// Resending the original/restored history rebuilds the map without any store.
+	for _, user := range []string{"", "", "two"} {
+		w := request(secret, "", user)
+		require.Equal(t, 200, w.Code, w.Body.String())
+		require.Contains(t, w.Body.String(), secret)
+	}
+	// Even the same principal/session cannot restore a value absent this request.
+	for _, user := range []string{"", "two"} {
+		w := request(firstToken, "", user)
+		require.Equal(t, 200, w.Code, w.Body.String())
+		require.NotContains(t, w.Body.String(), secret)
+		require.Contains(t, w.Body.String(), firstToken)
+	}
+	before := calls
+	for _, user := range []string{"", "two"} {
+		w := request("continue", "resp_1", user)
+		require.Equal(t, 400, w.Code)
+		require.NotContains(t, w.Body.String(), secret)
+	}
+	require.Equal(t, before, calls, "unsupported continuation must never reach upstream")
 }
 
 func TestKeyProtectionDisabledSelectionFailuresAndCompression(t *testing.T) {
-	store, _ := protectedTestStore(t)
 	cfg := keyprotection.DefaultConfig()
 	settings := &protectionSettingsStub{config: cfg}
 	calls := 0
 	last := ""
-	router := protectionRouter(settings, store, func(c *gin.Context) {
+	router := protectionRouter(settings, func(c *gin.Context) {
 		calls++
 		b, _ := io.ReadAll(c.Request.Body)
 		last = string(b)

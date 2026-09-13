@@ -1,30 +1,21 @@
 package keyprotection
 
 import (
-	"bytes"
-	"crypto/hmac"
 	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"regexp"
 	"strings"
 	"testing"
 )
 
 const fictionalKey = "ghp_AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
-const fictionalToken = "keyx_0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+const fictionalToken = "keyx_49e7237e11464693589bca95fe317f2fde5793bb7d70da9749f55641a5fff406"
 
-func TestDeterministicScopedHMACPlaceholders(t *testing.T) {
-	seed := bytes.Repeat([]byte{0x42}, 32)
-	first, err := NewStateWithSeed(DefaultConfig(), nil, seed)
-	if err != nil {
-		t.Fatal(err)
-	}
-	second, err := NewStateWithSeed(DefaultConfig(), nil, seed)
-	if err != nil {
-		t.Fatal(err)
-	}
+func TestDeterministicSHA256Placeholders(t *testing.T) {
+	first := testState(t, DefaultConfig())
+	second := testState(t, DefaultConfig())
 	a, err := first.ProtectText(fictionalKey)
 	if err != nil {
 		t.Fatal(err)
@@ -33,39 +24,20 @@ func TestDeterministicScopedHMACPlaceholders(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	digest := hmac.New(sha256.New, seed)
-	_, _ = digest.Write([]byte(fictionalKey))
-	if a != b || a != "keyx_"+hex.EncodeToString(digest.Sum(nil)) || len(a) != PlaceholderLength {
-		t.Fatal("scoped digest is not stable HMAC-SHA256")
+	digest := sha256.Sum256([]byte(fictionalKey))
+	if a != b || a != fmt.Sprintf("keyx_%x", digest) || a != fictionalToken {
+		t.Fatal("placeholder is not stable SHA256")
 	}
-	seed[0]++
-	other, err := NewStateWithSeed(DefaultConfig(), nil, seed)
-	if err != nil {
-		t.Fatal(err)
-	}
-	c, err := other.ProtectText(fictionalKey)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if c == a {
-		t.Fatal("different scope seeds produced same token")
-	}
-	if _, err := NewStateWithSeed(DefaultConfig(), nil, []byte("short")); err == nil {
-		t.Fatal("weak seed accepted")
-	}
-	if first.RestoreText(c) != c {
-		t.Fatal("digest from another scope gained restoration access")
+	empty := testState(t, DefaultConfig())
+	if empty.RestoreText(a) != a {
+		t.Fatal("hash alone granted restoration access")
 	}
 }
 
 func TestStateDiagnosticsExcludeSensitiveValues(t *testing.T) {
-	seed := bytes.Repeat([]byte{0x42}, 32)
-	state, err := NewStateWithSeed(DefaultConfig(), map[string]string{fictionalToken: fictionalKey}, seed)
-	if err != nil {
-		t.Fatal(err)
-	}
+	state := testState(t, DefaultConfig(), fictionalKey)
 	for _, message := range []string{fmt.Sprint(state), fmt.Sprintf("%+v", state), fmt.Sprintf("%#v", state), fmt.Sprintf("%+v", *state), fmt.Sprintf("%#v", *state)} {
-		if strings.Contains(message, fictionalKey) || strings.Contains(message, fictionalToken) || strings.Contains(message, "BBBB") {
+		if strings.Contains(message, fictionalKey) || strings.Contains(message, fictionalToken) {
 			t.Fatal("diagnostic exposed sensitive state")
 		}
 	}
@@ -76,16 +48,9 @@ func TestStateDiagnosticsExcludeSensitiveValues(t *testing.T) {
 }
 
 func TestMappingByteLimits(t *testing.T) {
-	entries := make(map[string]string)
-	for i := range 8 {
-		entries["keyx_"+fmt.Sprintf("%064x", i)] = strings.Repeat(string(rune('A'+i)), MaxSecretBytes)
-	}
-	if _, err := NewState(DefaultConfig(), entries); !errors.Is(err, ErrCapacity) {
-		t.Fatal("aggregate mapping byte limit ignored")
-	}
 	config := DefaultConfig()
 	config.CustomRules = []Rule{{Name: "large_fixture", Pattern: `fixture_[A-Z]+`}}
-	state := testState(t, config, nil)
+	state := testState(t, config)
 	if _, err := state.ProtectText("fixture_" + strings.Repeat("A", MaxSecretBytes)); !errors.Is(err, ErrCapacity) {
 		t.Fatal("single secret byte limit ignored")
 	}
@@ -100,27 +65,36 @@ func TestMappingByteLimits(t *testing.T) {
 	}
 }
 
-func testState(t *testing.T, config Config, entries map[string]string) *State {
+func testState(t *testing.T, config Config, secrets ...string) *State {
 	t.Helper()
-	state, err := NewState(config, entries)
+	state, err := NewState(config)
 	if err != nil {
 		t.Fatal(err)
+	}
+	for _, secret := range secrets {
+		token, err := state.ProtectText(secret)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if token == secret {
+			t.Fatal("fixture did not create a mapping")
+		}
 	}
 	return state
 }
 
 func TestProtectTextRepeatAndIsolation(t *testing.T) {
-	state := testState(t, DefaultConfig(), nil)
+	state := testState(t, DefaultConfig())
 	input := "Use " + fictionalKey + " then " + fictionalKey + "."
 	protected, err := state.ProtectText(input)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if strings.Contains(protected, fictionalKey) || len(state.Entries()) != 1 || state.Counts()["github"] != 2 {
+	if strings.Contains(protected, fictionalKey) || len(state.entries) != 1 || state.Counts()["github"] != 2 {
 		t.Fatalf("replacement/count mismatch")
 	}
 	var token string
-	for token = range state.Entries() {
+	for token = range state.entries {
 	}
 	if !IsPlaceholderToken(token) || strings.Count(protected, token) != 2 {
 		t.Fatal("invalid or non-reused placeholder")
@@ -128,26 +102,15 @@ func TestProtectTextRepeatAndIsolation(t *testing.T) {
 	if state.RestoreText(protected) != input {
 		t.Fatal("round trip failed")
 	}
-	other := testState(t, DefaultConfig(), nil)
-	otherProtected, err := other.ProtectText(input)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if protected == otherProtected {
-		t.Fatal("independent states reused placeholder")
-	}
+	other := testState(t, DefaultConfig(), "ghp_"+strings.Repeat("B", 36))
 	if other.RestoreText(protected) != protected {
-		t.Fatal("restored another state's token")
+		t.Fatal("restored another request's token")
 	}
-	clone := state.Entries()
-	clone[token] = "changed"
-	if state.RestoreText(token) != fictionalKey {
-		t.Fatal("entries are externally mutable")
-	}
+
 }
 
 func TestRestoreOnlyCompleteAuthorizedPlaceholders(t *testing.T) {
-	state := testState(t, DefaultConfig(), map[string]string{fictionalToken: fictionalKey})
+	state := testState(t, DefaultConfig(), fictionalKey)
 	unknown := "keyx_" + strings.Repeat("f", 64)
 	for _, input := range []string{unknown, fictionalToken[:36], fictionalToken + "a", fictionalToken + "-", fictionalToken + "_", "x" + fictionalToken, strings.ToUpper(fictionalToken)} {
 		if state.RestoreText(input) != input {
@@ -160,7 +123,7 @@ func TestRestoreOnlyCompleteAuthorizedPlaceholders(t *testing.T) {
 }
 
 func TestConservativeDetection(t *testing.T) {
-	state := testState(t, DefaultConfig(), nil)
+	state := testState(t, DefaultConfig())
 	for _, input := range []string{"sketch", "sk-example", "sk-" + strings.Repeat("A", 47), "https://example.invalid/repo", "c6a7cbe2-411b-4ea7-97b8-63fdfb5f3c37", strings.Repeat("X", 100), "x" + fictionalKey, fictionalKey + "x"} {
 		got, err := state.ProtectText(input)
 		if err != nil {
@@ -181,28 +144,18 @@ func TestConservativeDetection(t *testing.T) {
 	}
 }
 
-func TestRedactAndCapacity(t *testing.T) {
-	config := DefaultConfig()
-	config.Mode = ModeRedact
-	state := testState(t, config, nil)
-	got, err := state.ProtectText(fictionalKey)
-	if err != nil {
-		t.Fatal(err)
+func TestMappingCapacity(t *testing.T) {
+	state := testState(t, DefaultConfig())
+	for i := range MaxMappings {
+		if _, err := state.ProtectText(fmt.Sprintf("ghp_%036d", i)); err != nil {
+			t.Fatal(err)
+		}
 	}
-	if got != RedactedMarker || len(state.Entries()) != 0 {
-		t.Fatal("redact unexpectedly established mapping")
-	}
-	config.Mode = ModeReversible
-	config.MaxMappings = 1
-	state = testState(t, config, nil)
-	if _, err := state.ProtectText(fictionalKey); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := state.ProtectText("ghp_" + strings.Repeat("B", 36)); !errors.Is(err, ErrCapacity) {
+	if _, err := state.ProtectText(fictionalKey); !errors.Is(err, ErrCapacity) {
 		t.Fatalf("expected capacity failure, got %v", err)
 	}
-	if _, err := state.ProtectText(fictionalKey); err != nil {
-		t.Fatal("repeated key should not consume capacity")
+	if _, err := state.ProtectText(fmt.Sprintf("ghp_%036d", 0)); err != nil {
+		t.Fatal("repeated key consumed capacity")
 	}
 }
 
@@ -215,28 +168,32 @@ func TestConfigScopeAndSnapshot(t *testing.T) {
 	if !config.Applies(7, 1) || !config.Applies(8, 9) || config.Applies(8, 1) || config.Applies(0, 9) {
 		t.Fatal("scope mismatch")
 	}
-	state := testState(t, config, nil)
+	state := testState(t, config)
 	config.Rules[0] = "google"
-	copy := state.Config()
-	copy.Rules[0] = "google"
-	if state.Config().Rules[0] != "github" {
-		t.Fatal("request config is mutable")
+	got, err := state.ProtectText(fictionalKey)
+	if err != nil || got != fictionalToken {
+		t.Fatal("active request rules changed")
+	}
+	copy := config.Normalized()
+	copy.UserIDs[0] = 99
+	if config.UserIDs[0] != 7 {
+		t.Fatal("normalized config aliases input")
 	}
 	config.Enabled = false
 	if config.Applies(7, 9) {
 		t.Fatal("disabled config applied")
 	}
-	for _, config := range []Config{{Mode: "bad"}, {RestoreScope: "bad"}, {TTLSeconds: -1}, {MaxMappings: 10001}, {MaxSessions: -1}, {Rules: []string{"bad"}}, {UserIDs: []int64{-1}}, {CustomRules: []Rule{{Name: "sample", Pattern: "("}}}, {CustomRules: []Rule{{Name: "sample", Pattern: ".*"}}}} {
+	for _, config := range []Config{{Rules: []string{"bad"}}, {UserIDs: []int64{-1}}, {CustomRules: []Rule{{Name: "sample", Pattern: "("}}}, {CustomRules: []Rule{{Name: "sample", Pattern: ".*"}}}} {
 		if config.Validate() == nil {
 			t.Errorf("invalid config accepted: %+v", config)
 		}
 	}
 }
 
-func TestCustomRulesAndInvalidMappings(t *testing.T) {
+func TestCustomRules(t *testing.T) {
 	config := DefaultConfig()
 	config.CustomRules = []Rule{{Name: "fictional", Pattern: `example_secret_[A-Z]{12}`}}
-	state := testState(t, config, nil)
+	state := testState(t, config)
 	got, err := state.ProtectText("example_secret_ABCDEFGHIJKL")
 	if err != nil {
 		t.Fatal(err)
@@ -244,29 +201,26 @@ func TestCustomRulesAndInvalidMappings(t *testing.T) {
 	if !IsPlaceholderToken(got) || state.Counts()["fictional"] != 1 {
 		t.Fatal("custom rule failed")
 	}
-	for _, entries := range []map[string]string{{"bad": fictionalKey}, {fictionalToken: ""}, {fictionalToken: fictionalToken}, {fictionalToken: fictionalKey, "keyx_" + strings.Repeat("f", 64): fictionalKey}} {
-		if _, err := NewState(DefaultConfig(), entries); err == nil {
-			t.Fatal("invalid mapping accepted")
-		}
-	}
+
 }
 
 func TestCustomRuleCannotRemapReservedPlaceholders(t *testing.T) {
 	config := DefaultConfig()
 	config.CustomRules = []Rule{{Name: "reserved_fixture", Pattern: `keyx_[a-f0-9]{64}`}}
-	state := testState(t, config, nil)
+	state := testState(t, config)
 	got, err := state.ProtectText(fictionalToken)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got != fictionalToken || len(state.Entries()) != 0 {
+	if got != fictionalToken || len(state.entries) != 0 {
 		t.Fatal("custom rule remapped reserved placeholder")
 	}
 }
 
 func TestRestoreArgumentsJSONEscapingAndPrecision(t *testing.T) {
 	secret := "fictional\"quote\\slash\nline"
-	state := testState(t, DefaultConfig(), map[string]string{fictionalToken: secret})
+	state := testState(t, Config{CustomRules: []Rule{{Name: "quoted_fixture", Pattern: regexp.QuoteMeta(secret)}}}, secret)
+	fictionalToken := fmt.Sprintf("keyx_%x", sha256.Sum256([]byte(secret)))
 	got, err := state.RestoreArguments(`{"key":"` + fictionalToken + `","id":900719925474099312345,"nested":["` + fictionalToken + `"]}`)
 	if err != nil {
 		t.Fatal(err)
@@ -291,12 +245,12 @@ func TestProtectProtocolBodies(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.protocol, func(t *testing.T) {
-			state := testState(t, DefaultConfig(), nil)
+			state := testState(t, DefaultConfig())
 			protected, err := state.ProtectJSON([]byte(tc.body), tc.protocol)
 			if err != nil {
 				t.Fatal(err)
 			}
-			if strings.Contains(string(protected), fictionalKey) || len(state.Entries()) != 1 {
+			if strings.Contains(string(protected), fictionalKey) || len(state.entries) != 1 {
 				t.Fatal("model-facing body contains fixture or mapping mismatch")
 			}
 			root, err := DecodeObject(protected)
@@ -307,7 +261,7 @@ func TestProtectProtocolBodies(t *testing.T) {
 				t.Fatal("numeric precision changed")
 			}
 			var token string
-			for token = range state.Entries() {
+			for token = range state.entries {
 			}
 			response := strings.ReplaceAll(tc.response, "TOKEN", token)
 			restored, err := state.RestoreJSON([]byte(response), tc.protocol)
@@ -321,17 +275,16 @@ func TestProtectProtocolBodies(t *testing.T) {
 	}
 }
 
-func TestRestoreScopeAndNonTargetFields(t *testing.T) {
+func TestRestoreContentAndPreserveNonTargetFields(t *testing.T) {
 	config := DefaultConfig()
-	config.RestoreScope = ScopeToolsOnly
-	state := testState(t, config, map[string]string{fictionalToken: fictionalKey})
+	state := testState(t, config, fictionalKey)
 	response := `{"id":"` + fictionalToken + `","metadata":{"secret":"` + fictionalToken + `"},"choices":[{"message":{"content":"` + fictionalToken + `","tool_calls":[{"id":"` + fictionalToken + `","function":{"name":"` + fictionalToken + `","arguments":"{\"key\":\"` + fictionalToken + `\"}"}}]}}]}`
 	got, err := state.RestoreJSON([]byte(response), "chat")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if strings.Count(string(got), fictionalKey) != 1 || strings.Count(string(got), fictionalToken) != 5 {
-		t.Fatal("restoration escaped authorized tool argument field")
+	if strings.Count(string(got), fictionalKey) != 2 || strings.Count(string(got), fictionalToken) != 4 {
+		t.Fatal("restoration escaped content and tool argument fields")
 	}
 	body := `{"model":"` + fictionalKey + `","metadata":{"key":"` + fictionalKey + `"},"messages":[{"role":"user","name":"` + fictionalKey + `","content":"` + fictionalKey + `"}]}`
 	protected, err := state.ProtectJSON([]byte(body), "chat")
@@ -351,6 +304,10 @@ func TestUnsupportedAndMalformedFailClosed(t *testing.T) {
 		{"chat", `{"messages":[{"role":"user","content":"a","content":"b"}]}`},
 		{"responses", `{"input":"ok","previous_response_id":"resp_1","previous_response_id":"resp_2"}`},
 		{"responses", `{"input":"ok","background":true}`},
+		{"responses", `{"input":"ok","previous_response_id":"resp_1"}`},
+		{"responses", `{"input":"ok","Previous_Response_ID":"resp_1"}`},
+		{"responses", `{"input":"ok","Conversation":"conv_1"}`},
+		{"responses", `{"input":"ok","Background":true}`},
 		{"responses", `{"input":"ok","conversation":"conv_1"}`},
 		{"responses", `{"input":[{"type":"reasoning","encrypted_content":"opaque"}]}`},
 		{"responses", `{"input":[{"type":"item_reference","id":"msg_1"}]}`},
@@ -364,7 +321,7 @@ func TestUnsupportedAndMalformedFailClosed(t *testing.T) {
 		{"chat", `{"messages":[{"role":"assistant","tool_calls":[{"function":{"name":"lookup","arguments":"{bad"}}]}]}`},
 	}
 	for _, tc := range cases {
-		state := testState(t, DefaultConfig(), nil)
+		state := testState(t, DefaultConfig())
 		got, err := state.ProtectJSON([]byte(tc.body), tc.protocol)
 		if err == nil || got != nil {
 			t.Errorf("unsupported/malformed input accepted for %s", tc.protocol)
@@ -376,7 +333,7 @@ func TestUnsupportedAndMalformedFailClosed(t *testing.T) {
 }
 
 func TestSchemaPropertiesAndAdditionalToolsProtected(t *testing.T) {
-	state := testState(t, DefaultConfig(), nil)
+	state := testState(t, DefaultConfig())
 	body := `{"input":[{"type":"message","role":"user","content":"hello","additional_tools":[{"type":"function","name":"lookup","description":"` + fictionalKey + `","parameters":{"type":"object","properties":{"name":{"type":"string","default":"` + fictionalKey + `"},"type":{"type":"string","description":"` + fictionalKey + `"}}}}]}]}`
 	protected, err := state.ProtectJSON([]byte(body), "responses")
 	if err != nil {
@@ -388,7 +345,7 @@ func TestSchemaPropertiesAndAdditionalToolsProtected(t *testing.T) {
 }
 
 func TestRestorationPreservesThinkingAndOpaqueSignatures(t *testing.T) {
-	state := testState(t, DefaultConfig(), map[string]string{fictionalToken: fictionalKey})
+	state := testState(t, DefaultConfig(), fictionalKey)
 	for _, block := range []string{
 		`{"type":"thinking","thinking":"` + fictionalToken + `","signature":"signed"}`,
 		`{"type":"thinking","thinking":"` + fictionalToken + `"}`,
@@ -414,7 +371,7 @@ func TestRestorationPreservesThinkingAndOpaqueSignatures(t *testing.T) {
 }
 
 func TestOpaqueMediaAndTextDocuments(t *testing.T) {
-	state := testState(t, DefaultConfig(), nil)
+	state := testState(t, DefaultConfig())
 	body := `{"messages":[{"role":"user","content":[{"type":"image","source":{"type":"base64","data":"` + fictionalKey + `"}},{"type":"document","title":"` + fictionalKey + `","source":{"type":"text","data":"` + fictionalKey + `"}}]}]}`
 	got, err := state.ProtectJSON([]byte(body), "messages")
 	if err != nil {
@@ -425,45 +382,45 @@ func TestOpaqueMediaAndTextDocuments(t *testing.T) {
 	}
 }
 
-func TestMultiRoundEchoAndExpiredMappings(t *testing.T) {
-	first := testState(t, DefaultConfig(), nil)
+func TestMultiRoundFullHistoryRebuildsMapping(t *testing.T) {
+	first := testState(t, DefaultConfig())
 	protected, err := first.ProtectJSON([]byte(`{"input":"`+fictionalKey+`"}`), "responses")
 	if err != nil {
 		t.Fatal(err)
 	}
 	var token string
-	for token = range first.Entries() {
+	for token = range first.entries {
 	}
-	second := testState(t, DefaultConfig(), first.Entries())
+	second := testState(t, DefaultConfig())
 	secondProtected, err := second.ProtectJSON([]byte(`{"input":"echo `+token+` and `+fictionalKey+`"}`), "responses")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(second.Entries()) != 1 || strings.Contains(string(secondProtected), fictionalKey) || !strings.Contains(string(protected), token) {
+	if len(second.entries) != 1 || strings.Contains(string(secondProtected), fictionalKey) || !strings.Contains(string(protected), token) {
 		t.Fatal("history echo did not reuse mapping")
 	}
-	expired := testState(t, DefaultConfig(), nil)
-	if expired.RestoreText(token) != token {
-		t.Fatal("unknown/expired token guessed")
+	unrelated := testState(t, DefaultConfig())
+	if unrelated.RestoreText(token) != token {
+		t.Fatal("token without an input key guessed")
 	}
 }
 
 func TestCapacityNeverReturnsPartialProtectedBody(t *testing.T) {
-	config := DefaultConfig()
-	config.MaxMappings = 1
-	state := testState(t, config, nil)
-	body := `{"input":"` + fictionalKey + ` and ghp_` + strings.Repeat("B", 36) + `"}`
-	got, err := state.ProtectJSON([]byte(body), "responses")
+	state := testState(t, DefaultConfig())
+	var keys []string
+	for i := 0; i <= MaxMappings; i++ {
+		keys = append(keys, fmt.Sprintf("ghp_%036d", i))
+	}
+	body, _ := json.Marshal(map[string]string{"input": strings.Join(keys, " ")})
+	got, err := state.ProtectJSON(body, "responses")
 	if !errors.Is(err, ErrCapacity) || got != nil {
 		t.Fatal("capacity failure exposed a partial body")
 	}
 }
 
-// Production seeds are derived from a platform secret and authenticated scope.
-// This deliberately public, fictional fixture only makes the example reproducible.
 func ExampleState_ProtectJSON() {
 	const secret = "ghp_AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
-	state, err := NewStateWithSeed(DefaultConfig(), nil, bytes.Repeat([]byte{0x42}, 32))
+	state, err := NewState(DefaultConfig())
 	if err != nil {
 		panic(err)
 	}
@@ -495,7 +452,7 @@ func ExampleState_ProtectJSON() {
 	fmt.Println("client tool arguments: " + arguments)
 	// Output:
 	// input: Use ghp_AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
-	// upstream: Use keyx_042a631f3210074debd0c896834d5a9024b1202715e5bce903bd673f3095e7a2
+	// upstream: Use keyx_49e7237e11464693589bca95fe317f2fde5793bb7d70da9749f55641a5fff406
 	// client text: Use ghp_AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
 	// client tool arguments: {"key":"ghp_AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"}
 }
