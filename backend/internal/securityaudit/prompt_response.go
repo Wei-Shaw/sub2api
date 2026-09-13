@@ -103,9 +103,10 @@ func completeResponseJSONPrefix(body []byte) []byte {
 				escaped = false
 				continue
 			}
-			if b == '\\' {
+			switch b {
+			case '\\':
 				escaped = true
-			} else if b == '"' {
+			case '"':
 				inString = false
 			}
 			continue

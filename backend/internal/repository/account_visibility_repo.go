@@ -59,7 +59,7 @@ func (r *accountVisibilityRepository) ListVisibleAccountIDs(ctx context.Context,
 	if err != nil {
 		return nil, nil, fmt.Errorf("list visible account ids: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	ids := make([]int64, 0, params.Limit())
 	for rows.Next() {
@@ -174,7 +174,7 @@ func (r *accountVisibilityRepository) ListVisibleGroups(ctx context.Context, use
 	if err != nil {
 		return nil, fmt.Errorf("list visible account groups: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	groups := make([]service.AccountVisibilityGroup, 0)
 	for rows.Next() {
@@ -200,7 +200,7 @@ func (r *accountVisibilityRepository) ListAccountVisibleUsers(ctx context.Contex
 	if err != nil {
 		return nil, fmt.Errorf("list account visible users: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	users := make([]service.AccountVisibleUser, 0)
 	for rows.Next() {

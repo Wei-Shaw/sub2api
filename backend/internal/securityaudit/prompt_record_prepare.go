@@ -7,7 +7,6 @@ import (
 	"errors"
 	"strings"
 	"sync"
-	"time"
 	"unicode/utf8"
 )
 
@@ -97,20 +96,6 @@ func (c *promptRecordCorrelation) result() (PromptRecordKey, bool) {
 	}
 }
 
-func (c *promptRecordCorrelation) wait(timeout time.Duration) (PromptRecordKey, bool) {
-	if c == nil {
-		return PromptRecordKey{}, false
-	}
-	timer := time.NewTimer(timeout)
-	defer timer.Stop()
-	select {
-	case <-c.ready:
-		return c.key, c.persisted
-	case <-timer.C:
-		return PromptRecordKey{}, false
-	}
-}
-
 func preparePromptRecord(req Request) (preparedPromptRecord, error) {
 	if req.recordingSkipPrompt && req.recordingIdentity != "" {
 		snapshot := promptRecordMetadata(req)
@@ -178,7 +163,7 @@ func promptRecordMetadataDocument(req Request, document any, fallbackBody []byte
 					truncated = true
 					break
 				}
-				retained.WriteByte('\n')
+				_ = retained.WriteByte('\n')
 				remaining--
 			}
 		}
@@ -190,7 +175,7 @@ func promptRecordMetadataDocument(req Request, document any, fallbackBody []byte
 				truncated = true
 				break
 			}
-			retained.WriteRune(r)
+			_, _ = retained.WriteRune(r)
 			remaining--
 		}
 	}
@@ -198,7 +183,7 @@ func promptRecordMetadataDocument(req Request, document any, fallbackBody []byte
 	if includeText {
 		snapshot.MessageCount = len(segments)
 		if truncated {
-			retained.WriteRune('…')
+			_, _ = retained.WriteRune('…')
 		}
 		snapshot.FullPrompt = retained.String()
 	}

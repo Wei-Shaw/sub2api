@@ -249,7 +249,7 @@ func (r *PostgreSQLRepository) ListPromptRecords(ctx context.Context, filter Pro
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	items := make([]*PromptRecordSummary, 0, pageSize)
 	for rows.Next() {
 		item := new(PromptRecordSummary)
