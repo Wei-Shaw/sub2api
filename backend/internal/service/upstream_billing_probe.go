@@ -626,7 +626,9 @@ func (s *UpstreamBillingProbeService) probeLoadedAccount(ctx context.Context, ac
 		return s.persistProbeFailure(ctx, account, intervalMinutes, now, 0, "missing_api_key", 0)
 	}
 	baseURL := account.GetCredential("base_url")
-	if account.IsCNProvider() && account.IsAdaptiveAPIProtocol() {
+	// 多协议 adaptive 账号（CN 供应商 / ollama_cloud）的探测 base 与出站
+	// base 同源：优先读 api_base_urls 分协议地址，而不是 legacy credentials.base_url。
+	if (account.IsCNProvider() || account.IsOllamaCloud()) && account.IsAdaptiveAPIProtocol() {
 		baseURL = account.GetCNProtocolBaseURL(APIProtocolChatCompletions)
 	}
 	if account.Platform == PlatformOpenAI {
