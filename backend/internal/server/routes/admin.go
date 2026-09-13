@@ -61,6 +61,9 @@ func RegisterAdminRoutes(
 		// Grok OAuth
 		registerGrokOAuthRoutes(admin, h)
 
+		registerCursorOAuthRoutes(admin, h)
+		registerDevinOAuthRoutes(admin, h)
+
 		// 国产供应商（kimi/zhipu/deepseek）额度与余额
 		registerCNProviderRoutes(admin, h)
 
@@ -472,6 +475,25 @@ func registerAntigravityOAuthRoutes(admin *gin.RouterGroup, h *handler.Handlers)
 		antigravity.POST("/oauth/auth-url", h.Admin.AntigravityOAuth.GenerateAuthURL)
 		antigravity.POST("/oauth/exchange-code", h.Admin.AntigravityOAuth.ExchangeCode)
 		antigravity.POST("/oauth/refresh-token", h.Admin.AntigravityOAuth.RefreshToken)
+	}
+}
+
+func registerCursorOAuthRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
+	cursor := admin.Group("/cursor")
+	{
+		cursor.POST("/oauth/auth-url", h.Admin.CursorOAuth.GenerateAuthURL)
+		cursor.POST("/oauth/poll", h.Admin.CursorOAuth.Poll)
+		cursor.POST("/oauth/refresh-token", h.Admin.CursorOAuth.RefreshToken)
+		cursor.GET("/accounts/:id/quota", h.Admin.CursorOAuth.QueryQuota)
+	}
+}
+
+func registerDevinOAuthRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
+	devin := admin.Group("/devin")
+	{
+		devin.POST("/oauth/auth-url", h.Admin.DevinOAuth.GenerateAuthURL)
+		devin.POST("/oauth/exchange-code", h.Admin.DevinOAuth.ExchangeCode)
+		devin.POST("/oauth/import-token", h.Admin.DevinOAuth.ImportToken)
 	}
 }
 

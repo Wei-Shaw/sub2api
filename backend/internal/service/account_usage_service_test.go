@@ -256,3 +256,31 @@ func TestBuildCodexUsageProgressFromExtra_ZerosExpiredWindow(t *testing.T) {
 		}
 	})
 }
+
+type forbidAnthropicUsageFetcher struct {
+	ClaudeUsageFetcher
+	t *testing.T
+}
+
+func (f *forbidAnthropicUsageFetcher) FetchUsageWithOptions(context.Context, *ClaudeUsageFetchOptions) (*ClaudeUsageResponse, error) {
+	f.t.Fatal("unsupported provider credentials must not reach the Anthropic usage fetcher")
+	return nil, context.Canceled
+}
+
+func TestAccountUsageRejectsAgentOAuthWithoutSendingCredentials(t *testing.T) {
+	for _, platform := range []string{PlatformCursor, PlatformDevin} {
+		t.Run(platform, func(t *testing.T) {
+			svc := &AccountUsageService{
+				cache:        NewUsageCache(),
+				usageFetcher: &forbidAnthropicUsageFetcher{t: t},
+			}
+			usage, err := svc.GetUsageForAccount(context.Background(), &Account{
+				ID: 1, Platform: platform, Type: AccountTypeOAuth,
+				Credentials: map[string]any{"access_token": "must-not-leave-this-provider"},
+			})
+			if err == nil || usage != nil {
+				t.Fatalf("unsupported OAuth usage query returned usage=%v err=%v", usage, err)
+			}
+		})
+	}
+}

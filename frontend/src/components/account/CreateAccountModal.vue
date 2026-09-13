@@ -161,6 +161,34 @@
             Grok
           </button>
         </div>
+        <div class="mt-2 flex flex-wrap rounded-lg bg-gray-100 p-1 dark:bg-dark-700">
+          <button
+            type="button"
+            @click="form.platform = 'cursor'"
+            :class="[
+              'flex flex-1 items-center justify-center gap-2 rounded-md px-4 py-2.5 text-sm font-medium transition-all',
+              form.platform === 'cursor'
+                ? 'bg-white text-sky-700 shadow-sm dark:bg-dark-600 dark:text-sky-300'
+                : 'text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-200'
+            ]"
+          >
+            <PlatformIcon platform="cursor" size="sm" />
+            Cursor
+          </button>
+          <button
+            type="button"
+            @click="form.platform = 'devin'"
+            :class="[
+              'flex flex-1 items-center justify-center gap-2 rounded-md px-4 py-2.5 text-sm font-medium transition-all',
+              form.platform === 'devin'
+                ? 'bg-white text-lime-700 shadow-sm dark:bg-dark-600 dark:text-lime-300'
+                : 'text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-200'
+            ]"
+          >
+            <PlatformIcon platform="devin" size="sm" />
+            Devin
+          </button>
+        </div>
         <!-- Multi-protocol API-key providers: Kimi / Zhipu GLM / DeepSeek / OpenCode -->
         <div class="mt-2 flex flex-wrap rounded-lg bg-gray-100 p-1 dark:bg-dark-700">
           <button
@@ -3547,7 +3575,7 @@
         :show-proxy-warning="form.platform !== 'openai' && form.platform !== 'grok' && !!form.proxy_id"
         :allow-multiple="form.platform === 'anthropic'"
         :show-cookie-option="form.platform === 'anthropic'"
-        :show-refresh-token-option="form.platform === 'openai' || form.platform === 'antigravity' || form.platform === 'grok'"
+        :show-refresh-token-option="form.platform === 'openai' || form.platform === 'antigravity' || form.platform === 'grok' || form.platform === 'cursor' || form.platform === 'devin'"
         :show-mobile-refresh-token-option="form.platform === 'openai'"
         :show-session-token-option="false"
         :show-access-token-option="false"
@@ -3886,7 +3914,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, computed, watch } from 'vue'
+import { ref, reactive, computed, watch, onBeforeUnmount } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useAppStore } from '@/stores/app'
 
@@ -3900,6 +3928,7 @@ import {
   isValidWildcardPattern
 } from '@/composables/useModelWhitelist'
 import { adminAPI } from '@/api/admin'
+import { extractApiErrorMessage } from '@/utils/apiError'
 import { useQuotaNotifyState } from '@/composables/useQuotaNotifyState'
 import {
   useAccountOAuth,
@@ -3910,6 +3939,8 @@ import { useOpenAIOAuth } from '@/composables/useOpenAIOAuth'
 import { useGeminiOAuth } from '@/composables/useGeminiOAuth'
 import { useAntigravityOAuth } from '@/composables/useAntigravityOAuth'
 import { useGrokOAuth } from '@/composables/useGrokOAuth'
+import { useCursorOAuth } from '@/composables/useCursorOAuth'
+import { useDevinOAuth } from '@/composables/useDevinOAuth'
 import type {
   Proxy,
   AdminGroup,
@@ -4004,6 +4035,8 @@ const oauthStepTitle = computed(() => {
   if (form.platform === 'gemini') return t('admin.accounts.oauth.gemini.title')
   if (form.platform === 'antigravity') return t('admin.accounts.oauth.antigravity.title')
   if (form.platform === 'grok') return t('admin.accounts.oauth.grok.title')
+  if (form.platform === 'cursor') return t('admin.accounts.oauth.cursor.title')
+  if (form.platform === 'devin') return t('admin.accounts.oauth.devin.title')
   return t('admin.accounts.oauth.title')
 })
 
@@ -4094,6 +4127,18 @@ const openaiOAuth = useOpenAIOAuth() // For OpenAI OAuth
 const geminiOAuth = useGeminiOAuth() // For Gemini OAuth
 const antigravityOAuth = useAntigravityOAuth() // For Antigravity OAuth
 const grokOAuth = useGrokOAuth() // For Grok OAuth
+const cursorOAuth = useCursorOAuth()
+const devinOAuth = useDevinOAuth()
+const agentSubmitting = ref(false)
+let agentAuthGeneration = 0
+const resetAgentOAuth = () => {
+  agentAuthGeneration++
+  if (agentSubmitting.value) submitting.value = false
+  agentSubmitting.value = false
+  cursorOAuth.resetState()
+  devinOAuth.resetState()
+}
+onBeforeUnmount(resetAgentOAuth)
 
 // Computed: current OAuth state for template binding
 const currentAuthUrl = computed(() => {
@@ -4101,6 +4146,8 @@ const currentAuthUrl = computed(() => {
   if (form.platform === 'gemini') return geminiOAuth.authUrl.value
   if (form.platform === 'antigravity') return antigravityOAuth.authUrl.value
   if (form.platform === 'grok') return grokOAuth.authUrl.value
+  if (form.platform === 'cursor') return cursorOAuth.authUrl.value
+  if (form.platform === 'devin') return devinOAuth.authUrl.value
   return oauth.authUrl.value
 })
 
@@ -4109,14 +4156,19 @@ const currentSessionId = computed(() => {
   if (form.platform === 'gemini') return geminiOAuth.sessionId.value
   if (form.platform === 'antigravity') return antigravityOAuth.sessionId.value
   if (form.platform === 'grok') return grokOAuth.sessionId.value
+  if (form.platform === 'cursor') return cursorOAuth.sessionId.value
+  if (form.platform === 'devin') return devinOAuth.sessionId.value
   return oauth.sessionId.value
 })
 
 const currentOAuthLoading = computed(() => {
+  if (agentSubmitting.value) return true
   if (form.platform === 'openai') return openaiOAuth.loading.value
   if (form.platform === 'gemini') return geminiOAuth.loading.value
   if (form.platform === 'antigravity') return antigravityOAuth.loading.value
   if (form.platform === 'grok') return grokOAuth.loading.value
+  if (form.platform === 'cursor') return cursorOAuth.loading.value
+  if (form.platform === 'devin') return devinOAuth.loading.value
   return oauth.loading.value
 })
 
@@ -4125,6 +4177,8 @@ const currentOAuthError = computed(() => {
   if (form.platform === 'gemini') return geminiOAuth.error.value
   if (form.platform === 'antigravity') return antigravityOAuth.error.value
   if (form.platform === 'grok') return grokOAuth.error.value
+  if (form.platform === 'cursor') return cursorOAuth.error.value
+  if (form.platform === 'devin') return devinOAuth.error.value
   return oauth.error.value
 })
 
@@ -4770,6 +4824,12 @@ const canExchangeCode = computed(() => {
   if (form.platform === 'grok') {
     return authCode.trim() && grokOAuth.sessionId.value && !grokOAuth.loading.value
   }
+  if (form.platform === 'cursor') {
+    return !!cursorOAuth.sessionId.value && !cursorOAuth.loading.value
+  }
+  if (form.platform === 'devin') {
+    return authCode.trim() && devinOAuth.sessionId.value && !devinOAuth.loading.value
+  }
   return authCode.trim() && oauth.sessionId.value && !oauth.loading.value
 })
 
@@ -4872,6 +4932,12 @@ watch(
       form.concurrency = 1
       form.load_factor = null
     }
+    if (newPlatform === 'cursor' || newPlatform === 'devin') {
+      accountCategory.value = 'oauth-based'
+      addMethod.value = 'oauth'
+      form.concurrency = 1
+      form.load_factor = null
+    }
     if (newPlatform !== 'gemini' && newPlatform !== 'anthropic' && accountCategory.value === 'service_account') {
       accountCategory.value = 'oauth-based'
     }
@@ -4922,6 +4988,7 @@ watch(
     geminiOAuth.resetState()
     antigravityOAuth.resetState()
     grokOAuth.resetState()
+    resetAgentOAuth()
   }
 )
 
@@ -5237,9 +5304,11 @@ const ensureAntigravityMixedChannelConfirmed = async (onConfirm: () => Promise<v
 }
 
 const submitCreateAccount = async (payload: CreateAccountRequest) => {
+  const agentAttempt = payload.platform === 'cursor' || payload.platform === 'devin' ? agentAuthGeneration : null
   submitting.value = true
   try {
     const account = await adminAPI.accounts.create(withAntigravityConfirmFlag(payload))
+    if (agentAttempt !== null && agentAttempt !== agentAuthGeneration) return
     const modelMapping = payload.credentials.model_mapping
     const hasConcreteMappedTarget = payload.type === 'apikey' &&
       typeof modelMapping === 'object' &&
@@ -5274,6 +5343,7 @@ const submitCreateAccount = async (payload: CreateAccountRequest) => {
     emit('created')
     handleClose()
   } catch (error: any) {
+    if (agentAttempt !== null && agentAttempt !== agentAuthGeneration) return
     if (error.response?.status === 409 && error.response?.data?.error === 'mixed_channel_warning' && needsMixedChannelCheck(form.platform)) {
       openMixedChannelDialog({
         message: error.response?.data?.message,
@@ -5286,12 +5356,13 @@ const submitCreateAccount = async (payload: CreateAccountRequest) => {
     }
     appStore.showError(error.response?.data?.message || error.response?.data?.detail || t('admin.accounts.failedToCreate'))
   } finally {
-    submitting.value = false
+    if (agentAttempt === null || agentAttempt === agentAuthGeneration) submitting.value = false
   }
 }
 
 // Methods
 const resetForm = () => {
+  resetAgentOAuth()
   step.value = 1
   form.name = ''
   form.notes = ''
@@ -5409,6 +5480,7 @@ const resetForm = () => {
 }
 
 const handleClose = () => {
+  resetAgentOAuth()
   antigravityMixedChannelConfirmed.value = false
   clearMixedChannelDialog()
   emit('close')
@@ -5883,6 +5955,7 @@ const goBackToBasicInfo = () => {
   geminiOAuth.resetState()
   antigravityOAuth.resetState()
   grokOAuth.resetState()
+  resetAgentOAuth()
   oauthFlowRef.value?.reset()
 }
 
@@ -5900,6 +5973,10 @@ const handleGenerateUrl = async () => {
     await antigravityOAuth.generateAuthUrl(form.proxy_id)
   } else if (form.platform === 'grok') {
     await grokOAuth.generateAuthUrl(form.proxy_id)
+  } else if (form.platform === 'cursor') {
+    await cursorOAuth.generateAuthUrl(form.proxy_id)
+  } else if (form.platform === 'devin') {
+    await devinOAuth.generateAuthUrl(form.proxy_id)
   } else {
     await oauth.generateAuthUrl(addMethod.value, form.proxy_id)
   }
@@ -5912,6 +5989,10 @@ const handleValidateRefreshToken = (rt: string) => {
     handleAntigravityValidateRT(rt)
   } else if (form.platform === 'grok') {
     handleGrokValidateRT(rt)
+  } else if (form.platform === 'cursor') {
+    void handleAgentTokenImport(rt, 'cursor')
+  } else if (form.platform === 'devin') {
+    void handleAgentTokenImport(rt, 'devin')
   }
 }
 
@@ -6878,6 +6959,112 @@ const handleGrokExchange = async (authCode: string) => {
   }
 }
 
+const handleCursorPoll = async () => {
+  if (!cursorOAuth.sessionId.value || agentSubmitting.value) return
+  const attempt = agentAuthGeneration
+  agentSubmitting.value = true
+  try {
+    const tokenInfo = await cursorOAuth.pollUntilReady(form.proxy_id)
+    if (!tokenInfo || attempt !== agentAuthGeneration || !props.show || form.platform !== 'cursor') return
+    const credentials = cursorOAuth.buildCredentials(tokenInfo)
+    const extra = cursorOAuth.buildExtraInfo(tokenInfo)
+    await createAccountAndFinish('cursor', 'oauth', credentials, extra)
+  } finally {
+    if (attempt === agentAuthGeneration) agentSubmitting.value = false
+  }
+}
+
+const handleDevinExchange = async (authCode: string) => {
+  if (!authCode.trim() || !devinOAuth.sessionId.value || agentSubmitting.value) return
+  const attempt = agentAuthGeneration
+  agentSubmitting.value = true
+  try {
+    const tokenInfo = await devinOAuth.exchangeAuthCode({
+      code: authCode.trim(),
+      sessionId: devinOAuth.sessionId.value,
+      state: oauthFlowRef.value?.oauthState || devinOAuth.state.value,
+      proxyId: form.proxy_id
+    })
+    if (!tokenInfo || attempt !== agentAuthGeneration || !props.show || form.platform !== 'devin') return
+    const credentials = devinOAuth.buildCredentials(tokenInfo)
+    const extra = devinOAuth.buildExtraInfo(tokenInfo)
+    await createAccountAndFinish('devin', 'oauth', credentials, extra)
+  } finally {
+    if (attempt === agentAuthGeneration) agentSubmitting.value = false
+  }
+}
+
+const handleAgentTokenImport = async (input: string, platform: 'cursor' | 'devin') => {
+  const tokens = input.split('\n').map(token => token.trim()).filter(Boolean)
+  if (tokens.length === 0 || agentSubmitting.value) return
+  const attempt = agentAuthGeneration
+  const oauthClient = platform === 'cursor' ? cursorOAuth : devinOAuth
+  const baseCredentials: Record<string, unknown> = {}
+  if (!applyTempUnschedConfig(baseCredentials)) return
+  const template: Omit<CreateAccountRequest, 'credentials'> = {
+    name: form.name,
+    notes: form.notes,
+    platform,
+    type: 'oauth',
+    proxy_id: form.proxy_id,
+    concurrency: form.concurrency,
+    load_factor: form.load_factor ?? undefined,
+    priority: form.priority,
+    rate_multiplier: form.rate_multiplier,
+    group_ids: [...form.group_ids],
+    expires_at: form.expires_at,
+    auto_pause_on_expired: autoPauseOnExpired.value
+  }
+  const baseExtra = withUpstreamRequestIdHeader({})
+  agentSubmitting.value = true
+  oauthClient.error.value = ''
+  let successCount = 0
+  const errors: string[] = []
+  try {
+    for (let i = 0; i < tokens.length; i++) {
+      if (attempt !== agentAuthGeneration) return
+      try {
+        const tokenInfo = platform === 'cursor'
+          ? await cursorOAuth.validateRefreshToken(tokens[i], template.proxy_id)
+          : await devinOAuth.importSessionToken(tokens[i])
+        if (attempt !== agentAuthGeneration || !props.show || form.platform !== platform) return
+        if (!tokenInfo) {
+          errors.push(`#${i + 1}: ${oauthClient.error.value || t('admin.accounts.oauth.authFailed')}`)
+          continue
+        }
+        await adminAPI.accounts.create({
+          ...template,
+          name: tokens.length > 1 ? `${template.name} #${i + 1}` : template.name,
+          credentials: { ...baseCredentials, ...oauthClient.buildCredentials(tokenInfo) },
+          extra: { ...baseExtra, ...oauthClient.buildExtraInfo(tokenInfo) }
+        })
+        if (attempt !== agentAuthGeneration) return
+        successCount++
+      } catch (error: unknown) {
+        if (attempt !== agentAuthGeneration) return
+        errors.push(`#${i + 1}: ${extractApiErrorMessage(error, t('admin.accounts.failedToCreate'))}`)
+      }
+    }
+    if (successCount > 0 && errors.length === 0) {
+      appStore.showSuccess(tokens.length > 1
+        ? t('admin.accounts.oauth.batchSuccess', { count: successCount })
+        : t('admin.accounts.accountCreated'))
+      emit('created')
+      handleClose()
+    } else {
+      oauthClient.error.value = errors.join('\n')
+      if (successCount > 0) {
+        appStore.showWarning(t('admin.accounts.oauth.batchPartialSuccess', { success: successCount, failed: errors.length }))
+        emit('created')
+      } else {
+        appStore.showError(t('admin.accounts.oauth.batchFailed'))
+      }
+    }
+  } finally {
+    if (attempt === agentAuthGeneration) agentSubmitting.value = false
+  }
+}
+
 // Anthropic OAuth 授权码兑换
 const handleAnthropicExchange = async (authCode: string) => {
   if (!authCode.trim() || !oauth.sessionId.value) return
@@ -6980,6 +7167,10 @@ const handleExchangeCode = async () => {
       return handleAntigravityExchange(authCode)
     case 'grok':
       return handleGrokExchange(authCode)
+    case 'cursor':
+      return handleCursorPoll()
+    case 'devin':
+      return handleDevinExchange(authCode)
     default:
       return handleAnthropicExchange(authCode)
   }

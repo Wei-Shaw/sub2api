@@ -1237,6 +1237,8 @@ function generateRoutedCodexFiles(
     deepseek: 'deepseek-v4-pro',
     minimax: 'MiniMax-M3',
     opencode_go: 'glm-5.3',
+    cursor: 'claude-4.6-opus-high',
+    devin: 'swe-1-6',
     composite: 'gpt-5.5'
   }
   const preferredModel = preferredModels[platform] || ''
@@ -1252,6 +1254,8 @@ function generateRoutedCodexFiles(
     deepseek: 'DeepSeek',
     minimax: 'MiniMax',
     opencode_go: 'OpenCode',
+    cursor: 'Cursor',
+    devin: 'Devin',
     composite: 'Composite'
   }
   const label = labels[platform]

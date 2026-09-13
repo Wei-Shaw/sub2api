@@ -2,6 +2,10 @@
 
 FRONTEND_CRITICAL_VITEST := \
 	src/i18n/__tests__/localeKeyCompleteness.spec.ts \
+	src/composables/__tests__/useCursorOAuth.spec.ts \
+	src/components/account/__tests__/CreateAccountModal.agent.spec.ts \
+	src/components/admin/account/__tests__/ReAuthAccountModal.spec.ts \
+	src/components/account/__tests__/ModelWhitelistSelector.spec.ts \
 	src/api/__tests__/client.spec.ts \
 	src/api/__tests__/tokenRefresh.spec.ts \
 	src/api/__tests__/channelMonitorV2.spec.ts \

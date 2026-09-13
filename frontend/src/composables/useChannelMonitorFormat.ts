@@ -23,6 +23,8 @@ import {
   PROVIDER_DEEPSEEK,
   PROVIDER_MINIMAX,
   PROVIDER_OPENCODE_GO,
+  PROVIDER_CURSOR,
+  PROVIDER_DEVIN,
   PROVIDERS,
   STATUS_OPERATIONAL,
   STATUS_DEGRADED,
@@ -120,6 +122,10 @@ export function useChannelMonitorFormat() {
         return 'bg-rose-100 text-rose-700 dark:bg-rose-500/15 dark:text-rose-300'
       case PROVIDER_OPENCODE_GO:
         return 'bg-amber-100 text-amber-800 dark:bg-amber-500/15 dark:text-amber-300'
+      case PROVIDER_CURSOR:
+        return 'bg-sky-100 text-sky-700 dark:bg-sky-500/15 dark:text-sky-300'
+      case PROVIDER_DEVIN:
+        return 'bg-lime-100 text-lime-700 dark:bg-lime-500/15 dark:text-lime-300'
       default:
         return NEUTRAL_BADGE
     }
@@ -188,6 +194,14 @@ export function useChannelMonitorFormat() {
         return active
           ? 'border-amber-500 bg-amber-50 text-amber-800 dark:bg-amber-500/15 dark:text-amber-300 dark:border-amber-400'
           : 'border-gray-200 bg-white text-gray-600 hover:border-amber-300 hover:text-amber-700 dark:border-dark-700 dark:bg-dark-800 dark:text-gray-400 dark:hover:border-amber-500/50'
+      case PROVIDER_CURSOR:
+        return active
+          ? 'border-sky-500 bg-sky-50 text-sky-700 dark:bg-sky-500/15 dark:text-sky-300 dark:border-sky-400'
+          : 'border-gray-200 bg-white text-gray-600 hover:border-sky-300 hover:text-sky-700 dark:border-dark-700 dark:bg-dark-800 dark:text-gray-400 dark:hover:border-sky-500/50'
+      case PROVIDER_DEVIN:
+        return active
+          ? 'border-lime-500 bg-lime-50 text-lime-700 dark:bg-lime-500/15 dark:text-lime-300 dark:border-lime-400'
+          : 'border-gray-200 bg-white text-gray-600 hover:border-lime-300 hover:text-lime-700 dark:border-dark-700 dark:bg-dark-800 dark:text-gray-400 dark:hover:border-lime-500/50'
       default:
         return active
           ? 'border-gray-400 bg-gray-50 text-gray-700 dark:border-dark-500 dark:bg-dark-700 dark:text-gray-200'
@@ -276,6 +290,10 @@ export function providerGradient(provider: string): string {
       return 'bg-gradient-to-br from-rose-50 to-rose-100 dark:from-rose-500/10 dark:to-rose-500/20'
     case PROVIDER_OPENCODE_GO:
       return 'bg-gradient-to-br from-amber-50 to-amber-100 dark:from-amber-500/10 dark:to-amber-500/20'
+    case PROVIDER_CURSOR:
+      return 'bg-gradient-to-br from-sky-50 to-sky-100 dark:from-sky-500/10 dark:to-sky-500/20'
+    case PROVIDER_DEVIN:
+      return 'bg-gradient-to-br from-lime-50 to-lime-100 dark:from-lime-500/10 dark:to-lime-500/20'
     default:
       return 'bg-gradient-to-br from-gray-100 to-gray-200 dark:from-dark-700 dark:to-dark-600'
   }

@@ -23,6 +23,8 @@ var monitorProviders = map[string]struct{}{
 	MonitorProviderZhipu:       {},
 	MonitorProviderDeepseek:    {},
 	MonitorProviderMiniMax:     {},
+	MonitorProviderCursor:      {},
+	MonitorProviderDevin:       {},
 }
 
 // probeCapableProviders 支持探活（probe / quota_probe）的 provider。
@@ -72,7 +74,7 @@ func monitorCheckModeUsesQuota(checkMode string) bool {
 //	provider                | probe | quota | quota_probe
 //	------------------------+-------+-------+------------
 //	openai/anthropic/...    |  Y    |  Y    |  Y
-//	antigravity（无 adapter）|  N    |  Y    |  N
+//	antigravity/cursor/devin |  N    |  Y    |  N
 func validateCheckMode(provider, checkMode string) error {
 	checkMode = defaultCheckMode(checkMode)
 	switch checkMode {
@@ -215,8 +217,11 @@ func normalizeMonitorPrimaryModel(provider, checkMode, model string) string {
 //   - anthropic：OAuth / Setup Token（API-Key 型无 usage 通道，永久 error）
 //   - openai：OAuth（API-Key 型无 usage 通道）
 //   - gemini/grok/antigravity：本地统计/值通道降级，不会永久 error，放行
+//   - cursor/devin：尚无配额数据源，禁止落入 Anthropic OAuth 用量接口
 func monitorAccountQuotaCapability(account *Account) error {
 	switch account.Platform {
+	case PlatformCursor, PlatformDevin:
+		return ErrChannelMonitorAccountNotSupportable
 	case PlatformOpenCodeGo:
 		return nil
 	case PlatformKimi, PlatformZhipu, PlatformDeepseek, PlatformMiniMax:

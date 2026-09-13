@@ -110,6 +110,27 @@ func newQuotaFetcherTestSetup(t *testing.T) (*ChannelMonitorQuotaFetcher, *stubM
 	return fetcher, usage, cnQuota, cnBalance, accounts
 }
 
+func TestQuotaFetcher_AgentOAuthAccountsFailClosed(t *testing.T) {
+	for _, platform := range []string{PlatformCursor, PlatformDevin} {
+		t.Run(platform, func(t *testing.T) {
+			fetcher, _, _, _, accounts := newQuotaFetcherTestSetup(t)
+			accounts.accounts[1] = &Account{
+				ID: 1, Platform: platform, Type: AccountTypeOAuth,
+				Credentials: map[string]any{"access_token": "must-not-leave-this-provider"},
+			}
+			fetcher.usage = &AccountUsageService{
+				cache:        NewUsageCache(),
+				usageFetcher: &forbidAnthropicUsageFetcher{t: t},
+			}
+			snapshot := fetcher.Fetch(context.Background(), 1)
+			require.False(t, snapshot.Success)
+			require.False(t, snapshot.CredentialInvalid)
+			require.Contains(t, snapshot.Error, platform)
+			require.NotContains(t, snapshot.Error, "must-not-leave-this-provider")
+		})
+	}
+}
+
 // --- 分派 ---
 
 func TestQuotaFetcher_OverseasAccountUsesUsageService(t *testing.T) {

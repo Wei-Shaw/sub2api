@@ -554,6 +554,7 @@ export default {
         checkModeProbeHint: 'Sends a lightweight LLM request to measure availability and latency',
         checkModeQuota: 'Quota',
         checkModeQuotaHint: 'Only queries the linked account usage windows / balance without probe requests',
+        activeQuotaUnsupported: 'Cursor and Devin do not support active quota checks. Use passive monitoring instead.',
         checkModeQuotaProbe: 'Probe + Quota',
         checkModeQuotaProbeHint: 'Probes the channel and attaches the quota snapshot to the primary model result',
         linkedAccount: 'Linked Account',

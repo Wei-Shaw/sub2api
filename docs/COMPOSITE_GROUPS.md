@@ -18,6 +18,9 @@ Composite groups can route to these concrete account platforms:
 - Zhipu GLM
 - DeepSeek
 - MiniMax
+- OpenCode
+- Cursor
+- Devin
 
 The selected concrete platform is used for account selection, user platform
 quota checks, post-usage billing, ops error platform attribution, channel
@@ -47,8 +50,9 @@ Each route belongs to one composite group and contains:
 - `enabled`: disabled routes are ignored by runtime resolution but remain
   visible to admins.
 
-Resolution order is explicit route first, then built-in detection. When more
-than one explicit route matches, exact matches beat prefix matches,
+Resolution order is explicit route first, then unambiguous exact account model
+ownership, then built-in detection. When more than one explicit route matches,
+exact matches beat prefix matches,
 endpoint-specific routes beat `any`, longer prefixes beat shorter prefixes,
 then lower `priority`, then lower route id.
 
@@ -56,6 +60,12 @@ For JSON-body endpoints, the gateway rewrites the request `model` field to the
 route's `upstream_model` before dispatch. For Gemini native paths such as
 `/v1beta/models/{model}:generateContent`, the gateway resolves `{model}` and
 the handler forwards the resolved upstream model.
+
+Use explicit account model mappings or group routes for Cursor/Devin models in
+composite groups. Unmapped Cursor/Devin accounts alone do not advertise their
+native defaults in model discovery or Codex manifests; dedicated provider groups
+retain those defaults. Account mappings are applied after group/channel model
+translation, while client responses retain the originally requested model.
 
 Codex Alpha Search and Live requests use the `responses` route domain. Live
 requests resolve the model from `session.model`, including multipart `session`

@@ -19,6 +19,8 @@ export const PROVIDER_ZHIPU: Provider = 'zhipu'
 export const PROVIDER_DEEPSEEK: Provider = 'deepseek'
 export const PROVIDER_MINIMAX: Provider = 'minimax'
 export const PROVIDER_OPENCODE_GO: Provider = 'opencode_go'
+export const PROVIDER_CURSOR: Provider = 'cursor'
+export const PROVIDER_DEVIN: Provider = 'devin'
 
 export const DEFAULT_GROK_ENDPOINT = 'https://api.x.ai'
 export const DEFAULT_GROK_MODEL = 'grok-4.5'
@@ -48,10 +50,12 @@ export const PROVIDERS: readonly Provider[] = [
   PROVIDER_DEEPSEEK,
   PROVIDER_MINIMAX,
   PROVIDER_OPENCODE_GO,
+  PROVIDER_CURSOR,
+  PROVIDER_DEVIN,
 ]
 
 /** 仅支持配额模式（无探活 adapter）的 provider。 */
-export const QUOTA_ONLY_PROVIDERS: readonly Provider[] = [PROVIDER_ANTIGRAVITY]
+export const QUOTA_ONLY_PROVIDERS: readonly Provider[] = [PROVIDER_ANTIGRAVITY, PROVIDER_CURSOR, PROVIDER_DEVIN]
 
 export const CHECK_MODES: readonly CheckMode[] = [
   CHECK_MODE_PROBE,

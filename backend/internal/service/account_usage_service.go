@@ -485,7 +485,7 @@ func (s *AccountUsageService) getUsageForAccount(ctx context.Context, account *A
 	}
 
 	// API Key账号不支持usage查询
-	return nil, fmt.Errorf("account type %s does not support usage query", account.Type)
+	return nil, fmt.Errorf("account platform %s with type %s does not support usage query", account.Platform, account.Type)
 }
 
 // GetUsage 获取账号使用量

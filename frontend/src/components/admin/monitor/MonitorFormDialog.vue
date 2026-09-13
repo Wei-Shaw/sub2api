@@ -41,7 +41,9 @@
             type="button"
             :data-testid="`monitor-provider-${opt.value}`"
             :aria-pressed="form.provider === opt.value"
-            class="flex items-center justify-center gap-2 rounded-lg border-2 px-3 py-2.5 text-sm font-medium transition-colors"
+            :disabled="opt.disabled"
+            :title="opt.disabled ? t('admin.channelMonitor.form.activeQuotaUnsupported') : undefined"
+            class="flex items-center justify-center gap-2 rounded-lg border-2 px-3 py-2.5 text-sm font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50"
             :class="providerPickerClass(opt.value, form.provider === opt.value)"
             @click="selectProvider(opt.value)"
           >
@@ -49,6 +51,9 @@
             <span>{{ opt.label }}</span>
           </button>
         </div>
+        <p v-if="activeQuotaUnsupported" role="alert" class="mt-2 text-sm text-amber-600 dark:text-amber-400">
+          {{ t('admin.channelMonitor.form.activeQuotaUnsupported') }}
+        </p>
       </div>
 
       <!-- 配额模式数据源：关联账号（复用账号侧用量/余额服务） -->
@@ -210,7 +215,7 @@
         <button
           type="submit"
           form="channel-monitor-form"
-          :disabled="submitting"
+          :disabled="submitting || activeQuotaUnsupported"
           class="btn btn-primary"
         >
           {{ submitting
@@ -271,6 +276,9 @@ import {
   PROVIDER_DEEPSEEK,
   PROVIDER_MINIMAX,
   PROVIDER_OPENCODE_GO,
+  PROVIDER_CURSOR,
+  PROVIDER_DEVIN,
+  QUOTA_ONLY_PROVIDERS,
   API_MODE_CHAT_COMPLETIONS,
   API_MODE_RESPONSES,
   CHECK_MODE_PROBE,
@@ -362,6 +370,7 @@ const form = reactive<MonitorForm>({
 // quota / quota_probe 需要关联账号；probe / quota_probe 需要探活字段。
 const usesQuotaMode = computed(() => form.check_mode !== CHECK_MODE_PROBE)
 const usesProbePart = computed(() => form.check_mode !== CHECK_MODE_QUOTA)
+const activeQuotaUnsupported = computed(() => form.provider === PROVIDER_CURSOR || form.provider === PROVIDER_DEVIN)
 
 // jitter 上限与后端校验一致：interval - jitter 不得低于最小检测间隔 15 秒。
 const maxJitterSeconds = computed<number>(() => Math.max(0, (form.interval_seconds || 0) - 15))
@@ -463,9 +472,14 @@ function clearRequestSnapshot() {
   form.body_override = null
 }
 
+function isQuotaOnlyProvider(p: Provider): boolean {
+  return (QUOTA_ONLY_PROVIDERS as readonly Provider[]).includes(p)
+}
+
 interface ProviderOption {
   value: Provider
   label: string
+  disabled?: boolean
 }
 
 const providerOptions = computed<ProviderOption[]>(() => [
@@ -479,6 +493,8 @@ const providerOptions = computed<ProviderOption[]>(() => [
   { value: PROVIDER_DEEPSEEK, label: t('monitorCommon.providers.deepseek') },
   { value: PROVIDER_MINIMAX, label: t('monitorCommon.providers.minimax') },
   { value: PROVIDER_OPENCODE_GO, label: t('monitorCommon.providers.opencode_go') },
+  { value: PROVIDER_CURSOR, label: t('monitorCommon.providers.cursor'), disabled: true },
+  { value: PROVIDER_DEVIN, label: t('monitorCommon.providers.devin'), disabled: true },
 ])
 
 // 国产 provider 预填的官方 endpoint（仅探活侧；配额模式 endpoint 可留空）。
@@ -502,21 +518,21 @@ const checkModeOptions = computed<CheckModeOption[]>(() => [
     value: CHECK_MODE_PROBE,
     label: t('admin.channelMonitor.form.checkModeProbe'),
     hint: t('admin.channelMonitor.form.checkModeProbeHint'),
-    // antigravity 无探活 adapter，仅配额模式。
-    disabled: form.provider === PROVIDER_ANTIGRAVITY,
+    // These providers have no active probe adapter.
+    disabled: isQuotaOnlyProvider(form.provider),
   },
   {
     value: CHECK_MODE_QUOTA,
     label: t('admin.channelMonitor.form.checkModeQuota'),
     hint: t('admin.channelMonitor.form.checkModeQuotaHint'),
-    disabled: false,
+    disabled: activeQuotaUnsupported.value,
   },
   {
     value: CHECK_MODE_QUOTA_PROBE,
     label: t('admin.channelMonitor.form.checkModeQuotaProbe'),
     hint: t('admin.channelMonitor.form.checkModeQuotaProbeHint'),
-    // antigravity 无探活 adapter，只支持配额模式。
-    disabled: form.provider === PROVIDER_ANTIGRAVITY,
+    // These providers have no active probe adapter.
+    disabled: isQuotaOnlyProvider(form.provider),
   },
 ])
 
@@ -679,15 +695,15 @@ function selectProvider(provider: Provider) {
   form.account_id = null
   pinnedAccount.value = null
   accountHydrationFailed.value = false
-  // antigravity 仅配额模式：切到它时强制 quota（checkModeOptions 同步禁用其余项）。
-  if (provider === PROVIDER_ANTIGRAVITY && form.check_mode !== CHECK_MODE_QUOTA) {
+  // Providers without probe adapters keep the quota-only form shape.
+  if (isQuotaOnlyProvider(provider) && form.check_mode !== CHECK_MODE_QUOTA) {
     form.check_mode = CHECK_MODE_QUOTA
   }
-  // 对称还原：从 antigravity 切走时撤掉强制 quota，否则编辑存量 antigravity
-  // 监控换平台后仍停留在 quota（目标平台未必支持），update 会携带残留配置。
+  // 对称还原：从仅配额 provider 切走时撤掉强制 quota，否则编辑存量监控换平台后
+  // 仍停留在 quota（目标平台未必支持），update 会携带残留配置。
   // 同步清掉 quota 占位模型（loadFromMonitor 回填的 'quota'），否则切回
   // probe 后拿 'quota' 当探活模型（与离开 grok 清 DEFAULT_GROK_MODEL 同理）。
-  if (previousProvider === PROVIDER_ANTIGRAVITY && form.check_mode === CHECK_MODE_QUOTA) {
+  if (isQuotaOnlyProvider(previousProvider) && !isQuotaOnlyProvider(provider) && form.check_mode === CHECK_MODE_QUOTA) {
     form.check_mode = CHECK_MODE_PROBE
     if (form.primary_model.trim() === 'quota') form.primary_model = ''
   }
@@ -839,6 +855,10 @@ function buildPayload(): CreateParams {
 
 async function handleSubmit() {
   if (submitting.value) return
+  if (activeQuotaUnsupported.value) {
+    appStore.showError(t('admin.channelMonitor.form.activeQuotaUnsupported'))
+    return
+  }
   if (!form.name.trim()) {
     appStore.showError(t('admin.channelMonitor.nameRequired'))
     return
