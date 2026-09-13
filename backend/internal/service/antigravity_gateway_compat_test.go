@@ -251,7 +251,7 @@ func TestBuildAntigravityCompatGeminiBody_ConfiguresMixedToolInvocations(t *test
 		t.Run(tt.name, func(t *testing.T) {
 			claudeBody := []byte(`{"messages":[{"role":"user","content":"hello"}],"tools":` + tt.tools + `}`)
 			claudeBody = bytes.ReplaceAll(claudeBody, []byte{92}, nil)
-			body, err := svc.buildAntigravityCompatGeminiBody(context.Background(), claudeBody, nil, "project-1", "gemini-2.5-flash")
+			body, err := svc.buildAntigravityCompatGeminiBody(context.Background(), claudeBody, nil, "project-1", "gemini-2.5-flash", claudeBody)
 			require.NoError(t, err)
 
 			var wrapped map[string]any

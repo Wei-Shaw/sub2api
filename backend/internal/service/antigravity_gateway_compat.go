@@ -2,6 +2,7 @@ package service
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -13,6 +14,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/pkg/antigravity"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/apicompat"
 	"github.com/gin-gonic/gin"
+	"github.com/tidwall/gjson"
 )
 
 type antigravityCompatProtocol uint8
@@ -238,7 +240,7 @@ func (s *AntigravityGatewayService) prepareAntigravityCompatCall(
 		_ = s.writeAntigravityCompatError(c, http.StatusBadRequest, "invalid_request_error", err.Error())
 		return nil, err
 	}
-	geminiBody, err := s.buildAntigravityCompatGeminiBody(ctx, request.claudeBody, &claudeRequest, projectID, mappedModel)
+	geminiBody, err := s.buildAntigravityCompatGeminiBody(ctx, request.claudeBody, &claudeRequest, projectID, mappedModel, request.originalBody)
 	if err != nil {
 		return nil, s.writeAntigravityCompatError(c, http.StatusBadRequest, "invalid_request_error", "Invalid request")
 	}
@@ -260,6 +262,7 @@ func (s *AntigravityGatewayService) buildAntigravityCompatGeminiBody(
 	claudeRequest *antigravity.ClaudeRequest,
 	projectID string,
 	mappedModel string,
+	originalBody []byte,
 ) ([]byte, error) {
 	if strings.HasPrefix(strings.ToLower(mappedModel), "gemini-") {
 		body, err := convertClaudeMessagesToGeminiGenerateContent(claudeBody)
@@ -278,12 +281,52 @@ func (s *AntigravityGatewayService) buildAntigravityCompatGeminiBody(
 		if cleaned, cleanErr := cleanGeminiRequest(body); cleanErr == nil {
 			body = cleaned
 		}
+		// response_format lives on the ORIGINAL inbound body (Chat
+		// Completions / Responses). claudeBody is Anthropic-schema and
+		// never carries it (#7088).
+		body = ensureGeminiResponseFormatJSON(body, originalBody)
 		return s.wrapV1InternalRequest(projectID, mappedModel, body)
 	}
 
 	options := s.getClaudeTransformOptions(ctx)
 	options.EnableIdentityPatch = true
 	return antigravity.TransformClaudeToGeminiWithOptions(claudeRequest, projectID, mappedModel, options)
+}
+
+// ensureGeminiResponseFormatJSON injects responseMimeType application/json
+// into the Gemini GenerationConfig when the original inbound request asked
+// for a JSON response (#7088). Without it, Gemini 3.8 returns chat prose
+// and downstream JSON parsers crash.
+func ensureGeminiResponseFormatJSON(body []byte, originalBody []byte) []byte {
+	if len(originalBody) == 0 {
+		return body
+	}
+	// Chat Completions: response_format.type json_object/json_schema.
+	// Responses: text.format.type json_object/json_schema.
+	jsonRequested := gjson.GetBytes(originalBody, "response_format.type").String() == "json_object" ||
+		gjson.GetBytes(originalBody, "response_format.type").String() == "json_schema" ||
+		gjson.GetBytes(originalBody, "text.format.type").String() == "json_object" ||
+		gjson.GetBytes(originalBody, "text.format.type").String() == "json_schema" ||
+		bytes.Contains(originalBody, []byte(`"json_object"`)) ||
+		bytes.Contains(originalBody, []byte(`"json_schema"`))
+	if !jsonRequested {
+		return body
+	}
+	var req map[string]any
+	if err := json.Unmarshal(body, &req); err != nil {
+		return body
+	}
+	genCfg, _ := req["generationConfig"].(map[string]any)
+	if genCfg == nil {
+		genCfg = make(map[string]any)
+		req["generationConfig"] = genCfg
+	}
+	genCfg["responseMimeType"] = "application/json"
+	out, err := json.Marshal(req)
+	if err != nil {
+		return body
+	}
+	return out
 }
 
 func enableMixedGeminiToolInvocations(body []byte) ([]byte, error) {
