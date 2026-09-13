@@ -568,19 +568,112 @@ func (r *usageLogRepository) GetBatchAPIKeyUsageStats(ctx context.Context, apiKe
 	for _, id := range normalizedAPIKeyIDs {
 		result[id] = &BatchAPIKeyUsageStats{APIKeyID: id}
 	}
+	if !endTime.After(startTime) {
+		return result, nil
+	}
 
+	// 日桶只覆盖查询区间内的完整自然日。首尾不足一天的片段继续读明细，
+	// 从而保持与原始 [startTime, endTime) 查询完全一致。
+	rollupStart := timezone.StartOfDay(startTime)
+	if startTime.After(rollupStart) {
+		rollupStart = rollupStart.AddDate(0, 0, 1)
+	}
+	rollupEnd := timezone.StartOfDay(endTime)
+
+	// 历史段读日桶、当日段读明细。
+	//
+	// 直接在 usage_logs 上按 api_key_id 聚合 30 天，代价随保留窗口线性增长；热点 key
+	// 往往集中了绝大部分流量，单次请求要聚合千万行级别的数据，需要数十秒。
+	// usage_apikey_daily_rollups 由分块日结产出，
+	// 其发布水位 usage_group_rollup_state.closed_before 之前的日期才是已结算的，
+	// 水位当天及之后仍以原始日志为准，避免与尾段重复计入。
 	query := `
+		WITH state_values AS (
+			SELECT
+				COUNT(*) = 1
+					AND MAX(timezone_name) = $5
+					AND MAX(closed_before) <= ($4::timestamptz AT TIME ZONE $5::text)::date AS valid,
+				MAX(closed_before) AS closed_before
+			FROM usage_group_rollup_state
+			WHERE id = 1
+		),
+		state AS (
+			SELECT
+				valid,
+				CASE
+					WHEN valid THEN GREATEST(
+						($6::timestamptz AT TIME ZONE $5::text)::date,
+						LEAST(closed_before, ($7::timestamptz AT TIME ZONE $5::text)::date)
+					)
+					ELSE ($6::timestamptz AT TIME ZONE $5::text)::date
+				END AS rollup_end_date,
+				CASE
+					WHEN valid THEN GREATEST(
+						($6::timestamptz AT TIME ZONE $5::text)::date,
+						LEAST(closed_before, ($7::timestamptz AT TIME ZONE $5::text)::date)
+					)::timestamp AT TIME ZONE $5::text
+					ELSE $6::timestamptz
+				END AS rollup_end
+			FROM state_values
+		),
+		historical AS (
+			SELECT
+				rollup.api_key_id,
+				COALESCE(SUM(rollup.actual_cost), 0) AS total_cost
+			FROM usage_apikey_daily_rollups rollup
+			CROSS JOIN state
+			WHERE state.valid
+				AND rollup.api_key_id = ANY($1)
+				AND rollup.bucket_date >= ($6::timestamptz AT TIME ZONE $5::text)::date
+				AND rollup.bucket_date < state.rollup_end_date
+			GROUP BY rollup.api_key_id
+		),
+		raw_segments AS (
+			-- 两个不重叠的小区间分别走 (api_key_id, created_at) 索引：
+			-- 首日不足一天的前缀，以及日桶发布水位之后的尾段。
+			SELECT ul.api_key_id, ul.actual_cost, ul.created_at
+			FROM usage_logs ul
+			WHERE ul.api_key_id = ANY($1)
+				AND ul.created_at >= $2
+				AND ul.created_at < LEAST($3::timestamptz, $6::timestamptz)
+
+			UNION ALL
+
+			SELECT ul.api_key_id, ul.actual_cost, ul.created_at
+			FROM usage_logs ul
+			CROSS JOIN state
+			WHERE ul.api_key_id = ANY($1)
+				AND ul.created_at >= GREATEST($2::timestamptz, state.rollup_end)
+				AND ul.created_at < $3
+		),
+		tail AS (
+			SELECT
+				api_key_id,
+				COALESCE(SUM(actual_cost), 0) AS total_cost,
+				COALESCE(SUM(actual_cost) FILTER (WHERE created_at >= $4), 0) AS today_cost
+			FROM raw_segments
+			GROUP BY api_key_id
+		)
 		SELECT
-			api_key_id,
-			COALESCE(SUM(actual_cost) FILTER (WHERE created_at >= $2 AND created_at < $3), 0) as total_cost,
-			COALESCE(SUM(actual_cost) FILTER (WHERE created_at >= $4), 0) as today_cost
-		FROM usage_logs
-		WHERE api_key_id = ANY($1)
-		  AND created_at >= LEAST($2, $4)
-		GROUP BY api_key_id
+			k.api_key_id,
+			COALESCE(historical.total_cost, 0) + COALESCE(tail.total_cost, 0) AS total_cost,
+			COALESCE(tail.today_cost, 0) AS today_cost
+		FROM unnest($1::bigint[]) AS k(api_key_id)
+		LEFT JOIN historical ON historical.api_key_id = k.api_key_id
+		LEFT JOIN tail ON tail.api_key_id = k.api_key_id
 	`
 	today := timezone.Today()
-	rows, err := r.sql.QueryContext(ctx, query, pq.Array(normalizedAPIKeyIDs), startTime, endTime, today)
+	rows, err := r.sql.QueryContext(
+		ctx,
+		query,
+		pq.Array(normalizedAPIKeyIDs),
+		startTime,
+		endTime,
+		today,
+		timezone.Name(),
+		rollupStart,
+		rollupEnd,
+	)
 	if err != nil {
 		return nil, err
 	}
