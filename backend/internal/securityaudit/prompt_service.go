@@ -59,6 +59,10 @@ func (s *PromptService) RecordPrompt(ctx context.Context, req Request) {
 		return
 	}
 	config := s.GetPromptRecordingConfig()
+	// Session ID is a record identity field, not optional request-header content.
+	// Capture it before the headers switch is applied so disabling header storage
+	// cannot make the session filter and detail metadata lose their value.
+	req.recordingSessionID = promptRecordSessionID(req.Headers)
 	req.recordingSkipHeaders = !config.HeadersEnabled
 	req.recordingSkipPrompt = !config.PromptEnabled
 	req.recordingFilterPreset = config.FilterPreset

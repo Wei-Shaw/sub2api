@@ -119,6 +119,7 @@ func preparePromptRecord(req Request) (preparedPromptRecord, error) {
 	storedDocument := sanitizePromptRecordDocument(req.Protocol, document, promptRecordFilterOptions{
 		Enabled: req.recordingFilterPreset, AgentPreset: req.recordingFilterAgent, Skills: req.recordingFilterSkills,
 	})
+	storedDocument = truncatePromptRecordMessages(storedDocument, promptRecordMaxMessages)
 	prepared.StoredBody, err = json.Marshal(storedDocument)
 	if err != nil {
 		return preparedPromptRecord{}, err

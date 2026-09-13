@@ -2,6 +2,52 @@ package securityaudit
 
 import "strings"
 
+const promptRecordMaxMessages = 30
+
+// truncatePromptRecordMessages keeps only the newest messages in the retained
+// request document. The request itself may contain much more history, but a
+// prompt record only needs the latest conversation context for review.
+func truncatePromptRecordMessages(value any, maxMessages int) any {
+	if maxMessages < 1 {
+		return value
+	}
+	return truncatePromptRecordMessageValue(value, "", maxMessages)
+}
+
+func truncatePromptRecordMessageValue(value any, key string, maxMessages int) any {
+	switch typed := value.(type) {
+	case map[string]any:
+		result := make(map[string]any, len(typed))
+		for childKey, child := range typed {
+			result[childKey] = truncatePromptRecordMessageValue(child, childKey, maxMessages)
+		}
+		return result
+	case []any:
+		if promptRecordMessageCollectionKey(key) && len(typed) > maxMessages {
+			result := make([]any, maxMessages)
+			for index, item := range typed[len(typed)-maxMessages:] {
+				result[index] = truncatePromptRecordMessageValue(item, "", maxMessages)
+			}
+			return result
+		}
+		result := make([]any, len(typed))
+		for index, item := range typed {
+			result[index] = truncatePromptRecordMessageValue(item, "", maxMessages)
+		}
+		return result
+	}
+	return value
+}
+
+func promptRecordMessageCollectionKey(key string) bool {
+	switch strings.ToLower(strings.TrimSpace(key)) {
+	case "messages", "input", "contents":
+		return true
+	default:
+		return false
+	}
+}
+
 // sanitizePromptRecordDocument builds a new retained tree. The input tree stays
 // untouched so its prompt identity can be calculated before filtering.
 func sanitizePromptRecordDocument(protocol string, document any, options promptRecordFilterOptions) any {

@@ -440,6 +440,11 @@ func (s *PromptRecordService) RecordPrompt(_ context.Context, req Request) {
 		req.recordingCorrelation.complete(PromptRecordKey{}, false)
 		return
 	}
+	if req.recordingSessionID == "" {
+		// Keep direct PromptRecordService callers safe as well as the normal
+		// PromptService path, which captures this before applying the switches.
+		req.recordingSessionID = promptRecordSessionID(req.Headers)
+	}
 	size := promptRecordRequestBytes(req)
 	if !s.reserve(size, false, req) {
 		req.recordingCorrelation.complete(PromptRecordKey{}, false)
@@ -540,7 +545,11 @@ func (s *PromptRecordService) persist(req Request) {
 		return
 	}
 	snapshot := prepared.StoredSnapshot
-	record := &PromptRecord{SessionID: promptRecordSessionID(req.Headers), Stage: ifEmpty(snapshot.Stage, req.Stage), UserID: snapshot.UserID, Username: snapshot.UsernameSnapshot, UserEmail: snapshot.UserEmailSnapshot, APIKeyID: snapshot.APIKeyID, APIKeyName: snapshot.APIKeyNameSnapshot, GroupID: snapshot.GroupID, GroupName: snapshot.GroupName, Provider: snapshot.Provider, Endpoint: snapshot.Endpoint, Protocol: snapshot.Protocol, Model: snapshot.Model, PromptHash: prepared.OriginalPromptHash, PromptText: snapshot.FullPrompt, PromptLength: snapshot.PromptLength, MessageCount: snapshot.MessageCount, RiskStatus: "pending", CreatedAt: time.Now()}
+	sessionID := req.recordingSessionID
+	if sessionID == "" {
+		sessionID = promptRecordSessionID(req.Headers)
+	}
+	record := &PromptRecord{SessionID: sessionID, Stage: ifEmpty(snapshot.Stage, req.Stage), UserID: snapshot.UserID, Username: snapshot.UsernameSnapshot, UserEmail: snapshot.UserEmailSnapshot, APIKeyID: snapshot.APIKeyID, APIKeyName: snapshot.APIKeyNameSnapshot, GroupID: snapshot.GroupID, GroupName: snapshot.GroupName, Provider: snapshot.Provider, Endpoint: snapshot.Endpoint, Protocol: snapshot.Protocol, Model: snapshot.Model, PromptHash: prepared.OriginalPromptHash, PromptText: snapshot.FullPrompt, PromptLength: snapshot.PromptLength, MessageCount: snapshot.MessageCount, RiskStatus: "pending", CreatedAt: time.Now()}
 	record.TurnNo = req.TurnNo
 	if req.recordingRetentionDays > 0 {
 		expiresAt := record.CreatedAt.AddDate(0, 0, req.recordingRetentionDays)

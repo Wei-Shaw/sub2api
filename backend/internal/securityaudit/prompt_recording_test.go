@@ -2,8 +2,10 @@ package securityaudit
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"net/http"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -127,7 +129,7 @@ func TestPromptRecordingContentCombinationsRetainFullRequest(t *testing.T) {
 			require.NoError(t, manager.SavePromptRecordingSettings(context.Background(), PromptRecordingSettingsUpdate{HeadersEnabled: &headersEnabled, PromptEnabled: &promptEnabled}))
 			repo := &capturedRequestRepository{records: make(chan *PromptRecord, 1)}
 			service := &PromptService{config: manager, records: newPromptRecordService(repo, 1, 1, 1)}
-			req := Request{RequestID: "full-request", Body: []byte(body), Headers: http.Header{"X-Test": {"first", "second"}}}
+			req := Request{RequestID: "full-request", Body: []byte(body), Headers: http.Header{"Session-Id": {"session-full-request"}, "X-Test": {"first", "second"}}}
 			service.RecordPrompt(context.Background(), req)
 			// The queued job owns its input and the recording policy at capture time.
 			req.Body[0] = '!'
@@ -136,8 +138,9 @@ func TestPromptRecordingContentCombinationsRetainFullRequest(t *testing.T) {
 			require.NoError(t, manager.SavePromptRecordingSettings(context.Background(), PromptRecordingSettingsUpdate{HeadersEnabled: &oppositeHeaders, PromptEnabled: &oppositePrompt}))
 			select {
 			case record := <-repo.records:
+				require.Equal(t, "session-full-request", record.SessionID)
 				if headersEnabled {
-					require.JSONEq(t, `{"X-Test":["first","second"]}`, record.RequestHeaders)
+					require.JSONEq(t, `{"Session-Id":["session-full-request"],"X-Test":["first","second"]}`, record.RequestHeaders)
 				} else {
 					require.Empty(t, record.RequestHeaders)
 				}
@@ -155,6 +158,39 @@ func TestPromptRecordingContentCombinationsRetainFullRequest(t *testing.T) {
 			}
 		}
 	}
+}
+
+func TestPreparePromptRecordKeepsOnlyLatestThirtyMessages(t *testing.T) {
+	messages := make([]any, 35)
+	for index := range messages {
+		messages[index] = map[string]any{"role": "user", "content": "message-" + strconv.Itoa(index)}
+	}
+	body, err := json.Marshal(map[string]any{"messages": messages})
+	require.NoError(t, err)
+
+	prepared, err := preparePromptRecord(Request{Protocol: "openai_chat", Body: body})
+	require.NoError(t, err)
+	var stored map[string]any
+	require.NoError(t, json.Unmarshal(prepared.StoredBody, &stored))
+	items, ok := stored["messages"].([]any)
+	require.True(t, ok)
+	require.Len(t, items, promptRecordMaxMessages)
+	for index, item := range items {
+		message, ok := item.(map[string]any)
+		require.True(t, ok)
+		require.Equal(t, "message-"+strconv.Itoa(index+5), message["content"])
+	}
+	require.Equal(t, promptRecordMaxMessages, prepared.StoredSnapshot.MessageCount)
+	// The full request identity remains based on the original request.
+	original := promptRecordMetadataDocument(Request{Protocol: "openai_chat"}, mustDecodePromptDocument(t, body), body, false)
+	require.Equal(t, original.PromptHash, prepared.OriginalPromptHash)
+}
+
+func mustDecodePromptDocument(t *testing.T, body []byte) any {
+	t.Helper()
+	document, err := decodePromptDocument(body)
+	require.NoError(t, err)
+	return document
 }
 
 func TestPromptRecordingRetainsRequestsWithoutTextAndMatchesResponse(t *testing.T) {

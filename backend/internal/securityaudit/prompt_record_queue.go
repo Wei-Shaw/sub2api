@@ -35,7 +35,7 @@ type PromptRecordService struct {
 }
 
 func promptRecordMetadataBytes(req Request) int64 {
-	return int64(1024 + len(req.RequestID) + len(req.Username) + len(req.UserEmail) + len(req.APIKeyName) + len(req.GroupName) + len(req.Provider) + len(req.Endpoint) + len(req.Protocol) + len(req.Model) + len(req.Stage))
+	return int64(1024 + len(req.RequestID) + len(req.recordingSessionID) + len(req.Username) + len(req.UserEmail) + len(req.APIKeyName) + len(req.GroupName) + len(req.Provider) + len(req.Endpoint) + len(req.Protocol) + len(req.Model) + len(req.Stage))
 }
 
 func promptRecordRequestBytes(req Request) int64 {

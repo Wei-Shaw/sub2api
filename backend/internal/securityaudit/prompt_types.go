@@ -91,6 +91,7 @@ type Request struct {
 	Body       []byte
 	Headers    http.Header
 	// Recording exclusions are captured before queueing and do not affect auditing.
+	recordingSessionID     string
 	recordingSkipHeaders   bool
 	recordingSkipPrompt    bool
 	recordingFilterPreset  bool
