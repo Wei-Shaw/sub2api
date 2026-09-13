@@ -669,7 +669,8 @@ func (s *AuthService) canBypassRegistrationDisabledForOAuth(ctx context.Context,
 	if signupSource != "dingtalk" {
 		return false
 	}
-	cfg, err := s.settingService.GetDingTalkConnectOAuthConfig(ctx)
+	app, _ := ctx.Value(dingTalkApplicationContextKey{}).(string)
+	cfg, err := s.settingService.GetDingTalkOAuthConfigForApp(ctx, app)
 	if err != nil || !cfg.Enabled || !cfg.BypassRegistration {
 		return false
 	}

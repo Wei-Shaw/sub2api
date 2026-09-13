@@ -398,6 +398,20 @@ type DingTalkConnectConfig struct {
 	EnableAttributeSync          bool     `mapstructure:"enable_attribute_sync"`
 	AttributeSyncFields          []string `mapstructure:"attribute_sync_fields"`
 	AttributeSyncOverwritePolicy string   `mapstructure:"attribute_sync_overwrite_policy"`
+
+	// Additional applications are configured independently of the legacy default.
+	Apps []DingTalkAppConfig `mapstructure:"apps"`
+}
+
+type DingTalkAppConfig struct {
+	ID                     string `mapstructure:"id" json:"id"`
+	Name                   string `mapstructure:"name" json:"name"`
+	ClientID               string `mapstructure:"client_id" json:"client_id"`
+	ClientSecret           string `mapstructure:"client_secret" json:"client_secret,omitempty"`
+	ClientSecretConfigured bool   `mapstructure:"-" json:"client_secret_configured"`
+	RedirectURL            string `mapstructure:"redirect_url" json:"redirect_url"`
+	CorpID                 string `mapstructure:"corp_id" json:"corp_id"`
+	Enabled                bool   `mapstructure:"enabled" json:"enabled"`
 }
 
 type EmailOAuthProviderConfig struct {
