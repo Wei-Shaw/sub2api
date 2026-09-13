@@ -180,7 +180,7 @@
                 <div class="flex items-center justify-between gap-3">
                   <div class="flex items-center gap-2.5">
                     <button type="button" role="switch" :aria-checked="!!subscription.auto_advance_week" :aria-label="t('userSubscriptions.advanceWeek.autoLabel')"
-                      :disabled="autoSavingId !== null || (!subscription.auto_advance_week && subscription.status !== 'active')"
+                      :disabled="resetBusy || (!subscription.auto_advance_week && subscription.status !== 'active')"
                       :class="['relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary-500 disabled:opacity-50', subscription.auto_advance_week ? 'bg-primary-500' : 'bg-gray-300 dark:bg-dark-500']"
                       @click="toggleAutoAdvance(subscription)">
                       <span :class="['inline-block h-4 w-4 transform rounded-full bg-white shadow-sm transition-transform', subscription.auto_advance_week ? 'translate-x-4' : 'translate-x-1']" />
@@ -190,7 +190,7 @@
                   <span :title="!canAdvanceWeek(subscription) ? t('userSubscriptions.advanceWeek.unavailable') : undefined">
                     <button type="button"
                       class="inline-flex h-8 shrink-0 items-center justify-center whitespace-nowrap rounded-lg border border-gray-200 bg-white px-3 text-xs font-medium text-gray-600 transition-colors hover:border-primary-300 hover:text-primary-600 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary-500 disabled:cursor-not-allowed disabled:border-gray-200 disabled:text-gray-400 dark:border-dark-500 dark:bg-dark-800 dark:text-gray-300 dark:disabled:border-dark-600 dark:disabled:text-gray-500"
-                      :disabled="!canAdvanceWeek(subscription) || advanceLoading"
+                      :disabled="!canAdvanceWeek(subscription) || resetBusy"
                       :aria-describedby="!canAdvanceWeek(subscription) ? `reset-unavailable-${subscription.id}` : undefined"
                       @click="openAdvanceWeek(subscription)">
                       {{ t('userSubscriptions.advanceWeek.action') }}
@@ -241,6 +241,19 @@
                   })
                 }}
               </p>
+              <div class="rounded-xl border border-gray-100 bg-gray-50/60 px-3 py-2.5 dark:border-dark-600 dark:bg-dark-700/40">
+                <div class="flex flex-wrap items-center justify-between gap-2">
+                  <p class="text-[11px] leading-relaxed text-gray-400 dark:text-gray-500">{{ t('userSubscriptions.advanceMonth.hint') }}</p>
+                  <span>
+                    <button type="button"
+                      class="inline-flex h-8 shrink-0 items-center justify-center whitespace-nowrap rounded-lg border border-gray-200 bg-white px-3 text-xs font-medium text-gray-600 transition-colors hover:border-primary-300 hover:text-primary-600 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary-500 disabled:cursor-not-allowed disabled:border-gray-200 disabled:text-gray-400 dark:border-dark-500 dark:bg-dark-800 dark:text-gray-300 dark:disabled:border-dark-600 dark:disabled:text-gray-500"
+                      :disabled="!canAdvanceMonth(subscription) || resetBusy"
+                      @click="openAdvanceMonth(subscription)">
+                      {{ t('userSubscriptions.advanceMonth.action') }}
+                    </button>
+                  </span>
+                </div>
+              </div>
             </div>
 
             <!-- No limits configured - Unlimited badge -->
@@ -284,6 +297,22 @@
         </div>
       </template>
     </BaseDialog>
+    <BaseDialog :show="!!monthPreview" :title="t('userSubscriptions.advanceMonth.title')" width="narrow" @close="closeAdvanceMonth">
+      <div v-if="monthPreview" class="space-y-4 text-sm text-gray-600 dark:text-gray-300">
+        <p>{{ t('userSubscriptions.advanceMonth.description') }}</p>
+        <dl class="space-y-3 rounded-lg bg-gray-50 p-4 dark:bg-dark-700">
+          <div><dt>{{ t('userSubscriptions.advanceWeek.deduct') }}</dt><dd class="mt-1 font-semibold text-amber-700 dark:text-amber-300">{{ formatAdvanceDuration(monthPreview.deduct_seconds) }}</dd></div>
+          <div><dt>{{ t('userSubscriptions.advanceWeek.newExpiry') }}</dt><dd class="mt-1 font-semibold">{{ formatDateTimeToMinute(monthPreview.new_expires_at) }}</dd></div>
+        </dl>
+        <p>{{ t('userSubscriptions.advanceMonth.warning') }}</p>
+      </div>
+      <template #footer>
+        <div class="flex justify-end gap-3">
+          <button class="btn btn-secondary" :disabled="monthLoading" @click="closeAdvanceMonth">{{ t('common.cancel') }}</button>
+          <button class="btn btn-primary" :disabled="monthLoading || !monthPreview" @click="confirmAdvanceMonth">{{ monthLoading ? t('common.processing') : t('userSubscriptions.advanceWeek.confirm') }}</button>
+        </div>
+      </template>
+    </BaseDialog>
     <BaseDialog :show="!!autoTarget" :title="t('userSubscriptions.advanceWeek.autoTitle')" width="narrow" @close="closeAutoDialog">
       <div class="space-y-3 text-sm text-gray-600 dark:text-gray-300">
         <p>{{ t('userSubscriptions.advanceWeek.autoDescription') }}</p>
@@ -300,11 +329,11 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted } from 'vue'
+import { computed, ref, onMounted, onUnmounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
 import { useAppStore } from '@/stores/app'
-import subscriptionsAPI, { previewAdvanceWeek, advanceWeek, setAutoAdvanceWeek, type WeeklyAdvancePreview } from '@/api/subscriptions'
+import subscriptionsAPI, { previewAdvanceWeek, advanceWeek, setAutoAdvanceWeek, previewAdvanceMonth, advanceMonth, type WeeklyAdvancePreview, type MonthlyAdvancePreview } from '@/api/subscriptions'
 import BaseDialog from '@/components/common/BaseDialog.vue'
 import { useSubscriptionStore } from '@/stores/subscriptions'
 import type { UserSubscription } from '@/types'
@@ -338,9 +367,12 @@ const subscriptions = ref<UserSubscription[]>([])
 const loading = ref(true)
 const advanceLoading = ref(false)
 const advancePreview = ref<WeeklyAdvancePreview | null>(null)
+const monthLoading = ref(false)
+const monthPreview = ref<MonthlyAdvancePreview | null>(null)
 const subscriptionStore = useSubscriptionStore()
 const autoTarget = ref<UserSubscription | null>(null)
 const autoSavingId = ref<number | null>(null)
+const resetBusy = computed(() => advanceLoading.value || monthLoading.value || autoSavingId.value !== null)
 let subscriptionsGeneration = 0
 let autoPoller: ReturnType<typeof setInterval> | undefined
 
@@ -349,13 +381,13 @@ function closeAutoDialog() {
 }
 
 function toggleAutoAdvance(subscription: UserSubscription) {
-  if (autoSavingId.value !== null) return
+  if (resetBusy.value) return
   if (subscription.auto_advance_week) void saveAutoAdvance(subscription, false)
   else autoTarget.value = subscription
 }
 
 async function saveAutoAdvance(subscription: UserSubscription, enabled: boolean) {
-  if (autoSavingId.value !== null) return
+  if (resetBusy.value) return
   autoSavingId.value = subscription.id
   ++subscriptionsGeneration
   try {
@@ -373,7 +405,7 @@ async function saveAutoAdvance(subscription: UserSubscription, enabled: boolean)
 
 onMounted(() => {
   autoPoller = setInterval(async () => {
-    if (!subscriptions.value.some(item => item.auto_advance_week) || advanceLoading.value || autoSavingId.value !== null || advancePreview.value || autoTarget.value) return
+    if (!subscriptions.value.some(item => item.auto_advance_week) || resetBusy.value || advancePreview.value || monthPreview.value || autoTarget.value) return
     const generation = subscriptionsGeneration
     try {
       const updated = await subscriptionsAPI.getMySubscriptions()
@@ -390,6 +422,52 @@ function canAdvanceWeek(subscription: UserSubscription): boolean {
   return start <= Date.now() && reset > Date.now() && new Date(subscription.expires_at).getTime() > reset
 }
 
+function canAdvanceMonth(subscription: UserSubscription): boolean {
+  if (!subscription.expires_at || subscription.status !== 'active' || !subscription.monthly_window_start || !(subscription.monthly_usage_usd > 0) || !(Number(subscription.group?.monthly_limit_usd) > 0)) return false
+  const now = Date.now()
+  const start = new Date(subscription.monthly_window_start).getTime()
+  const reset = subscription.monthly_reset_at
+    ? new Date(subscription.monthly_reset_at).getTime()
+    : start + 30 * 24 * 3600 * 1000
+  return new Date(subscription.starts_at).getTime() <= now && start <= now && reset > now && new Date(subscription.expires_at).getTime() > reset
+}
+
+function closeAdvanceMonth() {
+  if (!monthLoading.value) monthPreview.value = null
+}
+
+async function openAdvanceMonth(subscription: UserSubscription) {
+  if (resetBusy.value) return
+  monthLoading.value = true
+  ++subscriptionsGeneration
+  try {
+    monthPreview.value = await previewAdvanceMonth(subscription.id)
+  } catch {
+    appStore.showError(t('userSubscriptions.advanceMonth.failed'))
+  } finally {
+    monthLoading.value = false
+  }
+}
+
+async function confirmAdvanceMonth() {
+  if (!monthPreview.value || resetBusy.value) return
+  monthLoading.value = true
+  ++subscriptionsGeneration
+  try {
+    await advanceMonth(monthPreview.value)
+    monthPreview.value = null
+    appStore.showSuccess(t('userSubscriptions.advanceMonth.success'))
+    await loadSubscriptions()
+    await subscriptionStore.fetchActiveSubscriptions(true)
+  } catch {
+    monthPreview.value = null
+    appStore.showError(t('userSubscriptions.advanceMonth.failed'))
+    await loadSubscriptions()
+  } finally {
+    monthLoading.value = false
+  }
+}
+
 function formatAdvanceDuration(seconds: number): string {
   const minutes = Math.ceil(seconds / 60)
   return t('userSubscriptions.advanceWeek.duration', { days: Math.floor(minutes / 1440), hours: Math.floor(minutes % 1440 / 60), minutes: minutes % 60 })
@@ -400,8 +478,9 @@ function closeAdvanceWeek() {
 }
 
 async function openAdvanceWeek(subscription: UserSubscription) {
-  if (advanceLoading.value) return
+  if (resetBusy.value) return
   advanceLoading.value = true
+  ++subscriptionsGeneration
   try {
     advancePreview.value = await previewAdvanceWeek(subscription.id)
   } catch {
@@ -412,8 +491,9 @@ async function openAdvanceWeek(subscription: UserSubscription) {
 }
 
 async function confirmAdvanceWeek() {
-  if (!advancePreview.value || advanceLoading.value) return
+  if (!advancePreview.value || resetBusy.value) return
   advanceLoading.value = true
+  ++subscriptionsGeneration
   try {
     await advanceWeek(advancePreview.value)
     advancePreview.value = null

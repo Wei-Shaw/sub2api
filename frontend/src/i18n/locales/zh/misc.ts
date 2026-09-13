@@ -109,6 +109,15 @@ export default {
 
   // User Subscriptions Page
   userSubscriptions: {
+    advanceMonth: {
+      action: '重置月额度',
+      hint: '重置将扣除本月剩余时长',
+      title: '重置月额度并扣减时长',
+      description: '本月剩余额度将作废，月用量归零，从确认时刻开始新的 1 个月额度周期。',
+      warning: '订阅到期时间将提前相同时长。周额度周期同步推进，跨过周重置时间时清零周用量；日用量不变。扣除时长不可撤销，最终以确认时的本月剩余时间为准。',
+      success: '已重置月额度，订阅到期时间已更新',
+      failed: '暂时无法重置月额度，请刷新后重试。需已使用月额度，且订阅还有下一周期。'
+    },
     advanceWeek: {
       autoLabel: "周额度用尽后自动进入下一周",
       autoShortLabel: "自动重置",

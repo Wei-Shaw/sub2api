@@ -442,6 +442,7 @@ func TestAPIContracts(t *testing.T) {
 						"daily_window_start": null,
 						"weekly_window_start": null,
 						"monthly_window_start": null,
+						"monthly_reset_at": null,
 						"daily_usage_usd": 1.23,
 						"weekly_usage_usd": 2.34,
 						"auto_advance_week": false,
@@ -2274,6 +2275,9 @@ func (stubUserSubscriptionRepo) ExistsActiveByUserIDAndGroupID(ctx context.Conte
 }
 func (stubUserSubscriptionRepo) ApplyWeeklyAdvance(context.Context, int64, time.Time, time.Time, *time.Time, float64) error {
 	panic("unexpected ApplyWeeklyAdvance call")
+}
+func (stubUserSubscriptionRepo) ApplyMonthlyAdvance(context.Context, int64, time.Time, time.Time, *time.Time, float64) error {
+	panic("unexpected ApplyMonthlyAdvance call")
 }
 
 func (stubUserSubscriptionRepo) ExtendExpiry(ctx context.Context, subscriptionID int64, newExpiresAt time.Time) error {

@@ -27,6 +27,7 @@ type UserSubscriptionRepository interface {
 	ExistsActiveByUserIDAndGroupID(ctx context.Context, userID, groupID int64) (bool, error)
 	ExtendExpiry(ctx context.Context, subscriptionID int64, newExpiresAt time.Time) error
 	ApplyWeeklyAdvance(ctx context.Context, id int64, weeklyStart, expiresAt time.Time, monthlyStart *time.Time, monthlyUsage float64) error
+	ApplyMonthlyAdvance(ctx context.Context, id int64, monthlyStart, expiresAt time.Time, weeklyStart *time.Time, weeklyUsage float64) error
 	UpdateStatus(ctx context.Context, subscriptionID int64, status string) error
 	UpdateNotes(ctx context.Context, subscriptionID int64, notes string) error
 

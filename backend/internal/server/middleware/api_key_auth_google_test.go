@@ -222,6 +222,9 @@ func (f fakeGoogleSubscriptionRepo) ExistsActiveByUserIDAndGroupID(ctx context.C
 func (f fakeGoogleSubscriptionRepo) ApplyWeeklyAdvance(context.Context, int64, time.Time, time.Time, *time.Time, float64) error {
 	panic("unexpected ApplyWeeklyAdvance call")
 }
+func (f fakeGoogleSubscriptionRepo) ApplyMonthlyAdvance(context.Context, int64, time.Time, time.Time, *time.Time, float64) error {
+	panic("unexpected ApplyMonthlyAdvance call")
+}
 
 func (f fakeGoogleSubscriptionRepo) ExtendExpiry(ctx context.Context, subscriptionID int64, newExpiresAt time.Time) error {
 	return errors.New("not implemented")

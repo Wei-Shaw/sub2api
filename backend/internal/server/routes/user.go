@@ -135,6 +135,8 @@ func RegisterUserRoutes(
 			subscriptions.GET("/summary", h.Subscription.GetSummary)
 			subscriptions.GET("/:id/advance-week", h.Subscription.PreviewAdvanceWeek)
 			subscriptions.POST("/:id/advance-week", h.Subscription.AdvanceWeek)
+			subscriptions.GET("/:id/advance-month", h.Subscription.PreviewAdvanceMonth)
+			subscriptions.POST("/:id/advance-month", h.Subscription.AdvanceMonth)
 			subscriptions.PUT("/:id/auto-advance-week", h.Subscription.SetAutoAdvanceWeek)
 		}
 

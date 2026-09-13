@@ -97,3 +97,24 @@ export async function advanceWeek(preview: WeeklyAdvancePreview): Promise<Weekly
 export async function setAutoAdvanceWeek(id: number, enabled: boolean): Promise<UserSubscription> {
   return (await apiClient.put<UserSubscription>(`/subscriptions/${id}/auto-advance-week`, { enabled })).data
 }
+
+export interface MonthlyAdvancePreview {
+  subscription_id: number
+  monthly_window_start: string
+  weekly_window_start: string | null
+  expires_at: string
+  new_expires_at: string
+  deduct_seconds: number
+}
+
+export async function previewAdvanceMonth(id: number): Promise<MonthlyAdvancePreview> {
+  return (await apiClient.get<MonthlyAdvancePreview>(`/subscriptions/${id}/advance-month`)).data
+}
+
+export async function advanceMonth(preview: MonthlyAdvancePreview): Promise<MonthlyAdvancePreview> {
+  return (await apiClient.post<MonthlyAdvancePreview>(`/subscriptions/${preview.subscription_id}/advance-month`, {
+    monthly_window_start: preview.monthly_window_start,
+    weekly_window_start: preview.weekly_window_start,
+    expires_at: preview.expires_at
+  })).data
+}

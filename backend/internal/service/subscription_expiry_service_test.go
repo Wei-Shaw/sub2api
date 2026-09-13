@@ -84,6 +84,9 @@ func (r *subscriptionExpiryRepoStub) ExtendExpiry(context.Context, int64, time.T
 func (r *subscriptionExpiryRepoStub) ApplyWeeklyAdvance(context.Context, int64, time.Time, time.Time, *time.Time, float64) error {
 	return nil
 }
+func (r *subscriptionExpiryRepoStub) ApplyMonthlyAdvance(context.Context, int64, time.Time, time.Time, *time.Time, float64) error {
+	panic("unexpected ApplyMonthlyAdvance call")
+}
 
 func (r *subscriptionExpiryRepoStub) UpdateStatus(context.Context, int64, string) error {
 	return nil
