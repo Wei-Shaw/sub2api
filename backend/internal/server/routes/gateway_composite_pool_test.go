@@ -157,9 +157,10 @@ func TestDispatchOpenAICompatibleGatewaySingleDeepSeekMatchesPoolFamily(t *testi
 	require.Zero(t, generic)
 }
 
-// 跨原生协议族池（兼容族混 anthropic/gemini/antigravity，或全部为原生族）
-// 必须显式 400 并点名候选平台，不得落入通用 handler。
-func TestDispatchOpenAICompatibleGatewayRejectsCrossFamilyPool(t *testing.T) {
+// 跨原生协议族池（兼容族混 anthropic/gemini/antigravity，或全部为原生族）不再
+// 显式 400：B1 起 routes 解除族门禁，落通用 handler，由 generic 网关按选中账号
+// 的协议能力分发转发。
+func TestDispatchOpenAICompatibleGatewayRoutesCrossFamilyPoolToGeneric(t *testing.T) {
 	for _, subset := range [][]string{
 		{service.PlatformAnthropic, service.PlatformDeepseek},
 		{service.PlatformOpenAI, service.PlatformGrok, service.PlatformGemini},
@@ -168,20 +169,15 @@ func TestDispatchOpenAICompatibleGatewayRejectsCrossFamilyPool(t *testing.T) {
 		{service.PlatformAnthropic, service.PlatformGemini, service.PlatformAntigravity},
 	} {
 		var openAI, generic int
-		recorder := httptest.NewRecorder()
-		c, _ := gin.CreateTestContext(recorder)
+		c, _ := gin.CreateTestContext(httptest.NewRecorder())
 		c.Request = httptest.NewRequest(http.MethodPost, "/v1/messages", nil).WithContext(
 			service.WithCompositeCandidatePlatforms(context.Background(), subset))
 		dispatchOpenAICompatibleGateway(c,
 			func(c *gin.Context) { openAI++ },
 			func(c *gin.Context) { generic++ })
 		require.Zero(t, openAI, "subset=%v must not enter the OpenAI handler", subset)
-		require.Zero(t, generic, "subset=%v must not fall through to the generic handler", subset)
-		require.True(t, c.IsAborted(), "subset=%v must abort", subset)
-		require.Equal(t, http.StatusBadRequest, recorder.Code, "subset=%v", subset)
-		for _, platform := range subset {
-			require.Contains(t, recorder.Body.String(), platform, "subset=%v must name every candidate", subset)
-		}
+		require.Equal(t, 1, generic, "subset=%v must fall through to the generic handler", subset)
+		require.False(t, c.IsAborted(), "subset=%v must not be aborted", subset)
 	}
 }
 
@@ -216,8 +212,8 @@ func TestDispatchOpenAICompatibleGatewayKeepsGenericTargets(t *testing.T) {
 	require.Equal(t, 1, generic)
 }
 
-// count_tokens 沿用既有端点语义：兼容族池进 OpenAI CountTokens，跨族池
-// 明确拒绝，grok 单目标保留 GrokCountTokens。
+// count_tokens 沿用既有端点语义：兼容族池进 OpenAI CountTokens，跨族池落通用
+// CountTokens，grok 单目标保留 GrokCountTokens。
 func TestDispatchOpenAICompatibleCountTokensPoolAndSingle(t *testing.T) {
 	var compatible, grok, generic int
 	handlers := []gin.HandlerFunc{
@@ -242,7 +238,7 @@ func TestDispatchOpenAICompatibleCountTokensPoolAndSingle(t *testing.T) {
 	require.Zero(t, grok)
 	require.Zero(t, generic)
 
-	// 跨族池拒绝，任何 handler 都不执行。
+	// 跨族池落通用 CountTokens（generic 链路对不可计数账号按排除重选处理）。
 	c := newContext(func(c *gin.Context) {
 		c.Request = c.Request.WithContext(service.WithCompositeCandidatePlatforms(c.Request.Context(),
 			[]string{service.PlatformAnthropic, service.PlatformDeepseek}))
@@ -251,8 +247,8 @@ func TestDispatchOpenAICompatibleCountTokensPoolAndSingle(t *testing.T) {
 	dispatchOpenAICompatibleCountTokens(c, handlers[0], handlers[1], handlers[2])
 	require.Zero(t, compatible)
 	require.Zero(t, grok)
-	require.Zero(t, generic)
-	require.True(t, c.IsAborted())
+	require.Equal(t, 1, generic)
+	require.False(t, c.IsAborted())
 
 	// grok 单目标保留本地估算路径。
 	compatible, grok, generic = 0, 0, 0
@@ -340,33 +336,86 @@ func TestCompositeTargetPlatformMiddlewareUsesAnthropicEnvelopeOnMessages(t *tes
 	require.Contains(t, decoded.Error.Message, "totally-unknown-alias")
 }
 
-// 跨族池在 /v1/messages 上同样返回 Anthropic 信封；CC 端点保持 OpenAI 信封。
-func TestCompositeCrossFamilyPoolEnvelopeFollowsInboundProtocol(t *testing.T) {
+// 跨族池在 /v1/messages 上不再被 400 拒绝：混族池与全兼容族池一样按族归属
+// 分发（混族落通用 handler），信封由具体 handler 的错误路径决定。
+func TestCompositeCrossFamilyPoolFallsThroughOnMessagesAndChatCompletions(t *testing.T) {
 	crossFamily := []string{service.PlatformAnthropic, service.PlatformDeepseek}
 
-	// /v1/messages：Anthropic 信封。
+	// /v1/messages：混族池落通用 handler，不再 400。
 	recorder := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(recorder)
 	c.Request = httptest.NewRequest(http.MethodPost, "/v1/messages", nil).WithContext(
 		service.WithCompositeCandidatePlatforms(context.Background(), crossFamily))
-	dispatchOpenAICompatibleGateway(c, func(c *gin.Context) {}, func(c *gin.Context) {})
-	require.True(t, c.IsAborted())
-	var decoded struct {
-		Type string `json:"type"`
-	}
-	require.NoError(t, json.Unmarshal(recorder.Body.Bytes(), &decoded))
-	require.Equal(t, "error", decoded.Type, "messages-family rejections must use the Anthropic envelope")
+	var openAI, generic int
+	dispatchOpenAICompatibleGateway(c,
+		func(c *gin.Context) { openAI++ },
+		func(c *gin.Context) { generic++ })
+	require.Zero(t, openAI)
+	require.Equal(t, 1, generic)
+	require.False(t, c.IsAborted())
+	require.Equal(t, http.StatusOK, recorder.Code, "cross-family pool must reach the generic handler instead of being rejected")
 
-	// /v1/chat/completions：OpenAI 信封。
+	// /v1/chat/completions：混族池同样落通用 handler（B2 再做池化循环）。
 	recorder2 := httptest.NewRecorder()
 	c2, _ := gin.CreateTestContext(recorder2)
 	c2.Request = httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil).WithContext(
 		service.WithCompositeCandidatePlatforms(context.Background(), crossFamily))
-	dispatchOpenAICompatibleGateway(c2, func(c *gin.Context) {}, func(c *gin.Context) {})
-	require.True(t, c2.IsAborted())
-	var decoded2 struct {
-		Type string `json:"type"`
+	var openAI2, generic2 int
+	dispatchOpenAICompatibleGateway(c2,
+		func(c *gin.Context) { openAI2++ },
+		func(c *gin.Context) { generic2++ })
+	require.Zero(t, openAI2)
+	require.Equal(t, 1, generic2)
+	require.False(t, c2.IsAborted())
+}
+
+// B1 解门禁后的完整路由行为（httptest engine + fake ownership resolver）：
+// 混族池（anthropic+kimi）POST /v1/messages 不再 400、进入 generic handler；
+// 全 OpenAI 族池仍走 OpenAI handler（不回归）。
+func TestCompositePoolMessagesDispatchEndToEnd(t *testing.T) {
+	newRouter := func(ownership compositePoolOwnershipStub, openAI, generic gin.HandlerFunc) *gin.Engine {
+		t.Helper()
+		gin.SetMode(gin.TestMode)
+		router := gin.New()
+		router.Use(gin.HandlerFunc(servermiddleware.APIKeyAuthMiddleware(func(c *gin.Context) {
+			groupID := int64(1)
+			c.Set(string(servermiddleware.ContextKeyAPIKey), &service.APIKey{
+				GroupID: &groupID,
+				Group:   &service.Group{ID: groupID, Platform: service.PlatformComposite},
+			})
+			c.Next()
+		})))
+		resolver := service.NewCompositeRouteResolver(compositeRouteRepoStub{})
+		resolver.SetModelOwnershipResolver(ownership.ResolveModelOwnership)
+		router.Use(compositeTargetPlatformMiddleware(resolver))
+		// 与 RegisterAPIGatewayRoutes 相同的 /v1/messages 分发闭包。
+		router.POST("/v1/messages", func(c *gin.Context) {
+			dispatchOpenAICompatibleGateway(c, openAI, generic)
+		})
+		return router
 	}
-	require.NoError(t, json.Unmarshal(recorder2.Body.Bytes(), &decoded2))
-	require.Empty(t, decoded2.Type, "chat completions rejections must keep the OpenAI envelope")
+
+	// 混族池：进入 generic handler（不再 400）。
+	genericCalled := false
+	router := newRouter(compositePoolOwnershipStub{platforms: []string{service.PlatformAnthropic, service.PlatformKimi}},
+		func(c *gin.Context) { t.Fatal("mixed pool must not enter the OpenAI handler") },
+		func(c *gin.Context) { genericCalled = true; c.Status(http.StatusNoContent) })
+	req := httptest.NewRequest(http.MethodPost, "/v1/messages", strings.NewReader(`{"model":"cn-alias","max_tokens":1,"messages":[]}`))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	require.True(t, genericCalled, "mixed pool /v1/messages must reach the generic handler")
+	require.Equal(t, http.StatusNoContent, w.Code)
+
+	// 全 OpenAI 族池：仍走 OpenAI handler（不回归）。
+	openAICalled := false
+	router2 := newRouter(compositePoolOwnershipStub{platforms: []string{service.PlatformDeepseek, service.PlatformKimi}},
+		func(c *gin.Context) { openAICalled = true; c.Status(http.StatusNoContent) },
+		func(c *gin.Context) { t.Fatal("all-OpenAI-family pool must not enter the generic handler") })
+	req2 := httptest.NewRequest(http.MethodPost, "/v1/messages", strings.NewReader(`{"model":"cn-alias","messages":[]}`))
+	req2.Header.Set("Content-Type", "application/json")
+	w2 := httptest.NewRecorder()
+	router2.ServeHTTP(w2, req2)
+	require.True(t, openAICalled, "all-OpenAI-family pool /v1/messages must keep the OpenAI handler")
+	require.Equal(t, http.StatusNoContent, w2.Code)
 }
