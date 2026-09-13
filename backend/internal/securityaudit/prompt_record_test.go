@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"regexp"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -19,14 +20,14 @@ type blockingPromptRecordRepository struct {
 	inserted        atomic.Int64
 }
 
-func (r *blockingPromptRecordRepository) InsertPromptRecord(context.Context, *PromptRecord) error {
-	r.inserted.Add(1)
+func (r *blockingPromptRecordRepository) InsertPromptRecord(context.Context, *PromptRecord) (int64, error) {
+	id := r.inserted.Add(1)
 	select {
 	case r.started <- struct{}{}:
 	default:
 	}
 	<-r.release
-	return nil
+	return id, nil
 }
 func (r *blockingPromptRecordRepository) UpdatePromptRecordResponse(_ context.Context, key PromptRecordKey, _ PromptResponse) (bool, error) {
 	if r.responseUpdated != nil {
@@ -44,6 +45,49 @@ func (*blockingPromptRecordRepository) GetPromptRecord(context.Context, int64) (
 func (*blockingPromptRecordRepository) DeletePromptRecord(context.Context, int64) error { return nil }
 func (*blockingPromptRecordRepository) DeletePromptRecords(context.Context, []int64) (int64, error) {
 	return 0, nil
+}
+func (*blockingPromptRecordRepository) DeleteAllPromptRecords(context.Context) (int64, error) {
+	return 0, nil
+}
+
+func TestPromptRecordPolicyAllowsOnlyUserFacingEndpointsAndTurns(t *testing.T) {
+	for _, endpoint := range []string{"/v1/responses", "/v1/messages", "/v1/chat/completions"} {
+		require.True(t, ShouldRecordPromptRequest(Request{Endpoint: endpoint}), endpoint)
+	}
+	for _, endpoint := range []string{"", "/v1/alpha/search", "/v1/embeddings", "/v1/responses/"} {
+		require.False(t, ShouldRecordPromptRequest(Request{Endpoint: endpoint}), endpoint)
+	}
+
+	for _, metadata := range []string{
+		`{"request_kind":"memory","thread_source":"memory_consolidation"}`,
+		`{"request_kind":"compaction"}`,
+		`{"request_kind":"turn","thread_source":"thread_title"}`,
+		`{"request_kind":"turn","thread_source":"system"}`,
+		`{"request_kind":"turn","turn_trigger":"thread_title"}`,
+	} {
+		require.False(t, ShouldRecordPromptRequest(Request{
+			Endpoint: "/v1/responses", Headers: map[string][]string{"X-Codex-Turn-Metadata": {metadata}},
+		}), metadata)
+	}
+	require.True(t, ShouldRecordPromptRequest(Request{
+		Endpoint: "/v1/responses", Headers: map[string][]string{"X-Codex-Turn-Metadata": {`{"request_kind":"turn","thread_source":"user"}`}},
+	}))
+	require.True(t, ShouldRecordPromptRequest(Request{
+		Endpoint: "/v1/responses", Headers: map[string][]string{"X-Codex-Turn-Metadata": {`invalid-json`}},
+	}))
+}
+
+func TestPromptRecordSessionIDUsesProviderSessionHeaderWithoutRequestIDFallback(t *testing.T) {
+	require.Equal(t, "codex-session", promptRecordSessionID(map[string][]string{
+		"Session-Id": {"codex-session"}, "X-Claude-Code-Session-Id": {"claude-session"},
+	}))
+	require.Equal(t, "claude-session", promptRecordSessionID(map[string][]string{
+		"X-Claude-Code-Session-Id": {"claude-session"},
+	}))
+	require.Empty(t, promptRecordSessionID(nil))
+	require.Len(t, []byte(promptRecordSessionID(map[string][]string{
+		"Session-Id": {strings.Repeat("会", 100)},
+	})), 126)
 }
 
 func TestPromptRecordServiceUsesBoundedQueuesWhenSaturated(t *testing.T) {
@@ -94,7 +138,7 @@ func TestPromptRecordResponseQueueIsIndependentFromBlockedRequestWrites(t *testi
 	}
 
 	_, responseReference := newPromptRecordingRequestPair(Request{RequestID: "response", Stage: "http", APIKeyID: 7})
-	key := PromptRecordKey{RequestID: "response", Stage: "http", APIKeyID: 7, PromptHash: "hash"}
+	key := PromptRecordKey{ID: 42}
 	responseReference.recordingCorrelation.complete(key, true)
 	service.RecordResponse(context.Background(), responseReference, PromptResponse{Text: "ok", CapturedAt: time.Now()})
 
@@ -113,12 +157,12 @@ type recoveringPromptRecordRepository struct {
 	done  chan struct{}
 }
 
-func (r *recoveringPromptRecordRepository) InsertPromptRecord(context.Context, *PromptRecord) error {
+func (r *recoveringPromptRecordRepository) InsertPromptRecord(context.Context, *PromptRecord) (int64, error) {
 	if r.calls.Add(1) == 1 {
 		panic("record storage panic")
 	}
 	r.done <- struct{}{}
-	return nil
+	return r.calls.Load(), nil
 }
 
 func TestPromptRecordWorkerRecoversFromStoragePanic(t *testing.T) {
@@ -144,21 +188,21 @@ func TestListPromptRecordsReturnsCallMetadataWithoutPromptText(t *testing.T) {
 
 	mock.ExpectQuery(regexp.QuoteMeta("SELECT COUNT(*) FROM prompt_records WHERE (expires_at IS NULL OR expires_at > NOW())")).
 		WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(1))
-	mock.ExpectQuery("SELECT id, request_id, turn_no, stage.*FROM prompt_records WHERE .*expires_at.* ORDER BY created_at DESC, id DESC").
+	mock.ExpectQuery("SELECT id, session_id, turn_no, stage.*FROM prompt_records WHERE .*expires_at.* ORDER BY created_at DESC, id DESC").
 		WithArgs(20, 0).
 		WillReturnRows(sqlmock.NewRows([]string{
-			"id", "request_id", "turn_no", "stage", "user_id", "username_snapshot", "user_email_snapshot",
+			"id", "session_id", "turn_no", "stage", "user_id", "username_snapshot", "user_email_snapshot",
 			"api_key_id", "api_key_name_snapshot", "group_id", "group_name", "provider", "endpoint", "protocol",
 			"model", "prompt_hash", "prompt_length", "message_count", "risk_status", "risk_checked_at", "created_at", "expires_at",
 		}).AddRow(
-			7, "req-7", 1, "http", 2, "alice", "alice@example.com", 3, "primary", nil, "", "openai",
+			7, "session-7", 1, "http", 2, "alice", "alice@example.com", 3, "primary", nil, "", "openai",
 			"/v1/chat/completions", "openai_chat", "gpt-test", "hash", 128, 4, "pending", nil, createdAt, nil,
 		))
 
 	page, err := repository.ListPromptRecords(context.Background(), PromptRecordFilter{}, 1, 20)
 	require.NoError(t, err)
 	require.Len(t, page.Items, 1)
-	require.Equal(t, "req-7", page.Items[0].RequestID)
+	require.Equal(t, "session-7", page.Items[0].SessionID)
 	require.Equal(t, 128, page.Items[0].PromptLength)
 
 	payload, err := json.Marshal(page)

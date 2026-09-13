@@ -20,11 +20,7 @@ type preparedPromptRecord struct {
 }
 
 type PromptRecordKey struct {
-	RequestID  string
-	Stage      string
-	TurnNo     int
-	APIKeyID   int64
-	PromptHash string
+	ID int64
 }
 
 type promptRecordCorrelation struct {
@@ -226,12 +222,5 @@ func promptRecordFallbackSnapshot(req Request, body []byte) PromptSnapshot {
 		GroupID: cloneInt64Ptr(req.GroupID), GroupName: req.GroupName, Provider: req.Provider,
 		Endpoint: req.Endpoint, Protocol: req.Protocol, Model: req.Model,
 		Stage: ifEmpty(req.Stage, "http"), PromptHash: hex.EncodeToString(sum[:]),
-	}
-}
-
-func promptRecordKey(req Request, promptHash string) PromptRecordKey {
-	return PromptRecordKey{
-		RequestID: req.RequestID, Stage: ifEmpty(req.Stage, "http"), TurnNo: req.TurnNo,
-		APIKeyID: req.APIKeyID, PromptHash: promptHash,
 	}
 }

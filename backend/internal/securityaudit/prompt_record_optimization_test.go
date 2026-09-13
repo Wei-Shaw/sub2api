@@ -27,21 +27,21 @@ func TestRecordReadyResponseBypassesPendingAndLateRequestStillCompletes(t *testi
 	s := newPromptRecordService(repo, 2, 2, 1)
 	_, pending := newPromptRecordingRequestPair(Request{RequestID: "slow"})
 	_, ready := newPromptRecordingRequestPair(Request{RequestID: "ready"})
-	ready.recordingCorrelation.complete(PromptRecordKey{RequestID: "ready"}, true)
+	ready.recordingCorrelation.complete(PromptRecordKey{ID: 2}, true)
 	s.RecordResponse(context.Background(), pending, PromptResponse{Text: "slow result"})
 	s.RecordResponse(context.Background(), ready, PromptResponse{Text: "ready result"})
 	select {
 	case key := <-repo.responseUpdated:
-		require.Equal(t, "ready", key.RequestID)
+		require.EqualValues(t, 2, key.ID)
 	case <-time.After(time.Second):
 		t.Fatal("ready response blocked by pending request")
 	}
 	// Exceed the removed five-second identity timeout.
 	time.Sleep(5100 * time.Millisecond)
-	pending.recordingCorrelation.complete(PromptRecordKey{RequestID: "slow"}, true)
+	pending.recordingCorrelation.complete(PromptRecordKey{ID: 1}, true)
 	select {
 	case key := <-repo.responseUpdated:
-		require.Equal(t, "slow", key.RequestID)
+		require.EqualValues(t, 1, key.ID)
 	case <-time.After(time.Second):
 		t.Fatal("late request lost its response")
 	}
@@ -78,10 +78,10 @@ func TestRecordShutdownDrainsRequestsAndResponses(t *testing.T) {
 
 type cancellableRecordRepository struct{ blockingPromptRecordRepository }
 
-func (r *cancellableRecordRepository) InsertPromptRecord(ctx context.Context, _ *PromptRecord) error {
+func (r *cancellableRecordRepository) InsertPromptRecord(ctx context.Context, _ *PromptRecord) (int64, error) {
 	r.started <- struct{}{}
 	<-ctx.Done()
-	return ctx.Err()
+	return 0, ctx.Err()
 }
 
 func TestRecordShutdownDeadlineCancelsStorage(t *testing.T) {

@@ -141,7 +141,7 @@ func TestPresetRecordingKeepsResponseIdentityAndAuditInput(t *testing.T) {
 			require.NotContains(t, record.PromptText, "preset")
 			require.Contains(t, promptRecordSnapshot(req).FullPrompt, "preset")
 			records.persistResponse(responseReference, PromptResponse{Text: "response", CapturedAt: time.Now()})
-			require.Equal(t, record.PromptHash, repo.responseHash)
+			require.EqualValues(t, 37, repo.responseID)
 		case <-time.After(3 * time.Second):
 			t.Fatal("record not persisted")
 		}

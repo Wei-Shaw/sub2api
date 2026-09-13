@@ -32,6 +32,7 @@ type fakePromptAdminService struct {
 	getRecord     func(context.Context, int64) (*PromptRecord, error)
 	deleteRecord  func(context.Context, int64) error
 	deleteRecords func(context.Context, []int64) (int64, error)
+	deleteAll     func(context.Context) (int64, error)
 	recording     PromptRecordingConfig
 	saveRecording func(context.Context, bool) (PromptRecordingConfig, error)
 }
@@ -111,6 +112,12 @@ func (s *fakePromptAdminService) DeletePromptRecords(ctx context.Context, ids []
 		return int64(len(ids)), nil
 	}
 	return s.deleteRecords(ctx, ids)
+}
+func (s *fakePromptAdminService) DeleteAllPromptRecords(ctx context.Context) (int64, error) {
+	if s.deleteAll == nil {
+		return 0, nil
+	}
+	return s.deleteAll(ctx)
 }
 func (s *fakePromptAdminService) GetPromptRecordingConfig() PromptRecordingConfig {
 	return s.recording
@@ -198,6 +205,7 @@ func promptAdminRouter(service PromptAdminService) *gin.Engine {
 	records.GET("", handler.ListPromptRecords)
 	records.GET("/recording", handler.GetPromptRecordingConfig)
 	records.PUT("/recording", handler.UpdatePromptRecordingConfig)
+	records.DELETE("/all", handler.DeleteAllPromptRecords)
 	records.GET("/:id", handler.GetPromptRecord)
 	records.DELETE("/:id", handler.DeletePromptRecord)
 	records.POST("/batch-delete", handler.BatchDeletePromptRecords)
@@ -401,4 +409,13 @@ func TestPromptRecordBatchDeleteDeduplicatesIDs(t *testing.T) {
 		"/admin/prompt-records/batch-delete", map[string]any{"ids": []int64{4, 4, 8}})
 	require.Equal(t, http.StatusOK, response.Code)
 	require.Contains(t, response.Body.String(), `"deleted":2`)
+}
+
+func TestPromptRecordDeleteAllReturnsDeletedCount(t *testing.T) {
+	service := &fakePromptAdminService{deleteAll: func(context.Context) (int64, error) {
+		return 983, nil
+	}}
+	response := promptAdminRequest(t, promptAdminRouter(service), http.MethodDelete, "/admin/prompt-records/all", nil)
+	require.Equal(t, http.StatusOK, response.Code)
+	require.Contains(t, response.Body.String(), `"deleted":983`)
 }

@@ -6,7 +6,8 @@ const mocks = vi.hoisted(() => ({
   listPromptRecords: vi.fn(),
   getPromptRecord: vi.fn(),
   deletePromptRecord: vi.fn(),
-	batchDeletePromptRecords: vi.fn(),
+		batchDeletePromptRecords: vi.fn(),
+		deleteAllPromptRecords: vi.fn(),
 	getPromptRecordingConfig: vi.fn(),
 		updatePromptRecordingConfig: vi.fn(),
 		copyToClipboard: vi.fn(),
@@ -20,6 +21,7 @@ vi.mock('../api', () => ({
   getPromptRecord: mocks.getPromptRecord,
   deletePromptRecord: mocks.deletePromptRecord,
 	batchDeletePromptRecords: mocks.batchDeletePromptRecords,
+	deleteAllPromptRecords: mocks.deleteAllPromptRecords,
 	getPromptRecordingConfig: mocks.getPromptRecordingConfig,
 	updatePromptRecordingConfig: mocks.updatePromptRecordingConfig,
 }))
@@ -41,16 +43,18 @@ vi.mock('vue-i18n', async () => {
   const actual = await vi.importActual<typeof import('vue-i18n')>('vue-i18n')
   return {
     ...actual,
-    useI18n: () => ({
-      t: (key: string, params?: Record<string, unknown>) =>
-        key.replace(/\{(\w+)\}/g, (_, token) => String(params?.[token] ?? `{${token}}`)),
-    }),
+		useI18n: () => ({
+			t: (key: string, params?: Record<string, unknown>) => {
+				const rendered = key.replace(/\{(\w+)\}/g, (_, token) => String(params?.[token] ?? `{${token}}`))
+				return params && 'count' in params ? `${rendered} ${String(params.count)}` : rendered
+			},
+		}),
   }
 })
 
 const summary = {
   id: 7,
-  request_id: 'req-7',
+	session_id: 'session-7',
   turn_no: 1,
   stage: 'http',
   user_id: 2,
@@ -100,6 +104,7 @@ describe('PromptRecordsView', () => {
     })
     mocks.deletePromptRecord.mockResolvedValue(undefined)
 		mocks.batchDeletePromptRecords.mockResolvedValue({ deleted: 1 })
+		mocks.deleteAllPromptRecords.mockResolvedValue({ deleted: 983 })
 		mocks.getPromptRecordingConfig.mockResolvedValue({
 			enabled: true,
 			headers_enabled: true,
@@ -139,11 +144,12 @@ describe('PromptRecordsView', () => {
     wrapper.unmount()
   })
 
-  it('uses cursor history and resets it when filters change', async () => {
-    mocks.listPromptRecords.mockResolvedValue({ items: [summary], has_more: true, next_cursor: 'cursor-two' })
+	it('uses cursor history and resets it when filters change', async () => {
+		mocks.listPromptRecords.mockResolvedValue({ items: [summary], has_more: true, next_cursor: 'cursor-two', total: 983 })
     const wrapper = mount(PromptRecordsView, { global: { stubs: { AppLayout: { template: '<div><slot /></div>' } } } })
     await flushPromises()
-    expect(mocks.listPromptRecords.mock.calls[0][0]).toMatchObject({ pagination: 'cursor', page: 1 })
+		expect(mocks.listPromptRecords.mock.calls[0][0]).toMatchObject({ pagination: 'cursor', page: 1 })
+		expect(wrapper.get('[data-test="record-total"]').text()).toContain('983')
     await wrapper.get('[data-test="record-next"]').trigger('click')
     await flushPromises()
     expect(mocks.listPromptRecords.mock.calls[1][0]).toMatchObject({ cursor: 'cursor-two', page: 2 })
@@ -353,7 +359,7 @@ describe('PromptRecordsView', () => {
     wrapper.unmount()
   })
 
-  it('batch deletes selected rows', async () => {
+	it('batch deletes selected rows', async () => {
     const wrapper = mount(PromptRecordsView, {
       global: {
         stubs: {
@@ -373,7 +379,40 @@ describe('PromptRecordsView', () => {
     await wrapper.get('[data-test="confirm-delete"]').trigger('click')
     await flushPromises()
 
-    expect(mocks.batchDeletePromptRecords).toHaveBeenCalledWith([7])
-    wrapper.unmount()
-  })
+		expect(mocks.batchDeletePromptRecords).toHaveBeenCalledWith([7])
+		wrapper.unmount()
+	})
+
+	it('deletes every prompt record only after confirmation', async () => {
+		mocks.listPromptRecords
+			.mockResolvedValueOnce({ items: [summary], total: 983, has_more: true, next_cursor: 'next' })
+			.mockResolvedValueOnce({ items: [], total: 0, has_more: false })
+		const wrapper = mount(PromptRecordsView, {
+			global: {
+				stubs: {
+					AppLayout: { template: '<div><slot /></div>' },
+					ConfirmDialog: {
+						props: ['show', 'title', 'message'], emits: ['confirm', 'cancel'],
+						template: '<button v-if="show" data-test="confirm-delete" @click="$emit(\'confirm\')">{{ title }} {{ message }}</button>',
+					},
+				},
+			},
+		})
+		await flushPromises()
+		await wrapper.get('[data-test="prompt-record-delete-all"]').trigger('click')
+		expect(mocks.deleteAllPromptRecords).not.toHaveBeenCalled()
+		expect(wrapper.get('[data-test="confirm-delete"]').text()).toContain('983')
+		await wrapper.get('[data-test="confirm-delete"]').trigger('click')
+		await flushPromises()
+		expect(mocks.deleteAllPromptRecords).toHaveBeenCalledOnce()
+		expect(mocks.listPromptRecords.mock.lastCall?.[0]).toMatchObject({ page: 1, cursor: undefined })
+		wrapper.unmount()
+	})
+
+	it('does not render the record processing status panel', async () => {
+		const wrapper = mount(PromptRecordsView, { global: { stubs: { AppLayout: { template: '<div><slot /></div>' } } } })
+		await flushPromises()
+		expect(wrapper.find('[data-test="record-queue-stats"]').exists()).toBe(false)
+		wrapper.unmount()
+	})
 })

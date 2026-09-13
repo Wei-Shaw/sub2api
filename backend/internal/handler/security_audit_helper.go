@@ -99,8 +99,11 @@ func runSecurityAudit(c *gin.Context, reqLog *zap.Logger, coordinator *securitya
 		return &decision
 	}
 	request := buildSecurityAuditRequest(c, apiKey, subject, protocol, model, body, stage)
-	request, responseReference := coordinator.PreparePromptRecording(request)
-	c.Set(securityAuditRequestContextKey, responseReference)
+	if securityaudit.ShouldRecordPromptRequest(request) {
+		var responseReference securityaudit.Request
+		request, responseReference = coordinator.PreparePromptRecording(request)
+		c.Set(securityAuditRequestContextKey, responseReference)
+	}
 	if isSecurityAuditWebSocketStage(request.Stage) {
 		if turnNo, ok := securityAuditWSTurn(c); ok {
 			bodyHash := sha256.Sum256(body)

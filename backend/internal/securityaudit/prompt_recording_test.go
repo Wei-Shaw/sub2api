@@ -104,17 +104,17 @@ func TestPromptRecordingContentPersistsIndependentSwitches(t *testing.T) {
 
 type capturedRequestRepository struct {
 	blockingPromptRecordRepository
-	records      chan *PromptRecord
-	responseHash string
+	records    chan *PromptRecord
+	responseID int64
 }
 
-func (r *capturedRequestRepository) InsertPromptRecord(_ context.Context, record *PromptRecord) error {
+func (r *capturedRequestRepository) InsertPromptRecord(_ context.Context, record *PromptRecord) (int64, error) {
 	r.records <- record
-	return nil
+	return 37, nil
 }
 
 func (r *capturedRequestRepository) UpdatePromptRecordResponse(_ context.Context, key PromptRecordKey, _ PromptResponse) (bool, error) {
-	r.responseHash = key.PromptHash
+	r.responseID = key.ID
 	return true, nil
 }
 
@@ -160,16 +160,16 @@ func TestPromptRecordingContentCombinationsRetainFullRequest(t *testing.T) {
 func TestPromptRecordingRetainsRequestsWithoutTextAndMatchesResponse(t *testing.T) {
 	repo := &capturedRequestRepository{records: make(chan *PromptRecord, 1)}
 	service := newPromptRecordService(repo, 1, 1, 1)
-	req := Request{RequestID: "image-only", Protocol: "openai_chat_completions", Body: []byte(`{"messages":[{"role":"user","content":[{"type":"image_url","image_url":{"url":"data:image/png;base64,abcd"}}]}]}`)}
+	req := Request{RequestID: "image-only", Headers: http.Header{"Session-Id": {"session-image"}}, Protocol: "openai_chat_completions", Body: []byte(`{"messages":[{"role":"user","content":[{"type":"image_url","image_url":{"url":"data:image/png;base64,abcd"}}]}]}`)}
 	recordRequest, responseReference := newPromptRecordingRequestPair(req)
 	service.persist(recordRequest)
 	record := <-repo.records
 	require.NotContains(t, record.RequestBody, "image_url")
 	require.NotContains(t, record.RequestBody, "abcd")
-	require.Equal(t, "image-only", record.RequestID)
+	require.Equal(t, "session-image", record.SessionID)
 	service.persistResponse(responseReference, PromptResponse{Text: "image response", CapturedAt: time.Now()})
 	require.NotEmpty(t, record.PromptHash)
-	require.Equal(t, record.PromptHash, repo.responseHash)
+	require.EqualValues(t, 37, repo.responseID)
 }
 
 func TestPreparePromptRecordReturnsStoredBodyTextAndOriginalHash(t *testing.T) {

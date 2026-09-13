@@ -205,6 +205,13 @@ func (s *PromptService) DeletePromptRecords(ctx context.Context, ids []int64) (i
 	return s.records.DeletePromptRecords(ctx, ids)
 }
 
+func (s *PromptService) DeleteAllPromptRecords(ctx context.Context) (int64, error) {
+	if s == nil || s.records == nil {
+		return 0, errors.New("prompt record service unavailable")
+	}
+	return s.records.DeleteAllPromptRecords(ctx)
+}
+
 func (s *PromptService) Start(ctx context.Context) error {
 	if s == nil || s.config == nil || s.runner == nil {
 		return errors.New("prompt audit service unavailable")

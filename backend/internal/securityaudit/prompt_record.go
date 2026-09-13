@@ -30,7 +30,7 @@ const (
 // update them without changing request handling.
 type PromptRecord struct {
 	ID                 int64      `json:"id"`
-	RequestID          string     `json:"request_id"`
+	SessionID          string     `json:"session_id"`
 	TurnNo             int        `json:"turn_no"`
 	Stage              string     `json:"stage"`
 	UserID             int64      `json:"user_id"`
@@ -65,7 +65,7 @@ type PromptRecord struct {
 // results are loaded through GetPromptRecord when an administrator opens a row.
 type PromptRecordSummary struct {
 	ID            int64      `json:"id"`
-	RequestID     string     `json:"request_id"`
+	SessionID     string     `json:"session_id"`
 	TurnNo        int        `json:"turn_no"`
 	Stage         string     `json:"stage"`
 	UserID        int64      `json:"user_id"`
@@ -92,7 +92,7 @@ type PromptRecordFilter struct {
 	CursorMode      bool
 	CursorCreatedAt *time.Time
 	CursorID        int64
-	RequestID       string
+	SessionID       string
 	UserID          *int64
 	APIKeyID        *int64
 	Model           string
@@ -135,12 +135,13 @@ type PromptRecordQueueStats struct {
 }
 
 type PromptRecordRepository interface {
-	InsertPromptRecord(ctx context.Context, record *PromptRecord) error
+	InsertPromptRecord(ctx context.Context, record *PromptRecord) (int64, error)
 	UpdatePromptRecordResponse(ctx context.Context, key PromptRecordKey, response PromptResponse) (bool, error)
 	ListPromptRecords(ctx context.Context, filter PromptRecordFilter, page, pageSize int) (*PromptRecordPage, error)
 	GetPromptRecord(ctx context.Context, id int64) (*PromptRecord, error)
 	DeletePromptRecord(ctx context.Context, id int64) error
 	DeletePromptRecords(ctx context.Context, ids []int64) (int64, error)
+	DeleteAllPromptRecords(ctx context.Context) (int64, error)
 }
 
 type PromptResponse struct {
@@ -150,26 +151,27 @@ type PromptResponse struct {
 	CapturedAt time.Time
 }
 
-func (r *PostgreSQLRepository) InsertPromptRecord(ctx context.Context, record *PromptRecord) error {
+func (r *PostgreSQLRepository) InsertPromptRecord(ctx context.Context, record *PromptRecord) (int64, error) {
 	if r == nil || r.db == nil {
-		return errors.New("prompt record database unavailable")
+		return 0, errors.New("prompt record database unavailable")
 	}
 	if record == nil {
-		return errors.New("prompt record is empty")
+		return 0, errors.New("prompt record is empty")
 	}
-	_, err := r.db.ExecContext(ctx, `
+	var id int64
+	err := r.db.QueryRowContext(ctx, `
 		INSERT INTO prompt_records (
-			request_id, turn_no, stage, user_id, username_snapshot, user_email_snapshot,
+			session_id, turn_no, stage, user_id, username_snapshot, user_email_snapshot,
 			api_key_id, api_key_name_snapshot, group_id, group_name, provider, endpoint,
 			protocol, model, prompt_hash, prompt_text, prompt_length, message_count,
 			risk_status, created_at, expires_at, request_body, request_headers
 		) VALUES ($1,$2,$3,NULLIF($4,0),$5,$6,NULLIF($7,0),$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23)
-		ON CONFLICT DO NOTHING`,
-		record.RequestID, record.TurnNo, record.Stage, record.UserID, record.Username, record.UserEmail,
+		RETURNING id`,
+		record.SessionID, record.TurnNo, record.Stage, record.UserID, record.Username, record.UserEmail,
 		record.APIKeyID, record.APIKeyName, record.GroupID, record.GroupName, record.Provider, record.Endpoint,
 		record.Protocol, record.Model, record.PromptHash, record.PromptText, record.PromptLength, record.MessageCount,
-		ifEmpty(record.RiskStatus, "pending"), record.CreatedAt, record.ExpiresAt, record.RequestBody, record.RequestHeaders)
-	return err
+		ifEmpty(record.RiskStatus, "pending"), record.CreatedAt, record.ExpiresAt, record.RequestBody, record.RequestHeaders).Scan(&id)
+	return id, err
 }
 
 func (r *PostgreSQLRepository) UpdatePromptRecordResponse(ctx context.Context, key PromptRecordKey, captured PromptResponse) (bool, error) {
@@ -178,9 +180,7 @@ func (r *PostgreSQLRepository) UpdatePromptRecordResponse(ctx context.Context, k
 	}
 	result, err := r.db.ExecContext(ctx, `UPDATE prompt_records
 		SET response_text=$1, response_length=$2, response_truncated=$3, response_captured_at=$4
-		WHERE request_id=$5 AND stage=$6 AND turn_no=$7 AND COALESCE(api_key_id,0)=$8 AND prompt_hash=$9`,
-		captured.Text, captured.Length, captured.Truncated, captured.CapturedAt,
-		key.RequestID, ifEmpty(key.Stage, "http"), key.TurnNo, key.APIKeyID, key.PromptHash)
+		WHERE id=$5`, captured.Text, captured.Length, captured.Truncated, captured.CapturedAt, key.ID)
 	if err != nil {
 		return false, err
 	}
@@ -204,8 +204,8 @@ func (r *PostgreSQLRepository) ListPromptRecords(ctx context.Context, filter Pro
 		args = append(args, value)
 		where = append(where, fmt.Sprintf(sqlText, len(args)))
 	}
-	if filter.RequestID != "" {
-		add("request_id = $%d", filter.RequestID)
+	if filter.SessionID != "" {
+		add("session_id = $%d", filter.SessionID)
 	}
 	if filter.UserID != nil {
 		add("user_id = $%d", *filter.UserID)
@@ -227,6 +227,9 @@ func (r *PostgreSQLRepository) ListPromptRecords(ctx context.Context, filter Pro
 	}
 	whereSQL := strings.Join(where, " AND ")
 	var total int64
+	if err := r.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM prompt_records WHERE "+whereSQL, args...).Scan(&total); err != nil {
+		return nil, err
+	}
 	var pagingSQL string
 	if filter.CursorMode {
 		if filter.CursorCreatedAt != nil {
@@ -236,13 +239,10 @@ func (r *PostgreSQLRepository) ListPromptRecords(ctx context.Context, filter Pro
 		args = append(args, pageSize+1)
 		pagingSQL = fmt.Sprintf(" LIMIT $%d", len(args))
 	} else {
-		if err := r.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM prompt_records WHERE "+whereSQL, args...).Scan(&total); err != nil {
-			return nil, err
-		}
 		args = append(args, pageSize, int64(page-1)*int64(pageSize))
 		pagingSQL = fmt.Sprintf(" LIMIT $%d OFFSET $%d", len(args)-1, len(args))
 	}
-	rows, err := r.db.QueryContext(ctx, `SELECT id, request_id, turn_no, stage, COALESCE(user_id,0), username_snapshot,
+	rows, err := r.db.QueryContext(ctx, `SELECT id, session_id, turn_no, stage, COALESCE(user_id,0), username_snapshot,
 		user_email_snapshot, COALESCE(api_key_id,0), api_key_name_snapshot, group_id, group_name, provider, endpoint,
 		protocol, model, prompt_hash, prompt_length, message_count, risk_status,
 		risk_checked_at, created_at, expires_at FROM prompt_records WHERE `+whereSQL+` ORDER BY created_at DESC, id DESC`+pagingSQL, args...)
@@ -255,7 +255,7 @@ func (r *PostgreSQLRepository) ListPromptRecords(ctx context.Context, filter Pro
 		item := new(PromptRecordSummary)
 		var groupID sql.NullInt64
 		var riskCheckedAt, expiresAt sql.NullTime
-		if err := rows.Scan(&item.ID, &item.RequestID, &item.TurnNo, &item.Stage, &item.UserID, &item.Username, &item.UserEmail, &item.APIKeyID, &item.APIKeyName, &groupID, &item.GroupName, &item.Provider, &item.Endpoint, &item.Protocol, &item.Model, &item.PromptHash, &item.PromptLength, &item.MessageCount, &item.RiskStatus, &riskCheckedAt, &item.CreatedAt, &expiresAt); err != nil {
+		if err := rows.Scan(&item.ID, &item.SessionID, &item.TurnNo, &item.Stage, &item.UserID, &item.Username, &item.UserEmail, &item.APIKeyID, &item.APIKeyName, &groupID, &item.GroupName, &item.Provider, &item.Endpoint, &item.Protocol, &item.Model, &item.PromptHash, &item.PromptLength, &item.MessageCount, &item.RiskStatus, &riskCheckedAt, &item.CreatedAt, &expiresAt); err != nil {
 			return nil, err
 		}
 		if groupID.Valid {
@@ -290,11 +290,11 @@ func (r *PostgreSQLRepository) GetPromptRecord(ctx context.Context, id int64) (*
 	item := new(PromptRecord)
 	var groupID sql.NullInt64
 	var responseCapturedAt, riskCheckedAt, expiresAt sql.NullTime
-	err := r.db.QueryRowContext(ctx, `SELECT id, request_id, turn_no, stage, COALESCE(user_id,0), username_snapshot,
+	err := r.db.QueryRowContext(ctx, `SELECT id, session_id, turn_no, stage, COALESCE(user_id,0), username_snapshot,
 		user_email_snapshot, COALESCE(api_key_id,0), api_key_name_snapshot, group_id, group_name, provider, endpoint,
 		protocol, model, prompt_hash, prompt_text, prompt_length, message_count, risk_status, risk_result::text,
 		response_text, response_length, response_truncated, response_captured_at,
-		risk_checked_at, created_at, expires_at, request_body, request_headers FROM prompt_records WHERE id=$1`, id).Scan(&item.ID, &item.RequestID, &item.TurnNo, &item.Stage, &item.UserID, &item.Username, &item.UserEmail, &item.APIKeyID, &item.APIKeyName, &groupID, &item.GroupName, &item.Provider, &item.Endpoint, &item.Protocol, &item.Model, &item.PromptHash, &item.PromptText, &item.PromptLength, &item.MessageCount, &item.RiskStatus, &item.RiskResult, &item.ResponseText, &item.ResponseLength, &item.ResponseTruncated, &responseCapturedAt, &riskCheckedAt, &item.CreatedAt, &expiresAt, &item.RequestBody, &item.RequestHeaders)
+		risk_checked_at, created_at, expires_at, request_body, request_headers FROM prompt_records WHERE id=$1`, id).Scan(&item.ID, &item.SessionID, &item.TurnNo, &item.Stage, &item.UserID, &item.Username, &item.UserEmail, &item.APIKeyID, &item.APIKeyName, &groupID, &item.GroupName, &item.Provider, &item.Endpoint, &item.Protocol, &item.Model, &item.PromptHash, &item.PromptText, &item.PromptLength, &item.MessageCount, &item.RiskStatus, &item.RiskResult, &item.ResponseText, &item.ResponseLength, &item.ResponseTruncated, &responseCapturedAt, &riskCheckedAt, &item.CreatedAt, &expiresAt, &item.RequestBody, &item.RequestHeaders)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrPromptRecordNotFound
 	}
@@ -360,6 +360,17 @@ func (r *PostgreSQLRepository) DeletePromptRecords(ctx context.Context, ids []in
 		return 0, nil
 	}
 	result, err := r.db.ExecContext(ctx, "DELETE FROM prompt_records WHERE id = ANY($1)", pq.Array(ids))
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
+func (r *PostgreSQLRepository) DeleteAllPromptRecords(ctx context.Context) (int64, error) {
+	if r == nil || r.db == nil {
+		return 0, errors.New("prompt record database unavailable")
+	}
+	result, err := r.db.ExecContext(ctx, "DELETE FROM prompt_records")
 	if err != nil {
 		return 0, err
 	}
@@ -529,8 +540,7 @@ func (s *PromptRecordService) persist(req Request) {
 		return
 	}
 	snapshot := prepared.StoredSnapshot
-	key := promptRecordKey(req, prepared.OriginalPromptHash)
-	record := &PromptRecord{RequestID: snapshot.RequestID, Stage: ifEmpty(snapshot.Stage, req.Stage), UserID: snapshot.UserID, Username: snapshot.UsernameSnapshot, UserEmail: snapshot.UserEmailSnapshot, APIKeyID: snapshot.APIKeyID, APIKeyName: snapshot.APIKeyNameSnapshot, GroupID: snapshot.GroupID, GroupName: snapshot.GroupName, Provider: snapshot.Provider, Endpoint: snapshot.Endpoint, Protocol: snapshot.Protocol, Model: snapshot.Model, PromptHash: key.PromptHash, PromptText: snapshot.FullPrompt, PromptLength: snapshot.PromptLength, MessageCount: snapshot.MessageCount, RiskStatus: "pending", CreatedAt: time.Now()}
+	record := &PromptRecord{SessionID: promptRecordSessionID(req.Headers), Stage: ifEmpty(snapshot.Stage, req.Stage), UserID: snapshot.UserID, Username: snapshot.UsernameSnapshot, UserEmail: snapshot.UserEmailSnapshot, APIKeyID: snapshot.APIKeyID, APIKeyName: snapshot.APIKeyNameSnapshot, GroupID: snapshot.GroupID, GroupName: snapshot.GroupName, Provider: snapshot.Provider, Endpoint: snapshot.Endpoint, Protocol: snapshot.Protocol, Model: snapshot.Model, PromptHash: prepared.OriginalPromptHash, PromptText: snapshot.FullPrompt, PromptLength: snapshot.PromptLength, MessageCount: snapshot.MessageCount, RiskStatus: "pending", CreatedAt: time.Now()}
 	record.TurnNo = req.TurnNo
 	if req.recordingRetentionDays > 0 {
 		expiresAt := record.CreatedAt.AddDate(0, 0, req.recordingRetentionDays)
@@ -553,7 +563,7 @@ func (s *PromptRecordService) persist(req Request) {
 		}
 		encoded, err := json.Marshal(headers)
 		if err != nil {
-			req.recordingCorrelation.complete(key, false)
+			req.recordingCorrelation.complete(PromptRecordKey{}, false)
 			s.recordPersistFailure(req, "prompt_record_headers_encode_failed")
 			return
 		}
@@ -561,12 +571,13 @@ func (s *PromptRecordService) persist(req Request) {
 	}
 	ctx, cancel := context.WithTimeout(s.ctx, promptRecordPersistTimeout)
 	defer cancel()
-	if err := s.repo.InsertPromptRecord(ctx, record); err != nil {
-		req.recordingCorrelation.complete(key, false)
+	recordID, err := s.repo.InsertPromptRecord(ctx, record)
+	if err != nil {
+		req.recordingCorrelation.complete(PromptRecordKey{}, false)
 		s.recordPersistFailure(req, "prompt_record_insert_failed")
 		return
 	}
-	req.recordingCorrelation.complete(key, true)
+	req.recordingCorrelation.complete(PromptRecordKey{ID: recordID}, true)
 }
 
 func (s *PromptRecordService) persistResponse(req Request, captured PromptResponse) {
@@ -643,6 +654,9 @@ func (s *PromptRecordService) DeletePromptRecord(ctx context.Context, id int64) 
 }
 func (s *PromptRecordService) DeletePromptRecords(ctx context.Context, ids []int64) (int64, error) {
 	return s.repo.DeletePromptRecords(ctx, ids)
+}
+func (s *PromptRecordService) DeleteAllPromptRecords(ctx context.Context) (int64, error) {
+	return s.repo.DeleteAllPromptRecords(ctx)
 }
 
 func (s *PromptRecordService) QueueStats() PromptRecordQueueStats {

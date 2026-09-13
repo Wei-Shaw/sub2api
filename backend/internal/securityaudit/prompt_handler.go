@@ -34,6 +34,7 @@ type promptRecordAdminService interface {
 	GetPromptRecord(context.Context, int64) (*PromptRecord, error)
 	DeletePromptRecord(context.Context, int64) error
 	DeletePromptRecords(context.Context, []int64) (int64, error)
+	DeleteAllPromptRecords(context.Context) (int64, error)
 }
 
 type PromptAdminHandler struct {
@@ -110,7 +111,7 @@ func (h *PromptAdminHandler) ListPromptRecords(c *gin.Context) {
 		response.ErrorFrom(c, err)
 		return
 	}
-	filter := PromptRecordFilter{RequestID: strings.TrimSpace(c.Query("request_id")), Model: strings.TrimSpace(c.Query("model")), Stage: strings.TrimSpace(c.Query("stage"))}
+	filter := PromptRecordFilter{SessionID: strings.TrimSpace(c.Query("session_id")), Model: strings.TrimSpace(c.Query("model")), Stage: strings.TrimSpace(c.Query("stage"))}
 	filter.CursorMode = c.Query("pagination") == "cursor"
 	if cursor := c.Query("cursor"); cursor != "" {
 		decoded, decodeErr := base64.RawURLEncoding.DecodeString(cursor)
@@ -242,6 +243,21 @@ func (h *PromptAdminHandler) BatchDeletePromptRecords(c *gin.Context) {
 		return
 	}
 	setPromptAdminAudit(c, "success", "", map[string]any{"requested_count": len(ids), "deleted_count": deleted})
+	response.Success(c, gin.H{"deleted": deleted})
+}
+
+func (h *PromptAdminHandler) DeleteAllPromptRecords(c *gin.Context) {
+	if h.records == nil {
+		response.ErrorFrom(c, errors.New("prompt record service unavailable"))
+		return
+	}
+	deleted, err := h.records.DeleteAllPromptRecords(c.Request.Context())
+	if err != nil {
+		setPromptAdminAudit(c, "failed", "prompt_record_delete_all_failed", nil)
+		response.ErrorFrom(c, err)
+		return
+	}
+	setPromptAdminAudit(c, "success", "", map[string]any{"deleted_count": deleted})
 	response.Success(c, gin.H{"deleted": deleted})
 }
 

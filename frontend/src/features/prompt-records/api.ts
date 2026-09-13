@@ -1,8 +1,8 @@
 import { apiClient } from '@/api/client'
 
 export interface PromptRecordSummary {
-	id: number
-  request_id: string
+  id: number
+  session_id: string
   turn_no: number
   stage: string
   user_id: number
@@ -106,4 +106,9 @@ export async function deletePromptRecord(id: number) {
 export async function batchDeletePromptRecords(ids: number[]) {
 	const { data } = await apiClient.post<{ deleted: number }>('/admin/prompt-records/batch-delete', { ids })
 	return data
+}
+
+export async function deleteAllPromptRecords() {
+  const { data } = await apiClient.delete<{ deleted: number }>('/admin/prompt-records/all')
+  return data
 }

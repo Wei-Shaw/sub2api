@@ -43,7 +43,7 @@ func (c *Coordinator) Check(ctx context.Context, req Request) Decision {
 	if c == nil {
 		return allowDecision(nil, nil)
 	}
-	if c.record != nil {
+	if c.record != nil && ShouldRecordPromptRequest(req) {
 		c.recordPromptSafely(ctx, req)
 	}
 	mode := ModeOff
@@ -89,7 +89,7 @@ func (c *Coordinator) PreparePromptRecording(req Request) (Request, Request) {
 	responseReference := req
 	responseReference.Body = nil
 	responseReference.Headers = nil
-	if c == nil || !c.PromptResponseRecordingEnabled() {
+	if c == nil || !c.PromptResponseRecordingEnabled() || !ShouldRecordPromptRequest(req) {
 		return req, responseReference
 	}
 	return newPromptRecordingRequestPair(req)

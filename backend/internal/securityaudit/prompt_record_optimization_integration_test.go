@@ -32,7 +32,7 @@ func TestRecordOptimizationPostgres(t *testing.T) {
 	var exists bool
 	require.NoError(t, db.QueryRowContext(ctx, "SELECT to_regclass('public.prompt_records') IS NOT NULL").Scan(&exists))
 	require.False(t, exists, "test requires a fresh disposable database")
-	for _, name := range []string{"239_prompt_records.sql", "240_prompt_record_responses.sql", "241_prompt_record_requests.sql", "242_prompt_record_search_extension.sql", "243_prompt_record_search_cleanup_indexes_notx.sql"} {
+	for _, name := range []string{"239_prompt_records.sql", "240_prompt_record_responses.sql", "241_prompt_record_requests.sql", "242_prompt_record_search_extension.sql", "243_prompt_record_search_cleanup_indexes_notx.sql", "244_prompt_record_session_id.sql"} {
 		body, err := os.ReadFile(filepath.Join("../../migrations", name))
 		require.NoError(t, err)
 		if strings.HasSuffix(name, "_notx.sql") {
@@ -52,21 +52,23 @@ func TestRecordOptimizationPostgres(t *testing.T) {
 	created := time.Now().UTC().Truncate(time.Microsecond)
 	past, future := created.Add(-time.Hour), created.Add(time.Hour)
 	for i := range 6 {
-		record := &PromptRecord{RequestID: "record-" + strconv.Itoa(i), Stage: "http", PromptHash: strings.Repeat(strconv.Itoa(i), 64), Protocol: "responses", Model: "test-target-model", CreatedAt: created, RequestBody: `{"input":"canonical text"}`}
+		record := &PromptRecord{SessionID: "session-" + strconv.Itoa(i), Stage: "http", PromptHash: strings.Repeat(strconv.Itoa(i), 64), Protocol: "responses", Model: "test-target-model", CreatedAt: created, RequestBody: `{"input":"canonical text"}`}
 		if i == 0 {
 			record.ExpiresAt = &past
 		}
 		if i == 1 {
 			record.ExpiresAt = &future
 		}
-		require.NoError(t, repo.InsertPromptRecord(ctx, record))
+		_, err := repo.InsertPromptRecord(ctx, record)
+		require.NoError(t, err)
 	}
 	seen := map[int64]bool{}
 	filter := PromptRecordFilter{CursorMode: true, Model: "target"}
+	wantTotal := int64(5)
 	for {
 		page, err := repo.ListPromptRecords(ctx, filter, 1, 2)
 		require.NoError(t, err)
-		require.Zero(t, page.Total, "cursor mode does not execute a count")
+		require.Equal(t, wantTotal, page.Total)
 		for _, item := range page.Items {
 			require.False(t, seen[item.ID], "timestamp ties must not duplicate rows")
 			seen[item.ID] = true
@@ -84,7 +86,9 @@ func TestRecordOptimizationPostgres(t *testing.T) {
 		filter.CursorCreatedAt, filter.CursorID = &at, id
 		// Insert above the cursor; later pages must stay stable.
 		if len(seen) == 2 {
-			require.NoError(t, repo.InsertPromptRecord(ctx, &PromptRecord{RequestID: "newer", Stage: "http", PromptHash: strings.Repeat("f", 64), Model: "test-target-model", CreatedAt: created.Add(time.Second)}))
+			_, err := repo.InsertPromptRecord(ctx, &PromptRecord{SessionID: "session-newer", Stage: "http", PromptHash: strings.Repeat("f", 64), Model: "test-target-model", CreatedAt: created.Add(time.Second)})
+			require.NoError(t, err)
+			wantTotal = 6
 		}
 	}
 	require.Len(t, seen, 5)
@@ -115,5 +119,12 @@ func TestRecordOptimizationPostgres(t *testing.T) {
 	var indexes int
 	require.NoError(t, db.QueryRowContext(ctx, `SELECT count(*) FROM pg_indexes WHERE tablename='prompt_records' AND indexname IN ('idx_prompt_records_model_trgm','idx_prompt_records_expires_at_id')`).Scan(&indexes))
 	require.Equal(t, 2, indexes)
-	t.Log("Verified migrations, tied-timestamp cursors, concurrent insertion, substring filters, expiry visibility, bounded cleanup and legacy detail compatibility.")
+	deleted, err = repo.DeleteAllPromptRecords(ctx)
+	require.NoError(t, err)
+	require.EqualValues(t, 6, deleted)
+	page, err = repo.ListPromptRecords(ctx, PromptRecordFilter{}, 1, 20)
+	require.NoError(t, err)
+	require.Zero(t, page.Total)
+	require.Empty(t, page.Items)
+	t.Log("Verified migrations, counted cursors, tied-timestamp pagination, concurrent insertion, expiry visibility, full deletion and legacy detail compatibility.")
 }

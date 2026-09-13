@@ -157,18 +157,6 @@
           {{ t('admin.promptRecords.recordingContentHelp') }}
         </p>
         <p class="text-xs text-gray-500 dark:text-gray-400">{{ t('admin.promptRecords.responseScope') }}</p>
-		<details v-if="queueStats" class="rounded-lg border border-gray-200 p-3 text-xs text-gray-600 dark:border-dark-700 dark:text-gray-400" data-test="record-queue-stats">
-			<summary class="cursor-pointer py-1">{{ t('admin.promptRecords.queueStatus') }}</summary>
-			<div class="mt-3 grid gap-2 sm:grid-cols-2">
-				<p>{{ t('admin.promptRecords.queueMemory', { used: formatMiB(queueStats.in_flight_bytes), limit: formatMiB(queueStats.byte_capacity) }) }}</p>
-				<p>{{ t('admin.promptRecords.pendingResponses', { count: queueStats.pending_responses ?? 0 }) }}</p>
-				<p>{{ t('admin.promptRecords.requestFailures', { dropped: queueStats.request_dropped_total ?? 0, failed: queueStats.request_failed_total ?? 0 }) }}</p>
-				<p>{{ t('admin.promptRecords.responseFailures', { dropped: queueStats.response_dropped_total ?? 0, failed: queueStats.response_failed_total ?? 0 }) }}</p>
-				<p>{{ t('admin.promptRecords.cleanupStats', { deleted: queueStats.expired_deleted_total ?? 0, failed: queueStats.cleanup_failed_total ?? 0 }) }}</p>
-				<p v-if="queueStats.cleanup_backlog">{{ t('admin.promptRecords.cleanupBacklog') }}</p>
-				<p class="sm:col-span-2">{{ t('admin.promptRecords.queueStatsHelp') }}</p>
-			</div>
-		</details>
       </div>
 
       <div class="card overflow-hidden">
@@ -236,15 +224,15 @@
               />
             </div>
             <div class="w-full sm:w-auto sm:min-w-[280px]">
-              <label for="prompt-record-request-id" class="input-label">
-                {{ t('admin.promptRecords.requestId') }}
+              <label for="prompt-record-session-id" class="input-label">
+                {{ t('admin.promptRecords.sessionId') }}
               </label>
               <input
-                id="prompt-record-request-id"
-                v-model.trim="requestId"
+                id="prompt-record-session-id"
+                v-model.trim="sessionId"
                 class="input w-full font-mono"
                 type="text"
-                :placeholder="t('admin.promptRecords.requestIdPlaceholder')"
+                :placeholder="t('admin.promptRecords.sessionIdPlaceholder')"
               />
             </div>
             <div class="w-full sm:w-auto sm:min-w-[210px]">
@@ -270,6 +258,16 @@
             >
               <Icon name="trash" size="sm" class="mr-1.5" />
               {{ t('admin.promptRecords.deleteSelected', { count: selectedIDs.length }) }}
+            </button>
+            <button
+              type="button"
+              class="btn btn-danger"
+              :disabled="totalRecords === 0 || loading || deleteLoading"
+              data-test="prompt-record-delete-all"
+              @click="requestDeleteAll"
+            >
+              <Icon name="trash" size="sm" class="mr-1.5" />
+              {{ t('admin.promptRecords.deleteAll') }}
             </button>
             <button type="submit" class="btn btn-primary" :disabled="loading">
               <Icon name="search" size="sm" class="mr-1.5" />
@@ -359,12 +357,12 @@
               </div>
             </template>
 
-            <template #cell-request_id="{ row }">
+            <template #cell-session_id="{ row }">
               <span
                 class="block max-w-[180px] truncate font-mono text-xs text-gray-500 dark:text-gray-400"
-                :title="row.request_id || undefined"
+                :title="row.session_id || undefined"
               >
-                {{ row.request_id || '-' }}
+                {{ row.session_id || '-' }}
               </span>
             </template>
 
@@ -405,19 +403,22 @@
               <EmptyState :message="t('admin.promptRecords.empty')" />
             </template>
           </DataTable>
-			<div class="flex flex-wrap items-center justify-between gap-3 border-t border-gray-100 p-4 dark:border-dark-700">
-				<label class="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-400">
-					{{ t('admin.promptRecords.pageSize') }}
-					<select class="input w-20" :value="pagination.pageSize" :disabled="loading" data-test="record-page-size" @change="handlePageSizeChange(Number(($event.target as HTMLSelectElement).value))">
-						<option v-for="size in [10, 20, 50, 100]" :key="size" :value="size">{{ size }}</option>
-					</select>
-				</label>
-				<div class="flex flex-wrap items-center gap-3">
-					<span class="text-sm text-gray-500">{{ t('admin.promptRecords.currentPage', { page: pagination.page }) }}</span>
-					<button type="button" class="btn btn-secondary" :disabled="loading || pagination.page === 1" data-test="record-previous" @click="handlePageChange(pagination.page - 1)">{{ t('admin.promptRecords.previousPage') }}</button>
-					<button type="button" class="btn btn-secondary" :disabled="loading || !hasMore" data-test="record-next" @click="handlePageChange(pagination.page + 1)">{{ t('admin.promptRecords.nextPage') }}</button>
-				</div>
-			</div>
+          <div class="flex flex-wrap items-center justify-between gap-3 border-t border-gray-100 p-4 dark:border-dark-700">
+            <label class="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-400">
+              {{ t('admin.promptRecords.pageSize') }}
+              <select class="input w-20" :value="pagination.pageSize" :disabled="loading" data-test="record-page-size" @change="handlePageSizeChange(Number(($event.target as HTMLSelectElement).value))">
+                <option v-for="size in [10, 20, 50, 100]" :key="size" :value="size">{{ size }}</option>
+              </select>
+            </label>
+            <div class="flex flex-wrap items-center gap-3">
+              <span class="text-sm tabular-nums text-gray-500 dark:text-gray-400" data-test="record-total">
+                {{ t('admin.promptRecords.totalRecords', { count: formatNumber(totalRecords) }) }}
+              </span>
+              <span class="text-sm text-gray-500">{{ t('admin.promptRecords.currentPage', { page: pagination.page }) }}</span>
+              <button type="button" class="btn btn-secondary" :disabled="loading || pagination.page === 1" data-test="record-previous" @click="handlePageChange(pagination.page - 1)">{{ t('admin.promptRecords.previousPage') }}</button>
+              <button type="button" class="btn btn-secondary" :disabled="loading || !hasMore" data-test="record-next" @click="handlePageChange(pagination.page + 1)">{{ t('admin.promptRecords.nextPage') }}</button>
+            </div>
+          </div>
         </div>
       </div>
     </div>
@@ -506,8 +507,8 @@
 
   <ConfirmDialog
     :show="showDeleteConfirmation"
-    :title="t('admin.promptRecords.deleteConfirmTitle')"
-    :message="t('admin.promptRecords.deleteConfirmMessage', { count: pendingDeleteIDs.length })"
+    :title="deleteConfirmationTitle"
+    :message="deleteConfirmationMessage"
     :confirm-text="t('common.delete')"
     danger
     @confirm="confirmDelete"
@@ -532,6 +533,7 @@ import { adminUsageAPI, type SimpleUser } from '@/api/admin/usage'
 import { formatDateTime } from '@/utils/format'
 import {
   batchDeletePromptRecords,
+  deleteAllPromptRecords,
   deletePromptRecord,
   getPromptRecordingConfig,
   getPromptRecord,
@@ -539,7 +541,6 @@ import {
   updatePromptRecordingConfig,
   type PromptRecord,
   type PromptRecordSummary,
-  type PromptRecordQueueStats,
 } from './api'
 
 const { t } = useI18n()
@@ -611,7 +612,7 @@ const recordingSaving = ref(false)
 const loading = ref(false)
 const listError = ref(false)
 const model = ref('')
-const requestId = ref('')
+const sessionId = ref('')
 const startAt = ref('')
 const endAt = ref('')
 const userSearchRef = ref<HTMLElement | null>(null)
@@ -628,7 +629,7 @@ const pagination = reactive({ page: 1, pageSize: Math.min(100, getPersistedPageS
 const hasMore = ref(false)
 const nextCursor = ref('')
 const cursors = ref<string[]>([''])
-const queueStats = ref<PromptRecordQueueStats | null>(null)
+const totalRecords = ref(0)
 let activeFilters: Record<string, string | number | undefined> = {}
 let listController: AbortController | null = null
 
@@ -641,7 +642,7 @@ let detailRequestSequence = 0
 
 const showDeleteConfirmation = ref(false)
 const pendingDeleteIDs = ref<number[]>([])
-const deleteMode = ref<'single' | 'batch'>('single')
+const deleteMode = ref<'single' | 'batch' | 'all'>('single')
 const deleteLoading = ref(false)
 
 const selectedIDs = computed(() => selectedKeys.value.map(Number).filter((id) => Number.isInteger(id) && id > 0))
@@ -651,13 +652,19 @@ const recordingStatusText = computed(() => {
 		? t('admin.promptRecords.recordingEnabled')
 		: t('admin.promptRecords.recordingDisabled')
 })
+const deleteConfirmationTitle = computed(() => t(deleteMode.value === 'all'
+  ? 'admin.promptRecords.deleteAllConfirmTitle'
+  : 'admin.promptRecords.deleteConfirmTitle'))
+const deleteConfirmationMessage = computed(() => deleteMode.value === 'all'
+  ? t('admin.promptRecords.deleteAllConfirmMessage', { count: formatNumber(totalRecords.value) })
+  : t('admin.promptRecords.deleteConfirmMessage', { count: pendingDeleteIDs.value.length }))
 
 const columns = computed<Column[]>(() => [
   { key: 'user', label: t('admin.promptRecords.user') },
   { key: 'api_key', label: t('admin.promptRecords.apiKey') },
   { key: 'route', label: t('admin.promptRecords.route') },
   { key: 'prompt_size', label: t('admin.promptRecords.promptSize') },
-  { key: 'request_id', label: t('admin.promptRecords.requestId') },
+  { key: 'session_id', label: t('admin.promptRecords.sessionId') },
   { key: 'created_at', label: t('admin.promptRecords.time') },
   { key: 'actions', label: t('admin.promptRecords.actions'), class: 'text-right' },
 ])
@@ -676,7 +683,7 @@ const detailFields = computed(() => {
     { label: t('admin.promptRecords.protocol'), value: record.protocol || '-' },
     { label: t('admin.promptRecords.stage'), value: record.stage || '-' },
     { label: t('admin.promptRecords.turnNo'), value: String(record.turn_no ?? 0) },
-    { label: t('admin.promptRecords.requestId'), value: record.request_id || '-', mono: true },
+    { label: t('admin.promptRecords.sessionId'), value: record.session_id || '-', mono: true },
     { label: t('admin.promptRecords.promptHash'), value: record.prompt_hash || '-', mono: true },
   ]
 })
@@ -690,14 +697,12 @@ const responseDisplayText = computed(() => {
   return t(['first_turn', 'subsequent_turn'].includes(record.stage) ? 'admin.promptRecords.websocketResponseUnsupported' : 'admin.promptRecords.responseUnavailable')
 })
 
-function formatMiB(bytes = 0) { return (bytes / (1024 * 1024)).toFixed(1) }
-
 async function loadRecords(resetPage = false) {
   if (resetPage) {
     pagination.page = 1
     cursors.value = ['']
     activeFilters = {
-      model: model.value || undefined, request_id: requestId.value || undefined,
+      model: model.value || undefined, session_id: sessionId.value || undefined,
       user_id: selectedUserID.value || undefined,
       start_at: toRFC3339(startAt.value), end_at: toRFC3339(endAt.value),
     }
@@ -719,7 +724,7 @@ async function loadRecords(resetPage = false) {
     records.value = result.items
     hasMore.value = result.has_more && !!result.next_cursor
     nextCursor.value = result.next_cursor || ''
-    queueStats.value = result.queue
+    totalRecords.value = result.total ?? 0
   } catch (error: any) {
     if (controller.signal.aborted || listController !== controller || error?.name === 'AbortError' || error?.code === 'ERR_CANCELED') return
     console.error('[PromptRecordsView] Failed to load prompt records:', error)
@@ -783,7 +788,7 @@ function applyFilters() {
 
 function resetFilters() {
   model.value = ''
-  requestId.value = ''
+  sessionId.value = ''
   startAt.value = ''
   endAt.value = ''
   clearUser(false)
@@ -866,6 +871,13 @@ function requestBatchDelete() {
   showDeleteConfirmation.value = true
 }
 
+function requestDeleteAll() {
+  if (totalRecords.value === 0) return
+  deleteMode.value = 'all'
+  pendingDeleteIDs.value = []
+  showDeleteConfirmation.value = true
+}
+
 function closeDeleteConfirmation() {
   if (deleteLoading.value) return
   showDeleteConfirmation.value = false
@@ -873,19 +885,25 @@ function closeDeleteConfirmation() {
 }
 
 async function confirmDelete() {
-  if (deleteLoading.value || pendingDeleteIDs.value.length === 0) return
+  if (deleteLoading.value || (deleteMode.value !== 'all' && pendingDeleteIDs.value.length === 0)) return
   deleteLoading.value = true
   const ids = [...pendingDeleteIDs.value]
   try {
+    let deleted = ids.length
     if (deleteMode.value === 'single') await deletePromptRecord(ids[0])
-    else await batchDeletePromptRecords(ids)
+    else if (deleteMode.value === 'batch') await batchDeletePromptRecords(ids)
+    else deleted = (await deleteAllPromptRecords()).deleted
     selectedKeys.value = selectedKeys.value.filter((key) => !ids.includes(Number(key)))
-    if (selectedID.value && ids.includes(selectedID.value)) closeDetail()
+    if (deleteMode.value === 'all') selectedKeys.value = []
+    if (selectedID.value && (deleteMode.value === 'all' || ids.includes(selectedID.value))) closeDetail()
     showDeleteConfirmation.value = false
     pendingDeleteIDs.value = []
-    if (records.value.length <= ids.length && pagination.page > 1) pagination.page -= 1
-    await loadRecords()
-    appStore.showSuccess(t('admin.promptRecords.deleteSuccess', { count: ids.length }))
+    if (deleteMode.value === 'all') await loadRecords(true)
+    else {
+      if (records.value.length <= ids.length && pagination.page > 1) pagination.page -= 1
+      await loadRecords()
+    }
+    appStore.showSuccess(t('admin.promptRecords.deleteSuccess', { count: deleted }))
   } catch (error) {
     console.error('[PromptRecordsView] Failed to delete prompt records:', error)
     appStore.showError(t('admin.promptRecords.deleteFailed'))

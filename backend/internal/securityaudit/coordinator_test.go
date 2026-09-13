@@ -97,7 +97,7 @@ func TestCoordinatorDoesNotMutateRequestBody(t *testing.T) {
 func TestCoordinatorIsolatesPromptRecordingPanics(t *testing.T) {
 	coordinator := NewCoordinator(&fakeLegacyEngine{decision: &LegacyDecision{Allowed: true}}, nil, &panickingPromptRecorder{})
 	request, responseReference := coordinator.PreparePromptRecording(Request{
-		RequestID: "isolated", Body: []byte(`{"messages":[{"role":"user","content":"hello"}]}`),
+		RequestID: "isolated", Endpoint: "/v1/chat/completions", Body: []byte(`{"messages":[{"role":"user","content":"hello"}]}`),
 	})
 	require.Empty(t, responseReference.Body)
 	require.Nil(t, responseReference.Headers)
