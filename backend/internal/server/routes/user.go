@@ -25,6 +25,13 @@ func RegisterUserRoutes(
 	// 用户管理面变更类操作入审计（含 TOTP 启用/禁用、step-up 验证、密码修改等安全事件）
 	authenticated.Use(gin.HandlerFunc(auditLog))
 	{
+		// Department leaders receive only the organization-scoped operations.
+		organization := authenticated.Group("/organization/dingtalk")
+		organization.GET("/apps", h.DingTalkOrganization.Apps)
+		organization.GET("/apps/:app/directory", h.DingTalkOrganization.Directory)
+		organization.GET("/managers", h.DingTalkOrganization.Managers)
+		organization.GET("/grants", h.DingTalkOrganization.Grants)
+		organization.POST("/grants", h.DingTalkOrganization.Grant)
 		// 用户接口
 		user := authenticated.Group("/user")
 		{

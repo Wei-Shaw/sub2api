@@ -37,6 +37,16 @@ func RegisterAdminRoutes(
 		// 仪表盘
 		registerDashboardRoutes(admin, h)
 
+		organization := admin.Group("/dingtalk")
+		organization.GET("/apps", h.DingTalkOrganization.Apps)
+		organization.PUT("/apps", h.DingTalkOrganization.SaveApps)
+		organization.GET("/apps/:app/directory", h.DingTalkOrganization.Directory)
+		organization.POST("/apps/:app/sync", h.DingTalkOrganization.Sync)
+		organization.GET("/managers", h.DingTalkOrganization.Managers)
+		organization.PUT("/managers", h.DingTalkOrganization.SaveManager)
+		organization.GET("/grants", h.DingTalkOrganization.Grants)
+		organization.POST("/grants", h.DingTalkOrganization.Grant)
+
 		// 用户管理
 		registerUserManagementRoutes(admin, h)
 

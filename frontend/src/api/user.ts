@@ -118,6 +118,7 @@ export async function unbindAuthIdentity(provider: BindableOAuthProvider): Promi
 export type BindableOAuthProvider = Exclude<UserAuthProvider, 'email'>
 
 interface BuildOAuthBindingStartURLOptions {
+  dingTalkAppID?: string
   redirectTo?: string
   wechatOAuthSettings?: WeChatOAuthPublicSettings | null
 }
@@ -149,6 +150,8 @@ export function buildOAuthBindingStartURL(
     redirect: redirectTo,
     intent: 'bind_current_user'
   })
+
+  if (provider === 'dingtalk' && options.dingTalkAppID) params.set('app_id', options.dingTalkAppID)
 
   if (provider === 'wechat') {
     const mode = resolveWeChatOAuthBindingMode(options.wechatOAuthSettings)
