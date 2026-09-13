@@ -90,9 +90,14 @@ func TransformClaudeToGeminiWithOptions(claudeReq *ClaudeRequest, projectID, map
 
 	// 检测是否有 web_search 工具
 	hasWebSearchTool := hasWebSearchTool(claudeReq.Tools)
+	hasFunctionTools := hasFunctionToolsForSearchRouting(claudeReq.Tools)
 	requestType := "agent"
 	targetModel := mappedModel
-	if hasWebSearchTool {
+	// Pure search keeps the cheap 2.5-flash fallback. Mixed
+	// search+functions no longer falls back: v1internal rejects the mix
+	// on every tested model, so buildTools drops the search builtin and
+	// keeps function declarations instead of hard-400ing (#7080).
+	if hasWebSearchTool && !hasFunctionTools {
 		requestType = "web_search"
 		if targetModel != webSearchFallbackModel {
 			targetModel = webSearchFallbackModel
@@ -729,6 +734,26 @@ func hasMixedToolInvocations(declarations []GeminiToolDeclaration) bool {
 	return hasFunc && hasBuiltin
 }
 
+// hasFunctionToolsForSearchRouting reports whether tools include at least
+// one client-side function declaration (non-search, non-codeexec).
+func hasFunctionToolsForSearchRouting(tools []ClaudeTool) bool {
+	for _, tool := range tools {
+		if isWebSearchTool(tool) || isCodeExecutionTool(tool) {
+			continue
+		}
+		if tool.Type == "custom" {
+			if tool.Custom == nil || tool.Custom.InputSchema == nil {
+				continue
+			}
+		}
+		if strings.TrimSpace(tool.Name) == "" {
+			continue
+		}
+		return true
+	}
+	return false
+}
+
 // buildTools 构建 tools
 func buildTools(tools []ClaudeTool) []GeminiToolDeclaration {
 	if len(tools) == 0 {
@@ -800,7 +825,11 @@ func buildTools(tools []ClaudeTool) []GeminiToolDeclaration {
 			FunctionDeclarations: funcDecls,
 		})
 	}
-	if hasWebSearch {
+	// #7080: v1internal rejects search+function mixing on every tested
+	// model even with the toolConfig flag, so drop the search builtin and
+	// keep function declarations (LiteLLM degrades the same way to avoid
+	// the 400). Pure-search requests are unaffected.
+	if hasWebSearch && len(funcDecls) == 0 {
 		declarations = append(declarations, GeminiToolDeclaration{
 			GoogleSearch: &GeminiGoogleSearch{
 				EnhancedContent: &GeminiEnhancedContent{
@@ -810,6 +839,8 @@ func buildTools(tools []ClaudeTool) []GeminiToolDeclaration {
 				},
 			},
 		})
+	} else if hasWebSearch {
+		log.Printf("[Antigravity] dropping googleSearch: search+function mixing unsupported upstream, keeping %d function declarations", len(funcDecls))
 	}
 	if hasCodeExecution {
 		declarations = append(declarations, GeminiToolDeclaration{

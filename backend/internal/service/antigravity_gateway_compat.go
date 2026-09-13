@@ -309,12 +309,24 @@ func enableMixedGeminiToolInvocations(body []byte) ([]byte, error) {
 		return body, nil
 	}
 
-	toolConfig, _ := request["toolConfig"].(map[string]any)
-	if toolConfig == nil {
-		toolConfig = make(map[string]any)
-		request["toolConfig"] = toolConfig
+	// #7080: v1internal rejects search+function mixing on every tested
+	// model even with the flag, so drop the search builtin entries and
+	// keep function declarations (same degradation as the Claude path).
+	kept := make([]any, 0, 2)
+	if tools, ok := request["tools"].([]any); ok {
+		for _, rawTool := range tools {
+			tool, ok := rawTool.(map[string]any)
+			if !ok {
+				kept = append(kept, rawTool)
+				continue
+			}
+			if _, hasSearch := tool["googleSearch"]; hasSearch {
+				continue
+			}
+			kept = append(kept, rawTool)
+		}
 	}
-	toolConfig["includeServerSideToolInvocations"] = true
+	request["tools"] = kept
 	return json.Marshal(request)
 }
 

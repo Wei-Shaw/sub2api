@@ -258,14 +258,31 @@ func TestBuildAntigravityCompatGeminiBody_ConfiguresMixedToolInvocations(t *test
 			require.NoError(t, json.Unmarshal(body, &wrapped))
 			request, ok := wrapped["request"].(map[string]any)
 			require.True(t, ok)
-			toolConfig, exists := request["toolConfig"].(map[string]any)
-			if !tt.wantField {
-				require.False(t, exists)
+			tools, _ := request["tools"].([]any)
+			if tt.wantField {
+				// #7080 mixed case: search dropped (upstream rejects the
+				// mix), function declaration kept.
+				require.Len(t, tools, 1)
+				funcs, _ := tools[0].(map[string]any)["functionDeclarations"].([]any)
+				require.Len(t, funcs, 1)
+				for _, rawTool := range tools {
+					tool, _ := rawTool.(map[string]any)
+					require.NotContains(t, tool, "googleSearch")
+				}
 				return
 			}
-			require.True(t, exists)
-			require.Equal(t, true, toolConfig["includeServerSideToolInvocations"])
-			require.NotContains(t, toolConfig, "include_server_side_tool_invocations")
+			if tt.name == "server tools only" {
+				// Pure search is preserved.
+				require.Len(t, tools, 1)
+				_, hasSearch := tools[0].(map[string]any)["googleSearch"]
+				require.True(t, hasSearch)
+				return
+			}
+			// Client tools only: no search involved.
+			for _, rawTool := range tools {
+				tool, _ := rawTool.(map[string]any)
+				require.NotContains(t, tool, "googleSearch")
+			}
 		})
 	}
 }
@@ -293,10 +310,13 @@ func TestAntigravityCompatChatMixedBuiltInToolsEnableServerSideInvocations(t *te
 	require.NotNil(t, result)
 	require.Len(t, upstream.requestBodies, 1)
 	requestBody := upstream.requestBodies[0]
+	// #7080: search dropped on mixed (upstream rejects the mix); functions
+	// and code execution preserved. The flag stays for the
+	// functions+codeExecution mix, which upstream accepts.
 	require.True(t, gjson.GetBytes(requestBody, "request.toolConfig.includeServerSideToolInvocations").Bool())
 	require.Len(t, gjson.GetBytes(requestBody, "request.tools.0.functionDeclarations").Array(), 2)
-	require.True(t, gjson.GetBytes(requestBody, "request.tools.1.googleSearch").Exists())
-	require.True(t, gjson.GetBytes(requestBody, "request.tools.2.codeExecution").Exists())
+	require.False(t, strings.Contains(gjson.GetBytes(requestBody, "request.tools").String(), "googleSearch"))
+	require.True(t, gjson.GetBytes(requestBody, "request.tools.1.codeExecution").Exists())
 }
 
 func TestAntigravityCompatPreservesChatTokenLimit(t *testing.T) {

@@ -277,13 +277,12 @@ func TestBuildTools_PreservesWebSearchAlongsideFunctions(t *testing.T) {
 	}
 
 	result := buildTools(tools)
-	require.Len(t, result, 2)
+	// #7080: mixed search+functions drops the search builtin (upstream
+	// rejects the mix even with the flag) and keeps functions.
+	require.Len(t, result, 1)
 	require.Len(t, result[0].FunctionDeclarations, 1)
 	require.Equal(t, "get_weather", result[0].FunctionDeclarations[0].Name)
-	require.NotNil(t, result[1].GoogleSearch)
-	require.NotNil(t, result[1].GoogleSearch.EnhancedContent)
-	require.NotNil(t, result[1].GoogleSearch.EnhancedContent.ImageSearch)
-	require.Equal(t, 5, result[1].GoogleSearch.EnhancedContent.ImageSearch.MaxResultCount)
+	require.Nil(t, result[0].GoogleSearch)
 }
 
 func TestBuildGenerationConfig_ThinkingDynamicBudget(t *testing.T) {
@@ -533,7 +532,7 @@ func TestTransformClaudeToGeminiWithOptions_MessageRoles(t *testing.T) {
 	})
 }
 
-func TestTransformClaudeToGeminiWithOptions_PreservesWebSearchAlongsideFunctions(t *testing.T) {
+func TestTransformClaudeToGeminiWithOptions_DropsWebSearchAlongsideFunctions(t *testing.T) {
 	claudeReq := &ClaudeRequest{
 		Model: "claude-3-5-sonnet-latest",
 		Messages: []ClaudeMessage{
@@ -560,10 +559,11 @@ func TestTransformClaudeToGeminiWithOptions_PreservesWebSearchAlongsideFunctions
 
 	var req V1InternalRequest
 	require.NoError(t, json.Unmarshal(body, &req))
-	require.Len(t, req.Request.Tools, 2)
+	// #7080: search dropped on mixed, functions kept.
+	require.Len(t, req.Request.Tools, 1)
 	require.Len(t, req.Request.Tools[0].FunctionDeclarations, 1)
 	require.Equal(t, "get_weather", req.Request.Tools[0].FunctionDeclarations[0].Name)
-	require.NotNil(t, req.Request.Tools[1].GoogleSearch)
+	require.Nil(t, req.Request.Tools[0].GoogleSearch)
 }
 
 func TestGeminiToolConfig_IncludeServerSideToolInvocations(t *testing.T) {
@@ -596,13 +596,13 @@ func TestGeminiToolConfig_IncludeServerSideToolInvocations(t *testing.T) {
 		return req, string(body)
 	}
 
-	t.Run("mixed builtin and function tools enable server-side tool invocations", func(t *testing.T) {
+	t.Run("mixed builtin and function tools drop search keeps functions", func(t *testing.T) {
 		req, raw := transform(t, []ClaudeTool{functionTool, webSearchTool})
 
-		require.NotNil(t, req.Request.ToolConfig)
-		require.NotNil(t, req.Request.ToolConfig.IncludeServerSideToolInvocations)
-		require.True(t, *req.Request.ToolConfig.IncludeServerSideToolInvocations)
-		require.Contains(t, raw, `"includeServerSideToolInvocations":true`)
+		require.Len(t, req.Request.Tools, 1)
+		require.NotEmpty(t, req.Request.Tools[0].FunctionDeclarations)
+		require.Nil(t, req.Request.Tools[0].GoogleSearch)
+		require.NotContains(t, raw, "googleSearch")
 	})
 
 	t.Run("function tools only leave the flag unset", func(t *testing.T) {
