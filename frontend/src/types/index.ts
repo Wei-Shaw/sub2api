@@ -1141,6 +1141,12 @@ export interface OllamaCloudUsageSnapshot {
 export interface OllamaCloudUsageState {
   account_id: number
   eligible: boolean
+  /** eligible=false 的原因码（后端 EligibleReason，"" 缺省表示合格）。 */
+  eligible_reason?: 'platform_not_eligible' | 'wrong_account_type' | 'unsupported_base_url'
+  /** 双额度模式：legacy=5h/7d 滚动窗口，credits=月度美元信用池；非 ollama_cloud 平台缺省。 */
+  mode?: 'ollama_legacy' | 'ollama_credits'
+  /** credits 模式的月度信用池（USD，credentials.monthly_credit_usd）；未录入时缺省。 */
+  monthly_credit_usd?: number
   configured: boolean
   auto_refresh_enabled: boolean
   encryption_key_configured: boolean
