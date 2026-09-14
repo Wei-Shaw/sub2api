@@ -13,6 +13,7 @@ import (
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/devin/api/common"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/devin/llm"
+	"github.com/tidwall/gjson"
 )
 
 // Request 是 OpenAI Responses 请求中本适配器支持的字段集合。
@@ -46,6 +47,11 @@ type Request struct {
 	ToolChoice json.RawMessage `json:"tool_choice,omitempty"`
 	// ParallelToolCalls 为 false 时禁止并行工具调用。
 	ParallelToolCalls *bool `json:"parallel_tool_calls,omitempty"`
+	// Reasoning 是 Responses 的推理配置；effort 映射 Devin 分组模型的
+	// thinking 档位（off/minimal/low/medium/high/xhigh/max）。
+	Reasoning *struct {
+		Effort string `json:"effort,omitempty"`
+	} `json:"reasoning,omitempty"`
 }
 
 // responsesRequestFields 是 DecodeRequest 已消费的顶层字段；其余字段
@@ -57,6 +63,7 @@ var responsesRequestFields = map[string]bool{
 	"stream": true, "max_output_tokens": true, "temperature": true,
 	"top_p": true, "user": true, "prompt_cache_key": true,
 	"tool_choice": true, "parallel_tool_calls": true,
+	"reasoning": true, "reasoning_effort": true,
 	"previous_response_id": true,
 }
 
@@ -116,6 +123,13 @@ func DecodeRequest(data []byte) (AdaptedRequest, error) {
 
 	context := llm.RequestMessages{Model: request.Model, SystemPrompt: request.Instructions}
 	context.Dropped = append(context.Dropped, common.UnconsumedFields(data, responsesRequestFields)...)
+	// effort 档位：reasoning.effort 优先；兼容顶层 reasoning_effort。
+	if request.Reasoning != nil {
+		context.Reasoning = strings.TrimSpace(request.Reasoning.Effort)
+	}
+	if context.Reasoning == "" {
+		context.Reasoning = strings.TrimSpace(gjson.GetBytes(data, "reasoning_effort").String())
+	}
 	if request.MaxOutputTokens != nil && *request.MaxOutputTokens > 0 {
 		context.MaxTokens = request.MaxOutputTokens
 	}

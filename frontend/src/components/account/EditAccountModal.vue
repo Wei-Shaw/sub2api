@@ -732,9 +732,9 @@
         </div>
       </div>
 
-      <!-- OpenAI/Grok OAuth Model Mapping (OAuth 类型没有 apikey 容器，需要独立的模型映射区域) -->
+      <!-- OpenAI/Grok/Devin OAuth Model Mapping (OAuth 类型没有 apikey 容器，需要独立的模型映射区域) -->
       <div
-        v-if="(account.platform === 'openai' || account.platform === 'grok') && account.type === 'oauth'"
+        v-if="(account.platform === 'openai' || account.platform === 'grok' || account.platform === 'devin') && account.type === 'oauth'"
         class="border-t border-gray-200 pt-4 dark:border-dark-600"
       >
         <label class="input-label">{{ t('admin.accounts.modelRestriction') }}</label>

@@ -27,6 +27,11 @@ type Request struct {
 	TopK          *int            `json:"top_k,omitempty"`
 	StopSequences []string        `json:"stop_sequences,omitempty"`
 	Metadata      json.RawMessage `json:"metadata,omitempty"`
+	// Thinking 是 Anthropic 扩展思考开关；enabled → Devin 默认 high 档，
+	// disabled → off 档（经 thinkingLevelMap 解析为上游 uid）。
+	Thinking *struct {
+		Type string `json:"type"`
+	} `json:"thinking,omitempty"`
 }
 
 // Message 是 Anthropic 消息条目。
@@ -66,6 +71,7 @@ var anthropicRequestFields = map[string]bool{
 	"model": true, "messages": true, "system": true, "max_tokens": true,
 	"tools": true, "tool_choice": true, "stream": true, "temperature": true,
 	"top_p": true, "top_k": true, "stop_sequences": true, "metadata": true,
+	"thinking": true,
 }
 
 // AdaptedRequest 是 Anthropic 请求转换后的中间请求和生成选项。
@@ -97,6 +103,16 @@ func DecodeRequest(data []byte) (AdaptedRequest, error) {
 
 	context := llm.RequestMessages{Model: request.Model}
 	context.Dropped = append(context.Dropped, common.UnconsumedFields(data, anthropicRequestFields)...)
+	// thinking 开关 → thinking 档位；budget_tokens 不做档位量化，
+	// 由上游模型自身容量决定（与插件行为一致）。
+	if request.Thinking != nil {
+		switch request.Thinking.Type {
+		case "enabled":
+			context.Reasoning = "high"
+		case "disabled":
+			context.Reasoning = "off"
+		}
+	}
 	maxTokens := request.MaxTokens
 	if maxTokens > 0 {
 		context.MaxTokens = &maxTokens

@@ -654,27 +654,23 @@ func (h *DevinGatewayHandler) Models(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{"object": "list", "data": []any{}})
 		return
 	}
+	// 只暴露分组 id（swe-2/claude-fable-5-1/…）：thinking 档位经
+	// effort 参数或 "model:level" 语法解析，不把档位 uid 铺平
+	// 成独立模型（与插件 catalog 语义一致）。
 	data := make([]any, 0, len(groups))
 	seen := make(map[string]bool)
 	for _, group := range groups {
-		ids := []string{group.ID}
-		for _, uid := range group.ThinkingLevelMap {
-			if uid != "" && uid != group.ID {
-				ids = append(ids, uid)
-			}
+		if group.ID == "" || seen[group.ID] {
+			continue
 		}
-		for _, id := range ids {
-			if seen[id] {
-				continue
-			}
-			seen[id] = true
-			data = append(data, gin.H{
-				"id":       id,
-				"object":   "model",
-				"created":  0,
-				"owned_by": "devin",
-			})
-		}
+		seen[group.ID] = true
+		data = append(data, gin.H{
+			"id":       group.ID,
+			"object":   "model",
+			"created":  0,
+			"owned_by": "devin",
+			"name":     group.Name,
+		})
 	}
 	c.JSON(http.StatusOK, gin.H{"object": "list", "data": data})
 }

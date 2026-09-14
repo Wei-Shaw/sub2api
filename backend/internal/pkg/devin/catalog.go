@@ -763,3 +763,28 @@ func PickOverflowUID(currentUID string, catalog []Model) string {
 	}
 	return best
 }
+
+// ResolveCatalogModelUID 把对外暴露的分组模型 id（如 swe-2）解析为真实上游 uid。
+// 语义与 devin-connect catalog.ts 的 resolveModelUid 一致（内部委托
+// ResolveModelUID）：未指定 effort 档默认 "high"，沿 LevelOrder 先向
+// 更高档再向更低档取最近可用 uid。支持 "model:level" 后缀语法（如
+// swe-2:max），显式 effort 参数优先；model 不是任何分组 id（原始 uid /
+// 未知模型）时原样透传，交给上游裁决。
+func ResolveCatalogModelUID(groups []GroupedModel, model, effort string) string {
+	m := strings.TrimSpace(model)
+	effort = strings.ToLower(strings.TrimSpace(effort))
+	if effort == "" {
+		if i := strings.LastIndex(m, ":"); i > 0 && i < len(m)-1 {
+			if level := strings.ToLower(m[i+1:]); indexOfLevel(ThinkingLevel(level)) >= 0 {
+				effort = level
+				m = m[:i]
+			}
+		}
+	}
+	for i := range groups {
+		if groups[i].ID == m {
+			return ResolveModelUID(groups[i], effort)
+		}
+	}
+	return m
+}

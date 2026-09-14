@@ -295,13 +295,12 @@ func defaultModelsListCandidateIDs(platform string) []string {
 	case PlatformGrok:
 		return xai.DefaultModelIDs()
 	case PlatformDevin:
-		// Devin 上游目录是动态的，静态候选与前端 devinModels 对齐
+		// Devin 上游目录是动态的，静态候选与前端 devinModels 对齐——
+		// 只列分组 id；thinking 档位经 effort / "model:level" 语法选择。
 		return []string{
-			"swe-2", "swe-2-medium", "swe-2-high", "swe-2-max",
-			"claude-fable-5-1", "claude-fable-5-1-low", "claude-fable-5-1-high",
-			"claude-fable-5-1-xhigh", "claude-fable-5-1-max",
-			"gpt-6-astra", "gpt-6-astra-low", "gpt-6-astra-high",
-			"gpt-6-astra-xhigh", "gpt-6-astra-max",
+			"swe-2",
+			"claude-fable-5-1",
+			"gpt-6-astra",
 		}
 	case PlatformOpenCodeGo:
 		return DefaultOpenCodeGoModelIDs()

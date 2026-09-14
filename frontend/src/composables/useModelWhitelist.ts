@@ -250,12 +250,11 @@ const perplexityModels = [
 ]
 
 // Devin (Cognition) — 与后端 GroupModels 对外 id 对齐；分级 uid 作为独立可选项
+// Devin 对外只暴露分组 id；thinking 档位经 effort / "model:level" 选择
 const devinModels = [
-  'swe-2', 'swe-2-medium', 'swe-2-high', 'swe-2-max',
-  'claude-fable-5-1', 'claude-fable-5-1-low', 'claude-fable-5-1-high',
-  'claude-fable-5-1-xhigh', 'claude-fable-5-1-max',
-  'gpt-6-astra', 'gpt-6-astra-low', 'gpt-6-astra-high',
-  'gpt-6-astra-xhigh', 'gpt-6-astra-max'
+  'swe-2',
+  'claude-fable-5-1',
+  'gpt-6-astra'
 ]
 
 // 所有模型（去重）

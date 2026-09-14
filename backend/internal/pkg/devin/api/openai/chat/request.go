@@ -6,10 +6,12 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/devin/api/common"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/devin/llm"
+	"github.com/tidwall/gjson"
 )
 
 // Request 是 OpenAI Chat Completions 请求中本适配器支持的字段集合。
@@ -32,6 +34,9 @@ type Request struct {
 	PromptCacheKey      string          `json:"prompt_cache_key,omitempty"`
 	ParallelToolCalls   *bool           `json:"parallel_tool_calls,omitempty"`
 	N                   *int            `json:"n,omitempty"`
+	// ReasoningEffort 映射 Devin 分组模型的 thinking 档位
+	// （off/minimal/low/medium/high/xhigh/max）。
+	ReasoningEffort string `json:"reasoning_effort,omitempty"`
 }
 
 // Message 是 Chat Completions 消息条目。
@@ -82,6 +87,7 @@ type StreamOptions struct {
 // 上游没有对应物，记入 Dropped 透出而不是静默吞掉。
 var chatRequestFields = map[string]bool{
 	"model": true, "messages": true, "tools": true, "tool_choice": true,
+	"reasoning_effort": true, "reasoning": true,
 	"stream": true, "stream_options": true, "max_tokens": true,
 	"max_completion_tokens": true, "temperature": true, "top_p": true,
 	"stop": true, "top_k": true, "seed": true, "user": true,
@@ -118,6 +124,11 @@ func DecodeRequest(data []byte) (AdaptedRequest, error) {
 
 	context := llm.RequestMessages{Model: request.Model}
 	context.Dropped = append(context.Dropped, common.UnconsumedFields(data, chatRequestFields)...)
+	// effort 档位：reasoning_effort 优先；兼容 reasoning.effort 嵌套写法。
+	context.Reasoning = strings.TrimSpace(request.ReasoningEffort)
+	if context.Reasoning == "" {
+		context.Reasoning = strings.TrimSpace(gjson.GetBytes(data, "reasoning.effort").String())
+	}
 	maxTokensValue := request.MaxCompletionTokens
 	if maxTokensValue == nil {
 		maxTokensValue = request.MaxTokens

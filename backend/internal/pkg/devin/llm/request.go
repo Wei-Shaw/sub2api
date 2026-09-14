@@ -63,6 +63,10 @@ type RequestMessages struct {
 	// metadata.user_id），适配器可据此为同一对话派生稳定的上游会话 ID。
 	// 空表示调用方未提供。
 	SessionKey string
+	// Reasoning 是客户端请求的 thinking/effort 档位（off/minimal/low/
+	// medium/high/xhigh/max）。Devin 的分组模型 id 经 thinkingLevelMap
+	// 解析为具体上游 uid；空表示默认 high 档（与插件语义一致）。
+	Reasoning string
 	// Dropped 记录请求解码时被丢弃/降级的下游字段（"kind:detail"），
 	// 供调试日志透出——「解码即过滤」的静默面需要可观测。
 	Dropped []string

@@ -358,6 +358,13 @@ func (a *Adapter) flatCatalog() []devin.Model {
 	return a.models
 }
 
+// groupedCatalog 返回缓存的分组目录（无缓存时为 nil）。
+func (a *Adapter) groupedCatalog() []devin.GroupedModel {
+	a.catalogMu.RLock()
+	defer a.catalogMu.RUnlock()
+	return a.groups
+}
+
 // connectErrorText 提取错误文案（ConnectError 取 code: message 形态）。
 func connectErrorText(err error) string {
 	if err == nil {
@@ -386,6 +393,12 @@ func (a *Adapter) Stream(ctx context.Context, request llm.RequestMessages) (llm.
 	}
 	// 目录是 router 判定与能力位校验的依据；懒加载时此处补一次拉取。
 	a.ensureCatalog(ctx)
+	// 分组 id（swe-2）+ effort 档经 thinkingLevelMap 解析为上游 uid；
+	// 原始 uid / 未知模型原样透传。语义同插件 resolveModelUid。
+	if resolved := devin.ResolveCatalogModelUID(a.groupedCatalog(), model, request.Reasoning); resolved != model {
+		slog.Info("devin: resolved grouped model", "from", model, "effort", request.Reasoning, "to", resolved)
+		model = resolved
+	}
 	a.warnIfModelAbsentFromCatalog(model)
 	if err := a.validateImagesForModel(request, model); err != nil {
 		return nil, devin.NewInvalidRequest(err)
