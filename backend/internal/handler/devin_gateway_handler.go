@@ -20,6 +20,7 @@ import (
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/devin"
 	devinanthropic "github.com/Wei-Shaw/sub2api/internal/pkg/devin/api/anthropic/messages"
 	devincommon "github.com/Wei-Shaw/sub2api/internal/pkg/devin/api/common"
 	devinchat "github.com/Wei-Shaw/sub2api/internal/pkg/devin/api/openai/chat"
@@ -220,6 +221,7 @@ func (h *DevinGatewayHandler) forward(c *gin.Context, protocol devinProtocol) {
 	}
 	subject, _ := middleware2.GetAuthSubjectFromContext(c)
 	subscription, _ := middleware2.GetSubscriptionFromContext(c)
+	startTime := time.Now()
 
 	body, err := io.ReadAll(c.Request.Body)
 	if err != nil {
@@ -331,7 +333,7 @@ func (h *DevinGatewayHandler) forward(c *gin.Context, protocol devinProtocol) {
 		}
 
 		// 泵事件流 → 客户端。
-		result, pumpErr := h.pumpDevinStream(c, protocol, upstream, adapted, reqStream, &streamStarted)
+		result, firstTokenMs, pumpErr := h.pumpDevinStream(c, protocol, upstream, adapted, reqStream, &streamStarted)
 		if accountReleaseFunc != nil {
 			accountReleaseFunc()
 		}
@@ -355,7 +357,8 @@ func (h *DevinGatewayHandler) forward(c *gin.Context, protocol devinProtocol) {
 		}
 
 		// 成功后扣费（worker 池异步）。
-		h.submitDevinUsage(c, protocol, apiKey, subscription, account, reqModel, result, body)
+		h.submitDevinUsage(c, protocol, apiKey, subscription, account, reqModel, result, body,
+			reqStream, startTime, firstTokenMs, adapted.context.Reasoning)
 		return
 	}
 }
@@ -369,7 +372,7 @@ func (h *DevinGatewayHandler) pumpDevinStream(
 	adapted devinAdapted,
 	reqStream bool,
 	streamStarted *bool,
-) (*llm.AssistantMessage, error) {
+) (*llm.AssistantMessage, *int, error) {
 	ctx := c.Request.Context()
 	startedAt := time.Now()
 	var firstTokenMs *int
@@ -393,7 +396,7 @@ func (h *DevinGatewayHandler) pumpDevinStream(
 			if errors.Is(err, io.EOF) {
 				break
 			}
-			return final, err
+			return final, firstTokenMs, err
 		}
 		if firstTokenMs == nil &&
 			(event.Type == llm.ResponseEventTextDelta ||
@@ -414,36 +417,35 @@ func (h *DevinGatewayHandler) pumpDevinStream(
 		}
 		events, encErr := encoder.Encode(event)
 		if encErr != nil {
-			return final, fmt.Errorf("encode %s event: %w", event.Type, encErr)
+			return final, firstTokenMs, fmt.Errorf("encode %s event: %w", event.Type, encErr)
 		}
 		for _, sse := range events {
 			if !writeDevinSSE(c, sse) {
-				return final, errors.New("client disconnected")
+				return final, firstTokenMs, errors.New("client disconnected")
 			}
 		}
 		c.Writer.Flush()
 	}
 
 	if reqStream {
-		return final, nil
+		return final, firstTokenMs, nil
 	}
 	if final == nil {
-		return nil, errors.New("upstream stream ended without a final message")
+		return nil, firstTokenMs, errors.New("upstream stream ended without a final message")
 	}
 	if final.ErrorMessage != "" {
-		return final, errors.New(final.ErrorMessage)
+		return final, firstTokenMs, errors.New(final.ErrorMessage)
 	}
 	payload, err := encodeDevinFinal(protocol, final)
 	if err != nil {
-		return final, err
+		return final, firstTokenMs, err
 	}
 	c.Writer.Header().Set("Content-Type", "application/json")
 	c.Writer.WriteHeader(http.StatusOK)
 	if _, err := c.Writer.Write(payload); err != nil {
-		return final, err
+		return final, firstTokenMs, err
 	}
-	_ = firstTokenMs // 非流式不计首字延迟到客户端，仅计入用量
-	return final, nil
+	return final, firstTokenMs, nil
 }
 
 // writeDevinSSE 写一个 SSE 事件；写失败（客户端断开）返回 false。
@@ -475,20 +477,45 @@ func (h *DevinGatewayHandler) submitDevinUsage(
 	reqModel string,
 	message *llm.AssistantMessage,
 	requestBody []byte,
+	reqStream bool,
+	startTime time.Time,
+	firstTokenMs *int,
+	requestedEffort string,
 ) {
 	if message == nil {
 		return
 	}
 	result := &service.ForwardResult{
-		RequestID: message.UpstreamRequestID,
-		Model:     reqModel,
-		Stream:    true,
+		RequestID:    message.UpstreamRequestID,
+		Model:        reqModel,
+		Stream:       reqStream,
+		Duration:     time.Since(startTime),
+		FirstTokenMs: firstTokenMs,
 		Usage: service.ClaudeUsage{
 			InputTokens:              int(message.Usage.Input),
 			OutputTokens:             int(message.Usage.Output),
 			CacheCreationInputTokens: int(message.Usage.CacheWrite),
 			CacheReadInputTokens:     int(message.Usage.CacheRead),
 		},
+	}
+	// 推理强度：RequestedReasoningEffort 记客户端请求值（effort 参数或
+	// model:level 后缀）；ReasoningEffort 记实际生效档——从上游回报的
+	// 实际 uid（actual_model_uid，如 swe-2-max）回推，缺省回落请求值。
+	requestedEffort = strings.TrimSpace(requestedEffort)
+	if requestedEffort == "" {
+		if _, level, ok := devin.SplitModelLevelSuffix(reqModel); ok {
+			requestedEffort = level
+		}
+	}
+	if requestedEffort != "" {
+		result.RequestedReasoningEffort = &requestedEffort
+	}
+	effectiveEffort := devin.UidThinkingLevel(message.ResponseModel)
+	if effectiveEffort == "" {
+		effectiveEffort = requestedEffort
+	}
+	if effectiveEffort != "" {
+		result.ReasoningEffort = &effectiveEffort
 	}
 	// 上游回报的实际模型（actual_model_uid）≠ 请求模型时记入 UpstreamModel，
 	// usage_log 据此显示真实结算模型。

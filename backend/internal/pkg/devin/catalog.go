@@ -376,6 +376,15 @@ func matchModelThinkingSuffix(rest string) *levelMatch {
 	return nil
 }
 
+// UidThinkingLevel 从具体上游 uid 回推思考档位（如 swe-2-max → "max"）。
+// uid 未携带可识别的档位词时返回 ""——供用量记录推导实际生效的 effort。
+func UidThinkingLevel(uid string) string {
+	if level, _, ok := parseModelUid(uid); ok {
+		return string(level)
+	}
+	return ""
+}
+
 // parseModelUid 是显示名无档位/变体时从 uid 回推的兜底。
 func parseModelUid(uid string) (level ThinkingLevel, variant string, ok bool) {
 	lower := strings.ToLower(uid)
