@@ -1205,11 +1205,11 @@ func (s *AccountTestService) fetchAntigravityOAuthUpstreamModels(ctx context.Con
 	return dedupeAndSortModelIDs(models), nil
 }
 
-// fetchDevinUpstreamModels 经 Connect RPC 拉取 Devin 模型目录，返回分组 id
-// 列表（thinking 档位 uid 不铺平——客户端用 effort / "model:level" 选档）。
-func (s *AccountTestService) fetchDevinUpstreamModels(ctx context.Context, account *Account) ([]string, error) {
+// newDevinAdapter 用账号凭据/代理/TLS 指纹构建 Devin Connect adapter
+// （模型同步与账号测试共用）。
+func (s *AccountTestService) newDevinAdapter(account *Account) (*devinadapter.Adapter, error) {
 	if s.httpUpstream == nil {
-		return nil, newUpstreamModelSyncConfigError("Upstream HTTP client is not configured", nil)
+		return nil, errors.New("upstream HTTP client is not configured")
 	}
 	token := account.GetDevinToken()
 	if token == "" {
@@ -1217,14 +1217,14 @@ func (s *AccountTestService) fetchDevinUpstreamModels(ctx context.Context, accou
 		token = strings.TrimSpace(account.GetCredential("api_key"))
 	}
 	if token == "" {
-		return nil, newUpstreamModelSyncConfigError("No Devin access token is available", nil)
+		return nil, errors.New("no Devin access token is available")
 	}
 	baseURL := account.GetDevinBaseURL()
 	if baseURL == "" {
 		baseURL = devin.DefaultBaseURL
 	}
 	proxyURL := upstreamModelsProxyURL(account)
-	ad, err := devinadapter.New(devinadapter.Config{
+	return devinadapter.New(devinadapter.Config{
 		BaseURL:       baseURL,
 		Token:         token,
 		ClientVersion: account.GetDevinClientVersion(),
@@ -1232,6 +1232,12 @@ func (s *AccountTestService) fetchDevinUpstreamModels(ctx context.Context, accou
 			return s.httpUpstream.DoWithTLS(req, proxyURL, account.ID, account.Concurrency, s.tlsFPProfileService.ResolveTLSProfile(account))
 		},
 	})
+}
+
+// fetchDevinUpstreamModels 经 Connect RPC 拉取 Devin 模型目录，返回分组 id
+// 列表（thinking 档位 uid 不铺平——客户端用 effort / "model:level" 选档）。
+func (s *AccountTestService) fetchDevinUpstreamModels(ctx context.Context, account *Account) ([]string, error) {
+	ad, err := s.newDevinAdapter(account)
 	if err != nil {
 		return nil, newUpstreamModelSyncConfigError("Failed to configure Devin client", err)
 	}

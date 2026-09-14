@@ -28,7 +28,7 @@ import (
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/claude"
-	"github.com/Wei-Shaw/sub2api/internal/pkg/devin"
+	devinllm "github.com/Wei-Shaw/sub2api/internal/pkg/devin/llm"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/geminicli"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/openai"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/openai_compat"
@@ -391,27 +391,29 @@ func (s *AccountTestService) TestAccountConnection(c *gin.Context, accountID int
 	}
 
 	if account.IsDevin() {
-		return s.testDevinAccountConnection(c, account)
+		return s.testDevinAccountConnection(c, account, modelID, prompt)
 	}
 
 	return s.testClaudeAccountConnection(c, account, modelID)
 }
 
-// testDevinAccountConnection 用 SeatManagementService/GetUserStatus 验证
-// devin-session-token 是否有效（最便宜的认证 RPC），不回放上
-// GetChatMessage——避免消耗真实额度。
-func (s *AccountTestService) testDevinAccountConnection(c *gin.Context, account *Account) error {
-	token := account.GetDevinToken()
-	if token == "" {
-		return s.sendErrorAndEnd(c, "No Devin token available")
+// testDevinAccountConnection 通过 adapter 真实调用所选模型（最小提示词流式
+// 请求），把文本/思考增量转发为测试事件——与其他平台的模型测试行为一致，
+// 不再止步于 GetUserStatus 连通性检查。
+func (s *AccountTestService) testDevinAccountConnection(c *gin.Context, account *Account, modelID string, prompt string) error {
+	testModelID := strings.TrimSpace(modelID)
+	if testModelID == "" {
+		testModelID = "swe-2"
 	}
-	baseURL := account.GetDevinBaseURL()
-	if baseURL == "" {
-		baseURL = devin.DefaultBaseURL
+	testModelID = account.GetMappedModel(testModelID)
+	testPrompt := strings.TrimSpace(prompt)
+	if testPrompt == "" {
+		testPrompt = "Say hi."
 	}
-	version := account.GetDevinClientVersion()
-	if version == "" {
-		version = devin.DefaultClientVersion
+
+	ad, err := s.newDevinAdapter(account)
+	if err != nil {
+		return s.sendErrorAndEnd(c, fmt.Sprintf("Failed to configure Devin client: %s", err.Error()))
 	}
 
 	c.Writer.Header().Set("Content-Type", "text/event-stream")
@@ -420,37 +422,44 @@ func (s *AccountTestService) testDevinAccountConnection(c *gin.Context, account 
 	c.Writer.Header().Set("X-Accel-Buffering", "no")
 	c.Writer.Flush()
 
-	s.sendEvent(c, TestEvent{Type: "test_start", Model: modelIDOrDevin("")})
+	s.sendEvent(c, TestEvent{Type: "test_start", Model: testModelID})
 
-	body := devin.MarshalGetUserStatus(token, version, devin.ClientOS())
-	req, err := devin.NewUnaryRequest(baseURL, devin.PathGetUserStatus, token, body)
+	stream, err := ad.Stream(c.Request.Context(), devinllm.RequestMessages{
+		Model: testModelID,
+		Messages: []devinllm.Message{
+			devinllm.UserMessage{Content: []devinllm.Content{devinllm.TextContent{Text: testPrompt}}},
+		},
+	})
 	if err != nil {
-		return s.sendErrorAndEnd(c, fmt.Sprintf("Failed to build request: %s", err.Error()))
+		return s.sendErrorAndEnd(c, fmt.Sprintf("Request failed: %s", connectErrText(err)))
 	}
 
-	proxyURL := ""
-	if account.ProxyID != nil && account.Proxy != nil {
-		proxyURL = account.Proxy.URL()
+	var usage *devinllm.AssistantMessage
+	for {
+		event, recvErr := stream.Recv(c.Request.Context())
+		if errors.Is(recvErr, io.EOF) {
+			break
+		}
+		if recvErr != nil {
+			return s.sendErrorAndEnd(c, fmt.Sprintf("Stream error: %s", connectErrText(recvErr)))
+		}
+		switch event.Type {
+		case devinllm.ResponseEventTextDelta, devinllm.ResponseEventThinkingDelta:
+			if event.Delta != "" {
+				s.sendEvent(c, TestEvent{Type: "content", Text: event.Delta})
+			}
+		case devinllm.ResponseEventDone:
+			usage = event.Message
+		case devinllm.ResponseEventError:
+			if event.Error != nil && event.Error.ErrorMessage != "" {
+				return s.sendErrorAndEnd(c, fmt.Sprintf("Upstream error: %s", event.Error.ErrorMessage))
+			}
+			return s.sendErrorAndEnd(c, "Upstream error")
+		}
 	}
-	resp, err := s.httpUpstream.DoWithTLS(req.WithContext(c.Request.Context()), proxyURL, account.ID, account.Concurrency, s.tlsFPProfileService.ResolveTLSProfile(account))
-	if err != nil {
-		return s.sendErrorAndEnd(c, fmt.Sprintf("Request failed: %s", err.Error()))
+	if usage != nil && usage.Usage.TotalTokens > 0 {
+		s.sendEvent(c, TestEvent{Type: "content", Text: fmt.Sprintf("\n\n[tokens: in=%d out=%d]", usage.Usage.Input, usage.Usage.Output)})
 	}
-	defer func() { _ = resp.Body.Close() }()
-
-	data, err := devin.ReadUnaryResponse(resp)
-	if err != nil {
-		return s.sendErrorAndEnd(c, fmt.Sprintf("Upstream error: %s", connectErrText(err)))
-	}
-	status := devin.DecodeUserStatus(data)
-	label := status.Name
-	if label == "" {
-		label = status.Email
-	}
-	if label == "" {
-		label = "(anonymous)"
-	}
-	s.sendEvent(c, TestEvent{Type: "content", Text: fmt.Sprintf("Devin account OK: %s plan=%s can_use_cli=%v", label, status.PlanName, status.CanUseCLI)})
 	s.sendEvent(c, TestEvent{Type: "test_complete", Success: true})
 	return nil
 }
