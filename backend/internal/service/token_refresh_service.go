@@ -131,6 +131,9 @@ func NewTokenRefreshService(
 		grokOAuthService = grokOAuthServices[0]
 	}
 	grokRefresher := NewGrokTokenRefresher(grokOAuthService)
+	// Adobe 没有 refresh_token：长期凭据是账号里的浏览器 cookie，刷新器不依赖任何
+	// OAuth service，故直接构造。
+	adobeRefresher := NewAdobeTokenRefresher()
 
 	// Each provider is registered exactly once. The same registry supplies both
 	// execution and repository eligibility, preventing future platform drift.
@@ -141,6 +144,7 @@ func NewTokenRefreshService(
 		{platform: PlatformAntigravity, refresher: agRefresher, executor: agRefresher},
 		{platform: PlatformKiro, refresher: kiroRefresher, executor: kiroRefresher},
 		{platform: PlatformGrok, refresher: grokRefresher, executor: grokRefresher},
+		{platform: PlatformAdobe, refresher: adobeRefresher, executor: adobeRefresher},
 	}
 
 	return s

@@ -20,6 +20,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/domain"
 	"github.com/Wei-Shaw/sub2api/internal/handler/dto"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/adobe"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/antigravity"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/claude"
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
@@ -2918,6 +2919,16 @@ func (h *AccountHandler) GetAvailableModels(c *gin.Context) {
 		return
 	}
 
+	// Handle Adobe accounts
+	//
+	// Adobe 账号一律是 oauth，改前会落到本函数结尾的 Claude 兜底分支返回 claude.DefaultModels
+	// ——测试弹窗因此显示一堆 Sonnet/Opus。GetModelMapping 对 Adobe 在未显式配置时会自动
+	// 回落到 DefaultAdobeModelMapping，所以这一条同时覆盖默认账号与自定义映射的账号。
+	if account.Platform == service.PlatformAdobe {
+		response.Success(c, buildAdobeTestModels(account.GetModelMapping()))
+		return
+	}
+
 	// Handle Grok accounts
 	if account.Platform == service.PlatformGrok {
 		defaultModels := xai.DefaultModels()
@@ -3007,6 +3018,48 @@ func (h *AccountHandler) GetAvailableModels(c *gin.Context) {
 	}
 
 	response.Success(c, models)
+}
+
+// buildAdobeTestModels 把账号的 model_mapping 键渲染成测试弹窗可用的模型条目。
+//
+// 顺序是刻意的：先按 adobe.ImageModelIDs() 的对外展示序输出，再把运维自定义的额外别名
+// 按字典序追加。前端默认选中第一项，顺序不稳会让默认模型每次刷新都变。
+//
+// DisplayName 直接用 id：Adobe 的对外名本身可读（gpt-image-2 / nano-banana-pro / flux-pro），
+// 不值得再维护一张标签表。
+func buildAdobeTestModels(mapping map[string]string) []adobe.Model {
+	models := make([]adobe.Model, 0, len(mapping))
+	emitted := make(map[string]struct{}, len(mapping))
+
+	// 对外清单里的模型给人类可读展示名（"gpt-image-2" → "GPT Image 2"），
+	// 与 OpenAI/Gemini 的选择器观感一致。
+	for _, id := range adobe.ImageModelIDs() {
+		if _, ok := mapping[id]; !ok {
+			continue
+		}
+		emitted[id] = struct{}{}
+		displayName := id
+		if label, ok := adobe.DisplayLabel(id); ok {
+			displayName = label
+		}
+		models = append(models, adobe.Model{ID: id, Type: "model", DisplayName: displayName})
+	}
+
+	extras := make([]string, 0, len(mapping))
+	for id := range mapping {
+		if _, ok := emitted[id]; ok {
+			continue
+		}
+		extras = append(extras, id)
+	}
+	sort.Strings(extras)
+	// extras 刻意保留裸 id：默认映射里的 gpt-image / gpt-image-1 / gpt-image-1-mini
+	// 都落同一个族，套 label 会出现三行一模一样的「GPT Image 2」；
+	// 运维自定义的别名也该显示他自己写的那个名字。
+	for _, id := range extras {
+		models = append(models, adobe.Model{ID: id, Type: "model", DisplayName: id})
+	}
+	return models
 }
 
 func buildMappedKiroModels(mapping map[string]string) []kiropkg.Model {
@@ -3349,6 +3402,12 @@ func (h *AccountHandler) GetAntigravityDefaultModelMapping(c *gin.Context) {
 // GET /api/v1/admin/accounts/kiro/default-model-mapping
 func (h *AccountHandler) GetKiroDefaultModelMapping(c *gin.Context) {
 	response.Success(c, domain.DefaultKiroModelMapping)
+}
+
+// GetAdobeDefaultModelMapping 获取 Adobe 平台的默认模型映射
+// GET /api/v1/admin/accounts/adobe/default-model-mapping
+func (h *AccountHandler) GetAdobeDefaultModelMapping(c *gin.Context) {
+	response.Success(c, domain.DefaultAdobeModelMapping)
 }
 
 // sanitizeExtraBaseRPM 对 extra map 中的 base_rpm 值进行范围校验和归一化。

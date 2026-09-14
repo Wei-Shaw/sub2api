@@ -390,6 +390,12 @@ func (s *AccountTestService) TestAccountConnection(c *gin.Context, accountID int
 		return s.testKiroAccountConnection(c, account, modelID)
 	}
 
+	// Adobe 是文生图渠道，与下面 Claude 兜底的「发一条 prompt 收流式文本」协议不通。
+	// 改前它会落到 testClaudeAccountConnection，拿 IMS token 去打 api.anthropic.com。
+	if account.Platform == PlatformAdobe {
+		return s.testAdobeAccountConnection(c, account, modelID, prompt)
+	}
+
 	return s.testClaudeAccountConnection(c, account, modelID)
 }
 
@@ -3091,6 +3097,9 @@ func (s *AccountTestService) processOpenAIStream(c *gin.Context, body io.Reader)
 // testOpenAIImageAPIKey tests OpenAI image generation using an API Key account.
 func (s *AccountTestService) testOpenAIImageAPIKey(c *gin.Context, ctx context.Context, account *Account, modelID, prompt string) error {
 	authToken := account.GetOpenAIApiKey()
+	if authToken == "" {
+		authToken = strings.TrimSpace(account.GetCredential("api_key"))
+	}
 	if authToken == "" {
 		return s.sendErrorAndEnd(c, "No API key available")
 	}

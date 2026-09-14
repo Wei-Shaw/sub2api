@@ -110,11 +110,18 @@ type kiroUsageCache struct {
 	timestamp time.Time
 }
 
+// adobeUsageCache 缓存 Adobe credits/balance 结果，与 kiroUsageCache 同构。
+type adobeUsageCache struct {
+	usageInfo *UsageInfo
+	timestamp time.Time
+}
+
 const (
 	apiCacheTTL             = 3 * time.Minute
 	apiErrorCacheTTL        = 1 * time.Minute        // 负缓存 TTL：429 等错误缓存 1 分钟
 	antigravityErrorTTL     = 1 * time.Minute        // Antigravity 错误缓存 TTL（可恢复错误）
 	kiroUsageErrorTTL       = 1 * time.Minute        // Kiro 错误缓存 TTL（可恢复错误）
+	adobeUsageErrorTTL      = 1 * time.Minute        // Adobe credits 错误缓存 TTL（与 Kiro 同）
 	apiQueryMaxJitter       = 800 * time.Millisecond // 用量查询最大随机延迟
 	windowStatsCacheTTL     = 1 * time.Minute
 	openAIProbeCacheTTL     = 10 * time.Minute
@@ -129,9 +136,11 @@ type UsageCache struct {
 	windowStatsCache  sync.Map           // accountID -> *windowStatsCache
 	antigravityCache  sync.Map           // accountID -> *antigravityUsageCache
 	kiroUsageCache    sync.Map           // accountID -> *kiroUsageCache
+	adobeUsageCache   sync.Map           // accountID -> *adobeUsageCache
 	apiFlight         singleflight.Group // 防止同一账号的并发请求击穿缓存（Anthropic）
 	antigravityFlight singleflight.Group // 防止同一 Antigravity 账号的并发请求击穿缓存
 	kiroUsageFlight   singleflight.Group // 防止同一 Kiro 账号的并发请求击穿缓存
+	adobeUsageFlight  singleflight.Group // 防止同一 Adobe 账号的并发请求击穿缓存
 	openAIProbeCache  sync.Map           // accountID -> time.Time
 	grokProbeCache    sync.Map           // accountID -> last billing probe attempt
 }
@@ -277,6 +286,29 @@ type UsageInfo struct {
 
 	// 获取 usage 时的错误信息（降级返回，而非 500）
 	Error string `json:"error,omitempty"`
+
+	// Adobe credits/balance 快照。planCap 是不透明字符串（见抓包：目前只有 "FREE"），
+	// 调度决策只看数字 available，UI 只做展示。
+	AdobePlanCap       string            `json:"adobe_plan_cap,omitempty"`
+	AdobeCredit        *CreditProgress   `json:"adobe_credit,omitempty"`          // 顶栏进度：来自 total.quota
+	AdobeCreditPools   []AdobeCreditPool `json:"adobe_credit_pools,omitempty"`    // credits.<pool> 明细，本轮不渲染
+	AdobeCreditResetAt *time.Time        `json:"adobe_credit_reset_at,omitempty"` // availableUntil 解析结果
+}
+
+// CreditProgress 是一个「已用/上限/百分比」三件套，与 KiroCreditProgress 分开是
+// 因为 Kiro 那个带 DaysRemaining / ExpiryDate（订阅到期语义），Adobe 是每日重置。
+type CreditProgress struct {
+	CurrentUsage   float64 `json:"current_usage"`
+	UsageLimit     float64 `json:"usage_limit"`
+	PercentageUsed float64 `json:"percentage_used"`
+}
+
+// AdobeCreditPool 是 credits.<pool_name>.quota 的镜像，池名随套餐变化。
+type AdobeCreditPool struct {
+	Name      string `json:"name"`
+	Total     *int64 `json:"total,omitempty"`
+	Used      *int64 `json:"used,omitempty"`
+	Available *int64 `json:"available,omitempty"`
 }
 
 // ClaudeUsageWindow Anthropic /api/oauth/usage 返回的单个用量窗口
@@ -343,6 +375,7 @@ type AccountUsageService struct {
 	kiroCooldownStore       KiroCooldownStore
 	agentIdentityTaskMu     sync.Mutex
 	agentIdentityWS         agentIdentityWSConnectionInvalidator
+	adobeTokenRefresher     *AdobeTokenRefresher
 }
 
 // NewAccountUsageService 创建AccountUsageService实例
@@ -371,6 +404,7 @@ func NewAccountUsageService(
 		cache:                   cache,
 		identityCache:           identityCache,
 		tlsFPProfileService:     tlsFPProfileService,
+		adobeTokenRefresher:     NewAdobeTokenRefresher(),
 	}
 }
 
@@ -429,7 +463,11 @@ func (s *AccountUsageService) getUsageForAccount(ctx context.Context, account *A
 	}
 
 	if isKiroDirectModeAccount(account) {
-		return s.getKiroUsage(ctx, account, "active", false)
+		return s.getKiroUsage(ctx, account, "active", forceProbe)
+	}
+
+	if account.Platform == PlatformAdobe {
+		return s.getAdobeUsage(ctx, account, "active", forceProbe)
 	}
 
 	// Antigravity 平台：使用 AntigravityQuotaFetcher 获取额度
@@ -660,6 +698,10 @@ func (s *AccountUsageService) getPassiveUsageForAccount(ctx context.Context, acc
 			return nil, fmt.Errorf("passive usage only supported for Kiro OAuth/APIKey accounts")
 		}
 		return s.getKiroUsage(ctx, account, "passive", false)
+	}
+
+	if account.Platform == PlatformAdobe {
+		return s.getAdobeUsage(ctx, account, "passive", false)
 	}
 
 	if !supportsAnthropicPassiveUsage(account) {
