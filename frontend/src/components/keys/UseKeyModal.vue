@@ -1336,7 +1336,8 @@ function generateRoutedCodexFiles(
     minimax: 'MiniMax',
     opencode_go: 'OpenCode',
     typesafe: 'TypeSafe / Jev',
-    composite: 'Composite'
+    composite: 'Composite',
+    kiro: 'Kiro'
   }
   const label = labels[platform]
   const envContent = isWindows
