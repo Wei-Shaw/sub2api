@@ -6,9 +6,13 @@ package service
 
 import (
 	"context"
+	"crypto/sha256"
 	"errors"
+	"fmt"
 	"net/http"
 	"strings"
+	"sync"
+	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/devin"
 	devinadapter "github.com/Wei-Shaw/sub2api/internal/pkg/devin/adapter"
@@ -16,10 +20,29 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/pkg/devin/llm"
 )
 
+// devinAdapterIdleTTL 是 adapter 空闲回收窗口：超过即重建。adapter 自身
+// 对 catalog/AssignModel 的缓存有正确性保障，空闲重建只是丢掉缓存热度。
+const devinAdapterIdleTTL = 30 * time.Minute
+
+// devinAdapterCacheCap 是 adapter 缓存的硬上限（最久未用逐出）。
+const devinAdapterCacheCap = 512
+
 // DevinGatewayService 为 Devin 账号构造并驱动 Connect adapter。
 type DevinGatewayService struct {
 	httpUpstream       HTTPUpstream
 	tlsFingerprintProf *TLSFingerprintProfileService
+
+	// adapters 按账号指纹缓存复用 adapter：catalog（5min TTL）与
+	// AssignModel 解析两级缓存都挂在 adapter 实例上，每请求新建会让
+	// 两级缓存全部失效——每条流前多出 GetCliModelConfigs + AssignModel
+	// 两趟上游 RPC，直接体现为首字延迟。
+	adaptersMu sync.Mutex
+	adapters   map[string]cachedDevinAdapter
+}
+
+type cachedDevinAdapter struct {
+	adapter    *devinadapter.Adapter
+	lastUsedAt time.Time
 }
 
 // NewDevinGatewayService 创建服务。
@@ -27,10 +50,12 @@ func NewDevinGatewayService(httpUpstream HTTPUpstream, tlsFingerprintProf *TLSFi
 	return &DevinGatewayService{
 		httpUpstream:       httpUpstream,
 		tlsFingerprintProf: tlsFingerprintProf,
+		adapters:           make(map[string]cachedDevinAdapter),
 	}
 }
 
 // adapterForAccount 把账号凭据/代理/TLS 指纹绑定为一个 adapter。
+// 命中缓存直接复用；凭据/地址/代理/并发任一变化都会改变指纹而换用新 adapter。
 func (s *DevinGatewayService) adapterForAccount(account *Account) (*devinadapter.Adapter, error) {
 	if account == nil || !account.IsDevin() {
 		return nil, errors.New("account is not a devin platform account")
@@ -51,12 +76,47 @@ func (s *DevinGatewayService) adapterForAccount(account *Account) (*devinadapter
 		profile := s.tlsFingerprintProf.ResolveTLSProfile(account)
 		return s.httpUpstream.DoWithTLS(req, proxyURL, account.ID, account.Concurrency, profile)
 	}
-	return devinadapter.New(devinadapter.Config{
+	// 指纹含 token 哈希（不落明文）/base_url/client_version/代理/并发，
+	// 任何凭据或传输配置漂移都自动失效换新。
+	tokenHash := sha256.Sum256([]byte(token))
+	key := fmt.Sprintf("%d|%x|%s|%s|%s|%d", account.ID, tokenHash[:8],
+		baseURL, account.GetDevinClientVersion(), proxyURL, account.Concurrency)
+	now := time.Now()
+
+	s.adaptersMu.Lock()
+	defer s.adaptersMu.Unlock()
+	if entry, ok := s.adapters[key]; ok && now.Sub(entry.lastUsedAt) < devinAdapterIdleTTL {
+		entry.lastUsedAt = now
+		s.adapters[key] = entry
+		return entry.adapter, nil
+	}
+	ad, err := devinadapter.New(devinadapter.Config{
 		BaseURL:       baseURL,
 		Token:         token,
 		ClientVersion: account.GetDevinClientVersion(),
 		Do:            profileDoer,
 	})
+	if err != nil {
+		return nil, err
+	}
+	// 顺手清扫过期项；超限则逐出最久未用的。
+	for k, entry := range s.adapters {
+		if now.Sub(entry.lastUsedAt) >= devinAdapterIdleTTL {
+			delete(s.adapters, k)
+		}
+	}
+	if len(s.adapters) >= devinAdapterCacheCap {
+		var oldestKey string
+		var oldestAt time.Time
+		for k, entry := range s.adapters {
+			if oldestKey == "" || entry.lastUsedAt.Before(oldestAt) {
+				oldestKey, oldestAt = k, entry.lastUsedAt
+			}
+		}
+		delete(s.adapters, oldestKey)
+	}
+	s.adapters[key] = cachedDevinAdapter{adapter: ad, lastUsedAt: now}
+	return ad, nil
 }
 
 // Stream 打开一条 GetChatMessage 流，返回供应商无关的增量事件流。
