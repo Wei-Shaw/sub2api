@@ -1,0 +1,618 @@
+{
+  "models": [
+    {
+      "modelId": "flux",
+      "modelVersions": {
+        "fluxPro": {
+          "modelDisplayName": "Flux 1.1 Pro",
+          "modelCaiDisplayName": "Flux Pro",
+          "outputModality": [
+            "image"
+          ],
+          "enabled": true,
+          "releaseReadiness": "ga",
+          "bksGenerationModel": "firefall_3p:external:flux_1.1",
+          "size_enum": [
+            {
+              "width": 1024,
+              "height": 768
+            },
+            {
+              "width": 1440,
+              "height": 1440
+            },
+            {
+              "width": 768,
+              "height": 1024
+            },
+            {
+              "width": 576,
+              "height": 1024
+            },
+            {
+              "width": 1024,
+              "height": 576
+            }
+          ]
+        },
+        "fluxUltra": {
+          "modelDisplayName": "Flux 1.1 Ultra",
+          "modelCaiDisplayName": "Flux Ultra",
+          "outputModality": [
+            "image"
+          ],
+          "enabled": true,
+          "releaseReadiness": "ga",
+          "bksGenerationModel": "firefall_3p:external:flux_pro_ultra1.1",
+          "size_enum": [
+            {
+              "width": 1024,
+              "height": 768
+            },
+            {
+              "width": 1440,
+              "height": 1440
+            },
+            {
+              "width": 768,
+              "height": 1024
+            },
+            {
+              "width": 576,
+              "height": 1024
+            },
+            {
+              "width": 1024,
+              "height": 576
+            }
+          ]
+        }
+      },
+      "acModelFamilyProviderDisplayName": "Black Forest Labs"
+    },
+    {
+      "modelId": "gemini-flash",
+      "modelVersions": {
+        "nano-banana": {
+          "modelDisplayName": "Gemini 2.5 (Nano Banana)",
+          "modelCaiDisplayName": "Gemini Flash",
+          "outputModality": [
+            "image"
+          ],
+          "enabled": true,
+          "releaseReadiness": "ga",
+          "bksGenerationModel": "firefly_3p:external:gemini_flash",
+          "size_enum": [
+            {
+              "width": 1024,
+              "height": 1024
+            },
+            {
+              "width": 1536,
+              "height": 672
+            },
+            {
+              "width": 896,
+              "height": 1152
+            },
+            {
+              "width": 1152,
+              "height": 896
+            },
+            {
+              "width": 1248,
+              "height": 832
+            },
+            {
+              "width": 832,
+              "height": 1248
+            },
+            {
+              "width": 864,
+              "height": 1184
+            },
+            {
+              "width": 1184,
+              "height": 864
+            },
+            {
+              "width": 768,
+              "height": 1344
+            },
+            {
+              "width": 1344,
+              "height": 768
+            }
+          ]
+        },
+        "nano-banana-2": {
+          "modelDisplayName": "Gemini 3.0 (Nano Banana Pro)",
+          "modelCaiDisplayName": "Gemini Flash",
+          "outputModality": [
+            "image"
+          ],
+          "enabled": true,
+          "releaseReadiness": "ga",
+          "bksGenerationModel": "firefly_3p:external:gemini_flash_2",
+          "size_enum": [
+            {
+              "width": 1024,
+              "height": 1024
+            },
+            {
+              "width": 1264,
+              "height": 848
+            },
+            {
+              "width": 848,
+              "height": 1264
+            },
+            {
+              "width": 1200,
+              "height": 896
+            },
+            {
+              "width": 896,
+              "height": 1200
+            },
+            {
+              "width": 1152,
+              "height": 928
+            },
+            {
+              "width": 928,
+              "height": 1152
+            },
+            {
+              "width": 768,
+              "height": 1376
+            },
+            {
+              "width": 1376,
+              "height": 768
+            },
+            {
+              "width": 1584,
+              "height": 672
+            },
+            {
+              "width": 2048,
+              "height": 2048
+            },
+            {
+              "width": 2528,
+              "height": 1696
+            },
+            {
+              "width": 1696,
+              "height": 2528
+            },
+            {
+              "width": 2400,
+              "height": 1792
+            },
+            {
+              "width": 1792,
+              "height": 2400
+            },
+            {
+              "width": 2304,
+              "height": 1856
+            },
+            {
+              "width": 1856,
+              "height": 2304
+            },
+            {
+              "width": 1536,
+              "height": 2752
+            },
+            {
+              "width": 2752,
+              "height": 1536
+            },
+            {
+              "width": 3168,
+              "height": 1344
+            },
+            {
+              "width": 4096,
+              "height": 4096
+            },
+            {
+              "width": 5056,
+              "height": 3392
+            },
+            {
+              "width": 3392,
+              "height": 5056
+            },
+            {
+              "width": 4800,
+              "height": 3584
+            },
+            {
+              "width": 3584,
+              "height": 4800
+            },
+            {
+              "width": 4608,
+              "height": 3712
+            },
+            {
+              "width": 3712,
+              "height": 4608
+            },
+            {
+              "width": 3072,
+              "height": 5504
+            },
+            {
+              "width": 5504,
+              "height": 3072
+            },
+            {
+              "width": 6336,
+              "height": 2688
+            }
+          ]
+        },
+        "nano-banana-3": {
+          "modelDisplayName": "Gemini 3.1 (with Nano Banana 2)",
+          "modelCaiDisplayName": "Gemini Flash",
+          "outputModality": [
+            "image"
+          ],
+          "enabled": true,
+          "releaseReadiness": "ga",
+          "bksGenerationModel": "firefly_3p:external:nano_banana_3",
+          "size_enum": [
+            {
+              "width": 512,
+              "height": 512
+            },
+            {
+              "width": 1024,
+              "height": 1024
+            },
+            {
+              "width": 1264,
+              "height": 848
+            },
+            {
+              "width": 848,
+              "height": 1264
+            },
+            {
+              "width": 1200,
+              "height": 896
+            },
+            {
+              "width": 896,
+              "height": 1200
+            },
+            {
+              "width": 1152,
+              "height": 928
+            },
+            {
+              "width": 928,
+              "height": 1152
+            },
+            {
+              "width": 768,
+              "height": 1376
+            },
+            {
+              "width": 1376,
+              "height": 768
+            },
+            {
+              "width": 1584,
+              "height": 672
+            },
+            {
+              "width": 2048,
+              "height": 2048
+            },
+            {
+              "width": 2528,
+              "height": 1696
+            },
+            {
+              "width": 1696,
+              "height": 2528
+            },
+            {
+              "width": 2400,
+              "height": 1792
+            },
+            {
+              "width": 1792,
+              "height": 2400
+            },
+            {
+              "width": 2304,
+              "height": 1856
+            },
+            {
+              "width": 1856,
+              "height": 2304
+            },
+            {
+              "width": 1536,
+              "height": 2752
+            },
+            {
+              "width": 2752,
+              "height": 1536
+            },
+            {
+              "width": 3168,
+              "height": 1344
+            },
+            {
+              "width": 4096,
+              "height": 4096
+            },
+            {
+              "width": 5056,
+              "height": 3392
+            },
+            {
+              "width": 3392,
+              "height": 5056
+            },
+            {
+              "width": 4800,
+              "height": 3584
+            },
+            {
+              "width": 3584,
+              "height": 4800
+            },
+            {
+              "width": 4608,
+              "height": 3712
+            },
+            {
+              "width": 3712,
+              "height": 4608
+            },
+            {
+              "width": 3072,
+              "height": 5504
+            },
+            {
+              "width": 5504,
+              "height": 3072
+            },
+            {
+              "width": 6336,
+              "height": 2688
+            }
+          ]
+        }
+      },
+      "acModelFamilyProviderDisplayName": "Google"
+    },
+    {
+      "modelId": "imagen",
+      "modelVersions": {
+        "4.0-generate": {
+          "modelDisplayName": "Imagen 4",
+          "modelCaiDisplayName": "Imagen",
+          "outputModality": [
+            "image"
+          ],
+          "enabled": false,
+          "releaseReadiness": "ga",
+          "bksGenerationModel": "firefly_3p:external:imagen_4",
+          "size_enum": [
+            {
+              "width": 1280,
+              "height": 896
+            },
+            {
+              "width": 1024,
+              "height": 1024
+            },
+            {
+              "width": 768,
+              "height": 1408
+            },
+            {
+              "width": 1408,
+              "height": 768
+            },
+            {
+              "width": 896,
+              "height": 1280
+            }
+          ]
+        },
+        "4.0-fast-generate": {
+          "modelDisplayName": "Imagen 4 Fast",
+          "modelCaiDisplayName": "Imagen",
+          "outputModality": [
+            "image"
+          ],
+          "enabled": false,
+          "releaseReadiness": "ga",
+          "bksGenerationModel": "firefly_3p:external:imagen_4",
+          "size_enum": [
+            {
+              "width": 1280,
+              "height": 896
+            },
+            {
+              "width": 1024,
+              "height": 1024
+            },
+            {
+              "width": 768,
+              "height": 1408
+            },
+            {
+              "width": 1408,
+              "height": 768
+            },
+            {
+              "width": 896,
+              "height": 1280
+            }
+          ]
+        }
+      },
+      "acModelFamilyProviderDisplayName": "Google"
+    },
+    {
+      "modelId": "gpt-4o-image",
+      "modelVersions": {
+        "default": {
+          "modelDisplayName": "GPT Image",
+          "modelCaiDisplayName": "GPT image",
+          "outputModality": [
+            "image"
+          ],
+          "enabled": true,
+          "releaseReadiness": "ga",
+          "bksGenerationModel": "firefall_3p:external:gpt4o",
+          "size_enum": [
+            {
+              "width": 1024,
+              "height": 1024
+            },
+            {
+              "width": 1536,
+              "height": 1024
+            },
+            {
+              "width": 1024,
+              "height": 1536
+            }
+          ]
+        }
+      },
+      "acModelFamilyProviderDisplayName": "OpenAI"
+    },
+    {
+      "modelId": "gpt-image",
+      "modelVersions": {
+        "1.5": {
+          "modelDisplayName": "GPT Image 1.5",
+          "modelCaiDisplayName": "GPT Image 1.5",
+          "outputModality": [
+            "image"
+          ],
+          "enabled": true,
+          "releaseReadiness": "ga",
+          "bksGenerationModel": "firefly_3p:external:gpt_image_1_5",
+          "size_enum": [
+            {
+              "width": 1024,
+              "height": 1024
+            },
+            {
+              "width": 1536,
+              "height": 1024
+            },
+            {
+              "width": 1024,
+              "height": 1536
+            }
+          ]
+        },
+        "2": {
+          "modelDisplayName": "GPT Image 2",
+          "modelCaiDisplayName": "GPT Image 2",
+          "outputModality": [
+            "image"
+          ],
+          "enabled": true,
+          "releaseReadiness": "ga",
+          "bksGenerationModel": "firefly_3p:external:gpt_image_2"
+        },
+        "gpt-image-2.5-flare": {
+          "modelDisplayName": "GPT Image 2.5 Flare",
+          "modelCaiDisplayName": "GPT Image 2.5 Flare",
+          "outputModality": [
+            "image"
+          ],
+          "enabled": true,
+          "releaseReadiness": "alpha",
+          "bksGenerationModel": "firefly_3p:external:gpt_image_2_5_flare"
+        },
+        "gpt-image-2.5-prism": {
+          "modelDisplayName": "GPT Image 2.5 Sunburst",
+          "modelCaiDisplayName": "GPT Image 2.5 Sunburst",
+          "outputModality": [
+            "image"
+          ],
+          "enabled": true,
+          "releaseReadiness": "alpha",
+          "bksGenerationModel": "firefly_3p:external:gpt_image_2_5_prism"
+        }
+      },
+      "acModelFamilyProviderDisplayName": "OpenAI"
+    },
+    {
+      "modelId": "runway-gen4-image",
+      "modelVersions": {
+        "default": {
+          "modelDisplayName": "Runway Gen-4 Image",
+          "modelCaiDisplayName": "Runway",
+          "outputModality": [
+            "image"
+          ],
+          "enabled": true,
+          "releaseReadiness": "ga",
+          "bksGenerationModel": "firefly_3p:external:runway_gen4_image",
+          "size_enum": [
+            {
+              "width": 1920,
+              "height": 1080
+            },
+            {
+              "width": 1080,
+              "height": 1920
+            },
+            {
+              "width": 1024,
+              "height": 1024
+            },
+            {
+              "width": 1360,
+              "height": 768
+            },
+            {
+              "width": 1080,
+              "height": 1080
+            },
+            {
+              "width": 1168,
+              "height": 880
+            },
+            {
+              "width": 1440,
+              "height": 1080
+            },
+            {
+              "width": 1080,
+              "height": 1440
+            },
+            {
+              "width": 1808,
+              "height": 768
+            },
+            {
+              "width": 2112,
+              "height": 912
+            }
+          ]
+        }
+      },
+      "acModelFamilyProviderDisplayName": "Runway"
+    }
+  ]
+}
