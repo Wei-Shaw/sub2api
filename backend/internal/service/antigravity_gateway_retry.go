@@ -508,7 +508,10 @@ func (s *AntigravityGatewayService) antigravityRetryLoop(p antigravityRetryLoopP
 	if baseURL == "" {
 		return nil, errors.New("no antigravity forward base url configured")
 	}
-	availableURLs := []string{baseURL}
+availableURLs := antigravity.DefaultURLAvailability.GetAvailableURLs()
+	if len(availableURLs) == 0 {
+		availableURLs = []string{baseURL}
+	}
 
 	var resp *http.Response
 	var usedBaseURL string
