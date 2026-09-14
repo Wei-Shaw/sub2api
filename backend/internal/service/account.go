@@ -15,6 +15,7 @@ import (
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/domain"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/devin"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/geminicli"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/openai_compat"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/xai"
@@ -838,6 +839,14 @@ func normalizeRequestedModelForLookup(platform, requestedModel string) string {
 	if trimmed == "" {
 		return ""
 	}
+	// Devin "model:level" 语法：level 后缀只决定思考档位，不参与
+	// model_mapping 键的匹配（如 swe-2:max 按 swe-2 查白名单）。
+	if platform == PlatformDevin {
+		if base, _, ok := devin.SplitModelLevelSuffix(trimmed); ok {
+			return base
+		}
+		return trimmed
+	}
 	if platform != PlatformGemini && platform != PlatformAntigravity {
 		return trimmed
 	}
@@ -922,6 +931,14 @@ func (a *Account) ResolveMappedModel(requestedModel string) (mappedModel string,
 	normalized := normalizeRequestedModelForLookup(a.Platform, requestedModel)
 	if normalized != requestedModel {
 		if mappedModel, matched := resolveRequestedModelInMapping(mapping, normalized); matched {
+			// Devin level 后缀与模型映射正交：归一化只为命中白名单键，
+			// 档位要保留回映射结果（除非映射值自带 level 覆盖）。
+			if a.Platform == PlatformDevin {
+				if level := requestedModel[len(normalized):]; strings.HasPrefix(level, ":") &&
+					!strings.Contains(mappedModel, ":") {
+					mappedModel += level
+				}
+			}
 			return mappedModel, true
 		}
 	}

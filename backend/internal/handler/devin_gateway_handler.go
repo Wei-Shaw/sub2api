@@ -657,19 +657,40 @@ func (h *DevinGatewayHandler) Models(c *gin.Context) {
 	// 只暴露分组 id（swe-2/claude-fable-5-1/…）：thinking 档位经
 	// effort 参数或 "model:level" 语法解析，不把档位 uid 铺平
 	// 成独立模型（与插件 catalog 语义一致）。
-	data := make([]any, 0, len(groups))
+	names := make(map[string]string, len(groups))
+	catalogIDs := make([]string, 0, len(groups))
 	seen := make(map[string]bool)
 	for _, group := range groups {
 		if group.ID == "" || seen[group.ID] {
 			continue
 		}
 		seen[group.ID] = true
+		catalogIDs = append(catalogIDs, group.ID)
+		names[group.ID] = group.Name
+	}
+	// 账号级 model_mapping（分组合集）即客户端可见白名单——有配置
+	// 时直接暴露映射键（与其他平台 /v1/models 语义一致，支持改名
+	// 映射）；未配置时回退为上游目录全量分组 id。
+	source := catalogIDs
+	if allowed := h.gatewayService.GetAvailableModels(c.Request.Context(), apiKey.GroupID, service.PlatformDevin); len(allowed) > 0 {
+		source = allowed
+	}
+	// 分组级 allowlist（若启用）叠加过滤。
+	if apiKey.Group != nil && apiKey.Group.ModelAllowlistEnabled() {
+		source = apiKey.Group.ModelAllowlist.FilterForListing(source)
+	}
+	data := make([]any, 0, len(source))
+	for _, id := range source {
+		name := names[id]
+		if name == "" {
+			name = id
+		}
 		data = append(data, gin.H{
-			"id":       group.ID,
+			"id":       id,
 			"object":   "model",
 			"created":  0,
 			"owned_by": "devin",
-			"name":     group.Name,
+			"name":     name,
 		})
 	}
 	c.JSON(http.StatusOK, gin.H{"object": "list", "data": data})

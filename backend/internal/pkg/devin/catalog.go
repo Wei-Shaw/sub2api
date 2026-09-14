@@ -774,11 +774,9 @@ func ResolveCatalogModelUID(groups []GroupedModel, model, effort string) string 
 	m := strings.TrimSpace(model)
 	effort = strings.ToLower(strings.TrimSpace(effort))
 	if effort == "" {
-		if i := strings.LastIndex(m, ":"); i > 0 && i < len(m)-1 {
-			if level := strings.ToLower(m[i+1:]); indexOfLevel(ThinkingLevel(level)) >= 0 {
-				effort = level
-				m = m[:i]
-			}
+		if base, level, ok := SplitModelLevelSuffix(m); ok {
+			effort = level
+			m = base
 		}
 	}
 	for i := range groups {
@@ -787,4 +785,18 @@ func ResolveCatalogModelUID(groups []GroupedModel, model, effort string) string 
 		}
 	}
 	return m
+}
+
+// SplitModelLevelSuffix 剥离 "model:level" 语法中的 level 后缀（如
+// swe-2:max → (swe-2, max, true)）。仅当冒号后缀是合法思考档位时
+// 才拆分；否则原样返回 model 与 ok=false。供调度/白名单层在匹配
+// model_mapping 键时剥离档位后缀（档位与模型选择正交）。
+func SplitModelLevelSuffix(model string) (base string, level string, ok bool) {
+	m := strings.TrimSpace(model)
+	if i := strings.LastIndex(m, ":"); i > 0 && i < len(m)-1 {
+		if lvl := strings.ToLower(m[i+1:]); indexOfLevel(ThinkingLevel(lvl)) >= 0 {
+			return m[:i], lvl, true
+		}
+	}
+	return m, "", false
 }
