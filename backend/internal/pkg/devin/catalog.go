@@ -781,11 +781,13 @@ func PickOverflowUID(currentUID string, catalog []Model) string {
 // 未知模型）时原样透传，交给上游裁决。
 func ResolveCatalogModelUID(groups []GroupedModel, model, effort string) string {
 	m := strings.TrimSpace(model)
-	effort = strings.ToLower(strings.TrimSpace(effort))
-	if effort == "" {
-		if base, level, ok := SplitModelLevelSuffix(m); ok {
+	effort = NormalizeEffortParam(effort)
+	// 后缀无论 effort 是否显式给出都要剥掉（否则 swe-2:low 查不到分组 id）；
+	// effort 为空时后缀的 level 才作为档位来源——显式 effort 优先。
+	if base, level, ok := SplitModelLevelSuffix(m); ok {
+		m = base
+		if effort == "" {
 			effort = level
-			m = base
 		}
 	}
 	for i := range groups {
@@ -794,6 +796,24 @@ func ResolveCatalogModelUID(groups []GroupedModel, model, effort string) string 
 		}
 	}
 	return m
+}
+
+// NormalizeEffortParam 把客户端传入的 effort 形参归一化为 Devin 档位词：
+// OpenAI 的 "none"/"x-high"、Anthropic 的 "enabled"/"disabled" 等写法映射到
+// LevelOrder 词表（off/xhigh/high…）；未识别值原样返回（ResolveModelUID 按
+// 插件语义回落默认 high 档）。"model:level" 后缀不走这里——SplitModelLevelSuffix
+// 已经只产出合法档位词。
+func NormalizeEffortParam(raw string) string {
+	switch strings.ToLower(strings.TrimSpace(raw)) {
+	case "none", "disabled":
+		return string(ThinkingOff)
+	case "x-high", "x_high":
+		return string(ThinkingXHigh)
+	case "enabled", "on":
+		return string(ThinkingHigh)
+	default:
+		return strings.ToLower(strings.TrimSpace(raw))
+	}
 }
 
 // SplitModelLevelSuffix 剥离 "model:level" 语法中的 level 后缀（如
