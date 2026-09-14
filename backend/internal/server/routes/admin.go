@@ -61,6 +61,9 @@ func RegisterAdminRoutes(
 		// Grok OAuth
 		registerGrokOAuthRoutes(admin, h)
 
+		// Devin PKCE 登录
+		registerDevinOAuthRoutes(admin, h)
+
 		// 国产供应商（kimi/zhipu/deepseek）额度与余额
 		registerCNProviderRoutes(admin, h)
 
@@ -472,6 +475,16 @@ func registerAntigravityOAuthRoutes(admin *gin.RouterGroup, h *handler.Handlers)
 		antigravity.POST("/oauth/auth-url", h.Admin.AntigravityOAuth.GenerateAuthURL)
 		antigravity.POST("/oauth/exchange-code", h.Admin.AntigravityOAuth.ExchangeCode)
 		antigravity.POST("/oauth/refresh-token", h.Admin.AntigravityOAuth.RefreshToken)
+	}
+}
+
+// registerDevinOAuthRoutes 注册 Devin 平台的 PKCE 登录端点。
+// 无回调：用户打开 auth-url 后在页面复制授权码，粘贴给 exchange-code。
+func registerDevinOAuthRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
+	devin := admin.Group("/devin")
+	{
+		devin.POST("/oauth/auth-url", h.Admin.DevinOAuth.GenerateAuthURL)
+		devin.POST("/oauth/exchange-code", h.Admin.DevinOAuth.ExchangeCode)
 	}
 }
 

@@ -229,6 +229,11 @@ func DeriveUpstreamEndpoint(inbound, rawRequestPath, platform string) string {
 			return EndpointGeminiModels
 		}
 		return EndpointMessages
+
+	case service.PlatformDevin:
+		// Devin 上游是 Connect-RPC 推理流（GetChatMessage）；三种入站协议
+		// 都汇聚到同一上游端点。
+		return "devin/GetChatMessage"
 	}
 
 	// Unknown platform — fall back to inbound.

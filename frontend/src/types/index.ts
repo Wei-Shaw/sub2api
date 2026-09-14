@@ -538,7 +538,7 @@ export interface PaginationConfig {
 
 // ==================== API Key & Group Types ====================
 
-export type GroupPlatform = 'anthropic' | 'openai' | 'gemini' | 'antigravity' | 'grok' | 'kimi' | 'zhipu' | 'deepseek' | 'minimax' | 'opencode_go' | 'composite'
+export type GroupPlatform = 'anthropic' | 'openai' | 'gemini' | 'antigravity' | 'grok' | 'devin' | 'kimi' | 'zhipu' | 'deepseek' | 'minimax' | 'opencode_go' | 'composite'
 
 export type VideoModelPrices = Record<string, Record<string, number>>
 
@@ -918,7 +918,7 @@ export interface UpdateGroupRequest {
 
 // ==================== Account & Proxy Types ====================
 
-export type AccountPlatform = 'anthropic' | 'openai' | 'gemini' | 'antigravity' | 'grok' | 'kimi' | 'zhipu' | 'deepseek' | 'minimax' | 'opencode_go'
+export type AccountPlatform = 'anthropic' | 'openai' | 'gemini' | 'antigravity' | 'grok' | 'devin' | 'kimi' | 'zhipu' | 'deepseek' | 'minimax' | 'opencode_go'
 export type AccountType = 'oauth' | 'setup-token' | 'apikey' | 'upstream' | 'bedrock' | 'service_account'
 export type OAuthAddMethod = 'oauth' | 'setup-token'
 export type ProxyProtocol = 'http' | 'https' | 'socks5' | 'socks5h'
@@ -1375,6 +1375,30 @@ export interface GrokBillingSummary {
   failed_windows?: string[]
 }
 
+// Devin 额度快照（后端 DevinQuota 的 JSON 形态；-1 = unlimited 哨兵）
+export interface DevinQuotaInfo {
+  plan_name?: string
+  account_display_name?: string
+  org_id?: string
+  team_id?: string
+  is_enterprise?: boolean
+  can_use_cli?: boolean
+  monthly_prompt_credits?: number
+  monthly_flow_credits?: number
+  available_prompt_credits?: number
+  available_flow_credits?: number
+  available_flex_credits?: number
+  used_prompt_credits?: number
+  used_flow_credits?: number
+  used_flex_credits?: number
+  daily_quota_remaining_percent?: number
+  weekly_quota_remaining_percent?: number
+  daily_quota_reset_at?: string
+  weekly_quota_reset_at?: string
+  acu_consumed?: number
+  acu_limit?: number
+}
+
 export interface AccountUsageInfo {
   source?: 'passive' | 'active'
   updated_at: string | null
@@ -1404,6 +1428,8 @@ export interface AccountUsageInfo {
   grok_local_usage_7d?: WindowStats | null
   grok_local_usage_monthly?: WindowStats | null
   grok_billing?: GrokBillingSummary | null
+  // Devin (Cognition) 额度快照：来自 GetUserStatus
+  devin_quota?: DevinQuotaInfo | null
   subscription_tier?: string
   subscription_tier_raw?: string
   ai_credits?: Array<{

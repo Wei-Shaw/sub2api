@@ -564,6 +564,50 @@
       </div>
     </template>
 
+    <!-- Devin (Cognition) accounts: daily/weekly quota + credits -->
+    <template v-else-if="account.platform === 'devin'">
+      <div v-if="loading" class="space-y-1.5">
+        <div class="flex items-center gap-1">
+          <div class="h-3 w-[32px] animate-pulse rounded bg-gray-200 dark:bg-gray-700"></div>
+          <div class="h-1.5 w-8 animate-pulse rounded-full bg-gray-200 dark:bg-gray-700"></div>
+          <div class="h-3 w-[32px] animate-pulse rounded bg-gray-200 dark:bg-gray-700"></div>
+        </div>
+      </div>
+      <div v-else-if="needsReauth" class="space-y-1">
+        <span class="inline-block rounded px-1.5 py-0.5 text-[10px] font-medium bg-orange-100 text-orange-700 dark:bg-orange-900/40 dark:text-orange-300">
+          {{ t('admin.accounts.needsReauth') }}
+        </span>
+      </div>
+      <div v-else-if="usageInfo?.error" class="space-y-1">
+        <span class="inline-block rounded px-1.5 py-0.5 text-[10px] font-medium bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300">
+          {{ usageErrorLabel }}
+        </span>
+      </div>
+      <div v-else-if="usageInfo?.devin_quota" class="space-y-1">
+        <UsageProgressBar
+          v-if="devinDailyBar"
+          label="24h"
+          :utilization="devinDailyBar.utilization"
+          :resets-at="devinDailyBar.resetsAt"
+          color="sky"
+        />
+        <UsageProgressBar
+          v-if="devinWeeklyBar"
+          label="7d"
+          :utilization="devinWeeklyBar.utilization"
+          :resets-at="devinWeeklyBar.resetsAt"
+          color="sky"
+        />
+        <div v-if="devinCreditsLine" class="text-[10px] text-gray-500 dark:text-gray-400">
+          {{ devinCreditsLine }}
+        </div>
+        <div v-if="devinACULine" class="text-[10px] text-gray-500 dark:text-gray-400">
+          {{ devinACULine }}
+        </div>
+      </div>
+      <div v-else class="text-xs text-gray-400">-</div>
+    </template>
+
     <!-- Other accounts: no usage window -->
     <template v-else>
       <div class="text-xs text-gray-400">-</div>
@@ -750,10 +794,56 @@ const shouldFetchUsage = computed(() => {
   if (props.account.platform === 'grok') {
     return props.account.type === 'oauth'
   }
+  if (props.account.platform === 'devin') {
+    return props.account.type === 'oauth'
+  }
   if (props.account.platform === 'openai') {
     return props.account.type === 'oauth'
   }
   return false
+})
+
+// Devin 额度展示：GetUserStatus 返回的是"剩余百分比"，转成利用率
+const devinDailyBar = computed(() => {
+  const q = usageInfo.value?.devin_quota
+  if (!q || q.daily_quota_remaining_percent == null) return null
+  return {
+    utilization: Math.max(0, Math.min(100, 100 - q.daily_quota_remaining_percent)),
+    resetsAt: q.daily_quota_reset_at || null
+  }
+})
+const devinWeeklyBar = computed(() => {
+  const q = usageInfo.value?.devin_quota
+  if (!q || q.weekly_quota_remaining_percent == null) return null
+  return {
+    utilization: Math.max(0, Math.min(100, 100 - q.weekly_quota_remaining_percent)),
+    resetsAt: q.weekly_quota_reset_at || null
+  }
+})
+const devinCreditsLine = computed(() => {
+  const q = usageInfo.value?.devin_quota
+  if (!q) return ''
+  // -1 为 unlimited 哨兵
+  if (q.available_prompt_credits != null && q.available_prompt_credits < 0) {
+    return t('admin.accounts.usageWindow.devinCreditsUnlimited')
+  }
+  if (q.available_prompt_credits == null && q.available_flow_credits == null) return ''
+  const parts: string[] = []
+  if (q.available_prompt_credits != null) {
+    parts.push(`prompt ${q.used_prompt_credits ?? 0}/${q.available_prompt_credits + (q.used_prompt_credits ?? 0)}`)
+  }
+  if (q.available_flow_credits != null) {
+    parts.push(`flow ${q.used_flow_credits ?? 0}/${q.available_flow_credits + (q.used_flow_credits ?? 0)}`)
+  }
+  return parts.length
+    ? t('admin.accounts.usageWindow.devinCredits', { credits: parts.join(' · ') })
+    : ''
+})
+const devinACULine = computed(() => {
+  const q = usageInfo.value?.devin_quota
+  if (!q || (q.acu_consumed == null && q.acu_limit == null)) return ''
+  const limit = q.acu_limit != null && q.acu_limit > 0 ? q.acu_limit : '∞'
+  return t('admin.accounts.usageWindow.devinACU', { used: q.acu_consumed ?? 0, limit })
 })
 
 // CN 供应商子单元格可见性（与 CNProviderQuotaCell / CNProviderBalanceCell 共用

@@ -1240,8 +1240,31 @@ export default {
           },
           oauthOnlyHint: 'Initial Grok support is OAuth subscription-backed Responses API text and reasoning traffic only.'
         },
+        devin: {
+          title: 'Devin Account Authorization',
+          followSteps: 'Follow these steps to authorize your Devin (Cognition) account:',
+          step1GenerateUrl: 'Generate the Devin authorization URL',
+          generateAuthUrl: 'Generate Auth URL',
+          step2OpenUrl: 'Open the URL in your browser and complete authorization',
+          openUrlDesc:
+            'Open the authorization URL in a new tab, sign in to Devin, and approve the CLI sign-in to get an authorization code.',
+          step3EnterCode: 'Enter the authorization code or session token',
+          authCodeDesc:
+            'After authorization, paste the code shown by Devin — or paste a devin-session-token$… session token directly:',
+          authCode: 'Authorization Code or Session Token',
+          authCodePlaceholder: 'Paste the Devin authorization code, or a devin-session-token$… token',
+          authCodeHint:
+            'A PKCE authorization code requires a generated auth URL first. A devin-session-token$… token can be pasted directly.',
+          validating: 'Validating...',
+          validateAndCreate: 'Validate & Create Account',
+          failedToGenerateUrl: 'Failed to generate Devin auth URL',
+          missingExchangeParams:
+            'Missing authorization code or OAuth session. Generate an auth URL first, or paste a devin-session-token$… token.',
+          failedToExchangeCode: 'Failed to exchange Devin authorization code',
+          errors: {}
+        },
         // Gemini specific
-	        gemini: {
+        gemini: {
 	          title: 'Gemini Account Authorization',
 	          followSteps: 'Follow these steps to authorize your Gemini account:',
 	          step1GenerateUrl: 'Generate the authorization URL',
@@ -1470,6 +1493,7 @@ export default {
       openaiAccount: 'OpenAI Account',
       geminiAccount: 'Gemini Account',
       antigravityAccount: 'Antigravity Account',
+      devinAccount: 'Devin Account',
       grokAccount: 'Grok Account',
       inputMethod: 'Input Method',
       reAuthorizedSuccess: 'Account re-authorized successfully',
@@ -1572,6 +1596,9 @@ export default {
         grokOverageShort: 'OD $',
         grokUnknown: 'Grok quota is unknown until the first upstream response includes xAI rate-limit headers.',
         grokRetryAfter: 'Retry after {time}',
+        devinCredits: 'Credits: {credits}',
+        devinCreditsUnlimited: 'Credits: unlimited',
+        devinACU: 'ACU: {used} / {limit}',
         grokProbe: 'Probe',
         grokProbeTooltip: 'Send a minimal xAI Responses probe and read quota headers',
         grokResetUnsupported: 'Reset unsupported',

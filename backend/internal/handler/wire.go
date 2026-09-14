@@ -23,6 +23,7 @@ func ProvideAdminHandlers(
 	geminiOAuthHandler *admin.GeminiOAuthHandler,
 	antigravityOAuthHandler *admin.AntigravityOAuthHandler,
 	grokOAuthHandler *admin.GrokOAuthHandler,
+	devinOAuthHandler *admin.DevinOAuthHandler,
 	cnProviderHandler *admin.CNProviderHandler,
 	proxyHandler *admin.ProxyHandler,
 	redeemHandler *admin.RedeemHandler,
@@ -65,6 +66,7 @@ func ProvideAdminHandlers(
 		GeminiOAuth:            geminiOAuthHandler,
 		AntigravityOAuth:       antigravityOAuthHandler,
 		GrokOAuth:              grokOAuthHandler,
+		DevinOAuth:             devinOAuthHandler,
 		CNProvider:             cnProviderHandler,
 		Proxy:                  proxyHandler,
 		Redeem:                 redeemHandler,
@@ -115,6 +117,20 @@ func ProvideGatewayHandler(
 		errorPassthroughService, contentModerationService, userMsgQueueService, cfg, settingService)
 	h.securityAuditCoordinator = coordinator
 	return h
+}
+
+func ProvideDevinGatewayHandler(
+	devinGatewayService *service.DevinGatewayService,
+	gatewayService *service.GatewayService,
+	rateLimitService *service.RateLimitService,
+	concurrencyService *service.ConcurrencyService,
+	billingCacheService *service.BillingCacheService,
+	apiKeyService *service.APIKeyService,
+	usageRecordWorkerPool *service.UsageRecordWorkerPool,
+	cfg *config.Config,
+) *DevinGatewayHandler {
+	return NewDevinGatewayHandler(devinGatewayService, gatewayService, rateLimitService,
+		concurrencyService, billingCacheService, apiKeyService, usageRecordWorkerPool, cfg)
 }
 
 func ProvideOpenAIGatewayHandler(
@@ -185,6 +201,7 @@ func ProvideHandlers(
 	adminHandlers *AdminHandlers,
 	gatewayHandler *GatewayHandler,
 	openaiGatewayHandler *OpenAIGatewayHandler,
+	devinGatewayHandler *DevinGatewayHandler,
 	settingHandler *SettingHandler,
 	totpHandler *TotpHandler,
 	passkeyHandler *PasskeyHandler,
@@ -211,6 +228,7 @@ func ProvideHandlers(
 		Admin:            adminHandlers,
 		Gateway:          gatewayHandler,
 		OpenAIGateway:    openaiGatewayHandler,
+		DevinGateway:     devinGatewayHandler,
 		Setting:          settingHandler,
 		Totp:             totpHandler,
 		Passkey:          passkeyHandler,
@@ -237,6 +255,7 @@ var ProviderSet = wire.NewSet(
 	NewChannelMonitorV2Handler,
 	ProvideGatewayHandler,
 	ProvideOpenAIGatewayHandler,
+	ProvideDevinGatewayHandler,
 	NewTotpHandler,
 	NewPasskeyHandler,
 	ProvideSettingHandler,
@@ -260,6 +279,7 @@ var ProviderSet = wire.NewSet(
 	admin.NewGeminiOAuthHandler,
 	admin.NewAntigravityOAuthHandler,
 	admin.NewGrokOAuthHandler,
+	admin.NewDevinOAuthHandler,
 	admin.NewCNProviderHandler,
 	admin.NewProxyHandler,
 	admin.NewRedeemHandler,

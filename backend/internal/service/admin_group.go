@@ -294,6 +294,15 @@ func defaultModelsListCandidateIDs(platform string) []string {
 		return ids
 	case PlatformGrok:
 		return xai.DefaultModelIDs()
+	case PlatformDevin:
+		// Devin 上游目录是动态的，静态候选与前端 devinModels 对齐
+		return []string{
+			"swe-2", "swe-2-medium", "swe-2-high", "swe-2-max",
+			"claude-fable-5-1", "claude-fable-5-1-low", "claude-fable-5-1-high",
+			"claude-fable-5-1-xhigh", "claude-fable-5-1-max",
+			"gpt-6-astra", "gpt-6-astra-low", "gpt-6-astra-high",
+			"gpt-6-astra-xhigh", "gpt-6-astra-max",
+		}
 	case PlatformOpenCodeGo:
 		return DefaultOpenCodeGoModelIDs()
 	case PlatformComposite:
@@ -316,7 +325,7 @@ func defaultAllowImageGenerationForPlatform(platform string) bool {
 func compositeDefaultModelsListCandidateIDs() []string {
 	seen := make(map[string]struct{})
 	ids := make([]string, 0)
-	for _, platform := range []string{PlatformAnthropic, PlatformGemini, PlatformOpenAI, PlatformAntigravity, PlatformGrok, PlatformKimi, PlatformZhipu, PlatformDeepseek, PlatformMiniMax, PlatformOpenCodeGo} {
+	for _, platform := range []string{PlatformAnthropic, PlatformGemini, PlatformOpenAI, PlatformAntigravity, PlatformGrok, PlatformDevin, PlatformKimi, PlatformZhipu, PlatformDeepseek, PlatformMiniMax, PlatformOpenCodeGo} {
 		for _, id := range defaultModelsListCandidateIDs(platform) {
 			if _, ok := seen[id]; ok {
 				continue

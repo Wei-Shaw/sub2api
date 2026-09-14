@@ -55,6 +55,10 @@
     />
   </svg>
   <!-- Composite group icon -->
+  <svg v-else-if="platform === 'devin'" :class="sizeClass" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+    <path stroke-linecap="round" stroke-linejoin="round" d="M12 3l7 4v10l-7 4-7-4V7l7-4z" />
+    <circle cx="12" cy="12" r="2.5" fill="currentColor" stroke="none" />
+  </svg>
   <svg v-else-if="platform === 'composite'" :class="sizeClass" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
     <circle cx="6" cy="12" r="3" />
     <circle cx="18" cy="6" r="3" />

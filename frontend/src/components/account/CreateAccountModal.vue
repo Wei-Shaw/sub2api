@@ -160,6 +160,19 @@
             <PlatformIcon platform="grok" size="sm" />
             Grok
           </button>
+          <button
+            type="button"
+            @click="form.platform = 'devin'"
+            :class="[
+              'flex flex-1 items-center justify-center gap-2 rounded-md px-4 py-2.5 text-sm font-medium transition-all',
+              form.platform === 'devin'
+                ? 'bg-white text-sky-600 shadow-sm dark:bg-dark-600 dark:text-sky-400'
+                : 'text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-200'
+            ]"
+          >
+            <PlatformIcon platform="devin" size="sm" />
+            Devin
+          </button>
         </div>
         <!-- Multi-protocol API-key providers: Kimi / Zhipu GLM / DeepSeek / OpenCode -->
         <div class="mt-2 flex flex-wrap rounded-lg bg-gray-100 p-1 dark:bg-dark-700">
@@ -3910,6 +3923,7 @@ import { useOpenAIOAuth } from '@/composables/useOpenAIOAuth'
 import { useGeminiOAuth } from '@/composables/useGeminiOAuth'
 import { useAntigravityOAuth } from '@/composables/useAntigravityOAuth'
 import { useGrokOAuth } from '@/composables/useGrokOAuth'
+import { useDevinOAuth } from '@/composables/useDevinOAuth'
 import type {
   Proxy,
   AdminGroup,
@@ -4004,6 +4018,7 @@ const oauthStepTitle = computed(() => {
   if (form.platform === 'gemini') return t('admin.accounts.oauth.gemini.title')
   if (form.platform === 'antigravity') return t('admin.accounts.oauth.antigravity.title')
   if (form.platform === 'grok') return t('admin.accounts.oauth.grok.title')
+  if (form.platform === 'devin') return t('admin.accounts.oauth.devin.title')
   return t('admin.accounts.oauth.title')
 })
 
@@ -4094,6 +4109,7 @@ const openaiOAuth = useOpenAIOAuth() // For OpenAI OAuth
 const geminiOAuth = useGeminiOAuth() // For Gemini OAuth
 const antigravityOAuth = useAntigravityOAuth() // For Antigravity OAuth
 const grokOAuth = useGrokOAuth() // For Grok OAuth
+const devinOAuth = useDevinOAuth() // For Devin OAuth
 
 // Computed: current OAuth state for template binding
 const currentAuthUrl = computed(() => {
@@ -4101,6 +4117,7 @@ const currentAuthUrl = computed(() => {
   if (form.platform === 'gemini') return geminiOAuth.authUrl.value
   if (form.platform === 'antigravity') return antigravityOAuth.authUrl.value
   if (form.platform === 'grok') return grokOAuth.authUrl.value
+  if (form.platform === 'devin') return devinOAuth.authUrl.value
   return oauth.authUrl.value
 })
 
@@ -4109,6 +4126,7 @@ const currentSessionId = computed(() => {
   if (form.platform === 'gemini') return geminiOAuth.sessionId.value
   if (form.platform === 'antigravity') return antigravityOAuth.sessionId.value
   if (form.platform === 'grok') return grokOAuth.sessionId.value
+  if (form.platform === 'devin') return devinOAuth.sessionId.value
   return oauth.sessionId.value
 })
 
@@ -4117,6 +4135,7 @@ const currentOAuthLoading = computed(() => {
   if (form.platform === 'gemini') return geminiOAuth.loading.value
   if (form.platform === 'antigravity') return antigravityOAuth.loading.value
   if (form.platform === 'grok') return grokOAuth.loading.value
+  if (form.platform === 'devin') return devinOAuth.loading.value
   return oauth.loading.value
 })
 
@@ -4125,6 +4144,7 @@ const currentOAuthError = computed(() => {
   if (form.platform === 'gemini') return geminiOAuth.error.value
   if (form.platform === 'antigravity') return antigravityOAuth.error.value
   if (form.platform === 'grok') return grokOAuth.error.value
+  if (form.platform === 'devin') return devinOAuth.error.value
   return oauth.error.value
 })
 
@@ -4770,6 +4790,11 @@ const canExchangeCode = computed(() => {
   if (form.platform === 'grok') {
     return authCode.trim() && grokOAuth.sessionId.value && !grokOAuth.loading.value
   }
+  if (form.platform === 'devin') {
+    const code = authCode.trim()
+    if (!code || devinOAuth.loading.value) return false
+    return code.startsWith('devin-session-token$') || !!devinOAuth.sessionId.value
+  }
   return authCode.trim() && oauth.sessionId.value && !oauth.loading.value
 })
 
@@ -4871,6 +4896,10 @@ watch(
       modelRestrictionMode.value = 'mapping'
       form.concurrency = 1
       form.load_factor = null
+    }
+    if (newPlatform === 'devin') {
+      accountCategory.value = 'oauth-based'
+      addMethod.value = 'oauth'
     }
     if (newPlatform !== 'gemini' && newPlatform !== 'anthropic' && accountCategory.value === 'service_account') {
       accountCategory.value = 'oauth-based'
@@ -5900,6 +5929,8 @@ const handleGenerateUrl = async () => {
     await antigravityOAuth.generateAuthUrl(form.proxy_id)
   } else if (form.platform === 'grok') {
     await grokOAuth.generateAuthUrl(form.proxy_id)
+  } else if (form.platform === 'devin') {
+    await devinOAuth.generateAuthUrl(form.proxy_id)
   } else {
     await oauth.generateAuthUrl(addMethod.value, form.proxy_id)
   }
@@ -6878,6 +6909,39 @@ const handleGrokExchange = async (authCode: string) => {
   }
 }
 
+// Devin 授权码兑换：支持 PKCE code（需会话）与 devin-session-token$… 直贴（无需会话）。
+const handleDevinExchange = async (authCode: string) => {
+  const code = authCode.trim()
+  if (!code) return
+  const isTokenPaste = code.startsWith('devin-session-token$')
+  if (!isTokenPaste && !devinOAuth.sessionId.value) return
+
+  devinOAuth.loading.value = true
+  devinOAuth.error.value = ''
+
+  try {
+    const stateFromInput = oauthFlowRef.value?.oauthState || ''
+    const stateToUse = stateFromInput || devinOAuth.state.value
+
+    const tokenInfo = await devinOAuth.exchangeAuthCode({
+      code,
+      sessionId: devinOAuth.sessionId.value || undefined,
+      state: stateToUse || undefined,
+      proxyId: form.proxy_id
+    })
+    if (!tokenInfo) return
+
+    const credentials = devinOAuth.buildCredentials(tokenInfo)
+    const extra = devinOAuth.buildExtraInfo(tokenInfo)
+    await createAccountAndFinish('devin', 'oauth', credentials, extra)
+  } catch (error: any) {
+    devinOAuth.error.value = error.response?.data?.detail || t('admin.accounts.oauth.authFailed')
+    appStore.showError(devinOAuth.error.value)
+  } finally {
+    devinOAuth.loading.value = false
+  }
+}
+
 // Anthropic OAuth 授权码兑换
 const handleAnthropicExchange = async (authCode: string) => {
   if (!authCode.trim() || !oauth.sessionId.value) return
@@ -6980,6 +7044,8 @@ const handleExchangeCode = async () => {
       return handleAntigravityExchange(authCode)
     case 'grok':
       return handleGrokExchange(authCode)
+    case 'devin':
+      return handleDevinExchange(authCode)
     default:
       return handleAnthropicExchange(authCode)
   }

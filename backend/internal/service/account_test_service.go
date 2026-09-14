@@ -28,6 +28,7 @@ import (
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/claude"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/devin"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/geminicli"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/openai"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/openai_compat"
@@ -389,7 +390,76 @@ func (s *AccountTestService) TestAccountConnection(c *gin.Context, accountID int
 		return s.testOpenCodeGoAccountConnection(c, account, modelID, prompt)
 	}
 
+	if account.IsDevin() {
+		return s.testDevinAccountConnection(c, account)
+	}
+
 	return s.testClaudeAccountConnection(c, account, modelID)
+}
+
+// testDevinAccountConnection 用 SeatManagementService/GetUserStatus 验证
+// devin-session-token 是否有效（最便宜的认证 RPC），不回放上
+// GetChatMessage——避免消耗真实额度。
+func (s *AccountTestService) testDevinAccountConnection(c *gin.Context, account *Account) error {
+	token := account.GetDevinToken()
+	if token == "" {
+		return s.sendErrorAndEnd(c, "No Devin token available")
+	}
+	baseURL := account.GetDevinBaseURL()
+	if baseURL == "" {
+		baseURL = devin.DefaultBaseURL
+	}
+	version := account.GetDevinClientVersion()
+	if version == "" {
+		version = devin.DefaultClientVersion
+	}
+
+	c.Writer.Header().Set("Content-Type", "text/event-stream")
+	c.Writer.Header().Set("Cache-Control", "no-cache")
+	c.Writer.Header().Set("Connection", "keep-alive")
+	c.Writer.Header().Set("X-Accel-Buffering", "no")
+	c.Writer.Flush()
+
+	s.sendEvent(c, TestEvent{Type: "test_start", Model: modelIDOrDevin("")})
+
+	body := devin.MarshalGetUserStatus(token, version, devin.ClientOS())
+	req, err := devin.NewUnaryRequest(baseURL, devin.PathGetUserStatus, token, body)
+	if err != nil {
+		return s.sendErrorAndEnd(c, fmt.Sprintf("Failed to build request: %s", err.Error()))
+	}
+
+	proxyURL := ""
+	if account.ProxyID != nil && account.Proxy != nil {
+		proxyURL = account.Proxy.URL()
+	}
+	resp, err := s.httpUpstream.DoWithTLS(req.WithContext(c.Request.Context()), proxyURL, account.ID, account.Concurrency, s.tlsFPProfileService.ResolveTLSProfile(account))
+	if err != nil {
+		return s.sendErrorAndEnd(c, fmt.Sprintf("Request failed: %s", err.Error()))
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	data, err := devin.ReadUnaryResponse(resp)
+	if err != nil {
+		return s.sendErrorAndEnd(c, fmt.Sprintf("Upstream error: %s", connectErrText(err)))
+	}
+	status := devin.DecodeUserStatus(data)
+	label := status.Name
+	if label == "" {
+		label = status.Email
+	}
+	if label == "" {
+		label = "(anonymous)"
+	}
+	s.sendEvent(c, TestEvent{Type: "content", Text: fmt.Sprintf("Devin account OK: %s plan=%s can_use_cli=%v", label, status.PlanName, status.CanUseCLI)})
+	s.sendEvent(c, TestEvent{Type: "test_complete", Success: true})
+	return nil
+}
+
+func modelIDOrDevin(modelID string) string {
+	if modelID == "" {
+		return "devin"
+	}
+	return modelID
 }
 
 // testOpenCodeGoAccountConnection probes the native endpoint for the selected

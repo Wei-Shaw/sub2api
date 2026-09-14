@@ -272,6 +272,38 @@ func (a *Account) IsGrokOAuth() bool {
 	return a.IsGrok() && a.Type == AccountTypeOAuth
 }
 
+// IsDevin 报告是否为 Devin (Cognition) Connect 平台账号。
+func (a *Account) IsDevin() bool {
+	return a != nil && a.Platform == PlatformDevin
+}
+
+// GetDevinToken 返回 Devin Connect api key（devin-session-token$…）。
+// 存储于 credentials["access_token"]。
+func (a *Account) GetDevinToken() string {
+	if !a.IsDevin() {
+		return ""
+	}
+	return a.GetCredential("access_token")
+}
+
+// GetDevinBaseURL 返回 Connect 上游地址（默认 server.codeium.com），
+// 来自 credentials["api_server_url"]（PKCE 交换时上游返回）。
+func (a *Account) GetDevinBaseURL() string {
+	if !a.IsDevin() {
+		return ""
+	}
+	return strings.TrimSpace(a.GetCredential("api_server_url"))
+}
+
+// GetDevinClientVersion 返回伪装成 chisel CLI 的客户端版本，
+// 来自 credentials["client_version"]（空则由 wire 层用默认值）。
+func (a *Account) GetDevinClientVersion() string {
+	if !a.IsDevin() {
+		return ""
+	}
+	return strings.TrimSpace(a.GetCredential("client_version"))
+}
+
 // IsKimi / IsZhipu / IsDeepseek 标识国产 OpenAI 兼容供应商账号。
 func (a *Account) IsKimi() bool {
 	return a.Platform == PlatformKimi

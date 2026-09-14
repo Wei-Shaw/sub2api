@@ -490,6 +490,9 @@ export default {
         grokOverageShort: '超额 $',
         grokUnknown: 'Grok 配额需等待首次上游响应返回 xAI rate-limit 头后显示。',
         grokRetryAfter: '{time} 后重试',
+        devinCredits: 'Credits：{credits}',
+        devinCreditsUnlimited: 'Credits：不限量',
+        devinACU: 'ACU：{used} / {limit}',
         grokProbe: '探测',
         grokProbeTooltip: '发送最小 xAI Responses 探测请求并读取配额响应头',
         grokResetUnsupported: '不支持重置',
@@ -1303,6 +1306,25 @@ export default {
           },
           oauthOnlyHint: '首版 Grok 支持仅包含 OAuth 订阅的 Responses API 文本/推理转发。'
         },
+        devin: {
+          title: 'Devin 账号授权',
+          followSteps: '请按照以下步骤授权您的 Devin（Cognition）账号：',
+          step1GenerateUrl: '生成 Devin 授权链接',
+          generateAuthUrl: '生成授权链接',
+          step2OpenUrl: '在浏览器中打开链接并完成授权',
+          openUrlDesc: '在新标签页中打开授权链接，登录 Devin 并批准 CLI 登录以获取授权码。',
+          step3EnterCode: '输入授权码或会话 Token',
+          authCodeDesc: '授权完成后粘贴 Devin 给出的授权码；也可以直接粘贴 devin-session-token$… 会话 Token：',
+          authCode: '授权码或会话 Token',
+          authCodePlaceholder: '粘贴 Devin 授权码，或 devin-session-token$… 会话 Token',
+          authCodeHint: 'PKCE 授权码需要先生成授权链接；devin-session-token$… Token 可直接粘贴建号。',
+          validating: '验证中...',
+          validateAndCreate: '验证并创建账号',
+          failedToGenerateUrl: '生成 Devin 授权链接失败',
+          missingExchangeParams: '缺少授权码或 OAuth 会话。请先生成授权链接，或直接粘贴 devin-session-token$… Token。',
+          failedToExchangeCode: 'Devin 授权码兑换失败',
+          errors: {}
+        },
         // Gemini specific
         gemini: {
           title: 'Gemini 账户授权',
@@ -1528,6 +1550,7 @@ export default {
       openaiAccount: 'OpenAI 账号',
       geminiAccount: 'Gemini 账号',
       antigravityAccount: 'Antigravity 账号',
+      devinAccount: 'Devin 账号',
       grokAccount: 'Grok 账号',
       inputMethod: '输入方式',
       reAuthorizedSuccess: '账号重新授权成功',
