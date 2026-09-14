@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	"github.com/Wei-Shaw/sub2api/internal/model"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
 )
@@ -26,8 +27,8 @@ func bindGroupPlatformJSON(t *testing.T, target any, body string) error {
 
 func TestGroupPlatformBinding_AllowedPlatforms(t *testing.T) {
 	allowed := []string{
-		"anthropic", "openai", "gemini", "antigravity", "grok",
-		"kimi", "zhipu", "deepseek", "minimax", "composite",
+		"anthropic", "openai", "gemini", "antigravity", "kiro", "grok",
+		"adobe", "kimi", "zhipu", "deepseek", "minimax", "composite",
 	}
 	for _, platform := range allowed {
 		t.Run("create_"+platform, func(t *testing.T) {
@@ -72,10 +73,30 @@ func TestGroupPlatformBinding_RejectsInvalidPlatforms(t *testing.T) {
 }
 
 func TestCompositeRouteTargetPlatform_AllowsCNProviders(t *testing.T) {
-	for _, platform := range []string{"kimi", "zhipu", "deepseek", "minimax"} {
+	for _, platform := range []string{"kimi", "zhipu", "deepseek", "minimax", "adobe"} {
 		var req CompositeRouteRequest
 		body := fmt.Sprintf(`{"public_model":"m","target_platform":%q}`, platform)
 		require.NoError(t, bindGroupPlatformJSON(t, &req, body))
 		require.Equal(t, platform, req.TargetPlatform)
+	}
+}
+
+// 上面的白名单是手写的，加平台时同样会漏。这条把 binding tag 直接钉到
+// model.AllPlatforms()——那份清单自己有守卫测试，于是新增平台只要漏了 oneof tag，
+// 这里就会失败，而不是等到管理端建分组时报
+// "Field validation for 'Platform' failed on the 'oneof' tag"。
+func TestGroupPlatformBinding_CoversEveryConcretePlatform(t *testing.T) {
+	for _, platform := range model.AllPlatforms() {
+		t.Run(platform, func(t *testing.T) {
+			var createReq CreateGroupRequest
+			require.NoError(t, bindGroupPlatformJSON(t, &createReq,
+				fmt.Sprintf(`{"name":"g","platform":%q}`, platform)),
+				"platform %q 已在 model.AllPlatforms() 里，却过不了 CreateGroupRequest 的 oneof 白名单", platform)
+
+			var updateReq UpdateGroupRequest
+			require.NoError(t, bindGroupPlatformJSON(t, &updateReq,
+				fmt.Sprintf(`{"platform":%q}`, platform)),
+				"platform %q 过不了 UpdateGroupRequest 的 oneof 白名单", platform)
+		})
 	}
 }
