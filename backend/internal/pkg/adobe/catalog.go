@@ -29,40 +29,37 @@ const DefaultImageModelID = "firefly-nano-banana-pro-2k-16x9"
 // allResolutions 是注册目录时展开的分辨率档位。
 var allResolutions = []OutputResolution{Resolution1K, Resolution2K, Resolution4K}
 
-// nanoBananaRatioSuffixes 是 nano-banana / nano-banana-pro 支持的比例及其 id 后缀。
+// nanoBananaRatioSuffixes 是 nano-banana / nano-banana-pro 的比例枚举（Google 原生 10 种）。
+// 顶层 size 只发方图档位，比例走 modelSpecificPayload.aspectRatio，不要自制 WxH。
 var nanoBananaRatioSuffixes = map[string]string{
 	"1:1":  "1x1",
 	"16:9": "16x9",
 	"9:16": "9x16",
 	"4:3":  "4x3",
 	"3:4":  "3x4",
+	"3:2":  "3x2",
+	"2:3":  "2x3",
+	"4:5":  "4x5",
+	"5:4":  "5x4",
+	"21:9": "21x9",
 }
 
-// nanoBanana2RatioSuffixes 在通用比例之上额外支持横幅/竖幅超长比例。
+// nanoBanana2RatioSuffixes 在 Google 10 种之上额外支持 Firefly banana-3 的超长横幅/竖幅。
 var nanoBanana2RatioSuffixes = map[string]string{
 	"1:1":  "1x1",
 	"16:9": "16x9",
 	"9:16": "9x16",
 	"4:3":  "4x3",
 	"3:4":  "3x4",
+	"3:2":  "3x2",
+	"2:3":  "2x3",
+	"4:5":  "4x5",
+	"5:4":  "5x4",
+	"21:9": "21x9",
 	"1:8":  "1x8",
 	"1:4":  "1x4",
 	"4:1":  "4x1",
 	"8:1":  "8x1",
-}
-
-// gptImageRatioSuffixes 是 gpt-image 家族支持的比例及其 id 后缀。
-var gptImageRatioSuffixes = map[string]string{
-	"1:1":  "1x1",
-	"5:4":  "5x4",
-	"9:16": "9x16",
-	"21:9": "21x9",
-	"16:9": "16x9",
-	"3:2":  "3x2",
-	"4:3":  "4x3",
-	"4:5":  "4x5",
-	"3:4":  "3x4",
-	"2:3":  "2x3",
 }
 
 // PayloadKind 决定用哪一套 payload 构造器。上游 schema 的形状不是「所有 gpt-image 一样、
@@ -74,13 +71,13 @@ const (
 	// PayloadKindUnset 是零值。dispatch 遇到它会回落到「按 UpstreamModelID 猜」的老路径。
 	// 保留是为了让 Step 7 之前的调用方 / 老测试无需同步改动。
 	PayloadKindUnset PayloadKind = iota
-	// PayloadKindGPTImage 对 gpt-image v1.5 / v2：outputResolution + modelSpecificPayload.size 字面像素串
+	// PayloadKindGPTImage 是历史零值回落路径。v1.5 / v2 已改走 PayloadKindGPTImage25。
 	PayloadKindGPTImage
-	// PayloadKindGPTImage25 对 gpt-image v2.5-flare / v2.5-prism：无 outputResolution；
+	// PayloadKindGPTImage25 对 gpt-image v1.5 / v2 / v2.5：无 outputResolution；
 	// 有合法 WxH 时发顶层 size:{width,height}（含 4K，不夹紧）；空/auto 则省略。
-	// modelSpecificPayload 默认 {}，caiClaimVersion:2。低档套餐拒 4K 交给上游。
+	// v2.5 Auto 额外写 modelSpecificPayload.size:"auto"。caiClaimVersion:2。
 	PayloadKindGPTImage25
-	// PayloadKindNanoBanana 对 gemini-flash 家族：aspectRatio + parameters.addWatermark
+	// PayloadKindNanoBanana 对 gemini-flash 家族：方图档位 + 可选 aspectRatio
 	PayloadKindNanoBanana
 	// PayloadKindSizeEnum 对 flux / imagen / gpt-4o-image / runway-gen4-image：
 	// 顶层 size:{width,height} 从枚举里挑，无 outputResolution / modelSpecificPayload / aspectRatio
@@ -96,7 +93,7 @@ const (
 // ImageModelConf 是一个具体图像模型（家族 + 分辨率 + 比例）的上游参数。
 type ImageModelConf struct {
 	// ModelID 是本条目对应的完整模型 id。
-	// PayloadKindGPTImage / PayloadKindNanoBanana 走三维组合，ModelID 是 family-res-ratio；
+	// PayloadKindNanoBanana 走三维组合，ModelID 是 family-res-ratio；
 	// PayloadKindGPTImage25 / PayloadKindSizeEnum 只到族级，ModelID 就等于 Family。
 	ModelID string
 	// Family 是族级模型 id（如 firefly-gpt-image-2）。
@@ -109,13 +106,13 @@ type ImageModelConf struct {
 	UpstreamModelVersion string
 	// PayloadKind 决定 payload 层用哪一套构造器（见 PayloadKind 常量）。
 	PayloadKind PayloadKind
-	// OutputResolution 对档 A / C 直接映射上游档位；对 v2.5 / enum-size 由将发送
-	// 的像素长边推算（用于计费）。v2.5 不把该字段放进 payload。
+	// OutputResolution 对 banana 是方图档位；对 gpt-image / enum-size 由将发送
+	// 的像素长边推算（用于计费）。gpt-image 不把该字段放进 payload。
 	OutputResolution OutputResolution
 	AspectRatio      string
 	Description      string
-	// SizePixels 对 PayloadKindGPTImage25 是请求 WxH 原样（空/auto 为零值）；
-	// 对 PayloadKindSizeEnum 是允许集里 NearestSize 挑好的尺寸。payload 层直接发这个。
+	// SizePixels 对 PayloadKindGPTImage25 自由 WxH 是请求原样（空/auto 为零值）；
+	// 对 1.5 / enum-size 是允许集里 NearestSize 挑好的尺寸；对 banana 是档位方图。
 	SizePixels Size
 }
 
@@ -135,16 +132,15 @@ type imageFamilySpec struct {
 	upstreamModelVersion string
 	// payloadKind 决定 payload 层用哪一套构造器（Step 7 之前是按 upstreamModelID 猜的）。
 	payloadKind PayloadKind
-	// ratioSuffixes 只对 PayloadKindGPTImage / PayloadKindNanoBanana 有意义——它们
-	// 会展开成 family × resolution × ratio 全组合。档 B/D 的家族这两项都是 nil。
+	// ratioSuffixes 只对 PayloadKindNanoBanana 有意义——会展开成
+	// family × resolution × ratio 全组合。gpt-image / enum-size 这两项是 nil。
 	ratioSuffixes map[string]string
 	// ratiosSorted 是 ratioSuffixes 的键按「比例数值升序、数值相同按标签字典序」
 	// 排好的切片。NearestRatio 必须遍历它而不是直接遍历 map——map 迭代顺序随机，
 	// 平局时会让同一个 size 在不同进程里解析出不同比例。
 	ratiosSorted []string
-	// supportedSizes 只对 PayloadKindSizeEnum 有意义：上游 requestSchema.size.enum
-	// 的原样搬移，ResolveImage 从里面挑最接近请求的那个。顺序保留（便于对照 discovery）。
-	// v2.5 不走这张表：请求 WxH 原样发给上游，低档套餐拒 4K 由上游决定。
+	// supportedSizes 对 gpt-image 1.5 与 PayloadKindSizeEnum：上游 size.enum 原样搬移。
+	// 自由 WxH 的 gpt-image 2 / 2.5 不走这张表：请求像素原样发给上游。
 	supportedSizes []Size
 	label          string
 }
@@ -165,6 +161,10 @@ var (
 	gpt4oImageSupportedSizes = []Size{
 		{1024, 1024}, {1536, 1024}, {1024, 1536},
 	}
+	// gpt-image 1.5 的 size.enum，与 snapshot / discovery 三档一致。
+	gptImage15SupportedSizes = []Size{
+		{1024, 1024}, {1536, 1024}, {1024, 1536},
+	}
 	runwayGen4ImageSupportedSizes = []Size{
 		{1920, 1080}, {1080, 1920}, {1024, 1024}, {1360, 768}, {1080, 1080},
 		{1168, 880}, {1440, 1080}, {1080, 1440}, {1808, 768}, {2112, 912},
@@ -177,8 +177,7 @@ var rawImageFamilySpecs = []imageFamilySpec{
 		upstreamModel:        "openai:firefly:gpt-image",
 		upstreamModelID:      upstreamModelIDGPTImage,
 		upstreamModelVersion: "2",
-		payloadKind:          PayloadKindGPTImage,
-		ratioSuffixes:        gptImageRatioSuffixes,
+		payloadKind:          PayloadKindGPTImage25,
 		label:                "Firefly GPT Image 2",
 	},
 	{
@@ -186,8 +185,8 @@ var rawImageFamilySpecs = []imageFamilySpec{
 		upstreamModel:        "openai:firefly:gpt-image",
 		upstreamModelID:      upstreamModelIDGPTImage,
 		upstreamModelVersion: "1.5",
-		payloadKind:          PayloadKindGPTImage,
-		ratioSuffixes:        gptImageRatioSuffixes,
+		payloadKind:          PayloadKindGPTImage25,
+		supportedSizes:       gptImage15SupportedSizes,
 		label:                "Firefly GPT Image 1.5",
 	},
 	// Step 7：加入 gpt-image v2.5-flare 与 v2.5-prism。上游 modelVersion 用真名——
@@ -310,9 +309,8 @@ var ImageFamilyModelIDs = buildImageFamilyModelIDs()
 func buildImageModelCatalog() map[string]ImageModelConf {
 	catalog := make(map[string]ImageModelConf)
 	for _, spec := range imageFamilySpecs {
-		// 只有基于 ratio 的家族（gpt-image v1.5 / v2、nano-banana 系）能展开成
-		// family-resolution-ratio 全量 id。gpt-image v2.5 与 enum-size 家族没有
-		// 三维坐标——族级 id 直接由 ResolveImage 处理。
+		// 只有 banana 系展开成 family-resolution-ratio 全量 id。
+		// gpt-image 2 / 2.5 / 1.5 与 enum-size 只到族级，由 ResolveImage 处理。
 		if len(spec.ratioSuffixes) == 0 {
 			continue
 		}
@@ -329,6 +327,7 @@ func buildImageModelCatalog() map[string]ImageModelConf {
 					OutputResolution:     resolution,
 					AspectRatio:          ratio,
 					Description:          fmt.Sprintf("%s (%s %s)", spec.label, resolution, ratio),
+					SizePixels:           SquareFromResolution(resolution),
 				}
 			}
 		}
@@ -492,10 +491,11 @@ type ImageRequest struct {
 // ResolveImage 把一次出图请求解析成具体的上游模型配置。
 //
 // 分两种路径：
-//   - 有 ratioSuffixes 的家族（gpt-image v1.5/v2、nano-banana 系）：全量 id 查表；
-//     族级 id 按 Ratio / Size / 默认分辨率组合出全量 id 再查表
-//   - 无 ratioSuffixes 的家族（gpt-image v2.5、enum-size 家族）：只到族级；
-//     v2.5 把请求 WxH 原样填进 SizePixels（含 4K，不夹紧）；enum-size 仍 NearestSize
+//   - 有 ratioSuffixes 的家族（nano-banana 系）：全量 id 查表；
+//     族级 id 按 Ratio / Size / 默认分辨率组合出全量 id 再查表。
+//     客户端省略 size 时 banana 回落 1K 方图（对齐 Firefly 默认），不走全局 2K。
+//   - 无 ratioSuffixes 的家族（gpt-image 2/2.5/1.5、enum-size）：只到族级；
+//     2/2.5 把请求 WxH 原样填进 SizePixels；1.5 与 enum-size 走 NearestSize。
 func ResolveImage(req ImageRequest) (ImageModelConf, error) {
 	// 先把对外名翻译成内部族 id：白名单模式配出来的 model_mapping 是恒等对
 	// （"imagen-4" -> "imagen-4"），到这里时还没有 firefly- 前缀。
@@ -515,7 +515,7 @@ func ResolveImage(req ImageRequest) (ImageModelConf, error) {
 		return ImageModelConf{}, NewRequestError(fmt.Sprintf("unknown firefly image family: %q", familyID))
 	}
 
-	// 非 ratio 路径：直接产出族级 conf。v2.5 透传请求像素；enum-size 走 NearestSize。
+	// 非 ratio 路径：直接产出族级 conf。
 	if len(spec.ratioSuffixes) == 0 {
 		return resolveNonRatioFamily(spec, req)
 	}
@@ -526,7 +526,11 @@ func ResolveImage(req ImageRequest) (ImageModelConf, error) {
 	}
 	resolution := req.Resolution
 	if resolution == "" {
-		resolution = ResolutionFromSize(req.Size)
+		if spec.payloadKind == PayloadKindNanoBanana && isBlankSize(req.Size) {
+			resolution = Resolution1K
+		} else {
+			resolution = ResolutionFromSize(req.Size)
+		}
 	}
 
 	// NearestRatio 的结果必然在 ratioSuffixes 里，所以这条只会为「显式 req.Ratio
@@ -546,25 +550,30 @@ func ResolveImage(req ImageRequest) (ImageModelConf, error) {
 	return conf, nil
 }
 
-// resolveNonRatioFamily 处理 gpt-image v2.5 与 enum-size 家族。
+// resolveNonRatioFamily 处理 gpt-image 与 enum-size 家族。
 //
-// 与 ratio 路径的差别：ModelID 只到族级。v2.5 把请求 WxH 原样填进 SizePixels
-// （含 4K；低档套餐 UI 只露约 1K 的三种比例，官方价目低档无 4K，夹紧会让网关
-// 改 auto 却按 4K 计费）。enum-size 仍从允许集 NearestSize。
-// OutputResolution 按将发送的像素长边推算，只用于计费，不随 v2.5 payload 发出去。
+// 与 ratio 路径的差别：ModelID 只到族级。有 supportedSizes（1.5 / flux 等）先
+// NearestSize；否则 gpt-image 2/2.5 把请求 WxH 原样填进 SizePixels（含 4K）。
+// OutputResolution 只用于计费，不随 gpt-image payload 发出去。
 func resolveNonRatioFamily(spec imageFamilySpec, req ImageRequest) (ImageModelConf, error) {
-	resolution := req.Resolution
-	if resolution == "" {
-		resolution = ResolutionFromSize(req.Size)
-	}
 	var pixels Size
-	if spec.payloadKind == PayloadKindGPTImage25 {
+	if len(spec.supportedSizes) > 0 {
+		pixels = NearestSize(req.Size, spec.supportedSizes)
+	} else if spec.payloadKind == PayloadKindGPTImage25 {
 		if width, height, ok := parseSizeWxH(req.Size); ok {
 			pixels = Size{Width: width, Height: height}
 		}
-	} else if len(spec.supportedSizes) > 0 {
-		pixels = NearestSize(req.Size, spec.supportedSizes)
 	}
+
+	resolution := req.Resolution
+	if resolution == "" {
+		if spec.payloadKind == PayloadKindGPTImage25 && pixels.Width > 0 {
+			resolution = ResolutionFromSize(pixels.String())
+		} else {
+			resolution = ResolutionFromSize(req.Size)
+		}
+	}
+
 	aspect := strings.TrimSpace(req.Ratio)
 	if aspect == "" && pixels.Width > 0 && pixels.Height > 0 {
 		aspect = fmt.Sprintf("%d:%d", pixels.Width/gcd(pixels.Width, pixels.Height),
@@ -638,6 +647,24 @@ func imageFamilySpecByID(familyID string) (imageFamilySpec, bool) {
 // FallbackRatio 是 size 缺省/非法时的比例。
 const FallbackRatio = "1:1"
 
+// SquareFromResolution 返回 banana 档位对应的方图像素。Firefly UI 用方图表示
+// 1K/2K/4K，比例另走 aspectRatio；缺省档与 DefaultOutputResolution 一致（2K）。
+func SquareFromResolution(resolution OutputResolution) Size {
+	switch OutputResolution(strings.ToUpper(string(resolution))) {
+	case Resolution1K:
+		return Size{Width: 1024, Height: 1024}
+	case Resolution4K:
+		return Size{Width: 4096, Height: 4096}
+	default:
+		return Size{Width: 2048, Height: 2048}
+	}
+}
+
+func isBlankSize(size string) bool {
+	normalized := strings.ToLower(strings.TrimSpace(size))
+	return normalized == "" || normalized == "auto"
+}
+
 // parseSizeWxH 解析 "宽x高"；非法（含 "auto" / 空 / 非正数）返回 ok=false。
 func parseSizeWxH(size string) (width, height int, ok bool) {
 	normalized := strings.ToLower(strings.TrimSpace(size))
@@ -661,8 +688,8 @@ func parseSizeWxH(size string) (width, height int, ok bool) {
 // 先用 GCD 约分求精确比例、命中直接返回，未命中再按浮点差取最近——与仓库里
 // grokImagineAspectRatioFromSize 同一套算法。
 //
-// 「取最近」而不是「查表命中才算」是关键：各族支持的比例集不同（gpt-image 10 种、
-// nano-banana 5 种、nano-banana2 9 种），精确查表未命中就回落 1:1 会让 3840x2160
+// 「取最近」而不是「查表命中才算」是关键：各族支持的比例集不同（nano-banana
+// 10 种、nano-banana2 14 种），精确查表未命中就回落 1:1 会让 3840x2160
 // 这类请求静默出方图。allowed 为空时同样回落 FallbackRatio。
 func NearestRatio(size string, allowed []string) string {
 	if len(allowed) == 0 {

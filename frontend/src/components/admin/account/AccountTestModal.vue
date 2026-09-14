@@ -751,8 +751,8 @@ watch(
       await loadAvailableModels()
       if (isGrokAccount.value) {
         pickDefaultModelForMode()
-        applyDefaultPromptForMode()
       }
+      applyDefaultPromptForMode()
     } else {
       abortStream()
     }

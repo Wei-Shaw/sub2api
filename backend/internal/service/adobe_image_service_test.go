@@ -85,7 +85,7 @@ func TestAdobeImageServiceGenerateFillsBillingFields(t *testing.T) {
 
 	// Model 记客户端请求名，UpstreamModel 记实际打到 Adobe 的全量 id。
 	require.Equal(t, "gpt-image-2", result.Forward.Model)
-	require.Equal(t, "firefly-gpt-image-2-1k-1x1", result.Forward.UpstreamModel)
+	require.Equal(t, "firefly-gpt-image-2", result.Forward.UpstreamModel)
 	require.NotEmpty(t, result.Forward.RequestID)
 }
 
@@ -197,7 +197,7 @@ func TestAdobeImageServiceGPTImage25AutoOmitsTopLevelSize(t *testing.T) {
 			require.NotContains(t, submitted, "size")
 			require.NotContains(t, submitted, "outputResolution")
 			msp := submitted["modelSpecificPayload"].(map[string]any)
-			require.NotContains(t, msp, "size")
+			require.Equal(t, "auto", msp["size"])
 		})
 	}
 }
@@ -215,21 +215,21 @@ func TestAdobeImageServiceMissingSizeKeepsDefaultTier(t *testing.T) {
 		})
 		require.NoError(t, err, size)
 		require.Equal(t, "2K", result.Forward.ImageSize, size)
-		require.Equal(t, "firefly-gpt-image-2-2k-1x1", result.Forward.UpstreamModel, size)
+		require.Equal(t, "firefly-gpt-image-2", result.Forward.UpstreamModel, size)
 	}
 }
 
 // 缺口 A 的服务层回归：这些 size 在旧实现里全部静默出方图。
-func TestAdobeImageServiceDerivesAspectRatioFromSize(t *testing.T) {
-	tests := map[string]string{
-		"3840x2160": "firefly-gpt-image-2-4k-16x9",
-		"2160x3840": "firefly-gpt-image-2-4k-9x16",
-		"2048x1152": "firefly-gpt-image-2-2k-16x9",
-		"1536x1024": "firefly-gpt-image-2-2k-3x2",
-		"1024x1536": "firefly-gpt-image-2-2k-2x3",
-		"2016x864":  "firefly-gpt-image-2-2k-21x9",
+func TestAdobeImageServiceForwardsGPTImage2Pixels(t *testing.T) {
+	tests := map[string]adobe.Size{
+		"3840x2160": {3840, 2160},
+		"2160x3840": {2160, 3840},
+		"2048x1152": {2048, 1152},
+		"1536x1024": {1536, 1024},
+		"1024x1536": {1024, 1536},
+		"1152x928":  {1152, 928},
 	}
-	for size, wantModel := range tests {
+	for size, want := range tests {
 		t.Run(size, func(t *testing.T) {
 			api := &adobeFakeTransport{}
 			client := adobeSubmitPollDownload(t, api, []byte("X"))
@@ -239,9 +239,62 @@ func TestAdobeImageServiceDerivesAspectRatioFromSize(t *testing.T) {
 				Model: "gpt-image-2", Prompt: "x", Size: size, N: 1,
 			})
 			require.NoError(t, err)
-			require.Equal(t, wantModel, result.Forward.UpstreamModel)
+			require.Equal(t, "firefly-gpt-image-2", result.Forward.UpstreamModel)
+
+			require.NotEmpty(t, api.calls)
+			var submitted map[string]any
+			require.NoError(t, json.Unmarshal(api.calls[0].Body, &submitted))
+			got := submitted["size"].(map[string]any)
+			require.Equal(t, float64(want.Width), got["width"])
+			require.Equal(t, float64(want.Height), got["height"])
+			require.NotContains(t, submitted, "outputResolution")
+			msp := submitted["modelSpecificPayload"].(map[string]any)
+			require.NotContains(t, msp, "size")
 		})
 	}
+}
+
+func TestAdobeImageServiceBananaSquareTierAndAspectRatio(t *testing.T) {
+	api := &adobeFakeTransport{}
+	client := adobeSubmitPollDownload(t, api, []byte("X"))
+	svc := newAdobeTestService(t, client, nil)
+
+	result, err := svc.Generate(context.Background(), adobeTestAccount(), "tok", &OpenAIImagesRequest{
+		Model: "nano-banana2", Prompt: "x", Size: "1536x1024", N: 1,
+	})
+	require.NoError(t, err)
+	require.Equal(t, "2K", result.Forward.ImageSize)
+	require.Equal(t, "firefly-nano-banana2-2k-3x2", result.Forward.UpstreamModel)
+
+	var submitted map[string]any
+	require.NoError(t, json.Unmarshal(api.calls[0].Body, &submitted))
+	size := submitted["size"].(map[string]any)
+	require.Equal(t, float64(2048), size["width"])
+	require.Equal(t, float64(2048), size["height"])
+	msp := submitted["modelSpecificPayload"].(map[string]any)
+	require.Equal(t, "3:2", msp["aspectRatio"])
+	require.Equal(t, float64(2), submitted["caiClaimVersion"])
+	require.NotContains(t, submitted, "skipCai")
+}
+
+func TestAdobeImageServiceBananaEmptySizeIs1K(t *testing.T) {
+	api := &adobeFakeTransport{}
+	client := adobeSubmitPollDownload(t, api, []byte("X"))
+	svc := newAdobeTestService(t, client, nil)
+
+	result, err := svc.Generate(context.Background(), adobeTestAccount(), "tok", &OpenAIImagesRequest{
+		Model: "nano-banana2", Prompt: "x", N: 1,
+	})
+	require.NoError(t, err)
+	require.Equal(t, "1K", result.Forward.ImageSize)
+
+	var submitted map[string]any
+	require.NoError(t, json.Unmarshal(api.calls[0].Body, &submitted))
+	size := submitted["size"].(map[string]any)
+	require.Equal(t, float64(1024), size["width"])
+	require.Equal(t, float64(1024), size["height"])
+	msp := submitted["modelSpecificPayload"].(map[string]any)
+	require.NotContains(t, msp, "aspectRatio")
 }
 
 func TestAdobeImageServiceReturnsB64WithoutStorage(t *testing.T) {
@@ -383,8 +436,12 @@ func TestAdobeImageServiceUploadsSourceImages(t *testing.T) {
 	svc := newAdobeTestService(t, client, nil)
 
 	_, err := svc.Generate(context.Background(), adobeTestAccount(), "tok", &OpenAIImagesRequest{
-		Model: "gpt-image-2", Prompt: "edit", Size: "1024x1024", N: 1,
-		Uploads: []OpenAIImagesUpload{{Data: []byte("SRC"), ContentType: "image/png"}},
+		Model:    "gpt-image-2",
+		Prompt:   "edit",
+		Size:     "1024x1024",
+		N:        1,
+		Endpoint: openAIImagesEditsEndpoint,
+		Uploads:  []OpenAIImagesUpload{{Data: []byte("SRC"), ContentType: "image/png"}},
 	})
 	require.NoError(t, err)
 
@@ -392,7 +449,104 @@ func TestAdobeImageServiceUploadsSourceImages(t *testing.T) {
 	var submitted map[string]any
 	require.NoError(t, json.Unmarshal(api.calls[1].Body, &submitted))
 	require.Equal(t, []any{map[string]any{"id": "img-1", "usage": "subject"}}, submitted["referenceBlobs"])
-	require.Equal(t, "image2image", submitted["generationMetadata"].(map[string]any)["module"])
+	meta := submitted["generationMetadata"].(map[string]any)
+	require.Equal(t, "text2image", meta["module"])
+	require.Equal(t, "ff-image-editor", meta["submodule"])
+}
+
+func TestAdobeImageServiceGenerationsWithSourceUsesGenerateSubmodule(t *testing.T) {
+	api := &adobeFakeTransport{}
+	api.handler = func(req *adobe.Request, index int) (*adobe.Response, error) {
+		if index == 0 {
+			require.Equal(t, adobe.ImageUploadURL, req.URL)
+			return adobeJSONResponse(t, 200, map[string]any{
+				"images": []any{map[string]any{"id": "img-1"}},
+			}, nil), nil
+		}
+		if index == 1 {
+			return adobeJSONResponse(t, 200, map[string]any{},
+				map[string]string{"x-override-status-link": "https://poll/x"}), nil
+		}
+		return adobeJSONResponse(t, 200, map[string]any{
+			"outputs": []any{map[string]any{"image": map[string]any{"presignedUrl": "https://cdn/y.png"}}},
+		}, nil), nil
+	}
+	download := &adobeFakeTransport{handler: func(*adobe.Request, int) (*adobe.Response, error) {
+		return &adobe.Response{StatusCode: 200, Headers: map[string]string{}, Body: []byte("Y")}, nil
+	}}
+	client := adobe.NewClient(adobe.ClientConfig{Transport: api, DownloadTransport: download})
+	svc := newAdobeTestService(t, client, nil)
+
+	_, err := svc.Generate(context.Background(), adobeTestAccount(), "tok", &OpenAIImagesRequest{
+		Model:    "gpt-image-2",
+		Prompt:   "edit",
+		Size:     "1024x1024",
+		N:        1,
+		Endpoint: openAIImagesGenerationsEndpoint,
+		Uploads:  []OpenAIImagesUpload{{Data: []byte("SRC"), ContentType: "image/png"}},
+	})
+	require.NoError(t, err)
+
+	var submitted map[string]any
+	require.NoError(t, json.Unmarshal(api.calls[1].Body, &submitted))
+	meta := submitted["generationMetadata"].(map[string]any)
+	require.Equal(t, "text2image", meta["module"])
+	require.Equal(t, "ff-image-generate", meta["submodule"])
+}
+
+func TestAdobeImageServiceDoesNotUploadMask(t *testing.T) {
+	api := &adobeFakeTransport{}
+	api.handler = func(req *adobe.Request, index int) (*adobe.Response, error) {
+		if index == 0 {
+			require.Equal(t, adobe.ImageUploadURL, req.URL)
+			require.Equal(t, []byte("SRC"), req.Body)
+			return adobeJSONResponse(t, 200, map[string]any{
+				"images": []any{map[string]any{"id": "img-1"}},
+			}, nil), nil
+		}
+		if index == 1 {
+			return adobeJSONResponse(t, 200, map[string]any{},
+				map[string]string{"x-override-status-link": "https://poll/x"}), nil
+		}
+		return adobeJSONResponse(t, 200, map[string]any{
+			"outputs": []any{map[string]any{"image": map[string]any{"presignedUrl": "https://cdn/y.png"}}},
+		}, nil), nil
+	}
+	download := &adobeFakeTransport{handler: func(*adobe.Request, int) (*adobe.Response, error) {
+		return &adobe.Response{StatusCode: 200, Headers: map[string]string{}, Body: []byte("Y")}, nil
+	}}
+	client := adobe.NewClient(adobe.ClientConfig{Transport: api, DownloadTransport: download})
+	svc := newAdobeTestService(t, client, nil)
+
+	_, err := svc.Generate(context.Background(), adobeTestAccount(), "tok", &OpenAIImagesRequest{
+		Model:    "gpt-image-2",
+		Prompt:   "edit",
+		Size:     "1024x1024",
+		N:        1,
+		Endpoint: openAIImagesEditsEndpoint,
+		HasMask:  true,
+		Uploads:  []OpenAIImagesUpload{{Data: []byte("SRC"), ContentType: "image/png"}},
+		MaskUpload: &OpenAIImagesUpload{
+			FieldName:   "mask",
+			FileName:    "mask.png",
+			ContentType: "image/png",
+			Data:        []byte("MASK"),
+		},
+	})
+	require.NoError(t, err)
+
+	uploadCount := 0
+	for _, call := range api.calls {
+		if call.URL == adobe.ImageUploadURL {
+			uploadCount++
+			require.NotEqual(t, []byte("MASK"), call.Body)
+		}
+	}
+	require.Equal(t, 1, uploadCount)
+
+	var submitted map[string]any
+	require.NoError(t, json.Unmarshal(api.calls[1].Body, &submitted))
+	require.Equal(t, []any{map[string]any{"id": "img-1", "usage": "subject"}}, submitted["referenceBlobs"])
 }
 
 func TestAdobeImageServiceUnknownModel(t *testing.T) {

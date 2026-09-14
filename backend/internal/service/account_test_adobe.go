@@ -21,7 +21,7 @@ const (
 	// （ResolutionFromSize 按长边定档，1024 → 1K。）
 	adobeTestSize = "1024x1024"
 
-	adobeTestDefaultPrompt = "a red apple on a white background"
+	adobeTestDefaultPrompt = defaultOpenAIImageTestPrompt
 )
 
 // adobeTestClients 是账号测试专用的 Adobe 客户端缓存。
@@ -31,7 +31,7 @@ const (
 // 测试要的是原始字节，直接塞进 SSE 的 data: URL 给浏览器。
 var adobeTestClients = &adobeClientCache{}
 
-// resolveAdobeTestPrompt 与 resolveGrokImagePrompt 同形：空则用短默认。
+// resolveAdobeTestPrompt 与 resolveGrokImagePrompt 同形：空则用其它生图渠道同一句默认。
 func resolveAdobeTestPrompt(prompt string) string {
 	if trimmed := strings.TrimSpace(prompt); trimmed != "" {
 		return trimmed

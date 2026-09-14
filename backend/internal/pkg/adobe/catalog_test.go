@@ -10,24 +10,11 @@ import (
 )
 
 func TestImageModelCatalogRegistersFamilies(t *testing.T) {
-	gptImage2, ok := ResolveImageModel("firefly-gpt-image-2-2k-16x9")
-	require.True(t, ok)
-	require.Equal(t, ImageModelConf{
-		ModelID:              "firefly-gpt-image-2-2k-16x9",
-		Family:               "firefly-gpt-image-2",
-		UpstreamModel:        "openai:firefly:gpt-image",
-		UpstreamModelID:      "gpt-image",
-		UpstreamModelVersion: "2",
-		PayloadKind:          PayloadKindGPTImage,
-		OutputResolution:     Resolution2K,
-		AspectRatio:          "16:9",
-		Description:          "Firefly GPT Image 2 (2K 16:9)",
-	}, gptImage2)
+	_, ok := ResolveImageModel("firefly-gpt-image-2-2k-16x9")
+	require.False(t, ok, "gpt-image 2 不再展开全量 id")
 
-	gptImage15, ok := ResolveImageModel("firefly-gpt-image-1.5-2k-16x9")
-	require.True(t, ok)
-	require.Equal(t, "1.5", gptImage15.UpstreamModelVersion)
-	require.Equal(t, "openai:firefly:gpt-image", gptImage15.UpstreamModel)
+	_, ok = ResolveImageModel("firefly-gpt-image-1.5-2k-16x9")
+	require.False(t, ok, "gpt-image 1.5 不再展开全量 id")
 
 	nano, ok := ResolveImageModel("firefly-nano-banana-pro-4k-1x1")
 	require.True(t, ok)
@@ -35,6 +22,12 @@ func TestImageModelCatalogRegistersFamilies(t *testing.T) {
 	require.Equal(t, "nano-banana-2", nano.UpstreamModelVersion)
 	require.Equal(t, Resolution4K, nano.OutputResolution)
 	require.Equal(t, "1:1", nano.AspectRatio)
+	require.Equal(t, Size{4096, 4096}, nano.SizePixels)
+
+	fiveFour, ok := ResolveImageModel("firefly-nano-banana-pro-2k-5x4")
+	require.True(t, ok, "Pro 必须注册 5:4")
+	require.Equal(t, "5:4", fiveFour.AspectRatio)
+	require.Equal(t, Size{2048, 2048}, fiveFour.SizePixels)
 
 	nano2, ok := ResolveImageModel("firefly-nano-banana2-2k-1x1")
 	require.True(t, ok)
@@ -115,44 +108,58 @@ func TestIsImageModelID(t *testing.T) {
 }
 
 func TestResolveImage(t *testing.T) {
-	t.Run("全量 id 直接命中，忽略 size", func(t *testing.T) {
+	t.Run("banana 全量 id 直接命中，忽略 size", func(t *testing.T) {
 		conf, err := ResolveImage(ImageRequest{
-			ModelID: "firefly-gpt-image-2-4k-1x1",
-			Size:    "1792x1024", // 与 id 冲突时以 id 为准
+			ModelID: "firefly-nano-banana-pro-4k-1x1",
+			Size:    "1792x1024",
 		})
 		require.NoError(t, err)
 		require.Equal(t, Resolution4K, conf.OutputResolution)
 		require.Equal(t, "1:1", conf.AspectRatio)
+		require.Equal(t, Size{4096, 4096}, conf.SizePixels)
 	})
 
-	t.Run("族级 id 由 size 推导比例", func(t *testing.T) {
+	t.Run("gpt-image 2 族级 id 原样转发 WxH", func(t *testing.T) {
 		conf, err := ResolveImage(ImageRequest{
 			ModelID: "firefly-gpt-image-2",
-			Size:    "1792x1024",
+			Size:    "1152x928",
 		})
 		require.NoError(t, err)
-		require.Equal(t, "firefly-gpt-image-2-2k-16x9", conf.ModelID)
-		require.Equal(t, DefaultOutputResolution, conf.OutputResolution)
+		require.Equal(t, "firefly-gpt-image-2", conf.ModelID)
+		require.Equal(t, PayloadKindGPTImage25, conf.PayloadKind)
+		require.Equal(t, Size{1152, 928}, conf.SizePixels)
+		require.Equal(t, Resolution2K, conf.OutputResolution)
 	})
 
-	t.Run("显式 Ratio 优先于 Size", func(t *testing.T) {
+	t.Run("显式 Ratio 优先于 Size（banana）", func(t *testing.T) {
 		conf, err := ResolveImage(ImageRequest{
-			ModelID: "firefly-gpt-image-2",
+			ModelID: "firefly-nano-banana-pro",
 			Size:    "1792x1024",
 			Ratio:   "3:2",
 		})
 		require.NoError(t, err)
 		require.Equal(t, "3:2", conf.AspectRatio)
+		require.Equal(t, Size{2048, 2048}, conf.SizePixels)
 	})
 
-	t.Run("Ratio 为 auto 时回落 Size 推导", func(t *testing.T) {
+	t.Run("Ratio 为 auto 时回落 Size 推导（banana）", func(t *testing.T) {
 		conf, err := ResolveImage(ImageRequest{
-			ModelID: "firefly-gpt-image-2",
+			ModelID: "firefly-nano-banana-pro",
 			Size:    "1024x1792",
 			Ratio:   "auto",
 		})
 		require.NoError(t, err)
 		require.Equal(t, "9:16", conf.AspectRatio)
+	})
+
+	t.Run("banana 省略 size 回落 1K 方图", func(t *testing.T) {
+		for _, size := range []string{"", "auto"} {
+			conf, err := ResolveImage(ImageRequest{ModelID: "firefly-nano-banana-pro", Size: size})
+			require.NoError(t, err, size)
+			require.Equal(t, Resolution1K, conf.OutputResolution, size)
+			require.Equal(t, "1:1", conf.AspectRatio, size)
+			require.Equal(t, Size{1024, 1024}, conf.SizePixels, size)
+		}
 	})
 
 	t.Run("显式分辨率", func(t *testing.T) {
@@ -200,9 +207,9 @@ func TestResolveImageCommonSizes(t *testing.T) {
 		{"2048x2048", "1:1", "1:1", Resolution2K},
 		{"1792x1024", "16:9", "16:9", Resolution2K},
 		{"1024x1792", "9:16", "9:16", Resolution2K},
-		// ★ gpt-image 有 3:2 / 2:3，nano-banana 只能取最近的 4:3 / 3:4。
-		{"1536x1024", "3:2", "4:3", Resolution2K},
-		{"1024x1536", "2:3", "3:4", Resolution2K},
+		// gpt-image 2 转发像素；banana 用比例字符串 + 方图档位。
+		{"1536x1024", "3:2", "3:2", Resolution2K},
+		{"1024x1536", "2:3", "2:3", Resolution2K},
 		// ★ 参考项目的 "2K Wide" / "4K Wide" / "4K Tall"。
 		{"2048x1152", "16:9", "16:9", Resolution2K},
 		{"3840x2160", "16:9", "16:9", Resolution4K},
@@ -215,36 +222,34 @@ func TestResolveImageCommonSizes(t *testing.T) {
 		t.Run(tc.size, func(t *testing.T) {
 			gpt, err := ResolveImage(ImageRequest{ModelID: "firefly-gpt-image-2", Size: tc.size})
 			require.NoError(t, err)
-			require.Equal(t, tc.gptRatio, gpt.AspectRatio)
+			w, h, ok := parseSizeWxH(tc.size)
+			require.True(t, ok)
+			require.Equal(t, Size{Width: w, Height: h}, gpt.SizePixels)
 			require.Equal(t, tc.wantResoluton, gpt.OutputResolution)
 
 			nano, err := ResolveImage(ImageRequest{ModelID: "firefly-nano-banana-pro", Size: tc.size})
 			require.NoError(t, err)
 			require.Equal(t, tc.nanoRatio, nano.AspectRatio)
 			require.Equal(t, tc.wantResoluton, nano.OutputResolution)
+			require.Equal(t, SquareFromResolution(tc.wantResoluton), nano.SizePixels)
 		})
 	}
 }
 
 func TestNearestRatio(t *testing.T) {
-	gpt := mustFamilyRatios(t, "firefly-gpt-image-2")
 	nano := mustFamilyRatios(t, "firefly-nano-banana-pro")
 	nano2 := mustFamilyRatios(t, "firefly-nano-banana2")
 
-	// 精确 GCD 命中优先于就近匹配。
-	require.Equal(t, "21:9", NearestRatio("2520x1080", gpt))
-	require.Equal(t, "5:4", NearestRatio("2000x1600", gpt))
+	require.Equal(t, "21:9", NearestRatio("2520x1080", nano))
+	require.Equal(t, "5:4", NearestRatio("2000x1600", nano))
 
-	// 该族没有的比例取最近：gpt-image 无 8:1，最宽只有 21:9。
 	require.Equal(t, "4:1", NearestRatio("1024x256", nano2))
-	require.Equal(t, "16:9", NearestRatio("1024x256", nano)) // nano 最宽就是 16:9
-	require.Equal(t, "21:9", NearestRatio("1024x256", gpt))
+	require.Equal(t, "21:9", NearestRatio("1024x256", nano))
 
-	// 非法/缺省回落。
-	require.Equal(t, FallbackRatio, NearestRatio("", gpt))
-	require.Equal(t, FallbackRatio, NearestRatio("auto", gpt))
-	require.Equal(t, FallbackRatio, NearestRatio("abc", gpt))
-	require.Equal(t, FallbackRatio, NearestRatio("0x100", gpt))
+	require.Equal(t, FallbackRatio, NearestRatio("", nano))
+	require.Equal(t, FallbackRatio, NearestRatio("auto", nano))
+	require.Equal(t, FallbackRatio, NearestRatio("abc", nano))
+	require.Equal(t, FallbackRatio, NearestRatio("0x100", nano))
 	require.Equal(t, FallbackRatio, NearestRatio("1024x1024", nil))
 }
 
@@ -253,6 +258,9 @@ func TestNearestRatio(t *testing.T) {
 func TestNearestRatioIsDeterministic(t *testing.T) {
 	for _, familyID := range ImageFamilyModelIDs {
 		ratios := mustFamilyRatios(t, familyID)
+		if len(ratios) == 0 {
+			continue
+		}
 		for _, size := range []string{"1000x999", "1234x567", "800x800", "1920x1080"} {
 			want := NearestRatio(size, ratios)
 			for i := 0; i < 100; i++ {
@@ -285,7 +293,7 @@ func TestResolutionFromSize(t *testing.T) {
 // 长边已超 1024），用它反推会把 1K 判成 2K。计费认的是标称档位 conf.OutputResolution，
 // 与实际返回的像素尺寸本就不是同一回事。
 func TestEveryCatalogEntryReachableByFamilyAndSize(t *testing.T) {
-	require.Len(t, imageModelCatalog, 117)
+	require.Len(t, imageModelCatalog, 102)
 
 	for modelID, conf := range imageModelCatalog {
 		t.Run(modelID, func(t *testing.T) {
@@ -470,6 +478,20 @@ func TestResolveImageGPTImage25PassesThroughRequestedPixels(t *testing.T) {
 		require.Equal(t, Size{}, conf.SizePixels, size)
 		require.Equal(t, DefaultOutputResolution, conf.OutputResolution, size)
 	}
+}
+
+func TestResolveImageGPTImage15SnapsToEnum(t *testing.T) {
+	conf, err := ResolveImage(ImageRequest{ModelID: "firefly-gpt-image-1.5", Size: "1920x1080"})
+	require.NoError(t, err)
+	require.Equal(t, Size{1536, 1024}, conf.SizePixels)
+	require.Equal(t, PayloadKindGPTImage25, conf.PayloadKind)
+	require.Equal(t, "firefly-gpt-image-1.5", conf.ModelID)
+	require.Equal(t, Resolution2K, conf.OutputResolution)
+
+	auto, err := ResolveImage(ImageRequest{ModelID: "gpt-image-1.5", Size: ""})
+	require.NoError(t, err)
+	require.Equal(t, Size{1024, 1024}, auto.SizePixels)
+	require.Equal(t, Resolution1K, auto.OutputResolution)
 }
 
 // 历史 gpt-image 名字在 Adobe 侧没有对应版本，一律落 2（与默认映射表一致）。

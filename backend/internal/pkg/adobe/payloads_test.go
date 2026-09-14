@@ -9,26 +9,19 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestSizeFromRatio(t *testing.T) {
-	require.Equal(t, Size{2752, 1536}, SizeFromRatio("16:9", Resolution2K))
-	require.Equal(t, Size{2048, 2048}, SizeFromRatio("1:1", Resolution2K))
-	require.Equal(t, Size{1024, 1024}, SizeFromRatio("1:1", Resolution1K))
-	require.Equal(t, Size{4096, 4096}, SizeFromRatio("1:1", Resolution4K))
-
-	// 分辨率缺省时按 2K 处理。
-	require.Equal(t, SizeFromRatio("16:9", Resolution2K), SizeFromRatio("16:9", ""))
-	// 未知比例回退 16:9。
-	require.Equal(t, SizeFromRatio("16:9", Resolution2K), SizeFromRatio("7:3", Resolution2K))
+func requireGenerationMetadata(t *testing.T, payload map[string]any, module, submodule string) {
+	t.Helper()
+	meta, ok := payload["generationMetadata"].(map[string]any)
+	require.True(t, ok)
+	require.Equal(t, module, meta["module"])
+	require.Equal(t, submodule, meta["submodule"])
 }
 
-func TestGPTImagePixelsFromRatio(t *testing.T) {
-	size, ok := GPTImagePixelsFromRatio("16:9", Resolution2K)
-	require.True(t, ok)
-	require.Equal(t, Size{2560, 1440}, size)
-
-	// gpt-image 不支持 nano-banana2 的超长比例。
-	_, ok = GPTImagePixelsFromRatio("1:8", Resolution2K)
-	require.False(t, ok)
+func TestSquareFromResolution(t *testing.T) {
+	require.Equal(t, Size{1024, 1024}, SquareFromResolution(Resolution1K))
+	require.Equal(t, Size{2048, 2048}, SquareFromResolution(Resolution2K))
+	require.Equal(t, Size{4096, 4096}, SquareFromResolution(Resolution4K))
+	require.Equal(t, Size{2048, 2048}, SquareFromResolution(""))
 }
 
 func TestGPTImageDetailLevelFromQuality(t *testing.T) {
@@ -38,25 +31,32 @@ func TestGPTImageDetailLevelFromQuality(t *testing.T) {
 		"high":    5,
 		"":        1,
 		"unknown": 1,
-		// gpt-image-2.5 新增档位：上游只理解 1-5，取最高档。
-		"xhigh": 5,
-		"max":   5,
-		"HIGH":  5,
-		" max ": 5,
+		"xhigh":   5,
+		"max":     5,
+		"HIGH":    5,
+		" max ":   5,
 	}
 	for quality, want := range tests {
 		require.Equal(t, want, GPTImageDetailLevelFromQuality(quality), "quality=%q", quality)
 	}
 }
 
+func TestGPTImageDetailLevelFromQualityForVersion(t *testing.T) {
+	require.Equal(t, 5, GPTImageDetailLevelFromQualityForVersion("xhigh", "2"))
+	require.Equal(t, 5, GPTImageDetailLevelFromQualityForVersion("max", "1.5"))
+	require.Equal(t, 7, GPTImageDetailLevelFromQualityForVersion("xhigh", "gpt-image-2.5-flare"))
+	require.Equal(t, 7, GPTImageDetailLevelFromQualityForVersion("max", "gpt-image-2.5-prism"))
+	require.Equal(t, 5, GPTImageDetailLevelFromQualityForVersion("high", "gpt-image-2.5-flare"))
+}
+
 func TestBuildImagePayloadCandidatesGPTImageText2Image(t *testing.T) {
 	candidates, err := BuildImagePayloadCandidates(ImagePayloadOptions{
 		Prompt:               "a cat",
-		AspectRatio:          "16:9",
-		OutputResolution:     Resolution2K,
 		UpstreamModelID:      "gpt-image",
 		UpstreamModelVersion: "2",
+		PayloadKind:          PayloadKindGPTImage25,
 		QualityLevel:         "high",
+		SizePixels:           Size{Width: 1152, Height: 928},
 	})
 	require.NoError(t, err)
 	require.Len(t, candidates, 1)
@@ -64,10 +64,12 @@ func TestBuildImagePayloadCandidatesGPTImageText2Image(t *testing.T) {
 	p := candidates[0]
 	require.Equal(t, "gpt-image", p["modelId"])
 	require.Equal(t, "2", p["modelVersion"])
-	require.Equal(t, "2560x1440", p["modelSpecificPayload"].(map[string]any)["size"])
+	require.Equal(t, Size{Width: 1152, Height: 928}, p["size"])
+	require.NotContains(t, p, "outputResolution")
+	require.Equal(t, 2, p["caiClaimVersion"])
+	msp := p["modelSpecificPayload"].(map[string]any)
+	require.NotContains(t, msp, "size")
 	require.Equal(t, 5, p["generationSettings"].(map[string]any)["detailLevel"])
-	require.Equal(t, Size{2560, 1440}, p["size"])
-	require.Equal(t, "2K", p["outputResolution"])
 	require.Equal(t, "text2image", p["generationMetadata"].(map[string]any)["module"])
 	require.Empty(t, p["referenceBlobs"])
 }
@@ -86,38 +88,66 @@ func TestBuildImagePayloadCandidatesGPTImageDetailLevelOverride(t *testing.T) {
 	require.Equal(t, 3, candidates[0]["generationSettings"].(map[string]any)["detailLevel"])
 }
 
+func TestBuildImagePayloadCandidatesEditWithoutSourceKeepsGenerate(t *testing.T) {
+	candidates, err := BuildImagePayloadCandidates(ImagePayloadOptions{
+		Prompt:               "x",
+		UpstreamModelID:      "gpt-image",
+		UpstreamModelVersion: "2",
+		PayloadKind:          PayloadKindGPTImage25,
+		SizePixels:           Size{Width: 1024, Height: 1024},
+		Edit:                 true,
+	})
+	require.NoError(t, err)
+	requireGenerationMetadata(t, candidates[0], "text2image", "ff-image-generate")
+	require.Empty(t, candidates[0]["referenceBlobs"])
+}
+
 func TestBuildImagePayloadCandidatesGPTImageEdit(t *testing.T) {
 	candidates, err := BuildImagePayloadCandidates(ImagePayloadOptions{
 		Prompt:               "edit",
-		AspectRatio:          "1:1",
-		OutputResolution:     Resolution2K,
 		UpstreamModelID:      "gpt-image",
 		UpstreamModelVersion: "2",
+		PayloadKind:          PayloadKindGPTImage25,
+		SizePixels:           Size{Width: 1024, Height: 1024},
 		SourceImageIDs:       []string{"img1"},
 	})
 	require.NoError(t, err)
 	require.Len(t, candidates, 1)
 
 	p := candidates[0]
-	// 实证：gpt-image edit 必须 usage=subject，否则 Adobe 400
-	// "Image edit use case requires a reference image"。
 	require.Equal(t, []any{map[string]any{"id": "img1", "usage": "subject"}}, p["referenceBlobs"])
-	require.Equal(t, "image2image", p["generationMetadata"].(map[string]any)["module"])
-	// Adobe 新 API 拒收 referenceImages，确保不再出现该字段。
+	requireGenerationMetadata(t, p, "text2image", "ff-image-generate")
 	require.NotContains(t, p, "referenceImages")
 	require.NotContains(t, p, "referenceVideos")
 }
 
-func TestBuildImagePayloadCandidatesGPTImageUnsupportedRatio(t *testing.T) {
-	_, err := BuildImagePayloadCandidates(ImagePayloadOptions{
-		Prompt:           "x",
-		AspectRatio:      "1:8",
-		OutputResolution: Resolution2K,
-		UpstreamModelID:  "gpt-image",
+func TestBuildImagePayloadCandidatesGPTImageEditor(t *testing.T) {
+	candidates, err := BuildImagePayloadCandidates(ImagePayloadOptions{
+		Prompt:               "edit",
+		UpstreamModelID:      "gpt-image",
+		UpstreamModelVersion: "2",
+		PayloadKind:          PayloadKindGPTImage25,
+		SizePixels:           Size{Width: 1024, Height: 1024},
+		SourceImageIDs:       []string{"img1"},
+		Edit:                 true,
 	})
-	require.Error(t, err)
-	require.Contains(t, err.Error(), "unsupported gpt-image ratio")
-	require.False(t, IsRotatable(err))
+	require.NoError(t, err)
+	requireGenerationMetadata(t, candidates[0], "text2image", "ff-image-editor")
+	require.Equal(t, []any{map[string]any{"id": "img1", "usage": "subject"}}, candidates[0]["referenceBlobs"])
+}
+
+func TestBuildImagePayloadCandidatesGPTImageAutoOmitsTopLevelSize(t *testing.T) {
+	candidates, err := BuildImagePayloadCandidates(ImagePayloadOptions{
+		Prompt:               "x",
+		UpstreamModelID:      "gpt-image",
+		UpstreamModelVersion: "2",
+		PayloadKind:          PayloadKindGPTImage25,
+	})
+	require.NoError(t, err)
+	require.NotContains(t, candidates[0], "size")
+	require.NotContains(t, candidates[0], "outputResolution")
+	msp := candidates[0]["modelSpecificPayload"].(map[string]any)
+	require.NotContains(t, msp, "size", "v2 Auto 不写 msp.size")
 }
 
 func TestBuildImagePayloadCandidatesNanoBananaText2Image(t *testing.T) {
@@ -127,31 +157,55 @@ func TestBuildImagePayloadCandidatesNanoBananaText2Image(t *testing.T) {
 		OutputResolution:     Resolution2K,
 		UpstreamModelID:      "gemini-flash",
 		UpstreamModelVersion: "nano-banana-2",
+		PayloadKind:          PayloadKindNanoBanana,
+		SizePixels:           Size{Width: 2048, Height: 2048},
 	})
 	require.NoError(t, err)
 	require.Len(t, candidates, 1)
 
 	p := candidates[0]
-	require.Equal(t, Size{1536, 2752}, p["size"])
+	require.Equal(t, Size{2048, 2048}, p["size"])
 	msp := p["modelSpecificPayload"].(map[string]any)
 	require.Equal(t, "9:16", msp["aspectRatio"])
 	require.Equal(t, false, msp["parameters"].(map[string]any)["addWatermark"])
 	require.Equal(t, []any{}, p["referenceBlobs"])
 	require.Equal(t, false, p["groundSearch"])
-	require.Equal(t, false, p["skipCai"])
+	require.NotContains(t, p, "skipCai")
+	require.Equal(t, 2, p["caiClaimVersion"])
+}
+
+func TestBuildImagePayloadCandidatesNanoBananaFourKFiveFour(t *testing.T) {
+	candidates, err := BuildImagePayloadCandidates(ImagePayloadOptions{
+		Prompt:               "x",
+		AspectRatio:          "5:4",
+		OutputResolution:     Resolution4K,
+		UpstreamModelID:      "gemini-flash",
+		UpstreamModelVersion: "nano-banana-3",
+		PayloadKind:          PayloadKindNanoBanana,
+		SizePixels:           Size{Width: 4096, Height: 4096},
+	})
+	require.NoError(t, err)
+	p := candidates[0]
+	require.Equal(t, Size{4096, 4096}, p["size"])
+	require.Equal(t, "5:4", p["modelSpecificPayload"].(map[string]any)["aspectRatio"])
+	require.Equal(t, 2, p["caiClaimVersion"])
+	require.NotContains(t, p, "skipCai")
 }
 
 // 没给比例（或给了 auto）时不应凭空补一个 aspectRatio。
 func TestBuildImagePayloadCandidatesNanoBananaOmitsAspectRatio(t *testing.T) {
-	for _, ratio := range []string{"", "auto", "  ", "AUTO"} {
+	for _, ratio := range []string{"", "auto", "  ", "AUTO", "1:1"} {
 		candidates, err := BuildImagePayloadCandidates(ImagePayloadOptions{
-			Prompt:          "x",
-			AspectRatio:     ratio,
-			UpstreamModelID: "gemini-flash",
+			Prompt:           "x",
+			AspectRatio:      ratio,
+			UpstreamModelID:  "gemini-flash",
+			PayloadKind:      PayloadKindNanoBanana,
+			OutputResolution: Resolution1K,
 		})
 		require.NoError(t, err)
 		msp := candidates[0]["modelSpecificPayload"].(map[string]any)
 		require.NotContains(t, msp, "aspectRatio", "ratio=%q 不应带 aspectRatio", ratio)
+		require.Equal(t, Size{1024, 1024}, candidates[0]["size"])
 	}
 }
 
@@ -167,13 +221,27 @@ func TestBuildImagePayloadCandidatesNanoBananaEdit(t *testing.T) {
 	require.Len(t, candidates, 1)
 
 	p := candidates[0]
-	require.Equal(t, "image2image", p["generationMetadata"].(map[string]any)["module"])
+	requireGenerationMetadata(t, p, "text2image", "ff-image-generate")
 	// nano-banana 与 gpt-image 恰好相反：这里必须是 general，用 subject 会 400
 	// "Only general reference images are supported for Google Nano-Banana"。
 	require.Equal(t, []any{
 		map[string]any{"id": "a", "usage": "general"},
 		map[string]any{"id": "b", "usage": "general"},
 	}, p["referenceBlobs"])
+}
+
+func TestBuildImagePayloadCandidatesNanoBananaEditor(t *testing.T) {
+	candidates, err := BuildImagePayloadCandidates(ImagePayloadOptions{
+		Prompt:           "edit",
+		AspectRatio:      "1:1",
+		OutputResolution: Resolution2K,
+		UpstreamModelID:  "gemini-flash",
+		SourceImageIDs:   []string{"a"},
+		Edit:             true,
+	})
+	require.NoError(t, err)
+	requireGenerationMetadata(t, candidates[0], "text2image", "ff-image-editor")
+	require.Equal(t, []any{map[string]any{"id": "a", "usage": "general"}}, candidates[0]["referenceBlobs"])
 }
 
 // background 是 OpenAI 原生参数，随 size 一起走 modelSpecificPayload 透传。
@@ -200,11 +268,10 @@ func TestBuildImagePayloadCandidatesBackground(t *testing.T) {
 	})
 
 	t.Run("空值与 auto 一个字段都不发", func(t *testing.T) {
-		// 老链路 payload 必须字节级不变，故这里断言 modelSpecificPayload 只有 size。
 		for _, background := range []string{"", "auto", "  ", "AUTO"} {
 			msp := build(background, nil)
 			require.NotContains(t, msp, "background", "background=%q 不应写入字段", background)
-			require.Len(t, msp, 1, "background=%q 时 modelSpecificPayload 应只有 size", background)
+			require.Empty(t, msp, "background=%q 时 modelSpecificPayload 应为空", background)
 		}
 	})
 
@@ -420,6 +487,8 @@ func TestPayloadsAreJSONSerializable(t *testing.T) {
 		UpstreamModelID: "gpt-image",
 		Background:      "transparent",
 		SourceImageIDs:  []string{"a"},
+		SizePixels:      Size{Width: 1024, Height: 1024},
+		PayloadKind:     PayloadKindGPTImage25,
 	})
 	require.NoError(t, err)
 	raw, err := json.Marshal(candidates[0])
@@ -480,6 +549,19 @@ func TestBuildImagePayloadCandidatesGPTImage25PassesThrough4K(t *testing.T) {
 		"4K 必须原样发给上游，不得夹成 1024/1536")
 }
 
+func TestBuildImagePayloadCandidatesGPTImage25XHighDetailLevel(t *testing.T) {
+	candidates, err := BuildImagePayloadCandidates(ImagePayloadOptions{
+		Prompt:               "x",
+		UpstreamModelID:      "gpt-image",
+		UpstreamModelVersion: "gpt-image-2.5-flare",
+		PayloadKind:          PayloadKindGPTImage25,
+		QualityLevel:         "xhigh",
+		SizePixels:           Size{Width: 1024, Height: 1024},
+	})
+	require.NoError(t, err)
+	require.Equal(t, 7, candidates[0]["generationSettings"].(map[string]any)["detailLevel"])
+}
+
 func TestBuildImagePayloadCandidatesGPTImage25OmitsSizeWhenEmpty(t *testing.T) {
 	candidates, err := BuildImagePayloadCandidates(ImagePayloadOptions{
 		Prompt:               "a cat",
@@ -490,10 +572,10 @@ func TestBuildImagePayloadCandidatesGPTImage25OmitsSizeWhenEmpty(t *testing.T) {
 	require.NoError(t, err)
 	require.NotContains(t, candidates[0], "size")
 	msp := candidates[0]["modelSpecificPayload"].(map[string]any)
-	require.NotContains(t, msp, "size")
+	require.Equal(t, "auto", msp["size"], "v2.5 Auto 写 msp.size:auto")
 }
 
-// 图生图时 v2.5 走 module=image2image + usage=subject（与 v2 保持一致）。
+// 图生图时 v2.5 走 text2image + usage=subject（与 v2 保持一致）。
 func TestBuildImagePayloadCandidatesGPTImage25Edit(t *testing.T) {
 	candidates, err := BuildImagePayloadCandidates(ImagePayloadOptions{
 		Prompt:               "edit",
@@ -504,9 +586,22 @@ func TestBuildImagePayloadCandidatesGPTImage25Edit(t *testing.T) {
 	})
 	require.NoError(t, err)
 	require.Len(t, candidates, 1)
-	require.Equal(t, "image2image", candidates[0]["generationMetadata"].(map[string]any)["module"])
+	requireGenerationMetadata(t, candidates[0], "text2image", "ff-image-generate")
 	require.Equal(t, []any{map[string]any{"id": "abc", "usage": "subject"}},
 		candidates[0]["referenceBlobs"])
+}
+
+func TestBuildImagePayloadCandidatesGPTImage25Editor(t *testing.T) {
+	candidates, err := BuildImagePayloadCandidates(ImagePayloadOptions{
+		Prompt:               "edit",
+		UpstreamModelID:      "gpt-image",
+		UpstreamModelVersion: "gpt-image-2.5-prism",
+		PayloadKind:          PayloadKindGPTImage25,
+		SourceImageIDs:       []string{"abc"},
+		Edit:                 true,
+	})
+	require.NoError(t, err)
+	requireGenerationMetadata(t, candidates[0], "text2image", "ff-image-editor")
 }
 
 // v2.5 的 background 也走 modelSpecificPayload，透传规则与 v2 一致。
@@ -517,6 +612,7 @@ func TestBuildImagePayloadCandidatesGPTImage25Background(t *testing.T) {
 		UpstreamModelVersion: "gpt-image-2.5-flare",
 		PayloadKind:          PayloadKindGPTImage25,
 		Background:           "transparent",
+		SizePixels:           Size{Width: 1024, Height: 1024},
 	})
 	require.NoError(t, err)
 	msp := candidates[0]["modelSpecificPayload"].(map[string]any)
@@ -542,6 +638,22 @@ func TestBuildImagePayloadCandidatesSizeEnum(t *testing.T) {
 	require.NotContains(t, p, "modelSpecificPayload")
 	require.Equal(t, "fluxPro", p["modelVersion"])
 	require.Equal(t, "flux", p["modelId"])
+	requireGenerationMetadata(t, p, "text2image", "ff-image-generate")
+}
+
+func TestBuildImagePayloadCandidatesSizeEnumEditor(t *testing.T) {
+	candidates, err := BuildImagePayloadCandidates(ImagePayloadOptions{
+		Prompt:               "edit",
+		UpstreamModelID:      "flux",
+		UpstreamModelVersion: "fluxPro",
+		PayloadKind:          PayloadKindSizeEnum,
+		SizePixels:           Size{1024, 768},
+		SourceImageIDs:       []string{"img1"},
+		Edit:                 true,
+	})
+	require.NoError(t, err)
+	requireGenerationMetadata(t, candidates[0], "text2image", "ff-image-editor")
+	require.Equal(t, []any{map[string]any{"id": "img1", "usage": "subject"}}, candidates[0]["referenceBlobs"])
 }
 
 // enum-size 家族没有 SizePixels 就应报错——catalog 层没挑好尺寸的 bug 不该被

@@ -16,124 +16,48 @@ type Size struct {
 	Height int `json:"height"`
 }
 
-// String 返回 gpt-image 的 modelSpecificPayload.size 形式（"宽x高"）。
+// String 返回 gpt-image 的宽高字面量（"宽x高"）。
 func (s Size) String() string { return fmt.Sprintf("%dx%d", s.Width, s.Height) }
-
-// nano-banana 系各分辨率下的比例像素表。
-var (
-	nanoSizes1K = map[string]Size{
-		"1:1":  {1024, 1024},
-		"1:8":  {384, 3072},
-		"1:4":  {512, 2048},
-		"16:9": {1360, 768},
-		"9:16": {768, 1360},
-		"4:1":  {2048, 512},
-		"4:3":  {1152, 864},
-		"3:4":  {864, 1152},
-		"8:1":  {3072, 384},
-	}
-	nanoSizes2K = map[string]Size{
-		"1:1":  {2048, 2048},
-		"1:8":  {768, 6144},
-		"1:4":  {1024, 4096},
-		"16:9": {2752, 1536},
-		"9:16": {1536, 2752},
-		"4:1":  {4096, 1024},
-		"4:3":  {2048, 1536},
-		"3:4":  {1536, 2048},
-		"8:1":  {6144, 768},
-	}
-	nanoSizes4K = map[string]Size{
-		"1:1":  {4096, 4096},
-		"1:8":  {1536, 12288},
-		"1:4":  {2048, 8192},
-		"16:9": {5504, 3072},
-		"9:16": {3072, 5504},
-		"4:1":  {8192, 2048},
-		"4:3":  {4096, 3072},
-		"3:4":  {3072, 4096},
-		"8:1":  {12288, 1536},
-	}
-)
-
-// gpt-image 家族的比例像素表，与 nano-banana 系完全不同。
-var (
-	gptSizes1K = map[string]Size{
-		"1:1":  {1024, 1024},
-		"5:4":  {1120, 896},
-		"9:16": {720, 1280},
-		"21:9": {1456, 624},
-		"16:9": {1280, 720},
-		"4:3":  {1152, 864},
-		"3:2":  {1248, 832},
-		"4:5":  {896, 1120},
-		"3:4":  {864, 1152},
-		"2:3":  {832, 1248},
-	}
-	gptSizes2K = map[string]Size{
-		"1:1":  {2048, 2048},
-		"5:4":  {2240, 1792},
-		"9:16": {1440, 2560},
-		"21:9": {3024, 1296},
-		"16:9": {2560, 1440},
-		"4:3":  {2304, 1728},
-		"3:2":  {2496, 1664},
-		"4:5":  {1792, 2240},
-		"3:4":  {1728, 2304},
-		"2:3":  {1664, 2496},
-	}
-	gptSizes4K = map[string]Size{
-		"1:1":  {2880, 2880},
-		"5:4":  {3200, 2560},
-		"9:16": {2160, 3840},
-		"21:9": {3696, 1584},
-		"16:9": {3840, 2160},
-		"4:3":  {3264, 2448},
-		"3:2":  {3504, 2336},
-		"4:5":  {2560, 3200},
-		"3:4":  {2448, 3264},
-		"2:3":  {2336, 3504},
-	}
-)
-
-func sizeTable(resolution OutputResolution, m1K, m2K, m4K map[string]Size) map[string]Size {
-	switch OutputResolution(strings.ToUpper(string(resolution))) {
-	case Resolution1K:
-		return m1K
-	case Resolution4K:
-		return m4K
-	default:
-		return m2K
-	}
-}
-
-// SizeFromRatio 返回 nano-banana 系模型的像素尺寸；未知比例回退 16:9。
-func SizeFromRatio(ratio string, resolution OutputResolution) Size {
-	table := sizeTable(resolution, nanoSizes1K, nanoSizes2K, nanoSizes4K)
-	if size, ok := table[ratio]; ok {
-		return size
-	}
-	return table["16:9"]
-}
-
-// GPTImagePixelsFromRatio 返回 gpt-image 家族的像素尺寸；该家族不支持的比例返回 false。
-func GPTImagePixelsFromRatio(ratio string, resolution OutputResolution) (Size, bool) {
-	size, ok := sizeTable(resolution, gptSizes1K, gptSizes2K, gptSizes4K)[ratio]
-	return size, ok
-}
 
 // GPTImageDetailLevelFromQuality 把 OpenAI 的 quality 档位映射成上游 detailLevel。
 //
-// xhigh / max 是 gpt-image-2.5 新增的档位，Firefly 上游只理解 1-5，一律取最高档。
+// 未指定模型版本时按 v2 / 1.5 的上限 5。gpt-image-2.5 的 schema 是 1-7，
+// 用 GPTImageDetailLevelFromQualityForVersion。
 func GPTImageDetailLevelFromQuality(qualityLevel string) int {
+	return gptImageDetailLevelFromQuality(qualityLevel, 5)
+}
+
+// GPTImageDetailLevelFromQualityForVersion 按上游 modelVersion 选择 detailLevel 上限：
+// gpt-image-2.5-* 为 7，其余为 5。
+func GPTImageDetailLevelFromQualityForVersion(qualityLevel, modelVersion string) int {
+	return gptImageDetailLevelFromQuality(qualityLevel, gptImageDetailLevelCap(modelVersion))
+}
+
+func gptImageDetailLevelCap(modelVersion string) int {
+	if strings.Contains(strings.ToLower(modelVersion), "gpt-image-2.5") {
+		return 7
+	}
+	return 5
+}
+
+func gptImageDetailLevelFromQuality(qualityLevel string, max int) int {
 	switch strings.ToLower(strings.TrimSpace(qualityLevel)) {
-	case "high", "xhigh", "max":
+	case "high":
+		if max < 5 {
+			return max
+		}
 		return 5
+	case "xhigh", "max":
+		return max
 	case "medium":
 		return 3
 	default:
 		return 1
 	}
+}
+
+func isGPTImage25Version(modelVersion string) bool {
+	return strings.Contains(strings.ToLower(modelVersion), "gpt-image-2.5")
 }
 
 // seedNow 生成提交用的随机种子（复刻上游前端的取值方式）。
@@ -146,20 +70,24 @@ type ImagePayloadOptions struct {
 	OutputResolution     OutputResolution
 	UpstreamModelID      string
 	UpstreamModelVersion string
-	// PayloadKind 决定用哪套构造器。零值（PayloadKindGPTImage）等同于 Step 7 之前的
-	// 「按 UpstreamModelID 猜」路径，保持老 conf 直接透传时的行为一致。
+	// PayloadKind 决定用哪套构造器。零值回落到「按 UpstreamModelID 猜」：
+	// gpt-image 走自由 WxH 构造器，其余走 banana。
 	PayloadKind PayloadKind
-	// SizePixels：v2.5 是请求 WxH 原样；enum-size 是 catalog NearestSize 的结果。
-	// payload 层不再做二次像素决策。零值表示省略顶层 size（对齐 UI「自动」）。
+	// SizePixels：gpt-image 2/2.5 是请求 WxH 原样；1.5 / enum-size 是 catalog
+	// NearestSize 的结果；banana 是档位方图。payload 层不再做二次像素决策。
+	// 零值表示省略顶层 size（对齐 UI「自动」）。
 	SizePixels Size
 	// QualityLevel 是 OpenAI 的 quality；DetailLevel 为 nil 时由它推导。
 	QualityLevel string
-	// DetailLevel 显式指定上游 detailLevel（1-5），优先于 QualityLevel。
+	// DetailLevel 显式指定上游 detailLevel，优先于 QualityLevel。
 	DetailLevel *int
 	// SourceImageIDs 是已上传的参考图 id，非空即走图生图。
 	SourceImageIDs []string
+	// Edit 为 true 表示来自 /v1/images/edits。Firefly Image Edit 抓包走
+	// submodule=ff-image-editor；Generate 页参考图仍是 ff-image-generate。
+	Edit bool
 	// Background 是 OpenAI 的 background 参数（transparent / opaque / auto）。
-	// gpt-image v2 放进 modelSpecificPayload；v2.5 同样只把非 auto 的 background 塞进该对象。
+	// gpt-image 只把非 auto 的 background 塞进 modelSpecificPayload。
 	Background string
 }
 
@@ -170,40 +98,34 @@ type ImagePayloadOptions struct {
 // 调用方应逐个 POST 直到 200，不要只发第一个。
 func BuildImagePayloadCandidates(opts ImagePayloadOptions) ([]map[string]any, error) {
 	normalizedRatio := strings.ToLower(strings.TrimSpace(opts.AspectRatio))
-	effectiveRatio := normalizedRatio
-	if effectiveRatio == "" {
-		effectiveRatio = "1:1"
-	}
 
 	switch opts.PayloadKind {
-	case PayloadKindGPTImage25:
+	case PayloadKindGPTImage25, PayloadKindGPTImage:
 		return buildGPTImage25Payloads(opts)
 	case PayloadKindSizeEnum:
 		return buildSizeEnumPayloads(opts)
 	case PayloadKindNanoBanana:
-		return buildNanoBananaPayloads(opts, normalizedRatio, effectiveRatio), nil
-	case PayloadKindGPTImage:
-		return buildGPTImagePayloads(opts, effectiveRatio)
+		return buildNanoBananaPayloads(opts, normalizedRatio), nil
 	}
 
-	// 兼容 Step 7 之前——老调用方可能只填了 UpstreamModelID 就不设 PayloadKind。
+	// 兼容未设 PayloadKind 的调用方：按 UpstreamModelID 猜。
 	if strings.EqualFold(strings.TrimSpace(opts.UpstreamModelID), upstreamModelIDGPTImage) {
-		return buildGPTImagePayloads(opts, effectiveRatio)
+		return buildGPTImage25Payloads(opts)
 	}
-	return buildNanoBananaPayloads(opts, normalizedRatio, effectiveRatio), nil
+	return buildNanoBananaPayloads(opts, normalizedRatio), nil
 }
 
-// buildGPTImage25Payloads 是 gpt-image v2.5-flare / v2.5-prism 的 payload。
+// buildGPTImage25Payloads 是 gpt-image v1.5 / v2 / v2.5 的共用 payload。
 //
-// 抓包实测（Firefly UI，2:3）：v2.5 与 v2 的差异是：
+// 抓包（Firefly UI gpt-image/2，1152x928）：
 //   - 不发 outputResolution
-//   - 有合法 WxH 时发顶层 size:{width,height}（低档套餐拒 4K 交给上游，不夹成 1024/1536）
-//   - modelSpecificPayload 默认 {}，不写 size:"auto"
-//   - 多一个 caiClaimVersion:2
+//   - 有合法 WxH 时发顶层 size:{width,height}（含 4K，不夹紧）
+//   - modelSpecificPayload 默认 {}，不写像素字面量
+//   - caiClaimVersion:2
 //
-// 空 / auto 省略顶层 size，对齐 UI「自动」。
+// v2.5 Auto（无顶层 size）额外写 modelSpecificPayload.size:"auto"（2026-09-10 UI）。
 func buildGPTImage25Payloads(opts ImagePayloadOptions) ([]map[string]any, error) {
-	detailLevel := GPTImageDetailLevelFromQuality(opts.QualityLevel)
+	detailLevel := GPTImageDetailLevelFromQualityForVersion(opts.QualityLevel, opts.UpstreamModelVersion)
 	if opts.DetailLevel != nil {
 		detailLevel = *opts.DetailLevel
 	}
@@ -211,6 +133,11 @@ func buildGPTImage25Payloads(opts ImagePayloadOptions) ([]map[string]any, error)
 	modelSpecific := map[string]any{}
 	if bg := strings.ToLower(strings.TrimSpace(opts.Background)); bg != "" && bg != "auto" {
 		modelSpecific["background"] = bg
+	}
+
+	hasPixels := opts.SizePixels.Width > 0 && opts.SizePixels.Height > 0
+	if !hasPixels && isGPTImage25Version(opts.UpstreamModelVersion) {
+		modelSpecific["size"] = "auto"
 	}
 
 	base := map[string]any{
@@ -221,12 +148,12 @@ func buildGPTImage25Payloads(opts ImagePayloadOptions) ([]map[string]any, error)
 		"seeds":                []int{seedNow()},
 		"output":               map[string]any{"storeInputs": true},
 		"referenceBlobs":       []any{},
-		"generationMetadata":   map[string]any{"module": "text2image", "submodule": "ff-image-generate"},
+		"generationMetadata":   imageGenerationMetadata(opts),
 		"modelSpecificPayload": modelSpecific,
 		"generationSettings":   map[string]any{"detailLevel": detailLevel},
 		"caiClaimVersion":      2,
 	}
-	if opts.SizePixels.Width > 0 && opts.SizePixels.Height > 0 {
+	if hasPixels {
 		base["size"] = opts.SizePixels
 	}
 
@@ -234,9 +161,9 @@ func buildGPTImage25Payloads(opts ImagePayloadOptions) ([]map[string]any, error)
 		return []map[string]any{base}, nil
 	}
 
-	// 图生图分支同 v2：module=image2image + referenceBlobs.usage=subject。
+	// 图生图：抓包一律 text2image；gpt-image 参考图 usage=subject（general 会 400
+	// "Image edit use case requires a reference image"）。
 	edited := clonePayload(base)
-	edited["generationMetadata"] = map[string]any{"module": "image2image", "submodule": "ff-image-generate"}
 	edited["referenceBlobs"] = referenceBlobs(opts.SourceImageIDs, "subject")
 	return []map[string]any{edited}, nil
 }
@@ -259,79 +186,31 @@ func buildSizeEnumPayloads(opts ImagePayloadOptions) ([]map[string]any, error) {
 		"seeds":              []int{seedNow()},
 		"output":             map[string]any{"storeInputs": true},
 		"referenceBlobs":     []any{},
-		"generationMetadata": map[string]any{"module": "text2image", "submodule": "ff-image-generate"},
+		"generationMetadata": imageGenerationMetadata(opts),
 		"size":               opts.SizePixels,
 	}
 	if len(opts.SourceImageIDs) == 0 {
 		return []map[string]any{base}, nil
 	}
-	// enum-size 家族的图生图形态多样，抓包未覆盖——沿用 gpt-image 的 module=image2image
-	// + usage=subject。若上游拒收，逐个家族再补 candidate。
+	// enum-size 家族的图生图形态多样，抓包未覆盖独立 edit——generationMetadata
+	// 跟 gpt-image / banana，usage 仍沿用 subject。若上游拒收，逐个家族再补 candidate。
 	edited := clonePayload(base)
-	edited["generationMetadata"] = map[string]any{"module": "image2image", "submodule": "ff-image-generate"}
 	edited["referenceBlobs"] = referenceBlobs(opts.SourceImageIDs, "subject")
 	return []map[string]any{edited}, nil
 }
 
-func buildGPTImagePayloads(opts ImagePayloadOptions, ratio string) ([]map[string]any, error) {
-	detailLevel := GPTImageDetailLevelFromQuality(opts.QualityLevel)
-	if opts.DetailLevel != nil {
-		detailLevel = *opts.DetailLevel
-	}
-
-	pixels, ok := GPTImagePixelsFromRatio(ratio, opts.OutputResolution)
-	if !ok {
-		return nil, NewRequestError(fmt.Sprintf("unsupported gpt-image ratio: %s", ratio))
-	}
-	if pixels.Width <= 0 || pixels.Height <= 0 {
-		return nil, NewRequestError("gpt-image size must be positive")
-	}
-
-	modelSpecific := map[string]any{"size": pixels.String()}
-	// background 与 size 同属 OpenAI 原生参数，走同一个透传口。auto 是上游默认值，
-	// 不发以免多带字段——空值与 auto 都必须让 payload 与老链路字节级一致。
-	if bg := strings.ToLower(strings.TrimSpace(opts.Background)); bg != "" && bg != "auto" {
-		modelSpecific["background"] = bg
-	}
-
-	base := map[string]any{
-		"modelId":              opts.UpstreamModelID,
-		"modelVersion":         opts.UpstreamModelVersion,
-		"n":                    1,
-		"prompt":               opts.Prompt,
-		"seeds":                []int{seedNow()},
-		"output":               map[string]any{"storeInputs": true},
-		"referenceBlobs":       []any{},
-		"generationMetadata":   map[string]any{"module": "text2image", "submodule": "ff-image-generate"},
-		"modelSpecificPayload": modelSpecific,
-		"outputResolution":     strings.ToUpper(string(defaultedResolution(opts.OutputResolution))),
-		"generationSettings":   map[string]any{"detailLevel": detailLevel},
-		"size":                 pixels,
-	}
-
-	if len(opts.SourceImageIDs) == 0 {
-		return []map[string]any{base}, nil
-	}
-
-	// gpt-image 图生图：参考媒体必须走 referenceBlobs（每项 {id, usage}），Adobe 新
-	// API 已拒收 referenceImages/referenceVideos（422 validation_error）。
-	//
-	// usage 必须是 "subject"：经对真实 Adobe API 实证，module=image2image + usage=subject
-	// 才返回 200；usage=general 会 400 "Image edit use case requires a reference image"
-	// （Adobe 不把 general blob 当 edit 源图）。与 nano-banana 恰好相反，见下。
-	edited := clonePayload(base)
-	edited["generationMetadata"] = map[string]any{"module": "image2image", "submodule": "ff-image-generate"}
-	edited["referenceBlobs"] = referenceBlobs(opts.SourceImageIDs, "subject")
-	return []map[string]any{edited}, nil
-}
-
-func buildNanoBananaPayloads(opts ImagePayloadOptions, normalizedRatio, effectiveRatio string) []map[string]any {
+func buildNanoBananaPayloads(opts ImagePayloadOptions, normalizedRatio string) []map[string]any {
 	modelSpecific := map[string]any{
 		"parameters": map[string]any{"addWatermark": false},
 	}
-	// 注意用 normalizedRatio 而非 effectiveRatio：请求没给比例时不应凭空补一个。
-	if normalizedRatio != "" && normalizedRatio != "auto" {
+	// 空 / auto / 1:1 不发 aspectRatio：Firefly 默认方图且 schema 默认 1:1。
+	if normalizedRatio != "" && normalizedRatio != "auto" && normalizedRatio != "1:1" {
 		modelSpecific["aspectRatio"] = normalizedRatio
+	}
+
+	pixels := opts.SizePixels
+	if pixels.Width <= 0 || pixels.Height <= 0 {
+		pixels = SquareFromResolution(opts.OutputResolution)
 	}
 
 	base := map[string]any{
@@ -339,12 +218,12 @@ func buildNanoBananaPayloads(opts ImagePayloadOptions, normalizedRatio, effectiv
 		"modelVersion":         opts.UpstreamModelVersion,
 		"n":                    1,
 		"prompt":               opts.Prompt,
-		"size":                 SizeFromRatio(effectiveRatio, opts.OutputResolution),
+		"size":                 pixels,
 		"seeds":                []int{seedNow()},
 		"groundSearch":         false,
-		"skipCai":              false,
+		"caiClaimVersion":      2,
 		"output":               map[string]any{"storeInputs": true},
-		"generationMetadata":   map[string]any{"module": "text2image", "submodule": "ff-image-generate"},
+		"generationMetadata":   imageGenerationMetadata(opts),
 		"modelSpecificPayload": modelSpecific,
 	}
 
@@ -356,17 +235,20 @@ func buildNanoBananaPayloads(opts ImagePayloadOptions, normalizedRatio, effectiv
 	// nano-banana(Google) 图生图：usage 必须是 "general"——经实证，nano-banana 用
 	// "subject" 会 400 "Only general reference images are supported for Google
 	// Nano-Banana"；与 gpt-image 恰好相反，故两族不可共用同一 usage。
+	// 不要发 usage=mask：discovery 与 Image Edit 抓包都只有一张 general 图。
 	edited := clonePayload(base)
-	edited["generationMetadata"] = map[string]any{"module": "image2image", "submodule": "ff-image-generate"}
 	edited["referenceBlobs"] = referenceBlobs(opts.SourceImageIDs, "general")
 	return []map[string]any{edited}
 }
 
-func defaultedResolution(resolution OutputResolution) OutputResolution {
-	if strings.TrimSpace(string(resolution)) == "" {
-		return DefaultOutputResolution
+// imageGenerationMetadata 对齐 Firefly Web 抓包：有无参考图都是 module=text2image；
+// /v1/images/edits 用 submodule=ff-image-editor，其余用 ff-image-generate。
+func imageGenerationMetadata(opts ImagePayloadOptions) map[string]any {
+	submodule := "ff-image-generate"
+	if opts.Edit && len(opts.SourceImageIDs) > 0 {
+		submodule = "ff-image-editor"
 	}
-	return resolution
+	return map[string]any{"module": "text2image", "submodule": submodule}
 }
 
 func referenceBlobs(ids []string, usage string) []any {

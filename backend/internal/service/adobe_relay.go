@@ -52,6 +52,39 @@ func defaultModelMappingForAccount(account *Account) map[string]string {
 	return defaultModelMappingForPlatform(account.Platform)
 }
 
+// AdobeMaskRelaySelectionExclusions 构造「mask 优先走 API key 中转」阶段的选号排除集。
+//
+// failed 只拷贝，不就地改写，这样中转耗尽后 Cookie 号仍能被选到。
+// preferRelay 时才并入 extraNativeIDs（选号循环里漏网的 native）。
+func AdobeMaskRelaySelectionExclusions(failed map[int64]struct{}, preferRelay bool, extraNativeIDs map[int64]struct{}) map[int64]struct{} {
+	out := make(map[int64]struct{}, len(failed)+len(extraNativeIDs))
+	for id := range failed {
+		out[id] = struct{}{}
+	}
+	if preferRelay {
+		for id := range extraNativeIDs {
+			out[id] = struct{}{}
+		}
+	}
+	return out
+}
+
+// AdobePrefersMaskRelay 判断这次 images 请求是否应为 mask 优先打 API key 中转。
+// 只有 GPT Images 家族（gpt-image-* / firefly-gpt-image-*）的 mask 才有官方 inpaint
+// 语义；banana / flux / imagen 等忽略 mask，走正常调度。
+func AdobePrefersMaskRelay(req *OpenAIImagesRequest) bool {
+	if req == nil || !req.HasMask {
+		return false
+	}
+	return adobeModelUsesOpenAIMask(req.Model)
+}
+
+func adobeModelUsesOpenAIMask(model string) bool {
+	model = strings.ToLower(strings.TrimSpace(model))
+	model = strings.TrimPrefix(model, "firefly-")
+	return strings.HasPrefix(model, "gpt-image-")
+}
+
 // ExcludeAdobeNativeAccounts 把本组可调度的非中转 Adobe 账号并入 failed，
 // 避免内容拒绝后还把 maxAccountSwitches 浪费在不会成功的 Cookie 号上。
 func (s *GatewayService) ExcludeAdobeNativeAccounts(ctx context.Context, groupID *int64, failed map[int64]struct{}) {

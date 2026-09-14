@@ -90,6 +90,7 @@ func (s *AdobeImageService) Generate(
 			SizePixels:           conf.SizePixels,
 			QualityLevel:         req.Quality,
 			SourceImageIDs:       sourceImageIDs,
+			Edit:                 req.IsEdits(),
 			Background:           req.Background,
 		},
 	})
@@ -119,7 +120,8 @@ func (s *AdobeImageService) Generate(
 }
 
 // uploadSourceImages 把图生图的源图上传到 Adobe，返回可放进 payload 的 image id。
-// 文生图时返回 nil。
+// 文生图时返回 nil。OpenAI mask 不上传：3p Image Edit 抓包没有 usage=mask blob，
+// 真 mask 由 handler 优先转到 API key 中转号。
 func (s *AdobeImageService) uploadSourceImages(
 	ctx context.Context, client *adobe.Client, token string, req *OpenAIImagesRequest,
 ) ([]string, error) {

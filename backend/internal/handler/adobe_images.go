@@ -82,6 +82,8 @@ func (h *GatewayHandler) AdobeImages(c *gin.Context) {
 }
 
 // runAdobeImagesFailover 逐个账号尝试出图，直到成功或没有可换的账号。
+// gpt-image 带 mask 时先只选 API key 中转号；没有可用中转再忽略 mask 走 Cookie。
+// 其它模型忽略 mask，走正常调度。
 func (h *GatewayHandler) runAdobeImagesFailover(
 	c *gin.Context,
 	reqLog *zap.Logger,
@@ -95,19 +97,44 @@ func (h *GatewayHandler) runAdobeImagesFailover(
 	failedAccountIDs := make(map[int64]struct{})
 	var lastFailover *service.UpstreamFailoverError
 	skipAdobeNative := false
+	// 仅 gpt-image 家族的 mask 才优先打 API key 中转；banana 等忽略 mask。
+	preferRelayForMask := service.AdobePrefersMaskRelay(parsed)
+	deferredNatives := make(map[int64]struct{})
 
 	for switchCount := 0; switchCount <= h.maxAccountSwitches; switchCount++ {
 		if failoverClientGone(c) {
 			return
 		}
 
+		excluded := service.AdobeMaskRelaySelectionExclusions(failedAccountIDs, preferRelayForMask, deferredNatives)
+		if preferRelayForMask {
+			h.gatewayService.ExcludeAdobeNativeAccounts(requestCtx, apiKey.GroupID, excluded)
+		}
+
 		account, err := h.gatewayService.SelectAccountForModelWithExclusions(
-			requestCtx, apiKey.GroupID, "", parsed.Model, failedAccountIDs)
+			requestCtx, apiKey.GroupID, "", parsed.Model, excluded)
 		if err != nil || account == nil {
-			h.finishAdobeImagesWithoutAccount(c, reqLog, apiKey, parsed, failedAccountIDs, lastFailover, err)
-			return
+			if preferRelayForMask {
+				preferRelayForMask = false
+				reqLog.Warn("adobe_images.mask_fallback_native",
+					zap.Int("failed_account_count", len(failedAccountIDs)),
+					zap.Error(err),
+				)
+				account, err = h.gatewayService.SelectAccountForModelWithExclusions(
+					requestCtx, apiKey.GroupID, "", parsed.Model, failedAccountIDs)
+			}
+			if err != nil || account == nil {
+				h.finishAdobeImagesWithoutAccount(c, reqLog, apiKey, parsed, failedAccountIDs, lastFailover, err)
+				return
+			}
 		}
 		setOpsSelectedAccount(c, account.ID, account.Platform)
+
+		if preferRelayForMask && !service.IsAdobeRelayAccount(account) {
+			// listing 漏网的 Cookie 号：推迟到 mask fallback，不要记进 failed。
+			deferredNatives[account.ID] = struct{}{}
+			continue
+		}
 
 		if skipAdobeNative && !service.IsAdobeRelayAccount(account) {
 			// 内容安全拒绝后绝不再把同一 prompt 打到其它 Firefly Cookie 号。

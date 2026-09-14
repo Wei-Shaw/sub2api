@@ -226,7 +226,7 @@ func TestFormatAdobeTestError(t *testing.T) {
 }
 
 func TestResolveAdobeTestPrompt(t *testing.T) {
-	require.Equal(t, adobeTestDefaultPrompt, resolveAdobeTestPrompt(""))
-	require.Equal(t, adobeTestDefaultPrompt, resolveAdobeTestPrompt("   "))
+	require.Equal(t, defaultOpenAIImageTestPrompt, resolveAdobeTestPrompt(""))
+	require.Equal(t, defaultOpenAIImageTestPrompt, resolveAdobeTestPrompt("   "))
 	require.Equal(t, "custom", resolveAdobeTestPrompt("  custom  "))
 }

@@ -250,7 +250,11 @@ describe('AccountTestModal', () => {
 
     // 后端已按 adobe.ImageModelIDs() 的展示序返回；找 sonnet 对图像渠道毫无意义。
     expect((wrapper.vm as any).selectedModelId).toBe('gpt-image-2')
-    expect(wrapper.find('textarea.textarea-stub').exists()).toBe(true)
+    const promptInput = wrapper.find('textarea.textarea-stub')
+    expect(promptInput.exists()).toBe(true)
+    expect((promptInput.element as HTMLTextAreaElement).value).toBe(
+      'Generate a cute orange cat astronaut sticker on a clean pastel background.'
+    )
     expect(wrapper.find('[data-testid="adobe-test-credit-warning"]').exists()).toBe(false)
   })
 

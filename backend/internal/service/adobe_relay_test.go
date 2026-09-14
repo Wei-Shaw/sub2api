@@ -59,6 +59,51 @@ func TestAdobeRelayDefaultMappingIsIdentity(t *testing.T) {
 	}
 }
 
+func TestAdobeMaskRelaySelectionExclusions(t *testing.T) {
+	failed := map[int64]struct{}{11: {}}
+	natives := map[int64]struct{}{21: {}, 22: {}}
+
+	relayOnly := AdobeMaskRelaySelectionExclusions(failed, true, natives)
+	require.Equal(t, map[int64]struct{}{11: {}, 21: {}, 22: {}}, relayOnly)
+	require.Equal(t, map[int64]struct{}{11: {}}, failed, "failed 不得被就地改写")
+
+	afterFallback := AdobeMaskRelaySelectionExclusions(failed, false, natives)
+	require.Equal(t, map[int64]struct{}{11: {}}, afterFallback)
+
+	empty := AdobeMaskRelaySelectionExclusions(nil, true, natives)
+	require.Equal(t, natives, empty)
+	natives[99] = struct{}{}
+	require.NotContains(t, empty, int64(99), "应返回拷贝而不是共用 map")
+}
+
+func TestAdobePrefersMaskRelay(t *testing.T) {
+	tests := []struct {
+		name   string
+		model  string
+		mask   bool
+		want   bool
+	}{
+		{name: "gpt-image-2 with mask", model: "gpt-image-2", mask: true, want: true},
+		{name: "firefly-gpt-image-2 with mask", model: "firefly-gpt-image-2", mask: true, want: true},
+		{name: "gpt-image-2.5-flare with mask", model: "gpt-image-2.5-flare", mask: true, want: true},
+		{name: "gpt-image-2 without mask", model: "gpt-image-2", mask: false, want: false},
+		{name: "nano-banana2 with mask", model: "nano-banana2", mask: true, want: false},
+		{name: "firefly-nano-banana2 with mask", model: "firefly-nano-banana2", mask: true, want: false},
+		{name: "flux-pro with mask", model: "flux-pro", mask: true, want: false},
+		{name: "gpt-4o-image with mask", model: "gpt-4o-image", mask: true, want: false},
+		{name: "nil request", want: false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var req *OpenAIImagesRequest
+			if tt.model != "" || tt.mask {
+				req = &OpenAIImagesRequest{Model: tt.model, HasMask: tt.mask}
+			}
+			require.Equal(t, tt.want, AdobePrefersMaskRelay(req))
+		})
+	}
+}
+
 func TestAdobeRelayGetOpenAIBaseURL(t *testing.T) {
 	relay := &Account{
 		Platform: PlatformAdobe,
