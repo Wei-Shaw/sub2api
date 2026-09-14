@@ -20,6 +20,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/pkg/adobe"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	"github.com/Wei-Shaw/sub2api/internal/util/responseheaders"
 	"github.com/gin-gonic/gin"
@@ -486,6 +487,17 @@ func isGrokImageGenerationModel(model string) bool {
 func validateOpenAIImagesModel(model string) error {
 	model = strings.TrimSpace(model)
 	if isOpenAIImageGenerationModel(model) {
+		return nil
+	}
+	// Firefly 模型只在这一处放行，不并进 isOpenAIImageGenerationModel：那个谓词还被
+	// Codex 转换、定价回退、模型限流等 OpenAI 专属路径引用，放宽它会让 Adobe 模型
+	// 漏进那些完全不适用的分支。
+	//
+	// 对外名（imagen-4 / flux-pro / nano-banana …）必须一起放行：这一处校验的是
+	// **未经映射的原始请求模型**，而对外名里只有 gpt-image-* 前缀那几个能蒙混过
+	// isOpenAIImageGenerationModel，其余 9 个会在解析阶段就被拒。这是形状校验不是
+	// 鉴权——准入由分组白名单与账号 model_mapping 的严格白名单负责。
+	if adobe.IsImageModelID(model) || adobe.IsExternalImageModelID(model) {
 		return nil
 	}
 	if model == "" {

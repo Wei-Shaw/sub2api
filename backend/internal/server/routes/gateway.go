@@ -84,6 +84,10 @@ func RegisterGatewayRoutes(
 			h.OpenAIGateway.Images(c)
 		case service.PlatformGrok:
 			h.OpenAIGateway.GrokImages(c)
+		case service.PlatformAdobe:
+			// Adobe 走 GatewayHandler：它同时持有平台无关的选号器与 RecordUsage，
+			// 而 OpenAIGatewayHandler 只有后者。
+			h.Gateway.AdobeImages(c)
 		default:
 			service.MarkOpsClientBusinessLimited(c, service.OpsClientBusinessLimitedReasonLocalFeatureGate)
 			c.JSON(http.StatusNotFound, gin.H{

@@ -601,6 +601,9 @@ func writeUsageLogBestEffort(ctx context.Context, repo UsageLogRepository, usage
 type recordUsageOpts struct {
 	// Kiro 账号在上游返回 auto 等无法定价模型时使用保守计费兜底。
 	IsKiroAccount bool
+	// ImageBillingPlatform 是出图按次兜底价的平台隔离轴（账号 platform）。
+	// 仅 adobe 套 Firefly 分档；空值与 openai/gemini 等不得按模型名命中 Adobe 表。
+	ImageBillingPlatform string
 }
 
 // firstRecordUsageOpts 从可变参数中取首个非 nil 选项，缺省返回零值选项。
@@ -801,7 +804,10 @@ func (s *GatewayService) recordUsageCore(ctx context.Context, input *recordUsage
 	}
 
 	// 计算费用
-	opts := &recordUsageOpts{IsKiroAccount: account != nil && account.Platform == PlatformKiro}
+	opts := &recordUsageOpts{
+		IsKiroAccount:        account != nil && account.Platform == PlatformKiro,
+		ImageBillingPlatform: imageBillingPlatform(account),
+	}
 	cost := s.calculateRecordUsageCost(ctx, result, apiKey, billingModel, multiplier, imageMultiplier, pricingAt, opts)
 	// response_model：按上游成功响应自报的模型计费（渠道显式开启才生效）。
 	// 采纳条件见 responseModelBillingDeclaration + hasIdentifiedResponseModelPricing
@@ -911,7 +917,7 @@ func (s *GatewayService) calculateRecordUsageCost(
 		if resolved := s.resolveChannelPricing(ctx, billingModel, apiKey); resolved != nil && resolved.Mode == BillingModeToken {
 			return s.calculateTokenCost(ctx, result, apiKey, billingModel, multiplier, pricingAt, opts...)
 		}
-		return s.calculateImageCost(ctx, result, apiKey, billingModel, imageMultiplier)
+		return s.calculateImageCost(ctx, result, apiKey, billingModel, imageMultiplier, firstRecordUsageOpts(opts).ImageBillingPlatform)
 	}
 
 	// Voice audio (TTS / STT / realtime) when present on the forward result.
@@ -1074,6 +1080,7 @@ func (s *GatewayService) calculateImageCost(
 	apiKey *APIKey,
 	billingModel string,
 	multiplier float64,
+	platform string,
 ) *CostBreakdown {
 	sizeTier := NormalizeImageBillingTierOrDefault(result.ImageSize)
 	resolved := s.resolveChannelPricing(ctx, billingModel, apiKey)
@@ -1090,7 +1097,7 @@ func (s *GatewayService) calculateImageCost(
 	}
 	groupConfig := imagePriceConfigFromAPIKey(apiKey)
 	if apiKeyHasConfiguredImagePrice(apiKey, sizeTier) {
-		return s.billingService.CalculateImageCost(billingModel, sizeTier, result.ImageCount, groupConfig, multiplier)
+		return s.billingService.CalculateImageCostWithPlatform(billingModel, sizeTier, result.ImageCount, groupConfig, multiplier, platform)
 	}
 	if resolved != nil && resolved.Source == PricingSourceChannel {
 		tokens := UsageTokens{
@@ -1118,7 +1125,7 @@ func (s *GatewayService) calculateImageCost(
 		return cost
 	}
 
-	return s.billingService.CalculateImageCost(billingModel, sizeTier, result.ImageCount, groupConfig, multiplier)
+	return s.billingService.CalculateImageCostWithPlatform(billingModel, sizeTier, result.ImageCount, groupConfig, multiplier, platform)
 }
 
 // calculateTokenCost 计算 Token 计费：路径选择（分组/渠道定价 → 内置定价）
