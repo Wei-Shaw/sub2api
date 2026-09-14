@@ -12,6 +12,7 @@ export type Platform =
   | 'gemini'
   | 'kiro'
   | 'grok'
+  | 'adobe'
   | 'kimi'
   | 'zhipu'
   | 'deepseek'
@@ -26,6 +27,7 @@ const BADGE: Record<Platform, string> = {
   gemini: 'bg-blue-500/10 text-blue-600 border-blue-500/30 dark:text-blue-400',
   kiro: 'bg-violet-500/10 text-violet-600 border-violet-500/30 dark:text-violet-300',
   grok: 'bg-zinc-800/10 text-zinc-800 border-zinc-800/30 dark:bg-zinc-500/10 dark:text-zinc-200 dark:border-zinc-500/30',
+  adobe: 'bg-adobe-500/10 text-adobe-600 border-adobe-500/30 dark:text-adobe-400',
   kimi: 'bg-pink-500/10 text-pink-600 border-pink-500/30 dark:text-pink-400',
   zhipu: 'bg-indigo-500/10 text-indigo-600 border-indigo-500/30 dark:text-indigo-400',
   deepseek: 'bg-teal-500/10 text-teal-600 border-teal-500/30 dark:text-teal-400',
@@ -42,6 +44,7 @@ const BADGE_LIGHT: Record<Platform, string> = {
   gemini: 'bg-blue-500/10 text-blue-600 dark:bg-blue-500/10 dark:text-blue-300',
   kiro: 'bg-violet-500/10 text-violet-600 dark:bg-violet-500/10 dark:text-violet-300',
   grok: 'bg-zinc-800/10 text-zinc-800 dark:bg-zinc-500/10 dark:text-zinc-200',
+  adobe: 'bg-adobe-500/10 text-adobe-600 dark:bg-adobe-500/10 dark:text-adobe-300',
   kimi: 'bg-pink-500/10 text-pink-600 dark:bg-pink-500/10 dark:text-pink-300',
   zhipu: 'bg-indigo-500/10 text-indigo-600 dark:bg-indigo-500/10 dark:text-indigo-300',
   deepseek: 'bg-teal-500/10 text-teal-600 dark:bg-teal-500/10 dark:text-teal-300',
@@ -57,6 +60,7 @@ const BORDER: Record<Platform, string> = {
   gemini: 'border-blue-500/20 dark:border-blue-500/20',
   kiro: 'border-violet-500/20 dark:border-violet-500/20',
   grok: 'border-zinc-800/20 dark:border-zinc-500/20',
+  adobe: 'border-adobe-500/20 dark:border-adobe-500/20',
   kimi: 'border-pink-500/20 dark:border-pink-500/20',
   zhipu: 'border-indigo-500/20 dark:border-indigo-500/20',
   deepseek: 'border-teal-500/20 dark:border-teal-500/20',
@@ -73,6 +77,7 @@ const BORDER_STRONG: Record<Platform, string> = {
   gemini: 'border-blue-500/35 dark:border-blue-500/30',
   kiro: 'border-violet-500/35 dark:border-violet-500/30',
   grok: 'border-zinc-800/35 dark:border-zinc-500/35',
+  adobe: 'border-adobe-500/35 dark:border-adobe-500/30',
   kimi: 'border-pink-500/35 dark:border-pink-500/30',
   zhipu: 'border-indigo-500/35 dark:border-indigo-500/30',
   deepseek: 'border-teal-500/35 dark:border-teal-500/30',
@@ -90,6 +95,7 @@ const ACCENT: Record<Platform, string> = {
   gemini: '#3b82f6', // blue-500
   kiro: '#8b5cf6', // violet-500
   grok: '#71717a', // zinc-500
+  adobe: '#fa0f00', // Adobe Logo 红
   kimi: '#ec4899', // pink-500
   zhipu: '#6366f1', // indigo-500
   deepseek: '#14b8a6', // teal-500
@@ -106,6 +112,7 @@ const ACCENT_BAR: Record<Platform, string> = {
   gemini: 'bg-gradient-to-r from-blue-400 to-blue-500',
   kiro: 'bg-gradient-to-r from-violet-500 to-fuchsia-500',
   grok: 'bg-gradient-to-r from-zinc-700 to-zinc-900',
+  adobe: 'bg-gradient-to-r from-adobe-400 to-adobe-500',
   kimi: 'bg-gradient-to-r from-pink-400 to-pink-500',
   zhipu: 'bg-gradient-to-r from-indigo-400 to-indigo-500',
   deepseek: 'bg-gradient-to-r from-teal-400 to-teal-500',
@@ -122,6 +129,7 @@ const TEXT: Record<Platform, string> = {
   gemini: 'text-blue-600 dark:text-blue-400',
   kiro: 'text-violet-600 dark:text-violet-300',
   grok: 'text-zinc-800 dark:text-zinc-200',
+  adobe: 'text-adobe-600 dark:text-adobe-400',
   kimi: 'text-pink-600 dark:text-pink-400',
   zhipu: 'text-indigo-600 dark:text-indigo-400',
   deepseek: 'text-teal-600 dark:text-teal-400',
@@ -138,6 +146,7 @@ const ICON: Record<Platform, string> = {
   gemini: 'text-blue-500 dark:text-blue-400',
   kiro: 'text-violet-500 dark:text-violet-300',
   grok: 'text-zinc-800 dark:text-zinc-200',
+  adobe: 'text-adobe-500 dark:text-adobe-400',
   kimi: 'text-pink-500 dark:text-pink-400',
   zhipu: 'text-indigo-500 dark:text-indigo-400',
   deepseek: 'text-teal-500 dark:text-teal-400',
@@ -154,6 +163,7 @@ const BUTTON: Record<Platform, string> = {
   gemini: 'bg-blue-500 text-white hover:bg-blue-600 active:bg-blue-700 dark:bg-blue-500/80 dark:hover:bg-blue-500',
   kiro: 'bg-violet-600 text-white hover:bg-violet-700 active:bg-violet-800 dark:bg-violet-500/80 dark:hover:bg-violet-500',
   grok: 'bg-zinc-800 text-white hover:bg-zinc-900 active:bg-black dark:bg-zinc-700 dark:hover:bg-zinc-600',
+  adobe: 'bg-adobe-500 text-white hover:bg-adobe-600 active:bg-adobe-700 dark:bg-adobe-500/80 dark:hover:bg-adobe-500',
   kimi: 'bg-pink-500 text-white hover:bg-pink-600 active:bg-pink-700 dark:bg-pink-500/80 dark:hover:bg-pink-500',
   zhipu: 'bg-indigo-500 text-white hover:bg-indigo-600 active:bg-indigo-700 dark:bg-indigo-500/80 dark:hover:bg-indigo-500',
   deepseek: 'bg-teal-500 text-white hover:bg-teal-600 active:bg-teal-700 dark:bg-teal-500/80 dark:hover:bg-teal-500',
@@ -170,6 +180,7 @@ const DISCOUNT: Record<Platform, string> = {
   gemini: 'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300',
   kiro: 'bg-violet-100 text-violet-700 dark:bg-violet-900/40 dark:text-violet-300',
   grok: 'bg-zinc-100 text-zinc-800 dark:bg-zinc-800 dark:text-zinc-200',
+  adobe: 'bg-adobe-100 text-adobe-700 dark:bg-adobe-900/40 dark:text-adobe-300',
   kimi: 'bg-pink-100 text-pink-700 dark:bg-pink-900/40 dark:text-pink-300',
   zhipu: 'bg-indigo-100 text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-300',
   deepseek: 'bg-teal-100 text-teal-700 dark:bg-teal-900/40 dark:text-teal-300',
@@ -186,6 +197,7 @@ const GRADIENT: Record<Platform, string> = {
   gemini: 'from-blue-500 to-blue-600',
   kiro: 'from-violet-500 to-fuchsia-500',
   grok: 'from-zinc-700 to-zinc-900',
+  adobe: 'from-adobe-500 to-adobe-600',
   kimi: 'from-pink-500 to-pink-600',
   zhipu: 'from-indigo-500 to-indigo-600',
   deepseek: 'from-teal-500 to-teal-600',
@@ -202,6 +214,7 @@ const GRADIENT_TEXT: Record<Platform, string> = {
   gemini: 'text-blue-100',
   kiro: 'text-violet-100',
   grok: 'text-zinc-100',
+  adobe: 'text-adobe-100',
   kimi: 'text-pink-100',
   zhipu: 'text-indigo-100',
   deepseek: 'text-teal-100',
@@ -217,6 +230,7 @@ const GRADIENT_SUBTEXT: Record<Platform, string> = {
   gemini: 'text-blue-200',
   kiro: 'text-violet-100',
   grok: 'text-zinc-300',
+  adobe: 'text-adobe-200',
   kimi: 'text-pink-200',
   zhipu: 'text-indigo-200',
   deepseek: 'text-teal-200',
@@ -235,6 +249,7 @@ function isPlatform(p: string): p is Platform {
     p === 'gemini' ||
     p === 'kiro' ||
     p === 'grok' ||
+    p === 'adobe' ||
     p === 'kimi' ||
     p === 'zhipu' ||
     p === 'deepseek' ||
@@ -303,6 +318,7 @@ export function platformLabel(p: string): string {
     case 'gemini': return 'Gemini'
     case 'kiro': return 'Kiro'
     case 'grok': return 'Grok'
+    case 'adobe': return 'Adobe'
     case 'kimi': return 'Kimi'
     case 'zhipu': return 'Zhipu GLM'
     case 'deepseek': return 'DeepSeek'

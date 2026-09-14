@@ -975,6 +975,7 @@ export default {
         antigravity: 'Antigravity',
         grok: 'Grok',
         kiro: 'Kiro',
+        adobe: 'Adobe',
         kimi: 'Kimi',
         zhipu: 'Zhipu GLM',
         deepseek: 'DeepSeek',

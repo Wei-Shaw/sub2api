@@ -50,6 +50,8 @@
                     ? 'https://cloudcode-pa.googleapis.com'
                     : account.platform === 'kiro'
                       ? 'https://your-relay.example.com'
+                    : account.platform === 'adobe'
+                      ? 'https://your-relay.example.com'
                     : account.platform === 'grok'
                       ? 'https://api.x.ai/v1'
                       : 'https://api.anthropic.com'
@@ -786,10 +788,11 @@
         </div>
       </div>
 
-      <!-- OpenAI / Kiro / Grok OAuth Model Mapping (OAuth 类型没有 apikey 容器，需要独立区域) -->
+      <!-- OpenAI / Kiro / Grok / Adobe OAuth Model Mapping (OAuth 类型没有 apikey 容器，需要独立区域) -->
       <div
-        v-if="(account.platform === 'openai' || account.platform === 'kiro' || account.platform === 'grok') && account.type === 'oauth'"
+        v-if="(account.platform === 'openai' || account.platform === 'kiro' || account.platform === 'grok' || account.platform === 'adobe') && account.type === 'oauth'"
         class="border-t border-gray-200 pt-4 dark:border-dark-600"
+        data-testid="oauth-model-mapping-section"
       >
         <label class="input-label">{{ t('admin.accounts.modelRestriction') }}</label>
 
@@ -802,14 +805,16 @@
           </p>
         </div>
 
+        <!-- Kiro 只支持映射模式：对外模型名与上游模型 id 不同名，白名单模式生成的 x -> x 无意义。
+             Adobe 走下面的双模式分支：adobe.ResolveImage 自带外部名别名表，恒等对能解析。 -->
         <template v-else-if="account.platform === 'kiro'">
-          <div class="mb-3 rounded-lg bg-purple-50 p-3 dark:bg-purple-900/20">
+          <div class="mb-3 space-y-2 rounded-lg bg-purple-50 p-3 dark:bg-purple-900/20">
             <p class="text-xs text-purple-700 dark:text-purple-400">
               {{ t('admin.accounts.mapRequestModels') }}
             </p>
           </div>
 
-          <div v-if="modelMappings.length > 0" class="mb-3 space-y-2">
+          <div v-if="modelMappings.length > 0" class="mb-3 space-y-2" data-testid="oauth-model-mapping-rows">
             <div
               v-for="(mapping, index) in modelMappings"
               :key="'oauth-' + getModelMappingKey(mapping)"
@@ -818,6 +823,7 @@
               <input
                 v-model="mapping.from"
                 type="text"
+                data-testid="oauth-model-mapping-from"
                 class="input flex-1"
                 :placeholder="t('admin.accounts.requestModel')"
               />
@@ -837,11 +843,13 @@
               <input
                 v-model="mapping.to"
                 type="text"
+                data-testid="oauth-model-mapping-to"
                 class="input flex-1"
                 :placeholder="t('admin.accounts.actualModel')"
               />
               <button
                 type="button"
+                data-testid="oauth-model-mapping-remove"
                 @click="removeModelMapping(index)"
                 class="rounded-lg p-2 text-red-500 transition-colors hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-900/20"
               >
@@ -935,6 +943,7 @@
                 <input
                   v-model="mapping.from"
                   type="text"
+                  data-testid="oauth-model-mapping-from"
                   class="input flex-1"
                   :placeholder="t('admin.accounts.requestModel')"
                 />
@@ -954,11 +963,13 @@
                 <input
                   v-model="mapping.to"
                   type="text"
+                  data-testid="oauth-model-mapping-to"
                   class="input flex-1"
                   :placeholder="t('admin.accounts.actualModel')"
                 />
                 <button
                   type="button"
+                  data-testid="oauth-model-mapping-remove"
                   @click="removeModelMapping(index)"
                   class="rounded-lg p-2 text-red-500 transition-colors hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-900/20"
                 >
@@ -3279,6 +3290,7 @@ const baseUrlHint = computed(() => {
   if (props.account.platform === 'gemini') return t('admin.accounts.gemini.baseUrlHint')
   // Kiro 编辑表单仅对中转账号显示 base_url 字段(直连账号隐藏),故用中转提示文案。
   if (props.account.platform === 'kiro') return t('admin.accounts.kiro.relayBaseUrlHint')
+  if (props.account.platform === 'adobe') return t('admin.accounts.adobe.relayBaseUrlHint')
   if (props.account.platform === 'grok') return ''
   return t('admin.accounts.baseUrlHint')
 })
@@ -3581,7 +3593,8 @@ const getOpenAICompactModelMappingKey = createStableObjectKeyResolver<ModelMappi
 const getAntigravityModelMappingKey = createStableObjectKeyResolver<ModelMapping>('edit-antigravity-model-mapping')
 const getTempUnschedRuleKey = createStableObjectKeyResolver<TempUnschedRuleForm>('edit-temp-unsched-rule')
 
-const applyKiroModelMappings = (entries: Array<[string, string]>) => {
+// 纯映射模式平台（Kiro / Adobe）共用：只设映射模式并填行，与具体平台无关。
+const applyMappingOnlyModelMappings = (entries: Array<[string, string]>) => {
   modelRestrictionMode.value = 'mapping'
   modelMappings.value = entries.map(([from, to]) => ({ from, to }))
   allowedModels.value = []
@@ -3590,9 +3603,7 @@ const applyKiroModelMappings = (entries: Array<[string, string]>) => {
 const loadDefaultKiroModelMappings = () => {
   fetchKiroDefaultMappings().then(mappings => {
     if (!isKiroOAuthAccount.value) return
-    modelRestrictionMode.value = 'mapping'
-    modelMappings.value = mappings.map(({ from, to }) => ({ from, to }))
-    allowedModels.value = []
+    applyMappingOnlyModelMappings(mappings.map(({ from, to }) => [from, to]))
   })
 }
 
@@ -3964,6 +3975,7 @@ const defaultBaseUrl = computed(() => {
   if (props.account?.platform === 'openai') return 'https://api.openai.com'
   if (props.account?.platform === 'gemini') return 'https://generativelanguage.googleapis.com'
   if (props.account?.platform === 'kiro') return ''
+  if (props.account?.platform === 'adobe') return ''
   if (props.account?.platform === 'grok') return 'https://api.x.ai/v1'
   // CN 供应商：按当前模式/协议回落到官方预设（清空输入框提交时使用），
   // 不能落到 anthropic 默认值（会被当 CC base 拼出错误端点）。
@@ -4410,6 +4422,8 @@ const syncFormFromAccount = (newAccount: Account | null) => {
           ? 'https://generativelanguage.googleapis.com'
           : newAccount.platform === 'kiro'
             ? ''
+          : newAccount.platform === 'adobe'
+            ? ''
           : newAccount.platform === 'grok'
             ? 'https://api.x.ai/v1'
             : newAccount.platform === 'kimi' ||
@@ -4428,7 +4442,7 @@ const syncFormFromAccount = (newAccount: Account | null) => {
     if (newAccount.platform === 'kiro') {
       const existingMappings = credentials.model_mapping as Record<string, string> | undefined
       if (existingMappings && typeof existingMappings === 'object' && Object.keys(existingMappings).length > 0) {
-        applyKiroModelMappings(Object.entries(existingMappings))
+        applyMappingOnlyModelMappings(Object.entries(existingMappings))
       } else {
         fetchKiroDefaultMappings().then(mappings => {
           if (props.account?.id !== newAccount.id || props.account?.type !== 'apikey' || props.account?.platform !== 'kiro') {
@@ -4516,10 +4530,16 @@ const syncFormFromAccount = (newAccount: Account | null) => {
       const oauthCredentials = newAccount.credentials as Record<string, unknown>
       const existingMappings = oauthCredentials.model_mapping as Record<string, string> | undefined
       if (existingMappings && typeof existingMappings === 'object' && Object.keys(existingMappings).length > 0) {
-        applyKiroModelMappings(Object.entries(existingMappings))
+        applyMappingOnlyModelMappings(Object.entries(existingMappings))
       } else {
         loadDefaultKiroModelMappings()
       }
+    } else if (newAccount.platform === 'adobe' && newAccount.credentials) {
+      // Adobe 与 openai/grok 一样走通用的白名单/映射拆分：splitModelMappingObject
+      // 把恒等对归入白名单、非恒等对归入映射。存量账号那 17 条别名全是非恒等对，
+      // 于是自动开在映射模式并逐条列出——数据不变，只是多了一个可切到白名单的按钮。
+      const oauthCredentials = newAccount.credentials as Record<string, unknown>
+      loadModelRestrictionFromMapping(oauthCredentials.model_mapping as Record<string, unknown> | undefined)
     } else if ((newAccount.platform === 'openai' || newAccount.platform === 'grok') && newAccount.credentials) {
       const oauthCredentials = newAccount.credentials as Record<string, unknown>
       loadModelRestrictionFromMapping(oauthCredentials.model_mapping as Record<string, unknown> | undefined)
@@ -5486,6 +5506,27 @@ const handleSubmit = async () => {
       const newCredentials: Record<string, unknown> = { ...currentCredentials }
 
       const modelMapping = buildModelMappingObject('mapping', [], modelMappings.value)
+      if (modelMapping) {
+        newCredentials.model_mapping = modelMapping
+      } else {
+        delete newCredentials.model_mapping
+      }
+
+      updatePayload.credentials = newCredentials
+    }
+
+    // Adobe OAuth: persist model restriction to credentials
+    // 白名单与映射行都空 => 删掉 model_mapping，回落到后端 DefaultAdobeModelMapping。
+    if (props.account.platform === 'adobe') {
+      const currentCredentials = (updatePayload.credentials as Record<string, unknown>) ||
+        ((props.account.credentials as Record<string, unknown>) || {})
+      const newCredentials: Record<string, unknown> = { ...currentCredentials }
+
+      const modelMapping = buildModelMappingObject(
+        modelRestrictionMode.value,
+        allowedModels.value,
+        modelMappings.value
+      )
       if (modelMapping) {
         newCredentials.model_mapping = modelMapping
       } else {

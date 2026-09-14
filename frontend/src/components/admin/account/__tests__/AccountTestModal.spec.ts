@@ -220,4 +220,60 @@ describe('AccountTestModal', () => {
       mode: 'compact'
     })
   })
+
+  // Step 11：Adobe 的这三条曾经写在 src/components/account/AccountTestModal.vue 的 spec 里，
+  // 而那个组件根本没被渲染（AccountsView 用的是 admin/account/ 下的这个）。
+  // 结果是「测试通过但功能不存在」——所以用例必须跟着组件走。
+  const adobeAccount = {
+    id: 77,
+    name: 'Adobe Firefly',
+    platform: 'adobe',
+    type: 'oauth',
+    status: 'active'
+  }
+
+  // 故意混入一个含 "sonnet" 的运维自定义别名：旧代码对非 gemini 平台一律
+  // find(m => m.id.includes('sonnet'))，会把它选成默认项。没有这一条，
+  // 「默认选中首项」的断言就是空转（正常 Adobe 清单里本来也没有 sonnet）。
+  const adobeModels = [
+    { id: 'gpt-image-2', display_name: 'GPT Image 2' },
+    { id: 'imagen-4', display_name: 'Imagen 4' },
+    { id: 'claude-3-5-sonnet-20241022', display_name: 'claude-3-5-sonnet-20241022' }
+  ]
+
+  it('adobe 账号显示生图提示词输入框，并默认选中首个模型', async () => {
+    getAvailableModels.mockResolvedValue(adobeModels)
+
+    const wrapper = mountModal(adobeAccount)
+    await wrapper.setProps({ show: true })
+    await flushPromises()
+
+    // 后端已按 adobe.ImageModelIDs() 的展示序返回；找 sonnet 对图像渠道毫无意义。
+    expect((wrapper.vm as any).selectedModelId).toBe('gpt-image-2')
+    expect(wrapper.find('textarea.textarea-stub').exists()).toBe(true)
+    expect(wrapper.find('[data-testid="adobe-test-credit-warning"]').exists()).toBe(false)
+  })
+
+  it('adobe 提交只带 model_id 与 prompt，不带 mode', async () => {
+    getAvailableModels.mockResolvedValue(adobeModels)
+
+    const wrapper = mountModal(adobeAccount)
+    await wrapper.setProps({ show: true })
+    await flushPromises()
+
+    await wrapper.find('textarea.textarea-stub').setValue('a red apple')
+    const startButton = wrapper
+      .findAll('button')
+      .find((button) => button.text().includes('admin.accounts.startTest'))
+    await startButton!.trigger('click')
+    await flushPromises()
+    await flushPromises()
+
+    const [, request] = (global.fetch as any).mock.calls[0]
+    // mode 只对 openai/grok 下发；多发一个字段会打到后端的 Grok 分支。
+    expect(JSON.parse(request.body)).toEqual({
+      model_id: 'gpt-image-2',
+      prompt: 'a red apple'
+    })
+  })
 })

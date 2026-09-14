@@ -32,6 +32,11 @@ describe("groups image pricing platform support", () => {
     expect(imagePricingPlatforms.has("composite")).toBe(true);
   });
 
+  it("includes Adobe image groups", () => {
+    expect(supportsImagePricingPlatform("adobe")).toBe(true);
+    expect(imagePricingPlatforms.has("adobe")).toBe(true);
+  });
+
   it("keeps image and video pricing copy separate", () => {
     expect(imagePricingI18nKey("grok", "title")).toBe(
       "admin.groups.imagePricing.title",

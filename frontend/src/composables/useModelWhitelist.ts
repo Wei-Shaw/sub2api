@@ -99,6 +99,28 @@ const antigravityModels = [
   'tab_flash_lite_preview'
 ]
 
+// Adobe Firefly 图像模型（族级 id，与后端 internal/pkg/adobe 的
+// ImageFamilyModelIDs 保持一致）。分辨率与宽高比由请求的 size 推导，
+// 故这里不列 5×3×N 的全组合。
+// Step 8：干净外部名。与后端 adobe.ImageModelIDs() 一致。
+// 内部族 id（firefly-*）是路由用的，用户面看不到。
+const adobeModels = [
+  'gpt-image-2',
+  'gpt-image-1.5',
+  // sunburst 是 UI 展示名；后端把它映到上游 modelVersion=gpt-image-2.5-prism。
+  'gpt-image-2.5-flare',
+  'gpt-image-2.5-sunburst',
+  'nano-banana-pro',
+  'nano-banana',
+  'nano-banana2',
+  'flux-pro',
+  'flux-ultra',
+  'imagen-4',
+  'imagen-4-fast',
+  'gpt-4o-image',
+  'runway-gen4-image'
+]
+
 const kiroModels = [
   'gpt-5.6-sol',
   'gpt-5.6-terra',
@@ -415,6 +437,30 @@ const antigravityPresetMappings = [
   { label: 'Opus 4.8', from: 'claude-opus-4-8', to: 'claude-opus-4-8', color: 'bg-pink-100 text-pink-700 hover:bg-pink-200 dark:bg-pink-900/30 dark:text-pink-400' }
 ]
 
+// Adobe 预设映射（与后端 domain.DefaultAdobeModelMapping 保持一致）。
+// Step 8：清除所有 firefly-* 左侧的直通条目——用户面永远看不到内部族 id。
+const adobePresetMappings = [
+  { label: 'GPT Image 2', from: 'gpt-image-2', to: 'firefly-gpt-image-2', color: 'bg-red-100 text-red-700 hover:bg-red-200 dark:bg-red-900/30 dark:text-red-300' },
+  { label: 'GPT Image 1.5', from: 'gpt-image-1.5', to: 'firefly-gpt-image-1.5', color: 'bg-red-100 text-red-700 hover:bg-red-200 dark:bg-red-900/30 dark:text-red-300' },
+  // sunburst 是 UI 展示名（对应上游 modelVersion=gpt-image-2.5-prism）。
+  { label: 'GPT Image 2.5 Sunburst', from: 'gpt-image-2.5-sunburst', to: 'firefly-gpt-image-2-5-prism', color: 'bg-rose-100 text-rose-700 hover:bg-rose-200 dark:bg-rose-900/30 dark:text-rose-300' },
+  { label: 'GPT Image 2.5 Prism', from: 'gpt-image-2.5-prism', to: 'firefly-gpt-image-2-5-prism', color: 'bg-rose-100 text-rose-700 hover:bg-rose-200 dark:bg-rose-900/30 dark:text-rose-300' },
+  { label: 'GPT Image 2.5 Flare', from: 'gpt-image-2.5-flare', to: 'firefly-gpt-image-2-5-flare', color: 'bg-rose-100 text-rose-700 hover:bg-rose-200 dark:bg-rose-900/30 dark:text-rose-300' },
+  // 更早的 gpt-image 名字：Adobe 侧没有对应版本，一律落 2（与后端默认表一致）
+  { label: 'GPT Image', from: 'gpt-image', to: 'firefly-gpt-image-2', color: 'bg-rose-100 text-rose-700 hover:bg-rose-200 dark:bg-rose-900/30 dark:text-rose-300' },
+  { label: 'GPT Image 1', from: 'gpt-image-1', to: 'firefly-gpt-image-2', color: 'bg-rose-100 text-rose-700 hover:bg-rose-200 dark:bg-rose-900/30 dark:text-rose-300' },
+  { label: 'GPT Image 1 Mini', from: 'gpt-image-1-mini', to: 'firefly-gpt-image-2', color: 'bg-rose-100 text-rose-700 hover:bg-rose-200 dark:bg-rose-900/30 dark:text-rose-300' },
+  { label: 'Nano Banana Pro', from: 'nano-banana-pro', to: 'firefly-nano-banana-pro', color: 'bg-amber-100 text-amber-700 hover:bg-amber-200 dark:bg-amber-900/30 dark:text-amber-300' },
+  { label: 'Nano Banana 2', from: 'nano-banana2', to: 'firefly-nano-banana2', color: 'bg-amber-100 text-amber-700 hover:bg-amber-200 dark:bg-amber-900/30 dark:text-amber-300' },
+  { label: 'Nano Banana', from: 'nano-banana', to: 'firefly-nano-banana', color: 'bg-amber-100 text-amber-700 hover:bg-amber-200 dark:bg-amber-900/30 dark:text-amber-300' },
+  { label: 'FLUX Pro', from: 'flux-pro', to: 'firefly-flux-pro', color: 'bg-purple-100 text-purple-700 hover:bg-purple-200 dark:bg-purple-900/30 dark:text-purple-300' },
+  { label: 'FLUX Ultra', from: 'flux-ultra', to: 'firefly-flux-ultra', color: 'bg-purple-100 text-purple-700 hover:bg-purple-200 dark:bg-purple-900/30 dark:text-purple-300' },
+  { label: 'Imagen 4', from: 'imagen-4', to: 'firefly-imagen-4', color: 'bg-blue-100 text-blue-700 hover:bg-blue-200 dark:bg-blue-900/30 dark:text-blue-300' },
+  { label: 'Imagen 4 Fast', from: 'imagen-4-fast', to: 'firefly-imagen-4-fast', color: 'bg-blue-100 text-blue-700 hover:bg-blue-200 dark:bg-blue-900/30 dark:text-blue-300' },
+  { label: 'GPT-4o Image', from: 'gpt-4o-image', to: 'firefly-gpt-4o-image', color: 'bg-slate-100 text-slate-700 hover:bg-slate-200 dark:bg-slate-900/30 dark:text-slate-300' },
+  { label: 'Runway Gen-4', from: 'runway-gen4-image', to: 'firefly-runway-gen4-image', color: 'bg-teal-100 text-teal-700 hover:bg-teal-200 dark:bg-teal-900/30 dark:text-teal-300' }
+]
+
 const kiroPresetMappings = [
   { label: 'GPT-5.6 Sol', from: 'gpt-5.6-sol', to: 'gpt-5.6-sol', color: 'bg-orange-100 text-orange-700 hover:bg-orange-200 dark:bg-orange-900/30 dark:text-orange-300' },
   { label: 'GPT-5.6 Terra', from: 'gpt-5.6-terra', to: 'gpt-5.6-terra', color: 'bg-lime-100 text-lime-700 hover:bg-lime-200 dark:bg-lime-900/30 dark:text-lime-300' },
@@ -513,6 +559,7 @@ export function getModelsByPlatform(platform: string): string[] {
     case 'gemini': return geminiModels
     case 'antigravity': return antigravityModels
     case 'kiro': return kiroModels
+    case 'adobe': return adobeModels
     case 'zhipu': return zhipuModels
     case 'qwen': return qwenModels
     case 'deepseek': return deepseekModels
@@ -541,6 +588,7 @@ export function getPresetMappingsByPlatform(platform: string) {
   if (platform === 'grok' || platform === 'xai') return grokPresetMappings
   if (platform === 'antigravity') return antigravityPresetMappings
   if (platform === 'kiro') return kiroPresetMappings
+  if (platform === 'adobe') return adobePresetMappings
   if (platform === 'bedrock') return bedrockPresetMappings
   return anthropicPresetMappings
 }

@@ -323,6 +323,7 @@ export default {
         antigravity: 'Antigravity',
         grok: 'Grok',
         kiro: 'Kiro',
+        adobe: 'Adobe',
         kimi: 'Kimi',
         zhipu: 'Zhipu GLM',
         deepseek: 'DeepSeek',
@@ -385,6 +386,8 @@ export default {
         kiroApikey: '通过 API Key 直连 AWS',
         kiroApikeyRelay: '通过外部 API Key + Base URL 中转',
         kiroOauth: '社交 OAuth / AWS Builder ID / 导入',
+        adobeOauth: 'Firefly Cookie',
+        adobeApikeyRelay: '通过外部 API Key + Base URL 中转',
         antigravityApikey: '通过 Base URL + API Key 连接',
         upstream: '对接上游',
         upstreamDesc: '通过 Base URL + API Key 连接上游'
@@ -505,6 +508,9 @@ export default {
         kiroDaysLeft: '剩余 {days} 天',
         kiroExpires: '到期',
         kiroReset: '重置',
+        adobeCredits: 'Credits',
+        adobeReset: '重置',
+        adobePlanCap: '套餐',
         estimatedTotalCost: '预计总费用 ${cost}',
         estimatedTotalCostTooltip: '根据当前窗口费用和使用率估算达到 100% 使用率时的总费用'
       },
@@ -1132,6 +1138,17 @@ export default {
         pleaseEnterBaseUrl: '请输入上游 Base URL',
         pleaseEnterApiKey: '请输入上游 API Key'
       },
+      adobe: {
+        cookieLabel: 'Adobe Cookie',
+        cookieHint: '先登录 Adobe，打开 firefly.adobe.com/generate/image 停留片刻，然后在开发者工具里复制发往 adobeid-na1.services.adobe.com /ims/check/v6/token 的 Cookie 请求头（必须包含 ims_sid）。只从 firefly.adobe.com 复制 document.cookie 不够。可带 “Cookie:” 前缀，也支持 JSON 形式的 cookie 数组。短期 access token 会据此自动刷新。',
+        credentialStepTitle: '填写凭据',
+        cookiePlaceholder: 'ims_sid=...; aux_sid=...; ...',
+        cookieRequired: '请填写 Adobe Cookie',
+        accessTokenLabel: 'Access Token（可选）',
+        accessTokenHint: '留空则首次刷新时用 cookie 自动换取。仅在你已持有有效 IMS token 时才需要填。',
+        relayApiKeyHint: '该外部上游的 API Key（通过 Authorization: Bearer 发送）',
+        relayBaseUrlHint: '外部 OpenAI 兼容上游地址（如 https://your-relay.example.com）'
+      },
       kiro: {
         apiKeyHint: 'Kiro API Key（ksk_ 开头），将作为直连 AWS 的 Bearer Token',
         apiRegionLabel: 'API Region',
@@ -1607,6 +1624,7 @@ export default {
       geminiAccount: 'Gemini 账号',
       antigravityAccount: 'Antigravity 账号',
       grokAccount: 'Grok 账号',
+      adobeAccount: 'Adobe 账号',
       inputMethod: '输入方式',
       reAuthorizedSuccess: '账号重新授权成功',
       // Test Modal

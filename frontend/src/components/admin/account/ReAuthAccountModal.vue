@@ -21,7 +21,9 @@
                       ? 'from-purple-500 to-purple-600'
                       : isGrok
                         ? 'from-zinc-700 to-zinc-900'
-                        : 'from-orange-500 to-orange-600'
+                        : isAdobe
+                          ? 'from-adobe-500 to-adobe-600'
+                          : 'from-orange-500 to-orange-600'
             ]"
           >
             <Icon name="sparkles" size="md" class="text-white" />
@@ -40,7 +42,9 @@
                         ? t('admin.accounts.antigravityAccount')
                         : isGrok
                           ? t('admin.accounts.grokAccount')
-                          : t('admin.accounts.claudeCodeAccount')
+                          : isAdobe
+                            ? t('admin.accounts.adobeAccount')
+                            : t('admin.accounts.claudeCodeAccount')
               }}
             </span>
           </div>
@@ -341,8 +345,35 @@
         </div>
       </div>
 
+      <div v-if="isAdobe" class="space-y-4">
+        <div>
+          <label class="input-label">{{ t('admin.accounts.adobe.cookieLabel') }}</label>
+          <textarea
+            v-model="adobeCookie"
+            rows="4"
+            class="input font-mono text-xs"
+            :placeholder="t('admin.accounts.adobe.cookiePlaceholder')"
+            :disabled="adobeSubmitting"
+            data-testid="reauth-adobe-cookie-input"
+          ></textarea>
+          <p class="input-hint">{{ t('admin.accounts.adobe.cookieHint') }}</p>
+        </div>
+        <div>
+          <label class="input-label">{{ t('admin.accounts.adobe.accessTokenLabel') }}</label>
+          <input
+            v-model="adobeAccessToken"
+            type="password"
+            class="input font-mono"
+            autocomplete="off"
+            :disabled="adobeSubmitting"
+            data-testid="reauth-adobe-access-token-input"
+          />
+          <p class="input-hint">{{ t('admin.accounts.adobe.accessTokenHint') }}</p>
+        </div>
+      </div>
+
       <OAuthAuthorizationFlow
-        v-if="!isKiroImportMode"
+        v-if="!isKiroImportMode && !isAdobe"
         ref="oauthFlowRef"
         :add-method="addMethod"
         :auth-url="currentAuthUrl"
@@ -375,7 +406,17 @@
           {{ t('common.cancel') }}
         </button>
         <button
-          v-if="isKiroImportMode"
+          v-if="isAdobe"
+          type="button"
+          :disabled="adobeSubmitting"
+          class="btn btn-primary"
+          data-testid="reauth-adobe-submit"
+          @click="handleAdobeReauth"
+        >
+          {{ adobeSubmitting ? t('admin.accounts.oauth.verifying') : t('admin.accounts.reAuthorize') }}
+        </button>
+        <button
+          v-else-if="isKiroImportMode"
           type="button"
           :disabled="currentLoading || !kiroTokenJson.trim() || (kiroImportNeedsDeviceRegistration && !kiroDeviceRegistrationJson.trim())"
           class="btn btn-primary"
@@ -487,6 +528,9 @@ const kiroIDCStartUrl = ref('https://view.awsapps.com/start')
 const kiroIDCRegion = ref('us-east-1')
 const kiroTokenJson = ref('')
 const kiroDeviceRegistrationJson = ref('')
+const adobeCookie = ref('')
+const adobeAccessToken = ref('')
+const adobeSubmitting = ref(false)
 // 「从 Kiro IDE 导入」账号来源:决定字段显隐/必填/示例,并与 token JSON 内 provider 做一致性校验。
 const kiroImportProvider = ref<'Google' | 'Github' | 'BuilderId' | 'Enterprise' | 'ExternalIdp'>('Google')
 const kiroImportProviderOptions = ['Google', 'Github', 'BuilderId', 'Enterprise', 'ExternalIdp'] as const
@@ -510,6 +554,7 @@ const isAnthropic = computed(() => props.account?.platform === 'anthropic')
 const isAntigravity = computed(() => props.account?.platform === 'antigravity')
 const isKiro = computed(() => props.account?.platform === 'kiro')
 const isGrok = computed(() => props.account?.platform === 'grok')
+const isAdobe = computed(() => props.account?.platform === 'adobe')
 
 const oauthPlatform = computed<AccountPlatform>(() => {
   if (isOpenAI.value) return 'openai'
@@ -517,6 +562,7 @@ const oauthPlatform = computed<AccountPlatform>(() => {
   if (isKiro.value) return 'kiro'
   if (isAntigravity.value) return 'antigravity'
   if (isGrok.value) return 'grok'
+  if (isAdobe.value) return 'adobe'
   return 'anthropic'
 })
 
@@ -669,6 +715,9 @@ const resetState = () => {
   kiroTokenJson.value = ''
   kiroDeviceRegistrationJson.value = ''
   kiroImportProvider.value = 'Google'
+  adobeCookie.value = ''
+  adobeAccessToken.value = ''
+  adobeSubmitting.value = false
   claudeOAuth.resetState()
   openaiOAuth.resetState()
   geminiOAuth.resetState()
@@ -730,8 +779,39 @@ const updateAccountCredentials = async (payload: {
   handleClose()
 }
 
+const handleAdobeReauth = async () => {
+  if (!props.account) return
+  const cookie = adobeCookie.value.trim()
+  if (!cookie) {
+    appStore.showError(t('admin.accounts.adobe.cookieRequired'))
+    return
+  }
+
+  adobeSubmitting.value = true
+  try {
+    await updateAccountCredentials({
+      type: 'oauth',
+      credentials: buildUpdatedCredentials({
+        cookie,
+        // Empty string must be sent: omitting the key would keep the old IMS token.
+        access_token: adobeAccessToken.value.trim()
+      })
+    })
+  } catch (error: any) {
+    appStore.showError(
+      error?.response?.data?.detail ||
+        error?.response?.data?.message ||
+        error?.message ||
+        t('admin.accounts.oauth.authFailed')
+    )
+  } finally {
+    adobeSubmitting.value = false
+  }
+}
+
 const handleGenerateUrl = async () => {
   if (!props.account) return
+  if (isAdobe.value) return
 
   if (isOpenAILike.value) {
     await openaiOAuth.generateAuthUrl(props.account.proxy_id)

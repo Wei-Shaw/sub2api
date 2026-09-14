@@ -472,8 +472,15 @@ const supportsGrokVideoTest = computed(
   () => isGrokAccount.value && grokTestMode.value === 'video'
 )
 
+// Adobe 是纯文生图渠道，所有模型都走图像测试——不像 Grok/OpenAI 要按模型名判断。
+const supportsAdobeImageTest = computed(() => props.account?.platform === 'adobe')
+
 const supportsImageTest = computed(
-  () => supportsGeminiImageTest.value || supportsOpenAIImageTest.value || supportsGrokImageTest.value
+  () =>
+    supportsGeminiImageTest.value ||
+    supportsOpenAIImageTest.value ||
+    supportsGrokImageTest.value ||
+    supportsAdobeImageTest.value
 )
 
 // Model select only when the mode needs a model.
@@ -772,7 +779,9 @@ const loadAvailableModels = async () => {
       : models
     // Default selection by platform
     if (availableModels.value.length > 0) {
-      if (props.account.platform === 'gemini') {
+      // Adobe 后端已按 adobe.ImageModelIDs() 的展示序返回，第一个就是主推模型；
+      // 去找 sonnet 对纯图像渠道毫无意义。
+      if (props.account.platform === 'gemini' || props.account.platform === 'adobe') {
         selectedModelId.value = availableModels.value[0].id
       } else {
         // Try to select Sonnet as default, otherwise use first model
