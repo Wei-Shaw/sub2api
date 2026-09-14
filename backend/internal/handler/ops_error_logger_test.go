@@ -2152,7 +2152,7 @@ func TestOpsErrorLoggerMiddleware_RequestScopedInBandErrorKeepsRecoveredTelemetr
 
 	ops := service.NewOpsService(nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
 	router := gin.New()
-	router.Use(OpsErrorLoggerMiddleware(ops))
+	router.Use(OpsErrorLoggerMiddleware(ops, nil))
 	router.POST("/v1beta/models/gemini-3.7-flash:generateContent", func(c *gin.Context) {
 		setOpsRequestContext(c, "gemini-3.7-flash", false)
 		c.Set(service.OpsUpstreamErrorsKey, []*service.OpsUpstreamErrorEvent{{
@@ -2199,7 +2199,7 @@ func TestOpsErrorLoggerMiddleware_UpstreamInBandFailureStillSingleRow(t *testing
 
 	ops := service.NewOpsService(nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
 	router := gin.New()
-	router.Use(OpsErrorLoggerMiddleware(ops))
+	router.Use(OpsErrorLoggerMiddleware(ops, nil))
 	router.POST("/v1beta/models/gemini-3.7-flash:streamGenerateContent", func(c *gin.Context) {
 		setOpsRequestContext(c, "gemini-3.7-flash", true)
 		service.SetOpsUpstreamError(c, http.StatusTooManyRequests, "quota", "")
