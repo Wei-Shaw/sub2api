@@ -216,6 +216,18 @@ const routes: RouteRecordRaw[] = [
     }
   },
   {
+    path: '/quick-chat',
+    name: 'QuickChat',
+    component: () => import('@/views/user/QuickChatView.vue'),
+    meta: {
+      requiresAuth: true,
+      requiresAdmin: false,
+      title: 'Quick Chat',
+      titleKey: 'quickChat.title',
+      descriptionKey: 'quickChat.description'
+    }
+  },
+  {
     path: '/accounts',
     name: 'UserAccounts',
     component: () => import('@/views/user/AccountsView.vue'),

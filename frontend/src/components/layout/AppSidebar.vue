@@ -480,6 +480,10 @@ const PluginIcon = {
   render: () => h(Icon, { name: 'cube' })
 }
 
+const QuickChatIcon = {
+  render: () => h(Icon, { name: 'chatBubble' })
+}
+
 const BellIcon = {
   render: () =>
     h(
@@ -701,14 +705,17 @@ const flagBatchImageAccess = () => canUseBatchImage.value
 // buildSelfNavItems 构造用户自己的导航项（用户端主菜单和管理员的"我的账户"子菜单共享这组声明）。
 // withDashboard=true 时包含仪表盘（用户端），false 时不含（管理员的个人区已经有独立仪表盘入口）。
 //
-// 条目顺序：密钥 → 用量 → 可用渠道 → 渠道状态 → 订阅/支付 → 兑换/资料。
+// 条目顺序：快速体验 → 密钥 → 用量 → 可用渠道 → 渠道状态 → 订阅/支付 → 兑换/资料。
 // 可用渠道紧挨渠道状态之上，让用户"先看自己能用什么、再看对应状态"。
 function buildSelfNavItems(withDashboard: boolean): NavItem[] {
   const items: NavItem[] = []
   if (withDashboard) {
     items.push({ path: '/dashboard', label: t('nav.dashboard'), icon: DashboardIcon })
   }
-  items.push({ path: '/keys', label: t('nav.apiKeys'), icon: KeyIcon })
+  items.push(
+    { path: '/quick-chat', label: t('nav.quickChat'), icon: QuickChatIcon },
+    { path: '/keys', label: t('nav.apiKeys'), icon: KeyIcon },
+  )
   if (withDashboard) {
     items.push({ path: '/accounts', label: t('nav.accounts'), icon: GlobeIcon })
   }
