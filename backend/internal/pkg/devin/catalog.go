@@ -739,6 +739,17 @@ func indexOfLevel(level ThinkingLevel) int {
 	return 4 // ThinkingHigh
 }
 
+// isValidLevel 判断词是否为合法思考档位。与 indexOfLevel 不同：未知词
+// 返回 false 而不是按 high 档定位——用于 "model:level" 后缀拆分判定。
+func isValidLevel(word string) bool {
+	for _, l := range LevelOrder {
+		if string(l) == word {
+			return true
+		}
+	}
+	return false
+}
+
 // PickOverflowUID 在请求被上游判定过长时挑一个更大上下文的 uid。
 // 优先级：fusion 配对（sidekick 保留当前 uid）> 最大上下文的非 router
 // 条目（按 rank 序）。catalog 为上游目录原始扁平模型集。
@@ -823,7 +834,7 @@ func NormalizeEffortParam(raw string) string {
 func SplitModelLevelSuffix(model string) (base string, level string, ok bool) {
 	m := strings.TrimSpace(model)
 	if i := strings.LastIndex(m, ":"); i > 0 && i < len(m)-1 {
-		if lvl := strings.ToLower(m[i+1:]); indexOfLevel(ThinkingLevel(lvl)) >= 0 {
+		if lvl := strings.ToLower(m[i+1:]); isValidLevel(lvl) {
 			return m[:i], lvl, true
 		}
 	}

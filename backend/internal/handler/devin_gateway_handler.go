@@ -448,6 +448,48 @@ func (h *DevinGatewayHandler) pumpDevinStream(
 	return final, firstTokenMs, nil
 }
 
+// buildDevinForwardResult 把上游最终消息折叠为 ForwardResult。
+// 推理强度：RequestedReasoningEffort 记客户端请求值（effort 参数或
+// model:level 后缀）；ReasoningEffort 记实际生效档——从上游回报的
+// actual_model_uid（如 swe-2-max）回推，缺省回落请求值。
+func buildDevinForwardResult(reqModel string, message *llm.AssistantMessage, reqStream bool, startTime time.Time, firstTokenMs *int, requestedEffort string) *service.ForwardResult {
+	result := &service.ForwardResult{
+		RequestID:    message.UpstreamRequestID,
+		Model:        reqModel,
+		Stream:       reqStream,
+		Duration:     time.Since(startTime),
+		FirstTokenMs: firstTokenMs,
+		Usage: service.ClaudeUsage{
+			InputTokens:              int(message.Usage.Input),
+			OutputTokens:             int(message.Usage.Output),
+			CacheCreationInputTokens: int(message.Usage.CacheWrite),
+			CacheReadInputTokens:     int(message.Usage.CacheRead),
+		},
+	}
+	requestedEffort = strings.TrimSpace(requestedEffort)
+	if requestedEffort == "" {
+		if _, level, ok := devin.SplitModelLevelSuffix(reqModel); ok {
+			requestedEffort = level
+		}
+	}
+	if requestedEffort != "" {
+		result.RequestedReasoningEffort = &requestedEffort
+	}
+	effectiveEffort := devin.UidThinkingLevel(message.ResponseModel)
+	if effectiveEffort == "" {
+		effectiveEffort = requestedEffort
+	}
+	if effectiveEffort != "" {
+		result.ReasoningEffort = &effectiveEffort
+	}
+	// 上游回报的实际模型（actual_model_uid）≠ 请求模型时记入 UpstreamModel，
+	// usage_log 据此显示真实结算模型。
+	if upstreamModel := strings.TrimSpace(message.ResponseModel); upstreamModel != "" && upstreamModel != reqModel {
+		result.UpstreamModel = upstreamModel
+	}
+	return result
+}
+
 // writeDevinSSE 写一个 SSE 事件；写失败（客户端断开）返回 false。
 func writeDevinSSE(c *gin.Context, event devincommon.SSEEvent) bool {
 	if event.Name != "" && event.Name != "[DONE]" {
@@ -485,43 +527,7 @@ func (h *DevinGatewayHandler) submitDevinUsage(
 	if message == nil {
 		return
 	}
-	result := &service.ForwardResult{
-		RequestID:    message.UpstreamRequestID,
-		Model:        reqModel,
-		Stream:       reqStream,
-		Duration:     time.Since(startTime),
-		FirstTokenMs: firstTokenMs,
-		Usage: service.ClaudeUsage{
-			InputTokens:              int(message.Usage.Input),
-			OutputTokens:             int(message.Usage.Output),
-			CacheCreationInputTokens: int(message.Usage.CacheWrite),
-			CacheReadInputTokens:     int(message.Usage.CacheRead),
-		},
-	}
-	// 推理强度：RequestedReasoningEffort 记客户端请求值（effort 参数或
-	// model:level 后缀）；ReasoningEffort 记实际生效档——从上游回报的
-	// 实际 uid（actual_model_uid，如 swe-2-max）回推，缺省回落请求值。
-	requestedEffort = strings.TrimSpace(requestedEffort)
-	if requestedEffort == "" {
-		if _, level, ok := devin.SplitModelLevelSuffix(reqModel); ok {
-			requestedEffort = level
-		}
-	}
-	if requestedEffort != "" {
-		result.RequestedReasoningEffort = &requestedEffort
-	}
-	effectiveEffort := devin.UidThinkingLevel(message.ResponseModel)
-	if effectiveEffort == "" {
-		effectiveEffort = requestedEffort
-	}
-	if effectiveEffort != "" {
-		result.ReasoningEffort = &effectiveEffort
-	}
-	// 上游回报的实际模型（actual_model_uid）≠ 请求模型时记入 UpstreamModel，
-	// usage_log 据此显示真实结算模型。
-	if upstreamModel := strings.TrimSpace(message.ResponseModel); upstreamModel != "" && upstreamModel != reqModel {
-		result.UpstreamModel = upstreamModel
-	}
+	result := buildDevinForwardResult(reqModel, message, reqStream, startTime, firstTokenMs, requestedEffort)
 	quotaPlatform := service.QuotaPlatform(c.Request.Context(), apiKey)
 	userAgent := c.GetHeader("User-Agent")
 	clientIP := ip.GetClientIP(c)
@@ -681,44 +687,59 @@ func (h *DevinGatewayHandler) Models(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{"object": "list", "data": []any{}})
 		return
 	}
-	// 只暴露分组 id（swe-2/claude-fable-5-1/…）：thinking 档位经
-	// effort 参数或 "model:level" 语法解析，不把档位 uid 铺平
-	// 成独立模型（与插件 catalog 语义一致）。
+	allowed := h.gatewayService.GetAvailableModels(c.Request.Context(), apiKey.GroupID, service.PlatformDevin)
+	entries := devinModelEntries(groups, allowed, apiKey.Group)
+	data := make([]any, 0, len(entries))
+	for _, entry := range entries {
+		data = append(data, gin.H{
+			"id":       entry.id,
+			"object":   "model",
+			"created":  0,
+			"owned_by": "devin",
+			"name":     entry.name,
+		})
+	}
+	c.JSON(http.StatusOK, gin.H{"object": "list", "data": data})
+}
+
+// devinModelEntry 是 /v1/models 列表的一条输出。
+type devinModelEntry struct {
+	id   string
+	name string
+}
+
+// devinModelEntries 组装 /v1/models 的模型列表：
+// 只暴露分组 id（swe-2/claude-fable-5-1/…），thinking 档位经 effort 参数
+// 或 "model:level" 语法解析，不把档位 uid 铺平成独立模型（插件语义）。
+// allowed（账号级 model_mapping 的分组合集）非空时直接作为输出——与其他
+// 平台 /v1/models 语义一致、支持改名映射；为空时回落上游目录全量。
+// 分组级 allowlist（若启用）最后叠加过滤。
+func devinModelEntries(groups []devin.GroupedModel, allowed []string, group *service.Group) []devinModelEntry {
 	names := make(map[string]string, len(groups))
 	catalogIDs := make([]string, 0, len(groups))
 	seen := make(map[string]bool)
-	for _, group := range groups {
-		if group.ID == "" || seen[group.ID] {
+	for _, g := range groups {
+		if g.ID == "" || seen[g.ID] {
 			continue
 		}
-		seen[group.ID] = true
-		catalogIDs = append(catalogIDs, group.ID)
-		names[group.ID] = group.Name
+		seen[g.ID] = true
+		catalogIDs = append(catalogIDs, g.ID)
+		names[g.ID] = g.Name
 	}
-	// 账号级 model_mapping（分组合集）即客户端可见白名单——有配置
-	// 时直接暴露映射键（与其他平台 /v1/models 语义一致，支持改名
-	// 映射）；未配置时回退为上游目录全量分组 id。
 	source := catalogIDs
-	if allowed := h.gatewayService.GetAvailableModels(c.Request.Context(), apiKey.GroupID, service.PlatformDevin); len(allowed) > 0 {
+	if len(allowed) > 0 {
 		source = allowed
 	}
-	// 分组级 allowlist（若启用）叠加过滤。
-	if apiKey.Group != nil && apiKey.Group.ModelAllowlistEnabled() {
-		source = apiKey.Group.ModelAllowlist.FilterForListing(source)
+	if group != nil && group.ModelAllowlistEnabled() {
+		source = group.ModelAllowlist.FilterForListing(source)
 	}
-	data := make([]any, 0, len(source))
+	entries := make([]devinModelEntry, 0, len(source))
 	for _, id := range source {
 		name := names[id]
 		if name == "" {
 			name = id
 		}
-		data = append(data, gin.H{
-			"id":       id,
-			"object":   "model",
-			"created":  0,
-			"owned_by": "devin",
-			"name":     name,
-		})
+		entries = append(entries, devinModelEntry{id: id, name: name})
 	}
-	c.JSON(http.StatusOK, gin.H{"object": "list", "data": data})
+	return entries
 }

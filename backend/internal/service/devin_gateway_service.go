@@ -105,7 +105,7 @@ func (s *DevinGatewayService) adapterForAccount(account *Account) (*devinadapter
 			delete(s.adapters, k)
 		}
 	}
-	if len(s.adapters) >= devinAdapterCacheCap {
+	for len(s.adapters) >= devinAdapterCacheCap {
 		var oldestKey string
 		var oldestAt time.Time
 		for k, entry := range s.adapters {
