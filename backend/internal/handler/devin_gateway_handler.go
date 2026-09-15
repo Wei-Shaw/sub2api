@@ -333,7 +333,7 @@ func (h *DevinGatewayHandler) forward(c *gin.Context, protocol devinProtocol) {
 		}
 
 		// 泵事件流 → 客户端。
-		result, firstTokenMs, pumpErr := h.pumpDevinStream(c, protocol, upstream, adapted, reqStream, &streamStarted)
+		result, firstTokenMs, pumpErr := h.pumpDevinStream(c, protocol, upstream, adapted, reqStream, &streamStarted, startTime)
 		if accountReleaseFunc != nil {
 			accountReleaseFunc()
 		}
@@ -372,9 +372,9 @@ func (h *DevinGatewayHandler) pumpDevinStream(
 	adapted devinAdapted,
 	reqStream bool,
 	streamStarted *bool,
+	startTime time.Time,
 ) (*llm.AssistantMessage, *int, error) {
 	ctx := c.Request.Context()
-	startedAt := time.Now()
 	var firstTokenMs *int
 	// adapted.context.Model 仍是客户端请求模型（上游模型走 upstreamCtx 副本），
 	// 编码器直接用它回填响应中的 model 字段。
@@ -402,7 +402,9 @@ func (h *DevinGatewayHandler) pumpDevinStream(
 			(event.Type == llm.ResponseEventTextDelta ||
 				event.Type == llm.ResponseEventThinkingDelta ||
 				event.Type == llm.ResponseEventToolCallDelta) {
-			ms := int(time.Since(startedAt).Milliseconds())
+			// 从请求到达（startTime）起算，覆盖 Stream() 内的
+			// AssignModel/上游排队等真实首字延迟。
+			ms := int(time.Since(startTime).Milliseconds())
 			firstTokenMs = &ms
 		}
 		if event.Type == llm.ResponseEventDone && event.Message != nil {
