@@ -1076,6 +1076,8 @@
       :base-url="publicSettings?.api_base_url || ''"
       :platform="selectedKey?.group?.platform || null"
       :allow-messages-dispatch="selectedKey?.group?.allow_messages_dispatch || false"
+      :codex-config-default-model="selectedKey?.group?.codex_config_default_model || ''"
+      :codex-config-review-model="selectedKey?.group?.codex_config_review_model || ''"
       @close="closeUseKeyModal"
     />
 

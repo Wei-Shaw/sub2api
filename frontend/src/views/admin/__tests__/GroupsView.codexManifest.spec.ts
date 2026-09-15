@@ -11,12 +11,18 @@ const {
   getUsageSummary,
   getCapacitySummary,
   getLiveCapability,
+  createGroup,
+  updateGroup,
+  authState,
 } = vi.hoisted(() => ({
   listGroups: vi.fn(),
   getModelsListCandidates: vi.fn(),
   getUsageSummary: vi.fn(),
   getCapacitySummary: vi.fn(),
   getLiveCapability: vi.fn(),
+  createGroup: vi.fn(),
+  updateGroup: vi.fn(),
+  authState: { isSimpleMode: false },
 }));
 
 vi.mock("@/api/admin", () => ({
@@ -25,11 +31,12 @@ vi.mock("@/api/admin", () => ({
       list: listGroups,
       getAll: vi.fn(),
       getModelsListCandidates,
+      getModelAllowlistCandidates: vi.fn().mockResolvedValue([]),
       getUsageSummary,
       getCapacitySummary,
       getLiveCapability,
-      create: vi.fn(),
-      update: vi.fn(),
+      create: createGroup,
+      update: updateGroup,
       delete: vi.fn(),
       duplicate: vi.fn(),
       updateSortOrder: vi.fn(),
@@ -40,6 +47,8 @@ vi.mock("@/api/admin", () => ({
     },
   },
 }));
+
+vi.mock("@/stores/auth", () => ({ useAuthStore: () => authState }));
 
 vi.mock("@/stores/app", () => ({
   useAppStore: () => ({
@@ -111,6 +120,8 @@ const sourceGroup = {
   fallback_group_id_on_invalid_request: null,
   allow_messages_dispatch: false,
   allow_live: false,
+  codex_config_default_model: "existing-main",
+  codex_config_review_model: "existing-review",
   require_oauth_only: false,
   require_privacy_set: false,
   created_at: "2026-09-05T00:00:00Z",
@@ -218,7 +229,12 @@ const mountView = () =>
         GroupCapacityBadge: true,
         GroupRateMultipliersModal: true,
         GroupRPMOverridesModal: true,
-        ReasoningEffortPolicyFields: true,
+        ReasoningEffortPolicyFields: defineComponent({
+          setup(_, { expose }) {
+            expose({ validate: () => true, resetValidation: () => undefined });
+            return () => h("div");
+          },
+        }),
         CodexManifestAccountsField: CodexManifestAccountsFieldStub,
         PricingEntryCard: true,
         VueDraggable: true,
@@ -234,6 +250,9 @@ describe("GroupsView Codex manifest binding", () => {
     getUsageSummary.mockReset();
     getCapacitySummary.mockReset();
     getLiveCapability.mockReset();
+    createGroup.mockReset().mockResolvedValue({});
+    updateGroup.mockReset().mockResolvedValue({});
+    authState.isSimpleMode = false;
 
     listGroups.mockResolvedValue({
       items: [sourceGroup],
@@ -246,6 +265,62 @@ describe("GroupsView Codex manifest binding", () => {
     getUsageSummary.mockResolvedValue([]);
     getCapacitySummary.mockResolvedValue([]);
     getLiveCapability.mockResolvedValue({ supported: false });
+  });
+
+  it.each([false, true])("saves and resets Codex model settings (simple mode: %s)", async (simpleMode) => {
+    authState.isSimpleMode = simpleMode;
+    const wrapper = mountView();
+    await flushPromises();
+    const mainInput = () => wrapper.get('input[name="codex_config_default_model"]');
+    const reviewInput = () => wrapper.get('input[name="codex_config_review_model"]');
+
+    await wrapper.get('[data-tour="groups-create-btn"]').trigger("click");
+    expect(mainInput().attributes("placeholder")).toBe("claude-sonnet-4-6");
+    expect(reviewInput().attributes("placeholder")).toBe("claude-sonnet-4-6");
+    for (const [platform, expected] of [
+      ["openai", "gpt-5.5"],
+      ["gemini", "gemini-2.5-pro"],
+      ["anthropic", "claude-sonnet-4-6"],
+    ]) {
+      wrapper.getComponent('[data-tour="group-form-platform"]').vm.$emit("update:modelValue", platform);
+      await flushPromises();
+      expect(mainInput().attributes("placeholder")).toBe(expected);
+      expect(reviewInput().attributes("placeholder")).toBe(expected);
+    }
+    await wrapper.get('[data-tour="group-form-name"]').setValue("new group");
+    await mainInput().setValue("claude-opus-4-8");
+    expect(reviewInput().attributes("placeholder")).toBe("claude-opus-4-8");
+    await reviewInput().setValue("claude-haiku-4-5");
+    await wrapper.get("#create-group-form").trigger("submit");
+    await flushPromises();
+    expect(createGroup).toHaveBeenCalledWith(expect.objectContaining({
+      codex_config_default_model: "claude-opus-4-8",
+      codex_config_review_model: "claude-haiku-4-5",
+    }));
+    await wrapper.get('[data-tour="groups-create-btn"]').trigger("click");
+    expect((mainInput().element as HTMLInputElement).value).toBe("");
+    expect((reviewInput().element as HTMLInputElement).value).toBe("");
+    expect(reviewInput().attributes("placeholder")).toBe("claude-sonnet-4-6");
+    await wrapper.findAll("button").find((button) => button.text() === "common.cancel")!.trigger("click");
+
+    await wrapper.findAll("button").find((button) => button.text().includes("common.edit"))!.trigger("click");
+    await flushPromises();
+    expect((mainInput().element as HTMLInputElement).value).toBe("existing-main");
+    expect((reviewInput().element as HTMLInputElement).value).toBe("existing-review");
+    expect(mainInput().attributes("placeholder")).toBe("gpt-5.5");
+    expect(reviewInput().attributes("placeholder")).toBe("existing-main");
+    await mainInput().setValue(" custom-model ");
+    expect(reviewInput().attributes("placeholder")).toBe("custom-model");
+    await mainInput().setValue("");
+    expect(reviewInput().attributes("placeholder")).toBe("gpt-5.5");
+    await reviewInput().setValue(" custom-review ");
+    await wrapper.get("#edit-group-form").trigger("submit");
+    await flushPromises();
+    expect(updateGroup).toHaveBeenCalledWith(sourceGroup.id, expect.objectContaining({
+      codex_config_default_model: "",
+      codex_config_review_model: "custom-review",
+    }));
+    wrapper.unmount();
   });
 
   it("preserves consecutive child updates on the reactive edit config", async () => {
