@@ -1807,6 +1807,10 @@ func (s *GeminiMessagesCompatService) writeGeminiNativeUpstreamError(c *gin.Cont
 }
 
 func sleepGeminiBackoff(attempt int) {
+	time.Sleep(geminiBackoffDelay(attempt))
+}
+
+func geminiBackoffDelay(attempt int) time.Duration {
 	delay := geminiRetryBaseDelay * time.Duration(1<<uint(attempt-1))
 	if delay > geminiRetryMaxDelay {
 		delay = geminiRetryMaxDelay
@@ -1819,7 +1823,7 @@ func sleepGeminiBackoff(attempt int) {
 	if sleepFor < 0 {
 		sleepFor = 0
 	}
-	time.Sleep(sleepFor)
+	return sleepFor
 }
 
 var (
@@ -2075,8 +2079,10 @@ func mapGeminiStatusToClaudeErrorType(status string) string {
 }
 
 type geminiStreamResult struct {
-	usage        *ClaudeUsage
-	firstTokenMs *int
+	usage            *ClaudeUsage
+	firstTokenMs     *int
+	usageObserved    bool
+	clientDisconnect bool
 }
 
 func (s *GeminiMessagesCompatService) handleNonStreamingResponse(c *gin.Context, resp *http.Response, originalModel string) (*ClaudeUsage, error) {
@@ -2448,10 +2454,16 @@ func collectGeminiSSE(body io.Reader, isOAuth bool) (map[string]any, *ClaudeUsag
 	return collected, usage, err
 }
 
+func collectGeminiSSEWithUsageObservation(body io.Reader, isOAuth bool) (map[string]any, *ClaudeUsage, bool, error) {
+	collected, usage, stats, err := collectGeminiSSEObserved(body, isOAuth, nil)
+	return collected, usage, stats.usageObserved, err
+}
+
 // geminiSSECollectStats 记录一次 SSE 聚合读到的 data 事件数，以及非 data 行的兜底内容。
 type geminiSSECollectStats struct {
-	dataEvents int
-	fallback   *geminiSSEFallbackBody
+	dataEvents    int
+	usageObserved bool
+	fallback      *geminiSSEFallbackBody
 }
 
 // collectGeminiSSEObserved 在聚合的同时把每个解包后的事件原文交给 observe（可为 nil）。
@@ -2502,6 +2514,7 @@ func collectGeminiSSEObserved(body io.Reader, isOAuth bool, observe func(rawByte
 						last = parsed
 						if u := extractGeminiUsage(rawBytes); u != nil {
 							usage = u
+							stats.usageObserved = true
 						}
 						if parts := extractGeminiParts(parsed); len(parts) > 0 {
 							lastWithParts = parsed
@@ -2521,7 +2534,7 @@ func collectGeminiSSEObserved(body io.Reader, isOAuth bool, observe func(rawByte
 			break
 		}
 		if err != nil {
-			return nil, nil, stats, err
+			return mergeCollectedTextParts(pickGeminiCollectResult(last, lastWithParts), collectedTextParts), usage, stats, err
 		}
 	}
 
