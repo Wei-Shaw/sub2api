@@ -972,6 +972,8 @@ type GatewayConfig struct {
 	ProxyProbeResponseReadMaxBytes int64 `mapstructure:"proxy_probe_response_read_max_bytes"`
 	// Gemini 上游响应头调试日志开关（默认关闭，避免高频日志开销）
 	GeminiDebugResponseHeaders bool `mapstructure:"gemini_debug_response_headers"`
+	// GeminiDisconnectDrainTimeoutSeconds: Gemini Chat Completions 客户端断开后的最大排空时间（秒，0 使用默认值）。
+	GeminiDisconnectDrainTimeoutSeconds int `mapstructure:"gemini_disconnect_drain_timeout_seconds"`
 	// ConnectionPoolIsolation: 上游连接池隔离策略（proxy/account/account_proxy）
 	ConnectionPoolIsolation string `mapstructure:"connection_pool_isolation"`
 	// ForceCodexCLI: 强制将 OpenAI `/v1/responses` 请求按 Codex CLI 处理。
@@ -2475,6 +2477,7 @@ func setDefaults() {
 	viper.SetDefault("gateway.models_list_read_max_bytes", DefaultModelsListReadMaxBytes)
 	viper.SetDefault("gateway.proxy_probe_response_read_max_bytes", int64(1024*1024))
 	viper.SetDefault("gateway.gemini_debug_response_headers", false)
+	viper.SetDefault("gateway.gemini_disconnect_drain_timeout_seconds", 120)
 	viper.SetDefault("gateway.connection_pool_isolation", ConnectionPoolIsolationAccountProxy)
 	// HTTP 上游连接池配置（针对 5000+ 并发用户优化）
 	viper.SetDefault("gateway.max_idle_conns", 2560)          // 最大空闲连接总数（高并发场景可调大）
@@ -3296,6 +3299,9 @@ func (c *Config) Validate() error {
 	}
 	if c.Gateway.GrokResponseHeaderTimeout < 0 || c.Gateway.GrokResponseHeaderTimeout > 1800 {
 		return fmt.Errorf("gateway.grok_response_header_timeout must be between 0-1800 seconds")
+	}
+	if c.Gateway.GeminiDisconnectDrainTimeoutSeconds < 0 || c.Gateway.GeminiDisconnectDrainTimeoutSeconds > 600 {
+		return fmt.Errorf("gateway.gemini_disconnect_drain_timeout_seconds must be between 0-600 seconds")
 	}
 	if c.Gateway.OpenAIFirstOutputTimeoutSeconds < 0 || c.Gateway.OpenAIFirstOutputTimeoutSeconds > 600 ||
 		(c.Gateway.OpenAIFirstOutputTimeoutSeconds > 0 && c.Gateway.OpenAIFirstOutputTimeoutSeconds < 30) {

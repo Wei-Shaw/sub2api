@@ -249,7 +249,11 @@ func (h *GatewayHandler) ChatCompletions(c *gin.Context) {
 				reqLog.Warn("gateway.cc.bind_sticky_session_after_profit_admission_failed", zap.Int64("account_id", account.ID), zap.Error(err))
 			}
 		}
-		accountReleaseFunc = wrapReleaseOnDone(c.Request.Context(), accountReleaseFunc)
+		// Accepted Gemini attempts may outlive the downstream request while they
+		// drain provider usage. Keep the account slot until that bounded drain ends.
+		if account.Platform != service.PlatformGemini {
+			accountReleaseFunc = wrapReleaseOnDone(c.Request.Context(), accountReleaseFunc)
+		}
 
 		if groupPlatform == service.PlatformGemini && account.Platform != service.PlatformGemini {
 			if accountReleaseFunc != nil {
@@ -293,8 +297,90 @@ func (h *GatewayHandler) ChatCompletions(c *gin.Context) {
 		if accountReleaseFunc != nil {
 			accountReleaseFunc()
 		}
+		geminiDisconnect := account.Platform == service.PlatformGemini &&
+			((result != nil && result.ClientDisconnect) || errors.Is(err, service.ErrGeminiClientDisconnected))
+		partialUsage := err != nil && result != nil
+		if geminiDisconnect {
+			outcome := "no_usage"
+			fields := []zap.Field{
+				zap.Int64("account_id", account.ID),
+				zap.Bool("stream", reqStream),
+				zap.Int64("duration_ms", time.Since(requestStart).Milliseconds()),
+			}
+			if result != nil {
+				outcome = "terminal_usage"
+				if partialUsage {
+					outcome = "partial_usage"
+				}
+				fields = append(fields,
+					zap.String("upstream_request_id", result.RequestID),
+					zap.Int("input_tokens", result.Usage.InputTokens),
+					zap.Int("output_tokens", result.Usage.OutputTokens),
+					zap.Int("cache_creation_input_tokens", result.Usage.CacheCreationInputTokens),
+					zap.Int("cache_read_input_tokens", result.Usage.CacheReadInputTokens),
+				)
+			}
+			if err != nil {
+				fields = append(fields, zap.Error(err))
+			}
+			reqLog.Info("gateway.cc.gemini_disconnect_drain_finished",
+				append(fields, zap.String("outcome", outcome))...,
+			)
+		}
+		submitUsage := func(result *service.ForwardResult, partial bool) {
+			if result == nil {
+				return
+			}
+			userAgent := c.GetHeader("User-Agent")
+			clientIP := ip.GetClientIP(c)
+			requestPayloadHash := service.HashUsageRequestPayload(body)
+			inboundEndpoint := GetInboundEndpoint(c)
+			upstreamEndpoint := GetUpstreamEndpoint(c, account.Platform)
+			quotaPlatform := service.QuotaPlatform(c.Request.Context(), apiKey)
+			sessionID := service.ExtractClientSessionID(c)
+			stampForwardRequestedReasoningEffort(result, service.RequestedReasoningEffortFromContext(c.Request.Context()))
+			h.submitUsageRecordTask(c.Request.Context(), func(ctx context.Context) {
+				if err := h.gatewayService.RecordUsage(ctx, &service.RecordUsageInput{
+					Result:             result,
+					QuotaPlatform:      quotaPlatform,
+					APIKey:             apiKey,
+					User:               apiKey.User,
+					Account:            account,
+					Subscription:       subscription,
+					PricingAt:          pricingAt,
+					InboundEndpoint:    inboundEndpoint,
+					UpstreamEndpoint:   upstreamEndpoint,
+					UserAgent:          userAgent,
+					IPAddress:          clientIP,
+					RequestPayloadHash: requestPayloadHash,
+					APIKeyService:      h.apiKeyService,
+					SessionID:          sessionID,
+					ChannelUsageFields: clientRequestedUsageFields(c, channelMapping, reqModel, result.UpstreamModel),
+				}); err != nil {
+					reqLog.Error("gateway.cc.record_usage_failed",
+						zap.Int64("account_id", account.ID),
+						zap.Error(err),
+					)
+				} else if result.ClientDisconnect {
+					reqLog.Info("gateway.cc.gemini_disconnect_usage_recorded",
+						zap.Int64("account_id", account.ID),
+						zap.String("upstream_request_id", result.RequestID),
+						zap.Bool("stream", result.Stream),
+						zap.Bool("partial_usage", partial),
+						zap.Int("input_tokens", result.Usage.InputTokens),
+						zap.Int("output_tokens", result.Usage.OutputTokens),
+						zap.Int("cache_creation_input_tokens", result.Usage.CacheCreationInputTokens),
+						zap.Int("cache_read_input_tokens", result.Usage.CacheReadInputTokens),
+					)
+				}
+			})
+		}
 
 		if err != nil {
+			if c.Request.Context().Err() != nil || errors.Is(err, service.ErrGeminiClientDisconnected) || (result != nil && result.ClientDisconnect) {
+				submitUsage(result, true)
+				return
+			}
 			var failoverErr *service.UpstreamFailoverError
 			if errors.As(err, &failoverErr) {
 				if c.Writer.Size() != writerSizeBeforeForward {
@@ -313,6 +399,7 @@ func (h *GatewayHandler) ChatCompletions(c *gin.Context) {
 					return
 				}
 			}
+			submitUsage(result, true)
 			upstreamErrorAlreadyCommunicated := gatewayForwardErrorAlreadyCommunicated(c, writerSizeBeforeForward, err)
 			wroteFallback := false
 			if !upstreamErrorAlreadyCommunicated {
@@ -328,39 +415,7 @@ func (h *GatewayHandler) ChatCompletions(c *gin.Context) {
 		}
 
 		// 6. Record usage
-		userAgent := c.GetHeader("User-Agent")
-		clientIP := ip.GetClientIP(c)
-		requestPayloadHash := service.HashUsageRequestPayload(body)
-		inboundEndpoint := GetInboundEndpoint(c)
-		upstreamEndpoint := GetUpstreamEndpoint(c, account.Platform)
-
-		quotaPlatform := service.QuotaPlatform(c.Request.Context(), apiKey)
-		sessionID := service.ExtractClientSessionID(c)
-		stampForwardRequestedReasoningEffort(result, service.RequestedReasoningEffortFromContext(c.Request.Context()))
-		h.submitUsageRecordTask(c.Request.Context(), func(ctx context.Context) {
-			if err := h.gatewayService.RecordUsage(ctx, &service.RecordUsageInput{
-				Result:             result,
-				QuotaPlatform:      quotaPlatform,
-				APIKey:             apiKey,
-				User:               apiKey.User,
-				Account:            account,
-				Subscription:       subscription,
-				PricingAt:          pricingAt,
-				InboundEndpoint:    inboundEndpoint,
-				UpstreamEndpoint:   upstreamEndpoint,
-				UserAgent:          userAgent,
-				IPAddress:          clientIP,
-				RequestPayloadHash: requestPayloadHash,
-				APIKeyService:      h.apiKeyService,
-				SessionID:          sessionID,
-				ChannelUsageFields: clientRequestedUsageFields(c, channelMapping, reqModel, result.UpstreamModel),
-			}); err != nil {
-				reqLog.Error("gateway.cc.record_usage_failed",
-					zap.Int64("account_id", account.ID),
-					zap.Error(err),
-				)
-			}
-		})
+		submitUsage(result, false)
 		return
 	}
 }
