@@ -12,6 +12,7 @@ import (
 	"time"
 
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/forwardaudit"
 	pkghttputil "github.com/Wei-Shaw/sub2api/internal/pkg/httputil"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	middleware2 "github.com/Wei-Shaw/sub2api/internal/server/middleware"
@@ -259,8 +260,9 @@ func (h *AsyncImageHandler) failTask(taskID string, statusCode int, taskErr json
 }
 
 func newAsyncImageContext(c *gin.Context, body []byte, timeoutDuration time.Duration) (*gin.Context, *httptest.ResponseRecorder, context.CancelFunc) {
+	releaseAuditHold := forwardaudit.HoldRequest(c.Request)
 	base := context.WithoutCancel(c.Request.Context())
-	executionCtx, cancel := context.WithTimeout(base, timeoutDuration)
+	executionCtx, cancelExecution := context.WithTimeout(base, timeoutDuration)
 	request := c.Request.Clone(executionCtx)
 	request.Body = io.NopCloser(bytes.NewReader(body))
 	request.GetBody = func() (io.ReadCloser, error) {
@@ -274,7 +276,10 @@ func newAsyncImageContext(c *gin.Context, body []byte, timeoutDuration time.Dura
 	recorderCtx, _ := gin.CreateTestContext(recorder)
 	taskCtx.Writer = recorderCtx.Writer
 	taskCtx.Request = request
-	return taskCtx, recorder, cancel
+	return taskCtx, recorder, func() {
+		cancelExecution()
+		releaseAuditHold()
+	}
 }
 
 func asyncImageRequestStreams(contentType string, body []byte) bool {

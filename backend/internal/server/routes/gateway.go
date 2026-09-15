@@ -7,6 +7,7 @@ import (
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/handler"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/forwardaudit"
 	pkghttputil "github.com/Wei-Shaw/sub2api/internal/pkg/httputil"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/requestmodel"
 	"github.com/Wei-Shaw/sub2api/internal/server/middleware"
@@ -36,6 +37,14 @@ func RegisterGatewayRoutes(
 	endpointNorm := handler.InboundEndpointMiddleware()
 	compositeTarget := compositeTargetPlatformMiddleware(compositeResolver)
 	compositeGeminiTarget := compositeGeminiTargetPlatformMiddleware(compositeResolver)
+	openAIForwardAudit := openAIForwardAuditMiddleware(forwardaudit.NewRecorder(forwardaudit.Options{
+		Enabled:         cfg.Gateway.OpenAIForwardAudit.Enabled,
+		Directory:       cfg.Gateway.OpenAIForwardAudit.Directory,
+		QueueSize:       cfg.Gateway.OpenAIForwardAudit.QueueSize,
+		MaxBodyBytes:    cfg.Gateway.OpenAIForwardAudit.MaxBodyBytes,
+		MaxCaptureBytes: cfg.Gateway.OpenAIForwardAudit.MaxCaptureBytes,
+		MaxQueueBytes:   cfg.Gateway.OpenAIForwardAudit.MaxQueueBytes,
+	}))
 
 	// 未分组 Key 拦截中间件（按协议格式区分错误响应）
 	requireGroupAnthropic := middleware.RequireGroupAssignment(settingService, middleware.AnthropicErrorWriter)
@@ -190,6 +199,7 @@ func RegisterGatewayRoutes(
 	gateway.Use(endpointNorm)
 	gateway.Use(gin.HandlerFunc(apiKeyAuth))
 	gateway.GET("/sub2api/billing", h.Gateway.KeyBillingInfo)
+	gateway.Use(openAIForwardAudit)
 	gateway.Use(groupModelAllowlist)
 	gateway.Use(compositeTarget)
 	gateway.Use(requireGroupAnthropic)
@@ -366,7 +376,7 @@ func RegisterGatewayRoutes(
 	// 根路径别名共用中间件链：白名单准入在 apiKeyAuth 之后、compositeTarget
 	// 之前，避免逐条路由手工维护链导致漏挂。
 	rootRoute := func(method, path string, limit gin.HandlerFunc, handler gin.HandlerFunc) {
-		r.Handle(method, path, limit, clientRequestID, opsErrorLogger, endpointNorm, gin.HandlerFunc(apiKeyAuth), groupModelAllowlist, compositeTarget, requireGroupAnthropic, handler)
+		r.Handle(method, path, limit, clientRequestID, opsErrorLogger, endpointNorm, gin.HandlerFunc(apiKeyAuth), openAIForwardAudit, groupModelAllowlist, compositeTarget, requireGroupAnthropic, handler)
 	}
 	rootRoute(http.MethodPost, "/responses", bodyLimit, responsesHandler)
 	rootRoute(http.MethodPost, "/responses/*subpath", bodyLimit, guardResponsesSubpath(responsesHandler))
@@ -378,7 +388,7 @@ func RegisterGatewayRoutes(
 	rootRoute(http.MethodGet, "/models/:model", bodyLimit, h.Gateway.Models)
 	rootRoute(http.MethodPost, "/messages/count_tokens", bodyLimit, countTokensHandler)
 	codexDirect := r.Group("/backend-api/codex")
-	codexDirect.Use(bodyLimit, clientRequestID, opsErrorLogger, endpointNorm, gin.HandlerFunc(apiKeyAuth), groupModelAllowlist, compositeTarget, requireGroupAnthropic)
+	codexDirect.Use(bodyLimit, clientRequestID, opsErrorLogger, endpointNorm, gin.HandlerFunc(apiKeyAuth), openAIForwardAudit, groupModelAllowlist, compositeTarget, requireGroupAnthropic)
 	{
 		codexDirect.POST("/realtime/calls", h.OpenAIGateway.Live)
 		codexDirect.GET("/:call_id", h.OpenAIGateway.LiveSideband)
@@ -537,6 +547,28 @@ func getGroupPlatform(c *gin.Context) string {
 		}
 	}
 	return apiKey.Group.Platform
+}
+
+func openAIForwardAuditMiddleware(recorder *forwardaudit.Recorder) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		if c.Request == nil {
+			c.Next()
+			return
+		}
+		apiKey, ok := middleware.GetAPIKeyFromContext(c)
+		if !ok || apiKey == nil || apiKey.Group == nil ||
+			(apiKey.Group.Platform != service.PlatformOpenAI && apiKey.Group.Platform != service.PlatformComposite) {
+			c.Next()
+			return
+		}
+		userID := apiKey.UserID
+		if apiKey.User != nil && apiKey.User.ID > 0 {
+			userID = apiKey.User.ID
+		}
+		c.Request = forwardaudit.AttachRequest(c.Request, recorder, userID, apiKey.ID, service.ExtractClientSessionID(c))
+		defer forwardaudit.ReleaseRequest(c.Request)
+		c.Next()
+	}
 }
 
 func compositeTargetPlatformMiddleware(resolver *service.CompositeRouteResolver) gin.HandlerFunc {

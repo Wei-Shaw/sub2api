@@ -1012,6 +1012,8 @@ type GatewayConfig struct {
 	OpenAIScheduler GatewayOpenAISchedulerConfig `mapstructure:"openai_scheduler"`
 	// OpenAIHTTP2: OpenAI HTTP 上游协议策略（默认启用 HTTP/2，可按代理能力回退 HTTP/1.1）
 	OpenAIHTTP2 GatewayOpenAIHTTP2Config `mapstructure:"openai_http2"`
+	// OpenAIForwardAudit: OpenAI 转发请求/响应的本地文件审计配置。
+	OpenAIForwardAudit OpenAIForwardAuditConfig `mapstructure:"openai_forward_audit"`
 	// OpenAIProxyStreamCircuit: Responses SSE 代理断流熔断策略。
 	OpenAIProxyStreamCircuit GatewayOpenAIProxyStreamCircuitConfig `mapstructure:"openai_proxy_stream_circuit"`
 	// ImageConcurrency: 图片生成独立并发限制配置（默认关闭）
@@ -1161,6 +1163,15 @@ type GatewayOpenAIHTTP2Config struct {
 	FallbackWindowSeconds int `mapstructure:"fallback_window_seconds"`
 	// FallbackTTLSeconds: 触发后回退 HTTP/1.1 的持续时间（秒）
 	FallbackTTLSeconds int `mapstructure:"fallback_ttl_seconds"`
+}
+
+type OpenAIForwardAuditConfig struct {
+	Enabled         bool   `mapstructure:"enabled"`
+	Directory       string `mapstructure:"directory"`
+	QueueSize       int    `mapstructure:"queue_size"`
+	MaxBodyBytes    int64  `mapstructure:"max_body_bytes"`
+	MaxCaptureBytes int64  `mapstructure:"max_capture_bytes"`
+	MaxQueueBytes   int64  `mapstructure:"max_queue_bytes"`
 }
 
 // GatewayOpenAIProxyStreamCircuitConfig controls the bounded, in-process
@@ -2381,6 +2392,12 @@ func setDefaults() {
 	viper.SetDefault("gateway.codex_image_generation_bridge_enabled", false)
 	viper.SetDefault("gateway.openai_passthrough_allow_timeout_headers", false)
 	viper.SetDefault("gateway.openai_compact_model", "gpt-5.5")
+	viper.SetDefault("gateway.openai_forward_audit.enabled", false)
+	viper.SetDefault("gateway.openai_forward_audit.directory", "")
+	viper.SetDefault("gateway.openai_forward_audit.queue_size", 1024)
+	viper.SetDefault("gateway.openai_forward_audit.max_body_bytes", int64(32*1024*1024))
+	viper.SetDefault("gateway.openai_forward_audit.max_capture_bytes", int64(256*1024*1024))
+	viper.SetDefault("gateway.openai_forward_audit.max_queue_bytes", int64(128*1024*1024))
 	viper.SetDefault("gateway.live.max_session_duration_seconds", 3600)
 	// OpenAI Responses WebSocket（默认开启；可通过 force_http 紧急回滚）
 	viper.SetDefault("gateway.openai_ws.enabled", true)

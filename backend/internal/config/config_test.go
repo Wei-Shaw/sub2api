@@ -373,6 +373,42 @@ func TestNormalizeRunMode(t *testing.T) {
 	}
 }
 
+func TestLoadOpenAIForwardAuditConfig(t *testing.T) {
+	resetViperWithJWTSecret(t)
+	configFile := filepath.Join(t.TempDir(), "config.yaml")
+	require.NoError(t, os.WriteFile(configFile, []byte(`gateway:
+  openai_forward_audit:
+    enabled: true
+    directory: /var/lib/sub2api/openai-forward-audit
+    queue_size: 37
+    max_body_bytes: 1048576
+    max_capture_bytes: 8388608
+    max_queue_bytes: 4194304
+`), 0o600))
+	t.Setenv("CONFIG_FILE", configFile)
+
+	cfg, err := Load()
+	require.NoError(t, err)
+	require.True(t, cfg.Gateway.OpenAIForwardAudit.Enabled)
+	require.Equal(t, "/var/lib/sub2api/openai-forward-audit", cfg.Gateway.OpenAIForwardAudit.Directory)
+	require.Equal(t, 37, cfg.Gateway.OpenAIForwardAudit.QueueSize)
+	require.Equal(t, int64(1048576), cfg.Gateway.OpenAIForwardAudit.MaxBodyBytes)
+	require.Equal(t, int64(8388608), cfg.Gateway.OpenAIForwardAudit.MaxCaptureBytes)
+	require.Equal(t, int64(4194304), cfg.Gateway.OpenAIForwardAudit.MaxQueueBytes)
+}
+
+func TestOpenAIForwardAuditDefaultsDisabled(t *testing.T) {
+	resetViperWithJWTSecret(t)
+
+	cfg, err := Load()
+	require.NoError(t, err)
+	require.False(t, cfg.Gateway.OpenAIForwardAudit.Enabled)
+	require.Equal(t, 1024, cfg.Gateway.OpenAIForwardAudit.QueueSize)
+	require.Equal(t, int64(32*1024*1024), cfg.Gateway.OpenAIForwardAudit.MaxBodyBytes)
+	require.Equal(t, int64(256*1024*1024), cfg.Gateway.OpenAIForwardAudit.MaxCaptureBytes)
+	require.Equal(t, int64(128*1024*1024), cfg.Gateway.OpenAIForwardAudit.MaxQueueBytes)
+}
+
 func TestLoadDefaultSchedulingConfig(t *testing.T) {
 	resetViperWithJWTSecret(t)
 

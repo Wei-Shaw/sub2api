@@ -18,6 +18,7 @@ import (
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/claude"
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/forwardaudit"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/httpclient"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/openai"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/xai"
@@ -1798,7 +1799,7 @@ func (s *OpenAIGatewayService) fetchCachedOpenAIModels(ctx context.Context, requ
 	if state == openAIModelsCacheFresh {
 		return openAIModelsResponseForClient(manifest, ifNoneMatch), nil
 	}
-	resultCh := s.refreshCachedOpenAIModels(cacheKey, request, fetch)
+	resultCh := s.refreshCachedOpenAIModels(ctx, cacheKey, request, fetch)
 	if state == openAIModelsCacheStale {
 		return openAIModelsResponseForClient(manifest, ifNoneMatch), nil
 	}
@@ -1817,9 +1818,10 @@ func (s *OpenAIGatewayService) fetchCachedOpenAIModels(ctx context.Context, requ
 	}
 }
 
-func (s *OpenAIGatewayService) refreshCachedOpenAIModels(cacheKey string, request openAIModelsRequest, fetch func(ctx context.Context, ifNoneMatch string) (*OpenAIModelsResponse, error)) <-chan singleflight.Result {
+func (s *OpenAIGatewayService) refreshCachedOpenAIModels(ctx context.Context, cacheKey string, request openAIModelsRequest, fetch func(ctx context.Context, ifNoneMatch string) (*OpenAIModelsResponse, error)) <-chan singleflight.Result {
+	refreshContext := context.WithoutCancel(ctx)
 	return s.openAIModelsCache.refresh.DoChan(cacheKey, func() (any, error) {
-		ctx, cancel := context.WithTimeout(context.Background(), codexModelsManifestRequestTimeout)
+		ctx, cancel := context.WithTimeout(refreshContext, codexModelsManifestRequestTimeout)
 		defer cancel()
 		cached, _ := s.openAIModelsCache.get(cacheKey, time.Now())
 		ifNoneMatch := ""
@@ -1858,6 +1860,10 @@ func (s *OpenAIGatewayService) fetchOpenAIModelsUpstream(ctx context.Context, re
 	if ifNoneMatch = strings.TrimSpace(ifNoneMatch); ifNoneMatch != "" {
 		req.Header.Set("If-None-Match", ifNoneMatch)
 	}
+	req = forwardaudit.SetRequestActive(
+		req,
+		request.credentialAccount != nil && request.credentialAccount.Platform == PlatformOpenAI,
+	)
 
 	var resp *http.Response
 	if request.useAPIKeyUpstream {
@@ -1880,7 +1886,9 @@ func (s *OpenAIGatewayService) fetchOpenAIModelsUpstream(ctx context.Context, re
 			if clientErr != nil {
 				return nil, infraerrors.Newf(http.StatusInternalServerError, "OPENAI_CODEX_MODELS_PROXY_INVALID", "invalid proxy configuration: %v", clientErr)
 			}
-			resp, err = client.Do(req)
+			auditedClient := *client
+			auditedClient.Transport = forwardaudit.WrapTransport(client.Transport, request.accountID)
+			resp, err = auditedClient.Do(req)
 		}
 	}
 	if err != nil {

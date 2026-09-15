@@ -27,6 +27,7 @@ import (
 	"golang.org/x/net/http2"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/forwardaudit"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/proxyurl"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/proxyutil"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/servertiming"
@@ -215,6 +216,9 @@ func (s *httpUpstreamService) Do(req *http.Request, proxyURL string, accountID i
 
 	// 执行请求
 	client := s.httpClientForUpstreamRequest(entry.client, req)
+	auditedClient := *client
+	auditedClient.Transport = forwardaudit.WrapTransport(client.Transport, accountID)
+	client = &auditedClient
 	client = httpClientWithGrokAccessDeniedFallback(client)
 	resp, err := servertiming.Do(client, req)
 	if err != nil {
@@ -279,6 +283,9 @@ func (s *httpUpstreamService) DoWithTLS(req *http.Request, proxyURL string, acco
 	}
 
 	client := s.httpClientForUpstreamRequest(entry.client, req)
+	auditedClient := *client
+	auditedClient.Transport = forwardaudit.WrapTransport(client.Transport, accountID)
+	client = &auditedClient
 	client = httpClientWithGrokAccessDeniedFallback(client)
 	resp, err := servertiming.Do(client, req)
 	if err != nil {
