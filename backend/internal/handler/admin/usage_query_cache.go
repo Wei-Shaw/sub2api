@@ -11,6 +11,7 @@ import (
 var usageStatsCache = newSnapshotCache(30 * time.Second)
 
 type usageStatsCacheKeyData struct {
+	IncludeUserAgents     bool   `json:"include_user_agents"`
 	StartTime             string `json:"start_time"`
 	EndTime               string `json:"end_time"`
 	UserID                int64  `json:"user_id"`
@@ -36,6 +37,7 @@ func usageStatsCacheKey(filters usagestats.UsageLogFilters) string {
 		end = filters.EndTime.UTC().Format(time.RFC3339)
 	}
 	return mustMarshalDashboardCacheKey(usageStatsCacheKeyData{
+		IncludeUserAgents:     filters.IncludeUserAgents,
 		StartTime:             start,
 		EndTime:               end,
 		UserID:                filters.UserID,
