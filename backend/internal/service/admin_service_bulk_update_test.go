@@ -406,6 +406,12 @@ func TestAdminServiceBulkUpdateAccounts_RejectsInvalidOpenAISettingValuesBeforeW
 			extra:       map[string]any{"openai_responses_mode": "force_responses"},
 			reason:      "OPENAI_RESPONSES_MODE_INVALID",
 		},
+		{
+			name:        "preserve inbound without chat capability",
+			credentials: map[string]any{openAIEndpointCapabilitiesCredentialKey: []any{"embeddings"}},
+			extra:       map[string]any{"openai_responses_mode": "preserve_inbound"},
+			reason:      "OPENAI_RESPONSES_MODE_INVALID",
+		},
 	}
 
 	for _, tt := range tests {
@@ -518,6 +524,30 @@ func TestAdminServiceBulkUpdateAccounts_ForcedResponsesAcceptsChatCapabilityUpda
 
 	require.NoError(t, err)
 	require.Equal(t, 1, repo.bulkUpdateCalls)
+}
+
+func TestAdminServiceBulkUpdateAccounts_PreserveInboundAcceptsChatCapabilityUpdate(t *testing.T) {
+	repo := &accountRepoStubForBulkUpdate{getByIDsAccounts: []*Account{{
+		ID:       1,
+		Platform: PlatformOpenAI,
+		Type:     AccountTypeAPIKey,
+		Credentials: map[string]any{
+			openAIEndpointCapabilitiesCredentialKey: []any{"embeddings"},
+		},
+	}}}
+	svc := &adminServiceImpl{accountRepo: repo}
+
+	_, err := svc.BulkUpdateAccounts(context.Background(), &BulkUpdateAccountsInput{
+		AccountIDs: []int64{1},
+		Credentials: map[string]any{
+			openAIEndpointCapabilitiesCredentialKey: []any{"chat_completions"},
+		},
+		Extra: map[string]any{"openai_responses_mode": "preserve_inbound"},
+	})
+
+	require.NoError(t, err)
+	require.Equal(t, 1, repo.bulkUpdateCalls)
+	require.Equal(t, "preserve_inbound", repo.lastBulkUpdate.Extra["openai_responses_mode"])
 }
 
 func TestAdminServiceBulkUpdateAccounts_ReportsLongContextShadowInheritance(t *testing.T) {

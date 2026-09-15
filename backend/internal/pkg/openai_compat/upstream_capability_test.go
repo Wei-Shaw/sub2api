@@ -18,10 +18,12 @@ func TestResolveResponsesSupport(t *testing.T) {
 		{"value nil", map[string]any{ExtraKeyResponsesSupported: nil}, ResponsesSupportUnknown},
 		{"force responses", map[string]any{ExtraKeyResponsesMode: string(ResponsesSupportModeForceResponses)}, ResponsesSupportYes},
 		{"force chat completions", map[string]any{ExtraKeyResponsesMode: string(ResponsesSupportModeForceChatCompletions)}, ResponsesSupportNo},
+		{"preserve inbound", map[string]any{ExtraKeyResponsesMode: string(ResponsesSupportModePreserveInbound)}, ResponsesSupportYes},
 		{"auto follows probe", map[string]any{ExtraKeyResponsesMode: string(ResponsesSupportModeAuto), ExtraKeyResponsesSupported: false}, ResponsesSupportNo},
 		{"invalid mode follows probe", map[string]any{ExtraKeyResponsesMode: "bogus", ExtraKeyResponsesSupported: true}, ResponsesSupportYes},
 		{"force responses overrides probe false", map[string]any{ExtraKeyResponsesMode: string(ResponsesSupportModeForceResponses), ExtraKeyResponsesSupported: false}, ResponsesSupportYes},
 		{"force chat completions overrides probe true", map[string]any{ExtraKeyResponsesMode: string(ResponsesSupportModeForceChatCompletions), ExtraKeyResponsesSupported: true}, ResponsesSupportNo},
+		{"preserve inbound overrides unsupported probe", map[string]any{ExtraKeyResponsesMode: string(ResponsesSupportModePreserveInbound), ExtraKeyResponsesSupported: false}, ResponsesSupportYes},
 	}
 
 	for _, tc := range tests {
@@ -52,6 +54,7 @@ func TestShouldUseResponsesAPI(t *testing.T) {
 		// 手动覆盖：覆盖自动探测结果
 		{"force responses overrides unsupported probe", map[string]any{ExtraKeyResponsesMode: string(ResponsesSupportModeForceResponses), ExtraKeyResponsesSupported: false}, true},
 		{"force chat completions overrides supported probe", map[string]any{ExtraKeyResponsesMode: string(ResponsesSupportModeForceChatCompletions), ExtraKeyResponsesSupported: true}, false},
+		{"preserve inbound keeps responses available", map[string]any{ExtraKeyResponsesMode: string(ResponsesSupportModePreserveInbound), ExtraKeyResponsesSupported: false}, true},
 	}
 
 	for _, tc := range tests {
@@ -74,6 +77,7 @@ func TestNormalizeResponsesSupportMode(t *testing.T) {
 		{"auto", "auto", ResponsesSupportModeAuto},
 		{"force responses", "force_responses", ResponsesSupportModeForceResponses},
 		{"force chat completions", "force_chat_completions", ResponsesSupportModeForceChatCompletions},
+		{"preserve inbound", "preserve_inbound", ResponsesSupportModePreserveInbound},
 		{"invalid", "enabled", ResponsesSupportModeAuto},
 	}
 
@@ -82,6 +86,28 @@ func TestNormalizeResponsesSupportMode(t *testing.T) {
 			got := NormalizeResponsesSupportMode(tc.mode)
 			if got != tc.want {
 				t.Errorf("NormalizeResponsesSupportMode(%q) = %q, want %q", tc.mode, got, tc.want)
+			}
+		})
+	}
+}
+
+func TestShouldPreserveInboundProtocol(t *testing.T) {
+	tests := []struct {
+		name  string
+		extra map[string]any
+		want  bool
+	}{
+		{"nil", nil, false},
+		{"auto", map[string]any{ExtraKeyResponsesMode: string(ResponsesSupportModeAuto)}, false},
+		{"force responses", map[string]any{ExtraKeyResponsesMode: string(ResponsesSupportModeForceResponses)}, false},
+		{"preserve inbound", map[string]any{ExtraKeyResponsesMode: string(ResponsesSupportModePreserveInbound)}, true},
+		{"wrong type", map[string]any{ExtraKeyResponsesMode: true}, false},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := ShouldPreserveInboundProtocol(tc.extra); got != tc.want {
+				t.Errorf("ShouldPreserveInboundProtocol(%v) = %v, want %v", tc.extra, got, tc.want)
 			}
 		})
 	}

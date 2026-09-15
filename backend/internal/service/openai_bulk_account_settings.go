@@ -13,7 +13,7 @@ type bulkOpenAISettings struct {
 	endpointCapabilities    bool
 	responsesMode           bool
 	capabilitiesIncludeChat bool
-	forcedResponsesMode     bool
+	explicitTextRouteMode   bool
 }
 
 func (s bulkOpenAISettings) any() bool {
@@ -45,19 +45,19 @@ func normalizeBulkOpenAISettings(input *BulkUpdateAccountsInput) (bulkOpenAISett
 
 	if raw, exists := input.Extra[openai_compat.ExtraKeyResponsesMode]; exists {
 		settings.responsesMode = true
-		mode, forced, err := normalizeBulkOpenAIResponsesMode(raw)
+		mode, explicit, err := normalizeBulkOpenAIResponsesMode(raw)
 		if err != nil {
 			return settings, err
 		}
-		settings.forcedResponsesMode = forced
+		settings.explicitTextRouteMode = explicit
 		input.Extra[openai_compat.ExtraKeyResponsesMode] = mode
 	}
 
 	if settings.endpointCapabilities && !settings.capabilitiesIncludeChat {
-		if settings.forcedResponsesMode {
+		if settings.explicitTextRouteMode {
 			return settings, infraerrors.BadRequest(
 				"OPENAI_RESPONSES_MODE_INVALID",
-				"a forced Responses route requires the chat_completions endpoint capability",
+				"an explicit OpenAI text route requires the chat_completions endpoint capability",
 			)
 		}
 		if input.Extra == nil {
@@ -133,7 +133,8 @@ func normalizeBulkOpenAIResponsesMode(raw any) (any, bool, error) {
 	case openai_compat.ResponsesSupportModeAuto:
 		return nil, false, nil
 	case openai_compat.ResponsesSupportModeForceResponses,
-		openai_compat.ResponsesSupportModeForceChatCompletions:
+		openai_compat.ResponsesSupportModeForceChatCompletions,
+		openai_compat.ResponsesSupportModePreserveInbound:
 		return mode, true, nil
 	default:
 		return nil, false, invalidBulkOpenAIResponsesMode()
@@ -143,7 +144,7 @@ func normalizeBulkOpenAIResponsesMode(raw any) (any, bool, error) {
 func invalidBulkOpenAIResponsesMode() error {
 	return infraerrors.BadRequest(
 		"OPENAI_RESPONSES_MODE_INVALID",
-		"openai_responses_mode must be auto, force_responses, force_chat_completions, or null",
+		"openai_responses_mode must be auto, force_responses, force_chat_completions, preserve_inbound, or null",
 	)
 }
 
@@ -178,10 +179,10 @@ func validateBulkOpenAISettingsTargets(
 			}
 		}
 
-		if settings.forcedResponsesMode && !settings.capabilitiesIncludeChat &&
+		if settings.explicitTextRouteMode && !settings.capabilitiesIncludeChat &&
 			!settings.endpointCapabilities &&
 			!account.SupportsOpenAIEndpointCapability(OpenAIEndpointCapabilityChatCompletions) {
-			return 0, invalidBulkOpenAITarget(accountID, "a forced Responses route requires the chat_completions endpoint capability")
+			return 0, invalidBulkOpenAITarget(accountID, "an explicit OpenAI text route requires the chat_completions endpoint capability")
 		}
 	}
 
