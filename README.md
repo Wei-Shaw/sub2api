@@ -193,6 +193,7 @@ Sub2API is an AI API gateway platform designed to distribute and manage API quot
 - **Built-in Payment System** - Supports EasyPay, Alipay, WeChat Pay, and Stripe for user self-service top-up, no separate payment service needed ([Configuration Guide](docs/PAYMENT.md))
 - **Admin Dashboard** - Web interface for monitoring and management
 - **Composite Groups** - Admin routing layer that resolves requested models to concrete providers for multi-provider groups ([Operator Guide](docs/COMPOSITE_GROUPS.md))
+- **Adobe Firefly Images** - OpenAI-compatible image generation and editing from Firefly Web cookie accounts, with optional relay failover ([Adobe Firefly Support](#adobe-firefly-support))
 - **External System Integration** - Embed external systems (e.g. ticketing) via iframe to extend the admin dashboard
 
 ## Ecosystem
@@ -740,7 +741,7 @@ Simple Mode is designed for individual developers or internal teams who want qui
 
 ## Asynchronous Image Tasks
 
-Long-running OpenAI/Grok image generation and editing can be submitted through `/v1/images/generations/async` or `/v1/images/edits/async`, then polled at `/v1/images/tasks/{task_id}` without holding a CDN connection open. See [Asynchronous Image Tasks](docs/ASYNC_IMAGE_TASKS.md) for request and response examples.
+Long-running OpenAI/Grok image generation and editing can be submitted through `/v1/images/generations/async` or `/v1/images/edits/async`, then polled at `/v1/images/tasks/{task_id}` without holding a CDN connection open. Adobe Firefly groups are synchronous-only on `/v1/images/generations` and `/v1/images/edits`. See [Asynchronous Image Tasks](docs/ASYNC_IMAGE_TASKS.md) for request and response examples.
 
 ---
 
@@ -855,6 +856,98 @@ export ANTHROPIC_AUTH_TOKEN="sk-xxx"
 Antigravity accounts support optional **hybrid scheduling**. When enabled, the general endpoints `/v1/messages` and `/v1beta/` will also route requests to Antigravity accounts.
 
 > **⚠️ Warning**: Anthropic Claude and Antigravity Claude **cannot be mixed within the same conversation context**. Use groups to isolate them properly.
+
+---
+
+## Adobe Firefly Support
+
+Sub2API can serve OpenAI-compatible image generation from Adobe Firefly Web subscription accounts (browser cookies), with optional OpenAI-shaped relay accounts in the same Adobe group for failover.
+
+Direct Firefly calls use **Firefly Web** (`firefly.adobe.com` / `clio-playground-web`), not Adobe Express. Official Adobe Firefly Services API keys are not supported.
+
+### Supported Scope
+
+- Platform name: `adobe`
+- Account types: Firefly cookie accounts (shown as OAuth in the admin UI) and **API Key + Base URL** relay accounts
+- Public image targets: `/v1/images/generations` and `/v1/images/edits`, plus the existing no-prefix aliases
+- The API key's group must allow image generation (Adobe groups default this to on)
+- One image per request (`n` omitted or `1`; `n>1` is rejected)
+- `/v1/models` lists public external names only; do not send internal `firefly-*` family IDs
+- Out of scope for this provider: the video gateway, asynchronous image tasks (`/v1/images/*/async`), official Firefly Services API keys, and non-image protocols such as chat or TTS
+
+### Public Models
+
+| Public model | Notes |
+|--------------|--------|
+| `gpt-image-2` | Firefly GPT Image 2 |
+| `gpt-image-1.5` | Firefly GPT Image 1.5 |
+| `gpt-image-2.5-flare` | Firefly GPT Image 2.5 Flare |
+| `gpt-image-2.5-sunburst` | Firefly GPT Image 2.5 Sunburst (upstream version name is `prism`) |
+| `nano-banana`, `nano-banana-pro`, `nano-banana2` | Gemini Nano Banana family on Firefly |
+| `flux-pro`, `flux-ultra` | Firefly FLUX |
+| `imagen-4`, `imagen-4-fast` | Firefly Imagen 4 |
+| `gpt-4o-image` | Firefly GPT-4o Image |
+| `runway-gen4-image` | Firefly Runway Gen-4 Image |
+
+Legacy aliases `gpt-image`, `gpt-image-1`, and `gpt-image-1-mini` map to `gpt-image-2` but are not listed by `/v1/models`.
+
+`gpt-image-*` names are shared with official OpenAI image models. They reach Firefly only when the API key is bound to an **Adobe** group; an OpenAI group still talks to OpenAI. Composite groups do **not** auto-detect `gpt-image-*` (the name is ambiguous) — add an explicit composite route. `nano-banana*`, `flux-*`, `imagen-*`, and `runway-gen4*` can be auto-detected as Adobe.
+
+### Cookie Account Setup
+
+1. In the admin dashboard, create an **Adobe** group and add a Firefly cookie account.
+2. Sign in to Adobe in a browser, open `https://firefly.adobe.com/generate/image`, and let the page settle.
+3. In DevTools → Network, find a request to `adobeid-na1.services.adobe.com` `/ims/check/v6/token` and copy that request's **Cookie header**. It must include `ims_sid`.
+4. Copying `document.cookie` from `firefly.adobe.com` alone is **not** enough. A `Cookie:` prefix or a JSON cookie array is also accepted.
+5. The short-lived access token is optional; leave it empty to exchange the cookie on first refresh. Sub2API keeps refreshing the token from the cookie.
+6. Attach the account to the group, then create a Sub2API API key assigned to that group.
+
+When the cookie is no longer valid, re-export it from the browser. The refresher marks the account as error instead of looping forever.
+
+### Relay Accounts (Optional)
+
+The same Adobe group can also hold **API Key + Base URL** relay accounts. Those accounts do not call Firefly; they forward the OpenAI Images payload to `{base_url}` with `Authorization: Bearer`, keeping public model names such as `gpt-image-2` (they are not rewritten to internal `firefly-*` IDs).
+
+Typical uses:
+
+- Failover when a cookie account is out of credits, temporarily unavailable, or not entitled to the requested model/quality
+- `gpt-image-*` edits that include a **mask** prefer relay accounts (Firefly cookie accounts do not implement official OpenAI inpaint-mask semantics)
+- After a Firefly content-safety rejection (for example `image_unsafe`), Sub2API will not try another cookie account, but it may still try a relay account
+
+An Adobe API-key account without `base_url` is not a relay account.
+
+### `size` / `quality` / `background`
+
+| Family | Client `size` | Behavior |
+|--------|---------------|----------|
+| `gpt-image-2` / `gpt-image-2.5-*` | `WxH`, empty, or `auto` | Forward pixels as-is; omit size when empty/`auto` so Firefly auto-chooses |
+| `gpt-image-1.5` | `WxH` | Snap to `1024x1024` / `1536x1024` / `1024x1536` |
+| `nano-banana*` | `WxH`, empty, or `auto` | Map the long edge to a 1K/2K/4K square tier and the nearest `aspectRatio`; empty/`auto` uses Firefly's default 1K square. `nano-banana2` also accepts `1:8`, `1:4`, `4:1`, and `8:1` |
+| `flux-*` / `imagen-4*` / `gpt-4o-image` / `runway-gen4-image` | `WxH` | Snap to that family's allowed size enum |
+
+`quality` maps to Firefly `detailLevel`: `low` (default) → 1, `medium` → 3, `high` → 5, `xhigh`/`max` → 5 on v2/1.5 or 7 on 2.5.
+
+The gpt-image family accepts OpenAI `background` values: `transparent`, `opaque`, and `auto`.
+
+### Billing, Quota, And Failover
+
+- Billing is per image on `1K` / `2K` / `4K` tiers derived from the output long edge. Group image prices win when set; otherwise Adobe channel fallback prices are used.
+- Cookie accounts surface Firefly Credits on the admin dashboard. Exhausted accounts are temporarily removed from scheduling (about 30 minutes by default) so the next request can use another account.
+- A missing model or quality entitlement fails over to another account; it is not treated as a dead cookie.
+- Upstream `429` / `5xx` / network errors are retryable across accounts.
+
+### Example
+
+```bash
+curl https://your-sub2api.example.com/v1/images/generations \
+  -H "Authorization: Bearer sk-your-sub2api-key" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "gpt-image-2",
+    "prompt": "a red panda in a bamboo forest",
+    "size": "1024x1024"
+  }'
+```
 
 ---
 
