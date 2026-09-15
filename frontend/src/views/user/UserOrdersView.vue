@@ -6,6 +6,9 @@
         <div class="flex flex-wrap items-center gap-3">
           <Select v-model="currentFilter" :options="statusFilters" class="w-36" @change="fetchOrders" />
           <div class="flex flex-1 items-center justify-end gap-2">
+            <button type="button" class="btn btn-primary" :disabled="loading" @click="applyOrderFilters">
+              {{ t('common.search') }}
+            </button>
             <button @click="fetchOrders" :disabled="loading" class="btn btn-secondary" :title="t('common.refresh')">
               <Icon name="refresh" size="md" :class="loading ? 'animate-spin' : ''" />
             </button>
@@ -133,6 +136,8 @@ async function fetchOrders() {
     loading.value = false
   }
 }
+
+function applyOrderFilters() { pagination.page = 1; fetchOrders() }
 
 function handlePageChange(page: number) { pagination.page = page; fetchOrders() }
 function handlePageSizeChange(size: number) { pagination.page_size = size; pagination.page = 1; fetchOrders() }
