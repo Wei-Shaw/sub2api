@@ -438,6 +438,13 @@ func (h *GatewayHandler) GeminiV1BetaModels(c *gin.Context) {
 
 	fs := NewFailoverState(h.maxAccountSwitchesGemini, hasBoundSession)
 
+	// 登记粘性身份模型：成功偏好键用渠道映射前的 reqModel，而选号/出站继续用映射
+	// 后的 modelName（下面的 Select 参数不变）。两个客户端别名映射到同一上游模型
+	// 时，各自保留各自的成功偏好，互不覆盖。
+	c.Request = c.Request.WithContext(
+		service.WithGatewayStickyIdentityModel(c.Request.Context(), reqModel),
+	)
+
 	// 单账号分组提前设置 SingleAccountRetry 标记，让 Service 层首次 503 就不设模型限流标记。
 	// 避免单账号分组收到 503 (MODEL_CAPACITY_EXHAUSTED) 时设 29s 限流，导致后续请求连续快速失败。
 	if h.gatewayService.IsSingleAntigravityAccountGroup(c.Request.Context(), apiKey.GroupID) {
@@ -475,6 +482,9 @@ func (h *GatewayHandler) GeminiV1BetaModels(c *gin.Context) {
 			}
 		}
 		account := selection.Account
+		// 把调度器在有效分组上装配的成功偏好状态带到下一轮选号：整轮 failover
+		// 共用同一份 CAS expected，晚到覆盖保护才不会被中途重读削弱。
+		c.Request = c.Request.WithContext(service.ContextWithSelectionStickySuccess(c.Request.Context(), selection))
 		setOpsSelectedAccount(c, account.ID, account.Platform)
 
 		// 检测账号切换：如果粘性会话绑定的账号与当前选择的账号不同，清除 thoughtSignature
@@ -569,7 +579,7 @@ func (h *GatewayHandler) GeminiV1BetaModels(c *gin.Context) {
 		// 等待路径保持既有 eager 绑定（无门时 helper 直接绑定）；调度器已抢槽
 		// 的直达路径无门时由选号内部绑定，这里只在门下补准入后绑定。
 		if selection.ProfitGateActive() || !selection.Acquired {
-			if err := h.gatewayService.BindStickySessionAfterProfitAdmission(admissionCtx, apiKey.GroupID, sessionKey, account.ID); err != nil {
+			if err := h.gatewayService.BindStickySessionAfterProfitAdmission(admissionCtx, stickyGroupIDForSelection(selection, apiKey.GroupID), sessionKey, account.ID); err != nil {
 				reqLog.Warn("gemini.bind_sticky_session_after_profit_admission_failed", zap.Int64("account_id", account.ID), zap.Error(err))
 			}
 		}
@@ -620,6 +630,9 @@ func (h *GatewayHandler) GeminiV1BetaModels(c *gin.Context) {
 			reqLog.Error("gemini.forward_failed", zap.Int64("account_id", account.ID), zap.Error(err))
 			return
 		}
+
+		// 成功终态：门下把成功偏好提交/续期到真正成功的账号（无门为空操作）。
+		h.gatewayService.CommitGatewayStickySuccess(c.Request.Context(), selection, account, result, err)
 
 		// 捕获请求信息（用于异步记录，避免在 goroutine 中访问 gin.Context）
 		userAgent := c.GetHeader("User-Agent")
