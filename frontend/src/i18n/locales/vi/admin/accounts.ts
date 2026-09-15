@@ -491,10 +491,13 @@ export default mergeLocaleMessages(
       wsModeOff: 'Tắt (off)',
       wsModeCtxPool: 'Pool ngữ cảnh (ctx_pool)',
       wsModePassthrough: 'Passthrough',
+      wsModeHttpBridge: 'Cầu nối HTTP (http_bridge)',
       wsModeShared: 'Chia sẻ (shared)',
       wsModeDedicated: 'Riêng biệt (dedicated)',
       wsModeConcurrencyHint: 'Sau khi bật WS mode, độ đồng thời của tài khoản này sẽ được dùng làm giới hạn trên của pool kết nối WS của chính tài khoản đó.',
-      wsModePassthroughHint: 'Chế độ passthrough không dùng pool kết nối WS.',
+      wsModeCtxPoolHint: 'Gateway lấy và tái sử dụng kết nối WS upstream từ một pool; giới hạn pool do cấu hình gateway quyết định.',
+      wsModePassthroughHint: 'Gateway mở một kết nối WS upstream riêng cho mỗi phiên client, không dùng pool kết nối.',
+      wsModeHttpBridgeHint: 'Gateway chuyển request WS của client thành request HTTP upstream rồi chuyển response streaming SSE ngược lại thành message WS.',
       oauthResponsesWebsocketsV2: 'OAuth WebSocket Mode',
       oauthResponsesWebsocketsV2Desc:
         'Chỉ áp dụng cho OpenAI OAuth. Sau khi bật, tài khoản này mới được phép dùng giao thức OpenAI WebSocket Mode.',
@@ -1379,6 +1382,7 @@ export default mergeLocaleMessages(
       kimi: 'kimi',
       zhipu: 'Zhipu GLM',
       deepseek: 'DeepSeek',
+      opencode_go: 'OpenCode',
     },
     cnProviders: {
       accountMode: {
@@ -1420,12 +1424,30 @@ export default mergeLocaleMessages(
       balance: 'Số dư --',
       window5h: 'cửa sổ 5 giờ',
       windowWeekly: 'Khoảng thời gian hàng tuần',
+      windowMonthly: '30 ngày',
       probe: 'Truy vấn',
       probeTooltip: 'Truy vấn endpoint hạn ngạch của nhà cung cấp về mức sử dụng khung thời gian luân phiên 5 giờ/hàng tuần',
       balanceProbeTooltip: 'Truy vấn endpoint số dư của nhà cung cấp để biết số dư tài khoản',
       balanceLow: 'Số dư không đủ',
       noBalanceEndpoint: 'Nền tảng này không có endpoint truy vấn số dư',
       resetSoon: 'sắp đặt lại',
+    },
+    opencodeGo: {
+      accountMode: {
+        zen: 'Zen',
+        zenDesc: 'Cổng thanh toán theo mức sử dụng, trừ credit tài khoản và tính phí theo token.',
+        go: 'GO',
+        goDesc: 'Cổng thuê bao, giới hạn theo cửa sổ sử dụng 5 giờ / tuần / tháng.',
+      },
+      protocolRules: {
+        title: 'Định tuyến giao thức model',
+        hint: 'Ở chế độ thích ứng, mỗi model được gửi tới giao thức upstream gốc tương ứng. Dùng ID chính xác hoặc wildcard * ở cuối; rule khớp đầu tiên được ưu tiên. Model không khớp dùng Chat Completions.',
+        patternPlaceholder: 'grok-* hoặc deepseek-v4-flash',
+        add: 'Thêm rule',
+        remove: 'Xóa rule',
+        restoreDefaults: 'Khôi phục mặc định',
+        fallback: 'Model không khớp → Chat Completions (/v1/chat/completions)',
+      },
     },
     types: {
       grokOauth: 'Grok OAuth',

@@ -1153,6 +1153,7 @@ export default mergeLocaleMessages(
       scopeOAuth: 'Chỉ OAuth',
       serviceTier: 'Khớp service_tier',
       tierAll: 'Tất cả tầng',
+      tierMissing: 'Không gửi tier',
       tierFlex: 'flex',
       tierPriority: 'priority (fast)',
       title: 'Chính sách OpenAI Fast/Flex',
@@ -1324,6 +1325,21 @@ export default mergeLocaleMessages(
   {
     settings: {
     features: {
+      siteBillingMode: {
+        title: 'Chế độ thanh toán site',
+        description: 'Kiểm soát các lựa chọn mua mà người dùng nhìn thấy. Mặc định là “Nạp tiền và Đăng ký”.',
+        label: 'Lựa chọn mua',
+        options: {
+          rechargeAndSubscription: 'Nạp tiền và Đăng ký',
+          rechargeOnly: 'Chỉ nạp tiền',
+          subscriptionOnly: 'Chỉ đăng ký',
+        },
+        hints: {
+          rechargeAndSubscription: 'Người dùng có thể nạp số dư và mua gói đăng ký.',
+          rechargeOnly: 'Ẩn các lối vào liên quan đến đăng ký; các giao dịch đăng ký hiện có và subscription từ mã đổi không bị ảnh hưởng.',
+          subscriptionOnly: 'Trang mua chỉ cung cấp gói đăng ký và các đơn nạp số dư sẽ bị từ chối; mã đổi, hoa hồng affiliate và các khoản cộng số dư khác không bị ảnh hưởng.',
+        },
+      },
       channelMonitor: {
         mode: 'Chế độ giám sát',
         modeHint: 'Mặc định là V1 (đầu dò hoạt động). Chỉ chuyển sang V2 khi bạn muốn tổng hợp thụ động; mỗi lần chỉ có một triển khai có thể hoạt động.',

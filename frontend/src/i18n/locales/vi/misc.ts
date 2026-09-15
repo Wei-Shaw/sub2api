@@ -46,6 +46,8 @@ version: {
 purchase: {
   title: 'Nạp tiền / Đăng ký',
   description: 'Hoàn tất nạp tiền / đăng ký qua trang nhúng',
+  rechargeDescription: 'Nạp số dư qua trang nhúng',
+  subscriptionDescription: 'Mua gói đăng ký qua trang nhúng',
   openInNewTab: 'Mở ở tab mới',
   notEnabledTitle: 'Tính năng này chưa được bật',
   notEnabledDesc: 'Quản trị viên hiện chưa bật cổng nạp tiền / đăng ký, vui lòng liên hệ quản trị viên.',
@@ -399,6 +401,7 @@ payment: {
   tabSubscribe: 'Đăng ký',
   noPlans: 'Chưa có gói đăng ký nào khả dụng',
   notAvailable: 'Tính năng nạp tiền hiện chưa được mở',
+  billingUnavailable: 'Hiện chưa có nạp tiền hoặc gói đăng ký nào khả dụng. Vui lòng liên hệ quản trị viên.',
   confirmSubscription: 'Xác nhận đăng ký',
   confirmCancel: 'Bạn có chắc muốn hủy đơn hàng này không?',
   amountTooLow: 'Số tiền tối thiểu là {min}',

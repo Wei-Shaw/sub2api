@@ -335,7 +335,8 @@ monitorCommon: {
   providers: {
     openai: 'OpenAI',
     anthropic: 'Anthropic',
-    gemini: 'Gemini'
+    gemini: 'Gemini',
+    opencode_go: 'OpenCode'
   },
   extraModelsHeader: 'Mô hình bổ sung',
   extraModelsEmpty: 'Không có mô hình bổ sung',
@@ -523,6 +524,7 @@ redeem: {
   days: 'ngày',
   codeRedeemSuccess: 'Đổi mã thành công!',
   failedToRedeem: 'Đổi mã thất bại, vui lòng kiểm tra mã và thử lại.',
+  userRefreshFailed: 'Đổi mã thành công, nhưng làm mới thông tin tài khoản thất bại.',
   subscriptionRefreshFailed: 'Đổi mã thành công, nhưng làm mới trạng thái đăng ký thất bại.',
   pleaseEnterCode: 'Vui lòng nhập mã đổi',
   balanceAddedAffiliate: 'Số dư đã cộng (Chuyển affiliate)',
@@ -939,6 +941,7 @@ const additionsA = {
       "7dSonnet": 'Sonnet 7 ngày',
       "7dFable": 'Fable 7 ngày',
       weekly: 'hàng tuần',
+      monthly: 'Hàng tháng',
       daily: 'Hằng ngày',
       "30d": '30 ngày',
       total: 'Tổng cộng',
