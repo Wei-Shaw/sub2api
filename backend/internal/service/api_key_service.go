@@ -29,6 +29,10 @@ var (
 	ErrAPIKeyExists         = infraerrors.Conflict("API_KEY_EXISTS", "api key already exists")
 	ErrAPIKeyTooShort       = infraerrors.BadRequest("API_KEY_TOO_SHORT", "api key must be at least 16 characters")
 	ErrAPIKeyInvalidChars   = infraerrors.BadRequest("API_KEY_INVALID_CHARS", "api key can only contain letters, numbers, underscores, and hyphens")
+	ErrAPIKeyInvalidPrefix  = infraerrors.BadRequest("API_KEY_INVALID_PREFIX", "api key must use the configured prefix")
+	ErrAPIKeyExpiryConflict = infraerrors.BadRequest("API_KEY_EXPIRY_CONFLICT", "expires_in_days and expires_at cannot both be set")
+	ErrAPIKeyInvalidExpiry  = infraerrors.BadRequest("API_KEY_INVALID_EXPIRY", "expires_in_days must be greater than zero")
+	ErrAPIKeyInvalidLimit   = infraerrors.BadRequest("API_KEY_INVALID_LIMIT", "quota and rate limits must be non-negative")
 	ErrAPIKeyRateLimited    = infraerrors.TooManyRequests("API_KEY_RATE_LIMITED", "too many failed attempts, please try again later")
 	ErrAPIKeyAuthOverloaded = infraerrors.ServiceUnavailable("API_KEY_AUTH_OVERLOADED", "api key authentication is temporarily overloaded")
 	ErrInvalidIPPattern     = infraerrors.BadRequest("INVALID_IP_PATTERN", "invalid IP or CIDR pattern")
@@ -216,8 +220,9 @@ type CreateAPIKeyRequest struct {
 	IPBlacklist []string `json:"ip_blacklist"` // IP 黑名单
 
 	// Quota fields
-	Quota         float64 `json:"quota"`           // Quota limit in USD (0 = unlimited)
-	ExpiresInDays *int    `json:"expires_in_days"` // Days until expiry (nil = never expires)
+	Quota         float64    `json:"quota"`           // Quota limit in USD (0 = unlimited)
+	ExpiresInDays *int       `json:"expires_in_days"` // Days until expiry (nil = never expires)
+	ExpiresAt     *time.Time `json:"expires_at"`      // Explicit expiration time (nil = never expires)
 
 	// Rate limit fields (0 = unlimited)
 	RateLimit5h float64 `json:"rate_limit_5h"`
@@ -229,9 +234,11 @@ type CreateAPIKeyRequest struct {
 type UpdateAPIKeyRequest struct {
 	Name        *string   `json:"name"`
 	GroupID     *int64    `json:"group_id"`
+	CustomKey   *string   `json:"custom_key"`
 	Status      *string   `json:"status"`
 	IPWhitelist *[]string `json:"ip_whitelist"` // IP 白名单（nil 不修改，空数组清空）
 	IPBlacklist *[]string `json:"ip_blacklist"` // IP 黑名单（nil 不修改，空数组清空）
+	ClearGroup  bool      `json:"-"`            // Clear group binding (internal use)
 
 	// Quota fields
 	Quota           *float64   `json:"quota"`       // Quota limit in USD (nil = no change, 0 = unlimited)
@@ -416,6 +423,20 @@ func (s *APIKeyService) ValidateCustomKey(key string) error {
 	return nil
 }
 
+// ValidateCustomKeyPrefix verifies that a custom key stays in the configured
+// user API key namespace. It is separate from ValidateCustomKey to preserve
+// compatibility for existing user-created keys while allowing stricter admin APIs.
+func (s *APIKeyService) ValidateCustomKeyPrefix(key string) error {
+	prefix := "sk-"
+	if s != nil && s.cfg != nil && s.cfg.Default.APIKeyPrefix != "" {
+		prefix = s.cfg.Default.APIKeyPrefix
+	}
+	if !strings.HasPrefix(key, prefix) {
+		return ErrAPIKeyInvalidPrefix
+	}
+	return nil
+}
+
 // checkAPIKeyRateLimit 检查用户创建自定义Key的错误次数是否超限
 func (s *APIKeyService) checkAPIKeyRateLimit(ctx context.Context, userID int64) error {
 	if s.cache == nil {
@@ -547,7 +568,9 @@ func (s *APIKeyService) Create(ctx context.Context, userID int64, req CreateAPIK
 	}
 
 	// Set expiration time if specified
-	if req.ExpiresInDays != nil && *req.ExpiresInDays > 0 {
+	if req.ExpiresAt != nil {
+		apiKey.ExpiresAt = req.ExpiresAt
+	} else if req.ExpiresInDays != nil {
 		expiresAt := time.Now().AddDate(0, 0, *req.ExpiresInDays)
 		apiKey.ExpiresAt = &expiresAt
 	}
@@ -769,6 +792,7 @@ func (s *APIKeyService) Update(ctx context.Context, id int64, userID int64, req 
 	if apiKey.UserID != userID {
 		return nil, ErrInsufficientPerms
 	}
+	oldKey := apiKey.Key
 
 	// 验证 IP 白名单格式
 	if req.IPWhitelist != nil && len(*req.IPWhitelist) > 0 {
@@ -796,8 +820,24 @@ func (s *APIKeyService) Update(ctx context.Context, id int64, userID int64, req 
 		apiKey.Name = html.EscapeString(*req.Name)
 		fields.Name = true
 	}
+	if req.CustomKey != nil && *req.CustomKey != apiKey.Key {
+		if err := s.ValidateCustomKey(*req.CustomKey); err != nil {
+			return nil, err
+		}
+		exists, err := s.apiKeyRepo.ExistsByKey(ctx, *req.CustomKey)
+		if err != nil {
+			return nil, fmt.Errorf("check key exists: %w", err)
+		}
+		if exists {
+			return nil, ErrAPIKeyExists
+		}
+		apiKey.Key = *req.CustomKey
+	}
 
-	if req.GroupID != nil {
+	if req.ClearGroup {
+		apiKey.GroupID = nil
+		apiKey.Group = nil
+	} else if req.GroupID != nil {
 		// 验证分组权限
 		user, err := s.userRepo.GetByID(ctx, userID)
 		if err != nil {
@@ -902,6 +942,9 @@ func (s *APIKeyService) Update(ctx context.Context, id int64, userID int64, req 
 		return nil, fmt.Errorf("update api key: %w", err)
 	}
 
+	if oldKey != apiKey.Key {
+		s.InvalidateAuthCacheByKey(ctx, oldKey)
+	}
 	s.InvalidateAuthCacheByKey(ctx, apiKey.Key)
 	s.compileAPIKeyIPRules(apiKey)
 
