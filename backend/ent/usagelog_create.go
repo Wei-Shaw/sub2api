@@ -365,6 +365,26 @@ func (_c *UsageLogCreate) SetNillableActualCost(v *float64) *UsageLogCreate {
 	return _c
 }
 
+// SetAPIReferenceCost sets the "api_reference_cost" field.
+func (_c *UsageLogCreate) SetAPIReferenceCost(v float64) *UsageLogCreate {
+	_c.mutation.SetAPIReferenceCost(v)
+	return _c
+}
+
+// SetNillableAPIReferenceCost sets the "api_reference_cost" field if the given value is not nil.
+func (_c *UsageLogCreate) SetNillableAPIReferenceCost(v *float64) *UsageLogCreate {
+	if v != nil {
+		_c.SetAPIReferenceCost(*v)
+	}
+	return _c
+}
+
+// SetAPIReferencePricing sets the "api_reference_pricing" field.
+func (_c *UsageLogCreate) SetAPIReferencePricing(v map[string]interface{}) *UsageLogCreate {
+	_c.mutation.SetAPIReferencePricing(v)
+	return _c
+}
+
 // SetRateMultiplier sets the "rate_multiplier" field.
 func (_c *UsageLogCreate) SetRateMultiplier(v float64) *UsageLogCreate {
 	_c.mutation.SetRateMultiplier(v)
@@ -1055,6 +1075,14 @@ func (_c *UsageLogCreate) createSpec() (*UsageLog, *sqlgraph.CreateSpec) {
 		_spec.SetField(usagelog.FieldActualCost, field.TypeFloat64, value)
 		_node.ActualCost = value
 	}
+	if value, ok := _c.mutation.APIReferenceCost(); ok {
+		_spec.SetField(usagelog.FieldAPIReferenceCost, field.TypeFloat64, value)
+		_node.APIReferenceCost = &value
+	}
+	if value, ok := _c.mutation.APIReferencePricing(); ok {
+		_spec.SetField(usagelog.FieldAPIReferencePricing, field.TypeJSON, value)
+		_node.APIReferencePricing = value
+	}
 	if value, ok := _c.mutation.RateMultiplier(); ok {
 		_spec.SetField(usagelog.FieldRateMultiplier, field.TypeFloat64, value)
 		_node.RateMultiplier = value
@@ -1731,6 +1759,48 @@ func (u *UsageLogUpsert) UpdateActualCost() *UsageLogUpsert {
 // AddActualCost adds v to the "actual_cost" field.
 func (u *UsageLogUpsert) AddActualCost(v float64) *UsageLogUpsert {
 	u.Add(usagelog.FieldActualCost, v)
+	return u
+}
+
+// SetAPIReferenceCost sets the "api_reference_cost" field.
+func (u *UsageLogUpsert) SetAPIReferenceCost(v float64) *UsageLogUpsert {
+	u.Set(usagelog.FieldAPIReferenceCost, v)
+	return u
+}
+
+// UpdateAPIReferenceCost sets the "api_reference_cost" field to the value that was provided on create.
+func (u *UsageLogUpsert) UpdateAPIReferenceCost() *UsageLogUpsert {
+	u.SetExcluded(usagelog.FieldAPIReferenceCost)
+	return u
+}
+
+// AddAPIReferenceCost adds v to the "api_reference_cost" field.
+func (u *UsageLogUpsert) AddAPIReferenceCost(v float64) *UsageLogUpsert {
+	u.Add(usagelog.FieldAPIReferenceCost, v)
+	return u
+}
+
+// ClearAPIReferenceCost clears the value of the "api_reference_cost" field.
+func (u *UsageLogUpsert) ClearAPIReferenceCost() *UsageLogUpsert {
+	u.SetNull(usagelog.FieldAPIReferenceCost)
+	return u
+}
+
+// SetAPIReferencePricing sets the "api_reference_pricing" field.
+func (u *UsageLogUpsert) SetAPIReferencePricing(v map[string]interface{}) *UsageLogUpsert {
+	u.Set(usagelog.FieldAPIReferencePricing, v)
+	return u
+}
+
+// UpdateAPIReferencePricing sets the "api_reference_pricing" field to the value that was provided on create.
+func (u *UsageLogUpsert) UpdateAPIReferencePricing() *UsageLogUpsert {
+	u.SetExcluded(usagelog.FieldAPIReferencePricing)
+	return u
+}
+
+// ClearAPIReferencePricing clears the value of the "api_reference_pricing" field.
+func (u *UsageLogUpsert) ClearAPIReferencePricing() *UsageLogUpsert {
+	u.SetNull(usagelog.FieldAPIReferencePricing)
 	return u
 }
 
@@ -2663,6 +2733,55 @@ func (u *UsageLogUpsertOne) AddActualCost(v float64) *UsageLogUpsertOne {
 func (u *UsageLogUpsertOne) UpdateActualCost() *UsageLogUpsertOne {
 	return u.Update(func(s *UsageLogUpsert) {
 		s.UpdateActualCost()
+	})
+}
+
+// SetAPIReferenceCost sets the "api_reference_cost" field.
+func (u *UsageLogUpsertOne) SetAPIReferenceCost(v float64) *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.SetAPIReferenceCost(v)
+	})
+}
+
+// AddAPIReferenceCost adds v to the "api_reference_cost" field.
+func (u *UsageLogUpsertOne) AddAPIReferenceCost(v float64) *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.AddAPIReferenceCost(v)
+	})
+}
+
+// UpdateAPIReferenceCost sets the "api_reference_cost" field to the value that was provided on create.
+func (u *UsageLogUpsertOne) UpdateAPIReferenceCost() *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.UpdateAPIReferenceCost()
+	})
+}
+
+// ClearAPIReferenceCost clears the value of the "api_reference_cost" field.
+func (u *UsageLogUpsertOne) ClearAPIReferenceCost() *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.ClearAPIReferenceCost()
+	})
+}
+
+// SetAPIReferencePricing sets the "api_reference_pricing" field.
+func (u *UsageLogUpsertOne) SetAPIReferencePricing(v map[string]interface{}) *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.SetAPIReferencePricing(v)
+	})
+}
+
+// UpdateAPIReferencePricing sets the "api_reference_pricing" field to the value that was provided on create.
+func (u *UsageLogUpsertOne) UpdateAPIReferencePricing() *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.UpdateAPIReferencePricing()
+	})
+}
+
+// ClearAPIReferencePricing clears the value of the "api_reference_pricing" field.
+func (u *UsageLogUpsertOne) ClearAPIReferencePricing() *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.ClearAPIReferencePricing()
 	})
 }
 
@@ -3819,6 +3938,55 @@ func (u *UsageLogUpsertBulk) AddActualCost(v float64) *UsageLogUpsertBulk {
 func (u *UsageLogUpsertBulk) UpdateActualCost() *UsageLogUpsertBulk {
 	return u.Update(func(s *UsageLogUpsert) {
 		s.UpdateActualCost()
+	})
+}
+
+// SetAPIReferenceCost sets the "api_reference_cost" field.
+func (u *UsageLogUpsertBulk) SetAPIReferenceCost(v float64) *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.SetAPIReferenceCost(v)
+	})
+}
+
+// AddAPIReferenceCost adds v to the "api_reference_cost" field.
+func (u *UsageLogUpsertBulk) AddAPIReferenceCost(v float64) *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.AddAPIReferenceCost(v)
+	})
+}
+
+// UpdateAPIReferenceCost sets the "api_reference_cost" field to the value that was provided on create.
+func (u *UsageLogUpsertBulk) UpdateAPIReferenceCost() *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.UpdateAPIReferenceCost()
+	})
+}
+
+// ClearAPIReferenceCost clears the value of the "api_reference_cost" field.
+func (u *UsageLogUpsertBulk) ClearAPIReferenceCost() *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.ClearAPIReferenceCost()
+	})
+}
+
+// SetAPIReferencePricing sets the "api_reference_pricing" field.
+func (u *UsageLogUpsertBulk) SetAPIReferencePricing(v map[string]interface{}) *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.SetAPIReferencePricing(v)
+	})
+}
+
+// UpdateAPIReferencePricing sets the "api_reference_pricing" field to the value that was provided on create.
+func (u *UsageLogUpsertBulk) UpdateAPIReferencePricing() *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.UpdateAPIReferencePricing()
+	})
+}
+
+// ClearAPIReferencePricing clears the value of the "api_reference_pricing" field.
+func (u *UsageLogUpsertBulk) ClearAPIReferencePricing() *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.ClearAPIReferencePricing()
 	})
 }
 
