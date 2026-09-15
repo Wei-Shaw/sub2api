@@ -3,6 +3,7 @@ package repository
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -10,6 +11,11 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/service"
 )
 
+// GetThroughputTrend dispatches between the pre-aggregated and raw implementations.
+//
+// Historically this was raw-only, which meant every request scanned usage_logs and
+// ops_error_logs (including a CROSS JOIN LATERAL over the upstream_errors JSONB) and
+// `mode=auto` had no effect here. The preaggregated path is served by ops_metrics_minute.
 func (r *opsRepository) GetThroughputTrend(ctx context.Context, filter *service.OpsDashboardFilter, bucketSeconds int) (*service.OpsThroughputTrendResponse, error) {
 	if r == nil || r.db == nil {
 		return nil, fmt.Errorf("nil ops repository")
@@ -21,14 +27,36 @@ func (r *opsRepository) GetThroughputTrend(ctx context.Context, filter *service.
 		return nil, fmt.Errorf("start_time/end_time required")
 	}
 
-	if bucketSeconds <= 0 {
-		bucketSeconds = 60
-	}
-	if bucketSeconds != 60 && bucketSeconds != 300 && bucketSeconds != 3600 {
-		// Keep a small, predictable set of supported buckets for now.
-		bucketSeconds = 60
+	bucketSeconds = normalizeOpsBucketSeconds(bucketSeconds)
+
+	mode := filter.QueryMode
+	if !mode.IsValid() {
+		mode = service.OpsQueryModeRaw
 	}
 
+	switch mode {
+	case service.OpsQueryModePreagg:
+		return r.getThroughputTrendPreaggregated(ctx, filter, bucketSeconds)
+	case service.OpsQueryModeAuto:
+		out, err := r.getThroughputTrendPreaggregated(ctx, filter, bucketSeconds)
+		if err != nil && errors.Is(err, service.ErrOpsPreaggregatedNotPopulated) {
+			return r.getThroughputTrendRaw(ctx, filter, bucketSeconds)
+		}
+		return out, err
+	default:
+		return r.getThroughputTrendRaw(ctx, filter, bucketSeconds)
+	}
+}
+
+// normalizeOpsBucketSeconds keeps a small, predictable set of supported buckets.
+func normalizeOpsBucketSeconds(bucketSeconds int) int {
+	if bucketSeconds != 60 && bucketSeconds != 300 && bucketSeconds != 3600 {
+		return 60
+	}
+	return bucketSeconds
+}
+
+func (r *opsRepository) getThroughputTrendRaw(ctx context.Context, filter *service.OpsDashboardFilter, bucketSeconds int) (*service.OpsThroughputTrendResponse, error) {
 	start := filter.StartTime.UTC()
 	end := filter.EndTime.UTC()
 
@@ -425,6 +453,8 @@ func fillOpsThroughputBuckets(start, end time.Time, bucketSeconds int, points []
 	return out
 }
 
+// GetErrorTrend dispatches between the pre-aggregated and raw implementations,
+// mirroring GetThroughputTrend. Previously raw-only.
 func (r *opsRepository) GetErrorTrend(ctx context.Context, filter *service.OpsDashboardFilter, bucketSeconds int) (*service.OpsErrorTrendResponse, error) {
 	if r == nil || r.db == nil {
 		return nil, fmt.Errorf("nil ops repository")
@@ -436,13 +466,28 @@ func (r *opsRepository) GetErrorTrend(ctx context.Context, filter *service.OpsDa
 		return nil, fmt.Errorf("start_time/end_time required")
 	}
 
-	if bucketSeconds <= 0 {
-		bucketSeconds = 60
-	}
-	if bucketSeconds != 60 && bucketSeconds != 300 && bucketSeconds != 3600 {
-		bucketSeconds = 60
+	bucketSeconds = normalizeOpsBucketSeconds(bucketSeconds)
+
+	mode := filter.QueryMode
+	if !mode.IsValid() {
+		mode = service.OpsQueryModeRaw
 	}
 
+	switch mode {
+	case service.OpsQueryModePreagg:
+		return r.getErrorTrendPreaggregated(ctx, filter, bucketSeconds)
+	case service.OpsQueryModeAuto:
+		out, err := r.getErrorTrendPreaggregated(ctx, filter, bucketSeconds)
+		if err != nil && errors.Is(err, service.ErrOpsPreaggregatedNotPopulated) {
+			return r.getErrorTrendRaw(ctx, filter, bucketSeconds)
+		}
+		return out, err
+	default:
+		return r.getErrorTrendRaw(ctx, filter, bucketSeconds)
+	}
+}
+
+func (r *opsRepository) getErrorTrendRaw(ctx context.Context, filter *service.OpsDashboardFilter, bucketSeconds int) (*service.OpsErrorTrendResponse, error) {
 	start := filter.StartTime.UTC()
 	end := filter.EndTime.UTC()
 	where, args, _ := buildErrorWhere(filter, start, end, 1)
