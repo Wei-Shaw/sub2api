@@ -38,6 +38,58 @@ func TestBuildOpenAIRerankURL(t *testing.T) {
 	}
 }
 
+func TestExtractOpenAIRerankUsage(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name       string
+		body       string
+		wantInput  int
+		wantOutput int
+	}{
+		{
+			name:       "openai style top-level usage",
+			body:       `{"id":"rerank-abc","usage":{"prompt_tokens":17,"total_tokens":17}}`,
+			wantInput:  17,
+			wantOutput: 0,
+		},
+		{
+			// 生产实测（v0.9.331，硅基流动）：Jina/Cohere 风格响应没有顶层
+			// usage，用量只在 meta.tokens 中；只读顶层会记账 input_tokens=0。
+			name:       "jina cohere style meta tokens",
+			body:       `{"id":"rerank-abc","results":[],"meta":{"tokens":{"input_tokens":255,"output_tokens":0,"total_tokens":255},"billed_units":{"input_tokens":255,"output_tokens":0}}}`,
+			wantInput:  255,
+			wantOutput: 0,
+		},
+		{
+			name:       "jina cohere style meta tokens with output",
+			body:       `{"meta":{"tokens":{"input_tokens":255,"output_tokens":7}}}`,
+			wantInput:  255,
+			wantOutput: 7,
+		},
+		{
+			name:       "top-level usage wins over meta tokens",
+			body:       `{"usage":{"prompt_tokens":17},"meta":{"tokens":{"input_tokens":255}}}`,
+			wantInput:  17,
+			wantOutput: 0,
+		},
+		{
+			name:       "no usage anywhere",
+			body:       `{"id":"rerank-abc","results":[]}`,
+			wantInput:  0,
+			wantOutput: 0,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			usage := extractOpenAIRerankUsage([]byte(tt.body))
+			require.Equal(t, tt.wantInput, usage.InputTokens)
+			require.Equal(t, tt.wantOutput, usage.OutputTokens)
+		})
+	}
+}
+
 func TestForwardRerank_APIKeyPassthroughRecordsUsage(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
