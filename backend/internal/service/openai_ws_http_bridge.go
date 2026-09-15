@@ -504,6 +504,9 @@ func (s *OpenAIGatewayService) proxyOpenAIWSHTTPBridgeTurn(
 		if account.Platform != PlatformGrok && isOpenAIResponsesLiteWebSocketPayload(payload) {
 			upstreamReq.Header.Set(responsesLiteHeader, "true")
 		}
+		if err := applyMappedGPT55LiteCompatibility(upstreamReq, account, requestBody); err != nil {
+			return nil, err
+		}
 		return upstreamReq, nil
 	}
 	if account.Platform == PlatformGrok {
