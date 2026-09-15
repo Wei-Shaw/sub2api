@@ -455,14 +455,16 @@ func newConfiguredCodexModelDescriptor(modelID string) configuredCodexModelDescr
 		InputModalities:                   []string{"text"},
 	}
 
-	if isDeepSeekCodexModel(modelID) {
+	if isDeepSeekCodexModel(modelID) || isMimoCodexModel(modelID) {
 		defaultReasoningLevel := "high"
 		descriptor.DisplayName = deepSeekCodexDisplayName(modelID)
 		descriptor.Description = "DeepSeek coding and reasoning model routed through Sub2API."
 		descriptor.DefaultReasoningLevel = &defaultReasoningLevel
 		descriptor.SupportedReasoningLevels = []configuredCodexReasoningLevel{
 			{Effort: "low", Description: "Fast responses with lighter reasoning"},
+			{Effort: "medium", Description: "Balanced reasoning for coding tasks"},
 			{Effort: "high", Description: "Greater reasoning depth for coding and agent tasks"},
+			{Effort: "xhigh", Description: "Extended reasoning for complex tasks"},
 			{Effort: "max", Description: "Maximum reasoning depth for complex tasks"},
 		}
 		descriptor.SupportsParallelToolCalls = true
@@ -706,8 +708,21 @@ func deepSeekCodexDisplayName(modelID string) string {
 	}
 }
 
+func stripProviderQualifier(modelID string) string {
+	lower := strings.ToLower(strings.TrimSpace(modelID))
+	if idx := strings.LastIndex(lower, "/"); idx >= 0 {
+		lower = lower[idx+1:]
+	}
+	return lower
+}
+
 func isDeepSeekCodexModel(modelID string) bool {
-	return strings.HasPrefix(strings.ToLower(strings.TrimSpace(modelID)), "deepseek-")
+	return strings.HasPrefix(stripProviderQualifier(modelID), "deepseek-")
+}
+
+func isMimoCodexModel(modelID string) bool {
+	stripped := stripProviderQualifier(modelID)
+	return strings.HasPrefix(stripped, "mimo-") || strings.HasPrefix(stripped, "xiaomi-mimo")
 }
 
 func isGrokCodexModel(modelID string) bool {
