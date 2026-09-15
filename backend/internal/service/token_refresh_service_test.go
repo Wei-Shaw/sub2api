@@ -5,11 +5,14 @@ package service
 import (
 	"context"
 	"errors"
+	"fmt"
+	"net/http"
 	"reflect"
 	"testing"
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/adobe"
 	"github.com/stretchr/testify/require"
 )
 
@@ -919,6 +922,121 @@ func TestTokenRefreshService_RefreshWithRetry_NoRefreshTokenDoesNotTempUnschedul
 	require.Equal(t, 1, repo.setErrorCalls, "missing refresh token should be treated as a non-retryable credential state")
 }
 
+func TestTokenRefreshService_RefreshWithRetry_AdobeCookieAuthErrorSetsAccountError(t *testing.T) {
+	repo := &tokenRefreshAccountRepo{}
+	cfg := &config.Config{
+		TokenRefresh: config.TokenRefreshConfig{
+			MaxRetries:          2,
+			RetryBackoffSeconds: 0,
+		},
+	}
+	service := NewTokenRefreshService(repo, nil, nil, nil, nil, nil, nil, nil, cfg, nil)
+	account := &Account{
+		ID:       19,
+		Platform: PlatformAdobe,
+		Type:     AccountTypeOAuth,
+		Credentials: map[string]any{
+			"cookie": "dead",
+		},
+	}
+	refresher := &tokenRefresherStub{
+		err: fmt.Errorf("adobe cookie is no longer valid, re-export it from the browser: %w",
+			adobe.NewAuthError("Token invalid or expired", http.StatusUnauthorized)),
+	}
+
+	err := service.refreshWithRetry(context.Background(), account, refresher, refresher, time.Hour)
+	require.Error(t, err)
+	require.Equal(t, 0, repo.updateCalls)
+	require.Equal(t, 0, repo.setTempUnschedCalls, "dead Adobe cookie must not be parked as a retryable cooldown")
+	require.Equal(t, 1, repo.setErrorCalls, "dead Adobe cookie must permanently mark the account error")
+	require.Contains(t, repo.lastErrorMessage, "non-retryable")
+}
+
+// Adobe 刷新的临时失败（非强信号 403、IMS 5xx）不改账号状态：既不置 error，也不摘出调度。
+func TestTokenRefreshService_RefreshWithRetry_AdobeTemporaryErrorKeepsAccountState(t *testing.T) {
+	repo := &tokenRefreshAccountRepo{}
+	cfg := &config.Config{
+		TokenRefresh: config.TokenRefreshConfig{
+			MaxRetries:          2,
+			RetryBackoffSeconds: 0,
+		},
+	}
+	service := NewTokenRefreshService(repo, nil, nil, nil, nil, nil, nil, nil, cfg, nil)
+	account := &Account{
+		ID:          20,
+		Platform:    PlatformAdobe,
+		Type:        AccountTypeOAuth,
+		Credentials: map[string]any{"cookie": "maybe-fine"},
+	}
+	refresher := &tokenRefresherStub{
+		err: fmt.Errorf("refresh adobe token: %w", adobe.NewUpstreamTemporaryError(
+			`refresh request failed: 403 {"error":"access_denied"}`, http.StatusForbidden, adobe.ErrorTypeStatus)),
+	}
+
+	err := service.refreshWithRetry(context.Background(), account, refresher, refresher, time.Hour)
+	require.Error(t, err)
+	require.Equal(t, 0, repo.setErrorCalls, "weak IMS signals must not mark the account error")
+	require.Equal(t, 0, repo.setTempUnschedCalls, "weak IMS signals must not park the account")
+}
+
+// adobeConditionalErrorTokenRefreshRepo 在 tokenRefreshAccountRepo 之上实现按 cookie 条件置错。
+type adobeConditionalErrorTokenRefreshRepo struct {
+	*tokenRefreshAccountRepo
+	currentCookie    string
+	conditionalCalls int
+	expectedCookies  []string
+}
+
+func (r *adobeConditionalErrorTokenRefreshRepo) SetAdobeErrorIfCookieUnchanged(
+	_ context.Context, _ int64, expectedCookie string, errorMsg string,
+) (bool, error) {
+	r.conditionalCalls++
+	r.expectedCookies = append(r.expectedCookies, expectedCookie)
+	if expectedCookie != r.currentCookie {
+		return false, nil
+	}
+	r.lastErrorMessage = errorMsg
+	return true, nil
+}
+
+func TestTokenRefreshService_RefreshWithRetry_AdobeAuthErrorSkipsWhenCookieChanged(t *testing.T) {
+	base := &tokenRefreshAccountRepo{}
+	repo := &adobeConditionalErrorTokenRefreshRepo{tokenRefreshAccountRepo: base, currentCookie: "fresh"}
+	cfg := &config.Config{TokenRefresh: config.TokenRefreshConfig{MaxRetries: 1}}
+	service := NewTokenRefreshService(repo, nil, nil, nil, nil, nil, nil, nil, cfg, nil)
+	account := &Account{
+		ID: 20, Platform: PlatformAdobe, Type: AccountTypeOAuth,
+		Credentials: map[string]any{"cookie": "dead"},
+	}
+	refresher := &tokenRefresherStub{err: adobe.NewAuthError("Token invalid or expired", http.StatusUnauthorized)}
+
+	err := service.refreshWithRetry(context.Background(), account, refresher, refresher, time.Hour)
+	require.ErrorIs(t, err, errRefreshSkipped, "a replaced cookie must not be quarantined by the stale verdict")
+	require.Equal(t, 1, repo.conditionalCalls)
+	require.Equal(t, []string{"dead"}, repo.expectedCookies)
+	require.Zero(t, base.setErrorCalls, "conditional repository must replace the unconditional SetError")
+}
+
+func TestTokenRefreshService_RefreshWithRetry_AdobeAuthErrorConditionallySetsError(t *testing.T) {
+	base := &tokenRefreshAccountRepo{}
+	repo := &adobeConditionalErrorTokenRefreshRepo{tokenRefreshAccountRepo: base, currentCookie: "dead"}
+	cfg := &config.Config{TokenRefresh: config.TokenRefreshConfig{MaxRetries: 1}}
+	service := NewTokenRefreshService(repo, nil, nil, nil, nil, nil, nil, nil, cfg, nil)
+	account := &Account{
+		ID: 21, Platform: PlatformAdobe, Type: AccountTypeOAuth,
+		Credentials: map[string]any{"cookie": "dead"},
+	}
+	refresher := &tokenRefresherStub{err: adobe.NewAuthError("Token invalid or expired", http.StatusUnauthorized)}
+
+	err := service.refreshWithRetry(context.Background(), account, refresher, refresher, time.Hour)
+	var permanent *accountPermanentRefreshError
+	require.ErrorAs(t, err, &permanent)
+	require.True(t, permanent.persistentlyBlocked)
+	require.Equal(t, 1, repo.conditionalCalls)
+	require.Zero(t, base.setErrorCalls)
+	require.Contains(t, repo.lastErrorMessage, "non-retryable")
+}
+
 // TestIsNonRetryableRefreshError 测试不可重试错误判断
 func TestIsNonRetryableRefreshError(t *testing.T) {
 	tests := []struct {
@@ -941,6 +1059,10 @@ func TestIsNonRetryableRefreshError(t *testing.T) {
 		{name: "invalid_scope", err: errors.New("invalid_scope: requested scope is not allowed"), expected: true},
 		{name: "invalid_grant_with_desc", err: errors.New("Error: invalid_grant - token revoked"), expected: true},
 		{name: "case_insensitive", err: errors.New("INVALID_GRANT"), expected: true},
+		{name: "adobe_auth_error", err: adobe.NewAuthError("Token invalid or expired", http.StatusUnauthorized), expected: true},
+		{name: "adobe_cookie_wrapped_auth_error", err: fmt.Errorf("adobe cookie is no longer valid, re-export it from the browser: %w", adobe.NewAuthError("Token invalid or expired", http.StatusUnauthorized)), expected: true},
+		{name: "adobe_upstream_temporary", err: adobe.NewUpstreamTemporaryError("IMS 503", http.StatusServiceUnavailable, adobe.ErrorTypeStatus), expected: false},
+		{name: "adobe_temporary_with_access_denied_body", err: fmt.Errorf("refresh adobe token: %w", adobe.NewUpstreamTemporaryError(`refresh request failed: 403 {"error":"access_denied"}`, http.StatusForbidden, adobe.ErrorTypeStatus)), expected: false},
 	}
 
 	for _, tt := range tests {

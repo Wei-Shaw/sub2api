@@ -350,6 +350,45 @@ func (api *OAuthRefreshAPI) RefreshIfNeeded(
 			// while the provider call was in flight. Return the durable row so
 			// post-refresh cache publication cannot restore that stale snapshot.
 			freshAccount = durableAccount
+		} else if freshAccount.Platform == PlatformAdobe {
+			// Adobe 的长期凭据是管理员粘贴的 cookie：整体覆盖会把 IMS 往返期间的
+			// cookie / model_mapping 修改写回旧值，故只合并 token 字段，且要求 cookie 未变。
+			conditionalRepo, ok := api.accountRepo.(AdobeTokenCredentialsRepository)
+			if !ok {
+				return nil, &providerConfigurationRefreshError{
+					err: fmt.Errorf("adobe token refresh conditional repository is not configured"),
+				}
+			}
+			applied, updateErr := conditionalRepo.UpdateAdobeTokenIfCookieUnchanged(
+				ctx,
+				freshAccount.ID,
+				attemptedAccount.GetCredential("cookie"),
+				adobeTokenCredentialFields(newCredentials),
+			)
+			if updateErr != nil {
+				slog.Error("oauth_refresh_update_failed",
+					"account_id", freshAccount.ID,
+					"platform", freshAccount.Platform,
+					"error", updateErr,
+				)
+				return nil, fmt.Errorf("%w: %v", errOAuthRefreshCredentialPersist, updateErr)
+			}
+			if !applied {
+				currentAccount, readErr := api.accountRepo.GetByID(ctx, freshAccount.ID)
+				if readErr != nil || currentAccount == nil {
+					if readErr == nil {
+						readErr = fmt.Errorf("account not found after adobe token CAS miss")
+					}
+					return nil, fmt.Errorf("%w: %v", errOAuthRefreshAccountRereadFailed, readErr)
+				}
+				slog.Info("oauth_refresh_success_cas_skipped_stale_credentials",
+					"account_id", freshAccount.ID,
+					"platform", freshAccount.Platform,
+				)
+				return &OAuthRefreshResult{Account: currentAccount}, nil
+			}
+			// 本地合并结果只用于把新 token 交还调用方；DB 里其它字段以库内值为准。
+			freshAccount.Credentials = newCredentials
 		} else if updateErr := persistAccountCredentials(ctx, api.accountRepo, freshAccount, newCredentials); updateErr != nil {
 			slog.Error("oauth_refresh_update_failed",
 				"account_id", freshAccount.ID,

@@ -805,7 +805,7 @@ type GatewayService struct {
 	tlsFPProfileService   *TLSFingerprintProfileService
 	balanceNotifyService  *BalanceNotifyService
 	userPlatformQuotaRepo UserPlatformQuotaRepository
-	adobeTokenRefresher   *AdobeTokenRefresher
+	adobeTokenProvider    *AdobeTokenProvider
 }
 
 // NewGatewayService creates a new GatewayService
@@ -829,6 +829,7 @@ func NewGatewayService(
 	deferredService *DeferredService,
 	claudeTokenProvider *ClaudeTokenProvider,
 	kiroTokenProvider *KiroTokenProvider,
+	adobeTokenProvider *AdobeTokenProvider,
 	kiroCooldownStore KiroCooldownStore,
 	sessionLimitCache SessionLimitCache,
 	rpmCache RPMCache,
@@ -879,7 +880,10 @@ func NewGatewayService(
 		compositeResolver:     compositeResolver,
 		balanceNotifyService:  balanceNotifyService,
 		userPlatformQuotaRepo: userPlatformQuotaRepo,
-		adobeTokenRefresher:   NewAdobeTokenRefresher(),
+		adobeTokenProvider:    adobeTokenProvider,
+	}
+	if svc.adobeTokenProvider == nil {
+		svc.adobeTokenProvider = NewAdobeTokenProvider(accountRepo, nil)
 	}
 	if compositeResolver != nil {
 		compositeResolver.SetModelOwnershipResolver(svc.resolveCompositeModelOwnership)

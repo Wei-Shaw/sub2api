@@ -28,6 +28,11 @@ func TestClassifyAdobeErrorQuotaVsAuth(t *testing.T) {
 	require.Equal(t, adobeFailureAuth, auth.Failover.Reason)
 	require.Equal(t, GatewayFailureStageAccountAuth, auth.Failover.Stage)
 	require.Zero(t, auth.Cooldown, "token 过期由刷新器修复，冷却只会拖慢恢复")
+	require.True(t, auth.InvalidateToken, "401 是上游对 token 的明确拒绝")
+
+	forbidden := classifyAdobeError(adobe.NewAuthError("forbidden", http.StatusForbidden))
+	require.Equal(t, adobeFailureAuth, forbidden.Failover.Reason)
+	require.False(t, forbidden.InvalidateToken, "403 可能是 WAF，不能清掉 token")
 }
 
 func TestClassifyAdobeErrorNotEntitled(t *testing.T) {
@@ -136,4 +141,60 @@ func TestApplyAdobeCooldownSwallowsRepoError(t *testing.T) {
 			9, classifyAdobeError(adobe.NewQuotaExhaustedError("q", 403)))
 	})
 	require.Equal(t, 1, repo.calls)
+}
+
+type adobeTokenInvalidationRecorder struct {
+	AccountRepository
+	calls     int
+	accountID int64
+	token     string
+	err       error
+}
+
+func (r *adobeTokenInvalidationRecorder) InvalidateAdobeAccessTokenIfUnchanged(_ context.Context, id int64, token string) (bool, error) {
+	r.calls++
+	r.accountID, r.token = id, token
+	return r.err == nil, r.err
+}
+
+// 上游 401 是对这个 token 的明确拒绝：清掉它，下次取 token 走 cookie 刷新而不是按 exp 复用。
+// 403 可能是 WAF/风控，只让当次请求换号，不动账号凭据。
+func TestAdobeFailoverInvalidatesRejectedToken(t *testing.T) {
+	t.Run("401 清掉本次 token", func(t *testing.T) {
+		repo := &adobeTokenInvalidationRecorder{}
+		svc := &GatewayService{accountRepo: repo}
+		failover := svc.AdobeFailover(context.Background(), 9, "tok-rejected",
+			adobe.NewAuthError("Token invalid or expired", http.StatusUnauthorized))
+		require.NotNil(t, failover)
+		require.Equal(t, adobeFailureAuth, failover.Reason)
+		require.Equal(t, 1, repo.calls)
+		require.Equal(t, int64(9), repo.accountID)
+		require.Equal(t, "tok-rejected", repo.token)
+	})
+
+	t.Run("403 不动凭据", func(t *testing.T) {
+		repo := &adobeTokenInvalidationRecorder{}
+		svc := &GatewayService{accountRepo: repo}
+		require.NotNil(t, svc.AdobeFailover(context.Background(), 9, "tok",
+			adobe.NewAuthError("Token invalid or expired", http.StatusForbidden)))
+		require.Zero(t, repo.calls)
+	})
+
+	t.Run("非鉴权错误不动凭据", func(t *testing.T) {
+		repo := &adobeTokenInvalidationRecorder{}
+		svc := &GatewayService{accountRepo: repo}
+		require.NotNil(t, svc.AdobeFailover(context.Background(), 9, "tok",
+			adobe.NewUpstreamTemporaryError("boom", http.StatusBadGateway, adobe.ErrorTypeStatus)))
+		require.Zero(t, repo.calls)
+	})
+
+	t.Run("清除失败不影响本次换号", func(t *testing.T) {
+		repo := &adobeTokenInvalidationRecorder{err: errors.New("db down")}
+		svc := &GatewayService{accountRepo: repo}
+		failover := svc.AdobeFailover(context.Background(), 9, "tok",
+			adobe.NewAuthError("Token invalid or expired", http.StatusUnauthorized))
+		require.NotNil(t, failover)
+		require.Equal(t, NextAccountRetry, failover.NextAccountAction)
+		require.Equal(t, 1, repo.calls)
+	})
 }

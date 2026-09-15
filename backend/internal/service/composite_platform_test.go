@@ -133,6 +133,7 @@ func TestNewGatewayServiceWiresCompositeModelOwnershipResolver(t *testing.T) {
 		nil,
 		nil,
 		nil,
+		nil, // adobeTokenProvider
 		nil,
 		nil,
 		nil,

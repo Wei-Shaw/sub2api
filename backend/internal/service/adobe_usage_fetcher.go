@@ -16,6 +16,9 @@ import (
 // 兜底冷却时长——半小时足够熬过一次短暂上游延迟，又不会长到把付费账号闲置。
 const adobeCreditsExhaustedFallback = 30 * time.Minute
 
+// adobeUsageFetchTimeout 覆盖一次 IMS 换 token（30s）加 credits 查询（20s），留出余量。
+const adobeUsageFetchTimeout = 90 * time.Second
+
 // getAdobeUsage 拉取 Adobe 账号的 credits/balance，写进 UsageInfo。
 //
 // 与 kiro_usage_fetcher.go:76 getKiroUsage 同结构：cache + singleflight + 错误降级。
@@ -39,30 +42,44 @@ func (s *AccountUsageService) getAdobeUsage(ctx context.Context, account *Accoun
 	}
 
 	cached, hasCached := s.getCachedAdobeUsage(account.ID)
-	if hasCached && (cached.ErrorCode != "" || cached.Error != "") {
-		cached.Source = source
-		return cached, nil
-	}
+	// 手动刷新必须真的打上游：错误快照也只在非强制刷新时直接返回。
 	if !forceRefresh && hasCached {
 		cached.Source = source
 		return cached, nil
 	}
 
 	flightKey := fmt.Sprintf("adobe-usage:%d", account.ID)
-	result, fetchErr, _ := s.cache.adobeUsageFlight.Do(flightKey, func() (any, error) {
+	// 共享的上游调用脱离发起者的 ctx：首个调用方取消不能让其它等待者一起失败，
+	// 更不能把取消错误写成错误快照缓存一分钟。
+	resultCh := s.cache.adobeUsageFlight.DoChan(flightKey, func() (any, error) {
 		if !forceRefresh {
 			if usage, ok := s.getCachedAdobeUsage(account.ID); ok {
 				return usage, nil
 			}
 		}
-		usage, err := s.fetchAndCacheAdobeUsage(ctx, account, source)
+		sharedCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), adobeUsageFetchTimeout)
+		defer cancel()
+		usage, err := s.fetchAndCacheAdobeUsage(sharedCtx, account, source)
 		if err != nil {
 			return nil, err
 		}
 		return usage, nil
 	})
+	var result any
+	var fetchErr error
+	select {
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	case flight := <-resultCh:
+		result, fetchErr = flight.Val, flight.Err
+	}
+	if errors.Is(fetchErr, context.Canceled) {
+		return nil, fetchErr
+	}
 	if fetchErr == nil {
-		if usage, ok := result.(*UsageInfo); ok && usage != nil {
+		if shared, ok := result.(*UsageInfo); ok && shared != nil {
+			// singleflight 的结果由所有等待者共享，改 Source 前先拷贝。
+			usage := cloneUsageInfo(shared)
 			usage.Source = source
 			if source == "active" {
 				s.tryClearRecoverableAccountError(ctx, account)
@@ -85,7 +102,7 @@ func (s *AccountUsageService) getAdobeUsage(ctx context.Context, account *Accoun
 }
 
 func (s *AccountUsageService) fetchAndCacheAdobeUsage(ctx context.Context, account *Account, source string) (*UsageInfo, error) {
-	token, err := resolveAdobeAccessToken(ctx, s.accountRepo, s.adobeTokenRefresher, account)
+	token, err := s.adobeTokenProvider.GetAccessToken(ctx, account)
 	if err != nil {
 		return nil, err
 	}

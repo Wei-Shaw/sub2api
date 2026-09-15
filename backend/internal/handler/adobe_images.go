@@ -171,7 +171,7 @@ func (h *GatewayHandler) runAdobeImagesFailover(
 			return
 		}
 
-		failover := h.gatewayService.AdobeFailover(requestCtx, account.ID, err)
+		failover := h.gatewayService.AdobeFailover(requestCtx, account.ID, token, err)
 		if failover == nil {
 			// 不属于 Adobe 上游语义（编解码错误等）：没有换号的依据，直接上抛。
 			reqLog.Error("adobe_images.generate_failed",

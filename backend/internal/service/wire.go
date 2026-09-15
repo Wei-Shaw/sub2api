@@ -228,6 +228,7 @@ func ProvideAccountUsageService(
 	tlsFPProfileService *TLSFingerprintProfileService,
 	openAIGatewayService *OpenAIGatewayService,
 	kiroTokenProvider *KiroTokenProvider,
+	adobeTokenProvider *AdobeTokenProvider,
 ) *AccountUsageService {
 	service := NewAccountUsageService(
 		accountRepo,
@@ -243,6 +244,7 @@ func ProvideAccountUsageService(
 		tlsFPProfileService,
 	)
 	service.agentIdentityWS = openAIGatewayService
+	service.SetAdobeTokenProvider(adobeTokenProvider)
 	return service.SetKiroTokenProvider(kiroTokenProvider)
 }
 
@@ -259,6 +261,7 @@ func ProvideAccountTestService(
 	openAIGatewayService *OpenAIGatewayService,
 	settingService *SettingService,
 	pluginManager *PluginManager,
+	adobeTokenProvider *AdobeTokenProvider,
 ) *AccountTestService {
 	service := NewAccountTestService(
 		accountRepo,
@@ -275,6 +278,7 @@ func ProvideAccountTestService(
 	service.SetOpenAIGatewayService(openAIGatewayService)
 	service.SetSettingService(settingService)
 	service.SetPluginManager(pluginManager)
+	service.SetAdobeTokenProvider(adobeTokenProvider)
 	return service
 }
 
@@ -372,6 +376,12 @@ func ProvideKiroTokenProvider(
 	p.SetRefreshAPI(refreshAPI, executor)
 	p.SetRefreshPolicy(GeminiProviderRefreshPolicy())
 	return p
+}
+
+// ProvideAdobeTokenProvider creates AdobeTokenProvider sharing the OAuthRefreshAPI
+// singleton, so request-path and background refreshes serialize on the same locks.
+func ProvideAdobeTokenProvider(accountRepo AccountRepository, refreshAPI *OAuthRefreshAPI) *AdobeTokenProvider {
+	return NewAdobeTokenProvider(accountRepo, refreshAPI)
 }
 
 func ProvideKiroCooldownStore(redisClient *redis.Client) KiroCooldownStore {
@@ -894,6 +904,7 @@ var ProviderSet = wire.NewSet(
 	ProvideOAuthRefreshAPI,
 	ProvideGeminiTokenProvider,
 	ProvideKiroTokenProvider,
+	ProvideAdobeTokenProvider,
 	ProvideKiroCooldownStore,
 	NewGeminiMessagesCompatService,
 	ProvideAntigravityTokenProvider,

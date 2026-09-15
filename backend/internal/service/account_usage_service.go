@@ -375,7 +375,7 @@ type AccountUsageService struct {
 	kiroCooldownStore       KiroCooldownStore
 	agentIdentityTaskMu     sync.Mutex
 	agentIdentityWS         agentIdentityWSConnectionInvalidator
-	adobeTokenRefresher     *AdobeTokenRefresher
+	adobeTokenProvider      *AdobeTokenProvider
 }
 
 // NewAccountUsageService 创建AccountUsageService实例
@@ -404,13 +404,21 @@ func NewAccountUsageService(
 		cache:                   cache,
 		identityCache:           identityCache,
 		tlsFPProfileService:     tlsFPProfileService,
-		adobeTokenRefresher:     NewAdobeTokenRefresher(),
+		adobeTokenProvider:      NewAdobeTokenProvider(accountRepo, nil),
 	}
 }
 
 func (s *AccountUsageService) SetKiroTokenProvider(provider KiroUsageTokenProvider) *AccountUsageService {
 	if s != nil {
 		s.kiroTokenProvider = provider
+	}
+	return s
+}
+
+// SetAdobeTokenProvider 注入与网关共享 OAuthRefreshAPI 的 Adobe token provider。
+func (s *AccountUsageService) SetAdobeTokenProvider(provider *AdobeTokenProvider) *AccountUsageService {
+	if s != nil && provider != nil {
+		s.adobeTokenProvider = provider
 	}
 	return s
 }

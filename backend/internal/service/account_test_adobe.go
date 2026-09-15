@@ -67,35 +67,23 @@ func (s *AccountTestService) adobeTestAccessToken(ctx context.Context, c *gin.Co
 	}
 	s.sendEvent(c, TestEvent{Type: "status", Text: fmt.Sprintf("%s — exchanging a fresh one from the cookie...", reason)})
 
-	// 复用刷新器的全部语义（AuthError 包装、MergeCredentials 保留 cookie/model_mapping、
-	// expires_at 计算），但用测试的 client 缓存，这样单测的假传输仍然生效。
-	refresher := &AdobeTokenRefresher{clients: adobeTestClients}
-	credentials, err := refresher.Refresh(ctx, account)
+	// 与网关共用 AdobeTokenProvider：进程内锁 + Redis 锁 + DB 重读，落库只按 cookie 条件合并
+	// token 字段，不会把管理员刚改的 cookie / model_mapping 覆盖回旧值。
+	refreshed, err := s.adobeTestTokenProvider().GetAccessToken(ctx, account)
 	if err != nil {
 		return "", errors.New(formatAdobeTestError(err))
-	}
-
-	refreshed := strings.TrimSpace(credentialString(credentials, "access_token"))
-	if refreshed == "" {
-		return "", errors.New("adobe refresh returned an empty access_token")
-	}
-
-	// 落库失败不该让测试失败：token 在本次请求里已经可用，下次再刷一遍即可。
-	if persistErr := persistAccountCredentials(ctx, s.accountRepo, account, credentials); persistErr != nil {
-		s.sendEvent(c, TestEvent{Type: "status", Text: fmt.Sprintf(
-			"warning: refreshed token could not be saved (%v) — the test continues with it in memory", persistErr)})
 	}
 	s.sendEvent(c, TestEvent{Type: "status", Text: "Fresh access_token obtained from cookie."})
 	return refreshed, nil
 }
 
-// credentialString 从 credentials map 里取字符串字段。
-func credentialString(credentials map[string]any, key string) string {
-	if credentials == nil {
-		return ""
+// adobeTestTokenProvider 返回注入的共享 provider；未注入时（单测等）用测试 client 缓存构造
+// 一个仅进程内加锁的 provider，落库语义保持一致。
+func (s *AccountTestService) adobeTestTokenProvider() *AdobeTokenProvider {
+	if s.adobeTokenProvider != nil {
+		return s.adobeTokenProvider
 	}
-	value, _ := credentials[key].(string)
-	return value
+	return newAdobeTokenProvider(s.accountRepo, nil, &AdobeTokenRefresher{clients: adobeTestClients})
 }
 
 // testAdobeAccountConnection 对 Adobe 账号做一次真实出图，验证完整链路：

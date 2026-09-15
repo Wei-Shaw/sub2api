@@ -46,6 +46,7 @@ type adobeUsageTestRepo struct {
 	mu      sync.Mutex
 	calls   []adobeCooldownCall
 	updated map[string]any
+	account *Account
 }
 
 type adobeCooldownCall struct {
@@ -66,6 +67,27 @@ func (r *adobeUsageTestRepo) UpdateCredentials(_ context.Context, _ int64, crede
 	defer r.mu.Unlock()
 	r.updated = credentials
 	return nil
+}
+
+func (r *adobeUsageTestRepo) GetByID(_ context.Context, id int64) (*Account, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.account == nil || r.account.ID != id {
+		return nil, ErrAccountNotFound
+	}
+	return snapshotOAuthRefreshAccount(r.account), nil
+}
+
+func (r *adobeUsageTestRepo) UpdateAdobeTokenIfCookieUnchanged(
+	_ context.Context, id int64, expectedCookie string, tokenFields map[string]any,
+) (bool, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.account == nil || r.account.ID != id || r.account.GetCredential("cookie") != expectedCookie {
+		return false, nil
+	}
+	r.updated = tokenFields
+	return true, nil
 }
 
 // int64Ptr 已在 ops_openai_token_stats_test.go 定义
@@ -264,18 +286,18 @@ func TestGetAdobeUsageRefreshesEmptyTokenFromCookie(t *testing.T) {
 			PlanCap: "HARD",
 		},
 	}
-	repo := &adobeUsageTestRepo{}
-	svc := newAdobeUsageTestService(t, repo, client)
-	svc.adobeTokenRefresher = refresher
-
 	account := &Account{
 		ID:       9,
 		Platform: domain.PlatformAdobe,
 		Type:     AccountTypeOAuth,
+		Status:   StatusActive,
 		Credentials: map[string]any{
 			"cookie": "aux_sid=abc",
 		},
 	}
+	repo := &adobeUsageTestRepo{account: snapshotOAuthRefreshAccount(account)}
+	svc := newAdobeUsageTestService(t, repo, client)
+	svc.adobeTokenProvider = newAdobeTokenProvider(repo, nil, refresher)
 
 	info, err := svc.getAdobeUsage(context.Background(), account, "active", true)
 	require.NoError(t, err)
@@ -286,7 +308,7 @@ func TestGetAdobeUsageRefreshesEmptyTokenFromCookie(t *testing.T) {
 	repo.mu.Lock()
 	defer repo.mu.Unlock()
 	require.Equal(t, newToken, repo.updated["access_token"])
-	require.Equal(t, newToken, account.GetCredential("access_token"))
+	require.Empty(t, account.GetCredential("access_token"), "caller's snapshot must not be mutated")
 }
 
 // singleflight：并发同一账号只打上游一次。
@@ -397,3 +419,79 @@ type wrappedAdobeErr struct{ inner error }
 
 func (w *wrappedAdobeErr) Error() string { return w.inner.Error() }
 func (w *wrappedAdobeErr) Unwrap() error { return w.inner }
+
+// 上一次查询失败留下的错误快照不能挡住手动刷新：force=true 必须重新打上游。
+func TestGetAdobeUsageForceBypassesErrorSnapshot(t *testing.T) {
+	client := &stubAdobeCreditsClient{err: adobe.NewUpstreamTemporaryError("credits 503", http.StatusServiceUnavailable, adobe.ErrorTypeStatus)}
+	svc := newAdobeUsageTestService(t, &adobeUsageTestRepo{}, client)
+	account := adobeAccountWithToken()
+
+	degraded, err := svc.getAdobeUsage(context.Background(), account, "active", true)
+	require.NoError(t, err)
+	require.NotEmpty(t, degraded.Error)
+
+	client.err = nil
+	client.balance = &adobe.CreditsBalance{Total: int64Ptr(10), Used: int64Ptr(2), Available: int64Ptr(8)}
+	forced, err := svc.getAdobeUsage(context.Background(), account, "active", true)
+	require.NoError(t, err)
+	require.Equal(t, int32(2), client.calls.Load(), "force=true must not be short-circuited by the error snapshot")
+	require.Empty(t, forced.Error)
+}
+
+type enteringAdobeClient struct {
+	balance     *adobe.CreditsBalance
+	entered     chan struct{}
+	enteredOnce sync.Once
+	gate        chan struct{}
+	ctxErr      atomic.Value // error
+}
+
+func (c *enteringAdobeClient) FetchCreditsBalance(ctx context.Context, _ string) (*adobe.CreditsBalance, error) {
+	c.enteredOnce.Do(func() { close(c.entered) })
+	<-c.gate
+	if err := ctx.Err(); err != nil {
+		c.ctxErr.Store(err)
+		return nil, err
+	}
+	return c.balance, nil
+}
+
+// 首个调用方取消只让它自己返回：共享的上游查询继续完成，其它等待者拿到结果，也不缓存取消错误。
+func TestGetAdobeUsageLeaderCancelDoesNotPoisonFollowers(t *testing.T) {
+	client := &enteringAdobeClient{
+		balance: &adobe.CreditsBalance{Total: int64Ptr(10), Used: int64Ptr(3), Available: int64Ptr(7)},
+		entered: make(chan struct{}),
+		gate:    make(chan struct{}),
+	}
+	svc := newAdobeUsageTestService(t, &adobeUsageTestRepo{}, client)
+	account := adobeAccountWithToken()
+
+	leaderCtx, cancelLeader := context.WithCancel(context.Background())
+	leaderErr := make(chan error, 1)
+	go func() {
+		_, err := svc.getAdobeUsage(leaderCtx, account, "active", true)
+		leaderErr <- err
+	}()
+	<-client.entered
+
+	followerDone := make(chan *UsageInfo, 1)
+	go func() {
+		info, _ := svc.getAdobeUsage(context.Background(), account, "active", true)
+		followerDone <- info
+	}()
+
+	// 尽量让跟随者先挂到同一个 flight 上；即便它晚到另起一次查询，下面的断言也成立。
+	time.Sleep(20 * time.Millisecond)
+	cancelLeader()
+	require.ErrorIs(t, <-leaderErr, context.Canceled)
+	close(client.gate)
+
+	follower := <-followerDone
+	require.NotNil(t, follower)
+	require.Empty(t, follower.Error, "follower must receive the shared result, not the leader's cancellation")
+	require.Nil(t, client.ctxErr.Load(), "shared upstream call must not inherit the leader's cancellation")
+
+	cached, ok := svc.getCachedAdobeUsage(account.ID)
+	require.True(t, ok)
+	require.Empty(t, cached.Error)
+}

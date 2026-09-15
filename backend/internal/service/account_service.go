@@ -22,13 +22,16 @@ const AccountPrivacyModeUnsetFilter = "__unset__"
 // accounts. Candidate platforms are supplied by TokenRefreshService's refresher
 // registry so repository eligibility cannot drift from registered providers.
 type OAuthRefreshPageOptions struct {
-	Platforms            []string
-	AfterID              int64
-	Limit                int
-	ActiveOnly           bool
-	IncludeSetupToken    bool
-	RequireRefreshToken  bool
-	ExcludeRetryCooldown bool
+	Platforms           []string
+	AfterID             int64
+	Limit               int
+	ActiveOnly          bool
+	IncludeSetupToken   bool
+	RequireRefreshToken bool
+	// CookieCredentialPlatforms 列出以浏览器 cookie 作为长期凭据的平台（如 Adobe）：
+	// RequireRefreshToken 为 true 时，这些平台的账号改为要求非空 cookie 而非 refresh_token。
+	CookieCredentialPlatforms []string
+	ExcludeRetryCooldown      bool
 }
 
 // OAuthRefreshCandidatePage keeps cursor metadata from the raw SQL ID page.

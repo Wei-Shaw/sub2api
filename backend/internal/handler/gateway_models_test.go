@@ -102,6 +102,7 @@ func newGatewayModelsHandlerForTest(repo service.AccountRepository) *GatewayHand
 			nil, // deferredService
 			nil, // claudeTokenProvider
 			nil, // kiroTokenProvider
+			nil, // adobeTokenProvider
 			nil, // kiroCooldownStore
 			nil, // sessionLimitCache
 			nil, // rpmCache

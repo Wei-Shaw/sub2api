@@ -48,8 +48,12 @@ func adobeTestConnAccount(credentials map[string]any) *Account {
 
 func runAdobeTestConn(t *testing.T, account *Account, modelID, prompt string) (*httptest.ResponseRecorder, error) {
 	t.Helper()
+	return runAdobeTestConnWithRepo(t, &mockAccountRepoForGemini{accountsByID: map[int64]*Account{account.ID: account}}, account, modelID, prompt)
+}
+
+func runAdobeTestConnWithRepo(t *testing.T, repo AccountRepository, account *Account, modelID, prompt string) (*httptest.ResponseRecorder, error) {
+	t.Helper()
 	gin.SetMode(gin.TestMode)
-	repo := &mockAccountRepoForGemini{accountsByID: map[int64]*Account{account.ID: account}}
 	svc := &AccountTestService{accountRepo: repo}
 
 	rec := httptest.NewRecorder()
@@ -130,7 +134,7 @@ func TestTestAccountConnectionAdobeExchangesTokenFromCookie(t *testing.T) {
 		// 提交
 		if strings.Contains(req.URL, "generate-async") {
 			return adobeJSONResponse(t, 200, map[string]any{},
-				map[string]string{"x-override-status-link": "https://poll/x"}), nil
+				map[string]string{"x-override-status-link": "https://firefly-3p.ff.adobe.io/jobs/x"}), nil
 		}
 		// 轮询
 		return adobeJSONResponse(t, 200, map[string]any{
@@ -144,7 +148,8 @@ func TestTestAccountConnectionAdobeExchangesTokenFromCookie(t *testing.T) {
 	withStubbedAdobeTestClient(t, adobe.NewClient(adobe.ClientConfig{Transport: api, DownloadTransport: download}))
 
 	account := adobeTestConnAccount(map[string]any{"cookie": "aux_sid=abc", "access_token": ""})
-	rec, err := runAdobeTestConn(t, account, "gpt-image-2", "")
+	repo := newAdobeGatewayCredsRepo(account)
+	rec, err := runAdobeTestConnWithRepo(t, repo, account, "gpt-image-2", "")
 	require.NoError(t, err)
 
 	body := rec.Body.String()
@@ -154,9 +159,43 @@ func TestTestAccountConnectionAdobeExchangesTokenFromCookie(t *testing.T) {
 	require.Contains(t, body, `"success":true`)
 
 	// 换到的 token 必须落库，下次测试与生产请求直接复用。
-	require.Equal(t, refreshed, account.GetCredential("access_token"))
-	// cookie 不能被刷新流程抹掉（MergeCredentials 的契约）。
-	require.Equal(t, "aux_sid=abc", account.GetCredential("cookie"))
+	require.Equal(t, refreshed, repo.storedCredential("access_token"))
+	// cookie 不能被刷新流程抹掉。
+	require.Equal(t, "aux_sid=abc", repo.storedCredential("cookie"))
+	require.Equal(t, 1, repo.casCalls, "token must be merged via the cookie-conditional write")
+}
+
+// 管理员在测试换 token 的途中换了 cookie：旧 cookie 换来的 token 不能落库，更不能把 cookie 覆盖回旧值。
+func TestTestAccountConnectionAdobeDoesNotOverwriteReplacedCookie(t *testing.T) {
+	refreshed := adobeTestJWT(t, time.Now().Add(12*time.Hour))
+	api := &adobeFakeTransport{}
+	api.handler = func(req *adobe.Request, _ int) (*adobe.Response, error) {
+		if strings.Contains(req.URL, "ims/check/v6/token") {
+			return adobeJSONResponse(t, 200, map[string]any{"access_token": refreshed, "expires_in": 86400}, nil), nil
+		}
+		if strings.Contains(req.URL, "generate-async") {
+			return adobeJSONResponse(t, 200, map[string]any{},
+				map[string]string{"x-override-status-link": "https://firefly-3p.ff.adobe.io/jobs/x"}), nil
+		}
+		return adobeJSONResponse(t, 200, map[string]any{
+			"outputs": []any{map[string]any{"image": map[string]any{"presignedUrl": "https://cdn/img.png"}}},
+		}, nil), nil
+	}
+	download := &adobeFakeTransport{handler: func(*adobe.Request, int) (*adobe.Response, error) {
+		return &adobe.Response{StatusCode: 200, Headers: map[string]string{}, Body: []byte("PNG")}, nil
+	}}
+	withStubbedAdobeTestClient(t, adobe.NewClient(adobe.ClientConfig{Transport: api, DownloadTransport: download}))
+
+	account := adobeTestConnAccount(map[string]any{"cookie": "aux_sid=old", "access_token": ""})
+	repo := newAdobeGatewayCredsRepo(account)
+	repo.beforeCAS = func(stored *Account) {
+		stored.Credentials = map[string]any{"cookie": "aux_sid=new"}
+	}
+
+	_, _ = runAdobeTestConnWithRepo(t, repo, account, "gpt-image-2", "")
+
+	require.Equal(t, "aux_sid=new", repo.storedCredential("cookie"))
+	require.Empty(t, repo.storedCredential("access_token"), "token minted from the old cookie must not be persisted")
 }
 
 // token 与 cookie 都没有才是真的没救——此时短路报错，不该打上游。

@@ -18,36 +18,37 @@ func newGatewayRecordUsageServiceForTest(usageRepo UsageLogRepository, userRepo 
 	cfg := &config.Config{}
 	cfg.Default.RateMultiplier = 1.1
 	return NewGatewayService(
-		nil,                           // accountRepo
-		nil,                           // groupRepo
-		usageRepo,                     // usageLogRepo
-		nil,                           // usageBillingRepo
-		userRepo,                      // userRepo
-		subRepo,                       // userSubRepo
-		nil,                           // userGroupRateRepo
-		nil,                           // cache
-		cfg,                           // cfg
-		nil,                           // schedulerSnapshot
-		nil,                           // concurrencyService
-		NewBillingService(cfg, nil),   // billingService
-		nil,                           // rateLimitService
-		&BillingCacheService{},        // billingCacheService
-		nil,                           // identityService
-		nil,                           // httpUpstream
-		&DeferredService{},            // deferredService
-		nil,                           // claudeTokenProvider
-		nil,                           // kiroTokenProvider
-		nil,                           // kiroCooldownStore
-		nil,                           // sessionLimitCache
-		nil,                           // rpmCache
-		nil,                           // digestStore
-		nil,                           // settingService
-		nil,                           // tlsFPProfileService
-		nil,                           // channelService
-		nil,                           // resolver
-		nil,                           // compositeResolver
-		nil,                           // balanceNotifyService
-		nil,                           // userPlatformQuotaRepo
+		nil,                         // accountRepo
+		nil,                         // groupRepo
+		usageRepo,                   // usageLogRepo
+		nil,                         // usageBillingRepo
+		userRepo,                    // userRepo
+		subRepo,                     // userSubRepo
+		nil,                         // userGroupRateRepo
+		nil,                         // cache
+		cfg,                         // cfg
+		nil,                         // schedulerSnapshot
+		nil,                         // concurrencyService
+		NewBillingService(cfg, nil), // billingService
+		nil,                         // rateLimitService
+		&BillingCacheService{},      // billingCacheService
+		nil,                         // identityService
+		nil,                         // httpUpstream
+		&DeferredService{},          // deferredService
+		nil,                         // claudeTokenProvider
+		nil,                         // kiroTokenProvider
+		nil,                         // adobeTokenProvider
+		nil,                         // kiroCooldownStore
+		nil,                         // sessionLimitCache
+		nil,                         // rpmCache
+		nil,                         // digestStore
+		nil,                         // settingService
+		nil,                         // tlsFPProfileService
+		nil,                         // channelService
+		nil,                         // resolver
+		nil,                         // compositeResolver
+		nil,                         // balanceNotifyService
+		nil,                         // userPlatformQuotaRepo
 	)
 }
 

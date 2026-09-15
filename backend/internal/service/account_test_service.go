@@ -159,6 +159,8 @@ type AccountTestService struct {
 	// grokWSDialer is optional; realtime account tests use the default OpenAI-style
 	// WS dialer when nil (supports proxy + coder/websocket handshake).
 	grokWSDialer openAIWSClientDialer
+	// adobeTokenProvider 为 nil 时 Adobe 测试路径按需构造本地 provider。
+	adobeTokenProvider *AdobeTokenProvider
 }
 
 func (s *AccountTestService) SetSettingService(settingService *SettingService) {
@@ -170,6 +172,13 @@ func (s *AccountTestService) SetSettingService(settingService *SettingService) {
 func (s *AccountTestService) SetPluginManager(pluginManager *PluginManager) {
 	if s != nil {
 		s.pluginManager = pluginManager
+	}
+}
+
+// SetAdobeTokenProvider 注入与网关共享 OAuthRefreshAPI 的 Adobe token provider。
+func (s *AccountTestService) SetAdobeTokenProvider(provider *AdobeTokenProvider) {
+	if s != nil {
+		s.adobeTokenProvider = provider
 	}
 }
 

@@ -35,6 +35,9 @@ type adobeFailure struct {
 	Cooldown time.Duration
 	// CooldownReason 写进账号的不可调度原因，便于管理端排查。
 	CooldownReason string
+	// InvalidateToken 为 true 时，本次使用的 access_token 已被上游明确拒绝，应从账号里清掉，
+	// 让下次取 token 时走带锁刷新，而不是按 JWT exp 继续复用它。
+	InvalidateToken bool
 }
 
 // classifyAdobeError 把 internal/pkg/adobe 的类型化错误翻译成网关语义。
@@ -80,8 +83,9 @@ func classifyAdobeError(err error) adobeFailure {
 
 	var authErr *adobe.AuthError
 	if errors.As(err, &authErr) {
-		// 不冷却账号：token 过期由后台刷新器修复，冷却只会让恢复变慢。
-		// cookie 真的失效时，刷新器那条路会把账号置为 error。
+		// 不冷却账号：冷却只会让恢复变慢。401 是上游对这个 token 的明确拒绝（被吊销但 JWT 未到期），
+		// 清掉 token 后下次取 token 会走带锁的 cookie 刷新；cookie 真的失效时，刷新路径会把账号置为 error。
+		// 403 可能是 WAF/风控，不是 token 本身的问题，只让当次请求换号。
 		return adobeFailure{
 			Failover: &UpstreamFailoverError{
 				StatusCode:        statusOrDefault(authErr.StatusCode, http.StatusUnauthorized),
@@ -90,6 +94,7 @@ func classifyAdobeError(err error) adobeFailure {
 				Reason:            adobeFailureAuth,
 				NextAccountAction: NextAccountRetry,
 			},
+			InvalidateToken: authErr.StatusCode == http.StatusUnauthorized,
 		}
 	}
 
@@ -171,15 +176,36 @@ func applyAdobeCooldown(ctx context.Context, repo AccountRepository, accountID i
 // 这是 handler 层的唯一入口：分类结果（adobeFailure）刻意不导出，避免把
 // 「怎么处置」的判断散到 handler 里各写一遍。
 // 返回 nil 表示该错误不属于 Adobe 上游语义（如 ctx 取消），调用方应原样上抛。
-func (s *GatewayService) AdobeFailover(ctx context.Context, accountID int64, err error) *UpstreamFailoverError {
+// token 是本次请求发给上游的 access_token，用于在上游明确拒绝时按值清掉它。
+func (s *GatewayService) AdobeFailover(ctx context.Context, accountID int64, token string, err error) *UpstreamFailoverError {
 	failure := classifyAdobeError(err)
 	if failure.Failover == nil {
 		return nil
 	}
 	if s != nil {
 		applyAdobeCooldown(ctx, s.accountRepo, accountID, failure)
+		applyAdobeTokenInvalidation(ctx, s.accountRepo, accountID, token, failure)
 	}
 	return failure.Failover
+}
+
+// applyAdobeTokenInvalidation 清掉被上游明确拒绝的 access_token。失败只记日志——
+// 清不掉最多是下个请求再撞一次 401 再换号，不该让本次请求失败。
+func applyAdobeTokenInvalidation(ctx context.Context, repo AccountRepository, accountID int64, token string, failure adobeFailure) {
+	if !failure.InvalidateToken || accountID <= 0 || token == "" {
+		return
+	}
+	invalidator, ok := repo.(AdobeTokenInvalidationRepository)
+	if !ok {
+		return
+	}
+	if _, err := invalidator.InvalidateAdobeAccessTokenIfUnchanged(ctx, accountID, token); err != nil {
+		logger.L().With(zap.String("component", "service.adobe")).Warn(
+			"adobe.token_invalidation_failed",
+			zap.Int64("account_id", accountID),
+			zap.Error(err),
+		)
+	}
 }
 
 // IsAdobeContentRejected 报告这次 failover 是否来自 Firefly 内容安全拒绝。
