@@ -329,7 +329,7 @@ func TestAdminServiceBulkUpdateAccounts_NormalizesOpenAISettings(t *testing.T) {
 	result, err := svc.BulkUpdateAccounts(context.Background(), &BulkUpdateAccountsInput{
 		AccountIDs: []int64{1, 2},
 		Credentials: map[string]any{
-			openAIEndpointCapabilitiesCredentialKey: []any{"chat_completions", "embeddings"},
+			openAIEndpointCapabilitiesCredentialKey: []any{"chat_completions", "embeddings", "rerank"},
 		},
 		Extra: map[string]any{
 			openAILongContextBillingEnabledKey: true,
@@ -383,6 +383,74 @@ func TestAdminServiceBulkUpdateAccounts_EmbeddingsOnlyResetsResponsesMode(t *tes
 
 	require.NoError(t, err)
 	require.Equal(t, []string{"embeddings"}, repo.lastBulkUpdate.Credentials[openAIEndpointCapabilitiesCredentialKey])
+	require.Contains(t, repo.lastBulkUpdate.Extra, "openai_responses_mode")
+	require.Nil(t, repo.lastBulkUpdate.Extra["openai_responses_mode"])
+}
+
+func TestAdminServiceBulkUpdateAccounts_AcceptsRerankCapability(t *testing.T) {
+	tests := []struct {
+		name         string
+		capabilities any
+		want         any
+	}{
+		{
+			name:         "rerank only",
+			capabilities: []any{"rerank"},
+			want:         []string{"rerank"},
+		},
+		{
+			name:         "chat with rerank",
+			capabilities: []string{"rerank", "chat_completions"},
+			want:         []string{"chat_completions", "rerank"},
+		},
+		{
+			name:         "embeddings with rerank",
+			capabilities: []any{"embeddings", "rerank"},
+			want:         []string{"embeddings", "rerank"},
+		},
+		{
+			name:         "all capabilities clears key",
+			capabilities: []any{"chat_completions", "embeddings", "rerank"},
+			want:         nil,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			repo := &accountRepoStubForBulkUpdate{getByIDsAccounts: []*Account{{
+				ID: 1, Platform: PlatformOpenAI, Type: AccountTypeAPIKey,
+			}}}
+			svc := &adminServiceImpl{accountRepo: repo}
+
+			_, err := svc.BulkUpdateAccounts(context.Background(), &BulkUpdateAccountsInput{
+				AccountIDs: []int64{1},
+				Credentials: map[string]any{
+					openAIEndpointCapabilitiesCredentialKey: tt.capabilities,
+				},
+			})
+
+			require.NoError(t, err)
+			require.Equal(t, 1, repo.bulkUpdateCalls)
+			require.Equal(t, tt.want, repo.lastBulkUpdate.Credentials[openAIEndpointCapabilitiesCredentialKey])
+		})
+	}
+}
+
+func TestAdminServiceBulkUpdateAccounts_RerankOnlyResetsResponsesMode(t *testing.T) {
+	repo := &accountRepoStubForBulkUpdate{getByIDsAccounts: []*Account{
+		{ID: 1, Platform: PlatformOpenAI, Type: AccountTypeAPIKey},
+	}}
+	svc := &adminServiceImpl{accountRepo: repo}
+
+	_, err := svc.BulkUpdateAccounts(context.Background(), &BulkUpdateAccountsInput{
+		AccountIDs: []int64{1},
+		Credentials: map[string]any{
+			openAIEndpointCapabilitiesCredentialKey: []any{"rerank"},
+		},
+	})
+
+	require.NoError(t, err)
+	require.Equal(t, []string{"rerank"}, repo.lastBulkUpdate.Credentials[openAIEndpointCapabilitiesCredentialKey])
 	require.Contains(t, repo.lastBulkUpdate.Extra, "openai_responses_mode")
 	require.Nil(t, repo.lastBulkUpdate.Extra["openai_responses_mode"])
 }
