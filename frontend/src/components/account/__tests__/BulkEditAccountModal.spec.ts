@@ -492,7 +492,7 @@ describe('BulkEditAccountModal', () => {
     })
   })
 
-  it('端点能力默认值提交 null，表示恢复两个默认端点', async () => {
+  it('端点能力默认值提交 null，表示恢复全部默认端点', async () => {
     const wrapper = mountModal({
       selectedPlatforms: ['openai'],
       selectedTypes: ['apikey']
@@ -544,6 +544,7 @@ describe('BulkEditAccountModal', () => {
     await wrapper.get('#bulk-edit-openai-responses-mode-enabled').setValue(true)
     await wrapper.get('[data-testid="bulk-edit-openai-responses-mode-select"]').setValue('force_chat_completions')
     await wrapper.get('[data-testid="bulk-edit-openai-endpoint-capability-chat_completions"]').setValue(false)
+    await wrapper.get('[data-testid="bulk-edit-openai-endpoint-capability-rerank"]').setValue(false)
 
     expect((wrapper.get('[data-testid="bulk-edit-openai-responses-mode-select"]').element as HTMLSelectElement).value)
       .toBe('auto')
@@ -554,6 +555,40 @@ describe('BulkEditAccountModal', () => {
     expect(adminAPI.accounts.bulkUpdate).toHaveBeenCalledWith([1, 2], {
       credentials: { openai_capabilities: ['embeddings'] },
       extra: { openai_responses_mode: null }
+    })
+  })
+
+  it('仅勾选 Rerank 时提交 rerank 能力并恢复 Responses 自动模式', async () => {
+    const wrapper = mountModal({
+      selectedPlatforms: ['openai'],
+      selectedTypes: ['apikey']
+    })
+
+    await wrapper.get('#bulk-edit-openai-endpoint-capabilities-enabled').setValue(true)
+    await wrapper.get('[data-testid="bulk-edit-openai-endpoint-capability-chat_completions"]').setValue(false)
+    await wrapper.get('[data-testid="bulk-edit-openai-endpoint-capability-embeddings"]').setValue(false)
+    await wrapper.get('#bulk-edit-account-form').trigger('submit.prevent')
+    await flushPromises()
+
+    expect(adminAPI.accounts.bulkUpdate).toHaveBeenCalledWith([1, 2], {
+      credentials: { openai_capabilities: ['rerank'] },
+      extra: { openai_responses_mode: null }
+    })
+  })
+
+  it('取消 Rerank 后提交显式能力列表而非清空键', async () => {
+    const wrapper = mountModal({
+      selectedPlatforms: ['openai'],
+      selectedTypes: ['apikey']
+    })
+
+    await wrapper.get('#bulk-edit-openai-endpoint-capabilities-enabled').setValue(true)
+    await wrapper.get('[data-testid="bulk-edit-openai-endpoint-capability-rerank"]').setValue(false)
+    await wrapper.get('#bulk-edit-account-form').trigger('submit.prevent')
+    await flushPromises()
+
+    expect(adminAPI.accounts.bulkUpdate).toHaveBeenCalledWith([1, 2], {
+      credentials: { openai_capabilities: ['chat_completions', 'embeddings'] }
     })
   })
 
@@ -606,9 +641,12 @@ describe('BulkEditAccountModal', () => {
     await wrapper.get('#bulk-edit-openai-endpoint-capabilities-enabled').setValue(true)
     await wrapper.get('[data-testid="bulk-edit-openai-endpoint-capability-chat_completions"]').setValue(false)
     await wrapper.get('[data-testid="bulk-edit-openai-endpoint-capability-embeddings"]').setValue(false)
+    await wrapper.get('[data-testid="bulk-edit-openai-endpoint-capability-rerank"]').setValue(false)
 
-    expect((wrapper.get('[data-testid="bulk-edit-openai-endpoint-capability-embeddings"]').element as HTMLInputElement).checked)
+    expect((wrapper.get('[data-testid="bulk-edit-openai-endpoint-capability-rerank"]').element as HTMLInputElement).checked)
       .toBe(true)
+    expect((wrapper.get('[data-testid="bulk-edit-openai-endpoint-capability-embeddings"]').element as HTMLInputElement).checked)
+      .toBe(false)
   })
 
   it('关闭弹窗后重置新增设置的启用状态和值', async () => {
@@ -629,6 +667,7 @@ describe('BulkEditAccountModal', () => {
     expect(wrapper.get('[data-testid="bulk-edit-openai-long-context-billing-toggle"]').attributes('aria-checked')).toBe('false')
     expect((wrapper.get('#bulk-edit-openai-endpoint-capabilities-enabled').element as HTMLInputElement).checked).toBe(false)
     expect((wrapper.get('[data-testid="bulk-edit-openai-endpoint-capability-chat_completions"]').element as HTMLInputElement).checked).toBe(true)
+    expect((wrapper.get('[data-testid="bulk-edit-openai-endpoint-capability-rerank"]').element as HTMLInputElement).checked).toBe(true)
     expect((wrapper.get('[data-testid="bulk-edit-openai-responses-mode-select"]').element as HTMLSelectElement).value).toBe('auto')
   })
 
