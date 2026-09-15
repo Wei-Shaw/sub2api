@@ -186,6 +186,9 @@ func (UsageLog) Fields() []ent.Field {
 			Default(time.Now).
 			Immutable().
 			SchemaType(map[string]string{dialect.Postgres: "timestamptz"}),
+		field.String("user_prompt").
+			Optional().
+			Nillable(),
 	}
 }
 
