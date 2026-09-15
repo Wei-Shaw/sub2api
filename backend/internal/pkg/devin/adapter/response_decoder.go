@@ -254,10 +254,10 @@ func (decoder *responseDecoder) decodeThinking(events []llm.ResponseEvent, frame
 		events = append(events, llm.ResponseEvent{Type: llm.ResponseEventThinkingStart, ContentIndex: decoder.thinkIdx, Partial: &decoder.partial})
 	}
 	if delta := frame.DeltaThinking; delta != "" {
-		decoder.thinkingBuilder.WriteString(delta)
+		_, _ = decoder.thinkingBuilder.WriteString(delta)
 	}
 	if sig := frame.DeltaSignature; sig != "" {
-		decoder.thinkingSigBuilder.WriteString(sig)
+		_, _ = decoder.thinkingSigBuilder.WriteString(sig)
 	}
 	if sigType := frame.DeltaSignatureType; sigType != "" {
 		// signature_type 决定签名载荷的格式（sealed/anthropic/openai），
@@ -285,7 +285,7 @@ func (decoder *responseDecoder) decodeText(events []llm.ResponseEvent, delta str
 		events = append(events, llm.ResponseEvent{Type: llm.ResponseEventTextStart, ContentIndex: decoder.textIdx, Partial: &decoder.partial})
 	}
 	// 用 Builder 累加，避免每帧产生越来越大的新字符串。
-	decoder.textBuilder.WriteString(delta)
+	_, _ = decoder.textBuilder.WriteString(delta)
 	if len(decoder.stopPatterns) == 0 {
 		decoder.textEmitted += len(delta)
 		events = append(events, llm.ResponseEvent{Type: llm.ResponseEventTextDelta, ContentIndex: decoder.textIdx, Delta: delta, Partial: &decoder.partial})
@@ -317,7 +317,7 @@ func (decoder *responseDecoder) scanTextForStops(events []llm.ResponseEvent) []l
 		}
 		decoder.stoppedByPattern = true
 		decoder.textBuilder.Reset()
-		decoder.textBuilder.WriteString(text[:earliest])
+		_, _ = decoder.textBuilder.WriteString(text[:earliest])
 		return decoder.endText(events)
 	}
 	if safe := len(text) - decoder.maxPatternLen + 1; safe > decoder.textEmitted {
@@ -370,7 +370,7 @@ func (decoder *responseDecoder) decodeTool(events []llm.ResponseEvent, delta dev
 		state.call.Custom = true
 	}
 	if hasFragment {
-		state.arguments.WriteString(fragment)
+		_, _ = state.arguments.WriteString(fragment)
 	}
 	return decoder.decodeNativeTool(events, state, fragment, hasFragment)
 }

@@ -464,7 +464,7 @@ func wsMessageText(fields wsItemFields) string {
 	for _, part := range parts {
 		partType := wsJSONString(part, "type")
 		if partType == "input_text" || partType == "text" {
-			builder.WriteString(wsJSONString(part, "text"))
+			_, _ = builder.WriteString(wsJSONString(part, "text"))
 		}
 	}
 	return builder.String()

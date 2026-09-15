@@ -25,13 +25,13 @@ import (
 func deriveSessionIDs(request llm.RequestMessages) (trajectoryID string, cascadeID string) {
 	var seed strings.Builder
 	if request.SessionKey != "" {
-		seed.WriteString(request.SessionKey)
+		_, _ = seed.WriteString(request.SessionKey)
 	} else {
 		head := request.SystemPrompt
 		if len(head) > 4096 {
 			head = head[:4096]
 		}
-		seed.WriteString(head)
+		_, _ = seed.WriteString(head)
 		for _, message := range request.Messages {
 			text := firstMessageText(message)
 			if text == "" {
@@ -40,8 +40,8 @@ func deriveSessionIDs(request llm.RequestMessages) (trajectoryID string, cascade
 			if len(text) > 1024 {
 				text = text[:1024]
 			}
-			seed.WriteByte(0)
-			seed.WriteString(text)
+			_ = seed.WriteByte(0)
+			_, _ = seed.WriteString(text)
 			break
 		}
 	}

@@ -469,10 +469,10 @@ func slugify(text string) string {
 	lastDash := false
 	for _, r := range strings.ToLower(text) {
 		if (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') {
-			b.WriteRune(r)
+			_, _ = b.WriteRune(r)
 			lastDash = false
 		} else if !lastDash {
-			b.WriteByte('-')
+			_ = b.WriteByte('-')
 			lastDash = true
 		}
 	}

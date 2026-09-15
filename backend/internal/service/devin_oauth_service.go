@@ -35,6 +35,9 @@ func NewDevinOAuthService(proxyRepo ProxyRepository, upstream HTTPUpstream) *Dev
 
 // Stop 停止会话清理协程（服务退出时调用）。
 func (s *DevinOAuthService) Stop() {
+	if s == nil {
+		return
+	}
 	s.sessionStore.Stop()
 }
 
@@ -199,7 +202,7 @@ func (s *DevinOAuthService) doNoAuth(ctx context.Context, path string, body []by
 	if err != nil {
 		return nil, err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	return devin.ReadUnaryResponse(resp)
 }
 
@@ -214,7 +217,7 @@ func (s *DevinOAuthService) getUserStatus(ctx context.Context, token, baseURL, p
 	if err != nil {
 		return nil, err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	data, err := devin.ReadUnaryResponse(resp)
 	if err != nil {
 		return nil, err

@@ -47,7 +47,7 @@ func pumpUpstream(ctx context.Context, conn streamConn) <-chan upstreamFrame {
 	frames := make(chan upstreamFrame, upstreamFrameBuffer)
 	go func() {
 		defer close(frames)
-		defer conn.body.Close()
+		defer func() { _ = conn.body.Close() }()
 		for conn.reader.Next() {
 			frame := conn.reader.Frame()
 			if frame.End {

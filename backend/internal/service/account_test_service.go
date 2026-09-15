@@ -464,13 +464,6 @@ func (s *AccountTestService) testDevinAccountConnection(c *gin.Context, account 
 	return nil
 }
 
-func modelIDOrDevin(modelID string) string {
-	if modelID == "" {
-		return "devin"
-	}
-	return modelID
-}
-
 // testOpenCodeGoAccountConnection probes the native endpoint for the selected
 // model. Adaptive accounts (the default) follow OpenCodeGoModelProtocol:
 // grok/gpt/muse-spark → Responses, minimax/qwen → Anthropic, everything else

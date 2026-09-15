@@ -126,14 +126,14 @@ func convertMessage(message llm.Message, attachImages bool, repairs *llm.Request
 		for _, block := range message.Content {
 			switch typed := block.(type) {
 			case llm.TextContent:
-				text.WriteString(typed.Text)
+				_, _ = text.WriteString(typed.Text)
 			case llm.ThinkingContent:
 				// 一条 assistant 消息可带多个 thinking 块（interleaved）；
 				// wire 模型每 prompt 只有单份 thinking，顺序拼接、签名取最后非空。
 				if thinking.Len() > 0 && typed.Thinking != "" {
-					thinking.WriteString("\n")
+					_, _ = thinking.WriteString("\n")
 				}
-				thinking.WriteString(typed.Thinking)
+				_, _ = thinking.WriteString(typed.Thinking)
 				if typed.ThinkingSignature != "" {
 					signature = typed.ThinkingSignature
 					signatureType = typed.SignatureType
@@ -313,7 +313,7 @@ func promptForContent(source int, content []llm.Content, attachImages bool, repa
 	for _, block := range content {
 		switch block := block.(type) {
 		case llm.TextContent:
-			text.WriteString(block.Text)
+			_, _ = text.WriteString(block.Text)
 		case llm.ThinkingContent:
 			prompt.Thinking = block.Thinking
 			prompt.Signature = block.ThinkingSignature
@@ -323,9 +323,9 @@ func promptForContent(source int, content []llm.Content, attachImages bool, repa
 			if !attachImages {
 				// 与 WindsurfAPI 一致：历史图不进 Images，避免上游 invalid_argument。
 				if text.Len() > 0 {
-					text.WriteByte('\n')
+					_ = text.WriteByte('\n')
 				}
-				text.WriteString("[Image omitted from history]")
+				_, _ = text.WriteString("[Image omitted from history]")
 				repairs.OmittedHistoryImages++
 				continue
 			}

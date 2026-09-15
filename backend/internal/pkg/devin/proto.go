@@ -163,16 +163,6 @@ func iterFields(buf []byte, yield func(protoField) bool) {
 	}
 }
 
-// collectFields 把整个消息体收进切片（测试与短消息解析用）。
-func collectFields(buf []byte) []protoField {
-	var out []protoField
-	iterFields(buf, func(f protoField) bool {
-		out = append(out, f)
-		return true
-	})
-	return out
-}
-
 func (f protoField) string() string {
 	if f.wire == wireBytes {
 		return string(f.vbytes)
@@ -226,13 +216,4 @@ func fieldString(buf []byte, num int) string {
 		return true
 	})
 	return out
-}
-
-// marshalStringFields 是测试辅助：把 field->string 序列化为消息体。
-func marshalStringFields(fields map[int]string) []byte {
-	var buf []byte
-	for num, value := range fields {
-		buf = appendString(buf, num, value)
-	}
-	return buf
 }

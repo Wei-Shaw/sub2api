@@ -114,7 +114,7 @@ func (a *Adapter) doUnary(ctx context.Context, rpc string, body []byte) ([]byte,
 	if err != nil {
 		return nil, err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	return devin.ReadUnaryResponse(resp)
 }
 
@@ -131,7 +131,7 @@ func (a *Adapter) streamHTTP(ctx context.Context, rpc string, body []byte) (*dev
 	}
 	reader, err := devin.ReadStreamResponse(resp)
 	if err != nil {
-		resp.Body.Close()
+		_ = resp.Body.Close()
 		return nil, nil, err
 	}
 	return reader, resp.Body, nil

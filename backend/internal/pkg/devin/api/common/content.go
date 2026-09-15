@@ -302,7 +302,7 @@ func ContentText(content []llm.Content) string {
 	var builder strings.Builder
 	for _, block := range content {
 		if text, ok := block.(llm.TextContent); ok {
-			builder.WriteString(text.Text)
+			_, _ = builder.WriteString(text.Text)
 		}
 	}
 	return builder.String()

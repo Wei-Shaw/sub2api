@@ -218,7 +218,7 @@ func (encoder *StreamEncoder) reasoningDelta(event llm.ResponseEvent) ([]SSEEven
 	if err != nil {
 		return nil, err
 	}
-	item.value.WriteString(event.Delta)
+	_, _ = item.value.WriteString(event.Delta)
 	return []SSEEvent{encoder.emitDelta(deltaEvent{
 		Type: "response.reasoning_summary_text.delta", ItemID: item.id, OutputIndex: item.outputIndex,
 		SummaryIndex: new(int), Delta: event.Delta,
@@ -335,7 +335,7 @@ func (encoder *StreamEncoder) textDelta(event llm.ResponseEvent) ([]SSEEvent, er
 	if err != nil {
 		return nil, err
 	}
-	item.value.WriteString(event.Delta)
+	_, _ = item.value.WriteString(event.Delta)
 	return []SSEEvent{encoder.emitDelta(deltaEvent{
 		Type: "response.output_text.delta", ItemID: item.id, OutputIndex: item.outputIndex,
 		ContentIndex: &item.contentIndex, Delta: event.Delta, Logprobs: []any{},
@@ -401,7 +401,7 @@ func (encoder *StreamEncoder) toolCallDelta(event llm.ResponseEvent) ([]SSEEvent
 	if err != nil {
 		return nil, err
 	}
-	item.value.WriteString(event.Delta)
+	_, _ = item.value.WriteString(event.Delta)
 	eventName := "response.function_call_arguments.delta"
 	if item.kind == "custom_tool_call" {
 		eventName = "response.custom_tool_call_input.delta"

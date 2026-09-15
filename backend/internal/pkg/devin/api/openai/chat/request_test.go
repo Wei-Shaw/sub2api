@@ -50,7 +50,10 @@ func TestDecodeRequestBuildsConversationContext(t *testing.T) {
 	if len(request.Context.Tools) != 1 || request.Context.Tools[0].Name != "read_file" {
 		t.Fatalf("tools = %#v", request.Context.Tools)
 	}
-	user := request.Context.Messages[0].(llm.UserMessage)
+	user, ok := request.Context.Messages[0].(llm.UserMessage)
+	if !ok {
+		t.Fatalf("message[0] type = %T", request.Context.Messages[0])
+	}
 	if _, ok := user.Content[1].(llm.ImageContent); !ok {
 		t.Fatalf("user content[1] = %T, want ImageContent", user.Content[1])
 	}
@@ -68,8 +71,12 @@ func TestDecodeRequestAcceptsPlainString(t *testing.T) {
 	if len(request.Context.Messages) != 1 {
 		t.Fatalf("message count = %d, want 1", len(request.Context.Messages))
 	}
-	message := request.Context.Messages[0].(llm.UserMessage)
-	if message.Content[0].(llm.TextContent).Text != "hello" {
+	message, ok := request.Context.Messages[0].(llm.UserMessage)
+	if !ok {
+		t.Fatalf("message[0] type = %T", request.Context.Messages[0])
+	}
+	msgText, ok := message.Content[0].(llm.TextContent)
+	if !ok || msgText.Text != "hello" {
 		t.Fatalf("message content = %#v", message.Content)
 	}
 }
@@ -80,9 +87,12 @@ func TestDecodeRequestAcceptsFunctionCallArguments(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	assistant := request.Context.Messages[0].(llm.AssistantMessage)
-	call := assistant.Content[0].(llm.ToolCall)
-	if call.Name != "read_file" {
+	assistant, ok := request.Context.Messages[0].(llm.AssistantMessage)
+	if !ok {
+		t.Fatalf("message[0] type = %T", request.Context.Messages[0])
+	}
+	call, ok := assistant.Content[0].(llm.ToolCall)
+	if !ok || call.Name != "read_file" {
 		t.Fatalf("tool call name = %q", call.Name)
 	}
 	if !json.Valid(call.Arguments) || !strings.Contains(string(call.Arguments), `"path"`) {

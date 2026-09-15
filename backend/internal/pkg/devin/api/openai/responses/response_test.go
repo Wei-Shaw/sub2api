@@ -72,15 +72,15 @@ func TestStreamEncoderEncodesReasoningAndToolItems(t *testing.T) {
 	if completedResponseID := nestedString(t, completed, "response", "id"); completedResponseID != responseID {
 		t.Fatalf("completed response id = %q, want %q", completedResponseID, responseID)
 	}
-	response := completed["response"].(map[string]any)
-	output := response["output"].([]any)
+	response, _ := completed["response"].(map[string]any)
+	output := mustSlice(t, response["output"])
 	if len(output) != 2 {
 		t.Fatalf("completed output count = %d, want 2", len(output))
 	}
-	if output[0].(map[string]any)["type"] != "reasoning" || output[1].(map[string]any)["type"] != "function_call" {
+	if mustMap(t, output[0])["type"] != "reasoning" || mustMap(t, output[1])["type"] != "function_call" {
 		t.Fatalf("completed output = %#v", output)
 	}
-	if output[1].(map[string]any)["call_id"] != "call-1" {
+	if mustMap(t, output[1])["call_id"] != "call-1" {
 		t.Fatalf("completed function call = %#v", output[1])
 	}
 }
@@ -116,9 +116,9 @@ func TestStreamEncoderEncodesFinalTextMessage(t *testing.T) {
 		t.Fatalf("content part added = %#v", partAdded)
 	}
 	completed := decodeEventData(t, encoded[len(encoded)-1])
-	output := completed["response"].(map[string]any)["output"].([]any)
-	message := output[0].(map[string]any)
-	content := message["content"].([]any)[0].(map[string]any)
+	output := mustSlice(t, mustMap(t, completed["response"])["output"])
+	message, _ := output[0].(map[string]any)
+	content, _ := message["content"].([]any)[0].(map[string]any)
 	if message["type"] != "message" || content["text"] != "final answer" {
 		t.Fatalf("completed message = %#v", message)
 	}
@@ -171,8 +171,8 @@ func TestStreamEncoderHoldsReasoningForLateSignature(t *testing.T) {
 		t.Fatalf("reasoning encrypted_content = %q, want sig", got)
 	}
 	completed := decodeEventData(t, encoded[len(encoded)-1])
-	output := completed["response"].(map[string]any)["output"].([]any)
-	if got := output[0].(map[string]any)["encrypted_content"]; got != "sig" {
+	output := mustSlice(t, mustMap(t, completed["response"])["output"])
+	if got := mustMap(t, output[0])["encrypted_content"]; got != "sig" {
 		t.Fatalf("completed reasoning output = %#v", output[0])
 	}
 }
@@ -198,8 +198,8 @@ func TestStreamEncoderEncodesSignatureOnlyReasoning(t *testing.T) {
 		"response.output_item.done", "response.completed",
 	})
 	completed := decodeEventData(t, encoded[len(encoded)-1])
-	output := completed["response"].(map[string]any)["output"].([]any)
-	if got := output[0].(map[string]any)["encrypted_content"]; got != "sig" {
+	output := mustSlice(t, mustMap(t, completed["response"])["output"])
+	if got := mustMap(t, output[0])["encrypted_content"]; got != "sig" {
 		t.Fatalf("signature-only reasoning encrypted_content = %v, want sig", got)
 	}
 }
@@ -236,7 +236,7 @@ func TestStreamEncoderEncodesLengthAsIncomplete(t *testing.T) {
 		{Type: llm.ResponseEventDone, Reason: llm.StopReasonLength, Message: &llm.AssistantMessage{StopReason: llm.StopReasonLength}},
 	})
 	assertEventNames(t, encoded, []string{"response.created", "response.in_progress", "response.incomplete"})
-	response := decodeEventData(t, encoded[2])["response"].(map[string]any)
+	response, _ := decodeEventData(t, encoded[2])["response"].(map[string]any)
 	if response["status"] != "incomplete" || response["completed_at"] != nil {
 		t.Fatalf("incomplete response = %#v", response)
 	}
@@ -248,7 +248,7 @@ func TestResponseUsageIncludesCachedTokensInInputTotal(t *testing.T) {
 	if encoded["input_tokens"] != int64(12362) {
 		t.Fatalf("input_tokens = %v, want 12362", encoded["input_tokens"])
 	}
-	details := encoded["input_tokens_details"].(map[string]any)
+	details, _ := encoded["input_tokens_details"].(map[string]any)
 	if details["cached_tokens"] != int64(12195) {
 		t.Fatalf("cached_tokens = %v, want 12195", details["cached_tokens"])
 	}
@@ -290,6 +290,26 @@ func assertSequenceNumbers(t *testing.T, events []SSEEvent) {
 			t.Fatalf("event[%d] sequence_number = %v", index, data["sequence_number"])
 		}
 	}
+}
+
+// mustMap 断言 v 为 map 并返回（测试失败即终止）。
+func mustMap(t *testing.T, v any) map[string]any {
+	t.Helper()
+	m, ok := v.(map[string]any)
+	if !ok {
+		t.Fatalf("expected map[string]any, got %T", v)
+	}
+	return m
+}
+
+// mustSlice 断言 v 为切片并返回。
+func mustSlice(t *testing.T, v any) []any {
+	t.Helper()
+	s, ok := v.([]any)
+	if !ok {
+		t.Fatalf("expected []any, got %T", v)
+	}
+	return s
 }
 
 func decodeEventData(t *testing.T, event SSEEvent) map[string]any {
@@ -382,7 +402,7 @@ func TestStreamEncoderCustomToolCall(t *testing.T) {
 	if got := nestedString(t, done, "item", "input"); got != "*** Begin Patch" {
 		t.Fatalf("custom input = %q", got)
 	}
-	if _, hasArguments := done["item"].(map[string]any)["arguments"]; hasArguments {
+	if _, hasArguments := mustMap(t, done["item"])["arguments"]; hasArguments {
 		t.Fatal("custom_tool_call must not carry arguments field")
 	}
 }

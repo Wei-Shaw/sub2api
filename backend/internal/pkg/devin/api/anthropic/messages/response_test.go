@@ -52,8 +52,8 @@ func TestStreamEncoderEmitsToolUse(t *testing.T) {
 		t.Fatalf("events = %v", encoded)
 	}
 	startBlock := decodeEventData(t, encoded[1])
-	content := startBlock["content_block"].(map[string]any)
-	if content["type"] != "tool_use" || content["name"] != "lookup" {
+	content, ok := startBlock["content_block"].(map[string]any)
+	if !ok || content["type"] != "tool_use" || content["name"] != "lookup" {
 		t.Fatalf("content_block = %#v", content)
 	}
 	stopBlock := decodeEventData(t, encoded[4])
@@ -113,13 +113,13 @@ func TestStreamEncoderHoldsThinkingForLateSignature(t *testing.T) {
 		}
 	}
 	signatureDelta := decodeEventData(t, encoded[5])
-	delta := signatureDelta["delta"].(map[string]any)
-	if delta["type"] != "signature_delta" || delta["signature"] != "sig" || signatureDelta["index"] != float64(0) {
+	delta, ok := signatureDelta["delta"].(map[string]any)
+	if !ok || delta["type"] != "signature_delta" || delta["signature"] != "sig" || signatureDelta["index"] != float64(0) {
 		t.Fatalf("signature delta = %#v", signatureDelta)
 	}
 	stopBlock := decodeEventData(t, encoded[6])
-	block := stopBlock["content_block"].(map[string]any)
-	if stopBlock["index"] != float64(0) || block["type"] != "thinking" || block["signature"] != "sig" {
+	block, ok := stopBlock["content_block"].(map[string]any)
+	if !ok || stopBlock["index"] != float64(0) || block["type"] != "thinking" || block["signature"] != "sig" {
 		t.Fatalf("thinking stop block = %#v", stopBlock)
 	}
 }
@@ -144,8 +144,8 @@ func TestEncodeResponseFinal(t *testing.T) {
 	if parsed["type"] != "message" || parsed["model"] != "claude-test" {
 		t.Fatalf("response = %#v", parsed)
 	}
-	usage := parsed["usage"].(map[string]any)
-	if usage["cache_read_input_tokens"] != float64(3) || usage["cache_creation_input_tokens"] != float64(2) {
+	usage, ok := parsed["usage"].(map[string]any)
+	if !ok || usage["cache_read_input_tokens"] != float64(3) || usage["cache_creation_input_tokens"] != float64(2) {
 		t.Fatalf("usage = %#v", usage)
 	}
 }

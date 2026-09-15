@@ -86,7 +86,8 @@ func TestDecodeRequestPreservesMidConversationSystem(t *testing.T) {
 	if !ok {
 		t.Fatalf("message[1] type = %T, want llm.UserMessage", request.Context.Messages[1])
 	}
-	if mid.Content[0].(llm.TextContent).Text != "Available agent types for the Agent tool: explore" {
+	midText, ok := mid.Content[0].(llm.TextContent)
+	if !ok || midText.Text != "Available agent types for the Agent tool: explore" {
 		t.Fatalf("message[1] content = %#v", mid.Content)
 	}
 }
@@ -112,7 +113,10 @@ func TestDecodeRequestReplaysThinkingSignature(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	assistant := request.Context.Messages[1].(llm.AssistantMessage)
+	assistant, ok := request.Context.Messages[1].(llm.AssistantMessage)
+	if !ok {
+		t.Fatalf("message[1] type = %T, want llm.AssistantMessage", request.Context.Messages[1])
+	}
 	first, ok := assistant.Content[0].(llm.ThinkingContent)
 	if !ok || first.Thinking != "先想清楚再答" || first.ThinkingSignature != "sig-1" {
 		t.Fatalf("content[0] = %#v, want thinking+signature", assistant.Content[0])
@@ -132,8 +136,12 @@ func TestDecodeRequestAcceptsStringContent(t *testing.T) {
 	if len(request.Context.Messages) != 1 {
 		t.Fatalf("message count = %d, want 1", len(request.Context.Messages))
 	}
-	message := request.Context.Messages[0].(llm.UserMessage)
-	if message.Content[0].(llm.TextContent).Text != "hello" {
+	message, ok := request.Context.Messages[0].(llm.UserMessage)
+	if !ok {
+		t.Fatalf("message[0] type = %T, want llm.UserMessage", request.Context.Messages[0])
+	}
+	msgText, ok := message.Content[0].(llm.TextContent)
+	if !ok || msgText.Text != "hello" {
 		t.Fatalf("message content = %#v", message.Content)
 	}
 }

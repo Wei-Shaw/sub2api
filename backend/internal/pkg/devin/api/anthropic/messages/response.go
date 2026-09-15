@@ -149,7 +149,7 @@ func (encoder *StreamEncoder) textDelta(event llm.ResponseEvent) []SSEEvent {
 	if state == nil {
 		return nil
 	}
-	state.text.WriteString(event.Delta)
+	_, _ = state.text.WriteString(event.Delta)
 	return []SSEEvent{encoder.emitBlockDelta(event.ContentIndex, blockDelta{
 		Type: "text_delta", Text: event.Delta,
 	})}
@@ -189,7 +189,7 @@ func (encoder *StreamEncoder) thinkingDelta(event llm.ResponseEvent) []SSEEvent 
 	if state == nil {
 		return nil
 	}
-	state.thinking.WriteString(event.Delta)
+	_, _ = state.thinking.WriteString(event.Delta)
 	if state.redacted {
 		// 隐藏思考不应把增量正文发出去（上游也不会给正文，但 belt-and-suspenders）。
 		return nil
@@ -209,9 +209,9 @@ func (encoder *StreamEncoder) endThinking(event llm.ResponseEvent) []SSEEvent {
 		thinking = state.thinking.String()
 	}
 	state.thinking.Reset()
-	state.thinking.WriteString(thinking)
+	_, _ = state.thinking.WriteString(thinking)
 	if t, ok := thinkingAt(event.Partial, event.ContentIndex); ok {
-		state.signature.WriteString(t.ThinkingSignature)
+		_, _ = state.signature.WriteString(t.ThinkingSignature)
 		state.redacted = state.redacted || t.Redacted
 	}
 	// 上游把签名作为正文之后的尾随帧发送：尚无签名时推迟
@@ -228,7 +228,7 @@ func (encoder *StreamEncoder) thinkingSignature(event llm.ResponseEvent) []SSEEv
 	if state == nil {
 		return nil
 	}
-	state.signature.WriteString(event.Delta)
+	_, _ = state.signature.WriteString(event.Delta)
 	if !state.pendingSig {
 		return nil
 	}
@@ -297,7 +297,7 @@ func (encoder *StreamEncoder) toolUseDelta(event llm.ResponseEvent) []SSEEvent {
 	if state == nil {
 		return nil
 	}
-	state.input.WriteString(event.Delta)
+	_, _ = state.input.WriteString(event.Delta)
 	return []SSEEvent{encoder.emitBlockDelta(event.ContentIndex, blockDelta{
 		Type: "input_json_delta", PartialJSON: event.Delta,
 	})}

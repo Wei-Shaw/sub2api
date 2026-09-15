@@ -26,13 +26,13 @@ func withToolDescriptions(systemPrompt string, tools []llm.ToolDefinition) strin
 			continue
 		}
 		if section.Len() == 0 {
-			section.WriteString("# tools descriptions")
+			_, _ = section.WriteString("# tools descriptions")
 		}
-		section.WriteString("\n<tool name=\"")
-		section.WriteString(escapeXMLAttribute(tool.Name))
-		section.WriteString("\">\n")
-		section.WriteString(escapeXMLText(formatToolDescription(description)))
-		section.WriteString("\n</tool>")
+		_, _ = section.WriteString("\n<tool name=\"")
+		_, _ = section.WriteString(escapeXMLAttribute(tool.Name))
+		_, _ = section.WriteString("\">\n")
+		_, _ = section.WriteString(escapeXMLText(formatToolDescription(description)))
+		_, _ = section.WriteString("\n</tool>")
 	}
 	if section.Len() == 0 {
 		return systemPrompt

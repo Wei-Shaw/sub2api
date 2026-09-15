@@ -64,8 +64,14 @@ func TestDecodeRequestAcceptsStringInput(t *testing.T) {
 	if len(request.Context.Messages) != 1 {
 		t.Fatalf("message count = %d, want 1", len(request.Context.Messages))
 	}
-	message := request.Context.Messages[0].(llm.UserMessage)
-	content := message.Content[0].(llm.TextContent)
+	message, ok := request.Context.Messages[0].(llm.UserMessage)
+	if !ok {
+		t.Fatalf("message[0] type = %T", request.Context.Messages[0])
+	}
+	content, ok := message.Content[0].(llm.TextContent)
+	if !ok {
+		t.Fatalf("content[0] type = %T", message.Content[0])
+	}
 	if content.Text != "hello" {
 		t.Fatalf("text = %q, want hello", content.Text)
 	}
@@ -84,7 +90,10 @@ func TestDecodeRequestAcceptsImageURLObject(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	user := request.Context.Messages[0].(llm.UserMessage)
+	user, ok := request.Context.Messages[0].(llm.UserMessage)
+	if !ok {
+		t.Fatalf("message[0] type = %T", request.Context.Messages[0])
+	}
 	if len(user.Content) != 2 {
 		t.Fatalf("content count = %d, want 2", len(user.Content))
 	}
@@ -110,7 +119,7 @@ func TestDecodeRequestAcceptsChatCompletionsImagePart(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	user := request.Context.Messages[0].(llm.UserMessage)
+	user, _ := request.Context.Messages[0].(llm.UserMessage)
 	if _, ok := user.Content[1].(llm.ImageContent); !ok {
 		t.Fatalf("content[1] = %#v, want ImageContent", user.Content[1])
 	}
@@ -228,7 +237,7 @@ func TestDecodeRequestAttachesReasoningSummary(t *testing.T) {
 	if len(request.Context.Messages) != 3 {
 		t.Fatalf("message count = %d, want 3", len(request.Context.Messages))
 	}
-	assistant := request.Context.Messages[1].(llm.AssistantMessage)
+	assistant, _ := request.Context.Messages[1].(llm.AssistantMessage)
 	thinking, ok := assistant.Content[0].(llm.ThinkingContent)
 	if !ok || thinking.Thinking != "计划：先读文件再改" {
 		t.Fatalf("assistant content[0] = %#v, want ThinkingContent", assistant.Content[0])
@@ -322,7 +331,7 @@ func TestDecodeRequestMergesAssistantTurnItems(t *testing.T) {
 	if len(request.Context.Messages) != 1 {
 		t.Fatalf("message count = %d, want 1 merged", len(request.Context.Messages))
 	}
-	joined := request.Context.Messages[0].(llm.AssistantMessage)
+	joined, _ := request.Context.Messages[0].(llm.AssistantMessage)
 	texts := make([]string, 0, len(joined.Content))
 	for _, block := range joined.Content {
 		text, ok := block.(llm.TextContent)
@@ -353,7 +362,7 @@ func TestDecodeRequestDropsOrphanReasoning(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	user := request.Context.Messages[0].(llm.UserMessage)
+	user, _ := request.Context.Messages[0].(llm.UserMessage)
 	if len(user.Content) != 1 {
 		t.Fatalf("user content = %#v, want single text block", user.Content)
 	}
@@ -414,7 +423,7 @@ func TestDecodeRequestIgnoresUnsupportedExtensions(t *testing.T) {
 		if !ok {
 			t.Fatalf("message %d type = %T, want llm.UserMessage", index, request.Context.Messages[index])
 		}
-		text := message.Content[0].(llm.TextContent).Text
+		text := mustText(t, message.Content)
 		if !strings.HasPrefix(text, "[input item type=") {
 			t.Fatalf("demoted message %d = %q", index, text)
 		}
@@ -423,7 +432,7 @@ func TestDecodeRequestIgnoresUnsupportedExtensions(t *testing.T) {
 	if !ok {
 		t.Fatalf("message type = %T, want llm.UserMessage", request.Context.Messages[2])
 	}
-	if len(message.Content) != 1 || message.Content[0].(llm.TextContent).Text != "hello" {
+	if len(message.Content) != 1 || mustText(t, message.Content) != "hello" {
 		t.Fatalf("message content = %#v", message.Content)
 	}
 	if len(request.Context.Tools) != 1 || request.Context.Tools[0].Name != "known" {
@@ -491,7 +500,7 @@ func TestDecodeRequestDropsForeignReasoningPayload(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	assistant := request.Context.Messages[0].(llm.AssistantMessage)
+	assistant, _ := request.Context.Messages[0].(llm.AssistantMessage)
 	for _, block := range assistant.Content {
 		if thinking, ok := block.(llm.ThinkingContent); ok && thinking.ThinkingSignature != "" {
 			t.Fatalf("foreign signature must be dropped, got %#v", thinking)
@@ -519,12 +528,12 @@ func TestDecodeRequestCustomToolCall(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	assistant := request.Context.Messages[0].(llm.AssistantMessage)
+	assistant, _ := request.Context.Messages[0].(llm.AssistantMessage)
 	call, ok := assistant.Content[0].(llm.ToolCall)
 	if !ok || !call.Custom || string(call.Arguments) != "*** Begin Patch\n+x" {
 		t.Fatalf("custom tool call = %#v", assistant.Content[0])
 	}
-	result := request.Context.Messages[1].(llm.ToolResultMessage)
+	result, _ := request.Context.Messages[1].(llm.ToolResultMessage)
 	if result.ToolCallID != "c1" {
 		t.Fatalf("custom_tool_call_output = %#v", result)
 	}
@@ -544,11 +553,24 @@ func TestDecodeRequestToolOutputPartArray(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	result := request.Context.Messages[1].(llm.ToolResultMessage)
+	result, _ := request.Context.Messages[1].(llm.ToolResultMessage)
 	if len(result.Content) != 2 {
 		t.Fatalf("tool result content = %#v", result.Content)
 	}
 	if _, ok := result.Content[1].(llm.ImageContent); !ok {
 		t.Fatalf("content[1] = %T, want ImageContent", result.Content[1])
 	}
+}
+
+// mustText 断言 content[0] 为 TextContent 并返回正文。
+func mustText(t *testing.T, contents []llm.Content) string {
+	t.Helper()
+	if len(contents) == 0 {
+		t.Fatal("empty content")
+	}
+	text, ok := contents[0].(llm.TextContent)
+	if !ok {
+		t.Fatalf("content[0] type = %T, want TextContent", contents[0])
+	}
+	return text.Text
 }

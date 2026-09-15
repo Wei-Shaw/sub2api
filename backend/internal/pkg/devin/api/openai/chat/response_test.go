@@ -28,13 +28,17 @@ func TestStreamEncoderEmitsRoleAndText(t *testing.T) {
 		t.Fatalf("event count = %d, want 5", len(encoded))
 	}
 	first := decodeEventData(t, encoded[0])
-	if first["choices"].([]any)[0].(map[string]any)["delta"].(map[string]any)["role"] != "assistant" {
+	if choices, _ := first["choices"].([]any); len(choices) == 0 {
+		t.Fatal("first event missing choices")
+	} else if choice, _ := choices[0].(map[string]any); choice == nil {
+		t.Fatal("first event choice malformed")
+	} else if delta, _ := choice["delta"].(map[string]any); delta["role"] != "assistant" {
 		t.Fatalf("first event role missing: %v", first)
 	}
 	if strings.Contains(string(encoded[0].Data), `"content":`) {
 		t.Fatalf("first chunk should not contain content: %s", encoded[0].Data)
 	}
-	if decodeEventData(t, encoded[1])["choices"].([]any)[0].(map[string]any)["delta"].(map[string]any)["content"] != "final " {
+	if mustMap(t, mustMap(t, mustSlice(t, decodeEventData(t, encoded[1])["choices"])[0])["delta"])["content"] != "final " {
 		t.Fatalf("second chunk content wrong")
 	}
 }
@@ -58,9 +62,9 @@ func TestStreamEncoderEmitsToolCalls(t *testing.T) {
 		t.Fatalf("event count = %d, want 6", len(encoded))
 	}
 	firstTool := decodeEventData(t, encoded[1])
-	toolCall := firstTool["choices"].([]any)[0].(map[string]any)["delta"].(map[string]any)["tool_calls"].([]any)[0].(map[string]any)
-	if toolCall["function"].(map[string]any)["name"] != "lookup" {
-		t.Fatalf("tool call name = %v", toolCall["function"].(map[string]any)["name"])
+	toolCall, _ := firstTool["choices"].([]any)[0].(map[string]any)["delta"].(map[string]any)["tool_calls"].([]any)[0].(map[string]any)
+	if mustMap(t, toolCall["function"])["name"] != "lookup" {
+		t.Fatalf("tool call name = %v", toolCall["function"])
 	}
 }
 
@@ -89,11 +93,11 @@ func TestStreamEncoderToolCallAfterOtherBlocks(t *testing.T) {
 		t.Fatalf("event count = %d, want 6 (arg deltas must not be dropped)", len(encoded))
 	}
 	delta := decodeEventData(t, encoded[2])
-	toolCall := delta["choices"].([]any)[0].(map[string]any)["delta"].(map[string]any)["tool_calls"].([]any)[0].(map[string]any)
+	toolCall, _ := delta["choices"].([]any)[0].(map[string]any)["delta"].(map[string]any)["tool_calls"].([]any)[0].(map[string]any)
 	if toolCall["index"] != float64(0) {
 		t.Fatalf("tool_calls index = %v, want 0 (output ordinal, not content index)", toolCall["index"])
 	}
-	if toolCall["function"].(map[string]any)["arguments"] != `{"city":"` {
+	if mustMap(t, toolCall["function"])["arguments"] != `{"city":"` {
 		t.Fatalf("arguments delta = %v", toolCall["function"])
 	}
 }
@@ -118,8 +122,8 @@ func TestEncodeResponseFinal(t *testing.T) {
 	if parsed["object"] != "chat.completion" || parsed["model"] != "gpt-test" {
 		t.Fatalf("response = %#v", parsed)
 	}
-	usage := parsed["usage"].(map[string]any)
-	details := usage["prompt_tokens_details"].(map[string]any)
+	usage, _ := parsed["usage"].(map[string]any)
+	details, _ := usage["prompt_tokens_details"].(map[string]any)
 	if details["cached_tokens"] != float64(3) {
 		t.Fatalf("cached_tokens = %v", details["cached_tokens"])
 	}
@@ -144,7 +148,7 @@ func TestEncodeResponseFinalWithReasoning(t *testing.T) {
 	if err := json.Unmarshal(body, &parsed); err != nil {
 		t.Fatal(err)
 	}
-	message := parsed["choices"].([]any)[0].(map[string]any)["message"].(map[string]any)
+	message, _ := parsed["choices"].([]any)[0].(map[string]any)["message"].(map[string]any)
 	if message["content"] != "hello" {
 		t.Fatalf("content = %v, want hello", message["content"])
 	}
@@ -164,6 +168,26 @@ func encodeStreamEvents(t *testing.T, encoder *StreamEncoder, events []llm.Respo
 		encoded = append(encoded, batch...)
 	}
 	return encoded
+}
+
+// mustMap 断言 v 为 map 并返回（测试失败即终止）。
+func mustMap(t *testing.T, v any) map[string]any {
+	t.Helper()
+	m, ok := v.(map[string]any)
+	if !ok {
+		t.Fatalf("expected map[string]any, got %T", v)
+	}
+	return m
+}
+
+// mustSlice 断言 v 为切片并返回。
+func mustSlice(t *testing.T, v any) []any {
+	t.Helper()
+	s, ok := v.([]any)
+	if !ok {
+		t.Fatalf("expected []any, got %T", v)
+	}
+	return s
 }
 
 func decodeEventData(t *testing.T, event SSEEvent) map[string]any {
@@ -237,11 +261,11 @@ func TestStreamEncoderEmitsThinkingAsReasoningContent(t *testing.T) {
 		t.Fatalf("event count = %d, want 5", len(encoded))
 	}
 	second := decodeEventData(t, encoded[1])
-	if second["choices"].([]any)[0].(map[string]any)["delta"].(map[string]any)["reasoning_content"] != "think" {
+	if mustMap(t, mustMap(t, mustSlice(t, second["choices"])[0])["delta"])["reasoning_content"] != "think" {
 		t.Fatalf("second chunk should be thinking as reasoning_content: %v", second)
 	}
 	third := decodeEventData(t, encoded[2])
-	if third["choices"].([]any)[0].(map[string]any)["delta"].(map[string]any)["content"] != "hello" {
+	if mustMap(t, mustMap(t, mustSlice(t, third["choices"])[0])["delta"])["content"] != "hello" {
 		t.Fatalf("third chunk should be text content: %v", third)
 	}
 }

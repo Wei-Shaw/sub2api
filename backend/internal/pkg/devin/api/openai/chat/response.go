@@ -82,7 +82,13 @@ func EncodeResponse(message *llm.AssistantMessage) ([]byte, error) {
 		"usage": chatUsage(message.Usage),
 	}
 	if len(toolCalls) > 0 {
-		response["choices"].([]any)[0].(map[string]any)["message"].(map[string]any)["tool_calls"] = toolCalls
+		if choices, ok := response["choices"].([]any); ok && len(choices) > 0 {
+			if choice, ok := choices[0].(map[string]any); ok {
+				if message, ok := choice["message"].(map[string]any); ok {
+					message["tool_calls"] = toolCalls
+				}
+			}
+		}
 	}
 	return json.Marshal(response)
 }
@@ -201,7 +207,7 @@ func (encoder *StreamEncoder) toolCallDelta(event llm.ResponseEvent) []SSEEvent 
 	if state == nil {
 		return nil
 	}
-	state.arguments.WriteString(event.Delta)
+	_, _ = state.arguments.WriteString(event.Delta)
 	return []SSEEvent{encoder.chunk([]chatChoice{{
 		Delta: chatDelta{ToolCalls: []chatToolCall{{
 			Index:    state.index,
@@ -219,7 +225,7 @@ func (encoder *StreamEncoder) endToolCall(event llm.ResponseEvent) []SSEEvent {
 		state.id = event.ToolCall.ID
 		state.name = event.ToolCall.Name
 		state.arguments.Reset()
-		state.arguments.WriteString(string(event.ToolCall.Arguments))
+		_, _ = state.arguments.WriteString(string(event.ToolCall.Arguments))
 	}
 	// OpenAI Chat Completions 流式工具调用不输出单独的结束 chunk；finish_reason 会标记结束。
 	return nil
