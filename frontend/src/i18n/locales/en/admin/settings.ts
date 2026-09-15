@@ -1,5 +1,24 @@
 export default {
     settings: {
+      keyProtection: {
+        title: 'Automatic key protection',
+        description: 'Replace recognized keys before moderation and model forwarding, then restore them in reply text and tool arguments. Users paste keys as usual. Disabled by default.',
+        enabled: 'Enable automatic key protection',
+        users: 'Applicable users',
+        groups: 'Applicable API key groups',
+        targetHint: 'Both lists empty: apply to everyone. Otherwise, a matching user OR API key group enables protection. Hold Ctrl / Command to select or deselect multiple groups.',
+        boundary: 'Recognizes supported text formats only. Clients must resend full conversation history; server-side continuation and unsupported endpoints are rejected. Restored keys remain accessible to clients and tools, which control how they are used.',
+        advanced: 'Detection rules',
+        rules: 'Built-in rule IDs (comma separated; empty = all defaults)',
+        customRules: 'Additional rules (JSON array of name / pattern objects)',
+        rulesHint: 'List the built-in rules to keep; remove custom objects to delete them. Built-in IDs: openai, anthropic, github, gitlab, google, stripe, slack, huggingface, groq, npm, private_key (OpenSSH/PEM private keys). Custom patterns use Go regular expressions; the whole match is replaced.',
+        save: 'Save key protection settings',
+        saved: 'Key protection settings saved',
+        loadFailed: 'Could not load key protection settings. Saving is unavailable until the policy can be read.',
+        retry: 'Retry loading settings',
+        saveFailed: 'Could not save key protection settings. Check rule IDs, expressions and user/group IDs, then retry.',
+        invalidRules: 'Custom rules must be a JSON array of objects with string name and pattern fields only.',
+      },
       title: 'System Settings',
       description: 'Manage registration, email verification, default values, and SMTP settings',
       tabs: {

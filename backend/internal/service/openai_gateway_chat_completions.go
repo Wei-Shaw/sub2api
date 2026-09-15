@@ -130,7 +130,7 @@ func (s *OpenAIGatewayService) forwardAsChatCompletions(
 				}
 				chatReq, err := apicompat.ResponsesToChatCompletionsRequestWithOptions(
 					&responsesReq,
-					&apicompat.ResponsesToChatOptions{ReasoningContentByID: s.reasoningContentByID},
+					&apicompat.ResponsesToChatOptions{ReasoningContentByID: s.reasoningContentForContext(ctx)},
 				)
 				if err != nil {
 					return nil, fmt.Errorf("convert responses-shaped chat completions request: %w", err)
@@ -162,7 +162,7 @@ func (s *OpenAIGatewayService) forwardAsChatCompletions(
 			}
 			chatReq, err := apicompat.ResponsesToChatCompletionsRequestWithOptions(
 				&responsesReq,
-				&apicompat.ResponsesToChatOptions{ReasoningContentByID: s.reasoningContentByID},
+				&apicompat.ResponsesToChatOptions{ReasoningContentByID: s.reasoningContentForContext(ctx)},
 			)
 			if err != nil {
 				return nil, fmt.Errorf("convert responses-shaped chat completions request: %w", err)
