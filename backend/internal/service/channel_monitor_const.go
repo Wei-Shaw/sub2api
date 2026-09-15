@@ -28,6 +28,10 @@ const (
 	monitorMaintenanceMaxDaysPerRun = 35
 	// monitorWorkerConcurrency 调度器并发执行的监控数（pond 池容量）。
 	monitorWorkerConcurrency = 5
+	// Alert delivery uses a separate bounded pool so a slow DingTalk endpoint
+	// cannot consume the monitor-check workers during an outage.
+	alertWorkerConcurrency = 2
+	alertWorkerQueueSize   = 64
 	// monitorStartupLoadTimeout Start 时一次性加载所有 enabled monitor 的总超时。
 	monitorStartupLoadTimeout = 10 * time.Second
 	// monitorMinIntervalSeconds / monitorMaxIntervalSeconds 用户配置的检测间隔上下限。
