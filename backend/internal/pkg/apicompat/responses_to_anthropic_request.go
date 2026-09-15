@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+
+	"github.com/Wei-Shaw/sub2api/internal/pkg/claude"
 )
 
 // ResponsesToAnthropicRequest converts a Responses API request into an
@@ -51,20 +53,144 @@ func ResponsesToAnthropicRequest(req *ResponsesRequest) (*AnthropicRequest, erro
 		out.ToolChoice = tc
 	}
 
-	// reasoning.effort → output_config.effort + thinking
-	if req.Reasoning != nil && req.Reasoning.Effort != "" {
-		effort := mapResponsesEffortToAnthropic(req.Reasoning.Effort)
-		out.OutputConfig = &AnthropicOutputConfig{Effort: effort}
-		// Enable thinking for non-low efforts
-		if effort != "low" {
-			out.Thinking = &AnthropicThinking{
-				Type:         "enabled",
-				BudgetTokens: defaultThinkingBudget(effort),
-			}
-		}
+	// reasoning.effort is optional upstream behavior. Only send the form
+	// supported by the selected Claude model; unknown models get no optional
+	// reasoning fields instead of a likely upstream 400.
+	if req.Reasoning != nil {
+		applyResponsesReasoningToAnthropic(out, req.Model, req.Reasoning.Effort)
 	}
 
 	return out, nil
+}
+
+func applyResponsesReasoningToAnthropic(out *AnthropicRequest, model, requestedEffort string) {
+	if out == nil || strings.TrimSpace(requestedEffort) == "" {
+		return
+	}
+
+	effort := mapResponsesEffortToAnthropic(strings.ToLower(strings.TrimSpace(requestedEffort)))
+	modelID := normalizeResponsesAnthropicModelID(model)
+
+	if levels := claude.EffortLevelsForModel(model); len(levels) > 0 {
+		selectedEffort, ok := selectSupportedAnthropicEffort(levels, effort)
+		if !ok {
+			return
+		}
+		out.OutputConfig = &AnthropicOutputConfig{Effort: selectedEffort}
+		out.Thinking = &AnthropicThinking{Type: "adaptive"}
+		return
+	}
+
+	// These model families use manual extended thinking and reject
+	// output_config.effort.
+	if isManualThinkingModel(modelID) {
+		if effort == "low" {
+			return
+		}
+		budget, ok := thinkingBudgetForMaxTokens(effort, out.MaxTokens)
+		if !ok {
+			return
+		}
+		out.Thinking = &AnthropicThinking{
+			Type:         "enabled",
+			BudgetTokens: budget,
+		}
+	}
+}
+
+// ReapplyResponsesReasoningToAnthropic recalculates optional reasoning fields
+// after a gateway has resolved the final upstream model.
+func ReapplyResponsesReasoningToAnthropic(out *AnthropicRequest, model, requestedEffort string) {
+	if out == nil {
+		return
+	}
+	out.OutputConfig = nil
+	out.Thinking = nil
+	applyResponsesReasoningToAnthropic(out, model, requestedEffort)
+}
+
+func selectSupportedAnthropicEffort(levels []string, requested string) (string, bool) {
+	requestedRank := anthropicEffortRank(requested)
+	if requestedRank < 0 {
+		return "", false
+	}
+
+	selected := ""
+	for _, level := range levels {
+		if rank := anthropicEffortRank(level); rank >= 0 && rank <= requestedRank {
+			selected = level
+		}
+	}
+	return selected, selected != ""
+}
+
+func anthropicEffortRank(effort string) int {
+	switch effort {
+	case "low":
+		return 0
+	case "medium":
+		return 1
+	case "high":
+		return 2
+	case "max":
+		return 3
+	default:
+		return -1
+	}
+}
+
+func thinkingBudgetForMaxTokens(effort string, maxTokens int) (int, bool) {
+	if maxTokens <= 1024 {
+		return 0, false
+	}
+
+	budget := defaultThinkingBudget(effort)
+	if budget >= maxTokens {
+		budget = maxTokens - 1
+	}
+	if budget < 1024 {
+		return 0, false
+	}
+	return budget, true
+}
+
+func isManualThinkingModel(modelID string) bool {
+	for _, family := range []string{
+		"claude-haiku-4-5",
+		"claude-sonnet-4-5",
+		"claude-3-7-sonnet",
+	} {
+		if modelID == family || strings.HasPrefix(modelID, family+"-") {
+			return true
+		}
+	}
+	return false
+}
+
+func normalizeResponsesAnthropicModelID(model string) string {
+	id := strings.ToLower(strings.TrimSpace(model))
+	id = strings.TrimPrefix(id, "models/")
+	if slash := strings.IndexByte(id, '/'); slash >= 0 {
+		id = strings.TrimPrefix(strings.TrimSpace(id[slash+1:]), "models/")
+	}
+	id = strings.TrimPrefix(id, "anthropic.")
+	id = strings.TrimSuffix(id, "-thinking")
+	if len(id) >= 9 {
+		suffix := id[len(id)-9:]
+		if suffix[0] == '-' {
+			digits := true
+			for _, r := range suffix[1:] {
+				if r < '0' || r > '9' {
+					digits = false
+					break
+				}
+			}
+			if digits {
+				id = id[:len(id)-9]
+			}
+		}
+	}
+	return id
 }
 
 // defaultThinkingBudget returns a sensible thinking budget based on effort level.
