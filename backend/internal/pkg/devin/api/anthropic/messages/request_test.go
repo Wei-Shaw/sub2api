@@ -145,3 +145,29 @@ func TestDecodeRequestAcceptsStringContent(t *testing.T) {
 		t.Fatalf("message content = %#v", message.Content)
 	}
 }
+
+func TestDecodeRequestOutputConfigEffort(t *testing.T) {
+	cases := []struct {
+		name string
+		body string
+		want string
+	}{
+		// Claude Code 2.1+：effort 走 output_config，thinking 是 adaptive。
+		{"effort wins over adaptive", `{"model":"m","max_tokens":8,"messages":[{"role":"user","content":"hi"}],"thinking":{"type":"adaptive"},"output_config":{"effort":"max"}}`, "max"},
+		{"adaptive alone = high", `{"model":"m","max_tokens":8,"messages":[{"role":"user","content":"hi"}],"thinking":{"type":"adaptive"}}`, "high"},
+		{"enabled = high", `{"model":"m","max_tokens":8,"messages":[{"role":"user","content":"hi"}],"thinking":{"type":"enabled"}}`, "high"},
+		{"disabled = off", `{"model":"m","max_tokens":8,"messages":[{"role":"user","content":"hi"}],"thinking":{"type":"disabled"}}`, "off"},
+		{"no thinking = empty", `{"model":"m","max_tokens":8,"messages":[{"role":"user","content":"hi"}]}`, ""},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			request, err := DecodeRequest([]byte(tc.body))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if request.Context.Reasoning != tc.want {
+				t.Fatalf("Reasoning = %q, want %q", request.Context.Reasoning, tc.want)
+			}
+		})
+	}
+}
