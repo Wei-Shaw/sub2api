@@ -283,6 +283,10 @@ export interface PlatformUsage {
 
 export interface BatchUserUsageStats {
   user_id: number
+  today_requests: number
+  total_requests: number
+  today_tokens: number
+  total_tokens: number
   today_actual_cost: number
   total_actual_cost: number
   by_platform?: PlatformUsage[]

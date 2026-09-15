@@ -1105,18 +1105,59 @@ func (s *UsageLogRepoSuite) TestDashboardAggregationConsistency() {
 func (s *UsageLogRepoSuite) TestGetBatchUserUsageStats() {
 	user1 := mustCreateUser(s.T(), s.client, &service.User{Email: "batch1@test.com"})
 	user2 := mustCreateUser(s.T(), s.client, &service.User{Email: "batch2@test.com"})
+	idleUser := mustCreateUser(s.T(), s.client, &service.User{Email: "batch-idle@test.com"})
 	apiKey1 := mustCreateApiKey(s.T(), s.client, &service.APIKey{UserID: user1.ID, Key: "sk-batch1", Name: "k"})
 	apiKey2 := mustCreateApiKey(s.T(), s.client, &service.APIKey{UserID: user2.ID, Key: "sk-batch2", Name: "k"})
-	account := mustCreateAccount(s.T(), s.client, &service.Account{Name: "acc-batch"})
+	account := mustCreateAccount(s.T(), s.client, &service.Account{Name: "acc-batch", Platform: service.PlatformAnthropic})
+	openaiAccount := mustCreateAccount(s.T(), s.client, &service.Account{Name: "acc-batch-openai", Platform: service.PlatformOpenAI})
+	today := timezone.Today()
+	start := today.AddDate(0, 0, -30)
+	end := today.AddDate(0, 0, 1)
 
-	s.createUsageLog(user1, apiKey1, account, 10, 20, 0.5, time.Now())
-	s.createUsageLog(user2, apiKey2, account, 15, 25, 0.6, time.Now())
+	s.createUsageLog(user1, apiKey1, account, 10, 20, 0.5, today)
+	s.createUsageLog(user1, apiKey1, account, 30, 40, 0.7, start)
+	s.createUsageLog(user1, apiKey1, account, 100, 200, 1, start.Add(-time.Second))
+	s.createUsageLog(user1, apiKey1, account, 0, 0, 0, today) // Failed placeholder is excluded.
+	s.createUsageLog(user2, apiKey2, account, 15, 25, 0.6, today)
+	_, err := s.repo.Create(s.ctx, &service.UsageLog{
+		UserID:              user1.ID,
+		APIKeyID:            apiKey1.ID,
+		AccountID:           openaiAccount.ID,
+		RequestID:           uuid.NewString(),
+		Model:               "gpt-4",
+		InputTokens:         50,
+		OutputTokens:        60,
+		CacheCreationTokens: 70,
+		CacheReadTokens:     80,
+		TotalCost:           0.8,
+		ActualCost:          0.8,
+		CreatedAt:           today,
+	})
+	s.Require().NoError(err)
 
-	stats, err := s.repo.GetBatchUserUsageStats(s.ctx, []int64{user1.ID, user2.ID}, time.Time{}, time.Time{})
+	stats, err := s.repo.GetBatchUserUsageStats(s.ctx, []int64{user1.ID, user2.ID, idleUser.ID}, start, end)
 	s.Require().NoError(err, "GetBatchUserUsageStats")
-	s.Require().Len(stats, 2)
-	s.Require().NotNil(stats[user1.ID])
-	s.Require().NotNil(stats[user2.ID])
+	s.Require().Len(stats, 3)
+	s.Require().Equal(int64(2), stats[user1.ID].TodayRequests)
+	s.Require().Equal(int64(3), stats[user1.ID].TotalRequests)
+	s.Require().Equal(int64(290), stats[user1.ID].TodayTokens)
+	s.Require().Equal(int64(360), stats[user1.ID].TotalTokens)
+	s.Require().InDelta(1.3, stats[user1.ID].TodayActualCost, 1e-9)
+	s.Require().InDelta(2.0, stats[user1.ID].TotalActualCost, 1e-9)
+	s.Require().Len(stats[user1.ID].ByPlatform, 2)
+	s.Require().Equal(int64(1), stats[user2.ID].TodayRequests)
+	s.Require().Equal(int64(1), stats[user2.ID].TotalRequests)
+	s.Require().Equal(int64(40), stats[user2.ID].TodayTokens)
+	s.Require().Equal(int64(40), stats[user2.ID].TotalTokens)
+	s.Require().Equal(&BatchUserUsageStats{UserID: idleUser.ID}, stats[idleUser.ID])
+
+	// A historical range keeps today's totals independent and excludes its end boundary.
+	historical, err := s.repo.GetBatchUserUsageStats(s.ctx, []int64{user1.ID}, start, today)
+	s.Require().NoError(err)
+	s.Require().Equal(int64(1), historical[user1.ID].TotalRequests)
+	s.Require().Equal(int64(70), historical[user1.ID].TotalTokens)
+	s.Require().Equal(int64(2), historical[user1.ID].TodayRequests)
+	s.Require().Equal(int64(290), historical[user1.ID].TodayTokens)
 }
 
 func (s *UsageLogRepoSuite) TestGetBatchUserUsageStats_Empty() {
