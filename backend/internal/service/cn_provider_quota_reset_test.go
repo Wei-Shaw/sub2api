@@ -63,7 +63,7 @@ func (u *stubResetUpstream) next() *http.Response {
 func jsonResponse(body string) *http.Response {
 	rec := httptest.NewRecorder()
 	rec.Header().Set("Content-Type", "application/json")
-	rec.Write([]byte(body))
+	_, _ = rec.Write([]byte(body))
 	return rec.Result()
 }
 
