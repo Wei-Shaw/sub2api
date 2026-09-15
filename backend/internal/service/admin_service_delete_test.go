@@ -247,6 +247,7 @@ type groupRepoStub struct {
 	affectedUserIDs []int64
 	deleteErr       error
 	deleteCalls     []int64
+	guardedCalls    []int64
 }
 
 func (s *groupRepoStub) Create(ctx context.Context, group *Group) error {
@@ -271,6 +272,11 @@ func (s *groupRepoStub) Delete(ctx context.Context, id int64) error {
 
 func (s *groupRepoStub) DeleteCascade(ctx context.Context, id int64) ([]int64, error) {
 	s.deleteCalls = append(s.deleteCalls, id)
+	return s.affectedUserIDs, s.deleteErr
+}
+
+func (s *groupRepoStub) DeleteCascadeIfEmpty(ctx context.Context, id int64) ([]int64, error) {
+	s.guardedCalls = append(s.guardedCalls, id)
 	return s.affectedUserIDs, s.deleteErr
 }
 
@@ -701,6 +707,22 @@ func TestAdminService_DeleteGroup_Error(t *testing.T) {
 
 	err := svc.DeleteGroup(context.Background(), 42)
 	require.ErrorIs(t, err, deleteErr)
+}
+
+func TestAdminService_DeleteGroupIfEmpty_UsesGuardedCascade(t *testing.T) {
+	repo := &groupRepoStub{deleteErr: ErrGroupNotEmpty}
+	svc := &adminServiceImpl{groupRepo: repo, emptyGroupDeleteRepo: repo}
+
+	err := svc.DeleteGroupIfEmpty(context.Background(), 42)
+	require.ErrorIs(t, err, ErrGroupNotEmpty)
+	require.Equal(t, []int64{42}, repo.guardedCalls)
+	require.Empty(t, repo.deleteCalls)
+}
+
+func TestAdminService_DeleteGroupIfEmpty_MissingCapabilityReturnsError(t *testing.T) {
+	svc := &adminServiceImpl{groupRepo: &groupRepoStub{}}
+
+	require.ErrorContains(t, svc.DeleteGroupIfEmpty(context.Background(), 42), "guarded group deletion is unavailable")
 }
 
 func TestAdminService_DeleteProxy_Success(t *testing.T) {

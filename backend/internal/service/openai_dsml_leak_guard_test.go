@@ -374,7 +374,8 @@ func TestDSMLGuard_NotActivated(t *testing.T) {
 	})
 }
 
-// ⑧ 扣流中途上游断流 → 已扣内容冲洗放行（fail-open），无重试，无错误帧。
+// Held content survives an upstream abort; v0.2.4 also reports the truncation
+// to the handler instead of classifying the partial answer as a success.
 func TestDSMLGuard_MidHoldUpstreamAbortFlushesHeldLines(t *testing.T) {
 	prefix := strings.Join([]string{
 		`data: {"id":"x1","object":"chat.completion.chunk","model":"deepseek-v4-flash","choices":[{"index":0,"delta":{"role":"assistant"},"finish_reason":null}]}`,
@@ -392,7 +393,9 @@ func TestDSMLGuard_MidHoldUpstreamAbortFlushesHeldLines(t *testing.T) {
 		Header:     http.Header{"Content-Type": []string{"text/event-stream"}, "x-request-id": []string{"rid_abort"}},
 		Body:       abortingBody,
 	})
-	require.NoError(t, err, "mid-hold abort must fail open, not error")
+	require.Error(t, err)
+	var streamErr *openAIUpstreamStreamReadError
+	require.ErrorAs(t, err, &streamErr)
 	require.NotNil(t, result)
 	require.Len(t, upstream.requests, 1, "no terminal frame means no leak verdict, so no retry")
 
@@ -544,7 +547,7 @@ func TestDSMLLeakGuard_HandleLineStateMachine(t *testing.T) {
 	})
 }
 
-// TestDSMLGuard_ResponsesLaneObserveVerdict 锁定 observe 模式的 Responses 事件解析：
+// TestDSMLGuard_ResponsesLaneObserveVerdict 锁定 observe 模式 的 Responses 事件解析：
 // output_text.delta 里的标记 + 终态事件 → 判定泄漏；出现 function_call 事件则豁免。
 func TestDSMLGuard_ResponsesLaneObserveVerdict(t *testing.T) {
 	t.Parallel()
@@ -633,7 +636,9 @@ func TestDSMLGuard_RetryTruncatedBeforeUsageFallsBackToPriorAttemptUsage(t *test
 		dsmlSSEResponse("rid_leak_1", dsmlLeakAttemptLines("a1", 11, 7)...),
 		dsmlSSEResponse("rid_trunc_2", truncatedRetry...),
 	)
-	require.NoError(t, err)
+	require.Error(t, err, "the previous attempt's terminal must not hide a truncated retry")
+	var streamErr *openAIUpstreamStreamReadError
+	require.ErrorAs(t, err, &streamErr)
 	require.NotNil(t, result)
 	require.Equal(t, 11, result.Usage.InputTokens, "must fall back to attempt-1 usage, not zero")
 	require.Equal(t, 7, result.Usage.OutputTokens)
@@ -721,7 +726,9 @@ func TestDSMLGuard_TruncatedRetryFallsBackToPreviousAttemptUsage(t *testing.T) {
 		dsmlSSEResponse("rid_leak", dsmlLeakAttemptLines("t1", 7, 3)...),
 		dsmlSSEResponse("rid_truncated", truncatedLines...),
 	)
-	require.NoError(t, err)
+	require.Error(t, err, "partial output must retain usage without being reported as success")
+	var streamErr *openAIUpstreamStreamReadError
+	require.ErrorAs(t, err, &streamErr)
 	require.NotNil(t, result)
 	require.Len(t, upstream.requests, 2)
 	require.Equal(t, 7, result.Usage.InputTokens, "fall back to attempt-1 usage")

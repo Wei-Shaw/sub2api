@@ -6,6 +6,7 @@ import AccountsView from '../AccountsView.vue'
 const {
   listAccounts,
   listWithEtag,
+  getUpstreamBillingRatesWithEtag,
   getBatchTodayStats,
   getUpstreamBillingProbeSettings,
   getAllProxies,
@@ -17,6 +18,7 @@ const {
 } = vi.hoisted(() => ({
   listAccounts: vi.fn(),
   listWithEtag: vi.fn(),
+  getUpstreamBillingRatesWithEtag: vi.fn(),
   getBatchTodayStats: vi.fn(),
   getUpstreamBillingProbeSettings: vi.fn(),
   getAllProxies: vi.fn(),
@@ -32,6 +34,7 @@ vi.mock('@/api/admin', () => ({
     accounts: {
       list: listAccounts,
       listWithEtag,
+      getUpstreamBillingRatesWithEtag,
       getBatchTodayStats,
       getUpstreamBillingProbeSettings,
       delete: vi.fn(),
@@ -127,6 +130,7 @@ describe('admin AccountsView bulk edit scope', () => {
 
     listAccounts.mockReset()
     listWithEtag.mockReset()
+    getUpstreamBillingRatesWithEtag.mockReset()
     getBatchTodayStats.mockReset()
     getUpstreamBillingProbeSettings.mockReset()
     getAllProxies.mockReset()
@@ -144,6 +148,11 @@ describe('admin AccountsView bulk edit scope', () => {
       pages: 0
     })
     listWithEtag.mockResolvedValue({
+      notModified: true,
+      etag: null,
+      data: null
+    })
+    getUpstreamBillingRatesWithEtag.mockResolvedValue({
       notModified: true,
       etag: null,
       data: null
@@ -400,7 +409,7 @@ describe('admin AccountsView bulk edit scope', () => {
     expect(probeUpstreamBillingBatch).toHaveBeenCalledWith([7, 11])
   })
 
-  it('refreshes the current page after a batch probe and displays the synced rate', async () => {
+  it('updates the current page locally after a batch probe', async () => {
     const account = (id: number, rateMultiplier: number) => ({
       id,
       name: `account-${id}`,
@@ -422,6 +431,7 @@ describe('admin AccountsView bulk edit scope', () => {
         snapshot: {
           status: 'ok',
           data: { effective_rate_multiplier: 0.065 },
+          synced_rate_multiplier: 0.065,
           last_attempt_at: '2026-07-13T00:00:00Z',
           next_probe_at: '2026-07-13T00:30:00Z'
         }
@@ -471,12 +481,11 @@ describe('admin AccountsView bulk edit scope', () => {
     await flushPromises()
 
     expect(probeUpstreamBillingBatch).toHaveBeenCalledWith([11])
-    expect(listAccounts).toHaveBeenCalledTimes(3)
-    expect(listAccounts.mock.calls[2]?.[0]).toBe(2)
+    expect(listAccounts).toHaveBeenCalledTimes(2)
     expect(wrapper.get('[data-test="account-rate"]').text()).toBe('0.065x')
   })
 
-  it('does not report a successful batch probe as failed when the list refresh fails', async () => {
+  it('does not report a successful batch probe as failed when reconciliation is skipped', async () => {
     const account = {
       id: 7,
       name: 'account-7',
@@ -490,7 +499,6 @@ describe('admin AccountsView bulk edit scope', () => {
     }
     listAccounts
       .mockResolvedValueOnce({ items: [account], total: 1, page: 1, page_size: 20, pages: 1 })
-      .mockRejectedValueOnce(new Error('refresh failed'))
     probeUpstreamBillingBatch.mockResolvedValue([
       {
         account_id: 7,
@@ -549,7 +557,7 @@ describe('admin AccountsView bulk edit scope', () => {
     consoleError.mockRestore()
   })
 
-  it('refreshes the account row after a successful single-account probe', async () => {
+  it('updates the account row after a successful single-account probe', async () => {
     const account = (rateMultiplier: number) => ({
       id: 7,
       name: 'account-7',
@@ -570,6 +578,7 @@ describe('admin AccountsView bulk edit scope', () => {
       snapshot: {
         status: 'ok',
         data: { effective_rate_multiplier: 0.065 },
+        synced_rate_multiplier: 0.065,
         last_attempt_at: '2026-07-13T00:00:00Z',
         next_probe_at: '2026-07-13T00:30:00Z'
       }
@@ -615,7 +624,7 @@ describe('admin AccountsView bulk edit scope', () => {
     await flushPromises()
 
     expect(probeUpstreamBilling).toHaveBeenCalledWith(7)
-    expect(listAccounts).toHaveBeenCalledTimes(2)
+    expect(listAccounts).toHaveBeenCalledTimes(1)
     expect(wrapper.get('[data-test="account-rate"]').text()).toBe('0.065x')
   })
 })

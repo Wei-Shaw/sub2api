@@ -26,6 +26,18 @@ func TestAccountRepository_SetTempUnschedulable_NoRowsAffectedDoesNotWriteOutbox
 	require.NotContains(t, strings.Join(exec.execQueries, "\n"), "scheduler_outbox")
 }
 
+func TestAccountRepository_ResetQuotaUsedAndClearRateLimitCooldown_NoRowsAffectedReturnsNotFoundWithoutOutbox(t *testing.T) {
+	exec := &recordingSQLExecutor{result: rowsAffectedResult(0)}
+	repo := newAccountRepositoryWithSQL(nil, exec, nil)
+
+	err := repo.ResetQuotaUsedAndClearRateLimitCooldown(context.Background(), 42)
+
+	require.ErrorIs(t, err, service.ErrAccountNotFound)
+	require.Len(t, exec.execQueries, 1)
+	require.Contains(t, exec.execQueries[0], "UPDATE accounts")
+	require.NotContains(t, strings.Join(exec.execQueries, "\n"), "scheduler_outbox")
+}
+
 func TestAccountRepository_GrokCredentialConditionalMutationsAreEligibleAndAtomicallyPropagated(t *testing.T) {
 	proxyID := int64(77)
 	snapshot := service.GrokCredentialMutationSnapshot{

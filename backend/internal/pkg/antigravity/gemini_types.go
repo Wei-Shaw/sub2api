@@ -86,7 +86,11 @@ type GeminiThinkingConfig struct {
 type GeminiToolDeclaration struct {
 	FunctionDeclarations []GeminiFunctionDecl `json:"functionDeclarations,omitempty"`
 	GoogleSearch         *GeminiGoogleSearch  `json:"googleSearch,omitempty"`
+	CodeExecution        *GeminiCodeExecution `json:"codeExecution,omitempty"`
 }
+
+// GeminiCodeExecution enables Gemini's built-in code execution tool.
+type GeminiCodeExecution struct{}
 
 // GeminiFunctionDecl Gemini 函数声明
 type GeminiFunctionDecl struct {

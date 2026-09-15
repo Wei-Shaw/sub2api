@@ -15,7 +15,7 @@ const (
 
 type openAIQuotaResetWorkflowQuota interface {
 	QueryUsage(ctx context.Context, accountID int64) (*OpenAIQuotaUsage, error)
-	CacheResetCreditsSnapshot(ctx context.Context, accountID int64, credits *OpenAIRateLimitResetCredits) error
+	CachePostResetSnapshot(ctx context.Context, accountID int64, usage *OpenAIQuotaUsage) error
 }
 
 type openAIQuotaResetWorkflowRecoverer interface {
@@ -60,7 +60,7 @@ func RunOpenAIQuotaResetPostProcess(
 			slog.Warn("openai_quota_reset_cache_refresh_failed", "account_id", accountID, "error_code", infraerrors.Reason(usageErr))
 			result.WarningCode = OpenAIQuotaResetWarningCacheRefreshFailed
 		default:
-			if err := quota.CacheResetCreditsSnapshot(ctx, accountID, usage.RateLimitResetCredits); err != nil {
+			if err := quota.CachePostResetSnapshot(ctx, accountID, usage); err != nil {
 				slog.Warn("openai_quota_reset_cache_refresh_failed", "account_id", accountID, "error_code", infraerrors.Reason(err))
 				result.WarningCode = OpenAIQuotaResetWarningCacheRefreshFailed
 			} else {

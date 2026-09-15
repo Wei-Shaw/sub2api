@@ -251,6 +251,30 @@ func IsGrokModelID(model string) bool {
 	return false
 }
 
+// IsGrokImagineModel reports whether model is a Grok Imagine image or video
+// model. These media models cannot act as the primary Codex agent model.
+func IsGrokImagineModel(model string) bool {
+	normalized := strings.ToLower(StripGrokProviderPrefix(model))
+	if normalized == "" {
+		return false
+	}
+	if strings.HasPrefix(normalized, "imagine") {
+		return true
+	}
+	switch {
+	case normalized == "grok-imagine",
+		normalized == "grok-imagine-1",
+		normalized == "grok-imagine-edit",
+		normalized == "grok-video-1.5":
+		return true
+	case strings.HasPrefix(normalized, "grok-imagine-image"),
+		strings.HasPrefix(normalized, "grok-imagine-video"):
+		return true
+	default:
+		return false
+	}
+}
+
 // IsGrokTextResponsesModelID reports whether model is a known Grok text model
 // for the Responses API. Imagine image/video and unknown custom ids return false.
 func IsGrokTextResponsesModelID(model string) bool {

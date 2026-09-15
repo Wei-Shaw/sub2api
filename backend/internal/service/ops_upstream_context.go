@@ -2,11 +2,15 @@ package service
 
 import (
 	"encoding/json"
+	"errors"
+	"strconv"
 	"strings"
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/ctxkey"
 	"github.com/gin-gonic/gin"
+	"github.com/tidwall/gjson"
+	"github.com/tidwall/sjson"
 )
 
 // Gin context keys used by Ops error logger for capturing upstream error details.
@@ -130,12 +134,11 @@ func OpsClientBusinessLimitedReason(c *gin.Context) string {
 	return strings.TrimSpace(reason)
 }
 
-// OpsStreamError 描述网关在「响应状态已固化为 200」之后（keepalive ping 或部分数据
-// 已 flush）就地以 SSE error 帧形式返回的错误。由于 HTTP 状态码停留在 200，
-// 而 ops_error_logger 以 status>=400 为采集触发条件，这类流内失败
-// （并发限流回退、Wait 后二次计费校验失败、流开始后才无可用账号等）本会在错误看板里
-// 完全隐形。handler.handleStreamingAwareError 负责标记，ops_error_logger 中间件在
-// status<400 分支消费它并补记一条错误日志。
+// OpsStreamError 描述承载在 2xx 响应上的带内错误：网关在响应状态已固化为 200 之后
+// 就地以 SSE error 帧返回的错误（并发限流回退、Wait 后二次计费校验失败、流开始后才无
+// 可用账号等），以及上游 2xx 正文或事件里携带的错误结果（NonStream 标记非流式正文）。
+// 由于 HTTP 状态码停留在 2xx，ops_error_logger 中间件在 status<400 分支消费该标记并
+// 补记错误日志；标记方是 handler.handleStreamingAwareError 或各 service 的带内检测。
 type OpsStreamError struct {
 	// ErrType 是写入 SSE 帧的对客错误类型（如 rate_limit_error / upstream_error / api_error）。
 	ErrType string
@@ -145,7 +148,7 @@ type OpsStreamError struct {
 	// Message 是写入 SSE 帧的对客错误消息。
 	Message string
 	// IntendedStatus 是流若未固化本应返回的 HTTP 状态码（如并发限流的 429）。
-	// 默认仅用于错误分级；CountTowardsSLA=true 时也作为 Ops 的逻辑状态码。
+	// 默认仅用于错误分级；CountTowardsSLA 或 RequestScoped 为 true 时也作为 Ops 的逻辑状态码。
 	IntendedStatus int
 	// CountTowardsSLA 表示虽然 wire 状态已固化为 200，请求在应用语义上仍然失败，
 	// Ops 应使用 IntendedStatus 计入错误率/SLA。
@@ -160,6 +163,12 @@ type OpsStreamError struct {
 	UpstreamMessage string
 	UpstreamDetail  string
 	UpstreamErrors  []*OpsUpstreamErrorEvent
+	// RequestScoped 表示该带内失败是请求级结果（如上游内容策略截停），与本请求此前的
+	// 上游尝试无关：分类不受上游错误上下文影响、不快照也不落库上游归因、不继承透传规则的
+	// skip_monitoring，按业务限制计，落库状态取 IntendedStatus 以便进入错误列表。
+	RequestScoped bool
+	// NonStream 表示带内信号来自非流式 2xx 响应体，落库 stream=false。
+	NonStream bool
 }
 
 const maxOpsStreamErrorsPerRequest = 64
@@ -202,6 +211,16 @@ func MarkOpsStreamFailure(c *gin.Context, errType, code, message string, intende
 	})
 }
 
+// MarkOpsStreamErrorValue 以完整的 OpsStreamError 记录一次带内错误，供需要
+// RequestScoped / NonStream 等附加语义的调用方使用；首个标记生效的规则不变。
+// 调用方只填 ErrType / Code / Message / IntendedStatus / CountTowardsSLA / RequestScoped / NonStream。
+// AccountID、UpstreamModel 与 Turn 由请求上下文接管；UpstreamStatus、UpstreamMessage、
+// UpstreamDetail、UpstreamErrors 与 SkipMonitoring 在非 RequestScoped 时由上下文接管，
+// RequestScoped 时被忽略。
+func MarkOpsStreamErrorValue(c *gin.Context, streamErr OpsStreamError) {
+	markOpsStreamError(c, streamErr)
+}
+
 func markOpsStreamError(c *gin.Context, streamErr OpsStreamError) {
 	if c == nil {
 		return
@@ -209,7 +228,9 @@ func markOpsStreamError(c *gin.Context, streamErr OpsStreamError) {
 	streamErr.ErrType = strings.TrimSpace(streamErr.ErrType)
 	streamErr.Code = strings.TrimSpace(streamErr.Code)
 	streamErr.Message = strings.TrimSpace(streamErr.Message)
-	streamErr.SkipMonitoring = currentOpsFailureSkipMonitoring(c)
+	if !streamErr.RequestScoped {
+		streamErr.SkipMonitoring = currentOpsFailureSkipMonitoring(c)
+	}
 	snapshotOpsStreamErrorContext(c, &streamErr)
 	if GetOpenAIClientTransport(c) == OpenAIClientTransportWS {
 		if value, ok := c.Get(OpsStreamTurnKey); ok {
@@ -248,6 +269,9 @@ func snapshotOpsStreamErrorContext(c *gin.Context, streamErr *OpsStreamError) {
 	if value, ok := c.Get(OpsUpstreamModelKey); ok {
 		streamErr.UpstreamModel, _ = value.(string)
 		streamErr.UpstreamModel = strings.TrimSpace(streamErr.UpstreamModel)
+	}
+	if streamErr.RequestScoped {
+		return
 	}
 	if value, ok := c.Get(OpsUpstreamStatusCodeKey); ok {
 		switch status := value.(type) {
@@ -365,6 +389,17 @@ type OpsUpstreamErrorEvent struct {
 	AccountID   int64  `json:"account_id,omitempty"`
 	AccountName string `json:"account_name,omitempty"`
 
+	// Proxy attribution is an immutable, credential-free snapshot of the route
+	// used by this attempt. ProxyID is null for direct and unknown routes;
+	// ProxyName distinguishes direct/no_proxy from unknown.
+	// Never add proxy URLs or credentials to this event.
+	ProxyID   *int64 `json:"proxy_id"`
+	ProxyName string `json:"proxy_name"`
+
+	// DroppedEarlierAttempts is set on the oldest retained event when queue
+	// bounds forced earlier attempts of the same request to be discarded.
+	DroppedEarlierAttempts int `json:"dropped_earlier_attempts,omitempty"`
+
 	// Outcome
 	UpstreamStatusCode int    `json:"upstream_status_code,omitempty"`
 	UpstreamRequestID  string `json:"upstream_request_id,omitempty"`
@@ -394,6 +429,14 @@ type OpsUpstreamErrorEvent struct {
 	SkipMonitoring bool `json:"-"`
 }
 
+const (
+	opsProxyNameDirect  = "direct/no_proxy"
+	opsProxyNameUnknown = "unknown"
+	// opsProxyNameUnnamed labels a managed proxy whose name is blank. The
+	// proxies.name column is NOT NULL/non-empty, so this is a defensive value.
+	opsProxyNameUnnamed = "proxy"
+)
+
 func appendOpsUpstreamError(c *gin.Context, ev OpsUpstreamErrorEvent) {
 	if c == nil {
 		return
@@ -402,6 +445,7 @@ func appendOpsUpstreamError(c *gin.Context, ev OpsUpstreamErrorEvent) {
 		ev.AtUnixMs = time.Now().UnixMilli()
 	}
 	ev.Platform = strings.TrimSpace(ev.Platform)
+	normalizeOpsUpstreamProxyAttribution(&ev)
 	ev.UpstreamRequestID = strings.TrimSpace(ev.UpstreamRequestID)
 	ev.UpstreamResponseBody = strings.TrimSpace(ev.UpstreamResponseBody)
 	ev.Kind = strings.TrimSpace(ev.Kind)
@@ -427,6 +471,91 @@ func appendOpsUpstreamError(c *gin.Context, ev OpsUpstreamErrorEvent) {
 	c.Set(OpsUpstreamErrorsKey, existing)
 
 	checkSkipMonitoringForUpstreamEvent(c, &evCopy)
+}
+
+// opsUpstreamProxyAttribution derives both attribution fields from one
+// decision so they can never disagree. The event is assembled at the failure
+// site; forwarding code builds managed proxy routes from Proxy only when the
+// binding ID is also set, so the same rule decides the label here:
+//
+//   - nil account                     -> (nil, unknown)
+//   - no binding or no hydrated Proxy -> (nil, direct/no_proxy)
+//   - hydrated Proxy without durable ID -> (nil, unknown): the transport did
+//     use that proxy, but nothing durable identifies it
+//   - otherwise                       -> (Proxy.ID, Proxy.Name or "proxy")
+//
+// Invariant: proxy_id == null implies proxy_name is one of the two sentinels.
+func opsUpstreamProxyAttribution(account *Account) (*int64, string) {
+	if account == nil {
+		return nil, opsProxyNameUnknown
+	}
+	if account.ProxyID == nil || account.Proxy == nil {
+		return nil, opsProxyNameDirect
+	}
+	if account.Proxy.ID <= 0 {
+		return nil, opsProxyNameUnknown
+	}
+	proxyID := account.Proxy.ID
+	name := strings.TrimSpace(account.Proxy.Name)
+	if name == "" {
+		name = opsProxyNameUnnamed
+	}
+	return &proxyID, name
+}
+
+func opsUpstreamProxyID(account *Account) *int64 {
+	proxyID, _ := opsUpstreamProxyAttribution(account)
+	return proxyID
+}
+
+func opsUpstreamProxyName(account *Account) string {
+	_, name := opsUpstreamProxyAttribution(account)
+	return name
+}
+
+// opsUpstreamWSProxyAttribution is the OpenAI WebSocket variant. The WS dialer
+// sets an explicit proxy client only when the account has a usable managed
+// proxy; otherwise coder/websocket falls back to http.DefaultClient, which
+// honors HTTP_PROXY/HTTPS_PROXY/NO_PROXY. A missing managed proxy is therefore
+// unknown, not direct.
+func opsUpstreamWSProxyAttribution(account *Account) (*int64, string) {
+	proxyID, name := opsUpstreamProxyAttribution(account)
+	if proxyID == nil {
+		return nil, opsProxyNameUnknown
+	}
+	return proxyID, name
+}
+
+func setUnknownOpsUpstreamProxy(ev *OpsUpstreamErrorEvent) {
+	if ev == nil {
+		return
+	}
+	ev.ProxyID = nil
+	ev.ProxyName = opsProxyNameUnknown
+}
+
+// normalizeOpsUpstreamProxyAttribution makes legacy events explicit without
+// pretending that the account's current proxy is historical evidence.
+func normalizeOpsUpstreamProxyAttribution(ev *OpsUpstreamErrorEvent) {
+	if ev == nil {
+		return
+	}
+	if ev.ProxyID != nil && *ev.ProxyID <= 0 {
+		// A non-positive ID never identifies a managed proxy.
+		ev.ProxyID = nil
+	}
+	ev.ProxyName = strings.TrimSpace(ev.ProxyName)
+	if ev.ProxyID != nil {
+		if ev.ProxyName == "" {
+			ev.ProxyName = opsProxyNameUnnamed
+		}
+		return
+	}
+	// Invariant: proxy_id == null implies a sentinel name. Any other name
+	// without a durable ID is not historical evidence of a managed route.
+	if ev.ProxyName != opsProxyNameDirect {
+		setUnknownOpsUpstreamProxy(ev)
+	}
 }
 
 // checkSkipMonitoringForUpstreamEvent snapshots whether this attempt matches a
@@ -478,6 +607,56 @@ func ParseOpsUpstreamErrors(raw string) ([]*OpsUpstreamErrorEvent, error) {
 	var out []*OpsUpstreamErrorEvent
 	if err := json.Unmarshal([]byte(raw), &out); err != nil {
 		return nil, err
+	}
+	for _, ev := range out {
+		normalizeOpsUpstreamProxyAttribution(ev)
+	}
+	return out, nil
+}
+
+// normalizeOpsUpstreamErrorsJSON materializes missing proxy attribution on
+// stored JSON for detail reads. It edits only the attribution keys of events
+// that lack them, so keys written by older struct versions and the original
+// key order survive; nothing is re-marshaled through the current struct.
+func normalizeOpsUpstreamErrorsJSON(raw string) (string, error) {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return raw, nil
+	}
+	if !gjson.Valid(raw) {
+		return "", errors.New("upstream_errors is not valid JSON")
+	}
+	parsed := gjson.Parse(raw)
+	if !parsed.IsArray() {
+		return "", errors.New("upstream_errors is not a JSON array")
+	}
+	out := raw
+	for i, ev := range parsed.Array() {
+		if !ev.IsObject() {
+			continue
+		}
+		prefix := strconv.Itoa(i) + "."
+		proxyID := ev.Get("proxy_id")
+		proxyName := strings.TrimSpace(ev.Get("proxy_name").String())
+		hasValidID := proxyID.Exists() && proxyID.Type == gjson.Number && proxyID.Int() > 0
+		var err error
+		switch {
+		case hasValidID:
+			if proxyName == "" {
+				out, err = sjson.Set(out, prefix+"proxy_name", opsProxyNameUnnamed)
+			}
+		case proxyName == opsProxyNameDirect:
+			if !proxyID.Exists() || proxyID.Type != gjson.Null {
+				out, err = sjson.Set(out, prefix+"proxy_id", nil)
+			}
+		default:
+			if out, err = sjson.Set(out, prefix+"proxy_id", nil); err == nil {
+				out, err = sjson.Set(out, prefix+"proxy_name", opsProxyNameUnknown)
+			}
+		}
+		if err != nil {
+			return "", err
+		}
 	}
 	return out, nil
 }

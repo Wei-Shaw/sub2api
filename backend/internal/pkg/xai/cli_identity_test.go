@@ -41,7 +41,7 @@ func TestApplyCLIProxyHeaders(t *testing.T) {
 
 	req, err := http.NewRequest(http.MethodPost, "https://cli-chat-proxy.grok.com/v1/responses", nil)
 	require.NoError(t, err)
-	req.Header.Set("User-Agent", "sub2api-grok/1.0")
+	req.Header.Set("User-Agent", "legacy-client/1.0")
 
 	ApplyCLIProxyHeaders(req)
 
@@ -56,12 +56,12 @@ func TestApplyCLIProxyHeadersLeavesAPIHostUnchanged(t *testing.T) {
 
 	req, err := http.NewRequest(http.MethodPost, "https://api.x.ai/v1/responses", nil)
 	require.NoError(t, err)
-	req.Header.Set("User-Agent", "sub2api-grok/1.0")
+	req.Header.Set("User-Agent", "direct-api-client/1.0")
 
 	ApplyCLIProxyHeaders(req)
 
 	require.Empty(t, req.Header.Get("x-grok-client-version"))
 	require.Empty(t, req.Header.Get("x-grok-client-identifier"))
 	require.Empty(t, req.Header.Get("X-XAI-Token-Auth"))
-	require.Equal(t, "sub2api-grok/1.0", req.Header.Get("User-Agent"))
+	require.Equal(t, "direct-api-client/1.0", req.Header.Get("User-Agent"))
 }

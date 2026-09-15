@@ -83,6 +83,21 @@ export default {
     columnAlwaysVisible: 'This column is always visible',
     createKey: 'Create API Key',
     editKey: 'Edit API Key',
+    bulkEdit: {
+      title: 'Bulk Edit',
+      selectedCount: '{count} keys selected',
+      selectKey: 'Select key {name}',
+      clearSelection: 'Clear selection',
+      hint: 'Check the fields to update. Unchecked fields keep their current values.',
+      limitHint: 'Enter 0 for no limit. Existing usage is preserved.',
+      ipHint: 'One IP or CIDR per line. Leave empty to clear this list on the selected keys.',
+      invalidLimit: 'Enter a valid amount greater than or equal to 0.',
+      invalidExpiration: 'Choose a valid expiration date or select Never expires.',
+      apply: 'Apply to {count} keys',
+      success: 'Updated {count} keys',
+      partialFailure: 'Updated {success} keys; {failed} failed',
+      failureHint: 'These keys could not be updated. Adjust the settings and retry. Only failed keys will be retried.'
+    },
     deleteKey: 'Delete API Key',
     deleteConfirmMessage: "Are you sure you want to delete '{name}'? This action cannot be undone.",
     id: 'ID',
@@ -187,6 +202,38 @@ export default {
           'Export SUB2API_API_KEY, save config.toml under ~/.codex (mkdir -p ~/.codex). Prefer env_key auth; do not commit secrets.',
         codexNoteWindows:
           'Set $env:SUB2API_API_KEY, save config.toml under %USERPROFILE%\\.codex. Prefer env_key auth; do not commit secrets.',
+      },
+      deepseek: {
+        description: 'Configure Claude Code, Codex, or OpenCode through the current DeepSeek group.',
+        codexDescription: 'Configure Codex with API key authentication through the current DeepSeek group.',
+        codexConfigTomlHint: 'Download the model catalog below, save both files under the Codex config directory, and restart Codex.',
+        codexNote: 'Export SUB2API_API_KEY before starting Codex. The downloaded catalog contains model metadata only, not your API key.',
+      },
+      minimax: {
+        description: 'Configure Claude Code, Codex, or OpenCode through the current MiniMax group.',
+        codexDescription: 'Configure Codex with API key authentication through the current MiniMax group.',
+        codexConfigTomlHint: 'Download the model catalog below, save both files under the Codex config directory, and restart Codex.',
+        codexNote: 'Export SUB2API_API_KEY before starting Codex. The downloaded catalog contains model metadata only, not your API key.',
+      },
+      composite: {
+        description: 'Configure supported clients through the current Composite routing group.',
+        codexDescription: 'Configure Codex with API key authentication and the complete model catalog for this Composite group.',
+        codexConfigTomlHint: 'Download the model catalog below, save both files under the Codex config directory, and restart Codex.',
+        codexNote: 'Export SUB2API_API_KEY before starting Codex. Model requests are routed by the selected catalog slug.',
+      },
+      routedCodex: {
+        description: 'Configure Codex with the complete model catalog for the current routed group.',
+        configTomlHint: 'Download the model catalog below, save both files under the Codex config directory, and restart Codex.',
+        note: 'Export SUB2API_API_KEY before starting Codex. The downloaded catalog contains model metadata only, not your API key.',
+      },
+      codexModelCatalog: {
+        title: 'Codex model catalog',
+        description: 'Fetch with this API key, then save the catalog at the path referenced by config.toml.',
+        fetch: 'Fetch catalog',
+        retry: 'Retry',
+        download: 'Download catalog',
+        modelsCount: '{count} models ready to download',
+        errorDescription: 'The catalog could not be fetched with this API key.',
       },
       opencode: {
         title: 'OpenCode Example',
@@ -309,6 +356,7 @@ export default {
 	  modelVariant: 'Possible version variant',
 	  modelMismatch: 'Different model',
     reasoningEffort: 'Reasoning Effort',
+    requestedReasoningEffort: 'Requested reasoning effort',
     endpoint: 'Endpoint',
     endpointDistribution: 'Endpoint Distribution',
     inbound: 'Inbound',
@@ -329,6 +377,10 @@ export default {
     ws: 'WS',
     stream: 'Stream',
     sync: 'Sync',
+    nativeCompactionV2: 'Compaction',
+    compactionFilter: 'Request Kind',
+    allCompactionTypes: 'All Requests',
+    compactionOnly: 'Compaction Only',
     cyber: 'Cyber',
     live: 'Live',
     unknown: 'Unknown',
@@ -367,6 +419,7 @@ export default {
     cacheWrite: 'Write',
     serviceTier: 'Service tier',
     serviceTierPriority: 'Fast',
+    serviceTierUltrafast: 'Ultrafast',
     serviceTierFlex: 'Flex',
     serviceTierStandard: 'Standard',
     rate: 'Rate',
@@ -434,7 +487,9 @@ export default {
       antigravity: 'Antigravity',
       kimi: 'Kimi',
       zhipu: 'Zhipu GLM',
-      deepseek: 'DeepSeek'
+      deepseek: 'DeepSeek',
+      minimax: 'MiniMax',
+      opencode_go: 'OpenCode'
     },
     // Check modes (how a monitor performs its checks)
     checkMode: {
@@ -445,13 +500,13 @@ export default {
     // Quota snapshot rendering (MonitorQuotaView, shared by admin + user views)
     quota: {
       unavailable: 'Quota unavailable',
-      resetSoon: 'resetting',
       windows: {
         '5h': '5h',
         '7d': '7d',
         '7dSonnet': '7d Sonnet',
         '7dFable': '7d Fable',
         weekly: 'Weekly',
+        monthly: 'Monthly',
         daily: 'Daily',
         '30d': '30d',
         total: 'Total'
@@ -555,6 +610,8 @@ export default {
       inputPrice: 'Input',
       outputPrice: 'Output',
       cacheWritePrice: 'Cache Write',
+      cacheWrite5mPrice: 'Cache Write (5m)',
+      cacheWrite1hPrice: 'Cache Write (1h)',
       cacheReadPrice: 'Cache Read',
       imageInputPrice: 'Image Input',
       imageOutputPrice: 'Image Output',
@@ -603,6 +660,8 @@ export default {
       cacheReadShort: 'R',
       tierHint: 'The whole request is billed at the tier matching its total context (input + cache write + cache read)',
       tierHintMarginal: 'Only the portion above the threshold is billed at this tier; output is unaffected',
+      maxReasoningMultiplierBadge: 'Max ×{multiplier}',
+      maxReasoningMultiplierHint: 'When the forwarded reasoning effort is max, billing and quota usage for the request are multiplied by {multiplier}',
       marginalBadge: 'excess-only tiers',
       timePricingRowHint: 'Requests made within this period ({timezone} time) are billed at the prices in this row',
       timePricingRowHintWeekdays:
@@ -712,6 +771,7 @@ export default {
     days: ' days',
     codeRedeemSuccess: 'Code redeemed successfully!',
     failedToRedeem: 'Failed to redeem code. Please check the code and try again.',
+    userRefreshFailed: 'Redeemed successfully, but failed to refresh account information.',
     subscriptionRefreshFailed: 'Redeemed successfully, but failed to refresh subscription status.',
     pleaseEnterCode: 'Please enter a redeem code'
   },

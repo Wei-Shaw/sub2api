@@ -192,6 +192,10 @@ func (q *autoResetTestQuota) CacheResetCreditsSnapshot(context.Context, int64, *
 	return nil
 }
 
+func (q *autoResetTestQuota) CachePostResetSnapshot(context.Context, int64, *OpenAIQuotaUsage) error {
+	return nil
+}
+
 func (q *autoResetTestQuota) ResetCreditTargeted(_ context.Context, _ int64, creditID, redeemRequestID string) (*OpenAIQuotaResetResult, error) {
 	if creditID == "" || redeemRequestID == "" {
 		panic("targeted reset identifiers must be present")

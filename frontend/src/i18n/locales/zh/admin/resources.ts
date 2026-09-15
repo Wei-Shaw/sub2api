@@ -320,6 +320,8 @@ export default {
       customExpiry: '自定义',
       customExpiryDays: '自定义天数',
       expiryDaysRequired: '请输入有效的过期天数',
+      expiryDateRequired: '请输入有效的过期日期和时间',
+      localTimeZoneHint: '自定义时间按浏览器本地时区（{timezone}）解释。',
       groupRequired: '请选择订阅分组',
       days: '天',
       status: {
@@ -516,7 +518,9 @@ export default {
       account: '账户',
       group: '分组',
       requestId: '请求ID',
+      upstreamRequestId: '上游ID',
       requestIdCopied: '请求ID已复制',
+      upstreamRequestIdCopied: '上游ID已复制',
       allModels: '全部模型',
       allAccounts: '全部账户',
       allGroups: '全部分组',

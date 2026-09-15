@@ -133,8 +133,9 @@ func TestSyncGrokObservedModelsUsesCLIIdentityAndAccountHeaders(t *testing.T) {
 
 	require.NoError(t, svc.syncGrokObservedModels(context.Background(), account))
 	require.Equal(t, xai.DefaultCLIBaseURL+"/models", upstream.lastReq.URL.String())
-	require.NotEmpty(t, upstream.lastReq.Header.Get("x-grok-client-version"))
+	require.Equal(t, xai.CLIClientVersion, upstream.lastReq.Header.Get("x-grok-client-version"))
 	require.Equal(t, xai.CLIClientIdentifier, upstream.lastReq.Header.Get("x-grok-client-identifier"))
+	require.Equal(t, xai.CLIUserAgent(xai.CLIClientVersion), upstream.lastReq.Header.Get("User-Agent"))
 	require.Equal(t, "interactive", upstream.lastReq.Header.Get("X-Grok-Client-Mode"))
 	require.Equal(t, "user-902", upstream.lastReq.Header.Get("X-UserID"))
 	require.Equal(t, "user902@example.test", upstream.lastReq.Header.Get("X-Email"))

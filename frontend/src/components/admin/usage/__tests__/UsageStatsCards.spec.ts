@@ -64,4 +64,26 @@ describe('UsageStatsCards', () => {
     expect(text).toContain('Cache Read')
     expect(text).toContain('22')
   })
+
+  it('keeps the cache tooltip out of the layout while it is hidden', () => {
+    const wrapper = mount(UsageStatsCards, {
+      props: {
+        stats,
+      },
+      global: {
+        stubs: {
+          Icon: true,
+        },
+      },
+    })
+
+    const tooltip = wrapper.findAll('span').find((el) => el.classes().includes('group-hover:block'))
+
+    expect(tooltip).toBeDefined()
+    // `opacity-0` hides the tooltip visually but keeps it in the layout, so its
+    // fixed width still widens the document and causes horizontal scrolling on
+    // narrow screens. `hidden` (display: none) takes it out of the flow.
+    expect(tooltip?.classes()).toContain('hidden')
+    expect(tooltip?.classes()).not.toContain('opacity-0')
+  })
 })

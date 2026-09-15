@@ -77,3 +77,26 @@ func TestGetUserBreakdownStatsRequestTypeIncludesLegacyFallback(t *testing.T) {
 	require.Empty(t, rows)
 	require.NoError(t, mock.ExpectationsWereMet())
 }
+
+func TestGetUserBreakdownStatsFiltersNativeCompactionV2(t *testing.T) {
+	db, mock := newSQLMock(t)
+	repo := &usageLogRepository{sql: db}
+	start := time.Date(2026, 7, 1, 0, 0, 0, 0, time.UTC)
+	end := start.Add(24 * time.Hour)
+	nativeCompactionV2 := true
+
+	mock.ExpectQuery(regexp.QuoteMeta("AND ul.native_compaction_v2 = $3")).
+		WithArgs(start, end, true).
+		WillReturnRows(sqlmock.NewRows([]string{
+			"user_id", "email", "requests", "input_tokens", "output_tokens",
+			"cache_tokens", "total_tokens", "cost", "actual_cost", "account_cost",
+		}))
+
+	rows, err := repo.GetUserBreakdownStats(context.Background(), start, end, usagestats.UserBreakdownDimension{
+		NativeCompactionV2: &nativeCompactionV2,
+	}, 0)
+
+	require.NoError(t, err)
+	require.Empty(t, rows)
+	require.NoError(t, mock.ExpectationsWereMet())
+}

@@ -82,20 +82,19 @@ func TestParseSSEUsage_DeltaOverwritesWithNonZero(t *testing.T) {
 	require.Equal(t, 60, usage.CacheReadInputTokens)
 }
 
-func TestParseSSEUsage_DeltaDoesNotResetCacheCreationBreakdown(t *testing.T) {
+func TestParseSSEUsage_DeltaAuthoritativelyUpdatesCacheCreationBreakdown(t *testing.T) {
 	svc := newMinimalGatewayService()
 	usage := &ClaudeUsage{}
 
-	// 先在 message_start 中写入非零 5m/1h 明细
-	svc.parseSSEUsage(`{"type":"message_start","message":{"usage":{"input_tokens":100,"cache_creation":{"ephemeral_5m_input_tokens":30,"ephemeral_1h_input_tokens":70}}}}`, usage)
-	require.Equal(t, 30, usage.CacheCreation5mTokens)
-	require.Equal(t, 70, usage.CacheCreation1hTokens)
+	svc.parseSSEUsage(`{"type":"message_start","message":{"usage":{"cache_creation_input_tokens":463184,"cache_creation":{"ephemeral_5m_input_tokens":0,"ephemeral_1h_input_tokens":463184}}}}`, usage)
+	require.Equal(t, 463184, usage.CacheCreationInputTokens)
+	require.Equal(t, 0, usage.CacheCreation5mTokens)
+	require.Equal(t, 463184, usage.CacheCreation1hTokens)
 
-	// 后续 delta 带默认 0，不应覆盖已有非零值
-	svc.parseSSEUsage(`{"type":"message_delta","usage":{"output_tokens":12,"cache_creation":{"ephemeral_5m_input_tokens":0,"ephemeral_1h_input_tokens":0}}}`, usage)
-	require.Equal(t, 30, usage.CacheCreation5mTokens, "delta 的 0 值不应重置 5m 明细")
-	require.Equal(t, 70, usage.CacheCreation1hTokens, "delta 的 0 值不应重置 1h 明细")
-	require.Equal(t, 12, usage.OutputTokens)
+	svc.parseSSEUsage(`{"type":"message_delta","usage":{"cache_creation_input_tokens":463184,"cache_creation":{"ephemeral_5m_input_tokens":463184,"ephemeral_1h_input_tokens":0}}}`, usage)
+	require.Equal(t, 463184, usage.CacheCreationInputTokens)
+	require.Equal(t, 463184, usage.CacheCreation5mTokens)
+	require.Equal(t, 0, usage.CacheCreation1hTokens)
 }
 
 func TestParseSSEUsage_InvalidJSON(t *testing.T) {

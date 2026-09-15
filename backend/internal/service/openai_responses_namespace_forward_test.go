@@ -66,6 +66,69 @@ func TestOpenAIGatewayService_OAuthPreservesCodexNamespaceTools(t *testing.T) {
 	require.Empty(t, openAIResponsesNamespaceNames(c))
 }
 
+// API Key 自定义上游若接受 namespace 工具声明，也要求历史 function_call 原样携带
+// namespace。声明仍为命名空间工具却清掉调用项字段，会触发 Missing namespace。
+func TestOpenAIGatewayService_APIKeyPreservesDeclaredNamespaceToolCalls(t *testing.T) {
+	body := []byte(codexNamespaceRequestBody)
+	upstream := &httpUpstreamRecorder{responses: []*http.Response{
+		newOpenAIRejectedFieldTestResponse(http.StatusOK, namespaceForwardOKResponse),
+	}}
+	c := newOpenAIRejectedFieldTestContext(body)
+
+	result, err := newOpenAIRejectedFieldTestService(upstream).Forward(
+		context.Background(), c, newOpenAIRejectedFieldTestAccount(), body,
+	)
+
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.Len(t, upstream.bodies, 1)
+	forwarded := upstream.bodies[0]
+
+	require.True(t, gjson.GetBytes(forwarded, `tools.#(type=="namespace")`).Exists())
+	require.Equal(t, "collaboration", gjson.GetBytes(forwarded, "input.0.namespace").String())
+	require.False(t, gjson.GetBytes(forwarded, "input.1.namespace").Exists())
+}
+
+// Responses Lite 把 namespace 声明放在 input.additional_tools，而不是顶层 tools。
+// OpenAI API Key 走该请求形态时也必须保留历史 function_call.namespace。
+func TestOpenAIGatewayService_APIKeyPreservesLiteDeclaredNamespaceToolCalls(t *testing.T) {
+	body := []byte(`{
+		"model":"gpt-5.6-terra",
+		"stream":false,
+		"input":[
+			{"type":"function_call","namespace":"collaboration","name":"spawn_agent","call_id":"call_spawn","arguments":"{}"},
+			{"type":"function_call","namespace":"mcp__cua_repl","name":"js","call_id":"call_js","arguments":"{}"},
+			{"type":"message","role":"user","namespace":"leftover","content":[{"type":"input_text","text":"hello"}]},
+			{"type":"additional_tools","role":"developer","tools":[
+				{"type":"namespace","name":"collaboration","tools":[{"type":"function","name":"spawn_agent","parameters":{"type":"object"}}]},
+				{"type":"namespace","name":"mcp__cua_repl","tools":[{"type":"function","name":"js","parameters":{"type":"object"}}]}
+			]}
+		]
+	}`)
+	upstream := &httpUpstreamRecorder{responses: []*http.Response{
+		newOpenAIRejectedFieldTestResponse(http.StatusOK, namespaceForwardOKResponse),
+	}}
+	c := newOpenAIRejectedFieldTestContext(body)
+	c.Request.Header.Set(responsesLiteHeader, "true")
+
+	result, err := newOpenAIRejectedFieldTestService(upstream).Forward(
+		context.Background(), c, newOpenAIRejectedFieldTestAccount(), body,
+	)
+
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.Len(t, upstream.bodies, 1)
+	forwarded := upstream.bodies[0]
+
+	require.Equal(t, "collaboration", gjson.GetBytes(forwarded, `input.#(type=="additional_tools").tools.0.name`).String())
+	require.Equal(t, "mcp__cua_repl", gjson.GetBytes(forwarded, `input.#(type=="additional_tools").tools.1.name`).String())
+	require.Equal(t, "collaboration", gjson.GetBytes(forwarded, "input.0.namespace").String())
+	require.Equal(t, "spawn_agent", gjson.GetBytes(forwarded, "input.0.name").String())
+	require.Equal(t, "mcp__cua_repl", gjson.GetBytes(forwarded, "input.1.namespace").String())
+	require.Equal(t, "js", gjson.GetBytes(forwarded, "input.1.name").String())
+	require.False(t, gjson.GetBytes(forwarded, "input.2.namespace").Exists())
+}
+
 // compact 端点 schema 更窄：input[].namespace 会 400 Unknown parameter（issue #4761），
 // 且没有证据表明它接受 namespace 工具声明。compact 只做历史摘要、不需要模型寻址工具，
 // 因此保持既有的摊平 + 全量清理行为，不随默认值翻转扩大风险面。
