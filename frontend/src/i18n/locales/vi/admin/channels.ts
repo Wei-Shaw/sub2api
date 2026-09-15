@@ -308,6 +308,41 @@ export default mergeLocaleMessages(
 
     // Subscriptions Management
   subscriptions: {
+    batchAssign: {
+      enable: 'Cấp đăng ký cho nhiều người dùng',
+      hint: 'Tìm kiếm và thêm tối đa 100 người dùng để cấp cùng nhóm và thời hạn.',
+      selected: 'Đã thêm {count} người dùng',
+      removeUser: 'Xóa {email}',
+      result: 'Cấp đăng ký hoàn tất: thành công {success}, thất bại {failed}',
+      retryHint: 'Các mục thành công đã được xóa. Khắc phục lỗi rồi gửi lại những người dùng còn lại.'
+    },
+    bulk: {
+      extend: 'Điều chỉnh hàng loạt thời hạn',
+      reset_quota: 'Đặt lại hạn ngạch hàng loạt',
+      revoke: 'Thu hồi hàng loạt',
+      restore: 'Khôi phục hàng loạt',
+      selected: 'Đã chọn {count} gói đăng ký',
+      selectSubscription: 'Chọn gói đăng ký #{id}',
+      clearSelection: 'Bỏ chọn',
+      selectionHint: 'Chọn tối đa 100 gói đăng ký trên trang này. Đổi trang hoặc bộ lọc sẽ xóa lựa chọn. Mỗi thao tác chỉ xử lý các gói có trạng thái phù hợp.',
+      selectionLimit: 'Mỗi lần có thể xử lý tối đa 100 gói đăng ký',
+      selectionRequired: 'Vui lòng chọn ít nhất một gói đăng ký',
+      confirmTargets: 'Thao tác này sẽ xử lý {count} gói đăng ký sau đây',
+      groupFallback: 'Nhóm #{id}',
+      extendHint: 'Nhập số nguyên dương để gia hạn hoặc số âm để rút ngắn, tối đa 36500 ngày. Gói đã hết hạn sẽ được gia hạn từ hôm nay và không thể rút ngắn. Ngày hết hạn mới phải ở tương lai.',
+      invalidDays: 'Nhập số ngày là số nguyên khác 0 trong khoảng từ -36500 đến 36500',
+      resetWindows: 'Chọn các cửa sổ hạn ngạch cần đặt lại',
+      resetHint: 'Mức sử dụng trong các cửa sổ đã chọn sẽ về 0 và bắt đầu lại từ hôm nay.',
+      selectWindow: 'Vui lòng chọn ít nhất một cửa sổ hạn ngạch',
+      revokeHint: 'Các gói đăng ký này sẽ không thể sử dụng nữa. Bạn có thể khôi phục chúng sau từ danh sách đã thu hồi.',
+      restoreHint: 'Các gói đăng ký này sẽ được bật lại. Gói có thời hạn ban đầu đã kết thúc sẽ được khôi phục ở trạng thái hết hạn.',
+      confirm: 'Xác nhận thao tác',
+      retry: 'Thử lại thao tác ban đầu',
+      retryHint: 'Chưa xác nhận được kết quả thao tác. Thử lại sẽ tiếp tục thao tác ban đầu để tránh xử lý trùng lặp. Bạn cũng có thể đóng hộp thoại, chọn lại các gói đăng ký và tham số tương tự rồi thử lại.',
+      requestFailed: 'Yêu cầu thao tác hàng loạt thất bại, vui lòng thử lại',
+      result: 'Hoàn tất: thành công {success}, thất bại {failed}',
+      itemFailed: 'Thao tác thất bại'
+    },
     title: 'Quản lý đăng ký',
     description: 'Quản lý đăng ký người dùng và giới hạn hạn ngạch',
     assignSubscription: 'Cấp đăng ký',
