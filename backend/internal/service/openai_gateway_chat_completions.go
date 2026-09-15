@@ -301,12 +301,19 @@ func (s *OpenAIGatewayService) forwardAsChatCompletions(
 		}
 		isJSONObjectFormat := strings.EqualFold(strings.TrimSpace(gjson.GetBytes(responsesBody, "text.format.type").String()), "json_object")
 		codexResult := applyCodexOAuthTransformWithOptions(reqBody, codexOAuthTransformOptions{
-			SkipDefaultInstructions:             !isResponsesShape,
-			OmitPromotedSystemMessagesFromInput: !isResponsesShape && !isJSONObjectFormat,
+			SkipDefaultInstructions: !isResponsesShape,
+			// Always omit promoted system messages from input for Chat
+			// Completions compat (avoid double-send). For json_object mode
+			// a minimal JSON directive is injected below instead of the
+			// full multi-KB system prompt (#7027).
+			OmitPromotedSystemMessagesFromInput: !isResponsesShape,
 		})
 		if codexResult.Error != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": gin.H{"type": "invalid_request_error", "message": codexResult.Error.Error()}})
 			return nil, codexResult.Error
+		}
+		if isJSONObjectFormat && !isResponsesShape {
+			ensureMinimalJSONDirectiveInCodexInput(reqBody)
 		}
 		setCodexToolNameReverse(c, codexResult.ToolNameReverse)
 		if !isResponsesShape {

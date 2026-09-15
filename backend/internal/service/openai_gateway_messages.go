@@ -560,6 +560,33 @@ func ensureCodexOAuthInstructionsField(reqBody map[string]any) {
 	}
 }
 
+// ensureMinimalJSONDirectiveInCodexInput injects a minimal developer hint for
+// json_object mode (#7027) so upstream JSON validation sees an explicit JSON
+// indicator in input without duplicating the full system prompt.
+func ensureMinimalJSONDirectiveInCodexInput(reqBody map[string]any) {
+	if reqBody == nil {
+		return
+	}
+	input, ok := reqBody["input"].([]any)
+	if !ok {
+		return
+	}
+	for _, item := range input {
+		m, ok := item.(map[string]any)
+		if !ok {
+			continue
+		}
+		if role, _ := m["role"].(string); role == "developer" || role == "system" {
+			if content, _ := m["content"].(string); strings.Contains(strings.ToLower(content), "json") {
+				return
+			}
+		}
+	}
+	reqBody["input"] = append([]any{
+		map[string]any{"role": "developer", "content": "Return a valid JSON object."},
+	}, input...)
+}
+
 // handleAnthropicErrorResponse reads an upstream error and returns it in
 // Anthropic error format.
 func (s *OpenAIGatewayService) handleAnthropicErrorResponse(
