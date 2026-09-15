@@ -44,10 +44,10 @@ func NewAPIRequestWithURL(ctx context.Context, baseURL, action, accessToken stri
 		return nil, err
 	}
 
-	// 基础 Headers（与 Antigravity-Manager 保持一致，只设置这 3 个）
+	// 基础 Headers。Antigravity 生成接口需要使用兼容的客户端标识。
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", "Bearer "+accessToken)
-	req.Header.Set("User-Agent", GetUserAgentForContext(ctx))
+	req.Header.Set("User-Agent", "Antigravity/1.0")
 
 	return req, nil
 }
