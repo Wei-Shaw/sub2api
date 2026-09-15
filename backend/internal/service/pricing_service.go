@@ -514,7 +514,8 @@ func (s *PricingService) downloadPricingData() error {
 	}
 	logger.LegacyPrintf("service.pricing", "[Pricing] Downloading from %s", remoteURL)
 
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	// 自动选择管理代理时，允许直连及最多三个候选代理各自完成一次尝试。
+	ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
 	defer cancel()
 
 	// 获取远程哈希（用于同步锚点，不作为完整性校验）
@@ -1095,7 +1096,8 @@ func (s *PricingService) fetchRemoteHash() (string, error) {
 		return "", err
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	// 首次直连失败时，远程客户端会按延迟依次测试最多三个管理代理。
+	ctx, cancel := context.WithTimeout(context.Background(), 22*time.Second)
 	defer cancel()
 
 	hash, err := s.remoteClient.FetchHashText(ctx, hashURL)
