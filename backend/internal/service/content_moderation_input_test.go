@@ -1,6 +1,8 @@
 package service
 
 import (
+	"context"
+	"encoding/json"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -176,4 +178,174 @@ func TestExtractContentModerationInput_ResponsesLastIsAssistantSkipped(t *testin
 
 	require.Empty(t, input.Text)
 	require.Empty(t, input.Images)
+}
+
+func TestExtractContentModerationInput_ResponsesCollectsCurrentUserSuffix(t *testing.T) {
+	body := []byte(`{
+		"input":[
+			{"type":"message","role":"developer","content":[{"type":"input_text","text":"policy"}]},
+			{"type":"message","role":"user","content":[
+				{"type":"input_text","text":"first segment"},
+				{"type":"input_text","text":"second segment"}
+			]},
+			{"type":"input_text","text":"final segment"}
+		]
+	}`)
+
+	input := ExtractContentModerationInput(ContentModerationProtocolOpenAIResponses, body)
+
+	require.Equal(t, "first segment second segment final segment", input.Text)
+	require.Empty(t, input.Images)
+	require.Equal(t, contentModerationInputClassText, input.Classification())
+	require.False(t, input.MustFailClosed())
+}
+
+func TestExtractContentModerationInput_ResponsesCollectsTextAndImages(t *testing.T) {
+	body := []byte(`{
+		"input":[
+			{"type":"message","role":"user","content":[
+				{"type":"input_text","text":"check both"},
+				{"type":"input_image","image_url":"https://example.com/one.png"}
+			]},
+			{"type":"input_image","image_url":"data:image/png;base64,dHdv"}
+		]
+	}`)
+
+	input := ExtractContentModerationInput(ContentModerationProtocolOpenAIResponses, body)
+
+	require.Equal(t, "check both", input.Text)
+	require.Equal(t, []string{"https://example.com/one.png", "data:image/png;base64,dHdv"}, input.Images)
+	require.Equal(t, contentModerationInputClassTextImage, input.Classification())
+}
+
+func TestExtractContentModerationInput_ResponsesCollectsImageOnly(t *testing.T) {
+	body := []byte(`{
+		"input":[
+			{"type":"message","role":"user","content":[
+				{"type":"input_image","image_url":"https://example.com/only.png"}
+			]}
+		]
+	}`)
+
+	input := ExtractContentModerationInput(ContentModerationProtocolOpenAIResponses, body)
+
+	require.Empty(t, input.Text)
+	require.Equal(t, []string{"https://example.com/only.png"}, input.Images)
+	require.Equal(t, contentModerationInputClassImage, input.Classification())
+	require.False(t, input.MustFailClosed())
+}
+
+func TestExtractContentModerationInput_ResponsesClassifiesToolContinuation(t *testing.T) {
+	body := []byte(`{
+		"input":[
+			{"type":"message","role":"user","content":[{"type":"input_text","text":"run tests"}]},
+			{"type":"function_call","call_id":"call_1","name":"run_tests","arguments":"{}"},
+			{"type":"function_call_output","call_id":"call_1","output":"all passed"}
+		]
+	}`)
+
+	input := ExtractContentModerationInput(ContentModerationProtocolOpenAIResponses, body)
+
+	require.True(t, input.IsEmpty())
+	require.Equal(t, contentModerationInputClassToolContinuation, input.Classification())
+	require.Equal(t, responsesItemKindToolOutput, input.tailItemKind)
+	require.False(t, input.MustFailClosed())
+}
+
+func TestExtractContentModerationInput_ResponsesLongHistoryEndingInToolOutputSkipsHistoricalUser(t *testing.T) {
+	body := []byte(`{
+		"input":[
+			{"type":"message","role":"user","content":[{"type":"input_text","text":"historical prompt"}]},
+			{"type":"reasoning","encrypted_content":"opaque"},
+			{"type":"message","role":"assistant","content":[{"type":"output_text","text":"working"}]},
+			{"type":"function_call","call_id":"call_9","name":"shell","arguments":"{}"},
+			{"type":"function_call_output","call_id":"call_9","output":"very long tool output"}
+		]
+	}`)
+
+	input := ExtractContentModerationInput(ContentModerationProtocolOpenAIResponses, body)
+
+	require.True(t, input.IsEmpty())
+	require.NotContains(t, input.Text, "historical prompt")
+	require.Equal(t, contentModerationInputClassToolContinuation, input.Classification())
+	require.False(t, input.MustFailClosed())
+}
+
+func TestExtractContentModerationInput_ResponsesTrulyEmptyInput(t *testing.T) {
+	tests := []struct {
+		name string
+		body string
+	}{
+		{name: "missing input", body: `{}`},
+		{name: "empty array", body: `{"input":[]}`},
+		{name: "empty user content", body: `{"input":[{"type":"message","role":"user","content":[]}]}`},
+		{name: "blank string", body: `{"input":"   "}`},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			input := ExtractContentModerationInput(ContentModerationProtocolOpenAIResponses, []byte(tt.body))
+
+			require.True(t, input.IsEmpty())
+			require.Equal(t, contentModerationInputClassEmpty, input.Classification())
+			require.False(t, input.MustFailClosed())
+		})
+	}
+}
+
+func TestExtractContentModerationInput_ResponsesUnreviewableNonEmptyFailsClosed(t *testing.T) {
+	tests := []struct {
+		name string
+		body string
+	}{
+		{name: "invalid json", body: `{"input":`},
+		{name: "unsupported user file", body: `{"input":[{"type":"message","role":"user","content":[{"type":"input_file","file_id":"file_1"}]}]}`},
+		{name: "unknown tail item", body: `{"input":[{"type":"unknown","payload":{"value":1}}]}`},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			input := ExtractContentModerationInput(ContentModerationProtocolOpenAIResponses, []byte(tt.body))
+
+			require.True(t, input.IsEmpty())
+			require.True(t, input.MustFailClosed())
+			require.Contains(t, []string{contentModerationInputClassInvalidJSON, contentModerationInputClassUnsupported}, input.Classification())
+		})
+	}
+}
+
+func TestContentModerationCheck_ResponsesUnreviewableNonEmptyFailsClosedWithoutAuditCall(t *testing.T) {
+	cfg := defaultContentModerationConfig()
+	cfg.Enabled = true
+	cfg.Mode = ContentModerationModePreBlock
+	cfg.APIKeys = []string{"sk-test"}
+	rawCfg, err := json.Marshal(cfg)
+	require.NoError(t, err)
+
+	svc := NewContentModerationService(
+		&contentModerationTestSettingRepo{values: map[string]string{
+			SettingKeyRiskControlEnabled:      "true",
+			SettingKeyContentModerationConfig: string(rawCfg),
+		}},
+		&contentModerationTestRepo{},
+		&contentModerationTestHashCache{},
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+	)
+
+	decision, err := svc.Check(context.Background(), ContentModerationCheckInput{
+		RequestID: "req-fail-closed",
+		Endpoint:  "/responses",
+		Protocol:  ContentModerationProtocolOpenAIResponses,
+		Body:      []byte(`{"input":[{"type":"message","role":"user","content":[{"type":"input_file","file_id":"file_1"}]}]}`),
+	})
+
+	require.NoError(t, err)
+	require.False(t, decision.Allowed)
+	require.True(t, decision.Blocked)
+	require.Equal(t, ContentModerationActionError, decision.Action)
+	require.Equal(t, cfg.BlockStatus, decision.StatusCode)
 }
