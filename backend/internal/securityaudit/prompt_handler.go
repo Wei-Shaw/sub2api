@@ -111,7 +111,16 @@ func (h *PromptAdminHandler) ListPromptRecords(c *gin.Context) {
 		response.ErrorFrom(c, err)
 		return
 	}
-	filter := PromptRecordFilter{SessionID: strings.TrimSpace(c.Query("session_id")), Model: strings.TrimSpace(c.Query("model")), Stage: strings.TrimSpace(c.Query("stage"))}
+	apiKeyName := strings.TrimSpace(c.Query("api_key"))
+	if apiKeyName == "" {
+		apiKeyName = strings.TrimSpace(c.Query("api_key_name"))
+	}
+	filter := PromptRecordFilter{
+		SessionID:  strings.TrimSpace(c.Query("session_id")),
+		APIKeyName: apiKeyName,
+		Model:      strings.TrimSpace(c.Query("model")),
+		Stage:      strings.TrimSpace(c.Query("stage")),
+	}
 	filter.CursorMode = c.Query("pagination") == "cursor"
 	if cursor := c.Query("cursor"); cursor != "" {
 		decoded, decodeErr := base64.RawURLEncoding.DecodeString(cursor)

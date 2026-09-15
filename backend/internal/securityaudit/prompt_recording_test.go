@@ -129,7 +129,7 @@ func TestPromptRecordingContentCombinationsRetainFullRequest(t *testing.T) {
 			require.NoError(t, manager.SavePromptRecordingSettings(context.Background(), PromptRecordingSettingsUpdate{HeadersEnabled: &headersEnabled, PromptEnabled: &promptEnabled}))
 			repo := &capturedRequestRepository{records: make(chan *PromptRecord, 1)}
 			service := &PromptService{config: manager, records: newPromptRecordService(repo, 1, 1, 1)}
-			req := Request{RequestID: "full-request", Body: []byte(body), Headers: http.Header{"Session-Id": {"session-full-request"}, "X-Test": {"first", "second"}}}
+			req := Request{RequestID: "full-request", APIKeyID: 9, APIKeyName: "primary", Body: []byte(body), Headers: http.Header{"Session-Id": {"session-full-request"}, "X-Test": {"first", "second"}}}
 			service.RecordPrompt(context.Background(), req)
 			// The queued job owns its input and the recording policy at capture time.
 			req.Body[0] = '!'
@@ -139,6 +139,8 @@ func TestPromptRecordingContentCombinationsRetainFullRequest(t *testing.T) {
 			select {
 			case record := <-repo.records:
 				require.Equal(t, "session-full-request", record.SessionID)
+				require.Equal(t, int64(9), record.APIKeyID)
+				require.Equal(t, "primary", record.APIKeyName)
 				if headersEnabled {
 					require.JSONEq(t, `{"Session-Id":["session-full-request"],"X-Test":["first","second"]}`, record.RequestHeaders)
 				} else {

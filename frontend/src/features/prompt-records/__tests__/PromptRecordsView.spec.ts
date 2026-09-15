@@ -221,6 +221,16 @@ describe('PromptRecordsView', () => {
 		wrapper.unmount()
 	})
 
+	it('includes the API key name in the record search filters', async () => {
+		const wrapper = mount(PromptRecordsView, { global: { stubs: { AppLayout: { template: '<div><slot /></div>' } } } })
+		await flushPromises()
+		await wrapper.get('#prompt-record-api-key').setValue('primary')
+		await wrapper.findAll('form')[1].trigger('submit')
+		await flushPromises()
+		expect(mocks.listPromptRecords.mock.lastCall?.[0]).toMatchObject({ api_key: 'primary', page: 1, cursor: undefined })
+		wrapper.unmount()
+	})
+
 	it('updates the request and response recording switch', async () => {
 		const wrapper = mount(PromptRecordsView, {
 			global: {

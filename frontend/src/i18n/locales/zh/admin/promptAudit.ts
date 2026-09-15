@@ -54,6 +54,7 @@ export default {
     startAt: '开始时间',
     endAt: '结束时间',
     apiKey: 'API 密钥',
+    apiKeyPlaceholder: '输入密钥名称',
     group: '分组',
     route: '模型 / 入口',
     promptSize: '提示词规模',

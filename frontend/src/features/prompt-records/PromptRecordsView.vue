@@ -212,6 +212,18 @@
               </div>
             </div>
             <div class="w-full sm:w-auto sm:min-w-[220px]">
+              <label for="prompt-record-api-key" class="input-label">
+                {{ t('admin.promptRecords.apiKey') }}
+              </label>
+              <input
+                id="prompt-record-api-key"
+                v-model.trim="apiKeyKeyword"
+                class="input w-full"
+                type="text"
+                :placeholder="t('admin.promptRecords.apiKeyPlaceholder')"
+              />
+            </div>
+            <div class="w-full sm:w-auto sm:min-w-[220px]">
               <label for="prompt-record-model" class="input-label">
                 {{ t('admin.promptRecords.model') }}
               </label>
@@ -612,6 +624,7 @@ const recordingSaving = ref(false)
 const loading = ref(false)
 const listError = ref(false)
 const model = ref('')
+const apiKeyKeyword = ref('')
 const sessionId = ref('')
 const startAt = ref('')
 const endAt = ref('')
@@ -702,6 +715,7 @@ async function loadRecords(resetPage = false) {
     pagination.page = 1
     cursors.value = ['']
     activeFilters = {
+      api_key: apiKeyKeyword.value || undefined,
       model: model.value || undefined, session_id: sessionId.value || undefined,
       user_id: selectedUserID.value || undefined,
       start_at: toRFC3339(startAt.value), end_at: toRFC3339(endAt.value),
@@ -787,6 +801,7 @@ function applyFilters() {
 }
 
 function resetFilters() {
+  apiKeyKeyword.value = ''
   model.value = ''
   sessionId.value = ''
   startAt.value = ''

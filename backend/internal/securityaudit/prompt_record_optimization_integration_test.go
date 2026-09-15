@@ -32,7 +32,7 @@ func TestRecordOptimizationPostgres(t *testing.T) {
 	var exists bool
 	require.NoError(t, db.QueryRowContext(ctx, "SELECT to_regclass('public.prompt_records') IS NOT NULL").Scan(&exists))
 	require.False(t, exists, "test requires a fresh disposable database")
-	for _, name := range []string{"239_prompt_records.sql", "240_prompt_record_responses.sql", "241_prompt_record_requests.sql", "242_prompt_record_search_extension.sql", "243_prompt_record_search_cleanup_indexes_notx.sql", "244_prompt_record_session_id.sql"} {
+	for _, name := range []string{"239_prompt_records.sql", "240_prompt_record_responses.sql", "241_prompt_record_requests.sql", "242_prompt_record_search_extension.sql", "243_prompt_record_search_cleanup_indexes_notx.sql", "244_prompt_record_session_id.sql", "245_prompt_record_api_key_name_index_notx.sql"} {
 		body, err := os.ReadFile(filepath.Join("../../migrations", name))
 		require.NoError(t, err)
 		if strings.HasSuffix(name, "_notx.sql") {
@@ -117,8 +117,8 @@ func TestRecordOptimizationPostgres(t *testing.T) {
 	require.NoError(t, err)
 	require.EqualValues(t, 6, page.Total)
 	var indexes int
-	require.NoError(t, db.QueryRowContext(ctx, `SELECT count(*) FROM pg_indexes WHERE tablename='prompt_records' AND indexname IN ('idx_prompt_records_model_trgm','idx_prompt_records_expires_at_id')`).Scan(&indexes))
-	require.Equal(t, 2, indexes)
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT count(*) FROM pg_indexes WHERE tablename='prompt_records' AND indexname IN ('idx_prompt_records_model_trgm','idx_prompt_records_expires_at_id','idx_prompt_records_api_key_name_trgm')`).Scan(&indexes))
+	require.Equal(t, 3, indexes)
 	deleted, err = repo.DeleteAllPromptRecords(ctx)
 	require.NoError(t, err)
 	require.EqualValues(t, 6, deleted)

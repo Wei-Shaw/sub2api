@@ -54,6 +54,7 @@ export default {
     startAt: 'Start time',
     endAt: 'End time',
     apiKey: 'API key',
+    apiKeyPlaceholder: 'Enter a key name',
     group: 'Group',
     route: 'Model / endpoint',
     promptSize: 'Prompt size',

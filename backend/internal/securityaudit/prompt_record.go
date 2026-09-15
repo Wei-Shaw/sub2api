@@ -95,6 +95,7 @@ type PromptRecordFilter struct {
 	SessionID       string
 	UserID          *int64
 	APIKeyID        *int64
+	APIKeyName      string
 	Model           string
 	Stage           string
 	StartAt         *time.Time
@@ -212,6 +213,9 @@ func (r *PostgreSQLRepository) ListPromptRecords(ctx context.Context, filter Pro
 	}
 	if filter.APIKeyID != nil {
 		add("api_key_id = $%d", *filter.APIKeyID)
+	}
+	if strings.TrimSpace(filter.APIKeyName) != "" {
+		add("api_key_name_snapshot ILIKE $%d", "%"+strings.TrimSpace(filter.APIKeyName)+"%")
 	}
 	if strings.TrimSpace(filter.Model) != "" {
 		add("model ILIKE $%d", "%"+strings.TrimSpace(filter.Model)+"%")

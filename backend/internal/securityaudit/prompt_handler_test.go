@@ -381,6 +381,7 @@ func TestPromptAdminDeleteConfirmationErrorsStayGeneric(t *testing.T) {
 func TestPromptRecordListParsesUserAndTimeFilters(t *testing.T) {
 	service := &fakePromptAdminService{listRecords: func(_ context.Context, filter PromptRecordFilter, page, pageSize int) (*PromptRecordPage, error) {
 		require.Equal(t, int64(7), *filter.UserID)
+		require.Equal(t, "primary", filter.APIKeyName)
 		require.Equal(t, "gpt-test", filter.Model)
 		require.Equal(t, "2026-09-11T10:00:00Z", filter.StartAt.UTC().Format(time.RFC3339))
 		require.Equal(t, "2026-09-11T11:00:00Z", filter.EndAt.UTC().Format(time.RFC3339))
@@ -389,7 +390,7 @@ func TestPromptRecordListParsesUserAndTimeFilters(t *testing.T) {
 		return &PromptRecordPage{}, nil
 	}}
 	response := promptAdminRequest(t, promptAdminRouter(service), http.MethodGet,
-		"/admin/prompt-records?user_id=7&model=gpt-test&start_at=2026-09-11T10:00:00Z&end_at=2026-09-11T11:00:00Z&page=2&page_size=25", nil)
+		"/admin/prompt-records?user_id=7&api_key=primary&model=gpt-test&start_at=2026-09-11T10:00:00Z&end_at=2026-09-11T11:00:00Z&page=2&page_size=25", nil)
 	require.Equal(t, http.StatusOK, response.Code)
 }
 
