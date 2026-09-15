@@ -29,11 +29,11 @@ type usageStatsCacheKeyData struct {
 func usageStatsCacheKey(filters usagestats.UsageLogFilters) string {
 	start := ""
 	if filters.StartTime != nil {
-		start = filters.StartTime.UTC().Format(time.RFC3339)
+		start = filters.StartTime.UTC().Format(time.RFC3339Nano)
 	}
 	end := ""
 	if filters.EndTime != nil {
-		end = filters.EndTime.UTC().Format(time.RFC3339)
+		end = filters.EndTime.UTC().Format(time.RFC3339Nano)
 	}
 	return mustMarshalDashboardCacheKey(usageStatsCacheKeyData{
 		StartTime:             start,

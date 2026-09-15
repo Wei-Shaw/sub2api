@@ -161,21 +161,21 @@ func (h *UsageHandler) parseUserUsageFilters(c *gin.Context, requireRange bool) 
 	endDateStr := strings.TrimSpace(c.Query("end_date"))
 
 	if startDateStr != "" {
-		t, err := timezone.ParseInUserLocation("2006-01-02", startDateStr, userTZ)
+		t, err := timezone.ParseRangeBoundary(startDateStr, userTZ, false)
 		if err != nil {
-			response.BadRequest(c, "Invalid start_date format, use YYYY-MM-DD")
+			response.BadRequest(c, "Invalid start_date format, use YYYY-MM-DD or RFC3339")
 			return nil, false
 		}
 		startTime = t
 		startPtr = &startTime
 	}
 	if endDateStr != "" {
-		t, err := timezone.ParseInUserLocation("2006-01-02", endDateStr, userTZ)
+		t, err := timezone.ParseRangeBoundary(endDateStr, userTZ, true)
 		if err != nil {
-			response.BadRequest(c, "Invalid end_date format, use YYYY-MM-DD")
+			response.BadRequest(c, "Invalid end_date format, use YYYY-MM-DD or RFC3339")
 			return nil, false
 		}
-		endTime = t.AddDate(0, 0, 1)
+		endTime = t
 		endPtr = &endTime
 	}
 
@@ -201,6 +201,11 @@ func (h *UsageHandler) parseUserUsageFilters(c *gin.Context, requireRange bool) 
 			}
 			endPtr = &endTime
 		}
+	}
+
+	if startPtr != nil && endPtr != nil && !startTime.Before(endTime) {
+		response.BadRequest(c, "start_date must be before end_date")
+		return nil, false
 	}
 
 	return &userUsageFilters{
@@ -288,21 +293,25 @@ func (h *UsageHandler) ListErrors(c *gin.Context) {
 	// Date range (half-open [start, end)), reuse usage-list semantics.
 	userTZ := c.Query("timezone")
 	if startDateStr := c.Query("start_date"); startDateStr != "" {
-		t, err := timezone.ParseInUserLocation("2006-01-02", startDateStr, userTZ)
+		t, err := timezone.ParseRangeBoundary(startDateStr, userTZ, false)
 		if err != nil {
-			response.BadRequest(c, "Invalid start_date format, use YYYY-MM-DD")
+			response.BadRequest(c, "Invalid start_date format, use YYYY-MM-DD or RFC3339")
 			return
 		}
 		filter.StartTime = &t
 	}
 	if endDateStr := c.Query("end_date"); endDateStr != "" {
-		t, err := timezone.ParseInUserLocation("2006-01-02", endDateStr, userTZ)
+		t, err := timezone.ParseRangeBoundary(endDateStr, userTZ, true)
 		if err != nil {
-			response.BadRequest(c, "Invalid end_date format, use YYYY-MM-DD")
+			response.BadRequest(c, "Invalid end_date format, use YYYY-MM-DD or RFC3339")
 			return
 		}
-		t = t.AddDate(0, 0, 1)
 		filter.EndTime = &t
+	}
+
+	if filter.StartTime != nil && filter.EndTime != nil && !filter.StartTime.Before(*filter.EndTime) {
+		response.BadRequest(c, "start_date must be before end_date")
+		return
 	}
 
 	filter.Model = strings.TrimSpace(c.Query("model"))
@@ -420,7 +429,11 @@ func (h *UsageHandler) Stats(c *gin.Context) {
 	stats.UpstreamEndpoints = nil
 	stats.EndpointPaths = nil
 
-	response.Success(c, stats)
+	response.Success(c, struct {
+		*usagestats.UsageStats
+		StartTime string `json:"start_time"`
+		EndTime   string `json:"end_time"`
+	}{stats, parsed.StartTime.Format(time.RFC3339Nano), parsed.EndTime.Format(time.RFC3339Nano)})
 }
 
 const (
@@ -482,7 +495,9 @@ func (h *UsageHandler) DashboardTrend(c *gin.Context) {
 	response.Success(c, gin.H{
 		"trend":       trend,
 		"start_date":  parsed.StartTime.Format("2006-01-02"),
-		"end_date":    parsed.EndTime.Add(-24 * time.Hour).Format("2006-01-02"),
+		"start_time":  parsed.StartTime.Format(time.RFC3339Nano),
+		"end_date":    timezone.RangeEndDate(parsed.EndTime),
+		"end_time":    parsed.EndTime.Format(time.RFC3339Nano),
 		"granularity": granularity,
 	})
 }
@@ -510,7 +525,9 @@ func (h *UsageHandler) DashboardModels(c *gin.Context) {
 	response.Success(c, gin.H{
 		"models":     userModelStatsFromUsageStats(stats),
 		"start_date": parsed.StartTime.Format("2006-01-02"),
-		"end_date":   parsed.EndTime.Add(-24 * time.Hour).Format("2006-01-02"),
+		"start_time": parsed.StartTime.Format(time.RFC3339Nano),
+		"end_date":   timezone.RangeEndDate(parsed.EndTime),
+		"end_time":   parsed.EndTime.Format(time.RFC3339Nano),
 	})
 }
 
@@ -540,9 +557,11 @@ func (h *UsageHandler) DashboardSnapshotV2(c *gin.Context) {
 	}
 
 	resp := gin.H{
-		"generated_at": time.Now().UTC().Format(time.RFC3339),
+		"generated_at": time.Now().UTC().Format(time.RFC3339Nano),
 		"start_date":   parsed.StartTime.Format("2006-01-02"),
-		"end_date":     parsed.EndTime.Add(-24 * time.Hour).Format("2006-01-02"),
+		"start_time":   parsed.StartTime.Format(time.RFC3339Nano),
+		"end_date":     timezone.RangeEndDate(parsed.EndTime),
+		"end_time":     parsed.EndTime.Format(time.RFC3339Nano),
 		"granularity":  granularity,
 	}
 
@@ -719,6 +738,8 @@ func (h *UsageHandler) GetMyAPIKeyDailyUsage(c *gin.Context) {
 		"items":      items,
 		"days":       days,
 		"start_date": startTime.Format("2006-01-02"),
-		"end_date":   endTime.AddDate(0, 0, -1).Format("2006-01-02"),
+		"start_time": startTime.Format(time.RFC3339Nano),
+		"end_date":   timezone.RangeEndDate(endTime),
+		"end_time":   endTime.Format(time.RFC3339Nano),
 	})
 }
