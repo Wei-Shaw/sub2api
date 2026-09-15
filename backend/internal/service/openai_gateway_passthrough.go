@@ -1611,6 +1611,25 @@ func (s *OpenAIGatewayService) handleOpenAIStreamTerminalAccountSideEffects(
 	canonicalModel ...string,
 ) (int, bool) {
 	statusCode := openAIStreamFailureStatus(payload, message)
+	ctx := context.Background()
+	if c != nil && c.Request != nil {
+		ctx = c.Request.Context()
+	}
+	model := firstNonEmpty(canonicalModel...)
+	if model == "" {
+		model = firstNonEmpty(gjson.GetBytes(payload, "model").String(), gjson.GetBytes(payload, "response.model").String())
+	}
+	// response.failed is carried inside an HTTP 200 stream, so it bypasses the
+	// normal HTTP error path. Honor an administrator's explicit temporary
+	// unschedulable rule before applying the built-in terminal-event policy.
+	if statusCode != http.StatusUnauthorized && s != nil && s.rateLimitService != nil {
+		stateCtx, cancel := openAIAccountStateContext(ctx)
+		matched := s.rateLimitService.HandleTempUnschedulable(stateCtx, account, statusCode, payload, model)
+		cancel()
+		if matched {
+			return statusCode, true
+		}
+	}
 	switch statusCode {
 	case http.StatusForbidden:
 		if !openAIStream403AccountFailure(payload, message) {
@@ -1618,14 +1637,6 @@ func (s *OpenAIGatewayService) handleOpenAIStreamTerminalAccountSideEffects(
 		}
 		fallthrough
 	case http.StatusUnauthorized, http.StatusTooManyRequests, 529:
-		ctx := context.Background()
-		if c != nil && c.Request != nil {
-			ctx = c.Request.Context()
-		}
-		model := firstNonEmpty(canonicalModel...)
-		if model == "" {
-			model = firstNonEmpty(gjson.GetBytes(payload, "model").String(), gjson.GetBytes(payload, "response.model").String())
-		}
 		accountHeaders := headers
 		if statusCode == http.StatusTooManyRequests {
 			// 普通模型的流式 429 不能继承外层 HTTP 200 的全局 quota 快照；

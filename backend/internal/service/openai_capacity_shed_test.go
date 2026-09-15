@@ -21,11 +21,28 @@ import (
 type capacityShedAccountRepoStub struct {
 	AccountRepository // 嵌入接口，未实现的方法会 panic（不应被调用）
 
-	tempUnschedCalls int
+	tempUnschedCalls    int
+	modelRateLimitCalls []capacityShedModelRateLimitCall
+}
+
+type capacityShedModelRateLimitCall struct {
+	accountID int64
+	scope     string
+	resetAt   time.Time
+	reason    string
 }
 
 func (r *capacityShedAccountRepoStub) SetTempUnschedulable(_ context.Context, _ int64, _ time.Time, _ string) error {
 	r.tempUnschedCalls++
+	return nil
+}
+
+func (r *capacityShedAccountRepoStub) SetModelRateLimit(_ context.Context, id int64, scope string, resetAt time.Time, reason ...string) error {
+	call := capacityShedModelRateLimitCall{accountID: id, scope: scope, resetAt: resetAt}
+	if len(reason) > 0 {
+		call.reason = reason[0]
+	}
+	r.modelRateLimitCalls = append(r.modelRateLimitCalls, call)
 	return nil
 }
 
@@ -75,6 +92,70 @@ func TestStreamFailedEventCapacityShedRetriesOnSameAccount(t *testing.T) {
 	other := []byte(`{"type":"response.failed","response":{"error":{"code":"server_error"}}}`)
 	require.False(t, isOpenAIUpstreamCapacityShedEvent(other))
 	require.False(t, openAIStreamFailedEventRetryableOnSameAccount(nonPool, other, "boom"))
+}
+
+func TestOpenAIStreamTerminalCapacityShedHonorsConfiguredTempRule(t *testing.T) {
+	payload := []byte(`{"type":"response.failed","response":{"model":"gpt-5.6-terra","error":{"code":"server_error","message":"Our servers are currently overloaded. Please try again later."}}}`)
+
+	t.Run("configured rule creates model cooldown", func(t *testing.T) {
+		repo := &capacityShedAccountRepoStub{}
+		rateLimitService := NewRateLimitService(repo, nil, &config.Config{}, nil, nil)
+		gateway := &OpenAIGatewayService{rateLimitService: rateLimitService}
+		account := &Account{
+			ID:          1,
+			Platform:    PlatformOpenAI,
+			Type:        AccountTypeAPIKey,
+			Status:      StatusActive,
+			Schedulable: true,
+			Credentials: map[string]any{
+				"temp_unschedulable_enabled": true,
+				"temp_unschedulable_rules": []any{
+					map[string]any{
+						"error_code":       float64(http.StatusServiceUnavailable),
+						"keywords":         []any{"overloaded"},
+						"duration_minutes": float64(5),
+					},
+				},
+			},
+		}
+
+		status, handled := gateway.handleOpenAIStreamTerminalAccountSideEffects(
+			nil,
+			account,
+			payload,
+			"Our servers are currently overloaded. Please try again later.",
+			nil,
+			"gpt-5.6-terra",
+		)
+
+		require.Equal(t, http.StatusServiceUnavailable, status)
+		require.True(t, handled)
+		require.Zero(t, repo.tempUnschedCalls)
+		require.Len(t, repo.modelRateLimitCalls, 1)
+		require.Equal(t, "gpt-5.6-terra", repo.modelRateLimitCalls[0].scope)
+		require.WithinDuration(t, time.Now().Add(5*time.Minute), repo.modelRateLimitCalls[0].resetAt, 5*time.Second)
+	})
+
+	t.Run("default policy keeps request scoped behavior", func(t *testing.T) {
+		repo := &capacityShedAccountRepoStub{}
+		rateLimitService := NewRateLimitService(repo, nil, &config.Config{}, nil, nil)
+		gateway := &OpenAIGatewayService{rateLimitService: rateLimitService}
+		account := &Account{ID: 1, Platform: PlatformOpenAI, Type: AccountTypeAPIKey}
+
+		status, handled := gateway.handleOpenAIStreamTerminalAccountSideEffects(
+			nil,
+			account,
+			payload,
+			"Our servers are currently overloaded. Please try again later.",
+			nil,
+			"gpt-5.6-terra",
+		)
+
+		require.Equal(t, http.StatusServiceUnavailable, status)
+		require.False(t, handled)
+		require.Zero(t, repo.tempUnschedCalls)
+		require.Empty(t, repo.modelRateLimitCalls)
+	})
 }
 
 func TestOpenAIHTTPCapacityShedIsRequestScopedForOAuthAccounts(t *testing.T) {
