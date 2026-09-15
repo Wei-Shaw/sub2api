@@ -6,7 +6,7 @@ import { opsAPI } from '@/api/admin/ops'
 import BaseDialog from '@/components/common/BaseDialog.vue'
 import Select from '@/components/common/Select.vue'
 import Toggle from '@/components/common/Toggle.vue'
-import type { OpsAlertRuntimeSettings, EmailNotificationConfig, AlertSeverity, OpsAdvancedSettings, OpsMetricThresholds } from '../types'
+import type { OpsAlertRuntimeSettings, EmailNotificationConfig, AlertSeverity, WeComNotificationConfig, WeComNotificationConfigUpdate, OpsAdvancedSettings, OpsMetricThresholds } from '../types'
 
 const { t } = useI18n()
 const appStore = useAppStore()
@@ -27,6 +27,9 @@ const saving = ref(false)
 const runtimeSettings = ref<OpsAlertRuntimeSettings | null>(null)
 // 邮件通知配置
 const emailConfig = ref<EmailNotificationConfig | null>(null)
+const weComConfig = ref<WeComNotificationConfig | null>(null)
+const weComWebhookInput = ref('')
+const testingWeCom = ref(false)
 // 高级设置
 const advancedSettings = ref<OpsAdvancedSettings | null>(null)
 // 指标阈值配置
@@ -41,14 +44,17 @@ const metricThresholds = ref<OpsMetricThresholds>({
 async function loadAllSettings() {
   loading.value = true
   try {
-    const [runtime, email, advanced, thresholds] = await Promise.all([
+    const [runtime, email, weCom, advanced, thresholds] = await Promise.all([
       opsAPI.getAlertRuntimeSettings(),
       opsAPI.getEmailNotificationConfig(),
+      opsAPI.getWeComNotificationConfig(),
       opsAPI.getAdvancedSettings(),
       opsAPI.getMetricThresholds()
     ])
     runtimeSettings.value = runtime
     emailConfig.value = email
+    weComConfig.value = weCom
+    weComWebhookInput.value = ''
     advancedSettings.value = advanced
     // 兼容旧 payload：后端未返回该字段时补默认值，保证表单可绑定
     if (advancedSettings.value && !advancedSettings.value.openai_account_quota_auto_pause) {
@@ -89,6 +95,42 @@ const severityOptions: Array<{ value: AlertSeverity | ''; label: string }> = [
   { value: 'warning', label: t('common.warning') },
   { value: 'info', label: t('common.info') }
 ]
+const weComSeverityOptions = [
+  { value: '', label: t('admin.ops.settings.wecom.allSeverities') },
+  { value: 'P0', label: 'P0' },
+  { value: 'P1', label: 'P1' },
+  { value: 'P2', label: 'P2' },
+  { value: 'P3', label: 'P3' }
+]
+
+function buildWeComUpdate(): WeComNotificationConfigUpdate | null {
+  if (!weComConfig.value) return null
+  const payload: WeComNotificationConfigUpdate = {
+    enabled: weComConfig.value.enabled,
+    min_severity: weComConfig.value.min_severity,
+    rate_limit_per_hour: weComConfig.value.rate_limit_per_hour,
+    include_resolved_alerts: weComConfig.value.include_resolved_alerts
+  }
+  const webhook = weComWebhookInput.value.trim()
+  if (webhook) payload.webhook_url = webhook
+  return payload
+}
+
+async function testWeComNotification() {
+  const payload = buildWeComUpdate()
+  if (!payload) return
+  testingWeCom.value = true
+  try {
+    weComConfig.value = await opsAPI.updateWeComNotificationConfig(payload)
+    weComWebhookInput.value = ''
+    await opsAPI.testWeComNotification()
+    appStore.showSuccess(t('admin.ops.settings.wecom.testSuccess'))
+  } catch (err: any) {
+    appStore.showError(err?.response?.data?.message || err?.response?.data?.detail || t('admin.ops.settings.wecom.testFailed'))
+  } finally {
+    testingWeCom.value = false
+  }
+}
 
 // 验证邮箱
 function isValidEmailAddress(email: string): boolean {
@@ -158,6 +200,14 @@ const validation = computed(() => {
   }
 
   // 邮件配置: 启用但无收件人时不阻断保存, 保存时会自动禁用
+  if (weComConfig.value) {
+    if (weComConfig.value.enabled && !weComConfig.value.webhook_configured && !weComWebhookInput.value.trim()) {
+      errors.push(t('admin.ops.settings.wecom.webhookRequired'))
+    }
+    if (!Number.isFinite(weComConfig.value.rate_limit_per_hour) || weComConfig.value.rate_limit_per_hour < 0) {
+      errors.push(t('admin.ops.settings.wecom.rateLimitInvalid'))
+    }
+  }
 
   // 验证高级设置
   if (advancedSettings.value) {
@@ -216,6 +266,7 @@ async function saveAllSettings() {
     await Promise.all([
       runtimeSettings.value ? opsAPI.updateAlertRuntimeSettings(runtimeSettings.value) : Promise.resolve(),
       emailConfig.value ? opsAPI.updateEmailNotificationConfig(emailConfig.value) : Promise.resolve(),
+      buildWeComUpdate() ? opsAPI.updateWeComNotificationConfig(buildWeComUpdate()!) : Promise.resolve(),
       advancedSettings.value ? opsAPI.updateAdvancedSettings(advancedSettings.value) : Promise.resolve(),
       opsAPI.updateMetricThresholds(metricThresholds.value)
     ])
@@ -237,7 +288,7 @@ async function saveAllSettings() {
       {{ t('common.loading') }}
     </div>
 
-    <div v-else-if="runtimeSettings && emailConfig && advancedSettings" class="space-y-6">
+    <div v-else-if="runtimeSettings && emailConfig && weComConfig && advancedSettings" class="space-y-6">
       <!-- 验证错误 -->
       <div v-if="!validation.valid" class="rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800 dark:border-amber-900/50 dark:bg-amber-900/20 dark:text-amber-200">
         <div class="font-bold">{{ t('admin.ops.settings.validation.title') }}</div>
@@ -307,6 +358,48 @@ async function saveAllSettings() {
             <label class="input-label">{{ t('admin.ops.settings.minSeverity') }}</label>
             <Select v-model="emailConfig.alert.min_severity" :options="severityOptions" />
           </div>
+        </div>
+      </div>
+
+      <!-- 企业微信群机器人 -->
+      <div class="rounded-2xl bg-gray-50 p-4 dark:bg-dark-700/50">
+        <h4 class="mb-3 text-sm font-semibold text-gray-900 dark:text-white">{{ t('admin.ops.settings.wecom.title') }}</h4>
+        <div class="space-y-4">
+          <div class="flex items-center justify-between">
+            <div>
+              <label class="font-medium text-gray-900 dark:text-white">{{ t('admin.ops.settings.wecom.enabled') }}</label>
+              <p class="mt-1 text-xs text-gray-500">{{ t('admin.ops.settings.wecom.enabledHint') }}</p>
+            </div>
+            <Toggle v-model="weComConfig.enabled" />
+          </div>
+          <div>
+            <label class="input-label">{{ t('admin.ops.settings.wecom.webhook') }}</label>
+            <input
+              v-model="weComWebhookInput"
+              type="password"
+              class="input"
+              autocomplete="new-password"
+              :placeholder="weComConfig.webhook_configured ? weComConfig.webhook_url_masked : t('admin.ops.settings.wecom.webhookPlaceholder')"
+            />
+            <p class="mt-1 text-xs text-gray-500">{{ t('admin.ops.settings.wecom.webhookHint') }}</p>
+          </div>
+          <div class="grid grid-cols-1 gap-4 md:grid-cols-2">
+            <div>
+              <label class="input-label">{{ t('admin.ops.settings.wecom.minSeverity') }}</label>
+              <Select v-model="weComConfig.min_severity" :options="weComSeverityOptions" />
+            </div>
+            <div>
+              <label class="input-label">{{ t('admin.ops.settings.wecom.rateLimit') }}</label>
+              <input v-model.number="weComConfig.rate_limit_per_hour" type="number" min="0" class="input" />
+            </div>
+          </div>
+          <div class="flex items-center justify-between">
+            <label class="text-sm font-medium text-gray-700 dark:text-gray-300">{{ t('admin.ops.settings.wecom.includeResolved') }}</label>
+            <Toggle v-model="weComConfig.include_resolved_alerts" />
+          </div>
+          <button type="button" class="btn btn-secondary" :disabled="testingWeCom || (!weComConfig.webhook_configured && !weComWebhookInput.trim())" @click="testWeComNotification">
+            {{ testingWeCom ? t('admin.ops.settings.wecom.testing') : t('admin.ops.settings.wecom.test') }}
+          </button>
         </div>
       </div>
 

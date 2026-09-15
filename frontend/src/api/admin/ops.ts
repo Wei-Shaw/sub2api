@@ -704,6 +704,7 @@ export interface AlertRule {
   severity: OpsSeverity
   cooldown_minutes: number
   notify_email: boolean
+  notify_wecom: boolean
   filters?: Record<string, any>
   created_at?: string
   updated_at?: string
@@ -723,6 +724,7 @@ export interface AlertEvent {
   fired_at: string
   resolved_at?: string | null
   email_sent: boolean
+  wecom_sent: boolean
   created_at: string
 }
 
@@ -749,6 +751,24 @@ export interface EmailNotificationConfig {
     account_health_schedule: string
     account_health_error_rate_threshold: number
   }
+}
+
+export interface WeComNotificationConfig {
+  enabled: boolean
+  webhook_configured: boolean
+  webhook_url_masked?: string
+  min_severity: '' | 'P0' | 'P1' | 'P2' | 'P3'
+  rate_limit_per_hour: number
+  include_resolved_alerts: boolean
+}
+
+export interface WeComNotificationConfigUpdate {
+  enabled: boolean
+  webhook_url?: string
+  clear_webhook?: boolean
+  min_severity: '' | 'P0' | 'P1' | 'P2' | 'P3'
+  rate_limit_per_hour: number
+  include_resolved_alerts: boolean
 }
 
 export interface OpsMetricThresholds {
@@ -1199,6 +1219,7 @@ export interface AlertEventsQuery {
   status?: string
   severity?: string
   email_sent?: boolean
+  wecom_sent?: boolean
   time_range?: string
   start_time?: string
   end_time?: string
@@ -1242,6 +1263,20 @@ export async function getEmailNotificationConfig(): Promise<EmailNotificationCon
 export async function updateEmailNotificationConfig(config: EmailNotificationConfig): Promise<EmailNotificationConfig> {
   const { data } = await apiClient.put<EmailNotificationConfig>('/admin/ops/email-notification/config', config)
   return data
+}
+
+export async function getWeComNotificationConfig(): Promise<WeComNotificationConfig> {
+  const { data } = await apiClient.get<WeComNotificationConfig>('/admin/ops/wecom-notification/config')
+  return data
+}
+
+export async function updateWeComNotificationConfig(config: WeComNotificationConfigUpdate): Promise<WeComNotificationConfig> {
+  const { data } = await apiClient.put<WeComNotificationConfig>('/admin/ops/wecom-notification/config', config)
+  return data
+}
+
+export async function testWeComNotification(): Promise<void> {
+  await apiClient.post('/admin/ops/wecom-notification/test')
 }
 
 // Runtime settings (DB-backed)
@@ -1346,6 +1381,9 @@ export const opsAPI = {
   createAlertSilence,
   getEmailNotificationConfig,
   updateEmailNotificationConfig,
+  getWeComNotificationConfig,
+  updateWeComNotificationConfig,
+  testWeComNotification,
   getAlertRuntimeSettings,
   updateAlertRuntimeSettings,
   getRuntimeLogConfig,
