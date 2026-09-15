@@ -58,6 +58,14 @@
       </thead>
       <tbody>
         <tr
+          v-for="m in sortedModels"
+          :key="m.name"
+          class="cursor-pointer border-b border-gray-100 transition-colors last:border-b-0 hover:bg-gray-50/70 focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary-500/40 dark:border-dark-800 dark:hover:bg-dark-800/50"
+          tabindex="0"
+          :aria-label="t('modelPlaza.detail.open', { model: m.name })"
+          @click="$emit('select', m)"
+          @keydown.enter="$emit('select', m)"
+          @keydown.space.prevent="$emit('select', m)"
           v-for="{ model: m, period, key } in rows"
           :key="key"
           class="border-b border-gray-100 transition-colors last:border-b-0 hover:bg-gray-50/70 dark:border-dark-800 dark:hover:bg-dark-800/50"
@@ -335,6 +343,8 @@ const props = defineProps<{
   peakWindow?: string
   peakRateMultiplier?: number | null
 }>()
+
+defineEmits<{ select: [model: PlazaModel] }>()
 
 const { t } = useI18n()
 
