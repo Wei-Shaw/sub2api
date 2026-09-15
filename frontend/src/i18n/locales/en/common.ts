@@ -276,7 +276,7 @@ export default {
     clickToResend: 'Click to resend code',
     resendCode: 'Resend verification code',
     sendCodeDesc: "We'll send a verification code to",
-    codeSentSuccess: 'Verification code sent! Please check your inbox.',
+    codeSentSuccess: 'Verification code sent! Check your inbox, or your spam/junk folder if it is not there.',
     verifying: 'Verifying...',
     verifyAndCreate: 'Verify & Create Account',
     resendCountdown: 'Resend code in {countdown}s',

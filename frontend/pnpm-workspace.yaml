@@ -1,0 +1,6 @@
+packages:
+  - '**'
+
+allowBuilds:
+  esbuild: true
+  vue-demi: true

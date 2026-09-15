@@ -61,6 +61,13 @@ describe('AppSidebar header styles', () => {
     expect(sidebarHeaderBlockMatch?.[0]).not.toContain('@apply overflow-hidden;')
     expect(sidebarBrandBlockMatch?.[0]).not.toContain('overflow: hidden;')
   })
+
+  it('passes the build version into the badge instead of the public site version', () => {
+    expect(componentSource).toContain('<VersionBadge :version="appVersion" />')
+    expect(componentSource).toContain('const appVersion = __APP_VERSION__')
+    expect(componentSource).not.toContain('<VersionBadge :version="siteVersion" />')
+    expect(componentSource).not.toContain('const siteVersion = computed(() => appStore.siteVersion)')
+  })
 })
 
 describe('AppSidebar subscription feature flag', () => {

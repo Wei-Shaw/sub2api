@@ -22,7 +22,7 @@
       <nav class="mx-auto flex max-w-5xl flex-wrap items-center justify-between gap-3 sm:gap-4">
         <div class="flex min-w-0 flex-1 items-center gap-3">
           <img
-            :src="siteLogo || '/logo.svg'"
+            :src="siteLogo || '/logo.png'"
             alt="Logo"
             class="h-9 w-9 shrink-0 rounded-lg object-contain"
           />
@@ -70,7 +70,7 @@
     <main class="flex min-w-0 flex-1 items-center justify-center px-4 py-16 sm:px-6">
       <div class="min-w-0 max-w-2xl text-center">
         <img
-          :src="siteLogo || '/logo.svg'"
+          :src="siteLogo || '/logo.png'"
           alt="Logo"
           class="mx-auto mb-6 h-20 w-20 rounded-2xl object-contain"
         />
@@ -120,7 +120,7 @@
         <!-- Logo -->
         <div class="flex items-center">
           <div class="h-10 w-10 overflow-hidden rounded-xl shadow-md">
-            <img :src="siteLogo || '/logo.svg'" alt="Logo" class="h-full w-full object-contain" />
+            <img :src="siteLogo || '/logo.png'" alt="Logo" class="h-full w-full object-contain" />
           </div>
         </div>
 
