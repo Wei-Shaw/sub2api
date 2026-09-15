@@ -220,6 +220,9 @@ func (s *OpenAIGatewayService) sendCCUpstreamRequest(
 		}
 		applyGrokCacheHeaders(upstreamReq.Header, grokCacheIdentity)
 	}
+	// zhipu 账号统一为 ZCode Desktop 客户端指纹：上游按客户端身份风控，必须
+	// 盖过 claude-cli / Codex 等残留身份头（header_overrides 仍可再覆盖）。
+	applyZCodeIdentityHeaders(upstreamReq.Header, account, zcodeIdentityOpenAI)
 	// 账号级请求头覆写：放在所有内置默认头（含 Grok CLI 身份头）之后应用，
 	// 使配置值获得除共享传输层强制头之外的最高优先级。
 	account.ApplyHeaderOverrides(upstreamReq.Header)
