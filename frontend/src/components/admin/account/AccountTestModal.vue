@@ -224,6 +224,21 @@
         </button>
       </div>
 
+      <div v-if="pelicanHTML" class="space-y-2">
+        <div class="flex items-center justify-between text-xs font-medium text-gray-600 dark:text-gray-300">
+          <span>{{ t('admin.accounts.openai.pelicanPreview') }}</span>
+          <span v-if="pelicanResponseModel" class="font-mono text-gray-500 dark:text-gray-400">
+            {{ pelicanResponseModel }}
+          </span>
+        </div>
+        <iframe
+          :srcdoc="pelicanPreviewDocument"
+          sandbox="allow-scripts"
+          :title="t('admin.accounts.openai.pelicanPreview')"
+          class="aspect-video w-full rounded-lg border border-gray-200 bg-white dark:border-dark-500"
+        />
+      </div>
+
       <div v-if="generatedImages.length > 0" class="space-y-2">
         <div class="text-xs font-medium text-gray-600 dark:text-gray-300">
           {{ t('admin.accounts.imagePreview') }}
@@ -413,7 +428,9 @@ const generatedImages = ref<PreviewMedia[]>([])
 const generatedAudios = ref<PreviewMedia[]>([])
 const generatedVideos = ref<PreviewMedia[]>([])
 const previewImageUrl = ref('')
-const testMode = ref<'default' | 'compact'>('default')
+const pelicanHTML = ref('')
+const pelicanResponseModel = ref('')
+const testMode = ref<'default' | 'compact' | 'pelican'>('default')
 const grokTestMode = ref<'text' | 'image' | 'video' | 'search' | 'tts' | 'stt' | 'realtime'>('text')
 const uploadImageDataURL = ref('')
 const uploadImagePreview = ref('')
@@ -423,11 +440,20 @@ const uploadAudioName = ref('')
 const imageFileInput = ref<HTMLInputElement | null>(null)
 const audioFileInput = ref<HTMLInputElement | null>(null)
 const isOpenAIAccount = computed(() => props.account?.platform === 'openai')
+const isChatGPTAccount = computed(
+  () => isOpenAIAccount.value && (props.account?.type === 'oauth' || props.account?.type === 'setup-token')
+)
 const isGrokAccount = computed(() => props.account?.platform === 'grok')
-const openAITestModeOptions = computed(() => [
-  { value: 'default', label: t('admin.accounts.openai.testModeDefault') },
-  { value: 'compact', label: t('admin.accounts.openai.testModeCompact') }
-])
+const openAITestModeOptions = computed(() => {
+  const options = [
+    { value: 'default', label: t('admin.accounts.openai.testModeDefault') },
+    { value: 'compact', label: t('admin.accounts.openai.testModeCompact') }
+  ]
+  if (isChatGPTAccount.value) {
+    options.push({ value: 'pelican', label: t('admin.accounts.openai.testModePelican') })
+  }
+  return options
+})
 const grokTestModeOptions = computed(() => [
   { value: 'text', label: t('admin.accounts.grok.testModeText') },
   { value: 'image', label: t('admin.accounts.grok.testModeImage') },
@@ -483,6 +509,9 @@ const showModelSelect = computed(() => {
 })
 
 const modelOptionsForMode = computed(() => {
+  if (isOpenAIAccount.value && testMode.value === 'pelican') {
+    return availableModels.value.filter((m) => !m.id.toLowerCase().startsWith('gpt-image-'))
+  }
   if (!isGrokAccount.value) return availableModels.value
   if (grokTestMode.value === 'image') {
     return availableModels.value.filter((m) => isGrokImageModel(m.id))
@@ -670,6 +699,9 @@ const testModeSummary = computed(() => {
     }
   }
   if (supportsImageTest.value) return t('admin.accounts.imageTestMode')
+  if (isOpenAIAccount.value && testMode.value === 'pelican') {
+    return t('admin.accounts.openai.pelicanModeSummary')
+  }
   return t('admin.accounts.testPrompt')
 })
 
@@ -760,6 +792,17 @@ watch(grokTestMode, () => {
   applyDefaultPromptForMode()
 })
 
+watch(testMode, (mode) => {
+  if (!isOpenAIAccount.value || mode !== 'pelican') return
+  const options = modelOptionsForMode.value
+  if (options.some((model) => model.id === selectedModelId.value)) return
+  selectedModelId.value =
+    options.find((model) => model.id === 'gpt-6-astra')?.id ||
+    options.find((model) => model.id === 'gpt-5.6-sol')?.id ||
+    options[0]?.id ||
+    ''
+})
+
 const loadAvailableModels = async () => {
   if (!props.account) return
 
@@ -799,7 +842,18 @@ const resetState = () => {
   generatedAudios.value = []
   generatedVideos.value = []
   previewImageUrl.value = ''
+  pelicanHTML.value = ''
+  pelicanResponseModel.value = ''
 }
+
+const pelicanPreviewDocument = computed(() => {
+  if (!pelicanHTML.value) return ''
+  const policy = `<meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src data: blob:; style-src 'unsafe-inline'; script-src 'unsafe-inline'; font-src data:; media-src data: blob:;">`
+  if (/<head(?:\s[^>]*)?>/i.test(pelicanHTML.value)) {
+    return pelicanHTML.value.replace(/<head(\s[^>]*)?>/i, (head) => `${head}${policy}`)
+  }
+  return policy + pelicanHTML.value
+})
 
 const handleClose = () => {
   abortStream()
@@ -948,6 +1002,13 @@ const handleEvent = (event: {
   audio_url?: string
   video_url?: string
   mime_type?: string
+  data?: {
+    has_html?: boolean
+    html?: string
+    reply_preview?: string
+    response_id?: string
+    response_model?: string
+  }
 }) => {
   switch (event.type) {
     case 'test_start':
@@ -970,9 +1031,11 @@ const handleEvent = (event: {
                     : grokTestMode.value === 'realtime'
                       ? t('admin.accounts.grok.sendingRealtimeRequest')
                       : t('admin.accounts.sendingTestMessage')
-          : supportsImageTest.value
-            ? t('admin.accounts.sendingImageRequest')
-            : t('admin.accounts.sendingTestMessage'),
+          : isOpenAIAccount.value && testMode.value === 'pelican'
+            ? t('admin.accounts.openai.sendingPelicanRequest')
+            : supportsImageTest.value
+              ? t('admin.accounts.sendingImageRequest')
+              : t('admin.accounts.sendingTestMessage'),
         'text-gray-400'
       )
       addLine('', 'text-gray-300')
@@ -1021,6 +1084,23 @@ const handleEvent = (event: {
         addLine(event.text, 'text-cyan-300')
       }
       break
+
+    case 'pelican_result': {
+      if (streamingContent.value) {
+        streamingContent.value = ''
+      }
+      pelicanHTML.value = event.data?.html || ''
+      pelicanResponseModel.value = event.data?.response_model || ''
+      if (event.data?.has_html) {
+        addLine(t('admin.accounts.openai.pelicanHTMLReady'), 'text-green-300')
+      } else {
+        addLine(t('admin.accounts.openai.pelicanNoHTML'), 'text-yellow-300')
+        if (event.data?.reply_preview) {
+          addLine(event.data.reply_preview, 'text-gray-300')
+        }
+      }
+      break
+    }
 
     case 'test_complete':
       // Move streaming content to output lines
