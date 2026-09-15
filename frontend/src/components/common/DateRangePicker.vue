@@ -290,6 +290,14 @@ const handleEscape = (event: KeyboardEvent) => {
   }
 }
 
+// Restore the applied range after dismissal, including parent updates from Apply.
+watch(isOpen, (open) => {
+  if (open) return
+  localStartDate.value = props.startDate
+  localEndDate.value = props.endDate
+  onDateChange()
+}, { flush: 'post' })
+
 // Sync local state with props
 watch(
   () => props.startDate,
