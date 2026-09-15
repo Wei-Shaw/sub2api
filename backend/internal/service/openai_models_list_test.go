@@ -58,12 +58,12 @@ func TestFetchOpenAIModelsListUsesStandardRequestAndIsolatesCodexCache(t *testin
 }
 
 func TestFetchOpenAIModelsListOAuthSharesManifestCache(t *testing.T) {
-	_, calls := newCodexModelsOAuthCacheServer(t, `{"models":[{"slug":"special-oauth-model"},{"slug":"gpt-image-1"}]}`)
+	_, calls := newCodexModelsOAuthCacheServer(t, `{"models":[{"slug":"special-oauth-model","display_name":"Special OAuth Model","description":"manifest only"},{"slug":"gpt-image-1"}]}`)
 	s := &OpenAIGatewayService{}
 	account := newCodexModelsTestAccount()
 	response, err := s.FetchOpenAIModelsList(context.Background(), account)
 	require.NoError(t, err)
-	require.JSONEq(t, `{"object":"list","data":[{"id":"special-oauth-model","object":"model","owned_by":"openai","created":0},{"id":"gpt-image-1","object":"model","owned_by":"openai","created":0}]}`, string(response.Body))
+	require.JSONEq(t, `{"object":"list","data":[{"id":"special-oauth-model","object":"model","owned_by":"openai","created":0,"display_name":"Special OAuth Model"},{"id":"gpt-image-1","object":"model","owned_by":"openai","created":0}]}`, string(response.Body))
 	manifest, err := s.FetchCodexModelsManifest(context.Background(), account, CodexCanonicalClientVersion(), "")
 	require.NoError(t, err)
 	require.Contains(t, string(manifest.Body), `"slug":"special-oauth-model"`)

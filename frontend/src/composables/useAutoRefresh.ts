@@ -50,7 +50,7 @@ export function useAutoRefresh(options: UseAutoRefreshOptions) {
     if (shouldPause?.()) return
     if (fetching.value) return
 
-    if (countdown.value <= 0) {
+    if (countdown.value <= 1) {
       countdown.value = intervalSeconds.value
       fetching.value = true
       try { await onRefresh() } finally { fetching.value = false }
