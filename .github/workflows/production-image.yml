@@ -1,0 +1,202 @@
+name: Sub2API Production Image
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+      - master
+    tags:
+      - 'sub2api-*'
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      previous_image:
+        description: 'Optional previous image for marker regression comparison'
+        required: false
+        type: string
+
+permissions:
+  contents: read
+  packages: write
+  id-token: write
+  attestations: write
+  security-events: write
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: backend/go.mod
+          cache: true
+          cache-dependency-path: backend/go.sum
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: '20'
+          cache: pnpm
+          cache-dependency-path: frontend/pnpm-lock.yaml
+
+      - name: Source marker matrix
+        run: scripts/marker-matrix.sh --project sub2api --target source:. --require-all --output release/marker-matrix-source.tsv
+
+      - name: Backend unit tests
+        working-directory: backend
+        run: make test-unit
+
+      - name: Frontend build
+        working-directory: frontend
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm build
+
+      - name: Upload source marker matrix
+        uses: actions/upload-artifact@v7
+        with:
+          name: sub2api-source-marker-matrix
+          path: release/marker-matrix-source.tsv
+
+  image:
+    if: ${{ github.event_name != 'pull_request' }}
+    needs: validate
+    runs-on: ubuntu-latest
+    outputs:
+      image_ref: ${{ steps.manifest.outputs.image_ref }}
+      manifest_path: ${{ steps.manifest.outputs.manifest_path }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Set image name
+        id: image
+        run: echo "image=ghcr.io/${GITHUB_REPOSITORY,,}" >> "$GITHUB_OUTPUT"
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.repository_owner }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Docker metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ steps.image.outputs.image }}
+          tags: |
+            type=sha,prefix=git-
+            type=raw,value=production-${{ github.run_number }}
+
+      - name: Build and push image
+        id: build
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          provenance: true
+          sbom: true
+
+      - name: Attest image provenance
+        uses: actions/attest-build-provenance@v3
+        with:
+          subject-name: ${{ steps.image.outputs.image }}
+          subject-digest: ${{ steps.build.outputs.digest }}
+          push-to-registry: true
+
+      - name: Inspect built image markers
+        env:
+          IMAGE_REF: ${{ steps.image.outputs.image }}@${{ steps.build.outputs.digest }}
+          PREVIOUS_IMAGE: ${{ github.event.inputs.previous_image }}
+        run: |
+          docker pull "$IMAGE_REF"
+          scripts/marker-matrix.sh --project sub2api --target "image:$IMAGE_REF" --output release/marker-matrix-image.tsv
+          if [ -n "$PREVIOUS_IMAGE" ]; then
+            scripts/marker-matrix.sh --project sub2api --compare "$PREVIOUS_IMAGE" "$IMAGE_REF" --output release/marker-matrix-compare.tsv
+          fi
+
+      - name: Trivy image scan
+        uses: aquasecurity/trivy-action@0.32.0
+        with:
+          image-ref: ${{ steps.image.outputs.image }}@${{ steps.build.outputs.digest }}
+          format: sarif
+          output: trivy-results.sarif
+          severity: HIGH,CRITICAL
+          exit-code: '1'
+
+      - name: Upload Trivy results
+        if: always()
+        uses: github/codeql-action/upload-sarif@v4
+        with:
+          sarif_file: trivy-results.sarif
+
+      - name: Write release manifest
+        id: manifest
+        env:
+          IMAGE: ${{ steps.image.outputs.image }}
+          DIGEST: ${{ steps.build.outputs.digest }}
+          TAGS: ${{ steps.meta.outputs.tags }}
+          RUN_URL: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          mkdir -p release/manifests
+          python3 - <<'PY'
+          import datetime, json, os, pathlib
+          image = os.environ["IMAGE"]
+          digest = os.environ["DIGEST"]
+          manifest = {
+              "project": "sub2api",
+              "source": "github-actions",
+              "git_sha": os.environ["GITHUB_SHA"],
+              "created_at": datetime.datetime.now(datetime.timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z"),
+              "ci_run_url": os.environ["RUN_URL"],
+              "image": image,
+              "image_ref": f"{image}@{digest}",
+              "image_digest": digest,
+              "tags": [line for line in os.environ["TAGS"].splitlines() if line],
+              "base_image_digest": "recorded-by-buildkit-provenance",
+              "replaced_artifacts": ["/app/sub2api"],
+              "marker_matrix": {"status": "success", "regressions": 0, "path": "release/marker-matrix-image.tsv"},
+              "tests": [
+                  {"name": "source-marker-matrix", "status": "success"},
+                  {"name": "backend-unit-tests", "status": "success"},
+                  {"name": "frontend-build", "status": "success"},
+                  {"name": "trivy", "status": "success"}
+              ],
+              "attestations": {"sbom": True, "provenance": True}
+          }
+          path = pathlib.Path("release/manifests/sub2api-release-manifest.json")
+          path.write_text(json.dumps(manifest, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+          print(f"image_ref={manifest['image_ref']}")
+          print(f"manifest_path={path}")
+          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as out:
+              out.write(f"image_ref={manifest['image_ref']}\n")
+              out.write(f"manifest_path={path}\n")
+          PY
+          scripts/verify-release-manifest.sh release/manifests/sub2api-release-manifest.json --project sub2api --require-ci
+
+      - name: Upload release artifacts
+        uses: actions/upload-artifact@v7
+        with:
+          name: sub2api-production-release
+          path: |
+            release/manifests/sub2api-release-manifest.json
+            release/marker-matrix-image.tsv
+            release/marker-matrix-compare.tsv
+            trivy-results.sarif
