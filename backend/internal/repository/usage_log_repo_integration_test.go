@@ -1598,7 +1598,7 @@ func (s *UsageLogRepoSuite) TestGetAPIKeyUsageTrend() {
 	startTime := base.Add(-1 * time.Hour)
 	endTime := base.Add(48 * time.Hour)
 
-	trend, err := s.repo.GetAPIKeyUsageTrend(s.ctx, startTime, endTime, "day", 10)
+	trend, err := s.repo.GetAPIKeyUsageTrend(s.ctx, startTime, endTime, "day", 10, 0)
 	s.Require().NoError(err, "GetAPIKeyUsageTrend")
 	s.Require().GreaterOrEqual(len(trend), 2)
 }
@@ -1615,7 +1615,7 @@ func (s *UsageLogRepoSuite) TestGetAPIKeyUsageTrend_HourlyGranularity() {
 	startTime := base.Add(-1 * time.Hour)
 	endTime := base.Add(3 * time.Hour)
 
-	trend, err := s.repo.GetAPIKeyUsageTrend(s.ctx, startTime, endTime, "hour", 10)
+	trend, err := s.repo.GetAPIKeyUsageTrend(s.ctx, startTime, endTime, "hour", 10, 0)
 	s.Require().NoError(err, "GetAPIKeyUsageTrend hourly")
 	s.Require().Len(trend, 2)
 }

@@ -73,13 +73,16 @@ func (r *usageBatchLogRepoStub) GetUserBreakdownStats(context.Context, time.Time
 func (r *usageBatchLogRepoStub) GetAllGroupUsageSummary(context.Context, time.Time) ([]usagestats.GroupUsageSummary, error) {
 	return nil, nil
 }
-func (r *usageBatchLogRepoStub) GetAPIKeyUsageTrend(context.Context, time.Time, time.Time, string, int) ([]usagestats.APIKeyUsageTrendPoint, error) {
+func (r *usageBatchLogRepoStub) GetAPIKeyUsageTrend(context.Context, time.Time, time.Time, string, int, int64) ([]usagestats.APIKeyUsageTrendPoint, error) {
 	return nil, nil
 }
 func (r *usageBatchLogRepoStub) GetUserUsageTrend(context.Context, time.Time, time.Time, string, int) ([]usagestats.UserUsageTrendPoint, error) {
 	return nil, nil
 }
 func (r *usageBatchLogRepoStub) GetUserSpendingRanking(context.Context, time.Time, time.Time, int) (*usagestats.UserSpendingRankingResponse, error) {
+	return nil, nil
+}
+func (r *usageBatchLogRepoStub) GetAPIKeyUsageRanking(context.Context, time.Time, time.Time, int, string, int64) (*usagestats.APIKeyUsageRankingResponse, error) {
 	return nil, nil
 }
 func (r *usageBatchLogRepoStub) GetBatchUserUsageStats(context.Context, []int64, time.Time, time.Time) (map[int64]*usagestats.BatchUserUsageStats, error) {
