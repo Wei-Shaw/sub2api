@@ -11,18 +11,7 @@ import (
 // maxRedactDepth 限制递归深度以防止栈溢出
 const maxRedactDepth = 32
 
-var defaultSensitiveKeys = map[string]struct{}{
-	"authorization_code": {},
-	"code":               {},
-	"code_verifier":      {},
-	"access_token":       {},
-	"refresh_token":      {},
-	"id_token":           {},
-	"client_secret":      {},
-	"password":           {},
-}
-
-var defaultSensitiveKeyList = []string{
+var defaultSensitiveRawKeys = []string{
 	"authorization_code",
 	"code",
 	"code_verifier",
@@ -31,7 +20,35 @@ var defaultSensitiveKeyList = []string{
 	"id_token",
 	"client_secret",
 	"password",
+	"api_key",
+	"api-key",
+	"x-api-key",
+	"x-goog-api-key",
+	"private_key",
+	"privateKey",
+	"api_v3_key",
+	"apiV3Key",
+	"app_secret",
+	"appSecret",
+	"open_app_secret",
+	"openAppSecret",
+	"mp_app_secret",
+	"mpAppSecret",
+	"mobile_app_secret",
+	"mobileAppSecret",
+	"mch_id",
+	"mchId",
+	"secret_access_key",
+	"aws_secret_access_key",
 }
+
+var defaultSensitiveKeys = func() map[string]struct{} {
+	keys := make(map[string]struct{}, len(defaultSensitiveRawKeys))
+	for _, key := range defaultSensitiveRawKeys {
+		keys[normalizeKey(key)] = struct{}{}
+	}
+	return keys
+}()
 
 type textRedactPatterns struct {
 	reJSONLike  *regexp.Regexp
@@ -160,9 +177,9 @@ func normalizeAndSortExtraKeys(extraKeys []string) []string {
 }
 
 func buildKeyAlternation(extraKeys []string) string {
-	seen := make(map[string]struct{}, len(defaultSensitiveKeyList)+len(extraKeys))
-	keys := make([]string, 0, len(defaultSensitiveKeyList)+len(extraKeys))
-	for _, k := range defaultSensitiveKeyList {
+	seen := make(map[string]struct{}, len(defaultSensitiveRawKeys)+len(extraKeys))
+	keys := make([]string, 0, len(defaultSensitiveRawKeys)+len(extraKeys))
+	for _, k := range defaultSensitiveRawKeys {
 		seen[k] = struct{}{}
 		keys = append(keys, regexp.QuoteMeta(k))
 	}
