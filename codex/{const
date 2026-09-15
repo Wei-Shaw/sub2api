@@ -1,0 +1,12 @@
+[eval]:1
+const fs=require('fs');const data=JSON.parse(fs.readFileSync('sub2api-account-20260531130348.json','utf-8'));const names=new Set();if(data.accounts){data.accounts.forEach(a=>{if(a.name){let n=a.name.replace(/^\[lslscz\]/,'');if(n)names.add(n);}});}const txtFiles=['卡密导出_20260527.txt','卡密导出_20260524.txt'];const matched=[];const seen=new Set();txtFiles.forEach(tf=>{const lines=fs.readFileSync(tf,'utf-8').split('\n');lines.forEach(line=>{const t=line.trim();if(!t)return;for(const name of names){if(t.includes(name)){const m=t.match(/"email"\s*:\s*"(["]+)"/);const email=m?m[1]:name;if(!seen.has(email)){seen.add(email);matched.push(t);}break;}}}});});console.log('matched count:',matched.length);console.log('unique emails:',seen.size);matched.forEach(l= m=l.match(/"email"\s*:\s*"([^"]+)"/);console.log(' -',m?m[1]:'unknown');});fs.writeFileSync('匹配结果_失败邮箱_20260531.txt',matched.join('\n'),'utf-8');console.log('saved to 匹配结果_失败邮箱_20260531.txt');
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     ^
+Expected ',', got '}'
+
+SyntaxError: missing ) after argument list
+    at makeContextifyScript (node:internal/vm:185:14)
+    at compileScript (node:internal/process/execution:383:10)
+    at evalTypeScript (node:internal/process/execution:256:22)
+    at node:internal/main/eval_string:74:3
+
+Node.js v22.20.0

@@ -25,6 +25,7 @@ vi.mock("@/api/admin", () => ({
       list: listGroups,
       getAll: vi.fn(),
       getModelsListCandidates,
+      getModelAllowlistCandidates: getModelsListCandidates,
       getUsageSummary,
       getCapacitySummary,
       getLiveCapability,
@@ -45,6 +46,12 @@ vi.mock("@/stores/app", () => ({
   useAppStore: () => ({
     showError: vi.fn(),
     showSuccess: vi.fn(),
+  }),
+}));
+
+vi.mock("@/stores/auth", () => ({
+  useAuthStore: () => ({
+    isSimpleMode: false,
   }),
 }));
 

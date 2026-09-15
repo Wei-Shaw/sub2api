@@ -1,0 +1,33 @@
+{
+  "exported_at": "2026-05-11T16:09:11.832Z",
+  "proxies": [],
+  "accounts": [
+    {
+      "name": "curtisorion521@outlook.com",
+      "platform": "openai",
+      "type": "oauth",
+      "credentials": {
+        "access_token": "",
+        "chatgpt_account_id": "",
+        "chatgpt_user_id": "",
+        "client_id": "",
+        "email": "curtisorion521@outlook.com",
+        "expires_at": 0,
+        "id_token": "",
+        "organization_id": "",
+        "plan_type": "free",
+        "refresh_token": ""
+      },
+      "extra": {
+        "email": "curtisorion521@outlook.com",
+        "openai_oauth_responses_websockets_v2_enabled": false,
+        "openai_oauth_responses_websockets_v2_mode": "off",
+        "privacy_mode": "training_off"
+      },
+      "concurrency": 10,
+      "priority": 1,
+      "rate_multiplier": 1,
+      "auto_pause_on_expired": true
+    }
+  ]
+}

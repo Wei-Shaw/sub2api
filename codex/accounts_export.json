@@ -1,0 +1,546 @@
+{
+  "exported_at": "2026-05-11T16:09:11.832Z",
+  "proxies": [],
+  "accounts": [
+    {
+      "name": "curtisorion521@outlook.com",
+      "platform": "openai",
+      "type": "oauth",
+      "credentials": {
+        "access_token": "",
+        "chatgpt_account_id": "",
+        "chatgpt_user_id": "",
+        "client_id": "",
+        "email": "curtisorion521@outlook.com",
+        "expires_at": 0,
+        "id_token": "",
+        "organization_id": "",
+        "plan_type": "free",
+        "refresh_token": ""
+      },
+      "extra": {
+        "email": "curtisorion521@outlook.com",
+        "openai_oauth_responses_websockets_v2_enabled": false,
+        "openai_oauth_responses_websockets_v2_mode": "off",
+        "privacy_mode": "training_off"
+      },
+      "concurrency": 10,
+      "priority": 1,
+      "rate_multiplier": 1,
+      "auto_pause_on_expired": true
+    },
+    {
+      "name": "jenkinsjanice761@outlook.com",
+      "platform": "openai",
+      "type": "oauth",
+      "credentials": {
+        "access_token": "",
+        "chatgpt_account_id": "",
+        "chatgpt_user_id": "",
+        "client_id": "",
+        "email": "jenkinsjanice761@outlook.com",
+        "expires_at": 0,
+        "id_token": "",
+        "organization_id": "",
+        "plan_type": "free",
+        "refresh_token": ""
+      },
+      "extra": {
+        "email": "jenkinsjanice761@outlook.com",
+        "openai_oauth_responses_websockets_v2_enabled": false,
+        "openai_oauth_responses_websockets_v2_mode": "off",
+        "privacy_mode": "training_off"
+      },
+      "concurrency": 10,
+      "priority": 1,
+      "rate_multiplier": 1,
+      "auto_pause_on_expired": true
+    },
+    {
+      "name": "mccaffreyjimmy7833@outlook.com",
+      "platform": "openai",
+      "type": "oauth",
+      "credentials": {
+        "access_token": "",
+        "chatgpt_account_id": "",
+        "chatgpt_user_id": "",
+        "client_id": "",
+        "email": "mccaffreyjimmy7833@outlook.com",
+        "expires_at": 0,
+        "id_token": "",
+        "organization_id": "",
+        "plan_type": "free",
+        "refresh_token": ""
+      },
+      "extra": {
+        "email": "mccaffreyjimmy7833@outlook.com",
+        "openai_oauth_responses_websockets_v2_enabled": false,
+        "openai_oauth_responses_websockets_v2_mode": "off",
+        "privacy_mode": "training_off"
+      },
+      "concurrency": 10,
+      "priority": 1,
+      "rate_multiplier": 1,
+      "auto_pause_on_expired": true
+    },
+    {
+      "name": "kerrystoltzfus2722@outlook.com",
+      "platform": "openai",
+      "type": "oauth",
+      "credentials": {
+        "access_token": "",
+        "chatgpt_account_id": "",
+        "chatgpt_user_id": "",
+        "client_id": "",
+        "email": "kerrystoltzfus2722@outlook.com",
+        "expires_at": 0,
+        "id_token": "",
+        "organization_id": "",
+        "plan_type": "free",
+        "refresh_token": ""
+      },
+      "extra": {
+        "email": "kerrystoltzfus2722@outlook.com",
+        "openai_oauth_responses_websockets_v2_enabled": false,
+        "openai_oauth_responses_websockets_v2_mode": "off",
+        "privacy_mode": "training_off"
+      },
+      "concurrency": 10,
+      "priority": 1,
+      "rate_multiplier": 1,
+      "auto_pause_on_expired": true
+    },
+    {
+      "name": "rourkeremington3977@outlook.com",
+      "platform": "openai",
+      "type": "oauth",
+      "credentials": {
+        "access_token": "",
+        "chatgpt_account_id": "",
+        "chatgpt_user_id": "",
+        "client_id": "",
+        "email": "rourkeremington3977@outlook.com",
+        "expires_at": 0,
+        "id_token": "",
+        "organization_id": "",
+        "plan_type": "free",
+        "refresh_token": ""
+      },
+      "extra": {
+        "email": "rourkeremington3977@outlook.com",
+        "openai_oauth_responses_websockets_v2_enabled": false,
+        "openai_oauth_responses_websockets_v2_mode": "off",
+        "privacy_mode": "training_off"
+      },
+      "concurrency": 10,
+      "priority": 1,
+      "rate_multiplier": 1,
+      "auto_pause_on_expired": true
+    },
+    {
+      "name": "frankspence162@outlook.com",
+      "platform": "openai",
+      "type": "oauth",
+      "credentials": {
+        "access_token": "",
+        "chatgpt_account_id": "",
+        "chatgpt_user_id": "",
+        "client_id": "",
+        "email": "frankspence162@outlook.com",
+        "expires_at": 0,
+        "id_token": "",
+        "organization_id": "",
+        "plan_type": "free",
+        "refresh_token": ""
+      },
+      "extra": {
+        "email": "frankspence162@outlook.com",
+        "openai_oauth_responses_websockets_v2_enabled": false,
+        "openai_oauth_responses_websockets_v2_mode": "off",
+        "privacy_mode": "training_off"
+      },
+      "concurrency": 10,
+      "priority": 1,
+      "rate_multiplier": 1,
+      "auto_pause_on_expired": true
+    },
+    {
+      "name": "danielpena4454@outlook.com",
+      "platform": "openai",
+      "type": "oauth",
+      "credentials": {
+        "access_token": "",
+        "chatgpt_account_id": "",
+        "chatgpt_user_id": "",
+        "client_id": "",
+        "email": "danielpena4454@outlook.com",
+        "expires_at": 0,
+        "id_token": "",
+        "organization_id": "",
+        "plan_type": "free",
+        "refresh_token": ""
+      },
+      "extra": {
+        "email": "danielpena4454@outlook.com",
+        "openai_oauth_responses_websockets_v2_enabled": false,
+        "openai_oauth_responses_websockets_v2_mode": "off",
+        "privacy_mode": "training_off"
+      },
+      "concurrency": 10,
+      "priority": 1,
+      "rate_multiplier": 1,
+      "auto_pause_on_expired": true
+    },
+    {
+      "name": "helenhawkins1892@outlook.com",
+      "platform": "openai",
+      "type": "oauth",
+      "credentials": {
+        "access_token": "",
+        "chatgpt_account_id": "",
+        "chatgpt_user_id": "",
+        "client_id": "",
+        "email": "helenhawkins1892@outlook.com",
+        "expires_at": 0,
+        "id_token": "",
+        "organization_id": "",
+        "plan_type": "free",
+        "refresh_token": ""
+      },
+      "extra": {
+        "email": "helenhawkins1892@outlook.com",
+        "openai_oauth_responses_websockets_v2_enabled": false,
+        "openai_oauth_responses_websockets_v2_mode": "off",
+        "privacy_mode": "training_off"
+      },
+      "concurrency": 10,
+      "priority": 1,
+      "rate_multiplier": 1,
+      "auto_pause_on_expired": true
+    },
+    {
+      "name": "sharonsinclair475@outlook.com",
+      "platform": "openai",
+      "type": "oauth",
+      "credentials": {
+        "access_token": "",
+        "chatgpt_account_id": "",
+        "chatgpt_user_id": "",
+        "client_id": "",
+        "email": "sharonsinclair475@outlook.com",
+        "expires_at": 0,
+        "id_token": "",
+        "organization_id": "",
+        "plan_type": "free",
+        "refresh_token": ""
+      },
+      "extra": {
+        "email": "sharonsinclair475@outlook.com",
+        "openai_oauth_responses_websockets_v2_enabled": false,
+        "openai_oauth_responses_websockets_v2_mode": "off",
+        "privacy_mode": "training_off"
+      },
+      "concurrency": 10,
+      "priority": 1,
+      "rate_multiplier": 1,
+      "auto_pause_on_expired": true
+    },
+    {
+      "name": "stearnsalbert3041@outlook.com",
+      "platform": "openai",
+      "type": "oauth",
+      "credentials": {
+        "access_token": "",
+        "chatgpt_account_id": "",
+        "chatgpt_user_id": "",
+        "client_id": "",
+        "email": "stearnsalbert3041@outlook.com",
+        "expires_at": 0,
+        "id_token": "",
+        "organization_id": "",
+        "plan_type": "free",
+        "refresh_token": ""
+      },
+      "extra": {
+        "email": "stearnsalbert3041@outlook.com",
+        "openai_oauth_responses_websockets_v2_enabled": false,
+        "openai_oauth_responses_websockets_v2_mode": "off",
+        "privacy_mode": "training_off"
+      },
+      "concurrency": 10,
+      "priority": 1,
+      "rate_multiplier": 1,
+      "auto_pause_on_expired": true
+    },
+    {
+      "name": "parrishkyla4344@outlook.com",
+      "platform": "openai",
+      "type": "oauth",
+      "credentials": {
+        "access_token": "",
+        "chatgpt_account_id": "",
+        "chatgpt_user_id": "",
+        "client_id": "",
+        "email": "parrishkyla4344@outlook.com",
+        "expires_at": 0,
+        "id_token": "",
+        "organization_id": "",
+        "plan_type": "free",
+        "refresh_token": ""
+      },
+      "extra": {
+        "email": "parrishkyla4344@outlook.com",
+        "openai_oauth_responses_websockets_v2_enabled": false,
+        "openai_oauth_responses_websockets_v2_mode": "off",
+        "privacy_mode": "training_off"
+      },
+      "concurrency": 10,
+      "priority": 1,
+      "rate_multiplier": 1,
+      "auto_pause_on_expired": true
+    },
+    {
+      "name": "matteocarlson877@outlook.com",
+      "platform": "openai",
+      "type": "oauth",
+      "credentials": {
+        "access_token": "",
+        "chatgpt_account_id": "",
+        "chatgpt_user_id": "",
+        "client_id": "",
+        "email": "matteocarlson877@outlook.com",
+        "expires_at": 0,
+        "id_token": "",
+        "organization_id": "",
+        "plan_type": "free",
+        "refresh_token": ""
+      },
+      "extra": {
+        "email": "matteocarlson877@outlook.com",
+        "openai_oauth_responses_websockets_v2_enabled": false,
+        "openai_oauth_responses_websockets_v2_mode": "off",
+        "privacy_mode": "training_off"
+      },
+      "concurrency": 10,
+      "priority": 1,
+      "rate_multiplier": 1,
+      "auto_pause_on_expired": true
+    },
+    {
+      "name": "smileylisa003@outlook.com",
+      "platform": "openai",
+      "type": "oauth",
+      "credentials": {
+        "access_token": "",
+        "chatgpt_account_id": "",
+        "chatgpt_user_id": "",
+        "client_id": "",
+        "email": "smileylisa003@outlook.com",
+        "expires_at": 0,
+        "id_token": "",
+        "organization_id": "",
+        "plan_type": "free",
+        "refresh_token": ""
+      },
+      "extra": {
+        "email": "smileylisa003@outlook.com",
+        "openai_oauth_responses_websockets_v2_enabled": false,
+        "openai_oauth_responses_websockets_v2_mode": "off",
+        "privacy_mode": "training_off"
+      },
+      "concurrency": 10,
+      "priority": 1,
+      "rate_multiplier": 1,
+      "auto_pause_on_expired": true
+    },
+    {
+      "name": "spurgeonjace4638@outlook.com",
+      "platform": "openai",
+      "type": "oauth",
+      "credentials": {
+        "access_token": "",
+        "chatgpt_account_id": "",
+        "chatgpt_user_id": "",
+        "client_id": "",
+        "email": "spurgeonjace4638@outlook.com",
+        "expires_at": 0,
+        "id_token": "",
+        "organization_id": "",
+        "plan_type": "free",
+        "refresh_token": ""
+      },
+      "extra": {
+        "email": "spurgeonjace4638@outlook.com",
+        "openai_oauth_responses_websockets_v2_enabled": false,
+        "openai_oauth_responses_websockets_v2_mode": "off",
+        "privacy_mode": "training_off"
+      },
+      "concurrency": 10,
+      "priority": 1,
+      "rate_multiplier": 1,
+      "auto_pause_on_expired": true
+    },
+    {
+      "name": "helenjensen231@outlook.com",
+      "platform": "openai",
+      "type": "oauth",
+      "credentials": {
+        "access_token": "",
+        "chatgpt_account_id": "",
+        "chatgpt_user_id": "",
+        "client_id": "",
+        "email": "helenjensen231@outlook.com",
+        "expires_at": 0,
+        "id_token": "",
+        "organization_id": "",
+        "plan_type": "free",
+        "refresh_token": ""
+      },
+      "extra": {
+        "email": "helenjensen231@outlook.com",
+        "openai_oauth_responses_websockets_v2_enabled": false,
+        "openai_oauth_responses_websockets_v2_mode": "off",
+        "privacy_mode": "training_off"
+      },
+      "concurrency": 10,
+      "priority": 1,
+      "rate_multiplier": 1,
+      "auto_pause_on_expired": true
+    },
+    {
+      "name": "norahutchens426@outlook.com",
+      "platform": "openai",
+      "type": "oauth",
+      "credentials": {
+        "access_token": "",
+        "chatgpt_account_id": "",
+        "chatgpt_user_id": "",
+        "client_id": "",
+        "email": "norahutchens426@outlook.com",
+        "expires_at": 0,
+        "id_token": "",
+        "organization_id": "",
+        "plan_type": "free",
+        "refresh_token": ""
+      },
+      "extra": {
+        "email": "norahutchens426@outlook.com",
+        "openai_oauth_responses_websockets_v2_enabled": false,
+        "openai_oauth_responses_websockets_v2_mode": "off",
+        "privacy_mode": "training_off"
+      },
+      "concurrency": 10,
+      "priority": 1,
+      "rate_multiplier": 1,
+      "auto_pause_on_expired": true
+    },
+    {
+      "name": "lionelmcdowell1012@outlook.com",
+      "platform": "openai",
+      "type": "oauth",
+      "credentials": {
+        "access_token": "",
+        "chatgpt_account_id": "",
+        "chatgpt_user_id": "",
+        "client_id": "",
+        "email": "lionelmcdowell1012@outlook.com",
+        "expires_at": 0,
+        "id_token": "",
+        "organization_id": "",
+        "plan_type": "free",
+        "refresh_token": ""
+      },
+      "extra": {
+        "email": "lionelmcdowell1012@outlook.com",
+        "openai_oauth_responses_websockets_v2_enabled": false,
+        "openai_oauth_responses_websockets_v2_mode": "off",
+        "privacy_mode": "training_off"
+      },
+      "concurrency": 10,
+      "priority": 1,
+      "rate_multiplier": 1,
+      "auto_pause_on_expired": true
+    },
+    {
+      "name": "francesledbetter3383@outlook.com",
+      "platform": "openai",
+      "type": "oauth",
+      "credentials": {
+        "access_token": "",
+        "chatgpt_account_id": "",
+        "chatgpt_user_id": "",
+        "client_id": "",
+        "email": "francesledbetter3383@outlook.com",
+        "expires_at": 0,
+        "id_token": "",
+        "organization_id": "",
+        "plan_type": "free",
+        "refresh_token": ""
+      },
+      "extra": {
+        "email": "francesledbetter3383@outlook.com",
+        "openai_oauth_responses_websockets_v2_enabled": false,
+        "openai_oauth_responses_websockets_v2_mode": "off",
+        "privacy_mode": "training_off"
+      },
+      "concurrency": 10,
+      "priority": 1,
+      "rate_multiplier": 1,
+      "auto_pause_on_expired": true
+    },
+    {
+      "name": "wheelerbrandon974@outlook.com",
+      "platform": "openai",
+      "type": "oauth",
+      "credentials": {
+        "access_token": "",
+        "chatgpt_account_id": "",
+        "chatgpt_user_id": "",
+        "client_id": "",
+        "email": "wheelerbrandon974@outlook.com",
+        "expires_at": 0,
+        "id_token": "",
+        "organization_id": "",
+        "plan_type": "free",
+        "refresh_token": ""
+      },
+      "extra": {
+        "email": "wheelerbrandon974@outlook.com",
+        "openai_oauth_responses_websockets_v2_enabled": false,
+        "openai_oauth_responses_websockets_v2_mode": "off",
+        "privacy_mode": "training_off"
+      },
+      "concurrency": 10,
+      "priority": 1,
+      "rate_multiplier": 1,
+      "auto_pause_on_expired": true
+    },
+    {
+      "name": "ernestadler4140@outlook.com",
+      "platform": "openai",
+      "type": "oauth",
+      "credentials": {
+        "access_token": "",
+        "chatgpt_account_id": "",
+        "chatgpt_user_id": "",
+        "client_id": "",
+        "email": "ernestadler4140@outlook.com",
+        "expires_at": 0,
+        "id_token": "",
+        "organization_id": "",
+        "plan_type": "free",
+        "refresh_token": ""
+      },
+      "extra": {
+        "email": "ernestadler4140@outlook.com",
+        "openai_oauth_responses_websockets_v2_enabled": false,
+        "openai_oauth_responses_websockets_v2_mode": "off",
+        "privacy_mode": "training_off"
+      },
+      "concurrency": 10,
+      "priority": 1,
+      "rate_multiplier": 1,
+      "auto_pause_on_expired": true
+    }
+  ]
+}

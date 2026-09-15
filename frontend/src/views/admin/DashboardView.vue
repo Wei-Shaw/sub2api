@@ -1,6 +1,6 @@
 <template>
   <AppLayout>
-    <div class="space-y-6">
+    <div class="admin-dashboard space-y-6">
       <!-- Loading State -->
       <div v-if="loading" class="flex items-center justify-center py-12">
         <LoadingSpinner />
@@ -10,7 +10,7 @@
         <!-- Row 1: Core Stats -->
         <div class="grid grid-cols-2 gap-4 lg:grid-cols-4">
           <!-- Total API Keys -->
-          <div class="card p-4">
+          <div class="card dashboard-stat-card p-4">
             <div class="flex items-center gap-3">
               <div class="rounded-lg bg-blue-100 p-2 dark:bg-blue-900/30">
                 <Icon name="key" size="md" class="text-blue-600 dark:text-blue-400" :stroke-width="2" />
@@ -30,7 +30,7 @@
           </div>
 
           <!-- Service Accounts -->
-          <div class="card p-4">
+          <div class="card dashboard-stat-card p-4">
             <div class="flex items-center gap-3">
               <div class="rounded-lg bg-purple-100 p-2 dark:bg-purple-900/30">
                 <Icon name="server" size="md" class="text-purple-600 dark:text-purple-400" :stroke-width="2" />
@@ -55,7 +55,7 @@
           </div>
 
           <!-- Today Requests -->
-          <div class="card p-4">
+          <div class="card dashboard-stat-card p-4">
             <div class="flex items-center gap-3">
               <div class="rounded-lg bg-green-100 p-2 dark:bg-green-900/30">
                 <Icon name="chart" size="md" class="text-green-600 dark:text-green-400" :stroke-width="2" />
@@ -75,7 +75,7 @@
           </div>
 
           <!-- New Users Today -->
-          <div class="card p-4">
+          <div class="card dashboard-stat-card p-4">
             <div class="flex items-center gap-3">
               <div class="rounded-lg bg-emerald-100 p-2 dark:bg-emerald-900/30">
                 <Icon name="userPlus" size="md" class="text-emerald-600 dark:text-emerald-400" :stroke-width="2" />
@@ -98,7 +98,7 @@
         <!-- Row 2: Token Stats -->
         <div class="grid grid-cols-2 gap-4 lg:grid-cols-4">
           <!-- Today Tokens -->
-          <div class="card p-4">
+          <div class="card dashboard-stat-card p-4">
             <div class="flex items-center gap-3">
               <div class="rounded-lg bg-amber-100 p-2 dark:bg-amber-900/30">
                 <Icon name="cube" size="md" class="text-amber-600 dark:text-amber-400" :stroke-width="2" />
@@ -134,7 +134,7 @@
           </div>
 
           <!-- Total Tokens -->
-          <div class="card p-4">
+          <div class="card dashboard-stat-card p-4">
             <div class="flex items-center gap-3">
               <div class="rounded-lg bg-indigo-100 p-2 dark:bg-indigo-900/30">
                 <Icon name="database" size="md" class="text-indigo-600 dark:text-indigo-400" :stroke-width="2" />
@@ -170,7 +170,7 @@
           </div>
 
           <!-- Performance (RPM/TPM) -->
-          <div class="card p-4">
+          <div class="card dashboard-stat-card p-4">
             <div class="flex items-center gap-3">
               <div class="rounded-lg bg-violet-100 p-2 dark:bg-violet-900/30">
                 <Icon name="bolt" size="md" class="text-violet-600 dark:text-violet-400" :stroke-width="2" />
@@ -196,7 +196,7 @@
           </div>
 
           <!-- Avg Response Time -->
-          <div class="card p-4">
+          <div class="card dashboard-stat-card p-4">
             <div class="flex items-center gap-3">
               <div class="rounded-lg bg-rose-100 p-2 dark:bg-rose-900/30">
                 <Icon name="clock" size="md" class="text-rose-600 dark:text-rose-400" :stroke-width="2" />
@@ -227,7 +227,7 @@
             <button
               v-if="canUseBatchImage"
               type="button"
-              class="group flex items-center gap-3 rounded-lg bg-gray-50 p-3 text-left transition-colors hover:bg-sky-50 dark:bg-dark-800/50 dark:hover:bg-sky-900/20"
+              class="dashboard-action group flex items-center gap-3 rounded-xl bg-gray-50 p-3 text-left hover:bg-sky-50 dark:bg-dark-800/50 dark:hover:bg-sky-900/20"
               @click="router.push('/batch-image')"
             >
               <span class="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-lg bg-sky-100 text-sky-600 dark:bg-sky-900/30 dark:text-sky-400">
@@ -245,7 +245,7 @@
             </button>
             <button
               type="button"
-              class="group flex items-center gap-3 rounded-lg bg-gray-50 p-3 text-left transition-colors hover:bg-emerald-50 dark:bg-dark-800/50 dark:hover:bg-emerald-900/20"
+              class="dashboard-action group flex items-center gap-3 rounded-xl bg-gray-50 p-3 text-left hover:bg-emerald-50 dark:bg-dark-800/50 dark:hover:bg-emerald-900/20"
               @click="router.push('/admin/groups')"
             >
               <span class="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-lg bg-emerald-100 text-emerald-600 dark:bg-emerald-900/30 dark:text-emerald-400">
@@ -547,7 +547,7 @@ const userTrendChartData = computed(() => {
     '#ef4444',
     '#8b5cf6',
     '#ec4899',
-    '#14b8a6',
+    '#3b82f6',
     '#f97316',
     '#6366f1',
     '#84cc16',
@@ -755,4 +755,75 @@ onMounted(() => {
 </script>
 
 <style scoped>
+.admin-dashboard .card {
+  transition:
+    transform 200ms cubic-bezier(0.22, 1, 0.36, 1),
+    background-color 200ms ease,
+    border-color 200ms ease,
+    box-shadow 200ms ease;
+}
+
+.dashboard-stat-card > .flex > :first-child {
+  transition: transform 200ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.dashboard-action {
+  border: 1px solid transparent;
+  transition:
+    transform 180ms cubic-bezier(0.22, 1, 0.36, 1),
+    background-color 180ms ease,
+    border-color 180ms ease;
+}
+
+.dashboard-action :deep(svg:last-child) {
+  transition: transform 180ms cubic-bezier(0.22, 1, 0.36, 1), color 180ms ease;
+}
+
+@media (hover: hover) {
+  .admin-dashboard .card:hover {
+    background-color: rgb(255 255 255 / 82%);
+    border-color: rgb(147 197 253 / 52%);
+    box-shadow:
+      inset 0 1px 0 rgb(255 255 255 / 82%),
+      0 6px 8px rgb(30 64 175 / 9%);
+    transform: translateY(-2px);
+    backdrop-filter: blur(14px) saturate(125%);
+    -webkit-backdrop-filter: blur(14px) saturate(125%);
+  }
+
+  .dark .admin-dashboard .card:hover {
+    background-color: rgb(30 41 59 / 72%);
+    border-color: rgb(96 165 250 / 34%);
+    box-shadow: inset 0 1px 0 rgb(255 255 255 / 8%);
+  }
+
+  .dashboard-stat-card:hover > .flex > :first-child {
+    transform: translateY(-1px) scale(1.04);
+  }
+
+  .dashboard-action:hover {
+    border-color: rgb(147 197 253 / 48%);
+    transform: translateX(3px);
+  }
+
+  .dashboard-action:hover :deep(svg:last-child) {
+    transform: translateX(3px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .admin-dashboard .card,
+  .dashboard-stat-card > .flex > :first-child,
+  .dashboard-action,
+  .dashboard-action :deep(svg:last-child) {
+    transition: none;
+  }
+
+  .admin-dashboard .card:hover,
+  .dashboard-stat-card:hover > .flex > :first-child,
+  .dashboard-action:hover,
+  .dashboard-action:hover :deep(svg:last-child) {
+    transform: none;
+  }
+}
 </style>
