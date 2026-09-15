@@ -855,6 +855,25 @@ const pelicanPreviewDocument = computed(() => {
     }
   })
 
+  let handlerIndex = 0
+  preview.querySelectorAll<HTMLElement>('*').forEach((element) => {
+    const handlers = Array.from(element.attributes).filter((attribute) => /^on[a-z]+$/i.test(attribute.name))
+    if (handlers.length === 0) return
+
+    const handlerID = `pelican-handler-${handlerIndex++}`
+    element.dataset.pelicanHandlerId = handlerID
+    const listenerScript = preview.createElement('script')
+    listenerScript.textContent = handlers
+      .map((attribute) => {
+        element.removeAttribute(attribute.name)
+        const eventName = attribute.name.slice(2).toLowerCase()
+        const handlerBody = attribute.value.replace(/<\/script/gi, '<\\/script')
+        return `document.querySelector('[data-pelican-handler-id="${handlerID}"]')?.addEventListener(${JSON.stringify(eventName)}, function(event) { const result = (function(event) { ${handlerBody}\n}).call(this, event); if (result === false) { event.preventDefault(); event.stopPropagation(); } });`
+      })
+      .join('\n')
+    preview.body.appendChild(listenerScript)
+  })
+
   const nonce = document.querySelector<HTMLScriptElement>('script[nonce]')?.nonce
   if (nonce) {
     preview.querySelectorAll<HTMLScriptElement>('script:not([src])').forEach((script) => {

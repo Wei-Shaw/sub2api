@@ -236,7 +236,7 @@ describe('AccountTestModal', () => {
           type: 'pelican_result',
           data: {
             has_html: true,
-            html: `<!DOCTYPE html><html><head><meta http-equiv="Content-Security-Policy" content="script-src 'none'"></head><body>pelican<script>window.pelicanReady = true</script></body></html>`,
+            html: `<!DOCTYPE html><html><head><meta http-equiv="Content-Security-Policy" content="script-src 'none'"></head><body>pelican<button onclick="window.pelicanPaused = true">pause</button><input oninput="window.pelicanSpeed = this.value"><script>window.pelicanReady = true</script></body></html>`,
             response_model: 'gpt-6-astra'
           }
         })}\n`,
@@ -270,7 +270,10 @@ describe('AccountTestModal', () => {
     expect(wrapper.find('iframe').attributes('srcdoc')).toContain("default-src 'none'")
     expect(wrapper.find('iframe').attributes('srcdoc')).toContain('nonce="pelican-test-nonce"')
     expect(wrapper.find('iframe').attributes('srcdoc')).not.toContain("script-src 'none'")
-    expect(wrapper.find('iframe').attributes('srcdoc')).toContain('<body>pelican<script')
+    expect(wrapper.find('iframe').attributes('srcdoc')).not.toContain(' onclick=')
+    expect(wrapper.find('iframe').attributes('srcdoc')).not.toContain(' oninput=')
+    expect(wrapper.find('iframe').attributes('srcdoc')).toContain('addEventListener("click"')
+    expect(wrapper.find('iframe').attributes('srcdoc')).toContain('addEventListener("input"')
     nonceScript.remove()
   })
 
