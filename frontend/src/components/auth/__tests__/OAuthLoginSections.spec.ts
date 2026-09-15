@@ -1,8 +1,12 @@
-import { mount } from '@vue/test-utils'
+import { ref } from 'vue'
+import { mount, flushPromises } from '@vue/test-utils'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import LinuxDoOAuthSection from '@/components/auth/LinuxDoOAuthSection.vue'
 import DingTalkOAuthSection from '@/components/auth/DingTalkOAuthSection.vue'
 import OidcOAuthSection from '@/components/auth/OidcOAuthSection.vue'
+
+const publicApps = vi.hoisted(() => vi.fn())
+vi.mock('@/api/dingtalk', () => ({ publicDingTalkApps: publicApps }))
 
 const routeState = vi.hoisted(() => ({
   query: {} as Record<string, unknown>
@@ -14,12 +18,14 @@ vi.mock('vue-router', () => ({
 
 vi.mock('vue-i18n', () => ({
   useI18n: () => ({
-    t: (key: string) => key
+    t: (key: string) => key,
+    locale: ref('en')
   })
 }))
 
 describe('OAuth login sections', () => {
   beforeEach(() => {
+    publicApps.mockResolvedValue([])
     routeState.query = { redirect: '/billing?plan=pro', aff: 'AFF123' }
     window.sessionStorage.clear()
   })
@@ -31,6 +37,7 @@ describe('OAuth login sections', () => {
   ] as const)('emits a %s start request from the original button', async (provider, component) => {
     const originalHref = window.location.href
     const wrapper = mount(component, { props: { affCode: 'AFF456' } })
+    await flushPromises()
 
     await wrapper.get('button').trigger('click')
 
@@ -40,6 +47,15 @@ describe('OAuth login sections', () => {
     })
     expect(window.sessionStorage.getItem('oauth_aff_code')).toBe('AFF456')
     expect(window.location.href).toBe(originalHref)
+  })
+
+  it('selects a DingTalk application and sends its ID with the login request', async () => {
+    publicApps.mockResolvedValue([{ id: 'default', name: 'Default' }, { id: 'engineering', name: 'Engineering' }])
+    const wrapper = mount(DingTalkOAuthSection)
+    await flushPromises()
+    await wrapper.get('select').setValue('engineering')
+    await wrapper.get('button').trigger('click')
+    expect(wrapper.emitted('start')?.[0]?.[0]).toEqual({ provider: 'dingtalk', params: { redirect: '/billing?plan=pro', app_id: 'engineering' } })
   })
 
   it('includes a trimmed promo code in the LinuxDo OAuth request', async () => {

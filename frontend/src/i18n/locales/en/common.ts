@@ -163,6 +163,7 @@ export default {
 
   // Navigation
   nav: {
+    dingtalkOrganization: 'DingTalk organization',
     dashboard: 'Dashboard',
     announcements: 'Announcements',
     apiKeys: 'API Keys',

@@ -1,6 +1,10 @@
 <template>
   <div class="space-y-4">
-    <button type="button" :disabled="disabled" class="btn btn-secondary w-full" @click="startLogin">
+    <label v-if="apps.length > 1" class="block text-sm">
+      {{ locale.startsWith('zh') ? '选择钉钉应用' : 'DingTalk application' }}
+      <select v-model="selectedApp" class="input mt-1" :disabled="disabled"><option v-for="app in apps" :key="app.id" :value="app.id">{{ app.name }}</option></select>
+    </label>
+    <button type="button" :disabled="disabled || appsLoading" class="btn btn-secondary w-full" @click="startLogin">
       <svg
         class="icon mr-2"
         viewBox="0 0 24 24"
@@ -35,6 +39,8 @@
 </template>
 
 <script setup lang="ts">
+import { onMounted, ref } from 'vue'
+import { publicDingTalkApps } from '@/api/dingtalk'
 import { useRoute } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import type { OAuthLoginStart } from '@/api/auth'
@@ -52,11 +58,19 @@ const emit = defineEmits<{
 }>()
 
 const route = useRoute()
-const { t } = useI18n()
+const { t, locale } = useI18n()
+const apps = ref<{ id: string; name: string }[]>([])
+const selectedApp = ref('')
+const appsLoading = ref(true)
+onMounted(async () => {
+  try { apps.value = await publicDingTalkApps(); selectedApp.value = apps.value[0]?.id || '' } catch { /* Keep the legacy default login available. */ } finally { appsLoading.value = false }
+})
 
 function startLogin(): void {
   const redirectTo = (route.query.redirect as string) || '/dashboard'
   storeOAuthAffiliateCode(resolveAffiliateReferralCode(props.affCode, route.query.aff, route.query.aff_code))
-  emit('start', { provider: 'dingtalk', params: { redirect: redirectTo } })
+  const params: Record<string, string> = { redirect: redirectTo }
+  if (selectedApp.value && selectedApp.value !== 'default') params.app_id = selectedApp.value
+  emit('start', { provider: 'dingtalk', params })
 }
 </script>
