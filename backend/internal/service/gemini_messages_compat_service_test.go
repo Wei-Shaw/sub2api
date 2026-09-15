@@ -990,6 +990,12 @@ func TestParseGeminiRateLimitResetTime(t *testing.T) {
 			approxDelta: 13, // 向上取整 12.345 -> 13
 		},
 		{
+			name:        "标准 RetryInfo retryDelay",
+			input:       `{"error":{"details":[{"@type":"type.googleapis.com/google.rpc.RetryInfo","retryDelay":"10.1s"}]}}`,
+			wantNil:     false,
+			approxDelta: 11, // 向上取整 10.1 -> 11
+		},
+		{
 			name:        "daily quota",
 			input:       `{"error":{"message":"quota per day exceeded"}}`,
 			wantNil:     false,
