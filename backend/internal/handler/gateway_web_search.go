@@ -124,6 +124,12 @@ func (h *GatewayHandler) WebSearch(c *gin.Context) {
 	}
 
 	failedAccounts := make(map[int64]struct{})
+	keyRelease, keyErr := h.concurrencyHelper.AcquireAPIKeySlot(c.Request.Context(), apiKey.ID, apiKey.ConcurrencyLimit)
+	if keyErr != nil {
+		h.handleConcurrencyError(c, keyErr, "API key", false)
+		return
+	}
+	defer keyRelease()
 	var account *service.Account
 	var accountReleaseFunc func()
 	var nativeResp *websearch.SearchResponse
