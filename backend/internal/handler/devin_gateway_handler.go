@@ -293,6 +293,12 @@ func (h *DevinGatewayHandler) forward(c *gin.Context, protocol devinProtocol) {
 		// 模型；调度与计费仍用客户端请求模型 reqModel）。
 		upstreamCtx := adapted.context
 		if mapped, matched := account.ResolveMappedModel(upstreamCtx.Model); matched && strings.TrimSpace(mapped) != "" {
+			// Kiro 式回查：映射目标必须是目录里的分组 id（:level 后缀先剥再查）。
+			// 管理员填错目标在此得 4xx，而不是把脏模型名透传到上游才报错。
+			if validErr := h.validateDevinMappedModel(c.Request.Context(), account, mapped); validErr != nil {
+				h.devinError(c, protocol, http.StatusBadRequest, "invalid_request_error", validErr.Error())
+				return
+			}
 			upstreamCtx.Model = mapped
 		}
 
@@ -781,4 +787,31 @@ func devinModelEntries(groups []devin.GroupedModel, allowed []string, group *ser
 		})
 	}
 	return entries
+}
+
+// validateDevinMappedModel 校验 model_mapping 的目标必须是账号目录中的分组
+// 模型 id（Kiro 同款「映射目标再校验」：管理员配置错了目标模型名，也不能
+// 绕开校验把脏名字打到上游）。:level 后缀先剥掉再比对。目录拉取失败时
+// 放行——目录故障不该放大成请求故障，交给上游裁决。
+func (h *DevinGatewayHandler) validateDevinMappedModel(ctx context.Context, account *service.Account, mapped string) error {
+	groups, err := h.devinGateway.ListModels(ctx, account)
+	if err != nil {
+		return nil
+	}
+	if !devinMappedModelInCatalog(groups, mapped) {
+		return fmt.Errorf("model_mapping target %q is not a known Devin model", mapped)
+	}
+	return nil
+}
+
+// devinMappedModelInCatalog 判定映射目标是否为目录中的分组 id（:level 后缀
+// 先剥再比对——映射值写 swe-2:max 也合法，查的是家族 id）。
+func devinMappedModelInCatalog(groups []devin.GroupedModel, mapped string) bool {
+	base, _, _ := devin.SplitModelLevelSuffix(strings.TrimSpace(mapped))
+	for _, g := range groups {
+		if g.ID == base {
+			return true
+		}
+	}
+	return false
 }

@@ -230,3 +230,22 @@ func TestBuildDevinForwardResultEffort(t *testing.T) {
 		}
 	}
 }
+
+func TestDevinMappedModelInCatalog(t *testing.T) {
+	groups := devinCatalogFixture()
+	cases := []struct {
+		name, mapped string
+		want         bool
+	}{
+		{"known group id", "swe-2", true},
+		{"with level suffix", "swe-2:max", true},
+		{"bogus target", "swe-9-typo", false},
+		{"flattened uid not a group", "swe-2-high", false},
+		{"empty", "", false},
+	}
+	for _, tc := range cases {
+		if got := devinMappedModelInCatalog(groups, tc.mapped); got != tc.want {
+			t.Fatalf("%s: devinMappedModelInCatalog(%q) = %v, want %v", tc.name, tc.mapped, got, tc.want)
+		}
+	}
+}
