@@ -217,6 +217,9 @@ func (s *httpUpstreamService) Do(req *http.Request, proxyURL string, accountID i
 	client := s.httpClientForUpstreamRequest(entry.client, req)
 	client = httpClientWithGrokAccessDeniedFallback(client)
 	resp, err := servertiming.Do(client, req)
+	if err != nil && shouldRetryUpstreamStreamReset(entry.protocolMode, req, err) {
+		resp, err = s.retryUpstreamStreamReset(client, entry, req, accountID, err)
+	}
 	if err != nil {
 		s.recordOpenAIHTTP2Failure(profile, entry.protocolMode, entry.proxyKey, err)
 		// 请求失败，立即减少计数
@@ -1086,6 +1089,120 @@ func isOpenAIHTTP2CompatibilityError(err error) bool {
 		}
 	}
 	return false
+}
+
+// idleConnectionCloser 由 *http.Transport 实现。抽成接口是为了让重试路径的连接
+// 剔除行为可以被测试替身断言；调用方必须传入缓存条目里的原始 client，因为执行
+// 请求时的 client 已被 httpClientWithGrokAccessDeniedFallback 包过一层。
+type idleConnectionCloser interface {
+	CloseIdleConnections()
+}
+
+// isExplicitHTTP2ProtocolMode 报告该协议模式是否由本服务显式配置为 HTTP/2。
+// 只有这些模式才可能产生对端 RST_STREAM，也只有它们需要下面的补充重试。
+func isExplicitHTTP2ProtocolMode(protocolMode string) bool {
+	return protocolMode == upstreamProtocolModeOpenAIH2 ||
+		protocolMode == upstreamProtocolModeLongStreamH2
+}
+
+// isUpstreamHTTP2StreamReset 判断错误是否为“对端在响应头之前单独重置了这一条流”。
+//
+// 这类 RST_STREAM（PROTOCOL_ERROR / INTERNAL_ERROR）只影响单条流，连接本身仍然
+// 健康——同一条连接上先前的流通常都已正常完成。但 Go 的 HTTP/2 传输层在
+// canRetryError 里只重试 REFUSED_STREAM：
+//
+//	if se, ok := err.(StreamError); ok {
+//	    return se.Code == ErrCodeRefusedStream
+//	}
+//
+// （go1.27 起实际生效的是 net/http/internal/http2/transport.go；golang.org/x/net
+// 在 go1.27 && !http2legacy 下只是标准库实现的包装，其同名函数逻辑一致。）
+// 于是 PROTOCOL_ERROR 会原样冒泡到 http.Client.Do，上层不补重试就只能直接走换
+// 账号故障转移——用另一个账号的额度和限流预算去补一次传输层抖动。
+//
+// 标准库的 StreamError 实现了 As 方法，可转换为 x/net/http2.StreamError，因此
+// 这里的类型断言在两种实现下都成立。
+func isUpstreamHTTP2StreamReset(err error) bool {
+	if err == nil {
+		return false
+	}
+	var streamErr http2.StreamError
+	if !errors.As(err, &streamErr) {
+		return false
+	}
+	switch streamErr.Code {
+	case http2.ErrCodeProtocol, http2.ErrCodeInternal:
+		return true
+	default:
+		return false
+	}
+}
+
+// shouldRetryUpstreamStreamReset 判断这次失败是否值得原地重放一次。
+//
+// http.Client.Do 返回错误意味着响应头从未到达：上游没有应答、没有产生计费，也
+// 没有任何字节写给客户端。只要请求体可以通过 GetBody 重放（网关侧的上游请求都
+// 由 bytes.Reader 构造，标准库会自动填充 GetBody），重放就是安全的。
+func shouldRetryUpstreamStreamReset(protocolMode string, req *http.Request, err error) bool {
+	if !isExplicitHTTP2ProtocolMode(protocolMode) {
+		return false
+	}
+	if req == nil || req.GetBody == nil {
+		return false
+	}
+	// 客户端已断开或整体超时，重放没有意义。
+	if req.Context().Err() != nil {
+		return false
+	}
+	return isUpstreamHTTP2StreamReset(err)
+}
+
+// retryUpstreamStreamReset 重放一次被对端重置的请求，最多一次。
+//
+// 分级处理：第一次失败先原样重放（代价只是一次往返，多数偶发 reset 到此为止）；
+// 只有重放也失败，才剔除该客户端池中的空闲连接——那种情况下问题多半在连接级状态
+// 上，必须换一条新连接才能恢复。CloseIdleConnections 只关空闲连接，不会打断在途
+// 请求；账号级隔离策略下作用域仅限当前账号自己的池。
+func (s *httpUpstreamService) retryUpstreamStreamReset(
+	client *http.Client,
+	entry *upstreamClientEntry,
+	req *http.Request,
+	accountID int64,
+	cause error,
+) (*http.Response, error) {
+	body, err := req.GetBody()
+	if err != nil {
+		// 无法重放就保留原始错误，避免把诊断信息替换成次要的 GetBody 失败。
+		slog.Warn("upstream_http2_stream_reset_retry_skipped",
+			"account_id", accountID,
+			"protocol_mode", entry.protocolMode,
+			"cause", cause.Error(),
+			"reason", err.Error())
+		return nil, cause
+	}
+	retryReq := req.Clone(req.Context())
+	retryReq.Body = body
+
+	resp, err := servertiming.Do(client, retryReq)
+	if err != nil {
+		idleConnsClosed := false
+		if closer, ok := entry.client.Transport.(idleConnectionCloser); ok {
+			closer.CloseIdleConnections()
+			idleConnsClosed = true
+		}
+		slog.Warn("upstream_http2_stream_reset_retry_failed",
+			"account_id", accountID,
+			"protocol_mode", entry.protocolMode,
+			"cause", cause.Error(),
+			"retry_error", err.Error(),
+			"idle_conns_closed", idleConnsClosed)
+		return resp, err
+	}
+	slog.Warn("upstream_http2_stream_reset_recovered",
+		"account_id", accountID,
+		"protocol_mode", entry.protocolMode,
+		"cause", cause.Error())
+	return resp, nil
 }
 
 func isUpstreamTimeoutError(err error) bool {
