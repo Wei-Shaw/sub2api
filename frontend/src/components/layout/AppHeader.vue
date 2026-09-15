@@ -357,11 +357,16 @@ function closeDropdown() {
 
 async function handleLogout() {
   closeDropdown()
+  const configuredLogoutUrl = sanitizeUrl(appStore.cachedPublicSettings?.oidc_oauth_logout_url || '')
   try {
     await authStore.logout()
   } catch (error) {
     // Ignore logout errors - still redirect to login
     console.error('Logout error:', error)
+  }
+  if (configuredLogoutUrl) {
+    window.location.assign(configuredLogoutUrl)
+    return
   }
   await router.push('/login')
 }

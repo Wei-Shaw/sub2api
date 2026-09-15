@@ -106,6 +106,7 @@ import Input from '@/components/common/Input.vue'
 import Icon from '@/components/icons/Icon.vue'
 import { useAdminComplianceStore, useAppStore, useAuthStore } from '@/stores'
 import { getLocale } from '@/i18n'
+import { sanitizeUrl } from '@/utils/url'
 import zhDocument from '../../../../docs/legal/admin-compliance.zh.md?raw'
 import enDocument from '../../../../docs/legal/admin-compliance.en.md?raw'
 
@@ -178,8 +179,9 @@ async function submit(): Promise<void> {
 }
 
 async function logout(): Promise<void> {
+  const configuredLogoutUrl = sanitizeUrl(appStore.cachedPublicSettings?.oidc_oauth_logout_url || '')
   await authStore.logout()
-  window.location.href = '/login'
+  window.location.assign(configuredLogoutUrl || '/login')
 }
 </script>
 

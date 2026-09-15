@@ -360,6 +360,7 @@ export const useAppStore = defineStore('app', () => {
         wechat_oauth_mobile_enabled: false,
         oidc_oauth_enabled: false,
         oidc_oauth_provider_name: 'OIDC',
+        oidc_oauth_logout_url: '',
         github_oauth_enabled: false,
         google_oauth_enabled: false,
         backend_mode_enabled: false,
