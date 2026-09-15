@@ -670,6 +670,41 @@ export default {
 
     // Subscriptions
     subscriptions: {
+      batchAssign: {
+        enable: 'Assign to multiple users',
+        hint: 'Search and add up to 100 users to assign the same group and validity period.',
+        selected: '{count} users added',
+        removeUser: 'Remove {email}',
+        result: 'Assignment complete: {success} succeeded, {failed} failed',
+        retryHint: 'Successful users have been removed. Resolve any errors and submit the remaining users again.'
+      },
+      bulk: {
+        extend: 'Bulk Adjust Expiration',
+        reset_quota: 'Bulk Reset Quota',
+        revoke: 'Bulk Revoke',
+        restore: 'Bulk Restore',
+        selected: '{count} subscriptions selected',
+        selectSubscription: 'Select subscription #{id}',
+        clearSelection: 'Clear Selection',
+        selectionHint: 'Select up to 100 subscriptions on this page. Changing pages or filters clears the selection. Each action only processes subscriptions with an applicable status.',
+        selectionLimit: 'You can process up to 100 subscriptions at a time',
+        selectionRequired: 'Select at least one subscription',
+        confirmTargets: 'This action will process the following {count} subscriptions',
+        groupFallback: 'Group #{id}',
+        extendHint: 'Enter a positive whole number to extend or a negative one to shorten, up to 36500 days. Expired subscriptions are extended from now and cannot be shortened. The new expiration must be in the future.',
+        invalidDays: 'Enter a nonzero whole number of days between -36500 and 36500',
+        resetWindows: 'Select quota windows to reset',
+        resetHint: 'Usage in the selected windows will be zeroed and restarted from today.',
+        selectWindow: 'Select at least one quota window',
+        revokeHint: 'These subscriptions will no longer be usable. You can restore them later from the revoked list.',
+        restoreHint: 'These subscriptions will be enabled again. Subscriptions whose original validity has ended will be restored as expired.',
+        confirm: 'Confirm Action',
+        retry: 'Retry Original Action',
+        retryHint: 'The outcome is not yet confirmed. Retrying continues the original operation to avoid duplicate changes. You can also close this dialog, then select the same subscriptions and settings to retry.',
+        requestFailed: 'The bulk request failed. Please retry.',
+        result: 'Completed: {success} succeeded, {failed} failed',
+        itemFailed: 'Action failed'
+      },
       title: 'Subscription Management',
       description: 'Manage user subscriptions and quota limits',
       assignSubscription: 'Assign Subscription',

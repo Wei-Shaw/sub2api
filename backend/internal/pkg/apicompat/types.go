@@ -652,8 +652,11 @@ type ResponsesStreamEvent struct {
 	Code  string `json:"code,omitempty"`
 	Param string `json:"param,omitempty"`
 
-	// Sequence number for ordering events
-	SequenceNumber int `json:"sequence_number,omitempty"`
+	// SequenceNumber orders streamed events. Strict Responses clients (Grok Build,
+	// Codex CLI) declare it required and abort with `missing field 'sequence_number'`
+	// when it is absent, so it is always emitted — no omitempty. Same rule as
+	// ResponsesResponse.CreatedAt. Zero is a valid first-event value.
+	SequenceNumber int `json:"sequence_number"`
 }
 
 // ---------------------------------------------------------------------------
