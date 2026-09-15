@@ -141,11 +141,13 @@ docs/*
 !docs/COMPOSITE_GROUPS.md
 !docs/PLUGIN_DEVELOPMENT.md
 !docs/channel-monitor-v2-safe-defaults.md
+!docs/FEISHU_USAGE_ALERT.md
 !docs/legal/
 !docs/legal/*.md
 !docs/screenshots/
 docs/screenshots/*
 !docs/screenshots/mobile-account-actions-menu.png
+!docs/screenshots/feishu-usage-alert-example-card.png
 .serena/
 .codex/
 frontend/coverage/
