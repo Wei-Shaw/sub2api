@@ -710,10 +710,11 @@ export default {
         responsesWebsocketsV2PassthroughHint: '当前已开启自动透传：仅影响 HTTP 透传链路，不影响 WS mode。',
         responsesMode: 'Responses API 支持',
         responsesModeDesc:
-          '仅对 OpenAI API Key 的文本转发链路生效。自动跟随探测结果，强制模式会覆盖自动探测。',
+          '仅对 OpenAI API Key 的文本转发链路生效。自动跟随探测结果，强制模式固定一种上游协议；保持入站协议要求上游同时支持两个端点。',
         responsesModeAuto: '自动',
         responsesModeForceResponses: '强制 Responses',
         responsesModeForceChatCompletions: '强制 Chat Completions',
+        responsesModePreserveInbound: '保持客户端协议',
         responsesModeTextDisabledHint: '未启用 Responses / Chat Completions 端点时，此设置不适用。',
         imagesUrlToB64Json: '生图结果 URL 转 base64',
         imagesUrlToB64JsonDesc:
@@ -725,6 +726,7 @@ export default {
         capabilityTextAuto: 'Responses / Chat Completions（自动）',
         capabilityResponsesAuto: 'Responses（自动探测）',
         capabilityChatCompletions: 'Chat Completions',
+        capabilityDualProtocol: 'Responses + Chat Completions',
         capabilityChatCompletionsAuto: 'Chat Completions（自动探测）',
         capabilityEmbeddings: 'Embeddings',
         responsesStatusAutoSupported: '自动探测：Responses',
@@ -732,6 +734,7 @@ export default {
         responsesStatusAutoUnknown: '自动探测：未探测',
         responsesStatusForcedResponses: '已强制 Responses',
         responsesStatusForcedChatCompletions: '已强制 Chat Completions',
+        responsesStatusPreserveInbound: '保持客户端协议（上游必须同时支持两个端点）',
         planType: '订阅档位（手动覆盖）',
         planTypeDesc: '手动纠正本账号的 ChatGPT 订阅档位（Plus / Pro / Free）。注意：令牌临期刷新或命中 429 限流时，会用真实档位自动覆盖此处设置。',
         planTypeClear: '清空（自动识别）',

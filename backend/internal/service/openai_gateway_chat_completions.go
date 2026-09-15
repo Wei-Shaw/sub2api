@@ -184,6 +184,14 @@ func (s *OpenAIGatewayService) forwardAsChatCompletions(
 		return s.forwardChatCompletionsViaNativeAnthropic(ctx, c, account, body, defaultMappedModel)
 	}
 
+	// preserve_inbound is an explicit dual-endpoint declaration for OpenAI APIKey
+	// upstreams. Keep Chat Completions on its native endpoint instead of applying
+	// the normal CC -> Responses bridge. The account scheduler already requires
+	// the chat_completions endpoint capability for this request.
+	if account.IsOpenAIApiKey() && openai_compat.ShouldPreserveInboundProtocol(account.Extra) {
+		return s.forwardAsRawChatCompletions(ctx, c, account, body, defaultMappedModel)
+	}
+
 	// 固定 chat_completions 的 CN 账号，以及强制或已探测确认不支持 Responses
 	// 的其他 APIKey 账号，均走 CC 直转。
 	if shouldForwardOpenAIResponsesViaRawChatCompletions(account) {
