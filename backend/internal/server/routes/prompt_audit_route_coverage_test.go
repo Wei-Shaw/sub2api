@@ -33,6 +33,7 @@ func TestEveryGatewayPOSTRouteIsClassifiedForPromptAuditCoverage(t *testing.T) {
 		"/responses/*subpath":       {"gateway_handler_responses.go", "openai_gateway_handler.go"},
 		"/chat/completions":         {"gateway_handler_chat_completions.go", "openai_chat_completions.go"},
 		"/embeddings":               {"openai_embeddings.go"},
+		"/rerank":                   {"openai_rerank.go"},
 		"/alpha/search":             {"openai_alpha_search.go"},
 		"/live":                     {"openai_live.go"},
 		"/realtime/calls":           {"openai_live.go"},
