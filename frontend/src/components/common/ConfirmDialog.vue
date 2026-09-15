@@ -17,9 +17,12 @@
         <button
           @click="handleConfirm"
           type="button"
+          :disabled="confirmDisabled"
           :class="[
             'rounded-md px-4 py-2 text-sm font-medium text-white focus:outline-none focus:ring-2 focus:ring-offset-2 dark:focus:ring-offset-dark-800',
-            danger
+            confirmDisabled
+              ? 'cursor-not-allowed bg-gray-400 opacity-60 dark:bg-dark-600'
+              : danger
               ? 'bg-red-600 hover:bg-red-700 focus:ring-red-500'
               : 'bg-primary-600 hover:bg-primary-700 focus:ring-primary-500'
           ]"
@@ -45,6 +48,7 @@ interface Props {
   confirmText?: string
   cancelText?: string
   danger?: boolean
+  confirmDisabled?: boolean
 }
 
 interface Emits {
@@ -53,7 +57,8 @@ interface Emits {
 }
 
 const props = withDefaults(defineProps<Props>(), {
-  danger: false
+  danger: false,
+  confirmDisabled: false
 })
 
 const confirmText = computed(() => props.confirmText || t('common.confirm'))
