@@ -460,7 +460,7 @@ func TestForwardAsRawChatCompletions_NormalizesGLMReasoningEffortForUpstream(t *
 func TestForwardAsRawChatCompletions_SilentRefusalTriggersFailover(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
-	body := largeRawChatCompletionsBody()
+	body := []byte(`{"model":"gpt-5.4","messages":[{"role":"user","content":"hello"}],"stream":true}`)
 	rec := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(rec)
 	c.Request = httptest.NewRequest(http.MethodPost, "/v1/chat/completions", bytes.NewReader(body))
@@ -498,7 +498,7 @@ func TestForwardAsRawChatCompletions_SilentRefusalTriggersFailover(t *testing.T)
 func TestForwardAsRawChatCompletions_SilentRefusalToolCallsExempt(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
-	body := largeRawChatCompletionsBody()
+	body := []byte(`{"model":"gpt-5.4","messages":[{"role":"user","content":"hello"}],"stream":true}`)
 	rec := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(rec)
 	c.Request = httptest.NewRequest(http.MethodPost, "/v1/chat/completions", bytes.NewReader(body))
@@ -573,7 +573,7 @@ func TestHandleChatStreamingResponse_SilentRefusalReasoningSummaryExempt(t *test
 func TestForwardAsRawChatCompletions_SilentRefusalNormalContentExempt(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
-	body := largeRawChatCompletionsBody()
+	body := []byte(`{"model":"gpt-5.4","messages":[{"role":"user","content":"hello"}],"stream":true}`)
 	rec := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(rec)
 	c.Request = httptest.NewRequest(http.MethodPost, "/v1/chat/completions", bytes.NewReader(body))
