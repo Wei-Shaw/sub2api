@@ -201,6 +201,10 @@ func responsesItemWire(item *ResponsesOutput) map[string]any {
 		m["call_id"] = item.CallID
 		m["execution"] = "client"
 		m["arguments"] = toolSearchCallArgumentsJSON(item.Arguments)
+	case "web_search_call":
+		if item.Action != nil {
+			m["action"] = item.Action
+		}
 	}
 	return m
 }

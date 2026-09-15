@@ -11,9 +11,11 @@ import (
 // native Responses request is sent to an upstream that only understands
 // function tools.
 type ResponsesClientToolMapping struct {
-	CustomTools    map[string]bool
-	ToolSearch     bool
-	NamespaceTools map[string]ResponsesNamespaceName
+	CustomTools       map[string]bool
+	FunctionTools     map[string]bool
+	ToolSearch        bool
+	NamespaceTools    map[string]ResponsesNamespaceName
+	CodeModeExecTools map[string]bool
 }
 
 // AdaptResponsesClientTools lowers Codex client-only tools in req to
@@ -61,6 +63,9 @@ func AdaptResponsesClientTools(req map[string]any) (ResponsesClientToolMapping, 
 		if functionNames[name] {
 			return ResponsesClientToolMapping{}, false, fmt.Errorf("custom tool %q conflicts with a function tool of the same name; this upstream cannot disambiguate them, rename one of the tools", name)
 		}
+	}
+	if len(functionNames) > 0 {
+		adapter.FunctionTools = functionNames
 	}
 	if adapter.ToolSearch && (functionNames[toolSearchProxyName] || customNames[toolSearchProxyName]) {
 		return ResponsesClientToolMapping{}, false, fmt.Errorf("built-in tool_search conflicts with a declared tool named %q; this upstream cannot disambiguate them, rename the tool", toolSearchProxyName)
@@ -512,11 +517,19 @@ func restoreClientToolValue(value any, adapter *ResponsesClientToolMapping) bool
 		if strings.TrimSpace(stringValue(typed["type"])) == "function_call" {
 			name := strings.TrimSpace(stringValue(typed["name"]))
 			if adapter.CustomTools[name] {
+				namespace := adapter.NamespaceTools[name]
 				typed["type"] = "custom_tool_call"
 				retypeResponsesToolCallItemID(typed, "custom_tool_call")
-				typed["input"] = extractCustomToolCallInput(rawObjectString(typed["arguments"]))
+				if namespace.Custom {
+					typed["name"] = namespace.Name
+					typed["namespace"] = namespace.Namespace
+				}
+				input := extractCustomToolCallInput(rawObjectString(typed["arguments"]))
+				typed["input"] = normalizeRestoredCustomToolInput(name, input, adapter)
 				delete(typed, "arguments")
-				delete(typed, "namespace")
+				if !namespace.Custom {
+					delete(typed, "namespace")
+				}
 				changed = true
 			} else if adapter.ToolSearch && name == toolSearchProxyName {
 				typed["type"] = "tool_search_call"
@@ -547,8 +560,10 @@ type ResponsesClientToolStreamRestorer struct {
 }
 
 type responsesClientToolStreamCall struct {
-	kind string
-	name string
+	kind       string
+	name       string
+	sourceName string
+	namespace  string
 	// callID and itemID stay as the upstream sent them so later upstream
 	// events keep matching this call; clientItemID is what we emit.
 	callID       string
@@ -585,9 +600,10 @@ func (r *ResponsesClientToolStreamRestorer) Restore(event ResponsesStreamEvent) 
 		if call := r.recordItem(event); call != nil {
 			if call.kind == "custom" {
 				event.Item.Type = "custom_tool_call"
+				event.Item.Name = call.name
+				event.Item.Namespace = call.namespace
 				event.Item.Input = ""
 				event.Item.Arguments = ""
-				event.Item.Namespace = ""
 			} else {
 				event.Item.Type = "tool_search_call"
 				event.Item.Name = ""
@@ -613,6 +629,7 @@ func (r *ResponsesClientToolStreamRestorer) Restore(event ResponsesStreamEvent) 
 			}
 			if call.kind == "custom" {
 				input := extractCustomToolCallInput(call.arguments.String())
+				input = normalizeRestoredCustomToolInput(call.sourceName, input, &r.adapter)
 				if input != "" {
 					emit(ResponsesStreamEvent{Type: "response.custom_tool_call_input.delta", OutputIndex: call.outputIdx, ItemID: call.clientItemID, Delta: input})
 				}
@@ -625,9 +642,11 @@ func (r *ResponsesClientToolStreamRestorer) Restore(event ResponsesStreamEvent) 
 		if call := r.recordItem(event); call != nil {
 			if call.kind == "custom" {
 				event.Item.Type = "custom_tool_call"
-				event.Item.Input = extractCustomToolCallInput(call.arguments.String())
+				event.Item.Name = call.name
+				event.Item.Namespace = call.namespace
+				input := extractCustomToolCallInput(call.arguments.String())
+				event.Item.Input = normalizeRestoredCustomToolInput(call.sourceName, input, &r.adapter)
 				event.Item.Arguments = ""
-				event.Item.Namespace = ""
 			} else {
 				event.Item.Type = "tool_search_call"
 				event.Item.Name = ""
@@ -791,8 +810,13 @@ func (r *ResponsesClientToolStreamRestorer) recordItem(event ResponsesStreamEven
 	}
 	name := event.Item.Name
 	kind := ""
+	namespace := ""
 	if r.adapter.CustomTools[name] {
 		kind = "custom"
+		if entry := r.adapter.NamespaceTools[name]; entry.Custom {
+			name = entry.Name
+			namespace = entry.Namespace
+		}
 	} else if r.adapter.ToolSearch && name == toolSearchProxyName {
 		kind = "tool_search"
 	}
@@ -808,6 +832,8 @@ func (r *ResponsesClientToolStreamRestorer) recordItem(event ResponsesStreamEven
 		call = &responsesClientToolStreamCall{
 			kind:         kind,
 			name:         name,
+			sourceName:   event.Item.Name,
+			namespace:    namespace,
 			callID:       event.Item.CallID,
 			itemID:       event.Item.ID,
 			clientItemID: retypedResponsesToolCallItemID(event.Item.ID, responsesClientToolItemType(kind)),
@@ -865,11 +891,20 @@ func restoreResponsesOutputClientTools(outputs []ResponsesOutput, adapter *Respo
 			continue
 		}
 		if adapter.CustomTools[output.Name] {
+			sourceName := output.Name
+			namespace := adapter.NamespaceTools[sourceName]
 			output.Type = "custom_tool_call"
 			output.ID = retypedResponsesToolCallItemID(output.ID, output.Type)
-			output.Input = extractCustomToolCallInput(output.Arguments)
+			if namespace.Custom {
+				output.Name = namespace.Name
+				output.Namespace = namespace.Namespace
+			}
+			input := extractCustomToolCallInput(output.Arguments)
+			output.Input = normalizeRestoredCustomToolInput(sourceName, input, adapter)
 			output.Arguments = ""
-			output.Namespace = ""
+			if !namespace.Custom {
+				output.Namespace = ""
+			}
 		} else if adapter.ToolSearch && output.Name == toolSearchProxyName {
 			output.Type = "tool_search_call"
 			output.ID = retypedResponsesToolCallItemID(output.ID, output.Type)
@@ -880,4 +915,60 @@ func restoreResponsesOutputClientTools(outputs []ResponsesOutput, adapter *Respo
 			output.Name, output.Namespace = name.Name, name.Namespace
 		}
 	}
+}
+
+func normalizeRestoredCustomToolInput(sourceName, input string, adapter *ResponsesClientToolMapping) string {
+	if adapter == nil || !adapter.CodeModeExecTools[strings.TrimSpace(sourceName)] {
+		return input
+	}
+	return normalizeCodeModeExecInput(input)
+}
+
+func normalizeCodeModeExecInput(input string) string {
+	trimmed := strings.TrimSpace(input)
+	if trimmed == "" {
+		return input
+	}
+	compact := strings.ToLower(strings.Join(strings.Fields(trimmed), ""))
+	compact = strings.TrimSuffix(compact, ";")
+	if compact == "console.log(process.cwd())" || compact == "process.cwd()" ||
+		compact == "constcwd=process.cwd();console.log(cwd);cwd" ||
+		compact == "letcwd=process.cwd();console.log(cwd);cwd" ||
+		compact == "varcwd=process.cwd();console.log(cwd);cwd" {
+		return wrapShellCommandForCodeMode("pwd")
+	}
+	const malformedPrefix = "await tools.exec_command("
+	const malformedSuffix = "); emit text(result.output);"
+	if strings.HasPrefix(trimmed, malformedPrefix) && strings.HasSuffix(trimmed, malformedSuffix) {
+		arguments := strings.TrimSuffix(strings.TrimPrefix(trimmed, malformedPrefix), malformedSuffix)
+		return "const result = await tools.exec_command(" + arguments + "); text(result.output);"
+	}
+	if strings.Contains(trimmed, "tools.exec_command(") {
+		return input
+	}
+	if likelyShellCommand(trimmed) {
+		return wrapShellCommandForCodeMode(input)
+	}
+	return input
+}
+
+func wrapShellCommandForCodeMode(command string) string {
+	encoded, _ := json.Marshal(command)
+	return "const result = await tools.exec_command({cmd: " + string(encoded) + "});\ntext(result.output);"
+}
+
+func likelyShellCommand(input string) bool {
+	firstLine := strings.TrimSpace(strings.SplitN(input, "\n", 2)[0])
+	lower := strings.ToLower(firstLine)
+	for _, prefix := range []string{"get-", "set-", "new-", "remove-", "select-", "write-", "where-object", "foreach-object", "$", "./", `.\\`, "& "} {
+		if strings.HasPrefix(lower, prefix) {
+			return true
+		}
+	}
+	for _, command := range []string{"ls", "dir", "pwd", "cd", "curl", "wget", "git", "rg", "grep", "find", "python", "python3", "node", "npm", "pnpm", "go", "docker", "docker-compose", "ssh", "scp", "cmd", "powershell", "pwsh"} {
+		if lower == command || strings.HasPrefix(lower, command+" ") || strings.HasPrefix(lower, command+"\t") {
+			return true
+		}
+	}
+	return false
 }

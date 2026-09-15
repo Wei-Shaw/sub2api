@@ -51,11 +51,15 @@ func adaptResponsesClientToolsForFunctionUpstreamWithMapping(
 }
 
 func adaptGrokResponsesClientTools(body []byte) ([]byte, apicompat.ResponsesClientToolMapping, error) {
-	return adaptResponsesClientToolsForFunctionUpstream(body, "Grok")
+	adapted, mapping, err := adaptResponsesClientToolsForFunctionUpstream(body, "Grok")
+	if err != nil {
+		return adapted, mapping, err
+	}
+	return adapted, enableCodeModeExecNormalization(mapping), nil
 }
 
 func hasResponsesClientToolMapping(mapping apicompat.ResponsesClientToolMapping) bool {
-	return len(mapping.CustomTools) > 0 || mapping.ToolSearch || len(mapping.NamespaceTools) > 0
+	return len(mapping.CustomTools) > 0 || len(mapping.FunctionTools) > 0 || mapping.ToolSearch || len(mapping.NamespaceTools) > 0
 }
 
 func hasGrokResponsesClientToolMapping(mapping apicompat.ResponsesClientToolMapping) bool {
@@ -129,12 +133,46 @@ func newResponsesClientToolStreamBody(
 	return body
 }
 
-func newGrokResponsesClientToolStreamBody(
-	source io.ReadCloser,
+func enableCodeModeExecNormalization(mapping apicompat.ResponsesClientToolMapping) apicompat.ResponsesClientToolMapping {
+	names := make(map[string]bool)
+	if mapping.CustomTools["exec"] {
+		names["exec"] = true
+	}
+	for flat, tool := range mapping.NamespaceTools {
+		if tool.Custom && strings.TrimSpace(tool.Namespace) == "functions" && strings.TrimSpace(tool.Name) == "exec" {
+			names[flat] = true
+			names["functions.exec"] = true
+			names["exec"] = true
+			names["exec_command"] = true
+			names["functions.exec_command"] = true
+			names["functions__exec_command"] = true
+		}
+	}
+	if len(names) > 0 {
+		mapping.CodeModeExecTools = names
+	} else {
+		mapping.CodeModeExecTools = nil
+	}
+	return mapping
+}
+
+func enableClaudeCodeModeExecNormalization(
 	mapping apicompat.ResponsesClientToolMapping,
-	maxLineSize int,
-) io.ReadCloser {
-	return newResponsesClientToolStreamBody(source, mapping, maxLineSize)
+	models ...string,
+) apicompat.ResponsesClientToolMapping {
+	for index := len(models) - 1; index >= 0; index-- {
+		model := strings.ToLower(strings.TrimSpace(models[index]))
+		if model == "" {
+			continue
+		}
+		if strings.Contains(model, "claude") {
+			return enableCodeModeExecNormalization(mapping)
+		}
+		mapping.CodeModeExecTools = nil
+		return mapping
+	}
+	mapping.CodeModeExecTools = nil
+	return mapping
 }
 
 func transformResponsesClientToolStream(

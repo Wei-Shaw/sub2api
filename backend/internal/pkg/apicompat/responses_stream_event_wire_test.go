@@ -132,6 +132,25 @@ func TestWire_UnknownEventFallsBackToDefault(t *testing.T) {
 	require.Contains(t, m, "response")
 }
 
+func TestWire_WebSearchCallCarriesActionOnDone(t *testing.T) {
+	m := marshalEvent(t, ResponsesStreamEvent{
+		Type:        "response.output_item.done",
+		OutputIndex: 0,
+		Item: &ResponsesOutput{
+			Type:   "web_search_call",
+			ID:     "ws_1",
+			Status: "completed",
+			Action: &WebSearchAction{Type: "search", Query: "OpenCode Go pricing"},
+		},
+	})
+	item, ok := m["item"].(map[string]any)
+	require.True(t, ok, "item must be an object")
+	action, ok := item["action"].(map[string]any)
+	require.True(t, ok, "web_search_call done must carry action")
+	require.Equal(t, "search", action["type"])
+	require.Equal(t, "OpenCode Go pricing", action["query"])
+}
+
 func TestResponsesOutputUnmarshal_ToolSearchObjectArguments(t *testing.T) {
 	var item ResponsesOutput
 	require.NoError(t, json.Unmarshal([]byte(`{
