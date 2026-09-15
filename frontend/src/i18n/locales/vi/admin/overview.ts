@@ -746,6 +746,7 @@ export default mergeLocaleMessages(
       clearAllConfirm: 'Xác nhận xóa hạn mức ngày / tuần / tháng của tất cả nền tảng? Mọi nền tảng sẽ trở thành "không giới hạn"; không thể hoàn tác cục bộ, cần nhập lại thủ công trước khi lưu.',
       reset: {
         button: 'Đặt lại cửa sổ này',
+        unavailable: 'Nền tảng này chưa cấu hình hạn mức nên không có cửa sổ sử dụng để đặt lại',
         confirm: 'Xác nhận đặt lại mức dùng {window} của người dùng này trên nền tảng {platform}? Thao tác có hiệu lực ngay.',
         success: 'Đã đặt lại mức dùng {platform} {window}',
         failed: 'Đặt lại thất bại',
@@ -856,6 +857,7 @@ export default mergeLocaleMessages(
       gemini: 'Gemini',
       antigravity: 'Antigravity',
       kiro: 'Kiro',
+      opencode_go: 'OpenCode',
     },
     saving: 'Đang lưu...',
     noGroups: 'Chưa có nhóm',
