@@ -98,12 +98,15 @@ func TestOllamaCloudWhitelist_NonEmptyMappingKeepsMappingSemantics(t *testing.T)
 // 回归护栏：非 ollama 平台的空 mapping 仍放行所有（钉住 4 处风险面语义）。
 // 不含 antigravity / grok：这两个平台空 mapping 的既有语义是注入平台默认映射
 // （resolveModelMapping），从来不是「放行所有」，与本次改动无关。
+// 不含 deepseek：其空 mapping 的模型能力由 DeepSeek 自身的名单测试守护，
+// 本护栏只钉住 ollama_cloud 白名单改动不误伤其它平台，不替其它平台的能力
+// 定义背书。
 func TestOllamaCloudWhitelist_NonOllamaEmptyMappingStillAllowsAll(t *testing.T) {
 	t.Parallel()
 
 	for _, platform := range []string{
 		"", PlatformAnthropic, PlatformOpenAI, PlatformGemini,
-		PlatformDeepseek, PlatformKimi, PlatformMiniMax, PlatformZhipu, PlatformOpenCodeGo,
+		PlatformKimi, PlatformMiniMax, PlatformZhipu, PlatformOpenCodeGo,
 	} {
 		account := &Account{ID: 1, Platform: platform, Type: AccountTypeAPIKey, Credentials: map[string]any{}}
 		require.Truef(t, account.IsModelSupported("totally-unpriced-model"),
