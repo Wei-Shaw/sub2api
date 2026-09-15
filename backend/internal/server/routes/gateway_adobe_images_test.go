@@ -17,6 +17,10 @@ import (
 
 // adobeRoutesRouter 搭一个最小路由，只为验证 images 端点按分组平台的分派。
 func adobeRoutesRouter(t *testing.T, group *service.Group) *gin.Engine {
+	return adobeRoutesRouterWithResolver(t, group, nil)
+}
+
+func adobeRoutesRouterWithResolver(t *testing.T, group *service.Group, resolver *service.CompositeRouteResolver) *gin.Engine {
 	t.Helper()
 	gin.SetMode(gin.TestMode)
 	cfg := &config.Config{RunMode: config.RunModeSimple}
@@ -35,7 +39,7 @@ func adobeRoutesRouter(t *testing.T, group *service.Group) *gin.Engine {
 		c.Set(string(servermiddleware.ContextKeyAPIKey), &service.APIKey{ID: 11, GroupID: &group.ID, Group: group})
 		c.Set(string(servermiddleware.ContextKeyUser), servermiddleware.AuthSubject{UserID: 22, Concurrency: 1})
 		c.Next()
-	}), nil, nil, nil, nil, nil, cfg)
+	}), nil, nil, nil, nil, resolver, cfg)
 	return router
 }
 
@@ -109,4 +113,58 @@ func TestGatewayRoutesImagesStillRejectsOtherPlatforms(t *testing.T) {
 	w := postAdobeImages(t, router, "/v1/images/generations", `{"model":"gpt-image-2","prompt":"x"}`)
 	require.Equal(t, http.StatusNotFound, w.Code, w.Body.String())
 	require.Contains(t, w.Body.String(), "not supported for this platform")
+}
+
+func TestGatewayRoutesCompositeDetectableAdobeModelsDispatchToAdobeImages(t *testing.T) {
+	group := &service.Group{ID: 1, Platform: service.PlatformComposite, AllowImageGeneration: false}
+	router := adobeRoutesRouter(t, group)
+
+	for _, model := range []string{"nano-banana-pro", "firefly-gpt-image-2"} {
+		w := postAdobeImages(t, router, "/v1/images/generations", `{"model":"`+model+`","prompt":"x"}`)
+		require.Equal(t, http.StatusForbidden, w.Code, "%s: %s", model, w.Body.String())
+		require.Contains(t, w.Body.String(), service.ImageGenerationPermissionMessage(), model)
+	}
+}
+
+func TestGatewayRoutesCompositeDallEDispatchesToOpenAIImages(t *testing.T) {
+	group := &service.Group{ID: 1, Platform: service.PlatformComposite, AllowImageGeneration: false}
+	router := adobeRoutesRouter(t, group)
+
+	w := postAdobeImages(t, router, "/v1/images/generations", `{"model":"dall-e-3","prompt":"x"}`)
+	require.Equal(t, http.StatusServiceUnavailable, w.Code, w.Body.String())
+	require.Contains(t, w.Body.String(), "Service temporarily unavailable")
+	require.NotContains(t, w.Body.String(), service.ImageGenerationPermissionMessage())
+}
+
+func TestGatewayRoutesCompositeUnresolvedGptImageReturns404(t *testing.T) {
+	group := &service.Group{ID: 1, Platform: service.PlatformComposite, AllowImageGeneration: true}
+	router := adobeRoutesRouter(t, group)
+
+	w := postAdobeImages(t, router, "/v1/images/generations", `{"model":"gpt-image-2","prompt":"x"}`)
+	require.Equal(t, http.StatusNotFound, w.Code, w.Body.String())
+	require.Contains(t, w.Body.String(), "not supported for this platform")
+}
+
+func TestGatewayRoutesCompositeExplicitAdobeRouteDispatchesGptImage(t *testing.T) {
+	group := &service.Group{ID: 1, Platform: service.PlatformComposite, AllowImageGeneration: false}
+	resolver := service.NewCompositeRouteResolver(compositeRouteRepoStub{
+		routes: []service.CompositeModelRoute{
+			{
+				ID:             1,
+				GroupID:        1,
+				PublicModel:    "gpt-image-2",
+				MatchType:      service.CompositeRouteMatchExact,
+				TargetPlatform: service.PlatformAdobe,
+				UpstreamModel:  "firefly-gpt-image-2",
+				Endpoint:       service.CompositeRouteEndpointImages,
+				Priority:       100,
+				Enabled:        true,
+			},
+		},
+	})
+	router := adobeRoutesRouterWithResolver(t, group, resolver)
+
+	w := postAdobeImages(t, router, "/v1/images/generations", `{"model":"gpt-image-2","prompt":"x"}`)
+	require.Equal(t, http.StatusForbidden, w.Code, w.Body.String())
+	require.Contains(t, w.Body.String(), service.ImageGenerationPermissionMessage())
 }

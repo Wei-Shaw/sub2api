@@ -3,6 +3,7 @@
 package service
 
 import (
+	"context"
 	"testing"
 
 	"github.com/Wei-Shaw/sub2api/internal/domain"
@@ -78,10 +79,10 @@ func TestAdobeMaskRelaySelectionExclusions(t *testing.T) {
 
 func TestAdobePrefersMaskRelay(t *testing.T) {
 	tests := []struct {
-		name   string
-		model  string
-		mask   bool
-		want   bool
+		name  string
+		model string
+		mask  bool
+		want  bool
 	}{
 		{name: "gpt-image-2 with mask", model: "gpt-image-2", mask: true, want: true},
 		{name: "firefly-gpt-image-2 with mask", model: "firefly-gpt-image-2", mask: true, want: true},
@@ -134,4 +135,28 @@ func TestAdobeRelayExplicitMappingOverridesIdentity(t *testing.T) {
 	require.Equal(t, "gpt-image-2", relay.GetMappedModel("nano-banana"))
 	require.False(t, relay.IsModelSupported("gpt-image-2"),
 		"显式映射是严格白名单，没列出的对外名不应再靠默认恒等表放行")
+}
+
+func TestAdobeRelayAPIKeyReachesOpenAIForwarding(t *testing.T) {
+	relay := &Account{
+		Platform: PlatformAdobe,
+		Type:     AccountTypeAPIKey,
+		Credentials: map[string]any{
+			"api_key":  "sk-relay",
+			"base_url": "https://relay.example",
+		},
+	}
+	require.Equal(t, "sk-relay", relay.GetOpenAIProtocolAPIKey())
+
+	token, mode, err := (&OpenAIGatewayService{}).GetAccessToken(context.Background(), relay)
+	require.NoError(t, err)
+	require.Equal(t, "sk-relay", token)
+	require.Equal(t, "apikey", mode)
+
+	noBaseURL := &Account{
+		Platform:    PlatformAdobe,
+		Type:        AccountTypeAPIKey,
+		Credentials: map[string]any{"api_key": "sk-relay"},
+	}
+	require.Empty(t, noBaseURL.GetOpenAIProtocolAPIKey())
 }

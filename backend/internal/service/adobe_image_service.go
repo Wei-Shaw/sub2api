@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/adobe"
@@ -42,13 +43,68 @@ type AdobeImageResult struct {
 	Forward *OpenAIForwardResult
 }
 
-// Generate 用指定账号完成一次出图。
+// adobeImageDetachedTimeout 是提交之后（提交重试、轮询、下载、转存）脱离客户端连接的总时限。
+// 覆盖 3 次提交各 60s、DefaultImageTimeout 轮询与下载，留出余量。
+const adobeImageDetachedTimeout = 10 * time.Minute
+
+// AdobeImageCall 是一次客户端请求在多次换号尝试之间共享的状态。
 //
-// 错误一律是 adobe 包的类型化错误或本包的 *adobe.RequestError（终态），
-// 交由 classifyAdobeError 翻译成网关语义。
+// 输入图 URL 只抓一次：换号时复用已取回的字节，只重新上传（上传得到的 image id 与账号绑定）。
+type AdobeImageCall struct {
+	Request *OpenAIImagesRequest
+	// ChannelMappedModel 非空时替代 Request.Model 参与账号模型映射与计费模型。
+	ChannelMappedModel string
+
+	inputsOnce sync.Once
+	inputs     []*adobeInputImage
+	inputsErr  error
+}
+
+// NewAdobeImageCall 构造请求级出图状态。
+func NewAdobeImageCall(req *OpenAIImagesRequest, channelMappedModel string) *AdobeImageCall {
+	return &AdobeImageCall{Request: req, ChannelMappedModel: strings.TrimSpace(channelMappedModel)}
+}
+
+// inputImages 懒加载 JSON 体里的输入图 URL；首个调用的 ctx 决定抓取是否被取消。
+func (call *AdobeImageCall) inputImages(ctx context.Context, client *http.Client) ([]*adobeInputImage, error) {
+	call.inputsOnce.Do(func() {
+		images := make([]*adobeInputImage, 0, len(call.Request.InputImageURLs))
+		for _, rawURL := range call.Request.InputImageURLs {
+			image, err := fetchAdobeInputImage(ctx, client, rawURL)
+			if err != nil {
+				// 取图失败是请求本身的问题，换账号也救不了。
+				// 详细原因只进 Message（日志）；对外文案固定，避免把内网连通性等细节回显给调用方。
+				call.inputsErr = adobeInputImageRequestError(err)
+				return
+			}
+			images = append(images, image)
+		}
+		call.inputs = images
+	})
+	return call.inputs, call.inputsErr
+}
+
+// Generate 用指定账号完成一次出图（单次调用，不跨换号复用输入图）。
 func (s *AdobeImageService) Generate(
 	ctx context.Context, account *Account, token string, req *OpenAIImagesRequest,
 ) (*AdobeImageResult, error) {
+	return s.GenerateCall(ctx, account, token, NewAdobeImageCall(req, ""))
+}
+
+// GenerateCall 用指定账号完成一次出图。
+//
+// 错误一律是 adobe 包的类型化错误或本包的 *adobe.RequestError（终态），
+// 交由 classifyAdobeError 翻译成网关语义。
+//
+// ctx 取消只影响提交之前的阶段（取图、上传）：一旦提交，上游已开始消耗 credits，
+// 之后的轮询与下载脱离客户端连接，保证产物能交回 handler 记账。
+func (s *AdobeImageService) GenerateCall(
+	ctx context.Context, account *Account, token string, call *AdobeImageCall,
+) (*AdobeImageResult, error) {
+	var req *OpenAIImagesRequest
+	if call != nil {
+		req = call.Request
+	}
 	if account == nil {
 		return nil, adobe.NewRequestError("adobe account is required")
 	}
@@ -66,6 +122,9 @@ func (s *AdobeImageService) Generate(
 	}
 
 	requestedModel := strings.TrimSpace(req.Model)
+	if call.ChannelMappedModel != "" {
+		requestedModel = call.ChannelMappedModel
+	}
 	upstreamModelID := account.GetMappedModel(requestedModel)
 	conf, err := adobe.ResolveImage(adobe.ImageRequest{ModelID: upstreamModelID, Size: req.Size})
 	if err != nil {
@@ -73,12 +132,18 @@ func (s *AdobeImageService) Generate(
 	}
 
 	client := s.clients.clientForAccount(account)
-	sourceImageIDs, err := s.uploadSourceImages(ctx, client, token, req)
+	sourceImageIDs, err := s.uploadSourceImages(ctx, client, token, call)
 	if err != nil {
 		return nil, err
 	}
+	if err := ctx.Err(); err != nil {
+		// 客户端在提交前离开：还没花 credits，直接放弃。
+		return nil, err
+	}
 
-	generated, err := client.GenerateImage(ctx, adobe.GenerateImageInput{
+	upstreamCtx, cancelUpstream := context.WithTimeout(context.WithoutCancel(ctx), adobeImageDetachedTimeout)
+	defer cancelUpstream()
+	generated, err := client.GenerateImage(upstreamCtx, adobe.GenerateImageInput{
 		Token: token,
 		Options: adobe.ImagePayloadOptions{
 			Prompt:               req.Prompt,
@@ -97,9 +162,13 @@ func (s *AdobeImageService) Generate(
 	if err != nil {
 		return nil, err
 	}
+	if generated == nil || len(generated.Bytes) == 0 {
+		// 上游声称完成却没给出图片：按临时故障处理，交给 failover 换号，而不是写空响应。
+		return nil, adobe.NewUpstreamTemporaryError("adobe returned an empty image", 0, adobe.ErrorTypeStatus)
+	}
 
 	requestID := uuid.NewString()
-	body, err := s.buildResponseBody(ctx, requestID, generated.Bytes)
+	body, err := s.buildResponseBody(upstreamCtx, requestID, generated.Bytes)
 	if err != nil {
 		return nil, err
 	}
@@ -123,8 +192,9 @@ func (s *AdobeImageService) Generate(
 // 文生图时返回 nil。OpenAI mask 不上传：3p Image Edit 抓包没有 usage=mask blob，
 // 真 mask 由 handler 优先转到 API key 中转号。
 func (s *AdobeImageService) uploadSourceImages(
-	ctx context.Context, client *adobe.Client, token string, req *OpenAIImagesRequest,
+	ctx context.Context, client *adobe.Client, token string, call *AdobeImageCall,
 ) ([]string, error) {
+	req := call.Request
 	if len(req.Uploads) == 0 && len(req.InputImageURLs) == 0 {
 		return nil, nil
 	}
@@ -141,13 +211,12 @@ func (s *AdobeImageService) uploadSourceImages(
 		}
 		ids = append(ids, id)
 	}
-	// JSON 体里的 URL 需要先取回字节。
-	for _, rawURL := range req.InputImageURLs {
-		image, err := fetchAdobeInputImage(ctx, s.inputClient, rawURL)
-		if err != nil {
-			// 取图失败是请求本身的问题，换账号也救不了。
-			return nil, adobe.NewRequestError(err.Error())
-		}
+	// JSON 体里的 URL 需要先取回字节；同一请求换号时复用已取回的字节。
+	images, err := call.inputImages(ctx, s.inputClient)
+	if err != nil {
+		return nil, err
+	}
+	for _, image := range images {
 		id, err := client.UploadImage(ctx, token, image.Data, image.ContentType)
 		if err != nil {
 			return nil, err

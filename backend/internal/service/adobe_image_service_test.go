@@ -3,9 +3,11 @@
 package service
 
 import (
+	"bytes"
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"io"
 	"net/http"
 	"testing"
 
@@ -41,7 +43,7 @@ func adobeSubmitPollDownload(t *testing.T, api *adobeFakeTransport, imageBytes [
 	api.handler = func(_ *adobe.Request, index int) (*adobe.Response, error) {
 		if index == 0 {
 			return adobeJSONResponse(t, 200, map[string]any{},
-				map[string]string{"x-override-status-link": "https://poll/x"}), nil
+				map[string]string{"x-override-status-link": "https://firefly-3p.ff.adobe.io/jobs/x"}), nil
 		}
 		return adobeJSONResponse(t, 200, map[string]any{
 			"status":  "COMPLETED",
@@ -423,7 +425,7 @@ func TestAdobeImageServiceUploadsSourceImages(t *testing.T) {
 		}
 		if index == 1 {
 			return adobeJSONResponse(t, 200, map[string]any{},
-				map[string]string{"x-override-status-link": "https://poll/x"}), nil
+				map[string]string{"x-override-status-link": "https://firefly-3p.ff.adobe.io/jobs/x"}), nil
 		}
 		return adobeJSONResponse(t, 200, map[string]any{
 			"outputs": []any{map[string]any{"image": map[string]any{"presignedUrl": "https://cdn/y.png"}}},
@@ -465,7 +467,7 @@ func TestAdobeImageServiceGenerationsWithSourceUsesGenerateSubmodule(t *testing.
 		}
 		if index == 1 {
 			return adobeJSONResponse(t, 200, map[string]any{},
-				map[string]string{"x-override-status-link": "https://poll/x"}), nil
+				map[string]string{"x-override-status-link": "https://firefly-3p.ff.adobe.io/jobs/x"}), nil
 		}
 		return adobeJSONResponse(t, 200, map[string]any{
 			"outputs": []any{map[string]any{"image": map[string]any{"presignedUrl": "https://cdn/y.png"}}},
@@ -506,7 +508,7 @@ func TestAdobeImageServiceDoesNotUploadMask(t *testing.T) {
 		}
 		if index == 1 {
 			return adobeJSONResponse(t, 200, map[string]any{},
-				map[string]string{"x-override-status-link": "https://poll/x"}), nil
+				map[string]string{"x-override-status-link": "https://firefly-3p.ff.adobe.io/jobs/x"}), nil
 		}
 		return adobeJSONResponse(t, 200, map[string]any{
 			"outputs": []any{map[string]any{"image": map[string]any{"presignedUrl": "https://cdn/y.png"}}},
@@ -574,4 +576,148 @@ func TestAdobeImageServiceEmptyToken(t *testing.T) {
 	require.ErrorContains(t, err, "access token is empty")
 	// token 缺失应触发换号 + 刷新，而不是直接失败。
 	require.Equal(t, NextAccountRetry, classifyAdobeError(err).Failover.NextAccountAction)
+}
+
+func TestAdobeImageServiceEmptyDownloadIsRotatable(t *testing.T) {
+	api := &adobeFakeTransport{}
+	client := adobeSubmitPollDownload(t, api, nil)
+	svc := newAdobeTestService(t, client, nil)
+
+	result, err := svc.Generate(context.Background(), adobeTestAccount(), "tok", &OpenAIImagesRequest{
+		Model:  "gpt-image-2",
+		Prompt: "a cat",
+		Size:   "1024x1024",
+		N:      1,
+	})
+	require.Nil(t, result)
+	require.Error(t, err)
+	require.True(t, adobe.IsRotatable(err), "空结果应换号重试")
+}
+
+// adobeCtxRecordingTransport 在 adobeFakeTransport 基础上记录每次调用时 ctx 是否已取消。
+type adobeCtxRecordingTransport struct {
+	adobeFakeTransport
+	ctxErrs []error
+}
+
+func (t *adobeCtxRecordingTransport) Do(ctx context.Context, req *adobe.Request) (*adobe.Response, error) {
+	t.ctxErrs = append(t.ctxErrs, ctx.Err())
+	return t.adobeFakeTransport.Do(ctx, req)
+}
+
+// 提交之后客户端断开：轮询与下载必须继续，产物交回 handler 记账。
+func TestAdobeImageServiceDetachesAfterSubmit(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	api := &adobeCtxRecordingTransport{}
+	api.handler = func(_ *adobe.Request, index int) (*adobe.Response, error) {
+		if index == 0 {
+			cancel() // 提交已被上游受理后客户端离开
+			return adobeJSONResponse(t, 200, map[string]any{},
+				map[string]string{"x-override-status-link": "https://firefly-3p.ff.adobe.io/jobs/x"}), nil
+		}
+		return adobeJSONResponse(t, 200, map[string]any{
+			"outputs": []any{map[string]any{"image": map[string]any{"presignedUrl": "https://cdn.example.com/img.png"}}},
+		}, nil), nil
+	}
+	download := &adobeCtxRecordingTransport{}
+	download.handler = func(*adobe.Request, int) (*adobe.Response, error) {
+		return &adobe.Response{StatusCode: 200, Headers: map[string]string{}, Body: []byte("PNG")}, nil
+	}
+	client := adobe.NewClient(adobe.ClientConfig{Transport: api, DownloadTransport: download})
+	svc := newAdobeTestService(t, client, nil)
+
+	result, err := svc.Generate(ctx, adobeTestAccount(), "tok", &OpenAIImagesRequest{
+		Model: "gpt-image-2", Prompt: "a cat", Size: "1024x1024", N: 1,
+	})
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.Equal(t, 1, result.Forward.ImageCount)
+	require.Len(t, api.ctxErrs, 2)
+	require.NoError(t, api.ctxErrs[1], "poll must not inherit the client's cancellation")
+	require.Len(t, download.ctxErrs, 1)
+	require.NoError(t, download.ctxErrs[0], "download must not inherit the client's cancellation")
+}
+
+// 提交前客户端已离开：不打上游，不花 credits。
+func TestAdobeImageServiceSkipsSubmitWhenClientGone(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	api := &adobeFakeTransport{handler: func(*adobe.Request, int) (*adobe.Response, error) {
+		t.Error("submit must not be sent after the client left")
+		return nil, context.Canceled
+	}}
+	svc := newAdobeTestService(t, adobe.NewClient(adobe.ClientConfig{Transport: api, DownloadTransport: api}), nil)
+
+	_, err := svc.Generate(ctx, adobeTestAccount(), "tok", &OpenAIImagesRequest{
+		Model: "gpt-image-2", Prompt: "a cat", Size: "1024x1024", N: 1,
+	})
+	require.ErrorIs(t, err, context.Canceled)
+	require.Empty(t, api.calls)
+}
+
+// adobeCountingRoundTripper 统计输入图抓取次数，并返回固定 PNG。
+type adobeCountingRoundTripper struct {
+	calls int
+}
+
+func (rt *adobeCountingRoundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
+	rt.calls++
+	png := []byte("\x89PNG\r\n\x1a\n0000")
+	return &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     http.Header{"Content-Type": []string{"image/png"}},
+		Body:       io.NopCloser(bytes.NewReader(png)),
+		Request:    req,
+	}, nil
+}
+
+// 同一请求换号重试时只抓一次输入图 URL，每个账号各自重新上传。
+func TestAdobeImageCallFetchesInputImagesOnce(t *testing.T) {
+	uploads := 0
+	api := &adobeFakeTransport{}
+	api.handler = func(req *adobe.Request, _ int) (*adobe.Response, error) {
+		switch req.URL {
+		case adobe.ImageUploadURL:
+			uploads++
+			return adobeJSONResponse(t, 200, map[string]any{
+				"images": []any{map[string]any{"id": "img"}},
+			}, nil), nil
+		case adobe.ImageSubmitURL:
+			// 400 不在同号内重试，避免测试等待提交退避。
+			return adobeJSONResponse(t, 400, map[string]any{}, nil), nil
+		}
+		t.Fatalf("unexpected url %s", req.URL)
+		return nil, nil
+	}
+	client := adobe.NewClient(adobe.ClientConfig{Transport: api, DownloadTransport: api})
+	svc := newAdobeTestService(t, client, nil)
+	rt := &adobeCountingRoundTripper{}
+	svc.inputClient = &http.Client{Transport: rt}
+	call := NewAdobeImageCall(&OpenAIImagesRequest{
+		Model: "gpt-image-2", Prompt: "edit", Size: "1024x1024", N: 1,
+		Endpoint:       openAIImagesEditsEndpoint,
+		InputImageURLs: []string{"https://images.example.com/a.png"},
+	}, "")
+
+	for i := 0; i < 2; i++ {
+		_, err := svc.GenerateCall(context.Background(), adobeTestAccount(), "tok", call)
+		require.Error(t, err)
+	}
+	require.Equal(t, 1, rt.calls, "input image url must be fetched once per client request")
+	require.Equal(t, 2, uploads, "each attempt uploads the cached bytes again")
+}
+
+// 渠道映射后的模型参与账号映射与计费模型。
+func TestAdobeImageCallUsesChannelMappedModel(t *testing.T) {
+	api := &adobeFakeTransport{}
+	client := adobeSubmitPollDownload(t, api, []byte("PNG"))
+	svc := newAdobeTestService(t, client, nil)
+
+	result, err := svc.GenerateCall(context.Background(), adobeTestAccount(), "tok", NewAdobeImageCall(&OpenAIImagesRequest{
+		Model: "my-alias", Prompt: "a cat", Size: "1024x1024", N: 1,
+	}, "nano-banana-pro"))
+	require.NoError(t, err)
+	require.Equal(t, "nano-banana-pro", result.Forward.Model)
+	require.Contains(t, result.Forward.UpstreamModel, "nano-banana-pro")
 }

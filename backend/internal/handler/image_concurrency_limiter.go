@@ -2,9 +2,35 @@ package handler
 
 import (
 	"context"
+	"strings"
 	"sync"
 	"time"
+
+	"github.com/Wei-Shaw/sub2api/internal/config"
 )
+
+// sharedImageConcurrencyLimiter 是进程内唯一的出图并发限流器。
+// OpenAI/Grok 出图（OpenAIGatewayHandler）与 Adobe 出图（GatewayHandler）共用它，
+// 使 gateway.image_concurrency 的上限对所有出图入口整体生效。
+var sharedImageConcurrencyLimiter = &imageConcurrencyLimiter{}
+
+// acquireImageConcurrencySlot 按 gateway.image_concurrency 配置占用出图槽，不写响应。
+// cfg 或 limiter 为空时视为不限流。
+func acquireImageConcurrencySlot(ctx context.Context, cfg *config.Config, limiter *imageConcurrencyLimiter) (func(), bool) {
+	if cfg == nil || limiter == nil {
+		return nil, true
+	}
+	imageConcurrency := cfg.Gateway.ImageConcurrency
+	wait := strings.TrimSpace(imageConcurrency.OverflowMode) == config.ImageConcurrencyOverflowModeWait
+	return limiter.Acquire(
+		ctx,
+		imageConcurrency.Enabled,
+		imageConcurrency.MaxConcurrentRequests,
+		wait,
+		time.Duration(imageConcurrency.WaitTimeoutSeconds)*time.Second,
+		imageConcurrency.MaxWaitingRequests,
+	)
+}
 
 type imageConcurrencyLimiter struct {
 	mu      sync.Mutex
