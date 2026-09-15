@@ -501,7 +501,7 @@ func getGroupPlatform(c *gin.Context) string {
 }
 
 // isOpenAICompatibleGatewayFamilyPlatform 报告单个平台是否经 OpenAI 网关转发
-// （openai/grok/国产 OpenAI 兼容供应商/OpenCode Go）。
+// （openai/grok/国产 OpenAI 兼容供应商/OpenCode Go/Ollama Cloud）。
 func isOpenAICompatibleGatewayFamilyPlatform(platform string) bool {
 	switch platform {
 	case service.PlatformOpenAI, service.PlatformGrok,
