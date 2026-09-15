@@ -848,11 +848,26 @@ const resetState = () => {
 
 const pelicanPreviewDocument = computed(() => {
   if (!pelicanHTML.value) return ''
-  const policy = `<meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src data: blob:; style-src 'unsafe-inline'; script-src 'unsafe-inline'; font-src data:; media-src data: blob:;">`
-  if (/<head(?:\s[^>]*)?>/i.test(pelicanHTML.value)) {
-    return pelicanHTML.value.replace(/<head(\s[^>]*)?>/i, (head) => `${head}${policy}`)
+  const preview = new DOMParser().parseFromString(pelicanHTML.value, 'text/html')
+  preview.querySelectorAll('meta[http-equiv]').forEach((meta) => {
+    if (meta.getAttribute('http-equiv')?.toLowerCase() === 'content-security-policy') {
+      meta.remove()
+    }
+  })
+
+  const nonce = document.querySelector<HTMLScriptElement>('script[nonce]')?.nonce
+  if (nonce) {
+    preview.querySelectorAll<HTMLScriptElement>('script:not([src])').forEach((script) => {
+      script.nonce = nonce
+    })
   }
-  return policy + pelicanHTML.value
+
+  const policy = preview.createElement('meta')
+  policy.httpEquiv = 'Content-Security-Policy'
+  policy.content =
+    "default-src 'none'; img-src data: blob:; style-src 'unsafe-inline'; script-src 'unsafe-inline'; font-src data:; media-src data: blob:; connect-src 'none'; frame-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'"
+  preview.head.prepend(policy)
+  return `<!DOCTYPE html>${preview.documentElement.outerHTML}`
 })
 
 const handleClose = () => {

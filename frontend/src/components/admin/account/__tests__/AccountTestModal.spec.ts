@@ -222,6 +222,9 @@ describe('AccountTestModal', () => {
   })
 
   it('鹈鹕测智会发送独立模式并沙箱预览生成的 HTML', async () => {
+    const nonceScript = document.createElement('script')
+    nonceScript.nonce = 'pelican-test-nonce'
+    document.head.appendChild(nonceScript)
     getAvailableModels.mockResolvedValue([
       { id: 'gpt-6-astra', display_name: 'GPT-6 Astra' },
       { id: 'gpt-image-2.5-flare', display_name: 'GPT Image 2.5 Flare' }
@@ -233,7 +236,7 @@ describe('AccountTestModal', () => {
           type: 'pelican_result',
           data: {
             has_html: true,
-            html: '<!DOCTYPE html><html><head></head><body>pelican</body></html>',
+            html: `<!DOCTYPE html><html><head><meta http-equiv="Content-Security-Policy" content="script-src 'none'"></head><body>pelican<script>window.pelicanReady = true</script></body></html>`,
             response_model: 'gpt-6-astra'
           }
         })}\n`,
@@ -265,7 +268,10 @@ describe('AccountTestModal', () => {
     expect(wrapper.text()).toContain('gpt-6-astra')
     expect(wrapper.find('iframe').attributes('sandbox')).toBe('allow-scripts')
     expect(wrapper.find('iframe').attributes('srcdoc')).toContain("default-src 'none'")
-    expect(wrapper.find('iframe').attributes('srcdoc')).toContain('<body>pelican</body>')
+    expect(wrapper.find('iframe').attributes('srcdoc')).toContain('nonce="pelican-test-nonce"')
+    expect(wrapper.find('iframe').attributes('srcdoc')).not.toContain("script-src 'none'")
+    expect(wrapper.find('iframe').attributes('srcdoc')).toContain('<body>pelican<script')
+    nonceScript.remove()
   })
 
   it('OpenAI API Key 账号不提供鹈鹕测智模式', async () => {
