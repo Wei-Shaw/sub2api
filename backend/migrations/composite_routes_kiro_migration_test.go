@@ -15,7 +15,7 @@ import (
 // 此处硬编码而非 import service：migrations 是叶子包，被 repository 依赖，
 // 反向 import 会成环。
 var expectedCompositeRouteTargetPlatforms = []string{
-	"adobe", "anthropic", "antigravity", "deepseek", "gemini", "grok", "kimi", "kiro", "minimax", "openai", "zhipu",
+	"adobe", "anthropic", "antigravity", "deepseek", "gemini", "grok", "kimi", "kiro", "minimax", "openai", "opencode_go", "zhipu",
 }
 
 const compositeRouteTargetPlatformConstraint = "composite_model_routes_target_platform_check"

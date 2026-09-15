@@ -24,7 +24,7 @@
               v-model="filters.protocol"
               :options="protocolOptions"
               :placeholder="t('admin.proxies.allProtocols')"
-              @change="loadProxies"
+              @change="handleFilterChange"
             />
           </div>
           <div class="w-full sm:w-36">
@@ -32,7 +32,7 @@
               v-model="filters.status"
               :options="statusOptions"
               :placeholder="t('admin.proxies.allStatus')"
-              @change="loadProxies"
+              @change="handleFilterChange"
             />
           </div>
 
@@ -1217,6 +1217,11 @@ const loadProxies = async () => {
       abortController = null
     }
   }
+}
+
+const handleFilterChange = () => {
+  pagination.page = 1
+  loadProxies()
 }
 
 let searchTimeout: ReturnType<typeof setTimeout>

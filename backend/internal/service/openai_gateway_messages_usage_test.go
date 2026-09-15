@@ -38,6 +38,7 @@ func TestHandleAnthropicStreamingResponseMergesKiroCredits(t *testing.T) {
 
 	rec := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/messages", nil)
 	resp := &http.Response{
 		Header: http.Header{"x-request-id": []string{"rid_messages_stream_kiro_credits"}},
 		Body: io.NopCloser(strings.NewReader(strings.Join([]string{
