@@ -175,15 +175,15 @@ func devinSessionHash(request *llm.RequestMessages) string {
 		return "devin:" + key
 	}
 	h := sha256.New()
-	h.Write([]byte(request.Model))
-	h.Write([]byte{0})
-	h.Write([]byte(request.SystemPrompt))
+	_, _ = h.Write([]byte(request.Model))
+	_, _ = h.Write([]byte{0})
+	_, _ = h.Write([]byte(request.SystemPrompt))
 	if len(request.Messages) > 0 {
 		// 只取首条消息，与 pkg/devin/adapter 的会话派生一致。
 		for _, content := range devinMessageContents(request.Messages[0]) {
 			if text, ok := content.(llm.TextContent); ok {
-				h.Write([]byte{0})
-				h.Write([]byte(text.Text))
+				_, _ = h.Write([]byte{0})
+				_, _ = h.Write([]byte(text.Text))
 			}
 		}
 	}
@@ -691,21 +691,32 @@ func (h *DevinGatewayHandler) Models(c *gin.Context) {
 	entries := devinModelEntries(groups, allowed, apiKey.Group)
 	data := make([]any, 0, len(entries))
 	for _, entry := range entries {
-		data = append(data, gin.H{
+		item := gin.H{
 			"id":       entry.id,
 			"object":   "model",
 			"created":  0,
-			"owned_by": "devin",
+			"owned_by": entry.ownedBy,
 			"name":     entry.name,
-		})
+		}
+		// 上游目录已知上下文/输出上限时附带——客户端与 UI 据此显示模型容量。
+		if entry.contextWindow > 0 {
+			item["context_window"] = entry.contextWindow
+		}
+		if entry.maxTokens > 0 {
+			item["max_output_tokens"] = entry.maxTokens
+		}
+		data = append(data, item)
 	}
 	c.JSON(http.StatusOK, gin.H{"object": "list", "data": data})
 }
 
 // devinModelEntry 是 /v1/models 列表的一条输出。
 type devinModelEntry struct {
-	id   string
-	name string
+	id            string
+	name          string
+	ownedBy       string
+	contextWindow int
+	maxTokens     int
 }
 
 // devinModelEntries 组装 /v1/models 的模型列表：
@@ -715,7 +726,13 @@ type devinModelEntry struct {
 // 平台 /v1/models 语义一致、支持改名映射；为空时回落上游目录全量。
 // 分组级 allowlist（若启用）最后叠加过滤。
 func devinModelEntries(groups []devin.GroupedModel, allowed []string, group *service.Group) []devinModelEntry {
-	names := make(map[string]string, len(groups))
+	type catalogInfo struct {
+		name          string
+		ownedBy       string
+		contextWindow int
+		maxTokens     int
+	}
+	catalog := make(map[string]catalogInfo, len(groups))
 	catalogIDs := make([]string, 0, len(groups))
 	seen := make(map[string]bool)
 	for _, g := range groups {
@@ -724,7 +741,16 @@ func devinModelEntries(groups []devin.GroupedModel, allowed []string, group *ser
 		}
 		seen[g.ID] = true
 		catalogIDs = append(catalogIDs, g.ID)
-		names[g.ID] = g.Name
+		ownedBy := strings.TrimSpace(g.OwnedBy)
+		if ownedBy == "" {
+			ownedBy = "devin"
+		}
+		catalog[g.ID] = catalogInfo{
+			name:          g.Name,
+			ownedBy:       ownedBy,
+			contextWindow: g.ContextWindow,
+			maxTokens:     g.MaxTokens,
+		}
 	}
 	source := catalogIDs
 	if len(allowed) > 0 {
@@ -735,11 +761,22 @@ func devinModelEntries(groups []devin.GroupedModel, allowed []string, group *ser
 	}
 	entries := make([]devinModelEntry, 0, len(source))
 	for _, id := range source {
-		name := names[id]
+		info := catalog[id]
+		name := info.name
 		if name == "" {
 			name = id
 		}
-		entries = append(entries, devinModelEntry{id: id, name: name})
+		ownedBy := info.ownedBy
+		if ownedBy == "" {
+			ownedBy = "devin"
+		}
+		entries = append(entries, devinModelEntry{
+			id:            id,
+			name:          name,
+			ownedBy:       ownedBy,
+			contextWindow: info.contextWindow,
+			maxTokens:     info.maxTokens,
+		})
 	}
 	return entries
 }

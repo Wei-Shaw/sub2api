@@ -109,9 +109,9 @@ func TestDevinSessionHash(t *testing.T) {
 
 func devinCatalogFixture() []devin.GroupedModel {
 	return []devin.GroupedModel{
-		{ID: "swe-2", Name: "SWE-2"},
-		{ID: "claude-fable-5-1", Name: "Claude Fable 5.1"},
-		{ID: "gpt-6-astra", Name: "GPT-6 Astra"},
+		{ID: "swe-2", Name: "SWE-2", ContextWindow: 262144, MaxTokens: 32768, OwnedBy: "devin"},
+		{ID: "claude-fable-5-1", Name: "Claude Fable 5.1", ContextWindow: 400000, MaxTokens: 64000, OwnedBy: "anthropic"},
+		{ID: "gpt-6-astra", Name: "GPT-6 Astra", ContextWindow: 1000000, MaxTokens: 128000, OwnedBy: "openai"},
 	}
 }
 
@@ -123,6 +123,12 @@ func TestDevinModelEntriesNoMapping(t *testing.T) {
 	}
 	if entries[0].id != "swe-2" || entries[0].name != "SWE-2" {
 		t.Fatalf("unexpected first entry: %+v", entries[0])
+	}
+	if entries[0].contextWindow != 262144 || entries[0].maxTokens != 32768 {
+		t.Fatalf("context/max tokens not propagated: %+v", entries[0])
+	}
+	if entries[1].ownedBy != "anthropic" {
+		t.Fatalf("ownedBy = %q, want anthropic", entries[1].ownedBy)
 	}
 }
 
@@ -139,6 +145,9 @@ func TestDevinModelEntriesMappingWhitelist(t *testing.T) {
 	}
 	if entries[1].name != "my-alias" {
 		t.Fatalf("catalog miss should fall back to id as name, got %q", entries[1].name)
+	}
+	if entries[1].contextWindow != 0 || entries[1].ownedBy != "devin" {
+		t.Fatalf("alias entry should carry no catalog metadata, got %+v", entries[1])
 	}
 }
 
