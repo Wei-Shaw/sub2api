@@ -268,7 +268,7 @@ type SystemSettings struct {
 
 	// OpenAI 账号调度
 	OpenAILowUpstreamRatePriorityEnabled                   bool
-	OpenAIOAuthSchedulingRateMultiplier                    float64
+	OpenAIOAuthSchedulingRateMultiplier                    *float64
 	OpenAIAdvancedSchedulerEnabled                         bool
 	OpenAIAdvancedSchedulerStickyWeightedEnabled           bool
 	OpenAIAdvancedSchedulerSubscriptionPriorityEnabled     bool
