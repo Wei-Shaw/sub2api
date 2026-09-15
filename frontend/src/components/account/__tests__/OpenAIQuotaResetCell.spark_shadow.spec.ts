@@ -108,6 +108,45 @@ describe('OpenAIQuotaResetCell — 外审 F6:影子禁用重置', () => {
     wrapper.unmount()
   })
 
+  it('排了到期重置定时器时显示计划触发时刻', () => {
+    const account = makeAccount({
+      parent_account_id: null,
+      extra: {
+        auto_reset_credit_expiry_enabled: true,
+        codex_reset_credit_snapshot: { available_count: 1, credits: [{ expires_at: FUTURE_EXPIRY_EARLY }] },
+        codex_auto_reset_credit_expiry_at: '2099-07-02T04:05:06Z',
+      },
+    })
+    const wrapper = mount(OpenAIQuotaResetCell, { props: { account } })
+
+    const expiryResetAt = wrapper.get('[data-testid="expiry-reset-at"]')
+    expect(expiryResetAt.text()).toContain('admin.accounts.openaiQuotaReset.expiryResetAt:')
+    expect(expiryResetAt.attributes('title')).toContain('admin.accounts.openaiQuotaReset.expiryResetAtFull:')
+    wrapper.unmount()
+
+    const withoutTimer = mount(OpenAIQuotaResetCell, {
+      props: { account: makeAccount({ parent_account_id: null, extra: { auto_reset_credit_expiry_enabled: true, codex_reset_credit_snapshot_at: '2026-09-05T01:02:03Z' } }) },
+    })
+    expect(withoutTimer.find('[data-testid="expiry-reset-at"]').exists()).toBe(false)
+    withoutTimer.unmount()
+  })
+
+  it('只开到期用卡时也显示自动用卡状态行', () => {
+    const account = makeAccount({
+      parent_account_id: null,
+      extra: {
+        auto_reset_credit_expiry_enabled: true,
+        codex_auto_reset_credit_state: { status: 'no_credit', available_count: 0, checked_at: '2026-09-05T14:55:03Z' },
+        codex_reset_credit_snapshot: { available_count: 1, credits: [{ expires_at: FUTURE_EXPIRY_EARLY }] },
+      },
+    })
+    const wrapper = mount(OpenAIQuotaResetCell, { props: { account } })
+
+    expect(wrapper.find('[data-testid="auto-reset-credit-state"]').exists()).toBe(true)
+    expect(wrapper.find('[data-testid="expiry-reset-at"]').exists()).toBe(false)
+    wrapper.unmount()
+  })
+
   it('缓存中的重置卡全部过期时视为未知,不点亮重置入口', () => {
     const account = makeAccount({
       parent_account_id: null,
@@ -230,6 +269,35 @@ describe('OpenAIQuotaResetCell — 外审 F6:影子禁用重置', () => {
     wrapper.unmount()
   })
 
+  it('查询成功后回传同步后的账号行以更新计划触发时刻', async () => {
+    const syncedAccount = makeAccount({
+      parent_account_id: null,
+      extra: { auto_reset_credit_expiry_enabled: true, codex_reset_credit_snapshot_at: '2026-09-05T01:02:03Z' },
+    })
+    vi.mocked(refreshOpenAIQuota).mockResolvedValue({
+      rate_limit_reset_credits: { available_count: 0, credits: [] },
+      fetched_at: 1770000000,
+      cache_persisted: true,
+      account: syncedAccount,
+    })
+    const account = makeAccount({
+      parent_account_id: null,
+      extra: {
+        auto_reset_credit_expiry_enabled: true,
+        codex_reset_credit_snapshot: { available_count: 1, credits: [{ expires_at: FUTURE_EXPIRY_EARLY }] },
+        codex_auto_reset_credit_expiry_at: '2099-07-02T04:05:06Z',
+      },
+    })
+    const wrapper = mount(OpenAIQuotaResetCell, { props: { account } })
+
+    await wrapper.findAll('button')[0].trigger('click')
+    await flushPromises()
+
+    expect(refreshOpenAIQuota).toHaveBeenCalledWith(1)
+    expect(wrapper.emitted('account-updated')).toEqual([[syncedAccount]])
+    wrapper.unmount()
+  })
+
   it('重置成功后直接使用响应中的最新缓存并回传恢复后的账号', async () => {
     const recoveredAccount = makeAccount({
       parent_account_id: null,
@@ -347,8 +415,6 @@ describe('OpenAIQuotaResetCell — 外审 F6:影子禁用重置', () => {
 
 describe('OpenAIQuotaResetCell 自动用卡运行态', () => {
   it.each([
-    ['checking', 'checking'],
-    ['available', 'available'],
     ['resetting', 'resetting'],
     ['success', 'success'],
     ['no_credit', 'noCredit'],
@@ -374,11 +440,47 @@ describe('OpenAIQuotaResetCell 自动用卡运行态', () => {
     wrapper.unmount()
   })
 
+  // 查询阶段的失败不是用卡失败，标签要按错误码区分，避免误以为消耗了重置卡。
+  it.each([
+    ['RESET_CREDIT_QUERY_FAILED', 'queryFailed'],
+    ['RESET_CREDIT_DETAILS_UNAVAILABLE', 'queryFailed'],
+    ['OPENAI_AUTO_RESET_FAILED', 'failed'],
+  ] as const)('failed 状态按错误码 %s 区分查询失败与用卡失败', (errorCode, labelKey) => {
+    const account = makeAccount({
+      extra: {
+        auto_reset_credit_expiry_enabled: true,
+        codex_auto_reset_credit_state: {
+          status: 'failed',
+          available_count: 2,
+          checked_at: '2099-07-03T04:05:06Z',
+          error_code: errorCode,
+        },
+      },
+    })
+    const wrapper = mount(OpenAIQuotaResetCell, { props: { account } })
+    const state = wrapper.get('[data-testid="auto-reset-credit-state"]')
+    expect(state.text()).toContain(`admin.accounts.openaiQuotaReset.autoStatus.${labelKey}`)
+    expect(state.text()).toContain(errorCode)
+    wrapper.unmount()
+  })
+
   it('开关关闭时不显示历史运行态', () => {
     const account = makeAccount({
       extra: {
         auto_reset_credit_enabled: false,
         codex_auto_reset_credit_state: { status: 'success', available_count: 1 },
+      },
+    })
+    const wrapper = mount(OpenAIQuotaResetCell, { props: { account } })
+    expect(wrapper.find('[data-testid="auto-reset-credit-state"]').exists()).toBe(false)
+    wrapper.unmount()
+  })
+
+  it.each(['available', 'checking'])('%s 属于稳态,不显示状态行', (status) => {
+    const account = makeAccount({
+      extra: {
+        auto_reset_credit_enabled: true,
+        codex_auto_reset_credit_state: { status, trigger_window: '7d', available_count: 2, checked_at: '2099-07-03T04:05:06Z' },
       },
     })
     const wrapper = mount(OpenAIQuotaResetCell, { props: { account } })
