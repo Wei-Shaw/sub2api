@@ -136,11 +136,18 @@ func (r *dashboardAggregationRepository) syncGroupUsageRollupsInTx(ctx context.C
 	var closedBefore string
 	var previousRetainedFrom time.Time
 	var stateTimezoneName string
+	// #6976: never hold a row lock during the multi-minute historical
+	// rebuild. Take a transaction-scoped advisory lock for mutual
+	// exclusion between concurrent rollups, read the watermark without
+	// FOR UPDATE (so usage_logs INSERT triggers never queue behind us),
+	// and only lock the state row briefly in the final UPDATE below.
+	if _, err := r.sql.ExecContext(ctx, `SELECT pg_advisory_xact_lock(727425027619)`); err != nil {
+		return fmt.Errorf("获取分组用量汇总互斥锁: %w", err)
+	}
 	if err := scanSingleRow(ctx, r.sql, `
 		SELECT closed_before::text, retained_from, timezone_name
 		FROM usage_group_rollup_state
 		WHERE id = 1
-		FOR UPDATE
 	`, nil, &closedBefore, &previousRetainedFrom, &stateTimezoneName); err != nil {
 		return fmt.Errorf("读取分组用量汇总水位: %w", err)
 	}
