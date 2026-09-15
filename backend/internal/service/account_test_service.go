@@ -3045,7 +3045,7 @@ func (s *AccountTestService) processOpenAIPelicanStream(c *gin.Context, body io.
 		switch eventType {
 		case "response.output_text.delta":
 			if delta, _ := data["delta"].(string); delta != "" {
-				outputText.WriteString(delta)
+				_, _ = outputText.WriteString(delta)
 				if outputText.Len() > openAIPelicanMaxReplyBytes {
 					return s.sendErrorAndEnd(c, "Pelican response exceeded the 2 MiB limit")
 				}
@@ -3053,7 +3053,7 @@ func (s *AccountTestService) processOpenAIPelicanStream(c *gin.Context, body io.
 		case "response.completed", "response.done":
 			finalOutput, responseID, responseModel := openAIPelicanFinalResponse(data["response"])
 			if outputText.Len() == 0 {
-				outputText.WriteString(finalOutput)
+				_, _ = outputText.WriteString(finalOutput)
 			}
 			if outputText.Len() > openAIPelicanMaxReplyBytes {
 				return s.sendErrorAndEnd(c, "Pelican response exceeded the 2 MiB limit")
@@ -3118,9 +3118,9 @@ func appendOpenAIPelicanTextParts(target *strings.Builder, rawParts any) {
 			continue
 		}
 		if target.Len() > 0 {
-			target.WriteString("\n")
+			_, _ = target.WriteString("\n")
 		}
-		target.WriteString(text)
+		_, _ = target.WriteString(text)
 	}
 }
 
