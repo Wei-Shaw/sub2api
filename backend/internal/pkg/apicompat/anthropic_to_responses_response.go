@@ -39,7 +39,7 @@ func AnthropicToResponsesResponse(resp *AnthropicResponse) *ResponsesResponse {
 			if block.Thinking != "" {
 				outputs = append(outputs, ResponsesOutput{
 					Type: "reasoning",
-					ID:   generateItemID(),
+					ID:   generateReasoningItemID(),
 					Summary: []ResponsesSummary{{
 						Type: "summary_text",
 						Text: block.Thinking,
@@ -290,7 +290,7 @@ func anthToResHandleContentBlockStart(evt *AnthropicStreamEvent, state *Anthropi
 		// 会稳定产生 text → thinking 这个顺序。
 		events = append(events, closeCurrentResponsesItem(state)...)
 
-		state.CurrentItemID = generateItemID()
+		state.CurrentItemID = generateReasoningItemID()
 		state.CurrentItemType = "reasoning"
 		state.ContentIndex = 0
 
@@ -656,7 +656,15 @@ func generateResponsesID() string {
 }
 
 func generateItemID() string {
+	return generateItemIDWithPrefix("item")
+}
+
+func generateReasoningItemID() string {
+	return generateItemIDWithPrefix("rs")
+}
+
+func generateItemIDWithPrefix(prefix string) string {
 	b := make([]byte, 12)
 	_, _ = rand.Read(b)
-	return "item_" + hex.EncodeToString(b)
+	return prefix + "_" + hex.EncodeToString(b)
 }
