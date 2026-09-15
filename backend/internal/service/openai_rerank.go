@@ -209,8 +209,15 @@ func writeOpenAIRerankError(c *gin.Context, statusCode int, errType, message str
 // extractOpenAIRerankUsage 解析 rerank 上游的 usage。多数 OpenAI 兼容 reranker
 // （如硅基流动）只回传 total_tokens，部分实现回传 prompt_tokens/completion_tokens，
 // 这里按 embeddings 同款取值链兜底。
+//
+// Jina/Cohere 风格的实现（硅基流动 rerank 即如此）没有顶层 usage，用量放在
+// meta.tokens 中，因此顶层读不到时回退到该路径，否则记账 input_tokens=0。
+// meta.billed_units 与 meta.tokens 数值相同，无需再读。
 func extractOpenAIRerankUsage(body []byte) OpenAIUsage {
 	usage := gjson.GetBytes(body, "usage")
+	if !usage.Exists() || !usage.IsObject() {
+		usage = gjson.GetBytes(body, "meta.tokens")
+	}
 	if !usage.Exists() || !usage.IsObject() {
 		return OpenAIUsage{}
 	}
