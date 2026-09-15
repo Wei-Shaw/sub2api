@@ -668,10 +668,20 @@ readLoop:
 
 		if eventType == "error" || eventType == "response.failed" {
 			markOpenAICyberPolicyEvent(c, message, http.StatusOK, usage)
+			if !wroteDownstream && isOpenAIAPIKeyCapacityFailure(account, message) {
+				lease.MarkBroken()
+				return nil, s.newOpenAIStreamFailoverErrorWithModel(c, account, false, lease.HandshakeHeaders().Get("x-request-id"), message, extractOpenAISSEErrorMessage(message), mappedModel, lease.HandshakeHeaders())
+			}
 		}
 
 		if eventType == "error" {
-			s.handleOpenAIWSErrorEventTransientFailure(ctx, account, mappedModel, lease.HandshakeHeaders(), message)
+			var capacityFailure *OpenAIStreamTerminalError
+			if isOpenAIAPIKeyCapacityFailure(account, message) {
+				upstreamMessage := extractOpenAISSEErrorMessage(message)
+				capacityFailure = s.observeOpenAICapacityTerminalFailure(ctx, account, mappedModel, lease.HandshakeHeaders(), message, upstreamMessage)
+			} else {
+				s.handleOpenAIWSErrorEventTransientFailure(ctx, account, mappedModel, lease.HandshakeHeaders(), message)
+			}
 			errCodeRaw, errTypeRaw, errMsgRaw := parseOpenAIWSErrorEventFields(message)
 			s.persistOpenAIWSRateLimitSignal(ctx, account, lease.HandshakeHeaders(), message, errCodeRaw, errTypeRaw, errMsgRaw, mappedModel)
 			errMsg := strings.TrimSpace(errMsgRaw)
@@ -735,6 +745,10 @@ readLoop:
 						"message": errMsg,
 					},
 				})
+			}
+			if capacityFailure != nil {
+				upstreamTerminalEvent = "response.failed"
+				return resultWithUsage(), capacityFailure
 			}
 			return nil, fmt.Errorf("openai ws error event: %s", errMsg)
 		}

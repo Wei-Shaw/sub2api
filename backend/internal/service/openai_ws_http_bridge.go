@@ -793,7 +793,7 @@ func (s *OpenAIGatewayService) proxyOpenAIWSHTTPBridgeTurn(
 		replayCollector.AddEvent(eventType, upstreamMessage)
 
 		var upstreamEventErr error
-		if officialOpenAIResponses && bareErrorPending && (eventType == "response.completed" || eventType == "response.done") {
+		if officialOpenAIResponses && bareErrorPending && !isOpenAIAPIKeyCapacityFailure(account, bareErrorPayload) && (eventType == "response.completed" || eventType == "response.done") {
 			// Some upstreams emit a recoverable bare error before the authoritative
 			// successful terminal. Do not replace that terminal with a synthetic
 			// failure or retain side effects from the superseded error.
@@ -841,7 +841,7 @@ func (s *OpenAIGatewayService) proxyOpenAIWSHTTPBridgeTurn(
 				return nil, s.newOpenAIStreamFailoverErrorWithModel(c, account, true, resp.Header.Get("x-request-id"), upstreamMessage, errMessage, mappedModel, resp.Header)
 			}
 			if account.Platform != PlatformGrok && !failureAccountSideEffectsApplied {
-				if eventType == "response.failed" || (!officialOpenAIResponses && shouldFailover && !requestScopedCapacity) {
+				if eventType == "response.failed" || isOpenAIAPIKeyCapacityFailure(account, upstreamMessage) || (!officialOpenAIResponses && shouldFailover && !requestScopedCapacity) {
 					failureAccountSideEffectsApplied = s.handleOpenAIWSFailureAccountSideEffects(ctx, account, mappedModel, resp.Header, upstreamMessage)
 				}
 			}

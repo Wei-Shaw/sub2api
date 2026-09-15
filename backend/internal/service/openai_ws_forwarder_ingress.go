@@ -982,6 +982,7 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 
 		responseID := ""
 		usage := OpenAIUsage{}
+		var capacityFailure *OpenAIStreamTerminalError
 		imageCounter := newOpenAIImageOutputCounter()
 		var firstTokenMs *int
 		reqStream := openAIWSPayloadBoolFromRaw(payload, "stream", true)
@@ -1041,9 +1042,21 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 			}
 			if eventType == "error" || eventType == "response.failed" {
 				markOpenAICyberPolicyEvent(c, upstreamMessage, http.StatusOK, &usage)
+				if isOpenAIAPIKeyCapacityFailure(account, upstreamMessage) {
+					message := extractOpenAISSEErrorMessage(upstreamMessage)
+					if !wroteDownstream && turn == 1 {
+						lease.MarkBroken()
+						return nil, s.newOpenAIStreamFailoverErrorWithModel(c, account, false, lease.HandshakeHeaders().Get("x-request-id"), upstreamMessage, message, mappedModel, lease.HandshakeHeaders())
+					}
+					if capacityFailure == nil {
+						capacityFailure = s.observeOpenAICapacityTerminalFailure(ctx, account, mappedModel, lease.HandshakeHeaders(), upstreamMessage, message)
+					}
+				}
 			}
 			if eventType == "error" {
-				s.handleOpenAIWSErrorEventTransientFailure(ctx, account, mappedModel, lease.HandshakeHeaders(), upstreamMessage)
+				if capacityFailure == nil {
+					s.handleOpenAIWSErrorEventTransientFailure(ctx, account, mappedModel, lease.HandshakeHeaders(), upstreamMessage)
+				}
 				errCodeRaw, errTypeRaw, errMsgRaw := parseOpenAIWSErrorEventFields(upstreamMessage)
 				statusCode := openAIWSRejectedFieldRetryHTTPStatus(upstreamMessage)
 				if !wroteDownstream && statusCode == http.StatusBadRequest && rejectedFieldRetryState != nil {
@@ -1210,7 +1223,10 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 				}
 			}
 			if isTerminalEvent {
-				terminalEvent := s.handleOpenAIWSTerminalTransientFailure(ctx, account, mappedModel, lease.HandshakeHeaders(), upstreamMessage)
+				terminalEvent := normalizeOpenAIWSTerminalEvent(eventType)
+				if capacityFailure == nil {
+					terminalEvent = s.handleOpenAIWSTerminalTransientFailure(ctx, account, mappedModel, lease.HandshakeHeaders(), upstreamMessage)
+				}
 				// 客户端已断连时，上游连接的 session 状态不可信，标记 broken 避免回池复用。
 				if clientDisconnected {
 					lease.MarkBroken()

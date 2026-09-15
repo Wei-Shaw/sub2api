@@ -456,6 +456,13 @@ type OverloadCooldownSettings struct {
 	CooldownMinutes int  `json:"cooldown_minutes"`
 }
 
+type OpenAIAPIKeyHealthBreakerSettings struct {
+	Enabled          bool `json:"enabled"`
+	WindowMinutes    int  `json:"window_minutes"`
+	FailureThreshold int  `json:"failure_threshold"`
+	CooldownMinutes  int  `json:"cooldown_minutes"`
+}
+
 // RateLimit429CooldownSettings 429默认回避配置 DTO
 type RateLimit429CooldownSettings struct {
 	Enabled         bool `json:"enabled"`

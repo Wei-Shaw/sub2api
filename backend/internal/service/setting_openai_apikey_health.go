@@ -66,3 +66,22 @@ func (s *SettingService) GetOpenAIAPIKeyHealthBreakerSettings(ctx context.Contex
 	result := *settings
 	return &result, nil
 }
+
+func (s *SettingService) SetOpenAIAPIKeyHealthBreakerSettings(ctx context.Context, settings *OpenAIAPIKeyHealthBreakerSettings) error {
+	if settings == nil {
+		return fmt.Errorf("settings cannot be nil")
+	}
+	normalized := normalizeOpenAIAPIKeyHealthBreakerSettings(settings)
+	if settings.Enabled && *normalized != *settings {
+		return fmt.Errorf("window_minutes and cooldown_minutes must be between 1-60; failure_threshold must be between 1-10000")
+	}
+	data, err := json.Marshal(normalized)
+	if err != nil {
+		return err
+	}
+	if err := s.settingRepo.Set(ctx, SettingKeyOpenAIAPIKeyHealthBreakerSettings, string(data)); err != nil {
+		return fmt.Errorf("set OpenAI API key health breaker settings: %w", err)
+	}
+	s.openAIAPIKeyHealthBreakerCache.Store(&cachedOpenAIAPIKeyHealthBreakerSettings{})
+	return nil
+}

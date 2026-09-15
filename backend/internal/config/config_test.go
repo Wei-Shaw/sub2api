@@ -79,6 +79,28 @@ func TestLoadServerTimingConfig(t *testing.T) {
 	})
 }
 
+func TestLoadServerShutdownTimeout(t *testing.T) {
+	for _, tc := range []struct {
+		value   string
+		want    int
+		invalid bool
+	}{
+		{"", 5, false}, {"0", 0, false}, {"600", 600, false}, {"-1", 0, true}, {"3601", 0, true},
+	} {
+		t.Run(tc.value, func(t *testing.T) {
+			resetViperWithJWTSecret(t)
+			t.Setenv("SERVER_SHUTDOWN_TIMEOUT_SECONDS", tc.value)
+			cfg, err := Load()
+			if tc.invalid {
+				require.ErrorContains(t, err, "server.shutdown_timeout_seconds")
+			} else {
+				require.NoError(t, err)
+				require.Equal(t, tc.want, cfg.Server.ShutdownTimeoutSeconds)
+			}
+		})
+	}
+}
+
 func TestLoadRedisUsernameFromEnvironment(t *testing.T) {
 	resetViperWithJWTSecret(t)
 	t.Setenv("REDIS_USERNAME", "app-user")

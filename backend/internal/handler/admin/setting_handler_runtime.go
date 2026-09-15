@@ -65,6 +65,29 @@ func (h *SettingHandler) GetOverloadCooldownSettings(c *gin.Context) {
 	})
 }
 
+func (h *SettingHandler) GetOpenAIAPIKeyHealthBreakerSettings(c *gin.Context) {
+	settings, err := h.settingService.GetOpenAIAPIKeyHealthBreakerSettings(c.Request.Context())
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, dto.OpenAIAPIKeyHealthBreakerSettings(*settings))
+}
+
+func (h *SettingHandler) UpdateOpenAIAPIKeyHealthBreakerSettings(c *gin.Context) {
+	var req dto.OpenAIAPIKeyHealthBreakerSettings
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "Invalid request: "+err.Error())
+		return
+	}
+	settings := service.OpenAIAPIKeyHealthBreakerSettings(req)
+	if err := h.settingService.SetOpenAIAPIKeyHealthBreakerSettings(c.Request.Context(), &settings); err != nil {
+		response.BadRequest(c, err.Error())
+		return
+	}
+	h.GetOpenAIAPIKeyHealthBreakerSettings(c)
+}
+
 // UpdateOverloadCooldownSettingsRequest 更新529过载冷却配置请求
 type UpdateOverloadCooldownSettingsRequest struct {
 	Enabled         bool `json:"enabled"`
