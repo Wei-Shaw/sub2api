@@ -1339,19 +1339,29 @@ describe('EditAccountModal', () => {
     const embeddingsCheckbox = wrapper.get<HTMLInputElement>(
       '[data-testid="openai-endpoint-capability-embeddings"]'
     )
+    const rerankCheckbox = wrapper.get<HTMLInputElement>(
+      '[data-testid="openai-endpoint-capability-rerank"]'
+    )
 
     expect(chatCheckbox.element.checked).toBe(true)
     expect(embeddingsCheckbox.element.checked).toBe(true)
+    expect(rerankCheckbox.element.checked).toBe(true)
 
     await embeddingsCheckbox.setValue(false)
 
     expect(chatCheckbox.element.checked).toBe(true)
     expect(embeddingsCheckbox.element.checked).toBe(false)
 
+    await rerankCheckbox.setValue(false)
+
+    expect(chatCheckbox.element.checked).toBe(true)
+    expect(rerankCheckbox.element.checked).toBe(false)
+
     await chatCheckbox.setValue(false)
 
     expect(chatCheckbox.element.checked).toBe(true)
     expect(embeddingsCheckbox.element.checked).toBe(false)
+    expect(rerankCheckbox.element.checked).toBe(false)
 
     await wrapper.get('form#edit-account-form').trigger('submit.prevent')
 
