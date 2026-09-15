@@ -1885,7 +1885,7 @@ describe("admin SettingsView platform quota matrix", () => {
     expect(html).toContain("antigravity");
   });
 
-  it("保存时 updateSettings payload 应包含嵌套 default_platform_quotas 对象（含全 5 平台）", async () => {
+  it("保存时 updateSettings payload 应包含嵌套 default_platform_quotas 对象（含全平台）", async () => {
     const wrapper = mountView();
     await flushPromises();
     await openUsersTab(wrapper);
@@ -1913,6 +1913,41 @@ describe("admin SettingsView platform quota matrix", () => {
     // 不应存在旧扁平字段
     expect(payload).not.toHaveProperty("default_platform_quota_anthropic_daily");
     expect(payload).not.toHaveProperty("default_platform_quota_openai_weekly");
+  });
+
+  it("预置 ollama_cloud/kimi 等新平台默认配额后不做修改直接保存，payload 仍包含（整体替换不丢行）", async () => {
+    getSettings.mockResolvedValueOnce({
+      ...baseSettingsResponse,
+      default_platform_quotas: {
+        anthropic:   { daily: 5, weekly: null, monthly: null },
+        ollama_cloud: { daily: 3, weekly: 30, monthly: 300 },
+        kimi:         { daily: 1, weekly: null, monthly: null },
+        zhipu:        { daily: null, weekly: 2, monthly: null },
+        deepseek:     { daily: null, weekly: null, monthly: 4 },
+        minimax:      { daily: 0.5, weekly: null, monthly: null },
+        opencode_go:  { daily: 0.6, weekly: 6, monthly: 60 },
+      },
+    });
+
+    const wrapper = mountView();
+    await flushPromises();
+    await openUsersTab(wrapper);
+
+    await wrapper.find("form").trigger("submit.prevent");
+    await flushPromises();
+
+    const payload = updateSettings.mock.calls.at(-1)![0] as Record<string, unknown>;
+    const quotas = payload["default_platform_quotas"] as Record<string, Record<string, unknown>>;
+
+    // 整体替换语义下，这些平台配额行必须原样出现在提交 payload 中
+    expect(quotas["ollama_cloud"]).toEqual({ daily: 3, weekly: 30, monthly: 300 });
+    expect(quotas["kimi"]).toEqual({ daily: 1, weekly: null, monthly: null });
+    expect(quotas["zhipu"]).toEqual({ daily: null, weekly: 2, monthly: null });
+    expect(quotas["deepseek"]).toEqual({ daily: null, weekly: null, monthly: 4 });
+    expect(quotas["minimax"]).toEqual({ daily: 0.5, weekly: null, monthly: null });
+    expect(quotas["opencode_go"]).toEqual({ daily: 0.6, weekly: 6, monthly: 60 });
+    // 已知平台不受影响
+    expect(quotas["anthropic"]).toEqual({ daily: 5, weekly: null, monthly: null });
   });
 
   it("加载后 form.default_platform_quotas 含全 5 平台，从嵌套 JSON 正确读取数值", async () => {

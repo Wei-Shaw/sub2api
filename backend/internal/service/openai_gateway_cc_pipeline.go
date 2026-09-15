@@ -142,6 +142,11 @@ func (s *OpenAIGatewayService) failoverOpenAIUpstreamHTTPError(
 func (s *OpenAIGatewayService) openAIChatCompletionsTargetURL(account *Account) (string, error) {
 	baseURL := account.GetOpenAIBaseURL()
 	if baseURL == "" {
+		if account.IsMultiProtocolAPIKey() {
+			// 多协议网关缺 base 时必须显式失败：回落官方域名会把第三方 key
+			// 明文发到 api.openai.com。
+			return "", fmt.Errorf("account %d has no openai base url", account.ID)
+		}
 		baseURL = "https://api.openai.com"
 	}
 	validatedURL, err := s.validateUpstreamBaseURL(baseURL)
@@ -182,6 +187,11 @@ func (s *OpenAIGatewayService) sendCCUpstreamRequest(
 	userAgent string,
 	grokCacheIdentity string,
 ) (*http.Response, error) {
+	// Ollama Cloud 请求期定价预检（raw CC 出站）：未定价模型在任何上游 I/O 之前
+	// 显式 400，且 400 已由 helper 写出。非 failover 错误 ⇒ 不换号、不写账号处置。
+	if err := s.enforceOllamaCloudRequestPricingPreflight(ctx, c, account, body); err != nil {
+		return nil, err
+	}
 	upstreamCtx, releaseUpstreamCtx := detachUpstreamContext(ctx)
 	upstreamReq, err := http.NewRequestWithContext(upstreamCtx, http.MethodPost, targetURL, bytes.NewReader(body))
 	releaseUpstreamCtx()
@@ -254,10 +264,13 @@ type ccStreamScanState struct {
 // scanCCStream 驱动两条 CC 回退路径共享的 SSE 读循环：提取 data 行、在 [DONE]
 // 哨兵处停止、保留最新 usage、记录首 token 时延，并把每个解析成功的 chunk 交给
 // emit 回调做各自的协议转换与写出。读错误按既有约定过滤 context 取消类噪声后
-// 记入 Warn 日志。
+// 记入 Warn 日志。account 与 upstreamModel 用于在解析成 chunk 之前对原始 SSE 行
+// 做 Ollama Cloud DeepSeek reasoning 归一化（未命中时字节级透传，语义等同不挂）。
 func (s *OpenAIGatewayService) scanCCStream(
 	c *gin.Context,
 	resp *http.Response,
+	account *Account,
+	upstreamModel string,
 	logPrefix string,
 	requestID string,
 	startTime time.Time,
@@ -268,6 +281,9 @@ func (s *OpenAIGatewayService) scanCCStream(
 	scanner := s.newUpstreamSSEScanner(resp.Body)
 	for scanner.Scan() {
 		line := scanner.Text()
+		// Ollama Cloud DeepSeek 出站：在解析成 chunk 之前把 reasoning/thinking 归一化
+		// 成 reasoning_content，让协议转换器看到与官方 DeepSeek 完全一致的形态。
+		line = applyOllamaCloudRawChatCompletionsSSELine(account, upstreamModel, line)
 		payload, ok := extractOpenAISSEDataLine(line)
 		if !ok {
 			continue
@@ -326,10 +342,14 @@ func logCCStreamMissingDoneSentinel(logPrefix, requestID string) {
 }
 
 // readCCUpstreamJSONResponse 读取并解析 CC 非流式 JSON 响应，失败时以调用方
-// 端点格式回写错误；成功时顺带提取 usage。
+// 端点格式回写错误；成功时顺带提取 usage。account 与 upstreamModel 用于在解析
+// 成结构体之前对原始响应体做 Ollama Cloud DeepSeek reasoning 归一化（未命中时
+// 字节级透传，语义等同不挂）。
 func (s *OpenAIGatewayService) readCCUpstreamJSONResponse(
 	c *gin.Context,
 	resp *http.Response,
+	account *Account,
+	upstreamModel string,
 	writeError compatErrorWriter,
 ) (*apicompat.ChatCompletionsResponse, OpenAIUsage, error) {
 	respBody, err := ReadUpstreamResponseBody(resp.Body, s.cfg, c, openAITooLargeError)
@@ -339,6 +359,11 @@ func (s *OpenAIGatewayService) readCCUpstreamJSONResponse(
 		}
 		return nil, OpenAIUsage{}, fmt.Errorf("read upstream body: %w", err)
 	}
+
+	// Ollama Cloud DeepSeek 出站：在解析成结构体之前把 message/delta 里的
+	// reasoning/thinking 归一化成 reasoning_content，让协议转换器看到与官方
+	// DeepSeek 完全一致的形态。
+	respBody = applyOllamaCloudRawChatCompletionsResponse(account, upstreamModel, respBody)
 
 	var ccResp apicompat.ChatCompletionsResponse
 	if err := json.Unmarshal(respBody, &ccResp); err != nil {

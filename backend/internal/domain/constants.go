@@ -31,16 +31,24 @@ const (
 	// PlatformOpenCodeGo 是 OpenCode 平台（账号类型 Zen 按量 / Go 订阅）。
 	// 值保持 opencode_go 以兼容已落库的分组、配额与 Composite 路由 CHECK。
 	PlatformOpenCodeGo = "opencode_go"
-	PlatformComposite  = "composite"
+	// PlatformOllamaCloud 是 Ollama Cloud 订阅制聚合上游（多协议 API Key 网关）。
+	PlatformOllamaCloud = "ollama_cloud"
+	PlatformComposite   = "composite"
 )
 
 // Account mode constants 区分国产供应商的「按量付费（余额）」与「Coding Plan」两种接入方式。
 // 存储于 credentials["account_mode"]，决定 base_url 预设与额度监控方式。
+// ollama_cloud 的两代额度语义同存于此键：legacy 是 5h/7d 滚动窗口（与 Go 订阅同类，
+// 受阈值停调保护）；credits 是 2026-08-31 新定价后的月度美元信用池（无滚动窗口，
+// 用完不硬停，不走阈值停调）。
 const (
 	AccountModePayG   = "payg"   // 按量付费：消耗余额，做余额检测冷却
 	AccountModeCoding = "coding" // Coding Plan：滚动用量窗口冷却（5h / weekly）
 	AccountModeZen    = "zen"    // OpenCode Zen：按量付费，https://opencode.ai/zen/v1
 	AccountModeGo     = "go"     // OpenCode Go：订阅额度窗口，https://opencode.ai/zen/go/v1
+
+	AccountModeOllamaLegacy  = "ollama_legacy"  // Ollama Cloud legacy：5h / 7d 滚动窗口
+	AccountModeOllamaCredits = "ollama_credits" // Ollama Cloud 月度美元信用池
 )
 
 // API protocol constants 国产供应商的上游 API 协议维度。存储于

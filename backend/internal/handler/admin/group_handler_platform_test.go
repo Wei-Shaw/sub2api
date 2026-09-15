@@ -12,9 +12,9 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// 回归分组平台枚举:kimi/zhipu/deepseek/opencode_go 必须能通过 Create/Update 的
-// binding 校验（历史 bug:调度/路由链路已支持这些平台,但 oneof 白名单漏加,
-// 导致平台分组无法创建、账号"无可用分组"）;非法值仍须被拒。
+// 回归分组平台枚举:kimi/zhipu/deepseek/opencode_go/ollama_cloud 必须能通过
+// Create/Update 的 binding 校验（历史 bug:调度/路由链路已支持这些平台,但 oneof
+// 白名单漏加,导致平台分组无法创建、账号"无可用分组"）;非法值仍须被拒。
 func bindGroupPlatformJSON(t *testing.T, target any, body string) error {
 	t.Helper()
 	gin.SetMode(gin.TestMode)
@@ -27,7 +27,7 @@ func bindGroupPlatformJSON(t *testing.T, target any, body string) error {
 func TestGroupPlatformBinding_AllowedPlatforms(t *testing.T) {
 	allowed := []string{
 		"anthropic", "openai", "gemini", "antigravity", "grok",
-		"kimi", "zhipu", "deepseek", "minimax", "opencode_go", "composite",
+		"kimi", "zhipu", "deepseek", "minimax", "opencode_go", "ollama_cloud", "composite",
 	}
 	for _, platform := range allowed {
 		t.Run("create_"+platform, func(t *testing.T) {
@@ -72,7 +72,7 @@ func TestGroupPlatformBinding_RejectsInvalidPlatforms(t *testing.T) {
 }
 
 func TestCompositeRouteTargetPlatform_AllowsCNProviders(t *testing.T) {
-	for _, platform := range []string{"kimi", "zhipu", "deepseek", "minimax", "opencode_go"} {
+	for _, platform := range []string{"kimi", "zhipu", "deepseek", "minimax", "opencode_go", "ollama_cloud"} {
 		var req CompositeRouteRequest
 		body := fmt.Sprintf(`{"public_model":"m","target_platform":%q}`, platform)
 		require.NoError(t, bindGroupPlatformJSON(t, &req, body))

@@ -2,6 +2,7 @@ package routes
 
 import (
 	"errors"
+	"fmt"
 	"net/http"
 	"strings"
 
@@ -45,26 +46,10 @@ func RegisterGatewayRoutes(
 	// 保证校验发生在合成路由改写与调度之前，且只看客户端书写的模型名。
 	groupModelAllowlist := middleware.GroupModelAllowlist()
 
-	isOpenAIResponsesCompatibleGatewayPlatform := func(c *gin.Context) bool {
-		switch getGroupPlatform(c) {
-		case service.PlatformOpenAI, service.PlatformGrok,
-			service.PlatformKimi, service.PlatformZhipu, service.PlatformDeepseek,
-			service.PlatformMiniMax, service.PlatformOpenCodeGo:
-			// 国产 OpenAI 兼容供应商与 openai/grok 一样经 OpenAI 网关转发。
-			return true
-		default:
-			return false
-		}
-	}
+	// 单目标与账号池统一走 dispatcher：池候选全属 OpenAI 兼容族进 OpenAI
+	// CountTokens，其余（跨族池 / 非兼容族单目标）落通用网关。
 	countTokensHandler := func(c *gin.Context) {
-		switch getGroupPlatform(c) {
-		case service.PlatformOpenAI, service.PlatformKimi, service.PlatformZhipu, service.PlatformDeepseek, service.PlatformMiniMax, service.PlatformOpenCodeGo:
-			h.OpenAIGateway.CountTokens(c)
-		case service.PlatformGrok:
-			h.OpenAIGateway.GrokCountTokens(c)
-		default:
-			h.Gateway.CountTokens(c)
-		}
+		dispatchOpenAICompatibleCountTokens(c, h.OpenAIGateway.CountTokens, h.OpenAIGateway.GrokCountTokens, h.Gateway.CountTokens)
 	}
 	codexModelsHandler := func(c *gin.Context) {
 		dispatchCodexModelsGateway(c, h.OpenAIGateway.CodexModels, h.Gateway.CodexModels)
@@ -196,11 +181,7 @@ func RegisterGatewayRoutes(
 	{
 		// /v1/messages: auto-route based on group platform
 		gateway.POST("/messages", func(c *gin.Context) {
-			if isOpenAIResponsesCompatibleGatewayPlatform(c) {
-				h.OpenAIGateway.Messages(c)
-				return
-			}
-			h.Gateway.Messages(c)
+			dispatchOpenAICompatibleGateway(c, h.OpenAIGateway.Messages, h.Gateway.Messages)
 		})
 		// /v1/messages/count_tokens: OpenAI bridges upstream, Grok estimates
 		// locally, and Anthropic-compatible platforms retain their existing path.
@@ -216,18 +197,10 @@ func RegisterGatewayRoutes(
 		gateway.GET("/live/:call_id", h.OpenAIGateway.LiveSideband)
 		// OpenAI Responses API: auto-route based on group platform
 		gateway.POST("/responses", func(c *gin.Context) {
-			if isOpenAIResponsesCompatibleGatewayPlatform(c) {
-				h.OpenAIGateway.Responses(c)
-				return
-			}
-			h.Gateway.Responses(c)
+			dispatchOpenAICompatibleGateway(c, h.OpenAIGateway.Responses, h.Gateway.Responses)
 		})
 		gateway.POST("/responses/*subpath", guardResponsesSubpath(func(c *gin.Context) {
-			if isOpenAIResponsesCompatibleGatewayPlatform(c) {
-				h.OpenAIGateway.Responses(c)
-				return
-			}
-			h.Gateway.Responses(c)
+			dispatchOpenAICompatibleGateway(c, h.OpenAIGateway.Responses, h.Gateway.Responses)
 		}))
 		gateway.POST("/alpha/search", textBodyLimit, h.OpenAIGateway.AlphaSearch)
 		gateway.GET("/responses", func(c *gin.Context) {
@@ -235,11 +208,7 @@ func RegisterGatewayRoutes(
 		})
 		// OpenAI Chat Completions API: auto-route based on group platform
 		gateway.POST("/chat/completions", func(c *gin.Context) {
-			if isOpenAIResponsesCompatibleGatewayPlatform(c) {
-				h.OpenAIGateway.ChatCompletions(c)
-				return
-			}
-			h.Gateway.ChatCompletions(c)
+			dispatchOpenAICompatibleGateway(c, h.OpenAIGateway.ChatCompletions, h.Gateway.ChatCompletions)
 		})
 		gateway.POST("/embeddings", textBodyLimit, func(c *gin.Context) {
 			if !isOpenAIOnlyEndpointGatewayPlatform(c) {
@@ -357,11 +326,7 @@ func RegisterGatewayRoutes(
 
 	// OpenAI Responses API（不带v1前缀的别名）— auto-route based on group platform
 	responsesHandler := func(c *gin.Context) {
-		if isOpenAIResponsesCompatibleGatewayPlatform(c) {
-			h.OpenAIGateway.Responses(c)
-			return
-		}
-		h.Gateway.Responses(c)
+		dispatchOpenAICompatibleGateway(c, h.OpenAIGateway.Responses, h.Gateway.Responses)
 	}
 	// 根路径别名共用中间件链：白名单准入在 apiKeyAuth 之后、compositeTarget
 	// 之前，避免逐条路由手工维护链导致漏挂。
@@ -392,11 +357,7 @@ func RegisterGatewayRoutes(
 	}
 	// OpenAI Chat Completions API（不带v1前缀的别名）— auto-route based on group platform
 	rootRoute(http.MethodPost, "/chat/completions", bodyLimit, func(c *gin.Context) {
-		if isOpenAIResponsesCompatibleGatewayPlatform(c) {
-			h.OpenAIGateway.ChatCompletions(c)
-			return
-		}
-		h.Gateway.ChatCompletions(c)
+		dispatchOpenAICompatibleGateway(c, h.OpenAIGateway.ChatCompletions, h.Gateway.ChatCompletions)
 	})
 	rootRoute(http.MethodPost, "/embeddings", textBodyLimit, func(c *gin.Context) {
 		if !isOpenAIOnlyEndpointGatewayPlatform(c) {
@@ -539,6 +500,120 @@ func getGroupPlatform(c *gin.Context) string {
 	return apiKey.Group.Platform
 }
 
+// isOpenAICompatibleGatewayFamilyPlatform 报告单个平台是否经 OpenAI 网关转发
+// （openai/grok/国产 OpenAI 兼容供应商/OpenCode Go/Ollama Cloud）。
+func isOpenAICompatibleGatewayFamilyPlatform(platform string) bool {
+	switch platform {
+	case service.PlatformOpenAI, service.PlatformGrok,
+		service.PlatformKimi, service.PlatformZhipu, service.PlatformDeepseek,
+		service.PlatformMiniMax, service.PlatformOpenCodeGo, service.PlatformOllamaCloud:
+		// 国产 OpenAI 兼容供应商与 openai/grok 一样经 OpenAI 网关转发。
+		return true
+	default:
+		return false
+	}
+}
+
+// compositePoolCandidatePlatforms 返回 composite 账号池请求的候选平台集合；
+// 非池请求（未写池候选）返回 false。与 service pool 语义一致：已有明确
+// resolved endpoint pin（如 Gemini fallback、显式 single 决策）时按 single
+// 处理——候选数据保留在 ctx 但不作为活跃池。
+func compositePoolCandidatePlatforms(c *gin.Context) ([]string, bool) {
+	if c == nil || c.Request == nil {
+		return nil, false
+	}
+	if _, resolved := service.ResolvedTargetPlatformFromContext(c.Request.Context()); resolved {
+		return nil, false
+	}
+	candidates := service.CompositeCandidatePlatformsFromContext(c.Request.Context())
+	if len(candidates) == 0 {
+		return nil, false
+	}
+	return candidates, true
+}
+
+// writeCompositeRouteAdmissionError 按实际入站 endpoint 选择错误信封：
+// messages 系列（Anthropic 协议入口）沿用 {"type":"error","error":{...}}，
+// 其余 OpenAI 端点沿用 {"error":{...}}，随后 Abort。
+func writeCompositeRouteAdmissionError(c *gin.Context, status int, message string) {
+	service.MarkOpsClientBusinessLimited(c, service.OpsClientBusinessLimitedReasonLocalModelConfiguration)
+	envelope := gin.H{"error": gin.H{"type": "invalid_request_error", "message": message}}
+	if c.Request != nil && c.Request.URL != nil && strings.Contains(c.Request.URL.Path, "/messages") {
+		envelope = gin.H{"type": "error", "error": gin.H{"type": "invalid_request_error", "message": message}}
+	}
+	c.JSON(status, envelope)
+	c.Abort()
+}
+
+// isCompositeOpenAIFamilyPool 报告账号池候选是否全部属于 OpenAI 兼容族。
+// 池的 handler 家族只由族归属决定，与池大小无关。
+func isCompositeOpenAIFamilyPool(candidates []string) bool {
+	if len(candidates) == 0 {
+		return false
+	}
+	for _, platform := range candidates {
+		if !isOpenAICompatibleGatewayFamilyPlatform(platform) {
+			return false
+		}
+	}
+	return true
+}
+
+// isOpenAIResponsesCompatibleGatewayPlatform 报告请求是否应进入 OpenAI 兼容族
+// handler。账号池请求没有单一目标平台：池候选全部属于兼容族才进入，混入其他
+// 族的池返回 false 落通用网关（generic handler 按选中账号的协议能力分发，
+// 不再显式拒绝），不允许按池大小或猜测选族。
+func isOpenAIResponsesCompatibleGatewayPlatform(c *gin.Context) bool {
+	if candidates, ok := compositePoolCandidatePlatforms(c); ok {
+		return isCompositeOpenAIFamilyPool(candidates)
+	}
+	return isOpenAICompatibleGatewayFamilyPlatform(getGroupPlatform(c))
+}
+
+// dispatchOpenAICompatibleGateway 把文本端点（messages/responses/chat
+// completions）路由进 OpenAI 兼容族：账号池候选全部属于兼容族 → OpenAI 网关；
+// 其余（跨族池 / 全原生协议族池）落通用网关——generic handler 在池激活时按
+// 选中账号的协议能力分发转发，不信任「一定有 anthropic 能力」；单目标沿用
+// 既有族判断落通用网关。
+func dispatchOpenAICompatibleGateway(c *gin.Context, openAIHandler, genericHandler gin.HandlerFunc) {
+	if candidates, ok := compositePoolCandidatePlatforms(c); ok {
+		if isCompositeOpenAIFamilyPool(candidates) {
+			openAIHandler(c)
+			return
+		}
+		genericHandler(c)
+		return
+	}
+	if isOpenAICompatibleGatewayFamilyPlatform(getGroupPlatform(c)) {
+		openAIHandler(c)
+		return
+	}
+	genericHandler(c)
+}
+
+// dispatchOpenAICompatibleCountTokens 沿用 count_tokens 的既有语义：openai 与
+// 国产兼容供应商走 OpenAI CountTokens，grok 走本地估算；账号池候选全部属于
+// 兼容族时进入 OpenAI CountTokens（沿用其原有端点能力/不支持语义），其余池落
+// 通用 CountTokens（generic 链路对不可计数账号按排除重选处理）。
+func dispatchOpenAICompatibleCountTokens(c *gin.Context, compatibleHandler, grokHandler, genericHandler gin.HandlerFunc) {
+	if candidates, ok := compositePoolCandidatePlatforms(c); ok {
+		if isCompositeOpenAIFamilyPool(candidates) {
+			compatibleHandler(c)
+			return
+		}
+		genericHandler(c)
+		return
+	}
+	switch getGroupPlatform(c) {
+	case service.PlatformOpenAI, service.PlatformKimi, service.PlatformZhipu, service.PlatformDeepseek, service.PlatformMiniMax, service.PlatformOpenCodeGo, service.PlatformOllamaCloud:
+		compatibleHandler(c)
+	case service.PlatformGrok:
+		grokHandler(c)
+	default:
+		genericHandler(c)
+	}
+}
+
 func compositeTargetPlatformMiddleware(resolver *service.CompositeRouteResolver) gin.HandlerFunc {
 	if resolver == nil {
 		resolver = service.NewCompositeRouteResolver(nil)
@@ -579,13 +654,19 @@ func compositeTargetPlatformMiddleware(resolver *service.CompositeRouteResolver)
 				c.Abort()
 				return
 			}
-			if decision.Matched {
-				c.Request = c.Request.WithContext(service.WithCompositeRouteDecision(c.Request.Context(), decision))
-				if upstreamModel := strings.TrimSpace(decision.UpstreamModel); upstreamModel != "" && upstreamModel != model && gjson.ValidBytes(body) {
-					if _, modelPath := requestmodel.JSONModelPathForRoute(routePath, body); modelPath != "" {
-						if rewritten, rewriteErr := sjson.SetBytes(body, modelPath, upstreamModel); rewriteErr == nil {
-							body = rewritten
-						}
+			if !decision.Matched {
+				// composite 请求的模型既无显式路由、也无账号映射/候选池可归入
+				// 具体平台：继续放行只会落到通用网关并按通用协议报错。对
+				// composite 在入口明确以请求错误拒绝（带模型名与原因），信封
+				// 按入站 endpoint 协议选择。
+				writeCompositeRouteAdmissionError(c, http.StatusBadRequest, fmt.Sprintf("Model %q cannot be resolved to any platform in this composite group (%s)", model, decision.Reason))
+				return
+			}
+			c.Request = c.Request.WithContext(service.WithCompositeRouteDecision(c.Request.Context(), decision))
+			if upstreamModel := strings.TrimSpace(decision.UpstreamModel); upstreamModel != "" && upstreamModel != model && gjson.ValidBytes(body) {
+				if _, modelPath := requestmodel.JSONModelPathForRoute(routePath, body); modelPath != "" {
+					if rewritten, rewriteErr := sjson.SetBytes(body, modelPath, upstreamModel); rewriteErr == nil {
+						body = rewritten
 					}
 				}
 			}

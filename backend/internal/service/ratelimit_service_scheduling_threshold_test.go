@@ -228,3 +228,81 @@ func TestRateLimitService_ApplyAccountSchedulingThreshold_UnsupportedPlatformDoe
 	require.Nil(t, account.TempUnschedulableUntil)
 	require.Empty(t, account.TempUnschedulableReason)
 }
+
+func TestRateLimitService_ApplyAccountSchedulingThreshold_OllamaCloudLegacySetsTempUnschedulable(t *testing.T) {
+	accountSchedulingThresholdsSF.Forget(SettingKeyAccountSchedulingThresholds)
+	accountSchedulingThresholdsCache.Store(&cachedAccountSchedulingThresholds{})
+
+	settingsRepo := newMockSettingRepo()
+	settingsRepo.data[SettingKeyAccountSchedulingThresholds] = `{"ollama_cloud":80}`
+
+	accountRepo := &rateLimitAccountRepoStub{}
+	rl := NewRateLimitService(accountRepo, nil, &config.Config{}, nil, nil)
+	rl.SetSettingService(NewSettingService(settingsRepo, &config.Config{}))
+
+	until := time.Now().UTC().Add(2 * time.Hour)
+	account := &Account{
+		ID:          3001,
+		Platform:    PlatformOllamaCloud,
+		Type:        AccountTypeAPIKey,
+		Status:      StatusActive,
+		Schedulable: true,
+		Credentials: map[string]any{
+			"account_mode": "ollama_legacy",
+		},
+		Extra: ollamaCloudSnapshotExtra(OllamaCloudUsageStatusOK, map[string]any{
+			"five_hour": ollamaCloudUsageWindowFixture(95, until),
+			"seven_day": ollamaCloudUsageWindowFixture(40, until.Add(5*24*time.Hour)),
+		}),
+	}
+
+	blocked := rl.ApplyAccountSchedulingThreshold(context.Background(), account)
+
+	require.True(t, blocked)
+	require.Equal(t, 1, accountRepo.tempCalls)
+	require.NotNil(t, account.TempUnschedulableUntil)
+	require.WithinDuration(t, until, *account.TempUnschedulableUntil, time.Second)
+	require.True(t, IsAccountSchedulingThresholdReason(accountRepo.lastTempReason))
+
+	var payload map[string]any
+	require.NoError(t, json.Unmarshal([]byte(accountRepo.lastTempReason), &payload))
+	require.Equal(t, PlatformOllamaCloud, payload["platform"])
+	require.Equal(t, "5h", payload["window"])
+	require.Equal(t, float64(80), payload["threshold_percent"])
+	require.Equal(t, float64(95), payload["used_percent"])
+}
+
+func TestRateLimitService_ApplyAccountSchedulingThreshold_OllamaCloudCreditsDoesNotBlock(t *testing.T) {
+	accountSchedulingThresholdsSF.Forget(SettingKeyAccountSchedulingThresholds)
+	accountSchedulingThresholdsCache.Store(&cachedAccountSchedulingThresholds{})
+
+	settingsRepo := newMockSettingRepo()
+	settingsRepo.data[SettingKeyAccountSchedulingThresholds] = `{"ollama_cloud":80}`
+
+	accountRepo := &rateLimitAccountRepoStub{}
+	rl := NewRateLimitService(accountRepo, nil, &config.Config{}, nil, nil)
+	rl.SetSettingService(NewSettingService(settingsRepo, &config.Config{}))
+
+	until := time.Now().UTC().Add(2 * time.Hour)
+	account := &Account{
+		ID:          3002,
+		Platform:    PlatformOllamaCloud,
+		Type:        AccountTypeAPIKey,
+		Status:      StatusActive,
+		Schedulable: true,
+		Credentials: map[string]any{
+			"account_mode": "ollama_credits",
+		},
+		Extra: ollamaCloudSnapshotExtra(OllamaCloudUsageStatusOK, map[string]any{
+			"five_hour": ollamaCloudUsageWindowFixture(100, until),
+			"seven_day": ollamaCloudUsageWindowFixture(100, until.Add(5*24*time.Hour)),
+		}),
+	}
+
+	blocked := rl.ApplyAccountSchedulingThreshold(context.Background(), account)
+
+	require.False(t, blocked)
+	require.Equal(t, 0, accountRepo.tempCalls)
+	require.Nil(t, account.TempUnschedulableUntil)
+	require.Empty(t, account.TempUnschedulableReason)
+}

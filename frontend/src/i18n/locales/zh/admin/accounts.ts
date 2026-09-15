@@ -128,6 +128,15 @@ export default {
       usageWindowsHint: '“5h / 7d”是上游账号（如 OpenAI ChatGPT、Claude）官方的滚动用量窗口限制，由上游对账号设定，并非 sub2api 配置，也与你映射的模型无关。窗口滚动到期后用量会自动重置，无法在 sub2api 端解除该限制。',
       ollamaCloud: {
         title: 'Ollama Cloud 用量',
+        accountMode: {
+          title: '账号模式',
+          legacy: 'Legacy（滚动窗口）',
+          legacyDesc: '按官方 5h / 7d 滚动窗口配额计费与监控',
+          credits: 'Credits（月度信用池）',
+          creditsDesc: '按月度美元信用额度计费与监控',
+          monthlyCreditUsd: '月度信用额度（USD）',
+          monthlyCreditUsdPlaceholder: '例如 60'
+        },
         sessionSecurityHint: '浏览器会话会加密落库，且只发送到固定的 Ollama 官方设置页。',
         configured: '已配置',
         notConfigured: '未配置',
@@ -147,6 +156,7 @@ export default {
         sevenDay: '7 天',
         sevenDayShort: '7d',
         balance: '余额',
+        monthlyPoolShort: '月池',
         models: '模型',
         status: '状态',
         updatedAt: '更新时间',
@@ -154,6 +164,11 @@ export default {
         unauthorized: '会话已过期',
         failed: '刷新失败',
         windowWithReset: '已用 {percent}，{reset} 重置',
+        eligibleReason: {
+          platform_not_eligible: '平台不在 Ollama Cloud 用量白名单内',
+          wrong_account_type: '仅 API Key 账号支持用量查询',
+          unsupported_base_url: 'base_url 非官方 ollama.com，无法查询用量'
+        },
         loadFailed: '加载 Ollama Cloud 用量设置失败',
         sessionSaved: 'Ollama 浏览器会话已保存',
         sessionSaveFailed: '保存 Ollama 浏览器会话失败',
@@ -312,6 +327,7 @@ export default {
         deepseek: 'DeepSeek',
         minimax: 'MiniMax',
         opencode_go: 'OpenCode',
+        ollama_cloud: 'Ollama Cloud',
       },
       cnProviders: {
         accountMode: {

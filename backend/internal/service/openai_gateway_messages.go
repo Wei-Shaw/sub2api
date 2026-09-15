@@ -331,6 +331,12 @@ func (s *OpenAIGatewayService) ForwardAsAnthropic(
 		}
 	}
 
+	// Ollama Cloud 原生 Responses 出站 clamp：与 /v1/responses 入站路径（Forward）同一
+	// 判据（实际 Responses 上游为 ollama.com + 映射后的出站模型为 DeepSeek 系），在此
+	// 转换路径（Anthropic Messages 入站 → Responses 出站）独立补齐，模型映射与服务层
+	// 改写全部完成后、构建上游请求前最后一次改写 body。
+	responsesBody = ollamaCloudClampResponsesMaxOutputTokensBody(account, upstreamModel, responsesBody)
+
 	// 5. Get access token
 	token, _, err := s.getRequestCredential(ctx, c, account)
 	if err != nil {
@@ -389,6 +395,9 @@ func (s *OpenAIGatewayService) ForwardAsAnthropic(
 	if account.ProxyID != nil && account.Proxy != nil {
 		proxyURL = account.Proxy.URL()
 	}
+	// Codex transform 等可能在初始映射后再归一模型；发送前记录最终 slug
+	// （端点已在步骤 6 前按实际分流记录），失败路径的错误日志保留真实模型。
+	SetOpsUpstreamModel(c, upstreamModel)
 	// Grok may reject encrypted reasoning replayed under a different OAuth
 	// account/cache identity. Match forwardGrokResponses: one strip+retry before
 	// treating the 400 as a hard failure / failover trigger.

@@ -49,6 +49,7 @@ vi.mock('@/components/common/BaseDialog.vue', () => ({
 }))
 
 import UserPlatformQuotaModal from '../UserPlatformQuotaModal.vue'
+import { QUOTA_PLATFORMS } from '@/api/admin/settings'
 import type { UserSubscription } from '@/types'
 
 function makeUser(overrides: { subscriptions?: UserSubscription[] } = {}) {
@@ -79,14 +80,12 @@ describe('UserPlatformQuotaModal', () => {
     expect(apiMocks.getPlatformQuotas).toHaveBeenCalledWith(99)
   })
 
-  it('空数据渲染 5 个 platform 行', async () => {
+  it('空数据渲染全平台（对齐后端 AllowedQuotaPlatforms）行', async () => {
     const w = await mountAndOpen()
     const html = w.html()
-    expect(html).toContain('anthropic')
-    expect(html).toContain('openai')
-    expect(html).toContain('gemini')
-    expect(html).toContain('antigravity')
-    expect(html).toContain('grok')
+    for (const p of QUOTA_PLATFORMS) {
+      expect(html).toContain(p)
+    }
   })
 
   it('已有数据正确填充 limit input', async () => {
@@ -98,13 +97,13 @@ describe('UserPlatformQuotaModal', () => {
     })
     const w = await mountAndOpen()
     const inputs = w.findAll('input[type=number]')
-    // 5 platforms × 3 windows = 15 inputs
-    expect(inputs.length).toBe(15)
+    // 全平台 × 3 windows = QUOTA_PLATFORMS.length × 3 inputs
+    expect(inputs.length).toBe(QUOTA_PLATFORMS.length * 3)
     // 第一个 input 是 anthropic.daily = 10
     expect((inputs[0].element as HTMLInputElement).value).toBe('10')
   })
 
-  it('保存提交完整 5 platform payload', async () => {
+  it('保存提交完整全平台 payload', async () => {
     apiMocks.getPlatformQuotas.mockResolvedValueOnce({
       platform_quotas: [
         { platform: 'openai', daily_limit_usd: null, weekly_limit_usd: 20, monthly_limit_usd: null,
@@ -121,9 +120,77 @@ describe('UserPlatformQuotaModal', () => {
     expect(apiMocks.updatePlatformQuotas).toHaveBeenCalledTimes(1)
     const [uid, payload] = apiMocks.updatePlatformQuotas.mock.calls[0]
     expect(uid).toBe(99)
-    expect(payload).toHaveLength(5) // 5 platforms always submitted
+    expect(payload).toHaveLength(QUOTA_PLATFORMS.length) // 全平台总是提交（整体替换语义）
     const openai = payload.find((p: any) => p.platform === 'openai')
     expect(openai.weekly_limit_usd).toBe(20)
+  })
+
+  it('预置 ollama_cloud 配额后不做修改直接保存，payload 仍包含该配额（整体替换不丢行）', async () => {
+    apiMocks.getPlatformQuotas.mockResolvedValueOnce({
+      platform_quotas: [
+        { platform: 'ollama_cloud', daily_limit_usd: 3, weekly_limit_usd: 30, monthly_limit_usd: 300,
+          daily_usage_usd: 0.5, weekly_usage_usd: 2, monthly_usage_usd: 10 },
+      ],
+    })
+    const w = await mountAndOpen()
+    const saveBtn = w.findAll('button').find((b) => b.text() === 'admin.users.platformQuota.save')
+    await saveBtn!.trigger('click')
+    await flushPromises()
+    expect(apiMocks.updatePlatformQuotas).toHaveBeenCalledTimes(1)
+    const [, payload] = apiMocks.updatePlatformQuotas.mock.calls[0]
+    const ollama = payload.find((p: any) => p.platform === 'ollama_cloud')
+    expect(ollama).toEqual({
+      platform: 'ollama_cloud',
+      daily_limit_usd: 3,
+      weekly_limit_usd: 30,
+      monthly_limit_usd: 300,
+    })
+  })
+
+  it('kimi/zhipu/deepseek/minimax/opencode_go 预置配额保存后不丢', async () => {
+    apiMocks.getPlatformQuotas.mockResolvedValueOnce({
+      platform_quotas: (['kimi', 'zhipu', 'deepseek', 'minimax', 'opencode_go'] as const).map((platform, i) => ({
+        platform,
+        daily_limit_usd: i + 1,
+        weekly_limit_usd: null,
+        monthly_limit_usd: null,
+        daily_usage_usd: 0,
+        weekly_usage_usd: 0,
+        monthly_usage_usd: 0,
+      })),
+    })
+    const w = await mountAndOpen()
+    const saveBtn = w.findAll('button').find((b) => b.text() === 'admin.users.platformQuota.save')
+    await saveBtn!.trigger('click')
+    await flushPromises()
+    const [, payload] = apiMocks.updatePlatformQuotas.mock.calls[0]
+    for (const platform of ['kimi', 'zhipu', 'deepseek', 'minimax', 'opencode_go']) {
+      const row = payload.find((p: any) => p.platform === platform)
+      expect(row).toBeDefined()
+      expect(row.daily_limit_usd).not.toBeNull()
+    }
+  })
+
+  it('响应中的未知平台 key 被保留并随保存提交', async () => {
+    apiMocks.getPlatformQuotas.mockResolvedValueOnce({
+      platform_quotas: [
+        { platform: 'some_future_platform', daily_limit_usd: 7, weekly_limit_usd: null, monthly_limit_usd: 9,
+          daily_usage_usd: 0, weekly_usage_usd: 0, monthly_usage_usd: 0 },
+      ],
+    })
+    const w = await mountAndOpen()
+    expect(w.html()).toContain('some_future_platform')
+    const saveBtn = w.findAll('button').find((b) => b.text() === 'admin.users.platformQuota.save')
+    await saveBtn!.trigger('click')
+    await flushPromises()
+    const [, payload] = apiMocks.updatePlatformQuotas.mock.calls[0]
+    const row = payload.find((p: any) => p.platform === 'some_future_platform')
+    expect(row).toEqual({
+      platform: 'some_future_platform',
+      daily_limit_usd: 7,
+      weekly_limit_usd: null,
+      monthly_limit_usd: 9,
+    })
   })
 
   it('全部清空把所有 limit 置 null（确认通过）', async () => {
@@ -186,7 +253,7 @@ describe('UserPlatformQuotaModal', () => {
   it('未配置限额的平台重置按钮禁用并提示不可用', async () => {
     const w = await mountAndOpen()
     const resetBtns = w.findAll('button').filter((b) => b.text() === '↻')
-    expect(resetBtns.length).toBe(15) // 5 平台 × 3 窗口
+    expect(resetBtns.length).toBe(QUOTA_PLATFORMS.length * 3) // 全平台 × 3 窗口
     for (const b of resetBtns) {
       expect((b.element as HTMLButtonElement).disabled).toBe(true)
       expect(b.attributes('title')).toBe('admin.users.platformQuota.reset.unavailable')

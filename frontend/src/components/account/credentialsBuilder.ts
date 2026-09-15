@@ -260,6 +260,7 @@ export const GROK_BASE_URL_PRESETS: GrokBaseUrlPreset[] = [
 
 export type CnAccountMode = 'payg' | 'coding'
 export type OpenCodeAccountMode = 'zen' | 'go'
+export type OllamaCloudAccountMode = 'ollama_legacy' | 'ollama_credits'
 export type CnProviderPlatform = 'kimi' | 'zhipu' | 'deepseek' | 'minimax'
 
 /** deepseek / kimi / minimax 支持原生 responses；adaptive 会按入站协议选择原生端点。 */
@@ -270,15 +271,21 @@ export function isCNProviderPlatform(platform: string): platform is CnProviderPl
   return platform === 'kimi' || platform === 'zhipu' || platform === 'deepseek' || platform === 'minimax'
 }
 
-/** DeepSeek、Kimi 与 MiniMax 提供原生 Responses 端点。 */
+/** DeepSeek、Kimi 与 MiniMax 提供原生 Responses 端点；Ollama Cloud 自适应支持 /v1/responses。 */
 export function cnSupportsNativeResponses(platform: string): boolean {
-  return platform === 'deepseek' || platform === 'kimi' || platform === 'minimax' || platform === 'opencode_go'
+  return platform === 'deepseek' || platform === 'kimi' || platform === 'minimax' || platform === 'opencode_go' || platform === 'ollama_cloud'
 }
 
 export const OPENCODE_GO_BASE_URL = 'https://opencode.ai/zen/go/v1'
 export const OPENCODE_GO_ANTHROPIC_BASE_URL = 'https://opencode.ai/zen/go'
 export const OPENCODE_ZEN_BASE_URL = 'https://opencode.ai/zen/v1'
 export const OPENCODE_ZEN_ANTHROPIC_BASE_URL = 'https://opencode.ai/zen'
+
+// Ollama Cloud 默认端点（与后端 service/domain_constants.go 的 DefaultOllamaCloudBaseURL /
+// DefaultOllamaCloudAnthropicBaseURL 一字不差）。anthropic 档不带 /v1：后端按协议拼接
+// /v1/messages，预设若带 /v1 会拼出 /v1/v1/messages 静默 404。
+export const OLLAMA_BASE_URL = 'https://ollama.com/v1'
+export const OLLAMA_ANTHROPIC_BASE_URL = 'https://ollama.com'
 
 export function isOpenCodeGoPlatform(platform: string): boolean {
   return platform === 'opencode_go'
@@ -358,7 +365,7 @@ export function applyOpenCodeGoProtocolRules(
 }
 
 export function isMultiProtocolApiKeyPlatform(platform: string): boolean {
-  return platform === 'kimi' || platform === 'zhipu' || platform === 'deepseek' || platform === 'minimax' || platform === 'opencode_go'
+  return platform === 'kimi' || platform === 'zhipu' || platform === 'deepseek' || platform === 'minimax' || platform === 'opencode_go' || platform === 'ollama_cloud'
 }
 
 export interface CnBaseUrlPreset {
@@ -424,6 +431,8 @@ export function defaultCNBaseUrl(
         return 'https://api.minimaxi.com/anthropic'
       case 'opencode_go':
         return mode === 'zen' ? OPENCODE_ZEN_ANTHROPIC_BASE_URL : OPENCODE_GO_ANTHROPIC_BASE_URL
+      case 'ollama_cloud':
+        return OLLAMA_ANTHROPIC_BASE_URL
       default:
         return ''
     }
@@ -442,6 +451,8 @@ export function defaultCNBaseUrl(
       return 'https://api.minimaxi.com/v1'
     case 'opencode_go':
       return mode === 'zen' ? OPENCODE_ZEN_BASE_URL : OPENCODE_GO_BASE_URL
+    case 'ollama_cloud':
+      return OLLAMA_BASE_URL
     default:
       return ''
   }
@@ -449,7 +460,7 @@ export function defaultCNBaseUrl(
 
 /** 返回自适应模式下需要配置的原生协议及其默认端点。 */
 export function defaultCNAdaptiveBaseUrls(
-  platform: CnProviderPlatform | 'opencode_go',
+  platform: CnProviderPlatform | 'opencode_go' | 'ollama_cloud',
   mode: CnAccountMode | OpenCodeAccountMode
 ): Record<CnNativeApiProtocol, string> {
   return {

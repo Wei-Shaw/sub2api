@@ -127,21 +127,65 @@ func deleteOpenAIResponsesNoneReasoningEffortFromObject(account *Account, body m
 }
 
 // normalizeDeepSeekResponsesRequestBody 适配无状态 CN Responses 端点：
-// 强制 store=false 并清除 previous_response_id（DeepSeek / Kimi 官方
-// Responses 均不支持服务端状态存储，携带这些字段会被拒绝）。
+// 强制 store=false 并清除 previous_response_id（DeepSeek / Kimi / Ollama Cloud
+// 官方 Responses 均不支持服务端状态存储，携带这些字段会被拒绝）。
 // 非原生 Responses 协议账号原样返回。
-func normalizeDeepSeekResponsesRequestBody(account *Account, body []byte) []byte {
+//
+// 请求体携带非 null 的 conversation 时返回 *openAIResponsesStatelessFieldError
+// 且不改写 body：一律 400 是产品选择——显式失败优于静默丢上下文——不是该用法
+// 不存在。依赖 conversation 的客户端把历史存在服务端、通常不重发 input，静默剥离
+// 等于静默丢上下文（回答质量下降且零错误信号）。已知代价是 conversation + 完整
+// input 的 non-stream 用法被误伤；出现真实此类客户端时按平台/账号开关显式
+// 放行，不得回退静默剥离。
+//
+// 判定用 Type != gjson.Null 而非 Exists()：gjson 对 JSON null 也返回
+// Exists()==true（Raw 非空），而 conversation: null 语义上与「省略该字段」等价
+// （很多客户端会把可选字段序列化成 null），必须按无会话依赖正常出站。
+func normalizeDeepSeekResponsesRequestBody(account *Account, body []byte) ([]byte, error) {
 	if account == nil || !account.UsesNativeCNResponses() {
-		return body
+		return body, nil
+	}
+	if gjson.GetBytes(body, "conversation").Type != gjson.Null {
+		return body, &openAIResponsesStatelessFieldError{field: "conversation"}
 	}
 	normalized, err := sjson.SetBytes(body, "store", false)
 	if err != nil {
-		return body
+		return body, fmt.Errorf("force responses store=false: %w", err)
 	}
 	if stripped, err := sjson.DeleteBytes(normalized, "previous_response_id"); err == nil {
 		normalized = stripped
 	}
-	return normalized
+	return normalized, nil
+}
+
+// openAIResponsesStatelessFieldError 标记请求体携带无状态 Responses 端点不支持
+// 的服务端状态字段（如 conversation）。网关必须把它应答为 400
+// invalid_request_error，不得向上游转发，也不得触发账号 failover。
+type openAIResponsesStatelessFieldError struct {
+	field string
+}
+
+func (e *openAIResponsesStatelessFieldError) Error() string {
+	return fmt.Sprintf(
+		"%s is not supported on this stateless /responses endpoint: omit it and send the full input with store=false",
+		e.field,
+	)
+}
+
+// respondOpenAIStatelessFieldError 按 stripOpenAIResponsesInputNamespaces 的先例
+// 把无状态端点不支持的字段应答为 400 invalid_request_error（由服务层写出响应，
+// handler 侧 ensureForwardErrorResponse 检测到响应已提交便不再追加 fallback）。
+// 写前 MarkResponseCommitted 与 cyber_policy / grok content 拒绝及 ollama_cloud
+// 定价预检 400 同款：本 400 的错误消息（"%s is not supported ..."）不在
+// openAIForwardErrorAlreadyCommunicated 识别的消息前缀里，不置位的话 handler 会因
+// Writer 已写出而向 JSON body 尾部追加 SSE 终止帧，污染响应体。
+func respondOpenAIStatelessFieldError(c *gin.Context, statelessErr *openAIResponsesStatelessFieldError) {
+	setOpsUpstreamError(c, http.StatusBadRequest, statelessErr.Error(), "")
+	MarkResponseCommitted(c)
+	c.JSON(http.StatusBadRequest, gin.H{"error": gin.H{
+		"type":    "invalid_request_error",
+		"message": statelessErr.Error(),
+	}})
 }
 
 func trimOpenAIEncryptedReasoningItems(reqBody map[string]any) bool {

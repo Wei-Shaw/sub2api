@@ -24,14 +24,24 @@ const (
 	CompositeRouteSourceExplicit = "route"
 	CompositeRouteSourceDetector = "detector"
 	CompositeRouteSourceAccount  = "account_model"
+	// CompositeRouteSourceAccountPool 标识「同一公开模型由多个平台同时提供」的
+	// 稳定候选池决策：Matched=true 且 TargetPlatform 为空，CandidatePlatforms
+	// 列出去重升序后的参与平台，最终平台由统一 OpenAI 兼容 selector 按既有
+	// priority/load/sticky 选定，池决策不改写请求体模型。
+	CompositeRouteSourceAccountPool = "account_pool"
 )
 
 // CompositeModelOwnership identifies the concrete provider that exposes a
 // public model through an account-level exact mapping.
+//
+// TargetPlatform 非空表示 single 决策（既有语义不变）；CandidatePlatforms 非空
+// （去重升序）表示多平台候选池，此时 Matched=true 且 TargetPlatform/Ambiguous
+// 均为空值语义。旧调用方（mock/stub）只设置单平台字段时行为保持兼容。
 type CompositeModelOwnership struct {
-	TargetPlatform string
-	Matched        bool
-	Ambiguous      bool
+	TargetPlatform     string
+	Matched            bool
+	Ambiguous          bool
+	CandidatePlatforms []string
 }
 
 type CompositeModelOwnershipResolver func(context.Context, int64, string) (CompositeModelOwnership, error)
@@ -63,16 +73,30 @@ type CompositeRoutePreviewRequest struct {
 	Endpoint string `json:"endpoint"`
 }
 
+// CompositeRouteDecision 描述 composite 分组对一次请求的解析结果。
+//
+// 两种互斥形态：
+//   - single：TargetPlatform 非空（既有字段语义完全不变）；
+//   - pool：Source=CompositeRouteSourceAccountPool，TargetPlatform/UpstreamModel
+//     为空，CandidatePlatforms 为去重升序的候选平台集合。pool 不改写请求体模型，
+//     最终平台交由统一 OpenAI 兼容 selector 选择。
 type CompositeRouteDecision struct {
-	Matched        bool                 `json:"matched"`
-	Source         string               `json:"source"`
-	GroupID        int64                `json:"group_id"`
-	PublicModel    string               `json:"public_model"`
-	TargetPlatform string               `json:"target_platform"`
-	UpstreamModel  string               `json:"upstream_model"`
-	Endpoint       string               `json:"endpoint"`
-	Route          *CompositeModelRoute `json:"route,omitempty"`
-	Reason         string               `json:"reason,omitempty"`
+	Matched            bool                 `json:"matched"`
+	Source             string               `json:"source"`
+	GroupID            int64                `json:"group_id"`
+	PublicModel        string               `json:"public_model"`
+	TargetPlatform     string               `json:"target_platform"`
+	UpstreamModel      string               `json:"upstream_model"`
+	Endpoint           string               `json:"endpoint"`
+	CandidatePlatforms []string             `json:"candidate_platforms,omitempty"`
+	Route              *CompositeModelRoute `json:"route,omitempty"`
+	Reason             string               `json:"reason,omitempty"`
+}
+
+// isCompositePoolDecision reports whether the decision carries a multi-platform
+// candidate pool (as opposed to a single concrete target platform).
+func isCompositePoolDecision(decision CompositeRouteDecision) bool {
+	return strings.TrimSpace(decision.TargetPlatform) == "" && len(decision.CandidatePlatforms) > 0
 }
 
 type CompositeRouteInput struct {

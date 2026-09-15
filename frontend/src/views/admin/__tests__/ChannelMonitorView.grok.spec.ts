@@ -100,8 +100,11 @@ describe('channel monitor Grok provider', () => {
     await flushPromises()
 
     expect(PROVIDERS).toContain(PROVIDER_GROK)
+    // Provider grid mirrors the full backend oneof list (migration 239 CHECK):
+    // openai/anthropic/gemini/grok/antigravity/kimi/zhipu/deepseek/minimax/
+    // opencode_go/ollama_cloud.
     const providerButtons = wrapper.findAll('[data-testid^="monitor-provider-"]')
-    expect(providerButtons).toHaveLength(8)
+    expect(providerButtons).toHaveLength(11)
     expect(providerButtons[0].element.parentElement?.className).toContain('grid-cols-2')
     expect(providerButtons[0].element.parentElement?.className).toContain('sm:grid-cols-4')
 

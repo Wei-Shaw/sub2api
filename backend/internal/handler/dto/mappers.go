@@ -238,7 +238,11 @@ func AccountFromServiceShallow(a *service.Account) *Account {
 	redactedCreds, credsStatus := RedactCredentials(a.Credentials)
 	extra := redactAccountManagedExtra(a.Extra)
 	var ollamaCloudUsage *service.OllamaCloudUsageState
-	if state := service.OllamaCloudUsageStateFromAccount(a); state.Eligible {
+	// platform=ollama_cloud 一律下发 state：不合格账号（反代 base_url、oauth
+	// 类型）也要把 EligibleReason 送到前端用量格做可解释提示。legacy 宿主
+	// 平台（openai/anthropic/国产）无法与普通同平台账号区分，维持仅在
+	// eligible 时下发，避免给正常 CN/OpenAI 账号挂上无意义的 ineligible 状态。
+	if state := service.OllamaCloudUsageStateFromAccount(a); state.Eligible || a.Platform == service.PlatformOllamaCloud {
 		ollamaCloudUsage = state
 	}
 	out := &Account{
