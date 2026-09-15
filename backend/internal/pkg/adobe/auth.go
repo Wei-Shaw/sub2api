@@ -147,14 +147,7 @@ func (c *Client) RefreshAccessTokenFromCookie(
 	}
 	if resp.StatusCode != http.StatusOK {
 		message := fmt.Sprintf("refresh request failed: %d %s", resp.StatusCode, resp.BodyPreview())
-		// cookie 失效返回 401/403，需要用户重新导出——不是可重试的临时故障。
-		if isAuthStatus(resp.StatusCode) {
-			return nil, NewAuthError(message, resp.StatusCode)
-		}
-		if IsRetryableStatus(resp.StatusCode) {
-			return nil, NewUpstreamTemporaryError(message, resp.StatusCode, ErrorTypeStatus)
-		}
-		return nil, NewRequestError(message)
+		return nil, imsRefreshFailure(resp.StatusCode, resp.Body, message)
 	}
 
 	var data map[string]any
@@ -361,6 +354,54 @@ func (c *Client) FetchCreditsBalance(ctx context.Context, accessToken string) (*
 		PlanCap:        payload.Total.PlanCap,
 		CreditPools:    pools,
 	}, nil
+}
+
+// imsCredentialRejectedCode 是 IMS 明确拒绝会话 cookie 时给出的错误码。
+const imsCredentialRejectedCode = "invalid_credentials"
+
+// imsProviderConfigCodes 是 IMS 针对 client_id / scope 等全局配置的错误码：
+// 与单个账号的 cookie 无关，所有账号都会同样失败。
+var imsProviderConfigCodes = map[string]struct{}{
+	"invalid_client":      {},
+	"unauthorized_client": {},
+	"invalid_scope":       {},
+}
+
+// imsRefreshFailure 把 IMS 刷新的非 200 响应归类。
+//
+// 只有强信号才返回 AuthError（调用方会据此把账号永久置 error）：
+//   - 401，且错误码不是全局配置类；
+//   - 403，且错误码明确为 invalid_credentials。
+//
+// 其它 401/403（全局配置错误码、其它 JSON 错误码、WAF 页面、空 body）换 cookie 也救不了，
+// 按临时故障处理：只让当次请求换号，不改账号状态，避免一次全局故障把一批账号打成 error。
+func imsRefreshFailure(status int, body []byte, message string) error {
+	code := strings.ToLower(imsErrorCode(body))
+	switch status {
+	case http.StatusUnauthorized:
+		if _, providerWide := imsProviderConfigCodes[code]; providerWide {
+			return NewUpstreamTemporaryError(message, status, ErrorTypeStatus)
+		}
+		return NewAuthError(message, status)
+	case http.StatusForbidden:
+		if code == imsCredentialRejectedCode {
+			return NewAuthError(message, status)
+		}
+		return NewUpstreamTemporaryError(message, status, ErrorTypeStatus)
+	}
+	if IsRetryableStatus(status) {
+		return NewUpstreamTemporaryError(message, status, ErrorTypeStatus)
+	}
+	return NewRequestError(message)
+}
+
+// imsErrorCode 从 IMS 的 JSON 错误体里取错误码；非 JSON（WAF 页面、空 body）返回空串。
+func imsErrorCode(body []byte) string {
+	var data map[string]any
+	if err := json.Unmarshal(body, &data); err != nil || data == nil {
+		return ""
+	}
+	return firstString(data, "error", "error_code", "errorCode")
 }
 
 // firstString 返回第一个非空的字符串字段。

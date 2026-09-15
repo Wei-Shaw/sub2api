@@ -403,6 +403,36 @@ func TestEnumSizeFamiliesPickNearestSize(t *testing.T) {
 	}
 }
 
+// 计费档位按实际发给上游的像素算：客户端写的 size 只决定比例，不能用来挑档。
+func TestEnumSizeFamiliesBillByActualPixels(t *testing.T) {
+	cases := []struct {
+		family    string
+		size      string
+		wantPixel Size
+		wantRes   OutputResolution
+	}{
+		// 232x100 比例最接近 2112x912：实际出 2K 以上长边，不能按请求的小尺寸记 1K。
+		{"firefly-runway-gen4-image", "232x100", Size{2112, 912}, Resolution4K},
+		// 请求 4096x4096 实际只出 1440x1440，不能按 4K 多收。
+		{"firefly-flux-pro", "4096x4096", Size{1440, 1440}, Resolution2K},
+		{"firefly-flux-ultra", "1x1", Size{1440, 1440}, Resolution2K},
+		{"firefly-imagen-4", "8000x4500", Size{1408, 768}, Resolution2K},
+		{"firefly-gpt-4o-image", "100x100", Size{1024, 1024}, Resolution1K},
+		{"firefly-gpt-image-1.5", "4096x2730", Size{1536, 1024}, Resolution2K},
+		// 空 size 取允许集第一个，档位跟着它走，不落到 2K 默认值。
+		{"firefly-flux-pro", "", Size{1024, 768}, Resolution1K},
+		{"firefly-runway-gen4-image", "", Size{1920, 1080}, Resolution2K},
+	}
+	for _, c := range cases {
+		t.Run(c.family+"/"+c.size, func(t *testing.T) {
+			conf, err := ResolveImage(ImageRequest{ModelID: c.family, Size: c.size})
+			require.NoError(t, err)
+			require.Equal(t, c.wantPixel, conf.SizePixels)
+			require.Equal(t, c.wantRes, conf.OutputResolution)
+		})
+	}
+}
+
 // NearestSize 的兜底：允许集为空 / size 非法 应可预测地回落，不 panic。
 func TestNearestSizeFallbacks(t *testing.T) {
 	require.Equal(t, Size{}, NearestSize("1024x1024", nil))

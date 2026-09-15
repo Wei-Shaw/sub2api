@@ -7,6 +7,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"strings"
 	"testing"
@@ -68,17 +69,17 @@ func testClient(api, download Transport) *Client {
 
 func TestExtractResultLink(t *testing.T) {
 	t.Run("优先响应头", func(t *testing.T) {
-		require.Equal(t, "https://poll/1", ExtractResultLink(
-			map[string]string{"x-override-status-link": "https://poll/1"},
-			map[string]any{"links": map[string]any{"result": "https://poll/2"}},
+		require.Equal(t, "https://firefly-3p.ff.adobe.io/jobs/1", ExtractResultLink(
+			map[string]string{"x-override-status-link": "https://firefly-3p.ff.adobe.io/jobs/1"},
+			map[string]any{"links": map[string]any{"result": "https://firefly-3p.ff.adobe.io/jobs/2"}},
 		))
 	})
 
 	t.Run("回落 body.links.result", func(t *testing.T) {
-		require.Equal(t, "https://poll/2", ExtractResultLink(nil,
-			map[string]any{"links": map[string]any{"result": "https://poll/2"}}))
-		require.Equal(t, "https://poll/3", ExtractResultLink(nil,
-			map[string]any{"links": map[string]any{"result": map[string]any{"href": "https://poll/3"}}}))
+		require.Equal(t, "https://firefly-3p.ff.adobe.io/jobs/2", ExtractResultLink(nil,
+			map[string]any{"links": map[string]any{"result": "https://firefly-3p.ff.adobe.io/jobs/2"}}))
+		require.Equal(t, "https://firefly-3p.ff.adobe.io/jobs/3", ExtractResultLink(nil,
+			map[string]any{"links": map[string]any{"result": map[string]any{"href": "https://firefly-3p.ff.adobe.io/jobs/3"}}}))
 	})
 
 	t.Run("都没有返回空", func(t *testing.T) {
@@ -116,8 +117,8 @@ func TestGenerateImageRoundTrip(t *testing.T) {
 			token := strings.TrimPrefix(req.Headers["authorization"], "Bearer ")
 			require.Equal(t, BuildSubmitNonce(token, "a cat"), req.Headers["x-nonce"])
 			return jsonResponse(t, 200,
-				map[string]any{"links": map[string]any{"result": "https://poll/abc"}},
-				map[string]string{"x-override-status-link": "https://poll/abc"}), nil
+				map[string]any{"links": map[string]any{"result": "https://firefly-3p.ff.adobe.io/jobs/abc"}},
+				map[string]string{"x-override-status-link": "https://firefly-3p.ff.adobe.io/jobs/abc"}), nil
 		}
 		require.Equal(t, "clio-playground-web", req.Headers["x-api-key"])
 		require.Equal(t, "application/json", req.Headers["content-type"])
@@ -153,7 +154,7 @@ func TestGenerateImageUsesDownloadTransport(t *testing.T) {
 	api := &fakeTransport{handler: func(req *Request, index int) (*Response, error) {
 		if index == 0 {
 			return jsonResponse(t, 200, map[string]any{}, map[string]string{
-				"x-override-status-link": "https://poll/abc",
+				"x-override-status-link": "https://firefly-3p.ff.adobe.io/jobs/abc",
 			}), nil
 		}
 		return jsonResponse(t, 200, map[string]any{
@@ -264,7 +265,7 @@ func TestGenerateImageRetriesRetryableSubmit(t *testing.T) {
 			}
 			if index == 1 {
 				return jsonResponse(t, 200, map[string]any{}, map[string]string{
-					"x-override-status-link": "https://poll/abc",
+					"x-override-status-link": "https://firefly-3p.ff.adobe.io/jobs/abc",
 				}), nil
 			}
 			return jsonResponse(t, 200, map[string]any{
@@ -300,6 +301,37 @@ func TestGenerateImageRetriesRetryableSubmit(t *testing.T) {
 		require.Equal(t, 408, temporary.StatusCode)
 		require.Len(t, api.calls, submitAttempts)
 	})
+
+	t.Run("连续 429 同号重试到上限", func(t *testing.T) {
+		api := &fakeTransport{handler: func(*Request, int) (*Response, error) {
+			return jsonResponse(t, 429, map[string]any{"message": "too many requests"}, nil), nil
+		}}
+		_, err := testClient(api, nil).GenerateImage(context.Background(), GenerateImageInput{
+			Token:   fakeToken(t),
+			Options: ImagePayloadOptions{Prompt: "x", AspectRatio: "1:1", UpstreamModelID: "gpt-image"},
+		})
+		var temporary *UpstreamTemporaryError
+		require.True(t, errors.As(err, &temporary))
+		require.Len(t, api.calls, submitAttempts)
+	})
+
+	// 5xx/451 可能是上游已受理、中间层回错：同号重发会叠加重复的付费任务，只提交一次交给 handler 换号。
+	for _, status := range []int{451, 500, 502, 503, 504} {
+		t.Run(fmt.Sprintf("%d 不在同号重试", status), func(t *testing.T) {
+			api := &fakeTransport{handler: func(*Request, int) (*Response, error) {
+				return &Response{StatusCode: status, Headers: map[string]string{}, Body: []byte("upstream down")}, nil
+			}}
+			_, err := testClient(api, nil).GenerateImage(context.Background(), GenerateImageInput{
+				Token:   fakeToken(t),
+				Options: ImagePayloadOptions{Prompt: "x", AspectRatio: "1:1", UpstreamModelID: "gpt-image"},
+			})
+			var temporary *UpstreamTemporaryError
+			require.True(t, errors.As(err, &temporary))
+			require.Equal(t, status, temporary.StatusCode)
+			require.True(t, IsRotatable(err))
+			require.Len(t, api.calls, 1)
+		})
+	}
 }
 
 func TestGenerateImageUpstreamErrors(t *testing.T) {
@@ -346,7 +378,7 @@ func TestGenerateImageEditSubmitsOnce(t *testing.T) {
 	api := &fakeTransport{handler: func(req *Request, _ int) (*Response, error) {
 		if strings.Contains(req.URL, "generate-async") {
 			return jsonResponse(t, 200, map[string]any{},
-				map[string]string{"x-override-status-link": "https://poll/x"}), nil
+				map[string]string{"x-override-status-link": "https://firefly-3p.ff.adobe.io/jobs/x"}), nil
 		}
 		return jsonResponse(t, 200, map[string]any{
 			"outputs": []any{map[string]any{"image": map[string]any{"presignedUrl": "https://cdn/y.png"}}},
@@ -381,7 +413,7 @@ func TestGenerateImagePollFailure(t *testing.T) {
 	api := &fakeTransport{handler: func(_ *Request, index int) (*Response, error) {
 		if index == 0 {
 			return jsonResponse(t, 200, map[string]any{},
-				map[string]string{"x-override-status-link": "https://poll/x"}), nil
+				map[string]string{"x-override-status-link": "https://firefly-3p.ff.adobe.io/jobs/x"}), nil
 		}
 		return jsonResponse(t, 200, map[string]any{"status": "FAILED"}, nil), nil
 	}}
@@ -398,7 +430,7 @@ func TestGenerateImagePollFailureFromHeader(t *testing.T) {
 	api := &fakeTransport{handler: func(_ *Request, index int) (*Response, error) {
 		if index == 0 {
 			return jsonResponse(t, 200, map[string]any{},
-				map[string]string{"x-override-status-link": "https://poll/x"}), nil
+				map[string]string{"x-override-status-link": "https://firefly-3p.ff.adobe.io/jobs/x"}), nil
 		}
 		return jsonResponse(t, 200, map[string]any{}, map[string]string{"x-task-status": "cancelled"}), nil
 	}}
@@ -414,7 +446,7 @@ func TestGenerateImagePollTimeout(t *testing.T) {
 	api := &fakeTransport{handler: func(_ *Request, index int) (*Response, error) {
 		if index == 0 {
 			return jsonResponse(t, 200, map[string]any{},
-				map[string]string{"x-override-status-link": "https://poll/x"}), nil
+				map[string]string{"x-override-status-link": "https://firefly-3p.ff.adobe.io/jobs/x"}), nil
 		}
 		return jsonResponse(t, 200, map[string]any{"status": "RUNNING"}, nil), nil
 	}}
@@ -427,13 +459,60 @@ func TestGenerateImagePollTimeout(t *testing.T) {
 	require.ErrorContains(t, err, "image generation timed out")
 }
 
+// 轮询可能先回 202（仍在运行），再回 201 携带结果；两者都不能被当成错误或空结果。
+func TestGenerateImagePollAcceptsAcceptedThenCreated(t *testing.T) {
+	api := &fakeTransport{handler: func(_ *Request, index int) (*Response, error) {
+		switch index {
+		case 0:
+			return jsonResponse(t, 200, map[string]any{},
+				map[string]string{"x-override-status-link": "https://firefly-3p.ff.adobe.io/jobs/x"}), nil
+		case 1:
+			return jsonResponse(t, 202, map[string]any{}, nil), nil
+		default:
+			return jsonResponse(t, 201, map[string]any{
+				"outputs": []any{map[string]any{"image": map[string]any{"presignedUrl": "https://cdn/z.png"}}},
+			}, nil), nil
+		}
+	}}
+	download := &fakeTransport{handler: func(*Request, int) (*Response, error) {
+		return bytesResponse(200, []byte("Z")), nil
+	}}
+	out, err := testClient(api, download).GenerateImage(context.Background(), GenerateImageInput{
+		Token:        fakeToken(t),
+		Options:      ImagePayloadOptions{Prompt: "x", AspectRatio: "1:1", UpstreamModelID: "gpt-image"},
+		PollInterval: time.Millisecond,
+	})
+	require.NoError(t, err)
+	require.NotNil(t, out)
+	require.Equal(t, []byte("Z"), out.Bytes)
+}
+
+// 201 但没有结果时继续轮询直到超时，而不是返回 (nil, nil)。
+func TestGenerateImagePollCreatedWithoutResultTimesOut(t *testing.T) {
+	api := &fakeTransport{handler: func(_ *Request, index int) (*Response, error) {
+		if index == 0 {
+			return jsonResponse(t, 200, map[string]any{},
+				map[string]string{"x-override-status-link": "https://firefly-3p.ff.adobe.io/jobs/x"}), nil
+		}
+		return jsonResponse(t, 201, map[string]any{}, nil), nil
+	}}
+	out, err := testClient(api, nil).GenerateImage(context.Background(), GenerateImageInput{
+		Token:        fakeToken(t),
+		Options:      ImagePayloadOptions{Prompt: "x", AspectRatio: "1:1", UpstreamModelID: "gpt-image"},
+		Timeout:      time.Nanosecond,
+		PollInterval: time.Millisecond,
+	})
+	require.Nil(t, out)
+	require.ErrorContains(t, err, "image generation timed out")
+}
+
 // ctx 取消要能中断轮询循环，否则调用方断开后请求还在后台空转。
 func TestGenerateImagePollRespectsContextCancel(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	api := &fakeTransport{handler: func(_ *Request, index int) (*Response, error) {
 		if index == 0 {
 			return jsonResponse(t, 200, map[string]any{},
-				map[string]string{"x-override-status-link": "https://poll/x"}), nil
+				map[string]string{"x-override-status-link": "https://firefly-3p.ff.adobe.io/jobs/x"}), nil
 		}
 		cancel()
 		return jsonResponse(t, 200, map[string]any{"status": "RUNNING"}, nil), nil
@@ -513,4 +592,149 @@ func TestUploadImage(t *testing.T) {
 		_, err := testClient(api, nil).UploadImage(context.Background(), fakeToken(t), []byte("R"), "")
 		require.ErrorContains(t, err, "no image id returned")
 	})
+}
+
+// pollClient 造一个「提交成功后按 pollResponses 顺序应答轮询」的客户端。
+func pollClient(t *testing.T, pollURL string, poll func(index int) (*Response, error)) (*Client, *fakeTransport, *fakeTransport) {
+	t.Helper()
+	api := &fakeTransport{handler: func(_ *Request, index int) (*Response, error) {
+		if index == 0 {
+			return jsonResponse(t, 200, map[string]any{},
+				map[string]string{"x-override-status-link": pollURL}), nil
+		}
+		return poll(index - 1)
+	}}
+	download := &fakeTransport{handler: func(*Request, int) (*Response, error) {
+		return bytesResponse(200, []byte("IMG")), nil
+	}}
+	return testClient(api, download), api, download
+}
+
+func completedWith(t *testing.T, presigned string) *Response {
+	t.Helper()
+	return jsonResponse(t, 200, map[string]any{
+		"outputs": []any{map[string]any{"image": map[string]any{"presignedUrl": presigned}}},
+	}, nil)
+}
+
+func generateTestImage(client *Client, t *testing.T) (*GenerateResult, error) {
+	t.Helper()
+	return client.GenerateImage(context.Background(), GenerateImageInput{
+		Token:        fakeToken(t),
+		Options:      ImagePayloadOptions{Prompt: "x", AspectRatio: "1:1", UpstreamModelID: "gpt-image"},
+		PollInterval: time.Millisecond,
+	})
+}
+
+// 任务已提交、credits 已在消耗：轮询偶发的 5xx / 网络错误不能让整个任务作废。
+func TestGenerateImagePollToleratesTransientFailures(t *testing.T) {
+	client, api, _ := pollClient(t, "https://firefly-3p.ff.adobe.io/jobs/x", func(index int) (*Response, error) {
+		switch index {
+		case 0:
+			return jsonResponse(t, 503, map[string]any{}, nil), nil
+		case 1:
+			return nil, NewUpstreamTemporaryError("connection reset", 0, ErrorTypeConnection)
+		default:
+			return completedWith(t, "https://cdn.example.com/img.png"), nil
+		}
+	})
+
+	result, err := generateTestImage(client, t)
+	require.NoError(t, err)
+	require.Equal(t, []byte("IMG"), result.Bytes)
+	require.Len(t, api.calls, 4, "submit + 2 failed polls + 1 successful poll")
+}
+
+func TestGenerateImagePollGivesUpAfterConsecutiveFailures(t *testing.T) {
+	client, api, _ := pollClient(t, "https://firefly-3p.ff.adobe.io/jobs/x", func(int) (*Response, error) {
+		return jsonResponse(t, 503, map[string]any{}, nil), nil
+	})
+
+	_, err := generateTestImage(client, t)
+	var temporary *UpstreamTemporaryError
+	require.True(t, errors.As(err, &temporary))
+	require.Len(t, api.calls, 1+maxConsecutivePollFailures+1)
+}
+
+// 轮询鉴权失败不是临时故障，立即返回。
+func TestGenerateImagePollDoesNotRetryAuthFailure(t *testing.T) {
+	client, api, _ := pollClient(t, "https://firefly-3p.ff.adobe.io/jobs/x", func(int) (*Response, error) {
+		return jsonResponse(t, 401, map[string]any{}, nil), nil
+	})
+
+	_, err := generateTestImage(client, t)
+	var auth *AuthError
+	require.True(t, errors.As(err, &auth))
+	require.Len(t, api.calls, 2)
+}
+
+// 轮询链接来自上游响应且会带 Bearer token：非 adobe.io 主机一律拒绝，不发请求。
+func TestGenerateImageRejectsNonAdobePollURL(t *testing.T) {
+	for _, link := range []string{
+		"https://attacker.example.com/jobs/x",
+		"http://firefly-3p.ff.adobe.io/jobs/x",
+		"https://adobe.io.attacker.example/jobs/x",
+		"https://evil-adobe.io/jobs/x",
+	} {
+		t.Run(link, func(t *testing.T) {
+			client, api, _ := pollClient(t, link, func(int) (*Response, error) {
+				t.Error("poll must not be sent to a non-adobe host")
+				return nil, errors.New("unexpected")
+			})
+			_, err := generateTestImage(client, t)
+			require.ErrorContains(t, err, "adobe api url")
+			require.Len(t, api.calls, 1, "only the submit request is sent")
+		})
+	}
+}
+
+// 产物直链只接受 https 域名：IP 字面量、localhost、http 都拒绝，不发下载请求。
+func TestGenerateImageRejectsUnsafeMediaURL(t *testing.T) {
+	for _, link := range []string{
+		"http://cdn.example.com/img.png",
+		"https://169.254.169.254/latest/meta-data",
+		"https://[::1]/img.png",
+		"https://localhost/img.png",
+	} {
+		t.Run(link, func(t *testing.T) {
+			client, _, download := pollClient(t, "https://firefly-3p.ff.adobe.io/jobs/x", func(int) (*Response, error) {
+				return completedWith(t, link), nil
+			})
+			_, err := generateTestImage(client, t)
+			require.ErrorContains(t, err, "media url")
+			require.Empty(t, download.calls)
+		})
+	}
+}
+
+func TestGenerateImageCapsImageDownloadSize(t *testing.T) {
+	client, _, download := pollClient(t, "https://firefly-3p.ff.adobe.io/jobs/x", func(int) (*Response, error) {
+		return completedWith(t, "https://cdn.example.com/img.png"), nil
+	})
+
+	_, err := generateTestImage(client, t)
+	require.NoError(t, err)
+	require.Len(t, download.calls, 1)
+	require.Equal(t, MaxImageDownloadBytes, download.calls[0].MaxBodyBytes)
+}
+
+func TestNormalizeVideoPollURLRequiresAdobeHost(t *testing.T) {
+	raw := "https://firefly-epo1234.attacker.example/v2/jobs/job-1"
+	require.Equal(t, raw, NormalizeVideoPollURL(raw), "non adobe.io host must not be rewritten into an adobe host")
+}
+
+// 上游 4xx 与 401 的原始 body 只进日志，对外文案固定。
+func TestUpstreamErrorBodiesStayOutOfUserMessages(t *testing.T) {
+	requestErr := classifyAdobeHTTPError(400, `{"internal_trace":"abc"}`, `submit failed: 400 {"internal_trace":"abc"}`)
+	var reqErr *RequestError
+	require.True(t, errors.As(requestErr, &reqErr))
+	require.Contains(t, reqErr.Error(), "internal_trace", "log message keeps the upstream body")
+	require.NotContains(t, reqErr.User(), "internal_trace")
+	require.Contains(t, reqErr.User(), "HTTP 400")
+
+	authErr := authOrQuotaError(jsonResponse(t, 401, map[string]any{"trace": "secret-trace"}, nil))
+	var auth *AuthError
+	require.True(t, errors.As(authErr, &auth))
+	require.Contains(t, auth.Error(), "secret-trace")
+	require.NotContains(t, auth.User(), "secret-trace")
 }

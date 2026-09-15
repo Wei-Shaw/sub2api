@@ -24,6 +24,20 @@ const maxErrorBodyBytes = 300
 // defaultRequestTimeout 是未显式指定时的单次请求超时。
 const defaultRequestTimeout = 60 * time.Second
 
+// impersonateClientTimeout 是 tls-client 客户端级超时的上限。
+//
+// 客户端只构造一次，不能沿用首个请求的 Timeout（否则先发一个 20s 的 credits 查询，后续 60s
+// 的提交都会被截断）；单次请求的时限由 Do 里的 context.WithTimeout 负责。也不能设 0：
+// tls-client 走 HTTP 代理 CONNECT 时会拿 now+timeout 当 deadline，0 会让握手立即失败。
+const impersonateClientTimeout = 10 * time.Minute
+
+// 响应体读取上限。Request.MaxBodyBytes 为 0 时 API 调用取 DefaultMaxResponseBytes。
+const (
+	DefaultMaxResponseBytes int64 = 16 << 20 // API JSON 响应
+	MaxImageDownloadBytes   int64 = 64 << 20 // 单张图片产物
+	MaxVideoDownloadBytes   int64 = 1 << 30  // 单个视频产物
+)
+
 // Request 是一次上游 HTTP 请求。
 type Request struct {
 	Method  string
@@ -36,6 +50,8 @@ type Request struct {
 	HeaderOrder []string
 	Body        []byte
 	Timeout     time.Duration
+	// MaxBodyBytes 是响应体读取上限；超出时返回 RequestError。<=0 取 DefaultMaxResponseBytes。
+	MaxBodyBytes int64
 }
 
 // Response 是一次上游 HTTP 响应。响应体已完整读入内存——Firefly 的响应都是小 JSON
@@ -102,7 +118,7 @@ type impersonateTransport struct {
 	initEr error
 }
 
-func (t *impersonateTransport) ensureClient(timeout time.Duration) (tlsclient.HttpClient, error) {
+func (t *impersonateTransport) ensureClient() (tlsclient.HttpClient, error) {
 	t.once.Do(func() {
 		profile, ok := profiles.MappedTLSClients[t.identity.TLSProfile]
 		if !ok {
@@ -110,7 +126,7 @@ func (t *impersonateTransport) ensureClient(timeout time.Duration) (tlsclient.Ht
 			return
 		}
 		options := []tlsclient.HttpClientOption{
-			tlsclient.WithTimeoutSeconds(int(timeout.Seconds())),
+			tlsclient.WithTimeoutSeconds(int(impersonateClientTimeout.Seconds())),
 			tlsclient.WithClientProfile(profile),
 			tlsclient.WithCookieJar(tlsclient.NewCookieJar()),
 			// Firefly 的提交/轮询都是普通 HTTPS；关掉 HTTP/3 以免协商出与 profile
@@ -124,7 +140,7 @@ func (t *impersonateTransport) ensureClient(timeout time.Duration) (tlsclient.Ht
 		client, err := tlsclient.NewHttpClient(tlsclient.NewNoopLogger(), options...)
 		if err != nil {
 			t.initEr = NewUpstreamTemporaryError(
-				fmt.Sprintf("create tls client: %v", err), 0, ErrorTypeConnection)
+				redactProxyURL(fmt.Sprintf("create tls client: %v", err), t.proxyURL), 0, ErrorTypeConnection)
 			return
 		}
 		t.client = client
@@ -137,7 +153,7 @@ func (t *impersonateTransport) Do(ctx context.Context, req *Request) (*Response,
 	if timeout <= 0 {
 		timeout = defaultRequestTimeout
 	}
-	client, err := t.ensureClient(timeout)
+	client, err := t.ensureClient()
 	if err != nil {
 		return nil, err
 	}
@@ -159,11 +175,15 @@ func (t *impersonateTransport) Do(ctx context.Context, req *Request) (*Response,
 	if err != nil {
 		return nil, classifyTransportError(err, t.proxyURL != "")
 	}
+	if resp == nil {
+		// WithCatchPanics 恢复库内 panic 时返回 (nil, nil)。
+		return nil, NewUpstreamTemporaryError("tls client returned no response", 0, ErrorTypeNetwork)
+	}
 	defer func() { _ = resp.Body.Close() }()
 
-	raw, err := io.ReadAll(resp.Body)
+	raw, err := readLimitedBody(resp.Body, req.MaxBodyBytes)
 	if err != nil {
-		return nil, classifyTransportError(err, t.proxyURL != "")
+		return nil, classifyReadError(err, t.proxyURL != "")
 	}
 	return &Response{
 		StatusCode: resp.StatusCode,
@@ -227,12 +247,21 @@ func flattenHeaders(headers fhttp.Header) map[string]string {
 
 // ---- 标准库传输 ----
 
+// plainTransportDialControl 是直连下载时的拨号校验；单测连 httptest 回环服务时置 nil。
+var plainTransportDialControl = publicDialControl
+
+// maxDownloadRedirects 是产物下载允许跟随的重定向次数上限。
+const maxDownloadRedirects = 3
+
 type plainTransport struct {
 	proxyURL string
 
 	once   sync.Once
 	client *http.Client
 	initEr error
+	// resolveGuard 在经代理下载时为 true：拨号目标是代理本身，拨号层校验失效，
+	// 改为发请求前在本地解析主机名做尽力而为的 IP 校验。
+	resolveGuard bool
 }
 
 func (t *plainTransport) ensureClient() (*http.Client, error) {
@@ -246,14 +275,39 @@ func (t *plainTransport) ensureClient() (*http.Client, error) {
 		if t.proxyURL != "" {
 			parsed, err := url.Parse(t.proxyURL)
 			if err != nil {
-				t.initEr = NewRequestError(fmt.Sprintf("invalid proxy url: %v", err))
+				// 不回显原串：代理 URL 里常带 user:pass。
+				t.initEr = NewRequestError("invalid proxy url")
 				return
 			}
 			transport.Proxy = http.ProxyURL(parsed)
+			t.resolveGuard = true
+		} else if environmentProxyConfigured() {
+			t.resolveGuard = true
+		} else if plainTransportDialControl != nil {
+			// 直连时在拨号层校验实际 IP：产物直链来自上游响应，下载结果会原样交给调用方，
+			// 不能被利用来探测内网。经代理（账号代理或环境代理）时拨号目标是代理本身，改走 resolveGuard。
+			dialer := &net.Dialer{Timeout: 30 * time.Second, KeepAlive: 30 * time.Second, Control: plainTransportDialControl}
+			transport.Proxy = nil
+			transport.DialContext = dialer.DialContext
 		}
-		t.client = &http.Client{Transport: transport}
+		t.client = &http.Client{Transport: transport, CheckRedirect: t.checkRedirect}
 	})
 	return t.client, t.initEr
+}
+
+// checkRedirect 对每一跳重定向重新校验目标：否则合规的直链可以 302 到内网主机名，
+// 经代理时拨号层校验看不到真实目标。
+func (t *plainTransport) checkRedirect(req *http.Request, via []*http.Request) error {
+	if len(via) >= maxDownloadRedirects {
+		return fmt.Errorf("%w: more than %d redirects", ErrBlockedDestination, maxDownloadRedirects)
+	}
+	if err := validateDownloadURL(req.URL.String()); err != nil {
+		return fmt.Errorf("%w: %v", ErrBlockedDestination, err)
+	}
+	if t.resolveGuard {
+		return checkResolvedPublicHost(req.Context(), req.URL.Hostname())
+	}
+	return nil
 }
 
 func (t *plainTransport) Do(ctx context.Context, req *Request) (*Response, error) {
@@ -281,15 +335,24 @@ func (t *plainTransport) Do(ctx context.Context, req *Request) (*Response, error
 		httpReq.Header.Set(name, value)
 	}
 
+	if t.resolveGuard {
+		if err := checkResolvedPublicHost(ctx, httpReq.URL.Hostname()); err != nil {
+			return nil, NewRequestError("media download destination is not allowed")
+		}
+	}
+
 	resp, err := client.Do(httpReq)
 	if err != nil {
+		if errors.Is(err, ErrBlockedDestination) {
+			return nil, NewRequestError("media download destination is not allowed")
+		}
 		return nil, classifyTransportError(err, t.proxyURL != "")
 	}
 	defer func() { _ = resp.Body.Close() }()
 
-	raw, err := io.ReadAll(resp.Body)
+	raw, err := readLimitedBody(resp.Body, req.MaxBodyBytes)
 	if err != nil {
-		return nil, classifyTransportError(err, t.proxyURL != "")
+		return nil, classifyReadError(err, t.proxyURL != "")
 	}
 
 	out := make(map[string]string, len(resp.Header))
@@ -299,6 +362,58 @@ func (t *plainTransport) Do(ctx context.Context, req *Request) (*Response, error
 		}
 	}
 	return &Response{StatusCode: resp.StatusCode, Headers: out, Body: raw}, nil
+}
+
+// errBodyTooLarge 表示响应体超过 Request.MaxBodyBytes。
+var errBodyTooLarge = errors.New("response body too large")
+
+// readLimitedBody 读取响应体，超过 limit（<=0 取 DefaultMaxResponseBytes）时返回 errBodyTooLarge。
+func readLimitedBody(body io.Reader, limit int64) ([]byte, error) {
+	if limit <= 0 {
+		limit = DefaultMaxResponseBytes
+	}
+	raw, err := io.ReadAll(io.LimitReader(body, limit+1))
+	if err != nil {
+		return nil, err
+	}
+	if int64(len(raw)) > limit {
+		return nil, fmt.Errorf("%w: exceeds %d bytes", errBodyTooLarge, limit)
+	}
+	return raw, nil
+}
+
+// classifyReadError 区分「响应体超限」（终态）与读体时的网络错误（可重试）。
+func classifyReadError(err error, viaProxy bool) error {
+	if errors.Is(err, errBodyTooLarge) {
+		return NewRequestError(err.Error())
+	}
+	return classifyTransportError(err, viaProxy)
+}
+
+// environmentProxyConfigured 报告进程环境是否为 https 请求配置了代理。
+func environmentProxyConfigured() bool {
+	proxy, err := http.ProxyFromEnvironment(&http.Request{URL: &url.URL{Scheme: "https", Host: "firefly.adobe.io"}})
+	return err == nil && proxy != nil
+}
+
+// redactProxyURL 把错误信息里的代理 URL 替换成不含凭据的形式。
+func redactProxyURL(message, proxyURL string) string {
+	if proxyURL == "" {
+		return message
+	}
+	parsed, err := url.Parse(proxyURL)
+	if err != nil {
+		return strings.ReplaceAll(message, proxyURL, "[proxy]")
+	}
+	safe := parsed.Scheme + "://" + parsed.Host
+	message = strings.ReplaceAll(message, proxyURL, safe)
+	if parsed.User != nil {
+		message = strings.ReplaceAll(message, parsed.User.String(), "***")
+		if password, ok := parsed.User.Password(); ok && password != "" {
+			message = strings.ReplaceAll(message, password, "***")
+		}
+	}
+	return message
 }
 
 // classifyTransportError 把网络层错误归到可重试的临时错误，并标出来源，

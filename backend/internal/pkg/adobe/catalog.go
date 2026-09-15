@@ -565,9 +565,11 @@ func resolveNonRatioFamily(spec imageFamilySpec, req ImageRequest) (ImageModelCo
 		}
 	}
 
+	// 计费档位必须跟实际发给上游的像素走，而不是客户端写的 size：enum 家族会被 NearestSize
+	// 换成另一个尺寸（232x100 → 2112x912），按请求 size 计费会让用户挑低档或被多收。
 	resolution := req.Resolution
 	if resolution == "" {
-		if spec.payloadKind == PayloadKindGPTImage25 && pixels.Width > 0 {
+		if pixels.Width > 0 && pixels.Height > 0 {
 			resolution = ResolutionFromSize(pixels.String())
 		} else {
 			resolution = ResolutionFromSize(req.Size)

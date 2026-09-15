@@ -133,7 +133,7 @@ func TestSubmit408IsRotatable(t *testing.T) {
 		Body:       []byte(`{"error_code":"timeout_error","message":"system under load"}`),
 	}
 	c := &Client{}
-	err := c.errorForSubmit(resp, "submit", "")
+	err := c.errorForSubmit(resp, "submit")
 	require.Error(t, err)
 
 	var temporary *UpstreamTemporaryError
@@ -148,7 +148,7 @@ func TestSubmit451ImageUnsafeIsContentRejected(t *testing.T) {
 		Body:       []byte(`{"error_code":"image_unsafe","message":"nsfw"}`),
 	}
 	c := &Client{}
-	err := c.errorForSubmit(resp, "submit", "")
+	err := c.errorForSubmit(resp, "submit")
 	require.Error(t, err)
 
 	var rejected *ContentRejectedError
@@ -175,7 +175,7 @@ func TestSubmit451WithoutUnsafeStaysTemporary(t *testing.T) {
 		Body:       []byte(`{"error_code":"unavailable","message":"legal hold"}`),
 	}
 	c := &Client{}
-	err := c.errorForSubmit(resp, "submit", "")
+	err := c.errorForSubmit(resp, "submit")
 	var temporary *UpstreamTemporaryError
 	require.ErrorAs(t, err, &temporary)
 	var rejected *ContentRejectedError

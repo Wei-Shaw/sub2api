@@ -3,6 +3,7 @@ package adobe
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -17,12 +18,17 @@ const (
 	DefaultVideoTimeout  = 600 * time.Second
 	DefaultPollInterval  = 3 * time.Second
 	defaultSubmitTimeout = 60 * time.Second
-	// submitAttempts 是 generate-async 提交的尝试次数。Adobe 用 408 +
-	// timeout_error / "system under load" 做降载，第一次立刻失败很常见。
+	// submitAttempts 是 generate-async 提交在同一账号上的尝试次数，只用于 408/429 降载。
+	// Adobe 用 408 + timeout_error / "system under load" 做降载，第一次立刻失败很常见。
 	submitAttempts = 3
+	// maxConsecutivePollFailures 是轮询连续遇到临时故障（网络错误、408/429/5xx）的容忍次数。
+	// 任务已提交、credits 已在消耗，一次抖动就放弃会让 handler 换号重新生成；成功一次即清零。
+	maxConsecutivePollFailures = 3
+	// videoDownloadTimeout 是视频产物下载的单次超时；图片沿用 defaultSubmitTimeout。
+	videoDownloadTimeout = 5 * time.Minute
 )
 
-// submitRetryWait 是两次提交之间的基础等待；第 n 次重试等 n * wait（1.5s / 3s）。
+// submitRetryWait 是两次提交之间的基础等待；按次翻倍（1.5s / 3s）。
 // 单测把它置 0，避免给套件加秒级延迟。
 var submitRetryWait = 1500 * time.Millisecond
 
@@ -195,7 +201,7 @@ type GenerateResult struct {
 //
 // 提交阶段依次尝试 BuildImagePayloadCandidates 返回的候选，命中 200 即停；
 // 遇到 401/403 立即中断——那是凭据问题，换 payload 形状无用。
-// 408/429/5xx 是上游过载，不是 schema 问题：同一 payload 退避重试，不再换候选。
+// 408/429/451/5xx 是上游过载或故障，不是 schema 问题：不再换候选（重试策略见 postSubmit）。
 func (c *Client) GenerateImage(ctx context.Context, input GenerateImageInput) (*GenerateResult, error) {
 	candidates, err := BuildImagePayloadCandidates(input.Options)
 	if err != nil {
@@ -204,7 +210,6 @@ func (c *Client) GenerateImage(ctx context.Context, input GenerateImageInput) (*
 
 	headers, order := c.submitHeaders(input.Token, input.Options.Prompt)
 	var submitResp *Response
-	var lastBody string
 	for _, payload := range candidates {
 		body, err := json.Marshal(payload)
 		if err != nil {
@@ -220,12 +225,12 @@ func (c *Client) GenerateImage(ctx context.Context, input GenerateImageInput) (*
 		if isAuthStatus(submitResp.StatusCode) || IsRetryableStatus(submitResp.StatusCode) {
 			break
 		}
-		lastBody = submitResp.BodyPreview()
 	}
 	if submitResp == nil {
 		return nil, NewRequestError("submit failed: no response")
 	}
-	if err := c.errorForSubmit(submitResp, "submit", lastBody); err != nil {
+	// 错误信息与内容拒绝判断只看最后这次响应自己的 body：状态码与 body 必须来自同一次提交。
+	if err := c.errorForSubmit(submitResp, "submit"); err != nil {
 		return nil, err
 	}
 
@@ -240,6 +245,8 @@ func (c *Client) GenerateImage(ctx context.Context, input GenerateImageInput) (*
 		outputKey:    "image",
 		timeout:      orDuration(input.Timeout, DefaultImageTimeout),
 		pollInterval: orDuration(input.PollInterval, DefaultPollInterval),
+		maxDownload:  MaxImageDownloadBytes,
+		downloadWait: defaultSubmitTimeout,
 	})
 }
 
@@ -265,7 +272,7 @@ func (c *Client) GenerateVideo(ctx context.Context, input GenerateVideoInput) (*
 	if err != nil {
 		return nil, err
 	}
-	if err := c.errorForSubmit(submitResp, "video submit", ""); err != nil {
+	if err := c.errorForSubmit(submitResp, "video submit"); err != nil {
 		return nil, err
 	}
 
@@ -280,6 +287,8 @@ func (c *Client) GenerateVideo(ctx context.Context, input GenerateVideoInput) (*
 		outputKey:    "video",
 		timeout:      orDuration(input.Timeout, DefaultVideoTimeout),
 		pollInterval: orDuration(input.PollInterval, DefaultPollInterval),
+		maxDownload:  MaxVideoDownloadBytes,
+		downloadWait: videoDownloadTimeout,
 	})
 }
 
@@ -292,11 +301,19 @@ type pollParams struct {
 	outputKey    string
 	timeout      time.Duration
 	pollInterval time.Duration
+	// maxDownload / downloadWait 是产物下载的大小上限与单次超时。
+	maxDownload  int64
+	downloadWait time.Duration
 }
 
 func (c *Client) poll(ctx context.Context, params pollParams) (*GenerateResult, error) {
+	// 轮询链接来自上游响应，且请求会带账号 token：只允许发往 adobe.io。
+	if err := validateAPIURL(params.pollURL); err != nil {
+		return nil, err
+	}
 	headers, order := c.pollHeaders(params.token)
 	deadline := timeNow().Add(params.timeout)
+	consecutiveFailures := 0
 
 	for {
 		resp, err := c.transport.Do(ctx, &Request{
@@ -307,11 +324,40 @@ func (c *Client) poll(ctx context.Context, params pollParams) (*GenerateResult, 
 			Timeout:     defaultSubmitTimeout,
 		})
 		if err != nil {
-			return nil, err
+			if !isTransientPollError(ctx, err) {
+				return nil, err
+			}
+			consecutiveFailures++
+			if consecutiveFailures > maxConsecutivePollFailures {
+				return nil, err
+			}
+			if waitErr := waitNextPoll(ctx, deadline, params); waitErr != nil {
+				return nil, waitErr
+			}
+			continue
 		}
-		if resp.StatusCode != http.StatusOK {
+		switch {
+		case resp.StatusCode == http.StatusOK, resp.StatusCode == http.StatusCreated:
+		case resp.StatusCode == http.StatusAccepted:
+			// 202：任务仍在排队/运行，没有可解析的结果。
+			consecutiveFailures = 0
+			if err := waitNextPoll(ctx, deadline, params); err != nil {
+				return nil, err
+			}
+			continue
+		case IsRetryableStatus(resp.StatusCode) && !IsContentRejectedBody(string(resp.Body)):
+			consecutiveFailures++
+			if consecutiveFailures > maxConsecutivePollFailures {
+				return nil, c.errorForStatus(resp, params.label+" poll")
+			}
+			if err := waitNextPoll(ctx, deadline, params); err != nil {
+				return nil, err
+			}
+			continue
+		default:
 			return nil, c.errorForStatus(resp, params.label+" poll")
 		}
+		consecutiveFailures = 0
 
 		var latest map[string]any
 		if err := json.Unmarshal(resp.Body, &latest); err != nil {
@@ -321,7 +367,7 @@ func (c *Client) poll(ctx context.Context, params pollParams) (*GenerateResult, 
 		if mediaURL, found, err := presignedURL(latest, params.outputKey); err != nil {
 			return nil, err
 		} else if found {
-			bytes, err := c.download(ctx, mediaURL)
+			bytes, err := c.download(ctx, mediaURL, params.maxDownload, params.downloadWait)
 			if err != nil {
 				return nil, err
 			}
@@ -335,26 +381,49 @@ func (c *Client) poll(ctx context.Context, params pollParams) (*GenerateResult, 
 				return nil, NewContentRejectedError(message, resp.StatusCode,
 					"Image content was rejected by the upstream safety filter")
 			}
-			return nil, NewRequestError(message)
+			jobErr := NewRequestError(message)
+			jobErr.UserMessage = fmt.Sprintf("Adobe %s generation failed", params.label)
+			return nil, jobErr
 		}
 
-		if timeNow().After(deadline) {
-			return nil, NewRequestError(fmt.Sprintf("%s generation timed out", params.label))
-		}
-		select {
-		case <-ctx.Done():
-			return nil, ctx.Err()
-		case <-time.After(params.pollInterval):
+		if err := waitNextPoll(ctx, deadline, params); err != nil {
+			return nil, err
 		}
 	}
 }
 
-func (c *Client) download(ctx context.Context, mediaURL string) ([]byte, error) {
+// isTransientPollError 判断轮询请求的传输错误是否值得在同一任务上继续轮询。
+func isTransientPollError(ctx context.Context, err error) bool {
+	if ctx.Err() != nil {
+		return false
+	}
+	var temporary *UpstreamTemporaryError
+	return errors.As(err, &temporary)
+}
+
+// waitNextPoll 在两次轮询之间检查截止时间并等待 pollInterval；ctx 取消立即返回。
+func waitNextPoll(ctx context.Context, deadline time.Time, params pollParams) error {
+	if timeNow().After(deadline) {
+		return NewRequestError(fmt.Sprintf("%s generation timed out", params.label))
+	}
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-time.After(params.pollInterval):
+		return nil
+	}
+}
+
+func (c *Client) download(ctx context.Context, mediaURL string, maxBytes int64, timeout time.Duration) ([]byte, error) {
+	if err := validateDownloadURL(mediaURL); err != nil {
+		return nil, err
+	}
 	resp, err := c.downloadTransport.Do(ctx, &Request{
-		Method:  http.MethodGet,
-		URL:     mediaURL,
-		Headers: map[string]string{"accept": "*/*"},
-		Timeout: defaultSubmitTimeout,
+		Method:       http.MethodGet,
+		URL:          mediaURL,
+		Headers:      map[string]string{"accept": "*/*"},
+		Timeout:      orDuration(timeout, defaultSubmitTimeout),
+		MaxBodyBytes: maxBytes,
 	})
 	if err != nil {
 		return nil, err
@@ -369,7 +438,10 @@ func (c *Client) download(ctx context.Context, mediaURL string) ([]byte, error) 
 	return resp.Body, nil
 }
 
-// postSubmit 发送 generate-async 提交，并对 Adobe 降载状态码做有限次退避重试。
+// postSubmit 发送 generate-async 提交，只对 Adobe 降载状态码（408/429）在同一账号上退避重试。
+//
+// 5xx/451 不在同一账号重试：请求可能已被上游受理，中间层才回了错误，同号重发会叠加
+// 重复的付费任务；这类错误交给 handler 换号，最坏提交次数从 3×换号数降到换号数。
 func (c *Client) postSubmit(
 	ctx context.Context, rawURL string, headers map[string]string, order []string, body []byte,
 ) (*Response, error) {
@@ -387,8 +459,7 @@ func (c *Client) postSubmit(
 			return nil, err
 		}
 		last = resp
-		if resp.StatusCode == http.StatusOK || isAuthStatus(resp.StatusCode) || !IsRetryableStatus(resp.StatusCode) ||
-			IsContentRejectedBody(string(resp.Body)) {
+		if !isSubmitLoadSheddingStatus(resp.StatusCode) || IsContentRejectedBody(string(resp.Body)) {
 			return resp, nil
 		}
 		if attempt == submitAttempts {
@@ -399,6 +470,11 @@ func (c *Client) postSubmit(
 		}
 	}
 	return last, nil
+}
+
+// isSubmitLoadSheddingStatus 报告提交响应是否为 Adobe 的降载拒绝（请求未被受理），可同号重试。
+func isSubmitLoadSheddingStatus(status int) bool {
+	return status == http.StatusRequestTimeout || status == http.StatusTooManyRequests
 }
 
 func waitSubmitRetry(ctx context.Context, attempt int) error {
@@ -423,17 +499,14 @@ func waitSubmitRetry(ctx context.Context, attempt int) error {
 }
 
 // errorForSubmit 处理提交响应，把 401/403 细分成配额耗尽、权益不足与鉴权失效。
-func (c *Client) errorForSubmit(resp *Response, label, fallbackBody string) error {
+func (c *Client) errorForSubmit(resp *Response, label string) error {
 	if resp.StatusCode == http.StatusOK {
 		return nil
 	}
 	if isAuthStatus(resp.StatusCode) {
 		return authOrQuotaError(resp)
 	}
-	body := fallbackBody
-	if body == "" {
-		body = resp.BodyPreview()
-	}
+	body := resp.BodyPreview()
 	message := fmt.Sprintf("%s failed: %d %s", label, resp.StatusCode, body)
 	return classifyAdobeHTTPError(resp.StatusCode, body, message)
 }
@@ -458,7 +531,10 @@ func classifyAdobeHTTPError(status int, body, message string) error {
 	if IsRetryableStatus(status) {
 		return NewUpstreamTemporaryError(message, status, ErrorTypeStatus)
 	}
-	return NewRequestError(message)
+	// 上游 4xx 体可能含内部字段：原文只留在 Message（日志），对外给固定文案。
+	requestErr := NewRequestError(message)
+	requestErr.UserMessage = fmt.Sprintf("Adobe rejected the request (HTTP %d)", status)
+	return requestErr
 }
 
 // authOrQuotaError 区分「配额耗尽」「权益不足」「token 失效」：三者共用 401/403，
@@ -476,10 +552,13 @@ func authOrQuotaError(resp *Response) error {
 		}
 		return NewNotEntitledError(message, resp.StatusCode, "")
 	}
+	message := "Token invalid or expired"
 	if preview != "" {
-		return NewAuthError("Token invalid or expired: "+preview, resp.StatusCode)
+		message += ": " + preview
 	}
-	return NewAuthError("Token invalid or expired", resp.StatusCode)
+	authErr := NewAuthError(message, resp.StatusCode)
+	authErr.UserMessage = "Adobe account authentication failed"
+	return authErr
 }
 
 func isAuthStatus(status int) bool {
@@ -573,7 +652,7 @@ func NormalizeVideoPollURL(rawURL string) string {
 		return rawURL
 	}
 	host := parsed.Host
-	if host == "" || !strings.HasPrefix(host, "firefly-epo") {
+	if host == "" || !strings.HasPrefix(host, "firefly-epo") || !isAdobeIOHost(parsed.Hostname()) {
 		return rawURL
 	}
 	pathParts := strings.FieldsFunc(parsed.Path, func(r rune) bool { return r == '/' })

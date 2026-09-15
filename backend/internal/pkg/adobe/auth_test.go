@@ -161,6 +161,63 @@ func TestRefreshAccessTokenErrors(t *testing.T) {
 		require.True(t, errors.As(err, &auth))
 	})
 
+	t.Run("403 带 IMS 错误体归为鉴权失效", func(t *testing.T) {
+		err := refresh(t, jsonResponse(t, 403, map[string]any{"error": "invalid_credentials"}, nil))
+		var auth *AuthError
+		require.True(t, errors.As(err, &auth))
+	})
+
+	// WAF 拦截出口 IP 时返回 HTML 或空 body 的 403：不能当 cookie 失效，否则账号会被批量永久置 error。
+	t.Run("403 HTML 归为可重试", func(t *testing.T) {
+		err := refresh(t, &Response{StatusCode: 403, Headers: map[string]string{}, Body: []byte("<html>Access Denied</html>")})
+		var auth *AuthError
+		require.False(t, errors.As(err, &auth))
+		var temporary *UpstreamTemporaryError
+		require.True(t, errors.As(err, &temporary))
+	})
+
+	t.Run("403 空 body 归为可重试", func(t *testing.T) {
+		err := refresh(t, &Response{StatusCode: 403, Headers: map[string]string{}})
+		var auth *AuthError
+		require.False(t, errors.As(err, &auth))
+		var temporary *UpstreamTemporaryError
+		require.True(t, errors.As(err, &temporary))
+	})
+
+	t.Run("403 JSON 但无错误字段归为可重试", func(t *testing.T) {
+		err := refresh(t, jsonResponse(t, 403, map[string]any{"message": "forbidden"}, nil))
+		var temporary *UpstreamTemporaryError
+		require.True(t, errors.As(err, &temporary))
+	})
+
+	// 只有 invalid_credentials 是针对单个 cookie 的明确拒绝；其它错误码只让当次请求换号，
+	// 不能让一次全局故障（client_id 失效、限流等）把整批账号永久置 error。
+	for _, code := range []string{"invalid_client", "access_denied", "rate_limited"} {
+		t.Run("403 JSON 错误码 "+code+" 归为可重试", func(t *testing.T) {
+			err := refresh(t, jsonResponse(t, 403, map[string]any{"error": code}, nil))
+			var auth *AuthError
+			require.False(t, errors.As(err, &auth))
+			var temporary *UpstreamTemporaryError
+			require.True(t, errors.As(err, &temporary))
+		})
+	}
+
+	for _, code := range []string{"invalid_client", "unauthorized_client", "invalid_scope"} {
+		t.Run("401 全局配置错误码 "+code+" 归为可重试", func(t *testing.T) {
+			err := refresh(t, jsonResponse(t, 401, map[string]any{"error_code": code}, nil))
+			var auth *AuthError
+			require.False(t, errors.As(err, &auth))
+			var temporary *UpstreamTemporaryError
+			require.True(t, errors.As(err, &temporary))
+		})
+	}
+
+	t.Run("401 带 invalid_credentials 归为鉴权失效", func(t *testing.T) {
+		err := refresh(t, jsonResponse(t, 401, map[string]any{"error": "invalid_credentials"}, nil))
+		var auth *AuthError
+		require.True(t, errors.As(err, &auth))
+	})
+
 	t.Run("5xx 归为可重试", func(t *testing.T) {
 		err := refresh(t, jsonResponse(t, 503, map[string]any{}, nil))
 		var temporary *UpstreamTemporaryError

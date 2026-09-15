@@ -99,7 +99,16 @@ func TestImpersonateTransportRejectsUnknownProfile(t *testing.T) {
 	require.False(t, IsRotatable(err), "配置错误换号也无用")
 }
 
+// allowLoopbackDownloads 让直连下载在本测试内可以连 httptest 的回环地址。
+func allowLoopbackDownloads(t *testing.T) {
+	t.Helper()
+	previous := plainTransportDialControl
+	plainTransportDialControl = nil
+	t.Cleanup(func() { plainTransportDialControl = previous })
+}
+
 func TestPlainTransportRoundTrip(t *testing.T) {
+	allowLoopbackDownloads(t)
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		require.Equal(t, "*/*", r.Header.Get("accept"))
 		w.Header().Set("X-Task-Status", "COMPLETED")
@@ -122,6 +131,69 @@ func TestPlainTransportRoundTrip(t *testing.T) {
 	require.Empty(t, resp.Header("missing"))
 }
 
+// 产物直链可以 302 到内网主机名：每一跳都要重新校验，而不只是首个 URL。
+func TestPlainTransportRejectsUnsafeRedirects(t *testing.T) {
+	allowLoopbackDownloads(t)
+	for name, location := range map[string]string{
+		"localhost": "https://localhost/secret",
+		"ip 字面量":    "https://10.0.0.1/secret",
+		"降级到 http":  "http://media.example.com/secret",
+	} {
+		t.Run(name, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				http.Redirect(w, r, location, http.StatusFound)
+			}))
+			defer server.Close()
+
+			_, err := NewPlainTransport("").Do(context.Background(), &Request{Method: http.MethodGet, URL: server.URL})
+			require.ErrorContains(t, err, "destination is not allowed")
+			require.False(t, IsRotatable(err), "目标被策略拒绝，换号也无用")
+		})
+	}
+}
+
+func TestPlainTransportRedirectLimit(t *testing.T) {
+	transport := NewPlainTransport("").(*plainTransport)
+	_, err := transport.ensureClient()
+	require.NoError(t, err)
+	via := make([]*http.Request, maxDownloadRedirects)
+	next, _ := http.NewRequest(http.MethodGet, "https://media.example.com/next", nil)
+	require.ErrorIs(t, transport.checkRedirect(next, via), ErrBlockedDestination)
+	require.NoError(t, transport.checkRedirect(next, via[:1]))
+}
+
+// 经代理时拨号层看到的是代理地址，改为发请求前本地解析主机名。
+func TestPlainTransportProxyResolveGuard(t *testing.T) {
+	stubResolver := func(t *testing.T, ip string) {
+		t.Helper()
+		previous := downloadResolver
+		downloadResolver = func(context.Context, string) ([]net.IPAddr, error) {
+			return []net.IPAddr{{IP: net.ParseIP(ip)}}, nil
+		}
+		t.Cleanup(func() { downloadResolver = previous })
+	}
+
+	t.Run("解析到内网被拒且不发请求", func(t *testing.T) {
+		stubResolver(t, "10.0.0.1")
+		_, err := NewPlainTransport("http://127.0.0.1:1").Do(context.Background(), &Request{
+			Method: http.MethodGet, URL: "https://media.example.com/img.png",
+		})
+		require.ErrorContains(t, err, "destination is not allowed")
+		require.False(t, IsRotatable(err))
+	})
+
+	t.Run("解析到公网放行", func(t *testing.T) {
+		stubResolver(t, "93.184.216.34")
+		// 代理地址不可达：放行后应得到代理连接失败，而不是被策略拒绝。
+		_, err := NewPlainTransport("http://127.0.0.1:1").Do(context.Background(), &Request{
+			Method: http.MethodGet, URL: "https://media.example.com/img.png", Timeout: 2 * time.Second,
+		})
+		require.Error(t, err)
+		require.NotContains(t, err.Error(), "not allowed")
+		require.True(t, IsRotatable(err))
+	})
+}
+
 func TestPlainTransportInvalidProxy(t *testing.T) {
 	_, err := NewPlainTransport("://bad").Do(context.Background(), &Request{
 		Method: http.MethodGet, URL: "https://example.com",
@@ -130,6 +202,7 @@ func TestPlainTransportInvalidProxy(t *testing.T) {
 }
 
 func TestPlainTransportTimeout(t *testing.T) {
+	allowLoopbackDownloads(t)
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		time.Sleep(200 * time.Millisecond)
 		w.WriteHeader(http.StatusOK)
@@ -207,4 +280,71 @@ func TestDefaultModels(t *testing.T) {
 		require.False(t, seen[model.ID], "模型 id 重复: %s", model.ID)
 		seen[model.ID] = true
 	}
+}
+
+// 直连下载在拨号层拒绝回环/私网地址：上游给的产物直链不能被用来探测内网。
+func TestPlainTransportBlocksPrivateDestination(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		t.Error("loopback server must not be reached")
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+
+	_, err := NewPlainTransport("").Do(context.Background(), &Request{Method: http.MethodGet, URL: server.URL})
+	require.ErrorContains(t, err, "not allowed")
+	require.False(t, IsRotatable(err), "blocked destination is terminal, not a retryable network error")
+}
+
+func TestPlainTransportRejectsOversizedBody(t *testing.T) {
+	allowLoopbackDownloads(t)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write(make([]byte, 64))
+	}))
+	defer server.Close()
+
+	_, err := NewPlainTransport("").Do(context.Background(), &Request{
+		Method: http.MethodGet, URL: server.URL, MaxBodyBytes: 16,
+	})
+	require.ErrorContains(t, err, "exceeds 16 bytes")
+	require.False(t, IsRotatable(err))
+
+	resp, err := NewPlainTransport("").Do(context.Background(), &Request{
+		Method: http.MethodGet, URL: server.URL, MaxBodyBytes: 64,
+	})
+	require.NoError(t, err)
+	require.Len(t, resp.Body, 64)
+}
+
+func TestPlainTransportInvalidProxyDoesNotLeakCredentials(t *testing.T) {
+	_, err := NewPlainTransport("http://user:s3cret@[::1").Do(context.Background(), &Request{
+		Method: http.MethodGet, URL: "https://example.com",
+	})
+	require.Error(t, err)
+	require.NotContains(t, err.Error(), "s3cret")
+}
+
+func TestRedactProxyURL(t *testing.T) {
+	proxy := "http://user:s3cret@proxy.example.com:8080"
+	msg := redactProxyURL("dial "+proxy+" failed for user:s3cret", proxy)
+	require.NotContains(t, msg, "s3cret")
+	require.Contains(t, msg, "http://proxy.example.com:8080")
+}
+
+// 客户端只构造一次：首个请求的短超时不能锁死后续请求的时限。
+func TestImpersonateTransportTimeoutIsPerRequest(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/slow" {
+			time.Sleep(1500 * time.Millisecond)
+		}
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+
+	transport := NewImpersonateTransport(Identity{}, "")
+	_, err := transport.Do(context.Background(), &Request{Method: http.MethodGet, URL: server.URL + "/fast", Timeout: time.Second})
+	require.NoError(t, err)
+
+	resp, err := transport.Do(context.Background(), &Request{Method: http.MethodGet, URL: server.URL + "/slow", Timeout: 5 * time.Second})
+	require.NoError(t, err, "a later request with a longer timeout must not inherit the first request's 1s limit")
+	require.Equal(t, http.StatusOK, resp.StatusCode)
 }
