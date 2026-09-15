@@ -272,6 +272,10 @@ gateway:
   # Maximum TTL (seconds) a Gemini explicit context cache may be created or extended to (default: 86400)
   # Gemini 显式上下文缓存单次可设置的最长有效期（秒，默认 86400）；存储费在创建/延长请求中一次性收取
   gemini_cached_content_max_ttl_seconds: 86400
+  # Maximum time (seconds) to keep draining an accepted Gemini request after the client disconnects,
+  # so the usage already sent by the provider can still be billed (0 uses the 600s default, max 600).
+  # 客户端断开后，已受理的 Gemini 请求继续排空以获取计费用量的最长时间（秒，0 使用 600 秒默认值，上限 600）。
+  gemini_disconnect_drain_timeout_seconds: 600
   # Connection pool isolation strategy:
   # 连接池隔离策略：
   # - proxy: Isolate by proxy, same proxy shares connection pool (suitable for few proxies, many accounts)

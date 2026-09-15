@@ -1061,6 +1061,8 @@ type GatewayConfig struct {
 	GeminiDebugResponseHeaders bool `mapstructure:"gemini_debug_response_headers"`
 	// GeminiCachedContentMaxTTLSeconds: Gemini 显式缓存单次可设置的最长有效期（秒），<=0 时按 86400 处理
 	GeminiCachedContentMaxTTLSeconds int `mapstructure:"gemini_cached_content_max_ttl_seconds"`
+	// GeminiDisconnectDrainTimeoutSeconds: Gemini 客户端断开后已受理请求的最大排空时间（秒，0 使用默认值）。
+	GeminiDisconnectDrainTimeoutSeconds int `mapstructure:"gemini_disconnect_drain_timeout_seconds"`
 	// ConnectionPoolIsolation: 上游连接池隔离策略（proxy/account/account_proxy）
 	ConnectionPoolIsolation string `mapstructure:"connection_pool_isolation"`
 	// ForceCodexCLI: 强制将 OpenAI `/v1/responses` 请求按 Codex CLI 处理。
@@ -2590,6 +2592,7 @@ func setDefaults() {
 	viper.SetDefault("gateway.proxy_probe_response_read_max_bytes", int64(1024*1024))
 	viper.SetDefault("gateway.gemini_debug_response_headers", false)
 	viper.SetDefault("gateway.gemini_cached_content_max_ttl_seconds", 86400)
+	viper.SetDefault("gateway.gemini_disconnect_drain_timeout_seconds", 600)
 	viper.SetDefault("gateway.connection_pool_isolation", ConnectionPoolIsolationAccountProxy)
 	// HTTP 上游连接池配置（针对 5000+ 并发用户优化）
 	viper.SetDefault("gateway.max_idle_conns", 2560)          // 最大空闲连接总数（高并发场景可调大）
@@ -3431,6 +3434,9 @@ func (c *Config) Validate() error {
 	}
 	if c.Gateway.MaxSameAccountRetriesGemini < 0 || c.Gateway.MaxSameAccountRetriesGemini > 10 {
 		return fmt.Errorf("gateway.max_same_account_retries_gemini must be between 0-10")
+	}
+	if c.Gateway.GeminiDisconnectDrainTimeoutSeconds < 0 || c.Gateway.GeminiDisconnectDrainTimeoutSeconds > 600 {
+		return fmt.Errorf("gateway.gemini_disconnect_drain_timeout_seconds must be between 0-600 seconds")
 	}
 	if c.Gateway.OpenAIFirstOutputTimeoutSeconds < 0 || c.Gateway.OpenAIFirstOutputTimeoutSeconds > 600 ||
 		(c.Gateway.OpenAIFirstOutputTimeoutSeconds > 0 && c.Gateway.OpenAIFirstOutputTimeoutSeconds < 30) {
