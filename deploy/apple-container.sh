@@ -469,8 +469,8 @@ EOF
 }
 
 prepare_app_environment() {
-    [[ -n "${POSTGRES_ADDRESS}" && -n "${REDIS_ADDRESS}" ]] || \
-        die "Dependency network addresses are not available."
+    [[ -n "${POSTGRES_ADDRESS}" && -n "${REDIS_ADDRESS}" && -n "${APP_IMAGE_ID}" ]] || \
+        die "Dependency network addresses or application image ID are not available."
 
     cp "${ENV_FILE}" "${APP_ENV_FILE}"
     cat >>"${APP_ENV_FILE}" <<EOF
@@ -488,6 +488,7 @@ REDIS_HOST=${REDIS_ADDRESS}
 REDIS_PORT=6379
 REDIS_PASSWORD=${REDIS_PASSWORD}
 DATA_DIR=/app/storage/data
+APPLE_CONTAINER_SUB2API_IMAGE_ID=${APP_IMAGE_ID}
 EOF
     chmod 600 "${APP_ENV_FILE}"
 }
@@ -533,8 +534,59 @@ create_app_container() {
         --volume "${APP_VOLUME}:/app/storage" \
         --entrypoint /bin/sh \
         "${APP_IMAGE}" \
-        -c 'set -e; mkdir -p "$DATA_DIR"; chown -R sub2api:sub2api "$DATA_DIR"; exec su-exec sub2api /app/sub2api' \
+        -c '
+set -e
+mkdir -p "$DATA_DIR"
+chown -R sub2api:sub2api "$DATA_DIR"
+
+runtime_dir=/app/storage/runtime
+runtime_binary="$runtime_dir/sub2api"
+image_marker="$runtime_dir/base-image-id"
+installed_image_id=""
+if [ -f "$image_marker" ]; then
+    installed_image_id="$(cat "$image_marker")"
+fi
+if [ ! -x "$runtime_binary" ] || [ "$installed_image_id" != "$APPLE_CONTAINER_SUB2API_IMAGE_ID" ]; then
+    mkdir -p "$runtime_dir"
+    cp /app/sub2api "${runtime_binary}.new"
+    chown sub2api:sub2api "${runtime_binary}.new"
+    chmod 0755 "${runtime_binary}.new"
+    mv "${runtime_binary}.new" "$runtime_binary"
+    printf "%s\n" "$APPLE_CONTAINER_SUB2API_IMAGE_ID" >"${image_marker}.new"
+    mv "${image_marker}.new" "$image_marker"
+    rm -f "${runtime_binary}.backup"
+fi
+chown -R sub2api:sub2api "$runtime_dir"
+
+child_pid=""
+stop() {
+    trap - TERM INT
+    if [ -n "$child_pid" ]; then
+        kill -TERM "$child_pid" 2>/dev/null || true
+        wait "$child_pid" 2>/dev/null || true
+    fi
+    exit 0
+}
+trap stop TERM INT
+
+while true; do
+    su-exec sub2api "$runtime_binary" &
+    child_pid=$!
+    set +e
+    wait "$child_pid"
+    status=$?
+    set -e
+    child_pid=""
+    echo "Sub2API exited with status ${status}; restarting in 1 second..." >&2
+    sleep 1
+done
+' \
         >/dev/null
+}
+
+application_image_id() {
+    container image inspect "${APP_IMAGE}" | \
+        plutil -extract 0.id raw -o - -
 }
 
 ensure_container() {
@@ -680,6 +732,9 @@ cmd_up() {
     ensure_image_available "${APP_IMAGE}"
     ensure_image_available "${POSTGRES_IMAGE}"
     ensure_image_available "${REDIS_IMAGE}"
+    APP_IMAGE_ID="$(application_image_id)" || \
+        die "Unable to inspect application image ID for ${APP_IMAGE}."
+    [[ -n "${APP_IMAGE_ID}" ]] || die "Application image ID must not be empty."
 
     if [[ "${recreate}" == true ]]; then
         delete_container_if_present "${APP_CONTAINER}"

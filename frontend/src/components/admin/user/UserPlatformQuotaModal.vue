@@ -43,8 +43,8 @@
                   <button
                     type="button"
                     class="text-xs text-gray-400 hover:text-amber-500 disabled:opacity-50"
-                    :disabled="!!resetting[`${row.platform}.daily`]"
-                    :title="t('admin.users.platformQuota.reset.button')"
+                    :disabled="!!resetting[`${row.platform}.daily`] || !savedConfigured.has(row.platform)"
+                    :title="t(savedConfigured.has(row.platform) ? 'admin.users.platformQuota.reset.button' : 'admin.users.platformQuota.reset.unavailable')"
                     @click="onReset(row.platform, 'daily')"
                   >↻</button>
                 </div>
@@ -62,8 +62,8 @@
                   <button
                     type="button"
                     class="text-xs text-gray-400 hover:text-amber-500 disabled:opacity-50"
-                    :disabled="!!resetting[`${row.platform}.weekly`]"
-                    :title="t('admin.users.platformQuota.reset.button')"
+                    :disabled="!!resetting[`${row.platform}.weekly`] || !savedConfigured.has(row.platform)"
+                    :title="t(savedConfigured.has(row.platform) ? 'admin.users.platformQuota.reset.button' : 'admin.users.platformQuota.reset.unavailable')"
                     @click="onReset(row.platform, 'weekly')"
                   >↻</button>
                 </div>
@@ -81,8 +81,8 @@
                   <button
                     type="button"
                     class="text-xs text-gray-400 hover:text-amber-500 disabled:opacity-50"
-                    :disabled="!!resetting[`${row.platform}.monthly`]"
-                    :title="t('admin.users.platformQuota.reset.button')"
+                    :disabled="!!resetting[`${row.platform}.monthly`] || !savedConfigured.has(row.platform)"
+                    :title="t(savedConfigured.has(row.platform) ? 'admin.users.platformQuota.reset.button' : 'admin.users.platformQuota.reset.unavailable')"
                     @click="onReset(row.platform, 'monthly')"
                   >↻</button>
                 </div>
@@ -148,6 +148,18 @@ const loading = ref(false)
 const submitting = ref(false)
 const resetting = reactive<Record<string, boolean>>({})
 const quotas = ref<QuotaRow[]>([])
+// 已保存且至少配置了一档限额的平台。只有这些平台在后端有配额记录，重置用量窗口才有对象。
+const savedConfigured = ref<Set<PlatformQuotaPlatform>>(new Set())
+
+function configuredPlatforms(items: PlatformQuotaItem[]): Set<PlatformQuotaPlatform> {
+  const out = new Set<PlatformQuotaPlatform>()
+  for (const it of items) {
+    if (it.daily_limit_usd != null || it.weekly_limit_usd != null || it.monthly_limit_usd != null) {
+      out.add(it.platform)
+    }
+  }
+  return out
+}
 
 function emptyRow(p: PlatformQuotaPlatform): QuotaRow {
   return {
@@ -190,9 +202,11 @@ async function load() {
   try {
     const data = await adminAPI.users.getPlatformQuotas(props.user.id)
     quotas.value = normalize(data.platform_quotas || [])
+    savedConfigured.value = configuredPlatforms(data.platform_quotas || [])
   } catch {
     appStore.showError(t('admin.users.platformQuota.loadFailed'))
     quotas.value = PLATFORMS.map(emptyRow)
+    savedConfigured.value = new Set()
   } finally {
     loading.value = false
   }
@@ -273,6 +287,7 @@ async function onReset(platform: PlatformQuotaPlatform, quotaWindow: PlatformQuo
   try {
     const data = await adminAPI.users.resetPlatformQuotaWindow(props.user.id, platform, quotaWindow)
     quotas.value = normalize(data.platform_quotas || [])
+    savedConfigured.value = configuredPlatforms(data.platform_quotas || [])
     appStore.showSuccess(t('admin.users.platformQuota.reset.success', { platform, window: windowLabel }))
   } catch (e: any) {
     appStore.showError(e?.response?.data?.message || t('admin.users.platformQuota.reset.failed'))

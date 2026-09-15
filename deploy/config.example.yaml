@@ -147,6 +147,7 @@ security:
       - "api.moonshot.cn"
       - "open.bigmodel.cn"
       - "api.minimaxi.com"
+      - "opencode.ai"
       - "generativelanguage.googleapis.com"
       - "cloudcode-pa.googleapis.com"
       - "*.openai.azure.com"
@@ -305,11 +306,11 @@ gateway:
   # OpenAI 透传模式是否放行客户端超时头（如 x-stainless-timeout）
   # 默认 false：过滤超时头，降低上游提前断流风险。
   openai_passthrough_allow_timeout_headers: false
-  # Model used for OpenAI /responses/compact upstream requests (default: gpt-5.4).
-  # OpenAI /responses/compact 上游模型（默认 gpt-5.4）。
+  # Model used for OpenAI /responses/compact upstream requests (default: gpt-5.5).
+  # OpenAI /responses/compact 上游模型（默认 gpt-5.5）。
   # Use this to avoid compact failures when newer models are not yet supported by the compact endpoint.
   # 当 compact 端点暂未支持更新模型时，可通过这里降级规避失败。
-  openai_compact_model: "gpt-5.4"
+  openai_compact_model: "gpt-5.5"
   # ChatGPT Frameless Live 单会话硬上限（秒）。
   live:
     max_session_duration_seconds: 3600
@@ -356,10 +357,16 @@ gateway:
     max_idle_per_account: 12
     # 是否按账号并发动态计算连接池上限：
     # effective_max_conns = min(max_conns_per_account, ceil(account.concurrency * factor))
+    # 旧版及 mode_router_v2 的 ctx_pool 共用此开关和下方类型系数；关闭后使用 max_conns_per_account。
+    # mode_router_v2 下并发数 <= 0 的账号仍不可调度。
     dynamic_max_conns_by_account_concurrency_enabled: true
-    # 按账号类型分别设置系数（OAuth / API Key）
-    oauth_max_conns_factor: 1.0
-    apikey_max_conns_factor: 1.0
+    # 按账号类型分别设置系数（OAuth / API Key）。
+    # ctx_pool 接入下每个客户端会话在整个生命周期（轮次之间也不释放）持有一条上游连接，
+    # 该上限限制的是同时持有连接的会话数，在飞请求数另由账号并发限制；
+    # 系数 1.0 会让存活会话数一到并发数，新会话就收到 1013 upstream websocket is busy。
+    # 空闲连接数另受 max_idle_per_account 裁剪。
+    oauth_max_conns_factor: 5.0
+    apikey_max_conns_factor: 5.0
     dial_timeout_seconds: 10
     read_timeout_seconds: 900
     write_timeout_seconds: 120

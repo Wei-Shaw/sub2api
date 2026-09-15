@@ -1545,6 +1545,7 @@ func (h *AccountHandler) Refresh(c *gin.Context) {
 
 	if warning == "missing_project_id_temporary" {
 		response.Success(c, gin.H{
+			"account": h.buildAccountResponseWithRuntime(c.Request.Context(), updatedAccount),
 			"message": "Token refreshed successfully, but project_id could not be retrieved (will retry automatically)",
 			"warning": "missing_project_id_temporary",
 		})
