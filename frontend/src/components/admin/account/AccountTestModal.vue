@@ -877,7 +877,7 @@ const pelicanPreviewDocument = computed(() => {
   const nonce = document.querySelector<HTMLScriptElement>('script[nonce]')?.nonce
   if (nonce) {
     preview.querySelectorAll<HTMLScriptElement>('script:not([src])').forEach((script) => {
-      script.nonce = nonce
+      script.setAttribute('data-pelican-nonce', '')
     })
   }
 
@@ -886,7 +886,12 @@ const pelicanPreviewDocument = computed(() => {
   policy.content =
     "default-src 'none'; img-src data: blob:; style-src 'unsafe-inline'; script-src 'unsafe-inline'; font-src data:; media-src data: blob:; connect-src 'none'; frame-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'"
   preview.head.prepend(policy)
-  return `<!DOCTYPE html>${preview.documentElement.outerHTML}`
+  let serializedPreview = preview.documentElement.outerHTML
+  if (nonce) {
+    const escapedNonce = nonce.replace(/&/g, '&amp;').replace(/"/g, '&quot;')
+    serializedPreview = serializedPreview.split('data-pelican-nonce=""').join(`nonce="${escapedNonce}"`)
+  }
+  return `<!DOCTYPE html>${serializedPreview}`
 })
 
 const handleClose = () => {

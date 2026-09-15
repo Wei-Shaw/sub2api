@@ -269,6 +269,7 @@ describe('AccountTestModal', () => {
     expect(wrapper.find('iframe').attributes('sandbox')).toBe('allow-scripts')
     expect(wrapper.find('iframe').attributes('srcdoc')).toContain("default-src 'none'")
     expect(wrapper.find('iframe').attributes('srcdoc')).toContain('nonce="pelican-test-nonce"')
+    expect(wrapper.find('iframe').attributes('srcdoc')).not.toContain('data-pelican-nonce')
     expect(wrapper.find('iframe').attributes('srcdoc')).not.toContain("script-src 'none'")
     expect(wrapper.find('iframe').attributes('srcdoc')).not.toContain(' onclick=')
     expect(wrapper.find('iframe').attributes('srcdoc')).not.toContain(' oninput=')
