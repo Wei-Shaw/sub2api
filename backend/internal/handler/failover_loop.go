@@ -77,7 +77,7 @@ func sameAccountRetryDelayFor(failoverErr *service.UpstreamFailoverError, retryC
 }
 
 func sameAccountRetryAllowed(failoverErr *service.UpstreamFailoverError, retryCount, retryLimit int) bool {
-	if failoverErr == nil || !failoverErr.RetryableOnSameAccount {
+	if failoverErr == nil || !failoverErr.RetryableOnSameAccount || retryLimit <= 0 {
 		return false
 	}
 	if !sameAccountRetryDeadlineAllows(failoverErr) {
@@ -115,6 +115,14 @@ func effectiveSameAccountRetryLimit(failoverErr *service.UpstreamFailoverError, 
 		return 0
 	}
 	limit := account.GetPoolModeRetryCount()
+	// An explicit OAuth override must also cap deadline-based 429 retries.
+	if failoverErr != nil && account.Platform == service.PlatformOpenAI && account.Type == service.AccountTypeOAuth {
+		if value, ok := account.Credentials["pool_mode_retry_count"]; ok && value != nil && limit > 0 {
+			if failoverErr.SameAccountRetryMax <= 0 || limit < failoverErr.SameAccountRetryMax {
+				failoverErr.SameAccountRetryMax = limit
+			}
+		}
+	}
 	if limit > 0 && failoverErr != nil && failoverErr.SameAccountRetryMax > 0 && failoverErr.SameAccountRetryMax < limit {
 		return failoverErr.SameAccountRetryMax
 	}
