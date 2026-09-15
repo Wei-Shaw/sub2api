@@ -108,6 +108,14 @@ func (s *OpenAIGatewayService) forwardAsRawChatCompletions(
 	// usage recording can apply the selected credential's response contract.
 	serviceTier := extractOpenAIServiceTierFromBody(upstreamBody)
 	if account.Platform == PlatformGrok {
+		aliasedBody, reverseNames, aliasErr := aliasGrokReservedClientToolNamesBody(upstreamBody)
+		if aliasErr != nil {
+			return nil, fmt.Errorf("alias grok reserved client tools: %w", aliasErr)
+		}
+		if len(reverseNames) > 0 {
+			mergeCodexToolNameReverse(c, reverseNames)
+		}
+		upstreamBody = aliasedBody
 		strippedBody, stripErr := stripRedundantGrokChatViewImageTool(upstreamBody)
 		if stripErr != nil {
 			return nil, fmt.Errorf("strip redundant Grok Chat view_image tool: %w", stripErr)
