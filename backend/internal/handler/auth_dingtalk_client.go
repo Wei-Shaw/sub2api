@@ -134,6 +134,7 @@ type DingTalkStaffInfo struct {
 	Name     string // 企业内真实姓名（钉钉企业管理后台配置）
 	Nickname string // 钉钉个人昵称（用户自己设置）
 	Email    string
+	OrgEmail string // Enterprise-managed email; never populated from personal/extension fallbacks.
 	DeptIDs  []int64
 	// CorpID 不来自 staff 接口，来自 userToken；不在此 struct
 }
@@ -393,6 +394,7 @@ func (c *DingTalkClient) GetStaffInfoByUserId(ctx context.Context, userID string
 		Name:     v.Result.Name,
 		Nickname: v.Result.Nickname,
 		Email:    email,
+		OrgEmail: strings.TrimSpace(v.Result.OrgEmail),
 		DeptIDs:  v.Result.DeptID,
 	}, nil
 }
