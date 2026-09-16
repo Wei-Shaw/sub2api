@@ -1,0 +1,8 @@
+# Orca 默认终端 tab：第一个自动起 claude，第二个留给手动输入。
+# 用 `orca worktree create --agent claude` 建时 agent 会挂到第一个 tab，
+# 这里的 command 会被跳过，不会重复启动。
+defaultTabs:
+  - title: claude
+    command: claude --dangerously-skip-permissions
+    color: "#7c3aed"
+  - title: shell
