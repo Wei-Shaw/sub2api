@@ -2,14 +2,20 @@
 package handler
 
 import (
+	"context"
 	"errors"
+	"io"
 	"net/http"
+	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/devin"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/devin/llm"
 	"github.com/Wei-Shaw/sub2api/internal/service"
+	"github.com/gin-gonic/gin"
 )
 
 func TestDevinFailoverErrorClassification(t *testing.T) {
@@ -247,5 +253,64 @@ func TestDevinMappedModelInCatalog(t *testing.T) {
 		if got := devinMappedModelInCatalog(groups, tc.mapped); got != tc.want {
 			t.Fatalf("%s: devinMappedModelInCatalog(%q) = %v, want %v", tc.name, tc.mapped, got, tc.want)
 		}
+	}
+}
+
+// stallThenFinishStream 模拟"首个事件前静默"的上游流：delay 期间无事件，
+// 之后吐一个 text delta + done。用于验证中流 keepalive 在静默期补心跳。
+type stallThenFinishStream struct {
+	delay  time.Duration
+	events []llm.ResponseEvent
+	idx    int
+}
+
+func (s *stallThenFinishStream) Recv(ctx context.Context) (llm.ResponseEvent, error) {
+	if s.idx == 0 {
+		select {
+		case <-time.After(s.delay):
+		case <-ctx.Done():
+			return llm.ResponseEvent{}, ctx.Err()
+		}
+	}
+	if s.idx >= len(s.events) {
+		return llm.ResponseEvent{}, io.EOF
+	}
+	ev := s.events[s.idx]
+	s.idx++
+	return ev, nil
+}
+
+// TestPumpDevinStreamEmitsKeepaliveDuringSilence 复刻线上形态：上游首帧
+// 静默 >1s 时，pump 必须向客户端写 SSE 注释心跳，而不是让连接饿着。
+func TestPumpDevinStreamEmitsKeepaliveDuringSilence(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/messages", nil)
+
+	h := &DevinGatewayHandler{cfg: &config.Config{}}
+	h.cfg.Gateway.StreamKeepaliveInterval = 1 // 秒，配置最小粒度
+
+	stream := &stallThenFinishStream{
+		delay: 1500 * time.Millisecond,
+		events: []llm.ResponseEvent{
+			{Type: llm.ResponseEventTextDelta, Delta: "hi", Partial: &llm.AssistantMessage{}},
+			{Type: llm.ResponseEventDone, Reason: llm.StopReasonStop, Message: &llm.AssistantMessage{
+				Content: []llm.Content{llm.TextContent{Text: "hi"}},
+			}},
+		},
+	}
+	adapted := devinAdapted{context: llm.RequestMessages{Model: "swe-2"}, stream: true}
+	streamStarted := false
+	_, _, err := h.pumpDevinStream(c, devinProtocolMessages, stream, adapted, true, &streamStarted, time.Now())
+	if err != nil {
+		t.Fatalf("pump: %v", err)
+	}
+	body := rec.Body.String()
+	if !strings.HasPrefix(body, ":\n\n") {
+		t.Fatalf("expected keepalive comment emitted during silence, body=%q", body)
+	}
+	if !strings.Contains(body, "message_stop") {
+		t.Fatalf("expected stream events after keepalive, body=%q", body)
 	}
 }

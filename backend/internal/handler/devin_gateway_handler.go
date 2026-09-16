@@ -91,9 +91,12 @@ func NewDevinGatewayHandler(
 		billingCacheService:   billingCacheService,
 		apiKeyService:         apiKeyService,
 		usageRecordWorkerPool: usageRecordWorkerPool,
-		concurrencyHelper:     NewConcurrencyHelper(concurrencyService, SSEPingFormatClaude, 0),
-		maxAccountSwitches:    maxAccountSwitches,
-		cfg:                   cfg,
+		// 槽位等待 ping 用 SSE 注释形态：devin 同端口复务 /v1/messages 与两个
+		// OpenAI 协议，data:{"type":"ping"} 不是合法 chat.completion chunk，
+		// 只有 ":" 注释对三种协议都安全（eventsource 解析层直接忽略）。
+		concurrencyHelper:  NewConcurrencyHelper(concurrencyService, SSEPingFormatComment, 0),
+		maxAccountSwitches: maxAccountSwitches,
+		cfg:                cfg,
 	}
 }
 
@@ -259,6 +262,15 @@ func (h *DevinGatewayHandler) forward(c *gin.Context, protocol devinProtocol) {
 		defer userReleaseFunc()
 	}
 
+	// 下游心跳：账号选择/AssignModel/上游 headers 等待期间（实测 5-15s，
+	// 极端 ~60s+）客户端零字节会被代理当空闲断连。SSE 注释心跳首拍延迟
+	// 一个 interval，此前的硬错误仍走 JSON+状态码；一旦写真实响应即永久
+	// 停拍（对齐 openAI compact 机制）。WS 传输的 writer 会把 ":" 注释
+	// 转成 WebSocket Ping，同一实现覆盖两种传输。
+	if reqStream && h.cfg != nil && h.cfg.Gateway.StreamKeepaliveInterval > 0 {
+		defer service.StartSSEStreamKeepalive(c, time.Duration(h.cfg.Gateway.StreamKeepaliveInterval)*time.Second)()
+	}
+
 	sessionKey := devinSessionHash(&adapted.context)
 	fs := NewFailoverState(h.maxAccountSwitches, false)
 
@@ -273,8 +285,8 @@ func (h *DevinGatewayHandler) forward(c *gin.Context, protocol devinProtocol) {
 					zap.String("model", reqModel),
 					zap.Int64p("group_id", apiKey.GroupID),
 					zap.Error(selErr))
-				h.devinError(c, protocol, http.StatusServiceUnavailable, "api_error",
-					"No available accounts: "+selErr.Error())
+				h.devinErrorStreamingAware(c, protocol, http.StatusServiceUnavailable,
+					"No available accounts: "+selErr.Error(), streamStarted)
 				return
 			}
 			switch fs.HandleSelectionExhausted(c.Request.Context()) {
@@ -296,7 +308,7 @@ func (h *DevinGatewayHandler) forward(c *gin.Context, protocol devinProtocol) {
 			// Kiro 式回查：映射目标必须是目录里的分组 id（:level 后缀先剥再查）。
 			// 管理员填错目标在此得 4xx，而不是把脏模型名透传到上游才报错。
 			if validErr := h.validateDevinMappedModel(c.Request.Context(), account, mapped); validErr != nil {
-				h.devinError(c, protocol, http.StatusBadRequest, "invalid_request_error", validErr.Error())
+				h.devinErrorStreamingAware(c, protocol, http.StatusBadRequest, validErr.Error(), streamStarted)
 				return
 			}
 			upstreamCtx.Model = mapped
@@ -306,14 +318,14 @@ func (h *DevinGatewayHandler) forward(c *gin.Context, protocol devinProtocol) {
 		if !selection.Acquired {
 			if selection.WaitPlan == nil {
 				markOpsRoutingCapacityLimited(c)
-				h.devinError(c, protocol, http.StatusServiceUnavailable, "api_error", "No available accounts")
+				h.devinErrorStreamingAware(c, protocol, http.StatusServiceUnavailable, "No available accounts", streamStarted)
 				return
 			}
 			accountReleaseFunc, err = h.concurrencyHelper.AcquireAccountSlotWithWaitTimeout(
 				c, account.ID, selection.WaitPlan.MaxConcurrency,
 				selection.WaitPlan.Timeout, reqStream, &streamStarted)
 			if err != nil {
-				h.devinError(c, protocol, http.StatusTooManyRequests, "rate_limit_error", "Too many pending requests")
+				h.devinErrorStreamingAware(c, protocol, http.StatusTooManyRequests, "Too many pending requests", streamStarted)
 				return
 			}
 		}
@@ -395,15 +407,75 @@ func (h *DevinGatewayHandler) pumpDevinStream(
 		*streamStarted = true
 	}
 
+	// 中流空闲心跳：上游长思考 / 服务端排队会让帧间隔超过代理空闲超时。
+	// Recv 放进专用 goroutine，select 叠加空闲计时，静默超 interval 写
+	// ":" 注释（antigravity 同款；WS writer 将其转 Ping）。
+	type recvResult struct {
+		event llm.ResponseEvent
+		err   error
+	}
+	var recvCh <-chan recvResult
+	var keepaliveCh <-chan time.Time
+	var keepaliveInterval time.Duration
+	if reqStream && h.cfg != nil && h.cfg.Gateway.StreamKeepaliveInterval > 0 {
+		keepaliveInterval = time.Duration(h.cfg.Gateway.StreamKeepaliveInterval) * time.Second
+	}
+	if reqStream {
+		ch := make(chan recvResult, 1)
+		go func() {
+			for {
+				event, err := upstream.Recv(ctx)
+				select {
+				case ch <- recvResult{event, err}:
+					if err != nil {
+						return
+					}
+				case <-ctx.Done():
+					return
+				}
+			}
+		}()
+		recvCh = ch
+		if keepaliveInterval > 0 {
+			ticker := time.NewTicker(keepaliveInterval)
+			defer ticker.Stop()
+			keepaliveCh = ticker.C
+		}
+	}
+
 	var final *llm.AssistantMessage
+	lastEventAt := time.Now()
 	for {
-		event, err := upstream.Recv(ctx)
+		var event llm.ResponseEvent
+		var err error
+		if reqStream {
+			select {
+			case r := <-recvCh:
+				event, err = r.event, r.err
+			case <-keepaliveCh:
+				// 上次事件后已满一个 interval 才写，避免稠密流上白写。
+				if time.Since(lastEventAt) >= keepaliveInterval {
+					if _, werr := fmt.Fprint(c.Writer, string(SSEPingFormatComment)); werr == nil {
+						c.Writer.Flush()
+						recordGatewayStreamHeartbeat(c, len(SSEPingFormatComment))
+					} else {
+						return final, firstTokenMs, errors.New("client disconnected")
+					}
+				}
+				continue
+			case <-ctx.Done():
+				return final, firstTokenMs, ctx.Err()
+			}
+		} else {
+			event, err = upstream.Recv(ctx)
+		}
 		if err != nil {
 			if errors.Is(err, io.EOF) {
 				break
 			}
 			return final, firstTokenMs, err
 		}
+		lastEventAt = time.Now()
 		if firstTokenMs == nil &&
 			(event.Type == llm.ResponseEventTextDelta ||
 				event.Type == llm.ResponseEventThinkingDelta ||
@@ -594,7 +666,9 @@ func (h *DevinGatewayHandler) devinFailoverExhausted(c *gin.Context, protocol de
 
 // devinErrorStreamingAware 流已开始时发协议内 error 事件，否则 JSON 错误。
 func (h *DevinGatewayHandler) devinErrorStreamingAware(c *gin.Context, protocol devinProtocol, status int, message string, streamStarted bool) {
-	if streamStarted {
+	// SSEStreamKeepaliveStarted 覆盖心跳已提交 200 但 streamStarted 尚未
+	// 置位的窗口：此时只能回流内错误事件，JSON+状态码写入已无效。
+	if streamStarted || service.SSEStreamKeepaliveStarted(c) {
 		event := llm.ResponseEvent{
 			Type:  llm.ResponseEventError,
 			Error: &llm.AssistantMessage{ErrorMessage: message},
