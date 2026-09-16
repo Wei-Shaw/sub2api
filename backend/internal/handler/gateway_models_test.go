@@ -156,7 +156,7 @@ func TestGatewayCodexModels_DoesNotLeakModelsFromOtherGroups(t *testing.T) {
 	var got codexModelsResponseForTest
 	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &got))
 	slugs := codexModelSlugsForTest(got.Models)
-	require.Equal(t, []string{"deepseek-v4-pro", "deepseek-v4-flash"}, slugs)
+	require.Equal(t, defaultCodexModelIDsForPlatform(service.PlatformDeepSeek), slugs)
 	require.NotContains(t, slugs, "deepseek-4-pro")
 }
 

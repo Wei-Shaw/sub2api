@@ -108,6 +108,7 @@ func listCompositeAvailableModels(ctx context.Context, gateway *service.GatewayS
 		service.PlatformZhipu,
 		service.PlatformDeepseek,
 		service.PlatformMiniMax,
+		service.PlatformOpenCodeGo,
 	} {
 		platformModels := gateway.GetAvailableModels(ctx, groupID, platform)
 		if len(platformModels) == 0 {

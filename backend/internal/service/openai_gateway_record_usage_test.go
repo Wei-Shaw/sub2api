@@ -374,9 +374,9 @@ func TestOpenAIGatewayServiceRecordUsage_DeepSeekCachedReasoningAndIsolationMode
 		cacheReadTokens       = 400
 		outputTokens          = 200
 		reasoningTokens       = 150
-		inputPricePerToken    = deepseekProOffPeakInputPrice
-		cachePricePerToken    = deepseekProOffPeakCacheRead
-		outputPricePerToken   = deepseekProOffPeakOutputPrice
+		inputPricePerToken    = deepseekFlashOffPeakInputPrice
+		cachePricePerToken    = deepseekFlashOffPeakCacheRead
+		outputPricePerToken   = deepseekFlashOffPeakOutputPrice
 		groupRateMultiplier   = 1.25
 		accountRateMultiplier = 0.8
 	)
@@ -395,6 +395,7 @@ func TestOpenAIGatewayServiceRecordUsage_DeepSeekCachedReasoningAndIsolationMode
 			usageRepo := &openAIRecordUsageLogRepoStub{inserted: true}
 			userRepo := &openAIRecordUsageUserRepoStub{}
 			svc := newOpenAIRecordUsageServiceForTest(usageRepo, userRepo, &openAIRecordUsageSubRepoStub{}, nil)
+			svc.resolver = NewModelPricingResolver(nil, svc.billingService)
 			groupID := int64(4200 + index)
 			accountRate := accountRateMultiplier
 			account := &Account{
@@ -408,7 +409,7 @@ func TestOpenAIGatewayServiceRecordUsage_DeepSeekCachedReasoningAndIsolationMode
 			}
 
 			err := svc.RecordUsage(context.Background(), &OpenAIRecordUsageInput{
-				PricingAt: time.Date(2026, 8, 29, 12, 0, 0, 0, time.UTC),
+				PricingAt: time.Date(2026, 9, 16, 12, 0, 0, 0, time.UTC),
 				Result: &OpenAIForwardResult{
 					RequestID: fmt.Sprintf("resp_deepseek_billing_%d", index),
 					Model:     model,

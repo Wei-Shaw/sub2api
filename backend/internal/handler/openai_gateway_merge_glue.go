@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
-	"time"
 
 	coderws "github.com/coder/websocket"
 	"github.com/gin-gonic/gin"
@@ -25,10 +24,6 @@ func copyFailoverResponseHeaders(c *gin.Context, headers http.Header) {
 			c.Header(key, value)
 		}
 	}
-}
-
-func (h *OpenAIGatewayHandler) recordCyberPolicyIfMarkedWithUsage(c *gin.Context, apiKey *service.APIKey, account *service.Account, subscription *service.UserSubscription, model string, forwardErrored bool, cyberBlockBody []byte, channelFields service.ChannelUsageFields, requestPayloadHash string, result *service.OpenAIForwardResult, quotaPlatform string, pricingAt time.Time) {
-	h.recordCyberPolicyIfMarked(c, apiKey, account, subscription, model, forwardErrored, cyberBlockBody, channelFields, requestPayloadHash)
 }
 
 func validateResponsesWebSocketTurnPlatform(

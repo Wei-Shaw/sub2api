@@ -152,17 +152,18 @@ export default {
         '30d': '近30天',
         custom: '自定义'
       },
-      openaiTokenStats: {
+      tokenStats: {
         title: 'Token 请求统计',
         viewModeTopN: 'TopN',
         viewModePagination: '分页',
         prevPage: '上一页',
         nextPage: '下一页',
         pageInfo: '第 {page}/{total} 页',
-        totalModels: '模型总数：{total}',
-        failedToLoad: '加载 Token 请求统计失败',
+        totalRows: '平台/模型统计项总数：{total}',
+        failedToLoad: '加载 Token 统计失败',
         empty: '当前筛选条件下暂无 Token 请求统计数据',
         table: {
+          platform: '平台',
           model: '模型',
           requestCount: '请求数',
           avgTokensPerSec: '平均 Tokens/秒',

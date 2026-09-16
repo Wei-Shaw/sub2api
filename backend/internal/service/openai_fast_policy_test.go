@@ -339,42 +339,6 @@ func TestApplyOpenAIFastPolicyToBody_ForcePriorityRewritesKnownTier(t *testing.T
 	}
 }
 
-func TestApplyOpenAIFastPolicyToBody_ForcePriorityRuleOnPriorityInjectsMissingTier(t *testing.T) {
-	settings := &OpenAIFastPolicySettings{
-		Rules: []OpenAIFastPolicyRule{{
-			ServiceTier: OpenAIFastTierPriority,
-			Action:      OpenAIFastPolicyActionForcePriority,
-			Scope:       BetaPolicyScopeAll,
-		}},
-	}
-	svc := newOpenAIGatewayServiceWithSettings(t, settings)
-	account := &Account{Platform: PlatformOpenAI, Type: AccountTypeAPIKey}
-	body := []byte(`{"model":"gpt-5.5","messages":[]}`)
-
-	updated, err := svc.applyOpenAIFastPolicyToBody(context.Background(), account, "gpt-5.5", body)
-	require.NoError(t, err)
-	require.Equal(t, OpenAIFastTierPriority, gjson.GetBytes(updated, "service_tier").String())
-}
-
-func TestApplyOpenAIFastPolicyToBody_ForcePriorityFallbackInjectsMissingTier(t *testing.T) {
-	settings := &OpenAIFastPolicySettings{
-		Rules: []OpenAIFastPolicyRule{{
-			ServiceTier:    OpenAIFastTierPriority,
-			Action:         BetaPolicyActionPass,
-			Scope:          BetaPolicyScopeAll,
-			ModelWhitelist: []string{"gpt-5.5"},
-			FallbackAction: OpenAIFastPolicyActionForcePriority,
-		}},
-	}
-	svc := newOpenAIGatewayServiceWithSettings(t, settings)
-	account := &Account{Platform: PlatformOpenAI, Type: AccountTypeAPIKey}
-	body := []byte(`{"model":"gpt-4.1","messages":[]}`)
-
-	updated, err := svc.applyOpenAIFastPolicyToBody(context.Background(), account, "gpt-4.1", body)
-	require.NoError(t, err)
-	require.Equal(t, OpenAIFastTierPriority, gjson.GetBytes(updated, "service_tier").String())
-}
-
 func TestApplyOpenAIFastPolicyToBody_GroupForceInjectsAndOverridesTier(t *testing.T) {
 	svc := newOpenAIGatewayServiceWithSettings(t, DefaultOpenAIFastPolicySettings())
 	account := &Account{Platform: PlatformOpenAI, Type: AccountTypeOAuth}

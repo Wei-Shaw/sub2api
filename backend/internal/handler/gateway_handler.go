@@ -1274,7 +1274,7 @@ func (h *GatewayHandler) compositeAvailableModels(ctx context.Context, groupID *
 		if len(platformModels) == 0 {
 			// CN 供应商没有静态默认模型列表（defaultModelIDsForPlatform 的
 			// default 分支是 Claude 列表），composite 下只暴露账号映射键。
-			if _, ok := schedulablePlatforms[platform]; ok && !service.IsMultiProtocolAPIKeyProvider(platform) {
+			if _, ok := schedulablePlatforms[platform]; ok {
 				platformModels = defaultModelIDsForPlatform(platform)
 			}
 		}
@@ -1451,6 +1451,14 @@ func defaultModelIDsForPlatform(platform string) []string {
 		return claude.DefaultModelIDs()
 	case service.PlatformGrok:
 		return xai.DefaultModelIDs()
+	case service.PlatformDeepSeek:
+		return service.DeepSeekDefaultModelIDs()
+	case service.PlatformKimi:
+		return service.KimiDefaultModelIDs()
+	case service.PlatformZhipu:
+		return service.ZhipuDefaultModelIDs()
+	case service.PlatformMiniMax:
+		return []string{"MiniMax-M3", "MiniMax-M2.7", "MiniMax-M2.5"}
 	case service.PlatformOpenCodeGo:
 		return service.DefaultOpenCodeGoModelIDs()
 	case service.PlatformComposite:
@@ -1863,6 +1871,7 @@ func (h *GatewayHandler) handleConcurrencyError(c *gin.Context, err error, slotT
 func (h *GatewayHandler) handleFailoverExhausted(c *gin.Context, failoverErr *service.UpstreamFailoverError, platform string, streamStarted bool) {
 	statusCode := failoverErr.StatusCode
 	responseBody := failoverErr.ResponseBody
+	copyFailoverResponseHeaders(c, failoverErr.ResponseHeaders)
 	if service.IsOpenAISilentRefusalErrorBody(responseBody) {
 		service.SetOpsUpstreamError(c, statusCode, service.OpenAISilentRefusalClientMessage(), "")
 		h.handleStreamingAwareError(c, http.StatusBadGateway, "upstream_error", service.OpenAISilentRefusalClientMessage(), streamStarted)
@@ -1913,6 +1922,8 @@ func (h *GatewayHandler) mapUpstreamError(statusCode int) (int, string, string) 
 	switch statusCode {
 	case 401:
 		return http.StatusBadGateway, "upstream_error", "Upstream authentication failed, please contact administrator"
+	case 402:
+		return http.StatusPaymentRequired, "billing_error", "Upstream account has insufficient balance, please contact administrator"
 	case 403:
 		return http.StatusBadGateway, "upstream_error", "Upstream access forbidden, please contact administrator"
 	case 429:

@@ -294,6 +294,12 @@ func defaultModelsListCandidateIDs(platform string) []string {
 		return ids
 	case PlatformGrok:
 		return xai.DefaultModelIDs()
+	case PlatformDeepSeek:
+		return DeepSeekDefaultModelIDs()
+	case PlatformKimi:
+		return KimiDefaultModelIDs()
+	case PlatformZhipu:
+		return ZhipuDefaultModelIDs()
 	case PlatformOpenCodeGo:
 		return DefaultOpenCodeGoModelIDs()
 	case PlatformComposite:
@@ -342,6 +348,14 @@ func groupSupportsOAuthOnlyFilter(platform string) bool {
 		platform == PlatformGemini ||
 		platform == PlatformGrok ||
 		platform == PlatformComposite
+}
+
+func sanitizeGroupOAuthRequirement(group *Group) {
+	if group != nil &&
+		(group.Platform == PlatformDeepSeek || group.Platform == PlatformKimi || group.Platform == PlatformZhipu ||
+			group.Platform == PlatformMiniMax || group.Platform == PlatformOpenCodeGo) {
+		group.RequireOAuthOnly = false
+	}
 }
 
 func groupSupportsOpenAIFast(platform string) bool {
@@ -615,6 +629,7 @@ func (s *adminServiceImpl) CreateGroup(ctx context.Context, input *CreateGroupIn
 		MaxReasoningEffortOverLimit: maxReasoningEffortOverLimit,
 		ReasoningEffortMappings:     reasoningEffortMappings,
 	}
+	sanitizeGroupOAuthRequirement(group)
 	sanitizeGroupMessagesDispatchFields(group)
 	sanitizeGroupOpenAIFast(group)
 	if group.Platform != PlatformOpenAI && group.Platform != PlatformComposite {
@@ -1030,6 +1045,7 @@ func (s *adminServiceImpl) UpdateGroup(ctx context.Context, id int64, input *Upd
 		}
 		group.ReasoningEffortMappings = reasoningEffortMappings
 	}
+	sanitizeGroupOAuthRequirement(group)
 	sanitizeGroupMessagesDispatchFields(group)
 	sanitizeGroupOpenAIFast(group)
 	if group.Platform != PlatformOpenAI && group.Platform != PlatformComposite {
