@@ -72,6 +72,7 @@ func (s *OpenAIGatewayService) forwardAsChatCompletions(
 	compatPromptCacheTenantIsolated bool,
 ) (*OpenAIForwardResult, error) {
 	rememberOpenCodeInboundBody(c, body)
+	rememberOpenAISessionAffinityID(c, body, false)
 	beginUpstreamResponseModelObservation(c)
 	ClearActualOpenAIUpstreamEndpoint(c)
 	if shouldForwardOpenAIResponsesViaRawChatCompletions(account) {
@@ -386,6 +387,7 @@ func (s *OpenAIGatewayService) forwardAsChatCompletions(
 		}
 		upstreamReq.Header.Set("session_id", generateSessionUUID(sessionKey))
 	}
+	applyOpenAISessionAffinityHeader(c, account, upstreamReq.Header)
 
 	// 7. Send request
 	proxyURL := ""

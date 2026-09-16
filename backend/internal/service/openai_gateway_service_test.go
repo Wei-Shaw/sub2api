@@ -417,6 +417,20 @@ func TestOpenAIGatewayService_ClientSessionHeaderPriority(t *testing.T) {
 	require.Equal(t, "body-session", svc.ExtractSessionID(c, body))
 }
 
+func TestOpenAIGatewayService_PromptCacheKeyRemainsIndependentFromSessionHeader(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil)
+	c.Request.Header.Set("session_id", "stable-session")
+
+	svc := &OpenAIGatewayService{}
+	body := []byte(`{"prompt_cache_key":"separate-cache-key"}`)
+	require.Equal(t, "stable-session", svc.ExtractSessionID(c, body))
+	require.Equal(t, "separate-cache-key", svc.ExtractPromptCacheKey(c, body))
+	require.Equal(t, "stable-session", svc.ExtractPromptCacheKey(c, nil), "header fallback remains compatible when the body has no cache key")
+}
+
 func TestOpenAIGatewayService_CodexSessionIDKeepsReconnectHashStable(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	recorder := httptest.NewRecorder()
