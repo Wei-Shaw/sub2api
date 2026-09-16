@@ -41,54 +41,32 @@ func RegisterGatewayRoutes(
 	requireGroupAnthropic := middleware.RequireGroupAssignment(settingService, middleware.AnthropicErrorWriter)
 	requireGroupGoogle := middleware.RequireGroupAssignment(settingService, middleware.GoogleErrorWriter)
 
-	writeUnsupportedPlatformFeature := func(c *gin.Context, feature string) {
-		service.MarkOpsClientBusinessLimited(c, service.OpsClientBusinessLimitedReasonLocalFeatureGate)
-		c.AbortWithStatusJSON(http.StatusNotFound, gin.H{
-			"error": gin.H{
-				"type":    "not_found_error",
-				"message": feature + " is not supported for this platform",
-			},
-		})
-	}
-	rejectDeepSeekFeature := func(feature string, next gin.HandlerFunc) gin.HandlerFunc {
-		return func(c *gin.Context) {
-			if getGroupPlatform(c) == service.PlatformDeepSeek {
-				writeUnsupportedPlatformFeature(c, feature)
-				return
-			}
-			next(c)
-		}
-	}
-	allowDeepSeekStandaloneCompact := func(feature string, next gin.HandlerFunc) gin.HandlerFunc {
-		return func(c *gin.Context) {
-			exactCompactPath := c.Request != nil && c.Request.URL != nil && c.Request.URL.RawPath == "" && c.Param("subpath") == "/compact"
-			if getGroupPlatform(c) == service.PlatformDeepSeek && !exactCompactPath {
-				writeUnsupportedPlatformFeature(c, feature)
-				return
-			}
-			next(c)
-		}
-	}
-
 	// 分组级模型白名单准入：在 apiKeyAuth 之后、compositeTarget 之前，
 	// 保证校验发生在合成路由改写与调度之前，且只看客户端书写的模型名。
 	groupModelAllowlist := middleware.GroupModelAllowlist()
 
+	isOpenAIResponsesCompatibleGatewayPlatform := func(c *gin.Context) bool {
+		switch getGroupPlatform(c) {
+		case service.PlatformOpenAI, service.PlatformGrok,
+			service.PlatformKimi, service.PlatformZhipu, service.PlatformDeepseek,
+			service.PlatformMiniMax, service.PlatformOpenCodeGo:
+			// 国产 OpenAI 兼容供应商与 openai/grok 一样经 OpenAI 网关转发。
+			return true
+		default:
+			return false
+		}
+	}
 	countTokensHandler := func(c *gin.Context) {
 		switch getGroupPlatform(c) {
-		case service.PlatformOpenAI:
+		case service.PlatformOpenAI, service.PlatformKimi, service.PlatformZhipu, service.PlatformDeepseek, service.PlatformMiniMax, service.PlatformOpenCodeGo:
 			h.OpenAIGateway.CountTokens(c)
-		case service.PlatformGrok, service.PlatformKimi, service.PlatformZhipu, service.PlatformDeepseek, service.PlatformMiniMax:
-			// CN providers (and Grok) have no reliable count_tokens upstream;
-			// estimate locally so Claude Code keeps working without selecting an account.
+		case service.PlatformGrok:
 			h.OpenAIGateway.GrokCountTokens(c)
 		default:
 			h.Gateway.CountTokens(c)
 		}
 	}
 	codexModelsHandler := func(c *gin.Context) {
-		// Official OpenAI groups proxy ChatGPT's live Codex manifest. Other
-		// groups use the generated multi-provider catalog.
 		dispatchCodexModelsGateway(c, h.OpenAIGateway.CodexModels, h.Gateway.CodexModels)
 	}
 	modelsHandler := func(c *gin.Context) {
@@ -100,16 +78,6 @@ func RegisterGatewayRoutes(
 	}
 	isOpenAIOnlyEndpointGatewayPlatform := func(c *gin.Context) bool {
 		return getGroupPlatform(c) == service.PlatformOpenAI
-	}
-	isOpenAIResponsesCompatibleGatewayPlatform := func(c *gin.Context) bool {
-		switch getGroupPlatform(c) {
-		case service.PlatformOpenAI, service.PlatformGrok,
-			service.PlatformKimi, service.PlatformZhipu, service.PlatformDeepseek, service.PlatformMiniMax:
-			// 国产 OpenAI 兼容供应商与 openai/grok 一样经 OpenAI 网关转发。
-			return true
-		default:
-			return false
-		}
 	}
 	imagesHandler := func(c *gin.Context) {
 		switch getGroupPlatform(c) {
@@ -228,32 +196,50 @@ func RegisterGatewayRoutes(
 	{
 		// /v1/messages: auto-route based on group platform
 		gateway.POST("/messages", func(c *gin.Context) {
-			dispatchMessagesGateway(c, h.OpenAIGateway.Messages, h.Gateway.Messages)
+			if isOpenAIResponsesCompatibleGatewayPlatform(c) {
+				h.OpenAIGateway.Messages(c)
+				return
+			}
+			h.Gateway.Messages(c)
 		})
 		// /v1/messages/count_tokens: OpenAI bridges upstream, Grok estimates
 		// locally, and Anthropic-compatible platforms retain their existing path.
 		gateway.POST("/messages/count_tokens", countTokensHandler)
 		// Codex CLI / Codex app refresh their model picker from the provider's
-		// /models endpoint with a client_version query. Official OpenAI groups
-		// proxy ChatGPT's live manifest; Composite and other routed groups
-		// synthesize the same Codex format from the group's schedulable
-		// platforms. Other clients keep the OpenAI-style list.
+		// /models endpoint with a client_version query and expect the ChatGPT
+		// Codex manifest format; other clients keep the OpenAI-style list.
 		gateway.GET("/models", modelsHandler)
+		// Single-model discovery never selects the Codex client_version manifest.
+		gateway.GET("/models/:model", h.Gateway.Models)
 		gateway.GET("/usage", h.Gateway.Usage)
-		gateway.POST("/live", rejectDeepSeekFeature("Live API", h.OpenAIGateway.Live))
-		gateway.GET("/live/:call_id", rejectDeepSeekFeature("Live API", h.OpenAIGateway.LiveSideband))
+		gateway.POST("/live", h.OpenAIGateway.Live)
+		gateway.GET("/live/:call_id", h.OpenAIGateway.LiveSideband)
 		// OpenAI Responses API: auto-route based on group platform
 		gateway.POST("/responses", func(c *gin.Context) {
-			dispatchChatResponsesGateway(c, h.OpenAIGateway.Responses, h.Gateway.Responses)
+			if isOpenAIResponsesCompatibleGatewayPlatform(c) {
+				h.OpenAIGateway.Responses(c)
+				return
+			}
+			h.Gateway.Responses(c)
 		})
-		gateway.POST("/responses/*subpath", guardResponsesSubpath(allowDeepSeekStandaloneCompact("Responses subpaths", func(c *gin.Context) {
-			dispatchChatResponsesGateway(c, h.OpenAIGateway.Responses, h.Gateway.Responses)
-		})))
-		gateway.POST("/alpha/search", textBodyLimit, rejectDeepSeekFeature("Alpha search API", h.OpenAIGateway.AlphaSearch))
-		gateway.GET("/responses", h.OpenAIGateway.ResponsesWebSocket)
+		gateway.POST("/responses/*subpath", guardResponsesSubpath(func(c *gin.Context) {
+			if isOpenAIResponsesCompatibleGatewayPlatform(c) {
+				h.OpenAIGateway.Responses(c)
+				return
+			}
+			h.Gateway.Responses(c)
+		}))
+		gateway.POST("/alpha/search", textBodyLimit, h.OpenAIGateway.AlphaSearch)
+		gateway.GET("/responses", func(c *gin.Context) {
+			h.OpenAIGateway.ResponsesWebSocket(c)
+		})
 		// OpenAI Chat Completions API: auto-route based on group platform
 		gateway.POST("/chat/completions", func(c *gin.Context) {
-			dispatchChatResponsesGateway(c, h.OpenAIGateway.ChatCompletions, h.Gateway.ChatCompletions)
+			if isOpenAIResponsesCompatibleGatewayPlatform(c) {
+				h.OpenAIGateway.ChatCompletions(c)
+				return
+			}
+			h.Gateway.ChatCompletions(c)
 		})
 		gateway.POST("/embeddings", textBodyLimit, func(c *gin.Context) {
 			if !isOpenAIOnlyEndpointGatewayPlatform(c) {
@@ -371,7 +357,11 @@ func RegisterGatewayRoutes(
 
 	// OpenAI Responses API（不带v1前缀的别名）— auto-route based on group platform
 	responsesHandler := func(c *gin.Context) {
-		dispatchChatResponsesGateway(c, h.OpenAIGateway.Responses, h.Gateway.Responses)
+		if isOpenAIResponsesCompatibleGatewayPlatform(c) {
+			h.OpenAIGateway.Responses(c)
+			return
+		}
+		h.Gateway.Responses(c)
 	}
 	// 根路径别名共用中间件链：白名单准入在 apiKeyAuth 之后、compositeTarget
 	// 之前，避免逐条路由手工维护链导致漏挂。
@@ -379,27 +369,34 @@ func RegisterGatewayRoutes(
 		r.Handle(method, path, limit, clientRequestID, opsErrorLogger, endpointNorm, gin.HandlerFunc(apiKeyAuth), groupModelAllowlist, compositeTarget, requireGroupAnthropic, handler)
 	}
 	rootRoute(http.MethodPost, "/responses", bodyLimit, responsesHandler)
-	rootRoute(http.MethodPost, "/responses/*subpath", bodyLimit, guardResponsesSubpath(allowDeepSeekStandaloneCompact("Responses subpaths", responsesHandler)))
-	rootRoute(http.MethodPost, "/alpha/search", textBodyLimit, rejectDeepSeekFeature("Alpha search API", h.OpenAIGateway.AlphaSearch))
+	rootRoute(http.MethodPost, "/responses/*subpath", bodyLimit, guardResponsesSubpath(responsesHandler))
+	rootRoute(http.MethodPost, "/alpha/search", textBodyLimit, h.OpenAIGateway.AlphaSearch)
 	rootRoute(http.MethodGet, "/responses", bodyLimit, func(c *gin.Context) {
 		h.OpenAIGateway.ResponsesWebSocket(c)
 	})
 	rootRoute(http.MethodGet, "/models", bodyLimit, modelsHandler)
+	rootRoute(http.MethodGet, "/models/:model", bodyLimit, h.Gateway.Models)
 	rootRoute(http.MethodPost, "/messages/count_tokens", bodyLimit, countTokensHandler)
 	codexDirect := r.Group("/backend-api/codex")
 	codexDirect.Use(bodyLimit, clientRequestID, opsErrorLogger, endpointNorm, gin.HandlerFunc(apiKeyAuth), groupModelAllowlist, compositeTarget, requireGroupAnthropic)
 	{
-		codexDirect.POST("/realtime/calls", rejectDeepSeekFeature("Codex Live API", h.OpenAIGateway.Live))
-		codexDirect.GET("/:call_id", rejectDeepSeekFeature("Codex Live API", h.OpenAIGateway.LiveSideband))
+		codexDirect.POST("/realtime/calls", h.OpenAIGateway.Live)
+		codexDirect.GET("/:call_id", h.OpenAIGateway.LiveSideband)
 		codexDirect.POST("/responses", responsesHandler)
-		codexDirect.POST("/responses/*subpath", guardResponsesSubpath(allowDeepSeekStandaloneCompact("Codex Responses API", responsesHandler)))
-		codexDirect.POST("/alpha/search", textBodyLimit, rejectDeepSeekFeature("Codex alpha search API", h.OpenAIGateway.AlphaSearch))
-		codexDirect.GET("/responses", h.OpenAIGateway.ResponsesWebSocket)
+		codexDirect.POST("/responses/*subpath", guardResponsesSubpath(responsesHandler))
+		codexDirect.POST("/alpha/search", textBodyLimit, h.OpenAIGateway.AlphaSearch)
+		codexDirect.GET("/responses", func(c *gin.Context) {
+			h.OpenAIGateway.ResponsesWebSocket(c)
+		})
 		codexDirect.GET("/models", codexModelsHandler)
 	}
 	// OpenAI Chat Completions API（不带v1前缀的别名）— auto-route based on group platform
 	rootRoute(http.MethodPost, "/chat/completions", bodyLimit, func(c *gin.Context) {
-		dispatchChatResponsesGateway(c, h.OpenAIGateway.ChatCompletions, h.Gateway.ChatCompletions)
+		if isOpenAIResponsesCompatibleGatewayPlatform(c) {
+			h.OpenAIGateway.ChatCompletions(c)
+			return
+		}
+		h.Gateway.ChatCompletions(c)
 	})
 	rootRoute(http.MethodPost, "/embeddings", textBodyLimit, func(c *gin.Context) {
 		if !isOpenAIOnlyEndpointGatewayPlatform(c) {
@@ -520,23 +517,21 @@ func RegisterGatewayRoutes(
 
 }
 
-// dispatchChatResponsesGateway keeps OpenAI-compatible transports on their
-// native handler after a composite group has resolved to a concrete provider.
 func dispatchChatResponsesGateway(c *gin.Context, openAIHandler, genericHandler gin.HandlerFunc) {
 	switch getGroupPlatform(c) {
 	case service.PlatformOpenAI, service.PlatformGrok, service.PlatformDeepSeek,
-		service.PlatformKimi, service.PlatformZhipu, service.PlatformMiniMax:
+		service.PlatformKimi, service.PlatformZhipu, service.PlatformMiniMax,
+		service.PlatformOpenCodeGo:
 		openAIHandler(c)
 	default:
 		genericHandler(c)
 	}
 }
 
-// dispatchMessagesGateway routes OpenAI-compatible and CN-provider groups,
-// including DeepSeek Anthropic-protocol accounts, onto the OpenAI gateway.
 func dispatchMessagesGateway(c *gin.Context, openAIHandler, genericHandler gin.HandlerFunc) {
 	switch getGroupPlatform(c) {
-	case service.PlatformOpenAI, service.PlatformGrok, service.PlatformKimi, service.PlatformZhipu, service.PlatformDeepSeek, service.PlatformMiniMax:
+	case service.PlatformOpenAI, service.PlatformGrok, service.PlatformKimi, service.PlatformZhipu,
+		service.PlatformDeepSeek, service.PlatformMiniMax, service.PlatformOpenCodeGo:
 		openAIHandler(c)
 	default:
 		genericHandler(c)
@@ -576,7 +571,6 @@ func compositeTargetPlatformMiddleware(resolver *service.CompositeRouteResolver)
 			return
 		}
 		if c.Request == nil || c.Request.Method == http.MethodGet {
-			handler.AttachResponsesWebSocketCompositeResolver(c, resolver)
 			c.Next()
 			return
 		}
@@ -600,14 +594,10 @@ func compositeTargetPlatformMiddleware(resolver *service.CompositeRouteResolver)
 		routePath := c.FullPath()
 		model := requestmodel.FromBodyForRoute(routePath, c.GetHeader("Content-Type"), body)
 		if model != "" {
-			endpoint := compositeRouteEndpointForPath(c.Request.URL.Path)
-			decision, err := resolver.Resolve(c.Request.Context(), apiKey.Group.ID, model, endpoint)
+			decision, err := resolver.Resolve(c.Request.Context(), apiKey.Group.ID, model, compositeRouteEndpointForPath(c.Request.URL.Path))
 			if err != nil {
 				c.JSON(http.StatusInternalServerError, gin.H{"error": gin.H{"type": "server_error", "message": "Failed to resolve composite model route"}})
 				c.Abort()
-				return
-			}
-			if rejectUnsupportedCompositeRouteEndpoint(c, decision, endpoint) {
 				return
 			}
 			if decision.Matched {
@@ -641,9 +631,6 @@ func compositeGeminiTargetPlatformMiddleware(resolver *service.CompositeRouteRes
 					c.Abort()
 					return
 				}
-				if rejectUnsupportedCompositeRouteEndpoint(c, decision, service.CompositeRouteEndpointGemini) {
-					return
-				}
 				if decision.Matched {
 					c.Request = c.Request.WithContext(service.WithCompositeRouteDecision(c.Request.Context(), decision))
 				}
@@ -654,23 +641,6 @@ func compositeGeminiTargetPlatformMiddleware(resolver *service.CompositeRouteRes
 		}
 		c.Next()
 	}
-}
-
-func rejectUnsupportedCompositeRouteEndpoint(c *gin.Context, decision service.CompositeRouteDecision, endpoint string) bool {
-	if strings.TrimSpace(decision.TargetPlatform) == "" {
-		return false
-	}
-	if service.CompositeRouteRequestEndpointSupported(decision.TargetPlatform, endpoint) {
-		return false
-	}
-	service.MarkOpsClientBusinessLimited(c, service.OpsClientBusinessLimitedReasonLocalFeatureGate)
-	c.AbortWithStatusJSON(http.StatusNotFound, gin.H{
-		"error": gin.H{
-			"type":    "not_found_error",
-			"message": endpoint + " is not supported for this platform",
-		},
-	})
-	return true
 }
 
 // grokCustomVoiceEndpoint derives the upstream Voice endpoint for the

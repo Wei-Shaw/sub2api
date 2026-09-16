@@ -219,13 +219,10 @@ func (h *OpsHandler) GetDashboardErrorDistribution(c *gin.Context) {
 	response.Success(c, data)
 }
 
-// GetDashboardTokenStats returns platform token efficiency stats grouped by model.
-// GET /api/v1/admin/ops/dashboard/token-stats
-func (h *OpsHandler) GetDashboardTokenStats(c *gin.Context) {
-	h.getDashboardTokenStats(c)
-}
-
-func (h *OpsHandler) getDashboardTokenStats(c *gin.Context) {
+// GetDashboardOpenAITokenStats returns token efficiency stats for all platforms, grouped by model.
+// The endpoint name is retained for compatibility; platform and group_id optionally narrow the scope.
+// GET /api/v1/admin/ops/dashboard/openai-token-stats
+func (h *OpsHandler) GetDashboardOpenAITokenStats(c *gin.Context) {
 	if h.opsService == nil {
 		response.Error(c, http.StatusServiceUnavailable, "Ops service not available")
 		return
@@ -235,12 +232,13 @@ func (h *OpsHandler) getDashboardTokenStats(c *gin.Context) {
 		return
 	}
 
-	filter, err := parseOpsTokenStatsFilter(c)
+	filter, err := parseOpsOpenAITokenStatsFilter(c)
 	if err != nil {
 		response.BadRequest(c, err.Error())
 		return
 	}
-	data, err := h.opsService.GetTokenStats(c.Request.Context(), filter)
+
+	data, err := h.opsService.GetOpenAITokenStats(c.Request.Context(), filter)
 	if err != nil {
 		response.ErrorFrom(c, err)
 		return
@@ -248,7 +246,11 @@ func (h *OpsHandler) getDashboardTokenStats(c *gin.Context) {
 	response.Success(c, data)
 }
 
-func parseOpsTokenStatsFilter(c *gin.Context) (*service.OpsTokenStatsFilter, error) {
+func (h *OpsHandler) GetDashboardTokenStats(c *gin.Context) {
+	h.GetDashboardOpenAITokenStats(c)
+}
+
+func parseOpsOpenAITokenStatsFilter(c *gin.Context) (*service.OpsOpenAITokenStatsFilter, error) {
 	if c == nil {
 		return nil, fmt.Errorf("invalid request")
 	}
@@ -257,14 +259,14 @@ func parseOpsTokenStatsFilter(c *gin.Context) (*service.OpsTokenStatsFilter, err
 	if timeRange == "" {
 		timeRange = "30d"
 	}
-	dur, ok := parseOpsTokenStatsDuration(timeRange)
+	dur, ok := parseOpsOpenAITokenStatsDuration(timeRange)
 	if !ok {
 		return nil, fmt.Errorf("invalid time_range")
 	}
 	end := time.Now().UTC()
 	start := end.Add(-dur)
 
-	filter := &service.OpsTokenStatsFilter{
+	filter := &service.OpsOpenAITokenStatsFilter{
 		TimeRange: timeRange,
 		StartTime: start,
 		EndTime:   end,
@@ -314,7 +316,7 @@ func parseOpsTokenStatsFilter(c *gin.Context) (*service.OpsTokenStatsFilter, err
 	return filter, nil
 }
 
-func parseOpsTokenStatsDuration(v string) (time.Duration, bool) {
+func parseOpsOpenAITokenStatsDuration(v string) (time.Duration, bool) {
 	switch strings.TrimSpace(v) {
 	case "30m":
 		return 30 * time.Minute, true
@@ -329,6 +331,14 @@ func parseOpsTokenStatsDuration(v string) (time.Duration, bool) {
 	default:
 		return 0, false
 	}
+}
+
+func parseOpsTokenStatsFilter(c *gin.Context) (*service.OpsTokenStatsFilter, error) {
+	return parseOpsOpenAITokenStatsFilter(c)
+}
+
+func parseOpsTokenStatsDuration(v string) (time.Duration, bool) {
+	return parseOpsOpenAITokenStatsDuration(v)
 }
 
 func pickThroughputBucketSeconds(window time.Duration) int {

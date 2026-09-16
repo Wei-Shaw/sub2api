@@ -6,12 +6,18 @@ import UsersView from '../UsersView.vue'
 
 const {
   listUsers,
+  deleteUser,
+  showError,
+  showSuccess,
   getAllGroups,
   getBatchUsersUsage,
   listEnabledDefinitions,
   getBatchUserAttributes
 } = vi.hoisted(() => ({
   listUsers: vi.fn(),
+  deleteUser: vi.fn(),
+  showError: vi.fn(),
+  showSuccess: vi.fn(),
   getAllGroups: vi.fn(),
   getBatchUsersUsage: vi.fn(),
   listEnabledDefinitions: vi.fn(),
@@ -23,7 +29,7 @@ vi.mock('@/api/admin', () => ({
     users: {
       list: listUsers,
       toggleStatus: vi.fn(),
-      delete: vi.fn()
+      delete: deleteUser
     },
     groups: {
       getAll: getAllGroups
@@ -40,8 +46,8 @@ vi.mock('@/api/admin', () => ({
 
 vi.mock('@/stores/app', () => ({
   useAppStore: () => ({
-    showError: vi.fn(),
-    showSuccess: vi.fn()
+    showError,
+    showSuccess
   })
 }))
 
@@ -50,7 +56,8 @@ vi.mock('vue-i18n', async () => {
   return {
     ...actual,
     useI18n: () => ({
-      t: (key: string) => key
+      t: (key: string, params?: { count?: number }) =>
+        params?.count === undefined ? key : `${key}:${params.count}`
     })
   }
 })
@@ -119,12 +126,53 @@ const BulkEditUserModalStub = {
   `
 }
 
+const mountBulkDeleteView = () => mount(UsersView, {
+  global: {
+    stubs: {
+      AppLayout: { template: '<div><slot /></div>' },
+      TablePageLayout: {
+        template: '<div><slot name="filters" /><slot name="table" /><slot name="pagination" /></div>'
+      },
+      DataTable: DataTableStub,
+      Pagination: PaginationStub,
+      ConfirmDialog: {
+        props: ['show', 'message'],
+        emits: ['confirm', 'cancel'],
+        template: `<div v-if="show" data-test="delete-dialog">
+          <span>{{ message }}</span>
+          <button data-test="confirm-delete" @click="$emit('confirm')">confirm</button>
+          <button data-test="cancel-delete" @click="$emit('cancel')">cancel</button>
+        </div>`
+      },
+      EmptyState: true,
+      GroupBadge: true,
+      Select: true,
+      UserAttributesConfigModal: true,
+      UserConcurrencyCell: true,
+      UserCreateModal: true,
+      UserEditModal: true,
+      BulkEditUserModal: true,
+      UserPlatformQuotaModal: true,
+      UserApiKeysModal: true,
+      UserAllowedGroupsModal: true,
+      UserBalanceModal: true,
+      UserBalanceHistoryModal: true,
+      GroupReplaceModal: true,
+      Icon: true,
+      Teleport: true
+    }
+  }
+})
+
 describe('admin UsersView', () => {
   beforeEach(() => {
     vi.useRealTimers()
     localStorage.clear()
 
     listUsers.mockReset()
+    deleteUser.mockReset()
+    showError.mockReset()
+    showSuccess.mockReset()
     getAllGroups.mockReset()
     getBatchUsersUsage.mockReset()
     listEnabledDefinitions.mockReset()
@@ -145,6 +193,83 @@ describe('admin UsersView', () => {
 
   afterEach(() => {
     vi.useRealTimers()
+  })
+
+  it('cancels bulk deletion without deleting or clearing selected users', async () => {
+    const wrapper = mountBulkDeleteView()
+    await flushPromises()
+
+    expect(wrapper.find('[data-test="bulk-delete-users"]').exists()).toBe(false)
+    await wrapper.get('[data-test="select-42"]').trigger('click')
+    await wrapper.get('[data-test="bulk-delete-users"]').trigger('click')
+    expect(wrapper.get('[data-test="delete-dialog"]').text()).toContain('admin.users.bulkDelete.confirm:1')
+    expect(deleteUser).not.toHaveBeenCalled()
+
+    await wrapper.get('[data-test="cancel-delete"]').trigger('click')
+    expect(wrapper.find('[data-test="delete-dialog"]').exists()).toBe(false)
+    expect(deleteUser).not.toHaveBeenCalled()
+    expect(wrapper.get('[data-test="selected-keys"]').text()).toBe('42')
+    wrapper.unmount()
+  })
+
+  it.each([
+    { failedIds: [], remaining: '', deleted: 2 },
+    { failedIds: [43], remaining: '43', deleted: 1 },
+    { failedIds: [42, 43], remaining: '42,43', deleted: 0 }
+  ])('deletes across pages and retains failures: $remaining', async ({ failedIds, remaining, deleted }) => {
+    listUsers.mockImplementation(async (page: number) => ({
+      items: [createAdminUser({ id: page === 2 ? 43 : 42 })],
+      total: 2, page, page_size: 20, pages: 2
+    }))
+    deleteUser.mockImplementation(async (id: number) => {
+      if (failedIds.includes(id)) throw new Error('Cannot delete user')
+    })
+    const wrapper = mountBulkDeleteView()
+    await flushPromises()
+    await wrapper.get('[data-test="select-42"]').trigger('click')
+    await wrapper.get('[data-test="next-page"]').trigger('click')
+    await flushPromises()
+    await wrapper.get('[data-test="select-43"]').trigger('click')
+    await wrapper.get('[data-test="bulk-delete-users"]').trigger('click')
+    expect(deleteUser).not.toHaveBeenCalled()
+
+    await wrapper.get('[data-test="confirm-delete"]').trigger('click')
+    await flushPromises()
+
+    expect(deleteUser.mock.calls).toEqual([[42], [43]])
+    expect(wrapper.get('[data-test="selected-keys"]').text()).toBe(remaining)
+    expect(wrapper.find('[data-test="delete-dialog"]').exists()).toBe(false)
+    if (deleted) {
+      expect(showSuccess).toHaveBeenCalledWith(`admin.users.bulkDelete.success:${deleted}`)
+      expect(listUsers.mock.lastCall?.[0]).toBe(1)
+    } else {
+      expect(showSuccess).not.toHaveBeenCalled()
+    }
+    if (failedIds.length) expect(showError).toHaveBeenCalledWith(`admin.users.bulkDelete.failed:${failedIds.length}`)
+    else expect(showError).not.toHaveBeenCalled()
+    wrapper.unmount()
+  })
+
+  it('deletes the confirmed selection while preserving users selected during deletion', async () => {
+    listUsers.mockResolvedValue({
+      items: [createAdminUser({ id: 42 }), createAdminUser({ id: 43 })],
+      total: 2, page: 1, page_size: 20, pages: 1
+    })
+    let finishDelete!: () => void
+    deleteUser.mockImplementation(() => new Promise<void>(resolve => { finishDelete = resolve }))
+    const wrapper = mountBulkDeleteView()
+    await flushPromises()
+    await wrapper.get('[data-test="select-42"]').trigger('click')
+    await wrapper.get('[data-test="bulk-delete-users"]').trigger('click')
+    await wrapper.get('[data-test="confirm-delete"]').trigger('click')
+    expect(wrapper.get('[data-test="bulk-delete-users"]').attributes('disabled')).toBeDefined()
+    await wrapper.get('[data-test="select-43"]').trigger('click')
+    finishDelete()
+    await flushPromises()
+
+    expect(deleteUser.mock.calls).toEqual([[42]])
+    expect(wrapper.get('[data-test="selected-keys"]').text()).toBe('43')
+    wrapper.unmount()
   })
 
   it('shows active, used, and created activity columns in order and requests last_used_at sort', async () => {

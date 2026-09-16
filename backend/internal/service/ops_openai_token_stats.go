@@ -59,3 +59,7 @@ func (s *OpsService) GetTokenStats(ctx context.Context, filter *OpsTokenStatsFil
 
 	return s.opsRepo.GetTokenStats(ctx, filter)
 }
+
+func (s *OpsService) GetOpenAITokenStats(ctx context.Context, filter *OpsOpenAITokenStatsFilter) (*OpsOpenAITokenStatsResponse, error) {
+	return s.GetTokenStats(ctx, filter)
+}

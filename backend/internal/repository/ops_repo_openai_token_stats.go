@@ -6,11 +6,10 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/Wei-Shaw/sub2api/internal/pkg/usagestats"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 )
 
-func (r *opsRepository) GetTokenStats(ctx context.Context, filter *service.OpsTokenStatsFilter) (*service.OpsTokenStatsResponse, error) {
+func (r *opsRepository) GetOpenAITokenStats(ctx context.Context, filter *service.OpsOpenAITokenStatsFilter) (*service.OpsOpenAITokenStatsResponse, error) {
 	if r == nil || r.db == nil {
 		return nil, fmt.Errorf("nil ops repository")
 	}
@@ -28,27 +27,16 @@ func (r *opsRepository) GetTokenStats(ctx context.Context, filter *service.OpsTo
 	dashboardFilter := &service.OpsDashboardFilter{
 		StartTime: filter.StartTime.UTC(),
 		EndTime:   filter.EndTime.UTC(),
+		Platform:  strings.TrimSpace(strings.ToLower(filter.Platform)),
 		GroupID:   filter.GroupID,
 	}
 
 	join, where, baseArgs, next := buildUsageWhere(dashboardFilter, dashboardFilter.StartTime, dashboardFilter.EndTime, 1)
-	join += " LEFT JOIN groups g ON g.id = ul.group_id LEFT JOIN accounts a ON a.id = ul.account_id"
-	platformExpr := "LOWER(TRIM(" + usageLogEffectivePlatformExpr + "))"
-	modelExpr := resolveModelDimensionExpressionWithAlias(usagestats.ModelSourceRequested, "ul")
-	platform := strings.TrimSpace(strings.ToLower(filter.Platform))
-	if platform != "" {
-		baseArgs = append(baseArgs, platform)
-		where += fmt.Sprintf(" AND %s = $%d", platformExpr, next)
-		next++
-	}
-	where += " AND NULLIF(TRIM(COALESCE(" + usageLogEffectivePlatformExpr + ", '')), '') IS NOT NULL"
-	where += " AND (ul.input_tokens + ul.output_tokens + ul.cache_creation_tokens + ul.cache_read_tokens) > 0"
 
 	baseCTE := `
 WITH stats AS (
   SELECT
-	` + platformExpr + ` AS platform,
-    ` + modelExpr + ` AS model,
+    ul.model AS model,
     COUNT(*)::bigint AS request_count,
     ROUND(
       AVG(
@@ -66,7 +54,7 @@ WITH stats AS (
   FROM usage_logs ul
   ` + join + `
   ` + where + `
-  GROUP BY ` + platformExpr + `, ` + modelExpr + `
+  GROUP BY ul.model
 )
 `
 
@@ -78,7 +66,6 @@ WITH stats AS (
 
 	querySQL := baseCTE + `
 SELECT
-  platform,
   model,
   request_count,
   avg_tokens_per_sec,
@@ -87,7 +74,7 @@ SELECT
   avg_duration_ms,
   requests_with_first_token
 FROM stats
-ORDER BY request_count DESC, platform ASC, model ASC`
+ORDER BY request_count DESC, model ASC`
 
 	args := make([]any, 0, len(baseArgs)+2)
 	args = append(args, baseArgs...)
@@ -107,13 +94,12 @@ ORDER BY request_count DESC, platform ASC, model ASC`
 	}
 	defer func() { _ = rows.Close() }()
 
-	items := make([]*service.OpsTokenStatsItem, 0, 32)
+	items := make([]*service.OpsOpenAITokenStatsItem, 0, 32)
 	for rows.Next() {
-		item := &service.OpsTokenStatsItem{}
+		item := &service.OpsOpenAITokenStatsItem{}
 		var avgTPS sql.NullFloat64
 		var avgFirstToken sql.NullFloat64
 		if err := rows.Scan(
-			&item.Platform,
 			&item.Model,
 			&item.RequestCount,
 			&avgTPS,
@@ -138,11 +124,11 @@ ORDER BY request_count DESC, platform ASC, model ASC`
 		return nil, err
 	}
 
-	resp := &service.OpsTokenStatsResponse{
+	resp := &service.OpsOpenAITokenStatsResponse{
 		TimeRange: strings.TrimSpace(filter.TimeRange),
 		StartTime: dashboardFilter.StartTime,
 		EndTime:   dashboardFilter.EndTime,
-		Platform:  platform,
+		Platform:  dashboardFilter.Platform,
 		GroupID:   dashboardFilter.GroupID,
 		Items:     items,
 		Total:     total,
@@ -155,4 +141,8 @@ ORDER BY request_count DESC, platform ASC, model ASC`
 		resp.PageSize = filter.PageSize
 	}
 	return resp, nil
+}
+
+func (r *opsRepository) GetTokenStats(ctx context.Context, filter *service.OpsTokenStatsFilter) (*service.OpsTokenStatsResponse, error) {
+	return r.GetOpenAITokenStats(ctx, filter)
 }

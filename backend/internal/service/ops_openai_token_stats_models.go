@@ -53,3 +53,9 @@ type OpsTokenStatsResponse struct {
 	// TopN mode metadata.
 	TopN *int `json:"top_n,omitempty"`
 }
+
+type (
+	OpsOpenAITokenStatsFilter   = OpsTokenStatsFilter
+	OpsOpenAITokenStatsItem     = OpsTokenStatsItem
+	OpsOpenAITokenStatsResponse = OpsTokenStatsResponse
+)
