@@ -4,6 +4,7 @@ package service
 
 import (
 	"context"
+	"net/url"
 	"testing"
 	"time"
 
@@ -14,7 +15,7 @@ func TestAdminProxyPartialUpdatePreservesOmittedSettings(t *testing.T) {
 	for _, input := range []*UpdateProxyInput{{Status: "inactive"}, {Name: "renamed"}, {Host: "new.example"}} {
 		expiry := time.Now().Add(24 * time.Hour)
 		backup := int64(10)
-		original := &Proxy{ID: 9, Name: "original", Host: "old.example", Status: StatusActive, ExpiresAt: &expiry, FallbackMode: FallbackModeProxy, BackupProxyID: &backup, ExpiryWarnDays: 7}
+		original := &Proxy{ID: 9, Name: "original", Host: "old.example", ConsoleURL: "http://old.example/ui/", Status: StatusActive, ExpiresAt: &expiry, FallbackMode: FallbackModeProxy, BackupProxyID: &backup, ExpiryWarnDays: 7}
 		repo := &updatingProxyRepoStub{proxyRepoStub: &proxyRepoStub{}, proxy: original}
 		svc := &adminServiceImpl{proxyRepo: repo}
 		got, err := svc.UpdateProxy(context.Background(), 9, input)
@@ -23,8 +24,33 @@ func TestAdminProxyPartialUpdatePreservesOmittedSettings(t *testing.T) {
 		require.Equal(t, original.FallbackMode, got.FallbackMode)
 		require.Equal(t, original.BackupProxyID, got.BackupProxyID)
 		require.Equal(t, original.ExpiryWarnDays, got.ExpiryWarnDays)
+		require.Equal(t, original.ConsoleURL, got.ConsoleURL)
 		require.Equal(t, 1, repo.updateCalls)
 	}
+}
+
+func TestAdminProxyUpdateValidatesAndClearsConsoleURL(t *testing.T) {
+	repo := &updatingProxyRepoStub{proxyRepoStub: &proxyRepoStub{}, proxy: &Proxy{ID: 9, ConsoleURL: "http://old.example/ui/"}}
+	svc := &adminServiceImpl{proxyRepo: repo}
+
+	valid := " http://proxy.example.com:9090/ui/#/proxies "
+	got, err := svc.UpdateProxy(context.Background(), 9, &UpdateProxyInput{ConsoleURL: &valid})
+	require.NoError(t, err)
+	require.Equal(t, "http://proxy.example.com:9090/ui/#/proxies", got.ConsoleURL)
+
+	for _, invalid := range []string{
+		"ftp://proxy.example.com/ui/",
+		(&url.URL{Scheme: "http", Host: "proxy.example.com", Path: "/ui/", User: url.UserPassword("example-user", "example-password")}).String(),
+		"http://proxy.example.com/ui/?secret=value",
+	} {
+		_, err = svc.UpdateProxy(context.Background(), 9, &UpdateProxyInput{ConsoleURL: &invalid})
+		require.Error(t, err)
+	}
+
+	empty := ""
+	got, err = svc.UpdateProxy(context.Background(), 9, &UpdateProxyInput{ConsoleURL: &empty})
+	require.NoError(t, err)
+	require.Empty(t, got.ConsoleURL)
 }
 
 func TestAdminProxyPartialUpdateClearsAndSetsSettings(t *testing.T) {
