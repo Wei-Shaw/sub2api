@@ -90,7 +90,7 @@ import { useClipboard } from '@/composables/useClipboard'
 import { adminAPI } from '@/api/admin'
 import type { AdminUser, UserAttributeValuesMap } from '@/types'
 import BaseDialog from '@/components/common/BaseDialog.vue'
-import Select from '@/components/common/Select.vue'
+import Select, { type SelectOption } from '@/components/common/Select.vue'
 import UserAttributeForm from '@/components/user/UserAttributeForm.vue'
 import Icon from '@/components/icons/Icon.vue'
 import { useStepUp, isStepUpBlocked, isStepUpCancelled, stepUpBlockReason } from '@/composables/useStepUp'
@@ -101,10 +101,6 @@ const emit = defineEmits(['close', 'success'])
 const { t } = useI18n(); const appStore = useAppStore(); const { copyToClipboard } = useClipboard()
 
 const submitting = ref(false); const passwordCopied = ref(false)
-const roleOptions = computed(() => [
-  { value: 'user', label: t('admin.users.roles.user') },
-  { value: 'admin', label: t('admin.users.roles.admin') }
-])
 const form = reactive({
   email: '',
   password: '',
@@ -115,6 +111,11 @@ const form = reactive({
   rpm_limit: 0,
   customAttributes: {} as UserAttributeValuesMap
 })
+
+const roleOptions = computed<SelectOption[]>(() => [
+  { value: 'user', label: t('admin.users.roles.user') },
+  { value: 'admin', label: t('admin.users.roles.admin') },
+])
 
 watch(() => props.user, (u) => {
   if (u) {

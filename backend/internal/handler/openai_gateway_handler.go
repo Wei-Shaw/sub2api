@@ -371,7 +371,7 @@ func NewOpenAIGatewayHandler(
 		contentModerationService: contentModerationService,
 		opsService:               opsService,
 		concurrencyHelper:        NewConcurrencyHelper(concurrencyService, SSEPingFormatComment, pingInterval),
-		imageLimiter:             &imageConcurrencyLimiter{},
+		imageLimiter:             sharedImageConcurrencyLimiter,
 		maxAccountSwitches:       maxAccountSwitches,
 		cfg:                      cfg,
 	}
@@ -3323,19 +3323,10 @@ func (h *OpenAIGatewayHandler) submitMandatoryUsageRecordTask(parent context.Con
 }
 
 func (h *OpenAIGatewayHandler) acquireImageGenerationSlot(c *gin.Context, streamStarted bool) (func(), bool) {
-	if h == nil || h.cfg == nil || h.imageLimiter == nil {
+	if h == nil {
 		return nil, true
 	}
-	imageConcurrency := h.cfg.Gateway.ImageConcurrency
-	wait := strings.TrimSpace(imageConcurrency.OverflowMode) == config.ImageConcurrencyOverflowModeWait
-	release, acquired := h.imageLimiter.Acquire(
-		c.Request.Context(),
-		imageConcurrency.Enabled,
-		imageConcurrency.MaxConcurrentRequests,
-		wait,
-		time.Duration(imageConcurrency.WaitTimeoutSeconds)*time.Second,
-		imageConcurrency.MaxWaitingRequests,
-	)
+	release, acquired := acquireImageConcurrencySlot(c.Request.Context(), h.cfg, h.imageLimiter)
 	if acquired {
 		return release, true
 	}

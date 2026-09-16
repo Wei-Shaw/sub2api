@@ -389,6 +389,14 @@ type OpsUpstreamErrorEvent struct {
 	AccountID   int64  `json:"account_id,omitempty"`
 	AccountName string `json:"account_name,omitempty"`
 
+	// Model diagnostics.
+	RequestedModel      string `json:"requested_model,omitempty"`
+	MappedModel         string `json:"mapped_model,omitempty"`
+	KiroModelID         string `json:"kiro_model_id,omitempty"`
+	HasTools            bool   `json:"has_tools,omitempty"`
+	HasAdaptiveThinking bool   `json:"has_adaptive_thinking,omitempty"`
+	HasContext1MBeta    bool   `json:"has_context_1m_beta,omitempty"`
+
 	// Proxy attribution is an immutable, credential-free snapshot of the route
 	// used by this attempt. ProxyID is null for direct and unknown routes;
 	// ProxyName distinguishes direct/no_proxy from unknown.
@@ -399,14 +407,6 @@ type OpsUpstreamErrorEvent struct {
 	// DroppedEarlierAttempts is set on the oldest retained event when queue
 	// bounds forced earlier attempts of the same request to be discarded.
 	DroppedEarlierAttempts int `json:"dropped_earlier_attempts,omitempty"`
-
-	// Model diagnostics.
-	RequestedModel      string `json:"requested_model,omitempty"`
-	MappedModel         string `json:"mapped_model,omitempty"`
-	KiroModelID         string `json:"kiro_model_id,omitempty"`
-	HasTools            bool   `json:"has_tools,omitempty"`
-	HasAdaptiveThinking bool   `json:"has_adaptive_thinking,omitempty"`
-	HasContext1MBeta    bool   `json:"has_context_1m_beta,omitempty"`
 
 	// Outcome
 	UpstreamStatusCode int    `json:"upstream_status_code,omitempty"`

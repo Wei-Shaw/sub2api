@@ -161,20 +161,18 @@ const mountUsersView = (stubs: Record<string, unknown> = {}) => mount(UsersView,
   }
 })
 
-// 批量删除用例需要可交互的 ConfirmDialog / Pagination 桩，其余桩沿用默认集合。
-const ConfirmDialogStub = {
-  props: ['show', 'message'],
-  emits: ['confirm', 'cancel'],
-  template: `<div v-if="show" data-test="delete-dialog">
-    <span>{{ message }}</span>
-    <button data-test="confirm-delete" @click="$emit('confirm')">confirm</button>
-    <button data-test="cancel-delete" @click="$emit('cancel')">cancel</button>
-  </div>`
-}
-
 const mountBulkDeleteView = () => mountUsersView({
   Pagination: PaginationStub,
-  ConfirmDialog: ConfirmDialogStub
+  ConfirmDialog: {
+    props: ['show', 'message'],
+    emits: ['confirm', 'cancel'],
+    template: `<div v-if="show" data-test="delete-dialog">
+      <span>{{ message }}</span>
+      <button data-test="confirm-delete" @click="$emit('confirm')">confirm</button>
+      <button data-test="cancel-delete" @click="$emit('cancel')">cancel</button>
+    </div>`
+  },
+  BulkEditUserModal: true
 })
 
 describe('admin UsersView', () => {

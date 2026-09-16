@@ -36,6 +36,7 @@ type UpstreamModelMetadata struct {
 	SupportedReasoningLevels []string                   `json:"supported_reasoning_levels,omitempty"`
 	InputModalities          []string                   `json:"input_modalities,omitempty"`
 	ContextWindow            int64                      `json:"context_window,omitempty"`
+	MaxContextWindow         int64                      `json:"max_context_window,omitempty"`
 	MaxOutputTokens          int64                      `json:"max_output_tokens,omitempty"`
 	CodexToolCapabilities    map[string]json.RawMessage `json:"codex_tool_capabilities,omitempty"`
 }
@@ -389,6 +390,7 @@ func upstreamModelMetadataIsUseful(metadata UpstreamModelMetadata) bool {
 		len(metadata.InputModalities) > 0 ||
 		len(metadata.CodexToolCapabilities) > 0 ||
 		metadata.ContextWindow > 0 ||
+		metadata.MaxContextWindow > 0 ||
 		metadata.MaxOutputTokens > 0
 }
 
@@ -472,6 +474,11 @@ func mergeUpstreamModelMetadata(primary, fallback UpstreamModelMetadata) (Upstre
 	}
 	if merged.ContextWindow <= 0 && fallback.ContextWindow > 0 {
 		merged.ContextWindow = fallback.ContextWindow
+		// Keep the registry's context limits together. A direct upstream default
+		// without an explicit maximum remains the conservative ceiling.
+		if merged.MaxContextWindow <= 0 {
+			merged.MaxContextWindow = fallback.MaxContextWindow
+		}
 		changed = true
 	}
 	if merged.MaxOutputTokens <= 0 && fallback.MaxOutputTokens > 0 {
@@ -582,6 +589,7 @@ func upstreamMetadataFromModelsDevModel(modelID string, model modelsDevModel) Up
 		SupportedReasoningLevels: levels,
 		InputModalities:          normalizeCodexInputModalities(model.Modalities.Input),
 		ContextWindow:            model.Limit.Context,
+		MaxContextWindow:         model.Limit.Context,
 		MaxOutputTokens:          model.Limit.Output,
 	}
 	if len(levels) > 0 {
@@ -1360,6 +1368,7 @@ func upstreamMetadataFromCapabilityEntry(modelID string, entry upstreamModelCapa
 		SupportedReasoningLevels: levels,
 		InputModalities:          normalizeCodexInputModalities(modalities),
 		ContextWindow:            contextWindow,
+		MaxContextWindow:         entry.MaxContextWindow,
 		MaxOutputTokens:          maxOutputTokens,
 	}
 }

@@ -5,19 +5,13 @@
 --
 -- 与 224/226/227 同型：DROP IF EXISTS 后重建超集约束，存量行瞬时校验通过。
 
---
--- 【fork 增补】上游此文件重建 user_platform_quotas.platform 约束时不含 kiro，
--- 会把 145/227 的成果再次回退，且存量 kiro 配额行会让 ADD CONSTRAINT 直接失败、
--- 中止整次迁移。该文件在本仓库从未被应用过（随本次上游同步首次进入），因此就地
--- 补成超集而非再加前向迁移；同步上游时务必保留这一项。
-
 ALTER TABLE user_platform_quotas
     DROP CONSTRAINT IF EXISTS user_platform_quotas_platform_check;
 
 ALTER TABLE user_platform_quotas
     ADD CONSTRAINT user_platform_quotas_platform_check
-    CHECK (platform IN ('anthropic', 'openai', 'gemini', 'antigravity', 'kiro', 'grok',
-                        'kimi', 'zhipu', 'deepseek', 'minimax'));
+    CHECK (platform IN ('anthropic', 'openai', 'gemini', 'antigravity', 'grok',
+                        'kimi', 'zhipu', 'deepseek', 'kiro', 'minimax'));
 
 ALTER TABLE composite_model_routes
     DROP CONSTRAINT IF EXISTS composite_model_routes_target_platform_check;
@@ -25,7 +19,7 @@ ALTER TABLE composite_model_routes
 ALTER TABLE composite_model_routes
     ADD CONSTRAINT composite_model_routes_target_platform_check
     CHECK (target_platform IN ('anthropic', 'openai', 'gemini', 'antigravity', 'grok',
-                               'kimi', 'zhipu', 'deepseek', 'minimax'));
+                               'kimi', 'zhipu', 'deepseek', 'kiro', 'minimax'));
 
 DO $$
 DECLARE
@@ -45,7 +39,7 @@ BEGIN
         ALTER TABLE channel_monitors
             ADD CONSTRAINT channel_monitors_provider_check
             CHECK (provider IN ('openai', 'anthropic', 'gemini', 'grok',
-                                'antigravity', 'kimi', 'zhipu', 'deepseek', 'minimax'));
+                                'antigravity', 'kimi', 'zhipu', 'deepseek', 'kiro', 'minimax'));
     END IF;
 
     SELECT pg_get_constraintdef(c.oid)
@@ -61,6 +55,6 @@ BEGIN
         ALTER TABLE channel_monitor_request_templates
             ADD CONSTRAINT channel_monitor_request_templates_provider_check
             CHECK (provider IN ('openai', 'anthropic', 'gemini', 'grok',
-                                'antigravity', 'kimi', 'zhipu', 'deepseek', 'minimax'));
+                                'antigravity', 'kimi', 'zhipu', 'deepseek', 'kiro', 'minimax'));
     END IF;
 END $$;

@@ -21,14 +21,9 @@ const groups = [
   { id: 2, name: 'Composite', platform: 'composite', status: 'active' }
 ] as any
 
-const stubs = {
-  GroupBadge: { props: ['name'], template: '<span>{{ name }}</span>' },
-  Icon: true
-}
-
 const mountSelector = (modelValue: number[] = []) => mount(GroupSelector, {
   props: { modelValue, groups },
-  global: { stubs }
+  global: { stubs: { GroupBadge: { props: ['name'], template: '<span>{{ name }}</span>' }, Icon: true } }
 })
 
 describe('GroupSelector', () => {
@@ -41,7 +36,7 @@ describe('GroupSelector', () => {
         groups: [],
         label: '适用分组'
       },
-      global: { stubs }
+      global: { stubs: { GroupBadge: true, Icon: true } }
     })
 
     expect(wrapper.text()).toContain('适用分组 （已选 0 个）')

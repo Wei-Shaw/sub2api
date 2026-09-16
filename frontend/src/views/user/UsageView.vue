@@ -641,9 +641,10 @@ const exportToCSV = async () => {
   try {
     const allLogs: UsageLog[] = []
     const pageSize = 100
+    const exportParams = buildUsageListParams(1, pageSize)
     const totalPages = Math.ceil(pagination.total / pageSize)
     for (let page = 1; page <= totalPages; page++) {
-      const response = await usageAPI.query(buildUsageListParams(page, pageSize))
+      const response = await usageAPI.query({ ...exportParams, page })
       allLogs.push(...response.items)
     }
     if (allLogs.length === 0) {
@@ -696,7 +697,7 @@ const exportToCSV = async () => {
     const url = window.URL.createObjectURL(blob)
     const link = document.createElement('a')
     link.href = url
-    link.download = `usage_${startDate.value}_to_${endDate.value}.csv`
+    link.download = `usage_${exportParams.start_date}_to_${exportParams.end_date}.csv`
     link.click()
     window.URL.revokeObjectURL(url)
     appStore.showSuccess(t('usage.exportSuccess'))

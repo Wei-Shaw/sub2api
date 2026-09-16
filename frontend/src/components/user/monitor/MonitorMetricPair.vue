@@ -1,5 +1,5 @@
 <template>
-  <div class="mt-5 grid grid-cols-2 gap-2">
+  <div class="mt-5 grid grid-cols-2 gap-2" data-testid="monitor-metric-pair">
     <div
       class="rounded-xl p-3 bg-gray-50/80 dark:bg-dark-900/40 border border-gray-100 dark:border-dark-700/50"
     >

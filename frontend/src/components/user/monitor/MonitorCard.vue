@@ -43,8 +43,9 @@
       </span>
     </div>
 
-    <!-- Metrics -->
+    <!-- 纯配额模式不发 LLM / HEAD，延迟和 PING 恒为空，藏掉避免两块「-」 -->
     <MonitorMetricPair
+      v-if="!quotaOnly"
       primary-icon="bolt"
       :primary-label="t('monitorCommon.dialogLatency')"
       :primary-value="formatLatency(item.primary_latency_ms)"
@@ -55,8 +56,13 @@
       secondary-unit="ms"
     />
 
-    <!-- 配额模式：最新用量/余额快照（服务端已按系统开关剥离，此处 flag 为纵深防御） -->
-    <MonitorQuotaView v-if="quotaVisible" :snapshot="item.latest_quota" class="mt-2" />
+    <!-- 完整快照受 show_quota 开关约束；组级账号计数即使开关关闭也会下发 -->
+    <MonitorQuotaView
+      v-if="quotaVisible"
+      :snapshot="item.latest_quota"
+      :accounts-only="accountsOnly"
+      class="mt-2"
+    />
 
     <!-- Divider -->
     <div class="mt-4 border-t border-gray-100 dark:border-dark-700/60"></div>
@@ -129,9 +135,22 @@ const providerTintClass = computed(() =>
   PROVIDER_TINT[props.item.provider] ?? 'text-gray-500 dark:text-gray-300'
 )
 
-const quotaVisible = computed(
-  () => isChannelMonitorQuotaVisible() && !!props.item.latest_quota
-)
+const quotaOnly = computed(() => {
+  if (props.item.check_mode === 'quota') return true
+  // 旧响应没有 check_mode 时，主模型占位符 "quota" 也是纯配额卡。
+  return !props.item.check_mode && props.item.primary_model === 'quota'
+})
+
+const showFullQuota = computed(() => isChannelMonitorQuotaVisible())
+
+const accountsOnly = computed(() => !showFullQuota.value)
+
+const quotaVisible = computed(() => {
+  const snapshot = props.item.latest_quota
+  if (!snapshot) return false
+  if (showFullQuota.value) return true
+  return (snapshot.accounts_total ?? 0) > 0
+})
 
 const availabilityLabel = computed(() => {
   const win = t(`channelStatus.windowTab.${props.window}`)

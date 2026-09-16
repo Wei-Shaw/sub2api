@@ -3,7 +3,6 @@ export default {
       title: 'Account Management',
       description: 'Manage AI platform accounts and credentials',
       createAccount: 'Create Account',
-      add: 'Add',
       autoRefresh: 'Auto Refresh',
       enableAutoRefresh: 'Enable auto refresh',
       refreshInterval5s: '5 seconds',
@@ -121,6 +120,7 @@ export default {
         antigravity: 'Antigravity',
         grok: 'Grok',
         kiro: 'Kiro',
+        adobe: 'Adobe',
         kimi: 'Kimi',
         zhipu: 'Zhipu GLM',
         deepseek: 'DeepSeek',
@@ -202,6 +202,8 @@ export default {
         kiroApikey: 'Connect to AWS directly via API Key',
         kiroApikeyRelay: 'Relay via external API Key + Base URL',
         kiroOauth: 'Social OAuth / AWS Builder ID / Import',
+        adobeOauth: 'Firefly cookie',
+        adobeApikeyRelay: 'Relay via external API Key + Base URL',
         antigravityApikey: 'Connect via Base URL + API Key',
         upstream: 'Upstream',
         upstreamDesc: 'Connect via Base URL + API Key'
@@ -592,6 +594,7 @@ export default {
       vertexSaJsonInvalid: 'Service Account JSON format is invalid',
       vertexSaJsonRequired: 'Please upload a Service Account JSON',
       oauthSetupToken: 'OAuth / Setup Token',
+      add: 'Add',
       addMethod: 'Add Method',
       setupTokenLongLived: 'Setup Token (Long-lived)',
       baseUrl: 'Base URL',
@@ -625,16 +628,19 @@ export default {
           'Disabled by default. Enable to allow responses_websockets_v2 capability (still gated by global and account-type switches).',
         wsMode: 'WS mode',
         wsModeDesc:
-          'Only applies to the current OpenAI account type; account WS modes, including http_bridge, take effect only when the global gateway.openai_ws.mode_router_v2_enabled=true.',
+          'Applies only to the current OpenAI account type. Select Off to disable WS. Other modes use the selected connection method only when gateway.openai_ws.mode_router_v2_enabled=true; otherwise, they use the context pool.',
         wsModeOff: 'Off (off)',
         wsModeCtxPool: 'Context Pool (ctx_pool)',
         wsModePassthrough: 'Passthrough (passthrough)',
         wsModeHttpBridge: 'HTTP Bridge (http_bridge)',
         wsModeShared: 'Shared (shared)',
         wsModeDedicated: 'Dedicated (dedicated)',
-        wsModeConcurrencyHint:
-          'When WS mode is enabled, account concurrency becomes the WS connection pool limit for this account.',
-        wsModePassthroughHint: 'Passthrough mode does not use the WS connection pool.',
+        wsModeCtxPoolHint:
+          'The gateway gets and reuses upstream WS connections from a pool, with the pool limit determined by gateway configuration.',
+        wsModePassthroughHint:
+          'The gateway opens a separate upstream WS connection for each client session, without using a connection pool.',
+        wsModeHttpBridgeHint:
+          'The gateway converts client WS requests to upstream HTTP requests, then converts SSE streaming responses back into WS messages.',
         oauthResponsesWebsocketsV2: 'OAuth WebSocket Mode',
         oauthResponsesWebsocketsV2Desc:
           'Only applies to OpenAI OAuth. This account can use OpenAI WebSocket Mode only when enabled.',
@@ -788,8 +794,6 @@ export default {
       modelRestriction: 'Model Restriction (Optional)',
       modelWhitelist: 'Model Whitelist',
       modelMapping: 'Model Mapping',
-      fromModel: 'Request model',
-      toModel: 'Target model',
       selectAllowedModels: 'Select allowed models. Leave empty to support all models.',
       mapRequestModels:
         'Map request models to actual models. Left is the requested model, right is the actual model sent to API.',
@@ -797,6 +801,8 @@ export default {
       supportsAllModels: '(supports all models)',
       requestModel: 'Request model',
       actualModel: 'Actual model',
+      fromModel: 'Source model',
+      toModel: 'Target model',
       addMapping: 'Add Mapping',
       mappingExists: 'Mapping for {model} already exists',
       wildcardOnlyAtEnd: 'Wildcard * can only be at the end',
@@ -1073,6 +1079,17 @@ export default {
         apiKeyHint: 'API Key for the upstream service',
         pleaseEnterBaseUrl: 'Please enter upstream Base URL',
         pleaseEnterApiKey: 'Please enter upstream API Key'
+      },
+      adobe: {
+        cookieLabel: 'Adobe Cookie',
+        cookieHint: 'Sign in to Adobe, open firefly.adobe.com/generate/image and let it settle, then copy the Cookie header from an adobeid-na1.services.adobe.com /ims/check/v6/token request in DevTools (it must include ims_sid). Copying document.cookie from firefly.adobe.com alone is not enough. A "Cookie:" prefix or a JSON cookie array is also accepted. The short-lived access token is refreshed from this automatically.',
+        credentialStepTitle: 'Enter credentials',
+        cookiePlaceholder: 'ims_sid=...; aux_sid=...; ...',
+        cookieRequired: 'Please enter the Adobe cookie',
+        accessTokenLabel: 'Access Token (optional)',
+        accessTokenHint: 'Leave empty to have it fetched from the cookie on first refresh. Fill it only when you already hold a valid IMS token.',
+        relayApiKeyHint: 'API key for that external upstream (sent as Authorization: Bearer)',
+        relayBaseUrlHint: 'External OpenAI-compatible upstream URL (e.g. https://your-relay.example.com)'
       },
       kiro: {
         apiKeyHint: 'Kiro API Key (starts with ksk_), used as the Bearer token for direct AWS access',
@@ -1561,6 +1578,7 @@ export default {
       geminiAccount: 'Gemini Account',
       antigravityAccount: 'Antigravity Account',
       grokAccount: 'Grok Account',
+      adobeAccount: 'Adobe Account',
       inputMethod: 'Input Method',
       reAuthorizedSuccess: 'Account re-authorized successfully',
       // Test Modal
@@ -1679,6 +1697,9 @@ export default {
         kiroDaysLeft: '{days}d left',
         kiroExpires: 'Expires',
         kiroReset: 'Reset',
+        adobeCredits: 'Credits',
+        adobeReset: 'Reset',
+        adobePlanCap: 'Plan',
         estimatedTotalCost: 'Est. total ${cost}',
         estimatedTotalCostTooltip: 'Estimated total cost at 100% utilization, based on current window cost and utilization'
       },

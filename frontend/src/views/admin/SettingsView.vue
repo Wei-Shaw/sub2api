@@ -1174,6 +1174,7 @@
                           | 'all'
                           | 'priority'
                           | 'flex'
+                          | 'missing'
                       "
                       :options="openaiFastPolicyTierOptions"
                     />
@@ -5256,19 +5257,12 @@
                 >
                   {{ t("admin.settings.gatewayForwarding.openaiTTFTMode") }}
                 </label>
-                <select
-                  id="openai-ttft-mode"
+                <Select
                   v-model="form.openai_ttft_mode"
-                  class="input mt-2 w-full"
+                  :options="openaiTTFTModeOptions"
                   data-testid="openai-ttft-mode"
-                >
-                  <option value="semantic">
-                    {{ t("admin.settings.gatewayForwarding.openaiTTFTModeSemantic") }}
-                  </option>
-                  <option value="visible">
-                    {{ t("admin.settings.gatewayForwarding.openaiTTFTModeVisible") }}
-                  </option>
-                </select>
+                  class="mt-2"
+                />
                 <p class="mt-1.5 text-xs text-gray-500 dark:text-gray-400">
                   {{ t("admin.settings.gatewayForwarding.openaiTTFTModeHint") }}
                 </p>
@@ -8906,6 +8900,10 @@ import {
 const { t, locale } = useI18n();
 
 // Select 选项（i18n label 用 computed 保证切换语言响应式）
+const openaiTTFTModeOptions = computed(() => [
+  { value: "semantic", label: t("admin.settings.gatewayForwarding.openaiTTFTModeSemantic") },
+  { value: "visible", label: t("admin.settings.gatewayForwarding.openaiTTFTModeVisible") },
+]);
 const grokDefaultBaseURLModeOptions = computed(() => [
   { value: "cli", label: t("admin.settings.gatewayForwarding.grokBaseURLModeCLI") },
   { value: "api", label: t("admin.settings.gatewayForwarding.grokBaseURLModeAPI") },
@@ -12226,6 +12224,7 @@ const openaiFastPolicyTierOptions = computed(() => [
     label: t("admin.settings.openaiFastPolicy.tierUltrafast"),
   },
   { value: "flex", label: t("admin.settings.openaiFastPolicy.tierFlex") },
+  { value: "missing", label: t("admin.settings.openaiFastPolicy.tierMissing") },
 ]);
 
 const openaiFastPolicyActionOptions = computed(() => [

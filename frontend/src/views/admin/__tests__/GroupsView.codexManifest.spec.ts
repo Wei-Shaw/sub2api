@@ -48,12 +48,8 @@ vi.mock("@/stores/app", () => ({
   }),
 }));
 
-// GroupsView 的 setup 里还取了 auth store，上游这个用例漏了它，
-// 导致在 upstream/main 上也会抛 "getActivePinia() was called but there was no active Pinia"。
 vi.mock("@/stores/auth", () => ({
-  useAuthStore: () => ({
-    isSimpleMode: false,
-  }),
+  useAuthStore: () => ({ isSimpleMode: false }),
 }));
 
 vi.mock("@/stores/onboarding", () => ({

@@ -339,7 +339,63 @@ func responsesInputToChatMessagesWithOptions(instructions string, inputRaw json.
 	if err != nil {
 		return nil, err
 	}
-	return normalizeChatMessagesWithToolOutputMedia(built, mediaByCallID), nil
+	normalized := normalizeChatMessagesWithToolOutputMedia(built, mediaByCallID)
+	return normalizeResponsesDerivedChatMessageRoles(normalized), nil
+}
+
+// normalizeResponsesDerivedChatMessageRoles rewrites the Chat Completions
+// message list produced by the Responses bridge so that strict upstreams which
+// only accept system content at the very start of the conversation accept it.
+//
+// The bridge turns the Responses `instructions` field and every role:"developer"
+// item into a system message. Codex always sends both instructions and a leading
+// developer item, and it also injects developer notices into the middle of the
+// message history (for example when the user switches models). Forwarded as-is
+// that produces two leading system messages and mid-conversation system
+// messages, which Qwen-family upstreams reject with
+// "System message must be at the beginning." (HTTP 400).
+//
+// Leading system/developer messages are therefore merged into a single leading
+// system message, while later ones keep their position but are downgraded to
+// user messages so the same text still reaches the model.
+func normalizeResponsesDerivedChatMessageRoles(messages []ChatMessage) []ChatMessage {
+	isInstructionRole := func(role string) bool {
+		return role == "system" || role == "developer"
+	}
+
+	leading := 0
+	for leading < len(messages) && isInstructionRole(messages[leading].Role) {
+		leading++
+	}
+
+	out := make([]ChatMessage, 0, len(messages))
+	switch leading {
+	case 0:
+		// No leading instructions, nothing to merge.
+	case 1:
+		// A single leading prompt is already valid; keep its content byte for
+		// byte instead of round-tripping it through the text merge below.
+		out = append(out, messages[0])
+	default:
+		merged := make([]string, 0, leading)
+		for _, m := range messages[:leading] {
+			if text := strings.TrimSpace(chatMessageContentText(m.Content)); text != "" {
+				merged = append(merged, text)
+			}
+		}
+		if len(merged) > 0 {
+			content, _ := json.Marshal(strings.Join(merged, "\n\n"))
+			out = append(out, ChatMessage{Role: "system", Content: content})
+		}
+	}
+
+	for _, m := range messages[leading:] {
+		if isInstructionRole(m.Role) {
+			m.Role = "user"
+		}
+		out = append(out, m)
+	}
+	return out
 }
 
 // buildChatMessagesFromItems walks the Responses input items and appends the

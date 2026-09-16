@@ -20,15 +20,22 @@ PR 作者转为在 [`nianzs/sub2api`](https://github.com/nianzs/sub2api) 长期�
 
 ## 同步流程
 
-`nianzs/sub2api` 会持续跟上游合并（通常落后上游几十个提交），所以增量同步的冲突面能长期
-维持在几十个文件量级：
+`nianzs/sub2api` 会持续跟上游合并（有时甚至**领先**——2026-09 那次它已经包含了
+`upstream/main` 并在其上加了 Adobe），所以增量同步的冲突面能长期维持在几十个文件量级。
+
+日常同步走 `/sync-upstream`（`.claude/commands/sync-upstream.md`）。手工做的话：
 
 ```bash
 git fetch upstream kiro
-git checkout main && git merge upstream/main && git push origin main
-git checkout -b sync/kiro-$(date +%Y%m%d) main
-git merge kiro/main
+git checkout -b sync/upstream-vX.Y.Z main
+git merge upstream/main      # 第一段：只和官方对齐
+# 解冲突 → 重跑生成物 → 本地验证 → commit
+git merge kiro/main          # 第二段：只剩 kiro 自有增量
+# 同上 → commit → push 开 PR，让 CI 先绿再合 main
 ```
+
+**两段合并的顺序不要改**：先 upstream 后 kiro，冲突被拆成两批，
+每批都能单独跑绿、单独回滚；反过来或一次合完会把两类语义揉在一个提交里。
 
 ### 冲突解决的既定规则
 
@@ -36,20 +43,33 @@ git merge kiro/main
 
 1. **生成物不手工合**：`backend/cmd/server/wire_gen.go` 与 `backend/ent/` 下的生成文件，
    随便留一版让文件语法完整，然后 `cd backend && make generate` 重新生成，以生成结果为准。
-2. **平台枚举/白名单一律取并集**，新增 `kiro` 且保留上游后来加的平台。
-   漏掉任何一处都会静默不生效，合完必须逐个回看：
+2. **平台枚举/白名单一律取并集**，保留 fork 的 `kiro` / `adobe`，也保留上游后来加的平台
+   （截至 v0.2.5 共 12 个：anthropic / openai / gemini / antigravity / kiro / grok / adobe /
+   kimi / zhipu / deepseek / minimax / opencode_go）。
+   漏掉任何一处都会静默不生效或直接编译失败，合完必须逐个回看：
    - `backend/internal/domain/constants.go`、`internal/service/domain_constants.go`
+   - `internal/service/domain_constants.go` 的 `AllowedQuotaPlatforms`（多处已改为从它派生）
    - `internal/model/error_passthrough_rule.go` 的 `AllPlatforms()`
-   - `internal/handler/admin/group_handler.go` 的 `binding:"...oneof=..."`
+   - `internal/handler/admin/group_handler.go` 的 **3 处** `binding:"...oneof=..."`
+     （Create / Update 含 `kiro`，composite 的 `target_platform` 不含）
    - `internal/service/scheduler_snapshot_service.go` 的 `schedulerSnapshotPlatforms()`
    - `internal/repository/simple_mode_default_groups.go` 的 `requiredByPlatform`
-   - `internal/service/domain_constants.go` 的 `AllowedQuotaPlatforms`
+   - `internal/service/oauth_only_platforms.go`
    - `backend/ent/schema/user_platform_quota.go` 的 `Validate`
-   - 前端只有 `frontend/src/constants/platforms.ts` 一处（`CONCRETE_PLATFORM_OPTIONS`），
-     其余选择器都从它派生，**不要**把 fork 侧那几份硬编码数组抄回来。
-3. **scheduler 快照测试取 fork 侧的参数化断言**。上游把平台数量硬编码进断言
-   （「8 平台 = 36 个 token」），fork 侧改成了 `expectedSchedulerAccountQueryCount()` /
-   `len(schedulerCanonicalBuckets(0))`。平台数一变上游那版必然失败，参数化版本才是对的。
+   - `backend/ent/schema/channel_monitor.go` / `channel_monitor_request_template.go` 的
+     `field.Enum("provider")`（**不含 adobe**，与 kiro 的 239 号迁移一致）
+   - 前端：`frontend/src/constants/platforms.ts` 的 `CONCRETE_PLATFORM_OPTIONS`、
+     `frontend/src/types/index.ts` 的 `GroupPlatform` / `AccountPlatform` 联合、
+     `frontend/src/utils/platformColors.ts` 的 10 个穷尽 `Record<Platform, string>`、
+     `frontend/src/utils/keyGroupProviders.ts` 的 `Record<GroupPlatform, KeyGroupProvider>`
+     （后两者是**穷尽映射**，漏 key 直接 TS 编译失败）。
+     其余选择器都从 `platforms.ts` 派生，**不要**把 fork 侧那几份硬编码数组抄回来。
+3. ~~scheduler 快照测试取 fork 侧的参数化断言~~ —— **本条已作废**（2026-09 同步 v0.2.5 时）。
+   上游自己也把断言参数化了（`schedulerCanonicalBucketCount()` /
+   `schedulerCanonicalAccountQueryCount()`），kiro 侧则进一步把
+   `schedulerSnapshotPlatforms()` 改成由 `AllowedQuotaPlatforms` 派生。
+   现在的规则是：**这一族测试整体取 kiro 侧**，平台数变化只需改 `AllowedQuotaPlatforms`，
+   断言会自洽。fork 自有的守卫用例 `service/scheduler_snapshot_platforms_test.go` 保留。
 4. **网关/调度/计费共享文件以上游为骨架**，把 fork 的 `kiro` 分支逻辑并进去，
    不要整文件 `--theirs` 覆盖掉上游的修复。
 5. **fork 的私有改动一律丢弃**：根目录 agent 工作笔记（`findings.md`/`progress.md`/`task_plan.md`）、
@@ -60,6 +80,15 @@ git merge kiro/main
    fork 曾就地改过 `157_user_platform_quotas_add_grok.sql` 和
    `224_user_platform_quotas_add_cn_providers.sql`——同一问题已由前向迁移
    `227_user_platform_quotas_restore_kiro.sql` 修好，就地改是多余且有害的。
+7. **上游每次加平台都可能把 `kiro` / `adobe` 从 CHECK 约束里抹掉**。上游的
+   `237_add_minimax_platform.sql` / `238_opencode_go_platform.sql` 用 `DROP CONSTRAINT` +
+   重建全量列表的写法加新平台，抄的是上游自己的平台清单，于是第三次重复了 224 号事故
+   （145 → 224 抹掉 → 227 补回 → 237/238 又抹掉）。约束缺平台时，注册预填充配额的
+   多行 INSERT 整条违约 → 快照 fail-open 仅 warn → 新用户拿到零条配额记录。
+   **每次同步完都必须跑 `go test -tags=unit ./migrations/`**：
+   `TestUserPlatformQuotaPlatformCheckFinalStateCoversAllPlatforms` 会取文件名序最后一个
+   重建该约束的迁移并校验其平台列表，是这条链路唯一的自动护栏。
+   当前终态由 kiro 的 `239_fork_platform_constraints_superset.sql` 提供（四张表、12 平台）。
 
 ## 代码位置
 
@@ -114,6 +143,64 @@ Kiro 走的是标准 Anthropic 入口（`/v1/messages`），由 **API Key 所属
 | `kiro_sticky_session_ttl_seconds` | 粘性绑定 TTL |
 | `kiro_endpoint_mode` | `q` = AWS Q（`q.{region}.amazonaws.com`）/ `krs` = Kiro Runtime Service（`runtime.us-east-1.kiro.dev`） |
 
+## 其他 fork 私有能力（KIRO.md 长期漏记）
+
+这份文档原本只写 Kiro，但本 fork 相对 `Wei-Shaw/sub2api` 还带着几条独立链路。
+同步时它们和 Kiro 一样需要保住，列在这里免得再靠 `git log` 现查。
+
+### prompt-rules（提示词规则）
+
+管理端按「分组 + 模型」配置规则，在网关入口对请求体做 prepend / append / replace
+（plain 与 regex 两种匹配），跨 Anthropic / OpenAI-Chat / Responses / Gemini 四种协议。
+作者是 `nianzs`，随 Kiro 一起进来，但与 Kiro 无关。
+
+- 后端：`backend/ent/schema/prompt_rule.go` + 生成物、`internal/model/prompt_rule.go`、
+  `internal/repository/prompt_rule_repo.go` / `prompt_rule_cache.go`、
+  `internal/service/prompt_rule_service.go` / `prompt_rule_inject.go`、
+  `internal/handler/prompt_rule_injection.go`、`internal/handler/admin/prompt_rule_handler.go`
+- 路由：`internal/server/routes/admin.go` 的 `registerPromptRuleRoutes` → `/admin/prompt-rules`
+- 迁移：`180_prompt_rules.sql`、`188_prompt_rule_replace_action.sql`
+- 前端：`api/admin/promptRules.ts`、`views/admin/PromptRulesView.vue`、
+  `i18n/locales/{en,zh}/admin/promptRules.ts`
+- **合并时最容易漏的是 9 个注入点**（上游对这批文件改动很频繁）：
+  `handler/gateway_handler.go`、`gateway_handler_chat_completions.go`、
+  `gateway_handler_responses.go`、`handler/openai_chat_completions.go`、
+  `handler/openai_gateway_handler.go`（4 处）、`handler/gemini_v1beta_handler.go`。
+  合完 `grep -rn injectMatchingPromptRules backend/internal/handler` 应当有 10 行
+  （9 个调用点 + `prompt_rule_injection.go` 里的实现）。
+
+### 原生控件禁用与守卫
+
+全站禁用原生 `<select>` 与 `window.alert/confirm/prompt`，统一走
+`components/common/Select.vue` 与 `appStore.showConfirm` / `ConfirmDialog`。
+守卫是 `frontend/src/__tests__/nativeControls.spec.ts`（扫描全部生产源码，零容忍）。
+
+上游每次加 UI 都会带进新的原生控件，解冲突时的正确做法是**取上游骨架、再把替换套一遍**，
+然后跑这条用例。给用例写 stub 时复用 `EditAccountModal.spec.ts` 里的 `SelectStub`
+（它渲染真实 `<select>` 并 `v-bind="$attrs"`，`data-testid` 和 `setValue()` 都能照常用）。
+
+### 其他
+
+Codex Responses remote compaction v2、Grok→Claude Code 风格护栏、
+管理员删除 Ops 错误日志、Responses 自定义工具调用、用量清理按模型维度、
+按筛选结果全选账号、xxhash 哈希、`anthropictokenizer` 包，
+以及三条防合丢守卫用例（`service/wire_merge_preservation_test.go`、
+`service/scheduler_snapshot_platforms_test.go`、
+`frontend/src/i18n/__tests__/forkLocalePreservation.spec.ts`）。
+
+## Adobe Firefly 渠道（随 kiro 远端引入）
+
+2026-09 同步时随 `nianzs/sub2api` 引入的第 12 个平台 `adobe`：Firefly 出图，
+cookie 条件合并 token、网关与后台刷新共用 provider、出图准入与共享并发槽、
+合成分组调度与用户配额纳入 Adobe。
+
+> ⚠️ 与 Kiro 同类的合规风险：反代 Adobe Firefly 同样可能违反其服务条款，
+> 是否启用由使用者自行判断并承担风险。
+
+注意 `adobe` **不在** `channel_monitors` / `channel_monitor_request_templates` 的
+provider 枚举里（ent schema 与 kiro 的 239 号迁移一致），只在
+`user_platform_quotas` 与 `composite_model_routes` 的 CHECK 约束里。
+
 ## 已知约束与踩坑
 
 ### govulncheck：webp 解码器的可达性
@@ -160,6 +247,19 @@ go vet  -tags=e2e ./...
 上游保留了 `deleted_api_key_audits` 表（迁移 145）与写入侧，缺的只是**反查**那一半；
 若将来需要「认证失败时用明文反查已删除 Key 的原所有者」，实现可从 `git show ddf063352` 取回。
 
+### 分组模型白名单：v0.2.5 的语义变更
+
+上游 `feat(groups)!`（迁移 `235_group_model_allowlist.sql`）把 `groups.models_list_config`
+**原地重命名**成 `model_allowlist`，数据原样保留，但语义从「只影响 `/v1/models` 展示」
+变成了「请求准入」——由 `internal/server/middleware/group_model_allowlist.go` 在
+`/v1`、`/v1beta`、根别名、`/backend-api/codex/*`、antigravity 各入口统一拦截，
+不在白名单里的模型直接 404。
+
+对 Kiro 分组尤其要留意：Kiro 把 `*-thinking` 当作独立 model ID
+（`internal/pkg/kiro/models.go`），管理员以前填的「展示列表」通常没列全，
+升级后这些模型会被拒。**升级前务必核对 `groups.model_allowlist` 里 `enabled=true` 的分组**，
+必要时先把 `enabled` 置回 false 再逐个确认。
+
 ### 迁移文件同号不同名
 
 合入的 Kiro 迁移与上游存在同号不同名的情况（例如两个 `153_*.sql`）。
@@ -167,4 +267,6 @@ go vet  -tags=e2e ./...
 因此可以共存，不要为了「看着整齐」重编号——重编号等于换文件名，
 会让已部署库重复执行同一段 DDL。
 
-新增的 Kiro 迁移：`135` / `145` / `151` / `152` / `153`×2 / `192` / `227`。
+新增的 Kiro 迁移：`135` / `145` / `151` / `152` / `153`×2 / `192` / `227` / `239`×2
+（`239_add_kiro_to_platform_checks.sql` 与 kiro 的 `239_fork_platform_constraints_superset.sql`，
+后者按文件名序在后、且是前者的超集，终态以后者为准）。

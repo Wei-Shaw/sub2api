@@ -805,6 +805,7 @@ type GatewayService struct {
 	tlsFPProfileService   *TLSFingerprintProfileService
 	balanceNotifyService  *BalanceNotifyService
 	userPlatformQuotaRepo UserPlatformQuotaRepository
+	adobeTokenProvider    *AdobeTokenProvider
 }
 
 // NewGatewayService creates a new GatewayService
@@ -828,6 +829,7 @@ func NewGatewayService(
 	deferredService *DeferredService,
 	claudeTokenProvider *ClaudeTokenProvider,
 	kiroTokenProvider *KiroTokenProvider,
+	adobeTokenProvider *AdobeTokenProvider,
 	kiroCooldownStore KiroCooldownStore,
 	sessionLimitCache SessionLimitCache,
 	rpmCache RPMCache,
@@ -878,6 +880,10 @@ func NewGatewayService(
 		compositeResolver:     compositeResolver,
 		balanceNotifyService:  balanceNotifyService,
 		userPlatformQuotaRepo: userPlatformQuotaRepo,
+		adobeTokenProvider:    adobeTokenProvider,
+	}
+	if svc.adobeTokenProvider == nil {
+		svc.adobeTokenProvider = NewAdobeTokenProvider(accountRepo, nil)
 	}
 	if compositeResolver != nil {
 		compositeResolver.SetModelOwnershipResolver(svc.resolveCompositeModelOwnership)
@@ -1423,6 +1429,14 @@ func (s *GatewayService) getOAuthToken(ctx context.Context, account *Account) (s
 		accessToken := account.GetGrokAccessToken()
 		if accessToken == "" {
 			return "", "", errors.New("grok access_token not found in credentials")
+		}
+		return accessToken, "oauth", nil
+	}
+
+	if account.Platform == PlatformAdobe && account.Type == AccountTypeOAuth {
+		accessToken, err := s.getAdobeOAuthToken(ctx, account)
+		if err != nil {
+			return "", "", err
 		}
 		return accessToken, "oauth", nil
 	}

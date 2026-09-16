@@ -99,7 +99,7 @@ func TestAccountTestService_Kiro429DoesNotFallbackToCodeWhispererEndpoint(t *tes
 	require.Contains(t, err.Error(), "API returned 429")
 }
 
-func TestAccountTestService_KiroIDCWithoutProfileArnOmitsProfileArnAndUsesDefaultRuntimeRegion(t *testing.T) {
+func TestAccountTestService_KiroIDCWithoutProfileArnUsesDefaultProfileArnAndDefaultRuntimeRegion(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	ctx, _ := newTestContext()
 
@@ -136,7 +136,8 @@ func TestAccountTestService_KiroIDCWithoutProfileArnOmitsProfileArnAndUsesDefaul
 	require.Equal(t, "q.us-east-1.amazonaws.com", upstream.requests[0].URL.Host)
 	body, readErr := io.ReadAll(upstream.requests[0].Body)
 	require.NoError(t, readErr)
-	require.NotContains(t, string(body), `"profileArn":`)
+	// Builder ID / 无企业 profile 的账号回退占位符 ARN（现在 Q 端点也必须带 profileArn）。
+	require.Contains(t, string(body), kiroBuilderIDProfileARN)
 }
 
 func TestAccountTestService_KiroInvalidModelErrorPassthrough(t *testing.T) {
@@ -207,8 +208,8 @@ func TestAccountTestService_KiroInvalidModelDoesNotRefreshProfileArnOrRetry(t *t
 
 	firstBody, readErr := io.ReadAll(upstream.requests[0].Body)
 	require.NoError(t, readErr)
-	// Q endpoint 不传 profileArn（凭据中的占位符 ARN 会导致 403）
-	require.NotContains(t, string(firstBody), `"profileArn"`)
+	// 凭据已有真实 ARN → 直接作为 profileArn 下发（现在所有端点都必须带 profileArn）。
+	require.Contains(t, string(firstBody), `arn:aws:codewhisperer:us-east-1:123456789012:profile/STALE`)
 	require.Equal(t, "arn:aws:codewhisperer:us-east-1:123456789012:profile/STALE", account.GetCredential("profile_arn"))
 }
 
@@ -249,7 +250,44 @@ func TestAccountTestService_KiroPreferredEndpointIsIgnored(t *testing.T) {
 	require.Empty(t, upstream.requests[0].Header.Get("X-Amz-Target"))
 }
 
-func TestBuildKiroPayloadForAccount_KiroBuilderIDWithoutProfileArnOmitsProfileArn(t *testing.T) {
+func TestAccountTestService_KiroAPIKeyOmitsProfileArn(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	ctx, _ := newTestContext()
+
+	account := &Account{
+		ID:          199,
+		Name:        "kiro-apikey-no-profilearn",
+		Platform:    PlatformKiro,
+		Type:        AccountTypeAPIKey,
+		Concurrency: 1,
+		Credentials: map[string]any{
+			"api_key": "kiro-api-key",
+		},
+	}
+	repo := &mockAccountRepoForGemini{accountsByID: map[int64]*Account{account.ID: account}}
+	upstream := &queuedHTTPUpstream{
+		responses: []*http.Response{
+			newJSONResponse(http.StatusUnauthorized, `{"message":"invalid token"}`),
+		},
+	}
+	svc := &AccountTestService{
+		accountRepo:         repo,
+		httpUpstream:        upstream,
+		cfg:                 &config.Config{Security: config.SecurityConfig{URLAllowlist: config.URLAllowlistConfig{Enabled: false}}},
+		tlsFPProfileService: &TLSFingerprintProfileService{},
+	}
+
+	err := svc.TestAccountConnection(ctx, account.ID, "claude-sonnet-4-6", "", AccountTestModeDefault)
+	require.Error(t, err)
+	require.Len(t, upstream.requests, 1)
+	require.Equal(t, "q.us-east-1.amazonaws.com", upstream.requests[0].URL.Host)
+	body, readErr := io.ReadAll(upstream.requests[0].Body)
+	require.NoError(t, readErr)
+	// API Key 凭据没有 profile 概念，不下发 profileArn。
+	require.NotContains(t, string(body), `"profileArn"`)
+}
+
+func TestBuildKiroPayloadForAccount_KiroBuilderIDWithoutProfileArnUsesBuilderIDPlaceholder(t *testing.T) {
 	account := &Account{
 		ID:       3,
 		Name:     "kiro-builder-id",
@@ -271,10 +309,11 @@ func TestBuildKiroPayloadForAccount_KiroBuilderIDWithoutProfileArnOmitsProfileAr
 	buildResult, err := (&GatewayService{}).buildKiroPayloadForAccount(context.Background(), account, nil, payloadBytes, "claude-sonnet-4-6", "kiro-access-token", "claude-sonnet-4-6", nil)
 	require.NoError(t, err)
 	kiroPayload := buildResult.Payload
-	require.NotContains(t, string(kiroPayload), `"profileArn":`)
+	// Builder ID 无真实 profile → 回退占位符 ARN（现在 Q 端点也必须带 profileArn）。
+	require.Contains(t, string(kiroPayload), kiroBuilderIDProfileARN)
 }
 
-func TestBuildKiroPayloadForAccount_KiroBuilderIDWithCachedProfileArnOmitsForQMode(t *testing.T) {
+func TestBuildKiroPayloadForAccount_KiroBuilderIDWithCachedProfileArnUsesCachedArn(t *testing.T) {
 	account := &Account{
 		ID:       33,
 		Name:     "kiro-builder-id-cached",
@@ -297,8 +336,8 @@ func TestBuildKiroPayloadForAccount_KiroBuilderIDWithCachedProfileArnOmitsForQMo
 	buildResult, err := (&GatewayService{}).buildKiroPayloadForAccount(context.Background(), account, nil, payloadBytes, "claude-sonnet-4-6", "kiro-access-token", "claude-sonnet-4-6", nil)
 	require.NoError(t, err)
 	kiroPayload := buildResult.Payload
-	// parsed=nil → Q endpoint 模式，Q endpoint 不传 profileArn
-	require.NotContains(t, string(kiroPayload), `"profileArn"`)
+	// 凭据已有 ARN → 直接下发（现在所有端点都必须带 profileArn）。
+	require.Contains(t, string(kiroPayload), `arn:aws:codewhisperer:us-east-1:123456789012:profile/CACHED`)
 }
 
 func TestGatewayServiceForwardRoutesKiroOAuthAndCapturesMeteringCredits(t *testing.T) {
@@ -515,7 +554,7 @@ func buildKiroEventStreamFrame(t *testing.T, eventType string, payload map[strin
 	return frame
 }
 
-func TestBuildKiroPayloadForAccount_KiroEnterpriseIDCOmitsMissingProfileArn(t *testing.T) {
+func TestBuildKiroPayloadForAccount_KiroEnterpriseIDCUsesBuilderIDPlaceholderForMissingProfileArn(t *testing.T) {
 	account := &Account{
 		ID:       4,
 		Name:     "kiro-enterprise-idc",
@@ -538,7 +577,9 @@ func TestBuildKiroPayloadForAccount_KiroEnterpriseIDCOmitsMissingProfileArn(t *t
 	buildResult, err := (&GatewayService{}).buildKiroPayloadForAccount(context.Background(), account, nil, payloadBytes, "claude-sonnet-4-6", "kiro-access-token", "claude-sonnet-4-6", nil)
 	require.NoError(t, err)
 	kiroPayload := buildResult.Payload
-	require.NotContains(t, string(kiroPayload), `"profileArn":`)
+	// 纯构建路径不查 ListAvailableProfiles，Enterprise 缺真实 ARN 时回退占位符；
+	// 真实 Enterprise ARN 由 ensureKiroProfileArnForRequest 在 Auto/KRS 请求前解析回填。
+	require.Contains(t, string(kiroPayload), kiroBuilderIDProfileARN)
 }
 
 func TestBuildKiroPayloadForAccount_StableConversationIDByDefault(t *testing.T) {

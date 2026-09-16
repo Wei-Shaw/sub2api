@@ -27,93 +27,15 @@ func TestBuildRuntimeUserAgentStable(t *testing.T) {
 	require.Equal(t, ua1, ua2)
 	require.Contains(t, ua1, "KiroIDE-")
 	require.Contains(t, amzUA, "KiroIDE-")
-	require.Contains(t, ua1, "KiroIDE-0.11.")
-	require.Contains(t, ua1, "aws-sdk-js/1.0.34")
+	require.Contains(t, ua1, "KiroIDE-1.0.437")
+	// streamingSDKVersions 是多元素池，seed 决定命中哪一条；用 fingerprint 反查而
+	// 非硬编码字面量，避免每次扩池就要改测试。
+	fp := globalRuntimeFingerprints().Get(key, machineID)
+	require.Contains(t, ua1, "aws-sdk-js/"+fp.StreamingSDKVersion)
+	require.Contains(t, ua1, "api/codewhispererstreaming#"+fp.StreamingSDKVersion)
 	require.Contains(t, ua1, "md/nodejs#22.22.0")
 	require.Contains(t, ua1, machineID)
 	require.Contains(t, amzUA, machineID)
-}
-
-func TestKiroResponseBrandComesFromUpstreamModel(t *testing.T) {
-	tests := []struct {
-		model string
-		want  string
-	}{
-		{model: "claude-sonnet-4.6", want: "Claude"},
-		{model: "gpt-5.6-sol", want: "Codex"},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.model, func(t *testing.T) {
-			result, err := BuildKiroPayloadWithRequestModel(
-				[]byte(`{"model":"custom-model-alias","messages":[{"role":"user","content":"hi"}]}`),
-				tt.model, "custom-model-alias", "", "AI_EDITOR", nil,
-			)
-			require.NoError(t, err)
-			require.Equal(t, tt.want, result.Context.ResponseBrand)
-		})
-	}
-}
-
-func TestParseNonStreamingEventStreamRebrandsResponseStrings(t *testing.T) {
-	tests := []struct {
-		name  string
-		brand string
-	}{
-		{name: "claude", brand: "Claude"},
-		{name: "gpt", brand: "Codex"},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			stream := bytes.NewBuffer(nil)
-			_, _ = stream.Write(buildEventStreamFrame(t, "assistantResponseEvent", map[string]any{
-				"assistantResponseEvent": map[string]any{"content": "Kiro response"},
-			}))
-			_, _ = stream.Write(buildEventStreamFrame(t, "toolUseEvent", map[string]any{
-				"toolUseEvent": map[string]any{
-					"toolUseId": "toolu_brand",
-					"name":      "custom_tool",
-					"input":     `{"message":"Kiro","nested":["from Kiro"]}`,
-					"stop":      true,
-				},
-			}))
-
-			result, err := ParseNonStreamingEventStreamWithContext(stream, "custom-model-alias", KiroRequestContext{ResponseBrand: tt.brand})
-			require.NoError(t, err)
-			require.Equal(t, tt.brand+" response", gjson.GetBytes(result.ResponseBody, "content.0.text").String())
-			require.Equal(t, "Kiro", gjson.GetBytes(result.ResponseBody, "content.1.input.message").String())
-			require.Equal(t, "from Kiro", gjson.GetBytes(result.ResponseBody, "content.1.input.nested.0").String())
-			require.Contains(t, string(result.ResponseBody), "Kiro")
-		})
-	}
-}
-
-func TestStreamEventStreamRebrandsAcrossEventBoundaries(t *testing.T) {
-	stream := bytes.NewBuffer(nil)
-	for _, content := range []string{"Ki", "ro says K", "iro"} {
-		_, _ = stream.Write(buildEventStreamFrame(t, "assistantResponseEvent", map[string]any{
-			"assistantResponseEvent": map[string]any{"content": content},
-		}))
-	}
-	_, _ = stream.Write(buildEventStreamFrame(t, "toolUseEvent", map[string]any{
-		"toolUseEvent": map[string]any{
-			"toolUseId": "toolu_stream_brand",
-			"name":      "custom_tool",
-			"input":     `{"message":"Kiro"}`,
-			"stop":      true,
-		},
-	}))
-
-	var out bytes.Buffer
-	_, err := StreamEventStreamAsAnthropicWithContext(
-		context.Background(), stream, &out, "custom-model-alias", 1, KiroRequestContext{ResponseBrand: "Codex"},
-	)
-	require.NoError(t, err)
-	require.Contains(t, out.String(), "Codex says ")
-	require.Equal(t, 2, strings.Count(out.String(), "Codex"))
-	// Tool input is JSON-encoded inside the SSE payload; the literal Kiro must survive.
-	require.Contains(t, out.String(), "Kiro")
 }
 
 func TestBuildKiroPayloadBasic(t *testing.T) {
@@ -135,13 +57,15 @@ func TestBuildKiroPayloadBasic(t *testing.T) {
 	require.Equal(t, remoteWebSearchDescription, gjson.GetBytes(payload, "conversationState.currentMessage.userInputMessage.userInputMessageContext.tools.0.toolSpecification.description").String())
 	require.Equal(t, "hello kiro", gjson.GetBytes(payload, "conversationState.currentMessage.userInputMessage.content").String())
 	systemContent := gjson.GetBytes(payload, "conversationState.history.0.userInputMessage.content").String()
+	require.Contains(t, systemContent, "<CRITICAL_OVERRIDE>")
+	require.Contains(t, systemContent, "You must never say that you are Kiro")
 	require.Contains(t, systemContent, "<identity>")
-	require.Contains(t, systemContent, "You are claude-sonnet-4-5, a senior software engineer")
-	require.NotContains(t, systemContent, "Kiro")
+	require.Contains(t, systemContent, "If no identity is provided, say that you are Claude.")
+	require.Contains(t, systemContent, "You are Claude, a senior software engineer")
 	require.Contains(t, systemContent, "You are a test system prompt.")
 	require.NotContains(t, systemContent, "[Context: Current date is ")
 	require.NotContains(t, systemContent, "[Context: Current time is ")
-	require.Less(t, strings.Index(systemContent, "<identity>"), strings.Index(systemContent, "You are a test system prompt."))
+	require.Less(t, strings.Index(systemContent, "<CRITICAL_OVERRIDE>"), strings.Index(systemContent, "You are a test system prompt."))
 	require.Equal(t, "I will follow these instructions.", gjson.GetBytes(payload, "conversationState.history.1.assistantResponseMessage.content").String())
 }
 
@@ -387,8 +311,8 @@ func TestBuildKiroPayloadInjectsChunkedWritePolicyIntoSystemPrompt(t *testing.T)
 
 	systemContent := gjson.GetBytes(payload, "conversationState.history.0.userInputMessage.content").String()
 	require.Contains(t, systemContent, "<thinking_mode>enabled</thinking_mode>")
-	require.Less(t, strings.Index(systemContent, "<thinking_mode>enabled</thinking_mode>"), strings.Index(systemContent, "<identity>"))
-	require.Less(t, strings.Index(systemContent, "<identity>"), strings.Index(systemContent, "Follow user instructions."))
+	require.Less(t, strings.Index(systemContent, "<thinking_mode>enabled</thinking_mode>"), strings.Index(systemContent, "<CRITICAL_OVERRIDE>"))
+	require.Less(t, strings.Index(systemContent, "<CRITICAL_OVERRIDE>"), strings.Index(systemContent, "Follow user instructions."))
 	require.Contains(t, systemContent, "Follow user instructions.")
 	require.Contains(t, systemContent, systemChunkedWritePolicy)
 	require.Equal(t, 1, strings.Count(systemContent, systemChunkedWritePolicy))
@@ -428,7 +352,7 @@ func TestBuildKiroPayloadDoesNotInjectClaudeThinkingTagsForGPTModels(t *testing.
 	require.NoError(t, err)
 
 	systemContent := gjson.GetBytes(kiroBuildResult.Payload, "conversationState.history.0.userInputMessage.content").String()
-	require.Contains(t, systemContent, "You are gpt-5.6-terra, a senior software engineer")
+	require.Contains(t, systemContent, "You are Claude, a senior software engineer")
 	require.NotContains(t, systemContent, "<thinking_mode>")
 	require.NotContains(t, systemContent, "<max_thinking_length>")
 	require.NotContains(t, systemContent, "<thinking_effort>")
@@ -582,21 +506,21 @@ func TestBuildKiroPayloadEnablesImplicitThinkingTagStrippingForOpus47And48(t *te
 	}
 }
 
-// kiroBuiltinIdentityPrompt 中的 {{identity}} 占位符必须被映射前的模型名替换。
+// kiroBuiltinIdentityPrompt 中的 {{identity}} 占位符必须被实际身份替换,
+// 默认回退到 "Claude",避免模型直接复读模板字面量。
 func TestBuildKiroPayloadRendersBuiltinIdentityPlaceholder(t *testing.T) {
 	body := []byte(`{
-		"model":"mapped-upstream-model",
+		"model":"claude-sonnet-4-5",
 		"messages":[{"role":"user","content":"hi"}]
 	}`)
-	result, err := BuildKiroPayloadWithRequestModel(body, "mapped-upstream-model", "gpt-5.6-sol", "", "AI_EDITOR", nil)
+	result, err := BuildKiroPayloadWithContext(body, "claude-sonnet-4.5", "", "AI_EDITOR", nil)
 	require.NoError(t, err)
 
 	systemContent := gjson.GetBytes(result.Payload, "conversationState.history.0.userInputMessage.content").String()
 	require.NotContains(t, systemContent, "{{identity}}",
 		"placeholder must be rendered before sending to upstream")
-	require.Contains(t, systemContent, "You are gpt-5.6-sol,")
-	require.NotContains(t, systemContent, "You are mapped-upstream-model,")
-	require.NotContains(t, systemContent, "Kiro")
+	require.Contains(t, systemContent, "You are Claude,",
+		"default identity should fall back to 'Claude'")
 }
 
 func TestBuildKiroPayloadInjectsThinkingForThinkingAliasModel(t *testing.T) {
@@ -706,7 +630,7 @@ func TestParseNonStreamingEventStream(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, "end_turn", result.StopReason)
 	require.Equal(t, 12, result.Usage.InputTokens)
-	require.Equal(t, 3, result.Usage.CacheReadInputTokens)
+	require.Zero(t, result.Usage.CacheReadInputTokens)
 	require.Equal(t, 7, result.Usage.OutputTokens)
 	require.Equal(t, 22, result.Usage.TotalTokens)
 
@@ -720,6 +644,33 @@ func TestParseNonStreamingEventStream(t *testing.T) {
 	firstText, ok := first["text"].(string)
 	require.True(t, ok)
 	require.True(t, strings.Contains(firstText, "hello from kiro"))
+	require.False(t, gjson.GetBytes(result.ResponseBody, "usage.cache_read_input_tokens").Exists())
+	require.NotContains(t, string(result.ResponseBody), `"cache_read_input_tokens":3`)
+}
+
+func TestParseNonStreamingEventStreamIgnoresUpstreamCacheUsageWithoutEmulation(t *testing.T) {
+	stream := bytes.NewBuffer(nil)
+	_, _ = stream.Write(buildEventStreamFrame(t, "messageMetadataEvent", map[string]any{
+		"messageMetadataEvent": map[string]any{
+			"tokenUsage": map[string]any{
+				"uncachedInputTokens":  120,
+				"outputTokens":         7,
+				"cacheReadInputTokens": 999,
+				"totalTokens":          1126,
+			},
+		},
+	}))
+
+	result, err := ParseNonStreamingEventStreamWithContext(stream, "claude-sonnet-4-5", KiroRequestContext{})
+	require.NoError(t, err)
+	require.Equal(t, 120, result.Usage.InputTokens)
+	require.Equal(t, 7, result.Usage.OutputTokens)
+	require.Equal(t, 1126, result.Usage.TotalTokens)
+	require.Zero(t, result.Usage.CacheReadInputTokens)
+	require.Zero(t, result.Usage.CacheCreationInputTokens)
+	require.False(t, gjson.GetBytes(result.ResponseBody, "usage.cache_read_input_tokens").Exists())
+	require.False(t, gjson.GetBytes(result.ResponseBody, "usage.cache_creation_input_tokens").Exists())
+	require.NotContains(t, string(result.ResponseBody), `"cache_read_input_tokens":999`)
 }
 
 func TestParseNonStreamingEventStreamPreservesLargeIntegerInMapInput(t *testing.T) {
@@ -2544,8 +2495,9 @@ func TestKiroCacheEmulationUsageInjectedIntoNonStreamingResponse(t *testing.T) {
 	_, _ = stream.Write(buildEventStreamFrame(t, "messageMetadataEvent", map[string]any{
 		"messageMetadataEvent": map[string]any{
 			"tokenUsage": map[string]any{
-				"uncachedInputTokens": 120,
-				"outputTokens":        7,
+				"uncachedInputTokens":  120,
+				"outputTokens":         7,
+				"cacheReadInputTokens": 999,
 			},
 		},
 	}))
@@ -2561,10 +2513,12 @@ func TestKiroCacheEmulationUsageInjectedIntoNonStreamingResponse(t *testing.T) {
 	require.Equal(t, 20, result.Usage.InputTokens)
 	require.Equal(t, 70, result.Usage.CacheReadInputTokens)
 	require.Equal(t, 30, result.Usage.CacheCreationInputTokens)
+	require.Equal(t, 127, result.Usage.TotalTokens)
 	require.Equal(t, 20, int(gjson.GetBytes(result.ResponseBody, "usage.input_tokens").Int()))
 	require.Equal(t, 70, int(gjson.GetBytes(result.ResponseBody, "usage.cache_read_input_tokens").Int()))
 	require.Equal(t, 30, int(gjson.GetBytes(result.ResponseBody, "usage.cache_creation_input_tokens").Int()))
 	require.Equal(t, 30, int(gjson.GetBytes(result.ResponseBody, "usage.cache_creation.ephemeral_5m_input_tokens").Int()))
+	require.NotContains(t, string(result.ResponseBody), `"cache_read_input_tokens":999`)
 }
 
 func TestKiroCacheEmulationUsageInjectedIntoStreamAndResult(t *testing.T) {
@@ -2572,8 +2526,9 @@ func TestKiroCacheEmulationUsageInjectedIntoStreamAndResult(t *testing.T) {
 	_, _ = stream.Write(buildEventStreamFrame(t, "messageMetadataEvent", map[string]any{
 		"messageMetadataEvent": map[string]any{
 			"tokenUsage": map[string]any{
-				"uncachedInputTokens": 120,
-				"outputTokens":        7,
+				"uncachedInputTokens":  120,
+				"outputTokens":         7,
+				"cacheReadInputTokens": 999,
 			},
 		},
 	}))
@@ -2593,11 +2548,18 @@ func TestKiroCacheEmulationUsageInjectedIntoStreamAndResult(t *testing.T) {
 	require.Equal(t, 20, result.Usage.InputTokens)
 	require.Equal(t, 70, result.Usage.CacheReadInputTokens)
 	require.Equal(t, 30, result.Usage.CacheCreationInputTokens)
+	require.Equal(t, 127, result.Usage.TotalTokens)
 	output := out.String()
-	require.Contains(t, output, `"input_tokens":20`)
-	require.Contains(t, output, `"cache_read_input_tokens":70`)
-	require.Contains(t, output, `"cache_creation_input_tokens":30`)
+	messageStart := extractSSEEventData(t, output, "message_start")
+	require.Equal(t, 20, int(gjson.GetBytes(messageStart, "message.usage.input_tokens").Int()))
+	require.Equal(t, 70, int(gjson.GetBytes(messageStart, "message.usage.cache_read_input_tokens").Int()))
+	require.Equal(t, 30, int(gjson.GetBytes(messageStart, "message.usage.cache_creation_input_tokens").Int()))
+	messageDelta := extractSSEEventData(t, output, "message_delta")
+	require.Equal(t, 20, int(gjson.GetBytes(messageDelta, "usage.input_tokens").Int()))
+	require.Equal(t, 70, int(gjson.GetBytes(messageDelta, "usage.cache_read_input_tokens").Int()))
+	require.Equal(t, 30, int(gjson.GetBytes(messageDelta, "usage.cache_creation_input_tokens").Int()))
 	require.Contains(t, output, `"ephemeral_1h_input_tokens":30`)
+	require.NotContains(t, output, `"cache_read_input_tokens":999`)
 }
 
 func TestNormalizeStreamingToolInput(t *testing.T) {

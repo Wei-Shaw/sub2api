@@ -615,7 +615,7 @@ func TestExecuteKiroUpstreamAutoSwitchesFromQ429ToKRS(t *testing.T) {
 	require.NoError(t, err)
 	krsBody, err := io.ReadAll(upstream.requests[1].Body)
 	require.NoError(t, err)
-	require.NotContains(t, string(qBody), `"profileArn"`)
+	require.Contains(t, string(qBody), `"profileArn":"`+profileARN+`"`)
 	require.Contains(t, string(krsBody), `"profileArn":"`+profileARN+`"`)
 }
 

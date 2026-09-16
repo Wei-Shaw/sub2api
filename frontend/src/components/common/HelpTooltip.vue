@@ -76,13 +76,19 @@ function onViewportChange() {
   updatePosition()
 }
 
+/**
+ * 气泡是 position: fixed，坐标系就是视口，而 getBoundingClientRect() 返回的已经是
+ * 视口坐标——再加 scrollX/scrollY 会把滚动距离重复计一次，页面越往下滚气泡偏得越远
+ * （表现为气泡跑到触发元素下方）。所以这里直接用 rect，不做任何滚动补偿；
+ * 滚动/缩放时由 onViewportChange 重新调用本函数保持跟随。
+ */
 function updatePosition() {
   const el = triggerRef.value
   if (!el) return
   const rect = el.getBoundingClientRect()
   tooltipStyle.value = {
-    top: `${rect.top + window.scrollY}px`,
-    left: `${rect.left + rect.width / 2 + window.scrollX}px`,
+    top: `${rect.top}px`,
+    left: `${rect.left + rect.width / 2}px`,
   }
 }
 

@@ -324,8 +324,8 @@ func (h *AccountHandler) importData(ctx context.Context, req DataImportRequest, 
 						Protocol:       proxy.Protocol,
 						Host:           proxy.Host,
 						Port:           proxy.Port,
-						Username:       proxy.Username,
-						Password:       proxy.Password,
+						Username:       &proxy.Username,
+						Password:       &proxy.Password,
 					})
 				}
 			}
@@ -400,8 +400,8 @@ func (h *AccountHandler) importData(ctx context.Context, req DataImportRequest, 
 				Protocol:       created.Protocol,
 				Host:           created.Host,
 				Port:           created.Port,
-				Username:       created.Username,
-				Password:       created.Password,
+				Username:       &created.Username,
+				Password:       &created.Password,
 			})
 		}
 	}

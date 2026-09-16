@@ -236,6 +236,7 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 		serviceTier = strings.TrimSpace(*result.ServiceTier)
 	}
 	longContextBillingGate := openAILongContextBillingGate(billingAccount)
+	imagePlatform := imageBillingPlatform(account)
 	cost, err = s.calculateOpenAIRecordUsageCost(
 		ctx,
 		result,
@@ -249,6 +250,7 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 		serviceTier,
 		longContextBillingGate,
 		pricingAt,
+		imagePlatform,
 	)
 	if err != nil {
 		if !isUsagePricingUnavailableError(err) {
@@ -282,6 +284,7 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 			responseCost, responseErr := s.calculateOpenAIRecordUsageCost(
 				ctx, result, apiKey, responseModels, multiplier, imageMultiplier,
 				videoMultiplier, baseMultiplier, tokens, serviceTier, longContextBillingGate, pricingAt,
+				imagePlatform,
 			)
 			// 基线定价源以 baselineBillingModel 为准：它正是 calculateOpenAIRecordUsageCost
 			// 内部做渠道定价判断时使用的模型，且"首候选有渠道价"必然意味着首候选就是实际
@@ -313,6 +316,7 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 			"",
 			longContextBillingGate,
 			pricingAt,
+			imagePlatform,
 		)
 		if standardErr != nil {
 			return standardErr
@@ -572,6 +576,7 @@ func (s *OpenAIGatewayService) calculateOpenAIRecordUsageCost(
 	serviceTier string,
 	longContextBillingGate *bool,
 	pricingAt time.Time,
+	platform string,
 ) (*CostBreakdown, error) {
 	billingModel := firstUsageBillingModel(billingModels)
 	if result != nil && result.WebSearchCalls > 0 {
@@ -603,7 +608,7 @@ func (s *OpenAIGatewayService) calculateOpenAIRecordUsageCost(
 	if result != nil && result.ImageCount > 0 {
 		// 渠道定价为 token 计费时走 token 路径，否则走图片计费
 		if resolved := s.resolveOpenAIChannelPricing(ctx, billingModel, apiKey); resolved == nil || resolved.Mode != BillingModeToken {
-			return s.calculateOpenAIImageCost(ctx, billingModel, apiKey, result, imageMultiplier), nil
+			return s.calculateOpenAIImageCost(ctx, billingModel, apiKey, result, imageMultiplier, platform), nil
 		}
 	}
 
@@ -749,6 +754,7 @@ func (s *OpenAIGatewayService) calculateOpenAIImageCost(
 	apiKey *APIKey,
 	result *OpenAIForwardResult,
 	multiplier float64,
+	platform string,
 ) *CostBreakdown {
 	sizeTier := NormalizeImageBillingTierOrDefault(result.ImageSize)
 	resolved := s.resolveOpenAIChannelPricing(ctx, billingModel, apiKey)
@@ -766,13 +772,13 @@ func (s *OpenAIGatewayService) calculateOpenAIImageCost(
 	}
 	groupConfig := imagePriceConfigFromAPIKey(apiKey)
 	if apiKeyHasConfiguredImagePrice(apiKey, sizeTier) {
-		return s.billingService.CalculateImageCost(billingModel, sizeTier, result.ImageCount, groupConfig, multiplier)
+		return s.billingService.CalculateImageCostWithPlatform(billingModel, sizeTier, result.ImageCount, groupConfig, multiplier, platform)
 	}
 	if refreshed := s.apiKeyWithFreshGroupMediaPricing(ctx, apiKey); refreshed != apiKey {
 		apiKey = refreshed
 		groupConfig = imagePriceConfigFromAPIKey(apiKey)
 		if apiKeyHasConfiguredImagePrice(apiKey, sizeTier) {
-			return s.billingService.CalculateImageCost(billingModel, sizeTier, result.ImageCount, groupConfig, multiplier)
+			return s.billingService.CalculateImageCostWithPlatform(billingModel, sizeTier, result.ImageCount, groupConfig, multiplier, platform)
 		}
 	}
 	if resolved != nil && resolved.Source == PricingSourceChannel &&
@@ -795,7 +801,7 @@ func (s *OpenAIGatewayService) calculateOpenAIImageCost(
 		logger.LegacyPrintf("service.openai_gateway", "Calculate image channel cost failed: %v", err)
 	}
 
-	return s.billingService.CalculateImageCost(billingModel, sizeTier, result.ImageCount, groupConfig, multiplier)
+	return s.billingService.CalculateImageCostWithPlatform(billingModel, sizeTier, result.ImageCount, groupConfig, multiplier, platform)
 }
 
 func (s *OpenAIGatewayService) calculateOpenAIVideoCost(

@@ -14,7 +14,7 @@ import (
 	"github.com/dgraph-io/ristretto"
 )
 
-const apiKeyAuthSnapshotVersion = 25 // v25: merge of fork v23 (Kiro cache/profit-control/pricing) and upstream v24 (group model_allowlist + codex_models_manifest_config)
+const apiKeyAuthSnapshotVersion = 25 // v25: v24 (Kiro cache fields + group profit control + search/audio/video_model_prices billing fields + long-context + model pricing + CN providers + group force/free_openai_fast + codex_models_manifest_config) + group model_allowlist field (renamed from models_list_config, enforcing semantics)
 
 type apiKeyAuthCacheConfig struct {
 	l1Size        int

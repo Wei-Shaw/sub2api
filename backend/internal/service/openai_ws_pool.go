@@ -40,6 +40,7 @@ var (
 	errOpenAIWSConnClosed               = errors.New("openai ws connection closed")
 	errOpenAIWSConnQueueFull            = errors.New("openai ws connection queue full")
 	errOpenAIWSPreferredConnUnavailable = errors.New("openai ws preferred connection unavailable")
+	errOpenAIWSPoolChanged              = errors.New("openai ws account pool changed")
 )
 
 type openAIWSDialError struct {
@@ -494,6 +495,32 @@ func (c *openAIWSConn) acquire(ctx context.Context) error {
 			}
 			return nil
 		}
+	}
+}
+
+// acquireOrPoolChanged 与 acquire 相同，但同时监听账号池的变更信号：
+// 别的连接释放、连接被剔除或新拨号完成都会触发它，此时返回 errOpenAIWSPoolChanged，
+// 调用方应放弃只等这一条连接，回到选择逻辑重新挑选。
+func (c *openAIWSConn) acquireOrPoolChanged(ctx context.Context, poolChanged <-chan struct{}) error {
+	if c == nil {
+		return errOpenAIWSConnClosed
+	}
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-c.closedCh:
+		return errOpenAIWSConnClosed
+	case <-poolChanged:
+		return errOpenAIWSPoolChanged
+	case <-c.leaseCh:
+		if err := ctx.Err(); err != nil {
+			c.release()
+			return err
+		}
+		if !c.leaseTokenUsable() {
+			return errOpenAIWSConnClosed
+		}
+		return nil
 	}
 }
 
@@ -1071,11 +1098,32 @@ func (p *openAIWSConnPool) runBackgroundCleanupSweep(now time.Time) {
 	}
 }
 
+// openAIWSAcquireQueueWait 跨广播重选与递归重试累计一次获取的排队耗时，
+// 由 Acquire 在统一出口写入租约与指标，任何成功路径都不会漏记。
+type openAIWSAcquireQueueWait struct {
+	queued  bool
+	rewoken bool
+	total   time.Duration
+}
+
 func (p *openAIWSConnPool) Acquire(ctx context.Context, req openAIWSAcquireRequest) (*openAIWSConnLease, error) {
 	if p != nil {
 		p.metrics.acquireTotal.Add(1)
 	}
-	lease, err := p.acquire(ctx, cloneOpenAIWSAcquireRequest(req), 0)
+	queueWait := &openAIWSAcquireQueueWait{}
+	lease, err := p.acquire(ctx, cloneOpenAIWSAcquireRequest(req), 0, queueWait)
+	if lease != nil && queueWait.rewoken {
+		// 广播重选经 tryAcquire 拿令牌，不像排队分支那样在取得令牌后检查取消，
+		// 这里补上复查：上下文已取消就归还令牌并按取消返回。
+		if ctxErr := ctx.Err(); ctxErr != nil {
+			lease.Release()
+			return nil, ctxErr
+		}
+	}
+	if lease != nil && queueWait.total > 0 {
+		lease.queueWait = queueWait.total
+		p.metrics.acquireQueueWaitMs.Add(queueWait.total.Milliseconds())
+	}
 	if lease != nil && lease.conn != nil {
 		now := time.Now()
 		lease.idleBefore = lease.conn.idleDuration(now)
@@ -1084,12 +1132,15 @@ func (p *openAIWSConnPool) Acquire(ctx context.Context, req openAIWSAcquireReque
 	return lease, err
 }
 
-func (p *openAIWSConnPool) acquire(ctx context.Context, req openAIWSAcquireRequest, retry int) (*openAIWSConnLease, error) {
+func (p *openAIWSConnPool) acquire(ctx context.Context, req openAIWSAcquireRequest, retry int, queueWait *openAIWSAcquireQueueWait) (*openAIWSConnLease, error) {
 	if p == nil || req.Account == nil || req.Account.ID <= 0 {
 		return nil, errors.New("invalid ws acquire request")
 	}
 	if stringsTrim(req.WSURL) == "" {
 		return nil, errors.New("ws url is empty")
+	}
+	if queueWait == nil {
+		queueWait = &openAIWSAcquireQueueWait{}
 	}
 
 retryAcquire:
@@ -1139,7 +1190,7 @@ retryAcquire:
 						preferredConn.close()
 						p.evictConn(accountID, preferredConn.id)
 						if retry < 1 {
-							return p.acquire(ctx, req, retry+1)
+							return p.acquire(ctx, req, retry+1, queueWait)
 						}
 						return nil, err
 					}
@@ -1181,7 +1232,7 @@ retryAcquire:
 				if errors.Is(err, errOpenAIWSConnClosed) {
 					p.evictConn(accountID, preferredConn.id)
 					if retry < 1 {
-						return p.acquire(ctx, req, retry+1)
+						return p.acquire(ctx, req, retry+1, queueWait)
 					}
 				}
 				return nil, err
@@ -1192,7 +1243,7 @@ retryAcquire:
 					preferredConn.close()
 					p.evictConn(accountID, preferredConn.id)
 					if retry < 1 {
-						return p.acquire(ctx, req, retry+1)
+						return p.acquire(ctx, req, retry+1, queueWait)
 					}
 					return nil, err
 				}
@@ -1225,7 +1276,7 @@ retryAcquire:
 						conn.close()
 						p.evictConn(accountID, conn.id)
 						if retry < 1 {
-							return p.acquire(ctx, req, retry+1)
+							return p.acquire(ctx, req, retry+1, queueWait)
 						}
 						return nil, err
 					}
@@ -1254,7 +1305,7 @@ retryAcquire:
 					best.close()
 					p.evictConn(accountID, best.id)
 					if retry < 1 {
-						return p.acquire(ctx, req, retry+1)
+						return p.acquire(ctx, req, retry+1, queueWait)
 					}
 					return nil, err
 				}
@@ -1282,7 +1333,7 @@ retryAcquire:
 							conn.close()
 							p.evictConn(accountID, conn.id)
 							if retry < 1 {
-								return p.acquire(ctx, req, retry+1)
+								return p.acquire(ctx, req, retry+1, queueWait)
 							}
 							return nil, err
 						}
@@ -1362,7 +1413,7 @@ retryAcquire:
 				conn.close()
 			}
 			if retry < 1 {
-				return p.acquire(ctx, req, retry+1)
+				return p.acquire(ctx, req, retry+1, queueWait)
 			}
 			return nil, errOpenAIWSConnClosed
 		}
@@ -1419,20 +1470,36 @@ acquireAtCapacity:
 		return nil, errOpenAIWSConnQueueFull
 	}
 	target.waiters.Add(1)
+	// 排队时不只等这一条连接的令牌：账号池任何容量变化（别的连接释放、被剔除、
+	// 新拨号完成）都会唤醒等待者回到 retryAcquire 重新选择。变更通道必须在锁内取，
+	// 否则会漏掉解锁到开始等待之间的信号。
+	changedCh := ap.changeChannelLocked()
 	ap.mu.Unlock()
 	closeOpenAIWSConns(evicted)
-	defer target.waiters.Add(-1)
 	waitStart := time.Now()
-	p.metrics.acquireQueueWaitTotal.Add(1)
+	if !queueWait.queued {
+		queueWait.queued = true
+		p.metrics.acquireQueueWaitTotal.Add(1)
+	}
 
-	if err := target.acquire(ctx); err != nil {
-		if errors.Is(err, errOpenAIWSConnClosed) {
+	waitErr := target.acquireOrPoolChanged(ctx, changedCh)
+	target.waiters.Add(-1)
+	queueWait.total += time.Since(waitStart)
+	if waitErr != nil {
+		if errors.Is(waitErr, errOpenAIWSPoolChanged) {
+			if ctxErr := ctx.Err(); ctxErr != nil {
+				return nil, ctxErr
+			}
+			queueWait.rewoken = true
+			goto retryAcquire
+		}
+		if errors.Is(waitErr, errOpenAIWSConnClosed) {
 			p.evictConn(accountID, target.id)
 			if retry < 1 {
-				return p.acquire(ctx, req, retry+1)
+				return p.acquire(ctx, req, retry+1, queueWait)
 			}
 		}
-		return nil, err
+		return nil, waitErr
 	}
 	if p.shouldHealthCheckConn(target) {
 		if err := target.pingWithTimeout(openAIWSConnHealthCheckTO); err != nil {
@@ -1440,15 +1507,13 @@ acquireAtCapacity:
 			target.close()
 			p.evictConn(accountID, target.id)
 			if retry < 1 {
-				return p.acquire(ctx, req, retry+1)
+				return p.acquire(ctx, req, retry+1, queueWait)
 			}
 			return nil, err
 		}
 	}
 
-	queueWait := time.Since(waitStart)
-	p.metrics.acquireQueueWaitMs.Add(queueWait.Milliseconds())
-	lease := &openAIWSConnLease{pool: p, accountID: accountID, conn: target, queueWait: queueWait, connPick: connPick, reused: true}
+	lease := &openAIWSConnLease{pool: p, accountID: accountID, conn: target, connPick: connPick, reused: true}
 	p.metrics.acquireReuseTotal.Add(1)
 	p.recordLastSuccessfulAcquire(accountID, acquireGeneration, req)
 	p.ensureTargetIdleAsync(accountID)
@@ -2156,14 +2221,8 @@ func (p *openAIWSConnPool) effectiveMaxConnsByAccount(account *Account) int {
 	if hardCap <= 0 {
 		return 0
 	}
-	if p.modeRouterV2Enabled() {
-		if account == nil {
-			return hardCap
-		}
-		if account.Concurrency <= 0 {
-			return 0
-		}
-		return min(account.Concurrency, hardCap)
+	if p.modeRouterV2Enabled() && account != nil && account.Concurrency <= 0 {
+		return 0
 	}
 	if account == nil || !p.dynamicMaxConnsEnabled() {
 		return hardCap

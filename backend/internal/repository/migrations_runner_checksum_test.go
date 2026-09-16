@@ -181,6 +181,30 @@ func TestIsMigrationChecksumCompatible(t *testing.T) {
 		require.True(t, isMigrationChecksumCompatible(name, released, edited))
 	})
 
+	// 从官方镜像切到 fork：db 记录官方版 checksum，文件是补了 kiro/adobe 的 fork 版。
+	t.Run("157/237/238官方版与fork版兼容", func(t *testing.T) {
+		for _, tc := range []struct{ name, official, fork string }{
+			{"157_user_platform_quotas_add_grok.sql", "5cace8fa32c6174a72721cd9b01f28f4545de1fd7bcd9ca196a4225056ec4fb8", "a918734da39c2e5a82e4a5e9511bac1f4cf7e310ceadd647df52692320633c1b"},
+			{"237_add_minimax_platform.sql", "f4c73d2dbce114ca7ade1aac51998c3465490f4f3c9b3e868e53590f3fa8601b", "c754b29e15c10ef2a72887c4e2dd04a73a37c6c06218d1b2725836884450c03a"},
+			{"238_opencode_go_platform.sql", "6f987e251519bd3759e60da44620a5d777494cceb333b6ce394aa0ea536ef5a2", "d310f134e119bd0b01c36e048841d04e1adc04a117c5c516ccdbbc8800742414"},
+		} {
+			require.True(t, isMigrationChecksumCompatible(tc.name, tc.official, tc.fork), tc.name)
+			require.False(t, isMigrationChecksumCompatible(tc.name,
+				"ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff", tc.fork), tc.name)
+		}
+	})
+
+	// tw-01 现网库：2026-09-12 升级到 v0.2.4 时应用的是本 fork 自己的就地补丁版，
+	// 与官方版、kiro 版都不同。不放行会让后续升级在启动时报 checksum mismatch。
+	t.Run("237/238本fork历史就地补丁版兼容", func(t *testing.T) {
+		for _, tc := range []struct{ name, forkLegacy, current string }{
+			{"237_add_minimax_platform.sql", "f0ec18d80d35e280f848ecc44c82e476e44c6f4ff373f6f08093eb6a43d6d809", "c754b29e15c10ef2a72887c4e2dd04a73a37c6c06218d1b2725836884450c03a"},
+			{"238_opencode_go_platform.sql", "79639d114ef8632b1fa49a813cf843e6b43fde00fe581f4e37e06007d340b97f", "d310f134e119bd0b01c36e048841d04e1adc04a117c5c516ccdbbc8800742414"},
+		} {
+			require.True(t, isMigrationChecksumCompatible(tc.name, tc.forkLegacy, tc.current), tc.name)
+		}
+	})
+
 	t.Run("224未知checksum不兼容", func(t *testing.T) {
 		const name = "224_user_platform_quotas_add_cn_providers.sql"
 		unknown := "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"

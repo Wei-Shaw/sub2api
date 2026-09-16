@@ -24,21 +24,12 @@
           :placeholder="t('admin.accounts.opencodeGo.protocolRules.patternPlaceholder')"
           :data-testid="`opencode-go-protocol-pattern-${index}`"
         />
-        <select
+        <Select
           v-model="row.protocol"
-          class="input w-44 shrink-0"
+          :options="protocolOptions"
+          class="w-44 shrink-0"
           :data-testid="`opencode-go-protocol-select-${index}`"
-        >
-          <option value="chat_completions">
-            {{ t('admin.accounts.cnProviders.apiProtocol.chatCompletions') }}
-          </option>
-          <option value="responses">
-            {{ t('admin.accounts.cnProviders.apiProtocol.responses') }}
-          </option>
-          <option value="anthropic">
-            {{ t('admin.accounts.cnProviders.apiProtocol.anthropic') }}
-          </option>
-        </select>
+        />
         <button
           type="button"
           class="rounded-lg p-2 text-red-500 transition-colors hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-900/20"
@@ -68,8 +59,10 @@
 </template>
 
 <script setup lang="ts">
+import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import Icon from '@/components/icons/Icon.vue'
+import Select from '@/components/common/Select.vue'
 import { createStableObjectKeyResolver } from '@/utils/stableObjectKey'
 import {
   cloneOpenCodeGoProtocolRules,
@@ -90,6 +83,11 @@ const emit = defineEmits<{
 }>()
 
 const { t } = useI18n()
+const protocolOptions = computed(() => [
+  { value: 'chat_completions', label: t('admin.accounts.cnProviders.apiProtocol.chatCompletions') },
+  { value: 'responses', label: t('admin.accounts.cnProviders.apiProtocol.responses') },
+  { value: 'anthropic', label: t('admin.accounts.cnProviders.apiProtocol.anthropic') }
+])
 const getRowKey = createStableObjectKeyResolver<OpenCodeGoProtocolRule>('opencode-go-protocol-rule')
 
 const addRow = () => {

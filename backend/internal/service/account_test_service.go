@@ -159,6 +159,8 @@ type AccountTestService struct {
 	// grokWSDialer is optional; realtime account tests use the default OpenAI-style
 	// WS dialer when nil (supports proxy + coder/websocket handshake).
 	grokWSDialer openAIWSClientDialer
+	// adobeTokenProvider 为 nil 时 Adobe 测试路径按需构造本地 provider。
+	adobeTokenProvider *AdobeTokenProvider
 }
 
 func (s *AccountTestService) SetSettingService(settingService *SettingService) {
@@ -170,6 +172,13 @@ func (s *AccountTestService) SetSettingService(settingService *SettingService) {
 func (s *AccountTestService) SetPluginManager(pluginManager *PluginManager) {
 	if s != nil {
 		s.pluginManager = pluginManager
+	}
+}
+
+// SetAdobeTokenProvider 注入与网关共享 OAuthRefreshAPI 的 Adobe token provider。
+func (s *AccountTestService) SetAdobeTokenProvider(provider *AdobeTokenProvider) {
+	if s != nil {
+		s.adobeTokenProvider = provider
 	}
 }
 
@@ -196,10 +205,9 @@ func (s *AccountTestService) FetchOpenAIAccountModels(ctx context.Context, accou
 	if err := json.Unmarshal(response.Body, &payload); err != nil {
 		return nil, fmt.Errorf("decode OpenAI account models: %w", err)
 	}
-	// Every entry in the picker is labelled by the same rule: the upstream display
-	// name when the catalog has one, otherwise the local catalog name for that model
-	// ID, otherwise the raw ID. Without this the picker mixes "GPT-5.6 Sol" with
-	// "gpt-5.6-sol" for the same catalog.
+	// 上游目录只保证 id：Codex manifest 分支在标准化时会丢弃 slug 以外的字段，
+	// 而测试弹窗用 display_name 当选项标签，留空会渲染成一排空白项。
+	// Populate picker fields here without changing the shared discovery response or cache.
 	for i := range payload.Data {
 		model := &payload.Data[i]
 		if strings.TrimSpace(model.DisplayName) == "" {
@@ -391,6 +399,12 @@ func (s *AccountTestService) TestAccountConnection(c *gin.Context, accountID int
 
 	if isKiroDirectModeAccount(account) {
 		return s.testKiroAccountConnection(c, account, modelID)
+	}
+
+	// Adobe 是文生图渠道，与下面 Claude 兜底的「发一条 prompt 收流式文本」协议不通。
+	// 改前它会落到 testClaudeAccountConnection，拿 IMS token 去打 api.anthropic.com。
+	if account.Platform == PlatformAdobe {
+		return s.testAdobeAccountConnection(c, account, modelID, prompt)
 	}
 
 	if account.IsOpenCodeGo() {
@@ -737,8 +751,10 @@ func formatKiroTestError(statusCode int, body []byte, requestedModel string, acc
 func (s *AccountTestService) executeKiroTestUpstream(ctx context.Context, account *Account, anthropicBody []byte, mappedModel, token string) (*http.Response, error) {
 	modelID := kiropkg.MapModel(mappedModel)
 	currentToken := token
-	// 测试连接走 Q endpoint，Q endpoint 不需要 profileArn（凭据中的占位符 ARN 会导致 403）
-	profileArn := ""
+	// generateAssistantResponse 现在强制要求 profileArn（缺失 → 403 "User is not
+	// authorized to make this call."）。按账号类型解析：API Key → 空；
+	// 其余 凭据真实 ARN > Social ARN > Builder ID 占位符。
+	profileArn := kiroResolveRequestProfileArn(account)
 	preparedBody := prepareKiroPayloadBodyForRequestModel(anthropicBody, mappedModel)
 	buildResult, err := kiropkg.BuildKiroPayloadWithContext(preparedBody, modelID, profileArn, "AI_EDITOR", nil)
 	if err != nil {
@@ -784,6 +800,7 @@ func (s *AccountTestService) executeKiroTestUpstream(ctx context.Context, accoun
 					if refreshErr == nil && strings.TrimSpace(refreshedToken) != "" {
 						currentToken = refreshedToken
 						accountKey = buildKiroAccountKey(account)
+						profileArn = kiroResolveRequestProfileArn(account)
 						buildResult, err = kiropkg.BuildKiroPayloadWithContext(preparedBody, modelID, profileArn, "AI_EDITOR", nil)
 						if err != nil {
 							return nil, err
@@ -3138,7 +3155,7 @@ func (s *AccountTestService) processOpenAIStream(c *gin.Context, body io.Reader)
 
 // testOpenAIImageAPIKey tests OpenAI image generation using an API Key account.
 func (s *AccountTestService) testOpenAIImageAPIKey(c *gin.Context, ctx context.Context, account *Account, modelID, prompt string) error {
-	authToken := account.GetOpenAIApiKey()
+	authToken := strings.TrimSpace(account.GetOpenAIProtocolAPIKey())
 	if authToken == "" {
 		return s.sendErrorAndEnd(c, "No API key available")
 	}

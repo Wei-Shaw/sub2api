@@ -239,6 +239,20 @@ func kiroResolveProfileArnForKRS(account *Account) string {
 	return kiroDefaultProfileARN(account)
 }
 
+// kiroResolveRequestProfileArn 返回直连 AWS 请求（getUsageLimits /
+// generateAssistantResponse，Q 与 KRS 端点）应携带的 profileArn。
+//
+// 上游现在对所有端点强制要求 profileArn：缺失 → 403 "User is not authorized to
+// make this call."（或 getUsageLimits 的 400 "profileArn is required"）。
+// API Key 凭据没有 profile 概念（与 kiroResolveAndPersistProfileArn 一致），返回空；
+// 其余账号走 kiroResolveProfileArnForKRS（凭据真实 ARN > Social ARN > Builder ID 占位符）。
+func kiroResolveRequestProfileArn(account *Account) string {
+	if account != nil && account.Type == AccountTypeAPIKey {
+		return ""
+	}
+	return kiroResolveProfileArnForKRS(account)
+}
+
 func newKiroJSONRequest(ctx context.Context, endpointURL string, payload []byte, token, accountKey, machineID, amzTarget string, account *Account) (*http.Request, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpointURL, bytes.NewReader(payload))
 	if err != nil {

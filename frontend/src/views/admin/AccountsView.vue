@@ -784,6 +784,7 @@ const accountSupportsBatchUsage = (account: Account) => {
   if (account.platform === 'antigravity') return account.type === 'oauth'
   if (account.platform === 'openai') return account.type === 'oauth'
   if (account.platform === 'grok') return account.type === 'oauth'
+  if (account.platform === 'adobe') return account.type === 'oauth'
   return false
 }
 
@@ -2436,9 +2437,10 @@ const handleDuplicateAccount = async (a: Account) => {
 }
 const handleRefresh = async (a: Account) => {
   try {
-    const updated = await adminAPI.accounts.refreshCredentials(a.id)
-    patchAccountInList(updated)
+    const result = await adminAPI.accounts.refreshCredentials(a.id)
+    patchAccountInList(result.account)
     enterAutoRefreshSilentWindow()
+    if (result.warning) appStore.showWarning(result.message)
   } catch (error) {
     console.error('Failed to refresh credentials:', error)
   }

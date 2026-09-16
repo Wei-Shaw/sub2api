@@ -83,6 +83,21 @@ export default {
     columnAlwaysVisible: 'This column is always visible',
     createKey: 'Create API Key',
     editKey: 'Edit API Key',
+    bulkEdit: {
+      title: 'Bulk Edit',
+      selectedCount: '{count} keys selected',
+      selectKey: 'Select key {name}',
+      clearSelection: 'Clear selection',
+      hint: 'Check the fields to update. Unchecked fields keep their current values.',
+      limitHint: 'Enter 0 for no limit. Existing usage is preserved.',
+      ipHint: 'One IP or CIDR per line. Leave empty to clear this list on the selected keys.',
+      invalidLimit: 'Enter a valid amount greater than or equal to 0.',
+      invalidExpiration: 'Choose a valid expiration date or select Never expires.',
+      apply: 'Apply to {count} keys',
+      success: 'Updated {count} keys',
+      partialFailure: 'Updated {success} keys; {failed} failed',
+      failureHint: 'These keys could not be updated. Adjust the settings and retry. Only failed keys will be retried.'
+    },
     deleteKey: 'Delete API Key',
     deleteConfirmMessage: "Are you sure you want to delete '{name}'? This action cannot be undone.",
     id: 'ID',
@@ -101,6 +116,19 @@ export default {
     nameLabel: 'Name',
     namePlaceholder: 'My API Key',
     groupLabel: 'Group',
+    providerLabel: 'Provider',
+    providers: {
+      anthropic: 'Anthropic',
+      openai: 'OpenAI',
+      domestic: 'Chinese AI',
+      other: 'Other'
+    },
+    providerHints: {
+      anthropic: 'Choose an available Anthropic / Claude group',
+      openai: 'Choose an available OpenAI / GPT group',
+      domestic: 'Includes DeepSeek, Kimi, Zhipu GLM and MiniMax',
+      other: 'Includes Gemini, Grok, Antigravity, OpenCode and mixed groups'
+    },
     selectGroup: 'Select a group',
     statusLabel: 'Status',
     selectStatus: 'Select status',
@@ -470,6 +498,7 @@ export default {
       gemini: 'Gemini',
       grok: 'Grok',
       antigravity: 'Antigravity',
+      kiro: 'Kiro',
       kimi: 'Kimi',
       zhipu: 'Zhipu GLM',
       deepseek: 'DeepSeek',
@@ -485,6 +514,10 @@ export default {
     // Quota snapshot rendering (MonitorQuotaView, shared by admin + user views)
     quota: {
       unavailable: 'Quota unavailable',
+      resetSoon: 'resetting',
+      accountsHealthy: '{healthy}/{total} accounts with quota',
+      accountsExhausted: '{count} exhausted',
+      accountsUnknown: '{count} unknown',
       windows: {
         '5h': '5h',
         '7d': '7d',
@@ -501,7 +534,20 @@ export default {
         tokens: 'Tokens',
         shared: 'Shared',
         pro: 'Pro',
-        flash: 'Flash'
+        flash: 'Flash',
+        credits: 'Credits',
+        bonus: 'Bonus'
+      },
+      // 后端 message 是固定英文格式且已落库，展示层按格式解析后本地化（见 localizeMonitorMessage）
+      messages: {
+        noQuotaLeft: 'No quota left: {exhausted}/{total} accounts exhausted',
+        allUnavailable: 'Quota unavailable for all {total} accounts',
+        quotaHigh: 'Quota high: {name} at {percent}%',
+        balanceLow: 'Balance low: {amount} {currency}',
+        balanceLowNoAmount: 'Balance low ({currency})',
+        accountNotFound: 'Linked account not found',
+        groupNotFound: 'Linked group not found',
+        groupNoAccounts: 'Linked group has no accounts'
       }
     },
     extraModelsHeader: 'Extra Models',
@@ -756,6 +802,7 @@ export default {
     days: ' days',
     codeRedeemSuccess: 'Code redeemed successfully!',
     failedToRedeem: 'Failed to redeem code. Please check the code and try again.',
+    userRefreshFailed: 'Redeemed successfully, but failed to refresh account information.',
     subscriptionRefreshFailed: 'Redeemed successfully, but failed to refresh subscription status.',
     pleaseEnterCode: 'Please enter a redeem code'
   },

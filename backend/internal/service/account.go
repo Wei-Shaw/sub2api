@@ -639,7 +639,7 @@ func (a *Account) resolveModelMapping(rawMapping map[string]any) map[string]stri
 	if a.Credentials == nil {
 		// 部分平台在未显式配置 model_mapping 时仍应使用默认映射，
 		// 以限制可调度/可转发的模型集合。
-		if defaults := defaultModelMappingForPlatform(a.Platform); defaults != nil {
+		if defaults := defaultModelMappingForAccount(a); defaults != nil {
 			return defaults
 		}
 		if a.Platform == domain.PlatformGrok {
@@ -649,10 +649,11 @@ func (a *Account) resolveModelMapping(rawMapping map[string]any) map[string]stri
 		return nil
 	}
 	if len(rawMapping) == 0 {
+		// Google One 为账号级判定（依赖 credentials），需先于平台级默认映射
 		if a.IsGeminiGoogleOne() {
 			return geminicli.GoogleOneModelMapping()
 		}
-		if defaults := defaultModelMappingForPlatform(a.Platform); defaults != nil {
+		if defaults := defaultModelMappingForAccount(a); defaults != nil {
 			return defaults
 		}
 		if a.Platform == domain.PlatformGrok {
@@ -694,10 +695,11 @@ func (a *Account) resolveModelMapping(rawMapping map[string]any) map[string]stri
 		return result
 	}
 
+	// Google One 为账号级判定（依赖 credentials），需先于平台级默认映射
 	if a.IsGeminiGoogleOne() {
 		return geminicli.GoogleOneModelMapping()
 	}
-	if defaults := defaultModelMappingForPlatform(a.Platform); defaults != nil {
+	if defaults := defaultModelMappingForAccount(a); defaults != nil {
 		return defaults
 	}
 	if a.Platform == domain.PlatformGrok {
@@ -712,6 +714,8 @@ func defaultModelMappingForPlatform(platform string) map[string]string {
 		return domain.DefaultAntigravityModelMapping
 	case domain.PlatformKiro:
 		return domain.DefaultKiroModelMapping
+	case domain.PlatformAdobe:
+		return domain.DefaultAdobeModelMapping
 	default:
 		return nil
 	}
@@ -871,6 +875,10 @@ func resolveRequestedModelInMapping(mapping map[string]string, requestedModel st
 // 会把未知模型原样透传，Codex 上游对这类模型必然返回不可重试的 400，导致
 // 请求卡死在该账号上、无法 failover 到真正支持该模型的 API Key 账号（#3662）。
 // 未知/自定义别名仍保持允许（兼容渠道级映射），见 isOpenAIOAuthServableModel。
+//
+// 例外：DeepSeek 平台的空映射不再是「允许所有」，改按官方模型白名单判定
+// （isDeepseekServableModel）——未知模型名透传上游只会得到 404/400，并误触发
+// per-(账号,模型) 30 分钟冷却；带 [1m] 上下文后缀的写法先归一化再比对。
 func (a *Account) IsModelSupported(requestedModel string) bool {
 	// 透传模式仅替换认证、模型语义完全交由上游决定，因此放行所有模型。
 	// 该短路必须在 model_mapping 判定之前：账号从"白名单模式"切换到透传后，
@@ -883,6 +891,9 @@ func (a *Account) IsModelSupported(requestedModel string) bool {
 	if len(mapping) == 0 {
 		if a.IsOpenAIOAuth() {
 			return isOpenAIOAuthServableModel(requestedModel)
+		}
+		if a.Platform == PlatformDeepseek {
+			return isDeepseekServableModel(requestedModel)
 		}
 		return true // 无映射 = 允许所有
 	}
@@ -1370,8 +1381,12 @@ func (a *Account) IsOpenAIApiKey() bool {
 
 // GetOpenAIBaseURL 解析 OpenAI 协议族账号的上游 base_url。
 // 适用 openai、国产 OpenAI 兼容供应商（kimi/zhipu/deepseek）与 OpenCode Go；
-// grok 走 GetGrokBaseURL，此处对 grok 返回 "" 以保持原有行为。
+// grok 走 GetGrokBaseURL，此处对 grok 返回 "" 以保持原有行为。Adobe 中转号（apikey + base_url）走 OpenAI
+// 出图转发，必须返回它自己的 base_url，否则会落到 api.openai.com。
 func (a *Account) GetOpenAIBaseURL() string {
+	if isAdobeRelayAccount(a) {
+		return strings.TrimRight(strings.TrimSpace(a.GetCredential("base_url")), "/")
+	}
 	if !a.IsOpenAI() && !a.IsCNProvider() && !a.IsOpenCodeGo() {
 		return ""
 	}
@@ -1772,11 +1787,15 @@ func (a *Account) GetOpenAIApiKey() string {
 // GetOpenAIProtocolAPIKey 返回 OpenAI 协议族 APIKey 账号的密钥。
 // 覆盖 openai 原生账号、国产 OpenAI 兼容供应商（kimi/zhipu/deepseek）
 // 以及 OpenCode Go 账号，供转发鉴权、模型列表同步等协议族共用路径使用。
+// Adobe 中转号（apikey + base_url）走 OpenAI 出图转发，同样返回其 api_key。
 // 注意 IsOpenAIApiKey 语义上仅指 openai 平台账号，调度倍率/WS 能力门控
 // 继续以其为准，不受本方法影响。
 func (a *Account) GetOpenAIProtocolAPIKey() string {
 	if a == nil {
 		return ""
+	}
+	if isAdobeRelayAccount(a) {
+		return a.GetCredential("api_key")
 	}
 	if a.IsMultiProtocolAPIKey() {
 		if a.Type != AccountTypeAPIKey {

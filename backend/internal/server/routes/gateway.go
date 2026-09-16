@@ -85,6 +85,12 @@ func RegisterGatewayRoutes(
 			h.OpenAIGateway.Images(c)
 		case service.PlatformGrok:
 			h.OpenAIGateway.GrokImages(c)
+		case service.PlatformAdobe:
+			// Adobe 走 GatewayHandler：它同时持有平台无关的选号器与 RecordUsage，
+			// 而 OpenAIGatewayHandler 只有后者。
+			// composite 分组在 middleware 已 resolve 到 adobe 时也会落到这里；
+			// 未 resolve 的 composite（例如无路由的 gpt-image-*）不能猜 Adobe，走 default 404。
+			h.Gateway.AdobeImages(c)
 		default:
 			service.MarkOpsClientBusinessLimited(c, service.OpsClientBusinessLimitedReasonLocalFeatureGate)
 			c.JSON(http.StatusNotFound, gin.H{

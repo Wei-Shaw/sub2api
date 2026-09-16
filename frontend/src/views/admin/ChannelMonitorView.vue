@@ -68,8 +68,15 @@
           <template #cell-name="{ row, value }">
             <div class="flex items-center gap-1.5">
               <span class="font-medium text-gray-900 dark:text-white">{{ value }}</span>
-              <HelpTooltip v-if="row.api_key_decrypt_failed" :content="t('admin.channelMonitor.apiKeyDecryptFailed')">
-                <Icon name="exclamationTriangle" size="sm" class="text-red-500" />
+              <!-- 图标必须放 #trigger slot：默认 slot 是气泡内容，占用它会顶掉 content 文案。
+                   quota 模式不读 API Key（后端 RunCheck 同样跳过该校验），解密失败对它无影响，不告警。 -->
+              <HelpTooltip
+                v-if="row.api_key_decrypt_failed && row.check_mode !== CHECK_MODE_QUOTA"
+                :content="t('admin.channelMonitor.apiKeyDecryptFailed')"
+              >
+                <template #trigger>
+                  <Icon name="exclamationTriangle" size="sm" class="text-red-500" />
+                </template>
               </HelpTooltip>
             </div>
           </template>
@@ -198,6 +205,7 @@ import MonitorPrimaryModelCell from '@/components/admin/monitor/MonitorPrimaryMo
 import MonitorActionsCell from '@/components/admin/monitor/MonitorActionsCell.vue'
 import { getPersistedPageSize } from '@/composables/usePersistedPageSize'
 import { useChannelMonitorFormat } from '@/composables/useChannelMonitorFormat'
+import { CHECK_MODE_QUOTA } from '@/constants/channelMonitor'
 import MonitorSettingsPanel from '@/features/channel-monitor-v2/MonitorSettingsPanel.vue'
 import { isChannelMonitorV1Mode } from '@/utils/featureFlags'
 

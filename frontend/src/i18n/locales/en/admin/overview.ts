@@ -177,7 +177,7 @@ export default {
         restoreConfirm: 'Are you sure you want to restore from this backup? This will overwrite the current database!',
         restorePasswordPrompt: 'Please enter your admin password to confirm the restore operation',
         restoreSuccess: 'Database restored successfully',
-        delete: 'Delete',
+        delete: 'Delete Backup',
         deleteConfirm: 'Are you sure you want to delete this backup?',
         deleted: 'Backup deleted'
       },
@@ -983,6 +983,7 @@ export default {
         antigravity: 'Antigravity',
         grok: 'Grok',
         kiro: 'Kiro',
+        adobe: 'Adobe',
         kimi: 'Kimi',
         zhipu: 'Zhipu GLM',
         deepseek: 'DeepSeek',

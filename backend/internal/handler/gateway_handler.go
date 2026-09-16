@@ -15,6 +15,7 @@ import (
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/domain"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/adobe"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/antigravity"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/claude"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/ctxkey"
@@ -79,6 +80,8 @@ type GatewayHandler struct {
 	securityAuditCoordinator  *securityaudit.Coordinator
 	concurrencyHelper         *ConcurrencyHelper
 	userMsgQueueHelper        *UserMsgQueueHelper
+	adobeImageService         *service.AdobeImageService
+	imageLimiter              *imageConcurrencyLimiter
 	maxAccountSwitches        int
 	maxAccountSwitchesGemini  int
 	cfg                       *config.Config
@@ -101,6 +104,7 @@ func NewGatewayHandler(
 	promptRuleService *service.PromptRuleService,
 	contentModerationService *service.ContentModerationService,
 	userMsgQueueService *service.UserMessageQueueService,
+	adobeImageService *service.AdobeImageService,
 	cfg *config.Config,
 	settingService *service.SettingService,
 ) *GatewayHandler {
@@ -138,6 +142,8 @@ func NewGatewayHandler(
 		contentModerationService:  contentModerationService,
 		concurrencyHelper:         NewConcurrencyHelper(concurrencyService, SSEPingFormatClaude, pingInterval),
 		userMsgQueueHelper:        umqHelper,
+		adobeImageService:         adobeImageService,
+		imageLimiter:              sharedImageConcurrencyLimiter,
 		maxAccountSwitches:        maxAccountSwitches,
 		maxAccountSwitchesGemini:  maxAccountSwitchesGemini,
 		cfg:                       cfg,
@@ -1308,6 +1314,23 @@ func (h *GatewayHandler) codexModelIDsForGroup(ctx context.Context, group *servi
 	return fallbackModels
 }
 
+// compositeListedPlatforms is the public /v1/models catalog for composite groups.
+// Kiro is omitted on purpose: its model names collide with Anthropic/OpenAI and
+// cannot be inferred by DetectModelPlatform.
+var compositeListedPlatforms = []string{
+	service.PlatformAnthropic,
+	service.PlatformGemini,
+	service.PlatformOpenAI,
+	service.PlatformAntigravity,
+	service.PlatformGrok,
+	service.PlatformAdobe,
+	service.PlatformKimi,
+	service.PlatformZhipu,
+	service.PlatformDeepseek,
+	service.PlatformMiniMax,
+	service.PlatformOpenCodeGo,
+}
+
 func (h *GatewayHandler) compositeAvailableModels(ctx context.Context, groupID *int64) []string {
 	if h == nil || h.gatewayService == nil {
 		return nil
@@ -1315,7 +1338,7 @@ func (h *GatewayHandler) compositeAvailableModels(ctx context.Context, groupID *
 	seen := make(map[string]struct{})
 	models := make([]string, 0)
 	schedulablePlatforms := h.gatewayService.GetSchedulablePlatforms(ctx, groupID)
-	for _, platform := range []string{service.PlatformAnthropic, service.PlatformGemini, service.PlatformOpenAI, service.PlatformAntigravity, service.PlatformGrok, service.PlatformKimi, service.PlatformZhipu, service.PlatformDeepseek, service.PlatformMiniMax, service.PlatformOpenCodeGo} {
+	for _, platform := range compositeListedPlatforms {
 		platformModels := h.gatewayService.GetAvailableModels(ctx, groupID, platform)
 		if len(platformModels) == 0 {
 			// CN 供应商没有静态默认模型列表（defaultModelIDsForPlatform 的
@@ -1453,15 +1476,17 @@ func writeOpenAIModelsList(c *gin.Context, modelIDs []string) {
 }
 
 // modelListingSource 汇总模型列表过滤的候选来源：账号映射键（availableModels）
-// 与平台默认列表（fallbackModels）。账号映射为空时回落默认列表；Anthropic
-// 平台两者取并集，其余平台以账号映射键为准。
+// 与平台默认列表（fallbackModels）。账号映射为空时回落默认列表。
 //
-// 仅 anthropic 需要合并平台默认模型：其 OAuth 账号可能完全没有 model_mapping，却能服务
-// 整个 claude 默认模型族；分组内混用「无 mapping 的 OAuth 账号」与「带 mapping 的 APIKey
-// 账号」时，GetAvailableModels 只会返回后者的 mapping keys，需要 merge 把 OAuth 能服务的
-// claude 模型补回来。其它平台（含 kiro、openai、gemini）的 model_mapping 是严格白名单
-// （kiro 未显式配置时套用 DefaultKiroModelMapping），未映射的模型本就无法服务，因此不合并
-// 默认模型——否则从账号 mapping 移除某模型后仍会被默认模型兜底塞回。
+// 仅 anthropic 平台把两者取并集：其 OAuth 账号可能完全没有 model_mapping，却能服务
+// 整个 claude 默认模型族；当分组内混用「无 mapping 的 OAuth 账号」与「带 mapping 的
+// APIKey 账号」时，GetAvailableModels 只会返回后者的 mapping keys，需要 merge 默认
+// 模型把 OAuth 能服务的 claude 模型补回来。
+//
+// 其它平台（含 kiro、openai、gemini 等）的 model_mapping 是严格白名单，明确限定了账号
+// 可调度/可转发的模型集合（kiro 未显式配置时也会套用 DefaultKiroModelMapping），未映射
+// 的模型本就无法服务，因此只返回账号可用模型、不合并默认模型——否则从账号 mapping 中移除
+// 某模型后，仍会被默认模型兜底塞回，导致 /v1/models 与账号实际可服务集合不一致。
 func modelListingSource(platform string, availableModels, fallbackModels []string) []string {
 	if len(availableModels) == 0 {
 		return fallbackModels
@@ -1508,6 +1533,9 @@ func defaultModelIDsForPlatform(platform string) []string {
 		return ids
 	case service.PlatformAnthropic:
 		return claude.DefaultModelIDs()
+	case service.PlatformAdobe:
+		// 修 bug：Step 8 之前这里没有 adobe 分支，`/v1/models` 会走 default: 分支返回 claude 模型。
+		return adobe.ImageModelIDs()
 	case service.PlatformGrok:
 		return xai.DefaultModelIDs()
 	case service.PlatformOpenCodeGo:
@@ -1515,7 +1543,7 @@ func defaultModelIDsForPlatform(platform string) []string {
 	case service.PlatformComposite:
 		ids := make([]string, 0)
 		seen := make(map[string]struct{})
-		for _, concretePlatform := range []string{service.PlatformAnthropic, service.PlatformGemini, service.PlatformOpenAI, service.PlatformAntigravity, service.PlatformGrok, service.PlatformKimi, service.PlatformZhipu, service.PlatformDeepseek, service.PlatformMiniMax, service.PlatformOpenCodeGo} {
+		for _, concretePlatform := range compositeListedPlatforms {
 			for _, id := range defaultModelIDsForPlatform(concretePlatform) {
 				if _, ok := seen[id]; ok {
 					continue

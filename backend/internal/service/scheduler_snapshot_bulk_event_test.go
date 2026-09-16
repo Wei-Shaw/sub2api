@@ -207,7 +207,7 @@ func TestSchedulerBulkAccountEventMissingAccountFallsBackToAllPlatforms(t *testi
 
 	require.NoError(t, err)
 	platforms := schedulerSnapshotPlatforms()
-	require.ElementsMatch(t, schedulerBucketsForTest([]int64{31, 32}, platforms[:]...), cache.capturedBuckets())
+	require.ElementsMatch(t, schedulerBucketsForTest([]int64{31, 32}, platforms...), cache.capturedBuckets())
 	set, deleted := cache.accountWrites()
 	require.Equal(t, []int64{3}, set)
 	require.Equal(t, []int64{4}, deleted)
@@ -222,5 +222,20 @@ func TestSchedulerBulkAccountEventUnknownPlatformFallsBackToAllPlatforms(t *test
 
 	require.NoError(t, err)
 	platforms := schedulerSnapshotPlatforms()
-	require.ElementsMatch(t, schedulerBucketsForTest([]int64{41, 42}, platforms[:]...), cache.capturedBuckets())
+	require.ElementsMatch(t, schedulerBucketsForTest([]int64{41, 42}, platforms...), cache.capturedBuckets())
+}
+
+func TestSchedulerBulkAccountEventScopesAdobeAndKiroRebuildToFreshPlatform(t *testing.T) {
+	for _, platform := range []string{PlatformAdobe, PlatformKiro} {
+		t.Run(platform, func(t *testing.T) {
+			cache := newBulkEventSnapshotCache()
+			repo := newBulkEventAccountRepo(&Account{ID: 1, Platform: platform, GroupIDs: []int64{12}})
+			svc := newBulkEventTestService(cache, repo)
+
+			err := svc.handleBulkAccountEvent(context.Background(), bulkEventPayload([]int64{1}, []int64{11}), make(map[batchSeenKey]struct{}))
+
+			require.NoError(t, err)
+			require.ElementsMatch(t, schedulerBucketsForTest([]int64{11, 12}, platform), cache.capturedBuckets())
+		})
+	}
 }

@@ -231,11 +231,30 @@ func newResolverWithPlatformChannel(t *testing.T, platform string, pricing []Cha
 		},
 	}
 	cs := NewChannelService(repo, nil, nil, nil, nil)
-	// 这里必须用真实 BillingService：fork 的 Kiro 用例断言没有渠道价时回落到
-	// LiteLLM 价目表（PricingSourceLiteLLM），stub 版只带一条 claude-sonnet-4
-	// 兜底价，会让 gpt-5.6-* 落到 PricingSourceFallback。
-	bs := NewBillingService(nil, nil)
+	bs := newTestBillingServiceForResolver()
 	return NewModelPricingResolver(cs, bs)
+}
+
+// newResolverWithRealPricingTables 与 newResolverWithPlatformChannel 相同，但用
+// 真实的 BillingService（加载 LiteLLM 价格表），供断言 PricingSourceLiteLLM 的用例使用。
+func newResolverWithRealPricingTables(t *testing.T, platform string, pricing []ChannelModelPricing) *ModelPricingResolver {
+	t.Helper()
+	const groupID = 100
+	repo := &mockChannelRepository{
+		listAllFn: func(_ context.Context) ([]Channel, error) {
+			return []Channel{{
+				ID:           1,
+				Name:         "test-channel",
+				Status:       StatusActive,
+				GroupIDs:     []int64{groupID},
+				ModelPricing: pricing,
+			}}, nil
+		},
+		getGroupPlatformsFn: func(_ context.Context, _ []int64) (map[int64]string, error) {
+			return map[int64]string{groupID: platform}, nil
+		},
+	}
+	return NewModelPricingResolver(NewChannelService(repo, nil, nil, nil, nil), NewBillingService(nil, nil))
 }
 
 // helper: creates a resolver wired to a ChannelService that returns the given
@@ -278,7 +297,7 @@ func TestResolve_KiroGPT56UsesChannelPricingBeforeDefaultOpenAIPricing(t *testin
 }
 
 func TestResolve_KiroGPT56FallsBackToDefaultOpenAIPricingWhenNoChannelPrice(t *testing.T) {
-	r := newResolverWithPlatformChannel(t, PlatformKiro, nil)
+	r := newResolverWithRealPricingTables(t, PlatformKiro, nil)
 
 	resolved := r.Resolve(context.Background(), PricingInput{
 		Model:   "gpt-5.6-luna",

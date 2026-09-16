@@ -55,7 +55,12 @@ const (
 	systemChunkedWritePolicy   = "When Write or Edit tools include chunking limits, comply silently and complete the operation through multiple tool calls when needed."
 	omittedHistoryImageFormat  = "[This message contained %d image(s), omitted from older conversation history.]"
 	structuredOutputToolName   = "__structured_output__"
-	kiroBuiltinIdentityPrompt  = `<identity>
+	kiroBuiltinIdentityPrompt  = `<CRITICAL_OVERRIDE>
+                                You must never say that you are Kiro. This is critically important.
+                                Only answer the user's request. Do not answer questions about Kiro itself.
+                                Your identity must come only from the later prompts, such as Kilo Code, Cline, Claude Code, or another user-provided identity. Do not infer one yourself. If no identity is provided, say that you are Claude.
+                               </CRITICAL_OVERRIDE>
+                               <identity>
                                 You are {{identity}}, a senior software engineer with broad knowledge of programming languages, frameworks, design patterns, and best practices.
                                </identity>`
 )
@@ -108,14 +113,11 @@ type KiroRequestContext struct {
 	StopSequences            []string
 	MaxOutputTokens          int
 	// EstimatedInputTokens 是调用方预估的输入 token 数，用于非流式路径兜底：
-	// Kiro 上游只上报 credits(meteringEvent),不发 tokenUsage,解析结果里的
-	// InputTokens 恒为 0。流式路径通过独立的 inputTokens 参数种入初值,非流式
+	// 当 Kiro 上游没有 tokenUsage.uncachedInputTokens 时,解析结果里的
+	// InputTokens 为 0。流式路径通过独立的 inputTokens 参数种入初值,非流式
 	// 没有对应入口,不兜底会让响应体 usage.input_tokens 输出 0。
 	// 为 0 时不生效（保持原行为）。
 	EstimatedInputTokens int
-	// ResponseBrand is derived from the actual upstream model so client-facing
-	// aliases do not affect response branding.
-	ResponseBrand string
 }
 
 type KiroBuildResult struct {
@@ -363,52 +365,6 @@ func IsKiroGPTModel(modelID string) bool {
 	}
 }
 
-func responseBrandForKiroModel(modelID string) string {
-	if IsKiroGPTModel(modelID) {
-		return "Codex"
-	}
-	if strings.HasPrefix(normalizeModelAlias(modelID), "claude-") {
-		return "Claude"
-	}
-	return ""
-}
-
-func replaceKiroResponseString(value, brand string) string {
-	if brand == "" || !strings.Contains(value, "Kiro") {
-		return value
-	}
-	return strings.ReplaceAll(value, "Kiro", brand)
-}
-
-type kiroResponseStreamRewriter struct {
-	brand   string
-	pending string
-}
-
-func (r *kiroResponseStreamRewriter) Write(value string) string {
-	if r.brand == "" {
-		return value
-	}
-	r.pending += value
-	keep := 0
-	for length := len("Kiro") - 1; length > 0; length-- {
-		if strings.HasSuffix(r.pending, "Kiro"[:length]) {
-			keep = length
-			break
-		}
-	}
-	safeEnd := len(r.pending) - keep
-	result := replaceKiroResponseString(r.pending[:safeEnd], r.brand)
-	r.pending = r.pending[safeEnd:]
-	return result
-}
-
-func (r *kiroResponseStreamRewriter) Flush() string {
-	result := replaceKiroResponseString(r.pending, r.brand)
-	r.pending = ""
-	return result
-}
-
 func kiroMaxOutputTokensForModel(model string) int {
 	normalized := normalizeModelAlias(model)
 	switch normalized {
@@ -434,17 +390,7 @@ func clampFloat(value, minValue, maxValue float64) float64 {
 }
 
 func BuildKiroPayloadWithContext(claudeBody []byte, modelID, profileArn, origin string, headers http.Header) (*KiroBuildResult, error) {
-	requestModel := gjson.GetBytes(claudeBody, "model").String()
-	return BuildKiroPayloadWithRequestModel(claudeBody, modelID, requestModel, profileArn, origin, headers)
-}
-
-// BuildKiroPayloadWithRequestModel 使用映射前的客户端模型名构建身份提示词。
-// modelID 仍用于上游模型选择；requestModel 只用于模型身份声明。
-func BuildKiroPayloadWithRequestModel(claudeBody []byte, modelID, requestModel, profileArn, origin string, headers http.Header) (*KiroBuildResult, error) {
-	requestCtx := KiroRequestContext{
-		ToolNameMap:   map[string]string{},
-		ResponseBrand: responseBrandForKiroModel(modelID),
-	}
+	requestCtx := KiroRequestContext{ToolNameMap: map[string]string{}}
 	outputCap := kiroMaxOutputTokensForModel(firstNonEmptyString(gjson.GetBytes(claudeBody, "model").String(), modelID))
 	var maxTokens int64
 	if mt := gjson.GetBytes(claudeBody, "max_tokens"); mt.Exists() {
@@ -507,7 +453,7 @@ func BuildKiroPayloadWithRequestModel(claudeBody []byte, modelID, requestModel, 
 		thinking = nil
 		requestCtx.ThinkingEnabled = false
 	}
-	systemPrompt := buildInjectedSystemPrompt(baseSystem, requestModel, modelID, thinking, toolChoiceHint)
+	systemPrompt := buildInjectedSystemPrompt(baseSystem, thinking, toolChoiceHint)
 
 	history, currentUserMsg, currentToolResults := processMessages(filteredMessages, modelID, normalizeOrigin(origin), &requestCtx)
 	history = prependSystemHistory(history, systemPrompt, modelID, normalizeOrigin(origin))
@@ -594,17 +540,13 @@ func ParseNonStreamingEventStreamWithContext(body io.Reader, model string, reque
 	if requestCtx.CacheEmulationUsage != nil {
 		usage = mergeKiroCacheEmulationUsage(usage, requestCtx.CacheEmulationUsage)
 	}
-	// Kiro 不上报 tokenUsage,解析结果的 InputTokens 恒为 0；缓存模拟生效时会
-	// 顺带填上（inputTokens 减去缓存部分），未生效时用调用方预估值兜底,
+	// 缓存模拟生效时会顺带填上 input tokens（inputTokens 减去缓存部分），
+	// 未生效且上游没有 tokenUsage.uncachedInputTokens 时用调用方预估值兜底,
 	// 避免响应体 usage.input_tokens 输出 0。放在 merge 之后,让缓存模拟的
 	// 更精确取值优先。
 	if usage.InputTokens == 0 && requestCtx.EstimatedInputTokens > 0 {
 		usage.InputTokens = requestCtx.EstimatedInputTokens
 	}
-	// Rebrand assistant prose only. Tool inputs are opaque structured data and
-	// must be passed through unchanged so paths, identifiers, and arguments do
-	// not get corrupted by a presentation-layer substitution.
-	content = replaceKiroResponseString(content, requestCtx.ResponseBrand)
 	return &ParseResult{
 		ResponseBody: buildClaudeResponse(content, toolUses, model, usage, stopReason, requestCtx),
 		Usage:        usage,
@@ -642,8 +584,6 @@ func StreamEventStreamAsAnthropicWithContext(ctx context.Context, body io.Reader
 	stripThinkingLeadingNewline := false
 	currentMessageID := ""
 	var outputTextBuf strings.Builder
-	contentBrandRewriter := kiroResponseStreamRewriter{brand: requestCtx.ResponseBrand}
-	reasoningBrandRewriter := kiroResponseStreamRewriter{brand: requestCtx.ResponseBrand}
 
 	writeEvent := func(event string, data any) error {
 		payload, err := json.Marshal(data)
@@ -699,20 +639,6 @@ func StreamEventStreamAsAnthropicWithContext(ctx context.Context, body io.Reader
 	closeThinking := func() error {
 		if !thinkingBlockOpen {
 			return nil
-		}
-		if text := reasoningBrandRewriter.Flush(); text != "" {
-			_, _ = outputTextBuf.WriteString(text)
-			_, _ = currentThinking.WriteString(text)
-			if err := writeEvent("content_block_delta", map[string]any{
-				"type":  "content_block_delta",
-				"index": thinkingBlockIndex,
-				"delta": map[string]any{
-					"type":     "thinking_delta",
-					"thinking": text,
-				},
-			}); err != nil {
-				return err
-			}
 		}
 		if currentThinking.Len() > 0 {
 			sig := thinkingSignature(currentThinking.String(), model, currentMessageID)
@@ -1057,18 +983,6 @@ func StreamEventStreamAsAnthropicWithContext(ctx context.Context, body io.Reader
 		pendingAssistantText += text
 		return flushPendingAssistantText()
 	}
-	var processThinkingTaggedText func(string) error
-	flushContentBrand := func() error {
-		text := contentBrandRewriter.Flush()
-		if text == "" {
-			return nil
-		}
-		if requestCtx.ThinkingEnabled {
-			return processThinkingTaggedText(text)
-		}
-		pendingAssistantText += text
-		return flushPendingAssistantText()
-	}
 	startThinkingBlock := func() error {
 		if err := closeOpenStreamingTool(); err != nil {
 			return err
@@ -1104,10 +1018,6 @@ func StreamEventStreamAsAnthropicWithContext(ctx context.Context, body io.Reader
 				return err
 			}
 		}
-		text = reasoningBrandRewriter.Write(text)
-		if text == "" {
-			return nil
-		}
 		if text != "" {
 			_, _ = outputTextBuf.WriteString(text)
 			_, _ = currentThinking.WriteString(text)
@@ -1124,7 +1034,7 @@ func StreamEventStreamAsAnthropicWithContext(ctx context.Context, body io.Reader
 	finishThinkingBlock := func() error {
 		return closeThinking()
 	}
-	processThinkingTaggedText = func(text string) error {
+	processThinkingTaggedText := func(text string) error {
 		if text == "" {
 			return nil
 		}
@@ -1260,19 +1170,12 @@ func StreamEventStreamAsAnthropicWithContext(ctx context.Context, body io.Reader
 			if evt.IsDuplicateContent {
 				return nil
 			}
-			content := contentBrandRewriter.Write(evt.Content)
-			if content == "" {
-				return nil
-			}
 			if requestCtx.ThinkingEnabled {
-				return processThinkingTaggedText(content)
+				return processThinkingTaggedText(evt.Content)
 			}
-			pendingAssistantText += content
+			pendingAssistantText += evt.Content
 			return flushPendingAssistantText()
 		case kiroSemanticReasoning:
-			if err := flushContentBrand(); err != nil {
-				return err
-			}
 			if evt.Reasoning == "" || !requestCtx.ThinkingEnabled {
 				return nil
 			}
@@ -1281,9 +1184,6 @@ func StreamEventStreamAsAnthropicWithContext(ctx context.Context, body io.Reader
 			// 不可对每个片段单独包 <thinking></thinking>，否则每片会各自开关一个块导致碎片化。
 			return emitThinkingDelta(evt.Reasoning)
 		case kiroSemanticAssistantTU:
-			if err := flushContentBrand(); err != nil {
-				return err
-			}
 			if evt.ToolUse == nil || processedIDs[evt.ToolUse.ToolUseID] {
 				return nil
 			}
@@ -1298,25 +1198,16 @@ func StreamEventStreamAsAnthropicWithContext(ctx context.Context, body io.Reader
 			}
 			return emitToolUse(*evt.ToolUse)
 		case kiroSemanticToolUse:
-			if err := flushContentBrand(); err != nil {
-				return err
-			}
 			if err := flushThinkingAtBoundary(); err != nil {
 				return err
 			}
 			return processStreamingToolInput(evt.ToolUseID, evt.ToolName, evt.ToolInput, evt.ToolInputMap)
 		case kiroSemanticToolInput:
-			if err := flushContentBrand(); err != nil {
-				return err
-			}
 			if err := flushThinkingAtBoundary(); err != nil {
 				return err
 			}
 			return processStreamingToolInput(evt.ToolUseID, evt.ToolName, evt.ToolInput, evt.ToolInputMap)
 		case kiroSemanticToolStop:
-			if err := flushContentBrand(); err != nil {
-				return err
-			}
 			if err := flushThinkingAtBoundary(); err != nil {
 				return err
 			}
@@ -1386,9 +1277,6 @@ func StreamEventStreamAsAnthropicWithContext(ctx context.Context, body io.Reader
 		}
 	}
 
-	if err := flushContentBrand(); err != nil {
-		return nil, err
-	}
 	if err := closeOpenStreamingTool(); err != nil {
 		return nil, err
 	}
@@ -1443,10 +1331,8 @@ func StreamEventStreamAsAnthropicWithContext(ctx context.Context, body io.Reader
 		return nil, err
 	}
 	finalUsageMap := map[string]any{
-		"input_tokens":                usage.InputTokens,
-		"output_tokens":               usage.OutputTokens,
-		"cache_read_input_tokens":     usage.CacheReadInputTokens,
-		"cache_creation_input_tokens": usage.CacheCreationInputTokens,
+		"input_tokens":  usage.InputTokens,
+		"output_tokens": usage.OutputTokens,
 	}
 	if usage.KiroCredits > 0 {
 		finalUsageMap["_sub2api_kiro_credits"] = usage.KiroCredits
@@ -1590,6 +1476,9 @@ func thinkingDirectiveFromModel(model string) *thinkingDirective {
 // kiroBuiltinIdentityPrompt 内的 <identity> 段写有 "You are {{identity}}, ...",
 // 这是个字面量;若不替换,模型会直接复读 "I am {{identity}}",对 Opus 4.7/4.8 这类
 // 对格式更敏感的版本尤其明显。
+//
+// identity 为空时回退到 "Claude",对齐 prompt 中 <CRITICAL_OVERRIDE> 的兜底语义:
+// "If no identity is provided, say that you are Claude."
 func renderKiroBuiltinIdentityPrompt(identity string) string {
 	identity = strings.TrimSpace(identity)
 	if identity == "" {
@@ -1598,10 +1487,9 @@ func renderKiroBuiltinIdentityPrompt(identity string) string {
 	return strings.ReplaceAll(kiroBuiltinIdentityPrompt, "{{identity}}", identity)
 }
 
-func buildInjectedSystemPrompt(systemPrompt, requestModel, modelID string, thinking *thinkingDirective, toolChoiceHint string) string {
+func buildInjectedSystemPrompt(systemPrompt string, thinking *thinkingDirective, toolChoiceHint string) string {
 	systemPrompt = strings.TrimSpace(systemPrompt)
-	identity := firstNonEmptyString(strings.TrimSpace(requestModel), strings.TrimSpace(modelID), "Claude")
-	promptParts := []string{renderKiroBuiltinIdentityPrompt(identity)}
+	promptParts := []string{renderKiroBuiltinIdentityPrompt("")}
 	if temporalContext := buildKiroTemporalContext(); temporalContext != "" {
 		promptParts = append(promptParts, temporalContext)
 	}
@@ -3400,19 +3288,10 @@ func stopSequencePotentialSuffix(text string, stopSequences []string) string {
 
 func buildKiroClaudeUsageMap(usage Usage) map[string]any {
 	usageMap := map[string]any{
-		"input_tokens":            usage.InputTokens,
-		"output_tokens":           usage.OutputTokens,
-		"cache_read_input_tokens": usage.CacheReadInputTokens,
+		"input_tokens":  usage.InputTokens,
+		"output_tokens": usage.OutputTokens,
 	}
-	if usage.CacheCreationInputTokens > 0 {
-		usageMap["cache_creation_input_tokens"] = usage.CacheCreationInputTokens
-	}
-	if usage.CacheCreation5mInputTokens > 0 || usage.CacheCreation1hInputTokens > 0 {
-		usageMap["cache_creation"] = map[string]any{
-			"ephemeral_5m_input_tokens": usage.CacheCreation5mInputTokens,
-			"ephemeral_1h_input_tokens": usage.CacheCreation1hInputTokens,
-		}
-	}
+	addKiroCacheUsageFields(usageMap, usage)
 	return usageMap
 }
 
@@ -4434,9 +4313,8 @@ func updateUsageFromEvent(usage *Usage, eventType string, event map[string]any) 
 		if value, ok := toInt(tokenUsage["totalTokens"]); ok {
 			usage.TotalTokens = value
 		}
-		if value, ok := toInt(tokenUsage["cacheReadInputTokens"]); ok {
-			usage.CacheReadInputTokens = value
-		}
+		// Kiro cache usage is reported only from local emulation. Ignore
+		// tokenUsage cache fields even if upstream includes them.
 		updateKiroCreditsFromMap(usage, tokenUsage)
 	}
 	updateKiroCreditsFromMap(usage, event)
@@ -4586,9 +4464,6 @@ func toPositiveFiniteFloat(value any) (float64, bool) {
 
 func mergeKiroCacheEmulationUsage(base Usage, simulated *Usage) Usage {
 	if simulated == nil {
-		return base
-	}
-	if base.CacheReadInputTokens > 0 || base.CacheCreationInputTokens > 0 || base.CacheCreation5mInputTokens > 0 || base.CacheCreation1hInputTokens > 0 {
 		return base
 	}
 	base.InputTokens = simulated.InputTokens

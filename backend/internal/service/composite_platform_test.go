@@ -133,6 +133,7 @@ func TestNewGatewayServiceWiresCompositeModelOwnershipResolver(t *testing.T) {
 		nil,
 		nil,
 		nil,
+		nil, // adobeTokenProvider
 		nil,
 		nil,
 		nil,
@@ -164,6 +165,9 @@ func TestDetectModelPlatform(t *testing.T) {
 		{name: "claude", model: "claude-sonnet-4-5", platform: PlatformAnthropic, ok: true},
 		{name: "anthropic prefix", model: "anthropic/claude-opus-4-5", platform: PlatformAnthropic, ok: true},
 		{name: "gpt", model: "gpt-5.1", platform: PlatformOpenAI, ok: true},
+		{name: "gpt-image is not inferred", model: "gpt-image-2", ok: false},
+		{name: "dall-e stays openai", model: "dall-e-3", platform: PlatformOpenAI, ok: true},
+		{name: "nano-banana adobe", model: "nano-banana-pro", platform: PlatformAdobe, ok: true},
 		{name: "o series", model: "o3-mini", platform: PlatformOpenAI, ok: true},
 		{name: "embedding", model: "text-embedding-3-large", platform: PlatformOpenAI, ok: true},
 		{name: "gemini", model: "gemini-3-pro", platform: PlatformGemini, ok: true},
@@ -217,10 +221,7 @@ func TestCompositeGroupSchedulerHasAllCanonicalPlatformBuckets(t *testing.T) {
 	for platform := range seen {
 		platforms = append(platforms, platform)
 	}
-	require.ElementsMatch(t,
-		[]string{PlatformAnthropic, PlatformGemini, PlatformOpenAI, PlatformAntigravity, PlatformKiro, PlatformGrok, PlatformKimi, PlatformZhipu, PlatformDeepseek, PlatformMiniMax, PlatformOpenCodeGo},
-		platforms,
-	)
+	require.ElementsMatch(t, AllowedQuotaPlatforms, platforms)
 }
 
 func TestCompositeConcretePlatformsIncludeCNProviders(t *testing.T) {

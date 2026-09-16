@@ -185,22 +185,26 @@ func TestDefaultAntigravityModelMapping_Gemini31FlashLite(t *testing.T) {
 	}
 }
 
-// 上游只有 -tiered 一个真实模型，档位由请求里的 thinkingBudget 决定；裸名与
-// -low/-medium/-high 直接发给上游会 404，因此本仓库把它们全部收敛到 -tiered。
-// 上游原测试断言恒等映射，与该结论冲突，这里按收敛后的行为断言。
+// 本 fork 的口径：Gemini 3.7 Flash 在上游只有 -tiered 一个真实模型，档位由请求里的
+// thinkingBudget 决定，裸档位名（-low/-medium/-high）与裸名打上游会 404。
+// 因此默认映射把这一族全部收敛到 -tiered，不再逐个映射到自身。
 func TestDefaultAntigravityModelMapping_Gemini37FlashModels(t *testing.T) {
+	const want = "gemini-3.7-flash-tiered"
 	for _, model := range []string{"gemini-3.7-flash", "gemini-3.7-flash-high", "gemini-3.7-flash-low", "gemini-3.7-flash-medium", "gemini-3.7-flash-tiered"} {
-		if got := DefaultAntigravityModelMapping[model]; got != "gemini-3.7-flash-tiered" {
-			t.Fatalf("expected %s to map to gemini-3.7-flash-tiered, got %q", model, got)
+		if got := DefaultAntigravityModelMapping[model]; got != want {
+			t.Fatalf("expected %s to map to %s, got %q", model, want, got)
 		}
 	}
 }
 
-// 同 3.7：裸名与档位名一律收敛到 -tiered，见上一个用例的说明。
+// 本 fork 的口径：Gemini 3.8 Flash 在上游只有 -tiered 一个真实模型，档位由请求里的
+// thinkingBudget 决定，裸档位名（-low/-medium/-high）与裸名打上游会 404。
+// 因此默认映射把这一族全部收敛到 -tiered，不再逐个映射到自身。
 func TestDefaultAntigravityModelMapping_Gemini38FlashModels(t *testing.T) {
+	const want = "gemini-3.8-flash-tiered"
 	for _, model := range []string{"gemini-3.8-flash", "gemini-3.8-flash-high", "gemini-3.8-flash-low", "gemini-3.8-flash-medium", "gemini-3.8-flash-tiered"} {
-		if got := DefaultAntigravityModelMapping[model]; got != "gemini-3.8-flash-tiered" {
-			t.Fatalf("expected %s to map to gemini-3.8-flash-tiered, got %q", model, got)
+		if got := DefaultAntigravityModelMapping[model]; got != want {
+			t.Fatalf("expected %s to map to %s, got %q", model, want, got)
 		}
 	}
 }

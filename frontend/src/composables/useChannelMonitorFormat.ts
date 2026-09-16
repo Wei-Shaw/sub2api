@@ -18,6 +18,7 @@ import {
   PROVIDER_GEMINI,
   PROVIDER_GROK,
   PROVIDER_ANTIGRAVITY,
+  PROVIDER_KIRO,
   PROVIDER_KIMI,
   PROVIDER_ZHIPU,
   PROVIDER_DEEPSEEK,
@@ -46,7 +47,7 @@ export interface AvailabilityRow {
 }
 
 export function useChannelMonitorFormat() {
-  const { t } = useI18n()
+  const { t, te } = useI18n()
 
   function statusLabel(s: MonitorStatus | ''): string {
     if (!s) return t('monitorCommon.status.unknown')
@@ -107,9 +108,11 @@ export function useChannelMonitorFormat() {
       case PROVIDER_GROK:
         return 'bg-zinc-100 text-zinc-700 dark:bg-zinc-500/15 dark:text-zinc-300'
       // 配色与 utils/platformColors.ts 的平台色对齐：antigravity=purple /
-      // kimi=pink / zhipu=indigo / deepseek=teal。
+      // kiro=violet / kimi=pink / zhipu=indigo / deepseek=teal。
       case PROVIDER_ANTIGRAVITY:
         return 'bg-purple-100 text-purple-700 dark:bg-purple-500/15 dark:text-purple-300'
+      case PROVIDER_KIRO:
+        return 'bg-violet-100 text-violet-700 dark:bg-violet-500/15 dark:text-violet-300'
       case PROVIDER_KIMI:
         return 'bg-pink-100 text-pink-700 dark:bg-pink-500/15 dark:text-pink-300'
       case PROVIDER_ZHIPU:
@@ -168,6 +171,10 @@ export function useChannelMonitorFormat() {
         return active
           ? 'border-purple-500 bg-purple-50 text-purple-700 dark:bg-purple-500/15 dark:text-purple-300 dark:border-purple-400'
           : 'border-gray-200 bg-white text-gray-600 hover:border-purple-300 hover:text-purple-700 dark:border-dark-700 dark:bg-dark-800 dark:text-gray-400 dark:hover:border-purple-500/50'
+      case PROVIDER_KIRO:
+        return active
+          ? 'border-violet-500 bg-violet-50 text-violet-700 dark:bg-violet-500/15 dark:text-violet-300 dark:border-violet-400'
+          : 'border-gray-200 bg-white text-gray-600 hover:border-violet-300 hover:text-violet-700 dark:border-dark-700 dark:bg-dark-800 dark:text-gray-400 dark:hover:border-violet-500/50'
       case PROVIDER_KIMI:
         return active
           ? 'border-pink-500 bg-pink-50 text-pink-700 dark:bg-pink-500/15 dark:text-pink-300 dark:border-pink-400'
@@ -224,12 +231,83 @@ export function useChannelMonitorFormat() {
     return t('monitorCommon.relativeDaysAgo', { n: diffDay })
   }
 
+  /**
+   * 后端检测 message 的本地化。
+   *
+   * 这些文案由 Go 侧用固定格式拼出（deriveGroupQuotaStatus / quotaDegradedHint /
+   * 配额错误常量），并已按原文落进 channel_monitor_histories.message，历史行无法回填。
+   * 后端也用 strings.Contains 匹配这些英文串判定「配置类错误」（isMonitorQuotaConfigError），
+   * 改后端文案会同时破坏存量数据和该判定，所以本地化只在展示层做：
+   * 按格式解析出数值再走 i18n，未识别的串原样透出（前向兼容新增文案）。
+   */
+  function localizeMonitorMessage(message: string | null | undefined): string {
+    const raw = (message || '').trim()
+    if (!raw) return ''
+
+    const noQuota = /^no quota left:\s*(\d+)\/(\d+)\s+accounts exhausted$/i.exec(raw)
+    if (noQuota) {
+      return t('monitorCommon.quota.messages.noQuotaLeft', {
+        exhausted: noQuota[1],
+        total: noQuota[2],
+      })
+    }
+
+    const allUnavailable = /^quota unavailable for all\s+(\d+)\s+accounts$/i.exec(raw)
+    if (allUnavailable) {
+      return t('monitorCommon.quota.messages.allUnavailable', { total: allUnavailable[1] })
+    }
+
+    // name 形如 "credits/total" 或 "5h"：拆开后各段复用 windows/labels 的既有翻译。
+    const quotaHigh = /^quota high:\s*(.+?)\s+at\s+([\d.]+)%$/i.exec(raw)
+    if (quotaHigh) {
+      return t('monitorCommon.quota.messages.quotaHigh', {
+        name: localizeTierName(quotaHigh[1]),
+        percent: quotaHigh[2],
+      })
+    }
+
+    const balanceLow = /^balance low:\s*(\S+)\s+(\S+)$/i.exec(raw)
+    if (balanceLow) {
+      return t('monitorCommon.quota.messages.balanceLow', {
+        amount: balanceLow[1],
+        currency: balanceLow[2],
+      })
+    }
+
+    const balanceLowBare = /^balance low\s*\((\S+)\)$/i.exec(raw)
+    if (balanceLowBare) {
+      return t('monitorCommon.quota.messages.balanceLowNoAmount', { currency: balanceLowBare[1] })
+    }
+
+    const configErrors: Record<string, string> = {
+      'linked account not found': 'monitorCommon.quota.messages.accountNotFound',
+      'linked group not found': 'monitorCommon.quota.messages.groupNotFound',
+      'linked group has no accounts': 'monitorCommon.quota.messages.groupNoAccounts',
+    }
+    const configKey = configErrors[raw.toLowerCase()]
+    if (configKey) return t(configKey)
+
+    return raw
+  }
+
+  /** "credits/total" → "额度/总量"；单段或未知 token 原样返回。 */
+  function localizeTierName(name: string): string {
+    const [labelPart, windowPart] = name.includes('/') ? name.split('/', 2) : ['', name]
+    const windowKey = `monitorCommon.quota.windows.${windowPart}`
+    const localizedWindow = te(windowKey) ? t(windowKey) : windowPart
+    if (!labelPart) return localizedWindow
+    const labelKey = `monitorCommon.quota.labels.${labelPart}`
+    const localizedLabel = te(labelKey) ? t(labelKey) : labelPart
+    return `${localizedLabel}/${localizedWindow}`
+  }
+
   return {
     statusLabel,
     statusBadgeClass,
     providerLabel,
     checkModeLabel,
     formatMonitorModel,
+    localizeMonitorMessage,
     providerBadgeClass,
     checkModeBadgeClass,
     providerPickerClass,
@@ -266,6 +344,8 @@ export function providerGradient(provider: string): string {
       return 'bg-gradient-to-br from-zinc-50 to-neutral-200 dark:from-zinc-500/10 dark:to-neutral-500/20'
     case PROVIDER_ANTIGRAVITY:
       return 'bg-gradient-to-br from-purple-50 to-purple-100 dark:from-purple-500/10 dark:to-purple-500/20'
+    case PROVIDER_KIRO:
+      return 'bg-gradient-to-br from-violet-50 to-violet-100 dark:from-violet-500/10 dark:to-violet-500/20'
     case PROVIDER_KIMI:
       return 'bg-gradient-to-br from-pink-50 to-pink-100 dark:from-pink-500/10 dark:to-pink-500/20'
     case PROVIDER_ZHIPU:

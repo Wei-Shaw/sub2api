@@ -1266,7 +1266,7 @@ func (s *BillingService) getModelPricingAt(model string, pricingAt time.Time) (*
 		// token 计费：直接返回会把 token 流量按 $0 计费。跳过后走 fallback，
 		// 无 fallback 则 fail-closed（ErrModelPricingUnavailable）。
 		// 图片计费路径（getDefaultImagePrice / getImageUnitPrice）直接读
-		// PricingService，不受影响。
+		// PricingService，不受影响。Adobe 分档只在 platform=adobe 时套用。
 		if litellmPricing != nil && litellmPricing.TokenPricingAbsent {
 			litellmPricing = nil
 		}
@@ -2103,20 +2103,21 @@ func (s *BillingService) CalculateAudioCost(mode string, durationOrUnits float64
 	}
 }
 
-// CalculateImageCost 计算图片生成费用
-// model: 请求的模型名称（用于获取 LiteLLM 默认价格）
-// imageSize: 图片尺寸 "1K", "2K", "4K"
-// imageCount: 生成的图片数量
-// groupConfig: 分组配置的价格（可能为 nil，表示使用默认值）
-// rateMultiplier: 费率倍数
+// CalculateImageCost 计算图片生成费用。未传平台时不套 Adobe 分档，避免
+// gpt-image-* 等同名模型把 OpenAI 出图按 Firefly 档计费。
 func (s *BillingService) CalculateImageCost(model string, imageSize string, imageCount int, groupConfig *ImagePriceConfig, rateMultiplier float64) *CostBreakdown {
+	return s.CalculateImageCostWithPlatform(model, imageSize, imageCount, groupConfig, rateMultiplier, "")
+}
+
+// CalculateImageCostWithPlatform 与 CalculateImageCost 相同，但按账号/分组平台
+// 决定是否套 Adobe Firefly 兜底价。仅 platform=adobe 走 adobeImagePriceTierByModel。
+func (s *BillingService) CalculateImageCostWithPlatform(model string, imageSize string, imageCount int, groupConfig *ImagePriceConfig, rateMultiplier float64, platform string) *CostBreakdown {
 	if imageCount <= 0 {
 		return &CostBreakdown{}
 	}
 	imageSize = NormalizeImageBillingTierOrDefault(imageSize)
 
-	// 获取单价
-	unitPrice := s.getImageUnitPrice(model, imageSize, groupConfig)
+	unitPrice := s.getImageUnitPrice(model, imageSize, groupConfig, platform)
 
 	// 计算总费用
 	totalCost := unitPrice * float64(imageCount)
@@ -2164,7 +2165,7 @@ func (s *BillingService) CalculateVideoCost(model string, resolution string, vid
 }
 
 // getImageUnitPrice 获取图片单价
-func (s *BillingService) getImageUnitPrice(model string, imageSize string, groupConfig *ImagePriceConfig) float64 {
+func (s *BillingService) getImageUnitPrice(model string, imageSize string, groupConfig *ImagePriceConfig, platform string) float64 {
 	// 优先使用分组配置的价格
 	if groupConfig != nil {
 		switch imageSize {
@@ -2183,8 +2184,7 @@ func (s *BillingService) getImageUnitPrice(model string, imageSize string, group
 		}
 	}
 
-	// 回退到 LiteLLM 默认价格
-	return s.getDefaultImagePrice(model, imageSize)
+	return s.getDefaultImagePrice(model, imageSize, platform)
 }
 
 func (s *BillingService) getVideoUnitPrice(model string, resolution string, groupConfig *VideoPriceConfig) float64 {
@@ -2212,10 +2212,18 @@ func (s *BillingService) getVideoUnitPrice(model string, resolution string, grou
 	return s.getDefaultVideoPrice(model, resolution)
 }
 
-// getDefaultImagePrice 获取 LiteLLM 默认图片价格
-func (s *BillingService) getDefaultImagePrice(model string, imageSize string) float64 {
+// getDefaultImagePrice 获取 LiteLLM 默认图片价格。
+// Adobe 分档只在 platform=adobe 时生效：gpt-image-1 / gpt-image-2.5-flare 等
+// 同时是 OpenAI 官方出图名，合成路由也不按前缀猜平台。空平台与 openai/gemini/grok
+// 必须落到 LiteLLM output_cost_per_image，没有则用通用 $0.134。
+func (s *BillingService) getDefaultImagePrice(model string, imageSize string, platform string) float64 {
 	if price, ok := getDefaultGrokImagineImagePrice(model, imageSize); ok {
 		return price
+	}
+	if isAdobeImageBillingPlatform(platform) {
+		if price, ok := getDefaultAdobeImagePrice(model, imageSize); ok {
+			return price
+		}
 	}
 
 	basePrice := 0.0
@@ -2253,7 +2261,82 @@ func (s *BillingService) getDefaultVideoPrice(model string, resolution string) f
 	// Keep the historical model default as the fallback (interpreted as a per-second
 	// rate; today only Grok models reach video billing, so this path is a safety net),
 	// while letting group-level video prices override it independently from image prices.
-	return s.getDefaultImagePrice(model, ImageBillingSize2K)
+	return s.getDefaultImagePrice(model, ImageBillingSize2K, "")
+}
+
+// adobeImagePriceTiers 是 Adobe Firefly 直连的三档兜底价（[1K, 2K, 4K]）。
+//
+// 分档依据（USD/image，含 middleman 溢价）：
+//   - nano:  Google Gemini Flash 系（nano-banana*）；Google 官方 nano-banana ~$0.02–0.04
+//   - gpt-image: OpenAI 标准 gpt-image / 1.5 / 2；OpenAI 官方 gpt-image-1 ~$0.02(low)-$0.19(high)
+//   - premium: gpt-image-2.5 旗舰
+//   - third:   flux / imagen-4 / gpt-4o-image / runway；对齐各家官方 $0.04–$0.08 档
+//
+// 数字目标是「三档差异化，避免一价通吃」，而非精确 P/L；精确计费交给分组的
+// image_price_1k/2k/4k 覆盖。这里只是让「运维忘配价」时不会以 $0.134 大锅收.
+var adobeImagePriceTiers = map[string][3]float64{
+	"nano":      {0.02, 0.04, 0.08},
+	"gpt-image": {0.05, 0.08, 0.15},
+	"premium":   {0.10, 0.15, 0.25},
+	"third":     {0.08, 0.12, 0.20},
+}
+
+// adobeImagePriceTierByModel 把用户面模型名（billingModel = requestedModel，即
+// DefaultAdobeModelMapping 的 keys）映射到 adobeImagePriceTiers 的档位。
+//
+// 表内含 gpt-image-* 等与 OpenAI 官方出图同名的对外名。隔离轴是 platform=adobe，
+// 不是「OpenAI 一定走 token 计费」：未配 image_price_* 且渠道不是 token 时，
+// calculateOpenAIImageCost 仍会落到本函数。非 Adobe 平台不得查这张表。
+var adobeImagePriceTierByModel = map[string]string{
+	"nano-banana":            "nano",
+	"nano-banana-pro":        "nano",
+	"nano-banana2":           "nano",
+	"gpt-image":              "gpt-image",
+	"gpt-image-1":            "gpt-image",
+	"gpt-image-1-mini":       "gpt-image",
+	"gpt-image-1.5":          "gpt-image",
+	"gpt-image-2":            "gpt-image",
+	"gpt-image-2.5-flare":    "premium",
+	"gpt-image-2.5-prism":    "premium",
+	"gpt-image-2.5-sunburst": "premium",
+	"flux-pro":               "third",
+	"flux-ultra":             "third",
+	"imagen-4":               "third",
+	"imagen-4-fast":          "third",
+	"gpt-4o-image":           "third",
+	"runway-gen4-image":      "third",
+}
+
+func isAdobeImageBillingPlatform(platform string) bool {
+	return strings.EqualFold(strings.TrimSpace(platform), PlatformAdobe)
+}
+
+func imageBillingPlatform(account *Account) string {
+	if account == nil {
+		return ""
+	}
+	return account.Platform
+}
+
+// getDefaultAdobeImagePrice 是 Adobe Firefly 直连的兜底价。未命中返回 (0, false)——
+// 交给下游继续走 pricingService → hardcoded $0.134。调用方必须先用
+// isAdobeImageBillingPlatform 把门，本函数本身只按模型名查表。
+func getDefaultAdobeImagePrice(model string, imageSize string) (float64, bool) {
+	tier, ok := adobeImagePriceTierByModel[strings.ToLower(strings.TrimSpace(model))]
+	if !ok {
+		return 0, false
+	}
+	prices := adobeImagePriceTiers[tier]
+	switch NormalizeImageBillingTierOrDefault(imageSize) {
+	case ImageBillingSize1K:
+		return prices[0], true
+	case ImageBillingSize2K:
+		return prices[1], true
+	case ImageBillingSize4K:
+		return prices[2], true
+	default:
+		return prices[1], true
+	}
 }
 
 func getDefaultGrokImagineImagePrice(model string, imageSize string) (float64, bool) {

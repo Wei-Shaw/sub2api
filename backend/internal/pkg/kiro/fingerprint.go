@@ -17,7 +17,6 @@ import (
 
 type RuntimeFingerprint struct {
 	OIDCSDKVersion      string
-	RuntimeSDKVersion   string
 	StreamingSDKVersion string
 	OSType              string
 	OSVersion           string
@@ -36,17 +35,16 @@ var (
 	globalRuntimeFingerprintManagerOnce sync.Once
 
 	oidcSDKVersions      = []string{"3.980.0", "3.975.0", "3.972.0", "3.808.0", "3.738.0", "3.737.0", "3.736.0", "3.735.0"}
-	runtimeSDKVersions   = []string{"1.0.0"}
-	streamingSDKVersions = []string{"1.0.34"}
+	streamingSDKVersions = []string{"1.0.44", "1.0.39", "1.0.34"}
 	osTypes              = []string{"darwin", "win32"}
 	osVersions           = map[string][]string{
-		"darwin": {"24.6.0"},
-		"win32":  {"10.0.22631"},
+		"darwin": {"25.5.0", "25.0.0", "24.6.0"},
+		"win32":  {"10.0.26100", "10.0.22631"},
 	}
 	nodeVersions = []string{"22.22.0"}
-	kiroVersions = []string{
-		"0.11.132", "0.11.131", "0.11.130",
-	}
+	// kiroVersions 只放已验证的真实 Kiro app 发布号（当前唯一来源：/Applications/Kiro.app 1.0.437）。
+	// 追加历史或未来 GA 版本前先在真实客户端上抓 UA 核对，避免编造的版本号反被识别。
+	kiroVersions = []string{"1.0.437"}
 )
 
 func globalRuntimeFingerprints() *runtimeFingerprintManager {
@@ -95,7 +93,6 @@ func generateRuntimeFingerprint(accountKey, machineID string) *RuntimeFingerprin
 
 	return &RuntimeFingerprint{
 		OIDCSDKVersion:      oidcSDKVersions[rng.Intn(len(oidcSDKVersions))],
-		RuntimeSDKVersion:   runtimeSDKVersions[rng.Intn(len(runtimeSDKVersions))],
 		StreamingSDKVersion: streamingSDKVersions[rng.Intn(len(streamingSDKVersions))],
 		OSType:              osType,
 		OSVersion:           osVersionPool[rng.Intn(len(osVersionPool))],
@@ -200,7 +197,7 @@ var kiroIDEUserAgentVersion = func() string {
 	if v := strings.TrimSpace(os.Getenv("KIRO_IDE_VERSION")); v != "" {
 		return v
 	}
-	return "0.12.301"
+	return "1.0.437"
 }()
 
 // BuildKiroIDERuntimeUserAgent 构造 KRS endpoint 的 User-Agent，格式为

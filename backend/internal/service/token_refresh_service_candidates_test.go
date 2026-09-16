@@ -40,6 +40,12 @@ func (r *tokenRefreshCandidateRepo) ListOAuthRefreshCandidatePage(_ context.Cont
 			continue
 		}
 		refreshToken, _ := account.Credentials["refresh_token"].(string)
+		for _, platform := range options.CookieCredentialPlatforms {
+			if account.Platform == platform {
+				// cookie 类平台以 cookie 代替 refresh_token 参与候选过滤，与仓储 SQL 一致。
+				refreshToken, _ = account.Credentials["cookie"].(string)
+			}
+		}
 		inRetryCooldown := account.TempUnschedulableUntil != nil &&
 			account.TempUnschedulableUntil.After(now) &&
 			strings.HasPrefix(account.TempUnschedulableReason, "token refresh retry exhausted:")

@@ -327,6 +327,15 @@
         </div>
       </BaseDialog>
 
+      <ConfirmDialog
+        :show="confirmRequest !== null"
+        :title="confirmRequest?.title || ''"
+        :message="confirmRequest?.message || ''"
+        :danger="confirmRequest?.danger ?? false"
+        @confirm="acceptConfirm"
+        @cancel="confirmRequest = null"
+      />
+
       <TotpStepUpDialog :controller="pluginStepUp" />
     </div>
   </AppLayout>
@@ -343,6 +352,7 @@ import {
 import { useAppStore } from "@/stores";
 import AppLayout from "@/components/layout/AppLayout.vue";
 import BaseDialog from "@/components/common/BaseDialog.vue";
+import ConfirmDialog from "@/components/common/ConfirmDialog.vue";
 import Icon from "@/components/icons/Icon.vue";
 import TotpStepUpDialog from "@/components/auth/TotpStepUpDialog.vue";
 import {
@@ -377,6 +387,25 @@ const uiSession = ref<PluginUISession | null>(null);
 const pluginFrame = ref<HTMLIFrameElement | null>(null);
 const uiLoading = ref(false);
 const uiError = ref("");
+
+// 统一的二次确认请求：单个 ConfirmDialog 实例承载启用/停用/卸载三类确认
+interface ConfirmRequest {
+  title: string;
+  message: string;
+  danger: boolean;
+  action: () => Promise<void>;
+}
+const confirmRequest = ref<ConfirmRequest | null>(null);
+
+function requestConfirm(request: ConfirmRequest): void {
+  confirmRequest.value = request;
+}
+
+async function acceptConfirm(): Promise<void> {
+  const request = confirmRequest.value;
+  confirmRequest.value = null;
+  if (request) await request.action();
+}
 const iframeHeight = ref(640);
 const pluginFrameLoaded = ref(false);
 const pendingBridgeRequests = new Map<string, number>();
@@ -455,11 +484,22 @@ function setRollout(id: number, event: Event): void {
 }
 
 async function enablePlugin(plugin: PluginInstallation): Promise<void> {
-  let acceptUntested = false;
   if (!plugin.compatibility.tested) {
-    acceptUntested = window.confirm(t("admin.plugins.confirmUntested"));
-    if (!acceptUntested) return;
+    requestConfirm({
+      title: t("admin.plugins.enable"),
+      message: t("admin.plugins.confirmUntested"),
+      danger: true,
+      action: () => performEnable(plugin, true),
+    });
+    return;
   }
+  await performEnable(plugin, false);
+}
+
+async function performEnable(
+  plugin: PluginInstallation,
+  acceptUntested: boolean,
+): Promise<void> {
   busyID.value = plugin.id;
   try {
     await pluginStepUp.run(() =>
@@ -479,7 +519,15 @@ async function enablePlugin(plugin: PluginInstallation): Promise<void> {
 }
 
 async function disablePlugin(plugin: PluginInstallation): Promise<void> {
-  if (!window.confirm(t("admin.plugins.confirmDisable"))) return;
+  requestConfirm({
+    title: t("admin.plugins.disable"),
+    message: t("admin.plugins.confirmDisable"),
+    danger: true,
+    action: () => performDisable(plugin),
+  });
+}
+
+async function performDisable(plugin: PluginInstallation): Promise<void> {
   busyID.value = plugin.id;
   try {
     await pluginStepUp.run(() => adminAPI.plugins.disable(plugin.id));
@@ -493,7 +541,15 @@ async function disablePlugin(plugin: PluginInstallation): Promise<void> {
 }
 
 async function uninstallPlugin(plugin: PluginInstallation): Promise<void> {
-  if (!window.confirm(t("admin.plugins.confirmUninstall"))) return;
+  requestConfirm({
+    title: t("admin.plugins.uninstall"),
+    message: t("admin.plugins.confirmUninstall"),
+    danger: true,
+    action: () => performUninstall(plugin),
+  });
+}
+
+async function performUninstall(plugin: PluginInstallation): Promise<void> {
   busyID.value = plugin.id;
   try {
     await pluginStepUp.run(() => adminAPI.plugins.remove(plugin.id));
