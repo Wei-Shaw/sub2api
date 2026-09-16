@@ -19,7 +19,7 @@ type tempUnschedReasonPayload struct {
 	Platform         string  `json:"platform,omitempty"`
 	Window           string  `json:"window,omitempty"`
 	Scope            string  `json:"scope,omitempty"`
-	ThresholdPercent int     `json:"threshold_percent,omitempty"`
+	ThresholdPercent float64 `json:"threshold_percent,omitempty"`
 	UsedPercent      float64 `json:"used_percent,omitempty"`
 	UntilUnix        int64   `json:"until_unix,omitempty"`
 	TriggeredAtUnix  int64   `json:"triggered_at_unix,omitempty"`
@@ -30,7 +30,7 @@ type AccountSchedulingThresholdReasonInput struct {
 	Platform         string
 	Window           string
 	Scope            string
-	ThresholdPercent int
+	ThresholdPercent float64
 	UsedPercent      float64
 	Until            time.Time
 	Now              time.Time
@@ -147,7 +147,7 @@ func buildAccountSchedulingThresholdErrorMessage(input AccountSchedulingThreshol
 	}
 
 	return fmt.Sprintf(
-		"%s scheduling threshold reached for %s: %.1f%% used >= %d%%; paused until %s",
+		"%s scheduling threshold reached for %s: %.1f%% used >= %g%%; paused until %s",
 		platform,
 		target,
 		input.UsedPercent,

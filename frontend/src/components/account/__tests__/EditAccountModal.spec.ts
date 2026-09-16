@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { defineComponent } from 'vue'
-import { mount } from '@vue/test-utils'
+import { flushPromises, mount } from '@vue/test-utils'
 
 const { updateAccountMock, checkMixedChannelRiskMock, authIsSimpleMode } = vi.hoisted(() => ({
   updateAccountMock: vi.fn(),
@@ -1266,6 +1266,48 @@ describe('EditAccountModal', () => {
     expect(updateAccountMock.mock.calls[0]?.[1]?.credentials?.openai_capabilities).toEqual([
       'chat_completions'
     ])
+  })
+
+  it.each(['kimi', 'zhipu', 'minimax', 'opencode_go'] as const)('edits independent native quota percentages for %s', async (platform) => {
+    const account = buildAccount()
+    account.platform = platform
+    account.type = 'apikey'
+    account.credentials = { ...account.credentials, account_mode: platform === 'opencode_go' ? 'go' : 'coding', api_protocol: 'chat_completions' }
+    account.extra = { auto_pause_7d_threshold: 0.8, quota_weekly_limit: 25, custom_note: 'preserved' }
+    updateAccountMock.mockReset().mockResolvedValue(account)
+    checkMixedChannelRiskMock.mockResolvedValue({ has_risk: false })
+    const wrapper = mountModal(account)
+    expect(wrapper.find('[data-testid="account-scheduling-threshold-section"]').exists()).toBe(true)
+    expect((wrapper.get('[data-testid="auto-pause-7d-threshold"]').element as HTMLInputElement).value).toBe('80')
+    await wrapper.get('[data-testid="auto-pause-7d-threshold"]').setValue('90')
+    await wrapper.get('[data-testid="auto-pause-5h-disabled"]').trigger('click')
+    if (platform === 'opencode_go') await wrapper.get('[data-testid="auto-pause-monthly-threshold"]').setValue('75')
+    else expect(wrapper.find('[data-testid="auto-pause-monthly-threshold"]').exists()).toBe(false)
+    await wrapper.get('form#edit-account-form').trigger('submit.prevent')
+    await flushPromises()
+    expect(updateAccountMock).toHaveBeenCalledTimes(1)
+    expect(updateAccountMock.mock.calls[0][1].extra).toMatchObject({
+      auto_pause_7d_threshold: 0.9, auto_pause_5h_disabled: true, quota_weekly_limit: 25, custom_note: 'preserved'
+    })
+    if (platform === 'opencode_go') expect(updateAccountMock.mock.calls[0][1].extra.auto_pause_monthly_threshold).toBe(0.75)
+  })
+
+  it.each(['deepseek', 'zhipu', 'kimi', 'minimax', 'opencode_go'] as const)('does not invent subscription percentages for payg %s', (platform) => {
+    const account = buildAccount()
+    account.platform = platform
+    account.credentials = { ...account.credentials, account_mode: platform === 'opencode_go' ? 'zen' : 'payg' }
+    const wrapper = mountModal(account)
+    expect(wrapper.find('[data-testid="quota-window-settings"]').exists()).toBe(false)
+    expect(wrapper.find('[data-testid="quota-percent-unavailable"]').exists()).toBe(true)
+  })
+
+  it('rejects an out-of-range quota percentage without submitting', async () => {
+    const account = buildAccount()
+    updateAccountMock.mockReset()
+    const wrapper = mountModal(account)
+    await wrapper.get('[data-testid="auto-pause-7d-threshold"]').setValue('101')
+    await wrapper.get('form#edit-account-form').trigger('submit.prevent')
+    expect(updateAccountMock).not.toHaveBeenCalled()
   })
 
 	it('submits OpenAI quota auto-pause thresholds in extra', async () => {
