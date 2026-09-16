@@ -515,6 +515,10 @@ func logOpenAIWSModeInfo(format string, args ...any) {
 	logger.LegacyPrintf("service.openai_gateway", "[OpenAI WS Mode][openai_ws_mode=true] "+format, args...)
 }
 
+func logOpenAIWSModeWarn(format string, args ...any) {
+	logger.LegacyPrintf("service.openai_gateway", "[warn] [OpenAI WS Mode][openai_ws_mode=true] "+format, args...)
+}
+
 func isOpenAIWSModeDebugEnabled() bool {
 	return logger.L().Core().Enabled(zap.DebugLevel)
 }

@@ -112,7 +112,7 @@ func TestWSResponseCreate_ForcePriorityRewritesKnownTier(t *testing.T) {
 	svc := newOpenAIGatewayServiceWithSettings(t, settings)
 	account := &Account{Platform: PlatformOpenAI, Type: AccountTypeAPIKey}
 
-	for _, tier := range []string{"flex", "auto", "default", "scale", "fast", "priority"} {
+	for _, tier := range []string{"flex", "auto", "default", "scale", "fast", "priority", "ultrafast"} {
 		frame := []byte(`{"type":"response.create","model":"gpt-5.5","service_tier":"` + tier + `"}`)
 		updated, blocked, err := svc.applyOpenAIFastPolicyToWSResponseCreate(context.Background(), account, "gpt-5.5", frame)
 		require.NoError(t, err)
@@ -131,6 +131,24 @@ func TestWSResponseCreate_GroupForceInjectsMissingTier(t *testing.T) {
 	frame := []byte(`{"type":"response.create","model":"gpt-5.6-sol","input":[]}`)
 
 	updated, blocked, err := svc.applyOpenAIFastPolicyToWSResponseCreate(ctx, account, "gpt-5.6-sol", frame)
+	require.NoError(t, err)
+	require.Nil(t, blocked)
+	require.Equal(t, OpenAIFastTierPriority, gjson.GetBytes(updated, "service_tier").String())
+}
+
+func TestWSResponseCreate_ForcePriorityInjectsMissingTier(t *testing.T) {
+	settings := &OpenAIFastPolicySettings{
+		Rules: []OpenAIFastPolicyRule{{
+			ServiceTier: OpenAIFastTierMissing,
+			Action:      OpenAIFastPolicyActionForcePriority,
+			Scope:       BetaPolicyScopeAll,
+		}},
+	}
+	svc := newOpenAIGatewayServiceWithSettings(t, settings)
+	account := &Account{Platform: PlatformOpenAI, Type: AccountTypeOAuth}
+	frame := []byte(`{"type":"response.create","model":"gpt-5.5"}`)
+
+	updated, blocked, err := svc.applyOpenAIFastPolicyToWSResponseCreate(context.Background(), account, "gpt-5.5", frame)
 	require.NoError(t, err)
 	require.Nil(t, blocked)
 	require.Equal(t, OpenAIFastTierPriority, gjson.GetBytes(updated, "service_tier").String())

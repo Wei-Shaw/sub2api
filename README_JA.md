@@ -64,8 +64,8 @@
 </tr>
 
 <tr>
-<td width="180"><a href="https://apikey.fun/register?aff=SUB2API"><img src="assets/partners/logos/apikey-fun.png" alt="APIKEY.FUN" width="150"></a></td>
-<td>APIKEY.FUN のご支援に感謝します！<a href="https://apikey.fun/register?aff=SUB2API">APIKEY.FUN</a> は sub2api オープンソースプロジェクトのコアコントリビューターの一つであり、オープンで安定した、コストパフォーマンスに優れた AI API アクセスサービスの提供に取り組んでいます。プラットフォームは Claude、OpenAI、Gemini など人気モデルの API 中継サービスをサポートし、価格は公式料金のわずか 7% から。専用リンク <a href="https://apikey.fun/register?aff=SUB2API">APIKEY</a> から登録すると、すべてのチャージで永久 5% 割引をご利用いただけます。</td>
+<td width="180"><a href="https://apikey.fan/register?aff=SUB2API"><img src="assets/partners/logos/apikey-fun.png" alt="APIKEY.FUN" width="150"></a></td>
+<td>APIKEY.FUN のご支援に感謝します！<a href="https://apikey.fan/register?aff=SUB2API">APIKEY.FUN</a> は sub2api オープンソースプロジェクトのコアコントリビューターの一つであり、オープンで安定した、コストパフォーマンスに優れた AI API アクセスサービスの提供に取り組んでいます。プラットフォームは Claude、OpenAI、Gemini など人気モデルの API 中継サービスをサポートし、価格は公式料金のわずか 7% から。専用リンク <a href="https://apikey.fan/register?aff=SUB2API">APIKEY</a> から登録すると、すべてのチャージで永久 5% 割引をご利用いただけます。</td>
 </tr>
 
 <tr>
@@ -116,14 +116,6 @@
 <tr>
 <td width="180"><a href="https://www.proxy4free.com/?keyword=4yjqecpc"><img src="assets/partners/logos/proxy4free.png" alt="proxy4free" width="150"></a></td>
 <td>Proxy4Free のご支援に感謝します！Proxy4Free は開発者と AI アプリケーション向けのデータプロキシサービスプロバイダーで、住宅プロキシ、静的住宅プロキシ、ISP プロキシ、データセンタープロキシなど多様なプロキシソリューションを提供しており、Web Scraping、Browser Automation、AI Agent などのシナリオに適しています。グローバル IP リソース、安定した接続、柔軟な切り替えをサポートし、開発者のデータ収集成功率の向上と IP ブロックリスクの低減を支援します。<a href="https://www.proxy4free.com/?keyword=4yjqecpc">こちらのリンクから登録</a>して、より安定した効率的な自動化ワークフローを簡単に構築しましょう。
-</td>
-</tr>
-
-<tr>
-<td width="180"><a href="http://www.fastaitoken.com/register"><img src="assets/partners/logos/fastaitoken.jpg" alt="fastaitoken" width="150"></a></td>
-<td>🎉 FastAIToken のご支援に感謝します！<a href="http://www.fastaitoken.com/register">FastAIToken</a> は開発者向けの AI API アグリゲーションプラットフォームで、OpenAI、Claude、Gemini などの主要な大規模モデルに対応しています。チャージは 1:1（1 元 = 1 米ドル分の API クレジット）で、開発者がより低コスト・より手軽に世界トップクラスの大規模モデルサービスを利用できます。<br>
-
-🚀 プラットフォームでは多彩なチャネルを自由に選択できます：超低価格の 0.02x OpenAI 特典グループ（期間限定）、最低 0.25x の OpenAI グループ、0.7x Claude（95% 固定キャッシュ）、1.2x Claude Max チャネル。さらに、各グループの可用率・レイテンシ・稼働状況をリアルタイムで表示する公開ステータスページを提供し、透明で信頼できるサービスを実現。7×24 時間の有人テクニカルサポート（ボットではありません）により、開発者のニーズに迅速に対応します。
 </td>
 </tr>
 
@@ -181,6 +173,16 @@
 <tr>
 <td width="180"><a href="https://www.axisnow.io/"><img src="assets/partners/logos/axisnow.jpg" alt="AxisNow" width="150"></a></td>
 <td>AxisNow のご支援に感謝します！<a href="https://www.axisnow.io/">AxisNow</a> はウェブサイトと API を保護・高速化し、中国本土および世界中で快適なアクセス体験を実現します。クライアント SDK により、ネイティブ／モバイルアプリにも高速化・セキュリティ機能を拡張できます — <strong>自社構築・プライベートデプロイ CDN</strong>｜<strong>サブスクリプション型高防御 CDN</strong>｜<strong>自律制御で柔軟に組み合わせられる CDN ネットワーク</strong>。</td>
+</tr>
+
+<tr>
+<td width="180"><a href="https://pp.dog/register?aff=SUB2API"><img src="assets/partners/logos/ppdog.png" alt="PP.dog" width="150"></a></td>
+<td><a href="https://pp.dog/register?aff=SUB2API">PP.dog</a> は自社運用の大規模アカウントプールを持つソースレベルの API ゲートウェイで、下流の中継ステーションや高頻度開発者向けに API ゲートウェイリレーサービスを提供し、アカウントプールの自主構築にかかるすべての手間を省きます。✅ ソース直供：自社運用の大規模アカウントプール、中間マージンなし；🧧 コスト最強：総合レート倍率わずか 0.03x、コストは公式の 0.35% のみ；🚀 超高速体験：ファーストトークンレイテンシ 1 秒未満、公式ネイティブ API に匹敵するスムーズさ。<a href="https://www.pp.dog/register?aff=SUB2API">今すぐ PP.dog に接続</a></td>
+</tr>
+
+<tr>
+<td width="180"><a href="https://colaproxy.com/?utm_source=sub2api&utm_medium=sub2api&ref=sub2api"><img src="assets/partners/logos/cola-proxy.jpg" alt="ColaProxy" width="150"></a></td>
+<td>ColaProxy は、Web スクレイピング、自動化、マルチアカウント管理向けに構築された高品質な住宅プロキシを提供します。有効期限なしのトラフィックで無料トライアルが利用でき、料金は $0.3/GB から、無制限の同時接続とインテリジェントな IP ローテーションにより、よりスムーズで安定したプロキシ体験を実現します。割引コード COLA10 で 10% オフ、信頼性の高い住宅プロキシでプロジェクトを今すぐスケールしましょう。<a href="https://colaproxy.com/?utm_source=sub2api&utm_medium=sub2api&ref=sub2api">ColaProxy を始める</a></td>
 </tr>
 
 </table>

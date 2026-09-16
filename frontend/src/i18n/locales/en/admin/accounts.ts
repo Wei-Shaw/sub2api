@@ -3,6 +3,7 @@ export default {
       title: 'Account Management',
       description: 'Manage AI platform accounts and credentials',
       createAccount: 'Create Account',
+      add: 'Add',
       autoRefresh: 'Auto Refresh',
       enableAutoRefresh: 'Enable auto refresh',
       refreshInterval5s: '5 seconds',
@@ -123,6 +124,8 @@ export default {
         kimi: 'Kimi',
         zhipu: 'Zhipu GLM',
         deepseek: 'DeepSeek',
+        minimax: 'MiniMax',
+        opencode_go: 'OpenCode',
       },
       cnProviders: {
         accountMode: {
@@ -164,11 +167,29 @@ export default {
         balance: 'Balance --',
         window5h: '5h',
         windowWeekly: '7d',
+        windowMonthly: '30d',
         probe: 'Query',
         probeTooltip: 'Query the provider quota endpoint for 5-hour / weekly rolling window usage',
         balanceProbeTooltip: 'Query the provider balance endpoint for the account balance',
         balanceLow: 'Insufficient balance',
         noBalanceEndpoint: 'This platform has no balance query endpoint',
+      },
+      opencodeGo: {
+        accountMode: {
+          zen: 'Zen',
+          zenDesc: 'Pay-as-you-go gateway. Consumes account credits, billed per token.',
+          go: 'GO',
+          goDesc: 'Subscription gateway, rate-limited by 5-hour / weekly / monthly usage windows.',
+        },
+        protocolRules: {
+          title: 'Model protocol routing',
+          hint: 'In adaptive mode, each model is sent to a native upstream protocol. Use an exact ID or a trailing * glob (e.g. grok-*, qwen*). The first matching rule wins; unmatched models use Chat Completions.',
+          patternPlaceholder: 'grok-* or deepseek-v4-flash',
+          add: 'Add rule',
+          remove: 'Remove rule',
+          restoreDefaults: 'Restore defaults',
+          fallback: 'Unmatched models → Chat Completions (/v1/chat/completions)',
+        },
       },
       types: {
         oauth: 'OAuth',
@@ -578,6 +599,14 @@ export default {
       apiKeyRequired: 'API Key *',
       apiKeyPlaceholder: 'sk-ant-api03-...',
       apiKeyHint: 'Your Claude Console API Key',
+      upstreamRequestIdHeader: 'Upstream ID',
+      upstreamRequestIdHeaderPlaceholder: 'Leave empty to record nothing',
+      upstreamRequestIdHeaderHelp: {
+        intro: 'Name of the response header in which the direct upstream declares its request ID. The value is recorded in the "Upstream ID" column of the usage log; leave empty to record nothing.',
+        examplesTitle: 'Common values',
+        sub2apiNote: 'Matches the request ID column of its usage log',
+        official: '{platform} official API'
+      },
       // OpenAI specific hints
       openai: {
         baseUrlHint: 'Leave default for official OpenAI API',
@@ -596,16 +625,19 @@ export default {
           'Disabled by default. Enable to allow responses_websockets_v2 capability (still gated by global and account-type switches).',
         wsMode: 'WS mode',
         wsModeDesc:
-          'Only applies to the current OpenAI account type; account WS modes, including http_bridge, take effect only when the global gateway.openai_ws.mode_router_v2_enabled=true.',
+          'Applies only to the current OpenAI account type. Select Off to disable WS. Other modes use the selected connection method only when gateway.openai_ws.mode_router_v2_enabled=true; otherwise, they use the context pool.',
         wsModeOff: 'Off (off)',
         wsModeCtxPool: 'Context Pool (ctx_pool)',
         wsModePassthrough: 'Passthrough (passthrough)',
         wsModeHttpBridge: 'HTTP Bridge (http_bridge)',
         wsModeShared: 'Shared (shared)',
         wsModeDedicated: 'Dedicated (dedicated)',
-        wsModeConcurrencyHint:
-          'When WS mode is enabled, account concurrency becomes the WS connection pool limit for this account.',
-        wsModePassthroughHint: 'Passthrough mode does not use the WS connection pool.',
+        wsModeCtxPoolHint:
+          'The gateway gets and reuses upstream WS connections from a pool, with the pool limit determined by gateway configuration.',
+        wsModePassthroughHint:
+          'The gateway opens a separate upstream WS connection for each client session, without using a connection pool.',
+        wsModeHttpBridgeHint:
+          'The gateway converts client WS requests to upstream HTTP requests, then converts SSE streaming responses back into WS messages.',
         oauthResponsesWebsocketsV2: 'OAuth WebSocket Mode',
         oauthResponsesWebsocketsV2Desc:
           'Only applies to OpenAI OAuth. This account can use OpenAI WebSocket Mode only when enabled.',
@@ -622,6 +654,9 @@ export default {
         responsesModeForceChatCompletions: 'Force Chat Completions',
         responsesModeTextDisabledHint:
           'Not applicable when the Responses / Chat Completions endpoint is not enabled.',
+        imagesUrlToB64Json: 'Image result URL to base64',
+        imagesUrlToB64JsonDesc:
+          'Only applies to non-streaming Images responses of OpenAI API Key accounts. When an upstream image item has a url but no b64_json, the gateway downloads the url and fills b64_json with its base64 content (url is kept) for clients built on the official API; the response is returned unchanged if the download fails.',
         endpointCapabilities: 'Endpoint capabilities',
         endpointCapabilitiesDesc:
           'Used by account routing. The text endpoint follows the Responses API support setting above and is shown as Responses, Chat Completions, or auto mode; Embeddings independently controls /v1/embeddings.',
@@ -756,6 +791,8 @@ export default {
       modelRestriction: 'Model Restriction (Optional)',
       modelWhitelist: 'Model Whitelist',
       modelMapping: 'Model Mapping',
+      fromModel: 'Request model',
+      toModel: 'Target model',
       selectAllowedModels: 'Select allowed models. Leave empty to support all models.',
       mapRequestModels:
         'Map request models to actual models. Left is the requested model, right is the actual model sent to API.',
@@ -763,8 +800,6 @@ export default {
       supportsAllModels: '(supports all models)',
       requestModel: 'Request model',
       actualModel: 'Actual model',
-      fromModel: 'Source model',
-      toModel: 'Target model',
       addMapping: 'Add Mapping',
       mappingExists: 'Mapping for {model} already exists',
       wildcardOnlyAtEnd: 'Wildcard * can only be at the end',
@@ -780,7 +815,9 @@ export default {
       syncUpstreamModelsFailed: 'Failed to sync upstream models',
       syncUpstreamModelsError: 'Failed to sync upstream models: {message}',
       syncUpstreamModelsMetadataIncomplete:
-        'Model IDs were synced, but capability metadata is incomplete and was not updated.',
+        'Model IDs were synced, but no capability metadata could be updated.',
+      syncUpstreamModelsMetadataPartial:
+        'Some model capabilities were updated; remaining models are still incomplete.',
       clearAllModels: 'Clear all models',
       customModelName: 'Custom model name',
       enterCustomModelName: 'Enter custom model name',
@@ -850,6 +887,30 @@ export default {
       grokClientToolCache: {
         title: 'Client Tool Cache (May Change Automatic Tool Selection)',
         hint: 'For detected Grok Free OAuth accounts, this is enabled by default for client function tools such as Codex and Trae. Turn it off to opt out if the automatic tool-selection behavior is not acceptable.'
+      },
+      grokMediaEligibility: {
+        title: 'Media Generation Eligibility',
+        hint: 'Controls whether this Grok OAuth account may be selected for image and video generation.',
+        auto: 'Automatic detection',
+        enabled: 'Force enable',
+        disabled: 'Force disable',
+        current: 'Current decision:',
+        eligible: 'Eligible',
+        ineligible: 'Not eligible',
+        loading: 'Loading eligibility…',
+        loadFailed: 'Unable to load media eligibility',
+        autoHint: 'Automatic detection only clears the manual override; it does not trigger a media request.',
+        forceEnableWarning: 'Force enable bypasses automatic eligibility checks. Use only for accounts confirmed to support image/video generation.',
+        partialSave: 'Other account settings may have been saved, but media eligibility was not updated. Please retry.',
+        reasons: {
+          eligible: 'Paid entitlement confirmed',
+          billing_inconclusive: 'Billing information inconclusive',
+          billing_forbidden: 'Billing endpoint forbidden',
+          billing_free_tier: 'Free tier account',
+          billing_unobserved: 'Billing not observed yet',
+          override_enabled: 'Manually forced enabled',
+          override_disabled: 'Manually forced disabled'
+        }
       },
       autoPauseOnExpired: 'Auto Pause On Expired',
       autoPauseOnExpiredDesc: 'When enabled, the account will auto pause scheduling after it expires',
@@ -1620,7 +1681,9 @@ export default {
         kiroCredits: 'Credits',
         kiroDaysLeft: '{days}d left',
         kiroExpires: 'Expires',
-        kiroReset: 'Reset'
+        kiroReset: 'Reset',
+        estimatedTotalCost: 'Est. total ${cost}',
+        estimatedTotalCostTooltip: 'Estimated total cost at 100% utilization, based on current window cost and utilization'
       },
       openaiQuotaReset: {
         count: 'Credits',

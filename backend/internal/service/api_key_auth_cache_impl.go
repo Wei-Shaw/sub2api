@@ -14,7 +14,7 @@ import (
 	"github.com/dgraph-io/ristretto"
 )
 
-const apiKeyAuthSnapshotVersion = 23 // v23: merge of v22 Kiro cache/profit-control/pricing fields + upstream v22 free_openai_fast/max_reasoning_effort_over_limit fields
+const apiKeyAuthSnapshotVersion = 25 // v25: fork v23（Kiro/利润控制/计费字段）+ 上游 v24 的 group model_allowlist 与 codex_models_manifest_config
 
 type apiKeyAuthCacheConfig struct {
 	l1Size        int
@@ -428,7 +428,8 @@ func (s *APIKeyService) snapshotFromAPIKey(ctx context.Context, apiKey *APIKey) 
 			FreeOpenAIFast:                  groupForSnapshot.FreeOpenAIFast,
 			DefaultMappedModel:              groupForSnapshot.DefaultMappedModel,
 			MessagesDispatchModelConfig:     groupForSnapshot.MessagesDispatchModelConfig,
-			ModelsListConfig:                groupForSnapshot.ModelsListConfig,
+			ModelAllowlist:                  groupForSnapshot.ModelAllowlist,
+			CodexModelsManifestConfig:       groupForSnapshot.CodexModelsManifestConfig,
 			RPMLimit:                        groupForSnapshot.RPMLimit,
 			MaxReasoningEffort:              groupForSnapshot.MaxReasoningEffort,
 			MaxReasoningEffortOverLimit:     groupForSnapshot.MaxReasoningEffortOverLimit,
@@ -537,7 +538,8 @@ func (s *APIKeyService) snapshotToAPIKey(key string, snapshot *APIKeyAuthSnapsho
 			FreeOpenAIFast:                  snapshot.Group.FreeOpenAIFast,
 			DefaultMappedModel:              snapshot.Group.DefaultMappedModel,
 			MessagesDispatchModelConfig:     snapshot.Group.MessagesDispatchModelConfig,
-			ModelsListConfig:                snapshot.Group.ModelsListConfig,
+			ModelAllowlist:                  snapshot.Group.ModelAllowlist,
+			CodexModelsManifestConfig:       snapshot.Group.CodexModelsManifestConfig,
 			RPMLimit:                        snapshot.Group.RPMLimit,
 			MaxReasoningEffort:              snapshot.Group.MaxReasoningEffort,
 			MaxReasoningEffortOverLimit:     snapshot.Group.MaxReasoningEffortOverLimit,

@@ -230,9 +230,31 @@ func newResolverWithPlatformChannel(t *testing.T, platform string, pricing []Cha
 			return map[int64]string{groupID: platform}, nil
 		},
 	}
-	cs := NewChannelService(repo, nil, nil, nil)
-	bs := NewBillingService(nil, nil)
+	cs := NewChannelService(repo, nil, nil, nil, nil)
+	bs := newTestBillingServiceForResolver()
 	return NewModelPricingResolver(cs, bs)
+}
+
+// newResolverWithRealPricingTables 与 newResolverWithPlatformChannel 相同，但用
+// 真实的 BillingService（加载 LiteLLM 价格表），供断言 PricingSourceLiteLLM 的用例使用。
+func newResolverWithRealPricingTables(t *testing.T, platform string, pricing []ChannelModelPricing) *ModelPricingResolver {
+	t.Helper()
+	const groupID = 100
+	repo := &mockChannelRepository{
+		listAllFn: func(_ context.Context) ([]Channel, error) {
+			return []Channel{{
+				ID:           1,
+				Name:         "test-channel",
+				Status:       StatusActive,
+				GroupIDs:     []int64{groupID},
+				ModelPricing: pricing,
+			}}, nil
+		},
+		getGroupPlatformsFn: func(_ context.Context, _ []int64) (map[int64]string, error) {
+			return map[int64]string{groupID: platform}, nil
+		},
+	}
+	return NewModelPricingResolver(NewChannelService(repo, nil, nil, nil, nil), NewBillingService(nil, nil))
 }
 
 // helper: creates a resolver wired to a ChannelService that returns the given
@@ -275,7 +297,7 @@ func TestResolve_KiroGPT56UsesChannelPricingBeforeDefaultOpenAIPricing(t *testin
 }
 
 func TestResolve_KiroGPT56FallsBackToDefaultOpenAIPricingWhenNoChannelPrice(t *testing.T) {
-	r := newResolverWithPlatformChannel(t, PlatformKiro, nil)
+	r := newResolverWithRealPricingTables(t, PlatformKiro, nil)
 
 	resolved := r.Resolve(context.Background(), PricingInput{
 		Model:   "gpt-5.6-luna",
@@ -616,7 +638,7 @@ func TestResolve_WithChannelOverride_CacheError(t *testing.T) {
 			return nil, errors.New("database unavailable")
 		},
 	}
-	cs := NewChannelService(repo, nil, nil, nil)
+	cs := NewChannelService(repo, nil, nil, nil, nil)
 	bs := newTestBillingServiceForResolver()
 	r := NewModelPricingResolver(cs, bs)
 

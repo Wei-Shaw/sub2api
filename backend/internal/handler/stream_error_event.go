@@ -33,10 +33,13 @@ type responsesFailedBody struct {
 }
 
 // responsesFailedEvent 是写入 SSE data 行的顶层结构。
-// 故意不带 sequence_number：spec 标记可选，且本函数被调用时无法可靠拿到 last seq。
+// SequenceNumber 不带 omitempty：grok-build 等 Rust serde 客户端把它当必填字段，
+// 缺失即 `missing field 'sequence_number'`。拿不到上一帧序号时写 0——这是终止事件，
+// 后面不会再续流。
 type responsesFailedEvent struct {
-	Type     string              `json:"type"`
-	Response responsesFailedBody `json:"response"`
+	Type           string              `json:"type"`
+	SequenceNumber int                 `json:"sequence_number"`
+	Response       responsesFailedBody `json:"response"`
 }
 
 // writeResponsesFailedSSE emits a `response.failed` SSE event in the OpenAI
@@ -49,14 +52,13 @@ type responsesFailedEvent struct {
 // 而抛出 "stream closed before response.completed"。
 //
 // 字段集对齐 apicompat.makeResponsesCompletedEvent：id/object/model/status/output/error。
-// 故意不写 sequence_number：本函数被调用时无法可靠拿到当前流的 last sequence，
-// 而 OpenAI spec 将 sequence_number 设为可选；省略避免破坏单调性约束。
+// sequence_number 始终写出（未知时为 0）：OpenAI spec 标可选，但 grok-build 当必填。
 //
 // 返回 true 表示已尝试 SSE 写出（不论 Write 是否成功，caller 都应直接 return）。
 // 返回 false 表示 writer 不支持 Flusher，无法以 SSE 形式回报错误；
 // 此时 caller 也无法回退到 JSON（HTTP 200 已固化），通常意味着连接已经损坏，
 // 应当让请求处理函数 return，由上层关闭连接。
-func writeResponsesFailedSSE(c *gin.Context, errType, message string) bool {
+func writeResponsesFailedSSE(c *gin.Context, errType, code, message string) bool {
 	flusher, ok := c.Writer.(http.Flusher)
 	if !ok {
 		return false
@@ -72,7 +74,7 @@ func writeResponsesFailedSSE(c *gin.Context, errType, message string) bool {
 			Status:    "failed",
 			Output:    []any{},
 			Error: responsesFailedError{
-				Code:    mapResponsesErrorCode(errType),
+				Code:    mapResponsesErrorCode(errType, code),
 				Message: message,
 			},
 		},
@@ -155,7 +157,10 @@ func requestModel(c *gin.Context) string {
 
 // mapResponsesErrorCode 把内部 errType 映射为 Responses 协议常见的 error.code。
 // 无明确映射时原样返回，保证至少可读。
-func mapResponsesErrorCode(errType string) string {
+func mapResponsesErrorCode(errType, code string) string {
+	if code != "" {
+		return code
+	}
 	switch errType {
 	case "rate_limit_error":
 		return "rate_limit_exceeded"
