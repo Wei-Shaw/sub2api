@@ -26,6 +26,11 @@ func isAdobeRelayAccount(account *Account) bool {
 
 // shouldSkipAdobeNativeAccount 在本次请求已撞上内容安全拒绝后，禁止再打
 // Firefly Cookie 号。中转号不受影响。
+//
+// kiro 上游写了这个判定与配套用例，但还没有在 failover 路径上接线（全仓零调用方）。
+// 保留原样等其接线，仅屏蔽 unused；若上游长期不接，下次同步时可连同用例一起删。
+//
+//nolint:unused // kiro 上游预留，尚未接线
 func shouldSkipAdobeNativeAccount(skipNative bool, account *Account) bool {
 	return skipNative && !isAdobeRelayAccount(account)
 }

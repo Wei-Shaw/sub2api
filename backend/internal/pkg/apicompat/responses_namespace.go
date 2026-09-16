@@ -222,10 +222,6 @@ func isNamespaceQualifiedCallType(typ string) bool {
 	}
 }
 
-func rewriteNamespaceQualifiedCall(item map[string]any, names map[string]ResponsesNamespaceName) bool {
-	return rewriteNamespaceCall(item, names, nil)
-}
-
 func rewriteNamespaceCall(item map[string]any, names map[string]ResponsesNamespaceName, bareNames map[string]string) bool {
 	namespace := strings.TrimSpace(stringValue(item["namespace"]))
 	name := strings.TrimSpace(stringValue(item["name"]))
