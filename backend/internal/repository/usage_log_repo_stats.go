@@ -387,6 +387,88 @@ func (r *usageLogRepository) GetAccountWindowStatsBatch(ctx context.Context, acc
 	return result, nil
 }
 
+// GetAccountPerformanceStatsBatch aggregates recorded text performance without
+// excluding media requests from request_count/last_request_at. media_type was
+// removed in migration 090; use the persisted media counters and endpoint paths.
+func (r *usageLogRepository) GetAccountPerformanceStatsBatch(ctx context.Context, accountIDs []int64, startTime, endTime time.Time) (map[int64]*service.AccountPerformanceStats, error) {
+	result := make(map[int64]*service.AccountPerformanceStats, len(accountIDs))
+	if len(accountIDs) == 0 {
+		return result, nil
+	}
+
+	query := `
+		WITH samples AS (
+			SELECT account_id, created_at, first_token_ms, duration_ms, output_tokens,
+				cache_read_tokens,
+				input_tokens::bigint + cache_creation_tokens::bigint + cache_read_tokens::bigint AS input_total,
+				(
+					COALESCE(image_count, 0) = 0 AND COALESCE(video_count, 0) = 0
+					AND COALESCE(image_output_tokens, 0) = 0
+					AND NOT COALESCE(native_compaction_v2, FALSE)
+					AND COALESCE(request_type, 0) NOT IN (4, 5)
+					AND LOWER(COALESCE(billing_mode, '')) NOT IN ('image', 'video', 'audio')
+					AND LOWER(COALESCE(inbound_endpoint, '')) !~ '/(images|videos|audio|realtime|live)(/|$)|/responses/compact(/|$)|bidigeneratecontent'
+					AND LOWER(COALESCE(upstream_endpoint, '')) !~ '/(images|videos|audio|realtime|live)(/|$)|/responses/compact(/|$)|bidigeneratecontent'
+					AND input_tokens >= 0 AND output_tokens >= 0
+					AND cache_creation_tokens >= 0 AND cache_read_tokens >= 0
+				) AS text_eligible,
+				CASE
+					WHEN request_type IN (2, 3) THEN TRUE
+					WHEN request_type = 1 THEN FALSE
+					ELSE COALESCE(stream, FALSE) OR COALESCE(openai_ws_mode, FALSE)
+				END AS streaming
+			FROM usage_logs
+			WHERE account_id = ANY($1) AND created_at >= $2 AND created_at < $3
+		), eligible AS (
+			SELECT *,
+				text_eligible AND streaming AND output_tokens > 0
+					AND first_token_ms >= 0 AND duration_ms > 0
+					AND duration_ms >= first_token_ms AS ttft_eligible,
+				text_eligible AND streaming AND output_tokens > 0
+					AND first_token_ms >= 0 AND duration_ms > first_token_ms AS tps_eligible,
+				text_eligible AND input_total > 0 AS cache_eligible
+			FROM samples
+		)
+		SELECT account_id, COUNT(*),
+			AVG(first_token_ms) FILTER (WHERE ttft_eligible),
+			(SUM(output_tokens::double precision) FILTER (WHERE tps_eligible)) * 1000
+				/ NULLIF(SUM(duration_ms::double precision - first_token_ms) FILTER (WHERE tps_eligible), 0),
+			(SUM(cache_read_tokens::double precision) FILTER (WHERE cache_eligible))
+				/ NULLIF(SUM(input_total::double precision) FILTER (WHERE cache_eligible), 0),
+			COUNT(*) FILTER (WHERE ttft_eligible),
+			COUNT(*) FILTER (WHERE tps_eligible),
+			COUNT(*) FILTER (WHERE cache_eligible),
+			MAX(created_at)
+		FROM eligible
+		GROUP BY account_id
+	`
+	rows, err := r.sql.QueryContext(ctx, query, pq.Array(accountIDs), startTime, endTime)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+	for rows.Next() {
+		var accountID int64
+		stats := &service.AccountPerformanceStats{}
+		if err := rows.Scan(
+			&accountID, &stats.RequestCount, &stats.TTFTMs, &stats.TPS, &stats.CacheRate,
+			&stats.TTFTSamples, &stats.TPSSamples, &stats.CacheSamples, &stats.LastRequestAt,
+		); err != nil {
+			return nil, err
+		}
+		result[accountID] = stats
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	for _, accountID := range accountIDs {
+		if result[accountID] == nil {
+			result[accountID] = &service.AccountPerformanceStats{}
+		}
+	}
+	return result, nil
+}
+
 // GetGeminiUsageTotalsBatch 批量聚合 Gemini 账号在窗口内的 Pro/Flash 请求与用量。
 // 模型分类规则与 service.geminiModelClassFromName 一致：model 包含 flash/lite 视为 flash，其余视为 pro。
 func (r *usageLogRepository) GetGeminiUsageTotalsBatch(ctx context.Context, accountIDs []int64, startTime, endTime time.Time) (map[int64]service.GeminiUsageTotals, error) {
