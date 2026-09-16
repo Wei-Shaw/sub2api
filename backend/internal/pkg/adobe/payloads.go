@@ -63,6 +63,17 @@ func isGPTImage25Version(modelVersion string) bool {
 // seedNow 生成提交用的随机种子（复刻上游前端的取值方式）。
 func seedNow() int { return int(timeNow().Unix() % 999999) }
 
+// SeedNow 是未显式指定 ImagePayloadOptions.Seed 时使用的 Firefly 风格种子。
+// 同秒并发出图应传 SeedNow()+i，避免撞种。
+func SeedNow() int { return seedNow() }
+
+func payloadSeed(opts ImagePayloadOptions) int {
+	if opts.Seed != nil {
+		return *opts.Seed
+	}
+	return seedNow()
+}
+
 // ImagePayloadOptions 是构造图像提交体所需的输入。
 type ImagePayloadOptions struct {
 	Prompt               string
@@ -89,6 +100,8 @@ type ImagePayloadOptions struct {
 	// Background 是 OpenAI 的 background 参数（transparent / opaque / auto）。
 	// gpt-image 只把非 auto 的 background 塞进 modelSpecificPayload。
 	Background string
+	// Seed 写入 payload 的 seeds[0]。未设时用 SeedNow()。
+	Seed *int
 }
 
 // BuildImagePayloadCandidates 构造 /v2/3p-images/generate-async 的请求体候选列表。
@@ -145,7 +158,7 @@ func buildGPTImage25Payloads(opts ImagePayloadOptions) ([]map[string]any, error)
 		"modelVersion":         opts.UpstreamModelVersion,
 		"n":                    1,
 		"prompt":               opts.Prompt,
-		"seeds":                []int{seedNow()},
+		"seeds":                []int{payloadSeed(opts)},
 		"output":               map[string]any{"storeInputs": true},
 		"referenceBlobs":       []any{},
 		"generationMetadata":   imageGenerationMetadata(opts),
@@ -183,7 +196,7 @@ func buildSizeEnumPayloads(opts ImagePayloadOptions) ([]map[string]any, error) {
 		"modelVersion":       opts.UpstreamModelVersion,
 		"n":                  1,
 		"prompt":             opts.Prompt,
-		"seeds":              []int{seedNow()},
+		"seeds":              []int{payloadSeed(opts)},
 		"output":             map[string]any{"storeInputs": true},
 		"referenceBlobs":     []any{},
 		"generationMetadata": imageGenerationMetadata(opts),
@@ -219,7 +232,7 @@ func buildNanoBananaPayloads(opts ImagePayloadOptions, normalizedRatio string) [
 		"n":                    1,
 		"prompt":               opts.Prompt,
 		"size":                 pixels,
-		"seeds":                []int{seedNow()},
+		"seeds":                []int{payloadSeed(opts)},
 		"groundSearch":         false,
 		"caiClaimVersion":      2,
 		"output":               map[string]any{"storeInputs": true},

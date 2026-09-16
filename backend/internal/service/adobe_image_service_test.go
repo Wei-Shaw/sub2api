@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"io"
 	"net/http"
+	"sync"
 	"testing"
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/adobe"
@@ -17,11 +18,14 @@ import (
 
 // adobeFakeTransport 按调用序号返回预置响应，并记录收到的请求。
 type adobeFakeTransport struct {
+	mu      sync.Mutex
 	handler func(req *adobe.Request, index int) (*adobe.Response, error)
 	calls   []*adobe.Request
 }
 
 func (t *adobeFakeTransport) Do(_ context.Context, req *adobe.Request) (*adobe.Response, error) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
 	index := len(t.calls)
 	t.calls = append(t.calls, req)
 	return t.handler(req, index)
@@ -37,11 +41,11 @@ func adobeJSONResponse(t *testing.T, status int, body any, headers map[string]st
 	return &adobe.Response{StatusCode: status, Headers: headers, Body: raw}
 }
 
-// adobeSubmitPollDownload 模拟一次成功的「提交 → 轮询 → 下载」。
+// adobeSubmitPollDownload 模拟成功的「提交 → 轮询 → 下载」，同一 Transport 可服务多次 fan-out。
 func adobeSubmitPollDownload(t *testing.T, api *adobeFakeTransport, imageBytes []byte) *adobe.Client {
 	t.Helper()
-	api.handler = func(_ *adobe.Request, index int) (*adobe.Response, error) {
-		if index == 0 {
+	api.handler = func(req *adobe.Request, _ int) (*adobe.Response, error) {
+		if req.URL == adobe.ImageSubmitURL {
 			return adobeJSONResponse(t, 200, map[string]any{},
 				map[string]string{"x-override-status-link": "https://firefly-3p.ff.adobe.io/jobs/x"}), nil
 		}
@@ -54,6 +58,22 @@ func adobeSubmitPollDownload(t *testing.T, api *adobeFakeTransport, imageBytes [
 		return &adobe.Response{StatusCode: 200, Headers: map[string]string{}, Body: imageBytes}, nil
 	}}
 	return adobe.NewClient(adobe.ClientConfig{Transport: api, DownloadTransport: download})
+}
+
+func adobeSubmitBodies(t *testing.T, api *adobeFakeTransport) []map[string]any {
+	t.Helper()
+	api.mu.Lock()
+	defer api.mu.Unlock()
+	var bodies []map[string]any
+	for _, req := range api.calls {
+		if req.URL != adobe.ImageSubmitURL {
+			continue
+		}
+		var submitted map[string]any
+		require.NoError(t, json.Unmarshal(req.Body, &submitted))
+		bodies = append(bodies, submitted)
+	}
+	return bodies
 }
 
 func newAdobeTestService(t *testing.T, client *adobe.Client, resolve ImageStorageResolver) *AdobeImageService {
@@ -380,7 +400,107 @@ func (*adobeFailingStorage) Save(context.Context, string, string, []byte) (strin
 	return "", http.ErrHandlerTimeout
 }
 
-func TestAdobeImageServiceRejectsMultipleImages(t *testing.T) {
+func TestAdobeImageServiceFansOutN(t *testing.T) {
+	api := &adobeFakeTransport{}
+	client := adobeSubmitPollDownload(t, api, []byte("PNGDATA"))
+	svc := newAdobeTestService(t, client, nil)
+
+	result, err := svc.Generate(context.Background(), adobeTestAccount(), "tok", &OpenAIImagesRequest{
+		Model: "gpt-image-2", Prompt: "x", Size: "1024x1024", N: 2,
+	})
+	require.NoError(t, err)
+	require.Equal(t, 2, result.Forward.ImageCount)
+
+	var payload struct {
+		Data []struct {
+			B64JSON string `json:"b64_json"`
+		} `json:"data"`
+	}
+	require.NoError(t, json.Unmarshal(result.Body, &payload))
+	require.Len(t, payload.Data, 2)
+	for _, item := range payload.Data {
+		decoded, err := base64.StdEncoding.DecodeString(item.B64JSON)
+		require.NoError(t, err)
+		require.Equal(t, []byte("PNGDATA"), decoded)
+	}
+
+	submitted := adobeSubmitBodies(t, api)
+	require.Len(t, submitted, 2)
+	seeds := make([]int, 0, 2)
+	for _, body := range submitted {
+		require.Equal(t, float64(1), body["n"])
+		rawSeeds, ok := body["seeds"].([]any)
+		require.True(t, ok)
+		require.Len(t, rawSeeds, 1)
+		seeds = append(seeds, int(rawSeeds[0].(float64)))
+	}
+	require.NotEqual(t, seeds[0], seeds[1])
+	delta := seeds[0] - seeds[1]
+	if delta < 0 {
+		delta = -delta
+	}
+	require.Equal(t, 1, delta)
+}
+
+func TestAdobeImageServiceTreatsNonPositiveNAsOne(t *testing.T) {
+	api := &adobeFakeTransport{}
+	client := adobeSubmitPollDownload(t, api, []byte("PNGDATA"))
+	svc := newAdobeTestService(t, client, nil)
+
+	result, err := svc.Generate(context.Background(), adobeTestAccount(), "tok", &OpenAIImagesRequest{
+		Model: "gpt-image-2", Prompt: "x", Size: "1024x1024", N: 0,
+	})
+	require.NoError(t, err)
+	require.Equal(t, 1, result.Forward.ImageCount)
+	require.Len(t, adobeSubmitBodies(t, api), 1)
+}
+
+func TestAdobeImageServiceFansOutNSharesUploadedSource(t *testing.T) {
+	var uploads int
+	api := &adobeFakeTransport{}
+	api.handler = func(req *adobe.Request, _ int) (*adobe.Response, error) {
+		switch req.URL {
+		case adobe.ImageUploadURL:
+			uploads++
+			require.Equal(t, []byte("SRC"), req.Body)
+			return adobeJSONResponse(t, 200, map[string]any{
+				"images": []any{map[string]any{"id": "img-1"}},
+			}, nil), nil
+		case adobe.ImageSubmitURL:
+			return adobeJSONResponse(t, 200, map[string]any{},
+				map[string]string{"x-override-status-link": "https://firefly-3p.ff.adobe.io/jobs/x"}), nil
+		default:
+			return adobeJSONResponse(t, 200, map[string]any{
+				"outputs": []any{map[string]any{"image": map[string]any{"presignedUrl": "https://cdn/y.png"}}},
+			}, nil), nil
+		}
+	}
+	download := &adobeFakeTransport{handler: func(*adobe.Request, int) (*adobe.Response, error) {
+		return &adobe.Response{StatusCode: 200, Headers: map[string]string{}, Body: []byte("Y")}, nil
+	}}
+	client := adobe.NewClient(adobe.ClientConfig{Transport: api, DownloadTransport: download})
+	svc := newAdobeTestService(t, client, nil)
+
+	result, err := svc.Generate(context.Background(), adobeTestAccount(), "tok", &OpenAIImagesRequest{
+		Model:    "gpt-image-2",
+		Prompt:   "edit",
+		Size:     "1024x1024",
+		N:        2,
+		Endpoint: openAIImagesEditsEndpoint,
+		Uploads:  []OpenAIImagesUpload{{Data: []byte("SRC"), ContentType: "image/png"}},
+	})
+	require.NoError(t, err)
+	require.Equal(t, 2, result.Forward.ImageCount)
+	require.Equal(t, 1, uploads)
+
+	submitted := adobeSubmitBodies(t, api)
+	require.Len(t, submitted, 2)
+	for _, body := range submitted {
+		require.Equal(t, []any{map[string]any{"id": "img-1", "usage": "subject"}}, body["referenceBlobs"])
+	}
+}
+
+func TestAdobeImageServiceRejectsNAboveMax(t *testing.T) {
 	api := &adobeFakeTransport{handler: func(*adobe.Request, int) (*adobe.Response, error) {
 		t.Fatal("不应发起上游请求")
 		return nil, nil
@@ -389,11 +509,51 @@ func TestAdobeImageServiceRejectsMultipleImages(t *testing.T) {
 	svc := newAdobeTestService(t, client, nil)
 
 	_, err := svc.Generate(context.Background(), adobeTestAccount(), "tok", &OpenAIImagesRequest{
-		Model: "gpt-image-2", Prompt: "x", N: 2,
+		Model: "gpt-image-2", Prompt: "x", N: 11,
 	})
-	require.ErrorContains(t, err, "one image per request")
-	// 参数错误换号也无用。
+	require.ErrorContains(t, err, "n must be between 1 and 10")
 	require.Equal(t, NextAccountStop, classifyAdobeError(err).Failover.NextAccountAction)
+}
+
+func TestAdobeImageServiceRejectsWebPOutputFormat(t *testing.T) {
+	api := &adobeFakeTransport{handler: func(*adobe.Request, int) (*adobe.Response, error) {
+		t.Fatal("不应发起上游请求")
+		return nil, nil
+	}}
+	client := adobe.NewClient(adobe.ClientConfig{Transport: api, DownloadTransport: api})
+	svc := newAdobeTestService(t, client, nil)
+
+	for _, format := range []string{"webp", "WEBP"} {
+		_, err := svc.Generate(context.Background(), adobeTestAccount(), "tok", &OpenAIImagesRequest{
+			Model: "gpt-image-2", Prompt: "x", N: 1, OutputFormat: format,
+		})
+		require.ErrorContains(t, err, "output_format=")
+		require.Equal(t, NextAccountStop, classifyAdobeError(err).Failover.NextAccountAction)
+	}
+}
+
+func TestAdobeImageServiceRejectsTransparentJPEG(t *testing.T) {
+	api := &adobeFakeTransport{handler: func(*adobe.Request, int) (*adobe.Response, error) {
+		t.Fatal("不应发起上游请求")
+		return nil, nil
+	}}
+	client := adobe.NewClient(adobe.ClientConfig{Transport: api, DownloadTransport: api})
+	svc := newAdobeTestService(t, client, nil)
+
+	for _, tc := range []struct {
+		background string
+		format     string
+	}{
+		{background: "transparent", format: "jpeg"},
+		{background: "TRANSPARENT", format: "jpg"},
+		{background: " Transparent ", format: "JPEG"},
+	} {
+		_, err := svc.Generate(context.Background(), adobeTestAccount(), "tok", &OpenAIImagesRequest{
+			Model: "gpt-image-2", Prompt: "x", N: 1, Background: tc.background, OutputFormat: tc.format,
+		})
+		require.ErrorContains(t, err, "background=transparent")
+		require.Equal(t, NextAccountStop, classifyAdobeError(err).Failover.NextAccountAction)
+	}
 }
 
 // background 是 Step 1 里生产实测过的字段，必须真的透传到上游 payload。

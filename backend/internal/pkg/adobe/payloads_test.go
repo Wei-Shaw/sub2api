@@ -669,3 +669,38 @@ func TestBuildImagePayloadCandidatesSizeEnumRequiresPixels(t *testing.T) {
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "SizePixels")
 }
+
+func TestBuildImagePayloadCandidatesUsesExplicitSeed(t *testing.T) {
+	seed := 4242
+	tests := []ImagePayloadOptions{
+		{
+			Prompt:               "x",
+			UpstreamModelID:      "gpt-image",
+			UpstreamModelVersion: "2",
+			PayloadKind:          PayloadKindGPTImage25,
+			SizePixels:           Size{Width: 1024, Height: 1024},
+			Seed:                 &seed,
+		},
+		{
+			Prompt:               "x",
+			UpstreamModelID:      "flux",
+			UpstreamModelVersion: "fluxPro",
+			PayloadKind:          PayloadKindSizeEnum,
+			SizePixels:           Size{1024, 768},
+			Seed:                 &seed,
+		},
+		{
+			Prompt:               "x",
+			UpstreamModelID:      "gemini-flash",
+			UpstreamModelVersion: "nano-banana-2",
+			PayloadKind:          PayloadKindNanoBanana,
+			SizePixels:           Size{1024, 1024},
+			Seed:                 &seed,
+		},
+	}
+	for _, opts := range tests {
+		candidates, err := BuildImagePayloadCandidates(opts)
+		require.NoError(t, err, "kind=%v", opts.PayloadKind)
+		require.Equal(t, []int{seed}, candidates[0]["seeds"], "kind=%v", opts.PayloadKind)
+	}
+}

@@ -12,6 +12,7 @@ import (
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/adobe"
 	"github.com/google/uuid"
+	"golang.org/x/sync/errgroup"
 )
 
 // AdobeImageService 把一次 OpenAI 形状的出图请求翻译成 Adobe Firefly 直连调用，
@@ -111,14 +112,12 @@ func (s *AdobeImageService) GenerateCall(
 	if req == nil {
 		return nil, adobe.NewRequestError("images request is required")
 	}
-	// Adobe 单次只出一张。静默只返回一张会让客户端以为 n 生效了，
-	// 明确报错比让用户对着账单猜好。
-	if req.N > 1 {
-		return nil, adobe.NewRequestError(
-			fmt.Sprintf("adobe channel generates one image per request, got n=%d", req.N))
-	}
 	if strings.TrimSpace(token) == "" {
 		return nil, adobe.NewAuthError("adobe access token is empty", http.StatusUnauthorized)
+	}
+	n, outputFormat, err := validateAdobeImageParams(req)
+	if err != nil {
+		return nil, err
 	}
 
 	requestedModel := strings.TrimSpace(req.Model)
@@ -143,32 +142,28 @@ func (s *AdobeImageService) GenerateCall(
 
 	upstreamCtx, cancelUpstream := context.WithTimeout(context.WithoutCancel(ctx), adobeImageDetachedTimeout)
 	defer cancelUpstream()
-	generated, err := client.GenerateImage(upstreamCtx, adobe.GenerateImageInput{
-		Token: token,
-		Options: adobe.ImagePayloadOptions{
-			Prompt:               req.Prompt,
-			AspectRatio:          conf.AspectRatio,
-			OutputResolution:     conf.OutputResolution,
-			UpstreamModelID:      conf.UpstreamModelID,
-			UpstreamModelVersion: conf.UpstreamModelVersion,
-			PayloadKind:          conf.PayloadKind,
-			SizePixels:           conf.SizePixels,
-			QualityLevel:         req.Quality,
-			SourceImageIDs:       sourceImageIDs,
-			Edit:                 req.IsEdits(),
-			Background:           req.Background,
-		},
-	})
+	images, err := generateAdobeImages(upstreamCtx, client, token, adobe.ImagePayloadOptions{
+		Prompt:               req.Prompt,
+		AspectRatio:          conf.AspectRatio,
+		OutputResolution:     conf.OutputResolution,
+		UpstreamModelID:      conf.UpstreamModelID,
+		UpstreamModelVersion: conf.UpstreamModelVersion,
+		PayloadKind:          conf.PayloadKind,
+		SizePixels:           conf.SizePixels,
+		QualityLevel:         req.Quality,
+		SourceImageIDs:       sourceImageIDs,
+		Edit:                 req.IsEdits(),
+		Background:           req.Background,
+	}, n)
 	if err != nil {
 		return nil, err
 	}
-	if generated == nil || len(generated.Bytes) == 0 {
-		// 上游声称完成却没给出图片：按临时故障处理，交给 failover 换号，而不是写空响应。
-		return nil, adobe.NewUpstreamTemporaryError("adobe returned an empty image", 0, adobe.ErrorTypeStatus)
+	for i := range images {
+		images[i] = applyAdobeOutputFormat(images[i], outputFormat, req.OutputCompression)
 	}
 
 	requestID := uuid.NewString()
-	body, err := s.buildResponseBody(upstreamCtx, requestID, generated.Bytes)
+	body, err := s.buildResponseBody(upstreamCtx, requestID, images)
 	if err != nil {
 		return nil, err
 	}
@@ -178,7 +173,7 @@ func (s *AdobeImageService) GenerateCall(
 		Forward: &OpenAIForwardResult{
 			RequestID:  requestID,
 			Model:      requestedModel,
-			ImageCount: 1,
+			ImageCount: n,
 			// 计费档位：adobe 的 OutputResolution 取值就是 "1K"/"2K"/"4K"，
 			// ClassifyImageBillingTier 直接认这三个字面量。
 			ImageSize:        string(conf.OutputResolution),
@@ -186,6 +181,45 @@ func (s *AdobeImageService) GenerateCall(
 			UpstreamEndpoint: adobe.ImageSubmitURL,
 		},
 	}, nil
+}
+
+// generateAdobeImages 把 OpenAI 的 n 拆成 n 次 Firefly 任务（每次上游仍是 n=1）。
+// 全成或全败：任一张最终失败则整单失败。
+func generateAdobeImages(
+	ctx context.Context,
+	client *adobe.Client,
+	token string,
+	opts adobe.ImagePayloadOptions,
+	n int,
+) ([][]byte, error) {
+	images := make([][]byte, n)
+	group, groupCtx := errgroup.WithContext(ctx)
+	group.SetLimit(adobeFanOutConcurrency)
+	baseSeed := adobe.SeedNow()
+	for i := range n {
+		group.Go(func() error {
+			itemOpts := opts
+			seed := baseSeed + i
+			itemOpts.Seed = &seed
+			generated, err := client.GenerateImage(groupCtx, adobe.GenerateImageInput{
+				Token:   token,
+				Options: itemOpts,
+			})
+			if err != nil {
+				return err
+			}
+			if generated == nil || len(generated.Bytes) == 0 {
+				// 上游声称完成却没给出图片：按临时故障处理，交给 failover 换号，而不是写空响应。
+				return adobe.NewUpstreamTemporaryError("adobe returned an empty image", 0, adobe.ErrorTypeStatus)
+			}
+			images[i] = generated.Bytes
+			return nil
+		})
+	}
+	if err := group.Wait(); err != nil {
+		return nil, err
+	}
+	return images, nil
 }
 
 // uploadSourceImages 把图生图的源图上传到 Adobe，返回可放进 payload 的 image id。
@@ -233,15 +267,20 @@ func (s *AdobeImageService) uploadSourceImages(
 //
 // 先按 b64_json 组装，再在对象存储可用时整体过一遍 ImageResultUploader.Rewrite——
 // 它会把每项的 b64_json 上传后替换成 url。这样两条分支共用同一段组装逻辑。
-func (s *AdobeImageService) buildResponseBody(ctx context.Context, requestID string, image []byte) ([]byte, error) {
-	if len(image) == 0 {
+func (s *AdobeImageService) buildResponseBody(ctx context.Context, requestID string, images [][]byte) ([]byte, error) {
+	if len(images) == 0 {
 		return nil, adobe.NewRequestError("adobe returned an empty image")
+	}
+	data := make([]any, 0, len(images))
+	for _, image := range images {
+		if len(image) == 0 {
+			return nil, adobe.NewRequestError("adobe returned an empty image")
+		}
+		data = append(data, map[string]any{"b64_json": base64.StdEncoding.EncodeToString(image)})
 	}
 	payload := map[string]any{
 		"created": time.Now().Unix(),
-		"data": []any{
-			map[string]any{"b64_json": base64.StdEncoding.EncodeToString(image)},
-		},
+		"data":    data,
 	}
 	body, err := json.Marshal(payload)
 	if err != nil {
