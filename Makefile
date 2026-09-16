@@ -5,6 +5,16 @@ FRONTEND_CRITICAL_VITEST := \
 	src/api/__tests__/client.spec.ts \
 	src/api/__tests__/tokenRefresh.spec.ts \
 	src/api/__tests__/keys.bulkUpdate.spec.ts \
+	src/api/__tests__/admin.accounts.performance.spec.ts \
+	src/components/account/__tests__/AccountPerformanceCell.spec.ts \
+	src/components/admin/account/__tests__/AccountTestModal.spec.ts \
+	src/views/admin/__tests__/AccountsView.bulkEdit.spec.ts \
+	src/views/admin/__tests__/AccountsView.lite.spec.ts \
+	src/views/admin/__tests__/AccountsView.priorityColumn.spec.ts \
+	src/views/admin/__tests__/AccountsView.schedulerScore.spec.ts \
+	src/views/admin/__tests__/AccountsView.selectAllResults.spec.ts \
+	src/views/admin/__tests__/AccountsView.sparkShadow.spec.ts \
+	src/views/admin/__tests__/AccountsView.usageWindowsHint.spec.ts \
 	src/components/keys/__tests__/BulkEditKeysModal.spec.ts \
 	src/views/user/__tests__/KeysView.spec.ts \
 	src/api/__tests__/channelMonitorV2.spec.ts \
