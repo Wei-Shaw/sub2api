@@ -1,280 +1,262 @@
-import { mergeLocaleMessages } from './merge'
-
-const base = {
+export default {
+  batchImageGuide: {
+    title: 'Batch Image Generation',
+    description: 'Submit multiple prompts in one job and download the generated images when complete'
+  },
   // Home Page
-home: {
-  viewOnGithub: 'Xem trên GitHub',
-  viewDocs: 'Xem tài liệu',
-  docs: 'Tài liệu',
-  switchToLight: 'Chuyển sang chế độ sáng',
-  switchToDark: 'Chuyển sang chế độ tối',
-  dashboard: 'Bảng điều khiển',
-  login: 'Đăng nhập',
-  getStarted: 'Bắt đầu ngay',
-  goToDashboard: 'Vào bảng điều khiển',
-  legal: {
-    title: 'Tài liệu pháp lý',
-    description: 'Xem điều khoản dịch vụ, chính sách sử dụng, khu vực hỗ trợ và điều khoản riêng trước khi đăng nhập.'
-  },
-  // Mới thêm: điểm nhấn giá trị cho người dùng
-  heroSubtitle: 'Một khóa, dùng nhiều mô hình AI',
-  heroDescription: 'Không cần quản lý nhiều tài khoản thuê bao, truy cập một chỗ tới Claude, GPT, Gemini và các dịch vụ AI phổ biến khác',
-  tags: {
-    subscriptionToApi: 'Từ đăng ký đến API',
-    stickySession: 'Duy trì phiên',
-    realtimeBilling: 'Tính phí theo mức dùng'
-  },
-  // Khu vực nêu vấn đề của người dùng
-  painPoints: {
-    title: 'Bạn cũng đang gặp những vấn đề này?',
-    items: {
-      expensive: {
-        title: 'Chi phí thuê bao cao',
-        desc: 'Mỗi dịch vụ AI đều phải đăng ký riêng, chi phí hàng tháng ngày càng tăng'
-      },
-      complex: {
-        title: 'Khó quản lý nhiều tài khoản',
-        desc: 'Tài khoản và khóa của nhiều nền tảng bị phân tán khắp nơi, rất phiền khi quản lý'
-      },
-      unstable: {
-        title: 'Dịch vụ thiếu ổn định',
-        desc: 'Một tài khoản đơn lẻ rất dễ chạm giới hạn, ảnh hưởng tới việc sử dụng bình thường'
-      },
-      noControl: {
-        title: 'Không kiểm soát được mức sử dụng',
-        desc: 'Không biết tiền đang bị tiêu vào đâu, cũng không thể giới hạn mức dùng của từng thành viên trong nhóm'
-      }
-    }
-  },
-  // Khu vực giải pháp
-  solutions: {
-    title: 'Chúng tôi giúp bạn xử lý',
-    subtitle: 'Chỉ 3 bước đơn giản để bắt đầu dùng AI nhẹ đầu hơn'
-  },
-  features: {
-    unifiedGateway: 'Kết nối chỉ với một lần cấu hình',
-    unifiedGatewayDesc: 'Chỉ cần lấy một API key là có thể gọi toàn bộ mô hình AI đã được tích hợp, không cần đăng ký riêng lẻ.',
-    multiAccount: 'Ổn định và đáng tin cậy',
-    multiAccountDesc: 'Điều phối thông minh nhiều tài khoản upstream, tự động chuyển đổi và cân bằng tải để giảm lỗi lặp lại.',
-    balanceQuota: 'Dùng bao nhiêu trả bấy nhiêu',
-    balanceQuotaDesc: 'Tính tiền theo mức dùng thực tế, hỗ trợ đặt trần quota và theo dõi mức dùng của cả nhóm rõ ràng.'
-  },
-  // So sánh ưu thế
-  comparison: {
-    title: 'Vì sao nên chọn chúng tôi?',
-    headers: {
-      feature: 'Hạng mục',
-      official: 'Thuê bao chính hãng',
-      us: 'Nền tảng này'
+  home: {
+    viewOnGithub: 'View on GitHub',
+    viewDocs: 'View Documentation',
+    docs: 'Docs',
+    switchToLight: 'Switch to Light Mode',
+    switchToDark: 'Switch to Dark Mode',
+    dashboard: 'Dashboard',
+    login: 'Login',
+    getStarted: 'Get Started',
+    goToDashboard: 'Go to Dashboard',
+    legal: {
+      title: 'Legal documents',
+      description: 'Review the service terms, usage policy, supported regions, and service-specific terms before you sign in.'
     },
-    items: {
-      pricing: {
-        feature: 'Hình thức thanh toán',
-        official: 'Phí tháng cố định, không dùng hết vẫn phải trả',
-        us: 'Trả theo mức dùng, dùng bao nhiêu trả bấy nhiêu'
-      },
-      models: {
-        feature: 'Lựa chọn mô hình',
-        official: 'Một nhà cung cấp duy nhất',
-        us: 'Chuyển đổi linh hoạt giữa nhiều mô hình'
-      },
-      management: {
-        feature: 'Quản lý tài khoản',
-        official: 'Mỗi dịch vụ phải quản lý riêng',
-        us: 'Một khóa thống nhất, quản lý tập trung'
-      },
-      stability: {
-        feature: 'Độ ổn định dịch vụ',
-        official: 'Một tài khoản đơn lẻ dễ chạm giới hạn',
-        us: 'Pool nhiều tài khoản, tự động chuyển đổi'
-      },
-      control: {
-        feature: 'Kiểm soát mức dùng',
-        official: 'Không thể giới hạn',
-        us: 'Có thể đặt quota, xem chi tiết'
+    // User-focused value proposition
+    heroSubtitle: 'One Key, All AI Models',
+    heroDescription: 'No need to manage multiple subscriptions. Access Claude, GPT, Gemini and more with a single API key',
+    tags: {
+      subscriptionToApi: 'Subscription to API',
+      stickySession: 'Session Persistence',
+      realtimeBilling: 'Pay As You Go'
+    },
+    // Pain points section
+    painPoints: {
+      title: 'Sound Familiar?',
+      items: {
+        expensive: {
+          title: 'High Subscription Costs',
+          desc: 'Paying for multiple AI subscriptions that add up every month'
+        },
+        complex: {
+          title: 'Account Chaos',
+          desc: 'Managing scattered accounts and API keys across different platforms'
+        },
+        unstable: {
+          title: 'Service Interruptions',
+          desc: 'Single accounts hitting rate limits and disrupting your workflow'
+        },
+        noControl: {
+          title: 'No Usage Control',
+          desc: "Can't track where your money goes or limit team member usage"
+        }
       }
+    },
+    // Solutions section
+    solutions: {
+      title: 'We Solve These Problems',
+      subtitle: 'Three simple steps to stress-free AI access'
+    },
+    features: {
+      unifiedGateway: 'One-Click Access',
+      unifiedGatewayDesc: 'Get a single API key to call all connected AI models. No separate applications needed.',
+      multiAccount: 'Always Reliable',
+      multiAccountDesc: 'Smart routing across multiple upstream accounts with automatic failover. Say goodbye to errors.',
+      balanceQuota: 'Pay What You Use',
+      balanceQuotaDesc: 'Usage-based billing with quota limits. Full visibility into team consumption.'
+    },
+    // Comparison section
+    comparison: {
+      title: 'Why Choose Us?',
+      headers: {
+        feature: 'Comparison',
+        official: 'Official Subscriptions',
+        us: 'Our Platform'
+      },
+      items: {
+        pricing: {
+          feature: 'Pricing',
+          official: 'Fixed monthly fee, pay even if unused',
+          us: 'Pay only for what you use'
+        },
+        models: {
+          feature: 'Model Selection',
+          official: 'Single provider only',
+          us: 'Switch between models freely'
+        },
+        management: {
+          feature: 'Account Management',
+          official: 'Manage each service separately',
+          us: 'Unified key, one dashboard'
+        },
+        stability: {
+          feature: 'Stability',
+          official: 'Single account rate limits',
+          us: 'Multi-account pool, auto-failover'
+        },
+        control: {
+          feature: 'Usage Control',
+          official: 'Not available',
+          us: 'Quotas & detailed analytics'
+        }
+      }
+    },
+    providers: {
+      title: 'Supported AI Models',
+      description: 'One API, Multiple Choices',
+      supported: 'Supported',
+      soon: 'Soon',
+      claude: 'Claude',
+      gemini: 'Gemini',
+      antigravity: 'Antigravity',
+      more: 'More'
+    },
+    // CTA section
+    cta: {
+      title: 'Ready to Get Started?',
+      description: 'Sign up now and get free trial credits to experience seamless AI access',
+      button: 'Sign Up Free'
+    },
+    footer: {
+      allRightsReserved: 'All rights reserved.'
     }
-  },
-  providers: {
-    title: 'Các mô hình AI đã hỗ trợ',
-    description: 'Một API, nhiều lựa chọn',
-    supported: 'Đã hỗ trợ',
-    soon: 'Sắp ra mắt',
-    claude: 'Claude',
-    gemini: 'Gemini',
-    antigravity: 'Antigravity',
-    more: 'Thêm'
-  },
-  // Khu vực CTA
-  cta: {
-    title: 'Sẵn sàng bắt đầu chưa?',
-    description: 'Đăng ký để nhận hạn mức dùng thử miễn phí và trải nghiệm dịch vụ AI một cửa',
-    button: 'Đăng ký miễn phí'
-  },
-  footer: {
-    allRightsReserved: 'Bảo lưu mọi quyền.'
-  }
   },
 
   // Key Usage Query Page
-keyUsage: {
-  title: 'Tra cứu mức dùng API Key',
-  subtitle: 'Nhập API Key của bạn để xem chi phí phát sinh và trạng thái sử dụng theo thời gian thực',
-  placeholder: 'sk-ant-mirror-xxxxxxxxxxxx',
-  query: 'Tra cứu',
-  querying: 'Đang tra cứu...',
-  privacyNote: 'Key của bạn chỉ được xử lý cục bộ trong trình duyệt và sẽ không bị lưu lại',
-  dateRange: 'Phạm vi thống kê:',
-  dateRangeToday: 'Hôm nay',
-  dateRange7d: '7 ngày',
-  dateRange30d: '30 ngày',
-  dateRangeCustom: 'Tùy chỉnh',
-  apply: 'Áp dụng',
-  used: 'Đã sử dụng',
-  detailInfo: 'Thông tin chi tiết',
-  tokenStats: 'Thống kê token',
-  modelStats: 'Thống kê mức dùng theo mô hình',
-  // Table headers
-  model: 'Mô hình',
-  requests: 'Số yêu cầu',
-  inputTokens: 'Token đầu vào',
-  outputTokens: 'Token đầu ra',
-  cacheCreationTokens: 'Tạo bộ nhớ đệm',
-  cacheReadTokens: 'Đọc bộ nhớ đệm',
-  totalTokens: 'Tổng token',
-  cost: 'Chi phí',
-  // Status
-  quotaMode: 'Chế độ hạn mức của key',
-  walletBalance: 'Số dư ví',
-  // Ring card titles
-  totalQuota: 'Tổng hạn mức',
-  limit5h: 'Hạn mức 5 giờ',
-  limitDaily: 'Hạn mức theo ngày',
-  limit7d: 'Hạn mức 7 ngày',
-  limitWeekly: 'Hạn mức theo tuần',
-  limitMonthly: 'Hạn mức theo tháng',
-  // Detail rows
-  remainingQuota: 'Hạn mức còn lại',
-  expiresAt: 'Hết hạn lúc',
-  todayExpires: '(Hết hạn hôm nay)',
-  daysLeft: '(còn {days} ngày)',
-  usedQuota: 'Hạn mức đã dùng',
-  resetNow: 'Sắp đặt lại',
-  subscriptionType: 'Loại đăng ký',
-  subscriptionExpires: 'Đăng ký hết hạn',
-  // Usage stat cells
-  todayRequests: 'Yêu cầu hôm nay',
-  todayInputTokens: 'Token đầu vào hôm nay',
-  todayOutputTokens: 'Token đầu ra hôm nay',
-  todayTokens: 'Token hôm nay',
-  todayCacheCreation: 'Tạo bộ nhớ đệm hôm nay',
-  todayCacheRead: 'Đọc bộ nhớ đệm hôm nay',
-  todayCost: 'Chi phí hôm nay',
-  rpmTpm: 'RPM / TPM',
-  totalRequests: 'Tổng số yêu cầu',
-  totalInputTokens: 'Tổng token đầu vào',
-  totalOutputTokens: 'Tổng token đầu ra',
-  totalTokensLabel: 'Tổng token tích lũy',
-  totalCacheCreation: 'Tổng lượt tạo bộ nhớ đệm',
-  totalCacheRead: 'Tổng lượt đọc bộ nhớ đệm',
-  totalCost: 'Tổng chi phí',
-  avgDuration: 'Thời gian trung bình',
-  // Messages
-  enterApiKey: 'Vui lòng nhập API Key',
-  querySuccess: 'Tra cứu thành công',
-  queryFailed: 'Tra cứu thất bại',
-  windowUnits: {
-    day: 'D',
-    week: 'W',
-    month: 'M'
-  },
-  queryFailedRetry: 'Tra cứu thất bại, vui lòng thử lại sau',
+  keyUsage: {
+    title: 'API Key Usage',
+    subtitle: 'Enter your API Key to view real-time spending and usage status',
+    placeholder: 'sk-ant-mirror-xxxxxxxxxxxx',
+    query: 'Query',
+    querying: 'Querying...',
+    privacyNote: 'Your Key is processed locally in the browser and will not be stored',
+    dateRange: 'Date Range:',
+    dateRangeToday: 'Today',
+    dateRange7d: '7 Days',
+    dateRange30d: '30 Days',
+    dateRange90d: '90 Days',
+    dateRangeCustom: 'Custom',
+    apply: 'Apply',
+    used: 'Used',
+    detailInfo: 'Detail Information',
+    tokenStats: 'Token Statistics',
+    dailyDetail: 'Daily Detail',
+    modelStats: 'Model Usage Statistics',
+    // Table headers
+    date: 'Date',
+    model: 'Model',
+    requests: 'Requests',
+    inputTokens: 'Input Tokens',
+    outputTokens: 'Output Tokens',
+    cacheCreationTokens: 'Cache Creation',
+    cacheReadTokens: 'Cache Read',
+    cacheWriteTokens: 'Cache Write',
+    totalTokens: 'Total Tokens',
+    cost: 'Cost',
+    // Status
+    quotaMode: 'Key Quota Mode',
+    walletBalance: 'Wallet Balance',
+    // Ring card titles
+    totalQuota: 'Total Quota',
+    limit5h: '5-Hour Limit',
+    limitDaily: 'Daily Limit',
+    limit7d: '7-Day Limit',
+    limitWeekly: 'Weekly Limit',
+    limitMonthly: 'Monthly Limit',
+    // Detail rows
+    remainingQuota: 'Remaining Quota',
+    expiresAt: 'Expires At',
+    todayExpires: '(expires today)',
+    daysLeft: '({days} days)',
+    usedQuota: 'Used Quota',
+    resetNow: 'Resetting soon',
+    subscriptionType: 'Subscription Type',
+    billingType: 'Billing Type',
+    subscriptionExpires: 'Subscription Expires',
+    // Usage stat cells
+    todayRequests: 'Today Requests',
+    todayInputTokens: 'Today Input',
+    todayOutputTokens: 'Today Output',
+    todayTokens: 'Today Tokens',
+    todayCacheCreation: 'Today Cache Creation',
+    todayCacheRead: 'Today Cache Read',
+    todayCost: 'Today Cost',
+    rpmTpm: 'RPM / TPM',
+    totalRequests: 'Total Requests',
+    totalInputTokens: 'Total Input',
+    totalOutputTokens: 'Total Output',
+    totalTokensLabel: 'Total Tokens',
+    totalCacheCreation: 'Total Cache Creation',
+    totalCacheRead: 'Total Cache Read',
+    totalCost: 'Total Cost',
+    avgDuration: 'Avg Duration',
+    // Messages
+    enterApiKey: 'Please enter an API Key',
+    querySuccess: 'Query successful',
+    queryFailed: 'Query failed',
+    queryFailedRetry: 'Query failed, please try again later',
+    noDailyUsage: 'No daily usage data',
   },
 
   // Setup Wizard
-setup: {
-  title: 'Trình hướng dẫn cài đặt Sub2API',
-  description: 'Cấu hình instance Sub2API của bạn',
-  database: {
-    title: 'Cấu hình cơ sở dữ liệu',
-    description: 'Kết nối tới cơ sở dữ liệu PostgreSQL của bạn',
-    host: 'Máy chủ',
-    port: 'Cổng',
-    username: 'Tên người dùng',
-    password: 'Mật khẩu',
-    databaseName: 'Tên cơ sở dữ liệu',
-    sslMode: 'Chế độ SSL',
-    passwordPlaceholder: 'Mật khẩu',
-    ssl: {
-      disable: 'Tắt',
-      require: 'Yêu cầu',
-      verifyCa: 'Xác minh CA',
-      verifyFull: 'Xác minh đầy đủ'
+  setup: {
+    title: 'Sub2API Setup',
+    description: 'Configure your Sub2API instance',
+    database: {
+      title: 'Database Configuration',
+      description: 'Connect to your PostgreSQL database',
+      host: 'Host',
+      port: 'Port',
+      username: 'Username',
+      password: 'Password',
+      databaseName: 'Database Name',
+      sslMode: 'SSL Mode',
+      passwordPlaceholder: 'Password',
+      ssl: {
+        disable: 'Disable',
+        require: 'Require',
+        verifyCa: 'Verify CA',
+        verifyFull: 'Verify Full'
+      }
+    },
+    redis: {
+      title: 'Redis Configuration',
+      description: 'Connect to your Redis server',
+      host: 'Host',
+      port: 'Port',
+      username: 'Username (optional)',
+      password: 'Password (optional)',
+      database: 'Database',
+      usernamePlaceholder: 'Leave empty for default user',
+      passwordPlaceholder: 'Password',
+      enableTls: 'Enable TLS',
+      enableTlsHint: 'Use TLS when connecting to Redis (public CA certs)'
+    },
+    admin: {
+      title: 'Admin Account',
+      description: 'Create your administrator account',
+      email: 'Email',
+      password: 'Password',
+      confirmPassword: 'Confirm Password',
+      passwordPlaceholder: 'Min 8 characters',
+      confirmPasswordPlaceholder: 'Confirm password',
+      passwordMismatch: 'Passwords do not match'
+    },
+    ready: {
+      title: 'Ready to Install',
+      description: 'Review your configuration and complete setup',
+      database: 'Database',
+      redis: 'Redis',
+      adminEmail: 'Admin Email'
+    },
+    status: {
+      testing: 'Testing...',
+      success: 'Connection Successful',
+      testConnection: 'Test Connection',
+      installing: 'Installing...',
+      completeInstallation: 'Complete Installation',
+      completed: 'Installation completed!',
+      redirecting: 'Redirecting to login page...',
+      restarting: 'Service is restarting, please wait...',
+      timeout: 'Service restart is taking longer than expected. Please refresh the page manually.'
     }
   },
-  redis: {
-    title: 'Cấu hình Redis',
-    description: 'Kết nối tới máy chủ Redis của bạn',
-    host: 'Máy chủ',
-    port: 'Cổng',
-    password: 'Mật khẩu (không bắt buộc)',
-    database: 'Cơ sở dữ liệu',
-    passwordPlaceholder: 'Mật khẩu',
-    enableTls: 'Bật TLS',
-    enableTlsHint: 'Sử dụng TLS khi kết nối Redis (chứng chỉ CA công khai)'
-  },
-  admin: {
-    title: 'Tài khoản quản trị viên',
-    description: 'Tạo tài khoản quản trị viên của bạn',
-    email: 'Email',
-    password: 'Mật khẩu',
-    confirmPassword: 'Xác nhận mật khẩu',
-    passwordPlaceholder: 'Ít nhất 8 ký tự',
-    confirmPasswordPlaceholder: 'Nhập lại mật khẩu',
-    passwordMismatch: 'Mật khẩu không khớp'
-  },
-  ready: {
-    autoRefreshRemaining: 'Còn {seconds}s đến lần làm mới tiếp theo',
-    title: 'Sẵn sàng cài đặt',
-    description: 'Kiểm tra cấu hình của bạn và hoàn tất cài đặt',
-    database: 'Cơ sở dữ liệu',
-    redis: 'Redis',
-    adminEmail: 'Email quản trị viên'
-  },
-  status: {
-    testing: 'Đang kiểm tra...',
-    success: 'Kết nối thành công',
-    testConnection: 'Kiểm tra kết nối',
-    installing: 'Đang cài đặt...',
-    completeInstallation: 'Hoàn tất cài đặt',
-    completed: 'Cài đặt hoàn tất!',
-    redirecting: 'Đang chuyển đến trang đăng nhập...',
-    restarting: 'Dịch vụ đang khởi động lại, vui lòng chờ...',
-    timeout: 'Thời gian khởi động lại dịch vụ lâu hơn dự kiến, vui lòng tự làm mới trang.'
-  }
-  }
+
+  // Common
 }
-
-const additionsA = {
-  batchImageGuide: {
-  title: 'Tạo hình ảnh hàng loạt',
-  description: 'Gửi nhiều lời nhắc trong một công việc và tải xuống các hình ảnh được tạo khi hoàn thành',
-  },
-
-  keyUsage: {
-  dateRange90d: '90 ngày',
-  dailyDetail: 'Chi tiết hàng ngày',
-  date: 'Ngày',
-  cacheWriteTokens: 'Ghi bộ nhớ đệm',
-  noDailyUsage: 'Không có dữ liệu sử dụng hàng ngày',
-  },
-
-  setup: {
-  redis: {
-    username: 'Tên người dùng (tùy chọn)',
-    usernamePlaceholder: 'Để trống cho người dùng mặc định',
-  },
-  }
-}
-
-export default mergeLocaleMessages(base, additionsA)
