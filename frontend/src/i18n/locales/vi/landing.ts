@@ -161,7 +161,6 @@ keyUsage: {
   usedQuota: 'Hạn mức đã dùng',
   resetNow: 'Sắp đặt lại',
   subscriptionType: 'Loại đăng ký',
-  billingType: 'Loại tính phí',
   subscriptionExpires: 'Đăng ký hết hạn',
   // Usage stat cells
   todayRequests: 'Yêu cầu hôm nay',

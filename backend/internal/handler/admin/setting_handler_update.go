@@ -50,6 +50,16 @@ type UpdateSettingsRequest struct {
 	SMTPFromName string `json:"smtp_from_name"`
 	SMTPUseTLS   bool   `json:"smtp_use_tls"`
 
+	// Dataset collection. Credentials are write-only; the GET response exposes
+	// only DatasetGoogleDriveCredentialsConfigured.
+	DatasetEnabled                *bool   `json:"dataset_enabled"`
+	DatasetGoogleDriveCredentials *string `json:"dataset_google_drive_credentials"`
+	DatasetGoogleDriveFolderID    *string `json:"dataset_google_drive_folder_id"`
+	DatasetBatchSize              *int    `json:"dataset_batch_size"`
+	DatasetBatchMaxMB             *int    `json:"dataset_batch_max_mb"`
+	DatasetBatchIntervalSec       *int    `json:"dataset_batch_interval_sec"`
+	DatasetBufferMaxItems         *int    `json:"dataset_buffer_max_items"`
+
 	// Cloudflare Turnstile 设置
 	TurnstileEnabled   bool   `json:"turnstile_enabled"`
 	TurnstileSiteKey   string `json:"turnstile_site_key"`
@@ -671,6 +681,58 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		req.SMTPFrom = previousSettings.SMTPFrom
 		req.SMTPFromName = previousSettings.SMTPFromName
 		req.SMTPUseTLS = previousSettings.SMTPUseTLS
+	}
+
+	datasetEnabled := previousSettings.DatasetEnabled
+	if req.DatasetEnabled != nil {
+		datasetEnabled = *req.DatasetEnabled
+	}
+	datasetCredentials := ""
+	if req.DatasetGoogleDriveCredentials != nil && strings.TrimSpace(*req.DatasetGoogleDriveCredentials) != "" {
+		datasetCredentials = strings.TrimSpace(*req.DatasetGoogleDriveCredentials)
+	}
+	if req.DatasetGoogleDriveCredentials != nil {
+		if err := service.ValidateDatasetGoogleDriveCredentials(datasetCredentials); err != nil {
+			response.BadRequest(c, "dataset_google_drive_credentials "+err.Error())
+			return
+		}
+	}
+	datasetFolderID := previousSettings.DatasetGoogleDriveFolderID
+	if req.DatasetGoogleDriveFolderID != nil {
+		datasetFolderID = strings.TrimSpace(*req.DatasetGoogleDriveFolderID)
+	}
+	datasetBatchSize := previousSettings.DatasetBatchSize
+	if req.DatasetBatchSize != nil {
+		datasetBatchSize = *req.DatasetBatchSize
+	}
+	datasetBatchMaxMB := previousSettings.DatasetBatchMaxMB
+	if req.DatasetBatchMaxMB != nil {
+		datasetBatchMaxMB = *req.DatasetBatchMaxMB
+	}
+	datasetBatchIntervalSec := previousSettings.DatasetBatchIntervalSec
+	if req.DatasetBatchIntervalSec != nil {
+		datasetBatchIntervalSec = *req.DatasetBatchIntervalSec
+	}
+	datasetBufferMaxItems := previousSettings.DatasetBufferMaxItems
+	if req.DatasetBufferMaxItems != nil {
+		datasetBufferMaxItems = *req.DatasetBufferMaxItems
+	}
+	for _, field := range []struct {
+		name  string
+		value *int
+		check func(int) error
+	}{
+		{name: "dataset_batch_size", value: req.DatasetBatchSize, check: service.ValidateDatasetBatchSize},
+		{name: "dataset_batch_max_mb", value: req.DatasetBatchMaxMB, check: service.ValidateDatasetBatchMaxMB},
+		{name: "dataset_batch_interval_sec", value: req.DatasetBatchIntervalSec, check: service.ValidateDatasetBatchIntervalSec},
+		{name: "dataset_buffer_max_items", value: req.DatasetBufferMaxItems, check: service.ValidateDatasetBufferMaxItems},
+	} {
+		if field.value != nil {
+			if err := field.check(*field.value); err != nil {
+				response.BadRequest(c, field.name+" "+err.Error())
+				return
+			}
+		}
 	}
 
 	turnstileEnabled := req.TurnstileEnabled
@@ -1588,6 +1650,14 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		SMTPFrom:                            req.SMTPFrom,
 		SMTPFromName:                        req.SMTPFromName,
 		SMTPUseTLS:                          req.SMTPUseTLS,
+		DatasetEnabled:                      datasetEnabled,
+		DatasetGoogleDriveCredentials:       datasetCredentials,
+		DatasetGoogleDriveCredentialsSet:    req.DatasetGoogleDriveCredentials != nil && strings.TrimSpace(*req.DatasetGoogleDriveCredentials) != "",
+		DatasetGoogleDriveFolderID:          datasetFolderID,
+		DatasetBatchSize:                    datasetBatchSize,
+		DatasetBatchMaxMB:                   datasetBatchMaxMB,
+		DatasetBatchIntervalSec:             datasetBatchIntervalSec,
+		DatasetBufferMaxItems:               datasetBufferMaxItems,
 		TurnstileEnabled:                    req.TurnstileEnabled,
 		TurnstileSiteKey:                    req.TurnstileSiteKey,
 		TurnstileSecretKey:                  req.TurnstileSecretKey,
@@ -2404,6 +2474,13 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		SMTPFrom:                                               updatedSettings.SMTPFrom,
 		SMTPFromName:                                           updatedSettings.SMTPFromName,
 		SMTPUseTLS:                                             updatedSettings.SMTPUseTLS,
+		DatasetEnabled:                                         updatedSettings.DatasetEnabled,
+		DatasetGoogleDriveCredentialsConfigured:                updatedSettings.DatasetGoogleDriveCredentialsConfigured,
+		DatasetGoogleDriveFolderID:                             updatedSettings.DatasetGoogleDriveFolderID,
+		DatasetBatchSize:                                       updatedSettings.DatasetBatchSize,
+		DatasetBatchMaxMB:                                      updatedSettings.DatasetBatchMaxMB,
+		DatasetBatchIntervalSec:                                updatedSettings.DatasetBatchIntervalSec,
+		DatasetBufferMaxItems:                                  updatedSettings.DatasetBufferMaxItems,
 		TurnstileEnabled:                                       updatedSettings.TurnstileEnabled,
 		TurnstileSiteKey:                                       updatedSettings.TurnstileSiteKey,
 		TurnstileSecretKeyConfigured:                           updatedSettings.TurnstileSecretKeyConfigured,

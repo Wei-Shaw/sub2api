@@ -2,6 +2,7 @@ package admin
 
 import (
 	"log/slog"
+	"strings"
 
 	"github.com/Wei-Shaw/sub2api/internal/handler/dto"
 	"github.com/Wei-Shaw/sub2api/internal/server/middleware"
@@ -100,6 +101,27 @@ func diffSettings(before *service.SystemSettings, after *service.SystemSettings,
 	}
 	if before.SMTPUseTLS != after.SMTPUseTLS {
 		changed = append(changed, "smtp_use_tls")
+	}
+	if before.DatasetEnabled != after.DatasetEnabled {
+		changed = append(changed, "dataset_enabled")
+	}
+	if before.DatasetGoogleDriveFolderID != after.DatasetGoogleDriveFolderID {
+		changed = append(changed, "dataset_google_drive_folder_id")
+	}
+	if before.DatasetBatchSize != after.DatasetBatchSize {
+		changed = append(changed, "dataset_batch_size")
+	}
+	if before.DatasetBatchMaxMB != after.DatasetBatchMaxMB {
+		changed = append(changed, "dataset_batch_max_mb")
+	}
+	if before.DatasetBatchIntervalSec != after.DatasetBatchIntervalSec {
+		changed = append(changed, "dataset_batch_interval_sec")
+	}
+	if before.DatasetBufferMaxItems != after.DatasetBufferMaxItems {
+		changed = append(changed, "dataset_buffer_max_items")
+	}
+	if req.DatasetGoogleDriveCredentials != nil && strings.TrimSpace(*req.DatasetGoogleDriveCredentials) != "" {
+		changed = append(changed, "dataset_google_drive_credentials")
 	}
 	if before.TurnstileEnabled != after.TurnstileEnabled {
 		changed = append(changed, "turnstile_enabled")

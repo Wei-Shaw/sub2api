@@ -241,6 +241,48 @@ func (s *SettingService) buildSystemSettingsUpdates(ctx context.Context, setting
 	updates[SettingKeySMTPFromName] = settings.SMTPFromName
 	updates[SettingKeySMTPUseTLS] = strconv.FormatBool(settings.SMTPUseTLS)
 
+	updates[SettingKeyDatasetEnabled] = strconv.FormatBool(settings.DatasetEnabled)
+	updates[SettingKeyDatasetGoogleDriveFolderID] = strings.TrimSpace(settings.DatasetGoogleDriveFolderID)
+	updates[SettingKeyDatasetBatchSize] = strconv.Itoa(settings.DatasetBatchSize)
+	updates[SettingKeyDatasetBatchMaxMB] = strconv.Itoa(settings.DatasetBatchMaxMB)
+	updates[SettingKeyDatasetBatchIntervalSec] = strconv.Itoa(settings.DatasetBatchIntervalSec)
+	updates[SettingKeyDatasetBufferMaxItems] = strconv.Itoa(settings.DatasetBufferMaxItems)
+	if settings.DatasetBatchSize != 0 || settings.DatasetBatchMaxMB != 0 || settings.DatasetBatchIntervalSec != 0 || settings.DatasetBufferMaxItems != 0 {
+		if err := ValidateDatasetSettingsValues(settings.DatasetBatchSize, settings.DatasetBatchMaxMB, settings.DatasetBatchIntervalSec, settings.DatasetBufferMaxItems); err != nil {
+			return nil, infraerrors.BadRequest("INVALID_DATASET_SETTINGS", err.Error())
+		}
+	}
+	if settings.DatasetGoogleDriveCredentialsSet {
+		if strings.TrimSpace(settings.DatasetGoogleDriveCredentials) == "" {
+			// An empty write-only field means "not supplied" so a settings save
+			// from an older client cannot erase the existing credential.
+		} else {
+			if err := ValidateDatasetGoogleDriveCredentials(settings.DatasetGoogleDriveCredentials); err != nil {
+				return nil, infraerrors.BadRequest("INVALID_DATASET_CREDENTIALS", err.Error())
+			}
+			if s.secretEncryptor == nil {
+				return nil, errors.New("dataset credentials encryption is unavailable")
+			}
+			encrypted, err := s.secretEncryptor.Encrypt(settings.DatasetGoogleDriveCredentials)
+			if err != nil {
+				return nil, fmt.Errorf("encrypt dataset Google Drive credentials: %w", err)
+			}
+			updates[SettingKeyDatasetGoogleDriveCredentials] = encrypted
+		}
+	} else if strings.TrimSpace(settings.DatasetGoogleDriveCredentials) != "" {
+		if err := ValidateDatasetGoogleDriveCredentials(settings.DatasetGoogleDriveCredentials); err != nil {
+			return nil, infraerrors.BadRequest("INVALID_DATASET_CREDENTIALS", err.Error())
+		}
+		if s.secretEncryptor == nil {
+			return nil, errors.New("dataset credentials encryption is unavailable")
+		}
+		encrypted, err := s.secretEncryptor.Encrypt(settings.DatasetGoogleDriveCredentials)
+		if err != nil {
+			return nil, fmt.Errorf("encrypt dataset Google Drive credentials: %w", err)
+		}
+		updates[SettingKeyDatasetGoogleDriveCredentials] = encrypted
+	}
+
 	// Cloudflare Turnstile 设置（只有非空才更新密钥）
 	updates[SettingKeyTurnstileEnabled] = strconv.FormatBool(settings.TurnstileEnabled)
 	updates[SettingKeyTurnstileSiteKey] = settings.TurnstileSiteKey

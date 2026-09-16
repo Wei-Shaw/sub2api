@@ -82,21 +82,6 @@ keys: {
   allStatus: 'Tất cả trạng thái',
   createKey: 'Tạo khóa',
   editKey: 'Chỉnh sửa khóa',
-  bulkEdit: {
-    title: 'Chỉnh sửa hàng loạt',
-    selectedCount: 'Đã chọn {count} khóa',
-    selectKey: 'Chọn khóa {name}',
-    clearSelection: 'Bỏ chọn',
-    hint: 'Chọn các trường cần cập nhật. Các trường không chọn sẽ giữ nguyên giá trị hiện tại.',
-    limitHint: 'Nhập 0 để không giới hạn. Mức sử dụng hiện có được giữ nguyên.',
-    ipHint: 'Mỗi dòng một IP hoặc CIDR. Để trống để xóa danh sách này trên các khóa đã chọn.',
-    invalidLimit: 'Nhập số tiền hợp lệ lớn hơn hoặc bằng 0.',
-    invalidExpiration: 'Chọn ngày hết hạn hợp lệ hoặc chọn Không bao giờ hết hạn.',
-    apply: 'Áp dụng cho {count} khóa',
-    success: 'Đã cập nhật {count} khóa',
-    partialFailure: 'Đã cập nhật {success} khóa; {failed} khóa thất bại',
-    failureHint: 'Không thể cập nhật các khóa này. Điều chỉnh cài đặt và thử lại. Chỉ các khóa thất bại sẽ được thử lại.'
-  },
   deleteKey: 'Xóa khóa',
   deleteConfirmMessage: 'Bạn có chắc muốn xóa \'{name}\' không? Thao tác này không thể hoàn tác.',
   apiKey: 'Khóa API',
@@ -304,10 +289,6 @@ usage: {
   ws: 'WS',
   stream: 'Streaming',
   sync: 'Đồng bộ',
-  nativeCompactionV2: 'Nén ngữ cảnh',
-  compactionFilter: 'Loại yêu cầu',
-  allCompactionTypes: 'Tất cả yêu cầu',
-  compactionOnly: 'Chỉ nén ngữ cảnh',
   unknown: 'Không xác định',
   in: 'Đầu vào',
   out: 'Đầu ra',
@@ -350,8 +331,7 @@ monitorCommon: {
   providers: {
     openai: 'OpenAI',
     anthropic: 'Anthropic',
-    gemini: 'Gemini',
-    opencode_go: 'OpenCode'
+    gemini: 'Gemini'
   },
   extraModelsHeader: 'Mô hình bổ sung',
   extraModelsEmpty: 'Không có mô hình bổ sung',
@@ -443,8 +423,6 @@ availableChannels: {
     inputPrice: 'Đầu vào',
     outputPrice: 'Đầu ra',
     cacheWritePrice: 'Ghi cache',
-    cacheWrite5mPrice: 'Ghi cache (5 phút)',
-    cacheWrite1hPrice: 'Ghi cache (1 giờ)',
     cacheReadPrice: 'Đọc cache',
     imageOutputPrice: 'Đầu ra hình ảnh',
     perRequestPrice: 'Mỗi yêu cầu',
@@ -539,7 +517,6 @@ redeem: {
   days: 'ngày',
   codeRedeemSuccess: 'Đổi mã thành công!',
   failedToRedeem: 'Đổi mã thất bại, vui lòng kiểm tra mã và thử lại.',
-  userRefreshFailed: 'Đổi mã thành công, nhưng làm mới thông tin tài khoản thất bại.',
   subscriptionRefreshFailed: 'Đổi mã thành công, nhưng làm mới trạng thái đăng ký thất bại.',
   pleaseEnterCode: 'Vui lòng nhập mã đổi',
   balanceAddedAffiliate: 'Số dư đã cộng (Chuyển affiliate)',
@@ -956,7 +933,6 @@ const additionsA = {
       "7dSonnet": 'Sonnet 7 ngày',
       "7dFable": 'Fable 7 ngày',
       weekly: 'hàng tuần',
-      monthly: 'Hàng tháng',
       daily: 'Hằng ngày',
       "30d": '30 ngày',
       total: 'Tổng cộng',
@@ -1096,29 +1072,4 @@ const additionsA = {
   }
 }
 
-export default mergeLocaleMessages(base, additionsA, {
-  usage: {
-    serviceTierUltrafast: 'Ultrafast',
-  },
-  monitorCommon: {
-    providers: {
-      minimax: 'MiniMax',
-    },
-  },
-  modelPlaza: {
-    table: {
-      maxReasoningMultiplierBadge: 'Tối đa ×{multiplier}',
-      maxReasoningMultiplierHint: 'Khi reasoning effort được chuyển tiếp là max, chi phí và hạn ngạch của request sẽ được nhân với {multiplier}',
-    },
-  },
-  keys: {
-    useKeyModal: {
-      minimax: {
-        description: 'Cấu hình Claude Code, Codex hoặc OpenCode thông qua nhóm MiniMax hiện tại.',
-        codexDescription: 'Cấu hình Codex bằng xác thực API key thông qua nhóm MiniMax hiện tại.',
-        codexConfigTomlHint: 'Tải catalog model bên dưới, lưu cả hai file vào thư mục cấu hình Codex rồi khởi động lại Codex.',
-        codexNote: 'Export SUB2API_API_KEY trước khi khởi động Codex. Catalog đã tải chỉ chứa metadata model, không chứa API key của bạn.',
-      },
-    },
-  },
-})
+export default mergeLocaleMessages(base, additionsA)

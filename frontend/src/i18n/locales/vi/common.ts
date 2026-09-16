@@ -134,8 +134,6 @@ nav: {
   github: 'GitHub',
   mySubscriptions: 'Đăng ký của tôi',
   buySubscription: 'Nạp tiền / Đăng ký',
-  recharge: 'Nạp tiền',
-  subscribe: 'Đăng ký',
   docs: 'Tài liệu',
   myOrders: 'Đơn hàng của tôi',
   orderManagement: 'Quản lý đơn hàng',

@@ -122,6 +122,7 @@ type SettingService struct {
 	defaultSubGroupReader       DefaultSubscriptionGroupReader
 	proxyRepo                   ProxyRepository // for resolving websearch provider proxy URLs
 	cfg                         *config.Config
+	secretEncryptor             SecretEncryptor
 	onUpdate                    func() // Callback when settings are updated (for cache invalidation)
 	version                     string // Application version
 	webSearchManagerBuilder     WebSearchManagerBuilder
@@ -304,6 +305,13 @@ func NewSettingService(settingRepo SettingRepository, cfg *config.Config) *Setti
 		settingRepo: settingRepo,
 		cfg:         cfg,
 	}
+}
+
+// SetSecretEncryptor injects the process-wide encryptor used for settings that
+// contain credentials. It is optional for read-only settings service tests, but
+// required before persisting dataset credentials.
+func (s *SettingService) SetSecretEncryptor(encryptor SecretEncryptor) {
+	s.secretEncryptor = encryptor
 }
 
 // SetDefaultSubscriptionGroupReader injects an optional group reader for default subscription validation.

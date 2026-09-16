@@ -58,6 +58,14 @@ type SystemSettings struct {
 	SMTPFromName           string `json:"smtp_from_name"`
 	SMTPUseTLS             bool   `json:"smtp_use_tls"`
 
+	DatasetEnabled                          bool   `json:"dataset_enabled"`
+	DatasetGoogleDriveCredentialsConfigured bool   `json:"dataset_google_drive_credentials_configured"`
+	DatasetGoogleDriveFolderID              string `json:"dataset_google_drive_folder_id"`
+	DatasetBatchSize                        int    `json:"dataset_batch_size"`
+	DatasetBatchMaxMB                       int    `json:"dataset_batch_max_mb"`
+	DatasetBatchIntervalSec                 int    `json:"dataset_batch_interval_sec"`
+	DatasetBufferMaxItems                   int    `json:"dataset_buffer_max_items"`
+
 	TurnstileEnabled                       bool     `json:"turnstile_enabled"`
 	TurnstileSiteKey                       string   `json:"turnstile_site_key"`
 	TurnstileSecretKeyConfigured           bool     `json:"turnstile_secret_key_configured"`
