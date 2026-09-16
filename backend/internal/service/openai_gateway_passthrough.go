@@ -374,7 +374,9 @@ func (s *OpenAIGatewayService) forwardOpenAIPassthrough(
 		}
 
 		upstreamStart := time.Now()
+		telemetryAttempt := s.beginCodexTelemetry(c, account, body, upstreamReq.Header)
 		resp, err = s.doOpenAIUpstream(upstreamReq, proxyURL, account)
+		telemetryAttempt.observeResult(resp, err)
 		SetOpsLatencyMs(c, OpsUpstreamLatencyMsKey, time.Since(upstreamStart).Milliseconds())
 		if err != nil {
 			// Transport-level failure (proxy/DNS/TCP/TLS — no HTTP response). Convert to

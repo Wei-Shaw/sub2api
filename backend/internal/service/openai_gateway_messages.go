@@ -33,6 +33,9 @@ func (s *OpenAIGatewayService) ForwardAsAnthropic(
 	promptCacheKey string,
 	defaultMappedModel string,
 ) (*OpenAIForwardResult, error) {
+	// 遥测回合收尾：覆盖 Grok strip 重试循环与三处尾递归重入。尾递归时内层
+	// frame 先收尾，而内层的返回值就是本回合的最终结果，外层随后是 no-op。
+	defer finishCodexTelemetryTurn(c)
 	rememberOpenCodeInboundBody(c, body)
 	beginUpstreamResponseModelObservation(c)
 	ClearActualOpenAIUpstreamEndpoint(c)
@@ -411,7 +414,9 @@ func (s *OpenAIGatewayService) ForwardAsAnthropic(
 				return nil, fmt.Errorf("build grok retry request: %w", err)
 			}
 		}
+		telemetryAttempt := s.beginCodexTelemetry(c, account, responsesBody, upstreamReq.Header)
 		resp, err = s.doOpenAIUpstream(upstreamReq, proxyURL, account)
+		telemetryAttempt.observeResult(resp, err)
 		if err != nil {
 			return nil, s.handleOpenAIUpstreamTransportError(ctx, c, account, err, false)
 		}

@@ -2463,6 +2463,36 @@
         </div>
       </div>
 
+      <div
+        v-if="account?.platform === 'openai' && account?.type === 'oauth' && !isSparkShadow && !isOpenAIAgentIdentity"
+        class="border-t border-gray-200 pt-4 dark:border-dark-600"
+      >
+        <div class="flex items-center justify-between">
+          <div>
+            <label class="input-label mb-0">{{ t('admin.accounts.openai.codexTelemetry') }}</label>
+            <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+              {{ t('admin.accounts.openai.codexTelemetryDesc') }}
+            </p>
+          </div>
+          <button
+            type="button"
+            data-testid="edit-codex-telemetry-toggle"
+            @click="codexTelemetryEnabled = !codexTelemetryEnabled"
+            :class="[
+              'relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2',
+              codexTelemetryEnabled ? 'bg-primary-600' : 'bg-gray-200 dark:bg-dark-600'
+            ]"
+          >
+            <span
+              :class="[
+                'pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out',
+                codexTelemetryEnabled ? 'translate-x-5' : 'translate-x-0'
+              ]"
+            />
+          </button>
+        </div>
+      </div>
+
       <!-- OpenAI 订阅档位手动覆盖（Plus/Pro/Free），仅 OAuth 非影子账号 -->
       <div
         v-if="account?.platform === 'openai' && account?.type === 'oauth' && !isSparkShadow"
@@ -3340,6 +3370,12 @@ const selectableGroups = computed(() => {
 // 故隐藏代理选择器。
 const isSparkShadow = computed(() => props.account?.parent_account_id != null)
 
+const isOpenAIAgentIdentity = computed(() => {
+  const creds = props.account?.credentials as Record<string, unknown> | undefined
+  const mode = String(creds?.auth_mode || '').trim().toLowerCase().replace(/[\s_-]+/g, '')
+  return mode === 'agentidentity'
+})
+
 const hideAccountLongContextBilling = computed(() => {
   return allSelectedGroupsEnableLongContextPricing(form.group_ids, props.groups)
 })
@@ -3779,6 +3815,7 @@ const openaiOAuthResponsesWebSocketV2Mode = ref<OpenAIWSMode>(OPENAI_WS_MODE_OFF
 const openaiAPIKeyResponsesWebSocketV2Mode = ref<OpenAIWSMode>(OPENAI_WS_MODE_OFF)
 const codexCLIOnlyEnabled = ref(false)
 const codexCLIOnlyAppServerEnabled = ref(false)
+const codexTelemetryEnabled = ref(false)
 type CodexFingerprintMode = 'off' | 'device' | 'session' | 'full'
 const codexFingerprintMode = ref<CodexFingerprintMode>('off')
 type CodexImageToolMode = 'inherit' | 'enabled' | 'disabled' | 'block'
@@ -4270,6 +4307,7 @@ const syncFormFromAccount = (newAccount: Account | null) => {
   openaiAPIKeyResponsesWebSocketV2Mode.value = OPENAI_WS_MODE_OFF
   codexCLIOnlyEnabled.value = false
   codexCLIOnlyAppServerEnabled.value = false
+  codexTelemetryEnabled.value = false
   codexFingerprintMode.value = 'off'
   codexImageToolMode.value = 'inherit'
   anthropicPassthroughEnabled.value = false
@@ -4328,6 +4366,7 @@ const syncFormFromAccount = (newAccount: Account | null) => {
       codexFingerprintMode.value = (['off', 'device', 'session', 'full'].includes(fpMode || '')
         ? fpMode as CodexFingerprintMode
         : 'off')
+      codexTelemetryEnabled.value = extra?.codex_telemetry_enabled === true
     }
     const credentials = newAccount.credentials as Record<string, unknown> | undefined
     const compactMappings = credentials?.compact_model_mapping as Record<string, string> | undefined
@@ -5870,6 +5909,7 @@ const handleSubmit = async () => {
       const currentExtra = (props.account.extra as Record<string, unknown>) || {}
       const newExtra: Record<string, unknown> = { ...currentExtra }
       const hadCodexCLIOnlyEnabled = currentExtra.codex_cli_only === true
+      const hadCodexTelemetryEnabled = currentExtra.codex_telemetry_enabled === true
       if (props.account.type === 'oauth' || props.account.type === 'setup-token') {
         newExtra.openai_oauth_responses_websockets_v2_mode = openaiOAuthResponsesWebSocketV2Mode.value
         newExtra.openai_oauth_responses_websockets_v2_enabled = isOpenAIWSModeEnabled(openaiOAuthResponsesWebSocketV2Mode.value)
@@ -5982,6 +6022,15 @@ const handleSubmit = async () => {
           newExtra.codex_fingerprint_mode = codexFingerprintMode.value
         } else {
           delete newExtra.codex_fingerprint_mode
+        }
+        if (!isSparkShadow.value && !isOpenAIAgentIdentity.value) {
+          if (codexTelemetryEnabled.value) {
+            newExtra.codex_telemetry_enabled = true
+          } else if (hadCodexTelemetryEnabled) {
+            newExtra.codex_telemetry_enabled = false
+          } else {
+            delete newExtra.codex_telemetry_enabled
+          }
         }
       }
 

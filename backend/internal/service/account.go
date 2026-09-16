@@ -2122,6 +2122,19 @@ func (a *Account) IsOveragesEnabled() bool {
 	return false
 }
 
+const codexTelemetryEnabledExtraKey = "codex_telemetry_enabled"
+
+// IsCodexTelemetryEnabled reports whether this OpenAI OAuth account opted into
+// simulated Codex client telemetry. Missing or non-bool extra is off. Setup
+// tokens, API keys, Agent Identity, and other platforms cannot enable it.
+func (a *Account) IsCodexTelemetryEnabled() bool {
+	if a == nil || !a.IsOpenAIOAuth() || a.IsOpenAIAgentIdentity() || a.Extra == nil {
+		return false
+	}
+	enabled, ok := a.Extra[codexTelemetryEnabledExtraKey].(bool)
+	return ok && enabled
+}
+
 // IsOpenAIPassthroughEnabled 返回 OpenAI 账号是否启用"自动透传（仅替换认证）"。
 //
 // 新字段：accounts.extra.openai_passthrough。

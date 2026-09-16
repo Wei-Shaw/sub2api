@@ -1932,4 +1932,50 @@ describe('EditAccountModal Adobe model mapping', () => {
       'gpt-image-*': 'firefly-gpt-image-2'
     })
   })
+
+  it('loads and submits extra.codex_telemetry_enabled for OpenAI OAuth', async () => {
+    const account = buildAccount()
+    account.type = 'oauth'
+    account.extra = { codex_telemetry_enabled: true }
+    updateAccountMock.mockReset()
+    checkMixedChannelRiskMock.mockReset()
+    checkMixedChannelRiskMock.mockResolvedValue({ has_risk: false })
+    updateAccountMock.mockResolvedValue(account)
+
+    const wrapper = mountModal(account)
+    expect(wrapper.find('[data-testid="edit-codex-telemetry-toggle"]').exists()).toBe(true)
+    await wrapper.get('form#edit-account-form').trigger('submit.prevent')
+
+    expect(updateAccountMock.mock.calls[0]?.[1]?.extra?.codex_telemetry_enabled).toBe(true)
+  })
+
+  it('writes false when Telemetry is turned off for an OpenAI OAuth account', async () => {
+    const account = buildAccount()
+    account.type = 'oauth'
+    account.extra = { codex_telemetry_enabled: true }
+    updateAccountMock.mockReset()
+    checkMixedChannelRiskMock.mockReset()
+    checkMixedChannelRiskMock.mockResolvedValue({ has_risk: false })
+    updateAccountMock.mockResolvedValue(account)
+
+    const wrapper = mountModal(account)
+    await wrapper.get('[data-testid="edit-codex-telemetry-toggle"]').trigger('click')
+    await wrapper.get('form#edit-account-form').trigger('submit.prevent')
+
+    expect(updateAccountMock.mock.calls[0]?.[1]?.extra?.codex_telemetry_enabled).toBe(false)
+  })
+
+  it('does not show the Telemetry toggle for API keys or Spark shadows', async () => {
+    const apiKey = mountModal(buildAccount())
+    expect(apiKey.find('[data-testid="edit-codex-telemetry-toggle"]').exists()).toBe(false)
+
+    const shadow = mountModal(buildOpenAISparkShadowAccount())
+    expect(shadow.find('[data-testid="edit-codex-telemetry-toggle"]').exists()).toBe(false)
+
+    const agent = buildAccount()
+    agent.type = 'oauth'
+    agent.credentials = { ...(agent.credentials as Record<string, unknown>), auth_mode: 'agent_identity' }
+    const agentWrapper = mountModal(agent)
+    expect(agentWrapper.find('[data-testid="edit-codex-telemetry-toggle"]').exists()).toBe(false)
+  })
 })

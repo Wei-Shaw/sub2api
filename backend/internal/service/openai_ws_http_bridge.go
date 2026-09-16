@@ -433,6 +433,9 @@ func (s *OpenAIGatewayService) proxyOpenAIWSHTTPBridgeTurn(
 	if writeClientMessage == nil {
 		return nil, errors.New("client websocket writer is nil")
 	}
+	// 一次调用 = 一个对话回合（ingress 的 for turn := 1; ; turn++ 循环），所以收尾
+	// 也按回合注册：既覆盖本回合的重试循环，又让下一个回合从干净的 memo 重新开始。
+	defer finishCodexTelemetryTurn(c)
 	responseModelObserver := &upstreamResponseModelObserver{}
 
 	body, err := prepareOpenAIWSHTTPBridgeBody(account, payload)
@@ -546,7 +549,9 @@ func (s *OpenAIGatewayService) proxyOpenAIWSHTTPBridgeTurn(
 		if buildErr != nil {
 			return nil, buildErr
 		}
+		telemetryAttempt := s.beginCodexTelemetry(c, account, body, upstreamReq.Header)
 		resp, err = s.doOpenAIUpstream(upstreamReq, proxyURL, account)
+		telemetryAttempt.observeResult(resp, err)
 		if err != nil {
 			if turn == 1 {
 				return nil, s.handleOpenAIUpstreamTransportError(ctx, c, account, err, true)

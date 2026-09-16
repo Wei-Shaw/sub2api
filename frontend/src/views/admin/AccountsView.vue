@@ -265,6 +265,7 @@
                   :plan-type="getAccountPlanType(row)"
                   :privacy-mode="row.extra?.privacy_mode || row.parent_privacy_mode"
                   :subscription-expires-at="row.credentials?.subscription_expires_at || row.parent_subscription_expires_at"
+                  :telemetry-enabled="row.extra?.codex_telemetry_enabled === true"
                 />
                 <span
                   v-if="getAntigravityTierLabel(row)"

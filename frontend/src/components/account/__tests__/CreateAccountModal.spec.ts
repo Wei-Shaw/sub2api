@@ -835,6 +835,37 @@ describe('CreateAccountModal OpenAI long-context billing', () => {
     expect(createOpenAICodexPATMock.mock.calls[0]?.[0]?.extra?.openai_long_context_billing_enabled).toBe(false)
   })
 
+  it('shows the Telemetry toggle only for OpenAI OAuth accounts', async () => {
+    const wrapper = mountModal()
+    await selectButtonByText(wrapper, 'OpenAI')
+    expect(wrapper.find('[data-testid="create-codex-telemetry-toggle"]').exists()).toBe(true)
+
+    await selectButtonByText(wrapper, 'API Key')
+    expect(wrapper.find('[data-testid="create-codex-telemetry-toggle"]').exists()).toBe(false)
+  })
+
+  it('omits codex_telemetry_enabled from extra by default', async () => {
+    const wrapper = await openCodexImportStep()
+    await wrapper.get('[data-testid="import-codex-pat"]').trigger('click')
+    await flushPromises()
+
+    expect(createOpenAICodexPATMock.mock.calls[0]?.[0]?.extra).not.toHaveProperty('codex_telemetry_enabled')
+  })
+
+  it('submits extra.codex_telemetry_enabled when Telemetry is enabled for OpenAI OAuth', async () => {
+    const wrapper = mountModal()
+    await selectButtonByText(wrapper, 'OpenAI')
+    await wrapper.get('[data-testid="create-codex-telemetry-toggle"]').trigger('click')
+    await wrapper.get('form#create-account-form input[type="text"]').setValue('Codex import')
+    await wrapper.get('form#create-account-form').trigger('submit.prevent')
+    await wrapper.get('[data-testid="import-codex-pat"]').trigger('click')
+    await flushPromises()
+
+    expect(createOpenAICodexPATMock).toHaveBeenCalledTimes(1)
+    expect(createOpenAICodexPATMock.mock.calls[0]?.[0]?.extra?.codex_telemetry_enabled).toBe(true)
+    expect(JSON.stringify(createOpenAICodexPATMock.mock.calls[0]?.[0])).not.toMatch(/抗降智/)
+  })
+
   it('allows enabling the Kiro direct API-key upstream billing probe', async () => {
     await submitApiKeyAccount('kiro', false, true)
 

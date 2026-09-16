@@ -989,6 +989,15 @@ type GatewayConfig struct {
 	// DisableCodexOriginatorNormalization: 已废弃，等价于 DisableCodexIdentityEnforcement。
 	// 保留以兼容既有配置文件；加载时会折叠进新键，不要在新代码里直接读取。
 	DisableCodexOriginatorNormalization bool `mapstructure:"disable_codex_originator_normalization"`
+	// CodexTelemetryEnabled is the process-level kill switch for Codex client
+	// telemetry. Default true via viper: per-account extra.codex_telemetry_enabled
+	// still gates sending. Set false (GATEWAY_CODEX_TELEMETRY_ENABLED=false) to
+	// ignore every account toggle. Zero-value Config in tests is false, so
+	// existing suites do not enqueue telemetry unless they opt in.
+	CodexTelemetryEnabled bool `mapstructure:"codex_telemetry_enabled"`
+	// CodexStatsigAPIKey overrides the public Codex Statsig SDK key used for
+	// OTLP metric export. Empty keeps the client-shipped default.
+	CodexStatsigAPIKey string `mapstructure:"codex_statsig_api_key"`
 	// CodexImageGenerationBridgeEnabled: 是否为 Codex `/v1/responses` 自动注入 image_generation 工具和桥接指令。
 	// 默认关闭，避免纯文本 Codex 请求被意外改写；显式携带 image_generation 工具的请求仍按分组能力转发。
 	CodexImageGenerationBridgeEnabled bool `mapstructure:"codex_image_generation_bridge_enabled"`
@@ -2380,6 +2389,8 @@ func setDefaults() {
 	viper.SetDefault("gateway.force_codex_cli", false)
 	viper.SetDefault("gateway.disable_codex_identity_enforcement", false)
 	viper.SetDefault("gateway.disable_codex_originator_normalization", false)
+	viper.SetDefault("gateway.codex_telemetry_enabled", true)
+	viper.SetDefault("gateway.codex_statsig_api_key", "")
 	viper.SetDefault("gateway.codex_image_generation_bridge_enabled", false)
 	viper.SetDefault("gateway.openai_passthrough_allow_timeout_headers", false)
 	viper.SetDefault("gateway.openai_compact_model", "gpt-5.5")

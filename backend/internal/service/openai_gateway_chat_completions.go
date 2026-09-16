@@ -59,6 +59,9 @@ func (s *OpenAIGatewayService) ForwardAsChatCompletions(
 	promptCacheKey string,
 	defaultMappedModel string,
 ) (*OpenAIForwardResult, error) {
+	// 遥测回合收尾放在这层非递归 wrapper：forwardAsChatCompletions 会尾递归重入
+	// 自己（agent identity task recovery），在内层注册会让重试各自收尾。
+	defer finishCodexTelemetryTurn(c)
 	return s.forwardAsChatCompletions(ctx, c, account, body, promptCacheKey, defaultMappedModel, false)
 }
 
@@ -392,7 +395,9 @@ func (s *OpenAIGatewayService) forwardAsChatCompletions(
 	if account.ProxyID != nil && account.Proxy != nil {
 		proxyURL = account.Proxy.URL()
 	}
+	telemetryAttempt := s.beginCodexTelemetry(c, account, responsesBody, upstreamReq.Header)
 	resp, err := s.doOpenAIUpstream(upstreamReq, proxyURL, account)
+	telemetryAttempt.observeResult(resp, err)
 	if err != nil {
 		return nil, s.handleOpenAIUpstreamTransportError(ctx, c, account, err, false)
 	}

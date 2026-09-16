@@ -268,6 +268,12 @@ gateway:
   #
   # 注意：开启后会影响所有客户端的行为（不仅限于 VS Code / Codex CLI），请谨慎开启。
   force_codex_cli: false
+  # Process-level Codex client telemetry kill switch (default true).
+  # Per-account extra.codex_telemetry_enabled still gates sending.
+  # Env: GATEWAY_CODEX_TELEMETRY_ENABLED=false ignores every account toggle.
+  # Optional: GATEWAY_CODEX_STATSIG_API_KEY overrides the public Statsig SDK key.
+  codex_telemetry_enabled: true
+  # codex_statsig_api_key: ""
   # Stop rewriting load-shed Codex originators to the official CLI identity.
   # 关闭「把落在上游降载桶的 Codex originator 改写为官方 CLI 身份（codex_cli_rs）」。
   #

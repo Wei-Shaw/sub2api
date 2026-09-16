@@ -30,8 +30,8 @@
         <span>{{ typeLabel }}</span>
       </span>
     </div>
-    <!-- Row 2: Plan type + Privacy mode (only if either exists) -->
-    <div v-if="planLabel || privacyBadge" class="inline-flex items-center overflow-hidden rounded-md">
+    <!-- Row 2: Plan type + Privacy mode + Telemetry -->
+    <div v-if="planLabel || privacyBadge || telemetryEnabled" class="inline-flex items-center overflow-hidden rounded-md">
       <span v-if="planLabel" :class="['inline-flex items-center gap-1 px-1.5 py-1', planBadgeClass]">
         <GrokFreeIcon
           v-if="isGrokFreePlan"
@@ -55,6 +55,13 @@
           <path stroke-linecap="round" stroke-linejoin="round" :d="privacyBadge.icon" />
         </svg>
         <span>{{ privacyBadge.label }}</span>
+      </span>
+      <span
+        v-if="telemetryEnabled"
+        data-testid="platform-telemetry-badge"
+        class="inline-flex items-center gap-1 px-1.5 py-1 bg-teal-100 text-teal-700 dark:bg-teal-900/30 dark:text-teal-300"
+      >
+        <span>Telemetry</span>
       </span>
     </div>
     <!-- Row 3: Subscription expiration (non-free paid accounts only) -->
@@ -83,9 +90,12 @@ interface Props {
   planType?: string
   privacyMode?: string
   subscriptionExpiresAt?: string
+  telemetryEnabled?: boolean
 }
 
-const props = defineProps<Props>()
+const props = withDefaults(defineProps<Props>(), {
+  telemetryEnabled: false
+})
 
 const platformLabel = computed(() => sharedPlatformLabel(props.platform))
 
