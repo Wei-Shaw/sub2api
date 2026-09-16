@@ -34,6 +34,7 @@ const {
 vi.mock('@/api/admin', () => ({
   adminAPI: {
     accounts: {
+      getBatchPerformance: vi.fn().mockResolvedValue({ stats: {}, window_start: '', window_end: '' }),
       list: listAccounts,
       listWithEtag,
       getBatchTodayStats,
