@@ -102,11 +102,15 @@ var migrationChecksumCompatibilityRules = map[string]migrationChecksumCompatibil
 	// 成功升级；两个历史 checksum 双向互认，227 会将已应用旧版的约束统一为全部 9 平台。
 	"224_user_platform_quotas_add_cn_providers.sql": newMigrationChecksumCompatibilityRule("5227db3c1a6a1e2e422a9f9ba9d1f490c708b6c6dd91ce89f3c48115421a3e55", "4de3bf301cd838bbaf85613ce37dd47643165c0e3f36a1075341ff71aa37fae1"),
 	// 157/237/238 是官方迁移，本 fork 就地在平台白名单里补了 kiro/adobe。
-	// 从官方镜像切到本 fork 的库记录的是官方 checksum，需要放行；
-	// 两版约束的差异由 239_fork_platform_constraints_superset 统一收敛。
+	// 同一文件在野外存在三个版本，全部双向互认：
+	//   1. 官方原版（第二个 checksum）—— 从官方镜像切过来的库；
+	//   2. kiro 上游 nianzs/sub2api 的就地补丁（第一个 = 当前文件）；
+	//   3. 本 fork 在 2026-09-12 同步 v0.2.4 时自己打的就地补丁（第三个）——
+	//      tw-01 现网库记的就是这一版，不放行会让 v0.2.5 升级在启动时被拒。
+	// 三版约束的差异由 239_fork_platform_constraints_superset 统一收敛为全集。
 	"157_user_platform_quotas_add_grok.sql": newMigrationChecksumCompatibilityRule("a918734da39c2e5a82e4a5e9511bac1f4cf7e310ceadd647df52692320633c1b", "5cace8fa32c6174a72721cd9b01f28f4545de1fd7bcd9ca196a4225056ec4fb8"),
-	"237_add_minimax_platform.sql":          newMigrationChecksumCompatibilityRule("c754b29e15c10ef2a72887c4e2dd04a73a37c6c06218d1b2725836884450c03a", "f4c73d2dbce114ca7ade1aac51998c3465490f4f3c9b3e868e53590f3fa8601b"),
-	"238_opencode_go_platform.sql":          newMigrationChecksumCompatibilityRule("d310f134e119bd0b01c36e048841d04e1adc04a117c5c516ccdbbc8800742414", "6f987e251519bd3759e60da44620a5d777494cceb333b6ce394aa0ea536ef5a2"),
+	"237_add_minimax_platform.sql":          newMigrationChecksumCompatibilityRule("c754b29e15c10ef2a72887c4e2dd04a73a37c6c06218d1b2725836884450c03a", "f4c73d2dbce114ca7ade1aac51998c3465490f4f3c9b3e868e53590f3fa8601b", "f0ec18d80d35e280f848ecc44c82e476e44c6f4ff373f6f08093eb6a43d6d809"),
+	"238_opencode_go_platform.sql":          newMigrationChecksumCompatibilityRule("d310f134e119bd0b01c36e048841d04e1adc04a117c5c516ccdbbc8800742414", "6f987e251519bd3759e60da44620a5d777494cceb333b6ce394aa0ea536ef5a2", "79639d114ef8632b1fa49a813cf843e6b43fde00fe581f4e37e06007d340b97f"),
 }
 
 // ApplyMigrations 将嵌入的 SQL 迁移文件应用到指定的数据库。

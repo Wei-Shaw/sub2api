@@ -80,15 +80,3 @@ func TestUserPlatformQuotaPlatformCheckFinalStateCoversAllPlatforms(t *testing.T
 		"migration %s 定义的平台列表与 service.AllowedQuotaPlatforms 不一致；"+
 			"重建 CHECK 约束时必须列出全部允许平台，漏项会让对应平台的配额行插入失败", last)
 }
-
-// TestAddKiroToPlatformChecksMigration 校验 239 号迁移把上游 237/238 重建 CHECK 时
-// 漏掉的 kiro 补回来，且列表是 238（含 minimax/opencode_go）的超集。
-func TestAddKiroToPlatformChecksMigration(t *testing.T) {
-	content, err := FS.ReadFile("239_add_kiro_to_platform_checks.sql")
-	require.NoError(t, err)
-
-	sql := strings.Join(strings.Fields(string(content)), " ")
-	require.Contains(t, sql, "DROP CONSTRAINT IF EXISTS user_platform_quotas_platform_check")
-	require.Contains(t, sql,
-		"CHECK (platform IN ('anthropic', 'openai', 'gemini', 'antigravity', 'kiro', 'grok', 'kimi', 'zhipu', 'deepseek', 'minimax', 'opencode_go'))")
-}

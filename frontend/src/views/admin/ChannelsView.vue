@@ -646,6 +646,7 @@ import { apiIntervalsToForm, apiTimePricingToForm, createDefaultTimePricingForm,
 import type { AdminGroup, GroupPlatform } from '@/types'
 import type { Column } from '@/components/common/types'
 import { platformTextClass, platformBadgeLightClass } from '@/utils/platformColors'
+import { CONCRETE_PLATFORM_OPTIONS } from '@/constants/platforms'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import TablePageLayout from '@/components/layout/TablePageLayout.vue'
 import DataTable from '@/components/common/DataTable.vue'
@@ -772,7 +773,7 @@ const form = reactive({
 let abortController: AbortController | null = null
 
 // ── Platform config ──
-const platformOrder: GroupPlatform[] = ['anthropic', 'openai', 'gemini', 'antigravity', 'kiro', 'grok', 'kimi', 'zhipu', 'deepseek', 'minimax', 'opencode_go']
+const platformOrder: GroupPlatform[] = CONCRETE_PLATFORM_OPTIONS.map((option) => option.value)
 // Composite pricing/mapping may target every concrete schedulable provider.
 const compositePlatforms: GroupPlatform[] = ['anthropic', 'openai', 'gemini', 'antigravity', 'kiro', 'grok', 'kimi', 'zhipu', 'deepseek', 'minimax', 'opencode_go']
 
