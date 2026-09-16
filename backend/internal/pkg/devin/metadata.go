@@ -26,7 +26,9 @@ const (
 	// ClientName 是抓包中的 ide_name/extension_name/ide_type 值。
 	ClientName = "chisel"
 	// DefaultClientVersion 是未安装本地 CLI 时的回落版本号。
-	DefaultClientVersion = "3000.2.17"
+	// 版本过低时上游 catalog 不含 fusion-sidekick 条目，overflow 换模
+	// 会绕过 fusion 配对直接选裸模型——保持与当前 CLI 版本一致。
+	DefaultClientVersion = "3000.10.27"
 )
 
 // ClientOS 返回抓包形态的操作系统标识（darwin→"mac"，windows→"windows"，
