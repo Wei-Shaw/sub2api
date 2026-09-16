@@ -442,12 +442,16 @@ func appendVarint(dst []byte, v uint64) []byte {
 	return append(dst, byte(v))
 }
 
-// testClientModelConfig 编码一个最小 ClientModelConfig（label+uid+context_window）。
-func testClientModelConfig(label, uid string, contextWindow uint64) []byte {
+// testClientModelConfig 编码一个最小 ClientModelConfig（label+uid+context_window，
+// isRouter 时附带 model_info{is_router:true}）。
+func testClientModelConfig(label, uid string, contextWindow uint64, isRouter bool) []byte {
 	var m []byte
 	m = testProtoString(m, 1, label)
 	m = testProtoString(m, 22, uid)
 	m = testProtoVarint(m, 18, contextWindow)
+	if isRouter {
+		m = testProtoBytes(m, 23, testProtoVarint(nil, 25, 1)) // model_info{is_router:true}
+	}
 	return testProtoBytes(nil, 1, m)
 }
 
@@ -502,17 +506,18 @@ func fakeHTTPResp(status int, body []byte) *http.Response {
 	}
 }
 
-// TestStreamOverflowRetryOnTrailerTooLong 复刻插件语义：「prompt too long」
-// 经 end 帧 trailer 到达时（请求期判定够不到），换 ≥1M 上下文的 uid 整轮重试。
+// TestStreamOverflowRetryOnTrailerTooLong 验证运维逃生门：仅当
+// DEVIN_OVERFLOW_MODEL 显式指定目标 uid 时，「prompt too long」（经
+// end 帧 trailer 到达）才换 uid 整轮重试一次。
 func TestStreamOverflowRetryOnTrailerTooLong(t *testing.T) {
+	t.Setenv("DEVIN_OVERFLOW_MODEL", "swe-2-max")
 	var chatBodies [][]byte
 	do := func(req *http.Request) (*http.Response, error) {
 		body, _ := io.ReadAll(req.Body)
 		switch req.URL.Path {
 		case devin.PathGetCliModelConfigs:
-			catalog := append(
-				testClientModelConfig("SWE-2 High", "swe-2-high", 262_000),
-				testClientModelConfig("Big 1M High", "big-1m-high", 1_048_576)...)
+			catalog := testClientModelConfig("SWE-2 High", "swe-2-high", 262_000, false)
+			catalog = append(catalog, testClientModelConfig("SWE-2 Max", "swe-2-max", 262_000, false)...)
 			return fakeHTTPResp(200, catalog), nil
 		case devin.PathGetChatMessage:
 			// 流式请求体是 Connect envelope（5B 头 + proto payload）。
@@ -571,7 +576,67 @@ func TestStreamOverflowRetryOnTrailerTooLong(t *testing.T) {
 	if len(chatBodies) != 2 {
 		t.Fatalf("expected 2 GetChatMessage calls (orig + overflow), got %d", len(chatBodies))
 	}
-	if uid := testFieldString(chatBodies[1], 21); uid != "big-1m-high" {
-		t.Fatalf("retry model_uid = %q, want big-1m-high", uid)
+	if uid := testFieldString(chatBodies[1], 21); uid != "swe-2-max" {
+		t.Fatalf("retry model_uid = %q, want swe-2-max", uid)
+	}
+}
+
+// TestStreamOverflowNoPairingReturnsError 严格模型固定语义：请求
+// swe-2-high 就固定打 swe-2-high——catalog 里即便有 fusion 配对和
+// ≥1M 异族裸模型也不自动换模，原始 too-long 错误以 error 事件透传。
+func TestStreamOverflowNoPairingReturnsError(t *testing.T) {
+	var chatCalls int
+	do := func(req *http.Request) (*http.Response, error) {
+		body, _ := io.ReadAll(req.Body)
+		_ = body
+		switch req.URL.Path {
+		case devin.PathGetCliModelConfigs:
+			catalog := testClientModelConfig("SWE-2 High", "swe-2-high", 262_000, false)
+			catalog = append(catalog, testClientModelConfig("Claude Fable 5.1 Medium", "claude-fable-5-1-medium", 1_000_000, false)...)
+			catalog = append(catalog, testClientModelConfig("Fusion (GPT-6 Astra High Thinking + SWE-2 High)", "fusion-gpt-6-astra-high-sidekick-swe-2-high", 1_000_000, true)...)
+			return fakeHTTPResp(200, catalog), nil
+		case devin.PathGetChatMessage:
+			chatCalls++
+			trailer := `{"error":{"code":"invalid_argument","message":"invalid_argument: The prompt is too long for this model"}}`
+			return fakeHTTPResp(200, testConnectFrame(true, []byte(trailer))), nil
+		}
+		return fakeHTTPResp(200, nil), nil
+	}
+	a, err := New(Config{Token: "tok", Do: do})
+	if err != nil {
+		t.Fatal(err)
+	}
+	stream, err := a.Stream(context.Background(), llm.RequestMessages{
+		Model:    "swe-2-high",
+		Messages: []llm.Message{llm.UserMessage{Content: []llm.Content{llm.TextContent{Text: "hi"}}}},
+	})
+	if err != nil {
+		t.Fatalf("stream: %v", err)
+	}
+	var gotErr bool
+	var errText string
+	for {
+		event, err := stream.Recv(context.Background())
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			t.Fatalf("recv: %v", err)
+		}
+		if event.Type == llm.ResponseEventError {
+			gotErr = true
+			if event.Error != nil {
+				errText = event.Error.ErrorMessage
+			}
+		}
+	}
+	if !gotErr {
+		t.Fatal("expected error event when no fusion pairing exists")
+	}
+	if !strings.Contains(errText, "too long") {
+		t.Fatalf("error should carry upstream too-long text, got %q", errText)
+	}
+	if chatCalls != 1 {
+		t.Fatalf("expected no retry (1 GetChatMessage call), got %d", chatCalls)
 	}
 }

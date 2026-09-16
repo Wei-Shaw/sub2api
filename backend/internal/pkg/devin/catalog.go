@@ -750,40 +750,6 @@ func isValidLevel(word string) bool {
 	return false
 }
 
-// PickOverflowUID 在请求被上游判定过长时挑一个更大上下文的 uid。
-// 优先级：fusion 配对（sidekick 保留当前 uid）> 最大上下文的非 router
-// 条目（按 rank 序）。catalog 为上游目录原始扁平模型集。
-func PickOverflowUID(currentUID string, catalog []Model) string {
-	// fusion 路由项：sidekick 保留当前 uid 的配对优先。
-	for _, lead := range []string{"gpt-6-astra-high", "claude-fable-5-1-high", "claude-opus-5-high", "gpt-5-6-sol-high"} {
-		for _, model := range catalog {
-			if model.IsRouter && strings.HasSuffix(model.ID, "-sidekick-"+currentUID) && strings.Contains(model.ID, "-"+lead+"-") {
-				return model.ID
-			}
-		}
-	}
-	for _, model := range catalog {
-		if model.IsRouter && strings.HasSuffix(model.ID, "-sidekick-"+currentUID) {
-			return model.ID
-		}
-	}
-	best := ""
-	bestRank := 1 << 30
-	for _, model := range catalog {
-		if model.IsRouter || model.ID == currentUID {
-			continue
-		}
-		if model.ContextWindow < 1_000_000 {
-			continue
-		}
-		if r := rank(model.ID); r < bestRank {
-			bestRank = r
-			best = model.ID
-		}
-	}
-	return best
-}
-
 // ResolveCatalogModelUID 把对外暴露的分组模型 id（如 swe-2）解析为真实上游 uid。
 // 语义与 devin-connect catalog.ts 的 resolveModelUid 一致（内部委托
 // ResolveModelUID）：未指定 effort 档默认 "high"，沿 LevelOrder 先向

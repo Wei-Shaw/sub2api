@@ -351,21 +351,15 @@ func isPromptTooLong(err error) bool {
 	return err != nil && promptTooLongPattern.MatchString(connectErrorText(err))
 }
 
-// flatCatalog 返回缓存的扁平目录条目（PickOverflowUID 的输入）。
-func (a *Adapter) flatCatalog() []devin.Model {
-	a.catalogMu.RLock()
-	defer a.catalogMu.RUnlock()
-	return a.models
-}
-
-// pickOverflowUID 为「prompt too long」重试挑选目标 uid：
-// DEVIN_OVERFLOW_MODEL 显式指定 > 插件 PickOverflowUID（sidekick 配对 >
-// ≥1M 非路由条目）。与当前 uid 相同或无候选时返回空。
+// pickOverflowUID 为「prompt too long」重试挑选目标 uid：只认
+// DEVIN_OVERFLOW_MODEL 环境变量的显式指定（运维逃生门）。默认返回空——
+// 不做任何自动换模：请求 swe-2 就固定打 swe-2，too-long 错误原样
+// 透传给调用方，而不是静默换成别的模型。
 func (a *Adapter) pickOverflowUID(currentUID string) string {
 	if overflow := strings.TrimSpace(os.Getenv("DEVIN_OVERFLOW_MODEL")); overflow != "" && overflow != currentUID {
 		return overflow
 	}
-	return devin.PickOverflowUID(currentUID, a.flatCatalog())
+	return ""
 }
 
 // groupedCatalog 返回缓存的分组目录（无缓存时为 nil）。
@@ -430,8 +424,8 @@ func (a *Adapter) Stream(ctx context.Context, request llm.RequestMessages) (llm.
 	streamCtx, cancel := context.WithCancel(ctx)
 	conn, err := a.getChatMessageWithRetry(streamCtx, params)
 	if err != nil && isPromptTooLong(err) {
-		// 「prompt too long」按插件语义重试一次：换一个更大上下文的 uid
-		// （DEVIN_OVERFLOW_MODEL 显式指定 > fusion sidekick 配对 > ≥1M 非路由条目）。
+		// 「prompt too long」仅在 DEVIN_OVERFLOW_MODEL 显式指定目标 uid 时
+		// 重试一次；默认不自动换模，too-long 错误直接透传给调用方。
 		if overflow := a.pickOverflowUID(model); overflow != "" {
 			slog.Warn("devin: prompt too long; retrying with overflow uid", "from", model, "to", overflow)
 			retryModel, retryJWT, routeErr := a.resolveModelRouting(ctx, request, overflow)
@@ -466,8 +460,8 @@ func (a *Adapter) Stream(ctx context.Context, request llm.RequestMessages) (llm.
 				slog.Warn("devin: reopening stream: upstream ended with empty content")
 			case isPromptTooLong(cause):
 				// 「prompt too long」也经 end 帧 trailer 到达（Connect 流式错误）：
-				// 请求期判定够不到——同插件语义换更大上下文的 uid 整轮重试。
-				// tryReopen 的 retried 闸保证全局只重试一次。
+				// 仅在 DEVIN_OVERFLOW_MODEL 显式指定时换 uid 重试（retried 闸
+				// 保证全局只一次）；默认把 too-long 错误透传给调用方。
 				overflow := a.pickOverflowUID(model)
 				if overflow == "" {
 					return nil, nil, cause
