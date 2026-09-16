@@ -245,8 +245,8 @@ gateway:
   # Enable Gemini upstream response header debug logs (default: false)
   # 是否开启 Gemini 上游响应头调试日志（默认 false）
   gemini_debug_response_headers: false
-  # Maximum time to drain an accepted Gemini Chat Completions request after the client disconnects (0 uses 120s).
-  # 客户端断开后，已受理的 Gemini Chat Completions 请求继续排空以获取计费用量的最长时间（秒，0 使用 120 秒）。
+  # Maximum time to drain an accepted Gemini generation after the client disconnects (0 uses 120s).
+  # 客户端断开后，已受理的 Gemini 生成请求继续排空以获取计费用量的最长时间（秒，0 使用 120 秒）。
   gemini_disconnect_drain_timeout_seconds: 120
   # Connection pool isolation strategy:
   # 连接池隔离策略：

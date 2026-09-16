@@ -972,7 +972,7 @@ type GatewayConfig struct {
 	ProxyProbeResponseReadMaxBytes int64 `mapstructure:"proxy_probe_response_read_max_bytes"`
 	// Gemini 上游响应头调试日志开关（默认关闭，避免高频日志开销）
 	GeminiDebugResponseHeaders bool `mapstructure:"gemini_debug_response_headers"`
-	// GeminiDisconnectDrainTimeoutSeconds: Gemini Chat Completions 客户端断开后的最大排空时间（秒，0 使用默认值）。
+	// GeminiDisconnectDrainTimeoutSeconds: Gemini 生成请求客户端断开后的最大排空时间（秒，0 使用默认值）。
 	GeminiDisconnectDrainTimeoutSeconds int `mapstructure:"gemini_disconnect_drain_timeout_seconds"`
 	// ConnectionPoolIsolation: 上游连接池隔离策略（proxy/account/account_proxy）
 	ConnectionPoolIsolation string `mapstructure:"connection_pool_isolation"`
