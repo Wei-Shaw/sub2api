@@ -39,6 +39,18 @@ type SystemSettings struct {
 	SMTPFromName           string
 	SMTPUseTLS             bool
 
+	// Dataset collection. DatasetGoogleDriveCredentials is internal runtime
+	// state and is intentionally not copied into the public DTO.
+	DatasetEnabled                          bool
+	DatasetGoogleDriveCredentials           string
+	DatasetGoogleDriveCredentialsConfigured bool
+	DatasetGoogleDriveCredentialsSet        bool
+	DatasetGoogleDriveFolderID              string
+	DatasetBatchSize                        int
+	DatasetBatchMaxMB                       int
+	DatasetBatchIntervalSec                 int
+	DatasetBufferMaxItems                   int
+
 	// Telegram Bot Monitor
 	TelegramBotToken             string
 	TelegramBotTokenConfigured   bool

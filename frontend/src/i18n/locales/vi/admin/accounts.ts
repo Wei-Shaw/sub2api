@@ -14,38 +14,6 @@ export default mergeLocaleMessages(
     refreshInterval15s: '15 giây',
     refreshInterval30s: '30 giây',
     autoRefreshCountdown: 'Tự động làm mới: {seconds}s',
-    openaiProvision: {
-      statusTitle: 'Trạng thái bổ sung OpenAI',
-      loading: 'Đang tải trạng thái OpenAI...',
-      healthySummary: 'OpenAI khỏe mạnh: {healthy}/{target}',
-      checkingSummary: 'Đang kiểm tra OpenAI...',
-      provisioningSummary: 'Đang tạo tài khoản: {count} chờ callback',
-      reauthorizationSummary: 'Đang ủy quyền lại: {count}',
-      healthy: 'OAuth khỏe mạnh',
-      pending: 'Đang chờ tạo/callback',
-      requested: 'Lần gần nhất đã yêu cầu',
-      reauthorization: 'Đang chờ reauth',
-      lastCallback: 'Callback gần nhất',
-      nextCheck: 'Lần check kế tiếp',
-      lastCheck: 'Check gần nhất',
-      reset: 'Reset request đang chờ',
-      resetting: 'Đang reset...',
-      resetSuccess: 'Đã reset trạng thái provisioning',
-      resetFailed: 'Reset trạng thái provisioning thất bại',
-      notAvailable: 'Chưa có',
-      noCallback: 'Chưa nhận callback',
-      received: 'Đã nhận',
-      phase: {
-        disabled: 'Đã tắt',
-        idle: 'Đang chờ chu kỳ tiếp theo',
-        checking: 'Đang kiểm tra số tài khoản',
-        sending_provision_request: 'Đang gửi request tạo tài khoản',
-        waiting_for_provision_callback: 'Đang chờ callback provisioning',
-        waiting_for_reauthorization_callback: 'Đang chờ callback reauth',
-        error: 'Có lỗi trong automation',
-        unknown: 'Chưa xác định'
-      }
-    },
     listPendingSyncHint: 'Danh sách có thay đổi chưa đồng bộ; nhấn đồng bộ để cập nhật dữ liệu mới nhất.',
     listPendingSyncAction: 'Đồng bộ ngay',
     syncFromCrs: 'Đồng bộ từ CRS',
@@ -491,13 +459,10 @@ export default mergeLocaleMessages(
       wsModeOff: 'Tắt (off)',
       wsModeCtxPool: 'Pool ngữ cảnh (ctx_pool)',
       wsModePassthrough: 'Passthrough',
-      wsModeHttpBridge: 'Cầu nối HTTP (http_bridge)',
       wsModeShared: 'Chia sẻ (shared)',
       wsModeDedicated: 'Riêng biệt (dedicated)',
       wsModeConcurrencyHint: 'Sau khi bật WS mode, độ đồng thời của tài khoản này sẽ được dùng làm giới hạn trên của pool kết nối WS của chính tài khoản đó.',
-      wsModeCtxPoolHint: 'Gateway lấy và tái sử dụng kết nối WS upstream từ một pool; giới hạn pool do cấu hình gateway quyết định.',
-      wsModePassthroughHint: 'Gateway mở một kết nối WS upstream riêng cho mỗi phiên client, không dùng pool kết nối.',
-      wsModeHttpBridgeHint: 'Gateway chuyển request WS của client thành request HTTP upstream rồi chuyển response streaming SSE ngược lại thành message WS.',
+      wsModePassthroughHint: 'Chế độ passthrough không dùng pool kết nối WS.',
       oauthResponsesWebsocketsV2: 'OAuth WebSocket Mode',
       oauthResponsesWebsocketsV2Desc:
         'Chỉ áp dụng cho OpenAI OAuth. Sau khi bật, tài khoản này mới được phép dùng giao thức OpenAI WebSocket Mode.',
@@ -615,26 +580,6 @@ export default mergeLocaleMessages(
     interceptWarmupRequests: 'Chặn request làm nóng',
     interceptWarmupRequestsDesc: 'Sau khi bật, các request làm nóng như tạo tiêu đề sẽ trả về response mock và không tiêu tốn token upstream',
     autoPauseOnExpired: 'Tự động tạm dừng điều phối khi hết hạn',
-    grokMediaEligibility: {
-      title: 'Đủ điều kiện tạo Media',
-      hint: 'Kiểm soát xem tài khoản Grok OAuth này có thể được chọn để tạo ảnh và video hay không.',
-      auto: 'Phát hiện tự động',
-      autoHint: 'Phát hiện tự động chỉ xóa ghi đè thủ công; nó không kích hoạt yêu cầu media.',
-      forceEnableWarning: 'Bật ép buộc bỏ qua kiểm tra đủ điều kiện tự động. Chỉ sử dụng cho các tài khoản được xác nhận hỗ trợ tạo ảnh/video.',
-      current: 'Quyết định hiện tại:',
-      eligible: 'Đủ điều kiện',
-      ineligible: 'Không đủ điều kiện',
-      partialSave: 'Các cài đặt tài khoản khác có thể đã được lưu, nhưng đủ điều kiện media chưa được cập nhật. Vui lòng thử lại.',
-      reasons: {
-        eligible: 'Quyền lợi trả phí đã được xác nhận',
-        billing_inconclusive: 'Thông tin thanh toán không rõ ràng',
-        billing_forbidden: 'Endpoint thanh toán bị cấm',
-        billing_free_tier: 'Tài khoản gói miễn phí',
-        billing_unobserved: 'Chưa quan sát thanh toán',
-        override_enabled: 'Bắt buộc bật thủ công',
-        override_disabled: 'Bắt buộc tắt thủ công'
-      }
-    },
     autoPauseOnExpiredDesc: 'Sau khi bật, tài khoản sẽ tự động tạm dừng điều phối khi hết hạn',
     // Quota control (Anthropic OAuth/SetupToken only)
     quotaControl: {
@@ -733,7 +678,6 @@ export default mergeLocaleMessages(
     billingRateMultiplierHint: '0 nghĩa là không tính phí, chỉ ảnh hưởng tới phần tính phí của tài khoản',
     expiresAt: 'Hết hạn lúc',
     expiresAtHint: 'Để trống nghĩa là không hết hạn',
-    expiresAtTimezoneHint: 'Thời gian nhập được hiểu theo múi giờ trình duyệt của bạn ({timezone}).',
     higherPriorityFirst: 'Giá trị càng nhỏ thì ưu tiên càng cao',
     mixedScheduling: 'Dùng trong /v1/messages',
     mixedSchedulingHint: 'Sau khi bật, tài khoản có thể tham gia điều phối trong các nhóm Anthropic/Gemini',
@@ -1262,16 +1206,8 @@ export default mergeLocaleMessages(
   },
   {
     accounts: {
-      syncUpstreamModelsMetadataPartial: 'Một số khả năng model đã được cập nhật; các model còn lại vẫn chưa đầy đủ.',
-      upstreamRequestIdHeader: 'ID Upstream',
-      upstreamRequestIdHeaderPlaceholder: 'Để trống để không ghi lại',
-      upstreamRequestIdHeaderHelp: {
-        intro: 'Tên header response mà upstream trực tiếp khai báo request ID của nó. Giá trị sẽ được ghi lại trong cột "ID Upstream" của log sử dụng; để trống để không ghi lại.',
-        examplesTitle: 'Giá trị thông dụng',
-        sub2apiNote: 'Khớp với cột request ID trong log sử dụng của nó',
-      },
-      syncUpstreamModelsMetadataIncomplete: 'ID model đã được đồng bộ, nhưng metadata khả năng chưa đầy đủ và không được cập nhật.',
-      fromModel: 'Model nguồn',
+    syncUpstreamModelsMetadataIncomplete: 'ID model đã được đồng bộ, nhưng metadata khả năng chưa đầy đủ và không được cập nhật.',
+    fromModel: 'Model nguồn',
     toModel: 'Model đích',
     messages: {
       accountCreated: 'Đã tạo tài khoản',
@@ -1382,7 +1318,6 @@ export default mergeLocaleMessages(
       kimi: 'kimi',
       zhipu: 'Zhipu GLM',
       deepseek: 'DeepSeek',
-      opencode_go: 'OpenCode',
     },
     cnProviders: {
       accountMode: {
@@ -1405,49 +1340,15 @@ export default mergeLocaleMessages(
         responses: 'Responses',
         responsesDesc: 'Endpoint Responses gốc của nhà cung cấp — lý tưởng cho Codex.',
       },
-      zhipuTeam: {
-        title: 'Tổ chức / Project ID của gói nhóm',
-        organization: 'Organization ID (gói nhóm, tùy chọn)',
-        organizationPlaceholder: 'Organization ID của Coding Plan nhóm',
-        project: 'Project ID (gói nhóm, tùy chọn)',
-        projectPlaceholder: 'Project ID của Coding Plan nhóm',
-        hint: 'Chỉ cần cho GLM Coding Plan nhóm; khi điền, truy vấn usage sẽ dùng endpoint nhóm. Để trống với gói cá nhân. Nhấn dấu hỏi để xem cách lấy ID.',
-        help: {
-          title: 'Cách lấy Organization / Project ID',
-          step1: 'Đăng nhập nền tảng Zhipu (bigmodel.cn) bằng tài khoản nhóm và mở “Coding Plan → Team → My Plan”.',
-          step2: 'Nhấn F12 để mở DevTools, chuyển sang tab Network rồi tải lại trang.',
-          step3: 'Nhập /api/biz/v1/organization vào ô lọc Network và mở request tương ứng (ví dụ api_keys).',
-          step4: 'Trong URL request, đoạn bắt đầu bằng org- là Organization ID và đoạn bắt đầu bằng proj_ là Project ID; cũng có thể xem trong header bigmodel-organization / bigmodel-project.',
-          example: 'Ví dụ: …/organization/org-0610bE2D…/projects/proj_0798F20…/api_keys → điền org-0610bE2D… vào Organization ID và proj_0798F20… vào Project ID',
-        },
-      },
       balance: 'Số dư --',
       window5h: 'cửa sổ 5 giờ',
       windowWeekly: 'Khoảng thời gian hàng tuần',
-      windowMonthly: '30 ngày',
       probe: 'Truy vấn',
       probeTooltip: 'Truy vấn endpoint hạn ngạch của nhà cung cấp về mức sử dụng khung thời gian luân phiên 5 giờ/hàng tuần',
       balanceProbeTooltip: 'Truy vấn endpoint số dư của nhà cung cấp để biết số dư tài khoản',
       balanceLow: 'Số dư không đủ',
       noBalanceEndpoint: 'Nền tảng này không có endpoint truy vấn số dư',
       resetSoon: 'sắp đặt lại',
-    },
-    opencodeGo: {
-      accountMode: {
-        zen: 'Zen',
-        zenDesc: 'Cổng thanh toán theo mức sử dụng, trừ credit tài khoản và tính phí theo token.',
-        go: 'GO',
-        goDesc: 'Cổng thuê bao, giới hạn theo cửa sổ sử dụng 5 giờ / tuần / tháng.',
-      },
-      protocolRules: {
-        title: 'Định tuyến giao thức model',
-        hint: 'Ở chế độ thích ứng, mỗi model được gửi tới giao thức upstream gốc tương ứng. Dùng ID chính xác hoặc wildcard * ở cuối; rule khớp đầu tiên được ưu tiên. Model không khớp dùng Chat Completions.',
-        patternPlaceholder: 'grok-* hoặc deepseek-v4-flash',
-        add: 'Thêm rule',
-        remove: 'Xóa rule',
-        restoreDefaults: 'Khôi phục mặc định',
-        fallback: 'Model không khớp → Chat Completions (/v1/chat/completions)',
-      },
     },
     types: {
       grokOauth: 'Grok OAuth',
@@ -1777,30 +1678,6 @@ export default mergeLocaleMessages(
     audioReceived: 'Đã nhận được âm thanh thử nghiệm #{count}',
     videoPreview: 'Video đã tạo:',
     videoReceived: 'Đã nhận được video test #{count}',
-    },
-  },
-  {
-    accounts: {
-      platforms: {
-        minimax: 'MiniMax',
-      },
-      grokMediaEligibility: {
-        enabled: 'Bắt buộc bật',
-        disabled: 'Bắt buộc tắt',
-        loading: 'Đang tải trạng thái đủ điều kiện…',
-        loadFailed: 'Không thể tải trạng thái đủ điều kiện media',
-      },
-      openai: {
-        imagesUrlToB64Json: 'Chuyển URL kết quả ảnh sang base64',
-        imagesUrlToB64JsonDesc: 'Chỉ áp dụng cho response Images không streaming của tài khoản OpenAI API Key. Khi một item ảnh upstream có url nhưng không có b64_json, gateway sẽ tải url và điền b64_json bằng nội dung base64 (vẫn giữ url) cho các client dùng API chính thức; response được giữ nguyên nếu tải thất bại.',
-      },
-      upstreamRequestIdHeaderHelp: {
-        official: 'API chính thức của {platform}',
-      },
-      usageWindow: {
-        estimatedTotalCost: 'Tổng ước tính ${cost}',
-        estimatedTotalCostTooltip: 'Tổng chi phí ước tính khi sử dụng 100%, dựa trên chi phí cửa sổ và mức sử dụng hiện tại',
-      },
-    },
+    }
   },
 )

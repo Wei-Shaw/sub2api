@@ -499,6 +499,14 @@ export interface SystemSettings {
   smtp_from_email: string;
   smtp_from_name: string;
   smtp_use_tls: boolean;
+  // Dataset collection settings. Credentials are write-only.
+  dataset_enabled: boolean;
+  dataset_google_drive_credentials_configured: boolean;
+  dataset_google_drive_folder_id: string;
+  dataset_batch_size: number;
+  dataset_batch_max_mb: number;
+  dataset_batch_interval_sec: number;
+  dataset_buffer_max_items: number;
   // Cloudflare Turnstile settings
   turnstile_enabled: boolean;
   turnstile_site_key: string;
@@ -902,6 +910,13 @@ export interface UpdateSettingsRequest {
   smtp_from_email?: string;
   smtp_from_name?: string;
   smtp_use_tls?: boolean;
+  dataset_enabled?: boolean;
+  dataset_google_drive_credentials?: string;
+  dataset_google_drive_folder_id?: string;
+  dataset_batch_size?: number;
+  dataset_batch_max_mb?: number;
+  dataset_batch_interval_sec?: number;
+  dataset_buffer_max_items?: number;
   turnstile_enabled?: boolean;
   turnstile_site_key?: string;
   turnstile_secret_key?: string;

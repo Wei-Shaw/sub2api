@@ -258,6 +258,16 @@ const (
 	SettingKeySMTPFromName = "smtp_from_name" // 发件人名称
 	SettingKeySMTPUseTLS   = "smtp_use_tls"   // 是否使用TLS
 
+	// Dataset collection settings. Credentials are encrypted before persistence
+	// and never returned by the admin settings response.
+	SettingKeyDatasetEnabled                = "dataset_enabled"
+	SettingKeyDatasetGoogleDriveCredentials = "dataset_google_drive_credentials"
+	SettingKeyDatasetGoogleDriveFolderID    = "dataset_google_drive_folder_id"
+	SettingKeyDatasetBatchSize              = "dataset_batch_size"
+	SettingKeyDatasetBatchMaxMB             = "dataset_batch_max_mb"
+	SettingKeyDatasetBatchIntervalSec       = "dataset_batch_interval_sec"
+	SettingKeyDatasetBufferMaxItems         = "dataset_buffer_max_items"
+
 	// Cloudflare Turnstile 设置
 	SettingKeyTurnstileEnabled   = "turnstile_enabled"    // 是否启用 Turnstile 验证
 	SettingKeyTurnstileSiteKey   = "turnstile_site_key"   // Turnstile Site Key

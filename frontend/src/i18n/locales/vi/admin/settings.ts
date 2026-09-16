@@ -14,6 +14,7 @@ export default mergeLocaleMessages(
       users: 'Users',
       gateway: 'Gateway',
       email: 'Email',
+      dataset: 'Dataset',
       backup: 'Backup',
       payment: 'Payment',
     },
@@ -340,10 +341,6 @@ export default mergeLocaleMessages(
     gatewayForwarding: {
       title: 'Hành vi chuyển tiếp yêu cầu',
       description: 'Kiểm soát hành vi khi chuyển tiếp yêu cầu tới tài khoản OAuth upstream',
-      openaiTTFTMode: 'Chỉ số token đầu tiên của OpenAI Responses',
-      openaiTTFTModeSemantic: 'Tương thích legacy (sự kiện ngữ nghĩa)',
-      openaiTTFTModeVisible: 'Nội dung hiển thị thực tế',
-      openaiTTFTModeHint: 'Mặc định ghi first_token_ms tại sự kiện ngữ nghĩa không phải preamble đầu tiên. Chế độ nội dung hiển thị thực tế chỉ ghi khi có văn bản, tham số tool hoặc nội dung hình ảnh không rỗng.',
       fingerprintUnification: 'Hợp nhất fingerprint',
       fingerprintUnificationHint: 'Đồng nhất các header yêu cầu X-Stainless-* của những người dùng dùng chung một tài khoản OAuth. Khi tắt sẽ passthrough header gốc từ client.',
       metadataPassthrough: 'Passthrough metadata',
@@ -483,7 +480,6 @@ export default mergeLocaleMessages(
       namePlaceholder: 'Ví dụ: Trung tâm trợ giúp',
       url: 'URL trang',
       urlPlaceholder: 'https://example.com/page',
-      hideOpenButton: 'Ẩn nút "Mở trong tab mới"',
       iconSvg: 'Biểu tượng SVG',
       iconSvgPlaceholder: '<svg>...</svg>',
       iconPreview: 'Xem trước biểu tượng',
@@ -784,6 +780,32 @@ export default mergeLocaleMessages(
       fromNamePlaceholder: 'Sub2API',
       useTls: 'Dùng TLS',
       useTlsHint: 'Bật mã hóa TLS cho kết nối SMTP'
+    },
+    dataset: {
+      title: 'Thu thập dataset',
+      description: 'Thu thập bất đồng bộ, có giới hạn các bản ghi request/response để xuất dữ liệu fine-tuning.',
+      enabled: 'Bật thu thập dataset',
+      enabledHint: 'Việc thu thập vẫn fail-open và bất đồng bộ; tắt sẽ dừng bản ghi mới nhưng không thay đổi hành vi gateway.',
+      credentials: 'Credential OAuth Google Drive',
+      credentialsConfigured: 'Đã cấu hình credential',
+      credentialsMissing: 'Chưa cấu hình credential',
+      credentialsHint: 'Chọn file JSON OAuth client. File chỉ được gửi khi anh chọn file, được mã hóa trước khi lưu và không bao giờ trả về trình duyệt.',
+      selectedFile: 'Đã chọn: {fileName}',
+      folderId: 'Google Drive folder ID',
+      folderIdPlaceholder: '1AbCdEfGhIjKlMnOpQrStUvWxYz',
+      folderIdHint: 'Dùng folder ID của thư mục đích trong URL Google Drive.',
+      batchSize: 'Số record tối đa mỗi batch',
+      batchSizeHint: 'Flush batch khi đủ số record này. Phạm vi: 1–1000.',
+      batchMaxMB: 'Kích thước batch tối đa (MB)',
+      batchMaxMBHint: 'Flush trước khi payload JSONL vượt kích thước này. Phạm vi: 1–100 MB.',
+      batchIntervalSec: 'Khoảng thời gian batch (giây)',
+      batchIntervalHint: 'Flush batch đang mở sau khoảng thời gian này. Phạm vi: 1–3600 giây.',
+      bufferMaxItems: 'Số record buffer tối đa',
+      bufferMaxItemsHint: 'Sức chứa queue trong memory có giới hạn; khi đầy sẽ bỏ record thay vì chặn traffic gateway.',
+      writeOnlyNotice: 'Credential chỉ hỗ trợ ghi. Client secret và refresh token hiện có không được load vào form hoặc trả về bởi API.',
+      fileTooLarge: 'File credential phải nhỏ hơn {maxKb} KiB.',
+      fileEmpty: 'File credential đang rỗng.',
+      fileReadFailed: 'Không thể đọc file credential.',
     },
     testEmail: {
       title: 'Gửi email test',
@@ -1153,7 +1175,6 @@ export default mergeLocaleMessages(
       scopeOAuth: 'Chỉ OAuth',
       serviceTier: 'Khớp service_tier',
       tierAll: 'Tất cả tầng',
-      tierMissing: 'Không gửi tier',
       tierFlex: 'flex',
       tierPriority: 'priority (fast)',
       title: 'Chính sách OpenAI Fast/Flex',
@@ -1325,21 +1346,6 @@ export default mergeLocaleMessages(
   {
     settings: {
     features: {
-      siteBillingMode: {
-        title: 'Chế độ thanh toán site',
-        description: 'Kiểm soát các lựa chọn mua mà người dùng nhìn thấy. Mặc định là “Nạp tiền và Đăng ký”.',
-        label: 'Lựa chọn mua',
-        options: {
-          rechargeAndSubscription: 'Nạp tiền và Đăng ký',
-          rechargeOnly: 'Chỉ nạp tiền',
-          subscriptionOnly: 'Chỉ đăng ký',
-        },
-        hints: {
-          rechargeAndSubscription: 'Người dùng có thể nạp số dư và mua gói đăng ký.',
-          rechargeOnly: 'Ẩn các lối vào liên quan đến đăng ký; các giao dịch đăng ký hiện có và subscription từ mã đổi không bị ảnh hưởng.',
-          subscriptionOnly: 'Trang mua chỉ cung cấp gói đăng ký và các đơn nạp số dư sẽ bị từ chối; mã đổi, hoa hồng affiliate và các khoản cộng số dư khác không bị ảnh hưởng.',
-        },
-      },
       channelMonitor: {
         mode: 'Chế độ giám sát',
         modeHint: 'Mặc định là V1 (đầu dò hoạt động). Chỉ chuyển sang V2 khi bạn muốn tổng hợp thụ động; mỗi lần chỉ có một triển khai có thể hoạt động.',
@@ -1719,24 +1725,6 @@ export default mergeLocaleMessages(
       previousResponseWeight: 'Độ bám previous_response',
       sessionStickyWeight: 'Độ bám session_hash',
     },
-    openaiAutoProvision: {
-      title: 'Tự động bổ sung tài khoản OpenAI',
-      description: 'Khi số OAuth OpenAI khỏe mạnh thấp hơn mục tiêu, yêu cầu turb-gpt-free-register đăng ký và tải tài khoản bổ sung.',
-      enabledTitle: 'Bật tự động bổ sung',
-      targetLabel: 'Số OAuth khỏe mạnh mục tiêu',
-      intervalLabel: 'Chu kỳ kiểm tra (giây)',
-      workersLabel: 'Số worker đăng ký',
-      requestsPerAccountLabel: 'Số request 5 giờ cho mỗi OAuth account',
-      tokensPerAccountLabel: 'Số token 5 giờ cho mỗi OAuth account',
-      emailSourceLabel: 'Ghi đè nguồn email',
-      emailSourcePlaceholder: 'Dùng cấu hình mặc định của turb',
-      turbURLLabel: 'URL turb-gpt-free-register',
-      callbackURLLabel: 'URL callback của Sub2API',
-      turbAuthCodeLabel: 'Mã xác thực WebUI của turb',
-      callbackSecretLabel: 'Secret callback',
-      reauthorizationTitle: 'Tự động ủy quyền lại OAuth bị lỗi',
-      reauthorizationDescription: 'Chạy lại Codex OAuth từ đầu và chỉ thay token sau khi identity khớp.',
-    },
     usageRecords: {
       title: 'Hồ sơ sử dụng',
       description: 'Cài đặt cho việc sử dụng và hồ sơ yêu cầu không thành công hiển thị cho người dùng cuối.',
@@ -1745,19 +1733,6 @@ export default mergeLocaleMessages(
       label: 'Cho phép người dùng xem các yêu cầu lỗi của riêng họ',
       description: 'Khi được bật, người dùng có thể thấy chế độ xem đã được chỉnh sửa về các yêu cầu không thành công của họ trên trang sử dụng (không có chi tiết nội bộ/upstream). Yêu cầu kích hoạt giám sát hoạt động để có dữ liệu.',
     },
-    },
-  },
-  {
-    settings: {
-      features: {
-        channelMonitor: {
-          hideUserRanking: 'Ẩn bảng xếp hạng người dùng khỏi người dùng',
-          hideUserRankingHint: 'Khi bật, trang Channel Monitor V2 của người dùng sẽ ẩn tab xếp hạng và API người dùng không trả về các dòng xếp hạng. Quản trị viên vẫn xem được bảng xếp hạng.',
-        },
-      },
-      openaiFastPolicy: {
-        tierUltrafast: 'ultrafast',
-      },
-    },
+    }
   },
 )

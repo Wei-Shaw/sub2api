@@ -9028,6 +9028,215 @@
         </div>
         <!-- /Tab: Email -->
 
+        <!-- Tab: Dataset -->
+        <div v-show="activeTab === 'dataset'" class="space-y-6">
+          <div class="card">
+            <div
+              class="border-b border-gray-100 px-6 py-4 dark:border-dark-700"
+            >
+              <div class="flex items-start gap-3">
+                <Icon
+                  name="database"
+                  size="md"
+                  class="mt-0.5 flex-shrink-0 text-primary-500"
+                />
+                <div>
+                  <h2 class="text-lg font-semibold text-gray-900 dark:text-white">
+                    {{ t("admin.settings.dataset.title") }}
+                  </h2>
+                  <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                    {{ t("admin.settings.dataset.description") }}
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            <div class="space-y-6 p-6">
+              <div
+                class="flex items-start justify-between gap-4 rounded-lg border border-gray-200 p-4 dark:border-dark-600"
+              >
+                <div>
+                  <label class="font-medium text-gray-900 dark:text-white">
+                    {{ t("admin.settings.dataset.enabled") }}
+                  </label>
+                  <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                    {{ t("admin.settings.dataset.enabledHint") }}
+                  </p>
+                </div>
+                <Toggle
+                  v-model="form.dataset_enabled"
+                  data-testid="dataset-enabled"
+                />
+              </div>
+
+              <div class="grid grid-cols-1 gap-6 md:grid-cols-2">
+                <div class="md:col-span-2">
+                  <div class="flex flex-wrap items-center justify-between gap-2">
+                    <label
+                      for="dataset-credentials"
+                      class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300"
+                    >
+                      {{ t("admin.settings.dataset.credentials") }}
+                    </label>
+                    <span
+                      data-testid="dataset-credentials-configured"
+                      class="mb-2 inline-flex items-center rounded-full px-2.5 py-1 text-xs font-medium"
+                      :class="
+                        form.dataset_google_drive_credentials_configured
+                          ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300'
+                          : 'bg-gray-100 text-gray-600 dark:bg-dark-700 dark:text-gray-300'
+                      "
+                    >
+                      {{
+                        form.dataset_google_drive_credentials_configured
+                          ? t("admin.settings.dataset.credentialsConfigured")
+                          : t("admin.settings.dataset.credentialsMissing")
+                      }}
+                    </span>
+                  </div>
+                  <input
+                    id="dataset-credentials"
+                    data-testid="dataset-credentials-input"
+                    type="file"
+                    accept="application/json,.json"
+                    class="block w-full cursor-pointer rounded-lg border border-gray-300 bg-white text-sm text-gray-700 file:mr-4 file:border-0 file:bg-gray-100 file:px-4 file:py-2.5 file:text-sm file:font-medium dark:border-dark-600 dark:bg-dark-800 dark:text-gray-300 dark:file:bg-dark-700"
+                    @change="handleDatasetCredentialFileChange"
+                  />
+                  <p
+                    v-if="datasetCredentialFileName"
+                    data-testid="dataset-credential-file-name"
+                    class="mt-2 text-xs font-medium text-green-600 dark:text-green-400"
+                  >
+                    {{
+                      t("admin.settings.dataset.selectedFile", {
+                        fileName: datasetCredentialFileName,
+                      })
+                    }}
+                  </p>
+                  <p class="mt-2 text-xs text-gray-500 dark:text-gray-400">
+                    {{ t("admin.settings.dataset.credentialsHint") }}
+                  </p>
+                </div>
+
+                <div class="md:col-span-2">
+                  <label
+                    for="dataset-folder-id"
+                    class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300"
+                  >
+                    {{ t("admin.settings.dataset.folderId") }}
+                  </label>
+                  <input
+                    id="dataset-folder-id"
+                    data-testid="dataset-folder-id"
+                    v-model="form.dataset_google_drive_folder_id"
+                    type="text"
+                    class="input"
+                    :placeholder="
+                      t('admin.settings.dataset.folderIdPlaceholder')
+                    "
+                    autocomplete="off"
+                  />
+                  <p class="mt-1.5 text-xs text-gray-500 dark:text-gray-400">
+                    {{ t("admin.settings.dataset.folderIdHint") }}
+                  </p>
+                </div>
+
+                <div>
+                  <label
+                    for="dataset-batch-size"
+                    class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300"
+                  >
+                    {{ t("admin.settings.dataset.batchSize") }}
+                  </label>
+                  <input
+                    id="dataset-batch-size"
+                    data-testid="dataset-batch-size"
+                    v-model.number="form.dataset_batch_size"
+                    type="number"
+                    min="1"
+                    max="1000"
+                    class="input"
+                  />
+                  <p class="mt-1.5 text-xs text-gray-500 dark:text-gray-400">
+                    {{ t("admin.settings.dataset.batchSizeHint") }}
+                  </p>
+                </div>
+
+                <div>
+                  <label
+                    for="dataset-batch-max-mb"
+                    class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300"
+                  >
+                    {{ t("admin.settings.dataset.batchMaxMB") }}
+                  </label>
+                  <input
+                    id="dataset-batch-max-mb"
+                    data-testid="dataset-batch-max-mb"
+                    v-model.number="form.dataset_batch_max_mb"
+                    type="number"
+                    min="1"
+                    max="100"
+                    step="1"
+                    class="input"
+                  />
+                  <p class="mt-1.5 text-xs text-gray-500 dark:text-gray-400">
+                    {{ t("admin.settings.dataset.batchMaxMBHint") }}
+                  </p>
+                </div>
+
+                <div>
+                  <label
+                    for="dataset-batch-interval"
+                    class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300"
+                  >
+                    {{ t("admin.settings.dataset.batchIntervalSec") }}
+                  </label>
+                  <input
+                    id="dataset-batch-interval"
+                    data-testid="dataset-batch-interval"
+                    v-model.number="form.dataset_batch_interval_sec"
+                    type="number"
+                    min="1"
+                    max="3600"
+                    class="input"
+                  />
+                  <p class="mt-1.5 text-xs text-gray-500 dark:text-gray-400">
+                    {{ t("admin.settings.dataset.batchIntervalHint") }}
+                  </p>
+                </div>
+
+                <div>
+                  <label
+                    for="dataset-buffer-max-items"
+                    class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300"
+                  >
+                    {{ t("admin.settings.dataset.bufferMaxItems") }}
+                  </label>
+                  <input
+                    id="dataset-buffer-max-items"
+                    data-testid="dataset-buffer-max-items"
+                    v-model.number="form.dataset_buffer_max_items"
+                    type="number"
+                    min="1"
+                    max="100000"
+                    class="input"
+                  />
+                  <p class="mt-1.5 text-xs text-gray-500 dark:text-gray-400">
+                    {{ t("admin.settings.dataset.bufferMaxItemsHint") }}
+                  </p>
+                </div>
+              </div>
+
+              <div
+                class="flex items-start gap-3 rounded-lg bg-blue-50 p-4 text-sm text-blue-800 dark:bg-blue-900/20 dark:text-blue-200"
+              >
+                <Icon name="lock" size="sm" class="mt-0.5 flex-shrink-0" />
+                <p>{{ t("admin.settings.dataset.writeOnlyNotice") }}</p>
+              </div>
+            </div>
+          </div>
+        </div>
+
         <!-- Tab: Backup -->
         <div v-show="activeTab === 'backup'">
           <BackupSettings />
@@ -9230,6 +9439,7 @@ type SettingsTab =
   | "gateway"
   | "payment"
   | "email"
+  | "dataset"
   | "backup";
 const activeTab = ref<SettingsTab>("general");
 const settingsTabs = [
@@ -9241,6 +9451,7 @@ const settingsTabs = [
   { key: "gateway" as SettingsTab, icon: "server" as const },
   { key: "payment" as SettingsTab, icon: "creditCard" as const },
   { key: "email" as SettingsTab, icon: "mail" as const },
+  { key: "dataset" as SettingsTab, icon: "database" as const },
   { key: "backup" as SettingsTab, icon: "database" as const },
 ];
 
@@ -9303,6 +9514,7 @@ const testingSmtp = ref(false);
 const testingTelegram = ref(false);
 const sendingTestEmail = ref(false);
 const smtpPasswordManuallyEdited = ref(false);
+const datasetCredentialFileName = ref("");
 const testEmailAddress = ref("");
 const registrationEmailSuffixWhitelistTags = ref<string[]>([]);
 const registrationEmailSuffixWhitelistDraft = ref("");
@@ -9854,6 +10066,7 @@ type SettingsForm = Omit<
   channel_monitor_show_quota: boolean;
   channel_monitor_hide_user_ranking: boolean;
   smtp_password: string;
+  dataset_google_drive_credentials: string;
   turnstile_secret_key: string;
   tencent_captcha_app_secret_key: string;
   tencent_captcha_cloud_secret_id: string;
@@ -10009,9 +10222,17 @@ const form = reactive<SettingsForm>({
   smtp_username: "",
   smtp_password: "",
   smtp_password_configured: false,
+  dataset_google_drive_credentials: "",
   smtp_from_email: "",
   smtp_from_name: "",
   smtp_use_tls: true,
+  dataset_enabled: false,
+  dataset_google_drive_credentials_configured: false,
+  dataset_google_drive_folder_id: "",
+  dataset_batch_size: 100,
+  dataset_batch_max_mb: 10,
+  dataset_batch_interval_sec: 300,
+  dataset_buffer_max_items: 1000,
   // Cloudflare Turnstile
   turnstile_enabled: false,
   turnstile_site_key: "",
@@ -11244,6 +11465,56 @@ const claudeSyncedVersionLabel = computed(() => {
   });
 });
 
+const datasetCredentialMaxBytes = 64 * 1024;
+let datasetCredentialReadPromise: Promise<void> | null = null;
+
+async function handleDatasetCredentialFileChange(event: Event): Promise<void> {
+  const input = event.target as HTMLInputElement;
+  const file = input.files?.[0];
+  input.value = "";
+  if (!file) return;
+
+  if (file.size > datasetCredentialMaxBytes) {
+    datasetCredentialFileName.value = "";
+    appStore.showError(
+      t("admin.settings.dataset.fileTooLarge", { maxKb: 64 }),
+    );
+    return;
+  }
+
+  const readPromise = (async () => {
+    try {
+      const contents = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(String(reader.result ?? ""));
+        reader.onerror = () =>
+          reject(reader.error ?? new Error("file read failed"));
+        reader.readAsText(file);
+      });
+      if (!contents.trim()) {
+        datasetCredentialFileName.value = "";
+        appStore.showError(t("admin.settings.dataset.fileEmpty"));
+        return;
+      }
+      form.dataset_google_drive_credentials = contents;
+      datasetCredentialFileName.value = file.name;
+    } catch {
+      datasetCredentialFileName.value = "";
+      appStore.showError(t("admin.settings.dataset.fileReadFailed"));
+    }
+  })();
+
+  datasetCredentialReadPromise = readPromise;
+  try {
+    await readPromise;
+  } finally {
+    if (datasetCredentialReadPromise === readPromise) {
+      datasetCredentialReadPromise = null;
+    }
+  }
+}
+>>>>>>> 63c27ab32 (feat(admin): add Dataset Settings to Admin Settings UI (#185))
+
 async function loadSettings() {
   loading.value = true;
   loadFailed.value = false;
@@ -11523,6 +11794,9 @@ const siteBillingModeHint = computed(() =>
 async function saveSettings() {
   saving.value = true;
   try {
+    if (datasetCredentialReadPromise) {
+      await datasetCredentialReadPromise;
+    }
     const normalizedTableDefaultPageSize = Math.floor(
       Number(form.table_default_page_size),
     );
@@ -11668,6 +11942,7 @@ async function saveSettings() {
       );
     form.claude_oauth_system_prompt_blocks =
       claudeOAuthSystemPromptBlocksJSON;
+    const datasetCredential = form.dataset_google_drive_credentials.trim();
 
     const oauthSchedulingRate = form.openai_oauth_scheduling_rate_multiplier;
     if (
@@ -11739,6 +12014,15 @@ async function saveSettings() {
       smtp_from_email: form.smtp_from_email,
       smtp_from_name: form.smtp_from_name,
       smtp_use_tls: form.smtp_use_tls,
+      dataset_enabled: form.dataset_enabled,
+      dataset_google_drive_folder_id: form.dataset_google_drive_folder_id,
+      dataset_batch_size: form.dataset_batch_size,
+      dataset_batch_max_mb: form.dataset_batch_max_mb,
+      dataset_batch_interval_sec: form.dataset_batch_interval_sec,
+      dataset_buffer_max_items: form.dataset_buffer_max_items,
+      ...(datasetCredential
+        ? { dataset_google_drive_credentials: datasetCredential }
+        : {}),
       turnstile_enabled: form.turnstile_enabled,
       turnstile_site_key: form.turnstile_site_key,
       turnstile_secret_key: form.turnstile_secret_key || undefined,
@@ -12109,6 +12393,8 @@ async function saveSettings() {
     );
     registrationEmailSuffixWhitelistDraft.value = "";
     form.smtp_password = "";
+    form.dataset_google_drive_credentials = "";
+    datasetCredentialFileName.value = "";
     smtpPasswordManuallyEdited.value = false;
     form.turnstile_secret_key = "";
     form.aliyun_captcha_access_key_secret = "";

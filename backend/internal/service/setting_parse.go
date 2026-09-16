@@ -18,6 +18,53 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/pkg/xai"
 )
 
+func datasetBoolSetting(s *SettingService, settings map[string]string, key string) bool {
+	if value, ok := settings[key]; ok {
+		return value == "true"
+	}
+	return s != nil && s.cfg != nil && s.cfg.Dataset.Enabled
+}
+
+func datasetStringSetting(s *SettingService, settings map[string]string, key string, fallback func(*config.Config) string) string {
+	if value, ok := settings[key]; ok {
+		return strings.TrimSpace(value)
+	}
+	if s != nil && s.cfg != nil {
+		return strings.TrimSpace(fallback(s.cfg))
+	}
+	return ""
+}
+
+func datasetIntSetting(s *SettingService, settings map[string]string, key string, fallback func(*config.Config) int) int {
+	if value, ok := settings[key]; ok {
+		parsed, err := strconv.Atoi(value)
+		if err == nil {
+			return parsed
+		}
+	}
+	if s != nil && s.cfg != nil {
+		return fallback(s.cfg)
+	}
+	return 0
+}
+
+func (s *SettingService) decryptDatasetCredentials(value string) string {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return ""
+	}
+	if s == nil || s.secretEncryptor == nil {
+		slog.Warn("dataset credentials are stored but settings encryption is unavailable")
+		return ""
+	}
+	decrypted, err := s.secretEncryptor.Decrypt(value)
+	if err != nil {
+		slog.Warn("failed to decrypt dataset credentials", "error", err)
+		return ""
+	}
+	return decrypted
+}
+
 // InitializeDefaultSettings 初始化默认设置
 func (s *SettingService) InitializeDefaultSettings(ctx context.Context) error {
 	// 检查是否已有设置
@@ -172,6 +219,13 @@ func (s *SettingService) InitializeDefaultSettings(ctx context.Context) error {
 		SettingKeyForceEmailOnThirdPartySignup:              "false",
 		SettingKeySMTPPort:                                  "587",
 		SettingKeySMTPUseTLS:                                "false",
+		SettingKeyDatasetEnabled:                            "false",
+		SettingKeyDatasetGoogleDriveCredentials:             "",
+		SettingKeyDatasetGoogleDriveFolderID:                "",
+		SettingKeyDatasetBatchSize:                          "100",
+		SettingKeyDatasetBatchMaxMB:                         "10",
+		SettingKeyDatasetBatchIntervalSec:                   "300",
+		SettingKeyDatasetBufferMaxItems:                     "1000",
 		SettingTelegramBotToken:                             "",
 		SettingTelegramChatID:                               "",
 		SettingTelegramNotifyNewUser:                        "false",
@@ -403,6 +457,12 @@ func (s *SettingService) parseSettings(settings map[string]string) *SystemSettin
 		SMTPFrom:                               settings[SettingKeySMTPFrom],
 		SMTPFromName:                           settings[SettingKeySMTPFromName],
 		SMTPUseTLS:                             settings[SettingKeySMTPUseTLS] == "true",
+		DatasetEnabled:                         datasetBoolSetting(s, settings, SettingKeyDatasetEnabled),
+		DatasetGoogleDriveFolderID:             datasetStringSetting(s, settings, SettingKeyDatasetGoogleDriveFolderID, func(cfg *config.Config) string { return cfg.Dataset.GoogleDriveFolderID }),
+		DatasetBatchSize:                       datasetIntSetting(s, settings, SettingKeyDatasetBatchSize, func(cfg *config.Config) int { return cfg.Dataset.BatchSize }),
+		DatasetBatchMaxMB:                      datasetIntSetting(s, settings, SettingKeyDatasetBatchMaxMB, func(cfg *config.Config) int { return cfg.Dataset.BatchMaxMB }),
+		DatasetBatchIntervalSec:                datasetIntSetting(s, settings, SettingKeyDatasetBatchIntervalSec, func(cfg *config.Config) int { return cfg.Dataset.BatchIntervalSec }),
+		DatasetBufferMaxItems:                  datasetIntSetting(s, settings, SettingKeyDatasetBufferMaxItems, func(cfg *config.Config) int { return cfg.Dataset.BufferMaxItems }),
 		TelegramBotToken:                       settings[SettingTelegramBotToken],
 		TelegramBotTokenConfigured:             settings[SettingTelegramBotToken] != "",
 		TelegramChatID:                         settings[SettingTelegramChatID],
@@ -502,6 +562,12 @@ func (s *SettingService) parseSettings(settings map[string]string) *SystemSettin
 
 	// 敏感信息直接返回，方便测试连接时使用
 	result.SMTPPassword = settings[SettingKeySMTPPassword]
+	result.DatasetGoogleDriveCredentials = s.decryptDatasetCredentials(settings[SettingKeyDatasetGoogleDriveCredentials])
+	result.DatasetGoogleDriveCredentialsConfigured = strings.TrimSpace(settings[SettingKeyDatasetGoogleDriveCredentials]) != "" || result.DatasetGoogleDriveCredentials != ""
+	result.DatasetGoogleDriveCredentialsSet = strings.TrimSpace(settings[SettingKeyDatasetGoogleDriveCredentials]) != ""
+	if result.DatasetGoogleDriveCredentials == "" && s != nil && s.cfg != nil {
+		result.DatasetGoogleDriveCredentialsConfigured = result.DatasetGoogleDriveCredentialsConfigured || strings.TrimSpace(s.cfg.Dataset.GoogleDriveCredentials) != ""
+	}
 	result.TurnstileSecretKey = settings[SettingKeyTurnstileSecretKey]
 	result.TencentCaptchaAppSecretKey = settings[SettingKeyTencentCaptchaAppSecretKey]
 	result.TencentCaptchaCloudSecretID = settings[SettingKeyTencentCaptchaCloudSecretID]

@@ -403,6 +403,13 @@ const baseSettingsResponse = {
   smtp_from_email: "",
   smtp_from_name: "",
   smtp_use_tls: true,
+  dataset_enabled: true,
+  dataset_google_drive_credentials_configured: true,
+  dataset_google_drive_folder_id: "folder-from-server",
+  dataset_batch_size: 100,
+  dataset_batch_max_mb: 10,
+  dataset_batch_interval_sec: 300,
+  dataset_buffer_max_items: 1000,
   turnstile_enabled: false,
   turnstile_site_key: "",
   turnstile_secret_key_configured: false,
@@ -562,6 +569,7 @@ function mountView() {
         GroupOptionItem: true,
         ProxySelector: true,
         ImageUpload: ImageUploadStub,
+        EmailTemplateEditor: true,
         BackupSettings: true,
       },
     },
@@ -605,6 +613,16 @@ async function openUsersTab(wrapper: ReturnType<typeof mountView>) {
 
   expect(usersTabButton).toBeDefined();
   await usersTabButton?.trigger("click");
+  await flushPromises();
+}
+
+async function openDatasetTab(wrapper: ReturnType<typeof mountView>) {
+  const datasetTabButton = wrapper
+    .findAll("button")
+    .find((node) => node.text().includes("admin.settings.tabs.dataset"));
+
+  expect(datasetTabButton).toBeDefined();
+  await datasetTabButton?.trigger("click");
   await flushPromises();
 }
 
@@ -2125,5 +2143,45 @@ describe("admin SettingsView platform quota matrix", () => {
     const quotas = payload["default_platform_quotas"] as Record<string, Record<string, unknown>>;
     // 不管输入是什么，提交值应为 null（而非 "" 或 NaN）
     expect(quotas["anthropic"]?.["daily"]).toBe(null);
+  });
+
+  it("loads dataset settings and does not send the existing credential on a normal save", async () => {
+    const wrapper = mountView();
+    await flushPromises();
+    await openDatasetTab(wrapper);
+
+    const enabledInput = wrapper.find<HTMLInputElement>('[data-testid="dataset-enabled"]');
+    const folderInput = wrapper.find<HTMLInputElement>('[data-testid="dataset-folder-id"]');
+    expect(enabledInput.element.checked).toBe(true);
+    expect(folderInput.element.value).toBe("folder-from-server");
+    expect(wrapper.find('[data-testid="dataset-credentials-configured"]').exists()).toBe(true);
+
+    await wrapper.find("form").trigger("submit.prevent");
+    await flushPromises();
+
+    const payload = updateSettings.mock.calls.at(-1)?.[0] as Record<string, unknown>;
+    expect(payload.dataset_enabled).toBe(true);
+    expect(payload.dataset_google_drive_folder_id).toBe("folder-from-server");
+    expect(Object.prototype.hasOwnProperty.call(payload, "dataset_google_drive_credentials")).toBe(false);
+  });
+
+  it("sends only a newly selected credential file", async () => {
+    const wrapper = mountView();
+    await flushPromises();
+    await openDatasetTab(wrapper);
+
+    const credentialJSON = JSON.stringify({ installed: { client_id: "client-id" } });
+    const input = wrapper.find<HTMLInputElement>('[data-testid="dataset-credentials-input"]');
+    const file = new File([credentialJSON], "client_secret.json", { type: "application/json" });
+    Object.defineProperty(input.element, "files", { value: [file] });
+    await input.trigger("change");
+    await flushPromises();
+
+    await wrapper.find("form").trigger("submit.prevent");
+    await flushPromises();
+
+    expect(updateSettings).toHaveBeenCalledWith(expect.objectContaining({
+      dataset_google_drive_credentials: credentialJSON,
+    }));
   });
 });
