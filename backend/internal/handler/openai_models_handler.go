@@ -1,7 +1,9 @@
 package handler
 
 import (
+	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
@@ -17,8 +19,12 @@ func (h *GatewayHandler) pinnedOpenAIModels(c *gin.Context, group *service.Group
 		writeOpenAIModelsError(c, http.StatusInternalServerError, "api_error", "OpenAI model discovery is not configured")
 		return
 	}
+	etag := c.GetHeader("If-None-Match")
+	if c.Param("model") != "" {
+		etag = "" // A collection ETag cannot validate a single-model representation.
+	}
 	response, account, err := h.openAIGatewayService.FetchPinnedOpenAIModelsList(
-		c.Request.Context(), group, h.maxAccountSwitches, c.GetHeader("If-None-Match"),
+		c.Request.Context(), group, h.maxAccountSwitches, etag,
 	)
 	if c.Request.Context().Err() != nil {
 		return
@@ -40,6 +46,10 @@ func writeOpenAIModelsError(c *gin.Context, status int, errorType, message strin
 }
 
 func writeOpenAIModelsResponse(c *gin.Context, manifest *service.OpenAIModelsResponse) {
+	if c.Param("model") != "" {
+		writeRetrievedModel(c, manifest.Body)
+		return
+	}
 	if manifest.ETag != "" {
 		c.Header("ETag", manifest.ETag)
 	}
@@ -49,4 +59,51 @@ func writeOpenAIModelsResponse(c *gin.Context, manifest *service.OpenAIModelsRes
 		return
 	}
 	c.Data(http.StatusOK, "application/json", manifest.Body)
+}
+
+// Both discovery endpoints consume the same final catalogue, after group/platform
+// selection and allowlist filtering. Preserve every field on the selected entry.
+func writeModelsListResponse(c *gin.Context, models any) {
+	response := gin.H{"object": "list", "data": models}
+	if c.Param("model") == "" {
+		c.JSON(http.StatusOK, response)
+		return
+	}
+	body, err := json.Marshal(response)
+	if err != nil {
+		writeOpenAIModelsError(c, http.StatusInternalServerError, "api_error", "Failed to encode model catalogue")
+		return
+	}
+	writeRetrievedModel(c, body)
+}
+
+func writeRetrievedModel(c *gin.Context, body []byte) {
+	var catalog struct {
+		Data []json.RawMessage `json:"data"`
+	}
+	if err := json.Unmarshal(body, &catalog); err != nil {
+		writeOpenAIModelsError(c, http.StatusBadGateway, "upstream_error", "Invalid model catalogue")
+		return
+	}
+	modelID := c.Param("model")
+	for _, raw := range catalog.Data {
+		var model map[string]json.RawMessage
+		if err := json.Unmarshal(raw, &model); err != nil {
+			writeOpenAIModelsError(c, http.StatusBadGateway, "upstream_error", "Invalid model catalogue entry")
+			return
+		}
+		var id string
+		if err := json.Unmarshal(model["id"], &id); err != nil {
+			writeOpenAIModelsError(c, http.StatusBadGateway, "upstream_error", "Invalid model catalogue ID")
+			return
+		}
+		if id == modelID {
+			c.Data(http.StatusOK, "application/json", raw)
+			return
+		}
+	}
+	c.JSON(http.StatusNotFound, gin.H{"error": gin.H{
+		"type": "invalid_request_error", "code": "model_not_found", "param": "model",
+		"message": fmt.Sprintf("Model %q does not exist or is not available for this group", modelID),
+	}})
 }
