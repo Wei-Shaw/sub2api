@@ -4,10 +4,13 @@
 package adapter
 
 import (
+	"bytes"
 	"context"
+	"encoding/binary"
 	"encoding/json"
 	"errors"
 	"io"
+	"net/http"
 	"strings"
 	"testing"
 	"time"
@@ -411,5 +414,164 @@ func TestConnectErrorClassification(t *testing.T) {
 	}
 	if devin.IsTransientTransportError(errors.New("x")) != true {
 		t.Fatal("plain transport error should be transient")
+	}
+}
+
+// --- overflow 重试（流级 too-long）测试基建 ------------------------------
+
+func testProtoVarint(dst []byte, field int, v uint64) []byte {
+	dst = appendVarint(dst, uint64(field)<<3) // wire 0
+	return appendVarint(dst, v)
+}
+
+func testProtoBytes(dst []byte, field int, b []byte) []byte {
+	dst = appendVarint(dst, uint64(field)<<3|2) // wire 2
+	dst = appendVarint(dst, uint64(len(b)))
+	return append(dst, b...)
+}
+
+func testProtoString(dst []byte, field int, s string) []byte {
+	return testProtoBytes(dst, field, []byte(s))
+}
+
+func appendVarint(dst []byte, v uint64) []byte {
+	for v >= 0x80 {
+		dst = append(dst, byte(v)|0x80)
+		v >>= 7
+	}
+	return append(dst, byte(v))
+}
+
+// testClientModelConfig 编码一个最小 ClientModelConfig（label+uid+context_window）。
+func testClientModelConfig(label, uid string, contextWindow uint64) []byte {
+	var m []byte
+	m = testProtoString(m, 1, label)
+	m = testProtoString(m, 22, uid)
+	m = testProtoVarint(m, 18, contextWindow)
+	return testProtoBytes(nil, 1, m)
+}
+
+// testConnectFrame 编码一帧 Connect envelope（flag + 4B 长度 + payload）。
+func testConnectFrame(end bool, payload []byte) []byte {
+	out := make([]byte, 5)
+	if end {
+		out[0] = 0x02
+	}
+	binary.BigEndian.PutUint32(out[1:5], uint32(len(payload)))
+	return append(out, payload...)
+}
+
+// testFieldString 从请求体 proto 里读一个 string 字段（验证重试用了 overflow uid）。
+func testFieldString(body []byte, num int) string {
+	for i := 0; i < len(body); {
+		tag, n := binary.Uvarint(body[i:])
+		if n <= 0 {
+			return ""
+		}
+		i += n
+		fnum, wire := int(tag>>3), int(tag&7)
+		switch wire {
+		case 0:
+			_, n = binary.Uvarint(body[i:])
+			if n <= 0 {
+				return ""
+			}
+			i += n
+		case 2:
+			l, n := binary.Uvarint(body[i:])
+			if n <= 0 {
+				return ""
+			}
+			i += n
+			if fnum == num {
+				return string(body[i : i+int(l)])
+			}
+			i += int(l)
+		default:
+			return ""
+		}
+	}
+	return ""
+}
+
+func fakeHTTPResp(status int, body []byte) *http.Response {
+	return &http.Response{
+		StatusCode: status,
+		Header:     http.Header{"Content-Type": []string{"application/connect+proto"}},
+		Body:       io.NopCloser(bytes.NewReader(body)),
+	}
+}
+
+// TestStreamOverflowRetryOnTrailerTooLong 复刻插件语义：「prompt too long」
+// 经 end 帧 trailer 到达时（请求期判定够不到），换 ≥1M 上下文的 uid 整轮重试。
+func TestStreamOverflowRetryOnTrailerTooLong(t *testing.T) {
+	var chatBodies [][]byte
+	do := func(req *http.Request) (*http.Response, error) {
+		body, _ := io.ReadAll(req.Body)
+		switch req.URL.Path {
+		case devin.PathGetCliModelConfigs:
+			catalog := append(
+				testClientModelConfig("SWE-2 High", "swe-2-high", 262_000),
+				testClientModelConfig("Big 1M High", "big-1m-high", 1_048_576)...)
+			return fakeHTTPResp(200, catalog), nil
+		case devin.PathGetChatMessage:
+			// 流式请求体是 Connect envelope（5B 头 + proto payload）。
+			if len(body) > 5 {
+				chatBodies = append(chatBodies, body[5:])
+			}
+			if len(chatBodies) == 1 {
+				trailer := `{"error":{"code":"invalid_argument","message":"invalid_argument: The prompt is too long for this model"}}`
+				return fakeHTTPResp(200, testConnectFrame(true, []byte(trailer))), nil
+			}
+			stream := append(
+				testConnectFrame(false, testProtoString(nil, 3, "hello")),
+				testConnectFrame(false, testProtoVarint(nil, 5, 2))...)
+			stream = append(stream, testConnectFrame(true, []byte(`{}`))...)
+			return fakeHTTPResp(200, stream), nil
+		}
+		return fakeHTTPResp(200, nil), nil
+	}
+	a, err := New(Config{Token: "tok", Do: do})
+	if err != nil {
+		t.Fatal(err)
+	}
+	stream, err := a.Stream(context.Background(), llm.RequestMessages{
+		Model:    "swe-2-high",
+		Messages: []llm.Message{llm.UserMessage{Content: []llm.Content{llm.TextContent{Text: "hi"}}}},
+	})
+	if err != nil {
+		t.Fatalf("stream: %v", err)
+	}
+	var texts []string
+	var done, gotErr bool
+	for {
+		event, err := stream.Recv(context.Background())
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			t.Fatalf("recv: %v", err)
+		}
+		if event.Type == llm.ResponseEventTextDelta {
+			texts = append(texts, event.Delta)
+		}
+		if event.Type == llm.ResponseEventDone {
+			done = true
+		}
+		if event.Type == llm.ResponseEventError {
+			gotErr = true
+		}
+	}
+	if gotErr || !done {
+		t.Fatalf("expected retried success: done=%v err=%v events-text=%v", done, gotErr, texts)
+	}
+	if strings.Join(texts, "") != "hello" {
+		t.Fatalf("text = %q", texts)
+	}
+	if len(chatBodies) != 2 {
+		t.Fatalf("expected 2 GetChatMessage calls (orig + overflow), got %d", len(chatBodies))
+	}
+	if uid := testFieldString(chatBodies[1], 21); uid != "big-1m-high" {
+		t.Fatalf("retry model_uid = %q, want big-1m-high", uid)
 	}
 }

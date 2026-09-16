@@ -358,6 +358,16 @@ func (a *Adapter) flatCatalog() []devin.Model {
 	return a.models
 }
 
+// pickOverflowUID 为「prompt too long」重试挑选目标 uid：
+// DEVIN_OVERFLOW_MODEL 显式指定 > 插件 PickOverflowUID（sidekick 配对 >
+// ≥1M 非路由条目）。与当前 uid 相同或无候选时返回空。
+func (a *Adapter) pickOverflowUID(currentUID string) string {
+	if overflow := strings.TrimSpace(os.Getenv("DEVIN_OVERFLOW_MODEL")); overflow != "" && overflow != currentUID {
+		return overflow
+	}
+	return devin.PickOverflowUID(currentUID, a.flatCatalog())
+}
+
 // groupedCatalog 返回缓存的分组目录（无缓存时为 nil）。
 func (a *Adapter) groupedCatalog() []devin.GroupedModel {
 	a.catalogMu.RLock()
@@ -422,14 +432,7 @@ func (a *Adapter) Stream(ctx context.Context, request llm.RequestMessages) (llm.
 	if err != nil && isPromptTooLong(err) {
 		// 「prompt too long」按插件语义重试一次：换一个更大上下文的 uid
 		// （DEVIN_OVERFLOW_MODEL 显式指定 > fusion sidekick 配对 > ≥1M 非路由条目）。
-		overflow := strings.TrimSpace(os.Getenv("DEVIN_OVERFLOW_MODEL"))
-		if overflow == model {
-			overflow = ""
-		}
-		if overflow == "" {
-			overflow = devin.PickOverflowUID(model, a.flatCatalog())
-		}
-		if overflow != "" {
+		if overflow := a.pickOverflowUID(model); overflow != "" {
 			slog.Warn("devin: prompt too long; retrying with overflow uid", "from", model, "to", overflow)
 			retryModel, retryJWT, routeErr := a.resolveModelRouting(ctx, request, overflow)
 			if routeErr == nil {
@@ -443,28 +446,46 @@ func (a *Adapter) Stream(ctx context.Context, request llm.RequestMessages) (llm.
 		cancel()
 		return nil, err
 	}
+	decoderModel := model
 	return &responseStream{
 		frames:  pumpUpstream(streamCtx, conn),
 		cancel:  cancel,
-		decoder: newResponseDecoder(model, request.StopSequences, customToolNames(request.Tools)),
+		decoder: newResponseDecoder(decoderModel, request.StopSequences, customToolNames(request.Tools)),
 		// 上游流建立后、产出任何内容前的失败允许整体重发一次：
 		// 传输层断裂重试能改变结果；语义错误（invalid_argument 等）
 		// 重试只会复现同样失败，直接放行。
 		reopen: func(cause error, continueEmpty bool) (<-chan upstreamFrame, context.CancelFunc, error) {
 			retryRequest := request
-			if continueEmpty {
+			retryModel, retryJWT := model, assignmentJWT
+			switch {
+			case continueEmpty:
 				// 空 end_turn（有 stopReason 零内容，上游实测存在的退化形态）：
 				// 追加 "continue" 用户消息重发一次，让模型在同一上下文续说。
 				retryRequest.Messages = append(append([]llm.Message{}, request.Messages...),
 					llm.UserMessage{Content: []llm.Content{llm.TextContent{Text: "continue"}}})
 				slog.Warn("devin: reopening stream: upstream ended with empty content")
-			} else if !devin.IsTransientTransportError(cause) {
+			case isPromptTooLong(cause):
+				// 「prompt too long」也经 end 帧 trailer 到达（Connect 流式错误）：
+				// 请求期判定够不到——同插件语义换更大上下文的 uid 整轮重试。
+				// tryReopen 的 retried 闸保证全局只重试一次。
+				overflow := a.pickOverflowUID(model)
+				if overflow == "" {
+					return nil, nil, cause
+				}
+				routed, jwt, routeErr := a.resolveModelRouting(ctx, request, overflow)
+				if routeErr != nil {
+					return nil, nil, cause
+				}
+				retryModel, retryJWT = routed, jwt
+				decoderModel = retryModel
+				slog.Warn("devin: prompt too long; reopening with overflow uid", "from", model, "to", retryModel)
+			case !devin.IsTransientTransportError(cause):
 				return nil, nil, cause
-			} else {
+			default:
 				slog.Warn("devin: reopening stream: transport error before first content", "error", cause)
 			}
 			retryCtx, retryCancel := context.WithCancel(ctx)
-			rebuilt, _, buildErr := buildRequestParams(retryRequest, a.config.Token, a.clientVersion(), a.clientOS(), model, assignmentJWT)
+			rebuilt, _, buildErr := buildRequestParams(retryRequest, a.config.Token, a.clientVersion(), a.clientOS(), retryModel, retryJWT)
 			var reopened streamConn
 			if buildErr == nil {
 				reopened, buildErr = a.getChatMessageWithRetry(retryCtx, rebuilt)
@@ -476,7 +497,7 @@ func (a *Adapter) Stream(ctx context.Context, request llm.RequestMessages) (llm.
 			return pumpUpstream(retryCtx, reopened), retryCancel, nil
 		},
 		newDecoder: func() *responseDecoder {
-			return newResponseDecoder(model, request.StopSequences, customToolNames(request.Tools))
+			return newResponseDecoder(decoderModel, request.StopSequences, customToolNames(request.Tools))
 		},
 	}, nil
 }
