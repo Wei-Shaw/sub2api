@@ -777,6 +777,9 @@ export default {
         testMode: '测试模式',
         testModeDefault: '常规请求',
         testModeCompact: 'Compact 探测',
+        testModePelican: '鹈鹕测智',
+        pelicanTestMode: '提示词："Generate an SVG of a pelican riding a bicycle"',
+        sendingPelicanRequest: '正在请求模型生成骑自行车的鹈鹕 SVG...',
         modelRestrictionDisabledByPassthrough: '已开启自动透传：模型白名单/映射不会生效。',
       },
       grok: {

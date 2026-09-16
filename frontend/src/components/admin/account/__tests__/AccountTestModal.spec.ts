@@ -220,4 +220,40 @@ describe('AccountTestModal', () => {
       mode: 'compact'
     })
   })
+
+  it('OpenAI 鹈鹕测智会发送固定提示词并渲染 SVG', async () => {
+    getAvailableModels.mockResolvedValue([
+      { id: 'gpt-5.6-sol', display_name: 'GPT-5.6 Sol' }
+    ])
+    global.fetch = vi.fn().mockResolvedValue(
+      createStreamResponse([
+        'data: {"type":"test_start","model":"gpt-5.6-sol"}\n',
+        'data: {"type":"image","image_url":"data:image/svg+xml;base64,PHN2Zz48L3N2Zz4=","mime_type":"image/svg+xml"}\n',
+        'data: {"type":"test_complete","success":true}\n'
+      ])
+    ) as any
+
+    const wrapper = mountModal({
+      id: 42,
+      name: 'OpenAI OAuth',
+      platform: 'openai',
+      type: 'oauth',
+      status: 'active'
+    })
+    await wrapper.setProps({ show: true })
+    await flushPromises()
+
+    ;(wrapper.vm as any).testMode = 'pelican'
+    await (wrapper.vm as any).startTest()
+    await flushPromises()
+
+    const [, request] = (global.fetch as any).mock.calls[0]
+    expect(JSON.parse(request.body)).toMatchObject({
+      model_id: 'gpt-5.6-sol',
+      mode: 'pelican',
+      prompt: 'Generate an SVG of a pelican riding a bicycle'
+    })
+    const preview = wrapper.find('img[alt="test-image-1"]')
+    expect(preview.attributes('src')).toBe('data:image/svg+xml;base64,PHN2Zz48L3N2Zz4=')
+  })
 })

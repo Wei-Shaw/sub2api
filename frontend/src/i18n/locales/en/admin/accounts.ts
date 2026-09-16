@@ -699,6 +699,9 @@ export default {
         testMode: 'Test mode',
         testModeDefault: 'Default request',
         testModeCompact: 'Compact probe',
+        testModePelican: 'Pelican intelligence test',
+        pelicanTestMode: 'Prompt: "Generate an SVG of a pelican riding a bicycle"',
+        sendingPelicanRequest: 'Asking the model to generate a pelican riding a bicycle as SVG...',
         modelRestrictionDisabledByPassthrough: 'Automatic passthrough is enabled: model whitelist/mapping will not take effect.',
       },
       grok: {
