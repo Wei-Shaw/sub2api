@@ -27,158 +27,14 @@
 - **📖 免責事項**：本プロジェクトは技術的な学習および研究の目的でのみ提供されます。本プロジェクトの使用により生じたアカウントの停止、サービスの中断、データの損失、その他一切の直接的または間接的な損害について、作者は一切の責任を負いません。
 - **🚫 商用利用の非許諾**：本プロジェクトの開発者は、いかなる個人または組織に対しても、本プロジェクトを利用したいかなる形態の商業運営も一切許諾していません。本プロジェクトの名義で、または本プロジェクトに基づいて行われる商業行為はすべて本プロジェクトおよびその開発者とは無関係であり、それにより生じる一切の紛争、損失、法的責任は行為者自身が負うものとします。
 
-## ❤️ スポンサー
-
-> [こちらに掲載しませんか？](mailto:support@sub2api.org)
-
-<table>
-
-<tr>
-<td width="180"><a href="https://cctk.ai/register?aff=SUB2API"><img src="assets/partners/logos/cctk.jpg" alt="CCTK.AI" width="150"></a></td>
-<td>CCTK.AI のご支援に感謝します！<a href="https://cctk.ai/register?aff=SUB2API">CCTK.AI</a> は安定性とコストパフォーマンスにこだわった AI API ゲートウェイで、Claude、OpenAI、Gemini など主要モデルの高速中継サービスを提供しています。Claude Code や Codex などの主要なコーディングツールにシームレスに対応し、公式価格を大きく下回るコストで同等のモデル能力を利用できます。<a href="https://cctk.ai/register?aff=SUB2API">こちらのリンク</a>から登録して、より速く、より安定した、よりお得な AI API 接続をお試しください。</td>
-</tr>
-
-<tr>
-<td width="180"><a href="https://www.openmodel.ai?ref=sub2api"><img src="assets/partners/logos/openmodel.jpg" alt="openmodel" width="150"></a></td>
-<td>1つの API で、トップモデルを使い放題！<a href="https://www.openmodel.ai?ref=sub2api">OpenModel</a> は本番環境グレードで高可用性の AI API ゲートウェイに特化し、アプリを真に高速・安定させます：自動フェイルオーバー、最適なチャネルへのスマートルーティング、本番グレードの SLA 保証。単一プロバイダーをはるかに上回る SLA で、安定性をあなたの核心的な競争力にします。</td>
-</tr>
-
-<tr>
-<td width="180"><a href="https://etok.ai"><img src="assets/partners/logos/etok.png" alt="ETok" width="150"></a></td>
-<td>ETok.ai のご支援に感謝します！ETok.ai はワンストップ AI プログラミングツールサービスプラットフォームの構築に取り組んでいます。Claude Code の専用プランと技術コミュニティサービスを提供し、Google Gemini や OpenAI Codex もサポートしています。丁寧に設計されたプランと専門的な技術コミュニティを通じて、開発者に安定したサービス保証と継続的な技術サポートを提供し、AI アシスト プログラミングを真の生産性向上ツールにします。<a href="https://etok.ai">こちら</a>から登録！</td>
-</tr>
-
-<tr>
-<td width="180"><a href="https://apikey.fan/register?aff=SUB2API"><img src="assets/partners/logos/apikey-fun.png" alt="APIKEY.FUN" width="150"></a></td>
-<td>APIKEY.FUN のご支援に感謝します！<a href="https://apikey.fan/register?aff=SUB2API">APIKEY.FUN</a> は sub2api オープンソースプロジェクトのコアコントリビューターの一つであり、オープンで安定した、コストパフォーマンスに優れた AI API アクセスサービスの提供に取り組んでいます。プラットフォームは Claude、OpenAI、Gemini など人気モデルの API 中継サービスをサポートし、価格は公式料金のわずか 7% から。専用リンク <a href="https://apikey.fan/register?aff=SUB2API">APIKEY</a> から登録すると、すべてのチャージで永久 5% 割引をご利用いただけます。</td>
-</tr>
-
-<tr>
-<td width="180"><a href="https://aigocode.com/invite/SUB2API"><img src="assets/partners/logos/aigocode.png" alt="AIGoCode" width="150"></a></td>
-<td>AIGoCode のご支援に感謝します！AIGoCode は Claude Code、Codex、最新の Gemini モデルを統合したオールインワンプラットフォームで、安定的かつ効率的でコストパフォーマンスに優れた AI コーディングサービスを提供します。柔軟なサブスクリプションプラン、アカウント停止リスクゼロ、VPN 不要の直接アクセス、超高速レスポンスが特長です。AIGoCode は sub2api ユーザー向けに特別特典を用意しています：<a href="https://aigocode.com/invite/SUB2API">こちらのリンク</a>から登録すると、初回チャージ時に 10% のボーナスクレジットを追加プレゼント！</td>
-</tr>
-
-<tr>
-<td width="180"><a href="https://codex-everywhere.com"><img src="assets/partners/logos/codex-everywhere.jpg" alt="CodexEverywhere" width="150"></a></td>
-<td>OpenAI 公式価格のわずか 3% で本物の GPT-5.6 シリーズを提供 — <a href="https://codex-everywhere.com">CodexEverywhere</a> は世界中の開発者にフロンティアモデルへのアクセスを民主化しています。私たちは透明性と誠実さを信条とし、モデル品質は数か月にわたるアクティブなコミュニティの監視によって検証されています。USD および暗号通貨に対応。<a href="https://codex-everywhere.com">codex-everywhere.com</a> で $20 の無料トライアルから始めましょう。</td>
-</tr>
-
-<tr>
-<td width="180"><a href="https://shop.bmoplus.com/?utm_source=github"><img src="assets/partners/logos/bmoplus.jpg" alt="bmoplus" width="150"></a></td>
-<td>本プロジェクトにご支援いただいた BmoPlus に感謝いたします！BmoPlusは、AIサブスクリプションのヘビーユーザー向けに特化した信頼性の高いAIアカウントサービスプロバイダーであり、安定した ChatGPT Plus / ChatGPT Pro (完全保証) / Claude Pro / Super Grok / Gemini Pro の公式代行チャージおよび即納アカウントを提供しています。こちらの<a href="https://shop.bmoplus.com/?utm_source=github">BmoPlus AIアカウント専門店/代行チャージ</a>経由でご登録・ご注文いただいたユーザー様は、GPTを 公式サイト価格の約1割（90% OFF） という驚異的な価格でご利用いただけます！</td>
-</tr>
-
-<tr>
-<td width="180"><a href="https://bestproxy.com/?keyword=a2e8iuol"><img src="assets/partners/logos/bestproxy.png" alt="bestproxy" width="150"></a></td>
-<td>Bestproxy のご支援に感謝します！<a href="https://bestproxy.com/?keyword=a2e8iuol">Bestproxy</a> は高純度の住宅IPを提供し、1アカウント1IP専有をサポートしています。実際の家庭ネットワークとフィンガープリント分離を組み合わせることで、リンク環境の分離を実現し、関連付けによるリスク管理の確率を低減します。</td>
-</tr>
-
-<tr>
-<td width="180"><a href="https://pateway.ai/?ch=1tsfr51"><img src="assets/partners/logos/pateway.png" alt="pateway" width="150"></a></td>
-<td>PatewayAI のご支援に感謝します！PatewayAI は、ヘビーAI開発者向けに公式直結を重視した高品質モデルAPIリレーサービスプロバイダーです。Claude 全シリーズおよび Codex シリーズモデルを提供し、100%公式ソースから直接供給 — 偽りなし、水増しなし、検証歓迎。課金は完全透明で、トークン単位の請求書を1件ずつ監査可能です。
-エンタープライズ級の高同時接続にも対応し、法人顧客向けに専用管理プラットフォームを提供しています。法人顧客は正式な契約を締結し、請求書の発行が可能です。詳細は公式サイトでお問い合わせください。
-<a href="https://pateway.ai/?ch=1tsfr51">こちらのリンク</a>から登録すると、$3 のトライアルクレジットがもらえます。チャージは最大40%オフ、友達紹介で双方にボーナス付与 — 紹介報酬は最大 $150。</td>
-</tr>
-
-<tr>
-<td width="180"><a href="https://api.pptoken.cc/register?promo=SUB2API"><img src="assets/partners/logos/pptoken.png" alt="pptoken" width="150"></a></td>
-<td>PPToken.cc のご支援に感謝します！<a href="https://api.pptoken.cc/register?promo=SUB2API">PPToken.cc</a> は GPT シリーズモデルの API 中継サービスを専門としており、Codex、Claude Code、OpenAI 互換クライアント、Gemini CLI などのツール接続をサポートしています。チャージは 1:1（1元＝1ドル分のクレジット）、GPT モデルは最低 0.16 倍のレート倍率で、総合コストは公式価格の約 2.2% 、最速ファーストトークンは約1秒 — 開発者が低コスト・高速レスポンスで GPT モデル機能にアクセスするのに最適です。テクニカルサポート：24時間365日リアルな人間が対応（ボットではありません）、グループ内で @技術 すれば 10 分以内に返信。スポンサー特典：先着 200 名のユーザーが<a href="https://api.pptoken.cc/register?promo=SUB2API">専用登録リンク</a>から登録し、プロモコード `SUB2API` を入力すると、Codex / Claude Code の無料トライアルクレジットを獲得できます — 最低利用額なし、カード登録不要。
-</td>
-</tr>
-
-<tr>
-<td width="180"><a href="https://veilx.io/#/hello/SJRBRVDV"><img src="assets/partners/logos/veilx.png" alt="veilx" width="150"></a></td>
-<td>Veilx のご支援に感謝します！<a href="https://veilx.io/#/hello/SJRBRVDV">Veilx</a> CDN は超大規模 API リクエストシナリオ向けに設計されており、AI 中継サービスと AI API 呼び出しチェーンに対して深く最適化されています。高並列・高頻度リクエスト・大容量トラフィックに容易に対応し、開発者と企業により高速で安定した、低レイテンシの加速体験を提供します。OpenAI、Claude、Gemini などの AI インターフェース中継はもちろん、チャット、画像生成、Embedding、ストリーミング出力などの複雑なシナリオでも、Veilx は応答速度と接続安定性を大幅に向上させ、ネットワーク変動によるタイムアウトや失敗を効果的に削減します。さらに、Veilx は中国三大ネットワーク最適化の高速回線を提供しており、中国本土から海外 AI サービスへのアクセス速度と安定性を大幅に向上させます。グローバル AI 中継プラットフォーム、海外 AI SaaS、越境ビジネス、高並列 API システム展開に特に適しています。AI API のために生まれ、あなたの AI 中継サービスをより速く、より安定して、より安心に。<a href="https://veilx.io/#/hello/SJRBRVDV">購入リンク</a>
-</td>
-</tr>
-
-<tr>
-<td width="180"><a href="https://roxybrowser.com/invite/bgGKG7"><img src="assets/partners/logos/RoxyBrowser.png" alt="RoxyBrowser" width="150"></a></td>
-<td>RoxyBrowser のご支援に感謝します！<a href="https://roxybrowser.com/invite/bgGKG7">RoxyBrowser</a> は Sub2API の理想的なパートナーです：ネイティブ統合された Roxy AI Agent と高品質なネイティブ住宅 IP を搭載し、シンプルなコマンドで一括自動化をサポート、マルチアカウント管理のセキュリティと効率を大幅に向上させます！<a href="https://roxybrowser.com/invite/bgGKG7">このリンク</a>から登録すると、無料の住宅 IP パッケージと生涯 10% 割引を獲得できます。
-</td>
-</tr>
-
-<tr>
-<td width="180"><a href="https://www.proxy4free.com/?keyword=4yjqecpc"><img src="assets/partners/logos/proxy4free.png" alt="proxy4free" width="150"></a></td>
-<td>Proxy4Free のご支援に感謝します！Proxy4Free は開発者と AI アプリケーション向けのデータプロキシサービスプロバイダーで、住宅プロキシ、静的住宅プロキシ、ISP プロキシ、データセンタープロキシなど多様なプロキシソリューションを提供しており、Web Scraping、Browser Automation、AI Agent などのシナリオに適しています。グローバル IP リソース、安定した接続、柔軟な切り替えをサポートし、開発者のデータ収集成功率の向上と IP ブロックリスクの低減を支援します。<a href="https://www.proxy4free.com/?keyword=4yjqecpc">こちらのリンクから登録</a>して、より安定した効率的な自動化ワークフローを簡単に構築しましょう。
-</td>
-</tr>
-
-<tr>
-<td width="180"><a href="http://aimzoon.com"><img src="assets/partners/logos/aimzoon.jpg" alt="aimzoon" width="150"></a></td>
-<td>Aimzoon のご支援に感謝します！<a href="http://aimzoon.com">Aimzoon</a> は安定してコストパフォーマンスに優れた AI API 接続サービスを提供し、開発者が主要な AI サービスを Codex、Claude Code、Gemini CLI などのコーディングツールへ素早く接続できるようにします。複雑な設定は不要で、より速い接続、より安定した呼び出し、より低いコストを実現。Codex レート割引や特価レートなどのキャンペーンも随時開催中、登録するだけで無料お試しクレジットをプレゼント。AI コーディングを日常のワークフローへ。<a href="http://aimzoon.com">こちら</a>から登録してお試しください！
-</td>
-</tr>
-
-<tr>
-<td width="180"><a href="https://nagora.ai/"><img src="assets/partners/logos/nagora.png" alt="Nagora" width="150"></a></td>
-<td><a href="https://nagora.ai/">Nagora</a>は、開発者やチーム向けに設計されたマルチモデルAI APIゲートウェイです。1つのアカウントと1つのAPIキーだけで、26種類以上の主要なテキストモデルおよび画像モデルを一元的に利用できます。OpenAI、Anthropic、Geminiの各プロトコルに対応し、Claude Code、Codex、Gemini CLIなどの開発ツールにもシームレスに接続できます。 プラットフォームには、インテリジェントルーティング、自動フェイルオーバー、透明性の高い料金体系、請求の一元管理に加え、予算管理、レート制限、同時実行数の制御機能が備わっています。これにより、個人開発、チームでの共同作業、本番環境におけるAI APIの利用を、より安定的かつ柔軟に管理できます。 既存のアプリケーションを改修する必要はありません。Base URLとAPIキーを置き換えるだけで、最短1分で導入を完了できます。</td>
-</tr>
-
-<tr>
-<td width="180"><a href="https://s.qiniu.com/u6rQrq"><img src="assets/partners/logos/qiniu.jpg" alt="Qiniu AI" width="150"></a></td>
-<td>七牛云AI のご支援に感謝します！七牛云AI は、七牛云（02567.HK）傘下のエンタープライズ向け大規模モデル MaaS プラットフォームです。世界の主要モデル 150+ をワンストップで利用でき、グローバル主要モデルプロバイダーのプロトコルに対応し、テキスト、画像、音声、動画、ファイル処理などのフルモーダル処理能力をカバー。169万を超える企業・開発者ユーザーにサービスを提供しています。Sub2API ユーザー向けの限定特典として、<a href="https://s.qiniu.com/u6rQrq">こちらのリンク</a>から登録すると、企業ユーザーは 1200万 Token、開発者は 300万 Token を無料で獲得できます。</td>
-</tr>
-
-<tr>
-<td width="180"><a href="https://api.fenno.ai/s/dC4k"><img src="assets/partners/logos/fennoai.jpg" alt="FennoAI" width="150"></a></td>
-<td>FennoAI のご支援に感謝します！FennoAI は、企業の研究開発チームと開発者向けの高安定・高性能 API 中継サービスプロバイダーです。OpenAI と Anthropic のプロトコルに対応し、Codex、Claude Code、OpenCode などの主要 AI コーディングツールにシームレスに接続できます。エンタープライズ級の安定性を備え、1 日あたり千億規模の Token 呼び出しに対応。国内外法人間の企業間決済と請求書発行もサポートし、企業の研究開発・調達ニーズに応えます。Sub2API ユーザー限定特典として、<a href="https://api.fenno.ai/s/dC4k">専用リンク</a>からサブスクリプションを購入すると、わずか 1.99 ドルで 50 ドル相当の Coding Plan クレジットを獲得できます。さらに招待報酬にも対応しており、友達の購入で最大 20% の還元を獲得可能。招待が多いほど、報酬も増えます。</td>
-</tr>
-
-<tr>
-<td width="180"><a href="https://lanox.ai/?c=6"><img src="assets/partners/logos/lanox.jpg" alt="LanoX AI" width="150"></a></td>
-<td>本プロジェクトをご支援いただいている <a href="https://lanox.ai/?c=6">LanoX AI</a> に感謝します！LanoX AI は、開発者、チーム、企業向けに、安定性とコストパフォーマンスに優れたグローバルモデル接続サービスを提供しています。 🎁 新規ユーザー特典 — 数百万 Token を無料で獲得可能。さらに 500+ の無料モデルで、低コストなテスト、検証、デプロイをより簡単に 🧠 世界の主要モデル — GPT · Claude · Gemini · Qwen · Grok... 🎬 マルチモーダル制作 — Seedance 2.0 · GPT Image · Gemini Nano Banana 🛡️ エンタープライズ級の安定性 — 高可用性 💎 ネイティブ能力の出力 💎 性能劣化なし 💎 モデル混在なし 💎 利用量と課金が透明 💎 💰 より低い利用コスト — トップモデルを公式価格の 1 割から利用可能。明確なドキュメント、簡単な接続、請求書発行、企業向け一括利用に対応 🏢 企業に最適 — AI プロダクト、Agent、コンテンツプラットフォーム、大量利用する開発チームに最適</td>
-</tr>
-
-<tr>
-<td width="180"><a href="https://www.rapidproxy.io/?ref=sub2api"><img src="assets/partners/logos/rapidproxy.jpg" alt="RapidProxy" width="150"></a></td>
-<td><a href="https://www.rapidproxy.io/?ref=sub2api">RapidProxy</a> は開発者向けのデータ収集プロキシソリューションであり、安定して信頼できる住宅用プロキシサービスを提供します。9,000 万以上のグローバル住宅 IP と 200 以上の国・地域のカバー、インテリジェントなローテーション機構、精密な地域ターゲティング機能により、クローラー、AI データ学習、SEO モニタリング、EC データ分析などのプロジェクトがアクセス制限を突破し、データ収集の効率を高めます。Playwright、Selenium、Puppeteer などの主要な自動化フレームワークに対応し、料金は $0.65/GB から。<a href="https://www.rapidproxy.io/?ref=sub2api">今すぐ無料でお試しください</a>。</td>
-</tr>
-
-<tr>
-<td width="180"><a href="https://hao.ai"><img src="assets/partners/logos/haoai.png" alt="hao.ai" width="150"></a></td>
-<td><a href="https://hao.ai">hao.ai</a> は、開発者とチーム向けの高速で安定した大規模モデル統合 API ゲートウェイです。1 つの API Key と統一されたインターフェースで、GPT、Claude、xAI Grok などの主要モデルに接続でき、OpenAI や Anthropic などの一般的なプロトコルと SDK に対応しています。プラットフォームはモデルルーティング、フェイルオーバー、チーム管理、完全な呼び出しログを提供し、モデル価格は公式参考価格の 1.5 割から。よりシンプルに、より安定して、より低コストに AI アプリケーションを構築できます。</td>
-</tr>
-
-<tr>
-<td width="180"><a href="https://www.swiftproxy.net/?ref=sub2api"><img src="assets/partners/logos/swiftprox.png" alt="Swiftproxy" width="150"></a></td>
-<td>Swiftproxy は開発者向けの高性能プロキシソリューションで、安定して信頼できるレジデンシャルおよび静的レジデンシャルプロキシサービスを提供します。9,000 万以上のクリーンな住宅 IP を保有し、グローバルカバレッジ、柔軟なローテーション、精密なジオターゲティングにより、Web スクレイピング、AI オートメーション、ブラウザ自動化、SEO モニタリング、マルチアカウント管理などのプロジェクトがアクセス制限を克服し、ワークフロー効率を向上させます。HTTP(S) および SOCKS5 プロトコルに対応し、Playwright、Selenium、Puppeteer などの主要な自動化ツールと統合可能。動的プロキシトラフィックは使い切るまで期限切れなし、無料テストも利用可能 — <a href="https://www.swiftproxy.net/?ref=sub2api">今すぐ無料テストを開始</a>！</td>
-</tr>
-
-<tr>
-<td width="180"><a href="https://www.duckip.cn/?keyword=cu7oog6y"><img src="assets/partners/logos/duckip.png" alt="DuckIP" width="150"></a></td>
-<td><a href="https://www.duckip.cn/?keyword=cu7oog6y">DuckIP</a> - 195 以上の国と地域にわたる 9,000 万以上のグローバルレジデンシャルネットワークリソース。ローテーションとスティッキーセッションに対応し、パブリックデータ収集、RAG 更新、モデル評価、マルチリージョンデータワークロードに最適。🟢レジデンシャルプロキシ - 20% オフ；🟢スタティックレジデンシャルプロキシ - ¥50.00/IP から；🟢無制限レジデンシャルプロキシ - ¥19.8/時間 から。✅500M 無料トライアルを取得。</td>
-</tr>
-
-<tr>
-<td width="180"><a href="https://go.apimart.ai/gh-sub2api"><img src="assets/partners/logos/apimart.jpg" alt="APIMart" width="150"></a></td>
-<td>APIMart のご支援に感謝します！<a href="https://go.apimart.ai/gh-sub2api">APIMart</a> は AI 画像・動画生成に特化した低価格 API プラットフォームです。GPT-Image-2 は 1 枚 $0.006 から、1 ドルで 160 枚以上の画像を生成できます。画像と動画の両方に対応する非同期 API を 1 つで利用でき、タスクを送信して ID を取得し、ポーリングまたはコールバックで結果を取得できます。数万枚規模のバッチ処理でもタイムアウトせず、モデルを変更してもコードの変更は不要です。月額料金なしの従量課金制で、<a href="https://go.apimart.ai/gh-sub2api">こちらの登録リンク</a>からすぐに利用を開始できます。</td>
-</tr>
-
-<tr>
-<td width="180"><a href="https://www.axisnow.io/"><img src="assets/partners/logos/axisnow.jpg" alt="AxisNow" width="150"></a></td>
-<td>AxisNow のご支援に感謝します！<a href="https://www.axisnow.io/">AxisNow</a> はウェブサイトと API を保護・高速化し、中国本土および世界中で快適なアクセス体験を実現します。クライアント SDK により、ネイティブ／モバイルアプリにも高速化・セキュリティ機能を拡張できます — <strong>自社構築・プライベートデプロイ CDN</strong>｜<strong>サブスクリプション型高防御 CDN</strong>｜<strong>自律制御で柔軟に組み合わせられる CDN ネットワーク</strong>。</td>
-</tr>
-
-<tr>
-<td width="180"><a href="https://pp.dog/register?aff=SUB2API"><img src="assets/partners/logos/ppdog.png" alt="PP.dog" width="150"></a></td>
-<td><a href="https://pp.dog/register?aff=SUB2API">PP.dog</a> は自社運用の大規模アカウントプールを持つソースレベルの API ゲートウェイで、下流の中継ステーションや高頻度開発者向けに API ゲートウェイリレーサービスを提供し、アカウントプールの自主構築にかかるすべての手間を省きます。✅ ソース直供：自社運用の大規模アカウントプール、中間マージンなし；🧧 コスト最強：総合レート倍率わずか 0.03x、コストは公式の 0.35% のみ；🚀 超高速体験：ファーストトークンレイテンシ 1 秒未満、公式ネイティブ API に匹敵するスムーズさ。<a href="https://www.pp.dog/register?aff=SUB2API">今すぐ PP.dog に接続</a></td>
-</tr>
-
-<tr>
-<td width="180"><a href="https://colaproxy.com/?utm_source=sub2api&utm_medium=sub2api&ref=sub2api"><img src="assets/partners/logos/cola-proxy.jpg" alt="ColaProxy" width="150"></a></td>
-<td>ColaProxy は、Web スクレイピング、自動化、マルチアカウント管理向けに構築された高品質な住宅プロキシを提供します。有効期限なしのトラフィックで無料トライアルが利用でき、料金は $0.3/GB から、無制限の同時接続とインテリジェントな IP ローテーションにより、よりスムーズで安定したプロキシ体験を実現します。割引コード COLA10 で 10% オフ、信頼性の高い住宅プロキシでプロジェクトを今すぐスケールしましょう。<a href="https://colaproxy.com/?utm_source=sub2api&utm_medium=sub2api&ref=sub2api">ColaProxy を始める</a></td>
-</tr>
-
-</table>
-
 ## 概要
 
-Sub2API は、AI 製品のサブスクリプションから API クォータを配分・管理するために設計された AI API ゲートウェイプラットフォームです。ユーザーはプラットフォームが生成した API キーを通じて上流の AI サービスにアクセスでき、プラットフォームは認証、課金、負荷分散、リクエスト転送を処理します。
+Sub2API は、AI 製品のサブスクリプションから API クォータを配分・管理するために設計された AI API ゲートウェイプラットフォームです。ユーザーはプラットフォームが生成した API キーを通じて上流の AI サービスにアクセスでき、プラットフォームは認証、課金、負荷分散、リクエスト転送を処理します。Adobe Firefly Web の Cookie アカウントから OpenAI 互換の画像生成も利用できます。詳細は [Adobe Firefly サポート](#adobe-firefly-サポート) を参照してください。
 
 ## 機能
 
 - **マルチアカウント管理** - 複数の上流アカウントタイプ（OAuth、APIキー）をサポート
+- **Adobe Firefly 画像生成** - Firefly Web の Cookie アカウントから OpenAI 互換の画像生成・編集を提供し、中継アカウントによるフェイルオーバーにも対応（[Adobe Firefly サポート](#adobe-firefly-サポート)）
 - **APIキー配布** - ユーザー向けの APIキーの生成と管理
 - **精密な課金** - トークンレベルの使用量追跡とコスト計算
 - **スマートスケジューリング** - スティッキーセッション付きのインテリジェントなアカウント選択
@@ -186,8 +42,104 @@ Sub2API は、AI 製品のサブスクリプションから API クォータを�
 - **レート制限** - 設定可能なリクエスト数およびトークンレート制限
 - **内蔵決済システム** - EasyPay、Alipay、WeChat Pay、Stripe に対応。ユーザーのセルフサービスチャージが可能で、別途決済サービスのデプロイは不要（[設定ガイド](docs/PAYMENT.md)）
 - **管理ダッシュボード** - 監視・管理のための Web インターフェース
-- **Adobe Firefly 画像生成** - Firefly Web の Cookie アカウントから OpenAI 互換の画像生成・編集を提供し、中継アカウントによるフェイルオーバーにも対応（[Adobe Firefly サポート](#adobe-firefly-サポート)）
 - **外部システム連携** - 外部システム（チケット管理など）を iframe 経由で管理ダッシュボードに埋め込み可能
+
+---
+
+## Adobe Firefly サポート
+
+Sub2API は、Adobe Firefly Web のサブスクリプションアカウント（ブラウザ Cookie）から OpenAI 互換の画像生成を提供できます。同じ Adobe グループに OpenAI 形式の外部中継アカウントを追加してフェイルオーバーにも使えます。
+
+直結は **Firefly Web**（`firefly.adobe.com` / `clio-playground-web`）を使います。Adobe Express ではなく、公式の Adobe Firefly Services API キーもサポートしません。
+
+### サポート範囲
+
+- プラットフォーム名: `adobe`
+- アカウント種別: Firefly Cookie（管理画面では OAuth と表示）および **API Key + Base URL** 中継アカウント
+- 公開画像エンドポイント: `/v1/images/generations` と `/v1/images/edits`（`/v1` なしの既存エイリアスも含む）
+- API キーのグループで画像生成を許可する必要があります（Adobe グループはデフォルトで有効）
+- `n` の省略時は 1、最大 10。Cookie 経路は n 回の Firefly ジョブに分割し（上流の `n` は常に 1）、枚数課金します。`n>10` は拒否します
+- `output_format` は `png`/`jpeg` をダウンロード後にローカル変換します（`jpg` は jpeg 扱い）。`webp` は未対応。未指定なら上流の形式を維持します
+- `/v1/models` は公開用の外部モデル名のみを返します。内部の `firefly-*` ファミリー ID は送らないでください
+- 本プロバイダーの対象外: 動画ゲートウェイ、非同期画像タスク（`/v1/images/*/async`）、公式 Firefly Services API キー、チャット / TTS などの非画像プロトコル
+
+### 公開モデル
+
+| 公開モデル名 | 説明 |
+|--------------|------|
+| `gpt-image-2` | Firefly GPT Image 2 |
+| `gpt-image-1.5` | Firefly GPT Image 1.5 |
+| `gpt-image-2.5-flare` | Firefly GPT Image 2.5 Flare |
+| `gpt-image-2.5-sunburst` | Firefly GPT Image 2.5 Sunburst（上流の version 名は `prism`） |
+| `nano-banana` / `nano-banana-pro` / `nano-banana2` | Firefly 上の Gemini Nano Banana 系列 |
+| `flux-pro` / `flux-ultra` | Firefly FLUX |
+| `imagen-4` / `imagen-4-fast` | Firefly Imagen 4 |
+| `gpt-4o-image` | Firefly GPT-4o Image |
+| `runway-gen4-image` | Firefly Runway Gen-4 Image |
+
+旧エイリアス `gpt-image`、`gpt-image-1`、`gpt-image-1-mini` は `gpt-image-2` に落ちますが、`/v1/models` には出ません。
+
+`gpt-image-*` は公式 OpenAI 画像モデルと同名です。Firefly に届くのは API キーが **Adobe** グループに紐づいている場合のみで、OpenAI グループなら従来どおり OpenAI に行きます。Composite グループは `gpt-image-*` を自動判定しません（名前が曖昧なため）。明示的なルートを追加してください。`nano-banana*`、`flux-*`、`imagen-*`、`runway-gen4*` は Composite で Adobe として自動検出できます。
+
+### Cookie アカウントの設定
+
+1. 管理ダッシュボードで **Adobe** グループを作成し、Firefly Cookie アカウントを追加します。
+2. ブラウザで Adobe にログインし、`https://firefly.adobe.com/generate/image` を開いてページが落ち着くまで待ちます。
+3. DevTools → Network で `adobeid-na1.services.adobe.com` の `/ims/check/v6/token` リクエストを見つけ、その **Cookie ヘッダー**をコピーします。`ims_sid` が含まれている必要があります。
+4. `firefly.adobe.com` の `document.cookie` だけをコピーしても **不十分**です。`Cookie:` プレフィックスや JSON の cookie 配列も受け付けます。
+5. 短命の Access Token は任意です。空なら初回リフレッシュ時に Cookie から取得します。以降は Cookie から自動更新されます。
+6. アカウントをグループに割り当て、そのグループに紐づく Sub2API API キーを作成します。
+
+Cookie が無効になったらブラウザから再エクスポートしてください。リフレッシャーは無限ループせず、アカウントをエラー状態にします。
+
+### 中継アカウント（任意）
+
+同じ Adobe グループに **API Key + Base URL** 中継アカウントを追加できます。これらは Firefly を呼ばず、同じ OpenAI Images ペイロードを `{base_url}` へ `Authorization: Bearer` で転送し、公開モデル名（例: `gpt-image-2`）を内部の `firefly-*` に書き換えません。
+
+主な用途:
+
+- Cookie アカウントのクレジット枯渇、一時障害、モデル / 品質の entitlement 不足時のフェイルオーバー
+- **mask** 付きの `gpt-image-*` 編集は中継アカウントを優先（Firefly Cookie 直結は公式の inpaint mask 意味論を実装していません）
+- Firefly のコンテンツセーフティ拒否（例: `image_unsafe`）のあと、別の Cookie アカウントは試しませんが、中継アカウントは試せます
+
+`base_url` のない Adobe API キーアカウントは中継アカウントではありません。
+
+### `size` / `quality` / `background`
+
+| ファミリー | クライアント `size` | 動作 |
+|------------|---------------------|------|
+| `gpt-image-2` / `gpt-image-2.5-*` | `WxH`、空、または `auto` | ピクセルをそのまま転送。空/`auto` なら size を省略し、上流に任せる |
+| `gpt-image-1.5` | `WxH` | `1024x1024` / `1536x1024` / `1024x1536` の最近傍 |
+| `nano-banana*` | `WxH`、空、または `auto` | 長辺から 1K/2K/4K の正方形ティアと最近傍 `aspectRatio`。空/`auto` は Firefly デフォルトの 1K 正方形。`nano-banana2` は `1:8` / `1:4` / `4:1` / `8:1` も可 |
+| `flux-*` / `imagen-4*` / `gpt-4o-image` / `runway-gen4-image` | `WxH` | そのファミリーの許可サイズ列挙への最近傍 |
+
+`quality` は Firefly の `detailLevel` に対応します: `low`（デフォルト）→ 1、`medium` → 3、`high` → 5、`xhigh`/`max` は v2/1.5 で 5、2.5 で 7。
+
+gpt-image ファミリーは OpenAI の `background`（`transparent` / `opaque` / `auto`）を受け付けます。
+
+`n` の省略時は 1（最大 10）です。Cookie アカウントは n 回の Firefly ジョブに分割し、枚数課金します。`output_format` が `png` または `jpeg` の場合はダウンロード後にローカル変換します。`webp` は拒否し、未指定なら Firefly の形式を維持します。`background=transparent` と `output_format=jpeg` は同時に使えません。
+
+### 課金、クォータ、フェイルオーバー
+
+- 課金は出力長辺から導いた `1K` / `2K` / `4K` の枚数課金です。グループの画像単価があればそれを使い、なければ Adobe チャネルのフォールバック価格です。
+- Cookie アカウントは Firefly Credits を管理画面に表示します。枯渇したアカウントは一時的にスケジュール対象外になり（デフォルト約 30 分）、次のリクエストは別アカウントへ回ります。
+- モデルまたは品質の entitlement 不足は別アカウントへフェイルオーバーし、Cookie 失効としては扱いません。
+- 上流の `429` / `5xx` / ネットワークエラーはアカウントを跨いで再試行できます。
+
+### 呼び出し例
+
+```bash
+curl https://your-sub2api.example.com/v1/images/generations \
+  -H "Authorization: Bearer sk-your-sub2api-key" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "gpt-image-2",
+    "prompt": "a red panda in a bamboo forest",
+    "size": "1024x1024"
+  }'
+```
+
+---
 
 ## エコシステム
 
@@ -688,101 +640,6 @@ export ANTHROPIC_AUTH_TOKEN="sk-xxx"
 Antigravity アカウントはオプションの**ハイブリッドスケジューリング**をサポートしています。有効にすると、汎用エンドポイント `/v1/messages` および `/v1beta/` も Antigravity アカウントにリクエストをルーティングします。
 
 > **⚠️ 警告**: Anthropic Claude と Antigravity Claude は**同じ会話コンテキスト内で混在させることはできません**。グループを使用して適切に分離してください。
-
----
-
-## Adobe Firefly サポート
-
-Sub2API は、Adobe Firefly Web のサブスクリプションアカウント（ブラウザ Cookie）から OpenAI 互換の画像生成を提供できます。同じ Adobe グループに OpenAI 形式の外部中継アカウントを追加してフェイルオーバーにも使えます。
-
-直結は **Firefly Web**（`firefly.adobe.com` / `clio-playground-web`）を使います。Adobe Express ではなく、公式の Adobe Firefly Services API キーもサポートしません。
-
-### サポート範囲
-
-- プラットフォーム名: `adobe`
-- アカウント種別: Firefly Cookie（管理画面では OAuth と表示）および **API Key + Base URL** 中継アカウント
-- 公開画像エンドポイント: `/v1/images/generations` と `/v1/images/edits`（`/v1` なしの既存エイリアスも含む）
-- API キーのグループで画像生成を許可する必要があります（Adobe グループはデフォルトで有効）
-- 1 リクエストあたり **1 枚**のみ（`n` 省略または `1`。`n>1` は拒否）
-- `/v1/models` は公開用の外部モデル名のみを返します。内部の `firefly-*` ファミリー ID は送らないでください
-- 本プロバイダーの対象外: 動画ゲートウェイ、非同期画像タスク（`/v1/images/*/async`）、公式 Firefly Services API キー、チャット / TTS などの非画像プロトコル
-
-### 公開モデル
-
-| 公開モデル名 | 説明 |
-|--------------|------|
-| `gpt-image-2` | Firefly GPT Image 2 |
-| `gpt-image-1.5` | Firefly GPT Image 1.5 |
-| `gpt-image-2.5-flare` | Firefly GPT Image 2.5 Flare |
-| `gpt-image-2.5-sunburst` | Firefly GPT Image 2.5 Sunburst（上流の version 名は `prism`） |
-| `nano-banana` / `nano-banana-pro` / `nano-banana2` | Firefly 上の Gemini Nano Banana 系列 |
-| `flux-pro` / `flux-ultra` | Firefly FLUX |
-| `imagen-4` / `imagen-4-fast` | Firefly Imagen 4 |
-| `gpt-4o-image` | Firefly GPT-4o Image |
-| `runway-gen4-image` | Firefly Runway Gen-4 Image |
-
-旧エイリアス `gpt-image`、`gpt-image-1`、`gpt-image-1-mini` は `gpt-image-2` に落ちますが、`/v1/models` には出ません。
-
-`gpt-image-*` は公式 OpenAI 画像モデルと同名です。Firefly に届くのは API キーが **Adobe** グループに紐づいている場合のみで、OpenAI グループなら従来どおり OpenAI に行きます。Composite グループは `gpt-image-*` を自動判定しません（名前が曖昧なため）。明示的なルートを追加してください。`nano-banana*`、`flux-*`、`imagen-*`、`runway-gen4*` は Composite で Adobe として自動検出できます。
-
-### Cookie アカウントの設定
-
-1. 管理ダッシュボードで **Adobe** グループを作成し、Firefly Cookie アカウントを追加します。
-2. ブラウザで Adobe にログインし、`https://firefly.adobe.com/generate/image` を開いてページが落ち着くまで待ちます。
-3. DevTools → Network で `adobeid-na1.services.adobe.com` の `/ims/check/v6/token` リクエストを見つけ、その **Cookie ヘッダー**をコピーします。`ims_sid` が含まれている必要があります。
-4. `firefly.adobe.com` の `document.cookie` だけをコピーしても **不十分**です。`Cookie:` プレフィックスや JSON の cookie 配列も受け付けます。
-5. 短命の Access Token は任意です。空なら初回リフレッシュ時に Cookie から取得します。以降は Cookie から自動更新されます。
-6. アカウントをグループに割り当て、そのグループに紐づく Sub2API API キーを作成します。
-
-Cookie が無効になったらブラウザから再エクスポートしてください。リフレッシャーは無限ループせず、アカウントをエラー状態にします。
-
-### 中継アカウント（任意）
-
-同じ Adobe グループに **API Key + Base URL** 中継アカウントを追加できます。これらは Firefly を呼ばず、同じ OpenAI Images ペイロードを `{base_url}` へ `Authorization: Bearer` で転送し、公開モデル名（例: `gpt-image-2`）を内部の `firefly-*` に書き換えません。
-
-主な用途:
-
-- Cookie アカウントのクレジット枯渇、一時障害、モデル / 品質の entitlement 不足時のフェイルオーバー
-- **mask** 付きの `gpt-image-*` 編集は中継アカウントを優先（Firefly Cookie 直結は公式の inpaint mask 意味論を実装していません）
-- Firefly のコンテンツセーフティ拒否（例: `image_unsafe`）のあと、別の Cookie アカウントは試しませんが、中継アカウントは試せます
-
-`base_url` のない Adobe API キーアカウントは中継アカウントではありません。
-
-### `size` / `quality` / `background`
-
-| ファミリー | クライアント `size` | 動作 |
-|------------|---------------------|------|
-| `gpt-image-2` / `gpt-image-2.5-*` | `WxH`、空、または `auto` | ピクセルをそのまま転送。空/`auto` なら size を省略し、上流に任せる |
-| `gpt-image-1.5` | `WxH` | `1024x1024` / `1536x1024` / `1024x1536` の最近傍 |
-| `nano-banana*` | `WxH`、空、または `auto` | 長辺から 1K/2K/4K の正方形ティアと最近傍 `aspectRatio`。空/`auto` は Firefly デフォルトの 1K 正方形。`nano-banana2` は `1:8` / `1:4` / `4:1` / `8:1` も可 |
-| `flux-*` / `imagen-4*` / `gpt-4o-image` / `runway-gen4-image` | `WxH` | そのファミリーの許可サイズ列挙への最近傍 |
-
-`quality` は Firefly の `detailLevel` に対応します: `low`（デフォルト）→ 1、`medium` → 3、`high` → 5、`xhigh`/`max` は v2/1.5 で 5、2.5 で 7。
-
-gpt-image ファミリーは OpenAI の `background`（`transparent` / `opaque` / `auto`）を受け付けます。
-
-### 課金、クォータ、フェイルオーバー
-
-- 課金は出力長辺から導いた `1K` / `2K` / `4K` の枚数課金です。グループの画像単価があればそれを使い、なければ Adobe チャネルのフォールバック価格です。
-- Cookie アカウントは Firefly Credits を管理画面に表示します。枯渇したアカウントは一時的にスケジュール対象外になり（デフォルト約 30 分）、次のリクエストは別アカウントへ回ります。
-- モデルまたは品質の entitlement 不足は別アカウントへフェイルオーバーし、Cookie 失効としては扱いません。
-- 上流の `429` / `5xx` / ネットワークエラーはアカウントを跨いで再試行できます。
-
-### 呼び出し例
-
-```bash
-curl https://your-sub2api.example.com/v1/images/generations \
-  -H "Authorization: Bearer sk-your-sub2api-key" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "model": "gpt-image-2",
-    "prompt": "a red panda in a bamboo forest",
-    "size": "1024x1024"
-  }'
-```
-
----
-
 ## プロジェクト構成
 
 ```
