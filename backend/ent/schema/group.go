@@ -213,6 +213,10 @@ func (Group) Fields() []ent.Field {
 			Optional().
 			SchemaType(map[string]string{dialect.Postgres: "jsonb"}).
 			Comment("模型路由配置：模型模式 -> 优先账号ID列表"),
+		field.JSON("scheduler_config", map[string]any{}).
+			Optional().
+			SchemaType(map[string]string{dialect.Postgres: "jsonb"}).
+			Comment("分组级高可用调度配置；空值保持 legacy 行为"),
 
 		// 模型路由开关 (added by migration 041)
 		field.Bool("model_routing_enabled").

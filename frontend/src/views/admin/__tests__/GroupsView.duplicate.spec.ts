@@ -390,4 +390,53 @@ describe('GroupsView duplicate action', () => {
     }
   })
 
+  it('preserves the saved HA selection while the list refresh is pending', async () => {
+    updateGroup.mockResolvedValue({
+      ...sourceGroup,
+      scheduler: { strategy: 'high_availability', selection_mode: 'strict_health' }
+    })
+    const wrapper = mountView()
+    await flushPromises()
+    const edit = () => wrapper.findAll('button').find((button) => button.text() === 'common.edit')!
+    await edit().trigger('click')
+    await flushPromises()
+    const toggle = wrapper.get('#edit-group-form button[aria-pressed]')
+    await toggle.trigger('click')
+    await wrapper.get('#edit-group-form select').setValue('strict_health')
+    let resolveRefresh!: (value: unknown) => void
+    listGroups.mockImplementationOnce(() => new Promise((resolve) => { resolveRefresh = resolve }))
+    await wrapper.get('#edit-group-form').trigger('submit')
+    await flushPromises()
+    expect(updateGroup).toHaveBeenCalledWith(42, expect.objectContaining({
+      scheduler: expect.objectContaining({ strategy: 'high_availability', selection_mode: 'strict_health' })
+    }))
+    await edit().trigger('click')
+    await flushPromises()
+    expect(wrapper.get('#edit-group-form button[aria-pressed]').attributes('aria-pressed')).toBe('true')
+    expect((wrapper.get('#edit-group-form select').element as HTMLSelectElement).value).toBe('strict_health')
+    resolveRefresh({ items: [sourceGroup], total: 1, page: 1, page_size: 20, pages: 1 })
+    await flushPromises()
+    wrapper.unmount()
+  })
+
+  it('hides HA controls in simple mode and submits only basic group fields', async () => {
+    authState.isSimpleMode = true
+    updateGroup.mockResolvedValue(sourceGroup)
+    const wrapper = mountView()
+    await flushPromises()
+    const createButton = wrapper.findAll('button').find((button) => button.text() === 'admin.groups.createGroup')!
+    await createButton.trigger('click')
+    await flushPromises()
+    expect(wrapper.find('#create-group-form button[aria-pressed]').exists()).toBe(false)
+    const editButton = wrapper.findAll('button').find((button) => button.text() === 'common.edit')!
+    await editButton.trigger('click')
+    await flushPromises()
+    expect(wrapper.find('#edit-group-form button[aria-pressed]').exists()).toBe(false)
+    await wrapper.get('#edit-group-form').trigger('submit')
+    await flushPromises()
+    expect(updateGroup).toHaveBeenCalledWith(42, { name: 'Primary', description: '' })
+    expect(showError).not.toHaveBeenCalled()
+    wrapper.unmount()
+  })
+
 })

@@ -2205,6 +2205,16 @@ func ModelRoutingNotNil() predicate.Group {
 	return predicate.Group(sql.FieldNotNull(FieldModelRouting))
 }
 
+// SchedulerConfigIsNil applies the IsNil predicate on the "scheduler_config" field.
+func SchedulerConfigIsNil() predicate.Group {
+	return predicate.Group(sql.FieldIsNull(FieldSchedulerConfig))
+}
+
+// SchedulerConfigNotNil applies the NotNil predicate on the "scheduler_config" field.
+func SchedulerConfigNotNil() predicate.Group {
+	return predicate.Group(sql.FieldNotNull(FieldSchedulerConfig))
+}
+
 // ModelRoutingEnabledEQ applies the EQ predicate on the "model_routing_enabled" field.
 func ModelRoutingEnabledEQ(v bool) predicate.Group {
 	return predicate.Group(sql.FieldEQ(FieldModelRoutingEnabled, v))
