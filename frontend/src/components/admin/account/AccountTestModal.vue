@@ -413,7 +413,7 @@ const generatedImages = ref<PreviewMedia[]>([])
 const generatedAudios = ref<PreviewMedia[]>([])
 const generatedVideos = ref<PreviewMedia[]>([])
 const previewImageUrl = ref('')
-const testMode = ref<'default' | 'compact'>('default')
+const testMode = ref<'default' | 'compact' | 'pelican'>('default')
 const grokTestMode = ref<'text' | 'image' | 'video' | 'search' | 'tts' | 'stt' | 'realtime'>('text')
 const uploadImageDataURL = ref('')
 const uploadImagePreview = ref('')
@@ -426,8 +426,10 @@ const isOpenAIAccount = computed(() => props.account?.platform === 'openai')
 const isGrokAccount = computed(() => props.account?.platform === 'grok')
 const openAITestModeOptions = computed(() => [
   { value: 'default', label: t('admin.accounts.openai.testModeDefault') },
-  { value: 'compact', label: t('admin.accounts.openai.testModeCompact') }
+  { value: 'compact', label: t('admin.accounts.openai.testModeCompact') },
+  { value: 'pelican', label: t('admin.accounts.openai.testModePelican') }
 ])
+const pelicanTestPrompt = 'Generate an SVG of a pelican riding a bicycle'
 const grokTestModeOptions = computed(() => [
   { value: 'text', label: t('admin.accounts.grok.testModeText') },
   { value: 'image', label: t('admin.accounts.grok.testModeImage') },
@@ -669,6 +671,9 @@ const testModeSummary = computed(() => {
         return t('admin.accounts.grok.textTestMode')
     }
   }
+  if (isOpenAIAccount.value && testMode.value === 'pelican') {
+    return t('admin.accounts.openai.pelicanTestMode')
+  }
   if (supportsImageTest.value) return t('admin.accounts.imageTestMode')
   return t('admin.accounts.testPrompt')
 })
@@ -856,6 +861,9 @@ const startTest = async () => {
     }
     if (isOpenAIAccount.value) {
       requestBody.mode = testMode.value
+      if (testMode.value === 'pelican') {
+        requestBody.prompt = pelicanTestPrompt
+      }
     }
     if (isGrokAccount.value) {
       // Always send explicit Grok mode. search/tts/stt/realtime are standalone
@@ -972,6 +980,8 @@ const handleEvent = (event: {
                       : t('admin.accounts.sendingTestMessage')
           : supportsImageTest.value
             ? t('admin.accounts.sendingImageRequest')
+            : isOpenAIAccount.value && testMode.value === 'pelican'
+              ? t('admin.accounts.openai.sendingPelicanRequest')
             : t('admin.accounts.sendingTestMessage'),
         'text-gray-400'
       )

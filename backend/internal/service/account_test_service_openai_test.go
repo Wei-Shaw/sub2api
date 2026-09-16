@@ -163,6 +163,54 @@ func TestAccountTestService_OpenAIOAuthTestNormalizesGPT56Alias(t *testing.T) {
 	body, err := io.ReadAll(upstream.requests[0].Body)
 	require.NoError(t, err)
 	require.Equal(t, "gpt-5.6-sol", gjson.GetBytes(body, "model").String())
+	require.Equal(t, "hi", gjson.GetBytes(body, "input.0.content.0.text").String())
+	require.False(t, gjson.GetBytes(body, "reasoning").Exists())
+}
+
+func TestAccountTestService_OpenAIPelicanModeReturnsSVGImage(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	ctx, recorder := newTestContext()
+
+	resp := newJSONResponse(http.StatusOK, "")
+	resp.Body = io.NopCloser(strings.NewReader(
+		"data: {\"type\":\"response.output_text.delta\",\"delta\":\"```svg\\n<svg xmlns=\\\"http://www.w3.org/2000/svg\\\">\"}\n\n" +
+			"data: {\"type\":\"response.output_text.delta\",\"delta\":\"<text>pelican on a bicycle</text></svg>\\n```\"}\n\n" +
+			"data: {\"type\":\"response.completed\"}\n\n",
+	))
+
+	upstream := &queuedHTTPUpstream{responses: []*http.Response{resp}}
+	svc := &AccountTestService{httpUpstream: upstream}
+	account := &Account{
+		ID:          94,
+		Platform:    PlatformOpenAI,
+		Type:        AccountTypeOAuth,
+		Concurrency: 1,
+		Credentials: map[string]any{"access_token": "test-token"},
+	}
+
+	err := svc.testOpenAIAccountConnection(ctx, account, "gpt-5.6-sol", "ignored", AccountTestModePelican)
+	require.NoError(t, err)
+	require.Len(t, upstream.requests, 1)
+
+	body, err := io.ReadAll(upstream.requests[0].Body)
+	require.NoError(t, err)
+	require.Equal(t, defaultOpenAIPelicanPrompt, gjson.GetBytes(body, "input.0.content.0.text").String())
+	require.Equal(t, "medium", gjson.GetBytes(body, "reasoning.effort").String())
+	require.Contains(t, recorder.Body.String(), `"type":"image"`)
+	require.Contains(t, recorder.Body.String(), `"mime_type":"image/svg+xml"`)
+	require.Contains(t, recorder.Body.String(), `"success":true`)
+	require.NotContains(t, recorder.Body.String(), "```svg")
+}
+
+func TestExtractAccountTestSVGRejectsMissingSVG(t *testing.T) {
+	_, err := extractAccountTestSVG("I could not generate that image.")
+	require.EqualError(t, err, "model response did not contain an SVG")
+}
+
+func TestCreateOpenAICompactProbePayloadHasNoReasoning(t *testing.T) {
+	payload := createOpenAICompactProbePayload("gpt-5.6-sol", true)
+	_, exists := payload["reasoning"]
+	require.False(t, exists)
 }
 
 func TestAccountTestService_OpenAIShadowUsesParentCredentialsAndShadowModel(t *testing.T) {
