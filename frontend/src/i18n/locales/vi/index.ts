@@ -5,13 +5,40 @@ import channelMonitorV2 from './channelMonitorV2'
 import batchImage from './batchImage'
 import admin from './admin'
 import misc from './misc'
+import { mergeLocaleMessages } from './merge'
+import landingCompletion from './landing-completion'
+import commonCompletion from './common-completion'
+import dashboardCompletion from './dashboard-completion'
+import miscCompletion from './misc-completion'
+import adminOverviewCompletion from './admin/overview-completion'
+import adminChannelsCompletion from './admin/channels-completion'
+import adminAccountsCompletion from './admin/accounts-completion'
+import adminResourcesCompletion from './admin/resources-completion'
+import adminOpsCompletion from './admin/ops-completion'
+import adminSettingsCompletion from './admin/settings-completion'
 
-export default {
-  ...landing,
-  ...common,
-  ...dashboard,
-  ...channelMonitorV2,
-  ...batchImage,
+const completedAdmin = mergeLocaleMessages(
   admin,
-  ...misc,
-}
+  adminOverviewCompletion,
+  adminChannelsCompletion,
+  adminAccountsCompletion,
+  adminResourcesCompletion,
+  adminOpsCompletion,
+  adminSettingsCompletion,
+)
+
+export default mergeLocaleMessages(
+  {
+    ...landing,
+    ...common,
+    ...dashboard,
+    ...channelMonitorV2,
+    ...batchImage,
+    admin: completedAdmin,
+    ...misc,
+  },
+  landingCompletion,
+  commonCompletion,
+  dashboardCompletion,
+  miscCompletion,
+)
