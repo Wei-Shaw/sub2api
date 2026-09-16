@@ -2764,6 +2764,35 @@ func (h *AccountHandler) SetSchedulable(c *gin.Context) {
 	response.Success(c, h.buildAccountResponseWithRuntime(c.Request.Context(), account))
 }
 
+func getExplicitModelMapping(account *service.Account) map[string]string {
+	if account == nil || account.Credentials == nil {
+		return nil
+	}
+	raw, ok := account.Credentials["model_mapping"]
+	if !ok || raw == nil {
+		return nil
+	}
+	result := make(map[string]string)
+	switch m := raw.(type) {
+	case map[string]any:
+		for k, v := range m {
+			if s, ok := v.(string); ok && s != "" {
+				result[k] = s
+			}
+		}
+	case map[string]string:
+		for k, v := range m {
+			if v != "" {
+				result[k] = v
+			}
+		}
+	}
+	if len(result) == 0 {
+		return nil
+	}
+	return result
+}
+
 // GetAvailableModels handles getting available models for an account
 // GET /api/v1/admin/accounts/:id/models
 func (h *AccountHandler) GetAvailableModels(c *gin.Context) {
@@ -2779,47 +2808,67 @@ func (h *AccountHandler) GetAvailableModels(c *gin.Context) {
 		return
 	}
 
-	// Handle OpenAI accounts
-	if account.IsOpenAI() {
+	// Handle OpenAI accounts (and OpenAI-compatible domestic providers / OpenCode Go)
+	if account.IsOpenAI() || account.IsCNProvider() || account.IsOpenCodeGo() {
+		mapping := getExplicitModelMapping(account)
+		if len(mapping) == 0 {
+			mapping = account.GetModelMapping()
+		}
+
 		// Prefer the shared, account-keyed upstream catalog. If discovery fails,
 		// retain the legacy local catalog below so the test dialog remains usable.
+		var baseModels []openai.Model
 		if h.accountTestService != nil {
 			if models, fetchErr := h.accountTestService.FetchOpenAIAccountModels(c.Request.Context(), account); fetchErr == nil {
-				response.Success(c, models)
-				return
+				baseModels = models
 			}
 		}
+		if len(baseModels) == 0 {
+			baseModels = openai.DefaultModels
+		}
+
 		// OpenAI 自动透传会绕过常规模型改写，测试/模型列表也应回落到默认模型集。
-		if account.IsOpenAIPassthroughEnabled() {
-			response.Success(c, openai.DefaultModels)
+		if account.IsOpenAIPassthroughEnabled() || len(mapping) == 0 {
+			response.Success(c, baseModels)
 			return
 		}
 
-		mapping := account.GetModelMapping()
-		if len(mapping) == 0 {
-			response.Success(c, openai.DefaultModels)
-			return
+		baseByID := make(map[string]openai.Model, len(baseModels))
+		for _, m := range baseModels {
+			baseByID[m.ID] = m
 		}
 
-		// Return mapped models
-		var models []openai.Model
+		requestedModels := make([]string, 0, len(mapping))
 		for requestedModel := range mapping {
-			var found bool
-			for _, dm := range openai.DefaultModels {
-				if dm.ID == requestedModel {
-					models = append(models, dm)
-					found = true
+			requestedModels = append(requestedModels, requestedModel)
+		}
+		sort.Strings(requestedModels)
+
+		var models []openai.Model
+		for _, requestedModel := range requestedModels {
+			if m, found := baseByID[requestedModel]; found {
+				models = append(models, m)
+				continue
+			}
+			// Case-insensitive lookup fallback
+			var foldFound bool
+			for _, m := range baseModels {
+				if strings.EqualFold(m.ID, requestedModel) {
+					m.ID = requestedModel
+					models = append(models, m)
+					foldFound = true
 					break
 				}
 			}
-			if !found {
-				models = append(models, openai.Model{
-					ID:          requestedModel,
-					Object:      "model",
-					Type:        "model",
-					DisplayName: requestedModel,
-				})
+			if foldFound {
+				continue
 			}
+			models = append(models, openai.Model{
+				ID:          requestedModel,
+				Object:      "model",
+				Type:        "model",
+				DisplayName: requestedModel,
+			})
 		}
 		response.Success(c, models)
 		return
@@ -2830,40 +2879,55 @@ func (h *AccountHandler) GetAvailableModels(c *gin.Context) {
 		// Consumer Google One OAuth still uses the legacy Gemini CLI / Code
 		// Assist channel. Do not advertise newer 3.x or image models that the
 		// channel cannot serve.
-		if account.IsOAuth() {
-			if account.IsGeminiGoogleOne() {
-				response.Success(c, geminicli.GoogleOneModels)
-				return
-			}
-			response.Success(c, geminicli.DefaultModels)
+		defaultModels := geminicli.DefaultModels
+		if account.IsOAuth() && account.IsGeminiGoogleOne() {
+			defaultModels = geminicli.GoogleOneModels
+		}
+
+		mapping := getExplicitModelMapping(account)
+		if len(mapping) == 0 {
+			mapping = account.GetModelMapping()
+		}
+		if len(mapping) == 0 {
+			response.Success(c, defaultModels)
 			return
 		}
 
-		// For API Key accounts: return models based on model_mapping
-		mapping := account.GetModelMapping()
-		if len(mapping) == 0 {
-			response.Success(c, geminicli.DefaultModels)
-			return
+		defaultByID := make(map[string]geminicli.Model, len(defaultModels))
+		for _, dm := range defaultModels {
+			defaultByID[dm.ID] = dm
 		}
+
+		requestedModels := make([]string, 0, len(mapping))
+		for requestedModel := range mapping {
+			requestedModels = append(requestedModels, requestedModel)
+		}
+		sort.Strings(requestedModels)
 
 		var models []geminicli.Model
-		for requestedModel := range mapping {
-			var found bool
-			for _, dm := range geminicli.DefaultModels {
-				if dm.ID == requestedModel {
+		for _, requestedModel := range requestedModels {
+			if dm, found := defaultByID[requestedModel]; found {
+				models = append(models, dm)
+				continue
+			}
+			var foldFound bool
+			for _, dm := range defaultModels {
+				if strings.EqualFold(dm.ID, requestedModel) {
+					dm.ID = requestedModel
 					models = append(models, dm)
-					found = true
+					foldFound = true
 					break
 				}
 			}
-			if !found {
-				models = append(models, geminicli.Model{
-					ID:          requestedModel,
-					Type:        "model",
-					DisplayName: requestedModel,
-					CreatedAt:   "",
-				})
+			if foldFound {
+				continue
 			}
+			models = append(models, geminicli.Model{
+				ID:          requestedModel,
+				Type:        "model",
+				DisplayName: requestedModel,
+				CreatedAt:   "",
+			})
 		}
 		response.Success(c, models)
 		return
@@ -2871,8 +2935,50 @@ func (h *AccountHandler) GetAvailableModels(c *gin.Context) {
 
 	// Handle Antigravity accounts: return Claude + Gemini models
 	if account.Platform == service.PlatformAntigravity {
-		// 直接复用 antigravity.DefaultModels()，与 /v1/models 端点保持同步
-		response.Success(c, antigravity.DefaultModels())
+		defaultModels := antigravity.DefaultModels()
+		mapping := getExplicitModelMapping(account)
+		if len(mapping) == 0 {
+			// 如果没有显式配置白名单，保持原有行为返回默认模型全集
+			response.Success(c, defaultModels)
+			return
+		}
+
+		defaultByID := make(map[string]antigravity.ClaudeModel, len(defaultModels))
+		for _, dm := range defaultModels {
+			defaultByID[dm.ID] = dm
+		}
+
+		requestedModels := make([]string, 0, len(mapping))
+		for requestedModel := range mapping {
+			requestedModels = append(requestedModels, requestedModel)
+		}
+		sort.Strings(requestedModels)
+
+		var models []antigravity.ClaudeModel
+		for _, requestedModel := range requestedModels {
+			if dm, found := defaultByID[requestedModel]; found {
+				models = append(models, dm)
+				continue
+			}
+			var foldFound bool
+			for _, dm := range defaultModels {
+				if strings.EqualFold(dm.ID, requestedModel) {
+					dm.ID = requestedModel
+					models = append(models, dm)
+					foldFound = true
+					break
+				}
+			}
+			if foldFound {
+				continue
+			}
+			models = append(models, antigravity.ClaudeModel{
+				ID:          requestedModel,
+				Type:        "model",
+				DisplayName: requestedModel,
+			})
+		}
+		response.Success(c, models)
 		return
 	}
 
@@ -2880,19 +2986,10 @@ func (h *AccountHandler) GetAvailableModels(c *gin.Context) {
 	if account.Platform == service.PlatformGrok {
 		defaultModels := xai.DefaultModels()
 
-		hasExplicitMapping := false
-		switch rawMapping := account.Credentials["model_mapping"].(type) {
-		case map[string]any:
-			hasExplicitMapping = len(rawMapping) > 0
-		case map[string]string:
-			hasExplicitMapping = len(rawMapping) > 0
+		mapping := getExplicitModelMapping(account)
+		if len(mapping) == 0 {
+			mapping = account.GetModelMapping()
 		}
-		if !hasExplicitMapping {
-			response.Success(c, defaultModels)
-			return
-		}
-
-		mapping := account.GetModelMapping()
 		if len(mapping) == 0 {
 			response.Success(c, defaultModels)
 			return
@@ -2915,6 +3012,18 @@ func (h *AccountHandler) GetAvailableModels(c *gin.Context) {
 				models = append(models, defaultModel)
 				continue
 			}
+			var foldFound bool
+			for _, dm := range defaultModels {
+				if strings.EqualFold(dm.ID, requestedModel) {
+					dm.ID = requestedModel
+					models = append(models, dm)
+					foldFound = true
+					break
+				}
+			}
+			if foldFound {
+				continue
+			}
 			models = append(models, xai.Model{
 				ID:          requestedModel,
 				Object:      "model",
@@ -2927,41 +3036,50 @@ func (h *AccountHandler) GetAvailableModels(c *gin.Context) {
 	}
 
 	// Handle Claude/Anthropic accounts
-	// For OAuth and Setup-Token accounts: return default models
-	if account.IsOAuth() {
-		response.Success(c, claude.DefaultModels)
-		return
-	}
-
-	// For API Key accounts: return models based on model_mapping
-	mapping := account.GetModelMapping()
+	mapping := getExplicitModelMapping(account)
 	if len(mapping) == 0 {
-		// No mapping configured, return default models
+		mapping = account.GetModelMapping()
+	}
+	if len(mapping) == 0 {
 		response.Success(c, claude.DefaultModels)
 		return
 	}
 
-	// Return mapped models (keys of the mapping are the available model IDs)
-	var models []claude.Model
+	defaultModels := claude.DefaultModels
+	defaultByID := make(map[string]claude.Model, len(defaultModels))
+	for _, dm := range defaultModels {
+		defaultByID[dm.ID] = dm
+	}
+
+	requestedModels := make([]string, 0, len(mapping))
 	for requestedModel := range mapping {
-		// Try to find display info from default models
-		var found bool
-		for _, dm := range claude.DefaultModels {
-			if dm.ID == requestedModel {
+		requestedModels = append(requestedModels, requestedModel)
+	}
+	sort.Strings(requestedModels)
+
+	var models []claude.Model
+	for _, requestedModel := range requestedModels {
+		if dm, found := defaultByID[requestedModel]; found {
+			models = append(models, dm)
+			continue
+		}
+		var foldFound bool
+		for _, dm := range defaultModels {
+			if strings.EqualFold(dm.ID, requestedModel) {
+				dm.ID = requestedModel
 				models = append(models, dm)
-				found = true
+				foldFound = true
 				break
 			}
 		}
-		// If not found in defaults, create a basic entry
-		if !found {
-			models = append(models, claude.Model{
-				ID:          requestedModel,
-				Type:        "model",
-				DisplayName: requestedModel,
-				CreatedAt:   "",
-			})
+		if foldFound {
+			continue
 		}
+		models = append(models, claude.Model{
+			ID:          requestedModel,
+			Type:        "model",
+			DisplayName: requestedModel,
+		})
 	}
 
 	response.Success(c, models)
