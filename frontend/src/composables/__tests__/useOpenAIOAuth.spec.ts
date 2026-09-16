@@ -59,6 +59,20 @@ describe('useOpenAIOAuth.buildCredentials', () => {
     expect(creds.access_token).toBe('at')
     expect(creds.refresh_token).toBe('rt')
   })
+
+  it('should keep ChatGPT subscription expiration from token response', () => {
+    const oauth = useOpenAIOAuth()
+    const creds = oauth.buildCredentials({
+      access_token: 'at',
+      refresh_token: 'rt',
+      expires_at: 1700000000,
+      plan_type: 'team',
+      subscription_expires_at: '2026-07-20T19:22:48+00:00'
+    })
+
+    expect(creds.plan_type).toBe('team')
+    expect(creds.subscription_expires_at).toBe('2026-07-20T19:22:48+00:00')
+  })
 })
 
 describe('useOpenAIOAuth.exchangeAuthCode', () => {

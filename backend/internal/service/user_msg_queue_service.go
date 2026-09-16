@@ -12,6 +12,7 @@ import (
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
+	"github.com/tidwall/gjson"
 )
 
 // UserMsgQueueCache 用户消息串行队列 Redis 缓存接口
@@ -24,10 +25,8 @@ type UserMsgQueueCache interface {
 	GetLastCompletedMs(ctx context.Context, accountID int64) (int64, error)
 	// GetCurrentTimeMs 获取 Redis 服务器当前时间（毫秒），与 ReleaseLock 记录的时间源一致
 	GetCurrentTimeMs(ctx context.Context) (int64, error)
-	// ForceReleaseLock 强制释放锁（孤儿锁清理）
-	ForceReleaseLock(ctx context.Context, accountID int64) error
-	// ScanLockKeys 扫描 PTTL == -1 的孤儿锁 key，返回 accountID 列表
-	ScanLockKeys(ctx context.Context, maxCount int) ([]int64, error)
+	// ReconcileExpiredLockCandidates 处理锁索引中的到期候选，按真实 PTTL 清理或刷新索引
+	ReconcileExpiredLockCandidates(ctx context.Context, maxCount int) (cleaned int, err error)
 }
 
 // QueueLockResult 锁获取结果
@@ -62,43 +61,48 @@ func NewUserMessageQueueService(cache UserMsgQueueCache, rpmCache RPMCache, cfg 
 // 2. 最后一条消息 role == "user"
 // 3. 最后一条消息 content（如果是数组）中不含 type:"tool_result" / "tool_use_result"
 func IsRealUserMessage(parsed *ParsedRequest) bool {
-	if parsed == nil || len(parsed.Messages) == 0 {
+	if parsed == nil {
+		return false
+	}
+	messagesRaw := parsed.MessagesRaw()
+	if len(messagesRaw) == 0 {
 		return false
 	}
 
-	lastMsg := parsed.Messages[len(parsed.Messages)-1]
-	msgMap, ok := lastMsg.(map[string]any)
-	if !ok {
+	messages := gjson.ParseBytes(messagesRaw)
+	if !messages.IsArray() {
+		return false
+	}
+	lastMsg := gjson.Result{}
+	messages.ForEach(func(_, msg gjson.Result) bool {
+		lastMsg = msg
+		return true
+	})
+	if !lastMsg.Exists() || !lastMsg.IsObject() {
+		return false
+	}
+	if lastMsg.Get("role").String() != "user" {
 		return false
 	}
 
-	role, _ := msgMap["role"].(string)
-	if role != "user" {
-		return false
+	content := lastMsg.Get("content")
+	if !content.Exists() {
+		return true
+	}
+	if !content.IsArray() {
+		return true
 	}
 
-	// 检查 content 是否包含 tool_result 类型
-	content, ok := msgMap["content"]
-	if !ok {
-		return true // 没有 content 字段，视为普通用户消息
-	}
-
-	contentArr, ok := content.([]any)
-	if !ok {
-		return true // content 不是数组（可能是 string），视为普通用户消息
-	}
-
-	for _, item := range contentArr {
-		itemMap, ok := item.(map[string]any)
-		if !ok {
-			continue
-		}
-		itemType, _ := itemMap["type"].(string)
+	isReal := true
+	content.ForEach(func(_, item gjson.Result) bool {
+		itemType := item.Get("type").String()
 		if itemType == "tool_result" || itemType == "tool_use_result" {
+			isReal = false
 			return false
 		}
-	}
-	return true
+		return true
+	})
+	return isReal
 }
 
 // TryAcquire 尝试立即获取串行锁
@@ -240,8 +244,8 @@ func (s *UserMessageQueueService) CalculateRPMAwareDelay(ctx context.Context, ac
 	return applyJitter(baseDelay, 0.15)
 }
 
-// StartCleanupWorker 启动孤儿锁清理 worker
-// 定期 SCAN umq:*:lock 并清理 PTTL == -1 的异常锁（PTTL 检查在 cache.ScanLockKeys 内完成）
+// StartCleanupWorker 启动孤儿锁清理 worker。
+// worker 只处理锁索引中的到期候选，真正删除前由 cache 层再次校验锁 PTTL。
 func (s *UserMessageQueueService) StartCleanupWorker(interval time.Duration) {
 	if s == nil || s.cache == nil || interval <= 0 {
 		return
@@ -251,21 +255,11 @@ func (s *UserMessageQueueService) StartCleanupWorker(interval time.Duration) {
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
 
-		accountIDs, err := s.cache.ScanLockKeys(ctx, 1000)
+		// 每轮限制处理数量，避免清理任务在大量过期候选时长时间占用 Redis。
+		cleaned, err := s.cache.ReconcileExpiredLockCandidates(ctx, 1000)
 		if err != nil {
-			logger.LegacyPrintf("service.umq", "Cleanup scan failed: %v", err)
+			logger.LegacyPrintf("service.umq", "Cleanup reconcile failed: %v", err)
 			return
-		}
-
-		cleaned := 0
-		for _, accountID := range accountIDs {
-			cleanCtx, cleanCancel := context.WithTimeout(context.Background(), 2*time.Second)
-			if err := s.cache.ForceReleaseLock(cleanCtx, accountID); err != nil {
-				logger.LegacyPrintf("service.umq", "Cleanup force release failed for account %d: %v", accountID, err)
-			} else {
-				cleaned++
-			}
-			cleanCancel()
 		}
 
 		if cleaned > 0 {

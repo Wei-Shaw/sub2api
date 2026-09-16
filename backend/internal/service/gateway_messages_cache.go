@@ -1,6 +1,8 @@
 package service
 
 import (
+	"context"
+	"encoding/json"
 	"fmt"
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/claude"
@@ -11,7 +13,7 @@ import (
 // stripMessageCacheControl 移除 $.messages[*].content[*].cache_control。
 // 与 Parrot _strip_message_cache_control 语义一致。
 //
-// 为什么必须整体清空：客户端（特别是 Claude Code）经常把 cache_control 打在
+// 旧策略为什么整体清空：客户端（特别是 Claude Code）经常把 cache_control 打在
 // "当前最后一条 user message" 上；下一轮对话 messages 追加后，原本的最后一条
 // 变成中间某条，cache_control 还挂着就导致"前缀签名变化"，破坏缓存命中。
 // 统一由代理重新打断点（addMessageCacheBreakpoints）才能在多轮间稳定。
@@ -85,6 +87,25 @@ func addMessageCacheBreakpoints(body []byte) []byte {
 	return body
 }
 
+// rewriteMessageCacheControlIfEnabled 按系统设置决定是否执行旧版 messages 缓存断点改写。
+func (s *GatewayService) rewriteMessageCacheControlIfEnabled(ctx context.Context, body []byte) []byte {
+	if s == nil || !s.isRewriteMessageCacheControlEnabled(ctx) {
+		return body
+	}
+	body = stripMessageCacheControl(body)
+	return addMessageCacheBreakpoints(body)
+}
+
+func (s *GatewayService) isRewriteMessageCacheControlEnabled(ctx context.Context) bool {
+	if s == nil {
+		return false
+	}
+	if s.settingService != nil {
+		return s.settingService.IsRewriteMessageCacheControlEnabled(ctx)
+	}
+	return false
+}
+
 // injectCacheControlOnLastContentBlock 把 cache_control 断点打在 messages[idx]
 // 的最后一个 content block 上。若 content 是 string，先升级成单块 text 数组
 // （对齐 Parrot _inject_cache_on_msg 的行为）。
@@ -137,5 +158,8 @@ func injectCacheControlOnLastContentBlock(body []byte, idx int, msg *gjson.Resul
 // mustJSONString 把一个 Go string 序列化为合法 JSON string（含引号），
 // 用于 sjson.SetRawBytes 场景下手工拼 JSON。
 func mustJSONString(s string) string {
-	return fmt.Sprintf("%q", s)
+	// Go string quoting can emit non-JSON escapes such as \x7f or \a.
+	// Marshaling a string cannot fail.
+	encoded, _ := json.Marshal(s)
+	return string(encoded)
 }

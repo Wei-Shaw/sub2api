@@ -11,9 +11,12 @@ vi.mock('@/api/client', () => ({
 }))
 
 import {
+  batchUpdateLimits,
   bindUserAuthIdentity,
   type AdminBindAuthIdentityRequest,
   type AdminBoundAuthIdentity,
+  type BatchUpdateUserLimitsRequest,
+  type BatchUpdateUserLimitsResponse,
 } from '@/api/admin/users'
 
 type Assert<T extends true> = T
@@ -62,6 +65,20 @@ const requestContractExact: Assert<
 > = true
 const responseContractExact: Assert<
   IsExact<AdminBoundAuthIdentity, ExpectedAdminBoundAuthIdentity>
+> = true
+const batchRequestContractExact: Assert<
+  IsExact<
+    BatchUpdateUserLimitsRequest,
+    {
+      user_ids: number[]
+      all?: boolean
+      concurrency?: number
+      rpm_limit?: number
+    }
+  >
+> = true
+const batchResponseContractExact: Assert<
+  IsExact<BatchUpdateUserLimitsResponse, { affected: number }>
 > = true
 
 describe('admin users api auth identity binding', () => {
@@ -113,5 +130,21 @@ describe('admin users api auth identity binding', () => {
   it('keeps bind auth identity request and response types aligned with the backend contract', () => {
     expect(requestContractExact).toBe(true)
     expect(responseContractExact).toBe(true)
+  })
+
+  it('posts batch limit updates once with only the supplied limit fields', async () => {
+    const request: BatchUpdateUserLimitsRequest = {
+      user_ids: [4, 7],
+      all: false,
+      rpm_limit: 0,
+    }
+    post.mockResolvedValue({ data: { affected: 2 } satisfies BatchUpdateUserLimitsResponse })
+
+    const result = await batchUpdateLimits(request)
+
+    expect(post).toHaveBeenCalledWith('/admin/users/batch-limits', request)
+    expect(result).toEqual({ affected: 2 })
+    expect(batchRequestContractExact).toBe(true)
+    expect(batchResponseContractExact).toBe(true)
   })
 })

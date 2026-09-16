@@ -88,11 +88,14 @@ func TransformClaudeToGeminiWithOptions(claudeReq *ClaudeRequest, projectID, map
 	// 用于存储 tool_use id -> name 映射
 	toolIDToName := make(map[string]string)
 
-	// 检测是否有 web_search 工具
-	hasWebSearchTool := hasWebSearchTool(claudeReq.Tools)
+	// 仅在「只有内置 web_search、没有客户端 function tools」时走 web_search 降级模型。
+	// Antigravity v1internal 不支持内置工具与 functionDeclarations 混用（即使设置
+	// includeServerSideToolInvocations 仍会 400，见 issue #6464），混用时会丢弃内置搜索，
+	// 因此不能再强制切到 gemini-2.5-flash，否则 Codex 等带 shell 工具的请求会整单失败。
+	useWebSearchRequest := hasWebSearchTool(claudeReq.Tools) && !hasClientFunctionTools(claudeReq.Tools)
 	requestType := "agent"
 	targetModel := mappedModel
-	if hasWebSearchTool {
+	if useWebSearchRequest {
 		requestType = "web_search"
 		if targetModel != webSearchFallbackModel {
 			targetModel = webSearchFallbackModel
@@ -107,13 +110,19 @@ func TransformClaudeToGeminiWithOptions(claudeReq *ClaudeRequest, projectID, map
 	allowDummyThought := strings.HasPrefix(targetModel, "gemini-")
 
 	// 1. 构建 contents
-	contents, strippedThinking, err := buildContents(claudeReq.Messages, toolIDToName, isThinkingEnabled, allowDummyThought)
+	contents, messageSystemParts, strippedThinking, err := buildContents(claudeReq.Messages, toolIDToName, isThinkingEnabled, allowDummyThought)
 	if err != nil {
 		return nil, fmt.Errorf("build contents: %w", err)
 	}
 
 	// 2. 构建 systemInstruction（使用 targetModel 而非原始请求模型，确保身份注入基于最终模型）
 	systemInstruction := buildSystemInstruction(claudeReq.System, targetModel, opts, claudeReq.Tools)
+	if len(messageSystemParts) > 0 {
+		if systemInstruction == nil {
+			systemInstruction = &GeminiContent{Role: "user"}
+		}
+		systemInstruction.Parts = append(systemInstruction.Parts, messageSystemParts...)
+	}
 
 	// 3. 构建 generationConfig
 	reqForConfig := claudeReq
@@ -137,14 +146,19 @@ func TransformClaudeToGeminiWithOptions(claudeReq *ClaudeRequest, projectID, map
 	// 5. 构建内部请求
 	innerRequest := GeminiRequest{
 		Contents: contents,
-		// 总是设置 toolConfig，与官方客户端一致
-		ToolConfig: &GeminiToolConfig{
-			FunctionCallingConfig: &GeminiFunctionCallingConfig{
-				Mode: "VALIDATED",
-			},
-		},
 		// 总是生成 sessionId，基于用户消息内容
 		SessionID: generateStableSessionID(contents),
+	}
+
+	// toolConfig must always be present: upstream rejects requests without it,
+	// including reasoning models called without any tools.
+	// 总是设置 toolConfig，与官方客户端一致。
+	// 注意：buildTools 会在客户端 function tools 存在时丢弃 googleSearch/codeExecution
+	// （issue #6464），因此这里不再注入 includeServerSideToolInvocations。
+	innerRequest.ToolConfig = &GeminiToolConfig{
+		FunctionCallingConfig: &GeminiFunctionCallingConfig{
+			Mode: "VALIDATED",
+		},
 	}
 
 	if systemInstruction != nil {
@@ -204,6 +218,10 @@ type modelInfo struct {
 // 只有在此映射表中的模型才会注入身份提示词
 // 注意：模型映射逻辑在网关层完成；这里仅用于按模型前缀判断是否注入身份提示词。
 var modelInfoMap = map[string]modelInfo{
+	"claude-fable-5-1":  {DisplayName: "Claude Fable 5.1", CanonicalID: "claude-fable-5-1"},
+	"claude-fable-5":    {DisplayName: "Claude Fable 5", CanonicalID: "claude-fable-5"},
+	"claude-opus-4-8":   {DisplayName: "Claude Opus 4.8", CanonicalID: "claude-opus-4-8"},
+	"claude-opus-4-7":   {DisplayName: "Claude Opus 4.7", CanonicalID: "claude-opus-4-7"},
 	"claude-opus-4-5":   {DisplayName: "Claude Opus 4.5", CanonicalID: "claude-opus-4-5-20250929"},
 	"claude-opus-4-6":   {DisplayName: "Claude Opus 4.6", CanonicalID: "claude-opus-4-6"},
 	"claude-sonnet-4-6": {DisplayName: "Claude Sonnet 4.6", CanonicalID: "claude-sonnet-4-6"},
@@ -354,8 +372,9 @@ func buildSystemInstruction(system json.RawMessage, modelName string, opts Trans
 }
 
 // buildContents 构建 contents
-func buildContents(messages []ClaudeMessage, toolIDToName map[string]string, isThinkingEnabled, allowDummyThought bool) ([]GeminiContent, bool, error) {
+func buildContents(messages []ClaudeMessage, toolIDToName map[string]string, isThinkingEnabled, allowDummyThought bool) ([]GeminiContent, []GeminiPart, bool, error) {
 	var contents []GeminiContent
+	var systemParts []GeminiPart
 	strippedThinking := false
 
 	for i, msg := range messages {
@@ -366,10 +385,15 @@ func buildContents(messages []ClaudeMessage, toolIDToName map[string]string, isT
 
 		parts, strippedThisMsg, err := buildParts(msg.Content, toolIDToName, allowDummyThought)
 		if err != nil {
-			return nil, false, fmt.Errorf("build parts for message %d: %w", i, err)
+			return nil, nil, false, fmt.Errorf("build parts for message %d: %w", i, err)
 		}
 		if strippedThisMsg {
 			strippedThinking = true
+		}
+
+		if role == "system" {
+			systemParts = append(systemParts, parts...)
+			continue
 		}
 
 		// 只有 Gemini 模型支持 dummy thinking block workaround
@@ -403,7 +427,7 @@ func buildContents(messages []ClaudeMessage, toolIDToName map[string]string, isT
 		})
 	}
 
-	return contents, strippedThinking, nil
+	return contents, systemParts, strippedThinking, nil
 }
 
 // DummyThoughtSignature 用于跳过 Gemini 3 thought_signature 验证
@@ -587,14 +611,19 @@ func maxOutputTokensLimit(model string) int {
 func isAntigravityOpusHighTierModel(model string) bool {
 	lower := strings.ToLower(model)
 	return strings.HasPrefix(lower, "claude-opus-4-6") ||
-		strings.HasPrefix(lower, "claude-opus-4-7")
+		strings.HasPrefix(lower, "claude-opus-4-7") ||
+		strings.HasPrefix(lower, "claude-opus-4-8")
 }
 
 func buildGenerationConfig(req *ClaudeRequest) *GeminiGenerationConfig {
 	maxLimit := maxOutputTokensLimit(req.Model)
 	config := &GeminiGenerationConfig{
 		MaxOutputTokens: defaultMaxOutputTokens, // 默认最大输出
-		StopSequences:   DefaultStopSequences,
+	}
+
+	isReasoning := IsGeminiReasoningModel(req.Model)
+	if !isReasoning {
+		config.StopSequences = DefaultStopSequences
 	}
 
 	// 如果请求中指定了 MaxTokens，使用请求值
@@ -640,14 +669,16 @@ func buildGenerationConfig(req *ClaudeRequest) *GeminiGenerationConfig {
 	}
 
 	// 其他参数
-	if req.Temperature != nil {
-		config.Temperature = req.Temperature
-	}
-	if req.TopP != nil {
-		config.TopP = req.TopP
-	}
-	if req.TopK != nil {
-		config.TopK = req.TopK
+	if !isReasoning {
+		if req.Temperature != nil {
+			config.Temperature = req.Temperature
+		}
+		if req.TopP != nil {
+			config.TopP = req.TopP
+		}
+		if req.TopK != nil {
+			config.TopK = req.TopK
+		}
 	}
 
 	return config
@@ -656,6 +687,20 @@ func buildGenerationConfig(req *ClaudeRequest) *GeminiGenerationConfig {
 func hasWebSearchTool(tools []ClaudeTool) bool {
 	for _, tool := range tools {
 		if isWebSearchTool(tool) {
+			return true
+		}
+	}
+	return false
+}
+
+// hasClientFunctionTools 判断是否存在可转发的客户端 function/custom 工具。
+// 内置 web_search / code_execution 不算客户端工具。
+func hasClientFunctionTools(tools []ClaudeTool) bool {
+	for _, tool := range tools {
+		if isWebSearchTool(tool) || isCodeExecutionTool(tool) {
+			continue
+		}
+		if strings.TrimSpace(tool.Name) != "" {
 			return true
 		}
 	}
@@ -676,6 +721,10 @@ func isWebSearchTool(tool ClaudeTool) bool {
 	}
 }
 
+func isCodeExecutionTool(tool ClaudeTool) bool {
+	return strings.TrimSpace(tool.Type) == "code_execution"
+}
+
 // buildTools 构建 tools
 func buildTools(tools []ClaudeTool) []GeminiToolDeclaration {
 	if len(tools) == 0 {
@@ -683,11 +732,18 @@ func buildTools(tools []ClaudeTool) []GeminiToolDeclaration {
 	}
 
 	hasWebSearch := hasWebSearchTool(tools)
+	hasCodeExecution := false
+	for _, tool := range tools {
+		if isCodeExecutionTool(tool) {
+			hasCodeExecution = true
+			break
+		}
+	}
 
 	// 普通工具
 	var funcDecls []GeminiFunctionDecl
 	for _, tool := range tools {
-		if isWebSearchTool(tool) {
+		if isWebSearchTool(tool) || isCodeExecutionTool(tool) {
 			continue
 		}
 		// 跳过无效工具名称
@@ -734,6 +790,18 @@ func buildTools(tools []ClaudeTool) []GeminiToolDeclaration {
 		})
 	}
 
+	// Antigravity v1internal 协议不支持内置工具与 functionDeclarations 混用：
+	// 即便带上 includeServerSideToolInvocations 仍返回 400（issue #6464）。
+	// Codex 默认同时带 web_search 与 shell 等客户端工具，优先保留客户端工具，
+	// 使代理会话可继续，而不是整单 upstream_error。
+	if len(funcDecls) > 0 {
+		if hasWebSearch || hasCodeExecution {
+			log.Printf("[antigravity] dropping built-in tools (web_search/code_execution) because client function tools are present; Antigravity v1internal rejects the mix")
+		}
+		hasWebSearch = false
+		hasCodeExecution = false
+	}
+
 	var declarations []GeminiToolDeclaration
 	if len(funcDecls) > 0 {
 		declarations = append(declarations, GeminiToolDeclaration{
@@ -749,6 +817,11 @@ func buildTools(tools []ClaudeTool) []GeminiToolDeclaration {
 					},
 				},
 			},
+		})
+	}
+	if hasCodeExecution {
+		declarations = append(declarations, GeminiToolDeclaration{
+			CodeExecution: &GeminiCodeExecution{},
 		})
 	}
 	if len(declarations) == 0 {

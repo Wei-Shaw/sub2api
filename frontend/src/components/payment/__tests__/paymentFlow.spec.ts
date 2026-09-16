@@ -38,12 +38,14 @@ describe('getVisibleMethods', () => {
       alipay_direct: methodLimit({ single_min: 5 }),
       wxpay: methodLimit({ single_max: 100 }),
       stripe: methodLimit({ fee_rate: 3 }),
+      airwallex: methodLimit({ single_min: 10 }),
     })
 
     expect(visible).toEqual({
       alipay: methodLimit({ single_min: 5 }),
       wxpay: methodLimit({ single_max: 100 }),
       stripe: methodLimit({ fee_rate: 3 }),
+      airwallex: methodLimit({ single_min: 10 }),
     })
   })
 
@@ -56,6 +58,18 @@ describe('getVisibleMethods', () => {
 
     expect(visible.alipay.single_min).toBe(2)
     expect(visible.wxpay.fee_rate).toBe(1.2)
+  })
+
+  it('keeps custom EasyPay methods as visible methods', () => {
+    const visible = getVisibleMethods({
+      ldc: methodLimit({ single_min: 3 }),
+      usdt_trc20: methodLimit({ fee_rate: 1 }),
+    })
+
+    expect(visible).toEqual({
+      ldc: methodLimit({ single_min: 3 }),
+      usdt_trc20: methodLimit({ fee_rate: 1 }),
+    })
   })
 })
 
@@ -102,6 +116,29 @@ describe('decidePaymentLaunch', () => {
     expect(decision.kind).toBe('stripe_route')
     expect(decision.stripeMethod).toBe('wechat_pay')
     expect(decision.paymentState.orderType).toBe('subscription')
+  })
+
+  it('routes Airwallex client secrets through the hosted Airwallex page', () => {
+    const decision = decidePaymentLaunch(createOrderResult({
+      client_secret: 'awx_cs',
+      intent_id: 'int_awx',
+      currency: 'CNY',
+      country_code: 'CN',
+      payment_env: 'demo',
+      out_trade_no: 'sub2_awx',
+    }), {
+      visibleMethod: 'airwallex',
+      orderType: 'balance',
+      isMobile: false,
+      airwallexRouteUrl: '/payment/airwallex?order_id=101',
+    })
+
+    expect(decision.kind).toBe('airwallex_route')
+    expect(decision.paymentState.payUrl).toBe('/payment/airwallex?order_id=101')
+    expect(decision.paymentState.intentId).toBe('int_awx')
+    expect(decision.paymentState.currency).toBe('CNY')
+    expect(decision.paymentState.countryCode).toBe('CN')
+    expect(decision.paymentState.paymentEnv).toBe('demo')
   })
 
   it('keeps hosted redirect metadata for recovery flows', () => {
@@ -195,6 +232,64 @@ describe('decidePaymentLaunch', () => {
     expect(decision.jsapi?.appId).toBe('wx123')
     expect(decision.paymentState.orderType).toBe('subscription')
   })
+
+  it('forces qr_waiting for mobile alipay when forceQRCode is enabled', () => {
+    const decision = decidePaymentLaunch(createOrderResult({
+      pay_url: 'https://pay.example.com/mobile/session',
+      qr_code: 'https://pay.example.com/qr/session',
+    }), {
+      visibleMethod: 'alipay',
+      orderType: 'balance',
+      isMobile: true,
+      forceQRCode: true,
+    })
+
+    expect(decision.kind).toBe('qr_waiting')
+    expect(decision.paymentState.qrCode).toBe('https://pay.example.com/qr/session')
+  })
+
+  it('launches the Alipay app for a mobile precreate order', () => {
+    const decision = decidePaymentLaunch(createOrderResult({
+      qr_code: 'https://qr.alipay.com/dynamic-order-101',
+      alipay_mobile_precreate_deep_link: true,
+    }), {
+      visibleMethod: 'alipay',
+      orderType: 'balance',
+      isMobile: true,
+    })
+
+    expect(decision.kind).toBe('alipay_deep_link')
+    expect(decision.paymentState.qrCode).toBe('https://qr.alipay.com/dynamic-order-101')
+    expect(decision.paymentState.alipayMobilePrecreateDeepLink).toBe(true)
+  })
+
+  it('keeps the desktop Alipay QR flow when a precreate marker is present', () => {
+    const decision = decidePaymentLaunch(createOrderResult({
+      qr_code: 'https://qr.alipay.com/dynamic-order-102',
+      alipay_mobile_precreate_deep_link: true,
+    }), {
+      visibleMethod: 'alipay',
+      orderType: 'balance',
+      isMobile: false,
+    })
+
+    expect(decision.kind).toBe('qr_waiting')
+  })
+
+  it('does not affect non-alipay methods when forceQRCode is enabled', () => {
+    const decision = decidePaymentLaunch(createOrderResult({
+      pay_url: 'https://pay.example.com/mobile/session',
+      qr_code: 'https://pay.example.com/qr/session',
+    }), {
+      visibleMethod: 'wxpay',
+      orderType: 'balance',
+      isMobile: true,
+      forceQRCode: true,
+    })
+
+    // wxpay mobile with pay_url still redirects
+    expect(decision.kind).toBe('redirect_waiting')
+  })
 })
 
 describe('buildCreateOrderPayload', () => {
@@ -235,6 +330,49 @@ describe('buildCreateOrderPayload', () => {
       payment_source: 'wechat_in_app_resume',
     })
   })
+
+  it('passes is_mobile: false when forceQRCode is enabled for alipay', () => {
+    expect(buildCreateOrderPayload({
+      amount: 50,
+      paymentType: 'alipay',
+      orderType: 'balance',
+      origin: 'https://app.example.com',
+      isMobile: true,
+      isWechatBrowser: false,
+      forceQRCode: true,
+    })).toMatchObject({
+      is_mobile: false,
+    })
+  })
+
+  it('keeps is_mobile true when mobile precreate takes priority over forceQRCode', () => {
+    expect(buildCreateOrderPayload({
+      amount: 50,
+      paymentType: 'alipay',
+      orderType: 'balance',
+      origin: 'https://app.example.com',
+      isMobile: true,
+      isWechatBrowser: false,
+      forceQRCode: true,
+      mobilePrecreateDeepLink: true,
+    })).toMatchObject({
+      is_mobile: true,
+    })
+  })
+
+  it('still passes is_mobile: true when forceQRCode is enabled for non-alipay methods', () => {
+    expect(buildCreateOrderPayload({
+      amount: 50,
+      paymentType: 'wxpay',
+      orderType: 'balance',
+      origin: 'https://app.example.com',
+      isMobile: true,
+      isWechatBrowser: false,
+      forceQRCode: true,
+    })).toMatchObject({
+      is_mobile: true,
+    })
+  })
 })
 
 describe('readPaymentRecoverySnapshot', () => {
@@ -248,6 +386,10 @@ describe('readPaymentRecoverySnapshot', () => {
       payUrl: 'https://pay.example.com/session/33',
       outTradeNo: 'sub2_33',
       clientSecret: '',
+      intentId: '',
+      currency: '',
+      countryCode: '',
+      paymentEnv: '',
       payAmount: 18,
       orderType: 'balance',
       paymentMode: 'popup',
@@ -273,6 +415,10 @@ describe('readPaymentRecoverySnapshot', () => {
       payUrl: 'https://pay.example.com/session/55',
       outTradeNo: 'sub2_55',
       clientSecret: '',
+      intentId: '',
+      currency: '',
+      countryCode: '',
+      paymentEnv: '',
       payAmount: 18,
       orderType: 'balance',
       paymentMode: 'popup',
@@ -316,5 +462,32 @@ describe('readPaymentRecoverySnapshot', () => {
 
     expect(restored?.orderId).toBe(44)
     expect(restored?.outTradeNo).toBe('')
+  })
+
+  it('keeps backward compatibility with snapshots written before Airwallex fields existed', () => {
+    const restored = readPaymentRecoverySnapshot(JSON.stringify({
+      orderId: 45,
+      amount: 28,
+      qrCode: '',
+      expiresAt: '2099-01-01T00:10:00.000Z',
+      paymentType: 'airwallex',
+      payUrl: '/payment/airwallex?order_id=45',
+      outTradeNo: 'sub2_45',
+      clientSecret: 'awx_cs',
+      payAmount: 28,
+      orderType: 'balance',
+      paymentMode: '',
+      resumeToken: 'resume-45',
+      createdAt: Date.UTC(2099, 0, 1, 0, 0, 0),
+    }), {
+      now: Date.UTC(2099, 0, 1, 0, 1, 0),
+      resumeToken: 'resume-45',
+    })
+
+    expect(restored?.orderId).toBe(45)
+    expect(restored?.intentId).toBe('')
+    expect(restored?.currency).toBe('')
+    expect(restored?.countryCode).toBe('')
+    expect(restored?.paymentEnv).toBe('')
   })
 })

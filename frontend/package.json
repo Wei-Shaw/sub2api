@@ -5,7 +5,8 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "vue-tsc -b && vite build",
+    "check:i18n": "vitest run src/i18n/__tests__/localeKeyCompleteness.spec.ts",
+    "build": "pnpm run check:i18n && vue-tsc -b && vite build",
     "preview": "vite preview",
     "lint": "eslint . --ext .vue,.js,.jsx,.cjs,.mjs,.ts,.tsx,.cts,.mts --fix",
     "lint:check": "eslint . --ext .vue,.js,.jsx,.cjs,.mjs,.ts,.tsx,.cts,.mts",
@@ -15,13 +16,14 @@
     "test:coverage": "vitest run --coverage"
   },
   "dependencies": {
+    "@airwallex/components-sdk": "^1.30.2",
     "@lobehub/icons": "^4.0.2",
     "@stripe/stripe-js": "^9.0.1",
     "@tanstack/vue-virtual": "^3.13.23",
     "@vueuse/core": "^10.7.0",
-    "axios": "^1.16.0",
+    "axios": "^1.18.0",
     "chart.js": "^4.4.1",
-    "dompurify": "^3.3.1",
+    "dompurify": "^3.4.14",
     "driver.js": "^1.4.0",
     "file-saver": "^2.0.5",
     "marked": "^17.0.1",
@@ -35,6 +37,7 @@
     "xlsx": "^0.18.5"
   },
   "devDependencies": {
+    "@intlify/message-compiler": "9.14.5",
     "@types/dompurify": "^3.0.5",
     "@types/file-saver": "^2.0.7",
     "@types/mdx": "^2.0.13",
@@ -56,5 +59,13 @@
     "vite-plugin-checker": "^0.9.1",
     "vitest": "^2.1.9",
     "vue-tsc": "^2.2.0"
+  },
+  "pnpm": {
+    "overrides": {
+      "js-cookie": "3.0.7",
+      "form-data@<4.0.6": ">=4.0.6",
+      "postcss@<8.5.18": ">=8.5.18",
+      "dompurify@<3.4.14": ">=3.4.14"
+    }
   }
 }

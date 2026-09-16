@@ -2,6 +2,7 @@
   <ProfileIdentityBindingsSection
     :user="user"
     :linuxdo-enabled="linuxdoEnabled"
+    :dingtalk-enabled="dingtalkEnabled"
     :oidc-enabled="oidcEnabled"
     :oidc-provider-name="oidcProviderName"
     :wechat-enabled="wechatEnabled"
@@ -18,6 +19,7 @@ withDefaults(
   defineProps<{
     user: User | null
     linuxdoEnabled?: boolean
+    dingtalkEnabled?: boolean
     oidcEnabled?: boolean
     oidcProviderName?: string
     wechatEnabled?: boolean
@@ -26,6 +28,7 @@ withDefaults(
   }>(),
   {
     linuxdoEnabled: false,
+    dingtalkEnabled: false,
     oidcEnabled: false,
     oidcProviderName: 'OIDC',
     wechatEnabled: false,

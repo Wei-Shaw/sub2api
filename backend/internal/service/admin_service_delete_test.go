@@ -13,18 +13,45 @@ import (
 )
 
 type userRepoStub struct {
-	user          *User
-	getErr        error
-	createErr     error
-	deleteErr     error
-	exists        bool
-	existsErr     error
-	nextID        int64
-	created       []*User
-	updated       []*User
-	deletedIDs    []int64
-	usersByEmail  map[string]*User
-	getByEmailErr error
+	user                 *User
+	usersByID            map[int64]*User
+	getErr               error
+	createErr            error
+	deleteErr            error
+	exists               bool
+	existsErr            error
+	aliasExists          bool
+	aliasErr             error
+	guardedCreates       int
+	nextID               int64
+	created              []*User
+	updated              []*User
+	deletedIDs           []int64
+	usersByEmail         map[string]*User
+	getByEmailErr        error
+	getByEmailMisses     int
+	domainCounts         map[string]int
+	domainCountErr       error
+	domainLimitErr       error
+	domainLimitedCreates int
+}
+
+func (s *userRepoStub) CountUsersByEmailDomain(_ context.Context, domain string) (int, error) {
+	if s.domainCountErr != nil {
+		return 0, s.domainCountErr
+	}
+	return s.domainCounts[domain], nil
+}
+
+func (s *userRepoStub) CreateWithEmailAliasGuardAndDomainLimit(ctx context.Context, user *User, domain string) error {
+	s.domainLimitedCreates++
+	if s.domainLimitErr != nil {
+		return s.domainLimitErr
+	}
+	if s.domainCounts[domain] > 0 {
+		return ErrEmailDomainRegistrationLimit
+	}
+	return s.CreateWithEmailAliasGuard(ctx, user)
 }
 
 func (s *userRepoStub) Create(ctx context.Context, user *User) error {
@@ -43,9 +70,26 @@ func (s *userRepoStub) Create(ctx context.Context, user *User) error {
 	return nil
 }
 
+func (s *userRepoStub) CreateWithEmailAliasGuard(ctx context.Context, user *User) error {
+	s.guardedCreates++
+	if s.aliasErr != nil {
+		return s.aliasErr
+	}
+	if s.aliasExists {
+		return ErrEmailExists
+	}
+	return s.Create(ctx, user)
+}
+
 func (s *userRepoStub) GetByID(ctx context.Context, id int64) (*User, error) {
 	if s.getErr != nil {
 		return nil, s.getErr
+	}
+	if s.usersByID != nil {
+		if user, ok := s.usersByID[id]; ok {
+			return user, nil
+		}
+		return nil, ErrUserNotFound
 	}
 	if s.user == nil {
 		return nil, ErrUserNotFound
@@ -56,6 +100,10 @@ func (s *userRepoStub) GetByID(ctx context.Context, id int64) (*User, error) {
 func (s *userRepoStub) GetByEmail(ctx context.Context, email string) (*User, error) {
 	if s.getByEmailErr != nil {
 		return nil, s.getByEmailErr
+	}
+	if s.getByEmailMisses > 0 {
+		s.getByEmailMisses--
+		return nil, ErrUserNotFound
 	}
 	if s.usersByEmail != nil {
 		if user, ok := s.usersByEmail[email]; ok {
@@ -72,7 +120,7 @@ func (s *userRepoStub) GetFirstAdmin(ctx context.Context) (*User, error) {
 	panic("unexpected GetFirstAdmin call")
 }
 
-func (s *userRepoStub) Update(ctx context.Context, user *User) error {
+func (s *userRepoStub) Update(ctx context.Context, user *User, fields UserUpdateFields) error {
 	s.updated = append(s.updated, user)
 	if s.usersByEmail == nil {
 		s.usersByEmail = make(map[string]*User)
@@ -127,8 +175,22 @@ func (s *userRepoStub) DeductBalance(ctx context.Context, id int64, amount float
 	panic("unexpected DeductBalance call")
 }
 
+func (s *userRepoStub) AdjustBalance(ctx context.Context, id int64, delta float64) (BalanceChange, error) {
+	panic("unexpected AdjustBalance call")
+}
+
+func (s *userRepoStub) SetBalance(ctx context.Context, id int64, value float64) (BalanceChange, error) {
+	panic("unexpected SetBalance call")
+}
+
 func (s *userRepoStub) UpdateConcurrency(ctx context.Context, id int64, amount int) error {
 	panic("unexpected UpdateConcurrency call")
+}
+
+func (s *userRepoStub) BatchSetConcurrency(context.Context, []int64, int) (int, error) { return 0, nil }
+func (s *userRepoStub) BatchAddConcurrency(context.Context, []int64, int) (int, error) { return 0, nil }
+func (s *userRepoStub) BatchUpdateLimits(context.Context, []int64, *int, *int) (int, error) {
+	return 0, nil
 }
 
 func (s *userRepoStub) ExistsByEmail(ctx context.Context, email string) (bool, error) {
@@ -136,6 +198,13 @@ func (s *userRepoStub) ExistsByEmail(ctx context.Context, email string) (bool, e
 		return false, s.existsErr
 	}
 	return s.exists, nil
+}
+
+func (s *userRepoStub) ExistsByEmailAlias(ctx context.Context, email string) (bool, error) {
+	if s.aliasErr != nil {
+		return false, s.aliasErr
+	}
+	return s.aliasExists, nil
 }
 
 func (s *userRepoStub) RemoveGroupFromAllowedGroups(ctx context.Context, groupID int64) (int64, error) {
@@ -170,10 +239,15 @@ func (s *userRepoStub) DisableTotp(ctx context.Context, userID int64) error {
 	panic("unexpected DisableTotp call")
 }
 
+func (s *userRepoStub) GetByIDIncludeDeleted(ctx context.Context, id int64) (*User, error) {
+	return s.GetByID(ctx, id)
+}
+
 type groupRepoStub struct {
 	affectedUserIDs []int64
 	deleteErr       error
 	deleteCalls     []int64
+	guardedCalls    []int64
 }
 
 func (s *groupRepoStub) Create(ctx context.Context, group *Group) error {
@@ -198,6 +272,11 @@ func (s *groupRepoStub) Delete(ctx context.Context, id int64) error {
 
 func (s *groupRepoStub) DeleteCascade(ctx context.Context, id int64) ([]int64, error) {
 	s.deleteCalls = append(s.deleteCalls, id)
+	return s.affectedUserIDs, s.deleteErr
+}
+
+func (s *groupRepoStub) DeleteCascadeIfEmpty(ctx context.Context, id int64) ([]int64, error) {
+	s.guardedCalls = append(s.guardedCalls, id)
 	return s.affectedUserIDs, s.deleteErr
 }
 
@@ -239,6 +318,21 @@ func (s *groupRepoStub) GetAccountIDsByGroupIDs(ctx context.Context, groupIDs []
 
 func (s *groupRepoStub) UpdateSortOrders(ctx context.Context, updates []GroupSortOrderUpdate) error {
 	return nil
+}
+
+type deleteGroupAPIKeyRepoStub struct {
+	apiKeyRepoStubForGroupUpdate
+	keys         []string
+	listErr      error
+	listGroupIDs []int64
+}
+
+func (s *deleteGroupAPIKeyRepoStub) ListKeysByGroupID(ctx context.Context, groupID int64) ([]string, error) {
+	s.listGroupIDs = append(s.listGroupIDs, groupID)
+	if s.listErr != nil {
+		return nil, s.listErr
+	}
+	return s.keys, nil
 }
 
 type proxyRepoStub struct {
@@ -303,10 +397,28 @@ func (s *proxyRepoStub) CountAccountsByProxyID(ctx context.Context, proxyID int6
 func (s *proxyRepoStub) ListAccountSummariesByProxyID(ctx context.Context, proxyID int64) ([]ProxyAccountSummary, error) {
 	panic("unexpected ListAccountSummariesByProxyID call")
 }
+func (s *proxyRepoStub) SweepExpiredProxies(_ context.Context, _ time.Time) (int64, error) {
+	return 0, nil
+}
+func (s *proxyRepoStub) ListAllForFallback(_ context.Context) ([]Proxy, error) {
+	return nil, nil
+}
+func (s *proxyRepoStub) CountExpired(_ context.Context) (int64, error) {
+	return 0, nil
+}
+func (s *proxyRepoStub) CountExpiringSoon(_ context.Context, _ time.Time) (int64, error) {
+	return 0, nil
+}
 
 type redeemRepoStub struct {
 	deleteErrByID map[int64]error
 	deletedIDs    []int64
+
+	batchUpdateIDs    []int64
+	batchUpdateFields RedeemCodeBatchUpdateFields
+	batchUpdateResult int64
+	batchUpdateErr    error
+	batchUpdateCalled bool
 }
 
 func (s *redeemRepoStub) Create(ctx context.Context, code *RedeemCode) error {
@@ -327,6 +439,19 @@ func (s *redeemRepoStub) GetByCode(ctx context.Context, code string) (*RedeemCod
 
 func (s *redeemRepoStub) Update(ctx context.Context, code *RedeemCode) error {
 	panic("unexpected Update call")
+}
+
+func (s *redeemRepoStub) BatchUpdate(ctx context.Context, ids []int64, fields RedeemCodeBatchUpdateFields) (int64, error) {
+	s.batchUpdateCalled = true
+	s.batchUpdateIDs = append([]int64(nil), ids...)
+	s.batchUpdateFields = fields
+	if s.batchUpdateErr != nil {
+		return 0, s.batchUpdateErr
+	}
+	if s.batchUpdateResult != 0 {
+		return s.batchUpdateResult, nil
+	}
+	return int64(len(ids)), nil
 }
 
 func (s *redeemRepoStub) Delete(ctx context.Context, id int64) error {
@@ -422,6 +547,34 @@ func (s *billingCacheStub) InvalidateAPIKeyRateLimit(ctx context.Context, keyID 
 	panic("unexpected InvalidateAPIKeyRateLimit call")
 }
 
+func (s *billingCacheStub) GetUserPlatformQuotaCache(ctx context.Context, userID int64, platform string) (*UserPlatformQuotaCacheEntry, bool, error) {
+	panic("unexpected GetUserPlatformQuotaCache call")
+}
+
+func (s *billingCacheStub) SetUserPlatformQuotaCache(ctx context.Context, userID int64, platform string, entry *UserPlatformQuotaCacheEntry, ttl time.Duration) error {
+	panic("unexpected SetUserPlatformQuotaCache call")
+}
+
+func (s *billingCacheStub) DeleteUserPlatformQuotaCache(ctx context.Context, userID int64, platform string) error {
+	panic("unexpected DeleteUserPlatformQuotaCache call")
+}
+
+func (s *billingCacheStub) IncrUserPlatformQuotaUsageCache(ctx context.Context, userID int64, platform string, cost float64, ttl time.Duration, markDirty bool) error {
+	panic("unexpected IncrUserPlatformQuotaUsageCache call")
+}
+
+func (s *billingCacheStub) PopDirtyUserPlatformQuotaKeys(ctx context.Context, n int) ([]UserPlatformQuotaKey, error) {
+	panic("unexpected PopDirtyUserPlatformQuotaKeys call")
+}
+
+func (s *billingCacheStub) ReaddDirtyUserPlatformQuotaKeys(ctx context.Context, keys []UserPlatformQuotaKey) error {
+	panic("unexpected ReaddDirtyUserPlatformQuotaKeys call")
+}
+
+func (s *billingCacheStub) BatchGetUserPlatformQuotaCache(ctx context.Context, keys []UserPlatformQuotaKey) ([]*UserPlatformQuotaCacheEntry, error) {
+	panic("unexpected BatchGetUserPlatformQuotaCache call")
+}
+
 func waitForInvalidations(t *testing.T, ch <-chan subscriptionInvalidateCall, expected int) []subscriptionInvalidateCall {
 	t.Helper()
 	calls := make([]subscriptionInvalidateCall, 0, expected)
@@ -444,6 +597,31 @@ func TestAdminService_DeleteUser_Success(t *testing.T) {
 	err := svc.DeleteUser(context.Background(), 7)
 	require.NoError(t, err)
 	require.Equal(t, []int64{7}, repo.deletedIDs)
+}
+
+func TestAdminService_DeleteUser_DeletesOwnedAPIKeys(t *testing.T) {
+	repo := &userRepoStub{user: &User{ID: 7, Role: RoleUser}}
+	apiKeyRepo := &apiKeyRepoStub{
+		allowListByUserID: true,
+		listByUserIDKeys: []APIKey{
+			{ID: 11, UserID: 7, Key: "sk-user-1"},
+			{ID: 12, UserID: 7, Key: "sk-user-2"},
+		},
+	}
+	invalidator := &authCacheInvalidatorStub{}
+	svc := &adminServiceImpl{
+		userRepo:             repo,
+		apiKeyRepo:           apiKeyRepo,
+		authCacheInvalidator: invalidator,
+	}
+
+	err := svc.DeleteUser(context.Background(), 7)
+	require.NoError(t, err)
+	require.Equal(t, []int64{7}, repo.deletedIDs)
+	require.Equal(t, []int64{7}, apiKeyRepo.listByUserIDCalls)
+	require.Equal(t, []int64{11, 12}, apiKeyRepo.deletedIDs)
+	require.ElementsMatch(t, []string{"sk-user-1", "sk-user-2"}, invalidator.keys)
+	require.Equal(t, []int64{7}, invalidator.userIDs)
 }
 
 func TestAdminService_DeleteUser_NotFound(t *testing.T) {
@@ -497,6 +675,23 @@ func TestAdminService_DeleteGroup_Success_WithCacheInvalidation(t *testing.T) {
 	}, calls)
 }
 
+func TestAdminService_DeleteGroup_InvalidatesAuthCacheForBoundKeys(t *testing.T) {
+	repo := &groupRepoStub{}
+	apiKeyRepo := &deleteGroupAPIKeyRepoStub{keys: []string{"k1", "k2"}}
+	invalidator := &authCacheInvalidatorStub{}
+	svc := &adminServiceImpl{
+		groupRepo:            repo,
+		apiKeyRepo:           apiKeyRepo,
+		authCacheInvalidator: invalidator,
+	}
+
+	err := svc.DeleteGroup(context.Background(), 5)
+	require.NoError(t, err)
+	require.Equal(t, []int64{5}, repo.deleteCalls)
+	require.Equal(t, []int64{5}, apiKeyRepo.listGroupIDs)
+	require.Equal(t, []string{"k1", "k2"}, invalidator.keys)
+}
+
 func TestAdminService_DeleteGroup_NotFound(t *testing.T) {
 	repo := &groupRepoStub{deleteErr: ErrGroupNotFound}
 	svc := &adminServiceImpl{groupRepo: repo}
@@ -512,6 +707,22 @@ func TestAdminService_DeleteGroup_Error(t *testing.T) {
 
 	err := svc.DeleteGroup(context.Background(), 42)
 	require.ErrorIs(t, err, deleteErr)
+}
+
+func TestAdminService_DeleteGroupIfEmpty_UsesGuardedCascade(t *testing.T) {
+	repo := &groupRepoStub{deleteErr: ErrGroupNotEmpty}
+	svc := &adminServiceImpl{groupRepo: repo, emptyGroupDeleteRepo: repo}
+
+	err := svc.DeleteGroupIfEmpty(context.Background(), 42)
+	require.ErrorIs(t, err, ErrGroupNotEmpty)
+	require.Equal(t, []int64{42}, repo.guardedCalls)
+	require.Empty(t, repo.deleteCalls)
+}
+
+func TestAdminService_DeleteGroupIfEmpty_MissingCapabilityReturnsError(t *testing.T) {
+	svc := &adminServiceImpl{groupRepo: &groupRepoStub{}}
+
+	require.ErrorContains(t, svc.DeleteGroupIfEmpty(context.Background(), 42), "guarded group deletion is unavailable")
 }
 
 func TestAdminService_DeleteProxy_Success(t *testing.T) {

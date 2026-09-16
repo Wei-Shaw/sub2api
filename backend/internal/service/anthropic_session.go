@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"strings"
 	"time"
+
+	"github.com/tidwall/gjson"
 )
 
 // Anthropic 会话 Fallback 相关常量
@@ -30,28 +32,37 @@ func BuildAnthropicDigestChain(parsed *ParsedRequest) string {
 
 	var parts []string
 
-	// 1. system prompt
-	if parsed.System != nil {
-		systemData, _ := json.Marshal(parsed.System)
-		if len(systemData) > 0 && string(systemData) != "null" {
-			parts = append(parts, "s:"+shortHash(systemData))
-		}
+	if systemRaw := parsed.SystemRaw(); len(systemRaw) > 0 && string(systemRaw) != "null" {
+		parts = append(parts, "s:"+shortHash(canonicalAnthropicDigestJSON(systemRaw)))
 	}
 
-	// 2. messages
-	for _, msg := range parsed.Messages {
-		msgMap, ok := msg.(map[string]any)
-		if !ok {
-			continue
-		}
-		role, _ := msgMap["role"].(string)
-		prefix := rolePrefix(role)
-		content := msgMap["content"]
-		contentData, _ := json.Marshal(content)
-		parts = append(parts, prefix+":"+shortHash(contentData))
+	messages := parsed.MessagesRaw()
+	if len(messages) > 0 {
+		gjson.ParseBytes(messages).ForEach(func(_, msg gjson.Result) bool {
+			prefix := rolePrefix(msg.Get("role").String())
+			content := msg.Get("content")
+			parts = append(parts, prefix+":"+shortHash(canonicalAnthropicDigestJSON([]byte(content.Raw))))
+			return true
+		})
 	}
 
 	return strings.Join(parts, "-")
+}
+
+// canonicalAnthropicDigestJSON 保持 digest 对 JSON key 顺序和空白不敏感。
+func canonicalAnthropicDigestJSON(raw []byte) []byte {
+	if len(raw) == 0 {
+		return raw
+	}
+	var value any
+	if err := json.Unmarshal(raw, &value); err != nil {
+		return raw
+	}
+	canonical, err := json.Marshal(value)
+	if err != nil {
+		return raw
+	}
+	return canonical
 }
 
 // rolePrefix 将 Anthropic 的 role 映射为单字符前缀

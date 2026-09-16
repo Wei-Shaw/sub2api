@@ -23,24 +23,27 @@ import (
 // --- mock: UserRepository ---
 
 type mockUserRepo struct {
-	updateBalanceErr        error
-	updateBalanceFn         func(ctx context.Context, id int64, amount float64) error
-	getByIDUser             *User
-	getByIDErr              error
-	identities              []UserAuthIdentityRecord
-	unbindIdentityErr       error
-	unboundProviders        []string
-	updateLastActiveErr     error
-	updateLastActiveUserIDs []int64
-	updateLastActiveAt      []time.Time
-	updateFn                func(ctx context.Context, user *User) error
-	updateCalls             int
-	upsertAvatarFn          func(ctx context.Context, userID int64, input UpsertUserAvatarInput) (*UserAvatar, error)
-	upsertAvatarArgs        []UpsertUserAvatarInput
-	deleteAvatarFn          func(ctx context.Context, userID int64) error
-	deleteAvatarIDs         []int64
-	getAvatarFn             func(ctx context.Context, userID int64) (*UserAvatar, error)
-	txCalls                 int
+	updateBalanceErr         error
+	updateBalanceFn          func(ctx context.Context, id int64, amount float64) error
+	deductBalanceFn          func(ctx context.Context, id int64, amount float64) error
+	deductAvailableBalanceFn func(ctx context.Context, id int64, amount float64) (float64, error)
+	getByIDUser              *User
+	getByIDErr               error
+	identities               []UserAuthIdentityRecord
+	unbindIdentityErr        error
+	unboundProviders         []string
+	updateLastActiveErr      error
+	updateLastActiveUserIDs  []int64
+	updateLastActiveAt       []time.Time
+	updateFn                 func(ctx context.Context, user *User) error
+	updateCalls              int
+	updateFields             []UserUpdateFields
+	upsertAvatarFn           func(ctx context.Context, userID int64, input UpsertUserAvatarInput) (*UserAvatar, error)
+	upsertAvatarArgs         []UpsertUserAvatarInput
+	deleteAvatarFn           func(ctx context.Context, userID int64) error
+	deleteAvatarIDs          []int64
+	getAvatarFn              func(ctx context.Context, userID int64) (*UserAvatar, error)
+	txCalls                  int
 }
 
 type mockUserRepoTxKey struct{}
@@ -89,7 +92,8 @@ func (m *mockUserSettingRepo) Delete(context.Context, string) error {
 	panic("unexpected Delete call")
 }
 
-func (m *mockUserRepo) Create(context.Context, *User) error { return nil }
+func (m *mockUserRepo) Create(context.Context, *User) error                    { return nil }
+func (m *mockUserRepo) CreateWithEmailAliasGuard(context.Context, *User) error { return nil }
 func (m *mockUserRepo) GetByID(ctx context.Context, _ int64) (*User, error) {
 	if m.getByIDErr != nil {
 		return nil, m.getByIDErr
@@ -106,8 +110,9 @@ func (m *mockUserRepo) GetByID(ctx context.Context, _ int64) (*User, error) {
 }
 func (m *mockUserRepo) GetByEmail(context.Context, string) (*User, error) { return &User{}, nil }
 func (m *mockUserRepo) GetFirstAdmin(context.Context) (*User, error)      { return &User{}, nil }
-func (m *mockUserRepo) Update(ctx context.Context, user *User) error {
+func (m *mockUserRepo) Update(ctx context.Context, user *User, fields UserUpdateFields) error {
 	m.updateCalls++
+	m.updateFields = append(m.updateFields, fields)
 	if m.updateFn != nil {
 		return m.updateFn(ctx, user)
 	}
@@ -193,10 +198,39 @@ func (m *mockUserRepo) UpdateUserLastActiveAt(_ context.Context, userID int64, a
 	m.updateLastActiveAt = append(m.updateLastActiveAt, activeAt)
 	return m.updateLastActiveErr
 }
-func (m *mockUserRepo) DeductBalance(context.Context, int64, float64) error { return nil }
+func (m *mockUserRepo) DeductBalance(ctx context.Context, id int64, amount float64) error {
+	if m.deductBalanceFn != nil {
+		return m.deductBalanceFn(ctx, id, amount)
+	}
+	return nil
+}
+
+func (m *mockUserRepo) DeductAvailableBalance(ctx context.Context, id int64, amount float64) (float64, error) {
+	if m.deductAvailableBalanceFn != nil {
+		return m.deductAvailableBalanceFn(ctx, id, amount)
+	}
+	return amount, nil
+}
+
+func (m *mockUserRepo) AdjustBalance(ctx context.Context, id int64, delta float64) (BalanceChange, error) {
+	panic("unexpected AdjustBalance call")
+}
+
+func (m *mockUserRepo) SetBalance(ctx context.Context, id int64, value float64) (BalanceChange, error) {
+	panic("unexpected SetBalance call")
+}
 func (m *mockUserRepo) UpdateConcurrency(context.Context, int64, int) error { return nil }
 func (m *mockUserRepo) ExistsByEmail(context.Context, string) (bool, error) { return false, nil }
+func (m *mockUserRepo) ExistsByEmailAlias(context.Context, string) (bool, error) {
+	return false, nil
+}
 func (m *mockUserRepo) RemoveGroupFromAllowedGroups(context.Context, int64) (int64, error) {
+	return 0, nil
+}
+
+func (m *mockUserRepo) BatchSetConcurrency(context.Context, []int64, int) (int, error) { return 0, nil }
+func (m *mockUserRepo) BatchAddConcurrency(context.Context, []int64, int) (int, error) { return 0, nil }
+func (m *mockUserRepo) BatchUpdateLimits(context.Context, []int64, *int, *int) (int, error) {
 	return 0, nil
 }
 func (m *mockUserRepo) AddGroupToAllowedGroups(context.Context, int64, int64) error { return nil }
@@ -231,6 +265,10 @@ func (m *mockUserRepo) UnbindUserAuthProvider(_ context.Context, _ int64, provid
 	}
 	m.identities = append([]UserAuthIdentityRecord(nil), filtered...)
 	return nil
+}
+
+func (m *mockUserRepo) GetByIDIncludeDeleted(ctx context.Context, id int64) (*User, error) {
+	return m.GetByID(ctx, id)
 }
 
 func (m *mockUserRepo) WithUserProfileIdentityTx(ctx context.Context, fn func(txCtx context.Context) error) error {
@@ -310,6 +348,34 @@ func (m *mockBillingCache) UpdateAPIKeyRateLimitUsage(context.Context, int64, fl
 }
 func (m *mockBillingCache) InvalidateAPIKeyRateLimit(context.Context, int64) error {
 	return nil
+}
+
+func (m *mockBillingCache) GetUserPlatformQuotaCache(context.Context, int64, string) (*UserPlatformQuotaCacheEntry, bool, error) {
+	return nil, false, nil
+}
+
+func (m *mockBillingCache) SetUserPlatformQuotaCache(context.Context, int64, string, *UserPlatformQuotaCacheEntry, time.Duration) error {
+	return nil
+}
+
+func (m *mockBillingCache) DeleteUserPlatformQuotaCache(context.Context, int64, string) error {
+	return nil
+}
+
+func (m *mockBillingCache) IncrUserPlatformQuotaUsageCache(context.Context, int64, string, float64, time.Duration, bool) error {
+	return nil
+}
+
+func (m *mockBillingCache) PopDirtyUserPlatformQuotaKeys(context.Context, int) ([]UserPlatformQuotaKey, error) {
+	return nil, nil
+}
+
+func (m *mockBillingCache) ReaddDirtyUserPlatformQuotaKeys(context.Context, []UserPlatformQuotaKey) error {
+	return nil
+}
+
+func (m *mockBillingCache) BatchGetUserPlatformQuotaCache(context.Context, []UserPlatformQuotaKey) ([]*UserPlatformQuotaCacheEntry, error) {
+	return nil, nil
 }
 
 // --- 测试 ---

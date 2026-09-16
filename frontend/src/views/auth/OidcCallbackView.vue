@@ -338,6 +338,7 @@ type PendingOidcCompletion = PendingOAuthExchangeResponse & {
   pending_email?: string
   resolved_email?: string
   existing_account_email?: string
+  compat_email?: string
   email?: string
   suggested_email?: string
   provider_fallback?: string
@@ -461,6 +462,7 @@ function extractPendingAccountEmail(completion: PendingOidcCompletion): string {
   return (
     completion.pending_email ||
     completion.existing_account_email ||
+    completion.compat_email ||
     completion.resolved_email ||
     completion.email ||
     completion.suggested_email ||
@@ -703,6 +705,13 @@ async function handleCreateAccount(payload: PendingOAuthCreateAccountPayload) {
       email: payload.email,
       password: payload.password,
       verify_code: payload.verifyCode || undefined,
+      ...(payload.turnstileToken ? { turnstile_token: payload.turnstileToken } : {}),
+      ...(payload.tencentCaptchaTicket
+        ? {
+            tencent_captcha_ticket: payload.tencentCaptchaTicket,
+            tencent_captcha_randstr: payload.tencentCaptchaRandstr
+        }
+        : {}),
       invitation_code: payload.invitationCode || undefined,
       ...oauthAffiliatePayload(loadOAuthAffiliateCode()),
       ...serializeAdoptionDecision(currentAdoptionDecision())

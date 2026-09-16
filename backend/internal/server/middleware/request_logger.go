@@ -21,14 +21,15 @@ func RequestLogger() gin.HandlerFunc {
 			return
 		}
 
-		requestID := strings.TrimSpace(c.GetHeader(requestIDHeader))
-		if requestID == "" {
+		requestID, validRequestID := normalizeCorrelationID(c.GetHeader(requestIDHeader))
+		if !validRequestID {
 			requestID = uuid.NewString()
 		}
 		c.Header(requestIDHeader, requestID)
 
 		ctx := context.WithValue(c.Request.Context(), ctxkey.RequestID, requestID)
 		clientRequestID, _ := ctx.Value(ctxkey.ClientRequestID).(string)
+		clientRequestID, _ = normalizeCorrelationID(clientRequestID)
 
 		requestLogger := logger.With(
 			zap.String("component", "http"),

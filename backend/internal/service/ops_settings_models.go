@@ -69,12 +69,14 @@ type OpsMetricThresholds struct {
 }
 
 type OpsRuntimeLogConfig struct {
-	Level           string         `json:"level"`
-	EnableSampling  bool           `json:"enable_sampling"`
-	SamplingInitial int            `json:"sampling_initial"`
-	SamplingNext    int            `json:"sampling_thereafter"`
-	Caller          bool           `json:"caller"`
-	StacktraceLevel string         `json:"stacktrace_level"`
+	Level             string `json:"level"`
+	PersistAccessLogs bool   `json:"persist_access_logs"`
+	EnableSampling    bool   `json:"enable_sampling"`
+	SamplingInitial   int    `json:"sampling_initial"`
+	SamplingNext      int    `json:"sampling_thereafter"`
+	Caller            bool   `json:"caller"`
+	StacktraceLevel   string `json:"stacktrace_level"`
+	// RetentionDays is the authoritative retention for ops_system_logs.
 	RetentionDays   int            `json:"retention_days"`
 	Source          string         `json:"source,omitempty"`
 	UpdatedAt       string         `json:"updated_at,omitempty"`
@@ -92,17 +94,24 @@ type OpsAlertRuntimeSettings struct {
 
 // OpsAdvancedSettings stores advanced ops configuration (data retention, aggregation).
 type OpsAdvancedSettings struct {
-	DataRetention                   OpsDataRetentionSettings `json:"data_retention"`
-	Aggregation                     OpsAggregationSettings   `json:"aggregation"`
-	IgnoreCountTokensErrors         bool                     `json:"ignore_count_tokens_errors"`
-	IgnoreContextCanceled           bool                     `json:"ignore_context_canceled"`
-	IgnoreNoAvailableAccounts       bool                     `json:"ignore_no_available_accounts"`
-	IgnoreInvalidApiKeyErrors       bool                     `json:"ignore_invalid_api_key_errors"`
-	IgnoreInsufficientBalanceErrors bool                     `json:"ignore_insufficient_balance_errors"`
-	DisplayOpenAITokenStats         bool                     `json:"display_openai_token_stats"`
-	DisplayAlertEvents              bool                     `json:"display_alert_events"`
-	AutoRefreshEnabled              bool                     `json:"auto_refresh_enabled"`
-	AutoRefreshIntervalSec          int                      `json:"auto_refresh_interval_seconds"`
+	DataRetention               OpsDataRetentionSettings               `json:"data_retention"`
+	Aggregation                 OpsAggregationSettings                 `json:"aggregation"`
+	OpenAIAccountQuotaAutoPause OpsOpenAIAccountQuotaAutoPauseSettings `json:"openai_account_quota_auto_pause"`
+	IgnoreCountTokensErrors     bool                                   `json:"ignore_count_tokens_errors"`
+	IgnoreContextCanceled       bool                                   `json:"ignore_context_canceled"`
+	IgnoreNoAvailableAccounts   bool                                   `json:"ignore_no_available_accounts"`
+	// Deprecated compatibility field. It is always normalized to true.
+	IgnoreInvalidApiKeyErrors       bool `json:"ignore_invalid_api_key_errors"`
+	IgnoreInsufficientBalanceErrors bool `json:"ignore_insufficient_balance_errors"`
+	DisplayOpenAITokenStats         bool `json:"display_openai_token_stats"`
+	DisplayAlertEvents              bool `json:"display_alert_events"`
+	AutoRefreshEnabled              bool `json:"auto_refresh_enabled"`
+	AutoRefreshIntervalSec          int  `json:"auto_refresh_interval_seconds"`
+}
+
+type OpsOpenAIAccountQuotaAutoPauseSettings struct {
+	DefaultThreshold5h float64 `json:"default_threshold_5h"`
+	DefaultThreshold7d float64 `json:"default_threshold_7d"`
 }
 
 type OpsDataRetentionSettings struct {

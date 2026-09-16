@@ -66,6 +66,20 @@ func (s *handlerInMemoryLogSink) ContainsFieldValue(field, substr string) bool {
 	return false
 }
 
+func (s *handlerInMemoryLogSink) FieldValueForMessage(message, field string) (any, bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for _, event := range s.events {
+		if event == nil || event.Message != message || event.Fields == nil {
+			continue
+		}
+		if value, ok := event.Fields[field]; ok {
+			return value, true
+		}
+	}
+	return nil, false
+}
+
 func captureHandlerStructuredLog(t *testing.T) (*handlerInMemoryLogSink, func()) {
 	t.Helper()
 	handlerStructuredLogCaptureMu.Lock()
@@ -91,21 +105,29 @@ func captureHandlerStructuredLog(t *testing.T) (*handlerInMemoryLogSink, func())
 	}
 }
 
-func TestIsOpenAIRemoteCompactPath(t *testing.T) {
-	require.False(t, isOpenAIRemoteCompactPath(nil))
+func TestIsOpenAILegacyCompactPath(t *testing.T) {
+	require.False(t, isOpenAILegacyCompactPath(nil))
 
 	gin.SetMode(gin.TestMode)
 	rec := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(rec)
 
-	c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses/compact", nil)
-	require.True(t, isOpenAIRemoteCompactPath(c))
-
-	c.Request = httptest.NewRequest(http.MethodPost, "/responses/compact/", nil)
-	require.True(t, isOpenAIRemoteCompactPath(c))
-
-	c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", nil)
-	require.False(t, isOpenAIRemoteCompactPath(c))
+	for _, test := range []struct {
+		path string
+		want bool
+	}{
+		{path: "/v1/responses/compact", want: true},
+		{path: "/v1/responses/compact/detail", want: true},
+		{path: "/responses/compact/", want: true},
+		{path: "/v1/responses", want: false},
+		{path: "/openai/v1/responses", want: false},
+		{path: "/responses", want: false},
+		{path: "/backend-api/codex/responses", want: false},
+		{path: "/v1/responses/resp_123/cancel", want: false},
+	} {
+		c.Request = httptest.NewRequest(http.MethodPost, test.path, nil)
+		require.Equal(t, test.want, isOpenAILegacyCompactPath(c), test.path)
+	}
 }
 
 func TestLogOpenAIRemoteCompactOutcome_Succeeded(t *testing.T) {

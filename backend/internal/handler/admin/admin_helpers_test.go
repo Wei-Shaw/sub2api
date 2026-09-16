@@ -265,10 +265,12 @@ func TestOpenAIFastPolicySettingsFromDTO_NormalizesServiceTier(t *testing.T) {
 				ServiceTier: "PRIORITY",
 				Action:      "filter",
 				Scope:       "all",
+				UserIDs:     []int64{42},
 			}},
 		}
 		out := openaiFastPolicySettingsFromDTO(in)
 		require.Equal(t, service.OpenAIFastTierPriority, out.Rules[0].ServiceTier)
+		require.Equal(t, []int64{42}, out.Rules[0].UserIDs)
 	})
 
 	t.Run("non-empty values pass through (lowercased)", func(t *testing.T) {
@@ -276,13 +278,15 @@ func TestOpenAIFastPolicySettingsFromDTO_NormalizesServiceTier(t *testing.T) {
 			Rules: []dto.OpenAIFastPolicyRule{
 				{ServiceTier: "priority", Action: "filter", Scope: "all"},
 				{ServiceTier: "flex", Action: "block", Scope: "oauth"},
+				{ServiceTier: "ultrafast", Action: "pass", Scope: "all"},
 				{ServiceTier: "all", Action: "pass", Scope: "apikey"},
 			},
 		}
 		out := openaiFastPolicySettingsFromDTO(in)
-		require.Len(t, out.Rules, 3)
+		require.Len(t, out.Rules, 4)
 		require.Equal(t, service.OpenAIFastTierPriority, out.Rules[0].ServiceTier)
 		require.Equal(t, service.OpenAIFastTierFlex, out.Rules[1].ServiceTier)
-		require.Equal(t, service.OpenAIFastTierAny, out.Rules[2].ServiceTier)
+		require.Equal(t, service.OpenAIFastTierUltrafast, out.Rules[2].ServiceTier)
+		require.Equal(t, service.OpenAIFastTierAny, out.Rules[3].ServiceTier)
 	})
 }

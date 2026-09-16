@@ -16,6 +16,7 @@ func mustRawJSON(t *testing.T, s string) json.RawMessage {
 
 func TestShouldAutoInjectPromptCacheKeyForCompat(t *testing.T) {
 	require.True(t, shouldAutoInjectPromptCacheKeyForCompat("gpt-5.5"))
+	require.True(t, shouldAutoInjectPromptCacheKeyForCompat("gpt-5.5-pro"))
 	require.True(t, shouldAutoInjectPromptCacheKeyForCompat("gpt-5.4"))
 	require.True(t, shouldAutoInjectPromptCacheKeyForCompat("gpt-5.4-mini"))
 	require.True(t, shouldAutoInjectPromptCacheKeyForCompat("gpt-5.2"))
@@ -23,6 +24,34 @@ func TestShouldAutoInjectPromptCacheKeyForCompat(t *testing.T) {
 	require.True(t, shouldAutoInjectPromptCacheKeyForCompat("gpt-5.3-codex"))
 	require.True(t, shouldAutoInjectPromptCacheKeyForCompat("gpt-5.3-codex-spark"))
 	require.False(t, shouldAutoInjectPromptCacheKeyForCompat("gpt-4o"))
+}
+
+func TestShouldAutoInjectPromptCacheKeyForCompat_GPT6AstraForms(t *testing.T) {
+	for _, model := range []string{
+		"gpt-6",
+		"gpt-6-astra",
+		"openai/gpt-6",
+		"openai/gpt-6-astra",
+		"OPENAI/GPT-6_ASTRA",
+		"provider/gpt-6-astra",
+	} {
+		require.True(t, shouldAutoInjectPromptCacheKeyForCompat(model), model)
+	}
+
+	for _, model := range []string{
+		"gpt-6-terra",
+		"gpt-6.1",
+		"gpt-6-astra-preview",
+		"gpt-6-astra-unrelated-name",
+		"gpt-6-astra-2026-09-01",
+		"gpt-6-astra-2026-09-01-extra",
+		"gpt-6-astra-v",
+		"gpt-6-astra-v1.beta",
+		"claude-sonnet-4-5",
+		"gpt-4o",
+	} {
+		require.False(t, shouldAutoInjectPromptCacheKeyForCompat(model), model)
+	}
 }
 
 func TestDeriveCompatPromptCacheKey_StableAcrossLaterTurns(t *testing.T) {

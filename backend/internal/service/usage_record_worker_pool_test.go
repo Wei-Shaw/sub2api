@@ -176,7 +176,11 @@ func TestUsageRecordWorkerPool_SubmitAfterStop(t *testing.T) {
 
 	pool.Stop()
 	mode := pool.Submit(func(ctx context.Context) {})
-	require.Equal(t, UsageRecordSubmitModeDropped, mode)
+	require.Equal(t, UsageRecordSubmitModeDroppedStopped, mode)
+	require.True(t, mode.Dropped())
+	require.True(t, UsageRecordSubmitModeDropped.Dropped())
+	require.False(t, UsageRecordSubmitModeEnqueued.Dropped())
+	require.False(t, UsageRecordSubmitModeSync.Dropped())
 	require.GreaterOrEqual(t, pool.Stats().DroppedPoolStopped, uint64(1))
 }
 

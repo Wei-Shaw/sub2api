@@ -3,6 +3,8 @@ package schema
 import (
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/domain"
+
 	"entgo.io/ent"
 	"entgo.io/ent/dialect/entsql"
 	"entgo.io/ent/schema"
@@ -43,6 +45,10 @@ func (ChannelMonitorHistory) Fields() []ent.Field {
 			Optional().
 			Default("").
 			MaxLen(500),
+		// quota: 配额模式（check_mode = quota / quota_probe）检测时附带的
+		// 归一化配额快照（domain.MonitorQuotaSnapshot，JSONB）；探活模式为 NULL。
+		field.JSON("quota", &domain.MonitorQuotaSnapshot{}).
+			Optional(),
 		field.Time("checked_at").
 			Default(time.Now),
 	}

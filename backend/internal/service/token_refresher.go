@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"strings"
 	"time"
 )
 
@@ -37,11 +38,13 @@ func (r *ClaudeTokenRefresher) CacheKey(account *Account) string {
 }
 
 // CanRefresh 检查是否能处理此账号
-// 只处理 anthropic 平台的 oauth 类型账号
-// setup-token 虽然也是OAuth，但有效期1年，不需要频繁刷新
+// 处理 anthropic 平台的 oauth 与 setup-token 类型账号。
+// 两者的 access_token 均为短期令牌（expires_in=28800，即 8h），到期都需刷新；
+// setup-token 之前被排除会导致其 access_token 过期后请求 401。
+// 此处与手动刷新入口（account.IsOAuth()）保持一致，实际是否刷新由 NeedsRefresh
+// 基于 expires_at 门控，并在分布式锁保护下执行，不会造成过度刷新。
 func (r *ClaudeTokenRefresher) CanRefresh(account *Account) bool {
-	return account.Platform == PlatformAnthropic &&
-		account.Type == AccountTypeOAuth
+	return account.Platform == PlatformAnthropic && account.IsOAuth()
 }
 
 // NeedsRefresh 检查token是否需要刷新
@@ -89,12 +92,21 @@ func (r *OpenAITokenRefresher) CacheKey(account *Account) string {
 
 // CanRefresh 检查是否能处理此账号
 func (r *OpenAITokenRefresher) CanRefresh(account *Account) bool {
+	if account.IsCredentialShadow() {
+		return false
+	}
 	return account.Platform == PlatformOpenAI && account.Type == AccountTypeOAuth
 }
 
 // NeedsRefresh 检查token是否需要刷新
 // expires_at 缺失且处于限流状态时需要刷新，防止限流期间 token 静默过期
 func (r *OpenAITokenRefresher) NeedsRefresh(account *Account, refreshWindow time.Duration) bool {
+	if account.IsOpenAIPersonalAccessToken() {
+		return false
+	}
+	if strings.TrimSpace(account.GetOpenAIRefreshToken()) == "" {
+		return false
+	}
 	expiresAt := account.GetCredentialAsTime("expires_at")
 	if expiresAt == nil {
 		return account.IsRateLimited()
@@ -114,6 +126,7 @@ func (r *OpenAITokenRefresher) Refresh(ctx context.Context, account *Account) (m
 	// 使用服务提供的方法构建新凭证，并保留原有字段
 	newCredentials := r.openaiOAuthService.BuildAccountCredentials(tokenInfo)
 	newCredentials = MergeCredentials(account.Credentials, newCredentials)
+	newCredentials = NormalizeOpenAIPersonalAccessTokenCredentials(account, tokenInfo, newCredentials)
 
 	return newCredentials, nil
 }

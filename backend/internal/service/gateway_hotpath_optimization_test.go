@@ -144,6 +144,27 @@ func (s *stickyGatewayCacheHotpathStub) DeleteSessionAccountID(ctx context.Conte
 	return nil
 }
 
+func (s *stickyGatewayCacheHotpathStub) SetGrokVideoPendingBilling(_ context.Context, _ string, _ []byte, _ time.Duration) error {
+	return nil
+}
+func (s *stickyGatewayCacheHotpathStub) GetGrokVideoPendingBilling(_ context.Context, _ string) ([]byte, error) {
+	return nil, nil
+}
+func (s *stickyGatewayCacheHotpathStub) ClaimGrokVideoBilled(_ context.Context, _ string, _ time.Duration) (bool, error) {
+	return true, nil
+}
+
+func (s *stickyGatewayCacheHotpathStub) ReleaseGrokVideoBilled(_ context.Context, _ string) error {
+	return nil
+}
+
+func (s *stickyGatewayCacheHotpathStub) SetReasoningContent(_ context.Context, _ string, _ string, _ time.Duration) error {
+	return nil
+}
+func (s *stickyGatewayCacheHotpathStub) GetReasoningContent(_ context.Context, _ string) (string, error) {
+	return "", ErrReasoningContentNotFound
+}
+
 func (s *modelsListAccountRepoStub) ListSchedulableByGroupID(ctx context.Context, groupID int64) ([]Account, error) {
 	s.listByGroupCalls.Add(1)
 	if s.err != nil {
@@ -219,7 +240,15 @@ func TestGetUserGroupRateMultiplier_UsesCacheAndSingleflight(t *testing.T) {
 	}
 
 	close(start)
-	time.Sleep(20 * time.Millisecond)
+	// Wait for every caller to have recorded its cache miss before releasing the
+	// loader. A fixed sleep raced here: a goroutine that reached the cache after
+	// the singleflight load had already finished got a hit instead of a miss, and
+	// the miss assertion below saw 11 of 12. The miss counter is the observable
+	// that says "all callers are now inside the singleflight group".
+	require.Eventually(t, func() bool {
+		_, miss, _, _, _ := GatewayUserGroupRateCacheStats()
+		return miss == int64(concurrent)
+	}, 5*time.Second, time.Millisecond, "all callers must miss the cache before the loader is released")
 	close(unblock)
 	wg.Wait()
 
@@ -535,6 +564,46 @@ func TestGetAvailableModels_UsesShortCacheAndSupportsInvalidation(t *testing.T) 
 	require.Equal(t, int64(2), store)
 }
 
+// Scenario: 账号模型变更会失效所属平台缓存
+func TestResolveCompositeModelOwnershipUsesModelsCacheInvalidation(t *testing.T) {
+	groupID := int64(9)
+	repo := &modelsListAccountRepoStub{
+		byGroup: map[int64][]Account{
+			groupID: {{
+				ID:          1,
+				Platform:    PlatformDeepseek,
+				Credentials: map[string]any{"model_mapping": map[string]any{"company-model": "deepseek-v4-pro"}},
+			}},
+		},
+	}
+	svc := &GatewayService{
+		accountRepo:        repo,
+		modelsListCache:    gocache.New(time.Minute, time.Minute),
+		modelsListCacheTTL: time.Minute,
+	}
+
+	first, err := svc.resolveCompositeModelOwnership(context.Background(), groupID, "company-model")
+	require.NoError(t, err)
+	require.Equal(t, CompositeModelOwnership{TargetPlatform: PlatformDeepseek, Matched: true}, first)
+	require.Equal(t, int64(1), repo.listByGroupCalls.Load())
+
+	repo.byGroup[groupID] = []Account{{
+		ID:          2,
+		Platform:    PlatformOpenAI,
+		Credentials: map[string]any{"model_mapping": map[string]any{"company-model": "gpt-5"}},
+	}}
+	cached, err := svc.resolveCompositeModelOwnership(context.Background(), groupID, "company-model")
+	require.NoError(t, err)
+	require.Equal(t, first, cached)
+	require.Equal(t, int64(1), repo.listByGroupCalls.Load())
+
+	svc.InvalidateAvailableModelsCache(&groupID, PlatformDeepseek)
+	refreshed, err := svc.resolveCompositeModelOwnership(context.Background(), groupID, "company-model")
+	require.NoError(t, err)
+	require.Equal(t, CompositeModelOwnership{TargetPlatform: PlatformOpenAI, Matched: true}, refreshed)
+	require.Equal(t, int64(2), repo.listByGroupCalls.Load())
+}
+
 func TestGetAvailableModels_ErrorAndGlobalListBranches(t *testing.T) {
 	resetGatewayHotpathStatsForTest()
 
@@ -578,6 +647,97 @@ func TestGetAvailableModels_ErrorAndGlobalListBranches(t *testing.T) {
 	models := svcOK.GetAvailableModels(context.Background(), nil, "")
 	require.Equal(t, []string{"claude-3-5-sonnet", "gemini-2.5-pro"}, models)
 	require.Equal(t, int64(1), okRepo.listAllCalls.Load())
+}
+
+func TestGetAvailableModels_OpenAIPassthroughUsesDefaultFallback(t *testing.T) {
+	groupID := int64(10)
+
+	tests := []struct {
+		name     string
+		accounts []Account
+		want     []string
+	}{
+		{
+			name: "passthrough only ignores stale mapping",
+			accounts: []Account{
+				{
+					ID:          1,
+					Platform:    PlatformOpenAI,
+					Credentials: map[string]any{"model_mapping": map[string]any{"stale-model": "upstream-model"}},
+					Extra:       map[string]any{"openai_passthrough": true},
+				},
+			},
+			want: nil,
+		},
+		{
+			name: "passthrough wins over ordinary account mapping",
+			accounts: []Account{
+				{
+					ID:          2,
+					Platform:    PlatformOpenAI,
+					Credentials: map[string]any{"model_mapping": map[string]any{"configured-model": "configured-upstream"}},
+				},
+				{
+					ID:          3,
+					Platform:    PlatformOpenAI,
+					Credentials: map[string]any{"model_mapping": map[string]any{"stale-model": "upstream-model"}},
+					Extra:       map[string]any{"openai_passthrough": true},
+				},
+			},
+			want: nil,
+		},
+		{
+			name: "ordinary accounts preserve mapped whitelist",
+			accounts: []Account{
+				{
+					ID:          4,
+					Platform:    PlatformOpenAI,
+					Credentials: map[string]any{"model_mapping": map[string]any{"configured-model": "configured-upstream"}},
+				},
+			},
+			want: []string{"configured-model"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			repo := &modelsListAccountRepoStub{byGroup: map[int64][]Account{groupID: tt.accounts}}
+			svc := &GatewayService{
+				accountRepo:        repo,
+				modelsListCache:    gocache.New(time.Minute, time.Minute),
+				modelsListCacheTTL: time.Minute,
+			}
+
+			require.Equal(t, tt.want, svc.GetAvailableModels(context.Background(), &groupID, PlatformOpenAI))
+		})
+	}
+}
+
+func TestGetAvailableModels_GlobalListPreservesMappedModelsWithOpenAIPassthrough(t *testing.T) {
+	groupID := int64(11)
+	repo := &modelsListAccountRepoStub{
+		byGroup: map[int64][]Account{
+			groupID: {
+				{
+					ID:       1,
+					Platform: PlatformOpenAI,
+					Extra:    map[string]any{"openai_passthrough": true},
+				},
+				{
+					ID:          2,
+					Platform:    PlatformAnthropic,
+					Credentials: map[string]any{"model_mapping": map[string]any{"claude-mapped": "claude-upstream"}},
+				},
+			},
+		},
+	}
+	svc := &GatewayService{
+		accountRepo:        repo,
+		modelsListCache:    gocache.New(time.Minute, time.Minute),
+		modelsListCacheTTL: time.Minute,
+	}
+
+	require.Equal(t, []string{"claude-mapped"}, svc.GetAvailableModels(context.Background(), &groupID, ""))
 }
 
 func TestGatewayHotpathHelpers_CacheTTLAndStickyContext(t *testing.T) {

@@ -15,6 +15,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/Wei-Shaw/sub2api/internal/payment"
 )
@@ -37,6 +38,12 @@ type EasyPay struct {
 	instanceID string
 	config     map[string]string
 	httpClient *http.Client
+}
+
+type easyPayCustomMethod struct {
+	Type         string `json:"type"`
+	UpstreamType string `json:"upstreamType"`
+	DisplayName  string `json:"displayName"`
 }
 
 // NewEasyPay creates a new EasyPay provider.
@@ -95,7 +102,13 @@ func (e *EasyPay) apiBase() string {
 func (e *EasyPay) Name() string        { return "EasyPay" }
 func (e *EasyPay) ProviderKey() string { return payment.TypeEasyPay }
 func (e *EasyPay) SupportedTypes() []payment.PaymentType {
-	return []payment.PaymentType{payment.TypeAlipay, payment.TypeWxpay}
+	types := []payment.PaymentType{payment.TypeAlipay, payment.TypeWxpay}
+	for _, method := range e.customMethods() {
+		if method.Type != "" {
+			types = append(types, method.Type)
+		}
+	}
+	return types
 }
 
 func (e *EasyPay) MerchantIdentityMetadata() map[string]string {
@@ -124,13 +137,14 @@ func (e *EasyPay) CreatePayment(ctx context.Context, req payment.CreatePaymentRe
 // TradeNo is empty; it arrives via the notify callback after payment.
 func (e *EasyPay) createRedirectPayment(req payment.CreatePaymentRequest) (*payment.CreatePaymentResponse, error) {
 	notifyURL, returnURL := e.resolveURLs(req)
+	paymentType := e.upstreamPaymentType(req.PaymentType)
 	params := map[string]string{
-		"pid": e.config["pid"], "type": req.PaymentType,
+		"pid": e.config["pid"], "type": paymentType,
 		"out_trade_no": req.OrderID, "notify_url": notifyURL,
 		"return_url": returnURL, "name": req.Subject,
 		"money": req.Amount,
 	}
-	if cid := e.resolveCID(req.PaymentType); cid != "" {
+	if cid := e.resolveCID(paymentType); cid != "" {
 		params["cid"] = cid
 	}
 	if req.IsMobile {
@@ -150,13 +164,14 @@ func (e *EasyPay) createRedirectPayment(req payment.CreatePaymentRequest) (*paym
 // createAPIPayment calls mapi.php to get payurl/qrcode (existing behavior).
 func (e *EasyPay) createAPIPayment(ctx context.Context, req payment.CreatePaymentRequest) (*payment.CreatePaymentResponse, error) {
 	notifyURL, returnURL := e.resolveURLs(req)
+	paymentType := e.upstreamPaymentType(req.PaymentType)
 	params := map[string]string{
-		"pid": e.config["pid"], "type": req.PaymentType,
+		"pid": e.config["pid"], "type": paymentType,
 		"out_trade_no": req.OrderID, "notify_url": notifyURL,
 		"return_url": returnURL, "name": req.Subject,
 		"money": req.Amount, "clientip": req.ClientIP,
 	}
-	if cid := e.resolveCID(req.PaymentType); cid != "" {
+	if cid := e.resolveCID(paymentType); cid != "" {
 		params["cid"] = cid
 	}
 	if req.IsMobile {
@@ -187,7 +202,53 @@ func (e *EasyPay) createAPIPayment(ctx context.Context, req payment.CreatePaymen
 	if req.IsMobile && resp.PayURL2 != "" {
 		payURL = resp.PayURL2
 	}
-	return &payment.CreatePaymentResponse{TradeNo: resp.TradeNo, PayURL: payURL, QRCode: resp.QRCode}, nil
+	base := e.apiBase()
+	return &payment.CreatePaymentResponse{
+		TradeNo: resp.TradeNo,
+		PayURL:  resolveEasyPayReturnedRef(base, payURL),
+		QRCode:  resolveEasyPayReturnedRef(base, resp.QRCode),
+	}, nil
+}
+
+// resolveEasyPayReturnedRef absolutizes a payurl/payurl2/qrcode reference that
+// mapi.php returned, resolving it against the instance's configured apiBase.
+//
+// EasyPay-compatible upstreams disagree on this field: some answer with a full
+// checkout URL, others with a site-root-relative path such as
+// "/api/pay/toapp/<order>". createRedirectPayment already builds an absolute URL
+// itself (apiBase + "/submit.php?..."), but the mapi.php branch stored whatever
+// came back verbatim, and nothing downstream repairs it —
+// sanitizeCreatePaymentResponseDetails only strips NUL bytes before the value is
+// persisted to pay_url/qr_code. The frontend then feeds qr_code straight into
+// QRCode.toCanvas (PaymentQRCodeView.renderQR), so a relative path becomes a QR
+// whose payload is a bare path: WeChat renders it as text, and pay_url resolves
+// against the gateway's own domain and 404s.
+//
+// That is precisely the outcome the Alipay provider already refuses to produce —
+// "Setting it as QRCode would let the frontend render an unscannable image"
+// (createPagePayTrade) — so EasyPay is brought in line with the same rule.
+//
+// Only references beginning with "/" are resolved. Anything carrying a scheme is
+// already actionable and is returned untouched, which covers both absolute
+// https:// checkout URLs and app deep links (weixin://, wxp://, alipays://). A
+// reference without a leading slash is left alone as well: QR payloads are
+// frequently opaque tokens rather than paths, and rewriting "OrderToken123" into
+// "<apiBase>/OrderToken123" would break a payload that works today — strictly
+// worse than the bug this fixes.
+func resolveEasyPayReturnedRef(apiBase, ref string) string {
+	trimmed := strings.TrimSpace(ref)
+	if !strings.HasPrefix(trimmed, "/") {
+		return ref
+	}
+	base, err := url.Parse(strings.TrimSpace(apiBase))
+	if err != nil || base.Scheme == "" || base.Host == "" {
+		return ref
+	}
+	parsed, err := url.Parse(trimmed)
+	if err != nil || parsed.Scheme != "" {
+		return ref
+	}
+	return base.ResolveReference(parsed).String()
 }
 
 // resolveURLs returns (notifyURL, returnURL) preferring request values,
@@ -204,6 +265,41 @@ func (e *EasyPay) resolveURLs(req payment.CreatePaymentRequest) (string, string)
 	return notifyURL, returnURL
 }
 
+func (e *EasyPay) customMethods() []easyPayCustomMethod {
+	if e == nil {
+		return nil
+	}
+	raw := strings.TrimSpace(e.config["customMethods"])
+	if raw == "" {
+		return nil
+	}
+	var methods []easyPayCustomMethod
+	if err := json.Unmarshal([]byte(raw), &methods); err != nil {
+		return nil
+	}
+	result := make([]easyPayCustomMethod, 0, len(methods))
+	for _, method := range methods {
+		method.Type = strings.TrimSpace(method.Type)
+		method.UpstreamType = strings.TrimSpace(method.UpstreamType)
+		method.DisplayName = strings.TrimSpace(method.DisplayName)
+		if method.Type == "" || method.UpstreamType == "" {
+			continue
+		}
+		result = append(result, method)
+	}
+	return result
+}
+
+func (e *EasyPay) upstreamPaymentType(paymentType string) string {
+	paymentType = strings.TrimSpace(paymentType)
+	for _, method := range e.customMethods() {
+		if paymentType == method.Type {
+			return method.UpstreamType
+		}
+	}
+	return paymentType
+}
+
 func (e *EasyPay) QueryOrder(ctx context.Context, tradeNo string) (*payment.QueryOrderResponse, error) {
 	params := map[string]string{
 		"act": "order", "pid": e.config["pid"],
@@ -213,22 +309,59 @@ func (e *EasyPay) QueryOrder(ctx context.Context, tradeNo string) (*payment.Quer
 	if err != nil {
 		return nil, fmt.Errorf("easypay query: %w", err)
 	}
+	type easyPayQueryData struct {
+		TradeStatus *string `json:"trade_status"`
+		Status      *int    `json:"status"`
+		Money       *string `json:"money"`
+		TradeNo     *string `json:"trade_no"`
+	}
 	var resp struct {
-		Code   int    `json:"code"`
-		Msg    string `json:"msg"`
-		Status int    `json:"status"`
-		Money  string `json:"money"`
+		Code        int              `json:"code"`
+		Msg         string           `json:"msg"`
+		TradeStatus *string          `json:"trade_status"`
+		Status      *int             `json:"status"`
+		Money       *string          `json:"money"`
+		TradeNo     *string          `json:"trade_no"`
+		Data        easyPayQueryData `json:"data"`
 	}
 	if err := json.Unmarshal(body, &resp); err != nil {
 		return nil, fmt.Errorf("easypay parse query: %w", err)
 	}
 	status := payment.ProviderStatusPending
-	if resp.Status == easypayStatusPaid {
+	if resp.TradeStatus != nil {
+		if *resp.TradeStatus == tradeStatusSuccess {
+			status = payment.ProviderStatusPaid
+		}
+	} else if resp.Data.TradeStatus != nil {
+		if *resp.Data.TradeStatus == tradeStatusSuccess {
+			status = payment.ProviderStatusPaid
+		}
+	} else if resp.Status != nil {
+		if *resp.Status == easypayStatusPaid {
+			status = payment.ProviderStatusPaid
+		}
+	} else if resp.Data.Status != nil && *resp.Data.Status == easypayStatusPaid {
 		status = payment.ProviderStatusPaid
 	}
-	amount, _ := strconv.ParseFloat(resp.Money, 64)
+
+	money := ""
+	if resp.Money != nil {
+		money = *resp.Money
+	} else if resp.Data.Money != nil {
+		money = *resp.Data.Money
+	}
+	responseTradeNo := tradeNo
+	if resp.TradeNo != nil {
+		if *resp.TradeNo != "" {
+			responseTradeNo = *resp.TradeNo
+		}
+	} else if resp.Data.TradeNo != nil && *resp.Data.TradeNo != "" {
+		responseTradeNo = *resp.Data.TradeNo
+	}
+
+	amount, _ := strconv.ParseFloat(money, 64)
 	return &payment.QueryOrderResponse{
-		TradeNo:  tradeNo,
+		TradeNo:  responseTradeNo,
 		Status:   status,
 		Amount:   amount,
 		Metadata: e.MerchantIdentityMetadata(),
@@ -391,7 +524,11 @@ func summarizeEasyPayResponse(body []byte) string {
 		return "<empty>"
 	}
 	if len(summary) > maxEasypayErrorSummary {
-		return summary[:maxEasypayErrorSummary] + "..."
+		truncated := summary[:maxEasypayErrorSummary]
+		for len(truncated) > 0 && !utf8.ValidString(truncated) {
+			truncated = truncated[:len(truncated)-1]
+		}
+		return truncated + "..."
 	}
 	return summary
 }

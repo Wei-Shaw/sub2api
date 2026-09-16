@@ -87,13 +87,18 @@ func (r *promoCodeRepository) GetByCodeForUpdate(ctx context.Context, code strin
 	return promoCodeEntityToService(m), nil
 }
 
+// Update 写入管理员可编辑的字段。
+//
+// 这里刻意不写 used_count：它由兑换路径的 IncrementUsedCount 原子递增，
+// 而 used_count >= max_uses 正是"优惠码用完了"的判定依据。若管理员编辑
+// （改有效期、改额度……）时按快照把 used_count 回写，并发的兑换计数就会被抹掉，
+// 兑换次数统计随之失真。PromoService.Update 也从不修改该字段。
 func (r *promoCodeRepository) Update(ctx context.Context, code *service.PromoCode) error {
 	client := clientFromContext(ctx, r.client)
 	builder := client.PromoCode.UpdateOneID(code.ID).
 		SetCode(code.Code).
 		SetBonusAmount(code.BonusAmount).
 		SetMaxUses(code.MaxUses).
-		SetUsedCount(code.UsedCount).
 		SetStatus(code.Status).
 		SetNotes(code.Notes)
 

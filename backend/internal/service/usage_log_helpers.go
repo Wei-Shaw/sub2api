@@ -10,14 +10,23 @@ func optionalTrimmedStringPtr(raw string) *string {
 	return &trimmed
 }
 
-// optionalNonEqualStringPtr returns a pointer to value if it is non-empty and
-// differs from compare; otherwise nil. Used to store upstream_model only when
-// it differs from the requested model.
-func optionalNonEqualStringPtr(value, compare string) *string {
-	if value == "" || value == compare {
-		return nil
+func optionalStringValue(value *string) string {
+	if value == nil {
+		return ""
 	}
-	return &value
+	return strings.TrimSpace(*value)
+}
+
+// coalesceRequestedReasoningEffort prefers the client-requested value and falls
+// back to the effective/forwarded effort for historical or unmapped rows.
+func coalesceRequestedReasoningEffort(requested, forwarded *string) *string {
+	if trimmed := optionalStringValue(requested); trimmed != "" {
+		return &trimmed
+	}
+	if trimmed := optionalStringValue(forwarded); trimmed != "" {
+		return &trimmed
+	}
+	return nil
 }
 
 func forwardResultBillingModel(requestedModel, upstreamModel string) string {

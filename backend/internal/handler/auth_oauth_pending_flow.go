@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"net/url"
 	"strings"
@@ -31,10 +32,12 @@ const (
 	oauthPendingBrowserCookieName = "oauth_pending_browser_session"
 	oauthPendingSessionCookiePath = "/api/v1/auth/oauth"
 	oauthPendingSessionCookieName = "oauth_pending_session"
+	oauthPromoCodeCookieName      = "oauth_promo_code"
 	oauthPendingCookieMaxAgeSec   = 10 * 60
 	oauthPendingChoiceStep        = "choose_account_action_required"
 
 	oauthCompletionResponseKey = "completion_response"
+	oauthPromoCodeStateKey     = "promo_code"
 )
 
 var pendingOAuthCreateAccountPreCommitHook func(context.Context, *dbent.PendingAuthSession) error
@@ -63,20 +66,25 @@ type bindPendingOAuthLoginRequest struct {
 }
 
 type createPendingOAuthAccountRequest struct {
-	Email            string `json:"email" binding:"required,email"`
-	VerifyCode       string `json:"verify_code,omitempty"`
-	Password         string `json:"password" binding:"required,min=6"`
-	InvitationCode   string `json:"invitation_code,omitempty"`
-	AffCode          string `json:"aff_code,omitempty"`
-	AdoptDisplayName *bool  `json:"adopt_display_name,omitempty"`
-	AdoptAvatar      *bool  `json:"adopt_avatar,omitempty"`
+	Email                 string `json:"email" binding:"required,email"`
+	VerifyCode            string `json:"verify_code,omitempty"`
+	Password              string `json:"password" binding:"required,min=6"`
+	TurnstileToken        string `json:"turnstile_token,omitempty"`
+	TencentCaptchaTicket  string `json:"tencent_captcha_ticket,omitempty"`
+	TencentCaptchaRandstr string `json:"tencent_captcha_randstr,omitempty"`
+	InvitationCode        string `json:"invitation_code,omitempty"`
+	AffCode               string `json:"aff_code,omitempty"`
+	AdoptDisplayName      *bool  `json:"adopt_display_name,omitempty"`
+	AdoptAvatar           *bool  `json:"adopt_avatar,omitempty"`
 }
 
 type sendPendingOAuthVerifyCodeRequest struct {
-	Email             string `json:"email" binding:"required,email"`
-	TurnstileToken    string `json:"turnstile_token,omitempty"`
-	PendingAuthToken  string `json:"pending_auth_token,omitempty"`
-	PendingOAuthToken string `json:"pending_oauth_token,omitempty"`
+	Email                 string `json:"email" binding:"required,email"`
+	TurnstileToken        string `json:"turnstile_token,omitempty"`
+	TencentCaptchaTicket  string `json:"tencent_captcha_ticket,omitempty"`
+	TencentCaptchaRandstr string `json:"tencent_captcha_randstr,omitempty"`
+	PendingAuthToken      string `json:"pending_auth_token,omitempty"`
+	PendingOAuthToken     string `json:"pending_oauth_token,omitempty"`
 }
 
 func (r bindPendingOAuthLoginRequest) adoptionDecision() oauthAdoptionDecisionRequest {
@@ -160,6 +168,53 @@ func readOAuthPendingSessionCookie(c *gin.Context) (string, error) {
 	return readCookieDecoded(c, oauthPendingSessionCookieName)
 }
 
+func captureOAuthPromoCode(c *gin.Context, secure bool) {
+	promoCode := strings.TrimSpace(c.Query("promo_code"))
+	if promoCode == "" {
+		clearOAuthPromoCodeCookie(c, secure)
+		return
+	}
+	http.SetCookie(c.Writer, &http.Cookie{
+		Name:     oauthPromoCodeCookieName,
+		Value:    encodeCookieValue(promoCode),
+		Path:     oauthPendingBrowserCookiePath,
+		MaxAge:   oauthPendingCookieMaxAgeSec,
+		HttpOnly: true,
+		Secure:   secure,
+		SameSite: http.SameSiteLaxMode,
+	})
+}
+
+func clearOAuthPromoCodeCookie(c *gin.Context, secure bool) {
+	http.SetCookie(c.Writer, &http.Cookie{
+		Name:     oauthPromoCodeCookieName,
+		Value:    "",
+		Path:     oauthPendingBrowserCookiePath,
+		MaxAge:   -1,
+		HttpOnly: true,
+		Secure:   secure,
+		SameSite: http.SameSiteLaxMode,
+	})
+}
+
+func readOAuthPromoCode(c *gin.Context) string {
+	if c == nil {
+		return ""
+	}
+	promoCode, err := readCookieDecoded(c, oauthPromoCodeCookieName)
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(promoCode)
+}
+
+func pendingOAuthPromoCode(session *dbent.PendingAuthSession) string {
+	if session == nil {
+		return ""
+	}
+	return pendingSessionStringValue(session.LocalFlowState, oauthPromoCodeStateKey)
+}
+
 func redirectToFrontendCallback(c *gin.Context, frontendCallback string) {
 	u, err := url.Parse(frontendCallback)
 	if err != nil {
@@ -182,6 +237,13 @@ func (h *AuthHandler) createOAuthPendingSession(c *gin.Context, payload oauthPen
 		return err
 	}
 
+	localFlowState := map[string]any{
+		oauthCompletionResponseKey: payload.CompletionResponse,
+	}
+	if promoCode := readOAuthPromoCode(c); promoCode != "" {
+		localFlowState[oauthPromoCodeStateKey] = promoCode
+	}
+
 	session, err := svc.CreatePendingSession(c.Request.Context(), service.CreatePendingAuthSessionInput{
 		Intent:                 strings.TrimSpace(payload.Intent),
 		Identity:               payload.Identity,
@@ -190,11 +252,17 @@ func (h *AuthHandler) createOAuthPendingSession(c *gin.Context, payload oauthPen
 		RedirectTo:             strings.TrimSpace(payload.RedirectTo),
 		BrowserSessionKey:      strings.TrimSpace(payload.BrowserSessionKey),
 		UpstreamIdentityClaims: payload.UpstreamIdentityClaims,
-		LocalFlowState: map[string]any{
-			oauthCompletionResponseKey: payload.CompletionResponse,
-		},
+		LocalFlowState:         localFlowState,
 	})
 	if err != nil {
+		slog.Error("pending auth session create failed",
+			"intent", strings.TrimSpace(payload.Intent),
+			"provider_type", strings.TrimSpace(payload.Identity.ProviderType),
+			"provider_key", strings.TrimSpace(payload.Identity.ProviderKey),
+			"provider_subject_len", len(strings.TrimSpace(payload.Identity.ProviderSubject)),
+			"resolved_email_len", len(strings.TrimSpace(payload.ResolvedEmail)),
+			"has_target_user", payload.TargetUserID != nil,
+			"error", err.Error())
 		return infraerrors.InternalServer("PENDING_AUTH_SESSION_CREATE_FAILED", "failed to create pending auth session").WithCause(err)
 	}
 
@@ -264,6 +332,22 @@ func pendingSessionStringValue(values map[string]any, key string) string {
 
 func pendingSessionWantsInvitation(payload map[string]any) bool {
 	return strings.EqualFold(strings.TrimSpace(pendingSessionStringValue(payload, "error")), "invitation_required")
+}
+
+// pendingSessionRequiresEmailCompletion 判断 callback 写入的 completion payload 是否处于"补邮箱"状态。
+// 钉钉跨组织/staff 邮箱缺失时进入此状态：前端跳到补邮箱页，exchange 不应走 adoption apply。
+func pendingSessionRequiresEmailCompletion(payload map[string]any) bool {
+	if v, ok := payload["requires_email_completion"].(bool); ok && v {
+		return true
+	}
+	return strings.EqualFold(strings.TrimSpace(pendingSessionStringValue(payload, "step")), "email_completion")
+}
+
+// pendingSessionRequiresBindLogin 判断 callback 写入的 completion payload 是否处于"必须绑定已有账户"状态。
+// 钉钉 signupBlocked=true（注册关 + 钉钉企业豁免关）时进入此状态：前端渲染 bind_login 表单，
+// exchange 不应消费 session，否则后续 /pending/bind-login 找不到 session。
+func pendingSessionRequiresBindLogin(payload map[string]any) bool {
+	return strings.EqualFold(strings.TrimSpace(pendingSessionStringValue(payload, "step")), "bind_login_required")
 }
 
 func pendingOAuthCompletionCanIssueTokenPair(session *dbent.PendingAuthSession, payload map[string]any) bool {
@@ -485,7 +569,8 @@ func (h *AuthHandler) SendPendingOAuthVerifyCode(c *gin.Context) {
 		return
 	}
 
-	if err := h.authService.VerifyTurnstile(c.Request.Context(), req.TurnstileToken, ip.GetClientIP(c)); err != nil {
+	proof := captchaProof(req.TurnstileToken, req.TencentCaptchaTicket, req.TencentCaptchaRandstr)
+	if err := h.authService.VerifyCaptcha(c.Request.Context(), proof, ip.GetClientIP(c)); err != nil {
 		response.ErrorFrom(c, err)
 		return
 	}
@@ -520,7 +605,7 @@ func (h *AuthHandler) SendPendingOAuthVerifyCode(c *gin.Context) {
 		return
 	}
 
-	result, err := h.authService.SendPendingOAuthVerifyCode(c.Request.Context(), req.Email)
+	result, err := h.authService.SendPendingOAuthVerifyCode(c.Request.Context(), req.Email, c.GetHeader("Accept-Language"))
 	if err != nil {
 		response.ErrorFrom(c, err)
 		return
@@ -1467,8 +1552,10 @@ func normalizePendingOAuthCompletionResponse(payload map[string]any) map[string]
 		delete(normalized, key)
 	}
 	step := strings.ToLower(strings.TrimSpace(pendingSessionStringValue(normalized, "step")))
+	// 把多种 choice 别名归一为 oauthPendingChoiceStep；bind_login_required 是独立终态
+	// （前端渲染 needsBindLogin 而非 needsChooser），故不能并入归一化列表。
 	switch step {
-	case "choice", "choose_account_action", "choose_account", "choose", "email_required", "bind_login_required":
+	case "choice", "choose_account_action", "choose_account", "choose", "email_required":
 		normalized["step"] = oauthPendingChoiceStep
 	}
 	if strings.EqualFold(strings.TrimSpace(pendingSessionStringValue(normalized, "step")), oauthPendingChoiceStep) {
@@ -1594,6 +1681,8 @@ func (h *AuthHandler) bindPendingOAuthLogin(c *gin.Context, provider string) {
 	}
 
 	h.authService.RecordSuccessfulLogin(c.Request.Context(), user.ID)
+	// bindPendingOAuthLogin = 绑定已有账户登录，不动 users.username（用户已有自己的名字）
+	h.maybeSyncDingTalkAfterLogin(c.Request.Context(), session, user.ID)
 	tokenPair, err := h.authService.GenerateTokenPair(c.Request.Context(), user, "")
 	if err != nil {
 		response.InternalError(c, "Failed to generate token pair")
@@ -1668,6 +1757,11 @@ func (h *AuthHandler) createPendingOAuthAccount(c *gin.Context, provider string)
 		return
 	}
 	if err := h.ensureBackendModeAllowsNewUserLogin(c.Request.Context()); err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	proof := captchaProof(req.TurnstileToken, req.TencentCaptchaTicket, req.TencentCaptchaRandstr)
+	if err := h.authService.VerifyCaptcha(c.Request.Context(), proof, ip.GetClientIP(c)); err != nil {
 		response.ErrorFrom(c, err)
 		return
 	}
@@ -1791,7 +1885,10 @@ func (h *AuthHandler) createPendingOAuthAccount(c *gin.Context, provider string)
 		return
 	}
 
+	h.authService.ApplyOAuthSignupPromoCode(c.Request.Context(), user.ID, pendingOAuthPromoCode(session))
 	h.authService.RecordSuccessfulLogin(c.Request.Context(), user.ID)
+	// createPendingOAuthAccount = 注册新账户，需要把钉钉昵称同步到 users.username 作为初始值
+	h.maybeSyncDingTalkAfterRegistration(c.Request.Context(), session, user.ID)
 	clearCookies()
 	writeOAuthTokenPairResponse(c, tokenPair)
 }
@@ -1890,6 +1987,29 @@ func (h *AuthHandler) ExchangePendingOAuthCompletion(c *gin.Context) {
 			}
 			_ = decision
 		}
+		response.Success(c, payload)
+		return
+	}
+	if pendingSessionRequiresEmailCompletion(payload) {
+		response.Success(c, payload)
+		return
+	}
+	if pendingSessionRequiresBindLogin(payload) {
+		response.Success(c, payload)
+		return
+	}
+	// ─── 安全修复（账号接管 0day）────────────────────────────────────────────
+	// 非终态 session（如 choose_account_action_required）的 TargetUserID 可能来自
+	// 攻击者提交的他人邮箱：createPendingOAuthAccount / SendPendingOAuthVerifyCode
+	// 发现邮箱已存在时会把本 session 指向该邮箱用户，全程无密码、无邮箱验证码、
+	// 无账号所有权证明。若此时带着 adoption decision 继续执行，下方的
+	// applyPendingOAuthAdoption 会把本 OAuth identity 直接绑定到 TargetUserID，
+	// 攻击者随后再次 OAuth 登录即被系统识别为受害者本人（完整账号接管）。
+	// 只有两类 session 允许在此处执行 adoption/binding：
+	//   1. canIssueTokenPair == true —— 登录终态，identity 已安全绑定该用户；
+	//   2. intent == bind_current_user —— 已登录用户主动发起绑定（绑定目标来自登录态 cookie）。
+	// 其余状态一律只返回 payload，不绑定、不消费 session。
+	if !canIssueTokenPair && !strings.EqualFold(strings.TrimSpace(session.Intent), oauthIntentBindCurrentUser) {
 		response.Success(c, payload)
 		return
 	}

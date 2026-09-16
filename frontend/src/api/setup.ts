@@ -2,10 +2,11 @@
  * Setup API endpoints
  */
 import axios from 'axios'
+import { buildGatewayUrl } from './url'
 
 // Create a separate client for setup endpoints (not under /api/v1)
 const setupClient = axios.create({
-  baseURL: '',
+  baseURL: buildGatewayUrl('/').replace(/\/+$/, ''),
   timeout: 30000,
   headers: {
     'Content-Type': 'application/json'
@@ -29,6 +30,7 @@ export interface DatabaseConfig {
 export interface RedisConfig {
   host: string
   port: number
+  username: string
   password: string
   db: number
   enable_tls: boolean

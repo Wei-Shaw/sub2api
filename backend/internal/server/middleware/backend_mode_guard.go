@@ -29,7 +29,14 @@ func BackendModeUserGuard(settingService *service.SettingService) gin.HandlerFun
 
 func backendModeAllowsAuthPath(path string) bool {
 	path = strings.ToLower(strings.TrimSpace(path))
-	for _, suffix := range []string{"/auth/login", "/auth/login/2fa", "/auth/logout", "/auth/refresh"} {
+	for _, suffix := range []string{
+		"/auth/login",
+		"/auth/login/2fa",
+		"/auth/passkey/login/begin",
+		"/auth/passkey/login/finish",
+		"/auth/logout",
+		"/auth/refresh",
+	} {
 		if strings.HasSuffix(path, suffix) {
 			return true
 		}
@@ -40,15 +47,23 @@ func backendModeAllowsAuthPath(path string) bool {
 		"/auth/oauth/wechat/callback",
 		"/auth/oauth/wechat/payment/callback",
 		"/auth/oauth/oidc/callback",
+		"/auth/oauth/github/callback",
+		"/auth/oauth/google/callback",
+		"/auth/oauth/dingtalk/callback",
+		"/auth/oauth/github/complete-registration",
+		"/auth/oauth/google/complete-registration",
 		"/auth/oauth/linuxdo/complete-registration",
 		"/auth/oauth/wechat/complete-registration",
 		"/auth/oauth/oidc/complete-registration",
+		"/auth/oauth/dingtalk/complete-registration",
 		"/auth/oauth/linuxdo/create-account",
 		"/auth/oauth/wechat/create-account",
 		"/auth/oauth/oidc/create-account",
+		"/auth/oauth/dingtalk/create-account",
 		"/auth/oauth/linuxdo/bind-login",
 		"/auth/oauth/wechat/bind-login",
 		"/auth/oauth/oidc/bind-login",
+		"/auth/oauth/dingtalk/bind-login",
 	} {
 		if strings.HasSuffix(path, suffix) {
 			return true

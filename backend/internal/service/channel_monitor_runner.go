@@ -2,7 +2,9 @@ package service
 
 import (
 	"context"
+	"errors"
 	"log/slog"
+	"math/rand/v2"
 	"sync"
 	"time"
 
@@ -68,7 +70,23 @@ type scheduledMonitor struct {
 	id       int64
 	name     string
 	interval time.Duration
+	jitter   time.Duration // 每轮 ± [0, jitter] 的均匀随机偏移；0 = 固定间隔
 	cancel   context.CancelFunc
+}
+
+// nextDelay 计算下一次触发的等待时长：interval ± [0, jitter] 的均匀随机偏移。
+// 校验链路已保证 interval - jitter >= monitorMinIntervalSeconds，
+// 这里仍 clamp 一次下限，兜底数据库中违反约束的脏数据。
+func (t *scheduledMonitor) nextDelay() time.Duration {
+	if t.jitter <= 0 {
+		return t.interval
+	}
+	offset := time.Duration(rand.Int64N(int64(2*t.jitter) + 1)) // [0, 2*jitter]
+	d := t.interval - t.jitter + offset
+	if floor := monitorMinIntervalSeconds * time.Second; d < floor {
+		d = floor
+	}
+	return d
 }
 
 // NewChannelMonitorRunner 构造调度器。Start 在 wire 中调用一次。
@@ -122,14 +140,14 @@ func (r *ChannelMonitorRunner) Start() {
 }
 
 // Schedule 为指定监控创建（或重置）独立定时任务。
-//   - m.Enabled=false → 等同于 Unschedule(m.ID)
+//   - m.Enabled=false 或 APIKeyDecryptFailed=true → 等同于 Unschedule(m.ID)
 //   - 已存在的任务会先被取消再重建（适用于 IntervalSeconds 变更场景）
 //   - 新任务立即触发首次检测，之后按 IntervalSeconds 周期触发
 func (r *ChannelMonitorRunner) Schedule(m *ChannelMonitor) {
 	if r == nil || m == nil {
 		return
 	}
-	if !m.Enabled {
+	if !m.Enabled || m.APIKeyDecryptFailed {
 		r.Unschedule(m.ID)
 		return
 	}
@@ -140,6 +158,10 @@ func (r *ChannelMonitorRunner) Schedule(m *ChannelMonitor) {
 		slog.Error("channel_monitor: skip schedule for invalid interval",
 			"monitor_id", m.ID, "interval_seconds", m.IntervalSeconds)
 		return
+	}
+	jitter := time.Duration(m.JitterSeconds) * time.Second
+	if jitter < 0 {
+		jitter = 0
 	}
 
 	r.mu.Lock()
@@ -165,6 +187,7 @@ func (r *ChannelMonitorRunner) Schedule(m *ChannelMonitor) {
 		id:       m.ID,
 		name:     m.Name,
 		interval: interval,
+		jitter:   jitter,
 		cancel:   cancel,
 	}
 	r.tasks[m.ID] = task
@@ -211,20 +234,22 @@ func (r *ChannelMonitorRunner) Stop() {
 }
 
 // runScheduled 单个监控的循环：立即触发首次（满足"新建/启用即跑"），
-// 之后按 interval 周期触发；ctx 取消即退出。
+// 之后按 interval ± jitter 周期触发；ctx 取消即退出。
+// 用 timer 而非 ticker：jitter > 0 时每轮等待时长都需要重新随机化。
 func (r *ChannelMonitorRunner) runScheduled(ctx context.Context, task *scheduledMonitor) {
 	defer r.wg.Done()
 
 	r.fire(ctx, task)
 
-	ticker := time.NewTicker(task.interval)
-	defer ticker.Stop()
+	timer := time.NewTimer(task.nextDelay())
+	defer timer.Stop()
 	for {
 		select {
 		case <-ctx.Done():
 			return
-		case <-ticker.C:
+		case <-timer.C:
 			r.fire(ctx, task)
+			timer.Reset(task.nextDelay())
 		}
 	}
 }
@@ -232,8 +257,11 @@ func (r *ChannelMonitorRunner) runScheduled(ctx context.Context, task *scheduled
 // fire 提交一次检测到 worker 池。功能开关关闭时跳过本次（不取消任务，
 // 重新启用时立即恢复）；池满或重复在飞时也跳过。
 func (r *ChannelMonitorRunner) fire(ctx context.Context, task *scheduledMonitor) {
-	if r.settingService != nil && !r.settingService.GetChannelMonitorRuntime(ctx).Enabled {
-		return
+	if r.settingService != nil {
+		rt := r.settingService.GetChannelMonitorRuntime(ctx)
+		if !rt.ActiveProbesAllowed() {
+			return
+		}
 	}
 	if !r.tryAcquireInFlight(task.id) {
 		slog.Debug("channel_monitor: skip already in-flight",
@@ -269,7 +297,7 @@ func (r *ChannelMonitorRunner) releaseInFlight(id int64) {
 	r.inFlightMu.Unlock()
 }
 
-// runOne 执行单个监控的检测。所有错误只记日志，不熔断。
+// runOne 执行单个监控的检测。普通错误只记日志；API key 解密失败会撤销任务。
 // 任务结束时（含 panic recover）必须释放 in-flight 槽。
 func (r *ChannelMonitorRunner) runOne(id int64, name string) {
 	ctx, cancel := context.WithTimeout(context.Background(), monitorRequestTimeout+monitorPingTimeout+monitorRunOneBuffer)
@@ -285,6 +313,9 @@ func (r *ChannelMonitorRunner) runOne(id int64, name string) {
 	}()
 
 	if _, err := r.svc.RunCheck(ctx, id); err != nil {
+		if errors.Is(err, ErrChannelMonitorAPIKeyDecryptFailed) {
+			r.Unschedule(id)
+		}
 		slog.Warn("channel_monitor: run check failed",
 			"monitor_id", id, "name", name, "error", err)
 	}

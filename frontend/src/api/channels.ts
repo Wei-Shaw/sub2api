@@ -14,6 +14,10 @@ export interface UserAvailableGroup {
   subscription_type: string
   /** 分组默认倍率。用户专属倍率（若有）通过 /groups/rates 获取后在前端 join。 */
   rate_multiplier: number
+  peak_rate_enabled: boolean
+  peak_start: string
+  peak_end: string
+  peak_rate_multiplier: number
   /** true = 专属分组（小范围授权）；false = 公开分组。 */
   is_exclusive: boolean
 }
@@ -25,7 +29,12 @@ export interface UserPricingInterval {
   input_price: number | null
   output_price: number | null
   cache_write_price: number | null
+  cache_write_1h_price?: number | null
   cache_read_price: number | null
+  input_multiplier?: number | null
+  output_multiplier?: number | null
+  cache_write_multiplier?: number | null
+  cache_read_multiplier?: number | null
   per_request_price: number | null
 }
 
@@ -34,7 +43,10 @@ export interface UserSupportedModelPricing {
   input_price: number | null
   output_price: number | null
   cache_write_price: number | null
+  cache_write_1h_price?: number | null
   cache_read_price: number | null
+  max_reasoning_effort_multiplier?: number | null
+  image_input_price: number | null
   image_output_price: number | null
   per_request_price: number | null
   intervals: UserPricingInterval[]

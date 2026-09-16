@@ -121,6 +121,16 @@ linters:
       # Default: true — must be true, ent generates 130K+ lines of code
       generated-is-used: true
 
+  exclusions:
+    rules:
+      # G703/G704 污点分析在测试文件中只会命中 httptest mock 与测试者自设的
+      # 环境变量路径，不构成攻击面；且该分析跨环境结果不稳定（本地/CI 报告的
+      # 位置集合不同），逐点 nolint 无法收敛，故按路径豁免。生产代码不豁免，
+      # 必须逐点 //nolint:gosec 并写明信任边界。
+      - path: '_test\.go$'
+        linters: [ gosec ]
+        text: 'G70[34]'
+
 formatters:
   enable:
     - gofmt

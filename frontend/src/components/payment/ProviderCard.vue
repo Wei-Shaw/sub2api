@@ -69,13 +69,14 @@ import Icon from '@/components/icons/Icon.vue'
 import ToggleSwitch from './ToggleSwitch.vue'
 import type { ProviderInstance } from '@/types/payment'
 import type { TypeOption } from './providerConfig'
-import { PAYMENT_MODE_QRCODE, PAYMENT_MODE_POPUP } from './providerConfig'
+import { PAYMENT_MODE_QRCODE, PAYMENT_MODE_POPUP, PAYMENT_MODE_REDIRECT } from './providerConfig'
 
 const PROVIDER_KEY_LABELS: Record<string, string> = {
   easypay: 'admin.settings.payment.providerEasypay',
   alipay: 'admin.settings.payment.providerAlipay',
   wxpay: 'admin.settings.payment.providerWxpay',
   stripe: 'admin.settings.payment.providerStripe',
+  airwallex: 'admin.settings.payment.providerAirwallex',
 }
 
 const props = defineProps<{
@@ -98,10 +99,11 @@ const keyLabel = computed(() => t(PROVIDER_KEY_LABELS[props.provider.provider_ke
 const modeLabel = computed(() => {
   if (props.provider.payment_mode === PAYMENT_MODE_QRCODE) return t('admin.settings.payment.modeQRCode')
   if (props.provider.payment_mode === PAYMENT_MODE_POPUP) return t('admin.settings.payment.modePopup')
+  if (props.provider.payment_mode === PAYMENT_MODE_REDIRECT) return t('admin.settings.payment.modeRedirect')
   return ''
 })
 
 function isSelected(type: string): boolean {
-  return props.provider.supported_types.includes(type)
+  return Array.isArray(props.provider.supported_types) && props.provider.supported_types.includes(type)
 }
 </script>

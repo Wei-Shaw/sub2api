@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"net/url"
 	"strings"
@@ -39,6 +40,29 @@ type openAIWSClientConn interface {
 	Close() error
 }
 
+// openAIWSIdlePingCapable is intentionally separate from openAIWSClientConn.
+// A pool probe happens while no goroutine is reading an idle connection, which
+// is not safe for every WebSocket implementation.
+type openAIWSIdlePingCapable interface {
+	SupportsIdlePingWithoutReader() bool
+}
+
+// openAIWSReaderLoopCapable 声明该实现的控制帧只在阻塞读期间被消费，
+// 连接池需为其常驻一个读循环，否则空闲连接无法应答上游 ping。
+type openAIWSReaderLoopCapable interface {
+	RequiresReaderLoop() bool
+}
+
+// openAIWSUpstreamPingCounter 报告连接收到过多少个上游 ping 帧，用于核对读循环是否在应答保活。
+type openAIWSUpstreamPingCounter interface {
+	UpstreamPingCount() int64
+}
+
+// openAIWSForceCloser 不做关闭握手直接切断连接，用于对端已不响应的场景。
+type openAIWSForceCloser interface {
+	CloseNow() error
+}
+
 // openAIWSClientDialer 抽象 WS 建连器。
 type openAIWSClientDialer interface {
 	Dial(ctx context.Context, wsURL string, headers http.Header, proxyURL string) (openAIWSClientConn, int, http.Header, error)
@@ -61,6 +85,28 @@ type coderOpenAIWSClientDialer struct {
 	proxyMisses  atomic.Int64
 }
 
+// openAIWSHandshakeError keeps a bounded, non-logged HTTP error body so the
+// Agent Identity recovery path can distinguish an invalid task from other
+// 401 handshake failures.
+type openAIWSHandshakeError struct {
+	Body []byte
+	Err  error
+}
+
+func (e *openAIWSHandshakeError) Error() string {
+	if e == nil || e.Err == nil {
+		return "openai ws handshake failed"
+	}
+	return e.Err.Error()
+}
+
+func (e *openAIWSHandshakeError) Unwrap() error {
+	if e == nil {
+		return nil
+	}
+	return e.Err
+}
+
 type openAIWSProxyClientEntry struct {
 	client           *http.Client
 	lastUsedUnixNano int64
@@ -77,9 +123,14 @@ func (d *coderOpenAIWSClientDialer) Dial(
 		return nil, 0, nil, errors.New("ws url is empty")
 	}
 
+	wrapped := &coderOpenAIWSClientConn{}
 	opts := &coderws.DialOptions{
 		HTTPHeader:      cloneHeader(headers),
 		CompressionMode: coderws.CompressionContextTakeover,
+		OnPingReceived: func(context.Context, []byte) bool {
+			wrapped.upstreamPings.Add(1)
+			return true
+		},
 	}
 	if proxy := strings.TrimSpace(proxyURL); proxy != "" {
 		proxyClient, err := d.proxyHTTPClient(proxy)
@@ -97,7 +148,12 @@ func (d *coderOpenAIWSClientDialer) Dial(
 			status = resp.StatusCode
 			respHeaders = cloneHeader(resp.Header)
 		}
-		return nil, status, respHeaders, err
+		var body []byte
+		if resp != nil && resp.Body != nil {
+			body, _ = io.ReadAll(io.LimitReader(resp.Body, 8<<10))
+			_ = resp.Body.Close()
+		}
+		return nil, status, respHeaders, &openAIWSHandshakeError{Body: body, Err: err}
 	}
 	// coder/websocket 默认单消息读取上限为 32KB，Codex WS 事件（如 rate_limits/大 delta）
 	// 可能超过该阈值，需显式提高上限，避免本地 read_fail(message too big)。
@@ -106,7 +162,8 @@ func (d *coderOpenAIWSClientDialer) Dial(
 	if resp != nil {
 		respHeaders = cloneHeader(resp.Header)
 	}
-	return &coderOpenAIWSClientConn{conn: conn}, 0, respHeaders, nil
+	wrapped.conn = conn
+	return wrapped, 0, respHeaders, nil
 }
 
 func (d *coderOpenAIWSClientDialer) proxyHTTPClient(proxy string) (*http.Client, error) {
@@ -232,7 +289,15 @@ func (d *coderOpenAIWSClientDialer) SnapshotTransportMetrics() OpenAIWSTransport
 }
 
 type coderOpenAIWSClientConn struct {
-	conn *coderws.Conn
+	conn          *coderws.Conn
+	upstreamPings atomic.Int64
+}
+
+func (c *coderOpenAIWSClientConn) UpstreamPingCount() int64 {
+	if c == nil {
+		return 0
+	}
+	return c.upstreamPings.Load()
 }
 
 var _ openaiwsv2.FrameConn = (*coderOpenAIWSClientConn)(nil)
@@ -301,12 +366,33 @@ func (c *coderOpenAIWSClientConn) Ping(ctx context.Context) error {
 	return c.conn.Ping(ctx)
 }
 
+// SupportsIdlePingWithoutReader reports the actual coder/websocket contract.
+// Conn.Ping waits for a pong, while control frames are only consumed by Read.
+// Without a reader, using Ping as a health probe would deterministically time
+// out a healthy socket; the pool compensates with a resident reader loop.
+func (*coderOpenAIWSClientConn) SupportsIdlePingWithoutReader() bool {
+	return false
+}
+
+// RequiresReaderLoop 让池为 coder/websocket 连接常驻读循环，空闲期也能应答 ping。
+func (*coderOpenAIWSClientConn) RequiresReaderLoop() bool {
+	return true
+}
+
 func (c *coderOpenAIWSClientConn) Close() error {
 	if c == nil || c.conn == nil {
 		return nil
 	}
 	// Close 为幂等，忽略重复关闭错误。
 	_ = c.conn.Close(coderws.StatusNormalClosure, "")
+	_ = c.conn.CloseNow()
+	return nil
+}
+
+func (c *coderOpenAIWSClientConn) CloseNow() error {
+	if c == nil || c.conn == nil {
+		return nil
+	}
 	_ = c.conn.CloseNow()
 	return nil
 }

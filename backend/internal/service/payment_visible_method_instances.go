@@ -16,8 +16,7 @@ func enabledVisibleMethodsForProvider(providerKey, supportedTypes string) []stri
 	methodSet := make(map[string]struct{}, 2)
 	addMethod := func(method string) {
 		method = NormalizeVisibleMethod(method)
-		switch method {
-		case payment.TypeAlipay, payment.TypeWxpay:
+		if method != "" {
 			methodSet[method] = struct{}{}
 		}
 	}
@@ -55,6 +54,14 @@ func enabledVisibleMethodsForProvider(providerKey, supportedTypes string) []stri
 	for _, method := range []string{payment.TypeAlipay, payment.TypeWxpay} {
 		if _, ok := methodSet[method]; ok {
 			methods = append(methods, method)
+			delete(methodSet, method)
+		}
+	}
+	for _, supportedType := range splitTypes(supportedTypes) {
+		method := NormalizeVisibleMethod(supportedType)
+		if _, ok := methodSet[method]; ok {
+			methods = append(methods, method)
+			delete(methodSet, method)
 		}
 	}
 	return methods
@@ -215,7 +222,7 @@ func (s *PaymentConfigService) resolveEnabledVisibleMethodInstance(
 	}
 
 	method = NormalizeVisibleMethod(method)
-	if method != payment.TypeAlipay && method != payment.TypeWxpay {
+	if method == "" {
 		return nil, nil
 	}
 
@@ -239,4 +246,18 @@ func (s *PaymentConfigService) resolveEnabledVisibleMethodInstance(
 		return &dbent.PaymentProviderInstance{ProviderKey: ""}, nil
 	}
 	return selectVisibleMethodInstanceByProviderKey(matching, providerKey), nil
+}
+
+// UsesOfficialAlipayVisibleMethod reports whether the user-facing Alipay method
+// currently resolves to an enabled official Alipay provider instance.
+func (s *PaymentConfigService) UsesOfficialAlipayVisibleMethod(ctx context.Context) (bool, error) {
+	instance, err := s.resolveEnabledVisibleMethodInstance(ctx, payment.TypeAlipay)
+	if err != nil {
+		return false, err
+	}
+	return isOfficialAlipayProviderInstance(instance), nil
+}
+
+func isOfficialAlipayProviderInstance(instance *dbent.PaymentProviderInstance) bool {
+	return instance != nil && strings.EqualFold(strings.TrimSpace(instance.ProviderKey), payment.TypeAlipay)
 }

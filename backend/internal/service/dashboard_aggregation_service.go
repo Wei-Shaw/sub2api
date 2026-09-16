@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"log/slog"
 	"sync/atomic"
@@ -9,12 +10,22 @@ import (
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
+	"github.com/google/uuid"
 )
 
 const (
 	defaultDashboardAggregationTimeout         = 2 * time.Minute
 	defaultDashboardAggregationBackfillTimeout = 30 * time.Minute
 	dashboardAggregationRetentionInterval      = 6 * time.Hour
+
+	// dashboardAggregationLeaderLockKey 保证多副本部署中每个周期只有一个实例执行聚合。
+	dashboardAggregationLeaderLockKey = "dashboard:aggregation:leader"
+	// TTL 必须覆盖 dashboard 聚合与分组日汇总两个有界阶段，避免任务中途失锁。
+	dashboardAggregationLeaderLockTTL = 5 * time.Minute
+
+	// 启动回填耗时可能远长于周期聚合，因此使用独立锁并让 TTL 严格大于回填超时。
+	dashboardAggregationGroupUsageBackfillLeaderLockKey = "dashboard:aggregation:group-usage-backfill:leader"
+	dashboardAggregationGroupUsageBackfillLeaderLockTTL = defaultDashboardAggregationBackfillTimeout + time.Minute
 )
 
 var (
@@ -46,6 +57,10 @@ type DashboardAggregationService struct {
 	cfg                  config.DashboardAggregationConfig
 	running              int32
 	lastRetentionCleanup atomic.Value // time.Time
+
+	lockCache  LeaderLockCache
+	db         *sql.DB
+	instanceID string
 }
 
 // NewDashboardAggregationService 创建聚合服务。
@@ -58,7 +73,19 @@ func NewDashboardAggregationService(repo DashboardAggregationRepository, timingW
 		repo:        repo,
 		timingWheel: timingWheel,
 		cfg:         aggCfg,
+		instanceID:  uuid.NewString(),
 	}
+}
+
+// SetLeaderLock injects the leader-lock cache and DB used to elect a single
+// instance for the periodic scheduled aggregation. When both are nil the job runs
+// ungated (single-instance / test behavior).
+func (s *DashboardAggregationService) SetLeaderLock(lockCache LeaderLockCache, db *sql.DB) {
+	if s == nil {
+		return
+	}
+	s.lockCache = lockCache
+	s.db = db
 }
 
 // Start 启动定时聚合作业（重启生效配置）。
@@ -70,6 +97,7 @@ func (s *DashboardAggregationService) Start() {
 		logger.LegacyPrintf("service.dashboard_aggregation", "[DashboardAggregation] 聚合作业已禁用")
 		return
 	}
+	go s.runStartupGroupUsageSync()
 
 	interval := time.Duration(s.cfg.IntervalSeconds) * time.Second
 	if interval <= 0 {
@@ -197,6 +225,15 @@ func (s *DashboardAggregationService) runScheduledAggregation() {
 	ctx, cancel := context.WithTimeout(context.Background(), defaultDashboardAggregationTimeout)
 	defer cancel()
 
+	// Multi-instance guard: only the leader runs the periodic aggregation; peers
+	// skip this cycle to avoid N× redundant GROUP BY queries and watermark races.
+	release, ok := tryAcquireSingletonLeaderLock(ctx, s.lockCache, s.db, dashboardAggregationLeaderLockKey, s.instanceID, dashboardAggregationLeaderLockTTL)
+	if !ok {
+		return
+	}
+	defer release()
+	defer s.runScheduledGroupUsageSync()
+
 	now := time.Now().UTC()
 	last, err := s.repo.GetAggregationWatermark(ctx)
 	if err != nil {
@@ -234,6 +271,35 @@ func (s *DashboardAggregationService) runScheduledAggregation() {
 	)
 
 	s.maybeCleanupRetention(ctx, now)
+}
+
+func (s *DashboardAggregationService) runScheduledGroupUsageSync() {
+	ctx, cancel := context.WithTimeout(context.Background(), defaultDashboardAggregationTimeout)
+	defer cancel()
+	if err := s.syncGroupUsageRollups(ctx, time.Now().UTC()); err != nil {
+		logger.LegacyPrintf("service.dashboard_aggregation", "[DashboardAggregation] 分组用量日汇总失败: %v", err)
+	}
+}
+
+func (s *DashboardAggregationService) runStartupGroupUsageSync() {
+	ctx, cancel := context.WithTimeout(context.Background(), defaultDashboardAggregationBackfillTimeout)
+	defer cancel()
+	release, ok := tryAcquireSingletonLeaderLock(ctx, s.lockCache, s.db, dashboardAggregationGroupUsageBackfillLeaderLockKey, s.instanceID, dashboardAggregationGroupUsageBackfillLeaderLockTTL)
+	if !ok {
+		return
+	}
+	defer release()
+	if err := s.syncGroupUsageRollups(ctx, time.Now().UTC()); err != nil {
+		logger.LegacyPrintf("service.dashboard_aggregation", "[DashboardAggregation] 启动分组用量回填失败: %v", err)
+	}
+}
+
+func (s *DashboardAggregationService) syncGroupUsageRollups(ctx context.Context, now time.Time) error {
+	repo, ok := s.repo.(GroupUsageRollupRepository)
+	if !ok {
+		return nil
+	}
+	return repo.SyncGroupUsageRollups(ctx, GroupUsageTodayStart(now))
 }
 
 func (s *DashboardAggregationService) backfillRange(ctx context.Context, start, end time.Time) error {

@@ -14,12 +14,22 @@ const (
 	BillingModeToken      BillingMode = "token"       // 按 token 区间计费
 	BillingModePerRequest BillingMode = "per_request" // 按次计费（支持上下文窗口分层）
 	BillingModeImage      BillingMode = "image"       // 图片计费（当前按次，预留 token 计费）
+	BillingModeVideo      BillingMode = "video"       // 视频生成计费（按视频生成次数）
 )
 
 // IsValid 检查 BillingMode 是否为合法值
 func (m BillingMode) IsValid() bool {
 	switch m {
-	case BillingModeToken, BillingModePerRequest, BillingModeImage, "":
+	case BillingModeToken, BillingModePerRequest, BillingModeImage, BillingModeVideo, "":
+		return true
+	}
+	return false
+}
+
+// IsValidUsageFilter 检查 BillingMode 是否可用于使用记录筛选。
+func (m BillingMode) IsValidUsageFilter() bool {
+	switch m {
+	case BillingModeToken, BillingModePerRequest, BillingModeImage, BillingModeVideo, "":
 		return true
 	}
 	return false
@@ -29,6 +39,10 @@ const (
 	BillingModelSourceRequested     = "requested"
 	BillingModelSourceUpstream      = "upstream"
 	BillingModelSourceChannelMapped = "channel_mapped"
+	// BillingModelSourceResponse bills by a trusted model declaration observed
+	// in the successful upstream response. It is deliberately distinct from
+	// "upstream", which means the model sent to the provider.
+	BillingModelSourceResponse = "response_model"
 )
 
 // Channel 渠道实体
@@ -37,7 +51,7 @@ type Channel struct {
 	Name               string
 	Description        string
 	Status             string
-	BillingModelSource string         // "requested", "upstream", or "channel_mapped"
+	BillingModelSource string         // "requested", "upstream", "channel_mapped", or "response_model"
 	RestrictModels     bool           // 是否限制模型（仅允许定价列表中的模型）
 	Features           string         // 渠道特性描述（JSON 数组），用于支付页面展示
 	FeaturesConfig     map[string]any // 渠道功能配置（如 web search emulation）
@@ -73,37 +87,62 @@ type AccountStatsPricingRule struct {
 
 // ChannelModelPricing 渠道模型定价条目
 type ChannelModelPricing struct {
-	ID               int64
-	ChannelID        int64
-	Platform         string            // 所属平台（anthropic/openai/gemini/...）
-	Models           []string          // 绑定的模型列表
-	BillingMode      BillingMode       // 计费模式
-	InputPrice       *float64          // 每 token 输入价格（USD）— 向后兼容 flat 定价
-	OutputPrice      *float64          // 每 token 输出价格（USD）
-	CacheWritePrice  *float64          // 缓存写入价格
-	CacheReadPrice   *float64          // 缓存读取价格
-	ImageOutputPrice *float64          // 图片输出价格（向后兼容）
-	PerRequestPrice  *float64          // 默认按次计费价格（USD）
-	Intervals        []PricingInterval // 区间定价列表
-	CreatedAt        time.Time
-	UpdatedAt        time.Time
+	ID                           int64               `json:"id,omitempty"`
+	ChannelID                    int64               `json:"channel_id,omitempty"`
+	Platform                     string              `json:"platform"` // 所属平台（anthropic/openai/gemini/...）
+	Models                       []string            `json:"models"`
+	BillingMode                  BillingMode         `json:"billing_mode"`
+	InputPrice                   *float64            `json:"input_price"`
+	OutputPrice                  *float64            `json:"output_price"`
+	CacheWritePrice              *float64            `json:"cache_write_price"`
+	CacheWrite1hPrice            *float64            `json:"cache_write_1h_price"`
+	CacheReadPrice               *float64            `json:"cache_read_price"`
+	FastMultiplier               *float64            `json:"fast_multiplier"`
+	FlexMultiplier               *float64            `json:"flex_multiplier"`
+	MaxReasoningEffortMultiplier *float64            `json:"max_reasoning_effort_multiplier"`
+	ImageInputPrice              *float64            `json:"image_input_price"`
+	ImageOutputPrice             *float64            `json:"image_output_price"`
+	PerRequestPrice              *float64            `json:"per_request_price"`
+	Intervals                    []PricingInterval   `json:"intervals"`
+	TimePricing                  *ChannelTimePricing `json:"time_pricing,omitempty"`
+	CreatedAt                    time.Time           `json:"created_at,omitempty"`
+	UpdatedAt                    time.Time           `json:"updated_at,omitempty"`
+}
+
+// ChannelTimePricing 渠道模型定价的分时倍率配置。
+type ChannelTimePricing struct {
+	Timezone     string                     `json:"timezone"`
+	WeekdaysOnly bool                       `json:"weekdays_only,omitempty"`
+	Periods      []ChannelTimePricingPeriod `json:"periods"`
+}
+
+// ChannelTimePricingPeriod 是秒级的左闭右开分时倍率区间，并兼容历史 HH:mm 数据。
+type ChannelTimePricingPeriod struct {
+	StartTime  string  `json:"start_time"`
+	EndTime    string  `json:"end_time"`
+	Multiplier float64 `json:"multiplier"`
 }
 
 // PricingInterval 定价区间（token 区间 / 按次分层 / 图片分辨率分层）
 type PricingInterval struct {
-	ID              int64
-	PricingID       int64
-	MinTokens       int      // 区间下界（含）
-	MaxTokens       *int     // 区间上界（不含），nil = 无上限
-	TierLabel       string   // 层级标签（按次/图片模式：1K, 2K, 4K, HD 等）
-	InputPrice      *float64 // token 模式：每 token 输入价
-	OutputPrice     *float64 // token 模式：每 token 输出价
-	CacheWritePrice *float64 // token 模式：缓存写入价
-	CacheReadPrice  *float64 // token 模式：缓存读取价
-	PerRequestPrice *float64 // 按次/图片模式：每次请求价格
-	SortOrder       int
-	CreatedAt       time.Time
-	UpdatedAt       time.Time
+	ID                   int64     `json:"id,omitempty"`
+	PricingID            int64     `json:"pricing_id,omitempty"`
+	MinTokens            int       `json:"min_tokens"`
+	MaxTokens            *int      `json:"max_tokens"`
+	TierLabel            string    `json:"tier_label"`
+	InputPrice           *float64  `json:"input_price"`
+	OutputPrice          *float64  `json:"output_price"`
+	CacheWritePrice      *float64  `json:"cache_write_price"`
+	CacheWrite1hPrice    *float64  `json:"cache_write_1h_price"`
+	CacheReadPrice       *float64  `json:"cache_read_price"`
+	InputMultiplier      *float64  `json:"input_multiplier"`
+	OutputMultiplier     *float64  `json:"output_multiplier"`
+	CacheWriteMultiplier *float64  `json:"cache_write_multiplier"`
+	CacheReadMultiplier  *float64  `json:"cache_read_multiplier"`
+	PerRequestPrice      *float64  `json:"per_request_price"`
+	SortOrder            int       `json:"sort_order"`
+	CreatedAt            time.Time `json:"created_at,omitempty"`
+	UpdatedAt            time.Time `json:"updated_at,omitempty"`
 }
 
 // IsActive 判断渠道是否启用
@@ -180,6 +219,15 @@ func (p ChannelModelPricing) Clone() ChannelModelPricing {
 		cp.Intervals = make([]PricingInterval, len(p.Intervals))
 		copy(cp.Intervals, p.Intervals)
 	}
+	if p.TimePricing != nil {
+		cp.TimePricing = &ChannelTimePricing{
+			Timezone:     p.TimePricing.Timezone,
+			WeekdaysOnly: p.TimePricing.WeekdaysOnly,
+		}
+		if p.TimePricing.Periods != nil {
+			cp.TimePricing.Periods = append([]ChannelTimePricingPeriod(nil), p.TimePricing.Periods...)
+		}
+	}
 	return cp
 }
 
@@ -248,6 +296,17 @@ func (c *Channel) IsWebSearchEmulationEnabled(platform string) bool {
 	return ok && enabled
 }
 
+// IsBedrockCCCompatEnabled 返回该渠道是否启用了 Bedrock CC 兼容模式。
+// 一旦启用，该渠道下所有请求都会应用 CC 兼容转换，不区分账号 platform。
+func (c *Channel) IsBedrockCCCompatEnabled(platform string) bool {
+	if c == nil || c.FeaturesConfig == nil {
+		return false
+	}
+	// 直接检查 bedrock_cc_compat 开关，不再检查 platform 子字段
+	enabled, ok := c.FeaturesConfig[featureKeyBedrockCCCompat].(bool)
+	return ok && enabled
+}
+
 // deepCopyFeaturesConfig creates a deep copy of FeaturesConfig to prevent cache pollution.
 func deepCopyFeaturesConfig(src map[string]any) map[string]any {
 	dst := make(map[string]any, len(src))
@@ -262,10 +321,17 @@ func deepCopyFeaturesConfig(src map[string]any) map[string]any {
 }
 
 // ValidateIntervals 校验区间列表的合法性。
-// 规则：MinTokens >= 0；MaxTokens 若非 nil 则 > 0 且 > MinTokens；
-// 所有价格字段 >= 0；区间按 MinTokens 排序后无重叠（(min, max] 语义）；
-// 无界区间（MaxTokens=nil）必须是最后一个。间隙允许（回退默认价格）。
-func ValidateIntervals(intervals []PricingInterval) error {
+//
+// mode 决定区间语义：
+//   - BillingModeToken（含空值）：区间是上下文 token 数分段 (min, max]，
+//     按 MinTokens 排序后无重叠，无界区间（MaxTokens=nil）必须是最后一个。
+//   - BillingModePerRequest / BillingModeImage：区间是按 tier_label
+//     (1K/2K/4K 等) 分层，匹配走 label 不依赖 min/max，因此跳过区间重叠
+//     与 last-unlimited 校验，仅做单条字段自洽（min/max/价格非负）检查。
+//
+// 通用规则：MinTokens >= 0；MaxTokens 若非 nil 则 > 0 且 > MinTokens；
+// 所有价格字段 >= 0。
+func ValidateIntervals(intervals []PricingInterval, mode BillingMode) error {
 	if len(intervals) == 0 {
 		return nil
 	}
@@ -279,6 +345,11 @@ func ValidateIntervals(intervals []PricingInterval) error {
 		if err := validateSingleInterval(&sorted[i], i); err != nil {
 			return err
 		}
+	}
+
+	// per_request / image 模式按 tier_label 匹配，不做 token 区间重叠校验
+	if mode == BillingModePerRequest || mode == BillingModeImage || mode == BillingModeVideo {
+		return nil
 	}
 	return validateIntervalOverlap(sorted)
 }
@@ -300,7 +371,7 @@ func validateSingleInterval(iv *PricingInterval, idx int) error {
 	return validateIntervalPrices(iv, idx)
 }
 
-// validateIntervalPrices 校验区间内所有价格字段 >= 0
+// validateIntervalPrices 校验区间价格 >= 0、倍率 > 0。
 func validateIntervalPrices(iv *PricingInterval, idx int) error {
 	prices := []struct {
 		name string
@@ -309,12 +380,27 @@ func validateIntervalPrices(iv *PricingInterval, idx int) error {
 		{"input_price", iv.InputPrice},
 		{"output_price", iv.OutputPrice},
 		{"cache_write_price", iv.CacheWritePrice},
+		{"cache_write_1h_price", iv.CacheWrite1hPrice},
 		{"cache_read_price", iv.CacheReadPrice},
 		{"per_request_price", iv.PerRequestPrice},
 	}
 	for _, p := range prices {
 		if p.val != nil && *p.val < 0 {
 			return fmt.Errorf("interval #%d: %s must be >= 0", idx+1, p.name)
+		}
+	}
+	multipliers := []struct {
+		name string
+		val  *float64
+	}{
+		{"input_multiplier", iv.InputMultiplier},
+		{"output_multiplier", iv.OutputMultiplier},
+		{"cache_write_multiplier", iv.CacheWriteMultiplier},
+		{"cache_read_multiplier", iv.CacheReadMultiplier},
+	}
+	for _, multiplier := range multipliers {
+		if multiplier.val != nil && *multiplier.val <= 0 {
+			return fmt.Errorf("interval #%d: %s must be > 0", idx+1, multiplier.name)
 		}
 	}
 	return nil

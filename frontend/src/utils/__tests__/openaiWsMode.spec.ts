@@ -1,12 +1,13 @@
 import { describe, expect, it } from 'vitest'
 import {
   OPENAI_WS_MODE_CTX_POOL,
+  OPENAI_WS_MODE_HTTP_BRIDGE,
   OPENAI_WS_MODE_OFF,
   OPENAI_WS_MODE_PASSTHROUGH,
   isOpenAIWSModeEnabled,
   normalizeOpenAIWSMode,
   openAIWSModeFromEnabled,
-  resolveOpenAIWSModeConcurrencyHintKey,
+  resolveOpenAIWSModeHintKey,
   resolveOpenAIWSModeFromExtra
 } from '@/utils/openaiWsMode'
 
@@ -15,6 +16,7 @@ describe('openaiWsMode utils', () => {
     expect(normalizeOpenAIWSMode('off')).toBe(OPENAI_WS_MODE_OFF)
     expect(normalizeOpenAIWSMode('ctx_pool')).toBe(OPENAI_WS_MODE_CTX_POOL)
     expect(normalizeOpenAIWSMode('passthrough')).toBe(OPENAI_WS_MODE_PASSTHROUGH)
+    expect(normalizeOpenAIWSMode('http_bridge')).toBe(OPENAI_WS_MODE_HTTP_BRIDGE)
     expect(normalizeOpenAIWSMode(' Shared ')).toBe(OPENAI_WS_MODE_CTX_POOL)
     expect(normalizeOpenAIWSMode('DEDICATED')).toBe(OPENAI_WS_MODE_CTX_POOL)
     expect(normalizeOpenAIWSMode('invalid')).toBeNull()
@@ -54,17 +56,19 @@ describe('openaiWsMode utils', () => {
     expect(isOpenAIWSModeEnabled(OPENAI_WS_MODE_OFF)).toBe(false)
     expect(isOpenAIWSModeEnabled(OPENAI_WS_MODE_CTX_POOL)).toBe(true)
     expect(isOpenAIWSModeEnabled(OPENAI_WS_MODE_PASSTHROUGH)).toBe(true)
+    expect(isOpenAIWSModeEnabled(OPENAI_WS_MODE_HTTP_BRIDGE)).toBe(true)
   })
 
-  it('resolves concurrency hint key by mode', () => {
-    expect(resolveOpenAIWSModeConcurrencyHintKey(OPENAI_WS_MODE_OFF)).toBe(
-      'admin.accounts.openai.wsModeConcurrencyHint'
+  it('hides the off hint and resolves each active mode separately', () => {
+    expect(resolveOpenAIWSModeHintKey(OPENAI_WS_MODE_OFF)).toBeNull()
+    expect(resolveOpenAIWSModeHintKey(OPENAI_WS_MODE_CTX_POOL)).toBe(
+      'admin.accounts.openai.wsModeCtxPoolHint'
     )
-    expect(resolveOpenAIWSModeConcurrencyHintKey(OPENAI_WS_MODE_CTX_POOL)).toBe(
-      'admin.accounts.openai.wsModeConcurrencyHint'
-    )
-    expect(resolveOpenAIWSModeConcurrencyHintKey(OPENAI_WS_MODE_PASSTHROUGH)).toBe(
+    expect(resolveOpenAIWSModeHintKey(OPENAI_WS_MODE_PASSTHROUGH)).toBe(
       'admin.accounts.openai.wsModePassthroughHint'
+    )
+    expect(resolveOpenAIWSModeHintKey(OPENAI_WS_MODE_HTTP_BRIDGE)).toBe(
+      'admin.accounts.openai.wsModeHttpBridgeHint'
     )
   })
 })

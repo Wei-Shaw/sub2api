@@ -13,6 +13,7 @@ const STATUS_BADGE_MAP: Record<string, string> = {
   FAILED: 'badge-danger',
   REFUND_REQUESTED: 'badge-warning',
   REFUNDING: 'badge-warning',
+  REFUND_PENDING: 'badge-warning',
   PARTIALLY_REFUNDED: 'badge-warning',
   REFUNDED: 'badge-info',
   REFUND_FAILED: 'badge-danger',

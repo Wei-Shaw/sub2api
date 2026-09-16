@@ -108,6 +108,7 @@ const { t } = useI18n()
 const appStore = useAppStore()
 
 const importing = ref(false)
+const hasImportedData = ref(false)
 const file = ref<File | null>(null)
 const result = ref<AdminDataImportResult | null>(null)
 
@@ -121,6 +122,7 @@ watch(
   (open) => {
     if (open) {
       file.value = null
+      hasImportedData.value = false
       result.value = null
       if (fileInput.value) {
         fileInput.value.value = ''
@@ -140,6 +142,10 @@ const handleFileChange = (event: Event) => {
 
 const handleClose = () => {
   if (importing.value) return
+  if (hasImportedData.value) {
+    hasImportedData.value = false
+    emit('imported')
+  }
   emit('close')
 }
 
@@ -156,7 +162,7 @@ const readFileAsText = async (sourceFile: File): Promise<string> => {
   return await new Promise<string>((resolve, reject) => {
     const reader = new FileReader()
     reader.onload = () => resolve(String(reader.result ?? ''))
-    reader.onerror = () => reject(reader.error || new Error('Failed to read file'))
+    reader.onerror = () => reject(reader.error || new Error(t('common.fileReadFailed')))
     reader.readAsText(sourceFile)
   })
 }
@@ -183,8 +189,10 @@ const handleImport = async () => {
     }
 
     if (res.proxy_failed > 0) {
+      hasImportedData.value ||= res.proxy_created > 0 || res.proxy_reused > 0
       appStore.showError(t('admin.proxies.dataImportCompletedWithErrors', msgParams))
     } else {
+      hasImportedData.value = false
       appStore.showSuccess(t('admin.proxies.dataImportSuccess', msgParams))
       emit('imported')
     }

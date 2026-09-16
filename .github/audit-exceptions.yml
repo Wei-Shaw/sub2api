@@ -5,14 +5,14 @@ exceptions:
     severity: high
     reason: "Admin export only; switched to dynamic import to reduce exposure (CVE-2023-30533)"
     mitigation: "Load only on export; restrict export permissions and data scope"
-    expires_on: "2026-07-06"
+    expires_on: "2026-10-06"
     owner: "security@your-domain"
   - package: xlsx
     advisory: "GHSA-5pgg-2g8v-p4x9"
     severity: high
     reason: "Admin export only; switched to dynamic import to reduce exposure (CVE-2024-22363)"
     mitigation: "Load only on export; restrict export permissions and data scope"
-    expires_on: "2026-07-06"
+    expires_on: "2026-10-06"
     owner: "security@your-domain"
   - package: lodash
     advisory: "GHSA-r5fr-rjxr-66jc"
@@ -34,4 +34,11 @@ exceptions:
     reason: "NO_PROXY bypass not exploitable; all API calls go to known endpoints via server-side proxy"
     mitigation: "Proxy configuration not user-controlled; upgrade when axios releases fix"
     expires_on: "2026-07-10"
+    owner: "security@your-domain"
+  - package: nanoid
+    advisory: "GHSA-2v37-7h3g-55p8"
+    severity: high
+    reason: "Custom generator with size=0 not used; all nanoid calls use default size or positive values"
+    mitigation: "No zero-size custom generators in codebase; upgrade when nanoid releases fix"
+    expires_on: "2026-10-13"
     owner: "security@your-domain"
