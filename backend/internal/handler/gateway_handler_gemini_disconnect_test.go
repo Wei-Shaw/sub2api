@@ -290,3 +290,126 @@ func TestGatewayHandlerGeminiChatCompletions_HoldsAccountSlotUntilDisconnectDrai
 	require.Equal(t, int64(4), usageRecordedLogs[0].ContextMap()["output_tokens"])
 	require.Equal(t, false, usageRecordedLogs[0].ContextMap()["partial_usage"])
 }
+
+func TestGatewayHandlerGeminiNative_HoldsSlotRecordsUsageAndLogsDisconnectDrain(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	groupID := int64(9901)
+	group := &service.Group{
+		ID: groupID, Hydrated: true, Platform: service.PlatformGemini,
+		Status: service.StatusActive, RateMultiplier: 1,
+	}
+	account := &service.Account{
+		ID: 9902, Platform: service.PlatformGemini, Type: service.AccountTypeAPIKey,
+		Status: service.StatusActive, Schedulable: true, Concurrency: 1,
+		Credentials:   map[string]any{"api_key": "test-key"},
+		AccountGroups: []service.AccountGroup{{AccountID: 9902, GroupID: groupID}},
+	}
+	releaseBody := make(chan []byte, 1)
+	readStarted := make(chan struct{})
+	upstream := &geminiDisconnectHandlerUpstream{
+		dispatched: make(chan *http.Request, 1),
+		responseForRequest: func(req *http.Request) *http.Response {
+			return &http.Response{
+				StatusCode: http.StatusOK,
+				Header:     http.Header{"Content-Type": []string{"application/json"}, "X-Request-Id": []string{"native-upstream-1"}},
+				Body: &geminiHandlerDelayedBody{
+					ctx: req.Context(), release: releaseBody, readStart: readStarted,
+				},
+			}
+		},
+	}
+	usageRepo := &geminiDisconnectUsageRepo{created: make(chan *service.UsageLog, 2)}
+	cfg := &config.Config{RunMode: config.RunModeSimple}
+	cfg.Default.RateMultiplier = 1
+	schedulerSnapshot := service.NewSchedulerSnapshotService(&fakeSchedulerCache{accounts: []*service.Account{account}}, nil, nil, nil, nil)
+	concurrencyCache := &geminiAccountSlotTrackingCache{
+		acquired: make(chan struct{}),
+		released: make(chan struct{}, 1),
+	}
+	concurrencyService := service.NewConcurrencyService(concurrencyCache)
+	billingCacheService := service.NewBillingCacheService(nil, nil, nil, nil, nil, nil, cfg, nil)
+	t.Cleanup(billingCacheService.Stop)
+	gatewayService := service.NewGatewayService(
+		nil, &fakeGroupRepo{group: group}, usageRepo, nil, nil, nil, nil, nil, cfg,
+		schedulerSnapshot, concurrencyService, service.NewBillingService(cfg, nil), nil, billingCacheService,
+		nil, nil, service.NewDeferredService(nil, nil, time.Minute), nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil,
+	)
+	geminiService := service.NewGeminiMessagesCompatService(nil, nil, nil, nil, nil, nil, upstream, nil, cfg)
+	h := &GatewayHandler{
+		gatewayService:           gatewayService,
+		geminiCompatService:      geminiService,
+		billingCacheService:      billingCacheService,
+		concurrencyHelper:        NewConcurrencyHelper(concurrencyService, SSEPingFormatClaude, 0),
+		maxAccountSwitches:       1,
+		maxAccountSwitchesGemini: 1,
+		cfg:                      cfg,
+	}
+	apiKey := &service.APIKey{
+		ID: 9903, UserID: 9904, GroupID: &groupID, Group: group, Status: service.StatusActive,
+		User: &service.User{ID: 9904, Concurrency: 10, Balance: 100},
+	}
+	body := []byte(`{"contents":[]}`)
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Params = gin.Params{{Key: "modelAction", Value: "/gemini-2.5-flash:generateContent"}}
+	logCore, observedLogs := observer.New(zap.InfoLevel)
+	requestCtx := logger.IntoContext(context.WithValue(context.Background(), ctxkey.Group, group), zap.New(logCore))
+	requestCtx, cancel := context.WithCancel(requestCtx)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1beta/models/gemini-2.5-flash:generateContent", bytes.NewReader(body)).WithContext(requestCtx)
+	c.Request.Header.Set("Content-Type", "application/json")
+	c.Set(string(middleware.ContextKeyAPIKey), apiKey)
+	c.Set(string(middleware.ContextKeyUser), middleware.AuthSubject{UserID: apiKey.UserID, Concurrency: 10})
+
+	handlerDone := make(chan struct{})
+	go func() {
+		h.GeminiV1BetaModels(c)
+		close(handlerDone)
+	}()
+	select {
+	case <-readStarted:
+	case <-time.After(time.Second):
+		t.Fatal("Gemini native response body was not read")
+	}
+	cancel()
+	select {
+	case <-concurrencyCache.released:
+		t.Fatal("account slot was released before native Gemini drain finished")
+	case <-time.After(50 * time.Millisecond):
+	}
+	releaseBody <- []byte(`{"candidates":[{"content":{"parts":[{"text":"done"}]}}],"usageMetadata":{"promptTokenCount":6,"candidatesTokenCount":4}}`)
+
+	select {
+	case <-handlerDone:
+	case <-time.After(time.Second):
+		t.Fatal("native Gemini handler did not finish after usage arrived")
+	}
+	select {
+	case <-concurrencyCache.released:
+	case <-time.After(time.Second):
+		t.Fatal("account slot was not released after native Gemini drain finished")
+	}
+	select {
+	case log := <-usageRepo.created:
+		require.Equal(t, 6, log.InputTokens)
+		require.Equal(t, 4, log.OutputTokens)
+	case <-time.After(time.Second):
+		t.Fatal("drained native Gemini usage was not recorded")
+	}
+	select {
+	case <-usageRepo.created:
+		t.Fatal("native Gemini usage was recorded more than once")
+	case <-time.After(50 * time.Millisecond):
+	}
+	require.Empty(t, rec.Body.String())
+	drainStartLogs := observedLogs.FilterMessage("gemini.native_disconnect_drain_started").All()
+	require.Len(t, drainStartLogs, 1)
+	require.Equal(t, int64(9902), drainStartLogs[0].ContextMap()["account_id"])
+	drainFinishedLogs := observedLogs.FilterMessage("gemini.native_disconnect_drain_finished").All()
+	require.Len(t, drainFinishedLogs, 1)
+	require.Equal(t, "terminal_usage", drainFinishedLogs[0].ContextMap()["outcome"])
+	usageRecordedLogs := observedLogs.FilterMessage("gemini.native_disconnect_usage_recorded").All()
+	require.Len(t, usageRecordedLogs, 1)
+	require.Equal(t, int64(6), usageRecordedLogs[0].ContextMap()["input_tokens"])
+	require.Equal(t, int64(4), usageRecordedLogs[0].ContextMap()["output_tokens"])
+	require.Equal(t, false, usageRecordedLogs[0].ContextMap()["partial_usage"])
+}
