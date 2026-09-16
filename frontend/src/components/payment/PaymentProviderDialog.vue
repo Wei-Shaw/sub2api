@@ -192,6 +192,14 @@
                 <svg v-else class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></svg>
               </button>
             </div>
+            <textarea
+              v-else-if="field.multiline"
+              v-model="config[field.key]"
+              rows="3"
+              class="input font-mono text-xs"
+              spellcheck="false"
+              :placeholder="field.defaultValue || ''"
+            />
             <Select
               v-else-if="field.options?.length"
               v-model="config[field.key]"
@@ -333,11 +341,11 @@ import {
  * provider's built-in default behavior". */
 function defaultPaymentMode(providerKey: string): string {
   if (providerKey === 'easypay') return PAYMENT_MODE_QRCODE
+  if (providerKey === 'antom') return PAYMENT_MODE_REDIRECT
   return ''
 }
 
-/** Provider keys whose admin UI exposes a payment_mode selector.
- * Other providers always send payment_mode = ''. */
+/** Provider keys whose admin UI exposes a payment_mode selector. */
 function providerSupportsPaymentMode(providerKey: string): boolean {
   return providerKey === 'easypay' || providerKey === 'alipay'
 }
@@ -349,6 +357,10 @@ function isValidPaymentMode(providerKey: string, mode: string): boolean {
     return mode === PAYMENT_MODE_QRCODE || mode === PAYMENT_MODE_POPUP
   }
   if (providerKey === 'alipay') {
+    return mode === '' || mode === PAYMENT_MODE_REDIRECT
+  }
+  if (providerKey === 'antom') {
+    // Antom 托管收银台固定跳转：允许保留后端写入的 redirect。
     return mode === '' || mode === PAYMENT_MODE_REDIRECT
   }
   return mode === ''
@@ -538,6 +550,14 @@ const paymentGuide = computed<PaymentGuide | null>(() => {
     }
   }
 
+  if (form.provider_key === 'antom') {
+    return {
+      summary: t('admin.settings.payment.antomGuideSummary'),
+      note: t('admin.settings.payment.antomGuideNote'),
+      items: [],
+    }
+  }
+
   return null
 })
 
@@ -718,7 +738,7 @@ function handleSave() {
     name: form.name,
     supported_types: form.supported_types,
     enabled: form.enabled,
-    payment_mode: supportsPaymentMode.value ? form.payment_mode : '',
+    payment_mode: supportsPaymentMode.value ? form.payment_mode : defaultPaymentMode(form.provider_key),
     refund_enabled: form.refund_enabled,
     allow_user_refund: form.refund_enabled ? form.allow_user_refund : false,
     config: filteredConfig,

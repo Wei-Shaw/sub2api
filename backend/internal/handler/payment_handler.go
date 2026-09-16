@@ -278,6 +278,7 @@ func (h *PaymentHandler) CreateOrder(c *gin.Context) {
 		OpenID:          req.OpenID,
 		ClientIP:        c.ClientIP(),
 		IsMobile:        mobile,
+		UserAgent:       c.Request.UserAgent(),
 		IsWeChatBrowser: isWeChatBrowser(c),
 		SrcHost:         c.Request.Host,
 		SrcURL:          c.Request.Referer(),

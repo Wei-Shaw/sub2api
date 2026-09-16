@@ -77,6 +77,7 @@ type CreateOrderRequest struct {
 	OpenID          string
 	ClientIP        string
 	IsMobile        bool
+	UserAgent       string
 	IsWeChatBrowser bool
 	SrcHost         string
 	SrcURL          string

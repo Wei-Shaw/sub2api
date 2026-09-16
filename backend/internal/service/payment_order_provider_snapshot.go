@@ -198,6 +198,17 @@ func validateProviderSnapshotMetadata(order *dbent.PaymentOrder, providerKey str
 				return fmt.Errorf("stripe currency mismatch: expected %s, got %s", expected, actual)
 			}
 		}
+	case payment.TypeAntom:
+		if expected := strings.TrimSpace(snapshot.MerchantAppID); expected != "" {
+			if actual := strings.TrimSpace(metadata["app_id"]); actual != expected {
+				return fmt.Errorf("antom client_id mismatch: expected %s, got %s", expected, actual)
+			}
+		}
+		if expected := strings.TrimSpace(snapshot.Currency); expected != "" {
+			if actual := strings.TrimSpace(metadata["currency"]); !strings.EqualFold(actual, expected) {
+				return fmt.Errorf("antom currency mismatch: expected %s, got %s", expected, actual)
+			}
+		}
 	case payment.TypeAirwallex:
 		if expected := strings.TrimSpace(snapshot.MerchantID); expected != "" {
 			actual := strings.TrimSpace(metadata["account_id"])

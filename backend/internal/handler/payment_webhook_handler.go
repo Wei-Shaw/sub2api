@@ -67,6 +67,11 @@ func (h *PaymentWebhookHandler) AirwallexWebhook(c *gin.Context) {
 	h.handleNotify(c, payment.TypeAirwallex)
 }
 
+// AntomWebhook handles signed payment and capture notifications.
+func (h *PaymentWebhookHandler) AntomWebhook(c *gin.Context) {
+	h.handleNotify(c, payment.TypeAntom)
+}
+
 // handleNotify is the shared logic for all provider webhook handlers.
 func (h *PaymentWebhookHandler) handleNotify(c *gin.Context, providerKey string) {
 	var rawBody string
@@ -90,7 +95,7 @@ func (h *PaymentWebhookHandler) handleNotify(c *gin.Context, providerKey string)
 	providers, err := h.paymentService.GetWebhookProviders(c.Request.Context(), providerKey, outTradeNo)
 	if err != nil {
 		slog.Warn("[Payment Webhook] provider not found", "provider", providerKey, "outTradeNo", outTradeNo, "error", err)
-		if providerKey == payment.TypeWxpay {
+		if providerKey == payment.TypeWxpay || providerKey == payment.TypeAntom {
 			c.String(http.StatusBadRequest, "verify failed")
 			return
 		}
@@ -101,6 +106,12 @@ func (h *PaymentWebhookHandler) handleNotify(c *gin.Context, providerKey string)
 	headers := make(map[string]string)
 	for k := range c.Request.Header {
 		headers[strings.ToLower(k)] = c.GetHeader(k)
+	}
+	// Antom signatures bind the raw request target and method, not just the body.
+	// Set these after copying headers so a caller cannot supply them.
+	if providerKey == payment.TypeAntom {
+		headers[":path"] = c.Request.URL.RequestURI()
+		headers[":method"] = c.Request.Method
 	}
 
 	resolvedProviderKey, notification, err := verifyNotificationWithProviders(c.Request.Context(), providers, rawBody, headers)
@@ -148,6 +159,13 @@ func (h *PaymentWebhookHandler) handleNotify(c *gin.Context, providerKey string)
 // This allows looking up the correct provider instance before verification.
 func extractOutTradeNo(rawBody, providerKey string) string {
 	switch providerKey {
+	case payment.TypeAntom:
+		var payload struct {
+			PaymentRequestID string `json:"paymentRequestId"`
+		}
+		if err := json.Unmarshal([]byte(rawBody), &payload); err == nil {
+			return strings.TrimSpace(payload.PaymentRequestID)
+		}
 	case payment.TypeEasyPay, payment.TypeAlipay:
 		values, err := url.ParseQuery(rawBody)
 		if err == nil {
@@ -203,11 +221,13 @@ const (
 
 // writeSuccessResponse 返回各支付服务商要求的成功响应。
 // 微信支付需要 JSON {"code":"SUCCESS","message":"成功"}；
-// Stripe 和空中云汇接受空 200，其它服务商接受纯文本 "success"。
+// Antom requires a result object; Stripe and Airwallex accept an empty 200.
 func writeSuccessResponse(c *gin.Context, providerKey string) {
 	switch providerKey {
 	case payment.TypeWxpay:
 		c.JSON(http.StatusOK, wxpaySuccessResponse{Code: wxpaySuccessCode, Message: wxpaySuccessMessage})
+	case payment.TypeAntom:
+		c.JSON(http.StatusOK, gin.H{"result": gin.H{"resultCode": "SUCCESS", "resultStatus": "S", "resultMessage": "success"}})
 	case payment.TypeStripe, payment.TypeAirwallex:
 		c.String(http.StatusOK, "")
 	default:

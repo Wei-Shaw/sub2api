@@ -28,6 +28,7 @@ const (
 	checkPaidResultCancelled   = "cancelled"
 
 	pendingPaymentReconcileLimit = 20
+	antomNotificationGracePeriod = 5 * time.Minute
 )
 
 type checkPaidOptions struct {
@@ -152,6 +153,11 @@ func (s *PaymentService) reconcilePaid(ctx context.Context, o *dbent.PaymentOrde
 func (s *PaymentService) checkPaidWithOptions(ctx context.Context, o *dbent.PaymentOrder, opts checkPaidOptions) string {
 	prov, err := s.getOrderProvider(ctx, o)
 	if err != nil {
+		return ""
+	}
+	// Antom notifications are primary; inquiry is a fallback after five minutes.
+	// Explicit cancellation must still check immediately before closing an order.
+	if prov.ProviderKey() == payment.TypeAntom && !opts.cancelIfUnpaid && time.Since(o.CreatedAt) < antomNotificationGracePeriod {
 		return ""
 	}
 	queryRef := paymentOrderQueryReference(o, prov)
@@ -303,8 +309,7 @@ func (s *PaymentService) VerifyOrderByOutTradeNo(ctx context.Context, outTradeNo
 	return o, nil
 }
 
-// ReconcilePendingPaymentOrders actively checks recent pending Alipay and WeChat
-// orders so missed provider notifications do not wait until order expiry to fulfill.
+// ReconcilePendingPaymentOrders recovers missed Alipay, WeChat and Antom notifications.
 func (s *PaymentService) ReconcilePendingPaymentOrders(ctx context.Context) (int, error) {
 	now := time.Now()
 	orders, err := s.entClient.PaymentOrder.Query().
@@ -320,6 +325,10 @@ func (s *PaymentService) ReconcilePendingPaymentOrders(ctx context.Context) (int
 				paymentorder.PaymentTypeHasPrefix(payment.TypeAlipay+"_"),
 				paymentorder.ProviderKeyEQ(payment.TypeAlipay),
 				paymentorder.ProviderKeyHasPrefix(payment.TypeAlipay+"_"),
+				paymentorder.And(
+					paymentorder.Or(paymentorder.PaymentTypeEQ(payment.TypeAntom), paymentorder.ProviderKeyEQ(payment.TypeAntom)),
+					paymentorder.CreatedAtLTE(now.Add(-antomNotificationGracePeriod)),
+				),
 			),
 		).
 		Order(dbent.Asc(paymentorder.FieldCreatedAt)).

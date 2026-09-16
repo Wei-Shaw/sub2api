@@ -27,8 +27,8 @@ func (s *PaymentService) GetWebhookProvider(ctx context.Context, providerKey, ou
 }
 
 // GetWebhookProviders returns provider candidates that can verify the webhook.
-// Official WeChat Pay may require multiple candidates because the callback body
-// cannot be bound to a merchant before decryption.
+// WeChat notifications and Antom capture notifications need signature-based
+// instance selection because their bodies do not identify a merchant order.
 func (s *PaymentService) GetWebhookProviders(ctx context.Context, providerKey, outTradeNo string) ([]payment.Provider, error) {
 	if outTradeNo != "" {
 		order, err := s.entClient.PaymentOrder.Query().Where(paymentorder.OutTradeNo(outTradeNo)).Only(ctx)
@@ -51,8 +51,8 @@ func (s *PaymentService) GetWebhookProviders(ctx context.Context, providerKey, o
 				}
 				return []payment.Provider{prov}, nil
 			}
-			if strings.TrimSpace(providerKey) == payment.TypeWxpay {
-				return s.getEnabledWebhookProvidersByKey(ctx, providerKey)
+			if providerKey == payment.TypeWxpay || providerKey == payment.TypeAntom {
+				return s.getWebhookProviderCandidatesByKey(ctx, providerKey)
 			}
 			if !s.webhookRegistryFallbackAllowed(ctx, providerKey) {
 				return nil, fmt.Errorf("webhook provider fallback is ambiguous for %s", providerKey)
@@ -66,8 +66,8 @@ func (s *PaymentService) GetWebhookProviders(ctx context.Context, providerKey, o
 		}
 	}
 
-	if strings.TrimSpace(providerKey) == payment.TypeWxpay {
-		return s.getEnabledWebhookProvidersByKey(ctx, providerKey)
+	if providerKey == payment.TypeWxpay || providerKey == payment.TypeAntom {
+		return s.getWebhookProviderCandidatesByKey(ctx, providerKey)
 	}
 
 	if !s.webhookRegistryFallbackAllowed(ctx, providerKey) {
@@ -116,15 +116,15 @@ func psHasPinnedProviderInstance(order *dbent.PaymentOrder) bool {
 	return order != nil && (psOrderProviderSnapshot(order) != nil || (order.ProviderInstanceID != nil && strings.TrimSpace(*order.ProviderInstanceID) != ""))
 }
 
-func (s *PaymentService) getEnabledWebhookProvidersByKey(ctx context.Context, providerKey string) ([]payment.Provider, error) {
+func (s *PaymentService) getWebhookProviderCandidatesByKey(ctx context.Context, providerKey string) ([]payment.Provider, error) {
 	providerKey = strings.TrimSpace(providerKey)
-	instances, err := s.entClient.PaymentProviderInstance.Query().
-		Where(
-			paymentproviderinstance.ProviderKeyEQ(providerKey),
-			paymentproviderinstance.EnabledEQ(true),
-		).
-		Order(dbent.Asc(paymentproviderinstance.FieldSortOrder)).
-		All(ctx)
+	query := s.entClient.PaymentProviderInstance.Query().Where(paymentproviderinstance.ProviderKeyEQ(providerKey))
+	// A delayed Antom capture still belongs to its original instance, even if
+	// the administrator has since disabled that instance for new payments.
+	if providerKey != payment.TypeAntom {
+		query.Where(paymentproviderinstance.EnabledEQ(true))
+	}
+	instances, err := query.Order(dbent.Asc(paymentproviderinstance.FieldSortOrder)).All(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("query webhook provider instances: %w", err)
 	}

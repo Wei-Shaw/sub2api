@@ -139,6 +139,34 @@ describe('PaymentProviderDialog payment guide', () => {
     expect(wrapper.text()).toContain('/api/v1/payment/webhook/stripe')
   })
 
+  it('preserves masked Antom credentials while saving an editable notification origin', async () => {
+    const provider = providerFactory({
+      provider_key: 'antom',
+      name: 'Antom',
+      supported_types: ['antom'],
+      config: {
+        clientId: 'SANDBOX_client',
+        merchantPrivateKey: '',
+        antomPublicKey: 'public-key',
+        apiBase: 'https://open-sea-global.alipay.com',
+        currency: 'USD',
+        notifyUrl: 'https://old.example/api/v1/payment/webhook/antom',
+      },
+    })
+    const wrapper = mountDialog({ editing: provider })
+    ;(wrapper.vm as unknown as { loadProvider: (value: ProviderInstance) => void }).loadProvider(provider)
+    await nextTick()
+    const origin = wrapper.findAll('input').find(input => (input.element as HTMLInputElement).value === 'https://old.example')
+    if (!origin) throw new Error('notification origin input missing')
+    await origin.setValue('https://payments.example')
+    await wrapper.find('form').trigger('submit.prevent')
+    const payload = wrapper.emitted('save')?.[0]?.[0] as { config: Record<string, string>; payment_mode: string }
+    expect(payload.config.notifyUrl).toBe('https://payments.example/api/v1/payment/webhook/antom')
+    expect(payload.config).not.toHaveProperty('merchantPrivateKey')
+    expect(payload.config.antomPublicKey).toBe('public-key')
+    expect(payload.payment_mode).toBe('redirect')
+  })
+
   it('emits an empty Airwallex accountId when the admin clears it', async () => {
     const provider = providerFactory({
       config: {

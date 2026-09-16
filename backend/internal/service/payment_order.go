@@ -299,6 +299,10 @@ func buildPaymentOrderProviderSnapshot(sel *payment.InstanceSelection, req Creat
 	if providerKey == payment.TypeStripe {
 		snapshot["currency"] = paymentProviderConfigCurrency(providerKey, sel.Config)
 	}
+	if providerKey == payment.TypeAntom {
+		snapshot["merchant_app_id"] = strings.TrimSpace(sel.Config["clientId"])
+		snapshot["currency"] = paymentProviderConfigCurrency(providerKey, sel.Config)
+	}
 	if providerKey == payment.TypeAirwallex {
 		if accountID := strings.TrimSpace(sel.Config["accountId"]); accountID != "" {
 			snapshot["merchant_id"] = accountID
@@ -440,10 +444,12 @@ func (s *PaymentService) invokeProvider(ctx context.Context, order *dbent.Paymen
 		return nil, err
 	}
 	providerReq := buildProviderCreatePaymentRequest(CreateOrderRequest{
+		UserID:      req.UserID,
 		PaymentType: req.PaymentType,
 		OpenID:      req.OpenID,
 		ClientIP:    req.ClientIP,
 		IsMobile:    req.IsMobile,
+		UserAgent:   req.UserAgent,
 		ReturnURL:   providerReturnURL,
 	}, sel, outTradeNo, payAmountStr, subject)
 	providerReq.AlipayMobilePrecreate = shouldUseAlipayMobilePrecreate(req, cfg, sel)
@@ -513,6 +519,7 @@ func removePostgresTextNUL(value string) string {
 func buildProviderCreatePaymentRequest(req CreateOrderRequest, sel *payment.InstanceSelection, orderID, amount, subject string) payment.CreatePaymentRequest {
 	return payment.CreatePaymentRequest{
 		OrderID:            orderID,
+		BuyerID:            strconv.FormatInt(req.UserID, 10),
 		Amount:             amount,
 		PaymentType:        req.PaymentType,
 		Subject:            subject,
@@ -520,6 +527,7 @@ func buildProviderCreatePaymentRequest(req CreateOrderRequest, sel *payment.Inst
 		OpenID:             strings.TrimSpace(req.OpenID),
 		ClientIP:           req.ClientIP,
 		IsMobile:           req.IsMobile,
+		UserAgent:          req.UserAgent,
 		InstanceSubMethods: selectedInstanceSupportedTypes(sel),
 	}
 }

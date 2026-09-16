@@ -25,6 +25,7 @@ Sub2API has a built-in payment system that enables user self-service top-up with
 | **Alipay (Direct)** | Desktop QR code, mobile Alipay redirect | Direct integration with Alipay Open Platform, returning desktop QR codes and mobile WAP/app launch links |
 | **WeChat Pay (Direct)** | Native QR, H5, MP/JSAPI Pay | Direct integration with WeChat Pay APIv3 with environment-aware routing |
 | **Stripe** | Card, Alipay, WeChat Pay, Link, etc. | International payments, multi-currency support |
+| **Antom** | Contracted cards and wallets | Hosted checkout, multiple currencies, refunds and cancellation |
 
 > Alipay/WeChat Pay direct and EasyPay can both exist as backend provider instances, but the frontend always exposes only two visible buttons: `Alipay` and `WeChat Pay`. Admins choose exactly one source for each visible method: direct or EasyPay. Direct channels connect to payment APIs directly with lower fees; EasyPay aggregates through third-party platforms with easier setup.
 
@@ -153,6 +154,29 @@ International payment platform supporting multiple payment methods and currencie
 | **Secret Key** | Stripe secret key (`sk_live_...` or `sk_test_...`) | Yes |
 | **Publishable Key** | Stripe publishable key (`pk_live_...` or `pk_test_...`) | Yes |
 | **Webhook Secret** | Stripe Webhook signing secret (`whsec_...`) | Yes |
+
+---
+
+### Antom Hosted Checkout
+
+After Antom merchant onboarding, add an **Antom** provider instance and enable the **Antom** payment method. Its separate frontend button opens hosted checkout for the cards and wallets enabled on the merchant account.
+
+| Parameter | Description |
+|-----------|-------------|
+| Client ID | Application identifier from Antom Dashboard; use the matching SANDBOX_ identifier for testing |
+| Merchant private key | RSA 2048 bits or larger, PKCS#1/PKCS#8, PEM or Base64 DER; masked in admin responses, leave empty when editing to retain it |
+| Antom public key | Public key supplied by Antom, not the merchant public key uploaded to Antom |
+| Key version | Defaults to 1; must match the merchant signing key version |
+| API base URL | HTTPS origin: open-sea-global.alipay.com (default), open-na-global.alipay.com (North America), open-de-global.alipay.com (Europe), or open.antglobal-us.com (US merchants) |
+| Payment currency | Defaults to CNY; select an account-supported currency. No automatic currency conversion |
+| Settlement currency | Optional three-letter code; leave empty for the merchant default |
+| Notification URL | Public HTTPS origin + /api/v1/payment/webhook/antom; proxies must preserve the signed path and raw request body |
+
+The integration calls createPaymentSession and supplies the notification URL, buyer identifier and return URL. Session creation, browser return and card authorization are not proof of captured payment. Card payments are credited only after full capture. Normal payment inquiry starts after a five-minute notification grace period; explicit cancellation still checks immediately.
+
+Refunds, refund inquiry and cancellation are supported. Processing or unknown refunds must be queried rather than resubmitted. A confirmed failure starts a new refund attempt on retry. Inquiry validates the fee-inclusive gateway amount without deducting fees from the user balance. Merchant, keys, gateway and currency cannot be changed while orders are pending. Disabled instances still accept historical capture notifications; do not delete them or rotate their verification keys prematurely.
+
+Before production, test actual checkout, capture notifications and refunds with matching sandbox credentials on the appropriate regional gateway. See the [official Hosted Checkout guide](https://docs.antom.com/ac/cashierpay/HOSTEDCKP.md) for protocol details.
 
 ---
 

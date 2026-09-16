@@ -140,6 +140,13 @@
     @apply dark:shadow-[#00AEEF]/20;
   }
 
+  .btn-antom {
+    @apply bg-[#1677FF] text-white shadow-md shadow-[#1677FF]/25;
+    @apply hover:bg-[#0f66e8] hover:shadow-lg hover:shadow-[#1677FF]/30;
+    @apply active:bg-[#0d5ad1];
+    @apply dark:shadow-[#1677FF]/20;
+  }
+
   .btn-wxpay {
     @apply bg-[#2BB741] text-white shadow-md shadow-[#2BB741]/25;
     @apply hover:bg-[#24a038] hover:shadow-lg hover:shadow-[#2BB741]/30;

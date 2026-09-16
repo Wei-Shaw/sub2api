@@ -502,6 +502,97 @@ func TestQueryAndFinalizeRefundFinalizesProviderStatuses(t *testing.T) {
 	}
 }
 
+func TestAntomRefundRetryAfterFinalFailure(t *testing.T) {
+	ctx := context.Background()
+	client := newPaymentConfigServiceTestClient(t)
+	order := createPendingRefundOrderForTest(t, ctx, client, "antom-retry")
+	_, err := client.PaymentOrder.UpdateOneID(order.ID).SetPaymentType(payment.TypeAntom).SetStatus(OrderStatusCompleted).Save(ctx)
+	require.NoError(t, err)
+	gateway := &antomRetryGateway{failedAttempts: map[string]bool{}}
+	restore := replacePaymentProviderFactoryForTest(t, gateway)
+	defer restore()
+	svc := &PaymentService{entClient: client, loadBalancer: &captureLoadBalancer{}}
+	plan, _, err := svc.PrepareRefund(ctx, order.ID, 100, "refund", false, false)
+	require.NoError(t, err)
+	failed, err := svc.ExecuteRefund(ctx, plan)
+	require.NoError(t, err)
+	require.False(t, failed.Success)
+	gateway.funded = true
+	plan, _, err = svc.PrepareRefund(ctx, order.ID, 100, "retry", false, false)
+	require.NoError(t, err)
+	result, err := svc.ExecuteRefund(ctx, plan)
+	require.NoError(t, err)
+	require.True(t, result.Success)
+	reloaded, err := client.PaymentOrder.Get(ctx, order.ID)
+	require.NoError(t, err)
+	require.Equal(t, OrderStatusRefunded, reloaded.Status)
+}
+
+func TestAntomPendingRefundRetryOnlyQueriesOriginalRefund(t *testing.T) {
+	ctx := context.Background()
+	client := newPaymentConfigServiceTestClient(t)
+	order := createPendingRefundOrderForTest(t, ctx, client, "antom-pending-retry")
+	_, err := client.PaymentOrder.UpdateOneID(order.ID).SetPaymentType(payment.TypeAntom).Save(ctx)
+	require.NoError(t, err)
+	restore := replacePaymentProviderFactoryForTest(t, &refundQueryProviderTestDouble{
+		gatewayRefundAmount: "100.00",
+		refundResponse:      &payment.RefundResponse{RefundID: "rf_test", Status: payment.ProviderStatusPending},
+	})
+	defer restore()
+	svc := &PaymentService{entClient: client, loadBalancer: &captureLoadBalancer{}}
+	plan, _, err := svc.PrepareRefund(ctx, order.ID, 25, "different amount", false, false)
+	require.NoError(t, err)
+	result, err := svc.ExecuteRefund(ctx, plan)
+	require.NoError(t, err)
+	require.False(t, result.Success)
+	reloaded, err := client.PaymentOrder.Get(ctx, order.ID)
+	require.NoError(t, err)
+	require.Equal(t, OrderStatusRefundPending, reloaded.Status)
+	require.Equal(t, 100.0, reloaded.RefundAmount)
+}
+
+func TestQueryAndFinalizeRefundIncludesGatewayFeesWithoutOverDeductingBalance(t *testing.T) {
+	for _, tc := range []struct {
+		name          string
+		refundAmount  float64
+		gatewayAmount string
+		wantStatus    string
+	}{
+		{"full", 100, "108.00", OrderStatusRefunded},
+		{"partial", 25, "27.00", OrderStatusPartiallyRefunded},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			ctx := context.Background()
+			client := newPaymentConfigServiceTestClient(t)
+			order := createPendingRefundOrderForTest(t, ctx, client, "query-fee-"+tc.name)
+			_, err := client.PaymentOrder.UpdateOneID(order.ID).SetPayAmount(108).SetFeeRate(8).SetRefundAmount(tc.refundAmount).Save(ctx)
+			require.NoError(t, err)
+			var deducted float64
+			svc := &PaymentService{
+				entClient:    client,
+				loadBalancer: &captureLoadBalancer{},
+				userRepo: &mockUserRepo{deductAvailableBalanceFn: func(_ context.Context, _ int64, amount float64) (float64, error) {
+					deducted += amount
+					return amount, nil
+				}},
+			}
+			restore := replacePaymentProviderFactoryForTest(t, &refundQueryProviderTestDouble{
+				gatewayRefundAmount: tc.gatewayAmount,
+				refundResponse:      &payment.RefundResponse{RefundID: "rf_test", Status: payment.ProviderStatusSuccess},
+			})
+			defer restore()
+			result, err := svc.QueryAndFinalizeRefund(ctx, order.ID)
+			require.NoError(t, err)
+			require.True(t, result.Success)
+			require.Equal(t, tc.refundAmount, deducted)
+			reloaded, err := client.PaymentOrder.Get(ctx, order.ID)
+			require.NoError(t, err)
+			require.Equal(t, tc.wantStatus, reloaded.Status)
+			require.Equal(t, tc.refundAmount, reloaded.RefundAmount)
+		})
+	}
+}
+
 func TestFinalizePendingRefundSuccessRejectsStaleCallerBeforeSecondDeduction(t *testing.T) {
 	ctx := context.Background()
 	client := newPaymentConfigServiceTestClient(t)
@@ -670,9 +761,28 @@ func (refundProviderTestDouble) Refund(context.Context, payment.RefundRequest) (
 
 type refundQueryProviderTestDouble struct {
 	refundProviderTestDouble
-	refundResponse *payment.RefundResponse
+	refundResponse      *payment.RefundResponse
+	gatewayRefundAmount string
 }
 
-func (p *refundQueryProviderTestDouble) QueryRefund(context.Context, payment.RefundQueryRequest) (*payment.RefundResponse, error) {
+func (p *refundQueryProviderTestDouble) QueryRefund(_ context.Context, req payment.RefundQueryRequest) (*payment.RefundResponse, error) {
+	if p.gatewayRefundAmount != "" && req.Amount != p.gatewayRefundAmount {
+		return nil, fmt.Errorf("gateway refund amount mismatch: expected %s, got %s", p.gatewayRefundAmount, req.Amount)
+	}
 	return p.refundResponse, nil
+}
+
+type antomRetryGateway struct {
+	refundProviderTestDouble
+	funded         bool
+	failedAttempts map[string]bool
+}
+
+func (*antomRetryGateway) ProviderKey() string { return payment.TypeAntom }
+func (p *antomRetryGateway) Refund(_ context.Context, req payment.RefundRequest) (*payment.RefundResponse, error) {
+	if !p.funded || p.failedAttempts[req.AttemptID] {
+		p.failedAttempts[req.AttemptID] = true
+		return &payment.RefundResponse{Status: payment.ProviderStatusFailed}, errors.New("merchant balance insufficient")
+	}
+	return &payment.RefundResponse{Status: payment.ProviderStatusSuccess}, nil
 }

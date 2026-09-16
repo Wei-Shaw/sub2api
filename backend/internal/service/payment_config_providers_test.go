@@ -735,6 +735,8 @@ func providerPendingOrderPaymentType(providerKey string) string {
 		return payment.TypeAlipay
 	case payment.TypeAirwallex:
 		return payment.TypeAirwallex
+	case payment.TypeAntom:
+		return payment.TypeAntom
 	case payment.TypeStripe:
 		return payment.TypeStripe
 	default:
@@ -821,4 +823,44 @@ func validWxpayProviderConfigWithJSAPIAppID(t *testing.T) map[string]string {
 	cfg := validWxpayProviderConfig(t)
 	cfg["mpAppId"] = "wx-mp-app-test"
 	return cfg
+}
+
+func validAntomProviderConfig(t *testing.T) map[string]string {
+	t.Helper()
+	key, err := rsa.GenerateKey(rand.Reader, 2048)
+	require.NoError(t, err)
+	publicKey, err := x509.MarshalPKIXPublicKey(&key.PublicKey)
+	require.NoError(t, err)
+	return map[string]string{
+		"clientId":           "SANDBOX_client-test",
+		"merchantPrivateKey": string(pem.EncodeToMemory(&pem.Block{Type: "RSA PRIVATE KEY", Bytes: x509.MarshalPKCS1PrivateKey(key)})),
+		"antomPublicKey":     string(pem.EncodeToMemory(&pem.Block{Type: "PUBLIC KEY", Bytes: publicKey})),
+		"currency":           "USD",
+		"notifyUrl":          "https://merchant.example.com/api/v1/payment/webhook/antom",
+	}
+}
+
+func TestAntomProviderConfigProtectsPrivateKeyAndPendingOrders(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	client := newPaymentConfigServiceTestClient(t)
+	svc := &PaymentConfigService{entClient: client}
+	cfg := validAntomProviderConfig(t)
+	instance, err := svc.CreateProviderInstance(ctx, CreateProviderInstanceRequest{
+		ProviderKey: payment.TypeAntom, Name: "Antom", Config: cfg,
+		SupportedTypes: []string{payment.TypeAntom}, Enabled: true, PaymentMode: "redirect",
+	})
+	require.NoError(t, err)
+	listed, err := svc.ListProviderInstancesWithConfig(ctx)
+	require.NoError(t, err)
+	require.Len(t, listed, 1)
+	require.Empty(t, listed[0].Config["merchantPrivateKey"])
+	require.Equal(t, cfg["antomPublicKey"], listed[0].Config["antomPublicKey"])
+	createPendingProviderConfigOrder(t, ctx, client, instance)
+	for _, field := range []string{"clientId", "merchantPrivateKey", "antomPublicKey", "keyVersion", "apiBase", "currency", "settlementCurrency"} {
+		t.Run(field, func(t *testing.T) {
+			_, err := svc.UpdateProviderInstance(ctx, instance.ID, UpdateProviderInstanceRequest{Config: map[string]string{field: "changed"}})
+			require.Equal(t, "PENDING_ORDERS", infraerrors.Reason(err))
+		})
+	}
 }

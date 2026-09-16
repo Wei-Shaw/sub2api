@@ -7,6 +7,7 @@ import (
 	"strconv"
 	"testing"
 
+	dbent "github.com/Wei-Shaw/sub2api/ent"
 	"github.com/Wei-Shaw/sub2api/internal/payment"
 	"github.com/stretchr/testify/require"
 )
@@ -193,4 +194,24 @@ func valueOrEmpty(v *string) string {
 		return ""
 	}
 	return *v
+}
+
+func TestAntomSnapshotRejectsCrossClientAndCurrencyNotifications(t *testing.T) {
+	t.Parallel()
+	snapshot := buildPaymentOrderProviderSnapshot(&payment.InstanceSelection{
+		InstanceID: "79", ProviderKey: payment.TypeAntom,
+		Config: map[string]string{"clientId": "SANDBOX_client", "currency": "usd", "merchantPrivateKey": "secret"},
+	}, CreateOrderRequest{})
+	order := &dbent.PaymentOrder{PaymentType: payment.TypeAntom, ProviderSnapshot: snapshot}
+	require.Equal(t, "USD", PaymentOrderCurrency(order))
+	require.NotContains(t, snapshot, "merchantPrivateKey")
+	require.NoError(t, validateProviderNotificationMetadata(order, payment.TypeAntom, map[string]string{"app_id": "SANDBOX_client", "currency": "USD"}))
+	for _, metadata := range []map[string]string{
+		{"app_id": "SANDBOX_other", "currency": "USD"},
+		{"app_id": "SANDBOX_client", "currency": "CNY"},
+		{"app_id": "SANDBOX_client"},
+		{"currency": "USD"},
+	} {
+		require.Error(t, validateProviderNotificationMetadata(order, payment.TypeAntom, metadata))
+	}
 }

@@ -296,7 +296,16 @@ func (s *PaymentService) deductAvailableBalance(ctx context.Context, userID int6
 }
 
 func (s *PaymentService) ExecuteRefund(ctx context.Context, p *RefundPlan) (*RefundResult, error) {
-	c, err := s.entClient.PaymentOrder.Update().Where(paymentorder.IDEQ(p.OrderID), paymentorder.StatusIn(OrderStatusCompleted, OrderStatusRefundRequested, OrderStatusRefundPending, OrderStatusRefundFailed)).SetStatus(OrderStatusRefunding).Save(ctx)
+	statuses := []string{OrderStatusCompleted, OrderStatusRefundRequested, OrderStatusRefundFailed}
+	if payment.GetBasePaymentType(p.Order.PaymentType) == payment.TypeAntom {
+		// An unknown refund must be resolved before another attempt can move money.
+		if p.Order.Status == OrderStatusRefundPending {
+			return s.QueryAndFinalizeRefund(ctx, p.OrderID)
+		}
+	} else {
+		statuses = append(statuses, OrderStatusRefundPending)
+	}
+	c, err := s.entClient.PaymentOrder.Update().Where(paymentorder.IDEQ(p.OrderID), paymentorder.StatusIn(statuses...)).SetStatus(OrderStatusRefunding).Save(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("lock: %w", err)
 	}
@@ -365,12 +374,28 @@ func (s *PaymentService) gwRefund(ctx context.Context, p *RefundPlan) (*payment.
 		})
 		return nil, err
 	}
+	var attemptID string
+	if prov.ProviderKey() == payment.TypeAntom {
+		// A final failure consumes Antom's idempotency key. The durable failure audit
+		// starts a new generation; unknown outcomes never advance this generation.
+		failure, err := s.entClient.PaymentAuditLog.Query().Where(
+			paymentauditlog.OrderIDEQ(strconv.FormatInt(p.OrderID, 10)),
+			paymentauditlog.ActionIn("REFUND_GATEWAY_FAILED", "REFUND_FAILED"),
+		).Order(dbent.Desc(paymentauditlog.FieldID)).First(ctx)
+		if err != nil && !dbent.IsNotFound(err) {
+			return nil, fmt.Errorf("load refund attempt: %w", err)
+		}
+		if failure != nil {
+			attemptID = strconv.FormatInt(failure.ID, 10)
+		}
+	}
 	finishProviderCall := servertiming.ObserveDependency(ctx, "payment")
 	resp, err := prov.Refund(ctx, payment.RefundRequest{
-		TradeNo: p.Order.PaymentTradeNo,
-		OrderID: p.Order.OutTradeNo,
-		Amount:  formatGatewayRefundAmount(p.GatewayAmount, p.Order),
-		Reason:  p.Reason,
+		TradeNo:   p.Order.PaymentTradeNo,
+		OrderID:   p.Order.OutTradeNo,
+		Amount:    formatGatewayRefundAmount(p.GatewayAmount, p.Order),
+		Reason:    p.Reason,
+		AttemptID: attemptID,
 	})
 	finishProviderCall()
 	if err != nil {
@@ -436,13 +461,14 @@ func (s *PaymentService) QueryAndFinalizeRefund(ctx context.Context, oid int64) 
 		return nil, infraerrors.BadRequest("REFUND_QUERY_UNSUPPORTED", "this payment provider does not support refund status query; please verify manually")
 	}
 
+	plan := s.refundFinalizePlan(o)
 	pendingDetail := s.latestRefundPendingDetail(ctx, oid)
 	finishProviderCall := servertiming.ObserveDependency(ctx, "payment")
 	resp, err := queryProvider.QueryRefund(ctx, payment.RefundQueryRequest{
 		TradeNo:  o.PaymentTradeNo,
 		OrderID:  o.OutTradeNo,
 		RefundID: pendingDetail.RefundID,
-		Amount:   formatGatewayRefundAmount(o.RefundAmount, o),
+		Amount:   formatGatewayRefundAmount(plan.GatewayAmount, o),
 	})
 	finishProviderCall()
 	if err != nil {
@@ -452,7 +478,6 @@ func (s *PaymentService) QueryAndFinalizeRefund(ctx context.Context, oid int64) 
 		return s.finalizeRefundFailed(ctx, o, err)
 	}
 
-	plan := s.refundFinalizePlan(o)
 	if !pendingDetail.DeductionRollbackOK {
 		plan.BalanceToDeduct = 0
 		plan.SubDaysToDeduct = 0

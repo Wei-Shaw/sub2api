@@ -18,6 +18,7 @@ const (
 	TypeLink         PaymentType = "link"
 	TypeEasyPay      PaymentType = "easypay"
 	TypeAirwallex    PaymentType = "airwallex"
+	TypeAntom        PaymentType = "antom"
 )
 
 // Order status constants shared across payment and service layers.
@@ -107,7 +108,9 @@ type CreatePaymentRequest struct {
 	ReturnURL   string // Browser redirect URL after payment
 	OpenID      string // WeChat JSAPI payer OpenID when available
 	ClientIP    string // Payer's IP address
+	BuyerID     string // Stable merchant-side buyer identifier for hosted checkout
 	IsMobile    bool   // Whether the request comes from a mobile device
+	UserAgent   string // Browser User-Agent for provider device context
 	// AlipayMobilePrecreate routes a mobile Alipay request through
 	// alipay.trade.precreate instead of alipay.trade.wap.pay.
 	AlipayMobilePrecreate bool
@@ -179,10 +182,11 @@ type PaymentNotification struct {
 
 // RefundRequest contains the parameters for requesting a refund.
 type RefundRequest struct {
-	TradeNo string
-	OrderID string
-	Amount  string // Refund amount formatted to 2 decimal places
-	Reason  string
+	TradeNo   string
+	OrderID   string
+	Amount    string // Refund amount formatted to 2 decimal places
+	Reason    string
+	AttemptID string // Stable retry generation; advance only after a confirmed failure
 }
 
 // RefundQueryRequest contains identifiers needed to query a previously

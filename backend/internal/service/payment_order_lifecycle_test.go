@@ -864,3 +864,40 @@ func newPaymentOrderLifecycleTestClient(t *testing.T) *dbent.Client {
 	t.Cleanup(func() { _ = client.Close() })
 	return client
 }
+
+func TestAntomReconciliationWaitsForNotificationGracePeriod(t *testing.T) {
+	ctx := context.Background()
+	client := newPaymentOrderLifecycleTestClient(t)
+	user, err := client.User.Create().SetEmail("antom-reconcile@example.com").SetPasswordHash("hash").SetUsername("antom-reconcile").Save(ctx)
+	require.NoError(t, err)
+	order, err := client.PaymentOrder.Create().
+		SetUserID(user.ID).SetUserEmail(user.Email).SetUserName(user.Username).
+		SetAmount(50).SetPayAmount(50).SetFeeRate(0).
+		SetRechargeCode("ANTOM-RECONCILE").SetOutTradeNo("sub2_antom_reconcile").
+		SetPaymentType(payment.TypeAntom).SetPaymentTradeNo("sub2_antom_reconcile").
+		SetOrderType(payment.OrderTypeBalance).SetStatus(OrderStatusPending).
+		SetExpiresAt(time.Now().Add(time.Hour)).SetClientIP("127.0.0.1").SetSrcHost("api.example.com").Save(ctx)
+	require.NoError(t, err)
+	registry := payment.NewRegistry()
+	prov := &paymentOrderLifecycleQueryProvider{key: payment.TypeAntom, resp: &payment.QueryOrderResponse{Status: payment.ProviderStatusPending}}
+	registry.Register(prov)
+	svc := &PaymentService{entClient: client, registry: registry, providersLoaded: true}
+	_, err = svc.VerifyOrderByOutTradeNo(ctx, order.OutTradeNo, user.ID)
+	require.NoError(t, err)
+	_, err = svc.ReconcilePendingPaymentOrders(ctx)
+	require.NoError(t, err)
+	require.Zero(t, prov.queryCalls, "notifications must remain primary during the grace period")
+	_, err = client.ExecContext(ctx, "UPDATE payment_orders SET created_at = ? WHERE id = ?", time.Now().Add(-6*time.Minute), order.ID)
+	require.NoError(t, err)
+	_, err = svc.ReconcilePendingPaymentOrders(ctx)
+	require.NoError(t, err)
+	require.Equal(t, 1, prov.queryCalls, "missed notifications must eventually be reconciled")
+	require.Equal(t, order.OutTradeNo, prov.lastQueryTradeNo)
+	// A freshly created order must still query upstream before explicit cancellation.
+	_, err = client.ExecContext(ctx, "UPDATE payment_orders SET created_at = ? WHERE id = ?", time.Now(), order.ID)
+	require.NoError(t, err)
+	_, err = svc.CancelOrder(ctx, order.ID, user.ID)
+	require.NoError(t, err)
+	require.Equal(t, 2, prov.queryCalls)
+	require.Equal(t, 1, prov.cancelCalls)
+}
