@@ -596,11 +596,25 @@ func writeUsageLogBestEffort(ctx context.Context, repo UsageLogRepository, usage
 	}
 }
 
-// recordUsageOpts 内部选项，参数化计费差异点。长上下文阶梯计价已改为价格目录
-// 数据驱动（见 Group.LongContextPricingEnabled），不再需要调用方传阈值/倍率。
+// recordUsageOpts 内部选项，承载计费主干需要但函数签名不便逐个透传的差异点。
+// 长上下文阶梯计价已由价格目录数据驱动（见 BillingService 阶梯单价表），故不再在此参数化。
 type recordUsageOpts struct {
 	// Kiro 账号在上游返回 auto 等无法定价模型时使用保守计费兜底。
 	IsKiroAccount bool
+	// ImageBillingPlatform 是出图按次兜底价的平台隔离轴（账号 platform）。
+	// 仅 adobe 套 Firefly 分档；空值与 openai/gemini 等不得按模型名命中 Adobe 表。
+	ImageBillingPlatform string
+}
+
+// firstRecordUsageOpts 从可变参数中取首个非 nil 选项，缺省返回零值选项。
+// 计费主干的多数调用点无需定制选项，可变参数让这些调用点保持与上游一致的签名。
+func firstRecordUsageOpts(opts []*recordUsageOpts) *recordUsageOpts {
+	for _, opt := range opts {
+		if opt != nil {
+			return opt
+		}
+	}
+	return &recordUsageOpts{}
 }
 
 // RecordUsage 记录使用量并扣费（或更新订阅用量）
@@ -622,7 +636,7 @@ func (s *GatewayService) RecordUsage(ctx context.Context, input *RecordUsageInpu
 		APIKeyService:      input.APIKeyService,
 		QuotaPlatform:      input.QuotaPlatform,
 		ChannelUsageFields: input.ChannelUsageFields,
-	}, &recordUsageOpts{})
+	})
 }
 
 // recordUsageCoreInput 是 recordUsageCore 的公共输入字段，从两种输入结构体中提取。
@@ -720,7 +734,7 @@ func logResponseModelBillingApplied(component string, account *Account, requestI
 }
 
 // recordUsageCore 是 RecordUsage 的核心实现。
-func (s *GatewayService) recordUsageCore(ctx context.Context, input *recordUsageCoreInput, opts *recordUsageOpts) error {
+func (s *GatewayService) recordUsageCore(ctx context.Context, input *recordUsageCoreInput) error {
 	result := input.Result
 	apiKey := input.APIKey
 	user := input.User
@@ -790,7 +804,10 @@ func (s *GatewayService) recordUsageCore(ctx context.Context, input *recordUsage
 	}
 
 	// 计算费用
-	opts.IsKiroAccount = account != nil && account.Platform == PlatformKiro
+	opts := &recordUsageOpts{
+		IsKiroAccount:        account != nil && account.Platform == PlatformKiro,
+		ImageBillingPlatform: imageBillingPlatform(account),
+	}
 	cost := s.calculateRecordUsageCost(ctx, result, apiKey, billingModel, multiplier, imageMultiplier, pricingAt, opts)
 	// response_model：按上游成功响应自报的模型计费（渠道显式开启才生效）。
 	// 采纳条件见 responseModelBillingDeclaration + hasIdentifiedResponseModelPricing
@@ -893,14 +910,14 @@ func (s *GatewayService) calculateRecordUsageCost(
 	multiplier float64,
 	imageMultiplier float64,
 	pricingAt time.Time,
-	opts *recordUsageOpts,
+	opts ...*recordUsageOpts,
 ) *CostBreakdown {
 	// 图片生成：渠道定价为 token 计费时走 token 路径，否则走图片计费
 	if result.ImageCount > 0 {
 		if resolved := s.resolveChannelPricing(ctx, billingModel, apiKey); resolved != nil && resolved.Mode == BillingModeToken {
-			return s.calculateTokenCost(ctx, result, apiKey, billingModel, multiplier, pricingAt, opts)
+			return s.calculateTokenCost(ctx, result, apiKey, billingModel, multiplier, pricingAt, opts...)
 		}
-		return s.calculateImageCost(ctx, result, apiKey, billingModel, imageMultiplier)
+		return s.calculateImageCost(ctx, result, apiKey, billingModel, imageMultiplier, firstRecordUsageOpts(opts).ImageBillingPlatform)
 	}
 
 	// Voice audio (TTS / STT / realtime) when present on the forward result.
@@ -922,7 +939,7 @@ func (s *GatewayService) calculateRecordUsageCost(
 	}
 
 	// Token 计费；SearchCount 为叠加 surcharge（不替代 token）。
-	tokenCost := s.calculateTokenCost(ctx, result, apiKey, billingModel, multiplier, pricingAt, opts)
+	tokenCost := s.calculateTokenCost(ctx, result, apiKey, billingModel, multiplier, pricingAt, opts...)
 	if result.SearchCount > 0 {
 		price := groupSearchPricePer1kFromAPIKey(apiKey)
 		if price != nil && *price == 0 {
@@ -1063,6 +1080,7 @@ func (s *GatewayService) calculateImageCost(
 	apiKey *APIKey,
 	billingModel string,
 	multiplier float64,
+	platform string,
 ) *CostBreakdown {
 	sizeTier := NormalizeImageBillingTierOrDefault(result.ImageSize)
 	resolved := s.resolveChannelPricing(ctx, billingModel, apiKey)
@@ -1079,7 +1097,7 @@ func (s *GatewayService) calculateImageCost(
 	}
 	groupConfig := imagePriceConfigFromAPIKey(apiKey)
 	if apiKeyHasConfiguredImagePrice(apiKey, sizeTier) {
-		return s.billingService.CalculateImageCost(billingModel, sizeTier, result.ImageCount, groupConfig, multiplier)
+		return s.billingService.CalculateImageCostWithPlatform(billingModel, sizeTier, result.ImageCount, groupConfig, multiplier, platform)
 	}
 	if resolved != nil && resolved.Source == PricingSourceChannel {
 		tokens := UsageTokens{
@@ -1107,7 +1125,7 @@ func (s *GatewayService) calculateImageCost(
 		return cost
 	}
 
-	return s.billingService.CalculateImageCost(billingModel, sizeTier, result.ImageCount, groupConfig, multiplier)
+	return s.billingService.CalculateImageCostWithPlatform(billingModel, sizeTier, result.ImageCount, groupConfig, multiplier, platform)
 }
 
 // calculateTokenCost 计算 Token 计费：路径选择（分组/渠道定价 → 内置定价）
@@ -1119,7 +1137,7 @@ func (s *GatewayService) calculateTokenCost(
 	billingModel string,
 	multiplier float64,
 	pricingAt time.Time,
-	opts *recordUsageOpts,
+	opts ...*recordUsageOpts,
 ) *CostBreakdown {
 	tokens := UsageTokens{
 		InputTokens:           result.Usage.InputTokens,
@@ -1151,7 +1169,7 @@ func (s *GatewayService) calculateTokenCost(
 	})
 	if err != nil {
 		logger.LegacyPrintf("service.gateway", "Calculate cost failed: %v", err)
-		if shouldUseKiroConservativeBillingFallback(result, billingModel, opts) {
+		if shouldUseKiroConservativeBillingFallback(result, billingModel, firstRecordUsageOpts(opts)) {
 			if fallback := s.calculateKiroConservativeTokenCost(tokens, multiplier); fallback != nil {
 				logger.LegacyPrintf("service.gateway", "Using conservative Kiro fallback pricing for model=%s", billingModel)
 				return fallback

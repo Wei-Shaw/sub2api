@@ -13,9 +13,10 @@ const PROVIDER_BY_PLATFORM: Record<GroupPlatform, KeyGroupProvider> = {
   deepseek: 'domestic',
   minimax: 'domestic',
   gemini: 'other',
-  kiro: 'other',
   grok: 'other',
   antigravity: 'other',
+  kiro: 'other',
+  adobe: 'other',
   composite: 'other',
   opencode_go: 'other'
 }

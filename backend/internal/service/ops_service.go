@@ -596,10 +596,10 @@ func sanitizeOpsUpstreamErrors(entry *OpsInsertErrorLogInput) error {
 
 		out.Platform = truncateString(strings.TrimSpace(out.Platform), 32)
 		out.AccountName = truncateString(strings.TrimSpace(out.AccountName), 128)
-		out.ProxyName = truncateString(strings.TrimSpace(out.ProxyName), 128)
 		out.RequestedModel = truncateString(strings.TrimSpace(out.RequestedModel), 128)
 		out.MappedModel = truncateString(strings.TrimSpace(out.MappedModel), 128)
 		out.KiroModelID = truncateString(strings.TrimSpace(out.KiroModelID), 128)
+		out.ProxyName = truncateString(strings.TrimSpace(out.ProxyName), 128)
 		out.UpstreamRequestID = truncateString(strings.TrimSpace(out.UpstreamRequestID), 128)
 		out.UpstreamURL = truncateString(strings.TrimSpace(out.UpstreamURL), urlMaxLen)
 		if body := strings.TrimSpace(out.UpstreamResponseBody); keepBody && body != "" {

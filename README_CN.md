@@ -194,11 +194,12 @@
 
 ## 项目概述
 
-Sub2API 是一个 AI API 网关平台，用于分发和管理 AI 产品订阅的 API 配额。用户通过平台生成的 API Key 调用上游 AI 服务，平台负责鉴权、计费、负载均衡和请求转发。
+Sub2API 是一个 AI API 网关平台，用于分发和管理 AI 产品订阅的 API 配额。用户通过平台生成的 API Key 调用上游 AI 服务，平台负责鉴权、计费、负载均衡和请求转发。Adobe Firefly Web Cookie 账号可提供 OpenAI 兼容出图，详见 [Adobe Firefly 使用说明](#adobe-firefly-使用说明)。
 
 ## 核心功能
 
 - **多账号管理** - 支持多种上游账号类型（OAuth、API Key）
+- **Adobe Firefly 出图** - 通过 Firefly Web Cookie 账号提供 OpenAI 兼容的图片生成与编辑，并支持中转号灾备（[使用说明](#adobe-firefly-使用说明)）
 - **API Key 分发** - 为用户生成和管理 API Key
 - **精确计费** - Token 级别的用量追踪和成本计算
 - **智能调度** - 智能账号选择，支持粘性会话
@@ -207,6 +208,103 @@ Sub2API 是一个 AI API 网关平台，用于分发和管理 AI 产品订阅的
 - **内置支付系统** - 支持 EasyPay 易支付、支付宝官方、微信官方、Stripe，用户自助充值，无需独立部署支付服务（[配置指南](docs/PAYMENT_CN.md)）
 - **管理后台** - Web 界面进行监控和管理
 - **外部系统集成** - 支持通过 iframe 嵌入外部系统（如工单等），扩展管理后台功能
+
+---
+
+## Adobe Firefly 使用说明
+
+Sub2API 支持通过 Adobe Firefly Web 订阅账号（浏览器 Cookie）直连出图，并把请求做成 OpenAI Images 兼容接口。同一 Adobe 分组里也可以加入 OpenAI 形态的外部中转账号作为灾备。
+
+直连走的是 **Firefly Web**（`firefly.adobe.com` / `clio-playground-web`），不是 Adobe Express，也不支持 Adobe 官方 Firefly Services API Key。
+
+### 支持范围
+
+- 平台名：`adobe`
+- 账号类型：Firefly Cookie（管理端显示为 OAuth）以及 **API Key + Base URL** 中转号
+- 公开出图入口：`/v1/images/generations`、`/v1/images/edits`（以及去掉 `/v1` 前缀的别名）
+- API Key 所在分组需要开启图片生成权限（Adobe 分组默认开启）
+- `n` 缺省 1，最大 10。Cookie 路径会拆成 n 次 Firefly 任务（上游每次仍是 n=1），按张计费；`n>10` 会直接拒绝
+- `output_format` 支持 `png`/`jpeg`（`jpg` 视为 jpeg），下载后本机转码；`webp` 不支持；未传则保持上游格式
+- `/v1/models` 只返回干净的外部模型名，不要直接请求内部 `firefly-*` 族 id
+- 本渠道暂不提供：视频网关、异步出图任务（`/v1/images/*/async`）、官方 Firefly Services API、以及聊天 / TTS 等非出图协议
+
+### 公开模型
+
+| 对外模型名 | 说明 |
+|------------|------|
+| `gpt-image-2` | Firefly GPT Image 2 |
+| `gpt-image-1.5` | Firefly GPT Image 1.5 |
+| `gpt-image-2.5-flare` | Firefly GPT Image 2.5 Flare |
+| `gpt-image-2.5-sunburst` | Firefly GPT Image 2.5 Sunburst（上游版本名为 prism） |
+| `nano-banana` / `nano-banana-pro` / `nano-banana2` | Firefly 上的 Gemini Nano Banana 系列 |
+| `flux-pro` / `flux-ultra` | Firefly FLUX |
+| `imagen-4` / `imagen-4-fast` | Firefly Imagen 4 |
+| `gpt-4o-image` | Firefly GPT-4o Image |
+| `runway-gen4-image` | Firefly Runway Gen-4 Image |
+
+历史别名 `gpt-image`、`gpt-image-1`、`gpt-image-1-mini` 会落到 `gpt-image-2`，但不会出现在 `/v1/models` 列表中。
+
+`gpt-image-*` 与 OpenAI 官方出图同名。只有 API Key 绑定 **Adobe 分组** 时才会走 Firefly；绑到 OpenAI 分组则仍走 OpenAI。合成分组（composite）**不会**根据 `gpt-image-*` 自动判断平台（名称有歧义），需要单独配置路由。`nano-banana*`、`flux-*`、`imagen-*`、`runway-gen4*` 可由合成分组自动识别为 Adobe。
+
+### Cookie 账号配置
+
+1. 在管理后台创建 **Adobe** 分组，并添加 Firefly Cookie 账号。
+2. 在浏览器登录 Adobe，打开 `https://firefly.adobe.com/generate/image` 并停留片刻。
+3. 打开开发者工具 → Network，找到发往 `adobeid-na1.services.adobe.com` 的 `/ims/check/v6/token` 请求，复制其 **Cookie 请求头**（必须包含 `ims_sid`）。
+4. 只从 `firefly.adobe.com` 复制 `document.cookie` **不够**。可带 `Cookie:` 前缀，也支持 JSON 形式的 cookie 数组。
+5. 短期 Access Token 可选；留空则首次刷新时用 Cookie 自动换取。之后后台会持续用 Cookie 刷新 token。
+6. 把账号加入分组，再创建绑定该分组的 Sub2API API Key。
+
+Cookie 失效后需要重新从浏览器导出。刷新器会把账号标为错误，而不是无限重试。
+
+### 中转账号（可选）
+
+同一 Adobe 分组可再添加 **API Key + Base URL** 中转号。这类账号不打 Firefly，而是把同一份 OpenAI Images 请求转发到 `{base_url}`（`Authorization: Bearer`），并保持对外模型名（如 `gpt-image-2`），不会改写成内部 `firefly-*`。
+
+典型用途：
+
+- Cookie 号配额耗尽、临时故障、或没有该模型 / 质量档权益时的灾备
+- `gpt-image-*` 带 **mask** 的编辑优先走中转号（Firefly Cookie 直连没有官方 inpaint mask 语义）
+- Firefly 内容安全拒绝（如 `image_unsafe`）后不会再换其它 Cookie 号，但仍可尝试中转号
+
+没有 `base_url` 的 Adobe API Key 不是中转号。
+
+### `size` / `quality` / `background`
+
+| 模型家族 | 客户端 `size` | 行为 |
+|----------|---------------|------|
+| `gpt-image-2` / `gpt-image-2.5-*` | `宽x高`、空或 `auto` | 像素原样转发；空/`auto` 则省略，由上游自动决定 |
+| `gpt-image-1.5` | `宽x高` | 就近落到 `1024x1024` / `1536x1024` / `1024x1536` |
+| `nano-banana*` | `宽x高`、空或 `auto` | 按长边落到 1K/2K/4K 方图档，比例走最近的 `aspectRatio`；空/`auto` 为 Firefly 默认 1K 方图。`nano-banana2` 额外支持 `1:8` / `1:4` / `4:1` / `8:1` |
+| `flux-*` / `imagen-4*` / `gpt-4o-image` / `runway-gen4-image` | `宽x高` | 就近落到该家族允许的尺寸枚举 |
+
+`quality` 会映射为 Firefly `detailLevel`：`low`（默认）→ 1，`medium` → 3，`high` → 5，`xhigh`/`max` 在 2 / 1.5 上为 5，在 2.5 上为 7。
+
+gpt-image 家族支持 OpenAI 的 `background`：`transparent` / `opaque` / `auto`。
+
+`n` 缺省 1，最大 10。Cookie 账号会拆成 n 次 Firefly 任务并按张计费。`output_format` 为 `png`/`jpeg` 时在下载后本机转码；`webp` 不支持；未传则保持上游格式。`background=transparent` 不能与 `output_format=jpeg` 同时使用。
+
+### 计费、额度与故障转移
+
+- 按张计费，档位为 `1K` / `2K` / `4K`（由输出长边推导）。优先使用分组配置的图片单价；未配置时使用 Adobe 渠道兜底价。
+- Cookie 账号会拉取 Firefly Credits 并显示在管理后台。额度耗尽的账号会暂时移出调度（默认约 30 分钟），请求改打其它账号。
+- 账号没有该模型或质量档权益时会换号，而不会把 Cookie 当成失效去刷新。
+- 上游 `429` / `5xx` / 网络错误可换号重试。
+
+### 调用示例
+
+```bash
+curl https://your-sub2api.example.com/v1/images/generations \
+  -H "Authorization: Bearer sk-your-sub2api-key" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "gpt-image-2",
+    "prompt": "a red panda in a bamboo forest",
+    "size": "1024x1024"
+  }'
+```
+
+---
 
 ## 生态项目
 
@@ -743,7 +841,7 @@ go generate ./cmd/server
 
 ## OpenAI 图片模型
 
-支持 `gpt-image-2.5-flare`、`gpt-image-2.5-sunburst` 及其 `2026-09-08` 日期快照，可通过 `/v1/images/generations`、`/v1/images/edits` 调用。`quality` 支持 `xhigh`、`max`、`auto`，合法自定义尺寸和图片 usage 明细保持透传。
+支持 `gpt-image-2.5-flare`、`gpt-image-2.5-sunburst` 及其 `2026-09-08` 日期快照，可通过 `/v1/images/generations`、`/v1/images/edits` 调用。`quality` 支持 `xhigh`、`max`、`auto`，合法自定义尺寸和图片 usage 明细保持透传。同名 `gpt-image-*` 若绑定 **Adobe 分组**，会走 Firefly 直连而不是 OpenAI，详见 [Adobe Firefly 使用说明](#adobe-firefly-使用说明)。
 
 OAuth / Setup Token 图片请求使用 Responses 主控模型调用 `image_generation` 工具，默认主控为 `gpt-5.6-luna`。可设置 `SUB2API_IMAGES_MAIN_MODEL` 切换为账号支持的文本模型；Docker Compose 用户修改 `.env` 后执行 `docker compose up -d` 重建容器。该配置不会替换所选图片模型，也不会覆盖 `/v1/responses` 请求中已经提供的文本主控模型。
 
@@ -782,9 +880,6 @@ export ANTHROPIC_AUTH_TOKEN="sk-xxx"
 Antigravity 账户支持可选的**混合调度**功能。开启后，通用端点 `/v1/messages` 和 `/v1beta/` 也会调度该账户。
 
 > **⚠️ 注意**：Anthropic Claude 和 Antigravity Claude **不能在同一上下文中混合使用**，请通过分组功能做好隔离。
-
----
-
 ## 项目结构
 
 ```

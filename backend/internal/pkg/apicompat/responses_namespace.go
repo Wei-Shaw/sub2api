@@ -44,6 +44,8 @@ func FlattenResponsesNamespacesExcept(req map[string]any, preserved map[string]b
 	}
 
 	names := make(map[string]ResponsesNamespaceName)
+	bareNames := make(map[string]string)
+	ambiguousBareNames := make(map[string]bool)
 	for _, raw := range tools {
 		tool, ok := raw.(map[string]any)
 		if !ok || strings.TrimSpace(stringValue(tool["type"])) != "namespace" {
@@ -71,6 +73,19 @@ func FlattenResponsesNamespacesExcept(req map[string]any, preserved map[string]b
 				return nil, false, fmt.Errorf("namespace tools %q/%q and %q/%q both flatten to %q; this upstream cannot disambiguate them, rename one of the tools", prev.Namespace, prev.Name, namespace, name, flat)
 			}
 			names[flat] = entry
+			// Older Codex turns can replay namespace calls without a namespace.
+			// Only infer the flat identity when the bare child name is unique
+			// and cannot refer to a top-level function/custom tool.
+			if topLevel[name] || ambiguousBareNames[name] {
+				delete(bareNames, name)
+				continue
+			}
+			if previous, exists := bareNames[name]; exists && previous != flat {
+				delete(bareNames, name)
+				ambiguousBareNames[name] = true
+				continue
+			}
+			bareNames[name] = flat
 		}
 	}
 	if len(names) == 0 {
@@ -110,13 +125,13 @@ func FlattenResponsesNamespacesExcept(req map[string]any, preserved map[string]b
 		}
 	}
 	req["tools"] = flattened
-	rewriteNamespaceQualifiedCalls(req["input"], names)
+	rewriteNamespaceCalls(req["input"], names, bareNames)
 	if choice, ok := req["tool_choice"].(map[string]any); ok {
 		choiceNamespace := strings.TrimSpace(stringValue(choice["name"]))
 		if strings.TrimSpace(stringValue(choice["type"])) == "namespace" && !preserved[choiceNamespace] {
 			req["tool_choice"] = "auto"
 		} else {
-			rewriteNamespaceQualifiedCall(choice, names)
+			rewriteNamespaceCall(choice, names, bareNames)
 		}
 	}
 	return names, true, nil
@@ -175,17 +190,21 @@ func isFlattenableNamespaceChild(child map[string]any) bool {
 }
 
 func rewriteNamespaceQualifiedCalls(value any, names map[string]ResponsesNamespaceName) {
+	rewriteNamespaceCalls(value, names, nil)
+}
+
+func rewriteNamespaceCalls(value any, names map[string]ResponsesNamespaceName, bareNames map[string]string) {
 	switch typed := value.(type) {
 	case []any:
 		for _, item := range typed {
-			rewriteNamespaceQualifiedCalls(item, names)
+			rewriteNamespaceCalls(item, names, bareNames)
 		}
 	case map[string]any:
 		if isNamespaceQualifiedCallType(stringValue(typed["type"])) {
-			rewriteNamespaceQualifiedCall(typed, names)
+			rewriteNamespaceCall(typed, names, bareNames)
 		}
 		for _, child := range typed {
-			rewriteNamespaceQualifiedCalls(child, names)
+			rewriteNamespaceCalls(child, names, bareNames)
 		}
 	}
 }
@@ -204,10 +223,22 @@ func isNamespaceQualifiedCallType(typ string) bool {
 }
 
 func rewriteNamespaceQualifiedCall(item map[string]any, names map[string]ResponsesNamespaceName) bool {
+	return rewriteNamespaceCall(item, names, nil)
+}
+
+func rewriteNamespaceCall(item map[string]any, names map[string]ResponsesNamespaceName, bareNames map[string]string) bool {
 	namespace := strings.TrimSpace(stringValue(item["namespace"]))
 	name := strings.TrimSpace(stringValue(item["name"]))
-	if namespace == "" || name == "" {
+	if name == "" {
 		return false
+	}
+	if namespace == "" {
+		flat, ok := bareNames[name]
+		if !ok {
+			return false
+		}
+		item["name"] = flat
+		return true
 	}
 	flat := flattenNamespaceToolName(namespace, name)
 	entry, ok := names[flat]

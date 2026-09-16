@@ -1360,6 +1360,15 @@ func (s *OpenAIGatewayService) handleOpenAIImagesOAuthNonStreamingResponse(
 			}
 			return OpenAIUsage{}, 0, nil, upstreamErr
 		}
+		// 软失败兜底：上游无图。按上游输出的文字内容区分三种情形（实测真因）：
+		//
+		// (A) 内容审核拒绝：模型未出图，但输出了文字拒绝（response.completed 里带
+		//     output_text / message，内容如“被安全系统判定为不适合生成”）。这是用户
+		//     prompt 触发 OpenAI 内容策略，模型主动拒绝改用文字回应。**换账号/重试均无效**
+		//     （内容层拦截，与账号/承载模型无关），故以 400 透传给客户端，避免无谓地
+		//     重试 + 消耗其它账号配额，且让客户端拿到可读的拒绝原因。
+		// (B) 有文字但非审核拒绝：判为 502 image_generation_unavailable，仍属可重试。
+		// (C) 真空响应：既无图也无任何文字输出，见下方 UpstreamFailoverError 分支。
 		if textFallbackErr := openAIImagesTextFallbackError(body); textFallbackErr != nil {
 			setOpsUpstreamError(c, textFallbackErr.clientStatusCode(), textFallbackErr.clientMessage(), summarizeOpenAIImagesNoOutputBody(body))
 			if !IsOpenAIImagesRetryableUpstreamError(textFallbackErr) {
@@ -1367,9 +1376,9 @@ func (s *OpenAIGatewayService) handleOpenAIImagesOAuthNonStreamingResponse(
 			}
 			return OpenAIUsage{}, 0, nil, textFallbackErr
 		}
-		// 真空响应：既无图也无文字输出。它保持短暂可重试语义，优先同账号重试。
-		// (B) 真空响应：记录上游诊断摘要到 ops（last_event/status/model/body 片段）便于
-		// 排查，并返回 UpstreamFailoverError 触发重试。因实测为「同账号概率性失败」，优先
+		// (C) 真空响应（罕见，如偶发路由到 gpt-5.x-mini、image_gen 工具未执行）：记录上游
+		// 诊断摘要到 ops（last_event/status/model/body 片段）便于排查，并返回
+		// UpstreamFailoverError 触发重试。因实测为「同账号概率性失败」，优先
 		// RetryableOnSameAccount 同账号快速重试（默认 3 次，大概率某次正常出图），用尽后
 		// 由 handler 自然换账号 failover（switchCount 上限保护），既提高成功率又不无谓
 		// 消耗其它账号配额。

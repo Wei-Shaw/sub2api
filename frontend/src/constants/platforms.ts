@@ -17,6 +17,7 @@ export const CONCRETE_PLATFORM_OPTIONS = [
   { value: 'antigravity', label: 'Antigravity' },
   { value: 'kiro', label: 'Kiro' },
   { value: 'grok', label: 'Grok' },
+  { value: 'adobe', label: 'Adobe' },
   { value: 'kimi', label: 'Kimi' },
   { value: 'zhipu', label: 'Zhipu GLM' },
   { value: 'deepseek', label: 'DeepSeek' },

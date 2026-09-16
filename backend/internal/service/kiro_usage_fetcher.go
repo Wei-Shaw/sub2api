@@ -155,7 +155,11 @@ func (s *AccountUsageService) fetchAndCacheKiroUsage(ctx context.Context, accoun
 	}
 
 	region := kiroAPIRegion(account)
-	profileArn := resolveKiroPayloadProfileArn(account)
+	// getUsageLimits 强制要求 profileArn（缺失时上游返回 400
+	// "profileArn is required for this request."）。按账号类型解析：API Key → 空；
+	// 其余凭据无值时回退默认 ARN（Social → Social ARN，其余含 Builder ID → 占位符 ARN），
+	// 与聊天路径共用 kiroResolveRequestProfileArn。
+	profileArn := kiroResolveRequestProfileArn(account)
 
 	resp, err := s.requestKiroUsageLimits(ctx, account, region, profileArn, token)
 	if err != nil {
@@ -262,6 +266,7 @@ func (s *AccountUsageService) requestKiroUsageLimits(ctx context.Context, accoun
 		q.Set("profileArn", profileArn)
 	}
 	q.Set("resourceType", kiroUsageResourceType)
+	q.Set("isEmailRequired", "true")
 	reqURL.RawQuery = q.Encode()
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, reqURL.String(), nil)

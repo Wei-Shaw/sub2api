@@ -959,8 +959,8 @@ func TestScanUsageLogRequestTypeAndLegacyFallback(t *testing.T) {
 			sql.NullString{},
 			sql.NullString{},
 			sql.NullFloat64{},
-			sql.NullFloat64{},
-			sql.NullString{}, // upstream_request_id
+			sql.NullFloat64{}, // kiro_credits
+			sql.NullString{},  // upstream_request_id
 			sql.NullString{},
 			false, // native_compaction_v2
 			now,

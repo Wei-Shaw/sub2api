@@ -14,6 +14,7 @@ import (
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/apicompat"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/kiro"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
 	"github.com/tidwall/gjson"
@@ -159,6 +160,59 @@ func TestAdaptResponsesClientToolsForAnthropic_LiftsAdditionalTools(t *testing.T
 	input := request["input"].([]any)
 	require.Len(t, input, 1)
 	require.Equal(t, "message", input[0].(map[string]any)["type"])
+}
+
+func TestAdaptResponsesClientToolsForAnthropic_NormalizesBareNamespaceHistoryForKiro(t *testing.T) {
+	requestBody := map[string]any{
+		"model": "gpt-5.6-sol",
+		"input": []any{
+			map[string]any{
+				"type": "additional_tools", "role": "developer",
+				"tools": []any{map[string]any{
+					"type": "namespace", "name": "functions",
+					"tools": []any{map[string]any{"type": "custom", "name": "exec", "description": "Run JavaScript"}},
+				}},
+			},
+			map[string]any{"type": "custom_tool_call", "name": "exec", "call_id": "custom_1", "input": "run()"},
+			map[string]any{"type": "custom_tool_call_output", "call_id": "custom_1", "output": "ok"},
+			map[string]any{"type": "function_call", "name": "exec", "call_id": "legacy_1", "arguments": "{\"input\":\"legacy()\"}"},
+			map[string]any{"type": "function_call_output", "call_id": "legacy_1", "output": "legacy ok"},
+			map[string]any{"type": "message", "role": "user", "content": []any{map[string]any{"type": "input_text", "text": "continue"}}},
+		},
+	}
+	body, err := json.Marshal(requestBody)
+	require.NoError(t, err)
+
+	adapted, mapping, err := adaptResponsesClientToolsForAnthropic(body)
+	require.NoError(t, err)
+	require.True(t, mapping.CustomTools["functions__exec"])
+	require.Equal(t, apicompat.ResponsesNamespaceName{Namespace: "functions", Name: "exec"}, mapping.NamespaceTools["functions__exec"])
+
+	var request apicompat.ResponsesRequest
+	require.NoError(t, json.Unmarshal(adapted, &request))
+	require.Len(t, request.Tools, 1)
+	require.Equal(t, "function", request.Tools[0].Type)
+	require.Equal(t, "functions__exec", request.Tools[0].Name)
+
+	anthropicRequest, err := apicompat.ResponsesToAnthropicRequest(&request)
+	require.NoError(t, err)
+	anthropicBody, err := json.Marshal(anthropicRequest)
+	require.NoError(t, err)
+	kiroBuildResult, err := kiro.BuildKiroPayloadWithContext(anthropicBody, "gpt-5.6-sol", "", "AI_EDITOR", nil)
+	require.NoError(t, err)
+
+	tools := gjson.GetBytes(kiroBuildResult.Payload, "conversationState.currentMessage.userInputMessage.userInputMessageContext.tools").Array()
+	require.Len(t, tools, 1, "裸 exec 历史不得触发额外占位工具")
+	require.Equal(t, "functions__exec", tools[0].Get("toolSpecification.name").String())
+
+	history := gjson.GetBytes(kiroBuildResult.Payload, "conversationState.history").Array()
+	var toolUseNames []string
+	for _, message := range history {
+		for _, toolUse := range message.Get("assistantResponseMessage.toolUses").Array() {
+			toolUseNames = append(toolUseNames, toolUse.Get("name").String())
+		}
+	}
+	require.Equal(t, []string{"functions__exec", "functions__exec"}, toolUseNames)
 }
 
 func namespaceToolAnthropicStream() string {

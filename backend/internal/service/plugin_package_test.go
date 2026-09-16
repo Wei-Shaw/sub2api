@@ -34,6 +34,7 @@ func TestPluginPackageInstallerInstallUnsignedDevelopmentPackage(t *testing.T) {
 	assert.FileExists(t, installation.ArtifactPath)
 	info, statErr := os.Stat(installation.BinaryPath)
 	require.NoError(t, statErr)
+	// Windows 没有 POSIX 执行位（FileMode 仅映射只读属性），该断言仅在类 Unix 平台有意义
 	if runtime.GOOS != "windows" {
 		assert.NotZero(t, info.Mode()&0o100)
 	}

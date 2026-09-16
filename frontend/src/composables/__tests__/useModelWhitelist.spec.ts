@@ -309,6 +309,63 @@ describe('useModelWhitelist', () => {
     expect(mappings.some(item => item.to === 'claude-opus-4-7')).toBe(false)
   })
 
+  // 逐条对齐 backend/internal/domain/constants.go 的 DefaultAdobeModelMapping
+  // 与 backend/internal/pkg/adobe 的 externalImageModelAliases。
+  //
+  // Step 10 起 Adobe 用通用的白名单/映射区块，不再预填这 17 行；但它们仍是「映射」
+  // 模式的快捷 chips，点一下就会原样写进 credentials.model_mapping，两边漂移
+  // 就是静默的路由错误。
+  it('adobe 预设映射与后端 DefaultAdobeModelMapping 逐条一致', () => {
+    const mappings = getPresetMappingsByPlatform('adobe')
+
+    const asObject = Object.fromEntries(mappings.map(({ from, to }) => [from, to]))
+    expect(asObject).toEqual({
+      'gpt-image-2': 'firefly-gpt-image-2',
+      'gpt-image-1.5': 'firefly-gpt-image-1.5',
+      // Step 8：sunburst 是 UI 展示名，映到上游 modelVersion=gpt-image-2.5-prism。
+      'gpt-image-2.5-sunburst': 'firefly-gpt-image-2-5-prism',
+      'gpt-image-2.5-prism': 'firefly-gpt-image-2-5-prism',
+      'gpt-image-2.5-flare': 'firefly-gpt-image-2-5-flare',
+      'gpt-image': 'firefly-gpt-image-2',
+      'gpt-image-1': 'firefly-gpt-image-2',
+      'gpt-image-1-mini': 'firefly-gpt-image-2',
+      'nano-banana-pro': 'firefly-nano-banana-pro',
+      'nano-banana2': 'firefly-nano-banana2',
+      'nano-banana': 'firefly-nano-banana',
+      'flux-pro': 'firefly-flux-pro',
+      'flux-ultra': 'firefly-flux-ultra',
+      'imagen-4': 'firefly-imagen-4',
+      'imagen-4-fast': 'firefly-imagen-4-fast',
+      'gpt-4o-image': 'firefly-gpt-4o-image',
+      'runway-gen4-image': 'firefly-runway-gen4-image'
+      // Step 8：所有 firefly-* 左侧的直通条目已删除。用户面只有干净外部名。
+    })
+    expect(mappings).toHaveLength(17)
+  })
+
+  // Step 8：用户面看到的每个模型（getModelsByPlatform('adobe')）都必须能在预设里找到——
+  // 否则用户看到一个 id 但预设映射不到，做出的映射条目会打不通。
+  // to 是内部族 id（firefly-*），不再等于 from。
+  it('adobe 预设映射覆盖 adobeModels 里的每个外部名', () => {
+    const presets = getPresetMappingsByPlatform('adobe')
+    const froms = new Set(presets.map(item => item.from))
+
+    for (const externalID of getModelsByPlatform('adobe')) {
+      expect(froms.has(externalID)).toBe(true)
+      expect(externalID.startsWith('firefly-')).toBe(false)  // 干净外部名，不带前缀
+    }
+  })
+
+  it('adobe 映射支持通配符前缀，且目标模型不允许带通配符', () => {
+    expect(
+      buildModelMappingObject('mapping', [], [{ from: 'gpt-image-*', to: 'firefly-gpt-image-2' }])
+    ).toEqual({ 'gpt-image-*': 'firefly-gpt-image-2' })
+
+    expect(
+      buildModelMappingObject('mapping', [], [{ from: 'gpt-image-2', to: 'firefly-*' }])
+    ).toBeNull()
+  })
+
   it('combined 模式会同时保留白名单身份映射和模型映射', () => {
     const mapping = buildModelMappingObject(
       'combined',

@@ -42,6 +42,7 @@ func TestGatewayServiceCalculateTokenCost_KiroAutoUsesConservativeFallback(t *te
 		nil,                         // deferredService
 		nil,                         // claudeTokenProvider
 		nil,                         // kiroTokenProvider
+		nil,                         // adobeTokenProvider
 		nil,                         // kiroCooldownStore
 		nil,                         // sessionLimitCache
 		nil,                         // rpmCache

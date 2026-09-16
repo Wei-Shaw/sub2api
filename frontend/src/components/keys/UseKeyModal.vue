@@ -1249,6 +1249,9 @@ function generateRoutedCodexFiles(
     antigravity: 'Antigravity',
     kiro: 'Kiro',
     grok: 'Grok',
+    // Adobe 是图像生成渠道，没有可用于 Codex CLI 的对话模型，故 preferredModels
+    // 里不给它预设值（会回落到空串）；label 仍需列出以满足穷尽映射。
+    adobe: 'Adobe',
     kimi: 'Kimi',
     zhipu: 'Zhipu',
     deepseek: 'DeepSeek',

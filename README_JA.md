@@ -194,6 +194,7 @@ Sub2API は、AI 製品のサブスクリプションから API クォータを�
 ## 機能
 
 - **マルチアカウント管理** - 複数の上流アカウントタイプ（OAuth、APIキー）をサポート
+- **Adobe Firefly 画像生成** - Firefly Web の Cookie アカウントから OpenAI 互換の画像生成・編集を提供し、中継アカウントによるフェイルオーバーにも対応（[Adobe Firefly サポート](#adobe-firefly-サポート)）
 - **APIキー配布** - ユーザー向けの APIキーの生成と管理
 - **精密な課金** - トークンレベルの使用量追跡とコスト計算
 - **スマートスケジューリング** - スティッキーセッション付きのインテリジェントなアカウント選択
@@ -202,6 +203,103 @@ Sub2API は、AI 製品のサブスクリプションから API クォータを�
 - **内蔵決済システム** - EasyPay、Alipay、WeChat Pay、Stripe に対応。ユーザーのセルフサービスチャージが可能で、別途決済サービスのデプロイは不要（[設定ガイド](docs/PAYMENT.md)）
 - **管理ダッシュボード** - 監視・管理のための Web インターフェース
 - **外部システム連携** - 外部システム（チケット管理など）を iframe 経由で管理ダッシュボードに埋め込み可能
+
+---
+
+## Adobe Firefly サポート
+
+Sub2API は、Adobe Firefly Web のサブスクリプションアカウント（ブラウザ Cookie）から OpenAI 互換の画像生成を提供できます。同じ Adobe グループに OpenAI 形式の外部中継アカウントを追加してフェイルオーバーにも使えます。
+
+直結は **Firefly Web**（`firefly.adobe.com` / `clio-playground-web`）を使います。Adobe Express ではなく、公式の Adobe Firefly Services API キーもサポートしません。
+
+### サポート範囲
+
+- プラットフォーム名: `adobe`
+- アカウント種別: Firefly Cookie（管理画面では OAuth と表示）および **API Key + Base URL** 中継アカウント
+- 公開画像エンドポイント: `/v1/images/generations` と `/v1/images/edits`（`/v1` なしの既存エイリアスも含む）
+- API キーのグループで画像生成を許可する必要があります（Adobe グループはデフォルトで有効）
+- `n` の省略時は 1、最大 10。Cookie 経路は n 回の Firefly ジョブに分割し（上流の `n` は常に 1）、枚数課金します。`n>10` は拒否します
+- `output_format` は `png`/`jpeg` をダウンロード後にローカル変換します（`jpg` は jpeg 扱い）。`webp` は未対応。未指定なら上流の形式を維持します
+- `/v1/models` は公開用の外部モデル名のみを返します。内部の `firefly-*` ファミリー ID は送らないでください
+- 本プロバイダーの対象外: 動画ゲートウェイ、非同期画像タスク（`/v1/images/*/async`）、公式 Firefly Services API キー、チャット / TTS などの非画像プロトコル
+
+### 公開モデル
+
+| 公開モデル名 | 説明 |
+|--------------|------|
+| `gpt-image-2` | Firefly GPT Image 2 |
+| `gpt-image-1.5` | Firefly GPT Image 1.5 |
+| `gpt-image-2.5-flare` | Firefly GPT Image 2.5 Flare |
+| `gpt-image-2.5-sunburst` | Firefly GPT Image 2.5 Sunburst（上流の version 名は `prism`） |
+| `nano-banana` / `nano-banana-pro` / `nano-banana2` | Firefly 上の Gemini Nano Banana 系列 |
+| `flux-pro` / `flux-ultra` | Firefly FLUX |
+| `imagen-4` / `imagen-4-fast` | Firefly Imagen 4 |
+| `gpt-4o-image` | Firefly GPT-4o Image |
+| `runway-gen4-image` | Firefly Runway Gen-4 Image |
+
+旧エイリアス `gpt-image`、`gpt-image-1`、`gpt-image-1-mini` は `gpt-image-2` に落ちますが、`/v1/models` には出ません。
+
+`gpt-image-*` は公式 OpenAI 画像モデルと同名です。Firefly に届くのは API キーが **Adobe** グループに紐づいている場合のみで、OpenAI グループなら従来どおり OpenAI に行きます。Composite グループは `gpt-image-*` を自動判定しません（名前が曖昧なため）。明示的なルートを追加してください。`nano-banana*`、`flux-*`、`imagen-*`、`runway-gen4*` は Composite で Adobe として自動検出できます。
+
+### Cookie アカウントの設定
+
+1. 管理ダッシュボードで **Adobe** グループを作成し、Firefly Cookie アカウントを追加します。
+2. ブラウザで Adobe にログインし、`https://firefly.adobe.com/generate/image` を開いてページが落ち着くまで待ちます。
+3. DevTools → Network で `adobeid-na1.services.adobe.com` の `/ims/check/v6/token` リクエストを見つけ、その **Cookie ヘッダー**をコピーします。`ims_sid` が含まれている必要があります。
+4. `firefly.adobe.com` の `document.cookie` だけをコピーしても **不十分**です。`Cookie:` プレフィックスや JSON の cookie 配列も受け付けます。
+5. 短命の Access Token は任意です。空なら初回リフレッシュ時に Cookie から取得します。以降は Cookie から自動更新されます。
+6. アカウントをグループに割り当て、そのグループに紐づく Sub2API API キーを作成します。
+
+Cookie が無効になったらブラウザから再エクスポートしてください。リフレッシャーは無限ループせず、アカウントをエラー状態にします。
+
+### 中継アカウント（任意）
+
+同じ Adobe グループに **API Key + Base URL** 中継アカウントを追加できます。これらは Firefly を呼ばず、同じ OpenAI Images ペイロードを `{base_url}` へ `Authorization: Bearer` で転送し、公開モデル名（例: `gpt-image-2`）を内部の `firefly-*` に書き換えません。
+
+主な用途:
+
+- Cookie アカウントのクレジット枯渇、一時障害、モデル / 品質の entitlement 不足時のフェイルオーバー
+- **mask** 付きの `gpt-image-*` 編集は中継アカウントを優先（Firefly Cookie 直結は公式の inpaint mask 意味論を実装していません）
+- Firefly のコンテンツセーフティ拒否（例: `image_unsafe`）のあと、別の Cookie アカウントは試しませんが、中継アカウントは試せます
+
+`base_url` のない Adobe API キーアカウントは中継アカウントではありません。
+
+### `size` / `quality` / `background`
+
+| ファミリー | クライアント `size` | 動作 |
+|------------|---------------------|------|
+| `gpt-image-2` / `gpt-image-2.5-*` | `WxH`、空、または `auto` | ピクセルをそのまま転送。空/`auto` なら size を省略し、上流に任せる |
+| `gpt-image-1.5` | `WxH` | `1024x1024` / `1536x1024` / `1024x1536` の最近傍 |
+| `nano-banana*` | `WxH`、空、または `auto` | 長辺から 1K/2K/4K の正方形ティアと最近傍 `aspectRatio`。空/`auto` は Firefly デフォルトの 1K 正方形。`nano-banana2` は `1:8` / `1:4` / `4:1` / `8:1` も可 |
+| `flux-*` / `imagen-4*` / `gpt-4o-image` / `runway-gen4-image` | `WxH` | そのファミリーの許可サイズ列挙への最近傍 |
+
+`quality` は Firefly の `detailLevel` に対応します: `low`（デフォルト）→ 1、`medium` → 3、`high` → 5、`xhigh`/`max` は v2/1.5 で 5、2.5 で 7。
+
+gpt-image ファミリーは OpenAI の `background`（`transparent` / `opaque` / `auto`）を受け付けます。
+
+`n` の省略時は 1（最大 10）です。Cookie アカウントは n 回の Firefly ジョブに分割し、枚数課金します。`output_format` が `png` または `jpeg` の場合はダウンロード後にローカル変換します。`webp` は拒否し、未指定なら Firefly の形式を維持します。`background=transparent` と `output_format=jpeg` は同時に使えません。
+
+### 課金、クォータ、フェイルオーバー
+
+- 課金は出力長辺から導いた `1K` / `2K` / `4K` の枚数課金です。グループの画像単価があればそれを使い、なければ Adobe チャネルのフォールバック価格です。
+- Cookie アカウントは Firefly Credits を管理画面に表示します。枯渇したアカウントは一時的にスケジュール対象外になり（デフォルト約 30 分）、次のリクエストは別アカウントへ回ります。
+- モデルまたは品質の entitlement 不足は別アカウントへフェイルオーバーし、Cookie 失効としては扱いません。
+- 上流の `429` / `5xx` / ネットワークエラーはアカウントを跨いで再試行できます。
+
+### 呼び出し例
+
+```bash
+curl https://your-sub2api.example.com/v1/images/generations \
+  -H "Authorization: Bearer sk-your-sub2api-key" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "gpt-image-2",
+    "prompt": "a red panda in a bamboo forest",
+    "size": "1024x1024"
+  }'
+```
+
+---
 
 ## エコシステム
 
@@ -702,9 +800,6 @@ export ANTHROPIC_AUTH_TOKEN="sk-xxx"
 Antigravity アカウントはオプションの**ハイブリッドスケジューリング**をサポートしています。有効にすると、汎用エンドポイント `/v1/messages` および `/v1beta/` も Antigravity アカウントにリクエストをルーティングします。
 
 > **⚠️ 警告**: Anthropic Claude と Antigravity Claude は**同じ会話コンテキスト内で混在させることはできません**。グループを使用して適切に分離してください。
-
----
-
 ## プロジェクト構成
 
 ```

@@ -9,8 +9,10 @@ import (
 // 渠道监控参数校验与归一化辅助函数。
 // 校验失败一律返回 channel_monitor_const.go 中预定义的 Err* 错误，错误信息不含具体 IP/hostname，避免泄露内网拓扑。
 
-// monitorProviders 渠道监控支持的全部 provider（与迁移 226 的 CHECK 约束一致）。
-// 不再以 adapter 表为唯一来源：antigravity 没有探活 adapter，但支持配额模式。
+// monitorProviders 渠道监控支持的全部 provider（单一权威来源）。
+// 与迁移 226 + 229 的 CHECK 约束终态、ent/schema/channel_monitor.go 及
+// channel_monitor_request_template.go 的 provider enum 三者保持同步。
+// 不再以 adapter 表为唯一来源：antigravity 与 kiro 没有探活 adapter，但支持配额模式。
 //
 //nolint:gochecknoglobals // 静态查表，初始化后不变。
 var monitorProviders = map[string]struct{}{
@@ -19,6 +21,7 @@ var monitorProviders = map[string]struct{}{
 	MonitorProviderGemini:      {},
 	MonitorProviderGrok:        {},
 	MonitorProviderAntigravity: {},
+	MonitorProviderKiro:        {},
 	MonitorProviderKimi:        {},
 	MonitorProviderZhipu:       {},
 	MonitorProviderDeepseek:    {},
@@ -27,6 +30,7 @@ var monitorProviders = map[string]struct{}{
 
 // probeCapableProviders 支持探活（probe / quota_probe）的 provider。
 // antigravity 上游无 Chat/Responses 可打（仅 IDE 代理形态），只允许配额模式。
+// kiro 走 AWS CodeWhisperer event-stream 协议，同样无探活 adapter，只允许配额模式。
 //
 //nolint:gochecknoglobals // 静态查表，初始化后不变。
 var probeCapableProviders = map[string]struct{}{
@@ -69,10 +73,10 @@ func monitorCheckModeUsesQuota(checkMode string) bool {
 
 // validateCheckMode 校验 check_mode 与 provider 的组合矩阵：
 //
-//	provider                | probe | quota | quota_probe
-//	------------------------+-------+-------+------------
-//	openai/anthropic/...    |  Y    |  Y    |  Y
-//	antigravity（无 adapter）|  N    |  Y    |  N
+//	provider                     | probe | quota | quota_probe
+//	-----------------------------+-------+-------+------------
+//	openai/anthropic/...         |  Y    |  Y    |  Y
+//	antigravity/kiro（无 adapter）|  N    |  Y    |  N
 func validateCheckMode(provider, checkMode string) error {
 	checkMode = defaultCheckMode(checkMode)
 	switch checkMode {

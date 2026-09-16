@@ -2127,7 +2127,7 @@ func TestMatchingPlatforms(t *testing.T) {
 		{"anthropic returns itself", PlatformAnthropic, []string{PlatformAnthropic}},
 		{"gemini returns itself", PlatformGemini, []string{PlatformGemini}},
 		{"openai returns itself", PlatformOpenAI, []string{PlatformOpenAI}},
-		{"composite returns concrete platforms", PlatformComposite, []string{PlatformAnthropic, PlatformGemini, PlatformOpenAI, PlatformAntigravity, PlatformGrok, PlatformKimi, PlatformZhipu, PlatformDeepseek, PlatformMiniMax, PlatformOpenCodeGo}},
+		{"composite returns concrete platforms", PlatformComposite, cloneAllowedQuotaPlatforms()},
 	}
 
 	for _, tt := range tests {
@@ -2173,6 +2173,36 @@ func TestCompositeChannelLookupUsesResolvedTargetPlatform(t *testing.T) {
 	anthropicResult := svc.ResolveChannelMapping(anthropicCtx, 99, "claude-3-5-sonnet")
 	require.True(t, anthropicResult.Mapped)
 	require.Equal(t, "claude-sonnet-4-5", anthropicResult.MappedModel)
+}
+
+func TestCompositeChannelLookupUsesAdobeMapping(t *testing.T) {
+	channel := Channel{
+		ID:       1,
+		Status:   StatusActive,
+		GroupIDs: []int64{99},
+		ModelMapping: map[string]map[string]string{
+			PlatformAdobe: {
+				"nano-banana-pro": "firefly-nano-banana-pro",
+			},
+			PlatformOpenAI: {
+				"gpt-5": "gpt-5-mini",
+			},
+		},
+	}
+	cache := populateChannelCache([]Channel{channel}, map[int64]string{99: PlatformComposite})
+	svc := &ChannelService{}
+	svc.cache.Store(cache)
+
+	adobeCtx := WithResolvedTargetPlatform(context.Background(), PlatformAdobe)
+	adobeResult := svc.ResolveChannelMapping(adobeCtx, 99, "nano-banana-pro")
+	require.True(t, adobeResult.Mapped)
+	require.Equal(t, "firefly-nano-banana-pro", adobeResult.MappedModel)
+
+	openAICtx := WithResolvedTargetPlatform(context.Background(), PlatformOpenAI)
+	openAIResult := svc.ResolveChannelMapping(openAICtx, 99, "gpt-5")
+	require.True(t, openAIResult.Mapped)
+	require.Equal(t, "gpt-5-mini", openAIResult.MappedModel)
+	require.False(t, svc.ResolveChannelMapping(openAICtx, 99, "nano-banana-pro").Mapped)
 }
 
 // ===========================================================================

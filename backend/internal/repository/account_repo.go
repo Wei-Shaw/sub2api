@@ -1229,10 +1229,21 @@ func (r *accountRepository) ListOAuthRefreshCandidatePage(ctx context.Context, o
 		query += `
 			AND type = 'oauth'`
 	}
+	args := []any{pq.Array(options.Platforms), options.AfterID, options.Limit}
 	if options.RequireRefreshToken {
-		query += `
+		if len(options.CookieCredentialPlatforms) > 0 {
+			// Adobe 等平台没有 refresh_token，长期凭据是 cookie：按平台分别要求对应凭据非空。
+			args = append(args, pq.Array(options.CookieCredentialPlatforms))
+			query += `
+			AND (
+				(credentials ? 'refresh_token' AND btrim(credentials->>'refresh_token') <> '')
+				OR (platform = ANY($4) AND btrim(COALESCE(credentials->>'cookie', '')) <> '')
+			)`
+		} else {
+			query += `
 			AND credentials ? 'refresh_token'
 			AND btrim(credentials->>'refresh_token') <> ''`
+		}
 	}
 	if options.ExcludeRetryCooldown {
 		query += `
@@ -1245,7 +1256,7 @@ func (r *accountRepository) ListOAuthRefreshCandidatePage(ctx context.Context, o
 		ORDER BY id ASC
 		LIMIT $3`
 
-	rows, err := r.sql.QueryContext(ctx, query, pq.Array(options.Platforms), options.AfterID, options.Limit)
+	rows, err := r.sql.QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -1470,6 +1481,170 @@ func (r *accountRepository) SetGrokOAuthErrorIfCredentialsUnchanged(
 		service.AccountTypeOAuth,
 		service.StatusActive,
 		string(expectedJSON),
+		service.SchedulerOutboxEventAccountChanged,
+	)
+	if err != nil {
+		return false, err
+	}
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return false, err
+	}
+	if rowsAffected == 0 {
+		return false, nil
+	}
+	r.syncSchedulerAccountSnapshotDetached(ctx, id)
+	return true, nil
+}
+
+// SetAdobeErrorIfCookieUnchanged marks an Adobe OAuth account as error only
+// while its cookie still equals the one IMS rejected. A cookie the admin
+// replaced during the IMS round trip is not quarantined by the stale verdict.
+// The scheduler outbox insert shares the statement.
+func (r *accountRepository) SetAdobeErrorIfCookieUnchanged(
+	ctx context.Context,
+	id int64,
+	expectedCookie string,
+	errorMsg string,
+) (bool, error) {
+	if r == nil || r.sql == nil {
+		return false, errors.New("account repository SQL executor is not configured")
+	}
+	if strings.TrimSpace(expectedCookie) == "" {
+		return false, errors.New("adobe error update requires the cookie used for refresh")
+	}
+	result, err := r.sql.ExecContext(ctx, `
+		WITH updated AS (
+		UPDATE accounts AS a
+		SET status = $1,
+			error_message = $2,
+			schedulable = FALSE,
+			updated_at = NOW()
+		WHERE a.id = $3
+			AND a.deleted_at IS NULL
+			AND a.platform = $4
+			AND a.type = $5
+			AND a.credentials ->> 'cookie' = $6
+		RETURNING a.id
+		)
+		INSERT INTO scheduler_outbox (event_type, account_id, group_id, payload)
+		SELECT $7, updated.id, NULL, NULL FROM updated
+	`,
+		service.StatusError,
+		errorMsg,
+		id,
+		service.PlatformAdobe,
+		service.AccountTypeOAuth,
+		expectedCookie,
+		service.SchedulerOutboxEventAccountChanged,
+	)
+	if err != nil {
+		return false, err
+	}
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return false, err
+	}
+	if rowsAffected == 0 {
+		return false, nil
+	}
+	r.syncSchedulerAccountSnapshotDetached(ctx, id)
+	return true, nil
+}
+
+// InvalidateAdobeAccessTokenIfUnchanged drops access_token / expires_at from an
+// Adobe OAuth account after Firefly rejected that exact token, so the next
+// request refreshes from the cookie instead of reusing a revoked token whose
+// JWT exp has not passed. It is a CAS on the token value: a token a concurrent
+// request already refreshed is left alone. The cookie and every other field are
+// preserved, and the scheduler outbox insert shares the statement.
+func (r *accountRepository) InvalidateAdobeAccessTokenIfUnchanged(
+	ctx context.Context,
+	id int64,
+	expectedAccessToken string,
+) (bool, error) {
+	if r == nil || r.sql == nil {
+		return false, errors.New("account repository SQL executor is not configured")
+	}
+	if strings.TrimSpace(expectedAccessToken) == "" {
+		return false, errors.New("adobe token invalidation requires the rejected access_token")
+	}
+	result, err := r.sql.ExecContext(ctx, `
+		WITH updated AS (
+		UPDATE accounts AS a
+		SET credentials = a.credentials - 'access_token' - 'expires_at',
+			updated_at = NOW()
+		WHERE a.id = $1
+			AND a.deleted_at IS NULL
+			AND a.platform = $2
+			AND a.type = $3
+			AND btrim(a.credentials ->> 'access_token') = $4
+		RETURNING a.id
+		)
+		INSERT INTO scheduler_outbox (event_type, account_id, group_id, payload)
+		SELECT $5, updated.id, NULL, NULL FROM updated
+	`,
+		id,
+		service.PlatformAdobe,
+		service.AccountTypeOAuth,
+		strings.TrimSpace(expectedAccessToken),
+		service.SchedulerOutboxEventAccountChanged,
+	)
+	if err != nil {
+		return false, err
+	}
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return false, err
+	}
+	if rowsAffected == 0 {
+		return false, nil
+	}
+	r.syncSchedulerAccountSnapshotDetached(ctx, id)
+	return true, nil
+}
+
+// UpdateAdobeTokenIfCookieUnchanged merges a refreshed IMS token into an Adobe
+// OAuth account only while its cookie still equals the one the token was minted
+// from. Only tokenFields are written (JSONB ||), so cookie / model_mapping edits
+// made during the IMS round trip survive. The scheduler outbox insert shares
+// the statement, so a failed invalidation rolls the credential update back.
+func (r *accountRepository) UpdateAdobeTokenIfCookieUnchanged(
+	ctx context.Context,
+	id int64,
+	expectedCookie string,
+	tokenFields map[string]any,
+) (bool, error) {
+	if r == nil || r.sql == nil {
+		return false, errors.New("account repository SQL executor is not configured")
+	}
+	if strings.TrimSpace(expectedCookie) == "" {
+		return false, errors.New("adobe token update requires the cookie used for refresh")
+	}
+	fieldsJSON, err := json.Marshal(normalizeJSONMap(tokenFields))
+	if err != nil {
+		return false, err
+	}
+	result, err := r.sql.ExecContext(ctx, `
+		WITH updated AS (
+		UPDATE accounts AS a
+		SET credentials = COALESCE(a.credentials, '{}'::jsonb) || $1::jsonb,
+			updated_at = NOW()
+		WHERE a.id = $2
+			AND a.deleted_at IS NULL
+			AND a.platform = $3
+			AND a.type = $4
+			AND a.credentials ->> 'cookie' = $5
+		RETURNING a.id
+		)
+		INSERT INTO scheduler_outbox (event_type, account_id, group_id, payload)
+		SELECT $6, updated.id, NULL, NULL FROM updated
+	`,
+		string(fieldsJSON),
+		id,
+		service.PlatformAdobe,
+		service.AccountTypeOAuth,
+		expectedCookie,
 		service.SchedulerOutboxEventAccountChanged,
 	)
 	if err != nil {

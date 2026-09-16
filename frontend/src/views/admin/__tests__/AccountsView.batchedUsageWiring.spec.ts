@@ -166,9 +166,10 @@ describe('admin AccountsView batched usage wiring', () => {
           platform: 'kiro',
           type: 'api_key',
           credentials: { api_key: 'k', base_url: 'https://relay.example.com' }
-        })
+        }),
+        accountFixture({ id: 104, platform: 'adobe', type: 'oauth' })
       ],
-      total: 3,
+      total: 4,
       page: 1,
       page_size: 20,
       pages: 1
@@ -189,6 +190,9 @@ describe('admin AccountsView batched usage wiring', () => {
     // Kiro 不在名单内 → 必须为 null，否则单元格会放弃取数并永久显示 "-"
     expect(capturedProps['102']?.requestBatchedUsage).toBeNull()
     expect(capturedProps['103']?.requestBatchedUsage).toBeNull()
+
+    // Adobe oauth 走批量，避免账号表每行打一次 credits/balance
+    expect(typeof capturedProps['104']?.requestBatchedUsage).toBe('function')
 
     wrapper.unmount()
   })

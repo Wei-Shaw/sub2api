@@ -405,6 +405,52 @@ func (s *AccountRepoSuite) TestListOAuthRefreshCandidatePage_GrokCursorAndExclus
 	s.Require().NotContains([]int64{first[0].ID, first[1].ID}, second[0].ID)
 }
 
+// Adobe 没有 refresh_token：按 cookie 进入后台刷新候选，其它平台仍要求 refresh_token。
+func (s *AccountRepoSuite) TestListOAuthRefreshCandidatePage_AdobeCookieCredential() {
+	adobeWithCookie := mustCreateAccount(s.T(), s.client, &service.Account{
+		Name:        "adobe-cookie-candidate",
+		Platform:    service.PlatformAdobe,
+		Type:        service.AccountTypeOAuth,
+		Status:      service.StatusActive,
+		Credentials: map[string]any{"cookie": "aux_sid=abc"},
+	})
+	mustCreateAccount(s.T(), s.client, &service.Account{
+		Name:        "adobe-blank-cookie-excluded",
+		Platform:    service.PlatformAdobe,
+		Type:        service.AccountTypeOAuth,
+		Status:      service.StatusActive,
+		Credentials: map[string]any{"cookie": "  ", "access_token": "stale"},
+	})
+	grokWithRefresh := mustCreateAccount(s.T(), s.client, &service.Account{
+		Name:        "grok-refresh-candidate",
+		Platform:    service.PlatformGrok,
+		Type:        service.AccountTypeOAuth,
+		Status:      service.StatusActive,
+		Credentials: map[string]any{"refresh_token": "refresh"},
+	})
+	mustCreateAccount(s.T(), s.client, &service.Account{
+		Name:        "grok-cookie-only-excluded",
+		Platform:    service.PlatformGrok,
+		Type:        service.AccountTypeOAuth,
+		Status:      service.StatusActive,
+		Credentials: map[string]any{"cookie": "must-not-make-grok-eligible"},
+	})
+
+	page, err := s.repo.ListOAuthRefreshCandidatePage(s.ctx, service.OAuthRefreshPageOptions{
+		Platforms:                 []string{service.PlatformGrok, service.PlatformAdobe},
+		Limit:                     10,
+		ActiveOnly:                true,
+		RequireRefreshToken:       true,
+		CookieCredentialPlatforms: []string{service.PlatformAdobe},
+	})
+	s.Require().NoError(err)
+	ids := make([]int64, 0, len(page.Accounts))
+	for _, account := range page.Accounts {
+		ids = append(ids, account.ID)
+	}
+	s.Require().ElementsMatch([]int64{adobeWithCookie.ID, grokWithRefresh.ID}, ids)
+}
+
 func (s *AccountRepoSuite) TestListWithFilters() {
 	tests := []struct {
 		name        string
@@ -1345,6 +1391,200 @@ func (s *AccountRepoSuite) TestUpdateGrokOAuthCredentialsIfUnchanged_SkipsConcur
 	)
 	s.Require().NoError(err)
 	s.Require().Zero(outboxCount)
+}
+
+func (s *AccountRepoSuite) TestUpdateAdobeTokenIfCookieUnchanged_MergesTokenFieldsOnly() {
+	account := mustCreateAccount(s.T(), s.client, &service.Account{
+		Name:        "adobe-token-cas-applied",
+		Platform:    service.PlatformAdobe,
+		Type:        service.AccountTypeOAuth,
+		Status:      service.StatusActive,
+		Schedulable: true,
+		Credentials: map[string]any{
+			"cookie":       "aux_sid=refresh",
+			"access_token": "stale-access",
+		},
+	})
+	// 刷新进行中管理员改了 model_mapping：合并写入不能把它抹掉。
+	s.Require().NoError(s.repo.UpdateCredentials(s.ctx, account.ID, map[string]any{
+		"cookie":        "aux_sid=refresh",
+		"access_token":  "stale-access",
+		"model_mapping": map[string]any{"gpt-image-1": "firefly-image-4"},
+	}))
+	cacheRecorder := &schedulerCacheRecorder{}
+	s.repo.schedulerCache = cacheRecorder
+	_, err := s.repo.sql.ExecContext(s.ctx, "TRUNCATE scheduler_outbox")
+	s.Require().NoError(err)
+
+	applied, err := s.repo.UpdateAdobeTokenIfCookieUnchanged(s.ctx, account.ID, "aux_sid=refresh", map[string]any{
+		"access_token":   "fresh-access",
+		"expires_at":     "2026-09-16T00:00:00Z",
+		"_token_version": int64(30),
+	})
+
+	s.Require().NoError(err)
+	s.Require().True(applied)
+	got, err := s.repo.GetByID(s.ctx, account.ID)
+	s.Require().NoError(err)
+	s.Require().Equal("fresh-access", got.GetCredential("access_token"))
+	s.Require().Equal("2026-09-16T00:00:00Z", got.GetCredential("expires_at"))
+	s.Require().Equal("aux_sid=refresh", got.GetCredential("cookie"))
+	s.Require().Equal(map[string]any{"gpt-image-1": "firefly-image-4"}, got.Credentials["model_mapping"])
+	s.Require().Len(cacheRecorder.setAccounts, 1)
+
+	var outboxCount int
+	err = scanSingleRow(
+		s.ctx,
+		s.repo.sql,
+		"SELECT COUNT(*) FROM scheduler_outbox WHERE event_type = $1 AND account_id = $2",
+		[]any{service.SchedulerOutboxEventAccountChanged, account.ID},
+		&outboxCount,
+	)
+	s.Require().NoError(err)
+	s.Require().Equal(1, outboxCount)
+}
+
+func (s *AccountRepoSuite) TestUpdateAdobeTokenIfCookieUnchanged_SkipsReplacedCookie() {
+	account := mustCreateAccount(s.T(), s.client, &service.Account{
+		Name:        "adobe-token-cas-cookie-replaced",
+		Platform:    service.PlatformAdobe,
+		Type:        service.AccountTypeOAuth,
+		Status:      service.StatusActive,
+		Schedulable: true,
+		Credentials: map[string]any{
+			"cookie":       "aux_sid=new",
+			"access_token": "stale-access",
+		},
+	})
+	cacheRecorder := &schedulerCacheRecorder{}
+	s.repo.schedulerCache = cacheRecorder
+	_, err := s.repo.sql.ExecContext(s.ctx, "TRUNCATE scheduler_outbox")
+	s.Require().NoError(err)
+
+	applied, err := s.repo.UpdateAdobeTokenIfCookieUnchanged(s.ctx, account.ID, "aux_sid=old", map[string]any{
+		"access_token": "minted-from-old-cookie",
+	})
+
+	s.Require().NoError(err)
+	s.Require().False(applied)
+	got, err := s.repo.GetByID(s.ctx, account.ID)
+	s.Require().NoError(err)
+	s.Require().Equal("stale-access", got.GetCredential("access_token"))
+	s.Require().Equal("aux_sid=new", got.GetCredential("cookie"))
+	s.Require().Empty(cacheRecorder.setAccounts)
+
+	var outboxCount int
+	err = scanSingleRow(
+		s.ctx,
+		s.repo.sql,
+		"SELECT COUNT(*) FROM scheduler_outbox WHERE event_type = $1 AND account_id = $2",
+		[]any{service.SchedulerOutboxEventAccountChanged, account.ID},
+		&outboxCount,
+	)
+	s.Require().NoError(err)
+	s.Require().Zero(outboxCount)
+}
+
+func (s *AccountRepoSuite) TestInvalidateAdobeAccessTokenIfUnchanged() {
+	newAccount := func(name, token string) *service.Account {
+		return mustCreateAccount(s.T(), s.client, &service.Account{
+			Name:        name,
+			Platform:    service.PlatformAdobe,
+			Type:        service.AccountTypeOAuth,
+			Status:      service.StatusActive,
+			Schedulable: true,
+			Credentials: map[string]any{
+				"cookie":        "aux_sid=keep",
+				"access_token":  token,
+				"expires_at":    "2099-01-01T00:00:00Z",
+				"model_mapping": map[string]any{"gpt-image-2": "gpt-image-2"},
+			},
+		})
+	}
+	cacheRecorder := &schedulerCacheRecorder{}
+	s.repo.schedulerCache = cacheRecorder
+	_, err := s.repo.sql.ExecContext(s.ctx, "TRUNCATE scheduler_outbox")
+	s.Require().NoError(err)
+
+	rejected := newAccount("adobe-token-invalidate-applied", "tok-rejected")
+	applied, err := s.repo.InvalidateAdobeAccessTokenIfUnchanged(s.ctx, rejected.ID, "tok-rejected")
+	s.Require().NoError(err)
+	s.Require().True(applied)
+	got, err := s.repo.GetByID(s.ctx, rejected.ID)
+	s.Require().NoError(err)
+	s.Require().Empty(got.GetCredential("access_token"))
+	s.Require().Empty(got.GetCredential("expires_at"))
+	s.Require().Equal("aux_sid=keep", got.GetCredential("cookie"), "cookie must survive token invalidation")
+	s.Require().NotNil(got.Credentials["model_mapping"])
+	s.Require().Equal(service.StatusActive, got.Status)
+
+	// 并发请求已刷新出新 token：旧 token 的拒绝结论不能把新 token 一起清掉。
+	refreshed := newAccount("adobe-token-invalidate-already-refreshed", "tok-new")
+	applied, err = s.repo.InvalidateAdobeAccessTokenIfUnchanged(s.ctx, refreshed.ID, "tok-rejected")
+	s.Require().NoError(err)
+	s.Require().False(applied)
+	got, err = s.repo.GetByID(s.ctx, refreshed.ID)
+	s.Require().NoError(err)
+	s.Require().Equal("tok-new", got.GetCredential("access_token"))
+
+	var outboxCount int
+	err = scanSingleRow(
+		s.ctx,
+		s.repo.sql,
+		"SELECT COUNT(*) FROM scheduler_outbox WHERE event_type = $1",
+		[]any{service.SchedulerOutboxEventAccountChanged},
+		&outboxCount,
+	)
+	s.Require().NoError(err)
+	s.Require().Equal(1, outboxCount)
+}
+
+func (s *AccountRepoSuite) TestSetAdobeErrorIfCookieUnchanged() {
+	newAccount := func(name, cookie string) *service.Account {
+		return mustCreateAccount(s.T(), s.client, &service.Account{
+			Name:        name,
+			Platform:    service.PlatformAdobe,
+			Type:        service.AccountTypeOAuth,
+			Status:      service.StatusActive,
+			Schedulable: true,
+			Credentials: map[string]any{"cookie": cookie},
+		})
+	}
+	cacheRecorder := &schedulerCacheRecorder{}
+	s.repo.schedulerCache = cacheRecorder
+	_, err := s.repo.sql.ExecContext(s.ctx, "TRUNCATE scheduler_outbox")
+	s.Require().NoError(err)
+
+	dead := newAccount("adobe-error-cas-applied", "aux_sid=dead")
+	applied, err := s.repo.SetAdobeErrorIfCookieUnchanged(s.ctx, dead.ID, "aux_sid=dead", "cookie rejected")
+	s.Require().NoError(err)
+	s.Require().True(applied)
+	got, err := s.repo.GetByID(s.ctx, dead.ID)
+	s.Require().NoError(err)
+	s.Require().Equal(service.StatusError, got.Status)
+	s.Require().Equal("cookie rejected", got.ErrorMessage)
+	s.Require().False(got.Schedulable)
+
+	// 管理员已换上新 cookie：旧 cookie 的失效结论不能隔离账号。
+	replaced := newAccount("adobe-error-cas-cookie-replaced", "aux_sid=new")
+	applied, err = s.repo.SetAdobeErrorIfCookieUnchanged(s.ctx, replaced.ID, "aux_sid=old", "cookie rejected")
+	s.Require().NoError(err)
+	s.Require().False(applied)
+	got, err = s.repo.GetByID(s.ctx, replaced.ID)
+	s.Require().NoError(err)
+	s.Require().Equal(service.StatusActive, got.Status)
+	s.Require().True(got.Schedulable)
+
+	var outboxCount int
+	err = scanSingleRow(
+		s.ctx,
+		s.repo.sql,
+		"SELECT COUNT(*) FROM scheduler_outbox WHERE event_type = $1",
+		[]any{service.SchedulerOutboxEventAccountChanged},
+		&outboxCount,
+	)
+	s.Require().NoError(err)
+	s.Require().Equal(1, outboxCount)
 }
 
 func (s *AccountRepoSuite) TestGrokOAuthConditionalMutation_DetachesBoundedSnapshotSync() {

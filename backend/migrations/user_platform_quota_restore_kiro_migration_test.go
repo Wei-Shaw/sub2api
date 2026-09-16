@@ -13,8 +13,7 @@ import (
 // 需与 service.AllowedQuotaPlatforms 及 ent/schema/user_platform_quota.go 的 Validate 同步。
 // 此处硬编码而非 import service：migrations 是叶子包，被 repository 依赖，反向 import 会成环。
 var expectedUserPlatformQuotaPlatforms = []string{
-	"anthropic", "antigravity", "deepseek", "gemini", "grok", "kimi", "kiro",
-	"minimax", "openai", "opencode_go", "zhipu",
+	"adobe", "anthropic", "antigravity", "deepseek", "gemini", "grok", "kimi", "kiro", "minimax", "openai", "opencode_go", "zhipu",
 }
 
 // TestUserPlatformQuotasRestoreKiroMigration 校验 227 号迁移把 224 漏掉的 kiro

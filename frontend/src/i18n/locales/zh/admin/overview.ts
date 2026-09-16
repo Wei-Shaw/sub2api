@@ -177,7 +177,7 @@ export default {
         restoreConfirm: '确定要从此备份恢复吗？这将覆盖当前数据库！',
         restorePasswordPrompt: '请输入管理员密码以确认恢复操作',
         restoreSuccess: '数据库恢复成功',
-        delete: '删除',
+        delete: '删除备份',
         deleteConfirm: '确定要删除此备份吗？',
         deleted: '备份已删除'
       },
@@ -916,6 +916,7 @@ export default {
         antigravity: 'Antigravity',
         grok: 'Grok',
         kiro: 'Kiro',
+        adobe: 'Adobe',
         kimi: 'Kimi',
         zhipu: 'Zhipu GLM',
         deepseek: 'DeepSeek',

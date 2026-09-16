@@ -77,6 +77,93 @@ func TestAdaptResponsesClientTools_LowersNamespacedCustomChild(t *testing.T) {
 	require.NotNil(t, execTool["parameters"], "降级后必须带自由文本 schema")
 }
 
+func TestAdaptResponsesClientTools_NormalizesUniqueBareNamespaceHistory(t *testing.T) {
+	req := map[string]any{
+		"model": "gpt-5.6-sol",
+		"tools": []any{map[string]any{
+			"type": "namespace", "name": "functions",
+			"tools": []any{
+				map[string]any{"type": "custom", "name": "exec"},
+				map[string]any{"type": "function", "name": "wait", "parameters": map[string]any{"type": "object"}},
+			},
+		}},
+		"input": []any{
+			map[string]any{"type": "custom_tool_call", "name": "exec", "call_id": "custom_1", "input": "run()"},
+			map[string]any{"type": "custom_tool_call_output", "call_id": "custom_1", "output": "ok"},
+			map[string]any{"type": "function_call", "name": "exec", "call_id": "legacy_1", "arguments": "{\"input\":\"legacy()\"}"},
+			map[string]any{"type": "function_call_output", "call_id": "legacy_1", "output": "legacy ok"},
+			map[string]any{"type": "function_call", "namespace": "functions", "name": "wait", "call_id": "qualified_1", "arguments": "{}"},
+			map[string]any{"type": "function_call", "name": "functions__wait", "call_id": "flat_1", "arguments": "{}"},
+		},
+	}
+
+	mapping, changed, err := AdaptResponsesClientTools(req)
+	require.NoError(t, err)
+	require.True(t, changed)
+	require.True(t, mapping.CustomTools["functions__exec"])
+
+	input := req["input"].([]any)
+	customCall := input[0].(map[string]any)
+	require.Equal(t, "function_call", customCall["type"])
+	require.Equal(t, "functions__exec", customCall["name"])
+	require.JSONEq(t, "{\"input\":\"run()\"}", customCall["arguments"].(string))
+
+	customOutput := input[1].(map[string]any)
+	require.Equal(t, "function_call_output", customOutput["type"])
+	require.Equal(t, "custom_1", customOutput["call_id"])
+	require.Equal(t, "ok", customOutput["output"])
+
+	legacyCall := input[2].(map[string]any)
+	require.Equal(t, "function_call", legacyCall["type"])
+	require.Equal(t, "functions__exec", legacyCall["name"])
+	legacyOutput := input[3].(map[string]any)
+	require.Equal(t, "legacy_1", legacyOutput["call_id"])
+	require.Equal(t, "legacy ok", legacyOutput["output"])
+
+	qualifiedCall := input[4].(map[string]any)
+	require.Equal(t, "functions__wait", qualifiedCall["name"])
+	require.NotContains(t, qualifiedCall, "namespace")
+	require.Equal(t, "functions__wait", input[5].(map[string]any)["name"])
+}
+
+func TestFlattenResponsesNamespaces_DoesNotInferAmbiguousBareHistory(t *testing.T) {
+	tests := []struct {
+		name  string
+		tools []any
+	}{
+		{
+			name: "top-level tool owns bare name",
+			tools: []any{
+				map[string]any{"type": "function", "name": "exec", "parameters": map[string]any{"type": "object"}},
+				map[string]any{"type": "namespace", "name": "functions", "tools": []any{map[string]any{"type": "custom", "name": "exec"}}},
+			},
+		},
+		{
+			name: "two namespaces own bare name",
+			tools: []any{
+				map[string]any{"type": "namespace", "name": "functions", "tools": []any{map[string]any{"type": "custom", "name": "exec"}}},
+				map[string]any{"type": "namespace", "name": "other", "tools": []any{map[string]any{"type": "function", "name": "exec"}}},
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			req := map[string]any{
+				"tools": tt.tools,
+				"input": []any{map[string]any{"type": "function_call", "name": "exec", "call_id": "call_1", "arguments": "{}"}},
+			}
+
+			_, changed, err := FlattenResponsesNamespaces(req)
+			require.NoError(t, err)
+			require.True(t, changed)
+			call := req["input"].([]any)[0].(map[string]any)
+			require.Equal(t, "exec", call["name"])
+			require.NotContains(t, call, "namespace")
+		})
+	}
+}
+
 // 非流式回程：上游按摊平名回 function_call，客户端必须收到
 // custom_tool_call + namespace=functions + name=exec。
 func TestRestoreResponsesClientToolPayload_NamespacedCustomChild(t *testing.T) {

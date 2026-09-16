@@ -107,4 +107,31 @@ describe('HelpTooltip', () => {
 
     wrapper.unmount()
   })
+
+  // 回归：气泡是 position: fixed（视口坐标系），而 getBoundingClientRect() 已是视口坐标。
+  // 曾经额外加了 scrollX/scrollY，导致滚动距离被重复计一次，页面下滚后气泡跑到触发元素下方。
+  it('positions the tooltip in viewport coordinates without double-counting scroll', async () => {
+    const rect = { top: 300, left: 100, width: 20, height: 16 } as DOMRect
+    const wrapper = mount(HelpTooltip, {
+      attachTo: document.body,
+      props: { content: 'positioned' },
+    })
+
+    const trigger = wrapper.get('.group')
+    ;(trigger.element as HTMLElement).getBoundingClientRect = () => rect
+    // 模拟页面已向下滚动：滚动量不应进入最终坐标。
+    Object.defineProperty(window, 'scrollY', { value: 400, configurable: true })
+    Object.defineProperty(window, 'scrollX', { value: 50, configurable: true })
+
+    await trigger.trigger('mouseenter')
+    await nextTick()
+
+    const tooltip = getTooltipElement()
+    // top: rect.top(300) 经模板的 calc(... - 8px) 得 292；若 scrollY 被重复计入则是 692。
+    // left: rect.left(100) + width/2(10) = 110；若 scrollX 被重复计入则是 160。
+    expect(tooltip.style.top).toContain('292px')
+    expect(tooltip.style.left).toBe('110px')
+
+    wrapper.unmount()
+  })
 })

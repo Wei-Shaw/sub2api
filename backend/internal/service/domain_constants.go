@@ -43,16 +43,17 @@ const (
 	PlatformGemini      = domain.PlatformGemini
 	PlatformAntigravity = domain.PlatformAntigravity
 	PlatformGrok        = domain.PlatformGrok
+	PlatformAdobe       = domain.PlatformAdobe
 	// 国产 OpenAI 兼容供应商（与 grok 一样经 OpenAI 网关转发）。
 	PlatformKimi       = domain.PlatformKimi
 	PlatformZhipu      = domain.PlatformZhipu
 	PlatformDeepseek   = domain.PlatformDeepseek
 	PlatformMiniMax    = domain.PlatformMiniMax
 	PlatformOpenCodeGo = domain.PlatformOpenCodeGo
-	PlatformComposite  = domain.PlatformComposite
-	// Kiro 走独立的 credits 用量口径，不参与原生用量窗口的自动停调阈值评估
-	// （见 AllowedSchedulingThresholdPlatforms）。
-	PlatformKiro = domain.PlatformKiro
+	// PlatformKiro is retained for unsupported-platform threshold tests and legacy
+	// account rows. Scheduling-threshold evaluation never pauses kiro accounts.
+	PlatformKiro      = domain.PlatformKiro
+	PlatformComposite = domain.PlatformComposite
 )
 
 // 账号接入模式（国产供应商）：按量付费 vs Coding Plan。
@@ -131,11 +132,18 @@ var AllowedQuotaPlatforms = []string{
 	PlatformAntigravity,
 	PlatformKiro,
 	PlatformGrok,
+	PlatformAdobe,
 	PlatformKimi,
 	PlatformZhipu,
 	PlatformDeepseek,
 	PlatformMiniMax,
 	PlatformOpenCodeGo,
+}
+
+func cloneAllowedQuotaPlatforms() []string {
+	platforms := make([]string, len(AllowedQuotaPlatforms))
+	copy(platforms, AllowedQuotaPlatforms)
+	return platforms
 }
 
 // AllowedSchedulingThresholdPlatforms 是允许设置账号自动停调阈值的平台列表。

@@ -3,7 +3,6 @@ export default {
       title: 'Account Management',
       description: 'Manage AI platform accounts and credentials',
       createAccount: 'Create Account',
-      add: 'Add',
       autoRefresh: 'Auto Refresh',
       enableAutoRefresh: 'Enable auto refresh',
       refreshInterval5s: '5 seconds',
@@ -121,6 +120,7 @@ export default {
         antigravity: 'Antigravity',
         grok: 'Grok',
         kiro: 'Kiro',
+        adobe: 'Adobe',
         kimi: 'Kimi',
         zhipu: 'Zhipu GLM',
         deepseek: 'DeepSeek',
@@ -202,6 +202,8 @@ export default {
         kiroApikey: 'Connect to AWS directly via API Key',
         kiroApikeyRelay: 'Relay via external API Key + Base URL',
         kiroOauth: 'Social OAuth / AWS Builder ID / Import',
+        adobeOauth: 'Firefly cookie',
+        adobeApikeyRelay: 'Relay via external API Key + Base URL',
         antigravityApikey: 'Connect via Base URL + API Key',
         upstream: 'Upstream',
         upstreamDesc: 'Connect via Base URL + API Key'
@@ -592,6 +594,7 @@ export default {
       vertexSaJsonInvalid: 'Service Account JSON format is invalid',
       vertexSaJsonRequired: 'Please upload a Service Account JSON',
       oauthSetupToken: 'OAuth / Setup Token',
+      add: 'Add',
       addMethod: 'Add Method',
       setupTokenLongLived: 'Setup Token (Long-lived)',
       baseUrl: 'Base URL',
@@ -791,8 +794,6 @@ export default {
       modelRestriction: 'Model Restriction (Optional)',
       modelWhitelist: 'Model Whitelist',
       modelMapping: 'Model Mapping',
-      fromModel: 'Request model',
-      toModel: 'Target model',
       selectAllowedModels: 'Select allowed models. Leave empty to support all models.',
       mapRequestModels:
         'Map request models to actual models. Left is the requested model, right is the actual model sent to API.',
@@ -800,6 +801,8 @@ export default {
       supportsAllModels: '(supports all models)',
       requestModel: 'Request model',
       actualModel: 'Actual model',
+      fromModel: 'Source model',
+      toModel: 'Target model',
       addMapping: 'Add Mapping',
       mappingExists: 'Mapping for {model} already exists',
       wildcardOnlyAtEnd: 'Wildcard * can only be at the end',
@@ -1076,6 +1079,17 @@ export default {
         apiKeyHint: 'API Key for the upstream service',
         pleaseEnterBaseUrl: 'Please enter upstream Base URL',
         pleaseEnterApiKey: 'Please enter upstream API Key'
+      },
+      adobe: {
+        cookieLabel: 'Adobe Cookie',
+        cookieHint: 'Sign in to Adobe, open firefly.adobe.com/generate/image and let it settle, then copy the Cookie header from an adobeid-na1.services.adobe.com /ims/check/v6/token request in DevTools (it must include ims_sid). Copying document.cookie from firefly.adobe.com alone is not enough. A "Cookie:" prefix or a JSON cookie array is also accepted. The short-lived access token is refreshed from this automatically.',
+        credentialStepTitle: 'Enter credentials',
+        cookiePlaceholder: 'ims_sid=...; aux_sid=...; ...',
+        cookieRequired: 'Please enter the Adobe cookie',
+        accessTokenLabel: 'Access Token (optional)',
+        accessTokenHint: 'Leave empty to have it fetched from the cookie on first refresh. Fill it only when you already hold a valid IMS token.',
+        relayApiKeyHint: 'API key for that external upstream (sent as Authorization: Bearer)',
+        relayBaseUrlHint: 'External OpenAI-compatible upstream URL (e.g. https://your-relay.example.com)'
       },
       kiro: {
         apiKeyHint: 'Kiro API Key (starts with ksk_), used as the Bearer token for direct AWS access',
@@ -1564,6 +1578,7 @@ export default {
       geminiAccount: 'Gemini Account',
       antigravityAccount: 'Antigravity Account',
       grokAccount: 'Grok Account',
+      adobeAccount: 'Adobe Account',
       inputMethod: 'Input Method',
       reAuthorizedSuccess: 'Account re-authorized successfully',
       // Test Modal
@@ -1682,6 +1697,9 @@ export default {
         kiroDaysLeft: '{days}d left',
         kiroExpires: 'Expires',
         kiroReset: 'Reset',
+        adobeCredits: 'Credits',
+        adobeReset: 'Reset',
+        adobePlanCap: 'Plan',
         estimatedTotalCost: 'Est. total ${cost}',
         estimatedTotalCostTooltip: 'Estimated total cost at 100% utilization, based on current window cost and utilization'
       },

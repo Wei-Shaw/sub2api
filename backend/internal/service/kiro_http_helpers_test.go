@@ -5,7 +5,6 @@ package service
 import (
 	"context"
 	"net/http"
-	"strings"
 	"testing"
 
 	kiropkg "github.com/Wei-Shaw/sub2api/internal/pkg/kiro"
@@ -94,11 +93,16 @@ func TestNewKiroJSONRequestAddsConditionalHeaders(t *testing.T) {
 	require.Equal(t, "arn:aws:codewhisperer:us-east-1:123456789012:profile/HEADER", req.Header.Get("x-amzn-kiro-profile-arn"))
 	require.Equal(t, "vibe", req.Header.Get("x-amzn-kiro-agent-mode"))
 	require.Equal(t, "true", req.Header.Get("x-amzn-codewhisperer-optout"))
-	require.Contains(t, req.Header.Get("User-Agent"), "aws-sdk-js/1.0.34")
+	// streamingSDKVersions 是多元素池，seed 决定命中哪一条：直接与 helper 生成的
+	// 参考 UA 全等比较，天然覆盖 aws-sdk-js/ 与 api/codewhispererstreaming# 段。
+	expectedUA := kiropkg.BuildRuntimeUserAgent("account-key", buildKiroMachineID(account))
+	expectedAmzUA := kiropkg.BuildRuntimeAmzUserAgent("account-key", buildKiroMachineID(account))
+	require.Equal(t, expectedUA, req.Header.Get("User-Agent"))
+	require.Equal(t, expectedAmzUA, req.Header.Get("X-Amz-User-Agent"))
 	require.Contains(t, req.Header.Get("User-Agent"), "md/nodejs#22.22.0")
 	require.Contains(t, req.Header.Get("User-Agent"), buildKiroMachineID(account))
 	require.Contains(t, req.Header.Get("X-Amz-User-Agent"), buildKiroMachineID(account))
-	require.True(t, strings.Contains(req.Header.Get("User-Agent"), "api/codewhispererstreaming#1.0.34"))
+	require.Contains(t, req.Header.Get("User-Agent"), "api/codewhispererstreaming#")
 	require.Empty(t, req.Header.Get("Anthropic-Beta"))
 }
 

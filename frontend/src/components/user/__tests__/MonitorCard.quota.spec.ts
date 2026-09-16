@@ -31,6 +31,7 @@ function makeItem(overrides: Partial<UserMonitorView> = {}): UserMonitorView {
     primary_latency_ms: null,
     primary_ping_latency_ms: null,
     availability_7d: 100,
+    check_mode: 'quota',
     extra_models: [],
     timeline: [],
     ...overrides,
@@ -47,7 +48,7 @@ function mountCard(item: UserMonitorView) {
     },
     global: {
       stubs: {
-        MonitorMetricPair: true,
+        MonitorMetricPair: { template: '<div data-testid="monitor-metric-pair" />' },
         MonitorAvailabilityRow: true,
         MonitorTimeline: true,
       },
@@ -56,7 +57,7 @@ function mountCard(item: UserMonitorView) {
 }
 
 describe('MonitorCard quota snapshot visibility', () => {
-  it('hides the quota block when the system switch is off even if data exists', () => {
+  it('hides a single-account snapshot when the system switch is off', () => {
     isQuotaVisible.mockReturnValue(false)
     const wrapper = mountCard(
       makeItem({
@@ -64,6 +65,28 @@ describe('MonitorCard quota snapshot visibility', () => {
       }),
     )
     expect(wrapper.find('[data-testid="monitor-quota-view"]').exists()).toBe(false)
+  })
+
+  it('shows group account counts even when the system switch is off', () => {
+    isQuotaVisible.mockReturnValue(false)
+    const wrapper = mountCard(
+      makeItem({
+        latest_quota: {
+          source: 'usage',
+          success: true,
+          fetched_at: '2026-08-18T00:00:00Z',
+          accounts_total: 10,
+          accounts_healthy: 3,
+          accounts_exhausted: 7,
+          plan_level: 'should-not-leak',
+          tiers: [{ window: '5h', used_percent: 88 }],
+        },
+      }),
+    )
+    expect(wrapper.find('[data-testid="monitor-quota-view"]').exists()).toBe(true)
+    expect(wrapper.find('[data-testid="monitor-quota-accounts"]').exists()).toBe(true)
+    expect(wrapper.text()).not.toContain('should-not-leak')
+    expect(wrapper.text()).not.toContain('88%')
   })
 
   it('renders the quota block when the switch is on and a snapshot exists', () => {
@@ -96,8 +119,26 @@ describe('MonitorCard quota snapshot visibility', () => {
   })
 
   it('keeps the real model name for probe monitors', () => {
-    const wrapper = mountCard(makeItem({ primary_model: 'claude-sonnet-4-5' }))
+    const wrapper = mountCard(makeItem({ check_mode: 'probe', primary_model: 'claude-sonnet-4-5' }))
     expect(wrapper.text()).toContain('claude-sonnet-4-5')
     expect(wrapper.text()).not.toContain('monitorCommon.checkMode.quota')
+  })
+
+  it('hides latency and ping tiles in quota-only mode', () => {
+    const wrapper = mountCard(makeItem({ check_mode: 'quota' }))
+    expect(wrapper.find('[data-testid="monitor-metric-pair"]').exists()).toBe(false)
+  })
+
+  it('keeps latency and ping tiles for probe and quota_probe', () => {
+    expect(
+      mountCard(makeItem({ check_mode: 'probe', primary_model: 'claude-sonnet-4-5' })).find(
+        '[data-testid="monitor-metric-pair"]',
+      ).exists(),
+    ).toBe(true)
+    expect(
+      mountCard(makeItem({ check_mode: 'quota_probe', primary_model: 'claude-sonnet-4-5' })).find(
+        '[data-testid="monitor-metric-pair"]',
+      ).exists(),
+    ).toBe(true)
   })
 })
