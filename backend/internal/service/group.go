@@ -21,6 +21,10 @@ type Group struct {
 	Description    string
 	Platform       string
 	RateMultiplier float64
+	// AutoRouteEnabled 将当前分组作为 OpenAI 虚拟入口；请求实际使用
+	// AutoRouteGroupIDs 中当前有效倍率最低且有可调度账号的目标分组。
+	AutoRouteEnabled  bool
+	AutoRouteGroupIDs []int64
 	// 高峰时段倍率：peak_rate_enabled 为 true 且当前时刻处于 [PeakStart, PeakEnd) 时，
 	// token 计费倍率额外乘以 PeakRateMultiplier。详见 PeakMultiplierAt。
 	PeakRateEnabled    bool
@@ -149,6 +153,26 @@ func IsGroupBindableInSimpleMode(group *Group) bool {
 
 func (g *Group) IsActive() bool {
 	return g.Status == StatusActive
+}
+
+// NormalizeAutoRouteGroupIDs 去重并移除非法 ID 与入口分组自身，保持管理员配置顺序。
+func NormalizeAutoRouteGroupIDs(currentGroupID int64, groupIDs []int64) []int64 {
+	if len(groupIDs) == 0 {
+		return []int64{}
+	}
+	result := make([]int64, 0, len(groupIDs))
+	seen := make(map[int64]struct{}, len(groupIDs))
+	for _, id := range groupIDs {
+		if id <= 0 || id == currentGroupID {
+			continue
+		}
+		if _, ok := seen[id]; ok {
+			continue
+		}
+		seen[id] = struct{}{}
+		result = append(result, id)
+	}
+	return result
 }
 
 func (g *Group) IsSubscriptionType() bool {

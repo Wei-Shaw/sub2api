@@ -20,7 +20,7 @@
 
       <!-- Grid Pattern -->
       <div
-        class="absolute inset-0 bg-[linear-gradient(rgba(20,184,166,0.03)_1px,transparent_1px),linear-gradient(90deg,rgba(20,184,166,0.03)_1px,transparent_1px)] bg-[size:64px_64px]"
+        class="absolute inset-0 bg-[linear-gradient(rgba(82,82,82,0.03)_1px,transparent_1px),linear-gradient(90deg,rgba(82,82,82,0.03)_1px,transparent_1px)] bg-[size:64px_64px]"
       ></div>
     </div>
 
@@ -31,11 +31,12 @@
         <!-- Custom Logo or Default Logo -->
         <template v-if="settingsLoaded">
           <div
-            class="mb-4 inline-flex h-16 w-16 items-center justify-center overflow-hidden rounded-2xl shadow-lg shadow-primary-500/30"
+            v-if="props.showBrandLogo"
+            class="mb-4 inline-flex h-16 min-w-[172px] items-center justify-center text-4xl font-bold text-gray-950 dark:text-white"
           >
-            <img :src="siteLogo || '/logo.svg'" alt="Logo" class="h-full w-full object-contain" />
+            <BrandWordmark :name="siteName" />
           </div>
-          <h1 class="text-gradient mb-2 text-3xl font-bold">
+          <h1 v-if="!props.showBrandLogo" class="brand-serif text-gradient mb-2 text-3xl font-bold">
             {{ siteName }}
           </h1>
           <p class="text-sm text-gray-500 dark:text-dark-400">
@@ -56,7 +57,7 @@
 
       <!-- Copyright -->
       <div class="mt-8 text-center text-xs text-gray-400 dark:text-dark-500">
-        &copy; {{ currentYear }} {{ siteName }}. All rights reserved.
+        &copy; {{ currentYear }} <span class="brand-serif">{{ siteName }}</span>. All rights reserved.
       </div>
     </div>
   </div>
@@ -65,12 +66,18 @@
 <script setup lang="ts">
 import { computed, onMounted } from 'vue'
 import { useAppStore } from '@/stores'
-import { sanitizeUrl } from '@/utils/url'
+import BrandWordmark from '@/components/common/BrandWordmark.vue'
+import { resolveSiteName } from '@/constants/site'
 
 const appStore = useAppStore()
 
-const siteName = computed(() => appStore.siteName || 'Sub2API')
-const siteLogo = computed(() => sanitizeUrl(appStore.siteLogo || '', { allowRelative: true, allowDataUrl: true }))
+const props = withDefaults(defineProps<{
+  showBrandLogo?: boolean
+}>(), {
+  showBrandLogo: true
+})
+
+const siteName = computed(() => resolveSiteName(appStore.siteName))
 const siteSubtitle = computed(() => appStore.cachedPublicSettings?.site_subtitle || 'Subscription to API Conversion Platform')
 const settingsLoaded = computed(() => appStore.publicSettingsLoaded)
 

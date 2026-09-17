@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/url"
 	"regexp"
@@ -67,7 +68,7 @@ func runCheckForModel(ctx context.Context, provider, endpoint, apiKey, model str
 	mode := bodyOverrideMode(opts)
 
 	start := time.Now()
-	respText, rawBody, statusCode, err := callProvider(ctx, provider, endpoint, apiKey, model, challenge.Prompt, opts)
+	respText, rawBody, statusCode, err := callProviderWithRetry(ctx, provider, endpoint, apiKey, model, challenge.Prompt, opts)
 	latency := time.Since(start)
 	latencyMs := int(latency / time.Millisecond)
 	res.LatencyMs = &latencyMs
@@ -105,6 +106,35 @@ func runCheckForModel(ctx context.Context, provider, endpoint, apiKey, model str
 	}
 
 	return finalizeOperationalOrDegraded(res, latency, latencyMs)
+}
+
+func callProviderWithRetry(ctx context.Context, provider, endpoint, apiKey, model, prompt string, opts *CheckOptions) (string, string, int, error) {
+	var respText, rawBody string
+	var statusCode int
+	var err error
+	for attempt := 0; attempt <= monitorTransientRetryCount; attempt++ {
+		respText, rawBody, statusCode, err = callProvider(ctx, provider, endpoint, apiKey, model, prompt, opts)
+		if !isRetryableMonitorResult(statusCode, err) || attempt == monitorTransientRetryCount {
+			return respText, rawBody, statusCode, err
+		}
+		timer := time.NewTimer(monitorTransientRetryDelay)
+		select {
+		case <-ctx.Done():
+			timer.Stop()
+			return "", "", 0, ctx.Err()
+		case <-timer.C:
+		}
+	}
+	return respText, rawBody, statusCode, err
+}
+
+func isRetryableMonitorResult(statusCode int, err error) bool {
+	if err != nil {
+		var netErr net.Error
+		return errors.As(err, &netErr) || errors.Is(err, context.DeadlineExceeded)
+	}
+	return statusCode == http.StatusTooManyRequests || statusCode == http.StatusBadGateway ||
+		statusCode == http.StatusServiceUnavailable || statusCode == http.StatusGatewayTimeout || statusCode == 529
 }
 
 // finalizeOperationalOrDegraded 负责走到最后一步的 operational/degraded 判定。

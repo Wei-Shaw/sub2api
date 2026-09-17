@@ -186,7 +186,7 @@ export default {
         step1: {
           title: 'Create an R2 Bucket',
           line1: 'Log in to the Cloudflare Dashboard (dash.cloudflare.com), select "R2 Object Storage" from the sidebar',
-          line2: 'Click "Create bucket", enter a name (e.g. sub2api-backups), choose a region',
+          line2: 'Click "Create bucket", enter a name (e.g. gptplusch-backups), choose a region',
           line3: 'Click create to finish'
         },
         step2: {
@@ -672,10 +672,12 @@ export default {
       allTypes: 'All Types',
       typeBalance: 'Balance (Redeem)',
       typeAffiliateBalance: 'Balance (Affiliate Transfer)',
+      typeCheckInBalance: 'Balance (Check-in Reward)',
       typeAdminBalance: 'Balance (Admin)',
       typeConcurrency: 'Concurrency (Redeem)',
       typeAdminConcurrency: 'Concurrency (Admin)',
       typeSubscription: 'Subscription',
+      checkInReward: 'Check-in Reward',
       failedToLoadBalanceHistory: 'Failed to load balance history',
       createdAt: 'Created',
       totalRecharged: 'Total Recharged',
@@ -1170,6 +1172,13 @@ export default {
         fallbackGroup: 'Fallback Group',
         fallbackHint: 'Non-Claude Code requests will use this group. Leave empty to reject directly.',
         noFallback: 'No Fallback (Reject)'
+      },
+      autoRoute: {
+        title: 'OpenAI Auto-route Group',
+        hint: 'Uses the lowest effective user rate first, falls back when no account is schedulable, and switches back after recovery.',
+        targets: 'Target groups',
+        targetsHint: 'Select one or more. Runtime order is calculated from user rate, group order, then group ID.',
+        targetsRequired: 'Select at least one target group before enabling auto routing.'
       },
       openaiMessages: {
         title: 'OpenAI Messages Dispatch',

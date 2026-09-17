@@ -1,5 +1,11 @@
 FROM golang:1.27.0-alpine
 
+ARG GOPROXY=https://goproxy.cn,direct
+ARG GOSUMDB=sum.golang.google.cn
+
+ENV GOPROXY=${GOPROXY}
+ENV GOSUMDB=${GOSUMDB}
+
 WORKDIR /app
 
 # 安装必要的工具

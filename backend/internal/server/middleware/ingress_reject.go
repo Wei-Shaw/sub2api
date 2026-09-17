@@ -16,6 +16,8 @@ import (
 type IngressRejectReason string
 
 const (
+	IngressRejectAPIKeyQuotaExhausted   IngressRejectReason = "api_key_quota_exhausted"
+	IngressRejectInsufficientBalance    IngressRejectReason = "insufficient_balance"
 	IngressRejectQueryAPIKeyDeprecated  IngressRejectReason = "query_api_key_deprecated"
 	IngressRejectAPIKeyRequired         IngressRejectReason = "api_key_required"
 	IngressRejectInvalidAPIKey          IngressRejectReason = "invalid_api_key"

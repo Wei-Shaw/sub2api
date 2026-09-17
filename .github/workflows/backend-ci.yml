@@ -2,7 +2,10 @@ name: CI
 
 on:
   push:
+    branches-ignore:
+      - custom-ui
   pull_request:
+  workflow_call:
 
 permissions:
   contents: read
@@ -14,6 +17,8 @@ jobs:
       - uses: actions/checkout@v6
       - name: Check deployment scripts
         run: |
+          /bin/bash -n deploy/aws-ssm-deploy.sh
+          /bin/bash deploy/tests/aws-ssm-deploy-test.sh
           /bin/bash -n deploy/apple-container.sh
           /bin/bash deploy/tests/apple-container-test.sh
           /bin/sh deploy/tests/docker-compose-security-test.sh

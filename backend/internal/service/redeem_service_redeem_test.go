@@ -100,3 +100,24 @@ func TestRedeemRejectsInvitationCodeBeforeTransaction(t *testing.T) {
 	require.Equal(t, StatusUnused, redeemRepo.code.Status)
 	require.Nil(t, redeemRepo.code.UsedBy)
 }
+
+func TestShouldResetCheckInCycleOnlyForPositiveBenefits(t *testing.T) {
+	tests := []struct {
+		name string
+		code *RedeemCode
+		want bool
+	}{
+		{name: "positive balance", code: &RedeemCode{Type: RedeemTypeBalance, Value: 100}, want: true},
+		{name: "negative balance adjustment", code: &RedeemCode{Type: RedeemTypeBalance, Value: -10}, want: false},
+		{name: "positive concurrency", code: &RedeemCode{Type: RedeemTypeConcurrency, Value: 2}, want: true},
+		{name: "default subscription duration", code: &RedeemCode{Type: RedeemTypeSubscription}, want: true},
+		{name: "subscription reduction", code: &RedeemCode{Type: RedeemTypeSubscription, ValidityDays: -1}, want: false},
+		{name: "missing code", code: nil, want: false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			require.Equal(t, tt.want, shouldResetCheckInCycle(tt.code))
+		})
+	}
+}

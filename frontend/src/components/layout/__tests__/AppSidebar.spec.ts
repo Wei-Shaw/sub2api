@@ -52,6 +52,15 @@ describe('AppSidebar collapsible groups', () => {
 })
 
 describe('AppSidebar header styles', () => {
+  it('does not clip the expanded logo', () => {
+    const sidebarLogoBlockMatch = componentSource.match(/\.sidebar-logo\s*\{[\s\S]*?\n\}/)
+
+    expect(sidebarLogoBlockMatch).not.toBeNull()
+    expect(sidebarLogoBlockMatch?.[0]).toContain('width: auto;')
+    expect(sidebarLogoBlockMatch?.[0]).toContain('overflow: visible;')
+    expect(componentSource).not.toContain("'w-32 justify-start text-[22px]'")
+  })
+
   it('does not clip the version badge dropdown', () => {
     const sidebarHeaderBlockMatch = styleSource.match(/\.sidebar-header\s*\{[\s\S]*?\n {2}\}/)
     const sidebarBrandBlockMatch = componentSource.match(/\.sidebar-brand\s*\{[\s\S]*?\n\}/)

@@ -33,6 +33,7 @@ type userRepository struct {
 }
 
 var _ service.RedeemUserAdjustmentRepository = (*userRepository)(nil)
+var _ service.CheckInCycleResetter = (*userRepository)(nil)
 
 func NewUserRepository(client *dbent.Client, sqlDB *sql.DB) service.UserRepository {
 	return newUserRepositoryWithSQL(client, sqlDB)
@@ -861,6 +862,20 @@ func (r *userRepository) ApplyRedeemBalanceAdjustment(ctx context.Context, id in
 	}
 	if affected == 0 {
 		return service.ErrUserNotFound
+	}
+	return nil
+}
+
+func (r *userRepository) ResetCheckInCycle(ctx context.Context, userID int64, resetAt time.Time) error {
+	const resetSQL = `
+		INSERT INTO user_checkin_states (user_id, cycle_reward, reset_at, updated_at)
+		VALUES ($1, 0, $2, $2)
+		ON CONFLICT (user_id) DO UPDATE
+		SET cycle_reward = 0, reset_at = EXCLUDED.reset_at, updated_at = EXCLUDED.updated_at
+	`
+	client := clientFromContext(ctx, r.client)
+	if _, err := client.ExecContext(ctx, resetSQL, userID, resetAt); err != nil {
+		return fmt.Errorf("reset user check-in cycle: %w", err)
 	}
 	return nil
 }

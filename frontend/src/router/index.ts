@@ -1,5 +1,5 @@
 /**
- * Vue Router configuration for Sub2API frontend
+ * Vue Router configuration for gptplusch frontend
  * Defines all application routes with lazy loading and navigation guards
  */
 
@@ -253,6 +253,29 @@ const routes: RouteRecordRaw[] = [
     }
   },
   {
+    path: '/store',
+    name: 'Store',
+    component: () => import('@/views/user/StoreView.vue'),
+    meta: {
+      requiresAuth: true,
+      requiresAdmin: false,
+      title: 'Store',
+      titleKey: 'store.title',
+      descriptionKey: 'store.description'
+    }
+  },
+  {
+    path: '/checkin',
+    name: 'CheckIn',
+    component: () => import('@/views/user/CheckInView.vue'),
+    meta: {
+      requiresAuth: true,
+      requiresAdmin: false,
+      title: 'Daily Check-in',
+      titleKey: 'checkIn.title'
+    }
+  },
+  {
     path: '/affiliate',
     name: 'Affiliate',
     component: () => import('@/views/user/AffiliateView.vue'),
@@ -448,6 +471,17 @@ const routes: RouteRecordRaw[] = [
       title: 'User Management',
       titleKey: 'admin.users.title',
       descriptionKey: 'admin.users.description'
+    }
+  },
+  {
+    path: '/admin/checkin',
+    name: 'AdminCheckIn',
+    component: () => import('@/views/admin/CheckInView.vue'),
+    meta: {
+      requiresAuth: true,
+      requiresAdmin: true,
+      title: 'Check-in System',
+      titleKey: 'admin.checkIn.title'
     }
   },
   {

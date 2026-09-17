@@ -247,6 +247,42 @@ func TestOpsErrorLoggerMiddleware_DoesNotBreakOuterMiddlewares(t *testing.T) {
 	require.Equal(t, http.StatusNoContent, rec.Code)
 }
 
+func TestOpsErrorLoggerMiddleware_AppendsRequestBodyDiagnostic(t *testing.T) {
+	setupOpsErrorLogTestQueue(t, 4)
+	gin.SetMode(gin.TestMode)
+
+	settings := &ingressRejectSettingRepo{}
+	repo := &ingressRejectOpsRepo{}
+	ops := service.NewOpsService(repo, settings, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+
+	router := gin.New()
+	router.Use(OpsErrorLoggerMiddleware(ops))
+	router.POST("/v1/responses", func(c *gin.Context) {
+		c.Set(requestBodyDiagnosticContextKey, requestBodyDiagnostic{
+			Kind:          "unexpected_eof",
+			BytesRead:     128,
+			ContentLength: 256,
+			WindowCount:   10,
+			WindowScore:   10,
+		})
+		c.JSON(http.StatusBadRequest, gin.H{"error": gin.H{
+			"message": "Failed to read request body",
+			"type":    "invalid_request_error",
+		}})
+	})
+
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/v1/responses", nil)
+	router.ServeHTTP(w, req)
+
+	require.Equal(t, http.StatusBadRequest, w.Code)
+	job := <-opsErrorLogQueue
+	require.Contains(t, job.entry.ErrorMessage, "request_body_error=unexpected_eof")
+	require.Contains(t, job.entry.ErrorMessage, "bytes_read=128")
+	require.NotContains(t, job.entry.ErrorMessage, "request_body=")
+	require.Equal(t, "P3", job.entry.Severity)
+}
+
 // setupOpsErrorLogTestQueue 阻止 enqueueOpsErrorLog 启动真实 worker，改用可检查的测试队列。
 func setupOpsErrorLogTestQueue(t *testing.T, size int) {
 	t.Helper()
