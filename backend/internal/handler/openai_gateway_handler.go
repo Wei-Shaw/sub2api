@@ -2110,88 +2110,120 @@ func recordOpenAIProfitVeto(failedAccountIDs map[int64]struct{}, accountID int64
 // 得记一条，低于该阈值说明没有等待发生，记录只会淹没日志。
 const openAIWSSlotWaitLogThreshold = 50 * time.Millisecond
 
-// logOpenAIWSSlotWaited 记录一次成功但非立即的账号并发槽位获取。
+// errOpenAIWSAccountWaitQueueFull 表示等待队列已满，调用方应当立刻放弃而不是再
+// 等一个完整的超时窗口。
+var errOpenAIWSAccountWaitQueueFull = errors.New("openai ws account wait queue is full")
+
+// acquireOpenAIWSAccountSlot 是 WS 侧账号并发槽准入的唯一入口，形状对齐 HTTP 的
+// acquireOpenAIAccountSlot：先立即试一次，没抢到才排队并有上限地等。
 //
-// 没有这条日志，「压根没发生槽位竞争」和「竞争了但在超时窗口内等到了」在日志
-// 里是同一种样子——两者都只留下沉默，于是既无法确认等待窗口是否真的起了作用，
-// 也无法校准 gateway.openai_ws.turn_slot_wait_timeout_seconds 该取多大。失败
-// 有 *_wait_failed，成功也需要对应的一条。
+// 收成一个函数是因为 WS 里有三处准入（握手期、BeforeTurn、429 同账号重试），此前
+// 各写各的，结果是能力覆盖取决于当时看到了几处——真实发生过的偏差包括第三处完全
+// 没有等待、BeforeTurn 丢掉调度器给的 WaitPlan.Timeout、两处用不同的队列上限。
 //
-// turn 为 0 表示首轮（握手期准入），大于 0 表示 BeforeTurn 的第 N 轮。
-func logOpenAIWSSlotWaited(reqLog *zap.Logger, msg string, turn int, accountID int64, waited time.Duration) {
-	if reqLog == nil || waited < openAIWSSlotWaitLogThreshold {
-		return
+// 「先试一次再排队」不只是快路径优化：入队/离队合计约 6 次 Redis 往返（计数脚本
+// 之外还有活跃索引的维护），无条件付出会让绝大多数根本没有竞争的 turn 白白多等
+// 这些往返，并且把账号反复塞进/移出活跃索引。
+//
+// turn > 0 时写进日志，0 表示没有 turn 上下文（握手期传 1，因为它就是第 1 轮）。
+// 返回的 error 可能是 errOpenAIWSAccountWaitQueueFull、*ConcurrencyError（等满超
+// 时）或底层错误，由调用方决定关闭方式。
+func (h *OpenAIGatewayHandler) acquireOpenAIWSAccountSlot(
+	ctx context.Context,
+	reqLog *zap.Logger,
+	turn int,
+	accountID int64,
+	maxConcurrency int,
+	maxWaiting int,
+	waitTimeout time.Duration,
+) (func(), error) {
+	releaseFunc, acquired, err := h.concurrencyHelper.TryAcquireAccountSlot(ctx, accountID, maxConcurrency)
+	if err != nil {
+		return nil, err
 	}
-	fields := make([]zap.Field, 0, 3)
-	fields = append(fields, zap.Int64("account_id", accountID), zap.Duration("waited", waited))
+	if acquired {
+		return releaseFunc, nil
+	}
+	// waitTimeout <= 0 表示显式关掉等待，回到 try-once 旧行为。
+	if waitTimeout <= 0 {
+		return nil, &ConcurrencyError{SlotType: "account", IsTimeout: true}
+	}
+
+	allowed, leave := h.enterOpenAIWSAccountWaitQueue(ctx, reqLog, accountID, maxWaiting)
+	if !allowed {
+		return nil, errOpenAIWSAccountWaitQueueFull
+	}
+	defer leave()
+
+	startedAt := time.Now()
+	releaseFunc, err = h.concurrencyHelper.AcquireAccountSlotWithWaitCtx(ctx, accountID, maxConcurrency, waitTimeout)
+	waited := time.Since(startedAt)
+	fields := []zap.Field{zap.Int64("account_id", accountID), zap.Duration("waited", waited)}
 	if turn > 0 {
 		fields = append(fields, zap.Int("turn", turn))
 	}
-	reqLog.Info(msg, fields...)
+	if err != nil {
+		reqLog.Warn("openai.websocket_account_slot_wait_failed", append(fields, zap.Error(err))...)
+		return nil, err
+	}
+	// 没有这条日志，「压根没发生竞争」和「竞争了但等到了」在日志里是同一种样子，
+	// 既无法确认等待窗口起没起作用，也无法校准超时该取多大。阈值以下说明第一次
+	// 尝试就命中，没有真的等过。
+	if waited >= openAIWSSlotWaitLogThreshold {
+		reqLog.Info("openai.websocket_account_slot_waited", fields...)
+	}
+	return releaseFunc, nil
+}
+
+// openAIWSAccountSlotErrorIsBusy 区分「账号忙、让客户端稍后重试」和「服务端内部
+// 错误」。队列已满、等满超时、以及对端已经走了，对客户端都是同一件事。
+func openAIWSAccountSlotErrorIsBusy(ctx context.Context, err error) bool {
+	if errors.Is(err, errOpenAIWSAccountWaitQueueFull) {
+		return true
+	}
+	var concurrencyErr *ConcurrencyError
+	if errors.As(err, &concurrencyErr) {
+		return true
+	}
+	return ctx.Err() != nil
 }
 
 // enterOpenAIWSAccountWaitQueue 为 WS 的账号槽等待做队列准入，语义对齐 HTTP
 // acquireResponsesAccountSlot。
 //
-// WS 此前只等不计数，有两个后果：调度器给出的 WaitPlan.MaxWaiting 对 WS 完全
-// 失效，任意多连接可以堆在同一账号上各等一个完整超时；更要紧的是这些等待者对
-// 其他路径是隐形的——HTTP 准入和调度选号（selectAccount 里的
-// GetAccountWaitingCount）都按这个计数判断账号还能不能再塞人，WS 不计数会让两
-// 者一致低估拥挤度，继续往已经排满队的账号引流。
+// WS 此前只等不计数，有两个后果：调度器给出的 MaxWaiting 对 WS 完全失效，任意多
+// 连接可以堆在同一账号上各等一个完整超时；更要紧的是这些等待者对其他路径是隐形
+// 的——HTTP 准入和调度选号（selectAccount 里的 GetAccountWaitingCount）都按这个
+// 计数判断账号还能不能再塞人，WS 不计数会让两者一致低估拥挤度，继续往已经排满队
+// 的账号引流。
 //
 // maxWaiting <= 0 时跳过计数：Lua 脚本以 current >= maxWait 判拒，传 0 会把所有
 // 等待一律拒掉。
-//
-// 返回 (allowed, leave)，leave 幂等，必须在等待结束后调用。
 func (h *OpenAIGatewayHandler) enterOpenAIWSAccountWaitQueue(ctx context.Context, reqLog *zap.Logger, accountID int64, maxWaiting int) (bool, func()) {
 	noop := func() {}
 	if h == nil || h.concurrencyHelper == nil || maxWaiting <= 0 {
 		return true, noop
 	}
+	// ConcurrencyService 有意吞掉 cache error 并 fail-open，这里的 error 恒为 nil；
+	// 仍然接住它，以免该契约变化时静默去 Decrement 一个从未 Increment 的计数。
 	canWait, err := h.concurrencyHelper.IncrementAccountWaitCount(ctx, accountID, maxWaiting)
 	if err != nil {
-		// 与 HTTP 路径一致：计数器故障只记日志，不因此放弃等待。
-		// 注意 ConcurrencyService 目前有意吞掉 cache error 并 fail-open 返回
-		// (true, nil)，所以这条分支实际走不到；保留它是为了在该契约变化时
-		// 仍然不去 Decrement 一个从未 Increment 的计数器。
-		if reqLog != nil {
-			reqLog.Warn("openai.websocket_account_wait_counter_increment_failed",
-				zap.Int64("account_id", accountID),
-				zap.Error(err),
-			)
-		}
+		reqLog.Warn("openai.websocket_account_wait_counter_increment_failed",
+			zap.Int64("account_id", accountID),
+			zap.Error(err),
+		)
 		return true, noop
 	}
 	if !canWait {
-		if reqLog != nil {
-			reqLog.Info("openai.websocket_account_wait_queue_full",
-				zap.Int64("account_id", accountID),
-				zap.Int("max_waiting", maxWaiting),
-			)
-		}
+		reqLog.Info("openai.websocket_account_wait_queue_full",
+			zap.Int64("account_id", accountID),
+			zap.Int("max_waiting", maxWaiting),
+		)
 		return false, noop
 	}
-	var once sync.Once
 	return true, func() {
-		once.Do(func() {
-			h.concurrencyHelper.DecrementAccountWaitCount(ctx, accountID)
-		})
+		h.concurrencyHelper.DecrementAccountWaitCount(ctx, accountID)
 	}
-}
-
-// resolveOpenAIWSAccountSlotWaitTimeout 给出本次账号槽等待的上限。
-//
-// gateway.openai_ws.turn_slot_wait_timeout_seconds 是 WS 侧的硬上限（设 0 表示
-// 显式关掉等待、回到 try-once 旧行为），planTimeout 是调度器按账号算出的等待预
-// 算。两者都有意义，取更紧的一个。
-func resolveOpenAIWSAccountSlotWaitTimeout(cfgTimeout, planTimeout time.Duration) time.Duration {
-	if cfgTimeout <= 0 {
-		return 0
-	}
-	if planTimeout > 0 && planTimeout < cfgTimeout {
-		return planTimeout
-	}
-	return cfgTimeout
 }
 
 // handleOpenAIProfitVetoExhausted 在利润否决预算耗尽时写出错误响应。
@@ -2776,15 +2808,24 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 		if selection.WaitPlan != nil && selection.WaitPlan.MaxConcurrency > 0 {
 			accountMaxConcurrency = selection.WaitPlan.MaxConcurrency
 		}
-		// 非首轮 turn 的等待队列上限刻意比握手期宽，用 fallback 档而不是
-		// selection.WaitPlan 里那个（sticky 档线上只有 3）。两者被拒的代价不同：
-		// 握手期排不进队列是「连接没建起来」，客户端重连即可；非首轮被拒是「干到
-		// 一半被踢」，正是 #106 要消除的那类失败，拿紧上限卡它会让长会话在拥挤时
-		// 优先出局，与初衷相反。仍然计数，因为让 HTTP 准入和调度选号看见这些等待
-		// 者才是入队的主要目的。配置校验保证该值为正。
+		// 三处准入（握手期、BeforeTurn、429 同账号重试）共用同一份等待预算，免得
+		// 各算各的——此前 BeforeTurn 就丢掉了调度器给的 WaitPlan.Timeout。
+		// WS 配置是硬上限（设 0 表示显式关掉等待），调度器按账号算的预算更紧则取它。
+		accountWaitTimeout := service.ResolveOpenAIWSTurnSlotWaitTimeout(h.cfg)
+		if selection.WaitPlan != nil && selection.WaitPlan.Timeout > 0 &&
+			selection.WaitPlan.Timeout < accountWaitTimeout {
+			accountWaitTimeout = selection.WaitPlan.Timeout
+		}
+		// 队列上限跟着调度器走，不另挑更宽的档。账号等待计数是 HTTP/WS 共用的同一个
+		// Redis key，而调度器判 sticky 用的正是 waitingCount < StickySessionMaxWaiting：
+		// WS 按更大的上限往里塞，会把 HTTP 的 sticky 请求挤去 fallback 档（超时从
+		// 120s 掉到 30s、丢粘性）。配置校验保证该值为正。
 		accountMaxWaiting := 0
 		if h.cfg != nil {
-			accountMaxWaiting = h.cfg.Gateway.Scheduling.FallbackMaxWaiting
+			accountMaxWaiting = h.cfg.Gateway.Scheduling.StickySessionMaxWaiting
+		}
+		if selection.WaitPlan != nil && selection.WaitPlan.MaxWaiting > 0 {
+			accountMaxWaiting = selection.WaitPlan.MaxWaiting
 		}
 		// 终检、准入后绑定与后续 turn 级复核都使用选号结果携带的门（composite
 		// 等跨分组调度的门只存在于调度栈局部 ctx）；准入成功后并入连接 ctx。
@@ -2813,56 +2854,24 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 				closeOpenAIClientWS(wsConn, coderws.StatusTryAgainLater, "account is busy, please retry later")
 				return
 			}
-			fastReleaseFunc, fastAcquired, err := h.concurrencyHelper.TryAcquireAccountSlot(
-				ctx,
-				account.ID,
-				selection.WaitPlan.MaxConcurrency,
+			// 调度器返回 WaitPlan 就意味着「这个账号值得等」。连接绑定单一上游
+			// 账号、无法中途换号，所以这里必须像 HTTP /responses 一样有上限地
+			// 等：槽位通常只是被同账号的其他连接短暂占住，直接放弃会让客户端
+			// 立刻断线重连。满载时换号是调度层的职责，不在这里重做。
+			//
+			// 握手期就是第 1 轮，所以 turn 传 1。
+			fastReleaseFunc, err := h.acquireOpenAIWSAccountSlot(
+				ctx, reqLog, 1, account.ID,
+				selection.WaitPlan.MaxConcurrency, accountMaxWaiting, accountWaitTimeout,
 			)
 			if err != nil {
-				reqLog.Warn("openai.websocket_account_slot_acquire_failed", zap.Int64("account_id", account.ID), zap.Error(err))
-				closeOpenAIClientWS(wsConn, coderws.StatusInternalError, "failed to acquire account concurrency slot")
-				return
-			}
-			if !fastAcquired {
-				// 调度器返回 WaitPlan 就意味着「这个账号值得等」。连接绑定单一上游
-				// 账号、无法中途换号，所以这里必须像 HTTP /responses 一样有上限地
-				// 等：槽位通常只是被同账号的其他连接短暂占住，直接放弃会让客户端
-				// 立刻断线重连。满载时换号是调度层的职责，不在这里重做。
-				//
-				// 「像 HTTP 一样」也包括排队本身：等待要进账号等待队列，既受
-				// MaxWaiting 约束，也让 HTTP 准入和调度选号看得见这些等待者。
-				waitTimeout := resolveOpenAIWSAccountSlotWaitTimeout(
-					service.ResolveOpenAIWSTurnSlotWaitTimeout(h.cfg),
-					selection.WaitPlan.Timeout,
-				)
-				leaveWaitQueue := func() {}
-				if waitTimeout > 0 {
-					allowed, leave := h.enterOpenAIWSAccountWaitQueue(ctx, reqLog, account.ID, selection.WaitPlan.MaxWaiting)
-					if !allowed {
-						closeOpenAIClientWS(wsConn, coderws.StatusTryAgainLater, "account is busy, please retry later")
-						return
-					}
-					leaveWaitQueue = leave
-				}
-				slotWaitStartedAt := time.Now()
-				fastReleaseFunc, err = h.concurrencyHelper.AcquireAccountSlotWithWaitCtx(
-					ctx,
-					account.ID,
-					selection.WaitPlan.MaxConcurrency,
-					waitTimeout,
-				)
-				slotWaited := time.Since(slotWaitStartedAt)
-				leaveWaitQueue()
-				if err != nil {
-					reqLog.Warn("openai.websocket_account_slot_wait_failed",
-						zap.Int64("account_id", account.ID),
-						zap.Duration("waited", slotWaited),
-						zap.Error(err),
-					)
+				if openAIWSAccountSlotErrorIsBusy(ctx, err) {
 					closeOpenAIClientWS(wsConn, coderws.StatusTryAgainLater, "account is busy, please retry later")
 					return
 				}
-				logOpenAIWSSlotWaited(reqLog, "openai.websocket_account_slot_waited", 0, account.ID, slotWaited)
+				reqLog.Warn("openai.websocket_account_slot_acquire_failed", zap.Int64("account_id", account.ID), zap.Error(err))
+				closeOpenAIClientWS(wsConn, coderws.StatusInternalError, "failed to acquire account concurrency slot")
+				return
 			}
 			// 分组利润控制：WS 快速抢槽成功后终检，越线则释放
 			// 槽位、排除该账号重新选号，全池耗尽由下一轮选号关闭连接。
@@ -3040,41 +3049,16 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 				// 连接绑定单一上游账号，中途换号会断掉会话链，所以这里只能等而不能
 				// 改选：上一轮释放的槽位常常瞬间被同分组其他连接抢走，不等的话正在
 				// 进行中的会话会被 1013 直接踢下线（客户端表现为中途反复重连）。
-				waitTimeout := service.ResolveOpenAIWSTurnSlotWaitTimeout(h.cfg)
-				leaveWaitQueue := func() {}
-				if waitTimeout > 0 {
-					allowed, leave := h.enterOpenAIWSAccountWaitQueue(ctx, reqLog, account.ID, accountMaxWaiting)
-					if !allowed {
-						return service.NewOpenAIWSClientCloseError(coderws.StatusTryAgainLater, "account is busy, please retry later", nil)
-					}
-					leaveWaitQueue = leave
-				}
-				slotWaitStartedAt := time.Now()
-				accountReleaseFunc, err := h.concurrencyHelper.AcquireAccountSlotWithWaitCtx(
-					ctx,
-					account.ID,
-					accountMaxConcurrency,
-					waitTimeout,
+				accountReleaseFunc, err := h.acquireOpenAIWSAccountSlot(
+					ctx, reqLog, turn, account.ID,
+					accountMaxConcurrency, accountMaxWaiting, accountWaitTimeout,
 				)
-				slotWaited := time.Since(slotWaitStartedAt)
-				leaveWaitQueue()
 				if err != nil {
-					var concurrencyErr *ConcurrencyError
-					if errors.As(err, &concurrencyErr) {
-						reqLog.Warn("openai.websocket_turn_account_slot_wait_failed",
-							zap.Int("turn", turn),
-							zap.Int64("account_id", account.ID),
-							zap.Duration("waited", slotWaited),
-							zap.Error(err),
-						)
-						return service.NewOpenAIWSClientCloseError(coderws.StatusTryAgainLater, "account is busy, please retry later", nil)
-					}
-					if ctxErr := ctx.Err(); ctxErr != nil {
+					if openAIWSAccountSlotErrorIsBusy(ctx, err) {
 						return service.NewOpenAIWSClientCloseError(coderws.StatusTryAgainLater, "account is busy, please retry later", err)
 					}
 					return service.NewOpenAIWSClientCloseError(coderws.StatusInternalError, "failed to acquire account concurrency slot", err)
 				}
-				logOpenAIWSSlotWaited(reqLog, "openai.websocket_turn_account_slot_waited", turn, account.ID, slotWaited)
 				// 账号槽已到手，user 槽拿不到就必须把它还回去，否则这一轮的账号槽会
 				// 一直挂到连接结束。
 				userReleaseFunc, userAcquired, err := h.concurrencyHelper.TryAcquireUserSlotForAPIKey(ctx, subject.UserID, subject.Concurrency, apiKey.ID)
@@ -3264,8 +3248,15 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 						return
 					}
 					if currentAccountRelease == nil {
-						accountRelease, acquired, acquireErr := h.concurrencyHelper.TryAcquireAccountSlot(ctx, account.ID, accountMaxConcurrency)
-						if acquireErr != nil || !acquired {
+						// 退避睡眠之前 AfterTurn 已经把槽还回去了，睡醒时被同分组其他
+						// 连接抢走是常态而非边缘情况——这条路径比 BeforeTurn 更需要等，
+						// 此前却是三处准入里唯一还在 try-once 的一处。
+						// 这里没有 turn 上下文，传 0。
+						accountRelease, acquireErr := h.acquireOpenAIWSAccountSlot(
+							ctx, reqLog, 0, account.ID,
+							accountMaxConcurrency, accountMaxWaiting, accountWaitTimeout,
+						)
+						if acquireErr != nil {
 							reqLog.Warn("openai.websocket_same_account_retry_slot_unavailable",
 								zap.Int64("account_id", account.ID),
 								zap.Error(acquireErr),
