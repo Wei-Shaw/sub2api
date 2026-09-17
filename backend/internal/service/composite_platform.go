@@ -4,6 +4,7 @@ import (
 	"context"
 	"strings"
 
+	"github.com/Wei-Shaw/sub2api/internal/pkg/adobe"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/ctxkey"
 )
 
@@ -130,11 +131,14 @@ func DetectModelPlatform(model string) (string, bool) {
 	// would still classify it as OpenAI.
 	case normalized == "gpt-image" || strings.HasPrefix(normalized, "gpt-image-"):
 		return "", false
+	// The remaining Adobe catalog names (e.g. gpt-4o-image) must also be
+	// matched before the gpt- prefix below.
 	case strings.HasPrefix(normalized, "nano-banana"),
 		strings.HasPrefix(normalized, "flux-"),
 		strings.HasPrefix(normalized, "imagen-"),
 		strings.HasPrefix(normalized, "firefly-"),
-		strings.HasPrefix(normalized, "runway-gen4"):
+		strings.HasPrefix(normalized, "runway-gen4"),
+		adobe.IsExternalImageModelID(normalized):
 		return PlatformAdobe, true
 	case strings.HasPrefix(normalized, "gpt-"),
 		strings.HasPrefix(normalized, "chatgpt-"),
