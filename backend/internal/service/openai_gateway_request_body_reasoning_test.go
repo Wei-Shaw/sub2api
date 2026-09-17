@@ -439,6 +439,15 @@ func assertAssistantMessagesGuarded(t *testing.T, body []byte) {
 	t.Helper()
 	items := gjson.GetBytes(body, "input").Array()
 	require.NotEmpty(t, items)
+	// 补齐后每条 reasoning item 都必须带非空明文：DeepSeek 对 no-plain 的 reasoning item
+	// 同样报 "The `reasoning_text` in the thinking mode must be passed back to the API."
+	for i, item := range items {
+		if strings.TrimSpace(item.Get("type").String()) != "reasoning" {
+			continue
+		}
+		text := item.Get("content.0.text").String()
+		require.NotEmptyf(t, text, "input.%d 的 reasoning 缺明文", i)
+	}
 	for i, item := range items {
 		if responsesInputItemTypeFromJSON(item) != "message" || item.Get("role").String() != "assistant" {
 			continue
@@ -500,6 +509,18 @@ func TestEnsureDeepSeekResponsesReasoningPlaceholders(t *testing.T) {
 				`{"type":"message","role":"user","content":"go"},` +
 				`{"type":"reasoning","id":"rs_1","summary":[],"encrypted_content":"opaque"},` +
 				`{"type":"message","id":"msg_1","role":"assistant","content":[{"type":"output_text","text":"hi"}]}]}`,
+			hasTools:    true,
+			wantChanged: true,
+		},
+		{
+			// 线上第二种形态：no-plain 的 reasoning 后面直接跟工具调用，没有 assistant 消息
+			// 可以承载新插入的占位 reasoning，必须给该 reasoning item 本身补明文。
+			name: "无明文的 reasoning 后直接跟工具调用",
+			body: `{"model":"deepseek-flash",` + deepSeekResponsesToolsFragment + `,"input":[` +
+				`{"type":"message","role":"user","content":"go"},` +
+				`{"type":"reasoning","id":"rs_np","summary":[],"encrypted_content":"opaque"},` +
+				`{"type":"function_call","call_id":"c1","name":"shell","arguments":"{}"},` +
+				`{"type":"function_call_output","call_id":"c1","output":"ok"}]}`,
 			hasTools:    true,
 			wantChanged: true,
 		},
@@ -613,6 +634,39 @@ func TestEnsureDeepSeekResponsesReasoningPlaceholdersFallsBackToIndexID(t *testi
 	require.Equal(t, "rs_ph_1", gjson.GetBytes(rewritten, "input.1.id").String())
 	require.Equal(t, " ", gjson.GetBytes(rewritten, "input.1.content.0.text").String())
 	assertAssistantMessagesGuarded(t, rewritten)
+}
+
+// TestEnsureDeepSeekResponsesReasoningPlaceholdersPromotesSummary 覆盖跨模型切换后的真实形态：
+// xAI 等上游只给 summary 不给 content，DeepSeek 不认 summary，导致
+// "The `reasoning_text` in the thinking mode must be passed back to the API."。
+// summary 里就是真实推理，提升为明文既满足校验又保住上下文。
+func TestEnsureDeepSeekResponsesReasoningPlaceholdersPromotesSummary(t *testing.T) {
+	withSummary := []byte(`{"model":"deepseek-flash",` + deepSeekResponsesToolsFragment + `,"input":[` +
+		`{"type":"message","role":"user","content":"go"},` +
+		`{"type":"reasoning","id":"rs_s","summary":[{"type":"summary_text","text":"真实推理"}],"encrypted_content":"opaque"},` +
+		`{"type":"function_call","call_id":"c1","name":"shell","arguments":"{}"},` +
+		`{"type":"function_call_output","call_id":"c1","output":"ok"}]}`)
+
+	rewritten, changed := ensureDeepSeekResponsesReasoningPlaceholders(withSummary, true)
+	require.True(t, changed)
+	require.Equal(t, "真实推理", gjson.GetBytes(rewritten, "input.1.content.0.text").String())
+	require.False(t, gjson.GetBytes(rewritten, "input.1.summary").Exists(), "summary 对 DeepSeek 无意义，提升后应移除")
+
+	// 没有 summary 时退回空格占位，仍然满足「每条 reasoning 都带非空明文」。
+	withoutSummary := []byte(`{"model":"deepseek-flash",` + deepSeekResponsesToolsFragment + `,"input":[` +
+		`{"type":"message","role":"user","content":"go"},` +
+		`{"type":"reasoning","id":"rs_e","summary":[],"encrypted_content":"opaque"},` +
+		`{"type":"function_call","call_id":"c1","name":"shell","arguments":"{}"},` +
+		`{"type":"function_call_output","call_id":"c1","output":"ok"}]}`)
+
+	rewritten, changed = ensureDeepSeekResponsesReasoningPlaceholders(withoutSummary, true)
+	require.True(t, changed)
+	require.Equal(t, " ", gjson.GetBytes(rewritten, "input.1.content.0.text").String())
+
+	// 幂等：提升过的历史再走一遍不再改写。
+	again, changedAgain := ensureDeepSeekResponsesReasoningPlaceholders(rewritten, true)
+	require.False(t, changedAgain)
+	require.JSONEq(t, string(rewritten), string(again))
 }
 
 func TestNormalizeDeepSeekResponsesToolCallBlocks(t *testing.T) {

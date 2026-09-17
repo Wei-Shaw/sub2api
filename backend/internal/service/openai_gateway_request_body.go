@@ -191,10 +191,11 @@ func responsesReasoningTextFromJSON(item gjson.Result) string {
 	return ""
 }
 
-// responsesInputHasUnguardedAssistantMessage 报告 input 里是否存在「前面没有非空明文
-// reasoning 的 assistant 消息」。只用于决定是否需要整体解码改写；判定口径必须与
-// ensureDeepSeekResponsesReasoningPlaceholders 的改写循环保持一致。
-func responsesInputHasUnguardedAssistantMessage(input gjson.Result) bool {
+// responsesInputNeedsReasoningReplay 报告 input 是否需要 reasoning 明文补齐：存在
+// 「无明文的 reasoning item」，或存在「前面没有非空明文 reasoning 的 assistant 消息」。
+// 只用于决定是否需要整体解码改写；判定口径必须与 ensureDeepSeekResponsesReasoningPlaceholders
+// 的改写循环保持一致。
+func responsesInputNeedsReasoningReplay(input gjson.Result) bool {
 	guarded := false
 	found := false
 	input.ForEach(func(_, item gjson.Result) bool {
@@ -202,7 +203,13 @@ func responsesInputHasUnguardedAssistantMessage(input gjson.Result) bool {
 		case "reasoning":
 			if responsesReasoningTextFromJSON(item) != "" {
 				guarded = true
+				return true
 			}
+			// 无明文的 reasoning item 本身就要补明文：DeepSeek 要求每条 reasoning item
+			// 都带 reasoning_text，仅靠给后续 assistant 消息插占位覆盖不到
+			// 「reasoning → function_call」这种没有 assistant 消息的形态。
+			found = true
+			return false
 		case "message":
 			if strings.TrimSpace(item.Get("role").String()) == "assistant" {
 				if !guarded {
@@ -258,7 +265,7 @@ func ensureDeepSeekResponsesReasoningPlaceholders(body []byte, knownHasTools boo
 		return body, false
 	}
 	input := parseRawJSONView(body).Get("input")
-	if !input.IsArray() || !responsesInputHasUnguardedAssistantMessage(input) {
+	if !input.IsArray() || !responsesInputNeedsReasoningReplay(input) {
 		return body, false
 	}
 
@@ -282,9 +289,27 @@ func ensureDeepSeekResponsesReasoningPlaceholders(body []byte, knownHasTools boo
 		}
 		switch responsesInputItemType(item) {
 		case "reasoning":
-			if responsesReasoningItemHasPlaintext(item) {
-				guarded = true
+			if !responsesReasoningItemHasPlaintext(item) {
+				// 补全 no-plain 的 reasoning item：DeepSeek 只认 content[].reasoning_text，
+				// 仅有 summary / encrypted_content 或空串都会被 400 拒绝
+				// （"The `reasoning_text` in the thinking mode must be passed back to the API."）。
+				//
+				// 跨模型切换时 xAI 等上游留下的是 summary-only 形态，summary 里就是真实推理，
+				// 直接提升为明文可以保住上下文；没有 summary 时退回空格占位。summary 一并移除，
+				// 因为该字段对 DeepSeek 无意义，留着只会让请求体翻倍。
+				if text := responsesReasoningSummaryText(item); text != "" {
+					item["content"] = []any{
+						map[string]any{"type": "reasoning_text", "text": text},
+					}
+					delete(item, "summary")
+				} else {
+					item["content"] = []any{
+						map[string]any{"type": "reasoning_text", "text": responsesReasoningPlaceholderText},
+					}
+				}
+				changed = true
 			}
+			guarded = true
 		case "message":
 			if strings.TrimSpace(firstNonEmptyString(item["role"])) == "assistant" {
 				if guarded {
@@ -309,6 +334,30 @@ func ensureDeepSeekResponsesReasoningPlaceholders(body []byte, knownHasTools boo
 		return body, false
 	}
 	return normalized, true
+}
+
+// responsesReasoningSummaryText 拼接 reasoning item 里 summary_text 的正文。
+// 跨模型切换后（xAI 等上游）推理正文只存在于 summary，DeepSeek 不认该字段，
+// 需要把它提升成 reasoning_text 才能满足上游校验并保住上下文。
+func responsesReasoningSummaryText(item map[string]any) string {
+	summary, ok := item["summary"].([]any)
+	if !ok {
+		return ""
+	}
+	parts := make([]string, 0, len(summary))
+	for _, rawPart := range summary {
+		part, ok := rawPart.(map[string]any)
+		if !ok {
+			continue
+		}
+		if strings.TrimSpace(firstNonEmptyString(part["type"])) != "summary_text" {
+			continue
+		}
+		if text, ok := part["text"].(string); ok && strings.TrimSpace(text) != "" {
+			parts = append(parts, text)
+		}
+	}
+	return strings.Join(parts, "\n")
 }
 
 // responsesReasoningItemHasPlaintext 判定解码后的 reasoning item 是否携带非空明文思维链。
