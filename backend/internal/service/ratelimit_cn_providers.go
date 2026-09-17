@@ -121,6 +121,54 @@ func (s *RateLimitService) cnBalanceCooldownDuration() time.Duration {
 	return cooldown
 }
 
+// cnProviderResponseIsFrequencyLimit reports frequency-type 429s that carry
+// no quota-reset semantics (e.g. zhipu 1302/控制请求频率). These must use
+// short backoff, never window-reset cooldown.
+func cnProviderResponseIsFrequencyLimit(responseBody []byte) bool {
+	if len(responseBody) == 0 {
+		return false
+	}
+	s := string(responseBody)
+	return strings.Contains(s, "1302") ||
+		strings.Contains(s, "控制请求频率") ||
+		strings.Contains(s, "frequency") ||
+		strings.Contains(s, "Frequency")
+}
+
+// cnProviderQuotaNearlyExhausted returns true only when a quota snapshot shows
+// ≥95% usage on any known window. Below that, 429s are treated as transient
+// frequency limits with short backoff (#6804).
+func cnProviderQuotaNearlyExhausted(account *Account) bool {
+	if account == nil || len(account.Extra) == 0 {
+		return false
+	}
+	for key, val := range account.Extra {
+		lower := strings.ToLower(key)
+		if !strings.Contains(lower, "used_percent") && !strings.Contains(lower, "usedpercent") {
+			continue
+		}
+		var pct float64
+		switch v := val.(type) {
+		case float64:
+			pct = v
+		case float32:
+			pct = float64(v)
+		case int:
+			pct = float64(v)
+		case int64:
+			pct = float64(v)
+		case string:
+			continue
+		default:
+			continue
+		}
+		if pct >= 95 {
+			return true
+		}
+	}
+	return false
+}
+
 // cnProviderQuotaSnapshotReset 读取 Coding Plan 账号快照中最早一个仍在未来的窗口
 // 重置时间（5h / weekly）。429 多数由 5h 滚动窗口触发，取较早的重置点可避免
 // 把账号冷却到 weekly 重置（可达数天）的过度停调；如果确是 weekly 窗口耗尽，
@@ -199,8 +247,16 @@ func (s *RateLimitService) applyCNProviderReactive429(
 	}
 	// 2) Coding Plan 窗口耗尽：冷却到快照中最早的窗口重置点（见
 	// cnProviderQuotaSnapshotReset：429 多由 5h 窗口触发，取较早点避免过度停调）。
+	// #6804: 频率型 429（如 zhipu 1302/控制请求频率）与窗口额度无关，
+	// 快照用量远未耗尽时必须走默认秒级退避，不能冷却到窗口重置点。
 	if account.IsCodingPlan() {
+		if cnProviderResponseIsFrequencyLimit(responseBody) {
+			return false
+		}
 		if until := cnProviderQuotaSnapshotReset(account, time.Now()); until != nil {
+			if !cnProviderQuotaNearlyExhausted(account) {
+				return false
+			}
 			s.notifyAccountSchedulingBlocked(account, *until, "429")
 			if err := s.accountRepo.SetRateLimited(ctx, account.ID, *until); err != nil {
 				slog.Warn("rate_limit_set_failed", "account_id", account.ID, "error", err)
