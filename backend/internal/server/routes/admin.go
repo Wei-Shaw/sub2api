@@ -678,13 +678,16 @@ func registerSubscriptionRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 		subscriptions.POST("/bulk-action", h.Admin.Subscription.BulkAction)
 		subscriptions.POST("/:id/extend", h.Admin.Subscription.Extend)
 		subscriptions.POST("/:id/reset-quota", h.Admin.Subscription.ResetQuota)
+		subscriptions.POST("/:id/quota-windows", h.Admin.Subscription.SetQuotaWindows)
 		subscriptions.POST("/:id/revoke", h.Admin.Subscription.Revoke)
 		subscriptions.POST("/:id/restore", h.Admin.Subscription.Restore)
 		subscriptions.DELETE("/:id", h.Admin.Subscription.Revoke)
 	}
 
-	// 分组下的订阅列表
+	// 分组下的订阅列表与组级配额操作
 	admin.GET("/groups/:id/subscriptions", h.Admin.Subscription.ListByGroup)
+	admin.POST("/groups/:id/subscriptions/quota-windows", h.Admin.Subscription.SetGroupQuotaWindows)
+	admin.POST("/groups/:id/subscriptions/reset-quota", h.Admin.Subscription.ResetGroupQuota)
 
 	// 用户下的订阅列表
 	admin.GET("/users/:id/subscriptions", h.Admin.Subscription.ListByUser)

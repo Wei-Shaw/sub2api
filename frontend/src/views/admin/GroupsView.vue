@@ -421,6 +421,28 @@
                 }}</span>
               </button>
               <button
+                v-if="!authStore.isSimpleMode && row.subscription_type === 'subscription'"
+                data-testid="group-set-quota-windows"
+                @click="handleSetGroupQuotaWindows(row)"
+                class="flex flex-col items-center gap-0.5 rounded-lg p-1.5 text-gray-500 transition-colors hover:bg-teal-50 hover:text-teal-600 dark:hover:bg-teal-900/20 dark:hover:text-teal-400"
+              >
+                <Icon name="clock" size="sm" />
+                <span class="text-xs">{{
+                  t("admin.groups.setQuotaWindows")
+                }}</span>
+              </button>
+              <button
+                v-if="!authStore.isSimpleMode && row.subscription_type === 'subscription'"
+                data-testid="group-reset-quota"
+                @click="handleResetGroupQuota(row)"
+                class="flex flex-col items-center gap-0.5 rounded-lg p-1.5 text-gray-500 transition-colors hover:bg-orange-50 hover:text-orange-600 dark:hover:bg-orange-900/20 dark:hover:text-orange-400"
+              >
+                <Icon name="refresh" size="sm" />
+                <span class="text-xs">{{
+                  t("admin.groups.resetGroupQuota")
+                }}</span>
+              </button>
+              <button
                 v-if="!authStore.isSimpleMode"
                 data-testid="group-rate-multipliers"
                 @click="handleRateMultipliers(row)"
@@ -3785,6 +3807,100 @@
       @cancel="cancelUnsupportedLive"
     />
 
+    <BaseDialog
+      :show="showSetGroupQuotaWindows"
+      :title="t('admin.groups.setQuotaWindowsTitle')"
+      @close="showSetGroupQuotaWindows = false"
+    >
+      <div class="space-y-3">
+        <p class="text-sm text-gray-600 dark:text-gray-400">
+          {{ t("admin.groups.setQuotaWindowsHint") }}
+        </p>
+        <label class="input-label" for="group-weekly-window">{{
+          t("admin.groups.weeklyWindowStart")
+        }}</label>
+        <input
+          id="group-weekly-window"
+          v-model="groupQuotaWindowForm.weekly"
+          type="datetime-local"
+          class="input"
+        />
+        <label class="input-label" for="group-monthly-window">{{
+          t("admin.groups.monthlyWindowStart")
+        }}</label>
+        <input
+          id="group-monthly-window"
+          v-model="groupQuotaWindowForm.monthly"
+          type="datetime-local"
+          class="input"
+        />
+      </div>
+      <template #footer>
+        <div class="flex justify-end gap-3">
+          <button
+            type="button"
+            class="btn btn-secondary"
+            @click="showSetGroupQuotaWindows = false"
+          >
+            {{ t("common.cancel") }}
+          </button>
+          <button
+            type="button"
+            class="btn btn-primary"
+            :disabled="groupQuotaSubmitting"
+            @click="confirmSetGroupQuotaWindows"
+          >
+            {{ t("common.confirm") }}
+          </button>
+        </div>
+      </template>
+    </BaseDialog>
+
+    <BaseDialog
+      :show="showResetGroupQuota"
+      :title="t('admin.groups.resetGroupQuotaTitle')"
+      @close="showResetGroupQuota = false"
+    >
+      <div class="space-y-3">
+        <p class="text-sm text-gray-600 dark:text-gray-400">
+          {{ t("admin.groups.resetGroupQuotaHint") }}
+        </p>
+        <div class="flex flex-wrap gap-5">
+          <label
+            v-for="window in groupQuotaWindows"
+            :key="window"
+            class="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300"
+          >
+            <input
+              v-model="groupResetWindows[window]"
+              type="checkbox"
+              class="h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+            />
+            {{ t(`admin.groups.${window}`) }}
+          </label>
+        </div>
+      </div>
+      <template #footer>
+        <div class="flex justify-end gap-3">
+          <button
+            type="button"
+            class="btn btn-secondary"
+            @click="showResetGroupQuota = false"
+          >
+            {{ t("common.cancel") }}
+          </button>
+          <button
+            type="button"
+            class="btn btn-primary"
+            :disabled="groupQuotaSubmitting"
+            @click="confirmResetGroupQuota"
+          >
+            {{ t("common.confirm") }}
+          </button>
+        </div>
+      </template>
+    </BaseDialog>
+
     <!-- Sort Order Modal -->
     <BaseDialog
       :show="showSortModal"
@@ -4317,6 +4433,10 @@ import type { ChannelModelPricing } from "@/api/admin/channels";
 import { VueDraggable } from "vue-draggable-plus";
 import { createStableObjectKeyResolver } from "@/utils/stableObjectKey";
 import { extractApiErrorMessage } from "@/utils/apiError";
+import {
+  dateTimeLocalInputToISO,
+  formatDateTimeLocalInputFromISO,
+} from "@/utils/datetimeLocal";
 import { useKeyedDebouncedSearch } from "@/composables/useKeyedDebouncedSearch";
 import { getPersistedPageSize } from "@/composables/usePersistedPageSize";
 import {
@@ -4833,6 +4953,13 @@ const showRateMultipliersModal = ref(false);
 const rateMultipliersGroup = ref<AdminGroup | null>(null);
 const showRPMOverridesModal = ref(false);
 const rpmOverridesGroup = ref<AdminGroup | null>(null);
+const showSetGroupQuotaWindows = ref(false);
+const showResetGroupQuota = ref(false);
+const quotaGroup = ref<AdminGroup | null>(null);
+const groupQuotaSubmitting = ref(false);
+const groupQuotaWindows = ["daily", "weekly", "monthly"] as const;
+const groupQuotaWindowForm = reactive({ weekly: "", monthly: "" });
+const groupResetWindows = reactive({ daily: true, weekly: true, monthly: true });
 const sortableGroups = ref<AdminGroup[]>([]);
 type ConcreteGroupPlatform = Exclude<GroupPlatform, "composite">;
 type CompositeRouteFormState = {
@@ -6394,6 +6521,115 @@ const removeEditMessagesDispatchMapping = (row: MessagesDispatchMappingRow) => {
 const handleRateMultipliers = (group: AdminGroup) => {
   rateMultipliersGroup.value = group;
   showRateMultipliersModal.value = true;
+};
+
+const handleSetGroupQuotaWindows = async (group: AdminGroup) => {
+  quotaGroup.value = group;
+  groupQuotaWindowForm.weekly = "";
+  groupQuotaWindowForm.monthly = "";
+  showSetGroupQuotaWindows.value = true;
+  try {
+    const page = await adminAPI.subscriptions.listByGroup(group.id, 1, 20);
+    const peer = page.items?.find(
+      (subscription) =>
+        subscription.status === "active" && subscription.weekly_window_start,
+    );
+    if (peer) {
+      groupQuotaWindowForm.weekly = formatDateTimeLocalInputFromISO(
+        peer.weekly_window_start,
+      );
+      groupQuotaWindowForm.monthly = formatDateTimeLocalInputFromISO(
+        peer.monthly_window_start || peer.weekly_window_start,
+      );
+    }
+  } catch {
+    // Prefill is optional; the admin can still enter timestamps manually.
+  }
+};
+
+const confirmSetGroupQuotaWindows = async () => {
+  if (!quotaGroup.value || groupQuotaSubmitting.value) return;
+  const weekly = dateTimeLocalInputToISO(groupQuotaWindowForm.weekly);
+  const monthly = dateTimeLocalInputToISO(groupQuotaWindowForm.monthly);
+  if (!weekly && !monthly) {
+    appStore.showError(t("admin.groups.pleaseSetWindowStart"));
+    return;
+  }
+  groupQuotaSubmitting.value = true;
+  try {
+    const result = await adminAPI.subscriptions.setGroupQuotaWindows(
+      quotaGroup.value.id,
+      {
+        weekly_window_start: weekly,
+        monthly_window_start: monthly,
+      },
+    );
+    showSetGroupQuotaWindows.value = false;
+    if (result.failed > 0) {
+      appStore.showError(
+        t("admin.groups.quotaWindowsPartial", {
+          success: result.success,
+          failed: result.failed,
+        }),
+      );
+    } else {
+      appStore.showSuccess(
+        t("admin.groups.quotaWindowsUpdated", { success: result.success }),
+      );
+    }
+  } catch (error: unknown) {
+    appStore.showError(
+      extractApiErrorMessage(error, t("admin.groups.failedToSetQuotaWindows")),
+    );
+  } finally {
+    groupQuotaSubmitting.value = false;
+  }
+};
+
+const handleResetGroupQuota = (group: AdminGroup) => {
+  quotaGroup.value = group;
+  groupResetWindows.daily = true;
+  groupResetWindows.weekly = true;
+  groupResetWindows.monthly = true;
+  showResetGroupQuota.value = true;
+};
+
+const confirmResetGroupQuota = async () => {
+  if (!quotaGroup.value || groupQuotaSubmitting.value) return;
+  if (
+    !groupResetWindows.daily &&
+    !groupResetWindows.weekly &&
+    !groupResetWindows.monthly
+  ) {
+    appStore.showError(t("admin.groups.selectWindow"));
+    return;
+  }
+  groupQuotaSubmitting.value = true;
+  try {
+    const result = await adminAPI.subscriptions.resetGroupQuota(
+      quotaGroup.value.id,
+      { ...groupResetWindows },
+    );
+    showResetGroupQuota.value = false;
+    if (result.failed > 0) {
+      appStore.showError(
+        t("admin.groups.resetGroupQuotaPartial", {
+          success: result.success,
+          failed: result.failed,
+        }),
+      );
+    } else {
+      appStore.showSuccess(
+        t("admin.groups.resetGroupQuotaSuccess", { success: result.success }),
+      );
+    }
+  } catch (error: unknown) {
+    appStore.showError(
+      extractApiErrorMessage(error, t("admin.groups.failedToResetGroupQuota")),
+    );
+  } finally {
+    groupQuotaSubmitting.value = false;
+  }
 };
 
 const handleRPMOverrides = (group: AdminGroup) => {
