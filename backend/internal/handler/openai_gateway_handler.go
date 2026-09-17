@@ -2701,8 +2701,24 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 				return
 			}
 			if !fastAcquired {
-				closeOpenAIClientWS(wsConn, coderws.StatusTryAgainLater, "account is busy, please retry later")
-				return
+				// 调度器返回 WaitPlan 就意味着「这个账号值得等」。连接绑定单一上游
+				// 账号、无法中途换号，所以这里必须像 HTTP /responses 一样有上限地
+				// 等：槽位通常只是被同账号的其他连接短暂占住，直接放弃会让客户端
+				// 立刻断线重连。满载时换号是调度层的职责，不在这里重做。
+				fastReleaseFunc, err = h.concurrencyHelper.AcquireAccountSlotWithWaitCtx(
+					ctx,
+					account.ID,
+					selection.WaitPlan.MaxConcurrency,
+					service.ResolveOpenAIWSTurnSlotWaitTimeout(h.cfg),
+				)
+				if err != nil {
+					reqLog.Warn("openai.websocket_account_slot_wait_failed",
+						zap.Int64("account_id", account.ID),
+						zap.Error(err),
+					)
+					closeOpenAIClientWS(wsConn, coderws.StatusTryAgainLater, "account is busy, please retry later")
+					return
+				}
 			}
 			// 分组利润控制：WS 快速抢槽成功后终检，越线则释放
 			// 槽位、排除该账号重新选号，全池耗尽由下一轮选号关闭连接。
@@ -2878,18 +2894,32 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 				if !userAcquired {
 					return service.NewOpenAIWSClientCloseError(coderws.StatusTryAgainLater, "too many concurrent requests, please retry later", nil)
 				}
-				accountReleaseFunc, accountAcquired, err := h.concurrencyHelper.TryAcquireAccountSlot(ctx, account.ID, accountMaxConcurrency)
+				// 连接绑定单一上游账号，中途换号会断掉会话链，所以这里只能等而不能
+				// 改选：上一轮释放的槽位常常瞬间被同分组其他连接抢走，不等的话正在
+				// 进行中的会话会被 1013 直接踢下线（客户端表现为中途反复重连）。
+				accountReleaseFunc, err := h.concurrencyHelper.AcquireAccountSlotWithWaitCtx(
+					ctx,
+					account.ID,
+					accountMaxConcurrency,
+					service.ResolveOpenAIWSTurnSlotWaitTimeout(h.cfg),
+				)
 				if err != nil {
 					if userReleaseFunc != nil {
 						userReleaseFunc()
 					}
-					return service.NewOpenAIWSClientCloseError(coderws.StatusInternalError, "failed to acquire account concurrency slot", err)
-				}
-				if !accountAcquired {
-					if userReleaseFunc != nil {
-						userReleaseFunc()
+					var concurrencyErr *ConcurrencyError
+					if errors.As(err, &concurrencyErr) {
+						reqLog.Warn("openai.websocket_turn_account_slot_wait_failed",
+							zap.Int("turn", turn),
+							zap.Int64("account_id", account.ID),
+							zap.Error(err),
+						)
+						return service.NewOpenAIWSClientCloseError(coderws.StatusTryAgainLater, "account is busy, please retry later", nil)
 					}
-					return service.NewOpenAIWSClientCloseError(coderws.StatusTryAgainLater, "account is busy, please retry later", nil)
+					if ctxErr := ctx.Err(); ctxErr != nil {
+						return service.NewOpenAIWSClientCloseError(coderws.StatusTryAgainLater, "account is busy, please retry later", err)
+					}
+					return service.NewOpenAIWSClientCloseError(coderws.StatusInternalError, "failed to acquire account concurrency slot", err)
 				}
 				currentUserRelease = wrapReleaseOnDone(ctx, userReleaseFunc)
 				currentAccountRelease = wrapReleaseOnDone(ctx, accountReleaseFunc)

@@ -30,6 +30,22 @@ func TestResolveOpenAIWSClientFirstMessageTimeout(t *testing.T) {
 	require.Equal(t, 120*time.Second, ResolveOpenAIWSClientFirstMessageTimeout(cfg))
 }
 
+func TestResolveOpenAIWSTurnSlotWaitTimeout(t *testing.T) {
+	defaultTimeout := time.Duration(config.DefaultOpenAIWSTurnSlotWaitTimeoutSeconds) * time.Second
+	require.Equal(t, defaultTimeout, ResolveOpenAIWSTurnSlotWaitTimeout(nil))
+
+	cfg := &config.Config{}
+	cfg.Gateway.OpenAIWS.TurnSlotWaitTimeoutSeconds = 45
+	require.Equal(t, 45*time.Second, ResolveOpenAIWSTurnSlotWaitTimeout(cfg))
+
+	// 0 与负数都表示关闭等待，回到「只试一次」的 legacy 行为。
+	cfg.Gateway.OpenAIWS.TurnSlotWaitTimeoutSeconds = 0
+	require.Equal(t, time.Duration(0), ResolveOpenAIWSTurnSlotWaitTimeout(cfg))
+
+	cfg.Gateway.OpenAIWS.TurnSlotWaitTimeoutSeconds = -1
+	require.Equal(t, time.Duration(0), ResolveOpenAIWSTurnSlotWaitTimeout(cfg))
+}
+
 func TestPrepareOpenAIWSHTTPBridgeBodyStripsWSFields(t *testing.T) {
 	body, err := prepareOpenAIWSHTTPBridgeBody(nil, []byte(`{"type":"response.create","generate":true,"model":"gpt-5","stream":false,"previous_response_id":"resp_prev","input":"hi","sequence":900719925474099312345}`))
 	require.NoError(t, err)
