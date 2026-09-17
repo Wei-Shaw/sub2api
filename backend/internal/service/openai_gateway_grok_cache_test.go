@@ -3,6 +3,7 @@
 package service
 
 import (
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"sync"
@@ -192,10 +193,53 @@ func TestResolveGrokCacheIdentityIDEHeaderPriority(t *testing.T) {
 		got := resolveGrokCacheIdentity(c, body, "explicit-argument", "grok-4.5")
 		onlyCurrent := newGrokCacheTestContext(402)
 		onlyCurrent.Request.Header.Set(header.name, header.value)
-		want := resolveGrokCacheIdentity(onlyCurrent, []byte(`{"model":"grok","input":"unrelated"}`), "", "grok-4.5")
-		require.Equal(t, want, got, header.name)
+		if header.name == grokConversationIDHeader {
+			// prompt_cache_key beats X-Grok-Conv-Id: verify the identity is
+			// derived from the body key, not the per-call conv label.
+			withOnlyBody := newGrokCacheTestContext(402)
+			want := resolveGrokCacheIdentity(withOnlyBody, body, "", "grok-4.5")
+			require.Equal(t, want, got, header.name)
+			withOnlyConv := newGrokCacheTestContext(402)
+			withOnlyConv.Request.Header.Set(header.name, header.value)
+			convOnly := resolveGrokCacheIdentity(withOnlyConv, []byte(`{"model":"grok","input":"unrelated"}`), "", "grok-4.5")
+			require.NotEqual(t, convOnly, got, "body key must not be shadowed by X-Grok-Conv-Id")
+		} else {
+			want := resolveGrokCacheIdentity(onlyCurrent, body, "", "grok-4.5")
+			require.Equal(t, want, got, header.name)
+		}
 		c.Request.Header.Del(header.name)
 	}
+}
+
+// TestResolveGrokCacheIdentitySideCallSharesParentCacheKey locks in the
+// grok-build side-call fix: recap-style side-calls (turn-summary /
+// title-refresh) send a fresh X-Grok-Conv-Id label but the parent session id
+// as body prompt_cache_key. The derived identity must follow the body key so
+// side-calls share the main turn's server-side cache prefix instead of
+// replaying the full conversation at full price on every call.
+func TestResolveGrokCacheIdentitySideCallSharesParentCacheKey(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	parentSession := "6f1c2f46-0f5e-4f9d-9d4e-2f0f1c3d5b7a"
+
+	mainTurn := newGrokCacheTestContext(910)
+	mainTurn.Request.Header.Set(grokConversationIDHeader, parentSession)
+	mainIdentity := resolveGrokCacheIdentity(mainTurn, []byte(`{"model":"grok-4.6","input":"main conversation"}`), "", "grok-4.6")
+	require.NotEmpty(t, mainIdentity)
+
+	sideCall := newGrokCacheTestContext(910)
+	sideCall.Request.Header.Set(grokConversationIDHeader, "turn-summary-"+uuidNew())
+	sideIdentity := resolveGrokCacheIdentity(sideCall, []byte(`{"model":"grok-4.6","prompt_cache_key":"`+parentSession+`","input":"summary replay"}`), "", "grok-4.6")
+	require.Equal(t, mainIdentity, sideIdentity,
+		"side-call with parent prompt_cache_key must share the main turn cache identity")
+
+	titleRefresh := newGrokCacheTestContext(910)
+	titleRefresh.Request.Header.Set(grokConversationIDHeader, "title-refresh-"+uuidNew())
+	titleIdentity := resolveGrokCacheIdentity(titleRefresh, []byte(`{"model":"grok-4.6","prompt_cache_key":"`+parentSession+`","input":"title replay"}`), "", "grok-4.6")
+	require.Equal(t, mainIdentity, titleIdentity)
+}
+
+func uuidNew() string {
+	return fmt.Sprintf("%08x-%04x-4%03x-9%03x-%012x", 0x1234, 0x5678, 0x9abc, 0xdef0, 0x1234567890ab)
 }
 
 func TestExplicitGrokCacheSeedPriority(t *testing.T) {
@@ -220,7 +264,18 @@ func TestExplicitGrokCacheSeedPriority(t *testing.T) {
 
 	body := []byte(`{"model":"grok","prompt_cache_key":"body-key","input":"hi"}`)
 	for _, header := range headers {
-		require.Equal(t, header.value, explicitGrokCacheSeed(c, body, "explicit-argument"), header.name)
+		var want string
+		switch header.name {
+		case grokConversationIDHeader:
+			// Client-declared prompt_cache_key outranks X-Grok-Conv-Id: the
+			// grok-build CLI pairs a fresh per-side-call conv label with the
+			// stable parent session id in the body field, and the body field
+			// is the official xAI cache-routing signal.
+			want = "body-key"
+		default:
+			want = header.value
+		}
+		require.Equal(t, want, explicitGrokCacheSeed(c, body, "explicit-argument"), header.name)
 		c.Request.Header.Del(header.name)
 	}
 	require.Equal(t, "body-key", explicitGrokCacheSeed(c, body, "explicit-argument"))

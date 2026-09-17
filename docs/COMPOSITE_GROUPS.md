@@ -14,6 +14,10 @@ Composite groups can route to these concrete account platforms:
 - OpenAI
 - Antigravity
 - Grok
+- Kimi
+- Zhipu GLM
+- DeepSeek
+- MiniMax
 
 The selected concrete platform is used for account selection, user platform
 quota checks, post-usage billing, ops error platform attribution, channel
@@ -68,6 +72,10 @@ Composite routing detects common public model IDs and provider-prefixed IDs:
 - `gpt-*`, `o*`, `codex-*`, `text-embedding-*`, `dall-e-*`, and
   `openai/*` route to OpenAI.
 - `grok-*` and `xai/grok-*` route to Grok.
+- `kimi-*`, `moonshot-*`, and `k3` route to Kimi.
+- `glm-*` routes to Zhipu GLM.
+- `deepseek-*` routes to DeepSeek.
+- `minimax-*`, `abab*`, and `minimax/*` route to MiniMax.
 
 Unknown or ambiguous model names fail closed with a client error instead of
 guessing a provider.

@@ -10,6 +10,62 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/service"
 )
 
+// groupUsageRollupSnapshot 是一次汇总水位的快照。
+// closedBefore / retainedFrom 在水位无效时退化为 1970-01-01，
+// 与此前 SQL 里 CASE WHEN valid 的语义一一对应。
+type groupUsageRollupSnapshot struct {
+	valid        bool
+	closedBefore string    // date，历史日桶的右开边界
+	retainedDate string    // retained_from 在服务端时区内的日期，历史日桶的左闭边界
+	tailStart    time.Time // 尾段（还没进日桶的那部分 usage_logs）的起点
+}
+
+// readGroupUsageRollupSnapshot 读一次汇总水位并在 Go 侧判定有效性。
+//
+// 判定条件与原先 SQL 里的 state_values CTE 完全一致：
+// 恰好一行、时区名与当前服务端配置相同、且水位不在未来。
+func (r *usageLogRepository) readGroupUsageRollupSnapshot(ctx context.Context, timezoneName, todayDate string) (groupUsageRollupSnapshot, error) {
+	epoch := time.Unix(0, 0).UTC()
+	invalid := groupUsageRollupSnapshot{
+		closedBefore: "1970-01-01",
+		retainedDate: "1970-01-01",
+		tailStart:    epoch,
+	}
+
+	var rowCount int
+	var closedBefore sql.NullString
+	var retainedFrom sql.NullTime
+	var stateTimezone sql.NullString
+	if err := scanSingleRow(ctx, r.sql, `
+		SELECT
+			COUNT(*),
+			MAX(closed_before)::text,
+			MAX(retained_from),
+			MAX(timezone_name)
+		FROM usage_group_rollup_state
+		WHERE id = 1
+	`, nil, &rowCount, &closedBefore, &retainedFrom, &stateTimezone); err != nil {
+		return groupUsageRollupSnapshot{}, fmt.Errorf("读取分组用量汇总水位: %w", err)
+	}
+	if rowCount != 1 || !closedBefore.Valid || !retainedFrom.Valid ||
+		!stateTimezone.Valid || stateTimezone.String != timezoneName ||
+		closedBefore.String > todayDate {
+		return invalid, nil
+	}
+
+	tailStart, err := service.ParseGroupUsageDate(closedBefore.String)
+	if err != nil {
+		// 水位值解析不出来，按无效处理：宁可多扫一次，也不要算错钱。
+		return invalid, nil //nolint:nilerr // 与上面的 valid 判定同语义，均降级为全量重算
+	}
+	return groupUsageRollupSnapshot{
+		valid:        true,
+		closedBefore: closedBefore.String,
+		retainedDate: service.GroupUsageDate(retainedFrom.Time),
+		tailStart:    tailStart.UTC(),
+	}, nil
+}
+
 func (r *usageLogRepository) getAllGroupUsageSummaryFromRollups(ctx context.Context, todayStart time.Time) (results []usagestats.GroupUsageSummary, err error) {
 	todayStart = service.GroupUsageTodayStart(todayStart)
 	yesterdayStart := service.GroupUsageYesterdayStart(todayStart)
@@ -17,40 +73,34 @@ func (r *usageLogRepository) getAllGroupUsageSummaryFromRollups(ctx context.Cont
 	todayDate := service.GroupUsageDate(todayStart)
 	yesterdayDate := service.GroupUsageDate(yesterdayStart)
 
+	state, err := r.readGroupUsageRollupSnapshot(ctx, timezoneName, todayDate)
+	if err != nil {
+		return nil, err
+	}
+
+	// 尾段起点必须以**查询参数**的形式给进来。
+	//
+	// 此前它是在同一条 SQL 里由 state CTE 算出、再 CROSS JOIN 给 tail 用的，
+	// 于是 created_at 的下界对 planner 来说是个运行期才知道的值：既进不了
+	// index cond，也估不准选择性，只能退化成 usage_logs 全表扫。
+	// 生产实测（1721 万行 / PostgreSQL 17）：
+	//   Seq Scan on usage_logs … rows=17212870, Rows Removed by Join Filter: 17178082
+	//   Execution Time: 48720 ms
+	// 换成参数之后走 idx_usage_logs_created_at：
+	//   Index Scan … Index Cond: (created_at >= $7)
+	//   Execution Time: 34 ms
 	const query = `
-		WITH state_values AS (
-			SELECT
-				COUNT(*) = 1
-					AND MAX(timezone_name) = $3
-					AND MAX(closed_before) <= $4::date AS valid,
-				MAX(closed_before) AS closed_before,
-				MAX(retained_from) AS retained_from
-			FROM usage_group_rollup_state
-			WHERE id = 1
-		),
-		state AS (
-			SELECT
-				CASE WHEN valid THEN closed_before ELSE DATE '1970-01-01' END AS closed_before,
-				CASE WHEN valid THEN retained_from ELSE TIMESTAMPTZ '1970-01-01 00:00:00+00' END AS retained_from,
-				CASE
-					WHEN valid THEN closed_before::timestamp AT TIME ZONE $3::text
-					ELSE TIMESTAMPTZ '1970-01-01 00:00:00+00'
-				END AS tail_start,
-				valid
-			FROM state_values
-		),
-		historical AS (
+		WITH historical AS (
 			SELECT
 				rollup.group_id,
 				COALESCE(SUM(rollup.actual_cost), 0) AS actual_cost,
 				COALESCE(SUM(rollup.actual_cost) FILTER (
-					WHERE rollup.bucket_date = $5::date
+					WHERE rollup.bucket_date = $3::date
 				), 0) AS yesterday_cost
 			FROM usage_group_daily_rollups rollup
-			CROSS JOIN state
-			WHERE state.valid
-				AND rollup.bucket_date >= (state.retained_from AT TIME ZONE $3::text)::date
-				AND rollup.bucket_date < state.closed_before
+			WHERE $4::boolean
+				AND rollup.bucket_date >= $5::date
+				AND rollup.bucket_date < $6::date
 			GROUP BY rollup.group_id
 		),
 		tail AS (
@@ -63,8 +113,7 @@ func (r *usageLogRepository) getAllGroupUsageSummaryFromRollups(ctx context.Cont
 						AND ul.created_at < $1
 				), 0) AS yesterday_cost
 			FROM usage_logs ul
-			CROSS JOIN state
-			WHERE ul.created_at >= state.tail_start
+			WHERE ul.created_at >= $7
 			GROUP BY ul.group_id
 		)
 		SELECT
@@ -83,9 +132,11 @@ func (r *usageLogRepository) getAllGroupUsageSummaryFromRollups(ctx context.Cont
 		query,
 		todayStart,
 		yesterdayStart,
-		timezoneName,
-		todayDate,
 		yesterdayDate,
+		state.valid,
+		state.retainedDate,
+		state.closedBefore,
+		state.tailStart,
 	)
 	if err != nil {
 		return nil, err

@@ -215,7 +215,7 @@ func (s *accountRepoStub) IncrementQuotaUsed(ctx context.Context, id int64, amou
 	return nil
 }
 
-func (s *accountRepoStub) ResetQuotaUsed(ctx context.Context, id int64) error {
+func (s *accountRepoStub) ResetQuotaUsedAndClearRateLimitCooldown(ctx context.Context, id int64) error {
 	return nil
 }
 

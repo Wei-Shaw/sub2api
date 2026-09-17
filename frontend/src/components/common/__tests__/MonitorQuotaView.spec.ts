@@ -42,9 +42,9 @@ describe('MonitorQuotaView', () => {
       },
     })
 
-    const rows = wrapper.findAll('[data-testid="monitor-quota-view"] .flex.items-center')
+    const rows = wrapper.findAll('[data-testid="monitor-quota-tier"]')
     // tier 行只在 success 且有数据时渲染
-    expect(rows.length).toBeGreaterThanOrEqual(3)
+    expect(rows).toHaveLength(3)
     const text = wrapper.text()
     // 已知 window token 走 i18n
     expect(text).toContain('monitorCommon.quota.windows.5h')
@@ -59,8 +59,9 @@ describe('MonitorQuotaView', () => {
     expect(text).toContain('95%')
 
     const html = wrapper.html()
-    // 阈值配色：≥90 红 / ≥75 黄 / 其余绿（与账号页 CNProviderQuotaCell 对齐）
-    expect(html).toContain('bg-emerald-500')
+    // 阈值配色（三处共用的 UsageProgressBar 统一）：≥90 红 / ≥75 黄 / 其余绿
+    // 42.4 → 绿、80 → 黄、95 → 红
+    expect(html).toContain('bg-green-500')
     expect(html).toContain('bg-amber-500')
     expect(html).toContain('bg-red-500')
   })

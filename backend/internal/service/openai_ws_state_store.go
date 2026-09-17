@@ -47,6 +47,18 @@ type openAIWSSessionConnBinding struct {
 	expiresAt time.Time
 }
 
+// openAIWSInvalidEncryptedBinding 记录一个会话中已被上游判定失效的
+// encrypted_content 摘要（invalid_encrypted_content lineage）。
+type openAIWSInvalidEncryptedBinding struct {
+	digests   map[string]struct{}
+	expiresAt time.Time
+}
+
+// openAIWSInvalidEncryptedDigestsPerSession 是单会话摘要集合的存储自保护上限。
+// 超出后新增摘要被忽略，仅退化为"该项下次仍触发一次上游拒绝后的常规 recovery"，
+// 不影响正确性。
+const openAIWSInvalidEncryptedDigestsPerSession = 512
+
 // OpenAIWSStateStore 管理 WSv2 的粘连状态。
 // - response_id -> account_id 用于续链路由
 // - response_id -> conn_id 用于连接内上下文复用
@@ -71,6 +83,15 @@ type OpenAIWSStateStore interface {
 	BindSessionConn(groupID int64, sessionHash, connID string, ttl time.Duration)
 	GetSessionConn(groupID int64, sessionHash string) (string, bool)
 	DeleteSessionConn(groupID int64, sessionHash string)
+
+	// invalid_encrypted_content lineage：按会话记录已被上游拒绝的
+	// encrypted_content 摘要，后续 turn 进场时仅剥离命中项，避免同一失效
+	// 密文随客户端历史反复触发"整包被拒→剥离→重试/重连"。仅进程内有效。
+	MarkSessionInvalidEncryptedContent(groupID int64, sessionHash string, digests []string, ttl time.Duration)
+	GetSessionInvalidEncryptedContentDigests(groupID int64, sessionHash string) map[string]struct{}
+	// HasAnySessionInvalidEncryptedContent 是热路径快速探测：全局无记录时
+	// 调用方可跳过会话哈希计算与摘要匹配。
+	HasAnySessionInvalidEncryptedContent() bool
 }
 
 type defaultOpenAIWSStateStore struct {
@@ -87,18 +108,22 @@ type defaultOpenAIWSStateStore struct {
 	sessionToConnMu      sync.RWMutex
 	sessionToConn        map[string]openAIWSSessionConnBinding
 
+	sessionInvalidEncryptedMu sync.RWMutex
+	sessionInvalidEncrypted   map[string]openAIWSInvalidEncryptedBinding
+
 	lastCleanupUnixNano atomic.Int64
 }
 
 // NewOpenAIWSStateStore 创建默认 WS 状态存储。
 func NewOpenAIWSStateStore(cache GatewayCache) OpenAIWSStateStore {
 	store := &defaultOpenAIWSStateStore{
-		cache:              cache,
-		responseToAccount:  make(map[string]openAIWSAccountBinding, 256),
-		responseOwners:     make(map[string]openAIHTTPResponseOwnerBinding, 256),
-		responseToConn:     make(map[string]openAIWSConnBinding, 256),
-		sessionToTurnState: make(map[string]openAIWSTurnStateBinding, 256),
-		sessionToConn:      make(map[string]openAIWSSessionConnBinding, 256),
+		cache:                   cache,
+		responseToAccount:       make(map[string]openAIWSAccountBinding, 256),
+		responseOwners:          make(map[string]openAIHTTPResponseOwnerBinding, 256),
+		responseToConn:          make(map[string]openAIWSConnBinding, 256),
+		sessionToTurnState:      make(map[string]openAIWSTurnStateBinding, 256),
+		sessionToConn:           make(map[string]openAIWSSessionConnBinding, 256),
+		sessionInvalidEncrypted: make(map[string]openAIWSInvalidEncryptedBinding),
 	}
 	store.lastCleanupUnixNano.Store(time.Now().UnixNano())
 	return store
@@ -396,6 +421,76 @@ func (s *defaultOpenAIWSStateStore) DeleteSessionConn(groupID int64, sessionHash
 	s.sessionToConnMu.Unlock()
 }
 
+func (s *defaultOpenAIWSStateStore) MarkSessionInvalidEncryptedContent(groupID int64, sessionHash string, digests []string, ttl time.Duration) {
+	key := openAIWSSessionTurnStateKey(groupID, sessionHash)
+	if key == "" || len(digests) == 0 {
+		return
+	}
+	ttl = normalizeOpenAIWSTTL(ttl)
+	s.maybeCleanup()
+
+	now := time.Now()
+	overflowed := 0
+	s.sessionInvalidEncryptedMu.Lock()
+	ensureBindingCapacity(s.sessionInvalidEncrypted, key, openAIWSStateStoreMaxEntriesPerMap)
+	binding, ok := s.sessionInvalidEncrypted[key]
+	if !ok || now.After(binding.expiresAt) || binding.digests == nil {
+		binding = openAIWSInvalidEncryptedBinding{digests: make(map[string]struct{}, len(digests))}
+	}
+	for _, digest := range digests {
+		digest = strings.TrimSpace(digest)
+		if digest == "" {
+			continue
+		}
+		if len(binding.digests) >= openAIWSInvalidEncryptedDigestsPerSession {
+			if _, exists := binding.digests[digest]; !exists {
+				overflowed++
+			}
+			continue
+		}
+		binding.digests[digest] = struct{}{}
+	}
+	binding.expiresAt = now.Add(ttl)
+	s.sessionInvalidEncrypted[key] = binding
+	s.sessionInvalidEncryptedMu.Unlock()
+
+	// HasAny/Get 在每个 OpenAI 请求热路径上抢同一把锁，日志 IO 必须在锁外。
+	if overflowed > 0 {
+		logOpenAIWSModeInfo(
+			"invalid_encrypted_lineage_capacity_overflow dropped_digests=%d capacity=%d",
+			overflowed,
+			openAIWSInvalidEncryptedDigestsPerSession,
+		)
+	}
+}
+
+func (s *defaultOpenAIWSStateStore) GetSessionInvalidEncryptedContentDigests(groupID int64, sessionHash string) map[string]struct{} {
+	key := openAIWSSessionTurnStateKey(groupID, sessionHash)
+	if key == "" {
+		return nil
+	}
+	s.maybeCleanup()
+
+	now := time.Now()
+	s.sessionInvalidEncryptedMu.RLock()
+	defer s.sessionInvalidEncryptedMu.RUnlock()
+	binding, ok := s.sessionInvalidEncrypted[key]
+	if !ok || now.After(binding.expiresAt) || len(binding.digests) == 0 {
+		return nil
+	}
+	digests := make(map[string]struct{}, len(binding.digests))
+	for digest := range binding.digests {
+		digests[digest] = struct{}{}
+	}
+	return digests
+}
+
+func (s *defaultOpenAIWSStateStore) HasAnySessionInvalidEncryptedContent() bool {
+	s.sessionInvalidEncryptedMu.RLock()
+	defer s.sessionInvalidEncryptedMu.RUnlock()
+	return len(s.sessionInvalidEncrypted) > 0
+}
+
 func (s *defaultOpenAIWSStateStore) maybeCleanup() {
 	if s == nil {
 		return
@@ -429,6 +524,26 @@ func (s *defaultOpenAIWSStateStore) maybeCleanup() {
 	s.sessionToConnMu.Lock()
 	cleanupExpiredSessionConnBindings(s.sessionToConn, now, openAIWSStateStoreCleanupMaxPerMap)
 	s.sessionToConnMu.Unlock()
+
+	s.sessionInvalidEncryptedMu.Lock()
+	cleanupExpiredInvalidEncryptedBindings(s.sessionInvalidEncrypted, now, openAIWSStateStoreCleanupMaxPerMap)
+	s.sessionInvalidEncryptedMu.Unlock()
+}
+
+func cleanupExpiredInvalidEncryptedBindings(bindings map[string]openAIWSInvalidEncryptedBinding, now time.Time, maxScan int) {
+	if len(bindings) == 0 || maxScan <= 0 {
+		return
+	}
+	scanned := 0
+	for key, binding := range bindings {
+		if now.After(binding.expiresAt) {
+			delete(bindings, key)
+		}
+		scanned++
+		if scanned >= maxScan {
+			break
+		}
+	}
 }
 
 func cleanupExpiredAccountBindings(bindings map[string]openAIWSAccountBinding, now time.Time, maxScan int) {

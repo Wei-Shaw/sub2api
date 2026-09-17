@@ -140,7 +140,7 @@
         :initial-input-method="grokInitialInputMethod"
         @generate-url="handleGenerateUrl"
         @cookie-auth="handleCookieAuth"
-        @validate-refresh-token="handleGrokValidateRefreshToken"
+        @validate-refresh-token="handleValidateRefreshToken"
         @import-sso="handleGrokImportSSO"
       />
 
@@ -624,6 +624,74 @@ const applyGrokReauthTokenInfo = async (tokenInfo: {
   appStore.showSuccess(t('admin.accounts.reAuthorizedSuccess'))
   emit('reauthorized', updatedAccount)
   handleClose()
+}
+
+/** Re-auth the existing account with one refresh token. */
+const handleValidateRefreshToken = async (refreshTokenInput: string) => {
+  if (!props.account) return
+  if (isGrok.value) {
+    await handleGrokValidateRefreshToken(refreshTokenInput)
+    return
+  }
+
+  const refreshToken = refreshTokenInput
+    .split('\n')
+    .map((line) => line.trim())
+    .filter(Boolean)[0]
+  if (!refreshToken) return
+
+  if (isOpenAILike.value) {
+    openaiOAuth.loading.value = true
+    openaiOAuth.error.value = ''
+    try {
+      const tokenInfo = await openaiOAuth.validateRefreshToken(refreshToken, props.account.proxy_id)
+      if (!tokenInfo) return
+
+      const updatedAccount = await adminAPI.accounts.applyOAuthCredentials(props.account.id, {
+        type: 'oauth',
+        credentials: openaiOAuth.buildCredentials(tokenInfo),
+        extra: openaiOAuth.buildExtraInfo(tokenInfo)
+      })
+      appStore.showSuccess(t('admin.accounts.reAuthorizedSuccess'))
+      emit('reauthorized', updatedAccount)
+      handleClose()
+    } catch (error: any) {
+      openaiOAuth.error.value =
+        error.response?.data?.detail ||
+        error.response?.data?.message ||
+        error.message ||
+        t('admin.accounts.oauth.authFailed')
+      appStore.showError(openaiOAuth.error.value)
+    } finally {
+      openaiOAuth.loading.value = false
+    }
+    return
+  }
+
+  if (!isAntigravity.value) return
+  antigravityOAuth.loading.value = true
+  antigravityOAuth.error.value = ''
+  try {
+    const tokenInfo = await antigravityOAuth.validateRefreshToken(refreshToken, props.account.proxy_id)
+    if (!tokenInfo) return
+
+    const updatedAccount = await adminAPI.accounts.applyOAuthCredentials(props.account.id, {
+      type: 'oauth',
+      credentials: antigravityOAuth.buildCredentials(tokenInfo, refreshToken)
+    })
+    appStore.showSuccess(t('admin.accounts.reAuthorizedSuccess'))
+    emit('reauthorized', updatedAccount)
+    handleClose()
+  } catch (error: any) {
+    antigravityOAuth.error.value =
+      error.response?.data?.detail ||
+      error.response?.data?.message ||
+      error.message ||
+      t('admin.accounts.oauth.authFailed')
+    appStore.showError(antigravityOAuth.error.value)
+  } finally {
+    antigravityOAuth.loading.value = false
+  }
 }
 
 /** Re-auth with a single SSO cookie → Build OAuth (not batch create). */

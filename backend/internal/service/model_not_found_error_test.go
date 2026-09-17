@@ -112,3 +112,29 @@ func TestIsOpenAICodexPlanGatedModelError(t *testing.T) {
 		})
 	}
 }
+
+func TestIsOpenAICompatibleModelNotFound400(t *testing.T) {
+	tests := []struct {
+		name string
+		body string
+		want bool
+	}{
+		{name: "structured code", body: `{"error":{"code":"model_not_found","message":"No such deployment"}}`, want: true},
+		{name: "unknown provider", body: `{"error":{"message":"Unknown provider for model claude-x"}}`, want: true},
+		{name: "model not found", body: `{"error":{"message":"Model not found: claude-x"}}`, want: true},
+		{name: "model unsupported", body: `{"error":{"message":"The requested model is not supported"}}`, want: true},
+		{name: "plain text compatible gateway", body: `unknown provider for model claude-x`, want: true},
+		{name: "invalid parameter remains terminal", body: `{"error":{"code":"invalid_request_error","message":"Invalid value for temperature"}}`, want: false},
+		{name: "structured non-matching code overrides model not found message", body: `{"error":{"code":"invalid_request_error","message":"Model not found: claude-x"}}`, want: false},
+		{name: "structured non-matching error code overrides unsupported message", body: `{"error":{"code":"upstream_error","message":"The requested model is not supported"}}`, want: false},
+		{name: "echoed phrase is ignored", body: `{"error":{"message":"Invalid request"},"echo":"model not found"}`, want: false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := isOpenAICompatibleModelNotFound400([]byte(tt.body)); got != tt.want {
+				t.Fatalf("isOpenAICompatibleModelNotFound400() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
