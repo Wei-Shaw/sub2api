@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"strconv"
 	"strings"
 	"unicode/utf8"
 
@@ -161,6 +162,170 @@ func normalizeDeepSeekResponsesRequestBody(account *Account, body []byte) []byte
 		return normalized
 	}
 	return rebuilt
+}
+
+const (
+	// responsesReasoningPlaceholderText 是占位 reasoning 的明文。必须是单个空格：
+	// DeepSeek 实测拒绝空串，非空即可通过；LiteLLM 对 Chat Completions 侧
+	// reasoning_content 的兜底同样注入单个空格。
+	responsesReasoningPlaceholderText = " "
+
+	// responsesReasoningPlaceholderIDPrefix 区分网关补出来的占位 item 与上游真实
+	// 返回的 reasoning item（DeepSeek 真实 item 的 id 是裸 UUID）。
+	responsesReasoningPlaceholderIDPrefix = "rs_ph_"
+)
+
+// responsesReasoningTextFromJSON 返回 reasoning item 的非空明文思维链，无明文时返回空串。
+//
+// 判定必须是「非空字符串」而不是「非空白」：占位值恰好是一个空格，用 TrimSpace
+// 判定会让占位被误判为空，导致每次请求都重复插入。
+func responsesReasoningTextFromJSON(item gjson.Result) string {
+	for _, part := range item.Get("content").Array() {
+		if strings.TrimSpace(part.Get("type").String()) != "reasoning_text" {
+			continue
+		}
+		if text := part.Get("text").String(); text != "" {
+			return text
+		}
+	}
+	return ""
+}
+
+// responsesInputHasUnguardedAssistantMessage 报告 input 里是否存在「前面没有非空明文
+// reasoning 的 assistant 消息」。只用于决定是否需要整体解码改写；判定口径必须与
+// ensureDeepSeekResponsesReasoningPlaceholders 的改写循环保持一致。
+func responsesInputHasUnguardedAssistantMessage(input gjson.Result) bool {
+	guarded := false
+	found := false
+	input.ForEach(func(_, item gjson.Result) bool {
+		switch strings.TrimSpace(item.Get("type").String()) {
+		case "reasoning":
+			if responsesReasoningTextFromJSON(item) != "" {
+				guarded = true
+			}
+		case "message":
+			if strings.TrimSpace(item.Get("role").String()) == "assistant" {
+				if !guarded {
+					found = true
+					return false
+				}
+				guarded = false
+				return true
+			}
+			guarded = false
+		}
+		return true
+	})
+	return found
+}
+
+// ensureDeepSeekResponsesReasoningPlaceholders 为历史里缺少 reasoning 明文的 assistant
+// 消息前置插入一条非空明文占位 reasoning item。
+//
+// DeepSeek 原生 Responses 端点在请求携带 tools 时要求每条 assistant 消息都回传 reasoning
+// 明文，否则整轮 400 "The `reasoning_text` in the thinking mode must be passed back to the
+// API."。以下形态都会触发：reasoning item 被中间层整条剔除、明文为空串、只有 summary、
+// 只有 encrypted_content（后两者 DeepSeek 都不认）。
+//
+// 占位只保证会话不中断，模型看不到该轮真实推理；保真版（回灌缓存里的真实明文）不在本次范围。
+func ensureDeepSeekResponsesReasoningPlaceholders(body []byte, knownHasTools bool) ([]byte, bool) {
+	if !knownHasTools || len(bytes.TrimSpace(body)) == 0 {
+		return body, false
+	}
+	input := parseRawJSONView(body).Get("input")
+	if !input.IsArray() || !responsesInputHasUnguardedAssistantMessage(input) {
+		return body, false
+	}
+
+	var reqBody map[string]any
+	if err := decodeOpenAIJSONUseNumber(body, &reqBody); err != nil {
+		return body, false
+	}
+	items, ok := reqBody["input"].([]any)
+	if !ok {
+		return body, false
+	}
+
+	rewritten := make([]any, 0, len(items)+1)
+	guarded := false
+	changed := false
+	for index, rawItem := range items {
+		item, ok := rawItem.(map[string]any)
+		if !ok {
+			rewritten = append(rewritten, rawItem)
+			continue
+		}
+		switch strings.TrimSpace(firstNonEmptyString(item["type"])) {
+		case "reasoning":
+			if responsesReasoningItemHasPlaintext(item) {
+				guarded = true
+			}
+		case "message":
+			if strings.TrimSpace(firstNonEmptyString(item["role"])) == "assistant" {
+				if guarded {
+					guarded = false
+				} else {
+					rewritten = append(rewritten, responsesReasoningPlaceholderItem(item, index))
+					changed = true
+				}
+			} else {
+				// user / system / developer 开启新段：上一段的 reasoning 不再复用。
+				guarded = false
+			}
+		}
+		rewritten = append(rewritten, item)
+	}
+	if !changed {
+		return body, false
+	}
+	reqBody["input"] = rewritten
+	normalized, err := marshalOpenAIUpstreamJSON(reqBody)
+	if err != nil {
+		return body, false
+	}
+	return normalized, true
+}
+
+// responsesReasoningItemHasPlaintext 判定解码后的 reasoning item 是否携带非空明文思维链。
+func responsesReasoningItemHasPlaintext(item map[string]any) bool {
+	content, ok := item["content"].([]any)
+	if !ok {
+		return false
+	}
+	for _, rawPart := range content {
+		part, ok := rawPart.(map[string]any)
+		if !ok {
+			continue
+		}
+		if strings.TrimSpace(firstNonEmptyString(part["type"])) != "reasoning_text" {
+			continue
+		}
+		if text, ok := part["text"].(string); ok && text != "" {
+			return true
+		}
+	}
+	return false
+}
+
+// responsesReasoningPlaceholderItem 构造占位 reasoning item。
+//
+// id 取被保护消息的 id（跨轮次稳定）；消息没有 id 时回落到它在改写后输入里的下标。
+// 这里刻意不用随机 UUID：随机 id 每轮都变，会让 DeepSeek 的上下文缓存前缀失效。
+func responsesReasoningPlaceholderItem(message map[string]any, index int) map[string]any {
+	id := strings.TrimSpace(firstNonEmptyString(message["id"]))
+	if id != "" {
+		id = responsesReasoningPlaceholderIDPrefix + id
+	} else {
+		id = responsesReasoningPlaceholderIDPrefix + strconv.Itoa(index)
+	}
+	return map[string]any{
+		"type":    "reasoning",
+		"id":      id,
+		"summary": []any{},
+		"content": []any{
+			map[string]any{"type": "reasoning_text", "text": responsesReasoningPlaceholderText},
+		},
+	}
 }
 
 func trimOpenAIEncryptedReasoningItems(reqBody map[string]any) bool {

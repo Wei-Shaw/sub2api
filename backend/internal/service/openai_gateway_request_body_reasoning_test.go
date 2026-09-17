@@ -427,3 +427,166 @@ func TestNormalizeOpenAIResponsesWebSocketCompatibilityBodyStripsReasoningConten
 	require.False(t, changed)
 	require.JSONEq(t, string(body), string(normalized))
 }
+
+// deepSeekResponsesToolsFragment 是 DeepSeek 原生 Responses 请求的最小 tools 片段。
+const deepSeekResponsesToolsFragment = `"tools":[{"type":"function","name":"shell","description":"run",` +
+	`"parameters":{"type":"object","properties":{"cmd":{"type":"string"}},"required":["cmd"]}}]`
+
+// assertAssistantMessagesGuarded 断言 input 里每条 assistant 消息前面都紧邻一条带非空明文
+// 的 reasoning item（DeepSeek 原生 Responses 在携带 tools 时的硬性契约）。
+func assertAssistantMessagesGuarded(t *testing.T, body []byte) {
+	t.Helper()
+	items := gjson.GetBytes(body, "input").Array()
+	require.NotEmpty(t, items)
+	for i, item := range items {
+		if item.Get("type").String() != "message" || item.Get("role").String() != "assistant" {
+			continue
+		}
+		require.Greaterf(t, i, 0, "assistant 消息不应位于 input 首位")
+		prev := items[i-1]
+		require.Equalf(t, "reasoning", prev.Get("type").String(), "input.%d 前应是 reasoning item", i)
+		require.NotEmptyf(t, prev.Get("content.0.text").String(), "input.%d 的 reasoning 明文不得为空", i-1)
+	}
+}
+
+func TestEnsureDeepSeekResponsesReasoningPlaceholders(t *testing.T) {
+	cases := []struct {
+		name        string
+		body        string
+		hasTools    bool
+		wantChanged bool
+	}{
+		{
+			name: "缺失 reasoning 的 assistant 消息被补齐",
+			body: `{"model":"deepseek-flash",` + deepSeekResponsesToolsFragment + `,"input":[` +
+				`{"type":"message","role":"user","content":"go"},` +
+				`{"type":"message","id":"msg_1","role":"assistant","content":[{"type":"output_text","text":""}]},` +
+				`{"type":"function_call","call_id":"c1","name":"shell","arguments":"{}"},` +
+				`{"type":"function_call_output","call_id":"c1","output":"ok"}]}`,
+			hasTools:    true,
+			wantChanged: true,
+		},
+		{
+			name: "已有非空明文 reasoning 不改写",
+			body: `{"model":"deepseek-flash",` + deepSeekResponsesToolsFragment + `,"input":[` +
+				`{"type":"message","role":"user","content":"go"},` +
+				`{"type":"reasoning","id":"rs_1","summary":[],"content":[{"type":"reasoning_text","text":"think"}]},` +
+				`{"type":"message","id":"msg_1","role":"assistant","content":[{"type":"output_text","text":"hi"}]}]}`,
+			hasTools:    true,
+			wantChanged: false,
+		},
+		{
+			name: "明文为空串视为缺失",
+			body: `{"model":"deepseek-flash",` + deepSeekResponsesToolsFragment + `,"input":[` +
+				`{"type":"message","role":"user","content":"go"},` +
+				`{"type":"reasoning","id":"rs_1","summary":[],"content":[{"type":"reasoning_text","text":""}]},` +
+				`{"type":"message","id":"msg_1","role":"assistant","content":[{"type":"output_text","text":"hi"}]}]}`,
+			hasTools:    true,
+			wantChanged: true,
+		},
+		{
+			name: "只有 summary 视为缺失",
+			body: `{"model":"deepseek-flash",` + deepSeekResponsesToolsFragment + `,"input":[` +
+				`{"type":"message","role":"user","content":"go"},` +
+				`{"type":"reasoning","id":"rs_1","summary":[{"type":"summary_text","text":"portable"}]},` +
+				`{"type":"message","id":"msg_1","role":"assistant","content":[{"type":"output_text","text":"hi"}]}]}`,
+			hasTools:    true,
+			wantChanged: true,
+		},
+		{
+			name: "只有 encrypted_content 视为缺失",
+			body: `{"model":"deepseek-flash",` + deepSeekResponsesToolsFragment + `,"input":[` +
+				`{"type":"message","role":"user","content":"go"},` +
+				`{"type":"reasoning","id":"rs_1","summary":[],"encrypted_content":"opaque"},` +
+				`{"type":"message","id":"msg_1","role":"assistant","content":[{"type":"output_text","text":"hi"}]}]}`,
+			hasTools:    true,
+			wantChanged: true,
+		},
+		{
+			name: "同一轮第二条 assistant 消息也要补齐",
+			body: `{"model":"deepseek-flash",` + deepSeekResponsesToolsFragment + `,"input":[` +
+				`{"type":"message","role":"user","content":"go"},` +
+				`{"type":"reasoning","id":"rs_1","summary":[],"content":[{"type":"reasoning_text","text":"think"}]},` +
+				`{"type":"message","id":"msg_1","role":"assistant","content":[{"type":"output_text","text":"hi"}]},` +
+				`{"type":"function_call","call_id":"c1","name":"shell","arguments":"{}"},` +
+				`{"type":"function_call_output","call_id":"c1","output":"ok"},` +
+				`{"type":"message","id":"msg_2","role":"assistant","content":[{"type":"output_text","text":"again"}]}]}`,
+			hasTools:    true,
+			wantChanged: true,
+		},
+		{
+			name: "user 开启新段后 assistant 消息重新需要 reasoning",
+			body: `{"model":"deepseek-flash",` + deepSeekResponsesToolsFragment + `,"input":[` +
+				`{"type":"message","role":"user","content":"go"},` +
+				`{"type":"reasoning","id":"rs_1","summary":[],"content":[{"type":"reasoning_text","text":"think"}]},` +
+				`{"type":"message","id":"msg_1","role":"assistant","content":[{"type":"output_text","text":"hi"}]},` +
+				`{"type":"message","role":"user","content":"again"},` +
+				`{"type":"message","id":"msg_2","role":"assistant","content":[{"type":"output_text","text":"second"}]}]}`,
+			hasTools:    true,
+			wantChanged: true,
+		},
+		{
+			name: "没有 assistant 消息不改写",
+			body: `{"model":"deepseek-flash",` + deepSeekResponsesToolsFragment + `,"input":[` +
+				`{"type":"message","role":"user","content":"go"}]}`,
+			hasTools:    true,
+			wantChanged: false,
+		},
+		{
+			name: "请求不带 tools 时不补齐",
+			body: `{"model":"deepseek-flash","input":[` +
+				`{"type":"message","role":"user","content":"go"},` +
+				`{"type":"message","id":"msg_1","role":"assistant","content":[{"type":"output_text","text":"hi"}]}]}`,
+			hasTools:    false,
+			wantChanged: false,
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			rewritten, changed := ensureDeepSeekResponsesReasoningPlaceholders([]byte(tc.body), tc.hasTools)
+			require.Equal(t, tc.wantChanged, changed)
+			if tc.wantChanged {
+				assertAssistantMessagesGuarded(t, rewritten)
+				return
+			}
+			require.JSONEq(t, tc.body, string(rewritten))
+		})
+	}
+}
+
+func TestEnsureDeepSeekResponsesReasoningPlaceholdersIsIdempotent(t *testing.T) {
+	body := []byte(`{"model":"deepseek-flash",` + deepSeekResponsesToolsFragment + `,"input":[` +
+		`{"type":"message","role":"user","content":"go"},` +
+		`{"type":"message","id":"msg_1","role":"assistant","content":[{"type":"output_text","text":""}]},` +
+		`{"type":"function_call","call_id":"c1","name":"shell","arguments":"{}"},` +
+		`{"type":"function_call_output","call_id":"c1","output":"ok"},` +
+		`{"type":"message","id":"msg_2","role":"assistant","content":[{"type":"output_text","text":"again"}]}]}`)
+
+	first, changed := ensureDeepSeekResponsesReasoningPlaceholders(body, true)
+	require.True(t, changed)
+	// 占位 id 由被保护消息的 id 派生，因此重复改写同一份历史必须得到逐字节一致的结果：
+	// 否则每轮 id 变化会让 DeepSeek 的上下文缓存前缀失效。
+	again, changedAgain := ensureDeepSeekResponsesReasoningPlaceholders(body, true)
+	require.True(t, changedAgain)
+	require.JSONEq(t, string(first), string(again))
+	require.Equal(t, "rs_ph_msg_1", gjson.GetBytes(first, "input.1.id").String())
+	require.Equal(t, "rs_ph_msg_2", gjson.GetBytes(first, "input.5.id").String())
+
+	// 已经补齐过的历史再走一遍必须判定为无改动，避免请求体在重试链路上不断膨胀。
+	replayed, replayedChanged := ensureDeepSeekResponsesReasoningPlaceholders(first, true)
+	require.False(t, replayedChanged)
+	require.JSONEq(t, string(first), string(replayed))
+}
+
+func TestEnsureDeepSeekResponsesReasoningPlaceholdersFallsBackToIndexID(t *testing.T) {
+	body := []byte(`{"model":"deepseek-flash",` + deepSeekResponsesToolsFragment + `,"input":[` +
+		`{"type":"message","role":"user","content":"go"},` +
+		`{"type":"message","role":"assistant","content":[{"type":"output_text","text":""}]}]}`)
+
+	rewritten, changed := ensureDeepSeekResponsesReasoningPlaceholders(body, true)
+	require.True(t, changed)
+	require.Equal(t, "rs_ph_1", gjson.GetBytes(rewritten, "input.1.id").String())
+	require.Equal(t, " ", gjson.GetBytes(rewritten, "input.1.content.0.text").String())
+	assertAssistantMessagesGuarded(t, rewritten)
+}
