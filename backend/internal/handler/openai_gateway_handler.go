@@ -2175,6 +2175,21 @@ func (h *OpenAIGatewayHandler) acquireOpenAIWSAccountSlot(
 	return releaseFunc, nil
 }
 
+// boundOpenAIWSWaitByDeadline 把账号槽等待上限收进一个外部截止时间之内。
+//
+// 用在 429 同账号重试上：deadline 是在退避之前检查的，等槽再花掉几十秒就可能等
+// 到一个已经过期的重试上去。剩余时间归零或为负时返回非正值，调用方据此退化成
+// try-once——与「deadline 已过」的语义一致。
+func boundOpenAIWSWaitByDeadline(waitTimeout time.Duration, deadline time.Time) time.Duration {
+	if deadline.IsZero() {
+		return waitTimeout
+	}
+	if remaining := time.Until(deadline); remaining < waitTimeout {
+		return remaining
+	}
+	return waitTimeout
+}
+
 // openAIWSAccountSlotErrorIsBusy 区分「账号忙、让客户端稍后重试」和「服务端内部
 // 错误」。队列已满、等满超时、以及对端已经走了，对客户端都是同一件事。
 func openAIWSAccountSlotErrorIsBusy(ctx context.Context, err error) bool {
@@ -2862,7 +2877,7 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 			// 握手期就是第 1 轮，所以 turn 传 1。
 			fastReleaseFunc, err := h.acquireOpenAIWSAccountSlot(
 				ctx, reqLog, 1, account.ID,
-				selection.WaitPlan.MaxConcurrency, accountMaxWaiting, accountWaitTimeout,
+				accountMaxConcurrency, accountMaxWaiting, accountWaitTimeout,
 			)
 			if err != nil {
 				if openAIWSAccountSlotErrorIsBusy(ctx, err) {
@@ -3244,17 +3259,20 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 					if failoverErr.ShouldReportAccountScheduleFailure() {
 						h.gatewayService.ReportOpenAIAccountScheduleResult(account, openAIAccountScheduleModel(c, account, wsForwardModel, false, nil), false, nil, err)
 					}
-					if !ensureUserSlotHeld() {
-						return
-					}
+					// 账号槽在前、user 槽在后，理由同 BeforeTurn：账号槽可能要等满整个
+					// 超时窗口，先拿 user 槽就等于让一个还没重试的 turn 把用户并发额度
+					// 占住几十秒。user 槽拿不到时 ensureUserSlotHeld 自己关连接，已挂在
+					// defer releaseTurnSlots 上的账号槽会随之释放。
 					if currentAccountRelease == nil {
 						// 退避睡眠之前 AfterTurn 已经把槽还回去了，睡醒时被同分组其他
 						// 连接抢走是常态而非边缘情况——这条路径比 BeforeTurn 更需要等，
 						// 此前却是三处准入里唯一还在 try-once 的一处。
+						// 等待不能越过同账号重试本身的有效期。
+						retryWaitTimeout := boundOpenAIWSWaitByDeadline(accountWaitTimeout, failoverErr.SameAccountRetryDeadline)
 						// 这里没有 turn 上下文，传 0。
 						accountRelease, acquireErr := h.acquireOpenAIWSAccountSlot(
 							ctx, reqLog, 0, account.ID,
-							accountMaxConcurrency, accountMaxWaiting, accountWaitTimeout,
+							accountMaxConcurrency, accountMaxWaiting, retryWaitTimeout,
 						)
 						if acquireErr != nil {
 							reqLog.Warn("openai.websocket_same_account_retry_slot_unavailable",
@@ -3265,6 +3283,9 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 							return
 						}
 						currentAccountRelease = wrapReleaseOnDone(ctx, accountRelease)
+					}
+					if !ensureUserSlotHeld() {
+						return
 					}
 					wsFirstMessage = wsAttemptMessage
 					continue

@@ -140,3 +140,20 @@ func TestOpenAIWSAccountSlotErrorIsBusy_SeparatesInternalFailures(t *testing.T) 
 	require.True(t, openAIWSAccountSlotErrorIsBusy(cancelled, errors.New("redis down")),
 		"对端已经走了就不必再区分原因")
 }
+
+func TestBoundOpenAIWSWaitByDeadline(t *testing.T) {
+	const cap = 30 * time.Second
+
+	require.Equal(t, cap, boundOpenAIWSWaitByDeadline(cap, time.Time{}),
+		"没有截止时间就只受 WS 上限约束")
+
+	require.Equal(t, cap, boundOpenAIWSWaitByDeadline(cap, time.Now().Add(time.Hour)),
+		"截止时间很远时不该缩短等待")
+
+	bounded := boundOpenAIWSWaitByDeadline(cap, time.Now().Add(2*time.Second))
+	require.Greater(t, bounded, time.Duration(0))
+	require.LessOrEqual(t, bounded, 2*time.Second, "等待不能越过重试本身的有效期")
+
+	require.LessOrEqual(t, boundOpenAIWSWaitByDeadline(cap, time.Now().Add(-time.Second)), time.Duration(0),
+		"截止时间已过应当退化成 try-once，而不是再等满一个窗口")
+}
