@@ -397,6 +397,11 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 			normalized = next
 		}
 		SetOpsUpstreamModel(c, upstreamModel)
+		if sanitized, changed, sanitizeErr := normalizeOpenAIPromptCacheFieldsRaw(normalized, account, upstreamModel); sanitizeErr != nil {
+			return openAIWSClientPayload{}, NewOpenAIWSClientCloseError(coderws.StatusPolicyViolation, "invalid websocket request payload", sanitizeErr)
+		} else if changed {
+			normalized = sanitized
+		}
 		if isCodexCLI && codexImageGenerationExplicitToolPolicy == codexImageGenerationExplicitToolPolicyStrip {
 			if stripped, changed, stripErr := stripOpenAIImageGenerationToolsFromRawPayload(normalized); stripErr != nil {
 				return openAIWSClientPayload{}, NewOpenAIWSClientCloseError(coderws.StatusPolicyViolation, "invalid websocket request payload", stripErr)

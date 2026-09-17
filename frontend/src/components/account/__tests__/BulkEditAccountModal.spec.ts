@@ -507,6 +507,18 @@ describe('BulkEditAccountModal', () => {
     })
   })
 
+  it('选择旧式 prompt_cache_retention 后批量提交 token', async () => {
+    const wrapper = mountModal({ selectedPlatforms: ['openai'], selectedTypes: ['apikey'] })
+    await wrapper.get('#bulk-edit-openai-endpoint-capabilities-enabled').setValue(true)
+    await wrapper.get('[data-testid="bulk-edit-openai-endpoint-capability-prompt_cache_retention"]').setValue(true)
+    await wrapper.get('#bulk-edit-account-form').trigger('submit.prevent')
+    await flushPromises()
+
+    expect(adminAPI.accounts.bulkUpdate).toHaveBeenCalledWith([1, 2], {
+      credentials: { openai_capabilities: ['chat_completions', 'embeddings', 'prompt_cache_retention'] }
+    })
+  })
+
   it('Responses 路由独立启用，auto 提交 null，强制模式提交明确值', async () => {
     const autoWrapper = mountModal({
       selectedPlatforms: ['openai'],
