@@ -168,3 +168,107 @@ func TestGatewayRoutesCompositeExplicitAdobeRouteDispatchesGptImage(t *testing.T
 	require.Equal(t, http.StatusForbidden, w.Code, w.Body.String())
 	require.Contains(t, w.Body.String(), service.ImageGenerationPermissionMessage())
 }
+
+func adobeGeminiGenerateContentBody(prompt string) string {
+	return `{"contents":[{"role":"user","parts":[{"text":"` + prompt + `"}]}]}`
+}
+
+func adobeGeminiV1BetaRouter(t *testing.T, group *service.Group) *gin.Engine {
+	return adobeGeminiV1BetaRouterWithResolver(t, group, nil)
+}
+
+func adobeGeminiV1BetaRouterWithResolver(t *testing.T, group *service.Group, resolver *service.CompositeRouteResolver) *gin.Engine {
+	t.Helper()
+	gin.SetMode(gin.TestMode)
+	cfg := &config.Config{RunMode: config.RunModeSimple}
+	cfg.Gateway.MaxBodySize = 1 << 20
+	openAI := service.NewOpenAIGatewayService(nil, nil, nil, nil, nil, nil, nil, cfg,
+		nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+	h := handler.NewGatewayHandler(nil, openAI, nil, nil, nil, nil, nil, nil, nil, nil,
+		nil, nil, nil, nil, service.NewAdobeImageService(nil), cfg, nil)
+	router := gin.New()
+	router.Use(func(c *gin.Context) {
+		c.Set(string(servermiddleware.ContextKeyAPIKey), &service.APIKey{ID: 11, GroupID: &group.ID, Group: group})
+		c.Set(string(servermiddleware.ContextKeyUser), servermiddleware.AuthSubject{UserID: 22, Concurrency: 1})
+		c.Next()
+	})
+	router.Use(compositeGeminiTargetPlatformMiddleware(resolver))
+	router.GET("/v1beta/models", h.GeminiV1BetaListModels)
+	router.GET("/v1beta/models/:model", h.GeminiV1BetaGetModel)
+	router.POST("/v1beta/models/*modelAction", h.GeminiV1BetaModels)
+	return router
+}
+
+func TestGatewayRoutesAdobeGenerateContentIsNotGeminiPlatformGate(t *testing.T) {
+	group := &service.Group{ID: 1, Platform: service.PlatformAdobe, AllowImageGeneration: false}
+	router := adobeGeminiV1BetaRouter(t, group)
+
+	w := postAdobeImages(t, router, "/v1beta/models/nano-banana-pro:generateContent", adobeGeminiGenerateContentBody("a cat"))
+	require.Equal(t, http.StatusForbidden, w.Code, w.Body.String())
+	require.Contains(t, w.Body.String(), service.ImageGenerationPermissionMessage())
+	require.NotContains(t, w.Body.String(), "platform is not gemini")
+	require.Contains(t, w.Body.String(), `"status"`)
+	require.NotContains(t, w.Body.String(), `"type":"permission_error"`)
+}
+
+func TestGatewayRoutesAdobeStreamGenerateContentIsNotGeminiPlatformGate(t *testing.T) {
+	group := &service.Group{ID: 1, Platform: service.PlatformAdobe, AllowImageGeneration: false}
+	router := adobeGeminiV1BetaRouter(t, group)
+
+	w := postAdobeImages(t, router, "/v1beta/models/nano-banana-pro:streamGenerateContent", adobeGeminiGenerateContentBody("a cat"))
+	require.Equal(t, http.StatusForbidden, w.Code, w.Body.String())
+	require.NotContains(t, w.Body.String(), "platform is not gemini")
+}
+
+func TestGatewayRoutesAdobeCountTokensUnsupported(t *testing.T) {
+	group := &service.Group{ID: 1, Platform: service.PlatformAdobe, AllowImageGeneration: true}
+	router := adobeGeminiV1BetaRouter(t, group)
+
+	w := postAdobeImages(t, router, "/v1beta/models/nano-banana-pro:countTokens", adobeGeminiGenerateContentBody("a cat"))
+	require.Equal(t, http.StatusNotFound, w.Code, w.Body.String())
+	require.Contains(t, w.Body.String(), "Unsupported action")
+}
+
+func TestGatewayRoutesAdobeGenerateContentRejectsNonImageModel(t *testing.T) {
+	group := &service.Group{ID: 1, Platform: service.PlatformAdobe, AllowImageGeneration: true}
+	router := adobeGeminiV1BetaRouter(t, group)
+
+	w := postAdobeImages(t, router, "/v1beta/models/gemini-2.5-flash:generateContent", adobeGeminiGenerateContentBody("hi"))
+	require.Equal(t, http.StatusBadRequest, w.Code, w.Body.String())
+	require.Contains(t, w.Body.String(), "image model")
+}
+
+func TestGatewayRoutesAdobeListModels(t *testing.T) {
+	group := &service.Group{ID: 1, Platform: service.PlatformAdobe, AllowImageGeneration: true}
+	router := adobeGeminiV1BetaRouter(t, group)
+
+	req := httptest.NewRequest(http.MethodGet, "/v1beta/models", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	require.Equal(t, http.StatusOK, w.Code, w.Body.String())
+	require.Contains(t, w.Body.String(), `"name":"models/nano-banana-pro"`)
+}
+
+func TestGatewayRoutesCompositeNanoBananaGenerateContentDispatchesAdobe(t *testing.T) {
+	group := &service.Group{ID: 1, Platform: service.PlatformComposite, AllowImageGeneration: false}
+	router := adobeGeminiV1BetaRouter(t, group)
+
+	w := postAdobeImages(t, router, "/v1beta/models/nano-banana-pro:generateContent", adobeGeminiGenerateContentBody("x"))
+	require.Equal(t, http.StatusForbidden, w.Code, w.Body.String())
+	require.Contains(t, w.Body.String(), service.ImageGenerationPermissionMessage())
+	require.NotContains(t, w.Body.String(), "platform is not gemini")
+}
+
+func TestGatewayRoutesAdobeImagesBananaStillOpenAIEnvelope(t *testing.T) {
+	group := &service.Group{ID: 1, Platform: service.PlatformAdobe, AllowImageGeneration: false}
+
+	geminiRouter := adobeGeminiV1BetaRouter(t, group)
+	w := postAdobeImages(t, geminiRouter, "/v1beta/models/nano-banana-pro:generateContent", adobeGeminiGenerateContentBody("x"))
+	require.Equal(t, http.StatusForbidden, w.Code)
+	require.NotContains(t, w.Body.String(), `"type":"permission_error"`)
+
+	imagesRouter := adobeRoutesRouter(t, group)
+	w = postAdobeImages(t, imagesRouter, "/v1/images/generations", `{"model":"nano-banana-pro","prompt":"x"}`)
+	require.Equal(t, http.StatusForbidden, w.Code, w.Body.String())
+	require.Contains(t, w.Body.String(), `"type"`)
+}

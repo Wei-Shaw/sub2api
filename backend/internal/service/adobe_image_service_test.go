@@ -104,6 +104,7 @@ func TestAdobeImageServiceGenerateFillsBillingFields(t *testing.T) {
 	require.Equal(t, 1, result.Forward.ImageCount)
 	require.Equal(t, "1K", result.Forward.ImageSize)
 	require.Equal(t, "1K", NormalizeImageBillingTierOrDefault(result.Forward.ImageSize))
+	require.Equal(t, [][]byte{[]byte("PNGDATA")}, result.Images)
 
 	// Model 记客户端请求名，UpstreamModel 记实际打到 Adobe 的全量 id。
 	require.Equal(t, "gpt-image-2", result.Forward.Model)
@@ -126,6 +127,60 @@ func TestAdobeImageServiceAppliesAccountModelMapping(t *testing.T) {
 	})
 	require.NoError(t, err)
 	require.Equal(t, "firefly-nano-banana-pro-1k-1x1", result.Forward.UpstreamModel)
+}
+
+func TestAdobeImageServicePassesGeminiAspectRatioAndImageSize(t *testing.T) {
+	api := &adobeFakeTransport{}
+	client := adobeSubmitPollDownload(t, api, []byte("X"))
+	svc := newAdobeTestService(t, client, nil)
+
+	req := &OpenAIImagesRequest{
+		Model: "nano-banana-pro", Prompt: "x", Size: "2048x2048", N: 1,
+	}
+	call := NewAdobeImageCall(req, "")
+	call.AspectRatio = "16:9"
+	call.ImageSize = "2K"
+
+	result, err := svc.GenerateCall(context.Background(), adobeTestAccount(), "tok", call)
+	require.NoError(t, err)
+	require.Equal(t, "2K", result.Forward.ImageSize)
+	require.Equal(t, "firefly-nano-banana-pro-2k-16x9", result.Forward.UpstreamModel)
+
+	require.NotEmpty(t, api.calls)
+	var submitted map[string]any
+	require.NoError(t, json.Unmarshal(api.calls[0].Body, &submitted))
+	msp, ok := submitted["modelSpecificPayload"].(map[string]any)
+	require.True(t, ok)
+	require.Equal(t, "16:9", msp["aspectRatio"])
+	size, ok := submitted["size"].(map[string]any)
+	require.True(t, ok)
+	require.Equal(t, float64(2048), size["width"])
+	require.Equal(t, float64(2048), size["height"])
+}
+
+// gpt-image 不走 aspectRatio 字段，比例只能靠 Gemini 路径推导出的 WxH 带过去。
+func TestAdobeImageServiceGeminiAspectRatioReachesGPTImagePixels(t *testing.T) {
+	api := &adobeFakeTransport{}
+	client := adobeSubmitPollDownload(t, api, []byte("X"))
+	svc := newAdobeTestService(t, client, nil)
+
+	req, call, err := ParseAdobeGeminiImageRequest("gpt-image-2", []byte(`{
+		"contents": [{"parts": [{"text": "x"}]}],
+		"generationConfig": {"imageConfig": {"aspectRatio": "16:9", "imageSize": "2K"}}
+	}`))
+	require.NoError(t, err)
+	require.Equal(t, "2048x1152", req.Size)
+
+	result, err := svc.GenerateCall(context.Background(), adobeTestAccount(), "tok", call)
+	require.NoError(t, err)
+	require.Equal(t, "2K", result.Forward.ImageSize)
+
+	bodies := adobeSubmitBodies(t, api)
+	require.NotEmpty(t, bodies)
+	size, ok := bodies[0]["size"].(map[string]any)
+	require.True(t, ok, "gpt-image payload must carry top-level size")
+	require.Equal(t, float64(2048), size["width"])
+	require.Equal(t, float64(1152), size["height"])
 }
 
 // TestAdobeImageServiceSizeDrivesBillingTier 是本仓库唯一能把「出图档位」和「计费档位」

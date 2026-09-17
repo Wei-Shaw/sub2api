@@ -41,7 +41,7 @@ func (h *GatewayHandler) GeminiV1BetaListModels(c *gin.Context) {
 	}
 	// 检查平台：优先使用强制平台（/antigravity 路由），否则要求 gemini 分组
 	forcePlatform, hasForcePlatform := middleware.GetForcePlatformFromContext(c)
-	if !hasForcePlatform && effectiveAPIKeyPlatform(c, apiKey) != service.PlatformGemini {
+	if !hasForcePlatform && !geminiV1BetaAllowsPlatform(effectiveAPIKeyPlatform(c, apiKey)) {
 		googleError(c, http.StatusBadRequest, "API key group platform is not gemini")
 		return
 	}
@@ -74,6 +74,15 @@ func (h *GatewayHandler) GeminiV1BetaListModels(c *gin.Context) {
 			return
 		}
 		c.JSON(http.StatusOK, antigravity.FallbackGeminiModelsList())
+		return
+	}
+
+	if isAdobeGeminiV1Beta(c, apiKey) {
+		models := service.AdobeGeminiModels()
+		for _, alias := range h.adobeGeminiAccountAliases(c.Request.Context(), apiKey.GroupID) {
+			models = append(models, service.AdobeGeminiModel(alias))
+		}
+		c.JSON(http.StatusOK, gemini.ModelsListResponse{Models: filterGeminiModels(models)})
 		return
 	}
 
@@ -167,7 +176,7 @@ func (h *GatewayHandler) GeminiV1BetaGetModel(c *gin.Context) {
 	}
 	// 检查平台：优先使用强制平台（/antigravity 路由），否则要求 gemini 分组
 	forcePlatform, hasForcePlatform := middleware.GetForcePlatformFromContext(c)
-	if !hasForcePlatform && effectiveAPIKeyPlatform(c, apiKey) != service.PlatformGemini {
+	if !hasForcePlatform && !geminiV1BetaAllowsPlatform(effectiveAPIKeyPlatform(c, apiKey)) {
 		googleError(c, http.StatusBadRequest, "API key group platform is not gemini")
 		return
 	}
@@ -177,6 +186,9 @@ func (h *GatewayHandler) GeminiV1BetaGetModel(c *gin.Context) {
 		googleError(c, http.StatusBadRequest, "Missing model in URL")
 		return
 	}
+	if isAdobeGeminiV1Beta(c, apiKey) {
+		modelName = strings.TrimSpace(strings.TrimPrefix(modelName, "models/"))
+	}
 	// 模型名会被拼进上游 URL 的 path，先在入口校验片段合规性，
 	// 见 service/upstream_path_guard.go。
 	if !service.IsSafeGeminiModelPathSegment(modelName) {
@@ -185,11 +197,30 @@ func (h *GatewayHandler) GeminiV1BetaGetModel(c *gin.Context) {
 	}
 	if resolvedModel, ok := service.ResolvedUpstreamModelFromContext(c.Request.Context()); ok && strings.TrimSpace(resolvedModel) != "" {
 		modelName = strings.TrimSpace(resolvedModel)
+		if isAdobeGeminiV1Beta(c, apiKey) {
+			modelName = strings.TrimSpace(strings.TrimPrefix(modelName, "models/"))
+		}
 	}
 
 	// 强制 antigravity 模式：返回 antigravity 模型信息
 	if forcePlatform == service.PlatformAntigravity {
 		c.JSON(http.StatusOK, antigravity.FallbackGeminiModel(modelName))
+		return
+	}
+
+	if isAdobeGeminiV1Beta(c, apiKey) {
+		model, ok := h.lookupAdobeGeminiModel(c.Request.Context(), apiKey.GroupID, modelName)
+		if !ok {
+			googleError(c, http.StatusNotFound, "model not found")
+			return
+		}
+		if apiKey.Group != nil && apiKey.Group.ModelAllowlistEnabled() &&
+			!apiKey.Group.ModelAllowlist.Allows(model.Name) &&
+			!apiKey.Group.ModelAllowlist.Allows(modelName) {
+			googleError(c, http.StatusNotFound, "model not found")
+			return
+		}
+		c.JSON(http.StatusOK, model)
 		return
 	}
 
@@ -243,7 +274,7 @@ func (h *GatewayHandler) GeminiV1BetaModels(c *gin.Context) {
 
 	// 检查平台：优先使用强制平台（/antigravity 路由，中间件已设置 request.Context），否则要求 gemini 分组
 	if !middleware.HasForcePlatform(c) {
-		if effectiveAPIKeyPlatform(c, apiKey) != service.PlatformGemini {
+		if !geminiV1BetaAllowsPlatform(effectiveAPIKeyPlatform(c, apiKey)) {
 			googleError(c, http.StatusBadRequest, "API key group platform is not gemini")
 			return
 		}
@@ -252,6 +283,22 @@ func (h *GatewayHandler) GeminiV1BetaModels(c *gin.Context) {
 	modelName, action, err := parseGeminiModelAction(strings.TrimPrefix(c.Param("modelAction"), "/"))
 	if err != nil {
 		googleError(c, http.StatusNotFound, err.Error())
+		return
+	}
+	if isAdobeGeminiV1Beta(c, apiKey) {
+		modelName = strings.TrimSpace(strings.TrimPrefix(modelName, "models/"))
+		if !service.IsSafeGeminiModelPathSegment(modelName) {
+			googleError(c, http.StatusBadRequest, "Invalid model in URL")
+			return
+		}
+		if resolvedModel, ok := service.ResolvedUpstreamModelFromContext(c.Request.Context()); ok && strings.TrimSpace(resolvedModel) != "" {
+			modelName = strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(resolvedModel), "models/"))
+		}
+		if action != "generateContent" && action != "streamGenerateContent" {
+			googleError(c, http.StatusNotFound, "Unsupported action")
+			return
+		}
+		h.AdobeGeminiImages(c, apiKey, authSubject, modelName, action)
 		return
 	}
 	// URL 里的模型名最终会被拼进上游 /v1beta/models/{model}:{action}，
@@ -771,6 +818,60 @@ func mapGeminiUpstreamError(statusCode int) (int, string) {
 type pathParseError struct{ msg string }
 
 func (e *pathParseError) Error() string { return e.msg }
+
+func geminiV1BetaAllowsPlatform(platform string) bool {
+	return platform == service.PlatformGemini || platform == service.PlatformAdobe
+}
+
+// lookupAdobeGeminiModel 先查 Adobe 出图目录；查不到时按渠道映射找目标模型，
+// 再查分组内 Adobe 账号 model_mapping 声明的别名。返回的 name 保留客户端请求的别名。
+func (h *GatewayHandler) lookupAdobeGeminiModel(ctx context.Context, groupID *int64, modelName string) (gemini.Model, bool) {
+	if model, ok := service.LookupAdobeGeminiModel(modelName); ok {
+		return model, true
+	}
+	mapping := h.resolveAdobeChannelMapping(ctx, groupID, modelName)
+	if mapping.Mapped {
+		model, ok := service.LookupAdobeGeminiModel(mapping.MappedModel)
+		if !ok {
+			return gemini.Model{}, false
+		}
+		model.Name = "models/" + modelName
+		return model, true
+	}
+	for _, alias := range h.adobeGeminiAccountAliases(ctx, groupID) {
+		if alias == modelName {
+			return service.AdobeGeminiModel(alias), true
+		}
+	}
+	return gemini.Model{}, false
+}
+
+// adobeGeminiAccountAliases 返回分组内 Adobe 账号 model_mapping 里的精确别名：
+// 跳过通配符、目录里已有的名字，以及出图入口会拒绝的其它平台模型名。
+func (h *GatewayHandler) adobeGeminiAccountAliases(ctx context.Context, groupID *int64) []string {
+	if h == nil || h.gatewayService == nil {
+		return nil
+	}
+	var aliases []string
+	for _, name := range h.gatewayService.GetAvailableModels(ctx, groupID, service.PlatformAdobe) {
+		name = strings.TrimSpace(name)
+		if name == "" || strings.Contains(name, "*") || service.IsAdobeGeminiImageModel(name) {
+			continue
+		}
+		if service.ValidateAdobeGeminiModel(name) != nil || !service.IsSafeGeminiModelPathSegment(name) {
+			continue
+		}
+		aliases = append(aliases, name)
+	}
+	return aliases
+}
+
+func isAdobeGeminiV1Beta(c *gin.Context, apiKey *service.APIKey) bool {
+	if middleware.HasForcePlatform(c) {
+		return false
+	}
+	return effectiveAPIKeyPlatform(c, apiKey) == service.PlatformAdobe
+}
 
 func googleError(c *gin.Context, status int, message string) {
 	c.JSON(status, gin.H{
