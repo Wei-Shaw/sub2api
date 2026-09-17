@@ -1771,7 +1771,8 @@ const openAIResponsesModeOptions = computed(() => [
   {
     value: 'force_chat_completions',
     label: t('admin.accounts.openai.responsesModeForceChatCompletions')
-  }
+  },
+  { value: 'preserve_inbound', label: t('admin.accounts.openai.responsesModePreserveInbound') }
 ])
 const openAITextEndpointCapabilityLabel = computed(() => {
   if (openAIResponsesMode.value === 'force_responses') {
@@ -1779,6 +1780,9 @@ const openAITextEndpointCapabilityLabel = computed(() => {
   }
   if (openAIResponsesMode.value === 'force_chat_completions') {
     return t('admin.accounts.openai.capabilityChatCompletions')
+  }
+  if (openAIResponsesMode.value === 'preserve_inbound') {
+    return t('admin.accounts.openai.capabilityDualProtocol')
   }
   return t('admin.accounts.openai.capabilityTextAuto')
 })

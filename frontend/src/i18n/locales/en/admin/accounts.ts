@@ -628,10 +628,11 @@ export default {
           'Automatic passthrough is currently enabled: it only affects HTTP passthrough and does not disable WS mode.',
         responsesMode: 'Responses API support',
         responsesModeDesc:
-          'Only applies to the OpenAI API Key text forwarding path. Auto follows probe results; force modes override probing.',
+          'Only applies to the OpenAI API Key text forwarding path. Auto follows probe results; force modes select one upstream protocol. Preserve inbound requires an upstream that supports both endpoints.',
         responsesModeAuto: 'Auto',
         responsesModeForceResponses: 'Force Responses',
         responsesModeForceChatCompletions: 'Force Chat Completions',
+        responsesModePreserveInbound: 'Preserve client protocol',
         responsesModeTextDisabledHint:
           'Not applicable when the Responses / Chat Completions endpoint is not enabled.',
         imagesUrlToB64Json: 'Image result URL to base64',
@@ -644,6 +645,7 @@ export default {
         capabilityTextAuto: 'Responses / Chat Completions (Auto)',
         capabilityResponsesAuto: 'Responses (auto probe)',
         capabilityChatCompletions: 'Chat Completions',
+        capabilityDualProtocol: 'Responses + Chat Completions',
         capabilityChatCompletionsAuto: 'Chat Completions (auto probe)',
         capabilityEmbeddings: 'Embeddings',
         responsesStatusAutoSupported: 'Auto probe: Responses',
@@ -651,6 +653,7 @@ export default {
         responsesStatusAutoUnknown: 'Auto probe: unknown',
         responsesStatusForcedResponses: 'Forced Responses',
         responsesStatusForcedChatCompletions: 'Forced Chat Completions',
+        responsesStatusPreserveInbound: 'Preserving client protocol (both upstream endpoints required)',
         planType: 'Plan tier (manual override)',
         planTypeDesc:
           "Manually correct this account's ChatGPT plan tier (Plus / Pro / Free). Note: a token refresh near expiry or a 429 rate-limit response will auto-overwrite this with the real tier.",

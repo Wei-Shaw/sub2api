@@ -47,11 +47,16 @@ const (
 
 	// ResponsesSupportModeForceChatCompletions 强制使用 /v1/chat/completions。
 	ResponsesSupportModeForceChatCompletions ResponsesSupportMode = "force_chat_completions"
+
+	// ResponsesSupportModePreserveInbound 保持客户端入站协议：
+	// /v1/chat/completions 走上游同名端点，/v1/responses 走上游同名端点。
+	// 该模式表示运营人员已确认上游同时支持两个端点。
+	ResponsesSupportModePreserveInbound ResponsesSupportMode = "preserve_inbound"
 )
 
 // ExtraKeyResponsesMode 是 accounts.extra JSON 中存储手动覆盖模式的键名。
 // 值类型为 string：auto=跟随探测，force_responses=强制 Responses，
-// force_chat_completions=强制 Chat Completions。
+// force_chat_completions=强制 Chat Completions，preserve_inbound=保持客户端入站协议。
 const ExtraKeyResponsesMode = "openai_responses_mode"
 
 // ExtraKeyResponsesSupported 是 accounts.extra JSON 中存储自动探测结果的键名。
@@ -66,6 +71,8 @@ func NormalizeResponsesSupportMode(mode string) ResponsesSupportMode {
 		return ResponsesSupportModeForceResponses
 	case ResponsesSupportModeForceChatCompletions:
 		return ResponsesSupportModeForceChatCompletions
+	case ResponsesSupportModePreserveInbound:
+		return ResponsesSupportModePreserveInbound
 	default:
 		return ResponsesSupportModeAuto
 	}
@@ -85,6 +92,10 @@ func ResolveResponsesSupport(extra map[string]any) AccountResponsesSupport {
 			return ResponsesSupportYes
 		case ResponsesSupportModeForceChatCompletions:
 			return ResponsesSupportNo
+		case ResponsesSupportModePreserveInbound:
+			// preserve_inbound 是双端点能力的显式运营声明。Responses 请求必须
+			// 保持在 /v1/responses，不得被自动探测结果降级到 Chat Completions。
+			return ResponsesSupportYes
 		}
 	}
 	v, ok := extra[ExtraKeyResponsesSupported]
@@ -104,12 +115,23 @@ func ResolveResponsesSupport(extra map[string]any) AccountResponsesSupport {
 // ShouldUseResponsesAPI 判断 OpenAI APIKey 账号的入站 /v1/chat/completions 请求
 // 是否应走"CC→Responses 转换 + 上游 /v1/responses"路径。
 //
-// 返回 true 的两种情况：
+// 返回 true 的三种情况：
 //  1. 账号已探测确认支持 Responses
 //  2. 账号未探测（标记缺失）——按"现状即证据"原则保留旧行为
+//  3. 账号显式选择 preserve_inbound，声明两个上游端点均可用
 //
 // 仅当账号已探测且确认不支持时返回 false，此时调用方应走 CC 直转路径
 // （详见 internal/service/openai_gateway_chat_completions_raw.go）。
 func ShouldUseResponsesAPI(extra map[string]any) bool {
 	return ResolveResponsesSupport(extra) != ResponsesSupportNo
+}
+
+// ShouldPreserveInboundProtocol 判断 OpenAI APIKey 账号是否应保持客户端入站协议。
+// 账号类型与 chat_completions 端点能力由 service/handler 层负责校验。
+func ShouldPreserveInboundProtocol(extra map[string]any) bool {
+	if extra == nil {
+		return false
+	}
+	mode, ok := extra[ExtraKeyResponsesMode].(string)
+	return ok && NormalizeResponsesSupportMode(mode) == ResponsesSupportModePreserveInbound
 }

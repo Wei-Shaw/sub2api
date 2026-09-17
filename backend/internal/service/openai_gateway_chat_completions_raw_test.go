@@ -123,6 +123,39 @@ func TestForwardAsRawChatCompletions_ForcesStreamUsageUpstreamAndPassesUsageDown
 	require.Contains(t, rec.Body.String(), "data: [DONE]")
 }
 
+func TestForwardAsChatCompletions_PreserveInboundUsesChatCompletionsEndpoint(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	body := []byte(`{"model":"gpt-5.4","messages":[{"role":"user","content":"hello"}],"stream":false}`)
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/chat/completions", bytes.NewReader(body))
+	c.Request.Header.Set("Content-Type", "application/json")
+
+	upstream := &httpUpstreamRecorder{resp: &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     http.Header{"Content-Type": []string{"application/json"}, "x-request-id": []string{"rid_preserve_chat"}},
+		Body: io.NopCloser(strings.NewReader(
+			`{"id":"chatcmpl_preserve","object":"chat.completion","model":"gpt-5.4","choices":[{"index":0,"message":{"role":"assistant","content":"ok"},"finish_reason":"stop"}],"usage":{"prompt_tokens":5,"completion_tokens":2,"total_tokens":7}}`,
+		)),
+	}}
+	svc := &OpenAIGatewayService{cfg: rawChatCompletionsTestConfig(), httpUpstream: upstream}
+	account := rawChatCompletionsTestAccount()
+	account.Extra = map[string]any{
+		openai_compat.ExtraKeyResponsesMode:      string(openai_compat.ResponsesSupportModePreserveInbound),
+		openai_compat.ExtraKeyResponsesSupported: false,
+	}
+
+	result, err := svc.ForwardAsChatCompletions(context.Background(), c, account, body, "", "")
+
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.Equal(t, "http://upstream.example/v1/chat/completions", upstream.lastReq.URL.String())
+	require.True(t, gjson.GetBytes(upstream.lastBody, "messages").Exists())
+	require.False(t, gjson.GetBytes(upstream.lastBody, "input").Exists())
+	require.Equal(t, "ok", gjson.Get(recorder.Body.String(), "choices.0.message.content").String())
+}
+
 func TestForwardAsChatCompletions_OpenAICompatibleGrokRawMissingUsageFailsBeforeWrite(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 

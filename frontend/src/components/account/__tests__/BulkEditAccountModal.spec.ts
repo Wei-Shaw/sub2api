@@ -534,6 +534,24 @@ describe('BulkEditAccountModal', () => {
     })
   })
 
+  it('Responses 路由可以保持客户端入站协议', async () => {
+    const wrapper = mountModal({
+      selectedPlatforms: ['openai'],
+      selectedTypes: ['apikey']
+    })
+
+    await wrapper.get('#bulk-edit-openai-responses-mode-enabled').setValue(true)
+    await wrapper
+      .get('[data-testid="bulk-edit-openai-responses-mode-select"]')
+      .setValue('preserve_inbound')
+    await wrapper.get('#bulk-edit-account-form').trigger('submit.prevent')
+    await flushPromises()
+
+    expect(adminAPI.accounts.bulkUpdate).toHaveBeenCalledWith([1, 2], {
+      extra: { openai_responses_mode: 'preserve_inbound' }
+    })
+  })
+
   it('仅启用 Embeddings 时恢复 Responses 自动模式并精确提交联动字段', async () => {
     const wrapper = mountModal({
       selectedPlatforms: ['openai'],
