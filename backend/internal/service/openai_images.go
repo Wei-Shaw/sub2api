@@ -929,13 +929,20 @@ func (s *OpenAIGatewayService) handleOpenAIImagesNonStreamingResponse(
 		return OpenAIUsage{}, 0, nil, err
 	}
 	body = s.backfillOpenAIImagesB64JSON(ctx, account, parsed, body)
-	responseheaders.WriteFilteredHeaders(c.Writer.Header(), resp.Header, s.responseHeaderFilter)
 	contentType := "application/json"
 	if s.cfg != nil && !s.cfg.Security.ResponseHeaders.Enabled {
 		if upstreamType := resp.Header.Get("Content-Type"); upstreamType != "" {
 			contentType = upstreamType
 		}
 	}
+	if sink := openAIImagesClientSinkFromContext(ctx); sink != nil {
+		sink.StatusCode = resp.StatusCode
+		sink.ContentType = contentType
+		sink.Body = append([]byte(nil), body...)
+		usage, _ := extractOpenAIUsageFromJSONBytes(body)
+		return usage, extractOpenAIImageCountFromJSONBytes(body), collectOpenAIResponseImageOutputSizesFromJSONBytes(body), nil
+	}
+	responseheaders.WriteFilteredHeaders(c.Writer.Header(), resp.Header, s.responseHeaderFilter)
 	c.Data(resp.StatusCode, contentType, body)
 
 	usage, _ := extractOpenAIUsageFromJSONBytes(body)
@@ -1758,4 +1765,31 @@ func dedupeStrings(values []string) []string {
 		out = append(out, value)
 	}
 	return out
+}
+
+type openAIImagesBufferedResponseKey struct{}
+
+// OpenAIImagesClientSink 承接非流式 Images 响应，避免直接写 gin。
+// Gemini generateContent 中转需要把 OpenAI JSON 转成 Gemini 信封后再写出。
+type OpenAIImagesClientSink struct {
+	StatusCode  int
+	ContentType string
+	Body        []byte
+}
+
+// WithOpenAIImagesBufferedResponse 让 ForwardImages 把非流式成功响应写入 sink 而不是 gin。
+func WithOpenAIImagesBufferedResponse(ctx context.Context) (context.Context, *OpenAIImagesClientSink) {
+	sink := &OpenAIImagesClientSink{}
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	return context.WithValue(ctx, openAIImagesBufferedResponseKey{}, sink), sink
+}
+
+func openAIImagesClientSinkFromContext(ctx context.Context) *OpenAIImagesClientSink {
+	if ctx == nil {
+		return nil
+	}
+	sink, _ := ctx.Value(openAIImagesBufferedResponseKey{}).(*OpenAIImagesClientSink)
+	return sink
 }
