@@ -89,3 +89,26 @@ func TestForwardDeepSeekResponsesSkipsPlaceholderWithoutTools(t *testing.T) {
 	require.Equal(t, "message", gjson.GetBytes(upstream.lastBody, "input.1.type").String())
 	require.False(t, strings.Contains(string(upstream.lastBody), responsesReasoningPlaceholderIDPrefix))
 }
+
+// TestForwardDeepSeekResponsesInjectsPlaceholderForTypeLessAssistantMessage 覆盖线上真实形态：
+// Responses 允许 message 省略 type 字段，DeepSeek 按 role 识别它并要求 reasoning 明文，
+// 补齐必须同样认得出来，否则请求仍会被 400 拒绝。
+func TestForwardDeepSeekResponsesInjectsPlaceholderForTypeLessAssistantMessage(t *testing.T) {
+	body := []byte(`{"model":"deepseek-flash","stream":false,` + deepSeekResponsesToolsFragment + `,"input":[` +
+		`{"role":"user","content":"go"},` +
+		`{"role":"assistant","content":[{"type":"output_text","text":""}]},` +
+		`{"type":"function_call","id":"fc_1","call_id":"c1","name":"shell","arguments":"{}","status":"completed"},` +
+		`{"type":"function_call_output","id":"fco_1","call_id":"c1","output":"ok","status":"completed"}]}`)
+
+	upstream := deepSeekResponsesTestUpstream()
+	svc := &OpenAIGatewayService{httpUpstream: upstream}
+	c := deepSeekResponsesTestContext(t, body)
+
+	_, err := svc.Forward(context.Background(), c, deepSeekResponsesTestAccount(), body)
+	require.NoError(t, err)
+	require.Equal(t, "https://api.deepseek.com/responses", upstream.lastReq.URL.String())
+	require.Len(t, gjson.GetBytes(upstream.lastBody, "input").Array(), 5)
+	require.Equal(t, "reasoning", gjson.GetBytes(upstream.lastBody, "input.1.type").String())
+	require.Equal(t, " ", gjson.GetBytes(upstream.lastBody, "input.1.content.0.text").String())
+	assertAssistantMessagesGuarded(t, upstream.lastBody)
+}

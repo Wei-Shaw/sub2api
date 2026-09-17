@@ -439,7 +439,7 @@ func assertAssistantMessagesGuarded(t *testing.T, body []byte) {
 	items := gjson.GetBytes(body, "input").Array()
 	require.NotEmpty(t, items)
 	for i, item := range items {
-		if item.Get("type").String() != "message" || item.Get("role").String() != "assistant" {
+		if responsesInputItemTypeFromJSON(item) != "message" || item.Get("role").String() != "assistant" {
 			continue
 		}
 		require.Greaterf(t, i, 0, "assistant 消息不应位于 input 首位")
@@ -522,6 +522,29 @@ func TestEnsureDeepSeekResponsesReasoningPlaceholders(t *testing.T) {
 				`{"type":"message","id":"msg_1","role":"assistant","content":[{"type":"output_text","text":"hi"}]},` +
 				`{"type":"message","role":"user","content":"again"},` +
 				`{"type":"message","id":"msg_2","role":"assistant","content":[{"type":"output_text","text":"second"}]}]}`,
+			hasTools:    true,
+			wantChanged: true,
+		},
+		{
+			// Responses 允许 message 省略 type 字段；DeepSeek 按 role 识别这类 item，
+			// 线上 400 就是这种形态：补齐必须同样认得出来。
+			name: "assistant 消息省略 type 字段也要补齐",
+			body: `{"model":"deepseek-flash",` + deepSeekResponsesToolsFragment + `,"input":[` +
+				`{"role":"user","content":"go"},` +
+				`{"role":"assistant","content":[{"type":"output_text","text":""}]},` +
+				`{"type":"function_call","call_id":"c1","name":"shell","arguments":"{}"},` +
+				`{"type":"function_call_output","call_id":"c1","output":"ok"}]}`,
+			hasTools:    true,
+			wantChanged: true,
+		},
+		{
+			name: "省略 type 的 user 消息要能结束上一段的 reasoning 复用",
+			body: `{"model":"deepseek-flash",` + deepSeekResponsesToolsFragment + `,"input":[` +
+				`{"type":"message","role":"user","content":"go"},` +
+				`{"type":"reasoning","id":"rs_1","summary":[],"content":[{"type":"reasoning_text","text":"think"}]},` +
+				`{"type":"message","id":"msg_1","role":"assistant","content":[{"type":"output_text","text":"hi"}]},` +
+				`{"role":"user","content":"again"},` +
+				`{"role":"assistant","id":"msg_2","content":[{"type":"output_text","text":"second"}]}]}`,
 			hasTools:    true,
 			wantChanged: true,
 		},

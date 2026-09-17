@@ -198,7 +198,7 @@ func responsesInputHasUnguardedAssistantMessage(input gjson.Result) bool {
 	guarded := false
 	found := false
 	input.ForEach(func(_, item gjson.Result) bool {
-		switch strings.TrimSpace(item.Get("type").String()) {
+		switch responsesInputItemTypeFromJSON(item) {
 		case "reasoning":
 			if responsesReasoningTextFromJSON(item) != "" {
 				guarded = true
@@ -217,6 +217,31 @@ func responsesInputHasUnguardedAssistantMessage(input gjson.Result) bool {
 		return true
 	})
 	return found
+}
+
+// responsesInputItemTypeFromJSON 归一化 input item 类型：Responses 允许 message 省略 type
+// 字段（只带 role），DeepSeek 同样按 role 识别这类 item。
+func responsesInputItemTypeFromJSON(item gjson.Result) string {
+	itemType := strings.TrimSpace(item.Get("type").String())
+	if itemType != "" {
+		return itemType
+	}
+	if strings.TrimSpace(item.Get("role").String()) != "" {
+		return "message"
+	}
+	return ""
+}
+
+// responsesInputItemType 是 responsesInputItemTypeFromJSON 的解码版本，规则必须保持一致。
+func responsesInputItemType(item map[string]any) string {
+	itemType := strings.TrimSpace(firstNonEmptyString(item["type"]))
+	if itemType != "" {
+		return itemType
+	}
+	if strings.TrimSpace(firstNonEmptyString(item["role"])) != "" {
+		return "message"
+	}
+	return ""
 }
 
 // ensureDeepSeekResponsesReasoningPlaceholders 为历史里缺少 reasoning 明文的 assistant
@@ -255,7 +280,7 @@ func ensureDeepSeekResponsesReasoningPlaceholders(body []byte, knownHasTools boo
 			rewritten = append(rewritten, rawItem)
 			continue
 		}
-		switch strings.TrimSpace(firstNonEmptyString(item["type"])) {
+		switch responsesInputItemType(item) {
 		case "reasoning":
 			if responsesReasoningItemHasPlaintext(item) {
 				guarded = true
