@@ -662,6 +662,24 @@ func SquareFromResolution(resolution OutputResolution) Size {
 	}
 }
 
+// SizeFromRatio 按档位与比例给出像素：长边取档位方图边长（保证 ResolutionFromSize
+// 推回同一档），短边按比例缩放后取 16 的倍数。ratio 非法时返回 ok=false。
+func SizeFromRatio(resolution OutputResolution, ratio string) (Size, bool) {
+	value, ok := ratioValue(ratio)
+	if !ok {
+		return Size{}, false
+	}
+	long := SquareFromResolution(resolution).Width
+	short := int(math.Round(float64(long)/math.Max(value, 1/value)/16)) * 16
+	if short < 16 {
+		short = 16
+	}
+	if value >= 1 {
+		return Size{Width: long, Height: short}, true
+	}
+	return Size{Width: short, Height: long}, true
+}
+
 func isBlankSize(size string) bool {
 	normalized := strings.ToLower(strings.TrimSpace(size))
 	return normalized == "" || normalized == "auto"

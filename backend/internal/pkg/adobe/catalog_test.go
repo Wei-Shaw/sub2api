@@ -285,6 +285,35 @@ func TestResolutionFromSize(t *testing.T) {
 	require.Equal(t, DefaultOutputResolution, ResolutionFromSize("-1x-1"))
 }
 
+func TestSizeFromRatio(t *testing.T) {
+	tests := []struct {
+		resolution OutputResolution
+		ratio      string
+		want       Size
+	}{
+		{Resolution2K, "16:9", Size{Width: 2048, Height: 1152}},
+		{Resolution1K, "9:16", Size{Width: 576, Height: 1024}},
+		{Resolution4K, "21:9", Size{Width: 4096, Height: 1760}},
+		{Resolution2K, "3:2", Size{Width: 2048, Height: 1360}},
+		{Resolution1K, "1:1", Size{Width: 1024, Height: 1024}},
+		{Resolution1K, "1:1000", Size{Width: 16, Height: 1024}},
+	}
+	for _, tt := range tests {
+		t.Run(string(tt.resolution)+"_"+tt.ratio, func(t *testing.T) {
+			got, ok := SizeFromRatio(tt.resolution, tt.ratio)
+			require.True(t, ok)
+			require.Equal(t, tt.want, got)
+			// 长边不变，档位与计费档位一致。
+			require.Equal(t, tt.resolution, ResolutionFromSize(got.String()))
+		})
+	}
+
+	for _, ratio := range []string{"", "wide", "16:0", "0:9", "16x9", "-16:9"} {
+		_, ok := SizeFromRatio(Resolution2K, ratio)
+		require.False(t, ok, ratio)
+	}
+}
+
 // TestEveryCatalogEntryReachableByFamilyAndSize 证明目录里 117 个组合全部能通过
 // 「族级 id + size」触达——这是「不必把全量 id 塞进 model_mapping 白名单」的依据。
 //
