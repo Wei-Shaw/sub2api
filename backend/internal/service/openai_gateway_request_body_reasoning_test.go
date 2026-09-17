@@ -1,6 +1,7 @@
 package service
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -612,4 +613,134 @@ func TestEnsureDeepSeekResponsesReasoningPlaceholdersFallsBackToIndexID(t *testi
 	require.Equal(t, "rs_ph_1", gjson.GetBytes(rewritten, "input.1.id").String())
 	require.Equal(t, " ", gjson.GetBytes(rewritten, "input.1.content.0.text").String())
 	assertAssistantMessagesGuarded(t, rewritten)
+}
+
+func TestNormalizeDeepSeekResponsesToolCallBlocks(t *testing.T) {
+	callA := `{"type":"function_call","call_id":"call-a","name":"exec_command","arguments":"{}"}`
+	callB := `{"type":"function_call","call_id":"call-b","name":"exec_command","arguments":"{}"}`
+	outA := `{"type":"function_call_output","call_id":"call-a","output":"ok"}`
+	outB := `{"type":"function_call_output","call_id":"call-b","output":"ok"}`
+	user := `{"type":"message","role":"user","content":"go"}`
+	commentary := `{"type":"message","role":"assistant","phase":"commentary","content":[{"type":"output_text","text":"先执行"}]}`
+
+	cases := []struct {
+		name        string
+		input       string
+		wantChanged bool
+	}{
+		{
+			// 线上形态：assistant message 夹在两个并行调用之间，DeepSeek 报
+			// "No tool output found for tool call"，必须把插入项移到调用块之前。
+			name:        "调用块内夹着 assistant 消息",
+			input:       `[` + user + `,` + callA + `,` + commentary + `,` + callB + `,` + outA + `,` + outB + `]`,
+			wantChanged: true,
+		},
+		{
+			name:        "调用块内夹着 reasoning",
+			input:       `[` + user + `,` + callA + `,` + `{"type":"reasoning","id":"rs_1","summary":[],"content":[{"type":"reasoning_text","text":"think"}]}` + `,` + callB + `,` + outA + `,` + outB + `]`,
+			wantChanged: true,
+		},
+		{
+			name:        "正常的并行调用块不改写",
+			input:       `[` + user + `,` + callA + `,` + callB + `,` + outA + `,` + outB + `]`,
+			wantChanged: false,
+		},
+		{
+			name:        "串行调用块不改写",
+			input:       `[` + user + `,` + callA + `,` + outA + `,` + callB + `,` + outB + `]`,
+			wantChanged: false,
+		},
+		{
+			name:        "孤立输出不改写",
+			input:       `[` + user + `,` + outA + `]`,
+			wantChanged: false,
+		},
+		{
+			name:        "没有工具调用不改写",
+			input:       `[` + user + `,` + commentary + `]`,
+			wantChanged: false,
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			body := []byte(`{"model":"deepseek-flash","input":` + tc.input + `}`)
+			rewritten, changed := normalizeDeepSeekResponsesToolCallBlocks(body)
+			require.Equal(t, tc.wantChanged, changed)
+			if !tc.wantChanged {
+				require.JSONEq(t, string(body), string(rewritten))
+				return
+			}
+			// 改写后检查 input 顺序，并确认没有 item 丢失。
+			items := gjson.GetBytes(rewritten, "input").Array()
+			require.Len(t, items, len(gjson.GetBytes(body, "input").Array()))
+			assertToolBlocksContiguous(t, rewritten)
+		})
+	}
+}
+
+// assertToolBlocksContiguous 断言 input 里每个工具调用块内部只含调用与输出：
+// 块一旦开始，出现非调用/输出 item 即视为仍被夹住。
+func assertToolBlocksContiguous(t *testing.T, body []byte) {
+	t.Helper()
+	items := gjson.GetBytes(body, "input").Array()
+	for index := 0; index < len(items); {
+		if !isOpenAIResponsesToolCallType(strings.TrimSpace(items[index].Get("type").String())) {
+			index++
+			continue
+		}
+		callIDs := make(map[string]struct{}, 4)
+		pending := make(map[string]struct{}, 4)
+		for index < len(items) {
+			itemType := strings.TrimSpace(items[index].Get("type").String())
+			callID := strings.TrimSpace(items[index].Get("call_id").String())
+			switch {
+			case isOpenAIResponsesToolCallType(itemType):
+				callIDs[callID] = struct{}{}
+				pending[callID] = struct{}{}
+				index++
+			case isOpenAIResponsesToolOutputType(itemType):
+				if _, ok := callIDs[callID]; !ok {
+					return
+				}
+				delete(pending, callID)
+				index++
+				if len(pending) == 0 {
+					goto nextBlock
+				}
+			default:
+				if len(pending) > 0 {
+					t.Fatalf("调用块内仍夹着 %q（下标 %d）", itemType, index)
+				}
+				goto nextBlock
+			}
+		}
+	nextBlock:
+	}
+}
+
+func TestNormalizeDeepSeekResponsesToolCallBlocksNoItemLoss(t *testing.T) {
+	// 用「调用块内插入 + 块外消息」的混合形态确认重排只换位置、不增删 item。
+	input := `[
+		{"type":"message","role":"user","content":"go"},
+		{"type":"function_call","call_id":"call-a","name":"exec_command","arguments":"{}"},
+		{"type":"reasoning","id":"rs_1","summary":[],"content":[{"type":"reasoning_text","text":"think"}]},
+		{"type":"function_call","call_id":"call-b","name":"exec_command","arguments":"{}"},
+		{"type":"function_call_output","call_id":"call-a","output":"ok"},
+		{"type":"function_call_output","call_id":"call-b","output":"ok"},
+		{"type":"message","role":"assistant","content":[{"type":"output_text","text":"done"}]}
+	]`
+	body := []byte(`{"model":"deepseek-flash","input":` + input + `}`)
+
+	rewritten, changed := normalizeDeepSeekResponsesToolCallBlocks(body)
+	require.True(t, changed)
+	items := gjson.GetBytes(rewritten, "input").Array()
+	require.Len(t, items, 7)
+	require.Equal(t, "user", items[0].Get("role").String())
+	// 插入项被移到调用块之前，调用与输出连续。
+	require.Equal(t, "reasoning", items[1].Get("type").String())
+	require.Equal(t, "call-a", items[2].Get("call_id").String())
+	require.Equal(t, "call-b", items[3].Get("call_id").String())
+	require.Equal(t, "call-a", items[4].Get("call_id").String())
+	require.Equal(t, "call-b", items[5].Get("call_id").String())
 }

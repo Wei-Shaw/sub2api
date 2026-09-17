@@ -353,6 +353,189 @@ func responsesReasoningPlaceholderItem(message map[string]any, index int) map[st
 	}
 }
 
+// isOpenAIResponsesToolCallType / isOpenAIResponsesToolOutputType 判定 Responses input 里
+// 的调用与输出 item 类型（含 custom / tool_search 三种形态）。
+func isOpenAIResponsesToolCallType(itemType string) bool {
+	switch itemType {
+	case "function_call", "custom_tool_call", "tool_search_call":
+		return true
+	default:
+		return false
+	}
+}
+
+func isOpenAIResponsesToolOutputType(itemType string) bool {
+	switch itemType {
+	case "function_call_output", "custom_tool_call_output", "tool_search_output":
+		return true
+	default:
+		return false
+	}
+}
+
+// normalizeDeepSeekResponsesToolCallBlocks 把插在工具调用块内部的非调用/输出 item
+// （assistant message、reasoning 等）移到该块之前，使调用块连续、其输出紧随其后。
+//
+// DeepSeek 原生 Responses 端点按「连续调用块 + 输出块」校验历史。跨模型切换后会出现
+// `call → message → call → output → output` 这类形态（上一个模型允许在并行调用之间插入
+// 说明），DeepSeek 会以 "No tool output found for tool call ..." 拒绝整轮——即使调用与
+// 输出在数量上完全配对。实测把插入项移到块前即可通过。
+func normalizeDeepSeekResponsesToolCallBlocks(body []byte) ([]byte, bool) {
+	input := parseRawJSONView(body).Get("input")
+	if !input.IsArray() || !responsesToolBlocksNeedNormalization(input) {
+		return body, false
+	}
+
+	var reqBody map[string]any
+	if err := decodeOpenAIJSONUseNumber(body, &reqBody); err != nil {
+		return body, false
+	}
+	items, ok := reqBody["input"].([]any)
+	if !ok {
+		return body, false
+	}
+	rewritten := reorderResponsesToolCallBlocks(items)
+	if len(rewritten) != len(items) {
+		// 只做重排、不做增删；长度变化说明判定与改写不一致，保持原样更安全。
+		return body, false
+	}
+	reqBody["input"] = rewritten
+	normalized, err := marshalOpenAIUpstreamJSON(reqBody)
+	if err != nil {
+		return body, false
+	}
+	return normalized, true
+}
+
+// responsesToolBlocksNeedNormalization 快判：是否存在「调用块夹着其它 item」的形态。
+// 判定规则必须与 reorderResponsesToolCallBlocks 保持一致。
+func responsesToolBlocksNeedNormalization(input gjson.Result) bool {
+	items := input.Array()
+	for index := 0; index < len(items); {
+		if !isOpenAIResponsesToolCallType(strings.TrimSpace(items[index].Get("type").String())) {
+			index++
+			continue
+		}
+		callIDs := make(map[string]struct{}, 4)
+		pending := make(map[string]struct{}, 4)
+		advanced := false
+		for index < len(items) {
+			itemType := strings.TrimSpace(items[index].Get("type").String())
+			callID := strings.TrimSpace(items[index].Get("call_id").String())
+			switch {
+			case isOpenAIResponsesToolCallType(itemType):
+				if callID != "" {
+					callIDs[callID] = struct{}{}
+					pending[callID] = struct{}{}
+				}
+				index++
+				advanced = true
+			case isOpenAIResponsesToolOutputType(itemType):
+				if _, ok := callIDs[callID]; !ok {
+					// 孤儿输出：本块到此结束。
+					return false
+				}
+				delete(pending, callID)
+				index++
+				advanced = true
+				if len(pending) == 0 {
+					goto blockDone
+				}
+			case len(pending) > 0:
+				// 调用块内部夹了其它 item。
+				return true
+			default:
+				goto blockDone
+			}
+		}
+	blockDone:
+		if !advanced {
+			index++
+		}
+	}
+	return false
+}
+
+// reorderResponsesToolCallBlocks 逐个收集调用块，把块内的插入项放到块前，其余 item 顺序不变。
+func reorderResponsesToolCallBlocks(items []any) []any {
+	out := make([]any, 0, len(items))
+	for index := 0; index < len(items); {
+		if !isOpenAIResponsesToolCallItem(items[index]) {
+			out = append(out, items[index])
+			index++
+			continue
+		}
+		block, inserts, next := collectResponsesToolCallBlock(items, index)
+		out = append(out, inserts...)
+		out = append(out, block...)
+		if next <= index {
+			out = append(out, items[index])
+			index++
+			continue
+		}
+		index = next
+	}
+	return out
+}
+
+// collectResponsesToolCallBlock 从 start 开始收集一个调用块。返回块内 item（调用与匹配的
+// 输出，保持原有相对顺序）、被夹在块中的插入项，以及下一个待处理下标。
+func collectResponsesToolCallBlock(items []any, start int) (block []any, inserts []any, next int) {
+	callIDs := make(map[string]struct{}, 4)
+	pending := make(map[string]struct{}, 4)
+	index := start
+	for index < len(items) {
+		item := items[index]
+		itemType := responsesInputItemTypeOfValue(item)
+		callID := responsesToolItemCallID(item)
+		switch {
+		case isOpenAIResponsesToolCallType(itemType):
+			if callID != "" {
+				callIDs[callID] = struct{}{}
+				pending[callID] = struct{}{}
+			}
+			block = append(block, item)
+			index++
+		case isOpenAIResponsesToolOutputType(itemType):
+			if _, ok := callIDs[callID]; !ok {
+				return block, inserts, index
+			}
+			delete(pending, callID)
+			block = append(block, item)
+			index++
+			if len(pending) == 0 {
+				return block, inserts, index
+			}
+		case len(pending) > 0:
+			inserts = append(inserts, item)
+			index++
+		default:
+			return block, inserts, index
+		}
+	}
+	return block, inserts, index
+}
+
+func isOpenAIResponsesToolCallItem(item any) bool {
+	return isOpenAIResponsesToolCallType(responsesInputItemTypeOfValue(item))
+}
+
+func responsesInputItemTypeOfValue(item any) string {
+	typed, ok := item.(map[string]any)
+	if !ok {
+		return ""
+	}
+	return responsesInputItemType(typed)
+}
+
+func responsesToolItemCallID(item any) string {
+	typed, ok := item.(map[string]any)
+	if !ok {
+		return ""
+	}
+	return strings.TrimSpace(firstNonEmptyString(typed["call_id"]))
+}
+
 func trimOpenAIEncryptedReasoningItems(reqBody map[string]any) bool {
 	if len(reqBody) == 0 {
 		return false

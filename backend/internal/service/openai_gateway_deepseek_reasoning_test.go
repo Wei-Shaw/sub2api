@@ -112,3 +112,31 @@ func TestForwardDeepSeekResponsesInjectsPlaceholderForTypeLessAssistantMessage(t
 	require.Equal(t, " ", gjson.GetBytes(upstream.lastBody, "input.1.content.0.text").String())
 	assertAssistantMessagesGuarded(t, upstream.lastBody)
 }
+
+// TestForwardDeepSeekResponsesReordersToolCallBlocks 覆盖跨模型切换后的第二种 400：
+// 会话里并行调用块中间夹着上一个模型的说明消息，DeepSeek 会报
+// "No tool output found for tool call ..."；网关必须把插入项移出调用块。
+func TestForwardDeepSeekResponsesReordersToolCallBlocks(t *testing.T) {
+	body := []byte(`{"model":"deepseek-flash","stream":false,` + deepSeekResponsesToolsFragment + `,"input":[` +
+		`{"type":"message","role":"user","content":"go"},` +
+		`{"type":"function_call","id":"fc_a","call_id":"call-a","name":"shell","arguments":"{}","status":"completed"},` +
+		`{"type":"message","id":"msg_1","role":"assistant","phase":"commentary","content":[{"type":"output_text","text":"先执行"}]},` +
+		`{"type":"function_call","id":"fc_b","call_id":"call-b","name":"shell","arguments":"{}","status":"completed"},` +
+		`{"type":"function_call_output","id":"fco_a","call_id":"call-a","output":"ok","status":"completed"},` +
+		`{"type":"function_call_output","id":"fco_b","call_id":"call-b","output":"ok","status":"completed"}]}`)
+
+	upstream := deepSeekResponsesTestUpstream()
+	svc := &OpenAIGatewayService{httpUpstream: upstream}
+	c := deepSeekResponsesTestContext(t, body)
+
+	_, err := svc.Forward(context.Background(), c, deepSeekResponsesTestAccount(), body)
+	require.NoError(t, err)
+	assertToolBlocksContiguous(t, upstream.lastBody)
+	// 说明消息被移到调用块之前；块规整先跑、reasoning 补齐后跑，因此该消息前会多出占位 reasoning。
+	require.Equal(t, "user", gjson.GetBytes(upstream.lastBody, "input.0.role").String())
+	require.Equal(t, "reasoning", gjson.GetBytes(upstream.lastBody, "input.1.type").String())
+	require.Equal(t, "assistant", gjson.GetBytes(upstream.lastBody, "input.2.role").String())
+	require.Equal(t, "call-a", gjson.GetBytes(upstream.lastBody, "input.3.call_id").String())
+	require.Equal(t, "call-b", gjson.GetBytes(upstream.lastBody, "input.4.call_id").String())
+	require.Len(t, gjson.GetBytes(upstream.lastBody, "input").Array(), 7)
+}
