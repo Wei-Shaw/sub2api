@@ -56,7 +56,7 @@ Sub2API は、Adobe Firefly Web のサブスクリプションアカウント（
 
 - プラットフォーム名: `adobe`
 - アカウント種別: Firefly Cookie（管理画面では OAuth と表示）および **API Key + Base URL** 中継アカウント
-- 公開画像エンドポイント: `/v1/images/generations` と `/v1/images/edits`（`/v1` なしの既存エイリアスも含む）
+- 公開画像エンドポイント: `/v1/images/generations` と `/v1/images/edits`（`/v1` なしの既存エイリアスも含む）、および Gemini ネイティブの `POST /v1beta/models/{model}:generateContent` / `streamGenerateContent`
 - API キーのグループで画像生成を許可する必要があります（Adobe グループはデフォルトで有効）
 - `n` の省略時は 1、最大 10。Cookie 経路は n 回の Firefly ジョブに分割し（上流の `n` は常に 1）、枚数課金します。`n>10` は拒否します
 - `output_format` は `png`/`jpeg` をダウンロード後にローカル変換します（`jpg` は jpeg 扱い）。`webp` は未対応。未指定なら上流の形式を維持します
@@ -79,7 +79,7 @@ Sub2API は、Adobe Firefly Web のサブスクリプションアカウント（
 
 旧エイリアス `gpt-image`、`gpt-image-1`、`gpt-image-1-mini` は `gpt-image-2` に落ちますが、`/v1/models` には出ません。
 
-`gpt-image-*` は公式 OpenAI 画像モデルと同名です。Firefly に届くのは API キーが **Adobe** グループに紐づいている場合のみで、OpenAI グループなら従来どおり OpenAI に行きます。Composite グループは `gpt-image-*` を自動判定しません（名前が曖昧なため）。明示的なルートを追加してください。`nano-banana*`、`flux-*`、`imagen-*`、`runway-gen4*` は Composite で Adobe として自動検出できます。
+`gpt-image-*` は公式 OpenAI 画像モデルと同名です。Firefly に届くのは API キーが **Adobe** グループに紐づいている場合のみで、OpenAI グループなら従来どおり OpenAI に行きます。Composite グループは `gpt-image-*` を自動判定しません（名前が曖昧なため）。明示的なルートを追加してください。`nano-banana*`、`flux-*`、`imagen-*`、`runway-gen4*`、`gpt-4o-image` は Composite で Adobe として自動検出できます。
 
 ### Cookie アカウントの設定
 
@@ -138,6 +138,26 @@ curl https://your-sub2api.example.com/v1/images/generations \
     "size": "1024x1024"
   }'
 ```
+
+同じ公開モデル名は Gemini ネイティブ画像生成でも呼べます（プロトコルはクライアントが選び、モデルはプロトコルに固定しません）:
+
+```bash
+curl "https://your-sub2api.example.com/v1beta/models/nano-banana-pro:generateContent" \
+  -H "x-goog-api-key: sk-your-sub2api-key" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "contents": [{"role": "user", "parts": [{"text": "a red panda in a bamboo forest"}]}],
+    "generationConfig": {
+      "imageConfig": {"aspectRatio": "16:9", "imageSize": "2K"}
+    }
+  }'
+```
+
+`streamGenerateContent` は生成完了後に **1 フレーム** の SSE（`data: {完全な JSON}\n\n`）を書き出します。トークン単位の増分ではなく、`[DONE]` も送りません。参照画像は `parts[].inlineData`（base64）または `fileData.fileUri`（`https://` のみ）です。
+
+`generationConfig.candidateCount` を n にすると、n 個の candidate（それぞれ `index` 付き）が返り、各 candidate に画像が 1 枚入ります。画像は通常 `inlineData` で返します。API キー中継アカウントがゲートウェイからダウンロードできない画像 URL しか返さなかった場合、その画像は `fileData.fileUri` で返し、クライアント側で取得します。1 枚も返せない場合は 502 となり、課金されません。
+
+`generationConfig.imageConfig.aspectRatio` / `imageSize`（`1K`/`2K`/`4K`）は Gemini プロトコルのフィールドで、OpenAI Images の `size`（`幅x高さ`）とは別マッピングです。Banana モデルの Gemini 経路は WxH から逆算せず、`aspectRatio`+`imageSize` をそのまま使います。その他のモデルと API Key 中継アカウントには `aspectRatio`+`imageSize` から算出した比率付きの `幅x高さ` を渡します（長辺はティアの辺長、比率のみ指定時は 1K）。
 
 ---
 

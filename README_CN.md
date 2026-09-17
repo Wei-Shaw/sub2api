@@ -57,7 +57,7 @@ Sub2API 支持通过 Adobe Firefly Web 订阅账号（浏览器 Cookie）直连�
 
 - 平台名：`adobe`
 - 账号类型：Firefly Cookie（管理端显示为 OAuth）以及 **API Key + Base URL** 中转号
-- 公开出图入口：`/v1/images/generations`、`/v1/images/edits`（以及去掉 `/v1` 前缀的别名）
+- 公开出图入口：`/v1/images/generations`、`/v1/images/edits`（以及去掉 `/v1` 前缀的别名），以及 Gemini 原生生图 `POST /v1beta/models/{model}:generateContent` / `streamGenerateContent`
 - API Key 所在分组需要开启图片生成权限（Adobe 分组默认开启）
 - `n` 缺省 1，最大 10。Cookie 路径会拆成 n 次 Firefly 任务（上游每次仍是 n=1），按张计费；`n>10` 会直接拒绝
 - `output_format` 支持 `png`/`jpeg`（`jpg` 视为 jpeg），下载后本机转码；`webp` 不支持；未传则保持上游格式
@@ -80,7 +80,7 @@ Sub2API 支持通过 Adobe Firefly Web 订阅账号（浏览器 Cookie）直连�
 
 历史别名 `gpt-image`、`gpt-image-1`、`gpt-image-1-mini` 会落到 `gpt-image-2`，但不会出现在 `/v1/models` 列表中。
 
-`gpt-image-*` 与 OpenAI 官方出图同名。只有 API Key 绑定 **Adobe 分组** 时才会走 Firefly；绑到 OpenAI 分组则仍走 OpenAI。合成分组（composite）**不会**根据 `gpt-image-*` 自动判断平台（名称有歧义），需要单独配置路由。`nano-banana*`、`flux-*`、`imagen-*`、`runway-gen4*` 可由合成分组自动识别为 Adobe。
+`gpt-image-*` 与 OpenAI 官方出图同名。只有 API Key 绑定 **Adobe 分组** 时才会走 Firefly；绑到 OpenAI 分组则仍走 OpenAI。合成分组（composite）**不会**根据 `gpt-image-*` 自动判断平台（名称有歧义），需要单独配置路由。`nano-banana*`、`flux-*`、`imagen-*`、`runway-gen4*`、`gpt-4o-image` 可由合成分组自动识别为 Adobe。
 
 ### Cookie 账号配置
 
@@ -139,6 +139,26 @@ curl https://your-sub2api.example.com/v1/images/generations \
     "size": "1024x1024"
   }'
 ```
+
+同一批对外模型名也可以走 Gemini 原生生图（协议由客户端选，模型不绑死协议）：
+
+```bash
+curl "https://your-sub2api.example.com/v1beta/models/nano-banana-pro:generateContent" \
+  -H "x-goog-api-key: sk-your-sub2api-key" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "contents": [{"role": "user", "parts": [{"text": "a red panda in a bamboo forest"}]}],
+    "generationConfig": {
+      "imageConfig": {"aspectRatio": "16:9", "imageSize": "2K"}
+    }
+  }'
+```
+
+`streamGenerateContent` 在出图完成后写**一帧** SSE（`data: {完整 JSON}\n\n`），不是逐 token 增量，也没有 `[DONE]`。参考图用 `parts[].inlineData`（base64）或 `fileData.fileUri`（仅 `https://`）。
+
+`generationConfig.candidateCount` 为 n 时返回 n 个 candidate（各带 `index`），每个 candidate 含一张图。图片默认以 `inlineData` 返回；API Key 中转号只给了网关下载不到的图片 url 时，该图改为 `fileData.fileUri` 返回，由客户端自行下载。一张图都拿不到时返回 502，且不计费。
+
+`generationConfig.imageConfig.aspectRatio` / `imageSize`（`1K`/`2K`/`4K`）是 Gemini 协议字段；OpenAI Images 的 `size`（`宽x高`）语义分开。香蕉模型在 Gemini 路径上直接使用 `aspectRatio`+`imageSize`，不再从 WxH 反推；其它模型与 API Key 中转号按 `aspectRatio`+`imageSize` 换算成带比例的 `宽x高`（长边取档位边长，只给比例时按 1K）。
 
 ---
 

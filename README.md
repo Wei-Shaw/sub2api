@@ -57,7 +57,7 @@ Direct Firefly calls use **Firefly Web** (`firefly.adobe.com` / `clio-playground
 
 - Platform name: `adobe`
 - Account types: Firefly cookie accounts (shown as OAuth in the admin UI) and **API Key + Base URL** relay accounts
-- Public image targets: `/v1/images/generations` and `/v1/images/edits`, plus the existing no-prefix aliases
+- Public image targets: `/v1/images/generations` and `/v1/images/edits`, plus the existing no-prefix aliases, and Gemini-native `POST /v1beta/models/{model}:generateContent` / `streamGenerateContent`
 - The API key's group must allow image generation (Adobe groups default this to on)
 - `n` defaults to 1 and is capped at 10. The cookie path fans out into n Firefly jobs (upstream `n` stays 1) and bills per image; `n>10` is rejected
 - `output_format` follows `png`/`jpeg` with a local transcode (`jpg` is accepted as jpeg). `webp` is not supported. Omit it to keep the upstream format
@@ -80,7 +80,7 @@ Direct Firefly calls use **Firefly Web** (`firefly.adobe.com` / `clio-playground
 
 Legacy aliases `gpt-image`, `gpt-image-1`, and `gpt-image-1-mini` map to `gpt-image-2` but are not listed by `/v1/models`.
 
-`gpt-image-*` names are shared with official OpenAI image models. They reach Firefly only when the API key is bound to an **Adobe** group; an OpenAI group still talks to OpenAI. Composite groups do **not** auto-detect `gpt-image-*` (the name is ambiguous) — add an explicit composite route. `nano-banana*`, `flux-*`, `imagen-*`, and `runway-gen4*` can be auto-detected as Adobe.
+`gpt-image-*` names are shared with official OpenAI image models. They reach Firefly only when the API key is bound to an **Adobe** group; an OpenAI group still talks to OpenAI. Composite groups do **not** auto-detect `gpt-image-*` (the name is ambiguous) — add an explicit composite route. `nano-banana*`, `flux-*`, `imagen-*`, `runway-gen4*`, and `gpt-4o-image` can be auto-detected as Adobe.
 
 ### Cookie Account Setup
 
@@ -139,6 +139,26 @@ curl https://your-sub2api.example.com/v1/images/generations \
     "size": "1024x1024"
   }'
 ```
+
+The same public model names also accept Gemini-native image generation (the client chooses the protocol; models are not bound to one envelope):
+
+```bash
+curl "https://your-sub2api.example.com/v1beta/models/nano-banana-pro:generateContent" \
+  -H "x-goog-api-key: sk-your-sub2api-key" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "contents": [{"role": "user", "parts": [{"text": "a red panda in a bamboo forest"}]}],
+    "generationConfig": {
+      "imageConfig": {"aspectRatio": "16:9", "imageSize": "2K"}
+    }
+  }'
+```
+
+`streamGenerateContent` writes **one** SSE frame after generation (`data: {full JSON}\n\n`). It is not token-by-token incremental output and does not send `[DONE]`. Reference images use `parts[].inlineData` (base64) or `fileData.fileUri` (`https://` only).
+
+With `generationConfig.candidateCount` set to n, the response has n candidates (each with an `index`), one image per candidate. Images are returned as `inlineData`; when an API-key relay account only returns an image URL the gateway cannot download, that image is returned as `fileData.fileUri` for the client to fetch. If no image can be delivered at all, the request fails with 502 and is not billed.
+
+`generationConfig.imageConfig.aspectRatio` / `imageSize` (`1K`/`2K`/`4K`) are Gemini-protocol fields; OpenAI Images `size` (`WxH`) is a separate mapping. Banana models on the Gemini path use `aspectRatio`+`imageSize` directly instead of inferring them from WxH; other models and API Key relay accounts receive a `WxH` derived from `aspectRatio`+`imageSize` (long edge = tier edge; ratio-only requests use 1K).
 
 ---
 
