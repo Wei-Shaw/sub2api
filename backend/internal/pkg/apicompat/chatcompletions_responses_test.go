@@ -202,6 +202,52 @@ func TestChatCompletionsToResponses_ToolStrict(t *testing.T) {
 	}
 }
 
+func TestChatCompletionsToResponses_ToolChoice(t *testing.T) {
+	tests := []struct {
+		name    string
+		choice  string
+		want    string
+		wantErr string
+	}{
+		{
+			name:   "nested chat function choice",
+			choice: `{"type":"function","function":{"name":"lookup"}}`,
+			want:   `{"type":"function","name":"lookup"}`,
+		},
+		{
+			name:   "flat function choice for proxy chaining",
+			choice: `{"type":"function","name":"lookup"}`,
+			want:   `{"type":"function","name":"lookup"}`,
+		},
+		{name: "auto", choice: `"auto"`, want: `"auto"`},
+		{name: "required", choice: `"required"`, want: `"required"`},
+		{name: "none", choice: `"none"`, want: `"none"`},
+		{
+			name:    "function choice without name",
+			choice:  `{"type":"function","function":{}}`,
+			wantErr: "function tool choice is missing name",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			req := &ChatCompletionsRequest{
+				Model:      "gpt-5.6-sol",
+				Messages:   []ChatMessage{{Role: "user", Content: json.RawMessage(`"Hi"`)}},
+				ToolChoice: json.RawMessage(tt.choice),
+			}
+
+			resp, err := ChatCompletionsToResponses(req)
+			if tt.wantErr != "" {
+				require.ErrorContains(t, err, tt.wantErr)
+				return
+			}
+			require.NoError(t, err)
+			assert.JSONEq(t, tt.want, string(resp.ToolChoice))
+		})
+	}
+}
+
 func TestChatCompletionsToResponses_LegacyFunctionDefaultsStrictFalse(t *testing.T) {
 	req := &ChatCompletionsRequest{
 		Model:    "gpt-4o",

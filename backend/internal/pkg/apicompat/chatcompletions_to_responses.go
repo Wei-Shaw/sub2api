@@ -82,10 +82,14 @@ func ChatCompletionsToResponses(req *ChatCompletionsRequest) (*ResponsesRequest,
 		out.Tools = convertChatToolsToResponses(req.Tools, req.Functions)
 	}
 
-	// tool_choice: already compatible format — pass through directly.
-	// Legacy function_call needs mapping.
+	// Chat named function choices nest the name under function, while Responses
+	// expects it at the top level. String choices are shared by both APIs.
 	if len(req.ToolChoice) > 0 {
-		out.ToolChoice = req.ToolChoice
+		tc, err := convertChatToolChoiceToResponses(req.ToolChoice)
+		if err != nil {
+			return nil, fmt.Errorf("convert tool_choice: %w", err)
+		}
+		out.ToolChoice = tc
 	} else if len(req.FunctionCall) > 0 {
 		tc, err := convertChatFunctionCallToToolChoice(req.FunctionCall)
 		if err != nil {
@@ -95,6 +99,45 @@ func ChatCompletionsToResponses(req *ChatCompletionsRequest) (*ResponsesRequest,
 	}
 
 	return out, nil
+}
+
+// convertChatToolChoiceToResponses maps Chat Completions tool_choice values to
+// the Responses API shape.
+//
+//	"auto"                                      -> "auto"
+//	{"type":"function","function":{"name":"X"}} -> {"type":"function","name":"X"}
+//	{"type":"function","name":"X"}              -> {"type":"function","name":"X"}
+func convertChatToolChoiceToResponses(raw json.RawMessage) (json.RawMessage, error) {
+	var choice string
+	if err := json.Unmarshal(raw, &choice); err == nil {
+		return json.Marshal(choice)
+	}
+
+	var obj struct {
+		Type     string `json:"type"`
+		Name     string `json:"name"`
+		Function *struct {
+			Name string `json:"name"`
+		} `json:"function"`
+	}
+	if err := json.Unmarshal(raw, &obj); err != nil {
+		return nil, err
+	}
+	if obj.Type != "function" {
+		return raw, nil
+	}
+
+	name := obj.Name
+	if obj.Function != nil && obj.Function.Name != "" {
+		name = obj.Function.Name
+	}
+	if name == "" {
+		return nil, fmt.Errorf("function tool choice is missing name")
+	}
+	return json.Marshal(map[string]any{
+		"type": "function",
+		"name": name,
+	})
 }
 
 // convertChatMessagesToResponsesInput converts the Chat Completions messages
