@@ -309,7 +309,39 @@ func (s *OpenAIGatewayService) applyOpenAICodexTicket(ctx context.Context, accou
 	return ErrOpenAICodexTicketUnavailable
 }
 
-func (s *OpenAIGatewayService) openAICodexTicketBlocksAccount(account *Account, requestedModel string) bool {
+// openAICodexTicketOutboundModel 预测本请求真正出站的模型名，也就是
+// applyOpenAICodexTicket 注入时读到的 body.model。
+//
+// 调度门控与注入必须按同一个模型名判定门票。普通请求下二者同源：Forward 的
+// upstreamModel 与本函数都走 resolveOpenAIAccountUpstreamModelForRequest，且
+// Forward 会把 body.model 改写成该值后才注入。但 /responses/compact 例外——
+// Forward 会把出站模型进一步改写为 compact 映射或 gateway.openai_compact_model
+// （默认非空），此时若门控仍按客户端原始模型判定，就会把「实际出站是非门控
+// 模型、根本不需要票」的 compact 请求整片误拦成不可调度。
+func (s *OpenAIGatewayService) openAICodexTicketOutboundModel(account *Account, requestedModel string, requireCompact bool) string {
+	model := strings.TrimSpace(requestedModel)
+	if account == nil || model == "" {
+		return model
+	}
+	if !account.IsOpenAI() {
+		return canonicalOpenAIAccountSchedulingModel(account, model)
+	}
+	_, upstreamModel := resolveOpenAIForwardMappedModels(account, model, requireCompact)
+	if requireCompact {
+		// 与 Forward 同序：compact 兜底模型优先于普通/compact 映射结果。
+		if compactModel := strings.TrimSpace(s.resolveOpenAICompactFallbackModel(account, model)); compactModel != "" {
+			upstreamModel = compactModel
+		}
+	}
+	if upstreamModel = strings.TrimSpace(upstreamModel); upstreamModel != "" {
+		return upstreamModel
+	}
+	return model
+}
+
+// outboundModel 必须是真正会发给上游的模型名（openAICodexTicketOutboundModel），
+// 不是客户端原始模型：注入侧读的是出站 body.model，两侧口径必须一致。
+func (s *OpenAIGatewayService) openAICodexTicketBlocksAccount(account *Account, outboundModel string) bool {
 	if s == nil || !isOpenAICodexTicketAccount(account) || !s.openAICodexTicketEnabled() {
 		return false
 	}
@@ -317,7 +349,7 @@ func (s *OpenAIGatewayService) openAICodexTicketBlocksAccount(account *Account, 
 	if !cfg.FailClosed {
 		return false
 	}
-	model := normalizeOpenAICodexTicketModel(requestedModel)
+	model := normalizeOpenAICodexTicketModel(outboundModel)
 	if !s.openAICodexTicketGatedModel(model) {
 		return false
 	}
