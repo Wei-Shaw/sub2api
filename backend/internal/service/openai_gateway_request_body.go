@@ -927,6 +927,13 @@ func openAIRequestBodyHasTools(body []byte) bool {
 	if tools := gjson.GetBytes(body, "tools"); tools.IsArray() && len(tools.Array()) > 0 {
 		return true
 	}
+	return openAIRequestBodyHasAdditionalTools(body)
+}
+
+// openAIRequestBodyHasAdditionalTools 报告请求是否把工具声明放在
+// input[].additional_tools 条目上。这是 Codex Responses Lite 的形状：顶层没有
+// tools，工具声明挂在 input 的 additional_tools 条目里。
+func openAIRequestBodyHasAdditionalTools(body []byte) bool {
 	for _, item := range gjson.GetBytes(body, "input").Array() {
 		if strings.TrimSpace(item.Get("type").String()) != "additional_tools" {
 			continue

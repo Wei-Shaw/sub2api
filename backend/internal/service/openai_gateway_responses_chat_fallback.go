@@ -14,6 +14,8 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	"github.com/Wei-Shaw/sub2api/internal/util/responseheaders"
 	"github.com/gin-gonic/gin"
+	"github.com/tidwall/gjson"
+	"github.com/tidwall/sjson"
 	"go.uber.org/zap"
 )
 
@@ -90,6 +92,11 @@ func (s *OpenAIGatewayService) forwardResponsesViaRawChatCompletions(
 	// /v1/responses 降级到 raw CC 的出站与 forwardAsRawChatCompletions 共用同一个
 	// 独立 Ollama Cloud token 钩子；chatReq.Model 已是模型映射后的 upstreamModel。
 	chatBody = clampOllamaCloudUpstreamMaxTokens(account, chatBody)
+	// DeepSeek 的 /chat/completions 不接受 response_format=json_schema（400
+	// "This response_format type is unavailable now"）。Responses 的 text.format
+	// json_schema 经 chat 桥原样转成该字段，必须剔除；text / json_object 均可用，
+	// 保持原样。剔除后模型退回纯文本输出，Codex 不依赖结构化输出即可继续。
+	chatBody = stripDeepSeekUnsupportedChatResponseFormat(account, chatBody)
 	// Keep the final outbound tier for usage-time reconciliation. A policy
 	// filter that removes the field therefore leaves this nil.
 	serviceTier := extractOpenAIServiceTierFromBody(chatBody)
@@ -398,4 +405,23 @@ func (s *OpenAIGatewayService) setReasoningContent(itemID, content string) {
 			zap.String("item_id", itemID),
 		)
 	}
+}
+
+// stripDeepSeekUnsupportedChatResponseFormat 剔除 DeepSeek /chat/completions 不接受的
+// response_format。Responses 的 text.format=json_schema 经 chat 桥会被原样转成
+// response_format:{"type":"json_schema"}，而 DeepSeek 会直接 400
+// （This response_format type is unavailable now）。DeepSeek 接受 text 与 json_object，
+// 仅 json_schema 需移除；移除后模型退回纯文本输出，Codex 不依赖结构化输出即可继续。
+func stripDeepSeekUnsupportedChatResponseFormat(account *Account, chatBody []byte) []byte {
+	if !isDeepSeekResponsesUpstream(account) {
+		return chatBody
+	}
+	if strings.TrimSpace(gjson.GetBytes(chatBody, "response_format.type").String()) != "json_schema" {
+		return chatBody
+	}
+	updated, err := sjson.DeleteBytes(chatBody, "response_format")
+	if err != nil {
+		return chatBody
+	}
+	return updated
 }

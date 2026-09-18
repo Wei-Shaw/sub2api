@@ -560,15 +560,20 @@ func (s *OpenAIGatewayService) forwardDeepSeekResponses(
 
 	clearOpenAIResponsesClientToolMapping(c)
 	compactPath := isOpenAIResponsesCompactPath(c)
-	if !compactPath &&
-		(account.GetAPIProtocol() == APIProtocolResponses || account.IsAdaptiveAPIProtocol()) &&
-		needsOpenAIResponsesClientToolAdaptation(body) {
+	if shouldAdaptDeepSeekResponsesClientTools(account, body, compactPath) {
 		adaptedBody, mapping, adaptErr := adaptOpenAIResponsesClientTools(body)
 		if adaptErr != nil {
 			return nil, fmt.Errorf("adapt DeepSeek Responses client tools: %w", adaptErr)
 		}
 		body = adaptedBody
 		setOpenAIResponsesClientToolMapping(c, mapping)
+	}
+	// 上游 PR #7286：DeepSeek /responses 接受 input[].additional_tools 但静默忽略
+	// 其中的工具声明（Codex Responses Lite 形状），工具会退化为 DSML 文本。原生
+	// DeepSeek 账号在本 fork 经此函数早返、到不了通用 Forward 的改道路由，这里补上
+	// Lite→chat 改道。只用 Lite 判定：chat 协议账号保持既有行为。
+	if shouldForwardDeepSeekResponsesLiteViaChatCompletions(account, body) {
+		return s.forwardResponsesViaRawChatCompletions(ctx, c, account, body)
 	}
 
 	// 上游 PR #7283：DeepSeek 原生 Responses 在携带 tools 时严格校验历史——assistant
