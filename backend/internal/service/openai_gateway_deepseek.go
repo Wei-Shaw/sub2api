@@ -571,6 +571,21 @@ func (s *OpenAIGatewayService) forwardDeepSeekResponses(
 		setOpenAIResponsesClientToolMapping(c, mapping)
 	}
 
+	// 上游 PR #7283：DeepSeek 原生 Responses 在携带 tools 时严格校验历史——assistant
+	// 消息缺 reasoning 明文会被 400 拒绝（"reasoning_text ... must be passed back"），
+	// 被说明消息打断的调用块报找不到 tool 输出。先重排调用块再补 reasoning 占位
+	// （顺序不能反：补齐要基于规整后的历史）。本 fork 经 forwardDeepSeekResponses
+	// 早返，钩子放这里而非通用 Forward。
+	if !compactPath &&
+		(account.GetAPIProtocol() == APIProtocolResponses || account.IsAdaptiveAPIProtocol()) {
+		if reorderedBody, reordered := normalizeDeepSeekResponsesToolCallBlocks(body); reordered {
+			body = reorderedBody
+		}
+		if replayedBody, replayed := ensureDeepSeekResponsesReasoningPlaceholders(body, openAIRequestBodyHasTools(body)); replayed {
+			body = replayedBody
+		}
+	}
+
 	originalModel := strings.TrimSpace(gjson.GetBytes(body, "model").String())
 	if originalModel == "" {
 		return nil, fmt.Errorf("parse DeepSeek Responses request: model is required")
