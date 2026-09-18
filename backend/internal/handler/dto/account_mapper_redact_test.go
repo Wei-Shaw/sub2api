@@ -100,6 +100,7 @@ func TestAccountFromServiceShallow_RedactsCodexTurnTicketState(t *testing.T) {
 	src := &service.Account{
 		ID: 41, Platform: service.PlatformOpenAI, Type: service.AccountTypeOAuth,
 		Extra: map[string]any{
+			"codex_harvest_proxy_url": "http://user:legacy-proxy-secret@proxy.example.com:8080",
 			"codex_turn_ticket:gpt-6-astra": map[string]any{
 				"state":       blob,
 				"length":      292,
@@ -115,6 +116,9 @@ func TestAccountFromServiceShallow_RedactsCodexTurnTicketState(t *testing.T) {
 	raw, err := json.Marshal(got)
 	require.NoError(t, err)
 	require.NotContains(t, string(raw), blob)
+	require.NotContains(t, string(raw), "legacy-proxy-secret")
+	require.NotContains(t, got.Extra, "codex_harvest_proxy_url")
+	require.Contains(t, src.Extra, "codex_harvest_proxy_url")
 }
 
 func TestAccountFromServiceShallow_NilCredentialsOmitsStatus(t *testing.T) {
