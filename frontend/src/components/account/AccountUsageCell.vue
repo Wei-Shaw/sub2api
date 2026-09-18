@@ -126,7 +126,8 @@
         >
           <span class="truncate font-medium text-gray-500 dark:text-gray-400" :title="ticket.model">{{ shortCodexTicketModel(ticket.model) }}</span>
           <span v-if="ticket.ready" class="text-emerald-600 dark:text-emerald-400">{{ formatCodexTicketRemaining(ticket.remaining_seconds) }}</span>
-          <span v-else class="text-amber-600 dark:text-amber-400">{{ t('admin.accounts.openai.codexTurnTicketPaused') }}</span>
+          <span v-else-if="ticket.blocked" class="text-amber-600 dark:text-amber-400">{{ t('admin.accounts.openai.codexTurnTicketPaused') }}</span>
+          <span v-else class="text-gray-500">{{ t('admin.accounts.openai.codexTurnTicketMissing') }}</span>
         </div>
       </div>
       <div v-if="hasOpenAIUsageFallback" class="space-y-1">

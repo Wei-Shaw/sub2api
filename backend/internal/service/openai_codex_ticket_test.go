@@ -5,6 +5,8 @@ import (
 	"io"
 	"net/http"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -112,12 +114,13 @@ func TestLookupOpenAICodexTicket_PrefersNewerExtra(t *testing.T) {
 		CapturedAt: time.Now().Add(-30 * time.Minute),
 		ExpiresAt:  time.Now().Add(-time.Minute),
 	})
-	account.Extra[openAICodexTicketExtraKey("gpt-6-astra")] = &openAICodexTicket{
+	account.Extra = map[string]any{openAICodexTicketExtraKey("gpt-6-astra"): &openAICodexTicket{
 		Model:      "gpt-6-astra",
 		State:      newState,
 		Length:     292,
 		CapturedAt: time.Now(),
 		ExpiresAt:  time.Now().Add(time.Hour),
+	},
 	}
 	got := svc.lookupOpenAICodexTicket(account, "gpt-6-astra")
 	require.NotNil(t, got)
@@ -217,17 +220,17 @@ func TestHarvestOpenAICodexTicket_StopsAt292AndUsesHarvestProxy(t *testing.T) {
 		Enabled:                      true,
 		TargetLength:                 292,
 		TTLSeconds:                   3600,
-		HarvestMaxAttempts:           10,
-		HarvestFailStreak:            8,
 		HarvestProxyURL:              "socks5h://user:pass@harvest.example:31",
 		HarvestAttemptTimeoutSeconds: 5,
-		HarvestOverallTimeoutSeconds: 30,
 		FailClosed:                   true,
 	}, upstream)
 	account := ticketTestAccount(41)
 
-	ticket, err := svc.ensureOpenAICodexTicket(context.Background(), account, "gpt-6-astra", true)
-	require.NoError(t, err)
+	svc.probeOnceOpenAICodexTicket(context.Background(), account, "gpt-6-astra")
+	require.Nil(t, svc.lookupOpenAICodexTicket(account, "gpt-6-astra"))
+	svc.probeOnceOpenAICodexTicket(context.Background(), account, "gpt-6-astra")
+	ticket := svc.lookupOpenAICodexTicket(account, "gpt-6-astra")
+	require.NotNil(t, ticket)
 	require.Equal(t, state292, ticket.State)
 	h := http.Header{}
 	h.Set(openAICodexTurnStateHeader, "stale")
@@ -262,15 +265,16 @@ func TestHarvestOpenAICodexTicket_HTTP503DoesNotAbortHunt(t *testing.T) {
 		Enabled:                      true,
 		TargetLength:                 292,
 		TTLSeconds:                   3600,
-		HarvestMaxAttempts:           20,
-		HarvestFailStreak:            8,
 		HarvestProxyURL:              "socks5h://harvest.example:31",
 		HarvestAttemptTimeoutSeconds: 5,
-		HarvestOverallTimeoutSeconds: 30,
 		FailClosed:                   true,
 	}, upstream)
-	ticket, err := svc.ensureOpenAICodexTicket(context.Background(), ticketTestAccount(41), "gpt-6-astra", true)
-	require.NoError(t, err)
+	account := ticketTestAccount(41)
+	svc.probeOnceOpenAICodexTicket(context.Background(), account, "gpt-6-astra")
+	require.Nil(t, svc.lookupOpenAICodexTicket(account, "gpt-6-astra"))
+	svc.probeOnceOpenAICodexTicket(context.Background(), account, "gpt-6-astra")
+	ticket := svc.lookupOpenAICodexTicket(account, "gpt-6-astra")
+	require.NotNil(t, ticket)
 	require.Equal(t, state292, ticket.State)
 	require.Len(t, upstream.requests, 2)
 }
@@ -294,23 +298,6 @@ func TestLookupOpenAICodexTicket_HydratesFromExtra(t *testing.T) {
 	require.True(t, got.valid(time.Now(), 292))
 }
 
-func TestSanitizeOpenAICodexTicketExtraValue_StripsState(t *testing.T) {
-	blob := fakeCodexTicketState(292)
-	got := SanitizeOpenAICodexTicketExtraValue(map[string]any{
-		"state":       blob,
-		"length":      292,
-		"model":       "gpt-6-astra",
-		"captured_at": time.Now(),
-		"expires_at":  time.Now().Add(time.Hour),
-		"attempts":    2,
-	})
-	asMap, ok := got.(map[string]any)
-	require.True(t, ok)
-	require.NotContains(t, asMap, "state")
-	require.Equal(t, 292, asMap["length"])
-	require.Equal(t, "gpt-6-astra", asMap["model"])
-}
-
 func TestOpenAICodexTicketStatuses_ReportsRemainingTTL(t *testing.T) {
 	account := ticketTestAccount(41)
 	account.Extra = map[string]any{
@@ -323,7 +310,7 @@ func TestOpenAICodexTicketStatuses_ReportsRemainingTTL(t *testing.T) {
 		},
 	}
 	now := time.Now()
-	got := OpenAICodexTicketStatuses(account, nil, 292, now)
+	got := OpenAICodexTicketStatuses(account, config.OpenAICodexTicketConfig{Enabled: true, FailClosed: true}, now)
 	require.Len(t, got, 2)
 	require.Equal(t, "gpt-6-astra", got[0].Model)
 	require.True(t, got[0].Ready)
@@ -336,4 +323,98 @@ func TestOpenAICodexTicketStatuses_ReportsRemainingTTL(t *testing.T) {
 func TestExtractOpenAICodexTicketModel(t *testing.T) {
 	require.Equal(t, "gpt-6-astra", extractOpenAICodexTicketModel([]byte(`{"model":"gpt-6-astra"}`)))
 	require.Empty(t, extractOpenAICodexTicketModel([]byte(`{}`)))
+}
+
+// These stubs exercise the real continuous refresh path with both default models
+// completing together. Run under -race to catch writes to the shared account maps.
+type codexTicketRefreshRepo struct {
+	AccountRepository
+	accounts []Account
+	mu       sync.Mutex
+	updates  map[string]any
+}
+
+func (r *codexTicketRefreshRepo) ListByPlatform(context.Context, string) ([]Account, error) {
+	return r.accounts, nil
+}
+func (r *codexTicketRefreshRepo) UpdateExtra(_ context.Context, _ int64, updates map[string]any) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.updates == nil {
+		r.updates = make(map[string]any)
+	}
+	for k, v := range updates {
+		r.updates[k] = v
+	}
+	return nil
+}
+
+type codexTicketConcurrentUpstream struct {
+	HTTPUpstream
+	started atomic.Int64
+	ready   chan struct{}
+}
+
+func (u *codexTicketConcurrentUpstream) Do(req *http.Request, _ string, _ int64, _ int) (*http.Response, error) {
+	if u.started.Add(1) == 2 {
+		close(u.ready)
+	}
+	select {
+	case <-u.ready:
+	case <-req.Context().Done():
+		return nil, req.Context().Err()
+	}
+	h := http.Header{}
+	h.Set(openAICodexTurnStateHeader, fakeCodexTicketState(292))
+	return &http.Response{StatusCode: 200, Header: h, Body: io.NopCloser(strings.NewReader("data: {}\n\n"))}, nil
+}
+func TestRefreshOpenAICodexTickets_ConcurrentModelsPreserveAccountSnapshot(t *testing.T) {
+	account := ticketTestAccount(41)
+	account.Status = StatusActive
+	account.Extra = map[string]any{"existing": true}
+	repo := &codexTicketRefreshRepo{accounts: []Account{*account}}
+	upstream := &codexTicketConcurrentUpstream{ready: make(chan struct{})}
+	svc := ticketTestService(t, config.OpenAICodexTicketConfig{Enabled: true, HarvestProxyURL: "socks5h://proxy.example.com:1080"}, upstream)
+	svc.accountRepo = repo
+	svc.refreshOpenAICodexTickets(context.Background())
+	require.Equal(t, int64(2), upstream.started.Load())
+	require.Equal(t, map[string]any{"existing": true}, account.Extra)
+	require.Len(t, repo.updates, 2)
+	for _, model := range []string{openAICodexTicketDefaultModel, openAICodexTicketDefaultSolModel} {
+		ticket := svc.lookupOpenAICodexTicket(account, model)
+		require.NotNil(t, ticket)
+		require.True(t, ticket.valid(time.Now(), 292))
+	}
+	// Valid tickets do not produce another probe on the next cycle.
+	svc.refreshOpenAICodexTickets(context.Background())
+	require.Equal(t, int64(2), upstream.started.Load())
+}
+func TestOpenAICodexTicketStatuses_RespectRuntimeConfiguration(t *testing.T) {
+	account := ticketTestAccount(41)
+	require.Empty(t, OpenAICodexTicketStatuses(account, config.OpenAICodexTicketConfig{}, time.Now()))
+	cfg := config.OpenAICodexTicketConfig{Enabled: true, Models: []string{"custom-model"}}
+	status := OpenAICodexTicketStatuses(account, cfg, time.Now())
+	require.Len(t, status, 1)
+	require.Equal(t, "custom-model", status[0].Model)
+	require.False(t, status[0].Blocked)
+	cfg.FailClosed = true
+	require.True(t, OpenAICodexTicketStatuses(account, cfg, time.Now())[0].Blocked)
+}
+func TestProbeOpenAICodexTicket_RejectsInvalidState(t *testing.T) {
+	for _, state := range []string{fakeCodexTicketState(312), strings.Repeat("X", 292), ""} {
+		h := http.Header{}
+		h.Set(openAICodexTurnStateHeader, state)
+		upstream := &httpUpstreamRecorder{responses: []*http.Response{{StatusCode: 200, Header: h, Body: io.NopCloser(strings.NewReader(""))}}}
+		svc := ticketTestService(t, config.OpenAICodexTicketConfig{Enabled: true, HarvestProxyURL: "http://proxy.example.com:8080"}, upstream)
+		account := ticketTestAccount(41)
+		svc.probeOnceOpenAICodexTicket(context.Background(), account, "gpt-6-astra")
+		require.Nil(t, svc.lookupOpenAICodexTicket(account, "gpt-6-astra"))
+	}
+}
+func TestOpenAICodexTicket_RequiresActualLengthAndExpiry(t *testing.T) {
+	ticket := &openAICodexTicket{State: fakeCodexTicketState(312), Length: 292, ExpiresAt: time.Now().Add(time.Hour)}
+	require.False(t, ticket.valid(time.Now(), 292))
+	ticket.State = fakeCodexTicketState(292)
+	ticket.ExpiresAt = time.Time{}
+	require.False(t, ticket.valid(time.Now(), 292))
 }

@@ -1173,6 +1173,7 @@ export interface Account {
     length?: number
     ready: boolean
     remaining_seconds: number
+    blocked: boolean
     expires_at?: string
   }>
   // Extra fields including Codex usage, OpenAI compact capability, and model-level rate limits.
