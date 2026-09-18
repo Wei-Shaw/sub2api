@@ -1801,6 +1801,73 @@ func openAIGroupForcesFast(ctx context.Context, account *Account) bool {
 	return IsGroupContextValid(group) && groupSupportsOpenAIFast(group.Platform) && group.ForceOpenAIFast
 }
 
+// 账号级 fast 开关（accounts.extra.openai_fast_mode，Account.OpenAIFastMode）
+// 对 service_tier 的三种处置。
+const (
+	// openAIFastModeActionKeep 不干预：保持请求体现有的 service_tier（或字段缺失）。
+	openAIFastModeActionKeep = "keep"
+	// openAIFastModeActionDelete 删除 service_tier 字段，让上游走默认档。
+	openAIFastModeActionDelete = "delete"
+	// openAIFastModeActionSet 把 service_tier 写成 tier。
+	openAIFastModeActionSet = "set"
+)
+
+// resolveOpenAIFastModeAction 是账号级 fast 开关的纯函数核心：HTTP body 版
+// （applyOpenAIFastPolicyToBody）、Forward 内联 patch 版、WS frame 版三个
+// 生效点共用它，避免同一套语义在三份实现里漂移。
+//
+// 入参：
+//   - mode：Account.OpenAIFastMode() 的返回值（"" / OpenAIFastModeForce / OpenAIFastModeOff）
+//   - rawTier：客户端请求体里的原始 service_tier（未归一化；字段缺失为 ""）
+//
+// 返回 (action, tier)：keep / delete / set（set 时 tier 为要写入的档位）。
+//
+// 语义：
+//   - ""（跟随）：恒 keep，调用方继续执行原有分组级 force 与全局策略逻辑。
+//   - off：无条件 delete，客户端传 fast/priority/ultrafast 还是别的值都删。
+//   - force：至少开 fast，且不做模型能力判定——管理员配了 force 就必须看到
+//     service_tier 被写入（白名单外模型、自定义上游模型名同样生效）。客户端
+//     原始 tier 归一化后已是 ultrafast 时保留 ultrafast（force 是「至少开
+//     fast」，不把用户已选的更高档降级）；其余一切情况写 priority。
+//
+// 全局策略的 block 不经过本函数：block 优先级最高且账号级不可绕过，由调用方
+// 先行判定并返回 403。
+func resolveOpenAIFastModeAction(mode, rawTier string) (action, tier string) {
+	switch mode {
+	case OpenAIFastModeOff:
+		return openAIFastModeActionDelete, ""
+	case OpenAIFastModeForce:
+		if normalizedOpenAIServiceTierValue(rawTier) == OpenAIFastTierUltrafast {
+			return openAIFastModeActionSet, OpenAIFastTierUltrafast
+		}
+		return openAIFastModeActionSet, OpenAIFastTierPriority
+	default:
+		return openAIFastModeActionKeep, ""
+	}
+}
+
+// applyOpenAIFastModeToJSONBody 把 resolveOpenAIFastModeAction 的判定落到以
+// sjson 字节切片表示的 JSON 体上（HTTP 请求体 / WS response.create 帧）。
+// delete 复用 filter 动作的删字段做法；字段不存在时 sjson 原样返回 body。
+func applyOpenAIFastModeToJSONBody(body []byte, action, tier string) ([]byte, error) {
+	switch action {
+	case openAIFastModeActionDelete:
+		trimmed, err := sjson.DeleteBytes(body, "service_tier")
+		if err != nil {
+			return body, fmt.Errorf("strip service_tier for account fast mode off: %w", err)
+		}
+		return trimmed, nil
+	case openAIFastModeActionSet:
+		updated, err := sjson.SetBytes(body, "service_tier", tier)
+		if err != nil {
+			return body, fmt.Errorf("force service_tier %s for account fast mode: %w", tier, err)
+		}
+		return updated, nil
+	default:
+		return body, nil
+	}
+}
+
 // applyOpenAIFastPolicyToBody applies the OpenAI fast policy to a raw request
 // body. When action=filter it removes the service_tier field; when
 // action=block it returns (body, *OpenAIFastBlockedError). On pass it
@@ -1811,6 +1878,12 @@ func openAIGroupForcesFast(ctx context.Context, account *Account) bool {
 // The global policy remains authoritative and may still pass, filter, or block
 // that final value.
 //
+// 账号级开关（Account.OpenAIFastMode）参与后的优先级：全局策略的 block 最高，
+// 账号级不可绕过；账号级 force/off 覆盖分组级 ForceOpenAIFast、全局策略的
+// filter / force_priority / pass，以及客户端自己带的值；账号级返回 ""（跟随）
+// 时本函数行为与此前完全一致。判定逻辑收敛在纯函数
+// resolveOpenAIFastModeAction，与 Forward 内联 patch 版、WS frame 版共用。
+//
 // Rationale for normalize-on-pass: chat-completions / messages 入口在调用本
 // 函数之前已经通过 normalizeResponsesBodyServiceTier 把 service_tier 归一化
 // 到了上游可识别值；passthrough（OpenAI 自动透传） / native /responses 等
@@ -1820,6 +1893,10 @@ func (s *OpenAIGatewayService) applyOpenAIFastPolicyToBody(ctx context.Context, 
 	if len(body) == 0 {
 		return body, nil
 	}
+	// 账号级 force 的 ultrafast 保留例外判定的是「客户端原本传的」tier，
+	// 必须在分组级 force 把 body 改写成 priority 之前读取。
+	clientTier := gjson.GetBytes(body, "service_tier").String()
+	fastMode := account.OpenAIFastMode()
 	if openAIGroupForcesFast(ctx, account) {
 		updated, err := sjson.SetBytes(body, "service_tier", OpenAIFastTierPriority)
 		if err != nil {
@@ -1829,6 +1906,12 @@ func (s *OpenAIGatewayService) applyOpenAIFastPolicyToBody(ctx context.Context, 
 	}
 	rawTier := gjson.GetBytes(body, "service_tier").String()
 	if rawTier == "" {
+		// 账号级表态覆盖全局策略针对 missing tier 的 force_priority（该场景
+		// 不产生 block，见 evaluateOpenAIFastPolicy 的调用点）。
+		if fastMode != "" {
+			action, tier := resolveOpenAIFastModeAction(fastMode, clientTier)
+			return applyOpenAIFastModeToJSONBody(body, action, tier)
+		}
 		if s.shouldForceOpenAIFastPriorityForMissingTier(ctx, account, model) {
 			updated, err := sjson.SetBytes(body, "service_tier", OpenAIFastTierPriority)
 			if err != nil {
@@ -1840,16 +1923,27 @@ func (s *OpenAIGatewayService) applyOpenAIFastPolicyToBody(ctx context.Context, 
 	}
 	normTier := normalizedOpenAIServiceTierValue(rawTier)
 	if normTier == "" {
+		// 未识别的 tier 原本原样透传（不评估策略）；账号级表态仍要覆盖它。
+		if fastMode != "" {
+			action, tier := resolveOpenAIFastModeAction(fastMode, clientTier)
+			return applyOpenAIFastModeToJSONBody(body, action, tier)
+		}
 		return body, nil
 	}
 	action, errMsg := s.evaluateOpenAIFastPolicy(ctx, account, model, normTier)
-	switch action {
-	case BetaPolicyActionBlock:
+	if action == BetaPolicyActionBlock {
 		msg := errMsg
 		if msg == "" {
 			msg = fmt.Sprintf("openai service_tier=%s is not allowed for model %s", normTier, model)
 		}
 		return body, &OpenAIFastBlockedError{Message: msg}
+	}
+	if fastMode != "" {
+		// 账号级表态覆盖 filter / force_priority / pass 与客户端自带的值。
+		modeAction, modeTier := resolveOpenAIFastModeAction(fastMode, clientTier)
+		return applyOpenAIFastModeToJSONBody(body, modeAction, modeTier)
+	}
+	switch action {
 	case BetaPolicyActionFilter:
 		trimmed, err := sjson.DeleteBytes(body, "service_tier")
 		if err != nil {
@@ -1908,6 +2002,10 @@ func writeOpenAIFastPolicyBlockedResponse(c *gin.Context, err *OpenAIFastBlocked
 //   - force_priority: keeps service_tier and rewrites it to "priority"
 //   - block: returns (frame, *OpenAIFastBlockedError)
 //   - Group ForceOpenAIFast: sets priority first, then applies the global rule
+//   - Account.OpenAIFastMode force/off: overrides everything above except block
+//
+// 账号级开关的优先级与 HTTP body 版一致（见 applyOpenAIFastPolicyToBody），
+// 判定同样走纯函数 resolveOpenAIFastModeAction；block 仍最高且不可绕过。
 //
 // Only frames whose "type" field strictly equals "response.create" are
 // inspected/mutated. Any other frame type — including the empty string —
@@ -1946,6 +2044,10 @@ func (s *OpenAIGatewayService) applyOpenAIFastPolicyToWSResponseCreate(
 	if frameType != "response.create" {
 		return frame, nil, nil
 	}
+	// 账号级 force 的 ultrafast 保留例外判定的是客户端原本传的 tier，
+	// 必须在分组级 force 改写 frame 之前读取。
+	clientTier := gjson.GetBytes(frame, "service_tier").String()
+	fastMode := account.OpenAIFastMode()
 	if openAIGroupForcesFast(ctx, account) {
 		updated, err := sjson.SetBytes(frame, "service_tier", OpenAIFastTierPriority)
 		if err != nil {
@@ -1953,8 +2055,21 @@ func (s *OpenAIGatewayService) applyOpenAIFastPolicyToWSResponseCreate(
 		}
 		frame = updated
 	}
+	// applyAccountFastMode 是三个生效点里本函数与 HTTP body 版共用的落盘路径：
+	// 只处理账号级判定结果，原有分支保持不动。
+	applyAccountFastMode := func() ([]byte, *OpenAIFastBlockedError, error) {
+		action, tier := resolveOpenAIFastModeAction(fastMode, clientTier)
+		updated, err := applyOpenAIFastModeToJSONBody(frame, action, tier)
+		if err != nil {
+			return frame, nil, err
+		}
+		return updated, nil, nil
+	}
 	rawTier := gjson.GetBytes(frame, "service_tier").String()
 	if rawTier == "" {
+		if fastMode != "" {
+			return applyAccountFastMode()
+		}
 		if s.shouldForceOpenAIFastPriorityForMissingTier(ctx, account, model) {
 			updated, err := sjson.SetBytes(frame, "service_tier", OpenAIFastTierPriority)
 			if err != nil {
@@ -1966,16 +2081,25 @@ func (s *OpenAIGatewayService) applyOpenAIFastPolicyToWSResponseCreate(
 	}
 	normTier := normalizedOpenAIServiceTierValue(rawTier)
 	if normTier == "" {
+		// 未识别的 tier 原本原样透传（不评估策略）；账号级表态仍要覆盖它。
+		if fastMode != "" {
+			return applyAccountFastMode()
+		}
 		return frame, nil, nil
 	}
 	action, errMsg := s.evaluateOpenAIFastPolicy(ctx, account, model, normTier)
-	switch action {
-	case BetaPolicyActionBlock:
+	if action == BetaPolicyActionBlock {
 		msg := errMsg
 		if msg == "" {
 			msg = fmt.Sprintf("openai service_tier=%s is not allowed for model %s", normTier, model)
 		}
 		return frame, &OpenAIFastBlockedError{Message: msg}, nil
+	}
+	if fastMode != "" {
+		// 账号级表态覆盖 filter / force_priority / pass 与客户端自带的值。
+		return applyAccountFastMode()
+	}
+	switch action {
 	case BetaPolicyActionFilter:
 		trimmed, err := sjson.DeleteBytes(frame, "service_tier")
 		if err != nil {

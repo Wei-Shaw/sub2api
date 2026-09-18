@@ -320,6 +320,9 @@ func (s *adminServiceImpl) DuplicateAccount(ctx context.Context, id int64, actor
 	if err != nil {
 		return nil, fmt.Errorf("normalize duplicate account extra: %w", err)
 	}
+	if err := ValidateOpenAIFastModeExtra(input.Platform, accountExtra); err != nil {
+		return nil, fmt.Errorf("validate duplicate account extra: %w", err)
+	}
 	if err := NormalizeHeaderOverrideCredentials(input.Credentials); err != nil {
 		return nil, err
 	}
@@ -371,6 +374,32 @@ func ValidateOpenAILongContextBillingExtra(platform string, extra map[string]any
 		)
 	}
 	return nil
+}
+
+// ValidateOpenAIFastModeExtra validates the OpenAI account fast mode flag when present.
+func ValidateOpenAIFastModeExtra(platform string, extra map[string]any) error {
+	if platform != PlatformOpenAI {
+		return nil
+	}
+	raw, exists := extra[OpenAIFastModeExtraKey]
+	if !exists {
+		return nil
+	}
+	value, ok := raw.(string)
+	if !ok {
+		return infraerrors.BadRequest(
+			"OPENAI_FAST_MODE_INVALID",
+			"openai_fast_mode must be one of: \"\", \"force\", \"off\"",
+		)
+	}
+	switch strings.ToLower(strings.TrimSpace(value)) {
+	case "", OpenAIFastModeForce, OpenAIFastModeOff:
+		return nil
+	}
+	return infraerrors.BadRequest(
+		"OPENAI_FAST_MODE_INVALID",
+		"openai_fast_mode must be one of: \"\", \"force\", \"off\"",
+	)
 }
 
 func normalizeOpenAILongContextBillingExtra(platform string, extra map[string]any) (map[string]any, error) {
@@ -486,6 +515,9 @@ func (s *adminServiceImpl) CreateAccount(ctx context.Context, input *CreateAccou
 	if err != nil {
 		return nil, err
 	}
+	if err := ValidateOpenAIFastModeExtra(input.Platform, accountExtra); err != nil {
+		return nil, err
+	}
 	if err := ValidateUpstreamRequestIDHeaderExtra(accountExtra); err != nil {
 		return nil, err
 	}
@@ -578,6 +610,9 @@ func (s *adminServiceImpl) UpdateAccount(ctx context.Context, id int64, input *U
 	if input.Extra != nil {
 		normalizedExtra, err = normalizeOpenAILongContextBillingUpdateExtra(account, input)
 		if err != nil {
+			return nil, err
+		}
+		if err := ValidateOpenAIFastModeExtra(account.Platform, input.Extra); err != nil {
 			return nil, err
 		}
 		normalizedExtra, err = normalizeGrokMediaEligibilityUpdateExtra(account, input, normalizedExtra)
@@ -916,6 +951,15 @@ func (s *adminServiceImpl) UpdateAccountExtra(ctx context.Context, id int64, upd
 			return err
 		}
 		if err := ValidateOpenAILongContextBillingExtra(account.Platform, updates); err != nil {
+			return err
+		}
+	}
+	if _, exists := updates[OpenAIFastModeExtraKey]; exists {
+		account, err := s.accountRepo.GetByID(ctx, id)
+		if err != nil {
+			return err
+		}
+		if err := ValidateOpenAIFastModeExtra(account.Platform, updates); err != nil {
 			return err
 		}
 	}

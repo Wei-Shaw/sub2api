@@ -1769,6 +1769,25 @@
         </div>
       </div>
 
+      <!-- OpenAI Fast 模式三态（跟随请求/强制开启/强制关闭） -->
+      <div
+        v-if="account?.platform === 'openai' && (account?.type === 'oauth' || account?.type === 'setup-token' || account?.type === 'apikey')"
+        data-testid="edit-openai-fast-mode"
+        class="border-t border-gray-200 pt-4 dark:border-dark-600"
+      >
+        <div class="flex items-center justify-between gap-4">
+          <div>
+            <label class="input-label mb-0">{{ t('admin.accounts.openai.fastMode') }}</label>
+            <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+              {{ t('admin.accounts.openai.fastModeDesc') }}
+            </p>
+          </div>
+          <div class="w-44">
+            <Select v-model="openaiFastMode" :options="openAIFastModeOptions" />
+          </div>
+        </div>
+      </div>
+
       <!-- OpenAI Codex namespace 工具摊平（兼容开关，仅 OAuth） -->
       <div
         v-if="account?.platform === 'openai' && account?.type === 'oauth'"
@@ -3512,6 +3531,9 @@ const customBaseUrl = ref('')
 
 // OpenAI 自动透传开关（OAuth/API Key）
 const openaiPassthroughEnabled = ref(false)
+// OpenAI Fast 模式三态：follow 为默认值，提交时不落键（跟随请求）
+type OpenAIFastMode = 'follow' | 'force' | 'off'
+const openaiFastMode = ref<OpenAIFastMode>('follow')
 // OpenAI Codex namespace 工具摊平兼容开关（仅 OAuth），缺省关闭即原样保留
 const openaiFlattenNamespacesEnabled = ref(false)
 const openAILongContextBillingEnabled = ref(false)
@@ -3655,6 +3677,11 @@ const openAICompactModeOptions = computed(() => [
   { value: 'auto', label: t('admin.accounts.openai.compactModeAuto') },
   { value: 'force_on', label: t('admin.accounts.openai.compactModeForceOn') },
   { value: 'force_off', label: t('admin.accounts.openai.compactModeForceOff') }
+])
+const openAIFastModeOptions = computed(() => [
+  { value: 'follow', label: t('admin.accounts.openai.fastModeFollow') },
+  { value: 'force', label: t('admin.accounts.openai.fastModeForce') },
+  { value: 'off', label: t('admin.accounts.openai.fastModeOff') }
 ])
 // OpenAI 订阅档位手动覆盖选项(清空 + Plus/Pro/Free;别名/自定义值友好显示且保留 canonical)
 const planTypeOptions = computed(() =>
@@ -3999,6 +4026,7 @@ const syncFormFromAccount = (newAccount: Account | null) => {
 
   // Load OpenAI passthrough toggle (OpenAI OAuth/SetupToken/API Key)
   openaiPassthroughEnabled.value = false
+  openaiFastMode.value = 'follow'
   openaiFlattenNamespacesEnabled.value = false
   openAILongContextBillingEnabled.value = false
   editPlanType.value = ''
@@ -4017,6 +4045,8 @@ const syncFormFromAccount = (newAccount: Account | null) => {
   webSearchEmulationMode.value = 'default'
   if (newAccount.platform === 'openai' && (newAccount.type === 'oauth' || newAccount.type === 'setup-token' || newAccount.type === 'apikey')) {
     openaiPassthroughEnabled.value = extra?.openai_passthrough === true || extra?.openai_oauth_passthrough === true
+    const fastModeValue = extra?.openai_fast_mode
+    openaiFastMode.value = fastModeValue === 'force' || fastModeValue === 'off' ? fastModeValue : 'follow'
     openaiFlattenNamespacesEnabled.value =
       newAccount.type === 'oauth' && extra?.openai_responses_flatten_namespaces === true
     const longContextBillingValue = extra?.openai_long_context_billing_enabled
@@ -5505,6 +5535,12 @@ const handleSubmit = async () => {
       } else {
         delete newExtra.openai_passthrough
         delete newExtra.openai_oauth_passthrough
+      }
+      // Fast 模式缺省即跟随请求，跟随时不落键
+      if (openaiFastMode.value === 'follow') {
+        delete newExtra.openai_fast_mode
+      } else {
+        newExtra.openai_fast_mode = openaiFastMode.value
       }
       // 缺省即保留 namespace，不写空值，避免 extra 里堆积默认项
       if (props.account.type === 'oauth' && openaiFlattenNamespacesEnabled.value) {

@@ -88,6 +88,18 @@ type OpenAIEndpointCapability string
 
 const openAILongContextBillingEnabledKey = "openai_long_context_billing_enabled"
 
+// OpenAIFastModeExtraKey 是账号级 OpenAI Fast 开关在 accounts.extra 中的键名。
+// 取值见 OpenAIFastModeForce / OpenAIFastModeOff；键缺失或空字符串表示跟随现状。
+const OpenAIFastModeExtraKey = "openai_fast_mode"
+
+// 账号级 OpenAI Fast 模式的合法取值。
+const (
+	// OpenAIFastModeForce 强制开启 fast（上游 service_tier 归一化为 priority）。
+	OpenAIFastModeForce = "force"
+	// OpenAIFastModeOff 强制关闭 fast。
+	OpenAIFastModeOff = "off"
+)
+
 const (
 	OpenAIEndpointCapabilityChatCompletions OpenAIEndpointCapability = "chat_completions"
 	OpenAIEndpointCapabilityEmbeddings      OpenAIEndpointCapability = "embeddings"
@@ -2100,6 +2112,31 @@ func (a *Account) IsOpenAIPassthroughEnabled() bool {
 		return enabled
 	}
 	return false
+}
+
+// OpenAIFastMode 返回 OpenAI 账号的账号级 fast 模式。
+//
+// 字段：accounts.extra.openai_fast_mode。
+// 返回 "force"（强制开 fast）/ "off"（强制关 fast）；字段缺失、空值或无法识别时返回 ""（跟随现状）。
+// 非 openai 平台账号恒返回 ""。大小写与首尾空白会被忽略。
+func (a *Account) OpenAIFastMode() string {
+	if a == nil || a.Platform != PlatformOpenAI || a.Extra == nil {
+		return ""
+	}
+	raw, ok := a.Extra[OpenAIFastModeExtraKey]
+	if !ok {
+		return ""
+	}
+	value, ok := raw.(string)
+	if !ok {
+		return ""
+	}
+	switch mode := strings.ToLower(strings.TrimSpace(value)); mode {
+	case OpenAIFastModeForce, OpenAIFastModeOff:
+		return mode
+	default:
+		return ""
+	}
 }
 
 // IsOpenAIResponsesWebSocketV2Enabled 返回 OpenAI 账号是否开启 Responses WebSocket v2。

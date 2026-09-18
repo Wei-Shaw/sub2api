@@ -651,6 +651,9 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 	}
 
 	rawTier := requestView.ServiceTier
+	// 账号级开关（Account.OpenAIFastMode）；判定用客户端原始 tier，见下方
+	// resolveOpenAIFastModeAction 的调用点。
+	fastMode := account.OpenAIFastMode()
 	if openAIGroupForcesFast(ctx, account) {
 		rawTier = OpenAIFastTierPriority
 		if requestView.ServiceTier != OpenAIFastTierPriority {
@@ -660,8 +663,9 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 	if rawTier != "" {
 		if normTier := normalizedOpenAIServiceTierValue(rawTier); normTier != "" {
 			action, errMsg := s.evaluateOpenAIFastPolicy(ctx, account, upstreamModel, normTier)
-			switch action {
-			case BetaPolicyActionBlock:
+			if action == BetaPolicyActionBlock {
+				// 全局策略 block 最高，账号级开关不可绕过，因此无论账号级
+				// 表态如何都在此直接 403。
 				msg := errMsg
 				if msg == "" {
 					msg = fmt.Sprintf("openai service_tier=%s is not allowed for model %s", normTier, upstreamModel)
@@ -669,19 +673,40 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 				blocked := &OpenAIFastBlockedError{Message: msg}
 				writeOpenAIFastPolicyBlockedResponse(c, blocked)
 				return nil, blocked
-			case BetaPolicyActionFilter:
-				markPatchDelete("service_tier")
-			case OpenAIFastPolicyActionForcePriority:
-				if rawTier != OpenAIFastTierPriority {
-					markPatchSet("service_tier", OpenAIFastTierPriority)
-				}
-			default:
-				if normTier != rawTier {
-					markPatchSet("service_tier", normTier)
+			}
+			if fastMode == "" {
+				switch action {
+				case BetaPolicyActionFilter:
+					markPatchDelete("service_tier")
+				case OpenAIFastPolicyActionForcePriority:
+					if rawTier != OpenAIFastTierPriority {
+						markPatchSet("service_tier", OpenAIFastTierPriority)
+					}
+				default:
+					if normTier != rawTier {
+						markPatchSet("service_tier", normTier)
+					}
 				}
 			}
 		}
-	} else if s.shouldForceOpenAIFastPriorityForMissingTier(ctx, account, upstreamModel) {
+	}
+	if fastMode != "" {
+		// 账号级 force/off 覆盖分组级 ForceOpenAIFast 与全局策略的其余动作
+		// （block 已在上方返回），也覆盖客户端自己带的值。
+		switch modeAction, modeTier := resolveOpenAIFastModeAction(fastMode, requestView.ServiceTier); modeAction {
+		case openAIFastModeActionDelete:
+			// 必须无条件删除：requestView.ServiceTier 是客户端原始值，分组级
+			// ForceOpenAIFast 只 markPatchSet（不写回 requestView），因此客户端
+			// 未带 service_tier 时该值为空；用非空守卫会漏删分组级刚设置的
+			// priority。patch 按顺序应用，delete 覆盖先前的同名 set；字段本就不
+			// 存在时 sjson.DeleteBytes 原样返回 body 且不报错。
+			markPatchDelete("service_tier")
+		case openAIFastModeActionSet:
+			if rawTier != modeTier {
+				markPatchSet("service_tier", modeTier)
+			}
+		}
+	} else if rawTier == "" && s.shouldForceOpenAIFastPriorityForMissingTier(ctx, account, upstreamModel) {
 		markPatchSet("service_tier", OpenAIFastTierPriority)
 	}
 

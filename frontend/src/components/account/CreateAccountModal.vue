@@ -3089,6 +3089,25 @@
         </div>
       </div>
 
+      <!-- OpenAI Fast 模式三态（跟随请求/强制开启/强制关闭） -->
+      <div
+        v-if="form.platform === 'openai'"
+        data-testid="create-openai-fast-mode"
+        class="border-t border-gray-200 pt-4 dark:border-dark-600"
+      >
+        <div class="flex items-center justify-between gap-4">
+          <div>
+            <label class="input-label mb-0">{{ t('admin.accounts.openai.fastMode') }}</label>
+            <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+              {{ t('admin.accounts.openai.fastModeDesc') }}
+            </p>
+          </div>
+          <div class="w-44">
+            <Select v-model="openaiFastMode" :options="openAIFastModeOptions" />
+          </div>
+        </div>
+      </div>
+
       <!-- OpenAI Codex namespace 工具摊平（兼容开关，仅 OAuth） -->
       <div
         v-if="form.platform === 'openai' && form.type === 'oauth'"
@@ -4425,6 +4444,9 @@ const applyGrokOAuthUpstreamConfig = (credentials: Record<string, unknown>) => {
 const interceptWarmupRequests = ref(false)
 const autoPauseOnExpired = ref(true)
 const openaiPassthroughEnabled = ref(false)
+// OpenAI Fast 模式三态：follow 为默认值，提交时不落键（跟随请求）
+type OpenAIFastMode = 'follow' | 'force' | 'off'
+const openaiFastMode = ref<OpenAIFastMode>('follow')
 // OpenAI Codex namespace 工具摊平兼容开关（仅 OAuth），缺省关闭即原样保留
 const openaiFlattenNamespacesEnabled = ref(false)
 const openAILongContextBillingEnabled = ref(false)
@@ -4507,6 +4529,11 @@ const openAICompactModeOptions = computed(() => [
   { value: 'auto', label: t('admin.accounts.openai.compactModeAuto') },
   { value: 'force_on', label: t('admin.accounts.openai.compactModeForceOn') },
   { value: 'force_off', label: t('admin.accounts.openai.compactModeForceOff') }
+])
+const openAIFastModeOptions = computed(() => [
+  { value: 'follow', label: t('admin.accounts.openai.fastModeFollow') },
+  { value: 'force', label: t('admin.accounts.openai.fastModeForce') },
+  { value: 'off', label: t('admin.accounts.openai.fastModeOff') }
 ])
 const openAIResponsesModeOptions = computed(() => [
   { value: 'auto', label: t('admin.accounts.openai.responsesModeAuto') },
@@ -4896,6 +4923,7 @@ watch(
     }
     if (newPlatform !== 'openai') {
       openaiPassthroughEnabled.value = false
+      openaiFastMode.value = 'follow'
       openaiFlattenNamespacesEnabled.value = false
       openAIEndpointCapabilities.value = ['chat_completions', 'embeddings']
       openaiOAuthResponsesWebSocketV2Mode.value = OPENAI_WS_MODE_OFF
@@ -5349,6 +5377,7 @@ const resetForm = () => {
   interceptWarmupRequests.value = false
   autoPauseOnExpired.value = true
   openaiPassthroughEnabled.value = false
+  openaiFastMode.value = 'follow'
   openaiFlattenNamespacesEnabled.value = false
   openAILongContextBillingEnabled.value = false
   openAILongContextBillingTouched.value = false
@@ -5435,6 +5464,12 @@ const buildOpenAIExtra = (base?: Record<string, unknown>): Record<string, unknow
   } else {
     delete extra.openai_passthrough
     delete extra.openai_oauth_passthrough
+  }
+  // Fast 模式缺省即跟随请求，不落键，避免 extra 里堆积默认项
+  if (openaiFastMode.value === 'follow') {
+    delete extra.openai_fast_mode
+  } else {
+    extra.openai_fast_mode = openaiFastMode.value
   }
   // 缺省即保留 namespace，不写空值，避免 extra 里堆积默认项
   if (form.type === 'oauth' && openaiFlattenNamespacesEnabled.value) {
