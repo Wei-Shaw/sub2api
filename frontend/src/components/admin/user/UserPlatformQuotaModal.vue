@@ -43,8 +43,8 @@
                   <button
                     type="button"
                     class="text-xs text-gray-400 hover:text-amber-500 disabled:opacity-50"
-                    :disabled="!!resetting[`${row.platform}.daily`]"
-                    :title="t('admin.users.platformQuota.reset.button')"
+                    :disabled="!!resetting[`${row.platform}.daily`] || !savedConfigured.has(row.platform)"
+                    :title="t(savedConfigured.has(row.platform) ? 'admin.users.platformQuota.reset.button' : 'admin.users.platformQuota.reset.unavailable')"
                     @click="onReset(row.platform, 'daily')"
                   >↻</button>
                 </div>
@@ -62,8 +62,8 @@
                   <button
                     type="button"
                     class="text-xs text-gray-400 hover:text-amber-500 disabled:opacity-50"
-                    :disabled="!!resetting[`${row.platform}.weekly`]"
-                    :title="t('admin.users.platformQuota.reset.button')"
+                    :disabled="!!resetting[`${row.platform}.weekly`] || !savedConfigured.has(row.platform)"
+                    :title="t(savedConfigured.has(row.platform) ? 'admin.users.platformQuota.reset.button' : 'admin.users.platformQuota.reset.unavailable')"
                     @click="onReset(row.platform, 'weekly')"
                   >↻</button>
                 </div>
@@ -81,8 +81,8 @@
                   <button
                     type="button"
                     class="text-xs text-gray-400 hover:text-amber-500 disabled:opacity-50"
-                    :disabled="!!resetting[`${row.platform}.monthly`]"
-                    :title="t('admin.users.platformQuota.reset.button')"
+                    :disabled="!!resetting[`${row.platform}.monthly`] || !savedConfigured.has(row.platform)"
+                    :title="t(savedConfigured.has(row.platform) ? 'admin.users.platformQuota.reset.button' : 'admin.users.platformQuota.reset.unavailable')"
                     @click="onReset(row.platform, 'monthly')"
                   >↻</button>
                 </div>
@@ -148,6 +148,18 @@ const loading = ref(false)
 const submitting = ref(false)
 const resetting = reactive<Record<string, boolean>>({})
 const quotas = ref<QuotaRow[]>([])
+// 已保存且至少配置了一档限额的平台。只有这些平台在后端有配额记录，重置用量窗口才有对象。
+const savedConfigured = ref<Set<PlatformQuotaPlatform>>(new Set())
+
+function configuredPlatforms(items: PlatformQuotaItem[]): Set<PlatformQuotaPlatform> {
+  const out = new Set<PlatformQuotaPlatform>()
+  for (const it of items) {
+    if (it.daily_limit_usd != null || it.weekly_limit_usd != null || it.monthly_limit_usd != null) {
+      out.add(it.platform)
+    }
+  }
+  return out
+}
 
 function emptyRow(p: PlatformQuotaPlatform): QuotaRow {
   return {
@@ -190,9 +202,11 @@ async function load() {
   try {
     const data = await adminAPI.users.getPlatformQuotas(props.user.id)
     quotas.value = normalize(data.platform_quotas || [])
+    savedConfigured.value = configuredPlatforms(data.platform_quotas || [])
   } catch {
     appStore.showError(t('admin.users.platformQuota.loadFailed'))
     quotas.value = PLATFORMS.map(emptyRow)
+    savedConfigured.value = new Set()
   } finally {
     loading.value = false
   }
@@ -217,14 +231,12 @@ function onClearAll() {
 
 async function onSave() {
   if (!props.user) return
-  // 校验所有 input：v-model.number 在用户输入"0."等中间状态时会写回 NaN，
-  // 之前的 normalizeLimit(NaN) 静默返回 null（"无限制"），把"有限额"配置悄悄改成"无限制"。
-  // 这里在 save 前显式检测 NaN，提示用户修正后再提交。
+  // 拒绝非法数值，避免 normalizeLimit 将其静默转换为 null（无限额）。
   const invalid: string[] = []
   for (const row of quotas.value) {
     for (const win of ['daily', 'weekly', 'monthly'] as const) {
       const v = row[`${win}_limit_usd` as const]
-      if (typeof v === 'number' && Number.isNaN(v)) {
+      if (typeof v === 'number' && (!Number.isFinite(v) || v < 0)) {
         invalid.push(`${row.platform}.${win}`)
       }
     }
@@ -254,7 +266,7 @@ async function onSave() {
 }
 
 // 仅在合法输入下返回数字：null/undefined/NaN/±Inf/负数 → null（视为"无限额"）。
-// 调用方负责在 NaN 路径上做单独的用户提示（见 onSave）。
+// 调用方在保存前拦截非法数值（见 onSave）。
 function normalizeLimit(v: number | null | undefined): number | null {
   if (v === null || v === undefined) return null
   if (typeof v === 'number' && Number.isFinite(v) && v >= 0) return v
@@ -273,6 +285,7 @@ async function onReset(platform: PlatformQuotaPlatform, quotaWindow: PlatformQuo
   try {
     const data = await adminAPI.users.resetPlatformQuotaWindow(props.user.id, platform, quotaWindow)
     quotas.value = normalize(data.platform_quotas || [])
+    savedConfigured.value = configuredPlatforms(data.platform_quotas || [])
     appStore.showSuccess(t('admin.users.platformQuota.reset.success', { platform, window: windowLabel }))
   } catch (e: any) {
     appStore.showError(e?.response?.data?.message || t('admin.users.platformQuota.reset.failed'))

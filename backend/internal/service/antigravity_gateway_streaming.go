@@ -288,6 +288,14 @@ func (s *AntigravityGatewayService) handleGeminiStreamingResponse(c *gin.Context
 				continue
 			}
 
+			// 上游每个 data 事件后面跟一个空行作为事件分隔。上面已经把 data 行写成
+			// "data: ...\n\n"，若再把这个空行透传出去，事件之间就会变成 "\n\n\n"。
+			// google-genai 的 Go SDK（Antigravity CLI 在用）按 "\n\n" 切事件，多出的
+			// "\n" 会粘到下一个事件开头，前缀变成 "\ndata" 而被判成 invalid stream chunk。
+			if trimmed == "" {
+				continue
+			}
+
 			cw.Fprintf("%s\n", line)
 
 		case <-intervalCh:

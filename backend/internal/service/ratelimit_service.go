@@ -31,6 +31,11 @@ type RateLimitService struct {
 	settingService        *SettingService
 	tokenCacheInvalidator TokenCacheInvalidator
 	runtimeBlocker        AccountRuntimeBlocker
+	// ollamaCloudUsageProbe is the optional Ollama Cloud usage probe scheduler
+	// injected via SetOllamaCloudUsageProbeScheduler. See
+	// ratelimit_service_ollama_429.go for how real-Ollama 429s schedule an async
+	// probe to learn the true usage-window reset.
+	ollamaCloudUsageProbe ollamaCloudUsageProbeScheduler
 	usageCacheMu          sync.RWMutex
 	usageCache            map[int64]*geminiUsageCacheEntry
 
@@ -512,7 +517,7 @@ func (s *RateLimitService) HandleUpstreamError(ctx context.Context, account *Acc
 	case 402:
 		// 国产供应商：余额不足是可恢复状态（充值/检测恢复后由周期任务自动解除），
 		// 不能走 handleAuthError 永久置 status=error。改为可恢复的临时停调。
-		if account.IsCNProvider() {
+		if account.IsCNProvider() || account.IsOpenCodeZen() {
 			s.handleCNProviderInsufficientBalance(ctx, account, upstreamMsg)
 			shouldDisable = true
 			break
@@ -990,7 +995,7 @@ func (s *RateLimitService) handle403(ctx context.Context, account *Account, upst
 	// 国产供应商与 openai 同口径:HTML 403(CDN/代理拦截页)不构成账号失效证据,
 	// 且 403 在 failover 状态集里会被逐账号重放——直接 SetError 会让一个坏请求/
 	// 一层坏代理连环永久禁用整组账号。走 HTML 豁免 + N 次累计 + 临时冷却。
-	if account.Platform == PlatformOpenAI || IsCNProvider(account.Platform) {
+	if account.Platform == PlatformOpenAI || IsCNProvider(account.Platform) || account.IsOpenCodeGo() {
 		return s.handleOpenAI403(ctx, account, upstreamMsg, responseBody)
 	}
 	// 非 Antigravity 平台：保持原有行为
@@ -1152,9 +1157,17 @@ func (s *RateLimitService) handle429(ctx context.Context, account *Account, head
 		}
 		return
 	}
+	// 真实 Ollama Cloud 用量账号（credentials base_url 指向 ollama.com）的 429 由
+	// ollama.com 的用量窗口驱动。其响应头不得被当作 OpenAI codex / Anthropic /
+	// CN 限流来解析，故在国产供应商分支之前单独处理：先设置永不缩短的临时冷却，
+	// 再调度异步 probe 学习真实重置点（详见 ratelimit_service_ollama_429.go）。
+	if account != nil && IsOllamaCloudUsageAccount(account) {
+		s.handleOllamaCloudUsage429(ctx, account, headers)
+		return
+	}
 	// 国产供应商（kimi/zhipu/deepseek）的 429 走专用可恢复路径：余额不足 → 临时停调，
 	// Coding Plan 窗口耗尽 → 冷却到快照重置点。未命中则继续默认 429 逻辑。
-	if account.IsCNProvider() {
+	if account.IsCNProvider() || account.IsOpenCodeGo() {
 		if s.applyCNProviderReactive429(ctx, account, headers, responseBody) {
 			return
 		}
