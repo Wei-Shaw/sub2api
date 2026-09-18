@@ -261,6 +261,66 @@ func (s *SettingService) GetAntigravityUserAgentVersion(ctx context.Context) str
 	return fallback
 }
 
+type cachedOpenAICodexTicketEnabled struct {
+	value     bool
+	expiresAt int64
+}
+
+const openAICodexTicketEnabledCacheTTL = 5 * time.Second
+
+// GetOpenAICodexTicketEnabled 返回后台 292 打票总开关。
+// 设置键存在时以后台为准；缺失则回退 yaml/env。
+func (s *SettingService) GetOpenAICodexTicketEnabled(ctx context.Context, fallback bool) bool {
+	if s == nil || s.settingRepo == nil {
+		return fallback
+	}
+	if cached, ok := s.openAICodexTicketEnabledCache.Load().(*cachedOpenAICodexTicketEnabled); ok && cached != nil {
+		if time.Now().UnixNano() < cached.expiresAt {
+			return cached.value
+		}
+	}
+	result, _, _ := s.openAICodexTicketEnabledSF.Do(SettingKeyOpenAICodexTicketEnabled, func() (any, error) {
+		if cached, ok := s.openAICodexTicketEnabledCache.Load().(*cachedOpenAICodexTicketEnabled); ok && cached != nil {
+			if time.Now().UnixNano() < cached.expiresAt {
+				return cached.value, nil
+			}
+		}
+		if ctx == nil {
+			ctx = context.Background()
+		}
+		dbCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+		defer cancel()
+		value, err := s.settingRepo.GetValue(dbCtx, SettingKeyOpenAICodexTicketEnabled)
+		if err != nil && !errors.Is(err, ErrSettingNotFound) {
+			if cached, ok := s.openAICodexTicketEnabledCache.Load().(*cachedOpenAICodexTicketEnabled); ok && cached != nil {
+				return cached.value, nil
+			}
+			return fallback, nil
+		}
+		enabled := fallback
+		if err == nil && strings.TrimSpace(value) != "" {
+			enabled = value == "true"
+		}
+		s.openAICodexTicketEnabledCache.Store(&cachedOpenAICodexTicketEnabled{
+			value:     enabled,
+			expiresAt: time.Now().Add(openAICodexTicketEnabledCacheTTL).UnixNano(),
+		})
+		return enabled, nil
+	})
+	if v, ok := result.(bool); ok {
+		return v
+	}
+	return fallback
+}
+
+func (s *SettingService) InvalidateOpenAICodexTicketEnabledCache() {
+	if s == nil {
+		return
+	}
+	s.openAICodexTicketEnabledSF.Forget(SettingKeyOpenAICodexTicketEnabled)
+	s.openAICodexTicketEnabledCache.Store(&cachedOpenAICodexTicketEnabled{expiresAt: 0})
+}
+
 type cachedOpenAICodexTicketHarvestProxy struct {
 	value     string
 	expiresAt int64

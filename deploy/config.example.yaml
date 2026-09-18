@@ -318,6 +318,8 @@ gateway:
   # 再在住宅 IP 业务请求中覆盖该头。默认关闭。
   # Env: GATEWAY_OPENAI_CODEX_TICKET_ENABLED=true
   #      GATEWAY_OPENAI_CODEX_TICKET_HARVEST_PROXY_URL=socks5h://user:pass@host:port
+  # Admin UI 开关（系统设置 → 网关 → Codex 设置 → 292 打票）可覆盖 enabled，无需重启。
+  # Off: do not harvest or inject. On: harvest in the background and inject on production requests.
   # The harvest proxy should rotate egress IPs itself (fresh CONNECT per request).
   openai_codex_ticket:
     enabled: false

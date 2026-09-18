@@ -150,7 +150,14 @@ func OpenAICodexTicketStatuses(account *Account, cfg config.OpenAICodexTicketCon
 }
 
 func (s *OpenAIGatewayService) openAICodexTicketEnabled() bool {
-	return s != nil && s.cfg != nil && s.cfg.Gateway.OpenAICodexTicket.Enabled
+	if s == nil {
+		return false
+	}
+	fallback := s.cfg != nil && s.cfg.Gateway.OpenAICodexTicket.Enabled
+	if s.settingService != nil {
+		return s.settingService.GetOpenAICodexTicketEnabled(context.Background(), fallback)
+	}
+	return fallback
 }
 
 func (s *OpenAIGatewayService) openAICodexTicketHarvestProxyURL() string {
@@ -377,17 +384,15 @@ func needsOpenAICodexAstraVersion(model string) bool {
 }
 
 func (s *OpenAIGatewayService) StartOpenAICodexTicketHarvester() {
-	if s == nil || !s.openAICodexTicketEnabled() {
+	if s == nil {
 		return
-	}
-	if s.openAICodexTicketHarvestProxyURL() == "" {
-		logger.L().Warn("openai_codex_ticket enabled but no harvest proxy is configured in settings or config; inject still uses stored tickets")
 	}
 	s.openaiCodexTicketStopOnce = sync.Once{}
 	s.openaiCodexTicketStopCh = make(chan struct{})
 	s.openaiCodexTicketWG.Add(1)
 	go s.openAICodexTicketHarvestLoop()
 	logger.L().Info("openai_codex_ticket harvester started",
+		zap.Bool("enabled", s.openAICodexTicketEnabled()),
 		zap.Int("ttl_seconds", s.openAICodexTicketConfig().TTLSeconds),
 		zap.Int("target_length", s.openAICodexTicketConfig().TargetLength),
 		zap.Strings("models", s.openAICodexTicketConfig().Models),
@@ -427,7 +432,7 @@ func (s *OpenAIGatewayService) openAICodexTicketHarvestLoop() {
 // ticket once. The loop waits for all probes, then waits the configured interval
 // before starting the next cycle.
 func (s *OpenAIGatewayService) refreshOpenAICodexTickets(ctx context.Context) {
-	if s == nil || s.accountRepo == nil {
+	if s == nil || s.accountRepo == nil || !s.openAICodexTicketEnabled() {
 		return
 	}
 	accounts, err := s.accountRepo.ListByPlatform(ctx, PlatformOpenAI)
@@ -476,7 +481,7 @@ func (s *OpenAIGatewayService) refreshOpenAICodexTickets(ctx context.Context) {
 // gAAAAA 前缀）就落库；否则记 Info miss，交给下个周期重试。同一 key 并发去重，避免上一发还没
 // 回来又叠一发。
 func (s *OpenAIGatewayService) probeOnceOpenAICodexTicket(ctx context.Context, account *Account, model string) {
-	if s == nil || account == nil {
+	if s == nil || account == nil || !s.openAICodexTicketEnabled() {
 		return
 	}
 	cfg := s.openAICodexTicketConfig()
