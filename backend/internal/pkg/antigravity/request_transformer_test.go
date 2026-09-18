@@ -390,6 +390,38 @@ func TestBuildGenerationConfig_ThinkingDynamicBudget(t *testing.T) {
 	}
 }
 
+func TestBuildGenerationConfig_GeminiThinkingMode(t *testing.T) {
+	tests := []struct {
+		name       string
+		model      string
+		budget     int
+		wantLevel  string
+		wantBudget int
+		wantMaxOut int
+	}{
+		{name: "gemini 3 low budget becomes low level", model: "gemini-3.8-flash", budget: 1024, wantLevel: "LOW", wantMaxOut: 4096},
+		{name: "gemini 3 medium budget becomes medium level", model: "gemini-3.8-flash", budget: 4096, wantLevel: "MEDIUM", wantMaxOut: 4096},
+		{name: "gemini 3 large budget becomes high level", model: "gemini-3.8-flash", budget: 32768, wantLevel: "HIGH", wantMaxOut: 4096},
+		{name: "gemini 2.5 flash keeps capped budget", model: "gemini-2.5-flash", budget: 32768, wantBudget: Gemini25FlashThinkingBudgetLimit, wantMaxOut: Gemini25FlashThinkingBudgetLimit + MaxTokensBudgetPadding},
+		{name: "gemini 2.5 pro keeps budget", model: "gemini-2.5-pro", budget: 32768, wantBudget: 32768, wantMaxOut: 33768},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := buildGenerationConfig(&ClaudeRequest{
+				Model:     tt.model,
+				MaxTokens: 4096,
+				Thinking:  &ThinkingConfig{Type: "enabled", BudgetTokens: tt.budget},
+			})
+			require.NotNil(t, cfg)
+			require.NotNil(t, cfg.ThinkingConfig)
+			require.Equal(t, tt.wantLevel, cfg.ThinkingConfig.ThinkingLevel)
+			require.Equal(t, tt.wantBudget, cfg.ThinkingConfig.ThinkingBudget)
+			require.Equal(t, tt.wantMaxOut, cfg.MaxOutputTokens)
+		})
+	}
+}
+
 func TestTransformClaudeToGeminiWithOptions_PreservesBillingHeaderSystemBlock(t *testing.T) {
 	tests := []struct {
 		name   string
