@@ -129,6 +129,7 @@ type CanvasConfig struct {
 type DatasetConfig struct {
 	Enabled                bool   `mapstructure:"enabled"`
 	GoogleDriveCredentials string `mapstructure:"google_drive_credentials"`
+	GoogleDriveTokenPath   string `mapstructure:"google_drive_token_path"`
 	GoogleDriveFolderID    string `mapstructure:"google_drive_folder_id"`
 	BatchSize              int    `mapstructure:"batch_size"`
 	BatchMaxMB             int    `mapstructure:"batch_max_mb"`
@@ -2729,6 +2730,7 @@ func setEnvReachableDefaults() {
 	// Dataset Collection
 	viper.SetDefault("dataset.enabled", false)
 	viper.SetDefault("dataset.google_drive_credentials", "")
+	viper.SetDefault("dataset.google_drive_token_path", "")
 	viper.SetDefault("dataset.google_drive_folder_id", "")
 	viper.SetDefault("dataset.batch_size", 100)
 	viper.SetDefault("dataset.batch_max_mb", 10)
