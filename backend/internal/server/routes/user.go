@@ -25,6 +25,19 @@ func RegisterUserRoutes(
 	// 用户管理面变更类操作入审计（含 TOTP 启用/禁用、step-up 验证、密码修改等安全事件）
 	authenticated.Use(gin.HandlerFunc(auditLog))
 	{
+		// Cloud credentials are administrator-only; user reports expose only the
+		// current user's allocated costs. All actions also check roles in-handler.
+		upstreamBilling := authenticated.Group("/upstream-billing")
+		upstreamBilling.Use(panelRateLimiter.Heavy())
+		upstreamBilling.GET("/report", h.UpstreamBilling.Report)
+		upstreamBilling.GET("/summary", h.UpstreamBilling.Summary)
+		upstreamBilling.GET("/bills/:id/source", middleware.AdminOnly(), h.UpstreamBilling.BillSource)
+		upstreamBilling.GET("/connections", middleware.AdminOnly(), h.UpstreamBilling.Connections)
+		upstreamBilling.GET("/accounts", middleware.AdminOnly(), h.UpstreamBilling.Accounts)
+		upstreamBilling.POST("/connections", middleware.AdminOnly(), middleware.AdminComplianceGuard(settingService), h.UpstreamBilling.SaveConnection)
+		upstreamBilling.PUT("/connections/:id", middleware.AdminOnly(), middleware.AdminComplianceGuard(settingService), h.UpstreamBilling.SaveConnection)
+		upstreamBilling.POST("/connections/:id/sync", middleware.AdminOnly(), middleware.AdminComplianceGuard(settingService), h.UpstreamBilling.Sync)
+
 		// 用户接口
 		user := authenticated.Group("/user")
 		{
