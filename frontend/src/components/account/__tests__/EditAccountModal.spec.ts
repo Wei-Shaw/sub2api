@@ -731,7 +731,7 @@ describe('EditAccountModal', () => {
     })
   })
 
-  it('preserves model mappings when editing the whitelist', async () => {
+  it('saves only the whitelist when editing in whitelist mode', async () => {
     const account = buildAccount()
     account.credentials.model_mapping = {
       'gpt-5.2': 'gpt-5.2',
@@ -751,7 +751,62 @@ describe('EditAccountModal', () => {
 
     expect(updateAccountMock).toHaveBeenCalledTimes(1)
     expect(updateAccountMock.mock.calls[0]?.[1]?.credentials?.model_mapping).toEqual({
-      'gpt-5.2-2025-12-11': 'gpt-5.2-2025-12-11',
+      'gpt-5.2-2025-12-11': 'gpt-5.2-2025-12-11'
+    })
+  })
+
+  it('saves only mappings when switching to the mapping tab', async () => {
+    const account = buildAccount()
+    account.credentials.model_mapping = {
+      'gpt-5.2': 'gpt-5.2',
+      'gpt-latest': 'gpt-5.2'
+    }
+    updateAccountMock.mockReset()
+    checkMixedChannelRiskMock.mockReset()
+    checkMixedChannelRiskMock.mockResolvedValue({ has_risk: false })
+    updateAccountMock.mockResolvedValue(account)
+
+    const wrapper = mountModal(account)
+
+    // Legacy combined data loads into the whitelist tab; the mapping stays behind the other tab.
+    expect(wrapper.get('[data-testid="model-whitelist-value"]').text()).toBe('gpt-5.2')
+
+    const mappingTab = wrapper.findAll('button').find((candidate) => candidate.text() === 'admin.accounts.modelMapping')!
+    expect(mappingTab.attributes('type')).toBe('button')
+    await mappingTab.trigger('click')
+
+    const fromInput = wrapper
+      .findAll('input')
+      .find((input) => (input.element as HTMLInputElement).value === 'gpt-latest')
+    expect(fromInput).toBeTruthy()
+
+    await wrapper.get('form#edit-account-form').trigger('submit.prevent')
+
+    expect(updateAccountMock).toHaveBeenCalledTimes(1)
+    expect(updateAccountMock.mock.calls[0]?.[1]?.credentials?.model_mapping).toEqual({
+      'gpt-latest': 'gpt-5.2'
+    })
+  })
+
+  it('opens the mapping tab when the account only has mappings', async () => {
+    const account = buildAccount()
+    account.credentials.model_mapping = {
+      'gpt-latest': 'gpt-5.2'
+    }
+    updateAccountMock.mockReset()
+    checkMixedChannelRiskMock.mockReset()
+    checkMixedChannelRiskMock.mockResolvedValue({ has_risk: false })
+    updateAccountMock.mockResolvedValue(account)
+
+    const wrapper = mountModal(account)
+
+    expect(wrapper.find('[data-testid="model-whitelist-value"]').exists()).toBe(false)
+    expect(wrapper.find('input[placeholder="admin.accounts.requestModel"]').exists()).toBe(true)
+
+    await wrapper.get('form#edit-account-form').trigger('submit.prevent')
+
+    expect(updateAccountMock).toHaveBeenCalledTimes(1)
+    expect(updateAccountMock.mock.calls[0]?.[1]?.credentials?.model_mapping).toEqual({
       'gpt-latest': 'gpt-5.2'
     })
   })
