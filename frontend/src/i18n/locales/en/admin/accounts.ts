@@ -667,6 +667,10 @@ export default {
         codexFingerprintDevice: 'Device only',
         codexFingerprintSession: 'Device + Session',
         codexFingerprintFull: 'Full convergence',
+        codexTurnTicket: 'Codex 292 ticket',
+        codexTurnTicketDesc: 'For gpt-6-astra and gpt-5.6-sol only: the account is schedulable for that model only after a 292-length x-codex-turn-state is captured. Tickets last one hour and refresh at 50 minutes; if none is found the model stays paused until harvest succeeds.',
+        codexTurnTicketReady: '{time} left',
+        codexTurnTicketPaused: 'No 292 ticket; this model is paused',
         codexImageTool: 'Codex image bridge policy',
         codexImageToolDesc:
           'Controls the hosted image_generation bridge and client-declared image tools on Codex /responses text requests. Hosted auto-injection applies only to non-Responses Lite requests. Account policy takes precedence over channel and global settings; standalone image-generation endpoints are unaffected.',

@@ -556,6 +556,10 @@ func (s *OpenAIGatewayService) isOpenAIAccountRequestRuntimeBlocked(account *Acc
 	if s == nil {
 		return false
 	}
+	canonicalModel := canonicalOpenAIAccountSchedulingModel(account, requestedModel)
+	if s.openAICodexTicketBlocksAccount(account, canonicalModel) {
+		return true
+	}
 	snapshot := s.peekOpenAIAccountRuntimeBlock(account)
 	if snapshot.blocked {
 		if accountPersistedSchedulingCooldownActive(account) {

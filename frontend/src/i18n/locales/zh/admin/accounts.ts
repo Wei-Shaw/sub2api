@@ -745,6 +745,10 @@ export default {
         codexFingerprintDevice: '仅设备',
         codexFingerprintSession: '设备+会话',
         codexFingerprintFull: '完全收敛',
+        codexTurnTicket: 'Codex 292 门票',
+        codexTurnTicketDesc: '仅 gpt-6-astra 与 gpt-5.6-sol：必须打到 292 长度的 x-codex-turn-state 才能调度该模型。门票有效期 1 小时，50 分钟后重新打票；没打到则该模型暂停直到打到为止。',
+        codexTurnTicketReady: '剩余 {time}',
+        codexTurnTicketPaused: '未打到 292，该模型已暂停',
         codexImageTool: 'Codex 图片桥接策略',
         codexImageToolDesc:
           '统一控制 Codex /responses 文本请求的 hosted image_generation 桥接和客户端图片工具声明。hosted 工具自动注入仅适用于非 Responses Lite 请求；账号级策略优先于渠道和全局配置，不影响独立图片生成接口。',
