@@ -1,6 +1,6 @@
 # Dataset Collection Deployment Summary
 
-## ✅ Infrastructure Deployed
+## ✅ Original Infrastructure Baseline
 
 **Commit:** `e88c7264f` — feat(dataset): add dataset collection infrastructure
 **Pushed:** 2026-09-13 11:35 +07
@@ -21,21 +21,22 @@
 
 ## 📋 Integration Status
 
-**Handler Integration:** ⚠️ NOT IMPLEMENTED
-Reason: `service.OpenAIForwardResult` does not expose raw response body.
-Streaming and non-streaming responses bypass structured capture.
+**Handler Integration:** ✅ Implemented on `feat/dataset-production-capture`
+- Non-streaming and completed streaming responses are captured at the handler boundary.
+- Partial streams, upstream errors, and client disconnects are excluded.
+- Capture is bounded and fail-open; sensitive fields are redacted before buffering/upload.
 
-**Required for Activation:**
-1. Add `ResponseBody []byte` field to `service.OpenAIForwardResult`
-2. Buffer responses in `ForwardAsChatCompletions` before client write
-3. Hook `dataset.CaptureFromOpenAIRequest()` in success path
-4. Test OAuth flow (browser auth on first run)
+**Runtime Activation Requirements:**
+1. Deploy the image containing the capture/runtime-config changes after CI passes.
+2. Mount the offline OAuth token file and set `DATASET_GOOGLE_DRIVE_TOKEN_PATH` when the DB credential is inline JSON.
+3. Keep `DATASET_ENABLED=false` until the token and folder are verified.
+4. Run an approved production probe and verify the uploaded JSONL file by Drive file ID.
 
-## 🚀 Deployment Steps (When Handler Integration Complete)
+## 🚀 Deployment Steps (When Runtime Activation Is Approved)
 
-### 1. Wait for CI to build image with commit `e88c7264f`
+### 1. Build and verify the approved exact SHA
 ```bash
-# Check CI status
+# Check CI status for the implementation SHA
 gh run list --limit 5 --branch main
 ```
 
@@ -48,11 +49,11 @@ docker-compose -f docker-compose.prod.yml up -d sub2api
 docker logs -f sub2api
 ```
 
-### 3. First-time OAuth Setup (when DATASET_ENABLED=true)
+### 3. Offline OAuth Setup (before DATASET_ENABLED=true)
 ```bash
-docker exec -it sub2api /bin/sh
-# Server prints OAuth URL → open in browser → paste code back
-# Token saved to /app/backend/credentials/google_drive_credentials.json.token
+# Provision the OAuth token through an approved offline operator procedure.
+# Mount the resulting token read-only at the configured token path.
+# The server fails fast/degrades if the token is missing; it never prompts on stdin.
 ```
 
 ### 4. Create Google Drive Folder
@@ -72,16 +73,16 @@ docker-compose -f docker-compose.prod.yml restart sub2api
 
 ## 📊 Current Production State
 
-**Dataset Collection:** Disabled (`DATASET_ENABLED=false`)
-**Reason:** Handler integration not implemented
-**Merge Safety:** ✅ Code merged, infrastructure ready, no impact on existing traffic
-**Next Action:** Implement service layer response capture when ready to activate
+**Dataset Collection:** Disabled in the live runtime until the token/probe gate is approved
+**Reason:** Production OAuth token and upload verification are not yet complete
+**Merge Safety:** Capture code is fail-open and does not affect existing traffic when disabled
+**Next Action:** Verify the deployment token mount, run CI on the implementation branch, then perform the approved runtime probe
 
 ## Architecture
 
 ```
 ┌─────────────────────────────────────────────────┐
-│  Request → Handler (NOT HOOKED)                 │
+│  Request → Handler (bounded capture hook)       │
 │             ↓                                    │
 │        Collector (bounded 1000-item buffer)     │
 │             ↓ (fail-open, non-blocking)         │
@@ -96,4 +97,4 @@ docker-compose -f docker-compose.prod.yml restart sub2api
 - Original plan: `DATASET_COLLECTION_PLAN.md`
 - Example config: `.env.dataset.example`
 
-**Status:** Infrastructure complete, waiting for handler integration to activate.
+**Status:** Capture/runtime code implemented; waiting for CI, token-mount, and approved upload-probe gates.

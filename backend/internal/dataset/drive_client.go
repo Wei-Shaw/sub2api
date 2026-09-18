@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"strings"
 	"time"
 
 	"golang.org/x/oauth2"
@@ -22,11 +23,19 @@ type DriveClient struct {
 }
 
 // NewDriveClient creates a new Google Drive client with OAuth2 credentials.
-func NewDriveClient(ctx context.Context, credentialsPath string, folderID string) (*DriveClient, error) {
-	// Read OAuth2 credentials
-	b, err := os.ReadFile(credentialsPath)
+// File-based credentials use the legacy <credentials>.token convention.
+// Inline JSON credentials must use NewDriveClientWithTokenPath.
+func NewDriveClient(ctx context.Context, credentialsSource string, folderID string) (*DriveClient, error) {
+	return NewDriveClientWithTokenPath(ctx, credentialsSource, "", folderID)
+}
+
+// NewDriveClientWithTokenPath creates a Google Drive client from either an
+// OAuth client JSON file path or inline JSON content. Inline JSON requires an
+// explicit token path because it has no stable filesystem location.
+func NewDriveClientWithTokenPath(ctx context.Context, credentialsSource, tokenPath, folderID string) (*DriveClient, error) {
+	b, inline, err := credentialBytes(credentialsSource)
 	if err != nil {
-		return nil, fmt.Errorf("unable to read credentials file: %w", err)
+		return nil, err
 	}
 
 	config, err := google.ConfigFromJSON(b, drive.DriveFileScope)
@@ -34,11 +43,15 @@ func NewDriveClient(ctx context.Context, credentialsPath string, folderID string
 		return nil, fmt.Errorf("unable to parse credentials: %w", err)
 	}
 
-	// Use token from file; fail fast if missing (production-safe)
-	tokenPath := credentialsPath + ".token"
-	token, err := tokenFromFile(tokenPath)
+	resolvedTokenPath, err := resolveTokenPath(credentialsSource, tokenPath, inline)
 	if err != nil {
-		return nil, fmt.Errorf("OAuth token not found at %s (generate token with scripts/dataset-oauth-init.sh before starting server): %w", tokenPath, err)
+		return nil, err
+	}
+
+	// Use token from file; fail fast if missing (production-safe)
+	token, err := tokenFromFile(resolvedTokenPath)
+	if err != nil {
+		return nil, fmt.Errorf("OAuth token not found at %s (provision an offline OAuth token before starting the server): %w", resolvedTokenPath, err)
 	}
 
 	client := config.Client(ctx, token)
@@ -51,6 +64,43 @@ func NewDriveClient(ctx context.Context, credentialsPath string, folderID string
 		service:  service,
 		folderID: folderID,
 	}, nil
+}
+
+func credentialBytes(source string) ([]byte, bool, error) {
+	source = strings.TrimSpace(source)
+	if source == "" {
+		return nil, false, fmt.Errorf("dataset Google Drive credentials are not configured")
+	}
+	if json.Valid([]byte(source)) {
+		return []byte(source), true, nil
+	}
+
+	b, err := os.ReadFile(source)
+	if err != nil {
+		return nil, false, fmt.Errorf("unable to read credentials file: %w", err)
+	}
+	return b, false, nil
+}
+
+func resolveTokenPath(credentialsSource, configuredTokenPath string, inline bool) (string, error) {
+	if tokenPath := strings.TrimSpace(configuredTokenPath); tokenPath != "" {
+		return tokenPath, nil
+	}
+	if inline {
+		return "", fmt.Errorf("OAuth token path is required when credentials are provided as inline JSON; set DATASET_GOOGLE_DRIVE_TOKEN_PATH")
+	}
+	return strings.TrimSpace(credentialsSource) + ".token", nil
+}
+
+func credentialSourceKind(source string) string {
+	source = strings.TrimSpace(source)
+	if source == "" {
+		return "unset"
+	}
+	if json.Valid([]byte(source)) {
+		return "inline-json"
+	}
+	return "file"
 }
 
 // UploadBatch uploads a batch of dataset entries as a JSONL file to Google Drive.
@@ -117,4 +167,4 @@ func tokenFromFile(file string) (tok *oauth2.Token, err error) {
 	return tok, err
 }
 
-// getTokenFromWeb is removed. Use scripts/dataset-oauth-init.sh to generate token offline.
+// getTokenFromWeb is removed. Provision OAuth tokens through an offline operator procedure.

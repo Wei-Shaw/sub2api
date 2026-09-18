@@ -3,6 +3,7 @@ package dataset
 import (
 	"context"
 	"log"
+	"strings"
 	"sync"
 	"time"
 
@@ -42,9 +43,10 @@ func InitializeDatasetCollection(ctx context.Context, cfg *config.Config) func()
 		return func() {}
 	}
 
-	log.Printf("[Dataset] Initializing collection: credentials=%s folder=%s batch_size=%d buffer_max=%d",
-		cfg.Dataset.GoogleDriveCredentials,
-		cfg.Dataset.GoogleDriveFolderID,
+	log.Printf("[Dataset] Initializing collection: credential_source=%s credential_configured=%t folder_configured=%t batch_size=%d buffer_max=%d",
+		credentialSourceKind(cfg.Dataset.GoogleDriveCredentials),
+		strings.TrimSpace(cfg.Dataset.GoogleDriveCredentials) != "",
+		strings.TrimSpace(cfg.Dataset.GoogleDriveFolderID) != "",
 		cfg.Dataset.BatchSize,
 		cfg.Dataset.BufferMaxItems,
 	)
@@ -87,7 +89,7 @@ func startWorker(ctx context.Context, cfg *config.Config) error {
 	}
 
 	// Create Drive client with new credentials
-	driveClient, err := NewDriveClient(ctx, cfg.Dataset.GoogleDriveCredentials, cfg.Dataset.GoogleDriveFolderID)
+	driveClient, err := NewDriveClientWithTokenPath(ctx, cfg.Dataset.GoogleDriveCredentials, cfg.Dataset.GoogleDriveTokenPath, cfg.Dataset.GoogleDriveFolderID)
 	if err != nil {
 		return err
 	}
@@ -135,6 +137,7 @@ func watchConfigChanges(ctx context.Context, cfg *config.Config) {
 				continue
 			}
 
+			preserveDeploymentConfig(&cfg.Dataset, newCfg)
 			if newCfg == nil || !newCfg.Enabled {
 				// Dataset disabled via Admin Settings
 				workerMu.RLock()
@@ -166,6 +169,7 @@ func watchConfigChanges(ctx context.Context, cfg *config.Config) {
 
 func configChanged(old, new *config.DatasetConfig) bool {
 	return old.GoogleDriveCredentials != new.GoogleDriveCredentials ||
+		old.GoogleDriveTokenPath != new.GoogleDriveTokenPath ||
 		old.GoogleDriveFolderID != new.GoogleDriveFolderID ||
 		old.BatchSize != new.BatchSize ||
 		old.BatchMaxMB != new.BatchMaxMB ||

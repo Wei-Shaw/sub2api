@@ -157,6 +157,9 @@ func runMainServer() {
 
 	// Initialize dataset collection (if enabled)
 	dataset.SetConfigReloader(app.SettingService)
+	if err := dataset.ApplyPersistedConfig(context.Background(), cfg, app.SettingService); err != nil {
+		log.Printf("[Dataset] Persisted config load failed; using bootstrap config: %v", err)
+	}
 	datasetCleanup := dataset.InitializeDatasetCollection(context.Background(), cfg)
 	defer datasetCleanup()
 
