@@ -7,6 +7,8 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"net/url"
+	"strconv"
 	"strings"
 	"time"
 
@@ -422,6 +424,60 @@ func stripDeepSeekUnsupportedChatResponseFormat(account *Account, chatBody []byt
 	updated, err := sjson.DeleteBytes(chatBody, "response_format")
 	if err != nil {
 		return chatBody
+	}
+	return updated
+}
+
+// targetsDeepSeekAPIHost 报告该账号实际上游是否是 DeepSeek 官方 API。
+// platform=deepseek 直接命中；platform=openai 但 base_url 指向 api.deepseek.com
+// 的映射账号同样命中（账号 18 这类 Codex→DeepSeek 接入方式）。
+func targetsDeepSeekAPIHost(account *Account) bool {
+	if account == nil {
+		return false
+	}
+	if account.Platform == PlatformDeepseek {
+		return true
+	}
+	u, err := url.Parse(strings.TrimSpace(account.GetOpenAIBaseURL()))
+	if err != nil {
+		return false
+	}
+	return strings.EqualFold(u.Hostname(), deepSeekAPIHost)
+}
+
+// ensureDeepSeekChatReasoningPlaceholders 给缺 reasoning_content 的 assistant
+// 消息补单个空格占位。DeepSeek thinking mode 要求历史里每条产生过思维的
+// assistant 消息都回传该字段，否则 400
+// "The `reasoning_content` in the thinking mode must be passed back to the API"。
+//
+// 桥接会从 summary / 缓存回注真实明文；这里只填仍为空的缺口，不覆盖已有内容。
+// 非 DeepSeek 上游原样返回（字节不变）。
+func ensureDeepSeekChatReasoningPlaceholders(account *Account, body []byte) []byte {
+	if !targetsDeepSeekAPIHost(account) {
+		return body
+	}
+	messages := gjson.GetBytes(body, "messages")
+	if !messages.IsArray() {
+		return body
+	}
+	updated := body
+	changed := false
+	for i, msg := range messages.Array() {
+		if strings.TrimSpace(msg.Get("role").String()) != "assistant" {
+			continue
+		}
+		if msg.Get("reasoning_content").String() != "" {
+			continue
+		}
+		next, err := sjson.SetBytes(updated, "messages."+strconv.Itoa(i)+".reasoning_content", responsesReasoningPlaceholderText)
+		if err != nil {
+			return body
+		}
+		updated = next
+		changed = true
+	}
+	if !changed {
+		return body
 	}
 	return updated
 }

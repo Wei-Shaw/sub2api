@@ -198,6 +198,10 @@ func (s *OpenAIGatewayService) sendCCUpstreamRequest(
 			return nil, err
 		}
 	}
+	// DeepSeek thinking mode 要求历史 assistant 回传 reasoning_content。Responses
+	// Lite 经本管线回退后，加密-only / 缺 reasoning item 的消息在缓存未命中时是
+	// 空的，这里补空格占位（与 #7283 Responses 侧 reasoning_text 占位同一常量）。
+	body = ensureDeepSeekChatReasoningPlaceholders(account, body)
 	upstreamCtx, releaseUpstreamCtx := detachUpstreamContext(ctx)
 	upstreamCtx = withDeepSeekRedirectsDisabled(upstreamCtx, account)
 	upstreamReq, err := http.NewRequestWithContext(upstreamCtx, http.MethodPost, targetURL, bytes.NewReader(body))
