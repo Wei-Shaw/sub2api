@@ -3911,7 +3911,7 @@ const loadModelRestrictionFromMapping = (rawMapping?: Record<string, unknown>) =
 }
 
 const buildModelRestrictionMapping = () =>
-  buildModelMappingObject('combined', allowedModels.value, modelMappings.value)
+  buildModelMappingObject(modelRestrictionMode.value, allowedModels.value, modelMappings.value)
 
 const applyOpenAIModelMappingCredentials = (credentials: Record<string, unknown>) => {
   const shouldApplyModelMapping = !openaiPassthroughEnabled.value
