@@ -98,6 +98,19 @@ keys: {
   nameLabel: 'Tên',
   namePlaceholder: 'Khóa API của tôi',
   groupLabel: 'Nhóm',
+  providerLabel: 'Nhà cung cấp',
+  providers: {
+    anthropic: 'Anthropic',
+    openai: 'OpenAI',
+    domestic: 'Mô hình nội địa',
+    other: 'Khác'
+  },
+  providerHints: {
+    anthropic: 'Chọn nhóm khả dụng cho Anthropic / Claude',
+    openai: 'Chọn nhóm khả dụng cho OpenAI / GPT',
+    domestic: 'Bao gồm DeepSeek, Kimi, Zhipu GLM và MiniMax',
+    other: 'Bao gồm Gemini, Grok, Antigravity, OpenCode và nhóm kết hợp'
+  },
   selectGroup: 'Chọn nhóm',
   statusLabel: 'Trạng thái',
   selectStatus: 'Chọn trạng thái',
@@ -517,6 +530,7 @@ redeem: {
   days: 'ngày',
   codeRedeemSuccess: 'Đổi mã thành công!',
   failedToRedeem: 'Đổi mã thất bại, vui lòng kiểm tra mã và thử lại.',
+  historyLoadFailed: 'Tải hoạt động thất bại. Vui lòng thử lại.',
   subscriptionRefreshFailed: 'Đổi mã thành công, nhưng làm mới trạng thái đăng ký thất bại.',
   pleaseEnterCode: 'Vui lòng nhập mã đổi',
   balanceAddedAffiliate: 'Số dư đã cộng (Chuyển affiliate)',
