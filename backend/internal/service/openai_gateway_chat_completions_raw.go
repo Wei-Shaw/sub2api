@@ -191,6 +191,11 @@ func (s *OpenAIGatewayService) forwardAsRawChatCompletions(
 	if err != nil {
 		return nil, err
 	}
+	upstreamBody, err = normalizeStrictChatDeveloperRoles(account, targetURL, upstreamBody)
+	if err != nil {
+		writeChatCompletionsError(c, http.StatusBadRequest, "invalid_request_error", err.Error())
+		return nil, err
+	}
 	upstreamEndpoint := grokChatRawEndpoint
 	if account.IsDeepSeek() {
 		upstreamEndpoint = deepSeekChatCompletionsEndpoint

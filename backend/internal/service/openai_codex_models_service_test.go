@@ -2594,6 +2594,11 @@ func TestFetchCodexModelsManifestRejectsInvalidEnvelope(t *testing.T) {
 	}
 }
 
+func TestValidateCodexModelsManifestEnvelopeRequiresExactModelsKey(t *testing.T) {
+	require.NoError(t, validateCodexModelsManifestEnvelope([]byte(`{"models":[]}`)))
+	require.Error(t, validateCodexModelsManifestEnvelope([]byte(`{"Models":[]}`)))
+}
+
 func TestFetchCodexModelsManifestAPIKeyDoesNotCacheInvalidEnvelope(t *testing.T) {
 	var calls atomic.Int32
 	upstream := &codexModelsHTTPUpstreamStub{do: func(_ *http.Request, _ string, _ int64, _ int) (*http.Response, error) {
