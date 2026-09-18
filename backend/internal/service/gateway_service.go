@@ -573,6 +573,45 @@ type AccountWaitPlan struct {
 	MaxConcurrency int
 	Timeout        time.Duration
 	MaxWaiting     int
+	// Candidates enables pool-level waiting. The first entry mirrors
+	// AccountID/MaxConcurrency for backward compatibility; handlers that
+	// understand pool waits retry all candidates and use the first slot that
+	// becomes available.
+	Candidates []AccountWaitCandidate
+}
+
+type AccountWaitCandidate struct {
+	Account        *Account
+	MaxConcurrency int
+}
+
+func newAccountPoolWaitPlan(accounts []*Account, timeout time.Duration, maxWaiting int) *AccountWaitPlan {
+	if len(accounts) == 0 {
+		return nil
+	}
+	candidates := make([]AccountWaitCandidate, 0, len(accounts))
+	seen := make(map[int64]struct{}, len(accounts))
+	for _, account := range accounts {
+		if account == nil {
+			continue
+		}
+		if _, ok := seen[account.ID]; ok {
+			continue
+		}
+		seen[account.ID] = struct{}{}
+		candidates = append(candidates, AccountWaitCandidate{Account: account, MaxConcurrency: account.Concurrency})
+	}
+	if len(candidates) == 0 {
+		return nil
+	}
+	first := candidates[0]
+	return &AccountWaitPlan{
+		AccountID:      first.Account.ID,
+		MaxConcurrency: first.MaxConcurrency,
+		Timeout:        timeout,
+		MaxWaiting:     maxWaiting,
+		Candidates:     candidates,
+	}
 }
 
 type AccountSelectionResult struct {

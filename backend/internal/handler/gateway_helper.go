@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"math/rand/v2"
 	"net/http"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -216,6 +217,30 @@ func (h *ConcurrencyHelper) IncrementAccountWaitCount(ctx context.Context, accou
 	return h.concurrencyService.IncrementAccountWaitCount(ctx, accountID, maxWait)
 }
 
+// IncrementAccountWaitPlan reserves one queue slot for a pool wait. A pool
+// wait must not be rejected merely because the first ranked account's queue is
+// full while another eligible account still has queue capacity. Candidates are
+// tried in scheduler order; only the candidate whose counter was actually
+// incremented must be decremented by the caller.
+func (h *ConcurrencyHelper) IncrementAccountWaitPlan(ctx context.Context, plan *service.AccountWaitPlan, fallback *service.Account) (int64, bool, error) {
+	if plan == nil {
+		return 0, false, nil
+	}
+	for _, candidate := range accountWaitCandidates(plan, fallback) {
+		if candidate.Account == nil {
+			continue
+		}
+		allowed, err := h.IncrementAccountWaitCount(ctx, candidate.Account.ID, plan.MaxWaiting)
+		if err != nil {
+			return 0, false, err
+		}
+		if allowed {
+			return candidate.Account.ID, true, nil
+		}
+	}
+	return 0, false, nil
+}
+
 // DecrementAccountWaitCount decrements the wait count for an account
 func (h *ConcurrencyHelper) DecrementAccountWaitCount(ctx context.Context, accountID int64) {
 	h.concurrencyService.DecrementAccountWaitCount(ctx, accountID)
@@ -262,6 +287,135 @@ func (h *ConcurrencyHelper) TryAcquireAccountSlot(ctx context.Context, accountID
 		return nil, false, nil
 	}
 	return result.ReleaseFunc, true, nil
+}
+
+func accountWaitCandidates(plan *service.AccountWaitPlan, fallback *service.Account) []service.AccountWaitCandidate {
+	if plan != nil && len(plan.Candidates) > 0 {
+		return plan.Candidates
+	}
+	if plan == nil || fallback == nil {
+		return nil
+	}
+	return []service.AccountWaitCandidate{{Account: fallback, MaxConcurrency: plan.MaxConcurrency}}
+}
+
+// TryAcquireAccountWaitPlan performs one pool-wide non-blocking admission
+// pass. It preserves the scheduler's candidate order but rotates the start
+// position so concurrent waiters do not all probe the same account first.
+func (h *ConcurrencyHelper) TryAcquireAccountWaitPlan(ctx context.Context, plan *service.AccountWaitPlan, fallback *service.Account) (func(), *service.Account, bool, error) {
+	candidates := accountWaitCandidates(plan, fallback)
+	if len(candidates) == 0 {
+		return nil, nil, false, nil
+	}
+	ordered := append([]service.AccountWaitCandidate(nil), candidates...)
+	sort.SliceStable(ordered, func(i, j int) bool {
+		if ordered[i].Account == nil {
+			return false
+		}
+		if ordered[j].Account == nil {
+			return true
+		}
+		return ordered[i].Account.Priority < ordered[j].Account.Priority
+	})
+	for tierStart := 0; tierStart < len(ordered); {
+		if ordered[tierStart].Account == nil {
+			break
+		}
+		tierEnd := tierStart + 1
+		priority := ordered[tierStart].Account.Priority
+		for tierEnd < len(ordered) && ordered[tierEnd].Account != nil && ordered[tierEnd].Account.Priority == priority {
+			tierEnd++
+		}
+		tierSize := tierEnd - tierStart
+		startOffset := 0
+		if tierSize > 1 {
+			startOffset = rand.IntN(tierSize)
+		}
+		for offset := 0; offset < tierSize; offset++ {
+			candidate := ordered[tierStart+(startOffset+offset)%tierSize]
+			release, acquired, err := h.TryAcquireAccountSlot(ctx, candidate.Account.ID, candidate.MaxConcurrency)
+			if err != nil {
+				return nil, nil, false, err
+			}
+			if acquired {
+				return release, candidate.Account, true, nil
+			}
+		}
+		tierStart = tierEnd
+	}
+	return nil, nil, false, nil
+}
+
+// AcquireAccountWaitPlanWithWaitTimeout waits for any candidate in the pool,
+// rather than pinning the request to the account that happened to be first
+// when the wait plan was created.
+func (h *ConcurrencyHelper) AcquireAccountWaitPlanWithWaitTimeout(
+	c *gin.Context,
+	plan *service.AccountWaitPlan,
+	fallback *service.Account,
+	timeout time.Duration,
+	isStream bool,
+	streamStarted *bool,
+) (func(), *service.Account, error) {
+	ctx, cancel := context.WithTimeout(c.Request.Context(), timeout)
+	defer cancel()
+
+	needPing := isStream && h.pingFormat != ""
+	var flusher http.Flusher
+	if needPing {
+		var ok bool
+		flusher, ok = c.Writer.(http.Flusher)
+		if !ok {
+			return nil, nil, fmt.Errorf("streaming not supported")
+		}
+	}
+	var pingCh <-chan time.Time
+	if needPing {
+		pingTicker := time.NewTicker(h.pingInterval)
+		defer pingTicker.Stop()
+		pingCh = pingTicker.C
+	}
+
+	if release, account, acquired, err := h.TryAcquireAccountWaitPlan(ctx, plan, fallback); err != nil || acquired {
+		return release, account, err
+	}
+
+	backoff := initialBackoff
+	timer := time.NewTimer(backoff)
+	defer timer.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			if parentErr := c.Request.Context().Err(); parentErr != nil {
+				return nil, nil, parentErr
+			}
+			return nil, nil, &ConcurrencyError{SlotType: "account", IsTimeout: true}
+		case <-pingCh:
+			if !*streamStarted {
+				c.Header("Content-Type", "text/event-stream")
+				c.Header("Cache-Control", "no-cache")
+				c.Header("Connection", "keep-alive")
+				c.Header("X-Accel-Buffering", "no")
+				*streamStarted = true
+			}
+			written, err := fmt.Fprint(c.Writer, string(h.pingFormat))
+			if err != nil {
+				return nil, nil, err
+			}
+			recordGatewayStreamHeartbeat(c, written)
+			flusher.Flush()
+		case <-timer.C:
+			release, account, acquired, err := h.TryAcquireAccountWaitPlan(ctx, plan, fallback)
+			if err != nil {
+				return nil, nil, err
+			}
+			if acquired {
+				return release, account, nil
+			}
+			backoff = nextBackoff(backoff)
+			timer.Reset(backoff)
+		}
+	}
 }
 
 // AcquireUserSlotWithWait acquires a user concurrency slot, waiting if necessary.

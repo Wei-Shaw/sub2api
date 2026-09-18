@@ -1441,8 +1441,9 @@ func TestOpenAISelectAccountWithLoadAwareness_AllFullWaitPlan(t *testing.T) {
 	}
 	cache := &stubGatewayCache{}
 	concurrencyCache := stubConcurrencyCache{
+		acquireResults: map[int64]bool{1: false},
 		loadMap: map[int64]*AccountLoadInfo{
-			1: {AccountID: 1, LoadRate: 100},
+			1: {AccountID: 1, CurrentConcurrency: 1, LoadRate: 100},
 		},
 	}
 

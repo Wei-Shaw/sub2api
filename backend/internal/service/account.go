@@ -178,6 +178,38 @@ func (a *Account) EffectiveLoadFactor() int {
 	return 1
 }
 
+// SchedulingPriority returns the priority that applies to the current
+// scheduling pool. Group bindings own the priority inside a group; the
+// account-level priority remains the fallback for ungrouped/simple-mode pools
+// and for legacy rows whose binding metadata is unavailable.
+func (a *Account) SchedulingPriority(groupID *int64) int {
+	if a == nil {
+		return 0
+	}
+	if groupID != nil {
+		for _, binding := range a.AccountGroups {
+			if binding.GroupID == *groupID {
+				return binding.Priority
+			}
+		}
+	}
+	return a.Priority
+}
+
+// applySchedulingPriority materializes the pool-specific priority on the
+// request-local account copies returned by the repository/snapshot layer. This
+// keeps the existing hot-path comparisons simple while making
+// account_groups.priority authoritative for grouped scheduling.
+func applySchedulingPriority(accounts []Account, groupID *int64) []Account {
+	if groupID == nil {
+		return accounts
+	}
+	for i := range accounts {
+		accounts[i].Priority = accounts[i].SchedulingPriority(groupID)
+	}
+	return accounts
+}
+
 func (a *Account) IsSchedulable() bool {
 	if !a.IsActive() || !a.Schedulable {
 		return false

@@ -557,13 +557,13 @@ func (s *ConcurrencyCacheSuite) TestGetAccountsLoadBatch() {
 	require.NoError(s.T(), err)
 	require.Len(s.T(), loadMap, 3)
 
-	// Verify account1: (2 + 1) / 3 = 100%
+	// Verify account1: active load is 2 / 3 = 66%; waiting is reported separately.
 	load1 := loadMap[account1]
 	require.NotNil(s.T(), load1)
 	require.Equal(s.T(), account1, load1.AccountID)
 	require.Equal(s.T(), 2, load1.CurrentConcurrency)
 	require.Equal(s.T(), 1, load1.WaitingCount)
-	require.Equal(s.T(), 100, load1.LoadRate)
+	require.Equal(s.T(), 66, load1.LoadRate)
 
 	// Verify account2: (1 + 0) / 2 = 50%
 	load2 := loadMap[account2]

@@ -2187,11 +2187,7 @@ func (h *OpenAIGatewayHandler) acquireOpenAIAccountSlot(
 		return nil, openAISlotAcquireFailed
 	}
 
-	fastReleaseFunc, fastAcquired, err := h.concurrencyHelper.TryAcquireAccountSlot(
-		ctx,
-		account.ID,
-		selection.WaitPlan.MaxConcurrency,
-	)
+	fastReleaseFunc, fastAccount, fastAcquired, err := h.concurrencyHelper.TryAcquireAccountWaitPlan(ctx, selection.WaitPlan, account)
 	if err != nil {
 		reqLog.Warn("openai.account_slot_quick_acquire_failed", zap.Int64("account_id", account.ID), zap.Error(err))
 		status, errType, code, message := concurrencyErrorResponse(err, "account")
@@ -2199,6 +2195,10 @@ func (h *OpenAIGatewayHandler) acquireOpenAIAccountSlot(
 		return nil, openAISlotAcquireFailed
 	}
 	if fastAcquired {
+		if fastAccount != nil {
+			account = fastAccount
+			selection.Account = fastAccount
+		}
 		// 分组利润控制：快速抢槽成功后终检。选号与抢槽之间账号
 		// 倍率可能刷新，越线则释放槽位交由调用方排除重选，不绑定粘连。
 		latest, vetoed, reason := h.gatewayService.ProfitControlVetoLatest(ctx, account)
@@ -2217,7 +2217,7 @@ func (h *OpenAIGatewayHandler) acquireOpenAIAccountSlot(
 		return wrapReleaseOnDone(ctx, fastReleaseFunc), openAISlotAcquireOK
 	}
 
-	canWait, waitErr := h.concurrencyHelper.IncrementAccountWaitCount(ctx, account.ID, selection.WaitPlan.MaxWaiting)
+	queueAccountID, canWait, waitErr := h.concurrencyHelper.IncrementAccountWaitPlan(ctx, selection.WaitPlan, account)
 	if waitErr != nil {
 		reqLog.Warn("openai.account_wait_counter_increment_failed", zap.Int64("account_id", account.ID), zap.Error(waitErr))
 	} else if !canWait {
@@ -2232,16 +2232,16 @@ func (h *OpenAIGatewayHandler) acquireOpenAIAccountSlot(
 	accountWaitCounted := waitErr == nil && canWait
 	releaseWait := func() {
 		if accountWaitCounted {
-			h.concurrencyHelper.DecrementAccountWaitCount(ctx, account.ID)
+			h.concurrencyHelper.DecrementAccountWaitCount(ctx, queueAccountID)
 			accountWaitCounted = false
 		}
 	}
 	defer releaseWait()
 
-	accountReleaseFunc, err := h.concurrencyHelper.AcquireAccountSlotWithWaitTimeout(
+	accountReleaseFunc, waitedAccount, err := h.concurrencyHelper.AcquireAccountWaitPlanWithWaitTimeout(
 		c,
-		account.ID,
-		selection.WaitPlan.MaxConcurrency,
+		selection.WaitPlan,
+		account,
 		selection.WaitPlan.Timeout,
 		reqStream,
 		streamStarted,
@@ -2251,6 +2251,10 @@ func (h *OpenAIGatewayHandler) acquireOpenAIAccountSlot(
 		status, errType, code, message := concurrencyErrorResponse(err, "account")
 		writeError(status, errType, code, message)
 		return nil, openAISlotAcquireFailed
+	}
+	if waitedAccount != nil {
+		account = waitedAccount
+		selection.Account = waitedAccount
 	}
 
 	// Slot acquired: no longer waiting in queue.
@@ -2690,11 +2694,7 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 				closeOpenAIClientWS(wsConn, coderws.StatusTryAgainLater, "account is busy, please retry later")
 				return
 			}
-			fastReleaseFunc, fastAcquired, err := h.concurrencyHelper.TryAcquireAccountSlot(
-				ctx,
-				account.ID,
-				selection.WaitPlan.MaxConcurrency,
-			)
+			fastReleaseFunc, fastAccount, fastAcquired, err := h.concurrencyHelper.TryAcquireAccountWaitPlan(ctx, selection.WaitPlan, account)
 			if err != nil {
 				reqLog.Warn("openai.websocket_account_slot_acquire_failed", zap.Int64("account_id", account.ID), zap.Error(err))
 				closeOpenAIClientWS(wsConn, coderws.StatusInternalError, "failed to acquire account concurrency slot")
@@ -2703,6 +2703,10 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 			if !fastAcquired {
 				closeOpenAIClientWS(wsConn, coderws.StatusTryAgainLater, "account is busy, please retry later")
 				return
+			}
+			if fastAccount != nil {
+				account = fastAccount
+				selection.Account = fastAccount
 			}
 			// 分组利润控制：WS 快速抢槽成功后终检，越线则释放
 			// 槽位、排除该账号重新选号，全池耗尽由下一轮选号关闭连接。

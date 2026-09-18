@@ -29,6 +29,8 @@ type helperConcurrencyCacheStub struct {
 	waitIncrementCalls  int
 	waitDecrementCalls  int
 	waitMaxWait         int
+	accountWaitSeq      []bool
+	accountWaitIDs      []int64
 	waitIncrementHook   func()
 	apiKeyTrackCalls    int
 	apiKeyReleaseCalls  int
@@ -67,6 +69,14 @@ func (s *helperConcurrencyCacheStub) GetAccountConcurrencyBatch(ctx context.Cont
 }
 
 func (s *helperConcurrencyCacheStub) IncrementAccountWaitCount(ctx context.Context, accountID int64, maxWait int) (bool, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if len(s.accountWaitSeq) > 0 {
+		s.accountWaitIDs = append(s.accountWaitIDs, accountID)
+		v := s.accountWaitSeq[0]
+		s.accountWaitSeq = s.accountWaitSeq[1:]
+		return v, nil
+	}
 	return true, nil
 }
 
@@ -515,4 +525,52 @@ func TestSetClaudeCodeClientContext_ParsedRequestProbeWithoutSystemPrompt(t *tes
 	c2.Request.Header.Set("User-Agent", "claude-cli/2.1.260 (external, cli)")
 	SetClaudeCodeClientContext(c2, nil, &service.ParsedRequest{Model: "claude-sonnet-4-5", MaxTokens: 64})
 	require.False(t, service.IsClaudeCodeClient(c2.Request.Context()))
+}
+
+func TestTryAcquireAccountWaitPlanUsesAnyAvailableCandidate(t *testing.T) {
+	cache := &helperConcurrencyCacheStub{accountSeq: []bool{false, true}}
+	concurrency := service.NewConcurrencyService(cache)
+	helper := NewConcurrencyHelper(concurrency, SSEPingFormatNone, 5*time.Millisecond)
+	first := &service.Account{ID: 101, Concurrency: 1}
+	second := &service.Account{ID: 102, Concurrency: 1}
+	plan := &service.AccountWaitPlan{
+		AccountID:      first.ID,
+		MaxConcurrency: first.Concurrency,
+		Candidates: []service.AccountWaitCandidate{
+			{Account: first, MaxConcurrency: first.Concurrency},
+			{Account: second, MaxConcurrency: second.Concurrency},
+		},
+	}
+
+	release, selected, acquired, err := helper.TryAcquireAccountWaitPlan(context.Background(), plan, first)
+	require.NoError(t, err)
+	require.True(t, acquired)
+	require.NotNil(t, selected)
+	require.Contains(t, []int64{first.ID, second.ID}, selected.ID)
+	require.NotNil(t, release)
+	release()
+	require.Equal(t, 2, cache.accountAcquireCalls)
+}
+
+func TestIncrementAccountWaitPlanSkipsFullFirstQueue(t *testing.T) {
+	cache := &helperConcurrencyCacheStub{accountWaitSeq: []bool{false, true}}
+	concurrency := service.NewConcurrencyService(cache)
+	helper := NewConcurrencyHelper(concurrency, SSEPingFormatNone, 5*time.Millisecond)
+	first := &service.Account{ID: 201, Concurrency: 1}
+	second := &service.Account{ID: 202, Concurrency: 1}
+	plan := &service.AccountWaitPlan{
+		MaxWaiting: 4,
+		Candidates: []service.AccountWaitCandidate{
+			{Account: first, MaxConcurrency: first.Concurrency},
+			{Account: second, MaxConcurrency: second.Concurrency},
+		},
+	}
+
+	queueAccountID, canWait, err := helper.IncrementAccountWaitPlan(context.Background(), plan, first)
+	require.NoError(t, err)
+	require.True(t, canWait)
+	require.Equal(t, second.ID, queueAccountID)
+	require.Equal(t, []int64{first.ID, second.ID}, cache.accountWaitIDs)
+
+	helper.DecrementAccountWaitCount(context.Background(), queueAccountID)
 }

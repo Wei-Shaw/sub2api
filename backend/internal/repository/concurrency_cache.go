@@ -642,6 +642,21 @@ func (c *concurrencyCache) AcquireAccountSlot(ctx context.Context, accountID int
 	return result == 1, nil
 }
 
+// TrackAccountSlot records an unlimited account's in-flight request without
+// applying a cap. The regular account namespace is reused so load queries and
+// cleanup remain consistent with limited accounts.
+func (c *concurrencyCache) TrackAccountSlot(ctx context.Context, accountID int64, requestID string) error {
+	key := accountSlotKey(accountID)
+	if _, err := trackSlotScript.Run(ctx, c.rdb, []string{key}, c.slotTTLSeconds, requestID).Result(); err != nil {
+		return err
+	}
+	now, err := c.rdb.Time(ctx).Result()
+	if err == nil {
+		c.touchActiveIndexAt(ctx, accountActiveIndexKey, accountID, now.Unix()+int64(c.slotTTLSeconds))
+	}
+	return nil
+}
+
 func (c *concurrencyCache) ReleaseAccountSlot(ctx context.Context, accountID int64, requestID string) error {
 	key := accountSlotKey(accountID)
 	if err := c.rdb.ZRem(ctx, key, requestID).Err(); err != nil {
@@ -998,7 +1013,10 @@ func (c *concurrencyCache) GetAccountsLoadBatch(ctx context.Context, accounts []
 		}
 		loadRate := 0
 		if ac.maxConcurrency > 0 {
-			loadRate = (currentConcurrency + waitingCount) * 100 / ac.maxConcurrency
+			// LoadRate measures active in-flight pressure only. WaitingCount is
+			// exposed separately so schedulers can apply an explicit queue weight
+			// instead of silently counting queued work twice.
+			loadRate = currentConcurrency * 100 / ac.maxConcurrency
 		}
 		loadMap[ac.id] = &service.AccountLoadInfo{
 			AccountID:          ac.id,

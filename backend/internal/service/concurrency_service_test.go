@@ -616,3 +616,30 @@ func TestIncrementAccountWaitCount_NilCache(t *testing.T) {
 	require.NoError(t, err)
 	require.True(t, allowed)
 }
+
+type unlimitedAccountTrackingCacheForTest struct {
+	stubConcurrencyCacheForTest
+	trackedAccountIDs []int64
+	trackedRequestIDs []string
+}
+
+func (c *unlimitedAccountTrackingCacheForTest) TrackAccountSlot(_ context.Context, accountID int64, requestID string) error {
+	c.trackedAccountIDs = append(c.trackedAccountIDs, accountID)
+	c.trackedRequestIDs = append(c.trackedRequestIDs, requestID)
+	return nil
+}
+
+func TestAcquireAccountSlot_UnlimitedStillTracksLoad(t *testing.T) {
+	cache := &unlimitedAccountTrackingCacheForTest{}
+	svc := NewConcurrencyService(cache)
+	result, err := svc.AcquireAccountSlot(context.Background(), 42, 0)
+	require.NoError(t, err)
+	require.True(t, result.Acquired)
+	require.Len(t, cache.trackedAccountIDs, 1)
+	require.Equal(t, int64(42), cache.trackedAccountIDs[0])
+	require.NotEmpty(t, cache.trackedRequestIDs[0])
+
+	result.ReleaseFunc()
+	require.Equal(t, []int64{42}, cache.releasedAccountIDs)
+	require.Equal(t, cache.trackedRequestIDs, cache.releasedRequestIDs)
+}

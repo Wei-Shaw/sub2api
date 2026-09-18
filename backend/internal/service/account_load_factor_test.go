@@ -44,3 +44,21 @@ func TestEffectiveLoadFactor_ZeroLoadFactor_ZeroConcurrency(t *testing.T) {
 	a := &Account{Concurrency: 0, LoadFactor: intPtrHelper(0)}
 	require.Equal(t, 1, a.EffectiveLoadFactor())
 }
+
+func TestSchedulingPriority_GroupBindingOverridesAccount(t *testing.T) {
+	groupID := int64(42)
+	account := &Account{
+		Priority: 100,
+		AccountGroups: []AccountGroup{
+			{GroupID: groupID, Priority: 3},
+		},
+	}
+	require.Equal(t, 3, account.SchedulingPriority(&groupID))
+}
+
+func TestSchedulingPriority_FallsBackToAccountPriority(t *testing.T) {
+	groupID := int64(42)
+	account := &Account{Priority: 7}
+	require.Equal(t, 7, account.SchedulingPriority(&groupID))
+	require.Equal(t, 7, account.SchedulingPriority(nil))
+}

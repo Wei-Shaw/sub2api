@@ -61,6 +61,13 @@ type APIKeyConcurrencyCache interface {
 	GetAPIKeyConcurrencyBatch(ctx context.Context, apiKeyIDs []int64) (map[int64]int, error)
 }
 
+// AccountSlotTrackingCache is an optional stats-only extension for accounts
+// whose Concurrency is unlimited. It keeps their in-flight load observable
+// without imposing a hard cap.
+type AccountSlotTrackingCache interface {
+	TrackAccountSlot(ctx context.Context, accountID int64, requestID string) error
+}
+
 // OpenAIWSIngressLeaseCache owns the short-lived distributed lease used to
 // bound live client WebSocket sessions. It is deliberately independent of the
 // request-slot namespace: idle ingress connections do not occupy turn slots.
@@ -340,11 +347,29 @@ type UserLoadInfo struct {
 // If the account is at max concurrency, it waits until a slot is available or timeout.
 // Returns a release function that MUST be called when the request completes.
 func (s *ConcurrencyService) AcquireAccountSlot(ctx context.Context, accountID int64, maxConcurrency int) (*AcquireResult, error) {
-	// If maxConcurrency is 0 or negative, no limit
+	// Unlimited accounts still need stats-only tracking; otherwise their live
+	// load remains permanently zero and the scheduler keeps over-selecting them.
 	if maxConcurrency <= 0 {
+		if s == nil || s.cache == nil {
+			return &AcquireResult{Acquired: true, ReleaseFunc: func() {}}, nil
+		}
+		tracker, ok := s.cache.(AccountSlotTrackingCache)
+		if !ok {
+			return &AcquireResult{Acquired: true, ReleaseFunc: func() {}}, nil
+		}
+		requestID := generateRequestID()
+		if err := tracker.TrackAccountSlot(ctx, accountID, requestID); err != nil {
+			return nil, err
+		}
 		return &AcquireResult{
-			Acquired:    true,
-			ReleaseFunc: func() {}, // no-op
+			Acquired: true,
+			ReleaseFunc: func() {
+				bgCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+				defer cancel()
+				if err := s.cache.ReleaseAccountSlot(bgCtx, accountID, requestID); err != nil {
+					logger.LegacyPrintf("service.concurrency", "Warning: failed to release unlimited account slot for %d (req=%s): %v", accountID, requestID, err)
+				}
+			},
 		}, nil
 	}
 
