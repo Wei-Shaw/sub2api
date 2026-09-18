@@ -1150,6 +1150,7 @@ export default {
           responses: 'Responses',
           chatCompletions: 'Chat Completions',
           embeddings: 'Embeddings',
+          rerank: 'Rerank',
           images: 'Images',
           gemini: 'Gemini Native'
         },

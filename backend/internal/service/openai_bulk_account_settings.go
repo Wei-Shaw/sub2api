@@ -9,15 +9,16 @@ import (
 )
 
 type bulkOpenAISettings struct {
-	longContextBilling      bool
-	endpointCapabilities    bool
-	responsesMode           bool
-	capabilitiesIncludeChat bool
-	forcedResponsesMode     bool
+	longContextBilling          bool
+	endpointCapabilities        bool
+	genericEndpointCapabilities bool
+	responsesMode               bool
+	capabilitiesIncludeChat     bool
+	forcedResponsesMode         bool
 }
 
 func (s bulkOpenAISettings) any() bool {
-	return s.longContextBilling || s.endpointCapabilities || s.responsesMode
+	return s.longContextBilling || s.endpointCapabilities || s.genericEndpointCapabilities || s.responsesMode
 }
 
 func normalizeBulkOpenAISettings(input *BulkUpdateAccountsInput) (bulkOpenAISettings, error) {
@@ -41,6 +42,12 @@ func normalizeBulkOpenAISettings(input *BulkUpdateAccountsInput) (bulkOpenAISett
 		}
 		settings.capabilitiesIncludeChat = includeChat
 		input.Credentials[openAIEndpointCapabilitiesCredentialKey] = capabilities
+	}
+	if _, exists := input.Credentials[endpointCapabilitiesCredentialKey]; exists {
+		// The provider-neutral key is normalized only after the target accounts
+		// are loaded: Gemini and Zhipu deliberately have different capability
+		// vocabularies, and Gemini's embedding option depends on account type.
+		settings.genericEndpointCapabilities = true
 	}
 
 	if raw, exists := input.Extra[openai_compat.ExtraKeyResponsesMode]; exists {
@@ -75,7 +82,7 @@ func normalizeBulkOpenAIEndpointCapabilities(raw any) (any, bool, error) {
 		return nil, true, nil
 	}
 
-	values := make([]string, 0, 2)
+	values := make([]string, 0, 3)
 	switch typed := raw.(type) {
 	case []any:
 		for _, item := range typed {
@@ -91,10 +98,10 @@ func normalizeBulkOpenAIEndpointCapabilities(raw any) (any, bool, error) {
 		return nil, false, invalidBulkOpenAIEndpointCapabilities()
 	}
 
-	selected := make(map[string]bool, 2)
+	selected := make(map[string]bool, 3)
 	for _, value := range values {
 		switch OpenAIEndpointCapability(value) {
-		case OpenAIEndpointCapabilityChatCompletions, OpenAIEndpointCapabilityEmbeddings:
+		case OpenAIEndpointCapabilityChatCompletions, OpenAIEndpointCapabilityEmbeddings, OpenAIEndpointCapabilityRerank:
 			selected[value] = true
 		default:
 			return nil, false, invalidBulkOpenAIEndpointCapabilities()
@@ -105,19 +112,185 @@ func normalizeBulkOpenAIEndpointCapabilities(raw any) (any, bool, error) {
 	}
 
 	includeChat := selected[string(OpenAIEndpointCapabilityChatCompletions)]
-	if includeChat && selected[string(OpenAIEndpointCapabilityEmbeddings)] {
-		return nil, true, nil
+	normalized := make([]string, 0, len(selected))
+	for _, capability := range []OpenAIEndpointCapability{
+		OpenAIEndpointCapabilityChatCompletions,
+		OpenAIEndpointCapabilityEmbeddings,
+		OpenAIEndpointCapabilityRerank,
+	} {
+		if selected[string(capability)] {
+			normalized = append(normalized, string(capability))
+		}
 	}
-	if includeChat {
-		return []string{string(OpenAIEndpointCapabilityChatCompletions)}, true, nil
-	}
-	return []string{string(OpenAIEndpointCapabilityEmbeddings)}, false, nil
+	return normalized, includeChat, nil
 }
 
 func invalidBulkOpenAIEndpointCapabilities() error {
 	return infraerrors.BadRequest(
 		"OPENAI_ENDPOINT_CAPABILITIES_INVALID",
-		"openai_capabilities must contain chat_completions, embeddings, or both",
+		"openai_capabilities must contain chat_completions, embeddings, rerank, or a supported combination",
+	)
+}
+
+func normalizeBulkGeminiEndpointCapabilities(raw any) (any, error) {
+	if raw == nil {
+		return nil, nil
+	}
+	values := make([]string, 0, 2)
+	switch typed := raw.(type) {
+	case []any:
+		for _, item := range typed {
+			value, ok := item.(string)
+			if !ok {
+				return nil, invalidBulkGeminiEndpointCapabilities()
+			}
+			values = append(values, value)
+		}
+	case []string:
+		values = append(values, typed...)
+	default:
+		return nil, invalidBulkGeminiEndpointCapabilities()
+	}
+	selected := make(map[string]bool, 2)
+	for _, value := range values {
+		switch value {
+		case "gemini_native", string(OpenAIEndpointCapabilityEmbeddings):
+			selected[value] = true
+		default:
+			return nil, invalidBulkGeminiEndpointCapabilities()
+		}
+	}
+	if len(selected) == 0 {
+		return nil, invalidBulkGeminiEndpointCapabilities()
+	}
+	normalized := make([]string, 0, len(selected))
+	for _, capability := range []string{"gemini_native", string(OpenAIEndpointCapabilityEmbeddings)} {
+		if selected[capability] {
+			normalized = append(normalized, capability)
+		}
+	}
+	return normalized, nil
+}
+
+func normalizeBulkZhipuEndpointCapabilities(raw any) (any, error) {
+	if raw == nil {
+		return nil, nil
+	}
+	values, err := bulkEndpointCapabilityStrings(raw)
+	if err != nil {
+		return nil, invalidBulkZhipuEndpointCapabilities()
+	}
+	selected := make(map[string]bool, 2)
+	for _, value := range values {
+		switch OpenAIEndpointCapability(value) {
+		case OpenAIEndpointCapabilityChatCompletions, OpenAIEndpointCapabilityEmbeddings:
+			selected[value] = true
+		default:
+			return nil, invalidBulkZhipuEndpointCapabilities()
+		}
+	}
+	if len(selected) == 0 {
+		return nil, invalidBulkZhipuEndpointCapabilities()
+	}
+	normalized := make([]string, 0, len(selected))
+	for _, capability := range []OpenAIEndpointCapability{
+		OpenAIEndpointCapabilityChatCompletions,
+		OpenAIEndpointCapabilityEmbeddings,
+	} {
+		if selected[string(capability)] {
+			normalized = append(normalized, string(capability))
+		}
+	}
+	return normalized, nil
+}
+
+func bulkEndpointCapabilityStrings(raw any) ([]string, error) {
+	values := make([]string, 0, 2)
+	switch typed := raw.(type) {
+	case []any:
+		for _, item := range typed {
+			value, ok := item.(string)
+			if !ok {
+				return nil, fmt.Errorf("endpoint capability must be a string")
+			}
+			values = append(values, value)
+		}
+	case []string:
+		values = append(values, typed...)
+	default:
+		return nil, fmt.Errorf("endpoint capabilities must be an array")
+	}
+	return values, nil
+}
+
+func invalidBulkZhipuEndpointCapabilities() error {
+	return infraerrors.BadRequest(
+		"ZHIPU_ENDPOINT_CAPABILITIES_INVALID",
+		"endpoint_capabilities must contain chat_completions, embeddings, or both",
+	)
+}
+
+// normalizeBulkGenericEndpointCapabilities resolves the provider-neutral
+// credentials key after target loading. Bulk edits must be homogeneous here so
+// a single JSONB patch never gives a provider another provider's vocabulary.
+func normalizeBulkGenericEndpointCapabilities(input *BulkUpdateAccountsInput, settings bulkOpenAISettings, targetsByID map[int64]*Account) error {
+	if input == nil || !settings.genericEndpointCapabilities {
+		return nil
+	}
+	platform := ""
+	geminiHasNonAPIKey := false
+	for _, accountID := range input.AccountIDs {
+		account := targetsByID[accountID]
+		if account == nil {
+			return invalidBulkOpenAITarget(accountID, "account does not exist")
+		}
+		if platform == "" {
+			platform = account.Platform
+		} else if account.Platform != platform {
+			return invalidBulkOpenAITarget(accountID, "endpoint capabilities require homogeneous Gemini or Zhipu targets")
+		}
+		if account.Platform == PlatformGemini && account.Type != AccountTypeAPIKey {
+			geminiHasNonAPIKey = true
+		}
+	}
+	raw := input.Credentials[endpointCapabilitiesCredentialKey]
+	switch platform {
+	case PlatformGemini:
+		capabilities, err := normalizeBulkGeminiEndpointCapabilities(raw)
+		if err != nil {
+			return err
+		}
+		if geminiHasNonAPIKey && capabilities != nil {
+			values := capabilities.([]string)
+			sanitized := make([]string, 0, 1)
+			for _, value := range values {
+				if value != string(OpenAIEndpointCapabilityEmbeddings) {
+					sanitized = append(sanitized, value)
+				}
+			}
+			if len(sanitized) == 0 {
+				input.Credentials[endpointCapabilitiesCredentialKey] = nil
+				return nil
+			}
+			capabilities = sanitized
+		}
+		input.Credentials[endpointCapabilitiesCredentialKey] = capabilities
+	case PlatformZhipu:
+		capabilities, err := normalizeBulkZhipuEndpointCapabilities(raw)
+		if err != nil {
+			return err
+		}
+		input.Credentials[endpointCapabilitiesCredentialKey] = capabilities
+	default:
+		return invalidBulkOpenAITarget(input.AccountIDs[0], "endpoint capabilities require homogeneous Gemini or Zhipu targets")
+	}
+	return nil
+}
+
+func invalidBulkGeminiEndpointCapabilities() error {
+	return infraerrors.BadRequest(
+		"GEMINI_ENDPOINT_CAPABILITIES_INVALID",
+		"endpoint_capabilities must contain gemini_native, embeddings, or both",
 	)
 }
 
@@ -175,6 +348,11 @@ func validateBulkOpenAISettingsTargets(
 		if settings.endpointCapabilities || settings.responsesMode {
 			if account.Platform != PlatformOpenAI || account.Type != AccountTypeAPIKey {
 				return 0, invalidBulkOpenAITarget(accountID, "endpoint capabilities and Responses routing require an OpenAI API-key account")
+			}
+		}
+		if settings.genericEndpointCapabilities {
+			if account.Platform != PlatformGemini && account.Platform != PlatformZhipu {
+				return 0, invalidBulkOpenAITarget(accountID, "endpoint capabilities require a Gemini or Zhipu account")
 			}
 		}
 
