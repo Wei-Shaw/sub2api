@@ -369,8 +369,9 @@ func TestSchedulerFullRebuildFreshActivePreparesEveryTokenBeforeFirstDB(t *testi
 		capturesAtFirstDB = cache.captureAttemptCount()
 		held, reopenCount := cache.leaseHeldAndTokenCount()
 		require.False(t, held)
-		require.Equal(t, schedulerCanonicalBucketCount(), reopenCount)
-		require.Equal(t, schedulerCanonicalBucketCount()+1, capturesAtFirstDB, "C(0) and the historical bucket must be captured before DB")
+		require.Equal(t, canonicalCount, schedulerCanonicalBucketCount())
+		require.Equal(t, canonicalCount, reopenCount)
+		require.Equal(t, canonicalCount+1, capturesAtFirstDB, "C(0) and the historical bucket must be captured before DB")
 	}
 	svc := newFullRebuildLifecycleService(cache, nil, accounts, groups, config.RunModeStandard)
 

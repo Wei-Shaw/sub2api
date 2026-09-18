@@ -365,14 +365,15 @@ func (s *AccountTestService) TestAccountConnection(c *gin.Context, accountID int
 	if account.IsDeepSeek() {
 		return s.testDeepSeekAccountConnection(c, account, modelID)
 	}
+	if usesCNProviderChatCompletionsConnectionTest(account) {
+		return s.testCNProviderChatCompletionsConnection(c, account, modelID, prompt)
+	}
 	if account.IsCNProvider() {
 		switch account.GetAPIProtocol() {
 		case APIProtocolAdaptive:
 			return s.testCNProviderAdaptiveConnection(c, account, modelID, prompt)
 		case APIProtocolResponses:
 			return s.testOpenAIAccountConnection(c, account, modelID, prompt, normalizeAccountTestMode(mode))
-		case APIProtocolChatCompletions:
-			return s.testCNProviderChatCompletionsConnection(c, account, modelID, prompt)
 		case APIProtocolAnthropic:
 			return s.testCNProviderAnthropicConnection(c, account, modelID)
 		}
@@ -442,6 +443,14 @@ func (s *AccountTestService) testOpenCodeGoResponsesConnection(c *gin.Context, a
 	c.Writer.Flush()
 	s.sendEvent(c, TestEvent{Type: "test_start", Model: testModelID})
 	return s.testCNProviderAdaptiveResponsesConnection(c, account, testModelID, authToken)
+}
+
+// usesCNProviderChatCompletionsConnectionTest 报告账号测试是否应走国产 Chat Completions 探测。
+// DeepSeek 即使协议标成 chat_completions 也仍走独立的 /v1/models 探测，避免把官方账号
+// 误打到通用 Chat Completions 探活。
+func usesCNProviderChatCompletionsConnectionTest(account *Account) bool {
+	return account != nil && !account.IsDeepSeek() && account.IsCNProvider() &&
+		account.GetAPIProtocol() == APIProtocolChatCompletions
 }
 
 func (s *AccountTestService) testCNProviderChatCompletionsConnection(c *gin.Context, account *Account, modelID string, prompt string) error {
