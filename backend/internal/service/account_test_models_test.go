@@ -86,7 +86,10 @@ func TestFetchOpenAIAccountModelsOAuthLabelsLocalImageModelsLikeUpstream(t *test
 	newCodexModelsOAuthCacheServer(t, `{"models":[{"slug":"gpt-5.6-sol"}]}`)
 	svc := &AccountTestService{openaiGatewayService: &OpenAIGatewayService{}}
 	account := newCodexModelsTestAccount()
-	account.Credentials["model_mapping"] = map[string]any{"gpt-image-2.5-flare": "gpt-image-2.5-flare"}
+	account.Credentials["model_mapping"] = map[string]any{
+		"gpt-5.6-sol":         "gpt-5.6-sol",
+		"gpt-image-2.5-flare": "gpt-image-2.5-flare",
+	}
 	models, err := svc.FetchOpenAIAccountModels(context.Background(), account)
 	require.NoError(t, err)
 	byID := make(map[string]string, len(models))
@@ -110,4 +113,38 @@ func TestFetchOpenAIAccountModelsOAuthRespectsImageAllowlist(t *testing.T) {
 	}
 	require.Contains(t, ids, "gpt-image-2.5-flare")
 	require.NotContains(t, ids, "gpt-image-2.5-sunburst")
+}
+
+func TestFetchOpenAIAccountModelsAPIKeyAppliesAliasMapping(t *testing.T) {
+	gateway := newCodexModelsAPIKeyTestService(&codexModelsHTTPUpstreamStub{do: func(_ *http.Request, _ string, _ int64, _ int) (*http.Response, error) {
+		return ordinaryModelsUpstreamResponse(`{"data":[
+			{"id":"deepseek-chat","owned_by":"deepseek"},
+			{"id":"deepseek-reasoner","owned_by":"deepseek"}
+		]}`), nil
+	}})
+	svc := &AccountTestService{openaiGatewayService: gateway}
+	account := newCodexModelsAPIKeyTestAccount("https://models.example/v1")
+	account.Credentials["model_mapping"] = map[string]any{"gpt-4o": "deepseek-chat"}
+	models, err := svc.FetchOpenAIAccountModels(context.Background(), account)
+	require.NoError(t, err)
+	require.Len(t, models, 1, "picker must list the alias, not raw upstream IDs")
+	require.Equal(t, "gpt-4o", models[0].ID)
+	require.Equal(t, "gpt-4o", models[0].DisplayName)
+	require.Equal(t, "model", models[0].Type)
+}
+
+func TestFetchOpenAIAccountModelsAPIKeyKeepsWhitelistEntries(t *testing.T) {
+	gateway := newCodexModelsAPIKeyTestService(&codexModelsHTTPUpstreamStub{do: func(_ *http.Request, _ string, _ int64, _ int) (*http.Response, error) {
+		return ordinaryModelsUpstreamResponse(`{"data":[
+			{"id":"deepseek-chat","owned_by":"deepseek"},
+			{"id":"deepseek-reasoner","owned_by":"deepseek"}
+		]}`), nil
+	}})
+	svc := &AccountTestService{openaiGatewayService: gateway}
+	account := newCodexModelsAPIKeyTestAccount("https://models.example/v1")
+	account.Credentials["model_mapping"] = map[string]any{"deepseek-chat": "deepseek-chat"}
+	models, err := svc.FetchOpenAIAccountModels(context.Background(), account)
+	require.NoError(t, err)
+	require.Len(t, models, 1)
+	require.Equal(t, "deepseek-chat", models[0].ID)
 }
