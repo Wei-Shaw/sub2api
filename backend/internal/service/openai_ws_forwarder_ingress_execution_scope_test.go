@@ -314,7 +314,16 @@ func runOpenAIWSCodexThreadPair(t *testing.T, threadA, threadB string) (serverEr
 	cancelA()
 	if aReadErr == nil {
 		require.Equal(t, "resp_thread_a", gjson.GetBytes(completedA, "response.id").String())
-		require.NoError(t, connA.Close(coderws.StatusNormalClosure, "done"))
+		if closeErr := connA.Close(coderws.StatusNormalClosure, "done"); closeErr != nil {
+			var wsClose coderws.CloseError
+			if errors.As(closeErr, &wsClose) && wsClose.Code == coderws.StatusTryAgainLater {
+				// 抢占关闭帧在独立 goroutine 里发出。A 可能先读到已经在路上的
+				// 上游完成事件，随后才收到关闭帧；对同线程重连来说仍是一次取代。
+				aReadErr = closeErr
+			} else {
+				require.NoError(t, closeErr)
+			}
+		}
 	}
 	require.NoError(t, connB.Close(coderws.StatusNormalClosure, "done"))
 
