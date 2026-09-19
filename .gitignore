@@ -150,6 +150,7 @@ docs/screenshots/*
 .serena/
 .codex/
 frontend/coverage/
+.pnpm-store/
 aicodex
 output/
 .codegraph/
