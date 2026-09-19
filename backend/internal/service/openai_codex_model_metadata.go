@@ -394,8 +394,9 @@ func applyUpstreamModelMetadataToCodexDescriptor(
 	} else if metadata.Reasoning != nil && *metadata.Reasoning {
 		levels := normalizeReasoningLevels(metadata.SupportedReasoningLevels)
 		if len(levels) == 0 {
-			descriptor.DefaultReasoningLevel = nil
-			descriptor.SupportedReasoningLevels = []configuredCodexReasoningLevel{}
+			// Upstream metadata with Reasoning=true but an empty level list
+			// (e.g. models.dev fallback) must NOT wipe family defaults
+			// already set by newConfiguredCodexModelDescriptor (#6999).
 		} else {
 			defaultLevel := normalizeReasoningLevel(metadata.DefaultReasoningLevel)
 			if !stringSliceContains(levels, defaultLevel) {
