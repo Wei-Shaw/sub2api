@@ -1,6 +1,6 @@
 package service
 
-// parentHealthyForShadow 报告 spark 影子账号的母账号凭据是否可用(影子据此可被调度)。
+// parentHealthyForShadow reports whether a linked account's parent can serve it.
 //
 // 非影子账号直接返回 true（不受此检查约束）。
 // lookup 将母账号 ID 解析为当前 Account（来自调度快照 map 或 repo）。
@@ -21,7 +21,17 @@ func parentHealthyForShadow(account *Account, lookup func(int64) *Account) bool 
 	if parent == nil {
 		return false
 	}
-	return parent.IsOpenAIOAuth() && parent.IsCredentialUsableForShadow()
+	if !parent.IsOpenAIOAuth() {
+		return false
+	}
+	if account.IsLinkedAccount() {
+		// A normal linked route shares the parent's global quota and operational
+		// state, while retaining its own route-level schedulable switch.
+		return parent.IsSchedulable() && parent.IsCredentialUsableForShadow()
+	}
+	// Spark has an independent quota bucket, so only shared credential and
+	// transport health cascade from the parent.
+	return parent.IsCredentialUsableForShadow()
 }
 
 // sparkModelVariants 返回所有归一到 spark 的模型 ID（当前仅 base：spark 无 effort 变体）。
