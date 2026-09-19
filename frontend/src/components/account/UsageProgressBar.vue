@@ -189,7 +189,7 @@ const shouldShowResetTime = computed(() => {
 // Format reset time
 const formatResetTime = computed(() => {
   // For rolling windows, when utilization is 0%, treat as immediately available.
-  if (props.showNowWhenIdle && props.utilization <= 0) {
+  if (props.showNowWhenIdle && props.utilization < 0) {
     return t('usage.resetNow')
   }
 
