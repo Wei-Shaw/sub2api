@@ -1121,3 +1121,64 @@ func TestBuildSchedulerMetadataAccount_KeepsOpenAIPassthroughForModelGate(t *tes
 		})
 	}
 }
+
+// 调度投影必须保留账号的 RPM 配置。
+//
+// 候选过滤走 ListSchedulableAccounts，读的是 buildSchedulerMetadataAccount 产出的精简投影；
+// isAccountSchedulableForRPM 靠 extra 上的 base_rpm 判定，缺失时 GetBaseRPM() 返回 0，
+// baseRPM <= 0 直接放行，已配置限流的账号在选号阶段被当作未开启 RPM（#7225）。
+// rpm_strategy / rpm_sticky_buffer 同理：只保留 base_rpm 会让三区判定退回默认值，
+// 红区（不可调度）被误判成黄区（仅粘性），超额请求照样被转发。
+func TestBuildSchedulerMetadataAccount_KeepsRPMFieldsForRPMGate(t *testing.T) {
+	newAccount := func(extra map[string]any) service.Account {
+		return service.Account{
+			ID:       7225,
+			Platform: service.PlatformAnthropic,
+			Type:     service.AccountTypeOAuth,
+			Extra:    extra,
+		}
+	}
+	roundTrip := func(t *testing.T, account service.Account) service.Account {
+		t.Helper()
+		// 走一遍真实的序列化/反序列化路径（写入 sched:meta 再由 decodeCachedAccount 读回）。
+		payload, err := json.Marshal(buildSchedulerMetadataAccount(account))
+		require.NoError(t, err)
+		var restored service.Account
+		require.NoError(t, json.Unmarshal(payload, &restored))
+		return restored
+	}
+
+	t.Run("tiered", func(t *testing.T) {
+		account := newAccount(map[string]any{
+			"base_rpm":          10,
+			"rpm_strategy":      "tiered",
+			"rpm_sticky_buffer": 1,
+		})
+		require.Equal(t, service.WindowCostNotSchedulable, account.CheckRPMSchedulability(11),
+			"前置条件：base_rpm=10 + 缓冲 1，当前 11 次已进红区")
+
+		restored := roundTrip(t, account)
+
+		require.Equal(t, 10, restored.GetBaseRPM())
+		require.Equal(t, "tiered", restored.GetRPMStrategy())
+		require.Equal(t, 1, restored.GetRPMStickyBuffer())
+		require.Equal(t, service.WindowCostNotSchedulable, restored.CheckRPMSchedulability(11),
+			"投影裁掉 RPM 配置会让已配置限流的账号在候选过滤阶段被放行")
+	})
+
+	t.Run("sticky_exempt", func(t *testing.T) {
+		account := newAccount(map[string]any{
+			"base_rpm":     10,
+			"rpm_strategy": "sticky_exempt",
+		})
+		require.Equal(t, service.WindowCostStickyOnly, account.CheckRPMSchedulability(100),
+			"前置条件：粘性豁免策略没有红区")
+
+		restored := roundTrip(t, account)
+
+		require.Equal(t, 10, restored.GetBaseRPM())
+		require.Equal(t, "sticky_exempt", restored.GetRPMStrategy())
+		require.Equal(t, service.WindowCostStickyOnly, restored.CheckRPMSchedulability(100),
+			"投影裁掉 rpm_strategy 会让粘性豁免账号退回三区判定")
+	})
+}
