@@ -20,14 +20,14 @@
       <!-- Number Input -->
       <input
         v-else-if="attr.type === 'number'"
-        v-model.number="localValues[attr.id]"
+        :value="localValues[attr.id]"
         type="number"
         :required="attr.required"
         :placeholder="attr.placeholder"
         :min="attr.validation?.min"
         :max="attr.validation?.max"
         class="input"
-        @input="emitChange"
+        @input="localValues[attr.id] = ($event.target as HTMLInputElement).value; emitChange()"
       />
 
       <!-- Date Input -->
