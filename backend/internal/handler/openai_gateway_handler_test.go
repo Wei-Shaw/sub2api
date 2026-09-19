@@ -381,6 +381,20 @@ func TestOpenAIEnsureForwardErrorResponse_AfterDeltaAppendsSingleValidResponseFa
 	require.Equal(t, 1, errorEvents)
 }
 
+func TestOpenAIEnsureForwardErrorResponse_PreservesCommittedStreamError(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest(http.MethodPost, EndpointResponses, nil)
+	body := "event: error\ndata: {\"type\":\"error\",\"code\":\"upstream_stream_read_error\",\"message\":\"Upstream response stream was interrupted\",\"param\":null,\"sequence_number\":0}\n\n"
+	_, err := c.Writer.WriteString(body)
+	require.NoError(t, err)
+	service.MarkResponseCommitted(c)
+	h := &OpenAIGatewayHandler{}
+	require.False(t, h.ensureForwardErrorResponse(c, true))
+	require.Equal(t, body, w.Body.String(), "preserve the service error without a second terminal event")
+}
+
 func TestOpenAIEnsureForwardErrorResponse_CompactKeepaliveOnlyWritesResponseFailed(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	w := httptest.NewRecorder()
