@@ -256,6 +256,26 @@ describe('CreateAccountModal OpenAI long-context billing', () => {
 
   afterEach(() => vi.useRealTimers())
 
+  it('renders every platform in one selector container', () => {
+    const wrapper = mountModal()
+    const platformSelector = wrapper.get('[data-tour="account-form-platform"]')
+
+    expect(platformSelector.findAll('button').map((button) => button.text())).toEqual([
+      'Anthropic',
+      'OpenAI',
+      'Gemini',
+      'Antigravity',
+      'Kiro',
+      'Grok',
+      'Adobe',
+      'Kimi',
+      'Zhipu GLM',
+      'DeepSeek',
+      'MiniMax',
+      'OpenCode',
+    ])
+  })
+
   it('sets month and year expiry presets without submitting the account form', async () => {
     vi.useFakeTimers({ toFake: ['Date'] })
     vi.setSystemTime(new Date('2026-01-31T12:34:00'))
