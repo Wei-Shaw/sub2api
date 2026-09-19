@@ -473,7 +473,15 @@ func (h *DashboardHandler) GetAPIKeyUsageTrend(c *gin.Context) {
 		limit = 5
 	}
 
-	trend, hit, err := h.getAPIKeyUsageTrendCached(c.Request.Context(), startTime, endTime, granularity, limit)
+	// 可选：只看某个用户的 Top-N Key 趋势(与分布/排行接口的 user_id 语义一致)。
+	var userID int64
+	if v := c.Query("user_id"); v != "" {
+		if id, parseErr := strconv.ParseInt(v, 10, 64); parseErr == nil {
+			userID = id
+		}
+	}
+
+	trend, hit, err := h.getAPIKeyUsageTrendCached(c.Request.Context(), startTime, endTime, granularity, limit, userID)
 	if err != nil {
 		response.Error(c, 500, "Failed to get API key usage trend")
 		return
@@ -521,6 +529,7 @@ type BatchUsersUsageRequest struct {
 }
 
 var dashboardUsersRankingCache = newSnapshotCache(5 * time.Minute)
+var dashboardAPIKeysRankingCache = newSnapshotCache(5 * time.Minute)
 var dashboardBatchUsersUsageCache = newSnapshotCache(30 * time.Second)
 var dashboardBatchAPIKeysUsageCache = newSnapshotCache(30 * time.Second)
 
@@ -572,6 +581,70 @@ func (h *DashboardHandler) GetUserSpendingRanking(c *gin.Context) {
 		"end_date":          endTime.Add(-24 * time.Hour).Format("2006-01-02"),
 	}
 	dashboardUsersRankingCache.Set(cacheKey, payload)
+	c.Header("X-Snapshot-Cache", "miss")
+	response.Success(c, payload)
+}
+
+// GetAPIKeyUsageRanking handles getting per-API-key usage ranking data.
+// GET /api/v1/admin/dashboard/api-keys-ranking
+// Query params: start_date, end_date, timezone, limit, sort_by, user_id
+func (h *DashboardHandler) GetAPIKeyUsageRanking(c *gin.Context) {
+	startTime, endTime := parseTimeRange(c)
+
+	// 饼图默认 Top 12;排行表最多 200(与 user-breakdown 一致)。
+	limit := 12
+	if v := c.Query("limit"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n > 0 && n <= 200 {
+			limit = n
+		}
+	}
+
+	// sort_by 由 repo 层 allowlist 校验;非法值静默回退默认排序(actual_cost)。
+	sortBy := strings.TrimSpace(c.Query("sort_by"))
+
+	var userID int64
+	if v := c.Query("user_id"); v != "" {
+		if id, err := strconv.ParseInt(v, 10, 64); err == nil {
+			userID = id
+		}
+	}
+
+	keyRaw, _ := json.Marshal(struct {
+		Start  string `json:"start"`
+		End    string `json:"end"`
+		Limit  int    `json:"limit"`
+		SortBy string `json:"sort_by"`
+		UserID int64  `json:"user_id"`
+	}{
+		Start:  startTime.UTC().Format(time.RFC3339),
+		End:    endTime.UTC().Format(time.RFC3339),
+		Limit:  limit,
+		SortBy: sortBy,
+		UserID: userID,
+	})
+	cacheKey := string(keyRaw)
+	if cached, ok := dashboardAPIKeysRankingCache.Get(cacheKey); ok {
+		c.Header("X-Snapshot-Cache", "hit")
+		response.Success(c, cached.Payload)
+		return
+	}
+
+	ranking, err := h.dashboardService.GetAPIKeyUsageRanking(c.Request.Context(), startTime, endTime, limit, sortBy, userID)
+	if err != nil {
+		response.Error(c, 500, "Failed to get API key usage ranking")
+		return
+	}
+
+	payload := gin.H{
+		"ranking":           ranking.Ranking,
+		"total_actual_cost": ranking.TotalActualCost,
+		"total_requests":    ranking.TotalRequests,
+		"total_tokens":      ranking.TotalTokens,
+		"total_keys":        ranking.TotalKeys,
+		"start_date":        startTime.Format("2006-01-02"),
+		"end_date":          endTime.Add(-24 * time.Hour).Format("2006-01-02"),
+	}
+	dashboardAPIKeysRankingCache.Set(cacheKey, payload)
 	c.Header("X-Snapshot-Cache", "miss")
 	response.Success(c, payload)
 }
