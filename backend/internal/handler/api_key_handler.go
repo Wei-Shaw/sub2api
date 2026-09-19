@@ -32,13 +32,14 @@ func NewAPIKeyHandler(apiKeyService *service.APIKeyService) *APIKeyHandler {
 
 // CreateAPIKeyRequest represents the create API key request payload
 type CreateAPIKeyRequest struct {
-	Name          string   `json:"name" binding:"required"`
-	GroupID       *int64   `json:"group_id"`        // nullable
-	CustomKey     *string  `json:"custom_key"`      // 可选的自定义key
-	IPWhitelist   []string `json:"ip_whitelist"`    // IP 白名单
-	IPBlacklist   []string `json:"ip_blacklist"`    // IP 黑名单
-	Quota         *float64 `json:"quota"`           // 配额限制 (USD)
-	ExpiresInDays *int     `json:"expires_in_days"` // 过期天数
+	Name          string     `json:"name" binding:"required"`
+	GroupID       *int64     `json:"group_id"`        // nullable
+	CustomKey     *string    `json:"custom_key"`      // 可选的自定义key
+	IPWhitelist   []string   `json:"ip_whitelist"`    // IP 白名单
+	IPBlacklist   []string   `json:"ip_blacklist"`    // IP 黑名单
+	Quota         *float64   `json:"quota"`           // 配额限制 (USD)
+	ExpiresInDays *int       `json:"expires_in_days"` // 过期天数
+	ExpiresAt     *time.Time `json:"expires_at"`      // Exact expiry (RFC3339), takes precedence over expires_in_days
 
 	// Rate limit fields (0 = unlimited)
 	RateLimit5h *float64 `json:"rate_limit_5h"`
@@ -203,6 +204,7 @@ func (h *APIKeyHandler) Create(c *gin.Context) {
 		IPWhitelist:   req.IPWhitelist,
 		IPBlacklist:   req.IPBlacklist,
 		ExpiresInDays: req.ExpiresInDays,
+		ExpiresAt:     req.ExpiresAt,
 	}
 	if req.Quota != nil {
 		svcReq.Quota = *req.Quota

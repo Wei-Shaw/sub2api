@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { flushPromises, mount, type VueWrapper } from '@vue/test-utils'
 import { nextTick } from 'vue'
 
@@ -545,6 +545,83 @@ describe('user KeysView column settings', () => {
       },
       expect.objectContaining({ signal: expect.any(AbortSignal) })
     )
+  })
+
+  describe('exact expiration', () => {
+    const toggleExpiration = (wrapper: VueWrapper) =>
+      wrapper.findAll('label').find((label) => label.text() === 'keys.expiration')!
+        .element.parentElement!.querySelector('button')!.click()
+
+    beforeEach(() => {
+      vi.useFakeTimers({ toFake: ['Date'] })
+      vi.setSystemTime(new Date(2026, 8, 19, 11, 19, 15))
+      getAvailableGroups.mockResolvedValue([{ id: 1, name: 'Test', platform: 'anthropic' }])
+      vi.mocked(keysAPI.create).mockResolvedValue(createApiKey())
+    })
+
+    afterEach(() => {
+      vi.useRealTimers()
+    })
+
+    const openCreate = async () => {
+      const wrapper = await mountView()
+      await wrapper.get('[data-tour="keys-create-btn"]').trigger('click')
+      await wrapper.get('[data-tour="key-form-name"]').setValue('Exact expiry')
+      wrapper.findComponent('[data-tour="key-form-group"]').vm.$emit('update:modelValue', 1)
+      await nextTick()
+      return wrapper
+    }
+
+    it.each([
+      { label: 'later today', input: '2026-09-19T13:00', expected: () => new Date(2026, 8, 19, 13).toISOString() },
+      { label: 'less than a minute', input: '2026-09-19T11:20', expected: () => new Date(2026, 8, 19, 11, 20).toISOString() },
+      { label: 'across midnight', input: '2026-09-20T00:15', expected: () => new Date(2026, 8, 20, 0, 15).toISOString() },
+    ])('preserves the selected local time $label', async ({ input, expected }) => {
+      const wrapper = await openCreate()
+      toggleExpiration(wrapper)
+      await nextTick()
+      await wrapper.get('input[type="datetime-local"]').setValue(input)
+      await wrapper.get('#key-form').trigger('submit')
+      await flushPromises()
+
+      expect(keysAPI.create).toHaveBeenCalledWith(
+        'Exact expiry', 1, undefined, [], [], 0, undefined,
+        { rate_limit_5h: 0, rate_limit_1d: 0, rate_limit_7d: 0 }, expected()
+      )
+      wrapper.unmount()
+    })
+
+    it.each(['disabled', 'empty', 'disabled after selecting a date'])('creates without expiry when %s', async (mode) => {
+      const wrapper = await openCreate()
+      if (mode !== 'disabled') {
+        toggleExpiration(wrapper)
+        await nextTick()
+        if (mode === 'disabled after selecting a date') {
+          await wrapper.get('input[type="datetime-local"]').setValue('2026-09-19T13:00')
+          toggleExpiration(wrapper)
+          await nextTick()
+        }
+      }
+      await wrapper.get('#key-form').trigger('submit')
+      await flushPromises()
+      expect(vi.mocked(keysAPI.create).mock.calls[0][6]).toBeUndefined()
+      expect(vi.mocked(keysAPI.create).mock.calls[0][8]).toBeUndefined()
+      wrapper.unmount()
+    })
+
+    it('continues to clear expiration when editing a key', async () => {
+      const key = { ...createApiKey(), group_id: 1, expires_at: new Date(2026, 8, 19, 13).toISOString() }
+      listKeys.mockResolvedValueOnce({ items: [key], total: 1, page: 1, page_size: 20, pages: 1 })
+      updateKey.mockResolvedValue({ ...key, expires_at: null })
+      const wrapper = await mountView()
+      await getButtonByText(wrapper, 'common.edit').trigger('click')
+      toggleExpiration(wrapper)
+      await nextTick()
+      await wrapper.get('#key-form').trigger('submit')
+      await flushPromises()
+      expect(updateKey).toHaveBeenCalledWith(key.id, expect.objectContaining({ expires_at: '' }))
+      wrapper.unmount()
+    })
   })
 
   describe('create provider selection', () => {
