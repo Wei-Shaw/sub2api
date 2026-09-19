@@ -7,6 +7,7 @@ import (
 	"crypto/subtle"
 	"encoding/base64"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
@@ -297,6 +298,7 @@ type UserService struct {
 	billingCache         BillingCache
 	lastActiveTouchL1    sync.Map
 	lastActiveTouchSF    singleflight.Group
+	notificationLocaleSF singleflight.Group
 }
 
 // NewUserService 创建用户服务实例
@@ -307,6 +309,52 @@ func NewUserService(userRepo UserRepository, settingRepo SettingRepository, auth
 		authCacheInvalidator: authCacheInvalidator,
 		billingCache:         billingCache,
 	}
+}
+
+// SaveNotificationEmailLocale persists an explicit account-level notification
+// email locale selection.
+func (s *UserService) SaveNotificationEmailLocale(ctx context.Context, userID int64, rawLocale string) error {
+	if s == nil || s.settingRepo == nil || userID <= 0 || strings.TrimSpace(rawLocale) == "" {
+		return nil
+	}
+
+	key := notificationEmailLocaleUserKeyPrefix + strconv.FormatInt(userID, 10)
+	locale := normalizeNotificationLocale(rawLocale)
+	if err := s.settingRepo.Set(ctx, key, locale); err != nil {
+		return fmt.Errorf("save notification email locale: %w", err)
+	}
+	return nil
+}
+
+// InitializeNotificationEmailLocale persists an account-level notification
+// email locale only when the user's setting does not already exist. The
+// singleflight group provides process-local serialization for the read-then-
+// write sequence; the initialization path is intentionally not a distributed
+// concurrency primitive.
+func (s *UserService) InitializeNotificationEmailLocale(ctx context.Context, userID int64, rawLocale string) (bool, error) {
+	if s == nil || s.settingRepo == nil || userID <= 0 || strings.TrimSpace(rawLocale) == "" {
+		return false, nil
+	}
+
+	key := notificationEmailLocaleUserKeyPrefix + strconv.FormatInt(userID, 10)
+	locale := normalizeNotificationLocale(rawLocale)
+	result, err, _ := s.notificationLocaleSF.Do(key, func() (any, error) {
+		if _, err := s.settingRepo.GetValue(ctx, key); err == nil {
+			return false, nil
+		} else if !errors.Is(err, ErrSettingNotFound) {
+			return false, fmt.Errorf("check notification email locale: %w", err)
+		}
+
+		if err := s.settingRepo.Set(ctx, key, locale); err != nil {
+			return false, fmt.Errorf("initialize notification email locale: %w", err)
+		}
+		return true, nil
+	})
+	if err != nil {
+		return false, err
+	}
+	initialized, _ := result.(bool)
+	return initialized, nil
 }
 
 // GetFirstAdmin 获取首个管理员用户（用于 Admin API Key 认证）
