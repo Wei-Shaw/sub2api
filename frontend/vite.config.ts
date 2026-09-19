@@ -1,6 +1,7 @@
 import { defineConfig, loadEnv, Plugin } from 'vite'
 import vue from '@vitejs/plugin-vue'
 import checker from 'vite-plugin-checker'
+import { readFileSync } from 'fs'
 import { resolve } from 'path'
 
 function escapeHtml(value: string): string {
@@ -82,6 +83,7 @@ export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), '')
   const backendUrl = env.VITE_DEV_PROXY_TARGET || 'http://localhost:8080'
   const devPort = Number(env.VITE_DEV_PORT || 3000)
+  const appVersion = readFileSync(resolve(__dirname, '../version.txt'), 'utf8').trim().replace(/^v/i, '')
 
   return {
     plugins: [
@@ -99,6 +101,7 @@ export default defineConfig(({ mode }) => {
     }
   },
   define: {
+    __APP_VERSION__: JSON.stringify(appVersion),
     // 启用 vue-i18n JIT 编译，在 CSP 环境下处理消息插值
     // JIT 编译器生成 AST 对象而非 JS 代码，无需 unsafe-eval
     __INTLIFY_JIT_COMPILATION__: true

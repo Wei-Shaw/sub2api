@@ -7,12 +7,14 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"html"
 	"log/slog"
 	"math/big"
 	"net"
+	"net/http"
 	"net/smtp"
 	"net/url"
 	"strconv"
@@ -188,6 +190,9 @@ const smtpIOTimeout = 20 * time.Second
 
 // SendEmailWithConfig 使用指定配置发送邮件
 func (s *EmailService) SendEmailWithConfig(config *SMTPConfig, to, subject, body string) error {
+	if strings.EqualFold(config.Host, "smtp.resend.com") {
+		return sendResendEmail(context.Background(), config, to, subject, body)
+	}
 	message, err := buildSMTPMessage(config, to, subject, body)
 	if err != nil {
 		return err
@@ -222,6 +227,39 @@ func (s *EmailService) SendEmailWithConfig(config *SMTPConfig, to, subject, body
 	// Email is sent successfully after w.Close(), ignore Quit errors
 	// Some SMTP servers return non-standard responses on QUIT
 	_ = client.Quit()
+	return nil
+}
+
+type resendEmailRequest struct {
+	From    string   `json:"from"`
+	To      []string `json:"to"`
+	Subject string   `json:"subject"`
+	HTML    string   `json:"html"`
+}
+
+func sendResendEmail(ctx context.Context, config *SMTPConfig, to, subject, body string) error {
+	from := config.From
+	if config.FromName != "" {
+		from = fmt.Sprintf("%s <%s>", config.FromName, config.From)
+	}
+	payload, err := json.Marshal(resendEmailRequest{From: from, To: []string{to}, Subject: subject, HTML: body})
+	if err != nil {
+		return fmt.Errorf("encode resend email: %w", err)
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, "https://api.resend.com/emails", strings.NewReader(string(payload)))
+	if err != nil {
+		return fmt.Errorf("create resend request: %w", err)
+	}
+	req.Header.Set("Authorization", "Bearer "+config.Password)
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := (&http.Client{Timeout: 20 * time.Second}).Do(req)
+	if err != nil {
+		return fmt.Errorf("resend request: %w", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return fmt.Errorf("resend api returned %s", resp.Status)
+	}
 	return nil
 }
 
@@ -453,6 +491,22 @@ func (s *EmailService) buildVerifyCodeEmailBody(code, siteName string) string {
 // 与 SendEmailWithConfig 共用 connectSMTP 建连（含 STARTTLS 升级逻辑），
 // 避免出现"测试连接失败但实际发信成功"的不一致。
 func (s *EmailService) TestSMTPConnectionWithConfig(config *SMTPConfig) error {
+	if strings.EqualFold(config.Host, "smtp.resend.com") {
+		req, err := http.NewRequest(http.MethodGet, "https://api.resend.com/domains", nil)
+		if err != nil {
+			return fmt.Errorf("create resend request: %w", err)
+		}
+		req.Header.Set("Authorization", "Bearer "+config.Password)
+		resp, err := (&http.Client{Timeout: 20 * time.Second}).Do(req)
+		if err != nil {
+			return fmt.Errorf("resend connection failed: %w", err)
+		}
+		defer func() { _ = resp.Body.Close() }()
+		if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+			return fmt.Errorf("resend authentication failed: %s", resp.Status)
+		}
+		return nil
+	}
 	client, err := s.connectSMTP(config)
 	if err != nil {
 		return fmt.Errorf("smtp connection failed: %w", err)
