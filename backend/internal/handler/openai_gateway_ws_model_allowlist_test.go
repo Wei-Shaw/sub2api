@@ -173,7 +173,7 @@ func TestOpenAIResponsesWebSocket_SessionUpdateToAllowedModelStillWorks(t *testi
 		secondPayload: `{"type":"response.create","stream":false}`,
 		group:         wsAllowlistGroup(true, "gpt-5.4"),
 	})
-	if len(got.clientEvents) < 2 {
-		t.Fatalf("expected at least two completed events, got %d", len(got.clientEvents))
+	if len(got.clientEvents) != 2 || len(got.logs) != 2 || len(got.upstreamPayloads) != 3 {
+		t.Fatalf("expected two completed/billed turns and three upstream frames, got events=%d logs=%d frames=%d", len(got.clientEvents), len(got.logs), len(got.upstreamPayloads))
 	}
 }

@@ -61,11 +61,12 @@ const (
 // 若编辑 Key 时无条件整行回写，并发累计的配额与限流计数就会被旧快照覆盖。
 // 因此调用方必须显式声明要改的列。
 type APIKeyUpdateFields struct {
-	Name      bool
-	Status    bool
-	Quota     bool
-	GroupID   bool
-	ExpiresAt bool
+	ConcurrencyLimit bool
+	Name             bool
+	Status           bool
+	Quota            bool
+	GroupID          bool
+	ExpiresAt        bool
 	// QuotaUsed 仅供"重置配额用量"路径声明；常规计费走 IncrementQuotaUsed。
 	QuotaUsed bool
 	// RateLimits 覆盖 rate_limit_5h / _1d / _7d 三个阈值。
@@ -209,11 +210,12 @@ type APIKeyAuthCacheInvalidator interface {
 
 // CreateAPIKeyRequest 创建API Key请求
 type CreateAPIKeyRequest struct {
-	Name        string   `json:"name"`
-	GroupID     *int64   `json:"group_id"`
-	CustomKey   *string  `json:"custom_key"`   // 可选的自定义key
-	IPWhitelist []string `json:"ip_whitelist"` // IP 白名单
-	IPBlacklist []string `json:"ip_blacklist"` // IP 黑名单
+	ConcurrencyLimit int      `json:"concurrency_limit"`
+	Name             string   `json:"name"`
+	GroupID          *int64   `json:"group_id"`
+	CustomKey        *string  `json:"custom_key"`   // 可选的自定义key
+	IPWhitelist      []string `json:"ip_whitelist"` // IP 白名单
+	IPBlacklist      []string `json:"ip_blacklist"` // IP 黑名单
 
 	// Quota fields
 	Quota         float64 `json:"quota"`           // Quota limit in USD (0 = unlimited)
@@ -227,11 +229,12 @@ type CreateAPIKeyRequest struct {
 
 // UpdateAPIKeyRequest 更新API Key请求
 type UpdateAPIKeyRequest struct {
-	Name        *string   `json:"name"`
-	GroupID     *int64    `json:"group_id"`
-	Status      *string   `json:"status"`
-	IPWhitelist *[]string `json:"ip_whitelist"` // IP 白名单（nil 不修改，空数组清空）
-	IPBlacklist *[]string `json:"ip_blacklist"` // IP 黑名单（nil 不修改，空数组清空）
+	ConcurrencyLimit *int      `json:"concurrency_limit"` // nil = no change, 0 = no additional limit
+	Name             *string   `json:"name"`
+	GroupID          *int64    `json:"group_id"`
+	Status           *string   `json:"status"`
+	IPWhitelist      *[]string `json:"ip_whitelist"` // IP 白名单（nil 不修改，空数组清空）
+	IPBlacklist      *[]string `json:"ip_blacklist"` // IP 黑名单（nil 不修改，空数组清空）
 
 	// Quota fields
 	Quota           *float64   `json:"quota"`       // Quota limit in USD (nil = no change, 0 = unlimited)
@@ -459,6 +462,9 @@ func (s *APIKeyService) canUserBindGroup(ctx context.Context, user *User, group 
 
 // Create 创建API Key
 func (s *APIKeyService) Create(ctx context.Context, userID int64, req CreateAPIKeyRequest) (*APIKey, error) {
+	if req.ConcurrencyLimit < 0 {
+		return nil, infraerrors.BadRequest("INVALID_CONCURRENCY_LIMIT", "concurrency_limit must be nonnegative")
+	}
 	if err := validateCreateAPIKeyRequest(req); err != nil {
 		return nil, err
 	}
@@ -532,18 +538,19 @@ func (s *APIKeyService) Create(ctx context.Context, userID int64, req CreateAPIK
 
 	// 创建API Key记录
 	apiKey := &APIKey{
-		UserID:      userID,
-		Key:         key,
-		Name:        html.EscapeString(req.Name),
-		GroupID:     req.GroupID,
-		Status:      StatusActive,
-		IPWhitelist: req.IPWhitelist,
-		IPBlacklist: req.IPBlacklist,
-		Quota:       req.Quota,
-		QuotaUsed:   0,
-		RateLimit5h: req.RateLimit5h,
-		RateLimit1d: req.RateLimit1d,
-		RateLimit7d: req.RateLimit7d,
+		UserID:           userID,
+		Key:              key,
+		Name:             html.EscapeString(req.Name),
+		GroupID:          req.GroupID,
+		Status:           StatusActive,
+		IPWhitelist:      req.IPWhitelist,
+		IPBlacklist:      req.IPBlacklist,
+		Quota:            req.Quota,
+		QuotaUsed:        0,
+		ConcurrencyLimit: req.ConcurrencyLimit,
+		RateLimit5h:      req.RateLimit5h,
+		RateLimit1d:      req.RateLimit1d,
+		RateLimit7d:      req.RateLimit7d,
 	}
 
 	// Set expiration time if specified
@@ -675,6 +682,24 @@ func (s *APIKeyService) currentConcurrencyForAPIKey(ctx context.Context, apiKeyI
 	return counts[apiKeyID]
 }
 
+// APIKeyQueuePolicy exposes the immutable key-queue policy of this process for
+// read-only metadata. It never consults the database.
+func (s *APIKeyService) APIKeyQueuePolicy() APIKeyQueuePolicy {
+	if s == nil || s.concurrencyService == nil {
+		return APIKeyQueuePolicy{}
+	}
+	return s.concurrencyService.APIKeyQueuePolicy()
+}
+
+// GetAPIKeyQueueStatsBatch returns active/waiting counts for the given keys.
+// An error means the snapshot is unknown; callers must not render zeroes.
+func (s *APIKeyService) GetAPIKeyQueueStatsBatch(ctx context.Context, apiKeyIDs []int64) (map[int64]APIKeyQueueCounts, error) {
+	if s == nil || s.concurrencyService == nil {
+		return nil, fmt.Errorf("api key queue statistics unavailable")
+	}
+	return s.concurrencyService.GetAPIKeyQueueStatsBatch(ctx, apiKeyIDs)
+}
+
 func (s *APIKeyService) VerifyOwnership(ctx context.Context, userID int64, apiKeyIDs []int64) ([]int64, error) {
 	if len(apiKeyIDs) == 0 {
 		return []int64{}, nil
@@ -757,6 +782,9 @@ func (s *APIKeyService) GetByKey(ctx context.Context, key string) (*APIKey, erro
 
 // Update 更新API Key
 func (s *APIKeyService) Update(ctx context.Context, id int64, userID int64, req UpdateAPIKeyRequest) (*APIKey, error) {
+	if req.ConcurrencyLimit != nil && *req.ConcurrencyLimit < 0 {
+		return nil, infraerrors.BadRequest("INVALID_CONCURRENCY_LIMIT", "concurrency_limit must be nonnegative")
+	}
 	if err := validateUpdateAPIKeyRequest(req); err != nil {
 		return nil, err
 	}
@@ -870,6 +898,10 @@ func (s *APIKeyService) Update(ctx context.Context, id int64, userID int64, req 
 	}
 
 	// Update rate limit configuration
+	if req.ConcurrencyLimit != nil {
+		apiKey.ConcurrencyLimit = *req.ConcurrencyLimit
+		fields.ConcurrencyLimit = true
+	}
 	if req.RateLimit5h != nil {
 		apiKey.RateLimit5h = *req.RateLimit5h
 		fields.RateLimits = true

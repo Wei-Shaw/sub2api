@@ -30,6 +30,60 @@ func TestResolveOpenAIWSClientFirstMessageTimeout(t *testing.T) {
 	require.Equal(t, 120*time.Second, ResolveOpenAIWSClientFirstMessageTimeout(cfg))
 }
 
+// The transport owns interruption of its underlying read on request cancel;
+// the consumer remains the sole owner of response-body Close.
+type contextAwareBridgeUpstream struct {
+	httpUpstreamRecorder
+	writer *io.PipeWriter
+}
+
+func (u *contextAwareBridgeUpstream) Do(req *http.Request, proxyURL string, accountID int64, concurrency int) (*http.Response, error) {
+	context.AfterFunc(req.Context(), func() { _ = u.writer.CloseWithError(req.Context().Err()) })
+	return u.httpUpstreamRecorder.Do(req, proxyURL, accountID, concurrency)
+}
+
+func TestProxyOpenAIWSHTTPBridgeSilentDisconnectBoundsDrain(t *testing.T) {
+	for _, usageArrives := range []bool{false, true} {
+		t.Run(fmt.Sprint("usage=", usageArrives), func(t *testing.T) {
+			body, writer := io.Pipe()
+			defer func() { _ = writer.Close() }()
+			upstream := &contextAwareBridgeUpstream{httpUpstreamRecorder: httpUpstreamRecorder{resp: &http.Response{StatusCode: http.StatusOK, Header: make(http.Header), Body: body}}, writer: writer}
+			svc := &OpenAIGatewayService{cfg: &config.Config{}, httpUpstream: upstream}
+			c, _ := gin.CreateTestContext(httptest.NewRecorder())
+			c.Request = httptest.NewRequest(http.MethodGet, "/v1/responses", nil)
+			disconnected := make(chan struct{})
+			ctx := context.WithValue(context.Background(), openAIWSDisconnectKey{}, (<-chan struct{})(disconnected))
+			payload := []byte(`{"type":"response.create","model":"gpt-5","input":"hi"}`)
+			done := make(chan struct{})
+			var result *OpenAIForwardResult
+			var err error
+			go func() {
+				defer close(done)
+				result, err = svc.proxyOpenAIWSHTTPBridgeTurn(ctx, c, &Account{ID: 1, Platform: PlatformOpenAI, Type: AccountTypeAPIKey}, "sk-test", payload, len(payload), "gpt-5", "", "", "", "", 2, func([]byte) error { return io.EOF })
+			}()
+			close(disconnected)
+			if usageArrives {
+				_, writeErr := io.WriteString(writer, "data: {\"type\":\"response.completed\",\"response\":{\"id\":\"resp_1\",\"usage\":{\"input_tokens\":11,\"output_tokens\":3}}}\n\n")
+				require.NoError(t, writeErr)
+			}
+			select {
+			case <-done:
+			case <-time.After(4 * time.Second):
+				t.Fatal("detached body did not terminate")
+			}
+			if usageArrives {
+				require.NoError(t, err)
+				require.Equal(t, 11, result.Usage.InputTokens)
+				require.Equal(t, 3, result.Usage.OutputTokens)
+			} else {
+				require.Error(t, err)
+			}
+			_, writeErr := writer.Write([]byte("still open?"))
+			require.Error(t, writeErr, "body must be closed before returning")
+		})
+	}
+}
+
 func TestPrepareOpenAIWSHTTPBridgeBodyStripsWSFields(t *testing.T) {
 	body, err := prepareOpenAIWSHTTPBridgeBody(nil, []byte(`{"type":"response.create","generate":true,"model":"gpt-5","stream":false,"previous_response_id":"resp_prev","input":"hi","sequence":900719925474099312345}`))
 	require.NoError(t, err)

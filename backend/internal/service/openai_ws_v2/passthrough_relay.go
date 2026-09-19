@@ -282,18 +282,23 @@ func Relay(
 	exitCh := make(chan relayExitSignal, 3)
 	dropDownstreamWrites := atomic.Bool{}
 	clientReaderStarted := atomic.Bool{}
+	var readers sync.WaitGroup
 	startClientReader := func() {
 		if !clientReaderStarted.CompareAndSwap(false, true) {
 			return
 		}
-		go runClientToUpstream(relayCtx, clientConn, options.ReadClientFrame, writeClientFrameUpstream, markActivity, clientToUpstreamFrames, onTrace, exitCh)
+		readers.Add(1)
+		go func() {
+			defer readers.Done()
+			runClientToUpstream(relayCtx, clientConn, options.ReadClientFrame, writeClientFrameUpstream, markActivity, clientToUpstreamFrames, onTrace, exitCh)
+		}()
 	}
 	if !options.StartClientAfterFirstDownstream {
 		startClientReader()
 	}
-	upstreamDone := make(chan struct{})
+	readers.Add(1)
 	go func() {
-		defer close(upstreamDone)
+		defer readers.Done()
 		runUpstreamToClient(
 			relayCtx,
 			upstreamConn,
@@ -375,14 +380,14 @@ func Relay(
 	// ReadFrame observes relayCtx cancellation and Close is the transport-level
 	// fallback. Join the reader before touching relayState or firing the final
 	// turn callback; otherwise a late read can race Relay's result settlement.
-	<-upstreamDone
+	readers.Wait()
 
 	emitTurnComplete(options.OnTurnComplete, state, finalizePendingBareError(state, nowFn()))
 	enrichResult(&result, state, nowFn().Sub(startAt))
 	result.ClientToUpstreamFrames = clientToUpstreamFrames.Load()
 	result.UpstreamToClientFrames = upstreamToClientFrames.Load()
 	result.DroppedDownstreamFrames = droppedDownstreamFrames.Load()
-	if options.FirstMessageSent && firstExit.stage == "read_client" && firstExit.graceful {
+	if options.FirstMessageSent && firstExit.stage == "read_client" && firstExit.graceful && (!hasSecondExit || secondExit.graceful) {
 		emitRelayTrace(onTrace, RelayTraceEvent{
 			Stage:           "relay_client_closed",
 			Graceful:        true,
@@ -804,8 +809,8 @@ func observeUpstreamMessage(
 	observeRelayTurnResponseServiceTier(turnTiming, firstRelayResponseServiceTier(message))
 	state.terminalEventType = eventType
 	if eventType == "error" {
-		// Some Responses servers emit error immediately before response.failed.
-		// Defer turn settlement so the authoritative failed usage can replace
+		// Some Responses servers emit error immediately before a response terminal.
+		// Defer turn settlement so the authoritative response usage can replace
 		// this fallback instead of billing both terminal frames.
 		if observed.responseID == "" {
 			observed.responseID = openAIWSRelayActiveTurnID(state)
@@ -823,8 +828,28 @@ func shouldFinalizePendingBareError(state *relayState, payload []byte, eventType
 		return false
 	}
 	eventType = strings.TrimSpace(eventType)
-	if eventType == "" || eventType == "error" || eventType == "response.failed" {
+	if eventType == "" || eventType == "error" {
 		return false
+	}
+	responseID := strings.TrimSpace(gjson.GetBytes(payload, "response.id").String())
+	if responseID == "" {
+		responseID = strings.TrimSpace(gjson.GetBytes(payload, "response_id").String())
+	}
+	if responseID == "" && isTerminalEvent(eventType) {
+		responseID = strings.TrimSpace(gjson.GetBytes(payload, "id").String())
+	}
+	if isTerminalEvent(eventType) {
+		pendingID := state.pendingBareError.responseID
+		if responseID != "" && pendingID != "" {
+			// A terminal for this response replaces the provisional error before
+			// any callback releases its slot. Different responses settle separately.
+			return responseID != pendingID
+		}
+		// Preserve providers' error -> response.failed association when no ID
+		// is available. An unassociated successful terminal starts another turn.
+		if eventType == "response.failed" {
+			return false
+		}
 	}
 	if isTerminalEvent(eventType) || eventType == "response.created" {
 		return true
@@ -832,7 +857,6 @@ func shouldFinalizePendingBareError(state *relayState, payload []byte, eventType
 	// Auxiliary provider frames may be interleaved between error and its
 	// authoritative response.failed. Only a response event identifying a
 	// different turn closes the pending error.
-	responseID := strings.TrimSpace(gjson.GetBytes(payload, "response.id").String())
 	if responseID == "" || state.pendingBareError.responseID == "" {
 		return false
 	}
