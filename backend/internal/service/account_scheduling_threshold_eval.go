@@ -14,7 +14,7 @@ type AccountSchedulingThresholdDecision struct {
 	Platform         string
 	Window           string
 	Scope            string
-	ThresholdPercent int
+	ThresholdPercent float64
 	UsedPercent      float64
 	Until            *time.Time
 }
@@ -45,25 +45,37 @@ func EvaluateAccountSchedulingThreshold(account *Account, thresholds map[string]
 	}
 
 	threshold, ok := resolveEffectiveAccountSchedulingThreshold(account, thresholds, decision.Platform)
-	decision.ThresholdPercent = threshold
-	if !ok || threshold >= 100 {
-		return decision
-	}
+	decision.ThresholdPercent = float64(threshold)
 
-	var winner *accountSchedulingThresholdCandidate
+	var candidates []*accountSchedulingThresholdCandidate
 	switch decision.Platform {
 	case PlatformOpenAI:
-		winner = pickLatestResetSchedulingCandidate(openAIThresholdCandidates(account, now), threshold, now)
+		candidates = openAIThresholdCandidates(account, now)
 	case PlatformAnthropic:
-		winner = pickLatestResetSchedulingCandidate(anthropicThresholdCandidates(account), threshold, now)
+		candidates = anthropicThresholdCandidates(account)
 	case PlatformGrok:
-		winner = pickLatestResetSchedulingCandidate(grokThresholdCandidates(account), threshold, now)
+		candidates = grokThresholdCandidates(account)
 	case PlatformKimi, PlatformZhipu, PlatformMiniMax, PlatformOpenCodeGo:
-		winner = pickLatestResetSchedulingCandidate(cnProviderThresholdCandidates(account, decision.Platform), threshold, now)
+		candidates = cnProviderThresholdCandidates(account, decision.Platform)
 	default:
 		return decision
 	}
 
+	var winner *accountSchedulingThresholdCandidate
+	for _, candidate := range candidates {
+		if candidate == nil {
+			continue
+		}
+		windowThreshold, enabled := effectiveSchedulingWindowThreshold(account, candidate.window, threshold, ok)
+		if !enabled || !candidateMatchesThreshold(candidate, windowThreshold, now) {
+			continue
+		}
+		if winner == nil || candidate.until.After(*winner.until) ||
+			(candidate.until.Equal(*winner.until) && candidate.usedPercent > winner.usedPercent) {
+			winner = candidate
+			decision.ThresholdPercent = windowThreshold
+		}
+	}
 	if winner == nil {
 		return decision
 	}
@@ -84,13 +96,14 @@ func evaluateAnthropicFableSchedulingThreshold(account *Account, thresholds map[
 
 	decision.Platform = PlatformAnthropic
 	threshold, ok := resolveEffectiveAccountSchedulingThreshold(account, thresholds, PlatformAnthropic)
-	decision.ThresholdPercent = threshold
-	if !ok || threshold >= 100 {
+	windowThreshold, enabled := effectiveSchedulingWindowThreshold(account, "7d_oi", threshold, ok)
+	decision.ThresholdPercent = windowThreshold
+	if !enabled {
 		return decision
 	}
 
 	candidate := anthropicFableThresholdCandidate(account)
-	if !candidateMatchesThreshold(candidate, threshold, now) {
+	if !candidateMatchesThreshold(candidate, windowThreshold, now) {
 		return decision
 	}
 
@@ -393,28 +406,11 @@ func cnThresholdCandidate(extra map[string]any, provider, window string) *accoun
 	}
 }
 
-func pickLatestResetSchedulingCandidate(candidates []*accountSchedulingThresholdCandidate, threshold int, now time.Time) *accountSchedulingThresholdCandidate {
-	var winner *accountSchedulingThresholdCandidate
-	for _, candidate := range candidates {
-		if !candidateMatchesThreshold(candidate, threshold, now) {
-			continue
-		}
-		if winner == nil || candidate.until.After(*winner.until) {
-			winner = candidate
-			continue
-		}
-		if winner.until.Equal(*candidate.until) && candidate.usedPercent > winner.usedPercent {
-			winner = candidate
-		}
-	}
-	return winner
-}
-
-func candidateMatchesThreshold(candidate *accountSchedulingThresholdCandidate, threshold int, now time.Time) bool {
+func candidateMatchesThreshold(candidate *accountSchedulingThresholdCandidate, threshold float64, now time.Time) bool {
 	if candidate == nil || candidate.until == nil || !candidate.until.After(now) {
 		return false
 	}
-	return candidate.usedPercent >= float64(threshold)
+	return !math.IsNaN(candidate.usedPercent) && !math.IsInf(candidate.usedPercent, 0) && candidate.usedPercent >= threshold
 }
 
 func utilizationAsPercent(raw any) float64 {

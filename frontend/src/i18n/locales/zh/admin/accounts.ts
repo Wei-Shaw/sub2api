@@ -398,7 +398,7 @@ export default {
         '仅对当前账号覆盖平台级自动停调阈值；关闭后使用平台设置。',
       accountSchedulingThresholdOverrideValue: '账号阈值百分比',
       accountSchedulingThresholdOverrideDisabledHint:
-        '1-100，达到该用量百分比后临时不可调度；100 表示禁用当前账号自动停调。',
+        '1–99 为所有原生窗口的默认百分比；100 禁用此默认规则。下方按窗口设置的阈值或禁用开关优先。',
       status: {
         active: '正常',
         inactive: '停用',
@@ -964,20 +964,26 @@ export default {
       },
       autoPauseOnExpired: '过期自动暂停调度',
       autoPauseOnExpiredDesc: '启用后，账号过期将自动暂停调度',
-	  autoPause5hThreshold: '5h 用量阈值(%)',
-	  autoPause7dThreshold: '7d 用量阈值(%)',
-	  autoPauseThresholdHint: '留空或填 0 表示使用全局默认阈值（在运维设置中配置）；填具体值则覆盖全局默认。达到阈值后仅在调度时跳过账号，不修改 schedulable。',
-	  autoPause5hDisabled: '禁用 5h 自动暂停',
-	  autoPause7dDisabled: '禁用 7d 自动暂停',
-	  autoPauseDisabledHint: '开启后该账号永不进入自动暂停（即使全局默认阈值已配置）。',
-	  autoResetCredit: {
-	    title: '自动使用重置卡',
-	    hint: '仅在实际用量达到阈值时使用最早到期的可用卡；默认关闭。无卡或失败时账号保持暂停。',
-	    threshold5h: '5h 自动用卡阈值(%)',
-	    threshold7d: '7d 自动用卡阈值(%)',
-	    thresholdHint: '两个窗口独立判断，任一达到自身阈值即触发。可填写 0.1–100，默认均为 100。',
-	    thresholdInvalid: '自动使用重置卡阈值必须在 0.1% 到 100% 之间。'
-	  },
+    autoPause5hThreshold: '5h 用量阈值(%)',
+    autoPause7dThreshold: '7d 用量阈值(%)',
+    quotaWindowTitle: '套餐额度百分比限额（按原生窗口）',
+    quotaWindowHint: '例如 7d 填 90，表示上游报告已使用 90% 时暂停调度至该窗口重置；不是美元金额，也不会重置厂商额度。必须有有效用量及重置时间，缺少快照不视为剩余 100%。不同窗口独立，任一达到阈值即停调。',
+    quotaPercentUnavailable: '当前为按量付费/余额型账号，没有可用的套餐百分比窗口；请使用美元金额限额。任意 5 天周期不能由余额自动换算。',
+    quotaWindowInvalid: '百分比须为 0–100 的有限数值；留空或 0 继承默认规则。',
+    autoPauseMonthlyThreshold: '月度用量阈值(%)',
+    autoPauseMonthlyDisabled: '禁用月度自动暂停',
+    autoPauseThresholdHint: '留空或 0 继承账号/平台默认；明确填写 100 表示用满该窗口才暂停。已产生的临时停调记录不会因编辑而自动清除，可等待重置或使用“重置临时停调”。这是基于上游快照的调度保护，并非并发请求下绝不超额的硬保证。',
+    autoPause5hDisabled: '禁用 5h 自动暂停',
+    autoPause7dDisabled: '禁用 7d 自动暂停',
+    autoPauseDisabledHint: '仅禁用这个窗口的百分比暂停，覆盖该窗口默认规则；其他窗口、金额限额和上游限流仍然有效。',
+    autoResetCredit: {
+      title: '自动使用重置卡',
+      hint: '仅在实际用量达到阈值时使用最早到期的可用卡；默认关闭。无卡或失败时账号保持暂停。',
+      threshold5h: '5h 自动用卡阈值(%)',
+      threshold7d: '7d 自动用卡阈值(%)',
+      thresholdHint: '两个窗口独立判断，任一达到自身阈值即触发。可填写 0.1–100，默认均为 100。',
+      thresholdInvalid: '自动使用重置卡阈值必须在 0.1% 到 100% 之间。'
+    },
       // Quota control (Anthropic OAuth/SetupToken only)
       quotaControl: {
         title: '配额控制',

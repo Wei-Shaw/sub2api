@@ -2374,9 +2374,12 @@
       </div>
 
       <div
-        v-if="account?.platform === 'openai'"
+        v-if="supportsQuotaWindowSettings"
         class="border-t border-gray-200 pt-4 dark:border-dark-600 space-y-4"
+        data-testid="quota-window-settings"
       >
+        <h3 class="font-medium">{{ t('admin.accounts.quotaWindowTitle') }}</h3>
+        <p class="input-hint">{{ t('admin.accounts.quotaWindowHint') }}</p>
         <div class="space-y-2">
           <div class="flex items-center justify-between">
             <label class="input-label mb-0">{{ t('admin.accounts.autoPause5hDisabled') }}</label>
@@ -2449,7 +2452,20 @@
           />
           <p class="input-hint">{{ t('admin.accounts.autoPauseThresholdHint') }}</p>
         </div>
+        <div v-if="account?.platform === 'opencode_go'" class="space-y-2">
+          <label class="flex items-center gap-2 input-label">
+            <input v-model="autoPauseMonthlyDisabled" type="checkbox" data-testid="auto-pause-monthly-disabled" />
+            {{ t('admin.accounts.autoPauseMonthlyDisabled') }}
+          </label>
+          <label class="input-label">{{ t('admin.accounts.autoPauseMonthlyThreshold') }}</label>
+          <input v-model.number="autoPauseMonthlyThreshold" type="number" min="0" max="100" step="0.1"
+            class="input" :disabled="autoPauseMonthlyDisabled" data-testid="auto-pause-monthly-threshold" />
+          <p class="input-hint">{{ t('admin.accounts.autoPauseThresholdHint') }}</p>
+        </div>
       </div>
+      <p v-else-if="account?.platform === 'deepseek' || isCNApiKeyAccount" class="input-hint" data-testid="quota-percent-unavailable">
+        {{ t('admin.accounts.quotaPercentUnavailable') }}
+      </p>
 
       <div
         v-if="account?.platform === 'openai' && account?.type === 'oauth' && !isSparkShadow"
@@ -3445,6 +3461,14 @@ const autoPause5hThreshold = ref<number | null>(null)
 const autoPause7dThreshold = ref<number | null>(null)
 const autoPause5hDisabled = ref(false)
 const autoPause7dDisabled = ref(false)
+const autoPauseMonthlyThreshold = ref<number | null>(null)
+const autoPauseMonthlyDisabled = ref(false)
+const supportsQuotaWindowSettings = computed(() => {
+  const platform = props.account?.platform
+  return platform === 'openai' || platform === 'anthropic' ||
+    (['kimi', 'zhipu', 'minimax'].includes(platform || '') && editAccountMode.value === 'coding') ||
+    (platform === 'opencode_go' && editOpenCodeAccountMode.value === 'go')
+})
 const autoResetCreditEnabled = ref(false)
 const autoResetCredit5hThreshold = ref(100)
 const autoResetCredit7dThreshold = ref(100)
@@ -3468,7 +3492,8 @@ const accountSchedulingThresholdOverrideEnabled = ref(false)
 const accountSchedulingThresholdOverrideValue = ref(100)
 const ACCOUNT_SCHEDULING_THRESHOLD_CREDENTIAL_KEY = 'account_scheduling_threshold'
 const supportsAccountSchedulingThresholdOverride = computed(() =>
-  supportsAccountSchedulingThresholdOverridePlatform(props.account?.platform)
+  supportsAccountSchedulingThresholdOverridePlatform(props.account?.platform) &&
+  (supportsQuotaWindowSettings.value || props.account?.platform === 'grok')
 )
 const tempUnschedRules = ref<TempUnschedRuleForm[]>([])
 const getModelMappingKey = createStableObjectKeyResolver<ModelMapping>('edit-model-mapping')
@@ -3980,21 +4005,23 @@ const syncFormFromAccount = (newAccount: Account | null) => {
   // Load mixed scheduling setting (only for antigravity accounts)
   mixedScheduling.value = false
   allowOverages.value = false
-	const extra = newAccount.extra as Record<string, unknown> | undefined
-	mixedScheduling.value = extra?.mixed_scheduling === true
-	allowOverages.value = extra?.allow_overages === true
-	upstreamRequestIdHeader.value = readUpstreamRequestIdHeader(extra)
-	openAIImagesUrlToB64JsonEnabled.value = extra?.images_url_to_b64_json === true
-	autoPause5hThreshold.value = typeof extra?.auto_pause_5h_threshold === 'number' ? extra.auto_pause_5h_threshold * 100 : null
-	autoPause7dThreshold.value = typeof extra?.auto_pause_7d_threshold === 'number' ? extra.auto_pause_7d_threshold * 100 : null
-	autoPause5hDisabled.value = extra?.auto_pause_5h_disabled === true
-	autoPause7dDisabled.value = extra?.auto_pause_7d_disabled === true
-	autoResetCreditEnabled.value = extra?.auto_reset_credit_enabled === true
-	autoResetCredit5hThreshold.value =
-		typeof extra?.auto_reset_credit_5h_threshold === 'number' ? extra.auto_reset_credit_5h_threshold * 100 : 100
-	autoResetCredit7dThreshold.value =
-		typeof extra?.auto_reset_credit_7d_threshold === 'number' ? extra.auto_reset_credit_7d_threshold * 100 : 100
-	upstreamBillingAutoProbeEnabled.value = extra?.upstream_billing_probe_enabled === true
+  const extra = newAccount.extra as Record<string, unknown> | undefined
+  mixedScheduling.value = extra?.mixed_scheduling === true
+  allowOverages.value = extra?.allow_overages === true
+  upstreamRequestIdHeader.value = readUpstreamRequestIdHeader(extra)
+  openAIImagesUrlToB64JsonEnabled.value = extra?.images_url_to_b64_json === true
+  autoPause5hThreshold.value = typeof extra?.auto_pause_5h_threshold === 'number' ? extra.auto_pause_5h_threshold * 100 : null
+  autoPause7dThreshold.value = typeof extra?.auto_pause_7d_threshold === 'number' ? extra.auto_pause_7d_threshold * 100 : null
+  autoPause5hDisabled.value = extra?.auto_pause_5h_disabled === true
+  autoPause7dDisabled.value = extra?.auto_pause_7d_disabled === true
+  autoPauseMonthlyThreshold.value = typeof extra?.auto_pause_monthly_threshold === 'number' ? extra.auto_pause_monthly_threshold * 100 : null
+  autoPauseMonthlyDisabled.value = extra?.auto_pause_monthly_disabled === true
+  autoResetCreditEnabled.value = extra?.auto_reset_credit_enabled === true
+  autoResetCredit5hThreshold.value =
+    typeof extra?.auto_reset_credit_5h_threshold === 'number' ? extra.auto_reset_credit_5h_threshold * 100 : 100
+  autoResetCredit7dThreshold.value =
+    typeof extra?.auto_reset_credit_7d_threshold === 'number' ? extra.auto_reset_credit_7d_threshold * 100 : 100
+  upstreamBillingAutoProbeEnabled.value = extra?.upstream_billing_probe_enabled === true
   upstreamBillingRateSyncEnabled.value =
     upstreamBillingAutoProbeEnabled.value && extra?.upstream_billing_rate_sync_enabled === true
 
@@ -4614,7 +4641,7 @@ const applyTempUnschedConfig = (credentials: Record<string, unknown>) => {
 
 
 function supportsAccountSchedulingThresholdOverridePlatform(platform: Account['platform'] | undefined) {
-  return platform === 'openai' || platform === 'anthropic' || platform === 'grok'
+  return ['openai', 'anthropic', 'grok', 'kimi', 'zhipu', 'minimax', 'opencode_go'].includes(platform || '')
 }
 
 function normalizeAccountSchedulingThresholdOverride(value: unknown): number | null {
@@ -4969,6 +4996,16 @@ const handleSubmit = async () => {
 			return
 		}
 	}
+
+  if (supportsQuotaWindowSettings.value) {
+    const values: unknown[] = [autoPause5hThreshold.value, autoPause7dThreshold.value,
+      ...(props.account.platform === 'opencode_go' ? [autoPauseMonthlyThreshold.value] : [])]
+    if (values.some(value => value != null && value !== '' &&
+      (typeof value !== 'number' || !Number.isFinite(value) || value < 0 || value > 100))) {
+      appStore.showError(t('admin.accounts.quotaWindowInvalid'))
+      return
+    }
+  }
 
   const updatePayload: Record<string, unknown> = { ...form }
   try {
@@ -5534,34 +5571,14 @@ const handleSubmit = async () => {
         } else {
           delete newExtra.images_url_to_b64_json
         }
-		}
-		if (autoPause5hThreshold.value != null && autoPause5hThreshold.value > 0) {
-			newExtra.auto_pause_5h_threshold = autoPause5hThreshold.value / 100
-		} else {
-			delete newExtra.auto_pause_5h_threshold
-		}
-		if (autoPause7dThreshold.value != null && autoPause7dThreshold.value > 0) {
-			newExtra.auto_pause_7d_threshold = autoPause7dThreshold.value / 100
-		} else {
-			delete newExtra.auto_pause_7d_threshold
-		}
-		if (autoPause5hDisabled.value) {
-			newExtra.auto_pause_5h_disabled = true
-		} else {
-			delete newExtra.auto_pause_5h_disabled
-		}
-		if (autoPause7dDisabled.value) {
-			newExtra.auto_pause_7d_disabled = true
-		} else {
-			delete newExtra.auto_pause_7d_disabled
-		}
-		if (props.account.type === 'oauth' && !isSparkShadow.value) {
-			newExtra.auto_reset_credit_enabled = autoResetCreditEnabled.value
-			newExtra.auto_reset_credit_5h_threshold = autoResetCredit5hThreshold.value / 100
-			newExtra.auto_reset_credit_7d_threshold = autoResetCredit7dThreshold.value / 100
-		}
-		// 运行态只允许后端服务更新，账号编辑不得回写旧状态。
-		delete newExtra.codex_auto_reset_credit_state
+    }
+    if (props.account.type === 'oauth' && !isSparkShadow.value) {
+      newExtra.auto_reset_credit_enabled = autoResetCreditEnabled.value
+      newExtra.auto_reset_credit_5h_threshold = autoResetCredit5hThreshold.value / 100
+      newExtra.auto_reset_credit_7d_threshold = autoResetCredit7dThreshold.value / 100
+    }
+    // 运行态只允许后端服务更新，账号编辑不得回写旧状态。
+    delete newExtra.codex_auto_reset_credit_state
 
 		delete newExtra.codex_image_generation_bridge_enabled
       switch (codexImageToolMode.value) {
@@ -5607,6 +5624,24 @@ const handleSubmit = async () => {
         }
       }
 
+      updatePayload.extra = newExtra
+    }
+
+    // Native quota percentages are independent of the account's USD budgets.
+    if (supportsQuotaWindowSettings.value) {
+      const currentExtra = (updatePayload.extra as Record<string, unknown>) || (props.account.extra as Record<string, unknown>) || {}
+      const newExtra = { ...currentExtra }
+      const windows = [
+        { key: '5h', threshold: autoPause5hThreshold.value, disabled: autoPause5hDisabled.value },
+        { key: '7d', threshold: autoPause7dThreshold.value, disabled: autoPause7dDisabled.value },
+        ...(props.account.platform === 'opencode_go' ? [{ key: 'monthly', threshold: autoPauseMonthlyThreshold.value, disabled: autoPauseMonthlyDisabled.value }] : [])
+      ]
+      for (const window of windows) {
+        if (window.threshold != null && window.threshold > 0) newExtra[`auto_pause_${window.key}_threshold`] = window.threshold / 100
+        else delete newExtra[`auto_pause_${window.key}_threshold`]
+        if (window.disabled) newExtra[`auto_pause_${window.key}_disabled`] = true
+        else delete newExtra[`auto_pause_${window.key}_disabled`]
+      }
       updatePayload.extra = newExtra
     }
 
