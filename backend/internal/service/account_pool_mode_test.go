@@ -16,6 +16,30 @@ func TestGetPoolModeRetryCount(t *testing.T) {
 		expected int
 	}{
 		{
+			name: "openai_oauth_explicit_zero_disables_retry",
+			account: &Account{
+				Type: AccountTypeOAuth, Platform: PlatformOpenAI,
+				Credentials: map[string]any{"pool_mode_retry_count": float64(0)},
+			},
+			expected: 0,
+		},
+		{
+			name: "openai_oauth_explicit_one",
+			account: &Account{
+				Type: AccountTypeOAuth, Platform: PlatformOpenAI,
+				Credentials: map[string]any{"pool_mode_retry_count": float64(1)},
+			},
+			expected: 1,
+		},
+		{
+			name: "other_oauth_keeps_default",
+			account: &Account{
+				Type: AccountTypeOAuth, Platform: PlatformAnthropic,
+				Credentials: map[string]any{"pool_mode_retry_count": float64(0)},
+			},
+			expected: defaultPoolModeRetryCount,
+		},
+		{
 			name: "default_when_not_pool_mode",
 			account: &Account{
 				Type:        AccountTypeAPIKey,
