@@ -123,7 +123,7 @@ export default {
           adaptive: 'Adaptive',
           adaptiveDesc: 'Uses the matching native provider endpoint for each inbound protocol, converting only when unavailable.',
           endpoints: 'Protocol endpoints',
-          responsesFallbackDesc: 'Responses requests are converted to Chat Completions because this provider has no native Responses endpoint.',
+          responsesFallbackDesc: 'This account type has no native Responses endpoint. Responses requests are converted to Chat Completions.',
           chatCompletions: 'Chat Completions',
           chatCompletionsDesc: 'Standard OpenAI-compatible endpoint; requests in other formats are converted.',
           anthropic: 'Anthropic',

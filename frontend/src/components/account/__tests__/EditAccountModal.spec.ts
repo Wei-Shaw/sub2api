@@ -552,7 +552,62 @@ describe('EditAccountModal', () => {
     })
   })
 
-  it('preserves adaptive GLM endpoints on submit', async () => {
+  it.each(['https://open.bigmodel.cn/api/v1', 'https://relay.example/api/v1'])(
+    'preserves explicit GLM Responses and its URL on save: %s', async (baseUrl) => {
+      const account = buildAccount()
+      account.platform = 'zhipu'
+      account.credentials = { api_key: 'sk-test', account_mode: 'coding', api_protocol: 'responses', base_url: baseUrl }
+      updateAccountMock.mockReset().mockResolvedValue(account)
+      checkMixedChannelRiskMock.mockReset().mockResolvedValue({ has_risk: false })
+      const wrapper = mountModal(account)
+      await wrapper.get('form#edit-account-form').trigger('submit.prevent')
+      expect(updateAccountMock.mock.calls[0]?.[1]?.credentials).toMatchObject({
+        account_mode: 'coding', api_protocol: 'responses', base_url: baseUrl
+      })
+    }
+  )
+
+  it('switches GLM Coding Plan from adaptive to the dedicated Responses endpoint', async () => {
+    const account = buildAccount()
+    account.platform = 'zhipu'
+    account.credentials = {
+      api_key: 'sk-test', account_mode: 'coding', api_protocol: 'adaptive',
+      base_url: 'https://open.bigmodel.cn/api/coding/paas/v4'
+    }
+    updateAccountMock.mockReset().mockResolvedValue(account)
+    checkMixedChannelRiskMock.mockReset().mockResolvedValue({ has_risk: false })
+    const wrapper = mountModal(account)
+    await wrapper.vm.$nextTick()
+    const button = wrapper.findAll('button').find(b => b.text() === 'admin.accounts.cnProviders.apiProtocol.responses')
+    expect(button).toBeDefined()
+    await button!.trigger('click')
+    await wrapper.get('form#edit-account-form').trigger('submit.prevent')
+    expect(updateAccountMock.mock.calls[0]?.[1]?.credentials).toMatchObject({
+      account_mode: 'coding', api_protocol: 'responses', base_url: 'https://open.bigmodel.cn/api/v1'
+    })
+  })
+
+  it('resets GLM Responses when changing from Coding Plan to payg', async () => {
+    const account = buildAccount()
+    account.platform = 'zhipu'
+    account.credentials = {
+      api_key: 'sk-test', account_mode: 'coding', api_protocol: 'responses',
+      base_url: 'https://open.bigmodel.cn/api/v1'
+    }
+    updateAccountMock.mockReset().mockResolvedValue(account)
+    checkMixedChannelRiskMock.mockReset().mockResolvedValue({ has_risk: false })
+    const wrapper = mountModal(account)
+    await wrapper.vm.$nextTick()
+    const button = wrapper.findAll('button').find(b => b.text() === 'admin.accounts.cnProviders.accountMode.payg')
+    expect(button).toBeDefined()
+    await button!.trigger('click')
+    await wrapper.get('form#edit-account-form').trigger('submit.prevent')
+    expect(updateAccountMock.mock.calls[0]?.[1]?.credentials).toMatchObject({
+      account_mode: 'payg', api_protocol: 'chat_completions', base_url: 'https://open.bigmodel.cn/api/paas/v4'
+    })
+  })
+
+  it.each([undefined, 'https://relay.example/api/v1'])('preserves adaptive GLM Responses URL on submit: %s', async (responsesUrl) => {
     const account = buildAccount()
     account.platform = 'zhipu'
     account.credentials = {
@@ -562,13 +617,15 @@ describe('EditAccountModal', () => {
       base_url: 'https://open.bigmodel.cn/api/coding/paas/v4',
       api_base_urls: {
         chat_completions: 'https://open.bigmodel.cn/api/coding/paas/v4',
-        anthropic: 'https://open.bigmodel.cn/api/anthropic'
+        anthropic: 'https://open.bigmodel.cn/api/anthropic',
+        ...(responsesUrl ? { responses: responsesUrl } : {})
       }
     }
     updateAccountMock.mockReset().mockResolvedValue(account)
     checkMixedChannelRiskMock.mockReset().mockResolvedValue({ has_risk: false })
 
     const wrapper = mountModal(account)
+    expect(wrapper.findAll('input').some(i => (i.element as HTMLInputElement).value === (responsesUrl ?? 'https://open.bigmodel.cn/api/v1'))).toBe(true)
     await wrapper.get('form#edit-account-form').trigger('submit.prevent')
 
     expect(updateAccountMock).toHaveBeenCalledTimes(1)
@@ -578,7 +635,8 @@ describe('EditAccountModal', () => {
       base_url: 'https://open.bigmodel.cn/api/coding/paas/v4',
       api_base_urls: {
         chat_completions: 'https://open.bigmodel.cn/api/coding/paas/v4',
-        anthropic: 'https://open.bigmodel.cn/api/anthropic'
+        anthropic: 'https://open.bigmodel.cn/api/anthropic',
+        responses: responsesUrl ?? 'https://open.bigmodel.cn/api/v1'
       }
     })
   })
