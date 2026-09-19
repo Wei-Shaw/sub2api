@@ -49,6 +49,11 @@ func (Proxy) Fields() []ent.Field {
 			MaxLen(100).
 			Optional().
 			Nillable(),
+		field.String("console_url").
+			MaxLen(2048).
+			Optional().
+			Nillable().
+			Comment("Optional MetaCubeXD console URL for this proxy."),
 		field.String("status").
 			MaxLen(20).
 			Default("active"),

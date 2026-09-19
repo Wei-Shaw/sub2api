@@ -470,7 +470,8 @@ type ProxyWithAccountCount struct {
 // 注意：普通接口不得使用此 DTO。
 type AdminProxy struct {
 	Proxy
-	Password string `json:"password,omitempty"`
+	Password   string `json:"password,omitempty"`
+	ConsoleURL string `json:"console_url,omitempty"`
 }
 
 // AdminProxyWithAccountCount 是管理员接口使用的带账号统计的 proxy DTO。
