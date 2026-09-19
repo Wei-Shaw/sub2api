@@ -607,7 +607,7 @@ describe('EditAccountModal', () => {
     })
   })
 
-  it('preserves adaptive GLM endpoints on submit', async () => {
+  it.each([undefined, 'https://relay.example/api/v1'])('preserves adaptive GLM Responses URL on submit: %s', async (responsesUrl) => {
     const account = buildAccount()
     account.platform = 'zhipu'
     account.credentials = {
@@ -617,13 +617,15 @@ describe('EditAccountModal', () => {
       base_url: 'https://open.bigmodel.cn/api/coding/paas/v4',
       api_base_urls: {
         chat_completions: 'https://open.bigmodel.cn/api/coding/paas/v4',
-        anthropic: 'https://open.bigmodel.cn/api/anthropic'
+        anthropic: 'https://open.bigmodel.cn/api/anthropic',
+        ...(responsesUrl ? { responses: responsesUrl } : {})
       }
     }
     updateAccountMock.mockReset().mockResolvedValue(account)
     checkMixedChannelRiskMock.mockReset().mockResolvedValue({ has_risk: false })
 
     const wrapper = mountModal(account)
+    expect(wrapper.findAll('input').some(i => (i.element as HTMLInputElement).value === (responsesUrl ?? 'https://open.bigmodel.cn/api/v1'))).toBe(true)
     await wrapper.get('form#edit-account-form').trigger('submit.prevent')
 
     expect(updateAccountMock).toHaveBeenCalledTimes(1)
@@ -633,7 +635,8 @@ describe('EditAccountModal', () => {
       base_url: 'https://open.bigmodel.cn/api/coding/paas/v4',
       api_base_urls: {
         chat_completions: 'https://open.bigmodel.cn/api/coding/paas/v4',
-        anthropic: 'https://open.bigmodel.cn/api/anthropic'
+        anthropic: 'https://open.bigmodel.cn/api/anthropic',
+        responses: responsesUrl ?? 'https://open.bigmodel.cn/api/v1'
       }
     })
   })

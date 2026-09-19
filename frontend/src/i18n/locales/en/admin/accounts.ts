@@ -123,7 +123,7 @@ export default {
           adaptive: 'Adaptive',
           adaptiveDesc: 'Uses the matching native provider endpoint for each inbound protocol, converting only when unavailable.',
           endpoints: 'Protocol endpoints',
-          responsesFallbackDesc: 'In adaptive mode, Responses requests are converted to Chat Completions. For GLM Coding Plan, select Responses explicitly to use the native endpoint.',
+          responsesFallbackDesc: 'This account type has no native Responses endpoint. Responses requests are converted to Chat Completions.',
           chatCompletions: 'Chat Completions',
           chatCompletionsDesc: 'Standard OpenAI-compatible endpoint; requests in other formats are converted.',
           anthropic: 'Anthropic',

@@ -1398,7 +1398,7 @@
               />
             </div>
           </div>
-          <p v-if="!cnSupportsAdaptiveResponses(form.platform)" class="input-hint">
+          <p v-if="!cnSupportsNativeResponses(form.platform, accountMode)" class="input-hint">
             {{ t('admin.accounts.cnProviders.apiProtocol.responsesFallbackDesc') }}
           </p>
         </div>
@@ -3947,7 +3947,6 @@ import {
   applyOpenCodeGoProtocolRules,
   cloneOpenCodeGoProtocolRules,
   cnSupportsNativeResponses,
-  cnSupportsAdaptiveResponses,
   defaultCNAdaptiveBaseUrls,
   defaultCNBaseUrl,
   defaultOpenCodeProtocolRules,
@@ -4189,7 +4188,7 @@ const adaptivePresetPlatform = computed<CnProviderPlatform | 'opencode_go'>(() =
   if (form.platform === 'opencode_go') return 'opencode_go'
   return cnPresetPlatform.value
 })
-// 当前平台/账号类型可选协议；智谱 Coding Plan 的 Responses 需显式选择。
+// 当前平台/账号类型可选协议；自适应模式复用相同的原生协议能力。
 const cnProtocolOptions = computed<Array<{ value: CnApiProtocol; labelKey: string }>>(() => {
   const opts: Array<{ value: CnApiProtocol; labelKey: string }> = [
     { value: 'adaptive', labelKey: 'adaptive' },
@@ -4206,7 +4205,7 @@ const cnAdaptiveProtocolOptions = computed<Array<{ value: CnNativeApiProtocol; l
     { value: 'chat_completions', labelKey: 'chatCompletions' },
     { value: 'anthropic', labelKey: 'anthropic' }
   ]
-  if (cnSupportsAdaptiveResponses(form.platform)) opts.push({ value: 'responses', labelKey: 'responses' })
+  if (cnSupportsNativeResponses(form.platform, accountMode.value)) opts.push({ value: 'responses', labelKey: 'responses' })
   return opts
 })
 

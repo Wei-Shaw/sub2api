@@ -523,6 +523,31 @@ describe('CreateAccountModal OpenAI long-context billing', () => {
     })
   })
 
+  it.each([false, true])('creates adaptive GLM with a native Responses endpoint; payg=%s', async (payg) => {
+    const wrapper = mountModal()
+    await selectButtonByText(wrapper, 'GLM')
+    await selectButtonByText(wrapper, 'admin.accounts.cnProviders.accountMode.coding')
+    const responses = wrapper.get('[data-testid="cn-adaptive-base-url-responses"]')
+    expect((responses.element as HTMLInputElement).value).toBe('https://open.bigmodel.cn/api/v1')
+    await responses.setValue('https://relay.example/api/v1')
+    if (payg) {
+      await selectButtonByText(wrapper, 'admin.accounts.cnProviders.accountMode.payg')
+      expect(wrapper.find('[data-testid="cn-adaptive-base-url-responses"]').exists()).toBe(false)
+    }
+    await wrapper.get('form#create-account-form input[type="text"]').setValue('GLM adaptive')
+    await wrapper.get('form#create-account-form input[type="password"]').setValue('sk-test')
+    await wrapper.get('form#create-account-form').trigger('submit.prevent')
+    await flushPromises()
+    const credentials = createAccountMock.mock.calls[0]?.[0]?.credentials
+    expect(credentials.api_protocol).toBe('adaptive')
+    if (payg) expect(credentials.api_base_urls.responses).toBeUndefined()
+    else expect(credentials.api_base_urls).toEqual({
+      chat_completions: 'https://open.bigmodel.cn/api/coding/paas/v4',
+      anthropic: 'https://open.bigmodel.cn/api/anthropic',
+      responses: 'https://relay.example/api/v1'
+    })
+  })
+
   it('submits adaptive Kimi protocol endpoints', async () => {
     const wrapper = mountModal()
     await selectButtonByText(wrapper, 'Kimi')

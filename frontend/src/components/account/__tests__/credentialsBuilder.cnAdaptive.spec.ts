@@ -35,7 +35,7 @@ describe('defaultCNAdaptiveBaseUrls', () => {
     expect(defaultCNAdaptiveBaseUrls('zhipu', 'coding')).toEqual({
       chat_completions: 'https://open.bigmodel.cn/api/coding/paas/v4',
       anthropic: 'https://open.bigmodel.cn/api/anthropic',
-      responses: ''
+      responses: 'https://open.bigmodel.cn/api/v1'
     })
   })
 
@@ -59,7 +59,7 @@ describe('defaultCNAdaptiveBaseUrls', () => {
 })
 
 
-describe('Zhipu native Responses opt-in', () => {
+describe('Zhipu native Responses', () => {
   it('offers native Responses only for Coding Plan and uses the dedicated endpoint', () => {
     expect(cnSupportsNativeResponses('zhipu', 'coding')).toBe(true)
     expect(cnSupportsNativeResponses('zhipu', 'payg')).toBe(false)

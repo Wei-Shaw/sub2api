@@ -262,7 +262,7 @@ export type CnAccountMode = 'payg' | 'coding'
 export type OpenCodeAccountMode = 'zen' | 'go'
 export type CnProviderPlatform = 'kimi' | 'zhipu' | 'deepseek' | 'minimax'
 
-/** 智谱 Coding Plan 的 responses 需显式选择；其他支持平台可通过 adaptive 选择原生端点。 */
+/** 自适应模式按入站协议使用当前平台和账号类型支持的原生端点。 */
 export type CnApiProtocol = 'adaptive' | 'chat_completions' | 'anthropic' | 'responses'
 export type CnNativeApiProtocol = Exclude<CnApiProtocol, 'adaptive'>
 
@@ -274,11 +274,6 @@ export function isCNProviderPlatform(platform: string): platform is CnProviderPl
 export function cnSupportsNativeResponses(platform: string, mode?: string): boolean {
   if (platform === 'zhipu') return mode === 'coding'
   return platform === 'deepseek' || platform === 'kimi' || platform === 'minimax' || platform === 'opencode_go'
-}
-
-// Zhipu native Responses is opt-in; keep existing adaptive accounts on the Chat bridge.
-export function cnSupportsAdaptiveResponses(platform: string): boolean {
-  return platform !== 'zhipu' && cnSupportsNativeResponses(platform)
 }
 
 export const OPENCODE_GO_BASE_URL = 'https://opencode.ai/zen/go/v1'
@@ -465,7 +460,7 @@ export function defaultCNAdaptiveBaseUrls(
   return {
     chat_completions: defaultCNBaseUrl(platform, mode, 'chat_completions'),
     anthropic: defaultCNBaseUrl(platform, mode, 'anthropic'),
-    responses: cnSupportsAdaptiveResponses(platform) ? defaultCNBaseUrl(platform, mode, 'responses') : ''
+    responses: cnSupportsNativeResponses(platform, mode) ? defaultCNBaseUrl(platform, mode, 'responses') : ''
   }
 }
 

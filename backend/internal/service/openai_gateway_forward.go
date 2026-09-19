@@ -1353,8 +1353,8 @@ func shouldForwardOpenAIResponsesViaRawChatCompletions(account *Account) bool {
 		return false
 	}
 	if account.IsCNProvider() {
-		// CN 的显式协议配置优先于异步探针 Extra；GLM 的 adaptive
-		// 保留 Chat Completions 转换，原生 Responses 需显式选择。
+		// CN 协议配置和原生能力优先于异步探针 Extra；自适应模式
+		// 在供应商支持时直通 Responses，否则保留 Chat Completions 转换。
 		switch account.GetAPIProtocol() {
 		case APIProtocolChatCompletions:
 			return true

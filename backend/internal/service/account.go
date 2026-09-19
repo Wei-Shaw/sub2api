@@ -1414,8 +1414,7 @@ func (a *Account) IsCodingPlan() bool {
 
 // GetAPIProtocol 返回国产供应商账号的上游 API 协议。存储于
 // credentials["api_protocol"]；缺失或与平台不匹配时回退 chat_completions
-// （与既有行为完全一致）。智谱 Coding Plan 的原生 Responses 必须显式选择，
-// 保留现有 adaptive 账号的 Chat Completions 转换行为。
+// （与既有行为完全一致）。智谱 Coding Plan 支持显式 Responses 和 adaptive 原生转发。
 func (a *Account) GetAPIProtocol() string {
 	if a == nil || !a.IsMultiProtocolAPIKey() {
 		return APIProtocolChatCompletions
@@ -1441,7 +1440,7 @@ func (a *Account) GetAPIProtocol() string {
 // SupportsNativeCNResponses 报告该国产供应商是否提供原生 Responses 端点。
 // DeepSeek 官方为 /responses（无 /v1）；Kimi 按量付费与 Coding Plan 均为
 // /v1/responses（moonshot.cn / kimi.com/coding）；MiniMax 为 /v1/responses。
-// 智谱 Coding Plan 为 /api/v1/responses，需显式选择协议。
+// 智谱 Coding Plan 为 /api/v1/responses。
 func (a *Account) SupportsNativeCNResponses() bool {
 	if a == nil {
 		return false
@@ -1457,17 +1456,14 @@ func (a *Account) SupportsNativeCNResponses() bool {
 }
 
 // UsesNativeCNResponses 报告当前账号是否应按原生 Responses 协议转发
-// （显式 responses，或 adaptive 且平台默认启用原生端点；智谱不自动启用）。
+// （显式 responses，或 adaptive 且平台具备原生端点）。
 func (a *Account) UsesNativeCNResponses() bool {
 	if a == nil || !a.SupportsNativeCNResponses() {
 		return false
 	}
 	switch a.GetAPIProtocol() {
-	case APIProtocolResponses:
+	case APIProtocolResponses, APIProtocolAdaptive:
 		return true
-	case APIProtocolAdaptive:
-		// Opt in explicitly: upgrading must not reroute existing GLM accounts.
-		return !a.IsZhipu()
 	default:
 		return false
 	}
