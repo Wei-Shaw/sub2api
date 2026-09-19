@@ -377,6 +377,11 @@ export default {
           fallback: '未命中以上规则 → Chat Completions（/v1/chat/completions）',
         },
       },
+      zhipuMcp: {
+        title: 'MCP 转发',
+        hint: '开启后 MCP 协议请求将通过该智谱账号转发。',
+        paygDisabledHint: '仅 Coding Plan 订阅模式的智谱账号可开启 MCP 转发。',
+      },
       types: {
         oauth: 'OAuth',
         chatgptOauth: 'ChatGPT OAuth',
