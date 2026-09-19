@@ -216,8 +216,9 @@ type CreateAPIKeyRequest struct {
 	IPBlacklist []string `json:"ip_blacklist"` // IP 黑名单
 
 	// Quota fields
-	Quota         float64 `json:"quota"`           // Quota limit in USD (0 = unlimited)
-	ExpiresInDays *int    `json:"expires_in_days"` // Days until expiry (nil = never expires)
+	Quota         float64    `json:"quota"`           // Quota limit in USD (0 = unlimited)
+	ExpiresInDays *int       `json:"expires_in_days"` // Legacy relative expiry (nil = never expires)
+	ExpiresAt     *time.Time `json:"expires_at"`      // Exact expiry; takes precedence over ExpiresInDays
 
 	// Rate limit fields (0 = unlimited)
 	RateLimit5h float64 `json:"rate_limit_5h"`
@@ -547,7 +548,9 @@ func (s *APIKeyService) Create(ctx context.Context, userID int64, req CreateAPIK
 	}
 
 	// Set expiration time if specified
-	if req.ExpiresInDays != nil && *req.ExpiresInDays > 0 {
+	if req.ExpiresAt != nil {
+		apiKey.ExpiresAt = req.ExpiresAt
+	} else if req.ExpiresInDays != nil && *req.ExpiresInDays > 0 {
 		expiresAt := time.Now().AddDate(0, 0, *req.ExpiresInDays)
 		apiKey.ExpiresAt = &expiresAt
 	}

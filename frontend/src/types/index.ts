@@ -765,7 +765,8 @@ export interface CreateApiKeyRequest {
   ip_whitelist?: string[]
   ip_blacklist?: string[]
   quota?: number // Quota limit in USD (0 = unlimited)
-  expires_in_days?: number // Days until expiry (null = never expires)
+  expires_in_days?: number // Legacy relative expiry (omitted = never expires)
+  expires_at?: string | null // Exact expiry (RFC3339); takes precedence over expires_in_days
   rate_limit_5h?: number
   rate_limit_1d?: number
   rate_limit_7d?: number
