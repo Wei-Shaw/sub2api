@@ -6,6 +6,7 @@ package service
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"sort"
@@ -271,18 +272,33 @@ func (s *OpenAIGatewayService) SelectAccountForTokenCount(
 ) (*Account, error) {
 	ctx = WithOpenAIProfitControlSuppressed(ctx)
 	ctx = s.withOpenAIQuotaAutoPauseContext(ctx)
-	return s.selectAccountForModelWithExclusions(
-		ctx,
-		groupID,
-		platform,
-		sessionHash,
-		requestedModel,
-		nil,
-		false,
-		0,
-		requiredCapability,
-		false,
-	)
+	excludedIDs := make(map[int64]struct{})
+	for clientVetoes := 0; clientVetoes < MaxCodexClientAdmissionVetoAttempts; clientVetoes++ {
+		account, err := s.selectAccountForModelWithExclusions(
+			ctx, groupID, platform, sessionHash, requestedModel, excludedIDs, false, 0, requiredCapability, false,
+		)
+		if err != nil {
+			if errors.Is(err, ErrNoAvailableAccounts) && len(excludedIDs) > 0 {
+				return nil, codexClientAdmissionErrorFromContext(ctx)
+			}
+			return nil, err
+		}
+		// Token counting has no generation slot, but still requires the same
+		// authoritative client-policy check immediately before forwarding.
+		admission, err := s.OpenAITerminalAdmissionLatest(ctx, account)
+		if err != nil {
+			return nil, err
+		}
+		if admission.ClientVetoed {
+			excludedIDs[account.ID] = struct{}{}
+			continue
+		}
+		if openAIStickyAdmissionDeferred(ctx) {
+			_ = s.BindStickySessionAfterProfitAdmission(ctx, groupID, sessionHash, admission.Account.ID)
+		}
+		return admission.Account, nil
+	}
+	return nil, codexClientAdmissionErrorFromContext(ctx)
 }
 
 // NormalizeOpenAICompatiblePlatform 保留 grok 与国产 OpenAI 兼容供应商（kimi/zhipu/
@@ -908,6 +924,9 @@ func (s *OpenAIGatewayService) selectAccountForModelWithExclusions(ctx context.C
 	selected, compactBlocked, filterStats := s.selectBestAccount(ctx, groupID, platform, accounts, requestedModel, excludedIDs, requireCompact, requiredCapability, preferLowUpstreamRate)
 
 	if selected == nil {
+		if filterStats.reasons[codexClientAdmissionFilterReason] > 0 {
+			return nil, codexClientAdmissionErrorFromContext(ctx)
+		}
 		return nil, noAvailableOpenAISelectionError(requestedModel, compactBlocked, filterStats.summary(""))
 	}
 
@@ -919,7 +938,7 @@ func (s *OpenAIGatewayService) selectAccountForModelWithExclusions(ctx context.C
 	// 4. 设置粘性会话绑定（利润门下推迟到 handler 终检通过后再绑定，
 	// 终检否决的账号不得成为新的粘性目标；无门保持既有 eager 绑定与 TTL）
 	// Set sticky session binding (deferred until terminal admission under a profit gate)
-	if sessionHash != "" && !gatewayProfitControlGateActive(ctx) {
+	if sessionHash != "" && !openAIStickyAdmissionDeferred(ctx) {
 		_ = s.setStickySessionAccountID(ctx, groupID, sessionHash, selected.ID, openaiStickySessionTTL)
 	}
 
@@ -985,6 +1004,12 @@ func (s *OpenAIGatewayService) tryStickySessionHit(ctx context.Context, groupID 
 		_ = s.deleteStickySessionAccountID(ctx, groupID, sessionHash)
 		return nil
 	}
+	if vetoed, _ := s.codexClientAdmissionVetoReason(ctx, account, s.parentAccountLookup(ctx)); vetoed {
+		// A client-incompatible sticky binding is skipped, not deleted. The same
+		// session can reuse it automatically when a compatible client returns.
+		recordCodexClientAdmissionStickySkip(ctx, accountID)
+		return nil
+	}
 
 	// 刷新会话 TTL 并返回账号
 	// Refresh session TTL and return account
@@ -1008,6 +1033,7 @@ func (s *OpenAIGatewayService) selectBestAccount(ctx context.Context, groupID *i
 	needsUpstreamCheck := s.needsUpstreamChannelRestrictionCheck(ctx, groupID)
 	eligible := make([]*Account, 0, len(accounts))
 	compactTiers := make(map[int64]int, len(accounts))
+	parentLookup := s.parentAccountLookup(ctx)
 
 	for i := range accounts {
 		acc := &accounts[i]
@@ -1045,6 +1071,10 @@ func (s *OpenAIGatewayService) selectBestAccount(ctx context.Context, groupID *i
 				filterStats.exclude("compact_unsupported")
 				continue
 			}
+		}
+		if vetoed, _ := s.codexClientAdmissionVetoReason(ctx, fresh, parentLookup); vetoed {
+			filterStats.exclude(codexClientAdmissionFilterReason)
+			continue
 		}
 
 		eligible = append(eligible, fresh)
@@ -1203,6 +1233,9 @@ func (s *OpenAIGatewayService) selectAccountWithLoadAwareness(ctx context.Contex
 						_ = s.deleteStickySessionAccountID(ctx, groupID, sessionHash)
 					} else if !parentHealthyForShadow(account, s.parentAccountLookup(ctx)) {
 						_ = s.deleteStickySessionAccountID(ctx, groupID, sessionHash)
+					} else if vetoed, _ := s.codexClientAdmissionVetoReason(ctx, account, s.parentAccountLookup(ctx)); vetoed {
+						// Keep the binding intact; only this request is incompatible.
+						recordCodexClientAdmissionStickySkip(ctx, accountID)
 					} else {
 						result, err := s.tryAcquireAccountSlot(ctx, accountID, account.Concurrency)
 						if err == nil && result != nil && result.Acquired {
@@ -1246,6 +1279,7 @@ func (s *OpenAIGatewayService) selectAccountWithLoadAwareness(ctx context.Contex
 		return a
 	}
 	baseCandidateCount := 0
+	clientRestricted := false
 	filterStats := openAISelectionFilterStats{pool: len(accounts)}
 	candidates := make([]*Account, 0, len(accounts))
 	for i := range accounts {
@@ -1273,11 +1307,18 @@ func (s *OpenAIGatewayService) selectAccountWithLoadAwareness(ctx context.Contex
 			filterStats.exclude("channel_upstream_restricted")
 			continue
 		}
+		if vetoed, _ := s.codexClientAdmissionVetoReason(ctx, acc, parentLookupL2); vetoed {
+			clientRestricted = true
+			continue
+		}
 		baseCandidateCount++
 		candidates = append(candidates, acc)
 	}
 
 	if len(candidates) == 0 {
+		if clientRestricted {
+			return nil, codexClientAdmissionErrorFromContext(ctx)
+		}
 		return nil, noAvailableOpenAISelectionError(requestedModel, false, filterStats.summary(""))
 	}
 	rateOrder := openAILegacyUpstreamRateOrder{}
@@ -1369,13 +1410,16 @@ func (s *OpenAIGatewayService) selectAccountWithLoadAwareness(ctx context.Contex
 			if needsUpstreamCheck && s.isUpstreamModelRestrictedByChannel(ctx, *groupID, fresh, requestedModel, requireCompact) {
 				continue
 			}
+			if vetoed, _ := s.codexClientAdmissionVetoReason(ctx, fresh, s.parentAccountLookup(ctx)); vetoed {
+				continue
+			}
 			result, err := s.tryAcquireAccountSlot(ctx, fresh.ID, fresh.Concurrency)
 			if err == nil && result != nil && result.Acquired {
 				selection, selectErr := s.newAcquiredSelectionResult(ctx, fresh, result.ReleaseFunc)
 				if selectErr != nil {
 					return nil, true, selectErr
 				}
-				if sessionHash != "" && !stickySpillover && !gatewayProfitControlGateActive(ctx) {
+				if sessionHash != "" && !stickySpillover && !openAIStickyAdmissionDeferred(ctx) {
 					_ = s.setStickySessionAccountID(ctx, groupID, sessionHash, fresh.ID, openaiStickySessionTTL)
 				}
 				return selection, true, nil
@@ -1408,13 +1452,16 @@ func (s *OpenAIGatewayService) selectAccountWithLoadAwareness(ctx context.Contex
 			if needsUpstreamCheck && s.isUpstreamModelRestrictedByChannel(ctx, *groupID, fresh, requestedModel, requireCompact) {
 				continue
 			}
+			if vetoed, _ := s.codexClientAdmissionVetoReason(ctx, fresh, s.parentAccountLookup(ctx)); vetoed {
+				continue
+			}
 			result, err := s.tryAcquireAccountSlot(ctx, fresh.ID, fresh.Concurrency)
 			if err == nil && result != nil && result.Acquired {
 				selection, selectErr := s.newAcquiredSelectionResult(ctx, fresh, result.ReleaseFunc)
 				if selectErr != nil {
 					return nil, selectErr
 				}
-				if sessionHash != "" && !stickySpillover && !gatewayProfitControlGateActive(ctx) {
+				if sessionHash != "" && !stickySpillover && !openAIStickyAdmissionDeferred(ctx) {
 					_ = s.setStickySessionAccountID(ctx, groupID, sessionHash, fresh.ID, openaiStickySessionTTL)
 				}
 				return selection, nil
@@ -1446,6 +1493,8 @@ func (s *OpenAIGatewayService) selectAccountWithLoadAwareness(ctx context.Contex
 	if requireCompact {
 		candidates = prioritizeOpenAICompactAccounts(candidates)
 	}
+	clientEligible := 0
+	clientVetoed := 0
 	for _, acc := range candidates {
 		fresh := s.resolveFreshSchedulableOpenAIAccount(ctx, acc, platform, requestedModel, false, requiredCapability)
 		if fresh == nil {
@@ -1458,6 +1507,11 @@ func (s *OpenAIGatewayService) selectAccountWithLoadAwareness(ctx context.Contex
 		if needsUpstreamCheck && s.isUpstreamModelRestrictedByChannel(ctx, *groupID, fresh, requestedModel, requireCompact) {
 			continue
 		}
+		clientEligible++
+		if vetoed, _ := s.codexClientAdmissionVetoReason(ctx, fresh, s.parentAccountLookup(ctx)); vetoed {
+			clientVetoed++
+			continue
+		}
 		return s.newSelectionResult(ctx, fresh, false, nil, &AccountWaitPlan{
 			AccountID:      fresh.ID,
 			MaxConcurrency: fresh.Concurrency,
@@ -1468,6 +1522,9 @@ func (s *OpenAIGatewayService) selectAccountWithLoadAwareness(ctx context.Contex
 
 	if requireCompact && baseCandidateCount > 0 {
 		return nil, ErrNoAvailableCompactAccounts
+	}
+	if clientEligible > 0 && clientVetoed == clientEligible {
+		return nil, codexClientAdmissionErrorFromContext(ctx)
 	}
 	return nil, ErrNoAvailableAccounts
 }

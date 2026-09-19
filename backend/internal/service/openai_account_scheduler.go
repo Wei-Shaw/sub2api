@@ -433,6 +433,9 @@ func (s *defaultOpenAIAccountScheduler) Select(
 			}
 			return selection, decision, nil
 		}
+		if !req.PreviousResponseCanMove && codexClientAdmissionDenied(ctx) {
+			return nil, decision, codexClientAdmissionErrorFromContext(ctx)
+		}
 	}
 
 	if req.GuardianParentAccountID > 0 {
@@ -532,15 +535,29 @@ func (s *defaultOpenAIAccountScheduler) selectBySessionHash(
 		clearBinding()
 		return nil, false, nil
 	}
-	if !s.isAccountRequestCompatible(ctx, account, req) {
+	if !s.isAccountRequestCompatibleBeforeClient(ctx, account, req) {
 		return nil, false, nil
 	}
 	if !s.isAccountTransportCompatible(account, req.RequiredTransport) {
 		clearBinding()
 		return nil, false, nil
 	}
+	if req.RequireCompact && openAICompactSupportTier(account) == 0 {
+		return nil, false, nil
+	}
+	if vetoed, _ := s.service.codexClientAdmissionVetoReason(ctx, account, func(id int64) *Account {
+		return s.lookupShadowParentAccount(ctx, id)
+	}); vetoed {
+		// Client policy is request-specific. Keep the sticky binding so a later
+		// compatible client can reuse it.
+		recordCodexClientAdmissionStickySkip(ctx, accountID)
+		return nil, false, nil
+	}
 	account = s.service.recheckSelectedOpenAIAccountFromDB(ctx, account, req.GroupID, req.Platform, req.RequestedModel, req.RequireCompact, req.RequiredCapability)
-	if account == nil || !s.service.openAIAccountMatchesSchedulingGroup(account, req.GroupID) || !s.isAccountRequestCompatible(ctx, account, req) || !s.isAccountTransportCompatible(account, req.RequiredTransport) {
+	if account == nil || !s.service.openAIAccountMatchesSchedulingGroup(account, req.GroupID) ||
+		!s.isAccountTransportCompatible(account, req.RequiredTransport) ||
+		!s.isAccountRequestCompatibleBeforeClient(ctx, account, req) ||
+		(req.RequireCompact && openAICompactSupportTier(account) == 0) {
 		clearBinding()
 		return nil, false, nil
 	}
@@ -559,6 +576,12 @@ func (s *defaultOpenAIAccountScheduler) selectBySessionHash(
 	}
 	if account != nil && isGrokModelQuotaBlocked(account.ID, upstreamModel, now) {
 		clearBinding()
+		return nil, false, nil
+	}
+	if vetoed, _ := s.service.codexClientAdmissionVetoReason(ctx, account, func(id int64) *Account {
+		return s.lookupShadowParentAccount(ctx, id)
+	}); vetoed {
+		recordCodexClientAdmissionStickySkip(ctx, accountID)
 		return nil, false, nil
 	}
 	escapeCfg := s.service.openAIStickyEscapeConfig()
@@ -1202,7 +1225,7 @@ func (s *defaultOpenAIAccountScheduler) tryAcquireOpenAISelectionOrderWithBudget
 		}
 
 		fresh := s.service.resolveFreshSchedulableOpenAIAccount(ctx, candidate.account, req.Platform, req.RequestedModel, false, req.RequiredCapability)
-		if fresh == nil || !s.isAccountTransportCompatible(fresh, req.RequiredTransport) || !s.isAccountRequestCompatible(ctx, fresh, req) {
+		if fresh == nil || !s.isAccountTransportCompatible(fresh, req.RequiredTransport) || !s.isAccountRequestCompatibleBeforeClient(ctx, fresh, req) {
 			release(result)
 			continue
 		}
@@ -1211,12 +1234,18 @@ func (s *defaultOpenAIAccountScheduler) tryAcquireOpenAISelectionOrderWithBudget
 			break
 		}
 		fresh = s.service.recheckSelectedOpenAIAccountFromDB(ctx, fresh, req.GroupID, req.Platform, req.RequestedModel, false, req.RequiredCapability)
-		if fresh == nil || !s.isAccountTransportCompatible(fresh, req.RequiredTransport) || !s.isAccountRequestCompatible(ctx, fresh, req) {
+		if fresh == nil || !s.isAccountTransportCompatible(fresh, req.RequiredTransport) || !s.isAccountRequestCompatibleBeforeClient(ctx, fresh, req) {
 			release(result)
 			continue
 		}
 		if req.RequireCompact && openAICompactSupportTier(fresh) == 0 {
 			compactBlocked = true
+			release(result)
+			continue
+		}
+		if vetoed, _ := s.service.codexClientAdmissionVetoReason(ctx, fresh, func(id int64) *Account {
+			return s.lookupShadowParentAccount(ctx, id)
+		}); vetoed {
 			release(result)
 			continue
 		}
@@ -1286,7 +1315,7 @@ func (s *defaultOpenAIAccountScheduler) tryFallbackToWeightedSticky(
 		if err != nil || account == nil {
 			continue
 		}
-		if !s.isAccountRequestCompatible(ctx, account, req) || !s.isAccountTransportCompatible(account, req.RequiredTransport) {
+		if !s.isAccountTransportCompatible(account, req.RequiredTransport) || !s.isAccountRequestCompatibleBeforeClient(ctx, account, req) {
 			continue
 		}
 		account = s.service.recheckSelectedOpenAIAccountFromDB(ctx, account, req.GroupID, req.Platform, req.RequestedModel, req.RequireCompact, req.RequiredCapability)
@@ -1302,10 +1331,15 @@ func (s *defaultOpenAIAccountScheduler) tryFallbackToWeightedSticky(
 			}
 			continue
 		}
-		if !s.isAccountRequestCompatible(ctx, account, req) || !s.isAccountTransportCompatible(account, req.RequiredTransport) {
+		if !s.isAccountTransportCompatible(account, req.RequiredTransport) || !s.isAccountRequestCompatibleBeforeClient(ctx, account, req) {
 			continue
 		}
 		if req.RequireCompact && openAICompactSupportTier(account) == 0 {
+			continue
+		}
+		if vetoed, _ := s.service.codexClientAdmissionVetoReason(ctx, account, func(id int64) *Account {
+			return s.lookupShadowParentAccount(ctx, id)
+		}); vetoed {
 			continue
 		}
 		// Keep weighted sticky fallback subject to the same free-tier gate as the
@@ -1468,13 +1502,23 @@ func (s *defaultOpenAIAccountScheduler) selectByLoadBalance(
 			filterStats.exclude("privacy_not_set")
 			continue
 		}
-		if compatible, reason := s.isAccountRequestCompatibleReason(ctx, account, req); !compatible {
+		if compatible, reason := s.isAccountRequestCompatibleBeforeClientReason(ctx, account, req); !compatible {
 			filterStats.exclude(reason)
 			continue
 		}
 		if !s.isAccountTransportCompatible(account, req.RequiredTransport) {
 			filterStats.exclude("transport_incompatible")
 			continue
+		}
+		// Unknown compact support remains eligible for the existing DB retry path;
+		// defer client-policy classification until that fresh recheck.
+		if !req.RequireCompact || openAICompactSupportTier(account) > 0 {
+			if vetoed, reason := s.service.codexClientAdmissionVetoReason(ctx, account, func(id int64) *Account {
+				return s.lookupShadowParentAccount(ctx, id)
+			}); vetoed {
+				filterStats.exclude(reason)
+				continue
+			}
 		}
 		filtered = append(filtered, account)
 		loadReq = append(loadReq, AccountWithConcurrency{
@@ -1483,6 +1527,9 @@ func (s *defaultOpenAIAccountScheduler) selectByLoadBalance(
 		})
 	}
 	if len(filtered) == 0 {
+		if filterStats.reasons[codexClientAdmissionFilterReason] > 0 {
+			return nil, 0, 0, 0, codexClientAdmissionErrorFromContext(ctx)
+		}
 		return nil, 0, 0, 0, noAvailableOpenAISelectionError(req.RequestedModel, false, filterStats.summary(""))
 	}
 
@@ -1688,6 +1735,8 @@ func (s *defaultOpenAIAccountScheduler) finishLoadBalanceSelectionFallback(
 
 	cfg := s.service.schedulingConfig()
 	compactBlocked := attempt.compactBlocked
+	clientEligible := 0
+	clientVetoed := 0
 	// WaitPlan.MaxConcurrency 使用 Concurrency（非 EffectiveLoadFactor），因为 WaitPlan 控制的是 Redis 实际并发槽位等待。
 	passes := 1
 	if budget != nil && budget.limited {
@@ -1708,18 +1757,25 @@ func (s *defaultOpenAIAccountScheduler) finishLoadBalanceSelectionFallback(
 				}
 			}
 			fresh := s.service.resolveFreshSchedulableOpenAIAccount(ctx, candidate.account, req.Platform, req.RequestedModel, false, req.RequiredCapability)
-			if fresh == nil || !s.isAccountTransportCompatible(fresh, req.RequiredTransport) || !s.isAccountRequestCompatible(ctx, fresh, req) {
+			if fresh == nil || !s.isAccountTransportCompatible(fresh, req.RequiredTransport) || !s.isAccountRequestCompatibleBeforeClient(ctx, fresh, req) {
 				continue
 			}
 			if !s.consumeOpenAISelectionDBRecheck(budget) {
 				return nil, candidateCount, topK, loadSkew, noAvailableOpenAISelectionError(req.RequestedModel, compactBlocked, filterStats.summary("selection_order_exhausted"))
 			}
 			fresh = s.service.recheckSelectedOpenAIAccountFromDB(ctx, fresh, req.GroupID, req.Platform, req.RequestedModel, false, req.RequiredCapability)
-			if fresh == nil || !s.isAccountTransportCompatible(fresh, req.RequiredTransport) || !s.isAccountRequestCompatible(ctx, fresh, req) {
+			if fresh == nil || !s.isAccountTransportCompatible(fresh, req.RequiredTransport) || !s.isAccountRequestCompatibleBeforeClient(ctx, fresh, req) {
 				continue
 			}
 			if req.RequireCompact && openAICompactSupportTier(fresh) == 0 {
 				compactBlocked = true
+				continue
+			}
+			clientEligible++
+			if vetoed, _ := s.service.codexClientAdmissionVetoReason(ctx, fresh, func(id int64) *Account {
+				return s.lookupShadowParentAccount(ctx, id)
+			}); vetoed {
+				clientVetoed++
 				continue
 			}
 			return attachSelectionProfitGate(ctx, &AccountSelectionResult{
@@ -1734,6 +1790,9 @@ func (s *defaultOpenAIAccountScheduler) finishLoadBalanceSelectionFallback(
 		}
 	}
 
+	if clientEligible > 0 && clientVetoed == clientEligible {
+		return nil, candidateCount, topK, loadSkew, codexClientAdmissionErrorFromContext(ctx)
+	}
 	return nil, candidateCount, topK, loadSkew, noAvailableOpenAISelectionError(req.RequestedModel, compactBlocked, filterStats.summary("selection_order_exhausted"))
 }
 
@@ -1768,11 +1827,31 @@ func (s *defaultOpenAIAccountScheduler) isAccountRequestCompatible(ctx context.C
 	return compatible
 }
 
-// isAccountRequestCompatibleReason reports whether the account can serve the
-// request, and when it cannot, names the veto point. The reason feeds
+func (s *defaultOpenAIAccountScheduler) isAccountRequestCompatibleReason(ctx context.Context, account *Account, req OpenAIAccountScheduleRequest) (bool, string) {
+	compatible, reason := s.isAccountRequestCompatibleBeforeClientReason(ctx, account, req)
+	if !compatible {
+		return false, reason
+	}
+	if vetoed, reason := s.service.codexClientAdmissionVetoReason(ctx, account, func(id int64) *Account {
+		return s.lookupShadowParentAccount(ctx, id)
+	}); vetoed {
+		return false, reason
+	}
+	return true, ""
+}
+
+func (s *defaultOpenAIAccountScheduler) isAccountRequestCompatibleBeforeClient(ctx context.Context, account *Account, req OpenAIAccountScheduleRequest) bool {
+	compatible, _ := s.isAccountRequestCompatibleBeforeClientReason(ctx, account, req)
+	return compatible
+}
+
+// isAccountRequestCompatibleBeforeClientReason applies every request-shape
+// compatibility check except the request-specific client admission policy.
+// Keeping that policy last prevents unrelated model/capability mismatches from
+// being reported as a typed client restriction error. The reason feeds
 // openAISelectionFilterStats so that "no available accounts" errors state why
 // each candidate was dropped instead of failing silently (#4599).
-func (s *defaultOpenAIAccountScheduler) isAccountRequestCompatibleReason(ctx context.Context, account *Account, req OpenAIAccountScheduleRequest) (bool, string) {
+func (s *defaultOpenAIAccountScheduler) isAccountRequestCompatibleBeforeClientReason(ctx context.Context, account *Account, req OpenAIAccountScheduleRequest) (bool, string) {
 	if account == nil {
 		return false, "account_nil"
 	}
@@ -2257,6 +2336,22 @@ func (s *OpenAIGatewayService) selectAccountWithSchedulerOnce(
 	scheduler := s.getOpenAIAccountScheduler(ctx)
 	if scheduler == nil {
 		decision.Layer = openAIAccountScheduleLayerLoadBalance
+		if codexClientAdmissionActive(ctx) && !previousResponseCanMove && strings.TrimSpace(previousResponseID) != "" && platform == PlatformOpenAI {
+			// Legacy scheduling keeps its load/priority selection. Only validate
+			// the client policy of an immovable continuation, without taking a slot.
+			s.ResolveAccountIDByPreviousResponseIDForScheduler(
+				ctx,
+				groupID,
+				previousResponseID,
+				requestedModel,
+				excludedIDs,
+				requiredCapability,
+				requireCompact,
+			)
+			if codexClientAdmissionDenied(ctx) {
+				return nil, decision, codexClientAdmissionErrorFromContext(ctx)
+			}
+		}
 		if guardianParentAccountID > 0 {
 			if s.checkChannelPricingRestriction(ctx, groupID, requestedModel) {
 				return nil, decision, fmt.Errorf("%w supporting model: %s (channel pricing restriction)", ErrNoAvailableAccounts, requestedModel)
