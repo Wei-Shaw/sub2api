@@ -2630,3 +2630,40 @@ func TestLoad_DefaultGatewayImageStreamConfig(t *testing.T) {
 		t.Fatalf("image stream timeout = %d, want greater than ordinary stream timeout %d", cfg.Gateway.ImageStreamDataIntervalTimeout, cfg.Gateway.StreamDataIntervalTimeout)
 	}
 }
+
+func TestLoadMaxDecompressedBodySize(t *testing.T) {
+	for _, tt := range []struct {
+		name      string
+		yamlValue string
+		envValue  string
+		want      int64
+		wantError bool
+	}{
+		{name: "default", want: 64 << 20},
+		{name: "yaml", yamlValue: "167772160", want: 160 << 20},
+		{name: "environment", envValue: "167772160", want: 160 << 20},
+		{name: "environment_overrides_yaml", yamlValue: "134217728", envValue: "167772160", want: 160 << 20},
+		{name: "zero", envValue: "0", wantError: true},
+		{name: "negative", envValue: "-1", wantError: true},
+		{name: "invalid", envValue: "160MiB", wantError: true},
+		{name: "overflow", envValue: "9223372036854775808", wantError: true},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			resetViperWithJWTSecret(t)
+			t.Setenv("GATEWAY_MAX_DECOMPRESSED_BODY_SIZE", tt.envValue)
+			if tt.yamlValue != "" {
+				path := filepath.Join(t.TempDir(), "config.yaml")
+				require.NoError(t, os.WriteFile(path, []byte("gateway:\n  max_decompressed_body_size: "+tt.yamlValue+"\n"), 0o600))
+				t.Setenv("CONFIG_FILE", path)
+			}
+			cfg, err := Load()
+			if tt.wantError {
+				require.Error(t, err)
+				require.Contains(t, err.Error(), "max_decompressed_body_size")
+				return
+			}
+			require.NoError(t, err)
+			require.Equal(t, tt.want, cfg.Gateway.MaxDecompressedBodySize)
+		})
+	}
+}
