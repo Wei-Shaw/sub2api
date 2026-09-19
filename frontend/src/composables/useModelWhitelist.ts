@@ -249,6 +249,14 @@ const perplexityModels = [
   'llama-3-sonar-small-32k-chat', 'llama-3-sonar-large-32k-chat'
 ]
 
+// Devin (Cognition) — 与后端 GroupModels 对外 id 对齐；分级 uid 作为独立可选项
+// Devin 对外只暴露分组 id；thinking 档位经 effort / "model:level" 选择
+const devinModels = [
+  'swe-2',
+  'claude-fable-5-1',
+  'gpt-6-astra'
+]
+
 // 所有模型（去重）
 const allModelsList: string[] = [
   ...openaiModels,
@@ -268,7 +276,8 @@ const allModelsList: string[] = [
   ...baiduModels,
   ...sparkModels,
   ...hunyuanModels,
-  ...perplexityModels
+  ...perplexityModels,
+  ...devinModels
 ]
 
 // 转换为下拉选项格式
@@ -471,6 +480,7 @@ export function getModelsByPlatform(platform: string): string[] {
     case 'spark': return sparkModels
     case 'hunyuan': return hunyuanModels
     case 'perplexity': return perplexityModels
+    case 'devin': return devinModels
     default: return claudeModels
   }
 }

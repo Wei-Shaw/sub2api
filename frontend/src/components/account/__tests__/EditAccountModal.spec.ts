@@ -445,6 +445,34 @@ describe('EditAccountModal', () => {
     })
   })
 
+  it('rehydrates and persists the Devin OAuth model whitelist', async () => {
+    const account = buildAccount()
+    account.platform = 'devin'
+    account.type = 'oauth'
+    account.credentials = {
+      access_token: 'devin-session-token$abc',
+      api_server_url: 'https://server.codeium.example',
+      model_mapping: {
+        'swe-2': 'swe-2',
+        'claude-fable-5-1': 'claude-fable-5-1'
+      }
+    }
+    updateAccountMock.mockReset().mockResolvedValue(account)
+    checkMixedChannelRiskMock.mockReset().mockResolvedValue({ has_risk: false })
+
+    const wrapper = mountModal(account)
+    expect(wrapper.get('[data-testid="model-whitelist-value"]').text()).toBe('swe-2,claude-fable-5-1')
+
+    await wrapper.get('[data-testid="rewrite-to-snapshot"]').trigger('click')
+    await wrapper.get('form#edit-account-form').trigger('submit.prevent')
+
+    expect(updateAccountMock).toHaveBeenCalledTimes(1)
+    expect(updateAccountMock.mock.calls[0]?.[1]?.credentials?.model_mapping).toEqual({
+      'gpt-5.2-2025-12-11': 'gpt-5.2-2025-12-11'
+    })
+    wrapper.unmount()
+  })
+
   it('preserves OpenCode Zen account type and endpoints on submit', async () => {
     const account = buildAccount()
     account.platform = 'opencode_go'

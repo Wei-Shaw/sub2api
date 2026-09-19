@@ -15,6 +15,8 @@ import (
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/antigravity"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/claude"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/devin"
+	devinadapter "github.com/Wei-Shaw/sub2api/internal/pkg/devin/adapter"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/geminicli"
 )
 
@@ -224,6 +226,12 @@ func (s *AccountTestService) SyncUpstreamModelCatalog(ctx context.Context, accou
 			"model_count", len(models),
 		)
 	}
+	// Devin 的分组 id 不在 models.dev 注册表中，能力增补只会产出噪音告警；
+	// 直接返回分组模型列表。
+	if account.IsDevin() {
+		return &UpstreamModelCatalog{Models: models, Metadata: make(map[string]UpstreamModelMetadata)}, nil
+	}
+
 	catalog := &UpstreamModelCatalog{Models: models, Metadata: make(map[string]UpstreamModelMetadata)}
 	if len(body) > 0 {
 		_, directMetadata, parseErr := extractUpstreamModelCatalog(body, account != nil && account.IsGrok())
@@ -737,6 +745,13 @@ func (s *AccountTestService) fetchUpstreamModelList(ctx context.Context, account
 		return models, nil, err
 	}
 
+	// Devin (Cognition)：Connect RPC 目录，对外只暴露分组 id（thinking 档位
+	// 由 effort 参数映射到 uid，不铺平为独立模型）。
+	if account.IsDevin() {
+		models, err := s.fetchDevinUpstreamModels(ctx, account)
+		return models, nil, err
+	}
+
 	if s.httpUpstream == nil {
 		return nil, nil, newUpstreamModelSyncConfigError("Upstream HTTP client is not configured", nil)
 	}
@@ -1186,6 +1201,56 @@ func (s *AccountTestService) fetchAntigravityOAuthUpstreamModels(ctx context.Con
 	models := make([]string, 0, len(modelsResp.Models))
 	for modelID := range modelsResp.Models {
 		models = append(models, strings.TrimSpace(modelID))
+	}
+	return dedupeAndSortModelIDs(models), nil
+}
+
+// newDevinAdapter 用账号凭据/代理/TLS 指纹构建 Devin Connect adapter
+// （模型同步与账号测试共用）。
+func (s *AccountTestService) newDevinAdapter(account *Account) (*devinadapter.Adapter, error) {
+	if s.httpUpstream == nil {
+		return nil, errors.New("upstream HTTP client is not configured")
+	}
+	token := account.GetDevinToken()
+	if token == "" {
+		// 预览路径的临时账号把会话 token 放在 api_key 字段。
+		token = strings.TrimSpace(account.GetCredential("api_key"))
+	}
+	if token == "" {
+		return nil, errors.New("no Devin access token is available")
+	}
+	baseURL := account.GetDevinBaseURL()
+	if baseURL == "" {
+		baseURL = devin.DefaultBaseURL
+	}
+	proxyURL := upstreamModelsProxyURL(account)
+	return devinadapter.New(devinadapter.Config{
+		BaseURL:       baseURL,
+		Token:         token,
+		ClientVersion: account.GetDevinClientVersion(),
+		Do: func(req *http.Request) (*http.Response, error) {
+			return s.httpUpstream.DoWithTLS(req, proxyURL, account.ID, account.Concurrency, s.tlsFPProfileService.ResolveTLSProfile(account))
+		},
+	})
+}
+
+// fetchDevinUpstreamModels 经 Connect RPC 拉取 Devin 模型目录，返回分组 id
+// 列表（thinking 档位 uid 不铺平——客户端用 effort / "model:level" 选档）。
+func (s *AccountTestService) fetchDevinUpstreamModels(ctx context.Context, account *Account) ([]string, error) {
+	ad, err := s.newDevinAdapter(account)
+	if err != nil {
+		return nil, newUpstreamModelSyncConfigError("Failed to configure Devin client", err)
+	}
+	groups, err := ad.ListModels(ctx)
+	if err != nil {
+		return nil, newUpstreamModelSyncUpstreamError("Failed to fetch Devin model catalog", err)
+	}
+	if len(groups) == 0 {
+		return nil, newUpstreamModelSyncUpstreamError("Upstream returned no supported models", nil)
+	}
+	models := make([]string, 0, len(groups))
+	for _, group := range groups {
+		models = append(models, group.ID)
 	}
 	return dedupeAndSortModelIDs(models), nil
 }
