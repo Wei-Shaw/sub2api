@@ -3703,3 +3703,59 @@ func TestFetchCodexModelsManifestOAuthSharedAcrossGroupsWithIndependentFiltering
 	require.Equal(t, []string{"model-b"}, got[92])
 	require.EqualValues(t, 1, calls.Load(), "同一账号两个分组同时请求时只发一次上游请求")
 }
+
+// Scenario: 非 OpenAI GPT 模型的 Codex 提示词不声称自己是 GPT。
+// Antigravity(Google) 对「Codex 提示词 + GPT-5 身份」直接回 429 RESOURCE_EXHAUSTED。
+func TestBuildCodexModelsManifestStripsGPTIdentityForNonGPTModels(t *testing.T) {
+	t.Parallel()
+
+	nonGPT := []string{
+		"gemini-3-flash", "claude-sonnet-4-6", "deepseek-v4-flash", "grok-4.3",
+		"gpt-oss-120b-medium", "company-coding-model", "company-codex-alias",
+	}
+	body, err := BuildCodexModelsManifest(nonGPT)
+	require.NoError(t, err)
+
+	var manifest struct {
+		Models []struct {
+			Slug          string `json:"slug"`
+			ModelMessages struct {
+				InstructionsTemplate string `json:"instructions_template"`
+			} `json:"model_messages"`
+		} `json:"models"`
+	}
+	require.NoError(t, json.Unmarshal(body, &manifest))
+	require.Len(t, manifest.Models, len(nonGPT))
+	for _, m := range manifest.Models {
+		tmpl := m.ModelMessages.InstructionsTemplate
+		require.NotContains(t, tmpl, "GPT-", m.Slug)
+		require.True(t, strings.HasPrefix(tmpl, "You are Codex"), "%s: %.60q", m.Slug, tmpl)
+		// Only the identity clause is removed; the rest of the bundled prompt is kept.
+		base := openai.CodexBaseInstructionsForModel(m.Slug)
+		require.Less(t, len(base)-len(tmpl), 32, m.Slug)
+	}
+}
+
+// Scenario: OpenAI GPT 模型的 Codex 提示词保持原样。
+func TestBuildCodexModelsManifestKeepsGPTIdentityForGPTModels(t *testing.T) {
+	t.Parallel()
+
+	for _, model := range []string{"gpt-5.5", "gpt-6-astra", "gpt-5.2", "gpt-5.3-codex-spark"} {
+		require.Equal(t, openai.CodexBaseInstructionsForModel(model), codexInstructionsTemplateForModel(model), model)
+	}
+}
+
+// Scenario: 每份内置 Codex 提示词的身份声明都能被识别并去掉。
+func TestCodexGPTIdentityPatternsCoverBundledPrompts(t *testing.T) {
+	t.Parallel()
+
+	for _, model := range []string{"gpt-5.1", "gpt-5.2", "gpt-5.5", "gpt-6-astra", "gpt-5-codex"} {
+		tmpl := openai.CodexBaseInstructionsForModel(model)
+		require.Contains(t, tmpl, "GPT-", "bundled prompt for %s changed; update this test", model)
+		for _, p := range codexGPTIdentityPatterns {
+			tmpl = p.re.ReplaceAllString(tmpl, p.repl)
+		}
+		require.NotContains(t, tmpl, "GPT-", model)
+		require.True(t, strings.HasPrefix(tmpl, "You are Codex"), "%s: %.60q", model, tmpl)
+	}
+}
