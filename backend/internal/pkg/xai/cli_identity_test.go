@@ -51,6 +51,22 @@ func TestApplyCLIProxyHeaders(t *testing.T) {
 	require.Equal(t, CLIUserAgent(CLIClientVersion), req.Header.Get("User-Agent"))
 }
 
+func TestHasSupportedOfficialIdentity(t *testing.T) {
+	t.Run("grok-shell user agent", func(t *testing.T) {
+		h := http.Header{}
+		h.Set("User-Agent", "grok-shell/1.0.5")
+		h.Set("x-grok-client-version", "1.0.5")
+		h.Set("x-grok-client-identifier", CLIClientIdentifier)
+		require.True(t, HasSupportedOfficialIdentity(h))
+	})
+
+	t.Run("legacy curl is not official", func(t *testing.T) {
+		h := http.Header{}
+		h.Set("User-Agent", "curl/8.5.0")
+		require.False(t, HasSupportedOfficialIdentity(h))
+	})
+}
+
 func TestApplyCLIProxyHeadersLeavesAPIHostUnchanged(t *testing.T) {
 	t.Setenv(CLIVersionEnv, "0.2.95")
 
