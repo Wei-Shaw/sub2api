@@ -139,16 +139,17 @@ func TestAdminServiceSimpleModeValidatesRequestedGroupIDsDirectly(t *testing.T) 
 	require.NoError(t, svc.ValidateAccountGroupBindings(context.Background(), []int64{1, 1001}))
 }
 
-func TestAdminServiceSimpleModeRejectsDirectCompositeGroupAccess(t *testing.T) {
-	repo := &groupRepoStubForAdmin{getByID: &Group{ID: 9, Platform: PlatformComposite}}
+func TestAdminServiceSimpleModeAllowsDirectCompositeGroupAccess(t *testing.T) {
+	repo := &groupRepoStubForAdmin{getByID: &Group{ID: 9, Platform: PlatformComposite, RateMultiplier: 1}}
 	svc := &adminServiceImpl{cfg: &config.Config{RunMode: config.RunModeSimple}, groupRepo: repo, emptyGroupDeleteRepo: repo}
-
-	_, err := svc.GetGroup(context.Background(), 9)
-	require.Error(t, err)
-	_, err = svc.UpdateGroup(context.Background(), 9, &UpdateGroupInput{})
-	require.Error(t, err)
-	require.Nil(t, repo.updated)
-	require.Error(t, svc.DeleteGroupIfEmpty(context.Background(), 9))
+	group, err := svc.GetGroup(context.Background(), 9)
+	require.NoError(t, err)
+	require.Equal(t, PlatformComposite, group.Platform)
+	_, err = svc.UpdateGroup(context.Background(), 9, &UpdateGroupInput{Name: "renamed"})
+	require.NoError(t, err)
+	require.Equal(t, "renamed", repo.updated.Name)
+	svc.emptyGroupDeleteRepo = &simpleCompositeEmptyDeleteRepo{}
+	require.NoError(t, svc.DeleteGroupIfEmpty(context.Background(), 9))
 }
 
 func TestAdminServiceSimpleModeRejectsAccountListCompositeFilter(t *testing.T) {
@@ -169,20 +170,6 @@ func TestAdminServiceSimpleModeRejectsAdvancedGroupOperationsDirectly(t *testing
 			_, err := svc.RecoverDuplicateGroup(context.Background(), 1, "admin:1", "key")
 			return err
 		}},
-		{"list composite routes", func() error { _, err := svc.ListCompositeRoutes(context.Background(), 1); return err }},
-		{"create composite route", func() error {
-			_, err := svc.CreateCompositeRoute(context.Background(), 1, CompositeRouteInput{})
-			return err
-		}},
-		{"update composite route", func() error {
-			_, err := svc.UpdateCompositeRoute(context.Background(), 1, 2, CompositeRouteInput{})
-			return err
-		}},
-		{"delete composite route", func() error { return svc.DeleteCompositeRoute(context.Background(), 1, 2) }},
-		{"preview composite route", func() error {
-			_, err := svc.PreviewCompositeRoute(context.Background(), 1, CompositeRoutePreviewRequest{})
-			return err
-		}},
 		{"get multipliers", func() error { _, err := svc.GetGroupRateMultipliers(context.Background(), 1); return err }},
 		{"clear multipliers", func() error { return svc.ClearGroupRateMultipliers(context.Background(), 1) }},
 		{"set multipliers", func() error { return svc.BatchSetGroupRateMultipliers(context.Background(), 1, nil) }},
@@ -199,16 +186,16 @@ func TestAdminServiceSimpleModeRejectsAdvancedGroupOperationsDirectly(t *testing
 	}
 }
 
-func TestAdminServiceSimpleModeRejectsCompositeCreateAndConversionDirectly(t *testing.T) {
-	svc := &adminServiceImpl{cfg: &config.Config{RunMode: config.RunModeSimple}}
-	_, err := svc.CreateGroup(context.Background(), &CreateGroupInput{Platform: PlatformComposite, RateMultiplier: 1})
-	require.Error(t, err)
-
-	repo := &groupRepoStubForAdmin{getByID: &Group{ID: 1, Platform: PlatformAnthropic}}
-	svc.groupRepo = repo
+func TestAdminServiceSimpleModeCreatesCompositeButPreservesExistingPlatform(t *testing.T) {
+	repo := &groupRepoStubForAdmin{createID: 9, getByID: &Group{ID: 1, Platform: PlatformAnthropic}}
+	svc := &adminServiceImpl{cfg: &config.Config{RunMode: config.RunModeSimple}, groupRepo: repo}
+	group, err := svc.CreateGroup(context.Background(), &CreateGroupInput{Name: "composite", Platform: PlatformComposite, RateMultiplier: 9})
+	require.NoError(t, err)
+	require.Equal(t, PlatformComposite, group.Platform)
+	require.Equal(t, 1.0, group.RateMultiplier)
 	_, err = svc.UpdateGroup(context.Background(), 1, &UpdateGroupInput{Platform: PlatformComposite})
-	require.Error(t, err)
-	require.Nil(t, repo.updated)
+	require.NoError(t, err)
+	require.Equal(t, PlatformAnthropic, repo.updated.Platform)
 }
 
 func TestAdminServiceSimpleModeNormalizesAllUnsupportedCreateFieldsDirectly(t *testing.T) {
@@ -2343,4 +2330,10 @@ func TestAdminService_CreateGroup_CodexModelsManifestConfigDisabledAccepted(t *t
 	require.NoError(t, err)
 	require.Equal(t, []int64{1, 2}, group.CodexModelsManifestConfig.AccountIDs)
 	require.False(t, repo.created.CodexModelsManifestConfig.Enabled)
+}
+
+type simpleCompositeEmptyDeleteRepo struct{}
+
+func (*simpleCompositeEmptyDeleteRepo) DeleteCascadeIfEmpty(context.Context, int64) ([]int64, error) {
+	return nil, nil
 }
