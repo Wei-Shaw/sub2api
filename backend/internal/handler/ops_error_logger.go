@@ -18,6 +18,7 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/Wei-Shaw/sub2api/internal/keyprotection"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/ctxkey"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/ip"
 	middleware2 "github.com/Wei-Shaw/sub2api/internal/server/middleware"
@@ -1064,6 +1065,11 @@ func (state *opsCaptureWriterState) appendCapturedResponse(chunk []byte) {
 func (state *opsCaptureWriterState) shouldCapture() bool {
 	if state.ctx == nil {
 		return true
+	}
+	// This writer is outside the final restoration boundary. Protected request
+	// failures retain upstream diagnostics, but never capture client plaintext.
+	if state.ctx.GetBool(keyprotection.ProtectedGinKey) {
+		return false
 	}
 	_, rejected := middleware2.GetIngressRejectReason(state.ctx)
 	return !rejected

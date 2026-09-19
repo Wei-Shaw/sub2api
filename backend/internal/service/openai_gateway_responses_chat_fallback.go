@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/keyprotection"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/apicompat"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	"github.com/Wei-Shaw/sub2api/internal/util/responseheaders"
@@ -59,10 +60,12 @@ func (s *OpenAIGatewayService) forwardResponsesViaRawChatCompletions(
 
 	// 自愈回写：历史里带明文 summary 的 reasoning item 刷新进缓存，覆盖 Redis
 	// 被 flush / 跨实例漂移后同 id 的 encrypted-only 副本无法再取明文的情况。
-	s.recacheReasoningItemsFromInput(responsesReq.Input)
+	if !keyprotection.IsProtected(ctx) {
+		s.recacheReasoningItemsFromInput(responsesReq.Input)
+	}
 
 	chatReq, err := apicompat.ResponsesToChatCompletionsRequestWithOptions(&responsesReq, &apicompat.ResponsesToChatOptions{
-		ReasoningContentByID: s.reasoningContentByID,
+		ReasoningContentByID: s.reasoningContentForContext(ctx),
 	})
 	if err != nil {
 		writeOpenAIResponsesFallbackError(c, http.StatusBadRequest, "invalid_request_error", err.Error())
@@ -326,6 +329,15 @@ func (s *OpenAIGatewayService) reasoningContentByID(itemID string) string {
 		return ""
 	}
 	return content
+}
+
+// Legacy reasoning caches are keyed only by provider item ID. Protected
+// requests cannot authorize that state and must use their submitted history.
+func (s *OpenAIGatewayService) reasoningContentForContext(ctx context.Context) func(string) string {
+	if keyprotection.IsProtected(ctx) {
+		return nil
+	}
+	return s.reasoningContentByID
 }
 
 // recacheReasoningItemsFromInput 把请求历史里带明文 summary 的 reasoning item

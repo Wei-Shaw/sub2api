@@ -46,6 +46,7 @@
 
         <!-- Tab: Security — Admin API Key -->
         <div v-show="activeTab === 'security'" class="space-y-6">
+          <KeyProtectionSettings v-if="activeTab === 'security'" />
           <!-- Admin API Key Settings -->
           <div class="card">
             <div
@@ -8875,6 +8876,7 @@ import ImageUpload from "@/components/common/ImageUpload.vue";
 import BackupSettings from "@/views/admin/BackupView.vue";
 import EmailTemplateEditor from "@/views/admin/settings/EmailTemplateEditor.vue";
 import OpenAIFastPolicyUserSelector from "@/views/admin/settings/OpenAIFastPolicyUserSelector.vue";
+import KeyProtectionSettings from "@/views/admin/settings/KeyProtectionSettings.vue";
 import { useClipboard } from "@/composables/useClipboard";
 import {
   useStepUp,

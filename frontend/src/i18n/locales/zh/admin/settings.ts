@@ -1,5 +1,24 @@
 export default {
     settings: {
+      keyProtection: {
+        title: '自动密钥保护',
+        description: '在审核和模型转发前替换可识别的密钥，在回复文本和工具参数中还原。用户照常粘贴密钥即可，默认关闭。',
+        enabled: '启用自动密钥保护',
+        users: '适用用户',
+        groups: '适用 API 密钥分组',
+        targetHint: '两项均为空时适用于所有用户；否则，命中所选用户或 API 密钥分组即可生效。按住 Ctrl / Command 可多选或取消选择分组。',
+        boundary: '仅识别支持的文本格式。客户端需每轮发送完整历史；服务端续接及不支持的入口会明确拒绝。还原后的密钥仍由客户端和工具接触并决定用途。',
+        advanced: '识别规则',
+        rules: '内置规则编号（逗号分隔，留空使用全部默认规则）',
+        customRules: '附加规则（含 name / pattern 的 JSON 对象数组）',
+        rulesHint: '填写需要保留的内置规则；删除附加规则对象即可停用。内置编号：openai、anthropic、github、gitlab、google、stripe、slack、huggingface、groq、npm、private_key（OpenSSH/PEM 私钥）。自定义模式使用 Go 正则表达式，替换整个匹配结果。',
+        save: '保存密钥保护设置',
+        saved: '密钥保护设置已保存',
+        loadFailed: '无法读取密钥保护设置。在成功读取前不可保存。',
+        retry: '重新读取设置',
+        saveFailed: '保存密钥保护设置失败，请检查规则编号、表达式、用户或分组编号后重试。',
+        invalidRules: '附加规则须为 JSON 数组，每个对象仅包含字符串类型的 name 和 pattern 字段。',
+      },
       title: '系统设置',
       description: '管理注册、邮箱验证、默认值和 SMTP 设置',
       tabs: {
