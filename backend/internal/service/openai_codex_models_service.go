@@ -946,9 +946,57 @@ func buildCodexModelsManifest(
 		}
 		models = append(models, encoded)
 	}
+	models, _ = preferCanonicalCodexPickerModels(models)
 	return json.Marshal(struct {
 		Models []json.RawMessage `json:"models"`
 	}{Models: models})
+}
+
+func codexPickerAliasTarget(modelID string) string {
+	switch canonicalizeOpenAIModelAliasSpelling(modelID) {
+	case "gpt-5.6":
+		return "gpt-5.6-sol"
+	case "gpt-6":
+		return "gpt-6-astra"
+	default:
+		return ""
+	}
+}
+
+// Keep family aliases routable while avoiding duplicate rows when the same
+// picker response already contains the concrete model they resolve to.
+func preferCanonicalCodexPickerModels(models []json.RawMessage) ([]json.RawMessage, bool) {
+	canonicalModels := make(map[string]struct{}, len(models))
+	for _, rawModel := range models {
+		var descriptor struct {
+			Slug string `json:"slug"`
+		}
+		if err := json.Unmarshal(rawModel, &descriptor); err != nil {
+			continue
+		}
+		normalized := canonicalizeOpenAIModelAliasSpelling(descriptor.Slug)
+		if normalized != "" {
+			canonicalModels[normalized] = struct{}{}
+		}
+	}
+
+	filtered := make([]json.RawMessage, 0, len(models))
+	changed := false
+	for _, rawModel := range models {
+		var descriptor struct {
+			Slug string `json:"slug"`
+		}
+		if err := json.Unmarshal(rawModel, &descriptor); err == nil {
+			if target := codexPickerAliasTarget(descriptor.Slug); target != "" {
+				if _, exists := canonicalModels[target]; exists {
+					changed = true
+					continue
+				}
+			}
+		}
+		filtered = append(filtered, rawModel)
+	}
+	return filtered, changed
 }
 
 func codexCatalogMetadataModels(
@@ -1380,6 +1428,9 @@ func mergeConfiguredCodexModelsManifest(
 		seen[modelID] = struct{}{}
 		changed = true
 	}
+	var aliasesRemoved bool
+	merged, aliasesRemoved = preferCanonicalCodexPickerModels(merged)
+	changed = changed || aliasesRemoved
 	if !changed {
 		return body, false, nil
 	}
