@@ -163,6 +163,11 @@ export default {
 
   // Navigation
   nav: {
+    organizationQuota: '组织额度分配',
+    organizationStatistics: '组织部门额度统计',
+    dingtalkManagers: '项目负责人',
+    dingtalkManagement: '钉钉组织管理',
+    dingtalkOrganization: '钉钉组织',
     dashboard: '仪表盘',
     announcements: '公告',
     apiKeys: 'API 密钥',

@@ -109,40 +109,44 @@
             </span>
           </div>
 
-          <router-link
-            v-for="item in personalNavItems"
-            :key="item.path"
-            :to="item.path"
-            class="sidebar-link mb-1"
-            :class="{ 'sidebar-link-active': isActive(item.path), 'sidebar-link-collapsed': sidebarCollapsed }"
-            :title="sidebarCollapsed ? item.label : undefined"
-            :data-tour="item.path === '/keys' ? 'sidebar-my-keys' : undefined"
-            @click="handleMenuItemClick(item.path)"
-          >
-            <span v-if="item.iconSvg" class="h-5 w-5 flex-shrink-0 sidebar-svg-icon" v-html="sanitizeSvg(item.iconSvg)"></span>
-            <component v-else :is="item.icon" class="h-5 w-5 flex-shrink-0" />
-            <span class="sidebar-label" :class="{ 'sidebar-label-collapsed': sidebarCollapsed }" :aria-hidden="sidebarCollapsed ? 'true' : 'false'">{{ item.label }}</span>
-          </router-link>
+          <template v-for="item in personalNavItems" :key="item.path">
+            <SidebarNavGroup v-if="item.children?.length" :item="item" :collapsed="sidebarCollapsed" :expanded="isGroupExpanded(item)" :active="isGroupActive(item)" :active-path="route.path" @toggle="handleSelfGroupClick(item)" @navigate="handleMenuItemClick" />
+            <router-link
+              v-else
+              :to="item.path"
+              class="sidebar-link mb-1"
+              :class="{ 'sidebar-link-active': isActive(item.path), 'sidebar-link-collapsed': sidebarCollapsed }"
+              :title="sidebarCollapsed ? item.label : undefined"
+              :data-tour="item.path === '/keys' ? 'sidebar-my-keys' : undefined"
+              @click="handleMenuItemClick(item.path)"
+            >
+              <span v-if="item.iconSvg" class="h-5 w-5 flex-shrink-0 sidebar-svg-icon" v-html="sanitizeSvg(item.iconSvg)"></span>
+              <component v-else :is="item.icon" class="h-5 w-5 flex-shrink-0" />
+              <span class="sidebar-label" :class="{ 'sidebar-label-collapsed': sidebarCollapsed }" :aria-hidden="sidebarCollapsed ? 'true' : 'false'">{{ item.label }}</span>
+            </router-link>
+          </template>
         </div>
       </template>
 
       <!-- Regular User View -->
       <template v-else-if="!appStore.backendModeEnabled">
         <div class="sidebar-section">
-          <router-link
-            v-for="item in userNavItems"
-            :key="item.path"
-            :to="item.path"
-            class="sidebar-link mb-1"
-            :class="{ 'sidebar-link-active': isActive(item.path), 'sidebar-link-collapsed': sidebarCollapsed }"
-            :title="sidebarCollapsed ? item.label : undefined"
-            :data-tour="item.path === '/keys' ? 'sidebar-my-keys' : undefined"
-            @click="handleMenuItemClick(item.path)"
-          >
-            <span v-if="item.iconSvg" class="h-5 w-5 flex-shrink-0 sidebar-svg-icon" v-html="sanitizeSvg(item.iconSvg)"></span>
-            <component v-else :is="item.icon" class="h-5 w-5 flex-shrink-0" />
-            <span class="sidebar-label" :class="{ 'sidebar-label-collapsed': sidebarCollapsed }" :aria-hidden="sidebarCollapsed ? 'true' : 'false'">{{ item.label }}</span>
-          </router-link>
+          <template v-for="item in userNavItems" :key="item.path">
+            <SidebarNavGroup v-if="item.children?.length" :item="item" :collapsed="sidebarCollapsed" :expanded="isGroupExpanded(item)" :active="isGroupActive(item)" :active-path="route.path" @toggle="handleSelfGroupClick(item)" @navigate="handleMenuItemClick" />
+            <router-link
+              v-else
+              :to="item.path"
+              class="sidebar-link mb-1"
+              :class="{ 'sidebar-link-active': isActive(item.path), 'sidebar-link-collapsed': sidebarCollapsed }"
+              :title="sidebarCollapsed ? item.label : undefined"
+              :data-tour="item.path === '/keys' ? 'sidebar-my-keys' : undefined"
+              @click="handleMenuItemClick(item.path)"
+            >
+              <span v-if="item.iconSvg" class="h-5 w-5 flex-shrink-0 sidebar-svg-icon" v-html="sanitizeSvg(item.iconSvg)"></span>
+              <component v-else :is="item.icon" class="h-5 w-5 flex-shrink-0" />
+              <span class="sidebar-label" :class="{ 'sidebar-label-collapsed': sidebarCollapsed }" :aria-hidden="sidebarCollapsed ? 'true' : 'false'">{{ item.label }}</span>
+            </router-link>
+          </template>
         </div>
       </template>
     </nav>
@@ -195,6 +199,7 @@ import { useAdminSettingsStore, useAppStore, useAuthStore, useOnboardingStore } 
 import VersionBadge from '@/components/common/VersionBadge.vue'
 import Icon from '@/components/icons/Icon.vue'
 import { sanitizeSvg } from '@/utils/sanitize'
+import SidebarNavGroup from './SidebarNavGroup.vue'
 import { sanitizeUrl } from '@/utils/url'
 import { FeatureFlags, makeSidebarFlag } from '@/utils/featureFlags'
 import { resolveSiteBillingMode } from '@/utils/siteBillingMode'
@@ -734,6 +739,15 @@ function buildSelfNavItems(withDashboard: boolean): NavItem[] {
     { path: '/redeem', label: t('nav.redeem'), icon: GiftIcon, hideInSimpleMode: true },
     { path: '/affiliate', label: t('nav.affiliate'), icon: UsersIcon, hideInSimpleMode: true, featureFlag: flagAffiliate },
     { path: '/profile', label: t('nav.profile'), icon: UserIcon },
+    {
+      path: '/organization', label: t('nav.dingtalkManagement'), icon: UsersIcon, expandOnly: true,
+      children: [
+        { path: '/organization/dingtalk', label: t('nav.dingtalkOrganization'), icon: UsersIcon },
+        ...(isAdmin.value ? [{ path: '/organization/managers', label: t('nav.dingtalkManagers'), icon: UsersIcon }] : []),
+        { path: '/organization/quota', label: t('nav.organizationQuota'), icon: CreditCardIcon },
+        { path: '/organization/statistics', label: t('nav.organizationStatistics'), icon: ChartIcon }
+      ]
+    },
     ...customMenuItemsForUser.value.map((item): NavItem => ({
       path: `/custom/${item.id}`,
       label: item.label,
@@ -919,6 +933,15 @@ function toggleGroup(item: NavItem) {
  * - Otherwise (default, e.g. /admin/orders): navigate to the parent path
  *   (router-link semantics) and ensure the group is expanded.
  */
+function handleSelfGroupClick(item: NavItem) {
+  if (sidebarCollapsed.value) {
+    toggleSidebar()
+    groupExpandOverrides.value.set(item.path, true)
+    return
+  }
+  toggleGroup(item)
+}
+
 function handleGroupClick(item: NavItem) {
   if (sidebarCollapsed.value) return
   if (item.expandOnly) {
@@ -1013,7 +1036,7 @@ onBeforeUnmount(() => {
   white-space: nowrap;
 }
 
-.sidebar-link-collapsed {
+:deep(.sidebar-link-collapsed) {
   gap: 0;
   padding-left: 0.875rem;
   padding-right: 0.875rem;
@@ -1065,7 +1088,7 @@ onBeforeUnmount(() => {
   transition-delay: 0.08s;
 }
 
-.sidebar-label {
+:deep(.sidebar-label) {
   display: block;
   min-width: 0;
   overflow: hidden;
@@ -1078,14 +1101,14 @@ onBeforeUnmount(() => {
   max-width: 12rem;
 }
 
-.sidebar-label-flex {
+:deep(.sidebar-label-flex) {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 0.5rem;
 }
 
-.sidebar-label-collapsed {
+:deep(.sidebar-label-collapsed) {
   max-width: 0;
   opacity: 0;
   transform: translateX(-4px);
