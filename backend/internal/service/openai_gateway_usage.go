@@ -174,7 +174,12 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 	if !isGrokVideoUsageResult(result, nil) {
 		ApplyOpenAIImageBillingResolution(result)
 	}
-	logServiceTierBillingDowngrade("service.openai_gateway", account, result.RequestID, ApplyOpenAIServiceTierBillingResolution(billingAccount, result))
+	tierResolution := ApplyOpenAIServiceTierBillingResolution(billingAccount, result)
+	logServiceTierBillingDowngrade("service.openai_gateway", account, result.RequestID, tierResolution)
+	// Use the protocol's effective tier, independently of customer discounts.
+	// Codex can report "default" for Fast turns; its outbound tier remains the
+	// authoritative reference in that case (see ResolveOpenAIServiceTierBilling).
+	referenceServiceTier := tierResolution.Billing
 
 	// OpenAI input_tokens 是总输入，包含缓存读取和缓存写入明细。
 	// 将三类 token 拆成互斥桶，避免缓存写入同时按普通输入和 cache_write 重复计费。
@@ -484,6 +489,8 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 			tokens, cost.TotalCost, pricingAt,
 		)
 	}
+
+	s.applyOpenAIAPIReferenceCost(ctx, usageLog, account, result, tokens, referenceServiceTier, pricingAt)
 
 	if s.cfg != nil && s.cfg.RunMode == config.RunModeSimple {
 		writeUsageLogBestEffort(ctx, s.usageLogRepo, usageLog, "service.openai_gateway")

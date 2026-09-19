@@ -190,6 +190,11 @@ func ActualCost(v float64) predicate.UsageLog {
 	return predicate.UsageLog(sql.FieldEQ(FieldActualCost, v))
 }
 
+// APIReferenceCost applies equality check predicate on the "api_reference_cost" field. It's identical to APIReferenceCostEQ.
+func APIReferenceCost(v float64) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldEQ(FieldAPIReferenceCost, v))
+}
+
 // RateMultiplier applies equality check predicate on the "rate_multiplier" field. It's identical to RateMultiplierEQ.
 func RateMultiplier(v float64) predicate.UsageLog {
 	return predicate.UsageLog(sql.FieldEQ(FieldRateMultiplier, v))
@@ -1533,6 +1538,66 @@ func ActualCostLT(v float64) predicate.UsageLog {
 // ActualCostLTE applies the LTE predicate on the "actual_cost" field.
 func ActualCostLTE(v float64) predicate.UsageLog {
 	return predicate.UsageLog(sql.FieldLTE(FieldActualCost, v))
+}
+
+// APIReferenceCostEQ applies the EQ predicate on the "api_reference_cost" field.
+func APIReferenceCostEQ(v float64) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldEQ(FieldAPIReferenceCost, v))
+}
+
+// APIReferenceCostNEQ applies the NEQ predicate on the "api_reference_cost" field.
+func APIReferenceCostNEQ(v float64) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldNEQ(FieldAPIReferenceCost, v))
+}
+
+// APIReferenceCostIn applies the In predicate on the "api_reference_cost" field.
+func APIReferenceCostIn(vs ...float64) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldIn(FieldAPIReferenceCost, vs...))
+}
+
+// APIReferenceCostNotIn applies the NotIn predicate on the "api_reference_cost" field.
+func APIReferenceCostNotIn(vs ...float64) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldNotIn(FieldAPIReferenceCost, vs...))
+}
+
+// APIReferenceCostGT applies the GT predicate on the "api_reference_cost" field.
+func APIReferenceCostGT(v float64) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldGT(FieldAPIReferenceCost, v))
+}
+
+// APIReferenceCostGTE applies the GTE predicate on the "api_reference_cost" field.
+func APIReferenceCostGTE(v float64) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldGTE(FieldAPIReferenceCost, v))
+}
+
+// APIReferenceCostLT applies the LT predicate on the "api_reference_cost" field.
+func APIReferenceCostLT(v float64) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldLT(FieldAPIReferenceCost, v))
+}
+
+// APIReferenceCostLTE applies the LTE predicate on the "api_reference_cost" field.
+func APIReferenceCostLTE(v float64) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldLTE(FieldAPIReferenceCost, v))
+}
+
+// APIReferenceCostIsNil applies the IsNil predicate on the "api_reference_cost" field.
+func APIReferenceCostIsNil() predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldIsNull(FieldAPIReferenceCost))
+}
+
+// APIReferenceCostNotNil applies the NotNil predicate on the "api_reference_cost" field.
+func APIReferenceCostNotNil() predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldNotNull(FieldAPIReferenceCost))
+}
+
+// APIReferencePricingIsNil applies the IsNil predicate on the "api_reference_pricing" field.
+func APIReferencePricingIsNil() predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldIsNull(FieldAPIReferencePricing))
+}
+
+// APIReferencePricingNotNil applies the NotNil predicate on the "api_reference_pricing" field.
+func APIReferencePricingNotNil() predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldNotNull(FieldAPIReferencePricing))
 }
 
 // RateMultiplierEQ applies the EQ predicate on the "rate_multiplier" field.
