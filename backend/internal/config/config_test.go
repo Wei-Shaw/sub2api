@@ -1946,6 +1946,16 @@ func TestValidateConfigErrors(t *testing.T) {
 			wantErr: "gateway.stream_data_interval_timeout must be non-negative",
 		},
 		{
+			name:    "gateway gemini disconnect drain negative",
+			mutate:  func(c *Config) { c.Gateway.GeminiDisconnectDrainTimeoutSeconds = -1 },
+			wantErr: "gateway.gemini_disconnect_drain_timeout_seconds",
+		},
+		{
+			name:    "gateway gemini disconnect drain too large",
+			mutate:  func(c *Config) { c.Gateway.GeminiDisconnectDrainTimeoutSeconds = 601 },
+			wantErr: "gateway.gemini_disconnect_drain_timeout_seconds",
+		},
+		{
 			name:    "gateway image stream keepalive range",
 			mutate:  func(c *Config) { c.Gateway.ImageStreamKeepaliveInterval = 4 },
 			wantErr: "gateway.image_stream_keepalive_interval",
@@ -2601,6 +2611,9 @@ func TestLoad_DefaultGatewayImageStreamConfig(t *testing.T) {
 	}
 	if cfg.Gateway.StreamKeepaliveInterval != 10 {
 		t.Fatalf("stream_keepalive_interval = %d, want 10", cfg.Gateway.StreamKeepaliveInterval)
+	}
+	if cfg.Gateway.GeminiDisconnectDrainTimeoutSeconds != 120 {
+		t.Fatalf("gemini_disconnect_drain_timeout_seconds = %d, want 120", cfg.Gateway.GeminiDisconnectDrainTimeoutSeconds)
 	}
 	if cfg.Gateway.ImageStreamDataIntervalTimeout != 900 {
 		t.Fatalf("image_stream_data_interval_timeout = %d, want 900", cfg.Gateway.ImageStreamDataIntervalTimeout)
