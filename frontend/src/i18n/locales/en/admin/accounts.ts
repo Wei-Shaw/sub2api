@@ -667,6 +667,11 @@ export default {
         codexFingerprintDevice: 'Device only',
         codexFingerprintSession: 'Device + Session',
         codexFingerprintFull: 'Full convergence',
+        codexTurnTicket: 'Codex 292 ticket',
+        codexTurnTicketDesc: 'Ticket status for the configured models. Requests are paused without a valid ticket only when fail-closed is enabled.',
+        codexTurnTicketMissing: 'No valid ticket; requests remain allowed',
+        codexTurnTicketReady: '{time} left',
+        codexTurnTicketPaused: 'No 292 ticket; this model is paused',
         codexImageTool: 'Codex image bridge policy',
         codexImageToolDesc:
           'Controls the hosted image_generation bridge and client-declared image tools on Codex /responses text requests. Hosted auto-injection applies only to non-Responses Lite requests. Account policy takes precedence over channel and global settings; standalone image-generation endpoints are unaffected.',
