@@ -431,13 +431,19 @@ func anthToResHandleContentBlockStop(evt *AnthropicStreamEvent, state *Anthropic
 		return events
 
 	case "function_call":
-		// Emit function_call_arguments.done + output item done
+		// Emit function_call_arguments.done + output item done.
+		// arguments must repeat exactly what the deltas already streamed for this
+		// item: clients reconcile the done event against the accumulated
+		// function_call_arguments.delta payloads and reject the call as
+		// inconsistent_tool_call when the two disagree. Omitting the field left it
+		// empty while the deltas carried the whole JSON.
 		events := []ResponsesStreamEvent{
 			makeResponsesEvent(state, "response.function_call_arguments.done", &ResponsesStreamEvent{
 				OutputIndex: state.OutputIndex,
 				ItemID:      state.CurrentItemID,
 				CallID:      state.CurrentCallID,
 				Name:        state.CurrentName,
+				Arguments:   state.CurrentArgs,
 			}),
 		}
 		events = append(events, closeCurrentResponsesItem(state)...)
