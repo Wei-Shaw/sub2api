@@ -180,7 +180,7 @@ Sub2API is an AI API gateway platform designed to distribute and manage API quot
 - **API Key Distribution** - Generate and manage API Keys for users
 - **Precise Billing** - Token-level usage tracking and cost calculation
 - **Smart Scheduling** - Intelligent account selection with sticky sessions
-- **Concurrency Control** - Per-user and per-account concurrency limits
+- **Concurrency Control** - Per-user and per-account limits, with optional per-API-key limits editable by the key owner or an administrator. Keys default to unlimited (`concurrency_limit: 0`); user limits still apply.
 - **Rate Limiting** - Configurable request and token rate limits
 - **Built-in Payment System** - Supports EasyPay, Alipay, WeChat Pay, and Stripe for user self-service top-up, no separate payment service needed ([Configuration Guide](docs/PAYMENT.md))
 - **Admin Dashboard** - Web interface for monitoring and management

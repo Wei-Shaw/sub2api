@@ -40,13 +40,14 @@ type LiveCallRequest struct {
 }
 
 type LiveCallIdentity struct {
-	APIKeyID        int64
-	UserID          int64
-	GroupID         *int64
-	SubscriptionID  *int64
-	UserAgent       string
-	IPAddress       string
-	InboundEndpoint string
+	ConcurrencyLimit int
+	APIKeyID         int64
+	UserID           int64
+	GroupID          *int64
+	SubscriptionID   *int64
+	UserAgent        string
+	IPAddress        string
+	InboundEndpoint  string
 }
 
 type LiveCallRecord struct {
@@ -97,6 +98,7 @@ type LiveConcurrencyCache interface {
 		apiKeyID int64,
 		leaseID string,
 		replacingRegularSlots bool,
+		apiKeyLimit ...int,
 	) (bool, error)
 	RefreshLiveLease(ctx context.Context, accountID, userID, apiKeyID int64, leaseID string) (bool, error)
 	ReleaseLiveLease(ctx context.Context, accountID, userID, apiKeyID int64, leaseID string) error

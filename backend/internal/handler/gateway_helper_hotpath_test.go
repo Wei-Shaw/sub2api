@@ -326,7 +326,7 @@ func TestTryAcquireUserSlotForAPIKey_TracksAPIKeySlot(t *testing.T) {
 	concurrency := service.NewConcurrencyService(cache)
 	helper := NewConcurrencyHelper(concurrency, SSEPingFormatNone, 5*time.Millisecond)
 
-	release, acquired, err := helper.TryAcquireUserSlotForAPIKey(context.Background(), 202, 3, 77)
+	release, acquired, err := helper.TryAcquireUserSlotForAPIKey(context.Background(), 202, 3, 77, 0, nil)
 	require.NoError(t, err)
 	require.True(t, acquired)
 	require.NotNil(t, release)

@@ -207,6 +207,7 @@ func (c *liveTestConcurrencyCache) AcquireLiveLease(
 	int64,
 	string,
 	bool,
+	...int,
 ) (bool, error) {
 	return true, nil
 }

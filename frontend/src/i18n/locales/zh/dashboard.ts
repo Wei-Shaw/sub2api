@@ -283,6 +283,10 @@ export default {
       geminiCliDesc: '导入为 Gemini CLI 配置'
     },
     // 配额和有效期
+    concurrencyLimit: '并发上限',
+    concurrencyLimitHint: '0 表示不单独限制，仍受用户总并发限制。',
+    concurrencyLimitInvalid: '请输入 0 到 2147483647 之间的整数。',
+    concurrencyLimitSaved: '并发上限已更新。',
     quotaLimit: '额度限制',
     quotaAmount: '额度金额 (USD)',
     quotaAmountPlaceholder: '输入 USD 额度限制',

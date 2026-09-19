@@ -26,7 +26,15 @@ export async function updateApiKeyGroup(id: number, groupId: number | null): Pro
   return data
 }
 
+export async function updateApiKeyConcurrencyLimit(id: number, concurrencyLimit: number): Promise<UpdateApiKeyGroupResult> {
+  const { data } = await apiClient.put<UpdateApiKeyGroupResult>(`/admin/api-keys/${id}`, {
+    concurrency_limit: concurrencyLimit
+  })
+  return data
+}
+
 export const apiKeysAPI = {
+  updateApiKeyConcurrencyLimit,
   updateApiKeyGroup
 }
 

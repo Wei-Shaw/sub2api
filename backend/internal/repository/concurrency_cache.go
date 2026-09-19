@@ -97,7 +97,7 @@ var (
 
 		-- 检查是否达到并发上限
 		local count = redis.call('ZCARD', key) + redis.call('ZCARD', liveKey)
-		if count < maxConcurrency then
+		if maxConcurrency <= 0 or count < maxConcurrency then
 			redis.call('ZADD', key, now, requestID)
 			redis.call('EXPIRE', key, ttl)
 			return {1, now}
@@ -135,16 +135,20 @@ var (
 		local userRegular = KEYS[3]
 		local userLive = KEYS[4]
 		local apiLive = KEYS[5]
+		local apiRegular = KEYS[6]
 		local accountMax = tonumber(ARGV[1])
 		local userMax = tonumber(ARGV[2])
 		local ttl = tonumber(ARGV[3])
 		local leaseID = ARGV[4]
 		local replacing = tonumber(ARGV[5])
+		local apiMax = tonumber(ARGV[6])
+		local regularTTL = tonumber(ARGV[7])
 		local now = tonumber(redis.call('TIME')[1])
 		local liveExpireBefore = now - ttl
 		redis.call('ZREMRANGEBYSCORE', accountLive, '-inf', liveExpireBefore)
 		redis.call('ZREMRANGEBYSCORE', userLive, '-inf', liveExpireBefore)
 		redis.call('ZREMRANGEBYSCORE', apiLive, '-inf', liveExpireBefore)
+		redis.call('ZREMRANGEBYSCORE', apiRegular, '-inf', now - regularTTL)
 		if redis.call('ZSCORE', accountLive, leaseID) ~= false then
 			return 1
 		end
@@ -154,6 +158,7 @@ var (
 		if replacing == 1 then allowance = 1 end
 		if accountMax > 0 and accountCount >= accountMax + allowance then return 0 end
 		if userMax > 0 and userCount >= userMax + allowance then return 0 end
+		if apiMax > 0 and redis.call('ZCARD', apiRegular) + redis.call('ZCARD', apiLive) >= apiMax then return 0 end
 		redis.call('ZADD', accountLive, now, leaseID)
 		redis.call('ZADD', userLive, now, leaseID)
 		redis.call('ZADD', apiLive, now, leaseID)
@@ -745,6 +750,19 @@ func (c *concurrencyCache) TrackAPIKeySlot(ctx context.Context, apiKeyID int64, 
 	return err
 }
 
+// AcquireAPIKeySlot shares the existing request-slot namespace with statistics.
+// Checking capacity and inserting the member must happen in one Redis script.
+func (c *concurrencyCache) AcquireAPIKeySlot(ctx context.Context, apiKeyID int64, limit int, requestID string) (bool, error) {
+	result, _, err := runScriptInt64Pair(ctx, c.rdb, acquireScript,
+		[]string{apiKeySlotKey(apiKeyID), liveAPIKeySlotKey(apiKeyID)}, limit, c.slotTTLSeconds, requestID)
+	return result == 1, err
+}
+
+func (c *concurrencyCache) RefreshAPIKeySlot(ctx context.Context, apiKeyID int64, requestID string) (bool, error) {
+	result, err := refreshLiveLeaseScript.Run(ctx, c.rdb, []string{apiKeySlotKey(apiKeyID)}, c.slotTTLSeconds, requestID).Int()
+	return result == 1, err
+}
+
 func (c *concurrencyCache) ReleaseAPIKeySlot(ctx context.Context, apiKeyID int64, requestID string) error {
 	key := apiKeySlotKey(apiKeyID)
 	return c.rdb.ZRem(ctx, key, requestID).Err()
@@ -801,6 +819,7 @@ func (c *concurrencyCache) AcquireLiveLease(
 	apiKeyID int64,
 	leaseID string,
 	replacingRegularSlots bool,
+	apiKeyLimit ...int,
 ) (bool, error) {
 	if c == nil || c.rdb == nil || accountID <= 0 || userID <= 0 || apiKeyID <= 0 || leaseID == "" {
 		return false, nil
@@ -809,13 +828,18 @@ func (c *concurrencyCache) AcquireLiveLease(
 	if replacingRegularSlots {
 		replacing = 1
 	}
+	limit := 0
+	if len(apiKeyLimit) > 0 {
+		limit = apiKeyLimit[0]
+	}
 	result, err := acquireLiveLeaseScript.Run(ctx, c.rdb, []string{
 		accountSlotKey(accountID),
 		liveAccountSlotKey(accountID),
 		userSlotKey(userID),
 		liveUserSlotKey(userID),
 		liveAPIKeySlotKey(apiKeyID),
-	}, accountMax, userMax, liveLeaseTTLSeconds, leaseID, replacing).Int()
+		apiKeySlotKey(apiKeyID),
+	}, accountMax, userMax, liveLeaseTTLSeconds, leaseID, replacing, limit, c.slotTTLSeconds).Int()
 	return result == 1, err
 }
 

@@ -47,6 +47,10 @@ func (APIKey) Fields() []ent.Field {
 		field.String("status").
 			MaxLen(20).
 			Default(domain.StatusActive),
+		field.Int("concurrency_limit").
+			Default(0).
+			NonNegative().
+			Comment("Maximum concurrent requests for this key; 0 adds no limit"),
 		field.Time("last_used_at").
 			Optional().
 			Nillable().

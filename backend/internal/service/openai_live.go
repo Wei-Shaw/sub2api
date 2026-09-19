@@ -186,6 +186,7 @@ func (s *OpenAIGatewayService) CreateLiveCall(
 			identity.APIKeyID,
 			leaseID,
 			true,
+			identity.ConcurrencyLimit,
 		)
 		if acquireErr != nil || !acquired {
 			selection.ReleaseFunc()
