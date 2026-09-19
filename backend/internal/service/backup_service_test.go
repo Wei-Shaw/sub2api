@@ -1146,10 +1146,11 @@ func TestRecoverStaleRecords(t *testing.T) {
 	})
 	// 模拟一条孤立的恢复中记录
 	_ = svc.saveRecord(context.Background(), &BackupRecord{
-		ID:            "stale-2",
-		Status:        "completed",
-		RestoreStatus: "running",
-		StartedAt:     time.Now().Add(-1 * time.Hour).Format(time.RFC3339),
+		ID:               "stale-2",
+		Status:           "completed",
+		RestoreStatus:    "running",
+		RestoreStartedAt: time.Now().Add(-1 * time.Hour).Format(time.RFC3339),
+		StartedAt:        time.Now().Add(-1 * time.Hour).Format(time.RFC3339),
 	})
 
 	svc.recoverStaleRecords()
