@@ -14,6 +14,7 @@ const config = (): PromptAuditConfig => ({
   enabled: true,
   blocking_enabled: false,
   blocking_latest_turn_only: false,
+  continue_on_guard_failure: false,
   store_pass_events: false,
   effective_mode: 'async_audit',
   strategy: 'priority',
@@ -22,6 +23,7 @@ const config = (): PromptAuditConfig => ({
   scanners: SCANNER_CATALOG.map((item) => item.id),
   all_groups: true,
   group_ids: [],
+  model_filter: { type: 'all', models: [] },
   endpoints: [{
     id: 'guard-1', name: 'Guard One', protocol: 'openai_compatible', base_url: 'http://127.0.0.1:8000',
     model: 'sileader/qwen3guard:0.6b', timeout_ms: 3000, input_limit: 4000, enabled: true,
@@ -35,8 +37,8 @@ const config = (): PromptAuditConfig => ({
 
 describe('Prompt Audit view model', () => {
   it('normalizes legacy null collections from the public config', () => {
-    const legacy = { ...config(), group_ids: null, scanners: null, endpoints: null } as unknown as PromptAuditConfig
-    expect(configToDraft(legacy)).toMatchObject({ group_ids: [], scanners: [], endpoints: [] })
+    const legacy = { ...config(), group_ids: null, scanners: null, endpoints: null, continue_on_guard_failure: undefined, model_filter: undefined } as unknown as PromptAuditConfig
+    expect(configToDraft(legacy)).toMatchObject({ group_ids: [], scanners: [], endpoints: [], continue_on_guard_failure: false, model_filter: { type: 'all', models: [] } })
   })
 
   it('models all nine official input scanners', () => {
@@ -69,6 +71,17 @@ describe('Prompt Audit view model', () => {
     expect(draftFingerprint(changed)).toBe(draftFingerprint(original))
     changed.queue_capacity += 1
     expect(draftFingerprint(changed)).not.toBe(draftFingerprint(original))
+  })
+
+  it('normalizes model scope and only sends Guard failure continuation for synchronous blocking', () => {
+    const draft = configToDraft({ ...config(), continue_on_guard_failure: true, model_filter: { type: 'include', models: [' gpt-test ', 'GPT-TEST', '', 'claude-test'] } })
+    expect(draft.model_filter).toEqual({ type: 'include', models: ['gpt-test', 'claude-test'] })
+    expect(buildUpdateRequest(draft)).toMatchObject({ continue_on_guard_failure: false, model_filter: { type: 'include', models: ['gpt-test', 'claude-test'] } })
+
+    draft.blocking_enabled = true
+    expect(buildUpdateRequest(draft).continue_on_guard_failure).toBe(true)
+    draft.model_filter = { type: 'all', models: ['ignored'] }
+    expect(buildUpdateRequest(draft).model_filter).toEqual({ type: 'all', models: [] })
   })
 
   it('requires a valid explicit range and sends canonical ISO timestamps for filter deletion', () => {
