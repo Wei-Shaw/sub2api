@@ -119,8 +119,14 @@ func TestNormalizeCodexSessionJSONExtractsCredentialsAndIgnoresSessionToken(t *t
 	if item.Credentials["access_token"] != accessToken {
 		t.Fatalf("access_token not stored")
 	}
+	if item.Credentials["type"] != "codex" {
+		t.Fatalf("type = %v, want codex", item.Credentials["type"])
+	}
 	if item.Credentials["email"] != "json@example.com" {
 		t.Fatalf("email = %v, want json@example.com", item.Credentials["email"])
+	}
+	if item.Credentials["account_id"] != "acct-from-json" {
+		t.Fatalf("account_id = %v, want acct-from-json", item.Credentials["account_id"])
 	}
 	if item.Credentials["chatgpt_account_id"] != "acct-from-json" {
 		t.Fatalf("chatgpt_account_id = %v, want acct-from-json", item.Credentials["chatgpt_account_id"])
@@ -142,6 +148,57 @@ func TestNormalizeCodexSessionJSONExtractsCredentialsAndIgnoresSessionToken(t *t
 	}
 	if item.TokenExpiresAt == nil {
 		t.Fatalf("TokenExpiresAt should be parsed from accessToken")
+	}
+	if item.Credentials["expired"] != item.Credentials["expires_at"] {
+		t.Fatalf("expired = %v, want expires_at %v", item.Credentials["expired"], item.Credentials["expires_at"])
+	}
+	if _, err := time.Parse(time.RFC3339, item.Credentials["last_refresh"].(string)); err != nil {
+		t.Fatalf("last_refresh is not RFC3339: %v", err)
+	}
+}
+
+func TestNormalizeCodexSessionJSONSupportsRelayGatewayAuthFormat(t *testing.T) {
+	raw := map[string]any{
+		"type":         "codex",
+		"access_token": "opaque-access-token",
+		"account_id":   "acct-current-format",
+		"expired":      "2026-08-05T13:40:42+08:00",
+		"last_refresh": "2026-05-26T16:30:20+08:00",
+	}
+
+	item, err := normalizeCodexImportEntry(codexImportEntry{Index: 1, Value: raw})
+	if err != nil {
+		t.Fatalf("normalizeCodexImportEntry error = %v", err)
+	}
+
+	if item.Credentials["type"] != "codex" {
+		t.Fatalf("type = %v, want codex", item.Credentials["type"])
+	}
+	if item.Credentials["access_token"] != "opaque-access-token" {
+		t.Fatalf("access_token = %v", item.Credentials["access_token"])
+	}
+	if item.Credentials["account_id"] != "acct-current-format" {
+		t.Fatalf("account_id = %v, want acct-current-format", item.Credentials["account_id"])
+	}
+	if item.Credentials["chatgpt_account_id"] != "acct-current-format" {
+		t.Fatalf("chatgpt_account_id = %v, want acct-current-format", item.Credentials["chatgpt_account_id"])
+	}
+	wantExpired, err := time.Parse(time.RFC3339, "2026-08-05T13:40:42+08:00")
+	if err != nil {
+		t.Fatalf("parse expected expired: %v", err)
+	}
+	gotExpired, err := time.Parse(time.RFC3339, item.Credentials["expired"].(string))
+	if err != nil {
+		t.Fatalf("expired is not RFC3339: %v", err)
+	}
+	if !gotExpired.Equal(wantExpired) {
+		t.Fatalf("expired = %v, want %v", item.Credentials["expired"], wantExpired.Format(time.RFC3339))
+	}
+	if item.Credentials["expires_at"] != item.Credentials["expired"] {
+		t.Fatalf("expires_at = %v, want expired %v", item.Credentials["expires_at"], item.Credentials["expired"])
+	}
+	if item.Credentials["last_refresh"] != "2026-05-26T16:30:20+08:00" {
+		t.Fatalf("last_refresh = %v", item.Credentials["last_refresh"])
 	}
 }
 

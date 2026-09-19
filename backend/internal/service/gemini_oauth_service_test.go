@@ -508,7 +508,9 @@ func TestGeminiOAuthService_BuildAccountCredentials(t *testing.T) {
 		}
 
 		creds := svc.BuildAccountCredentials(tokenInfo)
+		expectedExpired := time.Unix(1700000000, 0).Format(time.RFC3339)
 
+		assertCredStr(t, creds, "type", "gemini-cli")
 		assertCredStr(t, creds, "access_token", "access-123")
 		assertCredStr(t, creds, "refresh_token", "refresh-456")
 		assertCredStr(t, creds, "token_type", "Bearer")
@@ -517,6 +519,10 @@ func TestGeminiOAuthService_BuildAccountCredentials(t *testing.T) {
 		assertCredStr(t, creds, "tier_id", "gcp_standard")
 		assertCredStr(t, creds, "oauth_type", "code_assist")
 		assertCredStr(t, creds, "expires_at", "1700000000")
+		assertCredStr(t, creds, "expired", expectedExpired)
+		if _, err := time.Parse(time.RFC3339, creds["last_refresh"].(string)); err != nil {
+			t.Fatalf("last_refresh is not RFC3339: %v", err)
+		}
 
 		if _, ok := creds["drive_storage_limit"]; !ok {
 			t.Fatal("extra 字段 drive_storage_limit 未包含在 creds 中")
@@ -531,9 +537,15 @@ func TestGeminiOAuthService_BuildAccountCredentials(t *testing.T) {
 		}
 
 		creds := svc.BuildAccountCredentials(tokenInfo)
+		expectedExpired := time.Unix(1700000000, 0).Format(time.RFC3339)
 
+		assertCredStr(t, creds, "type", "gemini-cli")
 		assertCredStr(t, creds, "access_token", "token-only")
 		assertCredStr(t, creds, "expires_at", "1700000000")
+		assertCredStr(t, creds, "expired", expectedExpired)
+		if _, err := time.Parse(time.RFC3339, creds["last_refresh"].(string)); err != nil {
+			t.Fatalf("last_refresh is not RFC3339: %v", err)
+		}
 
 		// 可选字段不应存在
 		for _, key := range []string{"refresh_token", "token_type", "scope", "project_id", "tier_id", "oauth_type"} {
@@ -584,8 +596,8 @@ func TestGeminiOAuthService_BuildAccountCredentials(t *testing.T) {
 		creds := svc.BuildAccountCredentials(tokenInfo)
 
 		// 仅包含基础字段
-		if len(creds) != 3 { // access_token, expires_at, refresh_token
-			t.Fatalf("creds 字段数量不匹配: got=%d want=3, keys=%v", len(creds), credKeys(creds))
+		if len(creds) != 6 { // type, access_token, expires_at, expired, last_refresh, refresh_token
+			t.Fatalf("creds 字段数量不匹配: got=%d want=6, keys=%v", len(creds), credKeys(creds))
 		}
 	})
 }
