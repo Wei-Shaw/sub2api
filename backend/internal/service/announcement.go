@@ -82,4 +82,32 @@ type AnnouncementReadRepository interface {
 	GetReadMapByUser(ctx context.Context, userID int64, announcementIDs []int64) (map[int64]time.Time, error)
 	GetReadMapByUsers(ctx context.Context, announcementID int64, userIDs []int64) (map[int64]time.Time, error)
 	CountByAnnouncementID(ctx context.Context, announcementID int64) (int64, error)
+
+	// ListUsersOrderedByReadAt returns a paginated user list ordered by each user's
+	// read_at for the given announcement. Users who have not read the announcement
+	// are placed at the end for descending order and at the start for ascending
+	// order (so that the page can naturally surface either "latest readers" or
+	// "users who haven't read yet"). The search parameter is matched against
+	// users.email / users.username (case-insensitive substring).
+	//
+	// ListUsersOrderedByReadAt 返回按用户阅读该公告时间排序的分页用户列表。
+	// 未阅读的用户在降序时排到末尾,升序时排到开头 —— 便于一键查看"最近阅读人"
+	// 或"尚未阅读的人"。search 在 users.email / users.username 中做大小写不敏感
+	// 的子串匹配。
+	ListUsersOrderedByReadAt(
+		ctx context.Context,
+		announcementID int64,
+		params pagination.PaginationParams,
+		search string,
+	) ([]AnnouncementReadUserRow, *pagination.PaginationResult, error)
+}
+
+// AnnouncementReadUserRow is a flat row joining users with their per-announcement
+// read_at. Used by the admin read-status page when sorting by read_at.
+type AnnouncementReadUserRow struct {
+	UserID   int64
+	Email    string
+	Username string
+	Balance  float64
+	ReadAt   *time.Time
 }
