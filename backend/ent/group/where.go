@@ -315,6 +315,11 @@ func DefaultMappedModel(v string) predicate.Group {
 	return predicate.Group(sql.FieldEQ(FieldDefaultMappedModel, v))
 }
 
+// CcsDefaultModel applies equality check predicate on the "ccs_default_model" field. It's identical to CcsDefaultModelEQ.
+func CcsDefaultModel(v string) predicate.Group {
+	return predicate.Group(sql.FieldEQ(FieldCcsDefaultModel, v))
+}
+
 // RpmLimit applies equality check predicate on the "rpm_limit" field. It's identical to RpmLimitEQ.
 func RpmLimit(v int) predicate.Group {
 	return predicate.Group(sql.FieldEQ(FieldRpmLimit, v))
@@ -2388,6 +2393,71 @@ func DefaultMappedModelEqualFold(v string) predicate.Group {
 // DefaultMappedModelContainsFold applies the ContainsFold predicate on the "default_mapped_model" field.
 func DefaultMappedModelContainsFold(v string) predicate.Group {
 	return predicate.Group(sql.FieldContainsFold(FieldDefaultMappedModel, v))
+}
+
+// CcsDefaultModelEQ applies the EQ predicate on the "ccs_default_model" field.
+func CcsDefaultModelEQ(v string) predicate.Group {
+	return predicate.Group(sql.FieldEQ(FieldCcsDefaultModel, v))
+}
+
+// CcsDefaultModelNEQ applies the NEQ predicate on the "ccs_default_model" field.
+func CcsDefaultModelNEQ(v string) predicate.Group {
+	return predicate.Group(sql.FieldNEQ(FieldCcsDefaultModel, v))
+}
+
+// CcsDefaultModelIn applies the In predicate on the "ccs_default_model" field.
+func CcsDefaultModelIn(vs ...string) predicate.Group {
+	return predicate.Group(sql.FieldIn(FieldCcsDefaultModel, vs...))
+}
+
+// CcsDefaultModelNotIn applies the NotIn predicate on the "ccs_default_model" field.
+func CcsDefaultModelNotIn(vs ...string) predicate.Group {
+	return predicate.Group(sql.FieldNotIn(FieldCcsDefaultModel, vs...))
+}
+
+// CcsDefaultModelGT applies the GT predicate on the "ccs_default_model" field.
+func CcsDefaultModelGT(v string) predicate.Group {
+	return predicate.Group(sql.FieldGT(FieldCcsDefaultModel, v))
+}
+
+// CcsDefaultModelGTE applies the GTE predicate on the "ccs_default_model" field.
+func CcsDefaultModelGTE(v string) predicate.Group {
+	return predicate.Group(sql.FieldGTE(FieldCcsDefaultModel, v))
+}
+
+// CcsDefaultModelLT applies the LT predicate on the "ccs_default_model" field.
+func CcsDefaultModelLT(v string) predicate.Group {
+	return predicate.Group(sql.FieldLT(FieldCcsDefaultModel, v))
+}
+
+// CcsDefaultModelLTE applies the LTE predicate on the "ccs_default_model" field.
+func CcsDefaultModelLTE(v string) predicate.Group {
+	return predicate.Group(sql.FieldLTE(FieldCcsDefaultModel, v))
+}
+
+// CcsDefaultModelContains applies the Contains predicate on the "ccs_default_model" field.
+func CcsDefaultModelContains(v string) predicate.Group {
+	return predicate.Group(sql.FieldContains(FieldCcsDefaultModel, v))
+}
+
+// CcsDefaultModelHasPrefix applies the HasPrefix predicate on the "ccs_default_model" field.
+func CcsDefaultModelHasPrefix(v string) predicate.Group {
+	return predicate.Group(sql.FieldHasPrefix(FieldCcsDefaultModel, v))
+}
+
+// CcsDefaultModelHasSuffix applies the HasSuffix predicate on the "ccs_default_model" field.
+func CcsDefaultModelHasSuffix(v string) predicate.Group {
+	return predicate.Group(sql.FieldHasSuffix(FieldCcsDefaultModel, v))
+}
+
+// CcsDefaultModelEqualFold applies the EqualFold predicate on the "ccs_default_model" field.
+func CcsDefaultModelEqualFold(v string) predicate.Group {
+	return predicate.Group(sql.FieldEqualFold(FieldCcsDefaultModel, v))
+}
+
+// CcsDefaultModelContainsFold applies the ContainsFold predicate on the "ccs_default_model" field.
+func CcsDefaultModelContainsFold(v string) predicate.Group {
+	return predicate.Group(sql.FieldContainsFold(FieldCcsDefaultModel, v))
 }
 
 // RpmLimitEQ applies the EQ predicate on the "rpm_limit" field.

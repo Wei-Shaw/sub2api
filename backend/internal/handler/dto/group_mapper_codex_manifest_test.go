@@ -13,6 +13,7 @@ import (
 func TestGroupMapperRoundTripsCodexModelsManifestConfig(t *testing.T) {
 	group := &service.Group{
 		ID: 31, Name: "codex-manifest-dto", Platform: service.PlatformOpenAI, Status: service.StatusActive,
+		CCSDefaultModel: "custom-codex-model",
 		CodexModelsManifestConfig: service.GroupCodexModelsManifestConfig{
 			Enabled:             true,
 			AccountIDs:          []int64{101, 202},
@@ -34,8 +35,10 @@ func TestGroupMapperRoundTripsCodexModelsManifestConfig(t *testing.T) {
 	require.True(t, adminEnvelope.CodexModelsManifestConfig.Enabled)
 	require.Equal(t, []int64{101, 202}, adminEnvelope.CodexModelsManifestConfig.AccountIDs)
 	require.True(t, adminEnvelope.CodexModelsManifestConfig.FallbackToScheduler)
+	require.Contains(t, string(adminJSON), `"ccs_default_model":"custom-codex-model"`)
 
 	userJSON, err := json.Marshal(GroupFromService(group))
 	require.NoError(t, err)
 	require.NotContains(t, string(userJSON), "codex_models_manifest_config", "用户侧分组 DTO 不得暴露管理端 manifest 配置")
+	require.Contains(t, string(userJSON), `"ccs_default_model":"custom-codex-model"`)
 }

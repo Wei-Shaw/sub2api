@@ -1557,6 +1557,22 @@
             </div>
           </div>
         </div>
+        <!-- CCS 一键导入默认模型（按分组配置） -->
+        <div class="border-t border-gray-200 dark:border-dark-400 pt-4 mt-4">
+          <h4 class="text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+            {{ t("admin.groups.ccsImport.title") }}
+          </h4>
+          <p class="text-xs text-gray-500 dark:text-gray-400 mb-3">
+            {{ t("admin.groups.ccsImport.hint") }}
+          </p>
+          <input
+            v-model="createForm.ccs_default_model"
+            type="text"
+            class="input"
+            :placeholder="t('admin.groups.ccsImport.placeholder')"
+            maxlength="200"
+          />
+        </div>
         <!-- OpenAI Fast 开关（OpenAI 与 Composite 平台） -->
         <div
           v-if="supportsGroupOpenAIFast(createForm.platform)"
@@ -3206,6 +3222,22 @@
               />
             </div>
           </div>
+        </div>
+        <!-- CCS 一键导入默认模型（按分组配置） -->
+        <div class="border-t border-gray-200 dark:border-dark-400 pt-4 mt-4">
+          <h4 class="text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+            {{ t("admin.groups.ccsImport.title") }}
+          </h4>
+          <p class="text-xs text-gray-500 dark:text-gray-400 mb-3">
+            {{ t("admin.groups.ccsImport.hint") }}
+          </p>
+          <input
+            v-model="editForm.ccs_default_model"
+            type="text"
+            class="input"
+            :placeholder="t('admin.groups.ccsImport.placeholder')"
+            maxlength="200"
+          />
         </div>
         <!-- OpenAI Fast 开关（OpenAI 与 Composite 平台） -->
         <div
@@ -4981,6 +5013,7 @@ const createForm = reactive({
   // OpenAI Messages 调度配置（仅 openai 平台使用）
   allow_messages_dispatch: false,
   allow_live: false,
+  ccs_default_model: "",
   opus_mapped_model: createMessagesDispatchDefaults.opus_mapped_model,
   sonnet_mapped_model: createMessagesDispatchDefaults.sonnet_mapped_model,
   haiku_mapped_model: createMessagesDispatchDefaults.haiku_mapped_model,
@@ -5346,6 +5379,7 @@ const editForm = reactive({
   // OpenAI Messages 调度配置（仅 openai 平台使用）
   allow_messages_dispatch: false,
   allow_live: false,
+  ccs_default_model: "",
   default_mapped_model: '',
   opus_mapped_model: editMessagesDispatchDefaults.opus_mapped_model,
   sonnet_mapped_model: editMessagesDispatchDefaults.sonnet_mapped_model,
@@ -5801,6 +5835,7 @@ const closeCreateModal = () => {
   createForm.fallback_group_id_on_invalid_request = null;
   resetMessagesDispatchFormState(createForm);
   createForm.allow_live = false;
+  createForm.ccs_default_model = "";
   createForm.require_oauth_only = false;
   createForm.require_privacy_set = false;
   createForm.supported_model_scopes = ["claude", "gemini_text", "gemini_image"];
@@ -6086,6 +6121,7 @@ const handleEdit = async (group: AdminGroup) => {
     group.allow_messages_dispatch ||
     messagesDispatchFormState.allow_messages_dispatch;
   editForm.allow_live = group.allow_live ?? false;
+  editForm.ccs_default_model = group.ccs_default_model ?? "";
   editForm.opus_mapped_model = messagesDispatchFormState.opus_mapped_model;
   editForm.sonnet_mapped_model = messagesDispatchFormState.sonnet_mapped_model;
   editForm.haiku_mapped_model = messagesDispatchFormState.haiku_mapped_model;
