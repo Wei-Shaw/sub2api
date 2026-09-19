@@ -290,41 +290,94 @@
 
       <!-- Usage data from API -->
       <div v-else-if="hasAntigravityQuotaFromAPI" class="space-y-1">
-        <!-- Gemini 3 Pro -->
-        <UsageProgressBar
-          v-if="antigravity3ProUsageFromAPI !== null"
-          :label="t('admin.accounts.usageWindow.gemini3Pro')"
-          :utilization="antigravity3ProUsageFromAPI.utilization"
-          :resets-at="antigravity3ProUsageFromAPI.resetTime"
-          color="indigo"
-        />
+        <!-- 优先显示官方 5h / Weekly 分组额度桶；若无则回退显示具体模型条 -->
+        <template v-if="antigravityGemini5hUsage !== null || antigravityClaude5hUsage !== null">
+          <!-- Gemini (5h) -->
+          <UsageProgressBar
+            v-if="antigravityGemini5hUsage !== null"
+            :label="t('admin.accounts.usageWindow.gemini5h', 'G 5h')"
+            :title="'Gemini (5h)'"
+            :utilization="100 - antigravityGemini5hUsage.utilization"
+            :remaining-capacity="true"
+            :resets-at="antigravityGemini5hUsage.resetTime"
+            color="indigo"
+          />
 
-        <!-- Gemini 3 Flash -->
-        <UsageProgressBar
-          v-if="antigravity3FlashUsageFromAPI !== null"
-          :label="t('admin.accounts.usageWindow.gemini3Flash')"
-          :utilization="antigravity3FlashUsageFromAPI.utilization"
-          :resets-at="antigravity3FlashUsageFromAPI.resetTime"
-          color="emerald"
-        />
+          <!-- Gemini (Weekly) -->
+          <UsageProgressBar
+            v-if="antigravityGeminiWeeklyUsage !== null"
+            :label="t('admin.accounts.usageWindow.geminiWeekly', 'G 7d')"
+            :title="'Gemini (Weekly)'"
+            :utilization="100 - antigravityGeminiWeeklyUsage.utilization"
+            :remaining-capacity="true"
+            :resets-at="antigravityGeminiWeeklyUsage.resetTime"
+            color="emerald"
+          />
 
-        <!-- Gemini 3 Image -->
-        <UsageProgressBar
-          v-if="antigravity3ImageUsageFromAPI !== null"
-          :label="t('admin.accounts.usageWindow.gemini3Image')"
-          :utilization="antigravity3ImageUsageFromAPI.utilization"
-          :resets-at="antigravity3ImageUsageFromAPI.resetTime"
-          color="purple"
-        />
+          <!-- Claude (5h) -->
+          <UsageProgressBar
+            v-if="antigravityClaude5hUsage !== null"
+            :label="t('admin.accounts.usageWindow.claude5h', 'C 5h')"
+            :title="'Claude (5h)'"
+            :utilization="100 - antigravityClaude5hUsage.utilization"
+            :remaining-capacity="true"
+            :resets-at="antigravityClaude5hUsage.resetTime"
+            color="amber"
+          />
 
-        <!-- Claude -->
-        <UsageProgressBar
-          v-if="antigravityClaudeUsageFromAPI !== null"
-          :label="t('admin.accounts.usageWindow.claude')"
-          :utilization="antigravityClaudeUsageFromAPI.utilization"
-          :resets-at="antigravityClaudeUsageFromAPI.resetTime"
-          color="amber"
-        />
+          <!-- Claude (Weekly) -->
+          <UsageProgressBar
+            v-if="antigravityClaudeWeeklyUsage !== null"
+            :label="t('admin.accounts.usageWindow.claudeWeekly', 'C 7d')"
+            :title="'Claude (Weekly)'"
+            :utilization="100 - antigravityClaudeWeeklyUsage.utilization"
+            :remaining-capacity="true"
+            :resets-at="antigravityClaudeWeeklyUsage.resetTime"
+            color="purple"
+          />
+        </template>
+
+        <template v-else>
+          <!-- Gemini 3 Pro -->
+          <UsageProgressBar
+            v-if="antigravity3ProUsageFromAPI !== null"
+            :label="t('admin.accounts.usageWindow.gemini3Pro')"
+            :utilization="100 - antigravity3ProUsageFromAPI.utilization"
+            :remaining-capacity="true"
+            :resets-at="antigravity3ProUsageFromAPI.resetTime"
+            color="indigo"
+          />
+
+          <!-- Gemini 3 Flash -->
+          <UsageProgressBar
+            v-if="antigravity3FlashUsageFromAPI !== null"
+            :label="t('admin.accounts.usageWindow.gemini3Flash')"
+            :utilization="100 - antigravity3FlashUsageFromAPI.utilization"
+            :remaining-capacity="true"
+            :resets-at="antigravity3FlashUsageFromAPI.resetTime"
+            color="emerald"
+          />
+
+          <!-- Gemini 3 Image -->
+          <UsageProgressBar
+            v-if="antigravity3ImageUsageFromAPI !== null"
+            :label="t('admin.accounts.usageWindow.gemini3Image')"
+            :utilization="100 - antigravity3ImageUsageFromAPI.utilization"
+            :remaining-capacity="true"
+            :resets-at="antigravity3ImageUsageFromAPI.resetTime"
+            color="purple"
+          />
+
+          <!-- Claude -->
+          <UsageProgressBar
+            v-if="antigravityClaudeUsageFromAPI !== null"
+            :label="t('admin.accounts.usageWindow.claude')"
+            :utilization="100 - antigravityClaudeUsageFromAPI.utilization"
+            :remaining-capacity="true"
+            :resets-at="antigravityClaudeUsageFromAPI.resetTime"
+            color="amber"
+          />
+        </template>
 
         <div v-if="aiCreditsDisplay" class="mt-1 text-[10px] text-gray-500 dark:text-gray-400">
           💳 {{ t('admin.accounts.aiCreditsBalance') }}: {{ aiCreditsDisplay }}
@@ -867,27 +920,60 @@ const getAntigravityUsageFromAPI = (
 
 // Gemini 3 Pro from API
 const antigravity3ProUsageFromAPI = computed(() =>
-  getAntigravityUsageFromAPI(['gemini-3-pro-low', 'gemini-3-pro-high', 'gemini-3-pro-preview'])
+  getAntigravityUsageFromAPI([
+    'gemini-3.1-pro-high',
+    'gemini-3.1-pro-low',
+    'gemini-3.1-pro-preview',
+    'gemini-pro-agent',
+    'gemini-3-pro-low',
+    'gemini-3-pro-high',
+    'gemini-3-pro-preview'
+  ])
 )
 
 // Gemini 3 Flash from API
-const antigravity3FlashUsageFromAPI = computed(() => getAntigravityUsageFromAPI(['gemini-3-flash']))
+const antigravity3FlashUsageFromAPI = computed(() =>
+  getAntigravityUsageFromAPI([
+    'gemini-3-flash',
+    'gemini-3.5-flash-low',
+    'gemini-3.5-flash-lite',
+    'gemini-3.6-flash-high',
+    'gemini-3.6-flash-low',
+    'gemini-3.6-flash-medium',
+    'gemini-3.5-flash-extra-low',
+    'gemini-2.5-flash',
+    'gemini-2.5-flash-lite'
+  ])
+)
 
 // Gemini Image from API
 const antigravity3ImageUsageFromAPI = computed(() =>
-  getAntigravityUsageFromAPI(['gemini-2.5-flash-image', 'gemini-3.1-flash-image', 'gemini-3-pro-image'])
+  getAntigravityUsageFromAPI(['gemini-3.1-flash-image', 'gemini-2.5-flash-image', 'gemini-3-pro-image'])
 )
 
 // Claude from API (all Claude model variants)
 const antigravityClaudeUsageFromAPI = computed(() =>
   getAntigravityUsageFromAPI([
+    'claude-sonnet-4-6',
+    'claude-opus-4-6-thinking',
+    'claude-sonnet-4-5',
+    'claude-opus-4-5-thinking',
     'claude-fable-5-1',
     'claude-fable-5',
-    'claude-sonnet-4-5', 'claude-opus-4-5-thinking',
-    'claude-sonnet-4-6', 'claude-opus-4-6', 'claude-opus-4-6-thinking',
-    'claude-opus-4-7', 'claude-opus-4-8',
+    'claude-opus-4-7',
+    'claude-opus-4-8',
+    'claude-sonnet-4',
+    '3p-5h'
   ])
 )
+
+// Gemini 5h / Weekly limit buckets (来自 retrieveUserQuotaSummary)
+const antigravityGemini5hUsage = computed(() => getAntigravityUsageFromAPI(['gemini-5h']))
+const antigravityGeminiWeeklyUsage = computed(() => getAntigravityUsageFromAPI(['gemini-weekly']))
+
+// Claude 5h / Weekly limit buckets (来自 retrieveUserQuotaSummary)
+const antigravityClaude5hUsage = computed(() => getAntigravityUsageFromAPI(['3p-5h']))
+const antigravityClaudeWeeklyUsage = computed(() => getAntigravityUsageFromAPI(['3p-weekly']))
 
 const aiCreditsDisplay = computed(() => {
   const credits = usageInfo.value?.ai_credits
