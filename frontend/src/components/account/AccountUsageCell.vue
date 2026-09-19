@@ -422,12 +422,11 @@
         <div v-if="grokRetryAfterLabel" class="text-[10px] text-amber-600 dark:text-amber-400">
           {{ t('admin.accounts.usageWindow.grokRetryAfter', { time: grokRetryAfterLabel }) }}
         </div>
-        <GrokQuotaProbeCell :account="account" compact @probed="handleGrokProbed" />
       </div>
       <div v-else class="space-y-1">
         <div class="text-xs text-gray-400">-</div>
-        <GrokQuotaProbeCell :account="account" compact @probed="handleGrokProbed" />
       </div>
+      <GrokQuotaProbeCell :account="account" compact @probed="handleGrokProbed" />
     </template>
 
     <!-- CN providers (Kimi / Zhipu / DeepSeek): coding-plan quota or payg balance -->
