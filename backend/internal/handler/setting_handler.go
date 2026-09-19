@@ -90,6 +90,8 @@ func (h *SettingHandler) GetPublicSettings(c *gin.Context) {
 		WeChatOAuthMPEnabled:                settings.WeChatOAuthMPEnabled,
 		WeChatOAuthMobileEnabled:            settings.WeChatOAuthMobileEnabled,
 		OIDCOAuthEnabled:                    settings.OIDCOAuthEnabled,
+		OIDCOAuthExclusive:                  settings.OIDCOAuthExclusive,
+		OIDCOAuthEndSessionURL:              settings.OIDCOAuthEndSessionURL,
 		OIDCOAuthProviderName:               settings.OIDCOAuthProviderName,
 		GitHubOAuthEnabled:                  settings.GitHubOAuthEnabled,
 		GoogleOAuthEnabled:                  settings.GoogleOAuthEnabled,

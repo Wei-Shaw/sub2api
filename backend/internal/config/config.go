@@ -331,7 +331,9 @@ type WeChatConnectConfig struct {
 
 type OIDCConnectConfig struct {
 	Enabled                 bool   `mapstructure:"enabled"`
-	ProviderName            string `mapstructure:"provider_name"` // 显示名: "Keycloak" 等
+	Exclusive               bool   `mapstructure:"exclusive"`       // 仅允许 OIDC 登录，禁用本地密码登录/注册
+	EndSessionURL           string `mapstructure:"end_session_url"` // OIDC Provider 全局注销地址
+	ProviderName            string `mapstructure:"provider_name"`   // 显示名: "Keycloak" 等
 	ClientID                string `mapstructure:"client_id"`
 	ClientSecret            string `mapstructure:"client_secret"`
 	IssuerURL               string `mapstructure:"issuer_url"`
@@ -1872,6 +1874,7 @@ func load(allowMissingJWTSecret bool) (*Config, error) {
 	cfg.OIDC.Scopes = strings.TrimSpace(cfg.OIDC.Scopes)
 	cfg.OIDC.RedirectURL = strings.TrimSpace(cfg.OIDC.RedirectURL)
 	cfg.OIDC.FrontendRedirectURL = strings.TrimSpace(cfg.OIDC.FrontendRedirectURL)
+	cfg.OIDC.EndSessionURL = strings.TrimSpace(cfg.OIDC.EndSessionURL)
 	cfg.OIDC.TokenAuthMethod = strings.ToLower(strings.TrimSpace(cfg.OIDC.TokenAuthMethod))
 	cfg.OIDC.AllowedSigningAlgs = strings.TrimSpace(cfg.OIDC.AllowedSigningAlgs)
 	cfg.OIDC.UserInfoEmailPath = strings.TrimSpace(cfg.OIDC.UserInfoEmailPath)
@@ -2122,6 +2125,8 @@ func setDefaults() {
 
 	// Generic OIDC OAuth 登录
 	viper.SetDefault("oidc_connect.enabled", false)
+	viper.SetDefault("oidc_connect.exclusive", false)
+	viper.SetDefault("oidc_connect.end_session_url", "")
 	viper.SetDefault("oidc_connect.provider_name", "OIDC")
 	viper.SetDefault("oidc_connect.client_id", "")
 	viper.SetDefault("oidc_connect.client_secret", "")
@@ -2959,6 +2964,14 @@ func (c *Config) Validate() error {
 		}
 		warnIfInsecureURL("wechat_connect.frontend_redirect_url", weChat.FrontendRedirectURL)
 	}
+	if c.OIDC.Exclusive {
+		if strings.TrimSpace(c.OIDC.EndSessionURL) == "" {
+			return fmt.Errorf("oidc_connect.end_session_url is required when oidc_connect.exclusive=true")
+		}
+		if err := ValidateAbsoluteHTTPURL(c.OIDC.EndSessionURL); err != nil {
+			return fmt.Errorf("oidc_connect.end_session_url invalid: %w", err)
+		}
+	}
 	if c.OIDC.Enabled {
 		if strings.TrimSpace(c.OIDC.ClientID) == "" {
 			return fmt.Errorf("oidc_connect.client_id is required when oidc_connect.enabled=true")
@@ -3027,6 +3040,11 @@ func (c *Config) Validate() error {
 		if err := ValidateFrontendRedirectURL(c.OIDC.FrontendRedirectURL); err != nil {
 			return fmt.Errorf("oidc_connect.frontend_redirect_url invalid: %w", err)
 		}
+		if v := strings.TrimSpace(c.OIDC.EndSessionURL); v != "" {
+			if err := ValidateAbsoluteHTTPURL(v); err != nil {
+				return fmt.Errorf("oidc_connect.end_session_url invalid: %w", err)
+			}
+		}
 
 		warnIfInsecureURL("oidc_connect.issuer_url", c.OIDC.IssuerURL)
 		warnIfInsecureURL("oidc_connect.discovery_url", c.OIDC.DiscoveryURL)
@@ -3036,6 +3054,7 @@ func (c *Config) Validate() error {
 		warnIfInsecureURL("oidc_connect.jwks_url", c.OIDC.JWKSURL)
 		warnIfInsecureURL("oidc_connect.redirect_url", c.OIDC.RedirectURL)
 		warnIfInsecureURL("oidc_connect.frontend_redirect_url", c.OIDC.FrontendRedirectURL)
+		warnIfInsecureURL("oidc_connect.end_session_url", c.OIDC.EndSessionURL)
 	}
 	if c.Billing.CircuitBreaker.Enabled {
 		if c.Billing.CircuitBreaker.FailureThreshold <= 0 {
