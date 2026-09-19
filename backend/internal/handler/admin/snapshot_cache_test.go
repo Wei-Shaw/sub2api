@@ -91,10 +91,13 @@ func TestSnapshotCache_ETagFormat(t *testing.T) {
 	require.Equal(t, byte('"'), entry.ETag[len(entry.ETag)-1])
 }
 
-func TestBuildETagFromAny_UnmarshalablePayload(t *testing.T) {
+func TestSnapshotCache_UnmarshalablePayload(t *testing.T) {
 	// channels are not JSON-serializable
-	etag := buildETagFromAny(make(chan int))
-	require.Empty(t, etag)
+	c := newSnapshotCache(time.Second)
+	entry := c.Set("invalid", make(chan int))
+	require.Empty(t, entry.ETag)
+	_, ok := c.Get("invalid")
+	require.False(t, ok)
 }
 
 func TestSnapshotCache_GetOrLoad_MissThenHit(t *testing.T) {

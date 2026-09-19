@@ -42,12 +42,6 @@ const messages: Record<string, string> = {
 	'common.no': 'No',
 }
 
-const formatLocalDate = (date: Date): string => {
-  const year = date.getFullYear()
-  const month = String(date.getMonth() + 1).padStart(2, '0')
-  const day = String(date.getDate()).padStart(2, '0')
-  return `${year}-${month}-${day}`
-}
 
 vi.mock('@/api/admin', () => ({
   adminAPI: {
@@ -198,6 +192,43 @@ describe('admin UsageView route filters', () => {
   afterEach(() => {
     Object.keys(routeQuery).forEach((key) => delete routeQuery[key])
     vi.useRealTimers()
+  })
+
+  it('preserves a historical 24-hour deep link when refreshing', async () => {
+    routeQuery.start_date = '2026-09-08T05:12:00Z'
+    routeQuery.end_date = '2026-09-09T05:12:00Z'
+    const wrapper = mountRouteFilteredUsageView()
+    await flushPromises()
+    vi.advanceTimersByTime(120000)
+    ;(wrapper.vm as any).refreshData()
+    await flushPromises()
+    expect(list).toHaveBeenLastCalledWith(expect.objectContaining({
+      start_date: routeQuery.start_date, end_date: routeQuery.end_date
+    }), expect.anything())
+    wrapper.unmount()
+  })
+
+  it('advances the rolling preset on refresh, but keeps manual times fixed', async () => {
+    vi.setSystemTime(new Date('2026-09-10T05:12:59Z'))
+    const wrapper = mountRouteFilteredUsageView()
+    await flushPromises()
+    vi.setSystemTime(new Date('2026-09-10T05:15:10Z'))
+    ;(wrapper.vm as any).refreshData()
+    await flushPromises()
+    expect(list).toHaveBeenLastCalledWith(expect.objectContaining({
+      start_date: '2026-09-09T05:16:00.000Z', end_date: '2026-09-10T05:16:00.000Z'
+    }), expect.anything())
+    wrapper.findComponent({ name: 'DateRangePicker' }).vm.$emit('change', {
+      startDate: '2026-09-08T04:37:00.000Z', endDate: '2026-09-09T04:37:00.000Z', preset: null
+    })
+    await flushPromises()
+    vi.advanceTimersByTime(120000)
+    ;(wrapper.vm as any).refreshData()
+    await flushPromises()
+    expect(list).toHaveBeenLastCalledWith(expect.objectContaining({
+      start_date: '2026-09-08T04:37:00.000Z', end_date: '2026-09-09T04:37:00.000Z'
+    }), expect.anything())
+    wrapper.unmount()
   })
 
   it('shows the routed user while applying user_id to usage requests', async () => {
@@ -432,12 +463,16 @@ describe('admin UsageView distribution metric toggles', () => {
 
     expect(getSnapshotV2).toHaveBeenCalledTimes(1)
     const now = new Date()
-    const yesterday = new Date(now.getTime() - 24 * 60 * 60 * 1000)
     expect(getSnapshotV2).toHaveBeenCalledWith(expect.objectContaining({
-      start_date: formatLocalDate(yesterday),
-      end_date: formatLocalDate(now),
+      start_date: expect.stringContaining('T'),
+      end_date: expect.stringContaining('T'),
       granularity: 'hour'
     }))
+
+    const range = vi.mocked(getSnapshotV2).mock.calls[0]![0]!
+    expect(new Date(range.end_date!).getTime() - new Date(range.start_date!).getTime()).toBe(86400000)
+    expect(new Date(range.end_date!).getTime()).toBeGreaterThanOrEqual(now.getTime() - 1000)
+    expect(new Date(range.end_date!).getTime()).toBeLessThanOrEqual(now.getTime() + 60000)
 
     const modelChart = wrapper.find('[data-test="model-chart"]')
     const groupChart = wrapper.find('[data-test="group-chart"]')
@@ -678,6 +713,22 @@ describe('admin UsageView errors tab filter forwarding', () => {
       account_id: 7,
       group_id: 3,
     }))
+    wrapper.findComponent({ name: 'DateRangePicker' }).vm.$emit('change', {
+      startDate: '2026-09-10', endDate: '2026-09-10', preset: 'today'
+    })
+    await flushPromises()
+    expect(listErrorLogs).toHaveBeenLastCalledWith(expect.objectContaining({
+      start_time: new Date('2026-09-10T00:00:00').toISOString(),
+      end_time: new Date('2026-09-11T00:00:00').toISOString(),
+    }))
+    wrapper.findComponent({ name: 'DateRangePicker' }).vm.$emit('change', {
+      startDate: '2026-09-10T05:37:00Z', endDate: '2026-09-10T06:42:00Z', preset: null
+    })
+    await flushPromises()
+    expect(listErrorLogs).toHaveBeenLastCalledWith(expect.objectContaining({
+      start_time: '2026-09-10T05:37:00.000Z', end_time: '2026-09-10T06:42:00.000Z',
+    }))
+    wrapper.unmount()
   })
 })
 

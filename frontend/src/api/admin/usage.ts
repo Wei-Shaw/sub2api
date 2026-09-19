@@ -39,6 +39,7 @@ export interface SimpleApiKey {
 }
 
 export interface UsageCleanupFilters {
+  end_exclusive?: boolean
   start_time: string
   end_time: string
   user_id?: number

@@ -92,8 +92,8 @@ func (h *DashboardHandler) getUsageTrendCached(
 	upstreamModelMismatch *bool,
 ) ([]usagestats.TrendDataPoint, bool, error) {
 	key := mustMarshalDashboardCacheKey(dashboardTrendCacheKey{
-		StartTime:             startTime.UTC().Format(time.RFC3339),
-		EndTime:               endTime.UTC().Format(time.RFC3339),
+		StartTime:             startTime.UTC().Format(time.RFC3339Nano),
+		EndTime:               endTime.UTC().Format(time.RFC3339Nano),
 		Granularity:           granularity,
 		UserID:                userID,
 		APIKeyID:              apiKeyID,
@@ -132,8 +132,8 @@ func (h *DashboardHandler) getModelStatsCached(
 	upstreamModelMismatch *bool,
 ) ([]usagestats.ModelStat, bool, error) {
 	key := mustMarshalDashboardCacheKey(dashboardModelGroupCacheKey{
-		StartTime:             startTime.UTC().Format(time.RFC3339),
-		EndTime:               endTime.UTC().Format(time.RFC3339),
+		StartTime:             startTime.UTC().Format(time.RFC3339Nano),
+		EndTime:               endTime.UTC().Format(time.RFC3339Nano),
 		UserID:                userID,
 		APIKeyID:              apiKeyID,
 		AccountID:             accountID,
@@ -170,8 +170,8 @@ func (h *DashboardHandler) getGroupStatsCached(
 	upstreamModelMismatch *bool,
 ) ([]usagestats.GroupStat, bool, error) {
 	key := mustMarshalDashboardCacheKey(dashboardModelGroupCacheKey{
-		StartTime:             startTime.UTC().Format(time.RFC3339),
-		EndTime:               endTime.UTC().Format(time.RFC3339),
+		StartTime:             startTime.UTC().Format(time.RFC3339Nano),
+		EndTime:               endTime.UTC().Format(time.RFC3339Nano),
 		UserID:                userID,
 		APIKeyID:              apiKeyID,
 		AccountID:             accountID,
@@ -198,8 +198,8 @@ func (h *DashboardHandler) getGroupStatsCached(
 
 func (h *DashboardHandler) getAPIKeyUsageTrendCached(ctx context.Context, startTime, endTime time.Time, granularity string, limit int) ([]usagestats.APIKeyUsageTrendPoint, bool, error) {
 	key := mustMarshalDashboardCacheKey(dashboardEntityTrendCacheKey{
-		StartTime:   startTime.UTC().Format(time.RFC3339),
-		EndTime:     endTime.UTC().Format(time.RFC3339),
+		StartTime:   startTime.UTC().Format(time.RFC3339Nano),
+		EndTime:     endTime.UTC().Format(time.RFC3339Nano),
 		Granularity: granularity,
 		Limit:       limit,
 	})
@@ -215,8 +215,8 @@ func (h *DashboardHandler) getAPIKeyUsageTrendCached(ctx context.Context, startT
 
 func (h *DashboardHandler) getUserUsageTrendCached(ctx context.Context, startTime, endTime time.Time, granularity string, limit int) ([]usagestats.UserUsageTrendPoint, bool, error) {
 	key := mustMarshalDashboardCacheKey(dashboardEntityTrendCacheKey{
-		StartTime:   startTime.UTC().Format(time.RFC3339),
-		EndTime:     endTime.UTC().Format(time.RFC3339),
+		StartTime:   startTime.UTC().Format(time.RFC3339Nano),
+		EndTime:     endTime.UTC().Format(time.RFC3339Nano),
 		Granularity: granularity,
 		Limit:       limit,
 	})

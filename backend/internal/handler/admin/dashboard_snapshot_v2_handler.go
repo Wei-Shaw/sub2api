@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/response"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/timezone"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/usagestats"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/gin-gonic/gin"
@@ -25,6 +26,8 @@ type dashboardSnapshotV2Stats struct {
 type dashboardSnapshotV2Response struct {
 	GeneratedAt string `json:"generated_at"`
 
+	StartTime   string `json:"start_time"`
+	EndTime     string `json:"end_time"`
 	StartDate   string `json:"start_date"`
 	EndDate     string `json:"end_date"`
 	Granularity string `json:"granularity"`
@@ -73,6 +76,9 @@ type dashboardSnapshotV2CacheKey struct {
 
 func (h *DashboardHandler) GetSnapshotV2(c *gin.Context) {
 	startTime, endTime := parseTimeRange(c)
+	if c.IsAborted() {
+		return
+	}
 	granularity := strings.TrimSpace(c.DefaultQuery("granularity", "day"))
 	if granularity != "hour" {
 		granularity = "day"
@@ -97,8 +103,8 @@ func (h *DashboardHandler) GetSnapshotV2(c *gin.Context) {
 	}
 
 	keyRaw, _ := json.Marshal(dashboardSnapshotV2CacheKey{
-		StartTime:             startTime.UTC().Format(time.RFC3339),
-		EndTime:               endTime.UTC().Format(time.RFC3339),
+		StartTime:             startTime.Format(time.RFC3339Nano),
+		EndTime:               endTime.Format(time.RFC3339Nano),
 		Granularity:           granularity,
 		UserID:                filters.UserID,
 		APIKeyID:              filters.APIKeyID,
@@ -159,9 +165,11 @@ func (h *DashboardHandler) buildSnapshotV2Response(
 	usersTrendLimit int,
 ) (*dashboardSnapshotV2Response, error) {
 	resp := &dashboardSnapshotV2Response{
-		GeneratedAt: time.Now().UTC().Format(time.RFC3339),
+		GeneratedAt: time.Now().UTC().Format(time.RFC3339Nano),
+		StartTime:   startTime.Format(time.RFC3339Nano),
+		EndTime:     endTime.Format(time.RFC3339Nano),
 		StartDate:   startTime.Format("2006-01-02"),
-		EndDate:     endTime.Add(-24 * time.Hour).Format("2006-01-02"),
+		EndDate:     timezone.RangeEndDate(endTime),
 		Granularity: granularity,
 	}
 
