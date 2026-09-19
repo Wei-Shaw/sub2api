@@ -1007,3 +1007,12 @@ func TestGeminiMessagesCompatService_isModelSupportedByAccount(t *testing.T) {
 		})
 	}
 }
+
+// 通用路径成功粘性偏好：本替身不参与该用例，保持恒定 miss / 不写入。
+func (*mockGatewayCacheForGemini) GetGatewayStickySuccess(context.Context, int64, string, string) (GatewayStickySuccessBinding, error) {
+	return GatewayStickySuccessBinding{}, ErrStickySessionNotFound
+}
+
+func (*mockGatewayCacheForGemini) CompareAndSwapGatewayStickySuccess(context.Context, int64, string, string, GatewayStickySuccessBinding, GatewayStickySuccessBinding, time.Duration) (bool, error) {
+	return false, nil
+}
