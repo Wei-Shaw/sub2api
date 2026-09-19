@@ -1761,6 +1761,7 @@ func (r *accountRepository) ClearError(ctx context.Context, id int64) error {
 		Where(dbaccount.IDEQ(id)).
 		SetStatus(service.StatusActive).
 		SetErrorMessage("").
+		SetSchedulable(true).
 		Save(ctx)
 	if err != nil {
 		return err
