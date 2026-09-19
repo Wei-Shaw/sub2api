@@ -352,6 +352,9 @@ type OIDCConnectConfig struct {
 	ClockSkewSeconds        int    `mapstructure:"clock_skew_seconds"`     // 默认 120
 	RequireEmailVerified    bool   `mapstructure:"require_email_verified"` // 默认 false
 
+	// OIDC authorize 的 prompt 参数；为空时不发送。常用 login（强制重新认证）/ select_account / consent
+	Prompt string `mapstructure:"prompt"`
+
 	// 可选：用于从 userinfo JSON 中提取字段的 gjson 路径。
 	// 为空时，服务端会尝试一组常见字段名。
 	UserInfoEmailPath    string `mapstructure:"userinfo_email_path"`
