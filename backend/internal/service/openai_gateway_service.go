@@ -83,7 +83,7 @@ var openaiAllowedHeaders = map[string]bool{
 	"x-codex-turn-state":      true,
 	"x-codex-turn-metadata":   true,
 	"x-codex-window-id":       true,
-	responsesLiteHeaderKey:    true,
+	responsesLiteHeaderKey:    false,
 }
 
 // OpenAI passthrough allowed headers whitelist.
@@ -102,7 +102,7 @@ var openaiPassthroughAllowedHeaders = map[string]bool{
 	"x-codex-turn-state":      true,
 	"x-codex-turn-metadata":   true,
 	"x-codex-window-id":       true,
-	responsesLiteHeaderKey:    true,
+	responsesLiteHeaderKey:    false,
 }
 
 // codex_cli_only 拒绝时记录的请求头白名单（仅用于诊断日志，不参与上游透传）
