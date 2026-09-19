@@ -153,6 +153,10 @@ docs/screenshots/*
 !docs/screenshots/mobile-account-actions-menu.png
 .serena/
 .codex/
+.zcode/
+.zcodeignore
+.zcloud/
+.zcloudignore
 frontend/coverage/
 aicodex
 output/

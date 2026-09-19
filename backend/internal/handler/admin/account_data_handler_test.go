@@ -356,3 +356,25 @@ func TestImportDataRejectsKiroAccountManagerJSON(t *testing.T) {
 	require.Contains(t, rec.Body.String(), "unsupported data format")
 	require.Len(t, adminSvc.createdAccounts, 0)
 }
+
+func TestExportDataExcludesCodexTicketMaterial(t *testing.T) {
+	router, adminSvc := setupAccountDataRouter()
+	extra := map[string]any{
+		"codex_turn_ticket:gpt-6-astra": map[string]any{"state": "private-ticket-blob", "length": 292},
+		"codex_harvest_proxy_url":       "http://user:legacy-proxy-secret@proxy.example.com:8080",
+		"ordinary":                      "retained",
+	}
+	adminSvc.accounts = []service.Account{{ID: 21, Name: "account", Platform: service.PlatformOpenAI, Type: service.AccountTypeOAuth, Credentials: map[string]any{"access_token": "backup-token"}, Extra: extra}}
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/v1/admin/accounts/data?include_proxies=false", nil))
+	require.Equal(t, http.StatusOK, rec.Code)
+	var resp dataResponse
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
+	require.Len(t, resp.Data.Accounts, 1)
+	require.Equal(t, map[string]any{"ordinary": "retained"}, resp.Data.Accounts[0].Extra)
+	require.Equal(t, "backup-token", resp.Data.Accounts[0].Credentials["access_token"])
+	require.NotContains(t, rec.Body.String(), "private-ticket-blob")
+	require.NotContains(t, rec.Body.String(), "legacy-proxy-secret")
+	require.Contains(t, extra, "codex_turn_ticket:gpt-6-astra")
+	require.Contains(t, extra, "codex_harvest_proxy_url")
+}

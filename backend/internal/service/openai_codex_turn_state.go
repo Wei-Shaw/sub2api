@@ -117,6 +117,8 @@ func (s *OpenAIGatewayService) noteOpenAICodexTurnStateProvenance(c *gin.Context
 
 // guardOpenAICodexTurnStateEcho 出站守卫：客户端回带的 turn-state 若已知由
 // 其他账号铸造则剥离，同账号或无溯源记录时保持原样。只剥离、不注入——
+// 门控模型的 292 票由 applyOpenAICodexTicket 在守卫之后覆盖写入；
+// 非门控模型保持客户端回带（#5668）。
 // /responses 路径的客户端是真实 Codex，会按自身回合语义自行回带；服务端
 // 注入是 Claude 兼容桥（无法回带的客户端）的专属行为。
 func (s *OpenAIGatewayService) guardOpenAICodexTurnStateEcho(c *gin.Context, account *Account, h http.Header) {
