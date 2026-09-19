@@ -84,6 +84,7 @@ data: {"type":"response.completed"}
 
 func TestAccountTestService_AdaptiveChatOnlyProvidersTestChatAndAnthropicEndpoints(t *testing.T) {
 	account := adaptiveCNAccountTestAccount(301, PlatformZhipu)
+	account.Credentials["account_mode"] = AccountModeCoding
 	svc, upstream := adaptiveCNAccountTestService(
 		account,
 		adaptiveCNChatTestResponse(),

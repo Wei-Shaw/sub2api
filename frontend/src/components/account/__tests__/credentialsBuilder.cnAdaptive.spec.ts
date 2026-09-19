@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { cnSupportsNativeResponses, defaultCNAdaptiveBaseUrls } from '../credentialsBuilder'
+import { cnSupportsNativeResponses, defaultCNAdaptiveBaseUrls, defaultCNBaseUrl, CN_BASE_URL_PRESETS } from '../credentialsBuilder'
 
 describe('cnSupportsNativeResponses', () => {
   it('is true for DeepSeek, Kimi, and MiniMax', () => {
@@ -55,5 +55,18 @@ describe('defaultCNAdaptiveBaseUrls', () => {
     }
     expect(defaultCNAdaptiveBaseUrls('minimax', 'payg')).toEqual(expected)
     expect(defaultCNAdaptiveBaseUrls('minimax', 'coding')).toEqual(expected)
+  })
+})
+
+
+describe('Zhipu native Responses opt-in', () => {
+  it('offers native Responses only for Coding Plan and uses the dedicated endpoint', () => {
+    expect(cnSupportsNativeResponses('zhipu', 'coding')).toBe(true)
+    expect(cnSupportsNativeResponses('zhipu', 'payg')).toBe(false)
+    expect(defaultCNBaseUrl('zhipu', 'coding', 'responses')).toBe('https://open.bigmodel.cn/api/v1')
+    expect(defaultCNBaseUrl('zhipu', 'payg', 'responses')).toBe('')
+    expect(CN_BASE_URL_PRESETS.zhipu.filter(p => p.protocol === 'responses')).toEqual([
+      { mode: 'coding', protocol: 'responses', label: 'GLM Coding Responses', url: 'https://open.bigmodel.cn/api/v1' }
+    ])
   })
 })

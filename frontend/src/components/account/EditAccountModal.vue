@@ -72,7 +72,7 @@
               <input v-model="editAdaptiveBaseUrls[item.value]" type="text" class="input" />
             </div>
           </div>
-          <p v-if="!cnSupportsNativeResponses(account.platform)" class="input-hint">
+          <p v-if="!cnSupportsAdaptiveResponses(account.platform)" class="input-hint">
             {{ t('admin.accounts.cnProviders.apiProtocol.responsesFallbackDesc') }}
           </p>
         </div>
@@ -3072,6 +3072,7 @@ import {
   splitHeaderOverridesObject,
   validateHeaderOverrideRows,
   cnSupportsNativeResponses,
+  cnSupportsAdaptiveResponses,
   defaultCNAdaptiveBaseUrls,
   defaultCNBaseUrl,
   isCNProviderPlatform,
@@ -3242,7 +3243,7 @@ const cnProtocolOptions = computed<Array<{ value: CnApiProtocol; labelKey: strin
     { value: 'chat_completions', labelKey: 'chatCompletions' },
     { value: 'anthropic', labelKey: 'anthropic' }
   ]
-  if (cnSupportsNativeResponses(props.account?.platform ?? '')) {
+  if (cnSupportsNativeResponses(props.account?.platform ?? '', editAccountMode.value)) {
     opts.push({ value: 'responses', labelKey: 'responses' })
   }
   return opts
@@ -3252,7 +3253,7 @@ const editAdaptiveProtocolOptions = computed<Array<{ value: CnNativeApiProtocol;
     { value: 'chat_completions', labelKey: 'chatCompletions' },
     { value: 'anthropic', labelKey: 'anthropic' }
   ]
-  if (cnSupportsNativeResponses(props.account?.platform ?? '')) opts.push({ value: 'responses', labelKey: 'responses' })
+  if (cnSupportsAdaptiveResponses(props.account?.platform ?? '')) opts.push({ value: 'responses', labelKey: 'responses' })
   return opts
 })
 watch(editApiProtocol, (protocol, previousProtocol) => {
@@ -3282,6 +3283,10 @@ watch(editAccountMode, (mode, previousMode) => {
   const effectiveMode = props.account!.platform === 'deepseek' && mode === 'coding' ? 'payg' : mode
   if (effectiveMode !== mode) {
     editAccountMode.value = effectiveMode
+    return
+  }
+  if (editApiProtocol.value === 'responses' && !cnSupportsNativeResponses(props.account!.platform, mode)) {
+    editApiProtocol.value = 'chat_completions'
     return
   }
   if (editApiProtocol.value === 'adaptive') {
@@ -4218,7 +4223,7 @@ const syncFormFromAccount = (newAccount: Account | null) => {
         storedProtocol === 'responses'
           ? storedProtocol
           : 'chat_completions'
-      if (!cnSupportsNativeResponses(newAccount.platform) && editApiProtocol.value === 'responses') {
+      if (!cnSupportsNativeResponses(newAccount.platform, editAccountMode.value) && editApiProtocol.value === 'responses') {
         editApiProtocol.value = 'chat_completions'
       }
       const adaptiveDefaults = defaultCNAdaptiveBaseUrls(newAccount.platform, currentOpenCodeOrCNMode())
