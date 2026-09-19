@@ -342,11 +342,10 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 						zap.Bool("model_not_found", cls.ModelNotFound),
 						zap.Error(err),
 					)
-					message := cls.Message
 					if !cls.ModelNotFound {
-						message = "No available accounts: " + err.Error()
+						recordNoAvailableAccountsErrorForOps(c, err)
 					}
-					h.handleStreamingAwareError(c, cls.Status, cls.ErrType, message, streamStarted)
+					h.handleStreamingAwareError(c, cls.Status, cls.ErrType, cls.Message, streamStarted)
 					return
 				}
 				action := fs.HandleSelectionExhausted(c.Request.Context())
@@ -396,7 +395,8 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 						zap.String("model", reqModel),
 						zap.String("platform", platform),
 					)
-					h.handleStreamingAwareError(c, http.StatusServiceUnavailable, "api_error", "No available accounts", streamStarted)
+					recordNoAvailableAccountsReasonForOps(c, noAvailableAccountsReasonNoSlot)
+					h.handleStreamingAwareError(c, http.StatusServiceUnavailable, "api_error", noAvailableAccountsClientMessage, streamStarted)
 					return
 				}
 				accountWaitCounted := false
@@ -449,7 +449,8 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 				if fs.RecordProfitVeto(account.ID) == FailoverExhausted {
 					reqLog.Warn("gateway.profit_veto_attempts_exhausted", zap.Int("profit_veto_count", fs.ProfitVetoCount()))
 					markOpsRoutingCapacityLimited(c)
-					h.handleStreamingAwareError(c, http.StatusServiceUnavailable, "api_error", profitVetoExhaustedMessage, streamStarted)
+					recordNoAvailableAccountsReasonForOps(c, profitVetoExhaustedReason)
+					h.handleStreamingAwareError(c, http.StatusServiceUnavailable, "api_error", noAvailableAccountsClientMessage, streamStarted)
 					return
 				}
 				continue
@@ -673,11 +674,10 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 						zap.Bool("model_not_found", cls.ModelNotFound),
 						zap.Error(err),
 					)
-					message := cls.Message
 					if !cls.ModelNotFound {
-						message = "No available accounts: " + err.Error()
+						recordNoAvailableAccountsErrorForOps(c, err)
 					}
-					h.handleStreamingAwareError(c, cls.Status, cls.ErrType, message, streamStarted)
+					h.handleStreamingAwareError(c, cls.Status, cls.ErrType, cls.Message, streamStarted)
 					return
 				}
 				action := fs.HandleSelectionExhausted(c.Request.Context())
@@ -737,7 +737,8 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 						zap.String("model", reqModel),
 						zap.String("platform", platform),
 					)
-					h.handleStreamingAwareError(c, http.StatusServiceUnavailable, "api_error", "No available accounts", streamStarted)
+					recordNoAvailableAccountsReasonForOps(c, noAvailableAccountsReasonNoSlot)
+					h.handleStreamingAwareError(c, http.StatusServiceUnavailable, "api_error", noAvailableAccountsClientMessage, streamStarted)
 					return
 				}
 				accountWaitCounted := false
@@ -790,7 +791,8 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 				if fs.RecordProfitVeto(account.ID) == FailoverExhausted {
 					reqLog.Warn("gateway.profit_veto_attempts_exhausted", zap.Int("profit_veto_count", fs.ProfitVetoCount()))
 					markOpsRoutingCapacityLimited(c)
-					h.handleStreamingAwareError(c, http.StatusServiceUnavailable, "api_error", profitVetoExhaustedMessage, streamStarted)
+					recordNoAvailableAccountsReasonForOps(c, profitVetoExhaustedReason)
+					h.handleStreamingAwareError(c, http.StatusServiceUnavailable, "api_error", noAvailableAccountsClientMessage, streamStarted)
 					return
 				}
 				// 尝试被否决（从未转发），立即释放该账号的会话注册
