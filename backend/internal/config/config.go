@@ -1221,6 +1221,12 @@ func (c *UserMessageQueueConfig) GetEffectiveMode() string {
 // DefaultOpenAIWSClientFirstMessageTimeoutSeconds preserves the legacy ingress deadline.
 const DefaultOpenAIWSClientFirstMessageTimeoutSeconds = 30
 
+// DefaultOpenAIWSTurnSlotWaitTimeoutSeconds bounds how long an ingress turn may
+// wait for the connection's bound account to free a concurrency slot. It is kept
+// well below the HTTP sticky wait because a WebSocket turn holds a client that is
+// already waiting on a reply; a long wait reads as a hang rather than as queuing.
+const DefaultOpenAIWSTurnSlotWaitTimeoutSeconds = 30
+
 // GatewayOpenAIWSConfig OpenAI Responses WebSocket 配置。
 // 注意：默认全局开启；如需回滚可使用 force_http 或关闭 enabled。
 type GatewayOpenAIWSConfig struct {
@@ -1234,6 +1240,12 @@ type GatewayOpenAIWSConfig struct {
 	// IngressInterTurnIdleTimeoutSeconds bounds the time a client may remain idle
 	// between completed ingress turns. Zero disables this protection.
 	IngressInterTurnIdleTimeoutSeconds int `mapstructure:"ingress_inter_turn_idle_timeout_seconds"`
+	// TurnSlotWaitTimeoutSeconds bounds how long an ingress turn waits for the
+	// account concurrency slot it must re-acquire. A WebSocket connection is bound
+	// to one upstream account and cannot switch mid-session, so a busy account has
+	// to be waited out rather than routed around. Zero keeps the legacy behavior of
+	// a single non-blocking attempt followed by a 1013 close.
+	TurnSlotWaitTimeoutSeconds int `mapstructure:"turn_slot_wait_timeout_seconds"`
 	// MaxIngressConnectionsPerAPIKey bounds live client WebSocket ingress sessions
 	// per API key across all instances. Zero disables this protection.
 	MaxIngressConnectionsPerAPIKey int `mapstructure:"max_ingress_connections_per_api_key"`
@@ -2388,6 +2400,7 @@ func setDefaults() {
 	viper.SetDefault("gateway.openai_ws.ingress_mode_default", "ctx_pool")
 	viper.SetDefault("gateway.openai_ws.client_first_message_timeout_seconds", DefaultOpenAIWSClientFirstMessageTimeoutSeconds)
 	viper.SetDefault("gateway.openai_ws.ingress_inter_turn_idle_timeout_seconds", 300)
+	viper.SetDefault("gateway.openai_ws.turn_slot_wait_timeout_seconds", DefaultOpenAIWSTurnSlotWaitTimeoutSeconds)
 	viper.SetDefault("gateway.openai_ws.max_ingress_connections_per_api_key", 64)
 	viper.SetDefault("gateway.openai_ws.oauth_enabled", true)
 	viper.SetDefault("gateway.openai_ws.apikey_enabled", true)
@@ -3402,6 +3415,9 @@ func (c *Config) Validate() error {
 	}
 	if c.Gateway.OpenAIWS.IngressInterTurnIdleTimeoutSeconds < 0 {
 		return fmt.Errorf("gateway.openai_ws.ingress_inter_turn_idle_timeout_seconds must be non-negative")
+	}
+	if c.Gateway.OpenAIWS.TurnSlotWaitTimeoutSeconds < 0 {
+		return fmt.Errorf("gateway.openai_ws.turn_slot_wait_timeout_seconds must be non-negative")
 	}
 	if c.Gateway.OpenAIWS.MaxIngressConnectionsPerAPIKey < 0 {
 		return fmt.Errorf("gateway.openai_ws.max_ingress_connections_per_api_key must be non-negative")
