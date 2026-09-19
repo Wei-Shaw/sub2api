@@ -94,7 +94,7 @@
       <div v-else class="max-h-[28rem] space-y-3 overflow-y-auto">
         <div
           v-for="item in history"
-          :key="item.id"
+          :key="`${item.type}-${item.id}`"
           class="rounded-xl border border-gray-200 bg-white p-4 dark:border-dark-600 dark:bg-dark-800"
         >
           <div class="flex items-start justify-between">
@@ -199,8 +199,11 @@ const totalPages = computed(() => Math.ceil(total.value / pageSize) || 1)
 const typeOptions = computed(() => [
   { value: '', label: t('admin.users.allTypes') },
   { value: 'balance', label: t('admin.users.typeBalance') },
-  { value: 'affiliate_balance', label: t('admin.users.typeAffiliateBalance') },
   { value: 'admin_balance', label: t('admin.users.typeAdminBalance') },
+  { value: 'promo_balance', label: t('admin.users.typePromoBalance') },
+  { value: 'lottery_balance', label: t('admin.users.typeLotteryBalance') },
+  { value: 'affiliate_balance', label: t('admin.users.typeAffiliateBalance') },
+  { value: 'invitation', label: t('admin.users.typeInvitation') },
   { value: 'concurrency', label: t('admin.users.typeConcurrency') },
   { value: 'admin_concurrency', label: t('admin.users.typeAdminConcurrency') },
   { value: 'subscription', label: t('admin.users.typeSubscription') }
@@ -239,13 +242,24 @@ const loadHistory = async (page: number) => {
 const isAdminType = (type: string) => type === 'admin_balance' || type === 'admin_concurrency'
 
 // Helper: check if balance type (includes admin_balance)
-const isBalanceType = (type: string) => type === 'balance' || type === 'admin_balance' || type === 'affiliate_balance'
+const isBalanceType = (type: string) => [
+  'balance',
+  'admin_balance',
+  'affiliate_balance',
+  'promo_balance',
+  'lottery_balance'
+].includes(type)
 
 // Helper: check if subscription type
 const isSubscriptionType = (type: string) => type === 'subscription'
 
+const isInvitationType = (type: string) => type === 'invitation'
+
 // Icon name based on type
 const getIconName = (item: BalanceHistoryItem) => {
+  if (item.type === 'promo_balance') return 'gift'
+  if (item.type === 'lottery_balance') return 'trophy'
+  if (isInvitationType(item.type)) return 'key'
   if (isBalanceType(item.type)) return 'dollar'
   if (isSubscriptionType(item.type)) return 'badge'
   return 'bolt' // concurrency
@@ -253,6 +267,9 @@ const getIconName = (item: BalanceHistoryItem) => {
 
 // Icon background color
 const getIconBg = (item: BalanceHistoryItem) => {
+  if (item.type === 'promo_balance') return 'bg-amber-100 dark:bg-amber-900/30'
+  if (item.type === 'lottery_balance') return 'bg-rose-100 dark:bg-rose-900/30'
+  if (isInvitationType(item.type)) return 'bg-sky-100 dark:bg-sky-900/30'
   if (isBalanceType(item.type)) {
     return item.value >= 0
       ? 'bg-emerald-100 dark:bg-emerald-900/30'
@@ -266,6 +283,9 @@ const getIconBg = (item: BalanceHistoryItem) => {
 
 // Icon text color
 const getIconColor = (item: BalanceHistoryItem) => {
+  if (item.type === 'promo_balance') return 'text-amber-600 dark:text-amber-400'
+  if (item.type === 'lottery_balance') return 'text-rose-600 dark:text-rose-400'
+  if (isInvitationType(item.type)) return 'text-sky-600 dark:text-sky-400'
   if (isBalanceType(item.type)) {
     return item.value >= 0
       ? 'text-emerald-600 dark:text-emerald-400'
@@ -279,6 +299,7 @@ const getIconColor = (item: BalanceHistoryItem) => {
 
 // Value text color
 const getValueColor = (item: BalanceHistoryItem) => {
+  if (isInvitationType(item.type)) return 'text-sky-600 dark:text-sky-400'
   if (isBalanceType(item.type)) {
     return item.value >= 0
       ? 'text-emerald-600 dark:text-emerald-400'
@@ -297,6 +318,12 @@ const getItemTitle = (item: BalanceHistoryItem) => {
       return t('redeem.balanceAddedRedeem')
     case 'affiliate_balance':
       return t('redeem.balanceAddedAffiliate')
+    case 'promo_balance':
+      return t('redeem.balanceAddedPromo')
+    case 'lottery_balance':
+      return t('redeem.balanceAddedLottery')
+    case 'invitation':
+      return t('redeem.invitationUsed')
     case 'admin_balance':
       return item.value >= 0 ? t('redeem.balanceAddedAdmin') : t('redeem.balanceDeductedAdmin')
     case 'concurrency':
@@ -312,6 +339,7 @@ const getItemTitle = (item: BalanceHistoryItem) => {
 
 // Format display value
 const formatValue = (item: BalanceHistoryItem) => {
+  if (isInvitationType(item.type)) return t('redeem.invitationUsedValue')
   if (isBalanceType(item.type)) {
     const sign = item.value >= 0 ? '+' : ''
     return `${sign}$${item.value.toFixed(2)}`
