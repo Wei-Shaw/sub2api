@@ -14,12 +14,19 @@ function findField(providerKey: string, key: string) {
 }
 
 describe('PROVIDER_CONFIG_FIELDS.wxpay', () => {
-  it('keeps admin form validation aligned with backend-required credentials', () => {
-    expect(findField('wxpay', 'publicKeyId')?.optional).toBeFalsy()
-    expect(findField('wxpay', 'certSerial')?.optional).toBeFalsy()
+  it('uses the API v2 merchant credential fields in the admin form', () => {
+    expect((PROVIDER_CONFIG_FIELDS.wxpay || []).map(field => field.key)).toEqual([
+      'appId',
+      'mchId',
+      'apiV3Key',
+    ])
   })
 
   it('only keeps the simplified visible credential set in the admin form', () => {
+    expect(findField('wxpay', 'privateKey')).toBeUndefined()
+    expect(findField('wxpay', 'publicKey')).toBeUndefined()
+    expect(findField('wxpay', 'publicKeyId')).toBeUndefined()
+    expect(findField('wxpay', 'certSerial')).toBeUndefined()
     expect(findField('wxpay', 'mpAppId')).toBeUndefined()
     expect(findField('wxpay', 'h5AppName')).toBeUndefined()
     expect(findField('wxpay', 'h5AppUrl')).toBeUndefined()
