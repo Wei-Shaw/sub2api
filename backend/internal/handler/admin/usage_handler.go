@@ -348,7 +348,17 @@ func (h *UsageHandler) Stats(c *gin.Context) {
 	}
 
 	// Build filters and call GetStatsWithFilters
+	includeUserAgents := false
+	if raw := c.Query("include_user_agents"); raw != "" {
+		value, err := strconv.ParseBool(raw)
+		if err != nil {
+			response.BadRequest(c, "Invalid include_user_agents value, use true or false")
+			return
+		}
+		includeUserAgents = value
+	}
 	filters := usagestats.UsageLogFilters{
+		IncludeUserAgents:     includeUserAgents,
 		UserID:                userID,
 		APIKeyID:              apiKeyID,
 		AccountID:             accountID,
