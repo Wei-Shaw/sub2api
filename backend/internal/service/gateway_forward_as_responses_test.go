@@ -215,6 +215,51 @@ func TestAdaptResponsesClientToolsForAnthropic_NormalizesBareNamespaceHistoryFor
 	require.Equal(t, []string{"functions__exec", "functions__exec"}, toolUseNames)
 }
 
+func TestAdaptResponsesClientToolsForAnthropic_FlattensRootUnionSchema(t *testing.T) {
+	t.Parallel()
+
+	body := []byte(`{
+		"model":"claude-opus-5",
+		"input":[{"type":"message","role":"user","content":[{"type":"input_text","text":"create an automation"}]}],
+		"tools":[{"type":"namespace","name":"codex_app","tools":[{
+			"type":"function",
+			"name":"automation_update",
+			"description":"Create, update, view, or delete recurring automations",
+			"parameters":{"oneOf":[
+				{"type":"object","properties":{"mode":{"enum":["view"]},"id":{"type":"string"}},"required":["mode","id"]},
+				{"type":"object","properties":{"mode":{"enum":["update"]},"id":{"type":"string"}},"required":["mode","id"]}
+			]}
+		}]}]
+	}`)
+
+	adapted, _, err := adaptResponsesClientToolsForAnthropic(body)
+	require.NoError(t, err)
+
+	var responsesReq apicompat.ResponsesRequest
+	require.NoError(t, json.Unmarshal(adapted, &responsesReq))
+
+	claudeReq, err := apicompat.ResponsesToAnthropicRequest(&responsesReq)
+	require.NoError(t, err)
+	require.Len(t, claudeReq.Tools, 1)
+
+	tool := claudeReq.Tools[0]
+	require.Equal(t, "codex_app__automation_update", tool.Name)
+
+	var schema map[string]json.RawMessage
+	require.NoError(t, json.Unmarshal(tool.InputSchema, &schema))
+	require.JSONEq(t, `"object"`, string(schema["type"]))
+	require.NotContains(t, schema, "oneOf")
+	require.NotContains(t, schema, "anyOf")
+	require.NotContains(t, schema, "allOf")
+	require.JSONEq(t, `["mode","id"]`, string(schema["required"]))
+
+	wire, err := json.Marshal(tool)
+	require.NoError(t, err)
+	require.NotContains(t, string(wire), `"input_schema":{"oneOf"`)
+	require.NotContains(t, string(wire), `"input_schema":{"anyOf"`)
+	require.NotContains(t, string(wire), `"input_schema":{"allOf"`)
+}
+
 func namespaceToolAnthropicStream() string {
 	return strings.Join([]string{
 		`event: message_start`,

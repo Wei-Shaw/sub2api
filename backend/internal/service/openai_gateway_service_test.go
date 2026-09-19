@@ -589,6 +589,37 @@ func TestOpenAIGatewayService_BindHTTPResponseAccount(t *testing.T) {
 	require.False(t, owned)
 }
 
+func TestOpenAIGatewayService_BindHTTPResponseAccount_DetachesCanceledRequestContext(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/openai/v1/responses", nil)
+	groupID := int64(4201)
+	c.Set("api_key", &APIKey{ID: 501, GroupID: &groupID})
+	SetOpenAIHTTPResponseOwner(c, 601, 501)
+
+	cache := &responseBindContextProbeCache{}
+	svc := &OpenAIGatewayService{cache: cache}
+	account := &Account{ID: 37001, Platform: PlatformOpenAI, Type: AccountTypeAPIKey}
+	requestCtx, cancelRequest := context.WithCancel(context.Background())
+	cancelRequest()
+	startedAt := time.Now()
+
+	svc.bindHTTPResponseAccount(requestCtx, c, account, "resp_http_canceled_001")
+
+	require.Len(t, cache.setContextErrors, 3)
+	for _, contextErr := range cache.setContextErrors {
+		require.NoError(t, contextErr, "response affinity writes must survive downstream cancellation")
+	}
+	require.Len(t, cache.setDeadlines, 3)
+	for _, deadline := range cache.setDeadlines {
+		require.True(t, deadline.After(startedAt))
+		require.LessOrEqual(t, deadline.Sub(startedAt), openAIWSStateStoreRedisTimeout+100*time.Millisecond)
+	}
+	require.Len(t, cache.sessionBindings, 3)
+	require.Contains(t, cache.sessionBindings, openAIWSResponseAccountCacheKey("resp_http_canceled_001"))
+}
+
 func TestOpenAIGatewayService_GenerateExplicitSessionHash_SkipsContentFallback(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	svc := &OpenAIGatewayService{}
@@ -708,6 +739,23 @@ func (c stubConcurrencyCache) GetAccountWaitingCount(ctx context.Context, accoun
 type stubGatewayCache struct {
 	sessionBindings map[string]int64
 	deletedSessions map[string]int
+}
+
+type responseBindContextProbeCache struct {
+	stubGatewayCache
+	setContextErrors []error
+	setDeadlines     []time.Time
+}
+
+func (c *responseBindContextProbeCache) SetSessionAccountID(ctx context.Context, groupID int64, sessionHash string, accountID int64, ttl time.Duration) error {
+	c.setContextErrors = append(c.setContextErrors, ctx.Err())
+	if deadline, ok := ctx.Deadline(); ok {
+		c.setDeadlines = append(c.setDeadlines, deadline)
+	}
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	return c.stubGatewayCache.SetSessionAccountID(ctx, groupID, sessionHash, accountID, ttl)
 }
 
 func (c *stubGatewayCache) GetSessionAccountID(ctx context.Context, groupID int64, sessionHash string) (int64, error) {
