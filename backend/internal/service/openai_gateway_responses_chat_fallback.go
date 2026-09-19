@@ -31,6 +31,23 @@ func (s *OpenAIGatewayService) forwardResponsesViaRawChatCompletions(
 ) (*OpenAIForwardResult, error) {
 	startTime := time.Now()
 
+	// DeepSeek 原生 /responses 不认识 compaction_trigger：remote compaction v2 会得到
+	// reasoning+message 而非 compaction item，Codex 判 fatal。这里改写成普通总结回合
+	// （剥 trigger + 注入总结指令 + 强制非流式），回程再合成 compaction item。
+	compact := isOpenAINativeCompactionV2(c) && HasCompactionTriggerInInput(body)
+	if compact {
+		rewritten, err := buildDeepSeekCompactChatBody(body)
+		if err != nil {
+			writeOpenAIResponsesFallbackError(c, http.StatusBadRequest, "invalid_request_error", err.Error())
+			return nil, fmt.Errorf("build deepseek compact chat body: %w", err)
+		}
+		body = rewritten
+		logger.L().Info("openai responses chat fallback: deepseek compact request rewritten",
+			zap.Int64("account_id", account.ID),
+			zap.Int("rewritten_body_bytes", len(body)),
+		)
+	}
+
 	var responsesReq apicompat.ResponsesRequest
 	if err := json.Unmarshal(body, &responsesReq); err != nil {
 		writeOpenAIResponsesFallbackError(c, http.StatusBadRequest, "invalid_request_error", "Failed to parse request body")
@@ -94,6 +111,11 @@ func (s *OpenAIGatewayService) forwardResponsesViaRawChatCompletions(
 	// /v1/responses 降级到 raw CC 的出站与 forwardAsRawChatCompletions 共用同一个
 	// 独立 Ollama Cloud token 钩子；chatReq.Model 已是模型映射后的 upstreamModel。
 	chatBody = clampOllamaCloudUpstreamMaxTokens(account, chatBody)
+	// DeepSeek 的 /chat/completions 不接受 response_format=json_schema（400
+	// "This response_format type is unavailable now"）。Responses 的 text.format
+	// json_schema 经 chat 桥原样转成该字段，必须剔除；text / json_object 均可用，
+	// 保持原样。剔除后模型退回纯文本输出，Codex 不依赖结构化输出即可继续。
+	chatBody = stripDeepSeekUnsupportedChatResponseFormat(account, chatBody)
 	// Keep the final outbound tier for usage-time reconciliation. A policy
 	// filter that removes the field therefore leaves this nil.
 	serviceTier := extractOpenAIServiceTierFromBody(chatBody)
@@ -120,6 +142,13 @@ func (s *OpenAIGatewayService) forwardResponsesViaRawChatCompletions(
 
 	if resp.StatusCode >= 400 {
 		respBody, upstreamMsg := s.readOpenAIUpstreamError(resp)
+		if compact {
+			logger.L().Warn("openai responses chat fallback: deepseek compact upstream error",
+				zap.Int64("account_id", account.ID),
+				zap.Int("status", resp.StatusCode),
+				zap.String("message", upstreamMsg),
+			)
+		}
 		if foErr := s.failoverOpenAIUpstreamHTTPError(ctx, c, account, resp, respBody, upstreamMsg, upstreamModel); foErr != nil {
 			return nil, foErr
 		}
@@ -129,7 +158,7 @@ func (s *OpenAIGatewayService) forwardResponsesViaRawChatCompletions(
 	if clientStream {
 		return s.streamChatCompletionsAsResponses(c, resp, originalModel, customTools, functionTools, toolSearch, namespaceTools, billingModel, upstreamModel, reasoningEffort, serviceTier, startTime)
 	}
-	return s.bufferChatCompletionsAsResponses(c, resp, originalModel, customTools, functionTools, toolSearch, namespaceTools, billingModel, upstreamModel, reasoningEffort, serviceTier, startTime)
+	return s.bufferChatCompletionsAsResponses(c, resp, originalModel, customTools, functionTools, toolSearch, namespaceTools, billingModel, upstreamModel, reasoningEffort, serviceTier, startTime, compact)
 }
 
 func (s *OpenAIGatewayService) bufferChatCompletionsAsResponses(
@@ -145,6 +174,7 @@ func (s *OpenAIGatewayService) bufferChatCompletionsAsResponses(
 	reasoningEffort *string,
 	serviceTier *string,
 	startTime time.Time,
+	compact bool,
 ) (*OpenAIForwardResult, error) {
 	requestID := resp.Header.Get("x-request-id")
 	ccResp, usage, err := s.readCCUpstreamJSONResponse(c, resp, writeOpenAIResponsesFallbackError)
@@ -157,7 +187,33 @@ func (s *OpenAIGatewayService) bufferChatCompletionsAsResponses(
 	if s.responseHeaderFilter != nil {
 		responseheaders.WriteFilteredHeaders(c.Writer.Header(), resp.Header, s.responseHeaderFilter)
 	}
-	c.JSON(http.StatusOK, responsesResp)
+	if compact {
+		summary := compactSummaryTextFromResponses(responsesResp.Output)
+		logger.L().Info("openai responses chat fallback: deepseek compact synthesizing",
+			zap.Int("upstream_output_items", len(responsesResp.Output)),
+			zap.Int("summary_len", len(summary)),
+		)
+		compactResp := buildDeepSeekCompactResponse(responsesResp, summary)
+		encoded, err := json.Marshal(compactResp)
+		if err != nil {
+			return nil, fmt.Errorf("marshal deepseek compact response: %w", err)
+		}
+		payload, ok := buildDeepSeekCompactSSEPayload(encoded)
+		if !ok {
+			return nil, fmt.Errorf("build deepseek compact SSE payload")
+		}
+		c.Header("Content-Type", "text/event-stream")
+		c.Header("Cache-Control", "no-cache")
+		c.Header("Connection", "keep-alive")
+		c.Header("X-Accel-Buffering", "no")
+		c.Writer.WriteHeader(http.StatusOK)
+		if _, err := c.Writer.Write(payload); err != nil {
+			return nil, err
+		}
+		c.Writer.Flush()
+	} else {
+		c.JSON(http.StatusOK, responsesResp)
+	}
 
 	return &OpenAIForwardResult{
 		RequestID:                   requestID,
@@ -402,6 +458,25 @@ func (s *OpenAIGatewayService) setReasoningContent(itemID, content string) {
 			zap.String("item_id", itemID),
 		)
 	}
+}
+
+// stripDeepSeekUnsupportedChatResponseFormat 剔除 DeepSeek /chat/completions 不接受的
+// response_format。Responses 的 text.format=json_schema 经 chat 桥会被原样转成
+// response_format:{"type":"json_schema"}，而 DeepSeek 会直接 400
+// （This response_format type is unavailable now）。DeepSeek 接受 text 与 json_object，
+// 仅 json_schema 需移除；移除后模型退回纯文本输出，Codex 不依赖结构化输出即可继续。
+func stripDeepSeekUnsupportedChatResponseFormat(account *Account, chatBody []byte) []byte {
+	if !isDeepSeekResponsesUpstream(account) {
+		return chatBody
+	}
+	if strings.TrimSpace(gjson.GetBytes(chatBody, "response_format.type").String()) != "json_schema" {
+		return chatBody
+	}
+	updated, err := sjson.DeleteBytes(chatBody, "response_format")
+	if err != nil {
+		return chatBody
+	}
+	return updated
 }
 
 // deepSeekChatReasoningPlaceholderText 是 Chat Completions 侧 thinking-mode

@@ -306,3 +306,52 @@ func TestOpenAIPassthroughAPIKeyRestoresClientToolsStreaming(t *testing.T) {
 	require.Contains(t, output, `"input":"*** Begin Patch"`)
 	require.NotContains(t, output, `"input":{`)
 }
+
+func TestShouldAdaptDeepSeekResponsesClientToolsSkipsChatFallback(t *testing.T) {
+	nativeResponses := &Account{
+		Platform:    PlatformDeepseek,
+		Type:        AccountTypeAPIKey,
+		Credentials: map[string]any{"api_protocol": APIProtocolResponses},
+	}
+
+	topLevelCustom := []byte(`{"model":"deepseek-flash","tools":[{"type":"custom","name":"top_exec"}]}`)
+	// P1 反例：顶层 custom 工具与 input[].additional_tools 同时出现时会改走
+	// Chat fallback。fallback 从原始 body 重新计算 custom 工具并正确还原
+	// custom_tool_call，因此这里必须先跳过 client-tool adaptation——否则顶层
+	// top_exec 已被改写成 function，回程只能降级成 function_call（Codex 判
+	// unsupported call）。
+	customPlusAdditionalTools := []byte(`{
+		"model": "deepseek-flash",
+		"tools": [{"type": "custom", "name": "top_exec"}],
+		"input": [
+			{"type": "additional_tools", "role": "developer", "tools": [
+				{"type": "namespace", "name": "functions", "tools": [{"type": "custom", "name": "exec"}]}
+			]}
+		]
+	}`)
+	additionalToolsOnly := []byte(`{
+		"model": "deepseek-flash",
+		"input": [
+			{"type": "additional_tools", "role": "developer", "tools": [
+				{"type": "namespace", "name": "functions", "tools": [{"type": "custom", "name": "exec"}]}
+			]}
+		]
+	}`)
+	noClientTools := []byte(`{"model":"deepseek-flash","tools":[{"type":"function","name":"run","parameters":{"type":"object"}}]}`)
+
+	tests := []struct {
+		name string
+		body []byte
+		want bool
+	}{
+		{name: "top_level_custom_only_adapts", body: topLevelCustom, want: true},
+		{name: "custom_plus_additional_tools_skips", body: customPlusAdditionalTools, want: false},
+		{name: "additional_tools_only_skips", body: additionalToolsOnly, want: false},
+		{name: "no_client_tools_no_adapt", body: noClientTools, want: false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			require.Equal(t, tt.want, shouldAdaptDeepSeekResponsesClientTools(nativeResponses, tt.body, false))
+		})
+	}
+}

@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 
@@ -21,7 +22,7 @@ import (
 func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, account *Account, body []byte) (*OpenAIForwardResult, error) {
 	beginUpstreamResponseModelObservation(c)
 	ClearActualOpenAIUpstreamEndpoint(c)
-	if shouldForwardOpenAIResponsesViaRawChatCompletions(account) {
+	if shouldForwardOpenAIResponsesViaChatCompletions(account, body) {
 		SetActualOpenAIUpstreamEndpoint(c, "/v1/chat/completions")
 	}
 	filteredBody, filterErr := filterOpenAIResponsesNoneReasoningEffortForAccount(account, body)
@@ -138,9 +139,12 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 	}
 
 	nativeCNResponses := account.UsesNativeCNResponses()
-	nativeDeepSeekResponses := account.Platform == PlatformDeepseek && nativeCNResponses
-	if nativeDeepSeekResponses && account.Type == AccountTypeAPIKey && !compactPath &&
-		needsOpenAIResponsesClientToolAdaptation(body) {
+	// 先判定是否要走 Chat fallback：fallback 会自己从原始 body 重新计算 custom /
+	// tool_search / namespace 工具并正确还原 custom_tool_call。若这里先做 client-tool
+	// adaptation 把顶层 custom 改写成 function，再进 fallback 时回程查不到 custom
+	// 映射，会把 custom_tool_call 降级成 function_call（Codex 判 unsupported call）。
+	// 因此进入 fallback 的请求必须跳过 adaptation。
+	if shouldAdaptDeepSeekResponsesClientTools(account, body, compactPath) {
 		adaptedBody, mapping, adaptErr := adaptOpenAIResponsesClientTools(body)
 		if adaptErr != nil {
 			return nil, fmt.Errorf("adapt DeepSeek Responses client tools: %w", adaptErr)
@@ -195,7 +199,10 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 		originalModel = reqModel
 	}
 
-	if shouldForwardOpenAIResponsesViaRawChatCompletions(account) {
+	if isOpenAINativeCompactionV2(c) && shouldForwardDeepSeekResponsesCompactViaChatCompletions(account, body) {
+		return s.forwardResponsesViaRawChatCompletions(ctx, c, account, body)
+	}
+	if shouldForwardOpenAIResponsesViaChatCompletions(account, body) {
 		return s.forwardResponsesViaRawChatCompletions(ctx, c, account, body)
 	}
 	SetActualOpenAIUpstreamEndpoint(c, openAIResponsesUpstreamEndpoint)
@@ -1365,6 +1372,87 @@ func shouldForwardOpenAIResponsesViaRawChatCompletions(account *Account) bool {
 		}
 	}
 	return !openai_compat.ShouldUseResponsesAPI(account.Extra)
+}
+
+// shouldForwardOpenAIResponsesViaChatCompletions 是 chat-completions 回退的统一
+// 路由判定：账号级协议配置或探测结论要求回退，或者入站请求的形状是当前上游无法
+// 正确处理的（见 shouldForwardDeepSeekResponsesLiteViaChatCompletions）。
+func shouldForwardOpenAIResponsesViaChatCompletions(account *Account, body []byte) bool {
+	return shouldForwardOpenAIResponsesViaRawChatCompletions(account) ||
+		shouldForwardDeepSeekResponsesLiteViaChatCompletions(account, body)
+}
+
+// shouldForwardDeepSeekResponsesLiteViaChatCompletions 报告走原生 Responses 的
+// DeepSeek 账号是否应改走 chat 回退路径。
+//
+// DeepSeek 的 /responses 端点会接受 input[].additional_tools 并返回 200，但不会
+// 解析其中的工具声明——模型侧等同于没有任何工具可用，只能把调用写进正文
+// （DSML / <tool_call>{...}</tool_call>）。Codex 对 GPT 系模型名启用 Responses
+// Lite 时正是这个形状；同一上游用原生模型名（工具走顶层 tools）时一切正常。
+//
+// chat 回退路径的 apicompat.EffectiveResponsesTools 会把 additional_tools 提升为
+// 顶层工具，namespace 子工具摊平后回程再还原为 custom_tool_call，因此这里对
+// DeepSeek 显式绕开原生端点。
+func shouldForwardDeepSeekResponsesLiteViaChatCompletions(account *Account, body []byte) bool {
+	if account == nil || account.Type != AccountTypeAPIKey {
+		return false
+	}
+	if !isDeepSeekResponsesUpstream(account) {
+		return false
+	}
+	return openAIRequestBodyHasAdditionalTools(body)
+}
+
+// shouldForwardDeepSeekResponsesCompactViaChatCompletions 报告 DeepSeek 上游的
+// remote compaction v2 请求是否应改走 chat 桥。DeepSeek /responses 不认识
+// compaction_trigger，会把它当普通回合，返回 reasoning+message 而非 compaction
+// item，Codex 判 fatal（got 0 items）。改走 chat 桥后在回程合成 compaction item。
+func shouldForwardDeepSeekResponsesCompactViaChatCompletions(account *Account, body []byte) bool {
+	if account == nil || account.Type != AccountTypeAPIKey {
+		return false
+	}
+	if !isDeepSeekResponsesUpstream(account) {
+		return false
+	}
+	return HasCompactionTriggerInInput(body)
+}
+
+// deepSeekAPIHost 是 DeepSeek 官方 API 主机名，Responses 与 Chat Completions 同址。
+const deepSeekAPIHost = "api.deepseek.com"
+
+// isDeepSeekResponsesUpstream 报告该账号当前是否会打到 DeepSeek 的原生 Responses 端点。
+//
+// 除以 DeepSeek 平台配置的账号外，还必须覆盖「platform 填 openai、base_url 指向
+// DeepSeek」的账号：把 GPT 系模型名映射到 DeepSeek 时 Codex 正是这样接入的，
+// 此时 platform 字段不代表真实上游，只能按目标 hostname 判定——与
+// requiresSystemChatRole 用 hostname 识别严格供应商是同一思路。
+// shouldAdaptDeepSeekResponsesClientTools 决定是否在进入原生 DeepSeek Responses 前
+// 改写 client-only 工具。需要走 Chat fallback 的请求（含 input[].additional_tools 的
+// Responses Lite 形状）必须跳过：fallback 会从原始 body 重新计算 custom / tool_search /
+// namespace 工具并正确还原 custom_tool_call，先行改写会丢失顶层 custom 映射，回程
+// 降级成 function_call（Codex 判 unsupported call）。
+func shouldAdaptDeepSeekResponsesClientTools(account *Account, body []byte, compactPath bool) bool {
+	return account != nil &&
+		account.Platform == PlatformDeepseek &&
+		account.UsesNativeCNResponses() &&
+		account.Type == AccountTypeAPIKey &&
+		!compactPath &&
+		!shouldForwardOpenAIResponsesViaChatCompletions(account, body) &&
+		needsOpenAIResponsesClientToolAdaptation(body)
+}
+
+func isDeepSeekResponsesUpstream(account *Account) bool {
+	if account == nil {
+		return false
+	}
+	if account.Platform == PlatformDeepseek {
+		return account.UsesNativeCNResponses()
+	}
+	u, err := url.Parse(strings.TrimSpace(account.GetOpenAIBaseURL()))
+	if err != nil {
+		return false
+	}
+	return strings.EqualFold(u.Hostname(), deepSeekAPIHost)
 }
 
 func (s *OpenAIGatewayService) buildUpstreamRequest(ctx context.Context, c *gin.Context, account *Account, body []byte, token string, isStream bool, promptCacheKey string, isCodexCLI bool) (*http.Request, error) {
