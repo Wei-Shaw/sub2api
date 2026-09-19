@@ -407,6 +407,10 @@ func (r *oauthEmailAffiliateRepoStub) TransferQuotaToBalance(context.Context, in
 	panic("unexpected TransferQuotaToBalance call")
 }
 
+func (r *oauthEmailAffiliateRepoStub) WithdrawQuota(context.Context, int64, float64) (*service.AffiliateWithdrawResult, error) {
+	panic("unexpected WithdrawQuota call")
+}
+
 func (r *oauthEmailAffiliateRepoStub) ListInvitees(context.Context, int64, int) ([]service.AffiliateInvitee, error) {
 	panic("unexpected ListInvitees call")
 }

@@ -129,3 +129,67 @@ func TestIsValidAffiliateCodeFormat(t *testing.T) {
 		})
 	}
 }
+
+type affiliateWithdrawCall struct {
+	userID int64
+	amount float64
+}
+
+type affiliateWithdrawRepoStub struct {
+	AffiliateRepository
+	calls  []affiliateWithdrawCall
+	result *AffiliateWithdrawResult
+	err    error
+}
+
+func (s *affiliateWithdrawRepoStub) WithdrawQuota(_ context.Context, userID int64, amount float64) (*AffiliateWithdrawResult, error) {
+	s.calls = append(s.calls, affiliateWithdrawCall{userID: userID, amount: amount})
+	return s.result, s.err
+}
+
+// TestAdminWithdrawQuota_RejectsInvalidAmount 覆盖线下提现金额校验：非正数、
+// NaN/Inf、舍入到 8 位小数后为 0 或溢出的金额都在服务层拒绝，不进入仓储。
+func TestAdminWithdrawQuota_RejectsInvalidAmount(t *testing.T) {
+	t.Parallel()
+	for _, amount := range []float64{0, -1, math.NaN(), math.Inf(1), math.Inf(-1), 1e-9, math.MaxFloat64} {
+		repo := &affiliateWithdrawRepoStub{}
+		svc := &AffiliateService{repo: repo}
+		_, err := svc.AdminWithdrawQuota(context.Background(), 1, amount)
+		require.ErrorIs(t, err, ErrAffiliateWithdrawAmountInvalid, "amount %v", amount)
+		require.Empty(t, repo.calls, "amount %v must not reach repository", amount)
+	}
+}
+
+// TestAdminWithdrawQuota_RejectsInvalidUser 验证缺少目标用户时直接拒绝。
+func TestAdminWithdrawQuota_RejectsInvalidUser(t *testing.T) {
+	t.Parallel()
+	repo := &affiliateWithdrawRepoStub{}
+	svc := &AffiliateService{repo: repo}
+	_, err := svc.AdminWithdrawQuota(context.Background(), 0, 1)
+	require.Error(t, err)
+	require.Empty(t, repo.calls)
+}
+
+// TestAdminWithdrawQuota_RoundsAmountToLedgerPrecision 验证金额按 8 位小数舍入后
+// 交给仓储，仓储结果原样返回。
+func TestAdminWithdrawQuota_RoundsAmountToLedgerPrecision(t *testing.T) {
+	t.Parallel()
+	want := &AffiliateWithdrawResult{LedgerID: 9, UserID: 42, Amount: 12.34567891}
+	repo := &affiliateWithdrawRepoStub{result: want}
+	svc := &AffiliateService{repo: repo}
+
+	got, err := svc.AdminWithdrawQuota(context.Background(), 42, 12.3456789149)
+	require.NoError(t, err)
+	require.Same(t, want, got)
+	require.Equal(t, []affiliateWithdrawCall{{userID: 42, amount: 12.34567891}}, repo.calls)
+}
+
+// TestAdminWithdrawQuota_PropagatesInsufficientQuota 验证额度不足由仓储判定，
+// 服务层原样返回，前端据错误码提示。
+func TestAdminWithdrawQuota_PropagatesInsufficientQuota(t *testing.T) {
+	t.Parallel()
+	repo := &affiliateWithdrawRepoStub{err: ErrAffiliateQuotaInsufficient}
+	svc := &AffiliateService{repo: repo}
+	_, err := svc.AdminWithdrawQuota(context.Background(), 1, 1)
+	require.ErrorIs(t, err, ErrAffiliateQuotaInsufficient)
+}

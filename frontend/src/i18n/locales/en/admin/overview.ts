@@ -390,10 +390,12 @@ export default {
 
     affiliates: {
       invitesDescription: 'View site-wide inviter and invitee relationships',
-      rebatesDescription: 'View recharge orders that generated affiliate rebates',
-      transfersDescription: 'View affiliate quota transfers into account balance',
+      rebatesDescription: 'View every affiliate rebate accrual from recharge orders, redeem codes, and admin recharges',
+      transfersDescription: 'View affiliate quota transfers into balance and offline withdrawals',
       errors: {
-        loadFailed: 'Failed to load affiliate records'
+        loadFailed: 'Failed to load affiliate records',
+        AFFILIATE_QUOTA_INSUFFICIENT: 'Insufficient available affiliate quota',
+        AFFILIATE_WITHDRAW_AMOUNT_INVALID: 'Invalid withdrawal amount'
       },
       records: {
         search: 'Search',
@@ -418,7 +420,31 @@ export default {
         historyQuotaAfter: 'Historical Rebate After',
         invitedAt: 'Invited At',
         rebatedAt: 'Rebated At',
-        transferredAt: 'Transferred At'
+        transferredAt: 'Transferred At',
+        outflowType: 'Type'
+      },
+      outflowTypes: {
+        transfer: 'To Balance',
+        withdraw: 'Offline Withdrawal'
+      },
+      withdraw: {
+        button: 'Record Offline Withdrawal',
+        title: 'Record Offline Withdrawal',
+        user: 'User',
+        userPlaceholder: 'Search by email or username',
+        noUserFound: 'No matching users',
+        changeUser: 'Change user',
+        availableQuota: 'Available quota',
+        frozenHint: 'Rebates still in the freeze period are not included in the available quota',
+        amount: 'Withdrawal amount (USD)',
+        amountHint: 'Enter the amount already paid to this user outside the site',
+        fillAll: 'All',
+        warning: 'Recording deducts this amount from the user\'s available affiliate quota and cannot be undone. Make sure the off-site payment is complete.',
+        submit: 'Confirm',
+        submitting: 'Recording...',
+        success: 'Recorded offline withdrawal of {amount}; {remaining} still available',
+        amountRequired: 'Enter an amount greater than 0',
+        amountExceeds: 'Amount cannot exceed the available quota'
       },
       overview: {
         title: 'Affiliate User Overview',

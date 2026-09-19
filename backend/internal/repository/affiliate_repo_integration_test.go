@@ -417,3 +417,159 @@ func TestAffiliateRepository_ListUsersWithCustomSettings(t *testing.T) {
 
 	require.GreaterOrEqual(t, total, int64(2), "total must include at least our 2 custom rows")
 }
+
+func mustCreateAffiliateWithdrawUser(t *testing.T, client *dbent.Client, label string) *service.User {
+	t.Helper()
+	return mustCreateUser(t, client, &service.User{
+		Email:        fmt.Sprintf("affiliate-withdraw-%s-%d@example.com", label, time.Now().UnixNano()),
+		PasswordHash: "hash",
+		Role:         service.RoleUser,
+		Status:       service.StatusActive,
+		Balance:      5.5,
+		Concurrency:  5,
+	})
+}
+
+func mustSeedAffiliateQuota(t *testing.T, ctx context.Context, client *dbent.Client, userID int64, quota, frozen, history float64) {
+	t.Helper()
+	affCode := fmt.Sprintf("AFW%d-%06d", userID, time.Now().UnixNano()%1_000_000)
+	_, err := client.ExecContext(ctx, `
+INSERT INTO user_affiliates (user_id, aff_code, aff_quota, aff_frozen_quota, aff_history_quota, created_at, updated_at)
+VALUES ($1, $2, $3, $4, $5, NOW(), NOW())`, userID, affCode, quota, frozen, history)
+	require.NoError(t, err)
+}
+
+// TestAffiliateRepository_WithdrawQuota_DeductsAndRecordsLedger 覆盖线下提现主路径：
+// 只扣可提取额度，余额与累计返利不变，流水 action=withdraw 带额度快照，并出现在提取记录中。
+func TestAffiliateRepository_WithdrawQuota_DeductsAndRecordsLedger(t *testing.T) {
+	ctx := context.Background()
+	tx := testEntTx(t)
+	txCtx := dbent.NewTxContext(ctx, tx)
+	client := tx.Client()
+	repo := NewAffiliateRepository(client, integrationDB)
+
+	u := mustCreateAffiliateWithdrawUser(t, client, "user")
+	mustSeedAffiliateQuota(t, txCtx, client, u.ID, 20, 0, 30)
+
+	result, err := repo.WithdrawQuota(txCtx, u.ID, 12.5)
+	require.NoError(t, err)
+	require.Positive(t, result.LedgerID)
+	require.InDelta(t, 12.5, result.Amount, 1e-9)
+	require.InDelta(t, 7.5, result.AvailableQuotaAfter, 1e-9)
+	require.InDelta(t, 0.0, result.FrozenQuotaAfter, 1e-9)
+	require.InDelta(t, 30.0, result.HistoryQuotaAfter, 1e-9)
+
+	require.InDelta(t, 7.5, querySingleFloat(t, txCtx, client,
+		"SELECT aff_quota::double precision FROM user_affiliates WHERE user_id = $1", u.ID), 1e-9)
+	require.InDelta(t, 30.0, querySingleFloat(t, txCtx, client,
+		"SELECT aff_history_quota::double precision FROM user_affiliates WHERE user_id = $1", u.ID), 1e-9)
+	require.InDelta(t, 5.5, querySingleFloat(t, txCtx, client,
+		"SELECT balance::double precision FROM users WHERE id = $1", u.ID), 1e-9)
+
+	records, total, err := repo.ListAffiliateTransferRecords(txCtx, service.AffiliateRecordFilter{
+		Search:   u.Email,
+		Page:     1,
+		PageSize: 20,
+		SortDesc: true,
+	})
+	require.NoError(t, err)
+	require.EqualValues(t, 1, total)
+	require.Len(t, records, 1)
+	record := records[0]
+	require.Equal(t, result.LedgerID, record.LedgerID)
+	require.Equal(t, "withdraw", record.Action)
+	require.Equal(t, u.ID, record.UserID)
+	require.InDelta(t, 12.5, record.Amount, 1e-9)
+	require.True(t, record.SnapshotAvailable)
+	require.InDelta(t, 5.5, *record.BalanceAfter, 1e-9)
+	require.InDelta(t, 7.5, *record.AvailableQuotaAfter, 1e-9)
+	require.InDelta(t, 30.0, *record.HistoryQuotaAfter, 1e-9)
+}
+
+// TestAffiliateRepository_WithdrawQuota_ThawsMaturedQuotaFirst 验证已过冻结期
+// 但尚未解冻的额度在扣减前解冻并可被提现。
+func TestAffiliateRepository_WithdrawQuota_ThawsMaturedQuotaFirst(t *testing.T) {
+	ctx := context.Background()
+	tx := testEntTx(t)
+	txCtx := dbent.NewTxContext(ctx, tx)
+	client := tx.Client()
+	repo := NewAffiliateRepository(client, integrationDB)
+
+	u := mustCreateAffiliateWithdrawUser(t, client, "thaw")
+	mustSeedAffiliateQuota(t, txCtx, client, u.ID, 0, 10, 10)
+	_, err := client.ExecContext(txCtx, `
+INSERT INTO user_affiliate_ledger (user_id, action, amount, frozen_until, created_at, updated_at)
+VALUES ($1, 'accrue', 10, NOW() - INTERVAL '1 hour', NOW(), NOW())`, u.ID)
+	require.NoError(t, err)
+
+	result, err := repo.WithdrawQuota(txCtx, u.ID, 10)
+	require.NoError(t, err)
+	require.InDelta(t, 0.0, result.AvailableQuotaAfter, 1e-9)
+	require.InDelta(t, 0.0, result.FrozenQuotaAfter, 1e-9)
+	require.Equal(t, 1, querySingleInt(t, txCtx, client,
+		"SELECT COUNT(*) FROM user_affiliate_ledger WHERE user_id = $1 AND action = 'withdraw'", u.ID))
+}
+
+// TestAffiliateRepository_WithdrawQuota_InsufficientLeavesQuotaUntouched 验证未到期的
+// 冻结额度不可提现，额度不足时不扣减、不写流水。
+func TestAffiliateRepository_WithdrawQuota_InsufficientLeavesQuotaUntouched(t *testing.T) {
+	ctx := context.Background()
+	tx := testEntTx(t)
+	txCtx := dbent.NewTxContext(ctx, tx)
+	client := tx.Client()
+	repo := NewAffiliateRepository(client, integrationDB)
+
+	u := mustCreateAffiliateWithdrawUser(t, client, "insufficient")
+	mustSeedAffiliateQuota(t, txCtx, client, u.ID, 5, 10, 15)
+	_, err := client.ExecContext(txCtx, `
+INSERT INTO user_affiliate_ledger (user_id, action, amount, frozen_until, created_at, updated_at)
+VALUES ($1, 'accrue', 10, NOW() + INTERVAL '1 hour', NOW(), NOW())`, u.ID)
+	require.NoError(t, err)
+
+	_, err = repo.WithdrawQuota(txCtx, u.ID, 6)
+	require.ErrorIs(t, err, service.ErrAffiliateQuotaInsufficient)
+
+	require.InDelta(t, 5.0, querySingleFloat(t, txCtx, client,
+		"SELECT aff_quota::double precision FROM user_affiliates WHERE user_id = $1", u.ID), 1e-9)
+	require.InDelta(t, 10.0, querySingleFloat(t, txCtx, client,
+		"SELECT aff_frozen_quota::double precision FROM user_affiliates WHERE user_id = $1", u.ID), 1e-9)
+	require.Equal(t, 0, querySingleInt(t, txCtx, client,
+		"SELECT COUNT(*) FROM user_affiliate_ledger WHERE user_id = $1 AND action = 'withdraw'", u.ID))
+}
+
+// TestAffiliateRepository_ListAffiliateRebateRecords_IncludesNonOrderAccruals 验证兑换码
+// 等非订单来源的返利出现在返利记录中，订单字段为空。
+func TestAffiliateRepository_ListAffiliateRebateRecords_IncludesNonOrderAccruals(t *testing.T) {
+	ctx := context.Background()
+	tx := testEntTx(t)
+	txCtx := dbent.NewTxContext(ctx, tx)
+	client := tx.Client()
+	repo := NewAffiliateRepository(client, integrationDB)
+
+	inviter := mustCreateAffiliateWithdrawUser(t, client, "inviter")
+	invitee := mustCreateAffiliateWithdrawUser(t, client, "invitee")
+	mustSeedAffiliateQuota(t, txCtx, client, inviter.ID, 0, 0, 0)
+
+	applied, err := repo.AccrueQuota(txCtx, inviter.ID, invitee.ID, 2, 0, nil)
+	require.NoError(t, err)
+	require.True(t, applied)
+
+	records, total, err := repo.ListAffiliateRebateRecords(txCtx, service.AffiliateRecordFilter{
+		Search:   invitee.Email,
+		Page:     1,
+		PageSize: 20,
+		SortDesc: true,
+	})
+	require.NoError(t, err)
+	require.EqualValues(t, 1, total)
+	require.Len(t, records, 1)
+	record := records[0]
+	require.Nil(t, record.OrderID)
+	require.Nil(t, record.OrderAmount)
+	require.Nil(t, record.PayAmount)
+	require.Empty(t, record.OutTradeNo)
+	require.Equal(t, inviter.ID, record.InviterID)
+	require.NotNil(t, record.InviteeID)
+	require.Equal(t, invitee.ID, *record.InviteeID)
+	require.InDelta(t, 2.0, record.RebateAmount, 1e-9)
+}

@@ -46,25 +46,35 @@ export interface AffiliateInviteRecord {
   created_at: string
 }
 
+/**
+ * One rebate accrual. Non-order sources (redeem codes, admin recharges) carry no
+ * order, so order fields are null; invitee_id is null when the invitee account
+ * was deleted.
+ */
 export interface AffiliateRebateRecord {
-  order_id: number
+  order_id: number | null
   out_trade_no: string
   inviter_id: number
   inviter_email: string
   inviter_username: string
-  invitee_id: number
+  invitee_id: number | null
   invitee_email: string
   invitee_username: string
-  order_amount: number
-  pay_amount: number
+  order_amount: number | null
+  pay_amount: number | null
   rebate_amount: number
   payment_type: string
   order_status: string
   created_at: string
 }
 
+/** transfer = user moved quota into balance; withdraw = admin-recorded offline withdrawal. */
+export type AffiliateOutflowAction = 'transfer' | 'withdraw'
+
+/** One affiliate quota outflow: a transfer into balance or an offline withdrawal. */
 export interface AffiliateTransferRecord {
   ledger_id: number
+  action: AffiliateOutflowAction
   user_id: number
   user_email: string
   username: string
@@ -75,6 +85,20 @@ export interface AffiliateTransferRecord {
   history_quota_after?: number | null
   snapshot_available: boolean
   created_at: string
+}
+
+export interface WithdrawAffiliateQuotaRequest {
+  /** Amount already paid to the user outside the site (USD). */
+  amount: number
+}
+
+export interface AffiliateWithdrawResult {
+  ledger_id: number
+  user_id: number
+  amount: number
+  available_quota_after: number
+  frozen_quota_after: number
+  history_quota_after: number
 }
 
 export interface AffiliateUserOverview {
@@ -215,6 +239,17 @@ export async function getUserOverview(
   return data
 }
 
+export async function withdrawUserQuota(
+  userId: number,
+  payload: WithdrawAffiliateQuotaRequest,
+): Promise<AffiliateWithdrawResult> {
+  const { data } = await apiClient.post<AffiliateWithdrawResult>(
+    `/admin/affiliates/users/${userId}/withdraw`,
+    payload,
+  )
+  return data
+}
+
 export const affiliatesAPI = {
   listUsers,
   lookupUsers,
@@ -225,6 +260,7 @@ export const affiliatesAPI = {
   listRebateRecords,
   listTransferRecords,
   getUserOverview,
+  withdrawUserQuota,
 }
 
 export default affiliatesAPI
