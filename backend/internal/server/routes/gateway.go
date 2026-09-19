@@ -254,6 +254,21 @@ func RegisterGatewayRoutes(
 			}
 			h.OpenAIGateway.Embeddings(c)
 		})
+		// OpenAI-compatible rerank (e.g. SiliconFlow reranker models) is a
+		// passthrough endpoint, so it shares the embeddings platform gate.
+		gateway.POST("/rerank", textBodyLimit, func(c *gin.Context) {
+			if !isOpenAIOnlyEndpointGatewayPlatform(c) {
+				service.MarkOpsClientBusinessLimited(c, service.OpsClientBusinessLimitedReasonLocalFeatureGate)
+				c.JSON(http.StatusNotFound, gin.H{
+					"error": gin.H{
+						"type":    "not_found_error",
+						"message": "Rerank API is not supported for this platform",
+					},
+				})
+				return
+			}
+			h.OpenAIGateway.Rerank(c)
+		})
 		gateway.POST("/images/generations", imagesHandler)
 		gateway.POST("/images/edits", imagesHandler)
 		gateway.POST("/images/generations/async", h.AsyncImage.Submit)

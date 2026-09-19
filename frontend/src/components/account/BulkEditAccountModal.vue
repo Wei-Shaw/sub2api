@@ -1698,7 +1698,8 @@ const openaiFlattenNamespacesEnabled = ref(false)
 const openAILongContextBillingEnabled = ref(false)
 const openAIEndpointCapabilities = ref<OpenAIEndpointCapability[]>([
   'chat_completions',
-  'embeddings'
+  'embeddings',
+  'rerank'
 ])
 const openAIResponsesMode = ref<OpenAIResponsesMode>('auto')
 const openaiOAuthResponsesWebSocketV2Mode = ref<OpenAIWSMode>(OPENAI_WS_MODE_OFF)
@@ -1787,7 +1788,8 @@ const openAIEndpointCapabilityOptions = computed<
 >(() => [
   { value: 'chat_completions', label: openAITextEndpointCapabilityLabel.value },
   { value: 'embeddings', label: t('admin.accounts.openai.capabilityEmbeddings') },
-  { value: 'seedance', label: 'Seedance (Ark)' }
+  { value: 'seedance', label: 'Seedance (Ark)' },
+  { value: 'rerank', label: t('admin.accounts.openai.capabilityRerank') }
 ])
 const openAITextGenerationCapabilityEnabled = computed(() =>
   openAIEndpointCapabilities.value.includes('chat_completions')
@@ -1797,7 +1799,7 @@ const openAIResponsesModeApplicable = computed(
 )
 
 const normalizeOpenAIEndpointCapabilities = (values: OpenAIEndpointCapability[]) => {
-  const allowed: OpenAIEndpointCapability[] = ['chat_completions', 'embeddings', 'seedance']
+  const allowed: OpenAIEndpointCapability[] = ['chat_completions', 'embeddings', 'seedance', 'rerank']
   const selected = allowed.filter((value) => values.includes(value))
   return selected.length > 0 ? selected : ['chat_completions', 'embeddings'] as OpenAIEndpointCapability[]
 }
@@ -1996,10 +1998,15 @@ const buildUpdatePayload = (): Record<string, unknown> | null => {
   }
 
   if (applyOpenAIEndpointCapabilities) {
+    // 默认集（chat_completions + embeddings + rerank）等价于清空该键，
+    // seedance 需要自定义 base_url，保持 opt-in，不计入默认集。
+    const defaultCapabilities: OpenAIEndpointCapability[] = ['chat_completions', 'embeddings', 'rerank']
+    const selectedCapabilities = openAIEndpointCapabilities.value
     credentials.openai_capabilities =
-      openAIEndpointCapabilities.value.length === 2 && !openAIEndpointCapabilities.value.includes('seedance')
+      selectedCapabilities.length === defaultCapabilities.length &&
+      defaultCapabilities.every((capability) => selectedCapabilities.includes(capability))
         ? null
-        : [...openAIEndpointCapabilities.value]
+        : [...selectedCapabilities]
     credentialsChanged = true
   }
 
@@ -2385,7 +2392,7 @@ watch(
       openaiPassthroughEnabled.value = false
       openaiFlattenNamespacesEnabled.value = false
       openAILongContextBillingEnabled.value = false
-      openAIEndpointCapabilities.value = ['chat_completions', 'embeddings']
+      openAIEndpointCapabilities.value = ['chat_completions', 'embeddings', 'rerank']
       openAIResponsesMode.value = 'auto'
       modelRestrictionMode.value = 'whitelist'
       allowedModels.value = []
