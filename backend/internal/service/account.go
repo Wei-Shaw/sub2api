@@ -82,6 +82,9 @@ type Account struct {
 	headerOverrideCacheRawPtr         uintptr
 	headerOverrideCacheRawLen         int
 	headerOverrideCacheRawSig         uint64
+
+	// apiKeyPinned 标记本次请求已经选定上游 Key，避免同一请求内重复轮换。
+	apiKeyPinned bool
 }
 
 type OpenAIEndpointCapability string

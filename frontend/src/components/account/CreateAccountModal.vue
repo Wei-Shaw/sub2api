@@ -1418,6 +1418,12 @@
           />
           <p v-if="apiKeyHint" class="input-hint">{{ apiKeyHint }}</p>
         </div>
+        <AccountAPIKeyPoolEditor
+          v-model:strategy="apiKeyStrategy"
+          v-model:primary-weight="apiKeyPrimaryWeight"
+          v-model:extras="apiKeyExtras"
+          mode="create"
+        />
 
         <!-- 上游倍率自动探测：全部 API-key 平台可用（所在区块已限定 apikey 类型） -->
         <div
@@ -3945,6 +3951,9 @@ import CnBaseUrlPresets from '@/components/account/CnBaseUrlPresets.vue'
 import OpenCodeGoProtocolRulesEditor from '@/components/account/OpenCodeGoProtocolRulesEditor.vue'
 import HeaderOverrideEditor from '@/components/account/HeaderOverrideEditor.vue'
 import AvailabilityScheduleEditor from '@/components/account/AvailabilityScheduleEditor.vue'
+import AccountAPIKeyPoolEditor from '@/components/account/AccountAPIKeyPoolEditor.vue'
+import type { APIKeyExtraDraft } from '@/components/account/AccountAPIKeyPoolEditor.vue'
+import { applyAPIKeyPool } from '@/utils/apiKeyPool'
 import {
   applyAvailabilityScheduleToExtra,
   validateAvailabilityScheduleRules,
@@ -4162,6 +4171,9 @@ const accountCategory = ref<'oauth-based' | 'apikey' | 'bedrock' | 'service_acco
 const addMethod = ref<AddMethod>('oauth') // For oauth-based: 'oauth' or 'setup-token'
 const apiKeyBaseUrl = ref('https://api.anthropic.com')
 const apiKeyValue = ref('')
+const apiKeyStrategy = ref<'round_robin' | 'weighted'>('round_robin')
+const apiKeyPrimaryWeight = ref(1)
+const apiKeyExtras = ref<APIKeyExtraDraft[]>([])
 const upstreamBillingAutoProbeEnabled = ref(true)
 
 // ── 国产供应商（Kimi / Zhipu / DeepSeek）账号类型、API 协议与端点 ──
@@ -5328,6 +5340,9 @@ const resetForm = () => {
   adaptiveBaseUrls.value = { chat_completions: '', anthropic: '', responses: '' }
   apiKeyBaseUrl.value = 'https://api.anthropic.com'
   apiKeyValue.value = ''
+  apiKeyStrategy.value = 'round_robin'
+  apiKeyPrimaryWeight.value = 1
+  apiKeyExtras.value = []
   upstreamRequestIdHeader.value = ''
   upstreamBillingAutoProbeEnabled.value = true
   editQuotaLimit.value = null
@@ -5802,6 +5817,10 @@ const handleSubmit = async () => {
     appStore.showError(t('admin.accounts.pleaseEnterApiKey'))
     return
   }
+  if (apiKeyExtras.value.some((item) => !item.key.trim())) {
+    appStore.showError(t('admin.accounts.apiKeyPool.keyRequired'))
+    return
+  }
 
   // Determine default base URL based on platform
   const defaultBaseUrl =
@@ -5817,6 +5836,15 @@ const handleSubmit = async () => {
   const credentials: Record<string, unknown> = {
     base_url: apiKeyBaseUrl.value.trim() || defaultBaseUrl,
     api_key: apiKeyValue.value.trim()
+  }
+  const poolExtras = apiKeyExtras.value.filter((item) => item.key.trim())
+  if (poolExtras.length > 0) {
+    applyAPIKeyPool(credentials, {
+      strategy: apiKeyStrategy.value,
+      primaryKey: apiKeyValue.value.trim(),
+      primaryWeight: apiKeyPrimaryWeight.value,
+      extras: poolExtras
+    })
   }
   if (form.platform === 'gemini') {
     credentials.tier_id = geminiTierAIStudio.value

@@ -699,6 +699,21 @@ export default {
       apiKeyRequired: 'API Key *',
       apiKeyPlaceholder: 'sk-ant-api03-...',
       apiKeyHint: '您的 Claude Console API Key',
+      apiKeyPool: {
+        title: '多 Key 调度',
+        hint: '同一账号可配置多把 Key。添加后按轮询或权重选择上游 Key。',
+        add: '添加 Key',
+        remove: '移除',
+        strategy: '调度方式',
+        roundRobin: '轮询',
+        weighted: '按权重',
+        primaryWeight: '主 Key 权重',
+        key: 'Key',
+        label: '备注',
+        weight: '权重',
+        enabled: '启用',
+        keyRequired: '新增的 Key 不能为空'
+      },
       upstreamRequestIdHeader: '上游ID',
       upstreamRequestIdHeaderPlaceholder: '留空不记录',
       upstreamRequestIdHeaderHelp: {
