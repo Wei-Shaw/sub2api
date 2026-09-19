@@ -9,6 +9,7 @@ import (
 	"encoding/binary"
 	"encoding/hex"
 	"encoding/json"
+	"encoding/xml"
 	"errors"
 	"fmt"
 	"image"
@@ -22,11 +23,13 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"regexp"
+	"sort"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/apicompat"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/claude"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/geminicli"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/openai"
@@ -86,6 +89,7 @@ const (
 	defaultGeminiTextTestPrompt  = "hi"
 	defaultGeminiImageTestPrompt = "Generate a cute orange cat astronaut sticker on a clean pastel background."
 	defaultOpenAIImageTestPrompt = "Generate a cute orange cat astronaut sticker on a clean pastel background."
+	defaultOpenAIPelicanPrompt   = "Generate an SVG of a pelican riding a bicycle"
 	defaultGrokImageTestPrompt   = "Generate a cute orange cat astronaut sticker on a clean pastel background."
 	defaultGrokVideoTestPrompt   = "A red ball bouncing once on a white floor, short simple motion."
 	defaultGrokSearchTestQuery   = "xAI Grok"
@@ -329,7 +333,8 @@ func createTestPayload(modelID string) (map[string]any, error) {
 // TestAccountConnection tests an account's connection by sending a test request
 // All account types use full Claude Code client characteristics, only auth header differs
 // modelID is optional - if empty, defaults to claude.DefaultTestModel
-// mode is optional - "compact" routes OpenAI accounts to the /responses/compact probe path
+// mode is optional - "compact" routes OpenAI accounts to the /responses/compact probe path;
+// "pelican" is an extra OpenAI-only SVG intelligence check and does not change default/compact.
 // opts is optional media (image/audio data URLs for real generation / STT).
 func (s *AccountTestService) TestAccountConnection(c *gin.Context, accountID int64, modelID string, prompt string, mode string, opts ...AccountTestOptions) error {
 	ctx := c.Request.Context()
@@ -771,6 +776,9 @@ func (s *AccountTestService) testOpenAIAccountConnection(c *gin.Context, account
 	if mode == AccountTestModeCompact {
 		return s.testOpenAICompactConnection(c, account, testModelID)
 	}
+	if mode == AccountTestModePelican {
+		return s.testOpenAIPelicanConnection(c, account, testModelID)
+	}
 
 	// Route to image generation test if an image model is selected
 	if isOpenAIImageModel(testModelID) {
@@ -944,6 +952,207 @@ func (s *AccountTestService) testOpenAIAccountConnection(c *gin.Context, account
 
 	// Process SSE stream
 	return s.processOpenAIStream(c, resp.Body)
+}
+
+func (s *AccountTestService) testOpenAIPelicanConnection(c *gin.Context, account *Account, testModelID string) error {
+	ctx := c.Request.Context()
+	credentialAccount := account
+	if account.IsCredentialShadow() {
+		resolved, err := resolveCredentialAccount(ctx, s.accountRepo, account)
+		if err != nil {
+			return s.sendErrorAndEnd(c, err.Error())
+		}
+		credentialAccount = resolved
+	}
+
+	var authToken string
+	var apiURL string
+	var isOAuth bool
+	var normalizedBaseURL string
+
+	if credentialAccount.IsOAuth() {
+		isOAuth = true
+		if !credentialAccount.IsOpenAIAgentIdentity() {
+			authToken = credentialAccount.GetOpenAIAccessToken()
+		}
+		if authToken == "" && !credentialAccount.IsOpenAIAgentIdentity() {
+			return s.sendErrorAndEnd(c, "No access token available")
+		}
+		apiURL = chatgptCodexAPIURL
+	} else if credentialAccount.Type == "apikey" {
+		authToken = credentialAccount.GetOpenAIProtocolAPIKey()
+		if authToken == "" {
+			return s.sendErrorAndEnd(c, "No API key available")
+		}
+		baseURL := credentialAccount.GetOpenAIBaseURL()
+		if baseURL == "" {
+			baseURL = "https://api.openai.com"
+		}
+		var err error
+		normalizedBaseURL, err = s.validateUpstreamBaseURL(baseURL)
+		if err != nil {
+			return s.sendErrorAndEnd(c, fmt.Sprintf("Invalid base URL: %s", err.Error()))
+		}
+		if !openai_compat.ShouldUseResponsesAPI(account.Extra) {
+			return s.testOpenAIPelicanChatCompletionsConnection(c, account, testModelID, normalizedBaseURL, authToken)
+		}
+		apiURL = buildOpenAIResponsesURLForPlatform(credentialAccount.Platform, normalizedBaseURL)
+	} else {
+		return s.sendErrorAndEnd(c, fmt.Sprintf("Unsupported account type: %s", account.Type))
+	}
+
+	c.Writer.Header().Set("Content-Type", "text/event-stream")
+	c.Writer.Header().Set("Cache-Control", "no-cache")
+	c.Writer.Header().Set("Connection", "keep-alive")
+	c.Writer.Header().Set("X-Accel-Buffering", "no")
+	c.Writer.Flush()
+
+	upstreamTestModelID := testModelID
+	if isOAuth {
+		upstreamTestModelID = normalizeOpenAIModelForUpstream(credentialAccount, testModelID)
+	}
+	payloadBytes, _ := json.Marshal(createOpenAIPelicanTestPayload(upstreamTestModelID, isOAuth))
+
+	if !agentIdentityTaskRecoveryWasTried(ctx) {
+		s.sendEvent(c, TestEvent{Type: "test_start", Model: testModelID})
+	}
+
+	req, err := http.NewRequestWithContext(ctx, "POST", apiURL, bytes.NewReader(payloadBytes))
+	if err != nil {
+		return s.sendErrorAndEnd(c, "Failed to create request")
+	}
+	req = req.WithContext(WithHTTPUpstreamProfile(req.Context(), HTTPUpstreamProfileOpenAI))
+	req.Header.Set("Content-Type", "application/json")
+	if !isOAuth {
+		applyOpenAICodexProbeHeaders(req.Header)
+	}
+	if credentialAccount.IsOpenAIAgentIdentity() {
+		authHeaders, authErr := buildAgentIdentityAuthenticationHeaders(ctx, s.accountRepo, s.agentIdentityWS, &s.agentIdentityTaskMu, credentialAccount)
+		if authErr != nil {
+			return s.sendErrorAndEnd(c, "Failed to build Agent Identity authentication")
+		}
+		for key, values := range authHeaders {
+			for _, value := range values {
+				req.Header.Add(key, value)
+			}
+		}
+	} else {
+		req.Header.Set("Authorization", "Bearer "+authToken)
+	}
+	if isOAuth {
+		req.Host = "chatgpt.com"
+		req.Header.Set("accept", "text/event-stream")
+		req.Header.Set("OpenAI-Beta", "responses=experimental")
+		canonical := resolveCodexOutboundIdentity("")
+		req.Header.Set("Originator", canonical.originator)
+		if customUA := strings.TrimSpace(credentialAccount.GetOpenAIUserAgent()); customUA != "" {
+			req.Header.Set("User-Agent", customUA)
+		} else {
+			req.Header.Set("User-Agent", canonical.userAgent)
+		}
+		setOpenAIChatGPTAccountHeaders(req.Header, credentialAccount)
+		enforceCodexIdentityHeadersWithUA(req.Header, credentialAccount.GetOpenAIUserAgent())
+	}
+	credentialAccount.ApplyHeaderOverrides(req.Header)
+
+	proxyURL := ""
+	if account.ProxyID != nil && account.Proxy != nil {
+		proxyURL = account.Proxy.URL()
+	}
+	resp, err := s.doOpenAIAccountTestUpstream(req, proxyURL, account, true)
+	if err != nil {
+		return s.sendErrorAndEnd(c, fmt.Sprintf("Request failed: %s", err.Error()))
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	if isOAuth && s.accountRepo != nil {
+		if updates, err := extractOpenAICodexProbeUpdates(resp); err == nil && len(updates) > 0 {
+			_ = s.accountRepo.UpdateExtra(ctx, account.ID, updates)
+			mergeAccountExtra(account, updates)
+		}
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		body = redactAgentIdentitySensitiveBodyForAccount(ctx, s.accountRepo, credentialAccount, body)
+		if !agentIdentityTaskRecoveryWasTried(ctx) && credentialAccount.IsOpenAIAgentIdentity() && isAgentIdentityTaskInvalidHTTPResponse(resp.StatusCode, body) {
+			expectedTaskID := credentialAccount.GetCredential("task_id")
+			if err := ensureAgentIdentityTaskForAccount(ctx, s.accountRepo, s.agentIdentityWS, &s.agentIdentityTaskMu, credentialAccount, expectedTaskID); err != nil {
+				return s.sendErrorAndEnd(c, fmt.Sprintf("Agent Identity task recovery failed: %s", err.Error()))
+			}
+			c.Request = c.Request.WithContext(markAgentIdentityTaskRecoveryTried(ctx))
+			return s.testOpenAIPelicanConnection(c, account, testModelID)
+		}
+		if resp.StatusCode == http.StatusTooManyRequests {
+			s.reconcileOpenAI429State(ctx, account, resp.Header, body)
+		}
+		if resp.StatusCode == http.StatusUnauthorized && s.accountRepo != nil {
+			errMsg := fmt.Sprintf("Authentication failed (401): %s", string(body))
+			_ = s.accountRepo.SetError(ctx, account.ID, errMsg)
+		}
+		return s.sendErrorAndEnd(c, fmt.Sprintf("API returned %d: %s", resp.StatusCode, string(body)))
+	}
+
+	return s.processOpenAIPelicanStream(c, resp.Body)
+}
+
+func (s *AccountTestService) testOpenAIPelicanChatCompletionsConnection(
+	c *gin.Context,
+	account *Account,
+	testModelID string,
+	normalizedBaseURL string,
+	authToken string,
+) error {
+	ctx := c.Request.Context()
+	apiURL := buildOpenAIChatCompletionsURL(normalizedBaseURL)
+
+	c.Writer.Header().Set("Content-Type", "text/event-stream")
+	c.Writer.Header().Set("Cache-Control", "no-cache")
+	c.Writer.Header().Set("Connection", "keep-alive")
+	c.Writer.Header().Set("X-Accel-Buffering", "no")
+	c.Writer.Flush()
+
+	payload := createOpenAIChatCompletionsTestPayload(testModelID, defaultOpenAIPelicanPrompt)
+	payload["reasoning_effort"] = accountTestReasoningEffort
+	payloadBytes, _ := json.Marshal(payload)
+
+	s.sendEvent(c, TestEvent{Type: "test_start", Model: testModelID})
+	s.sendEvent(c, TestEvent{Type: "status", Text: "正在通过 /v1/chat/completions 测试连接"})
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, apiURL, bytes.NewReader(payloadBytes))
+	if err != nil {
+		return s.sendErrorAndEnd(c, "Failed to create Chat Completions request")
+	}
+	req = req.WithContext(WithHTTPUpstreamProfile(req.Context(), HTTPUpstreamProfileOpenAI))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Accept", "text/event-stream")
+	req.Header.Set("Authorization", "Bearer "+authToken)
+	account.ApplyHeaderOverrides(req.Header)
+	applyOpenCodeSessionHeader(c, account, apiURL, req.Header, payloadBytes)
+
+	proxyURL := ""
+	if account.ProxyID != nil && account.Proxy != nil {
+		proxyURL = account.Proxy.URL()
+	}
+	resp, err := s.httpUpstream.DoWithTLS(req, proxyURL, account.ID, account.Concurrency, s.tlsFPProfileService.ResolveTLSProfile(account))
+	if err != nil {
+		return s.sendErrorAndEnd(c, fmt.Sprintf("Chat Completions API (/v1/chat/completions) request failed: %s", err.Error()))
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		if resp.StatusCode == http.StatusTooManyRequests {
+			s.reconcileOpenAI429State(ctx, account, resp.Header, body)
+		}
+		if resp.StatusCode == http.StatusUnauthorized && s.accountRepo != nil {
+			errMsg := fmt.Sprintf("Chat Completions authentication failed (401): %s", string(body))
+			_ = s.accountRepo.SetError(ctx, account.ID, errMsg)
+		}
+		return s.sendErrorAndEnd(c, fmt.Sprintf("Chat Completions API (/v1/chat/completions) returned %d: %s", resp.StatusCode, string(body)))
+	}
+
+	return s.processOpenAIPelicanChatCompletionsStream(c, resp.Body)
 }
 
 // testGrokAccountConnection routes Grok admin connectivity tests by explicit mode first,
@@ -2969,6 +3178,351 @@ func (s *AccountTestService) processOpenAIStream(c *gin.Context, body io.Reader)
 			return s.sendErrorAndEnd(c, errorMsg)
 		}
 	}
+}
+
+func createOpenAIPelicanTestPayload(modelID string, isOAuth bool) map[string]any {
+	payload := createOpenAITestPayload(modelID, isOAuth)
+	payload["reasoning"] = map[string]any{"effort": accountTestReasoningEffort}
+	payload["input"] = []map[string]any{
+		{
+			"role": "user",
+			"content": []map[string]any{
+				{
+					"type": "input_text",
+					"text": defaultOpenAIPelicanPrompt,
+				},
+			},
+		},
+	}
+	return payload
+}
+
+func (s *AccountTestService) processOpenAIPelicanStream(c *gin.Context, body io.Reader) error {
+	scanner := newAccountTestPelicanScanner(body)
+	var output accountTestPelicanText
+
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		if line == "" || !sseDataPrefix.MatchString(line) {
+			continue
+		}
+
+		jsonStr := sseDataPrefix.ReplaceAllString(line, "")
+		if jsonStr == "[DONE]" {
+			return s.sendErrorAndEnd(c, "Stream ended before response.completed")
+		}
+
+		var data struct {
+			apicompat.ResponsesStreamEvent
+			Error   *apicompat.ResponsesError `json:"error"`
+			Message string                    `json:"message"`
+			Text    *string                   `json:"text"`
+		}
+		if err := json.Unmarshal([]byte(jsonStr), &data); err != nil {
+			return s.sendErrorAndEnd(c, "Invalid Pelican Responses stream: expected JSON data")
+		}
+
+		switch data.Type {
+		case "response.output_text.delta", "response.output_text.done":
+			text := data.Delta
+			done := data.Type == "response.output_text.done"
+			if done {
+				if data.Text == nil {
+					continue
+				}
+				text = *data.Text
+			}
+			if err := output.update([2]int{data.OutputIndex, data.ContentIndex}, text, done); err != nil {
+				return s.sendErrorAndEnd(c, err.Error())
+			}
+		case "response.completed", "response.done":
+			if response := data.Response; response != nil {
+				if response.Error != nil {
+					return s.sendErrorAndEnd(c, "OpenAI response failed: "+response.Error.Message)
+				}
+				if response.IncompleteDetails != nil || (response.Status != "" && response.Status != "completed") {
+					return s.sendErrorAndEnd(c, "OpenAI response did not complete: "+response.Status)
+				}
+				if response.Output != nil {
+					// The final output is authoritative and may use different indices
+					// from streamed parts. Replace it wholesale, never append it.
+					output = accountTestPelicanText{}
+					for i, item := range response.Output {
+						if item.Type != "message" {
+							continue
+						}
+						if item.Status != "" && item.Status != "completed" {
+							return s.sendErrorAndEnd(c, "OpenAI output message did not complete: "+item.Status)
+						}
+						for j, part := range item.Content {
+							if part.Type == "output_text" {
+								if err := output.update([2]int{i, j}, part.Text, true); err != nil {
+									return s.sendErrorAndEnd(c, err.Error())
+								}
+							}
+						}
+					}
+				}
+			}
+			return s.sendSVGTestResult(c, output.String())
+		case "response.failed":
+			errorMsg := "OpenAI response failed"
+			if data.Response != nil && data.Response.Error != nil && data.Response.Error.Message != "" {
+				errorMsg = data.Response.Error.Message
+			}
+			return s.sendErrorAndEnd(c, errorMsg)
+		case "response.incomplete":
+			return s.sendErrorAndEnd(c, "OpenAI response incomplete")
+		case "error":
+			errorMsg := data.Message
+			if data.Error != nil && data.Error.Message != "" {
+				errorMsg = data.Error.Message
+			}
+			if errorMsg == "" {
+				errorMsg = "Unknown error"
+			}
+			return s.sendErrorAndEnd(c, errorMsg)
+		}
+	}
+	if err := scanner.Err(); err != nil {
+		return s.sendErrorAndEnd(c, fmt.Sprintf("Stream read error: %s", err.Error()))
+	}
+	return s.sendErrorAndEnd(c, "Stream ended before response.completed")
+}
+
+func (s *AccountTestService) processOpenAIPelicanChatCompletionsStream(c *gin.Context, body io.Reader) error {
+	scanner := newAccountTestPelicanScanner(body)
+	seenJSON := false
+	seenFinish := false
+	var output accountTestPelicanText
+
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		if line == "" || !sseDataPrefix.MatchString(line) {
+			continue
+		}
+
+		jsonStr := sseDataPrefix.ReplaceAllString(line, "")
+		if jsonStr == "[DONE]" {
+			return s.sendSVGTestResult(c, output.String())
+		}
+
+		var data map[string]any
+		if err := json.Unmarshal([]byte(jsonStr), &data); err != nil {
+			return s.sendErrorAndEnd(c, "Invalid Chat Completions response from /v1/chat/completions: expected JSON data")
+		}
+		seenJSON = true
+
+		if errData, ok := data["error"].(map[string]any); ok {
+			errorMsg := "Chat Completions API (/v1/chat/completions) returned an error"
+			if msg, ok := errData["message"].(string); ok && msg != "" {
+				errorMsg = msg
+			}
+			return s.sendErrorAndEnd(c, fmt.Sprintf("Chat Completions API (/v1/chat/completions) error: %s", errorMsg))
+		}
+
+		choices, ok := data["choices"].([]any)
+		if !ok {
+			continue
+		}
+		for _, choiceValue := range choices {
+			choice, ok := choiceValue.(map[string]any)
+			if !ok {
+				continue
+			}
+			if delta, ok := choice["delta"].(map[string]any); ok {
+				if text, ok := delta["content"].(string); ok && text != "" {
+					if err := output.update([2]int{}, text, false); err != nil {
+						return s.sendErrorAndEnd(c, err.Error())
+					}
+				}
+			}
+			if message, ok := choice["message"].(map[string]any); ok {
+				if text, ok := message["content"].(string); ok && text != "" {
+					if err := output.update([2]int{}, text, true); err != nil {
+						return s.sendErrorAndEnd(c, err.Error())
+					}
+				}
+			}
+			if finishReason, ok := choice["finish_reason"].(string); ok && finishReason != "" {
+				if finishReason != "stop" {
+					return s.sendErrorAndEnd(c, "Chat Completions response did not complete: "+finishReason)
+				}
+				seenFinish = true
+			}
+		}
+	}
+	if err := scanner.Err(); err != nil {
+		return s.sendErrorAndEnd(c, fmt.Sprintf("Chat Completions stream read error from /v1/chat/completions: %s", err.Error()))
+	}
+	if seenFinish {
+		return s.sendSVGTestResult(c, output.String())
+	}
+	if seenJSON {
+		return s.sendErrorAndEnd(c, "Chat Completions stream from /v1/chat/completions ended before [DONE]")
+	}
+	return s.sendErrorAndEnd(c, "Invalid Chat Completions response from /v1/chat/completions: expected SSE JSON data")
+}
+
+const (
+	maxAccountTestSVGBytes = 2 << 20
+	// Allow surrounding model prose while bounding both decoded text and SSE
+	// lines (JSON can encode each text byte as a six-byte Unicode escape).
+	maxAccountTestPelicanTextBytes = 2 * maxAccountTestSVGBytes
+	maxAccountTestPelicanLineBytes = 6*maxAccountTestPelicanTextBytes + (64 << 10)
+	maxAccountTestPelicanTextParts = 1024
+)
+
+func newAccountTestPelicanScanner(body io.Reader) *bufio.Scanner {
+	scanner := bufio.NewScanner(body)
+	scanner.Buffer(make([]byte, 4096), maxAccountTestPelicanLineBytes)
+	return scanner
+}
+
+type accountTestPelicanText struct {
+	parts map[[2]int]*strings.Builder
+	size  int
+}
+
+func (o *accountTestPelicanText) update(key [2]int, text string, replace bool) error {
+	part := o.parts[key]
+	size := o.size + len(text)
+	if replace && part != nil {
+		size -= part.Len()
+	}
+	if size > maxAccountTestPelicanTextBytes {
+		return errors.New("model response text exceeded the 4 MiB limit")
+	}
+	if part == nil {
+		if text == "" {
+			return nil
+		}
+		if len(o.parts) >= maxAccountTestPelicanTextParts {
+			return errors.New("model response contained too many text parts")
+		}
+		if o.parts == nil {
+			o.parts = make(map[[2]int]*strings.Builder)
+		}
+		part = &strings.Builder{}
+		o.parts[key] = part
+	}
+	if replace {
+		part.Reset()
+	}
+	part.WriteString(text)
+	o.size = size
+	return nil
+}
+
+func (o *accountTestPelicanText) String() string {
+	keys := make([][2]int, 0, len(o.parts))
+	for key := range o.parts {
+		keys = append(keys, key)
+	}
+	sort.Slice(keys, func(i, j int) bool {
+		if keys[i][0] != keys[j][0] {
+			return keys[i][0] < keys[j][0]
+		}
+		return keys[i][1] < keys[j][1]
+	})
+	var text strings.Builder
+	text.Grow(o.size)
+	for _, key := range keys {
+		text.WriteString(o.parts[key].String())
+	}
+	return text.String()
+}
+
+func extractAccountTestSVG(text string) (string, error) {
+	start := -1
+	for offset := 0; offset < len(text); {
+		i := strings.IndexByte(text[offset:], '<')
+		if i < 0 {
+			break
+		}
+		i += offset
+		candidate := text[i:]
+		terminator := ""
+		switch {
+		case strings.HasPrefix(candidate, "<!--"):
+			terminator = "-->"
+		case strings.HasPrefix(candidate, "<![CDATA["):
+			terminator = "]]>"
+		case strings.HasPrefix(candidate, "<svg") &&
+			(len(candidate) == 4 || strings.ContainsRune(" \t\r\n/>", rune(candidate[4]))):
+			start = i
+		}
+		if start >= 0 {
+			break
+		}
+		if terminator != "" {
+			end := strings.Index(candidate, terminator)
+			if end < 0 {
+				break
+			}
+			offset = i + end + len(terminator)
+		} else {
+			offset = i + 1
+		}
+	}
+	if start == -1 {
+		return "", errors.New("model response did not contain an SVG")
+	}
+
+	candidate := text[start:]
+	decoder := xml.NewDecoder(strings.NewReader(candidate[:min(len(candidate), maxAccountTestSVGBytes+1)]))
+	depth := 0
+	for {
+		token, err := decoder.Token()
+		if decoder.InputOffset() > maxAccountTestSVGBytes {
+			return "", errors.New("model response SVG exceeded the 2 MiB limit")
+		}
+		if err != nil {
+			if errors.Is(err, io.EOF) || strings.Contains(err.Error(), "unexpected EOF") {
+				return "", errors.New("model response contained an incomplete SVG")
+			}
+			return "", fmt.Errorf("model response contained an invalid SVG: %w", err)
+		}
+		switch token := token.(type) {
+		case xml.StartElement:
+			if depth == 0 && (token.Name.Local != "svg" || (token.Name.Space != "" && token.Name.Space != "http://www.w3.org/2000/svg")) {
+				return "", errors.New("model response contained an invalid SVG root")
+			}
+			attributes := make(map[xml.Name]struct{}, len(token.Attr))
+			for _, attr := range token.Attr {
+				if _, exists := attributes[attr.Name]; exists {
+					return "", errors.New("model response contained an invalid SVG: duplicate attribute")
+				}
+				attributes[attr.Name] = struct{}{}
+			}
+			depth++
+		case xml.EndElement:
+			depth--
+			if depth == 0 {
+				return candidate[:int(decoder.InputOffset())], nil
+			}
+		case xml.Directive:
+			return "", errors.New("model response contained an invalid SVG: unexpected XML directive")
+		case xml.ProcInst:
+			if strings.EqualFold(token.Target, "xml") {
+				return "", errors.New("model response contained an invalid SVG: unexpected XML declaration")
+			}
+		}
+	}
+}
+
+func (s *AccountTestService) sendSVGTestResult(c *gin.Context, text string) error {
+	svg, err := extractAccountTestSVG(text)
+	if err != nil {
+		return s.sendErrorAndEnd(c, err.Error())
+	}
+	s.sendEvent(c, TestEvent{
+		Type:     "image",
+		ImageURL: "data:image/svg+xml;base64," + base64.StdEncoding.EncodeToString([]byte(svg)),
+		MimeType: "image/svg+xml",
+	})
+	s.sendEvent(c, TestEvent{Type: "test_complete", Success: true})
+	return nil
 }
 
 // testOpenAIImageAPIKey tests OpenAI image generation using an API Key account.

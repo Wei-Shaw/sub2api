@@ -326,6 +326,21 @@
               @usage-loaded="handleAccountUsageLoaded(row.id, $event)"
             />
           </template>
+          <template #header-performance="{ column }">
+            <div class="flex items-center">
+              <span>{{ column.label }}</span>
+              <HelpTooltip :content="t('admin.accounts.performance.hint')" width-class="w-80" />
+            </div>
+          </template>
+          <template #cell-performance="{ row }">
+            <AccountPerformanceCell
+              :stats="performanceSnapshot?.stats[String(row.id)] ?? null"
+              :window-start="performanceSnapshot?.window_start"
+              :window-end="performanceSnapshot?.window_end"
+              :loading="performanceLoading"
+              :error="performanceError"
+            />
+          </template>
           <template #cell-proxy="{ row }">
             <div class="flex flex-col gap-1">
               <div v-if="row.proxy" class="flex items-center gap-2">
@@ -487,11 +502,12 @@
 
 <script setup lang="ts">
 import { ref, reactive, computed, onMounted, onUnmounted, toRaw, watch } from 'vue'
-import { useIntervalFn } from '@vueuse/core'
+import { useDocumentVisibility, useIntervalFn } from '@vueuse/core'
 import { useI18n } from 'vue-i18n'
 import { useAppStore } from '@/stores/app'
 import { useAuthStore } from '@/stores/auth'
 import { adminAPI } from '@/api/admin'
+import type { BatchAccountPerformanceResponse } from '@/api/admin/accounts'
 import { useTableLoader } from '@/composables/useTableLoader'
 import { useSwipeSelect, type SwipeSelectVirtualContext } from '@/composables/useSwipeSelect'
 import { useTableSelection } from '@/composables/useTableSelection'
@@ -517,6 +533,7 @@ import type { SelectOption } from '@/components/common/Select.vue'
 import AccountStatusIndicator from '@/components/account/AccountStatusIndicator.vue'
 import AccountUsageCell from '@/components/account/AccountUsageCell.vue'
 import AccountTodayStatsCell from '@/components/account/AccountTodayStatsCell.vue'
+import AccountPerformanceCell from '@/components/account/AccountPerformanceCell.vue'
 import AccountGroupsCell from '@/components/account/AccountGroupsCell.vue'
 import AccountCapacityCell from '@/components/account/AccountCapacityCell.vue'
 import UpstreamBillingRateCell from '@/components/account/UpstreamBillingRateCell.vue'
@@ -1090,6 +1107,74 @@ const {
     sort_by: sortState.sort_by,
     sort_order: sortState.sort_order
   }
+})
+
+const performanceSnapshot = ref<BatchAccountPerformanceResponse | null>(null)
+const performanceLoading = ref(false)
+const performanceError = ref(false)
+const documentVisibility = useDocumentVisibility()
+let performanceController: AbortController | null = null
+
+const canRefreshPerformance = () =>
+  documentVisibility.value === 'visible' &&
+  !hiddenColumns.has('performance') &&
+  !loading.value &&
+  accounts.value.length > 0
+
+const refreshPerformanceBatch = async () => {
+  if (!canRefreshPerformance() || performanceController) return
+  const controller = new AbortController()
+  performanceController = controller
+  performanceLoading.value = true
+  try {
+    const snapshot = await adminAPI.accounts.getBatchPerformance(
+      accounts.value.map(account => account.id),
+      { signal: controller.signal }
+    )
+    if (controller.signal.aborted) return
+    performanceSnapshot.value = snapshot
+    performanceError.value = false
+  } catch (error) {
+    if (!controller.signal.aborted) {
+      performanceError.value = true
+      console.error('Failed to load passive account performance:', error)
+    }
+  } finally {
+    if (performanceController === controller) {
+      performanceController = null
+      performanceLoading.value = false
+    }
+  }
+}
+
+// Refresh only the local usage-log statistics, independently of account/credential refreshes.
+const { pause: pausePerformance, resume: resumePerformance } = useIntervalFn(
+  refreshPerformanceBatch,
+  30_000,
+  { immediate: false }
+)
+
+watch(
+  [() => accounts.value.map(account => account.id).join(','), () => hiddenColumns.has('performance'), loading, documentVisibility],
+  ([ids], [previousIds]) => {
+    pausePerformance()
+    performanceController?.abort()
+    performanceController = null
+    performanceLoading.value = false
+    if (ids !== previousIds) {
+      performanceSnapshot.value = null
+      performanceError.value = false
+    }
+    if (canRefreshPerformance()) {
+      void refreshPerformanceBatch()
+      resumePerformance()
+    }
+  }
+)
+
+onUnmounted(() => {
+  pausePerformance()
+  performanceController?.abort()
 })
 
 const {
@@ -1794,6 +1879,7 @@ const allColumns = computed(() => {
     c.push({ key: 'groups', label: t('admin.accounts.columns.groups'), sortable: false })
   }
   c.push({ key: 'usage', label: t('admin.accounts.columns.usageWindows'), sortable: false })
+  c.push({ key: 'performance', label: t('admin.accounts.columns.performance'), sortable: false })
   c.push(
     { key: 'proxy', label: t('admin.accounts.columns.proxy'), sortable: false },
     { key: 'priority', label: t('admin.accounts.columns.priority'), sortable: true },

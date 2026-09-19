@@ -237,11 +237,28 @@ export default {
         todayStats: 'Today Stats',
         groups: 'Groups',
         usageWindows: 'Usage Windows',
+        performance: 'Last 1h Performance',
         proxy: 'Proxy',
         lastUsed: 'Last Used',
         createdAt: 'Created',
         expiresAt: 'Expires At',
         actions: 'Actions'
+      },
+      performance: {
+        ttft: 'TTFT',
+        tps: 'Output',
+        cache: 'Cache',
+        noUsage: 'No usage in the last hour',
+        fewSamples: 'Few samples',
+        failed: 'Statistics unavailable',
+        stale: 'Refresh failed; showing old data',
+        hint: 'Real usage logs from the rolling last 60 minutes, not active probes. Refreshes every 30 seconds while this column is visible; log ingestion and short-lived caching may delay updates.',
+        window: 'Window: {start} to {end}',
+        requests: 'Usage records: {count} (not a success count)',
+        samples: '{metric} valid samples: {count}',
+        lastRequest: 'Latest record: {time}',
+        timingHint: 'TTFT is the mean streaming first-response latency. TPS is total output tokens divided by total post-first-response time; transport overhead and interrupted requests may be included. Models are combined, so compare with care.',
+        cacheHint: 'Cache rate is logged cache-read tokens divided by all input tokens, including cache creation and reads, not a request hit rate. Forced cache billing or missing upstream usage can affect it.'
       },
       schedulerScore: {
         baseShort: 'Base',
@@ -699,6 +716,9 @@ export default {
         testMode: 'Test mode',
         testModeDefault: 'Default request',
         testModeCompact: 'Compact probe',
+        testModePelican: 'Pelican intelligence test',
+        pelicanTestMode: 'Prompt: "Generate an SVG of a pelican riding a bicycle"',
+        sendingPelicanRequest: 'Asking the model to generate a pelican riding a bicycle as SVG...',
         modelRestrictionDisabledByPassthrough: 'Automatic passthrough is enabled: model whitelist/mapping will not take effect.',
       },
       grok: {
