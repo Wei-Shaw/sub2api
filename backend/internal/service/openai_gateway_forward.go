@@ -633,8 +633,13 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 	// ollama.com 以 400 拒绝）。在 `!isCodexCLI` 归一化块之后独立调用：非 Codex 时
 	// 位于平台字段归一化之后，不跳过原有平台 switch（patch 按追加顺序应用，set 在
 	// 先前的 delete/set 之后生效）；Codex 请求不做归一化，直接按 body 现值判定。
-	if clampedCap, ok := ollamaCloudResponsesMaxOutputTokensClamp(account, upstreamModel, body); ok {
+	// 生效值来自 max_tokens（无 max_output_tokens 的非 openai 平台）时，
+	// markPatchDelete("max_tokens") 与第 601 行一样按追加顺序在 set 之后应用。
+	if clampedCap, ok, sourceField := ollamaCloudResponsesMaxOutputTokensClamp(account, upstreamModel, body); ok {
 		markPatchSet("max_output_tokens", clampedCap)
+		if sourceField == "max_tokens" {
+			markPatchDelete("max_tokens")
+		}
 	}
 	if wsDecision.Transport != OpenAIUpstreamTransportResponsesWebsocketV2 &&
 		!account.IsOpenAIApiKey() && gjson.GetBytes(body, "previous_response_id").Exists() {
@@ -1364,6 +1369,18 @@ func shouldForwardOpenAIResponsesViaRawChatCompletions(account *Account) bool {
 			return false
 		}
 	}
+	if account.IsOllamaCloud() {
+		// Ollama Cloud 无 protocol_rules：显式 CC 锁 CC，adaptive / responses
+		// 走平台原生 Responses 端点（探针 Extra 不得把协议决策带偏）。
+		switch account.GetAPIProtocol() {
+		case APIProtocolChatCompletions:
+			return true
+		case APIProtocolAdaptive, APIProtocolResponses:
+			return !account.SupportsNativeCNResponses()
+		default:
+			return false
+		}
+	}
 	return !openai_compat.ShouldUseResponsesAPI(account.Extra)
 }
 
@@ -1387,6 +1404,11 @@ func (s *OpenAIGatewayService) buildUpstreamRequest(ctx context.Context, c *gin.
 			baseURL = account.GetCNProtocolBaseURL(APIProtocolResponses)
 		}
 		if baseURL == "" {
+			if account.IsMultiProtocolAPIKey() {
+				// 多协议网关缺 base 时必须显式失败：回落官方域名会把第三方 key
+				// 明文发到 api.openai.com。
+				return nil, fmt.Errorf("account %d has no openai responses base url", account.ID)
+			}
 			targetURL = openaiPlatformAPIURL
 		} else {
 			validatedURL, err := s.validateUpstreamBaseURL(baseURL)
@@ -1400,9 +1422,22 @@ func (s *OpenAIGatewayService) buildUpstreamRequest(ctx context.Context, c *gin.
 	}
 	targetURL = appendOpenAIResponsesRequestPathSuffix(targetURL, openAIResponsesRequestPathSuffix(c))
 
-	// DeepSeek / Kimi 原生 Responses 端点为无状态实现：强制 store=false、清除
-	// previous_response_id，避免携带状态字段被上游拒绝。
-	body = normalizeDeepSeekResponsesRequestBody(account, body)
+	// DeepSeek / Kimi / Ollama Cloud 原生 Responses 端点为无状态实现：强制
+	// store=false、清除 previous_response_id；携带 conversation 时显式 400。
+	body, err := normalizeDeepSeekResponsesRequestBody(account, body)
+	if err != nil {
+		var statelessErr *openAIResponsesStatelessFieldError
+		if errors.As(err, &statelessErr) {
+			respondOpenAIStatelessFieldError(c, statelessErr)
+		}
+		return nil, err
+	}
+
+	// Ollama Cloud 请求期定价预检：未定价模型在构造上游请求（即任何上游 I/O）之前
+	// 显式 400，且 400 已由 helper 写出。非 UpstreamFailoverError ⇒ 不换号、不写账号处置。
+	if err := s.enforceOllamaCloudRequestPricingPreflight(ctx, c, account, body); err != nil {
+		return nil, err
+	}
 
 	req, err := http.NewRequestWithContext(ctx, "POST", targetURL, bytes.NewReader(body))
 	if err != nil {

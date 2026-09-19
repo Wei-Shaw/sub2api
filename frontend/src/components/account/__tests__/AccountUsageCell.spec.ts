@@ -240,6 +240,81 @@ describe('AccountUsageCell', () => {
     expect(wrapper.find('[data-test="embedded-ollama"]').exists()).toBe(false)
   })
 
+  // ollama_cloud 本体平台：eligible 由后端下发，api key 账号走通用 apikey 根
+  // 分支（OllamaCloudUsageCell + today-stats），不进滚动用量窗口根分支，也不
+  // 拉取通用 /usage（后端对 apikey 账号一律拒绝）。
+  it('ollama_cloud apikey eligible 渲染 OllamaCloudUsageCell 且不经 /usage 拉取', async () => {
+    const wrapper = mount(AccountUsageCell, {
+      props: {
+        account: makeAccount({
+          id: 9100,
+          platform: 'ollama_cloud',
+          type: 'apikey',
+          ollama_cloud_usage: makeOllamaUsage(9100)
+        })
+      },
+      global: {
+        stubs: { ...cnUsageCellStubs, UsageProgressBar: true, AccountQuotaInfo: true }
+      }
+    })
+
+    await flushPromises()
+
+    expect(wrapper.find('[data-test="embedded-ollama"]').exists()).toBe(true)
+    expect(wrapper.find('[data-test="cn-quota-cell"]').exists()).toBe(false)
+    expect(wrapper.find('[data-test="cn-balance-cell"]').exists()).toBe(false)
+    expect(getUsage).not.toHaveBeenCalled()
+  })
+
+  it('ollama_cloud apikey 账号（无 ollama_cloud_usage）渲染占位而非 CN quota 格', async () => {
+    const wrapper = mount(AccountUsageCell, {
+      props: {
+        account: makeAccount({
+          id: 9101,
+          platform: 'ollama_cloud',
+          type: 'apikey',
+          ollama_cloud_usage: undefined
+        })
+      },
+      global: {
+        stubs: { ...cnUsageCellStubs, UsageProgressBar: true, AccountQuotaInfo: true }
+      }
+    })
+
+    await flushPromises()
+
+    expect(wrapper.find('[data-test="embedded-ollama"]').exists()).toBe(false)
+    expect(wrapper.find('[data-test="cn-quota-cell"]').exists()).toBe(false)
+    expect(wrapper.find('[data-test="cn-balance-cell"]').exists()).toBe(false)
+    expect(getUsage).not.toHaveBeenCalled()
+  })
+
+  // 不合格（如反代 base_url）：后端也下发 state（带 eligible_reason），cell
+  // 照常挂载以展示可解释提示，而不是空白占位。
+  it('ollama_cloud apikey 账号（eligible=false）仍渲染 OllamaCloudUsageCell 展示原因', async () => {
+    const wrapper = mount(AccountUsageCell, {
+      props: {
+        account: makeAccount({
+          id: 9102,
+          platform: 'ollama_cloud',
+          type: 'apikey',
+          ollama_cloud_usage: makeOllamaUsage(9102, {
+            eligible: false,
+            eligible_reason: 'unsupported_base_url'
+          })
+        })
+      },
+      global: {
+        stubs: { ...cnUsageCellStubs, UsageProgressBar: true, AccountQuotaInfo: true }
+      }
+    })
+
+    await flushPromises()
+
+    expect(wrapper.find('[data-test="embedded-ollama"]').exists()).toBe(true)
+    expect(getUsage).not.toHaveBeenCalled()
+  })
+
   it('Antigravity 图片用量会聚合新旧 image 模型', async () => {
     getUsage.mockResolvedValue({
       antigravity_quota: {

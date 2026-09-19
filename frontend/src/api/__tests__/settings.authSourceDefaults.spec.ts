@@ -5,18 +5,15 @@ import {
   buildAuthSourceDefaultsState,
   normalizePlatformQuotasMap,
   sanitizePlatformQuotasMap,
+  QUOTA_PLATFORMS,
   type UpdateSettingsRequest,
   type DefaultPlatformQuotasMap,
 } from "@/api/admin/settings";
 
-/** 全 null 的 5 平台 map，用于断言归一化默认值 */
-const allNullQuotas: DefaultPlatformQuotasMap = {
-  anthropic: { daily: null, weekly: null, monthly: null },
-  openai:    { daily: null, weekly: null, monthly: null },
-  gemini:    { daily: null, weekly: null, monthly: null },
-  antigravity: { daily: null, weekly: null, monthly: null },
-  grok: { daily: null, weekly: null, monthly: null },
-}
+/** 全 null 的全平台 map，用于断言归一化默认值 */
+const allNullQuotas: DefaultPlatformQuotasMap = Object.fromEntries(
+  QUOTA_PLATFORMS.map((p) => [p, { daily: null, weekly: null, monthly: null }] as const),
+);
 
 describe("admin settings auth source defaults helpers", () => {
   it("builds auth source defaults state from flat settings fields", () => {
@@ -240,12 +237,45 @@ describe("normalizePlatformQuotasMap", () => {
     expect(result.grok).toEqual({ daily: null, weekly: null, monthly: null });
   });
 
-  it("无参数时返回全 5 平台全 null", () => {
+  it("无参数时返回全平台（对齐后端 AllowedQuotaPlatforms）全 null", () => {
     const result = normalizePlatformQuotasMap();
-    expect(Object.keys(result)).toHaveLength(5);
+    expect(Object.keys(result)).toHaveLength(QUOTA_PLATFORMS.length);
     for (const v of Object.values(result)) {
       expect(v).toEqual({ daily: null, weekly: null, monthly: null });
     }
+  });
+
+  it("预置 ollama_cloud 配额在 normalize 后保留（不再被旧 5 平台列表丢弃）", () => {
+    const result = normalizePlatformQuotasMap({
+      ollama_cloud: { daily: 3, weekly: 30, monthly: 300 },
+      kimi:         { daily: 1, weekly: null, monthly: null },
+      zhipu:        { daily: null, weekly: 2, monthly: null },
+      deepseek:     { daily: null, weekly: null, monthly: 4 },
+      minimax:      { daily: 0.5, weekly: null, monthly: null },
+      opencode_go:  { daily: null, weekly: null, monthly: null },
+    });
+    expect(result.ollama_cloud).toEqual({ daily: 3, weekly: 30, monthly: 300 });
+    expect(result.kimi).toEqual({ daily: 1, weekly: null, monthly: null });
+    expect(result.zhipu).toEqual({ daily: null, weekly: 2, monthly: null });
+    expect(result.deepseek).toEqual({ daily: null, weekly: null, monthly: 4 });
+    expect(result.minimax).toEqual({ daily: 0.5, weekly: null, monthly: null });
+    expect(result.opencode_go).toEqual({ daily: null, weekly: null, monthly: null });
+  });
+
+  it("保留未知平台 key（后端新加、前端未收录）", () => {
+    const result = normalizePlatformQuotasMap({
+      anthropic: { daily: 5, weekly: null, monthly: null },
+      some_future_platform: { daily: 7, weekly: 8, monthly: 9 },
+    } as DefaultPlatformQuotasMap);
+    expect(result.some_future_platform).toEqual({ daily: 7, weekly: 8, monthly: 9 });
+    expect(result.anthropic).toEqual({ daily: 5, weekly: null, monthly: null });
+  });
+
+  it("未知平台的非 number 值归一化为 null", () => {
+    const result = normalizePlatformQuotasMap({
+      some_future_platform: { daily: "50" as unknown as number, weekly: undefined as unknown as number, monthly: null },
+    } as DefaultPlatformQuotasMap);
+    expect(result.some_future_platform).toEqual({ daily: null, weekly: null, monthly: null });
   });
 
   it("非 number 类型的值归一化为 null", () => {
@@ -288,9 +318,23 @@ describe("sanitizePlatformQuotasMap", () => {
     expect(result.gemini?.weekly).toBe(null);
   });
 
+  it("预置 ollama_cloud 配额清洗后保留（提交 payload 不再丢行）", () => {
+    const result = sanitizePlatformQuotasMap({
+      ollama_cloud: { daily: 3, weekly: 0, monthly: null },
+    });
+    expect(result.ollama_cloud).toEqual({ daily: 3, weekly: 0, monthly: null });
+  });
+
+  it("保留未知平台 key 且同样清洗其值", () => {
+    const result = sanitizePlatformQuotasMap({
+      some_future_platform: { daily: 7, weekly: -3, monthly: "x" as unknown as number },
+    } as DefaultPlatformQuotasMap);
+    expect(result.some_future_platform).toEqual({ daily: 7, weekly: null, monthly: null });
+  });
+
   it("缺失平台填充为全 null", () => {
     const result = sanitizePlatformQuotasMap({});
-    expect(Object.keys(result)).toHaveLength(5);
+    expect(Object.keys(result)).toHaveLength(QUOTA_PLATFORMS.length);
     for (const v of Object.values(result)) {
       expect(v).toEqual({ daily: null, weekly: null, monthly: null });
     }

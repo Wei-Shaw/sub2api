@@ -836,6 +836,69 @@ func (s *BillingService) initFallbackPricing() {
 		SupportsCacheBreakdown:  false,
 	}
 
+	// ---- Ollama Cloud 托管模型（ollama 独占，别家无同名条目）----
+	// Source: https://ollama.com/pricing（官方定价页，2026-09-12 检索）。
+	// 与别家同名的 ollama 模型（glm-5.3 / kimi-k3 / minimax-m3 / deepseek-v4-pro
+	// 等）复用上方既有同名条目，不在此重复。键名用 /v1/models 的 API id 形态；
+	// 家族匹配规则见 getFallbackPricing 的 Ollama 分支。Ollama 无 priority tier
+	// 公布价，*Priority 字段一律不填；未列出的 ollama 模型名保持 nil（白名单
+	// 语义，getFallbackPricing 末尾 return nil），显式拒绝而非误配。
+	// gpt-oss 两档（120b / 20b）价差约 4 倍，匹配必须按完整 tag 前缀分开，
+	// 禁止裸 "gpt-oss" 前缀（见 getFallbackPricing）。
+	s.fallbackPrices["gpt-oss:120b"] = &ModelPricing{
+		InputPricePerToken:     0.15e-6,  // $0.15 per MTok
+		OutputPricePerToken:    0.60e-6,  // $0.60 per MTok
+		CacheReadPricePerToken: 0.014e-6, // $0.014 per MTok (cache hit)
+		SupportsCacheBreakdown: false,
+	}
+	s.fallbackPrices["gpt-oss:20b"] = &ModelPricing{
+		InputPricePerToken:     0.07e-6,  // $0.07 per MTok
+		OutputPricePerToken:    0.30e-6,  // $0.30 per MTok
+		CacheReadPricePerToken: 0.035e-6, // $0.035 per MTok (cache hit)
+		SupportsCacheBreakdown: false,
+	}
+	s.fallbackPrices["gemma4:31b"] = &ModelPricing{
+		InputPricePerToken:     0.14e-6, // $0.14 per MTok
+		OutputPricePerToken:    0.40e-6, // $0.40 per MTok
+		CacheReadPricePerToken: 0.05e-6, // $0.05 per MTok (cache hit)
+		SupportsCacheBreakdown: false,
+	}
+	// mistral-large-3 / qwen3.5 / nemotron-3-nano 官方未公布 cached-input 档
+	// （定价页标注 "-"，非 0）。CacheReadPricePerToken 为 0 的语义是把缓存输入
+	// 按免费计（computeTokenBreakdown 直接乘该字段），为不低估成本，保守取输入价。
+	s.fallbackPrices["mistral-large-3:675b"] = &ModelPricing{
+		InputPricePerToken:     0.50e-6, // $0.50 per MTok
+		OutputPricePerToken:    1.50e-6, // $1.50 per MTok
+		CacheReadPricePerToken: 0.50e-6, // cached-input 未公布，保守按输入价
+		SupportsCacheBreakdown: false,
+	}
+	s.fallbackPrices["qwen3.5:397b"] = &ModelPricing{
+		InputPricePerToken:     0.60e-6, // $0.60 per MTok
+		OutputPricePerToken:    3.60e-6, // $3.60 per MTok
+		CacheReadPricePerToken: 0.60e-6, // cached-input 未公布，保守按输入价
+		SupportsCacheBreakdown: false,
+	}
+	// nemotron 三款价差约 12 倍（输出 $0.24 vs $3.00 per MTok），逐款精确匹配，
+	// 禁止裸 "nemotron" 兜底前缀（见 getFallbackPricing）。
+	s.fallbackPrices["nemotron-3-super"] = &ModelPricing{
+		InputPricePerToken:     0.015e-6, // $0.015 per MTok
+		OutputPricePerToken:    0.60e-6,  // $0.60 per MTok
+		CacheReadPricePerToken: 0.015e-6, // $0.015 per MTok (cache hit)
+		SupportsCacheBreakdown: false,
+	}
+	s.fallbackPrices["nemotron-3-nano:30b"] = &ModelPricing{
+		InputPricePerToken:     0.06e-6, // $0.06 per MTok
+		OutputPricePerToken:    0.24e-6, // $0.24 per MTok
+		CacheReadPricePerToken: 0.06e-6, // cached-input 未公布，保守按输入价
+		SupportsCacheBreakdown: false,
+	}
+	s.fallbackPrices["nemotron-3-ultra"] = &ModelPricing{
+		InputPricePerToken:     0.10e-6, // $0.10 per MTok
+		OutputPricePerToken:    3.00e-6, // $3.00 per MTok
+		CacheReadPricePerToken: 0.10e-6, // $0.10 per MTok (cache hit)
+		SupportsCacheBreakdown: false,
+	}
+
 	// xAI Grok 4.5: $2 input / $0.30 cached input / $6 output below 200k;
 	// long-context rates are $4 / $0.60 / $12 (>=200k prompt tokens).
 	s.fallbackPrices["grok-4.5"] = &ModelPricing{
@@ -1097,6 +1160,37 @@ func (s *BillingService) getFallbackPricing(model string) *ModelPricing {
 		return s.fallbackPrices["minimax-m2"]
 	}
 
+	// ---- Ollama Cloud 托管模型（ollama 独占，Source: https://ollama.com/pricing）----
+	// gpt-oss 两档（120b/20b）价差约 4 倍，必须按完整 tag 前缀分开匹配，禁止裸
+	// "gpt-oss" 前缀；nemotron 三款价差约 12 倍，逐款精确匹配，禁止裸 "nemotron"
+	// 兜底。前缀/子串规则天然覆盖 "-cloud" 变体（真实请求形态，见
+	// openai_gateway_ollama_cloud_max_tokens_test.go）与其它 tag 后缀。未列出的
+	// ollama 模型名沿用白名单语义：落到函数末尾 return nil（拒绝计费）。
+	if strings.HasPrefix(modelLower, "gpt-oss:120b") {
+		return s.fallbackPrices["gpt-oss:120b"]
+	}
+	if strings.HasPrefix(modelLower, "gpt-oss:20b") {
+		return s.fallbackPrices["gpt-oss:20b"]
+	}
+	if strings.Contains(modelLower, "gemma4") {
+		return s.fallbackPrices["gemma4:31b"]
+	}
+	if strings.Contains(modelLower, "mistral-large-3") {
+		return s.fallbackPrices["mistral-large-3:675b"]
+	}
+	if strings.HasPrefix(modelLower, "qwen3.5:397b") {
+		return s.fallbackPrices["qwen3.5:397b"]
+	}
+	if strings.Contains(modelLower, "nemotron-3-super") {
+		return s.fallbackPrices["nemotron-3-super"]
+	}
+	if strings.Contains(modelLower, "nemotron-3-nano") {
+		return s.fallbackPrices["nemotron-3-nano:30b"]
+	}
+	if strings.Contains(modelLower, "nemotron-3-ultra") {
+		return s.fallbackPrices["nemotron-3-ultra"]
+	}
+
 	// 火山方舟 豆包 Embedding（多模态向量化）。
 	// most-specific-first：放在未来任何 doubao-embedding / doubao 宽匹配之前。
 	// 覆盖带版本后缀的别名（如 doubao-embedding-vision-251215）。
@@ -1235,7 +1329,26 @@ func (s *BillingService) GetModelPricing(model string) (*ModelPricing, error) {
 // getModelPricingAt 是 GetModelPricing 的带计费时点内部变体：pricingAt 显式
 // 驱动 DeepSeek pro→Flash 切换判定（切换点前 Pro 价、之后 Flash 价），使
 // 展示/估算路径可与历史补账同刻复算，测试也能用固定时点钉住断言。
+//
+// 两级查价：字面名完整跑一遍查找链（LiteLLM → fallback），未命中且名含
+// ":tag" 时用剥 tag 名重跑一次同一查找链（pricingAt 原样传递）。字面优先：
+// bedrock canonical key（如 us.anthropic.claude-sonnet-4-5-20250929-v1:0）
+// 本身含 ":0"，字面命中时绝不剥；剥 tag 仅是 miss 后的第二级，见
+// normalizePricingModelNameForLookup。
 func (s *BillingService) getModelPricingAt(model string, pricingAt time.Time) (*ModelPricing, error) {
+	pricing, err := s.getModelPricingAtOnce(model, pricingAt)
+	if err == nil {
+		return pricing, nil
+	}
+	if stripped, ok := normalizePricingModelNameForLookup(model); ok {
+		if retry, retryErr := s.getModelPricingAtOnce(stripped, pricingAt); retryErr == nil {
+			return retry, nil
+		}
+	}
+	return nil, err
+}
+
+func (s *BillingService) getModelPricingAtOnce(model string, pricingAt time.Time) (*ModelPricing, error) {
 	// 标准化模型名称（转小写）
 	model = strings.ToLower(model)
 

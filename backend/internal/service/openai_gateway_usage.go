@@ -150,6 +150,72 @@ func groupBillsOpenAIFastAtStandard(apiKey *APIKey, account *Account, serviceTie
 	}
 }
 
+// 运营 preflight SQL（B2-④，上线/放量前人工执行；是一次性运营检查，不是迁移，
+// 不要放进 migrations/）。用于在放量前扫出「保存期门禁（B2-③）生效前就已存在、
+// 或绕过门禁写入」的无价 ollama_cloud 账号；三条都期望 0 行，均为可直接执行的
+// 完整语句，在【业务主库】accounts 表跑；命中处置与存量盘点（第 0 条）见完整
+// 迁移手册（运营文档）。已定价模型集合（22 名）取自 billing_service.go
+// fallbackPrices 的 ollama 条目：18 条字面名 + 家族兜底可计费的
+// kimi-k2.7-code / deepseek-v4.1-flash；查询里 regexp_replace 剥 :tag 的二级
+// 比对与两级查价同源。
+//
+//	-- 1) model_mapping 目标值必须全部有价；期望 0 行（命中先甄别家族兜底
+//	--    误报，再补价或改 mapping）
+//	WITH priced(model) AS (VALUES
+//	  ('nemotron-3-super'),('glm-5.3'),('gpt-oss:120b'),('glm-5.3-flash'),
+//	  ('kimi-k2.6'),('kimi-k3'),('deepseek-v4.1-flash'),('minimax-m2.7'),
+//	  ('mistral-large-3:675b'),('glm-5.1'),('glm-5.2'),('gpt-oss:20b'),
+//	  ('qwen3.5:397b'),('kimi-k2.7-code'),('nemotron-3-nano:30b'),('minimax-m3'),
+//	  ('gemma4:31b'),('nemotron-3-ultra'),('deepseek-v4-flash:0731'),
+//	  ('deepseek-v4-pro:0813'),('deepseek-v4-flash'),('deepseek-v4-pro'))
+//	SELECT a.id, a.name, kv.key AS source_model, kv.value AS target_model
+//	FROM accounts a,
+//	  jsonb_each_text(COALESCE(a.credentials->'model_mapping','{}'::jsonb)) AS kv
+//	WHERE a.deleted_at IS NULL AND a.platform = 'ollama_cloud'
+//	  AND btrim(kv.value) <> ''
+//	  AND lower(btrim(kv.value)) NOT IN (SELECT model FROM priced)
+//	  AND lower(regexp_replace(btrim(kv.value), ':.*$', '')) NOT IN (SELECT model FROM priced);
+//
+//	-- 1b) extra.allowed_models 清单值必须全部有价（清单存 accounts.extra，不在
+//	--    credentials；与 model_mapping 是同地位的两条可出站来源）；期望 0 行
+//	WITH priced(model) AS (VALUES
+//	  ('nemotron-3-super'),('glm-5.3'),('gpt-oss:120b'),('glm-5.3-flash'),
+//	  ('kimi-k2.6'),('kimi-k3'),('deepseek-v4.1-flash'),('minimax-m2.7'),
+//	  ('mistral-large-3:675b'),('glm-5.1'),('glm-5.2'),('gpt-oss:20b'),
+//	  ('qwen3.5:397b'),('kimi-k2.7-code'),('nemotron-3-nano:30b'),('minimax-m3'),
+//	  ('gemma4:31b'),('nemotron-3-ultra'),('deepseek-v4-flash:0731'),
+//	  ('deepseek-v4-pro:0813'),('deepseek-v4-flash'),('deepseek-v4-pro'))
+//	SELECT a.id, a.name, btrim(m.value) AS allowed_model
+//	FROM accounts a, jsonb_array_elements_text(a.extra->'allowed_models') AS m
+//	WHERE a.deleted_at IS NULL AND a.platform = 'ollama_cloud'
+//	  AND jsonb_typeof(a.extra->'allowed_models') = 'array'
+//	  AND btrim(m.value) <> ''
+//	  AND lower(btrim(m.value)) NOT IN (SELECT model FROM priced)
+//	  AND lower(regexp_replace(btrim(m.value), ':.*$', '')) NOT IN (SELECT model FROM priced);
+//
+//	-- 2) 空 mapping 账号必须有「有效清单」（非空字符串数组）；期望 0 行
+//	--    （空 mapping + 合法清单是合规形态，不算命中；此处命中的是既无 mapping
+//	--    又无有效清单的账号——运行时 deny-all，需补 allowed_models/mapping 或下线）
+//	SELECT a.id, a.name, a.status, a.schedulable,
+//	  CASE WHEN NOT (a.extra ? 'allowed_models') THEN 'no_allowed_models_key'
+//	    WHEN jsonb_typeof(a.extra->'allowed_models') <> 'array' THEN 'allowed_models_not_array'
+//	    WHEN NOT EXISTS (SELECT 1 FROM jsonb_array_elements_text(a.extra->'allowed_models')
+//	                     WHERE btrim(value) <> '') THEN 'allowed_models_empty'
+//	  END AS reason
+//	FROM accounts a
+//	WHERE a.deleted_at IS NULL AND a.platform = 'ollama_cloud'
+//	  AND COALESCE(a.credentials->'model_mapping','{}'::jsonb) = '{}'::jsonb
+//	  AND (NOT (a.extra ? 'allowed_models')
+//	    OR jsonb_typeof(a.extra->'allowed_models') <> 'array'
+//	    OR NOT EXISTS (SELECT 1 FROM jsonb_array_elements_text(a.extra->'allowed_models')
+//	                   WHERE btrim(value) <> ''));
+//
+// 上线后观察断言：日志中 `openai_usage.pricing_missing_record_zero_cost` 出现
+// 次数必须为 0（出现即回滚放量）。定价门禁已前移到上游 I/O 之前的请求期预检
+// （openai_gateway_ollama_cloud_pricing_preflight.go，未定价直接 400，不发上游）；
+// 记账阶段不再拒绝——这里只保留零成本落账 + 本告警作为「预检漏放」的兜底观测，
+// 两者不互相遮蔽：告警出现即说明有请求绕过了预检，需要排查而不是靠记账阶段补拒。
+//
 // RecordUsage records usage and deducts balance
 func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRecordUsageInput) error {
 	if input == nil {
@@ -254,6 +320,11 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 		if !isUsagePricingUnavailableError(err) {
 			return err
 		}
+		// 定价缺失回到既有的全平台 fail-open 设计：零成本落账 + Warn 告警。
+		// ollama_cloud 的请求期拒绝已前移到上游 I/O 之前的定价预检（见
+		// openai_gateway_ollama_cloud_pricing_preflight.go）；记账阶段拒绝会在
+		// 上游已调用、响应已写给客户端之后连 usage 记录一起丢掉，比零成本记录
+		// 更难发现，故不再在此拒绝——本告警是「预检漏放」的观测依据。
 		logger.L().With(
 			zap.String("component", "service.openai_gateway"),
 			zap.Strings("billing_models", billingModels),
@@ -494,9 +565,15 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 
 	// Async usage billing runs outside the original request context, so it
 	// cannot recover ForcePlatform there. Fall back for internal/test callers.
+	// fallback 与 generic 路径（gateway_usage_billing.go）同语义：composite 分组
+	// 请求缺省时回退到选中账号自己的平台——composite/openai 组默认值不是实际
+	// user×platform 配额维度，真正的 pool 请求必须按选中 account.Platform 扣减。
 	quotaPlatform := input.QuotaPlatform
 	if quotaPlatform == "" {
 		quotaPlatform = PlatformFromAPIKey(apiKey)
+		if quotaPlatform == PlatformComposite && account != nil {
+			quotaPlatform = account.Platform
+		}
 	}
 
 	billingErr := func() error {
@@ -915,19 +992,22 @@ func groupMediaPricingLooksIncomplete(group *Group) bool {
 		group.VideoPrice480P == nil && group.VideoPrice720P == nil && group.VideoPrice1080P == nil
 }
 
-// filterCNProviderBillingModelCandidates 过滤国产供应商（kimi/zhipu/deepseek）
-// 账号的计费候选模型名：claude-* 候选仅在运营者显式配置了分组/渠道定价时保留。
+// filterCNProviderBillingModelCandidates 过滤 CN/类 CN 平台（kimi/zhipu/deepseek/
+// opencode_go/ollama_cloud）账号的计费候选模型名：claude-* 候选仅在运营者显式
+// 配置了分组/渠道定价时保留。
 //
 // 背景：候选链的兜底候选含客户端请求的原始模型名。CN 上游的 Anthropic 兼容端点
 // 接受 claude-* 模型名但从不真正服务 Claude 模型；若放行，目录里的 Claude 价卡
 // 与 getFallbackPricing 的 "claude"→Sonnet 统一兜底会把 CN 流量按 Claude 原价
 // （数倍～数十倍）静默误计，且 usage 日志显示的正是 claude-* 名，无从察觉。
+// ollama_cloud 同理：它服务的是自家托管模型（qwen3.5/gpt-oss/nemotron 等），
+// 请求里的 claude-* 名不会真的被 Claude 服务，放行即按 Anthropic 价误计。
 // 候选全部落空时走既有的零成本+告警路径（openai_usage.pricing_missing_record_
-// zero_cost），与定价层「未知型号不回退以避免误计价」的既有设计意图一致；
-// 运营者的修复手段是配置账号级 model_mapping（映射到已定价的 CN 模型）或
-// 分组/渠道显式定价。
+// zero_cost；ollama_cloud 已由 B2-④ 收窄为显式拒绝），与定价层「未知型号不回退
+// 以避免误计价」的既有设计意图一致；运营者的修复手段是配置账号级 model_mapping
+// （映射到已定价的 CN/ollama 模型）或分组/渠道显式定价。
 func (s *OpenAIGatewayService) filterCNProviderBillingModelCandidates(ctx context.Context, account *Account, apiKey *APIKey, candidates []string) []string {
-	if account == nil || (!account.IsCNProvider() && !account.IsOpenCodeGo()) {
+	if account == nil || (!account.IsCNProvider() && !account.IsOpenCodeGo() && !account.IsOllamaCloud()) {
 		return candidates
 	}
 	out := make([]string, 0, len(candidates))

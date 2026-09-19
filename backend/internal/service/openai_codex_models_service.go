@@ -262,6 +262,10 @@ func loadCodexGroupCatalogAccounts(ctx context.Context, repo AccountRepository, 
 			PlatformZhipu,
 			PlatformDeepseek,
 			PlatformMiniMax,
+			PlatformOllamaCloud,
+			// PlatformOpenCodeGo 是方案标注的同类历史漏点：同为转售型平台，
+			// 不进目录则 Codex 客户端同样看不到其映射模型，随本行一并补上。
+			PlatformOpenCodeGo,
 		},
 		false,
 	)
