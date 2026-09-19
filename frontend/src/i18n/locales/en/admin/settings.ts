@@ -543,6 +543,16 @@ export default {
         openaiCodexVersionAutoSyncHint: 'Fetches the latest stable client version from the official repository every 6 hours, so you never need to upgrade this service just to keep the version current. When disabled, only the version above or the built-in default is used.',
         openaiCodexVersionSyncedValue: 'Currently synced: {version}',
         codexHardeningTitle: "Codex Settings",
+        codexTicketEnabled: "STATE ticket master switch",
+        codexTicketEnabledDesc:
+          "Only accounts explicitly enabled in their account settings can harvest and use STATE. The master switch alone does not opt in any account. When off, all accounts use normal forwarding.",
+        codexTicketAccountHint: "After saving the global pool, go to Accounts → Edit account → STATE ticket to select a plan and enable the accounts that need it.",
+        codexTicketAccountsLink: "Open accounts",
+        codexTicketHarvestProxy: "Global dynamic IP pool",
+        codexTicketHarvestProxyDesc:
+          "Shared by accounts with STATE enabled; normal requests keep each account's fixed proxy. Paste a full HTTP / SOCKS5h proxy URL including credentials. A username {'{'}sid{'}'} placeholder or 1024proxy SID is replaced on every attempt. Changing the pool preserves valid tickets. Leave blank to keep the saved pool.",
+        codexTicketHarvestProxyPlaceholder: "http://user:pass{'@'}proxy.example.com:1080",
+        codexTicketHarvestProxyConfigured: "Configured (password hidden). Paste a full new proxy URL to replace it.",
         codexClientRestrictionTitle: "Codex client restriction",
         codexHardeningDesc:
           "Only affects OpenAI OAuth accounts with 'Codex official clients only' enabled (global). Beyond User-Agent/Originator, harden the decision with a version range, an engine-fingerprint gate, and black/whitelists.",

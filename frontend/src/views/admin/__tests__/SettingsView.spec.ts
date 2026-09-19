@@ -720,6 +720,48 @@ describe("admin SettingsView payment visible method controls", () => {
     adminSettingsFetch.mockResolvedValue(undefined);
   });
 
+  it("submits the Codex ticket harvest toggle", async () => {
+    getSettings.mockResolvedValueOnce({
+      ...baseSettingsResponse,
+      openai_codex_ticket_enabled: false,
+    });
+    const wrapper = mountView();
+    await flushPromises();
+    const toggle = wrapper.get("#codex-ticket-enabled");
+    await toggle.setValue(true);
+    await wrapper.find("form").trigger("submit.prevent");
+    await flushPromises();
+    expect(updateSettings.mock.calls[0]?.[0].openai_codex_ticket_enabled).toBe(true);
+    wrapper.unmount();
+  });
+
+  it("edits the shared pool without reusing or displaying stored credentials", async () => {
+    getSettings.mockResolvedValueOnce({
+      ...baseSettingsResponse,
+      openai_codex_ticket_harvest_proxy_url: "http://user:***@old.example.com:8080",
+      openai_codex_ticket_harvest_proxy_configured: true,
+    });
+    const wrapper = mountView();
+    await flushPromises();
+    const input = wrapper.get("#codex-ticket-harvest-proxy");
+    expect(input.attributes("type")).toBe("password");
+    expect((input.element as HTMLInputElement).value).toBe("");
+    expect(wrapper.find('[data-testid="codex-ticket-global-pool-configured"]').exists()).toBe(true);
+    expect(wrapper.find('a[href="/admin/accounts"]').exists()).toBe(true);
+    await wrapper.find("form").trigger("submit.prevent");
+    await flushPromises();
+    expect(updateSettings.mock.calls[0]?.[0].openai_codex_ticket_harvest_proxy_url).toBeUndefined();
+    const proxy = "socks5h://pool-sid-{sid}-t-5:new-secret@pool.example.com:3000";
+    await input.setValue(proxy);
+    await wrapper.find("form").trigger("submit.prevent");
+    await flushPromises();
+    expect(updateSettings.mock.calls[1]?.[0].openai_codex_ticket_harvest_proxy_url).toBe(proxy);
+    expect((input.element as HTMLInputElement).value).toBe("");
+    expect(wrapper.text()).not.toContain("new-secret");
+    expect(updateSettings.mock.calls[1]?.[0]).not.toHaveProperty("openai_codex_ticket_harvest_proxy_configured");
+    wrapper.unmount();
+  });
+
   it("loads and saves the open button visibility for each custom menu", async () => {
     const menuItems = [
       { id: "docs", label: "Docs", url: "https://example.com/docs", icon_svg: "", visibility: "user", sort_order: 0 },

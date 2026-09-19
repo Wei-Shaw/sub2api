@@ -646,6 +646,10 @@ Or set `GATEWAY_OPENAI_WS_MODE_ROUTER_V2_ENABLED=true` in the environment.
 Use `http_bridge` for client-WebSocket/upstream-HTTP operation when rolling out
 or mitigating upstream WebSocket issues.
 
+#### Account-level Codex STATE tickets
+
+Use explicit per-account STATE controls, manual Pro/Team selection, verified fixed-proxy replay and a response watchdog. See [Account-level Codex STATE tickets](docs/CODEX_ACCOUNT_STATE.md) for setup and upgrade behavior.
+
 #### Force OpenAI upstream HTTP/SSE
 
 When an egress proxy or network repeatedly reconnects OpenAI Responses

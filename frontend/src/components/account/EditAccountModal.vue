@@ -1651,6 +1651,13 @@
         <ProxySelector v-model="form.proxy_id" :proxies="proxies" />
       </div>
 
+      <CodexAccountTicketSettings
+        v-if="account.platform === 'openai' && (account.type === 'oauth' || account.type === 'setup-token') && !isSparkShadow"
+        :account-id="account.id"
+        :visible="show"
+        :proxy-changed="form.proxy_id !== account.proxy_id"
+      />
+
       <UpstreamRequestIdHeaderField
         v-model="upstreamRequestIdHeader"
         :platform="account.platform"
@@ -3046,6 +3053,7 @@ import UpstreamRequestIdHeaderField from '@/components/account/UpstreamRequestId
 import Toggle from '@/components/common/Toggle.vue'
 import Icon from '@/components/icons/Icon.vue'
 import ProxySelector from '@/components/common/ProxySelector.vue'
+import CodexAccountTicketSettings from '@/components/account/CodexAccountTicketSettings.vue'
 import ProxyAdBanner from '@/components/common/ProxyAdBanner.vue'
 import GroupSelector from '@/components/common/GroupSelector.vue'
 import ModelWhitelistSelector from '@/components/account/ModelWhitelistSelector.vue'
