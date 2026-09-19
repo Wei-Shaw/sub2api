@@ -637,6 +637,20 @@ func (_c *UsageLogCreate) SetNillableCreatedAt(v *time.Time) *UsageLogCreate {
 	return _c
 }
 
+// SetUserPrompt sets the "user_prompt" field.
+func (_c *UsageLogCreate) SetUserPrompt(v string) *UsageLogCreate {
+	_c.mutation.SetUserPrompt(v)
+	return _c
+}
+
+// SetNillableUserPrompt sets the "user_prompt" field if the given value is not nil.
+func (_c *UsageLogCreate) SetNillableUserPrompt(v *string) *UsageLogCreate {
+	if v != nil {
+		_c.SetUserPrompt(*v)
+	}
+	return _c
+}
+
 // SetUser sets the "user" edge to the User entity.
 func (_c *UsageLogCreate) SetUser(v *User) *UsageLogCreate {
 	return _c.SetUserID(v.ID)
@@ -1134,6 +1148,10 @@ func (_c *UsageLogCreate) createSpec() (*UsageLog, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.CreatedAt(); ok {
 		_spec.SetField(usagelog.FieldCreatedAt, field.TypeTime, value)
 		_node.CreatedAt = value
+	}
+	if value, ok := _c.mutation.UserPrompt(); ok {
+		_spec.SetField(usagelog.FieldUserPrompt, field.TypeString, value)
+		_node.UserPrompt = &value
 	}
 	if nodes := _c.mutation.UserIDs(); len(nodes) > 0 {
 		edge := &sqlgraph.EdgeSpec{
@@ -2079,6 +2097,24 @@ func (u *UsageLogUpsert) SetCacheTTLOverridden(v bool) *UsageLogUpsert {
 // UpdateCacheTTLOverridden sets the "cache_ttl_overridden" field to the value that was provided on create.
 func (u *UsageLogUpsert) UpdateCacheTTLOverridden() *UsageLogUpsert {
 	u.SetExcluded(usagelog.FieldCacheTTLOverridden)
+	return u
+}
+
+// SetUserPrompt sets the "user_prompt" field.
+func (u *UsageLogUpsert) SetUserPrompt(v string) *UsageLogUpsert {
+	u.Set(usagelog.FieldUserPrompt, v)
+	return u
+}
+
+// UpdateUserPrompt sets the "user_prompt" field to the value that was provided on create.
+func (u *UsageLogUpsert) UpdateUserPrompt() *UsageLogUpsert {
+	u.SetExcluded(usagelog.FieldUserPrompt)
+	return u
+}
+
+// ClearUserPrompt clears the value of the "user_prompt" field.
+func (u *UsageLogUpsert) ClearUserPrompt() *UsageLogUpsert {
+	u.SetNull(usagelog.FieldUserPrompt)
 	return u
 }
 
@@ -3069,6 +3105,27 @@ func (u *UsageLogUpsertOne) SetCacheTTLOverridden(v bool) *UsageLogUpsertOne {
 func (u *UsageLogUpsertOne) UpdateCacheTTLOverridden() *UsageLogUpsertOne {
 	return u.Update(func(s *UsageLogUpsert) {
 		s.UpdateCacheTTLOverridden()
+	})
+}
+
+// SetUserPrompt sets the "user_prompt" field.
+func (u *UsageLogUpsertOne) SetUserPrompt(v string) *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.SetUserPrompt(v)
+	})
+}
+
+// UpdateUserPrompt sets the "user_prompt" field to the value that was provided on create.
+func (u *UsageLogUpsertOne) UpdateUserPrompt() *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.UpdateUserPrompt()
+	})
+}
+
+// ClearUserPrompt clears the value of the "user_prompt" field.
+func (u *UsageLogUpsertOne) ClearUserPrompt() *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.ClearUserPrompt()
 	})
 }
 
@@ -4225,6 +4282,27 @@ func (u *UsageLogUpsertBulk) SetCacheTTLOverridden(v bool) *UsageLogUpsertBulk {
 func (u *UsageLogUpsertBulk) UpdateCacheTTLOverridden() *UsageLogUpsertBulk {
 	return u.Update(func(s *UsageLogUpsert) {
 		s.UpdateCacheTTLOverridden()
+	})
+}
+
+// SetUserPrompt sets the "user_prompt" field.
+func (u *UsageLogUpsertBulk) SetUserPrompt(v string) *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.SetUserPrompt(v)
+	})
+}
+
+// UpdateUserPrompt sets the "user_prompt" field to the value that was provided on create.
+func (u *UsageLogUpsertBulk) UpdateUserPrompt() *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.UpdateUserPrompt()
+	})
+}
+
+// ClearUserPrompt clears the value of the "user_prompt" field.
+func (u *UsageLogUpsertBulk) ClearUserPrompt() *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.ClearUserPrompt()
 	})
 }
 
