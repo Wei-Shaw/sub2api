@@ -21,6 +21,7 @@ func TestOpenAIVisibleOutputClassification(t *testing.T) {
 		want      bool
 	}{
 		{name: "keepalive", data: `{"type":"keepalive"}`, want: false},
+		{name: "sequenced keepalive", data: `{"type":"keepalive","sequence_number":1}`, want: false},
 		{name: "created", data: `{"type":"response.created"}`, want: false},
 		{name: "empty output item", data: `{"type":"response.output_item.added","item":{"id":"item_test","type":"reasoning","summary":[]}}`, want: false},
 		{name: "empty delta", data: `{"type":"response.output_text.delta","delta":""}`, want: false},

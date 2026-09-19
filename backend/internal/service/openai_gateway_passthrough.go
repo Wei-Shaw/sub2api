@@ -1161,9 +1161,42 @@ func openAIStreamAddedEventStartsClientOutput(payload []byte, eventType string) 
 	}
 }
 
+// A heartbeat may carry an event sequence number, but no content-bearing fields.
+// An event name alone must not make an unknown vendor payload safe to replay.
+func openAIStreamDataIsKeepalive(data, eventType string) bool {
+	eventType = strings.TrimSpace(eventType)
+	if eventType != "" && eventType != "keepalive" {
+		return false
+	}
+	if !gjson.Valid(data) {
+		return false
+	}
+	payload := gjson.Parse(data)
+	if !payload.IsObject() || (eventType == "" && payload.Get("type").String() != "keepalive") {
+		return false
+	}
+	keepalive := true
+	payload.ForEach(func(key, value gjson.Result) bool {
+		switch key.Str {
+		case "type":
+			keepalive = value.Type == gjson.String && value.Str == "keepalive"
+		case "sequence_number":
+			_, err := strconv.ParseUint(value.Raw, 10, 64)
+			keepalive = value.Type == gjson.Number && err == nil
+		default:
+			keepalive = false
+		}
+		return keepalive
+	})
+	return keepalive
+}
+
 func openAIStreamDataStartsClientOutput(data, eventType string) bool {
 	trimmed := strings.TrimSpace(data)
 	if trimmed == "" {
+		return false
+	}
+	if openAIStreamDataIsKeepalive(trimmed, eventType) {
 		return false
 	}
 	switch strings.TrimSpace(eventType) {
@@ -1245,6 +1278,9 @@ func openAIStreamDataStartsVisibleOutput(data, eventType string) bool {
 func openAIStreamDataStartsSemanticTTFT(data, eventType string) bool {
 	trimmed := strings.TrimSpace(data)
 	if trimmed == "" || trimmed == "[DONE]" {
+		return false
+	}
+	if openAIStreamDataIsKeepalive(trimmed, eventType) {
 		return false
 	}
 	eventType = strings.TrimSpace(eventType)
@@ -1611,6 +1647,14 @@ func (s *OpenAIGatewayService) handleOpenAIStreamTerminalAccountSideEffects(
 	canonicalModel ...string,
 ) (int, bool) {
 	statusCode := openAIStreamFailureStatus(payload, message)
+	if isOpenAIAPIKeyCapacityFailure(account, payload) {
+		ctx := context.Background()
+		if c != nil && c.Request != nil {
+			ctx = c.Request.Context()
+		}
+		model := firstNonEmpty(firstNonEmpty(canonicalModel...), gjson.GetBytes(payload, "response.model").String(), gjson.GetBytes(payload, "model").String())
+		return statusCode, s.handleOpenAIAccountUpstreamError(ctx, account, statusCode, headers, payload, model)
+	}
 	switch statusCode {
 	case http.StatusForbidden:
 		if !openAIStream403AccountFailure(payload, message) {
@@ -1832,7 +1876,7 @@ func (s *OpenAIGatewayService) handleStreamingResponsePassthrough(
 	startTime time.Time,
 	originalModel string,
 	mappedModel string,
-) (*openaiStreamingResultPassthrough, error) {
+) (streamResult *openaiStreamingResultPassthrough, streamErr error) {
 	observer := upstreamResponseModelObserverFromContext(c)
 	if observer == nil {
 		observer = beginUpstreamResponseModelObservation(c)
@@ -1877,6 +1921,19 @@ func (s *OpenAIGatewayService) handleStreamingResponsePassthrough(
 	var bareErrorPayload []byte
 	bareErrorAccountSideEffectsPending := false
 	upstreamRequestID := strings.TrimSpace(resp.Header.Get("x-request-id"))
+	var capacityFailure *OpenAIStreamTerminalError
+	var capacityDrain openAICapacityUsageDrain
+	var capacityDiag openAICapacityStreamDiagnostics
+	capacityEventType := ""
+	semanticEventType, semanticEventBytes := "", 0
+	defer func() {
+		capacityDrain.stop()
+		if capacityFailure != nil {
+			_ = resp.Body.Close()
+			streamErr = capacityFailure
+			capacityDiag.finish(ctx, account, mappedModel, "passthrough_sse", upstreamRequestID, usage, capacityDrain.expired.Load(), clientDisconnected)
+		}
+	}()
 	// pendingLines 在首个可见输出前保留前导事件，确保无输出失败仍可安全 failover。
 	pendingLines := make([]string, 0, 8)
 
@@ -1926,6 +1983,10 @@ func (s *OpenAIGatewayService) handleStreamingResponsePassthrough(
 		}
 		flusher.Flush()
 		flushPending = false
+		if semanticEventBytes > 0 {
+			capacityDiag.committed(semanticEventType, semanticEventBytes)
+			semanticEventBytes = 0
+		}
 	}
 	defer flushPendingOutput()
 	writePendingLines := func() bool {
@@ -1958,6 +2019,9 @@ func (s *OpenAIGatewayService) handleStreamingResponsePassthrough(
 		failureDelivered = true
 		flushPending = true
 		flushPendingOutput()
+		if capacityFailure != nil && !clientDisconnected {
+			capacityDiag.failureDeliveredAt = time.Now()
+		}
 	}
 
 	scanner := bufio.NewScanner(resp.Body)
@@ -1982,6 +2046,9 @@ func (s *OpenAIGatewayService) handleStreamingResponsePassthrough(
 	}
 
 	for documentScanner.Scan() {
+		if capacityDrain.expired.Load() {
+			break
+		}
 		line := documentScanner.Text()
 		if eventType, ok := extractOpenAISSEEventLine(line); ok {
 			pendingSSEEventType = eventType
@@ -2071,7 +2138,14 @@ func (s *OpenAIGatewayService) handleStreamingResponsePassthrough(
 					}
 				}
 				if outputStarted && !cyberHit {
-					if codexFailureTerminal && eventType == "error" {
+					if capacityFailure != nil || isOpenAIAPIKeyCapacityFailure(account, dataBytes) {
+						if capacityFailure == nil {
+							capacityDiag.errorObservedAt = time.Now()
+							capacityFailure = s.observeOpenAICapacityTerminalFailure(ctx, account, mappedModel, resp.Header, dataBytes, failedMessage)
+						}
+						capacityEventType = eventType
+						bareErrorAccountSideEffectsPending = false
+					} else if codexFailureTerminal && eventType == "error" {
 						// Wait for the authoritative response.failed before mutating
 						// account health; EOF synthesis applies the pending effect.
 						bareErrorAccountSideEffectsPending = true
@@ -2142,8 +2216,13 @@ func (s *OpenAIGatewayService) handleStreamingResponsePassthrough(
 				line = "data: " + string(sanitizedData)
 			}
 			lineStartsClientOutput = forceFlushFailedEvent || openAIStreamDataStartsClientOutput(trimmedData, eventType)
+			if lineStartsClientOutput && eventType == "keepalive" {
+				capacityDiag.unrecognizedKeepalive(ctx, account, "passthrough_sse", dataBytes)
+			}
 			if lineStartsClientOutput && trimmedData != "[DONE]" && !openAIStreamEventTypeIsTerminal(eventType) {
 				semanticOutputSeen = true
+				semanticEventType = eventType
+				semanticEventBytes += len(dataBytes)
 			}
 			// OpenAI Responses streams that terminate with an empty
 			// response.completed (no output, no usage, no error, nothing sent
@@ -2162,6 +2241,10 @@ func (s *OpenAIGatewayService) handleStreamingResponsePassthrough(
 		}
 		if line == "" {
 			pendingSSEEventType = ""
+			if capacityFailure != nil && capacityEventType == "error" {
+				capacityDrain.start(resp.Body)
+				capacityEventType = ""
+			}
 			if suppressCurrentEvent {
 				suppressCurrentEvent = false
 				responseFailedPending = false
@@ -2198,9 +2281,23 @@ func (s *OpenAIGatewayService) handleStreamingResponsePassthrough(
 		if line == "" && responseFailedPending {
 			responseFailedPending = false
 			failureDelivered = true
+			if capacityFailure != nil && !clientDisconnected {
+				capacityDiag.failureDeliveredAt = time.Now()
+			}
+		}
+		if line == "" && capacityFailure != nil && capacityEventType == "response.failed" {
+			capacityDiag.finishReason = "response.failed"
+			return resultWithUsage(), capacityFailure
 		}
 	}
 	ensureResponseFailedTerminal()
+	if capacityFailure != nil {
+		capacityDiag.finishReason = "upstream_eof"
+		if documentScanner.Err() != nil {
+			capacityDiag.finishReason = "upstream_read_error"
+		}
+		return resultWithUsage(), capacityFailure
+	}
 	if err := documentScanner.Err(); err != nil {
 		if (sawDone || sawTerminalEvent) && !sawFailedEvent {
 			s.clearOpenAIProxyStreamDisconnect(account)

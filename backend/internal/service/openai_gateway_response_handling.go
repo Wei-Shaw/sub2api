@@ -48,7 +48,7 @@ func (s *OpenAIGatewayService) handleStreamingResponse(ctx context.Context, resp
 	return s.handleStreamingResponseWithReasoning(ctx, resp, c, account, startTime, originalModel, mappedModel, "")
 }
 
-func (s *OpenAIGatewayService) handleStreamingResponseWithReasoning(ctx context.Context, resp *http.Response, c *gin.Context, account *Account, startTime time.Time, originalModel, mappedModel, reasoningEffort string) (*openaiStreamingResult, error) {
+func (s *OpenAIGatewayService) handleStreamingResponseWithReasoning(ctx context.Context, resp *http.Response, c *gin.Context, account *Account, startTime time.Time, originalModel, mappedModel, reasoningEffort string) (streamResult *openaiStreamingResult, streamErr error) {
 	observer := upstreamResponseModelObserverFromContext(c)
 	if observer == nil {
 		observer = beginUpstreamResponseModelObservation(c)
@@ -255,6 +255,19 @@ func (s *OpenAIGatewayService) handleStreamingResponseWithReasoning(ctx context.
 	clientOutputStarted := false
 	codexFailureTerminal := account != nil && account.IsOpenAIOAuthLike()
 	upstreamRequestID := strings.TrimSpace(resp.Header.Get("x-request-id"))
+	var capacityFailure *OpenAIStreamTerminalError
+	var capacityDrain openAICapacityUsageDrain
+	var capacityDiag openAICapacityStreamDiagnostics
+	capacityEventType := ""
+	semanticEventType, semanticEventBytes := "", 0
+	defer func() {
+		capacityDrain.stop()
+		if capacityFailure != nil {
+			_ = resp.Body.Close()
+			streamErr = capacityFailure
+			capacityDiag.finish(ctx, account, mappedModel, "native_sse", upstreamRequestID, usage, capacityDrain.expired.Load(), clientDisconnected)
+		}
+	}()
 	var streamEarlyErr error
 	terminalFailurePending := false
 	failureDelivered := false
@@ -298,6 +311,10 @@ func (s *OpenAIGatewayService) handleStreamingResponseWithReasoning(ctx context.
 				} else {
 					clientOutputStarted = true
 					lastDownstreamWriteAt = time.Now()
+					if semanticEventBytes > 0 {
+						capacityDiag.committed(semanticEventType, semanticEventBytes)
+						semanticEventBytes = 0
+					}
 				}
 			}
 		}
@@ -368,6 +385,9 @@ func (s *OpenAIGatewayService) handleStreamingResponseWithReasoning(ctx context.
 		lastDownstreamWriteAt = time.Now()
 	}
 	finalizeStream := func() (*openaiStreamingResult, error) {
+		if capacityFailure != nil && capacityDiag.finishReason == "" {
+			capacityDiag.finishReason = "upstream_eof"
+		}
 		if stageFirstOutput && eventInProgress {
 			// EOF dispatches the final SSE event even without a trailing blank line.
 			completeGuardedEvent(true)
@@ -413,6 +433,11 @@ func (s *OpenAIGatewayService) handleStreamingResponseWithReasoning(ctx context.
 	handleScanErr := func(scanErr error) (*openaiStreamingResult, error, bool) {
 		if scanErr == nil {
 			return nil, nil, false
+		}
+		if capacityFailure != nil {
+			capacityDiag.finishReason = "upstream_read_error"
+			result, err := finalizeStream()
+			return result, err, true
 		}
 		if errors.Is(scanErr, errOpenAIFirstOutputScannerLimit) && !firstOutputProgressObserved {
 			logger.LegacyPrintf("service.openai_gateway", "SSE token exceeded guarded first-output limit: account=%d limit=%d error=%v", account.ID, openAIFirstOutputStageMaxBytes+openAIFirstOutputScannerFramingAllowance, scanErr)
@@ -469,6 +494,24 @@ func (s *OpenAIGatewayService) handleStreamingResponseWithReasoning(ctx context.
 		return resultWithUsage(), fmt.Errorf("stream read error: %w", scanErr), true
 	}
 	processSSELine := func(line string, queueDrained bool) {
+		defer func() {
+			if line == "" && capacityFailure != nil {
+				if failureDelivered && !clientDisconnected && capacityDiag.failureDeliveredAt.IsZero() {
+					capacityDiag.failureDeliveredAt = time.Now()
+				}
+				switch capacityEventType {
+				case "response.failed":
+					capacityDiag.finishReason = "response.failed"
+					streamEarlyErr = capacityFailure
+				case "error":
+					capacityDrain.start(resp.Body)
+				}
+				capacityEventType = ""
+			}
+		}()
+		if capacityDrain.expired.Load() {
+			streamEarlyErr = capacityFailure
+		}
 		if streamEarlyErr != nil {
 			return
 		}
@@ -553,7 +596,14 @@ func (s *OpenAIGatewayService) handleStreamingResponseWithReasoning(ctx context.
 					}
 				}
 				if outputStarted && !cyberHit {
-					if codexFailureTerminal && eventType == "error" {
+					if capacityFailure != nil || isOpenAIAPIKeyCapacityFailure(account, dataBytes) {
+						if capacityFailure == nil {
+							capacityDiag.errorObservedAt = time.Now()
+							capacityFailure = s.observeOpenAICapacityTerminalFailure(ctx, account, mappedModel, resp.Header, dataBytes, failedMessage)
+						}
+						capacityEventType = eventType
+						bareErrorAccountSideEffectsPending = false
+					} else if codexFailureTerminal && eventType == "error" {
 						// OpenAI commonly follows a bare error with response.failed.
 						// Defer account health updates so the pair is applied once.
 						bareErrorAccountSideEffectsPending = true
@@ -668,6 +718,9 @@ func (s *OpenAIGatewayService) handleStreamingResponseWithReasoning(ctx context.
 				line = s.replaceModelInSSELine(line, mappedModel, originalModel)
 			}
 			startsClientOutput := forceFlushFailedEvent || openAIStreamDataStartsClientOutput(data, eventType)
+			if startsClientOutput && eventType == "keepalive" {
+				capacityDiag.unrecognizedKeepalive(ctx, account, "native_sse", dataBytes)
+			}
 			startsVisibleOutput := openAIStreamDataStartsVisibleOutput(data, eventType)
 			startsTTFTOutput := openAIStreamDataStartsTTFT(data, eventType, forceFlushFailedEvent, ttftMode)
 			if stageFirstOutput {
@@ -679,6 +732,8 @@ func (s *OpenAIGatewayService) handleStreamingResponseWithReasoning(ctx context.
 			}
 			if startsClientOutput && !openAIStreamEventTypeIsTerminal(eventType) {
 				responsesSemanticOutputSeen = true
+				semanticEventType = eventType
+				semanticEventBytes += len(dataBytes)
 			}
 			// OpenAI Responses streams that terminate with an empty
 			// response.completed (no output, no usage, no error, nothing sent
@@ -700,7 +755,7 @@ func (s *OpenAIGatewayService) handleStreamingResponseWithReasoning(ctx context.
 					// 保证首个 token 事件尽快出站，避免影响 TTFT。
 					shouldFlush = true
 				}
-				eventShouldFlush = eventShouldFlush || shouldFlush
+				eventShouldFlush = eventShouldFlush || shouldFlush || (forceFlushFailedEvent && capacityFailure != nil)
 				if _, err := writePendingString(line); err != nil {
 					handlePendingWriteError(err)
 				} else if _, err := writePendingString("\n"); err != nil {
@@ -861,7 +916,14 @@ func (s *OpenAIGatewayService) handleStreamingResponseWithReasoning(ctx context.
 			_ = sendEvent(scanEvent{err: err})
 		}
 	}(scanBuf)
-	defer close(done)
+	defer func() {
+		close(done)
+		if capacityFailure != nil {
+			_ = resp.Body.Close()
+			for range events {
+			}
+		}
+	}()
 
 	for {
 		select {
@@ -885,6 +947,9 @@ func (s *OpenAIGatewayService) handleStreamingResponseWithReasoning(ctx context.
 			}
 
 		case <-intervalCh:
+			if capacityFailure != nil {
+				continue
+			}
 			if failureDelivered {
 				return resultWithUsage(), fmt.Errorf("upstream response failed: %s", failedMessage)
 			}
