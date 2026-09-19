@@ -282,3 +282,61 @@ func transformResponsesClientToolStream(
 	}
 	_ = destination.Close()
 }
+
+const (
+	grokReservedViewImageToolName = "view_image"
+	grokClientViewImageAlias      = "client_view_image"
+)
+
+func aliasGrokReservedClientToolName(name string) string {
+	if strings.EqualFold(strings.TrimSpace(name), grokReservedViewImageToolName) {
+		return grokClientViewImageAlias
+	}
+	return name
+}
+
+func aliasGrokReservedClientToolNamesBody(body []byte) ([]byte, map[string]string, error) {
+	if len(body) == 0 || !containsASCIIFold(body, []byte(grokReservedViewImageToolName)) {
+		return body, nil, nil
+	}
+	var reqBody map[string]any
+	if err := decodeOpenAIJSONUseNumber(body, &reqBody); err != nil {
+		return body, nil, fmt.Errorf("decode grok reserved client tools: %w", err)
+	}
+	reverse, changed, err := aliasGrokReservedClientToolNames(reqBody)
+	if err != nil || !changed {
+		return body, reverse, err
+	}
+	normalized, err := marshalOpenAIUpstreamJSON(reqBody)
+	if err != nil {
+		return body, nil, fmt.Errorf("encode grok reserved client tools: %w", err)
+	}
+	return normalized, reverse, nil
+}
+
+func aliasGrokReservedClientToolNames(reqBody map[string]any) (map[string]string, bool, error) {
+	if reqBody == nil {
+		return nil, false, nil
+	}
+	fields := collectOpenAIResponsesToolNameFields(reqBody)
+	occupied := make(map[string]struct{}, len(fields))
+	for _, field := range fields {
+		occupied[strings.TrimSpace(field.name)] = struct{}{}
+	}
+	if _, exists := occupied[grokClientViewImageAlias]; exists {
+		return nil, false, nil
+	}
+	reverse := make(map[string]string)
+	for _, field := range fields {
+		aliased := aliasGrokReservedClientToolName(field.name)
+		if aliased == field.name {
+			continue
+		}
+		field.object[field.key] = aliased
+		reverse[aliased] = strings.TrimSpace(field.name)
+	}
+	if len(reverse) == 0 {
+		return nil, false, nil
+	}
+	return reverse, true, nil
+}

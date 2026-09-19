@@ -1164,3 +1164,58 @@ func TestChatCompletionsChunkToResponsesEvents_FunctionToolStreamUnaffected(t *t
 	}
 	assert.True(t, sawArgsDelta, "function 工具应保持原有参数增量事件")
 }
+
+func TestResponsesToChatCompletionsRequest_NativeApplyPatchBecomesFunction(t *testing.T) {
+	req := &ResponsesRequest{
+		Model: "grok-4.6",
+		Input: json.RawMessage(`"fix it"`),
+		Tools: []ResponsesTool{
+			{Type: "apply_patch"},
+			{Type: "function", Name: "exec_command", Parameters: json.RawMessage(`{"type":"object"}`)},
+		},
+	}
+
+	out, err := ResponsesToChatCompletionsRequest(req)
+	require.NoError(t, err)
+	require.Len(t, out.Tools, 2)
+	assert.Equal(t, "function", out.Tools[0].Type)
+	assert.Equal(t, "apply_patch", out.Tools[0].Function.Name)
+	assert.Equal(t, applyPatchToolDescription, out.Tools[0].Function.Description)
+	assert.JSONEq(t, applyPatchToolInputSchema, string(out.Tools[0].Function.Parameters))
+	assert.Equal(t, "exec_command", out.Tools[1].Function.Name)
+	assert.True(t, CustomToolNames(req.Tools)["apply_patch"])
+}
+
+func TestResponsesToChatCompletionsRequest_NativeApplyPatchDedupesCustom(t *testing.T) {
+	req := &ResponsesRequest{
+		Model: "grok-4.6",
+		Input: json.RawMessage(`"fix it"`),
+		Tools: []ResponsesTool{
+			{Type: "custom", Name: "apply_patch", Description: "custom patch"},
+			{Type: "apply_patch"},
+		},
+	}
+
+	out, err := ResponsesToChatCompletionsRequest(req)
+	require.NoError(t, err)
+	require.Len(t, out.Tools, 1)
+	assert.Equal(t, "apply_patch", out.Tools[0].Function.Name)
+	assert.Equal(t, "custom patch", out.Tools[0].Function.Description)
+	assert.JSONEq(t, applyPatchToolInputSchema, string(out.Tools[0].Function.Parameters))
+}
+
+func TestChatCompletionsResponseToResponses_NormalizesGrokApplyPatch(t *testing.T) {
+	resp := &ChatCompletionsResponse{Choices: []ChatChoice{{Message: ChatMessage{ToolCalls: []ChatToolCall{{
+		ID: "call_patch",
+		Function: ChatFunctionCall{
+			Name:      "apply_patch",
+			Arguments: "{\"input\":\"*** Begin Patch ***\\n*** Add File: hello.txt\\n+hello\\n*** End Patch ***\\n*** End of File ***\"}",
+		},
+	}}}}}}
+
+	out := ChatCompletionsResponseToResponses(resp, "grok-4.6", map[string]bool{"apply_patch": true}, nil, false, nil)
+	require.Len(t, out.Output, 1)
+	assert.Equal(t, "custom_tool_call", out.Output[0].Type)
+	assert.Equal(t, "apply_patch", out.Output[0].Name)
+	assert.Equal(t, "*** Begin Patch\n*** Add File: hello.txt\n+hello\n*** End Patch\n", out.Output[0].Input)
+}
