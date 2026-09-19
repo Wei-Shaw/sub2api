@@ -1,5 +1,9 @@
 export default {
 
+  bestloong: {
+    pendingModule: 'This page will be completed in its scheduled delivery module.'
+  },
+
   // Subscription Progress (Header component)
   subscriptionProgress: {
     title: 'My Subscriptions',

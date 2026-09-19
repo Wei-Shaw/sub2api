@@ -1,5 +1,9 @@
 export default {
 
+  bestloong: {
+    pendingModule: '该页面将在后续交付模块中完善。'
+  },
+
   // Subscription Progress (Header component)
   subscriptionProgress: {
     title: '我的订阅',

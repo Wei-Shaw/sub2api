@@ -33,7 +33,7 @@
       {{ t('modelPlaza.loadFailed') }}
     </div>
     <template v-else>
-      <!-- 筛选区:平台 → 分组 → 倍率 -->
+      <!-- 筛选区:平台 → 分组 → 倍率(可选) → 模型 -->
       <PlazaFilterBar
         :platforms="platforms"
         :groups="groupOptions"
@@ -42,6 +42,7 @@
         :group-id="selectedGroupId"
         :rate="selectedRate"
         :search="searchQuery"
+        :show-rate="showRateDetails"
         @update:platform="selectedPlatform = $event"
         @update:group-id="selectedGroupId = $event"
         @update:rate="selectedRate = $event"
@@ -50,7 +51,12 @@
 
       <!-- 分组分节的模型清单(默认按生效倍率升序) -->
       <div v-if="filteredGroups.length > 0" class="space-y-5">
-        <PlazaGroupSection v-for="g in filteredGroups" :key="g.id" :group="g" />
+        <PlazaGroupSection
+          v-for="g in filteredGroups"
+          :key="g.id"
+          :group="g"
+          :show-rate-details="showRateDetails"
+        />
       </div>
       <div
         v-else
@@ -73,13 +79,17 @@ import PlazaGroupSection from './PlazaGroupSection.vue'
 import type { ModelPlazaGroup, ModelPlazaResponse } from '@/api/modelPlaza'
 import { useAuthStore } from '@/stores/auth'
 
-const props = defineProps<{
+const props = withDefaults(defineProps<{
   response: ModelPlazaResponse | null
   loading: boolean
   error?: boolean
   /** 后台内嵌形态(AppLayout 内):隐藏页头。 */
   embedded?: boolean
-}>()
+  /** 隐藏客户不需要感知的倍率、订阅和高峰计费细节，价格仍按倍率计算。 */
+  showRateDetails?: boolean
+}>(), {
+  showRateDetails: true
+})
 
 const { t } = useI18n()
 const authStore = useAuthStore()

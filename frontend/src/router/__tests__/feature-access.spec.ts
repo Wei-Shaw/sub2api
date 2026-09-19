@@ -210,3 +210,53 @@ describe('subscription route guard (opt-out flag)', () => {
     expect(next).toHaveBeenCalledWith('/admin/dashboard')
   })
 })
+
+describe('Bestloong TOB customer route guard', () => {
+  beforeEach(() => {
+    authStore.isAuthenticated = true
+    authStore.isAdmin = false
+    authStore.isSimpleMode = false
+    appStore.publicSettingsLoaded = true
+    appStore.cachedPublicSettings = {}
+    appStore.fetchPublicSettings.mockReset()
+  })
+
+  it.each([
+    '/subscriptions',
+    '/purchase',
+    '/orders',
+    '/available-channels',
+    '/affiliate',
+    '/batch-image',
+    '/custom/legacy-page',
+  ])('redirects a regular customer away from %s', async (path) => {
+    const { navigation, next } = runGuard({}, path)
+    await navigation
+
+    expect(next).toHaveBeenCalledOnce()
+    expect(next).toHaveBeenCalledWith('/dashboard')
+  })
+
+  it('keeps hidden customer routes available to administrators', async () => {
+    authStore.isAdmin = true
+
+    const { navigation, next } = runGuard({}, '/orders')
+    await navigation
+
+    expect(next).toHaveBeenCalledOnce()
+    expect(next).toHaveBeenCalledWith()
+  })
+
+  it('requires authentication for the model plaza route', async () => {
+    authStore.isAuthenticated = false
+
+    const { navigation, next } = runGuard({}, '/model-plaza')
+    await navigation
+
+    expect(next).toHaveBeenCalledOnce()
+    expect(next).toHaveBeenCalledWith({
+      path: '/login',
+      query: { redirect: '/model-plaza' },
+    })
+  })
+})

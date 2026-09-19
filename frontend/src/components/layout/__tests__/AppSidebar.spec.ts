@@ -64,19 +64,14 @@ describe('AppSidebar header styles', () => {
 })
 
 describe('AppSidebar subscription feature flag', () => {
-  it('gates the My Subscriptions entry behind the subscription public-settings flag', () => {
-    expect(componentSource).toContain('const flagSubscription = makeSidebarFlag(FeatureFlags.subscription)')
-    expect(componentSource).toMatch(/path: '\/subscriptions'[^\n]*featureFlag: flagSubscription/)
+  it('does not expose subscriptions, purchases, or orders in the customer menu', () => {
+    expect(componentSource).not.toContain("label: t('nav.mySubscriptions')")
+    expect(componentSource).not.toContain("label: purchaseNavLabel.value")
+    expect(componentSource).not.toContain("label: t('nav.myOrders')")
   })
 
   it('also hides the admin Subscription Management entry on recharge-only sites', () => {
+    expect(componentSource).toContain('const flagSubscription = makeSidebarFlag(FeatureFlags.subscription)')
     expect(componentSource).toMatch(/path: '\/admin\/subscriptions'[^\n]*featureFlag: flagSubscription/)
-  })
-
-  it('derives the purchase entry label from the site billing mode', () => {
-    expect(componentSource).toContain("import { resolveSiteBillingMode } from '@/utils/siteBillingMode'")
-    expect(componentSource).toMatch(/case 'recharge_only':\s*return t\('nav\.recharge'\)/)
-    expect(componentSource).toMatch(/case 'subscription_only':\s*return t\('nav\.subscribe'\)/)
-    expect(componentSource).toMatch(/path: '\/purchase'[^\n]*label: purchaseNavLabel\.value/)
   })
 })

@@ -48,6 +48,7 @@ function mountTable(
     imageRateMultiplier?: number | null
     peakWindow?: string
     peakRateMultiplier?: number | null
+    showRateDetails?: boolean
   }
 ) {
   return mount(PlazaModelPricingTable, {
@@ -75,6 +76,19 @@ describe('PlazaModelPricingTable', () => {
 
     expect(wrapper.text()).toContain('modelPlaza.table.maxReasoningMultiplierBadge')
     expect(wrapper.find('[title="modelPlaza.table.maxReasoningMultiplierHint"]').exists()).toBe(true)
+  })
+
+  it('hides all rate details without changing the calculated paid price', () => {
+    const model = tokenModel()
+    model.pricing!.max_reasoning_effort_multiplier = 3
+    const wrapper = mountTable([model], 1, 0.8, { showRateDetails: false })
+
+    expect(wrapper.text()).toContain('$2.40')
+    expect(wrapper.text()).toContain('$12.00')
+    expect(wrapper.text()).not.toContain('modelPlaza.table.rate')
+    expect(wrapper.text()).not.toContain('modelPlaza.table.maxReasoningMultiplierBadge')
+    expect(wrapper.text()).not.toContain('0.8x')
+    expect(wrapper.findAll('tbody tr').at(0)?.findAll('td')).toHaveLength(7)
   })
 
   it('倍率 ≠ 1 时价格列为折后实付价,官方价列保持原价', () => {

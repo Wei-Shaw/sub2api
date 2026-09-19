@@ -52,7 +52,7 @@
     </div>
 
     <!-- 三级:倍率(当前组合下不存在的置灰) -->
-    <div class="flex items-start gap-2">
+    <div v-if="showRate" class="flex items-start gap-2">
       <span class="w-10 shrink-0 pt-2 text-xs font-semibold uppercase tracking-wider text-gray-400 dark:text-dark-500">
         {{ t('modelPlaza.filters.rateLabel') }}
       </span>
@@ -117,7 +117,7 @@ import PlatformIcon from '@/components/common/PlatformIcon.vue'
 import { platformAccentColor } from '@/utils/platformColors'
 import type { GroupPlatform } from '@/types'
 
-const props = defineProps<{
+const props = withDefaults(defineProps<{
   /** 数据中出现的平台(去重排序后)。 */
   platforms: string[]
   /** 全量分组(含平台与生效倍率),三个维度的置灰联动由此推导。 */
@@ -129,7 +129,11 @@ const props = defineProps<{
   rate: number | 'all'
   /** 模型名搜索词(纯前端过滤)。 */
   search: string
-}>()
+  /** 是否展示倍率筛选。 */
+  showRate?: boolean
+}>(), {
+  showRate: true
+})
 
 defineEmits<{
   'update:platform': [value: string]

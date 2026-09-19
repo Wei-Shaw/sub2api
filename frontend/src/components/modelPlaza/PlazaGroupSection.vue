@@ -3,7 +3,7 @@
     class="overflow-hidden rounded-2xl border bg-white shadow-card dark:bg-dark-800/50"
     :class="[platformBorderStrongClass(group.platform)]"
   >
-    <!-- 分组头部:名称/平台/倍率徽章/专属/订阅徽章 + 描述 -->
+    <!-- 分组头部:名称/平台/可选计费徽章/专属徽章 + 描述 -->
     <header class="border-b border-gray-100 px-5 py-4 dark:border-dark-700/60">
       <div class="flex flex-wrap items-center gap-2">
         <GroupBadge
@@ -16,6 +16,7 @@
           :peak-start="group.peak_start"
           :peak-end="group.peak_end"
           :peak-rate-multiplier="group.peak_rate_multiplier"
+          :show-rate="showRateDetails"
           always-show-rate
         />
         <span
@@ -26,7 +27,7 @@
           {{ t('modelPlaza.badges.exclusive') }}
         </span>
         <span
-          v-if="group.subscription_type === 'subscription'"
+          v-if="showRateDetails && group.subscription_type === 'subscription'"
           class="inline-flex items-center rounded-md bg-violet-50 px-2 py-0.5 text-xs font-medium text-violet-600 dark:bg-violet-900/20 dark:text-violet-400"
         >
           {{ t('modelPlaza.badges.subscription') }}
@@ -36,7 +37,7 @@
         {{ group.description }}
       </p>
       <p
-        v-if="peakNote"
+        v-if="showRateDetails && peakNote"
         class="mt-1.5 inline-flex items-center gap-1 text-xs text-amber-600 dark:text-amber-400"
       >
         <Icon name="clock" size="xs" class="h-3 w-3" />
@@ -61,8 +62,9 @@
         :user-rate-multiplier="group.user_rate_multiplier ?? null"
         :image-rate-independent="group.image_rate_independent"
         :image-rate-multiplier="group.image_rate_multiplier"
-        :peak-window="peakWindow"
+        :peak-window="showRateDetails ? peakWindow : ''"
         :peak-rate-multiplier="group.peak_rate_multiplier"
+        :show-rate-details="showRateDetails"
       />
       <p v-else class="px-5 py-4 text-center text-sm text-gray-400 dark:text-dark-500">
         {{ t('modelPlaza.detail.noModels') }}
@@ -83,9 +85,12 @@ import { platformBorderStrongClass } from '@/utils/platformColors'
 import { hasPeakRate, formatPeakRateWindow, serverTimezoneLabel } from '@/utils/peak-rate'
 import { useAppStore } from '@/stores/app'
 
-const props = defineProps<{
+const props = withDefaults(defineProps<{
   group: ModelPlazaGroup
-}>()
+  showRateDetails?: boolean
+}>(), {
+  showRateDetails: true
+})
 
 const { t } = useI18n()
 const appStore = useAppStore()

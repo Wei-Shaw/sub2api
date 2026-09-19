@@ -9,7 +9,7 @@
         <col class="w-[11%]" />
         <col class="w-[8%]" />
         <col class="w-[14%]" />
-        <col class="w-[8%]" />
+        <col v-if="showRateDetails" class="w-[8%]" />
       </colgroup>
       <thead>
         <tr
@@ -37,6 +37,7 @@
             </div>
           </th>
           <th
+            v-if="showRateDetails"
             rowspan="2"
             class="border-l border-gray-100 py-2.5 pl-3 pr-5 text-right align-middle dark:border-dark-700/60"
           >
@@ -100,7 +101,7 @@
                 {{ t('modelPlaza.table.marginalBadge') }}
               </span>
               <span
-                v-if="m.pricing?.max_reasoning_effort_multiplier"
+                v-if="showRateDetails && m.pricing?.max_reasoning_effort_multiplier"
                 class="rounded-md bg-amber-50 px-1.5 py-0.5 text-[10px] font-medium text-amber-700 dark:bg-amber-900/20 dark:text-amber-300"
                 :title="t('modelPlaza.table.maxReasoningMultiplierHint', { multiplier: m.pricing.max_reasoning_effort_multiplier })"
               >
@@ -278,6 +279,7 @@
 
           <!-- 折扣倍率(分时时段行展示 生效倍率×时段倍率;生图独立倍率行展示独立倍率;专属倍率划线展示原倍率) -->
           <td
+            v-if="showRateDetails"
             class="border-l border-gray-100 py-2.5 pl-3 pr-5 text-right align-middle font-mono text-xs dark:border-dark-700/60"
           >
             <span
@@ -316,7 +318,7 @@ import {
 import type { PlazaModel, PlazaTimePricingPeriod } from '@/api/modelPlaza'
 import type { UserPricingInterval } from '@/api/channels'
 
-const props = defineProps<{
+const props = withDefaults(defineProps<{
   models: PlazaModel[]
   /** 分组平台;实付分区底色随平台着色,未知平台回退品牌青。 */
   platform?: string
@@ -334,7 +336,11 @@ const props = defineProps<{
    */
   peakWindow?: string
   peakRateMultiplier?: number | null
-}>()
+  /** 是否展示倍率列和倍率徽章；关闭时仅隐藏展示，实付价计算不变。 */
+  showRateDetails?: boolean
+}>(), {
+  showRateDetails: true
+})
 
 const { t } = useI18n()
 

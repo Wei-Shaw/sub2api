@@ -11,6 +11,7 @@ import { useAdminComplianceStore } from '@/stores/adminCompliance'
 import { useNavigationLoadingState } from '@/composables/useNavigationLoading'
 import { useRoutePrefetch } from '@/composables/useRoutePrefetch'
 import { getSetupStatus } from '@/api/setup'
+import { isBestloongHiddenCustomerPath } from '@/constants/bestloongNavigation'
 import { resolveCompletedSetupRedirectPath } from './setupRedirect'
 import { resolveRouteDocumentTitle } from './title'
 
@@ -180,7 +181,8 @@ const routes: RouteRecordRaw[] = [
     name: 'ModelPlaza',
     component: () => import('@/views/ModelPlazaView.vue'),
     meta: {
-      requiresAuth: false,
+      requiresAuth: true,
+      requiresAdmin: false,
       title: 'Model Plaza',
       titleKey: 'modelPlaza.title'
     }
@@ -250,6 +252,39 @@ const routes: RouteRecordRaw[] = [
       title: 'Redeem Code',
       titleKey: 'redeem.title',
       descriptionKey: 'redeem.description'
+    }
+  },
+  {
+    path: '/balance',
+    name: 'Balance',
+    component: () => import('@/views/user/BestloongPendingView.vue'),
+    meta: {
+      requiresAuth: true,
+      requiresAdmin: false,
+      title: 'My Balance',
+      titleKey: 'nav.myBalance'
+    }
+  },
+  {
+    path: '/tutorials',
+    name: 'Tutorials',
+    component: () => import('@/views/user/BestloongPendingView.vue'),
+    meta: {
+      requiresAuth: true,
+      requiresAdmin: false,
+      title: 'Tutorials',
+      titleKey: 'nav.tutorials'
+    }
+  },
+  {
+    path: '/about',
+    name: 'AboutUs',
+    component: () => import('@/views/user/BestloongPendingView.vue'),
+    meta: {
+      requiresAuth: true,
+      requiresAdmin: false,
+      title: 'About Us',
+      titleKey: 'nav.aboutUs'
     }
   },
   {
@@ -816,6 +851,18 @@ router.beforeEach(async (to, _from, next) => {
     }
   }
 
+  // Bestloong exposes a fixed TOB customer surface. Keep retired TOC pages
+  // available to administrators, but redirect regular customers even when
+  // they open an old bookmark directly.
+  if (
+    authStore.isAuthenticated &&
+    !authStore.isAdmin &&
+    isBestloongHiddenCustomerPath(to.path)
+  ) {
+    next('/dashboard')
+    return
+  }
+
   // If route doesn't require auth, allow access
   if (!requiresAuth) {
     // If already authenticated and trying to access login/register, redirect to appropriate dashboard
@@ -829,37 +876,6 @@ router.beforeEach(async (to, _from, next) => {
       // Admin users go to admin dashboard, regular users go to user dashboard
       next(authStore.isAdmin ? '/admin/dashboard' : '/dashboard')
       return
-    }
-    // Model Plaza:公开路由但受「启用开关 + 可选强制登录」双重控制(后端同口径 fail-closed)
-    if (to.path === '/model-plaza') {
-      if (!appStore.publicSettingsLoaded) {
-        try {
-          await appStore.fetchPublicSettings()
-        } catch (error) {
-          console.warn('Failed to load public settings in route guard', error)
-        }
-      }
-      const plazaSettings = appStore.cachedPublicSettings
-      // 仅在设置成功加载且明确为 false 时拦截(瞬时加载失败视为未知,由后端 404 兜底)
-      if (appStore.publicSettingsLoaded && plazaSettings?.model_plaza_enabled === false) {
-        next(
-          authStore.isAuthenticated
-            ? authStore.isAdmin
-              ? '/admin/dashboard'
-              : '/dashboard'
-            : '/home'
-        )
-        return
-      }
-      if (plazaSettings?.model_plaza_require_auth === true && !authStore.isAuthenticated) {
-        next({ path: '/login', query: { redirect: to.fullPath } })
-        return
-      }
-      // Backend mode:登录的非管理员也不可见(匿名由下方公共拦截处理,广场不在白名单)
-      if (appStore.backendModeEnabled && authStore.isAuthenticated && !authStore.isAdmin) {
-        next('/login')
-        return
-      }
     }
     // Backend mode: block public pages for unauthenticated users (except login, key-usage, setup)
     if (appStore.backendModeEnabled && !authStore.isAuthenticated) {
