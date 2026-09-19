@@ -193,12 +193,24 @@ func (s *GroupRepoSuite) TestUpdate() {
 	s.Require().NoError(s.repo.Create(s.ctx, group))
 
 	group.Name = "updated"
+	group.CodexConfigDefaultModel = strings.Repeat("m", 200)
+	group.CodexConfigReviewModel = "claude-haiku-4-5"
 	err := s.repo.Update(s.ctx, group)
 	s.Require().NoError(err, "Update")
 
 	got, err := s.repo.GetByID(s.ctx, group.ID)
 	s.Require().NoError(err, "GetByID after update")
 	s.Require().Equal("updated", got.Name)
+	s.Require().Equal(strings.Repeat("m", 200), got.CodexConfigDefaultModel)
+	s.Require().Equal("claude-haiku-4-5", got.CodexConfigReviewModel)
+
+	group.CodexConfigDefaultModel = ""
+	group.CodexConfigReviewModel = ""
+	s.Require().NoError(s.repo.Update(s.ctx, group), "Update clearing Codex config model")
+	cleared, err := s.repo.GetByID(s.ctx, group.ID)
+	s.Require().NoError(err, "GetByID after clearing Codex config model")
+	s.Require().Empty(cleared.CodexConfigDefaultModel)
+	s.Require().Empty(cleared.CodexConfigReviewModel)
 }
 
 func (s *GroupRepoSuite) TestGetByID_PreservesMessagesDispatchModelConfig() {
