@@ -73,6 +73,117 @@ func TestResponsesChatBridge_MixedCustomAndNamespaceToolNames(t *testing.T) {
 	assert.Equal(t, "not-json", out.Output[2].Input)
 }
 
+func TestResponsesChatBridge_NamespaceCustomToolRoundTrip(t *testing.T) {
+	req := &ResponsesRequest{
+		Model: "deepseek-test",
+		Input: json.RawMessage(`[
+			{"type":"additional_tools","role":"developer","tools":[
+				{"type":"namespace","name":"functions","tools":[
+					{"type":"custom","name":"exec","description":"Run local code","format":{"type":"text"}},
+					{"type":"function","name":"wait","parameters":{"type":"object","properties":{}}}
+				]}
+			]},
+			{"type":"message","role":"user","content":[{"type":"input_text","text":"run pwd"}]}
+		]`),
+	}
+
+	effective, err := EffectiveResponsesTools(req)
+	require.NoError(t, err)
+
+	chatReq, err := ResponsesToChatCompletionsRequest(req)
+	require.NoError(t, err)
+	require.Len(t, chatReq.Tools, 2)
+	assert.Equal(t, "functions__exec", chatReq.Tools[0].Function.Name)
+	assert.JSONEq(t, customToolInputSchema, string(chatReq.Tools[0].Function.Parameters))
+	assert.Equal(t, "functions__wait", chatReq.Tools[1].Function.Name)
+
+	namespaceTools := NamespaceToolNames(effective)
+	require.Len(t, namespaceTools, 2)
+	resp := &ChatCompletionsResponse{Choices: []ChatChoice{{Message: ChatMessage{
+		ToolCalls: []ChatToolCall{{
+			ID: "call_exec", Function: ChatFunctionCall{
+				Name: "functions__exec", Arguments: `{"input":"pwd"}`,
+			},
+		}},
+	}}}}
+
+	out := ChatCompletionsResponseToResponses(resp, req.Model, nil, nil, false, namespaceTools)
+	require.Len(t, out.Output, 1)
+	assert.Equal(t, "custom_tool_call", out.Output[0].Type)
+	assert.Equal(t, "functions", out.Output[0].Namespace)
+	assert.Equal(t, "exec", out.Output[0].Name)
+	assert.Equal(t, "pwd", out.Output[0].Input)
+}
+
+func TestResponsesChatBridge_NamespaceCustomToolStreamRoundTrip(t *testing.T) {
+	namespaceTools := NamespaceToolNames([]ResponsesTool{{
+		Type: "namespace", Name: "functions", Tools: []ResponsesTool{
+			{Type: "custom", Name: "exec", Description: "Run local code"},
+			{Type: "function", Name: "wait", Parameters: json.RawMessage(`{"type":"object"}`)},
+		},
+	}})
+	state := NewChatCompletionsToResponsesStreamState("deepseek-test")
+	state.NamespaceTools = namespaceTools
+
+	idx := 0
+	events := ChatCompletionsChunkToResponsesEvents(&ChatCompletionsChunk{
+		Choices: []ChatChunkChoice{{Delta: ChatDelta{ToolCalls: []ChatToolCall{{
+			Index: &idx,
+			ID:    "call_exec",
+			Function: ChatFunctionCall{
+				Name: "functions__exec", Arguments: `{"input":"pwd"}`,
+			},
+		}}}}},
+	}, state)
+	events = append(events, FinalizeChatCompletionsResponsesStream(state)...)
+
+	var added, done *ResponsesOutput
+	for i := range events {
+		switch events[i].Type {
+		case "response.output_item.added":
+			added = events[i].Item
+		case "response.output_item.done":
+			if events[i].Item != nil && events[i].Item.Type == "custom_tool_call" {
+				done = events[i].Item
+				sse, err := ResponsesEventToSSE(events[i])
+				require.NoError(t, err)
+				assert.Contains(t, sse, `"namespace":"functions"`)
+			}
+		}
+	}
+	require.NotNil(t, added)
+	assert.Equal(t, "custom_tool_call", added.Type)
+	assert.Equal(t, "functions", added.Namespace)
+	assert.Equal(t, "exec", added.Name)
+	require.NotNil(t, done)
+	assert.Equal(t, "functions", done.Namespace)
+	assert.Equal(t, "exec", done.Name)
+	assert.Equal(t, "pwd", done.Input)
+
+	completed := events[len(events)-1]
+	require.Equal(t, "response.completed", completed.Type)
+	require.Len(t, completed.Response.Output, 1)
+	assert.Equal(t, "custom_tool_call", completed.Response.Output[0].Type)
+	assert.Equal(t, "functions", completed.Response.Output[0].Namespace)
+	assert.Equal(t, "exec", completed.Response.Output[0].Name)
+}
+
+func TestResponsesToChatCompletionsRequest_RejectsNamespaceCustomNameConflict(t *testing.T) {
+	_, err := ResponsesToChatCompletionsRequest(&ResponsesRequest{
+		Model: "deepseek-test",
+		Input: json.RawMessage(`"run pwd"`),
+		Tools: []ResponsesTool{
+			{Type: "function", Name: "functions__exec", Parameters: json.RawMessage(`{"type":"object"}`)},
+			{Type: "namespace", Name: "functions", Tools: []ResponsesTool{
+				{Type: "custom", Name: "exec"},
+			}},
+		},
+	})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "functions__exec")
+	assert.Contains(t, err.Error(), "cannot disambiguate")
+}
+
 func TestChatCompletionsResponseToResponses_ExplicitFunctionOwnsCustomAliasCollision(t *testing.T) {
 	resp := &ChatCompletionsResponse{Choices: []ChatChoice{{Message: ChatMessage{ToolCalls: []ChatToolCall{{
 		ID: "call_function", Function: ChatFunctionCall{Name: "functions__exec", Arguments: `{"path":"/tmp"}`},
@@ -549,10 +660,12 @@ func TestResponsesToChatCompletionsRequest_NamespaceToolFlattensChildren(t *test
 
 	out, err := ResponsesToChatCompletionsRequest(req)
 	require.NoError(t, err)
-	require.Len(t, out.Tools, 1, "namespace 子工具中仅 function 类型被摊平")
+	require.Len(t, out.Tools, 2, "namespace 中的 function/custom 子工具都应被摊平")
 
 	assert.Equal(t, "gmail__send", out.Tools[0].Function.Name)
 	assert.Equal(t, "Send mail", out.Tools[0].Function.Description)
+	assert.Equal(t, "gmail__ignored_child", out.Tools[1].Function.Name)
+	assert.JSONEq(t, customToolInputSchema, string(out.Tools[1].Function.Parameters))
 }
 
 func TestResponsesToolsParsing_StringToolBecomesCustom(t *testing.T) {
@@ -776,8 +889,9 @@ func TestNamespaceToolNames_MapsFlattenedNames(t *testing.T) {
 	}
 
 	m := NamespaceToolNames(tools)
-	require.Len(t, m, 2)
+	require.Len(t, m, 3)
 	assert.Equal(t, NamespacedToolName{Namespace: "gmail", Name: "send"}, m["gmail__send"])
+	assert.Equal(t, NamespacedToolName{Namespace: "gmail", Name: "skip_me", Custom: true}, m["gmail__skip_me"])
 	assert.Equal(t, NamespacedToolName{Namespace: "crm", Name: "query"}, m["crm__query"])
 
 	// 摊平名超长时截断加哈希，无法按字符串切分还原，必须经映射反查。
