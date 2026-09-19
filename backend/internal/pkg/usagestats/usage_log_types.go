@@ -318,6 +318,10 @@ type PlatformUsage struct {
 // BatchUserUsageStats represents usage stats for a single user
 type BatchUserUsageStats struct {
 	UserID          int64           `json:"user_id"`
+	TodayRequests   int64           `json:"today_requests"`
+	TotalRequests   int64           `json:"total_requests"`
+	TodayTokens     int64           `json:"today_tokens"`
+	TotalTokens     int64           `json:"total_tokens"`
 	TodayActualCost float64         `json:"today_actual_cost"`
 	TotalActualCost float64         `json:"total_actual_cost"`
 	ByPlatform      []PlatformUsage `json:"by_platform,omitempty"`
