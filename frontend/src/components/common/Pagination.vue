@@ -179,37 +179,39 @@ const jumpPage = ref('')
 
 const visiblePages = computed(() => {
   const pages: (number | string)[] = []
-  const maxVisible = 7
   const total = totalPages.value
 
-  if (total <= maxVisible) {
-    // Show all pages if total is small
+  if (total <= 7) {
+    // Show all pages when there are 7 or fewer total
     for (let i = 1; i <= total; i++) {
       pages.push(i)
     }
-  } else {
-    // Always show first page
-    pages.push(1)
+    return pages
+  }
 
-    const start = Math.max(2, props.page - 2)
-    const end = Math.min(total - 1, props.page + 2)
-
-    // Add ellipsis before if needed
-    if (start > 2) {
-      pages.push('...')
-    }
-
-    // Add middle pages
-    for (let i = start; i <= end; i++) {
+  // Always produce exactly 7 items to keep the nav width stable:
+  //   [1, 2, 3, 4, 5, '...', total]          — near start (page ≤ 4)
+  //   [1, '...', p-1, p, p+1, '...', total]  — middle
+  //   [1, '...', total-4, …, total]           — near end (page ≥ total-3)
+  if (props.page <= 4) {
+    for (let i = 1; i <= 5; i++) {
       pages.push(i)
     }
-
-    // Add ellipsis after if needed
-    if (end < total - 1) {
-      pages.push('...')
+    pages.push('...')
+    pages.push(total)
+  } else if (props.page >= total - 3) {
+    pages.push(1)
+    pages.push('...')
+    for (let i = total - 4; i <= total; i++) {
+      pages.push(i)
     }
-
-    // Always show last page
+  } else {
+    pages.push(1)
+    pages.push('...')
+    pages.push(props.page - 1)
+    pages.push(props.page)
+    pages.push(props.page + 1)
+    pages.push('...')
     pages.push(total)
   }
 
