@@ -16,8 +16,9 @@ const (
 	OpenAIAutoResetCredit7dThresholdExtraKey = "auto_reset_credit_7d_threshold"
 	OpenAIAutoResetCreditStateExtraKey       = "codex_auto_reset_credit_state"
 
-	openAIAutoResetCreditDefaultThreshold = 1.0
-	openAIAutoResetCreditMinimumThreshold = 0.001
+	openAIAutoResetCreditDefaultThreshold   = 1.0
+	openAIAutoResetCreditDefault5hThreshold = 0.0
+	openAIAutoResetCreditMinimumThreshold   = 0.001
 )
 
 // OpenAIAutoResetCreditConfig 是账号级自动用卡配置。阈值采用 0-1 比例，
@@ -28,11 +29,15 @@ type OpenAIAutoResetCreditConfig struct {
 	Threshold7d float64
 }
 
+func (c OpenAIAutoResetCreditConfig) thresholdActive() bool {
+	return c.Enabled && (c.Threshold5h > 0 || c.Threshold7d > 0)
+}
+
 // ResolveOpenAIAutoResetCreditConfig 只接受 OpenAI OAuth 母账号；历史账号未配置时
 // 始终保持关闭，防止升级后产生意外消费。
 func ResolveOpenAIAutoResetCreditConfig(account *Account) OpenAIAutoResetCreditConfig {
 	config := OpenAIAutoResetCreditConfig{
-		Threshold5h: openAIAutoResetCreditDefaultThreshold,
+		Threshold5h: openAIAutoResetCreditDefault5hThreshold,
 		Threshold7d: openAIAutoResetCreditDefaultThreshold,
 	}
 	if !isOpenAIAutoResetCreditAccount(account) || account.Extra == nil {
@@ -53,7 +58,7 @@ func isOpenAIAutoResetCreditAccount(account *Account) bool {
 }
 
 // normalizeOpenAIAutoResetCreditExtra 校验管理请求中的配置并剥离服务运行态。
-// enabled=true 时补齐两个 100% 默认阈值；关闭时保留已设置阈值，方便再次开启。
+// enabled=true 时补齐默认阈值（5h 关闭、7d 100%）；关闭时保留已设置阈值，方便再次开启。
 func normalizeOpenAIAutoResetCreditExtra(platform, accountType string, isShadow bool, extra map[string]any) (map[string]any, error) {
 	if extra == nil {
 		return nil, nil
@@ -79,19 +84,19 @@ func normalizeOpenAIAutoResetCreditExtra(platform, accountType string, isShadow 
 		}
 		enabled = value
 	}
-	for key, present := range map[string]bool{
-		OpenAIAutoResetCredit5hThresholdExtraKey: has5h,
-		OpenAIAutoResetCredit7dThresholdExtraKey: has7d,
+	for key, defaultValue := range map[string]float64{
+		OpenAIAutoResetCredit5hThresholdExtraKey: openAIAutoResetCreditDefault5hThreshold,
+		OpenAIAutoResetCredit7dThresholdExtraKey: openAIAutoResetCreditDefaultThreshold,
 	} {
-		if !present {
+		if _, present := normalized[key]; !present {
 			if enabled {
-				normalized[key] = openAIAutoResetCreditDefaultThreshold
+				normalized[key] = defaultValue
 			}
 			continue
 		}
 		value, ok := parseOpenAIAutoResetThreshold(normalized[key])
 		if !ok || !isValidOpenAIAutoResetThreshold(value) {
-			return nil, infraerrors.Newf(http.StatusBadRequest, "OPENAI_AUTO_RESET_CREDIT_THRESHOLD_INVALID", "%s must be between 0.001 and 1.0", key)
+			return nil, infraerrors.Newf(http.StatusBadRequest, "OPENAI_AUTO_RESET_CREDIT_THRESHOLD_INVALID", "%s must be 0 (disabled) or between 0.001 and 1.0", key)
 		}
 		normalized[key] = value
 	}
@@ -132,8 +137,9 @@ func parseOpenAIAutoResetThreshold(value any) (float64, bool) {
 	}
 }
 
+// 0 表示该窗口不参与阈值触发。
 func isValidOpenAIAutoResetThreshold(value float64) bool {
-	return !math.IsNaN(value) && !math.IsInf(value, 0) && value >= openAIAutoResetCreditMinimumThreshold && value <= 1
+	return value == 0 || (!math.IsNaN(value) && !math.IsInf(value, 0) && value >= openAIAutoResetCreditMinimumThreshold && value <= 1)
 }
 
 func cloneOpenAIAutoResetExtra(source map[string]any) map[string]any {
