@@ -402,6 +402,10 @@ func (h *OpenAIGatewayHandler) ChatCompletions(c *gin.Context) {
 		} else {
 			h.gatewayService.ReportOpenAIAccountScheduleResult(account, openAIAccountScheduleModel(c, account, reqModel, false, result), true, nil)
 		}
+		// 首 Token 慢响应自动冷却：仅影响后续请求的调度
+		if result != nil {
+			h.gatewayService.MaybeCooldownSlowFirstToken(c.Request.Context(), account.ID, result.FirstTokenMs)
+		}
 
 		submitChatUsage(result)
 		reqLog.Debug("openai_chat_completions.request_completed",
