@@ -51,8 +51,8 @@ func TestNewAPIRequestWithURL_普通请求(t *testing.T) {
 	if auth := req.Header.Get("Authorization"); auth != "Bearer test-token" {
 		t.Errorf("Authorization 不匹配: got %s", auth)
 	}
-	if ua := req.Header.Get("User-Agent"); ua != GetUserAgent() {
-		t.Errorf("User-Agent 不匹配: got %s, want %s", ua, GetUserAgent())
+	if ua := req.Header.Get("User-Agent"); ua != "Antigravity/1.0" {
+		t.Errorf("User-Agent 不匹配: got %s, want Antigravity/1.0", ua)
 	}
 }
 
