@@ -455,6 +455,7 @@ func sliceRawFromBody(body []byte, r gjson.Result) []byte {
 }
 
 // stripEmptyTextBlocksFromSlice removes empty text blocks from a content slice (including nested tool_result content).
+// Used by FilterThinkingBlocksForRetry which already does full deserialization for retry purposes.
 // Returns (cleaned slice, true) if any blocks were removed, or (original, false) if unchanged.
 func stripEmptyTextBlocksFromSlice(blocks []any) ([]any, bool) {
 	var result []any
@@ -511,8 +512,60 @@ func stripEmptyTextBlocksFromSlice(blocks []any) ([]any, bool) {
 	return result, true
 }
 
+// isEmptyTextBlock checks if a gjson.Result represents an empty text block: {"type":"text","text":""}
+func isEmptyTextBlock(item gjson.Result) bool {
+	return item.Get("type").String() == "text" && item.Get("text").String() == ""
+}
+
+// collectEmptyTextBlockPathsInContent recursively collects sjson paths of empty text blocks
+// in a content array, including nested tool_result content.
+func collectEmptyTextBlockPathsInContent(content gjson.Result, basePath string, paths *[]string) {
+	if !content.IsArray() {
+		return
+	}
+	idx := 0
+	content.ForEach(func(_, item gjson.Result) bool {
+		itemPath := fmt.Sprintf("%s.%d", basePath, idx)
+		if isEmptyTextBlock(item) {
+			*paths = append(*paths, itemPath)
+		} else if item.Get("type").String() == "tool_result" {
+			nested := item.Get("content")
+			if nested.IsArray() {
+				collectEmptyTextBlockPathsInContent(nested, itemPath+".content", paths)
+			}
+		}
+		idx++
+		return true
+	})
+}
+
+// collectEmptyTextBlockPaths collects sjson paths of empty text blocks in messages,
+// including those nested inside tool_result content arrays (recursively).
+// Uses gjson for read-only traversal — never deserializes/re-serializes the body.
+func collectEmptyTextBlockPaths(body []byte) []string {
+	var paths []string
+
+	jsonStr := *(*string)(unsafe.Pointer(&body))
+	messages := gjson.Get(jsonStr, "messages")
+	if !messages.Exists() || !messages.IsArray() {
+		return nil
+	}
+
+	msgIdx := 0
+	messages.ForEach(func(_, msg gjson.Result) bool {
+		content := msg.Get("content")
+		collectEmptyTextBlockPathsInContent(content, fmt.Sprintf("messages.%d.content", msgIdx), &paths)
+		msgIdx++
+		return true
+	})
+
+	return paths
+}
+
 // StripEmptyTextBlocks removes empty text blocks from the request body (including nested tool_result content).
 // This is a lightweight pre-filter for the initial request path to prevent upstream 400 errors.
+// Uses gjson/sjson path-based operations to avoid full deserialization/re-serialization,
+// which would corrupt thinking block signatures (see issue #1175).
 // Returns the original body unchanged if no empty text blocks are found.
 func StripEmptyTextBlocks(body []byte) []byte {
 	// Fast path: check if body contains empty text patterns
@@ -524,45 +577,23 @@ func StripEmptyTextBlocks(body []byte) []byte {
 		return body
 	}
 
-	jsonStr := *(*string)(unsafe.Pointer(&body))
-	msgsRes := gjson.Get(jsonStr, "messages")
-	if !msgsRes.Exists() || !msgsRes.IsArray() {
+	paths := collectEmptyTextBlockPaths(body)
+	if len(paths) == 0 {
 		return body
 	}
 
-	var messages []any
-	if err := json.Unmarshal(sliceRawFromBody(body, msgsRes), &messages); err != nil {
-		return body
-	}
+	// Delete from back to front to keep earlier indices valid.
+	sort.Sort(sort.Reverse(sort.StringSlice(paths)))
 
-	modified := false
-	for _, msg := range messages {
-		msgMap, ok := msg.(map[string]any)
-		if !ok {
+	out := body
+	for _, path := range paths {
+		next, err := sjson.DeleteBytes(out, path)
+		if err != nil {
 			continue
 		}
-		content, ok := msgMap["content"].([]any)
-		if !ok {
-			continue
-		}
-		if cleaned, changed := stripEmptyTextBlocksFromSlice(content); changed {
-			modified = true
-			msgMap["content"] = cleaned
-		}
+		out = next
 	}
 
-	if !modified {
-		return body
-	}
-
-	msgsBytes, err := json.Marshal(messages)
-	if err != nil {
-		return body
-	}
-	out, err := sjson.SetRawBytes(body, "messages", msgsBytes)
-	if err != nil {
-		return body
-	}
 	return out
 }
 
