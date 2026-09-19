@@ -591,6 +591,10 @@ func (s *OpenAIGatewayService) forwardDeepSeekResponses(
 		}
 	}
 
+	// 原生路径早返绕过通用 buildUpstreamRequest。图片 url 别名与工具输出
+	// 提升仍要在这里做，否则 Codex input_image.image_url 会被 DeepSeek 422。
+	body = normalizeDeepSeekResponsesRequestBody(account, body)
+
 	originalModel := strings.TrimSpace(gjson.GetBytes(body, "model").String())
 	if originalModel == "" {
 		return nil, fmt.Errorf("parse DeepSeek Responses request: model is required")

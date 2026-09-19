@@ -712,6 +712,7 @@ func (s *OpenAIGatewayService) buildDeepSeekWSHTTPBridgeRequest(
 	if err != nil {
 		return nil, nil, err
 	}
+	prepared = normalizeDeepSeekResponsesRequestBody(account, prepared)
 	prepared, err = applyDeepSeekAuthenticatedUserID(ctx, s.cfg, account, DeepSeekUserIdentityResponses, prepared)
 	if err != nil {
 		return nil, nil, err

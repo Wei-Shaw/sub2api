@@ -843,6 +843,7 @@ func TestNormalizeDeepSeekResponsesRequestBody(t *testing.T) {
 	require.Equal(t, "user", gjson.GetBytes(mediaNormalized, "input.2.role").String())
 	require.Equal(t, "input_image", gjson.GetBytes(mediaNormalized, "input.2.content.1.type").String())
 	require.Equal(t, "data:image/png;base64,AQID", gjson.GetBytes(mediaNormalized, "input.2.content.1.image_url").String())
+	require.Equal(t, "data:image/png;base64,AQID", gjson.GetBytes(mediaNormalized, "input.2.content.1.url").String())
 
 	// 非 responses 协议（deepseek CC 账号）原样返回
 	deepseekCC := &Account{Platform: PlatformDeepseek, Type: AccountTypeAPIKey}
