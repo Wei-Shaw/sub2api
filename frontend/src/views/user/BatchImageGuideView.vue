@@ -11,6 +11,7 @@
                   :placeholder="t('batchImage.filters.searchTaskName')"
                   class="w-full"
                   @search="applyFilters"
+                  @enter="applyFilters"
                 />
               </div>
               <Select v-model="filters.apiKeyId" :options="apiKeyFilterOptions" class="w-full" @change="applyFilters" />
@@ -18,6 +19,9 @@
               <Select v-model="filters.downloaded" :options="downloadFilterOptions" class="w-full" @change="applyFilters" />
             </div>
             <div class="flex flex-wrap items-center justify-start gap-2 sm:justify-end 2xl:flex-shrink-0">
+              <button type="button" class="btn btn-primary" :disabled="loadingJobs" @click="applyFilters">
+                {{ t('common.search') }}
+              </button>
               <button type="button" class="btn btn-secondary" :disabled="loadingJobs" @click="resetFilters">
                 {{ t('common.reset') }}
               </button>

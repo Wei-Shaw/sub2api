@@ -237,10 +237,15 @@
                 <h2 class="text-lg font-semibold text-gray-900 dark:text-white">{{ t('admin.riskControl.records') }}</h2>
                 <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">{{ t('admin.riskControl.recordsHint') }}</p>
               </div>
-              <button type="button" class="btn btn-secondary inline-flex items-center gap-2" :disabled="logsLoading" @click="loadLogs">
-                <Icon name="refresh" size="sm" :class="logsLoading ? 'animate-spin' : ''" />
-                {{ t('admin.riskControl.refresh') }}
-              </button>
+              <div class="flex flex-wrap items-center gap-2">
+                <button type="button" class="btn btn-primary inline-flex items-center gap-2" :disabled="logsLoading" @click="reloadLogsFromFirstPage">
+                  {{ t('common.search') }}
+                </button>
+                <button type="button" class="btn btn-secondary inline-flex items-center gap-2" :disabled="logsLoading" @click="loadLogs">
+                  <Icon name="refresh" size="sm" :class="logsLoading ? 'animate-spin' : ''" />
+                  {{ t('admin.riskControl.refresh') }}
+                </button>
+              </div>
             </div>
 
             <div class="flex flex-col gap-2 rounded-lg border border-gray-100 bg-gray-50 px-3 py-2 dark:border-dark-700 dark:bg-dark-900/30 sm:flex-row sm:items-center sm:justify-between">
