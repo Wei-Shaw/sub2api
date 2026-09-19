@@ -9,31 +9,38 @@
       <!-- Account Info Header -->
       <div
         v-if="account"
-        class="flex items-center justify-between rounded-xl border border-primary-200 bg-gradient-to-r from-primary-50 to-primary-100 p-3 dark:border-primary-700/50 dark:from-primary-900/20 dark:to-primary-800/20"
+        class="flex flex-col gap-3 rounded-xl border border-primary-200 bg-gradient-to-r from-primary-50 to-primary-100 p-3 sm:flex-row sm:items-center sm:justify-between dark:border-primary-700/50 dark:from-primary-900/20 dark:to-primary-800/20"
       >
-        <div class="flex items-center gap-3">
+        <div class="flex min-w-0 items-center gap-3">
           <div
             class="flex h-10 w-10 items-center justify-center rounded-lg bg-gradient-to-br from-primary-500 to-primary-600"
           >
             <Icon name="chartBar" size="md" class="text-white" />
           </div>
-          <div>
-            <div class="font-semibold text-gray-900 dark:text-gray-100">{{ account.name }}</div>
+          <div class="min-w-0">
+            <div class="break-all font-semibold text-gray-900 dark:text-gray-100">{{ account.name }}</div>
             <div class="text-xs text-gray-500 dark:text-gray-400">
               {{ t('admin.accounts.last30DaysUsage') }}
             </div>
           </div>
         </div>
-        <span
-          :class="[
-            'rounded-full px-2.5 py-1 text-xs font-semibold',
-            account.status === 'active'
-              ? 'bg-green-100 text-green-700 dark:bg-green-500/20 dark:text-green-400'
-              : 'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-400'
-          ]"
-        >
-          {{ account.status }}
-        </span>
+        <div class="flex flex-wrap items-center gap-2 self-end sm:self-auto">
+          <span
+            class="rounded-full bg-blue-100 px-2.5 py-1 text-xs font-semibold text-blue-700 dark:bg-blue-500/20 dark:text-blue-300"
+          >
+            {{ t('usage.accountMultiplier') }} {{ accountRateMultiplierText }}
+          </span>
+          <span
+            :class="[
+              'rounded-full px-2.5 py-1 text-xs font-semibold',
+              account.status === 'active'
+                ? 'bg-green-100 text-green-700 dark:bg-green-500/20 dark:text-green-400'
+                : 'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-400'
+            ]"
+          >
+            {{ account.status }}
+          </span>
+        </div>
       </div>
 
       <!-- Loading State -->
@@ -505,6 +512,8 @@ const chartColors = computed(() => ({
   text: isDarkMode.value ? '#e5e7eb' : '#374151',
   grid: isDarkMode.value ? '#374151' : '#e5e7eb'
 }))
+
+const accountRateMultiplierText = computed(() => `${(props.account?.rate_multiplier ?? 1).toFixed(2)}x`)
 
 // Line chart data
 const trendChartData = computed(() => {
