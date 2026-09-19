@@ -1206,6 +1206,11 @@ export default {
         free: '免费 Fast',
         freeHint: '该分组的 Fast 请求仍使用 priority 档位，但客户实际费用按同一请求的 Standard 价格计算。'
       },
+      ccsImport: {
+        title: 'CCS 一键导入默认模型',
+        hint: '按分组设置客户点击“一键导入 CCS”时写入的模型名。留空使用该平台默认模型。',
+        placeholder: '例如：deepseek-v4-1-flash-260910'
+      },
       invalidRequestFallback: {
         title: '无效请求兜底分组',
         hint: '仅当上游明确返回 prompt too long 时才会触发，留空表示不兜底',

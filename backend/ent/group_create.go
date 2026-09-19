@@ -816,6 +816,20 @@ func (_c *GroupCreate) SetNillableCodexModelsManifestConfig(v *domain.GroupCodex
 	return _c
 }
 
+// SetCcsDefaultModel sets the "ccs_default_model" field.
+func (_c *GroupCreate) SetCcsDefaultModel(v string) *GroupCreate {
+	_c.mutation.SetCcsDefaultModel(v)
+	return _c
+}
+
+// SetNillableCcsDefaultModel sets the "ccs_default_model" field if the given value is not nil.
+func (_c *GroupCreate) SetNillableCcsDefaultModel(v *string) *GroupCreate {
+	if v != nil {
+		_c.SetCcsDefaultModel(*v)
+	}
+	return _c
+}
+
 // SetRpmLimit sets the "rpm_limit" field.
 func (_c *GroupCreate) SetRpmLimit(v int) *GroupCreate {
 	_c.mutation.SetRpmLimit(v)
@@ -1183,6 +1197,10 @@ func (_c *GroupCreate) defaults() error {
 		v := group.DefaultCodexModelsManifestConfig
 		_c.mutation.SetCodexModelsManifestConfig(v)
 	}
+	if _, ok := _c.mutation.CcsDefaultModel(); !ok {
+		v := group.DefaultCcsDefaultModel
+		_c.mutation.SetCcsDefaultModel(v)
+	}
 	if _, ok := _c.mutation.RpmLimit(); !ok {
 		v := group.DefaultRpmLimit
 		_c.mutation.SetRpmLimit(v)
@@ -1386,6 +1404,14 @@ func (_c *GroupCreate) check() error {
 	}
 	if _, ok := _c.mutation.CodexModelsManifestConfig(); !ok {
 		return &ValidationError{Name: "codex_models_manifest_config", err: errors.New(`ent: missing required field "Group.codex_models_manifest_config"`)}
+	}
+	if _, ok := _c.mutation.CcsDefaultModel(); !ok {
+		return &ValidationError{Name: "ccs_default_model", err: errors.New(`ent: missing required field "Group.ccs_default_model"`)}
+	}
+	if v, ok := _c.mutation.CcsDefaultModel(); ok {
+		if err := group.CcsDefaultModelValidator(v); err != nil {
+			return &ValidationError{Name: "ccs_default_model", err: fmt.Errorf(`ent: validator failed for field "Group.ccs_default_model": %w`, err)}
+		}
 	}
 	if _, ok := _c.mutation.RpmLimit(); !ok {
 		return &ValidationError{Name: "rpm_limit", err: errors.New(`ent: missing required field "Group.rpm_limit"`)}
@@ -1680,6 +1706,10 @@ func (_c *GroupCreate) createSpec() (*Group, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.CodexModelsManifestConfig(); ok {
 		_spec.SetField(group.FieldCodexModelsManifestConfig, field.TypeJSON, value)
 		_node.CodexModelsManifestConfig = value
+	}
+	if value, ok := _c.mutation.CcsDefaultModel(); ok {
+		_spec.SetField(group.FieldCcsDefaultModel, field.TypeString, value)
+		_node.CcsDefaultModel = value
 	}
 	if value, ok := _c.mutation.RpmLimit(); ok {
 		_spec.SetField(group.FieldRpmLimit, field.TypeInt, value)
@@ -2816,6 +2846,18 @@ func (u *GroupUpsert) SetCodexModelsManifestConfig(v domain.GroupCodexModelsMani
 // UpdateCodexModelsManifestConfig sets the "codex_models_manifest_config" field to the value that was provided on create.
 func (u *GroupUpsert) UpdateCodexModelsManifestConfig() *GroupUpsert {
 	u.SetExcluded(group.FieldCodexModelsManifestConfig)
+	return u
+}
+
+// SetCcsDefaultModel sets the "ccs_default_model" field.
+func (u *GroupUpsert) SetCcsDefaultModel(v string) *GroupUpsert {
+	u.Set(group.FieldCcsDefaultModel, v)
+	return u
+}
+
+// UpdateCcsDefaultModel sets the "ccs_default_model" field to the value that was provided on create.
+func (u *GroupUpsert) UpdateCcsDefaultModel() *GroupUpsert {
+	u.SetExcluded(group.FieldCcsDefaultModel)
 	return u
 }
 
@@ -4079,6 +4121,20 @@ func (u *GroupUpsertOne) SetCodexModelsManifestConfig(v domain.GroupCodexModelsM
 func (u *GroupUpsertOne) UpdateCodexModelsManifestConfig() *GroupUpsertOne {
 	return u.Update(func(s *GroupUpsert) {
 		s.UpdateCodexModelsManifestConfig()
+	})
+}
+
+// SetCcsDefaultModel sets the "ccs_default_model" field.
+func (u *GroupUpsertOne) SetCcsDefaultModel(v string) *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetCcsDefaultModel(v)
+	})
+}
+
+// UpdateCcsDefaultModel sets the "ccs_default_model" field to the value that was provided on create.
+func (u *GroupUpsertOne) UpdateCcsDefaultModel() *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateCcsDefaultModel()
 	})
 }
 
@@ -5525,6 +5581,20 @@ func (u *GroupUpsertBulk) SetCodexModelsManifestConfig(v domain.GroupCodexModels
 func (u *GroupUpsertBulk) UpdateCodexModelsManifestConfig() *GroupUpsertBulk {
 	return u.Update(func(s *GroupUpsert) {
 		s.UpdateCodexModelsManifestConfig()
+	})
+}
+
+// SetCcsDefaultModel sets the "ccs_default_model" field.
+func (u *GroupUpsertBulk) SetCcsDefaultModel(v string) *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetCcsDefaultModel(v)
+	})
+}
+
+// UpdateCcsDefaultModel sets the "ccs_default_model" field to the value that was provided on create.
+func (u *GroupUpsertBulk) UpdateCcsDefaultModel() *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateCcsDefaultModel()
 	})
 }
 

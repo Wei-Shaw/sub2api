@@ -1208,6 +1208,11 @@ export default {
         free: 'Free Fast',
         freeHint: 'Fast requests in this group still use the priority tier, but customers are charged the equivalent Standard price.'
       },
+      ccsImport: {
+        title: 'CCS one-click import default model',
+        hint: 'Set the model name written when a customer imports this group into CCS. Leave empty to use the platform default.',
+        placeholder: 'e.g. deepseek-v4-1-flash-260910'
+      },
       invalidRequestFallback: {
         title: 'Invalid Request Fallback Group',
         hint: 'Triggered only when upstream explicitly returns prompt too long. Leave empty to disable fallback.',
