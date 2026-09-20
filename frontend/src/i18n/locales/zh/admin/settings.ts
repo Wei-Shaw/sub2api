@@ -542,7 +542,7 @@ export default {
         codexTicketFailClosed: '缺票拦截',
         codexTicketFailClosedDesc:
           '开启后，门控模型没有有效门票的账号暂停调度（防 429），请求路由到有票账号；关闭后无票也照常转发（不带门票头，更易触发上游限流）。保存后即时生效，无需重启。',
-        codexTicketHarvestProxy: '292 打票代理',
+        codexTicketHarvestProxy: '打票代理',
         codexTicketHarvestProxyDesc:
           '仅在门票功能开启时用于打票，保存后后续探测会使用新代理，无需重启。日常业务仍走账号自己的住宅代理。填写完整代理 URL（http 或 socks5h，含用户名和密码）。代理服务商需自行负责出口 IP 轮换。留空并保存表示不改已保存的值。',
         codexTicketHarvestProxyPlaceholder: "http://user:pass{'@'}proxy.example.com:1080",
