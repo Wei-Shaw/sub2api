@@ -2659,6 +2659,46 @@ type BatchUsageRequest struct {
 	Force      bool    `json:"force"`
 }
 
+const maxAccountPerformanceSnapshots = 128
+
+var accountPerformanceBatchCache = newBoundedSnapshotCache(30*time.Second, maxAccountPerformanceSnapshots)
+
+type BatchAccountPerformanceRequest struct {
+	AccountIDs []int64 `json:"account_ids" binding:"required,max=1000,dive,gt=0"`
+}
+
+// GetBatchPerformance returns a cached, passive rolling-hour snapshot.
+// POST /api/v1/admin/accounts/performance/batch
+func (h *AccountHandler) GetBatchPerformance(c *gin.Context) {
+	var req BatchAccountPerformanceRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "Invalid request: "+err.Error())
+		return
+	}
+	accountIDs, err := service.NormalizeAccountPerformanceIDs(req.AccountIDs)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	cacheKey := fmt.Sprintf("accounts_performance:%v", accountIDs)
+	cached, hit, err := accountPerformanceBatchCache.GetOrLoad(cacheKey, func() (any, error) {
+		if h.accountUsageService == nil {
+			return nil, fmt.Errorf("account usage service is unavailable")
+		}
+		return h.accountUsageService.GetPerformanceStatsBatch(c.Request.Context(), accountIDs)
+	})
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	if hit {
+		c.Header("X-Snapshot-Cache", "hit")
+	} else {
+		c.Header("X-Snapshot-Cache", "miss")
+	}
+	response.Success(c, cached.Payload)
+}
+
 // GetBatchTodayStats 批量获取多个账号的今日统计。
 // POST /api/v1/admin/accounts/today-stats/batch
 func (h *AccountHandler) GetBatchTodayStats(c *gin.Context) {

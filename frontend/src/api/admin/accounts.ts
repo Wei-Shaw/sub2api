@@ -581,6 +581,35 @@ export async function getBatchTodayStats(accountIds: number[]): Promise<BatchTod
   return data
 }
 
+export interface AccountPerformanceStats {
+  request_count: number
+  ttft_ms: number | null
+  tps: number | null
+  cache_rate: number | null
+  ttft_samples: number
+  tps_samples: number
+  cache_samples: number
+  last_request_at: string | null
+}
+
+export interface BatchAccountPerformanceResponse {
+  stats: Record<string, AccountPerformanceStats>
+  window_start: string
+  window_end: string
+}
+
+export async function getBatchPerformance(
+  accountIds: number[],
+  options?: { signal?: AbortSignal }
+): Promise<BatchAccountPerformanceResponse> {
+  const { data } = await apiClient.post<BatchAccountPerformanceResponse>(
+    '/admin/accounts/performance/batch',
+    { account_ids: accountIds },
+    { signal: options?.signal }
+  )
+  return data
+}
+
 /**
  * Set account schedulable status
  * @param id - Account ID
@@ -1093,6 +1122,7 @@ export const accountsAPI = {
   getBatchUsage,
   getTodayStats,
   getBatchTodayStats,
+  getBatchPerformance,
   clearRateLimit,
   recoverState,
   resetAccountQuota,

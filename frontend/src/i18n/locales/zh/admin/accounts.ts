@@ -113,11 +113,28 @@ export default {
         todayStats: '今日统计',
         groups: '分组',
         usageWindows: '用量窗口',
+        performance: '近 1h 表现',
         proxy: '代理',
         lastUsed: '最近使用',
         createdAt: '创建时间',
         expiresAt: '过期时间',
         actions: '操作'
+      },
+      performance: {
+        ttft: '首字',
+        tps: '输出',
+        cache: '缓存',
+        noUsage: '近 1h 无使用',
+        fewSamples: '样本较少',
+        failed: '统计加载失败',
+        stale: '更新失败，显示旧数据',
+        hint: '滚动近 60 分钟的真实使用记录统计，非主动测速。该列可见时每 30 秒自动刷新；日志入库和短缓存可能造成延迟。',
+        window: '统计窗口：{start} 至 {end}',
+        requests: '使用记录：{count} 条（不代表成功请求数）',
+        samples: '{metric}有效样本：{count}',
+        lastRequest: '最近记录：{time}',
+        timingHint: '首字为流式首响应耗时均值；TPS 为总输出 Token ÷ 总首响应后耗时，可能包含传输与中断请求。不同模型混合统计，仅供参考。',
+        cacheHint: '缓存率为日志缓存读取 Token ÷ 总输入 Token（含缓存写入和读取），非请求命中比例。强制缓存计费或上游未报告用量会影响结果。'
       },
       schedulerScore: {
         baseShort: '普通',
@@ -777,6 +794,9 @@ export default {
         testMode: '测试模式',
         testModeDefault: '常规请求',
         testModeCompact: 'Compact 探测',
+        testModePelican: '鹈鹕测智',
+        pelicanTestMode: '提示词："Generate an SVG of a pelican riding a bicycle"',
+        sendingPelicanRequest: '正在请求模型生成骑自行车的鹈鹕 SVG...',
         modelRestrictionDisabledByPassthrough: '已开启自动透传：模型白名单/映射不会生效。',
       },
       grok: {

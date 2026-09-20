@@ -1,15 +1,21 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { DOMWrapper, flushPromises, mount } from '@vue/test-utils'
+import { DOMWrapper, enableAutoUnmount, flushPromises, mount } from '@vue/test-utils'
 import { defineComponent } from 'vue'
 
 import AccountsView from '../AccountsView.vue'
 import AccountActionMenu from '@/components/admin/account/AccountActionMenu.vue'
+import AccountPerformanceCell from '@/components/account/AccountPerformanceCell.vue'
+import Pagination from '@/components/common/Pagination.vue'
+import type { BatchAccountPerformanceResponse } from '@/api/admin/accounts'
+
+enableAutoUnmount(afterEach)
 
 const {
   listAccounts,
   listWithEtag,
   getById,
   getBatchTodayStats,
+  getBatchPerformance,
   getUpstreamBillingProbeSettings,
   getAllProxies,
   getAllGroups,
@@ -21,6 +27,7 @@ const {
   listWithEtag: vi.fn(),
   getById: vi.fn(),
   getBatchTodayStats: vi.fn(),
+  getBatchPerformance: vi.fn(),
   getUpstreamBillingProbeSettings: vi.fn(),
   getAllProxies: vi.fn(),
   getAllGroups: vi.fn(),
@@ -36,6 +43,7 @@ vi.mock('@/api/admin', () => ({
       getById,
       listWithEtag,
       getBatchTodayStats,
+      getBatchPerformance,
       getUpstreamBillingProbeSettings,
       delete: vi.fn(),
       batchClearError: vi.fn(),
@@ -62,12 +70,16 @@ vi.mock('vue-i18n', async () => {
 })
 
 const DataTableStub = defineComponent({
-  props: { data: { type: Array, default: () => [] } },
+  props: {
+    data: { type: Array, default: () => [] },
+    columns: { type: Array, default: () => [] }
+  },
   template: `
     <div>
       <div v-for="row in data" :key="row.id" :data-account-name="row.name">
         <slot name="cell-groups" :row="row" />
         <slot name="cell-actions" :row="row" />
+        <slot v-if="columns.some(column => column.key === 'performance')" name="cell-performance" :row="row" />
       </div>
     </div>
   `
@@ -123,6 +135,7 @@ function mountView(stubActionMenu = true) {
         AccountCapacityCell: true,
         AccountStatusIndicator: true,
         AccountTodayStatsCell: true,
+        AccountPerformanceCell: true,
         AccountGroupsCell: AccountGroupsCellStub,
         AccountUsageCell: true,
         UpstreamBillingRateCell: true,
@@ -156,13 +169,27 @@ const fullAccount = {
   extra: { detail_only: true }
 }
 
+const performanceResponse: BatchAccountPerformanceResponse = {
+  stats: {
+    '42': {
+      request_count: 8, ttft_ms: 820, tps: 46.3, cache_rate: 0.725,
+      ttft_samples: 8, tps_samples: 8, cache_samples: 8,
+      last_request_at: '2026-09-16T02:59:00Z'
+    }
+  },
+  window_start: '2026-09-16T02:00:00Z',
+  window_end: '2026-09-16T03:00:00Z'
+}
+
 describe('admin AccountsView lite account list', () => {
   beforeEach(() => {
     localStorage.clear()
+    vi.spyOn(document, 'visibilityState', 'get').mockReturnValue('visible')
     listAccounts.mockReset().mockResolvedValue({ items: [listRow], total: 1, page: 1, page_size: 20, pages: 1 })
     listWithEtag.mockReset().mockResolvedValue({ notModified: true, etag: 'compact-etag', data: null })
     getById.mockReset().mockResolvedValue(fullAccount)
     getBatchTodayStats.mockReset().mockResolvedValue({ stats: {} })
+    getBatchPerformance.mockReset().mockResolvedValue(performanceResponse)
     getUpstreamBillingProbeSettings.mockReset().mockResolvedValue({ enabled: true })
     getAllProxies.mockReset().mockResolvedValue([])
     getAllGroups.mockReset().mockResolvedValue([{ id: 7, name: 'codex', platform: 'openai' }])
@@ -235,6 +262,166 @@ describe('admin AccountsView lite account list', () => {
       expect.objectContaining({ etag: null })
     )
     wrapper.unmount()
+  })
+
+  it('shows performance after usage and refreshes passively with account auto-refresh disabled', async () => {
+    vi.useFakeTimers()
+    const wrapper = mountView()
+    await flushPromises()
+
+    const columns = wrapper.getComponent(DataTableStub).props('columns') as { key: string; sortable: boolean }[]
+    const usageIndex = columns.findIndex(column => column.key === 'usage')
+    expect(columns[usageIndex + 1]).toMatchObject({ key: 'performance', sortable: false })
+    expect(getBatchPerformance).toHaveBeenCalledTimes(1)
+    expect(getBatchPerformance).toHaveBeenCalledWith([42], { signal: expect.any(AbortSignal) })
+    expect(wrapper.getComponent(AccountPerformanceCell).props()).toMatchObject({
+      stats: performanceResponse.stats['42'],
+      windowStart: performanceResponse.window_start,
+      windowEnd: performanceResponse.window_end
+    })
+
+    await vi.advanceTimersByTimeAsync(30_000)
+    expect(getBatchPerformance).toHaveBeenCalledTimes(2)
+    expect(listWithEtag).not.toHaveBeenCalled()
+    expect(refreshCredentials).not.toHaveBeenCalled()
+    expect(getBatchTodayStats).toHaveBeenCalledTimes(1)
+    wrapper.unmount()
+    await vi.advanceTimersByTimeAsync(60_000)
+    expect(getBatchPerformance).toHaveBeenCalledTimes(2)
+  })
+
+  it('refreshes performance even when account list ETags remain unchanged', async () => {
+    vi.useFakeTimers()
+    localStorage.setItem('account-auto-refresh', JSON.stringify({ enabled: true, interval_seconds: 5 }))
+    const wrapper = mountView()
+    await flushPromises()
+    await vi.advanceTimersByTimeAsync(30_000)
+    expect(listWithEtag).toHaveBeenCalled()
+    expect(getBatchPerformance).toHaveBeenCalledTimes(2)
+    wrapper.unmount()
+  })
+
+  it('pauses in background tabs and immediately refreshes on returning', async () => {
+    vi.useFakeTimers()
+    const visibility = vi.spyOn(document, 'visibilityState', 'get').mockReturnValue('visible')
+    const wrapper = mountView()
+    await flushPromises()
+
+    visibility.mockReturnValue('hidden')
+    document.dispatchEvent(new Event('visibilitychange'))
+    await flushPromises()
+    await vi.advanceTimersByTimeAsync(60_000)
+    expect(getBatchPerformance).toHaveBeenCalledTimes(1)
+
+    visibility.mockReturnValue('visible')
+    document.dispatchEvent(new Event('visibilitychange'))
+    await flushPromises()
+    expect(getBatchPerformance).toHaveBeenCalledTimes(2)
+    wrapper.unmount()
+  })
+
+  it('does not fetch until an initially hidden page becomes visible', async () => {
+    const visibility = vi.spyOn(document, 'visibilityState', 'get').mockReturnValue('hidden')
+    const wrapper = mountView()
+    await flushPromises()
+    expect(getBatchPerformance).not.toHaveBeenCalled()
+
+    visibility.mockReturnValue('visible')
+    document.dispatchEvent(new Event('visibilitychange'))
+    await flushPromises()
+    expect(getBatchPerformance).toHaveBeenCalledTimes(1)
+    wrapper.unmount()
+  })
+
+  it('does not poll an empty account list', async () => {
+    vi.useFakeTimers()
+    listAccounts.mockResolvedValueOnce({ items: [], total: 0, page: 1, page_size: 20, pages: 0 })
+    const wrapper = mountView()
+    await flushPromises()
+    await vi.advanceTimersByTimeAsync(90_000)
+    expect(getBatchPerformance).not.toHaveBeenCalled()
+    wrapper.unmount()
+  })
+
+  it('does not fetch a hidden performance column and fetches immediately when shown', async () => {
+    vi.useFakeTimers()
+    localStorage.setItem('account-hidden-columns', JSON.stringify(['performance']))
+    const wrapper = mountView()
+    await flushPromises()
+    await vi.advanceTimersByTimeAsync(30_000)
+    expect(getBatchPerformance).not.toHaveBeenCalled()
+
+    const toolsButton = wrapper.findAll('button').find(button => button.text().includes('admin.accounts.moreActions'))
+    expect(toolsButton).toBeTruthy()
+    await toolsButton!.trigger('click')
+    const columnButton = wrapper.findAll('button').find(button => button.text() === 'admin.accounts.columns.performance')
+    expect(columnButton).toBeTruthy()
+    await columnButton!.trigger('click')
+    await flushPromises()
+    expect(getBatchPerformance).toHaveBeenCalledTimes(1)
+
+    await columnButton!.trigger('click')
+    await flushPromises()
+    await vi.advanceTimersByTimeAsync(60_000)
+    expect(getBatchPerformance).toHaveBeenCalledTimes(1)
+    wrapper.unmount()
+  })
+
+  it('cancels old-page requests and ignores their late responses', async () => {
+    let resolveOld: (response: BatchAccountPerformanceResponse) => void = () => {}
+    getBatchPerformance.mockReturnValueOnce(new Promise(resolve => { resolveOld = resolve }))
+    listAccounts.mockResolvedValueOnce({ items: [listRow], total: 21, page: 1, page_size: 20, pages: 2 })
+    const wrapper = mountView()
+    await flushPromises()
+    const oldSignal = getBatchPerformance.mock.calls[0][1].signal as AbortSignal
+
+    listAccounts.mockResolvedValueOnce({ items: [{ ...listRow, id: 43 }], total: 21, page: 2, page_size: 20, pages: 2 })
+    const nextResponse = { ...performanceResponse, stats: { '43': { ...performanceResponse.stats['42'], tps: 91 } } }
+    getBatchPerformance.mockResolvedValueOnce(nextResponse)
+    wrapper.getComponent(Pagination).vm.$emit('update:page', 2)
+    await flushPromises()
+    expect(oldSignal.aborted).toBe(true)
+    expect(getBatchPerformance).toHaveBeenLastCalledWith([43], { signal: expect.any(AbortSignal) })
+    expect(wrapper.getComponent(AccountPerformanceCell).props('stats').tps).toBe(91)
+
+    resolveOld(performanceResponse)
+    await flushPromises()
+    expect(wrapper.getComponent(AccountPerformanceCell).props('stats').tps).toBe(91)
+    wrapper.unmount()
+  })
+
+  it('marks refresh errors as stale and replaces expired-window values with empty statistics', async () => {
+    vi.useFakeTimers()
+    const logError = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const wrapper = mountView()
+    await flushPromises()
+    getBatchPerformance.mockRejectedValueOnce(new Error('query failed'))
+    await vi.advanceTimersByTimeAsync(30_000)
+    expect(wrapper.getComponent(AccountPerformanceCell).props()).toMatchObject({
+      stats: performanceResponse.stats['42'], error: true
+    })
+    expect(logError).toHaveBeenCalledWith('Failed to load passive account performance:', expect.any(Error))
+
+    const empty = {
+      request_count: 0, ttft_ms: null, tps: null, cache_rate: null,
+      ttft_samples: 0, tps_samples: 0, cache_samples: 0, last_request_at: null
+    }
+    getBatchPerformance.mockResolvedValueOnce({ ...performanceResponse, stats: { '42': empty } })
+    await vi.advanceTimersByTimeAsync(30_000)
+    expect(wrapper.getComponent(AccountPerformanceCell).props()).toMatchObject({ stats: empty, error: false })
+    wrapper.unmount()
+  })
+
+  it('does not overlap slow passive requests and aborts on unmount', async () => {
+    vi.useFakeTimers()
+    getBatchPerformance.mockReturnValueOnce(new Promise(() => {}))
+    const wrapper = mountView()
+    await flushPromises()
+    const signal = getBatchPerformance.mock.calls[0][1].signal as AbortSignal
+    await vi.advanceTimersByTimeAsync(90_000)
+    expect(getBatchPerformance).toHaveBeenCalledTimes(1)
+    wrapper.unmount()
+    expect(signal.aborted).toBe(true)
   })
 
   it('loads the full account by id before opening edit, test, and stats actions', async () => {

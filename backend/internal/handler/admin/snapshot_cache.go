@@ -18,10 +18,12 @@ type snapshotCacheEntry struct {
 }
 
 type snapshotCache struct {
-	mu    sync.RWMutex
-	ttl   time.Duration
-	items map[string]snapshotCacheEntry
-	sf    singleflight.Group
+	mu           sync.RWMutex
+	ttl          time.Duration
+	items        map[string]snapshotCacheEntry
+	sf           singleflight.Group
+	maxEntries   int
+	cleanupTimer *time.Timer
 }
 
 type snapshotCacheLoadResult struct {
@@ -39,6 +41,15 @@ func newSnapshotCache(ttl time.Duration) *snapshotCache {
 	}
 }
 
+func newBoundedSnapshotCache(ttl time.Duration, maxEntries int) *snapshotCache {
+	if maxEntries <= 0 {
+		panic("snapshot cache capacity must be positive")
+	}
+	c := newSnapshotCache(ttl)
+	c.maxEntries = maxEntries
+	return c
+}
+
 func (c *snapshotCache) Get(key string) (snapshotCacheEntry, bool) {
 	if c == nil || key == "" {
 		return snapshotCacheEntry{}, false
@@ -51,11 +62,15 @@ func (c *snapshotCache) Get(key string) (snapshotCacheEntry, bool) {
 	if !ok {
 		return snapshotCacheEntry{}, false
 	}
-	if now.After(entry.ExpiresAt) {
+	if !now.Before(entry.ExpiresAt) {
 		c.mu.Lock()
-		delete(c.items, key)
-		c.mu.Unlock()
-		return snapshotCacheEntry{}, false
+		defer c.mu.Unlock()
+		// A concurrent load may have replaced the expired snapshot.
+		entry, ok = c.items[key]
+		if !ok || !time.Now().Before(entry.ExpiresAt) {
+			delete(c.items, key)
+			return snapshotCacheEntry{}, false
+		}
 	}
 	return entry, true
 }
@@ -73,9 +88,52 @@ func (c *snapshotCache) Set(key string, payload any) snapshotCacheEntry {
 		return entry
 	}
 	c.mu.Lock()
+	now := time.Now()
+	entry.ExpiresAt = now.Add(c.ttl)
+	if c.maxEntries > 0 {
+		c.deleteExpiredLocked(now)
+		if _, exists := c.items[key]; !exists && len(c.items) >= c.maxEntries {
+			var oldestKey string
+			var oldestExpiry time.Time
+			for cachedKey, cached := range c.items {
+				if oldestExpiry.IsZero() || cached.ExpiresAt.Before(oldestExpiry) {
+					oldestKey, oldestExpiry = cachedKey, cached.ExpiresAt
+				}
+			}
+			delete(c.items, oldestKey)
+		}
+	}
 	c.items[key] = entry
+	c.scheduleCleanupLocked()
 	c.mu.Unlock()
 	return entry
+}
+
+func (c *snapshotCache) deleteExpiredLocked(now time.Time) {
+	for key, entry := range c.items {
+		if !now.Before(entry.ExpiresAt) {
+			delete(c.items, key)
+		}
+	}
+}
+
+func (c *snapshotCache) scheduleCleanupLocked() {
+	if c.maxEntries <= 0 || c.cleanupTimer != nil || len(c.items) == 0 {
+		return
+	}
+	var nextExpiry time.Time
+	for _, entry := range c.items {
+		if nextExpiry.IsZero() || entry.ExpiresAt.Before(nextExpiry) {
+			nextExpiry = entry.ExpiresAt
+		}
+	}
+	c.cleanupTimer = time.AfterFunc(time.Until(nextExpiry), func() {
+		c.mu.Lock()
+		defer c.mu.Unlock()
+		c.cleanupTimer = nil
+		c.deleteExpiredLocked(time.Now())
+		c.scheduleCleanupLocked()
+	})
 }
 
 func (c *snapshotCache) GetOrLoad(key string, load func() (any, error)) (snapshotCacheEntry, bool, error) {

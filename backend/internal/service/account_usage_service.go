@@ -9,10 +9,12 @@ import (
 	"log/slog"
 	"math/rand/v2"
 	"net/http"
+	"sort"
 	"strings"
 	"sync"
 	"time"
 
+	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 	httppool "github.com/Wei-Shaw/sub2api/internal/pkg/httpclient"
 	openaipkg "github.com/Wei-Shaw/sub2api/internal/pkg/openai"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
@@ -82,6 +84,50 @@ type UsageLogRepository interface {
 
 type accountWindowStatsBatchReader interface {
 	GetAccountWindowStatsBatch(ctx context.Context, accountIDs []int64, startTime time.Time) (map[int64]*usagestats.AccountStats, error)
+}
+
+type accountPerformanceStatsBatchReader interface {
+	GetAccountPerformanceStatsBatch(ctx context.Context, accountIDs []int64, startTime, endTime time.Time) (map[int64]*AccountPerformanceStats, error)
+}
+
+const MaxAccountPerformanceBatchSize = 1000
+
+// AccountPerformanceStats describes recorded usage, not verified successful requests.
+// CacheRate is the billing/log cache-read token share, not an upstream cache-hit rate.
+type AccountPerformanceStats struct {
+	RequestCount  int64      `json:"request_count"`
+	TTFTMs        *float64   `json:"ttft_ms"`
+	TPS           *float64   `json:"tps"`
+	CacheRate     *float64   `json:"cache_rate"`
+	TTFTSamples   int64      `json:"ttft_samples"`
+	TPSSamples    int64      `json:"tps_samples"`
+	CacheSamples  int64      `json:"cache_samples"`
+	LastRequestAt *time.Time `json:"last_request_at"`
+}
+
+type AccountPerformanceBatchStats struct {
+	Stats       map[int64]*AccountPerformanceStats `json:"stats"`
+	WindowStart time.Time                          `json:"window_start"`
+	WindowEnd   time.Time                          `json:"window_end"`
+}
+
+func NormalizeAccountPerformanceIDs(accountIDs []int64) ([]int64, error) {
+	if len(accountIDs) > MaxAccountPerformanceBatchSize {
+		return nil, infraerrors.BadRequest("INVALID_ACCOUNT_IDS", "account_ids must contain at most 1000 IDs")
+	}
+	ids := make([]int64, 0, len(accountIDs))
+	seen := make(map[int64]struct{}, len(accountIDs))
+	for _, id := range accountIDs {
+		if id <= 0 {
+			return nil, infraerrors.BadRequest("INVALID_ACCOUNT_IDS", "account_ids must contain only positive IDs")
+		}
+		if _, ok := seen[id]; !ok {
+			seen[id] = struct{}{}
+			ids = append(ids, id)
+		}
+	}
+	sort.Slice(ids, func(i, j int) bool { return ids[i] < ids[j] })
+	return ids, nil
 }
 
 // apiUsageCache 缓存从 Anthropic API 获取的使用率数据（utilization, resets_at）
@@ -1404,6 +1450,39 @@ func (s *AccountUsageService) GetTodayStats(ctx context.Context, accountID int64
 		StandardCost: stats.StandardCost,
 		UserCost:     stats.UserCost,
 	}, nil
+}
+
+// GetPerformanceStatsBatch only reads local usage logs in a rolling, half-open hour.
+func (s *AccountUsageService) GetPerformanceStatsBatch(ctx context.Context, accountIDs []int64) (*AccountPerformanceBatchStats, error) {
+	ids, err := NormalizeAccountPerformanceIDs(accountIDs)
+	if err != nil {
+		return nil, err
+	}
+	// PostgreSQL timestamps have microsecond precision; return the exact SQL bounds.
+	end := time.Now().UTC().Truncate(time.Microsecond)
+	result := &AccountPerformanceBatchStats{
+		Stats:       make(map[int64]*AccountPerformanceStats, len(ids)),
+		WindowStart: end.Add(-time.Hour),
+		WindowEnd:   end,
+	}
+	if len(ids) == 0 {
+		return result, nil
+	}
+	reader, ok := s.usageLogRepo.(accountPerformanceStatsBatchReader)
+	if !ok {
+		return nil, fmt.Errorf("account performance batch reader is unavailable")
+	}
+	stats, err := reader.GetAccountPerformanceStatsBatch(ctx, ids, result.WindowStart, result.WindowEnd)
+	if err != nil {
+		return nil, fmt.Errorf("get account performance stats: %w", err)
+	}
+	for _, id := range ids {
+		result.Stats[id] = stats[id]
+		if result.Stats[id] == nil {
+			result.Stats[id] = &AccountPerformanceStats{}
+		}
+	}
+	return result, nil
 }
 
 // GetTodayStatsBatch 批量获取账号今日统计，优先走批量 SQL，失败时回退单账号查询。
