@@ -768,7 +768,7 @@ func TestProxyOpenAIWSHTTPBridgeTurnTransportErrorFailoverSafety(t *testing.T) {
 		wantWrites   int
 	}{
 		{name: "first_turn_fails_over_before_downstream_event", turn: 1, wantFailover: true},
-		{name: "later_turn_does_not_replay_completed_turns", turn: 2, wantWrites: 1},
+		{name: "later_turn_fails_over_before_downstream_event", turn: 2, wantFailover: true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

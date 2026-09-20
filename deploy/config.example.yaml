@@ -227,6 +227,10 @@ gateway:
   openai_first_output_timeout_seconds: 0
   # Optional high/xhigh/max override (seconds, 0=use the standard timeout)
   openai_high_effort_first_output_timeout_seconds: 0
+  # OpenAI transport failures without an HTTP status fail over. Durable proxy/DNS/routing faults
+  # immediately unschedule the account for 10 minutes; timeouts/EOF/resets do not add a cooldown.
+  # OpenAI 未收到 HTTP 状态码的传输失败可换号；代理认证失败、拒连、DNS 不存在及不可达首次即禁调度 10 分钟。
+  # 普通超时、EOF、连接重置只换号，不累计冷却；WS 拨号使用同一规则，池排队与握手状态码沿用原处理。
   # Max request body size in bytes (default: 256MB)
   # 请求体最大字节数（默认 256MB）
   max_body_size: 268435456

@@ -906,9 +906,14 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 				account.ProxyID != nil && account.Proxy != nil,
 			)
 			var dialErr *openAIWSDialError
-			if errors.As(acquireErr, &dialErr) && dialErr != nil && dialErr.StatusCode == http.StatusTooManyRequests {
-				s.persistOpenAIWSRateLimitSignal(ctx, account, dialErr.ResponseHeaders, nil, "rate_limit_exceeded", "rate_limit_error", strings.TrimSpace(acquireErr.Error()), canonicalModel)
-				return nil, s.newOpenAIWSRateLimitFailoverError(account, dialErr.ResponseHeaders, nil, acquireErr.Error())
+			if errors.As(acquireErr, &dialErr) && dialErr != nil {
+				if failoverErr := s.handleOpenAIWSDialTransportFailure(ctx, c, account, turn, dialErr, false); failoverErr != nil {
+					return nil, failoverErr
+				}
+				if dialErr.StatusCode == http.StatusTooManyRequests {
+					s.persistOpenAIWSRateLimitSignal(ctx, account, dialErr.ResponseHeaders, nil, "rate_limit_exceeded", "rate_limit_error", strings.TrimSpace(acquireErr.Error()), canonicalModel)
+					return nil, s.newOpenAIWSRateLimitFailoverError(account, dialErr.ResponseHeaders, nil, acquireErr.Error())
+				}
 			}
 			if errors.Is(acquireErr, errOpenAIWSPreferredConnUnavailable) {
 				return nil, NewOpenAIWSClientCloseError(
@@ -1259,6 +1264,7 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 					result.wsReplayInput = replayInput
 					result.wsReplayInputExists = true
 				}
+				result.wsAccountFailoverReplayInput = replayCollector.AllItems()
 				if imageCount > 0 {
 					result.ImageCount = imageCount
 					result.ImageSize = imageSizeTier
@@ -1278,6 +1284,7 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 	currentImageInputSize := firstPayload.imageInputSize
 	currentPayloadBytes := firstPayload.payloadBytes
 	currentRequestedReasoningEffort := firstPayload.requestedReasoningEffort
+	currentAccountIdentitySourceRaw := firstPayload.accountIdentitySourceRaw
 	isStrictAffinityTurn := func(payload []byte) bool {
 		if !storeDisabled {
 			return false
@@ -1346,6 +1353,11 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 	lastTurnReplayInputExists := false
 	currentTurnReplayInput := []json.RawMessage(nil)
 	currentTurnReplayInputExists := false
+	lastTurnAccountFailoverInput := []json.RawMessage(nil)
+	lastTurnAccountFailoverInputExists := false
+	currentTurnAccountFailoverInput := []json.RawMessage(nil)
+	currentTurnAccountFailoverInputExists := false
+	currentTurnAccountFailoverInputBuilt := false
 	skipBeforeTurn := false
 	hasCurrentOrReplayFunctionCallOutput := func(payload []byte) bool {
 		if openAIWSRawPayloadHasToolCallOutput(payload) {
@@ -1458,6 +1470,28 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 		skipBeforeTurn = true
 		return true
 	}
+	// 后续轮次的换号错误必须携带可在新账号上重放的当前轮完整请求；
+	// 否则 handler 只能退回首包重试，首轮被重复生成计费、当前轮请求丢失。
+	// 无法安全重建上下文时载荷置空，由 handler 关闭连接。
+	wrapLaterTurnFailover := func(turn int, err error) error {
+		var failoverErr *UpstreamFailoverError
+		if turn <= 1 || !errors.As(err, &failoverErr) || failoverErr == nil {
+			return err
+		}
+		retryPayload, retrySafe, retryPayloadErr := buildOpenAIWSCurrentTurnRetryPayload(
+			currentAccountIdentitySourceRaw,
+			currentTurnAccountFailoverInput,
+			currentTurnAccountFailoverInputExists,
+			currentOriginalModel,
+		)
+		if retryPayloadErr != nil {
+			return fmt.Errorf("build websocket current-turn failover payload: %w", retryPayloadErr)
+		}
+		if !retrySafe {
+			retryPayload = nil
+		}
+		return newOpenAIWSCurrentTurnFailoverError(err, retryPayload)
+	}
 	for {
 		if turn > 1 && !skipBeforeTurn && hooks != nil && hooks.BeforeRequest != nil {
 			if err := hooks.BeforeRequest(turn, currentPayload, currentOriginalModel); err != nil {
@@ -1482,6 +1516,12 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 			}
 			if lastTurnReplayInputExists {
 				lastTurnReplayInput, _ = stripOpenAIInvalidEncryptedContentFromReplayItems(lastTurnReplayInput, invalidDigests)
+			}
+			if lastTurnAccountFailoverInputExists {
+				lastTurnAccountFailoverInput, _ = stripOpenAIInvalidEncryptedContentFromReplayItems(lastTurnAccountFailoverInput, invalidDigests)
+			}
+			if currentTurnAccountFailoverInputBuilt && currentTurnAccountFailoverInputExists {
+				currentTurnAccountFailoverInput, _ = stripOpenAIInvalidEncryptedContentFromReplayItems(currentTurnAccountFailoverInput, invalidDigests)
 			}
 		}
 		currentPreviousResponseID := openAIWSPayloadStringFromRaw(currentPayload, "previous_response_id")
@@ -1528,12 +1568,10 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 				)
 			}
 		}
-		nextReplayInput, nextReplayInputExists, replayInputErr := buildOpenAIWSReplayInputSequence(
-			lastTurnReplayInput,
-			lastTurnReplayInputExists,
-			currentPayload,
-			currentPreviousResponseID != "",
-		)
+		// 一次解析当前 input，正常 replay 与 account-failover 两份序列共享同一批正文。
+		// account-failover 序列每个客户端轮次只按原始请求构建一次：同一轮内的恢复重试会去掉
+		// previous_response_id 并用普通 replay 改写载荷，若据此重建会丢失历史助手输出。
+		currentItems, currentItemsExist, replayInputErr := openAIWSExtractNormalizedInputSequence(currentPayload)
 		if replayInputErr != nil {
 			logOpenAIWSModeInfo(
 				"ingress_ws_replay_input_skip account_id=%d turn=%d conn_id=%s reason=build_error cause=%s",
@@ -1544,9 +1582,28 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 			)
 			currentTurnReplayInput = nil
 			currentTurnReplayInputExists = false
+			if !currentTurnAccountFailoverInputBuilt {
+				currentTurnAccountFailoverInput = nil
+				currentTurnAccountFailoverInputExists = false
+			}
 		} else {
-			currentTurnReplayInput = nextReplayInput
-			currentTurnReplayInputExists = nextReplayInputExists
+			currentTurnReplayInput, currentTurnReplayInputExists = buildOpenAIWSReplayInputSequenceFromItems(
+				lastTurnReplayInput,
+				lastTurnReplayInputExists,
+				currentItems,
+				currentItemsExist,
+				currentPreviousResponseID != "",
+			)
+			if !currentTurnAccountFailoverInputBuilt {
+				currentTurnAccountFailoverInput, currentTurnAccountFailoverInputExists = buildOpenAIWSReplayInputSequenceFromItems(
+					lastTurnAccountFailoverInput,
+					lastTurnAccountFailoverInputExists,
+					currentItems,
+					currentItemsExist,
+					currentPreviousResponseID != "",
+				)
+				currentTurnAccountFailoverInputBuilt = true
+			}
 		}
 		replayHasFunctionCallOutput := currentTurnReplayInputExists &&
 			openAIWSRawItemsHasFunctionCallOutput(currentTurnReplayInput)
@@ -1640,7 +1697,7 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 		if sessionLease == nil {
 			acquiredLease, acquireErr := acquireTurnLease(turn, preferredConnID, forcePreferredConn, turnRetry > 0)
 			if acquireErr != nil {
-				return fmt.Errorf("acquire upstream websocket: %w", acquireErr)
+				return wrapLaterTurnFailover(turn, fmt.Errorf("acquire upstream websocket: %w", acquireErr))
 			}
 			sessionLease = acquiredLease
 			sessionConnID = strings.TrimSpace(sessionLease.ConnID())
@@ -1748,7 +1805,7 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 
 				acquiredLease, acquireErr := acquireTurnLease(turn, preferredConnID, forcePreferredConn, false)
 				if acquireErr != nil {
-					return fmt.Errorf("acquire upstream websocket after preflight ping fail: %w", acquireErr)
+					return wrapLaterTurnFailover(turn, fmt.Errorf("acquire upstream websocket after preflight ping fail: %w", acquireErr))
 				}
 				sessionLease = acquiredLease
 				sessionConnID = strings.TrimSpace(sessionLease.ConnID())
@@ -1808,7 +1865,7 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 				hooks.AfterTurn(turn, nil, finalErr)
 			}
 			sessionLease.MarkBroken()
-			return finalErr
+			return wrapLaterTurnFailover(turn, finalErr)
 		}
 		turnRetry = 0
 		turnPrevRecoveryTried = false
@@ -1829,6 +1886,12 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 		if result.wsReplayInputExists {
 			lastTurnReplayInput = combineOpenAIWSReplayItems(lastTurnReplayInput, result.wsReplayInput)
 			lastTurnReplayInputExists = true
+		}
+		lastTurnAccountFailoverInput = currentTurnAccountFailoverInput
+		lastTurnAccountFailoverInputExists = currentTurnAccountFailoverInputExists
+		if len(result.wsAccountFailoverReplayInput) > 0 {
+			lastTurnAccountFailoverInput = combineOpenAIWSReplayItems(lastTurnAccountFailoverInput, result.wsAccountFailoverReplayInput)
+			lastTurnAccountFailoverInputExists = true
 		}
 		nextStrictState, strictStateErr := buildOpenAIWSIngressPreviousTurnStrictState(currentPayload)
 		if strictStateErr != nil {
@@ -1942,6 +2005,8 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 		}
 		currentPayload = nextPayload.payloadRaw
 		currentOriginalModel = nextPayload.originalModel
+		currentAccountIdentitySourceRaw = nextPayload.accountIdentitySourceRaw
+		currentTurnAccountFailoverInputBuilt = false
 		currentImageBillingModel = nextPayload.imageBillingModel
 		currentImageSizeTier = nextPayload.imageSizeTier
 		currentImageInputSize = nextPayload.imageInputSize

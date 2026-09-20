@@ -548,7 +548,15 @@ func (s *OpenAIGatewayService) proxyOpenAIWSHTTPBridgeTurn(
 		}
 		resp, err = s.doOpenAIUpstream(upstreamReq, proxyURL, account)
 		if err != nil {
-			if turn == 1 {
+			if account.IsOpenAI() {
+				if isOpenAIWSSessionPreempted(ctx) {
+					return nil, errOpenAIWSSessionPreempted
+				}
+				if ctxErr := ctx.Err(); ctxErr != nil {
+					return nil, ctxErr
+				}
+			}
+			if turn == 1 || account.IsOpenAI() {
 				return nil, s.handleOpenAIUpstreamTransportError(ctx, c, account, err, true)
 			}
 			safeErr := sanitizeUpstreamErrorMessage(err.Error())

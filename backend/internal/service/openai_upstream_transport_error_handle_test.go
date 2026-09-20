@@ -6,8 +6,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net"
 	"net/http"
 	"net/http/httptest"
+	"syscall"
 	"testing"
 	"time"
 
@@ -37,6 +39,111 @@ func newOpenAITransportErrTestContext() (*gin.Context, *httptest.ResponseRecorde
 	c, _ := gin.CreateTestContext(rec)
 	c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", nil)
 	return c, rec
+}
+
+type openAITransportLegacyPolicyCase struct {
+	name  string
+	cause error
+	block bool
+}
+
+func openAITransportLegacyPolicyCases() []openAITransportLegacyPolicyCase {
+	return []openAITransportLegacyPolicyCase{
+		{"proxy_credentials", errors.New("username/password authentication failed"), true},
+		{"proxy_407_text", errors.New("proxy authentication required"), true},
+		{"refused_typed", &net.OpError{Op: "dial", Net: "tcp", Err: syscall.ECONNREFUSED}, true},
+		{"refused_text", errors.New("connect: connection refused"), true},
+		{"dns_typed", &net.DNSError{Err: "missing", Name: "proxy.invalid", IsNotFound: true}, true},
+		{"dns_text", errors.New("no such host"), true},
+		{"host_unreachable", syscall.EHOSTUNREACH, true},
+		{"network_unreachable", syscall.ENETUNREACH, true},
+		{"route_text", errors.New("no route to host"), true},
+		{"network_text", errors.New("network is unreachable"), true},
+		{"dial_timeout", &net.OpError{Op: "dial", Net: "tcp", Err: openAITransportTimeoutErr{}}, false},
+		{"socks_timeout", newOpenAISocksDialTimeoutError(), false},
+		{"tls_timeout", errors.New("net/http: TLS handshake timeout"), false},
+		{"eof", errors.New("EOF"), false},
+		{"reset", errors.New("connection reset by peer"), false},
+		{"header_timeout", errors.New("net/http: timeout awaiting response headers"), false},
+		{"attempt_deadline", context.DeadlineExceeded, false},
+	}
+}
+
+func runOpenAITransportLegacyPolicyTests(t *testing.T, invoke func(
+	*OpenAIGatewayService, context.Context, *gin.Context, *Account, error, bool,
+) error) {
+	t.Helper()
+	for _, tc := range openAITransportLegacyPolicyCases() {
+		for _, passthrough := range []bool{false, true} {
+			t.Run(fmt.Sprintf("%s/passthrough=%t", tc.name, passthrough), func(t *testing.T) {
+				repo := &openaiTransportAccountRepoStub{}
+				svc := &OpenAIGatewayService{accountRepo: repo}
+				account := &Account{ID: 715, Name: "transport-policy", Platform: PlatformOpenAI}
+				attempts := 4
+				if tc.block {
+					attempts = 1
+				}
+				before := time.Now()
+				for i := 0; i < attempts; i++ {
+					c, rec := newOpenAITransportErrTestContext()
+					err := invoke(svc, context.Background(), c, account, tc.cause, passthrough)
+					var failover *UpstreamFailoverError
+					require.ErrorAs(t, err, &failover)
+					require.NotNil(t, failover)
+					require.Equal(t, http.StatusBadGateway, failover.StatusCode)
+					require.True(t, failover.ShouldRetryNextAccount())
+					require.False(t, failover.RetryableOnSameAccount)
+					require.JSONEq(t, string(openAITransportFailoverBody), string(failover.ResponseBody))
+					require.Zero(t, rec.Body.Len())
+					require.False(t, c.Writer.Written())
+					rawEvents, exists := c.Get(OpsUpstreamErrorsKey)
+					require.True(t, exists)
+					events, ok := rawEvents.([]*OpsUpstreamErrorEvent)
+					require.True(t, ok)
+					require.Len(t, events, 1)
+					require.Equal(t, 0, events[0].UpstreamStatusCode)
+					require.Equal(t, "request_error", events[0].Kind)
+					require.Equal(t, passthrough, events[0].Passthrough)
+				}
+				after := time.Now()
+				require.Equal(t, tc.block, svc.isOpenAIAccountRuntimeBlocked(account))
+				if !tc.block {
+					require.Empty(t, repo.tempUnschedCalls)
+					return
+				}
+				require.Len(t, repo.tempUnschedCalls, 1)
+				call := repo.tempUnschedCalls[0]
+				require.Equal(t, account.ID, call.accountID)
+				require.False(t, call.until.Before(before.Add(10*time.Minute)))
+				require.False(t, call.until.After(after.Add(10*time.Minute)))
+			})
+		}
+	}
+}
+
+func TestOpenAITransportLegacyPolicy_HTTP(t *testing.T) {
+	runOpenAITransportLegacyPolicyTests(t, func(
+		svc *OpenAIGatewayService, ctx context.Context, c *gin.Context,
+		account *Account, cause error, passthrough bool,
+	) error {
+		return svc.handleOpenAIUpstreamTransportError(ctx, c, account, cause, passthrough)
+	})
+}
+
+func TestHandleOpenAIUpstreamTransportError_ParentDeadlineNoFailover(t *testing.T) {
+	ctx, cancel := context.WithDeadline(context.Background(), time.Now().Add(-time.Second))
+	defer cancel()
+	repo := &openaiTransportAccountRepoStub{}
+	svc := &OpenAIGatewayService{accountRepo: repo}
+	account := &Account{ID: 716, Platform: PlatformOpenAI}
+	c, rec := newOpenAITransportErrTestContext()
+	err := svc.handleOpenAIUpstreamTransportError(ctx, c, account, context.DeadlineExceeded, false)
+	var failover *UpstreamFailoverError
+	require.ErrorIs(t, err, context.DeadlineExceeded)
+	require.False(t, errors.As(err, &failover))
+	require.Empty(t, repo.tempUnschedCalls)
+	require.False(t, svc.isOpenAIAccountRuntimeBlocked(account))
+	require.Zero(t, rec.Body.Len())
 }
 
 type failingOpenAIHTTPUpstream struct {
@@ -357,4 +464,29 @@ func TestHandleOpenAIAccountUpstreamError_RecordsOllamaActivityOnly(t *testing.T
 	require.True(t, ok, "Ollama Cloud non-2xx must schedule last_used activity")
 	_, ok = deferred.lastUsedUpdates.Load(int64(505))
 	require.False(t, ok, "non-Ollama non-2xx must not schedule Ollama activity")
+}
+
+func newOpenAISocksDialTimeoutError() error {
+	return fmt.Errorf("Post %q: %w", "https://chatgpt.com/backend-api/codex/responses", &net.OpError{
+		Op:  "socks connect",
+		Net: "tcp",
+		Err: &net.OpError{Op: "dial", Net: "tcp", Err: openAITransportTimeoutErr{}},
+	})
+}
+
+// 等响应头超时是上游慢或挂起，不是拨号阶段问题：只换号，不计数不封。
+func TestHandleOpenAIUpstreamTransportError_ResponseHeaderTimeoutNeverBlocks(t *testing.T) {
+	repo := &openaiTransportAccountRepoStub{}
+	svc := &OpenAIGatewayService{accountRepo: repo}
+	account := &Account{ID: 160, Name: "slow-upstream", Platform: PlatformOpenAI}
+	headerTimeout := errors.New(`Post "https://chatgpt.com/backend-api/codex/responses": net/http: timeout awaiting response headers`)
+
+	for i := 0; i < 4; i++ {
+		c, _ := newOpenAITransportErrTestContext()
+		err := svc.handleOpenAIUpstreamTransportError(context.Background(), c, account, headerTimeout, false)
+		var fo *UpstreamFailoverError
+		require.True(t, errors.As(err, &fo))
+	}
+	require.False(t, svc.isOpenAIAccountRuntimeBlocked(account))
+	require.Empty(t, repo.tempUnschedCalls)
 }
