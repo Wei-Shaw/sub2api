@@ -338,7 +338,7 @@ const (
 	configuredCodexGrokContext         = 500_000
 	configuredCodexGrokBuildContext    = 256_000
 	configuredCodexGPT56MaxContext     = 872_000
-	configuredCodexGPT6AstraContext    = 1_050_000
+	configuredCodexGPT6AstraMaxContext = 872_000
 	configuredCodexToolOutputMaxTokens = 10_000
 )
 
@@ -517,8 +517,7 @@ func newConfiguredCodexModelDescriptor(modelID string) configuredCodexModelDescr
 				multiAgentEffort := "xhigh"
 				descriptor.MultiAgentReasoningEffort = &multiAgentEffort
 				descriptor.MultiAgentVersion = "v2"
-				descriptor.ContextWindow = configuredCodexGPT6AstraContext
-				descriptor.MaxContextWindow = configuredCodexGPT6AstraContext
+				descriptor.MaxContextWindow = configuredCodexGPT6AstraMaxContext
 			}
 		}
 		if SupportsVerbosity(modelID) {
@@ -2219,6 +2218,7 @@ func applySyncedAPIKeyCodexModelMetadata(body []byte, account *Account, overwrit
 		if !ok {
 			continue
 		}
+		metadata = codexCatalogAccountMetadata(account, lookupModel, metadata)
 		if lookupModel != slug {
 			metadata.DisplayName = ""
 			metadata.Description = ""
@@ -2251,12 +2251,16 @@ func applySyncedAPIKeyCodexModelMetadata(body []byte, account *Account, overwrit
 		if len(normalizeCodexInputModalities(metadata.InputModalities)) > 0 {
 			fields = append(fields, "input_modalities")
 		}
-		if metadata.ContextWindow > 0 {
+		if metadata.ContextWindow > 0 || metadata.MaxContextWindow > 0 {
 			fields = append(fields, "context_window", "max_context_window")
 		}
 
 		// List conversion has already applied live fields over account capabilities.
-		modelChanged := applyCodexToolCapabilities(model, metadata.CodexToolCapabilities, false)
+		modelChanged := false
+		if !overwriteLocalDefaults {
+			modelChanged = completeAstraNativeMaxContextWindow(model, slug)
+		}
+		modelChanged = applyCodexToolCapabilities(model, metadata.CodexToolCapabilities, false) || modelChanged
 		for _, field := range fields {
 			value, exists := syncedFields[field]
 			if !exists {
@@ -2358,6 +2362,7 @@ func completeAPIKeyCodexModelsManifestMetadata(body []byte, completeAll bool, ac
 			descriptor.InputModalities = []string{"text", "image"}
 			descriptor.SupportsImageDetailOriginal = true
 		}
+		modelChanged := completeAstraNativeMaxContextWindow(model, slug)
 		defaultBody, err := json.Marshal(descriptor)
 		if err != nil {
 			return nil, fmt.Errorf("encode default model %q: %w", slug, err)
@@ -2372,7 +2377,7 @@ func completeAPIKeyCodexModelsManifestMetadata(body []byte, completeAll bool, ac
 			capabilityModel = account.GetMappedModel(slug)
 		}
 		capabilities := accountCodexToolCapabilities(account, capabilityModel)
-		modelChanged := applyCodexToolCapabilities(model, capabilities, false)
+		modelChanged = applyCodexToolCapabilities(model, capabilities, false) || modelChanged
 		if completeDescriptor {
 			merged, err := mergeMissingCodexModelFields(model, defaults)
 			if err != nil {
@@ -2419,6 +2424,22 @@ func completeAPIKeyCodexModelsManifestMetadata(body []byte, completeAll bool, ac
 		return nil, fmt.Errorf("encode JSON object: %w", err)
 	}
 	return completed, nil
+}
+
+func completeAstraNativeMaxContextWindow(model map[string]json.RawMessage, slug string) bool {
+	if !isOpenAIGPT6AstraModel(slug) {
+		return false
+	}
+	maximum := bytes.TrimSpace(model["max_context_window"])
+	if len(maximum) > 0 && !bytes.Equal(maximum, []byte("null")) {
+		return false
+	}
+	var defaultWindow int64
+	if err := json.Unmarshal(model["context_window"], &defaultWindow); err != nil || defaultWindow <= 0 {
+		return false
+	}
+	model["max_context_window"] = append(json.RawMessage(nil), model["context_window"]...)
+	return true
 }
 
 func mergeMissingCodexModelFields(current, defaults map[string]json.RawMessage) (bool, error) {
