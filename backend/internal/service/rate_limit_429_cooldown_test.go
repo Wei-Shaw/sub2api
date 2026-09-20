@@ -97,6 +97,57 @@ func TestHandle429_FallbackDisabledSkipsLocalMark(t *testing.T) {
 	require.Zero(t, accountRepo.rateLimitCalls)
 }
 
+func TestHandle429_KimiDynamicAllocation429UsesShortFallback(t *testing.T) {
+	accountRepo := &rateLimit429AccountRepoStub{}
+	settingRepo := newMockSettingRepo()
+	data, _ := json.Marshal(RateLimit429CooldownSettings{Enabled: true, CooldownSeconds: 12})
+	settingRepo.data[SettingKeyRateLimit429CooldownSettings] = string(data)
+
+	settingSvc := NewSettingService(settingRepo, &config.Config{})
+	svc := NewRateLimitService(accountRepo, nil, &config.Config{}, nil, nil)
+	svc.SetSettingService(settingSvc)
+	now := time.Now()
+	account := &Account{
+		ID: 47, Platform: PlatformKimi, Type: AccountTypeAPIKey,
+		Credentials: map[string]any{"account_mode": AccountModeCoding},
+		Extra: map[string]any{
+			"kimi_5h_reset_at":     now.Add(2 * time.Hour).Format(time.RFC3339),
+			"kimi_weekly_reset_at": now.Add(24 * time.Hour).Format(time.RFC3339),
+		},
+	}
+
+	before := time.Now()
+	svc.handle429(context.Background(), account, http.Header{}, []byte(`{"error":{"code":"Throttling.AllocationQuota","message":"usage allocated quota exceeded. please try again later"}}`))
+	after := time.Now()
+
+	// 动态资源限流不能因为快照里有未来窗口，就被冷却到两小时后的 5h reset。
+	require.Equal(t, 1, accountRepo.rateLimitCalls)
+	require.True(t, accountRepo.lastRateLimitReset.After(before.Add(12*time.Second)))
+	require.True(t, accountRepo.lastRateLimitReset.Before(after.Add(12*time.Second)))
+}
+
+func TestHandle429_KimiExplicitWeeklyQuotaUsesWindowReset(t *testing.T) {
+	accountRepo := &rateLimit429AccountRepoStub{}
+	settingSvc := NewSettingService(newMockSettingRepo(), &config.Config{})
+	svc := NewRateLimitService(accountRepo, nil, &config.Config{}, nil, nil)
+	svc.SetSettingService(settingSvc)
+	now := time.Now()
+	reset := now.Add(3 * time.Hour)
+	account := &Account{
+		ID: 48, Platform: PlatformKimi, Type: AccountTypeAPIKey,
+		Credentials: map[string]any{"account_mode": AccountModeCoding},
+		Extra: map[string]any{
+			"kimi_5h_reset_at":     reset.Format(time.RFC3339),
+			"kimi_weekly_reset_at": now.Add(24 * time.Hour).Format(time.RFC3339),
+		},
+	}
+
+	svc.handle429(context.Background(), account, http.Header{}, []byte(`{"error":{"message":"You've reached your weekly (7-day) usage limit. Your quota will reset when the current 7-day window ends."}}`))
+
+	require.Equal(t, 1, accountRepo.rateLimitCalls)
+	require.WithinDuration(t, reset, accountRepo.lastRateLimitReset, time.Second)
+}
+
 // Anthropic 无 reset 头的 429（如 Extra usage required）也应走兜底冷却，
 // 否则账号永不冷却，调度器会让每个请求反复撞同一批 429 账号（旋转木马）。
 func TestHandle429_AnthropicNoResetTimeUsesFallbackCooldown(t *testing.T) {
