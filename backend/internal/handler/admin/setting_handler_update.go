@@ -1284,7 +1284,21 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 				return
 			}
 			urlTrimmed := strings.TrimSpace(item.URL)
-			if strings.HasPrefix(urlTrimmed, "md:") {
+			uriTrimmed := strings.TrimSpace(item.URI)
+			if uriTrimmed != "" {
+				if urlTrimmed != "" {
+					response.BadRequest(c, "Custom menu item must use either URL or URI, not both")
+					return
+				}
+				if !strings.HasPrefix(uriTrimmed, "/") || strings.HasPrefix(uriTrimmed, "//") || strings.ContainsAny(uriTrimmed, "\\\r\n") {
+					response.BadRequest(c, "Custom menu item URI must be a same-origin path starting with /")
+					return
+				}
+				if len(item.URI) > maxMenuItemURLLen {
+					response.BadRequest(c, "Custom menu item URI is too long (max 2048 characters)")
+					return
+				}
+			} else if strings.HasPrefix(urlTrimmed, "md:") {
 				// Markdown page mode: URL = "md:<slug>"
 				slug := strings.TrimPrefix(urlTrimmed, "md:")
 				if slug == "" {
