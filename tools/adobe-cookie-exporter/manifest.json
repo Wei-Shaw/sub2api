@@ -1,0 +1,13 @@
+{
+  "manifest_version": 3,
+  "name": "Adobe Cookie Exporter",
+  "description": "Export Adobe/Firefly cookies as Sub2API account import JSON.",
+  "version": "1.2.0",
+  "incognito": "split",
+  "permissions": ["cookies", "downloads", "activeTab", "scripting"],
+  "host_permissions": ["https://*.adobe.com/*"],
+  "action": {
+    "default_title": "Adobe Cookie Exporter",
+    "default_popup": "popup.html"
+  }
+}
