@@ -26,8 +26,8 @@ ENV NPM_CONFIG_REGISTRY=${NPM_CONFIG_REGISTRY}
 
 WORKDIR /app/frontend
 
-# Install pnpm (pinned to v9 to match CI and keep builds reproducible)
-RUN npm install -g pnpm@9 --registry="${NPM_CONFIG_REGISTRY}"
+# Install pnpm (pinned to match packageManager in frontend/package.json and CI)
+RUN npm install -g pnpm@9.15.9 --registry="${NPM_CONFIG_REGISTRY}"
 
 # Install dependencies first (better caching)
 COPY frontend/package.json frontend/pnpm-lock.yaml ./
