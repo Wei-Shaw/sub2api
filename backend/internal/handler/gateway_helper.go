@@ -399,45 +399,58 @@ func (h *ConcurrencyHelper) waitForSlotWithPingTimeout(c *gin.Context, slotType 
 		pingCh = pingTicker.C
 	}
 
+	release, err := waitForConcurrencySlot(ctx, acquireSlot, pingCh, func() error {
+		if !*streamStarted {
+			c.Header("Content-Type", "text/event-stream")
+			c.Header("Cache-Control", "no-cache")
+			c.Header("Connection", "keep-alive")
+			c.Header("X-Accel-Buffering", "no")
+			*streamStarted = true
+		}
+		written, err := fmt.Fprint(c.Writer, string(h.pingFormat))
+		if err != nil {
+			return err
+		}
+		recordGatewayStreamHeartbeat(c, written)
+		flusher.Flush()
+		return nil
+	})
+	if err != nil && ctx.Err() != nil {
+		if parentErr := c.Request.Context().Err(); parentErr != nil {
+			return nil, parentErr
+		}
+		return nil, &ConcurrencyError{SlotType: slotType, IsTimeout: true}
+	}
+	return release, err
+}
+
+func waitForConcurrencySlot(ctx context.Context, acquire func() (*service.AcquireResult, error), ping <-chan time.Time, heartbeat func() error) (func(), error) {
 	backoff := initialBackoff
 	timer := time.NewTimer(backoff)
 	defer timer.Stop()
-
 	for {
 		select {
 		case <-ctx.Done():
-			if parentErr := c.Request.Context().Err(); parentErr != nil {
-				return nil, parentErr
-			}
-			return nil, &ConcurrencyError{
-				SlotType:  slotType,
-				IsTimeout: true,
-			}
-
-		case <-pingCh:
-			// Send ping to keep connection alive
-			if !*streamStarted {
-				c.Header("Content-Type", "text/event-stream")
-				c.Header("Cache-Control", "no-cache")
-				c.Header("Connection", "keep-alive")
-				c.Header("X-Accel-Buffering", "no")
-				*streamStarted = true
-			}
-			written, err := fmt.Fprint(c.Writer, string(h.pingFormat))
-			if err != nil {
+			return nil, context.Cause(ctx)
+		case <-ping:
+			if err := heartbeat(); err != nil {
 				return nil, err
 			}
-			recordGatewayStreamHeartbeat(c, written)
-			flusher.Flush()
-
 		case <-timer.C:
-			// Try to acquire slot
-			result, err := acquireSlot()
+			if ctx.Err() != nil {
+				return nil, context.Cause(ctx)
+			}
+			result, err := acquire()
 			if err != nil {
 				return nil, err
 			}
-
 			if result.Acquired {
+				if ctx.Err() != nil {
+					if result.ReleaseFunc != nil {
+						result.ReleaseFunc()
+					}
+					return nil, context.Cause(ctx)
+				}
 				return result.ReleaseFunc, nil
 			}
 			backoff = nextBackoff(backoff)

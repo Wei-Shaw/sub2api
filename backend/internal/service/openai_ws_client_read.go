@@ -28,6 +28,9 @@ type openAIWSClientReadAhead struct {
 // The next regular reader takes over this read, preserving an early client frame.
 // Call only while no regular reader is active, and clean up when the handler exits.
 func BeginOpenAIWSClientReadAhead(ctx context.Context, conn *coderws.Conn) (context.Context, func()) {
+	if reader, _ := ctx.Value(openAIWSAccountWaitReaderKey{}).(*openAIWSAccountWaitReader); reader != nil && reader.conn == conn {
+		return BeginOpenAIWSAccountWait(ctx)
+	}
 	if pending, _ := ctx.Value(openAIWSClientReadAheadKey{}).(*openAIWSClientReadAhead); pending != nil && pending.conn == conn && !pending.claimed.Load() {
 		return ctx, func() {}
 	}
@@ -95,7 +98,9 @@ func readOpenAIWSClientMessageWithTimeoutStart(
 	}
 
 	readDone := make(chan openAIWSClientReadResult, 1)
-	if pending, _ := controlCtx.Value(openAIWSClientReadAheadKey{}).(*openAIWSClientReadAhead); pending != nil && pending.conn == conn && pending.claimed.CompareAndSwap(false, true) {
+	if reader, _ := controlCtx.Value(openAIWSAccountWaitReaderKey{}).(*openAIWSAccountWaitReader); reader != nil && reader.conn == conn {
+		go func() { readDone <- reader.next() }()
+	} else if pending, _ := controlCtx.Value(openAIWSClientReadAheadKey{}).(*openAIWSClientReadAhead); pending != nil && pending.conn == conn && pending.claimed.CompareAndSwap(false, true) {
 		readDone = pending.result
 	} else {
 		go func() {

@@ -1143,6 +1143,12 @@ func (s *OpenAIGatewayService) proxyResponsesWebSocketV2Passthrough(
 	}
 	upstreamFirstMessageSent := false
 	firstWriteCtx, cancelFirstWrite := context.WithTimeout(ctx, s.openAIWSWriteTimeout())
+	if hooks != nil && hooks.RequestSending != nil {
+		if err := hooks.RequestSending(); err != nil {
+			cancelFirstWrite()
+			return err
+		}
+	}
 	firstWriteErr := relayUpstreamFrameConn.WriteFrame(firstWriteCtx, coderws.MessageText, firstClientMessage)
 	cancelFirstWrite()
 	if firstWriteErr != nil {

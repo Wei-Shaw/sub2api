@@ -115,12 +115,10 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 	}
 
 	wsDecision := s.getOpenAIWSProtocolResolver().Resolve(account)
-	forceHTTPBridge := account.Platform == PlatformGrok ||
-		(s.pluginManager != nil && s.pluginManager.ShouldRouteOpenAIOAuth(account))
+	ingressMode := s.resolveOpenAIWSIngressMode(account)
+	forceHTTPBridge := ingressMode == OpenAIWSIngressModeHTTPBridge
 	modeRouterV2Enabled := s != nil && s.cfg != nil && s.cfg.Gateway.OpenAIWS.ModeRouterV2Enabled
-	ingressMode := OpenAIWSIngressModeCtxPool
 	if modeRouterV2Enabled && !forceHTTPBridge {
-		ingressMode = account.ResolveOpenAIResponsesWebSocketV2Mode(s.cfg.Gateway.OpenAIWS.IngressModeDefault)
 		if ingressMode == OpenAIWSIngressModeOff {
 			return NewOpenAIWSClientCloseError(
 				coderws.StatusPolicyViolation,
@@ -140,6 +138,9 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 			// 首轮准入由握手路径完成；后续 response.create 会在写入上游前
 			// 依次回调 BeforeRequest 和 BeforeTurn，并在终止或失败时回调
 			// AfterTurn，从而覆盖 turn 级利润复核、定价冻结和并发槽位释放。
+			if hooks != nil && hooks.IngressModeResolved != nil {
+				hooks.IngressModeResolved(OpenAIWSIngressModePassthrough)
+			}
 			return s.proxyResponsesWebSocketV2Passthrough(
 				ctx,
 				c,
@@ -522,6 +523,13 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 	}
 
 	useHTTPBridge := forceHTTPBridge || s.shouldBridgeOpenAIWSHTTP(account, firstPayload.payloadBytes, firstPayload.previousResponseID)
+	if hooks != nil && hooks.IngressModeResolved != nil {
+		if useHTTPBridge {
+			hooks.IngressModeResolved(OpenAIWSIngressModeHTTPBridge)
+		} else {
+			hooks.IngressModeResolved(ingressMode)
+		}
+	}
 	turnState := strings.TrimSpace(c.GetHeader(openAIWSTurnStateHeader))
 	stateStore := s.getOpenAIWSStateStore()
 	groupID := getOpenAIGroupIDFromContext(c)
@@ -674,6 +682,11 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 				)
 				if err != nil {
 					return fmt.Errorf("resolve Grok websocket cache identity: %w", err)
+				}
+			}
+			if hooks != nil && hooks.RequestSending != nil {
+				if err := hooks.RequestSending(); err != nil {
+					return err
 				}
 			}
 			result, bridgeErr := s.proxyOpenAIWSHTTPBridgeTurn(
@@ -970,6 +983,11 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 		}
 		turnStart := time.Now()
 		wroteDownstream := false
+		if hooks != nil && hooks.RequestSending != nil {
+			if err := hooks.RequestSending(); err != nil {
+				return nil, err
+			}
+		}
 		if err := lease.WriteJSONWithContextTimeout(ctx, json.RawMessage(payload), s.openAIWSWriteTimeout()); err != nil {
 			return nil, wrapOpenAIWSIngressTurnError(
 				"write_upstream",
