@@ -199,7 +199,7 @@ func TestCodexTicketPolicyExemptsCredentialShadows(t *testing.T) {
 		headers.Set(openAICodexTurnStateHeader, "client-state")
 		require.NoError(t, svc.applyOpenAICodexTicket(context.Background(), shadow, "gpt-6-astra", headers))
 		require.Equal(t, "client-state", headers.Get(openAICodexTurnStateHeader))
-		require.Empty(t, OpenAICodexTicketStatuses(shadow, cfg, time.Now()))
+		require.Empty(t, OpenAICodexTicketStatuses(shadow, cfg, 292, time.Now()))
 		svc.probeOnceOpenAICodexTicket(context.Background(), shadow, "gpt-6-astra")
 	}
 	svc.refreshOpenAICodexTickets(context.Background())

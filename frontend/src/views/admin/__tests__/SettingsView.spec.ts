@@ -479,6 +479,8 @@ const baseSettingsResponse = {
   openai_codex_ticket_enabled: false,
   openai_codex_ticket_harvest_proxy_url: "",
   openai_codex_ticket_harvest_proxy_configured: false,
+  openai_codex_ticket_default_length: 292,
+  openai_codex_ticket_plan_lengths: [],
   payment_enabled: true,
   payment_min_amount: 1,
   payment_max_amount: 10000,
@@ -755,6 +757,54 @@ describe("admin SettingsView payment visible method controls", () => {
     expect(updateSettings.mock.calls[0]?.[0].openai_codex_ticket_harvest_proxy_url)
       .toBe("socks5h://user:new-secret@new.example.com:1080");
     expect(updateSettings.mock.calls[0]?.[0]).not.toHaveProperty("openai_codex_ticket_harvest_proxy_configured");
+    wrapper.unmount();
+  });
+
+  it("loads Codex ticket plan length rules and submits normalized updates", async () => {
+    getSettings.mockResolvedValueOnce({
+      ...baseSettingsResponse,
+      openai_codex_ticket_default_length: 292,
+      openai_codex_ticket_plan_lengths: [{ plan: "business", length: 332 }],
+    });
+    const wrapper = mountView();
+    await flushPromises();
+
+    const defaultLength = wrapper.get<HTMLInputElement>("#codex-ticket-default-length");
+    expect(defaultLength.element.value).toBe("292");
+    let rows = wrapper.findAll('[data-test="codex-ticket-plan-row"]');
+    expect(rows).toHaveLength(1);
+    expect(rows[0].findAll("input")[0].element.value).toBe("business");
+    expect(rows[0].findAll("input")[1].element.value).toBe("332");
+
+    // 修改默认长度，追加一条 team 规则（大小写与空白应被规整）。
+    await defaultLength.setValue(296);
+    await wrapper.get("#codex-ticket-plan-rule-add").trigger("click");
+    rows = wrapper.findAll('[data-test="codex-ticket-plan-row"]');
+    await rows[1].findAll("input")[0].setValue("  Team ");
+    await rows[1].findAll("input")[1].setValue(332);
+
+    await wrapper.find("form").trigger("submit.prevent");
+    await flushPromises();
+    const payload = updateSettings.mock.calls[0]?.[0];
+    expect(payload.openai_codex_ticket_default_length).toBe(296);
+    expect(payload.openai_codex_ticket_plan_lengths).toEqual([
+      { plan: "business", length: 332 },
+      { plan: "team", length: 332 },
+    ]);
+    wrapper.unmount();
+  });
+
+  it("submits an empty Codex plan rules list after removing the last rule", async () => {
+    getSettings.mockResolvedValueOnce({
+      ...baseSettingsResponse,
+      openai_codex_ticket_plan_lengths: [{ plan: "team", length: 332 }],
+    });
+    const wrapper = mountView();
+    await flushPromises();
+    await wrapper.find("button.btn-ghost-danger").trigger("click");
+    await wrapper.find("form").trigger("submit.prevent");
+    await flushPromises();
+    expect(updateSettings.mock.calls[0]?.[0].openai_codex_ticket_plan_lengths).toEqual([]);
     wrapper.unmount();
   });
 

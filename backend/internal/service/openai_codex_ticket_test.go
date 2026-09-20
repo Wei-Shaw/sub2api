@@ -310,7 +310,7 @@ func TestOpenAICodexTicketStatuses_ReportsRemainingTTL(t *testing.T) {
 		},
 	}
 	now := time.Now()
-	got := OpenAICodexTicketStatuses(account, config.OpenAICodexTicketConfig{Enabled: true, FailClosed: true}, now)
+	got := OpenAICodexTicketStatuses(account, config.OpenAICodexTicketConfig{Enabled: true, FailClosed: true}, 292, now)
 	require.Len(t, got, 2)
 	require.Equal(t, "gpt-6-astra", got[0].Model)
 	require.True(t, got[0].Ready)
@@ -391,14 +391,14 @@ func TestRefreshOpenAICodexTickets_ConcurrentModelsPreserveAccountSnapshot(t *te
 }
 func TestOpenAICodexTicketStatuses_RespectRuntimeConfiguration(t *testing.T) {
 	account := ticketTestAccount(41)
-	require.Empty(t, OpenAICodexTicketStatuses(account, config.OpenAICodexTicketConfig{}, time.Now()))
+	require.Empty(t, OpenAICodexTicketStatuses(account, config.OpenAICodexTicketConfig{}, 292, time.Now()))
 	cfg := config.OpenAICodexTicketConfig{Enabled: true, Models: []string{"custom-model"}}
-	status := OpenAICodexTicketStatuses(account, cfg, time.Now())
+	status := OpenAICodexTicketStatuses(account, cfg, 292, time.Now())
 	require.Len(t, status, 1)
 	require.Equal(t, "custom-model", status[0].Model)
 	require.False(t, status[0].Blocked)
 	cfg.FailClosed = true
-	require.True(t, OpenAICodexTicketStatuses(account, cfg, time.Now())[0].Blocked)
+	require.True(t, OpenAICodexTicketStatuses(account, cfg, 292, time.Now())[0].Blocked)
 }
 func TestProbeOpenAICodexTicket_RejectsInvalidState(t *testing.T) {
 	for _, state := range []string{fakeCodexTicketState(312), strings.Repeat("X", 292), ""} {

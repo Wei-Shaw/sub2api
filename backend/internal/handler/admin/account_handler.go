@@ -370,10 +370,12 @@ func (h *AccountHandler) accountListResponseFromService(account *service.Account
 func (h *AccountHandler) enrichCodexTicketStatus(account *service.Account, out *dto.Account) {
 	if h != nil && h.cfg != nil && out != nil {
 		cfg := h.cfg.Gateway.OpenAICodexTicket
+		targetLength := cfg.TargetLength
 		if h.codexTicketSettings != nil {
 			cfg.Enabled = h.codexTicketSettings.GetOpenAICodexTicketEnabled(context.Background(), cfg.Enabled)
+			targetLength = h.codexTicketSettings.OpenAICodexTicketTargetLengthFor(context.Background(), account, cfg.TargetLength)
 		}
-		out.CodexTurnTickets = service.OpenAICodexTicketStatuses(account, cfg, time.Now())
+		out.CodexTurnTickets = service.OpenAICodexTicketStatuses(account, cfg, targetLength, time.Now())
 	}
 }
 

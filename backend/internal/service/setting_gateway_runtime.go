@@ -403,6 +403,106 @@ func (s *SettingService) InvalidateOpenAICodexTicketHarvestProxyCache() {
 	s.openAICodexTicketHarvestProxyCache.Store(&cachedOpenAICodexTicketHarvestProxy{expiresAt: 0})
 }
 
+// OpenAICodexTicketTargetLengthConfig 后台配置的门票长度：默认长度 + 订阅档位规则。
+type OpenAICodexTicketTargetLengthConfig struct {
+	DefaultLength int
+	Rules         []OpenAICodexTicketPlanLengthRule
+}
+
+type cachedOpenAICodexTicketTargetLength struct {
+	value     OpenAICodexTicketTargetLengthConfig
+	expiresAt int64
+}
+
+const openAICodexTicketTargetLengthCacheTTL = 5 * time.Second
+
+// GetOpenAICodexTicketTargetLengthConfig 返回后台的门票默认长度与档位规则。
+// 后台未配置默认长度时以 yamlDefault 兜底；读取失败时保留旧缓存或兜底值。
+func (s *SettingService) GetOpenAICodexTicketTargetLengthConfig(ctx context.Context, yamlDefault int) OpenAICodexTicketTargetLengthConfig {
+	fallback := OpenAICodexTicketTargetLengthConfig{DefaultLength: yamlDefault}
+	if yamlDefault <= 0 {
+		fallback.DefaultLength = 292
+	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if ctx.Err() != nil {
+		return fallback
+	}
+	if s == nil || s.settingRepo == nil {
+		return fallback
+	}
+	if cached, ok := s.openAICodexTicketTargetLengthCache.Load().(*cachedOpenAICodexTicketTargetLength); ok && cached != nil {
+		if time.Now().UnixNano() < cached.expiresAt {
+			return cached.value
+		}
+	}
+	resultCh := s.openAICodexTicketTargetLengthSF.DoChan(SettingKeyOpenAICodexTicketPlanLengths, func() (any, error) {
+		if cached, ok := s.openAICodexTicketTargetLengthCache.Load().(*cachedOpenAICodexTicketTargetLength); ok && cached != nil {
+			if time.Now().UnixNano() < cached.expiresAt {
+				return cached.value, nil
+			}
+		}
+		dbCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+		defer cancel()
+		defaultRaw, defErr := s.settingRepo.GetValue(dbCtx, SettingKeyOpenAICodexTicketDefaultLength)
+		rulesRaw, rulesErr := s.settingRepo.GetValue(dbCtx, SettingKeyOpenAICodexTicketPlanLengths)
+		if ctx.Err() != nil {
+			return nil, ctx.Err()
+		}
+		if (defErr != nil && !errors.Is(defErr, ErrSettingNotFound)) || (rulesErr != nil && !errors.Is(rulesErr, ErrSettingNotFound)) {
+			// 瞬时存储故障：沿用上一个已知值，只把缓存缩短到 1 秒以便尽快重试。
+			if cached, ok := s.openAICodexTicketTargetLengthCache.Load().(*cachedOpenAICodexTicketTargetLength); ok && cached != nil {
+				s.openAICodexTicketTargetLengthCache.Store(&cachedOpenAICodexTicketTargetLength{
+					value:     cached.value,
+					expiresAt: time.Now().Add(time.Second).UnixNano(),
+				})
+				return cached.value, nil
+			}
+			return fallback, nil
+		}
+		value := fallback
+		if n, err := strconv.Atoi(strings.TrimSpace(defaultRaw)); err == nil && n >= OpenAICodexTicketMinTargetLength && n <= OpenAICodexTicketMaxTargetLength {
+			value.DefaultLength = n
+		}
+		value.Rules = parseOpenAICodexTicketPlanLengthRules(rulesRaw)
+		s.openAICodexTicketTargetLengthCache.Store(&cachedOpenAICodexTicketTargetLength{
+			value:     value,
+			expiresAt: time.Now().Add(openAICodexTicketTargetLengthCacheTTL).UnixNano(),
+		})
+		return value, nil
+	})
+	select {
+	case <-ctx.Done():
+		return fallback
+	case result := <-resultCh:
+		if v, ok := result.Val.(OpenAICodexTicketTargetLengthConfig); ok && result.Err == nil {
+			return v
+		}
+		return fallback
+	}
+}
+
+// InvalidateOpenAICodexTicketTargetLengthCache 在设置更新后立即失效长度配置缓存。
+func (s *SettingService) InvalidateOpenAICodexTicketTargetLengthCache() {
+	if s == nil {
+		return
+	}
+	s.openAICodexTicketTargetLengthSF.Forget(SettingKeyOpenAICodexTicketPlanLengths)
+	s.openAICodexTicketTargetLengthCache.Store(&cachedOpenAICodexTicketTargetLength{expiresAt: 0})
+}
+
+// OpenAICodexTicketTargetLengthFor 按账号订阅档位解析门票目标长度，供
+// OpenAIGatewayService 之外的调用方（账号管理接口）使用；yamlDefault 为
+// yaml target_length 兜底值。
+func (s *SettingService) OpenAICodexTicketTargetLengthFor(ctx context.Context, account *Account, yamlDefault int) int {
+	cfg := OpenAICodexTicketTargetLengthConfig{DefaultLength: yamlDefault}
+	if s != nil {
+		cfg = s.GetOpenAICodexTicketTargetLengthConfig(ctx, yamlDefault)
+	}
+	return resolveOpenAICodexTicketTargetLength(openAICodexTicketAccountPlanType(account), cfg.Rules, cfg.DefaultLength)
+}
+
 // GetOpenAICodexUserAgent 返回 OpenAI Codex 上游请求使用的 User-Agent。
 // 后台设置优先；为空时回退到内置默认值。
 func (s *SettingService) GetOpenAICodexUserAgent(ctx context.Context) string {

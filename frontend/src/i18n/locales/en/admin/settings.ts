@@ -543,7 +543,7 @@ export default {
         openaiCodexVersionAutoSyncHint: 'Fetches the latest stable client version from the official repository every 6 hours, so you never need to upgrade this service just to keep the version current. When disabled, only the version above or the built-in default is used.',
         openaiCodexVersionSyncedValue: 'Currently synced: {version}',
         codexHardeningTitle: "Codex Settings",
-        codexTicketEnabled: "292 ticket harvest",
+        codexTicketEnabled: "Codex ticket harvest",
         codexTicketEnabledDesc:
           "When off, the gateway neither harvests nor injects x-codex-turn-state and forwards traffic as usual. When on, it harvests tickets in the background and overwrites that header on gated-model production requests.",
         codexTicketHarvestProxy: "292 harvest proxy",
@@ -551,6 +551,17 @@ export default {
           "Used only for minting 292 tickets when the ticket feature is enabled. Changes apply to subsequent probes without a restart. Production traffic still uses each account's residential proxy. Paste a full HTTP or SOCKS5h proxy URL including username and password. The proxy provider must handle IP rotation. Leave blank when saving to keep the stored value.",
         codexTicketHarvestProxyPlaceholder: "http://user:pass{'@'}proxy.example.com:1080",
         codexTicketHarvestProxyConfigured: "Configured (password hidden). Paste a full new proxy URL to replace it.",
+        codexTicketDefaultLength: "Default ticket length",
+        codexTicketDefaultLengthDesc:
+          "Target ticket length used when no plan rule matches. Personal subscriptions are usually 292; changing it invalidates existing tickets of other lengths and re-harvests.",
+        codexTicketPlanLengths: "Plan-based length rules",
+        codexTicketPlanLengthsDesc:
+          "Ticket lengths matched by account plan_type; Team/Business subscriptions are usually 332. Matching is case-insensitive substring, first match wins top-down; accounts without a match use the default length.",
+        codexTicketPlanRulePlaceholder: "e.g. team / business",
+        codexTicketPlanRuleAdd: "Add plan rule",
+        codexTicketPlanRuleRemove: "Remove rule",
+        codexTicketPlanLengthsEmpty: "No plan rules; every account uses the default length.",
+
         codexClientRestrictionTitle: "Codex client restriction",
         codexHardeningDesc:
           "Only affects OpenAI OAuth accounts with 'Codex official clients only' enabled (global). Beyond User-Agent/Originator, harden the decision with a version range, an engine-fingerprint gate, and black/whitelists.",

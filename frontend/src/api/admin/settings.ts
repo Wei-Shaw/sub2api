@@ -11,6 +11,12 @@ import type {
   NotifyEmailEntry,
 } from "@/types";
 
+/** Codex 门票订阅档位长度规则：plan 对账号 plan_type 做小写子串匹配，先命中先生效 */
+export interface CodexTicketPlanLengthRule {
+  plan: string;
+  length: number;
+}
+
 export interface DefaultSubscriptionSetting {
   group_id: number;
   validity_days: number;
@@ -642,6 +648,8 @@ export interface SystemSettings {
   openai_codex_ticket_enabled: boolean;
   openai_codex_ticket_harvest_proxy_url: string;
   openai_codex_ticket_harvest_proxy_configured: boolean;
+  openai_codex_ticket_default_length: number;
+  openai_codex_ticket_plan_lengths: CodexTicketPlanLengthRule[] | null;
   // codex_cli_only 加固
   min_codex_version: string;
   max_codex_version: string;
@@ -963,6 +971,8 @@ export interface UpdateSettingsRequest {
   openai_codex_version_auto_sync_enabled?: boolean;
   openai_codex_ticket_enabled?: boolean;
   openai_codex_ticket_harvest_proxy_url?: string;
+  openai_codex_ticket_default_length?: number;
+  openai_codex_ticket_plan_lengths?: CodexTicketPlanLengthRule[];
   // codex_cli_only 加固
   min_codex_version?: string;
   max_codex_version?: string;

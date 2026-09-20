@@ -326,12 +326,14 @@ gateway:
   # Use this to avoid compact failures when newer models are not yet supported by the compact endpoint.
   # 当 compact 端点暂未支持更新模型时，可通过这里降级规避失败。
   openai_compact_model: "gpt-5.5"
-  # Codex 292 门票打票（默认关闭）。开启后后台按 (账号, 模型) 捕获
+  # Codex 门票打票（默认关闭）。开启后后台按 (账号, 模型) 捕获
   # x-codex-turn-state，并在门控模型的业务请求中覆盖该头。
   # 打票走 harvest_proxy_url；日常业务仍用账号自己的住宅代理。
-  # 后台「系统设置 → 网关 → Codex 设置」可覆盖 enabled 与 harvest_proxy_url，无需重启。
+  # 后台「系统设置 → 网关 → Codex 设置」可覆盖 enabled、harvest_proxy_url、
+  # 默认长度与订阅档位长度规则（如 Team/Business=332、其余 292），无需重启。
   openai_codex_ticket:
     enabled: false
+    # 默认/兜底门票目标长度：后台未配置或未命中档位规则时使用。
     target_length: 292
     ttl_seconds: 3600
     refresh_before_seconds: 600

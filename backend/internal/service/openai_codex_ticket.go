@@ -86,6 +86,93 @@ func (s *OpenAIGatewayService) openAICodexTicketConfig() config.OpenAICodexTicke
 	return cfg
 }
 
+// OpenAICodexTicketPlanLengthRule 单条订阅档位长度规则。Plan 对账号 plan_type 做
+// 小写子串匹配（team 可兼容 self_serve_business_usage_based 等 workspace 计费名），
+// 按数组顺序先命中先生效，未命中回退默认长度。
+type OpenAICodexTicketPlanLengthRule struct {
+	Plan   string `json:"plan"`
+	Length int    `json:"length"`
+}
+
+const (
+	// OpenAICodexTicketMinTargetLength / MaxTargetLength 门票目标长度的合法区间，
+	// 覆盖个人订阅 292 与 Team/Business 332 等已知取值。
+	OpenAICodexTicketMinTargetLength = 100
+	OpenAICodexTicketMaxTargetLength = 512
+	openAICodexTicketMaxPlanRules    = 16
+)
+
+func openAICodexTicketAccountPlanType(account *Account) string {
+	if account == nil {
+		return ""
+	}
+	return strings.ToLower(strings.TrimSpace(account.GetCredential("plan_type")))
+}
+
+// resolveOpenAICodexTicketTargetLength 按账号订阅档位解析门票目标长度。
+func resolveOpenAICodexTicketTargetLength(planType string, rules []OpenAICodexTicketPlanLengthRule, defaultLen int) int {
+	if defaultLen <= 0 {
+		defaultLen = 292
+	}
+	plan := strings.ToLower(strings.TrimSpace(planType))
+	if plan == "" {
+		return defaultLen
+	}
+	for _, rule := range rules {
+		rulePlan := strings.ToLower(strings.TrimSpace(rule.Plan))
+		if rulePlan == "" || rule.Length < OpenAICodexTicketMinTargetLength || rule.Length > OpenAICodexTicketMaxTargetLength {
+			continue
+		}
+		if strings.Contains(plan, rulePlan) {
+			return rule.Length
+		}
+	}
+	return defaultLen
+}
+
+// openAICodexTicketTargetLength 返回该账号的门票目标长度：后台档位规则按
+// plan_type 匹配优先，未命中用后台默认长度，再回退 yaml target_length（292）。
+func (s *OpenAIGatewayService) openAICodexTicketTargetLength(account *Account) int {
+	return s.openAICodexTicketTargetLengthContext(context.Background(), account)
+}
+
+// parseOpenAICodexTicketPlanLengthRules 解析档位规则 JSON；非法条目（空 plan、
+// 长度越界）直接丢弃，整体解析失败返回 nil。
+func parseOpenAICodexTicketPlanLengthRules(raw string) []OpenAICodexTicketPlanLengthRule {
+	raw = strings.TrimSpace(raw)
+	if raw == "" || raw == "null" {
+		return nil
+	}
+	var rules []OpenAICodexTicketPlanLengthRule
+	if err := json.Unmarshal([]byte(raw), &rules); err != nil {
+		return nil
+	}
+	out := make([]OpenAICodexTicketPlanLengthRule, 0, len(rules))
+	for _, rule := range rules {
+		rule.Plan = strings.ToLower(strings.TrimSpace(rule.Plan))
+		if rule.Plan == "" || rule.Length < OpenAICodexTicketMinTargetLength || rule.Length > OpenAICodexTicketMaxTargetLength {
+			continue
+		}
+		out = append(out, rule)
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
+}
+
+func (s *OpenAIGatewayService) openAICodexTicketTargetLengthContext(ctx context.Context, account *Account) int {
+	if s == nil {
+		return 292
+	}
+	cfg := s.openAICodexTicketConfig()
+	if s.settingService == nil {
+		return resolveOpenAICodexTicketTargetLength(openAICodexTicketAccountPlanType(account), nil, cfg.TargetLength)
+	}
+	tlc := s.settingService.GetOpenAICodexTicketTargetLengthConfig(ctx, cfg.TargetLength)
+	return resolveOpenAICodexTicketTargetLength(openAICodexTicketAccountPlanType(account), tlc.Rules, tlc.DefaultLength)
+}
+
 func (s *OpenAIGatewayService) openAICodexTicketGatedModel(model string) bool {
 	model = normalizeOpenAICodexTicketModel(model)
 	if model == "" || !s.openAICodexTicketEnabled() {
@@ -109,16 +196,16 @@ type OpenAICodexTicketStatus struct {
 	ExpiresAt        *time.Time `json:"expires_at,omitempty"`
 }
 
-func OpenAICodexTicketStatuses(account *Account, cfg config.OpenAICodexTicketConfig, now time.Time) []OpenAICodexTicketStatus {
+func OpenAICodexTicketStatuses(account *Account, cfg config.OpenAICodexTicketConfig, targetLength int, now time.Time) []OpenAICodexTicketStatus {
 	if !cfg.Enabled || !isOpenAICodexTicketAccount(account) {
 		return nil
 	}
-	models, targetLen := cfg.Models, cfg.TargetLength
+	models := cfg.Models
 	if len(models) == 0 {
 		models = []string{openAICodexTicketDefaultModel, openAICodexTicketDefaultSolModel}
 	}
-	if targetLen <= 0 {
-		targetLen = 292
+	if targetLength <= 0 {
+		targetLength = 292
 	}
 	out := make([]OpenAICodexTicketStatus, 0, len(models))
 	for _, model := range models {
@@ -131,7 +218,7 @@ func OpenAICodexTicketStatuses(account *Account, cfg config.OpenAICodexTicketCon
 		if account != nil && account.Extra != nil {
 			ticket = parseOpenAICodexTicketFromAny(account.ID, model, account.Extra[openAICodexTicketExtraKey(model)])
 		}
-		if ticket.valid(now, targetLen) {
+		if ticket.valid(now, targetLength) {
 			status.Ready = true
 			status.Length = ticket.Length
 			remaining := int64(ticket.ExpiresAt.Sub(now) / time.Second)
@@ -206,10 +293,7 @@ func (s *OpenAIGatewayService) lookupOpenAICodexTicket(account *Account, model s
 		return nil
 	}
 	key := openAICodexTicketKey(account.ID, model)
-	targetLen := 292
-	if s != nil {
-		targetLen = s.openAICodexTicketConfig().TargetLength
-	}
+	targetLen := s.openAICodexTicketTargetLength(account)
 	now := time.Now()
 	var mem *openAICodexTicket
 	if raw, ok := s.openaiCodexTickets.Load(key); ok {
@@ -299,7 +383,7 @@ func (s *OpenAIGatewayService) applyOpenAICodexTicket(ctx context.Context, accou
 	}
 	cfg := s.openAICodexTicketConfig()
 	ticket := s.lookupOpenAICodexTicket(account, model)
-	if ticket.valid(time.Now(), cfg.TargetLength) {
+	if ticket.valid(time.Now(), s.openAICodexTicketTargetLengthContext(ctx, account)) {
 		h.Set(openAICodexTurnStateHeader, ticket.State)
 		return nil
 	}
@@ -354,7 +438,7 @@ func (s *OpenAIGatewayService) openAICodexTicketBlocksAccount(account *Account, 
 		return false
 	}
 	ticket := s.lookupOpenAICodexTicket(account, model)
-	return !ticket.valid(time.Now(), cfg.TargetLength)
+	return !ticket.valid(time.Now(), s.openAICodexTicketTargetLength(account))
 }
 
 func (s *OpenAIGatewayService) fireOpenAICodexTicketProbe(ctx context.Context, account *Account, token, model, proxyURL string, attemptTimeout time.Duration) (state string, status int, err error) {
@@ -439,10 +523,16 @@ func (s *OpenAIGatewayService) StartOpenAICodexTicketHarvester() {
 		defer close(done)
 		s.openAICodexTicketHarvestLoop(ctx)
 	}()
+	harvestCfg := s.openAICodexTicketConfig()
+	tlc := OpenAICodexTicketTargetLengthConfig{DefaultLength: harvestCfg.TargetLength}
+	if s.settingService != nil {
+		tlc = s.settingService.GetOpenAICodexTicketTargetLengthConfig(context.Background(), harvestCfg.TargetLength)
+	}
 	logger.L().Info("openai_codex_ticket harvester started",
-		zap.Int("ttl_seconds", s.openAICodexTicketConfig().TTLSeconds),
-		zap.Int("target_length", s.openAICodexTicketConfig().TargetLength),
-		zap.Strings("models", s.openAICodexTicketConfig().Models),
+		zap.Int("ttl_seconds", harvestCfg.TTLSeconds),
+		zap.Int("default_target_length", tlc.DefaultLength),
+		zap.Int("plan_length_rules", len(tlc.Rules)),
+		zap.Strings("models", harvestCfg.Models),
 	)
 }
 
@@ -504,7 +594,7 @@ func (s *OpenAIGatewayService) refreshOpenAICodexTickets(ctx context.Context) {
 				continue
 			}
 			// 已有一张有效且未临近过期的票 → 本周期不打，省得白刷。
-			if t := s.lookupOpenAICodexTicket(&account, model); t.valid(now, cfg.TargetLength) && !t.needsRefresh(now, refreshBefore) {
+			if t := s.lookupOpenAICodexTicket(&account, model); t.valid(now, s.openAICodexTicketTargetLength(&account)) && !t.needsRefresh(now, refreshBefore) {
 				continue
 			}
 			acc := account
@@ -553,7 +643,8 @@ func (s *OpenAIGatewayService) probeOnceOpenAICodexTicket(ctx context.Context, a
 				zap.String("reason", "error"), zap.Error(perr))
 			return nil, nil
 		}
-		if status != http.StatusOK || state == "" || len(state) != cfg.TargetLength || !strings.HasPrefix(state, openAICodexTicketStatePrefix) {
+		targetLen := s.openAICodexTicketTargetLengthContext(ctx, account)
+		if status != http.StatusOK || state == "" || len(state) != targetLen || !strings.HasPrefix(state, openAICodexTicketStatePrefix) {
 			logger.L().Info("openai_codex_ticket probe miss",
 				zap.Int64("account_id", account.ID), zap.String("model", model),
 				zap.Int("http", status), zap.Int("len", len(state)))
@@ -624,6 +715,33 @@ func ValidateOpenAICodexTicketHarvestProxyURL(raw string) error {
 		if err != nil || n < 1 || n > 65535 {
 			return errors.New("harvest proxy port must be between 1 and 65535")
 		}
+	}
+	return nil
+}
+
+// validateOpenAICodexTicketTargetLengthSettings 校验门票默认长度与档位规则。
+// defaultLength 为 0 表示本次未提交（保持既有值），不校验；规则里 plan 统一
+// 小写去空白后不允许重复，长度必须落在合法区间。
+func validateOpenAICodexTicketTargetLengthSettings(defaultLength int, rules []OpenAICodexTicketPlanLengthRule) error {
+	if defaultLength != 0 && (defaultLength < OpenAICodexTicketMinTargetLength || defaultLength > OpenAICodexTicketMaxTargetLength) {
+		return fmt.Errorf("default target length must be between %d and %d", OpenAICodexTicketMinTargetLength, OpenAICodexTicketMaxTargetLength)
+	}
+	if len(rules) > openAICodexTicketMaxPlanRules {
+		return fmt.Errorf("plan length rules exceed the limit of %d", openAICodexTicketMaxPlanRules)
+	}
+	seen := make(map[string]bool, len(rules))
+	for _, rule := range rules {
+		plan := strings.ToLower(strings.TrimSpace(rule.Plan))
+		if plan == "" {
+			return errors.New("plan length rule requires a non-empty plan")
+		}
+		if seen[plan] {
+			return fmt.Errorf("duplicate plan length rule: %s", plan)
+		}
+		if rule.Length < OpenAICodexTicketMinTargetLength || rule.Length > OpenAICodexTicketMaxTargetLength {
+			return fmt.Errorf("plan %s length must be between %d and %d", plan, OpenAICodexTicketMinTargetLength, OpenAICodexTicketMaxTargetLength)
+		}
+		seen[plan] = true
 	}
 	return nil
 }

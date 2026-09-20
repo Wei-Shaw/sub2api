@@ -720,6 +720,11 @@ const (
 	SettingKeyOpenAICodexTicketEnabled = "openai_codex_ticket_enabled"
 	// SettingKeyOpenAICodexTicketHarvestProxyURL 打票专用代理 URL；空则回退 yaml/env。
 	SettingKeyOpenAICodexTicketHarvestProxyURL = "openai_codex_ticket_harvest_proxy_url"
+	// SettingKeyOpenAICodexTicketDefaultLength 门票默认目标长度；缺失回退 yaml target_length（292）。
+	SettingKeyOpenAICodexTicketDefaultLength = "openai_codex_ticket_default_length"
+	// SettingKeyOpenAICodexTicketPlanLengths 订阅档位长度规则 JSON（[{"plan":"team","length":332}]），
+	// 按账号 plan_type 小写子串匹配、先命中先生效；未命中用默认长度。
+	SettingKeyOpenAICodexTicketPlanLengths = "openai_codex_ticket_plan_lengths"
 	// SettingKeyOpenAIAllowClaudeCodeCodexPlugin 已废弃：历史全局开关只作为升级迁移输入读取。
 	// 迁移后等价规则写入 SettingKeyCodexCLIOnlyWhitelist，不再参与运行时判定。
 	SettingKeyOpenAIAllowClaudeCodeCodexPlugin = "openai_allow_claude_code_codex_plugin"
