@@ -731,6 +731,13 @@ func (s *OpenAIGatewayService) handleErrorResponse(
 		statusCode = http.StatusTooManyRequests
 		errType = "rate_limit_error"
 		errMsg = "Upstream rate limit exceeded, please retry later"
+	case 413:
+		statusCode = http.StatusRequestEntityTooLarge
+		errType = "invalid_request_error"
+		errMsg = upstreamMsg
+		if errMsg == "" {
+			errMsg = "Request exceeds the maximum size"
+		}
 	default:
 		statusCode = http.StatusBadGateway
 		errType = "upstream_error"

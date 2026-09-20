@@ -1991,6 +1991,19 @@ func (s *GeminiMessagesCompatService) writeGeminiMappedError(c *gin.Context, acc
 		if errMsg == "" {
 			errMsg = "Upstream service overloaded, please retry later"
 		}
+	case 413:
+		if statusCode == 0 {
+			statusCode = http.StatusRequestEntityTooLarge
+		}
+		if errType == "" {
+			errType = "invalid_request_error"
+		}
+		if errMsg == "" {
+			errMsg = upstreamMsg
+		}
+		if errMsg == "" {
+			errMsg = "Request exceeds the maximum size"
+		}
 	case 500, 502, 503, 504:
 		if statusCode == 0 {
 			statusCode = http.StatusBadGateway
