@@ -275,7 +275,7 @@ export default {
     clickToResend: '点击重新发送验证码',
     resendCode: '重新发送验证码',
     sendCodeDesc: '我们将发送验证码到',
-    codeSentSuccess: '验证码已发送！请查收您的邮箱。',
+    codeSentSuccess: '验证码已发送！请查收邮箱；如果收件箱没有，请检查垃圾邮件或广告邮件。',
     verifying: '验证中...',
     verifyAndCreate: '验证并创建账户',
     resendCountdown: '{countdown}秒后可重新发送',

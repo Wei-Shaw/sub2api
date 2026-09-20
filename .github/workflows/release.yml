@@ -24,6 +24,7 @@ env:
 permissions:
   contents: write
   packages: write
+  pull-requests: read
 
 jobs:
   # Update VERSION file with tag version
@@ -60,12 +61,12 @@ jobs:
       - name: Setup pnpm
         uses: pnpm/action-setup@v6
         with:
-          version: 9
+          version: 11.20.0
 
       - name: Setup Node.js
         uses: actions/setup-node@v6
         with:
-          node-version: '20'
+          node-version: '22'
           cache: 'pnpm'
           cache-dependency-path: frontend/pnpm-lock.yaml
 
@@ -271,6 +272,49 @@ jobs:
                 parse_mode: "Markdown",
                 disable_web_page_preview: true
               }')"
+
+      - name: Send Feishu deployment notification
+        if: ${{ always() }}
+        continue-on-error: true
+        env:
+          FEISHU_WEBHOOK_URL: ${{ secrets.FEISHU_WEBHOOK_URL }}
+          PROJECT_VERSION_FILE: version.txt
+          DEPLOY_BRANCH: ${{ github.ref_name }}
+          COMMIT_AUTHOR: ${{ github.actor }}
+          COMMIT_MESSAGE: ${{ github.event.head_commit.message || github.sha }}
+          DEPLOY_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_SHA: ${{ github.sha }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          DEPLOY_STATUS: ${{ job.status }}
+        run: |
+          if [ -z "$FEISHU_WEBHOOK_URL" ]; then
+            echo 'FEISHU_WEBHOOK_URL is not configured, skipping notification'
+            exit 0
+          fi
+          PROJECT_VERSION=$(tr -d '\r\n' < "$PROJECT_VERSION_FILE")
+          MR_POINTS=$(curl --fail-with-body -sS \
+            -H 'Accept: application/vnd.github+json' \
+            -H "Authorization: Bearer $GITHUB_TOKEN" \
+            "https://api.github.com/repos/$GITHUB_REPOSITORY/commits/$GITHUB_SHA/pulls" \
+            | jq -r '.[0].body // empty' || true)
+          [ -n "$MR_POINTS" ] || MR_POINTS="$COMMIT_MESSAGE"
+          PREVIOUS_TAG=$(git describe --tags --abbrev=0 "$GITHUB_SHA^" 2>/dev/null || true)
+          if [ -n "$PREVIOUS_TAG" ]; then
+            GIT_DIFF_SUMMARY=$(git diff --stat "$PREVIOUS_TAG" "$GITHUB_SHA")
+          else
+            GIT_DIFF_SUMMARY=$(git show --stat --format='' "$GITHUB_SHA")
+          fi
+          if [ "$DEPLOY_STATUS" = "success" ]; then
+            TITLE='Sub2API 发布完成'
+          else
+            TITLE='Sub2API 发布失败'
+          fi
+          MESSAGE=$(printf '%s\n版本号: %s\n分支: %s\n提交人: %s\nMR 改动点:\n%s\nGit diff 摘要:\n%s\n提交记录: %s\n部署链接: %s' \
+            "$TITLE" "$PROJECT_VERSION" "$DEPLOY_BRANCH" "$COMMIT_AUTHOR" "$MR_POINTS" "$GIT_DIFF_SUMMARY" "$COMMIT_MESSAGE" "$DEPLOY_URL")
+          jq -n --arg text "$MESSAGE" '{msg_type: "text", content: {text: $text}}' \
+            | curl --fail-with-body -sS -X POST "$FEISHU_WEBHOOK_URL" \
+                -H 'Content-Type: application/json' -d @-
 
   sync-version-file:
     needs: [release]

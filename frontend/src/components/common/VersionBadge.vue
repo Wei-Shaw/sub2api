@@ -2,14 +2,8 @@
   <div class="relative">
     <!-- Admin: Full version badge with dropdown -->
     <template v-if="isAdmin">
-      <button
-        @click="toggleDropdown"
-        class="flex items-center gap-1.5 rounded-lg px-2 py-1 text-xs transition-colors"
-        :class="[
-          hasUpdate
-            ? 'bg-amber-100 text-amber-700 hover:bg-amber-200 dark:bg-amber-900/30 dark:text-amber-400 dark:hover:bg-amber-900/50'
-            : 'bg-gray-100 text-gray-600 hover:bg-gray-200 dark:bg-dark-800 dark:text-dark-400 dark:hover:bg-dark-700'
-        ]"
+      <div
+        class="flex items-center gap-1.5 text-[12px] leading-4 text-gray-500 transition-colors hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
         :title="hasUpdate ? t('version.updateAvailable') : t('version.upToDate')"
       >
         <span v-if="currentVersion" class="font-medium">v{{ currentVersion }}</span>
@@ -20,11 +14,11 @@
         <!-- Update indicator -->
         <span v-if="hasUpdate" class="relative flex h-2 w-2">
           <span
-            class="absolute inline-flex h-full w-full animate-ping rounded-full bg-amber-400 opacity-75"
+            class="absolute inline-flex h-full w-full animate-ping rounded-full bg-gray-400 opacity-75"
           ></span>
-          <span class="relative inline-flex h-2 w-2 rounded-full bg-amber-500"></span>
+          <span class="relative inline-flex h-2 w-2 rounded-full bg-gray-500"></span>
         </span>
-      </button>
+      </div>
 
       <!-- Dropdown -->
       <transition name="dropdown">
@@ -671,7 +665,7 @@ const dropdownRef = ref<HTMLElement | null>(null)
 
 // Use store's cached version state
 const loading = computed(() => appStore.versionLoading)
-const currentVersion = computed(() => appStore.currentVersion || props.version || '')
+const currentVersion = computed(() => props.version || appStore.currentVersion || '')
 const latestVersion = computed(() => appStore.latestVersion)
 const hasUpdate = computed(() => appStore.hasUpdate)
 const releaseInfo = computed(() => appStore.releaseInfo)
@@ -730,10 +724,6 @@ const activeManualCommand = computed(() =>
 
 // Only show update check for release builds (binary/docker deployment)
 const isReleaseBuild = computed(() => buildType.value === 'release')
-
-function toggleDropdown() {
-  dropdownOpen.value = !dropdownOpen.value
-}
 
 function closeDropdown() {
   dropdownOpen.value = false

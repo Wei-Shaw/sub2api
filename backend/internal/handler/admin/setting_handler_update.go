@@ -1275,6 +1275,10 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 			return
 		}
 		for i, item := range items {
+			if item.OpenMode != "" && item.OpenMode != "iframe" && item.OpenMode != "new_tab" {
+				response.BadRequest(c, "Custom menu open mode must be iframe or new_tab")
+				return
+			}
 			if strings.TrimSpace(item.Label) == "" {
 				response.BadRequest(c, "Custom menu item label is required")
 				return

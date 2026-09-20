@@ -193,6 +193,7 @@ export interface CustomMenuItem {
   page_slug?: string
   hide_open_button?: boolean
   visibility: 'user' | 'admin'
+  open_mode?: 'iframe' | 'new_tab'
   sort_order: number
 }
 

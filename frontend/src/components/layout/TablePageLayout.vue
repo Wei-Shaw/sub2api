@@ -1,12 +1,20 @@
 <template>
   <div class="table-page-layout" :class="{ 'mobile-mode': isMobile }">
     <!-- 固定区域：操作按钮 -->
-    <div v-if="$slots.actions" class="layout-section-fixed">
+    <div v-if="inlineToolbar" class="layout-section-fixed flex flex-wrap items-start justify-between gap-3">
+      <div v-if="$slots.filters" class="min-w-0">
+        <slot name="filters" />
+      </div>
+      <div v-if="$slots.actions" class="ml-auto shrink-0">
+        <slot name="actions" />
+      </div>
+    </div>
+    <div v-if="!inlineToolbar && $slots.actions" class="layout-section-fixed">
       <slot name="actions" />
     </div>
 
     <!-- 固定区域：搜索和过滤器 -->
-    <div v-if="$slots.filters" class="layout-section-fixed">
+    <div v-if="!inlineToolbar && $slots.filters" class="layout-section-fixed">
       <slot name="filters" />
     </div>
 
@@ -26,6 +34,8 @@
 
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted } from 'vue'
+
+defineProps<{ inlineToolbar?: boolean }>()
 
 const isMobile = ref(false)
 
