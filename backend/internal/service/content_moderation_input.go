@@ -46,6 +46,8 @@ func extractContentModerationInput(protocol string, body []byte, filterReminders
 	case ContentModerationProtocolOpenAIImages:
 		collector.addModerationText(&parts, gjson.GetBytes(body, "prompt").String())
 		collector.collectContentValue(gjson.GetBytes(body, "images"), &parts, &images)
+	case ContentModerationProtocolTypeSafeSystemOne:
+		collector.collectSystemOneState(gjson.GetBytes(body, "state"), &parts)
 	default:
 		collector.collectLastResponsesInput(gjson.GetBytes(body, "input"), &parts, &images)
 		collector.collectLastRoleMessage(gjson.GetBytes(body, "messages"), "user", &parts, &images)
@@ -59,6 +61,20 @@ func extractContentModerationInput(protocol string, body []byte, filterReminders
 		out.Normalize()
 	}
 	return out
+}
+
+func (collector moderationTextCollector) collectSystemOneState(value gjson.Result, parts *[]string) {
+	switch {
+	case !value.Exists():
+		return
+	case value.Type == gjson.String:
+		collector.addModerationText(parts, value.String())
+	case value.IsArray(), value.IsObject():
+		value.ForEach(func(_, child gjson.Result) bool {
+			collector.collectSystemOneState(child, parts)
+			return true
+		})
+	}
 }
 
 func (collector moderationTextCollector) collectLastRoleMessage(messages gjson.Result, role string, parts *[]string, images *[]string) {

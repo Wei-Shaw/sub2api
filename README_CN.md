@@ -740,6 +740,29 @@ OAuth / Setup Token 图片请求使用 Responses 主控模型调用 `image_gener
 
 ---
 
+## TypeSafe / Jev 使用说明
+
+Sub2API 支持使用 TypeSafe API Key 账户，通过 Jev 原生、非流式的 System One 协议调用模型。
+
+- 平台：`typesafe`；账号类型：API Key
+- 默认上游：`https://api.typesafe.ai`
+- 对外端点：`POST /v1/systemone`
+- 模型：`jev-latest`，TypeSafe 分组的 `/v1/models` 也会返回该模型
+- 问题类型：`noul`、`choice`、`score`
+
+请求和成功响应保持 System One 原生 JSON 结构。该端点不兼容 Chat Completions、Responses、Anthropic Messages 或流式客户端。
+
+```bash
+curl https://your-sub2api.example.com/v1/systemone \
+  -H 'Authorization: Bearer sk-your-sub2api-key' \
+  -H 'Content-Type: application/json' \
+  --data '{"model":"jev-latest","state":"待评估文本","questions":{"safety":{"type":"noul","instructions":"评估文本是否不安全"}}}'
+```
+
+`jev-latest` 内置价格为输入 `$0.042/百万 tokens`、输出 `$0`，渠道定价可以覆盖。凭据、限流、过载、服务端和网络错误沿用现有账号冷却与故障切换链路；请求错误（`400`、`422`）不会切换账号重试。
+
+---
+
 ## Antigravity 使用说明
 
 Sub2API 支持 [Antigravity](https://antigravity.so/) 账户，授权后可通过专用端点访问 Claude 和 Gemini 模型。

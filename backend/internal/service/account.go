@@ -17,6 +17,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/domain"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/geminicli"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/openai_compat"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/typesafe"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/xai"
 )
 
@@ -266,6 +267,10 @@ func (a *Account) IsGemini() bool {
 
 func (a *Account) IsGrok() bool {
 	return a.Platform == PlatformGrok
+}
+
+func (a *Account) IsTypeSafe() bool {
+	return a != nil && a.Platform == PlatformTypeSafe
 }
 
 func (a *Account) IsGrokOAuth() bool {
@@ -999,6 +1004,23 @@ func (a *Account) GetGeminiBaseURL(defaultBaseURL string) string {
 		return strings.TrimRight(baseURL, "/") + "/antigravity"
 	}
 	return baseURL
+}
+
+func (a *Account) GetTypeSafeBaseURL() string {
+	if a == nil || !a.IsTypeSafe() || a.Type != AccountTypeAPIKey {
+		return ""
+	}
+	if baseURL := strings.TrimSpace(a.GetCredential("base_url")); baseURL != "" {
+		return strings.TrimRight(baseURL, "/")
+	}
+	return typesafe.DefaultBaseURL
+}
+
+func (a *Account) GetTypeSafeAPIKey() string {
+	if a == nil || !a.IsTypeSafe() || a.Type != AccountTypeAPIKey {
+		return ""
+	}
+	return strings.TrimSpace(a.GetCredential("api_key"))
 }
 
 func (a *Account) GetExtraString(key string) string {

@@ -824,6 +824,29 @@ Administrators can override automatic media eligibility through the account crea
 
 ---
 
+## TypeSafe / Jev Support
+
+Sub2API supports TypeSafe API-key accounts through Jev's native, non-streaming System One protocol.
+
+- Platform: `typesafe`; account type: API Key
+- Default upstream: `https://api.typesafe.ai`
+- Public endpoint: `POST /v1/systemone`
+- Model: `jev-latest`, also returned by `/v1/models` for TypeSafe groups
+- Questions: `noul`, `choice`, and `score`
+
+Requests and successful responses retain the native System One JSON structure. This endpoint is not compatible with Chat Completions, Responses, Anthropic Messages, or streaming clients.
+
+```bash
+curl https://your-sub2api.example.com/v1/systemone \
+  -H 'Authorization: Bearer sk-your-sub2api-key' \
+  -H 'Content-Type: application/json' \
+  --data '{"model":"jev-latest","state":"Text to evaluate","questions":{"safety":{"type":"noul","instructions":"Evaluate whether the text is unsafe"}}}'
+```
+
+The built-in `jev-latest` price is `$0.042` per million input tokens and `$0` for output tokens. Channel pricing can override both values. Credential, rate-limit, overload, server, and network failures use the existing account cooldown and failover path; request errors (`400` and `422`) are returned without retrying another account.
+
+---
+
 ## Antigravity Support
 
 Sub2API supports [Antigravity](https://antigravity.so/) accounts. After authorization, dedicated endpoints are available for Claude and Gemini models.
