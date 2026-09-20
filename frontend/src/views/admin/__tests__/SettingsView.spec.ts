@@ -8,6 +8,12 @@ import zhCommon from "@/i18n/locales/zh/common";
 import zhSettings from "@/i18n/locales/zh/admin/settings";
 import SettingsView from "../SettingsView.vue";
 
+// This independently saved card has its own API/behavior tests; keep the parent
+// settings tests from making unmocked HTTP requests when opening Security.
+vi.mock("@/views/admin/settings/KeyProtectionSettings.vue", () => ({
+  default: { name: "KeyProtectionSettings", template: "<div />" },
+}));
+
 const {
   getSettings,
   updateSettings,
