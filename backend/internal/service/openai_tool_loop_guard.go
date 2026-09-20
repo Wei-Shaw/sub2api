@@ -142,10 +142,6 @@ func isOpenAIToolOutputItem(item map[string]any) bool {
 	}
 }
 
-func openAIToolItemName(item map[string]any) string {
-	return openAIToolItemIdentity(item).Name
-}
-
 func openAIToolItemIdentity(item map[string]any) openAIToolIdentity {
 	identity := openAIToolIdentity{
 		Name:      firstNonEmptyString(item["name"]),
