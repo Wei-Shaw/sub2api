@@ -720,37 +720,22 @@ describe("admin SettingsView payment visible method controls", () => {
     adminSettingsFetch.mockResolvedValue(undefined);
   });
 
-  it("submits the Codex ticket harvest toggle", async () => {
+  it("does not overwrite ticket settings managed on the dedicated page", async () => {
     getSettings.mockResolvedValueOnce({
       ...baseSettingsResponse,
       openai_codex_ticket_enabled: false,
-    });
-    const wrapper = mountView();
-    await flushPromises();
-    const toggle = wrapper.get("#codex-ticket-enabled");
-    await toggle.setValue(true);
-    await wrapper.find("form").trigger("submit.prevent");
-    await flushPromises();
-    expect(updateSettings.mock.calls[0]?.[0].openai_codex_ticket_enabled).toBe(true);
-    wrapper.unmount();
-  });
-
-  it("loads the masked Codex harvest proxy and submits a replacement URL", async () => {
-    getSettings.mockResolvedValueOnce({
-      ...baseSettingsResponse,
       openai_codex_ticket_harvest_proxy_url: "http://user:***@old.example.com:8080",
       openai_codex_ticket_harvest_proxy_configured: true,
     });
     const wrapper = mountView();
     await flushPromises();
-    const input = wrapper.get<HTMLInputElement>("#codex-ticket-harvest-proxy");
-    expect(input.element.value).toBe("http://user:***@old.example.com:8080");
-    await input.setValue("socks5h://user:new-secret@new.example.com:1080");
+    expect(wrapper.find("#codex-ticket-enabled").exists()).toBe(false);
+    expect(wrapper.find("#codex-ticket-harvest-proxy").exists()).toBe(false);
     await wrapper.find("form").trigger("submit.prevent");
     await flushPromises();
-    expect(updateSettings.mock.calls[0]?.[0].openai_codex_ticket_harvest_proxy_url)
-      .toBe("socks5h://user:new-secret@new.example.com:1080");
-    expect(updateSettings.mock.calls[0]?.[0]).not.toHaveProperty("openai_codex_ticket_harvest_proxy_configured");
+    expect(updateSettings).toHaveBeenCalled();
+    expect(updateSettings.mock.calls[0]?.[0]).not.toHaveProperty("openai_codex_ticket_enabled");
+    expect(updateSettings.mock.calls[0]?.[0]).not.toHaveProperty("openai_codex_ticket_harvest_proxy_url");
     wrapper.unmount();
   });
 

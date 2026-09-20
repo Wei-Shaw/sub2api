@@ -1571,7 +1571,77 @@ export async function resetWebSearchUsage(payload: {
   );
 }
 
+export interface TicketProxyPoolStatus {
+  managed: boolean;
+  count: number;
+  removed_count: number;
+  failure_limit: number;
+}
+export interface TicketHarvestStatus {
+  enabled: boolean;
+  refresh_before_seconds: number;
+  ttl_seconds: number;
+  models: string[];
+  harvest_proxy_configured: boolean;
+}
+export async function getTicketHarvestStatus(): Promise<TicketHarvestStatus> {
+  const { data } = await apiClient.get<TicketHarvestStatus>("/admin/settings/ticket-harvest-status");
+  return data;
+}
+export interface TicketProxyPoolImportResult extends TicketProxyPoolStatus {
+  added: number;
+  duplicates: number;
+}
+export async function getTicketProxyPool(): Promise<TicketProxyPoolStatus> {
+  const { data } = await apiClient.get<TicketProxyPoolStatus>("/admin/settings/ticket-proxy-pool");
+  return data;
+}
+export async function importTicketProxyPool(proxies: string[]): Promise<TicketProxyPoolImportResult> {
+  const { data } = await apiClient.post<TicketProxyPoolImportResult>("/admin/settings/ticket-proxy-pool", { proxies });
+  return data;
+}
+
+export interface TicketProxyProviderConfig {
+  type: "generate" | "extract";
+  user_id: string;
+  token?: string;
+  proxy_id: string;
+  extract_url?: string;
+  country: string;
+  mode: number;
+  session_time: number;
+  route: string;
+  auto_refill: boolean;
+}
+export interface TicketProxyProviderStatus extends TicketProxyProviderConfig {
+  configured: boolean;
+  token_configured: boolean;
+  extract_configured: boolean;
+}
+export interface TicketProxyFetchResult extends TicketProxyPoolImportResult {
+  requested: number;
+  received: number;
+}
+export async function getTicketProxyProvider(): Promise<TicketProxyProviderStatus> {
+  const { data } = await apiClient.get<TicketProxyProviderStatus>("/admin/settings/ticket-proxy-provider");
+  return data;
+}
+export async function saveTicketProxyProvider(config: TicketProxyProviderConfig): Promise<TicketProxyProviderStatus> {
+  const { data } = await apiClient.put<TicketProxyProviderStatus>("/admin/settings/ticket-proxy-provider", config);
+  return data;
+}
+export async function fetchTicketProxyProvider(count: number): Promise<TicketProxyFetchResult> {
+  const { data } = await apiClient.post<TicketProxyFetchResult>("/admin/settings/ticket-proxy-provider/fetch", { count }, { timeout: 60000 });
+  return data;
+}
+
 export const settingsAPI = {
+  getTicketHarvestStatus,
+  getTicketProxyProvider,
+  saveTicketProxyProvider,
+  fetchTicketProxyProvider,
+  getTicketProxyPool,
+  importTicketProxyPool,
   getSettings,
   updateSettings,
   testSmtpConnection,

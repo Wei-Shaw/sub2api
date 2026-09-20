@@ -2,14 +2,57 @@ package admin
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 
+	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
 )
+
+func TestSettingsCodexTicketStatusUsesRuntimeConfigWithoutSecrets(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	repo := &settingHandlerRepoStub{values: map[string]string{
+		service.SettingKeyOpenAICodexTicketEnabled:         "true",
+		service.SettingKeyOpenAICodexTicketHarvestProxyURL: "http://user:secret@proxy.example:8080",
+	}}
+	cfg := &config.Config{Default: config.DefaultConfig{UserConcurrency: 5}}
+	cfg.Gateway.OpenAICodexTicket = config.OpenAICodexTicketConfig{
+		RefreshBeforeSeconds: 1200, TTLSeconds: 3600, Models: []string{"gpt-6-astra", "gpt-5.6-sol"},
+	}
+	h := NewSettingHandler(service.NewSettingService(repo, cfg), nil, nil, nil, nil, nil, nil)
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodGet, "/api/v1/admin/settings/ticket-harvest-status", nil)
+	h.GetTicketHarvestStatus(c)
+	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
+	var result struct {
+		Data service.OpenAICodexTicketRuntimeStatus `json:"data"`
+	}
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &result))
+	require.True(t, result.Data.Enabled)
+	require.Equal(t, 1200, result.Data.RefreshBeforeSeconds)
+	require.Equal(t, cfg.Gateway.OpenAICodexTicket.Models, result.Data.Models)
+	require.True(t, result.Data.HarvestProxyConfigured)
+	require.NotContains(t, rec.Body.String(), "secret")
+	require.NotContains(t, rec.Body.String(), "proxy.example")
+}
+
+func TestSettingsCodexTicketToggleDoesNotOverwriteUnrelatedSettings(t *testing.T) {
+	h, repo := newStepUpSwitchTestHandler(t, map[string]string{
+		"site_name": "Existing site", "registration_enabled": "true",
+		service.SettingKeyOpenAICodexTicketHarvestProxyURL: "http://proxy.example:8080",
+	})
+	rec := doUpdateSettings(t, h, map[string]any{service.SettingKeyOpenAICodexTicketEnabled: true}, nil)
+	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
+	require.Equal(t, "true", repo.values[service.SettingKeyOpenAICodexTicketEnabled])
+	require.Equal(t, "Existing site", repo.values["site_name"])
+	require.Equal(t, "true", repo.values["registration_enabled"])
+	require.Equal(t, "http://proxy.example:8080", repo.values[service.SettingKeyOpenAICodexTicketHarvestProxyURL])
+}
 
 func TestSettingsCodexTicketProxyWriteReadAndHotReload(t *testing.T) {
 	key := service.SettingKeyOpenAICodexTicketHarvestProxyURL

@@ -526,6 +526,24 @@ const routes: RouteRecordRaw[] = [
     }
   },
   {
+    path: '/admin/codex-tickets',
+    name: 'AdminCodexTickets',
+    component: () => import('@/views/admin/CodexTicketsView.vue'),
+    meta: {
+      requiresAuth: true,
+      requiresAdmin: true,
+      title: '292 Tickets',
+      titleKey: 'admin.settings.gatewayForwarding.ticketPageTitle',
+      descriptionKey: 'admin.settings.gatewayForwarding.ticketPageDescription'
+    }
+  },
+  {
+    path: '/admin/quality-checks',
+    name: 'AdminQualityChecks',
+    component: () => import('@/views/admin/QualityChecksView.vue'),
+    meta: { requiresAuth: true, requiresAdmin: true, title: '降智检查' }
+  },
+  {
     path: '/admin/plugins',
     name: 'AdminPlugins',
     component: () => import('@/views/admin/PluginsView.vue'),

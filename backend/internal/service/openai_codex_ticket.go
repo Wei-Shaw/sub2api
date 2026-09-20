@@ -17,6 +17,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/openai"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/ticketproxy"
 	"github.com/google/uuid"
 	"github.com/tidwall/gjson"
 	"go.uber.org/zap"
@@ -42,6 +43,10 @@ type openAICodexTicket struct {
 	CapturedAt time.Time `json:"captured_at"`
 	ExpiresAt  time.Time `json:"expires_at"`
 	Attempts   int       `json:"attempts"`
+}
+
+type codexTicketProxyRefiller interface {
+	RefillIfEmpty(context.Context) (*ticketproxy.FetchResult, error)
 }
 
 func openAICodexTicketKey(accountID int64, model string) string {
@@ -290,23 +295,59 @@ func (s *OpenAIGatewayService) storeOpenAICodexTicket(ctx context.Context, accou
 // 请求路径只注入已捕获的有效门票，不现场打票；无票则返回
 // ErrOpenAICodexTicketUnavailable。打票由后台 harvester 完成。
 func (s *OpenAIGatewayService) applyOpenAICodexTicket(ctx context.Context, account *Account, model string, h http.Header) error {
-	if s == nil || h == nil || !isOpenAICodexTicketAccount(account) || !s.openAICodexTicketEnabledContext(ctx) {
-		return nil
-	}
+	_, err := s.applyOpenAICodexTicketWithReceipt(ctx, account, model, h)
+	return err
+}
+
+// OpenAICodexTicketReceipt records the ticket selected for this request. It must
+// never contain the state blob, and must not be reconstructed after dispatch:
+// a background refresh could otherwise report a different ticket.
+type OpenAICodexTicketReceipt struct {
+	Status     string     `json:"status"`
+	AccountID  int64      `json:"account_id,omitempty"`
+	Model      string     `json:"model,omitempty"`
+	Length     int        `json:"length,omitempty"`
+	CapturedAt *time.Time `json:"captured_at,omitempty"`
+	ExpiresAt  *time.Time `json:"expires_at,omitempty"`
+}
+
+func (s *OpenAIGatewayService) applyOpenAICodexTicketWithReceipt(ctx context.Context, account *Account, model string, h http.Header) (OpenAICodexTicketReceipt, error) {
 	model = normalizeOpenAICodexTicketModel(model)
+	r := OpenAICodexTicketReceipt{Status: "not_applicable", Model: model}
+	if account != nil {
+		r.AccountID = account.ID
+	}
+	if !isOpenAICodexTicketAccount(account) {
+		return r, nil
+	}
+	if s == nil || h == nil {
+		r.Status = "unavailable"
+		return r, nil
+	}
+	if !s.openAICodexTicketEnabledContext(ctx) {
+		r.Status = "disabled"
+		return r, nil
+	}
 	if model == "" || !s.openAICodexTicketGatedModel(model) {
-		return nil
+		r.Status = "not_required"
+		return r, nil
 	}
 	cfg := s.openAICodexTicketConfig()
 	ticket := s.lookupOpenAICodexTicket(account, model)
 	if ticket.valid(time.Now(), cfg.TargetLength) {
 		h.Set(openAICodexTurnStateHeader, ticket.State)
-		return nil
+		r.Status, r.Length = "injected", len(h.Get(openAICodexTurnStateHeader))
+		r.CapturedAt, r.ExpiresAt = &ticket.CapturedAt, &ticket.ExpiresAt
+		return r, nil
+	}
+	r.Status = "missing"
+	if ticket != nil && !ticket.ExpiresAt.IsZero() && !time.Now().Before(ticket.ExpiresAt) {
+		r.Status = "expired"
 	}
 	if !cfg.FailClosed {
-		return nil
+		return r, nil
 	}
-	return ErrOpenAICodexTicketUnavailable
+	return r, ErrOpenAICodexTicketUnavailable
 }
 
 // openAICodexTicketOutboundModel 预测本请求真正出站的模型名，也就是
@@ -483,6 +524,19 @@ func (s *OpenAIGatewayService) refreshOpenAICodexTickets(ctx context.Context) {
 	if s == nil || s.accountRepo == nil || ctx.Err() != nil || !s.openAICodexTicketEnabledContext(ctx) {
 		return
 	}
+	refiller := s.codexTicketProxyRefiller
+	if refiller == nil {
+		refiller = ticketproxy.OnesProxy
+	}
+	refilled, refillErr := refiller.RefillIfEmpty(ctx)
+	if ctx.Err() != nil {
+		return
+	}
+	if refillErr != nil {
+		logger.L().Warn("openai_codex_ticket automatic proxy refill failed; retry in 60 seconds", zap.Error(refillErr))
+	} else if refilled != nil {
+		logger.L().Info("openai_codex_ticket proxy pool automatically refilled", zap.Int("added", refilled.Added), zap.Int("count", refilled.Count))
+	}
 	accounts, err := s.accountRepo.ListByPlatform(ctx, PlatformOpenAI)
 	if err != nil {
 		logger.L().Warn("openai_codex_ticket list accounts failed", zap.Error(err))
@@ -533,8 +587,7 @@ func (s *OpenAIGatewayService) probeOnceOpenAICodexTicket(ctx context.Context, a
 		return
 	}
 	cfg := s.openAICodexTicketConfig()
-	proxyURL := s.openAICodexTicketHarvestProxyURLContext(ctx)
-	if proxyURL == "" || s.httpUpstream == nil || ctx.Err() != nil {
+	if s.httpUpstream == nil || ctx.Err() != nil {
 		return
 	}
 	key := openAICodexTicketKey(account.ID, model)
@@ -546,7 +599,34 @@ func (s *OpenAIGatewayService) probeOnceOpenAICodexTicket(ctx context.Context, a
 				zap.String("reason", "token"), zap.Error(err))
 			return nil, nil
 		}
+		pool := s.codexTicketProxyPool
+		if pool == nil {
+			pool = ticketproxy.Default
+		}
+		lease, managed, err := pool.Acquire()
+		if err != nil {
+			logger.L().Warn("openai_codex_ticket proxy pool unavailable", zap.Error(err))
+			return nil, nil
+		}
+		proxyURL := lease.URL
+		if !managed {
+			proxyURL = s.openAICodexTicketHarvestProxyURLContext(ctx)
+		}
+		if proxyURL == "" || ctx.Err() != nil {
+			return nil, nil
+		}
 		state, status, perr := s.fireOpenAICodexTicketProbe(ctx, account, token, model, proxyURL, time.Duration(cfg.HarvestAttemptTimeoutSeconds)*time.Second)
+		success := perr == nil && status == http.StatusOK && len(state) == cfg.TargetLength && strings.HasPrefix(state, openAICodexTicketStatePrefix)
+		// Shutdown/caller cancellation is not a proxy failure; probe timeouts are.
+		if managed && ctx.Err() == nil {
+			removed, reportErr := pool.Report(lease.ID, success)
+			if reportErr != nil {
+				logger.L().Warn("openai_codex_ticket proxy result persistence failed", zap.Error(reportErr))
+			}
+			if removed {
+				logger.L().Info("openai_codex_ticket proxy removed after consecutive failures", zap.String("proxy_id", lease.ID), zap.Int("failures", ticketproxy.FailureLimit))
+			}
+		}
 		if perr != nil {
 			logger.L().Info("openai_codex_ticket probe miss",
 				zap.Int64("account_id", account.ID), zap.String("model", model),

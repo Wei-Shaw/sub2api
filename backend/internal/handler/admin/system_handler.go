@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"net/http"
+	"os"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/networkstats"
 	"strconv"
 	"strings"
 	"time"
@@ -18,6 +20,7 @@ import (
 
 // SystemHandler handles system-related operations
 type SystemHandler struct {
+	networkStats *networkstats.Collector
 	updateSvc systemUpdateService
 	lockSvc   *service.SystemOperationLockService
 }
@@ -54,6 +57,7 @@ type systemUpdateService interface {
 // NewSystemHandler creates a new SystemHandler
 func NewSystemHandler(updateSvc systemUpdateService, lockSvc *service.SystemOperationLockService) *SystemHandler {
 	return &SystemHandler{
+	networkStats: networkstats.New(os.Getenv("HOST_NETWORK_STATS_DIR")),
 		updateSvc: updateSvc,
 		lockSvc:   lockSvc,
 	}

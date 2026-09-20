@@ -138,6 +138,7 @@ func normalizeGrokAccountTestMode(mode string) string {
 
 // AccountTestService handles account testing operations
 type AccountTestService struct {
+	qualityChecks             *QualityCheckService
 	accountRepo               AccountRepository
 	geminiTokenProvider       *GeminiTokenProvider
 	claudeTokenProvider       *ClaudeTokenProvider
@@ -847,6 +848,7 @@ func (s *AccountTestService) testOpenAIAccountConnection(c *gin.Context, account
 		upstreamTestModelID = normalizeOpenAIModelForUpstream(credentialAccount, testModelID)
 	}
 	payload := createOpenAITestPayload(upstreamTestModelID, isOAuth)
+	applyOpenAITestPrompt(payload, prompt)
 	payloadBytes, _ := json.Marshal(payload)
 
 	// Send test_start event once. A task-invalid Agent Identity response may
@@ -900,6 +902,12 @@ func (s *AccountTestService) testOpenAIAccountConnection(c *gin.Context, account
 
 	// 账号级请求头覆写：测试请求与真实转发保持一致的最终头
 	credentialAccount.ApplyHeaderOverrides(req.Header)
+
+	// Select the current account/model ticket immediately before dispatch,
+	// including the plugin transport. Ticket harvesting has its own path.
+	if err := s.applyAccountTestTicket(ctx, account, payloadBytes, req.Header); err != nil {
+		return s.sendErrorAndEnd(c, "当前账号和模型没有有效票据，本次未发送检查请求")
+	}
 
 	// Get proxy URL
 	proxyURL := ""
