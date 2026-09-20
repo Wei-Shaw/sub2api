@@ -104,6 +104,19 @@ const (
 	// credentials["openai_capabilities"] 配置集。仅用于生图意图的 /v1/responses
 	// 调度，避免把请求调度到会在 forward 阶段被降级为 Chat Completions 的账号（#4417）。
 	OpenAIEndpointCapabilityResponses OpenAIEndpointCapability = "responses"
+	// OpenAIEndpointCapabilityResponsesCompact 表示该账号能够承接 Codex 的
+	// native remote compaction v2 请求，比 OpenAIEndpointCapabilityResponses 宽。
+	//
+	// 压缩请求有两种承接方式：
+	//   - 上游原生 /responses 认识 compaction_trigger（OpenAI 官方、OAuth 等）；
+	//   - 其余账号走 chat 桥：网关把 compaction 回合改写成普通 CC 请求，回程再
+	//     合成 compaction item（buildDeepSeekCompactChatBody /
+	//     buildDeepSeekCompactResponse），因此只要求 chat_completions 可用。
+	//
+	// 早先统一按 OpenAIEndpointCapabilityResponses 过滤，纯 chat 账号（如把 GPT
+	// 模型名映射到聚合站的 platform=openai 账号）会被判 capability_mismatch，
+	// 压缩请求直接 503 no available account（实测确认）。
+	OpenAIEndpointCapabilityResponsesCompact OpenAIEndpointCapability = "responses_compact"
 )
 
 const openAIEndpointCapabilitiesCredentialKey = "openai_capabilities"
@@ -1871,6 +1884,16 @@ func (a *Account) SupportsOpenAIEndpointCapability(capability OpenAIEndpointCapa
 		}
 		// 支持 Responses 的上游同样需具备 chat 能力：复用下方 chat_completions
 		// 配置集校验。
+		capability = OpenAIEndpointCapabilityChatCompletions
+	case OpenAIEndpointCapabilityResponsesCompact:
+		// 与 OpenAIEndpointCapabilityResponses 的唯一区别：DeepSeek 语义上游的压缩
+		// 回合由 chat 桥承接（改写为普通 CC 请求 + 回程合成 compaction item，见
+		// shouldForwardDeepSeekResponsesCompactViaChatCompletions），因此不要求
+		// openai_responses_supported；其余账号保持原 Responses 判定。
+		if a.Type == AccountTypeAPIKey && !openai_compat.ShouldUseResponsesAPI(a.Extra) &&
+			!isDeepSeekSemanticsAccount(a) {
+			return false
+		}
 		capability = OpenAIEndpointCapabilityChatCompletions
 	case OpenAIEndpointCapabilityAlphaSearch:
 		// alpha/search 的转发按账号类型分流：OAuth/PAT 走

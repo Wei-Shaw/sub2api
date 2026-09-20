@@ -1383,27 +1383,30 @@ func shouldForwardOpenAIResponsesViaChatCompletions(account *Account, body []byt
 }
 
 // shouldForwardDeepSeekResponsesLiteViaChatCompletions 报告走原生 Responses 的
-// DeepSeek 账号是否应改走 chat 回退路径。
+// DeepSeek 语义上游是否应改走 chat 回退路径。
 //
 // DeepSeek 的 /responses 端点会接受 input[].additional_tools 并返回 200，但不会
 // 解析其中的工具声明——模型侧等同于没有任何工具可用，只能把调用写进正文
 // （DSML / <tool_call>{...}</tool_call>）。Codex 对 GPT 系模型名启用 Responses
 // Lite 时正是这个形状；同一上游用原生模型名（工具走顶层 tools）时一切正常。
 //
+// 上游判定用 isDeepSeekResponsesUpstream，覆盖官方 DeepSeek 与把 deepseek-* 模型
+// 挂在 platform=openai 下的聚合站（两者实测行为一致）。
+//
 // chat 回退路径的 apicompat.EffectiveResponsesTools 会把 additional_tools 提升为
 // 顶层工具，namespace 子工具摊平后回程再还原为 custom_tool_call，因此这里对
-// DeepSeek 显式绕开原生端点。
+// DeepSeek 语义上游显式绕开原生端点。
 func shouldForwardDeepSeekResponsesLiteViaChatCompletions(account *Account, body []byte) bool {
 	if account == nil || account.Type != AccountTypeAPIKey {
 		return false
 	}
-	if !isDeepSeekResponsesUpstream(account) {
+	if !isDeepSeekResponsesUpstream(account, gjson.GetBytes(body, "model").String()) {
 		return false
 	}
 	return openAIRequestBodyHasAdditionalTools(body)
 }
 
-// shouldForwardDeepSeekResponsesCompactViaChatCompletions 报告 DeepSeek 上游的
+// shouldForwardDeepSeekResponsesCompactViaChatCompletions 报告 DeepSeek 语义上游的
 // remote compaction v2 请求是否应改走 chat 桥。DeepSeek /responses 不认识
 // compaction_trigger，会把它当普通回合，返回 reasoning+message 而非 compaction
 // item，Codex 判 fatal（got 0 items）。改走 chat 桥后在回程合成 compaction item。
@@ -1411,7 +1414,7 @@ func shouldForwardDeepSeekResponsesCompactViaChatCompletions(account *Account, b
 	if account == nil || account.Type != AccountTypeAPIKey {
 		return false
 	}
-	if !isDeepSeekResponsesUpstream(account) {
+	if !isDeepSeekResponsesUpstream(account, gjson.GetBytes(body, "model").String()) {
 		return false
 	}
 	return HasCompactionTriggerInInput(body)
@@ -1420,12 +1423,104 @@ func shouldForwardDeepSeekResponsesCompactViaChatCompletions(account *Account, b
 // deepSeekAPIHost 是 DeepSeek 官方 API 主机名，Responses 与 Chat Completions 同址。
 const deepSeekAPIHost = "api.deepseek.com"
 
-// isDeepSeekResponsesUpstream 报告该账号当前是否会打到 DeepSeek 的原生 Responses 端点。
+// isDeepSeekResponsesUpstream 报告该账号当前是否会打到表现 DeepSeek 语义的上游：
+// 原生 /responses 接受 input[].additional_tools 却静默忽略其中的工具声明，且
+// /chat/completions 不接受 response_format=json_schema。
 //
-// 除以 DeepSeek 平台配置的账号外，还必须覆盖「platform 填 openai、base_url 指向
-// DeepSeek」的账号：把 GPT 系模型名映射到 DeepSeek 时 Codex 正是这样接入的，
-// 此时 platform 字段不代表真实上游，只能按目标 hostname 判定——与
-// requiresSystemChatRole 用 hostname 识别严格供应商是同一思路。
+// 识别分两路：
+//
+//  1. 明确的 DeepSeek 上游：platform=deepseek 且使用原生 Responses 协议，或
+//     platform=openai + base_url 指向 api.deepseek.com。后者是把 GPT 系模型名
+//     映射到 DeepSeek 时的经典接入方式，此时 platform 字段不代表真实上游。
+//  2. 本次请求实际转发到的模型属于 DeepSeek 模型族：部分聚合站（如 88api）用
+//     platform=openai 接入、hostname 不是 api.deepseek.com，但 model_mapping 把
+//     GPT 模型名映射到 deepseek-*。这类上游实测与官方 DeepSeek 表现一致，
+//     不识别的话 Responses Lite 仍会退化成 DSML 正文。
+//
+// 第二路绑定到具体请求的模型（requestedModel 是客户端模型名，经该账号
+// model_mapping 解析得到真正的出站模型），而不是账号的全部映射表：同一账号可能
+// 既有映射到 DeepSeek 的模型、也有映射到其他上游的模型，只有前者需要这套处理。
+func isDeepSeekResponsesUpstream(account *Account, requestedModel string) bool {
+	if account == nil || account.Type != AccountTypeAPIKey {
+		return false
+	}
+	if account.Platform == PlatformDeepseek {
+		return account.UsesNativeCNResponses()
+	}
+	if !account.IsOpenAICompatible() {
+		return false
+	}
+	if isDeepSeekAPIHost(account.GetOpenAIBaseURL()) {
+		return true
+	}
+	return requestTargetsDeepSeekModel(account, requestedModel)
+}
+
+// isDeepSeekAPIHost 判断 base_url 是否指向 DeepSeek 官方 API。
+// 用完整 hostname 比较，api.deepseek.com.evil.example 这类后缀伪造不会命中。
+func isDeepSeekAPIHost(baseURL string) bool {
+	u, err := url.Parse(strings.TrimSpace(baseURL))
+	if err != nil {
+		return false
+	}
+	return strings.EqualFold(u.Hostname(), deepSeekAPIHost)
+}
+
+// requestTargetsDeepSeekModel 报告该账号把 requestedModel 转发到 DeepSeek 模型族。
+//
+// requestedModel 为空时无法做请求级判定，退回「账号是否含 DeepSeek 映射」的账号级
+// 判定；调用方在能拿到模型名时都应传入。
+func requestTargetsDeepSeekModel(account *Account, requestedModel string) bool {
+	if account == nil {
+		return false
+	}
+	requestedModel = strings.TrimSpace(requestedModel)
+	if requestedModel != "" {
+		return isDeepSeekModelName(account.GetMappedModel(requestedModel))
+	}
+	return accountMapsToDeepSeekModel(account)
+}
+
+// isDeepSeekModelName 判断模型名是否属于 DeepSeek 模型族。
+func isDeepSeekModelName(model string) bool {
+	return strings.HasPrefix(strings.ToLower(strings.TrimSpace(model)), "deepseek-")
+}
+
+// accountMapsToDeepSeekModel 报告该账号的 model_mapping 是否包含 DeepSeek 模型。
+// 供无法取得请求模型名的调用点使用（能力判定按候选账号逐个评估）。
+func accountMapsToDeepSeekModel(account *Account) bool {
+	if account == nil {
+		return false
+	}
+	for _, upstream := range account.GetModelMapping() {
+		if isDeepSeekModelName(upstream) {
+			return true
+		}
+	}
+	return false
+}
+
+// isDeepSeekSemanticsAccount 报告该账号整体上属于 DeepSeek 语义上游：platform 或
+// hostname 命中 DeepSeek，或 model_mapping 含 deepseek-*（聚合站映射账号）。
+//
+// 用于只有账号、没有请求模型名的判定点（例如按候选账号逐个评估的端点能力检查）。
+// 能拿到请求模型时应改用 requestTargetsDeepSeekModel 做更精确的请求级判定。
+func isDeepSeekSemanticsAccount(account *Account) bool {
+	if account == nil {
+		return false
+	}
+	if account.Platform == PlatformDeepseek {
+		return true
+	}
+	if !account.IsOpenAICompatible() {
+		return false
+	}
+	if isDeepSeekAPIHost(account.GetOpenAIBaseURL()) {
+		return true
+	}
+	return accountMapsToDeepSeekModel(account)
+}
+
 // shouldAdaptDeepSeekResponsesClientTools 决定是否在进入原生 DeepSeek Responses 前
 // 改写 client-only 工具。需要走 Chat fallback 的请求（含 input[].additional_tools 的
 // Responses Lite 形状）必须跳过：fallback 会从原始 body 重新计算 custom / tool_search /
@@ -1439,20 +1534,6 @@ func shouldAdaptDeepSeekResponsesClientTools(account *Account, body []byte, comp
 		!compactPath &&
 		!shouldForwardOpenAIResponsesViaChatCompletions(account, body) &&
 		needsOpenAIResponsesClientToolAdaptation(body)
-}
-
-func isDeepSeekResponsesUpstream(account *Account) bool {
-	if account == nil {
-		return false
-	}
-	if account.Platform == PlatformDeepseek {
-		return account.UsesNativeCNResponses()
-	}
-	u, err := url.Parse(strings.TrimSpace(account.GetOpenAIBaseURL()))
-	if err != nil {
-		return false
-	}
-	return strings.EqualFold(u.Hostname(), deepSeekAPIHost)
 }
 
 func (s *OpenAIGatewayService) buildUpstreamRequest(ctx context.Context, c *gin.Context, account *Account, body []byte, token string, isStream bool, promptCacheKey string, isCodexCLI bool) (*http.Request, error) {
