@@ -18,12 +18,22 @@ type rateLimit429AccountRepoStub struct {
 	rateLimitCalls     int
 	lastRateLimitID    int64
 	lastRateLimitReset time.Time
+	tempUnschedCalls   int
+	lastTempUntil      time.Time
+	lastTempReason     string
 }
 
 func (r *rateLimit429AccountRepoStub) SetRateLimited(_ context.Context, id int64, resetAt time.Time) error {
 	r.rateLimitCalls++
 	r.lastRateLimitID = id
 	r.lastRateLimitReset = resetAt
+	return nil
+}
+
+func (r *rateLimit429AccountRepoStub) SetTempUnschedulable(_ context.Context, _ int64, until time.Time, reason string) error {
+	r.tempUnschedCalls++
+	r.lastTempUntil = until
+	r.lastTempReason = reason
 	return nil
 }
 
@@ -144,6 +154,69 @@ func TestHandle429_KimiExplicitWeeklyQuotaUsesWindowReset(t *testing.T) {
 
 	svc.handle429(context.Background(), account, http.Header{}, []byte(`{"error":{"message":"You've reached your weekly (7-day) usage limit. Your quota will reset when the current 7-day window ends."}}`))
 
+	require.Equal(t, 1, accountRepo.rateLimitCalls)
+	require.WithinDuration(t, reset, accountRepo.lastRateLimitReset, time.Second)
+}
+
+func TestHandleUpstreamError_KimiDynamic429UsesAccountTempRule(t *testing.T) {
+	accountRepo := &rateLimit429AccountRepoStub{}
+	settingSvc := NewSettingService(newMockSettingRepo(), &config.Config{})
+	svc := NewRateLimitService(accountRepo, nil, &config.Config{}, nil, nil)
+	svc.SetSettingService(settingSvc)
+	now := time.Now()
+	account := &Account{
+		ID: 49, Platform: PlatformKimi, Type: AccountTypeAPIKey,
+		Credentials: map[string]any{
+			"account_mode":               AccountModeCoding,
+			"temp_unschedulable_enabled": true,
+			"temp_unschedulable_rules": []any{map[string]any{
+				"error_code":       float64(http.StatusTooManyRequests),
+				"keywords":         []any{"Throttling.AllocationQuota"},
+				"duration_minutes": float64(60),
+			}},
+		},
+		Extra: map[string]any{
+			"kimi_5h_reset_at":     now.Add(2 * time.Hour).Format(time.RFC3339),
+			"kimi_weekly_reset_at": now.Add(24 * time.Hour).Format(time.RFC3339),
+		},
+	}
+
+	shouldDisable := svc.HandleUpstreamError(context.Background(), account, http.StatusTooManyRequests, http.Header{}, []byte(`{"error":{"code":"Throttling.AllocationQuota","message":"usage allocated quota exceeded"}}`))
+
+	require.True(t, shouldDisable)
+	require.Zero(t, accountRepo.rateLimitCalls, "动态 429 命中账号规则时不应写入窗口限流")
+	require.Equal(t, 1, accountRepo.tempUnschedCalls)
+	require.WithinDuration(t, time.Now().Add(60*time.Minute), accountRepo.lastTempUntil, 2*time.Second)
+	require.Contains(t, accountRepo.lastTempReason, "Throttling.AllocationQuota")
+}
+
+func TestHandleUpstreamError_KimiExplicitQuotaBypassesBroadTempRule(t *testing.T) {
+	accountRepo := &rateLimit429AccountRepoStub{}
+	svc := NewRateLimitService(accountRepo, nil, &config.Config{}, nil, nil)
+	svc.SetSettingService(NewSettingService(newMockSettingRepo(), &config.Config{}))
+	now := time.Now()
+	reset := now.Add(3 * time.Hour)
+	account := &Account{
+		ID: 50, Platform: PlatformKimi, Type: AccountTypeAPIKey,
+		Credentials: map[string]any{
+			"account_mode":               AccountModeCoding,
+			"temp_unschedulable_enabled": true,
+			"temp_unschedulable_rules": []any{map[string]any{
+				"error_code":       float64(http.StatusTooManyRequests),
+				"keywords":         []any{"usage limit"},
+				"duration_minutes": float64(60),
+			}},
+		},
+		Extra: map[string]any{
+			"kimi_5h_reset_at":     reset.Format(time.RFC3339),
+			"kimi_weekly_reset_at": now.Add(24 * time.Hour).Format(time.RFC3339),
+		},
+	}
+
+	shouldDisable := svc.HandleUpstreamError(context.Background(), account, http.StatusTooManyRequests, http.Header{}, []byte(`{"error":{"message":"You've reached your weekly (7-day) usage limit. Your quota will reset when the current 7-day window ends."}}`))
+
+	require.False(t, shouldDisable)
+	require.Zero(t, accountRepo.tempUnschedCalls, "明确配额耗尽不应被账号临时规则缩短")
 	require.Equal(t, 1, accountRepo.rateLimitCalls)
 	require.WithinDuration(t, reset, accountRepo.lastRateLimitReset, time.Second)
 }
