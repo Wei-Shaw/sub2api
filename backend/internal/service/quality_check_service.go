@@ -135,16 +135,17 @@ func (s *QualityCheckService) Stop() {
 	}
 	s.cancel()
 	s.dispatchMu.Lock()
-	s.dispatchMu.Unlock()
+	// Start waiting only after any active dispatch has registered its workers.
 	done := make(chan struct{})
 	go func() { s.workers.Wait(); close(done) }()
+	s.dispatchMu.Unlock()
 	select {
 	case <-done:
 	case <-time.After(4 * time.Second):
 	}
 }
 func (s *QualityCheckService) Config(ctx context.Context) (QualityConfig, error) {
-	c := QualityConfig{IntervalSeconds: 600}
+	c := QualityConfig{IntervalSeconds: int(qualityInterval / time.Second)}
 	err := s.db.QueryRowContext(ctx, "SELECT enabled,model FROM account_quality_settings WHERE id=1").Scan(&c.Enabled, &c.Model)
 	return c, err
 }
@@ -434,7 +435,7 @@ func parseQualityOutput(body, kind string) QualityCase {
 		case "test_start":
 			r.Model = e.Model
 		case "content":
-			text.WriteString(e.Text)
+			_, _ = text.WriteString(e.Text)
 		case "error":
 			failure = e.Error
 		case "test_complete":

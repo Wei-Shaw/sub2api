@@ -61,7 +61,10 @@ type OnesProxyProvider struct {
 }
 
 func NewOnesProxyProvider(path string, pool *Store) *OnesProxyProvider {
-	transport := http.DefaultTransport.(*http.Transport).Clone()
+	transport := &http.Transport{}
+	if defaultTransport, ok := http.DefaultTransport.(*http.Transport); ok {
+		transport = defaultTransport.Clone()
+	}
 	transport.Proxy = nil
 	return &OnesProxyProvider{path: path, pool: pool, client: &http.Client{
 		Transport: transport, Timeout: 45 * time.Second,
