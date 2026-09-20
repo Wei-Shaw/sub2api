@@ -503,6 +503,9 @@ func diffSettings(before *service.SystemSettings, after *service.SystemSettings,
 	if !equalOpenAICodexTicketPlanLengthRules(before.OpenAICodexTicketPlanLengthRules, after.OpenAICodexTicketPlanLengthRules) {
 		changed = append(changed, "openai_codex_ticket_plan_lengths")
 	}
+	if before.OpenAICodexTicketFailClosed != after.OpenAICodexTicketFailClosed {
+		changed = append(changed, "openai_codex_ticket_fail_closed")
+	}
 	if before.PaymentVisibleMethodAlipaySource != after.PaymentVisibleMethodAlipaySource {
 		changed = append(changed, "payment_visible_method_alipay_source")
 	}

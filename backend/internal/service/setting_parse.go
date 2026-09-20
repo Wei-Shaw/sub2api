@@ -897,6 +897,12 @@ func (s *SettingService) parseSettings(settings map[string]string) *SystemSettin
 	} else if s != nil && s.cfg != nil {
 		result.OpenAICodexTicketEnabled = s.cfg.Gateway.OpenAICodexTicket.Enabled
 	}
+	// 缺票拦截：后台值优先，缺失/空回退 yaml fail_closed（默认 true）。
+	if v, ok := settings[SettingKeyOpenAICodexTicketFailClosed]; ok && v != "" {
+		result.OpenAICodexTicketFailClosed = v == "true"
+	} else if s != nil && s.cfg != nil {
+		result.OpenAICodexTicketFailClosed = s.cfg.Gateway.OpenAICodexTicket.FailClosed
+	}
 	result.OpenAICodexTicketHarvestProxyURL = strings.TrimSpace(settings[SettingKeyOpenAICodexTicketHarvestProxyURL])
 	// 门票默认长度：后台值优先，缺失/非法回退 yaml target_length（兜底 292）。
 	result.OpenAICodexTicketDefaultLength = 0

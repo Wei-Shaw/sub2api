@@ -373,6 +373,7 @@ func (h *AccountHandler) enrichCodexTicketStatus(account *service.Account, out *
 		targetLength := cfg.TargetLength
 		if h.codexTicketSettings != nil {
 			cfg.Enabled = h.codexTicketSettings.GetOpenAICodexTicketEnabled(context.Background(), cfg.Enabled)
+			cfg.FailClosed = h.codexTicketSettings.GetOpenAICodexTicketFailClosed(context.Background(), cfg.FailClosed)
 			targetLength = h.codexTicketSettings.OpenAICodexTicketTargetLengthFor(context.Background(), account, cfg.TargetLength)
 		}
 		out.CodexTurnTickets = service.OpenAICodexTicketStatuses(account, cfg, targetLength, time.Now())

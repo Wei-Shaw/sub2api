@@ -332,6 +332,77 @@ func (s *SettingService) InvalidateOpenAICodexTicketEnabledCache() {
 	s.openAICodexTicketEnabledCache.Store(&cachedOpenAICodexTicketEnabled{expiresAt: 0})
 }
 
+type cachedOpenAICodexTicketFailClosed struct {
+	value     bool
+	expiresAt int64
+}
+
+const openAICodexTicketFailClosedCacheTTL = 5 * time.Second
+
+// GetOpenAICodexTicketFailClosed 返回缺票拦截开关（门控模型无票时是否暂停该账号调度）。
+// 设置键存在时以后台为准；缺失则回退 yaml/env（默认 true）。
+func (s *SettingService) GetOpenAICodexTicketFailClosed(ctx context.Context, fallback bool) bool {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if ctx.Err() != nil {
+		return fallback
+	}
+	if s == nil || s.settingRepo == nil {
+		return fallback
+	}
+	if cached, ok := s.openAICodexTicketFailClosedCache.Load().(*cachedOpenAICodexTicketFailClosed); ok && cached != nil {
+		if time.Now().UnixNano() < cached.expiresAt {
+			return cached.value
+		}
+	}
+	resultCh := s.openAICodexTicketFailClosedSF.DoChan(SettingKeyOpenAICodexTicketFailClosed, func() (any, error) {
+		if cached, ok := s.openAICodexTicketFailClosedCache.Load().(*cachedOpenAICodexTicketFailClosed); ok && cached != nil {
+			if time.Now().UnixNano() < cached.expiresAt {
+				return cached.value, nil
+			}
+		}
+		dbCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+		defer cancel()
+		value, err := s.settingRepo.GetValue(dbCtx, SettingKeyOpenAICodexTicketFailClosed)
+		if ctx.Err() != nil {
+			return nil, ctx.Err()
+		}
+		if err != nil && !errors.Is(err, ErrSettingNotFound) {
+			if cached, ok := s.openAICodexTicketFailClosedCache.Load().(*cachedOpenAICodexTicketFailClosed); ok && cached != nil {
+				return cached.value, nil
+			}
+			return fallback, nil
+		}
+		failClosed := fallback
+		if err == nil && strings.TrimSpace(value) != "" {
+			failClosed = value == "true"
+		}
+		s.openAICodexTicketFailClosedCache.Store(&cachedOpenAICodexTicketFailClosed{
+			value:     failClosed,
+			expiresAt: time.Now().Add(openAICodexTicketFailClosedCacheTTL).UnixNano(),
+		})
+		return failClosed, nil
+	})
+	select {
+	case <-ctx.Done():
+		return fallback
+	case result := <-resultCh:
+		if v, ok := result.Val.(bool); ok && result.Err == nil {
+			return v
+		}
+		return fallback
+	}
+}
+
+func (s *SettingService) InvalidateOpenAICodexTicketFailClosedCache() {
+	if s == nil {
+		return
+	}
+	s.openAICodexTicketFailClosedSF.Forget(SettingKeyOpenAICodexTicketFailClosed)
+	s.openAICodexTicketFailClosedCache.Store(&cachedOpenAICodexTicketFailClosed{expiresAt: 0})
+}
+
 type cachedOpenAICodexTicketHarvestProxy struct {
 	value     string
 	expiresAt int64

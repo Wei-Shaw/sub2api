@@ -218,6 +218,7 @@ type SystemSettings struct {
 	OpenAICodexClientVersionSynced          string `json:"openai_codex_client_version_synced"`
 	OpenAICodexVersionAutoSyncEnabled       bool   `json:"openai_codex_version_auto_sync_enabled"`
 	OpenAICodexTicketEnabled                bool   `json:"openai_codex_ticket_enabled"`
+	OpenAICodexTicketFailClosed             bool   `json:"openai_codex_ticket_fail_closed"`
 	OpenAICodexTicketHarvestProxyURL        string `json:"openai_codex_ticket_harvest_proxy_url"`
 	OpenAICodexTicketHarvestProxyConfigured bool   `json:"openai_codex_ticket_harvest_proxy_configured"`
 	// OpenAICodexTicketPlanLengthRules 直接复用 service.OpenAICodexTicketPlanLengthRule（plan/length）。

@@ -428,6 +428,7 @@ const baseSettingsResponse = {
   antigravity_user_agent_version: "",
   openai_codex_user_agent: "",
   openai_codex_ticket_enabled: false,
+  openai_codex_ticket_fail_closed: true,
   openai_codex_ticket_harvest_proxy_url: "",
   openai_codex_ticket_harvest_proxy_configured: false,
   openai_codex_ticket_default_length: 292,
@@ -685,9 +686,14 @@ describe("admin SettingsView payment visible method controls", () => {
     await flushPromises();
     const toggle = wrapper.get("#codex-ticket-enabled");
     await toggle.setValue(true);
+    // 缺票拦截默认随响应加载为 true，关掉后应随载荷提交 false
+    const failClosed = wrapper.get<HTMLInputElement>("#codex-ticket-fail-closed");
+    expect((failClosed.element as HTMLInputElement).checked).toBe(true);
+    await failClosed.setValue(false);
     await wrapper.find("form").trigger("submit.prevent");
     await flushPromises();
     expect(updateSettings.mock.calls[0]?.[0].openai_codex_ticket_enabled).toBe(true);
+    expect(updateSettings.mock.calls[0]?.[0].openai_codex_ticket_fail_closed).toBe(false);
     wrapper.unmount();
   });
 

@@ -304,6 +304,7 @@ func (h *SettingHandler) GetSettings(c *gin.Context) {
 		OpenAICodexClientVersionSynced:                         settings.OpenAICodexClientVersionSynced,
 		OpenAICodexVersionAutoSyncEnabled:                      settings.OpenAICodexVersionAutoSyncEnabled,
 		OpenAICodexTicketEnabled:                               settings.OpenAICodexTicketEnabled,
+		OpenAICodexTicketFailClosed:                            settings.OpenAICodexTicketFailClosed,
 		OpenAICodexTicketHarvestProxyURL:                       service.MaskProxyURL(settings.OpenAICodexTicketHarvestProxyURL),
 		OpenAICodexTicketHarvestProxyConfigured:                strings.TrimSpace(settings.OpenAICodexTicketHarvestProxyURL) != "",
 		OpenAICodexTicketDefaultLength:                         settings.OpenAICodexTicketDefaultLength,

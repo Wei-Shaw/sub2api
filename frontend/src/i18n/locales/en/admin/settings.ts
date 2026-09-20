@@ -546,6 +546,9 @@ export default {
         codexTicketEnabled: "Codex ticket harvest",
         codexTicketEnabledDesc:
           "When off, the gateway neither harvests nor injects x-codex-turn-state and forwards traffic as usual. When on, it harvests tickets in the background and overwrites that header on gated-model production requests.",
+        codexTicketFailClosed: "Block on missing ticket",
+        codexTicketFailClosedDesc:
+          "When on, accounts without a valid ticket for a gated model are paused for scheduling (avoids 429) and requests route to accounts holding tickets. When off, requests without a ticket are still forwarded (without the ticket header, more likely to hit upstream rate limits). Takes effect immediately after saving, no restart needed.",
         codexTicketHarvestProxy: "292 harvest proxy",
         codexTicketHarvestProxyDesc:
           "Used only for minting 292 tickets when the ticket feature is enabled. Changes apply to subsequent probes without a restart. Production traffic still uses each account's residential proxy. Paste a full HTTP or SOCKS5h proxy URL including username and password. The proxy provider must handle IP rotation. Leave blank when saving to keep the stored value.",

@@ -725,6 +725,9 @@ const (
 	// SettingKeyOpenAICodexTicketPlanLengths 订阅档位长度规则 JSON（[{"plan":"team","length":332}]），
 	// 按账号 plan_type 小写子串匹配、先命中先生效；未命中用默认长度。
 	SettingKeyOpenAICodexTicketPlanLengths = "openai_codex_ticket_plan_lengths"
+	// SettingKeyOpenAICodexTicketFailClosed 缺票拦截：门控模型无有效门票时暂停该账号调度；
+	// 缺失回退 yaml gateway.openai_codex_ticket.fail_closed（默认 true）。
+	SettingKeyOpenAICodexTicketFailClosed = "openai_codex_ticket_fail_closed"
 	// SettingKeyOpenAIAllowClaudeCodeCodexPlugin 已废弃：历史全局开关只作为升级迁移输入读取。
 	// 迁移后等价规则写入 SettingKeyCodexCLIOnlyWhitelist，不再参与运行时判定。
 	SettingKeyOpenAIAllowClaudeCodeCodexPlugin = "openai_allow_claude_code_codex_plugin"

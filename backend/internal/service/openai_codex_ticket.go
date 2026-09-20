@@ -370,9 +370,18 @@ func (s *OpenAIGatewayService) storeOpenAICodexTicket(ctx context.Context, accou
 	}
 }
 
+// openAICodexTicketFailClosedContext 返回缺票拦截的生效值：后台设置优先（缓存 5s），
+// 缺失回退 yaml fail_closed。热路径逐请求调用，走缓存不得直读 DB。
+func (s *OpenAIGatewayService) openAICodexTicketFailClosedContext(ctx context.Context, cfg config.OpenAICodexTicketConfig) bool {
+	if s.settingService != nil {
+		return s.settingService.GetOpenAICodexTicketFailClosed(ctx, cfg.FailClosed)
+	}
+	return cfg.FailClosed
+}
+
 // applyOpenAICodexTicket 在出站请求上覆盖 x-codex-turn-state。
-// 请求路径只注入已捕获的有效门票，不现场打票；无票则返回
-// ErrOpenAICodexTicketUnavailable。打票由后台 harvester 完成。
+// 请求路径只注入已捕获的有效门票，不现场打票；无票时 fail_closed
+// 开启则返回 ErrOpenAICodexTicketUnavailable，关闭则裸发。打票由后台 harvester 完成。
 func (s *OpenAIGatewayService) applyOpenAICodexTicket(ctx context.Context, account *Account, model string, h http.Header) error {
 	if s == nil || h == nil || !isOpenAICodexTicketAccount(account) || !s.openAICodexTicketEnabledContext(ctx) {
 		return nil
@@ -387,7 +396,7 @@ func (s *OpenAIGatewayService) applyOpenAICodexTicket(ctx context.Context, accou
 		h.Set(openAICodexTurnStateHeader, ticket.State)
 		return nil
 	}
-	if !cfg.FailClosed {
+	if !s.openAICodexTicketFailClosedContext(ctx, cfg) {
 		return nil
 	}
 	return ErrOpenAICodexTicketUnavailable
@@ -430,7 +439,7 @@ func (s *OpenAIGatewayService) openAICodexTicketBlocksAccount(account *Account, 
 		return false
 	}
 	cfg := s.openAICodexTicketConfig()
-	if !cfg.FailClosed {
+	if !s.openAICodexTicketFailClosedContext(context.Background(), cfg) {
 		return false
 	}
 	model := normalizeOpenAICodexTicketModel(outboundModel)

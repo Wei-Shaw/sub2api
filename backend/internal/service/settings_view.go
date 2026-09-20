@@ -251,6 +251,7 @@ type SystemSettings struct {
 	OpenAICodexClientVersionSynced         string                            // 自动同步到的官方最新稳定版版本号（只读展示）
 	OpenAICodexVersionAutoSyncEnabled      bool                              // 是否启用 Codex 客户端版本号自动同步（默认 true）
 	OpenAICodexTicketEnabled               bool                              // 是否启用 292 门票打票（默认 false）
+	OpenAICodexTicketFailClosed            bool                              // 缺票拦截：门控模型无票时暂停该账号调度；后台未配置时回退 yaml fail_closed（默认 true）
 	OpenAICodexTicketHarvestProxyURL       string                            // 打票专用代理 URL；空则回退 yaml/env
 	OpenAICodexTicketDefaultLength         int                               // 门票默认目标长度；后台未配置时回退 yaml target_length
 	OpenAICodexTicketPlanLengthRules       []OpenAICodexTicketPlanLengthRule // 订阅档位长度规则（plan_type 子串匹配，先命中先生效）
