@@ -45,7 +45,7 @@ describe('RedeemView refresh after redemption', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     redeem.mockResolvedValue({ type: 'balance', value: 20, message: 'Code applied' })
-    getHistory.mockResolvedValue([])
+    getHistory.mockResolvedValue({ items: [], total: 0 })
     refreshUser.mockResolvedValue({ balance: 30, concurrency: 2 })
     fetchActiveSubscriptions.mockResolvedValue([])
     vi.spyOn(console, 'error').mockImplementation(() => {})
@@ -59,9 +59,9 @@ describe('RedeemView refresh after redemption', () => {
     'keeps a successful %s redemption when profile refresh fails', async (type) => {
       redeem.mockResolvedValue({ type, value: 20, message: 'Code applied' })
       refreshUser.mockRejectedValue({ status: 503, message: 'Service unavailable' })
-      getHistory.mockResolvedValueOnce([]).mockResolvedValueOnce([{
+      getHistory.mockResolvedValueOnce({ items: [], total: 0 }).mockResolvedValueOnce({ total: 1, items: [{
         id: 1, code: 'REDEEM-CODE', type, value: 20, used_at: '2026-03-08T00:00:00Z',
-      }])
+      }] })
 
       const wrapper = await submitCode()
 
@@ -83,6 +83,122 @@ describe('RedeemView refresh after redemption', () => {
       wrapper.unmount()
     }
   )
+
+  it('pages on the server, changes size, and resets page and total after redeeming', async () => {
+    getHistory.mockResolvedValue({ items: [], total: 101 })
+    const wrapper = mount(RedeemView, {
+      global: { stubs: { AppLayout: { template: '<div><slot /></div>' }, Icon: true } },
+    })
+    await flushPromises()
+    const button = (text: string) => wrapper.findAll('button').find(b => b.text() === text)!
+    expect(getHistory).toHaveBeenLastCalledWith(1, 20)
+    expect(button('pagination.previous').attributes('disabled')).toBeDefined()
+    await button('pagination.next').trigger('click')
+    await flushPromises()
+    expect(getHistory).toHaveBeenLastCalledWith(2, 20)
+    await button('pagination.previous').trigger('click')
+    await flushPromises()
+    expect(getHistory).toHaveBeenLastCalledWith(1, 20)
+    expect(wrapper.findAll('select option').map(o => o.text())).toEqual(['20', '50', '100'])
+    await wrapper.get('select').setValue('50')
+    await flushPromises()
+    expect(getHistory).toHaveBeenLastCalledWith(1, 50)
+    await wrapper.get('select').setValue('100')
+    await flushPromises()
+    await button('pagination.next').trigger('click')
+    await flushPromises()
+    expect(getHistory).toHaveBeenLastCalledWith(2, 100)
+    expect(button('pagination.next').attributes('disabled')).toBeDefined()
+    getHistory.mockResolvedValue({ items: [], total: 102 })
+    await wrapper.get('input#code').setValue('NEW-CODE')
+    await wrapper.get('form').trigger('submit')
+    await flushPromises()
+    expect(getHistory).toHaveBeenLastCalledWith(1, 100)
+    expect(wrapper.text()).toContain('102')
+    expect(button('pagination.previous').attributes('disabled')).toBeDefined()
+    wrapper.unmount()
+  })
+
+  it('restores the loaded size and keeps rows and navigation usable after a size request fails', async () => {
+    const item = { id: 1, code: 'OLD-ROWS', type: 'balance', value: 20, used_at: '2026-03-08T00:00:00Z' }
+    getHistory.mockResolvedValue({ items: [item], total: 61 })
+    const wrapper = mount(RedeemView, {
+      global: { stubs: { AppLayout: { template: '<div><slot /></div>' }, Icon: true } },
+    })
+    await flushPromises()
+    const button = (text: string) => wrapper.findAll('button').find(b => b.text() === text)!
+    await button('pagination.next').trigger('click')
+    await flushPromises()
+    let rejectRequest!: (error: Error) => void
+    getHistory.mockImplementationOnce(() => new Promise((_resolve, reject) => { rejectRequest = reject }))
+    await wrapper.get('select').setValue('50')
+    expect(getHistory).toHaveBeenLastCalledWith(1, 50)
+    expect(button('pagination.next').attributes('disabled')).toBeDefined()
+    rejectRequest(new Error('Network error'))
+    await flushPromises()
+    expect(wrapper.get('select').element.value).toBe('20')
+    expect(wrapper.text()).toContain('OLD-ROWS')
+    expect(wrapper.text()).toContain('61')
+    expect(button('pagination.previous').attributes('disabled')).toBeUndefined()
+    expect(button('pagination.next').attributes('disabled')).toBeUndefined()
+    expect(showError).toHaveBeenCalledWith('redeem.historyLoadFailed')
+    await button('pagination.next').trigger('click')
+    await flushPromises()
+    expect(getHistory).toHaveBeenLastCalledWith(3, 20)
+    await wrapper.get('select').setValue('50')
+    await flushPromises()
+    expect(getHistory).toHaveBeenLastCalledWith(1, 50)
+    expect(wrapper.get('select').element.value).toBe('50')
+    expect(button('pagination.previous').attributes('disabled')).toBeDefined()
+    wrapper.unmount()
+  })
+
+  it.each(['success', 'failure'])('ignores a stale history %s after a newer size request succeeds', async (outcome) => {
+    let resolveOld!: (value: unknown) => void
+    let rejectOld!: (error: Error) => void
+    getHistory.mockImplementationOnce(() => new Promise((resolve, reject) => {
+      resolveOld = resolve
+      rejectOld = reject
+    }))
+    const wrapper = mount(RedeemView, {
+      global: { stubs: { AppLayout: { template: '<div><slot /></div>' }, Icon: true } },
+    })
+    getHistory.mockResolvedValue({ items: [{
+      id: 2, code: 'NEW-ROWS', type: 'balance', value: 30, used_at: '2026-03-08T00:00:00Z',
+    }], total: 61 })
+    // Force overlapping requests to exercise responses arriving out of order.
+    await wrapper.get('select').setValue('50')
+    await flushPromises()
+    const button = (text: string) => wrapper.findAll('button').find(b => b.text() === text)!
+    await button('pagination.next').trigger('click')
+    await flushPromises()
+    expect(getHistory).toHaveBeenLastCalledWith(2, 50)
+    if (outcome === 'success') {
+      resolveOld({ items: [], total: 0 })
+    } else {
+      rejectOld(new Error('Stale network error'))
+    }
+    await flushPromises()
+    expect(wrapper.get('select').element.value).toBe('50')
+    expect(wrapper.text()).toContain('NEW-ROWS')
+    expect(wrapper.text()).toContain('61')
+    expect(button('pagination.previous').attributes('disabled')).toBeUndefined()
+    expect(button('pagination.next').attributes('disabled')).toBeDefined()
+    expect(wrapper.get('select').attributes('disabled')).toBeUndefined()
+    expect(showError).not.toHaveBeenCalled()
+    await button('pagination.previous').trigger('click')
+    await flushPromises()
+    expect(getHistory).toHaveBeenLastCalledWith(1, 50)
+    wrapper.unmount()
+  })
+
+  it('disables both paging buttons for empty history', async () => {
+    const wrapper = await submitCode()
+    for (const button of wrapper.findAll('button').filter(b => b.text().startsWith('pagination.'))) {
+      expect(button.attributes('disabled')).toBeDefined()
+    }
+    wrapper.unmount()
+  })
 
   it('finishes normally without a warning when profile refresh succeeds', async () => {
     const wrapper = await submitCode()
