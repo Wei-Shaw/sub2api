@@ -141,7 +141,7 @@ export default {
         fastMultiplier: 'Fast Multiplier',
         flexMultiplier: 'Flex Multiplier',
         maxReasoningEffortMultiplier: 'Max Effort Multiplier',
-        fable51DefaultMaxReasoningMultiplier: 'Default: 3',
+        fable51DefaultMaxReasoningMultiplier: 'Default: 1',
         multiplierPlaceholder: 'Not set',
         multiplierPositive: 'Fast/Flex/Max effort multipliers must be greater than 0',
         inputMultiplier: 'Input Mult.',
