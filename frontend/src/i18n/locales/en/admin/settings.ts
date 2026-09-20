@@ -549,7 +549,7 @@ export default {
         codexTicketFailClosed: "Block on missing ticket",
         codexTicketFailClosedDesc:
           "When on, accounts without a valid ticket for a gated model are paused for scheduling (avoids 429) and requests route to accounts holding tickets. When off, requests without a ticket are still forwarded (without the ticket header, more likely to hit upstream rate limits). Takes effect immediately after saving, no restart needed.",
-        codexTicketHarvestProxy: "292 harvest proxy",
+        codexTicketHarvestProxy: "Harvest proxy",
         codexTicketHarvestProxyDesc:
           "Used only for minting 292 tickets when the ticket feature is enabled. Changes apply to subsequent probes without a restart. Production traffic still uses each account's residential proxy. Paste a full HTTP or SOCKS5h proxy URL including username and password. The proxy provider must handle IP rotation. Leave blank when saving to keep the stored value.",
         codexTicketHarvestProxyPlaceholder: "http://user:pass{'@'}proxy.example.com:1080",

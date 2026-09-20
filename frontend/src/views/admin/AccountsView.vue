@@ -514,6 +514,15 @@
       @confirm="handleBulkResetStatus"
       @cancel="showBulkResetConfirm = false"
     />
+    <ConfirmDialog
+      :show="showBulkRefreshTokenConfirm"
+      :title="t('admin.accounts.bulkRefreshTokenTitle')"
+      :message="t('admin.accounts.bulkRefreshTokenConfirm', { count: selIds.length })"
+      :confirm-text="t('common.confirm')"
+      :cancel-text="t('common.cancel')"
+      @confirm="handleBulkRefreshToken"
+      @cancel="showBulkRefreshTokenConfirm = false"
+    />
   </AppLayout>
 </template>
 
@@ -629,6 +638,7 @@ const includeProxyOnExport = ref(true)
 const showBulkEdit = ref(false)
 const showBulkDeleteConfirm = ref(false)
 const showBulkResetConfirm = ref(false)
+const showBulkRefreshTokenConfirm = ref(false)
 const bulkEditTarget = ref<AccountBulkEditTarget | null>(null)
 const showTempUnsched = ref(false)
 const showDeleteDialog = ref(false)
@@ -1956,9 +1966,13 @@ const handleBulkResetStatus = async () => {
   }
 }
 const handleBulkRefreshToken = async () => {
-  if (!confirm(t('common.confirm'))) return
+  if (!showBulkRefreshTokenConfirm.value) {
+    showBulkRefreshTokenConfirm.value = true
+    return
+  }
   const accountIds = [...selIds.value]
   try {
+    showBulkRefreshTokenConfirm.value = false
     const result = await adminAPI.accounts.batchRefresh(accountIds)
     if (result.failed > 0) {
       appStore.showError(t('admin.accounts.bulkActions.partialSuccess', { success: result.success, failed: result.failed }))
