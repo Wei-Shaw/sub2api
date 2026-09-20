@@ -488,6 +488,18 @@ func (s *OpenAIGatewayService) proxyOpenAIWSHTTPBridgeTurn(
 			body = liteBody
 		}
 	}
+	if guardedBody, guardResult, guarded, guardErr := applyOpenAIResponsesToolLoopGuard(body); guardErr != nil {
+		return nil, guardErr
+	} else if guarded {
+		body = guardedBody
+		logOpenAIWSModeInfo(
+			"tool_loop_guard account_id=%d tool=%s error_class=%s failures=%d transport=http_bridge",
+			account.ID,
+			normalizeOpenAIWSLogValue(guardResult.ToolName),
+			normalizeOpenAIWSLogValue(guardResult.ErrorClass),
+			guardResult.FailureCount,
+		)
+	}
 
 	buildUpstreamRequest := func(requestBody []byte) (*http.Request, error) {
 		upstreamCtx, releaseUpstreamCtx := detachUpstreamContext(ctx)

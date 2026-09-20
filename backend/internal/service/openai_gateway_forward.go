@@ -80,6 +80,18 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 	} else if toolSchemaSanitized {
 		body = sanitizedToolBody
 	}
+	if guardedBody, guardResult, guarded, guardErr := applyOpenAIResponsesToolLoopGuard(body); guardErr != nil {
+		return nil, guardErr
+	} else if guarded {
+		body = guardedBody
+		logger.LegacyPrintf(
+			"service.openai_tool_loop_guard",
+			"[OpenAIToolLoopGuard] suppressed tool=%s error_class=%s failures=%d transport=http",
+			guardResult.ToolName,
+			guardResult.ErrorClass,
+			guardResult.FailureCount,
+		)
+	}
 	if account.IsOpenAIOAuthLike() {
 		reasoningBody, reasoningChanged, reasoningErr := normalizeOpenAIResponsesReasoningMode(body)
 		if reasoningErr != nil {
