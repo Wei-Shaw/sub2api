@@ -21,7 +21,8 @@ h1 {
   color: #1f2937;
 }
 
-.context {
+.context,
+.arp {
   margin: 0;
   font-size: 12px;
   color: #475569;

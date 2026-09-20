@@ -80,7 +80,8 @@ func TestDefaultIdentityMatchesFireflyCapture(t *testing.T) {
 	require.NotEqual(t, "AdobeID,firefly_api,openid", DefaultIdentity.IMSScope,
 		"scope 不能缩回三项，Firefly IMS 需要完整列表")
 	require.Equal(t, "SunbreakWebUI1", DefaultIdentity.CreditsAPIKey)
-	require.Contains(t, DefaultIdentity.UserAgent, "Chrome/145")
+	require.Contains(t, DefaultIdentity.UserAgent, "Chrome/146")
+	require.Contains(t, DefaultIdentity.SecChUA, `"Google Chrome";v="146"`)
 	require.Equal(t, "chrome_146", DefaultIdentity.TLSProfile)
 }
 

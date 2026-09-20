@@ -85,9 +85,9 @@ Sub2API 支持通过 Adobe Firefly Web 订阅账号（浏览器 Cookie）直连�
 ### Cookie 账号配置
 
 1. 在管理后台创建 **Adobe** 分组，并添加 Firefly Cookie 账号。
-2. 在浏览器登录 Adobe，打开 `https://firefly.adobe.com/generate/image` 并停留片刻。
-3. 打开开发者工具 → Network，找到发往 `adobeid-na1.services.adobe.com` 的 `/ims/check/v6/token` 请求，复制其 **Cookie 请求头**（必须包含 `ims_sid`）。
-4. 只从 `firefly.adobe.com` 复制 `document.cookie` **不够**。可带 `Cookie:` 前缀，也支持 JSON 形式的 cookie 数组。
+2. 在浏览器登录 Adobe，打开 `https://firefly.adobe.com/generate/image`，并**在该页成功生一次图**（用来捕获可选的 ARP session 头）。
+3. 打开开发者工具 → Network，找到发往 `adobeid-na1.services.adobe.com` 的 `/ims/check/v6/token` 请求，复制其 **Cookie 请求头**（必须包含 `ims_sid`）。推荐改用 [`tools/adobe-cookie-exporter`](tools/adobe-cookie-exporter) 导出 JSON 后在账号页「导入」上传。
+4. 只从 `firefly.adobe.com` 复制 `document.cookie` **不够**。可带 `Cookie:` 前缀，也支持 JSON 形式的 cookie 数组。同一份导出 JSON 里的 `arp_session_id` 可选；收费号可留空，FREE 账号建议带上。
 5. 短期 Access Token 可选；留空则首次刷新时用 Cookie 自动换取。之后后台会持续用 Cookie 刷新 token。
 6. 把账号加入分组，再创建绑定该分组的 Sub2API API Key。
 

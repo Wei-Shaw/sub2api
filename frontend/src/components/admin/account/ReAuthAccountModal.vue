@@ -370,6 +370,18 @@
           />
           <p class="input-hint">{{ t('admin.accounts.adobe.accessTokenHint') }}</p>
         </div>
+        <div>
+          <label class="input-label">{{ t('admin.accounts.adobe.arpLabel') }}</label>
+          <textarea
+            v-model="adobeArpSession"
+            rows="3"
+            class="input font-mono text-xs"
+            :placeholder="t('admin.accounts.adobe.arpPlaceholder')"
+            :disabled="adobeSubmitting"
+            data-testid="reauth-adobe-arp-input"
+          ></textarea>
+          <p class="input-hint">{{ t('admin.accounts.adobe.arpHint') }}</p>
+        </div>
       </div>
 
       <OAuthAuthorizationFlow
@@ -485,7 +497,7 @@ import { useAppStore } from '@/stores/app'
 import type { Account, AccountPlatform } from '@/types'
 import { useGrokOAuth } from '@/composables/useGrokOAuth'
 import { KIRO_REGION_SELECT_OPTIONS } from '@/constants/kiroRegions'
-import { extractAdobeCookieInput } from '@/utils/adobeAccount'
+import { extractAdobeAccessTokenFromCookieInput, extractAdobeAccessTokenInput, extractAdobeArpFromCookieInput, extractAdobeArpSessionInput, extractAdobeCookieInput } from '@/utils/adobeAccount'
 
 interface OAuthFlowExposed {
   authCode: string
@@ -531,7 +543,19 @@ const kiroTokenJson = ref('')
 const kiroDeviceRegistrationJson = ref('')
 const adobeCookie = ref('')
 const adobeAccessToken = ref('')
+const adobeArpSession = ref('')
 const adobeSubmitting = ref(false)
+
+watch(adobeCookie, (value) => {
+  if (!adobeArpSession.value.trim()) {
+    const arp = extractAdobeArpFromCookieInput(value)
+    if (arp) adobeArpSession.value = arp
+  }
+  if (!adobeAccessToken.value.trim()) {
+    const token = extractAdobeAccessTokenFromCookieInput(value)
+    if (token) adobeAccessToken.value = token
+  }
+})
 // 「从 Kiro IDE 导入」账号来源:决定字段显隐/必填/示例,并与 token JSON 内 provider 做一致性校验。
 const kiroImportProvider = ref<'Google' | 'Github' | 'BuilderId' | 'Enterprise' | 'ExternalIdp'>('Google')
 const kiroImportProviderOptions = ['Google', 'Github', 'BuilderId', 'Enterprise', 'ExternalIdp'] as const
@@ -718,6 +742,7 @@ const resetState = () => {
   kiroImportProvider.value = 'Google'
   adobeCookie.value = ''
   adobeAccessToken.value = ''
+  adobeArpSession.value = ''
   adobeSubmitting.value = false
   claudeOAuth.resetState()
   openaiOAuth.resetState()
@@ -790,13 +815,20 @@ const handleAdobeReauth = async () => {
 
   adobeSubmitting.value = true
   try {
+    const next: Record<string, unknown> = {
+      cookie,
+      // Empty string must be sent: omitting the key would keep the old IMS token.
+      access_token: extractAdobeAccessTokenInput(adobeAccessToken.value)
+        || extractAdobeAccessTokenFromCookieInput(adobeCookie.value)
+    }
+    const arp = extractAdobeArpSessionInput(adobeArpSession.value)
+      || extractAdobeArpFromCookieInput(adobeCookie.value)
+    if (arp) {
+      next.arp_session_id = arp
+    }
     await updateAccountCredentials({
       type: 'oauth',
-      credentials: buildUpdatedCredentials({
-        cookie,
-        // Empty string must be sent: omitting the key would keep the old IMS token.
-        access_token: adobeAccessToken.value.trim()
-      })
+      credentials: buildUpdatedCredentials(next)
     })
   } catch (error: any) {
     appStore.showError(

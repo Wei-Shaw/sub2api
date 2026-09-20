@@ -1,7 +1,11 @@
 const statusText = document.getElementById("statusText");
 const contextText = document.getElementById("contextText");
+const arpText = document.getElementById("arpText");
+const tokenText = document.getElementById("tokenText");
 const scopeSelect = document.getElementById("scopeSelect");
 const exportJsonBtn = document.getElementById("exportJsonBtn");
+const ARP_STORAGE_KEY = "arp_session_id";
+const TOKEN_STORAGE_KEY = "access_token";
 
 function setStatus(message) {
   statusText.textContent = message;
@@ -240,6 +244,64 @@ function buildCookieHeader(cookies) {
   return parts.join("; ");
 }
 
+function getCapturedSession() {
+  return new Promise((resolve) => {
+    if (!chrome.storage?.session) {
+      resolve({ arp: "", token: "" });
+      return;
+    }
+    chrome.storage.session.get([ARP_STORAGE_KEY, TOKEN_STORAGE_KEY], (result) => {
+      if (chrome.runtime.lastError) {
+        resolve({ arp: "", token: "" });
+        return;
+      }
+      resolve({
+        arp: String(result?.[ARP_STORAGE_KEY] || "").trim(),
+        token: String(result?.[TOKEN_STORAGE_KEY] || "").trim(),
+      });
+    });
+  });
+}
+
+function renderArpStatus(arp) {
+  if (arp) {
+    arpText.textContent = `ARP: captured (${arp.length} chars)`;
+    return;
+  }
+  arpText.textContent =
+    "ARP: not captured — optional; generate an image on this Firefly tab to include it.";
+}
+
+function renderTokenStatus(token) {
+  if (!tokenText) return;
+  if (token) {
+    tokenText.textContent = `Token: captured (${token.length} chars)`;
+    return;
+  }
+  tokenText.textContent =
+    "Token: not captured — generate an image on this Firefly tab to skip the first cookie refresh.";
+}
+
+async function ensureArpHook(tab) {
+  if (!tab || typeof tab.id !== "number") return;
+  if (!String(tab.url || "").startsWith("https://firefly.adobe.com/")) return;
+  try {
+    await chrome.scripting.executeScript({
+      target: { tabId: tab.id },
+      files: ["content-main.js"],
+      world: "MAIN",
+      injectImmediately: true,
+    });
+    await chrome.scripting.executeScript({
+      target: { tabId: tab.id },
+      files: ["content-isolated.js"],
+      injectImmediately: true,
+    });
+  } catch {
+    // Host access or tab may not allow injection; webRequest can still capture ARP.
+  }
+}
+
 function downloadJson(filename, data) {
   const blob = new Blob([JSON.stringify(data, null, 2)], {
     type: "application/json",
@@ -266,6 +328,14 @@ async function generatePayload() {
       ? await getFireflyAccountLabel(tab.id)
       : "";
   const accountName = pageLabel ? `adobe-${pageLabel}` : `adobe-${fileTs}`;
+  const { arp: arpSessionId, token: accessToken } = await getCapturedSession();
+  const credentials = { cookie: cookieHeader };
+  if (arpSessionId) {
+    credentials.arp_session_id = arpSessionId;
+  }
+  if (accessToken) {
+    credentials.access_token = accessToken;
+  }
   const payload = {
     type: "sub2api-data",
     version: 1,
@@ -276,7 +346,7 @@ async function generatePayload() {
         name: accountName,
         platform: "adobe",
         type: "oauth",
-        credentials: { cookie: cookieHeader },
+        credentials,
         concurrency: 10,
         priority: 1,
       },
@@ -287,6 +357,8 @@ async function generatePayload() {
     payload,
     fileName,
     cookieCount: normalizedCookies.length,
+    arpCaptured: Boolean(arpSessionId),
+    tokenCaptured: Boolean(accessToken),
     incognito,
     storeId,
   };
@@ -305,11 +377,22 @@ function renderContext(context) {
 }
 
 async function initContext() {
+  const manifest = chrome.runtime.getManifest();
+  const versionText = document.getElementById("versionText");
+  if (versionText) {
+    versionText.textContent = `Extension v${manifest.version}`;
+  }
   try {
     const context = await getCurrentContext();
     renderContext(context);
+    await ensureArpHook(context.tab);
+    const session = await getCapturedSession();
+    renderArpStatus(session.arp);
+    renderTokenStatus(session.token);
   } catch (error) {
     contextText.textContent = "Browser context: unavailable";
+    arpText.textContent = "ARP: unavailable";
+    if (tokenText) tokenText.textContent = "Token: unavailable";
     setStatus(`Unable to detect the cookie store: ${error.message || error}`);
     exportJsonBtn.disabled = true;
   }
@@ -318,7 +401,7 @@ async function initContext() {
 exportJsonBtn.addEventListener("click", async () => {
   try {
     setStatus("Reading cookies...");
-    const { payload, fileName, cookieCount, incognito } =
+    const { payload, fileName, cookieCount, arpCaptured, tokenCaptured, incognito } =
       await generatePayload();
     if (!cookieCount) {
       setStatus("No cookies were found. Log in to Adobe or Firefly first.");
@@ -326,9 +409,16 @@ exportJsonBtn.addEventListener("click", async () => {
     }
     downloadJson(fileName, payload);
     const modeText = incognito ? "incognito" : "regular";
+    const arpNote = arpCaptured ? "ARP included." : "ARP omitted.";
+    const tokenNote = tokenCaptured
+      ? "IMS token included."
+      : "IMS token omitted — generate on Firefly to skip the first cookie refresh.";
     setStatus(
-      `Exported ${cookieCount} cookies from the ${modeText} browser store.`
+      `Exported ${cookieCount} cookies from the ${modeText} browser store. ${arpNote} ${tokenNote}`
     );
+    const creds = payload.accounts[0].credentials;
+    renderArpStatus(arpCaptured ? creds.arp_session_id : "");
+    renderTokenStatus(tokenCaptured ? creds.access_token : "");
   } catch (error) {
     setStatus(`Export failed: ${error.message || error}`);
   }

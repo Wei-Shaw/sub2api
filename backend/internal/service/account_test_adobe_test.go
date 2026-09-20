@@ -113,6 +113,23 @@ func TestTestAccountConnectionAdobeDefaultsToFirstModel(t *testing.T) {
 	require.Contains(t, rec.Body.String(), `"model":"`+adobe.ImageModelIDs()[0]+`"`)
 }
 
+func TestTestAccountConnectionAdobeForwardsARPSessionID(t *testing.T) {
+	const wantARP = "eyJzaWQiOiJ0ZXN0LWFycCIsImZ0ciI6InJlYWwifQ=="
+	api := &adobeFakeTransport{}
+	client := adobeSubmitPollDownload(t, api, []byte("X"))
+	withStubbedAdobeTestClient(t, client)
+
+	account := adobeTestConnAccount(map[string]any{
+		"cookie":         "aux_sid=abc",
+		"access_token":   "adobe-access-token",
+		"arp_session_id": wantARP,
+	})
+	_, err := runAdobeTestConn(t, account, "gpt-image-2", "")
+	require.NoError(t, err)
+	require.NotEmpty(t, api.calls)
+	require.Equal(t, wantARP, api.calls[0].Headers["x-arp-session-id"])
+}
+
 // access_token 在账号表单上是可选的（文案：留空则首次刷新时用 cookie 自动换取）。
 // 刚建好的账号必然没有 token，测试必须当场用 cookie 换一个，而不是让运维干等后台刷新器。
 func TestTestAccountConnectionAdobeExchangesTokenFromCookie(t *testing.T) {

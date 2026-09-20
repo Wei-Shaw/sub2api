@@ -74,8 +74,8 @@ const (
 	// PayloadKindGPTImage 是历史零值回落路径。v1.5 / v2 已改走 PayloadKindGPTImage25。
 	PayloadKindGPTImage
 	// PayloadKindGPTImage25 对 gpt-image v1.5 / v2 / v2.5：无 outputResolution；
-	// 有合法 WxH 时发顶层 size:{width,height}（含 4K，不夹紧）；空/auto 则省略。
-	// v2.5 Auto 额外写 modelSpecificPayload.size:"auto"。caiClaimVersion:2。
+	// 有合法 WxH 时发顶层 size:{width,height}（含 4K，不夹紧）；空/auto 则省略
+	// 顶层 size，改写 modelSpecificPayload.size:"auto"。caiClaimVersion:2。
 	PayloadKindGPTImage25
 	// PayloadKindNanoBanana 对 gemini-flash 家族：方图档位 + 可选 aspectRatio
 	PayloadKindNanoBanana

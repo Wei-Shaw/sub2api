@@ -1089,12 +1089,15 @@ export default {
       },
       adobe: {
         cookieLabel: 'Adobe Cookie',
-        cookieHint: 'Sign in to Adobe, open firefly.adobe.com/generate/image and let it settle, then export JSON with Adobe Cookie Exporter and upload it under Accounts → Import. You can also paste that JSON or the Cookie header from an adobeid-na1.services.adobe.com /ims/check/v6/token request here (it must include ims_sid). Copying document.cookie from firefly.adobe.com alone is not enough. A "Cookie:" prefix or a JSON cookie array is also accepted. The short-lived access token is refreshed from this automatically.',
+        cookieHint: 'Sign in to Adobe, open firefly.adobe.com/generate/image and successfully generate an image there, then export JSON with Adobe Cookie Exporter and upload it under Accounts → Import. You can also paste that JSON or the Cookie header from an adobeid-na1.services.adobe.com /ims/check/v6/token request here (it must include ims_sid). Copying document.cookie from firefly.adobe.com alone is not enough. A "Cookie:" prefix or a JSON cookie array is also accepted. The short-lived access token is refreshed from this automatically.',
         credentialStepTitle: 'Enter credentials',
         cookiePlaceholder: 'ims_sid=...; aux_sid=...; ...',
         cookieRequired: 'Please enter the Adobe cookie',
         accessTokenLabel: 'Access Token (optional)',
         accessTokenHint: 'Leave empty to have it fetched from the cookie on first refresh. Fill it only when you already hold a valid IMS token.',
+        arpLabel: 'ARP Session (optional)',
+        arpPlaceholder: 'Firefly x-arp-session-id header',
+        arpHint: 'Recommended for FREE accounts. With the exporter, generate an image on firefly.adobe.com/generate/image first, then export. Paid accounts can leave this empty. Pasting the exporter JSON into the cookie field also fills it.',
         relayApiKeyHint: 'API key for that external upstream (sent as Authorization: Bearer)',
         relayBaseUrlHint: 'External OpenAI-compatible upstream URL (e.g. https://your-relay.example.com)'
       },

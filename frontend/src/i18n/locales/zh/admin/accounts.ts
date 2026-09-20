@@ -1167,12 +1167,15 @@ export default {
       },
       adobe: {
         cookieLabel: 'Adobe Cookie',
-        cookieHint: '先登录 Adobe，打开 firefly.adobe.com/generate/image 停留片刻，然后用 Adobe Cookie Exporter 导出 JSON，在账号页「导入」上传；也可把该 JSON 或 Cookie 请求头贴到这里（必须包含 ims_sid）。只从 firefly.adobe.com 复制 document.cookie 不够。可带 “Cookie:” 前缀，也支持 JSON cookie 数组。短期 access token 会据此自动刷新。',
+        cookieHint: '先登录 Adobe，打开 firefly.adobe.com/generate/image，在网页上成功生一次图，然后用 Adobe Cookie Exporter 导出 JSON，在账号页「导入」上传；也可把该 JSON 或 Cookie 请求头贴到这里（必须包含 ims_sid）。只从 firefly.adobe.com 复制 document.cookie 不够。可带 “Cookie:” 前缀，也支持 JSON cookie 数组。短期 access token 会据此自动刷新。',
         credentialStepTitle: '填写凭据',
         cookiePlaceholder: 'ims_sid=...; aux_sid=...; ...',
         cookieRequired: '请填写 Adobe Cookie',
         accessTokenLabel: 'Access Token（可选）',
         accessTokenHint: '留空则首次刷新时用 cookie 自动换取。仅在你已持有有效 IMS token 时才需要填。',
+        arpLabel: 'ARP Session（可选）',
+        arpPlaceholder: 'Firefly 提交头 x-arp-session-id',
+        arpHint: 'FREE 账号建议填。用导出器时请先在 firefly.adobe.com/generate/image 成功生一次图再导出。收费号可留空。粘贴整份导出 JSON 到 Cookie 框也会自动填入。',
         relayApiKeyHint: '该外部上游的 API Key（通过 Authorization: Bearer 发送）',
         relayBaseUrlHint: '外部 OpenAI 兼容上游地址（如 https://your-relay.example.com）'
       },

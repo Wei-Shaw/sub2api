@@ -247,4 +247,65 @@ describe('ReAuthAccountModal platform routing', () => {
       },
     })
   })
+
+  it('reauth 粘贴带 ARP 的 JSON 会覆盖 arp_session_id，空则不带该键', async () => {
+    const wrapper = mountModal(buildAdobeAccount())
+
+    await wrapper.setProps({ show: true })
+    await flushPromises()
+
+    await wrapper.get('[data-testid="reauth-adobe-cookie-input"]').setValue(JSON.stringify({
+      type: 'sub2api-data',
+      accounts: [
+        {
+          credentials: {
+            cookie: 'ims_sid=from-json; aux_sid=abc',
+            arp_session_id: 'arp-reauth'
+          }
+        }
+      ]
+    }))
+    await wrapper.get('[data-testid="reauth-adobe-submit"]').trigger('click')
+    await flushPromises()
+
+    expect(applyOAuthCredentialsMock).toHaveBeenCalledWith(77, {
+      type: 'oauth',
+      credentials: {
+        model_mapping: { 'gpt-image-2': 'firefly-gpt-image-2' },
+        cookie: 'ims_sid=from-json; aux_sid=abc',
+        access_token: '',
+        arp_session_id: 'arp-reauth',
+      },
+    })
+  })
+
+  it('reauth 粘贴带 access_token 的 JSON 会写入该键，裸 cookie 仍清空旧 token', async () => {
+    const wrapper = mountModal(buildAdobeAccount())
+
+    await wrapper.setProps({ show: true })
+    await flushPromises()
+
+    await wrapper.get('[data-testid="reauth-adobe-cookie-input"]').setValue(JSON.stringify({
+      type: 'sub2api-data',
+      accounts: [
+        {
+          credentials: {
+            cookie: 'ims_sid=from-json; aux_sid=abc',
+            access_token: 'ims-reauth'
+          }
+        }
+      ]
+    }))
+    await wrapper.get('[data-testid="reauth-adobe-submit"]').trigger('click')
+    await flushPromises()
+
+    expect(applyOAuthCredentialsMock).toHaveBeenCalledWith(77, {
+      type: 'oauth',
+      credentials: {
+        model_mapping: { 'gpt-image-2': 'firefly-gpt-image-2' },
+        cookie: 'ims_sid=from-json; aux_sid=abc',
+        access_token: 'ims-reauth',
+      },
+    })
+  })
 })

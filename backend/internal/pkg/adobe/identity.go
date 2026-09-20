@@ -64,12 +64,12 @@ var DefaultIdentity = Identity{
 	Origin:  "https://firefly.adobe.com",
 	Referer: "https://firefly.adobe.com/",
 
-	UserAgent:       "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36",
-	SecChUA:         `"Not:A-Brand";v="99", "Google Chrome";v="145", "Chromium";v="145"`,
+	UserAgent:       "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36",
+	SecChUA:         `"Not:A-Brand";v="99", "Google Chrome";v="146", "Chromium";v="146"`,
 	SecChUAPlatform: `"Windows"`,
 
-	// chrome_146 配 Chrome/145 的 UA 差一个小版本。本轮只换应用身份，TLS 三件套
-	// 维持已验证过的 Chrome 组合，不跟 Camoufox 的 Firefox/152 对齐。
+	// tls-client v1.14 没有 chrome_145；用 chrome_146 配 Chrome/146 UA，避免
+	// 再出现「UA 145、ClientHello 146」的版本错位。
 	TLSProfile: "chrome_146",
 }
 

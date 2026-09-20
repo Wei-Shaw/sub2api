@@ -104,6 +104,47 @@ func TestNormalizeVideoPollURL(t *testing.T) {
 	}
 }
 
+func TestNormalizePollURLRewritesFireflyImageJob(t *testing.T) {
+	require.Equal(t,
+		"https://bks-epo8552.adobe.io/v2/jobs/result/job-1?host=firefly-epo855232.adobe.io/",
+		NormalizePollURL("https://firefly-epo855232.adobe.io/jobs/result/job-1"))
+	already := "https://bks-epo8552.adobe.io/v2/jobs/result/job-1?host=firefly-epo855232.adobe.io/"
+	require.Equal(t, already, NormalizePollURL(already))
+}
+
+func TestGenerateImageNormalizesPollURL(t *testing.T) {
+	api := &fakeTransport{handler: func(req *Request, index int) (*Response, error) {
+		if index == 0 {
+			return jsonResponse(t, 200, map[string]any{
+				"links": map[string]any{
+					"result": map[string]any{
+						"href": "https://firefly-epo855232.adobe.io/jobs/result/img-job-1",
+					},
+				},
+			}, nil), nil
+		}
+		require.Equal(t,
+			"https://bks-epo8552.adobe.io/v2/jobs/result/img-job-1?host=firefly-epo855232.adobe.io/",
+			req.URL)
+		require.Empty(t, req.Headers["x-api-key"])
+		require.Empty(t, req.Headers["content-type"])
+		return jsonResponse(t, 200, map[string]any{
+			"status":  "COMPLETED",
+			"outputs": []any{map[string]any{"image": map[string]any{"presignedUrl": "https://cdn/img.png"}}},
+		}, nil), nil
+	}}
+	download := &fakeTransport{handler: func(*Request, int) (*Response, error) {
+		return bytesResponse(200, []byte("PNG")), nil
+	}}
+
+	_, err := testClient(api, download).GenerateImage(context.Background(), GenerateImageInput{
+		Token:        fakeToken(t),
+		Options:      ImagePayloadOptions{Prompt: "x", UpstreamModelID: "gpt-image", UpstreamModelVersion: "2"},
+		PollInterval: time.Millisecond,
+	})
+	require.NoError(t, err)
+}
+
 func TestGenerateImageRoundTrip(t *testing.T) {
 	api := &fakeTransport{}
 	api.handler = func(req *Request, index int) (*Response, error) {
@@ -116,12 +157,18 @@ func TestGenerateImageRoundTrip(t *testing.T) {
 			require.NotEmpty(t, req.Headers["x-arp-session-id"])
 			token := strings.TrimPrefix(req.Headers["authorization"], "Bearer ")
 			require.Equal(t, BuildSubmitNonce(token, "a cat"), req.Headers["x-nonce"])
+			require.Equal(t, []string{
+				"user-agent", "accept", "accept-language", "referer",
+				"authorization", "content-type", "x-api-key", "x-arp-session-id",
+				"x-nonce", "origin", "sec-ch-ua", "sec-ch-ua-mobile",
+				"sec-ch-ua-platform", "sec-fetch-dest", "sec-fetch-mode", "sec-fetch-site",
+			}, req.HeaderOrder)
 			return jsonResponse(t, 200,
 				map[string]any{"links": map[string]any{"result": "https://firefly-3p.ff.adobe.io/jobs/abc"}},
 				map[string]string{"x-override-status-link": "https://firefly-3p.ff.adobe.io/jobs/abc"}), nil
 		}
-		require.Equal(t, "clio-playground-web", req.Headers["x-api-key"])
-		require.Equal(t, "application/json", req.Headers["content-type"])
+		require.Empty(t, req.Headers["x-api-key"])
+		require.Empty(t, req.Headers["content-type"])
 		require.Equal(t, DefaultIdentity.Origin, req.Headers["origin"])
 		return jsonResponse(t, 200, map[string]any{
 			"status":  "COMPLETED",
@@ -147,6 +194,34 @@ func TestGenerateImageRoundTrip(t *testing.T) {
 	require.Equal(t, []byte("PNGDATA"), out.Bytes)
 	require.Equal(t, "COMPLETED", out.Raw["status"])
 	require.Equal(t, "https://cdn/img.png", download.calls[0].URL)
+}
+
+func TestGenerateImageUsesAccountARPSessionID(t *testing.T) {
+	const wantARP = "eyJzaWQiOiJhY2NvdW50LWFycCIsImZ0ciI6InJlYWwifQ=="
+	api := &fakeTransport{}
+	api.handler = func(req *Request, index int) (*Response, error) {
+		if index == 0 {
+			require.Equal(t, wantARP, req.Headers["x-arp-session-id"])
+			return jsonResponse(t, 200,
+				map[string]any{"links": map[string]any{"result": "https://firefly-3p.ff.adobe.io/jobs/abc"}},
+				map[string]string{"x-override-status-link": "https://firefly-3p.ff.adobe.io/jobs/abc"}), nil
+		}
+		return jsonResponse(t, 200, map[string]any{
+			"status":  "COMPLETED",
+			"outputs": []any{map[string]any{"image": map[string]any{"presignedUrl": "https://cdn/img.png"}}},
+		}, nil), nil
+	}
+	download := &fakeTransport{handler: func(*Request, int) (*Response, error) {
+		return bytesResponse(200, []byte("PNG")), nil
+	}}
+
+	_, err := testClient(api, download).GenerateImage(context.Background(), GenerateImageInput{
+		Token:        fakeToken(t),
+		ARPSessionID: wantARP,
+		Options:      ImagePayloadOptions{Prompt: "x", UpstreamModelID: "gpt-image", UpstreamModelVersion: "2"},
+		PollInterval: time.Millisecond,
+	})
+	require.NoError(t, err)
 }
 
 // 产物下载必须走独立的传输（不带 TLS 伪装），不能复用 API 传输。

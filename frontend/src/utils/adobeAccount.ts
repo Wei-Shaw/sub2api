@@ -103,3 +103,138 @@ function normalizeAdobeCookieValue(value: unknown, depth = 0): string {
   return ''
 }
 
+/**
+ * 从粘贴内容取出可选的 Firefly ARP session token。
+ *
+ * 接受裸 token、`{arp_session_id}`，以及插件导出的 `sub2api-data` envelope。
+ * 解析不到时返回空串——该字段可选，收费号可以不填。
+ */
+export function extractAdobeArpSessionInput(input: string): string {
+  const text = input.trim()
+  if (!text) return ''
+  if (looksLikeJsonValue(text)) {
+    try {
+      return normalizeAdobeArpValue(JSON.parse(text))
+    } catch {
+      return ''
+    }
+  }
+  return text
+}
+
+/**
+ * 从 Cookie 输入框的粘贴内容里取 ARP：只认 JSON envelope，裸 cookie 串不当 token。
+ */
+export function extractAdobeArpFromCookieInput(input: string): string {
+  const text = input.trim()
+  if (!looksLikeJsonValue(text)) return ''
+  return extractAdobeArpSessionInput(text)
+}
+
+/**
+ * 从粘贴内容取出可选的 IMS access_token。
+ *
+ * 接受裸 JWT、`Bearer ` 前缀、`{access_token}`，以及插件导出的 `sub2api-data` envelope。
+ * 解析不到时返回空串——该字段可选，后台会用 cookie 换。
+ */
+export function extractAdobeAccessTokenInput(input: string): string {
+  const text = input.trim()
+  if (!text) return ''
+  if (looksLikeJsonValue(text)) {
+    try {
+      return normalizeAdobeAccessTokenValue(JSON.parse(text))
+    } catch {
+      return ''
+    }
+  }
+  return stripBearerPrefix(text)
+}
+
+/**
+ * 从 Cookie 输入框的粘贴内容里取 IMS token：只认 JSON envelope，裸 cookie 串不当 token。
+ */
+export function extractAdobeAccessTokenFromCookieInput(input: string): string {
+  const text = input.trim()
+  if (!looksLikeJsonValue(text)) return ''
+  return extractAdobeAccessTokenInput(text)
+}
+
+function stripBearerPrefix(text: string): string {
+  if (text.slice(0, 7).toLowerCase() === 'bearer ') {
+    return text.slice(7).trim()
+  }
+  return text
+}
+
+function normalizeAdobeAccessTokenValue(value: unknown, depth = 0): string {
+  if (depth > 4 || value == null) return ''
+  if (typeof value === 'string') {
+    const text = value.trim()
+    if (!text) return ''
+    if (looksLikeJsonValue(text)) {
+      try {
+        return normalizeAdobeAccessTokenValue(JSON.parse(text), depth + 1)
+      } catch {
+        return stripBearerPrefix(text)
+      }
+    }
+    return stripBearerPrefix(text)
+  }
+  if (typeof value !== 'object' || Array.isArray(value)) return ''
+
+  const record = value as Record<string, unknown>
+  if (Array.isArray(record.accounts) && record.accounts.length > 0) {
+    const first = record.accounts[0]
+    if (first && typeof first === 'object') {
+      const credentials = (first as Record<string, unknown>).credentials
+      if (credentials && typeof credentials === 'object') {
+        const extracted = normalizeAdobeAccessTokenValue(
+          (credentials as Record<string, unknown>).access_token,
+          depth + 1
+        )
+        if (extracted) return extracted
+      }
+    }
+  }
+  if ('access_token' in record) {
+    return normalizeAdobeAccessTokenValue(record.access_token, depth + 1)
+  }
+  return ''
+}
+
+function normalizeAdobeArpValue(value: unknown, depth = 0): string {
+  if (depth > 4 || value == null) return ''
+  if (typeof value === 'string') {
+    const text = value.trim()
+    if (!text) return ''
+    if (looksLikeJsonValue(text)) {
+      try {
+        return normalizeAdobeArpValue(JSON.parse(text), depth + 1)
+      } catch {
+        return text
+      }
+    }
+    return text
+  }
+  if (typeof value !== 'object' || Array.isArray(value)) return ''
+
+  const record = value as Record<string, unknown>
+  if (Array.isArray(record.accounts) && record.accounts.length > 0) {
+    const first = record.accounts[0]
+    if (first && typeof first === 'object') {
+      const credentials = (first as Record<string, unknown>).credentials
+      if (credentials && typeof credentials === 'object') {
+        const extracted = normalizeAdobeArpValue(
+          (credentials as Record<string, unknown>).arp_session_id,
+          depth + 1
+        )
+        if (extracted) return extracted
+      }
+    }
+  }
+  if ('arp_session_id' in record) {
+    return normalizeAdobeArpValue(record.arp_session_id, depth + 1)
+  }
+  return ''
+}
+

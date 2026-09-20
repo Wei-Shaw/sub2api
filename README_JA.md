@@ -84,9 +84,9 @@ Sub2API は、Adobe Firefly Web のサブスクリプションアカウント（
 ### Cookie アカウントの設定
 
 1. 管理ダッシュボードで **Adobe** グループを作成し、Firefly Cookie アカウントを追加します。
-2. ブラウザで Adobe にログインし、`https://firefly.adobe.com/generate/image` を開いてページが落ち着くまで待ちます。
-3. DevTools → Network で `adobeid-na1.services.adobe.com` の `/ims/check/v6/token` リクエストを見つけ、その **Cookie ヘッダー**をコピーします。`ims_sid` が含まれている必要があります。
-4. `firefly.adobe.com` の `document.cookie` だけをコピーしても **不十分**です。`Cookie:` プレフィックスや JSON の cookie 配列も受け付けます。
+2. ブラウザで Adobe にログインし、`https://firefly.adobe.com/generate/image` を開いて**そのページで画像を 1 枚生成**します（任意の ARP セッションヘッダーを取るため）。
+3. DevTools → Network で `adobeid-na1.services.adobe.com` の `/ims/check/v6/token` リクエストを見つけ、その **Cookie ヘッダー**をコピーします。`ims_sid` が含まれている必要があります。[`tools/adobe-cookie-exporter`](tools/adobe-cookie-exporter) で JSON を書き出して Accounts → Import するのが推奨です。
+4. `firefly.adobe.com` の `document.cookie` だけをコピーしても **不十分**です。`Cookie:` プレフィックスや JSON の cookie 配列も受け付けます。同じ JSON の `arp_session_id` は任意です。有料アカウントは省略でき、FREE アカウントでは付けることを推奨します。
 5. 短命の Access Token は任意です。空なら初回リフレッシュ時に Cookie から取得します。以降は Cookie から自動更新されます。
 6. アカウントをグループに割り当て、そのグループに紐づく Sub2API API キーを作成します。
 
