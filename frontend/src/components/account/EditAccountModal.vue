@@ -4384,7 +4384,9 @@ watch(
     if (!show || !newAccount) {
       return
     }
-    if (!wasShow || newAccount !== previousAccount) {
+    // 列表自动刷新会为同一账号创建新的对象引用；编辑中的表单状态属于
+    // 当前会话，不能因后台刷新账号元数据而被旧 credentials 重置。
+    if (!wasShow || newAccount.id !== previousAccount?.id) {
       syncFormFromAccount(newAccount)
       loadTLSProfiles()
     }
