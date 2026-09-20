@@ -1824,19 +1824,10 @@ const handleSubmit = async () => {
   const quota = formData.value.quota && formData.value.quota > 0 ? formData.value.quota : 0
 
   // Calculate expiration
-  let expiresInDays: number | undefined
   let expiresAt: string | null | undefined
   if (formData.value.enable_expiration && formData.value.expiration_date) {
-    if (!showEditModal.value) {
-      // Create mode: calculate days from date
-      const expDate = new Date(formData.value.expiration_date)
-      const now = new Date()
-      const diffDays = Math.ceil((expDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24))
-      expiresInDays = diffDays > 0 ? diffDays : 1
-    } else {
-      // Edit mode: use custom date directly
-      expiresAt = new Date(formData.value.expiration_date).toISOString()
-    }
+    // Preserve the selected local date and time in both create and edit mode.
+    expiresAt = new Date(formData.value.expiration_date).toISOString()
   } else if (showEditModal.value) {
     // Edit mode: if expiration disabled or date cleared, send empty string to clear
     expiresAt = ''
@@ -1877,8 +1868,9 @@ const handleSubmit = async () => {
         ipWhitelist,
         ipBlacklist,
         quota,
-        expiresInDays,
-        rateLimitData
+        undefined,
+        rateLimitData,
+        expiresAt
       )
       appStore.showSuccess(t('keys.keyCreatedSuccess'))
       // Only advance tour if active, on submit step, and creation succeeded
