@@ -6,6 +6,7 @@ import enCommon from "@/i18n/locales/en/common";
 import enSettings from "@/i18n/locales/en/admin/settings";
 import zhCommon from "@/i18n/locales/zh/common";
 import zhSettings from "@/i18n/locales/zh/admin/settings";
+import Select from "@/components/common/Select.vue";
 import SettingsView from "../SettingsView.vue";
 
 const {
@@ -283,56 +284,6 @@ const ToggleStub = defineComponent({
   },
 });
 
-const SelectStub = defineComponent({
-  props: {
-    modelValue: {
-      type: [String, Number, Boolean, null],
-      default: "",
-    },
-    options: {
-      type: Array,
-      default: () => [],
-    },
-    placeholder: {
-      type: String,
-      default: "",
-    },
-  },
-  emits: ["update:modelValue", "change"],
-  setup(props, { emit }) {
-    const onChange = (event: Event) => {
-      const target = event.target as HTMLSelectElement;
-      emit("update:modelValue", target.value);
-      const option =
-        (props.options as Array<Record<string, unknown>>).find(
-          (item) => String(item.value ?? "") === target.value,
-        ) ?? null;
-      emit("change", target.value, option);
-    };
-
-    return () =>
-      h(
-        "select",
-        {
-          class: "select-stub",
-          value: props.modelValue ?? "",
-          "data-placeholder": props.placeholder,
-          onChange,
-        },
-        (props.options as Array<Record<string, unknown>>).map((option) =>
-          h(
-            "option",
-            {
-              key: `${String(option.value ?? "")}:${String(option.label ?? "")}`,
-              value: option.value as string,
-            },
-            String(option.label ?? ""),
-          ),
-        ),
-      );
-  },
-});
-
 const ImageUploadStub = defineComponent({
   props: {
     modelValue: {
@@ -554,7 +505,6 @@ function mountView() {
     global: {
       stubs: {
         AppLayout: AppLayoutStub,
-        Select: SelectStub,
         Toggle: ToggleStub,
         Icon: true,
         ConfirmDialog: true,
@@ -773,15 +723,25 @@ describe("admin SettingsView payment visible method controls", () => {
     expect(defaultLength.element.value).toBe("292");
     let rows = wrapper.findAll('[data-test="codex-ticket-plan-row"]');
     expect(rows).toHaveLength(1);
-    expect(rows[0].findAll("input")[0].element.value).toBe("business");
-    expect(rows[0].findAll("input")[1].element.value).toBe("332");
+    // plan 用通用 Select 展示：非预设值（business）原样显示，长度仍是数字输入
+    const planSelect = rows[0].getComponent(Select);
+    expect(planSelect.props("creatable")).toBe(true);
+    expect(planSelect.props("options")).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ value: "plus", label: "Plus" }),
+        expect.objectContaining({ value: "team", label: "Business Standard" }),
+        expect.objectContaining({ value: "self_serve_business_prolite", label: "Business Premium" }),
+      ]),
+    );
+    expect(rows[0].get("button.select-trigger").text()).toBe("business");
+    expect(rows[0].get('input[type="number"]').element.value).toBe("332");
 
     // 修改默认长度，追加一条 team 规则（大小写与空白应被规整）。
     await defaultLength.setValue(296);
     await wrapper.get("#codex-ticket-plan-rule-add").trigger("click");
     rows = wrapper.findAll('[data-test="codex-ticket-plan-row"]');
-    await rows[1].findAll("input")[0].setValue("  Team ");
-    await rows[1].findAll("input")[1].setValue(332);
+    await rows[1].getComponent(Select).vm.$emit("update:modelValue", "  Team ");
+    await rows[1].get('input[type="number"]').setValue(332);
 
     await wrapper.find("form").trigger("submit.prevent");
     await flushPromises();
@@ -1344,7 +1304,6 @@ describe("admin SettingsView payment visible method controls", () => {
       global: {
         stubs: {
           AppLayout: AppLayoutStub,
-          Select: SelectStub,
           Toggle: ToggleStub,
           Icon: true,
           ConfirmDialog: true,
@@ -1488,9 +1447,9 @@ describe("admin SettingsView payment visible method controls", () => {
     await openGatewayTab(wrapper);
 
     const modeSelect = wrapper.get('[data-testid="openai-ttft-mode"]');
-    expect((modeSelect.element as HTMLSelectElement).value).toBe("visible");
+    expect(modeSelect.getComponent(Select).props("modelValue")).toBe("visible");
 
-    await modeSelect.setValue("semantic");
+    await modeSelect.getComponent(Select).vm.$emit("update:modelValue", "semantic");
     await wrapper.find("form").trigger("submit.prevent");
     await flushPromises();
 
@@ -1642,7 +1601,6 @@ describe("admin SettingsView payment visible method controls", () => {
       global: {
         stubs: {
           AppLayout: AppLayoutStub,
-          Select: SelectStub,
           Toggle: ToggleStub,
           Icon: true,
           ConfirmDialog: true,
@@ -1673,11 +1631,12 @@ describe("admin SettingsView payment visible method controls", () => {
     await openGatewayTab(wrapper);
 
     const select = wrapper.get('[data-testid="grok-default-base-url-mode"]');
+    const selectComponent = select.getComponent(Select);
 
     // 五个上游选项必须齐全且顺序与取值稳定（保存的是 value，不是 label）
-    const optionValues = select
-      .findAll("option")
-      .map((node) => (node.element as HTMLOptionElement).value);
+    const optionValues = (selectComponent.props("options") as Array<{ value: string }>).map(
+      (option) => option.value,
+    );
     expect(optionValues).toEqual([
       "cli",
       "api",
@@ -1687,9 +1646,9 @@ describe("admin SettingsView payment visible method controls", () => {
     ]);
 
     // 默认值来自 form 初始化
-    expect((select.element as HTMLSelectElement).value).toBe("cli");
+    expect(selectComponent.props("modelValue")).toBe("cli");
 
-    await select.setValue("us-west-2");
+    await selectComponent.vm.$emit("update:modelValue", "us-west-2");
     await wrapper.find("form").trigger("submit.prevent");
     await flushPromises();
 

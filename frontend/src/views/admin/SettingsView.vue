@@ -5817,12 +5817,14 @@
                     data-test="codex-ticket-plan-row"
                     class="flex items-center gap-2"
                   >
-                    <input
+                    <Select
                       :id="index === 0 ? 'codex-ticket-plan-rule-plan' : undefined"
                       v-model="rule.plan"
-                      type="text"
-                      list="codex-ticket-plan-presets"
-                      class="input w-48 font-mono text-sm"
+                      :options="codexTicketPlanOptions"
+                      searchable
+                      creatable
+                      creatable-label-mode="raw"
+                      class="w-48 flex-shrink-0"
                       :placeholder="t('admin.settings.gatewayForwarding.codexTicketPlanRulePlaceholder')"
                     />
                     <input
@@ -5842,12 +5844,6 @@
                       ✕
                     </button>
                   </div>
-                  <datalist id="codex-ticket-plan-presets">
-                    <option value="team" />
-                    <option value="business" />
-                    <option value="pro" />
-                    <option value="plus" />
-                  </datalist>
                   <button
                     id="codex-ticket-plan-rule-add"
                     type="button"
@@ -9012,6 +9008,7 @@ import {
   type FingerprintSignalType,
   type FingerprintSignalRow,
 } from "./codexFingerprintSignals";
+import { openAIPlanTypeLabel } from "@/utils/planType";
 
 const { t, locale } = useI18n();
 
@@ -9037,6 +9034,16 @@ const oidcTokenAuthMethodOptions = [
   { value: "client_secret_basic", label: "client_secret_basic" },
   { value: "none", label: "none" },
 ];
+// Codex 门票档位规则的 plan 预设：value 即后端做子串匹配的 canonical plan_type，
+// 标签复用 ChatGPT 档位命名；预设外的子串（如 business）通过 Select 的 creatable 输入。
+const codexTicketPlanOptions: SelectOption[] = [
+  "plus",
+  "pro",
+  "prolite",
+  "team",
+  "self_serve_business_prolite",
+  "free",
+].map((value) => ({ value, label: openAIPlanTypeLabel(value) || value }));
 const customMenuVisibilityOptions = computed(() => [
   { value: "user", label: t("admin.settings.customMenu.visibilityUser") },
   { value: "admin", label: t("admin.settings.customMenu.visibilityAdmin") },
