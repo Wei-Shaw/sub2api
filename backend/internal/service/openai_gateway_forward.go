@@ -199,7 +199,27 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 		return s.forwardResponsesViaRawChatCompletions(ctx, c, account, body)
 	}
 	SetActualOpenAIUpstreamEndpoint(c, openAIResponsesUpstreamEndpoint)
-	if account.IsOpenAI() && (account.IsOpenAIApiKey() || account.IsOpenAIOAuthLike()) {
+	if result, handled, err := s.maybeForwardDeepSeekRemoteCompaction(ctx, c, account, body); handled {
+		return result, err
+	}
+	deepSeekResponses := isDeepSeekResponsesUpstream(account)
+	if deepSeekResponses {
+		restoredBody, restored, restoreErr := s.RestoreDeepSeekCompactInput(ctx, body)
+		if restoreErr != nil {
+			return nil, restoreErr
+		}
+		if restored {
+			body = restoredBody
+			originalBody = restoredBody
+			requestView = newOpenAIRequestView(restoredBody)
+			reqModel, reqStream, promptCacheKey = requestView.Model, requestView.Stream, requestView.PromptCacheKey
+			originalModel = reqModel
+		}
+	}
+	// Official OpenAI rejects reasoning.content on replay. Mapped DeepSeek
+	// accounts are still IsOpenAI(), but DeepSeek thinking mode requires that
+	// plaintext; stripping it is what produced 400 reasoning_text on the mixed path.
+	if account.IsOpenAI() && (account.IsOpenAIApiKey() || account.IsOpenAIOAuthLike()) && !deepSeekResponses {
 		normalizedReasoningBody, reasoningChanged, reasoningErr := normalizeOpenAIResponsesReasoningContentReplay(body)
 		if reasoningErr != nil {
 			return nil, fmt.Errorf("normalize OpenAI Responses reasoning content replay: %w", reasoningErr)
@@ -222,6 +242,13 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 			reqModel, reqStream, promptCacheKey = requestView.Model, requestView.Stream, requestView.PromptCacheKey
 			originalModel = reqModel
 		}
+	}
+	if guardedBody, guarded := applyDeepSeekResponsesHistoryGuards(account, body, compactPath); guarded {
+		body = guardedBody
+		originalBody = guardedBody
+		requestView = newOpenAIRequestView(guardedBody)
+		reqModel, reqStream, promptCacheKey = requestView.Model, requestView.Stream, requestView.PromptCacheKey
+		originalModel = reqModel
 	}
 
 	compatMessagesBridge := isOpenAICompatMessagesBridgeBody(body)
