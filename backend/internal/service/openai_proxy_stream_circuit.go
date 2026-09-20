@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"errors"
+	"net/http"
 	"sync"
 	"time"
 
@@ -235,8 +236,37 @@ func openAIProxyStreamCircuitProxyID(account *Account) (int64, bool) {
 	return *account.ProxyID, true
 }
 
-func (s *OpenAIGatewayService) recordOpenAIProxyStreamDisconnect(account *Account, streamErr error, upstreamRequestID string) {
-	proxyID, ok := openAIProxyStreamCircuitProxyID(account)
+type openAIResponseEgressKey struct{}
+
+// Attach local-only metadata to the response's request, never to HTTP headers
+// or the shared Account snapshot. A fallback response must not heal/blame the
+// bound primary proxy. A negative ID means the caller cannot identify egress.
+func markOpenAIResponseEgress(resp *http.Response, req *http.Request, proxyID int64) *http.Response {
+	if resp == nil || req == nil || proxyID < 0 {
+		return resp
+	}
+	responseRequest := resp.Request
+	if responseRequest == nil {
+		responseRequest = req
+	}
+	resp.Request = responseRequest.WithContext(context.WithValue(responseRequest.Context(), openAIResponseEgressKey{}, proxyID))
+	return resp
+}
+
+func openAIResponseEgressProxyID(account *Account, responses ...*http.Response) (int64, bool) {
+	if account == nil || account.Platform != PlatformOpenAI {
+		return 0, false
+	}
+	if len(responses) > 0 && responses[0] != nil && responses[0].Request != nil {
+		if id, known := responses[0].Request.Context().Value(openAIResponseEgressKey{}).(int64); known {
+			return id, id > 0
+		}
+	}
+	return openAIProxyStreamCircuitProxyID(account)
+}
+
+func (s *OpenAIGatewayService) recordOpenAIProxyStreamDisconnect(account *Account, streamErr error, upstreamRequestID string, responses ...*http.Response) {
+	proxyID, ok := openAIResponseEgressProxyID(account, responses...)
 	if !ok || streamErr == nil || errors.Is(streamErr, context.Canceled) || errors.Is(streamErr, context.DeadlineExceeded) {
 		return
 	}
@@ -255,8 +285,8 @@ func (s *OpenAIGatewayService) recordOpenAIProxyStreamDisconnect(account *Accoun
 	)
 }
 
-func (s *OpenAIGatewayService) clearOpenAIProxyStreamDisconnect(account *Account) {
-	proxyID, ok := openAIProxyStreamCircuitProxyID(account)
+func (s *OpenAIGatewayService) clearOpenAIProxyStreamDisconnect(account *Account, responses ...*http.Response) {
+	proxyID, ok := openAIResponseEgressProxyID(account, responses...)
 	if !ok {
 		return
 	}
@@ -270,6 +300,16 @@ func (s *OpenAIGatewayService) clearOpenAIProxyStreamDisconnect(account *Account
 // the first pass found no available account while the circuit was withholding
 // proxies: a degraded proxy is strictly better than answering 502 (#5056).
 type openAIProxyStreamQuarantineBypassKey struct{}
+
+type openAIProxyQuarantineNativeTransportKey struct{}
+
+// HTTP egress fallback is not a reconnect/replay implementation for native WS.
+func withOpenAIProxyQuarantineTransport(ctx context.Context, transport OpenAIUpstreamTransport) context.Context {
+	if transport == OpenAIUpstreamTransportAny || transport == OpenAIUpstreamTransportHTTPSSE {
+		return ctx
+	}
+	return context.WithValue(ctx, openAIProxyQuarantineNativeTransportKey{}, true)
+}
 
 func withOpenAIProxyStreamQuarantineBypass(ctx context.Context) context.Context {
 	return context.WithValue(ctx, openAIProxyStreamQuarantineBypassKey{}, true)
@@ -292,7 +332,17 @@ func (s *OpenAIGatewayService) isOpenAIProxyStreamQuarantined(ctx context.Contex
 		return false
 	}
 	circuit := s.getOpenAIProxyStreamCircuit()
-	return circuit != nil && circuit.isBlocked(proxyID, time.Now())
+	if circuit == nil || !circuit.isBlocked(proxyID, time.Now()) {
+		return false
+	}
+	if native, _ := ctx.Value(openAIProxyQuarantineNativeTransportKey{}).(bool); native {
+		return true
+	}
+	// Quarantine an egress, not an otherwise eligible account. Forwarding
+	// independently rechecks the circuit and chooses the same authorized
+	// alternative. All other account eligibility gates remain in force.
+	_, canFallback := s.resolveRuntimeProxyFallback(ctx, account)
+	return !canFallback
 }
 
 // logOpenAIProxyStreamQuarantineFailOpen emits a rate-limited warning when a
