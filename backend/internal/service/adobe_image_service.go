@@ -141,6 +141,7 @@ func (s *AdobeImageService) GenerateCall(
 	if err != nil {
 		return nil, err
 	}
+	startTime := time.Now()
 
 	requestedModel := strings.TrimSpace(req.Model)
 	if call.ChannelMappedModel != "" {
@@ -202,6 +203,7 @@ func (s *AdobeImageService) GenerateCall(
 			ImageSize:        string(conf.OutputResolution),
 			UpstreamModel:    conf.ModelID,
 			UpstreamEndpoint: adobe.ImageSubmitURL,
+			Duration:         time.Since(startTime),
 		},
 	}, nil
 }
