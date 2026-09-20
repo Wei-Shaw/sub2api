@@ -13,6 +13,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/pkg/devin"
 	httppool "github.com/Wei-Shaw/sub2api/internal/pkg/httpclient"
 	openaipkg "github.com/Wei-Shaw/sub2api/internal/pkg/openai"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
@@ -104,10 +105,18 @@ type antigravityUsageCache struct {
 	timestamp time.Time
 }
 
+// devinUsageCache 缓存 Devin 额度数据
+type devinUsageCache struct {
+	usageInfo *UsageInfo
+	timestamp time.Time
+}
+
 const (
 	apiCacheTTL         = 3 * time.Minute
 	apiErrorCacheTTL    = 1 * time.Minute        // 负缓存 TTL：429 等错误缓存 1 分钟
 	antigravityErrorTTL = 1 * time.Minute        // Antigravity 错误缓存 TTL（可恢复错误）
+	devinCacheTTL       = 3 * time.Minute        // Devin 额度缓存 TTL
+	devinErrorTTL       = 1 * time.Minute        // Devin 错误降级缓存 TTL
 	apiQueryMaxJitter   = 800 * time.Millisecond // 用量查询最大随机延迟
 	windowStatsCacheTTL = 1 * time.Minute
 	openAIProbeCacheTTL = 10 * time.Minute
@@ -120,8 +129,10 @@ type UsageCache struct {
 	apiCache          sync.Map           // accountID -> *apiUsageCache
 	windowStatsCache  sync.Map           // accountID -> *windowStatsCache
 	antigravityCache  sync.Map           // accountID -> *antigravityUsageCache
+	devinCache        sync.Map           // accountID -> *devinUsageCache
 	apiFlight         singleflight.Group // 防止同一账号的并发请求击穿缓存（Anthropic）
 	antigravityFlight singleflight.Group // 防止同一 Antigravity 账号的并发请求击穿缓存
+	devinFlight       singleflight.Group // 防止同一 Devin 账号的并发请求击穿缓存
 	openAIProbeCache  sync.Map           // accountID -> time.Time
 	grokProbeCache    sync.Map           // accountID -> last billing probe attempt
 }
@@ -242,6 +253,9 @@ type UsageInfo struct {
 	// 错误码（机器可读）：forbidden / unauthenticated / rate_limited / network_error
 	ErrorCode string `json:"error_code,omitempty"`
 
+	// Devin 平台额度快照（GetUserStatus 主动拉取）
+	DevinQuota *DevinQuota `json:"devin_quota,omitempty"`
+
 	// 获取 usage 时的错误信息（降级返回，而非 500）
 	Error string `json:"error,omitempty"`
 }
@@ -297,6 +311,7 @@ type AccountUsageService struct {
 	antigravityQuotaFetcher *AntigravityQuotaFetcher
 	grokQuotaFetcher        *GrokQuotaFetcher
 	grokQuotaService        *GrokQuotaService
+	devinQuotaFetcher       *DevinQuotaFetcher
 	openAIQuotaService      *OpenAIQuotaService
 	cache                   *UsageCache
 	identityCache           IdentityCache
@@ -314,6 +329,7 @@ func NewAccountUsageService(
 	antigravityQuotaFetcher *AntigravityQuotaFetcher,
 	grokQuotaFetcher *GrokQuotaFetcher,
 	grokQuotaService *GrokQuotaService,
+	devinQuotaFetcher *DevinQuotaFetcher,
 	openAIQuotaService *OpenAIQuotaService,
 	cache *UsageCache,
 	identityCache IdentityCache,
@@ -327,6 +343,7 @@ func NewAccountUsageService(
 		antigravityQuotaFetcher: antigravityQuotaFetcher,
 		grokQuotaFetcher:        grokQuotaFetcher,
 		grokQuotaService:        grokQuotaService,
+		devinQuotaFetcher:       devinQuotaFetcher,
 		openAIQuotaService:      openAIQuotaService,
 		cache:                   cache,
 		identityCache:           identityCache,
@@ -383,6 +400,15 @@ func (s *AccountUsageService) getUsageForAccount(ctx context.Context, account *A
 
 	if account.Platform == PlatformGrok {
 		usage, err := s.getGrokUsage(ctx, account, forceProbe)
+		if err == nil && usage != nil && usage.Error == "" {
+			s.tryClearRecoverableAccountError(ctx, account)
+		}
+		return usage, err
+	}
+
+	// Devin 平台：使用 DevinQuotaFetcher 拉取 GetUserStatus 额度快照
+	if account.Platform == PlatformDevin {
+		usage, err := s.getDevinUsage(ctx, account)
 		if err == nil && usage != nil && usage.Error == "" {
 			s.tryClearRecoverableAccountError(ctx, account)
 		}
@@ -1095,6 +1121,88 @@ func (s *AccountUsageService) getAntigravityUsage(ctx context.Context, account *
 		return &UsageInfo{UpdatedAt: &now}, nil
 	}
 	return usage, nil
+}
+
+// getDevinUsage 获取 Devin 账户额度（GetUserStatus → DevinQuota 快照）。
+// 失败走降级缓存：返回带 Error/ErrorCode 的 UsageInfo 而非 500。
+func (s *AccountUsageService) getDevinUsage(ctx context.Context, account *Account) (*UsageInfo, error) {
+	if s.devinQuotaFetcher == nil || !s.devinQuotaFetcher.CanFetch(account) {
+		now := time.Now()
+		return &UsageInfo{UpdatedAt: &now}, nil
+	}
+
+	// 1. 检查缓存（命中即返回）
+	if cached, ok := s.cache.devinCache.Load(account.ID); ok {
+		if cache, ok := cached.(*devinUsageCache); ok {
+			if time.Since(cache.timestamp) < devinCacheTTL {
+				return cache.usageInfo, nil
+			}
+		}
+	}
+
+	// 2. singleflight 防止并发击穿
+	flightKey := fmt.Sprintf("devin-usage:%d", account.ID)
+	result, flightErr, _ := s.cache.devinFlight.Do(flightKey, func() (any, error) {
+		if cached, ok := s.cache.devinCache.Load(account.ID); ok {
+			if cache, ok := cached.(*devinUsageCache); ok && time.Since(cache.timestamp) < devinCacheTTL {
+				return cache.usageInfo, nil
+			}
+		}
+
+		// 使用独立 context，避免调用方 cancel 导致共享 flight 的请求失败
+		fetchCtx, fetchCancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer fetchCancel()
+
+		proxyURL := s.devinQuotaFetcher.GetProxyURL(fetchCtx, account)
+		fetchResult, err := s.devinQuotaFetcher.FetchQuota(fetchCtx, account, proxyURL)
+		if err != nil {
+			now := time.Now()
+			degraded := &UsageInfo{
+				UpdatedAt: &now,
+				Error:     err.Error(),
+				ErrorCode: devinUsageErrorCode(err),
+			}
+			enrichUsageWithAccountError(degraded, account)
+			s.cache.devinCache.Store(account.ID, &devinUsageCache{
+				usageInfo: degraded,
+				timestamp: now,
+			})
+			return degraded, nil
+		}
+
+		enrichUsageWithAccountError(fetchResult.UsageInfo, account)
+		s.cache.devinCache.Store(account.ID, &devinUsageCache{
+			usageInfo: fetchResult.UsageInfo,
+			timestamp: time.Now(),
+		})
+		// 上游快照同步进 Extra，供账号详情页/审计回看。
+		if fetchResult.Raw != nil {
+			mergeAccountExtra(account, map[string]any{"devin_quota": fetchResult.Raw})
+		}
+		return fetchResult.UsageInfo, nil
+	})
+
+	if flightErr != nil {
+		return nil, flightErr
+	}
+	usage, ok := result.(*UsageInfo)
+	if !ok || usage == nil {
+		now := time.Now()
+		return &UsageInfo{UpdatedAt: &now}, nil
+	}
+	return usage, nil
+}
+
+// devinUsageErrorCode 把 GetUserStatus 失败折叠为机器可读错误码。
+func devinUsageErrorCode(err error) string {
+	switch {
+	case devin.IsUnauthenticated(err):
+		return errorCodeUnauthenticated
+	case devin.IsCode(err, "resource_exhausted"):
+		return errorCodeRateLimited
+	default:
+		return errorCodeNetworkError
+	}
 }
 
 func (s *AccountUsageService) getGrokUsage(ctx context.Context, account *Account, force bool) (*UsageInfo, error) {

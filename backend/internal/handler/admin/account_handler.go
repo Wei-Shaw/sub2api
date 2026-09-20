@@ -2926,6 +2926,38 @@ func (h *AccountHandler) GetAvailableModels(c *gin.Context) {
 		return
 	}
 
+	// Handle Devin accounts：优先拉取上游分组目录（thinking 档位不铺平），
+	// 失败时回落到 model_mapping 键集或空列表。
+	if account.Platform == service.PlatformDevin {
+		if h.accountTestService != nil {
+			if catalog, fetchErr := h.accountTestService.SyncUpstreamModelCatalog(c.Request.Context(), account); fetchErr == nil && catalog != nil {
+				models := make([]gin.H, 0, len(catalog.Models))
+				for _, modelID := range catalog.Models {
+					models = append(models, gin.H{
+						"id":           modelID,
+						"type":         "model",
+						"display_name": modelID,
+						"created_at":   "",
+					})
+				}
+				response.Success(c, models)
+				return
+			}
+		}
+		mapping := account.GetModelMapping()
+		models := make([]gin.H, 0, len(mapping))
+		for requestedModel := range mapping {
+			models = append(models, gin.H{
+				"id":           requestedModel,
+				"type":         "model",
+				"display_name": requestedModel,
+				"created_at":   "",
+			})
+		}
+		response.Success(c, models)
+		return
+	}
+
 	// Handle Claude/Anthropic accounts
 	// For OAuth and Setup-Token accounts: return default models
 	if account.IsOAuth() {
@@ -3038,6 +3070,10 @@ func (h *AccountHandler) SyncUpstreamModelsPreview(c *gin.Context) {
 			"base_url":      req.BaseURL,
 			"model_mapping": modelMapping,
 		},
+	}
+	// Devin 会话 token 存于 access_token 字段（预览请求统一走 api_key 入参）。
+	if req.Platform == service.PlatformDevin {
+		tempAccount.Credentials["access_token"] = req.APIKey
 	}
 
 	if h.accountTestService == nil {

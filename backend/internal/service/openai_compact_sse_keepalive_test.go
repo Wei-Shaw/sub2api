@@ -323,3 +323,29 @@ func TestWriteOpenAIFastPolicyBlockedResponse_BeforeKeepaliveCommit(t *testing.T
 	require.Equal(t, http.StatusForbidden, rec.Code)
 	require.Equal(t, "permission_error", gjson.Get(rec.Body.String(), "error.type").String())
 }
+
+// TestSSEStreamKeepaliveGenericEntry 验证协议无关入口：心跳首拍提交 200 头并
+// 可被 SSEStreamKeepaliveStarted 只读观测；请求侧写响应后心跳永久停拍。
+func TestSSEStreamKeepaliveGenericEntry(t *testing.T) {
+	c, rec := newCompactBridgeTestContext(t, false)
+	stop := StartSSEStreamKeepalive(c, 20*time.Millisecond)
+	defer stop()
+
+	require.Eventually(t, func() bool {
+		return strings.Contains(rec.Body.String(), ": keepalive")
+	}, time.Second, 10*time.Millisecond)
+	assert.True(t, SSEStreamKeepaliveStarted(c))
+	assert.Equal(t, "text/event-stream", rec.Header().Get("Content-Type"))
+
+	// 停拍后请求侧接管：写入不再与心跳交错，started 状态保持可见。
+	stop()
+	_, err := c.Writer.WriteString("data: {}\n\n")
+	require.NoError(t, err)
+	assert.True(t, SSEStreamKeepaliveStarted(c))
+}
+
+// TestSSEStreamKeepaliveStartedNoKeepalive 未启动心跳的请求返回 false。
+func TestSSEStreamKeepaliveStartedNoKeepalive(t *testing.T) {
+	c, _ := newCompactBridgeTestContext(t, false)
+	assert.False(t, SSEStreamKeepaliveStarted(c))
+}

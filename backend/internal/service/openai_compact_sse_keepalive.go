@@ -316,3 +316,32 @@ func (w *openAICompactKeepaliveWriter) Written() bool {
 	defer w.k.mu.Unlock()
 	return w.ResponseWriter.Written()
 }
+
+// StartSSEStreamKeepalive 是协议无关的通用入口：为已确认处于 SSE 流式上下文
+// 的请求启动下游注释心跳（devin 等非 compact 网关路径共用 openAICompact
+// 机制）。语义与 startOpenAISSEKeepalive 一致——首拍延迟一个 interval，请求
+// goroutine 一旦构造真实响应即永久停拍，心跳字节不计入 failover 的
+// "已写语义响应"判定。
+func StartSSEStreamKeepalive(c *gin.Context, interval time.Duration) func() {
+	return startOpenAISSEKeepalive(c, interval)
+}
+
+// SSEStreamKeepaliveStarted 只读报告本请求的 SSE 心跳是否已提交过 200 响应头
+// （不停拍）。错误路径用它判定还能否回 JSON+状态码：已提交则必须降级为流内
+// 错误事件，否则 WriteHeader(4xx/5xx) 会成为无效调用、JSON body 混入 SSE 流。
+func SSEStreamKeepaliveStarted(c *gin.Context) bool {
+	if c == nil {
+		return false
+	}
+	value, ok := c.Get(openAICompactSSEKeepaliveKey)
+	if !ok {
+		return false
+	}
+	k, ok := value.(*openAICompactSSEKeepalive)
+	if !ok || k == nil {
+		return false
+	}
+	k.mu.Lock()
+	defer k.mu.Unlock()
+	return k.started
+}

@@ -28,6 +28,7 @@ import (
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/claude"
+	devinllm "github.com/Wei-Shaw/sub2api/internal/pkg/devin/llm"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/geminicli"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/openai"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/openai_compat"
@@ -389,7 +390,78 @@ func (s *AccountTestService) TestAccountConnection(c *gin.Context, accountID int
 		return s.testOpenCodeGoAccountConnection(c, account, modelID, prompt)
 	}
 
+	if account.IsDevin() {
+		return s.testDevinAccountConnection(c, account, modelID, prompt)
+	}
+
 	return s.testClaudeAccountConnection(c, account, modelID)
+}
+
+// testDevinAccountConnection 通过 adapter 真实调用所选模型（最小提示词流式
+// 请求），把文本/思考增量转发为测试事件——与其他平台的模型测试行为一致，
+// 不再止步于 GetUserStatus 连通性检查。
+func (s *AccountTestService) testDevinAccountConnection(c *gin.Context, account *Account, modelID string, prompt string) error {
+	testModelID := strings.TrimSpace(modelID)
+	if testModelID == "" {
+		testModelID = "swe-2"
+	}
+	testModelID = account.GetMappedModel(testModelID)
+	testPrompt := strings.TrimSpace(prompt)
+	if testPrompt == "" {
+		testPrompt = "Say hi."
+	}
+
+	ad, err := s.newDevinAdapter(account)
+	if err != nil {
+		return s.sendErrorAndEnd(c, fmt.Sprintf("Failed to configure Devin client: %s", err.Error()))
+	}
+
+	c.Writer.Header().Set("Content-Type", "text/event-stream")
+	c.Writer.Header().Set("Cache-Control", "no-cache")
+	c.Writer.Header().Set("Connection", "keep-alive")
+	c.Writer.Header().Set("X-Accel-Buffering", "no")
+	c.Writer.Flush()
+
+	s.sendEvent(c, TestEvent{Type: "test_start", Model: testModelID})
+
+	stream, err := ad.Stream(c.Request.Context(), devinllm.RequestMessages{
+		Model: testModelID,
+		Messages: []devinllm.Message{
+			devinllm.UserMessage{Content: []devinllm.Content{devinllm.TextContent{Text: testPrompt}}},
+		},
+	})
+	if err != nil {
+		return s.sendErrorAndEnd(c, fmt.Sprintf("Request failed: %s", connectErrText(err)))
+	}
+
+	var usage *devinllm.AssistantMessage
+	for {
+		event, recvErr := stream.Recv(c.Request.Context())
+		if errors.Is(recvErr, io.EOF) {
+			break
+		}
+		if recvErr != nil {
+			return s.sendErrorAndEnd(c, fmt.Sprintf("Stream error: %s", connectErrText(recvErr)))
+		}
+		switch event.Type {
+		case devinllm.ResponseEventTextDelta, devinllm.ResponseEventThinkingDelta:
+			if event.Delta != "" {
+				s.sendEvent(c, TestEvent{Type: "content", Text: event.Delta})
+			}
+		case devinllm.ResponseEventDone:
+			usage = event.Message
+		case devinllm.ResponseEventError:
+			if event.Error != nil && event.Error.ErrorMessage != "" {
+				return s.sendErrorAndEnd(c, fmt.Sprintf("Upstream error: %s", event.Error.ErrorMessage))
+			}
+			return s.sendErrorAndEnd(c, "Upstream error")
+		}
+	}
+	if usage != nil && usage.Usage.TotalTokens > 0 {
+		s.sendEvent(c, TestEvent{Type: "content", Text: fmt.Sprintf("\n\n[tokens: in=%d out=%d]", usage.Usage.Input, usage.Usage.Output)})
+	}
+	s.sendEvent(c, TestEvent{Type: "test_complete", Success: true})
+	return nil
 }
 
 // testOpenCodeGoAccountConnection probes the native endpoint for the selected

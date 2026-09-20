@@ -15,6 +15,7 @@ import (
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/domain"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/devin"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/geminicli"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/openai_compat"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/xai"
@@ -270,6 +271,38 @@ func (a *Account) IsGrok() bool {
 
 func (a *Account) IsGrokOAuth() bool {
 	return a.IsGrok() && a.Type == AccountTypeOAuth
+}
+
+// IsDevin 报告是否为 Devin (Cognition) Connect 平台账号。
+func (a *Account) IsDevin() bool {
+	return a != nil && a.Platform == PlatformDevin
+}
+
+// GetDevinToken 返回 Devin Connect api key（devin-session-token$…）。
+// 存储于 credentials["access_token"]。
+func (a *Account) GetDevinToken() string {
+	if !a.IsDevin() {
+		return ""
+	}
+	return a.GetCredential("access_token")
+}
+
+// GetDevinBaseURL 返回 Connect 上游地址（默认 server.codeium.com），
+// 来自 credentials["api_server_url"]（PKCE 交换时上游返回）。
+func (a *Account) GetDevinBaseURL() string {
+	if !a.IsDevin() {
+		return ""
+	}
+	return strings.TrimSpace(a.GetCredential("api_server_url"))
+}
+
+// GetDevinClientVersion 返回伪装成 chisel CLI 的客户端版本，
+// 来自 credentials["client_version"]（空则由 wire 层用默认值）。
+func (a *Account) GetDevinClientVersion() string {
+	if !a.IsDevin() {
+		return ""
+	}
+	return strings.TrimSpace(a.GetCredential("client_version"))
 }
 
 // IsKimi / IsZhipu / IsDeepseek 标识国产 OpenAI 兼容供应商账号。
@@ -806,6 +839,14 @@ func normalizeRequestedModelForLookup(platform, requestedModel string) string {
 	if trimmed == "" {
 		return ""
 	}
+	// Devin "model:level" 语法：level 后缀只决定思考档位，不参与
+	// model_mapping 键的匹配（如 swe-2:max 按 swe-2 查白名单）。
+	if platform == PlatformDevin {
+		if base, _, ok := devin.SplitModelLevelSuffix(trimmed); ok {
+			return base
+		}
+		return trimmed
+	}
 	if platform != PlatformGemini && platform != PlatformAntigravity {
 		return trimmed
 	}
@@ -897,6 +938,14 @@ func (a *Account) ResolveMappedModel(requestedModel string) (mappedModel string,
 	normalized := normalizeRequestedModelForLookup(a.Platform, requestedModel)
 	if normalized != requestedModel {
 		if mappedModel, matched := resolveRequestedModelInMapping(mapping, normalized); matched {
+			// Devin level 后缀与模型映射正交：归一化只为命中白名单键，
+			// 档位要保留回映射结果（除非映射值自带 level 覆盖）。
+			if a.Platform == PlatformDevin {
+				if level := requestedModel[len(normalized):]; strings.HasPrefix(level, ":") &&
+					!strings.Contains(mappedModel, ":") {
+					mappedModel += level
+				}
+			}
 			return mappedModel, true
 		}
 	}
