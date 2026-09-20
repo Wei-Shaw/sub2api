@@ -230,7 +230,11 @@ gateway:
   # OpenAI transport failures without an HTTP status fail over. Durable proxy/DNS/routing faults
   # immediately unschedule the account for 10 minutes; timeouts/EOF/resets do not add a cooldown.
   # OpenAI 未收到 HTTP 状态码的传输失败可换号；代理认证失败、拒连、DNS 不存在及不可达首次即禁调度 10 分钟。
-  # 普通超时、EOF、连接重置只换号，不累计冷却；WS 拨号使用同一规则，池排队与握手状态码沿用原处理。
+  # 普通超时、EOF、连接重置只换号，不累计冷却；WS ctx_pool 无状态码拨号失败与 http_bridge 各轮传输失败使用同一规则，
+  # passthrough 拨号失败与连接池排队沿用原处理。
+  # OpenAI ctx_pool / passthrough 首次无续链依赖的握手拒绝，复用 HTTP Responses 的错误分类、账号状态与重试规则。
+  # 同账号重试状态码与次数沿用账号配置；后续轮重连、已输出后的恢复保持原有安全边界。
+  # OpenAI WS 可安全换号的首输出超时与 HTTP 共用最多换号 1 次的上限，仍受总换号预算约束；成功轮后重置。
   # Max request body size in bytes (default: 256MB)
   # 请求体最大字节数（默认 256MB）
   max_body_size: 268435456

@@ -1068,6 +1068,7 @@ type GatewayConfig struct {
 	FailoverOn400 bool `mapstructure:"failover_on_400"`
 
 	// 账户切换最大次数（遇到上游错误时切换到其他账户的次数上限）
+	// OpenAI WS ctx_pool/http_bridge 成功完成一轮后，后续轮次恢复独立的切换预算。
 	MaxAccountSwitches int `mapstructure:"max_account_switches"`
 	// Gemini 账户切换最大次数（Gemini 平台单独配置，因 API 限制更严格）
 	MaxAccountSwitchesGemini int `mapstructure:"max_account_switches_gemini"`

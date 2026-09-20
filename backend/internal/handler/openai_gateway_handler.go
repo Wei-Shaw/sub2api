@@ -2534,14 +2534,19 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 	ctx = service.WithOpenAIGuardianParentAffinity(ctx, c, firstMessage, reqModel)
 	maxAccountSwitches := h.maxAccountSwitches
 	switchCount := 0
+	firstOutputTimeoutSwitchCount := 0
 	profitVetoCount := 0
 	failedAccountIDs := make(map[int64]struct{})
 	sameAccountRetryCount := make(map[int64]int)
 	var lastFailoverErr *service.UpstreamFailoverError
 	var oauth429FailoverState service.OpenAIOAuth429FailoverState
 	wsAttemptMessage := append([]byte(nil), firstMessage...)
-	waitForWSSameAccountRetry := func(account *service.Account, failoverErr *service.UpstreamFailoverError) bool {
-		if account == nil || failoverErr == nil || failoverErr.StatusCode != http.StatusTooManyRequests || failoverErr.SameAccountRetryDeadline.IsZero() {
+	var wsTurnSucceededSinceFailover atomic.Bool
+	waitForWSSameAccountRetry := func(account *service.Account, failoverErr *service.UpstreamFailoverError, handshakeFailure bool) bool {
+		if account == nil || failoverErr == nil || !failoverErr.ShouldRetryNextAccount() {
+			return false
+		}
+		if !handshakeFailure && (failoverErr.StatusCode != http.StatusTooManyRequests || failoverErr.SameAccountRetryDeadline.IsZero()) {
 			return false
 		}
 		retryLimit := effectiveSameAccountRetryLimit(failoverErr, account)
@@ -2572,6 +2577,10 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 		}
 		releaseAccountSlot()
 		if !failoverErr.ShouldRetryNextAccount() {
+			closeOpenAIWSFailoverExhausted(c, wsConn, failoverErr)
+			return false
+		}
+		if account.IsOpenAI() && openAIFirstOutputFailoverExhausted(failoverErr, &firstOutputTimeoutSwitchCount) {
 			closeOpenAIWSFailoverExhausted(c, wsConn, failoverErr)
 			return false
 		}
@@ -2896,6 +2905,9 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 				return nil
 			},
 			AfterTurn: func(turn int, result *service.OpenAIForwardResult, turnErr error) {
+				if account.IsOpenAI() && turnErr == nil && result != nil && result.SucceededForScheduling() {
+					wsTurnSucceededSinceFailover.Store(true)
+				}
 				turnStart := getTurnStart(turn)
 				cyberBlockBody := takeCyberTurnBody(turn)
 				// 每次 attempt 都清 cyber mark；failover 链结束前保留 recorded guard，
@@ -3043,6 +3055,22 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 				}
 				wsAttemptMessage = nextAttemptMessage
 				if retryCurrentTurn {
+					if model := strings.TrimSpace(gjson.GetBytes(wsAttemptMessage, "model").String()); model != "" {
+						reqModel = model
+						channelMappingWS, _ = h.gatewayService.ResolveChannelMappingAndRestrict(ctx, apiKey.GroupID, reqModel)
+						wsForwardModel = openAIChannelForwardModel(channelMappingWS, reqModel)
+						hooks.InitialRequestModel = reqModel
+					}
+					// 成功完成一轮后，下一轮恢复独立预算；在换号循环中清理，避免回调并发修改 map。
+					if wsTurnSucceededSinceFailover.Swap(false) {
+						switchCount = 0
+						firstOutputTimeoutSwitchCount = 0
+						profitVetoCount = 0
+						clear(failedAccountIDs)
+						clear(sameAccountRetryCount)
+						lastFailoverErr = nil
+						oauth429FailoverState = service.OpenAIOAuth429FailoverState{}
+					}
 					previousResponseID = ""
 					reqLog.Warn("openai.websocket_current_turn_failover_retry",
 						zap.Int64("account_id", account.ID),
@@ -3050,7 +3078,14 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 						zap.Int("retry_payload_bytes", len(retryPayload)),
 					)
 				}
-				if waitForWSSameAccountRetry(account, failoverErr) {
+				handshakeFailure := service.IsOpenAIWSHandshakeFailover(err)
+				if handshakeFailure {
+					var cleanupReadAhead func()
+					ctx, cleanupReadAhead = service.BeginOpenAIWSClientReadAhead(ctx, wsConn)
+					defer cleanupReadAhead()
+					c.Request = c.Request.WithContext(ctx)
+				}
+				if waitForWSSameAccountRetry(account, failoverErr, handshakeFailure) {
 					if failoverErr.ShouldReportAccountScheduleFailure() {
 						h.gatewayService.ReportOpenAIAccountScheduleResult(account, openAIAccountScheduleModel(c, account, wsForwardModel, false, nil), false, nil, err)
 					}
