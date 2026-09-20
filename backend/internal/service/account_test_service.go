@@ -178,6 +178,8 @@ func (s *AccountTestService) SetOpenAIGatewayService(gateway *OpenAIGatewayServi
 }
 
 // FetchOpenAIAccountModels uses the shared cached discovery path for the test picker.
+// It only fills picker-only gaps (local display-name fallbacks, OAuth image choices)
+// on its own copy; the shared catalog and its cache stay untouched.
 func (s *AccountTestService) FetchOpenAIAccountModels(ctx context.Context, account *Account) ([]openai.Model, error) {
 	if s == nil || s.openaiGatewayService == nil {
 		return nil, errors.New("OpenAI model discovery service is unavailable")
@@ -192,15 +194,37 @@ func (s *AccountTestService) FetchOpenAIAccountModels(ctx context.Context, accou
 	if err := json.Unmarshal(response.Body, &payload); err != nil {
 		return nil, fmt.Errorf("decode OpenAI account models: %w", err)
 	}
-	// Standard model catalogs do not require the fields used by the admin picker.
-	// Populate them here without changing the shared discovery response or cache.
+	// Every entry in the picker is labelled by the same rule: the upstream display
+	// name when the catalog has one, otherwise the local catalog name for that model
+	// ID, otherwise the raw ID. Without this the picker mixes "GPT-5.6 Sol" with
+	// "gpt-5.6-sol" for the same catalog.
 	for i := range payload.Data {
 		model := &payload.Data[i]
 		if strings.TrimSpace(model.DisplayName) == "" {
-			model.DisplayName = model.ID
+			model.DisplayName = openaiCodexDisplayName(model.ID)
 		}
 		if strings.TrimSpace(model.Type) == "" {
 			model.Type = "model"
+		}
+	}
+	// Codex discovery lists Responses drivers, not image_generation tool models.
+	// Add locally supported image choices only to the OAuth test picker; keep the
+	// shared upstream catalog and API-key discovery authoritative.
+	if account != nil && account.IsOpenAIOAuthLike() {
+		seen := make(map[string]bool, len(payload.Data))
+		for _, model := range payload.Data {
+			seen[model.ID] = true
+		}
+		for _, model := range openai.DefaultModels {
+			if IsGPTImageGenerationModel(model.ID) && account.IsModelSupported(model.ID) && !seen[model.ID] {
+				payload.Data = append(payload.Data, model)
+				seen[model.ID] = true
+			}
+		}
+		for model := range account.GetModelMapping() {
+			if IsGPTImageGenerationModel(model) && !strings.Contains(model, "*") && !seen[model] {
+				payload.Data = append(payload.Data, openai.Model{ID: model, Object: "model", Type: "model", OwnedBy: "openai", DisplayName: openaiCodexDisplayName(model)})
+			}
 		}
 	}
 	return payload.Data, nil
@@ -361,7 +385,54 @@ func (s *AccountTestService) TestAccountConnection(c *gin.Context, accountID int
 		return s.routeAntigravityTest(c, account, modelID, prompt)
 	}
 
+	if account.IsOpenCodeGo() {
+		return s.testOpenCodeGoAccountConnection(c, account, modelID, prompt)
+	}
+
 	return s.testClaudeAccountConnection(c, account, modelID)
+}
+
+// testOpenCodeGoAccountConnection probes the native endpoint for the selected
+// model. Adaptive accounts (the default) follow OpenCodeGoModelProtocol:
+// grok/gpt/muse-spark → Responses, minimax/qwen → Anthropic, everything else
+// (including deepseek-v4-flash) → Chat Completions. A pinned api_protocol
+// overrides that catalog. Falling through to the generic Claude tester used
+// credentials.base_url + /v1/messages?beta=true, which 404s as HTML on
+// https://opencode.ai/zen/go/v1/v1/messages.
+func (s *AccountTestService) testOpenCodeGoAccountConnection(c *gin.Context, account *Account, modelID string, prompt string) error {
+	testModelID := strings.TrimSpace(modelID)
+	if testModelID == "" {
+		testModelID = DefaultOpenCodeGoTestModel
+	}
+	testModelID = account.GetMappedModel(testModelID)
+	proto := account.GetAPIProtocol()
+	switch proto {
+	case APIProtocolChatCompletions, APIProtocolAnthropic, APIProtocolResponses:
+	default:
+		proto = openCodeGoNativeProtocol(account, testModelID)
+	}
+	switch proto {
+	case APIProtocolAnthropic:
+		return s.testCNProviderAnthropicConnection(c, account, testModelID)
+	case APIProtocolResponses:
+		return s.testOpenCodeGoResponsesConnection(c, account, testModelID)
+	default:
+		return s.testCNProviderChatCompletionsConnection(c, account, testModelID, prompt)
+	}
+}
+
+func (s *AccountTestService) testOpenCodeGoResponsesConnection(c *gin.Context, account *Account, testModelID string) error {
+	authToken := strings.TrimSpace(account.GetOpenAIProtocolAPIKey())
+	if authToken == "" {
+		return s.sendErrorAndEnd(c, "No API key available")
+	}
+	c.Writer.Header().Set("Content-Type", "text/event-stream")
+	c.Writer.Header().Set("Cache-Control", "no-cache")
+	c.Writer.Header().Set("Connection", "keep-alive")
+	c.Writer.Header().Set("X-Accel-Buffering", "no")
+	c.Writer.Flush()
+	s.sendEvent(c, TestEvent{Type: "test_start", Model: testModelID})
+	return s.testCNProviderAdaptiveResponsesConnection(c, account, testModelID, authToken)
 }
 
 func (s *AccountTestService) testCNProviderChatCompletionsConnection(c *gin.Context, account *Account, modelID string, prompt string) error {
@@ -2034,6 +2105,7 @@ func (s *AccountTestService) testOpenAIChatCompletionsConnection(
 
 	// 账号级请求头覆写：测试请求与真实转发保持一致的最终头
 	account.ApplyHeaderOverrides(req.Header)
+	applyOpenCodeSessionHeader(c, account, apiURL, req.Header, payloadBytes)
 
 	proxyURL := ""
 	if account.ProxyID != nil && account.Proxy != nil {
@@ -2996,7 +3068,7 @@ func (s *AccountTestService) testOpenAIImageAPIKey(c *gin.Context, ctx context.C
 	return nil
 }
 
-// testOpenAIImageOAuth tests OpenAI image generation using an OAuth account via Codex /responses API.
+// OAuth 图片测试与正式转发共用 Codex Images / Responses 分流规则。
 func (s *AccountTestService) testOpenAIImageOAuth(c *gin.Context, ctx context.Context, account *Account, modelID, prompt string) error {
 	credentialAccount := account
 	if account.IsShadow() {
@@ -3022,7 +3094,6 @@ func (s *AccountTestService) testOpenAIImageOAuth(c *gin.Context, ctx context.Co
 	c.Writer.Flush()
 
 	s.sendEvent(c, TestEvent{Type: "test_start", Model: modelID})
-	s.sendEvent(c, TestEvent{Type: "content", Text: "Calling Codex /responses image tool...\n"})
 
 	parsed := &OpenAIImagesRequest{
 		Endpoint: openAIImagesGenerationsEndpoint,
@@ -3031,12 +3102,19 @@ func (s *AccountTestService) testOpenAIImageOAuth(c *gin.Context, ctx context.Co
 	}
 	applyOpenAIImagesDefaults(parsed)
 
-	responsesBody, err := buildOpenAIImagesResponsesRequest(parsed, parsed.Model)
+	upstreamModel := account.GetMappedModel(parsed.Model)
+	responsesBody, targetURL, err := buildOpenAIImagesOAuthPayload(parsed, upstreamModel)
 	if err != nil {
 		return s.sendErrorAndEnd(c, fmt.Sprintf("Failed to build image request: %s", err.Error()))
 	}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, chatgptCodexAPIURL, bytes.NewReader(responsesBody))
+	direct := usesCodexDirectImages(upstreamModel)
+	if direct {
+		s.sendEvent(c, TestEvent{Type: "content", Text: fmt.Sprintf("Calling Codex /images/generations; image model: %s\n", upstreamModel)})
+	} else {
+		s.sendEvent(c, TestEvent{Type: "content", Text: fmt.Sprintf("Calling Codex /responses image tool; driver: %s; image model: %s\n", openAIImagesResponsesMainModelValue(), upstreamModel)})
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, targetURL, bytes.NewReader(responsesBody))
 	if err != nil {
 		return s.sendErrorAndEnd(c, "Failed to create request")
 	}
@@ -3058,6 +3136,10 @@ func (s *AccountTestService) testOpenAIImageOAuth(c *gin.Context, ctx context.Co
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "text/event-stream")
 	req.Header.Set("OpenAI-Beta", "responses=experimental")
+	if direct {
+		req.Header.Del("OpenAI-Beta")
+		req.Header.Set("Accept", "application/json")
+	}
 	canonical := resolveCodexOutboundIdentity("")
 	req.Header.Set("originator", canonical.originator)
 	if customUA := strings.TrimSpace(credentialAccount.GetOpenAIUserAgent()); customUA != "" {
@@ -3076,7 +3158,7 @@ func (s *AccountTestService) testOpenAIImageOAuth(c *gin.Context, ctx context.Co
 	}
 	resp, err := s.doOpenAIAccountTestUpstream(req, proxyURL, account, false)
 	if err != nil {
-		return s.sendErrorAndEnd(c, fmt.Sprintf("Responses API request failed: %s", err.Error()))
+		return s.sendErrorAndEnd(c, fmt.Sprintf("Image upstream request failed: %s", err.Error()))
 	}
 	defer func() {
 		if resp != nil && resp.Body != nil {
@@ -3088,7 +3170,7 @@ func (s *AccountTestService) testOpenAIImageOAuth(c *gin.Context, ctx context.Co
 		body = redactAgentIdentitySensitiveBodyForAccount(ctx, s.accountRepo, credentialAccount, body)
 		message := strings.TrimSpace(extractUpstreamErrorMessage(body))
 		if message == "" {
-			message = fmt.Sprintf("Responses API returned %d", resp.StatusCode)
+			message = fmt.Sprintf("Image upstream returned %d", resp.StatusCode)
 		}
 		return s.sendErrorAndEnd(c, message)
 	}
@@ -3099,12 +3181,26 @@ func (s *AccountTestService) testOpenAIImageOAuth(c *gin.Context, ctx context.Co
 	}
 	body = redactAgentIdentitySensitiveBodyForAccount(ctx, s.accountRepo, credentialAccount, body)
 
-	results, _, _, _, _, err := collectOpenAIImagesFromResponsesBody(body)
+	var results []openAIResponsesImageResult
+	if direct {
+		results, err = parseCodexDirectImagesResponse(body)
+	} else {
+		if upstreamErr := extractOpenAIImagesUpstreamError(body); upstreamErr != nil {
+			return s.sendErrorAndEnd(c, upstreamErr.clientMessage())
+		}
+		results, _, _, _, _, err = collectOpenAIImagesFromResponsesBody(body)
+	}
 	if err != nil {
 		return s.sendErrorAndEnd(c, fmt.Sprintf("Failed to parse image response: %s", err.Error()))
 	}
 	if len(results) == 0 {
-		return s.sendErrorAndEnd(c, "No images returned from responses API")
+		if textErr := openAIImagesTextFallbackError(body); textErr != nil {
+			return s.sendErrorAndEnd(c, textErr.clientMessage())
+		}
+		if direct {
+			return s.sendErrorAndEnd(c, "No images returned from Codex Images API")
+		}
+		return s.sendErrorAndEnd(c, "No images returned from Codex Responses API")
 	}
 
 	for _, item := range results {

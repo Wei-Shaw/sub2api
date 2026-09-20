@@ -663,8 +663,7 @@ func (s *OpenAIGatewayService) handleStreamingResponseWithReasoning(ctx context.
 				line = "data: " + data
 			}
 			// Replace model in response if needed.
-			// Fast path: most events do not contain model field values.
-			if needModelReplace && mappedModel != "" && strings.Contains(line, mappedModel) {
+			if needModelReplace {
 				line = s.replaceModelInSSELine(line, mappedModel, originalModel)
 			}
 			startsClientOutput := forceFlushFailedEvent || openAIStreamDataStartsClientOutput(data, eventType)
@@ -1070,33 +1069,28 @@ func effectiveOpenAISSEEventType(payload []byte, eventType string) string {
 }
 
 func (s *OpenAIGatewayService) replaceModelInSSELine(line, fromModel, toModel string) string {
+	if fromModel == "" || toModel == "" || fromModel == toModel {
+		return line
+	}
 	data, ok := extractOpenAISSEDataLine(line)
-	if !ok {
+	if !ok || !gjson.Valid(data) {
 		return line
 	}
-	if data == "" || data == "[DONE]" {
+	updated := data
+	// Only protocol model fields are rewritten; text and tool payloads are untouched.
+	for _, path := range []string{"model", "response.model"} {
+		if m := gjson.Get(updated, path); m.Type == gjson.String {
+			var err error
+			updated, err = sjson.Set(updated, path, toModel)
+			if err != nil {
+				return line
+			}
+		}
+	}
+	if updated == data {
 		return line
 	}
-
-	// 使用 gjson 精确检查 model 字段，避免全量 JSON 反序列化
-	if m := gjson.Get(data, "model"); m.Exists() && m.Str == fromModel {
-		newData, err := sjson.Set(data, "model", toModel)
-		if err != nil {
-			return line
-		}
-		return "data: " + newData
-	}
-
-	// 检查嵌套的 response.model 字段
-	if m := gjson.Get(data, "response.model"); m.Exists() && m.Str == fromModel {
-		newData, err := sjson.Set(data, "response.model", toModel)
-		if err != nil {
-			return line
-		}
-		return "data: " + newData
-	}
-
-	return line
+	return "data: " + updated
 }
 
 // correctToolCallsInResponseBody 修正响应体中的工具调用
@@ -1238,6 +1232,9 @@ func mergeOpenAIUsageNonZero(dst *OpenAIUsage, src OpenAIUsage) {
 	}
 	if src.ImageInputTokens > 0 {
 		dst.ImageInputTokens = src.ImageInputTokens
+	}
+	if src.ImageCacheReadTokens > 0 {
+		dst.ImageCacheReadTokens = src.ImageCacheReadTokens
 	}
 	if src.OutputTokens > 0 {
 		dst.OutputTokens = src.OutputTokens
@@ -1461,12 +1458,23 @@ func (s *OpenAIGatewayService) bindHTTPResponseAccount(ctx context.Context, c *g
 	if store == nil {
 		return
 	}
+	// The client may close the stream immediately after receiving its terminal
+	// event, canceling the request context before these durable affinity writes
+	// run. Preserve request values, but give all Redis writes one bounded budget
+	// independent of the downstream connection lifecycle.
+	bindBaseCtx := context.Background()
+	if ctx != nil {
+		bindBaseCtx = context.WithoutCancel(ctx)
+	}
+	bindCtx, cancel := context.WithTimeout(bindBaseCtx, openAIWSStateStoreRedisTimeout)
+	defer cancel()
+
 	groupID := getOpenAIGroupIDFromContext(c)
 	ttl := s.openAIWSResponseStickyTTL()
-	logOpenAIWSBindResponseAccountWarn(groupID, account.ID, responseID, store.BindResponseAccount(ctx, groupID, responseID, account.ID, ttl))
+	logOpenAIWSBindResponseAccountWarn(groupID, account.ID, responseID, store.BindResponseAccount(bindCtx, groupID, responseID, account.ID, ttl))
 	if rawOwner, ok := c.Get(openAIHTTPResponseOwnerContextKey); ok {
 		if owner, ok := rawOwner.(openAIHTTPResponseOwner); ok && owner.userID > 0 && owner.apiKeyID > 0 {
-			if err := s.BindOpenAIHTTPResponseOwner(ctx, groupID, responseID, owner.userID, owner.apiKeyID); err != nil {
+			if err := s.BindOpenAIHTTPResponseOwner(bindCtx, groupID, responseID, owner.userID, owner.apiKeyID); err != nil {
 				logger.L().Warn(
 					"openai.http_bind_response_owner_failed",
 					zap.Int64("group_id", groupID),

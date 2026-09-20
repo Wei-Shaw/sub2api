@@ -103,12 +103,12 @@ export const useAnnouncementStore = defineStore('announcements', () => {
 
     try {
       loading.value = true
-      await Promise.all(unread.map((a) => announcementsAPI.markRead(a.id)))
-      announcements.value.forEach((a) => {
-        if (!a.read_at) {
-          a.read_at = new Date().toISOString()
-        }
-      })
+      const results = await Promise.allSettled(unread.map(async (a) => {
+        await announcementsAPI.markRead(a.id)
+        a.read_at = new Date().toISOString()
+      }))
+      const failure = results.find((result) => result.status === 'rejected')
+      if (failure) throw failure.reason
     } catch (err: any) {
       console.error('Failed to mark all as read:', err)
       throw err

@@ -185,7 +185,7 @@ var (
 		"CHANNEL_MONITOR_ENDPOINT_SCHEME", "endpoint must use https scheme",
 	)
 	ErrChannelMonitorEndpointPath = infraerrors.BadRequest(
-		"CHANNEL_MONITOR_ENDPOINT_PATH", "endpoint must be base origin only (no path/query/fragment)",
+		"CHANNEL_MONITOR_ENDPOINT_PATH", "endpoint must not contain query parameters or a fragment",
 	)
 	ErrChannelMonitorEndpointPrivate = infraerrors.BadRequest(
 		"CHANNEL_MONITOR_ENDPOINT_PRIVATE", "endpoint must be a public host",
