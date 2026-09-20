@@ -99,7 +99,7 @@
       <template #table>
         <DataTable
           :columns="columns"
-          :data="apiKeys"
+          :data="displayedApiKeys"
           :loading="loading"
           selectable
           row-key="id"
@@ -107,10 +107,84 @@
           :selection-label="(key: ApiKey) => t('keys.bulkEdit.selectKey', { name: key.name })"
           @update:selected-keys="handleSelectionChange"
           :server-side-sort="true"
-          default-sort-key="created_at"
-          default-sort-order="desc"
+          :default-sort-key="sortState.sort_by"
+          :default-sort-order="sortState.sort_order"
           @sort="handleSort"
         >
+          <template #header-usage>
+            <div class="flex items-center gap-1.5 select-none" data-test="header-usage">
+              <span>{{ t('keys.usage') }}</span>
+              <div
+                class="inline-flex items-center gap-0.5 rounded-lg bg-gray-200/75 p-0.5 text-[11px] font-normal normal-case shadow-inner dark:bg-dark-700/80"
+              >
+                <button
+                  type="button"
+                  data-test="usage-sort-today"
+                  :title="t('keys.sortByUsageToday')"
+                  @click.stop="toggleUsageSort('today')"
+                  :class="[
+                    'flex items-center gap-0.5 rounded px-1.5 py-0.5 transition-all cursor-pointer',
+                    usageSortDim === 'today'
+                      ? 'bg-white font-semibold text-primary-600 shadow-sm dark:bg-dark-800 dark:text-primary-400'
+                      : 'text-gray-500 hover:text-gray-800 dark:text-gray-400 dark:hover:text-gray-200'
+                  ]"
+                >
+                  <span>{{ t('keys.today') }}</span>
+                  <span v-if="usageSortDim === 'today'" class="inline-flex items-center">
+                    <svg
+                      v-if="usageSortOrder === 'asc'"
+                      class="h-2.5 w-2.5"
+                      fill="currentColor"
+                      viewBox="0 0 10 10"
+                    >
+                      <path d="M5 2L1.5 6.5h7L5 2z" />
+                    </svg>
+                    <svg
+                      v-else
+                      class="h-2.5 w-2.5"
+                      fill="currentColor"
+                      viewBox="0 0 10 10"
+                    >
+                      <path d="M5 8L1.5 3.5h7L5 8z" />
+                    </svg>
+                  </span>
+                </button>
+                <button
+                  type="button"
+                  data-test="usage-sort-total"
+                  :title="t('keys.sortByUsage30d')"
+                  @click.stop="toggleUsageSort('total')"
+                  :class="[
+                    'flex items-center gap-0.5 rounded px-1.5 py-0.5 transition-all cursor-pointer',
+                    usageSortDim === 'total'
+                      ? 'bg-white font-semibold text-primary-600 shadow-sm dark:bg-dark-800 dark:text-primary-400'
+                      : 'text-gray-500 hover:text-gray-800 dark:text-gray-400 dark:hover:text-gray-200'
+                  ]"
+                >
+                  <span>{{ t('keys.usageSort30d') }}</span>
+                  <span v-if="usageSortDim === 'total'" class="inline-flex items-center">
+                    <svg
+                      v-if="usageSortOrder === 'asc'"
+                      class="h-2.5 w-2.5"
+                      fill="currentColor"
+                      viewBox="0 0 10 10"
+                    >
+                      <path d="M5 2L1.5 6.5h7L5 2z" />
+                    </svg>
+                    <svg
+                      v-else
+                      class="h-2.5 w-2.5"
+                      fill="currentColor"
+                      viewBox="0 0 10 10"
+                    >
+                      <path d="M5 8L1.5 3.5h7L5 8z" />
+                    </svg>
+                  </span>
+                </button>
+              </div>
+            </div>
+          </template>
+
           <template #cell-id="{ value }">
             <span class="font-mono text-xs text-gray-500 dark:text-gray-400">#{{ value }}</span>
           </template>
@@ -1355,12 +1429,56 @@ const columns = computed<Column[]>(() =>
 )
 
 const apiKeys = ref<ApiKey[]>([])
+type UsageSortDimension = 'today' | 'total'
+type UsageSortOrder = 'asc' | 'desc'
+const usageSortDim = ref<UsageSortDimension | null>(null)
+const usageSortOrder = ref<UsageSortOrder | null>(null)
+
+const toggleUsageSort = (dim: UsageSortDimension) => {
+  if (usageSortDim.value === dim) {
+    usageSortOrder.value = usageSortOrder.value === 'desc' ? 'asc' : 'desc'
+  } else {
+    usageSortDim.value = dim
+    usageSortOrder.value = 'desc'
+  }
+  if (sortState.value.sort_by) {
+    sortState.value.sort_by = ''
+  }
+}
+
+const displayedApiKeys = computed(() => {
+  if (!usageSortDim.value || !usageSortOrder.value) {
+    return apiKeys.value
+  }
+  const dim = usageSortDim.value
+  const order = usageSortOrder.value
+  return [...apiKeys.value].sort((a, b) => {
+    const statsA = usageStats.value[a.id]
+    const statsB = usageStats.value[b.id]
+    const todayA = statsA?.today_actual_cost ?? 0
+    const todayB = statsB?.today_actual_cost ?? 0
+    const totalA = statsA?.total_actual_cost ?? 0
+    const totalB = statsB?.total_actual_cost ?? 0
+
+    const primaryDiff = dim === 'today' ? todayA - todayB : totalA - totalB
+    const secDiff = dim === 'today' ? totalA - totalB : todayA - todayB
+
+    if (Math.abs(primaryDiff) > 1e-7) {
+      return order === 'asc' ? primaryDiff : -primaryDiff
+    }
+    if (Math.abs(secDiff) > 1e-7) {
+      return order === 'asc' ? secDiff : -secDiff
+    }
+    return order === 'asc' ? a.id - b.id : b.id - a.id
+  })
+})
+
 const selectedIds = ref<number[]>([])
 const showBulkEditModal = ref(false)
-const selectedApiKeys = computed(() => apiKeys.value.filter((key) => selectedIds.value.includes(key.id)))
+const selectedApiKeys = computed(() => displayedApiKeys.value.filter((key) => selectedIds.value.includes(key.id)))
 
 const handleSelectionChange = (ids: Array<string | number>) => {
-  const visibleIds = new Set(apiKeys.value.map((key) => key.id))
+  const visibleIds = new Set(displayedApiKeys.value.map((key) => key.id))
   selectedIds.value = [...new Set(ids.map(Number))].filter((id) => visibleIds.has(id))
 }
 
@@ -1599,8 +1717,8 @@ const loadApiKeys = async () => {
     if (filterSearch.value) filters.search = filterSearch.value
     if (filterStatus.value) filters.status = filterStatus.value
     if (filterGroupId.value !== '') filters.group_id = filterGroupId.value
-    filters.sort_by = sortState.value.sort_by
-    filters.sort_order = sortState.value.sort_order
+    filters.sort_by = sortState.value.sort_by || 'created_at'
+    filters.sort_order = sortState.value.sort_order || 'desc'
 
     const response = await keysAPI.list(pagination.value.page, pagination.value.page_size, filters, {
       signal
@@ -1684,6 +1802,8 @@ const handlePageSizeChange = (pageSize: number) => {
 }
 
 const handleSort = (key: string, order: 'asc' | 'desc') => {
+  usageSortDim.value = null
+  usageSortOrder.value = null
   selectedIds.value = []
   sortState.value.sort_by = key
   sortState.value.sort_order = order

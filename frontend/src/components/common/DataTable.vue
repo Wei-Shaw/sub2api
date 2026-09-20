@@ -941,12 +941,32 @@ watch(
   { flush: 'post' }
 )
 
+watch(
+  () => props.defaultSortKey,
+  (newKey) => {
+    sortKey.value = normalizeSortKey(newKey || '')
+  }
+)
+
+watch(
+  () => props.defaultSortOrder,
+  (newOrder) => {
+    sortOrder.value = normalizeSortOrder(newOrder)
+  }
+)
+
+const clearSort = () => {
+  sortKey.value = ''
+  sortOrder.value = 'asc'
+}
+
 defineExpose({
   virtualizer: rowVirtualizer,
   shouldVirtualize,
   sortedData,
   resolveRowKey,
   tableWrapperEl: tableWrapperRef,
+  clearSort,
 })
 </script>
 
