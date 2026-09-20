@@ -86,8 +86,8 @@ Legacy aliases `gpt-image`, `gpt-image-1`, and `gpt-image-1-mini` map to `gpt-im
 
 1. In the admin dashboard, create an **Adobe** group and add a Firefly cookie account.
 2. Sign in to Adobe in a browser, open `https://firefly.adobe.com/generate/image`, and let the page settle.
-3. In DevTools → Network, find a request to `adobeid-na1.services.adobe.com` `/ims/check/v6/token` and copy that request's **Cookie header**. It must include `ims_sid`.
-4. Copying `document.cookie` from `firefly.adobe.com` alone is **not** enough. A `Cookie:` prefix or a JSON cookie array is also accepted.
+3. Export a Sub2API account JSON with the Chrome/Edge extension in [`tools/adobe-cookie-exporter`](tools/adobe-cookie-exporter) (recommended), then upload it under **Accounts → Import**. Alternatively, in DevTools → Network find a request to `adobeid-na1.services.adobe.com` `/ims/check/v6/token` and copy that request's **Cookie header**. It must include `ims_sid`.
+4. Copying `document.cookie` from `firefly.adobe.com` alone is **not** enough. You can also paste the exporter JSON (or the `cookie` string, a `Cookie:` prefix, or a JSON cookie array) into the Adobe cookie field. Import does not bind groups; attach the account afterwards.
 5. The short-lived access token is optional; leave it empty to exchange the cookie on first refresh. Sub2API keeps refreshing the token from the cookie.
 6. Attach the account to the group, then create a Sub2API API key assigned to that group.
 
