@@ -74,11 +74,13 @@ const (
 // 国产 OpenAI 兼容供应商各模式的默认 base_url。
 // 与前端 credentialsBuilder.ts 中的预设保持一致。
 const (
-	DefaultKimiPayGBaseURL    = "https://api.moonshot.cn/v1"
-	DefaultKimiCodingBaseURL  = "https://api.kimi.com/coding/v1"
-	DefaultZhipuPayGBaseURL   = "https://open.bigmodel.cn/api/paas/v4"
-	DefaultZhipuCodingBaseURL = "https://open.bigmodel.cn/api/coding/paas/v4"
-	DefaultDeepseekBaseURL    = "https://api.deepseek.com"
+	DefaultKimiPayGBaseURL   = "https://api.moonshot.cn/v1"
+	DefaultKimiCodingBaseURL = "https://api.kimi.com/coding/v1"
+	// GLM Coding Plan 官方 Responses 基址（上游路径为 {base}/responses）。
+	DefaultZhipuCodingResponsesBaseURL = "https://open.bigmodel.cn/api/v1"
+	DefaultZhipuPayGBaseURL            = "https://open.bigmodel.cn/api/paas/v4"
+	DefaultZhipuCodingBaseURL          = "https://open.bigmodel.cn/api/coding/paas/v4"
+	DefaultDeepseekBaseURL             = "https://api.deepseek.com"
 	// MiniMax 按量付费与 Coding/Token Plan 共用推理域名，靠 API Key 区分套餐。
 	DefaultMiniMaxBaseURL = "https://api.minimaxi.com/v1"
 	// OpenCode Go：Chat Completions / Responses / models 共用 /v1 基址。

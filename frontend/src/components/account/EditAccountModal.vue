@@ -72,7 +72,7 @@
               <input v-model="editAdaptiveBaseUrls[item.value]" type="text" class="input" />
             </div>
           </div>
-          <p v-if="!cnSupportsNativeResponses(account.platform)" class="input-hint">
+          <p v-if="!cnSupportsNativeResponses(account.platform, currentOpenCodeOrCNMode())" class="input-hint">
             {{ t('admin.accounts.cnProviders.apiProtocol.responsesFallbackDesc') }}
           </p>
         </div>
@@ -3242,7 +3242,7 @@ const cnProtocolOptions = computed<Array<{ value: CnApiProtocol; labelKey: strin
     { value: 'chat_completions', labelKey: 'chatCompletions' },
     { value: 'anthropic', labelKey: 'anthropic' }
   ]
-  if (cnSupportsNativeResponses(props.account?.platform ?? '')) {
+  if (cnSupportsNativeResponses(props.account?.platform ?? '', currentOpenCodeOrCNMode())) {
     opts.push({ value: 'responses', labelKey: 'responses' })
   }
   return opts
@@ -3252,7 +3252,9 @@ const editAdaptiveProtocolOptions = computed<Array<{ value: CnNativeApiProtocol;
     { value: 'chat_completions', labelKey: 'chatCompletions' },
     { value: 'anthropic', labelKey: 'anthropic' }
   ]
-  if (cnSupportsNativeResponses(props.account?.platform ?? '')) opts.push({ value: 'responses', labelKey: 'responses' })
+  if (cnSupportsNativeResponses(props.account?.platform ?? '', currentOpenCodeOrCNMode())) {
+    opts.push({ value: 'responses', labelKey: 'responses' })
+  }
   return opts
 })
 watch(editApiProtocol, (protocol, previousProtocol) => {
@@ -3282,6 +3284,15 @@ watch(editAccountMode, (mode, previousMode) => {
   const effectiveMode = props.account!.platform === 'deepseek' && mode === 'coding' ? 'payg' : mode
   if (effectiveMode !== mode) {
     editAccountMode.value = effectiveMode
+    return
+  }
+  // GLM Responses 仅 Coding Plan 官方支持；切换模式时避免残留不可用协议。
+  if (
+    props.account?.platform === 'zhipu' &&
+    editApiProtocol.value === 'responses' &&
+    !cnSupportsNativeResponses(props.account.platform, effectiveMode)
+  ) {
+    editApiProtocol.value = 'chat_completions'
     return
   }
   if (editApiProtocol.value === 'adaptive') {
@@ -4218,7 +4229,10 @@ const syncFormFromAccount = (newAccount: Account | null) => {
         storedProtocol === 'responses'
           ? storedProtocol
           : 'chat_completions'
-      if (!cnSupportsNativeResponses(newAccount.platform) && editApiProtocol.value === 'responses') {
+      if (
+        !cnSupportsNativeResponses(newAccount.platform, currentOpenCodeOrCNMode()) &&
+        editApiProtocol.value === 'responses'
+      ) {
         editApiProtocol.value = 'chat_completions'
       }
       const adaptiveDefaults = defaultCNAdaptiveBaseUrls(newAccount.platform, currentOpenCodeOrCNMode())
