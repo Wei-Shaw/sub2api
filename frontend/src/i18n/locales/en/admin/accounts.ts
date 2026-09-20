@@ -1089,7 +1089,7 @@ export default {
       },
       adobe: {
         cookieLabel: 'Adobe Cookie',
-        cookieHint: 'Sign in to Adobe, open firefly.adobe.com/generate/image and let it settle, then copy the Cookie header from an adobeid-na1.services.adobe.com /ims/check/v6/token request in DevTools (it must include ims_sid). Copying document.cookie from firefly.adobe.com alone is not enough. A "Cookie:" prefix or a JSON cookie array is also accepted. The short-lived access token is refreshed from this automatically.',
+        cookieHint: 'Sign in to Adobe, open firefly.adobe.com/generate/image and let it settle, then export JSON with Adobe Cookie Exporter and upload it under Accounts → Import. You can also paste that JSON or the Cookie header from an adobeid-na1.services.adobe.com /ims/check/v6/token request here (it must include ims_sid). Copying document.cookie from firefly.adobe.com alone is not enough. A "Cookie:" prefix or a JSON cookie array is also accepted. The short-lived access token is refreshed from this automatically.',
         credentialStepTitle: 'Enter credentials',
         cookiePlaceholder: 'ims_sid=...; aux_sid=...; ...',
         cookieRequired: 'Please enter the Adobe cookie',

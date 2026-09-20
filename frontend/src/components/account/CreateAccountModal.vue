@@ -4699,6 +4699,7 @@ import {
   parseDateTimeLocalInput
 } from '@/utils/format'
 import { createStableObjectKeyResolver } from '@/utils/stableObjectKey'
+import { extractAdobeCookieInput } from '@/utils/adobeAccount'
 import { getAccountExpiryTimestamp } from '@/components/account/accountExpiry'
 import { VERTEX_LOCATION_SELECT_OPTIONS, BEDROCK_REGION_SELECT_OPTIONS } from '@/constants/account'
 import { KIRO_REGION_SELECT_OPTIONS } from '@/constants/kiroRegions'
@@ -6953,13 +6954,14 @@ const handleAdobeCreate = async () => {
     appStore.showError(t('admin.accounts.pleaseEnterAccountName'))
     return
   }
-  if (!adobeCookie.value.trim()) {
+  const cookie = extractAdobeCookieInput(adobeCookie.value)
+  if (!cookie) {
     appStore.showError(t('admin.accounts.adobe.cookieRequired'))
     return
   }
 
   const credentials: Record<string, unknown> = {
-    cookie: adobeCookie.value.trim()
+    cookie
   }
   // 留空时由后台刷新器首次用 cookie 换取，不写入空串以免被当成"已有 token"。
   if (adobeAccessToken.value.trim()) {

@@ -1167,7 +1167,7 @@ export default {
       },
       adobe: {
         cookieLabel: 'Adobe Cookie',
-        cookieHint: '先登录 Adobe，打开 firefly.adobe.com/generate/image 停留片刻，然后在开发者工具里复制发往 adobeid-na1.services.adobe.com /ims/check/v6/token 的 Cookie 请求头（必须包含 ims_sid）。只从 firefly.adobe.com 复制 document.cookie 不够。可带 “Cookie:” 前缀，也支持 JSON 形式的 cookie 数组。短期 access token 会据此自动刷新。',
+        cookieHint: '先登录 Adobe，打开 firefly.adobe.com/generate/image 停留片刻，然后用 Adobe Cookie Exporter 导出 JSON，在账号页「导入」上传；也可把该 JSON 或 Cookie 请求头贴到这里（必须包含 ims_sid）。只从 firefly.adobe.com 复制 document.cookie 不够。可带 “Cookie:” 前缀，也支持 JSON cookie 数组。短期 access token 会据此自动刷新。',
         credentialStepTitle: '填写凭据',
         cookiePlaceholder: 'ims_sid=...; aux_sid=...; ...',
         cookieRequired: '请填写 Adobe Cookie',

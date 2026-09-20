@@ -216,4 +216,35 @@ describe('ReAuthAccountModal platform routing', () => {
       },
     })
   })
+
+  it('unwraps pasted sub2api-data JSON into the cookie credential', async () => {
+    const wrapper = mountModal(buildAdobeAccount())
+
+    await wrapper.setProps({ show: true })
+    await flushPromises()
+
+    await wrapper.get('[data-testid="reauth-adobe-cookie-input"]').setValue(JSON.stringify({
+      type: 'sub2api-data',
+      proxies: [],
+      accounts: [
+        {
+          name: 'adobe-jane@example.com',
+          platform: 'adobe',
+          type: 'oauth',
+          credentials: { cookie: 'ims_sid=from-json; aux_sid=abc' }
+        }
+      ]
+    }))
+    await wrapper.get('[data-testid="reauth-adobe-submit"]').trigger('click')
+    await flushPromises()
+
+    expect(applyOAuthCredentialsMock).toHaveBeenCalledWith(77, {
+      type: 'oauth',
+      credentials: {
+        model_mapping: { 'gpt-image-2': 'firefly-gpt-image-2' },
+        cookie: 'ims_sid=from-json; aux_sid=abc',
+        access_token: '',
+      },
+    })
+  })
 })

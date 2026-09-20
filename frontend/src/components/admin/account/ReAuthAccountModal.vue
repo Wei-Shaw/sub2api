@@ -485,6 +485,7 @@ import { useAppStore } from '@/stores/app'
 import type { Account, AccountPlatform } from '@/types'
 import { useGrokOAuth } from '@/composables/useGrokOAuth'
 import { KIRO_REGION_SELECT_OPTIONS } from '@/constants/kiroRegions'
+import { extractAdobeCookieInput } from '@/utils/adobeAccount'
 
 interface OAuthFlowExposed {
   authCode: string
@@ -781,7 +782,7 @@ const updateAccountCredentials = async (payload: {
 
 const handleAdobeReauth = async () => {
   if (!props.account) return
-  const cookie = adobeCookie.value.trim()
+  const cookie = extractAdobeCookieInput(adobeCookie.value)
   if (!cookie) {
     appStore.showError(t('admin.accounts.adobe.cookieRequired'))
     return

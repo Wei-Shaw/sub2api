@@ -1004,6 +1004,33 @@ describe('CreateAccountModal Adobe model mapping', () => {
     expect(submittedCredentials()).not.toHaveProperty('model_mapping')
   })
 
+  it('粘贴 sub2api-data JSON 时只把 cookie 写进凭据', async () => {
+    const wrapper = await openAdobeTab()
+    await wrapper.get('[data-tour="account-form-name"]').setValue('adobe account')
+    await wrapper.get('form#create-account-form').trigger('submit.prevent')
+    await flushPromises()
+    await wrapper.get('[data-testid="adobe-cookie-input"]').setValue(JSON.stringify({
+      type: 'sub2api-data',
+      version: 1,
+      exported_at: '2026-09-20T06:54:00.000Z',
+      proxies: [],
+      accounts: [
+        {
+          name: 'adobe-jane@example.com',
+          platform: 'adobe',
+          type: 'oauth',
+          credentials: { cookie: 'ims_sid=abc; aux_sid=def' },
+          concurrency: 10,
+          priority: 1
+        }
+      ]
+    }))
+    await wrapper.get('[data-testid="adobe-create-account"]').trigger('click')
+    await flushPromises()
+
+    expect(submittedCredentials()?.cookie).toBe('ims_sid=abc; aux_sid=def')
+  })
+
   it('Adobe 中转号在第一步提交 type=apikey + base_url，不改默认 priority', async () => {
     const wrapper = await openAdobeTab()
     await wrapper.get('[data-testid="adobe-account-type-relay"]').trigger('click')
