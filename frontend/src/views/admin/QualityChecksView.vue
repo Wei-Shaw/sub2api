@@ -47,7 +47,7 @@
         </article>
       </div>
 
-      <details class="method-card"><summary><span>◈ 检查题目与判定说明</span><span>查看规则 ＋</span></summary><div class="method-grid"><section><h3>01 · 小鹅骑自行车</h3><p>检查 SVG 是否完整、可解析。画面是否准确表现小鹅骑车，需要点击缩略图目测；结构通过不等于画面质量通过。</p><pre>{{ overview?.goose_prompt }}</pre></section><section><h3>02 · 糖果推理</h3><p>按题目给出的固定摸取数量，最大不满足集合为 28 颗，因此保证值是 29 颗。自动判断只核对最终数值，推导需展开核验。</p><pre>{{ overview?.candy_prompt }}</pre></section></div></details>
+      <details class="method-card"><summary><span>◈ 检查题目与判定说明</span><span>查看规则 ＋</span></summary><div class="method-grid"><section><h3>01 · 小鹅骑自行车</h3><p>检查 SVG 是否完整、可解析。画面是否准确表现小鹅骑车，需要点击缩略图目测；结构通过不等于画面质量通过。</p><pre>{{ overview?.goose_prompt }}</pre></section><section><h3>02 · 糖果推理</h3><p>本地枚举参考：利用手感选取形状，最少 21 颗（9 圆形＋12 五角星）；不区分形状盲取则是 29 颗。自动判断只核对最终数值，推导需展开核验。</p><pre>{{ overview?.candy_prompt }}</pre></section></div></details>
       <p class="page-footnote">每题发出前同步该账号与实际模型的最新有效票据；票据开启时，缺票或过期会等待下轮。每轮两次调用消耗账号额度。结果记录本次使用的票据状态，旧记录不会随票据刷新而改变。两道题不能单独证明模型降级，保留最近 36 轮。</p>
     </div>
 

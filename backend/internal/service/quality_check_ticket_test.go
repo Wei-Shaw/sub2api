@@ -25,7 +25,7 @@ func (r *qualityTicketRepo) GetByID(context.Context, int64) (*Account, error)   
 func (r *qualityTicketRepo) UpdateExtra(context.Context, int64, map[string]any) error { return nil }
 
 func qualityTicketResponse() *http.Response {
-	return newJSONResponse(200, "data: {\"type\":\"response.output_text.delta\",\"delta\":\"答案：29颗\"}\n\ndata: {\"type\":\"response.completed\"}\n\n")
+	return newJSONResponse(200, "data: {\"type\":\"response.output_text.delta\",\"delta\":\"答案：21颗\"}\n\ndata: {\"type\":\"response.completed\"}\n\n")
 }
 
 func TestQualityTicketRequestUsesMappedModelAndFreshTicket(t *testing.T) {
