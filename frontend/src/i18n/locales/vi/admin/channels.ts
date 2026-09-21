@@ -413,6 +413,14 @@ export default mergeLocaleMessages(
     },
 
     riskControl: {
+    engine: 'Engine kiểm duyệt',
+    activeEngine: 'Engine đang hoạt động: {engine}',
+    engineUnavailable: 'Không có Key khả dụng cho engine đang hoạt động. Không thể kiểm duyệt API; các yêu cầu thất bại vẫn được cho qua theo chính sách hiện tại.',
+    typeSafeNotice: 'TypeSafe AI chỉ kiểm duyệt văn bản. Hình ảnh không được gửi đi và cũng không được kiểm duyệt. Ngưỡng hiện chưa được hiệu chỉnh; việc đổi engine không tắt các chính sách chặn, thông báo hoặc cấm tự động dùng chung.',
+    typeSafeThresholds: 'Ngưỡng mặc định giống OpenAI, nhưng ý nghĩa điểm số không tương đương. Hãy điều chỉnh ngưỡng từng danh mục dựa trên kết quả kiểm duyệt thực tế.',
+    auditSource: 'Nguồn kiểm duyệt',
+    skippedImages: 'Ảnh chưa kiểm duyệt: {count}',
+    legacyAuditSource: 'OpenAI (bản ghi cũ không lưu phiên bản model kiểm duyệt)',
     action: {
       block: 'Đã chặn',
       error: 'Lỗi',
