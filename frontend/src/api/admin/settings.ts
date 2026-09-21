@@ -17,7 +17,12 @@ export interface DefaultSubscriptionSetting {
 }
 
 // ── 平台限额类型 ──────────────────────────────────────────────────
-export type PlatformType = "anthropic" | "openai" | "gemini" | "antigravity" | "grok"
+// 配额平台镜像：与后端 service.AllowedQuotaPlatforms（单一权威来源：
+// backend/internal/service/domain_constants.go）保持一致。后端对
+// default_platform_quotas 与用户平台配额均为整体替换语义：这份列表缺一个平台，
+// 保存时就会静默丢弃该平台的配额行（缺行等价于不限额 → 限额 fail-open）。
+// 新增平台必须同步此列表。
+export type PlatformType = "anthropic" | "openai" | "gemini" | "antigravity" | "grok" | "typesafe"
 export type QuotaWindowType = "daily" | "weekly" | "monthly"
 
 /** 单平台三档限额；null = 不限制，undefined = 未填（等价 null） */
@@ -30,7 +35,7 @@ export interface PlatformQuotaLimits {
 /** 全平台默认限额 map（key = PlatformType） */
 export type DefaultPlatformQuotasMap = Partial<Record<PlatformType, PlatformQuotaLimits>>
 
-const PLATFORMS: PlatformType[] = ["anthropic", "openai", "gemini", "antigravity", "grok"]
+const PLATFORMS: PlatformType[] = ["anthropic", "openai", "gemini", "antigravity", "grok", "typesafe"]
 
 export type SchedulingThresholdPlatformType =
   | "openai"

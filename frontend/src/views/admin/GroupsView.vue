@@ -4623,7 +4623,10 @@ const platformFilterOptions = computed(() => [
 ]);
 
 const compositeRoutePlatformOptions = computed(() => [
-  ...CONCRETE_PLATFORM_OPTIONS,
+  // typesafe 只提供 POST /v1/systemone，不是 composite 可路由的对话上游：
+  // 后端 CompositeRouteRequest.target_platform 白名单与
+  // composite_model_routes_target_platform_check 都不接受它，选中必 400。
+  ...CONCRETE_PLATFORM_OPTIONS.filter((option) => option.value !== "typesafe"),
 ]);
 
 const compositeRouteEndpointOptions = computed(() => [

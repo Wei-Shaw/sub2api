@@ -294,11 +294,20 @@ func (a *Account) IsCNProvider() bool {
 	return a != nil && IsCNProvider(a.Platform)
 }
 
+// IsTypeSafe 报告账号平台是否为 TypeSafe AI 的 Jev 判断题服务。
+// 其凭据形态与 OpenAI 协议族 API Key 账号一致（base_url + api_key），
+// 但上游协议非 OpenAI 兼容，因此不参与 OpenAI 网关的协议分流。
+func (a *Account) IsTypeSafe() bool {
+	return a != nil && IsTypeSafe(a.Platform)
+}
+
 // IsOpenAICompatible 报告账号是否走 OpenAI 网关（OpenAI 协议族）。
 // openai/grok 原生走 OpenAI 网关；国产供应商同为 OpenAI Chat Completions
 // 兼容上游，也经 OpenAI 网关转发。OpenCode 同样经 OpenAI 网关按模型分流。
+// typesafe 只是复用该协议族的 credential 形态（base_url + api_key）与
+// 能力判定链，其请求不由 OpenAI 网关承接（见 routes/gateway.go 的平台分流）。
 func (a *Account) IsOpenAICompatible() bool {
-	return a != nil && (a.Platform == PlatformOpenAI || a.Platform == PlatformGrok || a.IsCNProvider() || a.IsOpenCodeGo())
+	return a != nil && (a.Platform == PlatformOpenAI || a.Platform == PlatformGrok || a.IsCNProvider() || a.IsOpenCodeGo() || a.IsTypeSafe())
 }
 
 func (a *Account) GeminiOAuthType() string {
@@ -1351,9 +1360,10 @@ func (a *Account) IsOpenAIApiKey() bool {
 
 // GetOpenAIBaseURL 解析 OpenAI 协议族账号的上游 base_url。
 // 适用 openai、国产 OpenAI 兼容供应商（kimi/zhipu/deepseek）与 OpenCode Go；
+// typesafe 复用同一凭据形态（credentials["base_url"] + 平台默认值）；
 // grok 走 GetGrokBaseURL，此处对 grok 返回 "" 以保持原有行为。
 func (a *Account) GetOpenAIBaseURL() string {
-	if !a.IsOpenAI() && !a.IsCNProvider() && !a.IsOpenCodeGo() {
+	if !a.IsOpenAI() && !a.IsCNProvider() && !a.IsOpenCodeGo() && !a.IsTypeSafe() {
 		return ""
 	}
 	if a.IsMultiProtocolAPIKey() && a.IsAdaptiveAPIProtocol() {
@@ -1386,6 +1396,8 @@ func (a *Account) GetOpenAIBaseURL() string {
 		return DefaultMiniMaxBaseURL
 	case PlatformOpenCodeGo:
 		return a.openCodeDefaultChatBaseURL()
+	case PlatformTypeSafe:
+		return DefaultTypeSafeBaseURL
 	default:
 		return "https://api.openai.com"
 	}
@@ -1751,15 +1763,16 @@ func (a *Account) GetOpenAIApiKey() string {
 }
 
 // GetOpenAIProtocolAPIKey 返回 OpenAI 协议族 APIKey 账号的密钥。
-// 覆盖 openai 原生账号、国产 OpenAI 兼容供应商（kimi/zhipu/deepseek）
-// 以及 OpenCode Go 账号，供转发鉴权、模型列表同步等协议族共用路径使用。
+// 覆盖 openai 原生账号、国产 OpenAI 兼容供应商（kimi/zhipu/deepseek）、
+// OpenCode Go 以及 typesafe（同为 credentials["api_key"] 的 APIKey 账号），
+// 供转发鉴权、模型列表同步等协议族共用路径使用。
 // 注意 IsOpenAIApiKey 语义上仅指 openai 平台账号，调度倍率/WS 能力门控
 // 继续以其为准，不受本方法影响。
 func (a *Account) GetOpenAIProtocolAPIKey() string {
 	if a == nil {
 		return ""
 	}
-	if a.IsMultiProtocolAPIKey() {
+	if a.IsMultiProtocolAPIKey() || a.IsTypeSafe() {
 		if a.Type != AccountTypeAPIKey {
 			return ""
 		}
