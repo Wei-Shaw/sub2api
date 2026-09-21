@@ -4,6 +4,13 @@ export default {
     pendingModule: 'This page will be completed in its scheduled delivery module.'
   },
 
+  tutorials: {
+    title: 'Tutorials',
+    description: 'Choose a client guide to connect to the Bestloong API.',
+    workBuddy: 'Work Buddy',
+    codexWindows: 'Codex Windows'
+  },
+
   // Subscription Progress (Header component)
   subscriptionProgress: {
     title: 'My Subscriptions',

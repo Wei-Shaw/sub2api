@@ -4,6 +4,13 @@ export default {
     pendingModule: '该页面将在后续交付模块中完善。'
   },
 
+  tutorials: {
+    title: '使用教程',
+    description: '按客户端选择对应教程，接入 Bestloong API。',
+    workBuddy: 'Work Buddy',
+    codexWindows: 'Codex Windows'
+  },
+
   // Subscription Progress (Header component)
   subscriptionProgress: {
     title: '我的订阅',

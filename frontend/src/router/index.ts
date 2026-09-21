@@ -268,7 +268,7 @@ const routes: RouteRecordRaw[] = [
   {
     path: '/tutorials',
     name: 'Tutorials',
-    component: () => import('@/views/user/BestloongPendingView.vue'),
+    component: () => import('@/views/user/TutorialsView.vue'),
     meta: {
       requiresAuth: true,
       requiresAdmin: false,
@@ -279,7 +279,7 @@ const routes: RouteRecordRaw[] = [
   {
     path: '/about',
     name: 'AboutUs',
-    component: () => import('@/views/user/BestloongPendingView.vue'),
+    component: () => import('@/views/user/AboutView.vue'),
     meta: {
       requiresAuth: true,
       requiresAdmin: false,
