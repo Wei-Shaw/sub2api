@@ -65,6 +65,12 @@ func shouldPreserveOpenAIResponsesNoneReasoningEffort(account *Account) bool {
 	if account == nil {
 		return false
 	}
+	// Chat Completions uses an explicit "none" to disable reasoning on
+	// compatible models (e.g. Qwen). Dropping it before the Responses bridge
+	// restores the upstream default and can unexpectedly enable thinking.
+	if shouldForwardOpenAIResponsesViaRawChatCompletions(account) {
+		return true
+	}
 	if account.IsOpenAIPassthroughEnabled() {
 		return true
 	}
@@ -80,7 +86,8 @@ func shouldPreserveOpenAIResponsesNoneReasoningEffort(account *Account) bool {
 
 // Codex 0.149.0 needs a single advertised effort to directly select a visible
 // non-reasoning model. Treat that catalog-only "none" value as omission for
-// compatible upstreams, while preserving official OpenAI request semantics.
+// native Responses compatible upstreams, while preserving official OpenAI
+// semantics and explicit reasoning controls on the Chat Completions bridge.
 func filterOpenAIResponsesNoneReasoningEffortForAccount(account *Account, body []byte) ([]byte, error) {
 	if len(body) == 0 || shouldPreserveOpenAIResponsesNoneReasoningEffort(account) {
 		return body, nil
