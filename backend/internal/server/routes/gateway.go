@@ -64,9 +64,11 @@ func RegisterGatewayRoutes(
 	}
 	// typesafe 分组没有对话端点（/messages、/chat/completions、/responses、
 	// /messages/count_tokens），必须在这几个入口显式拒绝：通用 Anthropic 网关按
-	// platform 过滤后仍会选中 typesafe 账号，再走 (*Account).GetBaseURL()——它在
-	// base_url 为空时无条件回落 https://api.anthropic.com，等于把 typesafe 的 key
-	// 当 Anthropic key 发到 Anthropic 官方域名。返回 true 表示已拒绝。
+	// platform 过滤后仍会选中 typesafe 账号，不拦就会落到通用网关/上游，拿到一个
+	// 语义不清的上游错误；这里改为干净的显式 404。曾经担心的「key 被当 Anthropic
+	// key 发到 https://api.anthropic.com」已不成立——(*Account).GetBaseURL() 现在
+	// 对 typesafe 早退返回空串，官方域名回落这条路已在 base URL 层关闭。
+	// 返回 true 表示已拒绝。
 	rejectTypeSafeConversationalEndpoint := func(c *gin.Context, apiName string) bool {
 		if !isTypeSafeGatewayPlatform(c) {
 			return false
