@@ -843,8 +843,34 @@ func TestGetFallbackPricing_FamilyMatching(t *testing.T) {
 			expectedInput: 0.098e-6,
 		},
 
+		// ---- TypeSafe Jev（System One）内置兜底价 ----
+		// 官方价：输入 $0.042/MTok、输出 FREE。期望值刻意写成 0.042/1e6（而非
+		// 4.2e-8 字面量）以钉死 USD-per-token 量级：若将来有人把 $/MTok 写法
+		// （0.042）直接填进兜底表，这里会差 100 万倍而立刻失败。
+		{
+			name:           "typesafe jev latest",
+			model:          "jev-latest",
+			expectedInput:  0.042 / 1e6,
+			expectedOutput: floatPtr(0),
+		},
+		{
+			// 上游把 jev-latest 解析成真实版本号（生产实测 jev-1.13.0），前缀规则须覆盖。
+			name:           "typesafe jev resolved version",
+			model:          "jev-1.13.0",
+			expectedInput:  0.042 / 1e6,
+			expectedOutput: floatPtr(0),
+		},
+		{
+			name:           "typesafe jev future preview alias",
+			model:          "jev-preview",
+			expectedInput:  0.042 / 1e6,
+			expectedOutput: floatPtr(0),
+		},
+
 		// ---- 负向用例 ----
 		{name: "qwen unknown no fallback", model: "qwen-max", expectNilPricing: true},
+		// jev- 前缀规则不得放宽成通吃：与 jev 无关的未知模型仍然返回 nil。
+		{name: "unrelated unknown model no fallback", model: "foo-unknown-model-xyz", expectNilPricing: true},
 		// doubao-pro / doubao-embedding（纯文本）不在白名单，不回退；仅 doubao-embedding-vision 显式命中。
 		{name: "doubao unknown no fallback", model: "doubao-pro", expectNilPricing: true},
 		{name: "doubao text embedding no fallback", model: "doubao-embedding-text-240515", expectNilPricing: true},

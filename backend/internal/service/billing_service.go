@@ -962,6 +962,21 @@ func (s *BillingService) initFallbackPricing() {
 		LongContextInputMultiplier:    2,
 		LongContextOutputMultiplier:   2,
 	}
+
+	// ---- TypeSafe Jev（System One）----
+	// TypeSafe 的 Jev 家族属于"目录里没有的生产 SKU"（LiteLLM 目录不含该模型，
+	// 既同步不到远端价表，也无法在渠道页手选），所以整条价卡内置在这里，
+	// 保证同镜像在任何环境裸部署后、只要有人配了 typesafe 账号/分组即可正确计价。
+	// 官方价（核价日期 2026-09-21）：输入 tokens = $0.042 / MTok；输出 tokens = FREE。
+	// 来源：https://typesafe.ai/blog/introducing-system-one-models-and-jev
+	// 单位换算：本结构体口径是 USD per token，故 $0.042/MTok → 0.042e-6 = 4.2e-8，输出为 0。
+	// 量级坑：把 $/MTok 写法直接填进来会差 100 万倍；单测以 0.042/1e6 钉死量级。
+	// 命中由同文件 getFallbackPricing 的 `jev-` 前缀家族规则负责（jev-latest / jev-1.13.0 / jev-preview ...）。
+	s.fallbackPrices["jev-latest"] = &ModelPricing{
+		InputPricePerToken:     0.042e-6, // $0.042 per MTok
+		OutputPricePerToken:    0,        // FREE
+		SupportsCacheBreakdown: false,
+	}
 }
 
 // getFallbackPricing 根据模型系列获取回退价格
@@ -1042,6 +1057,16 @@ func (s *BillingService) getFallbackPricing(model string) *ModelPricing {
 	}
 	if strings.HasPrefix(modelLower, "deepseek-") {
 		return s.fallbackPrices["deepseek-v4-flash"]
+	}
+
+	// TypeSafe Jev 家族（System One）：走 `jev-` 命名空间前缀匹配，理由有两条：
+	// ① TypeSafe 的 Jev 家族模型都在 `jev-` 命名空间下——上游会把 `jev-latest`
+	//    解析成真实版本（实测 `jev-1.13.0`），将来还可能有 `jev-preview` 等；
+	//    前缀匹配可覆盖整个家族，且新版本名发布后无需再改代码。
+	// ② 不要放宽到其它前缀：本函数既有的"白名单语义、未知型号不回退以避免误计价"
+	//    必须保持——任何非 `jev-` 的未知模型仍然返回 nil（fail-open 记零成本 + 告警）。
+	if strings.HasPrefix(modelLower, "jev-") {
+		return s.fallbackPrices["jev-latest"]
 	}
 
 	// ---- 国产 LLM 兜底匹配 ----
