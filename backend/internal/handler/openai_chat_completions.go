@@ -152,6 +152,7 @@ func (h *OpenAIGatewayHandler) ChatCompletions(c *gin.Context) {
 	maxAccountSwitches := h.maxAccountSwitches
 	switchCount := 0
 	profitVetoCount := 0
+	clientVetoCount := 0
 	failedAccountIDs := make(map[int64]struct{})
 	sameAccountRetryCount := make(map[int64]int)
 	var lastFailoverErr *service.UpstreamFailoverError
@@ -159,6 +160,7 @@ func (h *OpenAIGatewayHandler) ChatCompletions(c *gin.Context) {
 
 	// 分组利润控制：chat completions 文本入口请求级装门并固定 pricingAt。
 	ccPricingCtx, pricingAt := h.gatewayService.WithOpenAIRequestPricingContext(c.Request.Context(), apiKey.GroupID)
+	ccPricingCtx = h.gatewayService.WithOpenAICodexClientAdmission(ccPricingCtx, c, body)
 	c.Request = c.Request.WithContext(ccPricingCtx)
 
 	for {
@@ -189,6 +191,13 @@ func (h *OpenAIGatewayHandler) ChatCompletions(c *gin.Context) {
 				zap.Error(openAICompatibleSelectionErrorForLog(err, requestPlatform)),
 				zap.Int("excluded_account_count", len(failedAccountIDs)),
 			)
+			if lastFailoverErr == nil && h.handleOpenAICodexAdmissionError(c, err, streamStarted, false) {
+				return
+			}
+			if lastFailoverErr == nil && allExcludedOpenAIAccountsWereClientVetoed(failedAccountIDs, clientVetoCount) {
+				h.handleOpenAIClientAdmissionExhausted(c, c.Request.Context(), streamStarted, false)
+				return
+			}
 			if len(failedAccountIDs) == 0 {
 				cls := classifyOpenAICompatibleNoAccountErrorFromGin(c, h.gatewayService, apiKey, reqModel, reqModel)
 				cls = classifySelectionFailureError(err, cls)
@@ -229,9 +238,21 @@ func (h *OpenAIGatewayHandler) ChatCompletions(c *gin.Context) {
 			}
 			continue
 		}
+		if slotResult == openAISlotAcquireClientAdmissionUnavailable {
+			h.handleOpenAIClientAdmissionExhausted(c, c.Request.Context(), streamStarted, false)
+			return
+		}
+		if slotResult == openAISlotAcquireClientVetoed {
+			if !recordOpenAIClientAdmissionVeto(failedAccountIDs, account.ID, &clientVetoCount) {
+				h.handleOpenAIClientAdmissionExhausted(c, c.Request.Context(), streamStarted, false)
+				return
+			}
+			continue
+		}
 		if slotResult != openAISlotAcquireOK {
 			return
 		}
+		account = selection.Account
 
 		service.SetOpsLatencyMs(c, service.OpsRoutingLatencyMsKey, time.Since(routingStart).Milliseconds())
 		forwardStart := time.Now()
@@ -309,6 +330,17 @@ func (h *OpenAIGatewayHandler) ChatCompletions(c *gin.Context) {
 			})
 		}
 		if err != nil {
+			if errors.Is(err, service.ErrCodexClientAdmissionUnavailable) {
+				h.handleOpenAICodexAdmissionError(c, err, streamStarted, false)
+				return
+			}
+			if errors.Is(err, service.ErrCodexClientRestricted) {
+				if !recordOpenAIClientAdmissionVeto(failedAccountIDs, account.ID, &clientVetoCount) {
+					h.handleOpenAIClientAdmissionExhausted(c, c.Request.Context(), streamStarted, false)
+					return
+				}
+				continue
+			}
 			if result != nil && result.ImageCount > 0 {
 				reqLog.Warn("openai_chat_completions.forward_partial_error_with_image_result",
 					zap.Int64("account_id", account.ID),

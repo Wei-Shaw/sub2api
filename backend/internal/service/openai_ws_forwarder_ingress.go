@@ -83,6 +83,9 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 	if account == nil {
 		return errors.New("account is nil")
 	}
+	if _, err := s.enforceOpenAICodexClientAdmissionBeforeUpstream(ctx, account); err != nil {
+		return err
+	}
 	// A handler may reuse the same gin context across account failover attempts.
 	// Never let an OAuth attempt's response aliases leak into the next account.
 	setCodexToolNameReverse(c, nil)
@@ -137,9 +140,8 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 				forceHTTPBridge = true
 				break
 			}
-			// 首轮准入由握手路径完成；后续 response.create 会在写入上游前
-			// 依次回调 BeforeRequest 和 BeforeTurn，并在终止或失败时回调
-			// AfterTurn，从而覆盖 turn 级利润复核、定价冻结和并发槽位释放。
+			// 每个 response.create 都在写入上游前复核终端准入并冻结定价；
+			// 后续 turn 先调用 BeforeRequest，终止或失败时由 AfterTurn 释放槽位。
 			return s.proxyResponsesWebSocketV2Passthrough(
 				ctx,
 				c,
