@@ -56,7 +56,34 @@ func RegisterGatewayRoutes(
 			return false
 		}
 	}
+	// TypeSafe AI 的 Jev 判断题服务（POST /v1/systemone）只有 typesafe 分组可以访问。
+	// 刻意不复用 isOpenAIOnlyEndpointGatewayPlatform：后者要求
+	// group platform == PlatformOpenAI，会把 typesafe 分组全部挡在门外。
+	isTypeSafeGatewayPlatform := func(c *gin.Context) bool {
+		return getGroupPlatform(c) == service.PlatformTypeSafe
+	}
+	// typesafe 分组没有对话端点（/messages、/chat/completions、/responses、
+	// /messages/count_tokens），必须在这几个入口显式拒绝：通用 Anthropic 网关按
+	// platform 过滤后仍会选中 typesafe 账号，再走 (*Account).GetBaseURL()——它在
+	// base_url 为空时无条件回落 https://api.anthropic.com，等于把 typesafe 的 key
+	// 当 Anthropic key 发到 Anthropic 官方域名。返回 true 表示已拒绝。
+	rejectTypeSafeConversationalEndpoint := func(c *gin.Context, apiName string) bool {
+		if !isTypeSafeGatewayPlatform(c) {
+			return false
+		}
+		service.MarkOpsClientBusinessLimited(c, service.OpsClientBusinessLimitedReasonLocalFeatureGate)
+		c.JSON(http.StatusNotFound, gin.H{
+			"error": gin.H{
+				"type":    "not_found_error",
+				"message": apiName + " is not supported for TypeSafe groups; POST /v1/systemone is the only available endpoint",
+			},
+		})
+		return true
+	}
 	countTokensHandler := func(c *gin.Context) {
+		if rejectTypeSafeConversationalEndpoint(c, "Count Tokens API") {
+			return
+		}
 		switch getGroupPlatform(c) {
 		case service.PlatformOpenAI, service.PlatformKimi, service.PlatformZhipu, service.PlatformDeepseek, service.PlatformMiniMax, service.PlatformOpenCodeGo:
 			h.OpenAIGateway.CountTokens(c)
@@ -196,6 +223,9 @@ func RegisterGatewayRoutes(
 	{
 		// /v1/messages: auto-route based on group platform
 		gateway.POST("/messages", func(c *gin.Context) {
+			if rejectTypeSafeConversationalEndpoint(c, "Messages API") {
+				return
+			}
 			if isOpenAIResponsesCompatibleGatewayPlatform(c) {
 				h.OpenAIGateway.Messages(c)
 				return
@@ -216,6 +246,9 @@ func RegisterGatewayRoutes(
 		gateway.GET("/live/:call_id", h.OpenAIGateway.LiveSideband)
 		// OpenAI Responses API: auto-route based on group platform
 		gateway.POST("/responses", func(c *gin.Context) {
+			if rejectTypeSafeConversationalEndpoint(c, "Responses API") {
+				return
+			}
 			if isOpenAIResponsesCompatibleGatewayPlatform(c) {
 				h.OpenAIGateway.Responses(c)
 				return
@@ -223,6 +256,9 @@ func RegisterGatewayRoutes(
 			h.Gateway.Responses(c)
 		})
 		gateway.POST("/responses/*subpath", guardResponsesSubpath(func(c *gin.Context) {
+			if rejectTypeSafeConversationalEndpoint(c, "Responses API") {
+				return
+			}
 			if isOpenAIResponsesCompatibleGatewayPlatform(c) {
 				h.OpenAIGateway.Responses(c)
 				return
@@ -235,6 +271,9 @@ func RegisterGatewayRoutes(
 		})
 		// OpenAI Chat Completions API: auto-route based on group platform
 		gateway.POST("/chat/completions", func(c *gin.Context) {
+			if rejectTypeSafeConversationalEndpoint(c, "Chat Completions API") {
+				return
+			}
 			if isOpenAIResponsesCompatibleGatewayPlatform(c) {
 				h.OpenAIGateway.ChatCompletions(c)
 				return
@@ -253,6 +292,22 @@ func RegisterGatewayRoutes(
 				return
 			}
 			h.OpenAIGateway.Embeddings(c)
+		})
+		// TypeSafe AI 的 Jev 判断题服务是非 OpenAI 兼容的原生透传端点
+		// （请求 {model,state,questions}，响应 {model,usage,answers}，无流式），
+		// 因此用独立的平台门：只有 typesafe 分组可以访问。
+		gateway.POST("/systemone", textBodyLimit, func(c *gin.Context) {
+			if !isTypeSafeGatewayPlatform(c) {
+				service.MarkOpsClientBusinessLimited(c, service.OpsClientBusinessLimitedReasonLocalFeatureGate)
+				c.JSON(http.StatusNotFound, gin.H{
+					"error": gin.H{
+						"type":    "not_found_error",
+						"message": "System One API is not supported for this platform",
+					},
+				})
+				return
+			}
+			h.OpenAIGateway.SystemOne(c)
 		})
 		gateway.POST("/images/generations", imagesHandler)
 		gateway.POST("/images/edits", imagesHandler)
@@ -357,6 +412,9 @@ func RegisterGatewayRoutes(
 
 	// OpenAI Responses API（不带v1前缀的别名）— auto-route based on group platform
 	responsesHandler := func(c *gin.Context) {
+		if rejectTypeSafeConversationalEndpoint(c, "Responses API") {
+			return
+		}
 		if isOpenAIResponsesCompatibleGatewayPlatform(c) {
 			h.OpenAIGateway.Responses(c)
 			return
@@ -397,6 +455,9 @@ func RegisterGatewayRoutes(
 	}
 	// OpenAI Chat Completions API（不带v1前缀的别名）— auto-route based on group platform
 	rootRoute(http.MethodPost, "/chat/completions", bodyLimit, func(c *gin.Context) {
+		if rejectTypeSafeConversationalEndpoint(c, "Chat Completions API") {
+			return
+		}
 		if isOpenAIResponsesCompatibleGatewayPlatform(c) {
 			h.OpenAIGateway.ChatCompletions(c)
 			return
