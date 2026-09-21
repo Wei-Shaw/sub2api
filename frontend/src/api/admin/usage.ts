@@ -21,6 +21,7 @@ export interface AdminUsageStatsResponse {
   total_actual_cost: number
   total_account_cost: number
   average_duration_ms: number
+  average_latency_ms?: number
   endpoints?: EndpointStat[]
   upstream_endpoints?: EndpointStat[]
   endpoint_paths?: EndpointStat[]

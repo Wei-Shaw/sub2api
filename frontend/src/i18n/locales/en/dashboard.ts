@@ -349,6 +349,7 @@ export default {
     resetPending: 'Pending refresh',
     accountMultiplier: 'Account rate',
     avgDuration: 'Avg Duration',
+    elapsed: 'Duration',
     inSelectedRange: 'in selected range',
     perRequest: 'per request',
     apiKeyFilter: 'API Key',

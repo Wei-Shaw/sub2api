@@ -65,9 +65,9 @@
       <div class="min-w-0 flex-1">
         <p class="text-xs font-medium text-gray-500">{{ t('usage.totalCost') }}</p>
         <p class="text-xl font-bold text-green-600">
-          ${{ (stats?.total_actual_cost || 0).toFixed(4) }}
+          {{ currencySymbol }}{{ (stats?.total_actual_cost || 0).toFixed(4) }}
         </p>
-        <p class="text-xs text-gray-400">
+        <p v-if="showCostBreakdown" class="text-xs text-gray-400">
           <template v-if="showAccountCost && totalAccountCost != null">
             <span class="text-orange-500">{{ t('usage.accountCost') }} ${{ totalAccountCost.toFixed(4) }}</span>
             <span> · </span>
@@ -83,7 +83,7 @@
       <div class="rounded-lg bg-purple-100 p-2 dark:bg-purple-900/30 text-purple-600">
         <Icon name="clock" size="md" />
       </div>
-      <div><p class="text-xs font-medium text-gray-500">{{ t('usage.avgDuration') }}</p><p class="text-xl font-bold">{{ formatDuration(stats?.average_duration_ms || 0) }}</p></div>
+      <div><p class="text-xs font-medium text-gray-500">{{ t('usage.avgDuration') }}</p><p class="text-xl font-bold">{{ formatDuration(stats?.average_latency_ms ?? stats?.average_duration_ms ?? 0) }}</p></div>
     </div>
   </div>
 </template>
@@ -99,9 +99,13 @@ const props = withDefaults(defineProps<{
   stats: (AdminUsageStatsResponse | UsageStatsResponse) | null
   showAccountCost?: boolean
   strikeStandardCost?: boolean
+  currencySymbol?: string
+  showCostBreakdown?: boolean
 }>(), {
   showAccountCost: true,
   strikeStandardCost: false,
+  currencySymbol: '$',
+  showCostBreakdown: true,
 })
 
 const { t } = useI18n()

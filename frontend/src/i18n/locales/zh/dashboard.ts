@@ -354,6 +354,7 @@ export default {
     resetPending: '待刷新',
     accountMultiplier: '账号倍率',
     avgDuration: '平均耗时',
+    elapsed: '用时',
     inSelectedRange: '所选范围内',
     perRequest: '每次请求',
     apiKeyFilter: 'API 密钥',

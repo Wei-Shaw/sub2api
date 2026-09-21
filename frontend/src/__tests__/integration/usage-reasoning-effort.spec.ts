@@ -246,17 +246,14 @@ describe('usage reasoning effort page display', () => {
     localStorage.clear()
   })
 
-  it('user usage page only shows the requested reasoning effort', async () => {
+  it('user usage page omits reasoning effort from the R4 record columns', async () => {
     const wrapper = mount(UserUsageView, {
       global: { stubs: sharedPageStubs },
     })
     await flushPromises()
 
-    const cell = reasoningCellText(wrapper)
-    expect(cell).toContain('Max')
-    expect(cell).not.toContain('XHigh')
-    expect(cell).not.toContain('↳')
-    expect(wrapper.text()).not.toContain('XHigh')
+    expect(wrapper.find('[data-testid="reasoning-effort-cell"]').exists()).toBe(false)
+    expect(userQuery).toHaveBeenCalledWith(expect.objectContaining({ page_size: 10 }), expect.anything())
   })
 
   it('admin usage page shows requested and mapped effort after the column is enabled', async () => {

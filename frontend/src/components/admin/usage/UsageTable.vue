@@ -205,10 +205,18 @@
           </div>
         </template>
 
+        <template #cell-input_tokens="{ row }">
+          <span class="text-sm font-medium tabular-nums text-gray-900 dark:text-white">{{ row.input_tokens?.toLocaleString() || 0 }}</span>
+        </template>
+
+        <template #cell-output_tokens="{ row }">
+          <span class="text-sm font-medium tabular-nums text-gray-900 dark:text-white">{{ row.output_tokens?.toLocaleString() || 0 }}</span>
+        </template>
+
         <template #cell-cost="{ row }">
           <div class="text-sm">
             <div class="flex items-center gap-1.5">
-              <span class="font-medium text-green-600 dark:text-green-400">${{ row.actual_cost?.toFixed(6) || '0.000000' }}</span>
+              <span class="font-medium text-green-600 dark:text-green-400">{{ currencySymbol }}{{ row.actual_cost?.toFixed(6) || '0.000000' }}</span>
               <span
                 v-if="row.long_context_billing_applied"
                 data-testid="long-context-billing-marker"
@@ -216,6 +224,7 @@
               >x2</span>
               <!-- Cost Detail Tooltip -->
               <div
+                v-if="showCostDetails"
                 class="group relative"
                 @mouseenter="showTooltip($event, row)"
                 @mouseleave="hideTooltip"
@@ -233,7 +242,10 @@
 
         <!-- 合并首字/总耗时的健康度列：左侧色条上端随首字档、下端随总耗时档，中段(40%-60%)短渐变过渡，便于纵向扫视整体健康状况 -->
         <template #cell-latency="{ row }">
-          <div class="flex items-stretch gap-2">
+          <div v-if="latencyDisplay === 'preferred'" class="text-sm font-medium tabular-nums text-gray-900 dark:text-white">
+            {{ formatDuration(row.first_token_ms ?? row.duration_ms) }}
+          </div>
+          <div v-else class="flex items-stretch gap-2">
             <span
               class="w-1 shrink-0 rounded-full"
               :class="row.first_token_ms != null
@@ -597,6 +609,9 @@ interface Props {
   showUpstreamEndpoint?: boolean
   /** 嵌入统一卡片内使用：去掉自身卡片外观 */
   flat?: boolean
+  currencySymbol?: string
+  showCostDetails?: boolean
+  latencyDisplay?: 'detailed' | 'preferred'
 }
 
 const props = withDefaults(defineProps<Props>(), {
@@ -606,7 +621,10 @@ const props = withDefaults(defineProps<Props>(), {
   defaultSortOrder: 'asc',
   showAccountBilling: true,
   showUpstreamEndpoint: true,
-  flat: false
+  flat: false,
+  currencySymbol: '$',
+  showCostDetails: true,
+  latencyDisplay: 'detailed'
 })
 const emit = defineEmits<{
   userClick: [userID: number, email?: string]
@@ -618,6 +636,9 @@ const appStore = useAppStore()
 const copiedRequestId = ref<string | null>(null)
 const showAccountBilling = props.showAccountBilling
 const showUpstreamEndpoint = props.showUpstreamEndpoint
+const currencySymbol = props.currencySymbol
+const showCostDetails = props.showCostDetails
+const latencyDisplay = props.latencyDisplay
 const ipGeoBatchLoading = ref(false)
 
 const showIpGeoToolbar = computed(() => props.columns.some((col) => col.key === 'ip_address'))
