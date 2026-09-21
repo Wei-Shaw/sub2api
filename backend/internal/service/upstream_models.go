@@ -21,7 +21,7 @@ import (
 const (
 	upstreamModelsBodyLimit             int64 = 8 << 20
 	modelsDevRegistryURL                      = "https://models.dev/api.json"
-	modelsDevRegistryTTL                      = 6 * time.Hour
+	modelsDevRegistryTTLSeconds               = 6 * 60 * 60
 	UpstreamModelMetadataExtraKey             = "upstream_model_metadata"
 	UpstreamModelMetadataIncompleteCode       = "upstream_model_metadata_incomplete"
 	UpstreamModelMetadataPartialCode          = "upstream_model_metadata_partial"
@@ -530,16 +530,27 @@ func (s *AccountTestService) fetchModelsDevMetadata(
 }
 
 func (s *AccountTestService) fetchModelsDevRegistry(ctx context.Context, account *Account) (map[string]modelsDevProvider, error) {
+	registryURL := modelsDevRegistryURL
+	registryTTLSeconds := modelsDevRegistryTTLSeconds
+	if s.settingService != nil {
+		settings, err := s.settingService.GetAllSettings(ctx)
+		if err != nil {
+			return nil, err
+		}
+		registryURL = settings.ModelsDevRegistryURL
+		registryTTLSeconds = settings.ModelsDevRegistryTTL
+	}
+	registryTTL := time.Duration(registryTTLSeconds) * time.Second
 	now := time.Now()
 	s.modelMetadataRegistryMu.Lock()
-	if len(s.modelMetadataRegistry) > 0 && now.Sub(s.modelMetadataRegistryAt) < modelsDevRegistryTTL {
+	if len(s.modelMetadataRegistry) > 0 && now.Sub(s.modelMetadataRegistryAt) < registryTTL {
 		cached := s.modelMetadataRegistry
 		s.modelMetadataRegistryMu.Unlock()
 		return cached, nil
 	}
 	s.modelMetadataRegistryMu.Unlock()
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, modelsDevRegistryURL, nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, registryURL, nil)
 	if err != nil {
 		return nil, err
 	}

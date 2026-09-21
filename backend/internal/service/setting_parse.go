@@ -198,6 +198,8 @@ func (s *SettingService) InitializeDefaultSettings(ctx context.Context) error {
 		SettingKeyGrokDefaultTextModel:           "grok-4.6",
 		SettingKeyGrokCrossClientModelMapEnabled: "true",
 		SettingKeyGrokDefaultBaseURLMode:         GrokDefaultBaseURLModeCLI,
+		SettingKeyModelsDevRegistryURL:           modelsDevRegistryURL,
+		SettingKeyModelsDevRegistryTTL:           strconv.Itoa(modelsDevRegistryTTLSeconds),
 
 		// Available channels feature (default disabled; opt-in)
 		SettingKeyAvailableChannelsEnabled: "false",
@@ -819,6 +821,13 @@ func (s *SettingService) parseSettings(settings map[string]string) *SystemSettin
 	// Operators can set false to disable silent cross-client rewrite.
 	result.GrokCrossClientModelMapEnabled = !isFalseSettingValue(settings[SettingKeyGrokCrossClientModelMapEnabled])
 	result.GrokDefaultBaseURLMode = normalizeGrokDefaultBaseURLMode(settings[SettingKeyGrokDefaultBaseURLMode])
+
+	// Custom model metadata provider (default: https://models.dev, ttl: 6 hours)
+	result.ModelsDevRegistryURL = strings.TrimSpace(settings[SettingKeyModelsDevRegistryURL])
+	result.ModelsDevRegistryTTL = modelsDevRegistryTTLSeconds
+	if ttl, err := strconv.Atoi(strings.TrimSpace(settings[SettingKeyModelsDevRegistryTTL])); err == nil {
+		result.ModelsDevRegistryTTL = ttl
+	}
 
 	// Available channels feature (default: disabled; strict true)
 	result.AvailableChannelsEnabled = settings[SettingKeyAvailableChannelsEnabled] == "true"

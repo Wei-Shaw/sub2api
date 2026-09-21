@@ -341,6 +341,10 @@ type UpdateSettingsRequest struct {
 	GrokCrossClientModelMapEnabled *bool   `json:"grok_cross_client_model_map_enabled"`
 	GrokDefaultBaseURLMode         *string `json:"grok_default_base_url_mode"`
 
+	// 	Custom model metadata provider
+	ModelsDevRegistryURL *string `json:"models_dev_registry_url"`
+	ModelsDevRegistryTTL *int    `json:"models_dev_registry_ttl"`
+
 	// Available Channels feature switch (user-facing)
 	AvailableChannelsEnabled *bool `json:"available_channels_enabled"`
 
@@ -1933,6 +1937,18 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 				return strings.TrimSpace(*req.GrokDefaultBaseURLMode)
 			}
 			return previousSettings.GrokDefaultBaseURLMode
+		}(),
+		ModelsDevRegistryURL: func() string {
+			if req.ModelsDevRegistryURL != nil {
+				return strings.TrimSpace(*req.ModelsDevRegistryURL)
+			}
+			return previousSettings.ModelsDevRegistryURL
+		}(),
+		ModelsDevRegistryTTL: func() int {
+			if req.ModelsDevRegistryTTL != nil {
+				return *req.ModelsDevRegistryTTL
+			}
+			return previousSettings.ModelsDevRegistryTTL
 		}(),
 		AvailableChannelsEnabled: func() bool {
 			if req.AvailableChannelsEnabled != nil {

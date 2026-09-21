@@ -477,6 +477,14 @@ export default {
         saved: 'Ollama Cloud usage refresh settings saved',
         saveFailed: 'Failed to save Ollama Cloud usage refresh settings'
       },
+      modelMetadataRegistry: {
+        title: 'Model Metadata Registry',
+        description: 'Configure the models.dev-compatible registry used to fill missing model metadata.',
+        url: 'Registry URL',
+        urlHint: 'The endpoint must return a models.dev-compatible api.json response.',
+        ttl: 'Cache TTL (seconds)',
+        ttlHint: 'Default: 21600 seconds (6 hours). Set to 0 to disable caching.',
+      },
       gatewayForwarding: {
         title: 'Request Forwarding',
         description: 'Control how requests are forwarded to upstream OAuth accounts',

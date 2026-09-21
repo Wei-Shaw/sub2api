@@ -4492,6 +4492,51 @@
             </div>
           </div>
 
+          <!-- Model Metadata Registry -->
+          <div class="card">
+            <div class="border-b border-gray-100 px-6 py-4 dark:border-dark-700">
+              <h2 class="text-lg font-semibold text-gray-900 dark:text-white">
+                {{ t("admin.settings.modelMetadataRegistry.title") }}
+              </h2>
+              <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                {{ t("admin.settings.modelMetadataRegistry.description") }}
+              </p>
+            </div>
+            <div class="grid gap-5 p-6 md:grid-cols-2">
+              <div>
+                <label for="models-dev-registry-url" class="text-sm font-medium text-gray-700 dark:text-gray-300">
+                  {{ t("admin.settings.modelMetadataRegistry.url") }}
+                </label>
+                <input
+                  id="models-dev-registry-url"
+                  v-model.trim="form.models_dev_registry_url"
+                  type="text"
+                  class="input mt-2 w-full font-mono text-sm"
+                  placeholder="https://models.dev/api.json"
+                />
+                <p class="mt-1.5 text-xs text-gray-500 dark:text-gray-400">
+                  {{ t("admin.settings.modelMetadataRegistry.urlHint") }}
+                </p>
+              </div>
+              <div>
+                <label for="models-dev-registry-ttl" class="text-sm font-medium text-gray-700 dark:text-gray-300">
+                  {{ t("admin.settings.modelMetadataRegistry.ttl") }}
+                </label>
+                <input
+                  id="models-dev-registry-ttl"
+                  v-model.number="form.models_dev_registry_ttl"
+                  type="number"
+                  min="0"
+                  step="1"
+                  class="input mt-2 w-full"
+                />
+                <p class="mt-1.5 text-xs text-gray-500 dark:text-gray-400">
+                  {{ t("admin.settings.modelMetadataRegistry.ttlHint") }}
+                </p>
+              </div>
+            </div>
+          </div>
+
           <!-- Codex Settings -->
           <div class="card">
             <div
@@ -9795,6 +9840,8 @@ const form = reactive<SettingsForm>({
   grok_default_text_model: "grok-4.5",
   grok_cross_client_model_map_enabled: false,
   grok_default_base_url_mode: "cli",
+  models_dev_registry_url: "https://models.dev/api.json",
+  models_dev_registry_ttl: 21600,
   // Identity patch (Claude -> Gemini)
   enable_identity_patch: true,
   identity_patch_prompt: "",
@@ -11418,6 +11465,8 @@ async function saveSettings() {
       grok_cross_client_model_map_enabled:
         form.grok_cross_client_model_map_enabled,
       grok_default_base_url_mode: form.grok_default_base_url_mode,
+      models_dev_registry_url: form.models_dev_registry_url,
+      models_dev_registry_ttl: form.models_dev_registry_ttl,
       enable_identity_patch: form.enable_identity_patch,
       identity_patch_prompt: form.identity_patch_prompt,
       min_claude_code_version: form.min_claude_code_version,

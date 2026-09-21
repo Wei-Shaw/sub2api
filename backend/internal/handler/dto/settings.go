@@ -315,6 +315,10 @@ type SystemSettings struct {
 	GrokCrossClientModelMapEnabled bool   `json:"grok_cross_client_model_map_enabled"`
 	GrokDefaultBaseURLMode         string `json:"grok_default_base_url_mode"`
 
+	// Custom model metadata provider
+	ModelsDevRegistryURL string `json:"models_dev_registry_url"`
+	ModelsDevRegistryTTL int    `json:"models_dev_registry_ttl"`
+
 	// Available Channels feature switch (user-facing aggregate view)
 	AvailableChannelsEnabled bool `json:"available_channels_enabled"`
 
