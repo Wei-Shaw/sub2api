@@ -5,7 +5,7 @@
 > **范围**: 一级平台 `platform=typesafe`（TypeSafe AI 的 Jev 判断题服务）+ 原生透传端点 `POST /v1/systemone`
 > **文档位置**: 本文已从本地研究笔记目录 `docs/research/`（`docs/*` 默认忽略、不入库）归位到 `docs/TYPESAFE_PLATFORM.md`，并在 `.gitignore` 的 `!docs/...` 白名单中登记；这次归位本身是紧随 `a5769ffa4` 之后的一个提交。
 > **证据基线**: 本文所有路径、行号、测试名、环境变量均在本分支工作区逐条核实过；带「未验证」标注的除外。行号对应上述 HEAD `a5769ffa4` 的工作区状态。
-> **生产验证**: 另有一次 2026-09-21 的**生产端到端实测**（生产版本 `v0.9.338`），结论单列在 **§6.1**；它属运行证据、没有代码行号依据，也不进仓库自动化测试。
+> **生产验证**: 另有一次 2026-09-21 的**生产端到端实测**（生产版本 `v0.9.338`），结论单列在 **§6.1**；它属运行证据、没有代码行号依据，也不进仓库自动化测试。同日还按 TypeSafe 官方价格完成了分组定价卡配置与计费验证，单列在 **§6.3**。
 
 ---
 
@@ -110,6 +110,7 @@ f09a07449 feat(typesafe): add /v1/systemone passthrough endpoint
    - **分组模型定价卡**：分组新建 / 编辑表单里的 `model_pricing` 列表（`frontend/src/views/admin/GroupsView.vue:1494`、`:3144`，组件 `PricingEntryCard`）。
    - **渠道按模型定价**：渠道页面顶部按平台切换的标签页由 `platformOrder` 驱动（`frontend/src/views/admin/ChannelsView.vue:236`、`:766`），在渠道表单里加 pricing rule（`ChannelsView.vue:446-450`）。**本分支这条已可用**（`platformOrder` 已含 typesafe）；**在 integration 上需要合并后把 typesafe 加进 `platformOrder`**（integration 当前是 `[..., 'opencode_go', 'ollama_cloud']`，`integration:frontend/src/views/admin/ChannelsView.vue:766`）。
    - 注意：渠道里的「从 LiteLLM 目录同步模型」按钮**不支持 typesafe** —— `platformToLiteLLMProvider`（`backend/internal/handler/admin/channel_handler.go:637-648`）没有 typesafe，`SyncPricingModels` 会返回 `400 UNSUPPORTED_PLATFORM`（同文件 `:650-670`）。所以 typesafe 的定价只能手填。
+   - **生产现状（2026-09-21）**：实际采用的是**分组定价卡**（当时生产上没有任何 channel），已按 TypeSafe 官方价配好并验证，见 §6.3。
    - 具体界面字段名如与本文不符，**以当前界面为准**。
 5. **建绑定该分组的 API Key**：管理后台 →「API Keys」→ 新建，分组选第 1 步的 typesafe 分组。该分组的平台标签决定 `/v1/systemone` 的平台门是否放行。
 6. **客户端调用**：`POST /v1/systemone`。请求形状见第 1 节表格与第 6 节的 curl 示例。
@@ -212,7 +213,7 @@ TypeSafe 的 key 在本仓库有**两套互不相通**的存储，**当前不共
    - `/v1/embeddings` → 404 `"Embeddings API is not supported for this platform"`。
 4. **`GET /v1/models` → `{"data":[],"object":"list"}`**：有意空清单，**没有**回落 Claude 目录（第 4 节的行为在生产上确认）。
 5. **记账**：`usage_logs` 新增一行（model `jev-latest`、input 295、output 22、`billing_mode=token`、`stream=false`、`account_id=169`、`api_key_id=45`）；按 `groups` / `accounts` join 得出的平台归因是 **typesafe**；`inbound_endpoint` 与 `upstream_endpoint` **都是 `/v1/systemone`**（`backend/internal/handler/endpoint.go:94-95` 的映射在生产上确认）。**失败那一次没有产生 usage 行**；账号与 Key 的 `last_used_at` 均已更新。
-6. **成本为 0**：`jev-latest` 没有配置定价，走既有的 fail-open —— 记零成本并打 `openai_usage.pricing_missing_record_zero_cost` 告警（日志里 `billing_models: ["jev-latest"]`）。**运维待办：要按量计费，必须在分组定价卡或渠道按模型定价里给 `jev-latest` 配价**；渠道页的「从 LiteLLM 同步模型」对 typesafe 不可用（第 3 节第 4 条），只能手填。
+6. **成本为 0（当轮尚未配价）**：这一轮跑的时候 `jev-latest` 还没有配置定价，走既有的 fail-open —— 记零成本并打 `openai_usage.pricing_missing_record_zero_cost` 告警（日志里 `billing_models: ["jev-latest"]`）。fail-open 机制本身不变（命中不到价卡就按零成本记账并告警，不拒服务）；**原「运维待办：必须给 `jev-latest` 配价」已于同日完成** —— 按 TypeSafe 官方价格配好分组定价卡并实测通过，完整配置与验证见 **§6.3**。渠道页的「从 LiteLLM 同步模型」对 typesafe 不可用（第 3 节第 4 条），只能手填；生产当时也没有任何 channel，故渠道按模型定价不构成可选项。
 
 **C. 对第 4 节「上游错误体绝不透传」理由的修正**
 
@@ -226,6 +227,64 @@ TypeSafe 的 key 在本仓库有**两套互不相通**的存储，**当前不共
 - **并发与限流行为**：本轮只发了单请求，没有并发 / 压测样本。
 - **platform 级配额扣除路径**：生产该用户**没有** typesafe 的 `user_platform_quotas` 行，这条路径**未被触发**；目前链路仅有单测覆盖。
 - **图片等非文本输入**：协议本身不涉及（请求体只有 `state` / `questions` 文本字段）。
+
+### 6.3 计费配置与验证（2026-09-21）
+
+> 本节是**生产实配 + 实测**结论，接在 §6.1 之后：§6.1 那一轮跑的时候还没有价卡（fail-open 记零成本），本节记录其后按 TypeSafe 官方价格完成配置并验证的结果。口径同 §6.1 —— 只出现标识（`group id=39`、`account_id=169`、`api_key_id=45`），不写任何凭据内容；生产网关 host 沿用 `<生产网关域名>` 占位。
+
+**A. 官方价格与来源**
+
+- **TypeSafe 官方博客**「Introducing System One models and Jev」（https://typesafe.ai/blog/introducing-system-one-models-and-jev ）写明：**输入 tokens = `$0.042 / MTok`**（即 **$42 per billion tokens**）；**输出 tokens = FREE**（原文「too cheap to meter」）。
+- 第三方多源同值（DataCamp / flaviocopes / requesty 等）可作为**交叉印证**。
+- 因此本平台价格口径是：input `0.042` USD/MTok，output `0`。
+
+**B. 落在哪里：分组级定价卡 `groups.model_pricing`**
+
+- 存储位置为 **`groups.model_pricing`**（JSONB **数组**），条目结构与**渠道定价同构**（`service.ChannelModelPricing`）。
+- 生产分组 **`group id=39`**（TypeSafe / `platform=typesafe`）当前值（**单条**）：
+
+  | 字段 | 值 |
+  | --- | --- |
+  | `platform` | `typesafe` |
+  | `models` | `["jev-latest","jev-*"]` |
+  | `billing_mode` | `token` |
+  | `input_price` | `0.000000042` |
+  | `output_price` | `0` |
+  | `intervals` | `[]` |
+  | 其余价格字段 | `null` |
+
+- **单位坑（必须记住）**：库里存的是**每 token 的美元数**（USD **per token**），而前端界面显示与提交的是 **$/MTok**，提交时 ÷1e6。所以 `$0.042/MTok` 对应库值 **`0.000000042`**。把 `$0.042` 这种 $/MTok 写法直接写进库会**差 100 万倍**。
+- `models` 里的 **`jev-*` 是前缀通配**（配置名以 `*` 结尾即按前缀匹配），用于覆盖未来**按版本号固定模型名**的调用 —— 上游会把 `jev-latest` 解析为真实版本（§6.1 A 实测为 `jev-1.13.0`），命中前缀就不会漏计费。
+
+**C. 生效路径的坑（必须记住）**
+
+- 分组定价随「**API Key 认证快照**」缓存：**L1 进程内默认 15s**，**L2 Redis 默认 300s + 10% jitter**。
+- `groups` 表的失效触发器**不监控 `model_pricing` 列** ⇒ **直接写库不会触发失效**，最长约 **330s** 才生效。
+- 两种正确做法：
+  1. **推荐：走 admin API** `PUT /api/v1/admin/groups/{id}`，body 只需 `{"model_pricing":[…]}`（**指针局部更新**，值同样是 **per-token**）。服务端会做校验并**自动失效缓存**（跨实例广播），不必手工投递。
+  2. **只能写库时**：`UPDATE` 之后**补一次与触发器等价的失效投递**（cache_key 是 API Key 明文的 sha256 hex）：
+
+     ```sql
+     INSERT INTO auth_cache_invalidation_outbox (cache_key)
+     SELECT encode(sha256(convert_to(k.key,'UTF8')),'hex')
+     FROM api_keys k
+     WHERE k.group_id=<id> AND k.deleted_at IS NULL AND k.key <> '';
+     ```
+
+     并自行 `updated_at=NOW()`。本次生产就是这么做的：worker **两段投递均送达、队列已清空**。
+
+**D. 验证结果（生产实测）**
+
+- 调用 `POST /v1/systemone`（模型 `jev-latest`）→ **HTTP 200**。`usage_logs` 新增行：`input_tokens=295`、`output_tokens=22`、`input_cost=0.0000123900`、`output_cost=0`、`total_cost=actual_cost=0.0000123900`、`billing_mode=token`、`rate_multiplier=1.0`。数值与 **`295 × 0.000000042 = 1.239e-5` 精确吻合**。
+- **不再**出现 `openai_usage.pricing_missing_record_zero_cost`（jev）告警，也**没有** `group model_pricing unmarshal failed` 告警 ⇒ 价卡被正确命中，且 JSON 合法。
+- **余额扣减经受控对照验证**：同一时间窗内 `users.balance` 变化 **`0.00001239`**，等于该用户在该窗口**全部** `usage_logs.actual_cost` 之和。该用户另有其它在跑流量，所以用**时间窗求和对照**，而不是裸看余额。
+- 该 API Key 的 `quota_used` 仍为 **0**，**这不是缺陷**：该 Key 未配置 `quota`（`shouldDeductAPIKeyQuota` 要求 `quota > 0`）。分组的 `rate_multiplier=1.0` 表示用户**按上游成本价结算**；若要加价，需调 `rate_multiplier` 或价格。
+
+**E. 仍未覆盖 / 需注意**
+
+- 定价是**分组级**配置：**新建的其它 typesafe 分组不会自动继承**，需要按同样方式单独配价。（改代码加**内置兜底价**属于代码改动 + 新版本发布，**本仓库未做**。）
+- 渠道页的「**从 LiteLLM 同步模型**」对 typesafe 仍**不可用**（LiteLLM 目录没有该模型），只能手填；且生产当前**没有任何 channel**，因此**渠道路径对 typesafe 不是可选项**——**分组定价卡是唯一杠杆**。
+- **仍未验证**（与 §6.2 并列，不因本节通过而改变）：多账号 failover、并发 / 限流、platform 级配额扣减路径（该用户未设 typesafe 配额行）、非文本输入。
 
 ---
 
@@ -279,7 +338,7 @@ TypeSafe 的 key 在本仓库有**两套互不相通**的存储，**当前不共
 
 ### 生产端到端验证（2026-09-21，人工执行，不在仓库自动化测试内）
 
-- 上游直连探测 + 网关端点端到端（生产 `v0.9.338`，分组平台 `typesafe` 的 API Key）的**完整结论在 §6.1**。要点：直连 200（~2.06s，`jev-latest` → `jev-1.13.0`）、网关 200（~1.1s，响应与直连逐字段一致）、未知模型 400（自造错误体、上游原文出现 0 次）、对话端点与 `/v1/embeddings` 404、`GET /v1/models` 有意空清单、`usage_logs` 记账与平台归因 typesafe 正确、成本 0（未配价 fail-open，待办见 §6.1 B6）。这是运行证据，**没有**对应的仓库测试。
+- 上游直连探测 + 网关端点端到端（生产 `v0.9.338`，分组平台 `typesafe` 的 API Key）的**完整结论在 §6.1**。要点：直连 200（~2.06s，`jev-latest` → `jev-1.13.0`）、网关 200（~1.1s，响应与直连逐字段一致）、未知模型 400（自造错误体、上游原文出现 0 次）、对话端点与 `/v1/embeddings` 404、`GET /v1/models` 有意空清单、`usage_logs` 记账与平台归因 typesafe 正确。该轮**未配价**，成本为 0（fail-open 记零成本 + 告警）；其后同日按 TypeSafe 官方价完成分组定价卡配置并验证（成本精确吻合、余额扣减对照通过），结论在 **§6.3**。这些都是运行证据，**没有**对应的仓库测试。
 
 ### 验收命令
 
