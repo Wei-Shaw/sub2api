@@ -72,15 +72,15 @@ Sub2API 支持通过 Adobe Firefly Web 订阅账号（浏览器 Cookie）直连�
 | `gpt-image-1.5` | Firefly GPT Image 1.5 |
 | `gpt-image-2.5-flare` | Firefly GPT Image 2.5 Flare |
 | `gpt-image-2.5-sunburst` | Firefly GPT Image 2.5 Sunburst（上游版本名为 prism） |
-| `nano-banana` / `nano-banana-pro` / `nano-banana2` | Firefly 上的 Gemini Nano Banana 系列 |
+| `gemini-2.5-flash-image` / `gemini-3-pro-image` / `gemini-3.1-flash-image` | Firefly 上的 Gemini 生图（与 Gemini 渠道同名） |
 | `flux-pro` / `flux-ultra` | Firefly FLUX |
 | `imagen-4` / `imagen-4-fast` | Firefly Imagen 4 |
 | `gpt-4o-image` | Firefly GPT-4o Image |
 | `runway-gen4-image` | Firefly Runway Gen-4 Image |
 
-历史别名 `gpt-image`、`gpt-image-1`、`gpt-image-1-mini` 会落到 `gpt-image-2`，但不会出现在 `/v1/models` 列表中。
+历史别名 `gpt-image`、`gpt-image-1`、`gpt-image-1-mini` 会落到 `gpt-image-2`，但不会出现在 `/v1/models` 列表中。历史别名 `nano-banana`、`nano-banana-pro`、`nano-banana2` 仍可打到 Firefly，但同样不出现在 `/v1/models`。
 
-`gpt-image-*` 与 OpenAI 官方出图同名。只有 API Key 绑定 **Adobe 分组** 时才会走 Firefly；绑到 OpenAI 分组则仍走 OpenAI。合成分组（composite）**不会**根据 `gpt-image-*` 自动判断平台（名称有歧义），需要单独配置路由。`nano-banana*`、`flux-*`、`imagen-*`、`runway-gen4*`、`gpt-4o-image` 可由合成分组自动识别为 Adobe。
+`gpt-image-*` 与 OpenAI 官方出图同名。只有 API Key 绑定 **Adobe 分组** 时才会走 Firefly；绑到 OpenAI 分组则仍走 OpenAI。合成分组（composite）**不会**根据 `gpt-image-*` 自动判断平台（名称有歧义），需要单独配置路由。`gemini-*-image` / `gemini-3-pro-image*` 同样与 Gemini 渠道同名，合成分组也不自动判断。`nano-banana*`、`flux-*`、`imagen-*`、`runway-gen4*`、`gpt-4o-image` 可由合成分组自动识别为 Adobe。
 
 ### Cookie 账号配置
 
@@ -111,7 +111,7 @@ Cookie 失效后需要重新从浏览器导出。刷新器会把账号标为错�
 |----------|---------------|------|
 | `gpt-image-2` / `gpt-image-2.5-*` | `宽x高`、空或 `auto` | 像素原样转发；空/`auto` 则省略，由上游自动决定 |
 | `gpt-image-1.5` | `宽x高` | 就近落到 `1024x1024` / `1536x1024` / `1024x1536` |
-| `nano-banana*` | `宽x高`、空或 `auto` | 按长边落到 1K/2K/4K 方图档，比例走最近的 `aspectRatio`；空/`auto` 为 Firefly 默认 1K 方图。`nano-banana2` 额外支持 `1:8` / `1:4` / `4:1` / `8:1` |
+| `gemini-*-image` / `gemini-3-pro-image*` / `nano-banana*` | `宽x高`、空或 `auto` | 按长边落到 1K/2K/4K 方图档，比例走最近的 `aspectRatio`；空/`auto` 为 Firefly 默认 1K 方图。`gemini-3.1-flash-image` / `nano-banana2` 额外支持 `1:8` / `1:4` / `4:1` / `8:1` |
 | `flux-*` / `imagen-4*` / `gpt-4o-image` / `runway-gen4-image` | `宽x高` | 就近落到该家族允许的尺寸枚举 |
 
 `quality` 会映射为 Firefly `detailLevel`：`low`（默认）→ 1，`medium` → 3，`high` → 5，`xhigh`/`max` 在 2 / 1.5 上为 5，在 2.5 上为 7。
@@ -143,7 +143,7 @@ curl https://your-sub2api.example.com/v1/images/generations \
 同一批对外模型名也可以走 Gemini 原生生图（协议由客户端选，模型不绑死协议）：
 
 ```bash
-curl "https://your-sub2api.example.com/v1beta/models/nano-banana-pro:generateContent" \
+curl "https://your-sub2api.example.com/v1beta/models/gemini-3-pro-image:generateContent" \
   -H "x-goog-api-key: sk-your-sub2api-key" \
   -H "Content-Type: application/json" \
   -d '{
