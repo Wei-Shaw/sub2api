@@ -119,3 +119,27 @@ func (h *RedeemHandler) GetHistory(c *gin.Context) {
 	}
 	response.Success(c, out)
 }
+
+// GetBalanceHistory returns only the authenticated user's balance movements.
+// GET /api/v1/redeem/balance-history
+func (h *RedeemHandler) GetBalanceHistory(c *gin.Context) {
+	subject, ok := middleware2.GetAuthSubjectFromContext(c)
+	if !ok {
+		response.Unauthorized(c, "User not authenticated")
+		return
+	}
+	page, pageSize := response.ParsePagination(c)
+	entries, total, err := h.redeemService.GetUserBalanceHistory(c.Request.Context(), subject.UserID, pagination.PaginationParams{Page: page, PageSize: pageSize})
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	out := make([]dto.BalanceHistoryEntry, 0, len(entries))
+	for i := range entries {
+		out = append(out, dto.BalanceHistoryEntry{
+			ID: entries[i].ID, OccurredAt: entries[i].OccurredAt, Type: entries[i].Type,
+			Amount: entries[i].Amount, BalanceAfter: entries[i].BalanceAfter, Reference: entries[i].Reference,
+		})
+	}
+	response.Paginated(c, out, total, page, pageSize)
+}

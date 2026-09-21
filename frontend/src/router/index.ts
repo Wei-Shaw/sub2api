@@ -257,7 +257,7 @@ const routes: RouteRecordRaw[] = [
   {
     path: '/balance',
     name: 'Balance',
-    component: () => import('@/views/user/BestloongPendingView.vue'),
+    component: () => import('@/views/user/BalanceView.vue'),
     meta: {
       requiresAuth: true,
       requiresAdmin: false,

@@ -522,6 +522,15 @@ type RedeemCode struct {
 	Group *Group `json:"group,omitempty"`
 }
 
+type BalanceHistoryEntry struct {
+	ID           int64     `json:"id"`
+	OccurredAt   time.Time `json:"occurred_at"`
+	Type         string    `json:"type"`
+	Amount       float64   `json:"amount"`
+	BalanceAfter float64   `json:"balance_after"`
+	Reference    string    `json:"reference"`
+}
+
 // AdminRedeemCode 是管理员接口使用的 redeem code DTO（包含 notes 等字段）。
 // 注意：普通用户接口不得返回 notes 等内部信息。
 type AdminRedeemCode struct {

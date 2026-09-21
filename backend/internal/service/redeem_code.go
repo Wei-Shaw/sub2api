@@ -25,6 +25,17 @@ type RedeemCode struct {
 	Group *Group
 }
 
+// BalanceHistoryEntry is the user-facing balance ledger entry. Amounts use
+// the existing USD accounting unit; the customer UI formats them as yen.
+type BalanceHistoryEntry struct {
+	ID           int64
+	OccurredAt   time.Time
+	Type         string
+	Amount       float64
+	BalanceAfter float64
+	Reference    string
+}
+
 func (r *RedeemCode) IsUsed() bool {
 	return r.Status == StatusUsed
 }

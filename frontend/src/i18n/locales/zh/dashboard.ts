@@ -792,6 +792,7 @@ export default {
     codeRule3: '如有兑换问题，请联系客服',
     codeRule4: '余额和并发数即时更新',
     recentActivity: '最近活动',
+    exchangeRecords: '兑换记录',
     historyWillAppear: '您的兑换历史将显示在这里',
     balanceAddedRedeem: '余额充值（兑换）',
     balanceAddedAffiliate: '余额充值（返利转入）',
@@ -810,7 +811,19 @@ export default {
     historyLoadFailed: '加载兑换记录失败，请重试。',
     userRefreshFailed: '兑换成功，但账户信息刷新失败。',
     subscriptionRefreshFailed: '兑换成功，但订阅状态刷新失败。',
-    pleaseEnterCode: '请输入兑换码'
+    pleaseEnterCode: '请输入兑换码',
+    myBalance: '我的余额',
+    balanceHistory: '余额变动流水',
+    balanceHistoryDescription: '显示兑换入账、扣费和充值记录。',
+    balanceHistoryEmpty: '暂无余额变动记录',
+    balanceTime: '时间',
+    balanceType: '类型',
+    balanceAmount: '变动额',
+    balanceAfter: '变动后余额',
+    balanceReference: '关联单号',
+    balanceTypeRedeem: '兑换入账',
+    balanceTypeCharge: '扣费',
+    balanceTypeRecharge: '充值'
   },
 
   // Profile

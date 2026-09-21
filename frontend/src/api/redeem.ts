@@ -25,6 +25,15 @@ export interface RedeemHistoryItem {
   }
 }
 
+export interface BalanceHistoryItem {
+  id: number
+  occurred_at: string
+  type: 'redeem' | 'charge' | 'recharge' | string
+  amount: number
+  balance_after: number
+  reference: string
+}
+
 /**
  * Redeem a code
  * @param code - Redeem code string
@@ -61,9 +70,17 @@ export async function getHistory(page = 1, pageSize = 20): Promise<PaginatedResp
   return data
 }
 
+export async function getBalanceHistory(page = 1, pageSize = 10): Promise<PaginatedResponse<BalanceHistoryItem>> {
+  const { data } = await apiClient.get<PaginatedResponse<BalanceHistoryItem>>('/redeem/balance-history', {
+    params: { page, page_size: pageSize }
+  })
+  return data
+}
+
 export const redeemAPI = {
   redeem,
-  getHistory
+  getHistory,
+  getBalanceHistory
 }
 
 export default redeemAPI

@@ -747,3 +747,77 @@ func (s *RedeemService) reduceOrCancelSubscription(ctx context.Context, userID, 
 func (s *RedeemService) GetUserHistoryPaginated(ctx context.Context, userID int64, params pagination.PaginationParams) ([]RedeemCode, *pagination.PaginationResult, error) {
 	return s.redeemRepo.ListByUserPaginated(ctx, userID, params, "")
 }
+
+// GetUserBalanceHistory returns the user's money movements only. Redemption
+// and admin adjustment records come from redeem_codes; usage charges come from
+// the idempotent billing ledger populated by the gateway billing transaction.
+func (s *RedeemService) GetUserBalanceHistory(ctx context.Context, userID int64, params pagination.PaginationParams) ([]BalanceHistoryEntry, int64, error) {
+	if s == nil || s.entClient == nil || userID <= 0 {
+		return []BalanceHistoryEntry{}, 0, nil
+	}
+	rows, err := s.entClient.QueryContext(ctx, `
+WITH events AS (
+    SELECT
+        rc.id AS event_id,
+        COALESCE(rc.used_at, rc.created_at) AS occurred_at,
+        CASE WHEN po.id IS NOT NULL THEN 'recharge'
+             WHEN rc.type = 'balance' THEN 'redeem'
+             ELSE 'recharge' END AS event_type,
+        rc.value::double precision AS amount,
+        COALESCE(NULLIF(po.out_trade_no, ''), CASE WHEN po.id IS NOT NULL THEN 'order-' || po.id::text ELSE rc.code END) AS reference
+    FROM redeem_codes rc
+    LEFT JOIN payment_orders po ON po.recharge_code = rc.code AND po.user_id = rc.used_by
+    WHERE rc.used_by = $1
+      AND rc.type IN ('balance', 'admin_balance')
+
+    UNION ALL
+
+    SELECT
+        -ul.id AS event_id,
+        ul.created_at AS occurred_at,
+        'charge' AS event_type,
+        -ul.actual_cost::double precision AS amount,
+        COALESCE(NULLIF(ul.request_id, ''), 'usage-' || ul.id::text) AS reference
+    FROM usage_logs ul
+    WHERE ul.user_id = $1
+      AND ul.actual_cost > 0
+      AND COALESCE(ul.billing_type, 0) = 0
+), numbered AS (
+    SELECT
+        event_id,
+        occurred_at,
+        event_type,
+        amount,
+        reference,
+        COUNT(*) OVER () AS total,
+        u.balance::double precision
+          - COALESCE(SUM(amount) OVER (
+              ORDER BY occurred_at DESC, event_id DESC
+              ROWS BETWEEN UNBOUNDED PRECEDING AND 1 PRECEDING
+            ), 0) AS balance_after
+    FROM events
+    JOIN users u ON u.id = $1 AND u.deleted_at IS NULL
+)
+SELECT event_id, occurred_at, event_type, amount, balance_after, reference, total
+FROM numbered
+ORDER BY occurred_at DESC, event_id DESC
+OFFSET $2 LIMIT $3`, userID, params.Offset(), params.Limit())
+	if err != nil {
+		return nil, 0, err
+	}
+	defer func() { _ = rows.Close() }()
+
+	entries := make([]BalanceHistoryEntry, 0, params.Limit())
+	var total int64
+	for rows.Next() {
+		var entry BalanceHistoryEntry
+		if err := rows.Scan(&entry.ID, &entry.OccurredAt, &entry.Type, &entry.Amount, &entry.BalanceAfter, &entry.Reference, &total); err != nil {
+			return nil, 0, err
+		}
+		entries = append(entries, entry)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, 0, err
+	}
+	return entries, total, nil
+}

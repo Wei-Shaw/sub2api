@@ -788,6 +788,7 @@ export default {
     codeRule3: 'Contact support if you have issues redeeming a code',
     codeRule4: 'Balance and concurrency updates are immediate',
     recentActivity: 'Recent Activity',
+    exchangeRecords: 'Redemption Records',
     historyWillAppear: 'Your redemption history will appear here',
     balanceAddedRedeem: 'Balance Added (Redeem)',
     balanceAddedAffiliate: 'Balance Added (Affiliate Transfer)',
@@ -806,7 +807,19 @@ export default {
     historyLoadFailed: 'Failed to load activity. Please try again.',
     userRefreshFailed: 'Redeemed successfully, but failed to refresh account information.',
     subscriptionRefreshFailed: 'Redeemed successfully, but failed to refresh subscription status.',
-    pleaseEnterCode: 'Please enter a redeem code'
+    pleaseEnterCode: 'Please enter a redeem code',
+    myBalance: 'My Balance',
+    balanceHistory: 'Balance History',
+    balanceHistoryDescription: 'Redemption, usage charges, and recharge records.',
+    balanceHistoryEmpty: 'No balance changes yet',
+    balanceTime: 'Time',
+    balanceType: 'Type',
+    balanceAmount: 'Change',
+    balanceAfter: 'Balance After',
+    balanceReference: 'Reference',
+    balanceTypeRedeem: 'Redemption',
+    balanceTypeCharge: 'Usage charge',
+    balanceTypeRecharge: 'Recharge'
   },
 
   // Profile
