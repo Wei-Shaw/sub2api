@@ -3047,7 +3047,7 @@ func (h *AccountHandler) GetAvailableModels(c *gin.Context) {
 // 顺序是刻意的：先按 adobe.ImageModelIDs() 的对外展示序输出，再把运维自定义的额外别名
 // 按字典序追加。前端默认选中第一项，顺序不稳会让默认模型每次刷新都变。
 //
-// DisplayName 直接用 id：Adobe 的对外名本身可读（gpt-image-2 / nano-banana-pro / flux-pro），
+// DisplayName 直接用 id：Adobe 的对外名本身可读（gpt-image-2 / gemini-3-pro-image / flux-pro），
 // 不值得再维护一张标签表。
 func buildAdobeTestModels(mapping map[string]string) []adobe.Model {
 	models := make([]adobe.Model, 0, len(mapping))

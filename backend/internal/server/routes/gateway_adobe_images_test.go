@@ -145,6 +145,15 @@ func TestGatewayRoutesCompositeUnresolvedGptImageReturns404(t *testing.T) {
 	require.Contains(t, w.Body.String(), "not supported for this platform")
 }
 
+func TestGatewayRoutesCompositeUnresolvedGeminiImageReturns404(t *testing.T) {
+	group := &service.Group{ID: 1, Platform: service.PlatformComposite, AllowImageGeneration: true}
+	router := adobeRoutesRouter(t, group)
+
+	w := postAdobeImages(t, router, "/v1/images/generations", `{"model":"gemini-3-pro-image","prompt":"x"}`)
+	require.Equal(t, http.StatusNotFound, w.Code, w.Body.String())
+	require.Contains(t, w.Body.String(), "not supported for this platform")
+}
+
 func TestGatewayRoutesCompositeExplicitAdobeRouteDispatchesGptImage(t *testing.T) {
 	group := &service.Group{ID: 1, Platform: service.PlatformComposite, AllowImageGeneration: false}
 	resolver := service.NewCompositeRouteResolver(compositeRouteRepoStub{
@@ -246,7 +255,7 @@ func TestGatewayRoutesAdobeListModels(t *testing.T) {
 	w := httptest.NewRecorder()
 	router.ServeHTTP(w, req)
 	require.Equal(t, http.StatusOK, w.Code, w.Body.String())
-	require.Contains(t, w.Body.String(), `"name":"models/nano-banana-pro"`)
+	require.Contains(t, w.Body.String(), `"name":"models/gemini-3-pro-image"`)
 }
 
 func TestGatewayRoutesCompositeNanoBananaGenerateContentDispatchesAdobe(t *testing.T) {

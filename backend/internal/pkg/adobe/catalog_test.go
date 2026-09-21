@@ -481,9 +481,9 @@ func TestResolveImageAcceptsExternalModelNames(t *testing.T) {
 		"gpt-image-1.5":          "firefly-gpt-image-1.5",
 		"gpt-image-2.5-flare":    "firefly-gpt-image-2-5-flare",
 		"gpt-image-2.5-sunburst": "firefly-gpt-image-2-5-prism",
-		"nano-banana-pro":        "firefly-nano-banana-pro",
-		"nano-banana":            "firefly-nano-banana",
-		"nano-banana2":           "firefly-nano-banana2",
+		"gemini-3-pro-image":     "firefly-nano-banana-pro",
+		"gemini-2.5-flash-image": "firefly-nano-banana",
+		"gemini-3.1-flash-image": "firefly-nano-banana2",
 		"flux-pro":               "firefly-flux-pro",
 		"flux-ultra":             "firefly-flux-ultra",
 		"imagen-4":               "firefly-imagen-4",
@@ -500,6 +500,21 @@ func TestResolveImageAcceptsExternalModelNames(t *testing.T) {
 		conf, err := ResolveImage(ImageRequest{ModelID: externalID, Size: "1024x1024"})
 		require.NoError(t, err, "对外名 %s 必须可解析", externalID)
 		require.Equal(t, family, conf.Family, "对外名 %s 应落到族 %s", externalID, family)
+	}
+}
+
+func TestResolveImageAcceptsLegacyNanoBananaAliases(t *testing.T) {
+	for requested, wantFamily := range map[string]string{
+		"nano-banana":                    "firefly-nano-banana",
+		"nano-banana-pro":                "firefly-nano-banana-pro",
+		"nano-banana2":                   "firefly-nano-banana2",
+		"gemini-2.5-flash-image-preview": "firefly-nano-banana",
+		"gemini-3-pro-image-preview":     "firefly-nano-banana-pro",
+		"gemini-3.1-flash-image-preview": "firefly-nano-banana2",
+	} {
+		conf, err := ResolveImage(ImageRequest{ModelID: requested, Size: "1024x1024"})
+		require.NoError(t, err, requested)
+		require.Equal(t, wantFamily, conf.Family, requested)
 	}
 }
 
@@ -611,6 +626,18 @@ func TestDisplayLabel(t *testing.T) {
 	label, ok = DisplayLabel("gpt-image-2.5-sunburst")
 	require.True(t, ok)
 	require.Equal(t, "GPT Image 2.5 Sunburst", label)
+
+	label, ok = DisplayLabel("gemini-2.5-flash-image")
+	require.True(t, ok)
+	require.Equal(t, "Gemini 2.5 Flash Image", label)
+
+	label, ok = DisplayLabel("gemini-3-pro-image")
+	require.True(t, ok)
+	require.Equal(t, "Gemini 3 Pro Image", label)
+
+	label, ok = DisplayLabel("gemini-3.1-flash-image")
+	require.True(t, ok)
+	require.Equal(t, "Gemini 3.1 Flash Image", label)
 
 	label, ok = DisplayLabel("  IMAGEN-4  ")
 	require.True(t, ok, "应大小写不敏感并忽略首尾空白")

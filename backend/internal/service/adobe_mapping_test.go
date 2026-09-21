@@ -21,6 +21,10 @@ func TestAccountAdobeDefaultMapping(t *testing.T) {
 		require.Equal(t, "firefly-gpt-image-2", account.GetMappedModel("gpt-image-2"))
 		require.Equal(t, "firefly-gpt-image-1.5", account.GetMappedModel("gpt-image-1.5"))
 		require.Equal(t, "firefly-nano-banana-pro", account.GetMappedModel("nano-banana-pro"))
+		require.Equal(t, "firefly-nano-banana-pro", account.GetMappedModel("gemini-3-pro-image"))
+		require.Equal(t, "firefly-nano-banana", account.GetMappedModel("gemini-2.5-flash-image"))
+		require.Equal(t, "firefly-nano-banana2", account.GetMappedModel("gemini-3.1-flash-image"))
+		require.Equal(t, "firefly-nano-banana-pro", account.GetMappedModel("gemini-3-pro-image-preview"))
 		// Step 7：2.5 修回真族。sunburst 是 UI 展示名（对应上游 modelVersion=gpt-image-2.5-prism）。
 		require.Equal(t, "firefly-gpt-image-2-5-prism", account.GetMappedModel("gpt-image-2.5-sunburst"))
 		require.Equal(t, "firefly-gpt-image-2-5-prism", account.GetMappedModel("gpt-image-2.5-prism"))
@@ -60,6 +64,8 @@ func TestAdobeDefaultMappingTargetsResolve(t *testing.T) {
 	for _, requested := range []string{
 		"gpt-image-2", "gpt-image-1.5", "gpt-image-2.5-sunburst", "gpt-image-2.5-flare", "gpt-image-2.5-prism",
 		"nano-banana", "nano-banana2", "nano-banana-pro",
+		"gemini-2.5-flash-image", "gemini-3-pro-image", "gemini-3.1-flash-image",
+		"gemini-2.5-flash-image-preview", "gemini-3-pro-image-preview", "gemini-3.1-flash-image-preview",
 		"gpt-image", "gpt-image-1", "gpt-image-1-mini",
 	} {
 		mapped := account.GetMappedModel(requested)

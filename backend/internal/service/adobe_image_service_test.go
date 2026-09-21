@@ -131,6 +131,26 @@ func TestAdobeImageServiceAppliesAccountModelMapping(t *testing.T) {
 	require.Equal(t, "firefly-nano-banana-pro-1k-1x1", result.Forward.UpstreamModel)
 }
 
+func TestAdobeImageServiceMapsGeminiPublicNames(t *testing.T) {
+	api := &adobeFakeTransport{}
+	client := adobeSubmitPollDownload(t, api, []byte("X"))
+	svc := newAdobeTestService(t, client, nil)
+
+	for requested, wantFamily := range map[string]string{
+		"gemini-3-pro-image":     "firefly-nano-banana-pro-1k-1x1",
+		"nano-banana-pro":        "firefly-nano-banana-pro-1k-1x1",
+		"gemini-2.5-flash-image": "firefly-nano-banana-1k-1x1",
+		"gemini-3.1-flash-image": "firefly-nano-banana2-1k-1x1",
+	} {
+		result, err := svc.Generate(context.Background(), adobeTestAccount(), "tok", &OpenAIImagesRequest{
+			Model: requested, Prompt: "x", Size: "1024x1024", N: 1,
+		})
+		require.NoError(t, err, requested)
+		require.Equal(t, requested, result.Forward.Model, requested)
+		require.Equal(t, wantFamily, result.Forward.UpstreamModel, requested)
+	}
+}
+
 func TestAdobeImageServiceForwardsAccountARPSessionID(t *testing.T) {
 	const wantARP = "eyJzaWQiOiJzZXJ2aWNlLWFycCIsImZ0ciI6InJlYWwifQ=="
 	api := &adobeFakeTransport{}

@@ -75,7 +75,7 @@ func TestParseAdobeGeminiImageRequestSizeFromImageConfig(t *testing.T) {
 }
 
 func TestValidateAdobeGeminiModel(t *testing.T) {
-	for _, model := range []string{"nano-banana-pro", "models/nano-banana-pro", "gpt-4o-image", "gpt-image-2", "firefly-nano-banana-pro", "my-banana"} {
+	for _, model := range []string{"nano-banana-pro", "models/nano-banana-pro", "gemini-3-pro-image", "gemini-2.5-flash-image", "gpt-4o-image", "gpt-image-2", "firefly-nano-banana-pro", "my-banana"} {
 		require.NoError(t, ValidateAdobeGeminiModel(model), model)
 	}
 	for _, model := range []string{"gemini-2.5-flash", "claude-sonnet-4-6", "dall-e-3", ""} {
@@ -227,6 +227,10 @@ func TestAdobeGeminiModelsListShape(t *testing.T) {
 	model, ok := LookupAdobeGeminiModel("models/nano-banana-pro")
 	require.True(t, ok)
 	require.Equal(t, "models/nano-banana-pro", model.Name)
+
+	model, ok = LookupAdobeGeminiModel("models/gemini-3-pro-image")
+	require.True(t, ok)
+	require.Equal(t, "models/gemini-3-pro-image", model.Name)
 
 	_, ok = LookupAdobeGeminiModel("gemini-2.5-flash")
 	require.False(t, ok)

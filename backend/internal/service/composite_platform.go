@@ -131,8 +131,13 @@ func DetectModelPlatform(model string) (string, bool) {
 	// would still classify it as OpenAI.
 	case normalized == "gpt-image" || strings.HasPrefix(normalized, "gpt-image-"):
 		return "", false
+	// gemini-*-image is advertised by both Gemini and Adobe. Composite must
+	// not guess: this case must sit above IsExternalImageModelID or the
+	// Adobe alias table would classify it as Firefly.
+	case isGeminiImageSharedName(normalized):
+		return "", false
 	// The remaining Adobe catalog names (e.g. gpt-4o-image) must also be
-	// matched before the gpt- prefix below.
+	// matched before the gpt- prefix below. nano-banana* is Adobe-only.
 	case strings.HasPrefix(normalized, "nano-banana"),
 		strings.HasPrefix(normalized, "flux-"),
 		strings.HasPrefix(normalized, "imagen-"),
@@ -227,4 +232,13 @@ func isConcreteRequestPlatform(platform string) bool {
 	default:
 		return false
 	}
+}
+
+// isGeminiImageSharedName 判定是否 Gemini 官方与 Adobe Firefly 同名的生图模型。
+// 必须同时盖住 *-image 和 *-image-preview（含 gemini-3-pro-image*）。
+func isGeminiImageSharedName(model string) bool {
+	if !strings.HasPrefix(model, "gemini-") {
+		return false
+	}
+	return strings.HasSuffix(model, "-image") || strings.HasSuffix(model, "-image-preview")
 }

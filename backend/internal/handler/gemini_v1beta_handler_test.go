@@ -358,7 +358,8 @@ func TestGeminiV1BetaAdobeAccountAliasesAreVisible(t *testing.T) {
 		names[model.Name]++
 	}
 	require.Equal(t, 1, names["models/my-banana"])
-	require.Equal(t, 1, names["models/nano-banana-pro"], "目录名不能因为账号映射重复出现")
+	require.Equal(t, 1, names["models/gemini-3-pro-image"])
+	require.Zero(t, names["models/nano-banana-pro"], "历史别名不进目录，即使账号 mapping 写了恒等对")
 	require.Zero(t, names["models/banana-*"])
 	require.Zero(t, names["models/gemini-2.5-pro"])
 	require.Zero(t, names["models/gemini-only-alias"])
