@@ -78,7 +78,7 @@ Sub2API 支持通过 Adobe Firefly Web 订阅账号（浏览器 Cookie）直连�
 | `gpt-4o-image` | Firefly GPT-4o Image |
 | `runway-gen4-image` | Firefly Runway Gen-4 Image |
 
-历史别名 `gpt-image`、`gpt-image-1`、`gpt-image-1-mini` 会落到 `gpt-image-2`，但不会出现在 `/v1/models` 列表中。
+历史别名 `gpt-image`、`gpt-image-1`、`gpt-image-1-mini` 会落到 `gpt-image-2`，但不会出现在 `/v1/models` 列表中。预览名 `gemini-2.5-flash-image-preview`、`gemini-3-pro-image-preview`、`gemini-3.1-flash-image-preview` 同样可以请求，落到对应的非 preview 模型，也不出现在 `/v1/models`。
 
 `gpt-image-*` 与 OpenAI 官方出图同名。只有 API Key 绑定 **Adobe 分组** 时才会走 Firefly；绑到 OpenAI 分组则仍走 OpenAI。合成分组（composite）**不会**根据 `gpt-image-*` 自动判断平台（名称有歧义），需要单独配置路由。`gemini-*-image` / `gemini-3-pro-image*` 同样与 Gemini 渠道同名，合成分组按入口决定：`/v1/images/*` 走 Adobe；chat 类入口（chat completions、responses、messages）走 Gemini；`/v1beta` 看分组里哪个平台的号能服务该名字，Gemini/Antigravity 与 Adobe 都能服务时默认走 Gemini，可用显式路由改走 Adobe。`flux-*`、`imagen-*`、`runway-gen4*`、`gpt-4o-image` 可由合成分组自动识别为 Adobe。
 

@@ -78,7 +78,7 @@ Direct Firefly calls use **Firefly Web** (`firefly.adobe.com` / `clio-playground
 | `gpt-4o-image` | Firefly GPT-4o Image |
 | `runway-gen4-image` | Firefly Runway Gen-4 Image |
 
-Legacy aliases `gpt-image`, `gpt-image-1`, and `gpt-image-1-mini` map to `gpt-image-2` but are not listed by `/v1/models`.
+Legacy aliases `gpt-image`, `gpt-image-1`, and `gpt-image-1-mini` map to `gpt-image-2` but are not listed by `/v1/models`. Preview names `gemini-2.5-flash-image-preview`, `gemini-3-pro-image-preview`, and `gemini-3.1-flash-image-preview` are also accepted and map to the same model as their non-preview name, but are not listed by `/v1/models` either.
 
 `gpt-image-*` names are shared with official OpenAI image models. They reach Firefly only when the API key is bound to an **Adobe** group; an OpenAI group still talks to OpenAI. Composite groups do **not** auto-detect `gpt-image-*` (the name is ambiguous) — add an explicit composite route. `gemini-*-image` / `gemini-3-pro-image*` are also shared with the Gemini channel, so composite groups decide by endpoint: `/v1/images/*` goes to Adobe, chat-style endpoints (chat completions, responses, messages) go to Gemini, and `/v1beta` goes to whichever platform in the group can serve the name — if both Gemini/Antigravity and Adobe accounts can, it defaults to Gemini unless an explicit route says otherwise. `flux-*`, `imagen-*`, `runway-gen4*`, and `gpt-4o-image` can be auto-detected as Adobe.
 

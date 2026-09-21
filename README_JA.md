@@ -77,7 +77,7 @@ Sub2API は、Adobe Firefly Web のサブスクリプションアカウント（
 | `gpt-4o-image` | Firefly GPT-4o Image |
 | `runway-gen4-image` | Firefly Runway Gen-4 Image |
 
-旧エイリアス `gpt-image`、`gpt-image-1`、`gpt-image-1-mini` は `gpt-image-2` に落ちますが、`/v1/models` には出ません。
+旧エイリアス `gpt-image`、`gpt-image-1`、`gpt-image-1-mini` は `gpt-image-2` に落ちますが、`/v1/models` には出ません。プレビュー名 `gemini-2.5-flash-image-preview`、`gemini-3-pro-image-preview`、`gemini-3.1-flash-image-preview` もリクエストでき、対応する非 preview モデルに落ちますが、`/v1/models` には出ません。
 
 `gpt-image-*` は公式 OpenAI 画像モデルと同名です。Firefly に届くのは API キーが **Adobe** グループに紐づいている場合のみで、OpenAI グループなら従来どおり OpenAI に行きます。Composite グループは `gpt-image-*` を自動判定しません（名前が曖昧なため）。明示的なルートを追加してください。`gemini-*-image` / `gemini-3-pro-image*` も Gemini チャネルと同名のため、Composite はエンドポイントで判定します。`/v1/images/*` は Adobe、チャット系（chat completions / responses / messages）は Gemini、`/v1beta` はグループ内でその名前を扱えるプラットフォームに送ります。Gemini/Antigravity と Adobe の両方が扱える場合は Gemini が既定で、明示ルートで Adobe に変更できます。`flux-*`、`imagen-*`、`runway-gen4*`、`gpt-4o-image` は Composite で Adobe として自動検出できます。
 
