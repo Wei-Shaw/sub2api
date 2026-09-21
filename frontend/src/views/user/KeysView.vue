@@ -9,6 +9,7 @@
               :placeholder="t('keys.searchPlaceholder')"
               class="w-full sm:w-64"
               @search="onFilterChange"
+              @enter="onFilterChange"
             />
             <Select
               :model-value="filterGroupId"
@@ -49,6 +50,14 @@
 
       <template #actions>
         <div class="flex justify-end gap-3">
+          <button
+            type="button"
+            class="btn btn-primary"
+            :disabled="loading"
+            @click="onFilterChange"
+          >
+            {{ t('common.search') }}
+          </button>
           <button
             @click="loadApiKeys"
             :disabled="loading"
