@@ -27,6 +27,26 @@ legitimately occupy it for many minutes. Apply connection and unauthenticated
 request controls at the edge; authenticated user/API-key concurrency remains
 the application's responsibility.
 
+## 压缩请求的解压上限
+
+`gateway.max_decompressed_body_size` / `GATEWAY_MAX_DECOMPRESSED_BODY_SIZE`
+控制 gzip、x-gzip、zstd、deflate 请求解压后的正文大小，单位为字节，默认
+`67108864`（64 MiB）。必须设置为正整数，0 不表示无限制。配置在启动时加载，
+更改环境变量后需要重建容器；单独修改 Compose 的 `.env` 不会改变已有容器。
+
+例如，需要接收 130 MiB 的完整 JSON，可将解压上限设为 `167772160`（160 MiB），
+并核对对应路由的 `gateway.max_body_size`。纯文本接口仍受
+`gateway.text_max_body_size` 限制；有效解压上限取解压配置与该路由上限的较小值。
+`server.max_request_body_size`、网关正文限制和前置代理限制仍约束传输正文。
+提高普通请求体配置不会自动提高解压配置，未压缩的请求不受此新增配置影响。
+
+恰好达到有效上限的完整请求可以通过，超过一个字节即返回 413；损坏或不完整的
+压缩流仍按读取失败处理。解压失败不会向下游交付部分正文，也不进入上游模型调用。
+该策略在路由入口绑定到请求，白名单、合成路由等首次读体的位置使用同一限制。
+
+提高上限会增加单请求内存预算；并发、压缩流解码器、JSON 解析及正文副本还会带来
+额外内存开销。应按代表性请求和峰值并发评估后设置，避免将上限当成内存占用估算。
+
 ## Trusted client IPs
 
 `security.trust_forwarded_ip_for_api_key_acl` is enabled by default for upgrade
