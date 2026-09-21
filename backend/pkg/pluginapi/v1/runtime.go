@@ -14,6 +14,14 @@ const (
 	TransportAPIVersion = 1
 	// UIBridgeVersion 是插件管理页与沙箱 UI 的消息协议版本。
 	UIBridgeVersion = 1
+	// HostServiceAPIVersion 是宿主反向服务（HostService）的契约版本。它独立于
+	// TransportAPIVersion：宿主服务是叠加在传输契约之上的可选能力，通过
+	// InitHostServices 在运行时协商，因此新增宿主能力不会使既有插件失效。
+	//
+	// v2：ListAccounts 在 account_ids 之外增补 AccountInfo 全量可读元数据
+	// （状态/调度/限流/暂停原因等），供插件排除不可调度账号。纯加法变更，v1
+	// 插件忽略新字段即可继续工作。
+	HostServiceAPIVersion = 2
 	// TransportPluginName 是 go-plugin 中注册的唯一能力名称。
 	TransportPluginName = "oauth_transport"
 )
@@ -25,19 +33,38 @@ var HandshakeConfig = hcplugin.HandshakeConfig{
 	MagicCookieValue: "sub2api-plugin-v1",
 }
 
+// HostBrokerReceiver 由需要反向调用宿主服务的插件传输实现选择性实现。
+// GRPCServer 在插件进程启动注册服务时把 go-plugin broker 交给它，插件随后可在
+// InitHostServices 中用宿主下发的 broker id 拨号回宿主。宿主侧不实现此接口。
+type HostBrokerReceiver interface {
+	SetHostBroker(broker *hcplugin.GRPCBroker)
+}
+
+// TransportClient 是宿主 Dispense 传输能力后拿到的句柄，除 gRPC 客户端外还捆绑了
+// 本连接的 go-plugin broker，宿主据此把 HostService 反向暴露给插件。
+type TransportClient struct {
+	TransportPluginClient
+	Broker *hcplugin.GRPCBroker
+}
+
 // GRPCPlugin 把生成的 gRPC 服务注册到 go-plugin 子进程。
 type GRPCPlugin struct {
 	hcplugin.NetRPCUnsupportedPlugin
 	Impl TransportPluginServer
 }
 
-func (p *GRPCPlugin) GRPCServer(_ *hcplugin.GRPCBroker, server *grpc.Server) error {
+func (p *GRPCPlugin) GRPCServer(broker *hcplugin.GRPCBroker, server *grpc.Server) error {
 	RegisterTransportPluginServer(server, p.Impl)
+	// 插件侧：把 broker 交给需要反向访问宿主服务的实现（可选能力）。
+	if receiver, ok := p.Impl.(HostBrokerReceiver); ok {
+		receiver.SetHostBroker(broker)
+	}
 	return nil
 }
 
-func (p *GRPCPlugin) GRPCClient(_ context.Context, _ *hcplugin.GRPCBroker, conn *grpc.ClientConn) (any, error) {
-	return NewTransportPluginClient(conn), nil
+func (p *GRPCPlugin) GRPCClient(_ context.Context, broker *hcplugin.GRPCBroker, conn *grpc.ClientConn) (any, error) {
+	// 宿主侧：捆绑 broker，供 startPluginRuntime 反向暴露 HostService。
+	return &TransportClient{TransportPluginClient: NewTransportPluginClient(conn), Broker: broker}, nil
 }
 
 // ClientPluginMap 返回宿主侧使用的插件声明。
