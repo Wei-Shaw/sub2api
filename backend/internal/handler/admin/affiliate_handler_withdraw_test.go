@@ -43,7 +43,7 @@ func performWithdrawQuota(t *testing.T, repo *withdrawQuotaRepoStub, userID, ide
 	t.Helper()
 	gin.SetMode(gin.TestMode)
 	router := gin.New()
-	handler := NewAffiliateHandler(service.NewAffiliateService(repo, nil, nil, nil), nil)
+	handler := NewAffiliateHandler(service.NewAffiliateService(repo, nil, nil, nil), nil, nil)
 	router.POST("/api/v1/admin/affiliates/users/:user_id/withdraw", handler.WithdrawQuota)
 
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/admin/affiliates/users/"+userID+"/withdraw", bytes.NewBufferString(body))

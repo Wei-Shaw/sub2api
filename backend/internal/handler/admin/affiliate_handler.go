@@ -279,19 +279,16 @@ func (h *AffiliateHandler) ListRebateRecords(c *gin.Context) {
 	// invited account was deleted, so skip those ids instead of dereferencing.
 	if h.entClient != nil && len(items) > 0 {
 		userIDs := make([]int64, 0, len(items))
-		byUserID := make(map[int64][]service.AffiliateRebateRecord, len(items))
 		for _, r := range items {
-			if r.InviteeID == nil {
-				continue
+			if r.InviteeID != nil {
+				userIDs = append(userIDs, *r.InviteeID)
 			}
-			userIDs = append(userIDs, *r.InviteeID)
-			byUserID[*r.InviteeID] = append(byUserID[*r.InviteeID], r)
 		}
 		if len(userIDs) > 0 {
 			dcMap := service.LookupDeviceCodesByUserIDs(c.Request.Context(), h.entClient, userIDs)
-			for userID, records := range byUserID {
-				for _, r := range records {
-					r.InviteeDeviceCode = dcMap[userID]
+			for i := range items {
+				if items[i].InviteeID != nil {
+					items[i].InviteeDeviceCode = dcMap[*items[i].InviteeID]
 				}
 			}
 		}
