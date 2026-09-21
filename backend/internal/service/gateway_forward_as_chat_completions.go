@@ -430,6 +430,11 @@ func (s *GatewayService) handleCCStreamingFromAnthropic(
 			mergeAnthropicUsage(&usage, event.Message.Usage)
 		}
 
+		// Keep the outward Responses/Chat usage on the same normalized buckets used
+		// for billing, including converter handlers that consume event usage.
+		syncAnthropicResponsesUsage(anthState, usage)
+		normalizeAnthropicEventUsageForResponses(event, usage)
+
 		// Chain: Anthropic event → Responses events → CC chunks
 		responsesEvents := apicompat.AnthropicEventToResponsesEvents(event, anthState)
 		for _, resEvt := range responsesEvents {

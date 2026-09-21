@@ -407,6 +407,11 @@ func (s *OpenAIGatewayService) handleCCStreamingFromNativeAnthropic(
 			mergeAnthropicUsage(&usage, event.Message.Usage)
 		}
 
+		// Keep the outward Responses/Chat usage on the same normalized buckets used
+		// for billing, including converter handlers that consume event usage.
+		syncAnthropicResponsesUsage(anthState, usage)
+		normalizeAnthropicEventUsageForResponses(event, usage)
+
 		// 客户端已断开：跳过转换与写出，继续读上游直到流结束（usage 完整、
 		// 连接及时归还），不再提前 return。
 		if clientDisconnected {
