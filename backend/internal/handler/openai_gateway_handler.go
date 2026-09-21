@@ -438,6 +438,7 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 		// 原生 v2 压缩出站前补注 x-codex-beta-features: remote_compaction_v2，
 		// 与真实 Codex 线型一致（网关链剥头后本级负责恢复，#5586）。
 		service.MarkOpenAINativeCompactionV2(c)
+		c.Request = c.Request.WithContext(service.WithOpenAISummaryCompactionRequest(c.Request.Context()))
 	}
 	// body-signal compact：上游 unary 等待期间向下游发 SSE 注释行心跳，防止
 	// 反向代理空闲超时掐断长压缩连接（#3887）。首拍延迟一个心跳间隔，快速

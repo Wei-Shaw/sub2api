@@ -324,6 +324,28 @@ function mountModal(account = buildAccount(), renderGroupSelector = false) {
 }
 
 describe('EditAccountModal', () => {
+  it('saves summary compaction only for the selected account and can restore inheritance', async () => {
+    const account = buildAccount()
+    account.extra = { existing_flag: true }
+    updateAccountMock.mockReset().mockResolvedValue(account)
+    checkMixedChannelRiskMock.mockReset().mockResolvedValue({ has_risk: false })
+    const wrapper = mountModal(account)
+    expect(wrapper.get<HTMLSelectElement>('[data-testid="compact-strategy"]').element.value).toBe('inherit')
+    await wrapper.get('[data-testid="compact-strategy"]').setValue('summary')
+    await wrapper.get('form#edit-account-form').trigger('submit.prevent')
+    expect(updateAccountMock.mock.calls[0]?.[1]?.extra).toMatchObject({ existing_flag: true, openai_compact_strategy: 'summary' })
+    wrapper.unmount()
+
+    account.extra.openai_compact_strategy = 'summary'
+    updateAccountMock.mockClear()
+    const reopened = mountModal(account)
+    expect(reopened.get<HTMLSelectElement>('[data-testid="compact-strategy"]').element.value).toBe('summary')
+    await reopened.get('[data-testid="compact-strategy"]').setValue('inherit')
+    await reopened.get('form#edit-account-form').trigger('submit.prevent')
+    expect(updateAccountMock.mock.calls[0]?.[1]?.extra).not.toHaveProperty('openai_compact_strategy')
+    reopened.unmount()
+  })
+
   beforeEach(() => {
     authIsSimpleMode.value = true
   })

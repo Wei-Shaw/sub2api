@@ -682,6 +682,10 @@ export default {
         codexImageToolBadgeEnabled: 'Hosted bridge on',
         codexImageToolBadgeDisabled: 'No hosted injection',
         codexImageToolBadgeBlock: 'Client image tools stripped',
+        compactStrategy: 'Codex compaction strategy',
+        compactStrategyInherit: 'Follow client (default)',
+        compactStrategySummary: 'Summary compatibility',
+        compactStrategyDesc: 'Adapt Codex HTTP compaction for this account only. Uses the current request?s ordinary model mapping unless a compact-specific mapping matches. Summaries are lossy; image history and WebSocket are not supported. Other accounts keep their existing behavior.',
         compactMode: 'Compact mode',
         compactModeDesc:
           'Controls how this account participates in /responses/compact routing. Auto follows probe results, Force On always allows, Force Off always excludes.',
@@ -690,7 +694,7 @@ export default {
         compactModeForceOff: 'Force Off',
         compactModelMapping: 'Compact-only model mapping',
         compactModelMappingDesc:
-          'Only applies to /responses/compact. Use this when the upstream compact endpoint requires a special compact model.',
+          'Map the client model to the upstream compaction model for /responses/compact or explicitly enabled summary compatibility. Leave empty to use the current request model in summary mode.',
         compactSupported: 'Compact supported',
         compactUnsupported: 'Compact unsupported',
         compactAuto: 'Compact Auto',

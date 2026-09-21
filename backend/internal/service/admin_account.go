@@ -474,6 +474,9 @@ func buildAccountForCreate(input *CreateAccountInput, accountExtra map[string]an
 }
 
 func (s *adminServiceImpl) CreateAccount(ctx context.Context, input *CreateAccountInput) (*Account, error) {
+	if err := ValidateOpenAICompactStrategy(input.Platform, input.Type, input.Extra); err != nil {
+		return nil, err
+	}
 	accountExtra, err := normalizeOpenAILongContextBillingExtra(input.Platform, input.Extra)
 	if err != nil {
 		return nil, err
@@ -587,6 +590,9 @@ func (s *adminServiceImpl) UpdateAccount(ctx context.Context, id int64, input *U
 		effectiveType := account.Type
 		if input.Type != "" {
 			effectiveType = input.Type
+		}
+		if err := ValidateOpenAICompactStrategy(account.Platform, effectiveType, normalizedExtra); err != nil {
+			return nil, err
 		}
 		normalizedExtra, err = normalizeOpenAIAutoResetCreditExtra(account.Platform, effectiveType, account.IsShadow(), normalizedExtra)
 		if err != nil {
@@ -902,6 +908,15 @@ func (s *adminServiceImpl) UpdateAccount(ctx context.Context, id int64, input *U
 // UpdateAccountExtra 仅对 Extra JSONB 做 key 级合并，避免覆盖其它运行态键
 // （如 model_rate_limits / passive_usage_* 等）。
 func (s *adminServiceImpl) UpdateAccountExtra(ctx context.Context, id int64, updates map[string]any) error {
+	if _, exists := updates[OpenAICompactStrategyKey]; exists {
+		account, err := s.accountRepo.GetByID(ctx, id)
+		if err != nil {
+			return err
+		}
+		if err := ValidateOpenAICompactStrategy(account.Platform, account.Type, updates); err != nil {
+			return err
+		}
+	}
 	updates = sanitizedCodexFingerprintExtraUpdates(updates)
 	updates = stripOpenAIAutoResetCreditManagedExtra(updates, true)
 	delete(updates, UpstreamBillingProbeEnabledExtraKey)
@@ -972,7 +987,8 @@ func (s *adminServiceImpl) BulkUpdateAccounts(ctx context.Context, input *BulkUp
 
 	// 预取所有目标账号，供凭据守卫/代理守卫/混合渠道检查共用，避免多次 DB 查询。
 	var cachedTargets []*Account
-	if len(input.Credentials) > 0 || input.ProxyID != nil || needMixedChannelCheck || openAISettings.any() || input.ProbeEnabled != nil || input.RateMultiplier != nil {
+	_, hasCompactStrategy := input.Extra[OpenAICompactStrategyKey]
+	if len(input.Credentials) > 0 || input.ProxyID != nil || needMixedChannelCheck || openAISettings.any() || input.ProbeEnabled != nil || input.RateMultiplier != nil || hasCompactStrategy {
 		loaded, err := s.accountRepo.GetByIDs(ctx, input.AccountIDs)
 		if err != nil {
 			return nil, err
@@ -982,6 +998,11 @@ func (s *adminServiceImpl) BulkUpdateAccounts(ctx context.Context, input *BulkUp
 	targetsByID := make(map[int64]*Account, len(cachedTargets))
 	for _, account := range cachedTargets {
 		if account != nil {
+			if hasCompactStrategy {
+				if err := ValidateOpenAICompactStrategy(account.Platform, account.Type, input.Extra); err != nil {
+					return nil, err
+				}
+			}
 			targetsByID[account.ID] = account
 		}
 	}

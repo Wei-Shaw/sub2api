@@ -791,6 +791,10 @@ export default {
         codexImageToolBadgeEnabled: 'Hosted 桥接已开启',
         codexImageToolBadgeDisabled: '不注入 Hosted 工具',
         codexImageToolBadgeBlock: '客户端图片工具已移除',
+        compactStrategy: 'Codex 压缩策略',
+        compactStrategyInherit: '跟随客户端（默认）',
+        compactStrategySummary: '兼容摘要压缩',
+        compactStrategyDesc: '仅对此账号的 Codex HTTP 压缩请求启用摘要适配。未填写专属映射时使用当前请求的普通模型映射，配置专属映射则优先使用。摘要为有损压缩，目前不支持图片历史或 WebSocket。其他账号保持原行为。',
         compactMode: 'Compact 模式',
         compactModeDesc:
           '控制本账号在 /responses/compact 调度中的参与方式。Auto 跟随探测结果，Force On 强制允许，Force Off 强制排除。',
@@ -799,7 +803,7 @@ export default {
         compactModeForceOff: '强制关闭',
         compactModelMapping: 'Compact 专属模型映射',
         compactModelMappingDesc:
-          '仅在 /responses/compact 请求中生效。当上游 compact 端点需要特殊 compact 模型时使用。',
+          '用于 /responses/compact 或显式启用的兼容摘要压缩。将客户端模型映射到压缩使用的上游模型；摘要模式留空时跟随当前请求。',
         compactSupported: '支持 Compact',
         compactUnsupported: '不支持 Compact',
         compactAuto: 'Compact Auto',
