@@ -111,9 +111,12 @@ func TestGatewayRoutesSystemoneRejectedForOtherPlatforms(t *testing.T) {
 }
 
 // TestGatewayRoutesTypeSafeGroupCannotReachConversationalEndpoints 安全回归：
-// typesafe 分组不能进入通用 Anthropic 网关（它会用 GetBaseURL() 把 typesafe 的 key
-// 发到 api.anthropic.com）。测试路由的 GatewayHandler 是零值，一旦进入通用网关就会
-// 触发 nil 依赖，因此「拿到平台门的 404 文案」即证明在入口就被拒了。
+// typesafe 分组没有对话端点（/messages、/chat/completions、/responses、
+// /messages/count_tokens），不拦就会落到通用网关/上游并拿到语义不清的错误，这里改为
+// 干净的显式 404。曾经担心的「key 被当 Anthropic key 发到 api.anthropic.com」已不成立——
+// (*Account).GetBaseURL() 现在对 typesafe 早退返回空串，「凭据外泄」这一层已在 base URL
+// 层关闭。测试路由的 GatewayHandler 是零值，一旦进入通用网关就会触发 nil 依赖，因此
+// 「拿到平台门的 404 文案」即证明在入口就被拒了。
 func TestGatewayRoutesTypeSafeGroupCannotReachConversationalEndpoints(t *testing.T) {
 	router := newGatewayRoutesTestRouter(service.PlatformTypeSafe)
 
