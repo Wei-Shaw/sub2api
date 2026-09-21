@@ -499,6 +499,35 @@ func TestForwardAsRawChatCompletions_SilentRefusalTriggersFailover(t *testing.T)
 	require.Empty(t, rec.Body.String())
 }
 
+func TestForwardAsRawChatCompletions_OverloadBeforeContentTriggersFailoverForSmallRequests(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	body := []byte(`{"model":"gpt-5.5","messages":[{"role":"user","content":"hello"}],"stream":true}`)
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/chat/completions", bytes.NewReader(body))
+	c.Request.Header.Set("Content-Type", "application/json")
+
+	upstreamBody := strings.Join([]string{
+		`data: {"id":"chatcmpl_overloaded","object":"chat.completion.chunk","model":"gpt-5.5","choices":[{"index":0,"delta":{"role":"assistant"}}]}`,
+		"",
+		`data: {"error":{"type":"server_is_overloaded","message":"try again later"}}`,
+		"",
+	}, "\n")
+	upstream := &httpUpstreamRecorder{resp: &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     http.Header{"Content-Type": []string{"text/event-stream"}, "x-request-id": []string{"rid_overloaded"}},
+		Body:       io.NopCloser(strings.NewReader(upstreamBody)),
+	}}
+	svc := &OpenAIGatewayService{cfg: rawChatCompletionsTestConfig(), httpUpstream: upstream}
+
+	result, err := svc.forwardAsRawChatCompletions(context.Background(), c, rawChatCompletionsTestAccount(), body, "")
+	require.Nil(t, result)
+	var failoverErr *UpstreamFailoverError
+	require.True(t, errors.As(err, &failoverErr))
+	require.False(t, c.Writer.Written(), "role preamble must remain buffered until content or terminal error")
+	require.Empty(t, rec.Body.String())
+}
+
 func TestForwardAsRawChatCompletions_SilentRefusalToolCallsExempt(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
