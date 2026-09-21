@@ -3,12 +3,15 @@ package antigravity
 import (
 	"crypto/rand"
 	"encoding/json"
+	"errors"
 	"fmt"
-	"log"
 	"strings"
 	"sync/atomic"
 	"time"
 )
+
+// ErrMalformedFunctionCall indicates a failed generation, not a successful end of turn.
+var ErrMalformedFunctionCall = errors.New("upstream returned MALFORMED_FUNCTION_CALL")
 
 // TransformGeminiToClaude 将 Gemini 响应转换为 Claude 格式（非流式）
 func TransformGeminiToClaude(geminiResp []byte, originalModel string) ([]byte, *ClaudeUsage, error) {
@@ -32,6 +35,10 @@ func TransformGeminiToClaude(geminiResp []byte, originalModel string) ([]byte, *
 		v1Resp.Response = directResp
 		v1Resp.ResponseID = directResp.ResponseID
 		v1Resp.ModelVersion = directResp.ModelVersion
+	}
+
+	if len(v1Resp.Response.Candidates) > 0 && v1Resp.Response.Candidates[0].FinishReason == "MALFORMED_FUNCTION_CALL" {
+		return nil, nil, ErrMalformedFunctionCall
 	}
 
 	// 使用处理器转换
@@ -259,14 +266,6 @@ func (p *NonStreamingProcessor) buildResponse(geminiResp *GeminiResponse, respon
 	var finishReason string
 	if len(geminiResp.Candidates) > 0 {
 		finishReason = geminiResp.Candidates[0].FinishReason
-		if finishReason == "MALFORMED_FUNCTION_CALL" {
-			log.Printf("[Antigravity] MALFORMED_FUNCTION_CALL detected in response for model %s", originalModel)
-			if geminiResp.Candidates[0].Content != nil {
-				if b, err := json.Marshal(geminiResp.Candidates[0].Content); err == nil {
-					log.Printf("[Antigravity] Malformed content: %s", string(b))
-				}
-			}
-		}
 	}
 
 	stopReason := "end_turn"

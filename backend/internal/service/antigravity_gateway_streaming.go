@@ -913,6 +913,11 @@ func (s *AntigravityGatewayService) collectClaudeStreamResponse(c *gin.Context, 
 				continue
 			}
 
+			if extractGeminiFinishReason(parsed) == "MALFORMED_FUNCTION_CALL" {
+				recordAntigravityMalformedFunctionCall(c, originalModel)
+				return nil, nil, antigravityMalformedFunctionCallError()
+			}
+
 			last = parsed
 
 			// 保留最后一个有 parts 的响应，并收集所有 parts
@@ -1017,12 +1022,6 @@ func (s *AntigravityGatewayService) handleClaudeStreamToNonStreaming(c *gin.Cont
 
 // handleClaudeStreamingResponse 处理 Claude 流式响应（Gemini SSE → Claude SSE 转换）
 func (s *AntigravityGatewayService) handleClaudeStreamingResponse(c *gin.Context, resp *http.Response, startTime time.Time, originalModel string) (*antigravityStreamResult, error) {
-	c.Header("Content-Type", "text/event-stream")
-	c.Header("Cache-Control", "no-cache")
-	c.Header("Connection", "keep-alive")
-	c.Header("X-Accel-Buffering", "no")
-	c.Status(http.StatusOK)
-
 	flusher, ok := c.Writer.(http.Flusher)
 	if !ok {
 		return nil, errors.New("streaming not supported")
@@ -1115,6 +1114,13 @@ func (s *AntigravityGatewayService) handleClaudeStreamingResponse(c *gin.Context
 	lastDataAt := time.Now()
 
 	cw := newAntigravityClientWriter(c.Writer, flusher, "antigravity claude")
+	cw.beforeFirstWrite = func() {
+		c.Header("Content-Type", "text/event-stream")
+		c.Header("Cache-Control", "no-cache")
+		c.Header("Connection", "keep-alive")
+		c.Header("X-Accel-Buffering", "no")
+		c.Status(http.StatusOK)
+	}
 
 	// 仅发送一次错误事件，避免多次写入导致协议混乱
 	errorEventSent := false
@@ -1123,8 +1129,7 @@ func (s *AntigravityGatewayService) handleClaudeStreamingResponse(c *gin.Context
 			return
 		}
 		errorEventSent = true
-		_, _ = fmt.Fprintf(c.Writer, "event: error\ndata: {\"error\":\"%s\"}\n\n", reason)
-		flusher.Flush()
+		cw.Fprintf("event: error\ndata: {\"error\":\"%s\"}\n\n", reason)
 	}
 
 	// finishUsage 是获取 processor 最终 usage 的辅助函数
@@ -1171,6 +1176,15 @@ func (s *AntigravityGatewayService) handleClaudeStreamingResponse(c *gin.Context
 
 			// 处理 SSE 行，转换为 Claude 格式
 			claudeEvents := processor.ProcessLine(strings.TrimRight(ev.line, "\r\n"))
+			if err := processor.Err(); err != nil {
+				recordAntigravityMalformedFunctionCall(c, originalModel)
+				if !c.Writer.Written() && !cw.Disconnected() {
+					return nil, antigravityMalformedFunctionCallError()
+				}
+				cw.Write(claudeEvents)
+				MarkResponseCommitted(c)
+				return &antigravityStreamResult{usage: finishUsage(), firstTokenMs: firstTokenMs, clientDisconnect: cw.Disconnected()}, err
+			}
 			if len(claudeEvents) > 0 {
 				if firstTokenMs == nil {
 					ms := int(time.Since(startTime).Milliseconds())

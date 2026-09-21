@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	"log"
 	"strings"
 )
 
@@ -34,6 +33,7 @@ type StreamingProcessor struct {
 	webSearchQueries  []string
 	groundingChunks   []GeminiGroundingChunk
 	usageMapHook      UsageMapHook
+	terminalErr       error
 
 	// 累计 usage
 	inputTokens       int
@@ -74,6 +74,9 @@ func usageToMap(u ClaudeUsage) map[string]any {
 
 // ProcessLine 处理 SSE 行，返回 Claude SSE 事件
 func (p *StreamingProcessor) ProcessLine(line string) []byte {
+	if p.terminalErr != nil {
+		return nil
+	}
 	line = strings.TrimSpace(line)
 	if line == "" || !strings.HasPrefix(line, "data:") {
 		return nil
@@ -101,11 +104,6 @@ func (p *StreamingProcessor) ProcessLine(line string) []byte {
 
 	var result bytes.Buffer
 
-	// 发送 message_start
-	if !p.messageStartSent {
-		_, _ = result.Write(p.emitMessageStart(&v1Resp))
-	}
-
 	// 更新 usage
 	// 注意：Gemini 的 promptTokenCount 包含 cachedContentTokenCount，
 	// 但 Claude 的 input_tokens 不包含 cache_read_input_tokens，需要减去
@@ -115,6 +113,20 @@ func (p *StreamingProcessor) ProcessLine(line string) []byte {
 		p.outputTokens = geminiResp.UsageMetadata.CandidatesTokenCount + geminiResp.UsageMetadata.ThoughtsTokenCount
 		p.cacheReadTokens = cached
 		p.imageOutputTokens = geminiResp.UsageMetadata.ImageOutputTokens()
+	}
+
+	// Inspect terminal failures before emitting any content from this chunk.
+	if len(geminiResp.Candidates) > 0 && geminiResp.Candidates[0].FinishReason == "MALFORMED_FUNCTION_CALL" {
+		p.terminalErr = ErrMalformedFunctionCall
+		return p.formatSSE("error", map[string]any{
+			"type":  "error",
+			"error": map[string]any{"type": "api_error", "message": p.terminalErr.Error()},
+		})
+	}
+
+	// 发送 message_start
+	if !p.messageStartSent {
+		_, _ = result.Write(p.emitMessageStart(&v1Resp))
 	}
 
 	// 处理 parts
@@ -131,14 +143,6 @@ func (p *StreamingProcessor) ProcessLine(line string) []byte {
 	// 检查是否结束
 	if len(geminiResp.Candidates) > 0 {
 		finishReason := geminiResp.Candidates[0].FinishReason
-		if finishReason == "MALFORMED_FUNCTION_CALL" {
-			log.Printf("[Antigravity] MALFORMED_FUNCTION_CALL detected in stream for model %s", p.originalModel)
-			if geminiResp.Candidates[0].Content != nil {
-				if b, err := json.Marshal(geminiResp.Candidates[0].Content); err == nil {
-					log.Printf("[Antigravity] Malformed content: %s", string(b))
-				}
-			}
-		}
 		if finishReason != "" {
 			_, _ = result.Write(p.emitFinish(finishReason))
 		}
@@ -158,7 +162,7 @@ func (p *StreamingProcessor) Finish() ([]byte, *ClaudeUsage) {
 		ImageOutputTokens:    p.imageOutputTokens,
 	}
 
-	if !p.messageStartSent {
+	if p.terminalErr != nil || !p.messageStartSent {
 		return nil, usage
 	}
 
@@ -168,6 +172,11 @@ func (p *StreamingProcessor) Finish() ([]byte, *ClaudeUsage) {
 	}
 
 	return result.Bytes(), usage
+}
+
+// Err reports an upstream terminal failure, including failures in HTTP 200 streams.
+func (p *StreamingProcessor) Err() error {
+	return p.terminalErr
 }
 
 // MessageStartSent 报告流中是否已发出过 message_start 事件（即是否收到过有效的上游数据）

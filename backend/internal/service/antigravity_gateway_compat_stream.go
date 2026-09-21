@@ -92,6 +92,27 @@ func (a *antigravityResponsesStreamAdapter) Finalize(writer *antigravityClientWr
 }
 
 func (a *antigravityResponsesStreamAdapter) WriteError(writer *antigravityClientWriter, reason string) {
+	// Responses clients require a failed response terminal event; a generic error
+	// must not be swallowed by the Anthropic-to-Responses conversion/finalizer.
+	if reason == antigravity.ErrMalformedFunctionCall.Error() {
+		state := a.anthropicState
+		a.emitResponseEvent(apicompat.ResponsesStreamEvent{
+			Type:           "response.failed",
+			SequenceNumber: state.SequenceNumber,
+			Response: &apicompat.ResponsesResponse{
+				ID:        state.ResponseID,
+				Object:    "response",
+				CreatedAt: state.Created,
+				Model:     state.Model,
+				Status:    "failed",
+				Output:    append([]apicompat.ResponsesOutput{}, state.Outputs...),
+				Error:     &apicompat.ResponsesError{Code: "server_error", Message: reason},
+			},
+		}, writer)
+		state.SequenceNumber++
+		state.CompletedSent = true
+		return
+	}
 	writer.Fprintf("event: error\ndata: {\"type\":\"error\",\"error\":{\"type\":\"upstream_error\",\"message\":%q}}\n\n", reason)
 }
 
@@ -134,7 +155,7 @@ func newAntigravityCompatStreamSession(
 
 func (s *antigravityCompatStreamSession) consume(line string) {
 	claudeEvents := s.processor.ProcessLine(strings.TrimRight(line, "\r\n"))
-	if len(claudeEvents) == 0 {
+	if s.processor.Err() != nil || len(claudeEvents) == 0 {
 		return
 	}
 	s.consumeClaudeEvents(claudeEvents)
@@ -303,6 +324,14 @@ func (s *AntigravityGatewayService) handleAntigravityCompatStream(
 			resetAntigravityCompatTimer(timeoutTimer, timeout)
 			s.observeAntigravityGeminiSSELine(c, event.line)
 			session.consume(event.line)
+			if err := session.processor.Err(); err != nil {
+				recordAntigravityMalformedFunctionCall(c, originalModel)
+				if !c.Writer.Written() && !writer.Disconnected() {
+					return nil, antigravityMalformedFunctionCallError()
+				}
+				writeAntigravityCompatStreamError(c, adapter, writer, err.Error())
+				return session.collectResult(writer.Disconnected()), err
+			}
 
 		case <-timeoutCh:
 			if writer.Disconnected() {
