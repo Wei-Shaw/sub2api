@@ -42,15 +42,15 @@ func TestQualityPromptReachesActualAccountRequest(t *testing.T) {
 	}
 }
 func TestQualityRequiresCompletedOutputAndFinalAnswer(t *testing.T) {
-	r := parseQualityOutput(qualityEvents("答案：21颗", false), "candy")
+	r := parseQualityOutput(qualityEvents("答案：29颗", false), "candy")
 	require.Equal(t, "error", r.Status)
-	r = parseQualityOutput(qualityEvents("答案：21颗", true)+"data: {\"type\":\"error\",\"error\":\"upstream failed\"}\n\n", "candy")
+	r = parseQualityOutput(qualityEvents("答案：29颗", true)+"data: {\"type\":\"error\",\"error\":\"upstream failed\"}\n\n", "candy")
 	require.Equal(t, "error", r.Status)
 	r = parseQualityOutput(qualityEvents("可能有人给答案21，但我的最终答案：29颗", true), "candy")
-	require.Equal(t, "mismatch", r.Status)
+	require.Equal(t, "pass", r.Status)
 	require.Equal(t, 29, *r.Answer)
 	r = parseQualityOutput(qualityEvents("9圆形与12五角星。\n答案：21颗", true), "candy")
-	require.Equal(t, "pass", r.Status)
+	require.Equal(t, "mismatch", r.Status)
 	r = parseQualityOutput(qualityEvents("无法确定", true), "candy")
 	require.Equal(t, "review", r.Status)
 	r = parseQualityOutput(qualityEvents("", true), "candy")
@@ -86,16 +86,8 @@ func TestQualityCandyReferenceByExhaustiveCounts(t *testing.T) {
 			}
 		}
 	}
-	minDraw := 42
-	for r := 0; r <= 24; r++ {
-		for s := 0; s <= 17; s++ {
-			if !bad[[2]int{r, s}] && r+s < minDraw {
-				minDraw = r + s
-			}
-		}
-	}
-	require.Equal(t, 21, minDraw)
-	require.False(t, bad[[2]int{9, 12}])
+	// A fixed draw count must survive every possible circle/star split. The
+	// largest losing set has 28 candies, so 29 is the guarantee value.
 	require.Equal(t, 29, largest+1)
 }
 func TestQualitySchedulerPauseAndLostLeaseDoNotCallUpstream(t *testing.T) {

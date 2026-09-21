@@ -476,15 +476,12 @@ func parseQualityOutput(body, kind string) QualityCase {
 	if answer == nil {
 		r.Status = "review"
 		r.Note = "未识别最终答案，请展开查看推导"
-	} else if *answer == 21 {
-		r.Status = "pass"
-		r.Note = "答案 21 颗符合基准 · 推导可展开核验"
 	} else if *answer == 29 {
-		r.Status = "mismatch"
-		r.Note = "29 是盲取答案；题目允许用手感分辨形状，需复核"
+		r.Status = "pass"
+		r.Note = "答案 29 颗符合保证值 · 推导可展开核验"
 	} else {
 		r.Status = "mismatch"
-		r.Note = fmt.Sprintf("答案 %d 颗与基准 21 颗不一致，需复核", *answer)
+		r.Note = fmt.Sprintf("答案 %d 颗与保证值 29 颗不一致，需复核", *answer)
 	}
 	return r
 }
