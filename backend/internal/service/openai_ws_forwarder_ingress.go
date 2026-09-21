@@ -1378,6 +1378,9 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 	currentTurnAccountFailoverInput := []json.RawMessage(nil)
 	currentTurnAccountFailoverInputExists := false
 	currentTurnAccountFailoverInputBuilt := false
+	// 换号重放序列“存在”不等于“完整”：首帧续接连接建立之前的响应时，序列只含本连接内的片段。
+	lastTurnAccountFailoverHistoryComplete := false
+	currentTurnAccountFailoverHistoryComplete := false
 	skipBeforeTurn := false
 	hasCurrentOrReplayFunctionCallOutput := func(payload []byte) bool {
 		if openAIWSRawPayloadHasToolCallOutput(payload) {
@@ -1498,6 +1501,15 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 		if turn <= 1 || !errors.As(err, &failoverErr) || failoverErr == nil {
 			return err
 		}
+		if !currentTurnAccountFailoverHistoryComplete {
+			logOpenAIWSModeInfo(
+				"ingress_ws_account_failover_replay_skip account_id=%d turn=%d conn_id=%s reason=incomplete_history",
+				account.ID,
+				turn,
+				truncateOpenAIWSLogValue(sessionConnID, openAIWSIDValueMaxLen),
+			)
+			return newOpenAIWSCurrentTurnFailoverError(err, nil)
+		}
 		retryPayload, retrySafe, retryPayloadErr := buildOpenAIWSCurrentTurnRetryPayload(
 			currentAccountIdentitySourceRaw,
 			currentTurnAccountFailoverInput,
@@ -1605,6 +1617,7 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 			if !currentTurnAccountFailoverInputBuilt {
 				currentTurnAccountFailoverInput = nil
 				currentTurnAccountFailoverInputExists = false
+				currentTurnAccountFailoverHistoryComplete = false
 			}
 		} else {
 			currentTurnReplayInput, currentTurnReplayInputExists = buildOpenAIWSReplayInputSequenceFromItems(
@@ -1621,6 +1634,11 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 					currentItems,
 					currentItemsExist,
 					currentPreviousResponseID != "",
+				)
+				currentTurnAccountFailoverHistoryComplete = openAIWSAccountFailoverHistoryComplete(
+					lastTurnAccountFailoverHistoryComplete,
+					currentPreviousResponseID,
+					lastTurnResponseID,
 				)
 				currentTurnAccountFailoverInputBuilt = true
 			}
@@ -1909,6 +1927,7 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 		}
 		lastTurnAccountFailoverInput = currentTurnAccountFailoverInput
 		lastTurnAccountFailoverInputExists = currentTurnAccountFailoverInputExists
+		lastTurnAccountFailoverHistoryComplete = currentTurnAccountFailoverHistoryComplete
 		if len(result.wsAccountFailoverReplayInput) > 0 {
 			lastTurnAccountFailoverInput = combineOpenAIWSReplayItems(lastTurnAccountFailoverInput, result.wsAccountFailoverReplayInput)
 			lastTurnAccountFailoverInputExists = true

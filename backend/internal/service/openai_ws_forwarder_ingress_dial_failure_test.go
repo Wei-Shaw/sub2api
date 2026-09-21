@@ -183,6 +183,16 @@ func (d *openAIWSDialThenFailDialer) Calls() int {
 // 上游按 turnTwoEvents 回应后重试新建连接，此时拨号在传输层失败。返回 handler 将收到的错误与拨号次数。
 func runOpenAIWSLaterTurnDialFailureSession(t *testing.T, cfg *config.Config, turnTwoEvents [][]byte) (int, error) {
 	t.Helper()
+	return runOpenAIWSLaterTurnDialFailureSessionWithFirstFrame(
+		t,
+		cfg,
+		[]byte(`{"type":"response.create","model":"gpt-5.1","stream":false,"input":[{"role":"user","content":"first"}]}`),
+		turnTwoEvents,
+	)
+}
+
+func runOpenAIWSLaterTurnDialFailureSessionWithFirstFrame(t *testing.T, cfg *config.Config, firstFrame []byte, turnTwoEvents [][]byte) (int, error) {
+	t.Helper()
 	gin.SetMode(gin.TestMode)
 
 	cfg.Security.URLAllowlist.Enabled = false
@@ -268,7 +278,7 @@ func runOpenAIWSLaterTurnDialFailureSession(t *testing.T, cfg *config.Config, tu
 	defer func() { _ = clientConn.CloseNow() }()
 
 	writeCtx, cancelWrite := context.WithTimeout(context.Background(), 3*time.Second)
-	err = clientConn.Write(writeCtx, coderws.MessageText, []byte(`{"type":"response.create","model":"gpt-5.1","stream":false,"input":[{"role":"user","content":"first"}]}`))
+	err = clientConn.Write(writeCtx, coderws.MessageText, firstFrame)
 	cancelWrite()
 	require.NoError(t, err)
 
@@ -334,4 +344,45 @@ func TestOpenAIGatewayService_ProxyResponsesWebSocketFromClient_LaterTurnPrevRes
 
 	require.Equal(t, 2, dialCalls, "续链恢复后应重建连接")
 	requireOpenAIWSLaterTurnRetryPayload(t, serverErr)
+}
+
+// 场景：首帧用 previous_response_id 续接连接建立之前的响应、只带增量输入，网关手里没有此前的历史。
+// 第二轮拨号失败时，本连接内累积的 first / first-ok / second 不是完整对话，
+// 不得生成换号重放载荷：载荷置空，由 handler 关闭连接，避免替代账号静默丢失连接前的上下文。
+func TestOpenAIGatewayService_ProxyResponsesWebSocketFromClient_LaterTurnDialFailureRefusesFailoverWithoutFullHistory(t *testing.T) {
+	dialCalls, serverErr := runOpenAIWSLaterTurnDialFailureSessionWithFirstFrame(
+		t,
+		&config.Config{},
+		[]byte(`{"type":"response.create","model":"gpt-5.1","stream":false,"previous_response_id":"resp_before_connection","input":[{"role":"user","content":"first"}]}`),
+		nil,
+	)
+
+	require.Equal(t, 2, dialCalls, "第二轮首读失败后的重试应新建连接")
+	var failoverErr *UpstreamFailoverError
+	require.ErrorAs(t, serverErr, &failoverErr)
+	retryPayload, retryCurrentTurn := OpenAIWSCurrentTurnRetryPayload(serverErr)
+	require.True(t, retryCurrentTurn, "后续轮次的换号错误仍须标记为当前轮，禁止退回首包")
+	require.Empty(t, string(retryPayload), "历史不完整时不得携带跨账号重放载荷")
+}
+
+func TestOpenAIWSAccountFailoverHistoryComplete(t *testing.T) {
+	cases := []struct {
+		name               string
+		previousComplete   bool
+		previousResponseID string
+		lastTurnResponseID string
+		want               bool
+	}{
+		{name: "首帧自带全量 input", want: true},
+		{name: "首帧续接连接建立之前的响应", previousResponseID: "resp_before_connection"},
+		{name: "续接上一轮且此前完整", previousComplete: true, previousResponseID: " resp_1 ", lastTurnResponseID: "resp_1", want: true},
+		{name: "续接上一轮但此前不完整", previousResponseID: "resp_1", lastTurnResponseID: "resp_1"},
+		{name: "续接的不是上一轮响应", previousComplete: true, previousResponseID: "resp_other", lastTurnResponseID: "resp_1"},
+		{name: "不完整之后客户端重发全量 input", lastTurnResponseID: "resp_1", want: true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			require.Equal(t, tc.want, openAIWSAccountFailoverHistoryComplete(tc.previousComplete, tc.previousResponseID, tc.lastTurnResponseID))
+		})
+	}
 }

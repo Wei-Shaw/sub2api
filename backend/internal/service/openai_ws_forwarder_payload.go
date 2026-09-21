@@ -764,6 +764,18 @@ func setOpenAIWSPayloadInputSequence(
 	return sjson.SetRawBytes(payload, "input", inputRaw)
 }
 
+// openAIWSAccountFailoverHistoryComplete 判断换号重放序列是否覆盖完整对话历史。
+// 不带 previous_response_id 的请求自带全量 input；带了则只有它指向本连接上一轮响应、
+// 且上一轮序列本身完整时，拼接结果才完整。指向连接建立之前或其它响应的续链，
+// 其历史只存在于上游，网关无从重建。
+func openAIWSAccountFailoverHistoryComplete(previousComplete bool, previousResponseID string, lastTurnResponseID string) bool {
+	previousResponseID = strings.TrimSpace(previousResponseID)
+	if previousResponseID == "" {
+		return true
+	}
+	return previousComplete && previousResponseID == strings.TrimSpace(lastTurnResponseID)
+}
+
 func buildOpenAIWSCurrentTurnRetryPayload(
 	payload []byte,
 	fullInput []json.RawMessage,
