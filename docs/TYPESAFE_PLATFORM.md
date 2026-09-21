@@ -208,6 +208,8 @@ TypeSafe 的 key 在本仓库有**两套互不相通**的存储，**当前不共
    - `service.IsMultiProtocolAPIKeyProvider`：本分支 `backend/internal/service/domain_constants.go:131-135`（`IsCNProvider || OpenCodeGo`，**刻意不含 typesafe**），integration 是 `IsCNProvider || OpenCodeGo || IsOllamaCloud`（`integration:backend/internal/service/domain_constants.go:134-136`）→ 合并后保留 integration 的 `IsOllamaCloud` 项，同时**不要**把 typesafe 加进去。
    - `ent/schema/user_platform_quota.go` 的构建期 `Validate` 白名单同样要并集（本分支 `:42-47` 已加 `typesafe`；integration 加 `ollama_cloud`）。
 7. **迁移顺序无关**：`backend/migrations/240_typesafe_platform.sql` 的 CHECK 已写成「main 与 integration 已知平台并集 + typesafe」（含 `ollama_cloud`），与 integration 上的 `239_ollama_cloud_platform.sql` 谁先应用都成立；合并后不需要再改这个迁移（也不要改它 —— 迁移一旦应用不可修改）。
+8. **尾逗号**：并集 `frontend/src/utils/keyGroupProviders.ts` 的 `PROVIDER_BY_PLATFORM` 时，必须先把 integration 侧（`feature/composite-ollama-unified`）的最后一项写成带尾逗号的 `ollama_cloud: 'other',`，**再**在其后追加 `typesafe: 'other'`。该分支新增的那一行本身没有尾逗号（它替换掉了 main 里同样无尾逗号的末项 `opencode_go: 'other'`），不补逗号直接追加就是 TS 语法错误，`vue-tsc` / `pnpm build` 会直接失败。通用提醒：凡是要在 integration 的**最后一项**之后追加条目的对象/数组字面量（同类穷尽 `Record`、平台目录数组等），追加前都先确认该末项已有尾逗号。
+9. **composite 子用例合并时无需再改**：`backend/internal/server/routes/gateway_typesafe_test.go` 的 `TestGatewayRoutesSystemoneRejectedForOtherPlatforms` composite 分支，合并后会走 integration 的 composite 入口准入（400 `cannot be resolved to any platform in this composite group`），而**不是** `/v1/systemone` 的平台门（404 `System One API is not supported for this platform`）—— 本分支已把该断言写成「两种拒绝都接受、其余响应（含 2xx）一律失败」，所以重建 integration 时不必再动这个测试。记这条是因为上一次重建把该适配以额外提交补在了 integration 上，而那种提交会在下次重建时丢失。
 
 ---
 
