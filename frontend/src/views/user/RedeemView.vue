@@ -337,17 +337,19 @@
           </div>
           <div class="mt-4 flex flex-wrap items-center justify-between gap-3 text-sm">
             <span>{{ t('common.total') }}: {{ historyTotal }} {{ t('pagination.results') }}</span>
-            <label>
-              {{ t('pagination.perPage') }}
-              <select
+            <div class="flex items-center gap-2">
+              <span>{{ t('pagination.perPage') }}</span>
+              <Select
                 v-model="historyPageSize"
-                class="input w-20"
+                :options="historyPageSizeOptions"
+                :aria-label="t('pagination.perPage')"
+                class="w-24"
+                size="sm"
                 :disabled="loadingHistory || submitting"
+                data-testid="history-page-size"
                 @change="fetchHistory(1)"
-              >
-                <option v-for="size in [20, 50, 100]" :key="size" :value="size">{{ size }}</option>
-              </select>
-            </label>
+              />
+            </div>
             <button
               class="btn btn-secondary"
               :disabled="loadingHistory || submitting || historyPage <= 1"
@@ -374,6 +376,7 @@ import { useSubscriptionStore } from '@/stores/subscriptions'
 import { redeemAPI, authAPI, type RedeemHistoryItem } from '@/api'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import Icon from '@/components/icons/Icon.vue'
+import Select from '@/components/common/Select.vue'
 import { formatDateTime } from '@/utils/format'
 
 const { t } = useI18n()
@@ -401,6 +404,7 @@ const history = ref<RedeemHistoryItem[]>([])
 const loadingHistory = ref(false)
 const historyPage = ref(1)
 const historyPageSize = ref(20)
+const historyPageSizeOptions = [20, 50, 100].map(size => ({ value: size, label: String(size) }))
 const historyTotal = ref(0)
 let historyRequest = 0
 let loadedHistoryPageSize = 20

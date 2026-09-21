@@ -5861,9 +5861,10 @@
                   <button
                     id="codex-ticket-plan-rule-add"
                     type="button"
-                    class="btn-secondary text-xs"
+                    class="btn btn-secondary btn-sm"
                     @click="form.openai_codex_ticket_plan_lengths.push({ plan: '', length: form.openai_codex_ticket_default_length || 292 })"
                   >
+                    <Icon name="plus" size="xs" />
                     {{ t("admin.settings.gatewayForwarding.codexTicketPlanRuleAdd") }}
                   </button>
                   <p
