@@ -645,12 +645,27 @@ export default {
     noSearchResult: 'No matching models',
     anonymousHint: 'Sign in to see your exclusive groups and personal rates',
     filters: {
+      categoryLabel: 'Model categories',
+      orHint: 'OR filter: models matching any selected category are shown',
       platformLabel: 'Platform',
       groupLabel: 'Group',
       rateLabel: 'Rate',
       modelLabel: 'Model',
       searchPlaceholder: 'Search models',
       all: 'All'
+    },
+    card: {
+      capability: 'Capabilities and limits',
+      useCases: 'Use cases',
+      tier: 'Tier condition',
+      inputPrice: 'Input',
+      outputPrice: 'Output',
+      cacheRead: 'Cache read',
+      cacheWrite: 'Cache write',
+      glossary: 'Terms',
+      copyCallName: 'Copy model ID',
+      copySuccess: 'Model ID copied',
+      viewDetails: 'View full details for {name}'
     },
     badges: {
       exclusive: 'Exclusive',

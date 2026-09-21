@@ -66,6 +66,17 @@ type modelPlazaTimePricing struct {
 type modelPlazaModel struct {
 	Name            string                     `json:"name"`
 	Platform        string                     `json:"platform"`
+	DisplayName     string                     `json:"display_name"`
+	Capability      string                     `json:"capability"`
+	UseCases        string                     `json:"use_cases"`
+	Categories      []string                   `json:"categories"`
+	TierCondition   string                     `json:"tier_condition"`
+	InputPrice      string                     `json:"input_price"`
+	OutputPrice     string                     `json:"output_price"`
+	CacheReadPrice  string                     `json:"cache_read_price"`
+	CacheWritePrice string                     `json:"cache_write_price"`
+	Glossary        string                     `json:"glossary"`
+	LaunchDate      string                     `json:"launch_date"`
 	Pricing         *userSupportedModelPricing `json:"pricing"`
 	OfficialPricing *modelPlazaOfficialPricing `json:"official_pricing"`
 	// LongContextBasis 多档时的计价基准："whole_request"（整单按档）| "marginal"（仅超出部分）。
@@ -188,14 +199,28 @@ func toModelPlazaGroupDTO(g *service.PlazaGroup, userRates map[int64]float64) mo
 	models := make([]modelPlazaModel, 0, len(g.Models))
 	for i := range g.Models {
 		m := &g.Models[i]
-		models = append(models, modelPlazaModel{
+		dto := modelPlazaModel{
 			Name:             m.Name,
 			Platform:         m.Platform,
 			Pricing:          toUserPricing(m.Pricing),
 			OfficialPricing:  toModelPlazaOfficialPricing(m.OfficialPricing),
 			LongContextBasis: string(m.LongContextBasis),
 			TimePricing:      toModelPlazaTimePricing(m.TimePricing),
-		})
+		}
+		if metadata := m.Metadata; metadata != nil {
+			dto.DisplayName = metadata.DisplayName
+			dto.Capability = metadata.Capability
+			dto.UseCases = metadata.UseCases
+			dto.Categories = metadata.Categories
+			dto.TierCondition = metadata.TierCondition
+			dto.InputPrice = metadata.InputPrice
+			dto.OutputPrice = metadata.OutputPrice
+			dto.CacheReadPrice = metadata.CacheReadPrice
+			dto.CacheWritePrice = metadata.CacheWritePrice
+			dto.Glossary = metadata.Glossary
+			dto.LaunchDate = metadata.LaunchDate
+		}
+		models = append(models, dto)
 	}
 	dto := modelPlazaGroup{
 		ID:                        g.ID,

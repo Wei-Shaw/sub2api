@@ -650,12 +650,27 @@ export default {
     noSearchResult: '没有匹配的模型',
     anonymousHint: '登录后可查看你的专属分组与专属倍率',
     filters: {
+      categoryLabel: '模型类别',
+      orHint: '已按并集筛选：命中任一所选类别即可显示',
       platformLabel: '平台',
       groupLabel: '分组',
       rateLabel: '倍率',
       modelLabel: '模型',
       searchPlaceholder: '搜索模型名称',
       all: '全部'
+    },
+    card: {
+      capability: '能力边界',
+      useCases: '适用场景',
+      tier: '档位条件',
+      inputPrice: '输入价',
+      outputPrice: '输出价',
+      cacheRead: '缓存读',
+      cacheWrite: '缓存写',
+      glossary: '术语解释',
+      copyCallName: '复制调用名',
+      copySuccess: '调用名已复制',
+      viewDetails: '查看 {name} 完整信息'
     },
     badges: {
       exclusive: '专属分组',

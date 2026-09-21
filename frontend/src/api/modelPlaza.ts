@@ -46,6 +46,17 @@ export interface PlazaTimePricing {
 export interface PlazaModel {
   name: string
   platform: string
+  display_name: string
+  capability: string
+  use_cases: string
+  categories: ModelCategory[]
+  tier_condition: string
+  input_price: string
+  output_price: string
+  cache_read_price: string
+  cache_write_price: string
+  glossary: string
+  launch_date: string
   /** 实收口径的展示定价：档位可提供绝对单价或相对基础价倍率；均为标准时段价。 */
   pricing: UserSupportedModelPricing | null
   official_pricing: PlazaOfficialPricing | null
@@ -54,6 +65,9 @@ export interface PlazaModel {
   /** 仅配置了分时倍率的模型返回。 */
   time_pricing?: PlazaTimePricing
 }
+
+export const MODEL_CATEGORIES = ['文本', '多模态', '图像', '代码', '语音'] as const
+export type ModelCategory = (typeof MODEL_CATEGORIES)[number]
 
 export interface ModelPlazaGroup {
   id: number

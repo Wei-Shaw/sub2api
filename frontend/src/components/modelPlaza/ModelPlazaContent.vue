@@ -13,15 +13,6 @@
       v-html="descriptionHtml"
     ></div>
 
-    <!-- 未登录提示 -->
-    <p
-      v-if="!isAuthenticated"
-      class="flex items-center gap-1.5 text-xs text-gray-400 dark:text-dark-500"
-    >
-      <Icon name="infoCircle" size="xs" class="h-3.5 w-3.5" />
-      {{ t('modelPlaza.anonymousHint') }}
-    </p>
-
     <!-- 加载/错误/空 -->
     <div v-if="loading" class="flex min-h-[240px] items-center justify-center">
       <div class="h-8 w-8 animate-spin rounded-full border-2 border-primary-600/25 border-t-primary-600 dark:border-primary-400/25 dark:border-t-primary-400"></div>
@@ -33,29 +24,40 @@
       {{ t('modelPlaza.loadFailed') }}
     </div>
     <template v-else>
-      <!-- 筛选区:平台 → 分组 → 倍率(可选) → 模型 -->
-      <PlazaFilterBar
-        :platforms="platforms"
-        :groups="groupOptions"
-        :rates="rates"
-        :platform="selectedPlatform"
-        :group-id="selectedGroupId"
-        :rate="selectedRate"
-        :search="searchQuery"
-        :show-rate="showRateDetails"
-        @update:platform="selectedPlatform = $event"
-        @update:group-id="selectedGroupId = $event"
-        @update:rate="selectedRate = $event"
-        @update:search="searchQuery = $event"
-      />
+      <div class="rounded-2xl border border-gray-100 bg-white p-4 shadow-sm dark:border-dark-700 dark:bg-dark-800/60">
+        <div class="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+          <div class="flex flex-wrap gap-2" role="group" :aria-label="t('modelPlaza.filters.categoryLabel')">
+            <button
+              v-for="category in MODEL_CATEGORIES"
+              :key="category"
+              type="button"
+              class="rounded-full border px-3.5 py-1.5 text-sm font-medium transition"
+              :class="selectedCategories.includes(category)
+                ? 'border-primary-600 bg-primary-600 text-white'
+                : 'border-gray-200 bg-white text-gray-600 hover:border-primary-300 dark:border-dark-600 dark:bg-dark-800 dark:text-dark-300'"
+              :aria-pressed="selectedCategories.includes(category)"
+              @click="toggleCategory(category)"
+            >
+              {{ category }}
+            </button>
+          </div>
+          <input
+            v-model="searchQuery"
+            type="search"
+            class="input w-full lg:w-72"
+            :placeholder="t('modelPlaza.filters.searchPlaceholder')"
+          />
+        </div>
+        <p v-if="selectedCategories.length > 1" class="mt-2 text-xs text-gray-400 dark:text-dark-500">
+          {{ t('modelPlaza.filters.orHint') }}
+        </p>
+      </div>
 
-      <!-- 分组分节的模型清单(默认按生效倍率升序) -->
-      <div v-if="filteredGroups.length > 0" class="space-y-5">
-        <PlazaGroupSection
-          v-for="g in filteredGroups"
-          :key="g.id"
-          :group="g"
-          :show-rate-details="showRateDetails"
+      <div v-if="filteredModels.length > 0" class="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+        <ModelMetadataCard
+          v-for="model in filteredModels"
+          :key="model.name"
+          :model="model"
         />
       </div>
       <div
@@ -69,15 +71,17 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { marked } from 'marked'
 import DOMPurify from 'dompurify'
-import Icon from '@/components/icons/Icon.vue'
-import PlazaFilterBar from './PlazaFilterBar.vue'
-import PlazaGroupSection from './PlazaGroupSection.vue'
-import type { ModelPlazaGroup, ModelPlazaResponse } from '@/api/modelPlaza'
-import { useAuthStore } from '@/stores/auth'
+import ModelMetadataCard from './ModelMetadataCard.vue'
+import {
+  MODEL_CATEGORIES,
+  type ModelCategory,
+  type ModelPlazaResponse,
+  type PlazaModel
+} from '@/api/modelPlaza'
 
 const props = withDefaults(defineProps<{
   response: ModelPlazaResponse | null
@@ -92,15 +96,10 @@ const props = withDefaults(defineProps<{
 })
 
 const { t } = useI18n()
-const authStore = useAuthStore()
-const isAuthenticated = computed(() => authStore.isAuthenticated)
-
-const selectedPlatform = ref<string>('all')
-const selectedGroupId = ref<number | 'all'>('all')
-const selectedRate = ref<number | 'all'>('all')
+const selectedCategories = ref<ModelCategory[]>([])
 const searchQuery = ref('')
 
-const searchActive = computed(() => searchQuery.value.trim() !== '')
+const searchActive = computed(() => searchQuery.value.trim() !== '' || selectedCategories.value.length > 0)
 
 const descriptionHtml = computed(() => {
   const md = props.response?.description?.trim()
@@ -108,59 +107,41 @@ const descriptionHtml = computed(() => {
   return DOMPurify.sanitize(marked.parse(md) as string)
 })
 
-/** 生效倍率 = 用户专属倍率 ?? 分组默认倍率。 */
-function effectiveRate(g: ModelPlazaGroup): number {
-  return g.user_rate_multiplier ?? g.rate_multiplier
-}
-
-const platforms = computed(() =>
-  [...new Set((props.response?.groups ?? []).map((g) => g.platform).filter(Boolean))].sort()
-)
-
-const groupOptions = computed(() =>
-  (props.response?.groups ?? []).map((g) => ({
-    id: g.id,
-    name: g.name,
-    platform: g.platform,
-    rate: effectiveRate(g)
-  }))
-)
-
-/** 全量生效倍率;当前组合下不可用的项由 FilterBar 置灰而非隐藏。 */
-const rates = computed(() =>
-  [...new Set((props.response?.groups ?? []).map(effectiveRate))].sort((a, b) => a - b)
-)
-
-/** 数据刷新后选中的倍率可能不复存在,重置为全部。 */
-watch(rates, (list) => {
-  if (selectedRate.value !== 'all' && !list.includes(selectedRate.value)) {
-    selectedRate.value = 'all'
+const allModels = computed<PlazaModel[]>(() => {
+  const byName = new Map<string, PlazaModel>()
+  for (const group of props.response?.groups ?? []) {
+    for (const model of group.models) {
+      if (!model.display_name) continue
+      const key = model.name.toLowerCase()
+      if (!byName.has(key)) byName.set(key, model)
+    }
   }
-})
-
-const filteredGroups = computed(() => {
-  let groups = props.response?.groups ?? []
-  if (selectedPlatform.value !== 'all') {
-    groups = groups.filter((g) => g.platform === selectedPlatform.value)
-  }
-  if (selectedGroupId.value !== 'all') {
-    groups = groups.filter((g) => g.id === selectedGroupId.value)
-  }
-  if (selectedRate.value !== 'all') {
-    groups = groups.filter((g) => effectiveRate(g) === selectedRate.value)
-  }
-  // 模型名搜索:分组内只留命中的模型,整组无命中则隐藏该分组。
-  const q = searchQuery.value.trim().toLowerCase()
-  if (q) {
-    groups = groups
-      .map((g) => ({ ...g, models: g.models.filter((m) => m.name.toLowerCase().includes(q)) }))
-      .filter((g) => g.models.length > 0)
-  }
-  // 专属倍率会改变生效值,不能只依赖后端按默认倍率的排序。
-  return [...groups].sort(
-    (a, b) => effectiveRate(a) - effectiveRate(b) || a.name.localeCompare(b.name)
+  return [...byName.values()].sort(
+    (a, b) => b.launch_date.localeCompare(a.launch_date) || a.name.localeCompare(b.name)
   )
 })
+
+const filteredModels = computed(() => {
+  let models = allModels.value
+  if (selectedCategories.value.length > 0) {
+    models = models.filter((model) =>
+      model.categories.some((category) => selectedCategories.value.includes(category))
+    )
+  }
+  const q = searchQuery.value.trim().toLowerCase()
+  if (q) {
+    models = models.filter((model) =>
+      `${model.name} ${model.display_name}`.toLowerCase().includes(q)
+    )
+  }
+  return models
+})
+
+function toggleCategory(category: ModelCategory) {
+  selectedCategories.value = selectedCategories.value.includes(category)
+    ? selectedCategories.value.filter((item) => item !== category)
+    : [...selectedCategories.value, category]
+}
 </script>
 
 <style scoped>

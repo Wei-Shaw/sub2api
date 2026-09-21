@@ -17,6 +17,17 @@ function tokenModel(overrides: Partial<PlazaModel> = {}): PlazaModel {
   return {
     name: 'claude-sonnet',
     platform: 'anthropic',
+    display_name: 'Claude Sonnet',
+    capability: 'test',
+    use_cases: 'test',
+    categories: ['文本'],
+    tier_condition: '<272K',
+    input_price: '¥1',
+    output_price: '¥2',
+    cache_read_price: '¥0.1',
+    cache_write_price: '¥0.2',
+    glossary: 'test',
+    launch_date: '2026-01-01',
     pricing: {
       billing_mode: 'token',
       input_price: 3e-6,

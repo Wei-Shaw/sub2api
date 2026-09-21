@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sort"
 	"strings"
@@ -23,6 +24,7 @@ type PlazaOfficialPricing struct {
 type PlazaModel struct {
 	Name            string
 	Platform        string
+	Metadata        *ModelMetadata
 	Pricing         *ChannelModelPricing
 	OfficialPricing *PlazaOfficialPricing
 	// LongContextBasis 多档时的计价基准（整单 / 仅超出部分），单档为空。
@@ -67,6 +69,7 @@ type ModelPlazaService struct {
 	pricingService *PricingService
 	billingService *BillingService
 	resolver       *ModelPricingResolver
+	settingRepo    SettingRepository
 }
 
 // NewModelPlazaService 创建模型广场服务。
@@ -76,6 +79,7 @@ func NewModelPlazaService(
 	pricingService *PricingService,
 	billingService *BillingService,
 	resolver *ModelPricingResolver,
+	settingRepo SettingRepository,
 ) *ModelPlazaService {
 	return &ModelPlazaService{
 		channelRepo:    channelRepo,
@@ -83,6 +87,7 @@ func NewModelPlazaService(
 		pricingService: pricingService,
 		billingService: billingService,
 		resolver:       resolver,
+		settingRepo:    settingRepo,
 	}
 }
 
@@ -100,6 +105,15 @@ func NewModelPlazaService(
 //
 // 可见性过滤（专属分组）不在此层做，由 handler 按登录态裁剪。
 func (s *ModelPlazaService) ListGroups(ctx context.Context) ([]PlazaGroup, error) {
+	metadataByName, err := s.loadModelMetadata(ctx)
+	if err != nil {
+		return nil, err
+	}
+	// The R2 catalog is business-owned. Until a valid file is imported, expose an
+	// empty catalog instead of leaking the legacy channel/rate table.
+	if metadataByName != nil && len(metadataByName) == 0 {
+		return []PlazaGroup{}, nil
+	}
 	channels, err := s.channelRepo.ListAll(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("list channels: %w", err)
@@ -194,14 +208,27 @@ func (s *ModelPlazaService) ListGroups(ctx context.Context) ([]PlazaGroup, error
 	out := make([]PlazaGroup, 0, len(order))
 	for _, gid := range order {
 		pg := byGroup[gid]
+		if metadataByName != nil {
+			filtered := make([]PlazaModel, 0, len(pg.Models))
+			for j := range pg.Models {
+				metadata, ok := metadataByName[strings.ToLower(pg.Models[j].Name)]
+				if !ok || !metadataAllowsGroup(metadata, pg.Name) {
+					continue
+				}
+				metadataCopy := metadata
+				pg.Models[j].Metadata = &metadataCopy
+				filtered = append(filtered, pg.Models[j])
+			}
+			pg.Models = filtered
+		}
 		if len(pg.Models) == 0 {
 			continue
 		}
 		sort.SliceStable(pg.Models, func(i, j int) bool {
-			if pg.Models[i].Name != pg.Models[j].Name {
-				return pg.Models[i].Name < pg.Models[j].Name
+			if pg.Models[i].Metadata != nil && pg.Models[j].Metadata != nil && pg.Models[i].Metadata.LaunchDate != pg.Models[j].Metadata.LaunchDate {
+				return pg.Models[i].Metadata.LaunchDate > pg.Models[j].Metadata.LaunchDate
 			}
-			return pg.Models[i].Platform < pg.Models[j].Platform
+			return pg.Models[i].Name < pg.Models[j].Name
 		})
 		g := groupEnt[gid]
 		for j := range pg.Models {
@@ -218,6 +245,40 @@ func (s *ModelPlazaService) ListGroups(ctx context.Context) ([]PlazaGroup, error
 		return out[i].Name < out[j].Name
 	})
 	return out, nil
+}
+
+func (s *ModelPlazaService) loadModelMetadata(ctx context.Context) (map[string]ModelMetadata, error) {
+	if s.settingRepo == nil {
+		return nil, nil
+	}
+	raw, err := s.settingRepo.GetValue(ctx, ModelMetadataSettingKey)
+	if err != nil {
+		if errors.Is(err, ErrSettingNotFound) {
+			return map[string]ModelMetadata{}, nil
+		}
+		return nil, fmt.Errorf("load model metadata: %w", err)
+	}
+	records, err := ParseAndValidateModelMetadata([]byte(raw), nil)
+	if err != nil {
+		return nil, fmt.Errorf("stored model metadata is invalid: %w", err)
+	}
+	out := make(map[string]ModelMetadata, len(records))
+	for _, record := range records {
+		out[strings.ToLower(record.CallName)] = record
+	}
+	return out, nil
+}
+
+func metadataAllowsGroup(metadata ModelMetadata, groupName string) bool {
+	for _, allowed := range metadata.AuthorizedGroups {
+		if strings.TrimSpace(allowed) == AllAuthorizedGroupsMarker {
+			return true
+		}
+		if strings.EqualFold(strings.TrimSpace(allowed), strings.TrimSpace(groupName)) {
+			return true
+		}
+	}
+	return false
 }
 
 // fillDisplayPricing 把模型的展示定价换成实收口径：
