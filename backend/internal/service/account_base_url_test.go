@@ -68,6 +68,24 @@ func TestGetBaseURL(t *testing.T) {
 			},
 			expected: "",
 		},
+		{
+			name: "typesafe apikey without base_url never falls back to anthropic",
+			account: Account{
+				Type:        AccountTypeAPIKey,
+				Platform:    PlatformTypeSafe,
+				Credentials: map[string]any{},
+			},
+			expected: "",
+		},
+		{
+			name: "typesafe apikey with base_url is not handed to the anthropic path",
+			account: Account{
+				Type:        AccountTypeAPIKey,
+				Platform:    PlatformTypeSafe,
+				Credentials: map[string]any{"base_url": "https://custom.typesafe.example"},
+			},
+			expected: "",
+		},
 	}
 
 	for _, tt := range tests {
@@ -78,6 +96,28 @@ func TestGetBaseURL(t *testing.T) {
 			}
 		})
 	}
+}
+
+// GetBaseURL 对 typesafe 取空是 fail-closed，而不是丢弃凭据：typesafe 的真实上游
+// base 仍由 GetOpenAIBaseURL 解析（/v1/systemone 转发与连接测试都用它），且永不
+// 落到 api.anthropic.com。
+func TestGetBaseURLTypeSafeKeepsUpstreamOnTypeSafeHost(t *testing.T) {
+	configured := Account{
+		Type:        AccountTypeAPIKey,
+		Platform:    PlatformTypeSafe,
+		Credentials: map[string]any{"base_url": "https://custom.typesafe.example"},
+	}
+	require.Equal(t, "", configured.GetBaseURL())
+	require.Equal(t, "https://custom.typesafe.example", configured.GetOpenAIBaseURL())
+
+	unconfigured := Account{
+		Type:        AccountTypeAPIKey,
+		Platform:    PlatformTypeSafe,
+		Credentials: map[string]any{},
+	}
+	require.Equal(t, "", unconfigured.GetBaseURL())
+	require.Equal(t, DefaultTypeSafeBaseURL, unconfigured.GetOpenAIBaseURL())
+	require.NotEqual(t, "https://api.anthropic.com", unconfigured.GetOpenAIBaseURL())
 }
 
 func TestGetGeminiBaseURL(t *testing.T) {

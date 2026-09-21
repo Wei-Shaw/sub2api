@@ -31,6 +31,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/pkg/geminicli"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/openai"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/openai_compat"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/typesafe"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/xai"
 	"github.com/Wei-Shaw/sub2api/internal/util/urlvalidator"
 	"github.com/gin-gonic/gin"
@@ -46,6 +47,13 @@ const (
 	testClaudeAPIURL            = "https://api.anthropic.com/v1/messages?beta=true"
 	chatgptCodexAPIURL          = "https://chatgpt.com/backend-api/codex/responses"
 	defaultAntigravityTestModel = "claude-sonnet-4-6"
+)
+
+// typesafe 测试连接的最小良性探测体：单条 noul 判断题，state 只为证明端点可达。
+const (
+	typeSafeTestProbeState      = "ping"
+	typeSafeTestProbeQuestionID = "connectivity"
+	typeSafeTestProbeQuestion   = "这段文本是否为一个简短的非空探测字符串？"
 )
 
 // TestEvent represents a SSE event for account testing
@@ -416,6 +424,10 @@ func (s *AccountTestService) TestAccountConnection(c *gin.Context, accountID int
 		return s.testOpenCodeGoAccountConnection(c, account, modelID, prompt)
 	}
 
+	if account.IsTypeSafe() {
+		return s.testTypeSafeAccountConnection(c, account, modelID)
+	}
+
 	return s.testClaudeAccountConnection(c, account, modelID)
 }
 
@@ -460,6 +472,110 @@ func (s *AccountTestService) testOpenCodeGoResponsesConnection(c *gin.Context, a
 	c.Writer.Flush()
 	s.sendEvent(c, TestEvent{Type: "test_start", Model: testModelID})
 	return s.testCNProviderAdaptiveResponsesConnection(c, account, testModelID, authToken)
+}
+
+// testTypeSafeAccountConnection 探测 TypeSafe AI 的 Jev 判断题服务。
+//
+// typesafe 没有 Anthropic 协议路径：GetBaseURL() 对它返回空串，通用 Claude 探测
+// 会把账号的 api_key 当 Anthropic key 发到 api.anthropic.com（凭据外泄）。
+// 这里走与 /v1/systemone 转发同源的上游解析与 URL 构造：
+// GetOpenAIBaseURL（缺失回落 DefaultTypeSafeBaseURL）+ GetOpenAIProtocolAPIKey +
+// buildOpenAISystemOneURL，请求体只用 typesafe.Request 的最小良性探测。
+func (s *AccountTestService) testTypeSafeAccountConnection(c *gin.Context, account *Account, modelID string) error {
+	ctx := c.Request.Context()
+
+	testModelID := strings.TrimSpace(modelID)
+	if testModelID == "" {
+		// typesafe 没有模型目录，未指定时用平台默认探测模型。
+		testModelID = DefaultTypeSafeTestModel
+	}
+	testModelID = account.GetMappedModel(testModelID)
+
+	authToken := strings.TrimSpace(account.GetOpenAIProtocolAPIKey())
+	if authToken == "" {
+		return s.sendErrorAndEnd(c, "No API key available")
+	}
+
+	baseURL := strings.TrimSpace(account.GetOpenAIBaseURL())
+	if baseURL == "" {
+		return s.sendErrorAndEnd(c, "No base URL available")
+	}
+	normalizedBaseURL, err := s.validateUpstreamBaseURL(baseURL)
+	if err != nil {
+		return s.sendErrorAndEnd(c, fmt.Sprintf("Invalid base URL: %s", err.Error()))
+	}
+	apiURL := buildOpenAISystemOneURL(normalizedBaseURL)
+
+	// 最小良性探测：单条 noul 判断题，state 不含敏感内容。
+	probe := typesafe.Request{
+		Model: testModelID,
+		State: typeSafeTestProbeState,
+		Questions: map[string]typesafe.Question{
+			typeSafeTestProbeQuestionID: {
+				Type:         "noul",
+				Instructions: typeSafeTestProbeQuestion,
+			},
+		},
+	}
+	payloadBytes, err := json.Marshal(probe)
+	if err != nil {
+		return s.sendErrorAndEnd(c, "Failed to create test payload")
+	}
+
+	c.Writer.Header().Set("Content-Type", "text/event-stream")
+	c.Writer.Header().Set("Cache-Control", "no-cache")
+	c.Writer.Header().Set("Connection", "keep-alive")
+	c.Writer.Header().Set("X-Accel-Buffering", "no")
+	c.Writer.Flush()
+
+	s.sendEvent(c, TestEvent{Type: "test_start", Model: testModelID})
+	s.sendEvent(c, TestEvent{Type: "status", Text: "正在通过原生 /v1/systemone 测试连接"})
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, apiURL, bytes.NewReader(payloadBytes))
+	if err != nil {
+		return s.sendErrorAndEnd(c, "Failed to create request")
+	}
+	req = req.WithContext(WithHTTPUpstreamProfile(req.Context(), HTTPUpstreamProfileOpenAI))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Accept", "application/json")
+	req.Header.Set("Authorization", "Bearer "+authToken)
+
+	// 账号级请求头覆写：测试请求与真实转发保持一致的最终头
+	account.ApplyHeaderOverrides(req.Header)
+
+	proxyURL := ""
+	if account.ProxyID != nil && account.Proxy != nil {
+		proxyURL = account.Proxy.URL()
+	}
+
+	resp, err := s.httpUpstream.DoWithTLS(req, proxyURL, account.ID, account.Concurrency, s.tlsFPProfileService.ResolveTLSProfile(account))
+	if err != nil {
+		return s.sendErrorAndEnd(c, fmt.Sprintf("SystemOne API (/v1/systemone) request failed: %s", err.Error()))
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	if resp.StatusCode != http.StatusOK {
+		// 同 ForwardSystemOne：上游错误体可能回显请求内容甚至凭据，绝不回写调用方，
+		// 只带状态码与上游 request id 供排障。
+		requestID := firstNonEmptyString(resp.Header.Get("x-request-id"), resp.Header.Get("request-id"))
+		errMsg := fmt.Sprintf("SystemOne API (/v1/systemone) %s", openAISystemOneUpstreamErrorMessage(resp.StatusCode, requestID))
+		if resp.StatusCode == http.StatusUnauthorized && s.accountRepo != nil {
+			_ = s.accountRepo.SetError(ctx, account.ID, errMsg)
+		}
+		return s.sendErrorAndEnd(c, errMsg)
+	}
+
+	respBody, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+	if err != nil {
+		return s.sendErrorAndEnd(c, "Failed to read SystemOne API response")
+	}
+	upstreamModel := strings.TrimSpace(gjson.GetBytes(respBody, "model").String())
+	if upstreamModel == "" {
+		upstreamModel = testModelID
+	}
+	s.sendEvent(c, TestEvent{Type: "content", Text: fmt.Sprintf("已通过原生 /v1/systemone 验证（上游模型 %s）", upstreamModel)})
+	s.sendEvent(c, TestEvent{Type: "test_complete", Success: true})
+	return nil
 }
 
 func (s *AccountTestService) testCNProviderChatCompletionsConnection(c *gin.Context, account *Account, modelID string, prompt string) error {

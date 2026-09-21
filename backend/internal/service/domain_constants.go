@@ -89,6 +89,8 @@ const (
 	DefaultOpenCodeZenBaseURL = "https://opencode.ai/zen/v1"
 	// TypeSafe AI：Jev 判断题服务入口（POST /v1/systemone）。
 	DefaultTypeSafeBaseURL = "https://api.typesafe.ai"
+	// TypeSafe AI 没有模型目录，管理员测试连接在未指定 model_id 时用该模型探测。
+	DefaultTypeSafeTestModel = "jev-latest"
 )
 
 // 国产供应商 Anthropic 协议端点的默认 base_url（上游路径为 {base}/v1/messages）。

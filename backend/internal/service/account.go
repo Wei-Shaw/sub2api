@@ -983,8 +983,18 @@ func (a *Account) ResolveCompactMappedModel(requestedModel string) (mappedModel 
 	return requestedModel, false
 }
 
+// GetBaseURL 返回 Anthropic 协议端点的上游 base_url。
+// typesafe 一律返回空串：它按设计没有 Anthropic 协议路径（只提供
+// POST /v1/systemone 的 Jev 判断题服务），因此既不能回落
+// https://api.anthropic.com（那会把第三方 key 当 Anthropic key 发到官方域名，
+// 属于凭据外泄），也不能把它的 base_url 交给 Anthropic 形状的请求使用（那是
+// 误导性失败）。取空值让 Anthropic 协议调用方 fail-closed；typesafe 的真实上游
+// base 由 GetOpenAIBaseURL 解析（缺失时回落 DefaultTypeSafeBaseURL）。
 func (a *Account) GetBaseURL() string {
 	if a.Type != AccountTypeAPIKey {
+		return ""
+	}
+	if a.IsTypeSafe() {
 		return ""
 	}
 	baseURL := a.GetCredential("base_url")
