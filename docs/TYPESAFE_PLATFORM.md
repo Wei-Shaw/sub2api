@@ -5,6 +5,7 @@
 > **范围**: 一级平台 `platform=typesafe`（TypeSafe AI 的 Jev 判断题服务）+ 原生透传端点 `POST /v1/systemone`
 > **文档位置**: 本文已从本地研究笔记目录 `docs/research/`（`docs/*` 默认忽略、不入库）归位到 `docs/TYPESAFE_PLATFORM.md`，并在 `.gitignore` 的 `!docs/...` 白名单中登记；这次归位本身是紧随 `a5769ffa4` 之后的一个提交。
 > **证据基线**: 本文所有路径、行号、测试名、环境变量均在本分支工作区逐条核实过；带「未验证」标注的除外。行号对应上述 HEAD `a5769ffa4` 的工作区状态。
+> **生产验证**: 另有一次 2026-09-21 的**生产端到端实测**（生产版本 `v0.9.338`），结论单列在 **§6.1**；它属运行证据、没有代码行号依据，也不进仓库自动化测试。
 
 ---
 
@@ -121,7 +122,7 @@ f09a07449 feat(typesafe): add /v1/systemone passthrough endpoint
 - **`/v1/models` 对 typesafe 有意返回空清单。** `backend/internal/handler/gateway_handler.go:1188-1193`（`writeModelsList(c, platform, nil)`，注释说明「绝不回落 `claude.DefaultModels`」）；同链路 `defaultModelIDsForPlatform` 在 `:1463-1465` 返回 `nil`；分组可用模型解析 `backend/internal/service/admin_group.go:299-302` 同样返回 `nil`。前端白名单同步返回空（`frontend/src/composables/useModelWhitelist.ts:470-471`）。
 - **对话端点对 typesafe 分组显式 404。** `/v1/messages`、`/v1/messages/count_tokens`、`/v1/chat/completions`、`/v1/responses`（POST 与 `/v1/responses/*subpath`）、`GET /v1/responses`（Responses WebSocket ingress），以及不带 `/v1` 前缀的别名与 `/backend-api/codex/responses`，统一由 `rejectTypeSafeConversationalEndpoint` 在入口拒绝（`backend/internal/server/routes/gateway.go:72-84` 及第 2 节列出的 8 个调用点），响应体为自造的 `not_found_error`，message 形如 `<Api> is not supported for TypeSafe groups; POST /v1/systemone is the only available endpoint`（`gateway.go:78-80`）。
   门禁**现在**存在的理由：typesafe 分组没有对话端点，通用 Anthropic 网关按 platform 过滤后仍可能选中 typesafe 账号，不拦就会落到通用网关 / 上游并返回语义不清的错误；这里改为干净的显式 404。曾经担心的「把 typesafe 的 key 当 Anthropic key 发到 `https://api.anthropic.com`」已由 `GetBaseURL()` 对 typesafe 早退返回空串（`backend/internal/service/account.go:997-999`）在 base URL 层关闭。
-- **上游错误体绝不透传。** 凡上游 `status >= 400`，只回自造错误体（`{"error":{"type":"upstream_error","message":"Upstream returned status N (upstream request id: ...)"}}`），message 只带上游状态码与上游 request id：`backend/internal/service/openai_systemone.go:126-174`（含 failover 分支把 `failoverErr.ResponseBody` 覆盖为自造体，`:167-169`）、`:219-254`（`writeOpenAISystemOneError` / `openAISystemOneUpstreamErrorMessage` / `buildOpenAISystemOneUpstreamErrorBody`）。原因写在服务层注释（同文件 `:25-29`）：TypeSafe 错误响应可能回显请求内容甚至凭据，而出站 `Authorization` 用的是平台账号的 key；上游 body 只用于内部判定（failover 分类 / 熔断 / ops 事件）。同类注释也在 `backend/internal/pkg/typesafe/client.go:61-63`（「Do not log provider error bodies: they may echo user input or credentials」）。
+- **上游错误体绝不透传。** 凡上游 `status >= 400`，只回自造错误体（`{"error":{"type":"upstream_error","message":"Upstream returned status N (upstream request id: ...)"}}`），message 只带上游状态码与上游 request id：`backend/internal/service/openai_systemone.go:126-174`（含 failover 分支把 `failoverErr.ResponseBody` 覆盖为自造体，`:167-169`）、`:219-254`（`writeOpenAISystemOneError` / `openAISystemOneUpstreamErrorMessage` / `buildOpenAISystemOneUpstreamErrorBody`）。这样做的目标是**保守**的：不让上游的任意内容外泄给客户端。服务层注释（同文件 `:25-29`）写的理由是 TypeSafe 错误响应可能回显请求内容甚至凭据，而出站 `Authorization` 用的是平台账号的 key；上游 body 只用于内部判定（failover 分类 / 熔断 / ops 事件）。同类注释也在 `backend/internal/pkg/typesafe/client.go:61-63`（「Do not log provider error bodies: they may echo user input or credentials」）。**注意（2026-09-21 修正）**：本轮生产实测里的 400 unknown model 样本，上游返回的是 `{"detail":{"error_type":"api_usage_error","message":"Unknown model: ..."}}`，**没有回显凭据**；即「错误体会回显凭据」这一条在现有样本中**没有被复现**，只能按保守设计对待，**不要当成已验证事实**（详见 §6.1 C）。
 - **`openai_capabilities` 白名单不作用于 `/v1/systemone`。** handler 调用 `SelectAccountWithSchedulerForCapability` 时 `requiredCapability` 传空串（`backend/internal/handler/openai_systemone.go:126-142`），而 `SupportsOpenAIEndpointCapability("")` 恒真（`backend/internal/service/account.go:1859-1861`），能力过滤链（`backend/internal/service/openai_ws_forwarder_support.go:577`）因此被跳过。调度隔离由平台门 + 平台归一保证：`NormalizeOpenAICompatiblePlatform` 对 typesafe 返回自身（`backend/internal/service/openai_gateway_scheduling.go:294-302`）。
 - **WS ingress 另有独立拒绝路径。** typesafe 账号在 WSv2 ingress 模式解析上恒为 `off`（非 openai 平台），因此 `isOpenAIAccountTransportCompatible` 判定其与 ingress transport 不兼容（钉在 `backend/internal/service/openai_ws_ingress_typesafe_test.go:10-33`）。
 
@@ -155,12 +156,12 @@ TypeSafe 的 key 在本仓库有**两套互不相通**的存储，**当前不共
 
 ## 6. 已知限制与未验证项
 
-- **没有对真实 TypeSafe 上游做过端到端调用。** 本环境**没有** `TYPESAFE_API_KEY` / `TYPESAFE_LIVE_TEST`（grep 全仓库只有下面那一个 opt-in 测试读这两个变量）。现有证据是 httptest 契约测试 + 路由级测试 + 调度隔离测试（见第 8 节）。
+- **仓库里没有对真实上游做端到端调用的自动化测试。** 本开发环境**没有** `TYPESAFE_API_KEY` / `TYPESAFE_LIVE_TEST`（grep 全仓库只有下面那一个 opt-in 测试读这两个变量）；本分支的自动化证据仍是 httptest 契约测试 + 路由级测试 + 调度隔离测试（见第 8 节）。真实上游的端到端验证是 2026-09-21 在生产上**人工跑的一次**，结论见 §6.1 —— 它没有进仓库测试，也没有自动化回归。
 - **仓库里既有的 live 测试入口（覆盖的是审核引擎，不是网关端点）：**
   - 测试：`TestContentModerationTypeSafeLive`，`backend/internal/service/content_moderation_typesafe_live_test.go:15-36`。
   - 开关：`TYPESAFE_LIVE_TEST=1` + `TYPESAFE_API_KEY=<真实 key>`（同文件 `:16-20`）。默认 `t.Skip`。
   - 调用路径：`typesafe.Evaluate(ctx, http.DefaultClient, "https://api.typesafe.ai", key, ...)`（同文件 `:28`），即**直连上游**，绕开 `/v1/systemone`。它验证「TypeSafe 上游可达、协议与 13 条 noul 判定可用」，**不验证**本分支新增的网关端点、账号调度、计费或错误体净化。
-- **网关端点目前没有 live 测试**，需要人工用 curl 跑一次。示例（key 用占位符，**不要把真实凭据写进命令历史或文档**）：
+- **网关端点在仓库里没有 live 测试**，只能人工用 curl 跑（2026-09-21 已在生产上跑过一次，见 §6.1；自动化回归仍然没有）。示例（key 用占位符，**不要把真实凭据写进命令历史或文档**）：
 
   ```bash
   curl -sS -X POST "https://<your-sub2api-host>/v1/systemone" \
@@ -178,10 +179,53 @@ TypeSafe 的 key 在本仓库有**两套互不相通**的存储，**当前不共
     }'
   ```
 
-  期望：HTTP 200，响应 `{"model": "...", "usage": {"input_tokens": N, "output_tokens": M}, "answers": {"harassment": {"type": "noul", "noul": 0.x}}}`（`questions` 是对象 map、`answers` 按 question id 回填，见 `backend/internal/pkg/typesafe/client.go:18-24`、`:66-74`）。失败时若返回 `upstream_error`，message 只会带状态码与上游 request id，不带上游 body —— 这是设计行为，不是 bug。
+  期望：HTTP 200，响应 `{"model": "...", "usage": {"input_tokens": N, "output_tokens": M}, "answers": {"harassment": {"type": "noul", "noul": 0.x}}}`（`questions` 是对象 map、`answers` 按 question id 回填，见 `backend/internal/pkg/typesafe/client.go:18-24`、`:66-74`）。失败时若返回 `upstream_error`，message 只会带状态码与上游 request id，不带上游 body —— 这是设计行为，不是 bug。（2026-09-21 生产实测的正常路径与上述期望一致，只是 `model` 回的是上游真实版本而不是入参字面量，见 §6.1 B1。）
 - **`/v1/models/:model` 返回空清单而非 404**（第 4 节表格）。需要 404 的客户端不要依赖该路径判断 typesafe 分组的可用性。
-- **`/v1/live*`、`/alpha/search`、`/embeddings`** 现状见第 4 节表格；这几条**没有** typesafe 专属测试钉住，它们的 404 来自既有平台门，**未在本次改动中回归验证**。
-- **未验证**：`POST /v1/systemone` 在真实上游下的错误码分布、超时表现、以及上游是否真的在错误体里回显请求内容 —— 只按上游文档与代码注释做了防护性设计，没有实测样本。
+- **`/v1/live*`、`/alpha/search`、`/embeddings`** 现状见第 4 节表格；这几条**没有** typesafe 专属测试钉住，它们的 404 来自既有平台门。其中 `/v1/embeddings` 与 `GET /v1/responses`（Responses WebSocket ingress）的 404 已在 2026-09-21 生产实测中确认（§6.1 B3）；`/v1/live*` 与 `/alpha/search` **未在本次改动中回归验证**，也没有生产实测样本。
+- **未验证**：`POST /v1/systemone` 在真实上游下的**完整**错误码分布与各类错误的超时表现 —— 本轮只覆盖「400 unknown model」一类，且上游错误体是否回显凭据在本次样本中**没有被复现**（§6.1 C）；其余仍只按上游文档与代码注释做了防护性设计，没有实测样本。
+
+### 6.1 生产端到端实测结论（已验证，2026-09-21）
+
+> 本节是**生产环境实测**结论，与上面的「代码依据 / httptest 契约测试」是两类证据；结论只覆盖本轮实际跑过的样本，不外推。
+> 环境：生产版本 `v0.9.338`；调用方是分组平台 `typesafe` 的 **API Key**；涉及账号 `account_id=169`、`api_key_id=45`。本节只出现这类标识，不写任何凭据内容；生产网关 host 也从略，统一写成 `<生产网关域名>`。
+
+**A. 上游直连探测**（`POST https://api.typesafe.ai/v1/systemone`，`model=jev-latest`，一次良性判断）
+
+- 不带鉴权 → **403**。
+- 带鉴权 → **HTTP 200**，耗时约 **2.06s**，响应体：
+
+  ```json
+  {"model":"jev-1.13.0","answers":{"connectivity":{"type":"noul","noul":0.96}},"usage":{"input_tokens":295,"output_tokens":22}}
+  ```
+
+- 即 `jev-latest` 被上游解析为真实版本 **`jev-1.13.0`**；响应形状与第 1 节表格一致（`{model, usage, answers}`，`answers[id] = {type, noul}`）。
+- **2 秒级延迟**说明审核引擎那条 3s 默认超时偏紧（`content_moderation_config.engine_configs.typesafe.timeout_ms`）；**网关端点 `/v1/systemone` 不受那条超时约束**（它不在审核链路上）。
+
+**B. 网关端到端**（`POST https://<生产网关域名>/v1/systemone`，生产 `v0.9.338`，分组平台 `typesafe` 的 API Key）
+
+1. **正常判断请求 → 200**，耗时约 **1.1s**，响应体与上面直连探测**逐字段一致**（透传成立，网关没有改写响应）。
+2. **不存在的模型 → 400**，客户端看到的是**我们自造**的错误体 `{"error":{"message":"Upstream returned status 400","type":"upstream_error"}}`；上游原文（`Unknown model` 字样）在响应中出现 **0 次**（错误体净化生效，见第 4 节）。
+3. **对话端点拒绝**（均为 404，与第 4 节的门禁设计一致）：
+   - `/v1/messages` → 404 `"Messages API is not supported for TypeSafe groups; POST /v1/systemone is the only available endpoint"`；
+   - `/v1/chat/completions` → 404（同款文案）；
+   - `GET /v1/responses`（Responses WebSocket ingress）→ 404（同款文案）；
+   - `/v1/embeddings` → 404 `"Embeddings API is not supported for this platform"`。
+4. **`GET /v1/models` → `{"data":[],"object":"list"}`**：有意空清单，**没有**回落 Claude 目录（第 4 节的行为在生产上确认）。
+5. **记账**：`usage_logs` 新增一行（model `jev-latest`、input 295、output 22、`billing_mode=token`、`stream=false`、`account_id=169`、`api_key_id=45`）；按 `groups` / `accounts` join 得出的平台归因是 **typesafe**；`inbound_endpoint` 与 `upstream_endpoint` **都是 `/v1/systemone`**（`backend/internal/handler/endpoint.go:94-95` 的映射在生产上确认）。**失败那一次没有产生 usage 行**；账号与 Key 的 `last_used_at` 均已更新。
+6. **成本为 0**：`jev-latest` 没有配置定价，走既有的 fail-open —— 记零成本并打 `openai_usage.pricing_missing_record_zero_cost` 告警（日志里 `billing_models: ["jev-latest"]`）。**运维待办：要按量计费，必须在分组定价卡或渠道按模型定价里给 `jev-latest` 配价**；渠道页的「从 LiteLLM 同步模型」对 typesafe 不可用（第 3 节第 4 条），只能手填。
+
+**C. 对第 4 节「上游错误体绝不透传」理由的修正**
+
+第 4 节原先把「不透传上游错误体」的理由写成「TypeSafe 错误响应可能回显请求内容甚至凭据」。本轮实测的**一类**错误（400 unknown model）上游返回的是 `{"detail":{"error_type":"api_usage_error","message":"Unknown model: ..."}}`，**没有回显凭据**。准确口径因此是：该防护仍然是**保守设计**（避免上游任意内容外泄），但「错误体会回显凭据」这一条在本次样本中**没有被复现**，不作为已验证事实。第 4 节对应条目已按此口径改写。
+
+### 6.2 仍未验证的部分
+
+下面这些本轮**没有**实测样本，依旧按「未验证」对待（不要因为 6.1 通过就当成都已验证）：
+
+- **多账号故障转移 / 负载均衡**：生产当前只有 **1 个** typesafe 账号，failover 与池内选择都没被覆盖。
+- **并发与限流行为**：本轮只发了单请求，没有并发 / 压测样本。
+- **platform 级配额扣除路径**：生产该用户**没有** typesafe 的 `user_platform_quotas` 行，这条路径**未被触发**；目前链路仅有单测覆盖。
+- **图片等非文本输入**：协议本身不涉及（请求体只有 `state` / `questions` 文本字段）。
 
 ---
 
@@ -232,6 +276,10 @@ TypeSafe 的 key 在本仓库有**两套互不相通**的存储，**当前不共
 | 前端平台目录 | `frontend/src/constants/__tests__/platforms.spec.ts` | `platform option catalogs > exposes every concrete account platform` |
 | 前端配额平台 | `frontend/src/api/__tests__/settings.authSourceDefaults.spec.ts` | `normalizePlatformQuotasMap > 无参数时返回全 6 平台全 null`、`sanitizePlatformQuotasMap > 缺失平台填充为全 null` |
 | 审核引擎（真实调用入口） | `backend/internal/service/content_moderation_typesafe_live_test.go` | `TestContentModerationTypeSafeLive`（opt-in，见第 6 节） |
+
+### 生产端到端验证（2026-09-21，人工执行，不在仓库自动化测试内）
+
+- 上游直连探测 + 网关端点端到端（生产 `v0.9.338`，分组平台 `typesafe` 的 API Key）的**完整结论在 §6.1**。要点：直连 200（~2.06s，`jev-latest` → `jev-1.13.0`）、网关 200（~1.1s，响应与直连逐字段一致）、未知模型 400（自造错误体、上游原文出现 0 次）、对话端点与 `/v1/embeddings` 404、`GET /v1/models` 有意空清单、`usage_logs` 记账与平台归因 typesafe 正确、成本 0（未配价 fail-open，待办见 §6.1 B6）。这是运行证据，**没有**对应的仓库测试。
 
 ### 验收命令
 
