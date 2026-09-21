@@ -1865,7 +1865,7 @@ describe('EditAccountModal Adobe model mapping', () => {
 
   afterEach(() => vi.clearAllMocks())
 
-  // 存量账号那 17 条别名全是非恒等对，splitModelMappingObject 把它们归入映射，
+  // 存量账号那份默认别名全是非恒等对，splitModelMappingObject 把它们归入映射，
   // 于是弹窗自动开在映射模式并逐条列出——数据不变，只是多了个可切到白名单的按钮。
   it('renders the stored mapping instead of the defaults', async () => {
     const wrapper = mountModal(buildAdobeAccount({ 'gpt-image-2': 'firefly-gpt-image-2' }))

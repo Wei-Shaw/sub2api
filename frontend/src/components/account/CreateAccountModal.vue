@@ -5139,9 +5139,9 @@ const allowedModels = ref<string[]>([])
 
 // Adobe 用通用的「模型限制」区块（白名单 / 映射双模式），默认给空白名单。
 //
-// 空白名单 = 不下发 model_mapping = 后端回落到 DefaultAdobeModelMapping（17 条）。
+// 空白名单 = 不下发 model_mapping = 后端回落到 DefaultAdobeModelMapping（23 条）。
 // 刻意不预勾 13 个对外名：预勾会把历史别名 gpt-image / gpt-image-1 /
-// gpt-image-1-mini / gpt-image-2.5-prism 挡在门外，而运维八成不知道自己丢了它们。
+// gpt-image-1-mini / gpt-image-2.5-prism / nano-banana* 挡在门外，而运维八成不知道自己丢了它们。
 const applyAdobeModelRestrictionDefaults = () => {
   modelRestrictionMode.value = 'whitelist'
   allowedModels.value = []
@@ -5900,10 +5900,10 @@ const handleSelectGeminiOAuthType = (oauthType: 'code_assist' | 'google_one' | '
 watch(
   [modelRestrictionMode, () => form.platform],
   ([newMode]) => {
-    // Adobe 例外：预勾全部 13 个对外名会把历史别名 gpt-image / gpt-image-1 /
-    // gpt-image-1-mini / gpt-image-2.5-prism 挡在门外——它们不在用户面清单里
+    // Adobe 例外：预勾全部对外名会把历史别名 gpt-image / gpt-image-1 /
+    // gpt-image-1-mini / gpt-image-2.5-prism / nano-banana* 挡在门外——它们不在用户面清单里
     // （Step 8 刻意的），却是老客户端还在发的名字。留空 = 不下发 model_mapping
-    // = 后端回落到 DefaultAdobeModelMapping 那 17 条，四个别名都还在。
+    // = 后端回落到 DefaultAdobeModelMapping，历史别名都还在。
     if (form.platform === 'adobe') return
     if (newMode === 'whitelist') {
       allowedModels.value = [...getModelsByPlatform(form.platform)]
@@ -7000,7 +7000,7 @@ const handleAdobeCreate = async () => {
   }
 
   // 白名单为空且没有映射行 => 不下发 model_mapping，由后端回落到
-  // DefaultAdobeModelMapping（17 条，含 4 个历史别名）。
+  // DefaultAdobeModelMapping（含历史别名）。
   const modelMapping = buildModelMappingObject(
     modelRestrictionMode.value,
     allowedModels.value,

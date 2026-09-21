@@ -4717,7 +4717,7 @@ const syncFormFromAccount = (newAccount: Account | null) => {
       }
     } else if (newAccount.platform === 'adobe' && newAccount.credentials) {
       // Adobe 与 openai/grok 一样走通用的白名单/映射拆分：splitModelMappingObject
-      // 把恒等对归入白名单、非恒等对归入映射。存量账号那 17 条别名全是非恒等对，
+      // 把恒等对归入白名单、非恒等对归入映射。存量账号那份默认别名全是非恒等对，
       // 于是自动开在映射模式并逐条列出——数据不变，只是多了一个可切到白名单的按钮。
       const oauthCredentials = newAccount.credentials as Record<string, unknown>
       loadModelRestrictionFromMapping(oauthCredentials.model_mapping as Record<string, unknown> | undefined)
