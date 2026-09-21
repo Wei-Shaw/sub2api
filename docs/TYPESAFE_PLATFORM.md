@@ -1,9 +1,10 @@
 # TypeSafe 平台（platform=typesafe）交接：上线、行为边界与 integration 合并清单
 
 > **整理日期**: 2026-09-21
-> **分支**: `feature/typesafe-platform`（基于本地 `main`；本轮收尾前的 HEAD = `39a8d23a8`）
+> **分支**: `feature/typesafe-platform`（基于本地 `main`；HEAD = `a5769ffa4`）
 > **范围**: 一级平台 `platform=typesafe`（TypeSafe AI 的 Jev 判断题服务）+ 原生透传端点 `POST /v1/systemone`
-> **证据基线**: 本文所有路径、行号、测试名、环境变量均在本分支工作区逐条核实过；带「未验证」标注的除外。行号对应上述 HEAD + 两笔收尾提交之后的工作区状态。
+> **文档位置**: 本文已从本地研究笔记目录 `docs/research/`（`docs/*` 默认忽略、不入库）归位到 `docs/TYPESAFE_PLATFORM.md`，并在 `.gitignore` 的 `!docs/...` 白名单中登记；这次归位本身是紧随 `a5769ffa4` 之后的一个提交。
+> **证据基线**: 本文所有路径、行号、测试名、环境变量均在本分支工作区逐条核实过；带「未验证」标注的除外。行号对应上述 HEAD `a5769ffa4` 的工作区状态。
 
 ---
 
@@ -77,9 +78,12 @@
 - **渠道定价列表** `frontend/src/views/admin/ChannelsView.vue:766` — `platformOrder` 加 `typesafe`；`:769` 的 `compositePlatforms` **不加**（typesafe 不是 composite 可路由的对话上游，见 `frontend/src/views/admin/GroupsView.vue:4617-4620`）。
 - 其他：`frontend/src/components/keys/UseKeyModal.vue:1255`、`frontend/src/utils/keyGroupProviders.ts:20`、`frontend/src/i18n/locales/{en,zh}/admin/accounts.ts`（各 1 行）、`frontend/src/i18n/locales/{en,zh}/admin/overview.ts`（各 1 行）、`frontend/src/composables/useModelWhitelist.ts:470-471`、`frontend/src/api/admin/settings.ts`（配额平台镜像）、`frontend/src/views/admin/GroupsView.vue`。
 
-### commit 列表（`git log --oneline main..HEAD` 的真实输出，本轮两笔收尾提交之前）
+### commit 列表（`git log --oneline main..HEAD` 的真实输出，截至 `a5769ffa4`）
 
 ```
+a5769ffa4 docs(typesafe): align ws ingress test comment with current base-url behavior
+b85066940 docs(typesafe): document onboarding, limitations and integration merge checklist
+77688108b fix(typesafe): correct stale base-url comment in the gateway route gate
 39a8d23a8 feat(typesafe): expose account onboarding and platform surfaces in admin UI
 4c1a93b72 fix(typesafe): reject responses websocket ingress for typesafe groups
 34727633f fix(typesafe): keep account test connection on the systemone upstream
@@ -88,7 +92,7 @@ f09a07449 feat(typesafe): add /v1/systemone passthrough endpoint
 827ceeaf7 feat(typesafe): add typesafe platform skeleton
 ```
 
-另有本轮两笔收尾提交：`fix(typesafe): correct stale base-url comment in the gateway route gate`（注释纠正）与 `docs(typesafe): document onboarding, limitations and integration merge checklist`（本文件）。
+紧随 `a5769ffa4` 之后是本次文档归位提交：把本文件从 `docs/research/typesafe-platform-merge-and-ops.md` 移到 `docs/TYPESAFE_PLATFORM.md`，并在 `.gitignore` 的 `!docs/...` 白名单中登记（`b85066940` 是它上一次落库的位置，当时写在 `docs/research/` 下）。
 
 ---
 
