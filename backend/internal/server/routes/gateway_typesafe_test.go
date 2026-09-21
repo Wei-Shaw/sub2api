@@ -94,7 +94,6 @@ func TestGatewayRoutesSystemoneRejectedForOtherPlatforms(t *testing.T) {
 		service.PlatformMiniMax,
 		service.PlatformOpenCodeGo,
 		service.PlatformGemini,
-		service.PlatformComposite,
 	} {
 		t.Run(platform, func(t *testing.T) {
 			router := newGatewayRoutesTestRouter(platform)
@@ -108,6 +107,41 @@ func TestGatewayRoutesSystemoneRejectedForOtherPlatforms(t *testing.T) {
 			require.Contains(t, w.Body.String(), "System One API is not supported for this platform")
 		})
 	}
+
+	// composite 分组单独断言，且同时接受两条既有的拒绝路径 —— 合并 integration 后
+	// 它的拒绝发生点会前移，所以这里不能在两条路径里只钉一条：
+	//
+	//   - 本分支（以及未合入 composite 分支的 main 基线）：/v1/systemone 的平台门回
+	//     404 + "System One API is not supported for this platform"；
+	//   - 合入 integration 后：integration 的 composite 入口准入
+	//     （compositeTargetPlatformMiddleware）在平台门之前就以
+	//     400 + "cannot be resolved to any platform in this composite group"
+	//     拒掉 —— composite 分组解析不出 jev-judge-v1 归属的具体平台，
+	//     请求根本到不了 /v1/systemone。这是 integration 的 composite 入口准入
+	//     引入的差异，不是 systemone 平台门本身的语义。
+	//
+	// 两条路径都是既有拒绝，都不等于「composite 分组拿到了 SystemOne」；除这两种
+	// 之外的任何响应（尤其 2xx/成功）一律算失败。
+	t.Run(service.PlatformComposite, func(t *testing.T) {
+		router := newGatewayRoutesTestRouter(service.PlatformComposite)
+		req := httptest.NewRequest(http.MethodPost, "/v1/systemone", strings.NewReader(`{"model":"jev-judge-v1","state":"s","questions":[]}`))
+		req.Header.Set("Content-Type", "application/json")
+		w := httptest.NewRecorder()
+
+		router.ServeHTTP(w, req)
+
+		body := w.Body.String()
+		switch w.Code {
+		case http.StatusNotFound:
+			require.Contains(t, body, "System One API is not supported for this platform",
+				"404 必须来自 /v1/systemone 的平台门，body=%s", body)
+		case http.StatusBadRequest:
+			require.Contains(t, body, "cannot be resolved to any platform in this composite group",
+				"400 必须来自 composite 入口准入，body=%s", body)
+		default:
+			t.Fatalf("composite 分组必须以已知理由被拒（404 平台门或 400 composite 准入），实际 code=%d body=%s", w.Code, body)
+		}
+	})
 }
 
 // TestGatewayRoutesTypeSafeGroupCannotReachConversationalEndpoints 安全回归：
