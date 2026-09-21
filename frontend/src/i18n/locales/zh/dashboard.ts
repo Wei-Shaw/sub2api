@@ -327,6 +327,12 @@ export default {
 
   // Usage
   usage: {
+    streamFailed: '\u6d41\u5f0f\u5931\u8d25',
+    requestFailed: '\u8bf7\u6c42\u5931\u8d25',
+    requestSucceeded: '\u6210\u529f',
+    usageUnavailable: '\u7528\u91cf\u672a\u8fd4\u56de/\u672a\u89e3\u6790',
+    usageUnknown: '\u7528\u91cf\u72b6\u6001\u672a\u77e5',
+    transportStatus: 'HTTP \u72b6\u6001',
     title: '使用记录',
     description: '查看和分析您的 API 使用历史',
     costDetails: '费用明细',

@@ -126,6 +126,16 @@
 
         <template #cell-stream="{ row }">
           <div class="flex flex-wrap items-center gap-1">
+            <span
+              v-if="row.request_result"
+              data-testid="request-outcome"
+              class="text-xs font-medium"
+              :class="row.request_result.outcome === 'failed' ? 'text-red-600 dark:text-red-400' : 'text-green-600 dark:text-green-400'"
+              :title="`${t('usage.transportStatus')}: ${row.request_result.http_status_code ?? '-'}; ${row.request_result.error_code || ''}`"
+            >
+              {{ row.request_result.outcome === 'failed' ? t(row.stream ? 'usage.streamFailed' : 'usage.requestFailed') : t('usage.requestSucceeded') }}
+              <span v-if="row.request_result.outcome === 'failed'">{{ row.request_result.status_code }}</span>
+            </span>
             <span data-testid="request-type-badge" class="inline-flex items-center rounded px-2 py-0.5 text-xs font-medium" :class="getRequestTypeBadgeClass(row)">
               {{ getRequestTypeLabel(row) }}
             </span>
@@ -155,6 +165,16 @@
             <span class="text-gray-400">({{ formatImageBillingSize(row, t) }})</span>
           </div>
           <!-- Token 请求 -->
+          <div
+            v-else-if="row.request_result?.usage_status === 'unavailable'"
+            data-testid="usage-unavailable"
+            class="text-xs text-amber-600 dark:text-amber-400"
+          >{{ t('usage.usageUnavailable') }}</div>
+          <div
+            v-else-if="!row.request_result && !row.input_tokens && !row.output_tokens && !row.cache_read_tokens && !row.cache_creation_tokens && !row.image_input_tokens && !row.image_output_tokens && !row.video_count"
+            data-testid="usage-unknown"
+            class="text-xs text-gray-500 dark:text-gray-400"
+          >{{ t('usage.usageUnknown') }}</div>
           <div v-else class="flex items-center gap-1.5">
             <div class="space-y-1 text-sm">
               <div class="flex items-center gap-2">

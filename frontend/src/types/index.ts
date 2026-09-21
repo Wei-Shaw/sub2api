@@ -1707,6 +1707,13 @@ export type ImageSizeSource = 'output' | 'input' | 'default' | 'legacy'
 export type ImageSizeBreakdown = Record<string, number>
 
 export interface UsageLog {
+  request_result?: {
+    outcome: 'succeeded' | 'failed'
+    usage_status: 'reported' | 'unavailable'
+    status_code?: number
+    http_status_code?: number
+    error_code?: string
+  } | null
   id: number
   user_id: number
   api_key_id: number
