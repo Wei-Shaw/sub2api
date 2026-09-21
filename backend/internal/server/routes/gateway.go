@@ -208,6 +208,15 @@ func RegisterGatewayRoutes(
 			next(c)
 		}
 	}
+	// GET /responses 是 Responses WebSocket ingress（同一处理器挂在 /v1、根路径别名
+	// 与 /backend-api/codex 三个入口）。typesafe 分组没有对话端点，必须与
+	// POST /responses 共用同一平台门在这里一并拒绝，而不是另写一套。
+	responsesWebSocketHandler := func(c *gin.Context) {
+		if rejectTypeSafeConversationalEndpoint(c, "Responses API") {
+			return
+		}
+		h.OpenAIGateway.ResponsesWebSocket(c)
+	}
 
 	// API网关（Claude API兼容）
 	gateway := r.Group("/v1")
@@ -266,9 +275,7 @@ func RegisterGatewayRoutes(
 			h.Gateway.Responses(c)
 		}))
 		gateway.POST("/alpha/search", textBodyLimit, h.OpenAIGateway.AlphaSearch)
-		gateway.GET("/responses", func(c *gin.Context) {
-			h.OpenAIGateway.ResponsesWebSocket(c)
-		})
+		gateway.GET("/responses", responsesWebSocketHandler)
 		// OpenAI Chat Completions API: auto-route based on group platform
 		gateway.POST("/chat/completions", func(c *gin.Context) {
 			if rejectTypeSafeConversationalEndpoint(c, "Chat Completions API") {
@@ -434,9 +441,7 @@ func RegisterGatewayRoutes(
 	rootRoute(http.MethodPost, "/responses", bodyLimit, responsesHandler)
 	rootRoute(http.MethodPost, "/responses/*subpath", bodyLimit, guardResponsesSubpath(responsesHandler))
 	rootRoute(http.MethodPost, "/alpha/search", textBodyLimit, h.OpenAIGateway.AlphaSearch)
-	rootRoute(http.MethodGet, "/responses", bodyLimit, func(c *gin.Context) {
-		h.OpenAIGateway.ResponsesWebSocket(c)
-	})
+	rootRoute(http.MethodGet, "/responses", bodyLimit, responsesWebSocketHandler)
 	rootRoute(http.MethodGet, "/models", bodyLimit, modelsHandler)
 	rootRoute(http.MethodGet, "/models/:model", bodyLimit, h.Gateway.Models)
 	rootRoute(http.MethodPost, "/messages/count_tokens", bodyLimit, countTokensHandler)
@@ -448,9 +453,7 @@ func RegisterGatewayRoutes(
 		codexDirect.POST("/responses", responsesHandler)
 		codexDirect.POST("/responses/*subpath", guardResponsesSubpath(responsesHandler))
 		codexDirect.POST("/alpha/search", textBodyLimit, h.OpenAIGateway.AlphaSearch)
-		codexDirect.GET("/responses", func(c *gin.Context) {
-			h.OpenAIGateway.ResponsesWebSocket(c)
-		})
+		codexDirect.GET("/responses", responsesWebSocketHandler)
 		codexDirect.GET("/models", codexModelsHandler)
 	}
 	// OpenAI Chat Completions API（不带v1前缀的别名）— auto-route based on group platform

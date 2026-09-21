@@ -156,3 +156,45 @@ func TestGatewayRoutesOtherPlatformsKeepConversationalEndpoints(t *testing.T) {
 		require.NotContains(t, w.Body.String(), "TypeSafe groups", "platform=%s", platform)
 	}
 }
+
+// TestGatewayRoutesTypeSafeGroupCannotReachResponsesWebSocketIngress 安全回归：
+// GET /responses（Responses WebSocket ingress）是 typesafe 分组的最后一个未门禁
+// 对话入口。带上真实的 Upgrade: websocket 头请求，仍必须在入口拿到与 POST
+// /responses 完全一致的 404 文案 —— 零值 OpenAIGatewayHandler 一旦被进入就不可能
+// 返回该 404，因此「拿到 404」同时证明处理器未被进入（无上游调度、无上游调用）。
+func TestGatewayRoutesTypeSafeGroupCannotReachResponsesWebSocketIngress(t *testing.T) {
+	router := newGatewayRoutesTestRouter(service.PlatformTypeSafe)
+
+	for _, path := range []string{"/v1/responses", "/responses", "/backend-api/codex/responses"} {
+		req := httptest.NewRequest(http.MethodGet, path, nil)
+		req.Header.Set("Upgrade", "websocket")
+		req.Header.Set("Connection", "Upgrade")
+		req.Header.Set("Sec-WebSocket-Key", "dGhlIHNhbXBsZSBub25jZQ==")
+		req.Header.Set("Sec-WebSocket-Version", "13")
+		w := httptest.NewRecorder()
+
+		router.ServeHTTP(w, req)
+
+		require.Equal(t, http.StatusNotFound, w.Code, "path=%s 必须在入口被拒", path)
+		require.Contains(t, w.Body.String(), "Responses API is not supported for TypeSafe groups", "path=%s", path)
+		require.Contains(t, w.Body.String(), "/v1/systemone", "path=%s 必须提示唯一可用端点", path)
+	}
+}
+
+// TestGatewayRoutesOtherPlatformsKeepResponsesWebSocketIngress 反向保护：
+// 新门只针对 typesafe，其他平台的 GET /responses 仍进入 ResponsesWebSocket 处理器
+// （无 Upgrade 头时表现为 426，而不是平台门的 404）。
+func TestGatewayRoutesOtherPlatformsKeepResponsesWebSocketIngress(t *testing.T) {
+	for _, platform := range []string{service.PlatformOpenAI, service.PlatformKimi, service.PlatformGrok} {
+		for _, path := range []string{"/v1/responses", "/responses", "/backend-api/codex/responses"} {
+			router := newGatewayRoutesTestRouter(platform)
+			req := httptest.NewRequest(http.MethodGet, path, nil)
+			w := httptest.NewRecorder()
+
+			router.ServeHTTP(w, req)
+
+			require.Equal(t, http.StatusUpgradeRequired, w.Code, "platform=%s path=%s", platform, path)
+			require.NotContains(t, w.Body.String(), "TypeSafe groups", "platform=%s path=%s", platform, path)
+		}
+	}
+}
