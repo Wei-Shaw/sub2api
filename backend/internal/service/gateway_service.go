@@ -1635,10 +1635,14 @@ func (s *GatewayService) resolveCompositeModelOwnership(ctx context.Context, gro
 		return CompositeModelOwnership{}, err
 	}
 
+	sharedGeminiImage := IsCompositeSharedGeminiImageModel(model)
 	platforms := make(map[string]struct{})
 	for _, account := range accounts {
 		platform := strings.TrimSpace(account.Platform)
-		if !isConcreteRequestPlatform(platform) || !explicitModelMappingClaims(account, model) {
+		if !isConcreteRequestPlatform(platform) {
+			continue
+		}
+		if !explicitModelMappingClaims(account, model) && !(sharedGeminiImage && defaultMappingClaimsSharedGeminiImage(&account, model)) {
 			continue
 		}
 		platforms[platform] = struct{}{}
@@ -1658,6 +1662,18 @@ func (s *GatewayService) resolveCompositeModelOwnership(ctx context.Context, gro
 		s.modelsListCache.Set(cacheKey, ownership, s.modelsListCacheTTL)
 	}
 	return ownership, nil
+}
+
+// defaultMappingClaimsSharedGeminiImage 让 Gemini/Adobe 同名生图模型按账号的
+// 实际可服务范围（含默认映射）声明归属：分组里只有 Adobe 号时 /v1beta 请求
+// 能落到 Adobe，而不是被 composite 的 Gemini 兜底吞掉。
+func defaultMappingClaimsSharedGeminiImage(account *Account, model string) bool {
+	switch account.Platform {
+	case PlatformGemini, PlatformAntigravity, PlatformAdobe:
+		return account.IsModelSupported(model)
+	default:
+		return false
+	}
 }
 
 func explicitModelMappingClaims(account Account, model string) bool {

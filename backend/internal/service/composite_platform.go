@@ -235,10 +235,35 @@ func isConcreteRequestPlatform(platform string) bool {
 }
 
 // isGeminiImageSharedName 判定是否 Gemini 官方与 Adobe Firefly 同名的生图模型。
-// 必须同时盖住 *-image 和 *-image-preview（含 gemini-3-pro-image*）。
+// 只认 Adobe 目录里真有的 gemini-* 名；Adobe 没有的 gemini-*-image 仍归 Gemini。
 func isGeminiImageSharedName(model string) bool {
-	if !strings.HasPrefix(model, "gemini-") {
-		return false
+	return strings.HasPrefix(model, "gemini-") && adobe.IsExternalImageModelID(model)
+}
+
+// IsCompositeSharedGeminiImageModel 是 isGeminiImageSharedName 的归一化入口
+// （忽略大小写与 models/ 前缀），供 composite 解析与账号归属判断使用。
+func IsCompositeSharedGeminiImageModel(model string) bool {
+	normalized := strings.TrimPrefix(strings.ToLower(strings.TrimSpace(model)), "models/")
+	return isGeminiImageSharedName(normalized)
+}
+
+// compositeSharedImagePlatform 按入口为 Gemini/Adobe 同名生图模型选平台。
+// Adobe 只接 images 与 /v1beta；Gemini/Antigravity 不接 images。gemini/any
+// 入口两边都能服务，这里不决定，交给账号归属与 /v1beta 中间件的 Gemini 兜底。
+func compositeSharedImagePlatform(model, endpoint string) (string, bool) {
+	if !IsCompositeSharedGeminiImageModel(model) {
+		return "", false
 	}
-	return strings.HasSuffix(model, "-image") || strings.HasSuffix(model, "-image-preview")
+	switch endpoint {
+	case CompositeRouteEndpointImages:
+		return PlatformAdobe, true
+	case CompositeRouteEndpointMessages,
+		CompositeRouteEndpointCountTokens,
+		CompositeRouteEndpointResponses,
+		CompositeRouteEndpointChatCompletions,
+		CompositeRouteEndpointEmbeddings:
+		return PlatformGemini, true
+	default:
+		return "", false
+	}
 }

@@ -78,9 +78,9 @@ Direct Firefly calls use **Firefly Web** (`firefly.adobe.com` / `clio-playground
 | `gpt-4o-image` | Firefly GPT-4o Image |
 | `runway-gen4-image` | Firefly Runway Gen-4 Image |
 
-Legacy aliases `gpt-image`, `gpt-image-1`, and `gpt-image-1-mini` map to `gpt-image-2` but are not listed by `/v1/models`. Legacy aliases `nano-banana`, `nano-banana-pro`, and `nano-banana2` still reach Firefly but are not listed by `/v1/models`.
+Legacy aliases `gpt-image`, `gpt-image-1`, and `gpt-image-1-mini` map to `gpt-image-2` but are not listed by `/v1/models`.
 
-`gpt-image-*` names are shared with official OpenAI image models. They reach Firefly only when the API key is bound to an **Adobe** group; an OpenAI group still talks to OpenAI. Composite groups do **not** auto-detect `gpt-image-*` (the name is ambiguous) — add an explicit composite route. The same applies to `gemini-*-image` / `gemini-3-pro-image*` (shared with the Gemini channel). `nano-banana*`, `flux-*`, `imagen-*`, `runway-gen4*`, and `gpt-4o-image` can be auto-detected as Adobe.
+`gpt-image-*` names are shared with official OpenAI image models. They reach Firefly only when the API key is bound to an **Adobe** group; an OpenAI group still talks to OpenAI. Composite groups do **not** auto-detect `gpt-image-*` (the name is ambiguous) — add an explicit composite route. `gemini-*-image` / `gemini-3-pro-image*` are also shared with the Gemini channel, so composite groups decide by endpoint: `/v1/images/*` goes to Adobe, chat-style endpoints (chat completions, responses, messages) go to Gemini, and `/v1beta` goes to whichever platform in the group can serve the name — if both Gemini/Antigravity and Adobe accounts can, it defaults to Gemini unless an explicit route says otherwise. `flux-*`, `imagen-*`, `runway-gen4*`, and `gpt-4o-image` can be auto-detected as Adobe.
 
 ### Cookie Account Setup
 
@@ -111,7 +111,7 @@ An Adobe API-key account without `base_url` is not a relay account.
 |--------|---------------|----------|
 | `gpt-image-2` / `gpt-image-2.5-*` | `WxH`, empty, or `auto` | Forward pixels as-is; omit size when empty/`auto` so Firefly auto-chooses |
 | `gpt-image-1.5` | `WxH` | Snap to `1024x1024` / `1536x1024` / `1024x1536` |
-| `gemini-*-image` / `gemini-3-pro-image*` / `nano-banana*` | `WxH`, empty, or `auto` | Map the long edge to a 1K/2K/4K square tier and the nearest `aspectRatio`; empty/`auto` uses Firefly's default 1K square. `gemini-3.1-flash-image` / `nano-banana2` also accept `1:8`, `1:4`, `4:1`, and `8:1` |
+| `gemini-*-image` / `gemini-3-pro-image*` | `WxH`, empty, or `auto` | Map the long edge to a 1K/2K/4K square tier and the nearest `aspectRatio`; empty/`auto` uses Firefly's default 1K square. `gemini-3.1-flash-image` also accepts `1:8`, `1:4`, `4:1`, and `8:1` |
 | `flux-*` / `imagen-4*` / `gpt-4o-image` / `runway-gen4-image` | `WxH` | Snap to that family's allowed size enum |
 
 `quality` maps to Firefly `detailLevel`: `low` (default) → 1, `medium` → 3, `high` → 5, `xhigh`/`max` → 5 on v2/1.5 or 7 on 2.5.
