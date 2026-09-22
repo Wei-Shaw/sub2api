@@ -606,6 +606,29 @@ func TestHandleGeminiUpstreamError_PoolMode429(t *testing.T) {
 	}
 }
 
+func TestHandleGeminiUpstreamError_VertexServiceAccountUsesShortFallback(t *testing.T) {
+	repo := &rateLimit429AccountRepoStub{}
+	svc := &GeminiMessagesCompatService{
+		accountRepo:      repo,
+		rateLimitService: NewRateLimitService(repo, nil, &config.Config{}, nil, nil),
+	}
+	account := &Account{
+		ID:       605,
+		Platform: PlatformGemini,
+		Type:     AccountTypeServiceAccount,
+	}
+	body := []byte(`{"error":{"code":429,"status":"RESOURCE_EXHAUSTED","message":"Resource exhausted"}}`)
+
+	before := time.Now()
+	svc.handleGeminiUpstreamError(context.Background(), account, http.StatusTooManyRequests, http.Header{}, body)
+	after := time.Now()
+
+	require.Equal(t, 1, repo.rateLimitCalls)
+	require.Equal(t, account.ID, repo.lastRateLimitID)
+	require.WithinDuration(t, before.Add(time.Duration(defaultRateLimit429CooldownSeconds)*time.Second), repo.lastRateLimitReset, 2*time.Second)
+	require.True(t, repo.lastRateLimitReset.Before(after.Add(time.Minute)), "Vertex transient 429 must not pause the account until daily reset")
+}
+
 type geminiErrorPolicyRepo struct {
 	mockAccountRepoForGemini
 	setErrorCalls            int
