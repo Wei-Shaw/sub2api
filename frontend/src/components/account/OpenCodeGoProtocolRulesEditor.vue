@@ -83,12 +83,12 @@ const emit = defineEmits<{
 }>()
 
 const { t } = useI18n()
-const protocolOptions = computed(() => [
+const getRowKey = createStableObjectKeyResolver<OpenCodeGoProtocolRule>('opencode-go-protocol-rule')
+const protocolOptions = computed<Array<{ value: OpenCodeGoProtocolRule['protocol']; label: string }>>(() => [
   { value: 'chat_completions', label: t('admin.accounts.cnProviders.apiProtocol.chatCompletions') },
   { value: 'responses', label: t('admin.accounts.cnProviders.apiProtocol.responses') },
   { value: 'anthropic', label: t('admin.accounts.cnProviders.apiProtocol.anthropic') }
 ])
-const getRowKey = createStableObjectKeyResolver<OpenCodeGoProtocolRule>('opencode-go-protocol-rule')
 
 const addRow = () => {
   emit('update:rows', [...props.rows, { pattern: '', protocol: 'chat_completions' }])

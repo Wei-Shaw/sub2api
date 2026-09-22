@@ -58,12 +58,27 @@ func (r *CompositeRouteResolver) Resolve(ctx context.Context, groupID int64, mod
 		}
 	}
 
+	// Gemini/Adobe share gemini-*-image names; only one side serves each
+	// non-/v1beta endpoint, so the endpoint alone decides.
+	if platform, ok := compositeSharedImagePlatform(model, endpoint); ok {
+		return CompositeRouteDecision{
+			Matched:        true,
+			Source:         CompositeRouteSourceDetector,
+			GroupID:        groupID,
+			PublicModel:    model,
+			TargetPlatform: platform,
+			UpstreamModel:  model,
+			Endpoint:       endpoint,
+		}, nil
+	}
+
 	if r != nil && r.modelOwnershipResolver != nil && groupID > 0 {
 		ownership, err := r.modelOwnershipResolver(ctx, groupID, model)
 		if err != nil {
 			// A recognizable model can still use the existing detector when the
 			// account catalog is temporarily unavailable. Unknown aliases cannot.
-			if _, detectable := DetectModelPlatform(model); !detectable {
+			// Shared Gemini image names fall back to the /v1beta Gemini default.
+			if _, detectable := DetectModelPlatform(model); !detectable && !IsCompositeSharedGeminiImageModel(model) {
 				return decision, fmt.Errorf("resolve account model ownership: %w", err)
 			}
 		} else if ownership.Ambiguous {

@@ -2252,7 +2252,7 @@ func (s *BillingService) getDefaultVideoPrice(model string, resolution string) f
 // adobeImagePriceTiers 是 Adobe Firefly 直连的三档兜底价（[1K, 2K, 4K]）。
 //
 // 分档依据（USD/image，含 middleman 溢价）：
-//   - nano:  Google Gemini Flash 系（nano-banana*）；Google 官方 nano-banana ~$0.02–0.04
+//   - nano:  Google Gemini Flash 系（gemini-*-image / 历史别名 nano-banana*）
 //   - gpt-image: OpenAI 标准 gpt-image / 1.5 / 2；OpenAI 官方 gpt-image-1 ~$0.02(low)-$0.19(high)
 //   - premium: gpt-image-2.5 旗舰
 //   - third:   flux / imagen-4 / gpt-4o-image / runway；对齐各家官方 $0.04–$0.08 档
@@ -2273,23 +2273,29 @@ var adobeImagePriceTiers = map[string][3]float64{
 // 不是「OpenAI 一定走 token 计费」：未配 image_price_* 且渠道不是 token 时，
 // calculateOpenAIImageCost 仍会落到本函数。非 Adobe 平台不得查这张表。
 var adobeImagePriceTierByModel = map[string]string{
-	"nano-banana":            "nano",
-	"nano-banana-pro":        "nano",
-	"nano-banana2":           "nano",
-	"gpt-image":              "gpt-image",
-	"gpt-image-1":            "gpt-image",
-	"gpt-image-1-mini":       "gpt-image",
-	"gpt-image-1.5":          "gpt-image",
-	"gpt-image-2":            "gpt-image",
-	"gpt-image-2.5-flare":    "premium",
-	"gpt-image-2.5-prism":    "premium",
-	"gpt-image-2.5-sunburst": "premium",
-	"flux-pro":               "third",
-	"flux-ultra":             "third",
-	"imagen-4":               "third",
-	"imagen-4-fast":          "third",
-	"gpt-4o-image":           "third",
-	"runway-gen4-image":      "third",
+	"nano-banana":                    "nano",
+	"nano-banana-pro":                "nano",
+	"nano-banana2":                   "nano",
+	"gemini-2.5-flash-image":         "nano",
+	"gemini-2.5-flash-image-preview": "nano",
+	"gemini-3-pro-image":             "nano",
+	"gemini-3-pro-image-preview":     "nano",
+	"gemini-3.1-flash-image":         "nano",
+	"gemini-3.1-flash-image-preview": "nano",
+	"gpt-image":                      "gpt-image",
+	"gpt-image-1":                    "gpt-image",
+	"gpt-image-1-mini":               "gpt-image",
+	"gpt-image-1.5":                  "gpt-image",
+	"gpt-image-2":                    "gpt-image",
+	"gpt-image-2.5-flare":            "premium",
+	"gpt-image-2.5-prism":            "premium",
+	"gpt-image-2.5-sunburst":         "premium",
+	"flux-pro":                       "third",
+	"flux-ultra":                     "third",
+	"imagen-4":                       "third",
+	"imagen-4-fast":                  "third",
+	"gpt-4o-image":                   "third",
+	"runway-gen4-image":              "third",
 }
 
 func isAdobeImageBillingPlatform(platform string) bool {

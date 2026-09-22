@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net/http"
 	"strconv"
+	"strings"
 	"sync"
 
 	pkghttputil "github.com/Wei-Shaw/sub2api/internal/pkg/httputil"
@@ -23,6 +24,7 @@ import (
 // Adobe 账号不满足 account.IsOpenAICompatible()，走不了 OpenAI 调度器，故这里用
 // 平台无关的 GatewayService.SelectAccountForModelWithExclusions 自建 failover。
 func (h *GatewayHandler) AdobeImages(c *gin.Context) {
+	setAdobeImagesWriteMode(c, adobeImagesWriteOpenAI)
 	apiKey, ok := middleware2.GetAPIKeyFromContext(c)
 	if !ok {
 		adobeImagesError(c, http.StatusUnauthorized, "authentication_error", "Invalid API key")
@@ -104,6 +106,156 @@ func (h *GatewayHandler) AdobeImages(c *gin.Context) {
 		routingModel:   routingModel,
 		channelMapping: channelMapping,
 		call:           service.NewAdobeImageCall(parsed, channelMapping.MappedModel),
+		writeMode:      adobeImagesWriteOpenAI,
+	})
+}
+
+const (
+	adobeImagesWriteOpenAI    = "openai"
+	adobeImagesWriteGemini    = "gemini"
+	adobeImagesWriteGeminiSSE = "gemini-sse"
+	adobeImagesWriteModeKey   = "adobe_images_write_mode"
+)
+
+func setAdobeImagesWriteMode(c *gin.Context, mode string) {
+	if c == nil {
+		return
+	}
+	if strings.TrimSpace(mode) == "" {
+		mode = adobeImagesWriteOpenAI
+	}
+	c.Set(adobeImagesWriteModeKey, mode)
+}
+
+func adobeImagesWriteModeFromContext(c *gin.Context) string {
+	if c == nil {
+		return adobeImagesWriteOpenAI
+	}
+	if raw, ok := c.Get(adobeImagesWriteModeKey); ok {
+		if mode, ok := raw.(string); ok && strings.TrimSpace(mode) != "" {
+			return mode
+		}
+	}
+	return adobeImagesWriteOpenAI
+}
+
+func adobeImagesWritesGemini(c *gin.Context) bool {
+	switch adobeImagesWriteModeFromContext(c) {
+	case adobeImagesWriteGemini, adobeImagesWriteGeminiSSE:
+		return true
+	default:
+		return false
+	}
+}
+
+// AdobeGeminiImages 处理 Adobe 分组下的 Gemini generateContent / streamGenerateContent 生图。
+func (h *GatewayHandler) AdobeGeminiImages(c *gin.Context, apiKey *service.APIKey, subject middleware2.AuthSubject, modelName, action string) {
+	writeMode := adobeImagesWriteGemini
+	if action == "streamGenerateContent" {
+		writeMode = adobeImagesWriteGeminiSSE
+	}
+	setAdobeImagesWriteMode(c, writeMode)
+
+	if apiKey == nil {
+		adobeImagesError(c, http.StatusUnauthorized, "authentication_error", "Invalid API key")
+		return
+	}
+	if h.adobeImageService == nil {
+		adobeImagesError(c, http.StatusNotFound, "not_found_error", "Adobe image generation is not available")
+		return
+	}
+
+	reqLog := requestLogger(
+		c,
+		"handler.gateway.adobe_gemini_images",
+		zap.Int64("user_id", subject.UserID),
+		zap.Int64("api_key_id", apiKey.ID),
+		zap.Any("group_id", apiKey.GroupID),
+		zap.String("model", modelName),
+		zap.String("action", action),
+	)
+
+	body, err := pkghttputil.ReadRequestBodyWithPrealloc(c.Request)
+	if err != nil {
+		if maxErr, ok := extractMaxBytesError(err); ok {
+			adobeImagesError(c, http.StatusRequestEntityTooLarge, "invalid_request_error",
+				buildBodyTooLargeMessage(maxErr.Limit))
+			return
+		}
+		adobeImagesError(c, http.StatusBadRequest, "invalid_request_error", "Failed to read request body")
+		return
+	}
+
+	setOpsRequestContext(c, modelName, action == "streamGenerateContent")
+	setOpsEndpointContext(c, "", int16(service.RequestTypeSync))
+
+	if decision := h.checkSecurityAudit(c, reqLog, apiKey, subject,
+		service.ContentModerationProtocolGemini, modelName, body); decision != nil &&
+		!decision.AllowNextStage {
+		googleSecurityAuditError(c, decision)
+		return
+	}
+
+	if action == "generateContent" || action == "streamGenerateContent" {
+		body = injectMatchingPromptRules(reqLog, h.promptRuleService, apiKey.GroupID, modelName, service.PromptRuleProtocolGemini, body)
+	}
+
+	parsed, call, err := service.ParseAdobeGeminiImageRequest(modelName, body)
+	if err != nil {
+		adobeImagesError(c, http.StatusBadRequest, "invalid_request_error", err.Error())
+		return
+	}
+	parsed.Stream = false
+
+	if !service.GroupAllowsImageGeneration(apiKey.Group) {
+		adobeImagesError(c, http.StatusForbidden, "permission_error", service.ImageGenerationPermissionMessage())
+		return
+	}
+
+	routingModel := parsed.Model
+	if resolvedModel, ok := service.ResolvedUpstreamModelFromContext(c.Request.Context()); ok {
+		routingModel = strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(resolvedModel), "models/"))
+	}
+
+	// 渠道映射先于模型校验：运维配置的别名要按映射后的模型判定。
+	channelMapping := h.resolveAdobeChannelMapping(c.Request.Context(), apiKey.GroupID, routingModel)
+	effectiveModel := routingModel
+	if mapped := strings.TrimSpace(channelMapping.MappedModel); channelMapping.Mapped && mapped != "" {
+		effectiveModel = mapped
+	}
+	if err := service.ValidateAdobeGeminiModel(effectiveModel); err != nil {
+		adobeImagesError(c, http.StatusBadRequest, "invalid_request_error", err.Error())
+		return
+	}
+	call.ChannelMappedModel = strings.TrimSpace(channelMapping.MappedModel)
+	relayBody, err := service.MarshalAdobeGeminiRelayImagesBody(parsed)
+	if err != nil {
+		adobeImagesError(c, http.StatusBadRequest, "invalid_request_error", err.Error())
+		return
+	}
+
+	reqLog = reqLog.With(
+		zap.String("routing_model", routingModel),
+		zap.String("size", parsed.Size),
+		zap.String("aspect_ratio", call.AspectRatio),
+		zap.String("image_size", call.ImageSize),
+	)
+
+	releaseAdmission, admitted := h.admitAdobeImagesRequest(c, reqLog, apiKey, subject)
+	if !admitted {
+		return
+	}
+	defer releaseAdmission()
+
+	subscription, _ := middleware2.GetSubscriptionFromContext(c)
+	h.runAdobeImagesFailover(c, reqLog, apiKey, subject, subscription, &adobeImagesRequest{
+		parsed:         parsed,
+		body:           body,
+		relayBody:      relayBody,
+		routingModel:   routingModel,
+		channelMapping: channelMapping,
+		call:           call,
+		writeMode:      writeMode,
 	})
 }
 
@@ -111,11 +263,45 @@ func (h *GatewayHandler) AdobeImages(c *gin.Context) {
 type adobeImagesRequest struct {
 	parsed *service.OpenAIImagesRequest
 	body   []byte
+	// relayBody 非空时，中转号转发用它（Gemini 入站编成的 OpenAI Images JSON）。
+	relayBody []byte
 	// routingModel 用于选号；channelMapping.MappedModel 用于转发与账号模型映射。
 	routingModel   string
 	channelMapping service.ChannelMappingResult
 	// call 在换号之间复用已抓取的输入图。
-	call *service.AdobeImageCall
+	call      *service.AdobeImageCall
+	writeMode string
+}
+
+// resolveAdobeChannelMapping 只读查询渠道映射；gatewayService 缺失时视为无映射。
+func (h *GatewayHandler) resolveAdobeChannelMapping(ctx context.Context, groupID *int64, model string) service.ChannelMappingResult {
+	if h == nil || h.gatewayService == nil {
+		return service.ChannelMappingResult{MappedModel: model}
+	}
+	mapping, _ := h.gatewayService.ResolveChannelMappingAndRestrict(ctx, groupID, model)
+	return mapping
+}
+
+func (req *adobeImagesRequest) writesGemini() bool {
+	if req == nil {
+		return false
+	}
+	switch req.writeMode {
+	case adobeImagesWriteGemini, adobeImagesWriteGeminiSSE:
+		return true
+	default:
+		return false
+	}
+}
+
+func (req *adobeImagesRequest) forwardBody() []byte {
+	if req == nil {
+		return nil
+	}
+	if len(req.relayBody) > 0 {
+		return req.relayBody
+	}
+	return req.body
 }
 
 // admitAdobeImagesRequest 在选号前完成与 OpenAI/Grok 出图一致的准入：
@@ -387,9 +573,21 @@ func (h *GatewayHandler) tryAdobeImagesRelay(
 		return false, true
 	}
 
+	forwardCtx := c.Request.Context()
+	var sink *service.OpenAIImagesClientSink
+	if req.writesGemini() {
+		req.parsed.Stream = false
+		forwardCtx, sink = service.WithOpenAIImagesBufferedResponse(forwardCtx)
+		c.Request = c.Request.WithContext(forwardCtx)
+	}
+
 	result, err := h.openAIGatewayService.ForwardImages(
-		c.Request.Context(), c, account, req.body, req.parsed, req.channelMapping.MappedModel)
+		forwardCtx, c, account, req.forwardBody(), req.parsed, req.channelMapping.MappedModel)
 	if err == nil {
+		if req.writesGemini() {
+			h.finishAdobeGeminiImagesRelaySuccess(c, reqLog, apiKey, subject, subscription, account, result, req, sink)
+			return false, true
+		}
 		h.finishAdobeImagesRelaySuccess(c, reqLog, apiKey, subject, subscription, account, result, req)
 		return false, true
 	}
@@ -431,6 +629,23 @@ func (h *GatewayHandler) tryAdobeImagesRelay(
 		zap.Int64("account_id", account.ID), zap.Error(err))
 	if failover != nil {
 		adobeImagesFailoverError(c, failover)
+		return false, true
+	}
+	var upErr *service.OpenAIImagesUpstreamError
+	if errors.As(err, &upErr) && upErr != nil {
+		status := upErr.StatusCode
+		if status <= 0 {
+			status = http.StatusBadGateway
+		}
+		message := strings.TrimSpace(upErr.Message)
+		if message == "" {
+			message = "Upstream request failed"
+		}
+		errType := strings.TrimSpace(upErr.ErrorType)
+		if errType == "" {
+			errType = "api_error"
+		}
+		adobeImagesError(c, status, errType, message)
 		return false, true
 	}
 	adobeImagesError(c, http.StatusBadGateway, "api_error", "Upstream request failed")
@@ -480,8 +695,20 @@ func (h *GatewayHandler) finishAdobeImagesSuccess(
 		adobeImagesError(c, http.StatusBadGateway, "api_error", "Upstream request failed")
 		return
 	}
-	c.Data(http.StatusOK, "application/json", result.Body)
-	h.recordAdobeImagesUsage(c, apiKey, subject, subscription, account, result.Forward, req)
+	if req.writesGemini() {
+		// 先拼好信封再记账：一张图都交付不了时返回 502 且不计费。
+		body, err := service.BuildGeminiGenerateContentResponse(req.parsed.Model, service.AdobeGeminiImagesFromBytes(result.Images))
+		if err != nil {
+			reqLog.Error("adobe_images.gemini_encode_failed", zap.Int64("account_id", account.ID), zap.Error(err))
+			adobeImagesError(c, http.StatusBadGateway, "api_error", "Upstream request failed")
+			return
+		}
+		h.recordAdobeImagesUsage(c, apiKey, subject, subscription, account, result.Forward, req)
+		writeAdobeGeminiImagesBody(c, body)
+	} else {
+		c.Data(http.StatusOK, "application/json", result.Body)
+		h.recordAdobeImagesUsage(c, apiKey, subject, subscription, account, result.Forward, req)
+	}
 	upstreamModel := ""
 	if result.Forward != nil {
 		upstreamModel = result.Forward.UpstreamModel
@@ -512,6 +739,66 @@ func (h *GatewayHandler) finishAdobeImagesRelaySuccess(
 		zap.Int64("account_id", account.ID),
 		zap.String("upstream_model", upstreamModel),
 	)
+}
+
+func (h *GatewayHandler) finishAdobeGeminiImagesRelaySuccess(
+	c *gin.Context,
+	reqLog *zap.Logger,
+	apiKey *service.APIKey,
+	subject middleware2.AuthSubject,
+	subscription *service.UserSubscription,
+	account *service.Account,
+	result *service.OpenAIForwardResult,
+	req *adobeImagesRequest,
+	sink *service.OpenAIImagesClientSink,
+) {
+	var sinkBody []byte
+	if sink != nil {
+		sinkBody = sink.Body
+	}
+	model, outputFormat := "", ""
+	if req != nil && req.parsed != nil {
+		model, outputFormat = req.parsed.Model, req.parsed.OutputFormat
+	}
+	// 先转换、拼好信封再记账：一张图都交付不了时返回 502 且不计费。
+	images, err := service.OpenAIImagesJSONToGeminiImages(sinkBody, outputFormat)
+	if err != nil {
+		reqLog.Error("adobe_images.relay_gemini_convert_failed", zap.Int64("account_id", account.ID), zap.Error(err))
+		adobeImagesError(c, http.StatusBadGateway, "api_error", "Upstream request failed")
+		return
+	}
+	body, err := service.BuildGeminiGenerateContentResponse(model, images)
+	if err != nil {
+		reqLog.Error("adobe_images.gemini_encode_failed", zap.Int64("account_id", account.ID), zap.Error(err))
+		adobeImagesError(c, http.StatusBadGateway, "api_error", "Upstream request failed")
+		return
+	}
+	// 中转返回的无效项已被丢弃，只按实际交付的张数计费。
+	if result != nil && len(images) < result.ImageCount {
+		result.ImageCount = len(images)
+		if len(result.ImageOutputSizes) > len(images) {
+			result.ImageOutputSizes = result.ImageOutputSizes[:len(images)]
+		}
+	}
+	h.recordAdobeImagesUsage(c, apiKey, subject, subscription, account, result, req)
+	writeAdobeGeminiImagesBody(c, body)
+	upstreamModel := ""
+	if result != nil {
+		upstreamModel = result.UpstreamModel
+	}
+	reqLog.Debug("adobe_images.relay_completed",
+		zap.Int64("account_id", account.ID),
+		zap.String("upstream_model", upstreamModel),
+	)
+}
+
+// writeAdobeGeminiImagesBody 按写出模式把已拼好的 Gemini 信封写成 JSON 或单帧 SSE。
+func writeAdobeGeminiImagesBody(c *gin.Context, body []byte) {
+	if adobeImagesWriteModeFromContext(c) == adobeImagesWriteGeminiSSE {
+		c.Data(http.StatusOK, "text/event-stream", service.EncodeGeminiGenerateContentSSE(body))
+		return
+	}
+	c.Data(http.StatusOK, "application/json", body)
 }
 
 func (h *GatewayHandler) recordAdobeImagesUsage(
@@ -617,6 +904,10 @@ func adobeImagesFailoverError(c *gin.Context, failover *service.UpstreamFailover
 // adobeImagesError 渲染 OpenAI 形状的错误体——images 端点的客户端按 OpenAI 协议解析。
 func adobeImagesError(c *gin.Context, status int, errType, message string) {
 	if service.IsResponseCommitted(c) {
+		return
+	}
+	if adobeImagesWritesGemini(c) {
+		googleError(c, status, message)
 		return
 	}
 	c.JSON(status, gin.H{"error": gin.H{"type": errType, "message": message}})

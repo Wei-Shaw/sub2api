@@ -224,7 +224,15 @@ var DefaultAdobeModelMapping = map[string]string{
 	"gpt-image":        "firefly-gpt-image-2",
 	"gpt-image-1":      "firefly-gpt-image-2",
 	"gpt-image-1-mini": "firefly-gpt-image-2",
-	// Google Gemini nano-banana 系
+	// Google Gemini 生图：对外与 Gemini 渠道同名；内部仍落到 Firefly banana 族。
+	// Adobe 上 3-pro-image 不要折成 3.1——Firefly 里 Pro 与 Banana 2 是两个 version。
+	"gemini-2.5-flash-image":         "firefly-nano-banana",
+	"gemini-2.5-flash-image-preview": "firefly-nano-banana",
+	"gemini-3-pro-image":             "firefly-nano-banana-pro",
+	"gemini-3-pro-image-preview":     "firefly-nano-banana-pro",
+	"gemini-3.1-flash-image":         "firefly-nano-banana2",
+	"gemini-3.1-flash-image-preview": "firefly-nano-banana2",
+	// nano-banana* 是线上已在用的历史别名，继续可请求，不进 /v1/models。
 	"nano-banana-pro": "firefly-nano-banana-pro",
 	"nano-banana":     "firefly-nano-banana",
 	"nano-banana2":    "firefly-nano-banana2",

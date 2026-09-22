@@ -68,6 +68,7 @@ type AccountHandler struct {
 	grokImportProber        grokImportProber
 	upstreamBillingProbe    *service.UpstreamBillingProbeService
 	ollamaCloudUsage        *service.OllamaCloudUsageService
+	codexTicketSettings     *service.SettingService
 	cfg                     *config.Config
 }
 
@@ -78,6 +79,11 @@ func (h *AccountHandler) SetUpstreamBillingProbeService(probe *service.UpstreamB
 
 func (h *AccountHandler) SetOllamaCloudUsageService(usage *service.OllamaCloudUsageService) {
 	h.ollamaCloudUsage = usage
+}
+
+// SetCodexTicketSettings supplies the live policy without mutating shared config.
+func (h *AccountHandler) SetCodexTicketSettings(settings *service.SettingService) {
+	h.codexTicketSettings = settings
 }
 
 // NewAccountHandler creates a new admin account handler
@@ -342,6 +348,7 @@ const accountListGroupUngroupedQueryValue = "ungrouped"
 
 func (h *AccountHandler) accountResponseFromService(account *service.Account) *dto.Account {
 	out := dto.AccountFromService(account)
+	h.enrichCodexTicketStatus(account, out)
 	if h != nil && h.ollamaCloudUsage != nil && out != nil {
 		h.ollamaCloudUsage.EnrichState(out.OllamaCloudUsage)
 	}
@@ -350,6 +357,7 @@ func (h *AccountHandler) accountResponseFromService(account *service.Account) *d
 
 func (h *AccountHandler) accountListResponseFromService(account *service.Account) *dto.Account {
 	out := dto.AccountFromServiceShallow(account)
+	h.enrichCodexTicketStatus(account, out)
 	if out != nil && account != nil {
 		out.Proxy = dto.ProxyFromService(account.Proxy)
 	}
@@ -357,6 +365,19 @@ func (h *AccountHandler) accountListResponseFromService(account *service.Account
 		h.ollamaCloudUsage.EnrichState(out.OllamaCloudUsage)
 	}
 	return out
+}
+
+func (h *AccountHandler) enrichCodexTicketStatus(account *service.Account, out *dto.Account) {
+	if h != nil && h.cfg != nil && out != nil {
+		cfg := h.cfg.Gateway.OpenAICodexTicket
+		targetLength := cfg.TargetLength
+		if h.codexTicketSettings != nil {
+			cfg.Enabled = h.codexTicketSettings.GetOpenAICodexTicketEnabled(context.Background(), cfg.Enabled)
+			cfg.FailClosed = h.codexTicketSettings.GetOpenAICodexTicketFailClosed(context.Background(), cfg.FailClosed)
+			targetLength = h.codexTicketSettings.OpenAICodexTicketTargetLengthFor(context.Background(), account, cfg.TargetLength)
+		}
+		out.CodexTurnTickets = service.OpenAICodexTicketStatuses(account, cfg, targetLength, time.Now())
+	}
 }
 
 func (h *AccountHandler) isSimpleMode() bool {
@@ -3026,7 +3047,7 @@ func (h *AccountHandler) GetAvailableModels(c *gin.Context) {
 // 顺序是刻意的：先按 adobe.ImageModelIDs() 的对外展示序输出，再把运维自定义的额外别名
 // 按字典序追加。前端默认选中第一项，顺序不稳会让默认模型每次刷新都变。
 //
-// DisplayName 直接用 id：Adobe 的对外名本身可读（gpt-image-2 / nano-banana-pro / flux-pro），
+// DisplayName 直接用 id：Adobe 的对外名本身可读（gpt-image-2 / gemini-3-pro-image / flux-pro），
 // 不值得再维护一张标签表。
 func buildAdobeTestModels(mapping map[string]string) []adobe.Model {
 	models := make([]adobe.Model, 0, len(mapping))

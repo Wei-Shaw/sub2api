@@ -111,25 +111,52 @@ func (c *Client) browserHeaders() *headerBuilder {
 		set("sec-fetch-dest", "empty")
 }
 
-func (c *Client) submitHeaders(token, prompt string) (map[string]string, []string) {
-	headers := c.browserHeaders().
-		set("authorization", "Bearer "+token).
-		set("x-api-key", c.identity.FireflyAPIKey).
-		set("content-type", "application/json").
+func (c *Client) submitHeaders(token, prompt, arpSessionID string) (map[string]string, []string) {
+	// 顺序对齐 Firefly 前端 generate-async 抓包：自定义头（authorization /
+	// content-type / x-api-key / x-arp / x-nonce）在 origin 与 sec-fetch 之前。
+	// sec-ch-ua* 仍带上，因为 TLS 伪装是 Chrome，不能按 Camoufox Firefox 省略。
+	arp := strings.TrimSpace(arpSessionID)
+	if arp == "" {
+		arp = BuildARPSessionID()
+	}
+	headers := newHeaderBuilder().
+		set("user-agent", c.identity.UserAgent).
 		set("accept", "*/*").
-		set("x-arp-session-id", BuildARPSessionID())
+		set("accept-language", "en-US,en;q=0.9").
+		set("referer", c.identity.Referer).
+		set("authorization", "Bearer "+token).
+		set("content-type", "application/json").
+		set("x-api-key", c.identity.FireflyAPIKey).
+		set("x-arp-session-id", arp)
 	if nonce := BuildSubmitNonce(token, prompt); nonce != "" {
 		headers.set("x-nonce", nonce)
 	}
+	headers.
+		set("origin", c.identity.Origin).
+		set("sec-ch-ua", c.identity.SecChUA).
+		set("sec-ch-ua-mobile", "?0").
+		set("sec-ch-ua-platform", c.identity.SecChUAPlatform).
+		set("sec-fetch-dest", "empty").
+		set("sec-fetch-mode", "cors").
+		set("sec-fetch-site", "cross-site")
 	return headers.build()
 }
 
 func (c *Client) pollHeaders(token string) (map[string]string, []string) {
-	return c.browserHeaders().
-		set("authorization", "Bearer "+token).
-		set("x-api-key", c.identity.FireflyAPIKey).
-		set("content-type", "application/json").
+	// bks-epo 轮询抓包不带 x-api-key / content-type。
+	return newHeaderBuilder().
+		set("user-agent", c.identity.UserAgent).
 		set("accept", "*/*").
+		set("accept-language", "en-US,en;q=0.9").
+		set("referer", c.identity.Referer).
+		set("authorization", "Bearer "+token).
+		set("origin", c.identity.Origin).
+		set("sec-ch-ua", c.identity.SecChUA).
+		set("sec-ch-ua-mobile", "?0").
+		set("sec-ch-ua-platform", c.identity.SecChUAPlatform).
+		set("sec-fetch-dest", "empty").
+		set("sec-fetch-mode", "cors").
+		set("sec-fetch-site", "cross-site").
 		build()
 }
 
@@ -183,6 +210,8 @@ func (c *Client) UploadImage(ctx context.Context, token string, image []byte, mi
 type GenerateImageInput struct {
 	Token   string
 	Options ImagePayloadOptions
+	// ARPSessionID 是账号里保存的 Sherlock x-arp-session-id；空则回落到 BuildARPSessionID stub。
+	ARPSessionID string
 	// Timeout 是整个「提交 + 轮询」的上限；为空取 DefaultImageTimeout。
 	Timeout time.Duration
 	// PollInterval 为空取 DefaultPollInterval。
@@ -208,10 +237,10 @@ func (c *Client) GenerateImage(ctx context.Context, input GenerateImageInput) (*
 		return nil, err
 	}
 
-	headers, order := c.submitHeaders(input.Token, input.Options.Prompt)
+	headers, order := c.submitHeaders(input.Token, input.Options.Prompt, input.ARPSessionID)
 	var submitResp *Response
 	for _, payload := range candidates {
-		body, err := json.Marshal(payload)
+		body, err := marshalPayloadJSON(payload)
 		if err != nil {
 			return nil, NewRequestError(fmt.Sprintf("marshal image payload: %v", err))
 		}
@@ -240,7 +269,7 @@ func (c *Client) GenerateImage(ctx context.Context, input GenerateImageInput) (*
 	}
 	return c.poll(ctx, pollParams{
 		token:        input.Token,
-		pollURL:      pollURL,
+		pollURL:      NormalizePollURL(pollURL),
 		label:        "image",
 		outputKey:    "image",
 		timeout:      orDuration(input.Timeout, DefaultImageTimeout),
@@ -254,6 +283,8 @@ func (c *Client) GenerateImage(ctx context.Context, input GenerateImageInput) (*
 type GenerateVideoInput struct {
 	Token        string
 	Options      VideoPayloadOptions
+	// ARPSessionID 是账号里保存的 Sherlock x-arp-session-id；空则回落到 BuildARPSessionID stub。
+	ARPSessionID string
 	Timeout      time.Duration
 	PollInterval time.Duration
 }
@@ -262,12 +293,12 @@ type GenerateVideoInput struct {
 //
 // 与图像不同，视频只发单个 payload：各引擎的形状由 Engine 确定，不存在候选回退。
 func (c *Client) GenerateVideo(ctx context.Context, input GenerateVideoInput) (*GenerateResult, error) {
-	body, err := json.Marshal(BuildVideoPayload(input.Options))
+	body, err := marshalPayloadJSON(BuildVideoPayload(input.Options))
 	if err != nil {
 		return nil, NewRequestError(fmt.Sprintf("marshal video payload: %v", err))
 	}
 
-	headers, order := c.submitHeaders(input.Token, input.Options.Prompt)
+	headers, order := c.submitHeaders(input.Token, input.Options.Prompt, input.ARPSessionID)
 	submitResp, err := c.postSubmit(ctx, VideoSubmitURL, headers, order, body)
 	if err != nil {
 		return nil, err
@@ -282,7 +313,7 @@ func (c *Client) GenerateVideo(ctx context.Context, input GenerateVideoInput) (*
 	}
 	return c.poll(ctx, pollParams{
 		token:        input.Token,
-		pollURL:      NormalizeVideoPollURL(rawPollURL),
+		pollURL:      NormalizePollURL(rawPollURL),
 		label:        "video",
 		outputKey:    "video",
 		timeout:      orDuration(input.Timeout, DefaultVideoTimeout),
@@ -641,9 +672,13 @@ func ExtractResultLink(headers map[string]string, submitData map[string]any) str
 // shardPattern 匹配 firefly-epo 主机名里的四位分片号。
 var shardPattern = regexp.MustCompile(`^\d{4}$`)
 
-// NormalizeVideoPollURL 把 firefly-epo 分片链接转换成 Adobe 实际的视频任务查询地址。
-// 不是该形态的链接原样返回。
-func NormalizeVideoPollURL(rawURL string) string {
+// NormalizePollURL 把 firefly-epo 分片链接转换成 Adobe 实际的任务查询地址。
+//
+// 提交 body.links.result 是 https://firefly-epo{shard}….adobe.io/jobs/result/{id}；
+// 浏览器实际轮询 x-override-status-link：
+// https://bks-epo{shard前4位}.adobe.io/v2/jobs/result/{id}?host={原主机}/
+// 图像与视频同一套改写。不是该形态的链接原样返回。
+func NormalizePollURL(rawURL string) string {
 	if rawURL == "" {
 		return rawURL
 	}
@@ -668,6 +703,9 @@ func NormalizeVideoPollURL(rawURL string) string {
 	}
 	return fmt.Sprintf("https://bks-epo%s.adobe.io/v2/jobs/result/%s?host=%s/", shard, jobID, host)
 }
+
+// NormalizeVideoPollURL 是 NormalizePollURL 的别名，保留给既有调用方。
+func NormalizeVideoPollURL(rawURL string) string { return NormalizePollURL(rawURL) }
 
 func truncate(s string, limit int) string {
 	if len(s) > limit {

@@ -144,6 +144,9 @@ func BuildSubmitNonce(token, prompt string) string {
 // Firefly 前端提交 generate-async 时仍带该头。
 // 形状：base64({"sid":<uuid>,"ftr":<指纹串>})。
 // 含随机数与当前时间，故非确定性。
+//
+// 2026-09-20 网页抓包该头约 724 字节，前端 ftr 明显比下面这根短串更完整。
+// 完整 JS 指纹结构未还原前不拿随机填充凑长度——错的长串比短的重构更糟。
 func BuildARPSessionID() string {
 	randBytes := make([]byte, 16)
 	if _, err := rand.Read(randBytes); err != nil {

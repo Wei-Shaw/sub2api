@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Adobe Cookie Exporter</title>
+    <link rel="stylesheet" href="popup.css" />
+  </head>
+  <body>
+    <main class="app">
+      <h1>Adobe Cookie Export</h1>
+      <p id="versionText" class="context">Extension v…</p>
+      <p id="contextText" class="context">Checking browser context...</p>
+      <p id="arpText" class="arp">ARP: checking...</p>
+      <p id="tokenText" class="arp">Token: checking...</p>
+
+      <label class="field">
+        <span>Export Scope</span>
+        <select id="scopeSelect">
+          <option value="adobe">Adobe domains (recommended)</option>
+          <option value="current">Current site</option>
+        </select>
+      </label>
+
+      <div class="actions">
+        <button id="exportJsonBtn" type="button">Export Sub2API JSON</button>
+      </div>
+
+      <section class="result">
+        <p id="statusText" class="status">Ready to export.</p>
+      </section>
+    </main>
+
+    <script src="popup.js"></script>
+  </body>
+</html>

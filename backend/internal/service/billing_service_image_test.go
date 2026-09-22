@@ -175,6 +175,12 @@ func TestGetDefaultAdobeImagePrice(t *testing.T) {
 		{"nano-banana", 0.02, 0.04, 0.08},
 		{"nano-banana-pro", 0.02, 0.04, 0.08},
 		{"nano-banana2", 0.02, 0.04, 0.08},
+		{"gemini-2.5-flash-image", 0.02, 0.04, 0.08},
+		{"gemini-2.5-flash-image-preview", 0.02, 0.04, 0.08},
+		{"gemini-3-pro-image", 0.02, 0.04, 0.08},
+		{"gemini-3-pro-image-preview", 0.02, 0.04, 0.08},
+		{"gemini-3.1-flash-image", 0.02, 0.04, 0.08},
+		{"gemini-3.1-flash-image-preview", 0.02, 0.04, 0.08},
 		// gpt-image 档
 		{"gpt-image", 0.05, 0.08, 0.15},
 		{"gpt-image-1", 0.05, 0.08, 0.15},
@@ -212,7 +218,7 @@ func TestGetDefaultAdobeImagePrice(t *testing.T) {
 // gpt-image-1 仍在表内（Adobe 分组要用）；平台隔离由 getDefaultImagePrice 负责。
 func TestGetDefaultAdobeImagePriceMisses(t *testing.T) {
 	for _, model := range []string{
-		"gemini-3-pro-image",     // gemini 官方
+		"gemini-2.5-flash",       // Gemini 文本，不是生图
 		"grok-imagine-image-2.0", // Grok
 		"claude-opus-5",          // Anthropic
 		"firefly-imagen-4",       // 内部族 id 也不该命中：Step 8 之后请求方永远拿到干净外部名
@@ -227,7 +233,7 @@ func TestGetDefaultAdobeImagePriceMisses(t *testing.T) {
 func TestGetDefaultImagePrice_DoesNotApplyAdobeTiersWithoutAdobePlatform(t *testing.T) {
 	svc := &BillingService{}
 	for _, platform := range []string{"", PlatformOpenAI, PlatformGemini, PlatformGrok, "OpenAI"} {
-		for _, model := range []string{"gpt-image-1", "gpt-image-2.5-flare"} {
+		for _, model := range []string{"gpt-image-1", "gpt-image-2.5-flare", "gemini-3-pro-image"} {
 			got := svc.getDefaultImagePrice(model, "1K", platform)
 			adobePrice, _ := getDefaultAdobeImagePrice(model, "1K")
 			require.NotEqual(t, adobePrice, got,

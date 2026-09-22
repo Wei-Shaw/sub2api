@@ -100,6 +100,13 @@ const AccountTableFiltersStub = {
   template: '<button data-test="change-filter" @click="$emit(\'change\')">change filter</button>'
 }
 
+const ConfirmDialogStub = {
+  name: 'ConfirmDialog',
+  props: ['show', 'title', 'message'],
+  emits: ['confirm', 'cancel'],
+  template: '<button v-if="show" data-test="confirm-dialog" @click="$emit(\'confirm\')">{{ title }}</button>'
+}
+
 const mountView = () => mount(AccountsView, {
   global: {
     stubs: {
@@ -112,12 +119,7 @@ const mountView = () => mount(AccountsView, {
         template: '<div data-test="data-table"><div v-for="row in data" :key="row.id"><slot name="cell-select" :row="row" /></div></div>'
       },
       Pagination: true,
-      // fork 侧把原生 confirm 换成了统一 ConfirmDialog，批量操作需要二次确认
-      ConfirmDialog: {
-        props: ['show'],
-        emits: ['confirm', 'cancel'],
-        template: `<div v-if="show"><button data-test="confirm-dialog-ok" @click="$emit('confirm')">ok</button></div>`
-      },
+      ConfirmDialog: ConfirmDialogStub,
       AccountTableActions: { template: '<div><slot name="beforeCreate" /><slot name="after" /></div>' },
       AccountTableFilters: AccountTableFiltersStub,
       AccountBulkActionsBar: AccountBulkActionsBarStub,
@@ -172,13 +174,6 @@ describe('admin AccountsView select all filtered results', () => {
     vi.restoreAllMocks()
   })
 
-  // 批量刷新 token 走统一 ConfirmDialog：第一次点击只弹窗，确认后才发请求
-  const confirmBulkRefresh = async (wrapper: ReturnType<typeof mountView>) => {
-    await wrapper.get('[data-test="refresh-token"]').trigger('click')
-    await wrapper.get('[data-test="confirm-dialog-ok"]').trigger('click')
-    await flushPromises()
-  }
-
   it.each([
     { name: 'keeps only failed accounts selected', result: { total: 3, success: 2, failed: 1, errors: [{ account_id: 2, error: 'no refresh token available' }] }, expectedIds: [2] },
     { name: 'clears the selection after every account succeeds', result: { total: 3, success: 3, failed: 0 }, expectedIds: [] },
@@ -186,13 +181,15 @@ describe('admin AccountsView select all filtered results', () => {
   ])('$name after a batch token refresh and table reload', async ({ result, expectedIds }) => {
     listAccounts.mockResolvedValue({ items: makeAccounts(3), total: 3, page: 1, page_size: 20, pages: 1 })
     batchRefresh.mockResolvedValue(result)
-    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true)
     const wrapper = mountView()
     await flushPromises()
     await wrapper.get('[data-test="select-page"]').trigger('click')
-    await confirmBulkRefresh(wrapper)
+    await wrapper.get('[data-test="refresh-token"]').trigger('click')
+    expect(batchRefresh).not.toHaveBeenCalled()
+    expect(wrapper.get('[data-test="confirm-dialog"]').text()).toBe('admin.accounts.bulkRefreshTokenTitle')
+    await wrapper.get('[data-test="confirm-dialog"]').trigger('click')
+    await flushPromises()
 
-    expect(confirmSpy).not.toHaveBeenCalled()
     expect(batchRefresh).toHaveBeenCalledWith([1, 2, 3])
     expect(listAccounts).toHaveBeenCalledTimes(2)
     expect(wrapper.getComponent(AccountBulkActionsBarStub).props('selectedIds')).toEqual(expectedIds)
@@ -200,7 +197,9 @@ describe('admin AccountsView select all filtered results', () => {
       .toEqual([1, 2, 3].map(id => expectedIds.includes(id)))
     if (result.failed > 0) {
       expect(showError).toHaveBeenCalledWith('admin.accounts.bulkActions.partialSuccess')
-      await confirmBulkRefresh(wrapper)
+      await wrapper.get('[data-test="refresh-token"]').trigger('click')
+      await wrapper.get('[data-test="confirm-dialog"]').trigger('click')
+      await flushPromises()
       expect(batchRefresh).toHaveBeenLastCalledWith(expectedIds)
     }
     wrapper.unmount()

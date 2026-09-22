@@ -265,6 +265,7 @@
                   :plan-type="getAccountPlanType(row)"
                   :privacy-mode="row.extra?.privacy_mode || row.parent_privacy_mode"
                   :subscription-expires-at="row.credentials?.subscription_expires_at || row.parent_subscription_expires_at"
+                  :telemetry-enabled="row.extra?.codex_telemetry_enabled === true"
                 />
                 <span
                   v-if="getAntigravityTierLabel(row)"
@@ -514,13 +515,13 @@
       @cancel="showBulkResetConfirm = false"
     />
     <ConfirmDialog
-      :show="showBulkRefreshConfirm"
+      :show="showBulkRefreshTokenConfirm"
       :title="t('admin.accounts.bulkRefreshTokenTitle')"
       :message="t('admin.accounts.bulkRefreshTokenConfirm', { count: selIds.length })"
       :confirm-text="t('common.confirm')"
       :cancel-text="t('common.cancel')"
       @confirm="handleBulkRefreshToken"
-      @cancel="showBulkRefreshConfirm = false"
+      @cancel="showBulkRefreshTokenConfirm = false"
     />
   </AppLayout>
 </template>
@@ -637,7 +638,7 @@ const includeProxyOnExport = ref(true)
 const showBulkEdit = ref(false)
 const showBulkDeleteConfirm = ref(false)
 const showBulkResetConfirm = ref(false)
-const showBulkRefreshConfirm = ref(false)
+const showBulkRefreshTokenConfirm = ref(false)
 const bulkEditTarget = ref<AccountBulkEditTarget | null>(null)
 const showTempUnsched = ref(false)
 const showDeleteDialog = ref(false)
@@ -1965,13 +1966,13 @@ const handleBulkResetStatus = async () => {
   }
 }
 const handleBulkRefreshToken = async () => {
-  if (!showBulkRefreshConfirm.value) {
-    showBulkRefreshConfirm.value = true
+  if (!showBulkRefreshTokenConfirm.value) {
+    showBulkRefreshTokenConfirm.value = true
     return
   }
   const accountIds = [...selIds.value]
   try {
-    showBulkRefreshConfirm.value = false
+    showBulkRefreshTokenConfirm.value = false
     const result = await adminAPI.accounts.batchRefresh(accountIds)
     if (result.failed > 0) {
       appStore.showError(t('admin.accounts.bulkActions.partialSuccess', { success: result.success, failed: result.failed }))

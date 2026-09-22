@@ -6,6 +6,7 @@ import enCommon from "@/i18n/locales/en/common";
 import enSettings from "@/i18n/locales/en/admin/settings";
 import zhCommon from "@/i18n/locales/zh/common";
 import zhSettings from "@/i18n/locales/zh/admin/settings";
+import Select from "@/components/common/Select.vue";
 import SettingsView from "../SettingsView.vue";
 
 const {
@@ -283,56 +284,6 @@ const ToggleStub = defineComponent({
   },
 });
 
-const SelectStub = defineComponent({
-  props: {
-    modelValue: {
-      type: [String, Number, Boolean, null],
-      default: "",
-    },
-    options: {
-      type: Array,
-      default: () => [],
-    },
-    placeholder: {
-      type: String,
-      default: "",
-    },
-  },
-  emits: ["update:modelValue", "change"],
-  setup(props, { emit }) {
-    const onChange = (event: Event) => {
-      const target = event.target as HTMLSelectElement;
-      emit("update:modelValue", target.value);
-      const option =
-        (props.options as Array<Record<string, unknown>>).find(
-          (item) => String(item.value ?? "") === target.value,
-        ) ?? null;
-      emit("change", target.value, option);
-    };
-
-    return () =>
-      h(
-        "select",
-        {
-          class: "select-stub",
-          value: props.modelValue ?? "",
-          "data-placeholder": props.placeholder,
-          onChange,
-        },
-        (props.options as Array<Record<string, unknown>>).map((option) =>
-          h(
-            "option",
-            {
-              key: `${String(option.value ?? "")}:${String(option.label ?? "")}`,
-              value: option.value as string,
-            },
-            String(option.label ?? ""),
-          ),
-        ),
-      );
-  },
-});
-
 const ImageUploadStub = defineComponent({
   props: {
     modelValue: {
@@ -476,6 +427,12 @@ const baseSettingsResponse = {
   enable_client_dateline_normalization: true,
   antigravity_user_agent_version: "",
   openai_codex_user_agent: "",
+  openai_codex_ticket_enabled: false,
+  openai_codex_ticket_fail_closed: true,
+  openai_codex_ticket_harvest_proxy_url: "",
+  openai_codex_ticket_harvest_proxy_configured: false,
+  openai_codex_ticket_default_length: 292,
+  openai_codex_ticket_plan_lengths: [],
   payment_enabled: true,
   payment_min_amount: 1,
   payment_max_amount: 10000,
@@ -549,7 +506,6 @@ function mountView() {
     global: {
       stubs: {
         AppLayout: AppLayoutStub,
-        Select: SelectStub,
         Toggle: ToggleStub,
         Icon: true,
         ConfirmDialog: true,
@@ -719,6 +675,103 @@ describe("admin SettingsView payment visible method controls", () => {
     });
     fetchPublicSettings.mockResolvedValue(undefined);
     adminSettingsFetch.mockResolvedValue(undefined);
+  });
+
+  it("submits the Codex ticket harvest toggle", async () => {
+    getSettings.mockResolvedValueOnce({
+      ...baseSettingsResponse,
+      openai_codex_ticket_enabled: false,
+    });
+    const wrapper = mountView();
+    await flushPromises();
+    const toggle = wrapper.get("#codex-ticket-enabled");
+    await toggle.setValue(true);
+    // 缺票拦截默认随响应加载为 true，关掉后应随载荷提交 false
+    const failClosed = wrapper.get<HTMLInputElement>("#codex-ticket-fail-closed");
+    expect((failClosed.element as HTMLInputElement).checked).toBe(true);
+    await failClosed.setValue(false);
+    await wrapper.find("form").trigger("submit.prevent");
+    await flushPromises();
+    expect(updateSettings.mock.calls[0]?.[0].openai_codex_ticket_enabled).toBe(true);
+    expect(updateSettings.mock.calls[0]?.[0].openai_codex_ticket_fail_closed).toBe(false);
+    wrapper.unmount();
+  });
+
+  it("loads the masked Codex harvest proxy and submits a replacement URL", async () => {
+    getSettings.mockResolvedValueOnce({
+      ...baseSettingsResponse,
+      openai_codex_ticket_harvest_proxy_url: "http://user:***@old.example.com:8080",
+      openai_codex_ticket_harvest_proxy_configured: true,
+    });
+    const wrapper = mountView();
+    await flushPromises();
+    const input = wrapper.get<HTMLInputElement>("#codex-ticket-harvest-proxy");
+    expect(input.element.value).toBe("http://user:***@old.example.com:8080");
+    await input.setValue("socks5h://user:new-secret@new.example.com:1080");
+    await wrapper.find("form").trigger("submit.prevent");
+    await flushPromises();
+    expect(updateSettings.mock.calls[0]?.[0].openai_codex_ticket_harvest_proxy_url)
+      .toBe("socks5h://user:new-secret@new.example.com:1080");
+    expect(updateSettings.mock.calls[0]?.[0]).not.toHaveProperty("openai_codex_ticket_harvest_proxy_configured");
+    wrapper.unmount();
+  });
+
+  it("loads Codex ticket plan length rules and submits normalized updates", async () => {
+    getSettings.mockResolvedValueOnce({
+      ...baseSettingsResponse,
+      openai_codex_ticket_default_length: 292,
+      openai_codex_ticket_plan_lengths: [{ plan: "business", length: 332 }],
+    });
+    const wrapper = mountView();
+    await flushPromises();
+
+    const defaultLength = wrapper.get<HTMLInputElement>("#codex-ticket-default-length");
+    expect(defaultLength.element.value).toBe("292");
+    let rows = wrapper.findAll('[data-test="codex-ticket-plan-row"]');
+    expect(rows).toHaveLength(1);
+    // plan 用通用 Select 展示：非预设值（business）原样显示，长度仍是数字输入
+    const planSelect = rows[0].getComponent(Select);
+    expect(planSelect.props("creatable")).toBe(true);
+    expect(planSelect.props("options")).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ value: "plus", label: "Plus" }),
+        expect.objectContaining({ value: "team", label: "Business Standard" }),
+        expect.objectContaining({ value: "self_serve_business_prolite", label: "Business Premium" }),
+      ]),
+    );
+    expect(rows[0].get("button.select-trigger").text()).toBe("business");
+    expect(rows[0].get('input[type="number"]').element.value).toBe("332");
+
+    // 修改默认长度，追加一条 team 规则（大小写与空白应被规整）。
+    await defaultLength.setValue(296);
+    await wrapper.get("#codex-ticket-plan-rule-add").trigger("click");
+    rows = wrapper.findAll('[data-test="codex-ticket-plan-row"]');
+    await rows[1].getComponent(Select).vm.$emit("update:modelValue", "  Team ");
+    await rows[1].get('input[type="number"]').setValue(332);
+
+    await wrapper.find("form").trigger("submit.prevent");
+    await flushPromises();
+    const payload = updateSettings.mock.calls[0]?.[0];
+    expect(payload.openai_codex_ticket_default_length).toBe(296);
+    expect(payload.openai_codex_ticket_plan_lengths).toEqual([
+      { plan: "business", length: 332 },
+      { plan: "team", length: 332 },
+    ]);
+    wrapper.unmount();
+  });
+
+  it("submits an empty Codex plan rules list after removing the last rule", async () => {
+    getSettings.mockResolvedValueOnce({
+      ...baseSettingsResponse,
+      openai_codex_ticket_plan_lengths: [{ plan: "team", length: 332 }],
+    });
+    const wrapper = mountView();
+    await flushPromises();
+    await wrapper.find("button.btn-ghost-danger").trigger("click");
+    await wrapper.find("form").trigger("submit.prevent");
+    await flushPromises();
+    expect(updateSettings.mock.calls[0]?.[0].openai_codex_ticket_plan_lengths).toEqual([]);
+    wrapper.unmount();
   });
 
   it("loads and saves the open button visibility for each custom menu", async () => {
@@ -1257,7 +1310,6 @@ describe("admin SettingsView payment visible method controls", () => {
       global: {
         stubs: {
           AppLayout: AppLayoutStub,
-          Select: SelectStub,
           Toggle: ToggleStub,
           Icon: true,
           ConfirmDialog: true,
@@ -1401,9 +1453,9 @@ describe("admin SettingsView payment visible method controls", () => {
     await openGatewayTab(wrapper);
 
     const modeSelect = wrapper.get('[data-testid="openai-ttft-mode"]');
-    expect((modeSelect.element as HTMLSelectElement).value).toBe("visible");
+    expect(modeSelect.getComponent(Select).props("modelValue")).toBe("visible");
 
-    await modeSelect.setValue("semantic");
+    await modeSelect.getComponent(Select).vm.$emit("update:modelValue", "semantic");
     await wrapper.find("form").trigger("submit.prevent");
     await flushPromises();
 
@@ -1555,7 +1607,6 @@ describe("admin SettingsView payment visible method controls", () => {
       global: {
         stubs: {
           AppLayout: AppLayoutStub,
-          Select: SelectStub,
           Toggle: ToggleStub,
           Icon: true,
           ConfirmDialog: true,
@@ -1586,11 +1637,12 @@ describe("admin SettingsView payment visible method controls", () => {
     await openGatewayTab(wrapper);
 
     const select = wrapper.get('[data-testid="grok-default-base-url-mode"]');
+    const selectComponent = select.getComponent(Select);
 
     // 五个上游选项必须齐全且顺序与取值稳定（保存的是 value，不是 label）
-    const optionValues = select
-      .findAll("option")
-      .map((node) => (node.element as HTMLOptionElement).value);
+    const optionValues = (selectComponent.props("options") as Array<{ value: string }>).map(
+      (option) => option.value,
+    );
     expect(optionValues).toEqual([
       "cli",
       "api",
@@ -1600,9 +1652,9 @@ describe("admin SettingsView payment visible method controls", () => {
     ]);
 
     // 默认值来自 form 初始化
-    expect((select.element as HTMLSelectElement).value).toBe("cli");
+    expect(selectComponent.props("modelValue")).toBe("cli");
 
-    await select.setValue("us-west-2");
+    await selectComponent.vm.$emit("update:modelValue", "us-west-2");
     await wrapper.find("form").trigger("submit.prevent");
     await flushPromises();
 

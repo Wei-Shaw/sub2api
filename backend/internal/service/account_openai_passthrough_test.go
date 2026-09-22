@@ -71,6 +71,67 @@ func TestAccount_IsOpenAIOAuthPassthroughEnabled(t *testing.T) {
 	})
 }
 
+func TestAccount_IsCodexTelemetryEnabled(t *testing.T) {
+	t.Run("OpenAI OAuth 开启", func(t *testing.T) {
+		account := &Account{
+			Platform: PlatformOpenAI,
+			Type:     AccountTypeOAuth,
+			Extra: map[string]any{
+				"codex_telemetry_enabled": true,
+			},
+		}
+		require.True(t, account.IsCodexTelemetryEnabled())
+	})
+
+	t.Run("字段缺失默认关闭", func(t *testing.T) {
+		account := &Account{
+			Platform: PlatformOpenAI,
+			Type:     AccountTypeOAuth,
+			Extra:    map[string]any{},
+		}
+		require.False(t, account.IsCodexTelemetryEnabled())
+	})
+
+	t.Run("类型非法默认关闭", func(t *testing.T) {
+		account := &Account{
+			Platform: PlatformOpenAI,
+			Type:     AccountTypeOAuth,
+			Extra: map[string]any{
+				"codex_telemetry_enabled": "true",
+			},
+		}
+		require.False(t, account.IsCodexTelemetryEnabled())
+	})
+
+	t.Run("非 OAuth 账号始终关闭", func(t *testing.T) {
+		apiKey := &Account{
+			Platform: PlatformOpenAI,
+			Type:     AccountTypeAPIKey,
+			Extra:    map[string]any{"codex_telemetry_enabled": true},
+		}
+		require.False(t, apiKey.IsCodexTelemetryEnabled())
+
+		setupToken := &Account{
+			Platform: PlatformOpenAI,
+			Type:     AccountTypeSetupToken,
+			Extra:    map[string]any{"codex_telemetry_enabled": true},
+		}
+		require.False(t, setupToken.IsCodexTelemetryEnabled())
+	})
+
+	t.Run("Agent Identity 始终关闭", func(t *testing.T) {
+		account := &Account{
+			Platform: PlatformOpenAI,
+			Type:     AccountTypeOAuth,
+			Credentials: map[string]any{
+				openAIAuthModeCredentialKey: OpenAIAuthModeAgentIdentity,
+			},
+			Extra: map[string]any{"codex_telemetry_enabled": true},
+		}
+		require.False(t, account.IsCodexTelemetryEnabled())
+	})
+}
+
 func TestAccount_IsCodexCLIOnlyEnabled(t *testing.T) {
 	t.Run("OpenAI OAuth 开启", func(t *testing.T) {
 		account := &Account{

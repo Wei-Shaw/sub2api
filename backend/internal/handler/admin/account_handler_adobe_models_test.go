@@ -73,12 +73,18 @@ func TestAccountHandlerGetAvailableModels_AdobeDisplayNames(t *testing.T) {
 	require.Equal(t, "Imagen 4", byID["imagen-4"])
 	require.Equal(t, "FLUX Pro", byID["flux-pro"])
 	require.Equal(t, "GPT Image 2.5 Sunburst", byID["gpt-image-2.5-sunburst"])
+	require.Equal(t, "Gemini 3 Pro Image", byID["gemini-3-pro-image"])
+	require.Equal(t, "Gemini 2.5 Flash Image", byID["gemini-2.5-flash-image"])
+	require.Equal(t, "Gemini 3.1 Flash Image", byID["gemini-3.1-flash-image"])
 	for _, id := range adobe.ImageModelIDs() {
 		require.NotContains(t, byID[id], "firefly-", "展示名不应泄露内部族 id：%s", id)
 	}
 
 	// 历史别名保留裸 id：三个都落 firefly-gpt-image-2，套 label 会出现三行「GPT Image 2」。
 	for _, legacy := range []string{"gpt-image", "gpt-image-1", "gpt-image-1-mini"} {
+		require.Equal(t, legacy, byID[legacy], "历史别名 %s 应显示自身", legacy)
+	}
+	for _, legacy := range []string{"nano-banana", "nano-banana-pro", "nano-banana2"} {
 		require.Equal(t, legacy, byID[legacy], "历史别名 %s 应显示自身", legacy)
 	}
 }

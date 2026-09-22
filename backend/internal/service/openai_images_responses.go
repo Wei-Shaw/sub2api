@@ -1109,7 +1109,15 @@ func buildOpenAIImagesStreamErrorBodyFromUpstream(err *OpenAIImagesUpstreamError
 }
 
 func writeOpenAIImagesUpstreamErrorResponse(c *gin.Context, err *OpenAIImagesUpstreamError) bool {
-	if c == nil || c.Writer == nil || err == nil {
+	if c == nil || err == nil {
+		return false
+	}
+	if c.Request != nil {
+		if sink := openAIImagesClientSinkFromContext(c.Request.Context()); sink != nil {
+			return false
+		}
+	}
+	if c.Writer == nil {
 		return false
 	}
 	if c.Writer.Written() && OpenAIImagesJSONKeepaliveAdjustedWrittenSize(c) >= 0 {

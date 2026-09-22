@@ -24,4 +24,31 @@ describe('PlatformTypeBadge', () => {
     expect(wrapper.html()).toContain('text-violet-700')
     expect(wrapper.html()).not.toContain('bg-orange-100')
   })
+
+  it('shows an English Telemetry badge when enabled', () => {
+    const wrapper = mount(PlatformTypeBadge, {
+      props: {
+        platform: 'openai',
+        type: 'oauth',
+        planType: 'pro',
+        telemetryEnabled: true
+      }
+    })
+
+    expect(wrapper.get('[data-testid="platform-telemetry-badge"]').text()).toBe('Telemetry')
+    expect(wrapper.text()).toContain('Pro 20x')
+    expect(wrapper.text()).not.toMatch(/抗降智/)
+  })
+
+  it('hides the Telemetry badge when the switch is off', () => {
+    const wrapper = mount(PlatformTypeBadge, {
+      props: {
+        platform: 'openai',
+        type: 'oauth',
+        planType: 'plus'
+      }
+    })
+
+    expect(wrapper.find('[data-testid="platform-telemetry-badge"]').exists()).toBe(false)
+  })
 })

@@ -216,3 +216,152 @@ func TestShouldFallbackGeminiModel_DelegatesScopeFallback(t *testing.T) {
 	}
 	require.True(t, shouldFallbackGeminiModel("gemini-future-model", res))
 }
+
+func TestGeminiV1BetaListModels_AdobeGroupReturnsStaticImageModels(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodGet, "/v1beta/models", nil)
+	c.Set(string(middleware.ContextKeyAPIKey), &service.APIKey{
+		Group: &service.Group{Platform: service.PlatformAdobe},
+	})
+
+	(&GatewayHandler{}).GeminiV1BetaListModels(c)
+
+	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
+	var got struct {
+		Models []struct {
+			Name                       string   `json:"name"`
+			SupportedGenerationMethods []string `json:"supportedGenerationMethods"`
+		} `json:"models"`
+	}
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &got))
+	require.NotEmpty(t, got.Models)
+	require.Equal(t, "models/"+service.AdobeGeminiModels()[0].Name[len("models/"):], got.Models[0].Name)
+	require.Contains(t, got.Models[0].SupportedGenerationMethods, "generateContent")
+}
+
+func TestGeminiV1BetaGetModel_AdobeGroupKnownAndUnknown(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	t.Run("known", func(t *testing.T) {
+		rec := httptest.NewRecorder()
+		c, _ := gin.CreateTestContext(rec)
+		c.Request = httptest.NewRequest(http.MethodGet, "/v1beta/models/nano-banana-pro", nil)
+		c.Params = gin.Params{{Key: "model", Value: "nano-banana-pro"}}
+		c.Set(string(middleware.ContextKeyAPIKey), &service.APIKey{
+			Group: &service.Group{Platform: service.PlatformAdobe},
+		})
+		(&GatewayHandler{}).GeminiV1BetaGetModel(c)
+		require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
+		require.Contains(t, rec.Body.String(), `"name":"models/nano-banana-pro"`)
+	})
+
+	t.Run("unknown", func(t *testing.T) {
+		rec := httptest.NewRecorder()
+		c, _ := gin.CreateTestContext(rec)
+		c.Request = httptest.NewRequest(http.MethodGet, "/v1beta/models/gemini-2.5-flash", nil)
+		c.Params = gin.Params{{Key: "model", Value: "gemini-2.5-flash"}}
+		c.Set(string(middleware.ContextKeyAPIKey), &service.APIKey{
+			Group: &service.Group{Platform: service.PlatformAdobe},
+		})
+		(&GatewayHandler{}).GeminiV1BetaGetModel(c)
+		require.Equal(t, http.StatusNotFound, rec.Code, rec.Body.String())
+		require.Contains(t, rec.Body.String(), `"status":`)
+		require.NotContains(t, rec.Body.String(), `"type":`)
+	})
+
+	t.Run("allowlist matches models prefix", func(t *testing.T) {
+		rec := httptest.NewRecorder()
+		c, _ := gin.CreateTestContext(rec)
+		c.Request = httptest.NewRequest(http.MethodGet, "/v1beta/models/models/nano-banana-pro", nil)
+		c.Params = gin.Params{{Key: "model", Value: "models/nano-banana-pro"}}
+		c.Set(string(middleware.ContextKeyAPIKey), &service.APIKey{
+			Group: &service.Group{
+				Platform: service.PlatformAdobe,
+				ModelAllowlist: service.GroupModelAllowlist{
+					Enabled: true,
+					Models:  []string{"nano-banana-pro"},
+				},
+			},
+		})
+		(&GatewayHandler{}).GeminiV1BetaGetModel(c)
+		require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
+	})
+}
+
+// 账号 model_mapping 里的别名能出图，GetModel / ListModels 也必须认得；
+// 通配符、目录名和其它平台模型名不出现在别名里。
+func TestGeminiV1BetaAdobeAccountAliasesAreVisible(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	groupID := int64(9400)
+	repo := &gatewayModelsAccountRepoStub{byGroup: map[int64][]service.Account{
+		groupID: {
+			{
+				ID: 1, Platform: service.PlatformAdobe, Status: service.StatusActive, Schedulable: true,
+				Credentials: map[string]any{"model_mapping": map[string]any{
+					"my-banana":       "nano-banana-pro",
+					"nano-banana-pro": "nano-banana-pro",
+					"banana-*":        "nano-banana",
+					"gemini-2.5-pro":  "nano-banana-pro",
+				}},
+			},
+			{
+				ID: 2, Platform: service.PlatformGemini, Status: service.StatusActive, Schedulable: true,
+				Credentials: map[string]any{"model_mapping": map[string]any{"gemini-only-alias": "gemini-2.5-pro"}},
+			},
+		},
+	}}
+	h := newGatewayModelsHandlerForTest(repo)
+	apiKey := &service.APIKey{
+		GroupID: &groupID,
+		Group:   &service.Group{ID: groupID, Platform: service.PlatformAdobe},
+	}
+
+	getModel := func(model string) *httptest.ResponseRecorder {
+		rec := httptest.NewRecorder()
+		c, _ := gin.CreateTestContext(rec)
+		c.Request = httptest.NewRequest(http.MethodGet, "/v1beta/models/"+model, nil)
+		c.Params = gin.Params{{Key: "model", Value: model}}
+		c.Set(string(middleware.ContextKeyAPIKey), apiKey)
+		h.GeminiV1BetaGetModel(c)
+		return rec
+	}
+
+	rec := getModel("my-banana")
+	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
+	require.Contains(t, rec.Body.String(), `"name":"models/my-banana"`)
+	require.Contains(t, rec.Body.String(), "generateContent")
+
+	// 通配符在路径段校验处就被拒绝。
+	rec = getModel("banana-*")
+	require.Equal(t, http.StatusBadRequest, rec.Code, rec.Body.String())
+	for _, model := range []string{"gemini-2.5-pro", "gemini-only-alias", "unknown-alias"} {
+		rec := getModel(model)
+		require.Equal(t, http.StatusNotFound, rec.Code, "%s: %s", model, rec.Body.String())
+	}
+
+	rec = httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodGet, "/v1beta/models", nil)
+	c.Set(string(middleware.ContextKeyAPIKey), apiKey)
+	h.GeminiV1BetaListModels(c)
+	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
+	var got struct {
+		Models []struct {
+			Name string `json:"name"`
+		} `json:"models"`
+	}
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &got))
+	names := make(map[string]int, len(got.Models))
+	for _, model := range got.Models {
+		names[model.Name]++
+	}
+	require.Equal(t, 1, names["models/my-banana"])
+	require.Equal(t, 1, names["models/gemini-3-pro-image"])
+	require.Zero(t, names["models/nano-banana-pro"], "历史别名不进目录，即使账号 mapping 写了恒等对")
+	require.Zero(t, names["models/banana-*"])
+	require.Zero(t, names["models/gemini-2.5-pro"])
+	require.Zero(t, names["models/gemini-only-alias"])
+	require.Len(t, got.Models, len(service.AdobeGeminiModels())+1)
+}

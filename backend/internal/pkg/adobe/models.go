@@ -58,8 +58,8 @@ func ImageModelIDs() []string {
 		// gpt-image 系
 		"gpt-image-2", "gpt-image-1.5",
 		"gpt-image-2.5-flare", "gpt-image-2.5-sunburst", // sunburst 是 UI 名，上游 modelVersion=prism
-		// Google Gemini nano-banana 系
-		"nano-banana-pro", "nano-banana", "nano-banana2",
+		// Google Gemini 生图（与 Gemini 渠道对外名对齐；nano-banana* 是历史别名，不列）
+		"gemini-3-pro-image", "gemini-2.5-flash-image", "gemini-3.1-flash-image",
 		// Black Forest Labs FLUX
 		"flux-pro", "flux-ultra",
 		// Google Imagen 4

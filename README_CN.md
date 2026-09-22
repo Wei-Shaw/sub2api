@@ -221,7 +221,7 @@ Sub2API 支持通过 Adobe Firefly Web 订阅账号（浏览器 Cookie）直连�
 
 - 平台名：`adobe`
 - 账号类型：Firefly Cookie（管理端显示为 OAuth）以及 **API Key + Base URL** 中转号
-- 公开出图入口：`/v1/images/generations`、`/v1/images/edits`（以及去掉 `/v1` 前缀的别名）
+- 公开出图入口：`/v1/images/generations`、`/v1/images/edits`（以及去掉 `/v1` 前缀的别名），以及 Gemini 原生生图 `POST /v1beta/models/{model}:generateContent` / `streamGenerateContent`
 - API Key 所在分组需要开启图片生成权限（Adobe 分组默认开启）
 - `n` 缺省 1，最大 10。Cookie 路径会拆成 n 次 Firefly 任务（上游每次仍是 n=1），按张计费；`n>10` 会直接拒绝
 - `output_format` 支持 `png`/`jpeg`（`jpg` 视为 jpeg），下载后本机转码；`webp` 不支持；未传则保持上游格式
@@ -236,22 +236,22 @@ Sub2API 支持通过 Adobe Firefly Web 订阅账号（浏览器 Cookie）直连�
 | `gpt-image-1.5` | Firefly GPT Image 1.5 |
 | `gpt-image-2.5-flare` | Firefly GPT Image 2.5 Flare |
 | `gpt-image-2.5-sunburst` | Firefly GPT Image 2.5 Sunburst（上游版本名为 prism） |
-| `nano-banana` / `nano-banana-pro` / `nano-banana2` | Firefly 上的 Gemini Nano Banana 系列 |
+| `gemini-2.5-flash-image` / `gemini-3-pro-image` / `gemini-3.1-flash-image` | Firefly 上的 Gemini 生图（与 Gemini 渠道同名） |
 | `flux-pro` / `flux-ultra` | Firefly FLUX |
 | `imagen-4` / `imagen-4-fast` | Firefly Imagen 4 |
 | `gpt-4o-image` | Firefly GPT-4o Image |
 | `runway-gen4-image` | Firefly Runway Gen-4 Image |
 
-历史别名 `gpt-image`、`gpt-image-1`、`gpt-image-1-mini` 会落到 `gpt-image-2`，但不会出现在 `/v1/models` 列表中。
+历史别名 `gpt-image`、`gpt-image-1`、`gpt-image-1-mini` 会落到 `gpt-image-2`，但不会出现在 `/v1/models` 列表中。预览名 `gemini-2.5-flash-image-preview`、`gemini-3-pro-image-preview`、`gemini-3.1-flash-image-preview` 同样可以请求，落到对应的非 preview 模型，也不出现在 `/v1/models`。
 
-`gpt-image-*` 与 OpenAI 官方出图同名。只有 API Key 绑定 **Adobe 分组** 时才会走 Firefly；绑到 OpenAI 分组则仍走 OpenAI。合成分组（composite）**不会**根据 `gpt-image-*` 自动判断平台（名称有歧义），需要单独配置路由。`nano-banana*`、`flux-*`、`imagen-*`、`runway-gen4*` 可由合成分组自动识别为 Adobe。
+`gpt-image-*` 与 OpenAI 官方出图同名。只有 API Key 绑定 **Adobe 分组** 时才会走 Firefly；绑到 OpenAI 分组则仍走 OpenAI。合成分组（composite）**不会**根据 `gpt-image-*` 自动判断平台（名称有歧义），需要单独配置路由。`gemini-*-image` / `gemini-3-pro-image*` 同样与 Gemini 渠道同名，合成分组按入口决定：`/v1/images/*` 走 Adobe；chat 类入口（chat completions、responses、messages）走 Gemini；`/v1beta` 看分组里哪个平台的号能服务该名字，Gemini/Antigravity 与 Adobe 都能服务时默认走 Gemini，可用显式路由改走 Adobe。`flux-*`、`imagen-*`、`runway-gen4*`、`gpt-4o-image` 可由合成分组自动识别为 Adobe。
 
 ### Cookie 账号配置
 
 1. 在管理后台创建 **Adobe** 分组，并添加 Firefly Cookie 账号。
-2. 在浏览器登录 Adobe，打开 `https://firefly.adobe.com/generate/image` 并停留片刻。
-3. 打开开发者工具 → Network，找到发往 `adobeid-na1.services.adobe.com` 的 `/ims/check/v6/token` 请求，复制其 **Cookie 请求头**（必须包含 `ims_sid`）。
-4. 只从 `firefly.adobe.com` 复制 `document.cookie` **不够**。可带 `Cookie:` 前缀，也支持 JSON 形式的 cookie 数组。
+2. 在浏览器登录 Adobe，打开 `https://firefly.adobe.com/generate/image`，并**在该页成功生一次图**（用来捕获可选的 ARP session 头）。
+3. 打开开发者工具 → Network，找到发往 `adobeid-na1.services.adobe.com` 的 `/ims/check/v6/token` 请求，复制其 **Cookie 请求头**（必须包含 `ims_sid`）。推荐改用 [`tools/adobe-cookie-exporter`](tools/adobe-cookie-exporter) 导出 JSON 后在账号页「导入」上传。
+4. 只从 `firefly.adobe.com` 复制 `document.cookie` **不够**。可带 `Cookie:` 前缀，也支持 JSON 形式的 cookie 数组。同一份导出 JSON 里的 `arp_session_id` 可选；收费号可留空，FREE 账号建议带上。
 5. 短期 Access Token 可选；留空则首次刷新时用 Cookie 自动换取。之后后台会持续用 Cookie 刷新 token。
 6. 把账号加入分组，再创建绑定该分组的 Sub2API API Key。
 
@@ -275,7 +275,7 @@ Cookie 失效后需要重新从浏览器导出。刷新器会把账号标为错�
 |----------|---------------|------|
 | `gpt-image-2` / `gpt-image-2.5-*` | `宽x高`、空或 `auto` | 像素原样转发；空/`auto` 则省略，由上游自动决定 |
 | `gpt-image-1.5` | `宽x高` | 就近落到 `1024x1024` / `1536x1024` / `1024x1536` |
-| `nano-banana*` | `宽x高`、空或 `auto` | 按长边落到 1K/2K/4K 方图档，比例走最近的 `aspectRatio`；空/`auto` 为 Firefly 默认 1K 方图。`nano-banana2` 额外支持 `1:8` / `1:4` / `4:1` / `8:1` |
+| `gemini-*-image` / `gemini-3-pro-image*` | `宽x高`、空或 `auto` | 按长边落到 1K/2K/4K 方图档，比例走最近的 `aspectRatio`；空/`auto` 为 Firefly 默认 1K 方图。`gemini-3.1-flash-image` 额外支持 `1:8` / `1:4` / `4:1` / `8:1` |
 | `flux-*` / `imagen-4*` / `gpt-4o-image` / `runway-gen4-image` | `宽x高` | 就近落到该家族允许的尺寸枚举 |
 
 `quality` 会映射为 Firefly `detailLevel`：`low`（默认）→ 1，`medium` → 3，`high` → 5，`xhigh`/`max` 在 2 / 1.5 上为 5，在 2.5 上为 7。
@@ -303,6 +303,26 @@ curl https://your-sub2api.example.com/v1/images/generations \
     "size": "1024x1024"
   }'
 ```
+
+同一批对外模型名也可以走 Gemini 原生生图（协议由客户端选，模型不绑死协议）：
+
+```bash
+curl "https://your-sub2api.example.com/v1beta/models/gemini-3-pro-image:generateContent" \
+  -H "x-goog-api-key: sk-your-sub2api-key" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "contents": [{"role": "user", "parts": [{"text": "a red panda in a bamboo forest"}]}],
+    "generationConfig": {
+      "imageConfig": {"aspectRatio": "16:9", "imageSize": "2K"}
+    }
+  }'
+```
+
+`streamGenerateContent` 在出图完成后写**一帧** SSE（`data: {完整 JSON}\n\n`），不是逐 token 增量，也没有 `[DONE]`。参考图用 `parts[].inlineData`（base64）或 `fileData.fileUri`（仅 `https://`）。
+
+`generationConfig.candidateCount` 为 n 时返回 n 个 candidate（各带 `index`），每个 candidate 含一张图。图片默认以 `inlineData` 返回；API Key 中转号只给了网关下载不到的图片 url 时，该图改为 `fileData.fileUri` 返回，由客户端自行下载。一张图都拿不到时返回 502，且不计费。
+
+`generationConfig.imageConfig.aspectRatio` / `imageSize`（`1K`/`2K`/`4K`）是 Gemini 协议字段；OpenAI Images 的 `size`（`宽x高`）语义分开。香蕉模型在 Gemini 路径上直接使用 `aspectRatio`+`imageSize`，不再从 WxH 反推；其它模型与 API Key 中转号按 `aspectRatio`+`imageSize` 换算成带比例的 `宽x高`（长边取档位边长，只给比例时按 1K）。
 
 ---
 

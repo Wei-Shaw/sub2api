@@ -74,8 +74,8 @@ const (
 	// PayloadKindGPTImage 是历史零值回落路径。v1.5 / v2 已改走 PayloadKindGPTImage25。
 	PayloadKindGPTImage
 	// PayloadKindGPTImage25 对 gpt-image v1.5 / v2 / v2.5：无 outputResolution；
-	// 有合法 WxH 时发顶层 size:{width,height}（含 4K，不夹紧）；空/auto 则省略。
-	// v2.5 Auto 额外写 modelSpecificPayload.size:"auto"。caiClaimVersion:2。
+	// 有合法 WxH 时发顶层 size:{width,height}（含 4K，不夹紧）；空/auto 则省略
+	// 顶层 size，改写 modelSpecificPayload.size:"auto"。caiClaimVersion:2。
 	PayloadKindGPTImage25
 	// PayloadKindNanoBanana 对 gemini-flash 家族：方图档位 + 可选 aspectRatio
 	PayloadKindNanoBanana
@@ -214,18 +214,18 @@ var rawImageFamilySpecs = []imageFamilySpec{
 		upstreamModelVersion: "nano-banana-2",
 		payloadKind:          PayloadKindNanoBanana,
 		ratioSuffixes:        nanoBananaRatioSuffixes,
-		label:                "Firefly Nano Banana Pro",
+		label:                "Firefly Gemini 3 Pro Image",
 	},
 	{
 		// Step 7 bug 修正：改前 upstreamModelVersion 写成 nano-banana-2，与 Pro 撞车，
-		// 普通版请求实际打在 Pro 上。上游 discovery 里 nano-banana = Gemini 2.5 (Nano Banana)。
+		// 普通版请求实际打在 Pro 上。上游 discovery 里 nano-banana = Gemini 2.5 Flash Image。
 		familyID:             "firefly-nano-banana",
 		upstreamModel:        "google:firefly:colligo:nano-banana-pro",
 		upstreamModelID:      "gemini-flash",
 		upstreamModelVersion: "nano-banana",
 		payloadKind:          PayloadKindNanoBanana,
 		ratioSuffixes:        nanoBananaRatioSuffixes,
-		label:                "Firefly Nano Banana",
+		label:                "Firefly Gemini 2.5 Flash Image",
 	},
 	{
 		familyID:             "firefly-nano-banana2",
@@ -234,7 +234,7 @@ var rawImageFamilySpecs = []imageFamilySpec{
 		upstreamModelVersion: "nano-banana-3",
 		payloadKind:          PayloadKindNanoBanana,
 		ratioSuffixes:        nanoBanana2RatioSuffixes,
-		label:                "Firefly Nano Banana 2",
+		label:                "Firefly Gemini 3.1 Flash Image",
 	},
 	// Step 7：新增 enum-size 家族。这些家族的上游 schema 都用顶层 size:{width,height}
 	// 从有限枚举里挑，无 outputResolution/modelSpecificPayload，共用 buildSizeEnumPayloads。
@@ -380,18 +380,24 @@ var externalImageModelAliases = map[string]string{
 	"gpt-image-2.5-sunburst": "firefly-gpt-image-2-5-prism", // sunburst 是 UI 名，上游 modelVersion=prism
 	"gpt-image-2.5-prism":    "firefly-gpt-image-2-5-prism",
 	// 更早的 gpt-image 名字：Adobe 侧没有对应版本，一律落 2。
-	"gpt-image":         "firefly-gpt-image-2",
-	"gpt-image-1":       "firefly-gpt-image-2",
-	"gpt-image-1-mini":  "firefly-gpt-image-2",
-	"nano-banana-pro":   "firefly-nano-banana-pro",
-	"nano-banana":       "firefly-nano-banana",
-	"nano-banana2":      "firefly-nano-banana2",
-	"flux-pro":          "firefly-flux-pro",
-	"flux-ultra":        "firefly-flux-ultra",
-	"imagen-4":          "firefly-imagen-4",
-	"imagen-4-fast":     "firefly-imagen-4-fast",
-	"gpt-4o-image":      "firefly-gpt-4o-image",
-	"runway-gen4-image": "firefly-runway-gen4-image",
+	"gpt-image":                      "firefly-gpt-image-2",
+	"gpt-image-1":                    "firefly-gpt-image-2",
+	"gpt-image-1-mini":               "firefly-gpt-image-2",
+	"gemini-2.5-flash-image":         "firefly-nano-banana",
+	"gemini-2.5-flash-image-preview": "firefly-nano-banana",
+	"gemini-3-pro-image":             "firefly-nano-banana-pro",
+	"gemini-3-pro-image-preview":     "firefly-nano-banana-pro",
+	"gemini-3.1-flash-image":         "firefly-nano-banana2",
+	"gemini-3.1-flash-image-preview": "firefly-nano-banana2",
+	"nano-banana-pro":                "firefly-nano-banana-pro",
+	"nano-banana":                    "firefly-nano-banana",
+	"nano-banana2":                   "firefly-nano-banana2",
+	"flux-pro":                       "firefly-flux-pro",
+	"flux-ultra":                     "firefly-flux-ultra",
+	"imagen-4":                       "firefly-imagen-4",
+	"imagen-4-fast":                  "firefly-imagen-4-fast",
+	"gpt-4o-image":                   "firefly-gpt-4o-image",
+	"runway-gen4-image":              "firefly-runway-gen4-image",
 }
 
 // ExternalImageModelAliases 返回别名表的副本，供守卫测试与其它包比对。
@@ -660,6 +666,24 @@ func SquareFromResolution(resolution OutputResolution) Size {
 	default:
 		return Size{Width: 2048, Height: 2048}
 	}
+}
+
+// SizeFromRatio 按档位与比例给出像素：长边取档位方图边长（保证 ResolutionFromSize
+// 推回同一档），短边按比例缩放后取 16 的倍数。ratio 非法时返回 ok=false。
+func SizeFromRatio(resolution OutputResolution, ratio string) (Size, bool) {
+	value, ok := ratioValue(ratio)
+	if !ok {
+		return Size{}, false
+	}
+	long := SquareFromResolution(resolution).Width
+	short := int(math.Round(float64(long)/math.Max(value, 1/value)/16)) * 16
+	if short < 16 {
+		short = 16
+	}
+	if value >= 1 {
+		return Size{Width: long, Height: short}, true
+	}
+	return Size{Width: short, Height: long}, true
 }
 
 func isBlankSize(size string) bool {

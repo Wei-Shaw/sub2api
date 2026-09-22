@@ -40,7 +40,8 @@ func (s *OpenAIGatewayService) backfillOpenAIImagesB64JSON(
 	parsed *OpenAIImagesRequest,
 	body []byte,
 ) []byte {
-	if !ImagesURLToB64JSONEnabled(account) {
+	// Gemini 缓冲模式（sink）必须拿到图片字节才能拼 inlineData，不看账号开关一律回填。
+	if !ImagesURLToB64JSONEnabled(account) && openAIImagesClientSinkFromContext(ctx) == nil {
 		return body
 	}
 	if parsed != nil && parsed.ResponseFormat == "url" {

@@ -1,8 +1,10 @@
 package adobe
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
+	"sort"
 	"strings"
 	"time"
 )
@@ -56,9 +58,6 @@ func gptImageDetailLevelFromQuality(qualityLevel string, max int) int {
 	}
 }
 
-func isGPTImage25Version(modelVersion string) bool {
-	return strings.Contains(strings.ToLower(modelVersion), "gpt-image-2.5")
-}
 
 // seedNow 生成提交用的随机种子（复刻上游前端的取值方式）。
 func seedNow() int { return int(timeNow().Unix() % 999999) }
@@ -130,13 +129,11 @@ func BuildImagePayloadCandidates(opts ImagePayloadOptions) ([]map[string]any, er
 
 // buildGPTImage25Payloads 是 gpt-image v1.5 / v2 / v2.5 的共用 payload。
 //
-// 抓包（Firefly UI gpt-image/2，1152x928）：
+// 抓包（Firefly UI gpt-image/2，2026-09-20 FREE/收费默认生图一致）：
 //   - 不发 outputResolution
 //   - 有合法 WxH 时发顶层 size:{width,height}（含 4K，不夹紧）
-//   - modelSpecificPayload 默认 {}，不写像素字面量
+//   - 无顶层 size 时写 modelSpecificPayload.size:"auto"（v2 与 v2.5 相同）
 //   - caiClaimVersion:2
-//
-// v2.5 Auto（无顶层 size）额外写 modelSpecificPayload.size:"auto"（2026-09-10 UI）。
 func buildGPTImage25Payloads(opts ImagePayloadOptions) ([]map[string]any, error) {
 	detailLevel := GPTImageDetailLevelFromQualityForVersion(opts.QualityLevel, opts.UpstreamModelVersion)
 	if opts.DetailLevel != nil {
@@ -149,7 +146,7 @@ func buildGPTImage25Payloads(opts ImagePayloadOptions) ([]map[string]any, error)
 	}
 
 	hasPixels := opts.SizePixels.Width > 0 && opts.SizePixels.Height > 0
-	if !hasPixels && isGPTImage25Version(opts.UpstreamModelVersion) {
+	if !hasPixels {
 		modelSpecific["size"] = "auto"
 	}
 
@@ -492,4 +489,75 @@ func marshalJSON(v any) (string, error) {
 		return "", err
 	}
 	return string(raw), nil
+}
+
+// payloadKeyOrder 是 generate-async 顶层键的发送顺序。
+//
+// 对齐 Firefly 前端 2026-09-20 抓包（FREE/收费默认生图相同）：
+// n, seeds, output, prompt, referenceBlobs, caiClaimVersion, modelSpecificPayload,
+// modelId, modelVersion, generationMetadata, generationSettings。
+// size 有像素时插在 prompt 之后。其余键（视频/banana 扩展）按字母序接在后面，
+// 避免 Go map 的 json.Marshal 把整份 body 排成字典序。
+var payloadKeyOrder = []string{
+	"n", "seeds", "output", "prompt", "size", "referenceBlobs",
+	"caiClaimVersion", "modelSpecificPayload", "modelId", "modelVersion",
+	"generationMetadata", "generationSettings",
+	"groundSearch", "duration", "fps", "model", "generateAudio",
+	"generateLoop", "transparentBackground", "seed", "locale", "camera",
+	"negativePrompt", "jobMode", "debugGenerationEndpoint",
+	"referenceFrames", "referenceVideo", "cameraMotionReferenceVideo",
+	"characterReference", "editReferenceVideo",
+}
+
+// marshalPayloadJSON 按 payloadKeyOrder 序列化提交体。
+func marshalPayloadJSON(payload map[string]any) ([]byte, error) {
+	if payload == nil {
+		return []byte("null"), nil
+	}
+	var buf bytes.Buffer
+	buf.WriteByte('{')
+	written := make(map[string]bool, len(payload))
+	first := true
+	write := func(key string) error {
+		val, ok := payload[key]
+		if !ok || written[key] {
+			return nil
+		}
+		written[key] = true
+		if !first {
+			buf.WriteByte(',')
+		}
+		first = false
+		keyJSON, err := json.Marshal(key)
+		if err != nil {
+			return err
+		}
+		valJSON, err := json.Marshal(val)
+		if err != nil {
+			return err
+		}
+		buf.Write(keyJSON)
+		buf.WriteByte(':')
+		buf.Write(valJSON)
+		return nil
+	}
+	for _, key := range payloadKeyOrder {
+		if err := write(key); err != nil {
+			return nil, err
+		}
+	}
+	extras := make([]string, 0)
+	for key := range payload {
+		if !written[key] {
+			extras = append(extras, key)
+		}
+	}
+	sort.Strings(extras)
+	for _, key := range extras {
+		if err := write(key); err != nil {
+			return nil, err
+		}
+	}
+	buf.WriteByte('}')
+	return buf.Bytes(), nil
 }

@@ -216,7 +216,7 @@ Sub2API は、Adobe Firefly Web のサブスクリプションアカウント（
 
 - プラットフォーム名: `adobe`
 - アカウント種別: Firefly Cookie（管理画面では OAuth と表示）および **API Key + Base URL** 中継アカウント
-- 公開画像エンドポイント: `/v1/images/generations` と `/v1/images/edits`（`/v1` なしの既存エイリアスも含む）
+- 公開画像エンドポイント: `/v1/images/generations` と `/v1/images/edits`（`/v1` なしの既存エイリアスも含む）、および Gemini ネイティブの `POST /v1beta/models/{model}:generateContent` / `streamGenerateContent`
 - API キーのグループで画像生成を許可する必要があります（Adobe グループはデフォルトで有効）
 - `n` の省略時は 1、最大 10。Cookie 経路は n 回の Firefly ジョブに分割し（上流の `n` は常に 1）、枚数課金します。`n>10` は拒否します
 - `output_format` は `png`/`jpeg` をダウンロード後にローカル変換します（`jpg` は jpeg 扱い）。`webp` は未対応。未指定なら上流の形式を維持します
@@ -231,22 +231,22 @@ Sub2API は、Adobe Firefly Web のサブスクリプションアカウント（
 | `gpt-image-1.5` | Firefly GPT Image 1.5 |
 | `gpt-image-2.5-flare` | Firefly GPT Image 2.5 Flare |
 | `gpt-image-2.5-sunburst` | Firefly GPT Image 2.5 Sunburst（上流の version 名は `prism`） |
-| `nano-banana` / `nano-banana-pro` / `nano-banana2` | Firefly 上の Gemini Nano Banana 系列 |
+| `gemini-2.5-flash-image` / `gemini-3-pro-image` / `gemini-3.1-flash-image` | Firefly 上の Gemini 画像モデル（Gemini チャネルと同じ公開名） |
 | `flux-pro` / `flux-ultra` | Firefly FLUX |
 | `imagen-4` / `imagen-4-fast` | Firefly Imagen 4 |
 | `gpt-4o-image` | Firefly GPT-4o Image |
 | `runway-gen4-image` | Firefly Runway Gen-4 Image |
 
-旧エイリアス `gpt-image`、`gpt-image-1`、`gpt-image-1-mini` は `gpt-image-2` に落ちますが、`/v1/models` には出ません。
+旧エイリアス `gpt-image`、`gpt-image-1`、`gpt-image-1-mini` は `gpt-image-2` に落ちますが、`/v1/models` には出ません。プレビュー名 `gemini-2.5-flash-image-preview`、`gemini-3-pro-image-preview`、`gemini-3.1-flash-image-preview` もリクエストでき、対応する非 preview モデルに落ちますが、`/v1/models` には出ません。
 
-`gpt-image-*` は公式 OpenAI 画像モデルと同名です。Firefly に届くのは API キーが **Adobe** グループに紐づいている場合のみで、OpenAI グループなら従来どおり OpenAI に行きます。Composite グループは `gpt-image-*` を自動判定しません（名前が曖昧なため）。明示的なルートを追加してください。`nano-banana*`、`flux-*`、`imagen-*`、`runway-gen4*` は Composite で Adobe として自動検出できます。
+`gpt-image-*` は公式 OpenAI 画像モデルと同名です。Firefly に届くのは API キーが **Adobe** グループに紐づいている場合のみで、OpenAI グループなら従来どおり OpenAI に行きます。Composite グループは `gpt-image-*` を自動判定しません（名前が曖昧なため）。明示的なルートを追加してください。`gemini-*-image` / `gemini-3-pro-image*` も Gemini チャネルと同名のため、Composite はエンドポイントで判定します。`/v1/images/*` は Adobe、チャット系（chat completions / responses / messages）は Gemini、`/v1beta` はグループ内でその名前を扱えるプラットフォームに送ります。Gemini/Antigravity と Adobe の両方が扱える場合は Gemini が既定で、明示ルートで Adobe に変更できます。`flux-*`、`imagen-*`、`runway-gen4*`、`gpt-4o-image` は Composite で Adobe として自動検出できます。
 
 ### Cookie アカウントの設定
 
 1. 管理ダッシュボードで **Adobe** グループを作成し、Firefly Cookie アカウントを追加します。
-2. ブラウザで Adobe にログインし、`https://firefly.adobe.com/generate/image` を開いてページが落ち着くまで待ちます。
-3. DevTools → Network で `adobeid-na1.services.adobe.com` の `/ims/check/v6/token` リクエストを見つけ、その **Cookie ヘッダー**をコピーします。`ims_sid` が含まれている必要があります。
-4. `firefly.adobe.com` の `document.cookie` だけをコピーしても **不十分**です。`Cookie:` プレフィックスや JSON の cookie 配列も受け付けます。
+2. ブラウザで Adobe にログインし、`https://firefly.adobe.com/generate/image` を開いて**そのページで画像を 1 枚生成**します（任意の ARP セッションヘッダーを取るため）。
+3. DevTools → Network で `adobeid-na1.services.adobe.com` の `/ims/check/v6/token` リクエストを見つけ、その **Cookie ヘッダー**をコピーします。`ims_sid` が含まれている必要があります。[`tools/adobe-cookie-exporter`](tools/adobe-cookie-exporter) で JSON を書き出して Accounts → Import するのが推奨です。
+4. `firefly.adobe.com` の `document.cookie` だけをコピーしても **不十分**です。`Cookie:` プレフィックスや JSON の cookie 配列も受け付けます。同じ JSON の `arp_session_id` は任意です。有料アカウントは省略でき、FREE アカウントでは付けることを推奨します。
 5. 短命の Access Token は任意です。空なら初回リフレッシュ時に Cookie から取得します。以降は Cookie から自動更新されます。
 6. アカウントをグループに割り当て、そのグループに紐づく Sub2API API キーを作成します。
 
@@ -270,7 +270,7 @@ Cookie が無効になったらブラウザから再エクスポートしてく�
 |------------|---------------------|------|
 | `gpt-image-2` / `gpt-image-2.5-*` | `WxH`、空、または `auto` | ピクセルをそのまま転送。空/`auto` なら size を省略し、上流に任せる |
 | `gpt-image-1.5` | `WxH` | `1024x1024` / `1536x1024` / `1024x1536` の最近傍 |
-| `nano-banana*` | `WxH`、空、または `auto` | 長辺から 1K/2K/4K の正方形ティアと最近傍 `aspectRatio`。空/`auto` は Firefly デフォルトの 1K 正方形。`nano-banana2` は `1:8` / `1:4` / `4:1` / `8:1` も可 |
+| `gemini-*-image` / `gemini-3-pro-image*` | `WxH`、空、または `auto` | 長辺から 1K/2K/4K の正方形ティアと最近傍 `aspectRatio`。空/`auto` は Firefly デフォルトの 1K 正方形。`gemini-3.1-flash-image` は `1:8` / `1:4` / `4:1` / `8:1` も可 |
 | `flux-*` / `imagen-4*` / `gpt-4o-image` / `runway-gen4-image` | `WxH` | そのファミリーの許可サイズ列挙への最近傍 |
 
 `quality` は Firefly の `detailLevel` に対応します: `low`（デフォルト）→ 1、`medium` → 3、`high` → 5、`xhigh`/`max` は v2/1.5 で 5、2.5 で 7。
@@ -298,6 +298,26 @@ curl https://your-sub2api.example.com/v1/images/generations \
     "size": "1024x1024"
   }'
 ```
+
+同じ公開モデル名は Gemini ネイティブ画像生成でも呼べます（プロトコルはクライアントが選び、モデルはプロトコルに固定しません）:
+
+```bash
+curl "https://your-sub2api.example.com/v1beta/models/gemini-3-pro-image:generateContent" \
+  -H "x-goog-api-key: sk-your-sub2api-key" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "contents": [{"role": "user", "parts": [{"text": "a red panda in a bamboo forest"}]}],
+    "generationConfig": {
+      "imageConfig": {"aspectRatio": "16:9", "imageSize": "2K"}
+    }
+  }'
+```
+
+`streamGenerateContent` は生成完了後に **1 フレーム** の SSE（`data: {完全な JSON}\n\n`）を書き出します。トークン単位の増分ではなく、`[DONE]` も送りません。参照画像は `parts[].inlineData`（base64）または `fileData.fileUri`（`https://` のみ）です。
+
+`generationConfig.candidateCount` を n にすると、n 個の candidate（それぞれ `index` 付き）が返り、各 candidate に画像が 1 枚入ります。画像は通常 `inlineData` で返します。API キー中継アカウントがゲートウェイからダウンロードできない画像 URL しか返さなかった場合、その画像は `fileData.fileUri` で返し、クライアント側で取得します。1 枚も返せない場合は 502 となり、課金されません。
+
+`generationConfig.imageConfig.aspectRatio` / `imageSize`（`1K`/`2K`/`4K`）は Gemini プロトコルのフィールドで、OpenAI Images の `size`（`幅x高さ`）とは別マッピングです。Banana モデルの Gemini 経路は WxH から逆算せず、`aspectRatio`+`imageSize` をそのまま使います。その他のモデルと API Key 中継アカウントには `aspectRatio`+`imageSize` から算出した比率付きの `幅x高さ` を渡します（長辺はティアの辺長、比率のみ指定時は 1K）。
 
 ---
 

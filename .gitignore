@@ -157,6 +157,10 @@ docs/screenshots/*
 !docs/screenshots/codex-referral-success.png
 .serena/
 .codex/
+.zcode/
+.zcodeignore
+.zcloud/
+.zcloudignore
 frontend/coverage/
 aicodex
 output/

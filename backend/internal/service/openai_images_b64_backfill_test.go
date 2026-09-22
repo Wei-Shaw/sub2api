@@ -195,6 +195,20 @@ func TestBackfillOpenAIImagesB64JSON(t *testing.T) {
 	}
 }
 
+// Gemini 缓冲模式要拿字节拼 inlineData：账号开关关闭也必须回填。
+func TestBackfillOpenAIImagesB64JSON_BufferedSinkForcesBackfill(t *testing.T) {
+	upstream := &httpUpstreamRecorder{resp: b64BackfillImageResponse(http.StatusOK, "image/png", b64BackfillPNGBytes)}
+	svc := &OpenAIGatewayService{cfg: &config.Config{}, httpUpstream: upstream}
+	ctx, _ := WithOpenAIImagesBufferedResponse(context.Background())
+	// 与 ForwardImages 一致：回填拿到的是脱钩后的 upstreamCtx。
+	ctx = context.WithoutCancel(ctx)
+
+	got := svc.backfillOpenAIImagesB64JSON(ctx, b64BackfillAccount(false), &OpenAIImagesRequest{ResponseFormat: "b64_json"},
+		[]byte(`{"created":1,"data":[{"url":"https://cdn.example.com/a.png"}]}`))
+	require.Equal(t, base64.StdEncoding.EncodeToString(b64BackfillPNGBytes), gjson.GetBytes(got, "data.0.b64_json").String())
+	require.Len(t, upstream.requests, 1)
+}
+
 func TestBackfillOpenAIImagesB64JSON_DownloadRequestShape(t *testing.T) {
 	upstream := &httpUpstreamRecorder{resp: b64BackfillImageResponse(http.StatusOK, "image/png", b64BackfillPNGBytes)}
 	svc := &OpenAIGatewayService{cfg: &config.Config{}, httpUpstream: upstream}

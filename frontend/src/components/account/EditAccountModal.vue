@@ -2441,6 +2441,30 @@
         </div>
       </div>
 
+      <!-- Codex 292 门票状态（仅 OpenAI OAuth / SetupToken） -->
+      <div
+        v-if="account?.platform === 'openai' && (account?.type === 'oauth' || account?.type === 'setup-token') && codexTurnTickets.length"
+        class="border-t border-gray-200 pt-4 dark:border-dark-600"
+      >
+        <label class="input-label mb-0">{{ t('admin.accounts.openai.codexTurnTicket') }}</label>
+        <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+          {{ t('admin.accounts.openai.codexTurnTicketDesc') }}
+        </p>
+        <div class="mt-3 space-y-1.5">
+          <div v-for="ticket in codexTurnTickets" :key="ticket.model" class="flex items-center justify-between text-sm">
+            <span class="font-medium">{{ ticket.model }}</span>
+            <span v-if="ticket.ready" class="text-emerald-600 dark:text-emerald-400">
+              {{ t('admin.accounts.openai.codexTurnTicketReady', { time: formatCodexTicketRemaining(ticket.remaining_seconds) }) }}
+              <span v-if="ticket.length" class="ml-1 opacity-70">({{ ticket.length }})</span>
+            </span>
+            <span v-else-if="ticket.blocked" class="text-amber-600 dark:text-amber-400">
+              {{ t('admin.accounts.openai.codexTurnTicketPaused') }}
+            </span>
+            <span v-else class="text-gray-500">{{ t('admin.accounts.openai.codexTurnTicketMissing') }}</span>
+          </div>
+        </div>
+      </div>
+
       <!-- Codex 指纹收敛模式（仅 OpenAI OAuth） -->
       <div
         v-if="account?.platform === 'openai' && account?.type === 'oauth'"
@@ -2456,6 +2480,36 @@
           <div class="w-52 flex-shrink-0">
             <Select v-model="codexFingerprintMode" data-testid="edit-codex-fingerprint-mode-select" :options="codexFingerprintModeOptions" />
           </div>
+        </div>
+      </div>
+
+      <div
+        v-if="account?.platform === 'openai' && account?.type === 'oauth' && !isSparkShadow && !isOpenAIAgentIdentity"
+        class="border-t border-gray-200 pt-4 dark:border-dark-600"
+      >
+        <div class="flex items-center justify-between">
+          <div>
+            <label class="input-label mb-0">{{ t('admin.accounts.openai.codexTelemetry') }}</label>
+            <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+              {{ t('admin.accounts.openai.codexTelemetryDesc') }}
+            </p>
+          </div>
+          <button
+            type="button"
+            data-testid="edit-codex-telemetry-toggle"
+            @click="codexTelemetryEnabled = !codexTelemetryEnabled"
+            :class="[
+              'relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2',
+              codexTelemetryEnabled ? 'bg-primary-600' : 'bg-gray-200 dark:bg-dark-600'
+            ]"
+          >
+            <span
+              :class="[
+                'pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out',
+                codexTelemetryEnabled ? 'translate-x-5' : 'translate-x-0'
+              ]"
+            />
+          </button>
         </div>
       </div>
 
@@ -3336,6 +3390,21 @@ const selectableGroups = computed(() => {
 // 故隐藏代理选择器。
 const isSparkShadow = computed(() => props.account?.parent_account_id != null)
 
+const codexTurnTickets = computed(() => props.account?.codex_turn_tickets ?? [])
+
+function formatCodexTicketRemaining(seconds: number) {
+  const total = Math.max(0, Math.floor(seconds || 0))
+  const m = Math.floor(total / 60)
+  const s = total % 60
+  return `${m}m${String(s).padStart(2, '0')}s`
+}
+
+const isOpenAIAgentIdentity = computed(() => {
+  const creds = props.account?.credentials as Record<string, unknown> | undefined
+  const mode = String(creds?.auth_mode || '').trim().toLowerCase().replace(/[\s_-]+/g, '')
+  return mode === 'agentidentity'
+})
+
 const hideAccountLongContextBilling = computed(() => {
   return allSelectedGroupsEnableLongContextPricing(form.group_ids, props.groups)
 })
@@ -3611,12 +3680,12 @@ const isGrokOAuthAccount = computed(
   () => props.account?.platform === 'grok' && props.account?.type === 'oauth'
 )
 const grokMediaEligibilityMode = ref<GrokMediaEligibilityMode>('auto')
-const grokMediaEligibilityOptions = computed(() => [
+const grokMediaEligibilityInitialMode = ref<GrokMediaEligibilityMode>('auto')
+const grokMediaEligibilityOptions = computed<Array<{ value: GrokMediaEligibilityMode; label: string }>>(() => [
   { value: 'auto', label: t('admin.accounts.grokMediaEligibility.auto') },
   { value: 'enabled', label: t('admin.accounts.grokMediaEligibility.enabled') },
   { value: 'disabled', label: t('admin.accounts.grokMediaEligibility.disabled') }
 ])
-const grokMediaEligibilityInitialMode = ref<GrokMediaEligibilityMode>('auto')
 const grokMediaEligibilityState = ref<GrokMediaEligibilityState | null>(null)
 const grokMediaEligibilityLoading = ref(false)
 const grokMediaEligibilityError = ref('')
@@ -3780,6 +3849,7 @@ const openaiOAuthResponsesWebSocketV2Mode = ref<OpenAIWSMode>(OPENAI_WS_MODE_OFF
 const openaiAPIKeyResponsesWebSocketV2Mode = ref<OpenAIWSMode>(OPENAI_WS_MODE_OFF)
 const codexCLIOnlyEnabled = ref(false)
 const codexCLIOnlyAppServerEnabled = ref(false)
+const codexTelemetryEnabled = ref(false)
 type CodexFingerprintMode = 'off' | 'device' | 'session' | 'full'
 const codexFingerprintMode = ref<CodexFingerprintMode>('off')
 type CodexImageToolMode = 'inherit' | 'enabled' | 'disabled' | 'block'
@@ -4274,6 +4344,7 @@ const syncFormFromAccount = (newAccount: Account | null) => {
   openaiAPIKeyResponsesWebSocketV2Mode.value = OPENAI_WS_MODE_OFF
   codexCLIOnlyEnabled.value = false
   codexCLIOnlyAppServerEnabled.value = false
+  codexTelemetryEnabled.value = false
   codexFingerprintMode.value = 'off'
   codexImageToolMode.value = 'inherit'
   anthropicPassthroughEnabled.value = false
@@ -4332,6 +4403,7 @@ const syncFormFromAccount = (newAccount: Account | null) => {
       codexFingerprintMode.value = (['off', 'device', 'session', 'full'].includes(fpMode || '')
         ? fpMode as CodexFingerprintMode
         : 'off')
+      codexTelemetryEnabled.value = extra?.codex_telemetry_enabled === true
     }
     const credentials = newAccount.credentials as Record<string, unknown> | undefined
     const compactMappings = credentials?.compact_model_mapping as Record<string, string> | undefined
@@ -4648,7 +4720,7 @@ const syncFormFromAccount = (newAccount: Account | null) => {
       }
     } else if (newAccount.platform === 'adobe' && newAccount.credentials) {
       // Adobe 与 openai/grok 一样走通用的白名单/映射拆分：splitModelMappingObject
-      // 把恒等对归入白名单、非恒等对归入映射。存量账号那 17 条别名全是非恒等对，
+      // 把恒等对归入白名单、非恒等对归入映射。存量账号那份默认别名全是非恒等对，
       // 于是自动开在映射模式并逐条列出——数据不变，只是多了一个可切到白名单的按钮。
       const oauthCredentials = newAccount.credentials as Record<string, unknown>
       loadModelRestrictionFromMapping(oauthCredentials.model_mapping as Record<string, unknown> | undefined)
@@ -5874,6 +5946,7 @@ const handleSubmit = async () => {
       const currentExtra = (props.account.extra as Record<string, unknown>) || {}
       const newExtra: Record<string, unknown> = { ...currentExtra }
       const hadCodexCLIOnlyEnabled = currentExtra.codex_cli_only === true
+      const hadCodexTelemetryEnabled = currentExtra.codex_telemetry_enabled === true
       if (props.account.type === 'oauth' || props.account.type === 'setup-token') {
         newExtra.openai_oauth_responses_websockets_v2_mode = openaiOAuthResponsesWebSocketV2Mode.value
         newExtra.openai_oauth_responses_websockets_v2_enabled = isOpenAIWSModeEnabled(openaiOAuthResponsesWebSocketV2Mode.value)
@@ -5987,6 +6060,15 @@ const handleSubmit = async () => {
         } else {
           delete newExtra.codex_fingerprint_mode
         }
+        if (!isSparkShadow.value && !isOpenAIAgentIdentity.value) {
+          if (codexTelemetryEnabled.value) {
+            newExtra.codex_telemetry_enabled = true
+          } else if (hadCodexTelemetryEnabled) {
+            newExtra.codex_telemetry_enabled = false
+          } else {
+            delete newExtra.codex_telemetry_enabled
+          }
+        }
       }
 
       updatePayload.extra = newExtra
@@ -6063,6 +6145,16 @@ const handleSubmit = async () => {
         delete newExtra.upstream_request_id_header
       }
       updatePayload.extra = newExtra
+    }
+
+    if (updatePayload.extra && typeof updatePayload.extra === 'object') {
+      const extra = { ...(updatePayload.extra as Record<string, unknown>) }
+      for (const key of Object.keys(extra)) {
+        if (key.startsWith('codex_turn_ticket:') || key === 'codex_harvest_proxy_url') {
+          delete extra[key]
+        }
+      }
+      updatePayload.extra = extra
     }
 
     const canContinue = await ensureAntigravityMixedChannelConfirmed(async () => {

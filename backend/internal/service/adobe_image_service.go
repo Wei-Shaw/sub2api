@@ -40,6 +40,9 @@ func NewAdobeImageService(resolveStorage ImageStorageResolver) *AdobeImageServic
 type AdobeImageResult struct {
 	// Body 是可直接写给客户端的 OpenAI 形状响应。
 	Body []byte
+	// Images 是转码后的原始图片字节，供 Gemini generateContent 信封使用。
+	// Body 可能被对象存储改写成 url，Images 仍保留字节。
+	Images [][]byte
 	// Forward 交给 RecordUsage 记账；计费只认 ImageCount 与 ImageSize 两个字段。
 	Forward *OpenAIForwardResult
 }
@@ -55,6 +58,10 @@ type AdobeImageCall struct {
 	Request *OpenAIImagesRequest
 	// ChannelMappedModel 非空时替代 Request.Model 参与账号模型映射与计费模型。
 	ChannelMappedModel string
+	// AspectRatio 是 Gemini imageConfig.aspectRatio；空时 OpenAI Images 路径仍只靠 Size。
+	AspectRatio string
+	// ImageSize 是 Gemini imageConfig.imageSize（"1K"/"2K"/"4K"）；空时不覆盖 Size 推导。
+	ImageSize string
 
 	inputsOnce sync.Once
 	inputs     []*adobeInputImage
@@ -64,6 +71,21 @@ type AdobeImageCall struct {
 // NewAdobeImageCall 构造请求级出图状态。
 func NewAdobeImageCall(req *OpenAIImagesRequest, channelMappedModel string) *AdobeImageCall {
 	return &AdobeImageCall{Request: req, ChannelMappedModel: strings.TrimSpace(channelMappedModel)}
+}
+
+func (call *AdobeImageCall) imageRequest(upstreamModelID string) adobe.ImageRequest {
+	req := adobe.ImageRequest{ModelID: upstreamModelID}
+	if call == nil {
+		return req
+	}
+	if call.Request != nil {
+		req.Size = call.Request.Size
+	}
+	req.Ratio = strings.TrimSpace(call.AspectRatio)
+	if size := strings.TrimSpace(call.ImageSize); size != "" {
+		req.Resolution = adobe.OutputResolution(size)
+	}
+	return req
 }
 
 // inputImages 懒加载 JSON 体里的输入图 URL；首个调用的 ctx 决定抓取是否被取消。
@@ -119,13 +141,14 @@ func (s *AdobeImageService) GenerateCall(
 	if err != nil {
 		return nil, err
 	}
+	startTime := time.Now()
 
 	requestedModel := strings.TrimSpace(req.Model)
 	if call.ChannelMappedModel != "" {
 		requestedModel = call.ChannelMappedModel
 	}
 	upstreamModelID := account.GetMappedModel(requestedModel)
-	conf, err := adobe.ResolveImage(adobe.ImageRequest{ModelID: upstreamModelID, Size: req.Size})
+	conf, err := adobe.ResolveImage(call.imageRequest(upstreamModelID))
 	if err != nil {
 		return nil, err
 	}
@@ -142,7 +165,7 @@ func (s *AdobeImageService) GenerateCall(
 
 	upstreamCtx, cancelUpstream := context.WithTimeout(context.WithoutCancel(ctx), adobeImageDetachedTimeout)
 	defer cancelUpstream()
-	images, err := generateAdobeImages(upstreamCtx, client, token, adobe.ImagePayloadOptions{
+	images, err := generateAdobeImages(upstreamCtx, client, token, account.GetCredential("arp_session_id"), adobe.ImagePayloadOptions{
 		Prompt:               req.Prompt,
 		AspectRatio:          conf.AspectRatio,
 		OutputResolution:     conf.OutputResolution,
@@ -169,7 +192,8 @@ func (s *AdobeImageService) GenerateCall(
 	}
 
 	return &AdobeImageResult{
-		Body: body,
+		Body:   body,
+		Images: images,
 		Forward: &OpenAIForwardResult{
 			RequestID:  requestID,
 			Model:      requestedModel,
@@ -179,6 +203,7 @@ func (s *AdobeImageService) GenerateCall(
 			ImageSize:        string(conf.OutputResolution),
 			UpstreamModel:    conf.ModelID,
 			UpstreamEndpoint: adobe.ImageSubmitURL,
+			Duration:         time.Since(startTime),
 		},
 	}, nil
 }
@@ -189,6 +214,7 @@ func generateAdobeImages(
 	ctx context.Context,
 	client *adobe.Client,
 	token string,
+	arpSessionID string,
 	opts adobe.ImagePayloadOptions,
 	n int,
 ) ([][]byte, error) {
@@ -202,8 +228,9 @@ func generateAdobeImages(
 			seed := baseSeed + i
 			itemOpts.Seed = &seed
 			generated, err := client.GenerateImage(groupCtx, adobe.GenerateImageInput{
-				Token:   token,
-				Options: itemOpts,
+				Token:        token,
+				ARPSessionID: arpSessionID,
+				Options:      itemOpts,
 			})
 			if err != nil {
 				return err

@@ -256,6 +256,26 @@ describe('CreateAccountModal OpenAI long-context billing', () => {
 
   afterEach(() => vi.useRealTimers())
 
+  it('renders every platform in one selector container', () => {
+    const wrapper = mountModal()
+    const platformSelector = wrapper.get('[data-tour="account-form-platform"]')
+
+    expect(platformSelector.findAll('button').map((button) => button.text())).toEqual([
+      'Anthropic',
+      'OpenAI',
+      'Gemini',
+      'Antigravity',
+      'Grok',
+      'Kimi',
+      'Zhipu GLM',
+      'DeepSeek',
+      'MiniMax',
+      'OpenCode',
+      'Kiro',
+      'Adobe',
+    ])
+  })
+
   it('sets month and year expiry presets without submitting the account form', async () => {
     vi.useFakeTimers({ toFake: ['Date'] })
     vi.setSystemTime(new Date('2026-01-31T12:34:00'))
@@ -835,6 +855,37 @@ describe('CreateAccountModal OpenAI long-context billing', () => {
     expect(createOpenAICodexPATMock.mock.calls[0]?.[0]?.extra?.openai_long_context_billing_enabled).toBe(false)
   })
 
+  it('shows the Telemetry toggle only for OpenAI OAuth accounts', async () => {
+    const wrapper = mountModal()
+    await selectButtonByText(wrapper, 'OpenAI')
+    expect(wrapper.find('[data-testid="create-codex-telemetry-toggle"]').exists()).toBe(true)
+
+    await selectButtonByText(wrapper, 'API Key')
+    expect(wrapper.find('[data-testid="create-codex-telemetry-toggle"]').exists()).toBe(false)
+  })
+
+  it('omits codex_telemetry_enabled from extra by default', async () => {
+    const wrapper = await openCodexImportStep()
+    await wrapper.get('[data-testid="import-codex-pat"]').trigger('click')
+    await flushPromises()
+
+    expect(createOpenAICodexPATMock.mock.calls[0]?.[0]?.extra).not.toHaveProperty('codex_telemetry_enabled')
+  })
+
+  it('submits extra.codex_telemetry_enabled when Telemetry is enabled for OpenAI OAuth', async () => {
+    const wrapper = mountModal()
+    await selectButtonByText(wrapper, 'OpenAI')
+    await wrapper.get('[data-testid="create-codex-telemetry-toggle"]').trigger('click')
+    await wrapper.get('form#create-account-form input[type="text"]').setValue('Codex import')
+    await wrapper.get('form#create-account-form').trigger('submit.prevent')
+    await wrapper.get('[data-testid="import-codex-pat"]').trigger('click')
+    await flushPromises()
+
+    expect(createOpenAICodexPATMock).toHaveBeenCalledTimes(1)
+    expect(createOpenAICodexPATMock.mock.calls[0]?.[0]?.extra?.codex_telemetry_enabled).toBe(true)
+    expect(JSON.stringify(createOpenAICodexPATMock.mock.calls[0]?.[0])).not.toMatch(/抗降智/)
+  })
+
   it('allows enabling the Kiro direct API-key upstream billing probe', async () => {
     await submitApiKeyAccount('kiro', false, true)
 
@@ -951,6 +1002,112 @@ describe('CreateAccountModal Adobe model mapping', () => {
     // 发空对象会把账号锁成「没有任何可用模型」；正确行为是不发，
     // 交给后端回落到 DefaultAdobeModelMapping（含 4 个历史别名）。
     expect(submittedCredentials()).not.toHaveProperty('model_mapping')
+  })
+
+  it('粘贴 sub2api-data JSON 时只把 cookie 写进凭据', async () => {
+    const wrapper = await openAdobeTab()
+    await wrapper.get('[data-tour="account-form-name"]').setValue('adobe account')
+    await wrapper.get('form#create-account-form').trigger('submit.prevent')
+    await flushPromises()
+    await wrapper.get('[data-testid="adobe-cookie-input"]').setValue(JSON.stringify({
+      type: 'sub2api-data',
+      version: 1,
+      exported_at: '2026-09-20T06:54:00.000Z',
+      proxies: [],
+      accounts: [
+        {
+          name: 'adobe-jane@example.com',
+          platform: 'adobe',
+          type: 'oauth',
+          credentials: { cookie: 'ims_sid=abc; aux_sid=def' },
+          concurrency: 10,
+          priority: 1
+        }
+      ]
+    }))
+    await wrapper.get('[data-testid="adobe-create-account"]').trigger('click')
+    await flushPromises()
+
+    expect(submittedCredentials()?.cookie).toBe('ims_sid=abc; aux_sid=def')
+  })
+
+  it('粘贴带 arp_session_id 的 sub2api-data JSON 会写入凭据', async () => {
+    const wrapper = await openAdobeTab()
+    await wrapper.get('[data-tour="account-form-name"]').setValue('adobe account')
+    await wrapper.get('form#create-account-form').trigger('submit.prevent')
+    await flushPromises()
+    await wrapper.get('[data-testid="adobe-cookie-input"]').setValue(JSON.stringify({
+      type: 'sub2api-data',
+      accounts: [
+        {
+          credentials: {
+            cookie: 'ims_sid=abc; aux_sid=def',
+            arp_session_id: 'arp-from-json'
+          }
+        }
+      ]
+    }))
+    await wrapper.get('[data-testid="adobe-create-account"]').trigger('click')
+    await flushPromises()
+
+    expect(submittedCredentials()?.cookie).toBe('ims_sid=abc; aux_sid=def')
+    expect(submittedCredentials()?.arp_session_id).toBe('arp-from-json')
+  })
+
+  it('粘贴带 access_token 的 sub2api-data JSON 会写入凭据，空则不下发该键', async () => {
+    const wrapper = await openAdobeTab()
+    await wrapper.get('[data-tour="account-form-name"]').setValue('adobe account')
+    await wrapper.get('form#create-account-form').trigger('submit.prevent')
+    await flushPromises()
+    await wrapper.get('[data-testid="adobe-cookie-input"]').setValue(JSON.stringify({
+      type: 'sub2api-data',
+      accounts: [
+        {
+          credentials: {
+            cookie: 'ims_sid=abc; aux_sid=def',
+            access_token: 'ims-from-json'
+          }
+        }
+      ]
+    }))
+    await wrapper.get('[data-testid="adobe-create-account"]').trigger('click')
+    await flushPromises()
+
+    expect(submittedCredentials()?.cookie).toBe('ims_sid=abc; aux_sid=def')
+    expect(submittedCredentials()?.access_token).toBe('ims-from-json')
+
+    createAccountMock.mockClear()
+    const wrapperEmpty = await openAdobeTab()
+    await wrapperEmpty.get('[data-tour="account-form-name"]').setValue('adobe account')
+    await wrapperEmpty.get('form#create-account-form').trigger('submit.prevent')
+    await flushPromises()
+    await wrapperEmpty.get('[data-testid="adobe-cookie-input"]').setValue('aux_sid=abc; ims=def')
+    await wrapperEmpty.get('[data-testid="adobe-create-account"]').trigger('click')
+    await flushPromises()
+    expect(submittedCredentials()).not.toHaveProperty('access_token')
+  })
+
+  it('ARP 框手填会写入凭据，空则不下发该键', async () => {
+    const wrapper = await openAdobeTab()
+    await wrapper.get('[data-tour="account-form-name"]').setValue('adobe account')
+    await wrapper.get('form#create-account-form').trigger('submit.prevent')
+    await flushPromises()
+    expect(wrapper.find('[data-testid="adobe-arp-input"]').exists()).toBe(true)
+    await wrapper.get('[data-testid="adobe-cookie-input"]').setValue('aux_sid=abc; ims=def')
+    await wrapper.get('[data-testid="adobe-arp-input"]').setValue('  typed-arp  ')
+    await wrapper.get('[data-testid="adobe-create-account"]').trigger('click')
+    await flushPromises()
+    expect(submittedCredentials()?.arp_session_id).toBe('typed-arp')
+
+    createAccountMock.mockClear()
+    const wrapperEmpty = await openAdobeTab()
+    await wrapperEmpty.get('[data-tour="account-form-name"]').setValue('adobe account')
+    await wrapperEmpty.get('form#create-account-form').trigger('submit.prevent')
+    await flushPromises()
+    await wrapperEmpty.get('[data-testid="adobe-cookie-input"]').setValue('aux_sid=abc; ims=def')
+    await wrapperEmpty.get('[data-testid="adobe-create-account"]').trigger('click')
+    await flushPromises()
+    expect(submittedCredentials()).not.toHaveProperty('arp_session_id')
   })
 
   it('Adobe 中转号在第一步提交 type=apikey + base_url，不改默认 priority', async () => {

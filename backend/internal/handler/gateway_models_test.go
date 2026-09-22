@@ -133,7 +133,8 @@ func TestDefaultModelIDsForCompositeIncludesAdobeAndOmitsKiro(t *testing.T) {
 
 	compositeIDs := defaultModelIDsForPlatform(service.PlatformComposite)
 	require.Contains(t, compositeIDs, adobeIDs[0])
-	require.Contains(t, compositeIDs, "nano-banana-pro")
+	require.Contains(t, compositeIDs, "gemini-3-pro-image")
+	require.NotContains(t, compositeIDs, "nano-banana-pro")
 
 	require.NotContains(t, compositeListedPlatforms, service.PlatformKiro)
 	require.NotContains(t, compositeIDs, "claude-opus-4-8-thinking")

@@ -1865,7 +1865,7 @@ describe('EditAccountModal Adobe model mapping', () => {
 
   afterEach(() => vi.clearAllMocks())
 
-  // 存量账号那 17 条别名全是非恒等对，splitModelMappingObject 把它们归入映射，
+  // 存量账号那份默认别名全是非恒等对，splitModelMappingObject 把它们归入映射，
   // 于是弹窗自动开在映射模式并逐条列出——数据不变，只是多了个可切到白名单的按钮。
   it('renders the stored mapping instead of the defaults', async () => {
     const wrapper = mountModal(buildAdobeAccount({ 'gpt-image-2': 'firefly-gpt-image-2' }))
@@ -1944,5 +1944,51 @@ describe('EditAccountModal Adobe model mapping', () => {
     expect(updateAccountMock.mock.calls[0]?.[1]?.credentials?.model_mapping).toEqual({
       'gpt-image-*': 'firefly-gpt-image-2'
     })
+  })
+
+  it('loads and submits extra.codex_telemetry_enabled for OpenAI OAuth', async () => {
+    const account = buildAccount()
+    account.type = 'oauth'
+    account.extra = { codex_telemetry_enabled: true }
+    updateAccountMock.mockReset()
+    checkMixedChannelRiskMock.mockReset()
+    checkMixedChannelRiskMock.mockResolvedValue({ has_risk: false })
+    updateAccountMock.mockResolvedValue(account)
+
+    const wrapper = mountModal(account)
+    expect(wrapper.find('[data-testid="edit-codex-telemetry-toggle"]').exists()).toBe(true)
+    await wrapper.get('form#edit-account-form').trigger('submit.prevent')
+
+    expect(updateAccountMock.mock.calls[0]?.[1]?.extra?.codex_telemetry_enabled).toBe(true)
+  })
+
+  it('writes false when Telemetry is turned off for an OpenAI OAuth account', async () => {
+    const account = buildAccount()
+    account.type = 'oauth'
+    account.extra = { codex_telemetry_enabled: true }
+    updateAccountMock.mockReset()
+    checkMixedChannelRiskMock.mockReset()
+    checkMixedChannelRiskMock.mockResolvedValue({ has_risk: false })
+    updateAccountMock.mockResolvedValue(account)
+
+    const wrapper = mountModal(account)
+    await wrapper.get('[data-testid="edit-codex-telemetry-toggle"]').trigger('click')
+    await wrapper.get('form#edit-account-form').trigger('submit.prevent')
+
+    expect(updateAccountMock.mock.calls[0]?.[1]?.extra?.codex_telemetry_enabled).toBe(false)
+  })
+
+  it('does not show the Telemetry toggle for API keys or Spark shadows', async () => {
+    const apiKey = mountModal(buildAccount())
+    expect(apiKey.find('[data-testid="edit-codex-telemetry-toggle"]').exists()).toBe(false)
+
+    const shadow = mountModal(buildOpenAISparkShadowAccount())
+    expect(shadow.find('[data-testid="edit-codex-telemetry-toggle"]').exists()).toBe(false)
+
+    const agent = buildAccount()
+    agent.type = 'oauth'
+    agent.credentials = { ...(agent.credentials as Record<string, unknown>), auth_mode: 'agent_identity' }
+    const agentWrapper = mountModal(agent)
+    expect(agentWrapper.find('[data-testid="edit-codex-telemetry-toggle"]').exists()).toBe(false)
   })
 })

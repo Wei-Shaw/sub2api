@@ -40,7 +40,7 @@ const defaultImagePricePlaceholders: Record<
     image_price_4k: "0.02",
   },
   // Step 8：Adobe 分档 placeholder。取中位（gpt-image 档）——一个分组里可以同时挂
-  // nano-banana（$0.02）和 gpt-image-2.5（$0.10），placeholder 不能兼顾。精细化：按
+  // gemini-*-image（$0.02）和 gpt-image-2.5（$0.10），placeholder 不能兼顾。精细化：按
   // 模型建独立分组。真实价档由后端 getDefaultAdobeImagePrice 兜底、按模型分档。
   adobe: {
     image_price_1k: "0.05",

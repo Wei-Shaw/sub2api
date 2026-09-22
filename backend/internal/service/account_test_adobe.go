@@ -141,8 +141,9 @@ func (s *AccountTestService) testAdobeAccountConnection(
 
 	client := adobeTestClients.clientForAccount(account)
 	generated, err := client.GenerateImage(ctx, adobe.GenerateImageInput{
-		Token:   token,
-		Timeout: adobeTestTimeout,
+		Token:        token,
+		Timeout:      adobeTestTimeout,
+		ARPSessionID: account.GetCredential("arp_session_id"),
 		Options: adobe.ImagePayloadOptions{
 			Prompt:               resolveAdobeTestPrompt(prompt),
 			AspectRatio:          conf.AspectRatio,

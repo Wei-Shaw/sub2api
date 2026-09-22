@@ -257,6 +257,12 @@ type UpdateSettingsRequest struct {
 	OpenAICodexUserAgent                   *string `json:"openai_codex_user_agent"`
 	OpenAICodexClientVersion               *string `json:"openai_codex_client_version"`
 	OpenAICodexVersionAutoSyncEnabled      *bool   `json:"openai_codex_version_auto_sync_enabled"`
+	OpenAICodexTicketEnabled               *bool   `json:"openai_codex_ticket_enabled"`
+	OpenAICodexTicketFailClosed            *bool   `json:"openai_codex_ticket_fail_closed"`
+	OpenAICodexTicketHarvestProxyURL       string  `json:"openai_codex_ticket_harvest_proxy_url"`
+	// OpenAICodexTicketDefaultLength nil = 保持既有；OpenAICodexTicketPlanLengthRules nil = 保持既有（空数组 = 清空规则）。
+	OpenAICodexTicketDefaultLength   *int                                       `json:"openai_codex_ticket_default_length"`
+	OpenAICodexTicketPlanLengthRules *[]service.OpenAICodexTicketPlanLengthRule `json:"openai_codex_ticket_plan_lengths"`
 
 	// codex_cli_only 加固（global-only）
 	MinCodexVersion                      string `json:"min_codex_version"`
@@ -440,6 +446,27 @@ var settingKeyJSONAliases = map[string]string{
 // state (see TestUpdateSettingsMalformedForwardedClientIPHeadersRemainFailClosedWhenOmitted).
 // Only the value-typed fields are indistinguishable from a deliberate clear.
 var settingKeyByJSONName = buildSettingKeyByJSONName()
+
+// normalizeOpenAICodexTicketPlanLengthRulesForResponse 响应里规则始终是数组：
+// 未配置（nil）序列化为 []，避免客户端拿到 null。
+func normalizeOpenAICodexTicketPlanLengthRulesForResponse(rules []service.OpenAICodexTicketPlanLengthRule) []service.OpenAICodexTicketPlanLengthRule {
+	if rules == nil {
+		return []service.OpenAICodexTicketPlanLengthRule{}
+	}
+	return rules
+}
+
+// normalizeOpenAICodexTicketPlanLengthRules 把请求里的规则规整为小写去空白形态；
+// 长度合法性由 service 层校验。返回值保留空切片（空数组 = 清空规则），
+// 与「未提交」（nil 指针）区分开。
+func normalizeOpenAICodexTicketPlanLengthRules(rules []service.OpenAICodexTicketPlanLengthRule) []service.OpenAICodexTicketPlanLengthRule {
+	out := make([]service.OpenAICodexTicketPlanLengthRule, 0, len(rules))
+	for _, rule := range rules {
+		rule.Plan = strings.ToLower(strings.TrimSpace(rule.Plan))
+		out = append(out, rule)
+	}
+	return out
+}
 
 func buildSettingKeyByJSONName() map[string]string {
 	t := reflect.TypeOf(UpdateSettingsRequest{})
@@ -1768,6 +1795,37 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 			}
 			return previousSettings.OpenAICodexVersionAutoSyncEnabled
 		}(),
+		OpenAICodexTicketEnabled: func() bool {
+			if req.OpenAICodexTicketEnabled != nil {
+				return *req.OpenAICodexTicketEnabled
+			}
+			return previousSettings.OpenAICodexTicketEnabled
+		}(),
+		OpenAICodexTicketFailClosed: func() bool {
+			if req.OpenAICodexTicketFailClosed != nil {
+				return *req.OpenAICodexTicketFailClosed
+			}
+			return previousSettings.OpenAICodexTicketFailClosed
+		}(),
+		OpenAICodexTicketHarvestProxyURL: func() string {
+			next := strings.TrimSpace(req.OpenAICodexTicketHarvestProxyURL)
+			if service.IsMaskedProxyURL(next) {
+				return previousSettings.OpenAICodexTicketHarvestProxyURL
+			}
+			return next
+		}(),
+		OpenAICodexTicketDefaultLength: func() int {
+			if req.OpenAICodexTicketDefaultLength != nil {
+				return *req.OpenAICodexTicketDefaultLength
+			}
+			return previousSettings.OpenAICodexTicketDefaultLength
+		}(),
+		OpenAICodexTicketPlanLengthRules: func() []service.OpenAICodexTicketPlanLengthRule {
+			if req.OpenAICodexTicketPlanLengthRules != nil {
+				return normalizeOpenAICodexTicketPlanLengthRules(*req.OpenAICodexTicketPlanLengthRules)
+			}
+			return previousSettings.OpenAICodexTicketPlanLengthRules
+		}(),
 		MinCodexVersion:       strings.TrimSpace(req.MinCodexVersion),
 		MaxCodexVersion:       strings.TrimSpace(req.MaxCodexVersion),
 		CodexCLIOnlyBlacklist: strings.TrimSpace(req.CodexCLIOnlyBlacklist),
@@ -2310,6 +2368,12 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		OpenAICodexClientVersion:                               updatedSettings.OpenAICodexClientVersion,
 		OpenAICodexClientVersionSynced:                         updatedSettings.OpenAICodexClientVersionSynced,
 		OpenAICodexVersionAutoSyncEnabled:                      updatedSettings.OpenAICodexVersionAutoSyncEnabled,
+		OpenAICodexTicketEnabled:                               updatedSettings.OpenAICodexTicketEnabled,
+		OpenAICodexTicketFailClosed:                            updatedSettings.OpenAICodexTicketFailClosed,
+		OpenAICodexTicketHarvestProxyURL:                       service.MaskProxyURL(updatedSettings.OpenAICodexTicketHarvestProxyURL),
+		OpenAICodexTicketHarvestProxyConfigured:                strings.TrimSpace(updatedSettings.OpenAICodexTicketHarvestProxyURL) != "",
+		OpenAICodexTicketDefaultLength:                         updatedSettings.OpenAICodexTicketDefaultLength,
+		OpenAICodexTicketPlanLengthRules:                       normalizeOpenAICodexTicketPlanLengthRulesForResponse(updatedSettings.OpenAICodexTicketPlanLengthRules),
 		MinCodexVersion:                                        updatedSettings.MinCodexVersion,
 		MaxCodexVersion:                                        updatedSettings.MaxCodexVersion,
 		CodexCLIOnlyBlacklist:                                  updatedSettings.CodexCLIOnlyBlacklist,

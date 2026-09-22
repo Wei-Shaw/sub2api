@@ -285,6 +285,35 @@ func TestResolutionFromSize(t *testing.T) {
 	require.Equal(t, DefaultOutputResolution, ResolutionFromSize("-1x-1"))
 }
 
+func TestSizeFromRatio(t *testing.T) {
+	tests := []struct {
+		resolution OutputResolution
+		ratio      string
+		want       Size
+	}{
+		{Resolution2K, "16:9", Size{Width: 2048, Height: 1152}},
+		{Resolution1K, "9:16", Size{Width: 576, Height: 1024}},
+		{Resolution4K, "21:9", Size{Width: 4096, Height: 1760}},
+		{Resolution2K, "3:2", Size{Width: 2048, Height: 1360}},
+		{Resolution1K, "1:1", Size{Width: 1024, Height: 1024}},
+		{Resolution1K, "1:1000", Size{Width: 16, Height: 1024}},
+	}
+	for _, tt := range tests {
+		t.Run(string(tt.resolution)+"_"+tt.ratio, func(t *testing.T) {
+			got, ok := SizeFromRatio(tt.resolution, tt.ratio)
+			require.True(t, ok)
+			require.Equal(t, tt.want, got)
+			// 长边不变，档位与计费档位一致。
+			require.Equal(t, tt.resolution, ResolutionFromSize(got.String()))
+		})
+	}
+
+	for _, ratio := range []string{"", "wide", "16:0", "0:9", "16x9", "-16:9"} {
+		_, ok := SizeFromRatio(Resolution2K, ratio)
+		require.False(t, ok, ratio)
+	}
+}
+
 // TestEveryCatalogEntryReachableByFamilyAndSize 证明目录里 117 个组合全部能通过
 // 「族级 id + size」触达——这是「不必把全量 id 塞进 model_mapping 白名单」的依据。
 //
@@ -452,9 +481,9 @@ func TestResolveImageAcceptsExternalModelNames(t *testing.T) {
 		"gpt-image-1.5":          "firefly-gpt-image-1.5",
 		"gpt-image-2.5-flare":    "firefly-gpt-image-2-5-flare",
 		"gpt-image-2.5-sunburst": "firefly-gpt-image-2-5-prism",
-		"nano-banana-pro":        "firefly-nano-banana-pro",
-		"nano-banana":            "firefly-nano-banana",
-		"nano-banana2":           "firefly-nano-banana2",
+		"gemini-3-pro-image":     "firefly-nano-banana-pro",
+		"gemini-2.5-flash-image": "firefly-nano-banana",
+		"gemini-3.1-flash-image": "firefly-nano-banana2",
 		"flux-pro":               "firefly-flux-pro",
 		"flux-ultra":             "firefly-flux-ultra",
 		"imagen-4":               "firefly-imagen-4",
@@ -471,6 +500,21 @@ func TestResolveImageAcceptsExternalModelNames(t *testing.T) {
 		conf, err := ResolveImage(ImageRequest{ModelID: externalID, Size: "1024x1024"})
 		require.NoError(t, err, "对外名 %s 必须可解析", externalID)
 		require.Equal(t, family, conf.Family, "对外名 %s 应落到族 %s", externalID, family)
+	}
+}
+
+func TestResolveImageAcceptsLegacyNanoBananaAliases(t *testing.T) {
+	for requested, wantFamily := range map[string]string{
+		"nano-banana":                    "firefly-nano-banana",
+		"nano-banana-pro":                "firefly-nano-banana-pro",
+		"nano-banana2":                   "firefly-nano-banana2",
+		"gemini-2.5-flash-image-preview": "firefly-nano-banana",
+		"gemini-3-pro-image-preview":     "firefly-nano-banana-pro",
+		"gemini-3.1-flash-image-preview": "firefly-nano-banana2",
+	} {
+		conf, err := ResolveImage(ImageRequest{ModelID: requested, Size: "1024x1024"})
+		require.NoError(t, err, requested)
+		require.Equal(t, wantFamily, conf.Family, requested)
 	}
 }
 
@@ -582,6 +626,18 @@ func TestDisplayLabel(t *testing.T) {
 	label, ok = DisplayLabel("gpt-image-2.5-sunburst")
 	require.True(t, ok)
 	require.Equal(t, "GPT Image 2.5 Sunburst", label)
+
+	label, ok = DisplayLabel("gemini-2.5-flash-image")
+	require.True(t, ok)
+	require.Equal(t, "Gemini 2.5 Flash Image", label)
+
+	label, ok = DisplayLabel("gemini-3-pro-image")
+	require.True(t, ok)
+	require.Equal(t, "Gemini 3 Pro Image", label)
+
+	label, ok = DisplayLabel("gemini-3.1-flash-image")
+	require.True(t, ok)
+	require.Equal(t, "Gemini 3.1 Flash Image", label)
 
 	label, ok = DisplayLabel("  IMAGEN-4  ")
 	require.True(t, ok, "应大小写不敏感并忽略首尾空白")

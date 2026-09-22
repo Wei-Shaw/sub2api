@@ -220,7 +220,7 @@ Direct Firefly calls use **Firefly Web** (`firefly.adobe.com` / `clio-playground
 
 - Platform name: `adobe`
 - Account types: Firefly cookie accounts (shown as OAuth in the admin UI) and **API Key + Base URL** relay accounts
-- Public image targets: `/v1/images/generations` and `/v1/images/edits`, plus the existing no-prefix aliases
+- Public image targets: `/v1/images/generations` and `/v1/images/edits`, plus the existing no-prefix aliases, and Gemini-native `POST /v1beta/models/{model}:generateContent` / `streamGenerateContent`
 - The API key's group must allow image generation (Adobe groups default this to on)
 - `n` defaults to 1 and is capped at 10. The cookie path fans out into n Firefly jobs (upstream `n` stays 1) and bills per image; `n>10` is rejected
 - `output_format` follows `png`/`jpeg` with a local transcode (`jpg` is accepted as jpeg). `webp` is not supported. Omit it to keep the upstream format
@@ -235,22 +235,22 @@ Direct Firefly calls use **Firefly Web** (`firefly.adobe.com` / `clio-playground
 | `gpt-image-1.5` | Firefly GPT Image 1.5 |
 | `gpt-image-2.5-flare` | Firefly GPT Image 2.5 Flare |
 | `gpt-image-2.5-sunburst` | Firefly GPT Image 2.5 Sunburst (upstream version name is `prism`) |
-| `nano-banana`, `nano-banana-pro`, `nano-banana2` | Gemini Nano Banana family on Firefly |
+| `gemini-2.5-flash-image` / `gemini-3-pro-image` / `gemini-3.1-flash-image` | Gemini image models on Firefly (same public names as the Gemini channel) |
 | `flux-pro`, `flux-ultra` | Firefly FLUX |
 | `imagen-4`, `imagen-4-fast` | Firefly Imagen 4 |
 | `gpt-4o-image` | Firefly GPT-4o Image |
 | `runway-gen4-image` | Firefly Runway Gen-4 Image |
 
-Legacy aliases `gpt-image`, `gpt-image-1`, and `gpt-image-1-mini` map to `gpt-image-2` but are not listed by `/v1/models`.
+Legacy aliases `gpt-image`, `gpt-image-1`, and `gpt-image-1-mini` map to `gpt-image-2` but are not listed by `/v1/models`. Preview names `gemini-2.5-flash-image-preview`, `gemini-3-pro-image-preview`, and `gemini-3.1-flash-image-preview` are also accepted and map to the same model as their non-preview name, but are not listed by `/v1/models` either.
 
-`gpt-image-*` names are shared with official OpenAI image models. They reach Firefly only when the API key is bound to an **Adobe** group; an OpenAI group still talks to OpenAI. Composite groups do **not** auto-detect `gpt-image-*` (the name is ambiguous) — add an explicit composite route. `nano-banana*`, `flux-*`, `imagen-*`, and `runway-gen4*` can be auto-detected as Adobe.
+`gpt-image-*` names are shared with official OpenAI image models. They reach Firefly only when the API key is bound to an **Adobe** group; an OpenAI group still talks to OpenAI. Composite groups do **not** auto-detect `gpt-image-*` (the name is ambiguous) — add an explicit composite route. `gemini-*-image` / `gemini-3-pro-image*` are also shared with the Gemini channel, so composite groups decide by endpoint: `/v1/images/*` goes to Adobe, chat-style endpoints (chat completions, responses, messages) go to Gemini, and `/v1beta` goes to whichever platform in the group can serve the name — if both Gemini/Antigravity and Adobe accounts can, it defaults to Gemini unless an explicit route says otherwise. `flux-*`, `imagen-*`, `runway-gen4*`, and `gpt-4o-image` can be auto-detected as Adobe.
 
 ### Cookie Account Setup
 
 1. In the admin dashboard, create an **Adobe** group and add a Firefly cookie account.
-2. Sign in to Adobe in a browser, open `https://firefly.adobe.com/generate/image`, and let the page settle.
-3. In DevTools → Network, find a request to `adobeid-na1.services.adobe.com` `/ims/check/v6/token` and copy that request's **Cookie header**. It must include `ims_sid`.
-4. Copying `document.cookie` from `firefly.adobe.com` alone is **not** enough. A `Cookie:` prefix or a JSON cookie array is also accepted.
+2. Sign in to Adobe in a browser, open `https://firefly.adobe.com/generate/image`, and **successfully generate an image on that page** (needed to capture the optional ARP session header).
+3. Export a Sub2API account JSON with the Chrome/Edge extension in [`tools/adobe-cookie-exporter`](tools/adobe-cookie-exporter) (recommended), then upload it under **Accounts → Import**. Alternatively, in DevTools → Network find a request to `adobeid-na1.services.adobe.com` `/ims/check/v6/token` and copy that request's **Cookie header**. It must include `ims_sid`.
+4. Copying `document.cookie` from `firefly.adobe.com` alone is **not** enough. You can also paste the exporter JSON (or the `cookie` string, a `Cookie:` prefix, or a JSON cookie array) into the Adobe cookie field. The optional `arp_session_id` can be pasted in its own field or taken from the same JSON. Paid accounts can omit ARP; FREE accounts should include it. Import does not bind groups; attach the account afterwards.
 5. The short-lived access token is optional; leave it empty to exchange the cookie on first refresh. Sub2API keeps refreshing the token from the cookie.
 6. Attach the account to the group, then create a Sub2API API key assigned to that group.
 
@@ -274,7 +274,7 @@ An Adobe API-key account without `base_url` is not a relay account.
 |--------|---------------|----------|
 | `gpt-image-2` / `gpt-image-2.5-*` | `WxH`, empty, or `auto` | Forward pixels as-is; omit size when empty/`auto` so Firefly auto-chooses |
 | `gpt-image-1.5` | `WxH` | Snap to `1024x1024` / `1536x1024` / `1024x1536` |
-| `nano-banana*` | `WxH`, empty, or `auto` | Map the long edge to a 1K/2K/4K square tier and the nearest `aspectRatio`; empty/`auto` uses Firefly's default 1K square. `nano-banana2` also accepts `1:8`, `1:4`, `4:1`, and `8:1` |
+| `gemini-*-image` / `gemini-3-pro-image*` | `WxH`, empty, or `auto` | Map the long edge to a 1K/2K/4K square tier and the nearest `aspectRatio`; empty/`auto` uses Firefly's default 1K square. `gemini-3.1-flash-image` also accepts `1:8`, `1:4`, `4:1`, and `8:1` |
 | `flux-*` / `imagen-4*` / `gpt-4o-image` / `runway-gen4-image` | `WxH` | Snap to that family's allowed size enum |
 
 `quality` maps to Firefly `detailLevel`: `low` (default) → 1, `medium` → 3, `high` → 5, `xhigh`/`max` → 5 on v2/1.5 or 7 on 2.5.
@@ -302,6 +302,26 @@ curl https://your-sub2api.example.com/v1/images/generations \
     "size": "1024x1024"
   }'
 ```
+
+The same public model names also accept Gemini-native image generation (the client chooses the protocol; models are not bound to one envelope):
+
+```bash
+curl "https://your-sub2api.example.com/v1beta/models/gemini-3-pro-image:generateContent" \
+  -H "x-goog-api-key: sk-your-sub2api-key" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "contents": [{"role": "user", "parts": [{"text": "a red panda in a bamboo forest"}]}],
+    "generationConfig": {
+      "imageConfig": {"aspectRatio": "16:9", "imageSize": "2K"}
+    }
+  }'
+```
+
+`streamGenerateContent` writes **one** SSE frame after generation (`data: {full JSON}\n\n`). It is not token-by-token incremental output and does not send `[DONE]`. Reference images use `parts[].inlineData` (base64) or `fileData.fileUri` (`https://` only).
+
+With `generationConfig.candidateCount` set to n, the response has n candidates (each with an `index`), one image per candidate. Images are returned as `inlineData`; when an API-key relay account only returns an image URL the gateway cannot download, that image is returned as `fileData.fileUri` for the client to fetch. If no image can be delivered at all, the request fails with 502 and is not billed.
+
+`generationConfig.imageConfig.aspectRatio` / `imageSize` (`1K`/`2K`/`4K`) are Gemini-protocol fields; OpenAI Images `size` (`WxH`) is a separate mapping. Banana models on the Gemini path use `aspectRatio`+`imageSize` directly instead of inferring them from WxH; other models and API Key relay accounts receive a `WxH` derived from `aspectRatio`+`imageSize` (long edge = tier edge; ratio-only requests use 1K).
 
 ---
 

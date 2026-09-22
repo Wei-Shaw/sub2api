@@ -374,3 +374,85 @@ func TestCompositeRouteResolverExplicitRoutesCoverBucketTwoProviders(t *testing.
 		})
 	}
 }
+
+// Scenario: Gemini/Adobe 同名生图模型按入口定平台，gemini/any 入口交给账号归属
+func TestCompositeRouteResolverSharedGeminiImageUsesEndpoint(t *testing.T) {
+	models := []string{
+		"gemini-2.5-flash-image", "gemini-2.5-flash-image-preview",
+		"gemini-3-pro-image", "gemini-3-pro-image-preview",
+		"gemini-3.1-flash-image", "gemini-3.1-flash-image-preview",
+	}
+	cases := []struct {
+		endpoint string
+		platform string
+		matched  bool
+	}{
+		{CompositeRouteEndpointImages, PlatformAdobe, true},
+		{CompositeRouteEndpointChatCompletions, PlatformGemini, true},
+		{CompositeRouteEndpointResponses, PlatformGemini, true},
+		{CompositeRouteEndpointMessages, PlatformGemini, true},
+		{CompositeRouteEndpointCountTokens, PlatformGemini, true},
+		{CompositeRouteEndpointEmbeddings, PlatformGemini, true},
+		{CompositeRouteEndpointGemini, "", false},
+		{CompositeRouteEndpointAny, "", false},
+	}
+	resolver := NewCompositeRouteResolver(nil)
+	for _, model := range models {
+		for _, tc := range cases {
+			decision, err := resolver.Resolve(context.Background(), 7, model, tc.endpoint)
+			require.NoError(t, err, "%s@%s", model, tc.endpoint)
+			require.Equal(t, tc.matched, decision.Matched, "%s@%s", model, tc.endpoint)
+			require.Equal(t, tc.platform, decision.TargetPlatform, "%s@%s", model, tc.endpoint)
+			if tc.matched {
+				require.Equal(t, CompositeRouteSourceDetector, decision.Source)
+				require.Equal(t, model, decision.UpstreamModel)
+			}
+		}
+	}
+}
+
+func TestCompositeRouteResolverSharedGeminiImageExplicitRouteWins(t *testing.T) {
+	resolver := NewCompositeRouteResolver(compositeRouteRepoStub{
+		routes: []CompositeModelRoute{{
+			ID:             11,
+			GroupID:        7,
+			PublicModel:    "gemini-3-pro-image",
+			MatchType:      CompositeRouteMatchExact,
+			TargetPlatform: PlatformAdobe,
+			UpstreamModel:  "gemini-3-pro-image",
+			Endpoint:       CompositeRouteEndpointAny,
+			Enabled:        true,
+		}},
+	})
+
+	decision, err := resolver.Resolve(context.Background(), 7, "gemini-3-pro-image", CompositeRouteEndpointGemini)
+	require.NoError(t, err)
+	require.True(t, decision.Matched)
+	require.Equal(t, CompositeRouteSourceExplicit, decision.Source)
+	require.Equal(t, PlatformAdobe, decision.TargetPlatform)
+}
+
+func TestCompositeRouteResolverSharedGeminiImageUsesOwnershipOnGeminiEndpoint(t *testing.T) {
+	resolver := NewCompositeRouteResolver(nil)
+	resolver.SetModelOwnershipResolver(func(context.Context, int64, string) (CompositeModelOwnership, error) {
+		return CompositeModelOwnership{TargetPlatform: PlatformAdobe, Matched: true}, nil
+	})
+
+	decision, err := resolver.Resolve(context.Background(), 7, "gemini-3-pro-image", CompositeRouteEndpointGemini)
+	require.NoError(t, err)
+	require.True(t, decision.Matched)
+	require.Equal(t, CompositeRouteSourceAccount, decision.Source)
+	require.Equal(t, PlatformAdobe, decision.TargetPlatform)
+}
+
+// 同名模型查归属出错不能 500：/v1beta 由中间件兜底到 Gemini。
+func TestCompositeRouteResolverSharedGeminiImageOwnershipErrorDoesNotFail(t *testing.T) {
+	resolver := NewCompositeRouteResolver(nil)
+	resolver.SetModelOwnershipResolver(func(context.Context, int64, string) (CompositeModelOwnership, error) {
+		return CompositeModelOwnership{}, errors.New("account catalog unavailable")
+	})
+
+	decision, err := resolver.Resolve(context.Background(), 7, "gemini-3-pro-image", CompositeRouteEndpointGemini)
+	require.NoError(t, err)
+	require.False(t, decision.Matched)
+}

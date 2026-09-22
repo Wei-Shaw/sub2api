@@ -4,6 +4,7 @@ package adobe
 
 import (
 	"encoding/json"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -147,8 +148,30 @@ func TestBuildImagePayloadCandidatesGPTImageAutoOmitsTopLevelSize(t *testing.T) 
 	require.NotContains(t, candidates[0], "size")
 	require.NotContains(t, candidates[0], "outputResolution")
 	msp := candidates[0]["modelSpecificPayload"].(map[string]any)
-	require.NotContains(t, msp, "size", "v2 Auto 不写 msp.size")
+	require.Equal(t, "auto", msp["size"], "v2 Auto 写 msp.size:auto（2026-09-20 抓包）")
 }
+
+func TestMarshalPayloadJSONMatchesFireflyKeyOrder(t *testing.T) {
+	candidates, err := BuildImagePayloadCandidates(ImagePayloadOptions{
+		Prompt:               "1girl hold apple",
+		UpstreamModelID:      "gpt-image",
+		UpstreamModelVersion: "2",
+		PayloadKind:          PayloadKindGPTImage25,
+		QualityLevel:         "medium",
+		Seed:                 ptrInt(139153),
+	})
+	require.NoError(t, err)
+	raw, err := marshalPayloadJSON(candidates[0])
+	require.NoError(t, err)
+
+	wantPrefix := `{"n":1,"seeds":[139153],"output":{"storeInputs":true},"prompt":"1girl hold apple","referenceBlobs":[],"caiClaimVersion":2,"modelSpecificPayload":{"size":"auto"},"modelId":"gpt-image","modelVersion":"2","generationMetadata":`
+	require.True(t, strings.HasPrefix(string(raw), wantPrefix), string(raw))
+	alpha, err := json.Marshal(candidates[0])
+	require.NoError(t, err)
+	require.NotEqual(t, string(alpha), string(raw), "不得回落到 map 的字典序")
+}
+
+func ptrInt(v int) *int { return &v }
 
 func TestBuildImagePayloadCandidatesNanoBananaText2Image(t *testing.T) {
 	candidates, err := BuildImagePayloadCandidates(ImagePayloadOptions{
@@ -271,7 +294,7 @@ func TestBuildImagePayloadCandidatesBackground(t *testing.T) {
 		for _, background := range []string{"", "auto", "  ", "AUTO"} {
 			msp := build(background, nil)
 			require.NotContains(t, msp, "background", "background=%q 不应写入字段", background)
-			require.Empty(t, msp, "background=%q 时 modelSpecificPayload 应为空", background)
+			require.Equal(t, "auto", msp["size"], "gpt-image Auto 仍写 msp.size")
 		}
 	})
 
