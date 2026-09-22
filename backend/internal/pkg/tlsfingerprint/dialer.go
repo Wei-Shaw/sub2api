@@ -90,11 +90,17 @@ var (
 		0x0035, // TLS_RSA_WITH_AES_256_CBC_SHA
 	}
 
-	// defaultCurves contains the 3 supported groups from Node.js 24.x
+	// defaultCurves contains the supported groups captured from Claude Code 2.1.280
+	// (Node.js 24+/OpenSSL 3.x): the X25519MLKEM768 post-quantum hybrid first,
+	// followed by the classical groups. Node sends a key share for every group it
+	// supports, so the default KeyShareGroups below mirror this list with
+	// independently generated keys per group (matching OpenSSL 3.5 behavior, which
+	// generates a separate ephemeral per PQ and classical share).
 	defaultCurves = []utls.CurveID{
-		utls.X25519,    // 0x001d
-		utls.CurveP256, // 0x0017 (secp256r1)
-		utls.CurveP384, // 0x0018 (secp384r1)
+		utls.X25519MLKEM768, // 0x11ec X25519 + ML-KEM-768 hybrid (RFC 9794 / draft-ietf-tls-ecdhe-mlkem)
+		utls.X25519,         // 0x001d
+		utls.CurveP256,      // 0x0017 (secp256r1)
+		utls.CurveP384,      // 0x0018 (secp384r1)
 	}
 
 	// defaultPointFormats contains point formats from Node.js 24.x
@@ -368,7 +374,7 @@ func buildClientHelloSpecFromProfile(profile *Profile) *utls.ClientHelloSpec {
 		supportedVersions = profile.SupportedVersions
 	}
 
-	keyShareGroups := []utls.CurveID{utls.X25519}
+	keyShareGroups := []utls.CurveID{utls.X25519MLKEM768, utls.X25519}
 	if profile != nil && len(profile.KeyShareGroups) > 0 {
 		keyShareGroups = toUTLSCurves(profile.KeyShareGroups)
 	}
@@ -380,7 +386,13 @@ func buildClientHelloSpecFromProfile(profile *Profile) *utls.ClientHelloSpec {
 
 	enableGREASE := profile != nil && profile.EnableGREASE
 
-	// Build key shares
+	// Build key shares. Empty Data asks utls to generate a fresh private key
+	// per group at handshake time. For X25519MLKEM768 this produces a real
+	// ML-KEM-768 encapsulation key + X25519 ephemeral (Go crypto/mlkem) and
+	// registers the decapsulation keys so a server-selected PQ share works.
+	// X25519 deliberately does NOT use the keyShareHybridReuseMarker: real
+	// Claude Code (OpenSSL 3.5+) sends independently generated classical and
+	// PQ shares.
 	keyShares := make([]utls.KeyShare, len(keyShareGroups))
 	for i, g := range keyShareGroups {
 		keyShares[i] = utls.KeyShare{Group: g}
