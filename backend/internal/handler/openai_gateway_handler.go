@@ -2308,7 +2308,9 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 	clientIP := ip.GetClientIP(c)
 	userAgent := strings.TrimSpace(c.GetHeader("User-Agent"))
 	clientLifecycleCtx := c.Request.Context()
-	ctx := clientLifecycleCtx
+	ctx, cancelConcurrency := context.WithCancel(clientLifecycleCtx)
+	defer cancelConcurrency()
+	c.Request = c.Request.WithContext(ctx)
 	maxIngressConnections := 0
 	if h.cfg != nil {
 		maxIngressConnections = h.cfg.Gateway.OpenAIWS.MaxIngressConnectionsPerAPIKey
@@ -2485,10 +2487,24 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 	// 必须尽早注册，确保任何 early return 都能释放已获取的并发槽位。
 	defer releaseTurnSlots()
 
-	userReleaseFunc, userAcquired, err := h.concurrencyHelper.TryAcquireUserSlotForAPIKey(ctx, subject.UserID, subject.Concurrency, apiKey.ID)
+	// Reload the key policy at each admission, including subsequent turns on an
+	// existing connection. Do not mutate the original billing/auth snapshot.
+	acquireUserForKey := func() (func(), bool, error) {
+		limit := apiKey.ConcurrencyLimit
+		if h.apiKeyService != nil {
+			latest, err := h.apiKeyService.GetByKey(ctx, apiKey.Key)
+			if err != nil {
+				return nil, false, err
+			}
+			limit = latest.ConcurrencyLimit
+		}
+		return h.concurrencyHelper.TryAcquireUserSlotForAPIKey(ctx, subject.UserID, subject.Concurrency, apiKey.ID, limit, cancelConcurrency)
+	}
+
+	userReleaseFunc, userAcquired, err := acquireUserForKey()
 	if err != nil {
 		reqLog.Warn("openai.websocket_user_slot_acquire_failed", zap.Error(err))
-		closeOpenAIClientWS(wsConn, coderws.StatusInternalError, "failed to acquire user concurrency slot")
+		closeOpenAIClientWS(wsConn, concurrencyWSCloseStatus(err), concurrencyWSReason(err))
 		return
 	}
 	if !userAcquired {
@@ -2500,10 +2516,10 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 		if currentUserRelease != nil {
 			return true
 		}
-		userReleaseFunc, userAcquired, err := h.concurrencyHelper.TryAcquireUserSlotForAPIKey(ctx, subject.UserID, subject.Concurrency, apiKey.ID)
+		userReleaseFunc, userAcquired, err := acquireUserForKey()
 		if err != nil {
 			reqLog.Warn("openai.websocket_user_slot_reacquire_failed", zap.Error(err))
-			closeOpenAIClientWS(wsConn, coderws.StatusInternalError, "failed to acquire user concurrency slot")
+			closeOpenAIClientWS(wsConn, concurrencyWSCloseStatus(err), concurrencyWSReason(err))
 			return false
 		}
 		if !userAcquired {
@@ -2871,9 +2887,9 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 				// 防御式清理：避免异常路径下旧槽位覆盖导致泄漏。
 				releaseTurnSlots()
 				// 非首轮 turn 需要重新抢占并发槽位，避免长连接空闲占槽。
-				userReleaseFunc, userAcquired, err := h.concurrencyHelper.TryAcquireUserSlotForAPIKey(ctx, subject.UserID, subject.Concurrency, apiKey.ID)
+				userReleaseFunc, userAcquired, err := acquireUserForKey()
 				if err != nil {
-					return service.NewOpenAIWSClientCloseError(coderws.StatusInternalError, "failed to acquire user concurrency slot", err)
+					return service.NewOpenAIWSClientCloseError(concurrencyWSCloseStatus(err), concurrencyWSReason(err), err)
 				}
 				if !userAcquired {
 					return service.NewOpenAIWSClientCloseError(coderws.StatusTryAgainLater, "too many concurrent requests, please retry later", nil)

@@ -278,6 +278,10 @@ export default {
       geminiCliDesc: 'Import as Gemini CLI configuration',
     },
     // Quota and expiration
+    concurrencyLimit: 'Concurrency limit',
+    concurrencyLimitHint: '0 means no additional limit. The user concurrency limit still applies.',
+    concurrencyLimitInvalid: 'Enter a whole number between 0 and 2147483647.',
+    concurrencyLimitSaved: 'Concurrency limit updated.',
     quotaLimit: 'Quota Limit',
     quotaAmount: 'Quota Amount (USD)',
     quotaAmountPlaceholder: 'Enter quota limit in USD',

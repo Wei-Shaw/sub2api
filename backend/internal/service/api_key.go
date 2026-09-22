@@ -46,6 +46,7 @@ type APIKey struct {
 	User                *User
 	Group               *Group
 	CurrentConcurrency  int
+	ConcurrencyLimit    int // 0 adds no key-level limit; the user limit still applies.
 
 	// Quota fields
 	Quota     float64    // Quota limit in USD (0 = unlimited)

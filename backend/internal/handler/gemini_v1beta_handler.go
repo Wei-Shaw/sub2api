@@ -370,7 +370,8 @@ func (h *GatewayHandler) GeminiV1BetaModels(c *gin.Context) {
 	userReleaseFunc, err := geminiConcurrency.AcquireUserSlotWithWait(c, authSubject.UserID, authSubject.Concurrency, stream, &streamStarted)
 	if err != nil {
 		reqLog.Warn("gemini.user_slot_acquire_failed", zap.Error(err))
-		googleError(c, http.StatusTooManyRequests, err.Error())
+		status, _, _, message := concurrencyErrorResponse(err, "user")
+		googleError(c, status, message)
 		return
 	}
 	// 确保请求取消时也会释放槽位，避免长连接被动中断造成泄漏
