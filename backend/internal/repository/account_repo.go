@@ -3885,17 +3885,38 @@ func (r *accountRepository) ResetQuotaUsedAndClearRateLimitCooldown(ctx context.
 
 // RevertProxyFallback 将账号的 proxy_id 切回 proxy_fallback_origin_id，并清空 origin 字段。
 // 仅当 proxy_fallback_origin_id IS NOT NULL 时执行更新；
-// 若影响行数为 0，则返回 ErrAccountNotInFallback（账号存在但不在 fallback 状态）。
+// 非 fallback 状态返回 ErrAccountNotInFallback；原代理已删除或不存在返回 ErrProxyNotFound。
 func (r *accountRepository) RevertProxyFallback(ctx context.Context, accountID int64) error {
-	res, err := r.sql.ExecContext(ctx, `
-		UPDATE accounts SET proxy_id=proxy_fallback_origin_id, proxy_fallback_origin_id=NULL, updated_at=NOW()
-		WHERE id=$1 AND proxy_fallback_origin_id IS NOT NULL AND deleted_at IS NULL`, accountID)
+	// Lock the live origin before updating the account. FOR SHARE also conflicts
+	// with soft deletion (which updates deleted_at), unlike FOR KEY SHARE.
+	// Keep validation and restoration in one statement/transaction.
+	var outcome int
+	err := scanSingleRow(ctx, r.sql, `
+		WITH candidate AS MATERIALIZED (
+			SELECT id, proxy_fallback_origin_id AS origin_id
+			FROM accounts
+			WHERE id=$1 AND proxy_fallback_origin_id IS NOT NULL AND deleted_at IS NULL
+		), live_origin AS MATERIALIZED (
+			SELECT p.id FROM proxies p JOIN candidate c ON p.id=c.origin_id
+			WHERE p.deleted_at IS NULL
+			FOR SHARE OF p
+		), restored AS (
+			UPDATE accounts a SET proxy_id=p.id, proxy_fallback_origin_id=NULL, updated_at=NOW()
+			FROM live_origin p
+			WHERE a.id=$1 AND a.proxy_fallback_origin_id=p.id AND a.deleted_at IS NULL
+			RETURNING a.id
+		)
+		SELECT CASE WHEN EXISTS (SELECT 1 FROM restored) THEN 1
+			WHEN EXISTS (SELECT 1 FROM candidate) AND NOT EXISTS (SELECT 1 FROM live_origin) THEN 2
+			ELSE 0 END`, []any{accountID}, &outcome)
 	if err != nil {
 		return err
 	}
-	n, _ := res.RowsAffected()
-	if n == 0 {
+	switch outcome {
+	case 0:
 		return service.ErrAccountNotInFallback
+	case 2:
+		return service.ErrProxyNotFound
 	}
 	if err := enqueueSchedulerOutbox(ctx, r.sql, service.SchedulerOutboxEventAccountChanged, &accountID, nil, nil); err != nil {
 		logger.LegacyPrintf("repository.account", "[SchedulerOutbox] revert fallback enqueue failed: account=%d err=%v", accountID, err)
