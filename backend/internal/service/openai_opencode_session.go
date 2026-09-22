@@ -14,6 +14,14 @@ import (
 const (
 	openCodeSessionHeader         = "X-OpenCode-Session"
 	openCodeInboundBodyContextKey = "opencode_inbound_body"
+
+	// openCodeUpstreamUserAgent 是发往官方 OpenCode 上游的规范 User-Agent。
+	// opencode.ai 前置 Cloudflare 按客户端 UA 签名做 bot 拦截：Python-urllib 等
+	// 编程库 UA 会被 CF error code 1010 拒绝并返回 403。网关透传白名单放行
+	// user-agent，客户端自报身份原样到达上游会命中 WAF；该 403 再被计入账号
+	// 凭证类 strike，健康账号因此被自动禁用。取值沿用真实 opencode 客户端的
+	// UA 格式（opencode/<version>）。
+	openCodeUpstreamUserAgent = "opencode/1.0.0"
 )
 
 // rememberOpenCodeInboundBody keeps the client request body so protocol
@@ -95,6 +103,27 @@ func isOfficialOpenCodeHost(targetURL string) bool {
 		return false
 	}
 	return strings.EqualFold(parsed.Scheme, "https") && strings.EqualFold(parsed.Hostname(), "opencode.ai")
+}
+
+// applyOpenCodeUpstreamUserAgent 将发往官方 OpenCode 上游的出站 User-Agent 收敛为
+// 规范客户端身份，覆盖客户端透传值与平台默认 UA。判定规则与 x-opencode-session
+// 同源：opencode 平台账号，或（任意平台账号）目标为官方 opencode.ai 主机。
+// 必须先于 Account.ApplyHeaderOverrides 调用——账号 header_overrides 中显式
+// 配置的 user-agent 仍拥有最终决定权。
+func applyOpenCodeUpstreamUserAgent(account *Account, targetURL string, headers http.Header) {
+	if headers == nil {
+		return
+	}
+	if !(account != nil && account.IsOpenCodeGo()) && !isOfficialOpenCodeHost(targetURL) {
+		return
+	}
+	// 先删任意大小写变体再写入：透传链路与覆写直写 map 可能残留非 canonical 键。
+	for key := range headers {
+		if strings.EqualFold(key, "User-Agent") {
+			delete(headers, key)
+		}
+	}
+	headers.Set("User-Agent", openCodeUpstreamUserAgent)
 }
 
 func resolveOpenCodeSessionID(c *gin.Context, headers http.Header, generate bool, bodies ...[]byte) string {
