@@ -1003,6 +1003,8 @@ export default {
       priorityHint: 'Lower value accounts are used first',
       billingRateMultiplier: 'Billing Rate Multiplier',
       billingRateMultiplierHint: '0 = free, affects account billing only',
+      groupBillingRateMultiplier: 'Group Billing Multiplier',
+      groupBillingRateMultiplierHint: 'Applied to user/API key charges. Default 1; use 5 with a 0.2x group to restore 1x.',
       expiresAt: 'Expires At',
       expiresAtHint: 'Leave empty for no expiration',
       expiresAtTimezoneHint: 'Input is interpreted in your browser time zone ({timezone}).',

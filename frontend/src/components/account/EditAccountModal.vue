@@ -1721,6 +1721,18 @@
             />
           </div>
         </div>
+        <div>
+          <label class="input-label">{{ t('admin.accounts.groupBillingRateMultiplier') }}</label>
+          <input
+            v-model.number="form.group_rate_multiplier"
+            type="number"
+            min="0"
+            step="0.01"
+            class="input"
+            data-testid="account-group-rate-multiplier"
+          />
+          <p class="input-hint">{{ t('admin.accounts.groupBillingRateMultiplierHint') }}</p>
+        </div>
       </div>
       <div class="border-t border-gray-200 pt-4 dark:border-dark-600">
         <label class="input-label">{{ t('admin.accounts.expiresAt') }}</label>
@@ -3849,6 +3861,7 @@ const form = reactive({
   load_factor: null as number | null,
   priority: 1,
   rate_multiplier: 1,
+  group_rate_multiplier: 1,
   status: 'active' as 'active' | 'inactive' | 'error',
   group_ids: [] as number[],
   expires_at: null as number | null
@@ -3957,6 +3970,7 @@ const syncFormFromAccount = (newAccount: Account | null) => {
   form.load_factor = newAccount.load_factor ?? null
   form.priority = newAccount.priority
   form.rate_multiplier = newAccount.rate_multiplier ?? 1
+  form.group_rate_multiplier = newAccount.group_rate_multiplier ?? 1
   form.status = (newAccount.status === 'active' || newAccount.status === 'inactive' || newAccount.status === 'error')
     ? newAccount.status
     : 'active'

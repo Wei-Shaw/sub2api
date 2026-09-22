@@ -268,6 +268,27 @@ func (_u *AccountUpdate) AddRateMultiplier(v float64) *AccountUpdate {
 	return _u
 }
 
+// SetGroupRateMultiplier sets the "group_rate_multiplier" field.
+func (_u *AccountUpdate) SetGroupRateMultiplier(v float64) *AccountUpdate {
+	_u.mutation.ResetGroupRateMultiplier()
+	_u.mutation.SetGroupRateMultiplier(v)
+	return _u
+}
+
+// SetNillableGroupRateMultiplier sets the "group_rate_multiplier" field if the given value is not nil.
+func (_u *AccountUpdate) SetNillableGroupRateMultiplier(v *float64) *AccountUpdate {
+	if v != nil {
+		_u.SetGroupRateMultiplier(*v)
+	}
+	return _u
+}
+
+// AddGroupRateMultiplier adds value to the "group_rate_multiplier" field.
+func (_u *AccountUpdate) AddGroupRateMultiplier(v float64) *AccountUpdate {
+	_u.mutation.AddGroupRateMultiplier(v)
+	return _u
+}
+
 // SetStatus sets the "status" field.
 func (_u *AccountUpdate) SetStatus(v string) *AccountUpdate {
 	_u.mutation.SetStatus(v)
@@ -868,6 +889,12 @@ func (_u *AccountUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	if value, ok := _u.mutation.AddedRateMultiplier(); ok {
 		_spec.AddField(account.FieldRateMultiplier, field.TypeFloat64, value)
 	}
+	if value, ok := _u.mutation.GroupRateMultiplier(); ok {
+		_spec.SetField(account.FieldGroupRateMultiplier, field.TypeFloat64, value)
+	}
+	if value, ok := _u.mutation.AddedGroupRateMultiplier(); ok {
+		_spec.AddField(account.FieldGroupRateMultiplier, field.TypeFloat64, value)
+	}
 	if value, ok := _u.mutation.Status(); ok {
 		_spec.SetField(account.FieldStatus, field.TypeString, value)
 	}
@@ -1405,6 +1432,27 @@ func (_u *AccountUpdateOne) SetNillableRateMultiplier(v *float64) *AccountUpdate
 // AddRateMultiplier adds value to the "rate_multiplier" field.
 func (_u *AccountUpdateOne) AddRateMultiplier(v float64) *AccountUpdateOne {
 	_u.mutation.AddRateMultiplier(v)
+	return _u
+}
+
+// SetGroupRateMultiplier sets the "group_rate_multiplier" field.
+func (_u *AccountUpdateOne) SetGroupRateMultiplier(v float64) *AccountUpdateOne {
+	_u.mutation.ResetGroupRateMultiplier()
+	_u.mutation.SetGroupRateMultiplier(v)
+	return _u
+}
+
+// SetNillableGroupRateMultiplier sets the "group_rate_multiplier" field if the given value is not nil.
+func (_u *AccountUpdateOne) SetNillableGroupRateMultiplier(v *float64) *AccountUpdateOne {
+	if v != nil {
+		_u.SetGroupRateMultiplier(*v)
+	}
+	return _u
+}
+
+// AddGroupRateMultiplier adds value to the "group_rate_multiplier" field.
+func (_u *AccountUpdateOne) AddGroupRateMultiplier(v float64) *AccountUpdateOne {
+	_u.mutation.AddGroupRateMultiplier(v)
 	return _u
 }
 
@@ -2037,6 +2085,12 @@ func (_u *AccountUpdateOne) sqlSave(ctx context.Context) (_node *Account, err er
 	}
 	if value, ok := _u.mutation.AddedRateMultiplier(); ok {
 		_spec.AddField(account.FieldRateMultiplier, field.TypeFloat64, value)
+	}
+	if value, ok := _u.mutation.GroupRateMultiplier(); ok {
+		_spec.SetField(account.FieldGroupRateMultiplier, field.TypeFloat64, value)
+	}
+	if value, ok := _u.mutation.AddedGroupRateMultiplier(); ok {
+		_spec.AddField(account.FieldGroupRateMultiplier, field.TypeFloat64, value)
 	}
 	if value, ok := _u.mutation.Status(); ok {
 		_spec.SetField(account.FieldStatus, field.TypeString, value)

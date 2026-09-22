@@ -202,6 +202,10 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 	if apiKey.GroupID != nil && apiKey.Group != nil {
 		multiplier = s.ResolveUserGroupRateMultiplier(ctx, user.ID, *apiKey.GroupID, apiKey.Group.RateMultiplier)
 	}
+	// Account-side group multiplier is independent from RateMultiplier (which
+	// only changes account cost statistics). A value of 5 offsets a 0.2x group
+	// for this account and restores a 1.0x user charge.
+	multiplier *= account.UserGroupRateMultiplier()
 	// token 倍率叠加高峰因子（token 计费含图片 token，图片按次倍率不受影响）。
 	// 高峰因子按请求级 PricingAt 现算（与利润门 D 同源同刻，跨峰谷请求不中途
 	// 变价）；未装配 PricingAt 的路径回退记录时刻，保持既有行为。不并入上面的

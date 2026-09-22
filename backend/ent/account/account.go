@@ -46,6 +46,8 @@ const (
 	FieldPriority = "priority"
 	// FieldRateMultiplier holds the string denoting the rate_multiplier field in the database.
 	FieldRateMultiplier = "rate_multiplier"
+	// FieldGroupRateMultiplier holds the string denoting the group_rate_multiplier field in the database.
+	FieldGroupRateMultiplier = "group_rate_multiplier"
 	// FieldStatus holds the string denoting the status field in the database.
 	FieldStatus = "status"
 	// FieldErrorMessage holds the string denoting the error_message field in the database.
@@ -146,6 +148,7 @@ var Columns = []string{
 	FieldLoadFactor,
 	FieldPriority,
 	FieldRateMultiplier,
+	FieldGroupRateMultiplier,
 	FieldStatus,
 	FieldErrorMessage,
 	FieldLastUsedAt,
@@ -210,6 +213,8 @@ var (
 	DefaultPriority int
 	// DefaultRateMultiplier holds the default value on creation for the "rate_multiplier" field.
 	DefaultRateMultiplier float64
+	// DefaultGroupRateMultiplier holds the default value on creation for the "group_rate_multiplier" field.
+	DefaultGroupRateMultiplier float64
 	// DefaultStatus holds the default value on creation for the "status" field.
 	DefaultStatus string
 	// StatusValidator is a validator for the "status" field. It is called by the builders before save.
@@ -319,6 +324,11 @@ func ByPriority(opts ...sql.OrderTermOption) OrderOption {
 // ByRateMultiplier orders the results by the rate_multiplier field.
 func ByRateMultiplier(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldRateMultiplier, opts...).ToFunc()
+}
+
+// ByGroupRateMultiplier orders the results by the group_rate_multiplier field.
+func ByGroupRateMultiplier(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldGroupRateMultiplier, opts...).ToFunc()
 }
 
 // ByStatus orders the results by the status field.

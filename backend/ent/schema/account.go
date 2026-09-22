@@ -113,6 +113,12 @@ func (Account) Fields() []ent.Field {
 			SchemaType(map[string]string{dialect.Postgres: "decimal(10,4)"}).
 			Default(1.0),
 
+		// group_rate_multiplier: 账号级分组计费倍率，参与用户/API Key 扣费。
+		// 默认 1.0；例如分组倍率 0.2、账号值 5.0 时最终用户倍率为 1.0。
+		field.Float("group_rate_multiplier").
+			SchemaType(map[string]string{dialect.Postgres: "decimal(10,4)"}).
+			Default(1.0),
+
 		// status: 账户状态，如 "active", "error", "disabled"
 		field.String("status").
 			MaxLen(20).

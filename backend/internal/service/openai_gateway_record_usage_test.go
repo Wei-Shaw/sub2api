@@ -438,6 +438,27 @@ func TestOpenAIGatewayServiceRecordUsage_UsesUserSpecificGroupRate(t *testing.T)
 	require.Equal(t, 1, userRepo.deductCalls)
 }
 
+func TestOpenAIGatewayServiceRecordUsage_AppliesAccountGroupRateMultiplier(t *testing.T) {
+	groupID := int64(13)
+	groupRate := 0.2
+	accountGroupRate := 5.0
+	usage := OpenAIUsage{InputTokens: 15, OutputTokens: 4}
+	usageRepo := &openAIRecordUsageLogRepoStub{inserted: true}
+	userRepo := &openAIRecordUsageUserRepoStub{}
+	svc := newOpenAIRecordUsageServiceForTest(usageRepo, userRepo, &openAIRecordUsageSubRepoStub{}, nil)
+
+	err := svc.RecordUsage(context.Background(), &OpenAIRecordUsageInput{
+		Result: &OpenAIForwardResult{RequestID: "resp_account_group_rate", Usage: usage, Model: "gpt-5.1", Duration: time.Second},
+		APIKey: &APIKey{ID: 1002, GroupID: i64p(groupID), Group: &Group{ID: groupID, RateMultiplier: groupRate}},
+		User:   &User{ID: 2002}, Account: &Account{ID: 3002, GroupRateMultiplier: &accountGroupRate},
+	})
+
+	require.NoError(t, err)
+	require.NotNil(t, usageRepo.lastLog)
+	require.Equal(t, 1.0, usageRepo.lastLog.RateMultiplier)
+	require.Equal(t, usageRepo.lastLog.ActualCost, userRepo.lastAmount)
+}
+
 func TestOpenAIGatewayServiceRecordUsage_PeakRateAffectsTokenModeImageOutputTokens(t *testing.T) {
 	groupID := int64(14)
 	groupRate := 1.0

@@ -1104,6 +1104,8 @@ export default {
       priorityHint: '优先级越小的账号优先使用',
       billingRateMultiplier: '账号计费倍率',
       billingRateMultiplierHint: '0 表示不计费，仅影响账号计费',
+      groupBillingRateMultiplier: '分组计费倍率',
+      groupBillingRateMultiplierHint: '参与用户/API Key 扣费；默认 1。分组 0.2x 时设置 5x 可恢复 1x 原价',
       expiresAt: '过期时间',
       expiresAtHint: '留空表示不过期',
       expiresAtTimezoneHint: '输入按浏览器本地时区（{timezone}）解释。',
