@@ -356,19 +356,12 @@ func applyUsageBilling(ctx context.Context, requestID string, usageLog *UsageLog
 	}
 
 	cmd := buildUsageBillingCommand(requestID, usageLog, p)
-	if cmd == nil || cmd.RequestID == "" {
+	if cmd == nil || cmd.RequestID == "" || repo == nil {
 		if p.SimpleModeKeyRateLimitOnly {
 			return false, ErrSimpleModeKeyRateLimitBillingUnavailable
 		}
-		postUsageBilling(ctx, p, deps)
-		return true, nil
-	}
-	if repo == nil {
-		if p.SimpleModeKeyRateLimitOnly {
-			// The legacy path has no request-id deduplication and must never fall
-			// through to full balance/subscription billing for this opt-in mode.
-			return false, ErrSimpleModeKeyRateLimitBillingUnavailable
-		}
+		// The legacy path is only a fallback for standard billing. Simple mode
+		// must retain request-id deduplication and never bill other balances.
 		postUsageBilling(ctx, p, deps)
 		return true, nil
 	}
@@ -411,7 +404,11 @@ func finalizePostUsageBilling(ctx context.Context, p *postUsageBillingParams, de
 				logger.LegacyPrintf("service.gateway", "Warning: invalidate simple-mode api key rate-limit cache failed for key %d: %v", p.APIKey.ID, err)
 			}
 		}
-	} else if p.IsSubscriptionBill {
+		deps.deferredService.ScheduleLastUsedUpdate(p.Account.ID)
+		return
+	}
+
+	if p.IsSubscriptionBill {
 		if p.Cost.ActualCost > 0 && p.User != nil && p.APIKey != nil && p.APIKey.GroupID != nil {
 			deps.billingCacheService.QueueUpdateSubscriptionUsage(p.User.ID, *p.APIKey.GroupID, p.Cost.ActualCost)
 		}
@@ -419,7 +416,7 @@ func finalizePostUsageBilling(ctx context.Context, p *postUsageBillingParams, de
 		syncBalanceCacheAfterDeduction(ctx, p, deps, result)
 	}
 
-	if !p.SimpleModeKeyRateLimitOnly && p.Cost.ActualCost > 0 && p.APIKey != nil && p.APIKey.HasRateLimits() && deps.billingCacheService != nil {
+	if p.Cost.ActualCost > 0 && p.APIKey != nil && p.APIKey.HasRateLimits() && deps.billingCacheService != nil {
 		deps.billingCacheService.QueueUpdateAPIKeyRateLimitUsage(p.APIKey.ID, p.Cost.ActualCost)
 	}
 
@@ -432,7 +429,7 @@ func finalizePostUsageBilling(ctx context.Context, p *postUsageBillingParams, de
 	//     限制在并发 in-flight 请求数量内（旧实现的异步入队会让超支无限累积直到 worker 处理）
 	//   - DB 异步(flusher_enabled=false):在独立 goroutine 中走 detached context,失败用 ALERT log 触发 oncall 对账
 	//   - flusher_enabled=true:不直写 DB,由 flusher 异步批量刷（markDirty 已在 IncrementUserPlatformQuotaUsage 内部完成）
-	if !p.SimpleModeKeyRateLimitOnly && !p.IsSubscriptionBill && p.Platform != "" && p.Cost.ActualCost > 0 && p.User != nil && deps.userPlatformQuotaRepo != nil && deps.billingCacheService != nil {
+	if !p.IsSubscriptionBill && p.Platform != "" && p.Cost.ActualCost > 0 && p.User != nil && deps.userPlatformQuotaRepo != nil && deps.billingCacheService != nil {
 		if deps.billingCacheService.HasUserPlatformQuotaLimit(ctx, p.User.ID, p.Platform) {
 			deps.billingCacheService.IncrementUserPlatformQuotaUsage(p.User.ID, p.Platform, p.Cost.ActualCost)
 			if deps.cfg == nil || !deps.cfg.Database.UserPlatformQuotaFlusherEnabled {
@@ -461,10 +458,8 @@ func finalizePostUsageBilling(ctx context.Context, p *postUsageBillingParams, de
 
 	// Notification checks run async — all parameters are already captured,
 	// no dependency on the request context or upstream connection.
-	if !p.SimpleModeKeyRateLimitOnly {
-		go notifyBalanceLow(p, deps, result)
-		go notifyAccountQuota(p, deps, result)
-	}
+	go notifyBalanceLow(p, deps, result)
+	go notifyAccountQuota(p, deps, result)
 }
 
 func syncBalanceCacheAfterDeduction(ctx context.Context, p *postUsageBillingParams, deps *billingDeps, result *UsageBillingApplyResult) {
@@ -878,28 +873,8 @@ func (s *GatewayService) recordUsageCore(ctx context.Context, input *recordUsage
 		)
 	}
 
-	if s.cfg != nil && s.cfg.RunMode == config.RunModeSimple {
-		if simpleModeKeyRateLimitBillingEnabled(s.cfg, apiKey) {
-			_, billingErr := applyUsageBilling(ctx, usageLog.RequestID, usageLog, &postUsageBillingParams{
-				Cost:                       cost,
-				User:                       user,
-				APIKey:                     apiKey,
-				Account:                    account,
-				Subscription:               subscription,
-				RequestPayloadHash:         resolveUsageBillingPayloadFingerprint(ctx, input.RequestPayloadHash),
-				IsSubscriptionBill:         false,
-				AccountRateMultiplier:      accountRateMultiplier,
-				APIKeyService:              input.APIKeyService,
-				SimpleModeKeyRateLimitOnly: true,
-			}, s.billingDeps(), s.usageBillingRepo)
-			if billingErr != nil {
-				usageLog.ActualCost = 0
-				writeUsageLogBestEffort(ctx, s.usageLogRepo, usageLog, "service.gateway")
-				return billingErr
-			}
-			writeUsageLogBestEffort(ctx, s.usageLogRepo, usageLog, "service.gateway")
-			return nil
-		}
+	simpleModeKeyRateLimitOnly := simpleModeKeyRateLimitBillingEnabled(s.cfg, apiKey)
+	if s.cfg != nil && s.cfg.RunMode == config.RunModeSimple && !simpleModeKeyRateLimitOnly {
 		writeUsageLogBestEffort(ctx, s.usageLogRepo, usageLog, "service.gateway")
 		logger.LegacyPrintf("service.gateway", "[SIMPLE MODE] Usage recorded (not billed): user=%d, tokens=%d", usageLog.UserID, usageLog.TotalTokens())
 		s.deferredService.ScheduleLastUsedUpdate(account.ID)
@@ -918,16 +893,17 @@ func (s *GatewayService) recordUsageCore(ctx context.Context, input *recordUsage
 	}
 	requestID := usageLog.RequestID
 	_, billingErr := applyUsageBilling(ctx, requestID, usageLog, &postUsageBillingParams{
-		Cost:                  cost,
-		User:                  user,
-		APIKey:                apiKey,
-		Account:               account,
-		Subscription:          subscription,
-		RequestPayloadHash:    resolveUsageBillingPayloadFingerprint(ctx, input.RequestPayloadHash),
-		IsSubscriptionBill:    isSubscriptionBilling,
-		AccountRateMultiplier: accountRateMultiplier,
-		APIKeyService:         input.APIKeyService,
-		Platform:              quotaPlatform,
+		Cost:                       cost,
+		User:                       user,
+		APIKey:                     apiKey,
+		Account:                    account,
+		Subscription:               subscription,
+		RequestPayloadHash:         resolveUsageBillingPayloadFingerprint(ctx, input.RequestPayloadHash),
+		IsSubscriptionBill:         isSubscriptionBilling && !simpleModeKeyRateLimitOnly,
+		AccountRateMultiplier:      accountRateMultiplier,
+		APIKeyService:              input.APIKeyService,
+		Platform:                   quotaPlatform,
+		SimpleModeKeyRateLimitOnly: simpleModeKeyRateLimitOnly,
 	}, s.billingDeps(), s.usageBillingRepo)
 
 	if billingErr != nil {

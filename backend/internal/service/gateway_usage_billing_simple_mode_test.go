@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"errors"
 	"strconv"
 	"testing"
 
@@ -83,14 +84,61 @@ func TestApplyUsageBillingSimpleModeDeduplicatesWithoutBalanceEffects(t *testing
 	}
 }
 
-func TestApplyUsageBillingSimpleModeRejectsMissingRepository(t *testing.T) {
-	p := &postUsageBillingParams{
-		Cost:                       &CostBreakdown{ActualCost: 1},
-		User:                       &User{ID: 7},
-		APIKey:                     &APIKey{ID: 13, RateLimit5h: 10},
-		Account:                    &Account{ID: 9},
-		SimpleModeKeyRateLimitOnly: true,
+func TestApplyUsageBillingSimpleModeRejectsLegacyFallback(t *testing.T) {
+	for _, missing := range []string{"repository", "request_id", "api_key"} {
+		t.Run(missing, func(t *testing.T) {
+			p := &postUsageBillingParams{
+				Cost: &CostBreakdown{ActualCost: 1}, User: &User{ID: 7},
+				APIKey: &APIKey{ID: 13, RateLimit5h: 10}, Account: &Account{ID: 9},
+				SimpleModeKeyRateLimitOnly: true,
+			}
+			var repo UsageBillingRepository = &simpleModeUsageBillingRepoStub{}
+			requestID := "simple-req"
+			switch missing {
+			case "repository":
+				repo = nil
+			case "request_id":
+				requestID = ""
+			case "api_key":
+				p.APIKey = nil
+			}
+			_, err := applyUsageBilling(context.Background(), requestID, nil, p, &billingDeps{deferredService: &DeferredService{}}, repo)
+			require.ErrorIs(t, err, ErrSimpleModeKeyRateLimitBillingUnavailable)
+		})
 	}
-	_, err := applyUsageBilling(context.Background(), "simple-req", nil, p, &billingDeps{deferredService: &DeferredService{}}, nil)
-	require.ErrorIs(t, err, ErrSimpleModeKeyRateLimitBillingUnavailable)
+}
+
+// A failed cache eviction must not fall through into standard-mode charges.
+type simpleModeInvalidationCache struct {
+	BillingCache
+	invalidated []int64
+}
+
+func (c *simpleModeInvalidationCache) InvalidateAPIKeyRateLimit(_ context.Context, keyID int64) error {
+	c.invalidated = append(c.invalidated, keyID)
+	return errors.New("redis unavailable")
+}
+func TestFinalizeSimpleModePreservesLastUsedWithoutFinancialCacheWrites(t *testing.T) {
+	for _, subscription := range []bool{false, true} {
+		t.Run(strconv.FormatBool(subscription), func(t *testing.T) {
+			cache := &simpleModeInvalidationCache{}
+			writes := make(chan cacheWriteTask, 4)
+			deferred := &DeferredService{}
+			groupID := int64(5)
+			p := &postUsageBillingParams{
+				Cost: &CostBreakdown{ActualCost: 3}, User: &User{ID: 7},
+				APIKey:  &APIKey{ID: 13, GroupID: &groupID, RateLimit5h: 10},
+				Account: &Account{ID: 9}, IsSubscriptionBill: subscription,
+				SimpleModeKeyRateLimitOnly: true,
+			}
+			finalizePostUsageBilling(context.Background(), p, &billingDeps{
+				billingCacheService: &BillingCacheService{cache: cache, cacheWriteChan: writes},
+				deferredService:     deferred,
+			}, &UsageBillingApplyResult{Applied: true})
+			require.Equal(t, []int64{13}, cache.invalidated)
+			require.Empty(t, writes, "simple mode must not enqueue balance, subscription or window increments")
+			_, scheduled := deferred.lastUsedUpdates.Load(int64(9))
+			require.True(t, scheduled, "early return must preserve the account activity update")
+		})
+	}
 }
