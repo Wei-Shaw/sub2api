@@ -296,8 +296,6 @@ export default {
     rateLimit1d: 'Daily Limit (USD)',
     rateLimit7d: '7-Day Limit (USD)',
     rateLimitHint: 'Set the maximum spending for this key within each time window. 0 = unlimited.',
-    simpleModeRateLimitsEnabled: 'Simple mode: API-key spending windows are active. Balance and subscription billing remain bypassed.',
-    simpleModeRateLimitsDisabled: 'Simple mode: API-key spending windows are inactive. Requests bypass balance, subscription, and key-window checks.',
     rateLimitUsage: 'Rate Limit Usage',
     resetRateLimitUsage: 'Reset Rate Limit Usage',
     resetRateLimitTitle: 'Confirm Reset Rate Limit',

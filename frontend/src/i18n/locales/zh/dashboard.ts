@@ -301,8 +301,6 @@ export default {
     rateLimit1d: '日限额 (USD)',
     rateLimit7d: '7天限额 (USD)',
     rateLimitHint: '设置此密钥在指定时间窗口内的最大消费额。0 = 无限制。',
-    simpleModeRateLimitsEnabled: '简易模式：API Key 消费窗口已启用。余额和订阅计费仍保持跳过。',
-    simpleModeRateLimitsDisabled: '简易模式：API Key 消费窗口未启用。请求会跳过余额、订阅和密钥窗口检查。',
     rateLimitUsage: '速率限制用量',
     resetRateLimitUsage: '重置速率限制用量',
     resetRateLimitTitle: '确认重置速率限制',

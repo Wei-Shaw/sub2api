@@ -23,19 +23,6 @@
               @update:model-value="onStatusFilterChange"
             />
           </div>
-          <div
-            v-if="isSimpleMode && publicSettings"
-            class="flex items-start gap-2 rounded-lg border px-3 py-2 text-sm"
-            :class="simpleModeKeyRateLimitEnabled
-              ? 'border-emerald-200 bg-emerald-50 text-emerald-800 dark:border-emerald-800 dark:bg-emerald-900/20 dark:text-emerald-200'
-              : 'border-amber-200 bg-amber-50 text-amber-800 dark:border-amber-800 dark:bg-amber-900/20 dark:text-amber-200'"
-            data-test="simple-mode-key-rate-limit-status"
-          >
-            <Icon :name="simpleModeKeyRateLimitEnabled ? 'check' : 'infoCircle'" size="sm" class="mt-0.5 shrink-0" />
-            <span>
-              {{ t(simpleModeKeyRateLimitEnabled ? 'keys.simpleModeRateLimitsEnabled' : 'keys.simpleModeRateLimitsDisabled') }}
-            </span>
-          </div>
           <EndpointPopover
             v-if="publicSettings?.api_base_url || (publicSettings?.custom_endpoints?.length ?? 0) > 0"
             :api-base-url="publicSettings?.api_base_url || ''"
@@ -749,9 +736,6 @@
 
         <!-- Rate Limit Section -->
         <div class="space-y-3">
-          <p v-if="isSimpleMode && publicSettings" class="input-hint" data-test="simple-mode-key-rate-limit-form-status">
-            {{ t(simpleModeKeyRateLimitEnabled ? 'keys.simpleModeRateLimitsEnabled' : 'keys.simpleModeRateLimitsDisabled') }}
-          </p>
           <div class="flex items-center justify-between">
             <label class="input-label mb-0">{{ t('keys.rateLimitSection') }}</label>
             <button
@@ -1217,7 +1201,6 @@
 	import { ref, reactive, computed, watch, onMounted, onUnmounted, type ComponentPublicInstance } from 'vue'
 	import { useI18n } from 'vue-i18n'
 	import { useAppStore } from '@/stores/app'
-	import { useAuthStore } from '@/stores/auth'
 	import { useOnboardingStore } from '@/stores/onboarding'
 	import { useClipboard } from '@/composables/useClipboard'
 import { getPersistedPageSize } from '@/composables/usePersistedPageSize'
@@ -1274,7 +1257,6 @@ interface GroupOption {
 }
 
 const appStore = useAppStore()
-const authStore = useAuthStore()
 const onboardingStore = useOnboardingStore()
 const { copyToClipboard: clipboardCopy } = useClipboard()
 
@@ -1425,10 +1407,6 @@ const selectedKey = ref<ApiKey | null>(null)
 const copiedKeyId = ref<number | null>(null)
 const groupSelectorKeyId = ref<number | null>(null)
 const publicSettings = ref<PublicSettings | null>(null)
-const isSimpleMode = computed(() => authStore.isSimpleMode)
-const simpleModeKeyRateLimitEnabled = computed(
-  () => publicSettings.value?.simple_mode_key_rate_limit_enabled === true
-)
 const dropdownRef = ref<HTMLElement | null>(null)
 const columnDropdownRef = ref<HTMLElement | null>(null)
 const dropdownPosition = ref<{ top?: number; bottom?: number; left: number } | null>(null)

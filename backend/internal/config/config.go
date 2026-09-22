@@ -97,17 +97,16 @@ type Config struct {
 	Concurrency             ConcurrencyConfig             `mapstructure:"concurrency"`
 	TokenRefresh            TokenRefreshConfig            `mapstructure:"token_refresh"`
 	RunMode                 string                        `mapstructure:"run_mode" yaml:"run_mode"`
-	// SimpleModeKeyRateLimitEnabled opts simple mode into API-key 5h/1d/7d
-	// monetary window enforcement. It intentionally does not enable balance,
-	// subscription, platform, or lifetime API-key quota billing.
-	SimpleModeKeyRateLimitEnabled bool               `mapstructure:"simple_mode_key_rate_limit_enabled" yaml:"simple_mode_key_rate_limit_enabled"`
-	Timezone                      string             `mapstructure:"timezone"` // e.g. "Asia/Shanghai", "UTC"
-	Gemini                        GeminiConfig       `mapstructure:"gemini"`
-	Update                        UpdateConfig       `mapstructure:"update"`
-	Idempotency                   IdempotencyConfig  `mapstructure:"idempotency"`
-	BatchImage                    BatchImageConfig   `mapstructure:"batch_image"`
-	ImageStorage                  ImageStorageConfig `mapstructure:"image_storage"`
-	Plugins                       PluginConfig       `mapstructure:"plugins"`
+	Timezone                string                        `mapstructure:"timezone"` // e.g. "Asia/Shanghai", "UTC"
+	Gemini                  GeminiConfig                  `mapstructure:"gemini"`
+	Update                  UpdateConfig                  `mapstructure:"update"`
+	Idempotency             IdempotencyConfig             `mapstructure:"idempotency"`
+	BatchImage              BatchImageConfig              `mapstructure:"batch_image"`
+	ImageStorage            ImageStorageConfig            `mapstructure:"image_storage"`
+	Plugins                 PluginConfig                  `mapstructure:"plugins"`
+
+	// Enforce only API-key spending windows in simple mode.
+	SimpleModeKeyRateLimitEnabled bool `mapstructure:"simple_mode_key_rate_limit_enabled" yaml:"simple_mode_key_rate_limit_enabled"`
 }
 
 // PluginConfig 控制管理员手动上传的本地进程插件。
@@ -2592,7 +2591,6 @@ func setDefaults() {
 // environment. Any subsystem that wants a richer default still applies it after
 // unmarshal, exactly as before.
 func setEnvReachableDefaults() {
-	viper.SetDefault("simple_mode_key_rate_limit_enabled", false)
 	viper.SetDefault("gateway.forced_codex_instructions_template_file", "")
 	viper.SetDefault("gateway.session_idle_timeout_minutes", 0)
 	viper.SetDefault("gateway.user_message_queue.mode", "")
