@@ -1398,7 +1398,7 @@
               />
             </div>
           </div>
-          <p v-if="!cnSupportsNativeResponses(form.platform)" class="input-hint">
+          <p v-if="!cnSupportsNativeResponses(form.platform, accountMode)" class="input-hint">
             {{ t('admin.accounts.cnProviders.apiProtocol.responsesFallbackDesc') }}
           </p>
         </div>
@@ -4188,14 +4188,14 @@ const adaptivePresetPlatform = computed<CnProviderPlatform | 'opencode_go'>(() =
   if (form.platform === 'opencode_go') return 'opencode_go'
   return cnPresetPlatform.value
 })
-// 当前平台可选的协议档（responses 仅 deepseek / kimi）。
+// 当前平台/账号类型可选协议；自适应模式复用相同的原生协议能力。
 const cnProtocolOptions = computed<Array<{ value: CnApiProtocol; labelKey: string }>>(() => {
   const opts: Array<{ value: CnApiProtocol; labelKey: string }> = [
     { value: 'adaptive', labelKey: 'adaptive' },
     { value: 'chat_completions', labelKey: 'chatCompletions' },
     { value: 'anthropic', labelKey: 'anthropic' }
   ]
-  if (cnSupportsNativeResponses(form.platform)) {
+  if (cnSupportsNativeResponses(form.platform, accountMode.value)) {
     opts.push({ value: 'responses', labelKey: 'responses' })
   }
   return opts
@@ -4205,7 +4205,7 @@ const cnAdaptiveProtocolOptions = computed<Array<{ value: CnNativeApiProtocol; l
     { value: 'chat_completions', labelKey: 'chatCompletions' },
     { value: 'anthropic', labelKey: 'anthropic' }
   ]
-  if (cnSupportsNativeResponses(form.platform)) opts.push({ value: 'responses', labelKey: 'responses' })
+  if (cnSupportsNativeResponses(form.platform, accountMode.value)) opts.push({ value: 'responses', labelKey: 'responses' })
   return opts
 })
 
@@ -4293,6 +4293,10 @@ watch(openCodeAccountMode, (mode, previousMode) => {
 })
 watch(accountMode, (mode, previousMode) => {
   if (!isMultiProtocolPlatform.value || isOpenCodeGoPlatform.value) return
+  if (apiProtocol.value === 'responses' && !cnSupportsNativeResponses(form.platform, mode)) {
+    apiProtocol.value = 'chat_completions'
+    return
+  }
   if (apiProtocol.value === 'adaptive') {
     const previousDefaults = defaultCNAdaptiveBaseUrls(adaptivePresetPlatform.value, previousMode)
     const nextDefaults = defaultCNAdaptiveBaseUrls(adaptivePresetPlatform.value, mode)

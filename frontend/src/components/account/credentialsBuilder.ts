@@ -262,7 +262,7 @@ export type CnAccountMode = 'payg' | 'coding'
 export type OpenCodeAccountMode = 'zen' | 'go'
 export type CnProviderPlatform = 'kimi' | 'zhipu' | 'deepseek' | 'minimax'
 
-/** deepseek / kimi / minimax 支持原生 responses；adaptive 会按入站协议选择原生端点。 */
+/** 自适应模式按入站协议使用当前平台和账号类型支持的原生端点。 */
 export type CnApiProtocol = 'adaptive' | 'chat_completions' | 'anthropic' | 'responses'
 export type CnNativeApiProtocol = Exclude<CnApiProtocol, 'adaptive'>
 
@@ -270,8 +270,9 @@ export function isCNProviderPlatform(platform: string): platform is CnProviderPl
   return platform === 'kimi' || platform === 'zhipu' || platform === 'deepseek' || platform === 'minimax'
 }
 
-/** DeepSeek、Kimi 与 MiniMax 提供原生 Responses 端点。 */
-export function cnSupportsNativeResponses(platform: string): boolean {
+/** 智谱原生 Responses 限 Coding Plan；其他已支持平台保持原有行为。 */
+export function cnSupportsNativeResponses(platform: string, mode?: string): boolean {
+  if (platform === 'zhipu') return mode === 'coding'
   return platform === 'deepseek' || platform === 'kimi' || platform === 'minimax' || platform === 'opencode_go'
 }
 
@@ -383,7 +384,8 @@ export const CN_BASE_URL_PRESETS: Record<CnProviderPlatform, CnBaseUrlPreset[]> 
     { mode: 'payg', protocol: 'chat_completions', label: 'GLM PaaS', url: 'https://open.bigmodel.cn/api/paas/v4' },
     { mode: 'payg', protocol: 'anthropic', label: 'GLM Anthropic', url: 'https://open.bigmodel.cn/api/anthropic' },
     { mode: 'coding', protocol: 'chat_completions', label: 'GLM Coding', url: 'https://open.bigmodel.cn/api/coding/paas/v4' },
-    { mode: 'coding', protocol: 'anthropic', label: 'GLM Coding Anthropic', url: 'https://open.bigmodel.cn/api/anthropic' }
+    { mode: 'coding', protocol: 'anthropic', label: 'GLM Coding Anthropic', url: 'https://open.bigmodel.cn/api/anthropic' },
+    { mode: 'coding', protocol: 'responses', label: 'GLM Coding Responses', url: 'https://open.bigmodel.cn/api/v1' }
   ],
   deepseek: [
     { mode: 'payg', protocol: 'chat_completions', label: 'DeepSeek', url: 'https://api.deepseek.com' },
@@ -412,6 +414,9 @@ export function defaultCNBaseUrl(
   mode: CnAccountMode | OpenCodeAccountMode,
   protocol: CnApiProtocol = 'chat_completions'
 ): string {
+  if (platform === 'zhipu' && protocol === 'responses') {
+    return mode === 'coding' ? 'https://open.bigmodel.cn/api/v1' : ''
+  }
   if (protocol === 'anthropic') {
     switch (platform) {
       case 'kimi':
@@ -455,7 +460,7 @@ export function defaultCNAdaptiveBaseUrls(
   return {
     chat_completions: defaultCNBaseUrl(platform, mode, 'chat_completions'),
     anthropic: defaultCNBaseUrl(platform, mode, 'anthropic'),
-    responses: cnSupportsNativeResponses(platform) ? defaultCNBaseUrl(platform, mode, 'responses') : ''
+    responses: cnSupportsNativeResponses(platform, mode) ? defaultCNBaseUrl(platform, mode, 'responses') : ''
   }
 }
 

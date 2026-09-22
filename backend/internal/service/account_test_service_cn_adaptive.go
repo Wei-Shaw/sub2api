@@ -44,7 +44,7 @@ func (s *AccountTestService) testCNProviderAdaptiveConnection(c *gin.Context, ac
 		return err
 	}
 
-	if account.SupportsNativeCNResponses() {
+	if account.UsesNativeCNResponses() {
 		if err := s.testCNProviderAdaptiveResponsesConnection(c, account, testModelID, authToken); err != nil {
 			return err
 		}

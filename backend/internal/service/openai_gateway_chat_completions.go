@@ -150,12 +150,12 @@ func (s *OpenAIGatewayService) forwardAsChatCompletions(
 
 	// 自适应账号的标准 Chat Completions 入站使用供应商原生 CC 端点。
 	// Responses 形状下，DeepSeek / Kimi 继续走下方原生 Responses 链；GLM
-	// 没有 Responses 端点，先转换成 Chat Completions 再直转。
+	// 保留原有行为，先转换成 Chat Completions 再直转。
 	if account.IsAdaptiveAPIProtocol() && !account.IsOpenCodeGo() {
 		if !isResponsesShape {
 			return s.forwardAsRawChatCompletions(ctx, c, account, body, defaultMappedModel)
 		}
-		if !account.SupportsNativeCNResponses() {
+		if !account.UsesNativeCNResponses() {
 			var responsesReq apicompat.ResponsesRequest
 			if err := json.Unmarshal(body, &responsesReq); err != nil {
 				return nil, fmt.Errorf("parse responses-shaped chat completions request: %w", err)
