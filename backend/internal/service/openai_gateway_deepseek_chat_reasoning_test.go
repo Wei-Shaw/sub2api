@@ -87,6 +87,66 @@ func TestEnsureDeepSeekChatReasoningPlaceholders(t *testing.T) {
 	})
 }
 
+// OpenCode Zen / Go 把 deepseek-* 模型转发给 DeepSeek，同一条 thinking-mode 400
+// 会原样回吐，占位注入必须覆盖这条链路；同账号下的非 DeepSeek 模型不受影响。
+func TestEnsureDeepSeekChatReasoningPlaceholders_OpenCodeZenUpstream(t *testing.T) {
+	openCodeGo := &Account{
+		ID:          24,
+		Name:        "opencode-go",
+		Platform:    PlatformOpenCodeGo,
+		Type:        AccountTypeAPIKey,
+		Credentials: map[string]any{"api_key": "sk-test", "base_url": DefaultOpenCodeGoBaseURL},
+	}
+	openAIViaZen := &Account{
+		ID:          25,
+		Platform:    PlatformOpenAI,
+		Type:        AccountTypeAPIKey,
+		Credentials: map[string]any{"api_key": "sk-test", "base_url": DefaultOpenCodeZenBaseURL},
+	}
+	thirdPartyDeepSeekName := &Account{
+		ID:          26,
+		Platform:    PlatformOpenAI,
+		Type:        AccountTypeAPIKey,
+		Credentials: map[string]any{"api_key": "sk-test", "base_url": "http://upstream.example"},
+	}
+
+	missingFor := func(model string) []byte {
+		return []byte(`{"model":"` + model + `","messages":[{"role":"user","content":"hi"},{"role":"assistant","content":"","tool_calls":[{"id":"call_1","type":"function","function":{"name":"exec","arguments":"{}"}}]},{"role":"tool","tool_call_id":"call_1","content":"ok"}]}`)
+	}
+
+	t.Run("opencode_go_deepseek_model_fills_empty_assistant", func(t *testing.T) {
+		body := missingFor("deepseek-v4.1-flash")
+		got := ensureDeepSeekChatReasoningPlaceholders(openCodeGo, body)
+		require.Equal(t, deepSeekChatReasoningPlaceholderText, gjson.GetBytes(got, "messages.1.reasoning_content").String())
+		require.False(t, gjson.GetBytes(got, "messages.0.reasoning_content").Exists())
+		require.False(t, gjson.GetBytes(got, "messages.2.reasoning_content").Exists())
+	})
+
+	t.Run("opencode_go_non_deepseek_model_unchanged", func(t *testing.T) {
+		body := missingFor("glm-5.3")
+		got := ensureDeepSeekChatReasoningPlaceholders(openCodeGo, body)
+		require.Equal(t, string(body), string(got))
+	})
+
+	t.Run("opencode_prefixed_model_id_fills_empty_assistant", func(t *testing.T) {
+		body := missingFor("opencode-go/DeepSeek-V4-Pro")
+		got := ensureDeepSeekChatReasoningPlaceholders(openCodeGo, body)
+		require.Equal(t, deepSeekChatReasoningPlaceholderText, gjson.GetBytes(got, "messages.1.reasoning_content").String())
+	})
+
+	t.Run("openai_platform_pointed_at_zen_host_fills_empty_assistant", func(t *testing.T) {
+		body := missingFor("deepseek-v4-flash")
+		got := ensureDeepSeekChatReasoningPlaceholders(openAIViaZen, body)
+		require.Equal(t, deepSeekChatReasoningPlaceholderText, gjson.GetBytes(got, "messages.1.reasoning_content").String())
+	})
+
+	t.Run("unrelated_upstream_with_deepseek_model_name_unchanged", func(t *testing.T) {
+		body := missingFor("deepseek-v4.1-flash")
+		got := ensureDeepSeekChatReasoningPlaceholders(thirdPartyDeepSeekName, body)
+		require.Equal(t, string(body), string(got))
+	})
+}
+
 type reasoningHitCache struct {
 	stubGatewayCache
 	values map[string]string
