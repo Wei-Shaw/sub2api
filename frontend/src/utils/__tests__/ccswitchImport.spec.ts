@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   GROK_CC_SWITCH_MODEL,
+  DEEPSEEK_CC_SWITCH_CODEX_MODEL,
   OPENAI_CC_SWITCH_CODEX_MODEL,
   buildCcSwitchImportDeeplink
 } from '@/utils/ccswitchImport'
@@ -18,6 +19,32 @@ describe('ccswitchImport utils', () => {
 
   it('defaults Grok Build imports to the current Grok model', () => {
     expect(GROK_CC_SWITCH_MODEL).toBe('grok-4.5')
+  })
+
+  it('uses a group-specific model override for Codex imports', () => {
+    const params = paramsFromDeeplink(
+      buildCcSwitchImportDeeplink({
+        ...baseInput,
+        platform: 'openai',
+        clientType: 'claude',
+        defaultModel: 'custom-codex-model'
+      })
+    )
+
+    expect(params.get('model')).toBe('custom-codex-model')
+  })
+
+  it('imports DeepSeek groups into Codex with the configured/default model', () => {
+    const params = paramsFromDeeplink(
+      buildCcSwitchImportDeeplink({
+        ...baseInput,
+        platform: 'deepseek',
+        clientType: 'claude'
+      })
+    )
+
+    expect(params.get('app')).toBe('codex')
+    expect(params.get('model')).toBe(DEEPSEEK_CC_SWITCH_CODEX_MODEL)
   })
 
   const baseInput = {

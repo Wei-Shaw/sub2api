@@ -2,6 +2,7 @@ import type { GroupPlatform } from '@/types'
 
 export const OPENAI_CC_SWITCH_CODEX_MODEL = 'gpt-5.5'
 export const GROK_CC_SWITCH_MODEL = 'grok-4.5'
+export const DEEPSEEK_CC_SWITCH_CODEX_MODEL = 'deepseek-v4-1-flash-260910'
 
 export type CcSwitchClientType = 'claude' | 'gemini'
 
@@ -18,6 +19,7 @@ export interface CcSwitchImportDeeplinkInput {
   providerName: string
   apiKey: string
   usageScript: string
+  defaultModel?: string | null
 }
 
 function withV1Endpoint(baseUrl: string): string {
@@ -28,8 +30,10 @@ function withV1Endpoint(baseUrl: string): string {
 export function resolveCcSwitchImportConfig(
   platform: GroupPlatform | undefined | null,
   clientType: CcSwitchClientType,
-  baseUrl: string
+  baseUrl: string,
+  defaultModel?: string | null
 ): CcSwitchImportConfig {
+  const configuredModel = defaultModel?.trim()
   switch (platform || 'anthropic') {
     case 'antigravity':
       return {
@@ -40,7 +44,7 @@ export function resolveCcSwitchImportConfig(
       return {
         app: 'codex',
         endpoint: baseUrl,
-        model: OPENAI_CC_SWITCH_CODEX_MODEL
+        model: configuredModel || OPENAI_CC_SWITCH_CODEX_MODEL
       }
     case 'gemini':
       return {
@@ -51,7 +55,13 @@ export function resolveCcSwitchImportConfig(
       return {
         app: 'grokbuild',
         endpoint: withV1Endpoint(baseUrl),
-        model: GROK_CC_SWITCH_MODEL
+        model: configuredModel || GROK_CC_SWITCH_MODEL
+      }
+    case 'deepseek':
+      return {
+        app: 'codex',
+        endpoint: baseUrl,
+        model: configuredModel || DEEPSEEK_CC_SWITCH_CODEX_MODEL
       }
     default:
       return {
@@ -62,7 +72,12 @@ export function resolveCcSwitchImportConfig(
 }
 
 export function buildCcSwitchImportDeeplink(input: CcSwitchImportDeeplinkInput): string {
-  const config = resolveCcSwitchImportConfig(input.platform, input.clientType, input.baseUrl)
+  const config = resolveCcSwitchImportConfig(
+    input.platform,
+    input.clientType,
+    input.baseUrl,
+    input.defaultModel
+  )
   const entries: [string, string][] = [
     ['resource', 'provider'],
     ['app', config.app],

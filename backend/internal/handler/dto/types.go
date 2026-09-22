@@ -144,6 +144,8 @@ type Group struct {
 	AllowMessagesDispatch bool `json:"allow_messages_dispatch"`
 	// OpenAI Live 接口开关
 	AllowLive bool `json:"allow_live"`
+	// CCS 一键导入时使用的分组默认模型；为空时使用平台默认模型。
+	CCSDefaultModel string `json:"ccs_default_model,omitempty"`
 
 	// 账号过滤控制（仅 OpenAI/Antigravity 平台有效）
 	RequireOAuthOnly  bool `json:"require_oauth_only"`
@@ -192,6 +194,8 @@ type AdminGroup struct {
 	ModelAllowlist              service.GroupModelAllowlist              `json:"model_allowlist"`
 	// 固定账号获取 Codex Model Manifest 配置（仅 openai 平台使用）。
 	CodexModelsManifestConfig domain.GroupCodexModelsManifestConfig `json:"codex_models_manifest_config"`
+	// CCS 一键导入时使用的分组默认模型；为空时使用平台默认模型。
+	CCSDefaultModel string `json:"ccs_default_model,omitempty"`
 
 	// 支持的模型系列（仅 antigravity 平台使用）
 	SupportedModelScopes    []string       `json:"supported_model_scopes"`

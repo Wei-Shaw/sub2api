@@ -1101,6 +1101,20 @@ func (_u *GroupUpdate) SetNillableCodexModelsManifestConfig(v *domain.GroupCodex
 	return _u
 }
 
+// SetCcsDefaultModel sets the "ccs_default_model" field.
+func (_u *GroupUpdate) SetCcsDefaultModel(v string) *GroupUpdate {
+	_u.mutation.SetCcsDefaultModel(v)
+	return _u
+}
+
+// SetNillableCcsDefaultModel sets the "ccs_default_model" field if the given value is not nil.
+func (_u *GroupUpdate) SetNillableCcsDefaultModel(v *string) *GroupUpdate {
+	if v != nil {
+		_u.SetCcsDefaultModel(*v)
+	}
+	return _u
+}
+
 // SetRpmLimit sets the "rpm_limit" field.
 func (_u *GroupUpdate) SetRpmLimit(v int) *GroupUpdate {
 	_u.mutation.ResetRpmLimit()
@@ -1538,6 +1552,11 @@ func (_u *GroupUpdate) check() error {
 			return &ValidationError{Name: "default_mapped_model", err: fmt.Errorf(`ent: validator failed for field "Group.default_mapped_model": %w`, err)}
 		}
 	}
+	if v, ok := _u.mutation.CcsDefaultModel(); ok {
+		if err := group.CcsDefaultModelValidator(v); err != nil {
+			return &ValidationError{Name: "ccs_default_model", err: fmt.Errorf(`ent: validator failed for field "Group.ccs_default_model": %w`, err)}
+		}
+	}
 	if v, ok := _u.mutation.MaxReasoningEffort(); ok {
 		if err := group.MaxReasoningEffortValidator(v); err != nil {
 			return &ValidationError{Name: "max_reasoning_effort", err: fmt.Errorf(`ent: validator failed for field "Group.max_reasoning_effort": %w`, err)}
@@ -1881,6 +1900,9 @@ func (_u *GroupUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	}
 	if value, ok := _u.mutation.CodexModelsManifestConfig(); ok {
 		_spec.SetField(group.FieldCodexModelsManifestConfig, field.TypeJSON, value)
+	}
+	if value, ok := _u.mutation.CcsDefaultModel(); ok {
+		_spec.SetField(group.FieldCcsDefaultModel, field.TypeString, value)
 	}
 	if value, ok := _u.mutation.RpmLimit(); ok {
 		_spec.SetField(group.FieldRpmLimit, field.TypeInt, value)
@@ -3295,6 +3317,20 @@ func (_u *GroupUpdateOne) SetNillableCodexModelsManifestConfig(v *domain.GroupCo
 	return _u
 }
 
+// SetCcsDefaultModel sets the "ccs_default_model" field.
+func (_u *GroupUpdateOne) SetCcsDefaultModel(v string) *GroupUpdateOne {
+	_u.mutation.SetCcsDefaultModel(v)
+	return _u
+}
+
+// SetNillableCcsDefaultModel sets the "ccs_default_model" field if the given value is not nil.
+func (_u *GroupUpdateOne) SetNillableCcsDefaultModel(v *string) *GroupUpdateOne {
+	if v != nil {
+		_u.SetCcsDefaultModel(*v)
+	}
+	return _u
+}
+
 // SetRpmLimit sets the "rpm_limit" field.
 func (_u *GroupUpdateOne) SetRpmLimit(v int) *GroupUpdateOne {
 	_u.mutation.ResetRpmLimit()
@@ -3745,6 +3781,11 @@ func (_u *GroupUpdateOne) check() error {
 			return &ValidationError{Name: "default_mapped_model", err: fmt.Errorf(`ent: validator failed for field "Group.default_mapped_model": %w`, err)}
 		}
 	}
+	if v, ok := _u.mutation.CcsDefaultModel(); ok {
+		if err := group.CcsDefaultModelValidator(v); err != nil {
+			return &ValidationError{Name: "ccs_default_model", err: fmt.Errorf(`ent: validator failed for field "Group.ccs_default_model": %w`, err)}
+		}
+	}
 	if v, ok := _u.mutation.MaxReasoningEffort(); ok {
 		if err := group.MaxReasoningEffortValidator(v); err != nil {
 			return &ValidationError{Name: "max_reasoning_effort", err: fmt.Errorf(`ent: validator failed for field "Group.max_reasoning_effort": %w`, err)}
@@ -4105,6 +4146,9 @@ func (_u *GroupUpdateOne) sqlSave(ctx context.Context) (_node *Group, err error)
 	}
 	if value, ok := _u.mutation.CodexModelsManifestConfig(); ok {
 		_spec.SetField(group.FieldCodexModelsManifestConfig, field.TypeJSON, value)
+	}
+	if value, ok := _u.mutation.CcsDefaultModel(); ok {
+		_spec.SetField(group.FieldCcsDefaultModel, field.TypeString, value)
 	}
 	if value, ok := _u.mutation.RpmLimit(); ok {
 		_spec.SetField(group.FieldRpmLimit, field.TypeInt, value)

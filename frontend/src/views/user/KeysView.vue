@@ -2048,7 +2048,8 @@ const executeCcsImport = (row: ApiKey, clientType: CcSwitchClientType) => {
     clientType,
     providerName,
     apiKey: row.key,
-    usageScript
+    usageScript,
+    defaultModel: row.group?.ccs_default_model
   })
 
   try {

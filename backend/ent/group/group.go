@@ -134,6 +134,8 @@ const (
 	FieldModelAllowlist = "model_allowlist"
 	// FieldCodexModelsManifestConfig holds the string denoting the codex_models_manifest_config field in the database.
 	FieldCodexModelsManifestConfig = "codex_models_manifest_config"
+	// FieldCcsDefaultModel holds the string denoting the ccs_default_model field in the database.
+	FieldCcsDefaultModel = "ccs_default_model"
 	// FieldRpmLimit holds the string denoting the rpm_limit field in the database.
 	FieldRpmLimit = "rpm_limit"
 	// FieldMaxReasoningEffort holds the string denoting the max_reasoning_effort field in the database.
@@ -282,6 +284,7 @@ var Columns = []string{
 	FieldMessagesDispatchModelConfig,
 	FieldModelAllowlist,
 	FieldCodexModelsManifestConfig,
+	FieldCcsDefaultModel,
 	FieldRpmLimit,
 	FieldMaxReasoningEffort,
 	FieldMaxReasoningEffortOverLimit,
@@ -416,6 +419,10 @@ var (
 	DefaultModelAllowlist domain.GroupModelAllowlist
 	// DefaultCodexModelsManifestConfig holds the default value on creation for the "codex_models_manifest_config" field.
 	DefaultCodexModelsManifestConfig domain.GroupCodexModelsManifestConfig
+	// DefaultCcsDefaultModel holds the default value on creation for the "ccs_default_model" field.
+	DefaultCcsDefaultModel string
+	// CcsDefaultModelValidator is a validator for the "ccs_default_model" field. It is called by the builders before save.
+	CcsDefaultModelValidator func(string) error
 	// DefaultRpmLimit holds the default value on creation for the "rpm_limit" field.
 	DefaultRpmLimit int
 	// DefaultMaxReasoningEffort holds the default value on creation for the "max_reasoning_effort" field.
@@ -702,6 +709,11 @@ func ByRequirePrivacySet(opts ...sql.OrderTermOption) OrderOption {
 // ByDefaultMappedModel orders the results by the default_mapped_model field.
 func ByDefaultMappedModel(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldDefaultMappedModel, opts...).ToFunc()
+}
+
+// ByCcsDefaultModel orders the results by the ccs_default_model field.
+func ByCcsDefaultModel(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldCcsDefaultModel, opts...).ToFunc()
 }
 
 // ByRpmLimit orders the results by the rpm_limit field.
