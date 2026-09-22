@@ -79,12 +79,8 @@
 import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import Icon from '@/components/icons/Icon.vue'
-
-interface DatePreset {
-  labelKey: string
-  value: string
-  getRange: () => { start: string; end: string }
-}
+import { dateRangePresets as presets, type DatePreset } from '@/utils/dateRangePresets'
+import { formatDateLocalInput as formatDateToString } from '@/utils/format'
 
 interface Props {
   startDate: string
@@ -108,15 +104,6 @@ const localStartDate = ref(props.startDate)
 const localEndDate = ref(props.endDate)
 const activePreset = ref<string | null>('last24Hours')
 
-const today = computed(() => {
-  // Use local timezone to avoid UTC timezone issues
-  const now = new Date()
-  const year = now.getFullYear()
-  const month = String(now.getMonth() + 1).padStart(2, '0')
-  const day = String(now.getDate()).padStart(2, '0')
-  return `${year}-${month}-${day}`
-})
-
 // Tomorrow's date - used for max date to handle timezone differences
 // When user is in a timezone behind the server, "today" on server might be "tomorrow" locally
 const tomorrow = computed(() => {
@@ -124,99 +111,6 @@ const tomorrow = computed(() => {
   d.setDate(d.getDate() + 1)
   return formatDateToString(d)
 })
-
-// Helper function to format date to YYYY-MM-DD using local timezone
-const formatDateToString = (date: Date): string => {
-  const year = date.getFullYear()
-  const month = String(date.getMonth() + 1).padStart(2, '0')
-  const day = String(date.getDate()).padStart(2, '0')
-  return `${year}-${month}-${day}`
-}
-
-const presets: DatePreset[] = [
-  {
-    labelKey: 'dates.today',
-    value: 'today',
-    getRange: () => {
-      const t = today.value
-      return { start: t, end: t }
-    }
-  },
-  {
-    labelKey: 'dates.yesterday',
-    value: 'yesterday',
-    getRange: () => {
-      const d = new Date()
-      d.setDate(d.getDate() - 1)
-      const yesterday = formatDateToString(d)
-      return { start: yesterday, end: yesterday }
-    }
-  },
-  {
-    labelKey: 'dates.last24Hours',
-    value: 'last24Hours',
-    getRange: () => {
-      const end = new Date()
-      const start = new Date(end.getTime() - 24 * 60 * 60 * 1000)
-      return {
-        start: formatDateToString(start),
-        end: formatDateToString(end)
-      }
-    }
-  },
-  {
-    labelKey: 'dates.last7Days',
-    value: '7days',
-    getRange: () => {
-      const end = today.value
-      const d = new Date()
-      d.setDate(d.getDate() - 6)
-      const start = formatDateToString(d)
-      return { start, end }
-    }
-  },
-  {
-    labelKey: 'dates.last14Days',
-    value: '14days',
-    getRange: () => {
-      const end = today.value
-      const d = new Date()
-      d.setDate(d.getDate() - 13)
-      const start = formatDateToString(d)
-      return { start, end }
-    }
-  },
-  {
-    labelKey: 'dates.last30Days',
-    value: '30days',
-    getRange: () => {
-      const end = today.value
-      const d = new Date()
-      d.setDate(d.getDate() - 29)
-      const start = formatDateToString(d)
-      return { start, end }
-    }
-  },
-  {
-    labelKey: 'dates.thisMonth',
-    value: 'thisMonth',
-    getRange: () => {
-      const now = new Date()
-      const start = formatDateToString(new Date(now.getFullYear(), now.getMonth(), 1))
-      return { start, end: today.value }
-    }
-  },
-  {
-    labelKey: 'dates.lastMonth',
-    value: 'lastMonth',
-    getRange: () => {
-      const now = new Date()
-      const start = formatDateToString(new Date(now.getFullYear(), now.getMonth() - 1, 1))
-      const end = formatDateToString(new Date(now.getFullYear(), now.getMonth(), 0))
-      return { start, end }
-    }
-  }
-]
 
 const displayValue = computed(() => {
   if (activePreset.value) {

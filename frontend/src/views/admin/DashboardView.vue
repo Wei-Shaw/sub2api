@@ -290,7 +290,7 @@
                   <Select
                     v-model="granularity"
                     :options="granularityOptions"
-                    @change="loadChartData"
+                    @change="onGranularityChange"
                   />
                 </div>
               </div>
@@ -345,6 +345,8 @@ import { ref, computed, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
 import { useAppStore } from '@/stores/app'
+import { useAuthStore } from '@/stores/auth'
+import { loadAdminDashboardPreferences, saveAdminDashboardPreferences } from '@/utils/adminDashboardPreferences'
 
 const { t } = useI18n()
 import { adminAPI } from '@/api/admin'
@@ -388,6 +390,7 @@ ChartJS.register(
 )
 
 const appStore = useAppStore()
+const authStore = useAuthStore()
 const router = useRouter()
 const { canUseBatchImage, refreshBatchImageAccess } = useBatchImageAccess()
 const stats = ref<DashboardStats | null>(null)
@@ -425,10 +428,23 @@ const getLast24HoursRangeDates = (): { start: string; end: string } => {
 }
 
 // Date range
-const granularity = ref<'day' | 'hour'>('hour')
+const preferenceUserId = authStore.user?.id
+const savedPreferences = loadAdminDashboardPreferences(preferenceUserId)
+const granularity = ref<'day' | 'hour'>(savedPreferences?.granularity ?? 'hour')
 const defaultRange = getLast24HoursRangeDates()
-const startDate = ref(defaultRange.start)
-const endDate = ref(defaultRange.end)
+const startDate = ref(savedPreferences?.startDate ?? defaultRange.start)
+const endDate = ref(savedPreferences?.endDate ?? defaultRange.end)
+const datePreset = ref<string | null>(savedPreferences ? savedPreferences.preset : 'last24Hours')
+
+const savePreferences = () => {
+  if (authStore.user?.id !== preferenceUserId) return
+  saveAdminDashboardPreferences(preferenceUserId, {
+    startDate: startDate.value,
+    endDate: endDate.value,
+    preset: datePreset.value,
+    granularity: granularity.value
+  })
+}
 
 // Granularity options for Select component
 const granularityOptions = computed(() => [
@@ -640,6 +656,13 @@ const onDateRangeChange = (range: {
     granularity.value = 'day'
   }
 
+  datePreset.value = range.preset
+  savePreferences()
+  loadChartData()
+}
+
+const onGranularityChange = () => {
+  savePreferences()
   loadChartData()
 }
 
