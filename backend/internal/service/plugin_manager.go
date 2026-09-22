@@ -46,6 +46,11 @@ type PluginManager struct {
 	cfg       *config.Config
 	hostInfo  PluginHostInfo
 	installer *PluginPackageInstaller
+	// kvStore 为运行中的插件提供通用宿主键值存储；为 nil 时不向插件暴露宿主服务。
+	kvStore PluginKVStore
+	// accountDirectory 为声明了对应能力的插件提供账号目录与出站身份解析（敏感能力）；
+	// 通过 SetAccountDirectory 在启动装配阶段注入，为 nil 时插件拿不到该能力。
+	accountDirectory PluginAccountDirectory
 
 	operationMu        sync.Mutex
 	mu                 sync.Mutex
@@ -57,13 +62,14 @@ type PluginManager struct {
 	route              atomic.Pointer[pluginRoute]
 }
 
-func NewPluginManager(repo PluginRepository, encryptor SecretEncryptor, cfg *config.Config, hostInfo PluginHostInfo) *PluginManager {
+func NewPluginManager(repo PluginRepository, encryptor SecretEncryptor, cfg *config.Config, hostInfo PluginHostInfo, kvStore PluginKVStore) *PluginManager {
 	return &PluginManager{
 		repo:               repo,
 		encryptor:          encryptor,
 		cfg:                cfg,
 		hostInfo:           hostInfo,
 		installer:          NewPluginPackageInstaller(cfg, hostInfo),
+		kvStore:            kvStore,
 		runtimes:           make(map[int64]*pluginRuntime),
 		localInstallations: make(map[int64]*PluginInstallation),
 	}
@@ -813,6 +819,26 @@ func (m *PluginManager) Test(ctx context.Context, id int64) (*pluginv1.TestConfi
 	return runtime.api.TestConfig(testCtx, &pluginv1.TestConfigRequest{ConfigJson: configJSON})
 }
 
+// Status returns the plugin's passive runtime status (its Health response, including
+// any status_json blob) for the config UI. Unlike Test it never applies config,
+// starts a temporary runtime, or reaches upstream — a plugin that is not currently
+// running simply reports "not running" with no status blob. This makes it safe to
+// serve from a lightweight, ungated, read-only endpoint used for status polling.
+func (m *PluginManager) Status(ctx context.Context, id int64) (*pluginv1.HealthResponse, error) {
+	if _, err := m.repo.GetByID(ctx, id); err != nil {
+		return nil, err
+	}
+	m.mu.Lock()
+	runtime := m.runtimes[id]
+	m.mu.Unlock()
+	if runtime == nil {
+		return &pluginv1.HealthResponse{Healthy: false, Message: "插件未运行"}, nil
+	}
+	statusCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+	return runtime.status(statusCtx)
+}
+
 type pluginUIAssetClaims struct {
 	Version  int   `json:"version"`
 	PluginID int64 `json:"plugin_id"`
@@ -1018,7 +1044,55 @@ func (m *PluginManager) newRuntime(ctx context.Context, installation *PluginInst
 		return nil, err
 	}
 	timeout := time.Duration(m.cfg.Plugins.StartTimeoutSeconds) * time.Second
-	return startPluginRuntime(ctx, installation, timeout, socketDir)
+	return startPluginRuntime(ctx, installation, timeout, socketDir, m.buildHostServices(installation))
+}
+
+// SetAccountDirectory 注入账号目录实现（敏感能力）。仅在启动装配阶段调用一次，
+// 早于 Start，因此运行期读取无需额外同步。
+func (m *PluginManager) SetAccountDirectory(directory PluginAccountDirectory) {
+	m.mu.Lock()
+	m.accountDirectory = directory
+	m.mu.Unlock()
+}
+
+// buildHostServices 为单个插件构造绑定其 pluginKey 的宿主服务端点。返回 nil（未配置
+// 键值存储或缺少 pluginKey）时，startPluginRuntime 不会向插件暴露任何宿主服务。
+// 账号目录（会向插件交付账号凭据与全量元数据）只对「清单声明的能力授予了账号范围」的
+// 插件开放，且严格限定在该范围内，从而把暴露面收敛到本就要处理这些账号的插件。
+func (m *PluginManager) buildHostServices(installation *PluginInstallation) pluginv1.HostServiceServer {
+	if m.kvStore == nil || installation == nil || strings.TrimSpace(installation.PluginKey) == "" {
+		return nil
+	}
+	scope := pluginAccountScopeFromManifest(installation.Manifest)
+	var directory PluginAccountDirectory
+	if !scope.Empty() {
+		m.mu.Lock()
+		directory = m.accountDirectory
+		m.mu.Unlock()
+	}
+	return newPluginHostServiceServer(installation.PluginKey, m.kvStore, directory, scope)
+}
+
+// pluginCapabilityAccountScopeGrants 把「能力 id」映射到它授予的账号范围条目。这是
+// 唯一放宽账号可见性的通用入口：为需要账号访问的新能力扩权只需在此加一行，无需新增
+// RPC 或按插件定制目录实现。授予的范围以能力 id 为准并被固定，清单无法通过声明不同的
+// platform/account_type 来扩大它。
+var pluginCapabilityAccountScopeGrants = map[string]pluginAccountScopeEntry{
+	PluginCapabilityOpenAIOAuthOutbound: {Platform: PlatformOpenAI, AccountType: AccountTypeOAuth},
+}
+
+// pluginAccountScopeFromManifest 从（安装期已校验的）清单声明能力推导出账号可见范围
+// （各能力授予范围的并集）。
+func pluginAccountScopeFromManifest(manifest PluginManifest) PluginAccountScope {
+	entries := make([]pluginAccountScopeEntry, 0, len(manifest.Capabilities))
+	for _, capability := range manifest.Capabilities {
+		grant, ok := pluginCapabilityAccountScopeGrants[capability.ID]
+		if !ok {
+			continue
+		}
+		entries = append(entries, grant)
+	}
+	return newPluginAccountScope(entries...)
 }
 
 func (m *PluginManager) removeRuntimeLocked(id int64) *pluginRuntime {

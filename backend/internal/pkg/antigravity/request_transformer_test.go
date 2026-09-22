@@ -390,18 +390,22 @@ func TestBuildGenerationConfig_ThinkingDynamicBudget(t *testing.T) {
 	}
 }
 
-func TestTransformClaudeToGeminiWithOptions_PreservesBillingHeaderSystemBlock(t *testing.T) {
+func TestTransformClaudeToGeminiWithOptions_StripsBillingHeaderSystemBlock(t *testing.T) {
+	// x-anthropic-billing-header 只是 Anthropic OAuth 伪装链路用来防止被 Anthropic 判成
+	// 第三方应用的标记，对 Google Antigravity 毫无意义（Google 不认这个字段），留着只会
+	// 暴露这是被伪装转发的 Anthropic 流量，和身份块一样会触发 RESOURCE_EXHAUSTED，
+	// 所以和身份块一起剥掉，不是保留。见 stripClaudeAttribution。
 	tests := []struct {
 		name   string
 		system json.RawMessage
 	}{
 		{
 			name:   "system array",
-			system: json.RawMessage(`[{"type":"text","text":"x-anthropic-billing-header keep"}]`),
+			system: json.RawMessage(`[{"type":"text","text":"x-anthropic-billing-header: cc_version=2.1.246.27a"}]`),
 		},
 		{
 			name:   "system string",
-			system: json.RawMessage(`"x-anthropic-billing-header keep"`),
+			system: json.RawMessage(`"x-anthropic-billing-header: cc_version=2.1.246.27a"`),
 		},
 	}
 
@@ -427,13 +431,13 @@ func TestTransformClaudeToGeminiWithOptions_PreservesBillingHeaderSystemBlock(t 
 
 			found := false
 			for _, part := range req.Request.SystemInstruction.Parts {
-				if strings.Contains(part.Text, "x-anthropic-billing-header keep") {
+				if strings.Contains(part.Text, "x-anthropic-billing-header") {
 					found = true
 					break
 				}
 			}
 
-			require.True(t, found, "转换后的 systemInstruction 应保留 x-anthropic-billing-header 内容")
+			require.False(t, found, "转换后的 systemInstruction 不应保留 x-anthropic-billing-header 内容")
 		})
 	}
 }
@@ -504,8 +508,8 @@ func TestTransformClaudeToGeminiWithOptions_StripsClaudeCodeIdentityBlocks(t *te
 				{"type":"text","text":"` + agentSDKIdentity + `"},
 				{"type":"text","text":"` + mainPrompt + `"}
 			]`),
-			want:    []string{billing, mainPrompt},
-			notWant: []string{agentSDKIdentity},
+			want:    []string{mainPrompt},
+			notWant: []string{billing, agentSDKIdentity},
 		},
 		{
 			name:   "long prompt that quotes the identity sentence is kept",

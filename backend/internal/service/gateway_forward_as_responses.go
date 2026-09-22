@@ -89,10 +89,6 @@ func (s *GatewayService) ForwardAsResponses(
 			mappedModel = normalized
 		}
 	}
-	reasoningEffort := ExtractResponsesReasoningEffortFromBody(body, mappedModel, originalModel)
-	// 国产模型默认 effort 补充：需要 mappedModel 判定，推迟到 mapping 完成之后。
-	reasoningEffort = ApplyThinkingEnabledFallback(reasoningEffort, body, mappedModel)
-
 	// 4b. Codex remote compaction v2：input 里带 compaction_trigger 的请求不是普通
 	// 轮次，而是"把前文压缩成摘要"。Anthropic 协议族没有原生 compact 端点，转换器
 	// 已把触发器降级成摘要指令（见 apicompat.CompactionSummaryPrompt），这里只需把
@@ -148,6 +144,14 @@ func (s *GatewayService) ForwardAsResponses(
 
 	// 7. Enforce cache_control block limit
 	anthropicBody = enforceCacheControlLimit(anthropicBody)
+
+	// Bill the final Anthropic effort after conversion and account normalization.
+	// For example, OpenAI xhigh is forwarded as output_config.effort=max. Kiro 直连账号
+	// 绕过 buildUpstreamRequest（它对 kiro 直接返回错误），所以这里统一从 anthropicBody
+	// 取值——buildUpstreamRequest 返回的 forwardedBody 只是经 stripDeferredToolCacheControl
+	// 处理过的同一份 body，不影响 output_config.effort 字段。
+	reasoningEffort := NormalizeClaudeOutputEffort(gjson.GetBytes(anthropicBody, "output_config.effort").String())
+	reasoningEffort = ApplyThinkingEnabledFallback(reasoningEffort, anthropicBody, mappedModel)
 
 	var resp *http.Response
 	if isKiroDirectModeAccount(account) {

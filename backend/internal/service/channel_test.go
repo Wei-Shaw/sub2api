@@ -193,7 +193,8 @@ func TestChannelClone_Nil(t *testing.T) {
 
 func TestChannelModelPricingClone(t *testing.T) {
 	original := ChannelModelPricing{
-		Models: []string{"a", "b"},
+		ReasoningEffortMultipliers: map[string]float64{"high": 1.5},
+		Models:                     []string{"a", "b"},
 		Intervals: []PricingInterval{
 			{MinTokens: 0, TierLabel: "tier1"},
 		},
@@ -209,6 +210,8 @@ func TestChannelModelPricingClone(t *testing.T) {
 	}
 
 	cloned := original.Clone()
+	cloned.ReasoningEffortMultipliers["high"] = 2
+	require.Equal(t, 1.5, original.ReasoningEffortMultipliers["high"])
 
 	// Modify clone slices — original unchanged
 	cloned.Models[0] = "hacked"

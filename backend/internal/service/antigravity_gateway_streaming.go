@@ -192,11 +192,27 @@ func (s *AntigravityGatewayService) handleGeminiStreamingResponse(c *gin.Context
 		intervalCh = intervalTicker.C
 	}
 
-	// gemini 原生协议面不发下游 keepalive。其它协议面用的 ":\n\n"（SSE 注释）在这里是
-	// 致命的：google-genai 的 Go SDK（Antigravity CLI / IDE 在用）按 "\n\n" 切事件后只
-	// 认 "data:" 开头的块，收到注释直接 iterateResponseStream: invalid stream chunk: :
-	// 并终止整轮 agent 执行。上游 Google 本身在长思考期间也不发任何心跳，这里与之对齐。
-	// 同一原因见 gemini_v1beta_handler.go 的并发排队 ping —— 那里已经是 SSEPingFormatNone。
+	// 下游 keepalive：防止代理/Cloudflare Tunnel 因连接空闲而断开
+	keepaliveInterval := time.Duration(0)
+	if s.settingService.cfg != nil && s.settingService.cfg.Gateway.StreamKeepaliveInterval > 0 {
+		keepaliveInterval = time.Duration(s.settingService.cfg.Gateway.StreamKeepaliveInterval) * time.Second
+	}
+	// go-genai / python-genai 不会忽略 SSE 注释行，收到 ":\n\n" 会直接把整个流判成
+	// invalid stream chunk 而中断（Antigravity CLI 在用 go-genai）。对这类客户端宁可不发心跳；
+	// 其它客户端（curl、gemini-cli 等）正常吃注释，照常发，避免代理/Cloudflare Tunnel 因空闲断开。
+	if keepaliveInterval > 0 && downstreamRejectsSSEComments(c) {
+		keepaliveInterval = 0
+	}
+	var keepaliveTicker *time.Ticker
+	if keepaliveInterval > 0 {
+		keepaliveTicker = time.NewTicker(keepaliveInterval)
+		defer keepaliveTicker.Stop()
+	}
+	var keepaliveCh <-chan time.Time
+	if keepaliveTicker != nil {
+		keepaliveCh = keepaliveTicker.C
+	}
+	lastDataAt := time.Now()
 
 	cw := newAntigravityClientWriter(c.Writer, flusher, "antigravity gemini")
 
@@ -230,6 +246,7 @@ func (s *AntigravityGatewayService) handleGeminiStreamingResponse(c *gin.Context
 				return nil, ev.err
 			}
 
+			lastDataAt = time.Now()
 			line := ev.line
 			s.observeAntigravityGeminiSSELine(c, line)
 			trimmed := strings.TrimRight(line, "\r\n")
@@ -304,6 +321,19 @@ func (s *AntigravityGatewayService) handleGeminiStreamingResponse(c *gin.Context
 			logger.LegacyPrintf("service.antigravity_gateway", "Stream data interval timeout (antigravity)")
 			sendErrorEvent("stream_timeout")
 			return &antigravityStreamResult{usage: usage, firstTokenMs: firstTokenMs}, fmt.Errorf("stream data interval timeout")
+
+		case <-keepaliveCh:
+			if cw.Disconnected() {
+				continue
+			}
+			if time.Since(lastDataAt) < keepaliveInterval {
+				continue
+			}
+			// SSE 注释心跳：只对不会因注释崩溃的客户端发（见上面 downstreamRejectsSSEComments 的判断）
+			if !cw.Fprintf(":\n\n") {
+				logger.LegacyPrintf("service.antigravity_gateway", "Client disconnected during keepalive ping (antigravity gemini), continuing to drain upstream for billing")
+				continue
+			}
 		}
 	}
 }
