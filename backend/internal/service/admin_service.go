@@ -394,21 +394,22 @@ type UpdateGroupInput struct {
 }
 
 type CreateAccountInput struct {
-	Name               string
-	Notes              *string
-	Platform           string
-	Type               string
-	Credentials        map[string]any
-	Extra              map[string]any
-	ProxyID            *int64
-	Concurrency        int
-	Priority           int
-	RateMultiplier     *float64 // 账号计费倍率（>=0，允许 0）
-	LoadFactor         *int
-	GroupIDs           []int64
-	ExpiresAt          *int64
-	AutoPauseOnExpired *bool
-	ProbeEnabled       *bool
+	Name                string
+	Notes               *string
+	Platform            string
+	Type                string
+	Credentials         map[string]any
+	Extra               map[string]any
+	ProxyID             *int64
+	Concurrency         int
+	Priority            int
+	RateMultiplier      *float64 // 账号计费倍率（>=0，允许 0）
+	GroupRateMultiplier *float64 // 账号级分组计费倍率（>=0，默认 1）
+	LoadFactor          *int
+	GroupIDs            []int64
+	ExpiresAt           *int64
+	AutoPauseOnExpired  *bool
+	ProbeEnabled        *bool
 	// SkipDefaultGroupBind prevents auto-binding to platform default group when GroupIDs is empty.
 	SkipDefaultGroupBind bool
 	// SkipMixedChannelCheck skips the mixed channel risk check when binding groups.
@@ -435,6 +436,7 @@ type UpdateAccountInput struct {
 	Concurrency           *int     // 使用指针区分"未提供"和"设置为0"
 	Priority              *int     // 使用指针区分"未提供"和"设置为0"
 	RateMultiplier        *float64 // 账号计费倍率（>=0，允许 0）
+	GroupRateMultiplier   *float64 // 账号级分组计费倍率（>=0，默认 1）
 	LoadFactor            *int
 	Status                string
 	GroupIDs              *[]int64
@@ -447,20 +449,21 @@ type UpdateAccountInput struct {
 
 // BulkUpdateAccountsInput describes the payload for bulk updating accounts.
 type BulkUpdateAccountsInput struct {
-	AccountIDs     []int64
-	Filters        *BulkUpdateAccountFilters
-	Name           string
-	ProxyID        *int64
-	Concurrency    *int
-	Priority       *int
-	RateMultiplier *float64 // 账号计费倍率（>=0，允许 0）
-	LoadFactor     *int
-	Status         string
-	Schedulable    *bool
-	GroupIDs       *[]int64
-	Credentials    map[string]any
-	Extra          map[string]any
-	ProbeEnabled   *bool
+	AccountIDs          []int64
+	Filters             *BulkUpdateAccountFilters
+	Name                string
+	ProxyID             *int64
+	Concurrency         *int
+	Priority            *int
+	RateMultiplier      *float64 // 账号计费倍率（>=0，允许 0）
+	GroupRateMultiplier *float64 // 账号级分组计费倍率（>=0，默认 1）
+	LoadFactor          *int
+	Status              string
+	Schedulable         *bool
+	GroupIDs            *[]int64
+	Credentials         map[string]any
+	Extra               map[string]any
+	ProbeEnabled        *bool
 	// SkipMixedChannelCheck skips the mixed channel risk check when binding groups.
 	// This should only be set when the caller has explicitly confirmed the risk.
 	SkipMixedChannelCheck bool

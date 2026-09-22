@@ -725,6 +725,16 @@
         </div>
         <div>
           <div class="mb-3 flex items-center justify-between">
+            <label class="input-label mb-0" for="bulk-edit-group-rate-multiplier-enabled">
+              {{ t('admin.accounts.groupBillingRateMultiplier') }}
+            </label>
+            <input v-model="enableGroupRateMultiplier" id="bulk-edit-group-rate-multiplier-enabled" type="checkbox" class="rounded border-gray-300 text-primary-600 focus:ring-primary-500" />
+          </div>
+          <input v-model.number="groupRateMultiplier" id="bulk-edit-group-rate-multiplier" type="number" min="0" step="0.01" :disabled="!enableGroupRateMultiplier" class="input" :class="!enableGroupRateMultiplier && 'cursor-not-allowed opacity-50'" />
+          <p class="input-hint">{{ t('admin.accounts.groupBillingRateMultiplierHint') }}</p>
+        </div>
+        <div>
+          <div class="mb-3 flex items-center justify-between">
             <label
               id="bulk-edit-load-factor-label"
               class="input-label mb-0"
@@ -1655,6 +1665,8 @@ const enableConcurrency = ref(false)
 const enableLoadFactor = ref(false)
 const enablePriority = ref(false)
 const enableRateMultiplier = ref(false)
+const enableGroupRateMultiplier = ref(false)
+const groupRateMultiplier = ref(1)
 const enableStatus = ref(false)
 const enableGroups = ref(false)
 const enableOpenAIPassthrough = ref(false)
@@ -1959,6 +1971,9 @@ const buildUpdatePayload = (): Record<string, unknown> | null => {
   if (enableRateMultiplier.value) {
     updates.rate_multiplier = rateMultiplier.value
   }
+  if (enableGroupRateMultiplier.value) {
+    updates.group_rate_multiplier = groupRateMultiplier.value
+  }
 
   if (enableStatus.value) {
     updates.status = status.value
@@ -2216,6 +2231,7 @@ const handleSubmit = async () => {
     enableLoadFactor.value ||
     enablePriority.value ||
     enableRateMultiplier.value ||
+    enableGroupRateMultiplier.value ||
     enableStatus.value ||
     enableGroups.value ||
     enableOpenAIWSMode.value ||
