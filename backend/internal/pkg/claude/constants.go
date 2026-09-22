@@ -80,9 +80,9 @@ const DefaultCacheControlTTL = "5m"
 // 用于 billing attribution block 中的 cc_version=X.Y.Z.{fp} 前缀以及 fingerprint 计算。
 // 必须与 DefaultHeaders["User-Agent"] 中的版本号严格一致；不一致会被 Anthropic 判第三方。
 //
-// ⚠️ 读取实际生效的版本号请用 CLIVersion()，它会叠加 SUB2API_CLAUDE_CLI_VERSION 覆盖。
-// 直接引用本常量只在"表达内置基线"时才正确（例如覆盖值的下限校验）。
-const CLICurrentVersion = "2.1.258"
+// 本地补丁（opus-5-5 支持基线）：上游 0.2.7 基线为 2.1.258，Anthropic 对
+// claude-opus-5-5 的客户端版本闸门要求 >= 2.1.280，故抬升内置基线。
+const CLICurrentVersion = "2.1.280"
 
 // FullClaudeCodeMimicryBetas 返回最"像"真实 Claude Code CLI 的完整 beta 列表，
 // 用于 OAuth 账号伪装成 Claude Code 时使用。
