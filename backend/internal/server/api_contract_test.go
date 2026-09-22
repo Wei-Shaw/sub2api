@@ -528,12 +528,14 @@ func TestAPIContracts(t *testing.T) {
 				})
 			},
 			method:     http.MethodGet,
-			path:       "/api/v1/usage/stats?start_date=2025-01-01&end_date=2025-01-02",
+			path:       "/api/v1/usage/stats?start_date=2025-01-01&end_date=2025-01-02&timezone=UTC",
 			wantStatus: http.StatusOK,
 			wantJSON: `{
 				"code": 0,
 				"message": "success",
 				"data": {
+					"start_time": "2025-01-01T00:00:00Z",
+					"end_time": "2025-01-03T00:00:00Z",
 					"total_requests": 2,
 					"total_input_tokens": 15,
 					"total_output_tokens": 35,

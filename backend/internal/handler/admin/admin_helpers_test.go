@@ -26,10 +26,13 @@ func TestParseTimeRange(t *testing.T) {
 	require.Equal(t, time.Date(2024, 1, 3, 0, 0, 0, 0, time.UTC), end)
 
 	req = httptest.NewRequest(http.MethodGet, "/?start_date=bad&timezone=UTC", nil)
+	c, _ = gin.CreateTestContext(w)
 	c.Request = req
 	start, end = parseTimeRange(c)
-	require.False(t, start.IsZero())
-	require.False(t, end.IsZero())
+	require.True(t, start.IsZero())
+	require.True(t, end.IsZero())
+	require.True(t, c.IsAborted())
+	require.Equal(t, http.StatusBadRequest, w.Code)
 }
 
 func TestParseOpsViewParam(t *testing.T) {

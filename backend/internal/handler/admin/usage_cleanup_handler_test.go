@@ -311,6 +311,29 @@ func TestUsageHandlerCreateCleanupTaskWithLegacyStream(t *testing.T) {
 	require.True(t, *created.Filters.Stream)
 }
 
+func TestUsageHandlerCreateMinuteCleanupTaskExclusive(t *testing.T) {
+	repo := &cleanupRepoStub{}
+	cfg := &config.Config{UsageCleanup: config.UsageCleanupConfig{Enabled: true, MaxRangeDays: 31}}
+	router := setupCleanupRouter(service.NewUsageCleanupService(repo, nil, nil, cfg), 99)
+	body := []byte(`{"start_date":"2026-09-10T15:00:00+09:00","end_date":"2026-09-10T15:30:00+09:00"}`)
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/admin/usage/cleanup-tasks", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
+	repo.mu.Lock()
+	defer repo.mu.Unlock()
+	require.Len(t, repo.created, 1)
+	f := repo.created[0].Filters
+	require.True(t, f.EndExclusive)
+	require.Equal(t, "2026-09-10T15:30:00+09:00", f.EndTime.Format(time.RFC3339Nano))
+	var response struct {
+		Data struct{ Filters dto.UsageCleanupFilters }
+	}
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &response))
+	require.True(t, response.Data.Filters.EndExclusive)
+}
+
 func TestUsageHandlerCreateCleanupTaskSuccess(t *testing.T) {
 	repo := &cleanupRepoStub{}
 	cfg := &config.Config{UsageCleanup: config.UsageCleanupConfig{Enabled: true, MaxRangeDays: 31}}
@@ -346,7 +369,8 @@ func TestUsageHandlerCreateCleanupTaskSuccess(t *testing.T) {
 	require.Equal(t, "gpt-4", *created.Filters.Model)
 
 	start := time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC)
-	end := time.Date(2024, 1, 2, 0, 0, 0, 0, time.UTC).Add(24*time.Hour - time.Nanosecond)
+	end := time.Date(2024, 1, 3, 0, 0, 0, 0, time.UTC)
+	require.True(t, created.Filters.EndExclusive)
 	require.True(t, created.Filters.StartTime.Equal(start))
 	require.True(t, created.Filters.EndTime.Equal(end))
 }
