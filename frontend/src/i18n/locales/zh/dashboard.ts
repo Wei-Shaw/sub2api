@@ -66,6 +66,33 @@ export default {
 
   // API Keys
   keys: {
+    smartRouting: {
+      "title": "智能路由",
+      "fixed": "固定分组",
+      "mode": "路由模式",
+      "order": "按顺序选择可用分组",
+      "description": "从上到下匹配模型；模型不在目录中或当前没有可调度账号时，自动尝试下一组。最多添加 10 个分组。",
+      "first": "优先尝试",
+      "add": "添加分组",
+      "noGroups": "没有更多兼容分组",
+      "limit": "已达到 10 个分组上限",
+      "empty": "添加第一个路由分组",
+      "emptyHint": "可从不同的 OpenAI 兼容平台中选择",
+      "billing": "按实际命中的分组计费，沿用该组订阅与专属倍率。",
+      "scope": "首批支持 HTTP Chat / Responses 文本请求。上游开始处理后沿用组内重试；其他接口请使用固定分组密钥。",
+      "unavailable": "分组 #{id} 已不可用，请移除或重新选择",
+      "up": "上移",
+      "down": "下移",
+      "remove": "移除",
+      "moveUp": "上移 {name}",
+      "moveDown": "下移 {name}",
+      "removeGroup": "移除 {name}",
+      "added": "已添加分组",
+      "removed": "已移除分组",
+      "moved": "已移到第 {position} 位",
+      "required": "请选择 1–10 个可用的 OpenAI 兼容分组",
+      "edit": "编辑智能路由顺序"
+},
     title: 'API 密钥',
     description: '管理您的 API 密钥和访问令牌',
     searchPlaceholder: '搜索名称或Key...',

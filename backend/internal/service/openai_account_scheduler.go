@@ -2122,6 +2122,10 @@ func (s *OpenAIGatewayService) SelectAccountWithSchedulerForCapability(
 	useUpstreamTokenCost bool,
 	platformOverride ...string,
 ) (*AccountSelectionResult, OpenAIAccountScheduleDecision, error) {
+	if selection := takeSmartRoutingSelection(ctx, groupID, requestedModel); selection != nil {
+		return selection, OpenAIAccountScheduleDecision{Layer: "smart_routing", SelectedAccountID: selection.Account.ID, SelectedAccountType: selection.Account.Type}, nil
+	}
+
 	platform := PlatformOpenAI
 	if len(platformOverride) > 0 {
 		platform = platformOverride[0]

@@ -1121,6 +1121,11 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 // Returns models based on account configurations (model_mapping whitelist)
 // Falls back to default models if no whitelist is configured
 func (h *GatewayHandler) Models(c *gin.Context) {
+	if models, ok := service.SmartRoutingModelsFromContext(c.Request.Context()); ok {
+		writeOpenAIModelsList(c, models)
+		return
+	}
+
 	apiKey, _ := middleware2.GetAPIKeyFromContext(c)
 
 	var groupID *int64
@@ -1193,6 +1198,11 @@ func (h *GatewayHandler) Models(c *gin.Context) {
 // expected by Codex custom providers. Official OpenAI groups continue to use
 // OpenAIGatewayHandler.CodexModels so their live upstream metadata is preserved.
 func (h *GatewayHandler) CodexModels(c *gin.Context) {
+	if models, ok := service.SmartRoutingModelsFromContext(c.Request.Context()); ok {
+		writeSmartRoutingCodexModels(c, models)
+		return
+	}
+
 	apiKey, ok := middleware2.GetAPIKeyFromContext(c)
 	if !ok || apiKey == nil || apiKey.Group == nil {
 		h.errorResponse(c, http.StatusUnauthorized, "invalid_request_error", "API key group is required")
