@@ -32,7 +32,7 @@ require (
 	github.com/patrickmn/go-cache v2.1.0+incompatible
 	github.com/pquerna/otp v1.5.0
 	github.com/redis/go-redis/v9 v9.22.0
-	github.com/refraction-networking/utls v1.8.2
+	github.com/refraction-networking/utls v1.8.3-0.20260802151714-23b1dac19c06
 	github.com/robfig/cron/v3 v3.0.1
 	github.com/shirou/gopsutil/v4 v4.25.6
 	github.com/shopspring/decimal v1.4.0
