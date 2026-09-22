@@ -59,7 +59,10 @@ export function formatNumber(num: number | null | undefined): string {
  * @returns 格式化后的字符串，如 "$1.25"
  */
 export function formatCurrency(amount: number | null | undefined, currency: string = 'USD'): string {
-  if (amount === null || amount === undefined) return '$0.00'
+  if (amount === null || amount === undefined) {
+    const symbol = currency === 'CNY' ? '¥' : '$'
+    return `${symbol}0.00`
+  }
 
   const locale = getLocale()
 
@@ -69,9 +72,15 @@ export function formatCurrency(amount: number | null | undefined, currency: stri
   return new Intl.NumberFormat(locale, {
     style: 'currency',
     currency: currency,
+    currencyDisplay: 'narrowSymbol',
     minimumFractionDigits: fractionDigits,
     maximumFractionDigits: fractionDigits
   }).format(amount)
+}
+
+/** Format a customer-facing amount using the Bestloong display currency. */
+export function formatCustomerCurrency(amount: number | null | undefined): string {
+  return formatCurrency(amount, 'CNY')
 }
 
 /**
