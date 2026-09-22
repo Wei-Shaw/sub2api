@@ -499,33 +499,62 @@ func TestForwardAsRawChatCompletions_SilentRefusalTriggersFailover(t *testing.T)
 	require.Empty(t, rec.Body.String())
 }
 
-func TestForwardAsRawChatCompletions_OverloadBeforeContentTriggersFailoverForSmallRequests(t *testing.T) {
+func TestForwardAsRawChatCompletions_StreamErrorFailover(t *testing.T) {
 	gin.SetMode(gin.TestMode)
-	body := []byte(`{"model":"gpt-5.5","messages":[{"role":"user","content":"hello"}],"stream":true}`)
-	rec := httptest.NewRecorder()
-	c, _ := gin.CreateTestContext(rec)
-	c.Request = httptest.NewRequest(http.MethodPost, "/v1/chat/completions", bytes.NewReader(body))
-	c.Request.Header.Set("Content-Type", "application/json")
-
-	upstreamBody := strings.Join([]string{
-		`data: {"id":"chatcmpl_overloaded","object":"chat.completion.chunk","model":"gpt-5.5","choices":[{"index":0,"delta":{"role":"assistant"}}]}`,
-		"",
-		`data: {"error":{"type":"server_is_overloaded","message":"try again later"}}`,
-		"",
-	}, "\n")
-	upstream := &httpUpstreamRecorder{resp: &http.Response{
-		StatusCode: http.StatusOK,
-		Header:     http.Header{"Content-Type": []string{"text/event-stream"}, "x-request-id": []string{"rid_overloaded"}},
-		Body:       io.NopCloser(strings.NewReader(upstreamBody)),
-	}}
-	svc := &OpenAIGatewayService{cfg: rawChatCompletionsTestConfig(), httpUpstream: upstream}
-
-	result, err := svc.forwardAsRawChatCompletions(context.Background(), c, rawChatCompletionsTestAccount(), body, "")
-	require.Nil(t, result)
-	var failoverErr *UpstreamFailoverError
-	require.True(t, errors.As(err, &failoverErr))
-	require.False(t, c.Writer.Written(), "role preamble must remain buffered until content or terminal error")
-	require.Empty(t, rec.Body.String())
+	for _, tc := range []struct {
+		name     string
+		event    string
+		payload  string
+		content  bool
+		failover bool
+	}{
+		{name: "bare overload", payload: `{"error":{"type":"server_is_overloaded","message":"try again later"}}`, failover: true},
+		{name: "named overload", event: "error", payload: `{"error":{"type":"server_is_overloaded","message":"try again later"}}`, failover: true},
+		{name: "response failed", event: "response.failed", payload: `{"type":"response.failed","response":{"error":{"code":"server_error","message":"try again later"}}}`, failover: true},
+		{name: "after content", event: "error", payload: `{"error":{"type":"server_is_overloaded","message":"try again later"}}`, content: true},
+		{name: "invalid request", event: "error", payload: `{"error":{"type":"invalid_request_error","message":"invalid request"}}`},
+		{name: "context window", payload: `{"error":{"code":"context_length_exceeded","message":"input exceeds the context window"}}`},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			body := []byte(`{"model":"gpt-5.5","messages":[{"role":"user","content":"hello"}],"stream":true}`)
+			rec := httptest.NewRecorder()
+			c, _ := gin.CreateTestContext(rec)
+			c.Request = httptest.NewRequest(http.MethodPost, "/v1/chat/completions", bytes.NewReader(body))
+			c.Request.Header.Set("Content-Type", "application/json")
+			lines := []string{`data: {"id":"chatcmpl_overloaded","object":"chat.completion.chunk","model":"gpt-5.5","choices":[{"index":0,"delta":{"role":"assistant"}}]}`, ""}
+			if tc.content {
+				lines = append(lines, `data: {"choices":[{"index":0,"delta":{"content":"partial"}}]}`, "")
+			}
+			if tc.event != "" {
+				lines = append(lines, "event: "+tc.event)
+			}
+			lines = append(lines, "data: "+tc.payload, "", "data: [DONE]", "")
+			upstream := &httpUpstreamRecorder{resp: &http.Response{
+				StatusCode: http.StatusOK,
+				Header:     http.Header{"Content-Type": []string{"text/event-stream"}},
+				Body:       io.NopCloser(strings.NewReader(strings.Join(lines, "\n"))),
+			}}
+			svc := &OpenAIGatewayService{cfg: rawChatCompletionsTestConfig(), httpUpstream: upstream}
+			result, err := svc.forwardAsRawChatCompletions(context.Background(), c, rawChatCompletionsTestAccount(), body, "")
+			require.Error(t, err)
+			var failoverErr *UpstreamFailoverError
+			require.Equal(t, tc.failover, errors.As(err, &failoverErr))
+			if tc.failover {
+				require.Nil(t, result)
+				require.False(t, c.Writer.Written(), "role preamble must remain buffered before failover")
+				require.Empty(t, rec.Body.String())
+			} else {
+				require.NotNil(t, result)
+				require.Contains(t, rec.Body.String(), "data: "+tc.payload+"\n\n")
+				require.NotContains(t, rec.Body.String(), "[DONE]")
+				if tc.content {
+					require.Contains(t, rec.Body.String(), "partial")
+				} else {
+					require.NotContains(t, rec.Body.String(), "chatcmpl_overloaded")
+				}
+			}
+		})
+	}
 }
 
 func TestForwardAsRawChatCompletions_SilentRefusalToolCallsExempt(t *testing.T) {
