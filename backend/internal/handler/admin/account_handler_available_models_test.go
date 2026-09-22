@@ -671,6 +671,3 @@ func TestAccountHandlerGetAvailableModels_ClaudeOAuthWithModelMappingFiltersMode
 	require.Len(t, resp.Data, 1)
 	require.Equal(t, "claude-sonnet-4-5", resp.Data[0].ID)
 }
-
-
-
