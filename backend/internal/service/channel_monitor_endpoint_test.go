@@ -13,6 +13,8 @@ import (
 
 func TestValidateMonitorEndpoint_BasePath(t *testing.T) {
 	for _, endpoint := range []string{
+		"http://8.8.8.8/anthropic",
+		"http://8.8.8.8/anthropic/v1",
 		"https://8.8.8.8",
 		"https://8.8.8.8/anthropic",
 		"https://8.8.8.8/anthropic/",
@@ -28,7 +30,14 @@ func TestValidateMonitorEndpoint_BasePath(t *testing.T) {
 		endpoint string
 		want     error
 	}{
-		{"http://8.8.8.8/anthropic", ErrChannelMonitorEndpointScheme},
+		{"ftp://8.8.8.8/anthropic", ErrChannelMonitorEndpointScheme},
+		{"http://127.0.0.1/anthropic", ErrChannelMonitorEndpointPrivate},
+		{"http://10.0.0.1/anthropic", ErrChannelMonitorEndpointPrivate},
+		{"http://169.254.169.254/anthropic", ErrChannelMonitorEndpointPrivate},
+		{"http://[::1]/anthropic", ErrChannelMonitorEndpointPrivate},
+		{"http://[fd00::1]/anthropic", ErrChannelMonitorEndpointPrivate},
+		{"http://8.8.8.8/anthropic?key=secret", ErrChannelMonitorEndpointPath},
+		{"http://8.8.8.8/anthropic#fragment", ErrChannelMonitorEndpointPath},
 		{"https://8.8.8.8/anthropic?key=secret", ErrChannelMonitorEndpointPath},
 		{"https://8.8.8.8/anthropic#fragment", ErrChannelMonitorEndpointPath},
 		{"https://127.0.0.1/anthropic", ErrChannelMonitorEndpointPrivate},

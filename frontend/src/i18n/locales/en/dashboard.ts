@@ -322,6 +322,12 @@ export default {
 
   // Usage
   usage: {
+    streamFailed: 'Stream failed',
+    requestFailed: 'Request failed',
+    requestSucceeded: 'Succeeded',
+    usageUnavailable: 'Usage not returned / not parsed',
+    usageUnknown: 'Usage status unknown',
+    transportStatus: 'HTTP status',
     title: 'Usage Records',
     description: 'View and analyze your API usage history',
     costDetails: 'Cost Breakdown',

@@ -565,6 +565,7 @@ export interface Group {
   name: string
   description: string | null
   platform: GroupPlatform
+  scheduler?: GroupSchedulerConfig
   rate_multiplier: number
   rpm_limit?: number // Group-level RPM cap (0 = unlimited); overrides user-level rpm_limit when set
   max_reasoning_effort?: string // Anthropic/OpenAI reasoning ceiling; empty means unlimited
@@ -620,6 +621,16 @@ export interface Group {
   require_privacy_set: boolean
   created_at: string
   updated_at: string
+}
+
+export interface GroupSchedulerConfig {
+  strategy?: 'legacy' | 'high_availability'
+  selection_mode?: 'weighted' | 'strict_health'
+  first_byte_failover?: boolean
+  sticky_binding_mode?: 'keep_original' | 'rebind_on_failover'
+  probe_bypass_sticky?: boolean
+  max_account_switches?: number
+  same_account_retry_attempts?: number
 }
 
 export interface AdminGroup extends Group {
@@ -788,6 +799,7 @@ export interface UpdateApiKeyRequest {
 
 export interface CreateGroupRequest {
   name: string
+  scheduler?: GroupSchedulerConfig
   description?: string | null
   platform?: GroupPlatform
   rate_multiplier?: number
@@ -853,6 +865,7 @@ export interface CreateGroupRequest {
 
 export interface UpdateGroupRequest {
   name?: string
+  scheduler?: GroupSchedulerConfig
   description?: string | null
   platform?: GroupPlatform
   rate_multiplier?: number
@@ -1694,6 +1707,13 @@ export type ImageSizeSource = 'output' | 'input' | 'default' | 'legacy'
 export type ImageSizeBreakdown = Record<string, number>
 
 export interface UsageLog {
+  request_result?: {
+    outcome: 'succeeded' | 'failed'
+    usage_status: 'reported' | 'unavailable'
+    status_code?: number
+    http_status_code?: number
+    error_code?: string
+  } | null
   id: number
   user_id: number
   api_key_id: number
@@ -2402,6 +2422,7 @@ export interface ScheduledTestPlan {
   enabled: boolean
   max_results: number
   auto_recover: boolean
+  include_in_health_samples: boolean
   last_run_at: string | null
   next_run_at: string | null
   created_at: string
@@ -2427,6 +2448,7 @@ export interface CreateScheduledTestPlanRequest {
   enabled?: boolean
   max_results?: number
   auto_recover?: boolean
+  include_in_health_samples?: boolean
 }
 
 export interface UpdateScheduledTestPlanRequest {
@@ -2435,6 +2457,7 @@ export interface UpdateScheduledTestPlanRequest {
   enabled?: boolean
   max_results?: number
   auto_recover?: boolean
+  include_in_health_samples?: boolean
 }
 
 // Payment types

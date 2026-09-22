@@ -621,6 +621,15 @@ func TestForwardAsChatCompletions_StreamBareErrorAfterOutputDoesNotFailOver(t *t
 	require.Contains(t, rec.Body.String(), "partial")
 	require.Contains(t, rec.Body.String(), "temporary upstream failure")
 	require.NotContains(t, rec.Body.String(), "[DONE]")
+	mark, marked := GetOpsStreamError(c)
+	require.True(t, marked)
+	require.Equal(t, http.StatusBadGateway, mark.IntendedStatus)
+	require.Equal(t, "server_error", mark.Code)
+	require.Contains(t, rec.Body.String(), `"status_code":502`)
+	FinalizeOpenAIUsageResult(c, result, err)
+	require.Equal(t, "failed", result.RequestResult.Outcome)
+	require.Equal(t, "unavailable", result.RequestResult.UsageStatus)
+	require.Equal(t, http.StatusOK, result.RequestResult.HTTPStatusCode)
 }
 
 func TestForwardAsChatCompletions_StreamCyberPolicyNoFailover(t *testing.T) {

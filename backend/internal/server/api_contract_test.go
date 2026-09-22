@@ -353,6 +353,15 @@ func TestAPIContracts(t *testing.T) {
 						"name": "Group One",
 						"description": "desc",
 						"platform": "anthropic",
+						"scheduler": {
+							"strategy": "",
+							"selection_mode": "",
+							"first_byte_failover": false,
+							"sticky_binding_mode": "",
+							"probe_bypass_sticky": false,
+							"max_account_switches": 0,
+							"same_account_retry_attempts": 0
+						},
 						"rate_multiplier": 1.5,
 						"peak_rate_enabled": false,
 						"peak_start": "",

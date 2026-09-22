@@ -92,6 +92,7 @@ const DataTableStub = {
         <slot name="cell-reasoning_effort" :row="row" :value="row.reasoning_effort" />
         <slot name="cell-billing_mode" :row="row" />
         <slot name="cell-tokens" :row="row" />
+        <slot name="cell-stream" :row="row" />
         <slot name="cell-cost" :row="row" />
         <slot name="cell-request_id" :row="row" />
         <slot name="cell-upstream_request_id" :row="row" />
@@ -129,6 +130,33 @@ const baseImageRow = {
 }
 
 describe('admin UsageTable tooltip', () => {
+  it.each([
+    { name: 'failed without usage', result: { outcome: 'failed', usage_status: 'unavailable', status_code: 503, http_status_code: 200, error_code: 'server_is_overloaded' }, tokens: 0, unavailable: true, unknown: false },
+    { name: 'failed with partial usage', result: { outcome: 'failed', usage_status: 'reported', status_code: 502, http_status_code: 200 }, tokens: 123, unavailable: false, unknown: false },
+    { name: 'explicit zero usage', result: { outcome: 'succeeded', usage_status: 'reported', status_code: 200, http_status_code: 200 }, tokens: 0, unavailable: false, unknown: false },
+    { name: 'legacy zero usage', result: null, tokens: 0, unavailable: false, unknown: true },
+  ])('distinguishes $name', ({ result, tokens, unavailable, unknown }) => {
+    const wrapper = mount(UsageTable, {
+      props: {
+        data: [{ ...baseImageRow, model: 'gpt-5', image_count: 0, billing_mode: 'token', stream: true, input_tokens: tokens, request_result: result }],
+        loading: false,
+        columns: [],
+      },
+      global: { stubs: { DataTable: DataTableStub, EmptyState: true, Icon: true, Teleport: true } },
+    })
+    expect(wrapper.find('[data-testid="usage-unavailable"]').exists()).toBe(unavailable)
+    expect(wrapper.find('[data-testid="usage-unknown"]').exists()).toBe(unknown)
+    if (result) {
+      const outcome = wrapper.get('[data-testid="request-outcome"]')
+      expect(outcome.attributes('title')).toContain('200')
+      expect(outcome.text()).toContain(result.outcome === 'failed' ? 'usage.streamFailed' : 'usage.requestSucceeded')
+      if (result.outcome === 'failed') expect(outcome.text()).toContain(String(result.status_code))
+    } else {
+      expect(wrapper.find('[data-testid="request-outcome"]').exists()).toBe(false)
+    }
+    if (tokens) expect(wrapper.text()).toContain(String(tokens))
+  })
+
   beforeEach(() => {
     vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockReturnValue({
       x: 0,

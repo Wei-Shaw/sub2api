@@ -260,6 +260,7 @@ func (s *OpenAIGatewayService) handleStreamingResponseWithReasoning(ctx context.
 	failureDelivered := false
 	suppressCurrentEvent := false
 	var bareErrorPayload []byte
+	var finalFailurePayload []byte
 	bareErrorAccountSideEffectsPending := false
 	pendingSSEEventType := ""
 	eventInProgress := false
@@ -405,6 +406,7 @@ func (s *OpenAIGatewayService) handleStreamingResponseWithReasoning(ctx context.
 			return resultWithUsage(), fmt.Errorf("stream usage incomplete: missing terminal event")
 		}
 		if sawFailedEvent {
+			markOpenAITerminalStreamFailure(c, finalFailurePayload, failedMessage)
 			return resultWithUsage(), fmt.Errorf("upstream response failed: %s", failedMessage)
 		}
 		logOpenAISuccessMissingUsage(ctx, c, account, resp, usage, terminalEventType, clientDisconnected)
@@ -490,6 +492,7 @@ func (s *OpenAIGatewayService) handleStreamingResponseWithReasoning(ctx context.
 				terminalFailurePending = false
 				suppressCurrentEvent = false
 				bareErrorPayload = nil
+				finalFailurePayload = nil
 				bareErrorAccountSideEffectsPending = false
 				failedMessage = ""
 			}
@@ -518,6 +521,7 @@ func (s *OpenAIGatewayService) handleStreamingResponseWithReasoning(ctx context.
 			}
 			cyberHit := false
 			if eventType == "response.failed" || eventType == "error" {
+				finalFailurePayload = append(finalFailurePayload[:0], dataBytes...)
 				if codexFailureTerminal && eventType == "error" {
 					sawBareError = true
 					bareErrorPayload = append(bareErrorPayload[:0], dataBytes...)
@@ -589,11 +593,14 @@ func (s *OpenAIGatewayService) handleStreamingResponseWithReasoning(ctx context.
 							// antigravity 先例），否则透传命中的 failed 在监控中不可见。
 							s.recordOpenAIStreamUpstreamError(c, account, false, upstreamRequestID, "http_error", dataBytes, failedMessage)
 							MarkResponseCommitted(c)
+							MarkOpsStreamFailure(c, errType, openAIStreamErrorCode(dataBytes), errMsg, status)
 							c.Writer.Header().Set("Content-Type", "application/json; charset=utf-8")
 							c.JSON(status, gin.H{
 								"error": gin.H{
-									"type":    errType,
-									"message": errMsg,
+									"code":        openAIStreamErrorCode(dataBytes),
+									"status_code": status,
+									"type":        errType,
+									"message":     errMsg,
 								},
 							})
 							streamEarlyErr = fmt.Errorf("upstream response failed: passthrough rule matched message=%s", errMsg)
@@ -1227,6 +1234,7 @@ func mergeOpenAIUsageNonZero(dst *OpenAIUsage, src OpenAIUsage) {
 	if dst == nil {
 		return
 	}
+	dst.Reported = dst.Reported || src.Reported
 	if src.InputTokens > 0 {
 		dst.InputTokens = src.InputTokens
 	}
@@ -1526,6 +1534,7 @@ func openAIUsageFromGJSON(value gjson.Result) (OpenAIUsage, bool) {
 		value.Get("prompt_tokens_details.image_tokens"),
 	)
 	return OpenAIUsage{
+		Reported:                 value.Get("input_tokens").Type == gjson.Number || value.Get("prompt_tokens").Type == gjson.Number || value.Get("output_tokens").Type == gjson.Number || value.Get("completion_tokens").Type == gjson.Number,
 		InputTokens:              int(inputTokens),
 		ImageInputTokens:         imageInputTokens,
 		OutputTokens:             int(outputTokens),

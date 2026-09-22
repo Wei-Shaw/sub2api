@@ -2045,7 +2045,10 @@ func inferResponsesFailedOpsErrorType(code string) string {
 	}
 }
 
-func inferStreamFailureStatus(_ *gin.Context, parsed parsedOpsError) int {
+func inferStreamFailureStatus(c *gin.Context, parsed parsedOpsError) int {
+	if mark, ok := service.GetOpsStreamError(c); ok && mark.IntendedStatus >= 400 && mark.IntendedStatus <= 599 {
+		return mark.IntendedStatus
+	}
 	if parsed.StatusCode >= 400 && parsed.StatusCode <= 599 {
 		return parsed.StatusCode
 	}
