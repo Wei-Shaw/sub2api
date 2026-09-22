@@ -919,6 +919,10 @@ func TestDefaultCodexModelIDsForPlatform_DeepSeekUsesDeepSeekModels(t *testing.T
 	require.Equal(t, defaultModelIDsForPlatform(service.PlatformAnthropic), defaultCodexModelIDsForPlatform(service.PlatformAnthropic))
 }
 
+func TestDefaultModelIDsForPlatform_TypeSafeUsesJev(t *testing.T) {
+	require.Equal(t, []string{"jev-latest"}, defaultModelIDsForPlatform(service.PlatformTypeSafe))
+}
+
 func TestGatewayCodexModels_DeepSeekWithoutMappingUsesDeepSeekDefaults(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	const groupID int64 = 130

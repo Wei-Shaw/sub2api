@@ -57,11 +57,12 @@ describe('UserPlatformQuotaCell', () => {
     expect(html).toContain('90.5/2000')
   })
 
-  it('多平台按 anthropic→openai→gemini→antigravity 顺序，仅展示有限额的', () => {
+  it('多平台按固定顺序展示 TypeSafe，且仅展示有限额的平台', () => {
     const w = mount(UserPlatformQuotaCell, {
       props: {
         quotas: [
           item({ platform: 'gemini', monthly_limit_usd: 50 }),
+          item({ platform: 'typesafe', daily_limit_usd: 5 }),
           item({ platform: 'anthropic', daily_limit_usd: 10 }),
           item({ platform: 'openai', daily_usage_usd: 9 }),
         ],
@@ -69,6 +70,7 @@ describe('UserPlatformQuotaCell', () => {
     })
     const text = w.text()
     expect(text.indexOf('anthropic')).toBeLessThan(text.indexOf('gemini'))
+    expect(text.indexOf('gemini')).toBeLessThan(text.indexOf('typesafe'))
     expect(text).not.toContain('openai')
   })
 })

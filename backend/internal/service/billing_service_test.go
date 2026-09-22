@@ -129,6 +129,20 @@ func TestGetModelPricing_CaseInsensitive(t *testing.T) {
 	require.Equal(t, p1.InputPricePerToken, p2.InputPricePerToken)
 }
 
+func TestGetModelPricing_JevLatestInputOnlyAndChannelOverride(t *testing.T) {
+	svc := newTestBillingService()
+	pricing, err := svc.GetModelPricing("jev-latest")
+	require.NoError(t, err)
+	require.InDelta(t, 0.042/1_000_000, pricing.InputPricePerToken, 1e-15)
+	require.Zero(t, pricing.OutputPricePerToken)
+
+	input, output := 0.25/1_000_000, 0.5/1_000_000
+	pricing, err = svc.GetModelPricingWithChannel("jev-latest", &ChannelModelPricing{InputPrice: &input, OutputPrice: &output})
+	require.NoError(t, err)
+	require.Equal(t, input, pricing.InputPricePerToken)
+	require.Equal(t, output, pricing.OutputPricePerToken)
+}
+
 // issue #3394: fallback warn 应按模型名去重,每个模型每进程最多打一条,
 // 避免热路径每请求刷屏 ops_system_logs。
 func TestGetModelPricing_FallbackWarnLoggedOncePerModel(t *testing.T) {
