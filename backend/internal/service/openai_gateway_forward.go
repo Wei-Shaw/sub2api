@@ -151,6 +151,22 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 
 	originalBody := body
 	rememberOpenCodeInboundBody(c, originalBody)
+	// 跨模型切换后，会话历史里会出现「并行调用块中间夹着上一个模型的说明消息」的形态，
+	// DeepSeek 会以 "No tool output found for tool call ..." 拒绝整轮；先把插入项移出
+	// 调用块，再补 reasoning 占位（顺序不能反：补齐要基于规整后的历史）。
+	if nativeDeepSeekResponses && !compactPath {
+		if reorderedBody, reordered := normalizeDeepSeekResponsesToolCallBlocks(body); reordered {
+			body = reorderedBody
+		}
+	}
+	// DeepSeek 原生 Responses 端点在请求携带 tools 时要求历史每条 assistant 消息都回传
+	// reasoning 明文，缺失/空串会被上游以 400 拒绝（跨 passthrough failover 剥离、远程
+	// 压缩、resume 旧会话都会造成缺失）。这里补非空占位，保证会话不中断。
+	if nativeDeepSeekResponses && !compactPath {
+		if replayedBody, replayed := ensureDeepSeekResponsesReasoningPlaceholders(body, openAIRequestBodyHasTools(body)); replayed {
+			body = replayedBody
+		}
+	}
 	requestView := newOpenAIRequestView(body)
 	reqModel, reqStream, promptCacheKey := requestView.Model, requestView.Stream, requestView.PromptCacheKey
 	originalModel := reqModel
