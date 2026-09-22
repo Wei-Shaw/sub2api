@@ -3,7 +3,7 @@ export default {
     title: 'Dashboard',
     welcomeMessage: "Welcome back! Here's an overview of your account.",
     balance: 'Balance',
-    apiKeys: 'API Keys',
+    apiKeys: 'Bestloong API Keys',
     todayRequests: 'Today Requests',
     todayCost: 'Today Cost',
     todayTokens: 'Today Tokens',
@@ -52,8 +52,8 @@ export default {
     startUsingApi: 'Start using the API to see your usage history here.',
     viewAllUsage: 'View all usage',
     quickActions: 'Quick Actions',
-    createApiKey: 'Create API Key',
-    generateNewKey: 'Generate a new API key',
+    createApiKey: 'Create Bestloong API Key',
+    generateNewKey: 'Generate a new Bestloong API key',
     batchImageAgent: 'Batch Image Assistant',
     batchImageAgentDesc: 'Copy instructions for an agent',
     viewUsage: 'View Usage',
@@ -69,8 +69,8 @@ export default {
 
   // API Keys
   keys: {
-    title: 'API Keys',
-    description: 'Manage your API keys and access tokens',
+    title: 'Bestloong API Keys',
+    description: 'Manage your Bestloong API keys and access tokens',
     searchPlaceholder: 'Search name or key...',
     endpoints: {
       title: 'API Endpoints',
@@ -159,7 +159,7 @@ export default {
     lastUsedIP: 'Last Used IP',
     useKey: 'Use Key',
     useKeyModal: {
-      title: 'Use API Key',
+      title: 'Use Bestloong API Key',
       description:
         'Add the following environment variables to your terminal profile or run directly in terminal to configure API access.',
       copy: 'Copy',

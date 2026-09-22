@@ -6,7 +6,7 @@ export default {
 
   tutorials: {
     title: '使用教程',
-    description: '按客户端选择对应教程，接入 Bestloong API。',
+    description: '按客户端选择对应教程，接入 Bestloong。',
     workBuddy: 'Work Buddy',
     codexWindows: 'Codex Windows'
   },

@@ -3,7 +3,7 @@ export default {
     title: '仪表盘',
     welcomeMessage: '欢迎回来！这是您账户的概览。',
     balance: '余额',
-    apiKeys: 'API 密钥',
+    apiKeys: 'Bestloong API 密钥',
     todayRequests: '今日请求',
     todayCost: '今日消费',
     todayTokens: '今日 Token',
@@ -52,8 +52,8 @@ export default {
     startUsingApi: '开始使用 API 后，您的使用历史将显示在这里。',
     viewAllUsage: '查看全部',
     quickActions: '快捷操作',
-    createApiKey: '创建 API 密钥',
-    generateNewKey: '生成新的 API 密钥',
+    createApiKey: '创建 Bestloong API 密钥',
+    generateNewKey: '生成新的 Bestloong API 密钥',
     batchImageAgent: '批量生图助手',
     batchImageAgentDesc: '复制给 Agent 的任务说明',
     viewUsage: '查看使用记录',
@@ -69,8 +69,8 @@ export default {
 
   // API Keys
   keys: {
-    title: 'API 密钥',
-    description: '管理您的 API 密钥和访问令牌',
+    title: 'Bestloong API 密钥',
+    description: '管理您的 Bestloong API 密钥和访问令牌',
     searchPlaceholder: '搜索名称或Key...',
     endpoints: {
       title: 'API 端点',
@@ -159,7 +159,7 @@ export default {
     lastUsedIP: '最近使用 IP',
     useKey: '使用密钥',
     useKeyModal: {
-      title: '使用 API 密钥',
+      title: '使用 Bestloong API 密钥',
       description: '将以下环境变量添加到您的终端配置文件或直接在终端中运行。',
       copy: '复制',
       copied: '已复制',

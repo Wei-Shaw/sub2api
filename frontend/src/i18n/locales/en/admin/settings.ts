@@ -619,8 +619,8 @@ export default {
         backendModeDescription:
           'Disables user registration, public site, and self-service features. Only admin can log in and manage the platform.',
         siteName: 'Site Name',
-        siteNamePlaceholder: 'Sub2API',
-        siteNameHint: 'Displayed in emails and page titles',
+        siteNamePlaceholder: 'Bestloongai',
+        siteNameHint: 'Use Bestloongai for the shared administrator and customer brand',
         siteSubtitle: 'Site Subtitle',
         siteSubtitlePlaceholder: 'Subscription to API Conversion Platform',
         siteSubtitleHint: 'Displayed on login and register pages',

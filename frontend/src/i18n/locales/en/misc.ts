@@ -6,7 +6,7 @@ export default {
 
   tutorials: {
     title: 'Tutorials',
-    description: 'Choose a client guide to connect to the Bestloong API.',
+    description: 'Choose a client guide to connect to Bestloong.',
     workBuddy: 'Work Buddy',
     codexWindows: 'Codex Windows'
   },
