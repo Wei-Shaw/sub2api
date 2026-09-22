@@ -79,6 +79,15 @@ func TestLoadServerTimingConfig(t *testing.T) {
 	})
 }
 
+func TestLoadSimpleModeKeyRateLimitEnabledFromEnvironment(t *testing.T) {
+	resetViperWithJWTSecret(t)
+	t.Setenv("SIMPLE_MODE_KEY_RATE_LIMIT_ENABLED", "true")
+
+	cfg, err := Load()
+	require.NoError(t, err)
+	require.True(t, cfg.SimpleModeKeyRateLimitEnabled)
+}
+
 func TestLoadRedisUsernameFromEnvironment(t *testing.T) {
 	resetViperWithJWTSecret(t)
 	t.Setenv("REDIS_USERNAME", "app-user")

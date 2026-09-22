@@ -486,6 +486,27 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 	}
 
 	if s.cfg != nil && s.cfg.RunMode == config.RunModeSimple {
+		if simpleModeKeyRateLimitBillingEnabled(s.cfg, apiKey) {
+			_, billingErr := applyUsageBilling(ctx, usageLog.RequestID, usageLog, &postUsageBillingParams{
+				Cost:                       cost,
+				User:                       user,
+				APIKey:                     apiKey,
+				Account:                    account,
+				Subscription:               subscription,
+				RequestPayloadHash:         resolveUsageBillingPayloadFingerprint(ctx, input.RequestPayloadHash),
+				IsSubscriptionBill:         false,
+				AccountRateMultiplier:      accountRateMultiplier,
+				APIKeyService:              input.APIKeyService,
+				SimpleModeKeyRateLimitOnly: true,
+			}, s.billingDeps(), s.usageBillingRepo)
+			if billingErr != nil {
+				usageLog.ActualCost = 0
+				writeUsageLogBestEffort(ctx, s.usageLogRepo, usageLog, "service.openai_gateway")
+				return billingErr
+			}
+			writeUsageLogBestEffort(ctx, s.usageLogRepo, usageLog, "service.openai_gateway")
+			return nil
+		}
 		writeUsageLogBestEffort(ctx, s.usageLogRepo, usageLog, "service.openai_gateway")
 		logger.LegacyPrintf("service.openai_gateway", "[SIMPLE MODE] Usage recorded (not billed): user=%d, tokens=%d", usageLog.UserID, usageLog.TotalTokens())
 		s.deferredService.ScheduleLastUsedUpdate(account.ID)

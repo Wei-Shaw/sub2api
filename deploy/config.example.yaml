@@ -100,6 +100,13 @@ webauthn:
 # - simple: 隐藏 SaaS 功能，跳过计费和余额校验
 run_mode: "standard"
 
+# Optional simple-mode API-key spending windows (default: false)
+# 简易模式可选的 API Key 消费窗口限制（默认关闭）
+# When enabled with run_mode: simple, configured 5h/1d/7d key limits are
+# checked from the database and usage is recorded against those windows only.
+# Balance, subscription, platform, and lifetime key quota billing stay bypassed.
+simple_mode_key_rate_limit_enabled: false
+
 # =============================================================================
 # CORS Configuration
 # 跨域资源共享 (CORS) 配置

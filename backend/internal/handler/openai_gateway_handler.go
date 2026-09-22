@@ -2526,6 +2526,20 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 		return
 	}
 
+	// A WebSocket may outlive a key's remaining spending window. Recheck
+	// after acquiring turn slots, including the first account-selection wait.
+	// Restrict this extra check to the opt-in mode so standard-mode RPM checks
+	// are not charged a second time for the same request.
+	checkSimpleModeTurnBilling := func() error {
+		if h.cfg == nil || h.cfg.RunMode != config.RunModeSimple || !h.cfg.SimpleModeKeyRateLimitEnabled {
+			return nil
+		}
+		if err := h.billingCacheService.CheckBillingEligibility(ctx, apiKey.User, apiKey, apiKey.Group, subscription, service.QuotaPlatform(ctx, apiKey)); err != nil {
+			return service.NewOpenAIWSClientCloseError(coderws.StatusPolicyViolation, "billing check failed", err)
+		}
+		return nil
+	}
+
 	sessionHash := h.gatewayService.GenerateSessionHashWithFallback(
 		c,
 		firstMessage,
@@ -2783,6 +2797,11 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 		// turn 级定价：首轮回退到 TurnStarted 的所属 turn 时刻；后续 turn 由
 		// BeforeTurn 重新冻结 pricingAt 并按最新门复核当前账号。
 		var turnPricing openAIWSTurnPricing
+		// Passthrough ingress does not invoke BeforeTurn for the first frame.
+		if err := checkSimpleModeTurnBilling(); err != nil {
+			closeOpenAIClientWS(wsConn, coderws.StatusPolicyViolation, "billing check failed")
+			return
+		}
 		hooks := &service.OpenAIWSIngressHooks{
 			ClientLifecycleContext:      clientLifecycleCtx,
 			InitialRequestModel:         reqModel,
@@ -2893,7 +2912,7 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 				}
 				currentUserRelease = wrapReleaseOnDone(ctx, userReleaseFunc)
 				currentAccountRelease = wrapReleaseOnDone(ctx, accountReleaseFunc)
-				return nil
+				return checkSimpleModeTurnBilling()
 			},
 			AfterTurn: func(turn int, result *service.OpenAIForwardResult, turnErr error) {
 				turnStart := getTurnStart(turn)

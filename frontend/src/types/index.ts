@@ -209,6 +209,8 @@ export interface LoginAgreementDocument {
 }
 
 export interface PublicSettings {
+  /** Simple-mode API-key 5h/1d/7d spending windows are enforced. */
+  simple_mode_key_rate_limit_enabled?: boolean
   registration_enabled: boolean
   email_verify_enabled: boolean
   force_email_on_third_party_signup: boolean

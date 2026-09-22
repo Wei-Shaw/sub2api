@@ -18,6 +18,7 @@ const {
   copyToClipboard,
   isCurrentStep,
   nextStep,
+  authState,
 } = vi.hoisted(() => ({
   listKeys: vi.fn(),
   updateKey: vi.fn(),
@@ -30,6 +31,7 @@ const {
   copyToClipboard: vi.fn(),
   isCurrentStep: vi.fn(),
   nextStep: vi.fn(),
+  authState: { isSimpleMode: false },
 }))
 
 const messages: Record<string, string> = {
@@ -51,6 +53,8 @@ const messages: Record<string, string> = {
   'keys.lastUsedIP': 'Last Used IP',
   'keys.rateLimitColumn': 'Rate Limit',
   'keys.searchPlaceholder': 'Search name or key...',
+  'keys.simpleModeRateLimitsEnabled': 'Simple mode spending windows are active',
+  'keys.simpleModeRateLimitsDisabled': 'Simple mode spending windows are inactive',
   'keys.status.active': 'Active',
   'keys.status.expired': 'Expired',
   'keys.status.inactive': 'Inactive',
@@ -82,6 +86,12 @@ vi.mock('@/stores/app', () => ({
   useAppStore: () => ({
     showError,
     showSuccess,
+  }),
+}))
+
+vi.mock('@/stores/auth', () => ({
+  useAuthStore: () => ({
+    isSimpleMode: authState.isSimpleMode,
   }),
 }))
 
@@ -281,6 +291,7 @@ describe('user KeysView column settings', () => {
     copyToClipboard.mockReset()
     isCurrentStep.mockReset()
     nextStep.mockReset()
+    authState.isSimpleMode = false
 
     listKeys.mockResolvedValue({
       items: [createApiKey()],
@@ -294,6 +305,18 @@ describe('user KeysView column settings', () => {
     getAvailableGroups.mockResolvedValue([])
     getUserGroupRates.mockResolvedValue({})
     isCurrentStep.mockReturnValue(false)
+  })
+
+  it.each([
+    { enabled: false, message: 'keys.simpleModeRateLimitsDisabled' },
+    { enabled: true, message: 'keys.simpleModeRateLimitsEnabled' },
+  ])('shows the simple-mode spending-window state when enabled=$enabled', async ({ enabled, message }) => {
+    authState.isSimpleMode = true
+    getPublicSettings.mockResolvedValue({ simple_mode_key_rate_limit_enabled: enabled })
+
+    const wrapper = await mountView()
+
+    expect(wrapper.get('[data-test="simple-mode-key-rate-limit-status"]').text()).toContain(messages[message])
   })
 
   it.each([

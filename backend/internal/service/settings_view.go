@@ -323,6 +323,10 @@ type DefaultSubscriptionSetting struct {
 }
 
 type PublicSettings struct {
+	// SimpleModeKeyRateLimitEnabled reports the explicit simple-mode API-key
+	// window enforcement switch so authenticated and public UI can explain the
+	// effective behavior without exposing billing balances.
+	SimpleModeKeyRateLimitEnabled       bool `json:"simple_mode_key_rate_limit_enabled"`
 	RegistrationEnabled                 bool
 	EmailVerifyEnabled                  bool
 	ForceEmailOnThirdPartySignup        bool

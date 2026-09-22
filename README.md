@@ -726,6 +726,8 @@ Simple Mode is designed for individual developers or internal teams who want qui
 
 - Enable: Set environment variable `RUN_MODE=simple`
 - Difference: Hides SaaS-related features and skips billing process
+- Optional key windows: Set `SIMPLE_MODE_KEY_RATE_LIMIT_ENABLED=true` to enforce each API key's configured 5-hour, daily, and 7-day spending windows. The default is `false`; balance and subscription debit remain bypassed when enabled.
+- Window enforcement uses the database as its source of truth and records only API-key window usage. It is a post-request soft cap, so concurrent in-flight requests can overshoot by their final costs. Historical simple-mode usage is not backfilled.
 - Security note: In production, you must also set `SIMPLE_MODE_CONFIRM=true` to allow startup
 
 ---
