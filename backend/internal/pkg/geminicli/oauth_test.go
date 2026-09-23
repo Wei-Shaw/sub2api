@@ -665,7 +665,7 @@ func TestEffectiveOAuthConfig_MixedCommaAndSpaceScopes(t *testing.T) {
 	}
 }
 
-func TestEffectiveOAuthConfig_WhitespaceTriming(t *testing.T) {
+func TestEffectiveOAuthConfig_WhitespaceTrimming(t *testing.T) {
 	// 输入中的前后空白应被清理
 	cfg, err := EffectiveOAuthConfig(OAuthConfig{
 		ClientID:     "  custom-id  ",
