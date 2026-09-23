@@ -555,3 +555,65 @@ func TestExtractValidationURL(t *testing.T) {
 		})
 	}
 }
+
+func TestBuildUsageInfo_WithQuotaSummary(t *testing.T) {
+	fetcher := &AntigravityQuotaFetcher{}
+
+	modelsResp := &antigravity.FetchAvailableModelsResponse{
+		Models: map[string]antigravity.ModelInfo{
+			"claude-sonnet-4-6": {
+				QuotaInfo: &antigravity.ModelQuotaInfo{
+					RemainingFraction: 0.8,
+					ResetTime:         "2026-03-08T12:00:00Z",
+				},
+				DisplayName: "Claude Sonnet 4.6",
+			},
+		},
+	}
+
+	quotaSummary := &antigravity.RetrieveUserQuotaSummaryResponse{
+		Buckets: []antigravity.QuotaSummaryBucket{
+			{
+				BucketID:          "gemini-3.8-flash",
+				DisplayName:       "Gemini 3.8 Flash",
+				RemainingFraction: 0.85,
+				ResetTime:         "2026-03-08T18:00:00Z",
+			},
+		},
+		Groups: []antigravity.QuotaSummaryGroup{
+			{
+				DisplayName: "Gemini Group",
+				Buckets: []antigravity.QuotaSummaryBucket{
+					{
+						BucketID:          "gemini-3.8-flash-high",
+						DisplayName:       "Gemini 3.8 Flash (High)",
+						RemainingFraction: 0.60,
+						ResetTime:         "2026-03-08T19:00:00Z",
+					},
+				},
+			},
+		},
+	}
+
+	info := fetcher.buildUsageInfo(modelsResp, "g1-pro-tier", "PRO", nil, quotaSummary)
+
+	require.NotNil(t, info.AntigravityQuotaSummary)
+	require.Len(t, info.AntigravityQuotaSummary.Buckets, 1)
+	require.Len(t, info.AntigravityQuotaSummary.Groups, 1)
+
+	// Buckets should populate AntigravityQuota by BucketID and DisplayName
+	require.NotNil(t, info.AntigravityQuota["gemini-3.8-flash"])
+	require.Equal(t, 15, info.AntigravityQuota["gemini-3.8-flash"].Utilization)
+	require.Equal(t, "2026-03-08T18:00:00Z", info.AntigravityQuota["gemini-3.8-flash"].ResetTime)
+
+	require.NotNil(t, info.AntigravityQuota["Gemini 3.8 Flash"])
+	require.Equal(t, 15, info.AntigravityQuota["Gemini 3.8 Flash"].Utilization)
+
+	// Group buckets should also populate
+	require.NotNil(t, info.AntigravityQuota["gemini-3.8-flash-high"])
+	require.Equal(t, 40, info.AntigravityQuota["gemini-3.8-flash-high"].Utilization)
+
+	// FiveHour fallback should pick gemini-3.8-flash (15% utilization) over claude-sonnet-4-6 (20% utilization)
+	require.NotNil(t, info.FiveHour)
+	require.InDelta(t, 15.0, info.FiveHour.Utilization, 0.01)
+}

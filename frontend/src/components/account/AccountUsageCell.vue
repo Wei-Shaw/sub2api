@@ -844,42 +844,157 @@ interface AntigravityUsageResult {
   resetTime: string | null
 }
 
-// ===== Antigravity quota from API (usageInfo.antigravity_quota) =====
+// ===== Antigravity quota from API (usageInfo.antigravity_quota & antigravity_quota_summary) =====
 
-// 检查是否有从 API 获取的配额数据
+const GEMINI_3_FLASH_MODELS = [
+  'gemini-3.8-flash',
+  'gemini-3.8-flash-high',
+  'gemini-3.8-flash-medium',
+  'gemini-3.8-flash-low',
+  'gemini-3.8-flash-tiered',
+  'gemini-3.7-flash',
+  'gemini-3.7-flash-high',
+  'gemini-3.7-flash-medium',
+  'gemini-3.7-flash-low',
+  'gemini-3.7-flash-tiered',
+  'gemini-3.6-flash',
+  'gemini-3.6-flash-high',
+  'gemini-3.6-flash-medium',
+  'gemini-3.6-flash-low',
+  'gemini-3.6-flash-tiered',
+  'gemini-3.5-flash',
+  'gemini-3-flash',
+  'gemini-3-flash-preview',
+  'gemini-2.5-flash',
+  'gemini-2.5-flash-lite',
+  'gemini-2.5-flash-thinking',
+]
+
+const GEMINI_3_PRO_MODELS = [
+  'gemini-3.1-pro-high',
+  'gemini-3.1-pro-low',
+  'gemini-3.1-pro-preview',
+  'gemini-3.1-pro',
+  'gemini-pro-agent',
+  'gemini-3-pro-high',
+  'gemini-3-pro-low',
+  'gemini-3-pro-preview',
+  'gemini-2.5-pro',
+]
+
+const GEMINI_IMAGE_MODELS = [
+  'gemini-2.5-flash-image',
+  'gemini-3.1-flash-image',
+  'gemini-3.1-flash-image-preview',
+  'gemini-3-pro-image',
+  'gemini-3-pro-image-preview',
+]
+
+const CLAUDE_MODELS = [
+  'claude-fable-5-1',
+  'claude-fable-5',
+  'claude-sonnet-4-5',
+  'claude-opus-4-5-thinking',
+  'claude-sonnet-4-6',
+  'claude-opus-4-6',
+  'claude-opus-4-6-thinking',
+  'claude-opus-4-7',
+  'claude-opus-4-8',
+]
+
+// 检查是否有从 API 获取的配额数据 (quota map 或 quota summary)
 const hasAntigravityQuotaFromAPI = computed(() => {
-  return usageInfo.value?.antigravity_quota && Object.keys(usageInfo.value.antigravity_quota).length > 0
+  const hasQuota = !!(usageInfo.value?.antigravity_quota && Object.keys(usageInfo.value.antigravity_quota).length > 0)
+  const summary = usageInfo.value?.antigravity_quota_summary
+  const hasSummary = !!(summary && ((summary.buckets && summary.buckets.length > 0) || (summary.groups && summary.groups.length > 0)))
+  return hasQuota || hasSummary
 })
 
-// 从 API 配额数据中获取使用率（多模型取最高使用率）
+// 从 API 配额数据中获取使用率（支持 quotaSummary 与 quota map 多模型取最高使用率）
 const getAntigravityUsageFromAPI = (
-  modelNames: string[]
+  modelNames: string[],
+  summaryKeywords?: string[]
 ): AntigravityUsageResult | null => {
-  const quota = usageInfo.value?.antigravity_quota
-  if (!quota) return null
-
   let maxUtilization = 0
   let earliestReset: string | null = null
+  let matched = false
 
-  for (const model of modelNames) {
-    const modelQuota = quota[model]
-    if (!modelQuota) continue
-
-    if (modelQuota.utilization > maxUtilization) {
-      maxUtilization = modelQuota.utilization
-    }
-    if (modelQuota.reset_time) {
-      if (!earliestReset || modelQuota.reset_time < earliestReset) {
-        earliestReset = modelQuota.reset_time
+  // 1. 优先从官方配额摘要 antigravity_quota_summary 中匹配 (对应 agy /usage)
+  const summary = usageInfo.value?.antigravity_quota_summary
+  if (summary) {
+    const allBuckets = [
+      ...(summary.buckets || []),
+      ...(summary.groups || []).flatMap((g) => g.buckets || [])
+    ]
+    for (const b of allBuckets) {
+      const bId = (b.bucketId || '').toLowerCase()
+      const dName = (b.displayName || '').toLowerCase()
+      const hit =
+        modelNames.some((m) => {
+          const mLower = m.toLowerCase()
+          return bId === mLower || bId.includes(mLower) || dName.includes(mLower)
+        }) ||
+        (summaryKeywords &&
+          summaryKeywords.some((kw) => {
+            const kwLower = kw.toLowerCase()
+            return bId.includes(kwLower) || dName.includes(kwLower)
+          }))
+      if (hit) {
+        matched = true
+        if (typeof b.remainingFraction === 'number' && Number.isFinite(b.remainingFraction)) {
+          const util = Math.max(0, Math.min(100, Math.round((1 - b.remainingFraction) * 100)))
+          if (util > maxUtilization) {
+            maxUtilization = util
+          }
+        }
+        if (b.resetTime) {
+          if (!earliestReset || b.resetTime < earliestReset) {
+            earliestReset = b.resetTime
+          }
+        }
       }
     }
   }
 
-  // 如果没有找到任何匹配的模型
-  if (maxUtilization === 0 && earliestReset === null) {
-    const hasAnyData = modelNames.some((m) => quota[m])
-    if (!hasAnyData) return null
+  // 2. 从 antigravity_quota map 中匹配模型 (支持精确与前缀思考变体兜底)
+  const quota = usageInfo.value?.antigravity_quota
+  if (quota) {
+    for (const model of modelNames) {
+      const modelQuota = quota[model]
+      if (modelQuota) {
+        matched = true
+        if (modelQuota.utilization > maxUtilization) {
+          maxUtilization = modelQuota.utilization
+        }
+        if (modelQuota.reset_time) {
+          if (!earliestReset || modelQuota.reset_time < earliestReset) {
+            earliestReset = modelQuota.reset_time
+          }
+        }
+      }
+    }
+
+    if (!matched) {
+      for (const [quotaKey, modelQuota] of Object.entries(quota)) {
+        if (!modelQuota) continue
+        const quotaKeyLower = quotaKey.toLowerCase()
+        const hit = modelNames.some((m) => quotaKeyLower.startsWith(m.toLowerCase()))
+        if (hit) {
+          matched = true
+          if (modelQuota.utilization > maxUtilization) {
+            maxUtilization = modelQuota.utilization
+          }
+          if (modelQuota.reset_time) {
+            if (!earliestReset || modelQuota.reset_time < earliestReset) {
+              earliestReset = modelQuota.reset_time
+            }
+          }
+        }
+      }
+    }
   }
+
+  if (!matched) return null
 
   return {
     utilization: maxUtilization,
@@ -889,26 +1004,22 @@ const getAntigravityUsageFromAPI = (
 
 // Gemini 3 Pro from API
 const antigravity3ProUsageFromAPI = computed(() =>
-  getAntigravityUsageFromAPI(['gemini-3-pro-low', 'gemini-3-pro-high', 'gemini-3-pro-preview'])
+  getAntigravityUsageFromAPI(GEMINI_3_PRO_MODELS, ['pro', 'gemini 3 pro', 'gemini 3.1 pro'])
 )
 
-// Gemini 3 Flash from API
-const antigravity3FlashUsageFromAPI = computed(() => getAntigravityUsageFromAPI(['gemini-3-flash']))
+// Gemini 3 Flash from API (包含 3.8 等全部变体)
+const antigravity3FlashUsageFromAPI = computed(() =>
+  getAntigravityUsageFromAPI(GEMINI_3_FLASH_MODELS, ['flash', 'gemini 3 flash', 'gemini 3.8 flash', 'gemini 3.7 flash', 'gemini 3.6 flash'])
+)
 
 // Gemini Image from API
 const antigravity3ImageUsageFromAPI = computed(() =>
-  getAntigravityUsageFromAPI(['gemini-2.5-flash-image', 'gemini-3.1-flash-image', 'gemini-3-pro-image'])
+  getAntigravityUsageFromAPI(GEMINI_IMAGE_MODELS, ['image', 'flash image'])
 )
 
 // Claude from API (all Claude model variants)
 const antigravityClaudeUsageFromAPI = computed(() =>
-  getAntigravityUsageFromAPI([
-    'claude-fable-5-1',
-    'claude-fable-5',
-    'claude-sonnet-4-5', 'claude-opus-4-5-thinking',
-    'claude-sonnet-4-6', 'claude-opus-4-6', 'claude-opus-4-6-thinking',
-    'claude-opus-4-7', 'claude-opus-4-8',
-  ])
+  getAntigravityUsageFromAPI(CLAUDE_MODELS, ['claude', 'sonnet', 'opus'])
 )
 
 const aiCreditsDisplay = computed(() => {
