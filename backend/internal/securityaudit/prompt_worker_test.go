@@ -302,6 +302,15 @@ func TestEnqueuerSkipsOffOutOfScopeAndNoText(t *testing.T) {
 			cfg.GroupIDs = []int64{9}
 			return cfg
 		}(), req: asyncRequest()},
+		{name: "model out of scope", cfg: func() ActiveConfig {
+			cfg := asyncConfig()
+			cfg.ModelFilter = PromptAuditModelFilter{Type: ModelFilterInclude, Models: []string{"gpt-5"}}
+			return cfg
+		}(), req: func() Request {
+			req := asyncRequest()
+			req.Model = "gpt-4"
+			return req
+		}()},
 		{name: "no user text", cfg: asyncConfig(), req: Request{Protocol: "openai_chat_completions", Body: []byte(`{"messages":[{"role":"function","content":"not audited"}]}`)}},
 	}
 	for _, tt := range tests {

@@ -96,6 +96,7 @@
           <SaveToggle :label="t('admin.promptAudit.saveBar.enabled')" :model-value="draft.enabled" data-test="enabled-toggle" @update:model-value="setEnabled" />
           <SaveToggle :label="t('admin.promptAudit.saveBar.blocking')" :model-value="draft.blocking_enabled" :disabled="!draft.enabled" data-test="blocking-toggle" @update:model-value="setBlocking" />
           <SaveToggle :label="t('admin.promptAudit.saveBar.blockingLatestTurnOnly')" :model-value="draft.blocking_latest_turn_only" :disabled="!draft.enabled || !draft.blocking_enabled" data-test="blocking-latest-turn-only-toggle" @update:model-value="replaceDraft({ ...draft!, blocking_latest_turn_only: $event })" />
+          <SaveToggle :label="t('admin.promptAudit.saveBar.continueOnGuardFailure')" :model-value="draft.continue_on_guard_failure" :disabled="!draft.enabled || !draft.blocking_enabled" data-test="continue-on-guard-failure-toggle" @update:model-value="replaceDraft({ ...draft!, continue_on_guard_failure: $event })" />
           <SaveToggle :label="t('admin.promptAudit.saveBar.storePass')" :model-value="draft.store_pass_events" data-test="store-pass-toggle" @update:model-value="replaceDraft({ ...draft!, store_pass_events: $event })" />
         </div>
         <div class="flex items-center gap-3">
@@ -296,12 +297,12 @@ function updateEndpoints(value: PromptAuditEndpointDraft[]) {
 }
 function setEnabled(value: boolean) {
   if (!draft.value) return
-  replaceDraft({ ...draft.value, enabled: value, blocking_enabled: value ? draft.value.blocking_enabled : false })
+  replaceDraft({ ...draft.value, enabled: value, blocking_enabled: value ? draft.value.blocking_enabled : false, blocking_latest_turn_only: value ? draft.value.blocking_latest_turn_only : false, continue_on_guard_failure: value ? draft.value.continue_on_guard_failure : false })
 }
 function setBlocking(value: boolean) {
   if (!draft.value || !draft.value.enabled) return
   if (value && !draft.value.blocking_enabled) { showBlockingConfirmation.value = true; return }
-  replaceDraft({ ...draft.value, blocking_enabled: value })
+  replaceDraft({ ...draft.value, blocking_enabled: value, blocking_latest_turn_only: value ? draft.value.blocking_latest_turn_only : false, continue_on_guard_failure: value ? draft.value.continue_on_guard_failure : false })
 }
 function confirmBlocking() {
   showBlockingConfirmation.value = false
