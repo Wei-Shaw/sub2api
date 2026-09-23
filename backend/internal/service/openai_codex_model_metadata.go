@@ -193,6 +193,7 @@ func groupCodexModelMetadata(
 			}
 			missingMetadata = true
 		}
+		metadata = codexCatalogAccountMetadata(account, lookupModel, metadata)
 		metadata.CodexToolCapabilities = accountCodexToolCapabilities(account, lookupModel)
 		candidates = append(candidates, metadata)
 	}
@@ -210,6 +211,26 @@ func groupCodexModelMetadata(
 		metadata.Description = configuredCodexCustomDescription
 	}
 	return metadata, true
+}
+
+func codexCatalogAccountMetadata(account *Account, modelID string, metadata UpstreamModelMetadata) UpstreamModelMetadata {
+	if account == nil || !isOpenAIGPT6AstraModel(modelID) {
+		return metadata
+	}
+	snapshot := account.GetUpstreamModelMetadataSnapshot()
+	if (snapshot == nil || snapshot.Source != "models.dev") &&
+		!(account.IsOpenAIApiKey() && isOfficialOpenAIModelsBaseURL(account.GetOpenAIBaseURL())) {
+		return metadata
+	}
+	// API and registry context limits describe the model's capacity, not the
+	// Codex catalog's default and configurable maximum. Keep smaller limits.
+	if metadata.ContextWindow > configuredCodexFallbackContext {
+		metadata.ContextWindow = 0
+	}
+	if metadata.MaxContextWindow > configuredCodexGPT6AstraMaxContext {
+		metadata.MaxContextWindow = configuredCodexGPT6AstraMaxContext
+	}
+	return metadata
 }
 
 func codexExplicitModelTargetsConflict(accounts []Account, modelID string) bool {
