@@ -5,6 +5,7 @@ package service
 import (
 	"context"
 	"errors"
+	"fmt"
 	"testing"
 	"time"
 
@@ -244,6 +245,32 @@ var _ AccountRepository = (*mockAccountRepoForPlatform)(nil)
 type mockGatewayCacheForPlatform struct {
 	sessionBindings map[string]int64
 	deletedSessions map[string]int
+	// successBindings 是成功粘性偏好的内存实现，键为 group/session/model。
+	successBindings map[string]GatewayStickySuccessBinding
+}
+
+func gatewayStickySuccessTestKey(groupID int64, sessionHash, model string) string {
+	return fmt.Sprintf("%d/%s/%s", groupID, sessionHash, model)
+}
+
+func (m *mockGatewayCacheForPlatform) GetGatewayStickySuccess(_ context.Context, groupID int64, sessionHash, model string) (GatewayStickySuccessBinding, error) {
+	binding, ok := m.successBindings[gatewayStickySuccessTestKey(groupID, sessionHash, model)]
+	if !ok {
+		return binding, ErrStickySessionNotFound
+	}
+	return binding, nil
+}
+
+func (m *mockGatewayCacheForPlatform) CompareAndSwapGatewayStickySuccess(_ context.Context, groupID int64, sessionHash, model string, expected, next GatewayStickySuccessBinding, _ time.Duration) (bool, error) {
+	if m.successBindings == nil {
+		m.successBindings = make(map[string]GatewayStickySuccessBinding)
+	}
+	key := gatewayStickySuccessTestKey(groupID, sessionHash, model)
+	if m.successBindings[key] != expected {
+		return false, nil
+	}
+	m.successBindings[key] = next
+	return true, nil
 }
 
 func (m *mockGatewayCacheForPlatform) GetSessionAccountID(ctx context.Context, groupID int64, sessionHash string) (int64, error) {

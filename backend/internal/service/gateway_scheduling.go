@@ -65,6 +65,14 @@ func (s *GatewayService) SelectAccountForModelWithExclusions(ctx context.Context
 		platform = PlatformAnthropic
 	}
 	ctx = s.withGatewayProfitControlGate(ctx, groupID)
+	// 成功偏好按此处解析出的有效分组装配：门、候选过滤与粘性键同源。
+	//
+	// 模型维度用**身份模型**（入口登记的渠道映射前请求模型），不是这里的
+	// requestedModel——后者是**调度模型**，composite 路由上面刚把它改写成目标平台的
+	// 上游模型，Gemini 原生入口传进来的本身也是渠道映射后的模型。外层
+	// SelectAccountWithLoadAwareness 已装配过时，同身份同分组在此原样复用状态，
+	// 不重读 expected、不换键。
+	ctx = s.armGatewayStickySuccess(ctx, groupID, sessionHash, requestedModel)
 
 	// Claude Code 限制可能已将 groupID 解析为 fallback group，
 	// 渠道限制预检查必须使用解析后的分组。
@@ -118,6 +126,15 @@ func (s *GatewayService) SelectAccountWithLoadAwareness(ctx context.Context, gro
 	}
 	ctx = s.withGroupContext(ctx, group)
 	ctx = s.withGatewayProfitControlGate(ctx, groupID)
+	// 成功偏好按 checkClaudeCodeRestriction 解析出的有效分组装配：降级到另一个
+	// 分组时，由降级分组自己学习、读取与续期它的成功偏好，入口分组的开关不再
+	// 决定降级分组有没有成功偏好。
+	//
+	// 模型维度用**身份模型**（入口登记的渠道映射前请求模型）；requestedModel 是
+	// **调度模型**，只在没有登记身份时回落使用。两者在 Gemini 原生入口本就不同
+	// （handler 传入的是渠道映射后的 modelName），用调度模型会把映射到同一上游
+	// 模型的不同客户端别名合并成一条偏好。
+	ctx = s.armGatewayStickySuccess(ctx, groupID, sessionHash, requestedModel)
 
 	// Claude Code 限制可能已将 groupID 解析为 fallback group，
 	// 渠道限制预检查必须使用解析后的分组。
@@ -130,7 +147,12 @@ func (s *GatewayService) SelectAccountWithLoadAwareness(ctx context.Context, gro
 
 	var stickyAccountID int64
 	var stickySource string
-	if prefetch := prefetchedStickyAccountIDFromContext(ctx, groupID); prefetch > 0 {
+	if candidate, gated := gatewayStickySuccessCandidate(ctx, groupID, sessionHash); gated {
+		// 门下候选只有一个来源：成功偏好（无偏好时已在装配阶段兼容回落旧绑定）。
+		// 这里不再读预取或旧绑定，避免被已经被取代的账号压回来。
+		stickyAccountID = candidate
+		stickySource = "success_preference"
+	} else if prefetch := prefetchedStickyAccountIDFromContext(ctx, groupID); prefetch > 0 {
 		stickyAccountID = prefetch
 		stickySource = "prefetch"
 	} else if sessionHash != "" && s.cache != nil {
@@ -582,7 +604,10 @@ func (s *GatewayService) SelectAccountWithLoadAwareness(ctx context.Context, gro
 								"session", shortSessionHash(sessionHash),
 								"result", "slot_acquired",
 							)
-							if s.cache != nil {
+							// 抢到本地槽位只说明账号此刻空闲，上游还没有回应；由
+							// 成功偏好接管的会话不据此续期，续期只由确认成功的
+							// 提交完成。其余路径保持既有行为。
+							if s.cache != nil && !gatewayStickySuccessManaged(ctx, groupID, sessionHash) {
 								_ = s.cache.RefreshSessionTTL(ctx, derefGroupID(groupID), sessionHash, stickySessionTTL)
 							}
 							return s.newSelectionResult(ctx, account, true, result.ReleaseFunc, nil)
@@ -831,6 +856,16 @@ func (s *GatewayService) schedulingConfig() config.GatewaySchedulingConfig {
 		LoadBatchEnabled:         true,
 		SlotCleanupInterval:      30 * time.Second,
 	}
+}
+
+// effectiveSchedulingGroupID 读取调度栈当前生效的分组 ID。它与利润门、候选过滤
+// 和粘性键共用同一个来源：checkClaudeCodeRestriction 解析出的分组经
+// withGroupContext 写进 ctx。
+func effectiveSchedulingGroupID(ctx context.Context) int64 {
+	if group, ok := ctx.Value(ctxkey.Group).(*Group); ok && IsGroupContextValid(group) {
+		return group.ID
+	}
+	return 0
 }
 
 func (s *GatewayService) withGroupContext(ctx context.Context, group *Group) context.Context {
@@ -1582,6 +1617,11 @@ func (s *GatewayService) newSelectionResult(ctx context.Context, account *Accoun
 		Acquired:    acquired,
 		ReleaseFunc: release,
 		WaitPlan:    waitPlan,
+		// 记录调度真实生效的分组：ctx 里的分组在 checkClaudeCodeRestriction
+		// 降级后已被 withGroupContext 换成降级分组。
+		effectiveGroupID: effectiveSchedulingGroupID(ctx),
+		// 与利润门同处捕获：状态是在有效分组上装配的那一份。
+		stickySuccess: gatewayStickySuccessFromContext(ctx),
 	}), nil
 }
 
@@ -1912,7 +1952,7 @@ func (s *GatewayService) selectAccountForModelWithPlatform(ctx context.Context, 
 		}
 		// 1) Sticky session only applies if the bound account is within the routing set.
 		if sessionHash != "" && s.cache != nil {
-			accountID, err := s.cache.GetSessionAccountID(ctx, derefGroupID(groupID), sessionHash)
+			accountID, err := s.stickySessionCandidateID(ctx, groupID, sessionHash)
 			if err == nil && accountID > 0 && containsInt64(routingAccountIDs, accountID) {
 				if _, excluded := excludedIDs[accountID]; !excluded {
 					account, err := s.getSchedulableAccount(ctx, accountID)
@@ -2034,7 +2074,7 @@ func (s *GatewayService) selectAccountForModelWithPlatform(ctx context.Context, 
 
 	// 1. 查询粘性会话
 	if sessionHash != "" && s.cache != nil {
-		accountID, err := s.cache.GetSessionAccountID(ctx, derefGroupID(groupID), sessionHash)
+		accountID, err := s.stickySessionCandidateID(ctx, groupID, sessionHash)
 		if err == nil && accountID > 0 {
 			if _, excluded := excludedIDs[accountID]; !excluded {
 				account, err := s.getSchedulableAccount(ctx, accountID)
@@ -2176,7 +2216,7 @@ func (s *GatewayService) selectAccountWithMixedScheduling(ctx context.Context, g
 		}
 		// 1) Sticky session only applies if the bound account is within the routing set.
 		if sessionHash != "" && s.cache != nil {
-			accountID, err := s.cache.GetSessionAccountID(ctx, derefGroupID(groupID), sessionHash)
+			accountID, err := s.stickySessionCandidateID(ctx, groupID, sessionHash)
 			if err == nil && accountID > 0 && containsInt64(routingAccountIDs, accountID) {
 				if _, excluded := excludedIDs[accountID]; !excluded {
 					account, err := s.getSchedulableAccount(ctx, accountID)
@@ -2300,7 +2340,7 @@ func (s *GatewayService) selectAccountWithMixedScheduling(ctx context.Context, g
 
 	// 1. 查询粘性会话
 	if sessionHash != "" && s.cache != nil {
-		accountID, err := s.cache.GetSessionAccountID(ctx, derefGroupID(groupID), sessionHash)
+		accountID, err := s.stickySessionCandidateID(ctx, groupID, sessionHash)
 		if err == nil && accountID > 0 {
 			if _, excluded := excludedIDs[accountID]; !excluded {
 				account, err := s.getSchedulableAccount(ctx, accountID)

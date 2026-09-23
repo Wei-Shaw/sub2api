@@ -4012,3 +4012,12 @@ func TestHandleCompatErrorResponseCyberPolicyEarlyReturn(t *testing.T) {
 	require.NotContains(t, gotMsg, "Upstream request failed")
 	require.NotNil(t, GetOpsCyberPolicy(c))
 }
+
+// 通用路径成功粘性偏好：本替身不参与该用例，保持恒定 miss / 不写入。
+func (*stubGatewayCache) GetGatewayStickySuccess(context.Context, int64, string, string) (GatewayStickySuccessBinding, error) {
+	return GatewayStickySuccessBinding{}, ErrStickySessionNotFound
+}
+
+func (*stubGatewayCache) CompareAndSwapGatewayStickySuccess(context.Context, int64, string, string, GatewayStickySuccessBinding, GatewayStickySuccessBinding, time.Duration) (bool, error) {
+	return false, nil
+}
