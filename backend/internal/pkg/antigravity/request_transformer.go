@@ -62,9 +62,6 @@ const webSearchFallbackModel = "gemini-2.5-flash"
 // Claude API 要求 max_tokens > thinking.budget_tokens，否则返回 400 错误
 const MaxTokensBudgetPadding = 1000
 
-// Gemini 2.5 Flash thinking budget 上限
-const Gemini25FlashThinkingBudgetLimit = 24576
-
 // 对于 Antigravity 的 Claude（budget-only）模型，该语义最终等价为 thinkingBudget=24576。
 // 这里复用相同数值以保持行为一致。
 const ClaudeAdaptiveHighThinkingBudgetTokens = Gemini25FlashThinkingBudgetLimit
@@ -693,21 +690,24 @@ func buildGenerationConfig(req *ClaudeRequest) *GeminiGenerationConfig {
 			budget = ClaudeAdaptiveHighThinkingBudgetTokens
 		}
 
-		// 正预算需要做上限与 max_tokens 约束；动态预算（-1）直接透传给上游。
-		if budget > 0 {
-			// gemini-2.5-flash 上限
-			if strings.Contains(req.Model, "gemini-2.5-flash") && budget > Gemini25FlashThinkingBudgetLimit {
-				budget = Gemini25FlashThinkingBudgetLimit
-			}
+		if ResolveGeminiThinkingMode(req.Model) == GeminiThinkingLevel {
+			config.ThinkingConfig.ThinkingLevel = GeminiThinkingLevelForBudget(budget)
+		} else {
+			// 正预算需要做上限与 max_tokens 约束；动态预算（-1）直接透传给上游。
+			if budget > 0 {
+				if limit := GeminiThinkingBudgetLimitForModel(req.Model); limit > 0 && budget > limit {
+					budget = limit
+				}
 
-			// 自动修正：max_tokens 必须大于 budget_tokens（Claude 上游要求）
-			if adjusted, ok := ensureMaxTokensGreaterThanBudget(config.MaxOutputTokens, budget); ok {
-				log.Printf("[Antigravity] Auto-adjusted max_tokens from %d to %d (must be > budget_tokens=%d)",
-					config.MaxOutputTokens, adjusted, budget)
-				config.MaxOutputTokens = adjusted
+				// 自动修正：max_tokens 必须大于 budget_tokens（Claude 上游要求）
+				if adjusted, ok := ensureMaxTokensGreaterThanBudget(config.MaxOutputTokens, budget); ok {
+					log.Printf("[Antigravity] Auto-adjusted max_tokens from %d to %d (must be > budget_tokens=%d)",
+						config.MaxOutputTokens, adjusted, budget)
+					config.MaxOutputTokens = adjusted
+				}
 			}
+			config.ThinkingConfig.ThinkingBudget = budget
 		}
-		config.ThinkingConfig.ThinkingBudget = budget
 	}
 
 	if config.MaxOutputTokens > maxLimit {
