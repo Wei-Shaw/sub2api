@@ -60,7 +60,7 @@ func (s *OpenAIGatewayService) forwardAnthropicViaRawChatCompletions(
 	billingModel := resolveOpenAIForwardModel(account, anthropicReq.Model, defaultMappedModel)
 	upstreamModel := normalizeOpenAIModelForUpstream(account, billingModel)
 	chatReq.Model = upstreamModel
-	chatReq.ReasoningEffort = openAICompatAnthropicReasoningEffort(&anthropicReq, upstreamModel, chatReq.ReasoningEffort)
+	chatReq.ReasoningEffort = openAICompatAnthropicReasoningEffort(account, &anthropicReq, upstreamModel, chatReq.ReasoningEffort)
 	chatReq.Stream = clientStream
 	if clientStream {
 		chatReq.StreamOptions = &apicompat.ChatStreamOptions{IncludeUsage: true}
@@ -90,7 +90,7 @@ func (s *OpenAIGatewayService) forwardAnthropicViaRawChatCompletions(
 	}
 	// Provider normalization and policy caps can both change the converted effort.
 	// Use the final outbound value for usage logs and billing.
-	reasoningEffort := extractOpenAIReasoningEffortFromBody(chatBody, upstreamModel, billingModel, originalModel)
+	reasoningEffort := extractOpenAIReasoningEffortFromBody(account, chatBody, upstreamModel, billingModel, originalModel)
 	reasoningEffort = ApplyThinkingEnabledFallback(reasoningEffort, chatBody, upstreamModel)
 	// Unlike forwardResponsesViaRawChatCompletions, applyOpenAIFastPolicyToBody
 	// is intentionally skipped: Anthropic Messages bodies carry no service_tier,

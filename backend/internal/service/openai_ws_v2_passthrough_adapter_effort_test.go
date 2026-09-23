@@ -11,7 +11,7 @@ import (
 func TestWSPassthroughUsageMeta_InitFromFirstFrame_MappedModelCandidate(t *testing.T) {
 	body := []byte(`{"type":"response.create","model":"sol","reasoning":{"effort":"max"}}`)
 
-	meta := newOpenAIWSPassthroughUsageMeta("sol", body)
+	meta := newOpenAIWSPassthroughUsageMeta(nil, "sol", body)
 	meta.initFromFirstFrame(body, "gpt-5.6-sol")
 
 	got := meta.reasoningEffort.Load()
@@ -22,7 +22,7 @@ func TestWSPassthroughUsageMeta_InitFromFirstFrame_MappedModelCandidate(t *testi
 func TestWSPassthroughUsageMeta_InitFromFirstFrame_NonGPT56FallsBackToXHigh(t *testing.T) {
 	body := []byte(`{"type":"response.create","model":"gpt-5.4","reasoning":{"effort":"max"}}`)
 
-	meta := newOpenAIWSPassthroughUsageMeta("gpt-5.4", body)
+	meta := newOpenAIWSPassthroughUsageMeta(nil, "gpt-5.4", body)
 	meta.initFromFirstFrame(body, "gpt-5.4")
 	meta.captureRequestedReasoningEffort(body, "gpt-5.4")
 
@@ -34,10 +34,22 @@ func TestWSPassthroughUsageMeta_InitFromFirstFrame_NonGPT56FallsBackToXHigh(t *t
 	require.Equal(t, "max", *requested, "usage should keep the pre-mapping requested effort")
 }
 
+func TestWSPassthroughUsageMeta_UsesAccountUpstreamReasoningLevels(t *testing.T) {
+	body := []byte(`{"type":"response.create","model":"gpt-5.7","reasoning":{"effort":"max"}}`)
+	account := accountWithUpstreamReasoningLevels("gpt-5.7", "low", "medium", "high", "xhigh", "max")
+
+	meta := newOpenAIWSPassthroughUsageMeta(account, "gpt-5.7", body)
+	meta.initFromFirstFrame(body, "gpt-5.7")
+
+	got := meta.reasoningEffort.Load()
+	require.NotNil(t, got)
+	require.Equal(t, "max", *got, "synced upstream levels should preserve max for models outside the built-in list")
+}
+
 func TestWSPassthroughUsageMeta_UpdateFromResponseCreate_MappedModelCandidate(t *testing.T) {
 	body := []byte(`{"type":"response.create","model":"sol","reasoning":{"effort":"max"}}`)
 
-	meta := newOpenAIWSPassthroughUsageMeta("sol", body)
+	meta := newOpenAIWSPassthroughUsageMeta(nil, "sol", body)
 	meta.updateFromResponseCreate(body, "gpt-5.6-sol", "sol")
 
 	got := meta.reasoningEffort.Load()

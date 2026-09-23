@@ -1107,7 +1107,7 @@ func TestPassthroughUsageMeta_TracksReasoningEffortAcrossTurns(t *testing.T) {
 	account := &Account{Platform: PlatformOpenAI, Type: AccountTypeAPIKey}
 
 	firstFrame := []byte(`{"type":"response.create","model":"gpt-5.5","reasoning":{"effort":"medium"},"service_tier":"priority"}`)
-	meta := newOpenAIWSPassthroughUsageMeta("", firstFrame)
+	meta := newOpenAIWSPassthroughUsageMeta(nil, "", firstFrame)
 	capturedSessionModel := openAIWSPassthroughPolicyModelForFrame(account, firstFrame)
 	firstOut, firstBlocked, firstErr := svc.applyOpenAIFastPolicyToWSResponseCreate(context.Background(), account, capturedSessionModel, firstFrame)
 	require.NoError(t, firstErr)

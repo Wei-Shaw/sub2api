@@ -954,7 +954,7 @@ func TestExtractOpenAIReasoningEffortFromBody(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := extractOpenAIReasoningEffortFromBody(tt.body, tt.model)
+			got := extractOpenAIReasoningEffortFromBody(nil, tt.body, tt.model)
 			if tt.wantNil {
 				require.Nil(t, got)
 				return
