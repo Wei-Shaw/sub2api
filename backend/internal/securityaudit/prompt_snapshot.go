@@ -33,9 +33,9 @@ func ExtractPromptSnapshot(req Request) (PromptSnapshot, error) {
 	return extractPromptSnapshot(req, false)
 }
 
-// ExtractBlockingPromptSnapshot builds the narrow, low-latency blocking input
-// when configured. Asynchronous auditing always uses ExtractPromptSnapshot so
-// the complete client-controlled transcript is retained for review.
+// ExtractBlockingPromptSnapshot applies the configured input scope for both
+// synchronous blocking and asynchronous auditing. The historical name is kept
+// for compatibility; latestTurnOnly=false retains the full transcript.
 func ExtractBlockingPromptSnapshot(req Request, latestTurnOnly bool) (PromptSnapshot, error) {
 	return extractPromptSnapshot(req, latestTurnOnly)
 }
@@ -457,7 +457,7 @@ func normalizeSegmentsLatestUserFirst(values []promptSegment) []string {
 	return result
 }
 
-// blockingSegmentsLatestUserAndPreviousOutput limits synchronous guard input to
+// blockingSegmentsLatestUserAndPreviousOutput limits audit input to
 // the current user turn and the nearest preceding assistant/model turn. It is
 // deliberately opt-in because full transcript scanning remains stronger at
 // finding client-controlled content placed in older or non-user messages.
