@@ -549,6 +549,13 @@ func TestLoadDefaultOpenAIWSConfig(t *testing.T) {
 	if cfg.Gateway.OpenAIWS.MaxIngressConnectionsPerAPIKey != 64 {
 		t.Fatalf("Gateway.OpenAIWS.MaxIngressConnectionsPerAPIKey = %d, want 64", cfg.Gateway.OpenAIWS.MaxIngressConnectionsPerAPIKey)
 	}
+	if cfg.Gateway.OpenAIWS.TurnSlotWaitTimeoutSeconds != DefaultOpenAIWSTurnSlotWaitTimeoutSeconds {
+		t.Fatalf(
+			"Gateway.OpenAIWS.TurnSlotWaitTimeoutSeconds = %d, want %d",
+			cfg.Gateway.OpenAIWS.TurnSlotWaitTimeoutSeconds,
+			DefaultOpenAIWSTurnSlotWaitTimeoutSeconds,
+		)
+	}
 }
 
 func TestLoadOpenAIWSClientFirstMessageTimeoutFromEnv(t *testing.T) {
@@ -2218,6 +2225,11 @@ func TestValidateConfig_OpenAIWSRules(t *testing.T) {
 			name:    "ingress_inter_turn_idle_timeout_seconds 不能为负数",
 			mutate:  func(c *Config) { c.Gateway.OpenAIWS.IngressInterTurnIdleTimeoutSeconds = -1 },
 			wantErr: "gateway.openai_ws.ingress_inter_turn_idle_timeout_seconds",
+		},
+		{
+			name:    "turn_slot_wait_timeout_seconds 不能为负数",
+			mutate:  func(c *Config) { c.Gateway.OpenAIWS.TurnSlotWaitTimeoutSeconds = -1 },
+			wantErr: "gateway.openai_ws.turn_slot_wait_timeout_seconds",
 		},
 		{
 			name:    "max_ingress_connections_per_api_key 不能为负数",
