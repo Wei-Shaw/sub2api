@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"net/http"
+	"strings"
 	"time"
 
 	pluginv1 "github.com/Wei-Shaw/sub2api/pkg/pluginapi/v1"
@@ -46,13 +47,92 @@ type PluginOutboundIdentity struct {
 	Headers     http.Header
 }
 
-// PluginAccountDirectory 让插件枚举其能力所覆盖的账号，并按需解析这些账号的出站身份，
-// 无需等待一条真实请求流经插件。这是一项敏感能力（会把账号凭据交给插件进程），因此
-// 宿主只对「其声明能力确实覆盖这些账号」的插件开放（见 PluginManager.buildHostServices）。
-// 实现方自身也必须把返回范围收敛到该能力对应的账号集合。
+// PluginAccountInfo 是宿主向插件公开的、单个账号的「可读、非机密」视图。它绝不包含
+// 凭据（access_token / refresh_token / cookie 等）——凭据只经 ResolvePluginOutboundIdentity
+// 交付。范围内的账号一律返回（包含 active 但当前被暂停的：限流 / 临时不可调度 / 过载），
+// 由插件自行决策（例如跳过已暂停账号，避免密集打扰）；管理性禁用 / 过期账号由仓储查询
+// 上游过滤，不在此出现。Schedulable 是宿主权威判定（account.IsSchedulable），是插件
+// 排除账号的首选信号。
+//
+// 只保留少量稳定的决策核心字段；账号其余可读信息（含日后新增字段）全部放进
+// MetadataJSON，从而账号模型新增字段时宿主无需改契约、无需改映射、插件无需重编。
+type PluginAccountInfo struct {
+	ID          int64
+	Platform    string
+	AccountType string
+	Name        string
+	Status      string
+	Schedulable bool
+	IsShadow    bool
+	// MetadataJSON 是账号全量可读、非机密字段的 JSON 对象（键为账号模型字段名）。
+	MetadataJSON []byte
+}
+
+// pluginAccountScopeEntry 是账号范围中的一条 (platform, accountType) 规则。
+// Platform 为具体平台；AccountType 为空表示该平台下任意账号类型。
+type pluginAccountScopeEntry struct {
+	Platform    string
+	AccountType string
+}
+
+// PluginAccountScope 是宿主授予某插件的账号可见范围，由该插件清单声明的能力推导而来
+// （见 PluginManager.buildHostServices）。它是权限边界的唯一事实来源：插件永远无法
+// 越过它枚举或解析范围外账号，也无法自行扩大范围。
+type PluginAccountScope struct {
+	entries []pluginAccountScopeEntry
+}
+
+func newPluginAccountScope(entries ...pluginAccountScopeEntry) PluginAccountScope {
+	clean := make([]pluginAccountScopeEntry, 0, len(entries))
+	for _, e := range entries {
+		if strings.TrimSpace(e.Platform) == "" {
+			continue
+		}
+		clean = append(clean, e)
+	}
+	return PluginAccountScope{entries: clean}
+}
+
+// Empty 报告范围是否为空。空范围表示插件不具备任何账号目录能力。
+func (s PluginAccountScope) Empty() bool { return len(s.entries) == 0 }
+
+// Contains 报告某 (platform, accountType) 是否落在范围内。AccountType 为空的范围条目
+// 匹配该平台下任意类型。
+func (s PluginAccountScope) Contains(platform, accountType string) bool {
+	for _, e := range s.entries {
+		if e.Platform != "" && e.Platform != platform {
+			continue
+		}
+		if e.AccountType != "" && e.AccountType != accountType {
+			continue
+		}
+		return true
+	}
+	return false
+}
+
+// Platforms 返回范围内去重后的具体平台列表，供实现方按平台枚举账号。
+func (s PluginAccountScope) Platforms() []string {
+	seen := make(map[string]struct{}, len(s.entries))
+	out := make([]string, 0, len(s.entries))
+	for _, e := range s.entries {
+		if _, ok := seen[e.Platform]; ok {
+			continue
+		}
+		seen[e.Platform] = struct{}{}
+		out = append(out, e.Platform)
+	}
+	return out
+}
+
+// PluginAccountDirectory 让插件枚举其范围内的账号（携带全量可读元数据），并按需解析
+// 这些账号的出站身份，无需等待一条真实请求流经插件。ResolvePluginOutboundIdentity 会把
+// 账号凭据交给插件进程，属敏感能力；ListPluginAccounts 只交付非机密元数据。两者都必须
+// 把范围收敛到宿主传入的 scope。宿主只对「清单声明了对应账号能力」的插件构造 scope
+// （见 PluginManager.buildHostServices）。
 type PluginAccountDirectory interface {
-	ListPluginAccounts(ctx context.Context, platform, accountType string) ([]int64, error)
-	ResolvePluginOutboundIdentity(ctx context.Context, accountID int64) (*PluginOutboundIdentity, error)
+	ListPluginAccounts(ctx context.Context, scope PluginAccountScope, platform, accountType string) ([]PluginAccountInfo, error)
+	ResolvePluginOutboundIdentity(ctx context.Context, scope PluginAccountScope, accountID int64) (*PluginOutboundIdentity, error)
 }
 
 // pluginHostServiceServer 实现 pluginv1.HostServiceServer，是宿主经 go-plugin broker
@@ -63,10 +143,12 @@ type pluginHostServiceServer struct {
 	pluginKey string
 	store     PluginKVStore
 	directory PluginAccountDirectory
+	// scope 是宿主授予本插件的账号可见范围。账号目录的两个 RPC 都以它为权限边界。
+	scope PluginAccountScope
 }
 
-func newPluginHostServiceServer(pluginKey string, store PluginKVStore, directory PluginAccountDirectory) *pluginHostServiceServer {
-	return &pluginHostServiceServer{pluginKey: pluginKey, store: store, directory: directory}
+func newPluginHostServiceServer(pluginKey string, store PluginKVStore, directory PluginAccountDirectory, scope PluginAccountScope) *pluginHostServiceServer {
+	return &pluginHostServiceServer{pluginKey: pluginKey, store: store, directory: directory, scope: scope}
 }
 
 func (s *pluginHostServiceServer) ready() bool {
@@ -171,27 +253,35 @@ func (s *pluginHostServiceServer) KVList(ctx context.Context, req *pluginv1.KVLi
 }
 
 func (s *pluginHostServiceServer) ListAccounts(ctx context.Context, req *pluginv1.ListAccountsRequest) (*pluginv1.ListAccountsResponse, error) {
-	if s == nil || s.directory == nil {
+	if s == nil || s.directory == nil || s.scope.Empty() {
 		return nil, status.Error(codes.Unavailable, "账号目录不可用")
 	}
 	if req == nil {
 		return nil, status.Error(codes.InvalidArgument, "请求为空")
 	}
-	ids, err := s.directory.ListPluginAccounts(ctx, req.Platform, req.AccountType)
+	infos, err := s.directory.ListPluginAccounts(ctx, s.scope, req.Platform, req.AccountType)
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "列举账号失败: %v", err)
 	}
-	return &pluginv1.ListAccountsResponse{AccountIds: ids}, nil
+	resp := &pluginv1.ListAccountsResponse{
+		AccountIds: make([]int64, 0, len(infos)),
+		Accounts:   make([]*pluginv1.AccountInfo, 0, len(infos)),
+	}
+	for i := range infos {
+		resp.AccountIds = append(resp.AccountIds, infos[i].ID)
+		resp.Accounts = append(resp.Accounts, accountInfoToPlugin(infos[i]))
+	}
+	return resp, nil
 }
 
 func (s *pluginHostServiceServer) ResolveOutboundIdentity(ctx context.Context, req *pluginv1.ResolveOutboundIdentityRequest) (*pluginv1.ResolveOutboundIdentityResponse, error) {
-	if s == nil || s.directory == nil {
+	if s == nil || s.directory == nil || s.scope.Empty() {
 		return nil, status.Error(codes.Unavailable, "账号目录不可用")
 	}
 	if req == nil || req.AccountId <= 0 {
 		return nil, status.Error(codes.InvalidArgument, "account_id 无效")
 	}
-	identity, err := s.directory.ResolvePluginOutboundIdentity(ctx, req.AccountId)
+	identity, err := s.directory.ResolvePluginOutboundIdentity(ctx, s.scope, req.AccountId)
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "解析账号出站身份失败: %v", err)
 	}
@@ -207,6 +297,21 @@ func (s *pluginHostServiceServer) ResolveOutboundIdentity(ctx context.Context, r
 		Token:       identity.Token,
 		Headers:     headersToPlugin(identity.Headers),
 	}, nil
+}
+
+// accountInfoToPlugin 把宿主的账号元数据视图映射为线上契约消息。只映射稳定的决策核心
+// 字段；其余可读信息经 MetadataJSON 透传。绝不携带凭据。
+func accountInfoToPlugin(info PluginAccountInfo) *pluginv1.AccountInfo {
+	return &pluginv1.AccountInfo{
+		Id:           info.ID,
+		Platform:     info.Platform,
+		AccountType:  info.AccountType,
+		Name:         info.Name,
+		Status:       info.Status,
+		Schedulable:  info.Schedulable,
+		IsShadow:     info.IsShadow,
+		MetadataJson: info.MetadataJSON,
+	}
 }
 
 func pluginKVTTL(seconds int64) (time.Duration, error) {

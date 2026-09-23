@@ -17,7 +17,11 @@ const (
 	// HostServiceAPIVersion 是宿主反向服务（HostService）的契约版本。它独立于
 	// TransportAPIVersion：宿主服务是叠加在传输契约之上的可选能力，通过
 	// InitHostServices 在运行时协商，因此新增宿主能力不会使既有插件失效。
-	HostServiceAPIVersion = 1
+	//
+	// v2：ListAccounts 在 account_ids 之外增补 AccountInfo 全量可读元数据
+	// （状态/调度/限流/暂停原因等），供插件排除不可调度账号。纯加法变更，v1
+	// 插件忽略新字段即可继续工作。
+	HostServiceAPIVersion = 2
 	// TransportPluginName 是 go-plugin 中注册的唯一能力名称。
 	TransportPluginName = "oauth_transport"
 )

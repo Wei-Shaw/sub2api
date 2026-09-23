@@ -372,6 +372,53 @@ func TestBackupService_S3ConfigKeepExistingSecret(t *testing.T) {
 	require.Equal(t, "AKID-NEW", internal.AccessKeyID)
 }
 
+// 一次不带 secret 的保存（表单第二次提交、改端点、存定时配置）继承的是 loadS3Config
+// 解密后的明文。若那条路径跳过加密，明文就会覆盖库里的密文，而读取侧“兼容未加密旧
+// 数据”的回退会把它掩盖成一条日志，功能照常，密钥却是明文落库的。
+func TestBackupService_S3ConfigStaysEncryptedAfterSecondSave(t *testing.T) {
+	repo := newMockSettingRepo()
+	svc := newTestBackupService(repo, &mockDumper{}, newMockObjectStore())
+
+	_, err := svc.UpdateS3Config(context.Background(), BackupS3Config{
+		Bucket:          "my-bucket",
+		AccessKeyID:     "AKID",
+		SecretAccessKey: "original-secret",
+	})
+	require.NoError(t, err)
+
+	storedSecret := func() string {
+		raw, _ := repo.GetValue(context.Background(), settingKeyBackupS3Config)
+		var stored BackupS3Config
+		require.NoError(t, json.Unmarshal([]byte(raw), &stored))
+		return stored.SecretAccessKey
+	}
+	require.Equal(t, "ENC:original-secret", storedSecret())
+
+	// 第二次保存不带 secret，只改别的字段。
+	_, err = svc.UpdateS3Config(context.Background(), BackupS3Config{
+		Bucket:      "my-bucket",
+		AccessKeyID: "AKID-NEW",
+	})
+	require.NoError(t, err)
+
+	require.Equal(t, "ENC:original-secret", storedSecret(),
+		"secret must stay encrypted at rest after a save that inherits it")
+	require.NotEqual(t, "original-secret", storedSecret(), "secret must never be stored as plaintext")
+
+	// 第三次保存，确认不会反复套壳加密。
+	_, err = svc.UpdateS3Config(context.Background(), BackupS3Config{
+		Bucket:      "my-bucket",
+		AccessKeyID: "AKID-THIRD",
+	})
+	require.NoError(t, err)
+	require.Equal(t, "ENC:original-secret", storedSecret(), "secret must not be double-encrypted")
+
+	internal, err := svc.loadS3Config(context.Background())
+	require.NoError(t, err)
+	require.Equal(t, "original-secret", internal.SecretAccessKey)
+	require.Equal(t, "AKID-THIRD", internal.AccessKeyID)
+}
+
 func TestBackupService_UpdateS3Config_RejectsEphemeralKey(t *testing.T) {
 	repo := newMockSettingRepo()
 	svc := newTestBackupServiceEphemeralKey(repo)
@@ -1146,10 +1193,11 @@ func TestRecoverStaleRecords(t *testing.T) {
 	})
 	// 模拟一条孤立的恢复中记录
 	_ = svc.saveRecord(context.Background(), &BackupRecord{
-		ID:            "stale-2",
-		Status:        "completed",
-		RestoreStatus: "running",
-		StartedAt:     time.Now().Add(-1 * time.Hour).Format(time.RFC3339),
+		ID:               "stale-2",
+		Status:           "completed",
+		RestoreStatus:    "running",
+		RestoreStartedAt: time.Now().Add(-1 * time.Hour).Format(time.RFC3339),
+		StartedAt:        time.Now().Add(-1 * time.Hour).Format(time.RFC3339),
 	})
 
 	svc.recoverStaleRecords()

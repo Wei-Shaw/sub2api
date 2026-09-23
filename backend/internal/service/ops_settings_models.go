@@ -77,11 +77,14 @@ type OpsRuntimeLogConfig struct {
 	Caller            bool   `json:"caller"`
 	StacktraceLevel   string `json:"stacktrace_level"`
 	// RetentionDays is the authoritative retention for ops_system_logs.
-	RetentionDays   int            `json:"retention_days"`
-	Source          string         `json:"source,omitempty"`
-	UpdatedAt       string         `json:"updated_at,omitempty"`
-	UpdatedByUserID int64          `json:"updated_by_user_id,omitempty"`
-	Extra           map[string]any `json:"extra,omitempty"`
+	RetentionDays int `json:"retention_days"`
+	// RequestRetentionDays controls usage_logs; 0 keeps request history indefinitely.
+	// A nil value from older clients preserves the existing setting.
+	RequestRetentionDays *int           `json:"request_retention_days"`
+	Source               string         `json:"source,omitempty"`
+	UpdatedAt            string         `json:"updated_at,omitempty"`
+	UpdatedByUserID      int64          `json:"updated_by_user_id,omitempty"`
+	Extra                map[string]any `json:"extra,omitempty"`
 }
 
 type OpsAlertRuntimeSettings struct {

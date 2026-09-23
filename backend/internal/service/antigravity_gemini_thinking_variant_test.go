@@ -3,6 +3,7 @@ package service
 import (
 	"testing"
 
+	"github.com/Wei-Shaw/sub2api/internal/pkg/antigravity"
 	"github.com/stretchr/testify/require"
 )
 
@@ -114,5 +115,98 @@ func TestResolveGeminiThinkingVariant(t *testing.T) {
 		got, matched := resolveGeminiThinkingVariant(nil, "gemini-3.8-flash", budget("-1"))
 		require.False(t, matched)
 		require.Empty(t, got)
+	})
+}
+
+func TestGeminiThinkingLevelFromClaudeThinking(t *testing.T) {
+	tests := []struct {
+		name     string
+		thinking *antigravity.ThinkingConfig
+		want     string
+	}{
+		{"nil thinking", nil, "high"},
+		{"disabled", &antigravity.ThinkingConfig{Type: "disabled"}, "low"},
+		{"enabled without budget", &antigravity.ThinkingConfig{Type: "enabled"}, "high"},
+		{"budget 1024 -> low", &antigravity.ThinkingConfig{Type: "enabled", BudgetTokens: 1024}, "low"},
+		{"budget 4000 -> medium", &antigravity.ThinkingConfig{Type: "enabled", BudgetTokens: 4000}, "medium"},
+		{"budget 20000 -> high", &antigravity.ThinkingConfig{Type: "enabled", BudgetTokens: 20000}, "high"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			require.Equal(t, tt.want, geminiThinkingLevelFromClaudeThinking(tt.thinking))
+		})
+	}
+}
+
+// 锁定线上 404 回归：Chat Completions / Messages 兼容层收到裸 Gemini 模型名时，
+// 必须和 Gemini 原生路径一样解析到带后缀的上游变体，而不是把裸名透传给上游。
+func TestResolveGeminiThinkingVariantForLevel_CompatPathResolvesBareModel(t *testing.T) {
+	catalog := map[string]string{
+		"gemini-3.8-flash-low":    "gemini-3.8-flash-low",
+		"gemini-3.8-flash-medium": "gemini-3.8-flash-medium",
+		"gemini-3.8-flash-high":   "gemini-3.8-flash-high",
+	}
+	account := newAntigravityAccountWithMapping(catalog)
+
+	for _, tc := range []struct{ level, want string }{
+		{"low", "gemini-3.8-flash-low"},
+		{"medium", "gemini-3.8-flash-medium"},
+		{"high", "gemini-3.8-flash-high"},
+		{"", "gemini-3.8-flash-high"},
+	} {
+		t.Run("level="+tc.level, func(t *testing.T) {
+			got, matched := resolveGeminiThinkingVariantForLevel(account, "gemini-3.8-flash", tc.level)
+			require.True(t, matched)
+			require.Equal(t, tc.want, got)
+		})
+	}
+
+	t.Run("already suffixed model is untouched", func(t *testing.T) {
+		got, matched := resolveGeminiThinkingVariantForLevel(account, "gemini-3.8-flash-high", "low")
+		require.False(t, matched)
+		require.Empty(t, got)
+	})
+}
+
+// 同一请求无论走 Gemini 原生还是兼容层，都必须落到同一个上游变体。
+func TestGeminiThinkingLevel_NativeAndCompatAgree(t *testing.T) {
+	native := geminiThinkingLevelFromBody([]byte(`{"generationConfig":{"thinkingConfig":{"thinkingBudget":4000}}}`))
+	compat := geminiThinkingLevelFromClaudeThinking(&antigravity.ThinkingConfig{Type: "enabled", BudgetTokens: 4000})
+	require.Equal(t, native, compat)
+}
+
+// 回归锁：裸名解析必须发生在 getMappedModel 这一层，从而覆盖全部 Antigravity
+// 转发入口（/v1beta 原生、/v1/chat/completions、/v1/messages）以及账号测试。
+// 早前只在单个入口打补丁，导致 /v1/messages 仍把裸名透传给上游并触发
+// 404 "Requested entity was not found."
+func TestGetMappedModelResolvesBareGeminiModelForAllEntrypoints(t *testing.T) {
+	svc := &AntigravityGatewayService{}
+	account := newAntigravityAccountWithMapping(map[string]string{
+		"gemini-3.8-flash-low":    "gemini-3.8-flash-low",
+		"gemini-3.8-flash-medium": "gemini-3.8-flash-medium",
+		"gemini-3.8-flash-high":   "gemini-3.8-flash-high",
+	})
+
+	t.Run("default entrypoint falls back to high", func(t *testing.T) {
+		require.Equal(t, "gemini-3.8-flash-high", svc.getMappedModel(account, "gemini-3.8-flash"))
+	})
+
+	t.Run("caller supplied level wins", func(t *testing.T) {
+		require.Equal(t, "gemini-3.8-flash-low",
+			svc.getMappedModelForThinkingLevel(account, "gemini-3.8-flash", "low"))
+		require.Equal(t, "gemini-3.8-flash-medium",
+			svc.getMappedModelForThinkingLevel(account, "gemini-3.8-flash", "medium"))
+	})
+
+	t.Run("models/ prefix is handled", func(t *testing.T) {
+		require.Equal(t, "gemini-3.8-flash-high", svc.getMappedModel(account, "models/gemini-3.8-flash"))
+	})
+
+	t.Run("suffixed model keeps normal mapping", func(t *testing.T) {
+		require.Equal(t, "gemini-3.8-flash-low", svc.getMappedModel(account, "gemini-3.8-flash-low"))
+	})
+
+	t.Run("unsupported model still reports unsupported", func(t *testing.T) {
+		require.Empty(t, svc.getMappedModel(account, "gemini-9.9-flash"))
 	})
 }
