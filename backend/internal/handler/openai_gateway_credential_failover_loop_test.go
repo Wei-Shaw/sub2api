@@ -3,6 +3,7 @@
 package handler
 
 import (
+	"github.com/Wei-Shaw/sub2api/internal/pkg/tlsfingerprint"
 	"bytes"
 	"context"
 	"encoding/json"
@@ -388,6 +389,12 @@ func (u *grokCredentialHandlerUpstream) Do(req *http.Request, _ string, accountI
 			`{"id":"resp_healthy","object":"response","model":"grok-4.5","status":"completed","output":[],"usage":{"input_tokens":1,"output_tokens":1}}`,
 		)),
 	}, nil
+}
+
+// DoWithTLS forwards to Do: tests run with TLS fingerprint disabled,
+// and the gateway falls back to the plain path when the profile is nil.
+func (u *grokCredentialHandlerUpstream) DoWithTLS(req *http.Request, proxyURL string, accountID int64, accountConcurrency int, _ *tlsfingerprint.Profile) (*http.Response, error) {
+	return u.Do(req, proxyURL, accountID, accountConcurrency)
 }
 
 func (u *grokCredentialHandlerUpstream) accountHits() []int64 {
@@ -927,8 +934,8 @@ func newGrokCredentialFailoverHandler(t *testing.T, mode string) (*OpenAIGateway
 	gateway := service.NewOpenAIGatewayService(
 		repo, nil, nil, nil, nil, nil, nil, cfg, nil, nil,
 		service.NewBillingService(cfg, nil), nil, billingCache, upstream,
-		&service.DeferredService{}, nil, provider, nil, nil, nil, nil, nil,
-	)
+		nil, // tlsFPProfileService (test default: disabled),
+		&service.DeferredService{}, nil, provider, nil, nil, nil, nil, nil)
 	cache := &concurrencyCacheMock{
 		acquireUserSlotFn:    func(context.Context, int64, int, string) (bool, error) { return true, nil },
 		acquireAccountSlotFn: func(context.Context, int64, int, string) (bool, error) { return true, nil },

@@ -237,6 +237,7 @@ func newOpenAIRecordUsageServiceForTest(usageRepo UsageLogRepository, userRepo U
 		nil,
 		&BillingCacheService{},
 		nil,
+		nil, // tlsFPProfileService (test default: disabled),
 		&DeferredService{},
 		nil,
 		nil,
@@ -244,8 +245,7 @@ func newOpenAIRecordUsageServiceForTest(usageRepo UsageLogRepository, userRepo U
 		nil,
 		nil,
 		nil,
-		nil, // userPlatformQuotaRepo
-	)
+		nil)
 	svc.userGroupRateResolver = newUserGroupRateResolver(
 		rateRepo,
 		nil,

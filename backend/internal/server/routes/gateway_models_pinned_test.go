@@ -1,6 +1,7 @@
 package routes
 
 import (
+	"github.com/Wei-Shaw/sub2api/internal/pkg/tlsfingerprint"
 	"context"
 	"encoding/json"
 	"io"
@@ -44,6 +45,12 @@ func (u *pinnedModelsRoutesUpstream) Do(req *http.Request, _ string, _ int64, _ 
 	return &http.Response{StatusCode: 200, Header: make(http.Header), Body: io.NopCloser(strings.NewReader(body))}, nil
 }
 
+// DoWithTLS forwards to Do: tests run with TLS fingerprint disabled,
+// and the gateway falls back to the plain path when the profile is nil.
+func (u *pinnedModelsRoutesUpstream) DoWithTLS(req *http.Request, proxyURL string, accountID int64, accountConcurrency int, _ *tlsfingerprint.Profile) (*http.Response, error) {
+	return u.Do(req, proxyURL, accountID, accountConcurrency)
+}
+
 func TestGatewayRoutesPinnedModelsDispatchesOrdinaryAndCodexRequests(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	repo := &pinnedModelsRoutesRepository{account: service.Account{
@@ -54,7 +61,9 @@ func TestGatewayRoutesPinnedModelsDispatchesOrdinaryAndCodexRequests(t *testing.
 	upstream := &pinnedModelsRoutesUpstream{}
 	cfg := &config.Config{RunMode: config.RunModeSimple}
 	s := service.NewOpenAIGatewayService(repo, nil, nil, nil, nil, nil, nil, cfg,
-		nil, nil, nil, nil, nil, upstream, nil, nil, nil, nil, nil, nil, nil, nil)
+		nil, nil, nil, nil, nil, upstream,
+		nil, // tlsFPProfileService (test default: disabled)
+		nil, nil, nil, nil, nil, nil, nil, nil)
 	h := &handler.Handlers{
 		Gateway:       handler.NewGatewayHandler(nil, s, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, cfg, nil),
 		OpenAIGateway: handler.NewOpenAIGatewayHandler(s, nil, nil, nil, nil, nil, nil, nil, cfg),
@@ -103,7 +112,9 @@ func TestGatewayRoutesRetrievePinnedModel(t *testing.T) {
 	upstream := &pinnedModelsRoutesUpstream{}
 	cfg := &config.Config{RunMode: config.RunModeSimple}
 	s := service.NewOpenAIGatewayService(repo, nil, nil, nil, nil, nil, nil, cfg,
-		nil, nil, nil, nil, nil, upstream, nil, nil, nil, nil, nil, nil, nil, nil)
+		nil, nil, nil, nil, nil, upstream,
+		nil, // tlsFPProfileService (test default: disabled)
+		nil, nil, nil, nil, nil, nil, nil, nil)
 	h := &handler.Handlers{
 		Gateway:       handler.NewGatewayHandler(nil, s, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, cfg, nil),
 		OpenAIGateway: handler.NewOpenAIGatewayHandler(s, nil, nil, nil, nil, nil, nil, nil, cfg),

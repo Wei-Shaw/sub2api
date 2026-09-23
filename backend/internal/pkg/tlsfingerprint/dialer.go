@@ -369,6 +369,10 @@ func buildClientHelloSpecFromProfile(profile *Profile) *utls.ClientHelloSpec {
 		alpnProtocols = profile.ALPNProtocols
 	}
 
+	// codex 无 ALPN：Profile.ALPNProtocols == nil（未设置）走默认 http/1.1；
+	// 显式传入的 profile 想去掉 ALPN 时用「非 nil 空切片」表达。
+	noALPN := profile != nil && profile.ALPNProtocols != nil && len(profile.ALPNProtocols) == 0
+
 	supportedVersions := []uint16{utls.VersionTLS13, utls.VersionTLS12}
 	if profile != nil && len(profile.SupportedVersions) > 0 {
 		supportedVersions = profile.SupportedVersions
@@ -425,6 +429,10 @@ func buildClientHelloSpecFromProfile(profile *Profile) *utls.ClientHelloSpec {
 		case 13: // signature_algorithms
 			extensions = append(extensions, &utls.SignatureAlgorithmsExtension{SupportedSignatureAlgorithms: signatureAlgorithms})
 		case 16: // alpn
+			if noALPN {
+				// Codex profile 不发送 ALPN 扩展，跳过即可。
+				continue
+			}
 			extensions = append(extensions, &utls.ALPNExtension{AlpnProtocols: alpnProtocols})
 		case 18: // signed_certificate_timestamp
 			extensions = append(extensions, &utls.SCTExtension{})

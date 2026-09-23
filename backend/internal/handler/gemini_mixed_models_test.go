@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"github.com/Wei-Shaw/sub2api/internal/pkg/tlsfingerprint"
 	"encoding/json"
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/gemini"
@@ -93,6 +94,12 @@ type geminiMixedModelsUpstream struct {
 
 func (u *geminiMixedModelsUpstream) Do(_ *http.Request, _ string, _ int64, _ int) (*http.Response, error) {
 	return &http.Response{StatusCode: u.status, Header: http.Header{"Content-Type": {"application/json"}, "X-Request-Id": {"native-id"}}, Body: io.NopCloser(strings.NewReader(u.body))}, nil
+}
+
+// DoWithTLS forwards to Do: tests run with TLS fingerprint disabled,
+// and the gateway falls back to the plain path when the profile is nil.
+func (u *geminiMixedModelsUpstream) DoWithTLS(req *http.Request, proxyURL string, accountID int64, accountConcurrency int, _ *tlsfingerprint.Profile) (*http.Response, error) {
+	return u.Do(req, proxyURL, accountID, accountConcurrency)
 }
 func TestGeminiNativeModelsMergesNativeUpstream(t *testing.T) {
 	for _, tt := range []struct {

@@ -3,6 +3,7 @@
 package handler
 
 import (
+	"github.com/Wei-Shaw/sub2api/internal/pkg/tlsfingerprint"
 	"bytes"
 	"io"
 	"net/http"
@@ -67,6 +68,12 @@ func (u *astraProCapturedUpstream) Do(req *http.Request, _ string, accountID int
 		resp = &http.Response{StatusCode: http.StatusInternalServerError, Body: io.NopCloser(bytes.NewReader(nil))}
 	}
 	return resp, nil
+}
+
+// DoWithTLS forwards to Do: tests run with TLS fingerprint disabled,
+// and the gateway falls back to the plain path when the profile is nil.
+func (u *astraProCapturedUpstream) DoWithTLS(req *http.Request, proxyURL string, accountID int64, accountConcurrency int, _ *tlsfingerprint.Profile) (*http.Response, error) {
+	return u.Do(req, proxyURL, accountID, accountConcurrency)
 }
 
 func (u *astraProCapturedUpstream) snapshot() ([]string, []int64, [][]byte) {
