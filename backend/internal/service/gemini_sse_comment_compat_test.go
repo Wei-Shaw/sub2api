@@ -3,7 +3,9 @@ package service
 import (
 	"io"
 	"net/http"
+	"net/http/httptest"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -48,6 +50,24 @@ func TestDownstreamRejectsSSECommentsReadsBothHeaders(t *testing.T) {
 	require.False(t, downstreamRejectsSSEComments(nil))
 }
 
+type antigravityKeepaliveRecorder struct {
+	*httptest.ResponseRecorder
+	firstWrite chan struct{}
+	once       sync.Once
+}
+
+func newAntigravityKeepaliveRecorder() *antigravityKeepaliveRecorder {
+	return &antigravityKeepaliveRecorder{
+		ResponseRecorder: httptest.NewRecorder(),
+		firstWrite:       make(chan struct{}),
+	}
+}
+
+func (r *antigravityKeepaliveRecorder) Write(p []byte) (int, error) {
+	r.once.Do(func() { close(r.firstWrite) })
+	return r.ResponseRecorder.Write(p)
+}
+
 // runAntigravityGeminiStreamWithIdle 起一条上游流：先发一个 data 事件，然后空闲 idle 时长再关闭，
 // 返回写给下游的全部字节。用来观察空闲期间网关是否发了 ":\n\n" 心跳。
 func runAntigravityGeminiStreamWithIdle(t *testing.T, userAgent string, idle time.Duration) string {
@@ -57,7 +77,9 @@ func runAntigravityGeminiStreamWithIdle(t *testing.T, userAgent string, idle tim
 		config.GatewayConfig{MaxLineSize: defaultMaxLineSize, StreamKeepaliveInterval: 1},
 		nil,
 	)
-	c, recorder := newAntigravityCompatContext(http.MethodPost, "/v1beta/models/gemini-3.8-flash:streamGenerateContent", nil)
+	recorder := newAntigravityKeepaliveRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1beta/models/gemini-3.8-flash:streamGenerateContent", nil)
 	if userAgent != "" {
 		c.Request.Header.Set("User-Agent", userAgent)
 	}
@@ -73,6 +95,16 @@ func runAntigravityGeminiStreamWithIdle(t *testing.T, userAgent string, idle tim
 		`data: {"response":{"responseId":"resp_1","candidates":[{"content":{"parts":[{"text":"partial"}]}}],"usageMetadata":{"promptTokenCount":8,"candidatesTokenCount":1}}}`+"\n\n",
 	)
 	require.NoError(t, err)
+
+	// io.Pipe 的 Write 返回只代表 scanner 已经读到上游数据，并不代表 streaming
+	// goroutine 已经处理该事件并进入 keepalive select。整套 service 测试并发较重时，
+	// 直接从 Write 返回后计时会让 1s ticker 只剩约 200ms 调度余量，导致偶发假失败。
+	// 等首个 data 真正写到下游后再开始 idle 计时，使测试与它要验证的语义一致。
+	select {
+	case <-recorder.firstWrite:
+	case <-time.After(5 * time.Second):
+		t.Fatal("timed out waiting for the first downstream data event")
+	}
 	time.Sleep(idle)
 	require.NoError(t, writer.Close())
 	require.NoError(t, <-done)

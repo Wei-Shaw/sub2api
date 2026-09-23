@@ -316,6 +316,31 @@ gateway:
   # Use this to avoid compact failures when newer models are not yet supported by the compact endpoint.
   # 当 compact 端点暂未支持更新模型时，可通过这里降级规避失败。
   openai_compact_model: "gpt-5.5"
+  # ChatGPT OAuth x-codex-turn-state ticket: harvest a 292-length header via a
+  # dedicated HTTP(S)/SOCKS proxy, store it for ttl_seconds (default 3600), then inject
+  # it on residential-IP production requests. Off by default.
+  # ChatGPT OAuth 门票：用独立 HTTP(S)/SOCKS 代理打到 292 长度的 x-codex-turn-state，默认缓存 1 小时，
+  # 再在住宅 IP 业务请求中覆盖该头。默认关闭。
+  # Env: GATEWAY_OPENAI_CODEX_TICKET_ENABLED=true
+  #      GATEWAY_OPENAI_CODEX_TICKET_HARVEST_PROXY_URL=socks5h://user:pass@host:port
+  # Admin UI 开关（系统设置 → 网关 → Codex 设置 → 292 打票）可覆盖 enabled，无需重启。
+  # Off: do not harvest or inject. On: harvest in the background and inject on production requests.
+  # The harvest proxy should rotate egress IPs itself (fresh CONNECT per request).
+  # Credential shadow accounts retain their existing forwarding policy and are not ticket-gated.
+  openai_codex_ticket:
+    enabled: false
+    target_length: 292
+    ttl_seconds: 3600
+    refresh_before_seconds: 600
+    # 后台「系统设置 → 网关 → Codex 设置」可覆盖此值，无需重启。
+    # 后台值的读取缓存为 5 秒，下个探测周期使用新代理；代理服务商自行负责轮换 IP。
+    harvest_proxy_url: ""
+    harvest_probe_interval_seconds: 6
+    harvest_attempt_timeout_seconds: 25
+    fail_closed: true
+    models:
+      - gpt-6-astra
+      - gpt-5.6-sol
   # ChatGPT Frameless Live 单会话硬上限（秒）。
   live:
     max_session_duration_seconds: 3600
