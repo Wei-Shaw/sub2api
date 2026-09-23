@@ -445,6 +445,36 @@ describe('EditAccountModal', () => {
     })
   })
 
+  it('keeps unsaved model selections when the parent refreshes the same account', async () => {
+    const account = buildAccount()
+    updateAccountMock.mockReset()
+    checkMixedChannelRiskMock.mockReset()
+    checkMixedChannelRiskMock.mockResolvedValue({ has_risk: false })
+    updateAccountMock.mockResolvedValue(account)
+
+    const wrapper = mountModal(account)
+
+    await wrapper.get('[data-testid="rewrite-to-snapshot"]').trigger('click')
+    expect(wrapper.get('[data-testid="model-whitelist-value"]').text()).toBe('gpt-5.2-2025-12-11')
+
+    // The account list auto-refresh replaces the prop object after the sync
+    // endpoint updates account metadata. It must not reset the open form.
+    await wrapper.setProps({
+      account: {
+        ...account,
+        extra: { upstream_model_metadata: { models: {} } }
+      } as any
+    })
+
+    expect(wrapper.get('[data-testid="model-whitelist-value"]').text()).toBe('gpt-5.2-2025-12-11')
+
+    await wrapper.get('form#edit-account-form').trigger('submit.prevent')
+
+    expect(updateAccountMock.mock.calls[0]?.[1]?.credentials?.model_mapping).toEqual({
+      'gpt-5.2-2025-12-11': 'gpt-5.2-2025-12-11'
+    })
+  })
+
   it('preserves OpenCode Zen account type and endpoints on submit', async () => {
     const account = buildAccount()
     account.platform = 'opencode_go'
