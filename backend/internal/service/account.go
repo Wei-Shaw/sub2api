@@ -815,6 +815,35 @@ func normalizeRequestedModelForLookup(platform, requestedModel string) string {
 	return trimmed
 }
 
+// ModelMappingAllowUnlistedCredentialKey 打开后 model_mapping 里的改名条目（A→B）
+// 不再兼任白名单。白名单仍由恒等条目（X→X，管理端"模型白名单"写入的形态）表达：
+// 没有恒等条目时，未出现在映射里的模型按"无映射"规则放行并原样转发。
+const ModelMappingAllowUnlistedCredentialKey = "model_mapping_allow_unlisted"
+
+// ModelMappingAllowsUnlisted 报告账号是否把 model_mapping 与准入白名单解耦。
+// 默认 false，保持"非空映射即白名单"的历史语义。
+func (a *Account) ModelMappingAllowsUnlisted() bool {
+	if a == nil || a.Credentials == nil {
+		return false
+	}
+	enabled, _ := a.Credentials[ModelMappingAllowUnlistedCredentialKey].(bool)
+	return enabled
+}
+
+// modelMappingAdmitsUnlisted 报告未命中映射的模型是否仍可按"无映射"规则放行：
+// 需要打开解耦开关，且映射里没有白名单（恒等）条目。
+func (a *Account) modelMappingAdmitsUnlisted() bool {
+	if !a.ModelMappingAllowsUnlisted() {
+		return false
+	}
+	for from, to := range a.GetModelMapping() {
+		if from == to && !strings.Contains(from, "*") {
+			return false
+		}
+	}
+	return true
+}
+
 func mappingSupportsRequestedModel(mapping map[string]string, requestedModel string) bool {
 	if requestedModel == "" {
 		return false
@@ -862,19 +891,28 @@ func (a *Account) IsModelSupported(requestedModel string) bool {
 	}
 	mapping := a.GetModelMapping()
 	if len(mapping) == 0 {
-		if a.IsOpenAIOAuth() {
-			return isOpenAIOAuthServableModel(requestedModel)
-		}
-		if a.Platform == PlatformDeepseek {
-			return isDeepseekServableModel(requestedModel)
-		}
-		return true // 无映射 = 允许所有
+		return a.isUnmappedModelSupported(requestedModel)
 	}
 	if mappingSupportsRequestedModel(mapping, requestedModel) {
 		return true
 	}
 	normalized := normalizeRequestedModelForLookup(a.Platform, requestedModel)
-	return normalized != requestedModel && mappingSupportsRequestedModel(mapping, normalized)
+	if normalized != requestedModel && mappingSupportsRequestedModel(mapping, normalized) {
+		return true
+	}
+	// 映射与白名单解耦且未配置白名单时，未命中映射的模型按"无映射"规则判定，而不是直接拒绝。
+	return a.modelMappingAdmitsUnlisted() && a.isUnmappedModelSupported(requestedModel)
+}
+
+// isUnmappedModelSupported 是账号没有任何映射约束时的准入规则。
+func (a *Account) isUnmappedModelSupported(requestedModel string) bool {
+	if a.IsOpenAIOAuth() {
+		return isOpenAIOAuthServableModel(requestedModel)
+	}
+	if a.Platform == PlatformDeepseek {
+		return isDeepseekServableModel(requestedModel)
+	}
+	return true // 无映射 = 允许所有
 }
 
 // GetMappedModel 获取映射后的模型名（支持通配符，最长优先匹配）

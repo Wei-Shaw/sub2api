@@ -908,6 +908,10 @@ export default {
       toModel: '目标模型',
       selectAllowedModels: '选择允许的模型。留空则支持所有模型。',
       mapRequestModels: '将请求模型映射到实际模型。左边是请求的模型，右边是发送到 API 的实际模型。',
+      modelMappingAllowUnlisted: {
+        title: '映射不限制其他模型',
+        hint: '开启后映射只负责改写模型名：未列出的模型照常放行并原样转发，模型白名单另行生效。关闭时沿用旧行为，只有映射里列出的模型可用。',
+      },
       selectedModels: '已选择 {count} 个模型',
       supportsAllModels: '（支持所有模型）',
       requestModel: '请求模型',

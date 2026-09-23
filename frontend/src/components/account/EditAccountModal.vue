@@ -328,6 +328,7 @@
                   {{ t('admin.accounts.mapRequestModels') }}
                 </p>
               </div>
+              <ModelMappingAllowUnlistedToggle v-model="modelMappingAllowUnlisted" />
 
             <!-- Model Mapping List -->
             <div v-if="modelMappings.length > 0" class="mb-3 space-y-2">
@@ -795,6 +796,7 @@
                 {{ t('admin.accounts.mapRequestModels') }}
               </p>
             </div>
+            <ModelMappingAllowUnlistedToggle v-model="modelMappingAllowUnlisted" />
 
             <div v-if="modelMappings.length > 0" class="mb-3 space-y-2">
               <div
@@ -1020,6 +1022,7 @@
                 {{ t('admin.accounts.mapRequestModels') }}
               </p>
             </div>
+            <ModelMappingAllowUnlistedToggle v-model="modelMappingAllowUnlisted" />
 
             <!-- Model Mapping List -->
             <div v-if="modelMappings.length > 0" class="mb-3 space-y-2">
@@ -3131,6 +3134,7 @@ import Select from '@/components/common/Select.vue'
 import HelpTooltip from '@/components/common/HelpTooltip.vue'
 import UpstreamRequestIdHeaderField from '@/components/account/UpstreamRequestIdHeaderField.vue'
 import Toggle from '@/components/common/Toggle.vue'
+import ModelMappingAllowUnlistedToggle from '@/components/account/ModelMappingAllowUnlistedToggle.vue'
 import Icon from '@/components/icons/Icon.vue'
 import ProxySelector from '@/components/common/ProxySelector.vue'
 import ProxyAdBanner from '@/components/common/ProxyAdBanner.vue'
@@ -3513,6 +3517,7 @@ const modelMappings = ref<ModelMapping[]>([])
 const openAICompactModelMappings = ref<ModelMapping[]>([])
 const modelRestrictionMode = ref<'whitelist' | 'mapping'>('whitelist')
 const allowedModels = ref<string[]>([])
+const modelMappingAllowUnlisted = ref(false)
 const DEFAULT_POOL_MODE_RETRY_COUNT = 3
 const MAX_POOL_MODE_RETRY_COUNT = 10
 const DEFAULT_POOL_MODE_RETRY_STATUS_CODES = [401, 403, 429]
@@ -4091,6 +4096,22 @@ const loadModelRestrictionFromMapping = (rawMapping?: Record<string, unknown>) =
 const buildModelRestrictionMapping = () =>
   buildModelMappingObject('combined', allowedModels.value, modelMappings.value)
 
+// 映射/白名单解耦开关只在值变化时写入 credentials，避免无关编辑触发整份凭据回写。
+const applyModelMappingAllowUnlisted = (updatePayload: Record<string, unknown>) => {
+  if (!props.account || props.account.platform === 'antigravity') return
+  const original = (props.account.credentials as Record<string, unknown>) || {}
+  if ((original.model_mapping_allow_unlisted === true) === modelMappingAllowUnlisted.value) return
+  const credentials: Record<string, unknown> = {
+    ...((updatePayload.credentials as Record<string, unknown>) || original)
+  }
+  if (modelMappingAllowUnlisted.value) {
+    credentials.model_mapping_allow_unlisted = true
+  } else {
+    delete credentials.model_mapping_allow_unlisted
+  }
+  updatePayload.credentials = credentials
+}
+
 const applyOpenAIModelMappingCredentials = (credentials: Record<string, unknown>) => {
   const shouldApplyModelMapping = !openaiPassthroughEnabled.value
 
@@ -4117,6 +4138,8 @@ const syncFormFromAccount = (newAccount: Account | null) => {
   if (!newAccount) {
     return
   }
+  modelMappingAllowUnlisted.value =
+    (newAccount.credentials as Record<string, unknown> | undefined)?.model_mapping_allow_unlisted === true
   // 进入回填窗口：抑制 CN 模式/协议 watcher 联动重置 base_url（见 syncingForm 注释）。
   syncingForm.value = true
   void nextTick(() => {
@@ -5859,6 +5882,8 @@ const handleSubmit = async () => {
       }
       updatePayload.extra = newExtra
     }
+
+    applyModelMappingAllowUnlisted(updatePayload)
 
     const canContinue = await ensureAntigravityMixedChannelConfirmed(async () => {
       await submitUpdateAccount(accountID, updatePayload)
