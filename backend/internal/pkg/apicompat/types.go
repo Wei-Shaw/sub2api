@@ -33,11 +33,21 @@ type AnthropicRequest struct {
 	// user_id，进而导致请求被归类为第三方 app。
 	Metadata     json.RawMessage        `json:"metadata,omitempty"`
 	OutputConfig *AnthropicOutputConfig `json:"output_config,omitempty"`
+	// OutputFormat preserves the deprecated top-level structured-output field
+	// when an Anthropic request is parsed and re-serialized.
+	OutputFormat *AnthropicJSONOutputFormat `json:"output_format,omitempty"`
 }
 
 // AnthropicOutputConfig controls output generation parameters.
 type AnthropicOutputConfig struct {
-	Effort string `json:"effort,omitempty"` // "low" | "medium" | "high" | "max"
+	Effort string                     `json:"effort,omitempty"` // "low" | "medium" | "high" | "max"
+	Format *AnthropicJSONOutputFormat `json:"format,omitempty"`
+}
+
+// AnthropicJSONOutputFormat configures schema-constrained JSON output.
+type AnthropicJSONOutputFormat struct {
+	Type   string          `json:"type"`
+	Schema json.RawMessage `json:"schema,omitempty"`
 }
 
 // AnthropicThinking configures extended thinking in the Anthropic API.
