@@ -407,6 +407,12 @@ func (s *OpenAIGatewayService) handleResponsesStreamingFromNativeAnthropic(
 			mergeAnthropicUsage(&usage, event.Message.Usage)
 		}
 
+		// Keep terminal Responses usage aligned with the normalized billing
+		// buckets. Normalize converter input too so raw overlapping totals cannot
+		// overwrite the state when message_start/message_delta handlers run.
+		syncAnthropicResponsesUsage(state, usage)
+		normalizeAnthropicEventUsageForResponses(event, usage)
+
 		events := apicompat.AnthropicEventToResponsesEvents(event, state)
 		if clientDisconnected {
 			return
