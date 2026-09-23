@@ -252,7 +252,7 @@ func TestGrokOAuthServiceRefreshAccountTokenIgnoresIDTokenTierWhenAccessTokenHas
 	svc := NewGrokOAuthService(nil, &grokOAuthClientStub{
 		refreshResponse: &xai.TokenResponse{
 			AccessToken: "opaque-access-token",
-			IDToken:      makeGrokOAuthJWT(map[string]any{"tier": 5}),
+			IDToken:     makeGrokOAuthJWT(map[string]any{"tier": 5}),
 			TokenType:   "Bearer",
 			ExpiresIn:   3600,
 		},

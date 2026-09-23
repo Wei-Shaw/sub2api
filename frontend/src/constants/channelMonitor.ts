@@ -17,6 +17,8 @@ export const PROVIDER_ANTIGRAVITY: Provider = 'antigravity'
 export const PROVIDER_KIMI: Provider = 'kimi'
 export const PROVIDER_ZHIPU: Provider = 'zhipu'
 export const PROVIDER_DEEPSEEK: Provider = 'deepseek'
+export const PROVIDER_MINIMAX: Provider = 'minimax'
+export const PROVIDER_OPENCODE_GO: Provider = 'opencode_go'
 
 export const DEFAULT_GROK_ENDPOINT = 'https://api.x.ai'
 export const DEFAULT_GROK_MODEL = 'grok-4.5'
@@ -25,6 +27,8 @@ export const DEFAULT_GROK_MODEL = 'grok-4.5'
 export const DEFAULT_KIMI_ENDPOINT = 'https://api.moonshot.cn'
 export const DEFAULT_ZHIPU_ENDPOINT = 'https://open.bigmodel.cn'
 export const DEFAULT_DEEPSEEK_ENDPOINT = 'https://api.deepseek.com'
+export const DEFAULT_MINIMAX_ENDPOINT = 'https://api.minimaxi.com'
+export const DEFAULT_OPENCODE_GO_ENDPOINT = 'https://opencode.ai/zen/go/v1'
 
 export const CHECK_MODE_PROBE: CheckMode = 'probe'
 export const CHECK_MODE_QUOTA: CheckMode = 'quota'
@@ -42,6 +46,8 @@ export const PROVIDERS: readonly Provider[] = [
   PROVIDER_KIMI,
   PROVIDER_ZHIPU,
   PROVIDER_DEEPSEEK,
+  PROVIDER_MINIMAX,
+  PROVIDER_OPENCODE_GO,
 ]
 
 /** 仅支持配额模式（无探活 adapter）的 provider。 */

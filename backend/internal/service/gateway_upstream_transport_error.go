@@ -27,7 +27,8 @@ var gatewayTransportFailoverBody = []byte(`{"type":"error","error":{"type":"upst
 // proxy / DNS / TCP / TLS). It:
 //  1. records the failure in Ops error logs (status 0, kind=request_error) —
 //     the caller passes path-specific fields (UpstreamURL, Passthrough) via
-//     event; identity and classification fields are filled here;
+//     event; identity, proxy attribution and classification fields are
+//     filled here from the same account snapshot that built the transport;
 //  2. for durable faults (expired/rejected proxy creds, dead proxy,
 //     DNS/routing) temporarily unschedules the account and logs a stable warn
 //     event that alert rules can key on;
@@ -40,6 +41,7 @@ var gatewayTransportFailoverBody = []byte(`{"type":"error","error":{"type":"upst
 func (s *GatewayService) handleUpstreamTransportError(ctx context.Context, c *gin.Context, account *Account, err error, event OpsUpstreamErrorEvent) error {
 	safeErr := sanitizeUpstreamErrorMessage(err.Error())
 	setOpsUpstreamError(c, 0, safeErr, "")
+	event.ProxyID, event.ProxyName = opsUpstreamProxyAttribution(account)
 	event.Platform = account.Platform
 	event.AccountID = account.ID
 	event.AccountName = account.Name
@@ -79,7 +81,17 @@ func (s *GatewayService) handleUpstreamTransportError(ctx context.Context, c *gi
 //   - "gateway.account_temp_unschedule_transport_failed" — DB write attempted
 //     but returned an error (the account remains schedulable).
 func (s *GatewayService) tempUnscheduleTransportError(ctx context.Context, account *Account, safeErr string) {
-	if s == nil || account == nil || s.accountRepo == nil {
+	if s == nil {
+		return
+	}
+	tempUnscheduleAccountForTransportError(ctx, s.accountRepo, account, safeErr)
+}
+
+// tempUnscheduleAccountForTransportError is the repo-level implementation
+// shared by every forward path whose scheduler reads the persisted
+// temp-unschedulable state (Anthropic/Bedrock and Gemini).
+func tempUnscheduleAccountForTransportError(ctx context.Context, repo AccountRepository, account *Account, safeErr string) {
+	if account == nil || repo == nil {
 		return
 	}
 	until := time.Now().Add(gatewayTransportErrorTempUnschedDuration)
@@ -87,7 +99,7 @@ func (s *GatewayService) tempUnscheduleTransportError(ctx context.Context, accou
 
 	bgCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), openAIAccountStateUpdateTimeout)
 	defer cancel()
-	if err := s.accountRepo.SetTempUnschedulable(bgCtx, account.ID, until, reason); err != nil {
+	if err := repo.SetTempUnschedulable(bgCtx, account.ID, until, reason); err != nil {
 		logger.L().With(zap.String("component", "service.gateway")).Warn(
 			"gateway.account_temp_unschedule_transport_failed",
 			zap.Int64("account_id", account.ID),

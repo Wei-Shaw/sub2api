@@ -114,28 +114,60 @@ func TestOpsRuntimeSettingsAdministrativeUpdatesAreImmediatelyVisible(t *testing
 }
 
 func TestOpsRuntimeSettingsBackgroundRefreshConverges(t *testing.T) {
-	repo := &opsRuntimeRefreshRepo{values: map[string]string{SettingKeyOpsMonitoringEnabled: "false"}}
-	svc := &OpsService{settingRepo: repo}
+	repo := &opsRuntimeRefreshRepo{values: map[string]string{
+		SettingKeyOpsMonitoringEnabled: "false",
+		SettingKeyOpsRuntimeLogConfig:  `{"persist_access_logs":false}`,
+	}}
+	sink := &OpsSystemLogSink{}
+	svc := &OpsService{settingRepo: repo, systemLogSink: sink}
 	svc.initRuntimeSettings(context.Background())
 	if svc.IsMonitoringEnabled(context.Background()) {
 		t.Fatal("initial monitoring state = true, want false")
 	}
 
 	repo.set(SettingKeyOpsMonitoringEnabled, "true")
+	repo.set(SettingKeyOpsRuntimeLogConfig, `{"persist_access_logs":true}`)
 	svc.startRuntimeSettingsRefresh(context.Background(), 5*time.Millisecond, 0, 50*time.Millisecond)
 	t.Cleanup(svc.StopRuntimeSettingsRefresh)
 	waitForOpsRefresh(t, time.Second, func() bool {
-		return svc.IsMonitoringEnabled(context.Background()) && svc.RuntimeSettingsRefreshHealth().SuccessTotal > 0
+		return svc.IsMonitoringEnabled(context.Background()) &&
+			sink.persistAccessLogs.Load() &&
+			svc.RuntimeSettingsRefreshHealth().SuccessTotal > 0
 	})
+}
+
+func TestOpsRuntimeSettingsRefreshUsesSafeAccessLogDefault(t *testing.T) {
+	repo := &opsRuntimeRefreshRepo{values: map[string]string{
+		SettingKeyOpsRuntimeLogConfig: `{"persist_access_logs":true}`,
+	}}
+	sink := &OpsSystemLogSink{}
+	svc := &OpsService{settingRepo: repo, systemLogSink: sink}
+	svc.initRuntimeSettings(context.Background())
+	if !sink.persistAccessLogs.Load() {
+		t.Fatal("valid runtime config did not enable access-log persistence")
+	}
+
+	repo.set(SettingKeyOpsRuntimeLogConfig, `{invalid-json}`)
+	if err := svc.RefreshRuntimeSettings(context.Background()); err != nil {
+		t.Fatalf("RefreshRuntimeSettings() error = %v", err)
+	}
+	if sink.persistAccessLogs.Load() {
+		t.Fatal("invalid runtime config should fail closed for access-log persistence")
+	}
 }
 
 func TestOpsRuntimeSettingsRefreshFailuresKeepLastKnownGoodSnapshot(t *testing.T) {
 	repo := &opsRuntimeRefreshRepo{values: map[string]string{
 		SettingKeyOpsMonitoringEnabled: "false",
 		SettingKeyOpsAdvancedSettings:  `{"ignore_no_available_accounts":true}`,
+		SettingKeyOpsRuntimeLogConfig:  `{"persist_access_logs":true}`,
 	}}
-	svc := &OpsService{settingRepo: repo}
+	sink := &OpsSystemLogSink{}
+	svc := &OpsService{settingRepo: repo, systemLogSink: sink}
 	svc.initRuntimeSettings(context.Background())
+	if !sink.persistAccessLogs.Load() {
+		t.Fatal("initial access-log setting was not applied")
+	}
 	repo.fail.Store(true)
 	svc.startRuntimeSettingsRefresh(context.Background(), 5*time.Millisecond, 0, 50*time.Millisecond)
 	t.Cleanup(svc.StopRuntimeSettingsRefresh)
@@ -148,6 +180,9 @@ func TestOpsRuntimeSettingsRefreshFailuresKeepLastKnownGoodSnapshot(t *testing.T
 	}
 	if !svc.OpsAdvancedSettingsSnapshot().IgnoreNoAvailableAccounts {
 		t.Fatal("failed refresh overwrote last known advanced settings")
+	}
+	if !sink.persistAccessLogs.Load() {
+		t.Fatal("failed refresh overwrote last known access-log setting")
 	}
 }
 

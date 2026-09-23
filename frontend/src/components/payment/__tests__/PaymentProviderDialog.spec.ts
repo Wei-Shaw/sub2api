@@ -95,6 +95,32 @@ function mountDialog(options: { editing?: ProviderInstance | null } = {}) {
   })
 }
 
+describe('PaymentProviderDialog callback URLs', () => {
+  it.each([
+    ['https://notify.example.com/', 'https://return.example.com///', 'https://notify.example.com', 'https://return.example.com'],
+    [' https://notify.example.com/sub/ ', ' https://return.example.com/site/ ', 'https://notify.example.com/sub', 'https://return.example.com/site'],
+    ['https://notify.example.com', 'https://return.example.com', 'https://notify.example.com', 'https://return.example.com'],
+    ['', '', window.location.origin, window.location.origin],
+  ])('joins callback paths to %s and %s', async (notify, returnUrl, expectedNotify, expectedReturn) => {
+    const provider = providerFactory({
+      provider_key: 'easypay', name: 'EasyPay',
+      config: { pid: 'pid-1', apiBase: 'https://pay.example.com' },
+      supported_types: ['alipay'], payment_mode: 'qrcode',
+    })
+    const wrapper = mountDialog({ editing: provider })
+    ;(wrapper.vm as unknown as { loadProvider: (provider: ProviderInstance) => void }).loadProvider(provider)
+    await nextTick()
+    const bases = wrapper.findAll('input').filter(input => input.classes().includes('!rounded-r-none'))
+    await bases[0].setValue(notify)
+    await bases[1].setValue(returnUrl)
+    await wrapper.find('form').trigger('submit')
+    const payload = wrapper.emitted('save')?.[0]?.[0] as { config: Record<string, string> }
+    expect(payload.config.notifyUrl).toBe(expectedNotify + '/api/v1/payment/webhook/easypay')
+    expect(payload.config.returnUrl).toBe(expectedReturn + '/payment/result')
+    wrapper.unmount()
+  })
+})
+
 describe('PaymentProviderDialog payment guide', () => {
   it('shows no payment guide for providers without a flow guide', () => {
     const wrapper = mountDialog()
@@ -166,7 +192,7 @@ describe('PaymentProviderDialog payment guide', () => {
     expect(payload.config.accountId).toBe('')
   })
 
-  it('serializes EasyPay custom methods and adds them to supported_types', async () => {
+  it.each(['epay', 'usdt.trc20'])('serializes EasyPay upstream type %s and adds the local type to supported_types', async (upstreamType) => {
     const provider = providerFactory({
       provider_key: 'easypay',
       name: 'EasyPay',
@@ -197,7 +223,7 @@ describe('PaymentProviderDialog payment guide', () => {
     }
 
     await ldcTypeInput.setValue('ldc')
-    await upstreamTypeInput.setValue('epay')
+    await upstreamTypeInput.setValue(upstreamType)
     await displayNameInput.setValue('LDC')
     await wrapper.find('form').trigger('submit.prevent')
 
@@ -205,11 +231,15 @@ describe('PaymentProviderDialog payment guide', () => {
       config: Record<string, string>
       supported_types: string[]
     }
-    expect(payload.config.customMethods).toBe('[{"type":"ldc","upstreamType":"epay","displayName":"LDC"}]')
+    expect(JSON.parse(payload.config.customMethods)).toEqual([{ type: 'ldc', upstreamType, displayName: 'LDC' }])
     expect(payload.supported_types).toEqual(['alipay', 'wxpay', 'ldc'])
   })
 
-  it('rejects custom EasyPay method types with built-in payment prefixes', async () => {
+  it.each([
+    ['alipay_hk', 'hkpay'],
+    ['usdt.trc20', 'usdt.trc20'],
+    ['usdt_trc20', 'usdt/trc20'],
+  ])('rejects invalid EasyPay mapping %s to %s', async (type, upstreamType) => {
     const provider = providerFactory({
       provider_key: 'easypay',
       name: 'EasyPay',
@@ -239,9 +269,9 @@ describe('PaymentProviderDialog payment guide', () => {
       throw new Error('custom method inputs not found')
     }
 
-    await typeInput.setValue('alipay_hk')
-    await upstreamTypeInput.setValue('hkpay')
-    await displayNameInput.setValue('Hong Kong Alipay')
+    await typeInput.setValue(type)
+    await upstreamTypeInput.setValue(upstreamType)
+    await displayNameInput.setValue('Custom payment')
     await wrapper.find('form').trigger('submit.prevent')
 
     expect(wrapper.emitted('save')).toBeUndefined()

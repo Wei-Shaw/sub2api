@@ -30,6 +30,21 @@
 - Sub2API 继续负责响应状态处理、SSE 解析、错误映射、用量统计、计费和下游输出。
 - 灰度比例以账号 ID 稳定分桶，未命中的 OAuth 账号继续使用原有内置路径。
 
+## 宿主服务（HostService）
+
+`HostService` 是宿主经 go-plugin broker 反向暴露给插件的通用能力层，独立于具体插件类型，供有状态插件使用。它通过 `TransportPlugin.InitHostServices` 在运行时协商：宿主启动后把一个 broker 流 id 交给插件，插件用它拨号回宿主并获得 `HostServiceClient`。
+
+- **可选且向后兼容**：未实现 `InitHostServices` 的旧插件返回 `Unimplemented`，宿主静默跳过，转发能力不受影响。宿主服务有独立的 `HostServiceAPIVersion`，新增能力不会改变传输契约版本，也不会使既有插件失效。
+- **随进程回收**：宿主服务实例与插件进程生命周期绑定，插件退出时 broker 关闭并自动 `GracefulStop`，无需插件手动清理。
+
+当前提供的通用设施：
+
+- **命名空间键值存储（KV）**：`KVGet` / `KVSet` / `KVDelete` / `KVList`，为插件持久化跨请求、跨副本、跨重启的状态。存储由 Redis 支撑，因此多实例部署天然共享同一份状态。
+  - **命名空间隔离**：宿主根据服务该连接的运行时注入插件身份（`pluginKey`），插件无法伪造，也无法读写其它插件的命名空间。
+  - **护栏**：`namespace` / `key` 仅允许 `[A-Za-z0-9._-]`；单值上限 256 KiB；`ttl_seconds` 为 0 表示不过期、正值有上限；`KVList` 返回条数有上限。
+
+新增宿主设施时，在 `HostService` 上追加 RPC 即可，无需改动传输契约或清单格式。
+
 ## 包结构
 
 ```text
@@ -61,15 +76,21 @@ ui/assets/...
 
 插件 UI 由包内静态文件实现，宿主使用只有 `allow-scripts` 权限的 sandbox iframe 加载。iframe 没有管理员 Token，也不能直接访问管理 API。宿主为每次打开配置页生成短时资源 URL 和独立 Bridge Token，并且同时校验消息来源窗口与 Token。
 
-UI 可以发送以下消息：
+UI 可以发送以下消息。消息按语义分层，鉴权与副作用一致对应（读操作免二次验证，写/主动测试需要二次验证），任何插件都可复用，不针对具体插件定制：
 
-- `config.load`
-- `config.save`
-- `config.test`
-- `ui.resize`
-- `ui.notify`
+| 消息 | 语义 | 二次验证 | 映射的插件 RPC |
+| --- | --- | --- | --- |
+| `config.load` | 读取已保存配置 | 否 | 宿主数据库 |
+| `config.save` | 写入配置 | 是 | `ValidateConfig` + `ApplyConfig` |
+| `config.test` | 主动测试配置/连通性（可产生副作用） | 是 | `TestConfig` |
+| `plugin.status` | 读取运行时状态（无副作用） | 否 | `Health`（`status_json`） |
+| `ui.resize` / `ui.notify` | 仅 UI 交互 | — | — |
 
-每个请求消息带 `request_id`，宿主以 `<type>.result` 返回结果。配置整体使用 Sub2API 的密钥加密后存入数据库；运行中插件会先验证并应用新配置，数据库写入失败时恢复旧配置。
+每个请求消息带 `request_id`，宿主以 `<type>.result` 返回结果。
+
+- 配置整体使用 Sub2API 的密钥加密后存入数据库；运行中插件会先验证并应用新配置，数据库写入失败时恢复旧配置。
+- `config.test` 的结果由插件 UI 自行展示（内联或经 `ui.notify`），宿主不再对成功结果强制弹出提示，避免插件把它当作轻量状态轮询时刷屏。
+- `plugin.status` 是通用的**只读**状态通道：宿主经 `GET /admin/plugins/:id/status` 调用运行中插件的 `Health`，返回 `{healthy, message, status_json}`。`status_json` 是插件自定义的**不透明** JSON 快照（宿主不解析、不参与健康判定），插件必须以无副作用方式生成（不得应用配置、访问上游或触发探测），因此该端点只读、免二次验证。插件未运行时返回 `healthy=false` 且不含 `status_json`。这样带状态面板的插件无需滥用 `config.test` 即可展示实时状态。
 
 ## 协议源码
 
