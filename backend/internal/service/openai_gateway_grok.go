@@ -94,9 +94,27 @@ func (s *OpenAIGatewayService) forwardGrokResponses(
 		return nil, fmt.Errorf("apply grok Free function-tool cache route: %w", err)
 	}
 
+	patchedBody, reverseNames, aliasErr := aliasGrokReservedClientToolNamesBody(patchedBody)
+	if aliasErr != nil {
+		return nil, fmt.Errorf("alias grok reserved client tools: %w", aliasErr)
+	}
+	if len(reverseNames) > 0 {
+		mergeCodexToolNameReverse(c, reverseNames)
+	}
+
 	token, _, err := s.getRequestCredential(ctx, c, account)
 	if err != nil {
 		return nil, err
+	}
+
+	var imageBridgeUsage OpenAIUsage
+	bridgedBody, bridgeUsage, bridged, bridgeErr := s.bridgeGrokComposerImageInputs(ctx, c, account, patchedBody, token)
+	if bridgeErr != nil {
+		return nil, bridgeErr
+	}
+	if bridged {
+		patchedBody = bridgedBody
+		addOpenAIUsage(&imageBridgeUsage, bridgeUsage)
 	}
 
 	upstreamCtx, releaseUpstreamCtx := detachUpstreamContext(ctx)
@@ -247,6 +265,7 @@ func (s *OpenAIGatewayService) forwardGrokResponses(
 	if usage == nil {
 		usage = &OpenAIUsage{}
 	}
+	addOpenAIUsage(usage, imageBridgeUsage)
 	reasoningEffort := extractOpenAIReasoningEffortFromBody(patchedBody, originalModel)
 	result := &OpenAIForwardResult{
 		RequestID:       firstNonEmpty(resp.Header.Get("x-request-id"), resp.Header.Get("xai-request-id")),
@@ -1305,17 +1324,15 @@ func (s *OpenAIGatewayService) bridgeGrokComposerImageInputs(
 }
 
 func shouldBridgeGrokComposerImageInputs(body []byte) bool {
-	if len(body) == 0 || !isGrokComposerModel(gjson.GetBytes(body, "model").String()) {
+	if len(body) == 0 || !grokModelNeedsImageTextBridge(gjson.GetBytes(body, "model").String()) {
 		return false
 	}
 	messages := gjson.GetBytes(body, "messages")
-	if !messages.Exists() {
-		return false
-	}
-	return openAIJSONValueMayContainImageInput(messages)
+	input := gjson.GetBytes(body, "input")
+	return openAIJSONValueMayContainImageInput(messages) || openAIJSONValueMayContainImageInput(input)
 }
 
-func isGrokComposerModel(model string) bool {
+func grokModelNeedsImageTextBridge(model string) bool {
 	model = strings.TrimSpace(strings.ToLower(model))
 	if model == "" {
 		return false
@@ -1324,29 +1341,41 @@ func isGrokComposerModel(model string) bool {
 		parts := strings.Split(model, "/")
 		model = strings.TrimSpace(parts[len(parts)-1])
 	}
-	return strings.Contains(model, "composer")
+	if model == grokComposerImageBridgeVisionModel || strings.HasPrefix(model, "grok-build-0.1") {
+		return false
+	}
+	return strings.Contains(model, "composer") || strings.Contains(model, "build")
 }
 
 func collectGrokComposerImageURLs(reqBody map[string]any) []string {
-	messages, ok := reqBody["messages"].([]any)
-	if !ok {
-		return nil
-	}
-
 	var imageURLs []string
-	for _, msg := range messages {
-		msgMap, ok := msg.(map[string]any)
+	appendFromContent := func(content any) {
+		parts, ok := content.([]any)
 		if !ok {
-			continue
-		}
-		parts, ok := msgMap["content"].([]any)
-		if !ok {
-			continue
+			return
 		}
 		for _, part := range parts {
 			if imageURL := grokComposerImageURLFromPart(part); imageURL != "" {
 				imageURLs = append(imageURLs, imageURL)
 			}
+		}
+	}
+	if messages, ok := reqBody["messages"].([]any); ok {
+		for _, msg := range messages {
+			msgMap, ok := msg.(map[string]any)
+			if !ok {
+				continue
+			}
+			appendFromContent(msgMap["content"])
+		}
+	}
+	if input, ok := reqBody["input"].([]any); ok {
+		for _, item := range input {
+			itemMap, ok := item.(map[string]any)
+			if !ok {
+				continue
+			}
+			appendFromContent(itemMap["content"])
 		}
 	}
 	return imageURLs
@@ -1357,15 +1386,18 @@ func grokComposerImageURLFromPart(part any) string {
 	if !ok {
 		return ""
 	}
-	if strings.TrimSpace(strings.ToLower(fmt.Sprint(partMap["type"]))) != "image_url" {
+	partType := strings.TrimSpace(strings.ToLower(fmt.Sprint(partMap["type"])))
+	switch partType {
+	case "image_url", "input_image", "image":
+	default:
 		return ""
 	}
-	switch imageURL := partMap["image_url"].(type) {
+	raw := firstNonNilGrokJSONValue(partMap["image_url"], partMap["file_url"])
+	switch imageURL := raw.(type) {
 	case string:
 		return normalizeGrokComposerImageURL(imageURL)
 	case map[string]any:
-		raw, _ := imageURL["url"].(string)
-		return normalizeGrokComposerImageURL(raw)
+		return normalizeGrokComposerImageURL(grokStringValue(imageURL["url"]))
 	default:
 		return ""
 	}
@@ -1506,14 +1538,18 @@ func grokResponsesOutputText(resp *apicompat.ResponsesResponse) string {
 }
 
 func rewriteGrokComposerImagesAsText(reqBody map[string]any, descriptions []string) bool {
-	messages, ok := reqBody["messages"].([]any)
+	imageIndex := 0
+	changed := rewriteGrokChatMessageImagesAsText(reqBody["messages"], descriptions, &imageIndex)
+	return rewriteGrokResponsesInputImagesAsText(reqBody["input"], descriptions, &imageIndex) || changed
+}
+
+func rewriteGrokChatMessageImagesAsText(messages any, descriptions []string, imageIndex *int) bool {
+	items, ok := messages.([]any)
 	if !ok {
 		return false
 	}
-
-	imageIndex := 0
 	changed := false
-	for _, msg := range messages {
+	for _, msg := range items {
 		msgMap, ok := msg.(map[string]any)
 		if !ok {
 			continue
@@ -1526,10 +1562,10 @@ func rewriteGrokComposerImagesAsText(reqBody map[string]any, descriptions []stri
 		messageChanged := false
 		for _, part := range parts {
 			if imageURL := grokComposerImageURLFromPart(part); imageURL != "" {
-				if imageIndex < len(descriptions) {
-					textParts = append(textParts, fmt.Sprintf("Image %d description: %s", imageIndex+1, strings.TrimSpace(descriptions[imageIndex])))
+				if *imageIndex < len(descriptions) {
+					textParts = append(textParts, fmt.Sprintf("Image %d description: %s", *imageIndex+1, strings.TrimSpace(descriptions[*imageIndex])))
 				}
-				imageIndex++
+				*imageIndex++
 				messageChanged = true
 				continue
 			}
@@ -1539,6 +1575,45 @@ func rewriteGrokComposerImagesAsText(reqBody map[string]any, descriptions []stri
 		}
 		if messageChanged {
 			msgMap["content"] = strings.Join(textParts, "\n\n")
+			changed = true
+		}
+	}
+	return changed
+}
+
+func rewriteGrokResponsesInputImagesAsText(input any, descriptions []string, imageIndex *int) bool {
+	items, ok := input.([]any)
+	if !ok {
+		return false
+	}
+	changed := false
+	for _, item := range items {
+		itemMap, ok := item.(map[string]any)
+		if !ok {
+			continue
+		}
+		parts, ok := itemMap["content"].([]any)
+		if !ok {
+			continue
+		}
+		newParts := make([]any, 0, len(parts))
+		itemChanged := false
+		for _, part := range parts {
+			if grokComposerImageURLFromPart(part) != "" {
+				if *imageIndex < len(descriptions) {
+					newParts = append(newParts, map[string]any{
+						"type": "input_text",
+						"text": fmt.Sprintf("Image %d description: %s", *imageIndex+1, strings.TrimSpace(descriptions[*imageIndex])),
+					})
+				}
+				*imageIndex++
+				itemChanged = true
+				continue
+			}
+			newParts = append(newParts, part)
+		}
+		if itemChanged {
+			itemMap["content"] = newParts
 			changed = true
 		}
 	}
