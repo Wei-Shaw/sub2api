@@ -16,6 +16,7 @@ function deferred() {
   return { promise, resolve, reject }
 }
 const active = (message: string) => ({ active: true, state: { until_unix: Date.now() / 1000 + 3600, error_message: message, rule_index: -1 } })
+const activeState = (state: Record<string, unknown>) => ({ active: true, state: { until_unix: Date.now() / 1000 + 3600, rule_index: -1, ...state } })
 async function open() {
   const w = mount(TempUnschedStatusModal, { props: { show: false, account: { id: 1, name: 'first' } as Account },
     global: { stubs: { BaseDialog: { props: ['show'], template: '<div v-if="show"><slot /><slot name="footer" /></div>' } } } })
@@ -46,5 +47,29 @@ describe('temporary unschedulable status requests', () => {
     expect(mocks.showError).not.toHaveBeenCalled(); expect(w.find('.animate-spin').exists()).toBe(true)
     current.resolve({ active: false }); await flushPromises()
     expect(w.text()).toContain('admin.accounts.tempUnschedulable.notActive')
+  })
+})
+
+describe('block scope display', () => {
+  // 该弹窗只能展示账号级块（模型级块持久化在 extra.model_rate_limits，不经此接口返回），
+  // 因此任何 state 都必须显示账号级，绝不能显示"模型级"。
+  it('marks rule-declared account-wide blocks', async () => {
+    mocks.getTempUnschedulableStatus.mockResolvedValueOnce(activeState({ error_message: '402', matched_keyword: 'payment', rule_index: 0, account_wide: true }))
+    const w = await open(); await flushPromises()
+    expect(w.text()).toContain('admin.accounts.tempUnschedulable.blockScopeAccountRule')
+    expect(w.text()).not.toContain('blockScopeModel')
+  })
+  it('labels fallback account-level blocks (401 rule, no-model fallback) as account-wide too', async () => {
+    mocks.getTempUnschedulableStatus.mockResolvedValueOnce(activeState({ error_message: '401', matched_keyword: 'auth', rule_index: 1, account_wide: false }))
+    const w = await open(); await flushPromises()
+    expect(w.text()).toContain('admin.accounts.tempUnschedulable.blockScopeAccount')
+    expect(w.text()).not.toContain('admin.accounts.tempUnschedulable.blockScopeAccountRule')
+    expect(w.text()).not.toContain('blockScopeModel')
+  })
+  it('labels stream-timeout-like states without matched_keyword as account-wide', async () => {
+    mocks.getTempUnschedulableStatus.mockResolvedValueOnce(activeState({ error_message: 'Stream data interval timeout' }))
+    const w = await open(); await flushPromises()
+    expect(w.text()).toContain('admin.accounts.tempUnschedulable.blockScopeAccount')
+    expect(w.text()).not.toContain('blockScopeModel')
   })
 })

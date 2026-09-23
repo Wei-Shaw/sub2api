@@ -2704,6 +2704,7 @@ func (s *RateLimitService) triggerTempUnschedulable(ctx context.Context, account
 		MatchedKeyword:  matchedKeyword,
 		RuleIndex:       ruleIndex,
 		ErrorMessage:    truncateTempUnschedMessage(responseBody, tempUnschedMessageMaxBytes),
+		AccountWide:     rule.AccountWide,
 	}
 
 	reason := ""
@@ -2717,16 +2718,23 @@ func (s *RateLimitService) triggerTempUnschedulable(ctx context.Context, account
 	// Persist known-model failures under the model key so the scheduler excludes
 	// only this (account, model) pair. Authentication and model-unknown failures
 	// retain the legacy account-wide temporary-unschedulable behavior below.
-	modelKey := firstRequestedModel(requestedModel)
-	if modelKey != "" && statusCode != http.StatusUnauthorized {
-		if err := s.accountRepo.SetModelRateLimit(ctx, account.ID, modelKey, until, reason); err != nil {
-			slog.Warn("temp_unsched_model_rate_limit_set_failed", "account_id", account.ID, "model", modelKey, "error", err)
-			// The rule matched, so fail over the current request even if persistence
-			// failed; never widen a model-scoped failure into an account-wide block.
+	// Rules opted in via account_wide also keep the account-wide behavior: for
+	// providers whose quota is shared across all models on the account, a
+	// model-scoped block would still let the scheduler pick the drained
+	// account for other models and burn failover attempts on repeated quota
+	// errors.
+	if !rule.AccountWide {
+		modelKey := firstRequestedModel(requestedModel)
+		if modelKey != "" && statusCode != http.StatusUnauthorized {
+			if err := s.accountRepo.SetModelRateLimit(ctx, account.ID, modelKey, until, reason); err != nil {
+				slog.Warn("temp_unsched_model_rate_limit_set_failed", "account_id", account.ID, "model", modelKey, "error", err)
+				// The rule matched, so fail over the current request even if persistence
+				// failed; never widen a model-scoped failure into an account-wide block.
+				return true
+			}
+			slog.Info("account_model_temp_unschedulable", "account_id", account.ID, "model", modelKey, "until", until, "rule_index", ruleIndex, "status_code", statusCode)
 			return true
 		}
-		slog.Info("account_model_temp_unschedulable", "account_id", account.ID, "model", modelKey, "until", until, "rule_index", ruleIndex, "status_code", statusCode)
-		return true
 	}
 
 	s.notifyAccountSchedulingBlocked(account, until, "temp_unschedulable")
