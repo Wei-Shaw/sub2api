@@ -839,6 +839,142 @@ describe('EditAccountModal', () => {
     )
   })
 
+  it('loads and clears the plaintext collaboration toggle for OpenAI OAuth accounts', async () => {
+    const account = buildAccount()
+    account.type = 'oauth'
+    account.extra = {
+      openai_responses_plaintext_collaboration: true
+    }
+    updateAccountMock.mockReset()
+    checkMixedChannelRiskMock.mockReset()
+    checkMixedChannelRiskMock.mockResolvedValue({ has_risk: false })
+    updateAccountMock.mockResolvedValue(account)
+
+    const wrapper = mountModal(account)
+    const toggle = wrapper.get('[data-testid="edit-openai-plaintext-collaboration-toggle"]')
+
+    // Turning it off removes the key instead of writing false
+    await toggle.trigger('click')
+    await wrapper.get('form#edit-account-form').trigger('submit.prevent')
+
+    expect(updateAccountMock).toHaveBeenCalledTimes(1)
+    expect(updateAccountMock.mock.calls[0]?.[1]?.extra).not.toHaveProperty(
+      'openai_responses_plaintext_collaboration'
+    )
+  })
+
+  it('submits the plaintext collaboration toggle for OpenAI API Key accounts', async () => {
+    const account = buildAccount()
+    updateAccountMock.mockReset()
+    checkMixedChannelRiskMock.mockReset()
+    checkMixedChannelRiskMock.mockResolvedValue({ has_risk: false })
+    updateAccountMock.mockResolvedValue(account)
+
+    const wrapper = mountModal(account)
+    await wrapper.get('[data-testid="edit-openai-plaintext-collaboration-toggle"]').trigger('click')
+    await wrapper.get('form#edit-account-form').trigger('submit.prevent')
+
+    expect(updateAccountMock).toHaveBeenCalledTimes(1)
+    expect(
+      updateAccountMock.mock.calls[0]?.[1]?.extra?.openai_responses_plaintext_collaboration
+    ).toBe(true)
+  })
+
+  it('shows the plaintext collaboration toggle for OpenAI Setup Token accounts', () => {
+    const wrapper = mountModal(buildOpenAISetupTokenAccount())
+
+    expect(
+      wrapper.find('[data-testid="edit-openai-plaintext-collaboration-toggle"]').exists()
+    ).toBe(true)
+  })
+
+  it('hides the plaintext collaboration toggle for non-OpenAI accounts', () => {
+    const wrapper = mountModal(buildGrokOAuthAccount())
+
+    expect(
+      wrapper.find('[data-testid="edit-openai-plaintext-collaboration-toggle"]').exists()
+    ).toBe(false)
+  })
+
+  it('preserves sibling extra keys and model mapping when clearing the plaintext flag', async () => {
+    const account = buildAccount()
+    account.type = 'oauth'
+    account.extra = {
+      codex_fingerprint_mode: 'device',
+      unrelated_setting: 'keep-me',
+      openai_responses_plaintext_collaboration: true
+    }
+    updateAccountMock.mockReset()
+    checkMixedChannelRiskMock.mockReset()
+    checkMixedChannelRiskMock.mockResolvedValue({ has_risk: false })
+    updateAccountMock.mockResolvedValue(account)
+
+    const wrapper = mountModal(account)
+    await wrapper.get('[data-testid="edit-openai-plaintext-collaboration-toggle"]').trigger('click')
+    await wrapper.get('form#edit-account-form').trigger('submit.prevent')
+
+    expect(updateAccountMock).toHaveBeenCalledTimes(1)
+    const submitted = updateAccountMock.mock.calls[0]?.[1]
+    expect(submitted?.extra).not.toHaveProperty('openai_responses_plaintext_collaboration')
+    expect(submitted?.extra?.codex_fingerprint_mode).toBe('device')
+    expect(submitted?.extra?.unrelated_setting).toBe('keep-me')
+    expect(submitted?.credentials?.model_mapping).toEqual({ 'gpt-5.2': 'gpt-5.2' })
+  })
+
+  it('warns that plaintext collaboration does not apply to forced Chat Completions accounts', async () => {
+    const account = buildAccount()
+    account.extra = { openai_responses_mode: 'force_chat_completions' }
+    updateAccountMock.mockReset()
+    checkMixedChannelRiskMock.mockReset()
+    checkMixedChannelRiskMock.mockResolvedValue({ has_risk: false })
+    updateAccountMock.mockResolvedValue(account)
+
+    const wrapper = mountModal(account)
+
+    expect(
+      wrapper.find('[data-testid="edit-openai-plaintext-collaboration-mode-hint"]').exists()
+    ).toBe(true)
+
+    // Warning only: the toggle must stay usable so an already-on flag can still be turned off
+    await wrapper.get('[data-testid="edit-openai-plaintext-collaboration-toggle"]').trigger('click')
+    await wrapper.get('form#edit-account-form').trigger('submit.prevent')
+
+    expect(updateAccountMock).toHaveBeenCalledTimes(1)
+    expect(
+      updateAccountMock.mock.calls[0]?.[1]?.extra?.openai_responses_plaintext_collaboration
+    ).toBe(true)
+  })
+
+  it.each([true, false, undefined])(
+    'hides the plaintext collaboration toggle for Spark shadow accounts and preserves the stored flag (%s)',
+    async (storedFlag) => {
+      const account = buildOpenAISparkShadowAccount()
+      account.extra = { unrelated_setting: 'keep-me' }
+      if (storedFlag !== undefined) {
+        account.extra.openai_responses_plaintext_collaboration = storedFlag
+      }
+      updateAccountMock.mockReset()
+      checkMixedChannelRiskMock.mockReset()
+      checkMixedChannelRiskMock.mockResolvedValue({ has_risk: false })
+      updateAccountMock.mockResolvedValue(account)
+
+      const wrapper = mountModal(account)
+      expect(wrapper.find('[data-testid="edit-openai-plaintext-collaboration-toggle"]').exists()).toBe(false)
+
+      // An unrelated save must not silently drop a flag this UI cannot edit
+      await wrapper.get('form#edit-account-form').trigger('submit.prevent')
+
+      expect(updateAccountMock).toHaveBeenCalledTimes(1)
+      const submittedExtra = updateAccountMock.mock.calls[0]?.[1]?.extra
+      if (storedFlag === undefined) {
+        expect(submittedExtra).not.toHaveProperty('openai_responses_plaintext_collaboration')
+      } else {
+        expect(submittedExtra?.openai_responses_plaintext_collaboration).toBe(storedFlag)
+      }
+      expect(submittedExtra?.unrelated_setting).toBe('keep-me')
+    }
+  )
+
   it('writes the upstream request id header into extra only when it changes', async () => {
     const account = buildAccount()
     account.extra = { openai_compact_mode: 'force_on' }

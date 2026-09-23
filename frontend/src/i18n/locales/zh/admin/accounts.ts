@@ -715,6 +715,13 @@ export default {
         flattenNamespaces: '摊平 Codex namespace 工具（兼容）',
         flattenNamespacesDesc:
           '默认关闭：/responses 上的 namespace 工具声明原样转发，这正是 ChatGPT Codex 后端期望的形态。仅当该 OAuth 账号指向不认识 namespace 的兼容上游时才开启——摊平会把工具改名为 namespace__tool，使按 functions.<命名空间>.<工具> 寻址的模型（如 gpt-5.6 多智能体）无法调用。压缩（compact）请求不受该开关影响，始终摊平。',
+        plaintextCollaboration: '明文协作消息（实验性）',
+        plaintextCollaborationDesc:
+          '实验性功能，默认关闭；网关集成仍在验证中，尚未通过真实模型调用验证。对 OpenAI OAuth / Setup Token 与 API Key 账号的原生 Responses 链路生效。开启后，新的 Codex V2 协作（多智能体工作）消息以明文形式发送，便于跨账号迁移；不会自动恢复此前已加密的历史记录，关闭时 namespace 工具处理保持原样。请在自行验证真实工具调用后再开启，并确保池内所有账号使用相同设置。',
+        plaintextCollaborationModeHint:
+          '该账号已强制 Chat Completions：请勿开启此选项；不支持的出站模式在开启后会拒绝请求（HTTP 400 或关闭 WebSocket），仅原生 Responses 链路受支持。',
+        plaintextCollaborationBulkHint:
+          '批量编辑无法识别各账号的 Responses 模式，请勿对已强制 Chat Completions 的账号开启。',
         longContextBilling: 'API 长上下文计费',
         longContextBillingDesc: '默认关闭。仅当该账号的上游会按模型阈值收取 OpenAI API 长上下文费率时开启。',
         responsesWebsocketsV2: 'Responses WebSocket v2',

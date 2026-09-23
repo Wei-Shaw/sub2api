@@ -1,0 +1,24 @@
+{
+  "models": [
+    {
+      "slug": "canary-plaintext",
+      "display_name": "Canary Plaintext",
+      "description": "Synthetic local canary model; not backed by a real inference endpoint.",
+      "default_reasoning_level": "low",
+      "supported_reasoning_levels": [
+        { "effort": "low", "description": "Synthetic low effort" },
+        { "effort": "medium", "description": "Synthetic medium effort" }
+      ],
+      "shell_type": "disabled",
+      "visibility": "list",
+      "supported_in_api": true,
+      "priority": 1,
+      "support_verbosity": false,
+      "truncation_policy": { "mode": "tokens", "limit": 8192 },
+      "experimental_supported_tools": [],
+      "input_modalities": ["text"],
+      "context_window": 128000,
+      "multi_agent_version": "v2"
+    }
+  ]
+}

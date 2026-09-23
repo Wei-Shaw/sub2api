@@ -597,6 +597,13 @@ export default {
         flattenNamespaces: 'Flatten Codex namespace tools (compatibility)',
         flattenNamespacesDesc:
           'Disabled by default: Codex namespace tool declarations are forwarded as-is on /responses, which is what the ChatGPT Codex backend expects. Enable only when this OAuth account is routed to a relay that rejects namespace tools — flattening renames them to namespace__tool, which breaks models that address collaboration tools as functions.<namespace>.<tool>. Compaction requests always flatten regardless of this switch.',
+        plaintextCollaboration: 'Plaintext collaboration messages (experimental)',
+        plaintextCollaborationDesc:
+          'Experimental and off by default; gateway integration is under validation and real model calls have not been verified. Applies to OpenAI OAuth / Setup Token and API Key accounts on the native Responses path. When enabled, new Codex V2 collaboration (multi-agent work) messages are sent in plaintext form so they can move between accounts; it does not recover previously encrypted history, and namespace tool handling is unchanged while off. Enable only after verifying real tool calls on your own upstream, and keep the same setting on every account in the pool.',
+        plaintextCollaborationModeHint:
+          'Do not enable while this account forces Chat Completions: opt-in on this unsupported outbound mode rejects requests (HTTP 400 or WebSocket close). Only native Responses traffic is supported.',
+        plaintextCollaborationBulkHint:
+          'Bulk edit cannot detect each account\'s Responses mode. Do not enable this on accounts that force Chat Completions.',
         longContextBilling: 'API long-context pricing',
         longContextBillingDesc:
           'Disabled by default. Enable only when this account\'s upstream charges OpenAI API long-context rates above the model threshold.',

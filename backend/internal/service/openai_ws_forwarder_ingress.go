@@ -86,6 +86,10 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 	// A handler may reuse the same gin context across account failover attempts.
 	// Never let an OAuth attempt's response aliases leak into the next account.
 	setCodexToolNameReverse(c, nil)
+	// collaboration plaintext 会话不在此处清空：客户端在本连接上声明的
+	// 原始 tools 属客户端会话状态，跨账号 failover 仍需供 follow-up 帧继承。
+	// per-account alias mapping 由 bindAccount 在账号切换时重置，旧账号的
+	// 别名不会泄漏到新账号的响应还原。
 	if _, err := s.prepareCodexAccountIdentitySource(ctx, c, account); err != nil {
 		return err
 	}
@@ -189,6 +193,7 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 
 	type openAIWSClientPayload struct {
 		payloadRaw               []byte
+		collabPrepared           openAIWSCollabPlaintextPrepared
 		accountIdentitySourceRaw []byte
 		rawForHash               []byte
 		promptCacheKey           string
@@ -466,10 +471,23 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 			)
 		}
 		normalized = policyApplied
+		// collaboration plaintext opt-in：所有出站归一化完成后降级 namespace
+		// message tools；显式 tools 覆盖缓存声明，省略时继承上一份原文。
+		// opt-in 但出站模式不受支持的账号按契约在此明确拒绝连接。
+		collabSession, collabErr := openAIWSCollabPlaintextSessionForAccount(c, account)
+		if collabErr != nil {
+			return openAIWSClientPayload{}, NewOpenAIWSClientCloseError(coderws.StatusPolicyViolation, collabErr.Error(), collabErr)
+		}
+		prepared, prepareErr := prepareOpenAIWSCollabPlaintextPayload(collabSession, normalized, collabSession != nil)
+		if prepareErr != nil {
+			return openAIWSClientPayload{}, NewOpenAIWSClientCloseError(coderws.StatusPolicyViolation, prepareErr.Error(), prepareErr)
+		}
+		normalized = prepared.payload
 		ingressSessionOriginalModel = originalModel
 
 		return openAIWSClientPayload{
 			payloadRaw:               normalized,
+			collabPrepared:           prepared,
 			accountIdentitySourceRaw: accountIdentitySourceRaw,
 			rawForHash:               trimmed,
 			promptCacheKey:           promptCacheKey,
@@ -487,6 +505,15 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 		writeCtx, cancel := newOpenAIWSDownstreamWriteContext(ctx, hooks, s.openAIWSWriteTimeout())
 		defer cancel()
 		message = restoreCodexToolNamesFromContext(c, message)
+		// 还原侧只需要已建立的会话；账号未 opt-in 或不支持时 ForAccount
+		// 返回 nil（该错误会在请求侧的 adapt 处先被拒绝，不会走到这里）。
+		if collabSession, _ := openAIWSCollabPlaintextSessionForAccount(c, account); collabSession != nil {
+			restored, restoreErr := collabSession.restore(message)
+			if restoreErr != nil {
+				return fmt.Errorf("restore collaboration plaintext websocket event: %w", restoreErr)
+			}
+			message = restored
+		}
 		return clientConn.Write(writeCtx, coderws.MessageText, message)
 	}
 
@@ -690,6 +717,7 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 				grokCacheIdentity,
 				turn,
 				writeClientMessage,
+				currentBridgePayload.collabPrepared,
 			)
 			if bridgeErr != nil && isOpenAIWSSessionPreempted(ctx) {
 				return errOpenAIWSSessionPreempted
@@ -1272,6 +1300,7 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 	}
 
 	currentPayload := firstPayload.payloadRaw
+	currentCollabPrepared := firstPayload.collabPrepared
 	currentOriginalModel := firstPayload.originalModel
 	currentImageBillingModel := firstPayload.imageBillingModel
 	currentImageSizeTier := firstPayload.imageSizeTier
@@ -1780,6 +1809,7 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 			)
 		}
 
+		commitOpenAIWSCollabPlaintextPayload(c, account, currentCollabPrepared)
 		result, relayErr := sendAndRelay(turn, sessionLease, currentPayload, currentPayloadBytes, currentOriginalModel, currentImageBillingModel, currentImageSizeTier, currentImageInputSize, currentRequestedReasoningEffort)
 		if relayErr != nil {
 			lastTurnClean = false
@@ -1941,6 +1971,7 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 			}
 		}
 		currentPayload = nextPayload.payloadRaw
+		currentCollabPrepared = nextPayload.collabPrepared
 		currentOriginalModel = nextPayload.originalModel
 		currentImageBillingModel = nextPayload.imageBillingModel
 		currentImageSizeTier = nextPayload.imageSizeTier

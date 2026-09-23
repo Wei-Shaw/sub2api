@@ -32,6 +32,7 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 	clearGrokResponsesClientToolMapping(c)
 	clearOpenAIResponsesClientToolMapping(c)
 	clearOpenAIResponsesNamespaceNames(c)
+	clearOpenAIResponsesCollabPlaintextMapping(c)
 	setCodexToolNameReverse(c, nil)
 	if _, err := s.prepareCodexAccountIdentitySource(ctx, c, account); err != nil {
 		return nil, err
@@ -113,6 +114,20 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 	wsDecision = resolveOpenAIWSDecisionByClientTransport(wsDecision, GetOpenAIClientTransport(c))
 	passthroughEnabled := account.IsOpenAIPassthroughEnabled()
 	compactPath := isOpenAIResponsesCompactPath(c)
+	// collaboration plaintext opt-in：必须在账号侧 namespace strip/flatten 之前
+	// 降级并记录 mapping，否则剥离先发生会丢失原始 namespace/name 身份。
+	// compact 不是新 collaboration 调用生成路径，按契约跳过转换。
+	if account.IsOpenAIResponsesPlaintextCollaborationEnabled() && !compactPath {
+		adaptedBody, adaptErr := adaptOpenAIResponsesCollabPlaintextBody(c, account, body)
+		if adaptErr != nil {
+			setOpsUpstreamError(c, http.StatusBadRequest, adaptErr.Error(), "")
+			c.JSON(http.StatusBadRequest, gin.H{"error": gin.H{
+				"type": "invalid_request_error", "message": adaptErr.Error(), "param": "tools",
+			}})
+			return nil, adaptErr
+		}
+		body = adaptedBody
+	}
 	if shouldFlattenOpenAIResponsesNamespaces(account, wsDecision.Transport, passthroughEnabled, compactPath) {
 		body, err = flattenOpenAIResponsesNamespaces(c, body)
 		if err != nil {

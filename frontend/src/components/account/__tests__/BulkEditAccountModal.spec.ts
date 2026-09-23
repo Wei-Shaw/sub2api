@@ -320,6 +320,131 @@ describe('BulkEditAccountModal', () => {
     expect(wrapper.find('#bulk-edit-openai-flatten-namespaces-enabled').exists()).toBe(false)
   })
 
+  it('OpenAI 批量编辑可开启明文协作消息（实验性）开关', async () => {
+    const wrapper = mountModal({
+      selectedPlatforms: ['openai'],
+      selectedTypes: ['oauth']
+    })
+
+    await wrapper.get('#bulk-edit-openai-plaintext-collaboration-enabled').setValue(true)
+    await wrapper.get('#bulk-edit-openai-plaintext-collaboration-toggle').trigger('click')
+    await wrapper.get('#bulk-edit-account-form').trigger('submit.prevent')
+    await flushPromises()
+
+    expect(adminAPI.accounts.bulkUpdate).toHaveBeenCalledTimes(1)
+    expect(adminAPI.accounts.bulkUpdate).toHaveBeenCalledWith([1, 2], {
+      extra: {
+        openai_responses_plaintext_collaboration: true
+      }
+    })
+  })
+
+  it('明文协作开关仅勾选不拨动时显式提交 false', async () => {
+    const wrapper = mountModal({
+      selectedPlatforms: ['openai'],
+      selectedTypes: ['apikey']
+    })
+
+    await wrapper.get('#bulk-edit-openai-plaintext-collaboration-enabled').setValue(true)
+    await wrapper.get('#bulk-edit-account-form').trigger('submit.prevent')
+    await flushPromises()
+
+    expect(adminAPI.accounts.bulkUpdate).toHaveBeenCalledTimes(1)
+    expect(adminAPI.accounts.bulkUpdate).toHaveBeenCalledWith([1, 2], {
+      extra: {
+        openai_responses_plaintext_collaboration: false
+      }
+    })
+  })
+
+  it('明文协作开关对 OAuth/Setup Token/API Key 的 OpenAI 目标均展示', () => {
+    for (const selectedTypes of [['oauth'], ['setup-token'], ['apikey'], ['oauth', 'setup-token', 'apikey']]) {
+      const wrapper = mountModal({
+        selectedPlatforms: ['openai'],
+        selectedTypes
+      })
+      expect(wrapper.find('#bulk-edit-openai-plaintext-collaboration-enabled').exists()).toBe(true)
+      wrapper.unmount()
+    }
+  })
+
+  it('明文协作开关在非 OpenAI 或混合平台目标下隐藏', () => {
+    const anthropic = mountModal({
+      selectedPlatforms: ['anthropic'],
+      selectedTypes: ['apikey']
+    })
+    expect(anthropic.find('#bulk-edit-openai-plaintext-collaboration-enabled').exists()).toBe(false)
+    anthropic.unmount()
+
+    const mixed = mountModal({
+      selectedPlatforms: ['openai', 'anthropic'],
+      selectedTypes: ['apikey']
+    })
+    expect(mixed.find('#bulk-edit-openai-plaintext-collaboration-enabled').exists()).toBe(false)
+    mixed.unmount()
+  })
+
+  it('明文协作开关对混入非 OAuth/SetupToken/APIKey 类型的 OpenAI 目标隐藏且不写键', async () => {
+    const wrapper = mountModal({
+      selectedPlatforms: ['openai'],
+      selectedTypes: ['oauth', 'service_account']
+    })
+
+    expect(wrapper.find('#bulk-edit-openai-plaintext-collaboration-enabled').exists()).toBe(false)
+
+    // Enable an unrelated field so submission proceeds; the flag must not leak into extra
+    await wrapper.get('#bulk-edit-base-url-enabled').setValue(true)
+    await wrapper.get('#bulk-edit-base-url').setValue('https://api.example.invalid/v1')
+    await wrapper.get('#bulk-edit-account-form').trigger('submit.prevent')
+    await flushPromises()
+
+    expect(adminAPI.accounts.bulkUpdate).toHaveBeenCalledTimes(1)
+    const payload = vi.mocked(adminAPI.accounts.bulkUpdate).mock.calls[0]?.[1] as Record<string, unknown>
+    expect(payload?.extra ?? {}).not.toHaveProperty('openai_responses_plaintext_collaboration')
+  })
+
+  it('明文协作警告仅在勾选并设为 ON 时显示', async () => {
+    const wrapper = mountModal({
+      selectedPlatforms: ['openai'],
+      selectedTypes: ['oauth']
+    })
+    const hint = '[data-testid="bulk-edit-openai-plaintext-collaboration-mode-hint"]'
+
+    // Default no-change: no warning
+    expect(wrapper.find(hint).exists()).toBe(false)
+
+    // Checked but toggle still off (bulk clear): no warning
+    await wrapper.get('#bulk-edit-openai-plaintext-collaboration-enabled').setValue(true)
+    expect(wrapper.find(hint).exists()).toBe(false)
+
+    // Explicitly enabling: warning appears
+    await wrapper.get('#bulk-edit-openai-plaintext-collaboration-toggle').trigger('click')
+    expect(wrapper.find(hint).exists()).toBe(true)
+
+    // Turning it back off removes the warning again
+    await wrapper.get('#bulk-edit-openai-plaintext-collaboration-toggle').trigger('click')
+    expect(wrapper.find(hint).exists()).toBe(false)
+  })
+
+  it('明文协作开关默认不勾选时提交载荷不含该键', async () => {
+    const wrapper = mountModal({
+      selectedPlatforms: ['openai'],
+      selectedTypes: ['oauth']
+    })
+
+    await wrapper.get('#bulk-edit-base-url-enabled').setValue(true)
+    await wrapper.get('#bulk-edit-base-url').setValue('https://api.example.invalid/v1')
+    await wrapper.get('#bulk-edit-account-form').trigger('submit.prevent')
+    await flushPromises()
+
+    expect(adminAPI.accounts.bulkUpdate).toHaveBeenCalledTimes(1)
+    expect(adminAPI.accounts.bulkUpdate).toHaveBeenCalledWith([1, 2], {
+      credentials: {
+        base_url: 'https://api.example.invalid/v1'
+      }
+    })
+  })
+
   it('OpenAI OAuth 批量编辑应提交 OAuth 专属 WS mode 字段（含 http_bridge）', async () => {
     const wrapper = mountModal({
       selectedPlatforms: ['openai'],

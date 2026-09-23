@@ -660,6 +660,12 @@ readLoop:
 				}
 			}
 			message = restoreCodexToolNamesFromContext(c, message)
+			restoredMessage, restoreErr := restoreOpenAIResponsesCollabPlaintextPayload(c, message)
+			if restoreErr != nil {
+				lease.MarkBroken()
+				return nil, fmt.Errorf("restore OpenAI collaboration plaintext ws event: %w", restoreErr)
+			}
+			message = restoredMessage
 		}
 		if openAIWSMessageShouldParseUsage(eventType, message) {
 			parseOpenAIWSResponseUsageFromCompletedEvent(message, usage)
@@ -809,6 +815,11 @@ readLoop:
 			finalResponse = s.replaceModelInResponseBody(finalResponse, mappedModel, originalModel)
 		}
 		finalResponse = s.correctToolCallsInResponseBody(finalResponse)
+		restoredFinal, restoreErr := restoreOpenAIResponsesCollabPlaintextPayload(c, finalResponse)
+		if restoreErr != nil {
+			return resultWithUsage(), fmt.Errorf("restore OpenAI collaboration plaintext final response: %w", restoreErr)
+		}
+		finalResponse = restoredFinal
 		populateOpenAIUsageFromResponseJSON(finalResponse, usage)
 		if responseID == "" {
 			responseID = strings.TrimSpace(gjson.GetBytes(finalResponse, "id").String())

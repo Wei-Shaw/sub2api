@@ -29,6 +29,9 @@ type openAIWSClientFrameConn struct {
 	// model identifier they supplied for the current turn.
 	restoreResponseModel func([]byte) []byte
 	restoreToolNames     func([]byte) []byte
+	// restoreCollabPlaintext 将 collaboration plaintext 降级产生的别名还原为
+	// 原 namespace/name。返回 error 时终止写出，避免别名泄漏到客户端。
+	restoreCollabPlaintext func([]byte) ([]byte, error)
 }
 
 // openAIWSPolicyEnforcingFrameConn wraps a client-side FrameConn and runs
@@ -650,6 +653,13 @@ func (c *openAIWSClientFrameConn) WriteFrame(ctx context.Context, msgType coderw
 		if c.restoreToolNames != nil {
 			payload = c.restoreToolNames(payload)
 		}
+		if c.restoreCollabPlaintext != nil {
+			restored, restoreErr := c.restoreCollabPlaintext(payload)
+			if restoreErr != nil {
+				return restoreErr
+			}
+			payload = restored
+		}
 	}
 	return c.conn.Write(ctx, msgType, payload)
 }
@@ -687,6 +697,12 @@ func (s *OpenAIGatewayService) proxyResponsesWebSocketV2Passthrough(
 	}
 	if err := validateOpenAIWSBearerToken(account, token); err != nil {
 		return err
+	}
+	// opt-in 且出站模式不受支持时在拨号上游之前明确拒绝；
+	// 会话跨 failover 保留客户端 tools 声明，仅重置 per-account mapping。
+	collabSession, collabErr := openAIWSCollabPlaintextSessionForAccount(c, account)
+	if collabErr != nil {
+		return NewOpenAIWSClientCloseError(coderws.StatusPolicyViolation, collabErr.Error(), collabErr)
 	}
 	if isOpenAIResponsesLiteWebSocketPayload(firstClientMessage) {
 		liteFirstMessage, _, liteErr := normalizeOpenAIResponsesLitePayloadForAccount(firstClientMessage, account)
@@ -791,6 +807,12 @@ func (s *OpenAIGatewayService) proxyResponsesWebSocketV2Passthrough(
 		return NewOpenAIWSClientCloseError(coderws.StatusPolicyViolation, blocked.Message, blocked)
 	}
 	firstClientMessage = updatedFirst
+	// collaboration plaintext opt-in：首帧在所有出站归一化/policy 之后降级。
+	firstPrepared, prepareErr := prepareOpenAIWSCollabPlaintextPayload(collabSession, firstClientMessage, collabSession != nil)
+	if prepareErr != nil {
+		return NewOpenAIWSClientCloseError(coderws.StatusPolicyViolation, prepareErr.Error(), prepareErr)
+	}
+	firstClientMessage = firstPrepared.payload
 
 	// 在 policy filter 之后再提取 service_tier / reasoning_effort 用于
 	// usage 上报：filter 命中时 service_tier 已经从 firstClientMessage 中删除，
@@ -867,6 +889,7 @@ func (s *OpenAIGatewayService) proxyResponsesWebSocketV2Passthrough(
 	}
 
 	agentTaskRecoveryTried := false
+	firstToolsCommitted := false
 	var upstreamConn openAIWSClientConn
 	statusCode := 0
 	var handshakeHeaders http.Header
@@ -874,6 +897,10 @@ func (s *OpenAIGatewayService) proxyResponsesWebSocketV2Passthrough(
 		headers, err = s.refreshOpenAIAgentIdentityHeaders(ctx, account, headers)
 		if err != nil {
 			return fmt.Errorf("refresh ws authentication headers: %w", err)
+		}
+		if !firstToolsCommitted {
+			commitOpenAIWSCollabPlaintextPayload(c, account, firstPrepared)
+			firstToolsCommitted = true
 		}
 		dialCtx, cancelDial := context.WithTimeout(ctx, s.openAIWSDialTimeout())
 		upstreamConn, statusCode, handshakeHeaders, err = dialer.Dial(dialCtx, wsURL, headers, proxyURL)
@@ -968,6 +995,12 @@ func (s *OpenAIGatewayService) proxyResponsesWebSocketV2Passthrough(
 		},
 		restoreToolNames: func(payload []byte) []byte {
 			return restoreCodexToolNamesFromContext(c, payload)
+		},
+		restoreCollabPlaintext: func(payload []byte) ([]byte, error) {
+			if collabSession == nil {
+				return payload, nil
+			}
+			return collabSession.restore(payload)
 		},
 	}
 	policyClientConn := &openAIWSPolicyEnforcingFrameConn{
@@ -1111,9 +1144,17 @@ func (s *OpenAIGatewayService) proxyResponsesWebSocketV2Passthrough(
 			//     覆盖（Store(nil)），因为 OpenAI 上游对该帧实际不传
 			//     service_tier 时按 default 处理，billing 应如实反映。
 			if policyErr == nil && blocked == nil && isResponseCreate {
+				// collaboration plaintext opt-in：policy 通过后的最终出站帧降级；
+				// 显式 tools 覆盖缓存声明，省略时继承上一份原文。
+				prepared, prepareErr := prepareOpenAIWSCollabPlaintextPayload(collabSession, out, collabSession != nil)
+				if prepareErr != nil {
+					return payload, nil, NewOpenAIWSClientCloseError(coderws.StatusPolicyViolation, prepareErr.Error(), prepareErr)
+				}
+				out = prepared.payload
 				usageMeta.updateFromResponseCreate(out, model, requestModelForThisFrame)
 				_, actualModel := usageMeta.turnModels(requestModelForThisFrame)
 				SetOpsUpstreamModel(c, actualModel)
+				commitOpenAIWSCollabPlaintextPayload(c, account, prepared)
 				responseCreateAtCopy := responseCreateAt
 				acceptedTurnStartedAt.Store(&responseCreateAtCopy)
 				acceptedTurn = true

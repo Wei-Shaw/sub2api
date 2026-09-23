@@ -2284,6 +2284,19 @@ func (a *Account) IsOpenAIResponsesFlattenNamespacesEnabled() bool {
 	return ok && enabled
 }
 
+// IsOpenAIResponsesPlaintextCollaborationEnabled 返回账号级 opt-in 开关：
+// 将 collaboration namespace 中 message 参数标记 encrypted:true 的受支持
+// 工具降级为普通 function 工具后再转发上游，并在响应中还原原 namespace/name。
+// 字段：accounts.extra.openai_responses_plaintext_collaboration，缺省 false
+// （请求·响应行为与关闭时完全一致）。仅对 OpenAI 平台账号有效。
+func (a *Account) IsOpenAIResponsesPlaintextCollaborationEnabled() bool {
+	if a == nil || !a.IsOpenAI() || a.Extra == nil {
+		return false
+	}
+	enabled, ok := a.Extra["openai_responses_plaintext_collaboration"].(bool)
+	return ok && enabled
+}
+
 // IsOpenAIWSAllowStoreRecoveryEnabled 返回账号级 store 恢复开关。
 // 字段：accounts.extra.openai_ws_allow_store_recovery。
 func (a *Account) IsOpenAIWSAllowStoreRecoveryEnabled() bool {
