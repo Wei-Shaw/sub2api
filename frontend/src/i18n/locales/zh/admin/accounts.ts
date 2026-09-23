@@ -1028,11 +1028,9 @@ export default {
 	  autoPauseDisabledHint: '开启后该账号永不进入自动暂停（即使全局默认阈值已配置）。',
 	  autoResetCredit: {
 	    title: '自动使用重置卡',
-	    hint: '仅在实际用量达到阈值时使用最早到期的可用卡；默认关闭。无卡或失败时账号保持暂停。',
-	    threshold5h: '5h 自动用卡阈值(%)',
-	    threshold7d: '7d 自动用卡阈值(%)',
-	    thresholdHint: '两个窗口独立判断，任一达到自身阈值即触发。可填写 0.1–100，默认均为 100。',
-	    thresholdInvalid: '自动使用重置卡阈值必须在 0.1% 到 100% 之间。'
+	    hint: '仅在已启用窗口的上游实际用量达到 100% 时使用最早到期的可用卡；默认均关闭。5h 达限仅在单独开启后才会耗卡。',
+	    enable5h: '5h 达限时使用重置卡',
+	    enable7d: '7d 达限时使用重置卡'
 	  },
       // Quota control (Anthropic OAuth/SetupToken only)
       quotaControl: {
