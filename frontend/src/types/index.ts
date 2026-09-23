@@ -1378,6 +1378,30 @@ export interface AntigravityModelQuota {
   reset_time: string  // 重置时间 ISO8601
 }
 
+// Antigravity 官方配额桶信息 (来自 retrieveUserQuotaSummary)
+export interface QuotaSummaryBucket {
+  bucketId?: string
+  displayName?: string
+  description?: string
+  window?: string
+  remainingFraction?: number
+  remainingAmount?: number
+  disabled?: boolean
+  resetTime?: string
+}
+
+export interface QuotaSummaryGroup {
+  displayName?: string
+  description?: string
+  buckets?: QuotaSummaryBucket[]
+}
+
+export interface AntigravityQuotaSummary {
+  buckets?: QuotaSummaryBucket[]
+  groups?: QuotaSummaryGroup[]
+  description?: string
+}
+
 export interface GrokQuotaWindow {
   limit?: number | null
   remaining?: number | null
@@ -1436,6 +1460,7 @@ export interface AccountUsageInfo {
   gemini_pro_minute?: UsageProgress | null
   gemini_flash_minute?: UsageProgress | null
   antigravity_quota?: Record<string, AntigravityModelQuota> | null
+  antigravity_quota_summary?: AntigravityQuotaSummary | null
   grok_request_quota?: GrokQuotaWindow | null
   grok_token_quota?: GrokQuotaWindow | null
   grok_retry_after_seconds?: number | null

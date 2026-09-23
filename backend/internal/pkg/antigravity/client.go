@@ -652,6 +652,37 @@ type FetchAvailableModelsResponse struct {
 	DeprecatedModelIDs map[string]DeprecatedModelInfo `json:"deprecatedModelIds,omitempty"`
 }
 
+// RetrieveUserQuotaSummaryRequest retrieveUserQuotaSummary 请求
+type RetrieveUserQuotaSummaryRequest struct {
+	Project string `json:"project"`
+}
+
+// QuotaSummaryBucket 额度摘要单个桶
+type QuotaSummaryBucket struct {
+	BucketID          string  `json:"bucketId,omitempty"`
+	DisplayName       string  `json:"displayName,omitempty"`
+	Description       string  `json:"description,omitempty"`
+	Window            string  `json:"window,omitempty"`
+	RemainingFraction float64 `json:"remainingFraction,omitempty"`
+	RemainingAmount   int64   `json:"remainingAmount,omitempty"`
+	Disabled          bool    `json:"disabled,omitempty"`
+	ResetTime         string  `json:"resetTime,omitempty"`
+}
+
+// QuotaSummaryGroup 额度摘要分组
+type QuotaSummaryGroup struct {
+	DisplayName string               `json:"displayName,omitempty"`
+	Description string               `json:"description,omitempty"`
+	Buckets     []QuotaSummaryBucket `json:"buckets,omitempty"`
+}
+
+// RetrieveUserQuotaSummaryResponse retrieveUserQuotaSummary 响应
+type RetrieveUserQuotaSummaryResponse struct {
+	Buckets     []QuotaSummaryBucket `json:"buckets,omitempty"`
+	Groups      []QuotaSummaryGroup  `json:"groups,omitempty"`
+	Description string               `json:"description,omitempty"`
+}
+
 // FetchAvailableModels 获取可用模型和配额信息，返回解析后的结构体和原始 JSON
 // 支持 URL fallback：sandbox → daily → prod
 func (c *Client) FetchAvailableModels(ctx context.Context, accessToken, projectID string, bodyLimit int64) (*FetchAvailableModelsResponse, map[string]any, error) {
@@ -732,6 +763,86 @@ func (c *Client) FetchAvailableModels(ctx context.Context, accessToken, projectI
 		// 标记成功的 URL，下次优先使用
 		DefaultURLAvailability.MarkSuccess(baseURL)
 		return &modelsResp, rawResp, nil
+	}
+
+	return nil, nil, lastErr
+}
+
+// RetrieveUserQuotaSummary 获取用户额度配额摘要（对应 Antigravity agy /usage）
+// 支持 URL fallback：prod -> daily
+func (c *Client) RetrieveUserQuotaSummary(ctx context.Context, accessToken, projectID string, bodyLimit int64) (*RetrieveUserQuotaSummaryResponse, map[string]any, error) {
+	if c == nil || c.httpClient == nil {
+		return nil, nil, errors.New("antigravity client is not configured")
+	}
+	if bodyLimit <= 0 {
+		return nil, nil, errors.New("retrieveUserQuotaSummary body limit must be positive")
+	}
+
+	reqBody := RetrieveUserQuotaSummaryRequest{Project: projectID}
+	bodyBytes, err := json.Marshal(reqBody)
+	if err != nil {
+		return nil, nil, fmt.Errorf("序列化请求失败: %w", err)
+	}
+
+	availableURLs := BaseURLs
+	fetchClient := c.fetchAvailableModelsHTTPClient()
+	var lastErr error
+	for urlIdx, baseURL := range availableURLs {
+		apiURL := baseURL + "/v1internal:retrieveUserQuotaSummary"
+		req, err := http.NewRequestWithContext(ctx, http.MethodPost, apiURL, strings.NewReader(string(bodyBytes)))
+		if err != nil {
+			lastErr = fmt.Errorf("创建请求失败: %w", err)
+			continue
+		}
+		req.Header.Set("Authorization", "Bearer "+accessToken)
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("User-Agent", GetUserAgentForContext(ctx))
+
+		resp, err := servertiming.Do(fetchClient, req)
+		if err != nil {
+			lastErr = fmt.Errorf("retrieveUserQuotaSummary 请求失败: %w", err)
+			if shouldFallbackToNextURL(err, 0) && urlIdx < len(availableURLs)-1 {
+				log.Printf("[antigravity] retrieveUserQuotaSummary URL fallback: %s -> %s", baseURL, availableURLs[urlIdx+1])
+				continue
+			}
+			return nil, nil, lastErr
+		}
+
+		respBodyBytes, err := io.ReadAll(io.LimitReader(resp.Body, bodyLimit+1))
+		_ = resp.Body.Close()
+		if err != nil {
+			return nil, nil, fmt.Errorf("读取响应失败: %w", err)
+		}
+		if int64(len(respBodyBytes)) > bodyLimit {
+			return nil, nil, fmt.Errorf("响应超过 %d 字节", bodyLimit)
+		}
+
+		if shouldFallbackToNextURL(nil, resp.StatusCode) && urlIdx < len(availableURLs)-1 {
+			log.Printf("[antigravity] retrieveUserQuotaSummary URL fallback (HTTP %d): %s -> %s", resp.StatusCode, baseURL, availableURLs[urlIdx+1])
+			continue
+		}
+
+		if resp.StatusCode == http.StatusForbidden {
+			return nil, nil, &ForbiddenError{
+				StatusCode: resp.StatusCode,
+				Body:       string(respBodyBytes),
+			}
+		}
+
+		if resp.StatusCode != http.StatusOK {
+			return nil, nil, fmt.Errorf("retrieveUserQuotaSummary 失败 (HTTP %d): %s", resp.StatusCode, string(respBodyBytes))
+		}
+
+		var summaryResp RetrieveUserQuotaSummaryResponse
+		if err := json.Unmarshal(respBodyBytes, &summaryResp); err != nil {
+			return nil, nil, fmt.Errorf("响应解析失败: %w", err)
+		}
+
+		var rawResp map[string]any
+		_ = json.Unmarshal(respBodyBytes, &rawResp)
+
+		DefaultURLAvailability.MarkSuccess(baseURL)
+		return &summaryResp, rawResp, nil
 	}
 
 	return nil, nil, lastErr
