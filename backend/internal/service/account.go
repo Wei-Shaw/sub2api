@@ -1368,6 +1368,9 @@ func (a *Account) GetOpenAIBaseURL() string {
 			return baseURL
 		}
 	}
+	if a.UsesNativeCNResponses() {
+		return a.GetCNProtocolBaseURL(APIProtocolResponses)
+	}
 	// 平台默认 base_url：CN 供应商按 account_mode 选择 payg / coding 默认值。
 	switch a.Platform {
 	case PlatformKimi:
@@ -1411,8 +1414,8 @@ func (a *Account) IsCodingPlan() bool {
 
 // GetAPIProtocol 返回国产供应商账号的上游 API 协议。存储于
 // credentials["api_protocol"]；缺失或与平台不匹配时回退 chat_completions
-// （与既有行为完全一致）。responses 协议仅 deepseek / kimi / minimax 支持（官方原生
-// Responses 端点，适配 Codex）；zhipu 无此端点。
+// （与既有行为完全一致）。responses 协议仅 deepseek / kimi / minimax 以及
+// GLM Coding Plan 支持（官方原生 Responses 端点，适配 Codex）。
 func (a *Account) GetAPIProtocol() string {
 	if a == nil || !a.IsMultiProtocolAPIKey() {
 		return APIProtocolChatCompletions
@@ -1436,13 +1439,16 @@ func (a *Account) GetAPIProtocol() string {
 }
 
 // SupportsNativeCNResponses 报告该国产供应商是否提供原生 Responses 端点。
-// DeepSeek 官方为 /responses（无 /v1）；Kimi 按量付费与 Coding Plan 均为
-// /v1/responses（moonshot.cn / kimi.com/coding）；MiniMax 为 /v1/responses。
+// GLM 仅 Coding Plan 官方支持；DeepSeek 官方为 /responses（无 /v1）；
+// Kimi 按量付费与 Coding Plan 均为 /v1/responses（moonshot.cn / kimi.com/coding）；
+// MiniMax 为 /v1/responses。
 func (a *Account) SupportsNativeCNResponses() bool {
 	if a == nil {
 		return false
 	}
 	switch a.Platform {
+	case PlatformZhipu:
+		return a.GetAccountMode() == AccountModeCoding
 	case PlatformDeepseek, PlatformKimi, PlatformMiniMax, PlatformOpenCodeGo:
 		return true
 	default:
@@ -1517,6 +1523,12 @@ func (a *Account) defaultCNProtocolBaseURL(protocol string) string {
 			}
 			return DefaultKimiPayGBaseURL
 		case PlatformZhipu:
+			if protocol == APIProtocolResponses {
+				if a.GetAccountMode() == AccountModeCoding {
+					return DefaultZhipuCodingResponsesBaseURL
+				}
+				return ""
+			}
 			if a.GetAccountMode() == AccountModeCoding {
 				return DefaultZhipuCodingBaseURL
 			}

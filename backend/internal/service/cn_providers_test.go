@@ -637,7 +637,9 @@ func TestGetAPIProtocol(t *testing.T) {
 	require.Equal(t, APIProtocolAdaptive, mk(PlatformMiniMax, APIProtocolAdaptive).GetAPIProtocol())
 	require.Equal(t, APIProtocolAdaptive, mk(PlatformZhipu, APIProtocolAdaptive).GetAPIProtocol())
 	require.Equal(t, APIProtocolAdaptive, mk(PlatformDeepseek, APIProtocolAdaptive).GetAPIProtocol())
-	require.Equal(t, APIProtocolChatCompletions, mk(PlatformZhipu, APIProtocolResponses).GetAPIProtocol(), "zhipu 无 responses 端点")
+	zhipuCoding := mk(PlatformZhipu, APIProtocolResponses)
+	zhipuCoding.Credentials["account_mode"] = AccountModeCoding
+	require.Equal(t, APIProtocolResponses, zhipuCoding.GetAPIProtocol())
 	require.Equal(t, APIProtocolChatCompletions, mk(PlatformKimi, "bogus").GetAPIProtocol(), "非法值回退默认")
 	require.Equal(t, APIProtocolChatCompletions, (&Account{Platform: PlatformOpenAI, Type: AccountTypeAPIKey}).GetAPIProtocol(), "非 CN 供应商恒为默认")
 	require.Equal(t, APIProtocolAdaptive, mk(PlatformOpenCodeGo, "").GetAPIProtocol(), "opencode go 默认 adaptive")
@@ -652,6 +654,7 @@ func TestSupportsNativeCNResponses(t *testing.T) {
 	require.True(t, (&Account{Platform: PlatformMiniMax}).SupportsNativeCNResponses())
 	require.True(t, (&Account{Platform: PlatformOpenCodeGo}).SupportsNativeCNResponses())
 	require.False(t, (&Account{Platform: PlatformZhipu}).SupportsNativeCNResponses())
+	require.True(t, (&Account{Platform: PlatformZhipu, Credentials: map[string]any{"account_mode": AccountModeCoding}}).SupportsNativeCNResponses())
 	require.False(t, (&Account{Platform: PlatformOpenAI}).SupportsNativeCNResponses())
 }
 
@@ -668,8 +671,8 @@ func TestAdaptiveProtocolBaseURLs(t *testing.T) {
 	}{
 		{"kimi payg", PlatformKimi, AccountModePayG, DefaultKimiPayGBaseURL, DefaultKimiPayGAnthropicBaseURL, DefaultKimiPayGBaseURL},
 		{"kimi coding", PlatformKimi, AccountModeCoding, DefaultKimiCodingBaseURL, DefaultKimiCodingAnthropicBaseURL, DefaultKimiCodingBaseURL},
-		{"zhipu payg", PlatformZhipu, AccountModePayG, DefaultZhipuPayGBaseURL, DefaultZhipuAnthropicBaseURL, DefaultZhipuPayGBaseURL},
-		{"zhipu coding", PlatformZhipu, AccountModeCoding, DefaultZhipuCodingBaseURL, DefaultZhipuAnthropicBaseURL, DefaultZhipuCodingBaseURL},
+		{"zhipu payg", PlatformZhipu, AccountModePayG, DefaultZhipuPayGBaseURL, DefaultZhipuAnthropicBaseURL, ""},
+		{"zhipu coding", PlatformZhipu, AccountModeCoding, DefaultZhipuCodingBaseURL, DefaultZhipuAnthropicBaseURL, DefaultZhipuCodingResponsesBaseURL},
 		{"deepseek", PlatformDeepseek, AccountModePayG, DefaultDeepseekBaseURL, DefaultDeepseekAnthropicBaseURL, DefaultDeepseekBaseURL},
 		{"minimax payg", PlatformMiniMax, AccountModePayG, DefaultMiniMaxBaseURL, DefaultMiniMaxAnthropicBaseURL, DefaultMiniMaxBaseURL},
 		{"minimax coding", PlatformMiniMax, AccountModeCoding, DefaultMiniMaxBaseURL, DefaultMiniMaxAnthropicBaseURL, DefaultMiniMaxBaseURL},
@@ -689,6 +692,26 @@ func TestAdaptiveProtocolBaseURLs(t *testing.T) {
 			require.Equal(t, tc.wantAnthropic, account.GetAnthropicProtocolBaseURL())
 		})
 	}
+}
+
+func TestZhipuCodingResponsesDefaultBaseURL(t *testing.T) {
+	t.Parallel()
+
+	account := &Account{
+		Platform: PlatformZhipu,
+		Type:     AccountTypeAPIKey,
+		Credentials: map[string]any{
+			"api_protocol": APIProtocolResponses,
+			"account_mode": AccountModeCoding,
+		},
+	}
+
+	require.Equal(t, DefaultZhipuCodingResponsesBaseURL, account.GetOpenAIBaseURL())
+	require.Equal(
+		t,
+		"https://open.bigmodel.cn/api/v1/responses",
+		buildOpenAIResponsesURLForPlatform(account.Platform, account.GetOpenAIBaseURL()),
+	)
 }
 
 func TestAdaptiveProtocolBaseURLOverrides(t *testing.T) {
@@ -807,6 +830,7 @@ func TestBuildOpenAIResponsesURLForPlatform(t *testing.T) {
 	require.Equal(t, "https://relay.example.com/v1/responses", buildOpenAIResponsesURLForPlatform(PlatformDeepseek, "https://relay.example.com/v1"))
 	require.Equal(t, "https://api.openai.com/v1/responses", buildOpenAIResponsesURLForPlatform(PlatformOpenAI, "https://api.openai.com"))
 	require.Equal(t, "https://open.bigmodel.cn/api/paas/v4/responses", buildOpenAIResponsesURLForPlatform(PlatformZhipu, "https://open.bigmodel.cn/api/paas/v4"))
+	require.Equal(t, "https://open.bigmodel.cn/api/v1/responses", buildOpenAIResponsesURLForPlatform(PlatformZhipu, DefaultZhipuCodingResponsesBaseURL))
 	require.Equal(t, "https://api.moonshot.cn/v1/responses", buildOpenAIResponsesURLForPlatform(PlatformKimi, "https://api.moonshot.cn/v1"))
 	require.Equal(t, "https://api.kimi.com/coding/v1/responses", buildOpenAIResponsesURLForPlatform(PlatformKimi, "https://api.kimi.com/coding/v1"))
 }
