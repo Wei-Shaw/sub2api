@@ -460,6 +460,22 @@ func (h *AuthHandler) DingTalkOAuthCallback(c *gin.Context) {
 	}
 
 	signupBlocked := h.isDingTalkSignupBlocked(c.Request.Context(), cfg)
+	if canAutoRegisterDingTalk(cfg, staff, signupBlocked, forceEmailOnSignup,
+		h.settingSvc != nil && h.settingSvc.IsInvitationCodeEnabled(c.Request.Context())) {
+		upstreamClaims["enterprise_verified_email"] = strings.ToLower(strings.TrimSpace(staff.OrgEmail))
+		if err := h.createOAuthPendingSession(c, oauthPendingSessionPayload{
+			Intent: oauthIntentLogin, Identity: identityKey,
+			ResolvedEmail: strings.ToLower(strings.TrimSpace(staff.OrgEmail)),
+			RedirectTo:    redirectTo, BrowserSessionKey: browserSessionKey,
+			UpstreamIdentityClaims: upstreamClaims,
+			CompletionResponse:     map[string]any{"step": dingTalkAutoSignupStep, "redirect": redirectTo},
+		}); err != nil {
+			redirectOAuthError(c, frontendCallback, "session_error", infraerrors.Reason(err), infraerrors.Message(err))
+			return
+		}
+		redirectToFrontendCallback(c, frontendCallback)
+		return
+	}
 
 	// ─── 非命中：require_email=false 走 synthetic email 直接登录 ───
 	if !cfg.RequireEmail {
