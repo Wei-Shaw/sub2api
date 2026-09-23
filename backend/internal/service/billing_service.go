@@ -332,6 +332,7 @@ type BillingService struct {
 	cfg            *config.Config
 	pricingService *PricingService
 	fallbackPrices map[string]*ModelPricing // 硬编码回退价格
+	modelsDev      *modelsDevPricingSource  // models.dev 运行时价格源（LiteLLM 快照之前）
 
 	// fallbackWarnSeen 记录已打过 fallback 警告日志的(已小写化)模型名,
 	// 让 "[Billing] Using fallback pricing" 每个模型每进程最多打一条,
@@ -345,6 +346,7 @@ func NewBillingService(cfg *config.Config, pricingService *PricingService) *Bill
 		cfg:            cfg,
 		pricingService: pricingService,
 		fallbackPrices: make(map[string]*ModelPricing),
+		modelsDev:      newModelsDevPricingSource(nil),
 	}
 
 	// 初始化硬编码回退价格（当动态价格不可用时使用）
@@ -1293,7 +1295,7 @@ func (s *BillingService) getModelPricingAt(model string, pricingAt time.Time) (*
 	// 标准化模型名称（转小写）
 	model = strings.ToLower(model)
 
-	// 1. 优先从动态价格服务获取
+	// 0. 优先从动态价格服务获取
 	if s.pricingService != nil {
 		litellmPricing := s.pricingService.GetModelPricing(model)
 		// 仅有图片价、无 token 价的条目（如 LiteLLM 的 imagen 类模型）不能用于
@@ -1333,6 +1335,16 @@ func (s *BillingService) getModelPricingAt(model string, pricingAt time.Time) (*
 				ImageCacheReadPricePerToken:   litellmPricing.CacheReadInputImageTokenCost,
 				ImageOutputPricePerToken:      litellmPricing.OutputCostPerImageToken,
 			}, true, pricingAt), nil
+		}
+	}
+
+	// 1.5 models.dev 运行时价格源：LiteLLM 快照随发版打包，新 GPT 模型发布后
+	// 快照里没有条目，此时用 models.dev registry（运行时同步，6h TTL）补缺口，
+	// 新模型当天就有价格，不必等发版。已知模型的定价语义（裸别名→sol 等）由
+	// LiteLLM 快照先行保证，models.dev 不遮蔽既有行为。
+	if s.modelsDev != nil {
+		if mp, ok := s.modelsDev.getModelPricing(model); ok {
+			return s.applyModelSpecificPricingPolicyEx(model, mp, true, pricingAt), nil
 		}
 	}
 
