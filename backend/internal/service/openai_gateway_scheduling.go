@@ -55,8 +55,19 @@ func explicitOpenAIHeaderSessionID(c *gin.Context) string {
 }
 
 // ExtractSessionID extracts the raw session ID from headers or body without hashing.
-// Used by ForwardAsAnthropic to pass as prompt_cache_key for upstream cache.
 func (s *OpenAIGatewayService) ExtractSessionID(c *gin.Context, body []byte) string {
+	return explicitOpenAIRequestSessionID(c, body)
+}
+
+// ExtractPromptCacheKey preserves an explicit body cache key when it differs
+// from a routing session header. Without a body key, the established session
+// fallback remains unchanged for compatibility.
+func (s *OpenAIGatewayService) ExtractPromptCacheKey(c *gin.Context, body []byte) string {
+	if len(body) > 0 {
+		if cacheKey := strings.TrimSpace(openAIRequestPayloadView(body).Get("prompt_cache_key").String()); cacheKey != "" {
+			return cacheKey
+		}
+	}
 	return explicitOpenAIRequestSessionID(c, body)
 }
 

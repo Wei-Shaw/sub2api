@@ -43,6 +43,7 @@ func (s *OpenAIGatewayService) ForwardAsAnthropic(
 		body = sanitized
 	}
 	rememberOpenCodeInboundBody(c, body)
+	rememberOpenAISessionAffinityID(c, body, true)
 	beginUpstreamResponseModelObservation(c)
 	ClearActualOpenAIUpstreamEndpoint(c)
 	if shouldForwardOpenAIResponsesViaRawChatCompletions(account) {
@@ -392,6 +393,7 @@ func (s *OpenAIGatewayService) ForwardAsAnthropic(
 	if compatTurnState != "" && upstreamReq.Header.Get("x-codex-turn-state") == "" {
 		upstreamReq.Header.Set("x-codex-turn-state", compatTurnState)
 	}
+	applyOpenAISessionAffinityHeader(c, account, upstreamReq.Header)
 
 	// 7. Send request
 	proxyURL := ""
