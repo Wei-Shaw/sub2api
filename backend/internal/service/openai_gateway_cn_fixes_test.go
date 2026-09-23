@@ -78,6 +78,25 @@ func TestCalculateOpenAIRecordUsageCost_EmptyCandidatesIsPricingUnavailable(t *t
 		"空候选必须按无价可循处理（上层零成本落账），而不是丢弃整条 usage 记录: %v", err)
 }
 
+// 硅基流动 Qwen3-Embedding-8B 走 /v1/embeddings：修前无兜底价 → 生产
+// WARN openai_usage.pricing_missing_record_zero_cost 按 0 成本记账。
+// 补兜底价后必须能算出 token 成本（$0.04/MTok），且不再是 pricing unavailable。
+func TestCalculateOpenAIRecordUsageCost_Qwen3EmbeddingFallback(t *testing.T) {
+	svc := &OpenAIGatewayService{billingService: newTestBillingService()}
+	apiKey := &APIKey{Group: &Group{ID: 1, Platform: PlatformOpenAI}}
+	result := &OpenAIForwardResult{Model: "Qwen/Qwen3-Embedding-8B"}
+
+	cost, err := svc.calculateOpenAIRecordUsageCost(
+		context.Background(), result, apiKey, []string{"Qwen/Qwen3-Embedding-8B"},
+		1.0, 1.0, 1.0, 1.0, UsageTokens{InputTokens: 1000}, "", nil, time.Time{},
+	)
+	require.NoError(t, err)
+	require.False(t, isUsagePricingUnavailableError(err),
+		"补兜底价后不得再按无价可循处理: %v", err)
+	require.NotNil(t, cost)
+	require.InDelta(t, 1000*0.04e-6, cost.TotalCost, 1e-12)
+}
+
 func TestResponsesStreamingFromNativeAnthropic_ClientDisconnectDrainsUsage(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	svc := newNativeAnthropicHangTestService(5)
