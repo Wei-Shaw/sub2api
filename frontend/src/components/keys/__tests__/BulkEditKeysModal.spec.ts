@@ -77,6 +77,42 @@ describe('BulkEditKeysModal', () => {
     expect(wrapper.get('[data-test="submit"]').attributes('disabled')).toBeDefined()
   })
 
+  it.each([0, 8, Number.MAX_SAFE_INTEGER])('sends explicit concurrency limit %s', async (value) => {
+    const wrapper = mountModal()
+    await wrapper.get('[data-test="enable-concurrency_limit"]').setValue(true)
+    await wrapper.get('[data-test="concurrency_limit-input"]').setValue(String(value))
+    await wrapper.get('form').trigger('submit')
+    expect(bulkUpdate).toHaveBeenCalledWith([1, 2], { concurrency_limit: value })
+  })
+
+  it.each(['', '-1', '1.5', 'Infinity', 'NaN', '9007199254740992', '9223372036854775808'])(
+    'rejects invalid concurrency limit %s', async (value) => {
+      const wrapper = mountModal()
+      await wrapper.get('[data-test="enable-concurrency_limit"]').setValue(true)
+      await wrapper.get('[data-test="concurrency_limit-input"]').setValue(value)
+      await wrapper.get('form').trigger('submit')
+      expect(bulkUpdate).not.toHaveBeenCalled()
+      expect(wrapper.get('[role="alert"]').text()).toContain('keys.concurrencyLimitInvalid')
+    }
+  )
+
+  it('omits concurrency when unchecked and clears its choice and input on reopening', async () => {
+    const wrapper = mountModal()
+    await wrapper.get('[data-test="enable-concurrency_limit"]').setValue(true)
+    await wrapper.get('[data-test="concurrency_limit-input"]').setValue('0')
+    await wrapper.get('[data-test="enable-concurrency_limit"]').setValue(false)
+    await wrapper.get('[data-test="enable-status"]').setValue(true)
+    await wrapper.get('form').trigger('submit')
+    await flushPromises()
+    expect(bulkUpdate).toHaveBeenCalledWith([1, 2], { status: 'active' })
+    await wrapper.setProps({ show: false })
+    await wrapper.setProps({ show: true })
+    expect(wrapper.find('[data-test="concurrency_limit-input"]').exists()).toBe(false)
+    await wrapper.get('[data-test="enable-concurrency_limit"]').setValue(true)
+    expect((wrapper.get('[data-test="concurrency_limit-input"]').element as HTMLInputElement).value).toBe('')
+    expect(wrapper.get('[data-test="submit"]').attributes('disabled')).toBeDefined()
+  })
+
   it('requires an available group when changing group', async () => {
     const wrapper = mountModal()
     await wrapper.get('[data-test="enable-group"]').setValue(true)
@@ -119,6 +155,8 @@ describe('BulkEditKeysModal', () => {
     const wrapper = mountModal()
     await wrapper.get('[data-test="enable-quota"]').setValue(true)
     await wrapper.get('[data-test="quota-input"]').setValue('25.50')
+    await wrapper.get('[data-test="enable-concurrency_limit"]').setValue(true)
+    await wrapper.get('[data-test="concurrency_limit-input"]').setValue('4')
     await wrapper.get('form').trigger('submit')
     await flushPromises()
 
@@ -129,7 +167,7 @@ describe('BulkEditKeysModal', () => {
     await wrapper.setProps({ selectedKeys: [{ id: 2, name: 'Second' }, { id: 3, name: 'New selection' }] })
     await wrapper.get('form').trigger('submit')
     await flushPromises()
-    expect(bulkUpdate).toHaveBeenLastCalledWith([2], { quota: 25.5 })
+    expect(bulkUpdate).toHaveBeenLastCalledWith([2], { quota: 25.5, concurrency_limit: 4 })
     expect(wrapper.emitted('updated')).toEqual([[[1]], [[2]]])
     expect(wrapper.emitted('close')).toHaveLength(1)
   })

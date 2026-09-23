@@ -26,7 +26,7 @@ func TestLiveLeaseReplacesRegularSlotsAndCountsTowardLimits(t *testing.T) {
 	require.NoError(t, err)
 	require.True(t, userAcquired)
 
-	acquired, err := live.AcquireLiveLease(ctx, 10, 1, 20, 1, 30, "live-lease", true)
+	acquired, err := live.AcquireLiveLease(ctx, 10, 1, 20, 1, 30, 0, "live-lease", true)
 	require.NoError(t, err)
 	require.True(t, acquired)
 	require.NoError(t, regular.ReleaseAccountSlot(ctx, 10, "regular-account"))
@@ -59,7 +59,7 @@ func TestLiveLeaseExpiresWithoutRefresh(t *testing.T) {
 	require.True(t, ok)
 	ctx := context.Background()
 
-	acquired, err := live.AcquireLiveLease(ctx, 10, 1, 20, 1, 30, "expired-live", false)
+	acquired, err := live.AcquireLiveLease(ctx, 10, 1, 20, 1, 30, 0, "expired-live", false)
 	require.NoError(t, err)
 	require.True(t, acquired)
 
