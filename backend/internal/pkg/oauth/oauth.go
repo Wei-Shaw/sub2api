@@ -184,13 +184,17 @@ func BuildAuthorizationURL(state, codeChallenge, scope string) string {
 
 // TokenResponse represents the token response from OAuth provider
 type TokenResponse struct {
-	AccessToken  string       `json:"access_token"`
-	TokenType    string       `json:"token_type"`
-	ExpiresIn    int64        `json:"expires_in"`
-	RefreshToken string       `json:"refresh_token,omitempty"`
-	Scope        string       `json:"scope,omitempty"`
-	Organization *OrgInfo     `json:"organization,omitempty"`
-	Account      *AccountInfo `json:"account,omitempty"`
+	AccessToken  string `json:"access_token"`
+	TokenType    string `json:"token_type"`
+	ExpiresIn    int64  `json:"expires_in"`
+	RefreshToken string `json:"refresh_token,omitempty"`
+	// RefreshTokenExpiresIn 是 refresh_token 的剩余有效期（秒）。
+	// Anthropic 的 token 端点会返回该字段，官方 Claude Code 据此记录
+	// refreshTokenExpiresAt 并在临近到期时提示重新授权。
+	RefreshTokenExpiresIn int64        `json:"refresh_token_expires_in,omitempty"`
+	Scope                 string       `json:"scope,omitempty"`
+	Organization          *OrgInfo     `json:"organization,omitempty"`
+	Account               *AccountInfo `json:"account,omitempty"`
 }
 
 // OrgInfo represents organization info from OAuth response

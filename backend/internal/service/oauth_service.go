@@ -137,10 +137,22 @@ type TokenInfo struct {
 	ExpiresIn    int64  `json:"expires_in"`
 	ExpiresAt    int64  `json:"expires_at"`
 	RefreshToken string `json:"refresh_token,omitempty"`
-	Scope        string `json:"scope,omitempty"`
-	OrgUUID      string `json:"org_uuid,omitempty"`
-	AccountUUID  string `json:"account_uuid,omitempty"`
-	EmailAddress string `json:"email_address,omitempty"`
+	// RefreshTokenExpiresAt 是 refresh_token 的到期时间（Unix 秒）。
+	// 为 0 表示上游未返回 refresh_token_expires_in。
+	RefreshTokenExpiresAt int64  `json:"refresh_token_expires_at,omitempty"`
+	Scope                 string `json:"scope,omitempty"`
+	OrgUUID               string `json:"org_uuid,omitempty"`
+	AccountUUID           string `json:"account_uuid,omitempty"`
+	EmailAddress          string `json:"email_address,omitempty"`
+}
+
+// refreshTokenExpiresAtFromResponse 把上游返回的 refresh_token_expires_in（秒）
+// 换算成绝对到期时间；上游未返回时返回 0。
+func refreshTokenExpiresAtFromResponse(refreshTokenExpiresIn int64) int64 {
+	if refreshTokenExpiresIn <= 0 {
+		return 0
+	}
+	return time.Now().Unix() + refreshTokenExpiresIn
 }
 
 // ExchangeCode exchanges authorization code for tokens
@@ -259,12 +271,13 @@ func (s *OAuthService) exchangeCodeForToken(ctx context.Context, code, codeVerif
 	}
 
 	tokenInfo := &TokenInfo{
-		AccessToken:  tokenResp.AccessToken,
-		TokenType:    tokenResp.TokenType,
-		ExpiresIn:    tokenResp.ExpiresIn,
-		ExpiresAt:    time.Now().Unix() + tokenResp.ExpiresIn,
-		RefreshToken: tokenResp.RefreshToken,
-		Scope:        tokenResp.Scope,
+		AccessToken:           tokenResp.AccessToken,
+		TokenType:             tokenResp.TokenType,
+		ExpiresIn:             tokenResp.ExpiresIn,
+		ExpiresAt:             time.Now().Unix() + tokenResp.ExpiresIn,
+		RefreshToken:          tokenResp.RefreshToken,
+		RefreshTokenExpiresAt: refreshTokenExpiresAtFromResponse(tokenResp.RefreshTokenExpiresIn),
+		Scope:                 tokenResp.Scope,
 	}
 
 	if tokenResp.Organization != nil && tokenResp.Organization.UUID != "" {
@@ -293,12 +306,13 @@ func (s *OAuthService) RefreshToken(ctx context.Context, refreshToken string, pr
 	}
 
 	return &TokenInfo{
-		AccessToken:  tokenResp.AccessToken,
-		TokenType:    tokenResp.TokenType,
-		ExpiresIn:    tokenResp.ExpiresIn,
-		ExpiresAt:    time.Now().Unix() + tokenResp.ExpiresIn,
-		RefreshToken: tokenResp.RefreshToken,
-		Scope:        tokenResp.Scope,
+		AccessToken:           tokenResp.AccessToken,
+		TokenType:             tokenResp.TokenType,
+		ExpiresIn:             tokenResp.ExpiresIn,
+		ExpiresAt:             time.Now().Unix() + tokenResp.ExpiresIn,
+		RefreshToken:          tokenResp.RefreshToken,
+		RefreshTokenExpiresAt: refreshTokenExpiresAtFromResponse(tokenResp.RefreshTokenExpiresIn),
+		Scope:                 tokenResp.Scope,
 	}, nil
 }
 
