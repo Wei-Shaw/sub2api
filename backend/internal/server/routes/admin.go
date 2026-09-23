@@ -504,6 +504,8 @@ func registerCNProviderRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 		cn.GET("/accounts/:id/quota", h.Admin.CNProvider.QueryQuota)
 		// payg 账号余额（kimi/deepseek；zhipu 无余额端点）。
 		cn.GET("/accounts/:id/balance", h.Admin.CNProvider.QueryBalance)
+		// 使用智谱「用量重置额度」周重置次数（仅 zhipu coding 账号）。
+		cn.POST("/accounts/:id/reset-quota", h.Admin.CNProvider.ResetQuota)
 	}
 }
 

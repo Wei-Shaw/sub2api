@@ -23,7 +23,24 @@ export interface CNProviderQuotaProbeResult {
   status_code?: number
   fetched_at: number
   persisted: boolean
+  /** 智谱：是否存在可用的周额度重置次数（官网「用量重置额度」卡片同源）。 */
+  reset_available?: boolean
+  /** 智谱：最近一条可用周重置次数的有效期。 */
+  week_reset_expire_at?: string
   error?: string
+}
+
+/** 智谱周额度重置结果，对齐后端 CNProviderQuotaResetResult。 */
+export interface CNProviderQuotaResetResult {
+  provider: string
+  success: boolean
+  window: string
+  record_id: number
+  week_resets_left: number
+  error?: string
+  fetched_at: number
+  /** 成功时带回刷新后的用量探测快照（含 reset_available）。 */
+  probe?: CNProviderQuotaProbeResult
 }
 
 /** 单币种余额明细（deepseek 双币种账号含 CNY + USD 两条）。 */
@@ -64,7 +81,16 @@ export async function queryBalance(id: number): Promise<CNProviderBalanceResult>
   return data
 }
 
+/** 使用智谱「用量重置额度」周重置次数，恢复账号周用量。 */
+export async function resetQuota(id: number): Promise<CNProviderQuotaResetResult> {
+  const { data } = await apiClient.post<CNProviderQuotaResetResult>(
+    `/admin/cn-providers/accounts/${id}/reset-quota`
+  )
+  return data
+}
+
 export default {
   queryQuota,
-  queryBalance
+  queryBalance,
+  resetQuota
 }

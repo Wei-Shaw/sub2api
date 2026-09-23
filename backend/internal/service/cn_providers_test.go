@@ -161,6 +161,63 @@ func TestParseZhipuTokenTiers_IgnoresNonTokenEntries(t *testing.T) {
 	require.Empty(t, parseZhipuTokenTiers(data))
 }
 
+// TestParseZhipuTokenTiers_CreditLimitUnitClassification 团队版（type=2）响应为纯
+// CREDIT_LIMIT + 显式 unit 形态（2026-09-15 官网抓包），周期末尾周窗口 reset 早于 5h，
+// unit 分类必须胜出，不能走 reset 升序启发式标反窗口。
+func TestParseZhipuTokenTiers_CreditLimitUnitClassification(t *testing.T) {
+	t.Parallel()
+	data := gjson.Parse(`{
+		"limits": [
+			{"type":"CREDIT_LIMIT","unit":3,"number":5,"usage":35000,"currentValue":2927,"remaining":32072,"percentage":8,"nextResetTime":1789461009695},
+			{"type":"CREDIT_LIMIT","unit":6,"number":1,"usage":155000,"currentValue":73489,"remaining":81510,"percentage":47,"nextResetTime":1789451999997}
+		],
+		"level": "max"
+	}`)
+	tiers := parseZhipuTokenTiers(data)
+	require.Len(t, tiers, 2)
+	require.Equal(t, "5h", tiers[0].Window)
+	require.InDelta(t, 8.0, tiers[0].UsedPercent, 1e-9)
+	require.Equal(t, "2026-09-15T08:30:09Z", tiers[0].ResetAt)
+	require.Equal(t, "weekly", tiers[1].Window)
+	require.InDelta(t, 47.0, tiers[1].UsedPercent, 1e-9)
+	require.Equal(t, "2026-09-15T05:59:59Z", tiers[1].ResetAt)
+}
+
+// TestParseZhipuTokenTiers_TokensLimitWinsOverCredit TOKENS_LIMIT 与 CREDIT_LIMIT
+// 同时返回时只有 TOKENS_LIMIT 占位，credit 条目不得抢占槽位。
+func TestParseZhipuTokenTiers_TokensLimitWinsOverCredit(t *testing.T) {
+	t.Parallel()
+	data := gjson.Parse(`{
+		"limits": [
+			{"type":"CREDIT_LIMIT","unit":3,"percentage":91,"nextResetTime":1700000000000},
+			{"type":"TOKENS_LIMIT","unit":3,"percentage":20,"nextResetTime":1700000099999},
+			{"type":"CREDIT_LIMIT","unit":6,"percentage":77,"nextResetTime":1700000199999}
+		]
+	}`)
+	tiers := parseZhipuTokenTiers(data)
+	require.Len(t, tiers, 1)
+	require.Equal(t, "5h", tiers[0].Window)
+	require.InDelta(t, 20.0, tiers[0].UsedPercent, 1e-9)
+}
+
+// TestParseZhipuTokenTiers_CreditLimitNoUnitKeepsHeuristic 纯 CREDIT_LIMIT 且 unit
+// 缺失时保留原 reset 启发式（无 reset 优先 5h，其余升序）。
+func TestParseZhipuTokenTiers_CreditLimitNoUnitKeepsHeuristic(t *testing.T) {
+	t.Parallel()
+	data := gjson.Parse(`{
+		"limits": [
+			{"type":"CREDIT_LIMIT","percentage":50,"nextResetTime":1700000000000},
+			{"type":"CREDIT_LIMIT","percentage":10}
+		]
+	}`)
+	tiers := parseZhipuTokenTiers(data)
+	require.Len(t, tiers, 2)
+	require.Equal(t, "5h", tiers[0].Window)
+	require.InDelta(t, 10.0, tiers[0].UsedPercent, 1e-9)
+	require.Equal(t, "weekly", tiers[1].Window)
+	require.InDelta(t, 50.0, tiers[1].UsedPercent, 1e-9)
+}
+
 // TestCNQuotaExtraUpdates 验证 tier 列表落 Extra 快照键的 provider 前缀与窗口映射。
 func TestCNQuotaExtraUpdates(t *testing.T) {
 	t.Parallel()
