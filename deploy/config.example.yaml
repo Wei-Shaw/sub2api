@@ -100,6 +100,14 @@ webauthn:
 # - simple: 隐藏 SaaS 功能，跳过计费和余额校验
 run_mode: "standard"
 
+simple_mode:
+  # 仅控制简易模式启动时补齐默认分组；false 不删除已有分组，不改变运行时自动绑定或管理员并发设置。
+  # 环境变量：SIMPLE_MODE_AUTO_CREATE_DEFAULT_GROUPS
+  auto_create_default_groups: true
+
+# Enforce API-key 5h/1d/7d spending windows in simple mode; other billing stays disabled.
+simple_mode_key_rate_limit_enabled: false
+
 # =============================================================================
 # CORS Configuration
 # 跨域资源共享 (CORS) 配置

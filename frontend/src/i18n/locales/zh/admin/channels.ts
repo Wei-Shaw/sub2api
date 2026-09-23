@@ -27,6 +27,8 @@ export default {
         billingModePerRequest: '按次',
         billingModeImage: '按图片',
         billingModeVideo: '按视频',
+        videoPrice: '视频单价',
+        unitPerSecond: '/ 秒',
         inputPrice: '输入',
         outputPrice: '输出',
         cacheWritePrice: '缓存写入',
