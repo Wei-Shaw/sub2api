@@ -299,11 +299,18 @@ func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *A
 			}
 		}
 	}
-	if mappingSource == "" && account.Platform == PlatformAnthropic && account.Type != AccountTypeAPIKey {
-		normalized := claude.NormalizeModelID(reqModel)
-		if normalized != reqModel {
+	if mappingSource == "" && account.IsAnthropicOAuthOrSetupToken() {
+		if candidate := account.GetMappedModel(reqModel); candidate != reqModel {
+			mappedModel = candidate
+			mappingSource = "account"
+		}
+	}
+	if account.Platform == PlatformAnthropic && account.Type != AccountTypeAPIKey && (mappingSource == "" || account.IsAnthropicOAuthOrSetupToken()) {
+		if normalized := claude.NormalizeModelID(mappedModel); normalized != mappedModel {
 			mappedModel = normalized
-			mappingSource = "prefix"
+			if mappingSource == "" {
+				mappingSource = "prefix"
+			}
 		}
 	}
 	if mappedModel != reqModel {

@@ -732,9 +732,9 @@
         </div>
       </div>
 
-      <!-- OpenAI/Grok OAuth Model Mapping (OAuth 类型没有 apikey 容器，需要独立的模型映射区域) -->
+      <!-- OpenAI/Grok/Anthropic OAuth Model Mapping (OAuth 类型没有 apikey 容器，需要独立的模型映射区域) -->
       <div
-        v-if="(account.platform === 'openai' || account.platform === 'grok') && account.type === 'oauth'"
+        v-if="isOAuthModelMappingEditable"
         class="border-t border-gray-200 pt-4 dark:border-dark-600"
       >
         <label class="input-label">{{ t('admin.accounts.modelRestriction') }}</label>
@@ -3921,6 +3921,13 @@ const normalizeOpenAIResponsesMode = (mode: unknown): OpenAIResponsesMode => {
   }
   return 'auto'
 }
+const isAnthropicSubscriptionAccount = computed(() =>
+  props.account?.platform === 'anthropic' && (props.account.type === 'oauth' || props.account.type === 'setup-token')
+)
+const isOAuthModelMappingEditable = computed(() =>
+  ((props.account?.platform === 'openai' || props.account?.platform === 'grok') && props.account.type === 'oauth') ||
+  isAnthropicSubscriptionAccount.value
+)
 const isOpenAIModelRestrictionDisabled = computed(() =>
   props.account?.platform === 'openai' && openaiPassthroughEnabled.value
 )
@@ -4521,8 +4528,8 @@ const syncFormFromAccount = (newAccount: Account | null) => {
             : 'https://api.anthropic.com'
     editBaseUrl.value = platformDefaultUrl
 
-    // Load model mappings for OpenAI/Grok OAuth accounts
-    if ((newAccount.platform === 'openai' || newAccount.platform === 'grok') && newAccount.credentials) {
+    // Load model mappings for OpenAI/Grok/Anthropic OAuth accounts
+    if ((newAccount.platform === 'openai' || newAccount.platform === 'grok' || newAccount.platform === 'anthropic') && newAccount.credentials) {
       const oauthCredentials = newAccount.credentials as Record<string, unknown>
       loadModelRestrictionFromMapping(oauthCredentials.model_mapping as Record<string, unknown> | undefined)
     } else {
@@ -5428,8 +5435,8 @@ const handleSubmit = async () => {
       updatePayload.credentials = newCredentials
     }
 
-    // OpenAI/Grok OAuth: persist model mapping to credentials
-    if ((props.account.platform === 'openai' || props.account.platform === 'grok') && props.account.type === 'oauth') {
+    // OpenAI/Grok/Anthropic OAuth: persist model mapping to credentials
+    if (isOAuthModelMappingEditable.value) {
       const currentCredentials = isSparkShadow.value
         ? {}
         : (updatePayload.credentials as Record<string, unknown>) ||

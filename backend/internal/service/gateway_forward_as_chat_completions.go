@@ -52,7 +52,7 @@ func (s *GatewayService) ForwardAsChatCompletions(
 
 	// Resolve the final upstream model before model-specific conversion.
 	mappedModel := originalModel
-	if account.Type == AccountTypeAPIKey || account.Type == AccountTypeServiceAccount {
+	if account.Type == AccountTypeAPIKey || account.Type == AccountTypeServiceAccount || account.IsAnthropicOAuthOrSetupToken() {
 		mappedModel = account.GetMappedModel(originalModel)
 	}
 	if mappedModel == originalModel && account.Platform == PlatformAnthropic && account.Type == AccountTypeServiceAccount {
@@ -60,11 +60,8 @@ func (s *GatewayService) ForwardAsChatCompletions(
 		if normalized != originalModel {
 			mappedModel = normalized
 		}
-	} else if mappedModel == originalModel && account.Platform == PlatformAnthropic && account.Type != AccountTypeAPIKey {
-		normalized := claude.NormalizeModelID(originalModel)
-		if normalized != originalModel {
-			mappedModel = normalized
-		}
+	} else if account.Platform == PlatformAnthropic && account.Type != AccountTypeAPIKey && account.Type != AccountTypeServiceAccount {
+		mappedModel = claude.NormalizeModelID(mappedModel)
 	}
 	if err := validateClaudeOpus55Request(body, mappedModel); err != nil {
 		writeChatCompletionsError(c, http.StatusBadRequest, "invalid_request_error", err.Error())

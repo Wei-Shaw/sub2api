@@ -749,6 +749,29 @@ describe('EditAccountModal', () => {
     })
   })
 
+  it('shows and preserves model mapping for Anthropic setup-token accounts', async () => {
+    const account = buildAccount()
+    account.platform = 'anthropic'
+    account.type = 'setup-token'
+    account.credentials = {
+      model_mapping: { 'claude-opus-4-6': 'claude-opus-4-7' }
+    }
+    updateAccountMock.mockReset()
+    checkMixedChannelRiskMock.mockReset()
+    checkMixedChannelRiskMock.mockResolvedValue({ has_risk: false })
+    updateAccountMock.mockResolvedValue(account)
+
+    const wrapper = mountModal(account)
+    expect(wrapper.text()).toContain('admin.accounts.modelRestriction')
+
+    await wrapper.get('form#edit-account-form').trigger('submit.prevent')
+
+    expect(updateAccountMock).toHaveBeenCalledTimes(1)
+    expect(updateAccountMock.mock.calls[0]?.[1]?.credentials).toMatchObject({
+      model_mapping: { 'claude-opus-4-6': 'claude-opus-4-7' }
+    })
+  })
+
   it('submits OpenAI compact mode and compact-only model mapping', async () => {
     const account = buildAccount()
     account.extra = {
