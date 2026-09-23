@@ -646,6 +646,13 @@ Or set `GATEWAY_OPENAI_WS_MODE_ROUTER_V2_ENABLED=true` in the environment.
 Use `http_bridge` for client-WebSocket/upstream-HTTP operation when rolling out
 or mitigating upstream WebSocket issues.
 
+If a client changes models within a WebSocket session and a later turn needs
+replay-safe account failover, account selection uses that turn's model after
+channel mapping. The replay and subsequent turns that omit `model` retain the
+current client model, including when the replacement account uses a different
+WebSocket ingress mode. Existing failover conditions and replay-safety checks
+still apply.
+
 #### Force OpenAI upstream HTTP/SSE
 
 When an egress proxy or network repeatedly reconnects OpenAI Responses
