@@ -953,6 +953,15 @@ const (
 	ImageConcurrencyOverflowModeWait   = "wait"
 )
 
+const (
+	// UpstreamIPModeAuto lets Go choose either IPv4 or IPv6.
+	UpstreamIPModeAuto = "auto"
+	// UpstreamIPModeIPv4 restricts direct upstream dialing to IPv4.
+	UpstreamIPModeIPv4 = "ipv4"
+	// UpstreamIPModeIPv6 restricts direct upstream dialing to IPv6.
+	UpstreamIPModeIPv6 = "ipv6"
+)
+
 // GatewayConfig API网关相关配置
 type GatewayConfig struct {
 	// 等待上游响应头的超时时间（秒），0表示无超时
@@ -983,6 +992,9 @@ type GatewayConfig struct {
 	GeminiDebugResponseHeaders bool `mapstructure:"gemini_debug_response_headers"`
 	// ConnectionPoolIsolation: 上游连接池隔离策略（proxy/account/account_proxy）
 	ConnectionPoolIsolation string `mapstructure:"connection_pool_isolation"`
+	// UpstreamIPMode controls the address family used for direct upstream dials.
+	// Proxies still perform their own target resolution unless they are reached directly.
+	UpstreamIPMode string `mapstructure:"upstream_ip_mode"`
 	// ForceCodexCLI: 强制将 OpenAI `/v1/responses` 请求按 Codex CLI 处理。
 	// 用于网关未透传/改写 User-Agent 时的兼容兜底（默认关闭，避免影响其他客户端）。
 	ForceCodexCLI bool `mapstructure:"force_codex_cli"`
@@ -2487,6 +2499,7 @@ func setDefaults() {
 	viper.SetDefault("gateway.proxy_probe_response_read_max_bytes", int64(1024*1024))
 	viper.SetDefault("gateway.gemini_debug_response_headers", false)
 	viper.SetDefault("gateway.connection_pool_isolation", ConnectionPoolIsolationAccountProxy)
+	viper.SetDefault("gateway.upstream_ip_mode", UpstreamIPModeAuto)
 	// HTTP 上游连接池配置（针对 5000+ 并发用户优化）
 	viper.SetDefault("gateway.max_idle_conns", 2560)          // 最大空闲连接总数（高并发场景可调大）
 	viper.SetDefault("gateway.max_idle_conns_per_host", 120)  // 每主机最大空闲连接（HTTP/2 场景默认）
@@ -3341,6 +3354,12 @@ func (c *Config) Validate() error {
 	}
 	if c.Gateway.ImageConcurrency.MaxWaitingRequests < 0 {
 		return fmt.Errorf("gateway.image_concurrency.max_waiting_requests must be non-negative")
+	}
+	switch strings.TrimSpace(c.Gateway.UpstreamIPMode) {
+	case "", UpstreamIPModeAuto, UpstreamIPModeIPv4, UpstreamIPModeIPv6:
+	default:
+		return fmt.Errorf("gateway.upstream_ip_mode must be one of: %s/%s/%s",
+			UpstreamIPModeAuto, UpstreamIPModeIPv4, UpstreamIPModeIPv6)
 	}
 	if c.Gateway.MaxIdleConns <= 0 {
 		return fmt.Errorf("gateway.max_idle_conns must be positive")

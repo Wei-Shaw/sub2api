@@ -645,6 +645,27 @@ func TestLoadOpenAIHTTP2DisabledFromEnv(t *testing.T) {
 	require.False(t, cfg.Gateway.OpenAIHTTP2.Enabled)
 }
 
+func TestLoadUpstreamIPMode(t *testing.T) {
+	resetViperWithJWTSecret(t)
+
+	cfg, err := Load()
+	require.NoError(t, err)
+	require.Equal(t, UpstreamIPModeAuto, cfg.Gateway.UpstreamIPMode)
+
+	t.Setenv("GATEWAY_UPSTREAM_IP_MODE", UpstreamIPModeIPv4)
+	cfg, err = Load()
+	require.NoError(t, err)
+	require.Equal(t, UpstreamIPModeIPv4, cfg.Gateway.UpstreamIPMode)
+}
+
+func TestLoadRejectsInvalidUpstreamIPMode(t *testing.T) {
+	resetViperWithJWTSecret(t)
+	t.Setenv("GATEWAY_UPSTREAM_IP_MODE", "ipv4-only")
+
+	_, err := Load()
+	require.ErrorContains(t, err, "gateway.upstream_ip_mode")
+}
+
 func TestLoadDefaultOpenAIResponseHeaderTimeoutUnlimited(t *testing.T) {
 	resetViperWithJWTSecret(t)
 
