@@ -241,12 +241,16 @@ export default {
       },
       codexModelCatalog: {
         title: 'Codex model catalog',
-        description: 'Fetch with this API key, then save the catalog at the path referenced by config.toml.',
+        description: 'Automatically fetch the current catalog for this API key, then save the snapshot at the path referenced by config.toml.',
         fetch: 'Fetch catalog',
         retry: 'Retry',
+        refresh: 'Refresh catalog',
         download: 'Download catalog',
         modelsCount: '{count} models ready to download',
-        errorDescription: 'The catalog could not be fetched with this API key.',
+        fetchedAt: 'updated {time}',
+        compatibilityMode: 'Use a specific Codex client version for compatibility',
+        compatibilityVersionPlaceholder: 'for example, 0.200.1',
+        errorDescription: 'The catalog could not be fetched with this API key. The downloaded file remains a snapshot.',
       },
       opencode: {
         title: 'OpenCode Example',

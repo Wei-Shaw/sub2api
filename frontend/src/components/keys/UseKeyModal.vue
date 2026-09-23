@@ -199,6 +199,15 @@
               {{ t('keys.useKeyModal.codexModelCatalog.download') }}
             </button>
             <button
+              v-if="codexModelManifestState === 'ready'"
+              type="button"
+              data-testid="codex-model-catalog-refresh"
+              class="btn btn-secondary min-h-9 flex-shrink-0 px-3 text-xs"
+              @click="loadCodexModelManifest"
+            >
+              {{ t('keys.useKeyModal.codexModelCatalog.refresh') }}
+            </button>
+            <button
               v-else
               type="button"
               data-testid="codex-model-catalog-fetch"
@@ -217,11 +226,26 @@
                 : t('keys.useKeyModal.codexModelCatalog.fetch') }}
             </button>
           </div>
+          <div class="border-t border-gray-200 px-4 py-3 text-xs dark:border-dark-700">
+            <label class="flex items-center gap-2 text-gray-700 dark:text-gray-300">
+              <input v-model="codexManifestCompatibilityMode" type="checkbox" data-testid="codex-model-catalog-compatible-mode">
+              {{ t('keys.useKeyModal.codexModelCatalog.compatibilityMode') }}
+            </label>
+            <input
+              v-if="codexManifestCompatibilityMode"
+              v-model.trim="codexManifestClientVersion"
+              data-testid="codex-model-catalog-client-version"
+              type="text"
+              class="mt-2 w-full rounded border border-gray-300 bg-white px-2 py-1 font-mono dark:border-dark-600 dark:bg-dark-900"
+              :placeholder="t('keys.useKeyModal.codexModelCatalog.compatibilityVersionPlaceholder')"
+            >
+          </div>
           <p
             v-if="codexModelManifestState === 'ready'"
             class="border-t border-gray-200 px-4 py-2 text-xs text-emerald-700 dark:border-dark-700 dark:text-emerald-300"
           >
             {{ t('keys.useKeyModal.codexModelCatalog.modelsCount', { count: codexModelManifestModelCount }) }}
+            <span v-if="codexModelManifestFetchedAt"> · {{ t('keys.useKeyModal.codexModelCatalog.fetchedAt', { time: codexModelManifestFetchedAt }) }}</span>
           </p>
           <p
             v-else-if="codexModelManifestState === 'error'"
@@ -255,7 +279,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, h, watch, type Component } from 'vue'
+import { ref, computed, h, watch, onBeforeUnmount, type Component } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { saveAs } from 'file-saver'
 import BaseDialog from '@/components/common/BaseDialog.vue'
@@ -310,8 +334,12 @@ type CodexModelManifestState = 'idle' | 'loading' | 'ready' | 'error'
 const codexModelManifestState = ref<CodexModelManifestState>('idle')
 const codexModelManifestContent = ref('')
 const codexModelManifestModelCount = ref(0)
+const codexModelManifestFetchedAt = ref('')
+const codexManifestCompatibilityMode = ref(false)
+const codexManifestClientVersion = ref('')
 let codexModelManifestController: AbortController | null = null
 let codexModelManifestRequestID = 0
+let codexModelManifestRefreshTimer: ReturnType<typeof setInterval> | null = null
 
 const showCodexModelCatalog = computed(() =>
   props.show &&
@@ -327,7 +355,7 @@ const codexModelCatalogPath = computed(() => {
 
 const codexManifestContext = computed(() => {
   if (!showCodexModelCatalog.value) return ''
-  return `${props.platform}|${props.baseUrl}|${props.apiKey}`
+  return `${props.platform}|${props.baseUrl}|${props.apiKey}|${codexManifestCompatibilityMode.value}|${codexManifestClientVersion.value}`
 })
 
 // Reset tabs when platform changes
@@ -363,7 +391,21 @@ watch(() => props.show, (show) => {
 watch(codexManifestContext, (context, previousContext) => {
   if (context !== previousContext) {
     resetCodexModelManifest()
+    if (context) loadCodexModelManifest()
   }
+}, { immediate: true })
+
+watch(showCodexModelCatalog, (visible) => {
+  if (visible) {
+    startCodexModelManifestRefresh()
+  } else {
+    stopCodexModelManifestRefresh()
+  }
+}, { immediate: true })
+
+onBeforeUnmount(() => {
+  stopCodexModelManifestRefresh()
+  resetCodexModelManifest()
 })
 
 // Reset shell tab when client changes
@@ -623,10 +665,56 @@ function resetCodexModelManifest() {
   codexModelManifestState.value = 'idle'
   codexModelManifestContent.value = ''
   codexModelManifestModelCount.value = 0
+  codexModelManifestFetchedAt.value = ''
+}
+
+function stopCodexModelManifestRefresh() {
+  if (codexModelManifestRefreshTimer !== null) {
+    clearInterval(codexModelManifestRefreshTimer)
+    codexModelManifestRefreshTimer = null
+  }
+  document.removeEventListener('visibilitychange', refreshCodexModelManifestWhenVisible)
+}
+
+function refreshCodexModelManifestWhenVisible() {
+  if (!showCodexModelCatalog.value) return
+  if (document.visibilityState === 'hidden') {
+    pauseCodexModelManifestRequest()
+    if (codexModelManifestRefreshTimer !== null) {
+      clearInterval(codexModelManifestRefreshTimer)
+      codexModelManifestRefreshTimer = null
+    }
+    return
+  }
+  if (codexModelManifestRefreshTimer === null) startCodexModelManifestRefreshTimer()
+  loadCodexModelManifest()
+}
+
+function pauseCodexModelManifestRequest() {
+  if (!codexModelManifestController) return
+  codexModelManifestController.abort()
+  codexModelManifestController = null
+  codexModelManifestRequestID += 1
+  if (codexModelManifestState.value === 'loading') {
+    codexModelManifestState.value = 'idle'
+  }
+}
+
+function startCodexModelManifestRefresh() {
+  stopCodexModelManifestRefresh()
+  document.addEventListener('visibilitychange', refreshCodexModelManifestWhenVisible)
+  if (document.visibilityState !== 'hidden') startCodexModelManifestRefreshTimer()
+}
+
+function startCodexModelManifestRefreshTimer() {
+  if (codexModelManifestRefreshTimer !== null) return
+  codexModelManifestRefreshTimer = setInterval(() => {
+    if (document.visibilityState !== 'hidden') refreshCodexModelManifestWhenVisible()
+  }, 5 * 60 * 1000)
 }
 
 async function loadCodexModelManifest() {
-  if (!showCodexModelCatalog.value || !props.apiKey) return
+  if (!showCodexModelCatalog.value || !props.apiKey || document.visibilityState === 'hidden') return
 
   codexModelManifestController?.abort()
   const controller = new AbortController()
@@ -635,10 +723,14 @@ async function loadCodexModelManifest() {
   codexModelManifestState.value = 'loading'
 
   try {
-    const result = await fetchCodexModelsManifest(props.baseUrl, props.apiKey, controller.signal)
+    const selection = codexManifestCompatibilityMode.value
+      ? { mode: 'compatible' as const, clientVersion: codexManifestClientVersion.value }
+      : { mode: 'auto' as const }
+    const result = await fetchCodexModelsManifest(props.baseUrl, props.apiKey, { selection, signal: controller.signal })
     if (requestID !== codexModelManifestRequestID) return
     codexModelManifestContent.value = result.content
     codexModelManifestModelCount.value = result.modelCount
+    codexModelManifestFetchedAt.value = new Intl.DateTimeFormat(undefined, { hour: '2-digit', minute: '2-digit' }).format(new Date())
     codexModelManifestState.value = 'ready'
   } catch (error) {
     const errorName = error && typeof error === 'object' && 'name' in error
