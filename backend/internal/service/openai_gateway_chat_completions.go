@@ -92,7 +92,7 @@ func (s *OpenAIGatewayService) forwardAsChatCompletions(
 				"message": "This account only allows Codex official clients",
 			},
 		})
-		return nil, errors.New("codex_cli_only restriction: only codex official clients are allowed")
+		return nil, ErrCodexClientRestricted
 	}
 
 	if account.Platform == PlatformGrok {

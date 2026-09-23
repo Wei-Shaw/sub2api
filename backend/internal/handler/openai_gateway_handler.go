@@ -3130,6 +3130,13 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 			if shouldReportOpenAIWSProxyAccountFailure(err) {
 				h.gatewayService.ReportOpenAIAccountScheduleResult(account, openAIAccountScheduleModel(c, account, wsForwardModel, false, nil), false, nil, err)
 			}
+			// codex_cli_only 拒绝与 HTTP 一致计入账号调度失败（上方已上报）；service 已记录判定日志，
+			// 这里不按代理失败记日志，先发 error 帧（对齐 HTTP 403 文案）再关闭。
+			if hasClientCloseErr && errors.Is(err, service.ErrCodexClientRestricted) {
+				writeCodexClientRestrictedWSError(ctx, wsConn, closeErr.Reason())
+				closeOpenAIClientWS(wsConn, closeErr.StatusCode(), closeErr.Reason())
+				return
+			}
 			closeStatus, closeReason := summarizeWSCloseErrorForLog(err)
 			proxyFailedFields := []zap.Field{
 				zap.Int64("account_id", account.ID),
@@ -3876,6 +3883,28 @@ func writeContentModerationWSError(ctx context.Context, conn *coderws.Conn, deci
 	if err != nil {
 		payload = []byte(`{"event_id":"evt_content_moderation_blocked","type":"error","error":{"type":"invalid_request_error","code":"content_policy_violation","message":"content moderation blocked this request"}}`)
 	}
+	writeCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
+	defer cancel()
+	_ = conn.Write(writeCtx, coderws.MessageText, payload)
+}
+
+// writeCodexClientRestrictedWSError 在关闭前以 error 帧告知 codex_cli_only 拒绝原因，
+// 类型与文案同 HTTP 路径的 403 响应。
+func writeCodexClientRestrictedWSError(ctx context.Context, conn *coderws.Conn, message string) {
+	if conn == nil {
+		return
+	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	payload, _ := json.Marshal(gin.H{
+		"event_id": "evt_codex_client_restricted",
+		"type":     "error",
+		"error": gin.H{
+			"type":    "forbidden_error",
+			"message": message,
+		},
+	})
 	writeCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
 	defer cancel()
 	_ = conn.Write(writeCtx, coderws.MessageText, payload)
