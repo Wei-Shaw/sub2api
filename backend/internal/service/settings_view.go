@@ -156,6 +156,10 @@ type SystemSettings struct {
 	ContactInfo                 string
 	DocURL                      string
 	HomeContent                 string
+	FooterIcpNumber             string
+	FooterIcpURL                string
+	FooterPsbNumber             string
+	FooterPsbURL                string
 	CompactHomeEnabled          bool
 	HideCcsImportButton         bool
 	PurchaseSubscriptionEnabled bool
@@ -357,6 +361,10 @@ type PublicSettings struct {
 	ContactInfo                         string
 	DocURL                              string
 	HomeContent                         string
+	FooterIcpNumber                  string
+	FooterIcpURL                     string
+	FooterPsbNumber                  string
+	FooterPsbURL                     string
 	CompactHomeEnabled                  bool
 	HideCcsImportButton                 bool
 

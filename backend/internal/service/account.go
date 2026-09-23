@@ -82,6 +82,9 @@ type Account struct {
 	headerOverrideCacheRawPtr         uintptr
 	headerOverrideCacheRawLen         int
 	headerOverrideCacheRawSig         uint64
+
+	// apiKeyPinned 标记本次请求已经选定上游 Key，避免同一请求内重复轮换。
+	apiKeyPinned bool
 }
 
 type OpenAIEndpointCapability string
@@ -197,6 +200,11 @@ func (a *Account) IsSchedulable() bool {
 	}
 	if a.IsAPIKeyOrBedrock() && a.IsQuotaExceeded() {
 		return false
+	}
+	// Recurring availability windows (daily/weekly). First matching rule wins;
+	// no match keeps the manual schedulable result (already true here).
+	if forced, ok := a.appliesAvailabilitySchedule(now); ok {
+		return forced
 	}
 	return true
 }

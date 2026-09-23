@@ -228,6 +228,13 @@
           />
           <p class="input-hint">{{ t('admin.accounts.leaveEmptyToKeep') }}</p>
         </div>
+        <AccountAPIKeyPoolEditor
+          v-if="account.platform !== 'antigravity'"
+          v-model:strategy="apiKeyStrategy"
+          v-model:primary-weight="apiKeyPrimaryWeight"
+          v-model:extras="apiKeyExtras"
+          mode="edit"
+        />
 
         <!-- Model Restriction Section (不适用于 Antigravity) -->
         <div v-if="account.platform !== 'antigravity'" class="border-t border-gray-200 pt-4 dark:border-dark-600">
@@ -1577,6 +1584,10 @@
         </div>
       </div>
 
+      <AvailabilityScheduleEditor
+        v-model:enabled="availabilityScheduleEnabled"
+        v-model:rules="availabilityScheduleRules"
+      />
 
       <div
         v-if="supportsAccountSchedulingThresholdOverride"
@@ -3142,6 +3153,16 @@ import CnBaseUrlPresets from '@/components/account/CnBaseUrlPresets.vue'
 import OpenCodeGoProtocolRulesEditor from '@/components/account/OpenCodeGoProtocolRulesEditor.vue'
 import HeaderOverrideEditor from '@/components/account/HeaderOverrideEditor.vue'
 import OllamaCloudUsageSettings from '@/components/account/OllamaCloudUsageSettings.vue'
+import AvailabilityScheduleEditor from '@/components/account/AvailabilityScheduleEditor.vue'
+import AccountAPIKeyPoolEditor from '@/components/account/AccountAPIKeyPoolEditor.vue'
+import type { APIKeyExtraDraft } from '@/components/account/AccountAPIKeyPoolEditor.vue'
+import { applyAPIKeyPool, readAPIKeyPool } from '@/utils/apiKeyPool'
+import {
+  applyAvailabilityScheduleToExtra,
+  parseAvailabilityScheduleFromExtra,
+  validateAvailabilityScheduleRules,
+  type AvailabilityScheduleRuleForm
+} from '@/utils/availabilitySchedule'
 import {
   applyAntigravityProjectID,
   applyHeaderOverride,
@@ -3352,6 +3373,14 @@ interface TempUnschedRuleForm {
 const submitting = ref(false)
 const editBaseUrl = ref('https://api.anthropic.com')
 const editApiKey = ref('')
+const apiKeyStrategy = ref<'round_robin' | 'weighted'>('round_robin')
+const apiKeyPrimaryWeight = ref(1)
+const apiKeyExtras = ref<APIKeyExtraDraft[]>([])
+const savedAPIKeyExtraIDs = ref<Set<string>>(new Set())
+
+function hadAPIKeyExtra(id: string) {
+  return savedAPIKeyExtraIDs.value.has(id)
+}
 
 // ── 国产供应商（Kimi / Zhipu / DeepSeek）account_mode / api_protocol 编辑 ──
 // account_mode 决定额度/余额监控路径，api_protocol 决定转发端点与格式；
@@ -3634,6 +3663,8 @@ const antigravityWhitelistModels = ref<string[]>([])
 const antigravityModelMappings = ref<ModelMapping[]>([])
 const isSyncingAntigravityUpstream = ref(false)
 const tempUnschedEnabled = ref(false)
+const availabilityScheduleEnabled = ref(false)
+const availabilityScheduleRules = ref<AvailabilityScheduleRuleForm[]>([])
 const accountSchedulingThresholdOverrideEnabled = ref(false)
 const accountSchedulingThresholdOverrideValue = ref(100)
 const ACCOUNT_SCHEDULING_THRESHOLD_CREDENTIAL_KEY = 'account_scheduling_threshold'
@@ -4328,6 +4359,7 @@ const syncFormFromAccount = (newAccount: Account | null) => {
   loadQuotaControlSettings(newAccount)
 
   loadTempUnschedRules(credentials)
+  loadAvailabilitySchedule(newAccount.extra as Record<string, unknown> | undefined)
   loadAccountSchedulingThresholdOverride(newAccount.platform, credentials)
 
   // Load header override state for eligible account platforms/types
@@ -4372,6 +4404,11 @@ const syncFormFromAccount = (newAccount: Account | null) => {
   // Initialize API Key fields for apikey type
   if (newAccount.type === 'apikey' && newAccount.credentials) {
     const credentials = newAccount.credentials as Record<string, unknown>
+    const pool = readAPIKeyPool(credentials)
+    apiKeyStrategy.value = pool.strategy
+    apiKeyPrimaryWeight.value = pool.primaryWeight
+    apiKeyExtras.value = pool.extras
+    savedAPIKeyExtraIDs.value = new Set(pool.extras.map((item) => item.id))
     // 国产供应商：读取 account_mode 与 api_protocol 作为可编辑初始值
     // （编辑弹窗允许修正两者，用于修复早期存错默认值的账号）。
     if (isCNProviderPlatform(newAccount.platform) || newAccount.platform === 'opencode_go') {
@@ -4537,6 +4574,12 @@ const syncFormFromAccount = (newAccount: Account | null) => {
     selectedErrorCodes.value = []
   }
   editApiKey.value = ''
+  if (newAccount.type !== 'apikey') {
+    apiKeyStrategy.value = 'round_robin'
+    apiKeyPrimaryWeight.value = 1
+    apiKeyExtras.value = []
+    savedAPIKeyExtraIDs.value = new Set()
+  }
 }
 
 async function loadTLSProfiles() {
@@ -4864,6 +4907,28 @@ function loadTempUnschedRules(credentials?: Record<string, unknown>) {
   })
 }
 
+function loadAvailabilitySchedule(extra?: Record<string, unknown>) {
+  const parsed = parseAvailabilityScheduleFromExtra(extra)
+  availabilityScheduleEnabled.value = parsed.enabled
+  availabilityScheduleRules.value = parsed.rules
+}
+
+function availabilityScheduleValidationMessage(code: string | null): string | null {
+  if (!code) return null
+  switch (code) {
+    case 'empty':
+      return t('admin.accounts.availabilitySchedule.rulesInvalidEmpty')
+    case 'time':
+      return t('admin.accounts.availabilitySchedule.rulesInvalidTime')
+    case 'weekdays':
+      return t('admin.accounts.availabilitySchedule.rulesInvalidWeekdays')
+    case 'tooMany':
+      return t('admin.accounts.availabilitySchedule.rulesInvalidTooMany')
+    default:
+      return t('admin.accounts.availabilitySchedule.rulesInvalidEmpty')
+  }
+}
+
 // Load quota control settings from account (Anthropic OAuth/SetupToken only)
 function loadQuotaControlSettings(account: Account) {
   // Reset all quota control state first
@@ -5140,6 +5205,14 @@ const handleSubmit = async () => {
 		}
 	}
 
+  const scheduleError = availabilityScheduleValidationMessage(
+    validateAvailabilityScheduleRules(availabilityScheduleEnabled.value, availabilityScheduleRules.value)
+  )
+  if (scheduleError) {
+    appStore.showError(scheduleError)
+    return
+  }
+
   const updatePayload: Record<string, unknown> = { ...form }
   try {
     // 后端期望 proxy_id: 0 表示清除代理，而不是 null
@@ -5221,6 +5294,17 @@ const handleSubmit = async () => {
         appStore.showError(t('admin.accounts.apiKeyIsRequired'))
         return
       }
+      const missingExtraKey = apiKeyExtras.value.find((item) => !item.key.trim() && !hadAPIKeyExtra(item.id))
+      if (missingExtraKey) {
+        appStore.showError(t('admin.accounts.apiKeyPool.keyRequired'))
+        return
+      }
+      applyAPIKeyPool(newCredentials, {
+        strategy: apiKeyStrategy.value,
+        primaryKey: editApiKey.value.trim(),
+        primaryWeight: apiKeyPrimaryWeight.value,
+        extras: apiKeyExtras.value
+      })
 
       // Add model mapping if configured（OpenAI 开启自动透传时保留现有映射，不再编辑）
       if (shouldApplyModelMapping) {
@@ -5840,15 +5924,25 @@ const handleSubmit = async () => {
       updatePayload.extra = newExtra
     }
 
-    // 上游ID头名只在改动时写回 extra，避免用弹窗打开时的快照覆盖运行态键。
-    const nextUpstreamRequestIdHeader = upstreamRequestIdHeader.value.trim()
-    if (nextUpstreamRequestIdHeader !== readUpstreamRequestIdHeader(props.account.extra)) {
-      const currentExtra = (updatePayload.extra as Record<string, unknown>) || (props.account.extra as Record<string, unknown>) || {}
+    {
+      const currentExtra =
+        (updatePayload.extra as Record<string, unknown>) ||
+        (props.account.extra as Record<string, unknown>) ||
+        {}
       const newExtra: Record<string, unknown> = { ...currentExtra }
-      if (nextUpstreamRequestIdHeader) {
-        newExtra.upstream_request_id_header = nextUpstreamRequestIdHeader
-      } else {
-        delete newExtra.upstream_request_id_header
+      applyAvailabilityScheduleToExtra(
+        newExtra,
+        availabilityScheduleEnabled.value,
+        availabilityScheduleRules.value
+      )
+      // 上游ID头名只在改动时写回 extra，避免用弹窗打开时的快照覆盖运行态键。
+      const nextUpstreamRequestIdHeader = upstreamRequestIdHeader.value.trim()
+      if (nextUpstreamRequestIdHeader !== readUpstreamRequestIdHeader(props.account.extra)) {
+        if (nextUpstreamRequestIdHeader) {
+          newExtra.upstream_request_id_header = nextUpstreamRequestIdHeader
+        } else {
+          delete newExtra.upstream_request_id_header
+        }
       }
       updatePayload.extra = newExtra
     }
