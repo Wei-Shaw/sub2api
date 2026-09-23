@@ -745,6 +745,35 @@ describe("admin SettingsView payment visible method controls", () => {
     wrapper.unmount();
   });
 
+  it("loads and saves same-origin URI paths and the new-tab menu setting", async () => {
+    const menuItem = {
+      id: "help",
+      label: "Help",
+      url: "",
+      uri: "/help",
+      icon_svg: "",
+      visibility: "user",
+      sort_order: 0,
+      open_in_new_tab: true,
+    };
+    getSettings.mockResolvedValue({ ...baseSettingsResponse, custom_menu_items: [menuItem] });
+    const wrapper = mountView();
+    await flushPromises();
+
+    expect(wrapper.get('[data-testid="custom-menu-uri"]').element).toHaveProperty("value", "/help");
+    expect((wrapper.get('[data-testid="custom-menu-open-in-new-tab"]').element as HTMLInputElement).checked).toBe(true);
+
+    await wrapper.get('[data-testid="custom-menu-uri"]').setValue("/docs");
+    await wrapper.get('[data-testid="custom-menu-open-in-new-tab"]').setValue(false);
+    await wrapper.find("form").trigger("submit.prevent");
+    await flushPromises();
+
+    expect(updateSettings).toHaveBeenCalledWith(expect.objectContaining({
+      custom_menu_items: [{ ...menuItem, uri: "/docs", open_in_new_tab: false }],
+    }));
+    wrapper.unmount();
+  });
+
   it("submits the compact home page toggle", async () => {
     const wrapper = mountView();
     await flushPromises();
