@@ -95,15 +95,16 @@ func TestGroupHandlerSimpleModeSanitizesCommercialFields(t *testing.T) {
 	require.Nil(t, updated.RPMLimit)
 }
 
-func TestGroupHandlerSimpleModeRejectsCompositeBeforeService(t *testing.T) {
+func TestGroupHandlerSimpleModeCreatesCompositeGroup(t *testing.T) {
 	svc := newStubAdminService()
 	r := newSimpleModeGroupRouter(svc)
 	req := httptest.NewRequest(http.MethodPost, "/groups", bytes.NewBufferString(`{"name":"composite","platform":"composite"}`))
 	req.Header.Set("Content-Type", "application/json")
 	res := httptest.NewRecorder()
 	r.ServeHTTP(res, req)
-	require.Equal(t, http.StatusBadRequest, res.Code)
-	require.Empty(t, svc.createdGroups)
+	require.Equal(t, http.StatusOK, res.Code)
+	require.Len(t, svc.createdGroups, 1)
+	require.Equal(t, service.PlatformComposite, svc.createdGroups[0].Platform)
 }
 
 func TestGroupHandlerSimpleModeDeleteRejectsNonEmptyGroupBeforeCascade(t *testing.T) {
@@ -186,7 +187,7 @@ func TestGroupHandlerSimpleModeResponseUsesFieldAllowlist(t *testing.T) {
 	}
 }
 
-func TestGroupHandlerSimpleModeListsOnlyBindableGroups(t *testing.T) {
+func TestGroupHandlerSimpleModeListsBasicAndCompositeGroups(t *testing.T) {
 	svc := newStubAdminService()
 	svc.groups = []service.Group{{ID: 1, Name: "basic", Platform: service.PlatformAnthropic}, {ID: 2, Name: "composite", Platform: service.PlatformComposite}}
 	r := newSimpleModeGroupRouter(svc)
@@ -195,7 +196,7 @@ func TestGroupHandlerSimpleModeListsOnlyBindableGroups(t *testing.T) {
 		r.ServeHTTP(res, httptest.NewRequest(http.MethodGet, path, nil))
 		require.Equal(t, http.StatusOK, res.Code)
 		require.Contains(t, res.Body.String(), `"name":"basic"`)
-		require.NotContains(t, res.Body.String(), `"name":"composite"`)
+		require.Contains(t, res.Body.String(), `"name":"composite"`)
 	}
 }
 
@@ -276,11 +277,6 @@ func TestGroupHandlerSimpleModeBlocksAdvancedOperations(t *testing.T) {
 	}{
 		{http.MethodPost, "/groups/1/duplicate", ""},
 		{http.MethodGet, "/groups/1/model-allowlist-candidates", ""},
-		{http.MethodGet, "/groups/1/composite-routes", ""},
-		{http.MethodPost, "/groups/1/composite-routes", `{"public_model":"x","target_platform":"openai"}`},
-		{http.MethodPost, "/groups/1/composite-routes/preview", `{"model":"x"}`},
-		{http.MethodPut, "/groups/1/composite-routes/2", `{"public_model":"x","target_platform":"openai"}`},
-		{http.MethodDelete, "/groups/1/composite-routes/2", ""},
 		{http.MethodGet, "/groups/1/rate-multipliers", ""},
 		{http.MethodPut, "/groups/1/rate-multipliers", `{"entries":[]}`},
 		{http.MethodDelete, "/groups/1/rate-multipliers", ""},
