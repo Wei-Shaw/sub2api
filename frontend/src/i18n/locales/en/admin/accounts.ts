@@ -579,6 +579,21 @@ export default {
       apiKeyRequired: 'API Key *',
       apiKeyPlaceholder: 'sk-ant-api03-...',
       apiKeyHint: 'Your Claude Console API Key',
+      apiKeyPool: {
+        title: 'Multiple keys',
+        hint: 'One account can use several keys. After you add more, requests pick a key by round-robin or weight.',
+        add: 'Add key',
+        remove: 'Remove',
+        strategy: 'Selection',
+        roundRobin: 'Round-robin',
+        weighted: 'Weighted',
+        primaryWeight: 'Primary key weight',
+        key: 'Key',
+        label: 'Label',
+        weight: 'Weight',
+        enabled: 'Enabled',
+        keyRequired: 'A newly added key cannot be empty'
+      },
       upstreamRequestIdHeader: 'Upstream ID',
       upstreamRequestIdHeaderPlaceholder: 'Leave empty to record nothing',
       upstreamRequestIdHeaderHelp: {
