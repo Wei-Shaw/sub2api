@@ -158,6 +158,9 @@ func (s *ChannelMonitorService) Create(ctx context.Context, p ChannelMonitorCrea
 	if err := s.validateLinkedAccount(ctx, p.Provider, p.AccountID); err != nil {
 		return nil, err
 	}
+	if err := s.validateLinkedGroup(ctx, p.Provider, p.GroupID); err != nil {
+		return nil, err
+	}
 	checkMode := defaultCheckMode(p.CheckMode)
 	encrypted, err := s.encryptor.Encrypt(p.APIKey)
 	if err != nil {
@@ -182,6 +185,7 @@ func (s *ChannelMonitorService) Create(ctx context.Context, p ChannelMonitorCrea
 		BodyOverride:     p.BodyOverride,
 		CheckMode:        checkMode,
 		AccountID:        cloneInt64Pointer(p.AccountID),
+		GroupID:          cloneInt64Pointer(p.GroupID),
 	}
 	if err := s.repo.Create(ctx, m); err != nil {
 		return nil, fmt.Errorf("create channel monitor: %w", err)
@@ -249,6 +253,7 @@ func (s *ChannelMonitorService) Duplicate(
 		BodyOverride:         bodyOverride,
 		CheckMode:            defaultCheckMode(source.CheckMode),
 		AccountID:            cloneInt64Pointer(source.AccountID),
+		GroupID:              cloneInt64Pointer(source.GroupID),
 		DuplicateOperationID: operationID,
 	}
 	if err := s.repo.Create(ctx, duplicate); err != nil {
@@ -397,7 +402,12 @@ func validateCreateParams(p ChannelMonitorCreateParams) error {
 			return ErrChannelMonitorMissingAPIKey
 		}
 	}
-	if usesQuota && (p.AccountID == nil || *p.AccountID <= 0) {
+	hasAccount := p.AccountID != nil && *p.AccountID > 0
+	hasGroup := p.GroupID != nil && *p.GroupID > 0
+	if hasAccount && hasGroup {
+		return ErrChannelMonitorQuotaTargetConflict
+	}
+	if usesQuota && !hasAccount && !hasGroup {
 		return ErrChannelMonitorAccountRequired
 	}
 	if normalizeMonitorPrimaryModel(p.Provider, checkMode, p.PrimaryModel) == "" {
@@ -426,6 +436,28 @@ func (s *ChannelMonitorService) validateLinkedAccount(ctx context.Context, provi
 	return monitorAccountQuotaCapability(account)
 }
 
+// validateLinkedGroup 校验关联分组存在且平台与监控 provider 一致。
+// 不校验组内账号的配额能力：分组是动态集合（成员随时增删），逐个卡能力会让
+// 「组里混进一个 API-Key 型 openai 账号」直接阻断整个监控的创建；这类账号在
+// 聚合时会落到「未知」计数里，由 deriveGroupQuotaStatus 按「还有没有健康号」推导。
+// fetcher 未注入时 fail-closed（与 validateLinkedAccount 一致）。
+func (s *ChannelMonitorService) validateLinkedGroup(ctx context.Context, provider string, groupID *int64) error {
+	if groupID == nil || *groupID <= 0 {
+		return nil
+	}
+	if s.quotaFetcher == nil {
+		return ErrChannelMonitorAccountRequired
+	}
+	group, err := s.quotaFetcher.LoadGroup(ctx, *groupID)
+	if err != nil || group == nil {
+		return ErrChannelMonitorAccountRequired
+	}
+	if group.Platform != provider {
+		return ErrChannelMonitorGroupIncompatible
+	}
+	return nil
+}
+
 // Update 更新监控。APIKey 字段：nil 或空字符串 = 不修改；非空 = 加密后覆盖。
 func (s *ChannelMonitorService) Update(ctx context.Context, id int64, p ChannelMonitorUpdateParams) (*ChannelMonitor, error) {
 	existing, err := s.repo.GetByID(ctx, id)
@@ -443,8 +475,8 @@ func (s *ChannelMonitorService) Update(ctx context.Context, id int64, p ChannelM
 	if err := s.validateProbeAPIKey(existing, newPlainAPIKey); err != nil {
 		return nil, err
 	}
-	if p.Provider != nil || p.CheckMode != nil || p.AccountID != nil {
-		if err := s.revalidateLinkedAccount(ctx, existing); err != nil {
+	if p.Provider != nil || p.CheckMode != nil || p.AccountID != nil || p.GroupID != nil {
+		if err := s.revalidateLinkedQuotaTarget(ctx, existing); err != nil {
 			return nil, err
 		}
 	}
@@ -468,12 +500,15 @@ func (s *ChannelMonitorService) Update(ctx context.Context, id int64, p ChannelM
 }
 
 // validateMonitorModeFields 校验 check_mode 与其它字段的组合约束
-// （在 provider/check_mode/account_id/endpoint 全部应用后调用）：
-//   - quota / quota_probe 必须关联账号
+// （在 provider/check_mode/account_id/group_id/endpoint 全部应用后调用）：
+//   - quota / quota_probe 必须恰好关联一个数据源（账号或分组）
 //   - probe / quota_probe 必须持有 endpoint（探活目标）
 func validateMonitorModeFields(m *ChannelMonitor) error {
 	checkMode := defaultCheckMode(m.CheckMode)
-	if monitorCheckModeUsesQuota(checkMode) && m.AccountID == nil {
+	if m.AccountID != nil && m.GroupID != nil {
+		return ErrChannelMonitorQuotaTargetConflict
+	}
+	if monitorCheckModeUsesQuota(checkMode) && m.AccountID == nil && m.GroupID == nil {
 		return ErrChannelMonitorAccountRequired
 	}
 	if checkMode != MonitorCheckModeQuota && strings.TrimSpace(m.Endpoint) == "" {
@@ -501,6 +536,44 @@ func (s *ChannelMonitorService) validateProbeAPIKey(m *ChannelMonitor, newPlainK
 	}
 	if strings.TrimSpace(plain) == "" {
 		return ErrChannelMonitorMissingAPIKey
+	}
+	return nil
+}
+
+// revalidateLinkedQuotaTarget 在 provider/check_mode/account_id/group_id 任一
+// 变化后复核配额数据源，按绑定类型分派到账号或分组的复核逻辑。
+func (s *ChannelMonitorService) revalidateLinkedQuotaTarget(ctx context.Context, m *ChannelMonitor) error {
+	if m.GroupID != nil {
+		return s.revalidateLinkedGroup(ctx, m)
+	}
+	return s.revalidateLinkedAccount(ctx, m)
+}
+
+// revalidateLinkedGroup 复核关联分组：
+//   - 分组已被删除或平台失配：probe 模式自动解绑（静默修复），
+//     quota 模式显式报错（配额监控必须有可用数据源）
+func (s *ChannelMonitorService) revalidateLinkedGroup(ctx context.Context, m *ChannelMonitor) error {
+	usesQuota := monitorCheckModeUsesQuota(defaultCheckMode(m.CheckMode))
+	if s.quotaFetcher == nil {
+		if usesQuota {
+			return ErrChannelMonitorAccountRequired
+		}
+		m.GroupID = nil
+		return nil
+	}
+	group, err := s.quotaFetcher.LoadGroup(ctx, *m.GroupID)
+	if err != nil || group == nil {
+		if usesQuota {
+			return ErrChannelMonitorAccountRequired
+		}
+		m.GroupID = nil
+		return nil
+	}
+	if group.Platform != m.Provider {
+		if usesQuota {
+			return ErrChannelMonitorGroupIncompatible
+		}
+		m.GroupID = nil
 	}
 	return nil
 }
@@ -642,14 +715,18 @@ func (s *ChannelMonitorService) runQuotaOnlyCheck(ctx context.Context, m *Channe
 	return []*CheckResult{res}
 }
 
-// fetchQuotaSnapshot 抓取关联账号配额。未关联账号 / fetcher 未注入时返回
-// 显式错误快照（不返回 error，保证检测周期与历史时间线连续）。
+// fetchQuotaSnapshot 抓取配额数据源。数据源二选一：绑定分组时聚合组内全部
+// active 账号，否则读单个关联账号。未关联 / fetcher 未注入时返回显式错误快照
+// （不返回 error，保证检测周期与历史时间线连续）。
 func (s *ChannelMonitorService) fetchQuotaSnapshot(ctx context.Context, m *ChannelMonitor) *domain.MonitorQuotaSnapshot {
-	if m.AccountID == nil {
-		return quotaErrorSnapshot("usage", "linked account not found", time.Now())
-	}
 	if s.quotaFetcher == nil {
 		return quotaErrorSnapshot("usage", "quota fetcher is not configured", time.Now())
+	}
+	if m.GroupID != nil {
+		return s.quotaFetcher.FetchGroup(ctx, *m.GroupID)
+	}
+	if m.AccountID == nil {
+		return quotaErrorSnapshot("usage", monitorQuotaErrAccountNotFound, time.Now())
 	}
 	return s.quotaFetcher.Fetch(ctx, *m.AccountID)
 }
@@ -907,12 +984,24 @@ func applyMonitorUpdate(existing *ChannelMonitor, p ChannelMonitorUpdateParams) 
 			return err
 		}
 	}
+	// 数据源二选一：显式设置一个就隐式清空另一个，避免留下双绑的歧义状态
+	// （库层 CHECK 也会拒）。0 = 清空本项，此时不动另一项。
 	if p.AccountID != nil {
 		if *p.AccountID > 0 {
 			id := *p.AccountID
 			existing.AccountID = &id
+			existing.GroupID = nil
 		} else {
-			existing.AccountID = nil // 0 = 清空关联
+			existing.AccountID = nil
+		}
+	}
+	if p.GroupID != nil {
+		if *p.GroupID > 0 {
+			id := *p.GroupID
+			existing.GroupID = &id
+			existing.AccountID = nil
+		} else {
+			existing.GroupID = nil
 		}
 	}
 	if p.Endpoint != nil {
