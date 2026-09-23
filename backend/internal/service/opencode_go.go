@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
+	"github.com/tidwall/gjson"
 )
 
 // OpenCode Go 是 OpenCode Zen 的订阅网关：同一 API Key 下按模型分流到
@@ -260,6 +261,14 @@ func NormalizeOpenCodeGoProtocolRulesCredentials(credentials map[string]any) err
 
 func (a *Account) IsOpenCodeGo() bool {
 	return a != nil && a.Platform == PlatformOpenCodeGo
+}
+
+func isOpenCodeFreeTierRequestRejection(account *Account, statusCode int, body []byte) bool {
+	if account == nil || statusCode != http.StatusForbidden ||
+		(!account.IsOpenCodeGo() && !isOfficialOpenCodeHost(account.GetOpenAIBaseURL())) {
+		return false
+	}
+	return strings.EqualFold(gjson.GetBytes(body, "error.type").String(), "FreeTierError")
 }
 
 // GetOpenCodeAccountMode 返回 OpenCode 账号类型。未设置时按 Go 处理，兼容已有账号。

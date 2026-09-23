@@ -98,9 +98,10 @@ func TestApplyOpenCodeSessionHeaderTrustBoundary(t *testing.T) {
 			want:      "<generated>",
 		},
 		{
-			name:      "zen endpoint does not invent a session",
+			name:      "zen endpoint generates a session",
 			account:   openCodeSessionTestAccount("https://opencode.ai/zen/v1"),
 			targetURL: "https://opencode.ai/zen/v1/responses",
+			want:      "<generated>",
 		},
 		{
 			name:      "oauth account",
@@ -116,7 +117,7 @@ func TestApplyOpenCodeSessionHeaderTrustBoundary(t *testing.T) {
 			applyOpenCodeSessionHeader(newOpenCodeSessionTestContext(t, tt.incoming), tt.account, tt.targetURL, headers)
 			got := headers.Get(openCodeSessionHeader)
 			if tt.want == "<generated>" {
-				require.NotEmpty(t, got)
+				require.Regexp(t, `^ses_[0-9a-f]{12}[0-9A-Za-z]{14}$`, got)
 				return
 			}
 			require.Equal(t, tt.want, got)
@@ -135,7 +136,40 @@ func TestApplyOpenCodeSessionHeaderOpenCodeGoAlwaysSetsSession(t *testing.T) {
 	}
 	headers := make(http.Header)
 	applyOpenCodeSessionHeader(newOpenCodeSessionTestContext(t, ""), account, "https://relay.example.com/v1/chat/completions", headers)
-	require.NotEmpty(t, headers.Get(openCodeSessionHeader))
+	require.Regexp(t, `^ses_[0-9a-f]{12}[0-9A-Za-z]{14}$`, headers.Get(openCodeSessionHeader))
+}
+
+func TestApplyOpenCodeSessionHeaderOpenCodeZenWithoutCallerSession(t *testing.T) {
+	account := &Account{
+		Platform: PlatformOpenCodeGo,
+		Type:     AccountTypeAPIKey,
+		Credentials: map[string]any{
+			"account_mode": AccountModeZen,
+			"base_url":     "https://opencode.ai/zen/v1",
+		},
+	}
+	for _, targetURL := range []string{
+		"https://opencode.ai/zen/v1/chat/completions",
+		"https://opencode.ai/zen/v1/responses",
+		"https://opencode.ai/zen/v1/messages",
+		"https://relay.example.com/v1/chat/completions",
+	} {
+		t.Run(targetURL, func(t *testing.T) {
+			headers := make(http.Header)
+			applyOpenCodeSessionHeader(newOpenCodeSessionTestContext(t, ""), account, targetURL, headers)
+			require.Regexp(t, `^ses_[0-9a-f]{12}[0-9A-Za-z]{14}$`, headers.Get(openCodeSessionHeader))
+		})
+	}
+}
+
+func TestApplyOpenCodeClientHeadersAddsNativeMetadata(t *testing.T) {
+	account := &Account{Platform: PlatformOpenCodeGo, Type: AccountTypeAPIKey}
+	headers := make(http.Header)
+	applyOpenCodeClientHeaders(newOpenCodeSessionTestContext(t, ""), account, "https://relay.example.com/v1/chat/completions", headers)
+	require.Equal(t, "cli", headers.Get(openCodeClientHeader))
+	require.Equal(t, "global", headers.Get(openCodeProjectHeader))
+	require.Regexp(t, `^msg_[0-9a-f]{12}[0-9A-Za-z]{14}$`, headers.Get(openCodeRequestHeader))
+	require.NotEqual(t, headers.Get(openCodeSessionHeader), headers.Get(openCodeRequestHeader))
 }
 
 func TestApplyOpenCodeSessionHeaderMapsCallerSessionID(t *testing.T) {

@@ -1,18 +1,23 @@
 package service
 
 import (
+	"crypto/rand"
+	"fmt"
 	"net/http"
 	"net/url"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/gin-gonic/gin"
-	"github.com/google/uuid"
 	"github.com/tidwall/gjson"
 )
 
 const (
 	openCodeSessionHeader         = "X-OpenCode-Session"
+	openCodeClientHeader          = "X-OpenCode-Client"
+	openCodeProjectHeader         = "X-OpenCode-Project"
+	openCodeRequestHeader         = "X-OpenCode-Request"
 	openCodeInboundBodyContextKey = "opencode_inbound_body"
 
 	// openCodeUpstreamUserAgent 是发往官方 OpenCode 上游的规范 User-Agent。
@@ -20,8 +25,8 @@ const (
 	// 编程库 UA 会被 CF error code 1010 拒绝并返回 403。网关透传白名单放行
 	// user-agent，客户端自报身份原样到达上游会命中 WAF；该 403 再被计入账号
 	// 凭证类 strike，健康账号因此被自动禁用。取值沿用真实 opencode 客户端的
-	// UA 格式（opencode/<version>）。
-	openCodeUpstreamUserAgent = "opencode/1.0.0"
+	// UA 格式（opencode/<version>）；免费档当前要求至少 1.18.0。
+	openCodeUpstreamUserAgent = "opencode/1.18.32 ai-sdk/provider-utils/4.0.40 runtime/bun/1.3.14"
 )
 
 // rememberOpenCodeInboundBody keeps the client request body so protocol
@@ -50,8 +55,8 @@ func openCodeInboundBodies(c *gin.Context) [][]byte {
 }
 
 // applyOpenCodeSessionHeader sets x-opencode-session on outbound inference
-// requests. OpenCode Go requires a per-conversation value from 2026-09-05
-// (MissingSessionID). Prefer caller headers, then the documented body session
+// requests. OpenCode inference requires a per-conversation value (MissingSessionID).
+// Prefer caller headers, then the documented body session
 // fields (OpenAI prompt_cache_key / Anthropic metadata.user_id), then any
 // already applied account override. A generated UUID is last-resort only for
 // probes and clients that omit every stable identifier — a new UUID each turn
@@ -78,14 +83,14 @@ func applyOpenCodeSessionHeader(c *gin.Context, account *Account, targetURL stri
 }
 
 func shouldSendOpenCodeSessionHeader(account *Account, targetURL string) bool {
-	if account != nil && account.IsOpenCodeGoPlan() {
+	if account != nil && account.IsOpenCodeGo() {
 		return true
 	}
 	return isOfficialOpenCodeHost(targetURL)
 }
 
 func shouldGenerateOpenCodeSession(account *Account, targetURL string) bool {
-	if account != nil && account.IsOpenCodeGoPlan() {
+	if account != nil && account.IsOpenCodeGo() {
 		return true
 	}
 	parsed, err := url.Parse(targetURL)
@@ -94,7 +99,7 @@ func shouldGenerateOpenCodeSession(account *Account, targetURL string) bool {
 	}
 	return strings.EqualFold(parsed.Scheme, "https") &&
 		strings.EqualFold(parsed.Hostname(), "opencode.ai") &&
-		strings.Contains(parsed.Path, "/zen/go")
+		(strings.HasPrefix(parsed.Path, "/zen/v1/") || strings.HasPrefix(parsed.Path, "/zen/go/"))
 }
 
 func isOfficialOpenCodeHost(targetURL string) bool {
@@ -145,6 +150,72 @@ func applyOpenCodeUpstreamUserAgent(account *Account, targetURL string, headers 
 	headers.Set("User-Agent", userAgent)
 }
 
+func enforceOpenCodeMinimumUserAgent(account *Account, targetURL string, headers http.Header) {
+	if headers == nil || (account == nil || !account.IsOpenCodeGo()) && !isOfficialOpenCodeHost(targetURL) {
+		return
+	}
+	ua := strings.TrimSpace(headers.Get("User-Agent"))
+	if !strings.HasPrefix(strings.ToLower(ua), "opencode/") {
+		return
+	}
+	version := strings.TrimSpace(strings.SplitN(strings.TrimPrefix(ua, "opencode/"), " ", 2)[0])
+	parts := strings.Split(version, ".")
+	major, _ := strconv.Atoi(firstString(parts, 0))
+	minor, _ := strconv.Atoi(firstString(parts, 1))
+	if major < 1 || (major == 1 && minor < 18) {
+		headers.Set("User-Agent", openCodeUpstreamUserAgent)
+	}
+}
+
+func firstString(items []string, index int) string {
+	if index < 0 || index >= len(items) {
+		return "0"
+	}
+	return items[index]
+}
+
+// applyOpenCodeClientHeaders supplies the client metadata sent by the native
+// OpenCode provider. Zen's free lane uses these headers together with the
+// session and User-Agent to distinguish a complete OpenCode request from a
+// generic SDK request. Account overrides are applied after this function.
+func applyOpenCodeClientHeaders(c *gin.Context, account *Account, targetURL string, headers http.Header) {
+	if headers == nil || (account == nil || !account.IsOpenCodeGo()) && !isOfficialOpenCodeHost(targetURL) {
+		return
+	}
+	if headers.Get(openCodeClientHeader) == "" {
+		headers.Set(openCodeClientHeader, "cli")
+	}
+	if headers.Get(openCodeProjectHeader) == "" {
+		headers.Set(openCodeProjectHeader, "global")
+	}
+	if headers.Get(openCodeRequestHeader) == "" {
+		headers.Set(openCodeRequestHeader, newOpenCodeMessageID())
+	}
+}
+
+func newOpenCodeMessageID() string {
+	return newOpenCodeID("msg")
+}
+
+func newOpenCodeSessionID() string {
+	return newOpenCodeID("ses")
+}
+
+func newOpenCodeID(prefix string) string {
+	timestamp := (uint64(time.Now().UnixMilli()) << 12) & ((uint64(1) << 48) - 1)
+	var random [14]byte
+	if _, err := rand.Read(random[:]); err != nil {
+		return fmt.Sprintf("%s_%012x", prefix, timestamp)
+	}
+	const alphabet = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"
+	var suffix strings.Builder
+	suffix.Grow(len(random))
+	for _, b := range random {
+		suffix.WriteByte(alphabet[int(b)%len(alphabet)])
+	}
+	return fmt.Sprintf("%s_%012x%s", prefix, timestamp, suffix.String())
+}
+
 func resolveOpenCodeSessionID(c *gin.Context, headers http.Header, generate bool, bodies ...[]byte) string {
 	if c != nil && c.Request != nil {
 		if sessionID := sanitizeSessionID(c.GetHeader(openCodeSessionHeader)); sessionID != "" {
@@ -166,7 +237,7 @@ func resolveOpenCodeSessionID(c *gin.Context, headers http.Header, generate bool
 		return sessionID
 	}
 	if generate {
-		return uuid.NewString()
+		return newOpenCodeSessionID()
 	}
 	return ""
 }
