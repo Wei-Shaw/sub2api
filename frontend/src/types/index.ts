@@ -1184,9 +1184,13 @@ export interface Account {
       fetched_at: number
     }
     codex_referral_snapshot?: import('./openaiReferrals').OpenAIReferralEligibility | null
+    codex_reset_credit_snapshot_at?: string
+    codex_auto_reset_credit_expiry_at?: string
     auto_reset_credit_enabled?: boolean
     auto_reset_credit_5h_threshold?: number
     auto_reset_credit_7d_threshold?: number
+    auto_reset_credit_expiry_enabled?: boolean
+    auto_reset_credit_expiry_lead_minutes?: number
     codex_auto_reset_credit_state?: {
       status?: 'checking' | 'available' | 'resetting' | 'success' | 'no_credit' | 'failed'
       trigger_window?: string

@@ -957,6 +957,7 @@ export interface OpenAIQuotaResetResult {
 export interface OpenAIQuotaRefreshResult extends OpenAIQuotaUsage {
   cache_persisted: boolean
   credits_cache_persisted?: boolean
+  account?: Account | null
 }
 
 /**
