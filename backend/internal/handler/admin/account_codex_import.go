@@ -497,6 +497,7 @@ func normalizeCodexImportEntry(entry codexImportEntry) (*codexImportAccount, err
 			"imported_at":   now.Format(time.RFC3339),
 		},
 	}
+	lastRefresh := now.Format(time.RFC3339)
 
 	switch raw := entry.Value.(type) {
 	case string:
@@ -585,6 +586,9 @@ func normalizeCodexImportEntry(entry codexImportEntry) (*codexImportAccount, err
 			[]string{"org_id"},
 			[]string{"orgId"},
 		)
+		if value := firstCodexString(raw, []string{"last_refresh"}, []string{"lastRefresh"}); value != "" {
+			lastRefresh = value
+		}
 		item.Name = firstCodexString(raw, []string{"name"}, []string{"user", "name"})
 		authProvider := firstCodexString(raw, []string{"auth_provider"}, []string{"authProvider"})
 		if authProvider != "" {
@@ -600,14 +604,17 @@ func normalizeCodexImportEntry(entry codexImportEntry) (*codexImportAccount, err
 		if tokenExpiresAt, ok := firstCodexTime(raw,
 			[]string{"tokens", "expires_at"},
 			[]string{"tokens", "expiresAt"},
+			[]string{"tokens", "expired"},
 			[]string{"expires_at"},
 			[]string{"expiresAt"},
+			[]string{"expired"},
 		); ok {
 			if tokenExpiresAt.Unix() <= now.Unix()-codexImportClockSkewSeconds {
 				return nil, fmt.Errorf("access_token 已过期: %s", tokenExpiresAt.Format(time.RFC3339))
 			}
 			item.TokenExpiresAt = &tokenExpiresAt
 			item.Credentials["expires_at"] = tokenExpiresAt.Format(time.RFC3339)
+			item.Credentials["expired"] = tokenExpiresAt.Format(time.RFC3339)
 		}
 		copyCodexExtraString(raw, item.Extra, "user_image", []string{"user", "image"})
 		copyCodexExtraString(raw, item.Extra, "user_picture", []string{"user", "picture"})
@@ -624,6 +631,8 @@ func normalizeCodexImportEntry(entry codexImportEntry) (*codexImportAccount, err
 	if item.AccessToken == "" {
 		return nil, errors.New("缺少 accessToken/access_token")
 	}
+	item.Credentials["type"] = "codex"
+	item.Credentials["last_refresh"] = lastRefresh
 	item.Credentials["access_token"] = item.AccessToken
 	if item.RefreshToken != "" {
 		item.Credentials["refresh_token"] = item.RefreshToken
@@ -644,6 +653,7 @@ func normalizeCodexImportEntry(entry codexImportEntry) (*codexImportAccount, err
 	}
 
 	setCodexCredentialIfNotEmpty(item.Credentials, "email", item.Email)
+	setCodexCredentialIfNotEmpty(item.Credentials, "account_id", item.AccountID)
 	setCodexCredentialIfNotEmpty(item.Credentials, "chatgpt_account_id", item.AccountID)
 	setCodexCredentialIfNotEmpty(item.Credentials, "chatgpt_user_id", item.UserID)
 	setCodexCredentialIfNotEmpty(item.Credentials, "organization_id", item.Organization)
@@ -672,6 +682,7 @@ func enrichCodexImportAccountFromJWT(item *codexImportAccount, token string, val
 		expiresAt := time.Unix(claims.Exp, 0).UTC()
 		item.TokenExpiresAt = &expiresAt
 		item.Credentials["expires_at"] = expiresAt.Format(time.RFC3339)
+		item.Credentials["expired"] = expiresAt.Format(time.RFC3339)
 	}
 	if item.Email == "" {
 		item.Email = strings.TrimSpace(claims.Email)
