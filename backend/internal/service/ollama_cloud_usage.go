@@ -110,6 +110,7 @@ type OllamaCloudUsageModelWindow string
 const (
 	OllamaCloudUsageModelWindowFiveHour OllamaCloudUsageModelWindow = "five_hour"
 	OllamaCloudUsageModelWindowSevenDay OllamaCloudUsageModelWindow = "seven_day"
+	OllamaCloudUsageModelWindowMonthly  OllamaCloudUsageModelWindow = "monthly"
 )
 
 // OllamaCloudUsageModel is the window-scoped model/request pair exposed by Ollama's usage DOM.
@@ -124,6 +125,7 @@ type OllamaCloudUsageData struct {
 	Plan     string                  `json:"plan,omitempty"`
 	FiveHour *OllamaCloudUsageWindow `json:"five_hour,omitempty"`
 	SevenDay *OllamaCloudUsageWindow `json:"seven_day,omitempty"`
+	Monthly  *OllamaCloudUsageWindow `json:"monthly,omitempty"`
 	Balance  string                  `json:"balance,omitempty"`
 	Models   []OllamaCloudUsageModel `json:"models,omitempty"`
 }
