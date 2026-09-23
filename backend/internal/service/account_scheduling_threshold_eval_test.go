@@ -127,7 +127,7 @@ func TestEvaluateAnthropicFableSchedulingThreshold_UsesAccountOverrideWithoutPau
 	require.Equal(t, PlatformAnthropic, decision.Platform)
 	require.Equal(t, "7d_oi", decision.Window)
 	require.Equal(t, anthropicFableRateLimitKey, decision.Scope)
-	require.Equal(t, 60, decision.ThresholdPercent)
+	require.Equal(t, float64(60), decision.ThresholdPercent)
 	require.Equal(t, 61.0, decision.UsedPercent)
 	require.NotNil(t, decision.Until)
 	require.True(t, wantUntil.Equal(*decision.Until))
@@ -289,7 +289,7 @@ func TestEvaluateAccountSchedulingThreshold_AccountOverrideCanLowerOpenAIThresho
 
 	require.True(t, decision.ShouldPause)
 	require.Equal(t, PlatformOpenAI, decision.Platform)
-	require.Equal(t, 80, decision.ThresholdPercent)
+	require.Equal(t, float64(80), decision.ThresholdPercent)
 	require.Equal(t, "7d", decision.Window)
 	require.Empty(t, decision.Scope)
 	require.Equal(t, 85.0, decision.UsedPercent)
@@ -317,7 +317,7 @@ func TestEvaluateAccountSchedulingThreshold_AccountOverrideHundredDisablesOpenAI
 	}, now)
 
 	require.False(t, decision.ShouldPause)
-	require.Equal(t, 100, decision.ThresholdPercent)
+	require.Equal(t, float64(100), decision.ThresholdPercent)
 }
 
 func TestEvaluateAccountSchedulingThreshold_AccountOverrideRoundsDecimalThreshold(t *testing.T) {
@@ -341,7 +341,7 @@ func TestEvaluateAccountSchedulingThreshold_AccountOverrideRoundsDecimalThreshol
 	}, now)
 
 	require.True(t, decision.ShouldPause)
-	require.Equal(t, 76, decision.ThresholdPercent)
+	require.Equal(t, float64(76), decision.ThresholdPercent)
 	require.Equal(t, 80.0, decision.UsedPercent)
 	require.NotNil(t, decision.Until)
 	require.True(t, wantUntil.Equal(*decision.Until))
@@ -435,7 +435,7 @@ func TestEvaluateAccountSchedulingThreshold_GrokUsesConfiguredThresholds(t *test
 
 	require.True(t, decision.ShouldPause)
 	require.Equal(t, PlatformGrok, decision.Platform)
-	require.Equal(t, 90, decision.ThresholdPercent)
+	require.Equal(t, float64(90), decision.ThresholdPercent)
 	require.Equal(t, "grok", decision.Scope)
 	require.Equal(t, 92.0, decision.UsedPercent)
 	require.NotNil(t, decision.Until)

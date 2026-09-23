@@ -195,7 +195,7 @@ export default {
         'Override the platform auto-pause threshold for this account only. Disable to use platform settings.',
       accountSchedulingThresholdOverrideValue: 'Account threshold percent',
       accountSchedulingThresholdOverrideDisabledHint:
-        'Use 1-100. The account becomes temporarily unschedulable after reaching this usage percent; 100 disables it for this account.',
+        '1–99 is the default percentage for all native windows; 100 disables this default. Per-window thresholds and disable switches below take precedence.',
       status: {
         active: 'Active',
         inactive: 'Inactive',
@@ -894,20 +894,26 @@ export default {
       },
       autoPauseOnExpired: 'Auto Pause On Expired',
       autoPauseOnExpiredDesc: 'When enabled, the account will auto pause scheduling after it expires',
-	  autoPause5hThreshold: '5h Usage Threshold (%)',
-	  autoPause7dThreshold: '7d Usage Threshold (%)',
-	  autoPauseThresholdHint: 'Leave empty or set 0 to use the global default threshold (configured in Ops settings); set a value to override the global default. Reaching the threshold only skips the account during scheduling and does not modify schedulable.',
-	  autoPause5hDisabled: 'Disable 5h auto-pause',
-	  autoPause7dDisabled: 'Disable 7d auto-pause',
-	  autoPauseDisabledHint: 'When enabled, this account is never auto-paused (even if a global default threshold is configured).',
-	  autoResetCredit: {
-	    title: 'Automatically use reset credits',
-	    hint: 'Uses the earliest-expiring available credit only when actual usage reaches a threshold. Off by default; the account remains paused if no credit is available or reset fails.',
-	    threshold5h: '5h auto-reset threshold (%)',
-	    threshold7d: '7d auto-reset threshold (%)',
-	    thresholdHint: 'Each window is evaluated independently. Enter 0.1–100; both default to 100.',
-	    thresholdInvalid: 'Automatic reset-credit thresholds must be between 0.1% and 100%.'
-	  },
+    autoPause5hThreshold: '5h Usage Threshold (%)',
+    autoPause7dThreshold: '7d Usage Threshold (%)',
+    quotaWindowTitle: 'Subscription quota percentage limits (native windows)',
+    quotaWindowHint: 'For example, 7d = 90 pauses scheduling when upstream reports 90% used, until that window resets. This is not USD spending and does not reset provider quota. Valid usage and reset timestamps are required; missing snapshots do not mean 100% remaining. Any breached window pauses the account.',
+    quotaPercentUnavailable: 'This pay-as-you-go/balance account has no usable subscription percentage windows. Use USD spending limits instead; arbitrary five-day quotas cannot be inferred from a balance.',
+    quotaWindowInvalid: 'Percentages must be finite values from 0 to 100; empty or 0 inherits defaults.',
+    autoPauseMonthlyThreshold: 'Monthly usage threshold (%)',
+    autoPauseMonthlyDisabled: 'Disable monthly auto-pause',
+    autoPauseThresholdHint: 'Empty or 0 inherits account/platform defaults. Explicit 100 pauses at full usage. Editing does not clear an existing temporary pause; wait for reset or use Reset temporary scheduling block. Snapshot-based scheduling is not a hard no-overshoot guarantee for concurrent requests.',
+    autoPause5hDisabled: 'Disable 5h auto-pause',
+    autoPause7dDisabled: 'Disable 7d auto-pause',
+    autoPauseDisabledHint: 'Disables percentage pausing for this window only, overriding its default. Other windows, USD limits and upstream rate limits still apply.',
+    autoResetCredit: {
+      title: 'Automatically use reset credits',
+      hint: 'Uses the earliest-expiring available credit only when actual usage reaches a threshold. Off by default; the account remains paused if no credit is available or reset fails.',
+      threshold5h: '5h auto-reset threshold (%)',
+      threshold7d: '7d auto-reset threshold (%)',
+      thresholdHint: 'Each window is evaluated independently. Enter 0.1–100; both default to 100.',
+      thresholdInvalid: 'Automatic reset-credit thresholds must be between 0.1% and 100%.'
+    },
       // Quota control (Anthropic OAuth/SetupToken only)
       quotaControl: {
         title: 'Quota Control',
