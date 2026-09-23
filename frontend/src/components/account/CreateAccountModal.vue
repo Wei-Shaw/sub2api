@@ -70,12 +70,12 @@
       <!-- Platform Selection - Segmented Control Style -->
       <div>
         <label class="input-label">{{ t('admin.accounts.platform') }}</label>
-        <div class="mt-2 flex flex-wrap rounded-lg bg-gray-100 p-1 dark:bg-dark-700" data-tour="account-form-platform">
+        <div class="mt-2 grid grid-cols-3 rounded-lg bg-gray-100 p-1 dark:bg-dark-700 lg:grid-cols-6" data-tour="account-form-platform">
           <button
             type="button"
             @click="form.platform = 'anthropic'"
             :class="[
-              'flex flex-1 items-center justify-center gap-2 rounded-md px-4 py-2.5 text-sm font-medium transition-all',
+              'flex items-center justify-center gap-2 rounded-md px-2 py-2.5 text-sm font-medium transition-all lg:px-3',
               form.platform === 'anthropic'
                 ? 'bg-white text-orange-600 shadow-sm dark:bg-dark-600 dark:text-orange-400'
                 : 'text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-200'
@@ -88,7 +88,7 @@
             type="button"
             @click="form.platform = 'openai'"
             :class="[
-              'flex flex-1 items-center justify-center gap-2 rounded-md px-4 py-2.5 text-sm font-medium transition-all',
+              'flex items-center justify-center gap-2 rounded-md px-2 py-2.5 text-sm font-medium transition-all lg:px-3',
               form.platform === 'openai'
                 ? 'bg-white text-green-600 shadow-sm dark:bg-dark-600 dark:text-green-400'
                 : 'text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-200'
@@ -113,7 +113,7 @@
             type="button"
             @click="form.platform = 'gemini'"
             :class="[
-              'flex flex-1 items-center justify-center gap-2 rounded-md px-4 py-2.5 text-sm font-medium transition-all',
+              'flex items-center justify-center gap-2 rounded-md px-2 py-2.5 text-sm font-medium transition-all lg:px-3',
               form.platform === 'gemini'
                 ? 'bg-white text-blue-600 shadow-sm dark:bg-dark-600 dark:text-blue-400'
                 : 'text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-200'
@@ -138,7 +138,7 @@
             type="button"
             @click="form.platform = 'antigravity'"
             :class="[
-              'flex flex-1 items-center justify-center gap-2 rounded-md px-4 py-2.5 text-sm font-medium transition-all',
+              'flex items-center justify-center gap-2 rounded-md px-2 py-2.5 text-sm font-medium transition-all lg:px-3',
               form.platform === 'antigravity'
                 ? 'bg-white text-purple-600 shadow-sm dark:bg-dark-600 dark:text-purple-400'
                 : 'text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-200'
@@ -151,7 +151,7 @@
             type="button"
             @click="form.platform = 'grok'"
             :class="[
-              'flex flex-1 items-center justify-center gap-2 rounded-md px-4 py-2.5 text-sm font-medium transition-all',
+              'flex items-center justify-center gap-2 rounded-md px-2 py-2.5 text-sm font-medium transition-all lg:px-3',
               form.platform === 'grok'
                 ? 'bg-white text-zinc-900 shadow-sm dark:bg-dark-600 dark:text-zinc-100'
                 : 'text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-200'
@@ -159,6 +159,20 @@
           >
             <PlatformIcon platform="grok" size="sm" />
             Grok
+          </button>
+          <button
+            type="button"
+            data-testid="cursor-platform"
+            @click="form.platform = 'cursor'"
+            :class="[
+              'flex items-center justify-center gap-2 rounded-md px-2 py-2.5 text-sm font-medium transition-all lg:px-3',
+              form.platform === 'cursor'
+                ? 'bg-white text-amber-600 shadow-sm dark:bg-dark-600 dark:text-amber-400'
+                : 'text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-200'
+            ]"
+          >
+            <PlatformIcon platform="cursor" size="sm" />
+            Cursor
           </button>
         </div>
         <!-- Multi-protocol API-key providers: Kimi / Zhipu GLM / DeepSeek / OpenCode -->
@@ -479,6 +493,281 @@
         </div>
       </div>
 
+      <!-- Cursor Pro: browser deep-control OAuth or pasted session tokens -->
+      <div v-if="form.platform === 'cursor'" class="space-y-4" data-testid="cursor-credentials">
+        <div class="grid grid-cols-2 gap-2" data-testid="cursor-auth-method">
+          <button
+            type="button"
+            data-testid="cursor-method-browser"
+            :class="[
+              'rounded-lg border-2 p-2.5 text-left text-sm transition-all',
+              cursorAuthMethod === 'browser'
+                ? 'border-primary-500 bg-primary-50 dark:bg-primary-900/20'
+                : 'border-gray-200 hover:border-gray-400 dark:border-dark-600 dark:hover:border-gray-600'
+            ]"
+            @click="cursorAuthMethod = 'browser'"
+          >
+            {{ t('admin.accounts.cursor.methodBrowser') }}
+          </button>
+          <button
+            type="button"
+            data-testid="cursor-method-manual"
+            :class="[
+              'rounded-lg border-2 p-2.5 text-left text-sm transition-all',
+              cursorAuthMethod === 'manual'
+                ? 'border-primary-500 bg-primary-50 dark:bg-primary-900/20'
+                : 'border-gray-200 hover:border-gray-400 dark:border-dark-600 dark:hover:border-gray-600'
+            ]"
+            @click="cursorAuthMethod = 'manual'"
+          >
+            {{ t('admin.accounts.cursor.methodManual') }}
+          </button>
+        </div>
+
+        <!-- Browser OAuth: open the link, sub2api polls until login completes -->
+        <div v-if="cursorAuthMethod === 'browser'" class="space-y-3 rounded-lg bg-gray-50 p-3 dark:bg-dark-700" data-testid="cursor-oauth-flow">
+          <p class="text-xs text-gray-500 dark:text-gray-400">{{ t('admin.accounts.cursor.oauthHint') }}</p>
+          <button
+            v-if="!cursorOAuthURL"
+            type="button"
+            class="btn btn-primary"
+            data-testid="cursor-oauth-start"
+            :disabled="cursorOAuthStarting"
+            @click="startCursorOAuthFlow"
+          >
+            {{ t('admin.accounts.cursor.oauthStart') }}
+          </button>
+          <template v-else>
+            <a :href="cursorOAuthURL" target="_blank" rel="noopener" class="btn btn-outline w-full truncate" data-testid="cursor-oauth-url">
+              {{ t('admin.accounts.cursor.oauthOpen') }}
+            </a>
+            <p v-if="!cursorAccessToken" class="text-xs text-amber-600 dark:text-amber-400" data-testid="cursor-oauth-waiting">
+              {{ t('admin.accounts.cursor.oauthWaiting') }}
+            </p>
+            <p v-if="cursorAccessToken" class="text-xs text-emerald-600 dark:text-emerald-400" data-testid="cursor-oauth-done">
+              {{ t('admin.accounts.cursor.oauthDone') }}
+            </p>
+            <p v-if="cursorOAuthError" class="text-xs text-red-600 dark:text-red-400" data-testid="cursor-oauth-error">
+              {{ cursorOAuthError }}
+            </p>
+          </template>
+        </div>
+
+        <p v-if="cursorAuthMethod === 'manual'" class="text-xs text-gray-500 dark:text-gray-400">{{ t('admin.accounts.cursor.hint') }}</p>
+        <div>
+          <label class="input-label">{{ t('admin.accounts.cursor.accessToken') }}</label>
+          <input
+            v-model="cursorAccessToken"
+            data-testid="cursor-access-token"
+            type="password"
+            autocomplete="off"
+            class="input font-mono"
+            :placeholder="t('admin.accounts.cursor.accessTokenPlaceholder')"
+          />
+          <p class="input-hint">{{ t('admin.accounts.cursor.accessTokenHint') }}</p>
+        </div>
+        <div>
+          <label class="input-label">{{ t('admin.accounts.cursor.refreshToken') }}</label>
+          <input
+            v-model="cursorRefreshToken"
+            data-testid="cursor-refresh-token"
+            type="password"
+            autocomplete="off"
+            class="input font-mono"
+            :placeholder="t('admin.accounts.cursor.refreshTokenPlaceholder')"
+          />
+          <p class="input-hint">{{ t('admin.accounts.cursor.refreshTokenHint') }}</p>
+        </div>
+        <div>
+          <label class="input-label">{{ t('admin.accounts.cursor.machineId') }}</label>
+          <input
+            v-model="cursorMachineId"
+            data-testid="cursor-machine-id"
+            type="text"
+            autocomplete="off"
+            spellcheck="false"
+            class="input font-mono"
+            :placeholder="t('admin.accounts.cursor.machineIdPlaceholder')"
+          />
+          <p class="input-hint">{{ t('admin.accounts.cursor.machineIdHint') }}</p>
+        </div>
+        <div>
+          <label class="input-label">{{ t('admin.accounts.cursor.macMachineId') }}</label>
+          <input
+            v-model="cursorMacMachineId"
+            data-testid="cursor-mac-machine-id"
+            type="text"
+            autocomplete="off"
+            spellcheck="false"
+            class="input font-mono"
+            :placeholder="t('admin.accounts.cursor.macMachineIdPlaceholder')"
+          />
+          <p class="input-hint">{{ t('admin.accounts.cursor.macMachineIdHint') }}</p>
+        </div>
+        <div>
+          <label class="input-label">{{ t('admin.accounts.cursor.clientVersion') }}</label>
+          <input
+            v-model="cursorClientVersion"
+            data-testid="cursor-client-version"
+            type="text"
+            autocomplete="off"
+            class="input font-mono"
+            :placeholder="t('admin.accounts.cursor.clientVersionPlaceholder')"
+          />
+          <p class="input-hint">{{ t('admin.accounts.cursor.clientVersionHint') }}</p>
+        </div>
+      </div>
+
+      <!-- Cursor / OpenAI / Grok model restriction: keep next to Cursor tokens so it is visible on create -->
+      <div
+        v-if="form.platform === 'cursor' || ((form.platform === 'openai' || form.platform === 'grok') && isOAuthFlow)"
+        class="border-t border-gray-200 pt-4 dark:border-dark-600"
+        data-testid="oauth-model-restriction"
+      >
+        <label class="input-label">{{ t('admin.accounts.modelRestriction') }}</label>
+        <p v-if="form.platform === 'cursor'" class="mb-3 text-xs text-gray-500 dark:text-gray-400">
+          {{ t('admin.accounts.cursor.modelRestrictionHint') }}
+        </p>
+
+        <div
+          v-if="isOpenAIModelRestrictionDisabled"
+          class="mb-3 rounded-lg bg-amber-50 p-3 dark:bg-amber-900/20"
+        >
+          <p class="text-xs text-amber-700 dark:text-amber-400">
+            {{ t('admin.accounts.openai.modelRestrictionDisabledByPassthrough') }}
+          </p>
+        </div>
+
+        <template v-else>
+          <!-- Mode Toggle -->
+          <div class="mb-4 flex gap-2">
+            <button
+              type="button"
+              @click="modelRestrictionMode = 'whitelist'"
+              :class="[
+                'flex-1 rounded-lg px-4 py-2 text-sm font-medium transition-all',
+                modelRestrictionMode === 'whitelist'
+                  ? 'bg-primary-100 text-primary-700 dark:bg-primary-900/30 dark:text-primary-400'
+                  : 'bg-gray-100 text-gray-600 hover:bg-gray-200 dark:bg-dark-600 dark:text-gray-400 dark:hover:bg-dark-500'
+              ]"
+            >
+              {{ t('admin.accounts.modelWhitelist') }}
+            </button>
+            <button
+              type="button"
+              @click="modelRestrictionMode = 'mapping'"
+              :class="[
+                'flex-1 rounded-lg px-4 py-2 text-sm font-medium transition-all',
+                modelRestrictionMode === 'mapping'
+                  ? 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400'
+                  : 'bg-gray-100 text-gray-600 hover:bg-gray-200 dark:bg-dark-600 dark:text-gray-400 dark:hover:bg-dark-500'
+              ]"
+            >
+              {{ t('admin.accounts.modelMapping') }}
+            </button>
+          </div>
+
+          <!-- Whitelist Mode -->
+          <div v-show="modelRestrictionMode === 'whitelist'">
+            <ModelWhitelistSelector
+              v-model="allowedModels"
+              :platform="form.platform"
+              :sync-credentials="syncPreviewCredentials"
+              @catalog-loaded="onWhitelistCatalogLoaded"
+            />
+            <p class="text-xs text-gray-500 dark:text-gray-400">
+              {{ t('admin.accounts.selectedModels', { count: allowedModels.length }) }}
+              <span v-if="allowedModels.length === 0">{{
+                t('admin.accounts.supportsAllModels')
+              }}</span>
+            </p>
+          </div>
+
+          <!-- Mapping Mode -->
+          <div v-show="modelRestrictionMode === 'mapping'">
+            <div class="mb-3 rounded-lg bg-purple-50 p-3 dark:bg-purple-900/20">
+              <p class="text-xs text-purple-700 dark:text-purple-400">
+                {{ t('admin.accounts.mapRequestModels') }}
+              </p>
+            </div>
+
+            <div v-if="modelMappings.length > 0" class="mb-3 space-y-2">
+              <div
+                v-for="(mapping, index) in modelMappings"
+                :key="'oauth-' + getModelMappingKey(mapping)"
+                class="flex items-center gap-2"
+              >
+                <input
+                  v-model="mapping.from"
+                  type="text"
+                  class="input flex-1"
+                  :placeholder="t('admin.accounts.requestModel')"
+                />
+                <svg
+                  class="h-4 w-4 flex-shrink-0 text-gray-400"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                >
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width="2"
+                    d="M14 5l7 7m0 0l-7 7m7-7H3"
+                  />
+                </svg>
+                <input
+                  v-model="mapping.to"
+                  type="text"
+                  class="input flex-1"
+                  list="oauth-mapping-targets"
+                  :placeholder="t('admin.accounts.actualModel')"
+                />
+                <button
+                  type="button"
+                  @click="removeModelMapping(index)"
+                  class="rounded-lg p-2 text-red-500 transition-colors hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-900/20"
+                >
+                  <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                      stroke-width="2"
+                      d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
+                    />
+                  </svg>
+                </button>
+              </div>
+            </div>
+            <datalist id="oauth-mapping-targets">
+              <option v-for="model in mappingTargetModels" :key="model" :value="model" />
+            </datalist>
+
+            <button
+              type="button"
+              @click="addModelMapping"
+              class="mb-3 w-full rounded-lg border-2 border-dashed border-gray-300 px-4 py-2 text-gray-600 transition-colors hover:border-gray-400 hover:text-gray-700 dark:border-dark-500 dark:text-gray-400 dark:hover:border-dark-400 dark:hover:text-gray-300"
+            >
+              + {{ t('admin.accounts.addMapping') }}
+            </button>
+
+            <!-- Quick Add Buttons -->
+            <div class="flex flex-wrap gap-2">
+              <button
+                v-for="preset in presetMappings"
+                :key="'oauth-' + preset.label"
+                type="button"
+                @click="addPresetMapping(preset.from, preset.to)"
+                :class="['rounded-lg px-3 py-1 text-xs transition-colors', preset.color]"
+              >
+                + {{ preset.label }}
+              </button>
+            </div>
+          </div>
+        </template>
+      </div>
+
+
       <!-- OpenCode Zen vs Go -->
       <div v-if="isOpenCodeGoPlatform">
         <label class="input-label">{{ t('admin.accounts.cnProviders.accountMode.title') }}</label>
@@ -532,7 +821,7 @@
         </div>
       </div>
 
-      <!-- Account Mode Selection (Kimi / Zhipu / DeepSeek) -->
+>      <!-- Account Mode Selection (Kimi / Zhipu / DeepSeek) -->
       <div v-if="isCNPlatform && !isOpenCodeGoPlatform">
         <label class="input-label">{{ t('admin.accounts.cnProviders.accountMode.title') }}</label>
         <div class="mt-2 grid grid-cols-1 gap-3 sm:grid-cols-2" data-tour="account-form-mode">
@@ -3886,7 +4175,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, computed, watch } from 'vue'
+import { ref, reactive, computed, watch, onUnmounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useAppStore } from '@/stores/app'
 
@@ -3940,10 +4229,13 @@ import CnBaseUrlPresets from '@/components/account/CnBaseUrlPresets.vue'
 import OpenCodeGoProtocolRulesEditor from '@/components/account/OpenCodeGoProtocolRulesEditor.vue'
 import HeaderOverrideEditor from '@/components/account/HeaderOverrideEditor.vue'
 import { allSelectedGroupsEnableLongContextPricing } from '@/components/account/longContextBilling'
+import { startCursorOAuth, pollCursorOAuth } from '@/api/admin/cursor'
 import {
   applyAntigravityProjectID,
   applyHeaderOverride,
   applyInterceptWarmup,
+  buildCursorCredentials,
+  CURSOR_DEFAULT_CLIENT_VERSION,
   applyOpenCodeGoProtocolRules,
   cloneOpenCodeGoProtocolRules,
   cnSupportsNativeResponses,
@@ -4153,6 +4445,74 @@ const apiKeyBaseUrl = ref('https://api.anthropic.com')
 const apiKeyValue = ref('')
 const upstreamBillingAutoProbeEnabled = ref(true)
 
+const cursorAccessToken = ref('')
+const cursorRefreshToken = ref('')
+const cursorMachineId = ref('')
+const cursorMacMachineId = ref('')
+const cursorClientVersion = ref(CURSOR_DEFAULT_CLIENT_VERSION)
+
+// ── Cursor 浏览器授权（deep-control 登录流）──
+// 管理员打开授权链接在 cursor.com 登录，前端轮询后端直到 Cursor 签发 token。
+const cursorAuthMethod = ref<'browser' | 'manual'>('manual')
+const cursorTokenKind = ref('')
+const cursorOAuthURL = ref('')
+const cursorOAuthUUID = ref('')
+const cursorOAuthVerifier = ref('')
+const cursorOAuthStarting = ref(false)
+const cursorOAuthError = ref('')
+let cursorOAuthTimer: ReturnType<typeof setInterval> | null = null
+let cursorOAuthAttempts = 0
+const CURSOR_OAUTH_MAX_ATTEMPTS = 90
+
+function stopCursorOAuthPolling() {
+  if (cursorOAuthTimer) {
+    clearInterval(cursorOAuthTimer)
+    cursorOAuthTimer = null
+  }
+}
+
+onUnmounted(stopCursorOAuthPolling)
+
+async function startCursorOAuthFlow() {
+  cursorOAuthError.value = ''
+  cursorOAuthStarting.value = true
+  try {
+    const res = await startCursorOAuth()
+    cursorOAuthURL.value = res.url
+    cursorOAuthUUID.value = res.uuid
+    cursorOAuthVerifier.value = res.verifier
+    cursorOAuthAttempts = 0
+    stopCursorOAuthPolling()
+    cursorOAuthTimer = setInterval(pollCursorOAuthOnce, 2000)
+  } catch (e) {
+    cursorOAuthError.value = e instanceof Error ? e.message : String(e)
+  } finally {
+    cursorOAuthStarting.value = false
+  }
+}
+
+async function pollCursorOAuthOnce() {
+  if (!cursorOAuthURL.value || cursorAccessToken.value) return
+  cursorOAuthAttempts++
+  if (cursorOAuthAttempts > CURSOR_OAUTH_MAX_ATTEMPTS) {
+    stopCursorOAuthPolling()
+    cursorOAuthError.value = t('admin.accounts.cursor.oauthTimeout')
+    return
+  }
+  try {
+    const res = await pollCursorOAuth(cursorOAuthUUID.value, cursorOAuthVerifier.value, form.proxy_id)
+    if (res.done && res.credentials?.access_token) {
+      stopCursorOAuthPolling()
+      cursorAccessToken.value = res.credentials.access_token
+      cursorRefreshToken.value = res.credentials.refresh_token || ''
+      cursorTokenKind.value = res.credentials.token_kind || 'deep_control'
+      appStore.showSuccess(t('admin.accounts.cursor.oauthDone'))
+    }
+  } catch {
+    // 单次轮询失败不打断流程，下一轮重试；连续失败由上限兜底。
+  }
+}
+
 // ── 国产供应商（Kimi / Zhipu / DeepSeek）账号类型、API 协议与端点 ──
 const accountMode = ref<CnAccountMode>('payg')
 const openCodeAccountMode = ref<OpenCodeAccountMode>('zen')
@@ -4326,6 +4686,18 @@ function onCnPresetSelect(preset: { mode: CnAccountMode; protocol: CnApiProtocol
 }
 
 const syncPreviewCredentials = computed(() => {
+  if (form.platform === 'cursor') {
+    const accessToken = cursorAccessToken.value.trim()
+    if (!accessToken) return undefined
+    return {
+      platform: 'cursor',
+      type: 'oauth',
+      access_token: accessToken,
+      machine_id: cursorMachineId.value.trim() || undefined,
+      mac_machine_id: cursorMacMachineId.value.trim() || undefined,
+      client_version: cursorClientVersion.value.trim() || undefined
+    }
+  }
   if (!apiKeyValue.value) return undefined
   const baseUrl = isMultiProtocolPlatform.value && apiProtocol.value === 'adaptive'
     ? adaptiveBaseUrls.value.chat_completions.trim() || apiKeyBaseUrl.value.trim()
@@ -4343,6 +4715,15 @@ const syncPreviewCredentials = computed(() => {
     ...(modelMapping ? { model_mapping: modelMapping } : {})
   }
 })
+
+const liveModelCatalog = ref<string[]>([])
+const mappingTargetModels = computed(() => {
+  if (liveModelCatalog.value.length > 0) return liveModelCatalog.value
+  return getModelsByPlatform(form.platform)
+})
+const onWhitelistCatalogLoaded = (models: string[]) => {
+  liveModelCatalog.value = models
+}
 
 const editQuotaLimit = ref<number | null>(null)
 const editQuotaDailyLimit = ref<number | null>(null)
@@ -4733,6 +5114,10 @@ const form = reactive({
 
 // Helper to check if current type needs OAuth flow
 const isOAuthFlow = computed(() => {
+  // Cursor Pro uses pasted tokens on step 1; there is no browser OAuth flow.
+  if (form.platform === 'cursor') {
+    return false
+  }
   // Antigravity upstream 类型不需要 OAuth 流程
   if (form.platform === 'antigravity' && antigravityAccountType.value === 'upstream') {
     return false
@@ -4807,6 +5192,10 @@ watch(
 watch(
   [accountCategory, addMethod, antigravityAccountType, () => form.platform],
   ([category, method, agType]) => {
+    if (form.platform === 'cursor') {
+      form.type = 'oauth'
+      return
+    }
     // Antigravity upstream 类型（实际创建为 apikey）
     if (form.platform === 'antigravity' && agType === 'upstream') {
       form.type = 'apikey'
@@ -4850,6 +5239,7 @@ watch(
     allowedModels.value = []
     upstreamModelsPreviewed.value = false
     modelMappings.value = []
+    liveModelCatalog.value = []
     // Antigravity: 默认使用映射模式并填充默认映射
     if (newPlatform === 'antigravity') {
       antigravityModelRestrictionMode.value = 'mapping'
@@ -4872,6 +5262,14 @@ watch(
       modelRestrictionMode.value = 'mapping'
       form.concurrency = 1
       form.load_factor = null
+    }
+    if (newPlatform === 'cursor') {
+      accountCategory.value = 'oauth-based'
+      addMethod.value = 'oauth'
+      form.type = 'oauth'
+      form.concurrency = 1
+      form.load_factor = null
+      form.group_ids = []
     }
     if (newPlatform !== 'gemini' && newPlatform !== 'anthropic' && accountCategory.value === 'service_account') {
       accountCategory.value = 'oauth-based'
@@ -5330,6 +5728,7 @@ const resetForm = () => {
   openAICompactModelMappings.value = []
   modelRestrictionMode.value = 'whitelist'
   allowedModels.value = [...claudeModels] // Default fill related models
+  liveModelCatalog.value = []
 
   antigravityModelRestrictionMode.value = 'mapping'
   antigravityWhitelistModels.value = []
@@ -5347,6 +5746,18 @@ const resetForm = () => {
   openAIImagesUrlToB64JsonEnabled.value = false
   grokOAuthCustomBaseUrlEnabled.value = false
   grokOAuthBaseUrl.value = ''
+  cursorAccessToken.value = ''
+  cursorRefreshToken.value = ''
+  cursorMachineId.value = ''
+  cursorMacMachineId.value = ''
+  cursorClientVersion.value = CURSOR_DEFAULT_CLIENT_VERSION
+  cursorAuthMethod.value = 'manual'
+  cursorTokenKind.value = ''
+  cursorOAuthURL.value = ''
+  cursorOAuthUUID.value = ''
+  cursorOAuthVerifier.value = ''
+  cursorOAuthError.value = ''
+  stopCursorOAuthPolling()
   interceptWarmupRequests.value = false
   autoPauseOnExpired.value = true
   openaiPassthroughEnabled.value = false
@@ -5758,6 +6169,30 @@ const handleSubmit = async () => {
     return
   }
 
+  if (form.platform === 'cursor') {
+    if (!form.name.trim()) {
+      appStore.showError(t('admin.accounts.pleaseEnterAccountName'))
+      return
+    }
+    const built = buildCursorCredentials(
+      {
+        accessToken: cursorAccessToken.value,
+        refreshToken: cursorRefreshToken.value,
+        machineId: cursorMachineId.value,
+        macMachineId: cursorMacMachineId.value,
+        clientVersion: cursorClientVersion.value,
+        tokenKind: cursorTokenKind.value
+      },
+      'create'
+    )
+    if (!built.ok) {
+      appStore.showError(t(built.errorKey))
+      return
+    }
+    await createAccountAndFinish('cursor', 'oauth', built.credentials)
+    return
+  }
+
   // For apikey type, create directly
   if (!apiKeyValue.value.trim()) {
     appStore.showError(t('admin.accounts.pleaseEnterApiKey'))
@@ -5980,6 +6415,8 @@ const createAccountAndFinish = async (
     if (!credentials.base_url) {
       credentials.base_url = apiKeyBaseUrl.value.trim() || 'https://api.x.ai/v1'
     }
+  }
+  if (platform === 'grok' || platform === 'cursor') {
     const modelMapping = buildModelMappingObject(modelRestrictionMode.value, allowedModels.value, modelMappings.value)
     if (modelMapping) {
       credentials.model_mapping = modelMapping

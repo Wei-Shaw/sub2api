@@ -9,6 +9,10 @@ import {
   applyInterceptWarmup,
   applyOpenCodeGoProtocolRules,
   applyPlanType,
+  buildCursorCredentials,
+  CURSOR_DEFAULT_CLIENT_VERSION,
+  isCursorTelemetryId,
+  normalizeCursorAccessToken,
   buildHeaderOverridesObject,
   buildPlanTypeOptions,
   cloneOpenCodeGoProtocolRules,
@@ -572,5 +576,150 @@ describe('plan_type helpers', () => {
       expect(out).toEqual({ email: 'a@b.c' })
       expect('plan_type' in out).toBe(false)
     })
+  })
+})
+
+describe('Cursor credentials', () => {
+  const machineId = 'a'.repeat(64)
+  const macMachineId = 'b'.repeat(64)
+
+  it('strips a userId:: prefix from the access token', () => {
+    expect(normalizeCursorAccessToken('user_01ABC::eyJhbGciOiJIUzI1NiJ9')).toBe(
+      'eyJhbGciOiJIUzI1NiJ9'
+    )
+    expect(normalizeCursorAccessToken('  eyJplain  ')).toBe('eyJplain')
+  })
+
+  it('accepts 64-char hex telemetry IDs and rejects UUIDs', () => {
+    expect(isCursorTelemetryId(machineId)).toBe(true)
+    expect(isCursorTelemetryId('A'.repeat(64))).toBe(true)
+    expect(isCursorTelemetryId('not-a-telemetry-id')).toBe(false)
+    expect(isCursorTelemetryId('123e4567-e89b-12d3-a456-426614174000')).toBe(false)
+  })
+
+  it('requires access token and telemetry IDs on create, defaulting client version', () => {
+    const missing = buildCursorCredentials(
+      {
+        accessToken: '',
+        refreshToken: '',
+        machineId: '',
+        macMachineId: '',
+        clientVersion: ''
+      },
+      'create'
+    )
+    expect(missing.ok).toBe(false)
+
+    const built = buildCursorCredentials(
+      {
+        accessToken: 'acct::tok',
+        refreshToken: 'rt',
+        machineId,
+        macMachineId,
+        clientVersion: ''
+      },
+      'create'
+    )
+    expect(built).toEqual({
+      ok: true,
+      credentials: {
+        access_token: 'tok',
+        refresh_token: 'rt',
+        machine_id: machineId,
+        mac_machine_id: macMachineId,
+        client_version: CURSOR_DEFAULT_CLIENT_VERSION
+      }
+    })
+  })
+
+  it('omits empty tokens on edit and rejects invalid telemetry IDs', () => {
+    const keep = buildCursorCredentials(
+      {
+        accessToken: '',
+        refreshToken: '',
+        machineId,
+        macMachineId,
+        clientVersion: '3.18.9'
+      },
+      'edit'
+    )
+    expect(keep).toEqual({
+      ok: true,
+      credentials: {
+        machine_id: machineId,
+        mac_machine_id: macMachineId,
+        client_version: '3.18.9'
+      }
+    })
+
+    const invalid = buildCursorCredentials(
+      {
+        accessToken: 'tok',
+        refreshToken: '',
+        machineId: 'short',
+        macMachineId: '',
+        clientVersion: ''
+      },
+      'edit'
+    )
+    expect(invalid.ok).toBe(false)
+  })
+})
+
+describe('buildCursorCredentials deep-control tokens', () => {
+  it('omits machine ids when tokenKind is deep_control', () => {
+    const built = buildCursorCredentials(
+      {
+        accessToken: 'at',
+        refreshToken: 'rt',
+        machineId: '',
+        macMachineId: '',
+        clientVersion: '',
+        tokenKind: 'deep_control'
+      },
+      'create'
+    )
+    expect(built.ok).toBe(true)
+    if (!built.ok) return
+    expect(built.credentials.access_token).toBe('at')
+    expect(built.credentials.refresh_token).toBe('rt')
+    expect(built.credentials.token_kind).toBe('deep_control')
+    expect(built.credentials.machine_id).toBeUndefined()
+    expect(built.credentials.mac_machine_id).toBeUndefined()
+    expect(built.credentials.client_version).toBeUndefined()
+  })
+
+  it('still validates pasted machine ids when present alongside deep-control tokens', () => {
+    const built = buildCursorCredentials(
+      {
+        accessToken: 'at',
+        refreshToken: '',
+        machineId: 'not-hex!',
+        macMachineId: '',
+        clientVersion: '',
+        tokenKind: 'deep_control'
+      },
+      'create'
+    )
+    expect(built.ok).toBe(false)
+    if (built.ok) return
+    expect(built.errorKey).toBe('admin.accounts.cursor.machineIdInvalid')
+  })
+
+  it('still requires machine ids for pasted session tokens', () => {
+    const built = buildCursorCredentials(
+      {
+        accessToken: 'at',
+        refreshToken: '',
+        machineId: '',
+        macMachineId: '',
+        clientVersion: '',
+        tokenKind: ''
+      },
+      'create'
+    )
+    expect(built.ok).toBe(false)
+    if (built.ok) return
+    expect(built.errorKey).toBe('admin.accounts.cursor.machineIdRequired')
   })
 })

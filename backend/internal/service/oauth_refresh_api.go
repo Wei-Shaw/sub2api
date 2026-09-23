@@ -171,6 +171,27 @@ func (api *OAuthRefreshAPI) RefreshIfNeeded(
 	executor OAuthRefreshExecutor,
 	refreshWindow time.Duration,
 ) (*OAuthRefreshResult, error) {
+	return api.refreshAccount(ctx, account, executor, refreshWindow, false)
+}
+
+// RefreshNow 在同一套锁保护下强制刷新，即使 executor 判定 token 仍然新鲜。
+// 供网关请求命中上游 401 后的凭据轮换使用——绕过锁直接刷新会让并发请求
+// 用同一个旧 refresh_token 竞争，在轮换型供应商上必然产生 invalid_grant。
+func (api *OAuthRefreshAPI) RefreshNow(
+	ctx context.Context,
+	account *Account,
+	executor OAuthRefreshExecutor,
+) (*OAuthRefreshResult, error) {
+	return api.refreshAccount(ctx, account, executor, 0, true)
+}
+
+func (api *OAuthRefreshAPI) refreshAccount(
+	ctx context.Context,
+	account *Account,
+	executor OAuthRefreshExecutor,
+	refreshWindow time.Duration,
+	force bool,
+) (*OAuthRefreshResult, error) {
 	if api == nil || api.accountRepo == nil {
 		return nil, errors.New("oauth refresh account repository is not configured")
 	}
@@ -246,8 +267,8 @@ func (api *OAuthRefreshAPI) RefreshIfNeeded(
 		return &OAuthRefreshResult{Account: freshAccount}, nil
 	}
 
-	// 3. 二次检查是否仍需刷新（另一条路径可能已刷新）
-	if !executor.NeedsRefresh(freshAccount, refreshWindow) {
+	// 3. 二次检查是否仍需刷新（另一条路径可能已刷新）；force 跳过该检查
+	if !force && !executor.NeedsRefresh(freshAccount, refreshWindow) {
 		return &OAuthRefreshResult{
 			Account: freshAccount,
 		}, nil

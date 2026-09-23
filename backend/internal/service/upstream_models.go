@@ -15,6 +15,7 @@ import (
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/antigravity"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/claude"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/cursor"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/geminicli"
 )
 
@@ -737,6 +738,10 @@ func (s *AccountTestService) fetchUpstreamModelList(ctx context.Context, account
 		return models, nil, err
 	}
 
+	if account.Platform == PlatformCursor {
+		return s.fetchCursorUpstreamModels(ctx, account)
+	}
+
 	if s.httpUpstream == nil {
 		return nil, nil, newUpstreamModelSyncConfigError("Upstream HTTP client is not configured", nil)
 	}
@@ -784,6 +789,26 @@ func (s *AccountTestService) fetchUpstreamModelList(ctx context.Context, account
 	}
 
 	return models, body, nil
+}
+
+func (s *AccountTestService) fetchCursorUpstreamModels(ctx context.Context, account *Account) ([]string, []byte, error) {
+	creds := cursorCredentialsFromAccount(account)
+	if creds.AccessToken == "" {
+		return nil, nil, newUpstreamModelSyncConfigError("Cursor access token is required", nil)
+	}
+	var fetch func(context.Context, cursor.Credentials) ([]cursor.AvailableModel, error)
+	if s != nil && s.cursorAvailableModels != nil {
+		fetch = s.cursorAvailableModels
+	}
+	models, err := fetchCursorCatalog(ctx, account, fetch)
+	if err != nil {
+		return nil, nil, newUpstreamModelSyncUpstreamError("Failed to fetch Cursor model picker", err)
+	}
+	ids := cursor.ModelIDs(models)
+	if len(ids) == 0 {
+		return nil, nil, newUpstreamModelSyncUpstreamError("Cursor returned no supported models", nil)
+	}
+	return ids, nil, nil
 }
 
 func (s *AccountTestService) buildUpstreamModelsRequest(ctx context.Context, account *Account) (*http.Request, error) {

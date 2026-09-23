@@ -60,6 +60,7 @@ func RegisterAdminRoutes(
 
 		// Grok OAuth
 		registerGrokOAuthRoutes(admin, h)
+		registerCursorOAuthRoutes(admin, h)
 
 		// 国产供应商（kimi/zhipu/deepseek）额度与余额
 		registerCNProviderRoutes(admin, h)
@@ -493,6 +494,14 @@ func registerGrokOAuthRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 		grok.GET("/accounts/:id/quota", h.Admin.GrokOAuth.QueryQuota)
 		grok.POST("/accounts/:id/reset-quota", h.Admin.GrokOAuth.ResetQuota)
 		grok.GET("/runtime-sanity", h.Admin.GrokOAuth.RuntimeSanity)
+	}
+}
+
+func registerCursorOAuthRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
+	cursorGroup := admin.Group("/cursor")
+	{
+		cursorGroup.POST("/oauth/start", h.Admin.CursorOAuth.StartAuth)
+		cursorGroup.POST("/oauth/poll", h.Admin.CursorOAuth.PollAuth)
 	}
 }
 
