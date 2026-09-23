@@ -6,6 +6,13 @@ export default mergeLocaleMessages(
   ops: {
     title: 'Giám sát vận hành',
     description: 'Giám sát vận hành và xử lý sự cố',
+    requestRetentionDays: 'Số ngày giữ yêu cầu',
+    requestRetentionDaysHint: 'Giữ nhật ký yêu cầu trong số ngày này; 0 = vĩnh viễn',
+    retentionDaysInvalid: 'Số ngày giữ phải là số nguyên không âm',
+    retentionDaysOption: 'Tùy chọn số ngày giữ',
+    retentionCustom: 'Tùy chỉnh (ngày)',
+    retentionForever: 'Vĩnh viễn',
+    runtimeConfigLoadFailed: 'Tải cấu hình runtime thất bại',
     systemLogs: {
       title: 'Nhật ký hệ thống',
       description: 'Mặc định sắp xếp mới nhất trước; hỗ trợ lọc, tìm kiếm và dọn theo điều kiện hiện tại.',

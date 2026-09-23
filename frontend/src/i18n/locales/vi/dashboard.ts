@@ -962,13 +962,17 @@ const additionsA = {
   },
 
   availableChannels: {
-  pricing: {
-    billingModeVideo: 'mỗi video',
-    imageInputPrice: 'Giá đầu vào hình ảnh',
+    pricing: {
+      videoPrice: 'Giá video',
+      unitPerSecond: '/ giây',
+      billingModeVideo: 'mỗi video',
+      imageInputPrice: 'Giá đầu vào hình ảnh',
   },
   },
 
   modelPlaza: {
+    reasoningMultiplierBadge: '{effort} ×{multiplier}',
+    reasoningMultiplierHint: 'Khi mức độ lý luận chuyển tiếp là {effort}, tính phí và sử dụng hạn mức cho yêu cầu được nhân với {multiplier}. Mức chưa cấu hình dùng 1×',
   title: 'Kho model',
   description: 'Duyệt các mô hình có sẵn và giá cả theo nhóm',
   loading: 'Đang tải...',

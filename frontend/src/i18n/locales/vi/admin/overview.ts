@@ -209,6 +209,78 @@ export default mergeLocaleMessages(
     }
     },
 
+    affiliates: {
+      invitesDescription: 'Xem mối quan hệ người mời và người được mời trên toàn site',
+      rebatesDescription: 'Xem mọi khoản tích lũy hoàn lại affiliate từ đơn nạp tiền, mã đổi quà và nạp tiền admin',
+      transfersDescription: 'Xem việc chuyển hạn mức affiliate vào số dư và rút ngoại tuyến',
+      errors: {
+        loadFailed: 'Không thể tải bản ghi affiliate',
+        AFFILIATE_QUOTA_INSUFFICIENT: 'Hạn mức affiliate khả dụng không đủ',
+        AFFILIATE_WITHDRAW_AMOUNT_INVALID: 'Số tiền rút không hợp lệ'
+      },
+      records: {
+        search: 'Tìm kiếm',
+        searchPlaceholder: 'Email, tên người dùng, ID người dùng, hoặc số đơn hàng',
+        startAt: 'Ngày bắt đầu',
+        endAt: 'Ngày kết thúc',
+        inviter: 'Người mời',
+        invitee: 'Người được mời',
+        user: 'Người dùng',
+        deviceCode: 'Mã thiết bị',
+        affCode: 'Mã mời',
+        order: 'Đơn hàng',
+        totalRebate: 'Tổng hoàn lại',
+        orderAmount: 'Số tiền nạp',
+        payAmount: 'Số tiền đã thanh toán',
+        rebateAmount: 'Số tiền hoàn lại',
+        paymentType: 'Phương thức thanh toán',
+        orderStatus: 'Trạng thái đơn hàng',
+        transferAmount: 'Số tiền chuyển',
+        balanceAfter: 'Số dư sau',
+        availableQuotaAfter: 'Khả dụng sau',
+        frozenQuotaAfter: 'Đóng băng sau',
+        historyQuotaAfter: 'Hoàn lại lịch sử sau',
+        invitedAt: 'Được mời lúc',
+        rebatedAt: 'Hoàn lại lúc',
+        transferredAt: 'Chuyển lúc',
+        outflowType: 'Loại'
+      },
+      outflowTypes: {
+        transfer: 'Chuyển vào số dư',
+        withdraw: 'Rút ngoại tuyến'
+      },
+      withdraw: {
+        button: 'Ghi nhận rút ngoại tuyến',
+        title: 'Ghi nhận rút ngoại tuyến',
+        user: 'Người dùng',
+        userPlaceholder: 'Tìm theo email hoặc tên người dùng',
+        noUserFound: 'Không tìm thấy người dùng',
+        changeUser: 'Đổi người dùng',
+        availableQuota: 'Hạn mức khả dụng',
+        frozenHint: 'Hoàn lại vẫn trong thời gian đóng băng không được tính vào hạn mức khả dụng',
+        amount: 'Số tiền rút (USD)',
+        amountHint: 'Nhập số tiền đã trả cho người dùng này ngoài trang web',
+        fillAll: 'Tất cả',
+        warning: 'Ghi nhận sẽ trừ số tiền này từ hạn mức affiliate khả dụng của người dùng và không thể hoàn tác. Đảm bảo thanh toán ngoại tuyến đã hoàn tất.',
+        submit: 'Xác nhận',
+        submitting: 'Đang ghi nhận...',
+        success: 'Đã ghi nhận rút ngoại tuyến {amount}; còn {remaining} khả dụng',
+        replayed: 'Lần rút ngoại tuyến {amount} này đã được ghi nhận và không trừ lại; còn {remaining} khả dụng sau đó',
+        uncertainHint: 'Lần gửi cuối không trả về kết quả và có thể đã được ghi nhận. Người dùng và số tiền đã bị khóa; gửi lại sẽ thử đăng ký lại và không bao giờ trừ hai lần.',
+        amountRequired: 'Nhập số tiền lớn hơn 0',
+        amountExceeds: 'Số tiền không được vượt quá hạn mức khả dụng'
+      },
+      overview: {
+        title: 'Tổng quan người dùng Affiliate',
+        affCode: 'Mã mời',
+        rebateRate: 'Tỷ lệ hoàn lại',
+        invitedCount: 'Số người được mời',
+        rebatedInviteeCount: 'Người được mời có hoàn lại',
+        availableQuota: 'Hạn mức khả dụng',
+        historyQuota: 'Hoàn lại lịch sử'
+      }
+    },
+
     dataManagement: {
     title: 'Quản lý dữ liệu',
     description: 'Quản lý tập trung trạng thái agent quản lý dữ liệu, cấu hình object storage và các tác vụ sao lưu',
@@ -382,49 +454,6 @@ export default mergeLocaleMessages(
       refreshJobs: 'Làm mới tác vụ',
       loadMore: 'Tải thêm'
     }
-    },
-
-    affiliates: {
-    errors: {
-      loadFailed: 'Không thể tải bản ghi affiliate',
-    },
-    invitesDescription: 'Xem quan hệ người mời và người được mời trên toàn hệ thống',
-    overview: {
-      affCode: 'Mã mời',
-      availableQuota: 'Quota khả dụng',
-      historyQuota: 'Hoa hồng tích lũy',
-      invitedCount: 'Người dùng đã mời',
-      rebateRate: 'Tỷ lệ hoàn hoa hồng',
-      rebatedInviteeCount: 'Số người được hoàn hoa hồng',
-      title: 'Tổng quan người dùng Affiliate',
-    },
-    rebatesDescription: 'Xem các đơn nạp tiền đã tạo hoa hồng affiliate',
-    records: {
-      affCode: 'Mã mời',
-      deviceCode: 'Mã thiết bị',
-      availableQuotaAfter: 'Quota khả dụng sau đó',
-      balanceAfter: 'Số dư sau đó',
-      endAt: 'Ngày kết thúc',
-      frozenQuotaAfter: 'Quota đóng băng sau đó',
-      historyQuotaAfter: 'Hoa hồng tích lũy sau đó',
-      invitedAt: 'Được mời lúc',
-      invitee: 'Người được mời',
-      inviter: 'Người mời',
-      order: 'Đơn hàng',
-      orderAmount: 'Số tiền nạp',
-      orderStatus: 'Trạng thái đơn hàng',
-      paymentType: 'Phương thức thanh toán',
-      rebateAmount: 'Số tiền hoa hồng',
-      rebatedAt: 'Hoàn hoa hồng lúc',
-      search: 'Tìm kiếm',
-      searchPlaceholder: 'Email, tên người dùng, ID người dùng hoặc số đơn hàng',
-      startAt: 'Ngày bắt đầu',
-      totalRebate: 'Tổng hoa hồng',
-      transferAmount: 'Số tiền chuyển',
-      transferredAt: 'Đã chuyển lúc',
-      user: 'Người dùng',
-    },
-    transfersDescription: 'Xem các lần chuyển quota affiliate vào số dư tài khoản',
     },
 
     // Users Management
@@ -1075,12 +1104,6 @@ export default mergeLocaleMessages(
       downloadPartsHint: 'Tải xuống mọi phần theo thứ tự và nối các byte gzip: trên Linux/macOS chạy cat payload.part-* > backup.sql.gz; trên Windows chạy bản sao /b payload.part-000001+payload.part-000002 backup.sql.gz.',
       partLabel: 'Phần {index}',
       downloadFailed: 'URL tải xuống trống',
-    },
-    },
-
-    affiliates: {
-    records: {
-      payAmount: 'Số tiền đã thanh toán',
     },
     },
 

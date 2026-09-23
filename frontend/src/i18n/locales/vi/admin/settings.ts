@@ -330,7 +330,13 @@ export default mergeLocaleMessages(
       maxVersionHint: 'Từ chối các yêu cầu từ client Claude Code có phiên bản cao hơn giá trị này (định dạng semver). Để trống để không giới hạn phiên bản tối đa.',
       antigravityVersion: 'Phiên bản User-Agent Antigravity',
       antigravityVersionPlaceholder: 'Ví dụ 1.23.2',
-      antigravityVersionHint: 'Dùng cho API upstream Antigravity. Để trống sẽ dùng ANTIGRAVITY_USER_AGENT_VERSION hoặc mặc định tích hợp 1.23.2; khi điền, cài đặt trong admin sẽ được ưu tiên.'
+      antigravityVersionHint: 'Dùng cho API upstream Antigravity. Để trống sẽ dùng ANTIGRAVITY_USER_AGENT_VERSION hoặc mặc định tích hợp 1.23.2; khi điền, cài đặt trong admin sẽ được ưu tiên.',
+      claudeCodeClientVersion: 'Phiên bản client Claude Code',
+      claudeCodeClientVersionHint: 'Phiên bản Claude Code CLI --version được báo cáo bởi kiểm tra chuyển tiếp gateway',
+      claudeCodeVersionAutoSync: 'Tự động đồng bộ phiên bản Claude Code',
+      claudeCodeVersionAutoSyncHint: 'Đồng bộ phiên bản client Claude Code thực tế của gateway vào trường này mỗi lần lưu',
+      claudeCodeVersionSynced: 'Đã đồng bộ từ gateway',
+      oauthRateInvalid: 'Tỷ lệ tham chiếu lập lịch OAuth phải là số không âm, hoặc để trống để dùng tỷ lệ tài khoản'
     },
     scheduling: {
       title: 'Cài đặt điều phối gateway',
