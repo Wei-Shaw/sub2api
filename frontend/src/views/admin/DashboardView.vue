@@ -415,18 +415,15 @@ const formatLocalDate = (date: Date): string => {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
 }
 
-const getLast24HoursRangeDates = (): { start: string; end: string } => {
-  const end = new Date()
-  const start = new Date(end.getTime() - 24 * 60 * 60 * 1000)
-  return {
-    start: formatLocalDate(start),
-    end: formatLocalDate(end)
-  }
+// Default chart range: today, so the charts match the "Today" stat cards above them
+const getTodayRangeDates = (): { start: string; end: string } => {
+  const today = formatLocalDate(new Date())
+  return { start: today, end: today }
 }
 
 // Date range
 const granularity = ref<'day' | 'hour'>('hour')
-const defaultRange = getLast24HoursRangeDates()
+const defaultRange = getTodayRangeDates()
 const startDate = ref(defaultRange.start)
 const endDate = ref(defaultRange.end)
 
