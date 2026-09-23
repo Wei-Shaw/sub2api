@@ -48,6 +48,9 @@ func (r *proxyRepository) Create(ctx context.Context, proxyIn *service.Proxy) er
 	if proxyIn.Password != "" {
 		builder.SetPassword(proxyIn.Password)
 	}
+	if proxyIn.ConsoleURL != "" {
+		builder.SetConsoleURL(proxyIn.ConsoleURL)
+	}
 	if proxyIn.ExpiresAt != nil {
 		builder.SetExpiresAt(*proxyIn.ExpiresAt)
 	}
@@ -165,6 +168,11 @@ func updateProxyAndInvalidateProbeSnapshots(ctx context.Context, client *dbent.C
 		builder.SetPassword(proxyIn.Password)
 	} else {
 		builder.ClearPassword()
+	}
+	if proxyIn.ConsoleURL != "" {
+		builder.SetConsoleURL(proxyIn.ConsoleURL)
+	} else {
+		builder.ClearConsoleURL()
 	}
 	if proxyIn.ExpiresAt != nil {
 		builder.SetExpiresAt(*proxyIn.ExpiresAt)
@@ -589,6 +597,7 @@ func proxyEntityToService(m *dbent.Proxy) *service.Proxy {
 		Protocol:       m.Protocol,
 		Host:           m.Host,
 		Port:           m.Port,
+		ConsoleURL:     proxyOptionalStringValue(m.ConsoleURL),
 		Status:         m.Status,
 		CreatedAt:      m.CreatedAt,
 		UpdatedAt:      m.UpdatedAt,
@@ -604,6 +613,13 @@ func proxyEntityToService(m *dbent.Proxy) *service.Proxy {
 		out.Password = *m.Password
 	}
 	return out
+}
+
+func proxyOptionalStringValue(value *string) string {
+	if value == nil {
+		return ""
+	}
+	return *value
 }
 
 func applyProxyEntityToService(dst *service.Proxy, src *dbent.Proxy) {

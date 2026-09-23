@@ -566,8 +566,9 @@ func ProxyFromServiceAdmin(p *service.Proxy) *AdminProxy {
 		return nil
 	}
 	return &AdminProxy{
-		Proxy:    *base,
-		Password: p.Password,
+		Proxy:      *base,
+		Password:   p.Password,
+		ConsoleURL: p.ConsoleURL,
 	}
 }
 
