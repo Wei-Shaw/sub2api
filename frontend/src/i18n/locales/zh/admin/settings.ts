@@ -470,6 +470,14 @@ export default {
         saved: 'Ollama Cloud 用量刷新设置已保存',
         saveFailed: '保存 Ollama Cloud 用量刷新设置失败'
       },
+      modelMetadataRegistry: {
+        title: '模型元数据源',
+        description: '配置用于补全模型元数据的 models.dev 兼容 Registry。',
+        url: 'Registry URL',
+        urlHint: '接口需要返回与 models.dev api.json 兼容的数据。',
+        ttl: '缓存 TTL（秒）',
+        ttlHint: '默认 21600 秒（6 小时），设为 0 可禁用缓存。'
+      },
       opencodeGoUsage: {
         title: 'OpenCode Go 用量刷新',
         description: '刷新上游 OpenCode Go 账号上报的用量窗口；默认关闭，仅对单独开启的账号生效。',
