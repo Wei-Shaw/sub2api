@@ -1780,6 +1780,20 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 			)
 		}
 
+		if guardedPayload, guardResult, guarded, guardErr := applyOpenAIResponsesToolLoopGuard(currentPayload); guardErr != nil {
+			return guardErr
+		} else if guarded {
+			currentPayload = guardedPayload
+			currentPayloadBytes = len(guardedPayload)
+			logOpenAIWSModeInfo(
+				"tool_loop_guard account_id=%d turn=%d tool=%s error_class=%s failures=%d transport=websocket_v2",
+				account.ID,
+				turn,
+				normalizeOpenAIWSLogValue(guardResult.ToolName),
+				normalizeOpenAIWSLogValue(guardResult.ErrorClass),
+				guardResult.FailureCount,
+			)
+		}
 		result, relayErr := sendAndRelay(turn, sessionLease, currentPayload, currentPayloadBytes, currentOriginalModel, currentImageBillingModel, currentImageSizeTier, currentImageInputSize, currentRequestedReasoningEffort)
 		if relayErr != nil {
 			lastTurnClean = false
