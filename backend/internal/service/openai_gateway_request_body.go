@@ -1871,9 +1871,9 @@ func (s *OpenAIGatewayService) evaluateOpenAIFastPolicy(ctx context.Context, acc
 }
 
 // shouldForceOpenAIFastPriorityForMissingTier reports whether a request that
-// omitted service_tier should be upgraded to priority. This is opt-in through
-// the dedicated "missing" tier matcher; legacy "all" rules continue to apply
-// only to requests that explicitly selected a recognized tier.
+// omitted service_tier should be upgraded to priority. Both "all" and the
+// dedicated "missing" matcher cover omitted tiers; "missing" remains useful
+// when administrators want a rule that does not affect explicitly sent tiers.
 func (s *OpenAIGatewayService) shouldForceOpenAIFastPriorityForMissingTier(ctx context.Context, account *Account, model string) bool {
 	if account == nil || account.Platform != PlatformOpenAI {
 		return false
@@ -1905,7 +1905,7 @@ func evaluateOpenAIFastPolicyWithSettings(settings *OpenAIFastPolicySettings, us
 			}
 			ruleTier := strings.ToLower(strings.TrimSpace(rule.ServiceTier))
 			if tier == OpenAIFastTierMissing {
-				if ruleTier != OpenAIFastTierMissing {
+				if ruleTier != "" && ruleTier != OpenAIFastTierAny && ruleTier != OpenAIFastTierMissing {
 					continue
 				}
 			} else if ruleTier != "" && ruleTier != OpenAIFastTierAny && ruleTier != tier {
