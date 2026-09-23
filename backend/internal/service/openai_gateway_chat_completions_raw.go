@@ -299,6 +299,8 @@ func (s *OpenAIGatewayService) streamRawChatCompletions(
 	pendingLines := make([]string, 0, 8)
 	refusalDetector := newOpenAIChatSilentRefusalDetector(requestBodyLen)
 	var terminal openAIRawStreamTerminalState
+	var streamError error
+	var eventType string
 
 	writeLine := func(line string) {
 		if clientDisconnected {
@@ -334,8 +336,35 @@ func (s *OpenAIGatewayService) streamRawChatCompletions(
 
 	for scanner.Scan() {
 		line := scanner.Text()
-		refusalDetector.ObserveSSELine(line)
+		if name, ok := extractOpenAISSEEventLine(line); ok {
+			eventType = name
+		}
 		if payload, ok := extractOpenAISSEDataLine(line); ok {
+			payloadBytes := []byte(payload)
+			payloadType := strings.TrimSpace(gjson.Get(payload, "type").String())
+			if gjson.Get(payload, "error").IsObject() || payloadType == "response.failed" || eventType == "error" || eventType == "response.failed" {
+				message := extractOpenAISSEErrorMessage(payloadBytes)
+				shouldFailover := openAIStreamErrorEventShouldFailover(payloadBytes, message)
+				if payloadType == "response.failed" || eventType == "response.failed" {
+					shouldFailover = openAIStreamFailedEventShouldFailover(payloadBytes, message)
+				}
+				if !clientOutputStarted && !clientDisconnected && shouldFailover {
+					return nil, s.newOpenAIStreamFailoverErrorWithModel(c, account, false, requestID, payloadBytes, message, upstreamModel, resp.Header)
+				}
+				message = s.recordOpenAIStreamUpstreamError(c, account, false, requestID, "http_error", payloadBytes, message)
+				streamError = fmt.Errorf("upstream response failed: %s", message)
+				// Discard the buffered preamble, but preserve the raw error event.
+				if !clientOutputStarted {
+					pendingLines = pendingLines[:0]
+					if eventType != "" {
+						pendingLines = append(pendingLines, "event: "+eventType)
+					}
+				}
+				refusalDetector.sawError = true
+			}
+			// Event names alone must not release a preamble before the error
+			// payload has been classified for failover.
+			refusalDetector.ObservePayload(payloadBytes)
 			trimmedPayload := strings.TrimSpace(payload)
 			terminal.ObserveDataLine(trimmedPayload)
 			if trimmedPayload != "[DONE]" {
@@ -355,7 +384,15 @@ func (s *OpenAIGatewayService) streamRawChatCompletions(
 
 		line = s.replaceModelInSSELine(line, upstreamModel, originalModel)
 		writeLine(line)
+		if streamError != nil {
+			writeLine("")
+			if !clientDisconnected {
+				c.Writer.Flush()
+			}
+			break
+		}
 		if line == "" {
+			eventType = ""
 			if !clientDisconnected && clientOutputStarted {
 				c.Writer.Flush()
 			}
@@ -383,6 +420,10 @@ func (s *OpenAIGatewayService) streamRawChatCompletions(
 			Duration:                      time.Since(startTime),
 			FirstTokenMs:                  firstTokenMs,
 		}
+	}
+
+	if streamError != nil {
+		return resultWithUsage(), streamError
 	}
 
 	scanErr := scanner.Err()
