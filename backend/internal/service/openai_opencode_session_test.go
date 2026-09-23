@@ -116,11 +116,14 @@ func TestApplyOpenCodeSessionHeaderTrustBoundary(t *testing.T) {
 			headers := make(http.Header)
 			applyOpenCodeSessionHeader(newOpenCodeSessionTestContext(t, tt.incoming), tt.account, tt.targetURL, headers)
 			got := headers.Get(openCodeSessionHeader)
-			if tt.want == "<generated>" {
+			switch tt.want {
+			case "":
+				require.Empty(t, got)
+			case "<generated>":
 				require.Regexp(t, `^ses_[0-9a-f]{12}[0-9A-Za-z]{14}$`, got)
-				return
+			default:
+				require.Equal(t, normalizeOpenCodeSessionID(tt.want), got)
 			}
-			require.Equal(t, tt.want, got)
 		})
 	}
 }
@@ -174,11 +177,20 @@ func TestApplyOpenCodeClientHeadersAddsNativeMetadata(t *testing.T) {
 
 func TestApplyOpenCodeSessionHeaderMapsCallerSessionID(t *testing.T) {
 	account := &Account{Platform: PlatformOpenCodeGo, Type: AccountTypeAPIKey}
-	c := newOpenCodeSessionTestContext(t, "")
-	c.Request.Header.Set("session_id", "conv-from-client")
-	headers := make(http.Header)
-	applyOpenCodeSessionHeader(c, account, "https://opencode.ai/zen/go/v1/chat/completions", headers)
-	require.Equal(t, "conv-from-client", headers.Get(openCodeSessionHeader))
+	const targetURL = "https://opencode.ai/zen/go/v1/chat/completions"
+
+	withCallerID := func() string {
+		c := newOpenCodeSessionTestContext(t, "")
+		c.Request.Header.Set("session_id", "conv-from-client")
+		headers := make(http.Header)
+		applyOpenCodeSessionHeader(c, account, targetURL, headers)
+		return headers.Get(openCodeSessionHeader)
+	}
+
+	first := withCallerID()
+	require.Regexp(t, `^ses_[0-9a-f]{12}[0-9A-Za-z]{14}$`, first)
+	require.NotEqual(t, "conv-from-client", first, "客户端不透明会话串不得原样出站")
+	require.Equal(t, first, withCallerID(), "同一会话跨轮必须稳定，否则丢失上游 prompt cache")
 }
 
 func TestApplyOpenCodeSessionHeaderRejectsControlCharsInPromptCacheKey(t *testing.T) {
@@ -194,15 +206,18 @@ func TestApplyOpenCodeSessionHeaderRejectsControlCharsInPromptCacheKey(t *testin
 
 func TestApplyOpenCodeSessionHeaderUsesPromptCacheKeyInsteadOfRandomUUID(t *testing.T) {
 	account := &Account{Platform: PlatformOpenCodeGo, Type: AccountTypeAPIKey}
-	body := []byte(`{"model":"grok-4.6","prompt_cache_key":"kimi-session-42","input":"hello"}`)
-	headers := make(http.Header)
-	applyOpenCodeSessionHeader(newOpenCodeSessionTestContext(t, ""), account, "https://opencode.ai/zen/go/v1/responses", headers, body)
-	require.Equal(t, "kimi-session-42", headers.Get(openCodeSessionHeader))
+	const targetURL = "https://opencode.ai/zen/go/v1/responses"
 
-	headers2 := make(http.Header)
-	laterTurn := []byte(`{"model":"grok-4.6","prompt_cache_key":"kimi-session-42","input":"follow up"}`)
-	applyOpenCodeSessionHeader(newOpenCodeSessionTestContext(t, ""), account, "https://opencode.ai/zen/go/v1/responses", headers2, laterTurn)
-	require.Equal(t, headers.Get(openCodeSessionHeader), headers2.Get(openCodeSessionHeader))
+	turn := func(input string) string {
+		body := []byte(`{"model":"grok-4.6","prompt_cache_key":"kimi-session-42","input":"` + input + `"}`)
+		headers := make(http.Header)
+		applyOpenCodeSessionHeader(newOpenCodeSessionTestContext(t, ""), account, targetURL, headers, body)
+		return headers.Get(openCodeSessionHeader)
+	}
+
+	first := turn("hello")
+	require.Equal(t, normalizeOpenCodeSessionID("kimi-session-42"), first)
+	require.Equal(t, first, turn("follow up"), "同一 prompt_cache_key 跨轮不得变化")
 }
 
 func TestApplyOpenCodeSessionHeaderUsesAnthropicMetadataUserID(t *testing.T) {
@@ -210,7 +225,7 @@ func TestApplyOpenCodeSessionHeaderUsesAnthropicMetadataUserID(t *testing.T) {
 	body := []byte(`{"model":"minimax-m3","metadata":{"user_id":"coding-agent-session"},"messages":[{"role":"user","content":"hi"}]}`)
 	headers := make(http.Header)
 	applyOpenCodeSessionHeader(newOpenCodeSessionTestContext(t, ""), account, "https://opencode.ai/zen/go/v1/messages", headers, body)
-	require.Equal(t, "coding-agent-session", headers.Get(openCodeSessionHeader))
+	require.Equal(t, normalizeOpenCodeSessionID("coding-agent-session"), headers.Get(openCodeSessionHeader))
 }
 
 func TestApplyOpenCodeSessionHeaderUnwrapsClaudeCodeMetadataSessionJSON(t *testing.T) {
@@ -218,7 +233,7 @@ func TestApplyOpenCodeSessionHeaderUnwrapsClaudeCodeMetadataSessionJSON(t *testi
 	body := []byte(`{"model":"claude-sonnet-4","metadata":{"user_id":"{\"session_id\":\"meta-session-xyz\"}"},"messages":[]}`)
 	headers := make(http.Header)
 	applyOpenCodeSessionHeader(newOpenCodeSessionTestContext(t, ""), account, "https://opencode.ai/zen/go/v1/messages", headers, body)
-	require.Equal(t, "meta-session-xyz", headers.Get(openCodeSessionHeader))
+	require.Equal(t, normalizeOpenCodeSessionID("meta-session-xyz"), headers.Get(openCodeSessionHeader))
 }
 
 func TestApplyOpenCodeSessionHeaderBodyBeatsGeneratedUUIDAndLosesToCallerHeader(t *testing.T) {
@@ -227,12 +242,12 @@ func TestApplyOpenCodeSessionHeaderBodyBeatsGeneratedUUIDAndLosesToCallerHeader(
 
 	headers := make(http.Header)
 	applyOpenCodeSessionHeader(newOpenCodeSessionTestContext(t, "from-header"), account, "https://opencode.ai/zen/go/v1/responses", headers, body)
-	require.Equal(t, "from-header", headers.Get(openCodeSessionHeader))
+	require.Equal(t, normalizeOpenCodeSessionID("from-header"), headers.Get(openCodeSessionHeader))
 
 	converted := []byte(`{"model":"minimax-m3","messages":[]}`)
 	headers2 := make(http.Header)
 	applyOpenCodeSessionHeader(newOpenCodeSessionTestContext(t, ""), account, "https://opencode.ai/zen/go/v1/messages", headers2, converted, body)
-	require.Equal(t, "from-body", headers2.Get(openCodeSessionHeader))
+	require.Equal(t, normalizeOpenCodeSessionID("from-body"), headers2.Get(openCodeSessionHeader))
 }
 
 func TestApplyOpenCodeSessionHeaderUsesRememberedInboundBodyAfterConversion(t *testing.T) {
@@ -243,14 +258,37 @@ func TestApplyOpenCodeSessionHeaderUsesRememberedInboundBodyAfterConversion(t *t
 	headers := make(http.Header)
 	convertedCC := []byte(`{"model":"deepseek-v4-flash","messages":[{"role":"user","content":"hello"}]}`)
 	applyOpenCodeSessionHeader(c, account, "https://opencode.ai/zen/go/v1/chat/completions", headers, convertedCC)
-	require.Equal(t, "inbound-responses-session", headers.Get(openCodeSessionHeader))
+	require.Equal(t, normalizeOpenCodeSessionID("inbound-responses-session"), headers.Get(openCodeSessionHeader))
 
 	c2 := newOpenCodeSessionTestContext(t, "")
 	rememberOpenCodeInboundBody(c2, []byte(`{"model":"grok-4.6","metadata":{"user_id":"inbound-messages-session"},"messages":[{"role":"user","content":"hi"}]}`))
 	headers2 := make(http.Header)
 	convertedResponses := []byte(`{"model":"grok-4.6","input":"hi"}`)
 	applyOpenCodeSessionHeader(c2, account, "https://opencode.ai/zen/go/v1/responses", headers2, convertedResponses)
-	require.Equal(t, "inbound-messages-session", headers2.Get(openCodeSessionHeader))
+	require.Equal(t, normalizeOpenCodeSessionID("inbound-messages-session"), headers2.Get(openCodeSessionHeader))
+}
+
+func TestNormalizeOpenCodeSessionID(t *testing.T) {
+	// 真实 OpenCode 客户端的合规 session id 原样透出，保留其上游 prompt cache。
+	already := "ses_0123456789abAbCdEfGhIjKlMn"
+	require.True(t, isOpenCodeSessionID(already))
+	require.Equal(t, already, normalizeOpenCodeSessionID(already))
+
+	// 非合规形状（含账号 header_overrides 里的固定串）必须重编码为 ses_ 形状，
+	// 否则 Zen 免费档以 403 FreeTierError 拒绝（回归 3ae63e8f8）。
+	for _, foreign := range []string{
+		"cliproxy-opencode-go-session",
+		"fixed-account-value",
+		"conversation-123",
+		"ses_x",
+		"ses_0123456789ABAbCdEfGhIjKl", // 大写 hex 前缀同样被拒
+		"550e8400-e29b-41d4-a716-446655440000",
+	} {
+		got := normalizeOpenCodeSessionID(foreign)
+		require.True(t, isOpenCodeSessionID(got), "%q 必须重编码为 ses_ 形状, got %q", foreign, got)
+		require.NotEqual(t, foreign, got)
+		require.Equal(t, got, normalizeOpenCodeSessionID(foreign), "同一输入必须得到同一 id")
+	}
 }
 
 func TestOpenCodeSessionIDFromPayloadIgnoresEmptyBody(t *testing.T) {
@@ -287,7 +325,7 @@ func TestOpenCodeSessionForwardedByResponsesBuildersAfterAccountOverride(t *test
 			c := newOpenCodeSessionTestContext(t, "conversation-456")
 			req, err := tt.build(c)
 			require.NoError(t, err)
-			requireSingleOpenCodeSessionHeader(t, req.Header, "conversation-456")
+			requireSingleOpenCodeSessionHeader(t, req.Header, normalizeOpenCodeSessionID("conversation-456"))
 		})
 	}
 }
@@ -307,10 +345,13 @@ func TestOpenCodeSessionForwardedFromPromptCacheKeyWithoutCallerHeader(t *testin
 	body := []byte(`{"model":"gpt-5","prompt_cache_key":"stable-cache-key","input":"hello"}`)
 	req, err := svc.buildUpstreamRequest(context.Background(), c, account, body, "token", false, "", false)
 	require.NoError(t, err)
-	requireSingleOpenCodeSessionHeader(t, req.Header, "stable-cache-key")
+	requireSingleOpenCodeSessionHeader(t, req.Header, normalizeOpenCodeSessionID("stable-cache-key"))
 }
 
 func TestOpenCodeSessionMissingCallerValueKeepsExistingOverrideBehavior(t *testing.T) {
+	// 回归：账号 header_overrides 里配置的固定 session 串（如
+	// "cliproxy-opencode-go-session"）不是客户端 ses_ 形状，原样出站会被 Zen
+	// 免费档以 403 FreeTierError 拒绝；出站前必须重编码，且保持稳定。
 	gin.SetMode(gin.TestMode)
 	svc := openCodeSessionTestService()
 	account := openCodeSessionTestAccount("https://opencode.ai/zen/v1")
@@ -321,7 +362,7 @@ func TestOpenCodeSessionMissingCallerValueKeepsExistingOverrideBehavior(t *testi
 		[]byte(`{"model":"gpt-5","input":"hello"}`), "token", false, "", false,
 	)
 	require.NoError(t, err)
-	require.Equal(t, "fixed-account-value", getHeaderRaw(req.Header, "x-opencode-session"))
+	require.Equal(t, normalizeOpenCodeSessionID("fixed-account-value"), getHeaderRaw(req.Header, "x-opencode-session"))
 }
 
 type openCodeSessionHTTPUpstream struct {
@@ -539,7 +580,7 @@ func TestOpenCodeSessionForwardedByRawChatCompletionsAfterAccountOverride(t *tes
 	require.NoError(t, err)
 	require.NoError(t, resp.Body.Close())
 	require.NotNil(t, upstream.request)
-	requireSingleOpenCodeSessionHeader(t, upstream.request.Header, "conversation-789")
+	requireSingleOpenCodeSessionHeader(t, upstream.request.Header, normalizeOpenCodeSessionID("conversation-789"))
 }
 
 func TestOpenCodeSessionIsNotForwardedToOtherUpstreams(t *testing.T) {
