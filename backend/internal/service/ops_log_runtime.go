@@ -14,15 +14,23 @@ import (
 )
 
 func defaultOpsRuntimeLogConfig(cfg *config.Config) *OpsRuntimeLogConfig {
+	requestRetentionDays := 90
+	if cfg != nil {
+		requestRetentionDays = cfg.DashboardAgg.Retention.UsageLogsDays
+		if !cfg.DashboardAgg.Enabled {
+			requestRetentionDays = 0
+		}
+	}
 	out := &OpsRuntimeLogConfig{
-		Level:             "info",
-		PersistAccessLogs: false,
-		EnableSampling:    false,
-		SamplingInitial:   100,
-		SamplingNext:      100,
-		Caller:            true,
-		StacktraceLevel:   "error",
-		RetentionDays:     30,
+		Level:                "info",
+		PersistAccessLogs:    false,
+		EnableSampling:       false,
+		SamplingInitial:      100,
+		SamplingNext:         100,
+		Caller:               true,
+		StacktraceLevel:      "error",
+		RetentionDays:        30,
+		RequestRetentionDays: &requestRetentionDays,
 	}
 	if cfg == nil {
 		return out
@@ -60,6 +68,10 @@ func normalizeOpsRuntimeLogConfig(cfg *OpsRuntimeLogConfig, defaults *OpsRuntime
 	if cfg.RetentionDays <= 0 {
 		cfg.RetentionDays = defaults.RetentionDays
 	}
+	if cfg.RequestRetentionDays == nil && defaults.RequestRetentionDays != nil {
+		days := *defaults.RequestRetentionDays
+		cfg.RequestRetentionDays = &days
+	}
 }
 
 func validateOpsRuntimeLogConfig(cfg *OpsRuntimeLogConfig) error {
@@ -84,6 +96,9 @@ func validateOpsRuntimeLogConfig(cfg *OpsRuntimeLogConfig) error {
 	}
 	if cfg.RetentionDays < 1 || cfg.RetentionDays > 3650 {
 		return errors.New("retention_days must be between 1 and 3650")
+	}
+	if cfg.RequestRetentionDays != nil && (*cfg.RequestRetentionDays < 0 || *cfg.RequestRetentionDays > 3650) {
+		return errors.New("request_retention_days must be between 0 and 3650")
 	}
 	return nil
 }
@@ -139,6 +154,9 @@ func (s *OpsService) UpdateRuntimeLogConfig(ctx context.Context, req *OpsRuntime
 		return nil, err
 	}
 	next := *req
+	if next.RequestRetentionDays == nil {
+		next.RequestRetentionDays = oldCfg.RequestRetentionDays
+	}
 	normalizeOpsRuntimeLogConfig(&next, defaultOpsRuntimeLogConfig(s.cfg))
 	if err := validateOpsRuntimeLogConfig(&next); err != nil {
 		s.auditRuntimeLogConfigFailure(operatorID, oldCfg, &next, "validation_failed: "+err.Error())

@@ -4,14 +4,42 @@ import {
   apiTimePricingToForm,
   createDefaultTimePricingForm,
   formIntervalsToAPI,
+  formReasoningEffortMultipliersToAPI,
   formTimePricingToAPI,
   isValidPositiveMultiplier,
   validateIntervals,
+  validateReasoningEffortMultipliers,
   validateTimePricing,
   type IntervalFormEntry,
   type TimePricingFormEntry,
   type TimePricingPeriodFormEntry,
 } from '../types'
+
+describe('reasoning effort multipliers', () => {
+  it('serializes independent overrides without altering their values', () => {
+    expect(formReasoningEffortMultipliersToAPI({ none: '0.5', high: 1, max: '3', low: '' }))
+      .toEqual({ none: 0.5, high: 1, max: 3 })
+  })
+
+  it.each([null, undefined, {}, { max: '' }])('clears empty overrides with null: %j', value => {
+    expect(formReasoningEffortMultipliersToAPI(value)).toBeNull()
+    expect(validateReasoningEffortMultipliers(value, t)).toBeNull()
+  })
+
+  it('accepts supported levels with positive finite multipliers, including discounts', () => {
+    expect(validateReasoningEffortMultipliers({
+      none: 0.01, minimal: 0.5, low: 1, medium: '1.2', high: 2, xhigh: 2.5, max: 3,
+    }, t)).toBeNull()
+  })
+
+  it.each([0, -1, Infinity, NaN, 'invalid', 'Infinity'])('rejects invalid multiplier %s', multiplier => {
+    expect(validateReasoningEffortMultipliers({ high: multiplier }, t)).toContain('reasoningEffortMultiplierPositive')
+  })
+
+  it('rejects unsupported effort keys', () => {
+    expect(validateReasoningEffortMultipliers({ unknown: 2 }, t)).toContain('reasoningEffortLevelInvalid')
+  })
+})
 
 describe('interval multiplier conversion', () => {
   it('preserves component multipliers without MTok conversion', () => {
