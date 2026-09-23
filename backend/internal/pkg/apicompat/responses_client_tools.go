@@ -13,6 +13,7 @@ import (
 type ResponsesClientToolMapping struct {
 	CustomTools    map[string]bool
 	ToolSearch     bool
+	WebSearch      bool
 	NamespaceTools map[string]ResponsesNamespaceName
 }
 
@@ -303,7 +304,7 @@ func normalizeLoweredFunctionItemID(item map[string]any) {
 
 // responsesToolCallItemIDPrefixes lists the Responses item ID prefixes that are
 // tied to a specific tool-call item type.
-var responsesToolCallItemIDPrefixes = []string{"fc_", "ctc_", "tsc_"}
+var responsesToolCallItemIDPrefixes = []string{"fc_", "ctc_", "tsc_", "ws_"}
 
 // responsesToolCallItemIDPrefix reports the ID prefix the Responses API
 // validates for itemType, or "" when the type constrains no prefix.
@@ -313,6 +314,8 @@ func responsesToolCallItemIDPrefix(itemType string) string {
 		return "ctc_"
 	case "tool_search_call":
 		return "tsc_"
+	case "web_search_call":
+		return "ws_"
 	case "function_call":
 		return "fc_"
 	default:
@@ -526,6 +529,19 @@ func restoreClientToolValue(value any, adapter *ResponsesClientToolMapping) bool
 				delete(typed, "name")
 				delete(typed, "namespace")
 				changed = true
+			} else if adapter.WebSearch && name == webSearchProxyName {
+				typed["type"] = "web_search_call"
+				retypeResponsesToolCallItemID(typed, "web_search_call")
+				query := extractWebSearchQuery(rawObjectString(typed["arguments"]))
+				typed["action"] = map[string]any{
+					"type":  "search",
+					"query": query,
+				}
+				typed["status"] = "completed"
+				delete(typed, "arguments")
+				delete(typed, "name")
+				delete(typed, "namespace")
+				changed = true
 			}
 		}
 		for _, child := range typed {
@@ -588,6 +604,12 @@ func (r *ResponsesClientToolStreamRestorer) Restore(event ResponsesStreamEvent) 
 				event.Item.Input = ""
 				event.Item.Arguments = ""
 				event.Item.Namespace = ""
+			} else if call.kind == "web_search" {
+				event.Item.Type = "web_search_call"
+				event.Item.Name = ""
+				event.Item.Arguments = ""
+				event.Item.Namespace = ""
+				event.Item.Action = &WebSearchAction{Type: "search"}
 			} else {
 				event.Item.Type = "tool_search_call"
 				event.Item.Name = ""
@@ -628,6 +650,14 @@ func (r *ResponsesClientToolStreamRestorer) Restore(event ResponsesStreamEvent) 
 				event.Item.Input = extractCustomToolCallInput(call.arguments.String())
 				event.Item.Arguments = ""
 				event.Item.Namespace = ""
+			} else if call.kind == "web_search" {
+				event.Item.Type = "web_search_call"
+				event.Item.Name = ""
+				event.Item.Arguments = ""
+				event.Item.Namespace = ""
+				query := extractWebSearchQuery(call.arguments.String())
+				event.Item.Action = &WebSearchAction{Type: "search", Query: query}
+				event.Item.Status = "completed"
 			} else {
 				event.Item.Type = "tool_search_call"
 				event.Item.Name = ""
@@ -734,7 +764,7 @@ func (r *ResponsesClientToolStreamRestorer) clientToolEventPayload(payload []byt
 			return false
 		}
 		_, namespaceTool := r.adapter.NamespaceTools[raw.Item.Name]
-		return r.adapter.CustomTools[raw.Item.Name] || (r.adapter.ToolSearch && raw.Item.Name == toolSearchProxyName) || namespaceTool || r.calls[raw.Item.ID] != nil || r.calls[raw.Item.CallID] != nil
+		return r.adapter.CustomTools[raw.Item.Name] || (r.adapter.ToolSearch && raw.Item.Name == toolSearchProxyName) || (r.adapter.WebSearch && raw.Item.Name == webSearchProxyName) || namespaceTool || r.calls[raw.Item.ID] != nil || r.calls[raw.Item.CallID] != nil
 	}
 	if _, namespaceTool := r.adapter.NamespaceTools[raw.Name]; namespaceTool {
 		return true
@@ -779,10 +809,14 @@ func (r *ResponsesClientToolStreamRestorer) resequenceRaw(payload []byte, sequen
 // responsesClientToolItemType maps a restorer call kind to the item type the
 // client sees.
 func responsesClientToolItemType(kind string) string {
-	if kind == "custom" {
+	switch kind {
+	case "custom":
 		return "custom_tool_call"
+	case "web_search":
+		return "web_search_call"
+	default:
+		return "tool_search_call"
 	}
-	return "tool_search_call"
 }
 
 func (r *ResponsesClientToolStreamRestorer) recordItem(event ResponsesStreamEvent) *responsesClientToolStreamCall {
@@ -795,6 +829,8 @@ func (r *ResponsesClientToolStreamRestorer) recordItem(event ResponsesStreamEven
 		kind = "custom"
 	} else if r.adapter.ToolSearch && name == toolSearchProxyName {
 		kind = "tool_search"
+	} else if r.adapter.WebSearch && name == webSearchProxyName {
+		kind = "web_search"
 	}
 	if kind == "" {
 		return nil
@@ -875,9 +911,26 @@ func restoreResponsesOutputClientTools(outputs []ResponsesOutput, adapter *Respo
 			output.ID = retypedResponsesToolCallItemID(output.ID, output.Type)
 			output.Name = ""
 			output.Namespace = ""
+		} else if adapter.WebSearch && output.Name == webSearchProxyName {
+			output.Type = "web_search_call"
+			output.ID = retypedResponsesToolCallItemID(output.ID, output.Type)
+			output.Name = ""
+			output.Namespace = ""
+			query := extractWebSearchQuery(output.Arguments)
+			output.Action = &WebSearchAction{Type: "search", Query: query}
+			output.Arguments = ""
+			output.Status = "completed"
 		}
 		if name, ok := adapter.NamespaceTools[output.Name]; ok && output.Type == "function_call" {
 			output.Name, output.Namespace = name.Name, name.Namespace
 		}
 	}
+}
+
+func extractWebSearchQuery(arguments string) string {
+	var parsed struct {
+		Query string `json:"query"`
+	}
+	_ = json.Unmarshal([]byte(arguments), &parsed)
+	return parsed.Query
 }

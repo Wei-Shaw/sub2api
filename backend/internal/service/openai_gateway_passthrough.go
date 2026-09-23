@@ -28,7 +28,7 @@ import (
 const openAIResponsesClientToolMappingContextKey = "openai_responses_client_tool_mapping"
 
 func hasOpenAIResponsesClientToolMapping(mapping apicompat.ResponsesClientToolMapping) bool {
-	return len(mapping.CustomTools) > 0 || mapping.ToolSearch || len(mapping.NamespaceTools) > 0
+	return len(mapping.CustomTools) > 0 || mapping.ToolSearch || mapping.WebSearch || len(mapping.NamespaceTools) > 0
 }
 
 func adaptOpenAIResponsesClientTools(body []byte) ([]byte, apicompat.ResponsesClientToolMapping, error) {

@@ -80,6 +80,11 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 	} else if toolSchemaSanitized {
 		body = sanitizedToolBody
 	}
+	if adaptedWebSearchBody, webSearchAdapted, adaptErr := s.adaptOpenAIResponsesWebSearchTool(ctx, c, account, body); adaptErr != nil {
+		return nil, adaptErr
+	} else if webSearchAdapted {
+		body = adaptedWebSearchBody
+	}
 	if account.IsOpenAIOAuthLike() {
 		reasoningBody, reasoningChanged, reasoningErr := normalizeOpenAIResponsesReasoningMode(body)
 		if reasoningErr != nil {
