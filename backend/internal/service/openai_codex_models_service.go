@@ -2054,9 +2054,21 @@ func CodexModelsManifestETag(body []byte) string {
 
 var apiKeyCodexModelsWithoutResponsesLite = map[string]struct{}{
 	"gpt-6-astra":   {},
+	"gpt-6-sol":     {},
+	"gpt-6-luna":    {},
 	"gpt-5.6-sol":   {},
 	"gpt-5.6-terra": {},
 	"gpt-5.6-luna":  {},
+}
+
+func codexGPT6SolLunaBaseModel(model string) string {
+	canonical := canonicalizeOpenAIModelAliasSpelling(model)
+	for _, base := range []string{"gpt-6-sol", "gpt-6-luna"} {
+		if canonical == base || strings.HasPrefix(canonical, base+"-") {
+			return base
+		}
+	}
+	return ""
 }
 
 // adjustAPIKeyCodexModelsManifest prevents Codex from selecting Responses
@@ -2089,6 +2101,8 @@ func adjustAPIKeyCodexModelsManifest(body []byte, account *Account) ([]byte, err
 		}
 		if isOpenAIGPT6AstraModel(target) {
 			target = "gpt-6-astra"
+		} else if base := codexGPT6SolLunaBaseModel(target); base != "" {
+			target = base
 		}
 		if _, targeted := apiKeyCodexModelsWithoutResponsesLite[target]; !targeted {
 			continue

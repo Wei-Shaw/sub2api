@@ -415,23 +415,26 @@ func TestNewConfiguredCodexModelDescriptorUsesProviderMetadataAndSafeFallback(t 
 	require.Equal(t, configuredCodexTruncationPolicy{Mode: "bytes", Limit: 10_000}, custom.TruncationPolicy)
 }
 
-func TestBuildCodexModelsManifestUsesGPT6AstraInstructions(t *testing.T) {
-	body, err := BuildCodexModelsManifest([]string{"gpt-6-astra"})
+func TestBuildCodexModelsManifestUsesGPT6Instructions(t *testing.T) {
+	body, err := BuildCodexModelsManifest([]string{"gpt-6-astra", "gpt-6-sol", "gpt-6-luna"})
 	require.NoError(t, err)
 
 	var manifest struct {
 		Models []struct {
+			Slug          string `json:"slug"`
 			ModelMessages struct {
 				InstructionsTemplate string `json:"instructions_template"`
 			} `json:"model_messages"`
 		} `json:"models"`
 	}
 	require.NoError(t, json.Unmarshal(body, &manifest))
-	require.Len(t, manifest.Models, 1)
-	require.True(t, strings.HasPrefix(
-		strings.TrimSpace(manifest.Models[0].ModelMessages.InstructionsTemplate),
-		"You are Codex, an agent based on GPT-6.",
-	))
+	require.Len(t, manifest.Models, 3)
+	for _, model := range manifest.Models {
+		require.True(t, strings.HasPrefix(
+			strings.TrimSpace(model.ModelMessages.InstructionsTemplate),
+			"You are Codex, an agent based on GPT-6.",
+		), model.Slug)
+	}
 }
 
 func effortsFromConfiguredCodexLevels(levels []configuredCodexReasoningLevel) []string {
@@ -2349,8 +2352,8 @@ func TestAdjustAPIKeyCodexModelsManifest(t *testing.T) {
 	}{
 		{
 			name: "affected models disable responses lite and preserve unknown fields",
-			body: `{"models":[{"slug":"gpt-6-astra","use_responses_lite":true},{"slug":"gpt-5.6-sol","use_responses_lite":true,"unknown_model":{"enabled":true}},{"slug":"gpt-5.6-terra","use_responses_lite":true},{"slug":"gpt-5.6-luna","use_responses_lite":true}],"unknown_top":{"version":1}}`,
-			want: `{"models":[{"slug":"gpt-6-astra","use_responses_lite":false},{"slug":"gpt-5.6-sol","unknown_model":{"enabled":true},"use_responses_lite":false},{"slug":"gpt-5.6-terra","use_responses_lite":false},{"slug":"gpt-5.6-luna","use_responses_lite":false}],"unknown_top":{"version":1}}`,
+			body: `{"models":[{"slug":"gpt-6-astra","use_responses_lite":true},{"slug":"gpt-6-sol","use_responses_lite":true},{"slug":"gpt-6-luna","use_responses_lite":true},{"slug":"gpt-5.6-sol","use_responses_lite":true,"unknown_model":{"enabled":true}},{"slug":"gpt-5.6-terra","use_responses_lite":true},{"slug":"gpt-5.6-luna","use_responses_lite":true}],"unknown_top":{"version":1}}`,
+			want: `{"models":[{"slug":"gpt-6-astra","use_responses_lite":false},{"slug":"gpt-6-sol","use_responses_lite":false},{"slug":"gpt-6-luna","use_responses_lite":false},{"slug":"gpt-5.6-sol","unknown_model":{"enabled":true},"use_responses_lite":false},{"slug":"gpt-5.6-terra","use_responses_lite":false},{"slug":"gpt-5.6-luna","use_responses_lite":false}],"unknown_top":{"version":1}}`,
 		},
 		{
 			name: "unaffected model unchanged",
@@ -2373,8 +2376,20 @@ func TestAdjustAPIKeyCodexModelsManifest(t *testing.T) {
 	}
 }
 
+func TestAdjustAPIKeyCodexModelsManifestForMappedGPT6SolAndLuna(t *testing.T) {
+	account := newCodexModelsAPIKeyTestAccount("https://api.openai.com/v1")
+	account.Credentials["model_mapping"] = map[string]any{
+		"public-sol":  "openai/gpt-6-sol-2026-09-23",
+		"public-luna": "OPENAI/GPT-6_LUNA",
+	}
+	body := []byte(`{"models":[{"slug":"public-sol","use_responses_lite":true},{"slug":"public-luna","use_responses_lite":true},{"slug":"gpt-6-solar","use_responses_lite":true}]}`)
+	got, err := adjustAPIKeyCodexModelsManifest(body, account)
+	require.NoError(t, err)
+	require.JSONEq(t, `{"models":[{"slug":"public-sol","use_responses_lite":false},{"slug":"public-luna","use_responses_lite":false},{"slug":"gpt-6-solar","use_responses_lite":true}]}`, string(got))
+}
+
 func TestFetchCodexModelsManifestAPIKeyDisablesResponsesLiteForAffectedModels(t *testing.T) {
-	const upstreamBody = `{"models":[{"slug":"gpt-5.6-sol","use_responses_lite":true},{"slug":"gpt-5.6-codex","use_responses_lite":true}],"metadata":{"version":1}}`
+	const upstreamBody = `{"models":[{"slug":"gpt-6-sol","use_responses_lite":true},{"slug":"gpt-6-luna","use_responses_lite":true},{"slug":"gpt-5.6-sol","use_responses_lite":true},{"slug":"gpt-5.6-codex","use_responses_lite":true}],"metadata":{"version":1}}`
 	upstream := &codexModelsHTTPUpstreamStub{do: func(_ *http.Request, _ string, _ int64, _ int) (*http.Response, error) {
 		return &http.Response{
 			StatusCode: http.StatusOK,
@@ -2386,7 +2401,7 @@ func TestFetchCodexModelsManifestAPIKeyDisablesResponsesLiteForAffectedModels(t 
 	s := newCodexModelsAPIKeyTestService(upstream)
 	manifest, err := s.FetchCodexModelsManifest(context.Background(), newCodexModelsAPIKeyTestAccount("https://upstream.example"), "0.145.0", "")
 	require.NoError(t, err)
-	require.JSONEq(t, `{"models":[{"slug":"gpt-5.6-sol","use_responses_lite":false},{"slug":"gpt-5.6-codex","use_responses_lite":true}],"metadata":{"version":1}}`, string(manifest.Body))
+	require.JSONEq(t, `{"models":[{"slug":"gpt-6-sol","use_responses_lite":false},{"slug":"gpt-6-luna","use_responses_lite":false},{"slug":"gpt-5.6-sol","use_responses_lite":false},{"slug":"gpt-5.6-codex","use_responses_lite":true}],"metadata":{"version":1}}`, string(manifest.Body))
 	require.Equal(t, codexModelsManifestBodyETag(manifest.Body), manifest.ETag)
 	require.Equal(t, `"upstream-strong"`, manifest.upstreamETag)
 
@@ -2397,7 +2412,7 @@ func TestFetchCodexModelsManifestAPIKeyDisablesResponsesLiteForAffectedModels(t 
 }
 
 func TestFetchCodexModelsManifestOAuthPreservesResponsesLite(t *testing.T) {
-	const manifestBody = ` {"models":[{"slug":"gpt-5.6-sol","use_responses_lite":true}]} `
+	const manifestBody = ` {"models":[{"slug":"gpt-6-sol","use_responses_lite":true},{"slug":"gpt-6-luna","use_responses_lite":true},{"slug":"gpt-5.6-sol","use_responses_lite":true}]} `
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		_, _ = w.Write([]byte(manifestBody))
 	}))
