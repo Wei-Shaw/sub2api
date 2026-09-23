@@ -46,6 +46,13 @@ func RegisterAdminRoutes(
 		// 账号管理
 		registerAccountRoutes(admin, h, stepUpAuth)
 
+		// 管理员原始上游账单 API：复用 admin API key / admin JWT 认证。
+		upstreamBilling := admin.Group("/upstream-billing")
+		upstreamBilling.Use(panelRateLimiter.Heavy())
+		upstreamBilling.GET("/capabilities", h.UpstreamBilling.AdminCapabilities)
+		upstreamBilling.GET("/bills", h.UpstreamBilling.AdminBills)
+		upstreamBilling.GET("/bills/:id", h.UpstreamBilling.AdminBill)
+
 		// 公告管理
 		registerAnnouncementRoutes(admin, h)
 

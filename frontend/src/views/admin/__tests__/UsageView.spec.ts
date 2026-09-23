@@ -4,6 +4,8 @@ import { defineComponent, ref } from 'vue'
 
 import UsageView from '../UsageView.vue'
 
+vi.mock('@/components/usage/UpstreamBillingSummary.vue', () => ({ default: { template: '<div />' } }))
+
 const { list, exportList, getStats, getSnapshotV2, getById, getModelStats, listErrorLogs, routeQuery, aoaToSheet, sheetAddAoa, saveAs, xlsxWrite } = vi.hoisted(() => {
   vi.stubGlobal('localStorage', {
     getItem: vi.fn(() => null),

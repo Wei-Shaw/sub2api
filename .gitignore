@@ -33,6 +33,7 @@ backend/.gocache/
 # Node.js / Vue 前端
 # ===================
 node_modules/
+.pnpm-store/
 frontend/node_modules/
 frontend/dist/
 *.local
@@ -141,6 +142,8 @@ docs/*
 !docs/BATCH_IMAGE_MVP.md
 !docs/COMPOSITE_GROUPS.md
 !docs/PLUGIN_DEVELOPMENT.md
+!docs/UPSTREAM_BILLING.md
+!docs/upstream-billing-providers.md
 !docs/channel-monitor-v2-safe-defaults.md
 !docs/codex-credits.md
 !docs/legal/

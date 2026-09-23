@@ -26,6 +26,13 @@ func ProvideGrokOAuthService(proxyRepo ProxyRepository, oauthClient GrokOAuthCli
 	return svc
 }
 
+// ProvideUpstreamReconciliationService starts the bounded background bill worker.
+func ProvideUpstreamReconciliationService(db *sql.DB, encryptor SecretEncryptor, cfg *config.Config) *UpstreamReconciliationService {
+	svc := NewUpstreamReconciliationService(db, encryptor, cfg)
+	svc.Start()
+	return svc
+}
+
 // BuildInfo contains build information
 type BuildInfo struct {
 	Version   string
@@ -888,6 +895,7 @@ var ProviderSet = wire.NewSet(
 	ProvideAccountTestService,
 	ProvideUpstreamBillingProbeService,
 	ProvideOllamaCloudUsageService,
+	ProvideUpstreamReconciliationService,
 	ProvideSettingService,
 	NewDataManagementService,
 	ProvideBackupService,

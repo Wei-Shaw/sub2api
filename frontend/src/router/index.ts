@@ -241,6 +241,18 @@ const routes: RouteRecordRaw[] = [
     }
   },
   {
+    path: '/upstream-billing',
+    name: 'UpstreamBilling',
+    component: () => import('@/views/user/UpstreamBillingView.vue'),
+    meta: {
+      requiresAuth: true,
+      requiresAdmin: false,
+      title: 'Upstream Reconciliation',
+      titleKey: 'upstreamBilling.title',
+      descriptionKey: 'upstreamBilling.description'
+    }
+  },
+  {
     path: '/redeem',
     name: 'Redeem',
     component: () => import('@/views/user/RedeemView.vue'),

@@ -159,6 +159,7 @@ function mountUsageView() {
         DateRangePicker: true,
         Icon: true,
         UsageStatsCards: chartStub,
+        UpstreamBillingSummary: chartStub,
         UsageTable: chartStub,
         UserErrorRequestsTable: chartStub,
         ModelDistributionChart: chartStub,

@@ -93,6 +93,7 @@ func TestProvideCleanup_WithMinimalDependencies_NoPanic(t *testing.T) {
 		nil, // quotaFlusher
 		nil, // upstreamBillingProbe
 		nil, // ollamaCloudUsage
+		service.NewUpstreamReconciliationService(nil, nil, cfg),
 		nil, // auditLog
 		nil, // openAIAutoReset
 		nil, // promptAudit
