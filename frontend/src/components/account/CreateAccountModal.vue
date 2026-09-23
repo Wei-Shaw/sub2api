@@ -3332,6 +3332,15 @@
             <Select v-model="openAICompactMode" :options="openAICompactModeOptions" />
           </div>
         </div>
+        <div v-if="accountCategory === 'apikey'">
+          <label class="input-label">{{ t('admin.accounts.openai.compactStrategy') }}</label>
+          <Select
+            v-model="openAICompactStrategy"
+            :options="openAICompactStrategyOptions"
+            data-testid="compact-strategy"
+          />
+          <p class="input-hint">{{ t('admin.accounts.openai.compactStrategyDesc') }}</p>
+        </div>
         <div>
           <label class="input-label">{{ t('admin.accounts.openai.compactModelMapping') }}</label>
           <p class="input-hint">{{ t('admin.accounts.openai.compactModelMappingDesc') }}</p>
@@ -4430,6 +4439,7 @@ const openaiFlattenNamespacesEnabled = ref(false)
 const openAILongContextBillingEnabled = ref(false)
 const openAILongContextBillingTouched = ref(false)
 const openAICompactMode = ref<OpenAICompactMode>('auto')
+const openAICompactStrategy = ref<'inherit' | 'summary'>('inherit')
 const openAIResponsesMode = ref<OpenAIResponsesMode>('auto')
 // Images 非流式响应缺 b64_json 时由网关下载 url 回填（仅 OpenAI API Key）。
 const openAIImagesUrlToB64JsonEnabled = ref(false)
@@ -4503,6 +4513,10 @@ const getAntigravityModelMappingKey = createStableObjectKeyResolver<ModelMapping
 const getTempUnschedRuleKey = createStableObjectKeyResolver<TempUnschedRuleForm>('create-temp-unsched-rule')
 const geminiOAuthType = ref<'code_assist' | 'google_one' | 'ai_studio'>('google_one')
 const geminiAIStudioOAuthEnabled = ref(false)
+const openAICompactStrategyOptions = computed(() => [
+  { value: 'inherit', label: t('admin.accounts.openai.compactStrategyInherit') },
+  { value: 'summary', label: t('admin.accounts.openai.compactStrategySummary') }
+])
 const openAICompactModeOptions = computed(() => [
   { value: 'auto', label: t('admin.accounts.openai.compactModeAuto') },
   { value: 'force_on', label: t('admin.accounts.openai.compactModeForceOn') },
@@ -5354,6 +5368,7 @@ const resetForm = () => {
   openAILongContextBillingEnabled.value = false
   openAILongContextBillingTouched.value = false
   openAICompactMode.value = 'auto'
+  openAICompactStrategy.value = 'inherit'
   openAIResponsesMode.value = 'auto'
   openAIEndpointCapabilities.value = ['chat_completions', 'embeddings']
   openaiOAuthResponsesWebSocketV2Mode.value = OPENAI_WS_MODE_OFF
@@ -5466,6 +5481,11 @@ const buildOpenAIExtra = (base?: Record<string, unknown>): Record<string, unknow
     extra.codex_fingerprint_mode = codexFingerprintMode.value
   } else {
     delete extra.codex_fingerprint_mode
+  }
+  if (accountCategory.value === 'apikey' && openAICompactStrategy.value === 'summary') {
+    extra.openai_compact_strategy = 'summary'
+  } else {
+    delete extra.openai_compact_strategy
   }
   if (openAICompactMode.value !== 'auto') {
     extra.openai_compact_mode = openAICompactMode.value

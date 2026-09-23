@@ -434,7 +434,8 @@ func openAICompatibleAccountEligibilityFailureReasonBeforeProfit(ctx context.Con
 	if requestedModel != "" && !account.IsModelSupported(requestedModel) {
 		return "model_not_supported"
 	}
-	if !account.SupportsOpenAIEndpointCapability(requiredCapability) {
+	if !account.SupportsOpenAIEndpointCapability(requiredCapability) &&
+		(requiredCapability != OpenAIEndpointCapabilityResponses || !isSummaryCompactionRequest(ctx, account)) {
 		if account.IsGrok() && requiredCapability == OpenAIEndpointCapabilityGrokMediaGeneration {
 			_, reason := account.GrokMediaGenerationEligibility()
 			slog.Debug("grok_media_account_ineligible", "account_id", account.ID, "reason", reason)
@@ -800,6 +801,12 @@ func prioritizeOpenAICompactAccounts(accounts []*Account) []*Account {
 // would be sent for a given request, honoring the legacy compact-only mapping
 // when the caller is on the /responses/compact path.
 func resolveOpenAIAccountUpstreamModelForRequest(account *Account, requestedModel string, requireCompact bool) string {
+	if requireCompact && account.UsesOpenAISummaryCompaction() {
+		if mapped, matched := account.ResolveCompactMappedModel(requestedModel); matched {
+			return strings.TrimSpace(mapped)
+		}
+		return normalizeOpenAIModelForUpstream(account, resolveOpenAIForwardModel(account, requestedModel, ""))
+	}
 	// Forward checks the raw Chat Completions fallback before passthrough.
 	// These API-key accounts therefore apply normal account model_mapping and
 	// upstream normalization, but never compact_model_mapping.
