@@ -56,7 +56,7 @@
           v-if="modelValue"
           type="button"
           class="btn btn-secondary btn-sm text-red-600 hover:text-red-700 dark:text-red-400"
-          @click="$emit('update:modelValue', '')"
+          @click="removeImage"
         >
           <Icon name="trash" size="sm" class="mr-1.5" :stroke-width="2" />
           {{ resolvedRemoveLabel }}
@@ -69,7 +69,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { ref, computed, onBeforeUnmount } from 'vue'
 import { useI18n } from 'vue-i18n'
 import Icon from '@/components/icons/Icon.vue'
 import { sanitizeSvg } from '@/utils/sanitize'
@@ -98,6 +98,14 @@ const emit = defineEmits<{
 }>()
 
 const error = ref('')
+let reader: FileReader | null = null
+
+onBeforeUnmount(() => reader?.abort())
+
+function removeImage() {
+  reader?.abort()
+  emit('update:modelValue', '')
+}
 
 const resolvedUploadLabel = computed(() => props.uploadLabel || t('common.upload'))
 const resolvedRemoveLabel = computed(() => props.removeLabel || t('common.remove'))
@@ -118,6 +126,7 @@ function handleUpload(event: Event) {
   error.value = ''
 
   if (!file) return
+  reader?.abort()
 
   if (props.maxSize && file.size > props.maxSize) {
     error.value = t('common.fileTooLargeKb', {
@@ -128,7 +137,7 @@ function handleUpload(event: Event) {
     return
   }
 
-  const reader = new FileReader()
+  reader = new FileReader()
   if (props.mode === 'svg') {
     reader.onload = (e) => {
       const text = e.target?.result as string

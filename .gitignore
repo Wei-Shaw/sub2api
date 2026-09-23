@@ -133,7 +133,6 @@ deploy/docker-compose.override.yml
 .gocache/
 vite.config.js
 docs/*
-!docs/ANTIGRAVITY_ATTRIBUTION_429.md
 !docs/PAYMENT.md
 !docs/PAYMENT_CN.md
 !docs/ADMIN_PAYMENT_INTEGRATION_API.md
@@ -156,6 +155,7 @@ frontend/coverage/
 aicodex
 output/
 .codegraph/
+issues/
 
 # Vitest / Vite cache at repo root
 .vite/
