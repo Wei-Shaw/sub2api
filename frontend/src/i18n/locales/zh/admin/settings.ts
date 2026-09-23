@@ -536,6 +536,16 @@ export default {
         openaiCodexVersionAutoSyncHint: '每 6 小时从官方仓库获取最新稳定版客户端版本号，无需为了跟版本而升级本服务。关闭后仅使用上方手填版本或内置版本。',
         openaiCodexVersionSyncedValue: '当前同步到：{version}',
         codexHardeningTitle: 'Codex 设置',
+        codexTicketEnabled: 'STATE 票据总开关',
+        codexTicketEnabledDesc:
+          '仅允许手动开启的账号获取和使用 STATE。只打开总开关不会让其他账号参与；关闭后所有账号恢复普通请求流程。',
+        codexTicketAccountHint: '全局 IP 池保存后，在账号管理 → 编辑账号 → STATE 票据中选择套餐并手动开启需要的账号。',
+        codexTicketAccountsLink: '前往账号管理',
+        codexTicketHarvestProxy: '全局动态 IP 池',
+        codexTicketHarvestProxyDesc:
+          "供已开启 STATE 的账号统一采集票据，日常请求仍走各账号的固定代理。粘贴完整 HTTP / SOCKS5h 代理 URL（含用户名和密码）。用户名里的 {'{'}sid{'}'} 或 1024proxy 的 SID 每次尝试会自动更换。更换池不清除有效票据；留空保存保留现有配置。",
+        codexTicketHarvestProxyPlaceholder: "http://user:pass{'@'}proxy.example.com:1080",
+        codexTicketHarvestProxyConfigured: '已配置（密码已隐藏）。要更换请整段粘贴新的代理 URL。',
         codexClientRestrictionTitle: 'Codex 客户端限制',
         codexHardeningDesc:
           '仅对已开启「仅允许 Codex 官方客户端」的 OpenAI OAuth 账号生效（全局）。在 User-Agent/Originator 之外，用版本区间、引擎指纹门与黑/白名单巩固判定。',

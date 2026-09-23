@@ -675,6 +675,10 @@ Invalid base URL: invalid url scheme: http
 ./sub2api
 ```
 
+#### 账号级 Codex STATE 票据
+
+支持账号独立开关、手动 Pro/Team 选择、固定业务代理复验及响应动态守护。配置步骤和升级行为见 [账号级 Codex STATE 说明](docs/CODEX_ACCOUNT_STATE.md)。
+
 #### HTTP/2 (h2c) 与 HTTP/1.1 回退
 
 后端明文端口默认支持 h2c，并保留 HTTP/1.1 回退用于 WebSocket 与旧客户端。浏览器通常不支持 h2c，性能收益主要在反向代理或内网链路。

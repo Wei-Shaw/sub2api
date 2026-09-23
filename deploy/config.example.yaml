@@ -316,6 +316,30 @@ gateway:
   # Use this to avoid compact failures when newer models are not yet supported by the compact endpoint.
   # 当 compact 端点暂未支持更新模型时，可通过这里降级规避失败。
   openai_compact_model: "gpt-5.5"
+  # STATE tickets: master switch only. Every account defaults OFF.
+  # Configure the shared harvest proxy in Settings -> Gateway -> Codex.
+  # Enable individual accounts under Accounts -> Edit -> STATE tickets.
+  # The account's normal business proxy is unchanged.
+  # Both dynamic harvest and fixed-proxy replay must complete with the requested
+  # actual model; the manually selected account plan additionally requires
+  # 292 bytes for Pro or 332 bytes for Team. Length alone does not prove success.
+  # 全局设置动态代理池，每个账号单独开启；全局开启不会影响未开启的账号。
+  # 账号目标模型默认 gpt-6-astra；票据有效60分钟，提前10分钟刷新。
+  # 每轮最多8次尝试，失败冷却5分钟；缺票仅暂停已开启账号的目标模型。
+  # {sid} in the proxy username gets a new random value on each attempt;
+  # existing 1024proxy -sid-...-t-N usernames are also automatically refreshed.
+  openai_codex_ticket:
+    enabled: false
+    # Optional outer HTTP CONNECT proxy for reaching the harvest proxy itself.
+    # Leave empty when the server can reach the dynamic proxy directly.
+    # This option never changes business traffic.
+    # Env: GATEWAY_OPENAI_CODEX_TICKET_HARVEST_DIAL_PROXY_URL
+    harvest_dial_proxy_url: ""
+    harvest_probe_interval_seconds: 6
+    harvest_attempt_timeout_seconds: 25
+    # Legacy fields remain parseable but do not control account-ticket behavior:
+    # target_length, harvest_proxy_url, models, fail_closed,
+    # ttl_seconds, refresh_before_seconds. Account behavior above is fixed.
   # ChatGPT Frameless Live 单会话硬上限（秒）。
   live:
     max_session_duration_seconds: 3600
