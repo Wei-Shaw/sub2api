@@ -24,7 +24,7 @@ vi.mock('vue-i18n', async () => {
   return {
     ...actual,
     useI18n: () => ({
-      t: (key: string) => (key === 'common.copy' ? '复制' : key)
+      t: (key: string, params?: Record<string, string>) => key === 'common.copy' ? '复制' : key === 'admin.accounts.modelMappingConflict' ? `Model mapping conflict: ${params?.from} → ${params?.to}` : key
     })
   }
 })
@@ -89,6 +89,37 @@ describe('ModelWhitelistSelector', () => {
     showWarning.mockReset()
     syncUpstreamModels.mockReset()
     syncUpstreamModelsPreview.mockReset()
+  })
+
+  it('rejects a custom whitelist model that is already mapped to a different target', async () => {
+    const wrapper = mountSelector({ modelMappings: [{ from: 'gpt-latest', to: 'deepseek-chat' }] })
+    await wrapper.get('input[placeholder="admin.accounts.enterCustomModelName"]').setValue(' gpt-latest ')
+    await wrapper.findAll('button').find(button => button.text() === 'admin.accounts.addModel')!.trigger('click')
+
+    expect(wrapper.emitted('update:modelValue')).toBeUndefined()
+    expect(showInfo).toHaveBeenCalledWith(expect.stringContaining('gpt-latest → deepseek-chat'))
+  })
+
+  it('keeps the existing duplicate identity warning before checking mappings', async () => {
+    const wrapper = mountSelector({ modelValue: ['gpt-latest'], modelMappings: [{ from: 'gpt-latest', to: 'deepseek-chat' }] })
+    await wrapper.get('input[placeholder="admin.accounts.enterCustomModelName"]').setValue('gpt-latest')
+    await wrapper.findAll('button').find(button => button.text() === 'admin.accounts.addModel')!.trigger('click')
+    expect(showInfo).toHaveBeenCalledWith('admin.accounts.modelExists')
+    expect(wrapper.emitted('update:modelValue')).toBeUndefined()
+  })
+
+  it('allows matching identity mapping as a whitelist model', async () => {
+    const wrapper = mountSelector({ modelMappings: [{ from: 'gpt-latest', to: 'gpt-latest' }] })
+    await wrapper.get('input[placeholder="admin.accounts.enterCustomModelName"]').setValue('gpt-latest')
+    await wrapper.findAll('button').find(button => button.text() === 'admin.accounts.addModel')!.trigger('click')
+    expect(wrapper.emitted('update:modelValue')).toEqual([[['gpt-latest']]])
+  })
+
+  it('still allows custom models without a mapping prop', async () => {
+    const wrapper = mountSelector()
+    await wrapper.get('input[placeholder="admin.accounts.enterCustomModelName"]').setValue('custom-model')
+    await wrapper.findAll('button').find(button => button.text() === 'admin.accounts.addModel')!.trigger('click')
+    expect(wrapper.emitted('update:modelValue')).toEqual([[['custom-model']]])
   })
 
   it('copies a model ID without selecting the model', async () => {
