@@ -1001,6 +1001,18 @@ export default {
         securityWarning: '警告：此密钥拥有完整的管理员权限，请妥善保管。',
         usage: '使用方法：在请求头中添加 x-api-key: <your-admin-api-key>'
       },
+      openaiAPIKeyHealth: {
+        title: 'OpenAI 池账号健康熔断',
+        description: 'OpenAI 池模式 API Key 的累计终结失败策略，包含已确认的容量过载；默认关闭。',
+        enabled: '启用累计健康熔断',
+        window_minutes: '统计窗口（分钟，1-60）',
+        failure_threshold: '失败阈值（次，1-10000）',
+        cooldown_minutes: '账号暂停（分钟，1-60）',
+        scopeHint: '达到阈值后暂停整个账号。成功不会清空累计窗口；显式临时规则优先，已知模型的规则只暂停该模型。全池冷却期间可能无可用账号，关闭开关不会清除已有暂停。',
+        loadFailed: '加载健康熔断设置失败',
+        saved: '健康熔断设置已保存',
+        saveFailed: '保存健康熔断设置失败'
+      },
       overloadCooldown: {
         title: '529 过载冷却',
         description: '配置上游返回 529（过载）时的账号调度暂停策略',

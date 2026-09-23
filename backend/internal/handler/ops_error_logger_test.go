@@ -375,6 +375,36 @@ func TestOpsErrorLoggerMiddleware_RecordsRecoveredUpstreamTelemetryOutsideFailur
 	require.Equal(t, http.StatusTooManyRequests, persistedEvents[0].UpstreamStatusCode)
 }
 
+func TestOpsErrorLoggerMiddleware_DisconnectAfterHeartbeatIsNotRecovered(t *testing.T) {
+	setupOpsErrorLogTestQueue(t, 2)
+	gin.SetMode(gin.TestMode)
+	ops := service.NewOpsService(nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+	router := gin.New()
+	router.Use(OpsErrorLoggerMiddleware(ops))
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	router.POST("/v1/responses", func(c *gin.Context) {
+		c.Set(service.OpsUpstreamErrorsKey, []*service.OpsUpstreamErrorEvent{{UpstreamStatusCode: 524, Message: "upstream timeout"}})
+		c.Header("Content-Type", "text/event-stream")
+		_, _ = c.Writer.WriteString(": ping\n\n")
+		c.Writer.Flush()
+		cancel()
+		require.True(t, failoverClientGone(c))
+	})
+	recorder := httptest.NewRecorder()
+	router.ServeHTTP(recorder, httptest.NewRequest(http.MethodPost, "/v1/responses", nil).WithContext(ctx))
+	require.Equal(t, http.StatusOK, recorder.Code, "wire headers were already committed")
+	require.Equal(t, int64(1), OpsErrorLogQueueLength())
+	job := <-opsErrorLogQueue
+	require.Equal(t, statusClientClosedRequest, job.entry.StatusCode)
+	require.NotContains(t, job.entry.ErrorMessage, "Recovered")
+	require.NotNil(t, job.entry.UpstreamErrorsJSON)
+	events, err := service.ParseOpsUpstreamErrors(*job.entry.UpstreamErrorsJSON)
+	require.NoError(t, err)
+	require.Len(t, events, 1)
+	require.Equal(t, 524, events[0].UpstreamStatusCode)
+}
+
 func TestOpsErrorLoggerMiddleware_RecoveredTelemetryFiltersSkipMonitoringAttempts(t *testing.T) {
 	setupOpsErrorLogTestQueue(t, 2)
 	gin.SetMode(gin.TestMode)

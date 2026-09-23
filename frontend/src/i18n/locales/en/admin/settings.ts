@@ -1007,6 +1007,18 @@ export default {
         securityWarning: 'Warning: This key provides full admin access. Keep it secure.',
         usage: 'Usage: Add to request header - x-api-key: <your-admin-api-key>'
       },
+      openaiAPIKeyHealth: {
+        title: 'OpenAI Pool Account Health Breaker',
+        description: 'Accumulated terminal failures for OpenAI pool API keys, including confirmed capacity errors. Disabled by default.',
+        enabled: 'Enable accumulated health breaker',
+        window_minutes: 'Window (minutes, 1-60)',
+        failure_threshold: 'Failure threshold (1-10000)',
+        cooldown_minutes: 'Account cooldown (minutes, 1-60)',
+        scopeHint: 'The threshold pauses the whole account. Success does not reset the window. Explicit temporary rules take precedence and pause only the known model. A fully cooled pool may have no available accounts. Disabling does not clear existing pauses.',
+        loadFailed: 'Failed to load health breaker settings',
+        saved: 'Health breaker settings saved',
+        saveFailed: 'Failed to save health breaker settings'
+      },
       overloadCooldown: {
         title: '529 Overload Cooldown',
         description: 'Configure account scheduling pause strategy when upstream returns 529 (overloaded)',

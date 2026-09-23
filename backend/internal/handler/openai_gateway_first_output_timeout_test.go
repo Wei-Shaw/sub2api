@@ -49,3 +49,17 @@ func TestOpenAIRequestAllowsFailoverReplayStopsCanceledClient(t *testing.T) {
 	cancel()
 	require.False(t, openAIRequestAllowsFailoverReplay(c))
 }
+
+func TestOpenAICapacityFailoverAttemptCountsOnlyAfterRetries(t *testing.T) {
+	account := &service.Account{Type: service.AccountTypeAPIKey, Credentials: map[string]any{
+		"pool_mode": true, "pool_mode_retry_count": float64(3),
+	}}
+	err := &service.UpstreamFailoverError{StatusCode: 503, RetryableOnSameAccount: true, RequestScopedTransient: true}
+	for attempt := 0; attempt < 3; attempt++ {
+		require.False(t, shouldReportOpenAIFailoverAttempt(account, err, attempt))
+	}
+	require.True(t, shouldReportOpenAIFailoverAttempt(account, err, 3))
+	err.RetryableOnSameAccount = false
+	err.AccountHealthHandled = true
+	require.True(t, shouldReportOpenAIFailoverAttempt(account, err, 0), "explicit rules skip the remaining retries")
+}

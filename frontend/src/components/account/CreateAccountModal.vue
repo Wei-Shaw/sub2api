@@ -4688,6 +4688,15 @@ const geminiHelpLinks = {
 const presetMappings = computed(() => getPresetMappingsByPlatform(form.platform))
 const tempUnschedPresets = computed(() => [
   {
+    label: t('admin.accounts.tempUnschedulable.presets.capacityLabel'),
+    rule: {
+      error_code: 503,
+      keywords: 'overloaded, server_is_overloaded, slow_down',
+      duration_minutes: 2,
+      description: t('admin.accounts.tempUnschedulable.presets.capacityDesc')
+    }
+  },
+  {
     label: t('admin.accounts.tempUnschedulable.presets.overloadLabel'),
     rule: {
       error_code: 529,
