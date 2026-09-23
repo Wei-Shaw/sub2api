@@ -40,9 +40,13 @@ func antigravityCompatGeminiSSEResponse(thought bool) *http.Response {
 	}
 }
 
-func antigravityCompatReasoningAccount() *Account {
+func antigravityCompatReasoningAccount(t *testing.T) *Account {
+	t.Helper()
+
 	account := newAntigravityCompatAccount(AccountTypeOAuth)
-	account.Credentials["model_mapping"].(map[string]any)[antigravityCompatGeminiThinkingModel] = antigravityCompatGeminiThinkingModel
+	mapping, ok := account.Credentials["model_mapping"].(map[string]any)
+	require.True(t, ok, "model_mapping should be map[string]any")
+	mapping[antigravityCompatGeminiThinkingModel] = antigravityCompatGeminiThinkingModel
 	return account
 }
 
@@ -73,21 +77,21 @@ func decodeChatCompletionChunks(t *testing.T, body string) []apicompat.ChatCompl
 }
 
 func collectChatChunkText(chunks []apicompat.ChatCompletionsChunk) (reasoning, content string, finishReasons []string) {
-	var reasoningBuilder, contentBuilder strings.Builder
+	var reasoningParts, contentParts []string
 	for _, chunk := range chunks {
 		for _, choice := range chunk.Choices {
 			if choice.Delta.ReasoningContent != nil {
-				reasoningBuilder.WriteString(*choice.Delta.ReasoningContent)
+				reasoningParts = append(reasoningParts, *choice.Delta.ReasoningContent)
 			}
 			if choice.Delta.Content != nil {
-				contentBuilder.WriteString(*choice.Delta.Content)
+				contentParts = append(contentParts, *choice.Delta.Content)
 			}
 			if choice.FinishReason != nil {
 				finishReasons = append(finishReasons, *choice.FinishReason)
 			}
 		}
 	}
-	return reasoningBuilder.String(), contentBuilder.String(), finishReasons
+	return strings.Join(reasoningParts, ""), strings.Join(contentParts, ""), finishReasons
 }
 
 func TestAntigravityCompatChatCompletionsStreamExposesGeminiThoughts(t *testing.T) {
@@ -102,7 +106,7 @@ func TestAntigravityCompatChatCompletionsStreamExposesGeminiThoughts(t *testing.
 	result, err := svc.ForwardAsChatCompletions(
 		context.Background(),
 		c,
-		antigravityCompatReasoningAccount(),
+		antigravityCompatReasoningAccount(t),
 		body,
 		nil,
 	)
@@ -149,7 +153,7 @@ func TestAntigravityCompatChatCompletionsMapsReasoningEffortToGeminiLevel(t *tes
 			_, err := svc.ForwardAsChatCompletions(
 				context.Background(),
 				c,
-				antigravityCompatReasoningAccount(),
+				antigravityCompatReasoningAccount(t),
 				body,
 				nil,
 			)
@@ -174,7 +178,7 @@ func TestAntigravityCompatChatCompletionsDefaultsOmittedEffortToLowestGeminiLeve
 	_, err := svc.ForwardAsChatCompletions(
 		context.Background(),
 		c,
-		antigravityCompatReasoningAccount(),
+		antigravityCompatReasoningAccount(t),
 		body,
 		nil,
 	)
@@ -197,7 +201,7 @@ func TestAntigravityCompatChatCompletionsStreamDoesNotInventReasoning(t *testing
 	_, err := svc.ForwardAsChatCompletions(
 		context.Background(),
 		c,
-		antigravityCompatReasoningAccount(),
+		antigravityCompatReasoningAccount(t),
 		body,
 		nil,
 	)
@@ -227,7 +231,7 @@ func TestAntigravityCompatChatCompletionsNonStreamExposesGeminiThoughts(t *testi
 	result, err := svc.ForwardAsChatCompletions(
 		context.Background(),
 		c,
-		antigravityCompatReasoningAccount(),
+		antigravityCompatReasoningAccount(t),
 		body,
 		nil,
 	)
