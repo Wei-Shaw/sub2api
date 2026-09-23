@@ -232,6 +232,7 @@ const DefaultQuotaDimension = QuotaDimensionGlobal
 const (
 	QuotaDimensionGlobal QuotaDimension = "global"
 	QuotaDimensionSpark  QuotaDimension = "spark"
+	QuotaDimensionLinked QuotaDimension = "linked"
 )
 
 func (qd QuotaDimension) String() string {
@@ -241,7 +242,7 @@ func (qd QuotaDimension) String() string {
 // QuotaDimensionValidator is a validator for the "quota_dimension" field enum values. It is called by the builders before save.
 func QuotaDimensionValidator(qd QuotaDimension) error {
 	switch qd {
-	case QuotaDimensionGlobal, QuotaDimensionSpark:
+	case QuotaDimensionGlobal, QuotaDimensionSpark, QuotaDimensionLinked:
 		return nil
 	default:
 		return fmt.Errorf("account: invalid enum value for quota_dimension field: %q", qd)
