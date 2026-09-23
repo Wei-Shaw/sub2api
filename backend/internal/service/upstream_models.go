@@ -73,6 +73,7 @@ type modelsDevModel struct {
 	ReasoningOptions []modelsDevReasoningOption `json:"reasoning_options"`
 	Modalities       modelsDevModalities        `json:"modalities"`
 	Limit            modelsDevLimit             `json:"limit"`
+	Cost             modelsDevCost              `json:"cost"`
 }
 
 type modelsDevReasoningOption struct {

@@ -667,7 +667,14 @@ var codexGPTIdentityPatterns = []struct {
 // 429 RESOURCE_EXHAUSTED — which also puts the account into rate-limit
 // cooldown. Codex sends this template as `instructions` for the selected model.
 func codexInstructionsTemplateForModel(modelID string) string {
-	base := openai.CodexBaseInstructionsForModel(modelID)
+	base, matched := openai.CodexBaseInstructionsForModelMatched(modelID)
+	if !matched {
+		// embed 链走了通用兜底（未知模型）：尝试远端 codex-rs models.json
+		// 同步的最新 prompt（零发版依赖），未命中再落到 embed 兜底。
+		if remote, ok := remoteCodexInstructionsFor(modelID); ok {
+			base = remote
+		}
+	}
 	if codexModelKeepsGPTIdentity(modelID) {
 		return base
 	}

@@ -1414,7 +1414,15 @@ func extractPromptLikeInstructionsFromInput(reqBody map[string]any) string {
 // 按 model 选择真实 Codex CLI 的 base instructions，使合成请求在提示词层面贴近真实 Codex 行为；
 // 若内嵌 prompt 意外为空，回退到最小占位符以保证字段非空。
 func defaultCodexSynthInstructions(model string) string {
-	if instructions := strings.TrimSpace(openai.CodexBaseInstructionsForModel(model)); instructions != "" {
+	base, matched := openai.CodexBaseInstructionsForModelMatched(model)
+	if !matched {
+		// embed 链走了通用兜底（未知模型）：尝试远端 codex-rs models.json
+		// 同步的最新 prompt（零发版依赖），未命中再落到 embed 兜底。
+		if remote, ok := remoteCodexInstructionsFor(model); ok {
+			base = remote
+		}
+	}
+	if instructions := strings.TrimSpace(base); instructions != "" {
 		return instructions
 	}
 	return "You are a helpful coding assistant."
