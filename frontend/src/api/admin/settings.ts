@@ -562,6 +562,7 @@ export interface SystemSettings {
   // Generic OIDC OAuth settings
   oidc_connect_enabled: boolean;
   oidc_connect_provider_name: string;
+  oidc_connect_logout_url: string;
   oidc_connect_client_id: string;
   oidc_connect_client_secret_configured: boolean;
   oidc_connect_issuer_url: string;
@@ -896,6 +897,7 @@ export interface UpdateSettingsRequest {
   wechat_connect_frontend_redirect_url?: string;
   oidc_connect_enabled?: boolean;
   oidc_connect_provider_name?: string;
+  oidc_connect_logout_url?: string;
   oidc_connect_client_id?: string;
   oidc_connect_client_secret?: string;
   oidc_connect_issuer_url?: string;
