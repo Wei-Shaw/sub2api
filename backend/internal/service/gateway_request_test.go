@@ -638,6 +638,36 @@ func TestStripEmptyTextBlocks(t *testing.T) {
 	})
 }
 
+func TestStripEmptyTextBlocks_PreservesThinkingBlockSignature(t *testing.T) {
+	// The body contains both a thinking block with a cryptographic signature
+	// AND an empty text block. StripEmptyTextBlocks must remove the empty text
+	// block while preserving the thinking block bytes exactly (issue #1175).
+	thinkingSig := "ErUBCkYIAxgCIkDJr+e70s8tJkfFfSO3jLCa3dP/N0dPxqKHG5MIhFSBc0rrMU4B09sDOb0m59YVc5g6VA83KjxB8eXSOCjGJkkSDAi98uK8BhC27avJBRoMCN7y4rwGEKz0wpwDIjCqVH3jjhWkHspCi+NqZpULi2r/8e0Vu2YnEWl36nkKVANkf8jI7DJQM4S0Ywik7Jw="
+	input := []byte(`{"messages":[{"role":"assistant","content":[{"type":"thinking","thinking":"Let me analyze this.","signature":"` + thinkingSig + `"},{"type":"text","text":"Hello!"}]},{"role":"user","content":[{"type":"text","text":"continue"},{"type":"text","text":""}]}]}`)
+
+	out := StripEmptyTextBlocks(input)
+
+	// The empty text block in the user message should be removed
+	require.NotEqual(t, input, out, "should have removed the empty text block")
+
+	// The thinking block signature must be byte-for-byte identical
+	thinkingBlock := gjson.GetBytes(out, "messages.0.content.0")
+	require.Equal(t, "thinking", thinkingBlock.Get("type").String())
+	require.Equal(t, "Let me analyze this.", thinkingBlock.Get("thinking").String())
+	require.Equal(t, thinkingSig, thinkingBlock.Get("signature").String())
+
+	// Verify the raw JSON bytes of the thinking block are unchanged
+	originalThinking := gjson.GetBytes(input, "messages.0.content.0").Raw
+	outputThinking := thinkingBlock.Raw
+	require.Equal(t, originalThinking, outputThinking, "thinking block raw bytes must be identical")
+
+	// The user message should only have 1 content block now
+	userContent := gjson.GetBytes(out, "messages.1.content")
+	require.True(t, userContent.IsArray())
+	require.Equal(t, 1, len(userContent.Array()))
+	require.Equal(t, "continue", userContent.Array()[0].Get("text").String())
+}
+
 func TestFilterThinkingBlocksForRetry_PreservesNonEmptyTextBlocks(t *testing.T) {
 	// Non-empty text blocks should pass through unchanged
 	input := []byte(`{
