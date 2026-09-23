@@ -99,7 +99,7 @@ func TestForwardSystemOne_ForwardsToZenSystemOne(t *testing.T) {
 	require.Equal(t, "https://opencode.ai/zen/v1/systemone", req.URL.String())
 	require.Equal(t, "Bearer sk-systemone-test", req.Header.Get("Authorization"))
 	require.Equal(t, openCodeUpstreamUserAgent, req.Header.Get("User-Agent"))
-	require.Regexp(t, `^ses_[a-f0-9]{32}$`, req.Header.Get("X-OpenCode-Session"))
+	require.Empty(t, req.Header.Get("X-OpenCode-Session"), "旧树语义：Zen 账号无调用方会话标识时不伪造会话头")
 	require.Equal(t, "jev-1.13", gjson.GetBytes(upstream.lastBody, "model").String())
 
 	// 上游解析后的版本原样透传，不回写请求模型。
