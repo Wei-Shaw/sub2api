@@ -55,7 +55,11 @@ const messages: Record<string, string> = {
   'keys.status.expired': 'Expired',
   'keys.status.inactive': 'Inactive',
   'keys.status.quota_exhausted': 'Quota exhausted',
+  'keys.today': 'Today',
   'keys.usage': 'Usage',
+  'keys.usageSort30d': '30d',
+  'keys.sortByUsageToday': 'Sort by today usage',
+  'keys.sortByUsage30d': 'Sort by 30-day usage',
 }
 
 vi.mock('@/api', () => ({
@@ -165,7 +169,8 @@ const DataTableStub = {
       <button data-test="sort-current-concurrency" @click="$emit('sort', 'current_concurrency', 'asc')">
         Sort Current Concurrency
       </button>
-      <div v-for="row in data" :key="row.id">
+      <slot name="header-usage" />
+      <div v-for="row in data" :key="row.id" data-test="key-row" :data-id="row.id">
         <div
           v-if="columns.some((col) => col.key === 'id')"
           data-test="key-id"
@@ -639,6 +644,99 @@ describe('user KeysView column settings', () => {
       await getButtonByText(wrapper, 'common.edit').trigger('click')
       expect(wrapper.find('[data-tour="key-form-provider"]').exists()).toBe(false)
       expect(optionIds(wrapper)).toHaveLength(11)
+    })
+  })
+
+  describe('usage sorting', () => {
+    const key1 = { ...createApiKey(), id: 1, name: 'Key 1' }
+    const key2 = { ...createApiKey(), id: 2, name: 'Key 2' }
+    const key3 = { ...createApiKey(), id: 3, name: 'Key 3' }
+
+    beforeEach(() => {
+      listKeys.mockResolvedValue({
+        items: [key1, key2, key3],
+        total: 3,
+        page: 1,
+        page_size: 20,
+        pages: 1,
+      })
+      getDashboardApiKeysUsage.mockResolvedValue({
+        stats: {
+          '1': { api_key_id: 1, today_actual_cost: 0.5, total_actual_cost: 10.0 },
+          '2': { api_key_id: 2, today_actual_cost: 2.0, total_actual_cost: 5.0 },
+          '3': { api_key_id: 3, today_actual_cost: 0.1, total_actual_cost: 20.0 },
+        },
+      })
+    })
+
+    const getRenderedKeyIds = (wrapper: VueWrapper) =>
+      wrapper.findAll('[data-test="key-row"]').map((el) => Number(el.attributes('data-id')))
+
+    it('renders the usage sort buttons in the header', async () => {
+      const wrapper = await mountView()
+      expect(wrapper.find('[data-test="usage-sort-today"]').exists()).toBe(true)
+      expect(wrapper.find('[data-test="usage-sort-total"]').exists()).toBe(true)
+      expect(wrapper.get('[data-test="usage-sort-today"]').text()).toContain('Today')
+      expect(wrapper.get('[data-test="usage-sort-total"]').text()).toContain('30d')
+    })
+
+    it('sorts keys by today usage (descending first, then ascending)', async () => {
+      const wrapper = await mountView()
+      expect(getRenderedKeyIds(wrapper)).toEqual([1, 2, 3])
+
+      // Click today sort -> desc: key 2 (2.0) > key 1 (0.5) > key 3 (0.1)
+      await wrapper.get('[data-test="usage-sort-today"]').trigger('click')
+      expect(getRenderedKeyIds(wrapper)).toEqual([2, 1, 3])
+
+      // Click today sort again -> asc: key 3 (0.1) < key 1 (0.5) < key 2 (2.0)
+      await wrapper.get('[data-test="usage-sort-today"]').trigger('click')
+      expect(getRenderedKeyIds(wrapper)).toEqual([3, 1, 2])
+    })
+
+    it('sorts keys by 30-day usage (descending first, then ascending)', async () => {
+      const wrapper = await mountView()
+      expect(getRenderedKeyIds(wrapper)).toEqual([1, 2, 3])
+
+      // Click 30d sort -> desc: key 3 (20.0) > key 1 (10.0) > key 2 (5.0)
+      await wrapper.get('[data-test="usage-sort-total"]').trigger('click')
+      expect(getRenderedKeyIds(wrapper)).toEqual([3, 1, 2])
+
+      // Click 30d sort again -> asc: key 2 (5.0) < key 1 (10.0) < key 3 (20.0)
+      await wrapper.get('[data-test="usage-sort-total"]').trigger('click')
+      expect(getRenderedKeyIds(wrapper)).toEqual([2, 1, 3])
+    })
+
+    it('resets usage sorting when another column is sorted', async () => {
+      const wrapper = await mountView()
+      await wrapper.get('[data-test="usage-sort-today"]').trigger('click')
+      expect(getRenderedKeyIds(wrapper)).toEqual([2, 1, 3])
+
+      // Click another column sort
+      await wrapper.get('[data-test="sort-current-concurrency"]').trigger('click')
+      await flushPromises()
+
+      // Usage sort active classes should be gone
+      expect(wrapper.get('[data-test="usage-sort-today"]').classes()).not.toContain('font-semibold')
+      expect(wrapper.get('[data-test="usage-sort-total"]').classes()).not.toContain('font-semibold')
+    })
+
+    it('breaks ties using secondary usage dimension and then key ID', async () => {
+      getDashboardApiKeysUsage.mockResolvedValue({
+        stats: {
+          '1': { api_key_id: 1, today_actual_cost: 1.0, total_actual_cost: 5.0 },
+          '2': { api_key_id: 2, today_actual_cost: 1.0, total_actual_cost: 10.0 },
+          '3': { api_key_id: 3, today_actual_cost: 1.0, total_actual_cost: 10.0 },
+        },
+      })
+      const wrapper = await mountView()
+
+      // Primary: today (all 1.0), Secondary: total desc (key 2 & 3: 10.0 > key 1: 5.0), Tertiary: ID desc (3 > 2)
+      await wrapper.get('[data-test="usage-sort-today"]').trigger('click')
+      expect(getRenderedKeyIds(wrapper)).toEqual([3, 2, 1])
+
+      // Today asc -> primary equal, secondary asc (key 1: 5.0 < key 2 & 3: 10.0), tertiary ID asc (2 < 3)
+      await wrapper.get('[data-test="usage-sort-today"]').trigger('click')
+      expect(getRenderedKeyIds(wrapper)).toEqual([1, 2, 3])
     })
   })
 })
