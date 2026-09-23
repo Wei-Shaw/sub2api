@@ -330,6 +330,21 @@ export async function refreshCredentials(id: number): Promise<RefreshCredentials
  *   `quota_*` and `privacy_mode` are preserved
  * - clears the account error and invalidates the token cache server-side
  */
+/**
+ * Re-authorize one OpenAI OAuth account with a Codex auth.json / session JSON / accessToken.
+ * Only credentials are replaced; the backend rejects content that belongs to another ChatGPT user.
+ */
+export async function reauthCodexSession(
+  id: number,
+  content: string
+): Promise<{ account: Account; warnings?: string[] }> {
+  const { data } = await apiClient.post<{ account: Account; warnings?: string[] }>(
+    `/admin/accounts/${id}/reauth/codex-session`,
+    { content }
+  )
+  return data
+}
+
 export async function applyOAuthCredentials(
   id: number,
   payload: {
@@ -1113,6 +1128,7 @@ export const accountsAPI = {
   testAccount,
   refreshCredentials,
   applyOAuthCredentials,
+  reauthCodexSession,
   getStats,
   clearError,
   getUsage,

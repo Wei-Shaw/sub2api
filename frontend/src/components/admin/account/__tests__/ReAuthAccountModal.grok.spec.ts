@@ -40,3 +40,18 @@ describe('ReAuthAccountModal Grok re-auth paths', () => {
     expect(source).not.toContain('grokPrefillEmailPassword')
   })
 })
+
+describe('ReAuthAccountModal OpenAI Codex session re-auth', () => {
+  it('offers auth.json import for OpenAI and updates the existing account', () => {
+    expect(source).toContain(':show-codex-session-import-option="isOpenAI && !isOpenAIAgentIdentity"')
+    expect(source).toContain(':reauth="true"')
+    expect(source).toContain('@import-codex-session="handleImportCodexSession"')
+    expect(source).toContain('adminAPI.accounts.reauthCodexSession(props.account.id, content)')
+    // Must not go through the batch create/upsert endpoint
+    expect(source).not.toContain('importCodexSession(')
+  })
+
+  it('hides footer code-exchange button for codex session input', () => {
+    expect(source).toContain("method === 'codex_session'")
+  })
+})
