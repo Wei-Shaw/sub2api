@@ -108,9 +108,11 @@ func TestGatewayService_AnthropicAPIKeyPassthrough_ForwardStreamPreservesBodyAnd
 	c.Request.Header.Set("X-Api-Key", "inbound-api-key")
 	c.Request.Header.Set("X-Goog-Api-Key", "inbound-goog-key")
 	c.Request.Header.Set("Cookie", "secret=1")
-	c.Request.Header.Set("Anthropic-Beta", "interleaved-thinking-2025-05-14")
+	c.Request.Header.Set("Anthropic-Beta", "interleaved-thinking-2025-05-14,"+claude.BetaDangerousToolUse)
+	c.Request.Header.Set("Anthropic-Auto-Mode-Feature", "opaque-version")
+	c.Request.Header.Set("X-Claude-Code-Feature", "server-checks")
 
-	body := []byte(`{"model":"claude-3-7-sonnet-20250219","stream":true,"system":[{"type":"text","text":"x-anthropic-billing-header keep"}],"messages":[{"role":"user","content":[{"type":"text","text":"hello"}]}]}`)
+	body := []byte(`{"model":"claude-3-7-sonnet-20250219","stream":true,"safeguards":{"opaque":{"action_id":"toolu_1"}},"system":[{"type":"text","text":"x-anthropic-billing-header keep"}],"messages":[{"role":"user","content":[{"type":"text","text":"hello"}]}]}`)
 	parsed := &ParsedRequest{
 		Body:   NewRequestBodyRef(body),
 		Model:  "claude-3-7-sonnet-20250219",
@@ -118,7 +120,9 @@ func TestGatewayService_AnthropicAPIKeyPassthrough_ForwardStreamPreservesBodyAnd
 	}
 
 	upstreamSSE := strings.Join([]string{
-		`data: {"type":"message_start","message":{"usage":{"input_tokens":9,"cached_tokens":7}}}`,
+		`data: {"type":"message_start","message":{"usage":{"input_tokens":9,"cached_tokens":7}}},"safeguard_results":{"toolu_1":{"decision":"allow"}}}`,
+		"",
+		`data: {"type":"content_block_start","index":0,"content_block":{"type":"tool_use","id":"toolu_1","name":"Bash","input":{}}}`,
 		"",
 		`data: {"type":"message_delta","usage":{"output_tokens":3}}`,
 		"",
@@ -129,9 +133,12 @@ func TestGatewayService_AnthropicAPIKeyPassthrough_ForwardStreamPreservesBodyAnd
 		resp: &http.Response{
 			StatusCode: http.StatusOK,
 			Header: http.Header{
-				"Content-Type": []string{"text/event-stream"},
-				"x-request-id": []string{"rid-anthropic-pass"},
-				"Set-Cookie":   []string{"secret=upstream"},
+				"Content-Type":                       []string{"text/event-stream"},
+				"x-request-id":                       []string{"rid-anthropic-pass"},
+				"X-Should-Retry":                     []string{"false"},
+				"Anthropic-Ratelimit-Unified-Status": []string{"allowed"},
+				"Anthropic-Organization-Id":          []string{"org-upstream"},
+				"Set-Cookie":                         []string{"secret=upstream"},
 			},
 			Body: io.NopCloser(strings.NewReader(upstreamSSE)),
 		},
@@ -175,16 +182,24 @@ func TestGatewayService_AnthropicAPIKeyPassthrough_ForwardStreamPreservesBodyAnd
 	require.True(t, result.Stream)
 
 	require.Equal(t, "claude-3-haiku-20240307", gjson.GetBytes(upstream.lastBody, "model").String(), "透传模式应应用账号级模型映射")
+	require.Equal(t, "toolu_1", gjson.GetBytes(upstream.lastBody, "safeguards.opaque.action_id").String())
+	require.Equal(t, "opaque-version", upstream.lastReq.Header.Get("Anthropic-Auto-Mode-Feature"))
+	require.Equal(t, "server-checks", upstream.lastReq.Header.Get("X-Claude-Code-Feature"))
 
 	require.Equal(t, "upstream-anthropic-key", getHeaderRaw(upstream.lastReq.Header, "x-api-key"))
 	require.Empty(t, getHeaderRaw(upstream.lastReq.Header, "authorization"))
 	require.Empty(t, getHeaderRaw(upstream.lastReq.Header, "x-goog-api-key"))
 	require.Empty(t, getHeaderRaw(upstream.lastReq.Header, "cookie"))
 	require.Equal(t, "2023-06-01", getHeaderRaw(upstream.lastReq.Header, "anthropic-version"))
-	require.Equal(t, "interleaved-thinking-2025-05-14", getHeaderRaw(upstream.lastReq.Header, "anthropic-beta"))
+	require.Equal(t, "interleaved-thinking-2025-05-14,"+claude.BetaDangerousToolUse, getHeaderRaw(upstream.lastReq.Header, "anthropic-beta"))
 	require.Empty(t, getHeaderRaw(upstream.lastReq.Header, "x-stainless-lang"), "API Key 透传不应注入 OAuth 指纹头")
 
 	require.Contains(t, rec.Body.String(), `"cached_tokens":7`)
+	require.Contains(t, rec.Body.String(), `"safeguard_results":{"toolu_1":{"decision":"allow"}}`)
+	require.Contains(t, rec.Body.String(), `"id":"toolu_1"`)
+	require.Equal(t, "false", rec.Header().Get("X-Should-Retry"))
+	require.Equal(t, "allowed", rec.Header().Get("Anthropic-Ratelimit-Unified-Status"))
+	require.Empty(t, rec.Header().Get("Anthropic-Organization-Id"), "上游组织 ID 不得透给网关用户")
 	require.NotContains(t, rec.Body.String(), `"cache_read_input_tokens":7`, "透传输出不应被网关改写")
 	require.Equal(t, 7, result.Usage.CacheReadInputTokens, "计费 usage 解析应保留 cached_tokens 兼容")
 	require.Empty(t, rec.Header().Get("Set-Cookie"), "响应头应经过安全过滤")
@@ -1161,9 +1176,10 @@ func TestGatewayService_AnthropicAPIKeyPassthrough_ForwardDirect_NonStreamingSuc
 	rec := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(rec)
 	c.Request = httptest.NewRequest(http.MethodPost, "/v1/messages", nil)
+	c.Request.Header.Set("Anthropic-Beta", claude.BetaDangerousToolUse)
 
-	body := []byte(`{"model":"claude-3-5-sonnet-latest","messages":[{"role":"user","content":[{"type":"text","text":"hello"}]}]}`)
-	upstreamJSON := `{"id":"msg_1","type":"message","usage":{"input_tokens":12,"output_tokens":7,"cache_creation":{"ephemeral_5m_input_tokens":2,"ephemeral_1h_input_tokens":3},"cached_tokens":4}}`
+	body := []byte(`{"model":"claude-3-5-sonnet-latest","safeguards":{"opaque":{"action_id":"toolu_1"}},"messages":[{"role":"user","content":[{"type":"text","text":"hello"}]}]}`)
+	upstreamJSON := `{"id":"msg_1","type":"message","safeguard_results":{"toolu_1":{"decision":"allow"}},"usage":{"input_tokens":12,"output_tokens":7,"cache_creation":{"ephemeral_5m_input_tokens":2,"ephemeral_1h_input_tokens":3},"cached_tokens":4}}`
 	upstream := &anthropicHTTPUpstreamRecorder{
 		resp: &http.Response{
 			StatusCode: http.StatusOK,
@@ -1183,6 +1199,8 @@ func TestGatewayService_AnthropicAPIKeyPassthrough_ForwardDirect_NonStreamingSuc
 	result, err := svc.forwardAnthropicAPIKeyPassthrough(context.Background(), c, newAnthropicAPIKeyAccountForTest(), body, "claude-3-5-sonnet-latest", "claude-3-5-sonnet-latest", false, time.Now())
 	require.NoError(t, err)
 	require.NotNil(t, result)
+	require.Equal(t, "toolu_1", gjson.GetBytes(upstream.lastBody, "safeguards.opaque.action_id").String())
+	require.Equal(t, "allow", gjson.Get(rec.Body.String(), "safeguard_results.toolu_1.decision").String())
 	require.Equal(t, 12, result.Usage.InputTokens)
 	require.Equal(t, 7, result.Usage.OutputTokens)
 	require.Equal(t, 5, result.Usage.CacheCreationInputTokens)

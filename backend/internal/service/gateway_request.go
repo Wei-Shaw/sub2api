@@ -938,6 +938,12 @@ const anthropicBetaContextManagementToken = "context-management-2025-06-27"
 //   - 缺 token 时上游拒收：
 //     "thinking.adaptive.block_binding: Extra inputs are not permitted"
 //
+// safeguards 场景：
+//   - Claude Code Auto mode 服务端检查字段，与 `dangerous-tool-use-2026-09-03` beta 成对
+//   - OAuth mimic / 账号覆写 / beta policy 丢掉该 beta 时，单独的字段会被上游 400，
+//     Claude Code 随后在整段对话内拒绝 Auto mode 工具调用；剥除后上游不返回
+//     safeguard_results，客户端平稳回退本地分类
+//
 // message-level output_config 场景：
 //   - pi-ai（Harness 使用的 Anthropic provider）会为 opus5 生成形如
 //     `{"role":"system","content":[],"output_config":{"effort":"high"}}` 的控制消息，
@@ -990,6 +996,13 @@ func sanitizeAnthropicBodyForBetaTokens(body []byte, anthropicBetaHeader string)
 	if b, deleted := stripAnthropicBodyFieldUnlessBeta(
 		body, "fallback_credit_token", anthropicBetaHeader,
 		claude.BetaServerSideFallback, claude.BetaFallbackCredit, claude.BetaFallbackCreditLegacy,
+	); deleted {
+		body, changed = b, true
+	}
+
+	// safeguards：Claude Code Auto mode 服务端检查，仅接受 dangerous-tool-use beta。
+	if b, deleted := stripAnthropicBodyFieldUnlessBeta(
+		body, "safeguards", anthropicBetaHeader, claude.BetaDangerousToolUse,
 	); deleted {
 		body, changed = b, true
 	}

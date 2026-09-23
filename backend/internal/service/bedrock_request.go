@@ -644,6 +644,7 @@ func filterBedrockBetaTokens(tokens []string) []string {
 //   - context_management 缺 context-management beta → strip
 //   - fallbacks 缺 server-side-fallback beta → strip
 //   - fallback_credit_token 缺 server-side-fallback / 任一 fallback-credit beta → strip
+//   - safeguards 缺 dangerous-tool-use beta → strip
 //
 // 注意：fallback beta token 均不在 bedrockSupportedBetaTokens 白名单内
 // （会被 filterBedrockBetaTokens 过滤掉），因此条件 strip 实际总会剥除——这是预期：
@@ -658,6 +659,9 @@ func sanitizeBedrockFieldsForBetaTokens(body []byte, betaTokens []string) []byte
 	if !containsAnyBedrockBetaToken(betaTokens, claude.BetaServerSideFallback, claude.BetaFallbackCredit, claude.BetaFallbackCreditLegacy) &&
 		gjson.GetBytes(body, "fallback_credit_token").Exists() {
 		body, _ = sjson.DeleteBytes(body, "fallback_credit_token")
+	}
+	if !containsBedrockBetaToken(betaTokens, claude.BetaDangerousToolUse) && gjson.GetBytes(body, "safeguards").Exists() {
+		body, _ = sjson.DeleteBytes(body, "safeguards")
 	}
 	return body
 }

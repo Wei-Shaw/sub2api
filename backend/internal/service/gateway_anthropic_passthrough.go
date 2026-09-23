@@ -1,8 +1,6 @@
 package service
 
-// 本文件由 gateway_service.go 纯移动拆分而来：Anthropic APIKey 直通
-// （passthrough）转发路径及其流式/非流式响应与 usage 解析。仅做代码搬迁，
-// 无任何行为变更。
+// Anthropic API Key 直通转发及其流式/非流式响应与 usage 解析。
 
 import (
 	"bufio"
@@ -32,6 +30,14 @@ type anthropicPassthroughForwardInput struct {
 	OriginalModel string
 	RequestStream bool
 	StartTime     time.Time
+}
+
+// Native API-key passthrough must keep Anthropic/Claude Code feature headers
+// alongside opaque request fields. Authentication and unrelated client headers
+// still use the existing allowlist and credential replacement below.
+func forwardableAnthropicPassthroughHeader(name string) bool {
+	lower := strings.ToLower(strings.TrimSpace(name))
+	return allowedHeaders[lower] || strings.HasPrefix(lower, "anthropic-") || strings.HasPrefix(lower, "x-claude-code-")
 }
 
 func (s *GatewayService) forwardAnthropicAPIKeyPassthrough(
@@ -337,7 +343,7 @@ func (s *GatewayService) buildUpstreamRequestAnthropicAPIKeyPassthrough(
 	if c != nil && c.Request != nil {
 		for key, values := range c.Request.Header {
 			lowerKey := strings.ToLower(strings.TrimSpace(key))
-			if !allowedHeaders[lowerKey] {
+			if !forwardableAnthropicPassthroughHeader(lowerKey) {
 				continue
 			}
 			wireKey := resolveWireCasing(key)
@@ -907,12 +913,12 @@ func writeAnthropicPassthroughResponseHeaders(dst http.Header, src http.Header, 
 	}
 	if filter != nil {
 		responseheaders.WriteFilteredHeaders(dst, src, filter)
-		return
+	} else {
+		for _, key := range []string{"Content-Type", "x-request-id"} {
+			if v := strings.TrimSpace(src.Get(key)); v != "" {
+				dst.Set(key, v)
+			}
+		}
 	}
-	if v := strings.TrimSpace(src.Get("Content-Type")); v != "" {
-		dst.Set("Content-Type", v)
-	}
-	if v := strings.TrimSpace(src.Get("x-request-id")); v != "" {
-		dst.Set("x-request-id", v)
-	}
+	responseheaders.WriteClaudeCodeResponseHeaders(dst, src, filter)
 }
