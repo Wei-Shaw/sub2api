@@ -1137,6 +1137,38 @@ func TestBuildCodexModelsManifestForGroupUsesFallbackWhenTextOnlyPlatformHasNoSn
 	require.Equal(t, []any{"text"}, models[0]["input_modalities"])
 }
 
+func TestBuildCodexModelsManifestForGroupMappedDeepSeekAliasUsesDeepSeekCapabilities(t *testing.T) {
+	t.Parallel()
+
+	const groupID int64 = 736
+	svc := &GatewayService{accountRepo: codexModelsVisibilityAccountRepo{byGroup: map[int64][]Account{
+		groupID: {{
+			ID:       1,
+			Platform: PlatformOpenAI,
+			Type:     AccountTypeAPIKey,
+			Credentials: map[string]any{
+				"model_mapping": map[string]any{"gpt-6-astra": "deepseek-v4-pro"},
+			},
+		}},
+	}}}
+
+	body, err := svc.BuildCodexModelsManifestForGroup(
+		context.Background(),
+		&Group{ID: groupID, Platform: PlatformOpenAI},
+		"",
+		[]string{"gpt-6-astra"},
+	)
+	require.NoError(t, err)
+	models := decodeCodexManifestModels(t, body)
+	require.Len(t, models, 1)
+	model := models[0]
+	require.Equal(t, "gpt-6-astra", model["slug"])
+	require.Equal(t, false, model["use_responses_lite"], "mapped DeepSeek aliases must opt out of GPT Responses Lite")
+	require.Equal(t, "unified_exec", model["shell_type"])
+	require.Equal(t, "high", model["default_reasoning_level"])
+	require.Equal(t, []string{"low", "high", "max"}, effortsFromManifestModel(t, model))
+}
+
 func TestBuildCodexModelsManifestForGroupFallsBackWhenCapabilityLookupFails(t *testing.T) {
 	t.Parallel()
 
