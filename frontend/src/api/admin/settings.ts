@@ -723,6 +723,9 @@ export interface SystemSettings {
   channel_monitor_mode?: 'v1' | 'v2';
   channel_monitor_default_interval_seconds: number;
   channel_monitor_hide_throughput?: boolean;
+  channel_monitor_dingtalk_enabled: boolean;
+  channel_monitor_dingtalk_webhook_configured: boolean;
+  channel_monitor_dingtalk_secret_configured: boolean;
   channel_monitor_show_quota?: boolean;
   channel_monitor_hide_user_ranking?: boolean;
 
@@ -1028,6 +1031,11 @@ export interface UpdateSettingsRequest {
   channel_monitor_mode?: 'v1' | 'v2';
   channel_monitor_default_interval_seconds?: number;
   channel_monitor_hide_throughput?: boolean;
+  channel_monitor_dingtalk_enabled?: boolean;
+  channel_monitor_dingtalk_webhook?: string;
+  channel_monitor_dingtalk_secret?: string;
+  channel_monitor_dingtalk_webhook_clear?: boolean;
+  channel_monitor_dingtalk_secret_clear?: boolean;
   channel_monitor_show_quota?: boolean;
   channel_monitor_hide_user_ranking?: boolean;
 
@@ -1072,6 +1080,23 @@ export async function updateSettings(
   const { data } = await apiClient.put<SystemSettings>(
     "/admin/settings",
     settings,
+  );
+  return data;
+}
+
+export interface TestChannelMonitorDingTalkRequest {
+  channel_monitor_dingtalk_webhook?: string;
+  channel_monitor_dingtalk_secret?: string;
+  channel_monitor_dingtalk_webhook_clear?: boolean;
+  channel_monitor_dingtalk_secret_clear?: boolean;
+}
+
+export async function testChannelMonitorDingTalk(
+  request: TestChannelMonitorDingTalkRequest,
+): Promise<{ message: string }> {
+  const { data } = await apiClient.post<{ message: string }>(
+    "/admin/settings/test-channel-monitor-dingtalk",
+    request,
   );
   return data;
 }
@@ -1569,6 +1594,7 @@ export async function resetWebSearchUsage(payload: {
 export const settingsAPI = {
   getSettings,
   updateSettings,
+  testChannelMonitorDingTalk,
   testSmtpConnection,
   sendTestEmail,
   getEmailTemplates,
