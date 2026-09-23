@@ -6,6 +6,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/tlsfingerprint"
 	"io"
 	"log/slog"
 	"net/http"
@@ -216,6 +217,12 @@ func (u *grokQuotaSequenceUpstream) Do(req *http.Request, _ string, _ int64, _ i
 	}, nil
 }
 
+// DoWithTLS routes through this stub's Do override so per-test behavior
+// (strict roles, quota sequences) applies on the DoWithTLS path too.
+func (u *grokQuotaSequenceUpstream) DoWithTLS(req *http.Request, proxyURL string, accountID int64, accountConcurrency int, _ *tlsfingerprint.Profile) (*http.Response, error) {
+	return u.Do(req, proxyURL, accountID, accountConcurrency)
+}
+
 func (u *grokQuotaSequenceUpstream) snapshotRequests() []*http.Request {
 	u.mu.Lock()
 	defer u.mu.Unlock()
@@ -289,6 +296,12 @@ func (u *grokHybridUpstream) Do(req *http.Request, _ string, _ int64, _ int) (*h
 		Header:     make(http.Header),
 		Body:       io.NopCloser(strings.NewReader(monthlyPayload)),
 	}, nil
+}
+
+// DoWithTLS routes through this stub's Do override so per-test behavior
+// (strict roles, quota sequences) applies on the DoWithTLS path too.
+func (u *grokHybridUpstream) DoWithTLS(req *http.Request, proxyURL string, accountID int64, accountConcurrency int, _ *tlsfingerprint.Profile) (*http.Response, error) {
+	return u.Do(req, proxyURL, accountID, accountConcurrency)
 }
 
 func (u *grokHybridUpstream) snapshot() ([]*http.Request, [][]byte) {

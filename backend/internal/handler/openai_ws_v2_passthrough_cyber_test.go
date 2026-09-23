@@ -73,9 +73,10 @@ func newOpenAIWSPassthroughHandlerHarness(t *testing.T, upstreamURL string) *ope
 	billingCacheSvc := service.NewBillingCacheService(nil, nil, nil, nil, nil, nil, cfg, nil)
 	gatewaySvc := service.NewOpenAIGatewayService(
 		accountRepo, usageRepo, nil, nil, nil, nil, gatewayCache, cfg, nil, nil,
-		service.NewBillingService(cfg, nil), nil, billingCacheSvc, nil, &service.DeferredService{},
-		nil, nil, nil, nil, nil, settingSvc, nil,
-	)
+		service.NewBillingService(cfg, nil), nil, billingCacheSvc, nil,
+		nil, // tlsFPProfileService (test default: disabled)
+		&service.DeferredService{},
+		nil, nil, nil, nil, nil, settingSvc, nil)
 	concurrencyCache := &concurrencyCacheMock{
 		acquireUserSlotFn:    func(context.Context, int64, int, string) (bool, error) { return true, nil },
 		acquireAccountSlotFn: func(context.Context, int64, int, string) (bool, error) { return true, nil },
