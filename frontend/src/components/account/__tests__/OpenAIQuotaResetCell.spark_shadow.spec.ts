@@ -374,6 +374,23 @@ describe('OpenAIQuotaResetCell 自动用卡运行态', () => {
     wrapper.unmount()
   })
 
+  it('独立窗口开关控制运行态显示，显式关闭 7d 覆盖旧总开关', async () => {
+    const account = makeAccount({
+      extra: {
+        auto_reset_credit_enabled: true,
+        auto_reset_credit_5h_enabled: false,
+        auto_reset_credit_7d_enabled: false,
+        codex_auto_reset_credit_state: { status: 'success', available_count: 1 },
+      },
+    })
+    const wrapper = mount(OpenAIQuotaResetCell, { props: { account } })
+    expect(wrapper.find('[data-testid="auto-reset-credit-state"]').exists()).toBe(false)
+    account.extra!.auto_reset_credit_5h_enabled = true
+    await wrapper.setProps({ account: { ...account } })
+    expect(wrapper.find('[data-testid="auto-reset-credit-state"]').exists()).toBe(true)
+    wrapper.unmount()
+  })
+
   it('开关关闭时不显示历史运行态', () => {
     const account = makeAccount({
       extra: {

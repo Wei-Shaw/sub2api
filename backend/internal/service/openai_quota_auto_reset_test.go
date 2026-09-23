@@ -11,51 +11,79 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestNormalizeOpenAIAutoResetCreditExtra(t *testing.T) {
-	t.Run("历史账号默认关闭", func(t *testing.T) {
-		account := &Account{Platform: PlatformOpenAI, Type: AccountTypeOAuth}
-		config := ResolveOpenAIAutoResetCreditConfig(account)
-		require.False(t, config.Enabled)
-		require.Equal(t, 1.0, config.Threshold5h)
-		require.Equal(t, 1.0, config.Threshold7d)
-	})
+func TestAutoResetCreditWindowConfig(t *testing.T) {
+	account := &Account{Platform: PlatformOpenAI, Type: AccountTypeOAuth, Extra: map[string]any{
+		OpenAIAutoResetCreditEnabledExtraKey:     true,
+		OpenAIAutoResetCredit5hThresholdExtraKey: 0.5,
+		OpenAIAutoResetCredit7dThresholdExtraKey: 0.5,
+	}}
+	config := ResolveOpenAIAutoResetCreditConfig(account)
+	require.False(t, config.Enabled5h, "legacy enabled must not consume a credit for the 5h window")
+	require.True(t, config.Enabled7d)
+	account.Extra[OpenAIAutoResetCredit7dEnabledExtraKey] = false
+	account.Extra[OpenAIAutoResetCredit5hEnabledExtraKey] = true
+	config = ResolveOpenAIAutoResetCreditConfig(account)
+	require.True(t, config.Enabled5h)
+	require.False(t, config.Enabled7d, "explicit settings override legacy enabled")
 
-	t.Run("开启时补齐两个百分百阈值并剥离运行态", func(t *testing.T) {
-		extra, err := normalizeOpenAIAutoResetCreditExtra(PlatformOpenAI, AccountTypeOAuth, false, map[string]any{
-			OpenAIAutoResetCreditEnabledExtraKey: true,
-			OpenAIAutoResetCreditStateExtraKey:   map[string]any{"status": "success"},
-		})
-		require.NoError(t, err)
-		require.Equal(t, 1.0, extra[OpenAIAutoResetCredit5hThresholdExtraKey])
-		require.Equal(t, 1.0, extra[OpenAIAutoResetCredit7dThresholdExtraKey])
-		require.NotContains(t, extra, OpenAIAutoResetCreditStateExtraKey)
+	extra, err := normalizeOpenAIAutoResetCreditExtra(PlatformOpenAI, AccountTypeOAuth, false, map[string]any{
+		OpenAIAutoResetCredit5hEnabledExtraKey:   true,
+		OpenAIAutoResetCredit7dEnabledExtraKey:   false,
+		OpenAIAutoResetCreditEnabledExtraKey:     true,
+		OpenAIAutoResetCredit5hThresholdExtraKey: 0.5,
+		OpenAIAutoResetCreditStateExtraKey:       map[string]any{"status": "success"},
 	})
+	require.NoError(t, err)
+	require.Equal(t, true, extra[OpenAIAutoResetCredit5hEnabledExtraKey])
+	require.Equal(t, false, extra[OpenAIAutoResetCredit7dEnabledExtraKey])
+	require.NotContains(t, extra, OpenAIAutoResetCreditEnabledExtraKey)
+	require.NotContains(t, extra, OpenAIAutoResetCredit5hThresholdExtraKey)
+	require.NotContains(t, extra, OpenAIAutoResetCreditStateExtraKey)
 
-	t.Run("阈值和账号类型严格校验", func(t *testing.T) {
-		_, err := normalizeOpenAIAutoResetCreditExtra(PlatformOpenAI, AccountTypeOAuth, false, map[string]any{
-			OpenAIAutoResetCreditEnabledExtraKey:     true,
-			OpenAIAutoResetCredit5hThresholdExtraKey: 0.0009,
-		})
-		require.Error(t, err)
+	_, err = normalizeOpenAIAutoResetCreditExtra(PlatformOpenAI, AccountTypeOAuth, false, map[string]any{OpenAIAutoResetCredit5hEnabledExtraKey: "true"})
+	require.Error(t, err)
+	_, err = normalizeOpenAIAutoResetCreditExtra(PlatformOpenAI, AccountTypeOAuth, true, map[string]any{OpenAIAutoResetCredit5hEnabledExtraKey: true})
+	require.Error(t, err)
+}
 
-		_, err = normalizeOpenAIAutoResetCreditExtra(PlatformOpenAI, AccountTypeOAuth, true, map[string]any{
-			OpenAIAutoResetCreditEnabledExtraKey: true,
-		})
-		require.Error(t, err)
-	})
+func TestAutoResetCreditOnlyTriggersEnabledFullWindow(t *testing.T) {
+	service := &OpenAIQuotaAutoResetService{}
+	account := &Account{Extra: map[string]any{"auto_pause_5h_disabled": true, "auto_pause_7d_disabled": true}}
+	config := OpenAIAutoResetCreditConfig{Enabled5h: false, Enabled7d: true}
+	require.False(t, service.buildAssessment(account, config, 1, 0.99).resetReached)
+	require.Equal(t, "7d", service.buildAssessment(account, config, 1, 1).triggerWindow)
+	config.Enabled5h, config.Enabled7d = true, false
+	require.Equal(t, "5h", service.buildAssessment(account, config, 1, 1).triggerWindow)
+	require.False(t, service.buildAssessment(account, config, 0.99, 1).resetReached)
+}
+
+func TestLegacyResetCreditDoesNotBypassFiveHourPause(t *testing.T) {
+	now := time.Now().UTC()
+	account := &Account{ID: 10, Platform: PlatformOpenAI, Type: AccountTypeOAuth, Extra: map[string]any{
+		OpenAIAutoResetCreditEnabledExtraKey: true,
+		"auto_pause_5h_threshold":            0.8,
+		"codex_5h_used_percent":              100.0,
+		"codex_usage_updated_at":             now.Format(time.RFC3339),
+		"codex_5h_reset_at":                  now.Add(time.Hour).Format(time.RFC3339),
+		OpenAIAutoResetCreditStateExtraKey: OpenAIAutoResetCreditState{
+			Status: OpenAIAutoResetStatusAvailable, AvailableCount: 1, CheckedAt: now.Format(time.RFC3339),
+		},
+	}}
+	paused, decision := shouldAutoPauseOpenAIAccountByQuota(context.Background(), account)
+	require.True(t, paused)
+	require.NotContains(t, decision.reason, "quota_auto_reset")
 }
 
 func TestShouldAutoPauseOpenAIAccountByQuota_AutoResetCreditStates(t *testing.T) {
 	now := time.Now().UTC()
 	baseExtra := map[string]any{
-		OpenAIAutoResetCreditEnabledExtraKey:     true,
-		OpenAIAutoResetCredit5hThresholdExtraKey: 1.0,
-		OpenAIAutoResetCredit7dThresholdExtraKey: 1.0,
-		"auto_pause_5h_threshold":                0.8,
-		"auto_pause_7d_disabled":                 true,
-		"codex_5h_used_percent":                  90.0,
-		"codex_usage_updated_at":                 now.Format(time.RFC3339),
-		"codex_5h_reset_at":                      now.Add(time.Hour).Format(time.RFC3339),
+		OpenAIAutoResetCredit5hEnabledExtraKey: true,
+		OpenAIAutoResetCredit7dEnabledExtraKey: false,
+		"auto_pause_5h_threshold":              0.8,
+		"auto_pause_7d_disabled":               true,
+		"codex_5h_used_percent":                90.0,
+		"codex_usage_updated_at":               now.Format(time.RFC3339),
+		"codex_5h_reset_at":                    now.Add(time.Hour).Format(time.RFC3339),
 	}
 
 	t.Run("卡状态未知时暂停并触发异步查询", func(t *testing.T) {
@@ -126,16 +154,16 @@ func TestOpenAIQuotaAutoResetService_AssessesIndependentWindows(t *testing.T) {
 		"auto_pause_5h_disabled": true,
 		"auto_pause_7d_disabled": true,
 	}}
-	config := OpenAIAutoResetCreditConfig{Enabled: true, Threshold5h: 0.8, Threshold7d: 0.9}
+	config := OpenAIAutoResetCreditConfig{Enabled: true, Enabled5h: true, Enabled7d: true}
 	tests := []struct {
 		name       string
 		fiveHour   float64
 		sevenDay   float64
 		wantWindow string
 	}{
-		{name: "5h", fiveHour: 0.8, sevenDay: 0.2, wantWindow: "5h"},
-		{name: "7d", fiveHour: 0.2, sevenDay: 0.9, wantWindow: "7d"},
-		{name: "同时触发", fiveHour: 0.95, sevenDay: 0.95, wantWindow: "5h+7d"},
+		{name: "5h", fiveHour: 1, sevenDay: 0.2, wantWindow: "5h"},
+		{name: "7d", fiveHour: 0.2, sevenDay: 1, wantWindow: "7d"},
+		{name: "同时触发", fiveHour: 1, sevenDay: 1, wantWindow: "5h+7d"},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -228,14 +256,12 @@ func TestOpenAIQuotaAutoResetService_ConcurrentInstancesConsumeOnce(t *testing.T
 		ID: 99, Platform: PlatformOpenAI, Type: AccountTypeOAuth,
 		Status: StatusActive, Schedulable: true,
 		Extra: map[string]any{
-			OpenAIAutoResetCreditEnabledExtraKey:     true,
-			OpenAIAutoResetCredit5hThresholdExtraKey: 1.0,
-			OpenAIAutoResetCredit7dThresholdExtraKey: 1.0,
-			"codex_5h_used_percent":                  100.0,
-			"codex_7d_used_percent":                  10.0,
-			"codex_usage_updated_at":                 now.Format(time.RFC3339),
-			"codex_5h_reset_at":                      now.Add(time.Hour).Format(time.RFC3339),
-			"codex_7d_reset_at":                      now.Add(24 * time.Hour).Format(time.RFC3339),
+			OpenAIAutoResetCredit5hEnabledExtraKey: true,
+			"codex_5h_used_percent":                100.0,
+			"codex_7d_used_percent":                10.0,
+			"codex_usage_updated_at":               now.Format(time.RFC3339),
+			"codex_5h_reset_at":                    now.Add(time.Hour).Format(time.RFC3339),
+			"codex_7d_reset_at":                    now.Add(24 * time.Hour).Format(time.RFC3339),
 		},
 	}
 	repo := &autoResetTestAccountRepo{account: account}
@@ -291,12 +317,10 @@ func TestOpenAIQuotaAutoResetService_TimeoutRetryReusesRequestBody(t *testing.T)
 		ID: 100, Platform: PlatformOpenAI, Type: AccountTypeOAuth,
 		Status: StatusActive, Schedulable: true,
 		Extra: map[string]any{
-			OpenAIAutoResetCreditEnabledExtraKey:     true,
-			OpenAIAutoResetCredit5hThresholdExtraKey: 1.0,
-			OpenAIAutoResetCredit7dThresholdExtraKey: 1.0,
-			"codex_5h_used_percent":                  100.0,
-			"codex_usage_updated_at":                 now.Format(time.RFC3339),
-			"codex_5h_reset_at":                      now.Add(time.Hour).Format(time.RFC3339),
+			OpenAIAutoResetCredit5hEnabledExtraKey: true,
+			"codex_5h_used_percent":                100.0,
+			"codex_usage_updated_at":               now.Format(time.RFC3339),
+			"codex_5h_reset_at":                    now.Add(time.Hour).Format(time.RFC3339),
 		},
 	}
 	repo := &autoResetTestAccountRepo{account: account}

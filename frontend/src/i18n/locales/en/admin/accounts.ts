@@ -902,11 +902,9 @@ export default {
 	  autoPauseDisabledHint: 'When enabled, this account is never auto-paused (even if a global default threshold is configured).',
 	  autoResetCredit: {
 	    title: 'Automatically use reset credits',
-	    hint: 'Uses the earliest-expiring available credit only when actual usage reaches a threshold. Off by default; the account remains paused if no credit is available or reset fails.',
-	    threshold5h: '5h auto-reset threshold (%)',
-	    threshold7d: '7d auto-reset threshold (%)',
-	    thresholdHint: 'Each window is evaluated independently. Enter 0.1–100; both default to 100.',
-	    thresholdInvalid: 'Automatic reset-credit thresholds must be between 0.1% and 100%.'
+	    hint: 'Uses the earliest-expiring credit when an enabled window reaches 100% actual upstream usage. Both switches are off by default; a 5h limit can consume a credit only if you explicitly enable it.',
+	    enable5h: 'Redeem on 5h limit',
+	    enable7d: 'Redeem on 7d limit'
 	  },
       // Quota control (Anthropic OAuth/SetupToken only)
       quotaControl: {
