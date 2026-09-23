@@ -118,3 +118,30 @@ func WriteFilteredHeaders(dst http.Header, src http.Header, filter *CompiledHead
 		}
 	}
 }
+
+// WriteClaudeCodeResponseHeaders forwards the response headers Claude Code
+// reads on native Anthropic passthrough routes: x-should-retry and
+// anthropic-ratelimit-unified-*. Other anthropic-* headers such as
+// anthropic-organization-id describe the upstream account and stay filtered.
+// Explicit force_remove rules still apply, and headers already copied by the
+// standard filter are skipped.
+func WriteClaudeCodeResponseHeaders(dst, src http.Header, filter *CompiledHeaderFilter) {
+	if filter == nil {
+		filter = defaultCompiledHeaderFilter
+	}
+	for key, values := range src {
+		lower := strings.ToLower(strings.TrimSpace(key))
+		if lower != "x-should-retry" && !strings.HasPrefix(lower, "anthropic-ratelimit-unified-") {
+			continue
+		}
+		if _, removed := filter.forceRemove[lower]; removed {
+			continue
+		}
+		if len(dst.Values(key)) > 0 {
+			continue
+		}
+		for _, value := range values {
+			dst.Add(key, value)
+		}
+	}
+}

@@ -419,8 +419,7 @@ func (s *GatewayService) buildCountTokensRequestAnthropicAPIKeyPassthrough(
 
 	if c != nil && c.Request != nil {
 		for key, values := range c.Request.Header {
-			lowerKey := strings.ToLower(strings.TrimSpace(key))
-			if !allowedHeaders[lowerKey] {
+			if !forwardableAnthropicPassthroughHeader(key) {
 				continue
 			}
 			wireKey := resolveWireCasing(key)

@@ -38,6 +38,10 @@ const (
 	BetaServerSideFallback   = "server-side-fallback-2026-07-01"
 	BetaFallbackCredit       = "fallback-credit-2026-07-01"
 	BetaFallbackCreditLegacy = "fallback-credit-2026-06-01"
+
+	// Claude Code Auto mode 服务端检查：body.safeguards 仅在 anthropic-beta 含该
+	// token 时被上游接受。仅用于 sanitize 的条件判断，不加入任何默认 beta 集合。
+	BetaDangerousToolUse = "dangerous-tool-use-2026-09-03"
 )
 
 // DroppedBetas 是转发时需要从 anthropic-beta header 中移除的 beta token 列表。
