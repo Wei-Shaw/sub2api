@@ -68,6 +68,10 @@ const (
 	FieldTotalCost = "total_cost"
 	// FieldActualCost holds the string denoting the actual_cost field in the database.
 	FieldActualCost = "actual_cost"
+	// FieldAPIReferenceCost holds the string denoting the api_reference_cost field in the database.
+	FieldAPIReferenceCost = "api_reference_cost"
+	// FieldAPIReferencePricing holds the string denoting the api_reference_pricing field in the database.
+	FieldAPIReferencePricing = "api_reference_pricing"
 	// FieldRateMultiplier holds the string denoting the rate_multiplier field in the database.
 	FieldRateMultiplier = "rate_multiplier"
 	// FieldLongContextBillingApplied holds the string denoting the long_context_billing_applied field in the database.
@@ -187,6 +191,8 @@ var Columns = []string{
 	FieldCacheReadCost,
 	FieldTotalCost,
 	FieldActualCost,
+	FieldAPIReferenceCost,
+	FieldAPIReferencePricing,
 	FieldRateMultiplier,
 	FieldLongContextBillingApplied,
 	FieldAccountRateMultiplier,
@@ -433,6 +439,11 @@ func ByTotalCost(opts ...sql.OrderTermOption) OrderOption {
 // ByActualCost orders the results by the actual_cost field.
 func ByActualCost(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldActualCost, opts...).ToFunc()
+}
+
+// ByAPIReferenceCost orders the results by the api_reference_cost field.
+func ByAPIReferenceCost(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldAPIReferenceCost, opts...).ToFunc()
 }
 
 // ByRateMultiplier orders the results by the rate_multiplier field.
