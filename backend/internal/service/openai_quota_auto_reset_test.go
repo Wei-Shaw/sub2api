@@ -100,6 +100,43 @@ func TestShouldAutoPauseOpenAIAccountByQuota_AutoResetCreditStates(t *testing.T)
 	})
 }
 
+func TestNotifyOpenAIAutoResetFromScheduler_CoolsDownPerAccount(t *testing.T) {
+	svc := &OpenAIQuotaAutoResetService{ctx: context.Background(), queue: make(chan int64, 8)}
+	setOpenAIAutoResetNotifier(svc)
+	t.Cleanup(func() { clearOpenAIAutoResetNotifier(svc) })
+
+	const accountA, accountB int64 = 9_900_001, 9_900_002
+	t.Cleanup(func() {
+		openAIAutoResetSchedulerNotifiedAt.Delete(accountA)
+		openAIAutoResetSchedulerNotifiedAt.Delete(accountB)
+	})
+	drain := func() []int64 {
+		var got []int64
+		for {
+			select {
+			case id := <-svc.queue:
+				svc.pending.Delete(id)
+				got = append(got, id)
+			default:
+				return got
+			}
+		}
+	}
+
+	base := time.Now()
+	require.True(t, notifyOpenAIAutoResetFromSchedulerAt(accountA, base))
+	require.Equal(t, []int64{accountA}, drain())
+
+	require.False(t, notifyOpenAIAutoResetFromSchedulerAt(accountA, base.Add(10*time.Second)), "冷却期内同一账号不重复通知")
+	require.Empty(t, drain())
+
+	require.True(t, notifyOpenAIAutoResetFromSchedulerAt(accountB, base.Add(10*time.Second)), "冷却按账号独立")
+	require.Equal(t, []int64{accountB}, drain())
+
+	require.True(t, notifyOpenAIAutoResetFromSchedulerAt(accountA, base.Add(openAIAutoResetSchedulerNotifyCooldown)))
+	require.Equal(t, []int64{accountA}, drain())
+}
+
 func TestSelectOpenAIAutoResetCandidate_FailsClosed(t *testing.T) {
 	candidates := []openAIAutoResetCreditCandidate{
 		{ID: "later", ExpiresAt: "2026-09-02T00:00:00Z"},
