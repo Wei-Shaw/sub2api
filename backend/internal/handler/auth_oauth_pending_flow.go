@@ -1474,6 +1474,15 @@ func readPendingOAuthBrowserSession(c *gin.Context, h *AuthHandler) (*service.Au
 		return nil, nil, clearCookies, err
 	}
 
+	if session.ProviderType == "dingtalk" {
+		app := pendingSessionStringValue(session.UpstreamIdentityClaims, "dingtalk_app_id")
+		if app != "" && app != "default" {
+			if _, err := h.getDingTalkOAuthConfigForApp(c.Request.Context(), app); err != nil {
+				return nil, nil, clearCookies, err
+			}
+			c.Request = c.Request.WithContext(service.WithDingTalkApplication(c.Request.Context(), app))
+		}
+	}
 	return svc, session, clearCookies, nil
 }
 

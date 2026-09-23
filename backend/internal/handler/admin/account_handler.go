@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"log"
 	"log/slog"
+	"math"
 	"net/http"
 	"sort"
 	"strconv"
@@ -2756,6 +2757,99 @@ func (h *AccountHandler) GetBatchUsage(c *gin.Context) {
 		"usage":  usageByAccount,
 		"errors": errorsByAccount,
 	})
+}
+
+// GetOpenAISubscriptionBalanceSummary returns the estimated remaining balance
+// for OpenAI OAuth subscription accounts. The estimate uses the same 7d usage
+// window shown in the account list: projected total cost minus account-billed
+// cost. A missing/invalid utilization window is reported as unavailable rather
+// than being silently rendered as zero.
+func (h *AccountHandler) GetOpenAISubscriptionBalanceSummary(c *gin.Context) {
+	accounts, err := h.adminService.ListAccountsForSchedulerScoreFilter(c.Request.Context(), service.PlatformOpenAI, service.AccountTypeOAuth, "", "", 0, "")
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	type row struct {
+		ID                 int64    `json:"id"`
+		Name               string   `json:"name"`
+		Status             string   `json:"status"`
+		EstimatedTotalCost *float64 `json:"estimated_total_cost,omitempty"`
+		AccountCost        *float64 `json:"account_cost,omitempty"`
+		EstimatedBalance   *float64 `json:"estimated_balance,omitempty"`
+		Utilization        *float64 `json:"utilization,omitempty"`
+		Estimated          bool     `json:"estimated"`
+	}
+	accountIDs := make([]int64, 0, len(accounts))
+	for _, account := range accounts {
+		if account.ParentAccountID != nil {
+			continue
+		}
+		accountIDs = append(accountIDs, account.ID)
+	}
+	usageByAccount, _, err := h.accountUsageService.GetUsageBatch(c.Request.Context(), accountIDs, false)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	rows := make([]row, 0, len(accounts))
+	var total float64
+	var estimatedCount, unknownCount int
+	for _, account := range accounts {
+		// Spark shadow accounts share the parent's subscription and would double
+		// count the same upstream balance.
+		if account.ParentAccountID != nil {
+			continue
+		}
+		item := row{ID: account.ID, Name: account.Name, Status: account.Status, Estimated: true}
+		usage := usageByAccount[account.ID]
+		sevenDay := (*service.UsageProgress)(nil)
+		if usage != nil {
+			sevenDay = usage.SevenDay
+		}
+		if sevenDay == nil || sevenDay.WindowStats == nil || !isFinitePositive(sevenDay.Utilization) || !isFinitePositive(sevenDay.WindowStats.Cost) {
+			unknownCount++
+			rows = append(rows, item)
+			continue
+		}
+		accountCost := sevenDay.WindowStats.Cost
+		estimatedTotal := accountCost * 100 / sevenDay.Utilization
+		if !isFinitePositive(estimatedTotal) {
+			unknownCount++
+			rows = append(rows, item)
+			continue
+		}
+		balance := estimatedTotal - accountCost
+		item.EstimatedTotalCost = &estimatedTotal
+		item.AccountCost = &accountCost
+		item.EstimatedBalance = &balance
+		utilization := sevenDay.Utilization
+		item.Utilization = &utilization
+		total += balance
+		estimatedCount++
+		rows = append(rows, item)
+	}
+	sort.Slice(rows, func(i, j int) bool {
+		if rows[i].EstimatedBalance == nil && rows[j].EstimatedBalance != nil {
+			return false
+		}
+		if rows[i].EstimatedBalance != nil && rows[j].EstimatedBalance == nil {
+			return true
+		}
+		if rows[i].EstimatedBalance != nil && rows[j].EstimatedBalance != nil && *rows[i].EstimatedBalance != *rows[j].EstimatedBalance {
+			return *rows[i].EstimatedBalance > *rows[j].EstimatedBalance
+		}
+		return rows[i].Name < rows[j].Name
+	})
+	response.Success(c, gin.H{
+		"accounts":     rows,
+		"summary":      gin.H{"accounts": len(rows), "estimated_accounts": estimatedCount, "unknown_accounts": unknownCount, "estimated_balance": total},
+		"generated_at": time.Now().Unix(),
+	})
+}
+
+func isFinitePositive(value float64) bool {
+	return value > 0 && !math.IsNaN(value) && !math.IsInf(value, 0)
 }
 
 // SetSchedulableRequest represents the request body for setting schedulable status

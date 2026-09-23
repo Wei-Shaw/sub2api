@@ -207,6 +207,7 @@ func RegisterAuthRoutes(
 			}),
 			h.Auth.CreateOIDCOAuthAccount,
 		)
+		auth.GET("/oauth/dingtalk/apps", h.DingTalkOrganization.PublicApps)
 		auth.GET("/oauth/dingtalk/start", h.Auth.DingTalkOAuthStart)
 		auth.POST("/oauth/dingtalk/start", rateLimiter.LimitWithOptions("oauth-dingtalk-start", 20, time.Minute, middleware.RateLimitOptions{
 			FailureMode: middleware.RateLimitFailClose,
