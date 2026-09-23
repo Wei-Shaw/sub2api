@@ -61,8 +61,14 @@ func (s *OpenAIGatewayService) forwardResponsesViaRawChatCompletions(
 	// 被 flush / 跨实例漂移后同 id 的 encrypted-only 副本无法再取明文的情况。
 	s.recacheReasoningItemsFromInput(responsesReq.Input)
 
+	groupID := getOpenAIGroupIDFromContext(c)
+	enableWebSearch := s.shouldEmulateOpenAIWebSearch(ctx, account, groupID)
+	hasWebSearch := apicompat.HasWebSearchTool(effectiveTools)
+	emulateWebSearch := enableWebSearch && hasWebSearch
+
 	chatReq, err := apicompat.ResponsesToChatCompletionsRequestWithOptions(&responsesReq, &apicompat.ResponsesToChatOptions{
-		ReasoningContentByID: s.reasoningContentByID,
+		ReasoningContentByID:     s.reasoningContentByID,
+		EnableWebSearchEmulation: enableWebSearch,
 	})
 	if err != nil {
 		writeOpenAIResponsesFallbackError(c, http.StatusBadRequest, "invalid_request_error", err.Error())
@@ -127,14 +133,20 @@ func (s *OpenAIGatewayService) forwardResponsesViaRawChatCompletions(
 	}
 
 	if clientStream {
-		return s.streamChatCompletionsAsResponses(c, resp, originalModel, customTools, functionTools, toolSearch, namespaceTools, billingModel, upstreamModel, reasoningEffort, serviceTier, startTime)
+		return s.streamChatCompletionsAsResponses(ctx, c, resp, account, targetURL, apiKey, chatReq, emulateWebSearch, originalModel, customTools, functionTools, toolSearch, namespaceTools, billingModel, upstreamModel, reasoningEffort, serviceTier, startTime)
 	}
-	return s.bufferChatCompletionsAsResponses(c, resp, originalModel, customTools, functionTools, toolSearch, namespaceTools, billingModel, upstreamModel, reasoningEffort, serviceTier, startTime)
+	return s.bufferChatCompletionsAsResponses(ctx, c, resp, account, targetURL, apiKey, chatReq, emulateWebSearch, originalModel, customTools, functionTools, toolSearch, namespaceTools, billingModel, upstreamModel, reasoningEffort, serviceTier, startTime)
 }
 
 func (s *OpenAIGatewayService) bufferChatCompletionsAsResponses(
+	ctx context.Context,
 	c *gin.Context,
 	resp *http.Response,
+	account *Account,
+	targetURL string,
+	apiKey string,
+	chatReq *apicompat.ChatCompletionsRequest,
+	webSearchEmulated bool,
 	originalModel string,
 	customTools map[string]bool,
 	functionTools map[string]bool,
@@ -152,6 +164,66 @@ func (s *OpenAIGatewayService) bufferChatCompletionsAsResponses(
 		return nil, err
 	}
 	responsesResp := apicompat.ChatCompletionsResponseToResponses(ccResp, originalModel, customTools, functionTools, toolSearch, namespaceTools)
+
+	if webSearchEmulated && len(ccResp.Choices) > 0 {
+		for _, out := range responsesResp.Output {
+			if out.Type == "web_search_call" && out.Action != nil && out.Action.Query != "" {
+				query := out.Action.Query
+				searchResp, _, searchErr := doWebSearch(ctx, account, query)
+				var searchContent string
+				if searchErr != nil {
+					searchContent = "Web search failed: " + searchErr.Error()
+				} else {
+					searchContent = buildTextSummary(query, searchResp.Results)
+				}
+				chatReq.Messages = append(chatReq.Messages, apicompat.ChatMessage{
+					Role:      "assistant",
+					ToolCalls: ccResp.Choices[0].Message.ToolCalls,
+				})
+				toolRaw, _ := json.Marshal(searchContent)
+				chatReq.Messages = append(chatReq.Messages, apicompat.ChatMessage{
+					Role:       "tool",
+					ToolCallID: out.CallID,
+					Content:    toolRaw,
+				})
+				var remainingTools []apicompat.ChatTool
+				for _, t := range chatReq.Tools {
+					if t.Type == "function" && t.Function.Name == openAIWebSearchProxyName {
+						continue
+					}
+					remainingTools = append(remainingTools, t)
+				}
+				chatReq.Tools = remainingTools
+				if len(chatReq.Tools) == 0 {
+					chatReq.Tools = nil
+					chatReq.ToolChoice = nil
+				}
+				chatReq.Stream = false
+
+				turn2Body, err := json.Marshal(chatReq)
+				if err == nil {
+					turn2Body = clampOllamaCloudUpstreamMaxTokens(account, turn2Body)
+					turn2Resp, err := s.sendCCUpstreamRequest(ctx, c, account, targetURL, turn2Body, false, apiKey, account.GetOpenAIUserAgent(), "")
+					if err == nil {
+						defer func() { _ = turn2Resp.Body.Close() }()
+						if turn2Resp.StatusCode < 400 {
+							ccResp2, usage2, err2 := s.readCCUpstreamJSONResponse(c, turn2Resp, writeOpenAIResponsesFallbackError)
+							if err2 == nil && ccResp2 != nil {
+								responsesResp2 := apicompat.ChatCompletionsResponseToResponses(ccResp2, originalModel, customTools, functionTools, toolSearch, namespaceTools)
+								responsesResp.Output = append(responsesResp.Output, responsesResp2.Output...)
+								usage.InputTokens += usage2.InputTokens
+								usage.OutputTokens += usage2.OutputTokens
+								usage.CacheCreationInputTokens += usage2.CacheCreationInputTokens
+								usage.CacheReadInputTokens += usage2.CacheReadInputTokens
+							}
+						}
+					}
+				}
+				break
+			}
+		}
+	}
+
 	s.cacheReasoningItemsFromOutput(responsesResp.Output)
 
 	if s.responseHeaderFilter != nil {
@@ -175,8 +247,14 @@ func (s *OpenAIGatewayService) bufferChatCompletionsAsResponses(
 }
 
 func (s *OpenAIGatewayService) streamChatCompletionsAsResponses(
+	ctx context.Context,
 	c *gin.Context,
 	resp *http.Response,
+	account *Account,
+	targetURL string,
+	apiKey string,
+	chatReq *apicompat.ChatCompletionsRequest,
+	webSearchEmulated bool,
 	originalModel string,
 	customTools map[string]bool,
 	functionTools map[string]bool,
@@ -195,6 +273,7 @@ func (s *OpenAIGatewayService) streamChatCompletionsAsResponses(
 	state.CustomTools = customTools
 	state.FunctionTools = functionTools
 	state.ToolSearchDeclared = toolSearch
+	state.WebSearchDeclared = webSearchEmulated
 	state.NamespaceTools = namespaceTools
 	clientDisconnected := false
 
@@ -261,6 +340,71 @@ func (s *OpenAIGatewayService) streamChatCompletionsAsResponses(
 			Duration:                    time.Since(startTime),
 			FirstTokenMs:                scan.FirstTokenMs,
 		}, fmt.Errorf("invalid tool call arguments from upstream: %w", err)
+	}
+
+	if webSearchEmulated && state.HasWebSearchCall() {
+		toolDoneEvents := apicompat.CloseChatToolItems(state)
+		s.cacheReasoningItemsFromEvents(toolDoneEvents)
+		writeEvents(toolDoneEvents)
+
+		callID, query, ok := state.GetWebSearchCall()
+		if ok && query != "" && !clientDisconnected {
+			if _, err := fmt.Fprint(c.Writer, ": web search executing\n\n"); err == nil {
+				c.Writer.Flush()
+			}
+			searchResp, _, searchErr := doWebSearch(ctx, account, query)
+			var searchContent string
+			if searchErr != nil {
+				searchContent = "Web search failed: " + searchErr.Error()
+			} else {
+				searchContent = buildTextSummary(query, searchResp.Results)
+			}
+
+			chatReq.Messages = append(chatReq.Messages, apicompat.ChatMessage{
+				Role:      "assistant",
+				ToolCalls: state.StoredToolCallsSlice(),
+			})
+			toolRaw, _ := json.Marshal(searchContent)
+			chatReq.Messages = append(chatReq.Messages, apicompat.ChatMessage{
+				Role:       "tool",
+				ToolCallID: callID,
+				Content:    toolRaw,
+			})
+			var remainingTools []apicompat.ChatTool
+			for _, t := range chatReq.Tools {
+				if t.Type == "function" && t.Function.Name == openAIWebSearchProxyName {
+					continue
+				}
+				remainingTools = append(remainingTools, t)
+			}
+			chatReq.Tools = remainingTools
+			if len(chatReq.Tools) == 0 {
+				chatReq.Tools = nil
+				chatReq.ToolChoice = nil
+			}
+
+			turn2Body, err := json.Marshal(chatReq)
+			if err == nil {
+				turn2Body = clampOllamaCloudUpstreamMaxTokens(account, turn2Body)
+				turn2Resp, err := s.sendCCUpstreamRequest(ctx, c, account, targetURL, turn2Body, true, apiKey, account.GetOpenAIUserAgent(), "")
+				if err == nil {
+					defer func() { _ = turn2Resp.Body.Close() }()
+					if turn2Resp.StatusCode < 400 {
+						scan2 := s.scanCCStream(c, turn2Resp, "openai responses chat fallback turn 2", requestID, startTime, func(chunk *apicompat.ChatCompletionsChunk) {
+							events := apicompat.ChatCompletionsChunkToResponsesEvents(chunk, state)
+							s.cacheReasoningItemsFromEvents(events)
+							writeEvents(events)
+						})
+						if scan2.Err == nil {
+							scan.Usage.InputTokens += scan2.Usage.InputTokens
+							scan.Usage.OutputTokens += scan2.Usage.OutputTokens
+							scan.Usage.CacheCreationInputTokens += scan2.Usage.CacheCreationInputTokens
+							scan.Usage.CacheReadInputTokens += scan2.Usage.CacheReadInputTokens
+						}
+					}
+				}
+			}
+		}
 	}
 
 	finalEvents := apicompat.FinalizeChatCompletionsResponsesStream(state)
