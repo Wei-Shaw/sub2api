@@ -303,18 +303,13 @@ func mergeAnthropicUsage(dst *ClaudeUsage, src apicompat.AnthropicUsage) {
 		dst.CacheReadInputTokens = cacheReadTokens
 		dst.CacheCreationInputTokens = src.CacheCreationInputTokens
 	} else {
-		previousCacheReadTokens := dst.CacheReadInputTokens
-		previousCacheCreationTokens := dst.CacheCreationInputTokens
+		// Without an authoritative prompt total or miss bucket, input_tokens is
+		// provider-specific: it may already be the uncached bucket, or it may be
+		// a total from an earlier event. Do not infer a subtraction merely because
+		// a later event contains cache buckets; that would corrupt providers whose
+		// stream uses independent input and cache fields.
 		if src.InputTokens > 0 {
 			dst.InputTokens = src.InputTokens
-		}
-		if src.InputTokens == 0 && dst.InputTokens > 0 && (cacheReadTokens > 0 || src.CacheCreationInputTokens > 0) {
-			// Some compatible streams put the total prompt count in message_start,
-			// then provide only cumulative cache buckets in message_delta. Subtract
-			// only newly observed buckets so repeated deltas are idempotent.
-			newCacheReadTokens := max(cacheReadTokens-previousCacheReadTokens, 0)
-			newCacheCreationTokens := max(src.CacheCreationInputTokens-previousCacheCreationTokens, 0)
-			dst.InputTokens = max(dst.InputTokens-newCacheReadTokens-newCacheCreationTokens, 0)
 		}
 		if cacheReadTokens > 0 {
 			dst.CacheReadInputTokens = cacheReadTokens

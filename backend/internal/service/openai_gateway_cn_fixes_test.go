@@ -125,10 +125,10 @@ func TestResponsesStreamingFromNativeAnthropic_NormalizesTerminalUsage(t *testin
 		wantCached        int
 		wantCacheCreation int
 	}{
-		{name: "full cache", startUsage: `"input_tokens":1200`, deltaUsage: `"output_tokens":30,"cache_read_input_tokens":1200`, wantOutput: 30, wantCached: 1200},
-		{name: "partial cache", startUsage: `"input_tokens":1200`, deltaUsage: `"output_tokens":30,"cache_read_input_tokens":800`, wantInput: 400, wantOutput: 30, wantCached: 800},
-		{name: "cache creation", startUsage: `"input_tokens":1200`, deltaUsage: `"output_tokens":30,"cache_creation_input_tokens":800`, wantInput: 400, wantOutput: 30, wantCacheCreation: 800},
-		{name: "repeated cumulative cache bucket", startUsage: `"input_tokens":1200`, deltaUsage: `"output_tokens":30,"cache_read_input_tokens":800`, repeatDelta: true, wantInput: 400, wantOutput: 30, wantCached: 800},
+		{name: "full cache", startUsage: `"input_tokens":1200,"prompt_tokens":1200`, deltaUsage: `"input_tokens":0,"output_tokens":30,"prompt_tokens":1200,"cache_read_input_tokens":1200`, wantOutput: 30, wantCached: 1200},
+		{name: "partial cache", startUsage: `"input_tokens":1200,"prompt_tokens":1200`, deltaUsage: `"input_tokens":0,"output_tokens":30,"prompt_tokens":1200,"cache_read_input_tokens":800`, wantInput: 400, wantOutput: 30, wantCached: 800},
+		{name: "cache creation", startUsage: `"input_tokens":1200,"prompt_tokens":1200`, deltaUsage: `"input_tokens":0,"output_tokens":30,"prompt_tokens":1200,"cache_creation_input_tokens":800`, wantInput: 400, wantOutput: 30, wantCacheCreation: 800},
+		{name: "repeated cumulative cache bucket", startUsage: `"input_tokens":1200,"prompt_tokens":1200`, deltaUsage: `"input_tokens":0,"output_tokens":30,"prompt_tokens":1200,"cache_read_input_tokens":800`, repeatDelta: true, wantInput: 400, wantOutput: 30, wantCached: 800},
 	}
 
 	for _, tt := range tests {
