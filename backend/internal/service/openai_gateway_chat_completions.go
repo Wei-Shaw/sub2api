@@ -327,6 +327,10 @@ func (s *OpenAIGatewayService) forwardAsChatCompletions(
 			return nil, fmt.Errorf("remarshal after codex transform: %w", err)
 		}
 	}
+	responsesBody, _, err = sanitizeGPTPromptCacheHints(responsesBody, upstreamModel)
+	if err != nil {
+		return nil, fmt.Errorf("sanitize GPT prompt cache hints: %w", err)
+	}
 	// Codex transforms may normalize the model after the initial mapping pass;
 	// record the final slug immediately before policy/auth/upstream dispatch.
 	SetOpsUpstreamModel(c, upstreamModel)
