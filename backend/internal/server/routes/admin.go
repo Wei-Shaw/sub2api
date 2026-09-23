@@ -111,6 +111,11 @@ func RegisterAdminRoutes(
 
 		// 定时测试计划
 		registerScheduledTestRoutes(admin, h)
+		admin.GET("/quality-checks", h.Admin.Account.QualityOverview)
+		admin.PUT("/quality-checks/config", h.Admin.Account.QualityConfigure)
+		admin.POST("/quality-checks/run", h.Admin.Account.QualityRunNow)
+		admin.GET("/quality-checks/accounts/:id/history", h.Admin.Account.QualityHistory)
+		admin.GET("/quality-checks/runs/:id", h.Admin.Account.QualityRunDetail)
 
 		// 渠道管理
 		registerChannelRoutes(admin, h)
@@ -560,6 +565,12 @@ func registerSettingsRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 	adminSettings := admin.Group("/settings")
 	{
 		adminSettings.GET("", h.Admin.Setting.GetSettings)
+		adminSettings.GET("/ticket-proxy-pool", h.Admin.Setting.GetTicketProxyPool)
+		adminSettings.GET("/ticket-harvest-status", h.Admin.Setting.GetTicketHarvestStatus)
+		adminSettings.POST("/ticket-proxy-pool", h.Admin.Setting.ImportTicketProxyPool)
+		adminSettings.GET("/ticket-proxy-provider", h.Admin.Setting.GetTicketProxyProvider)
+		adminSettings.PUT("/ticket-proxy-provider", h.Admin.Setting.SaveTicketProxyProvider)
+		adminSettings.POST("/ticket-proxy-provider/fetch", h.Admin.Setting.FetchTicketProxyProvider)
 		adminSettings.PUT("", h.Admin.Setting.UpdateSettings)
 		adminSettings.POST("/test-smtp", h.Admin.Setting.TestSMTPConnection)
 		adminSettings.POST("/send-test-email", h.Admin.Setting.SendTestEmail)
@@ -661,6 +672,7 @@ func registerSystemRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 	system := admin.Group("/system")
 	{
 		system.GET("/version", h.Admin.System.GetVersion)
+		system.GET("/network-traffic", h.Admin.System.GetNetworkTraffic)
 		system.GET("/check-updates", h.Admin.System.CheckUpdates)
 		system.GET("/rollback-versions", h.Admin.System.GetRollbackVersions)
 		system.POST("/update", h.Admin.System.PerformUpdate)

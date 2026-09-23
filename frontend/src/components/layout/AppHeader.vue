@@ -248,6 +248,7 @@
         </div>
       </div>
     </div>
+    <NetworkTrafficBanner v-if="authStore.isAuthenticated && authStore.isAdmin" />
   </header>
 </template>
 
@@ -260,6 +261,7 @@ import { useAdminSettingsStore } from '@/stores/adminSettings'
 import LocaleSwitcher from '@/components/common/LocaleSwitcher.vue'
 import SubscriptionProgressMini from '@/components/common/SubscriptionProgressMini.vue'
 import AnnouncementBell from '@/components/common/AnnouncementBell.vue'
+import NetworkTrafficBanner from '@/components/admin/NetworkTrafficBanner.vue'
 import Icon from '@/components/icons/Icon.vue'
 import { sanitizeUrl } from '@/utils/url'
 import { FeatureFlags, isFeatureFlagEnabled } from '@/utils/featureFlags'

@@ -4,10 +4,12 @@ import (
 	"context"
 	"errors"
 	"net/http"
+	"os"
 	"strconv"
 	"strings"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/pkg/networkstats"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/response"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/sysutil"
 	middleware2 "github.com/Wei-Shaw/sub2api/internal/server/middleware"
@@ -18,8 +20,9 @@ import (
 
 // SystemHandler handles system-related operations
 type SystemHandler struct {
-	updateSvc systemUpdateService
-	lockSvc   *service.SystemOperationLockService
+	networkStats *networkstats.Collector
+	updateSvc    systemUpdateService
+	lockSvc      *service.SystemOperationLockService
 }
 
 // systemUpdateTimeout bounds a full in-place update or rollback: the release
@@ -54,8 +57,9 @@ type systemUpdateService interface {
 // NewSystemHandler creates a new SystemHandler
 func NewSystemHandler(updateSvc systemUpdateService, lockSvc *service.SystemOperationLockService) *SystemHandler {
 	return &SystemHandler{
-		updateSvc: updateSvc,
-		lockSvc:   lockSvc,
+		networkStats: networkstats.New(os.Getenv("HOST_NETWORK_STATS_DIR")),
+		updateSvc:    updateSvc,
+		lockSvc:      lockSvc,
 	}
 }
 
