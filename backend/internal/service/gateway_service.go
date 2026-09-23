@@ -1455,6 +1455,16 @@ func (s *GatewayService) GetAvailableModels(ctx context.Context, groupID *int64,
 			modelSet[model] = struct{}{}
 			hasAnyMapping = true
 		}
+		// 映射与白名单解耦的账号仍接受未列出的模型，列表需补上平台默认模型，
+		// 否则映射 key 会把整个分组的模型列表收窄成白名单。
+		if len(mapping) > 0 && acc.modelMappingAdmitsUnlisted() {
+			for _, model := range defaultModelsListCandidateIDs(acc.Platform) {
+				if platform != "" && acc.Platform != platform && !mixedListingModelAllowed(platform, model) {
+					continue
+				}
+				modelSet[model] = struct{}{}
+			}
+		}
 	}
 
 	// If no account has model_mapping, return nil (use default)

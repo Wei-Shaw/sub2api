@@ -801,6 +801,10 @@ export default {
       selectAllowedModels: 'Select allowed models. Leave empty to support all models.',
       mapRequestModels:
         'Map request models to actual models. Left is the requested model, right is the actual model sent to API.',
+      modelMappingAllowUnlisted: {
+        title: 'Mapping does not restrict other models',
+        hint: 'When on, mappings only rewrite model names: unlisted models are still accepted and forwarded unchanged, and the model whitelist applies separately. When off, only the models listed in the mapping are available (legacy behavior).',
+      },
       selectedModels: 'Selected {count} model(s)',
       supportsAllModels: '(supports all models)',
       requestModel: 'Request model',

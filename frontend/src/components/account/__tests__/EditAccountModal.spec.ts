@@ -749,6 +749,70 @@ describe('EditAccountModal', () => {
     })
   })
 
+  it('shows and preserves model mapping for Anthropic setup-token accounts', async () => {
+    const account = buildAccount()
+    account.platform = 'anthropic'
+    account.type = 'setup-token'
+    account.credentials = {
+      model_mapping: { 'claude-opus-4-6': 'claude-opus-4-7' }
+    }
+    updateAccountMock.mockReset()
+    checkMixedChannelRiskMock.mockReset()
+    checkMixedChannelRiskMock.mockResolvedValue({ has_risk: false })
+    updateAccountMock.mockResolvedValue(account)
+
+    const wrapper = mountModal(account)
+    expect(wrapper.text()).toContain('admin.accounts.modelRestriction')
+
+    await wrapper.get('form#edit-account-form').trigger('submit.prevent')
+
+    expect(updateAccountMock).toHaveBeenCalledTimes(1)
+    expect(updateAccountMock.mock.calls[0]?.[1]?.credentials).toMatchObject({
+      model_mapping: { 'claude-opus-4-6': 'claude-opus-4-7' }
+    })
+  })
+
+  it('persists the mapping/whitelist decoupling toggle', async () => {
+    const account = buildAccount()
+    account.credentials.model_mapping = { 'gpt-latest': 'gpt-5.2' }
+    updateAccountMock.mockReset()
+    checkMixedChannelRiskMock.mockReset()
+    checkMixedChannelRiskMock.mockResolvedValue({ has_risk: false })
+    updateAccountMock.mockResolvedValue(account)
+
+    const wrapper = mountModal(account)
+    const toggle = wrapper.get('[data-testid="model-mapping-allow-unlisted-toggle"]')
+    expect(toggle.attributes('aria-checked')).toBe('false')
+
+    await toggle.trigger('click')
+    await wrapper.get('form#edit-account-form').trigger('submit.prevent')
+
+    expect(updateAccountMock).toHaveBeenCalledTimes(1)
+    expect(updateAccountMock.mock.calls[0]?.[1]?.credentials).toMatchObject({
+      model_mapping: { 'gpt-latest': 'gpt-5.2' },
+      model_mapping_allow_unlisted: true
+    })
+  })
+
+  it('clears the decoupling toggle when switched off', async () => {
+    const account = buildAccount()
+    account.credentials.model_mapping = { 'gpt-latest': 'gpt-5.2' }
+    account.credentials.model_mapping_allow_unlisted = true
+    updateAccountMock.mockReset()
+    checkMixedChannelRiskMock.mockReset()
+    checkMixedChannelRiskMock.mockResolvedValue({ has_risk: false })
+    updateAccountMock.mockResolvedValue(account)
+
+    const wrapper = mountModal(account)
+    const toggle = wrapper.get('[data-testid="model-mapping-allow-unlisted-toggle"]')
+    expect(toggle.attributes('aria-checked')).toBe('true')
+
+    await toggle.trigger('click')
+    await wrapper.get('form#edit-account-form').trigger('submit.prevent')
+
+    expect(updateAccountMock.mock.calls[0]?.[1]?.credentials).not.toHaveProperty('model_mapping_allow_unlisted')
+  })
+
   it('submits OpenAI compact mode and compact-only model mapping', async () => {
     const account = buildAccount()
     account.extra = {
