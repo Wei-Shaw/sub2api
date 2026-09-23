@@ -962,6 +962,19 @@ func (s *BillingService) initFallbackPricing() {
 		LongContextInputMultiplier:    2,
 		LongContextOutputMultiplier:   2,
 	}
+	// TypeSafe Jev (OpenCode Zen SystemOne judgment models).
+	// 官方价：输入 $0.042/MTok，输出免费；jev-*-free 档完全免费。
+	// getFallbackPricing 中 free 优先匹配，避免免费模型落到付费卡。
+	s.fallbackPrices["jev-1.13"] = &ModelPricing{
+		InputPricePerToken:     0.042e-6,
+		OutputPricePerToken:    0,
+		SupportsCacheBreakdown: false,
+	}
+	s.fallbackPrices["jev-1.13-free"] = &ModelPricing{
+		InputPricePerToken:     0,
+		OutputPricePerToken:    0,
+		SupportsCacheBreakdown: false,
+	}
 }
 
 // getFallbackPricing 根据模型系列获取回退价格
@@ -1205,6 +1218,21 @@ func (s *BillingService) getFallbackPricing(model string) *ModelPricing {
 		return s.fallbackPrices["grok-4.20"]
 	case "grok-build", "grok-build-latest", "grok-build-0.1", "grok-composer", "grok-composer-2.5-fast", "composer-2.5":
 		return s.fallbackPrices["grok-build-0.1"]
+	}
+
+	// Unknown Grok text IDs (grok-5, dated snapshots, provider-prefixed) inherit
+	// the current default text card so a new model cannot ship unbilled.
+	if pricing := s.grokUnknownTextFamilyFallback(modelLower); pricing != nil {
+		return pricing
+	}
+
+	// TypeSafe Jev (OpenCode Zen SystemOne judgment models): free tier first
+	// so jev-*-free never lands on the paid card.
+	if strings.Contains(modelLower, "jev-") {
+		if strings.Contains(modelLower, "free") {
+			return s.fallbackPrices["jev-1.13-free"]
+		}
+		return s.fallbackPrices["jev-1.13"]
 	}
 
 	// Unknown Grok text IDs (grok-5, dated snapshots, provider-prefixed) inherit

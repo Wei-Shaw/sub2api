@@ -340,10 +340,22 @@ func (collector moderationTextCollector) addModerationText(parts *[]string, text
 	*parts = append(*parts, text)
 }
 
-// collectSystemOneText 收集 SystemOne (Jev) 请求的待审文本：state 优先，
-// 其次为各 question 的 instructions 与 criteria（按 question ID 排序，
-// criteria 按 label/下标稳定输出，保证同一请求每次提取结果一致）。
+// collectSystemOneText 收集 SystemOne (Jev) 请求的待审文本。
+//
+// 两条与其它协议不同的规则：
+//
+//  1. state 排第一：Normalize 只保留前 12K runes，state 排在 questions
+//     之后时，超长 questions 会把 state 完全挤出审核，形成旁路。
+//  2. 不经过 addModerationText 的 reminder 过滤：state/questions 是普通
+//     客户端数据，没有 Anthropic reminder 语义；复用该过滤会让
+//     "<system-reminder>敏感内容</system-reminder>" 免审直达上游。
 func (collector moderationTextCollector) collectSystemOneText(state, questions gjson.Result, parts *[]string) {
+	appendText := func(text string) {
+		if text = strings.TrimSpace(text); text != "" {
+			*parts = append(*parts, text)
+		}
+	}
+	appendText(state.String())
 	if questions.IsObject() {
 		ids := make([]string, 0)
 		questions.ForEach(func(id, _ gjson.Result) bool {
@@ -353,7 +365,7 @@ func (collector moderationTextCollector) collectSystemOneText(state, questions g
 		sort.Strings(ids)
 		for _, id := range ids {
 			question := questions.Get(id)
-			collector.addModerationText(parts, question.Get("instructions").String())
+			appendText(question.Get("instructions").String())
 			criteria := question.Get("criteria")
 			if criteria.IsObject() {
 				labels := make([]string, 0)
@@ -363,17 +375,16 @@ func (collector moderationTextCollector) collectSystemOneText(state, questions g
 				})
 				sort.Strings(labels)
 				for _, label := range labels {
-					collector.addModerationText(parts, label+": "+criteria.Get(label).String())
+					appendText(label + ": " + criteria.Get(label).String())
 				}
 			} else if criteria.IsArray() {
 				criteria.ForEach(func(_, rubric gjson.Result) bool {
-					collector.addModerationText(parts, rubric.String())
+					appendText(rubric.String())
 					return true
 				})
 			}
 		}
 	}
-	collector.addModerationText(parts, state.String())
 }
 
 func normalizeContentModerationText(text string) string {

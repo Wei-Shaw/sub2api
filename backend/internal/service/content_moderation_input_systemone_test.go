@@ -1,6 +1,7 @@
 package service
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -40,4 +41,20 @@ func TestExtractContentModerationInput_SystemOneEmptyBodyYieldsEmpty(t *testing.
 	input := ExtractContentModerationInput(ContentModerationProtocolSystemOne, []byte(`{"model":"jev-1.13"}`))
 
 	require.Empty(t, input.Text)
+}
+
+func TestExtractContentModerationInput_SystemOneStateSurvivesLongQuestions(t *testing.T) {
+	body := []byte(`{"model":"jev-1.13","state":"SENSITIVE_STATE_MARKER","questions":{"q":{"type":"choice","instructions":"` + strings.Repeat("x", maxModerationInputRunes+1000) + `","criteria":{"x":"y"}}}}`)
+
+	input := ExtractContentModerationInput(ContentModerationProtocolSystemOne, body)
+
+	require.Contains(t, input.Text, "SENSITIVE_STATE_MARKER")
+}
+
+func TestExtractContentModerationInput_SystemOneDoesNotFilterReminders(t *testing.T) {
+	body := []byte(`{"model":"jev-1.13","state":"<system-reminder>REMINDER_STATE_MARKER</system-reminder>","questions":{"q":{"type":"noul","instructions":"plain"}}}`)
+
+	input := ExtractContentModerationInput(ContentModerationProtocolSystemOne, body)
+
+	require.Contains(t, input.Text, "REMINDER_STATE_MARKER")
 }

@@ -431,12 +431,14 @@ func (s *AccountTestService) testOpenCodeGoAccountConnection(c *gin.Context, acc
 	if testModelID == "" {
 		testModelID = DefaultOpenCodeGoTestModel
 	}
-	testModelID = account.GetMappedModel(testModelID)
-	// Jev 模型原生走 SystemOne 端点（/v1/systemone），与文本协议（api_protocol
-	// 固定值 / 自适应目录）正交：pinned 协议只约束文本入口，不约束模型原生端点。
-	if isOpenCodeGoSystemOneModel(testModelID) {
-		return s.testOpenCodeGoSystemOneConnection(c, account, testModelID, prompt)
+	// 映射前后都参与 SystemOne 判定：合法映射（如 opencode/jev-1.13→jev-1.13）
+	// 不应改变探针端点；映射后不再是 jev 名时仍按映射前的原生模型选择探针，
+	// 与运行时 /v1/systemone 入口行为一致。
+	mappedModelID := account.GetMappedModel(testModelID)
+	if isOpenCodeGoSystemOneModel(testModelID) || isOpenCodeGoSystemOneModel(mappedModelID) {
+		return s.testOpenCodeGoSystemOneConnection(c, account, mappedModelID, prompt)
 	}
+	testModelID = mappedModelID
 	proto := account.GetAPIProtocol()
 	switch proto {
 	case APIProtocolChatCompletions, APIProtocolAnthropic, APIProtocolResponses:

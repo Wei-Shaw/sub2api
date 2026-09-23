@@ -99,7 +99,7 @@ func TestForwardSystemOne_ForwardsToZenSystemOne(t *testing.T) {
 	require.Equal(t, "https://opencode.ai/zen/v1/systemone", req.URL.String())
 	require.Equal(t, "Bearer sk-systemone-test", req.Header.Get("Authorization"))
 	require.Equal(t, openCodeUpstreamUserAgent, req.Header.Get("User-Agent"))
-	require.Empty(t, req.Header.Get("X-OpenCode-Session"), "Zen 账号无调用方会话标识时不伪造会话头")
+	require.Regexp(t, `^ses_[a-f0-9]{32}$`, req.Header.Get("X-OpenCode-Session"))
 	require.Equal(t, "jev-1.13", gjson.GetBytes(upstream.lastBody, "model").String())
 
 	// 上游解析后的版本原样透传，不回写请求模型。
@@ -206,4 +206,41 @@ func TestAccountTestService_OpenCodeGoJevUpstreamError(t *testing.T) {
 	require.Error(t, err)
 	require.Contains(t, recorder.Body.String(), `"type":"error"`)
 	require.NotContains(t, recorder.Body.String(), `"type":"test_complete"`)
+}
+
+func TestForwardSystemOne_CyberPolicySetsOpsMark(t *testing.T) {
+	t.Parallel()
+	gin.SetMode(gin.TestMode)
+
+	upstream := &httpUpstreamRecorder{resp: &http.Response{
+		StatusCode: http.StatusBadRequest,
+		Header:     http.Header{"Content-Type": []string{"application/json"}},
+		Body: io.NopCloser(strings.NewReader(
+			`{"error":{"code":"cyber_policy","message":"blocked by upstream security policy"}}`)),
+	}}
+	svc := &OpenAIGatewayService{cfg: rawChatCompletionsTestConfig(), httpUpstream: upstream}
+	account := systemOneTestAccount(505)
+
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/systemone", nil)
+
+	result, err := svc.ForwardSystemOne(context.Background(), c, account, systemOneTestBody(), "")
+	require.Error(t, err)
+	require.Nil(t, result)
+	require.NotNil(t, GetOpsCyberPolicy(c), "cyber 上游错误必须打 ops mark，供 handler 事后风控记录")
+}
+
+func TestAccountTestService_OpenCodeGoJevMappedAwayStillUsesSystemOne(t *testing.T) {
+	account := openCodeGoTestAccount(503)
+	account.Credentials["model_mapping"] = map[string]any{"jev-1.13": "support-judge"}
+	svc, upstream := adaptiveCNAccountTestService(account, systemOneTestResponse())
+	c, recorder := newTestContext()
+
+	err := svc.TestAccountConnection(c, account.ID, "jev-1.13", "probe state", AccountTestModeDefault)
+	require.NoError(t, err)
+	require.Len(t, upstream.requests, 1)
+	require.Equal(t, "https://opencode.ai/zen/go/v1/systemone", upstream.requests[0].URL.String())
+	require.Equal(t, "support-judge", gjson.GetBytes(upstream.lastBody, "model").String())
+	require.Contains(t, recorder.Body.String(), `"type":"test_complete"`)
 }

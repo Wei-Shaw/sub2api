@@ -843,6 +843,32 @@ func TestGetFallbackPricing_FamilyMatching(t *testing.T) {
 			expectedInput: 0.098e-6,
 		},
 
+		// ---- TypeSafe Jev（OpenCode Zen SystemOne）----
+		{
+			name:           "jev paid input 0.042 output free",
+			model:          "jev-1.13",
+			expectedInput:  0.042e-6,
+			expectedOutput: floatPtr(0),
+		},
+		{
+			name:           "jev resolved version bills paid",
+			model:          "jev-1.13.0",
+			expectedInput:  0.042e-6,
+			expectedOutput: floatPtr(0),
+		},
+		{
+			name:           "jev free tier bills zero",
+			model:          "jev-1.13-free",
+			expectedInput:  0,
+			expectedOutput: floatPtr(0),
+		},
+		{
+			name:           "opencode prefixed jev bills paid",
+			model:          "opencode/jev-1.13",
+			expectedInput:  0.042e-6,
+			expectedOutput: floatPtr(0),
+		},
+
 		// ---- 负向用例 ----
 		{name: "qwen unknown no fallback", model: "qwen-max", expectNilPricing: true},
 		// doubao-pro / doubao-embedding（纯文本）不在白名单，不回退；仅 doubao-embedding-vision 显式命中。

@@ -258,7 +258,8 @@ func RegisterGatewayRoutes(
 			h.Gateway.ChatCompletions(c)
 		})
 		// OpenCode Zen SystemOne (Jev) judgment API: OC platform only.
-		gateway.POST("/systemone", systemOneHandler)
+		// 纯文本协议（无内联媒体），用 textBodyLimit 而非 256MiB 的 bodyLimit。
+		gateway.POST("/systemone", textBodyLimit, systemOneHandler)
 		gateway.POST("/embeddings", textBodyLimit, func(c *gin.Context) {
 			if !isOpenAIOnlyEndpointGatewayPlatform(c) {
 				service.MarkOpsClientBusinessLimited(c, service.OpsClientBusinessLimitedReasonLocalFeatureGate)
@@ -422,7 +423,7 @@ func RegisterGatewayRoutes(
 		h.Gateway.ChatCompletions(c)
 	})
 	// OpenCode Zen SystemOne (Jev) judgment API（不带v1前缀的别名）
-	rootRoute(http.MethodPost, "/systemone", bodyLimit, systemOneHandler)
+	rootRoute(http.MethodPost, "/systemone", textBodyLimit, systemOneHandler)
 	rootRoute(http.MethodPost, "/embeddings", textBodyLimit, func(c *gin.Context) {
 		if !isOpenAIOnlyEndpointGatewayPlatform(c) {
 			service.MarkOpsClientBusinessLimited(c, service.OpsClientBusinessLimitedReasonLocalFeatureGate)

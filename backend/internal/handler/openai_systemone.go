@@ -244,6 +244,11 @@ func (h *OpenAIGatewayHandler) SystemOne(c *gin.Context) {
 			}()
 			return h.gatewayService.ForwardSystemOne(c.Request.Context(), c, account, forwardBody, "")
 		}()
+		var cyberBlockBodySystemOne []byte
+		if service.GetOpsCyberPolicy(c) != nil {
+			cyberBlockBodySystemOne = body
+		}
+		h.recordCyberPolicyIfMarked(c, apiKey, account, subscription, reqModel, err != nil, cyberBlockBodySystemOne, clientRequestedUsageFields(c, channelMapping, reqModel, ""), service.HashUsageRequestPayload(body))
 
 		forwardDurationMs := time.Since(forwardStart).Milliseconds()
 		upstreamLatencyMs, _ := getContextInt64(c, service.OpsUpstreamLatencyMsKey)

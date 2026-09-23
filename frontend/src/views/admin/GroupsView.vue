@@ -4650,6 +4650,10 @@ const compositeRouteEndpointOptions = computed(() => [
   },
   { value: "images", label: t("admin.groups.compositeRoutes.endpoints.images") },
   { value: "gemini", label: t("admin.groups.compositeRoutes.endpoints.gemini") },
+  {
+    value: "systemone",
+    label: t("admin.groups.compositeRoutes.endpoints.systemone"),
+  },
 ]);
 
 const compositeRouteMatchOptions = computed(() => [
