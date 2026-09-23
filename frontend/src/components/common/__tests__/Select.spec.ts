@@ -116,7 +116,7 @@ describe('Select dropdown viewport constraints', () => {
 })
 
 describe('Select multiple mode', () => {
-  it('supports a bare multiple prop and keeps the dropdown open while toggling values', async () => {
+  it.each(['auto', false] as const)('supports a bare multiple prop and keeps the dropdown open while toggling values (searchable=%s)', async (searchable) => {
     const Host = defineComponent({
       components: { AppSelect: Select },
       setup() {
@@ -129,9 +129,9 @@ describe('Select multiple mode', () => {
           { value: 5, label: 'Group 5' },
           { value: 6, label: 'Group 6' },
         ]
-        return { selected, options }
+        return { selected, options, searchable }
       },
-      template: '<AppSelect v-model="selected" :options="options" multiple />',
+      template: '<AppSelect v-model="selected" :options="options" :searchable="searchable" multiple />',
     })
 
     const wrapper = mount(Host)
@@ -142,8 +142,14 @@ describe('Select multiple mode', () => {
 
     const dropdown = document.body.querySelector<HTMLElement>('.select-dropdown-portal')
     expect(dropdown?.getAttribute('aria-multiselectable')).toBe('true')
+    expect(dropdown?.getAttribute('tabindex')).toBe('-1')
     expect(dropdown?.querySelectorAll('.select-checkbox')).toHaveLength(6)
-    expect(dropdown?.querySelector('.select-search')).not.toBeNull()
+    if (searchable === false) {
+      expect(dropdown?.querySelector('.select-search')).toBeNull()
+      expect(document.activeElement).toBe(dropdown)
+    } else {
+      expect(dropdown?.querySelector('.select-search')).not.toBeNull()
+    }
 
     const options = dropdown?.querySelectorAll<HTMLElement>('.select-option')
     options?.[0].dispatchEvent(new MouseEvent('click', { bubbles: true }))
