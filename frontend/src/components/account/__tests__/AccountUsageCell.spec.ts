@@ -280,7 +280,57 @@ describe('AccountUsageCell', () => {
 
     await flushPromises()
 
-    expect(wrapper.text()).toContain('admin.accounts.usageWindow.gemini3Image|70|2026-03-01T09:00:00Z')
+    expect(wrapper.text()).toContain('admin.accounts.usageWindow.gemini3Image|30|2026-03-01T09:00:00Z')
+  })
+
+  it('Antigravity 优先显示 5h / Weekly 分组额度桶', async () => {
+    getUsage.mockResolvedValue({
+      antigravity_quota: {
+        'gemini-5h': {
+          utilization: 15,
+          reset_time: '2026-03-01T11:00:00Z'
+        },
+        'gemini-weekly': {
+          utilization: 30,
+          reset_time: '2026-03-08T11:00:00Z'
+        },
+        '3p-5h': {
+          utilization: 10,
+          reset_time: '2026-03-01T12:00:00Z'
+        },
+        '3p-weekly': {
+          utilization: 25,
+          reset_time: '2026-03-08T12:00:00Z'
+        }
+      }
+    })
+
+    const wrapper = mount(AccountUsageCell, {
+      props: {
+        account: makeAccount({
+          id: 1003,
+          platform: 'antigravity',
+          type: 'oauth',
+          extra: {}
+        })
+      },
+      global: {
+        stubs: {
+          UsageProgressBar: {
+            props: ['label', 'utilization', 'resetsAt', 'color'],
+            template: '<div class="usage-bar">{{ label }}|{{ utilization }}|{{ resetsAt }}</div>'
+          },
+          AccountQuotaInfo: true
+        }
+      }
+    })
+
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('admin.accounts.usageWindow.gemini5h|85|2026-03-01T11:00:00Z')
+    expect(wrapper.text()).toContain('admin.accounts.usageWindow.geminiWeekly|70|2026-03-08T11:00:00Z')
+    expect(wrapper.text()).toContain('admin.accounts.usageWindow.claude5h|90|2026-03-01T12:00:00Z')
+    expect(wrapper.text()).toContain('admin.accounts.usageWindow.claudeWeekly|75|2026-03-08T12:00:00Z')
   })
 
   it('Antigravity 会显示 AI Credits 余额信息', async () => {
