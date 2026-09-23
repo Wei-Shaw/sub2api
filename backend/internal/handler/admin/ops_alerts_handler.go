@@ -77,13 +77,15 @@ type opsAlertRuleValidatedInput struct {
 
 	Enabled     bool
 	NotifyEmail bool
+	NotifyWeCom bool
 
-	WindowProvided    bool
-	SustainedProvided bool
-	CooldownProvided  bool
-	SeverityProvided  bool
-	EnabledProvided   bool
-	NotifyProvided    bool
+	WindowProvided      bool
+	SustainedProvided   bool
+	CooldownProvided    bool
+	SeverityProvided    bool
+	EnabledProvided     bool
+	NotifyProvided      bool
+	NotifyWeComProvided bool
 }
 
 func isPercentOrRateMetric(metricType string) bool {
@@ -196,6 +198,13 @@ func validateOpsAlertRulePayload(raw map[string]json.RawMessage) (*opsAlertRuleV
 		validated.NotifyEmail = true
 	}
 
+	if v, ok := raw["notify_wecom"]; ok {
+		validated.NotifyWeComProvided = true
+		if err := json.Unmarshal(v, &validated.NotifyWeCom); err != nil {
+			return nil, fmt.Errorf("notify_wecom must be a boolean")
+		}
+	}
+
 	if v, ok := raw["window_minutes"]; ok {
 		validated.WindowProvided = true
 		if err := json.Unmarshal(v, &validated.WindowMinutes); err != nil {
@@ -296,6 +305,7 @@ func (h *OpsHandler) CreateAlertRule(c *gin.Context) {
 	rule.Severity = validated.Severity
 	rule.Enabled = validated.Enabled
 	rule.NotifyEmail = validated.NotifyEmail
+	rule.NotifyWeCom = validated.NotifyWeCom
 
 	created, err := h.opsService.CreateAlertRule(c.Request.Context(), &rule)
 	if err != nil {
@@ -351,6 +361,7 @@ func (h *OpsHandler) UpdateAlertRule(c *gin.Context) {
 	rule.Severity = validated.Severity
 	rule.Enabled = validated.Enabled
 	rule.NotifyEmail = validated.NotifyEmail
+	rule.NotifyWeCom = validated.NotifyWeCom
 
 	updated, err := h.opsService.UpdateAlertRule(c.Request.Context(), &rule)
 	if err != nil {
@@ -551,6 +562,19 @@ func (h *OpsHandler) ListAlertEvents(c *gin.Context) {
 			filter.EmailSent = &b
 		default:
 			response.BadRequest(c, "Invalid email_sent")
+			return
+		}
+	}
+	if v := strings.TrimSpace(c.Query("wecom_sent")); v != "" {
+		switch strings.ToLower(v) {
+		case "true", "1":
+			b := true
+			filter.WeComSent = &b
+		case "false", "0":
+			b := false
+			filter.WeComSent = &b
+		default:
+			response.BadRequest(c, "Invalid wecom_sent")
 			return
 		}
 	}

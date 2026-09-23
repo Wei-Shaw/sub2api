@@ -20,6 +20,7 @@ var defaultSensitiveKeys = map[string]struct{}{
 	"id_token":           {},
 	"client_secret":      {},
 	"password":           {},
+	"webhook_url":        {},
 }
 
 var defaultSensitiveKeyList = []string{
@@ -31,6 +32,7 @@ var defaultSensitiveKeyList = []string{
 	"id_token",
 	"client_secret",
 	"password",
+	"webhook_url",
 }
 
 type textRedactPatterns struct {
