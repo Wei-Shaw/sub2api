@@ -99,13 +99,8 @@ func AnthropicToChatCompletionsRequest(req *AnthropicRequest) (*ChatCompletionsR
 		}
 	}
 
-	// Reasoning effort: output_config.effort maps 1:1 (max→xhigh). thinking.type
-	// itself is ignored (the Responses bridge behaves identically).
-	effort := "medium"
-	if req.OutputConfig != nil && req.OutputConfig.Effort != "" {
-		effort = req.OutputConfig.Effort
-	}
-	out.ReasoningEffort = mapAnthropicEffortToResponses(effort)
+	// Match the Responses bridge, including an explicit thinking disable.
+	out.ReasoningEffort = anthropicReasoningEffort(req)
 
 	parallelToolCalls := true
 	out.ParallelToolCalls = &parallelToolCalls
