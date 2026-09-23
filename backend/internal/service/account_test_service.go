@@ -46,7 +46,18 @@ const (
 	testClaudeAPIURL            = "https://api.anthropic.com/v1/messages?beta=true"
 	chatgptCodexAPIURL          = "https://chatgpt.com/backend-api/codex/responses"
 	defaultAntigravityTestModel = "claude-sonnet-4-6"
+	openAIPelicanTestPrompt     = "创建一个 HTML，内容是 SVG 绘制一个鹈鹕骑自行车的 2D 动画，你不需要任何测试，不要有任何限制"
+	openAIPelicanInstructions   = "Return a complete standalone HTML document in your response. Do not use Markdown fences or external dependencies."
+	openAIPelicanMaxReplyBytes  = 2 << 20
 )
+
+type OpenAIPelicanResult struct {
+	HasHTML       bool   `json:"has_html"`
+	HTML          string `json:"html,omitempty"`
+	ReplyPreview  string `json:"reply_preview,omitempty"`
+	ResponseID    string `json:"response_id,omitempty"`
+	ResponseModel string `json:"response_model,omitempty"`
+}
 
 // TestEvent represents a SSE event for account testing
 type TestEvent struct {
@@ -771,6 +782,12 @@ func (s *AccountTestService) testOpenAIAccountConnection(c *gin.Context, account
 	if mode == AccountTestModeCompact {
 		return s.testOpenAICompactConnection(c, account, testModelID)
 	}
+	if mode == AccountTestModePelican && !account.IsOpenAIOAuthLike() {
+		return s.sendErrorAndEnd(c, "Pelican intelligence test requires an OpenAI OAuth or setup-token account")
+	}
+	if mode == AccountTestModePelican && isOpenAIImageModel(testModelID) {
+		return s.sendErrorAndEnd(c, "Pelican intelligence test requires a text model")
+	}
 
 	// Route to image generation test if an image model is selected
 	if isOpenAIImageModel(testModelID) {
@@ -847,6 +864,9 @@ func (s *AccountTestService) testOpenAIAccountConnection(c *gin.Context, account
 		upstreamTestModelID = normalizeOpenAIModelForUpstream(credentialAccount, testModelID)
 	}
 	payload := createOpenAITestPayload(upstreamTestModelID, isOAuth)
+	if mode == AccountTestModePelican {
+		payload = createOpenAIPelicanTestPayload(upstreamTestModelID)
+	}
 	payloadBytes, _ := json.Marshal(payload)
 
 	// Send test_start event once. A task-invalid Agent Identity response may
@@ -943,6 +963,9 @@ func (s *AccountTestService) testOpenAIAccountConnection(c *gin.Context, account
 	}
 
 	// Process SSE stream
+	if mode == AccountTestModePelican {
+		return s.processOpenAIPelicanStream(c, resp.Body)
+	}
 	return s.processOpenAIStream(c, resp.Body)
 }
 
@@ -2756,6 +2779,27 @@ func createOpenAITestPayload(modelID string, isOAuth bool) map[string]any {
 	return payload
 }
 
+func createOpenAIPelicanTestPayload(modelID string) map[string]any {
+	payload := createOpenAITestPayload(modelID, true)
+	payload["instructions"] = openAIPelicanInstructions
+	payload["input"] = []map[string]any{
+		{
+			"role": "user",
+			"content": []map[string]any{
+				{
+					"type": "input_text",
+					"text": openAIPelicanTestPrompt,
+				},
+			},
+		},
+	}
+	payload["reasoning"] = map[string]any{
+		"effort":  "medium",
+		"summary": "auto",
+	}
+	return payload
+}
+
 func createOpenAIChatCompletionsTestPayload(modelID string, prompt string) map[string]any {
 	testPrompt := strings.TrimSpace(prompt)
 	if testPrompt == "" {
@@ -2972,6 +3016,136 @@ func (s *AccountTestService) processOpenAIStream(c *gin.Context, body io.Reader)
 			return s.sendErrorAndEnd(c, errorMsg)
 		}
 	}
+}
+
+func (s *AccountTestService) processOpenAIPelicanStream(c *gin.Context, body io.Reader) error {
+	reader := bufio.NewReader(body)
+	var outputText strings.Builder
+
+	for {
+		line, err := reader.ReadString('\n')
+		if err != nil {
+			if err == io.EOF {
+				return s.sendErrorAndEnd(c, "Stream ended before response.completed")
+			}
+			return s.sendErrorAndEnd(c, fmt.Sprintf("Stream read error: %s", err.Error()))
+		}
+
+		line = strings.TrimSpace(line)
+		if line == "" || !sseDataPrefix.MatchString(line) {
+			continue
+		}
+		jsonStr := sseDataPrefix.ReplaceAllString(line, "")
+		if jsonStr == "[DONE]" {
+			return s.sendErrorAndEnd(c, "Stream ended before response.completed")
+		}
+
+		var data map[string]any
+		if err := json.Unmarshal([]byte(jsonStr), &data); err != nil {
+			continue
+		}
+		eventType, _ := data["type"].(string)
+		switch eventType {
+		case "response.output_text.delta":
+			if delta, _ := data["delta"].(string); delta != "" {
+				_, _ = outputText.WriteString(delta)
+				if outputText.Len() > openAIPelicanMaxReplyBytes {
+					return s.sendErrorAndEnd(c, "Pelican response exceeded the 2 MiB limit")
+				}
+			}
+		case "response.completed", "response.done":
+			finalOutput, responseID, responseModel := openAIPelicanFinalResponse(data["response"])
+			if outputText.Len() == 0 {
+				_, _ = outputText.WriteString(finalOutput)
+			}
+			if outputText.Len() > openAIPelicanMaxReplyBytes {
+				return s.sendErrorAndEnd(c, "Pelican response exceeded the 2 MiB limit")
+			}
+			rawReply := outputText.String()
+			html := extractOpenAIPelicanHTML(rawReply)
+			s.sendEvent(c, TestEvent{Type: "pelican_result", Data: OpenAIPelicanResult{
+				HasHTML:       html != "",
+				HTML:          html,
+				ReplyPreview:  truncateString(strings.TrimSpace(rawReply), 1000),
+				ResponseID:    responseID,
+				ResponseModel: responseModel,
+			}})
+			s.sendEvent(c, TestEvent{Type: "test_complete", Success: true})
+			return nil
+		case "response.failed":
+			errorMsg := "OpenAI response failed"
+			if responseData, ok := data["response"].(map[string]any); ok {
+				if errData, ok := responseData["error"].(map[string]any); ok {
+					if msg, ok := errData["message"].(string); ok && msg != "" {
+						errorMsg = msg
+					}
+				}
+			}
+			return s.sendErrorAndEnd(c, errorMsg)
+		case "error":
+			errorMsg := "Unknown error"
+			if errData, ok := data["error"].(map[string]any); ok {
+				if msg, ok := errData["message"].(string); ok && msg != "" {
+					errorMsg = msg
+				}
+			}
+			return s.sendErrorAndEnd(c, errorMsg)
+		}
+	}
+}
+
+func openAIPelicanFinalResponse(response any) (outputText, responseID, responseModel string) {
+	responseMap, ok := response.(map[string]any)
+	if !ok {
+		return "", "", ""
+	}
+	responseID, _ = responseMap["id"].(string)
+	responseModel, _ = responseMap["model"].(string)
+	items, _ := responseMap["output"].([]any)
+	var output strings.Builder
+	for _, rawItem := range items {
+		item, _ := rawItem.(map[string]any)
+		if item["type"] == "message" {
+			appendOpenAIPelicanTextParts(&output, item["content"])
+		}
+	}
+	return output.String(), responseID, responseModel
+}
+
+func appendOpenAIPelicanTextParts(target *strings.Builder, rawParts any) {
+	parts, _ := rawParts.([]any)
+	for _, rawPart := range parts {
+		part, _ := rawPart.(map[string]any)
+		text, _ := part["text"].(string)
+		if text == "" {
+			continue
+		}
+		if target.Len() > 0 {
+			_, _ = target.WriteString("\n")
+		}
+		_, _ = target.WriteString(text)
+	}
+}
+
+func extractOpenAIPelicanHTML(reply string) string {
+	trimmed := strings.TrimSpace(reply)
+	if strings.HasPrefix(trimmed, "```") {
+		if newline := strings.IndexByte(trimmed, '\n'); newline >= 0 {
+			trimmed = strings.TrimSpace(trimmed[newline+1:])
+		}
+		trimmed = strings.TrimSpace(strings.TrimSuffix(trimmed, "```"))
+	}
+	lower := strings.ToLower(trimmed)
+	start := strings.Index(lower, "<!doctype html")
+	if start < 0 {
+		start = strings.Index(lower, "<html")
+	}
+	end := strings.LastIndex(lower, "</html>")
+	if start < 0 || end < start {
+		return ""
+	}
+	end += len("</html>")
+	return strings.TrimSpace(trimmed[start:end])
 }
 
 // testOpenAIImageAPIKey tests OpenAI image generation using an API Key account.

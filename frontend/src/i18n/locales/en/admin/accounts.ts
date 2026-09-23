@@ -699,6 +699,12 @@ export default {
         testMode: 'Test mode',
         testModeDefault: 'Default request',
         testModeCompact: 'Compact probe',
+        testModePelican: 'Pelican intelligence test',
+        pelicanModeSummary: 'Mode: Pelican intelligence test',
+        sendingPelicanRequest: 'Generating the pelican cycling HTML animation...',
+        pelicanHTMLReady: 'A complete previewable HTML document was generated',
+        pelicanNoHTML: 'No complete previewable HTML document was generated',
+        pelicanPreview: 'Pelican intelligence test preview',
         modelRestrictionDisabledByPassthrough: 'Automatic passthrough is enabled: model whitelist/mapping will not take effect.',
       },
       grok: {

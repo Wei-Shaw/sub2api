@@ -1289,7 +1289,9 @@ func (h *AccountHandler) Test(c *gin.Context) {
 		return
 	}
 
-	if h.rateLimitService != nil {
+	// The Pelican probe is observational. A successful response must not
+	// clear an unrelated account error or cooldown state.
+	if h.rateLimitService != nil && !strings.EqualFold(strings.TrimSpace(req.Mode), service.AccountTestModePelican) {
 		if _, err := h.rateLimitService.RecoverAccountAfterSuccessfulTest(c.Request.Context(), accountID); err != nil {
 			_ = c.Error(err)
 		}
