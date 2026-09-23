@@ -1,10 +1,10 @@
 package handler
 
 import (
-	"github.com/Wei-Shaw/sub2api/internal/pkg/tlsfingerprint"
 	"encoding/json"
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/gemini"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/tlsfingerprint"
 	"github.com/Wei-Shaw/sub2api/internal/server/middleware"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/gin-gonic/gin"

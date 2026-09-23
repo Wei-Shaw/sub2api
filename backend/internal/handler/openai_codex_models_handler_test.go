@@ -1,11 +1,11 @@
 package handler
 
 import (
-	"github.com/Wei-Shaw/sub2api/internal/pkg/tlsfingerprint"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/tlsfingerprint"
 	"io"
 	"net"
 	"net/http"

@@ -87,7 +87,7 @@ func TestMLKEM768JA3MatchesClaudeCode280(t *testing.T) {
 		Name:           "claude-code-2.1.280-at-IP",
 		EnableGREASE:   false,
 		Curves:         []uint16{4588, 29, 23, 24}, // 0x11ec, 0x1d, 0x17, 0x18
-		KeyShareGroups: []uint16{4588, 29},          // PQ hybrid + classical, independent keys like OpenSSL 3.5
+		KeyShareGroups: []uint16{4588, 29},         // PQ hybrid + classical, independent keys like OpenSSL 3.5
 		ALPNProtocols:  []string{"http/1.1"},
 		Extensions:     []uint16{23, 65281, 10, 11, 35, 16, 5, 13, 18, 51, 45, 43},
 	}

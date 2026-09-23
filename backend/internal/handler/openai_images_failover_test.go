@@ -3,9 +3,9 @@
 package handler
 
 import (
-	"github.com/Wei-Shaw/sub2api/internal/pkg/tlsfingerprint"
 	"bytes"
 	"context"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/tlsfingerprint"
 	"io"
 	"net/http"
 	"net/http/httptest"

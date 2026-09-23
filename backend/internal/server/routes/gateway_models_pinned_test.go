@@ -1,9 +1,9 @@
 package routes
 
 import (
-	"github.com/Wei-Shaw/sub2api/internal/pkg/tlsfingerprint"
 	"context"
 	"encoding/json"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/tlsfingerprint"
 	"io"
 	"net/http"
 	"net/http/httptest"

@@ -1,11 +1,11 @@
 package handler
 
 import (
-	"github.com/Wei-Shaw/sub2api/internal/pkg/tlsfingerprint"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/tlsfingerprint"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -2357,7 +2357,7 @@ func TestOpenAIResponses_APIKeyPassthroughPoolAuthFailureRetriesThenSwitchesToHe
 				rateLimitSvc,
 				billingCacheSvc,
 				upstream,
-		nil, // tlsFPProfileService (test default: disabled),
+				nil, // tlsFPProfileService (test default: disabled),
 				&service.DeferredService{},
 				nil,
 				nil,
