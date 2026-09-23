@@ -816,6 +816,34 @@ func (_c *GroupCreate) SetNillableCodexModelsManifestConfig(v *domain.GroupCodex
 	return _c
 }
 
+// SetCodexConfigDefaultModel sets the "codex_config_default_model" field.
+func (_c *GroupCreate) SetCodexConfigDefaultModel(v string) *GroupCreate {
+	_c.mutation.SetCodexConfigDefaultModel(v)
+	return _c
+}
+
+// SetNillableCodexConfigDefaultModel sets the "codex_config_default_model" field if the given value is not nil.
+func (_c *GroupCreate) SetNillableCodexConfigDefaultModel(v *string) *GroupCreate {
+	if v != nil {
+		_c.SetCodexConfigDefaultModel(*v)
+	}
+	return _c
+}
+
+// SetCodexConfigReviewModel sets the "codex_config_review_model" field.
+func (_c *GroupCreate) SetCodexConfigReviewModel(v string) *GroupCreate {
+	_c.mutation.SetCodexConfigReviewModel(v)
+	return _c
+}
+
+// SetNillableCodexConfigReviewModel sets the "codex_config_review_model" field if the given value is not nil.
+func (_c *GroupCreate) SetNillableCodexConfigReviewModel(v *string) *GroupCreate {
+	if v != nil {
+		_c.SetCodexConfigReviewModel(*v)
+	}
+	return _c
+}
+
 // SetRpmLimit sets the "rpm_limit" field.
 func (_c *GroupCreate) SetRpmLimit(v int) *GroupCreate {
 	_c.mutation.SetRpmLimit(v)
@@ -1183,6 +1211,14 @@ func (_c *GroupCreate) defaults() error {
 		v := group.DefaultCodexModelsManifestConfig
 		_c.mutation.SetCodexModelsManifestConfig(v)
 	}
+	if _, ok := _c.mutation.CodexConfigDefaultModel(); !ok {
+		v := group.DefaultCodexConfigDefaultModel
+		_c.mutation.SetCodexConfigDefaultModel(v)
+	}
+	if _, ok := _c.mutation.CodexConfigReviewModel(); !ok {
+		v := group.DefaultCodexConfigReviewModel
+		_c.mutation.SetCodexConfigReviewModel(v)
+	}
 	if _, ok := _c.mutation.RpmLimit(); !ok {
 		v := group.DefaultRpmLimit
 		_c.mutation.SetRpmLimit(v)
@@ -1386,6 +1422,12 @@ func (_c *GroupCreate) check() error {
 	}
 	if _, ok := _c.mutation.CodexModelsManifestConfig(); !ok {
 		return &ValidationError{Name: "codex_models_manifest_config", err: errors.New(`ent: missing required field "Group.codex_models_manifest_config"`)}
+	}
+	if _, ok := _c.mutation.CodexConfigDefaultModel(); !ok {
+		return &ValidationError{Name: "codex_config_default_model", err: errors.New(`ent: missing required field "Group.codex_config_default_model"`)}
+	}
+	if _, ok := _c.mutation.CodexConfigReviewModel(); !ok {
+		return &ValidationError{Name: "codex_config_review_model", err: errors.New(`ent: missing required field "Group.codex_config_review_model"`)}
 	}
 	if _, ok := _c.mutation.RpmLimit(); !ok {
 		return &ValidationError{Name: "rpm_limit", err: errors.New(`ent: missing required field "Group.rpm_limit"`)}
@@ -1680,6 +1722,14 @@ func (_c *GroupCreate) createSpec() (*Group, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.CodexModelsManifestConfig(); ok {
 		_spec.SetField(group.FieldCodexModelsManifestConfig, field.TypeJSON, value)
 		_node.CodexModelsManifestConfig = value
+	}
+	if value, ok := _c.mutation.CodexConfigDefaultModel(); ok {
+		_spec.SetField(group.FieldCodexConfigDefaultModel, field.TypeString, value)
+		_node.CodexConfigDefaultModel = value
+	}
+	if value, ok := _c.mutation.CodexConfigReviewModel(); ok {
+		_spec.SetField(group.FieldCodexConfigReviewModel, field.TypeString, value)
+		_node.CodexConfigReviewModel = value
 	}
 	if value, ok := _c.mutation.RpmLimit(); ok {
 		_spec.SetField(group.FieldRpmLimit, field.TypeInt, value)
@@ -2816,6 +2866,30 @@ func (u *GroupUpsert) SetCodexModelsManifestConfig(v domain.GroupCodexModelsMani
 // UpdateCodexModelsManifestConfig sets the "codex_models_manifest_config" field to the value that was provided on create.
 func (u *GroupUpsert) UpdateCodexModelsManifestConfig() *GroupUpsert {
 	u.SetExcluded(group.FieldCodexModelsManifestConfig)
+	return u
+}
+
+// SetCodexConfigDefaultModel sets the "codex_config_default_model" field.
+func (u *GroupUpsert) SetCodexConfigDefaultModel(v string) *GroupUpsert {
+	u.Set(group.FieldCodexConfigDefaultModel, v)
+	return u
+}
+
+// UpdateCodexConfigDefaultModel sets the "codex_config_default_model" field to the value that was provided on create.
+func (u *GroupUpsert) UpdateCodexConfigDefaultModel() *GroupUpsert {
+	u.SetExcluded(group.FieldCodexConfigDefaultModel)
+	return u
+}
+
+// SetCodexConfigReviewModel sets the "codex_config_review_model" field.
+func (u *GroupUpsert) SetCodexConfigReviewModel(v string) *GroupUpsert {
+	u.Set(group.FieldCodexConfigReviewModel, v)
+	return u
+}
+
+// UpdateCodexConfigReviewModel sets the "codex_config_review_model" field to the value that was provided on create.
+func (u *GroupUpsert) UpdateCodexConfigReviewModel() *GroupUpsert {
+	u.SetExcluded(group.FieldCodexConfigReviewModel)
 	return u
 }
 
@@ -4079,6 +4153,34 @@ func (u *GroupUpsertOne) SetCodexModelsManifestConfig(v domain.GroupCodexModelsM
 func (u *GroupUpsertOne) UpdateCodexModelsManifestConfig() *GroupUpsertOne {
 	return u.Update(func(s *GroupUpsert) {
 		s.UpdateCodexModelsManifestConfig()
+	})
+}
+
+// SetCodexConfigDefaultModel sets the "codex_config_default_model" field.
+func (u *GroupUpsertOne) SetCodexConfigDefaultModel(v string) *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetCodexConfigDefaultModel(v)
+	})
+}
+
+// UpdateCodexConfigDefaultModel sets the "codex_config_default_model" field to the value that was provided on create.
+func (u *GroupUpsertOne) UpdateCodexConfigDefaultModel() *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateCodexConfigDefaultModel()
+	})
+}
+
+// SetCodexConfigReviewModel sets the "codex_config_review_model" field.
+func (u *GroupUpsertOne) SetCodexConfigReviewModel(v string) *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetCodexConfigReviewModel(v)
+	})
+}
+
+// UpdateCodexConfigReviewModel sets the "codex_config_review_model" field to the value that was provided on create.
+func (u *GroupUpsertOne) UpdateCodexConfigReviewModel() *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateCodexConfigReviewModel()
 	})
 }
 
@@ -5525,6 +5627,34 @@ func (u *GroupUpsertBulk) SetCodexModelsManifestConfig(v domain.GroupCodexModels
 func (u *GroupUpsertBulk) UpdateCodexModelsManifestConfig() *GroupUpsertBulk {
 	return u.Update(func(s *GroupUpsert) {
 		s.UpdateCodexModelsManifestConfig()
+	})
+}
+
+// SetCodexConfigDefaultModel sets the "codex_config_default_model" field.
+func (u *GroupUpsertBulk) SetCodexConfigDefaultModel(v string) *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetCodexConfigDefaultModel(v)
+	})
+}
+
+// UpdateCodexConfigDefaultModel sets the "codex_config_default_model" field to the value that was provided on create.
+func (u *GroupUpsertBulk) UpdateCodexConfigDefaultModel() *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateCodexConfigDefaultModel()
+	})
+}
+
+// SetCodexConfigReviewModel sets the "codex_config_review_model" field.
+func (u *GroupUpsertBulk) SetCodexConfigReviewModel(v string) *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetCodexConfigReviewModel(v)
+	})
+}
+
+// UpdateCodexConfigReviewModel sets the "codex_config_review_model" field to the value that was provided on create.
+func (u *GroupUpsertBulk) UpdateCodexConfigReviewModel() *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateCodexConfigReviewModel()
 	})
 }
 

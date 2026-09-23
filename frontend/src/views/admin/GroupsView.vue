@@ -521,6 +521,30 @@
           />
           <p class="input-hint">{{ t("admin.groups.platformHint") }}</p>
         </div>
+        <div>
+          <label class="input-label">{{ t("admin.groups.codexConfig.defaultModel") }}</label>
+          <input
+            v-model="createForm.codex_config_default_model"
+            name="codex_config_default_model"
+            type="text"
+            class="input"
+            :placeholder="getCodexDefaultModel(createForm.platform)"
+            maxlength="200"
+          />
+          <p class="input-hint">{{ t("admin.groups.codexConfig.defaultModelHint") }}</p>
+        </div>
+        <div>
+          <label class="input-label">{{ t("admin.groups.codexConfig.reviewModel") }}</label>
+          <input
+            v-model="createForm.codex_config_review_model"
+            name="codex_config_review_model"
+            type="text"
+            class="input"
+            :placeholder="getCodexDefaultReviewModel(createForm.platform)"
+            maxlength="200"
+          />
+          <p class="input-hint">{{ t("admin.groups.codexConfig.reviewModelHint") }}</p>
+        </div>
         <!-- 从分组复制账号 -->
         <div v-if="!authStore.isSimpleMode && copyAccountsGroupOptions.length > 0">
           <div class="mb-1.5 flex items-center gap-1">
@@ -2157,6 +2181,30 @@
             data-tour="group-form-platform"
           />
           <p class="input-hint">{{ t("admin.groups.platformNotEditable") }}</p>
+        </div>
+        <div>
+          <label class="input-label">{{ t("admin.groups.codexConfig.defaultModel") }}</label>
+          <input
+            v-model="editForm.codex_config_default_model"
+            name="codex_config_default_model"
+            type="text"
+            class="input"
+            :placeholder="getCodexDefaultModel(editForm.platform)"
+            maxlength="200"
+          />
+          <p class="input-hint">{{ t("admin.groups.codexConfig.defaultModelHint") }}</p>
+        </div>
+        <div>
+          <label class="input-label">{{ t("admin.groups.codexConfig.reviewModel") }}</label>
+          <input
+            v-model="editForm.codex_config_review_model"
+            name="codex_config_review_model"
+            type="text"
+            class="input"
+            :placeholder="getCodexDefaultReviewModel(editForm.platform)"
+            maxlength="200"
+          />
+          <p class="input-hint">{{ t("admin.groups.codexConfig.reviewModelHint") }}</p>
         </div>
         <template v-if="!authStore.isSimpleMode">
         <!-- 从分组复制账号（编辑时） -->
@@ -4265,6 +4313,7 @@
 </template>
 
 <script setup lang="ts">
+import { getCodexDefaultModel, getCodexDefaultReviewModel } from '@/constants/codexConfig';
 import { ref, reactive, computed, onMounted, onUnmounted, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import { useAppStore } from "@/stores/app";
@@ -4990,6 +5039,8 @@ const createForm = reactive({
   // OpenAI Messages 调度配置（仅 openai 平台使用）
   allow_messages_dispatch: false,
   allow_live: false,
+  codex_config_default_model: "",
+  codex_config_review_model: "",
   opus_mapped_model: createMessagesDispatchDefaults.opus_mapped_model,
   sonnet_mapped_model: createMessagesDispatchDefaults.sonnet_mapped_model,
   haiku_mapped_model: createMessagesDispatchDefaults.haiku_mapped_model,
@@ -5355,6 +5406,8 @@ const editForm = reactive({
   // OpenAI Messages 调度配置（仅 openai 平台使用）
   allow_messages_dispatch: false,
   allow_live: false,
+  codex_config_default_model: "",
+  codex_config_review_model: "",
   default_mapped_model: '',
   opus_mapped_model: editMessagesDispatchDefaults.opus_mapped_model,
   sonnet_mapped_model: editMessagesDispatchDefaults.sonnet_mapped_model,
@@ -5767,6 +5820,8 @@ const closeCreateModal = () => {
   clearAllAccountSearchState();
   createForm.name = "";
   createForm.description = "";
+  createForm.codex_config_default_model = "";
+  createForm.codex_config_review_model = "";
   createForm.platform = "anthropic";
   createForm.rate_multiplier = 1.0;
   createForm.is_exclusive = false;
@@ -6023,6 +6078,8 @@ const handleCreateGroup = async () => {
           name: createForm.name,
           description: createForm.description,
           platform: createForm.platform,
+          codex_config_default_model: createForm.codex_config_default_model.trim(),
+          codex_config_review_model: createForm.codex_config_review_model.trim(),
         }
       : requestData;
     await adminAPI.groups.create(payload);
@@ -6107,6 +6164,8 @@ const handleEdit = async (group: AdminGroup) => {
     group.allow_messages_dispatch ||
     messagesDispatchFormState.allow_messages_dispatch;
   editForm.allow_live = group.allow_live ?? false;
+  editForm.codex_config_default_model = group.codex_config_default_model ?? "";
+  editForm.codex_config_review_model = group.codex_config_review_model ?? "";
   editForm.opus_mapped_model = messagesDispatchFormState.opus_mapped_model;
   editForm.sonnet_mapped_model = messagesDispatchFormState.sonnet_mapped_model;
   editForm.haiku_mapped_model = messagesDispatchFormState.haiku_mapped_model;
@@ -6283,6 +6342,8 @@ const handleUpdateGroup = async () => {
         editModelRoutingRules.value,
       ),
       model_allowlist: buildModelAllowlistConfig(editModelAllowlistState),
+      codex_config_default_model: editForm.codex_config_default_model.trim(),
+      codex_config_review_model: editForm.codex_config_review_model.trim(),
       // 非 openai 平台提交关闭状态，与后端归一化一致
       codex_models_manifest_config:
         editForm.platform === "openai"
@@ -6373,6 +6434,8 @@ const handleUpdateGroup = async () => {
       ? {
           name: editForm.name,
           description: editForm.description,
+          codex_config_default_model: editForm.codex_config_default_model.trim(),
+          codex_config_review_model: editForm.codex_config_review_model.trim(),
         }
       : payload;
     await adminAPI.groups.update(editingGroup.value.id, requestData);

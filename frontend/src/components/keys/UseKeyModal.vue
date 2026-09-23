@@ -229,6 +229,20 @@
           >
             {{ t('keys.useKeyModal.codexModelCatalog.errorDescription') }}
           </p>
+          <p
+            v-if="configuredCodexModelMissingFromCatalog"
+            data-testid="codex-config-model-missing"
+            class="border-t border-amber-200 px-4 py-2 text-xs text-amber-700 dark:border-amber-900 dark:text-amber-300"
+          >
+            {{ t('keys.useKeyModal.codexModelCatalog.configuredModelMissing', { model: props.codexConfigDefaultModel }) }}
+          </p>
+          <p
+            v-if="configuredCodexReviewModelMissingFromCatalog"
+            data-testid="codex-config-review-model-missing"
+            class="border-t border-amber-200 px-4 py-2 text-xs text-amber-700 dark:border-amber-900 dark:text-amber-300"
+          >
+            {{ t('keys.useKeyModal.codexModelCatalog.configuredReviewModelMissing', { model: props.codexConfigReviewModel }) }}
+          </p>
         </section>
 
         <!-- Usage Note -->
@@ -263,6 +277,7 @@ import Icon from '@/components/icons/Icon.vue'
 import { useClipboard } from '@/composables/useClipboard'
 import { fetchCodexModelsManifest } from '@/api/codex'
 import type { GroupPlatform } from '@/types'
+import { getCodexDefaultModel, getCodexDefaultReviewModel } from '@/constants/codexConfig'
 import {
   findCodexCatalogModel,
   formatCodexReasoningEffortTomlLine,
@@ -276,6 +291,8 @@ interface Props {
   baseUrl: string
   platform: GroupPlatform | null
   allowMessagesDispatch?: boolean
+  codexConfigDefaultModel?: string
+  codexConfigReviewModel?: string
 }
 
 interface Emits {
@@ -670,6 +687,34 @@ function selectCodexCatalogModel(preferredModel: string): string {
   return codexCatalogModelSlugs.value[0] || preferredModel
 }
 
+function selectConfiguredCodexModel(platformDefault: string): string {
+  const configured = props.codexConfigDefaultModel?.trim()
+  return configured || selectCodexCatalogModel(platformDefault)
+}
+
+function selectConfiguredCodexReviewModel(platform: GroupPlatform): string {
+  return props.codexConfigReviewModel?.trim() || getCodexDefaultReviewModel(platform)
+}
+
+function configuredOpenAIReviewModelTomlLine(): string {
+  const reviewModel = props.codexConfigReviewModel?.trim()
+  return reviewModel ? `review_model = "${escapeTomlBasicString(reviewModel)}"\n` : ''
+}
+
+const configuredCodexReviewModelMissingFromCatalog = computed(() => {
+  const configured = props.codexConfigReviewModel?.trim() || ''
+  return codexModelManifestState.value === 'ready' &&
+    Boolean(configured) &&
+    !codexCatalogModelSlugs.value.includes(configured)
+})
+
+const configuredCodexModelMissingFromCatalog = computed(() => {
+  const configured = props.codexConfigDefaultModel?.trim() || ''
+  return codexModelManifestState.value === 'ready' &&
+    Boolean(configured) &&
+    !codexCatalogModelSlugs.value.includes(configured)
+})
+
 function codexReasoningEffortTomlLine(modelSlug: string): string {
   return formatCodexReasoningEffortTomlLine(
     selectCodexConfigReasoningEffort(findCodexCatalogModel(codexModelManifestContent.value, modelSlug))
@@ -944,14 +989,13 @@ function generateOpenAIFiles(baseUrl: string, apiKey: string): FileConfig[] {
   const isWindows = activeTab.value === 'windows'
   const configDir = isWindows ? '%userprofile%\\.codex' : '~/.codex'
 
-  const model = selectCodexCatalogModel('gpt-5.5')
+  const model = selectConfiguredCodexModel(getCodexDefaultModel('openai'))
   const reasoningEffortLine = codexReasoningEffortTomlLine(model)
 
   // config.toml content
   const configContent = `model_provider = "OpenAI"
-model = "${model}"
-review_model = "${model}"
-${reasoningEffortLine}disable_response_storage = true
+model = "${escapeTomlBasicString(model)}"
+${configuredOpenAIReviewModelTomlLine()}${reasoningEffortLine}disable_response_storage = true
 model_catalog_json = "${escapeTomlBasicString(codexModelCatalogPath.value)}"
 network_access = "enabled"
 windows_wsl_setup_acknowledged = true
@@ -1007,7 +1051,14 @@ function joinConfigPath(dir: string, file: string, windows: boolean): string {
 }
 
 function escapeTomlBasicString(value: string): string {
-  return value.replace(/\\/g, '\\\\').replace(/"/g, '\\"')
+  return value
+    .replace(/\\/g, '\\\\')
+    .replace(/"/g, '\\"')
+    .split(String.fromCharCode(8)).join('\\b')
+    .replace(/\t/g, '\\t')
+    .replace(/\n/g, '\\n')
+    .replace(/\f/g, '\\f')
+    .replace(/\r/g, '\\r')
 }
 
 function generateGrokFiles(baseUrl: string, apiKey: string): FileConfig[] {
@@ -1158,7 +1209,8 @@ function generateGrokCodexFiles(baseUrl: string, apiKey: string): FileConfig[] {
   const shell = activeTab.value
   const isWindowsPath = shell === 'windows' || shell === 'cmd' || shell === 'powershell'
   const configDir = isWindowsPath ? '%userprofile%\\.codex' : '~/.codex'
-  const model = selectCodexCatalogModel('grok-4.5')
+  const model = selectConfiguredCodexModel(getCodexDefaultModel('grok'))
+  const reviewModel = selectConfiguredCodexReviewModel('grok')
 
   let envPath: string
   let envContent: string
@@ -1184,10 +1236,10 @@ function generateGrokCodexFiles(baseUrl: string, apiKey: string): FileConfig[] {
 # Switch model: grok-4.5 | grok-4.3 | grok-build-0.1 | grok-4.20-multi-agent-0309 (text / web_search)
 
 model_provider = "sub2api"
-model = "${model}"
+model = "${escapeTomlBasicString(model)}"
 model_catalog_json = "${escapeTomlBasicString(codexModelCatalogPath.value)}"
+${props.codexConfigReviewModel?.trim() ? '' : '# '}review_model = "${escapeTomlBasicString(reviewModel)}"
 # Optional:
-# review_model = "${model}"
 # model_reasoning_effort = "medium"
 # model_context_window = 500000
 # disable_response_storage = true
@@ -1228,21 +1280,9 @@ function generateRoutedCodexFiles(
 ): FileConfig[] {
   const isWindows = activeTab.value === 'windows'
   const configDir = isWindows ? '%userprofile%\\.codex' : '~/.codex'
-  const preferredModels: Partial<Record<GroupPlatform, string>> = {
-    openai: 'gpt-5.5',
-    anthropic: 'claude-sonnet-4-6',
-    gemini: 'gemini-2.5-pro',
-    antigravity: 'claude-sonnet-4-6',
-    grok: 'grok-4.5',
-    kimi: 'kimi-k2.5',
-    zhipu: 'glm-4.7',
-    deepseek: 'deepseek-v4-pro',
-    minimax: 'MiniMax-M3',
-    opencode_go: 'glm-5.3',
-    composite: 'gpt-5.5'
-  }
-  const preferredModel = preferredModels[platform] || ''
-  const model = selectCodexCatalogModel(preferredModel)
+  const preferredModel = getCodexDefaultModel(platform)
+  const model = selectConfiguredCodexModel(preferredModel)
+  const reviewModel = selectConfiguredCodexReviewModel(platform)
   const labels: Record<GroupPlatform, string> = {
     anthropic: 'Anthropic',
     openai: 'OpenAI',
@@ -1263,8 +1303,8 @@ function generateRoutedCodexFiles(
 
   const configContent = `# Codex CLI -> Sub2API ${label} group
 model_provider = "sub2api"
-model = "${model}"
-review_model = "${model}"
+model = "${escapeTomlBasicString(model)}"
+review_model = "${escapeTomlBasicString(reviewModel)}"
 disable_response_storage = true
 model_catalog_json = "${escapeTomlBasicString(codexModelCatalogPath.value)}"
 
@@ -1293,14 +1333,13 @@ supports_websockets = false`
 function generateOpenAIWsFiles(baseUrl: string, apiKey: string): FileConfig[] {
   const isWindows = activeTab.value === 'windows'
   const configDir = isWindows ? '%userprofile%\\.codex' : '~/.codex'
-  const model = selectCodexCatalogModel('gpt-5.5')
+  const model = selectConfiguredCodexModel(getCodexDefaultModel('openai'))
   const reasoningEffortLine = codexReasoningEffortTomlLine(model)
 
   // config.toml content with WebSocket v2
   const configContent = `model_provider = "OpenAI"
-model = "${model}"
-review_model = "${model}"
-${reasoningEffortLine}disable_response_storage = true
+model = "${escapeTomlBasicString(model)}"
+${configuredOpenAIReviewModelTomlLine()}${reasoningEffortLine}disable_response_storage = true
 model_catalog_json = "${escapeTomlBasicString(codexModelCatalogPath.value)}"
 network_access = "enabled"
 windows_wsl_setup_acknowledged = true
