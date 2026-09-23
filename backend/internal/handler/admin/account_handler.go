@@ -2883,6 +2883,10 @@ func (h *AccountHandler) GetAvailableModels(c *gin.Context) {
 	// Handle Grok accounts
 	if account.Platform == service.PlatformGrok {
 		defaultModels := xai.DefaultModels()
+		if account.IsGrokPassthroughEnabled() {
+			response.Success(c, defaultModels)
+			return
+		}
 
 		hasExplicitMapping := false
 		switch rawMapping := account.Credentials["model_mapping"].(type) {
