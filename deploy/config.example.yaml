@@ -262,6 +262,10 @@ gateway:
   # - account_proxy: Isolate by account+proxy combination (default, finest granularity)
   # - account_proxy: 按账户+代理组合隔离（默认，最细粒度）
   connection_pool_isolation: "account_proxy"
+  # Address family for direct upstream connections: auto, ipv4, or ipv6.
+  # Use ipv4 when an IPv4-only host receives AAAA records but has no IPv6 route.
+  # 直连上游地址族：auto/ipv4/ipv6；仅 IPv4 环境拿到 AAAA 但无 IPv6 路由时可设为 ipv4。
+  upstream_ip_mode: "auto"
   # Force Codex CLI mode: treat all /openai/v1/responses requests as Codex CLI.
   # 强制按 Codex CLI 处理 /openai/v1/responses 请求（用于网关未透传/改写 User-Agent 的兜底）。
   #
