@@ -9,10 +9,25 @@ describe('Codex models API', () => {
     vi.unstubAllGlobals()
   })
 
-  it('builds the authenticated Codex manifest endpoint from the public API base', () => {
+  it('uses the dedicated automatic catalog endpoint while preserving a gateway prefix', () => {
     expect(buildCodexModelsManifestUrl('https://example.com/api/v1/')).toBe(
-      'https://example.com/api/v1/models?client_version=0.147.0'
+      'https://example.com/api/backend-api/codex/models'
     )
+    expect(buildCodexModelsManifestUrl('https://example.com/api/backend-api/codex')).toBe(
+      'https://example.com/api/backend-api/codex/models'
+    )
+  })
+
+  it('keeps an explicit client version on the compatibility endpoint', () => {
+    expect(buildCodexModelsManifestUrl('https://example.com/api', {
+      mode: 'compatible', clientVersion: '0.200.1'
+    })).toBe('https://example.com/api/v1/models?client_version=0.200.1')
+    expect(buildCodexModelsManifestUrl('https://example.com/api/backend-api/codex/models', {
+      mode: 'compatible', clientVersion: '0.200.1'
+    })).toBe('https://example.com/api/v1/models?client_version=0.200.1')
+    expect(() => buildCodexModelsManifestUrl('https://example.com/api', {
+      mode: 'compatible', clientVersion: 'latest'
+    })).toThrow('invalid')
   })
 
   it('fetches a manifest with the current API key without adding it to the catalog', async () => {
@@ -50,7 +65,7 @@ describe('Codex models API', () => {
     const result = await fetchCodexModelsManifest('https://example.com/v1', 'sk-user-test')
 
     expect(fetchMock).toHaveBeenCalledWith(
-      'https://example.com/v1/models?client_version=0.147.0',
+      'https://example.com/backend-api/codex/models',
       expect.objectContaining({
         headers: {
           Accept: 'application/json',

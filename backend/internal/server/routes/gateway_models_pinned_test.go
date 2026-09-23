@@ -31,6 +31,7 @@ type pinnedModelsRoutesUpstream struct {
 	service.HTTPUpstream
 	ordinaryCalls atomic.Int32
 	codexCalls    atomic.Int32
+	codexBody     string
 }
 
 func (u *pinnedModelsRoutesUpstream) Do(req *http.Request, _ string, _ int64, _ int) (*http.Response, error) {
@@ -38,10 +39,79 @@ func (u *pinnedModelsRoutesUpstream) Do(req *http.Request, _ string, _ int64, _ 
 	if req.URL.Query().Has("client_version") {
 		u.codexCalls.Add(1)
 		body = `{"models":[{"slug":"gpt-5.5"}]}`
+		if u.codexBody != "" {
+			body = u.codexBody
+		}
 	} else {
 		u.ordinaryCalls.Add(1)
 	}
 	return &http.Response{StatusCode: 200, Header: make(http.Header), Body: io.NopCloser(strings.NewReader(body))}, nil
+}
+
+func TestGatewayRoutesDedicatedCodexModelsIsolatesAPIKeyGroups(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	repo := &pinnedModelsRoutesRepository{account: service.Account{
+		ID: 7, Platform: service.PlatformOpenAI, Type: service.AccountTypeAPIKey,
+		Status: service.StatusActive, Schedulable: true,
+		Credentials: map[string]any{"api_key": "test-models-key", "base_url": "https://models.example/v1"},
+	}}
+	upstream := &pinnedModelsRoutesUpstream{
+		codexBody: `{"models":[{"slug":"model-a"},{"slug":"model-b"}]}`,
+	}
+	cfg := &config.Config{RunMode: config.RunModeSimple}
+	s := service.NewOpenAIGatewayService(repo, nil, nil, nil, nil, nil, nil, cfg,
+		nil, nil, nil, nil, nil, upstream, nil, nil, nil, nil, nil, nil, nil, nil)
+	h := &handler.Handlers{
+		Gateway:       handler.NewGatewayHandler(nil, s, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, cfg, nil),
+		OpenAIGateway: handler.NewOpenAIGatewayHandler(s, nil, nil, nil, nil, nil, nil, nil, cfg),
+		AsyncImage:    handler.NewAsyncImageHandler(nil, nil),
+	}
+	groupA := &service.Group{
+		ID: 91, Platform: service.PlatformOpenAI,
+		ModelAllowlist:            service.GroupModelAllowlist{Enabled: true, Models: []string{"model-a"}},
+		CodexModelsManifestConfig: service.GroupCodexModelsManifestConfig{Enabled: true, AccountIDs: []int64{7}},
+	}
+	groupB := &service.Group{
+		ID: 92, Platform: service.PlatformOpenAI,
+		ModelAllowlist:            service.GroupModelAllowlist{Enabled: true, Models: []string{"model-b"}},
+		CodexModelsManifestConfig: service.GroupCodexModelsManifestConfig{Enabled: true, AccountIDs: []int64{7}},
+	}
+	groupsByKey := map[string]*service.Group{
+		"Bearer key-a": groupA,
+		"Bearer key-b": groupB,
+	}
+	router := gin.New()
+	RegisterGatewayRoutes(router, h, servermiddleware.APIKeyAuthMiddleware(func(c *gin.Context) {
+		group := groupsByKey[c.GetHeader("Authorization")]
+		if group == nil {
+			c.AbortWithStatus(http.StatusUnauthorized)
+			return
+		}
+		c.Set(string(servermiddleware.ContextKeyAPIKey), &service.APIKey{GroupID: &group.ID, Group: group})
+		c.Next()
+	}), nil, nil, nil, nil, nil, cfg)
+
+	request := func(key string) *httptest.ResponseRecorder {
+		w := httptest.NewRecorder()
+		req := httptest.NewRequest(http.MethodGet, "/backend-api/codex/models", nil)
+		req.Header.Set("Authorization", key)
+		router.ServeHTTP(w, req)
+		return w
+	}
+	assertCatalog := func(key, included, excluded string) {
+		t.Helper()
+		w := request(key)
+		require.Equal(t, http.StatusOK, w.Code, w.Body.String())
+		require.Contains(t, w.Body.String(), `"slug":"`+included+`"`)
+		require.NotContains(t, w.Body.String(), `"slug":"`+excluded+`"`)
+	}
+
+	assertCatalog("Bearer key-a", "model-a", "model-b")
+	assertCatalog("Bearer key-b", "model-b", "model-a")
+	assertCatalog("Bearer key-a", "model-a", "model-b")
+	require.Equal(t, http.StatusUnauthorized, request("Bearer bad-key").Code)
+	require.EqualValues(t, 1, upstream.codexCalls.Load(),
+		"groups may share the upstream cache but must receive independently filtered catalogs")
 }
 
 func TestGatewayRoutesPinnedModelsDispatchesOrdinaryAndCodexRequests(t *testing.T) {

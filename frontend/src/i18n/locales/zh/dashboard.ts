@@ -245,12 +245,16 @@ export default {
       },
       codexModelCatalog: {
         title: 'Codex 模型目录',
-        description: '使用当前 API Key 获取目录，并保存到 config.toml 引用的路径。',
+        description: '使用当前 API Key 自动获取最新目录，并将快照保存到 config.toml 引用的路径。',
         fetch: '获取目录',
         retry: '重试',
+        refresh: '刷新目录',
         download: '下载目录',
         modelsCount: '已获取 {count} 个模型',
-        errorDescription: '无法使用当前 API Key 获取模型目录。'
+        fetchedAt: '更新于 {time}',
+        compatibilityMode: '为兼容性指定 Codex 客户端版本',
+        compatibilityVersionPlaceholder: '例如 0.200.1',
+        errorDescription: '无法使用当前 API Key 获取模型目录；已下载文件仍是快照。'
       },
       opencode: {
         title: 'OpenCode 配置示例',

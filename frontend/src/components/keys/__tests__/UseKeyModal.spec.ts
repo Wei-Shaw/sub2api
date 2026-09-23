@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { flushPromises, mount } from '@vue/test-utils'
+import { enableAutoUnmount, flushPromises, mount } from '@vue/test-utils'
 import { nextTick } from 'vue'
 
 const { copyToClipboardMock, saveAsMock } = vi.hoisted(() => ({
@@ -25,6 +25,8 @@ vi.mock('file-saver', () => ({
 
 import UseKeyModal from '../UseKeyModal.vue'
 
+enableAutoUnmount(afterEach)
+
 function readBlobAsText(blob: Blob): Promise<string> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader()
@@ -36,6 +38,7 @@ function readBlobAsText(blob: Blob): Promise<string> {
 
 describe('UseKeyModal', () => {
   afterEach(() => {
+    vi.useRealTimers()
     vi.unstubAllGlobals()
     saveAsMock.mockClear()
   })
@@ -816,7 +819,7 @@ describe('UseKeyModal', () => {
     await flushPromises()
 
     expect(fetchMock).toHaveBeenCalledWith(
-      'https://example.com/v1/models?client_version=0.147.0',
+      'https://example.com/backend-api/codex/models',
       expect.objectContaining({
         headers: expect.objectContaining({ Authorization: 'Bearer sk-composite-test' })
       })
@@ -981,5 +984,80 @@ describe('UseKeyModal', () => {
       .find((content) => content.includes('model_provider = "OpenAI"'))
     expect(configToml).toContain('model = "glm-5.3"')
     expect(configToml).not.toContain('model_reasoning_effort')
+  })
+
+  it('does not let an earlier API key response replace the current catalog', async () => {
+    let resolveFirst!: (value: unknown) => void
+    let resolveSecond!: (value: unknown) => void
+    const first = new Promise((resolve) => { resolveFirst = resolve })
+    const second = new Promise((resolve) => { resolveSecond = resolve })
+    vi.stubGlobal('fetch', vi.fn()
+      .mockImplementationOnce(() => first)
+      .mockImplementationOnce(() => second))
+
+    const wrapper = mount(UseKeyModal, {
+      props: { show: true, apiKey: 'sk-old', baseUrl: 'https://example.com/v1', platform: 'openai' },
+      global: { stubs: { BaseDialog: { template: '<div><slot /><slot name="footer" /></div>' }, Icon: { template: '<span />' } } }
+    })
+    await wrapper.setProps({ apiKey: 'sk-new' })
+    resolveFirst({ ok: true, status: 200, json: async () => ({ models: [{ slug: 'old-model' }] }) })
+    await flushPromises()
+    expect(wrapper.findAll('pre code').map((code) => code.text()).join('\n')).not.toContain('old-model')
+
+    resolveSecond({ ok: true, status: 200, json: async () => ({ models: [{ slug: 'new-model' }] }) })
+    await flushPromises()
+    expect(wrapper.findAll('pre code').map((code) => code.text()).join('\n')).toContain('new-model')
+  })
+
+  it('refreshes while visible, pauses an in-flight request when hidden, and stops after close or unmount', async () => {
+    vi.useFakeTimers()
+    vi.clearAllTimers()
+    Object.defineProperty(document, 'visibilityState', { configurable: true, value: 'visible' })
+    const requests: RequestInit[] = []
+    const fetchMock = vi.fn((_url: string, options: RequestInit) => {
+      requests.push(options)
+      return Promise.resolve({ ok: true, status: 200, json: async () => ({ models: [{ slug: 'catalog-model' }] }) })
+    })
+    vi.stubGlobal('fetch', fetchMock)
+    const wrapper = mount(UseKeyModal, {
+      props: { show: true, apiKey: 'sk-test', baseUrl: 'https://example.com/v1', platform: 'openai' },
+      global: { stubs: { BaseDialog: { template: '<div><slot /><slot name="footer" /></div>' }, Icon: { template: '<span />' } } }
+    })
+    await flushPromises()
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+
+    await vi.advanceTimersByTimeAsync(5 * 60 * 1000)
+    await flushPromises()
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+
+    let resolvePending!: (value: unknown) => void
+    fetchMock.mockImplementationOnce((_url: string, options: RequestInit) => {
+      requests.push(options)
+      return new Promise((resolve) => { resolvePending = resolve })
+    })
+    await vi.advanceTimersByTimeAsync(5 * 60 * 1000)
+    expect(fetchMock).toHaveBeenCalledTimes(3)
+    Object.defineProperty(document, 'visibilityState', { configurable: true, value: 'hidden' })
+    document.dispatchEvent(new Event('visibilitychange'))
+    expect((requests[2].signal as AbortSignal).aborted).toBe(true)
+    await vi.advanceTimersByTimeAsync(10 * 60 * 1000)
+    expect(fetchMock).toHaveBeenCalledTimes(3)
+
+    Object.defineProperty(document, 'visibilityState', { configurable: true, value: 'visible' })
+    document.dispatchEvent(new Event('visibilitychange'))
+    await flushPromises()
+    expect(fetchMock).toHaveBeenCalledTimes(4)
+    resolvePending({ ok: true, status: 200, json: async () => ({ models: [{ slug: 'stale' }] }) })
+
+    await wrapper.setProps({ show: false })
+    const callsAfterClose = fetchMock.mock.calls.length
+    await vi.advanceTimersByTimeAsync(10 * 60 * 1000)
+    expect(fetchMock).toHaveBeenCalledTimes(callsAfterClose)
+    await wrapper.setProps({ show: true })
+    await flushPromises()
+    const callsBeforeUnmount = fetchMock.mock.calls.length
+    wrapper.unmount()
+    await vi.advanceTimersByTimeAsync(10 * 60 * 1000)
+    expect(fetchMock).toHaveBeenCalledTimes(callsBeforeUnmount)
   })
 })

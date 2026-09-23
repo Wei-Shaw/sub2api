@@ -1874,10 +1874,21 @@ func TestFetchCodexModelsManifestAgentIdentityRedactsUpstreamErrors(t *testing.T
 }
 
 func TestFetchCodexModelsManifestDefaultClientVersion(t *testing.T) {
-	var gotClientVersion string
+	codexCanonicalUAMu.RLock()
+	previousResolver := codexCanonicalUAResolver
+	codexCanonicalUAMu.RUnlock()
+	t.Cleanup(func() { SetCodexCanonicalUserAgentResolver(previousResolver) })
+
+	runtimeVersion := "0.200.0"
+	SetCodexCanonicalUserAgentResolver(func() string {
+		return buildCodexCLIUserAgent(runtimeVersion)
+	})
+
+	var gotClientVersions []string
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		gotClientVersion = r.URL.Query().Get("client_version")
-		_, _ = w.Write([]byte(`{"models":[]}`))
+		clientVersion := r.URL.Query().Get("client_version")
+		gotClientVersions = append(gotClientVersions, clientVersion)
+		_, _ = fmt.Fprintf(w, `{"models":[{"slug":%q}]}`, clientVersion)
 	}))
 	defer server.Close()
 
@@ -1886,12 +1897,21 @@ func TestFetchCodexModelsManifestDefaultClientVersion(t *testing.T) {
 	defer func() { chatgptCodexModelsURL = original }()
 
 	s := &OpenAIGatewayService{}
-	if _, err := s.FetchCodexModelsManifest(context.Background(), newCodexModelsTestAccount(), "", ""); err != nil {
-		t.Fatalf("FetchCodexModelsManifest returned error: %v", err)
-	}
-	if gotClientVersion != CodexCanonicalClientVersion() {
-		t.Errorf("default client_version: got %q, want %q", gotClientVersion, CodexCanonicalClientVersion())
-	}
+	account := newCodexModelsTestAccount()
+	first, err := s.FetchCodexModelsManifest(context.Background(), account, "", "")
+	require.NoError(t, err)
+	require.Equal(t, []string{"0.200.0"}, codexManifestModelSlugs(t, first.Body))
+
+	runtimeVersion = "0.201.0"
+	second, err := s.FetchCodexModelsManifest(context.Background(), account, "", "")
+	require.NoError(t, err)
+	require.Equal(t, []string{"0.201.0"}, codexManifestModelSlugs(t, second.Body))
+
+	third, err := s.FetchCodexModelsManifest(context.Background(), account, "", "")
+	require.NoError(t, err)
+	require.Equal(t, []string{"0.201.0"}, codexManifestModelSlugs(t, third.Body))
+	require.Equal(t, []string{"0.200.0", "0.201.0"}, gotClientVersions,
+		"a canonical version change must select a separate manifest cache entry")
 }
 
 func TestFetchCodexModelsManifestNotModified(t *testing.T) {
