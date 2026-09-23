@@ -1479,3 +1479,69 @@ func TestGatewayModels_CodexGeminiGroupListsAntigravityGeminiMappings(t *testing
 		require.True(t, strings.HasPrefix(slug, "gemini-"), "unexpected non-gemini model on gemini group: %s", slug)
 	}
 }
+
+func TestGatewayModels_MappedModelsSurvivePassthroughFallback(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	const model = "vendor-new-model-fixture"
+	for _, platform := range []string{service.PlatformOpenAI, service.PlatformComposite} {
+		for _, tt := range []struct {
+			name                       string
+			accountType                string
+			passthrough, mapped, mixed bool
+		}{
+			{"oauth passthrough mapping", service.AccountTypeOAuth, true, true, false},
+			{"oauth ordinary mapping", service.AccountTypeOAuth, false, true, false},
+			{"eleven accounts with seven passthrough", service.AccountTypeOAuth, false, true, true},
+			{"restricted api key mapping", service.AccountTypeAPIKey, true, true, false},
+			{"restricted api key excludes unknown", service.AccountTypeAPIKey, true, false, false},
+			{"allowlist alone does not invent source", service.AccountTypeOAuth, false, false, false},
+		} {
+			t.Run(platform+"/"+tt.name, func(t *testing.T) {
+				groupID := int64(7517)
+				mapped := "known-model"
+				if tt.mapped {
+					mapped = model
+				}
+				accounts := []service.Account{{
+					ID: 1, Platform: service.PlatformOpenAI, Type: tt.accountType,
+					Status: service.StatusActive, Schedulable: true,
+					Credentials: map[string]any{"model_mapping": map[string]any{mapped: mapped}},
+					Extra:       map[string]any{"openai_passthrough": tt.passthrough},
+				}}
+				if tt.mixed {
+					for i := 0; i < 10; i++ {
+						accounts = append(accounts, service.Account{ID: int64(i + 2), Platform: service.PlatformOpenAI, Type: service.AccountTypeOAuth,
+							Status: service.StatusActive, Schedulable: true, Extra: map[string]any{"openai_passthrough": i < 7}})
+					}
+				}
+				group := &service.Group{ID: groupID, Platform: platform,
+					ModelAllowlist: service.GroupModelAllowlist{Enabled: true, Models: []string{model, "absent-model", "unconfigured-*"}}}
+				h := newGatewayModelsHandlerForTest(&gatewayModelsAccountRepoStub{byGroup: map[int64][]service.Account{groupID: accounts}})
+				for _, codex := range []bool{false, true} {
+					rec := httptest.NewRecorder()
+					c, _ := gin.CreateTestContext(rec)
+					c.Request = httptest.NewRequest(http.MethodGet, "/v1/models?client_version=0.156.0", nil)
+					c.Set(string(middleware2.ContextKeyAPIKey), &service.APIKey{Group: group})
+					var ids []string
+					if codex {
+						h.CodexModels(c)
+						var got codexModelsResponseForTest
+						require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &got))
+						ids = codexModelSlugsForTest(got.Models)
+					} else {
+						h.Models(c)
+						var got gatewayModelsResponseForTest
+						require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &got))
+						ids = modelIDsForTest(got.Data)
+					}
+					require.Equal(t, http.StatusOK, rec.Code)
+					if tt.mapped {
+						require.Equal(t, []string{model}, ids, "codex=%t", codex)
+					} else {
+						require.Empty(t, ids, "codex=%t", codex)
+					}
+				}
+			})
+		}
+	}
+}

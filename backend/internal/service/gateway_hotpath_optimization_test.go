@@ -10,6 +10,7 @@ import (
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/ctxkey"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/openai"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/usagestats"
 	gocache "github.com/patrickmn/go-cache"
 	"github.com/stretchr/testify/require"
@@ -658,7 +659,7 @@ func TestGetAvailableModels_OpenAIPassthroughUsesDefaultFallback(t *testing.T) {
 		want     []string
 	}{
 		{
-			name: "passthrough only ignores stale mapping",
+			name: "passthrough preserves mapping alongside defaults",
 			accounts: []Account{
 				{
 					ID:          1,
@@ -667,10 +668,10 @@ func TestGetAvailableModels_OpenAIPassthroughUsesDefaultFallback(t *testing.T) {
 					Extra:       map[string]any{"openai_passthrough": true},
 				},
 			},
-			want: nil,
+			want: dedupeAndSortModelIDs(append(openai.DefaultModelIDs(), "stale-model")),
 		},
 		{
-			name: "passthrough wins over ordinary account mapping",
+			name: "passthrough retains ordinary account mapping",
 			accounts: []Account{
 				{
 					ID:          2,
@@ -684,7 +685,7 @@ func TestGetAvailableModels_OpenAIPassthroughUsesDefaultFallback(t *testing.T) {
 					Extra:       map[string]any{"openai_passthrough": true},
 				},
 			},
-			want: nil,
+			want: dedupeAndSortModelIDs(append(openai.DefaultModelIDs(), "configured-model", "stale-model")),
 		},
 		{
 			name: "ordinary accounts preserve mapped whitelist",
