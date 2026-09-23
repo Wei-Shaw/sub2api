@@ -969,6 +969,10 @@ linuxdo_connect:
 # =============================================================================
 oidc_connect:
   enabled: false
+  # 开启后隐藏本地账号密码入口，并由后端拒绝本地登录和注册。
+  exclusive: false
+  # exclusive=true 时必填，用于退出 Sub2API 后同步注销 OIDC Provider 会话。
+  end_session_url: ""
   provider_name: "OIDC"
   client_id: ""
   client_secret: ""

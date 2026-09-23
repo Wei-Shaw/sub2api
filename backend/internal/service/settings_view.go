@@ -374,6 +374,8 @@ type PublicSettings struct {
 	PaymentEnabled           bool
 	PaymentBalanceDisabled   bool
 	OIDCOAuthEnabled         bool
+	OIDCOAuthExclusive       bool
+	OIDCOAuthEndSessionURL   string
 	OIDCOAuthProviderName    string
 	GitHubOAuthEnabled       bool
 	GoogleOAuthEnabled       bool
