@@ -2829,8 +2829,8 @@ func TestGatewayService_SelectAccountWithLoadAwareness(t *testing.T) {
 
 		repo := &mockAccountRepoForPlatform{
 			accounts: []Account{
-				{ID: 1, Platform: PlatformAnthropic, Priority: 1, Status: StatusActive, Schedulable: true, Concurrency: 5},
-				{ID: 2, Platform: PlatformAnthropic, Priority: 1, Status: StatusActive, Schedulable: true, Concurrency: 5},
+				{ID: 1, Platform: PlatformAnthropic, Priority: 1, Status: StatusActive, Schedulable: true, Concurrency: 5, LoadFactor: new(1)},
+				{ID: 2, Platform: PlatformAnthropic, Priority: 1, Status: StatusActive, Schedulable: true, Concurrency: 5, LoadFactor: new(1)},
 			},
 			accountsByID: map[int64]*Account{},
 		}
@@ -2860,8 +2860,8 @@ func TestGatewayService_SelectAccountWithLoadAwareness(t *testing.T) {
 
 		concurrencyCache := &mockConcurrencyCache{
 			loadMap: map[int64]*AccountLoadInfo{
-				1: {AccountID: 1, LoadRate: 80},
-				2: {AccountID: 2, LoadRate: 20},
+				1: {AccountID: 1, CurrentConcurrency: 4, LoadRate: 400},
+				2: {AccountID: 2, CurrentConcurrency: 1, LoadRate: 100},
 			},
 		}
 
@@ -2886,8 +2886,8 @@ func TestGatewayService_SelectAccountWithLoadAwareness(t *testing.T) {
 
 		repo := &mockAccountRepoForPlatform{
 			accounts: []Account{
-				{ID: 1, Platform: PlatformAnthropic, Priority: 1, Status: StatusActive, Schedulable: true, Concurrency: 5},
-				{ID: 2, Platform: PlatformAnthropic, Priority: 1, Status: StatusActive, Schedulable: true, Concurrency: 5},
+				{ID: 1, Platform: PlatformAnthropic, Priority: 1, Status: StatusActive, Schedulable: true, Concurrency: 5, LoadFactor: new(1)},
+				{ID: 2, Platform: PlatformAnthropic, Priority: 1, Status: StatusActive, Schedulable: true, Concurrency: 5, LoadFactor: new(1)},
 			},
 			accountsByID: map[int64]*Account{},
 		}
@@ -2918,8 +2918,8 @@ func TestGatewayService_SelectAccountWithLoadAwareness(t *testing.T) {
 		concurrencyCache := &mockConcurrencyCache{
 			acquireResults: map[int64]bool{1: false, 2: false},
 			loadMap: map[int64]*AccountLoadInfo{
-				1: {AccountID: 1, LoadRate: 10},
-				2: {AccountID: 2, LoadRate: 20},
+				1: {AccountID: 1, CurrentConcurrency: 1, LoadRate: 100},
+				2: {AccountID: 2, CurrentConcurrency: 2, LoadRate: 200},
 			},
 		}
 
@@ -2975,8 +2975,8 @@ func TestGatewayService_SelectAccountWithLoadAwareness(t *testing.T) {
 
 		concurrencyCache := &mockConcurrencyCache{
 			loadMap: map[int64]*AccountLoadInfo{
-				1: {AccountID: 1, LoadRate: 100},
-				2: {AccountID: 2, LoadRate: 100},
+				1: {AccountID: 1, CurrentConcurrency: 5, LoadRate: 100},
+				2: {AccountID: 2, CurrentConcurrency: 5, LoadRate: 100},
 				3: {AccountID: 3, LoadRate: 0},
 			},
 		}
@@ -3307,7 +3307,7 @@ func TestGatewayService_SelectAccountWithLoadAwareness(t *testing.T) {
 
 		concurrencyCache := &mockConcurrencyCache{
 			loadMap: map[int64]*AccountLoadInfo{
-				1: {AccountID: 1, LoadRate: 50},
+				1: {AccountID: 1, CurrentConcurrency: 5, LoadRate: 100},
 			},
 			skipDefaultLoad: true,
 		}
@@ -3585,4 +3585,50 @@ func TestGatewayService_SelectAccountForModelWithPlatform_RoutedOpenAIGroup(t *t
 	require.NoError(t, err)
 	require.NotNil(t, acc)
 	require.Equal(t, int64(2), acc.ID, "routed account must win over the higher-priority unrouted one")
+}
+
+// The shared gateway must use the same bands for each platform, including when
+// an account has passed its load factor but still has actual concurrency slots.
+func TestGatewayLoadBandAcrossPlatforms(t *testing.T) {
+	for _, platform := range []string{PlatformAnthropic, PlatformGemini, PlatformAntigravity} {
+		for _, tc := range []struct {
+			name string
+			a, b int
+			want int64
+		}{
+			{"first boundary", 5, 0, 2},
+			{"second band", 9, 2, 1},
+		} {
+			t.Run(platform+"/"+tc.name, func(t *testing.T) {
+				a := loadBandTestAccount(1, 5, tc.a, 0)
+				b := loadBandTestAccount(2, 1, tc.b, 0)
+				for _, item := range []accountWithLoad{a, b} {
+					item.account.Platform = platform
+					item.account.Type = AccountTypeAPIKey
+				}
+				repo := &mockAccountRepoForPlatform{
+					accounts:     []Account{*a.account, *b.account},
+					accountsByID: map[int64]*Account{1: a.account, 2: b.account},
+				}
+				groupID := int64(1)
+				group := &Group{ID: groupID, Platform: platform, Status: StatusActive, Hydrated: true}
+				cfg := testConfig()
+				cfg.Gateway.Scheduling.LoadBatchEnabled = true
+				svc := &GatewayService{
+					accountRepo: repo,
+					groupRepo:   &mockGroupRepoForGateway{groups: map[int64]*Group{groupID: group}},
+					cache:       &mockGatewayCacheForPlatform{}, cfg: cfg,
+					concurrencyService: NewConcurrencyService(&mockConcurrencyCache{
+						loadMap: map[int64]*AccountLoadInfo{1: a.loadInfo, 2: b.loadInfo},
+					}),
+				}
+				selection, err := svc.SelectAccountWithLoadAwareness(context.Background(), &groupID, "", "", nil, "", 0)
+				require.NoError(t, err)
+				require.NotNil(t, selection)
+				require.True(t, selection.Acquired)
+				t.Cleanup(selection.ReleaseFunc)
+				require.Equal(t, tc.want, selection.Account.ID)
+			})
+		}
+	}
 }
