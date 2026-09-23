@@ -15,7 +15,8 @@ import type {
   UsageRequestType,
   UserErrorRequest,
   UserErrorRequestDetail,
-  UserErrorListParams
+  UserErrorListParams,
+  ApiKeyUsageRankingResponse
 } from '@/types'
 
 // ==================== Dashboard Types ====================
@@ -356,6 +357,29 @@ export async function getDashboardApiKeysUsage(
   return data
 }
 
+export interface MyApiKeysRankingParams {
+  start_date?: string
+  end_date?: string
+  limit?: number
+  // Sort column for the ranking (allowlisted server-side; falls back to actual_cost)
+  sort_by?: 'total_tokens' | 'input_tokens' | 'output_tokens' | 'cache_tokens' | 'requests' | 'cost' | 'actual_cost'
+}
+
+/**
+ * Get per-API-key usage ranking for the current user's own keys
+ * @param params - Query parameters for filtering
+ * @returns API key usage ranking data with window totals
+ */
+export async function getMyApiKeysRanking(
+  params?: MyApiKeysRankingParams
+): Promise<ApiKeyUsageRankingResponse> {
+  const { data } = await apiClient.get<ApiKeyUsageRankingResponse>(
+    '/usage/dashboard/api-keys-ranking',
+    { params }
+  )
+  return data
+}
+
 export async function listMyErrorRequests(
   params: UserErrorListParams
 ): Promise<PaginatedResponse<UserErrorRequest>> {
@@ -384,6 +408,7 @@ export const usageAPI = {
   getMyApiKeyDailyUsage,
   getDashboardSnapshotV2,
   getDashboardApiKeysUsage,
+  getMyApiKeysRanking,
   // Error requests
   listMyErrorRequests,
   getMyErrorDetail
