@@ -543,8 +543,8 @@ func shouldAutoPauseOpenAIAccountByQuota(ctx context.Context, account *Account) 
 		pauseReached5h := !disabled5h && pause5h > 0 && has5h && utilization5h >= pause5h
 		pauseReached7d := !disabled7d && pause7d > 0 && has7d && utilization7d >= pause7d
 		// An unselected window must retain its ordinary pause, even if a card is available.
-		if (pauseReached5h && config.Enabled5h || pauseReached7d && config.Enabled7d) &&
-			!(pauseReached5h && !config.Enabled5h || pauseReached7d && !config.Enabled7d) {
+		if (pauseReached5h || pauseReached7d) &&
+			(!pauseReached5h || config.Enabled5h) && (!pauseReached7d || config.Enabled7d) {
 			state := openAIAutoResetStateFromExtra(account.Extra)
 			if state != nil && state.Status == OpenAIAutoResetStatusAvailable && state.AvailableCount > 0 && !openAIAutoResetStateStale(state, now) {
 				return false, openAIQuotaAutoPauseDecision{}
