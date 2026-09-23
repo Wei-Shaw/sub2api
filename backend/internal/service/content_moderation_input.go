@@ -4,6 +4,7 @@ import (
 	"crypto/rand"
 	"fmt"
 	"math/big"
+	"sort"
 	"strings"
 
 	"github.com/tidwall/gjson"
@@ -46,6 +47,8 @@ func extractContentModerationInput(protocol string, body []byte, filterReminders
 	case ContentModerationProtocolOpenAIImages:
 		collector.addModerationText(&parts, gjson.GetBytes(body, "prompt").String())
 		collector.collectContentValue(gjson.GetBytes(body, "images"), &parts, &images)
+	case ContentModerationProtocolSystemOne:
+		collector.collectSystemOneText(gjson.GetBytes(body, "state"), gjson.GetBytes(body, "questions"), &parts)
 	default:
 		collector.collectLastResponsesInput(gjson.GetBytes(body, "input"), &parts, &images)
 		collector.collectLastRoleMessage(gjson.GetBytes(body, "messages"), "user", &parts, &images)
@@ -335,6 +338,42 @@ func (collector moderationTextCollector) addModerationText(parts *[]string, text
 		return
 	}
 	*parts = append(*parts, text)
+}
+
+// collectSystemOneText 收集 SystemOne (Jev) 请求的待审文本：state 优先，
+// 其次为各 question 的 instructions 与 criteria（按 question ID 排序，
+// criteria 按 label/下标稳定输出，保证同一请求每次提取结果一致）。
+func (collector moderationTextCollector) collectSystemOneText(state, questions gjson.Result, parts *[]string) {
+	if questions.IsObject() {
+		ids := make([]string, 0)
+		questions.ForEach(func(id, _ gjson.Result) bool {
+			ids = append(ids, id.String())
+			return true
+		})
+		sort.Strings(ids)
+		for _, id := range ids {
+			question := questions.Get(id)
+			collector.addModerationText(parts, question.Get("instructions").String())
+			criteria := question.Get("criteria")
+			if criteria.IsObject() {
+				labels := make([]string, 0)
+				criteria.ForEach(func(label, _ gjson.Result) bool {
+					labels = append(labels, label.String())
+					return true
+				})
+				sort.Strings(labels)
+				for _, label := range labels {
+					collector.addModerationText(parts, label+": "+criteria.Get(label).String())
+				}
+			} else if criteria.IsArray() {
+				criteria.ForEach(func(_, rubric gjson.Result) bool {
+					collector.addModerationText(parts, rubric.String())
+					return true
+				})
+			}
+		}
+	}
+	collector.addModerationText(parts, state.String())
 }
 
 func normalizeContentModerationText(text string) string {

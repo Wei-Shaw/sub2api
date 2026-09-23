@@ -95,6 +95,22 @@ func RegisterGatewayRoutes(
 			})
 		}
 	}
+	systemOneHandler := func(c *gin.Context) {
+		// SystemOne (Jev) 仅由 OpenCode 账号承接；composite 分组经
+		// compositeTarget 解析到 opencode_go 目标后 getGroupPlatform 同样返回
+		// opencode_go，与独立 OC 分组同语义放行。
+		if getGroupPlatform(c) != service.PlatformOpenCodeGo {
+			service.MarkOpsClientBusinessLimited(c, service.OpsClientBusinessLimitedReasonLocalFeatureGate)
+			c.JSON(http.StatusNotFound, gin.H{
+				"error": gin.H{
+					"type":    "not_found_error",
+					"message": "SystemOne API is not supported for this platform",
+				},
+			})
+			return
+		}
+		h.OpenAIGateway.SystemOne(c)
+	}
 	videoGenerationHandler := func(c *gin.Context) {
 		// Video status/content lookups below already allow Composite groups; keep
 		// task creation aligned so composite keys that route to Grok accounts can
@@ -241,6 +257,8 @@ func RegisterGatewayRoutes(
 			}
 			h.Gateway.ChatCompletions(c)
 		})
+		// OpenCode Zen SystemOne (Jev) judgment API: OC platform only.
+		gateway.POST("/systemone", systemOneHandler)
 		gateway.POST("/embeddings", textBodyLimit, func(c *gin.Context) {
 			if !isOpenAIOnlyEndpointGatewayPlatform(c) {
 				service.MarkOpsClientBusinessLimited(c, service.OpsClientBusinessLimitedReasonLocalFeatureGate)
@@ -403,6 +421,8 @@ func RegisterGatewayRoutes(
 		}
 		h.Gateway.ChatCompletions(c)
 	})
+	// OpenCode Zen SystemOne (Jev) judgment API（不带v1前缀的别名）
+	rootRoute(http.MethodPost, "/systemone", bodyLimit, systemOneHandler)
 	rootRoute(http.MethodPost, "/embeddings", textBodyLimit, func(c *gin.Context) {
 		if !isOpenAIOnlyEndpointGatewayPlatform(c) {
 			service.MarkOpsClientBusinessLimited(c, service.OpsClientBusinessLimitedReasonLocalFeatureGate)
@@ -679,6 +699,8 @@ func compositeRouteEndpointForPath(path string) string {
 		return service.CompositeRouteEndpointImages
 	case strings.Contains(path, "/v1beta/"):
 		return service.CompositeRouteEndpointGemini
+	case strings.Contains(path, "/systemone"):
+		return service.CompositeRouteEndpointSystemOne
 	default:
 		return service.CompositeRouteEndpointAny
 	}

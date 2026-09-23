@@ -29,6 +29,7 @@ const (
 	EndpointVideosEdits          = "/v1/videos/edits"
 	EndpointVideosExtensions     = "/v1/videos/extensions"
 	EndpointVideos               = "/v1/videos"
+	EndpointSystemOne            = "/v1/systemone"
 	EndpointSeedanceTasks        = "/api/v3/contents/generations/tasks"
 	EndpointGeminiModels         = "/v1beta/models"
 )
@@ -108,6 +109,8 @@ func NormalizeInboundEndpoint(path string) string {
 		return EndpointVideosExtensions
 	case strings.Contains(path, EndpointVideos) || strings.Contains(path, "/videos/"):
 		return EndpointVideos
+	case strings.Contains(path, EndpointSystemOne) || isSystemOneAliasPath(path):
+		return EndpointSystemOne
 	case strings.Contains(path, EndpointResponsesCompact) || isResponsesCompactAliasPath(path):
 		return EndpointResponsesCompact
 	case strings.Contains(path, EndpointResponses) || isResponsesRootAliasPath(path):
@@ -126,6 +129,18 @@ func isResponsesInputTokensAliasPath(path string) bool {
 	}
 	return isBareOrSubpathOf(trimmed, "/responses/input_tokens") ||
 		isBareOrSubpathOf(trimmed, "/backend-api/codex/responses/input_tokens")
+}
+
+// isSystemOneAliasPath reports whether path is the bare/alias route serving
+// the SystemOne (Jev) API without a "/v1/" prefix:
+//
+//   - "/systemone" (top-level bare route)
+func isSystemOneAliasPath(path string) bool {
+	trimmed := strings.TrimRight(strings.TrimSpace(path), "/")
+	if trimmed == "" {
+		return false
+	}
+	return isBareOrSubpathOf(trimmed, "/systemone")
 }
 
 // isResponsesCompactAliasPath reports whether path is the bare/alias

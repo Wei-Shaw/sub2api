@@ -56,6 +56,8 @@ func DefaultOpenCodeGoModelIDs() []string {
 		"hy4-preview",
 		"hy3",
 		"omen-alpha",
+		"jev-1.13",
+		"jev-1.13-free",
 	}
 }
 
@@ -65,6 +67,13 @@ func normalizeOpenCodeGoModelID(model string) string {
 		model = strings.TrimPrefix(model, prefix)
 	}
 	return model
+}
+
+// isOpenCodeGoSystemOneModel 报告模型是否为 SystemOne (Jev) 原生模型。
+// 匹配归一化后的 jev- 前缀：覆盖 jev-1.13 / jev-1.13-free 及后续版本，
+// 大小写与 opencode/ 前缀不敏感（与 normalizeOpenCodeGoModelID 同口径）。
+func isOpenCodeGoSystemOneModel(model string) bool {
+	return strings.HasPrefix(normalizeOpenCodeGoModelID(model), "jev-")
 }
 
 // OpenCodeGoProtocolRule is one model-pattern → native protocol mapping.
