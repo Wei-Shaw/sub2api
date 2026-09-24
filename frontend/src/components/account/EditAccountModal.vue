@@ -2537,7 +2537,7 @@
       </div>
 
       <div
-        v-if="account?.platform === 'openai' && account?.type === 'oauth' && !isSparkShadow"
+        v-if="(account?.platform === 'openai' || account?.platform === 'anthropic') && account?.type === 'oauth' && !isSparkShadow"
         class="space-y-4 border-t border-gray-200 pt-4 dark:border-dark-600"
         data-testid="auto-reset-credit-settings"
       >
@@ -2565,16 +2565,17 @@
             />
           </button>
         </div>
+        <p v-if="account?.platform === 'anthropic'" class="input-hint">{{ t('admin.accounts.autoResetCredit.claudeHint') }}</p>
         <label class="input-label">
           {{ t('admin.accounts.autoResetCredit.mode') }}
           <select v-model="autoResetCreditMode" :disabled="!autoResetCreditEnabled" class="input" data-testid="auto-reset-credit-mode">
-            <option value="threshold">{{ t('admin.accounts.autoResetCredit.thresholdMode') }}</option>
+            <option v-if="account?.platform === 'openai'" value="threshold">{{ t('admin.accounts.autoResetCredit.thresholdMode') }}</option>
             <option value="exhausted">{{ t('admin.accounts.autoResetCredit.exhaustedMode') }}</option>
             <option value="expiring">{{ t('admin.accounts.autoResetCredit.expiringOnlyMode') }}</option>
             <option value="expiring_or_exhausted">{{ t('admin.accounts.autoResetCredit.expiringMode') }}</option>
           </select>
         </label>
-        <p v-if="autoResetCreditMode === 'exhausted' || autoResetCreditMode === 'expiring_or_exhausted'" class="input-hint">{{ t('admin.accounts.autoResetCredit.exhaustedHint') }}</p>
+        <p v-if="autoResetCreditMode === 'exhausted' || autoResetCreditMode === 'expiring_or_exhausted'" class="input-hint">{{ t(account?.platform === 'anthropic' ? 'admin.accounts.autoResetCredit.claudeExhaustedHint' : 'admin.accounts.autoResetCredit.exhaustedHint') }}</p>
         <div v-if="autoResetCreditMode === 'expiring' || autoResetCreditMode === 'expiring_or_exhausted'" class="grid gap-4 sm:grid-cols-2">
           <label class="input-label">
             {{ t('admin.accounts.autoResetCredit.expiryHorizon') }}
@@ -4183,10 +4184,14 @@ const syncFormFromAccount = (newAccount: Account | null) => {
 	autoPause7dThreshold.value = typeof extra?.auto_pause_7d_threshold === 'number' ? extra.auto_pause_7d_threshold * 100 : null
 	autoPause5hDisabled.value = extra?.auto_pause_5h_disabled === true
 	autoPause7dDisabled.value = extra?.auto_pause_7d_disabled === true
-	autoResetCreditEnabled.value = extra?.auto_reset_credit_enabled === true
-  autoResetCreditMode.value = extra?.auto_reset_credit_mode === 'exhausted' || extra?.auto_reset_credit_mode === 'expiring' || extra?.auto_reset_credit_mode === 'expiring_or_exhausted' ? extra.auto_reset_credit_mode : 'threshold'
-  autoResetCreditExpiryHorizon.value = typeof extra?.auto_reset_credit_expiry_horizon_seconds === 'number' ? extra.auto_reset_credit_expiry_horizon_seconds : 3600
-  autoResetCreditExpiryUtilization.value = typeof extra?.auto_reset_credit_expiry_min_utilization === 'number' ? extra.auto_reset_credit_expiry_min_utilization * 100 : 25
+  const resetPrefix = newAccount.platform === 'anthropic' ? 'claude_auto_reset_credit_' : 'auto_reset_credit_'
+  const resetMode = extra?.[`${resetPrefix}mode`]
+  const resetHorizon = extra?.[`${resetPrefix}expiry_horizon_seconds`]
+  const resetUtilization = extra?.[`${resetPrefix}expiry_min_utilization`]
+  autoResetCreditEnabled.value = extra?.[`${resetPrefix}enabled`] === true
+  autoResetCreditMode.value = resetMode === 'exhausted' || resetMode === 'expiring' || resetMode === 'expiring_or_exhausted' ? resetMode : newAccount.platform === 'anthropic' ? 'exhausted' : 'threshold'
+  autoResetCreditExpiryHorizon.value = typeof resetHorizon === 'number' ? resetHorizon : 3600
+  autoResetCreditExpiryUtilization.value = typeof resetUtilization === 'number' ? resetUtilization * 100 : 25
 	autoResetCredit5hThreshold.value =
 		typeof extra?.auto_reset_credit_5h_threshold === 'number' ? extra.auto_reset_credit_5h_threshold * 100 : 100
 	autoResetCredit7dThreshold.value =
@@ -5873,6 +5878,15 @@ const handleSubmit = async () => {
       }
       // Quota notify config
       writeQuotaNotifyToExtra(newExtra, 'update')
+      updatePayload.extra = newExtra
+    }
+
+    if (props.account.platform === 'anthropic' && props.account.type === 'oauth' && !isSparkShadow.value) {
+      const newExtra = { ...((updatePayload.extra as Record<string, unknown>) || props.account.extra || {}) }
+      newExtra.claude_auto_reset_credit_enabled = autoResetCreditEnabled.value
+      newExtra.claude_auto_reset_credit_mode = autoResetCreditMode.value
+      newExtra.claude_auto_reset_credit_expiry_horizon_seconds = autoResetCreditExpiryHorizon.value
+      newExtra.claude_auto_reset_credit_expiry_min_utilization = autoResetCreditExpiryUtilization.value / 100
       updatePayload.extra = newExtra
     }
 

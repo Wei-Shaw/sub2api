@@ -1028,6 +1028,9 @@ export default {
 	  autoPauseDisabledHint: '开启后该账号永不进入自动暂停（即使全局默认阈值已配置）。',
 	  claudeResetCredits: {redeem: '使用重置额度', confirm: '确认消耗一次不可退还的 Claude 重置额度？此操作无法撤销。', retry: '重新查询同一操作', outcomes: { reset: '重置已确认。', unknown: '结果未知。请勿消耗其他额度；仅可重试同一操作。', already_used: '此重置次数已被消耗。', not_limited: '未重置：账号未受限。', cooldown: '未重置：冷却中。', ineligible: '未重置：账号不符合条件。', unavailable: '没有可用重置额度。' }, "query": "Claude 重置额度", "error": "无法刷新重置额度，未执行重置。", "count": "可用重置次数：{count}", "ineligible": "此账号不符合使用条件。", "cooldown": "冷却截止：{time}", "weekly": "每周窗口重置时间：{time}", "expires": "到期时间：{time}", "clears": "清除窗口：{windows}", "fetched": "查询时间：{time}"},
       autoResetCredit: {
+      claudeHint: '仅限 Claude OAuth，需 user:profile 权限。即将到期的额度也必须符合原生资格、冷却时间和 use_requires_limit 规则。默认关闭，额度不可退还。',
+      claudeExhaustedHint: '必须根据近期请求的分组和模型，确认所有合格 Claude 账号的最新用量均已耗尽。用量未知或无法测量的候选账号会阻止自动使用额度。',
+
       mode: '重置策略',
       thresholdMode: '单账号用量阈值',
       exhaustedMode: '仅在可用账号池耗尽时',

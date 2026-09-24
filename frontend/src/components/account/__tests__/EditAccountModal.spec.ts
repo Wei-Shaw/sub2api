@@ -1759,4 +1759,35 @@ describe('EditAccountModal OpenAI 自动使用重置卡', () => {
     wrapper.unmount()
   })
 
+  it.each(['exhausted', 'expiring', 'expiring_or_exhausted'] as const)('loads and saves Claude %s using isolated keys', async (mode) => {
+    const account = { ...buildOpenAIOAuthParentAccount(), platform: 'anthropic', extra: {
+      claude_auto_reset_credit_enabled: true, claude_auto_reset_credit_mode: mode,
+      claude_auto_reset_credit_expiry_horizon_seconds: 1800,
+      claude_auto_reset_credit_expiry_min_utilization: 0.45
+    } }
+    updateAccountMock.mockResolvedValue(account)
+    const wrapper = mountModal(account)
+    expect(wrapper.get('[data-testid="auto-reset-credit-mode"]').findAll('option').map(o => o.attributes('value'))).toEqual(['exhausted', 'expiring', 'expiring_or_exhausted'])
+    expect((wrapper.get('[data-testid="auto-reset-credit-mode"]').element as HTMLSelectElement).value).toBe(mode)
+    await wrapper.get('form#edit-account-form').trigger('submit.prevent')
+    const extra = updateAccountMock.mock.calls[0]?.[1]?.extra
+    expect(extra).toMatchObject(account.extra)
+    expect(extra).not.toHaveProperty('auto_reset_credit_enabled')
+    expect(extra).not.toHaveProperty('auto_reset_credit_mode')
+    expect(extra).not.toHaveProperty('auto_reset_credit_5h_threshold')
+    wrapper.unmount()
+  })
+  it('defaults Claude to disabled exhausted policy and excludes setup tokens and shadows', async () => {
+    const account = { ...buildOpenAIOAuthParentAccount(), platform: 'anthropic', extra: {} }
+    const wrapper = mountModal(account)
+    expect((wrapper.get('[data-testid="auto-reset-credit-mode"]').element as HTMLSelectElement).value).toBe('exhausted')
+    expect(wrapper.get('[data-testid="auto-reset-credit-mode"]').attributes('disabled')).toBeDefined()
+    wrapper.unmount()
+    for (const excluded of [{ ...account, type: 'setup-token' }, { ...account, parent_account_id: 5 }]) {
+      const hidden = mountModal(excluded)
+      expect(hidden.find('[data-testid="auto-reset-credit-settings"]').exists()).toBe(false)
+      hidden.unmount()
+    }
+  })
+
 })

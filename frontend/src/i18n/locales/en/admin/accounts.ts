@@ -927,6 +927,9 @@ export default {
 	  autoPauseDisabledHint: 'When enabled, this account is never auto-paused (even if a global default threshold is configured).',
 	  claudeResetCredits: {redeem: 'Use reset credit', confirm: 'Consume one non-refundable Claude reset credit? This cannot be undone.', retry: 'Check the same operation again', outcomes: { reset: 'Reset confirmed.', unknown: 'Result unknown. Do not spend another credit; retry only this same operation.', already_used: 'This credit use was already consumed.', not_limited: 'No reset: account is not limited.', cooldown: 'No reset: cooldown is active.', ineligible: 'No reset: account is ineligible.', unavailable: 'No reset credit is available.' }, "query": "Claude reset credits", "error": "Could not refresh reset credits. No reset was performed.", "count": "Available resets: {count}", "ineligible": "This account is not eligible.", "cooldown": "Cooldown until {time}", "weekly": "Weekly window resets at {time}", "expires": "Expires at {time}", "clears": "Clears: {windows}", "fetched": "Checked at {time}"},
       autoResetCredit: {
+      claudeHint: 'Claude OAuth only; user:profile access is required. Native eligibility, cooldown and use_requires_limit rules always apply, including for expiring credits. Off by default; credits cannot be refunded.',
+      claudeExhaustedHint: 'Requires fresh confirmed exhaustion for every eligible Claude account in a recently observed request group and model. Unknown usage or an unmeasurable candidate prevents automatic redemption.',
+
       mode: 'Reset policy',
       thresholdMode: 'Per-account usage threshold',
       exhaustedMode: 'Only when the usable account pool is exhausted',
