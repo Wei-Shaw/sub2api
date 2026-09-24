@@ -39,21 +39,21 @@ func CaptureFromOpenAIRequest(
 	entry := DatasetEntry{
 		Timestamp: time.Now().UTC(),
 		Endpoint:  "chat.completions",
-		Request: map[string]interface{}{
+		Request: map[string]any{
 			"model": reqModel,
 		},
-		Response: map[string]interface{}{
+		Response: map[string]any{
 			"model": respModel,
 		},
 	}
 
 	// Parse request messages
-	reqMessages := make([]map[string]interface{}, 0, len(messages))
+	reqMessages := make([]map[string]any, 0, len(messages))
 	for _, msg := range messages {
 		role := msg.Get("role").String()
 		content := msg.Get("content").String()
 		if role != "" {
-			reqMessages = append(reqMessages, map[string]interface{}{
+			reqMessages = append(reqMessages, map[string]any{
 				"role":    role,
 				"content": content,
 			})
@@ -65,7 +65,7 @@ func CaptureFromOpenAIRequest(
 	if len(choices) > 0 {
 		choice := choices[0]
 		assistantMsg := choice.Get("message")
-		entry.Response["message"] = map[string]interface{}{
+		entry.Response["message"] = map[string]any{
 			"role":    assistantMsg.Get("role").String(),
 			"content": assistantMsg.Get("content").String(),
 		}
@@ -79,7 +79,7 @@ func CaptureFromOpenAIRequest(
 	// Capture usage if present
 	usage := gjson.GetBytes(responseBody, "usage")
 	if usage.Exists() {
-		entry.Response["usage"] = map[string]interface{}{
+		entry.Response["usage"] = map[string]any{
 			"prompt_tokens":     usage.Get("prompt_tokens").Int(),
 			"completion_tokens": usage.Get("completion_tokens").Int(),
 			"total_tokens":      usage.Get("total_tokens").Int(),

@@ -42,7 +42,9 @@ func NewDriveClient(ctx context.Context, credentialsPath string, folderID string
 		if err != nil {
 			return nil, fmt.Errorf("unable to get token: %w", err)
 		}
-		saveToken(tokenPath, token)
+		if err := saveToken(tokenPath, token); err != nil {
+			return nil, fmt.Errorf("unable to save token: %w", err)
+		}
 	}
 
 	client := config.Client(ctx, token)
@@ -71,8 +73,12 @@ func (dc *DriveClient) UploadBatch(ctx context.Context, entries []DatasetEntry) 
 			log.Printf("[Dataset] Failed to serialize entry: %v", err)
 			continue
 		}
-		buf.Write(data)
-		buf.WriteByte('\n')
+		if _, err := buf.Write(data); err != nil {
+			return "", fmt.Errorf("failed to build JSONL batch: %w", err)
+		}
+		if err := buf.WriteByte('\n'); err != nil {
+			return "", fmt.Errorf("failed to terminate JSONL entry: %w", err)
+		}
 	}
 
 	// Create filename with timestamp
@@ -102,26 +108,37 @@ func (dc *DriveClient) UploadBatch(ctx context.Context, entries []DatasetEntry) 
 }
 
 // tokenFromFile retrieves a token from a local file.
-func tokenFromFile(file string) (*oauth2.Token, error) {
+func tokenFromFile(file string) (tok *oauth2.Token, err error) {
 	f, err := os.Open(file)
 	if err != nil {
 		return nil, err
 	}
-	defer f.Close()
-	tok := &oauth2.Token{}
+	defer func() {
+		if closeErr := f.Close(); err == nil {
+			err = closeErr
+		}
+	}()
+	tok = &oauth2.Token{}
 	err = json.NewDecoder(f).Decode(tok)
 	return tok, err
 }
 
 // saveToken saves a token to a file path.
-func saveToken(path string, token *oauth2.Token) {
+func saveToken(path string, token *oauth2.Token) (err error) {
 	f, err := os.Create(path)
 	if err != nil {
 		log.Printf("[Dataset] Unable to cache oauth token: %v", err)
-		return
+		return err
 	}
-	defer f.Close()
-	json.NewEncoder(f).Encode(token)
+	defer func() {
+		if closeErr := f.Close(); err == nil {
+			err = closeErr
+		}
+	}()
+	if err = json.NewEncoder(f).Encode(token); err != nil {
+		log.Printf("[Dataset] Unable to cache oauth token: %v", err)
+	}
+	return err
 }
 
 // getTokenFromWeb initiates the OAuth flow in the browser.

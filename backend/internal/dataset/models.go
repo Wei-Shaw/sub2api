@@ -7,10 +7,10 @@ import (
 
 // DatasetEntry represents a single LLM request/response pair for training dataset.
 type DatasetEntry struct {
-	Timestamp time.Time              `json:"timestamp"`
-	Endpoint  string                 `json:"endpoint"` // "chat.completions", "responses"
-	Request   map[string]interface{} `json:"request"`
-	Response  map[string]interface{} `json:"response,omitempty"`
+	Timestamp time.Time      `json:"timestamp"`
+	Endpoint  string         `json:"endpoint"` // "chat.completions", "responses"
+	Request   map[string]any `json:"request"`
+	Response  map[string]any `json:"response,omitempty"`
 }
 
 // ToJSON serializes the entry to JSON bytes (one line for JSONL).
