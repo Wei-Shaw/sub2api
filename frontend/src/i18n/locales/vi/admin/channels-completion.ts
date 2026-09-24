@@ -3,7 +3,9 @@ export default {
   "availableChannels": {
     "pricing": {
       "cacheWrite5mPrice": "Ghi cache (5 phút)",
-      "cacheWrite1hPrice": "Ghi cache (1 giờ)"
+      "cacheWrite1hPrice": "Ghi cache (1 giờ)",
+      "videoPrice": "Giá video",
+      "unitPerSecond": "Đơn vị trên giây"
     }
   },
   "channels": {
@@ -18,7 +20,15 @@ export default {
       "cacheWrite5mPriceShort": "Ghi cache 5p",
       "cacheWrite1hPriceShort": "Ghi cache 1g",
       "maxReasoningEffortMultiplier": "Hệ số tối đa",
-      "fable51DefaultMaxReasoningMultiplier": "Mặc định: 3"
+      "fable51DefaultMaxReasoningMultiplier": "Mặc định: 3",
+      "reasoningEffortMultipliers": "Hệ số suy luận",
+      "reasoningEffortMultiplierLabel": "Hệ số suy luận mức {effort}",
+      "reasoningEffortMultipliersHint": "Nhân chi phí và hạn ngạch yêu cầu theo mức suy luận được chuyển tiếp. Các mức chưa cấu hình sử dụng ×1.",
+      "reasoningEffortMultiplierPositive": "Hệ số suy luận mức {effort} phải là số hữu hạn lớn hơn 0",
+      "reasoningEffortLevelInvalid": "Mức suy luận không được hỗ trợ: {effort}",
+      "reasoningEffortMultiplierDefault": "Mặc định: 1",
+      "clearReasoningEffortMultipliers": "Xóa hệ số suy luận",
+      "selectedCount": "{count} đã chọn"
     }
   },
   "subscriptions": {

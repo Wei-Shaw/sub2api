@@ -23,6 +23,11 @@ export default {
       }
     },
     "gatewayForwarding": {
+      "claudeCodeClientVersion": "Phiên bản client Claude Code",
+      "claudeCodeClientVersionHint": "Phiên bản client mà gateway này khai báo upstream khi mô phỏng Claude Code CLI chính thức. Để trống để sử dụng phiên bản chính thức mới nhất được đồng bộ tự động; đặt giá trị sẽ ghim phiên bản và ngừng theo dõi tự động. Biến môi trường SUB2API_CLAUDE_CLI_VERSION hoặc phiên bản tích hợp chỉ được dùng khi cả giá trị thủ công và đồng bộ đều không hợp lệ.",
+      "claudeCodeVersionAutoSync": "Tự động đồng bộ phiên bản Claude Code",
+      "claudeCodeVersionAutoSyncHint": "Lấy phiên bản client Claude Code mới nhất từ kênh phát hành chính thức mỗi giờ, vì vậy bạn không bao giờ cần nâng cấp dịch vụ này chỉ để giữ phiên bản hiện tại. Khi tắt, việc lấy dữ liệu sẽ dừng nhưng phiên bản đã đồng bộ trước đó vẫn khả dụng. Phiên bản thủ công ở trên luôn được ưu tiên.",
+      "claudeCodeVersionSyncedValue": "Hiện đã đồng bộ: {version}",
       "openaiTTFTMode": "Chỉ số token đầu tiên của OpenAI Responses",
       "openaiTTFTModeSemantic": "Tương thích cũ (sự kiện ngữ nghĩa)",
       "openaiTTFTModeVisible": "Nội dung hiển thị thực tế",
@@ -52,6 +57,9 @@ export default {
       "callbackSecretLabel": "Callback secret",
       "reauthorizationTitle": "Tự động cấp lại quyền cho tài khoản OAuth bị lỗi",
       "reauthorizationDescription": "Bắt đầu luồng OAuth Codex mới và chỉ thay thế token tài khoản hiện có sau khi danh tính được xác nhận trùng khớp."
+    },
+    "openaiExperimentalScheduler": {
+      "oauthRateInvalid": "Tỷ lệ tham chiếu lập lịch OAuth phải là số không âm, hoặc để trống để dùng tỷ lệ tài khoản"
     }
   }
 }

@@ -76,5 +76,41 @@ export default {
       "free": "Fast miễn phí",
       "freeHint": "Các yêu cầu Fast trong nhóm này vẫn dùng tier priority, nhưng khách hàng chỉ bị tính mức giá tương đương Standard."
     }
+  },
+  backup: {
+    schedule: {
+      ordinaryRetention: 'Lưu trữ sao lưu thường',
+      ordinaryHint: 'Chính sách lưu trữ cho sao lưu hàng ngày thường.',
+      preview: 'Xem trước chính sách',
+      previewBoth: 'Giữ tối đa {count} bản sao lưu thường từ {days} ngày gần đây.',
+      previewDays: 'Giữ bản sao lưu thường từ {days} ngày gần đây, không giới hạn số lượng.',
+      previewCount: 'Giữ {count} bản sao lưu thường mới nhất, không giới hạn thời gian.',
+      previewUnlimited: 'Giữ tất cả bản sao lưu thường, không giới hạn thời gian hay số lượng.',
+    },
+    archive: {
+      title: 'Lưu trữ Dài hạn',
+      enabled: 'Bật lưu trữ dài hạn',
+      dates: 'Ngày lưu trữ',
+      selectDates: 'Chọn ngày',
+      selectedDates: 'Đã chọn {count} ngày',
+      day: 'Ngày {day}',
+      monthEnd: 'Cuối tháng',
+      done: 'Xong',
+      datesHint: 'Chọn các ngày trong tháng để lưu trữ. Mỗi tháng, bản sao lưu mới nhất của ngày được chọn sẽ được lưu trữ.',
+      retention: 'Chính sách lưu trữ',
+      count: 'Số lượng',
+      copies: 'bản sao',
+      forever: 'Vĩnh viễn',
+      foreverHint: 'Giữ tất cả bản sao lưu lưu trữ mãi mãi.',
+      countHint: 'Giữ tối đa số lượng bản sao lưu lưu trữ này. Khi vượt quá, bản cũ nhất sẽ bị xóa.',
+      fallbackHint: 'Nếu không có bản sao lưu nào vào ngày được chọn, bản gần nhất sẽ được lưu trữ.',
+      independentHint: 'Lưu trữ dài hạn độc lập với sao lưu thường. Xóa bản sao lưu thường không ảnh hưởng đến bản lưu trữ.',
+      disabledHint: 'Tắt lưu trữ dài hạn. Các bản lưu trữ hiện có vẫn được giữ cho đến khi xóa thủ công.',
+      invalidRetention: 'Số lượng lưu trữ phải là số nguyên dương.',
+      preview: 'Lưu trữ một bản sao lưu vào {dates} mỗi tháng: {retention}.',
+      retainLatest: 'giữ {count} bản lưu trữ mới nhất',
+      badge: 'Lưu trữ',
+      deleteConfirm: 'Xóa bản lưu trữ này? Thao tác không thể hoàn tác.',
+    },
   }
 }
