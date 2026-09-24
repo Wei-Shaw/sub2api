@@ -1211,7 +1211,8 @@ export default {
           chatCompletions: 'Chat Completions',
           embeddings: 'Embeddings',
           images: 'Images',
-          gemini: 'Gemini Native'
+          gemini: 'Gemini Native',
+          systemone: 'SystemOne (Jev)'
         },
         match: {
           exact: 'Exact',

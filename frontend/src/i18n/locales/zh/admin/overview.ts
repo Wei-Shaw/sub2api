@@ -1208,7 +1208,8 @@ export default {
           chatCompletions: 'Chat Completions',
           embeddings: 'Embeddings',
           images: 'Images',
-          gemini: 'Gemini 原生'
+          gemini: 'Gemini 原生',
+          systemone: 'SystemOne (Jev)'
         },
         match: {
           exact: '精确',

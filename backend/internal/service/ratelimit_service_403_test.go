@@ -86,3 +86,19 @@ func TestRateLimitService_HandleUpstreamError_OpenAI403ThresholdDisables(t *test
 	require.Contains(t, repo.lastErrorMsg, "workspace forbidden by policy")
 	require.Contains(t, repo.lastErrorMsg, "consecutive_403=3/3")
 }
+
+func TestRateLimitService_OpenCodeFreeTier403DoesNotDisableAccount(t *testing.T) {
+	repo := &rateLimitAccountRepoStub{}
+	counter := &openAI403CounterCacheStub{counts: []int64{3}}
+	service := NewRateLimitService(repo, nil, &config.Config{}, nil, nil)
+	service.SetOpenAI403CounterCache(counter)
+	account := &Account{ID: 303, Platform: PlatformOpenCodeGo, Type: AccountTypeAPIKey}
+	body := []byte(`{"type":"error","error":{"type":"FreeTierError","message":"Error from provider (Console): OpenCode's free tier can only be used from within OpenCode"}}`)
+
+	require.False(t, service.HandleUpstreamError(context.Background(), account, http.StatusForbidden, http.Header{}, body))
+	require.Equal(t, []int64{3}, counter.counts)
+	require.Zero(t, repo.setErrorCalls)
+	require.Zero(t, repo.tempCalls)
+	require.True(t, isOpenCodeFreeTierRequestRejection(account, http.StatusForbidden, body))
+	require.False(t, isOpenCodeFreeTierRequestRejection(account, http.StatusForbidden, []byte(`{"error":{"message":"FreeTierError"}}`)))
+}
