@@ -980,6 +980,9 @@ export default {
 	    }
 	  },
       autoResetCredit: {
+      claudeHint: 'Claude OAuth only; user:profile access is required. Native eligibility, cooldown and use_requires_limit rules always apply, including for expiring credits. Off by default; credits cannot be refunded.',
+      claudeExhaustedHint: 'Requires fresh confirmed exhaustion for every eligible Claude account in a recently observed request group and model. Unknown usage or an unmeasurable candidate prevents automatic redemption.',
+
       mode: 'Reset policy',
       thresholdMode: 'Per-account usage threshold',
       exhaustedMode: 'Only when the usable account pool is exhausted',

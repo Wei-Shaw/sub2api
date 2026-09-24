@@ -1082,6 +1082,9 @@ export default {
 	    }
 	  },
       autoResetCredit: {
+      claudeHint: '仅限 Claude OAuth，需 user:profile 权限。即将到期的额度也必须符合原生资格、冷却时间和 use_requires_limit 规则。默认关闭，额度不可退还。',
+      claudeExhaustedHint: '必须根据近期请求的分组和模型，确认所有合格 Claude 账号的最新用量均已耗尽。用量未知或无法测量的候选账号会阻止自动使用额度。',
+
       mode: '重置策略',
       thresholdMode: '单账号用量阈值',
       exhaustedMode: '仅在可用账号池耗尽时',
