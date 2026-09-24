@@ -224,6 +224,21 @@ func (c *openAIWSGatedConn) Close() error {
 	return nil
 }
 
+func closeOpenAIWSExecutionScopeClient(t *testing.T, conn *coderws.Conn) {
+	t.Helper()
+	err := conn.Close(coderws.StatusNormalClosure, "done")
+	if err == nil {
+		return
+	}
+	var closeErr coderws.CloseError
+	if errors.As(err, &closeErr) &&
+		closeErr.Code == coderws.StatusTryAgainLater &&
+		closeErr.Reason == openAIWSSessionPreemptedCloseReason {
+		return
+	}
+	require.NoError(t, err)
+}
+
 // runOpenAIWSCodexThreadPair 用 OAuth 账号（抢占只对 OAuth ctx_pool 生效）跑两条并发接入：
 // A 的请求发到上游后 B 才接入并立即完成，B 完成后才放行 A 的上游事件。
 // 返回 A 与 B 的服务端返回值、A 客户端读结果的错误。
@@ -325,7 +340,7 @@ func runOpenAIWSCodexThreadPair(t *testing.T, threadA, threadB string) (serverEr
 	}
 	cancelA()
 	if aReadErr == nil {
-		require.NoError(t, connA.Close(coderws.StatusNormalClosure, "done"))
+		closeOpenAIWSExecutionScopeClient(t, connA)
 	}
 	require.NoError(t, connB.Close(coderws.StatusNormalClosure, "done"))
 

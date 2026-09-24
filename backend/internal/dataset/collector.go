@@ -71,6 +71,62 @@ func (c *Collector) Drain(limit int) []DatasetEntry {
 	return entries
 }
 
+// Peek returns a snapshot of available entries without removing them.
+// Used for preview before upload to allow retry on failure.
+func (c *Collector) Peek(limit int) []DatasetEntry {
+	if limit <= 0 {
+		limit = c.maxItems
+	}
+
+	// Non-blocking snapshot
+	buffered := len(c.buffer)
+	if buffered == 0 {
+		return nil
+	}
+
+	if limit > buffered {
+		limit = buffered
+	}
+
+	entries := make([]DatasetEntry, 0, limit)
+peekLoop:
+	for i := 0; i < limit; i++ {
+		select {
+		case entry := <-c.buffer:
+			entries = append(entries, entry)
+		default:
+			break peekLoop
+		}
+	}
+
+	// Re-enqueue all peeked entries (preserve order)
+	for i := range entries {
+		select {
+		case c.buffer <- entries[i]:
+		default:
+			// Buffer full during re-enqueue (shouldn't happen, but fail-open)
+			log.Printf("[Dataset] WARN: Buffer full during peek re-enqueue, dropped %d entries", len(entries)-i)
+			return entries[:i]
+		}
+	}
+
+	return entries
+}
+
+// Clear removes N entries from the front of the buffer.
+// Used after successful upload to confirm entries were persisted.
+func (c *Collector) Clear(count int) {
+	for i := 0; i < count; i++ {
+		select {
+		case <-c.buffer:
+			// Successfully removed
+		default:
+			// Buffer already empty
+			return
+		}
+	}
+}
+
 // Stats returns current statistics.
 func (c *Collector) Stats() (total, dropped uint64, buffered int) {
 	c.mu.RLock()

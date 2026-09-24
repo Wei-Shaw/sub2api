@@ -34,17 +34,11 @@ func NewDriveClient(ctx context.Context, credentialsPath string, folderID string
 		return nil, fmt.Errorf("unable to parse credentials: %w", err)
 	}
 
-	// Use token from file or start OAuth flow
+	// Use token from file; fail fast if missing (production-safe)
 	tokenPath := credentialsPath + ".token"
 	token, err := tokenFromFile(tokenPath)
 	if err != nil {
-		token, err = getTokenFromWeb(config)
-		if err != nil {
-			return nil, fmt.Errorf("unable to get token: %w", err)
-		}
-		if err := saveToken(tokenPath, token); err != nil {
-			return nil, fmt.Errorf("unable to save token: %w", err)
-		}
+		return nil, fmt.Errorf("OAuth token not found at %s (generate token with scripts/dataset-oauth-init.sh before starting server): %w", tokenPath, err)
 	}
 
 	client := config.Client(ctx, token)
@@ -123,38 +117,4 @@ func tokenFromFile(file string) (tok *oauth2.Token, err error) {
 	return tok, err
 }
 
-// saveToken saves a token to a file path.
-func saveToken(path string, token *oauth2.Token) (err error) {
-	f, err := os.Create(path)
-	if err != nil {
-		log.Printf("[Dataset] Unable to cache oauth token: %v", err)
-		return err
-	}
-	defer func() {
-		if closeErr := f.Close(); err == nil {
-			err = closeErr
-		}
-	}()
-	if err = json.NewEncoder(f).Encode(token); err != nil {
-		log.Printf("[Dataset] Unable to cache oauth token: %v", err)
-	}
-	return err
-}
-
-// getTokenFromWeb initiates the OAuth flow in the browser.
-func getTokenFromWeb(config *oauth2.Config) (*oauth2.Token, error) {
-	authURL := config.AuthCodeURL("state-token", oauth2.AccessTypeOffline)
-	log.Printf("[Dataset] Go to the following link in your browser:\n%v\n", authURL)
-	log.Printf("[Dataset] Enter authorization code: ")
-
-	var authCode string
-	if _, err := fmt.Scan(&authCode); err != nil {
-		return nil, fmt.Errorf("unable to read authorization code: %w", err)
-	}
-
-	tok, err := config.Exchange(context.Background(), authCode)
-	if err != nil {
-		return nil, fmt.Errorf("unable to retrieve token from web: %w", err)
-	}
-	return tok, nil
-}
+// getTokenFromWeb is removed. Use scripts/dataset-oauth-init.sh to generate token offline.
