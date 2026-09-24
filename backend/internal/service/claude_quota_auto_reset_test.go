@@ -88,7 +88,9 @@ func TestClaudeResetRecoveryVerifiedWindowOnly(t *testing.T) {
 	}{{"verified", false, false, false, true}, {"other quota blocked", true, false, false, false}, {"different cooldown", false, true, false, false}, {"unknown", false, false, true, false}} {
 		t.Run(tc.name, func(t *testing.T) {
 			w, _ := newClaudeAutoIntegration(t, true, 75)
-			r := &claudeRecoveryRepo{claudeAutoIntegrationRepo: w.accounts.(*claudeAutoIntegrationRepo)}
+			baseRepo, ok := w.accounts.(*claudeAutoIntegrationRepo)
+			require.True(t, ok)
+			r := &claudeRecoveryRepo{claudeAutoIntegrationRepo: baseRepo}
 			w.accounts = r
 			now := time.Now().UTC().Truncate(time.Second)
 			limited := now.Add(-time.Minute)

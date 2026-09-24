@@ -111,7 +111,8 @@ func (f claudeAutoIntegrationUsage) FetchUsageWithOptions(c context.Context, _ *
 }
 func TestClaudeAutoIntegrationExhaustedWindowMustBeCleared(t *testing.T) {
 	w, count := newClaudeAutoIntegration(t, true, 75)
-	r := w.accounts.(*claudeAutoIntegrationRepo)
+	r, ok := w.accounts.(*claudeAutoIntegrationRepo)
+	require.True(t, ok)
 	r.account.Extra["claude_auto_reset_credit_mode"] = "exhausted"
 	w.fetcher = claudeAutoIntegrationUsage{}
 	w.scopes.Store("scope", claudeResetScope{model: "claude-sonnet-4", gateway: &GatewayService{}, expires: time.Now().Add(time.Minute)})
