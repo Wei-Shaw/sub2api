@@ -35,7 +35,17 @@ func adaptOpenAIResponsesClientTools(body []byte) ([]byte, apicompat.ResponsesCl
 	if !needsOpenAIResponsesClientToolAdaptation(body) {
 		return body, apicompat.ResponsesClientToolMapping{}, nil
 	}
+	return adaptOpenAIResponsesClientToolsUnchecked(body)
+}
 
+func adaptOpenAIResponsesClientToolsForFunctionUpstream(body []byte) ([]byte, apicompat.ResponsesClientToolMapping, error) {
+	if !needsOpenAIResponsesFunctionUpstreamToolAdaptation(body) {
+		return body, apicompat.ResponsesClientToolMapping{}, nil
+	}
+	return adaptOpenAIResponsesClientToolsUnchecked(body)
+}
+
+func adaptOpenAIResponsesClientToolsUnchecked(body []byte) ([]byte, apicompat.ResponsesClientToolMapping, error) {
 	decoder := json.NewDecoder(bytes.NewReader(body))
 	decoder.UseNumber()
 	var requestBody map[string]any
@@ -80,6 +90,25 @@ func needsOpenAIResponsesClientToolAdaptation(body []byte) bool {
 		return !needsAdaptation
 	}
 	visit(gjson.ParseBytes(body))
+	return needsAdaptation
+}
+
+func needsOpenAIResponsesFunctionUpstreamToolAdaptation(body []byte) bool {
+	if needsOpenAIResponsesClientToolAdaptation(body) {
+		return true
+	}
+	tools := gjson.GetBytes(body, "tools")
+	if !tools.IsArray() {
+		return false
+	}
+	needsAdaptation := false
+	tools.ForEach(func(_, tool gjson.Result) bool {
+		if tool.IsObject() && strings.TrimSpace(tool.Get("type").String()) == "namespace" {
+			needsAdaptation = true
+			return false
+		}
+		return true
+	})
 	return needsAdaptation
 }
 
@@ -232,9 +261,8 @@ func (s *OpenAIGatewayService) forwardOpenAIPassthrough(
 		}
 	}
 
-	if account != nil && account.Platform == PlatformOpenAI && account.Type == AccountTypeAPIKey &&
-		!isOpenAIResponsesCompactPath(c) && needsOpenAIResponsesClientToolAdaptation(body) {
-		adaptedBody, mapping, adaptErr := adaptOpenAIResponsesClientTools(body)
+	if shouldAdaptOpenAIResponsesClientTools(account, c, body) {
+		adaptedBody, mapping, adaptErr := adaptOpenAIResponsesClientToolsForFunctionUpstream(body)
 		if adaptErr != nil {
 			return nil, adaptErr
 		}

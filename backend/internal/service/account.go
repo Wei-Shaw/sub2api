@@ -1409,10 +1409,60 @@ func (a *Account) IsCodingPlan() bool {
 	return a.GetAccountMode() == AccountModeCoding
 }
 
+// SupportsNativeResponsesEndpoint reports whether the provider/account mode
+// exposes a native OpenAI Responses endpoint.
+func (a *Account) SupportsNativeResponsesEndpoint() bool {
+	if a == nil {
+		return false
+	}
+	switch a.Platform {
+	case PlatformDeepseek, PlatformKimi, PlatformMiniMax, PlatformOpenCodeGo:
+		return true
+	case PlatformZhipu:
+		return a.GetAccountMode() == AccountModeCoding
+	default:
+		return false
+	}
+}
+
+// UsesNativeResponsesProtocol reports whether the current protocol selection
+// routes Responses requests to the provider's native endpoint.
+func (a *Account) UsesNativeResponsesProtocol() bool {
+	if !a.SupportsNativeResponsesEndpoint() {
+		return false
+	}
+	switch a.GetAPIProtocol() {
+	case APIProtocolResponses, APIProtocolAdaptive:
+		return true
+	default:
+		return false
+	}
+}
+
+// SupportsCodexResponsesProtocol reports whether this account can serve Codex
+// through a native or gateway-managed Responses protocol.
+func (a *Account) SupportsCodexResponsesProtocol() bool {
+	if a == nil || !a.IsOpenAICompatible() {
+		return false
+	}
+	if a.IsGrok() {
+		return true
+	}
+	if a.IsOpenAI() {
+		return a.SupportsOpenAIEndpointCapability(OpenAIEndpointCapabilityResponses)
+	}
+	return a.Type == AccountTypeAPIKey && a.UsesNativeResponsesProtocol()
+}
+
+// SupportsResponsesWebSocketHTTPBridge reports whether the existing gateway
+// WebSocket-to-HTTP bridge supports this protocol family. Native third-party
+// Responses providers use their documented HTTP/SSE transport instead.
+func (a *Account) SupportsResponsesWebSocketHTTPBridge() bool {
+	return a != nil && (a.IsOpenAI() || a.IsGrok())
+}
+
 // GetAPIProtocol 返回国产供应商账号的上游 API 协议。存储于
-// credentials["api_protocol"]；缺失或与平台不匹配时回退 chat_completions
-// （与既有行为完全一致）。responses 协议仅 deepseek / kimi / minimax 支持（官方原生
-// Responses 端点，适配 Codex）；zhipu 无此端点。
+// credentials["api_protocol"]；缺失或与平台不匹配时回退 chat_completions。
 func (a *Account) GetAPIProtocol() string {
 	if a == nil || !a.IsMultiProtocolAPIKey() {
 		return APIProtocolChatCompletions
@@ -1423,7 +1473,7 @@ func (a *Account) GetAPIProtocol() string {
 	case APIProtocolAnthropic:
 		return APIProtocolAnthropic
 	case APIProtocolResponses:
-		if a.SupportsNativeCNResponses() {
+		if a.SupportsNativeResponsesEndpoint() {
 			return APIProtocolResponses
 		}
 	case APIProtocolChatCompletions:
@@ -1435,33 +1485,15 @@ func (a *Account) GetAPIProtocol() string {
 	return APIProtocolChatCompletions
 }
 
-// SupportsNativeCNResponses 报告该国产供应商是否提供原生 Responses 端点。
-// DeepSeek 官方为 /responses（无 /v1）；Kimi 按量付费与 Coding Plan 均为
-// /v1/responses（moonshot.cn / kimi.com/coding）；MiniMax 为 /v1/responses。
+// SupportsNativeCNResponses is retained for callers that still use the older name.
 func (a *Account) SupportsNativeCNResponses() bool {
-	if a == nil {
-		return false
-	}
-	switch a.Platform {
-	case PlatformDeepseek, PlatformKimi, PlatformMiniMax, PlatformOpenCodeGo:
-		return true
-	default:
-		return false
-	}
+	return a.SupportsNativeResponsesEndpoint()
 }
 
 // UsesNativeCNResponses 报告当前账号是否应按原生 Responses 协议转发
 // （显式 responses，或 adaptive 且平台具备原生端点）。
 func (a *Account) UsesNativeCNResponses() bool {
-	if a == nil || !a.SupportsNativeCNResponses() {
-		return false
-	}
-	switch a.GetAPIProtocol() {
-	case APIProtocolResponses, APIProtocolAdaptive:
-		return true
-	default:
-		return false
-	}
+	return a.UsesNativeResponsesProtocol()
 }
 
 // IsAdaptiveAPIProtocol 报告账号是否按入站协议动态选择供应商原生端点。
@@ -1509,7 +1541,7 @@ func (a *Account) defaultCNProtocolBaseURL(protocol string) string {
 		case PlatformOpenCodeGo:
 			return a.openCodeDefaultAnthropicBaseURL()
 		}
-	case APIProtocolChatCompletions, APIProtocolResponses:
+	case APIProtocolChatCompletions:
 		switch a.Platform {
 		case PlatformKimi:
 			if a.GetAccountMode() == AccountModeCoding {
@@ -1519,6 +1551,25 @@ func (a *Account) defaultCNProtocolBaseURL(protocol string) string {
 		case PlatformZhipu:
 			if a.GetAccountMode() == AccountModeCoding {
 				return DefaultZhipuCodingBaseURL
+			}
+			return DefaultZhipuPayGBaseURL
+		case PlatformDeepseek:
+			return DefaultDeepseekBaseURL
+		case PlatformMiniMax:
+			return DefaultMiniMaxBaseURL
+		case PlatformOpenCodeGo:
+			return a.openCodeDefaultChatBaseURL()
+		}
+	case APIProtocolResponses:
+		switch a.Platform {
+		case PlatformKimi:
+			if a.GetAccountMode() == AccountModeCoding {
+				return DefaultKimiCodingBaseURL
+			}
+			return DefaultKimiPayGBaseURL
+		case PlatformZhipu:
+			if a.GetAccountMode() == AccountModeCoding {
+				return DefaultZhipuCodingResponsesBaseURL
 			}
 			return DefaultZhipuPayGBaseURL
 		case PlatformDeepseek:
