@@ -133,7 +133,7 @@ func TestResetPolicyConcurrentDecisionLease(t *testing.T) {
 	require.False(t, ok)
 }
 func TestResetPolicyConfigModes(t *testing.T) {
-	for _, mode := range []string{"threshold", "exhausted"} {
+	for _, mode := range []string{"threshold", "exhausted", "expiring", "expiring_or_exhausted"} {
 		extra, err := normalizeOpenAIAutoResetCreditExtra(PlatformOpenAI, AccountTypeOAuth, false, map[string]any{OpenAIAutoResetCreditModeExtraKey: mode, OpenAIAutoResetCreditEnabledExtraKey: true})
 		require.NoError(t, err)
 		require.Equal(t, mode, ResolveOpenAIAutoResetCreditConfig(&Account{Platform: PlatformOpenAI, Type: AccountTypeOAuth, Extra: extra}).Mode)
