@@ -111,6 +111,7 @@ export default {
     copyToClipboard: '复制到剪贴板',
     copied: '已复制！',
     importToCcSwitch: '导入到 CCS',
+    importToMagpie: '导入到 Magpie',
     enable: '启用',
     disable: '禁用',
     nameLabel: '名称',

@@ -409,6 +409,14 @@
                 <Icon name="upload" size="sm" />
                 <span class="text-xs">{{ t('keys.importToCcSwitch') }}</span>
               </button>
+              <!-- Import to Magpie Button -->
+              <button
+                @click="importToMagpie(row)"
+                class="flex flex-col items-center gap-0.5 rounded-lg p-1.5 text-gray-500 transition-colors hover:bg-purple-50 hover:text-purple-600 dark:hover:bg-purple-900/20 dark:hover:text-purple-400"
+              >
+                <Icon name="upload" size="sm" />
+                <span class="text-xs">{{ t('keys.importToMagpie') }}</span>
+              </button>
               <!-- Toggle Status Button -->
               <button
                 @click="toggleKeyStatus(row)"
@@ -1236,6 +1244,7 @@ import {
   buildCcSwitchImportDeeplink,
   type CcSwitchClientType
 } from '@/utils/ccswitchImport'
+import { buildMagpieImportLink } from '@/utils/magpieImport'
 
 // Helper to format date for datetime-local input
 const formatDateTimeLocal = (isoDate: string): string => {
@@ -2064,6 +2073,23 @@ const handleCcsClientSelect = (clientType: CcSwitchClientType) => {
 const closeCcsClientSelect = () => {
   showCcsClientSelect.value = false
   pendingCcsRow.value = null
+}
+
+const importToMagpie = (row: ApiKey) => {
+  const baseUrl = publicSettings.value?.api_base_url || window.location.origin
+  const providerName = (publicSettings.value?.site_name || 'sub2api').trim() || 'sub2api'
+  const link = buildMagpieImportLink({
+    baseUrl,
+    platform: row.group?.platform,
+    providerName,
+    apiKey: row.key,
+    website: window.location.origin,
+    keysUrl: `${window.location.origin}${window.location.pathname}`
+  })
+
+  // Magpie's web form keeps the key in the URL fragment (never sent to its server),
+  // opens the desktop app, and offers the download when it is not installed yet.
+  window.open(link, '_blank', 'noopener,noreferrer')
 }
 
 function formatResetTime(resetAt: string | null): string {
