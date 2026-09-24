@@ -13,6 +13,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/apikey"
 	"github.com/Wei-Shaw/sub2api/ent/group"
 	"github.com/Wei-Shaw/sub2api/ent/user"
+	"github.com/Wei-Shaw/sub2api/internal/domain"
 )
 
 // APIKey is the model entity for the APIKey schema.
@@ -42,6 +43,8 @@ type APIKey struct {
 	IPWhitelist []string `json:"ip_whitelist,omitempty"`
 	// Blocked IPs/CIDRs
 	IPBlacklist []string `json:"ip_blacklist,omitempty"`
+	// Per-upstream-platform sub-limits (USD); empty = only key-level limits apply
+	PlatformLimits domain.APIKeyPlatformLimits `json:"platform_limits,omitempty"`
 	// Quota limit in USD for this API key (0 = unlimited)
 	Quota float64 `json:"quota,omitempty"`
 	// Used quota amount in USD
@@ -80,9 +83,11 @@ type APIKeyEdges struct {
 	Group *Group `json:"group,omitempty"`
 	// UsageLogs holds the value of the usage_logs edge.
 	UsageLogs []*UsageLog `json:"usage_logs,omitempty"`
+	// PlatformUsages holds the value of the platform_usages edge.
+	PlatformUsages []*APIKeyPlatformUsage `json:"platform_usages,omitempty"`
 	// loadedTypes holds the information for reporting if a
 	// type was loaded (or requested) in eager-loading or not.
-	loadedTypes [3]bool
+	loadedTypes [4]bool
 }
 
 // UserOrErr returns the User value or an error if the edge
@@ -116,12 +121,21 @@ func (e APIKeyEdges) UsageLogsOrErr() ([]*UsageLog, error) {
 	return nil, &NotLoadedError{edge: "usage_logs"}
 }
 
+// PlatformUsagesOrErr returns the PlatformUsages value or an error if the edge
+// was not loaded in eager-loading.
+func (e APIKeyEdges) PlatformUsagesOrErr() ([]*APIKeyPlatformUsage, error) {
+	if e.loadedTypes[3] {
+		return e.PlatformUsages, nil
+	}
+	return nil, &NotLoadedError{edge: "platform_usages"}
+}
+
 // scanValues returns the types for scanning values from sql.Rows.
 func (*APIKey) scanValues(columns []string) ([]any, error) {
 	values := make([]any, len(columns))
 	for i := range columns {
 		switch columns[i] {
-		case apikey.FieldIPWhitelist, apikey.FieldIPBlacklist:
+		case apikey.FieldIPWhitelist, apikey.FieldIPBlacklist, apikey.FieldPlatformLimits:
 			values[i] = new([]byte)
 		case apikey.FieldQuota, apikey.FieldQuotaUsed, apikey.FieldRateLimit5h, apikey.FieldRateLimit1d, apikey.FieldRateLimit7d, apikey.FieldUsage5h, apikey.FieldUsage1d, apikey.FieldUsage7d:
 			values[i] = new(sql.NullFloat64)
@@ -223,6 +237,14 @@ func (_m *APIKey) assignValues(columns []string, values []any) error {
 			} else if value != nil && len(*value) > 0 {
 				if err := json.Unmarshal(*value, &_m.IPBlacklist); err != nil {
 					return fmt.Errorf("unmarshal field ip_blacklist: %w", err)
+				}
+			}
+		case apikey.FieldPlatformLimits:
+			if value, ok := values[i].(*[]byte); !ok {
+				return fmt.Errorf("unexpected type %T for field platform_limits", values[i])
+			} else if value != nil && len(*value) > 0 {
+				if err := json.Unmarshal(*value, &_m.PlatformLimits); err != nil {
+					return fmt.Errorf("unmarshal field platform_limits: %w", err)
 				}
 			}
 		case apikey.FieldQuota:
@@ -329,6 +351,11 @@ func (_m *APIKey) QueryUsageLogs() *UsageLogQuery {
 	return NewAPIKeyClient(_m.config).QueryUsageLogs(_m)
 }
 
+// QueryPlatformUsages queries the "platform_usages" edge of the APIKey entity.
+func (_m *APIKey) QueryPlatformUsages() *APIKeyPlatformUsageQuery {
+	return NewAPIKeyClient(_m.config).QueryPlatformUsages(_m)
+}
+
 // Update returns a builder for updating this APIKey.
 // Note that you need to call APIKey.Unwrap() before calling this method if this APIKey
 // was returned from a transaction, and the transaction was committed or rolled back.
@@ -390,6 +417,9 @@ func (_m *APIKey) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("ip_blacklist=")
 	builder.WriteString(fmt.Sprintf("%v", _m.IPBlacklist))
+	builder.WriteString(", ")
+	builder.WriteString("platform_limits=")
+	builder.WriteString(fmt.Sprintf("%v", _m.PlatformLimits))
 	builder.WriteString(", ")
 	builder.WriteString("quota=")
 	builder.WriteString(fmt.Sprintf("%v", _m.Quota))

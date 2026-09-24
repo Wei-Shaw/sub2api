@@ -75,6 +75,8 @@ type APIKeyUpdateFields struct {
 	RateLimitUsage bool
 	// IPRules 覆盖 ip_whitelist 与 ip_blacklist。
 	IPRules bool
+	// PlatformLimits 整体覆盖 platform_limits（按上游来源细分的子限额）。
+	PlatformLimits bool
 }
 
 // IsEmpty 报告该次 Update 是否不写任何列。
@@ -223,6 +225,9 @@ type CreateAPIKeyRequest struct {
 	RateLimit5h float64 `json:"rate_limit_5h"`
 	RateLimit1d float64 `json:"rate_limit_1d"`
 	RateLimit7d float64 `json:"rate_limit_7d"`
+
+	// PlatformLimits 按上游来源细分的子限额（可选）；键取值见 AllowedQuotaPlatforms。
+	PlatformLimits APIKeyPlatformLimits `json:"platform_limits,omitempty"`
 }
 
 // UpdateAPIKeyRequest 更新API Key请求
@@ -244,6 +249,11 @@ type UpdateAPIKeyRequest struct {
 	RateLimit1d         *float64 `json:"rate_limit_1d"`
 	RateLimit7d         *float64 `json:"rate_limit_7d"`
 	ResetRateLimitUsage *bool    `json:"reset_rate_limit_usage"` // Reset all usage counters to 0
+
+	// PlatformLimits 整体覆盖按来源细分的子限额（nil = 不修改，空 map = 清空）。
+	PlatformLimits *APIKeyPlatformLimits `json:"platform_limits"`
+	// ResetPlatformUsage 把所有来源的子限额用量归零。
+	ResetPlatformUsage *bool `json:"reset_platform_usage"`
 }
 
 func validateAPIKeyLimit(v float64) error {
@@ -284,6 +294,7 @@ type RateLimitCacheInvalidator interface {
 
 type APIKeyService struct {
 	apiKeyRepo                APIKeyRepository
+	apiKeyPlatformUsageRepo   APIKeyPlatformUsageRepository
 	userRepo                  UserRepository
 	groupRepo                 GroupRepository
 	userSubRepo               UserSubscriptionRepository
@@ -530,20 +541,26 @@ func (s *APIKeyService) Create(ctx context.Context, userID int64, req CreateAPIK
 		}
 	}
 
+	platformLimits, err := NormalizeAPIKeyPlatformLimits(req.PlatformLimits)
+	if err != nil {
+		return nil, err
+	}
+
 	// 创建API Key记录
 	apiKey := &APIKey{
-		UserID:      userID,
-		Key:         key,
-		Name:        html.EscapeString(req.Name),
-		GroupID:     req.GroupID,
-		Status:      StatusActive,
-		IPWhitelist: req.IPWhitelist,
-		IPBlacklist: req.IPBlacklist,
-		Quota:       req.Quota,
-		QuotaUsed:   0,
-		RateLimit5h: req.RateLimit5h,
-		RateLimit1d: req.RateLimit1d,
-		RateLimit7d: req.RateLimit7d,
+		UserID:         userID,
+		Key:            key,
+		Name:           html.EscapeString(req.Name),
+		GroupID:        req.GroupID,
+		Status:         StatusActive,
+		IPWhitelist:    req.IPWhitelist,
+		IPBlacklist:    req.IPBlacklist,
+		Quota:          req.Quota,
+		QuotaUsed:      0,
+		RateLimit5h:    req.RateLimit5h,
+		RateLimit1d:    req.RateLimit1d,
+		RateLimit7d:    req.RateLimit7d,
+		PlatformLimits: platformLimits,
 	}
 
 	// Set expiration time if specified
@@ -893,6 +910,17 @@ func (s *APIKeyService) Update(ctx context.Context, id int64, userID int64, req 
 		fields.RateLimitUsage = true
 	}
 
+	// 按来源细分的子限额：整体覆盖（nil 不改，空 map 清空所有来源）
+	if req.PlatformLimits != nil {
+		platformLimits, err := NormalizeAPIKeyPlatformLimits(*req.PlatformLimits)
+		if err != nil {
+			return nil, err
+		}
+		apiKey.PlatformLimits = platformLimits
+		fields.PlatformLimits = true
+	}
+	resetPlatformUsage := req.ResetPlatformUsage != nil && *req.ResetPlatformUsage
+
 	// 上面的自动复活分支可能改了 status，这里统一登记。
 	if apiKey.Status != originalStatus {
 		fields.Status = true
@@ -910,7 +938,36 @@ func (s *APIKeyService) Update(ctx context.Context, id int64, userID int64, req 
 		_ = s.rateLimitCacheInvalid.InvalidateAPIKeyRateLimit(ctx, apiKey.ID)
 	}
 
+	// 子限额用量归零（管理侧「重置」入口）。用量表是 DB 权威源，无缓存需要失效。
+	if resetPlatformUsage && s.apiKeyPlatformUsageRepo != nil {
+		if err := s.apiKeyPlatformUsageRepo.ResetUsage(ctx, apiKey.ID, nil); err != nil {
+			return nil, fmt.Errorf("reset api key platform usage: %w", err)
+		}
+	}
+
 	return apiKey, nil
+}
+
+// SetAPIKeyPlatformUsageRepo 注入按来源细分的用量仓储（可选依赖：未注入时
+// 平台级用量的查询与重置能力不可用，限额配置本身仍可读写）。
+func (s *APIKeyService) SetAPIKeyPlatformUsageRepo(repo APIKeyPlatformUsageRepository) {
+	s.apiKeyPlatformUsageRepo = repo
+}
+
+// ListPlatformUsage 返回某个 key 各来源的子限额用量，供后台回显。
+// 仅所有者可读；未注入用量仓储时返回空列表。
+func (s *APIKeyService) ListPlatformUsage(ctx context.Context, id int64, userID int64) ([]APIKeyPlatformUsageRecord, error) {
+	_, ownerID, err := s.apiKeyRepo.GetKeyAndOwnerID(ctx, id)
+	if err != nil {
+		return nil, fmt.Errorf("get api key: %w", err)
+	}
+	if ownerID != userID {
+		return nil, ErrInsufficientPerms
+	}
+	if s.apiKeyPlatformUsageRepo == nil {
+		return nil, nil
+	}
+	return s.apiKeyPlatformUsageRepo.ListByAPIKey(ctx, id)
 }
 
 // Delete 删除API Key

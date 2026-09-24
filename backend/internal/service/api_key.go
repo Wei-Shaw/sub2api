@@ -3,6 +3,7 @@ package service
 import (
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/domain"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/ip"
 )
 
@@ -52,6 +53,12 @@ type APIKey struct {
 	QuotaUsed float64    // Used quota amount
 	ExpiresAt *time.Time // Expiration time (nil = never expires)
 
+	// PlatformLimits 是按上游来源（平台）细分的子限额。composite（混合）分组下
+	// 一个 key 会同时路由到多个平台，key 级的 Quota/RateLimit* 是单一金额池，
+	// 无法区分来源；本字段为每个来源额外提供一层同构的限额。
+	// nil/空 = 仅受 key 级限额约束（默认，热路径零开销）。
+	PlatformLimits APIKeyPlatformLimits
+
 	// Rate limit fields
 	RateLimit5h   float64    // Rate limit in USD per 5h (0 = unlimited)
 	RateLimit1d   float64    // Rate limit in USD per 1d (0 = unlimited)
@@ -71,6 +78,20 @@ func (k *APIKey) IsActive() bool {
 // HasRateLimits returns true if any rate limit window is configured
 func (k *APIKey) HasRateLimits() bool {
 	return k.RateLimit5h > 0 || k.RateLimit1d > 0 || k.RateLimit7d > 0
+}
+
+// PlatformLimit 返回 key 在指定来源上的子限额；未配置时返回零值与 false。
+// platform 为空串（例如 composite 路由未解析出目标平台）时恒为 false。
+func (k *APIKey) PlatformLimit(platform string) (APIKeyPlatformLimit, bool) {
+	if k == nil {
+		return APIKeyPlatformLimit{}, false
+	}
+	return k.PlatformLimits.Limit(platform)
+}
+
+// HasPlatformLimits 报告 key 是否配置了任何来源级子限额。
+func (k *APIKey) HasPlatformLimits() bool {
+	return k != nil && k.PlatformLimits.HasAnyLimit()
 }
 
 // IsExpired checks if the API key has expired
@@ -143,3 +164,10 @@ type APIKeyListFilters struct {
 	Status  string
 	GroupID *int64 // nil=不筛选, 0=无分组, >0=指定分组
 }
+
+// APIKeyPlatformLimit / APIKeyPlatformLimits 是 domain 同名类型的 service 层别名，
+// 保持与 GroupModelAllowlist 等既有字段一致的分层习惯。
+type (
+	APIKeyPlatformLimit  = domain.APIKeyPlatformLimit
+	APIKeyPlatformLimits = domain.APIKeyPlatformLimits
+)

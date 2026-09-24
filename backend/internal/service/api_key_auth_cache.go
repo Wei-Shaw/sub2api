@@ -26,6 +26,11 @@ type APIKeyAuthSnapshot struct {
 	RateLimit5h float64 `json:"rate_limit_5h"`
 	RateLimit1d float64 `json:"rate_limit_1d"`
 	RateLimit7d float64 `json:"rate_limit_7d"`
+
+	// PlatformLimits：按上游来源细分的子限额配置（同样只投影限额，用量在检查时读 DB）。
+	// 必须随快照投影，否则走缓存的请求会看不到配置 —— 参见 group.model_pricing
+	// 曾因漏投影而在网关热路径静默失效的先例。
+	PlatformLimits APIKeyPlatformLimits `json:"platform_limits,omitempty"`
 }
 
 // APIKeyAuthUserSnapshot 用户快照
