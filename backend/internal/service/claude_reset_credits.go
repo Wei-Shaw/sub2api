@@ -73,12 +73,15 @@ type claudeResetTokens interface {
 }
 
 type ClaudeResetCreditService struct {
-	accounts claudeResetAccounts
-	tokens   claudeResetTokens
-	proxies  ProxyRepository
-	settings *SettingService
-	do       func(*http.Request, string) (*http.Response, error)
-	now      func() time.Time
+	writer      claudeResetWriter
+	idempotency *IdempotencyCoordinator
+	locks       LeaderLockCache
+	accounts    claudeResetAccounts
+	tokens      claudeResetTokens
+	proxies     ProxyRepository
+	settings    *SettingService
+	do          func(*http.Request, string) (*http.Response, error)
+	now         func() time.Time
 }
 
 func NewClaudeResetCreditService(accounts AccountRepository, tokens *ClaudeTokenProvider, proxies ProxyRepository, settings *SettingService) *ClaudeResetCreditService {
@@ -142,6 +145,10 @@ func (s *ClaudeResetCreditService) query(ctx context.Context, id int64) (*Claude
 	if err != nil {
 		return nil, nil, err
 	}
+	return s.queryWithToken(ctx, token, proxy)
+}
+
+func (s *ClaudeResetCreditService) queryWithToken(ctx context.Context, token, proxy string) (*ClaudeResetCredits, *claudeResetBlock, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, claudeResetUsageURL, nil)
 	if err != nil {
 		return nil, nil, err
@@ -179,7 +186,7 @@ func (s *ClaudeResetCreditService) Query(ctx context.Context, id int64) (*Claude
 }
 
 func claudeGrantSelection(g claudeResetGrant) string {
-	h := sha256.Sum256([]byte(fmt.Sprintf("%s:%d", g.ID, g.ResetsLeft)))
+	h := sha256.Sum256([]byte(fmt.Sprintf("%s:%d:%v:%v", g.ID, g.ResetsLeft, g.StartsAt, g.EndsAt)))
 	return hex.EncodeToString(h[:])
 }
 
