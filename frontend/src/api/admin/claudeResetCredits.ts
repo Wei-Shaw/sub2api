@@ -26,3 +26,16 @@ export async function getClaudeResetCredits(id: number): Promise<ClaudeResetCred
   const { data } = await apiClient.get<ClaudeResetCredits>(`/admin/accounts/${id}/claude/reset-credits`)
   return data
 }
+
+export interface ClaudeResetResult {
+  outcome: 'reset' | 'unknown' | 'already_used' | 'not_limited' | 'cooldown' | 'ineligible' | 'unavailable'
+  reason?: string
+  credits?: ClaudeResetCredits
+  replayed: boolean
+}
+
+export async function redeemClaudeResetCredit(id: number, selectionToken: string, idempotencyKey: string): Promise<ClaudeResetResult> {
+  const { data } = await apiClient.post<ClaudeResetResult>(`/admin/accounts/${id}/claude/reset-credits`,
+    { selection_token: selectionToken }, { headers: { 'Idempotency-Key': idempotencyKey }, timeout: 90_000 })
+  return data
+}
