@@ -2570,11 +2570,12 @@
           <select v-model="autoResetCreditMode" :disabled="!autoResetCreditEnabled" class="input" data-testid="auto-reset-credit-mode">
             <option value="threshold">{{ t('admin.accounts.autoResetCredit.thresholdMode') }}</option>
             <option value="exhausted">{{ t('admin.accounts.autoResetCredit.exhaustedMode') }}</option>
+            <option value="expiring">{{ t('admin.accounts.autoResetCredit.expiringOnlyMode') }}</option>
             <option value="expiring_or_exhausted">{{ t('admin.accounts.autoResetCredit.expiringMode') }}</option>
           </select>
         </label>
-        <p v-if="autoResetCreditMode !== 'threshold'" class="input-hint">{{ t('admin.accounts.autoResetCredit.exhaustedHint') }}</p>
-        <div v-if="autoResetCreditMode === 'expiring_or_exhausted'" class="grid gap-4 sm:grid-cols-2">
+        <p v-if="autoResetCreditMode === 'exhausted' || autoResetCreditMode === 'expiring_or_exhausted'" class="input-hint">{{ t('admin.accounts.autoResetCredit.exhaustedHint') }}</p>
+        <div v-if="autoResetCreditMode === 'expiring' || autoResetCreditMode === 'expiring_or_exhausted'" class="grid gap-4 sm:grid-cols-2">
           <label class="input-label">
             {{ t('admin.accounts.autoResetCredit.expiryHorizon') }}
             <input v-model.number="autoResetCreditExpiryHorizon" type="number" min="60" max="604800" step="1" :disabled="!autoResetCreditEnabled" class="input" data-testid="auto-reset-credit-expiry-horizon" />
@@ -3636,7 +3637,7 @@ const autoPause7dThreshold = ref<number | null>(null)
 const autoPause5hDisabled = ref(false)
 const autoPause7dDisabled = ref(false)
 const autoResetCreditEnabled = ref(false)
-const autoResetCreditMode = ref<'threshold' | 'exhausted' | 'expiring_or_exhausted'>('threshold')
+const autoResetCreditMode = ref<'threshold' | 'exhausted' | 'expiring' | 'expiring_or_exhausted'>('threshold')
 const autoResetCreditExpiryHorizon = ref(3600)
 const autoResetCreditExpiryUtilization = ref(25)
 const autoResetCredit5hThreshold = ref(100)
@@ -4183,7 +4184,7 @@ const syncFormFromAccount = (newAccount: Account | null) => {
 	autoPause5hDisabled.value = extra?.auto_pause_5h_disabled === true
 	autoPause7dDisabled.value = extra?.auto_pause_7d_disabled === true
 	autoResetCreditEnabled.value = extra?.auto_reset_credit_enabled === true
-  autoResetCreditMode.value = extra?.auto_reset_credit_mode === 'exhausted' || extra?.auto_reset_credit_mode === 'expiring_or_exhausted' ? extra.auto_reset_credit_mode : 'threshold'
+  autoResetCreditMode.value = extra?.auto_reset_credit_mode === 'exhausted' || extra?.auto_reset_credit_mode === 'expiring' || extra?.auto_reset_credit_mode === 'expiring_or_exhausted' ? extra.auto_reset_credit_mode : 'threshold'
   autoResetCreditExpiryHorizon.value = typeof extra?.auto_reset_credit_expiry_horizon_seconds === 'number' ? extra.auto_reset_credit_expiry_horizon_seconds : 3600
   autoResetCreditExpiryUtilization.value = typeof extra?.auto_reset_credit_expiry_min_utilization === 'number' ? extra.auto_reset_credit_expiry_min_utilization * 100 : 25
 	autoResetCredit5hThreshold.value =
@@ -5158,7 +5159,7 @@ const handleSubmit = async () => {
     appStore.showError(t('admin.accounts.pleaseSelectStatus'))
     return
   }
-  if (autoResetCreditEnabled.value && autoResetCreditMode.value === 'expiring_or_exhausted' &&
+  if (autoResetCreditEnabled.value && (autoResetCreditMode.value === 'expiring' || autoResetCreditMode.value === 'expiring_or_exhausted') &&
     (!Number.isInteger(autoResetCreditExpiryHorizon.value) || autoResetCreditExpiryHorizon.value < 60 || autoResetCreditExpiryHorizon.value > 604800 ||
      !Number.isFinite(autoResetCreditExpiryUtilization.value) || autoResetCreditExpiryUtilization.value < 0.1 || autoResetCreditExpiryUtilization.value > 100)) {
     appStore.showError(t('admin.accounts.autoResetCredit.expiryInvalid'))

@@ -1738,4 +1738,25 @@ describe('EditAccountModal OpenAI 自动使用重置卡', () => {
     wrapper.unmount()
   })
 
+  it.each(['threshold', 'exhausted', 'expiring', 'expiring_or_exhausted'] as const)('loads and saves %s without changing its meaning', async (mode) => {
+    const account = buildOpenAIOAuthParentAccount()
+    account.extra = { auto_reset_credit_enabled: true, auto_reset_credit_mode: mode }
+    updateAccountMock.mockResolvedValue(account)
+    const wrapper = mountModal(account)
+    expect((wrapper.get('[data-testid="auto-reset-credit-mode"]').element as HTMLSelectElement).value).toBe(mode)
+    expect(wrapper.find('[data-testid="auto-reset-credit-expiry-horizon"]').exists()).toBe(mode === 'expiring' || mode === 'expiring_or_exhausted')
+    await wrapper.get('form#edit-account-form').trigger('submit.prevent')
+    expect(updateAccountMock.mock.calls[0]?.[1]?.extra.auto_reset_credit_mode).toBe(mode)
+    wrapper.unmount()
+  })
+  it('validates the expiring-only horizon', async () => {
+    const account = buildOpenAIOAuthParentAccount()
+    account.extra = { auto_reset_credit_enabled: true, auto_reset_credit_mode: 'expiring' }
+    const wrapper = mountModal(account)
+    await wrapper.get('[data-testid="auto-reset-credit-expiry-horizon"]').setValue('604801')
+    await wrapper.get('form#edit-account-form').trigger('submit.prevent')
+    expect(updateAccountMock).not.toHaveBeenCalled()
+    wrapper.unmount()
+  })
+
 })

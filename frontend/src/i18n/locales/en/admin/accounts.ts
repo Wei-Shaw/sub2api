@@ -930,6 +930,7 @@ export default {
       mode: 'Reset policy',
       thresholdMode: 'Per-account usage threshold',
       exhaustedMode: 'Only when the usable account pool is exhausted',
+      expiringOnlyMode: 'Only when a credit is expiring soon',
       expiringMode: 'Credit expiring soon or usable pool exhausted',
       exhaustedHint: 'Requires confirmed 100% usage in a live limit window for every active, schedulable OpenAI candidate sharing a group. Unknown usage prevents resetting. Background checks consider all model capabilities and can delay a reset.',
       expiryHorizon: 'Expiring within (seconds, 60–604800)',

@@ -1031,6 +1031,7 @@ export default {
       mode: '重置策略',
       thresholdMode: '单账号用量阈值',
       exhaustedMode: '仅在可用账号池耗尽时',
+      expiringOnlyMode: '仅在额度即将到期时',
       expiringMode: '额度即将到期或可用账号池耗尽',
       exhaustedHint: '同组所有活跃、可调度 OpenAI 候选账号均须在有效窗口内确认达到 100%。用量未知时不重置。后台检查所有模型能力，因此可能延迟重置。',
       expiryHorizon: '到期前时间（秒，60–604800）',
