@@ -52,7 +52,9 @@ export default {
   "modelPlaza": {
     "table": {
       "maxReasoningMultiplierBadge": "Tối đa ×{multiplier}",
-      "maxReasoningMultiplierHint": "Khi mức suy luận được chuyển tiếp là max, chi phí và hạn ngạch của yêu cầu được nhân với {multiplier}"
+      "maxReasoningMultiplierHint": "Khi mức suy luận được chuyển tiếp là max, chi phí và hạn ngạch của yêu cầu được nhân với {multiplier}",
+      "reasoningMultiplierBadge": "{effort} ×{multiplier}",
+      "reasoningMultiplierHint": "Khi mức suy luận được chuyển tiếp là {effort}, chi phí và hạn ngạch của yêu cầu được nhân với {multiplier}. Các mức chưa cấu hình sử dụng ×1"
     }
   },
   "redeem": {
