@@ -1709,9 +1709,13 @@ function getAntigravityTierLabel(row: any): string | null {
   }
 }
 
-// 账号显示邮箱:优先账号自身(extra/credentials),影子账号回退母账号 parent_email。
+// 账号显示邮箱: Ollama Key 优先使用用量快照的邮箱,其他账号沿用自身字段及影子账号母账号回退。
 // 供名称单元格 v-if/标题/文本三处共用,避免同一回退链在模板里重复三次。
 function accountDisplayEmail(row: any): string {
+  if (row.ollama_cloud_usage?.eligible) {
+    const email = row.ollama_cloud_usage.snapshot?.data?.email
+    if (email) return email
+  }
   return row.extra?.email_address || row.extra?.email || row.credentials?.email || row.parent_email || ''
 }
 

@@ -251,6 +251,10 @@ type ollamaUsageHTTPStub struct {
 	status         int
 	body           []byte
 	header         http.Header
+	profileStatus  int
+	profileBody    []byte
+	profileCalls   atomic.Int64
+	profileRequest *http.Request
 	calls          atomic.Int64
 	active         atomic.Int64
 	maxActive      atomic.Int64
@@ -261,6 +265,17 @@ type ollamaUsageHTTPStub struct {
 }
 
 func (s *ollamaUsageHTTPStub) Do(req *http.Request, proxyURL string, _ int64, _ int) (*http.Response, error) {
+	if req.URL.Path == "/api/me" {
+		s.profileCalls.Add(1)
+		s.mu.Lock()
+		s.profileRequest = req
+		s.mu.Unlock()
+		status := s.profileStatus
+		if status == 0 {
+			status = http.StatusUnauthorized
+		}
+		return &http.Response{StatusCode: status, Header: http.Header{"Content-Type": []string{"application/json"}}, Body: io.NopCloser(strings.NewReader(string(s.profileBody))), Request: req}, nil
+	}
 	s.calls.Add(1)
 	active := s.active.Add(1)
 	defer s.active.Add(-1)
@@ -587,6 +602,48 @@ func TestParseOllamaCloudUsageHTMLMissingOptionalFieldsAndCSSWidthFallback(t *te
 	}}, data.Models)
 }
 
+func TestParseOllamaCloudUsageHTMLMonthlyLayout(t *testing.T) {
+	data, err := parseOllamaCloudUsageHTML([]byte(`
+		<section>
+			<h2><span>Included usage</span><span>pro</span></h2>
+			<div>
+				<div><span>Monthly usage</span><span>$5.03 of $60 used</span></div>
+				<div data-time="2026-10-18T02:05:47Z">Resets in 4 weeks.</div>
+				<div data-usage-track aria-label="Monthly usage $5.03 of $60 used">
+					<button data-usage-segment style="width: 99%" aria-label="deepseek-v4.1-flash: 749 requests"></button>
+					<button data-usage-segment style="width: 1%" aria-label="deepseek-v4-flash:0731: 3 requests"></button>
+				</div>
+			</div>
+			<div><div><div>$0</div><div>Current balance</div></div></div>
+		</section>`))
+	require.NoError(t, err)
+	require.Equal(t, "pro", data.Plan)
+	require.Nil(t, data.FiveHour)
+	require.Nil(t, data.SevenDay)
+	require.NotNil(t, data.Monthly)
+	require.InDelta(t, 8.3833333333, data.Monthly.UsedPercent, 0.0000001)
+	require.NotNil(t, data.Monthly.ResetAt)
+	require.Equal(t, "2026-10-18T02:05:47Z", data.Monthly.ResetAt.Format(time.RFC3339))
+	require.Equal(t, "$0", data.Balance)
+	require.Equal(t, []OllamaCloudUsageModel{
+		{Model: "deepseek-v4-flash:0731", Window: OllamaCloudUsageModelWindowMonthly, Requests: 3},
+		{Model: "deepseek-v4.1-flash", Window: OllamaCloudUsageModelWindowMonthly, Requests: 749},
+	}, data.Models)
+}
+
+func TestParseOllamaCloudUsageHTMLMonthlyARIAWinsOverDistributionWidth(t *testing.T) {
+	data, err := parseOllamaCloudUsageHTML([]byte(`
+		<section>
+			<span>Monthly usage</span>
+			<div data-usage-track aria-label="Monthly usage $15 of $60 used">
+				<button data-usage-segment style="width: 100%" aria-label="deepseek-v4.1-flash: 100 requests"></button>
+			</div>
+		</section>`))
+	require.NoError(t, err)
+	require.NotNil(t, data.Monthly)
+	require.Equal(t, 25.0, data.Monthly.UsedPercent)
+}
+
 func TestParseOllamaCloudUsageHTMLResetElementVariants(t *testing.T) {
 	const want = "2026-07-23T03:00:00Z"
 	for name, element := range map[string]string{
@@ -891,6 +948,38 @@ func TestOllamaCloudUsageRefreshUsesFixedURLCookieAndNoRedirects(t *testing.T) {
 	require.NotContains(t, upstream.lastRequest.Header.Get("Cookie"), "tracking")
 	require.Empty(t, upstream.lastRequest.Header.Get("Authorization"))
 	require.True(t, HTTPUpstreamRedirectsDisabled(upstream.lastRequest.Context()))
+}
+
+func TestOllamaCloudUsageRefreshFetchesEmailForAPIKey(t *testing.T) {
+	account := ollamaUsageAccount(88)
+	account.Extra[OllamaCloudUsageSessionExtraKey] = "cipher:wos-session=browser-secret"
+	repo := &ollamaUsageTestRepo{upstreamBillingProbeAccountRepo: &upstreamBillingProbeAccountRepo{accounts: map[int64]*Account{88: account}}}
+	upstream := &ollamaUsageHTTPStub{
+		body:          ollamaUsageFixture(t),
+		profileStatus: http.StatusOK,
+		profileBody:   []byte(`{"email":"key-owner@example.com","name":"Owner"}`),
+	}
+	svc := newOllamaUsageTestService(t, repo, upstream, &upstreamBillingProbeSettingRepo{}, true)
+
+	state, err := svc.Refresh(context.Background(), 88)
+	require.NoError(t, err)
+	require.Equal(t, "key-owner@example.com", state.Snapshot.Data.Email)
+	require.Equal(t, int64(1), upstream.profileCalls.Load())
+	require.Equal(t, http.MethodPost, upstream.profileRequest.Method)
+	require.Equal(t, ollamaCloudUsageProfileURL, upstream.profileRequest.URL.String())
+	require.Equal(t, "Bearer key-88", upstream.profileRequest.Header.Get("Authorization"))
+	require.Empty(t, upstream.profileRequest.Header.Get("Cookie"))
+	require.True(t, HTTPUpstreamRedirectsDisabled(upstream.profileRequest.Context()))
+
+	// An unavailable profile endpoint must not invalidate a successful usage fetch.
+	other := ollamaUsageAccount(89)
+	other.Extra[OllamaCloudUsageSessionExtraKey] = "cipher:wos-session=other"
+	otherRepo := &ollamaUsageTestRepo{upstreamBillingProbeAccountRepo: &upstreamBillingProbeAccountRepo{accounts: map[int64]*Account{89: other}}}
+	otherUpstream := &ollamaUsageHTTPStub{body: ollamaUsageFixture(t)}
+	otherSvc := newOllamaUsageTestService(t, otherRepo, otherUpstream, &upstreamBillingProbeSettingRepo{}, true)
+	state, err = otherSvc.Refresh(context.Background(), 89)
+	require.NoError(t, err)
+	require.Empty(t, state.Snapshot.Data.Email)
 }
 
 func TestOllamaCloudUsageManualRefreshUsesShortIndependentInterval(t *testing.T) {
