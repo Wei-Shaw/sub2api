@@ -249,6 +249,61 @@ func TestCreateTradeRedirectModeSkipsPrecreate(t *testing.T) {
 	}
 }
 
+// When the provider instance is configured with paymentMode == "wap" (merchant
+// only signed 手机网站支付), the desktop flow must build a wap-pay URL and
+// expose it via the QRCode field so the frontend renders it as a QR code.
+func TestCreateTradeWapModeReturnsQrPayloadOnDesktop(t *testing.T) {
+	origWapPay := alipayTradeWapPay
+	origPreCreate := alipayTradePreCreate
+	origPagePay := alipayTradePagePay
+	t.Cleanup(func() {
+		alipayTradeWapPay = origWapPay
+		alipayTradePreCreate = origPreCreate
+		alipayTradePagePay = origPagePay
+	})
+
+	preCreateCalls, pagePayCalls, wapCalls := 0, 0, 0
+	alipayTradePreCreate = func(ctx context.Context, client *alipay.Client, param alipay.TradePreCreate) (*alipay.TradePreCreateRsp, error) {
+		preCreateCalls++
+		return nil, errors.New("unreachable: wap mode must skip precreate")
+	}
+	alipayTradePagePay = func(client *alipay.Client, param alipay.TradePagePay) (*url.URL, error) {
+		pagePayCalls++
+		return nil, errors.New("unreachable: wap mode must skip page pay")
+	}
+	alipayTradeWapPay = func(client *alipay.Client, param alipay.TradeWapPay) (*url.URL, error) {
+		wapCalls++
+		if param.ProductCode != alipayProductCodeWapPay {
+			t.Fatalf("product_code = %q, want %q", param.ProductCode, alipayProductCodeWapPay)
+		}
+		return url.Parse("https://openapi.alipay.com/gateway.do?wap-pay")
+	}
+
+	provider := &Alipay{
+		config: map[string]string{"paymentMode": "wap"},
+	}
+	resp, err := provider.createDesktopTrade(context.Background(), &alipay.Client{}, payment.CreatePaymentRequest{
+		OrderID: "sub2_104",
+		Amount:  "1.00",
+		Subject: "Balance recharge",
+	}, "https://merchant.example.com/api/v1/payment/webhook/alipay", "https://merchant.example.com/payment/result")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if preCreateCalls != 0 || pagePayCalls != 0 {
+		t.Fatalf("precreate calls = %d, page pay calls = %d, want 0/0 in wap mode", preCreateCalls, pagePayCalls)
+	}
+	if wapCalls != 1 {
+		t.Fatalf("wap pay calls = %d, want 1", wapCalls)
+	}
+	if resp.QRCode != "https://openapi.alipay.com/gateway.do?wap-pay" {
+		t.Fatalf("qr_code = %q, want the wap-pay URL", resp.QRCode)
+	}
+	if resp.PayURL == "" {
+		t.Fatal("expected pay_url kept as secondary link in wap mode")
+	}
+}
+
 func TestCreateTradeUsesWapPayForMobile(t *testing.T) {
 	origWapPay := alipayTradeWapPay
 	t.Cleanup(func() {

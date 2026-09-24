@@ -112,6 +112,9 @@ func (a *Alipay) MerchantIdentityMetadata() map[string]string {
 //   - Desktop, paymentMode == "redirect": skip precreate and go straight to
 //     alipay.trade.page.pay so the frontend always opens the Alipay checkout
 //     in a new tab. Use this when the merchant has not enabled FACE_TO_FACE_PAYMENT.
+//   - Desktop, paymentMode == "wap": merchant only signed 手机网站支付
+//     (QUICK_WAP_WAY). Build a wap-pay gateway URL and expose it via the
+//     QRCode field: the Alipay app scans it and opens the H5 cashier in-app.
 //
 // Note: alipay.trade.page.pay returns a checkout page URL, not a scannable
 // payment QR. Never expose it via the QRCode field.
@@ -161,6 +164,20 @@ func (a *Alipay) createDesktopTrade(ctx context.Context, client *alipay.Client, 
 	// Skip precreate to avoid a wasted API call.
 	if strings.EqualFold(strings.TrimSpace(a.config["paymentMode"]), "redirect") {
 		return a.createPagePayTrade(client, req, notifyURL, returnURL)
+	}
+
+	// Explicit wap mode: merchant only signed 手机网站支付. Neither precreate
+	// (当面付) nor page pay (电脑网站支付) is available, so build the wap-pay
+	// gateway URL and expose it as the QR payload — the Alipay app scans it and
+	// opens the H5 cashier in-app. PayURL is kept as a secondary "open link"
+	// option for users who prefer the browser flow.
+	if strings.EqualFold(strings.TrimSpace(a.config["paymentMode"]), "wap") {
+		resp, err := a.createWapTrade(client, req, notifyURL, returnURL)
+		if err != nil {
+			return nil, err
+		}
+		resp.QRCode = resp.PayURL
+		return resp, nil
 	}
 
 	resp, precreateErr := a.createPrecreateTrade(ctx, client, req, notifyURL)
