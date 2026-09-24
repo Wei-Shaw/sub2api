@@ -50,7 +50,7 @@ func shouldStripOpenAIResponsesInputItemID(itemType, id string) bool {
 	if !constrained {
 		return false
 	}
-	return id == "" || !strings.HasPrefix(id, prefix)
+	return id == "" || len(id) > 64 || !strings.HasPrefix(id, prefix)
 }
 
 func shouldStripOpenAIResponsesNonPairCallID(itemType string) bool {

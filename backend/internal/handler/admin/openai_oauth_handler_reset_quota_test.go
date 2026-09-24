@@ -17,11 +17,14 @@ import (
 )
 
 type openAIQuotaWorkflowStub struct {
-	resetResult *service.OpenAIQuotaResetResult
-	resetErr    error
-	queryResult *service.OpenAIQuotaUsage
-	queryErr    error
-	cacheErr    error
+	resetResult        *service.OpenAIQuotaResetResult
+	resetErr           error
+	queryResult        *service.OpenAIQuotaUsage
+	queryErr           error
+	cacheErr           error
+	creditsCacheErr    error
+	creditsCacheCalls  int
+	cachedCreditsUsage *service.OpenAIQuotaUsage
 
 	resetCalls int
 	queryCalls int
@@ -46,6 +49,12 @@ func (s *openAIQuotaWorkflowStub) CacheResetCreditsSnapshot(ctx context.Context,
 	s.cacheCalls++
 	s.cacheCtxErr = ctx.Err()
 	return s.cacheErr
+}
+
+func (s *openAIQuotaWorkflowStub) CacheCreditsSnapshot(_ context.Context, _ int64, usage *service.OpenAIQuotaUsage) error {
+	s.creditsCacheCalls++
+	s.cachedCreditsUsage = usage
+	return s.creditsCacheErr
 }
 
 func (s *openAIQuotaWorkflowStub) CachePostResetSnapshot(ctx context.Context, _ int64, _ *service.OpenAIQuotaUsage) error {
@@ -408,6 +417,34 @@ func TestOpenAIRefreshQuota_PersistFailureStillReturnsUsage(t *testing.T) {
 	require.NotNil(t, envelope.Data.RateLimitResetCredits)
 	require.Equal(t, 2, envelope.Data.RateLimitResetCredits.AvailableCount)
 	require.Equal(t, 1, quota.cacheCalls)
+}
+
+func TestOpenAIRefreshQuota_CreditsPersistIndependently(t *testing.T) {
+	for _, tc := range []struct {
+		name       string
+		resetErr   error
+		creditsErr error
+	}{
+		{name: "both saved"},
+		{name: "reset details missing", resetErr: errors.New("missing expirations")},
+		{name: "points cache failed", creditsErr: errors.New("write failed")},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			quota := successfulOpenAIQuotaWorkflowStub()
+			balance := "1250.75"
+			quota.queryResult.Credits = &service.OpenAICredits{HasCredits: true, Balance: &balance}
+			quota.cacheErr = tc.resetErr
+			quota.creditsCacheErr = tc.creditsErr
+			status, envelope := performOpenAIQuotaRefreshRequest(t, &OpenAIOAuthHandler{quotaService: quota})
+			require.Equal(t, http.StatusOK, status)
+			require.Equal(t, tc.resetErr == nil, envelope.Data.CachePersisted)
+			require.Equal(t, tc.creditsErr == nil, envelope.Data.CreditsCachePersisted)
+			require.Equal(t, quota.queryResult.Credits, envelope.Data.Credits)
+			require.Equal(t, quota.queryResult, quota.cachedCreditsUsage)
+			require.Equal(t, 1, quota.creditsCacheCalls)
+			require.Zero(t, quota.resetCalls)
+		})
+	}
 }
 
 // An empty-but-successful upstream read must not be dereferenced blindly.

@@ -71,7 +71,7 @@ func TestOpenAIResponsesTTFTStartsAtCompletedImage(t *testing.T) {
 	}
 }
 
-func TestOpenAINativeMetadataDoesNotDisarmFirstOutputTimeout(t *testing.T) {
+func TestOpenAINativeMetadataAndKeepaliveDoNotDisarmFirstOutputTimeout(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	svc := &OpenAIGatewayService{cfg: &config.Config{Gateway: config.GatewayConfig{
 		MaxLineSize:                     defaultMaxLineSize,
@@ -84,6 +84,7 @@ func TestOpenAINativeMetadataDoesNotDisarmFirstOutputTimeout(t *testing.T) {
 		defer func() { _ = writer.Close() }()
 		_, _ = io.WriteString(writer, "data: {\"type\":\"response.created\",\"response\":{\"id\":\"resp_test\"}}\n\n")
 		_, _ = io.WriteString(writer, "data: {\"type\":\"response.output_item.added\",\"item\":{\"id\":\"item_test\",\"type\":\"reasoning\",\"summary\":[]}}\n\n")
+		_, _ = io.WriteString(writer, "data: {\"type\":\"keepalive\"}\n\n")
 		time.Sleep(1200 * time.Millisecond)
 	}()
 

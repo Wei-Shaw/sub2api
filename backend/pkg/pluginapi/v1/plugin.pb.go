@@ -1704,8 +1704,19 @@ func (x *ListAccountsRequest) GetAccountType() string {
 }
 
 type ListAccountsResponse struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	AccountIds    []int64                `protobuf:"varint,1,rep,packed,name=account_ids,json=accountIds,proto3" json:"account_ids,omitempty"`
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// account_ids is retained for plugins built against host_service_api_version 1.
+	// The host keeps filling it (the ids of the accounts in `accounts`) so those
+	// plugins keep working; new plugins should read `accounts` instead.
+	AccountIds []int64 `protobuf:"varint,1,rep,packed,name=account_ids,json=accountIds,proto3" json:"account_ids,omitempty"`
+	// accounts carries the full readable metadata for every account in the
+	// plugin's scope — including active accounts that are currently NOT
+	// schedulable because they are paused (rate-limited / temp-unschedulable /
+	// overloaded). This lets a plugin make its own decisions (e.g. skip paused
+	// accounts) instead of hammering them. (Administratively disabled / expired
+	// accounts are already excluded upstream by the host.) Available when
+	// host_service_api_version >= 2.
+	Accounts      []*AccountInfo `protobuf:"bytes,2,rep,name=accounts,proto3" json:"accounts,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1747,6 +1758,138 @@ func (x *ListAccountsResponse) GetAccountIds() []int64 {
 	return nil
 }
 
+func (x *ListAccountsResponse) GetAccounts() []*AccountInfo {
+	if x != nil {
+		return x.Accounts
+	}
+	return nil
+}
+
+// AccountInfo is the host's readable, non-secret view of one account. It never
+// contains credentials (token / refresh_token / cookies); use
+// ResolveOutboundIdentity for those.
+//
+// The typed fields are a small, STABLE decision core. Everything else about the
+// account — including any field added to the account model later — is carried in
+// metadata_json, so new fields reach plugins WITHOUT a contract change, a host
+// mapper edit, or a plugin rebuild. Only a newly added *secret* field would ever
+// require a host change (a one-line denylist entry), which is the safe default.
+type AccountInfo struct {
+	state       protoimpl.MessageState `protogen:"open.v1"`
+	Id          int64                  `protobuf:"varint,1,opt,name=id,proto3" json:"id,omitempty"`
+	Platform    string                 `protobuf:"bytes,2,opt,name=platform,proto3" json:"platform,omitempty"`
+	AccountType string                 `protobuf:"bytes,3,opt,name=account_type,json=accountType,proto3" json:"account_type,omitempty"`
+	Name        string                 `protobuf:"bytes,4,opt,name=name,proto3" json:"name,omitempty"`
+	// status is the coarse lifecycle state: active / disabled / error / expired.
+	Status string `protobuf:"bytes,5,opt,name=status,proto3" json:"status,omitempty"`
+	// schedulable is the host-authoritative decision (IsSchedulable) — false when
+	// the account is active but paused for ANY reason (rate limit,
+	// temp-unschedulable, overload, expiry auto-pause, quota). This is the primary
+	// signal a plugin should use to skip an account so it stops probing paused ones.
+	Schedulable bool `protobuf:"varint,6,opt,name=schedulable,proto3" json:"schedulable,omitempty"`
+	IsShadow    bool `protobuf:"varint,7,opt,name=is_shadow,json=isShadow,proto3" json:"is_shadow,omitempty"`
+	// metadata_json is a host-produced JSON object holding the account's readable
+	// field set (status timestamps, rate-limit / overload / temp-unschedulable
+	// windows and reason, last-used, expiry, session window, group ids, priority,
+	// concurrency, quota dimension, extra config, proxy, and any future field).
+	// Keys are the account model's field names. Times are RFC3339 strings (JSON
+	// null when unset). Only two things are withheld: the raw Credentials blob
+	// (the refresh_token — a long-lived secret the outbound-identity RPC does not
+	// hand out; the short-lived access token and proxy URL come from that RPC), and
+	// the Groups/AccountGroups relation graphs (cyclic — group_ids conveys
+	// membership). Plugins read whatever keys they need; the host does not have to
+	// change when the account model gains a field.
+	MetadataJson  []byte `protobuf:"bytes,20,opt,name=metadata_json,json=metadataJson,proto3" json:"metadata_json,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *AccountInfo) Reset() {
+	*x = AccountInfo{}
+	mi := &file_plugin_proto_msgTypes[29]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *AccountInfo) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*AccountInfo) ProtoMessage() {}
+
+func (x *AccountInfo) ProtoReflect() protoreflect.Message {
+	mi := &file_plugin_proto_msgTypes[29]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use AccountInfo.ProtoReflect.Descriptor instead.
+func (*AccountInfo) Descriptor() ([]byte, []int) {
+	return file_plugin_proto_rawDescGZIP(), []int{29}
+}
+
+func (x *AccountInfo) GetId() int64 {
+	if x != nil {
+		return x.Id
+	}
+	return 0
+}
+
+func (x *AccountInfo) GetPlatform() string {
+	if x != nil {
+		return x.Platform
+	}
+	return ""
+}
+
+func (x *AccountInfo) GetAccountType() string {
+	if x != nil {
+		return x.AccountType
+	}
+	return ""
+}
+
+func (x *AccountInfo) GetName() string {
+	if x != nil {
+		return x.Name
+	}
+	return ""
+}
+
+func (x *AccountInfo) GetStatus() string {
+	if x != nil {
+		return x.Status
+	}
+	return ""
+}
+
+func (x *AccountInfo) GetSchedulable() bool {
+	if x != nil {
+		return x.Schedulable
+	}
+	return false
+}
+
+func (x *AccountInfo) GetIsShadow() bool {
+	if x != nil {
+		return x.IsShadow
+	}
+	return false
+}
+
+func (x *AccountInfo) GetMetadataJson() []byte {
+	if x != nil {
+		return x.MetadataJson
+	}
+	return nil
+}
+
 type ResolveOutboundIdentityRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	AccountId     int64                  `protobuf:"varint,1,opt,name=account_id,json=accountId,proto3" json:"account_id,omitempty"`
@@ -1756,7 +1899,7 @@ type ResolveOutboundIdentityRequest struct {
 
 func (x *ResolveOutboundIdentityRequest) Reset() {
 	*x = ResolveOutboundIdentityRequest{}
-	mi := &file_plugin_proto_msgTypes[29]
+	mi := &file_plugin_proto_msgTypes[30]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1768,7 +1911,7 @@ func (x *ResolveOutboundIdentityRequest) String() string {
 func (*ResolveOutboundIdentityRequest) ProtoMessage() {}
 
 func (x *ResolveOutboundIdentityRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_plugin_proto_msgTypes[29]
+	mi := &file_plugin_proto_msgTypes[30]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1781,7 +1924,7 @@ func (x *ResolveOutboundIdentityRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ResolveOutboundIdentityRequest.ProtoReflect.Descriptor instead.
 func (*ResolveOutboundIdentityRequest) Descriptor() ([]byte, []int) {
-	return file_plugin_proto_rawDescGZIP(), []int{29}
+	return file_plugin_proto_rawDescGZIP(), []int{30}
 }
 
 func (x *ResolveOutboundIdentityRequest) GetAccountId() int64 {
@@ -1806,7 +1949,7 @@ type ResolveOutboundIdentityResponse struct {
 
 func (x *ResolveOutboundIdentityResponse) Reset() {
 	*x = ResolveOutboundIdentityResponse{}
-	mi := &file_plugin_proto_msgTypes[30]
+	mi := &file_plugin_proto_msgTypes[31]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1818,7 +1961,7 @@ func (x *ResolveOutboundIdentityResponse) String() string {
 func (*ResolveOutboundIdentityResponse) ProtoMessage() {}
 
 func (x *ResolveOutboundIdentityResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_plugin_proto_msgTypes[30]
+	mi := &file_plugin_proto_msgTypes[31]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1831,7 +1974,7 @@ func (x *ResolveOutboundIdentityResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ResolveOutboundIdentityResponse.ProtoReflect.Descriptor instead.
 func (*ResolveOutboundIdentityResponse) Descriptor() ([]byte, []int) {
-	return file_plugin_proto_rawDescGZIP(), []int{30}
+	return file_plugin_proto_rawDescGZIP(), []int{31}
 }
 
 func (x *ResolveOutboundIdentityResponse) GetFound() bool {
@@ -2010,10 +2153,20 @@ const file_plugin_proto_rawDesc = "" +
 	"\x04keys\x18\x01 \x03(\tR\x04keys\"T\n" +
 	"\x13ListAccountsRequest\x12\x1a\n" +
 	"\bplatform\x18\x01 \x01(\tR\bplatform\x12!\n" +
-	"\faccount_type\x18\x02 \x01(\tR\vaccountType\"7\n" +
+	"\faccount_type\x18\x02 \x01(\tR\vaccountType\"s\n" +
 	"\x14ListAccountsResponse\x12\x1f\n" +
 	"\vaccount_ids\x18\x01 \x03(\x03R\n" +
-	"accountIds\"?\n" +
+	"accountIds\x12:\n" +
+	"\baccounts\x18\x02 \x03(\v2\x1e.sub2api.plugin.v1.AccountInfoR\baccounts\"\xec\x01\n" +
+	"\vAccountInfo\x12\x0e\n" +
+	"\x02id\x18\x01 \x01(\x03R\x02id\x12\x1a\n" +
+	"\bplatform\x18\x02 \x01(\tR\bplatform\x12!\n" +
+	"\faccount_type\x18\x03 \x01(\tR\vaccountType\x12\x12\n" +
+	"\x04name\x18\x04 \x01(\tR\x04name\x12\x16\n" +
+	"\x06status\x18\x05 \x01(\tR\x06status\x12 \n" +
+	"\vschedulable\x18\x06 \x01(\bR\vschedulable\x12\x1b\n" +
+	"\tis_shadow\x18\a \x01(\bR\bisShadow\x12#\n" +
+	"\rmetadata_json\x18\x14 \x01(\fR\fmetadataJson\"?\n" +
 	"\x1eResolveOutboundIdentityRequest\x12\x1d\n" +
 	"\n" +
 	"account_id\x18\x01 \x01(\x03R\taccountId\"\x80\x03\n" +
@@ -2058,7 +2211,7 @@ func file_plugin_proto_rawDescGZIP() []byte {
 	return file_plugin_proto_rawDescData
 }
 
-var file_plugin_proto_msgTypes = make([]protoimpl.MessageInfo, 34)
+var file_plugin_proto_msgTypes = make([]protoimpl.MessageInfo, 35)
 var file_plugin_proto_goTypes = []any{
 	(*GetInfoRequest)(nil),                  // 0: sub2api.plugin.v1.GetInfoRequest
 	(*GetInfoResponse)(nil),                 // 1: sub2api.plugin.v1.GetInfoResponse
@@ -2089,54 +2242,56 @@ var file_plugin_proto_goTypes = []any{
 	(*KVListResponse)(nil),                  // 26: sub2api.plugin.v1.KVListResponse
 	(*ListAccountsRequest)(nil),             // 27: sub2api.plugin.v1.ListAccountsRequest
 	(*ListAccountsResponse)(nil),            // 28: sub2api.plugin.v1.ListAccountsResponse
-	(*ResolveOutboundIdentityRequest)(nil),  // 29: sub2api.plugin.v1.ResolveOutboundIdentityRequest
-	(*ResolveOutboundIdentityResponse)(nil), // 30: sub2api.plugin.v1.ResolveOutboundIdentityResponse
-	nil,                                     // 31: sub2api.plugin.v1.ForwardRequestStart.HeadersEntry
-	nil,                                     // 32: sub2api.plugin.v1.ForwardResponseStart.HeadersEntry
-	nil,                                     // 33: sub2api.plugin.v1.ResolveOutboundIdentityResponse.HeadersEntry
+	(*AccountInfo)(nil),                     // 29: sub2api.plugin.v1.AccountInfo
+	(*ResolveOutboundIdentityRequest)(nil),  // 30: sub2api.plugin.v1.ResolveOutboundIdentityRequest
+	(*ResolveOutboundIdentityResponse)(nil), // 31: sub2api.plugin.v1.ResolveOutboundIdentityResponse
+	nil,                                     // 32: sub2api.plugin.v1.ForwardRequestStart.HeadersEntry
+	nil,                                     // 33: sub2api.plugin.v1.ForwardResponseStart.HeadersEntry
+	nil,                                     // 34: sub2api.plugin.v1.ResolveOutboundIdentityResponse.HeadersEntry
 }
 var file_plugin_proto_depIdxs = []int32{
-	31, // 0: sub2api.plugin.v1.ForwardRequestStart.headers:type_name -> sub2api.plugin.v1.ForwardRequestStart.HeadersEntry
+	32, // 0: sub2api.plugin.v1.ForwardRequestStart.headers:type_name -> sub2api.plugin.v1.ForwardRequestStart.HeadersEntry
 	11, // 1: sub2api.plugin.v1.ForwardRequest.start:type_name -> sub2api.plugin.v1.ForwardRequestStart
-	32, // 2: sub2api.plugin.v1.ForwardResponseStart.headers:type_name -> sub2api.plugin.v1.ForwardResponseStart.HeadersEntry
+	33, // 2: sub2api.plugin.v1.ForwardResponseStart.headers:type_name -> sub2api.plugin.v1.ForwardResponseStart.HeadersEntry
 	13, // 3: sub2api.plugin.v1.ForwardResponse.start:type_name -> sub2api.plugin.v1.ForwardResponseStart
 	14, // 4: sub2api.plugin.v1.ForwardResponse.end:type_name -> sub2api.plugin.v1.ForwardResponseEnd
 	15, // 5: sub2api.plugin.v1.ForwardResponse.error:type_name -> sub2api.plugin.v1.ForwardResponseError
-	33, // 6: sub2api.plugin.v1.ResolveOutboundIdentityResponse.headers:type_name -> sub2api.plugin.v1.ResolveOutboundIdentityResponse.HeadersEntry
-	10, // 7: sub2api.plugin.v1.ForwardRequestStart.HeadersEntry.value:type_name -> sub2api.plugin.v1.HeaderValues
-	10, // 8: sub2api.plugin.v1.ForwardResponseStart.HeadersEntry.value:type_name -> sub2api.plugin.v1.HeaderValues
-	10, // 9: sub2api.plugin.v1.ResolveOutboundIdentityResponse.HeadersEntry.value:type_name -> sub2api.plugin.v1.HeaderValues
-	0,  // 10: sub2api.plugin.v1.TransportPlugin.GetInfo:input_type -> sub2api.plugin.v1.GetInfoRequest
-	2,  // 11: sub2api.plugin.v1.TransportPlugin.Health:input_type -> sub2api.plugin.v1.HealthRequest
-	4,  // 12: sub2api.plugin.v1.TransportPlugin.ValidateConfig:input_type -> sub2api.plugin.v1.ValidateConfigRequest
-	6,  // 13: sub2api.plugin.v1.TransportPlugin.ApplyConfig:input_type -> sub2api.plugin.v1.ApplyConfigRequest
-	8,  // 14: sub2api.plugin.v1.TransportPlugin.TestConfig:input_type -> sub2api.plugin.v1.TestConfigRequest
-	12, // 15: sub2api.plugin.v1.TransportPlugin.Forward:input_type -> sub2api.plugin.v1.ForwardRequest
-	17, // 16: sub2api.plugin.v1.TransportPlugin.InitHostServices:input_type -> sub2api.plugin.v1.InitHostServicesRequest
-	19, // 17: sub2api.plugin.v1.HostService.KVGet:input_type -> sub2api.plugin.v1.KVGetRequest
-	21, // 18: sub2api.plugin.v1.HostService.KVSet:input_type -> sub2api.plugin.v1.KVSetRequest
-	23, // 19: sub2api.plugin.v1.HostService.KVDelete:input_type -> sub2api.plugin.v1.KVDeleteRequest
-	25, // 20: sub2api.plugin.v1.HostService.KVList:input_type -> sub2api.plugin.v1.KVListRequest
-	27, // 21: sub2api.plugin.v1.HostService.ListAccounts:input_type -> sub2api.plugin.v1.ListAccountsRequest
-	29, // 22: sub2api.plugin.v1.HostService.ResolveOutboundIdentity:input_type -> sub2api.plugin.v1.ResolveOutboundIdentityRequest
-	1,  // 23: sub2api.plugin.v1.TransportPlugin.GetInfo:output_type -> sub2api.plugin.v1.GetInfoResponse
-	3,  // 24: sub2api.plugin.v1.TransportPlugin.Health:output_type -> sub2api.plugin.v1.HealthResponse
-	5,  // 25: sub2api.plugin.v1.TransportPlugin.ValidateConfig:output_type -> sub2api.plugin.v1.ValidateConfigResponse
-	7,  // 26: sub2api.plugin.v1.TransportPlugin.ApplyConfig:output_type -> sub2api.plugin.v1.ApplyConfigResponse
-	9,  // 27: sub2api.plugin.v1.TransportPlugin.TestConfig:output_type -> sub2api.plugin.v1.TestConfigResponse
-	16, // 28: sub2api.plugin.v1.TransportPlugin.Forward:output_type -> sub2api.plugin.v1.ForwardResponse
-	18, // 29: sub2api.plugin.v1.TransportPlugin.InitHostServices:output_type -> sub2api.plugin.v1.InitHostServicesResponse
-	20, // 30: sub2api.plugin.v1.HostService.KVGet:output_type -> sub2api.plugin.v1.KVGetResponse
-	22, // 31: sub2api.plugin.v1.HostService.KVSet:output_type -> sub2api.plugin.v1.KVSetResponse
-	24, // 32: sub2api.plugin.v1.HostService.KVDelete:output_type -> sub2api.plugin.v1.KVDeleteResponse
-	26, // 33: sub2api.plugin.v1.HostService.KVList:output_type -> sub2api.plugin.v1.KVListResponse
-	28, // 34: sub2api.plugin.v1.HostService.ListAccounts:output_type -> sub2api.plugin.v1.ListAccountsResponse
-	30, // 35: sub2api.plugin.v1.HostService.ResolveOutboundIdentity:output_type -> sub2api.plugin.v1.ResolveOutboundIdentityResponse
-	23, // [23:36] is the sub-list for method output_type
-	10, // [10:23] is the sub-list for method input_type
-	10, // [10:10] is the sub-list for extension type_name
-	10, // [10:10] is the sub-list for extension extendee
-	0,  // [0:10] is the sub-list for field type_name
+	29, // 6: sub2api.plugin.v1.ListAccountsResponse.accounts:type_name -> sub2api.plugin.v1.AccountInfo
+	34, // 7: sub2api.plugin.v1.ResolveOutboundIdentityResponse.headers:type_name -> sub2api.plugin.v1.ResolveOutboundIdentityResponse.HeadersEntry
+	10, // 8: sub2api.plugin.v1.ForwardRequestStart.HeadersEntry.value:type_name -> sub2api.plugin.v1.HeaderValues
+	10, // 9: sub2api.plugin.v1.ForwardResponseStart.HeadersEntry.value:type_name -> sub2api.plugin.v1.HeaderValues
+	10, // 10: sub2api.plugin.v1.ResolveOutboundIdentityResponse.HeadersEntry.value:type_name -> sub2api.plugin.v1.HeaderValues
+	0,  // 11: sub2api.plugin.v1.TransportPlugin.GetInfo:input_type -> sub2api.plugin.v1.GetInfoRequest
+	2,  // 12: sub2api.plugin.v1.TransportPlugin.Health:input_type -> sub2api.plugin.v1.HealthRequest
+	4,  // 13: sub2api.plugin.v1.TransportPlugin.ValidateConfig:input_type -> sub2api.plugin.v1.ValidateConfigRequest
+	6,  // 14: sub2api.plugin.v1.TransportPlugin.ApplyConfig:input_type -> sub2api.plugin.v1.ApplyConfigRequest
+	8,  // 15: sub2api.plugin.v1.TransportPlugin.TestConfig:input_type -> sub2api.plugin.v1.TestConfigRequest
+	12, // 16: sub2api.plugin.v1.TransportPlugin.Forward:input_type -> sub2api.plugin.v1.ForwardRequest
+	17, // 17: sub2api.plugin.v1.TransportPlugin.InitHostServices:input_type -> sub2api.plugin.v1.InitHostServicesRequest
+	19, // 18: sub2api.plugin.v1.HostService.KVGet:input_type -> sub2api.plugin.v1.KVGetRequest
+	21, // 19: sub2api.plugin.v1.HostService.KVSet:input_type -> sub2api.plugin.v1.KVSetRequest
+	23, // 20: sub2api.plugin.v1.HostService.KVDelete:input_type -> sub2api.plugin.v1.KVDeleteRequest
+	25, // 21: sub2api.plugin.v1.HostService.KVList:input_type -> sub2api.plugin.v1.KVListRequest
+	27, // 22: sub2api.plugin.v1.HostService.ListAccounts:input_type -> sub2api.plugin.v1.ListAccountsRequest
+	30, // 23: sub2api.plugin.v1.HostService.ResolveOutboundIdentity:input_type -> sub2api.plugin.v1.ResolveOutboundIdentityRequest
+	1,  // 24: sub2api.plugin.v1.TransportPlugin.GetInfo:output_type -> sub2api.plugin.v1.GetInfoResponse
+	3,  // 25: sub2api.plugin.v1.TransportPlugin.Health:output_type -> sub2api.plugin.v1.HealthResponse
+	5,  // 26: sub2api.plugin.v1.TransportPlugin.ValidateConfig:output_type -> sub2api.plugin.v1.ValidateConfigResponse
+	7,  // 27: sub2api.plugin.v1.TransportPlugin.ApplyConfig:output_type -> sub2api.plugin.v1.ApplyConfigResponse
+	9,  // 28: sub2api.plugin.v1.TransportPlugin.TestConfig:output_type -> sub2api.plugin.v1.TestConfigResponse
+	16, // 29: sub2api.plugin.v1.TransportPlugin.Forward:output_type -> sub2api.plugin.v1.ForwardResponse
+	18, // 30: sub2api.plugin.v1.TransportPlugin.InitHostServices:output_type -> sub2api.plugin.v1.InitHostServicesResponse
+	20, // 31: sub2api.plugin.v1.HostService.KVGet:output_type -> sub2api.plugin.v1.KVGetResponse
+	22, // 32: sub2api.plugin.v1.HostService.KVSet:output_type -> sub2api.plugin.v1.KVSetResponse
+	24, // 33: sub2api.plugin.v1.HostService.KVDelete:output_type -> sub2api.plugin.v1.KVDeleteResponse
+	26, // 34: sub2api.plugin.v1.HostService.KVList:output_type -> sub2api.plugin.v1.KVListResponse
+	28, // 35: sub2api.plugin.v1.HostService.ListAccounts:output_type -> sub2api.plugin.v1.ListAccountsResponse
+	31, // 36: sub2api.plugin.v1.HostService.ResolveOutboundIdentity:output_type -> sub2api.plugin.v1.ResolveOutboundIdentityResponse
+	24, // [24:37] is the sub-list for method output_type
+	11, // [11:24] is the sub-list for method input_type
+	11, // [11:11] is the sub-list for extension type_name
+	11, // [11:11] is the sub-list for extension extendee
+	0,  // [0:11] is the sub-list for field type_name
 }
 
 func init() { file_plugin_proto_init() }
@@ -2161,7 +2316,7 @@ func file_plugin_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_plugin_proto_rawDesc), len(file_plugin_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   34,
+			NumMessages:   35,
 			NumExtensions: 0,
 			NumServices:   2,
 		},
