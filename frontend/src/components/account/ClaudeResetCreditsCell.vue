@@ -26,7 +26,7 @@
       {{ t('admin.accounts.claudeResetCredits.retry') }}
     </button>
     <ConfirmDialog :show="!!selected" :title="t('admin.accounts.claudeResetCredits.redeem')" :message="t('admin.accounts.claudeResetCredits.confirm')" danger @confirm="confirm" @cancel="selected = null" />
-    <TotpStepUpDialog :controller="stepUp" />
+    <TotpStepUpDialog v-if="selected || resetting" :controller="stepUp" />
   </div>
 </template>
 
