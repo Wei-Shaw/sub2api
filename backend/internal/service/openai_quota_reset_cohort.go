@@ -2,7 +2,6 @@ package service
 
 import (
 	"context"
-	"fmt"
 	"time"
 
 	"github.com/google/uuid"
@@ -33,35 +32,16 @@ func notifyOpenAIAutoResetScoped(ctx context.Context, accountID int64) {
 	service.Notify(accountID)
 }
 
-// Only a fresh, positive quota observation is evidence of exhaustion. Rate
-// limits, overload, occupied slots and transport failures are never evidence.
-func openAIResetQuotaExhausted(account *Account, now time.Time) bool {
-	if account == nil || openAIAutoResetSnapshotStale(account.Extra, now) {
-		return false
-	}
-	observed, err := parseTime(fmt.Sprint(account.Extra["codex_usage_updated_at"]))
-	if err != nil || observed.After(now.Add(time.Second)) {
-		return false
-	}
-	for _, window := range []string{"5h", "7d"} {
-		reset, err := parseTime(fmt.Sprint(account.Extra["codex_"+window+"_reset_at"]))
-		if err != nil || !reset.After(now) {
-			continue
-		}
-		value, ok := resolveOpenAIQuotaUtilization(account.Extra, window, now)
-		if ok && value >= 1 {
-			return true
-		}
-	}
-	return false
-}
-
 func (s *OpenAIQuotaAutoResetService) exhaustedCohort(ctx context.Context, target *Account, usage *OpenAIQuotaUsage, now time.Time) bool {
 	scopeRaw, ok := s.scopes.Load(target.ID)
 	if !ok {
 		return false
 	}
-	scope := scopeRaw.(openAIResetScope)
+	scope, ok := scopeRaw.(openAIResetScope)
+	if !ok {
+		s.scopes.Delete(target.ID)
+		return false
+	}
 	if !scope.expires.After(now) {
 		s.scopes.Delete(target.ID)
 		return false
