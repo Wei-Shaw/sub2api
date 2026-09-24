@@ -456,6 +456,9 @@ func TestForwardAsRawChatCompletions_NormalizesGLMReasoningEffortForUpstream(t *
 	require.NoError(t, err)
 	require.NotNil(t, result)
 	require.Equal(t, "max", gjson.GetBytes(upstream.lastBody, "reasoning_effort").String())
+	require.NotNil(t, result.ReasoningEffort)
+	require.Equal(t, "max", *result.ReasoningEffort)
+	require.Equal(t, 3.0, reasoningEffortBillingMultiplier(*result.ReasoningEffort, map[string]float64{"xhigh": 2, "max": 3}))
 }
 
 func TestForwardAsRawChatCompletions_SilentRefusalTriggersFailover(t *testing.T) {

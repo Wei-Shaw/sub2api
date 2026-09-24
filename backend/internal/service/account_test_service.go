@@ -188,10 +188,17 @@ func (s *AccountTestService) FetchOpenAIAccountModels(ctx context.Context, accou
 	if err != nil {
 		return nil, err
 	}
+	// The shared discovery response is the raw upstream catalog. Project it
+	// through the account mapping before exposing it in the admin picker so
+	// configured aliases remain public names and unconfigured models stay out.
+	projectedBody, err := projectAccountModelsBody(response.Body, account, nil, false)
+	if err != nil {
+		return nil, fmt.Errorf("project OpenAI account models: %w", err)
+	}
 	var payload struct {
 		Data []openai.Model `json:"data"`
 	}
-	if err := json.Unmarshal(response.Body, &payload); err != nil {
+	if err := json.Unmarshal(projectedBody, &payload); err != nil {
 		return nil, fmt.Errorf("decode OpenAI account models: %w", err)
 	}
 	// Every entry in the picker is labelled by the same rule: the upstream display
@@ -211,20 +218,40 @@ func (s *AccountTestService) FetchOpenAIAccountModels(ctx context.Context, accou
 	// Add locally supported image choices only to the OAuth test picker; keep the
 	// shared upstream catalog and API-key discovery authoritative.
 	if account != nil && account.IsOpenAIOAuthLike() {
+		passthrough := account.IsOpenAIPassthroughEnabled()
 		seen := make(map[string]bool, len(payload.Data))
 		for _, model := range payload.Data {
 			seen[model.ID] = true
 		}
 		for _, model := range openai.DefaultModels {
 			if IsGPTImageGenerationModel(model.ID) && account.IsModelSupported(model.ID) && !seen[model.ID] {
+				if !passthrough && !IsGPTImageGenerationModel(account.GetMappedModel(model.ID)) {
+					continue
+				}
 				payload.Data = append(payload.Data, model)
 				seen[model.ID] = true
 			}
 		}
-		for model := range account.GetModelMapping() {
-			if IsGPTImageGenerationModel(model) && !strings.Contains(model, "*") && !seen[model] {
-				payload.Data = append(payload.Data, openai.Model{ID: model, Object: "model", Type: "model", OwnedBy: "openai", DisplayName: openaiCodexDisplayName(model)})
+		// Image models that a configured alias points at are absent from the Codex
+		// manifest, so the projection alone cannot surface them. Resolve each public
+		// name to its target and keep the entry when that target is an image model.
+		// Judging by the target rather than the public name keeps a lookalike name
+		// (for example an alias spelled "gpt-image-*" that maps to a text model)
+		// from being synthesized into the picker.
+		// Passthrough keeps native image names without applying mapping targets.
+		for publicID := range account.GetModelMapping() {
+			if strings.Contains(publicID, "*") || seen[publicID] {
+				continue
 			}
+			target := publicID
+			if !passthrough {
+				target = account.GetMappedModel(publicID)
+			}
+			if !IsGPTImageGenerationModel(target) {
+				continue
+			}
+			payload.Data = append(payload.Data, openai.Model{ID: publicID, Object: "model", Type: "model", OwnedBy: "openai", DisplayName: openaiCodexDisplayName(publicID)})
+			seen[publicID] = true
 		}
 	}
 	return payload.Data, nil
@@ -272,7 +299,7 @@ func (s *AccountTestService) validateUpstreamBaseURL(raw string) (string, error)
 }
 
 // generateSessionString generates a Claude Code style session string.
-// The output format is determined by the UA version in claude.DefaultHeaders,
+// The output format is determined by the UA version in claude.DefaultHeaders(),
 // ensuring consistency between the user_id format and the UA sent to upstream.
 func generateSessionString() (string, error) {
 	b := make([]byte, 32)
@@ -281,7 +308,7 @@ func generateSessionString() (string, error) {
 	}
 	hex64 := hex.EncodeToString(b)
 	sessionUUID := uuid.New().String()
-	uaVersion := ExtractCLIVersion(claude.DefaultHeaders["User-Agent"])
+	uaVersion := ExtractCLIVersion(claude.DefaultHeaders()["User-Agent"])
 	return FormatMetadataUserID(hex64, "", sessionUUID, uaVersion), nil
 }
 
@@ -535,7 +562,7 @@ func (s *AccountTestService) testClaudeAccountConnection(c *gin.Context, account
 	req.Header.Set("anthropic-version", "2023-06-01")
 
 	// Apply Claude Code client headers
-	for key, value := range claude.DefaultHeaders {
+	for key, value := range claude.DefaultHeaders() {
 		req.Header.Set(key, value)
 	}
 
@@ -2102,6 +2129,9 @@ func (s *AccountTestService) testOpenAIChatCompletionsConnection(
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "text/event-stream")
 	req.Header.Set("Authorization", "Bearer "+authToken)
+
+	// 官方 OpenCode / Command Code 上游收敛为规范客户端 UA，与真实转发路径一致。
+	applyOpenCodeUpstreamUserAgent(account, apiURL, req.Header)
 
 	// 账号级请求头覆写：测试请求与真实转发保持一致的最终头
 	account.ApplyHeaderOverrides(req.Header)

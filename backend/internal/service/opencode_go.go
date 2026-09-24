@@ -27,6 +27,7 @@ const (
 // 供 /v1/models 在尚未同步上游列表时回退，以及账号白名单预填。
 func DefaultOpenCodeGoModelIDs() []string {
 	return []string{
+		"grok-4.7",
 		"grok-4.6",
 		"gpt-5.6-luna",
 		"glm-5.3-flash",
@@ -321,10 +322,16 @@ func (a *Account) ResolveOpenCodeGoUpstreamProtocol(model string) string {
 	}
 }
 
+// openCodeGoQuotaURL 根据 base_url 解析 OpenCode Go 额度端点。
+// /zen/go/v1（Chat 协议默认，DefaultOpenCodeGoBaseURL）与 /zen/go
+// （Anthropic 协议默认，DefaultOpenCodeGoAnthropicBaseURL）两种 base 统一
+// 剥掉尾部 /v1 后拼回 /v1/usage（实测 /zen/go/usage → 404），协议切换不
+// 影响额度探测端点。与 kimiQuotaURL 同一惯例。
 func openCodeGoQuotaURL(baseURL string) string {
 	base := strings.TrimRight(strings.TrimSpace(baseURL), "/")
 	if base == "" {
 		base = DefaultOpenCodeGoBaseURL
 	}
-	return base + openCodeGoUsagePath
+	base = strings.TrimSuffix(base, "/v1")
+	return base + "/v1" + openCodeGoUsagePath
 }

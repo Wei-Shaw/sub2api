@@ -998,6 +998,11 @@ func filterSchedulerExtra(extra map[string]any) map[string]any {
 		"mixed_scheduling",
 		"window_cost_limit",
 		"window_cost_sticky_reserve",
+		// RPM 门与窗口费用门一样跑在本投影上：isAccountSchedulableForRPM 读 base_rpm，
+		// 缺失时 GetBaseRPM() 返回 0 并直接放行，已配置限流的账号会被超额调度。
+		"base_rpm",
+		"rpm_strategy",
+		"rpm_sticky_buffer",
 		"max_sessions",
 		"session_idle_timeout_minutes",
 		"openai_oauth_responses_websockets_v2_enabled",

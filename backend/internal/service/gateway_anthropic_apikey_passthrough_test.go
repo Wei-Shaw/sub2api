@@ -913,7 +913,7 @@ func TestGatewayService_AnthropicOAuthMimic_RewritesSystemWithBillingBlock(t *te
 				require.Truef(t, anthropicBetaTokensContains(finalBeta, beta), "missing mimic beta %s", beta)
 			}
 			require.False(t, anthropicBetaTokensContains(finalBeta, "client-only-beta"))
-			for key, value := range claude.DefaultHeaders {
+			for key, value := range claude.DefaultHeaders() {
 				require.Equal(t, value, getHeaderRaw(upstream.lastReq.Header, key), "mimic fingerprint header %s", key)
 			}
 			require.NotEmpty(t, getHeaderRaw(upstream.lastReq.Header, "x-client-request-id"))
@@ -1768,4 +1768,46 @@ func TestGatewayService_AnthropicAPIKeyPassthrough_Non2xxRecordsOllamaActivity(t
 
 	_, ok := deferred.lastUsedUpdates.Load(int64(604))
 	require.True(t, ok, "Anthropic passthrough non-2xx on Ollama account must record activity via handleErrorResponse")
+}
+
+func TestOpus55RejectsUnsupportedParametersBeforeMimicry(t *testing.T) {
+	for _, typ := range []string{AccountTypeOAuth, AccountTypeAPIKey} {
+		for _, field := range []string{`"thinking":{"type":"disabled"}`, `"thinking":{"type":"enabled","budget_tokens":1024}`, `"tool_choice":{"type":"any"}`, `"tool_choice":{"type":"tool","name":"lookup"}`} {
+			for _, count := range []bool{false, true} {
+				rec := httptest.NewRecorder()
+				c, _ := gin.CreateTestContext(rec)
+				c.Request = httptest.NewRequest(http.MethodPost, "/v1/messages", nil)
+				model := "claude-opus-5-5"
+				account := &Account{ID: 1, Platform: PlatformAnthropic, Type: typ}
+				if typ == AccountTypeAPIKey {
+					model = "public-opus"
+					account.Credentials = map[string]any{"model_mapping": map[string]any{model: "claude-opus-5-5"}}
+				}
+				body := []byte(`{"model":"` + model + `","messages":[{"role":"user","content":"hello"}],` + field + `}`)
+				parsed := &ParsedRequest{Model: model, Body: NewRequestBodyRef(body)}
+				svc := &GatewayService{}
+				var err error
+				if count {
+					err = svc.ForwardCountTokens(context.Background(), c, account, parsed)
+				} else {
+					_, err = svc.Forward(context.Background(), c, account, parsed)
+				}
+				require.Error(t, err)
+				require.Equal(t, http.StatusBadRequest, rec.Code)
+				require.Contains(t, rec.Body.String(), "invalid_request_error")
+			}
+		}
+	}
+}
+
+func TestOpus55ThinkingDefaultPreservesSignedHistory(t *testing.T) {
+	body := []byte(`{"model":"claude-opus-5-5","messages":[{"role":"assistant","content":[{"type":"thinking","thinking":"","signature":"signed"},{"type":"redacted_thinking","data":"encrypted"},{"type":"tool_use","id":"toolu_1","name":"lookup","input":{}}]},{"role":"user","content":[{"type":"tool_result","tool_use_id":"toolu_1","content":"ok"}]}],"tool_choice":{"type":"none"},"thinking":{"type":"adaptive","display":"omitted"}}`)
+	require.Equal(t, string(body), string(FilterThinkingBlocks(body, "claude-opus-5-5")))
+	withoutThinking, _ := deleteJSONPathBytes(body, "thinking")
+	require.Equal(t, string(withoutThinking), string(FilterThinkingBlocks(withoutThinking, "claude-opus-5-5")))
+	out, _ := normalizeClaudeOAuthRequestBody(body, "claude-opus-5-5", claudeOAuthNormalizeOptions{})
+	require.Equal(t, "none", gjson.GetBytes(out, "tool_choice.type").String())
+	require.False(t, gjson.GetBytes(out, "output_config.effort").Exists(), "omission uses the official medium default")
+	require.Equal(t, "omitted", gjson.GetBytes(out, "thinking.display").String())
+	require.JSONEq(t, gjson.GetBytes(body, "messages").Raw, gjson.GetBytes(out, "messages").Raw)
 }

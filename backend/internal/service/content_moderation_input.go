@@ -91,13 +91,19 @@ func (collector moderationTextCollector) collectLastAnthropicUserMessage(message
 	if len(array) == 0 {
 		return
 	}
-	last := array[len(array)-1]
-	if strings.ToLower(strings.TrimSpace(last.Get("role").String())) != "user" {
+	// Anthropic requests may append a system message after the user turn. It
+	// does not represent a new model/tool turn, so retain the latest user
+	// content while continuing to reject assistant/tool-ended loops.
+	lastUser := len(array) - 1
+	for lastUser >= 0 && strings.ToLower(strings.TrimSpace(array[lastUser].Get("role").String())) == "system" {
+		lastUser--
+	}
+	if lastUser < 0 || strings.ToLower(strings.TrimSpace(array[lastUser].Get("role").String())) != "user" {
 		return
 	}
 	var candidate []string
 	var candidateImages []string
-	collector.collectAnthropicUserContentValue(last.Get("content"), &candidate, &candidateImages)
+	collector.collectAnthropicUserContentValue(array[lastUser].Get("content"), &candidate, &candidateImages)
 	if normalizeContentModerationText(strings.Join(candidate, "\n")) == "" && len(candidateImages) == 0 {
 		return
 	}

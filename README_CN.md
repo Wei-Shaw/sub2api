@@ -735,7 +735,10 @@ OAuth / Setup Token 图片请求使用 Responses 主控模型调用 `image_gener
 简易模式适合个人开发者或内部团队快速使用，不依赖完整 SaaS 功能。
 
 - 启用方式：设置环境变量 `RUN_MODE=simple`
+- 默认每次启动会补齐默认分组。设置 `SIMPLE_MODE_AUTO_CREATE_DEFAULT_GROUPS=false`（或 YAML `simple_mode.auto_create_default_groups: false`）可自行管理分组。默认值为 `true`；关闭后不删除已有分组，不改变运行时自动绑定或管理员并发设置。
 - 功能差异：隐藏 SaaS 相关功能，跳过计费流程
+- 可选密钥窗口：设置 `SIMPLE_MODE_KEY_RATE_LIMIT_ENABLED=true` 后，按每个 API Key 配置的 5 小时、1 天、7 天消费窗口进行限制，默认值为 `false`；启用后仍跳过余额和订阅扣费。
+- 窗口限制以数据库为准，只记录 API Key 窗口用量。它在请求完成后记账，并发中的请求可能以各自最终费用超过窗口上限。启用前的历史用量不会自动补算。
 - 安全注意事项：生产环境需同时设置 `SIMPLE_MODE_CONFIRM=true` 才允许启动
 
 ---

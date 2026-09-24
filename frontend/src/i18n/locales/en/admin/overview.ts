@@ -122,10 +122,42 @@ export default {
         cronExpr: 'Cron Expression',
         cronHint: 'e.g. "0 2 * * *" means every day at 2:00 AM',
         retainDays: 'Backup Expire Days',
-        retainDaysHint: 'Backup files auto-delete after this many days, 0 = never expire',
+        retainDaysHint: 'Ordinary backups are deleted after this many days; 0 = no age limit',
         retainCount: 'Max Retain Count',
-        retainCountHint: 'Maximum number of backups to keep, 0 = unlimited',
+        retainCountHint: 'Maximum ordinary backups to keep; 0 = no count limit',
+        ordinaryRetention: 'Ordinary backup retention',
+        ordinaryHint: 'Clean up the oldest ordinary backups when either limit is reached. Monthly archives are retained separately.',
+        preview: 'Retention preview',
+        previewBoth: 'Keep up to {count} ordinary backups from the last {days} days.',
+        previewDays: 'Keep ordinary backups from the last {days} days, with no count limit.',
+        previewCount: 'Keep the latest {count} ordinary backups, with no age limit.',
+        previewUnlimited: 'Ordinary backups are not automatically deleted.',
         saved: 'Schedule configuration saved'
+      },
+      archive: {
+        title: 'Monthly archives',
+        enabled: 'Enable',
+        dates: 'Archive dates (select multiple)',
+        selectDates: 'Select at least one archive date',
+        selectedDates: '{count} dates selected',
+        day: 'Day {day}',
+        monthEnd: 'Month end',
+        done: 'Done',
+        datesHint: 'Archive the first successful scheduled backup for each selected date, using its start date and the schedule time zone.',
+        retention: 'Archive retention',
+        count: 'Number of archives to keep',
+        copies: 'copies',
+        forever: 'Keep forever',
+        foreverHint: 'Keep all new archives permanently. Existing permanent archives remain protected after settings change.',
+        countHint: 'Count non-permanent archives across all selected dates together; delete the oldest when the limit is exceeded.',
+        fallbackHint: 'If no backup succeeds on a selected date, use the next successful backup in that month. Missing dates use month end. Count each backup only once.',
+        independentHint: 'Archives reuse scheduled backups and do not count toward ordinary retention. No archive is created if the month has no later successful backup.',
+        disabledHint: 'Disabling stops new archives. Existing archives keep their previous retention policy.',
+        invalidRetention: 'Retention days and counts must be non-negative integers. Non-permanent archives require at least 1 copy.',
+        preview: 'Archive one backup on {dates} each month: {retention}.',
+        retainLatest: 'keep the latest {count} archives in total',
+        badge: 'Monthly archive',
+        deleteConfirm: 'This is a monthly archive. Remove archive protection and permanently delete this backup? This cannot be undone.',
       },
       operations: {
         title: 'Backup Records',
@@ -390,10 +422,12 @@ export default {
 
     affiliates: {
       invitesDescription: 'View site-wide inviter and invitee relationships',
-      rebatesDescription: 'View recharge orders that generated affiliate rebates',
-      transfersDescription: 'View affiliate quota transfers into account balance',
+      rebatesDescription: 'View every affiliate rebate accrual from recharge orders, redeem codes, and admin recharges',
+      transfersDescription: 'View affiliate quota transfers into balance and offline withdrawals',
       errors: {
-        loadFailed: 'Failed to load affiliate records'
+        loadFailed: 'Failed to load affiliate records',
+        AFFILIATE_QUOTA_INSUFFICIENT: 'Insufficient available affiliate quota',
+        AFFILIATE_WITHDRAW_AMOUNT_INVALID: 'Invalid withdrawal amount'
       },
       records: {
         search: 'Search',
@@ -418,7 +452,33 @@ export default {
         historyQuotaAfter: 'Historical Rebate After',
         invitedAt: 'Invited At',
         rebatedAt: 'Rebated At',
-        transferredAt: 'Transferred At'
+        transferredAt: 'Transferred At',
+        outflowType: 'Type'
+      },
+      outflowTypes: {
+        transfer: 'To Balance',
+        withdraw: 'Offline Withdrawal'
+      },
+      withdraw: {
+        button: 'Record Offline Withdrawal',
+        title: 'Record Offline Withdrawal',
+        user: 'User',
+        userPlaceholder: 'Search by email or username',
+        noUserFound: 'No matching users',
+        changeUser: 'Change user',
+        availableQuota: 'Available quota',
+        frozenHint: 'Rebates still in the freeze period are not included in the available quota',
+        amount: 'Withdrawal amount (USD)',
+        amountHint: 'Enter the amount already paid to this user outside the site',
+        fillAll: 'All',
+        warning: 'Recording deducts this amount from the user\'s available affiliate quota and cannot be undone. Make sure the off-site payment is complete.',
+        submit: 'Confirm',
+        submitting: 'Recording...',
+        success: 'Recorded offline withdrawal of {amount}; {remaining} still available',
+        replayed: 'This offline withdrawal of {amount} was already recorded and was not deducted again; {remaining} was left available after it',
+        uncertainHint: 'The last submission returned no result and may already be recorded. The user and amount are locked; submitting again retries the same registration and never deducts twice.',
+        amountRequired: 'Enter an amount greater than 0',
+        amountExceeds: 'Amount cannot exceed the available quota'
       },
       overview: {
         title: 'Affiliate User Overview',

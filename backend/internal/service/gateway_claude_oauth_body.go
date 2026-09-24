@@ -263,7 +263,7 @@ func normalizeClaudeOAuthRequestBody(body []byte, modelID string, opts claudeOAu
 	// temperature：真实 Claude Code CLI 总是发送 temperature（默认 1，客户端可覆盖）。
 	// 之前的实现直接 delete 会导致 payload 缺字段，与真实 CLI 字节级不一致。
 	// 策略：客户端传了什么就透传；没传则补默认 1。
-	if !gjson.GetBytes(out, "temperature").Exists() {
+	if !gjson.GetBytes(out, "temperature").Exists() && !claude.IsOpus55(modelID) {
 		if next, ok := setJSONValueBytes(out, "temperature", 1); ok {
 			out = next
 			modified = true
@@ -304,7 +304,7 @@ func normalizeClaudeOAuthRequestBody(body []byte, modelID string, opts claudeOAu
 	// - 其他形态（auto/any/none）原样透传
 	// 如果 body 里完全没有 tools（空数组），tool_choice 没意义时才删除
 	if !gjson.GetBytes(out, "tools").IsArray() || len(gjson.GetBytes(out, "tools").Array()) == 0 {
-		if gjson.GetBytes(out, "tool_choice").Exists() {
+		if !claude.IsOpus55(modelID) && gjson.GetBytes(out, "tool_choice").Exists() {
 			if next, ok := deleteJSONPathBytes(out, "tool_choice"); ok {
 				out = next
 				modified = true
@@ -767,14 +767,17 @@ func expandClaudeOAuthSystemPromptTextTemplate(body []byte, text string, expansi
 		return "", nil
 	}
 	expansionPrompt = defaultClaudeOAuthExpansionPrompt(expansionPrompt)
-	billingText, err := buildBillingAttributionText(body, claude.CLIVersion())
+	// 同一次展开内只取一次版本号，billing attribution / 指纹 / 占位符三处共用，
+	// 避免运行期版本翻转瞬间取到不同值。
+	cliVersion := claude.EffectiveCLIVersion()
+	billingText, err := buildBillingAttributionText(body, cliVersion)
 	if err != nil {
 		return "", err
 	}
-	fp := computeClaudeCodeFingerprint(body, claude.CLIVersion())
+	fp := computeClaudeCodeFingerprint(body, cliVersion)
 	replacer := strings.NewReplacer(
 		"{billing_header}", billingText,
-		"{cc_version}", claude.CLIVersion(),
+		"{cc_version}", cliVersion,
 		"{fp}", fp,
 		"{claude_code_system_prompt}", claudeCodeSystemPrompt,
 		"{claude_code_expansion_prompt}", expansionPrompt,
