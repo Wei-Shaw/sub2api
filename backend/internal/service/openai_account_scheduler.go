@@ -386,6 +386,9 @@ func (s *defaultOpenAIAccountScheduler) Select(
 	if s != nil && s.service != nil && s.service.openAIGroupRequiresPrivacySet(ctx, req.GroupID) {
 		req.RequirePrivacySet = true
 	}
+	ctx = context.WithValue(ctx, openAIResetScopeKey{}, openAIResetScope{
+		request: req, scheduler: s, expires: time.Now().Add(time.Minute),
+	})
 	start := time.Now()
 	// 命名返回值保证 defer 写入的耗时同时返回给调用方。
 	defer func() {
@@ -1806,6 +1809,20 @@ func (s *defaultOpenAIAccountScheduler) isAccountRequestCompatibleReason(ctx con
 		return s.lookupShadowParentAccount(ctx, id)
 	}) {
 		return false, "shadow_parent_unhealthy"
+	}
+	return s.isAccountStructurallyCompatibleReason(ctx, account, req)
+}
+
+// Shared with reset policy: intentionally excludes health, slots and quota.
+func (s *defaultOpenAIAccountScheduler) isAccountStructurallyCompatibleReason(ctx context.Context, account *Account, req OpenAIAccountScheduleRequest) (bool, string) {
+	if account == nil {
+		return false, "account_nil"
+	}
+	if req.RequirePrivacySet && !account.IsPrivacySet() {
+		return false, "privacy_not_set"
+	}
+	if !s.isAccountTransportCompatible(account, req.RequiredTransport) {
+		return false, "transport_mismatch"
 	}
 	if req.RequestedModel != "" && !account.IsModelSupported(req.RequestedModel) {
 		return false, "model_not_supported"
