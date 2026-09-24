@@ -243,7 +243,7 @@ func (s *ClaudeResetCreditService) organization(ctx context.Context, token, prox
 	if err != nil {
 		return "", infraerrors.ServiceUnavailable("CLAUDE_RESET_PROFILE_FAILED", "OAuth profile unavailable")
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	var body struct {
 		Organization struct {
 			UUID string `json:"uuid"`
@@ -268,7 +268,7 @@ func (s *ClaudeResetCreditService) claim(ctx context.Context, token, proxy strin
 	if err != nil {
 		return unknown
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode == 401 || resp.StatusCode == 403 {
 		return &ClaudeResetOutcome{Outcome: "ineligible", Reason: "authorization_rejected"}
 	}
