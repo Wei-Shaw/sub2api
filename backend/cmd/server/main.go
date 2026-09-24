@@ -156,6 +156,7 @@ func runMainServer() {
 	defer app.Cleanup()
 
 	// Initialize dataset collection (if enabled)
+	dataset.SetConfigReloader(app.SettingService)
 	datasetCleanup := dataset.InitializeDatasetCollection(context.Background(), cfg)
 	defer datasetCleanup()
 

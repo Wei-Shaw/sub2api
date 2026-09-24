@@ -9,7 +9,7 @@ import (
 // Worker periodically drains the collector and uploads batches to Google Drive.
 type Worker struct {
 	collector        *Collector
-	driveClient      *DriveClient
+	driveClient      DriveClientInterface
 	batchSize        int
 	batchMaxMB       int
 	batchIntervalSec int
@@ -20,7 +20,7 @@ type Worker struct {
 // NewWorker creates a new background worker.
 func NewWorker(
 	collector *Collector,
-	driveClient *DriveClient,
+	driveClient DriveClientInterface,
 	batchSize int,
 	batchMaxMB int,
 	batchIntervalSec int,
@@ -74,7 +74,8 @@ func (w *Worker) run() {
 }
 
 func (w *Worker) flushBatch(ctx context.Context) {
-	entries := w.collector.Drain(w.batchSize)
+	// Peek without removing (allows retry on failure)
+	entries := w.collector.Peek(w.batchSize)
 	if len(entries) == 0 {
 		return
 	}
@@ -92,12 +93,32 @@ func (w *Worker) flushBatch(ctx context.Context) {
 		entries = entries[:mid]
 	}
 
-	// Upload to Drive
-	fileID, err := w.driveClient.UploadBatch(ctx, entries)
+	// Upload with bounded retry
+	var fileID string
+	var err error
+	for attempt := 1; attempt <= 3; attempt++ {
+		uploadCtx, cancel := context.WithTimeout(ctx, 60*time.Second)
+		fileID, err = w.driveClient.UploadBatch(uploadCtx, entries)
+		cancel()
+
+		if err == nil {
+			break
+		}
+
+		if attempt < 3 {
+			backoff := time.Duration(attempt*2) * time.Second
+			log.Printf("[Dataset] Upload attempt %d/3 failed: %v (retry in %v)", attempt, err, backoff)
+			time.Sleep(backoff)
+		}
+	}
+
 	if err != nil {
-		log.Printf("[Dataset] Failed to upload batch: %v", err)
+		log.Printf("[Dataset] Failed to upload after 3 attempts: %v (entries retained for next tick)", err)
 		return
 	}
+
+	// Clear only after confirmed success
+	w.collector.Clear(len(entries))
 
 	total, dropped, buffered := w.collector.Stats()
 	log.Printf("[Dataset] Batch uploaded: file_id=%s entries=%d total=%d dropped=%d buffered=%d",

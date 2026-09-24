@@ -254,14 +254,19 @@ func (h *OpenAIGatewayHandler) ChatCompletions(c *gin.Context) {
 			forwardBody = h.gatewayService.ReplaceModelInBody(body, channelMapping.MappedModel)
 		}
 		writerSizeBeforeForward := c.Writer.Size()
+		captureWriter, originalWriter := beginDatasetCapture(c)
 		result, err := func() (*service.OpenAIForwardResult, error) {
 			defer func() {
+				if captureWriter != nil {
+					c.Writer = originalWriter
+				}
 				if accountReleaseFunc != nil {
 					accountReleaseFunc()
 				}
 			}()
 			return h.gatewayService.ForwardAsChatCompletions(c.Request.Context(), c, account, forwardBody, promptCacheKey, "")
 		}()
+		captureOpenAIChatCompletionResult(body, result, err, captureWriter)
 		var cyberBlockBodyChat []byte
 		if service.GetOpsCyberPolicy(c) != nil {
 			cyberBlockBodyChat = body

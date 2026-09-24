@@ -85,6 +85,7 @@ var ProviderSet = wire.NewSet(
 	NewAnnouncementRepository,
 	NewAnnouncementReadRepository,
 	NewUsageLogRepository,
+	wire.Bind(new(service.UsageLogRepository), new(*usageLogRepository)),
 	NewOpenAIProvisionCapacityDemandStore,
 	ProvideOpenAIProvisionDemandService,
 	NewUsageBillingRepository,
