@@ -7,6 +7,7 @@ import (
 	"encoding/binary"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"maps"
 	"os"
@@ -558,9 +559,6 @@ func (s *PricingService) downloadPricingData() error {
 	}
 	logger.LegacyPrintf("service.pricing", "[Pricing] Downloading from %s", remoteURL)
 
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-	defer cancel()
-
 	// 获取远程哈希（用于同步锚点，不作为完整性校验）
 	var remoteHash string
 	if strings.TrimSpace(s.cfg.Pricing.HashURL) != "" {
@@ -570,7 +568,7 @@ func (s *PricingService) downloadPricingData() error {
 		}
 	}
 
-	body, err := s.remoteClient.FetchPricingJSON(ctx, remoteURL)
+	body, err := s.fetchPricingJSON(remoteURL)
 	if err != nil {
 		return fmt.Errorf("download failed: %w", err)
 	}
@@ -1135,19 +1133,129 @@ func (s *PricingService) useFallbackPricing() error {
 
 // fetchRemoteHash 从远程获取哈希值
 func (s *PricingService) fetchRemoteHash() (string, error) {
+	return s.fetchRemoteHashWithWait(time.Sleep)
+}
+
+// 远程价格同步的重试预算。哈希探测与目录下载都是单次 GET，公网链路上的 TLS
+// 握手超时、EOF 属于瞬时故障；一次失败就放弃会让整个更新周期（默认小时级）
+// 被跳过。这里在总预算内做小次数退避重试：快速失败的瞬时故障（5xx、连接被拒、
+// EOF）能被后续尝试覆盖，而持续不通时总耗时不超过预算，不会拖长启动路径。
+const (
+	pricingRemoteFetchAttempts    = 3
+	pricingRemoteFetchBaseBackoff = 250 * time.Millisecond
+	pricingRemoteFetchMaxBackoff  = 2 * time.Second
+	// 哈希探测：整体 25s。改造前每周期只有一次 10s 尝试，这里为瞬时故障留出重试空间。
+	pricingRemoteHashBudget = 25 * time.Second
+	// 目录下载：整体预算与改造前的单次超时一致，避免启动路径被拖慢。
+	pricingRemoteDownloadBudget = 30 * time.Second
+)
+
+// fetchRemoteHashWithWait 与 fetchRemoteHash 相同，但退避等待函数可注入，
+// 测试传空实现即可免去真实等待。
+func (s *PricingService) fetchRemoteHashWithWait(wait func(time.Duration)) (string, error) {
 	hashURL, err := s.validatePricingURL(s.cfg.Pricing.HashURL)
 	if err != nil {
-		return "", err
+		return "", err // 配置类错误重试也不会成功
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-
-	hash, err := s.remoteClient.FetchHashText(ctx, hashURL)
+	var hash string
+	attempts, err := withPricingRemoteRetry("remote hash fetch", pricingRemoteHashBudget, wait, func(ctx context.Context) error {
+		value, err := s.remoteClient.FetchHashText(ctx, hashURL)
+		if err != nil {
+			return err
+		}
+		hash = value
+		return nil
+	})
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("gave up after %d attempt(s): %w", attempts, err)
 	}
 	return strings.TrimSpace(hash), nil
+}
+
+// fetchPricingJSON 拉取远程价格目录，策略与 fetchRemoteHash 一致：瞬时失败按
+// 同一退避预算重试，只有全部尝试失败才让本轮同步失败。
+func (s *PricingService) fetchPricingJSON(remoteURL string) ([]byte, error) {
+	return s.fetchPricingJSONWithWait(remoteURL, time.Sleep)
+}
+
+// fetchPricingJSONWithWait 与 fetchPricingJSON 相同，但退避等待函数可注入。
+func (s *PricingService) fetchPricingJSONWithWait(remoteURL string, wait func(time.Duration)) ([]byte, error) {
+	var body []byte
+	attempts, err := withPricingRemoteRetry("pricing download", pricingRemoteDownloadBudget, wait, func(ctx context.Context) error {
+		value, err := s.remoteClient.FetchPricingJSON(ctx, remoteURL)
+		if err != nil {
+			return err
+		}
+		body = value
+		return nil
+	})
+	if err != nil {
+		return nil, fmt.Errorf("gave up after %d attempt(s): %w", attempts, err)
+	}
+	return body, nil
+}
+
+// withPricingRemoteRetry 在 budget 内重试 op，直到成功、尝试次数用尽或剩余预算
+// 不足以支撑下一次退避。返回实际尝试次数与最后一次错误。
+// 每次 op 调用都会拿到一个不会超出剩余预算的 ctx，因此总耗时有上界。
+func withPricingRemoteRetry(label string, budget time.Duration, wait func(time.Duration), op func(context.Context) error) (int, error) {
+	wait = pricingRetryWait(wait)
+	deadline := time.Now().Add(budget)
+	attempts := 0
+	var lastErr error
+	for attempt := 1; attempt <= pricingRemoteFetchAttempts; attempt++ {
+		remaining := time.Until(deadline)
+		if remaining <= 0 {
+			break
+		}
+		ctx, cancel := context.WithTimeout(context.Background(), remaining)
+		err := op(ctx)
+		cancel()
+		attempts = attempt
+		if err == nil {
+			return attempts, nil
+		}
+		lastErr = err
+		if attempt == pricingRemoteFetchAttempts {
+			break
+		}
+		delay := pricingRemoteRetryBackoff(attempt)
+		if time.Until(deadline) <= delay {
+			break // 退避后没有剩余预算，再试一次只会超时
+		}
+		logger.LegacyPrintf("service.pricing", "[Pricing] %s attempt %d/%d failed, retrying in %v: %v",
+			label, attempt, pricingRemoteFetchAttempts, delay, err)
+		wait(delay)
+	}
+	if lastErr == nil {
+		return attempts, errors.New("remote fetch produced no result")
+	}
+	return attempts, lastErr
+}
+
+func pricingRetryWait(wait func(time.Duration)) func(time.Duration) {
+	if wait == nil {
+		return time.Sleep
+	}
+	return wait
+}
+
+// pricingRemoteRetryBackoff 返回第 attempt 次失败后的退避时长（attempt 从 1 开始），
+// 指数增长并封顶 pricingRemoteFetchMaxBackoff。
+func pricingRemoteRetryBackoff(attempt int) time.Duration {
+	if attempt < 1 {
+		attempt = 1
+	}
+	shift := attempt - 1
+	if shift > 8 {
+		shift = 8
+	}
+	backoff := pricingRemoteFetchBaseBackoff * time.Duration(1<<uint(shift))
+	if backoff > pricingRemoteFetchMaxBackoff {
+		backoff = pricingRemoteFetchMaxBackoff
+	}
+	return backoff
 }
 
 func (s *PricingService) validatePricingURL(raw string) (string, error) {
