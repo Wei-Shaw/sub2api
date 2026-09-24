@@ -118,6 +118,23 @@ describe('OllamaCloudUsageCell', () => {
     expect(wrapper.findAllComponents(UsageProgressBar)[0].props('utilization')).toBe(43)
   })
 
+  it('renders the current monthly Ollama usage window', () => {
+    const monthly = usageState()
+    monthly.snapshot!.data = {
+      monthly: { used_percent: 8.4, reset_at: '2026-10-18T02:05:47Z' }
+    }
+
+    const wrapper = mount(OllamaCloudUsageCell, { props: { account: account(monthly) } })
+    const bars = wrapper.findAllComponents(UsageProgressBar)
+
+    expect(bars).toHaveLength(1)
+    expect(bars[0].props()).toMatchObject({
+      label: 'mo',
+      utilization: 8.4,
+      resetsAt: '2026-10-18T02:05:47Z'
+    })
+  })
+
   it('queries through the edit-page refresh endpoint and emits the updated state', async () => {
     const next = usageState()
     next.snapshot!.data!.five_hour!.used_percent = 43
