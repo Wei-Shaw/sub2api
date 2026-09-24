@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"strings"
 	"sync"
 	"time"
@@ -324,8 +325,41 @@ func (w *claudeQuotaAutoReset) evaluate(ctx context.Context, a *Account, cfg Ope
 		}
 		// Native selection binds grant+remaining count+validity; Redeem separately
 		// fences the native organization. Retries keep the same operation key.
+		reason := "exhausted"
+		if expiring {
+			reason = "expiring"
+		}
+		var before *ClaudeUsageResponse
+		var probeErr error
+		if (usefulExhausted && !expiring) || current.RateLimitResetAt != nil {
+			before, probeErr = w.usage(ctx, current)
+		}
+		if probeErr != nil {
+			slog.Info("claude_auto_reset_decision", "account_id", a.ID, "trigger", reason, "result", "usage_unknown")
+			return false
+		}
+		model := ""
+		if chosenScope != nil {
+			model = chosenScope.model
+		}
+		if usefulExhausted && !expiring && !claudeGrantClearsAllBlocks(before, credit.Clears, model, time.Now()) {
+			slog.Info("claude_auto_reset_decision", "account_id", a.ID, "trigger", reason, "result", "remaining_blocking_window")
+			return false
+		}
 		key := "claude-auto:" + shortOpenAIAutoResetHash(credit.SelectionToken)
-		_, _ = w.service.Redeem(ctx, a.ID, credit.SelectionToken, key)
+		outcome, redeemErr := w.service.Redeem(ctx, a.ID, credit.SelectionToken, key)
+		result := "failed"
+		if outcome != nil {
+			result = outcome.Outcome
+		}
+		// Do not log native payloads, IDs, selection tokens or error text.
+		slog.Info("claude_auto_reset_decision", "account_id", a.ID, "trigger", reason, "result", result)
+		if redeemErr == nil && outcome != nil && outcome.Outcome == "reset" {
+			recoveryCtx, cancel := context.WithTimeout(context.Background(), 8*time.Second)
+			recovered := w.recoverVerifiedQuota(recoveryCtx, current, before, credit.Clears)
+			cancel()
+			slog.Info("claude_auto_reset_recovery", "account_id", a.ID, "recovered", recovered)
+		}
 		return true // Any attempt ends the scan, including ambiguous outcomes.
 	}
 	return false
@@ -353,4 +387,74 @@ func claudeResetDimensionMatchesModel(dimension, model string) bool {
 	default:
 		return false
 	}
+}
+
+func claudeUsageDimensions(u *ClaudeUsageResponse) map[string]ClaudeUsageWindow {
+	if u == nil {
+		return nil
+	}
+	return map[string]ClaudeUsageWindow{"five_hour": {Utilization: u.FiveHour.Utilization, ResetsAt: u.FiveHour.ResetsAt}, "seven_day": {Utilization: u.SevenDay.Utilization, ResetsAt: u.SevenDay.ResetsAt}, "seven_day_sonnet": {Utilization: u.SevenDaySonnet.Utilization, ResetsAt: u.SevenDaySonnet.ResetsAt}, "seven_day_overage_included": u.SevenDayOverageIncluded}
+}
+func claudeGrantClearsAllBlocks(u *ClaudeUsageResponse, clears []string, model string, now time.Time) bool {
+	known := map[string]bool{}
+	for _, d := range clears {
+		known[d] = true
+	}
+	blocked := false
+	for d, v := range claudeUsageDimensions(u) {
+		if !claudeResetDimensionMatchesModel(d, model) {
+			continue
+		}
+		reset, err := time.Parse(time.RFC3339, v.ResetsAt)
+		if err != nil {
+			return false
+		}
+		if reset.After(now) && v.Utilization >= 100 {
+			blocked = true
+			if !known[d] {
+				return false
+			}
+		}
+	}
+	return blocked
+}
+func (w *claudeQuotaAutoReset) recoverVerifiedQuota(ctx context.Context, a *Account, before *ClaudeUsageResponse, clears []string) bool {
+	if a.RateLimitedAt == nil || a.RateLimitResetAt == nil {
+		return false
+	}
+	after, err := w.usage(ctx, a)
+	if err != nil || after == nil {
+		return false
+	}
+	prior, post := claudeUsageDimensions(before), claudeUsageDimensions(after)
+	matched := false
+	for _, d := range clears {
+		old, ok := prior[d]
+		if !ok {
+			continue
+		}
+		reset, err := time.Parse(time.RFC3339, old.ResetsAt)
+		current, exists := post[d]
+		_, parseErr := time.Parse(time.RFC3339, current.ResetsAt)
+		if err == nil && reset.Equal(*a.RateLimitResetAt) && old.Utilization >= 100 && exists && parseErr == nil && current.Utilization >= 0 && current.Utilization < 100 {
+			matched = true
+		}
+	}
+	if !matched {
+		return false
+	}
+	// A shared account cooldown cannot be cleared while any known quota blocks.
+	for _, v := range post {
+		if v.ResetsAt != "" && v.Utilization >= 100 {
+			return false
+		}
+	}
+	repo, ok := w.accounts.(interface {
+		ClearClaudeRateLimitIfObserved(context.Context, int64, time.Time, time.Time) (bool, error)
+	})
+	if !ok {
+		return false
+	}
+	cleared, err := repo.ClearClaudeRateLimitIfObserved(ctx, a.ID, *a.RateLimitedAt, *a.RateLimitResetAt)
+	return err == nil && cleared
 }
