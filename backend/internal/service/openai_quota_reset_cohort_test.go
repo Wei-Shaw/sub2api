@@ -216,3 +216,11 @@ func TestResetPolicyWorkerConcurrentRedemption(t *testing.T) {
 	require.NoError(t, err)
 	require.NotContains(t, string(encodedState), "credit-sensitive-id")
 }
+
+func TestResetCohortRejectsMalformedScope(t *testing.T) {
+	s := &OpenAIQuotaAutoResetService{}
+	s.scopes.Store(int64(1), "invalid scope")
+	require.False(t, s.exhaustedCohort(context.Background(), &Account{ID: 1}, exhaustedUsage(time.Now()), time.Now()))
+	_, ok := s.scopes.Load(int64(1))
+	require.False(t, ok)
+}
