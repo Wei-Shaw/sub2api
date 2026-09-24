@@ -78,6 +78,8 @@ const (
 	DefaultKimiCodingBaseURL  = "https://api.kimi.com/coding/v1"
 	DefaultZhipuPayGBaseURL   = "https://open.bigmodel.cn/api/paas/v4"
 	DefaultZhipuCodingBaseURL = "https://open.bigmodel.cn/api/coding/paas/v4"
+	// GLM Coding Plan exposes its Codex-compatible Responses endpoint under /api/v1.
+	DefaultZhipuCodingResponsesBaseURL = "https://open.bigmodel.cn/api/v1"
 	DefaultDeepseekBaseURL    = "https://api.deepseek.com"
 	// MiniMax 按量付费与 Coding/Token Plan 共用推理域名，靠 API Key 区分套餐。
 	DefaultMiniMaxBaseURL = "https://api.minimaxi.com/v1"
