@@ -605,6 +605,16 @@ func IPBlacklistNotNil() predicate.APIKey {
 	return predicate.APIKey(sql.FieldNotNull(FieldIPBlacklist))
 }
 
+// PlatformLimitsIsNil applies the IsNil predicate on the "platform_limits" field.
+func PlatformLimitsIsNil() predicate.APIKey {
+	return predicate.APIKey(sql.FieldIsNull(FieldPlatformLimits))
+}
+
+// PlatformLimitsNotNil applies the NotNil predicate on the "platform_limits" field.
+func PlatformLimitsNotNil() predicate.APIKey {
+	return predicate.APIKey(sql.FieldNotNull(FieldPlatformLimits))
+}
+
 // QuotaEQ applies the EQ predicate on the "quota" field.
 func QuotaEQ(v float64) predicate.APIKey {
 	return predicate.APIKey(sql.FieldEQ(FieldQuota, v))
@@ -1186,6 +1196,29 @@ func HasUsageLogs() predicate.APIKey {
 func HasUsageLogsWith(preds ...predicate.UsageLog) predicate.APIKey {
 	return predicate.APIKey(func(s *sql.Selector) {
 		step := newUsageLogsStep()
+		sqlgraph.HasNeighborsWith(s, step, func(s *sql.Selector) {
+			for _, p := range preds {
+				p(s)
+			}
+		})
+	})
+}
+
+// HasPlatformUsages applies the HasEdge predicate on the "platform_usages" edge.
+func HasPlatformUsages() predicate.APIKey {
+	return predicate.APIKey(func(s *sql.Selector) {
+		step := sqlgraph.NewStep(
+			sqlgraph.From(Table, FieldID),
+			sqlgraph.Edge(sqlgraph.O2M, false, PlatformUsagesTable, PlatformUsagesColumn),
+		)
+		sqlgraph.HasNeighbors(s, step)
+	})
+}
+
+// HasPlatformUsagesWith applies the HasEdge predicate on the "platform_usages" edge with a given conditions (other predicates).
+func HasPlatformUsagesWith(preds ...predicate.APIKeyPlatformUsage) predicate.APIKey {
+	return predicate.APIKey(func(s *sql.Selector) {
+		step := newPlatformUsagesStep()
 		sqlgraph.HasNeighborsWith(s, step, func(s *sql.Selector) {
 			for _, p := range preds {
 				p(s)

@@ -908,6 +908,47 @@
           </div>
         </div>
 
+        <!-- Per-Source Limits Section -->
+        <div class="space-y-3">
+          <div class="flex items-center justify-between">
+            <label class="input-label mb-0">{{ t('keys.platformLimitsSection') }}</label>
+            <button
+              type="button"
+              data-test="toggle-platform-limits"
+              @click="togglePlatformLimits"
+              :class="[
+                'relative inline-flex h-5 w-9 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none',
+                formData.enable_platform_limits ? 'bg-primary-600' : 'bg-gray-200 dark:bg-dark-600'
+              ]"
+            >
+              <span
+                :class="[
+                  'pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out',
+                  formData.enable_platform_limits ? 'translate-x-4' : 'translate-x-0'
+                ]"
+              />
+            </button>
+          </div>
+
+          <div v-if="formData.enable_platform_limits" class="space-y-4 pt-2">
+            <ApiKeyPlatformLimitsEditor
+              v-model="formData.platform_limits"
+              :usages="selectedKeyPlatformUsages"
+            />
+
+            <div v-if="showEditModal && selectedKey && selectedKeyPlatformUsages.length > 0">
+              <button
+                type="button"
+                data-test="reset-platform-usage"
+                @click="confirmResetPlatformUsage"
+                class="btn btn-secondary text-sm"
+              >
+                {{ t('keys.resetPlatformUsage') }}
+              </button>
+            </div>
+          </div>
+        </div>
+
         <!-- Expiration Section -->
         <div class="space-y-3">
           <div class="flex items-center justify-between">
@@ -1069,6 +1110,18 @@
       @cancel="showResetRateLimitDialog = false"
     />
 
+    <!-- Reset Per-Source Usage Confirmation Dialog -->
+    <ConfirmDialog
+      :show="showResetPlatformUsageDialog"
+      :title="t('keys.resetPlatformUsageTitle')"
+      :message="t('keys.resetPlatformUsageConfirmMessage', { name: selectedKey?.name })"
+      :confirm-text="t('keys.reset')"
+      :cancel-text="t('common.cancel')"
+      :danger="true"
+      @confirm="resetPlatformUsage"
+      @cancel="showResetPlatformUsageDialog = false"
+    />
+
     <!-- Use Key Modal -->
     <UseKeyModal
       :show="showUseKeyModal"
@@ -1210,6 +1263,7 @@ import { keysAPI, authAPI, usageAPI, userGroupsAPI } from '@/api'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import TablePageLayout from '@/components/layout/TablePageLayout.vue'
 import BulkEditKeysModal from '@/components/keys/BulkEditKeysModal.vue'
+import ApiKeyPlatformLimitsEditor from '@/components/keys/ApiKeyPlatformLimitsEditor.vue'
 	import DataTable from '@/components/common/DataTable.vue'
 	import Pagination from '@/components/common/Pagination.vue'
 	import BaseDialog from '@/components/common/BaseDialog.vue'
@@ -1222,7 +1276,7 @@ import BulkEditKeysModal from '@/components/keys/BulkEditKeysModal.vue'
 	import EndpointPopover from '@/components/keys/EndpointPopover.vue'
 	import GroupBadge from '@/components/common/GroupBadge.vue'
 	import GroupOptionItem from '@/components/common/GroupOptionItem.vue'
-	import type { ApiKey, Group, PublicSettings, SubscriptionType, GroupPlatform, UpdateApiKeyRequest } from '@/types'
+	import type { ApiKey, ApiKeyPlatformLimits, ApiKeyPlatformUsage, Group, PublicSettings, SubscriptionType, GroupPlatform, UpdateApiKeyRequest } from '@/types'
 import type { Column } from '@/components/common/types'
 import type { BatchApiKeyUsageStats } from '@/api/usage'
 import { formatDateTime } from '@/utils/format'
@@ -1399,6 +1453,9 @@ const showEditModal = ref(false)
 const showDeleteDialog = ref(false)
 const showResetQuotaDialog = ref(false)
 const showResetRateLimitDialog = ref(false)
+const showResetPlatformUsageDialog = ref(false)
+// Per-source usage only comes from the key detail endpoint, so it is loaded on demand.
+const selectedKeyPlatformUsages = ref<ApiKeyPlatformUsage[]>([])
 const showUseKeyModal = ref(false)
 const showCcsClientSelect = ref(false)
 const showColumnDropdown = ref(false)
@@ -1444,6 +1501,9 @@ const formData = ref({
   rate_limit_5h: null as number | null,
   rate_limit_1d: null as number | null,
   rate_limit_7d: null as number | null,
+  // Per-source (upstream platform) sub-limits
+  enable_platform_limits: false,
+  platform_limits: {} as ApiKeyPlatformLimits,
   enable_expiration: false,
   expiration_preset: '30' as '7' | '30' | '90' | 'custom',
   expiration_date: ''
@@ -1710,9 +1770,15 @@ const editKey = (key: ApiKey) => {
     rate_limit_5h: key.rate_limit_5h || null,
     rate_limit_1d: key.rate_limit_1d || null,
     rate_limit_7d: key.rate_limit_7d || null,
+    enable_platform_limits: Object.keys(key.platform_limits || {}).length > 0,
+    platform_limits: { ...(key.platform_limits || {}) },
     enable_expiration: hasExpiration,
     expiration_preset: 'custom',
     expiration_date: key.expires_at ? formatDateTimeLocal(key.expires_at) : ''
+  }
+  selectedKeyPlatformUsages.value = []
+  if (formData.value.enable_platform_limits) {
+    void loadPlatformUsages(key.id)
   }
   showEditModal.value = true
 }
@@ -1849,6 +1915,15 @@ const handleSubmit = async () => {
     rate_limit_7d: formData.value.rate_limit_7d && formData.value.rate_limit_7d > 0 ? formData.value.rate_limit_7d : 0,
   } : { rate_limit_5h: 0, rate_limit_1d: 0, rate_limit_7d: 0 }
 
+  // Per-source limits are sent as a whole map: {} clears every source.
+  const platformLimits: ApiKeyPlatformLimits = formData.value.enable_platform_limits
+    ? Object.fromEntries(
+        Object.entries(formData.value.platform_limits).filter(([, limit]) =>
+          Object.values(limit).some((value) => typeof value === 'number' && value > 0)
+        )
+      )
+    : {}
+
   submitting.value = true
   try {
     if (showEditModal.value && selectedKey.value) {
@@ -1862,6 +1937,7 @@ const handleSubmit = async () => {
         rate_limit_5h: rateLimitData.rate_limit_5h,
         rate_limit_1d: rateLimitData.rate_limit_1d,
         rate_limit_7d: rateLimitData.rate_limit_7d,
+        platform_limits: platformLimits,
       }
       if (shouldSubmitEditStatus(selectedKey.value, formData.value.status)) {
         updates.status = formData.value.status
@@ -1878,7 +1954,8 @@ const handleSubmit = async () => {
         ipBlacklist,
         quota,
         expiresInDays,
-        rateLimitData
+        rateLimitData,
+        platformLimits
       )
       appStore.showSuccess(t('keys.keyCreatedSuccess'))
       // Only advance tour if active, on submit step, and creation succeeded
@@ -1936,6 +2013,8 @@ const closeModals = () => {
     rate_limit_5h: null,
     rate_limit_1d: null,
     rate_limit_7d: null,
+    enable_platform_limits: false,
+    platform_limits: {},
     enable_expiration: false,
     expiration_preset: '30',
     expiration_date: ''
@@ -2004,6 +2083,43 @@ const resetRateLimitUsage = async () => {
   } catch (error: any) {
     const errorMsg = error.response?.data?.detail || t('keys.failedToResetRateLimit')
     appStore.showError(errorMsg)
+  }
+}
+
+const togglePlatformLimits = () => {
+  formData.value.enable_platform_limits = !formData.value.enable_platform_limits
+  // Turning the section off clears the map so the update request sends {} and
+  // the backend drops every per-source limit.
+  if (!formData.value.enable_platform_limits) {
+    formData.value.platform_limits = {}
+  }
+}
+
+const confirmResetPlatformUsage = () => {
+  showResetPlatformUsageDialog.value = true
+}
+
+const resetPlatformUsage = async () => {
+  if (!selectedKey.value) return
+  showResetPlatformUsageDialog.value = false
+  try {
+    await keysAPI.update(selectedKey.value.id, { reset_platform_usage: true })
+    appStore.showSuccess(t('keys.platformUsageResetSuccess'))
+    await loadApiKeys()
+    await loadPlatformUsages(selectedKey.value.id)
+  } catch (error: any) {
+    const errorMsg = error.response?.data?.detail || t('keys.failedToResetPlatformUsage')
+    appStore.showError(errorMsg)
+  }
+}
+
+// The list endpoint omits per-source usage; fetch it only for keys that use the feature.
+const loadPlatformUsages = async (keyId: number) => {
+  try {
+    const detail = await keysAPI.getById(keyId)
+    selectedKeyPlatformUsages.value = detail.platform_usages || []
+  } catch {
+    selectedKeyPlatformUsages.value = []
   }
 }
 

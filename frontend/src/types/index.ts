@@ -756,6 +756,36 @@ export interface ApiKey {
   reset_5h_at: string | null
   reset_1d_at: string | null
   reset_7d_at: string | null
+  /** Per-upstream-platform sub-limits; absent/empty = only key-level limits apply. */
+  platform_limits?: ApiKeyPlatformLimits
+  /** Per-platform usage, returned by the single-key detail endpoint only. */
+  platform_usages?: ApiKeyPlatformUsage[]
+}
+
+/**
+ * Sub-limits applied on one upstream platform. Semantics mirror the key-level
+ * fields: 0 or omitted means that dimension is unlimited. Platform limits are
+ * ANDed with the key-level limits, they never widen them.
+ */
+export interface ApiKeyPlatformLimit {
+  quota?: number
+  rate_limit_5h?: number
+  rate_limit_1d?: number
+  rate_limit_7d?: number
+}
+
+/** platform -> sub-limits. Keys match the concrete upstream platform ids. */
+export type ApiKeyPlatformLimits = Record<string, ApiKeyPlatformLimit>
+
+export interface ApiKeyPlatformUsage {
+  platform: string
+  quota_used: number
+  usage_5h: number
+  usage_1d: number
+  usage_7d: number
+  reset_5h_at?: string | null
+  reset_1d_at?: string | null
+  reset_7d_at?: string | null
 }
 
 export interface CreateApiKeyRequest {
@@ -769,6 +799,7 @@ export interface CreateApiKeyRequest {
   rate_limit_5h?: number
   rate_limit_1d?: number
   rate_limit_7d?: number
+  platform_limits?: ApiKeyPlatformLimits
 }
 
 export interface UpdateApiKeyRequest {
@@ -784,6 +815,9 @@ export interface UpdateApiKeyRequest {
   rate_limit_1d?: number
   rate_limit_7d?: number
   reset_rate_limit_usage?: boolean
+  /** Whole-map replacement: omitted = no change, {} = clear all platform limits. */
+  platform_limits?: ApiKeyPlatformLimits
+  reset_platform_usage?: boolean
 }
 
 export interface CreateGroupRequest {

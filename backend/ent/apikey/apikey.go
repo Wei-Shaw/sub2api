@@ -37,6 +37,8 @@ const (
 	FieldIPWhitelist = "ip_whitelist"
 	// FieldIPBlacklist holds the string denoting the ip_blacklist field in the database.
 	FieldIPBlacklist = "ip_blacklist"
+	// FieldPlatformLimits holds the string denoting the platform_limits field in the database.
+	FieldPlatformLimits = "platform_limits"
 	// FieldQuota holds the string denoting the quota field in the database.
 	FieldQuota = "quota"
 	// FieldQuotaUsed holds the string denoting the quota_used field in the database.
@@ -67,6 +69,8 @@ const (
 	EdgeGroup = "group"
 	// EdgeUsageLogs holds the string denoting the usage_logs edge name in mutations.
 	EdgeUsageLogs = "usage_logs"
+	// EdgePlatformUsages holds the string denoting the platform_usages edge name in mutations.
+	EdgePlatformUsages = "platform_usages"
 	// Table holds the table name of the apikey in the database.
 	Table = "api_keys"
 	// UserTable is the table that holds the user relation/edge.
@@ -90,6 +94,13 @@ const (
 	UsageLogsInverseTable = "usage_logs"
 	// UsageLogsColumn is the table column denoting the usage_logs relation/edge.
 	UsageLogsColumn = "api_key_id"
+	// PlatformUsagesTable is the table that holds the platform_usages relation/edge.
+	PlatformUsagesTable = "api_key_platform_usages"
+	// PlatformUsagesInverseTable is the table name for the APIKeyPlatformUsage entity.
+	// It exists in this package in order to avoid circular dependency with the "apikeyplatformusage" package.
+	PlatformUsagesInverseTable = "api_key_platform_usages"
+	// PlatformUsagesColumn is the table column denoting the platform_usages relation/edge.
+	PlatformUsagesColumn = "api_key_id"
 )
 
 // Columns holds all SQL columns for apikey fields.
@@ -106,6 +117,7 @@ var Columns = []string{
 	FieldLastUsedAt,
 	FieldIPWhitelist,
 	FieldIPBlacklist,
+	FieldPlatformLimits,
 	FieldQuota,
 	FieldQuotaUsed,
 	FieldExpiresAt,
@@ -310,6 +322,20 @@ func ByUsageLogs(term sql.OrderTerm, terms ...sql.OrderTerm) OrderOption {
 		sqlgraph.OrderByNeighborTerms(s, newUsageLogsStep(), append([]sql.OrderTerm{term}, terms...)...)
 	}
 }
+
+// ByPlatformUsagesCount orders the results by platform_usages count.
+func ByPlatformUsagesCount(opts ...sql.OrderTermOption) OrderOption {
+	return func(s *sql.Selector) {
+		sqlgraph.OrderByNeighborsCount(s, newPlatformUsagesStep(), opts...)
+	}
+}
+
+// ByPlatformUsages orders the results by platform_usages terms.
+func ByPlatformUsages(term sql.OrderTerm, terms ...sql.OrderTerm) OrderOption {
+	return func(s *sql.Selector) {
+		sqlgraph.OrderByNeighborTerms(s, newPlatformUsagesStep(), append([]sql.OrderTerm{term}, terms...)...)
+	}
+}
 func newUserStep() *sqlgraph.Step {
 	return sqlgraph.NewStep(
 		sqlgraph.From(Table, FieldID),
@@ -329,5 +355,12 @@ func newUsageLogsStep() *sqlgraph.Step {
 		sqlgraph.From(Table, FieldID),
 		sqlgraph.To(UsageLogsInverseTable, FieldID),
 		sqlgraph.Edge(sqlgraph.O2M, false, UsageLogsTable, UsageLogsColumn),
+	)
+}
+func newPlatformUsagesStep() *sqlgraph.Step {
+	return sqlgraph.NewStep(
+		sqlgraph.From(Table, FieldID),
+		sqlgraph.To(PlatformUsagesInverseTable, FieldID),
+		sqlgraph.Edge(sqlgraph.O2M, false, PlatformUsagesTable, PlatformUsagesColumn),
 	)
 }

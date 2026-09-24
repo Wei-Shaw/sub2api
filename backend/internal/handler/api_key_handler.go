@@ -44,6 +44,9 @@ type CreateAPIKeyRequest struct {
 	RateLimit5h *float64 `json:"rate_limit_5h"`
 	RateLimit1d *float64 `json:"rate_limit_1d"`
 	RateLimit7d *float64 `json:"rate_limit_7d"`
+
+	// PlatformLimits 按上游来源细分的子限额（可选）
+	PlatformLimits service.APIKeyPlatformLimits `json:"platform_limits"`
 }
 
 // UpdateAPIKeyRequest represents the update API key request payload
@@ -62,6 +65,10 @@ type UpdateAPIKeyRequest struct {
 	RateLimit1d         *float64 `json:"rate_limit_1d"`
 	RateLimit7d         *float64 `json:"rate_limit_7d"`
 	ResetRateLimitUsage *bool    `json:"reset_rate_limit_usage"` // 重置限速用量
+
+	// PlatformLimits 整体覆盖按来源细分的子限额（nil 不修改，空对象清空）
+	PlatformLimits     *service.APIKeyPlatformLimits `json:"platform_limits"`
+	ResetPlatformUsage *bool                         `json:"reset_platform_usage"` // 重置来源级用量
 }
 
 func validAPIKeyLimit(v float64) bool { return !math.IsNaN(v) && !math.IsInf(v, 0) && v >= 0 }
@@ -174,7 +181,15 @@ func (h *APIKeyHandler) GetByID(c *gin.Context) {
 		return
 	}
 
-	response.Success(c, dto.APIKeyFromService(key))
+	out := dto.APIKeyFromService(key)
+	// 详情接口附带各来源的子限额用量；查询失败不影响主体返回。
+	if key.HasPlatformLimits() {
+		if rows, usageErr := h.apiKeyService.ListPlatformUsage(c.Request.Context(), keyID, subject.UserID); usageErr == nil {
+			out.PlatformUsages = dto.APIKeyPlatformUsagesFromService(rows)
+		}
+	}
+
+	response.Success(c, out)
 }
 
 // Create handles creating a new API key
@@ -216,6 +231,7 @@ func (h *APIKeyHandler) Create(c *gin.Context) {
 	if req.RateLimit7d != nil {
 		svcReq.RateLimit7d = *req.RateLimit7d
 	}
+	svcReq.PlatformLimits = req.PlatformLimits
 
 	executeUserIdempotentJSON(c, "user.api_keys.create", req, service.DefaultWriteIdempotencyTTL(), func(ctx context.Context) (any, error) {
 		key, err := h.apiKeyService.Create(ctx, subject.UserID, svcReq)
@@ -260,6 +276,8 @@ func (h *APIKeyHandler) Update(c *gin.Context) {
 		RateLimit1d:         req.RateLimit1d,
 		RateLimit7d:         req.RateLimit7d,
 		ResetRateLimitUsage: req.ResetRateLimitUsage,
+		PlatformLimits:      req.PlatformLimits,
+		ResetPlatformUsage:  req.ResetPlatformUsage,
 	}
 	if req.Name != "" {
 		svcReq.Name = &req.Name

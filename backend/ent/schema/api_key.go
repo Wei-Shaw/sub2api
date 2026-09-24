@@ -58,6 +58,14 @@ func (APIKey) Fields() []ent.Field {
 			Optional().
 			Comment("Blocked IPs/CIDRs"),
 
+		// 按上游来源（平台）细分的限额配置。composite 分组的一个 key 会同时命中
+		// 多个平台，key 级的单一金额池无法区分来源；此字段为每个来源提供一层子限额。
+		// 空 map = 仅受 key 级限额约束（默认行为，零开销）。
+		field.JSON("platform_limits", domain.APIKeyPlatformLimits{}).
+			Optional().
+			SchemaType(map[string]string{dialect.Postgres: "jsonb"}).
+			Comment("Per-upstream-platform sub-limits (USD); empty = only key-level limits apply"),
+
 		// ========== Quota fields ==========
 		// Quota limit in USD (0 = unlimited)
 		field.Float("quota").
@@ -130,6 +138,7 @@ func (APIKey) Edges() []ent.Edge {
 			Field("group_id").
 			Unique(),
 		edge.To("usage_logs", UsageLog.Type),
+		edge.To("platform_usages", APIKeyPlatformUsage.Type),
 	}
 }
 
