@@ -110,15 +110,37 @@ func (s *ClaudeResetCreditService) redeemOnce(ctx context.Context, id int64, sel
 	if account == nil {
 		return nil, ErrAccountNotFound
 	}
-	// The durable account fence lives in the operation table, not editable
+	_, token, proxy, err := s.account(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	org, err := s.organization(ctx, token, proxy)
+	if err != nil {
+		return nil, err
+	}
+	orgHash := HashIdempotencyKey("claude-org:" + org)
+	orgLockKey := "claude:reset-credit:organization:" + orgHash
+	acquired, err = s.locks.TryAcquireLeaderLock(ctx, orgLockKey, owner, 90*time.Second)
+	if err != nil {
+		return nil, infraerrors.ServiceUnavailable("CLAUDE_RESET_LOCK_UNAVAILABLE", "reset coordination unavailable")
+	}
+	if !acquired {
+		return nil, infraerrors.Conflict("CLAUDE_RESET_BUSY", "another reset is in progress")
+	}
+	defer func() {
+		release, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		defer cancel()
+		_ = s.locks.ReleaseLeaderLock(release, orgLockKey, owner)
+	}()
+	// The durable provider-organization fence lives in the operation table, not editable
 	// account.Extra. Ordinary edits/imports cannot erase an ambiguous claim.
-	fenceKey := HashIdempotencyKey(fmt.Sprintf("account:%d", id))
+	fenceKey := orgHash
 	fence, err := s.idempotency.repo.GetByScopeAndKeyHash(ctx, claudeResetPendingScope, fenceKey)
 	if err != nil {
 		return nil, ErrIdempotencyStoreUnavail
 	}
 	if fence == nil {
-		row := &IdempotencyRecord{Scope: claudeResetPendingScope, IdempotencyKeyHash: fenceKey, RequestFingerprint: fmt.Sprintf("account:%d", id), Status: IdempotencyStatusProcessing, ExpiresAt: s.now().AddDate(100, 0, 0)}
+		row := &IdempotencyRecord{Scope: claudeResetPendingScope, IdempotencyKeyHash: fenceKey, RequestFingerprint: orgHash, Status: IdempotencyStatusProcessing, ExpiresAt: s.now().AddDate(100, 0, 0)}
 		_, err = s.idempotency.repo.CreateProcessing(ctx, row)
 		if err != nil {
 			return nil, ErrIdempotencyStoreUnavail
@@ -143,10 +165,6 @@ func (s *ClaudeResetCreditService) redeemOnce(ctx context.Context, id int64, sel
 			return &ClaudeResetOutcome{Outcome: pending.Outcome, Reason: pending.Reason, Replayed: true}, nil
 		}
 	}
-	_, token, proxy, err := s.account(ctx, id)
-	if err != nil {
-		return nil, err
-	}
 	status, block, err := s.queryWithToken(ctx, token, proxy)
 	if err != nil {
 		return nil, err
@@ -164,12 +182,6 @@ func (s *ClaudeResetCreditService) redeemOnce(ctx context.Context, id int64, sel
 	}
 	if grant == nil {
 		return nil, infraerrors.Conflict("CLAUDE_RESET_NOT_AVAILABLE", "selected reset is no longer available")
-	}
-	// Profile is queried with this exact account token; never trust organization
-	// identifiers supplied by callers, configured base URLs, or stale UI state.
-	org, err := s.organization(ctx, token, proxy)
-	if err != nil {
-		return nil, err
 	}
 	planResult, err := s.idempotency.Execute(ctx, IdempotencyExecuteOptions{
 		Scope: "claude_reset_prepared", ActorScope: fmt.Sprintf("account:%d", id), Method: http.MethodPost, Route: "/system/claude/reset-plan",

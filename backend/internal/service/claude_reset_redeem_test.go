@@ -18,22 +18,26 @@ func (s *resetWriterStub) GetByID(context.Context, int64) (*Account, error)     
 func (s *resetWriterStub) UpdateExtra(context.Context, int64, map[string]any) error { return nil }
 
 type resetLeaseStub struct {
+	keys map[string]bool
 	held bool
 	fail bool
 }
 
-func (s *resetLeaseStub) TryAcquireLeaderLock(context.Context, string, string, time.Duration) (bool, error) {
+func (s *resetLeaseStub) TryAcquireLeaderLock(_ context.Context, key, owner string, _ time.Duration) (bool, error) {
 	if s.fail {
 		return false, errors.New("unavailable")
 	}
-	if s.held {
+	if s.keys == nil {
+		s.keys = map[string]bool{}
+	}
+	if s.held || s.keys[key] {
 		return false, nil
 	}
-	s.held = true
+	s.keys[key] = true
 	return true, nil
 }
-func (s *resetLeaseStub) ReleaseLeaderLock(context.Context, string, string) error {
-	s.held = false
+func (s *resetLeaseStub) ReleaseLeaderLock(_ context.Context, key, owner string) error {
+	delete(s.keys, key)
 	return nil
 }
 func resetTestService(t *testing.T, claim string) (*ClaudeResetCreditService, *int) {
@@ -139,4 +143,19 @@ func TestClaudeResetNoopNewOperationUsesNewRequestID(t *testing.T) {
 	require.Equal(t, 2, *count)
 	require.Len(t, ids, 2)
 	require.NotEqual(t, ids[0], ids[1])
+}
+
+func TestClaudeResetDuplicateLocalAccountsShareOrganizationFence(t *testing.T) {
+	s, count := resetTestService(t, "network-error")
+	status, e := s.Query(context.Background(), 1)
+	require.NoError(t, e)
+	sel := status.Credits[0].SelectionToken
+	out, e := s.Redeem(context.Background(), 1, sel, "first-account")
+	require.NoError(t, e)
+	require.Equal(t, "unknown", out.Outcome)
+	out, e = s.Redeem(context.Background(), 2, sel, "duplicate-row")
+	require.NoError(t, e)
+	require.Equal(t, "unknown", out.Outcome)
+	require.True(t, out.Replayed)
+	require.Equal(t, 1, *count)
 }
