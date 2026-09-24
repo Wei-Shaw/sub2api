@@ -273,7 +273,7 @@ func TestCalculateCostUnified_ChannelTimePricingDoesNotApplyOutsideMatchingTime(
 	billing := NewBillingService(&config.Config{}, nil)
 
 	for _, pricingAt := range []time.Time{
-		time.Time{},
+		{},
 		time.Date(2026, 8, 17, 5, 0, 0, 0, time.UTC),
 	} {
 		cost, err := billing.CalculateCostUnified(CostInput{
