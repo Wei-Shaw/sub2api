@@ -106,7 +106,8 @@ func notifyClaudeResetScope(gateway *GatewayService, groupID *int64, model strin
 	key := fmt.Sprintf("%v:%s", derefGroupID(groupCopy), model)
 	count := 0
 	w.scopes.Range(func(k, v any) bool {
-		if !v.(claudeResetScope).expires.After(time.Now()) {
+		scope, ok := v.(claudeResetScope)
+		if !ok || !scope.expires.After(time.Now()) {
 			w.scopes.Delete(k)
 		} else {
 			count++
@@ -120,7 +121,8 @@ func notifyClaudeResetScope(gateway *GatewayService, groupID *int64, model strin
 }
 func (w *claudeQuotaAutoReset) scan(ctx context.Context) {
 	w.scopes.Range(func(k, v any) bool {
-		if !v.(claudeResetScope).expires.After(time.Now()) {
+		scope, ok := v.(claudeResetScope)
+		if !ok || !scope.expires.After(time.Now()) {
 			w.scopes.Delete(k)
 		}
 		return true
@@ -156,7 +158,8 @@ func (w *claudeQuotaAutoReset) scan(ctx context.Context) {
 		}
 	}
 	w.scopes.Range(func(k, v any) bool {
-		if !v.(claudeResetScope).expires.After(time.Now()) {
+		scope, ok := v.(claudeResetScope)
+		if !ok || !scope.expires.After(time.Now()) {
 			w.scopes.Delete(k)
 		}
 		return true
@@ -201,7 +204,7 @@ func (w *claudeQuotaAutoReset) cohort(ctx context.Context, target *Account, scop
 		privacy = g.RequirePrivacySet
 	}
 	eligible := func(a *Account) bool {
-		return a.Platform == PlatformAnthropic && a.IsActive() && a.Schedulable && openAIStickyAccountMatchesGroup(a, scope.groupID) && scope.gateway.isModelSupportedByAccount(a, scope.model) && (!privacy || a.IsPrivacySet()) && !(scope.groupID != nil && scope.gateway.needsUpstreamChannelRestrictionCheck(ctx, scope.groupID) && scope.gateway.isUpstreamModelRestrictedByChannel(ctx, *scope.groupID, a, scope.model))
+		return a.Platform == PlatformAnthropic && a.IsActive() && a.Schedulable && openAIStickyAccountMatchesGroup(a, scope.groupID) && scope.gateway.isModelSupportedByAccount(a, scope.model) && (!privacy || a.IsPrivacySet()) && (scope.groupID == nil || !scope.gateway.needsUpstreamChannelRestrictionCheck(ctx, scope.groupID) || !scope.gateway.isUpstreamModelRestrictedByChannel(ctx, *scope.groupID, a, scope.model))
 	}
 	if !eligible(target) {
 		return false
@@ -240,9 +243,10 @@ func (w *claudeQuotaAutoReset) evaluate(ctx context.Context, a *Account, cfg Ope
 	exhausted := false
 	if cfg.Mode != OpenAIAutoResetModeExpiring {
 		w.scopes.Range(func(_, v any) bool {
-			if w.cohort(ctx, a, v.(claudeResetScope), accounts) {
+			scope, ok := v.(claudeResetScope)
+			if ok && w.cohort(ctx, a, scope, accounts) {
 				exhausted = true
-				picked := v.(claudeResetScope)
+				picked := scope
 				chosenScope = &picked
 				return false
 			}
