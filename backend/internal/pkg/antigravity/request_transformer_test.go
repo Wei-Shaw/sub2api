@@ -300,6 +300,45 @@ func TestBuildTools_KeepsWebSearchWhenNoClientFunctions(t *testing.T) {
 	require.Equal(t, 5, result[0].GoogleSearch.EnhancedContent.ImageSearch.MaxResultCount)
 }
 
+func TestBuildGenerationConfig_Gemini3UsesThinkingLevel(t *testing.T) {
+	tests := []struct {
+		name      string
+		model     string
+		budget    int
+		wantLevel string
+	}{
+		{name: "tiered suffix uses budget fallback", model: "gemini-3.8-flash-tiered", budget: 1024, wantLevel: "low"},
+		{name: "high suffix wins over small budget", model: "gemini-3.8-flash-high", budget: 512, wantLevel: "high"},
+		{name: "medium suffix", model: "gemini-3.6-flash-medium", budget: 20000, wantLevel: "medium"},
+		{name: "low suffix", model: "gemini-3.1-pro-low", budget: 20000, wantLevel: "low"},
+		{name: "bare id uses budget fallback low", model: "gemini-3.8-flash", budget: 1024, wantLevel: "low"},
+		{name: "bare id uses budget fallback medium", model: "gemini-3.8-flash", budget: 4096, wantLevel: "medium"},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			cfg := buildGenerationConfig(&ClaudeRequest{
+				Model:     tc.model,
+				MaxTokens: 64,
+				Thinking:  &ThinkingConfig{Type: "enabled", BudgetTokens: tc.budget},
+			})
+			require.NotNil(t, cfg.ThinkingConfig)
+			require.Equal(t, tc.wantLevel, cfg.ThinkingConfig.ThinkingLevel)
+			require.Zero(t, cfg.ThinkingConfig.ThinkingBudget)
+			require.Equal(t, 64, cfg.MaxOutputTokens)
+		})
+	}
+
+	legacy := buildGenerationConfig(&ClaudeRequest{
+		Model:     "gemini-2.5-flash",
+		MaxTokens: 64,
+		Thinking:  &ThinkingConfig{Type: "enabled", BudgetTokens: 1024},
+	})
+	require.NotNil(t, legacy.ThinkingConfig)
+	require.Empty(t, legacy.ThinkingConfig.ThinkingLevel)
+	require.Equal(t, 1024, legacy.ThinkingConfig.ThinkingBudget)
+	require.Greater(t, legacy.MaxOutputTokens, legacy.ThinkingConfig.ThinkingBudget)
+}
+
 func TestBuildGenerationConfig_ThinkingDynamicBudget(t *testing.T) {
 	tests := []struct {
 		name        string
