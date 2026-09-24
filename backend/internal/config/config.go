@@ -107,6 +107,7 @@ type Config struct {
 	ImageStorage            ImageStorageConfig            `mapstructure:"image_storage"`
 	Plugins                 PluginConfig                  `mapstructure:"plugins"`
 	Canvas                  CanvasConfig                  `mapstructure:"canvas"`
+	Dataset                 DatasetConfig                 `mapstructure:"dataset"`
 
 	// Enforce only API-key spending windows in simple mode.
 	SimpleModeKeyRateLimitEnabled bool `mapstructure:"simple_mode_key_rate_limit_enabled" yaml:"simple_mode_key_rate_limit_enabled"`
@@ -122,6 +123,17 @@ type CanvasConfig struct {
 	Origin            string `mapstructure:"origin"`
 	BFFSharedSecret   string `mapstructure:"bff_shared_secret"`
 	LaunchCodeTTLSecs int    `mapstructure:"launch_code_ttl_seconds"`
+}
+
+// DatasetConfig configures LLM request/response dataset collection for training.
+type DatasetConfig struct {
+	Enabled                bool   `mapstructure:"enabled"`
+	GoogleDriveCredentials string `mapstructure:"google_drive_credentials"`
+	GoogleDriveFolderID    string `mapstructure:"google_drive_folder_id"`
+	BatchSize              int    `mapstructure:"batch_size"`
+	BatchMaxMB             int    `mapstructure:"batch_max_mb"`
+	BatchIntervalSec       int    `mapstructure:"batch_interval_sec"`
+	BufferMaxItems         int    `mapstructure:"buffer_max_items"`
 }
 
 // PluginConfig 控制管理员手动上传的本地进程插件。
