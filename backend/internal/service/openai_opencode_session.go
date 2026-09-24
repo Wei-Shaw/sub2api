@@ -268,7 +268,7 @@ func newOpenCodeID(prefix string) string {
 	var suffix strings.Builder
 	suffix.Grow(len(random))
 	for _, b := range random {
-		suffix.WriteByte(alphabet[int(b)%len(alphabet)])
+		_ = suffix.WriteByte(alphabet[int(b)%len(alphabet)])
 	}
 	return fmt.Sprintf("%s_%012x%s", prefix, timestamp, suffix.String())
 }
