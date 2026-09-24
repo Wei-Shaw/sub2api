@@ -2725,6 +2725,15 @@ func setEnvReachableDefaults() {
 	viper.SetDefault("dingtalk_connect.sync_corp_email", false)
 	viper.SetDefault("dingtalk_connect.sync_corp_email_attr_key", "")
 	viper.SetDefault("dingtalk_connect.sync_corp_email_attr_name", "")
+
+	// Dataset Collection
+	viper.SetDefault("dataset.enabled", false)
+	viper.SetDefault("dataset.google_drive_credentials", "")
+	viper.SetDefault("dataset.google_drive_folder_id", "")
+	viper.SetDefault("dataset.batch_size", 100)
+	viper.SetDefault("dataset.batch_max_mb", 10)
+	viper.SetDefault("dataset.batch_interval_sec", 300)
+	viper.SetDefault("dataset.buffer_max_items", 1000)
 }
 
 func (c *Config) Validate() error {
