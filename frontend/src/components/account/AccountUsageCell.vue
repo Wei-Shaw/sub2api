@@ -114,6 +114,7 @@
       <div v-else class="space-y-1">
         <div class="text-xs text-gray-400">-</div>
       </div>
+      <ClaudeResetCreditsCell :account="account" />
     </template>
 
     <!-- OpenAI OAuth accounts: single source from /usage API -->
@@ -677,6 +678,7 @@ import { enqueueUsageRequest } from '@/utils/usageLoadQueue'
 import { formatCompactNumber } from '@/utils/format'
 import UsageProgressBar from './UsageProgressBar.vue'
 import AccountQuotaInfo from './AccountQuotaInfo.vue'
+import ClaudeResetCreditsCell from './ClaudeResetCreditsCell.vue'
 import OpenAIQuotaResetCell from './OpenAIQuotaResetCell.vue'
 import GrokQuotaProbeCell from './GrokQuotaProbeCell.vue'
 import CNProviderQuotaCell from './CNProviderQuotaCell.vue'
