@@ -2330,10 +2330,18 @@ func (r *accountRepository) SetRateLimitedIfLater(ctx context.Context, id int64,
 // by a successful request. Matching both timestamps prevents a stale success
 // from erasing a later clear/re-arm generation with an equal or shorter reset.
 func (r *accountRepository) ClearRateLimitIfObserved(ctx context.Context, id int64, observedLimitedAt, observedResetAt time.Time) (bool, error) {
+	return r.clearOAuthRateLimitIfObserved(ctx, id, service.PlatformGrok, observedLimitedAt, observedResetAt)
+}
+
+// ClearClaudeRateLimitIfObserved preserves unrelated/new cooldown generations.
+func (r *accountRepository) ClearClaudeRateLimitIfObserved(ctx context.Context, id int64, limitedAt, resetAt time.Time) (bool, error) {
+	return r.clearOAuthRateLimitIfObserved(ctx, id, service.PlatformAnthropic, limitedAt, resetAt)
+}
+func (r *accountRepository) clearOAuthRateLimitIfObserved(ctx context.Context, id int64, platform string, observedLimitedAt, observedResetAt time.Time) (bool, error) {
 	updated, err := r.client.Account.Update().
 		Where(
 			dbaccount.IDEQ(id),
-			dbaccount.PlatformEQ(service.PlatformGrok),
+			dbaccount.PlatformEQ(platform),
 			dbaccount.TypeEQ(service.AccountTypeOAuth),
 			dbaccount.RateLimitedAtEQ(observedLimitedAt),
 			dbaccount.RateLimitResetAtEQ(observedResetAt),
