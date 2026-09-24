@@ -85,6 +85,31 @@ func normalizeOpenAIAutoResetCreditExtra(platform, accountType string, isShadow 
 		return nil, nil
 	}
 	normalized := cloneOpenAIAutoResetExtra(extra)
+	claudeFields := map[string]any{}
+	for k, v := range normalized {
+		if strings.HasPrefix(k, claudeAutoResetPrefix) {
+			claudeFields[strings.TrimPrefix(k, "claude_")] = v
+		}
+	}
+	if len(claudeFields) > 0 {
+		if platform != PlatformAnthropic || accountType != AccountTypeOAuth || isShadow {
+			return nil, infraerrors.New(http.StatusBadRequest, "CLAUDE_AUTO_RESET_ACCOUNT_INVALID", "automatic Claude resets require an OAuth parent account")
+		}
+		if _, exists := claudeFields[OpenAIAutoResetCreditModeExtraKey]; !exists {
+			claudeFields[OpenAIAutoResetCreditModeExtraKey] = OpenAIAutoResetModeExhausted
+		}
+		checked, err := normalizeOpenAIAutoResetCreditExtra(PlatformOpenAI, AccountTypeOAuth, false, claudeFields)
+		if err != nil {
+			return nil, err
+		}
+		if checked[OpenAIAutoResetCreditModeExtraKey] == OpenAIAutoResetModeThreshold {
+			return nil, infraerrors.New(http.StatusBadRequest, "CLAUDE_AUTO_RESET_MODE_INVALID", "Claude reset mode must be exhausted, expiring, or expiring_or_exhausted")
+		}
+		for k, v := range checked {
+			normalized["claude_"+k] = v
+		}
+	}
+
 	delete(normalized, OpenAIAutoResetCreditStateExtraKey)
 
 	_, hasEnabled := normalized[OpenAIAutoResetCreditEnabledExtraKey]
@@ -153,6 +178,11 @@ func stripOpenAIAutoResetCreditManagedExtra(extra map[string]any, stripConfig bo
 	}
 	delete(extra, OpenAIAutoResetCreditStateExtraKey)
 	if stripConfig {
+		for k := range extra {
+			if strings.HasPrefix(k, claudeAutoResetPrefix) {
+				delete(extra, k)
+			}
+		}
 		delete(extra, OpenAIAutoResetCreditModeExtraKey)
 		delete(extra, OpenAIAutoResetCreditExpiryHorizonExtraKey)
 		delete(extra, OpenAIAutoResetCreditExpiryMinUtilizationExtraKey)

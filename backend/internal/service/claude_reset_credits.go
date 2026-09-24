@@ -78,6 +78,7 @@ type ClaudeResetCreditService struct {
 	now      func() time.Time
 
 	// Redemption only; both are mandatory and never fail open.
+	automatic *claudeQuotaAutoReset
 	idempotency *IdempotencyCoordinator
 	locks       LeaderLockCache
 }
