@@ -73,6 +73,7 @@ type claudeResetTokens interface {
 }
 
 type ClaudeResetCreditService struct {
+	automatic   *claudeQuotaAutoReset
 	writer      claudeResetWriter
 	idempotency *IdempotencyCoordinator
 	locks       LeaderLockCache
