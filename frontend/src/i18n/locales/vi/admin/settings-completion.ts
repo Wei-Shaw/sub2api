@@ -60,6 +60,18 @@ export default {
     },
     "openaiExperimentalScheduler": {
       "oauthRateInvalid": "Tỷ lệ tham chiếu lập lịch OAuth phải là số không âm, hoặc để trống để dùng tỷ lệ tài khoản"
+    },
+    "opencodeGoUsage": {
+      "title": "Làm mới mức sử dụng OpenCode Go",
+      "description": "Làm mới các cửa sổ sử dụng do tài khoản OpenCode Go upstream báo cáo cho những tài khoản đã bật riêng. Mặc định tắt.",
+      "enabled": "Bật tự động làm mới toàn cục",
+      "enabledHint": "Chỉ làm mới các tài khoản đã bật công tắc tự động làm mới riêng. Vẫn có thể làm mới thủ công.",
+      "intervalMinutes": "Thời gian chờ tối đa khi yêu cầu vẫn tiếp diễn (phút)",
+      "intervalHint": "Phạm vi: 5–1440 phút. Khi yêu cầu liên tục khiến debounce liên tục lùi lại, hệ thống sẽ buộc làm mới muộn nhất sau khoảng thời gian này.",
+      "debounceMinutes": "Khoảng yên sau yêu cầu gần nhất (phút)",
+      "debounceHint": "Phạm vi: 1–60 phút và phải nhỏ hơn khoảng làm mới. Làm mới sau khi yêu cầu model gần nhất đã yên trong khoảng thời gian này.",
+      "saved": "Đã lưu cài đặt làm mới mức sử dụng OpenCode Go",
+      "saveFailed": "Không thể lưu cài đặt làm mới mức sử dụng OpenCode Go"
     }
   }
 }

@@ -102,11 +102,20 @@ func initializeApplication(buildInfo handler.BuildInfo) (*Application, error) {
 	authHandler := handler.ProvideAuthHandler(configConfig, authService, userService, settingService, promoService, redeemService, totpService, userAttributeService, canvasLaunchStore)
 	vClawClaimService := service.NewVClawClaimService(client, userRepository, redeemCodeRepository, userDeviceRepository, configConfig, settingService)
 	vClawHandler := handler.NewVClawHandler(vClawClaimService)
+	registry := payment.ProvideRegistry()
+	encryptionKey, err := payment.ProvideEncryptionKey(configConfig)
+	if err != nil {
+		return nil, err
+	}
+	defaultLoadBalancer := payment.ProvideDefaultLoadBalancer(client, encryptionKey)
+	paymentConfigService := service.ProvidePaymentConfigService(client, settingRepository, encryptionKey)
+	notificationEmailService := service.NewNotificationEmailService(settingRepository, emailService)
+	paymentService := service.ProvidePaymentService(client, registry, defaultLoadBalancer, redeemService, subscriptionService, paymentConfigService, userRepository, groupRepository, affiliateService, notificationEmailService, telegramNotifyService)
+	botSalesFulfillmentService := service.NewBotSalesFulfillmentService(client, userRepository, userDeviceRepository, vClawClaimService, paymentService, apiKeyService)
+	botSalesHandler := handler.NewBotSalesHandler(botSalesFulfillmentService)
 	userHandler := handler.NewUserHandler(userService, authService, emailService, emailCache, affiliateService, serviceUserPlatformQuotaRepository)
 	apiKeyHandler := handler.NewAPIKeyHandler(apiKeyService)
 	usageLogRepository := repository.NewUsageLogRepository(client, db)
-	openAIProvisionCapacityDemandStore := repository.NewOpenAIProvisionCapacityDemandStore(redisClient)
-	openAIProvisionDemandService := repository.ProvideOpenAIProvisionDemandService(usageLogRepository, openAIProvisionCapacityDemandStore)
 	usageService := service.NewUsageService(usageLogRepository, userRepository, client, apiKeyAuthCacheInvalidator)
 	opsRepository := repository.NewOpsRepository(db)
 	usageBillingRepository := repository.NewUsageBillingRepository(client, db)
@@ -152,7 +161,6 @@ func initializeApplication(buildInfo handler.BuildInfo) (*Application, error) {
 	modelPricingResolver := service.NewModelPricingResolver(channelService, billingService)
 	compositeModelRouteRepository := repository.NewCompositeModelRouteRepository(client)
 	compositeRouteResolver := service.NewCompositeRouteResolver(compositeModelRouteRepository)
-	notificationEmailService := service.NewNotificationEmailService(settingRepository, emailService)
 	balanceNotifyService := service.ProvideBalanceNotifyService(emailService, settingRepository, accountRepository, notificationEmailService, telegramNotifyService)
 	gatewayService := service.NewGatewayService(accountRepository, groupRepository, usageLogRepository, usageBillingRepository, userRepository, userSubscriptionRepository, userGroupRateRepository, gatewayCache, configConfig, schedulerSnapshotService, concurrencyService, billingService, rateLimitService, billingCacheService, identityService, httpUpstream, deferredService, claudeTokenProvider, sessionLimitCache, rpmCache, digestSessionStore, settingService, tlsFingerprintProfileService, channelService, modelPricingResolver, compositeRouteResolver, balanceNotifyService, serviceUserPlatformQuotaRepository)
 	openAIOAuthClient := repository.NewOpenAIOAuthClient()
@@ -239,16 +247,6 @@ func initializeApplication(buildInfo handler.BuildInfo) (*Application, error) {
 	proxyHandler := admin.NewProxyHandler(adminService)
 	adminRedeemHandler := admin.NewRedeemHandler(adminService, redeemService)
 	promoHandler := admin.NewPromoHandler(promoService)
-	encryptionKey, err := payment.ProvideEncryptionKey(configConfig)
-	if err != nil {
-		return nil, err
-	}
-	paymentConfigService := service.ProvidePaymentConfigService(client, settingRepository, encryptionKey)
-	registry := payment.ProvideRegistry()
-	defaultLoadBalancer := payment.ProvideDefaultLoadBalancer(client, encryptionKey)
-	paymentService := service.ProvidePaymentService(client, registry, defaultLoadBalancer, redeemService, subscriptionService, paymentConfigService, userRepository, groupRepository, affiliateService, notificationEmailService, telegramNotifyService)
-	botSalesFulfillmentService := service.NewBotSalesFulfillmentService(client, userRepository, userDeviceRepository, vClawClaimService, paymentService, apiKeyService)
-	botSalesHandler := handler.NewBotSalesHandler(botSalesFulfillmentService)
 	settingHandler := handler.ProvideAdminSettingHandler(settingService, emailService, turnstileService, aliyunCaptchaService, opsService, paymentConfigService, paymentService, userAttributeService, notificationEmailService, telegramNotifyService, totpService, userService)
 	opsHandler := admin.NewOpsHandler(opsService, client)
 	updateCache := repository.NewUpdateCache(redisClient)
@@ -307,6 +305,8 @@ func initializeApplication(buildInfo handler.BuildInfo) (*Application, error) {
 	legacyEngine := securityaudit.NewLegacyModerationAdapter(contentModerationService)
 	coordinator := securityaudit.NewCoordinator(legacyEngine, promptService)
 	gatewayHandler := handler.ProvideGatewayHandler(gatewayService, openAIGatewayService, geminiMessagesCompatService, antigravityGatewayService, userService, concurrencyService, billingCacheService, usageService, apiKeyService, usageRecordWorkerPool, errorPassthroughService, contentModerationService, userMessageQueueService, configConfig, settingService, coordinator)
+	openAIProvisionCapacityDemandStore := repository.NewOpenAIProvisionCapacityDemandStore(redisClient)
+	openAIProvisionDemandService := repository.ProvideOpenAIProvisionDemandService(usageLogRepository, openAIProvisionCapacityDemandStore)
 	openAIGatewayHandler := handler.ProvideOpenAIGatewayHandler(openAIGatewayService, pluginManager, concurrencyService, billingCacheService, apiKeyService, usageRecordWorkerPool, errorPassthroughService, contentModerationService, opsService, grokQuotaService, openAIProvisionDemandService, configConfig, coordinator, compositeRouteResolver)
 	handlerSettingHandler := handler.ProvideSettingHandler(settingService, buildInfo, notificationEmailService)
 	totpHandler := handler.NewTotpHandler(totpService)
@@ -367,10 +367,11 @@ func initializeApplication(buildInfo handler.BuildInfo) (*Application, error) {
 	userPlatformQuotaUsageFlusher := service.ProvideUserPlatformQuotaUsageFlusher(configConfig, billingCache, serviceUserPlatformQuotaRepository, timingWheelService)
 	v := provideCleanup(client, redisClient, opsMetricsCollector, opsAggregationService, opsAlertEvaluatorService, opsCleanupService, opsScheduledReportService, opsSystemLogSink, opsService, opsIngressRejectAggregator, apiKeyService, authCacheInvalidationWorker, schedulerSnapshotService, tokenRefreshService, accountExpiryService, cnProviderBalanceCheckService, openAICodexVersionSyncService, claudeCodeVersionSyncService, proxyExpiryService, subscriptionExpiryService, usageCleanupService, idempotencyCleanupService, batchImageCleanupService, batchImageWorkerRuntime, pricingService, emailQueueService, billingCacheService, usageRecordWorkerPool, subscriptionService, oAuthService, openAIOAuthService, geminiOAuthService, antigravityOAuthService, grokOAuthService, openAIGatewayService, scheduledTestRunnerService, backupService, paymentOrderExpiryService, channelMonitorRunner, channelMonitorV2Aggregator, openAIAutoProvisionService, userPlatformQuotaUsageFlusher, upstreamBillingProbeService, ollamaCloudUsageService, openCodeGoUsageService, auditLogService, openAIQuotaAutoResetService, promptService, pluginManager)
 	application := &Application{
-		Server:        httpServer,
-		PromptAudit:   promptService,
-		PluginManager: pluginManager,
-		Cleanup:       v,
+		Server:         httpServer,
+		PromptAudit:    promptService,
+		PluginManager:  pluginManager,
+		SettingService: settingService,
+		Cleanup:        v,
 	}
 	return application, nil
 }
@@ -378,10 +379,11 @@ func initializeApplication(buildInfo handler.BuildInfo) (*Application, error) {
 // wire.go:
 
 type Application struct {
-	Server        *http.Server
-	PromptAudit   *securityaudit.PromptService
-	PluginManager *service.PluginManager
-	Cleanup       func()
+	Server         *http.Server
+	PromptAudit    *securityaudit.PromptService
+	PluginManager  *service.PluginManager
+	SettingService *service.SettingService
+	Cleanup        func()
 }
 
 func providePrivacyClientFactory() service.PrivacyClientFactory {
