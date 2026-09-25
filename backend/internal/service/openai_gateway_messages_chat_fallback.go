@@ -157,17 +157,19 @@ func (s *OpenAIGatewayService) bufferChatCompletionsAsAnthropic(
 	c.JSON(http.StatusOK, anthropicResp)
 
 	return &OpenAIForwardResult{
-		RequestID:                   requestID,
-		UpstreamHeaders:             resp.Header,
-		Usage:                       usage,
-		Model:                       originalModel,
-		BillingModel:                billingModel,
-		UpstreamModel:               upstreamModel,
-		ReasoningEffort:             reasoningEffort,
-		UpstreamResponseServiceTier: observedUpstreamResponseServiceTier(c),
-		ServiceTier:                 resolvedOpenAIUpstreamServiceTier(c, serviceTier),
-		Stream:                      false,
-		Duration:                    time.Since(startTime),
+		RequestID:                     requestID,
+		UpstreamHeaders:               resp.Header,
+		Usage:                         usage,
+		Model:                         originalModel,
+		BillingModel:                  billingModel,
+		UpstreamModel:                 upstreamModel,
+		UpstreamResponseModel:         observedUpstreamResponseModel(c),
+		UpstreamResponseModelConflict: observedUpstreamResponseModelConflict(c),
+		ReasoningEffort:               reasoningEffort,
+		UpstreamResponseServiceTier:   observedUpstreamResponseServiceTier(c),
+		ServiceTier:                   resolvedOpenAIUpstreamServiceTier(c, serviceTier),
+		Stream:                        false,
+		Duration:                      time.Since(startTime),
 	}, nil
 }
 
@@ -219,19 +221,21 @@ func (s *OpenAIGatewayService) streamChatCompletionsAsAnthropic(
 		// masks the truncation, and surface the error to flag usage incomplete
 		// (mirrors forwardResponsesViaRawChatCompletions).
 		return &OpenAIForwardResult{
-			RequestID:                   requestID,
-			UpstreamHeaders:             resp.Header,
-			Usage:                       usage,
-			Model:                       originalModel,
-			BillingModel:                billingModel,
-			UpstreamModel:               upstreamModel,
-			ReasoningEffort:             reasoningEffort,
-			UpstreamResponseServiceTier: observedUpstreamResponseServiceTier(c),
-			ServiceTier:                 resolvedOpenAIUpstreamServiceTier(c, serviceTier),
-			Stream:                      true,
-			Duration:                    time.Since(startTime),
-			FirstTokenMs:                scan.FirstTokenMs,
-			ClientDisconnect:            clientDisconnected,
+			RequestID:                     requestID,
+			UpstreamHeaders:               resp.Header,
+			Usage:                         usage,
+			Model:                         originalModel,
+			BillingModel:                  billingModel,
+			UpstreamModel:                 upstreamModel,
+			UpstreamResponseModel:         observedUpstreamResponseModel(c),
+			UpstreamResponseModelConflict: observedUpstreamResponseModelConflict(c),
+			ReasoningEffort:               reasoningEffort,
+			UpstreamResponseServiceTier:   observedUpstreamResponseServiceTier(c),
+			ServiceTier:                   resolvedOpenAIUpstreamServiceTier(c, serviceTier),
+			Stream:                        true,
+			Duration:                      time.Since(startTime),
+			FirstTokenMs:                  scan.FirstTokenMs,
+			ClientDisconnect:              clientDisconnected,
 		}, fmt.Errorf("stream usage incomplete: %w", scan.Err)
 	}
 
@@ -256,18 +260,20 @@ func (s *OpenAIGatewayService) streamChatCompletionsAsAnthropic(
 	}
 
 	return &OpenAIForwardResult{
-		RequestID:                   requestID,
-		UpstreamHeaders:             resp.Header,
-		Usage:                       usage,
-		Model:                       originalModel,
-		BillingModel:                billingModel,
-		UpstreamModel:               upstreamModel,
-		ReasoningEffort:             reasoningEffort,
-		UpstreamResponseServiceTier: observedUpstreamResponseServiceTier(c),
-		ServiceTier:                 resolvedOpenAIUpstreamServiceTier(c, serviceTier),
-		Stream:                      true,
-		Duration:                    time.Since(startTime),
-		FirstTokenMs:                scan.FirstTokenMs,
-		ClientDisconnect:            clientDisconnected,
+		RequestID:                     requestID,
+		UpstreamHeaders:               resp.Header,
+		Usage:                         usage,
+		Model:                         originalModel,
+		BillingModel:                  billingModel,
+		UpstreamModel:                 upstreamModel,
+		UpstreamResponseModel:         observedUpstreamResponseModel(c),
+		UpstreamResponseModelConflict: observedUpstreamResponseModelConflict(c),
+		ReasoningEffort:               reasoningEffort,
+		UpstreamResponseServiceTier:   observedUpstreamResponseServiceTier(c),
+		ServiceTier:                   resolvedOpenAIUpstreamServiceTier(c, serviceTier),
+		Stream:                        true,
+		Duration:                      time.Since(startTime),
+		FirstTokenMs:                  scan.FirstTokenMs,
+		ClientDisconnect:              clientDisconnected,
 	}, nil
 }
