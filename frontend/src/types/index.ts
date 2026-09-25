@@ -1225,7 +1225,14 @@ export interface Account {
       fetched_at: number
     }
     codex_referral_snapshot?: import('./openaiReferrals').OpenAIReferralEligibility | null
+    claude_auto_reset_credit_enabled?: boolean
+    claude_auto_reset_credit_mode?: 'exhausted' | 'expiring' | 'expiring_or_exhausted'
+    claude_auto_reset_credit_expiry_horizon_seconds?: number
+    claude_auto_reset_credit_expiry_min_utilization?: number
     auto_reset_credit_enabled?: boolean
+    auto_reset_credit_mode?: 'threshold' | 'exhausted' | 'expiring' | 'expiring_or_exhausted'
+    auto_reset_credit_expiry_horizon_seconds?: number
+    auto_reset_credit_expiry_min_utilization?: number
     auto_reset_credit_5h_threshold?: number
     auto_reset_credit_7d_threshold?: number
     codex_auto_reset_credit_state?: {
