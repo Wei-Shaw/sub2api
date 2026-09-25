@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"strings"
 	"sync/atomic"
 	"time"
 
@@ -20,10 +21,12 @@ type WebSearchEmulationConfig struct {
 	Providers []WebSearchProviderConfig `json:"providers"`
 }
 
-// WebSearchProviderConfig describes a single search provider (Brave or Tavily).
+// WebSearchProviderConfig describes a single search provider (Brave, Tavily or
+// a self-hosted SearXNG instance).
 type WebSearchProviderConfig struct {
-	Type             string `json:"type"`                    // websearch.ProviderTypeBrave | Tavily
-	APIKey           string `json:"api_key,omitempty"`       // secret — omitted in API responses
+	Type             string `json:"type"`                    // websearch.ProviderTypeBrave | Tavily | Searxng
+	APIKey           string `json:"api_key,omitempty"`       // secret — omitted in API responses; optional for searxng
+	BaseURL          string `json:"base_url,omitempty"`      // searxng only: instance root, e.g. http://searxng:8080
 	APIKeyConfigured bool   `json:"api_key_configured"`      // read-only mask
 	QuotaLimit       *int64 `json:"quota_limit"`             // nil = unlimited, >0 = limited
 	SubscribedAt     *int64 `json:"subscribed_at,omitempty"` // subscription start (unix seconds); quota resets monthly
@@ -37,8 +40,9 @@ type WebSearchProviderConfig struct {
 const maxWebSearchProviders = 10
 
 var validProviderTypes = map[string]bool{
-	websearch.ProviderTypeBrave:  true,
-	websearch.ProviderTypeTavily: true,
+	websearch.ProviderTypeBrave:   true,
+	websearch.ProviderTypeTavily:  true,
+	websearch.ProviderTypeSearxng: true,
 }
 
 func validateWebSearchConfig(cfg *WebSearchEmulationConfig) error {
@@ -55,6 +59,14 @@ func validateWebSearchConfig(cfg *WebSearchEmulationConfig) error {
 		}
 		if p.QuotaLimit != nil && *p.QuotaLimit < 0 {
 			return fmt.Errorf("provider[%d]: quota_limit must be > 0 or null", i)
+		}
+		// SearXNG has no key to authenticate with, so the instance address is what
+		// it cannot work without. The keyed providers are deliberately NOT checked
+		// here: their keys arrive later, via mergeExistingAPIKeys, because the
+		// admin API never echoes secrets back — and SaveWebSearchEmulationConfig
+		// enforces them after that merge.
+		if p.Type == websearch.ProviderTypeSearxng && strings.TrimSpace(p.BaseURL) == "" {
+			return fmt.Errorf("provider[%d]: searxng requires base_url", i)
 		}
 		if seen[p.Type] {
 			return fmt.Errorf("provider[%d]: duplicate type %q", i, p.Type)
@@ -150,10 +162,12 @@ func (s *SettingService) SaveWebSearchEmulationConfig(ctx context.Context, cfg *
 	}
 	s.mergeExistingAPIKeys(ctx, cfg)
 
-	// After merge, validate all enabled providers have API keys
+	// After merge, validate all enabled providers are usable. SearXNG carries no
+	// key — an authenticating reverse proxy in front of it is optional — so only
+	// the keyed providers are checked here.
 	if cfg.Enabled {
 		for _, p := range cfg.Providers {
-			if p.APIKey == "" {
+			if websearch.RequiresAPIKey(p.Type) && p.APIKey == "" {
 				return infraerrors.BadRequest("MISSING_API_KEY",
 					fmt.Sprintf("provider %s has no API key configured", p.Type))
 			}
