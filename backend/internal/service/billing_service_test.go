@@ -1976,18 +1976,20 @@ func TestNewModelPricingCatalogFallbackAndContext(t *testing.T) {
 				}
 			})
 		}
-		t.Run(source+"/opus", func(t *testing.T) {
-			tokens := UsageTokens{InputTokens: 300000, OutputTokens: 500, CacheReadTokens: 1000, CacheCreationTokens: 1000, CacheCreation5mTokens: 400, CacheCreation1hTokens: 600}
-			for tier, mult := range map[string]float64{"": 1, "fast": 2} {
-				cost, err := svc.CalculateCostWithServiceTier("claude-opus-5-5", tokens, 1, tier)
-				require.NoError(t, err)
-				require.InDelta(t, 1.2*mult, cost.InputCost, 1e-10)
-				require.InDelta(t, (400*5e-6+600*8e-6)*mult, cost.CacheCreationCost, 1e-10)
-				require.InDelta(t, 1000*0.2e-6*mult, cost.CacheReadCost, 1e-10)
-				require.InDelta(t, 500*20e-6*mult, cost.OutputCost, 1e-10)
-				require.False(t, cost.LongContextBillingApplied)
-			}
-		})
+		for _, model := range []string{"claude-opus-5-5", "anthropic/claude-opus-5.5"} {
+			t.Run(source+"/"+model, func(t *testing.T) {
+				tokens := UsageTokens{InputTokens: 300000, OutputTokens: 500, CacheReadTokens: 1000, CacheCreationTokens: 1000, CacheCreation5mTokens: 400, CacheCreation1hTokens: 600}
+				for tier, mult := range map[string]float64{"": 1, "fast": 2} {
+					cost, err := svc.CalculateCostWithServiceTier(model, tokens, 1, tier)
+					require.NoError(t, err)
+					require.InDelta(t, 1.2*mult, cost.InputCost, 1e-10)
+					require.InDelta(t, (400*5e-6+600*8e-6)*mult, cost.CacheCreationCost, 1e-10)
+					require.InDelta(t, 1000*0.2e-6*mult, cost.CacheReadCost, 1e-10)
+					require.InDelta(t, 500*20e-6*mult, cost.OutputCost, 1e-10)
+					require.False(t, cost.LongContextBillingApplied)
+				}
+			})
+		}
 	}
 }
 
