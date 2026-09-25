@@ -210,6 +210,10 @@ func (s *PaymentService) PrepareRefund(ctx context.Context, oid int64, amt float
 	if err != nil {
 		return nil, nil, infraerrors.NotFound("NOT_FOUND", "order not found")
 	}
+	if o.OrderType == payment.OrderTypeMerchant {
+		// 商户订单不进本站余额，退款请在支付宝商户中心直接操作对应交易。
+		return nil, nil, infraerrors.BadRequest("MERCHANT_ORDER_NOT_REFUNDABLE", "merchant orders must be refunded in the alipay merchant center")
+	}
 	ok := []string{OrderStatusCompleted, OrderStatusRefundRequested, OrderStatusRefundPending, OrderStatusRefundFailed}
 	if !psSliceContains(ok, o.Status) {
 		return nil, nil, infraerrors.BadRequest("INVALID_STATUS", "order status does not allow refund")

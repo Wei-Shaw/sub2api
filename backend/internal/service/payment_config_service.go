@@ -2,6 +2,8 @@ package service
 
 import (
 	"context"
+	"encoding/json"
+	"errors"
 	"fmt"
 	"math"
 	"strconv"
@@ -513,4 +515,89 @@ func visibleMethodShouldBeExposed(method string, vals map[string]string, availab
 	}
 	source := NormalizeVisibleMethodSource(method, vals[sourceKey])
 	return source != "" && available[source]
+}
+
+// --- Merchant payment API configuration ---
+
+// SettingPaymentMerchants stores the merchant registry (JSON array of
+// PaymentMerchant) for the merchant payment API. Managed via
+// /admin/payment/merchants.
+const SettingPaymentMerchants = "payment_merchants"
+
+// PaymentMerchant is one external site allowed to collect payments through
+// this site's payment channel via the merchant payment API.
+type PaymentMerchant struct {
+	ID        string `json:"id"`
+	Name      string `json:"name"`
+	Secret    string `json:"secret"`
+	NotifyURL string `json:"notify_url"`
+	Enabled   bool   `json:"enabled"`
+}
+
+// ListPaymentMerchants returns all registered merchants (admin only).
+func (s *PaymentConfigService) ListPaymentMerchants(ctx context.Context) ([]PaymentMerchant, error) {
+	raw, err := s.settingRepo.GetValue(ctx, SettingPaymentMerchants)
+	if errors.Is(err, ErrSettingNotFound) || raw == "" {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("load payment merchants: %w", err)
+	}
+	var merchants []PaymentMerchant
+	if err := json.Unmarshal([]byte(raw), &merchants); err != nil {
+		return nil, fmt.Errorf("parse payment merchants: %w", err)
+	}
+	return merchants, nil
+}
+
+// GetPaymentMerchant returns the enabled merchant with the given ID.
+func (s *PaymentConfigService) GetPaymentMerchant(ctx context.Context, id string) (*PaymentMerchant, error) {
+	merchants, err := s.ListPaymentMerchants(ctx)
+	if err != nil {
+		return nil, err
+	}
+	for i := range merchants {
+		if merchants[i].ID == id {
+			if !merchants[i].Enabled {
+				return nil, infraerrors.Forbidden("MERCHANT_DISABLED", "merchant is disabled")
+			}
+			return &merchants[i], nil
+		}
+	}
+	return nil, infraerrors.NotFound("MERCHANT_NOT_FOUND", "merchant not found")
+}
+
+// SavePaymentMerchant upserts a merchant by ID.
+func (s *PaymentConfigService) SavePaymentMerchant(ctx context.Context, m PaymentMerchant) error {
+	merchants, err := s.ListPaymentMerchants(ctx)
+	if err != nil {
+		return err
+	}
+	replaced := false
+	for i := range merchants {
+		if merchants[i].ID == m.ID {
+			// Keep the stored secret when the caller passes an empty one
+			// (update flow must not wipe credentials).
+			if m.Secret == "" {
+				m.Secret = merchants[i].Secret
+			}
+			merchants[i] = m
+			replaced = true
+			break
+		}
+	}
+	if !replaced {
+		if m.Secret == "" {
+			return infraerrors.BadRequest("MERCHANT_SECRET_REQUIRED", "secret is required for a new merchant")
+		}
+		merchants = append(merchants, m)
+	}
+	data, err := json.Marshal(merchants)
+	if err != nil {
+		return fmt.Errorf("encode payment merchants: %w", err)
+	}
+	if err := s.settingRepo.Set(ctx, SettingPaymentMerchants, string(data)); err != nil {
+		return fmt.Errorf("save payment merchants: %w", err)
+	}
+	return nil
 }

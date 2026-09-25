@@ -45,12 +45,20 @@ func RegisterPaymentRoutes(
 
 	// --- Public payment endpoints (no auth) ---
 	// Signed resume-token recovery is the preferred public lookup path.
-	// The legacy anonymous out_trade_no verify endpoint remains available as a
-	// persisted-state compatibility path for staggered upgrades.
+	// The legacy anonymous out_trade_no verify endpoint remains available as
+	// a persisted-state compatibility path for staggered upgrades.
 	public := v1.Group("/payment/public")
 	{
 		public.POST("/orders/verify", paymentHandler.VerifyOrderPublic)
 		public.POST("/orders/resolve", paymentHandler.ResolveOrderPublicByResumeToken)
+	}
+
+	// --- Merchant payment endpoints (HMAC-authenticated in handler) ---
+	// External same-operator sites collect payments through this instance.
+	merchant := v1.Group("/merchant/payment")
+	{
+		merchant.POST("/orders", paymentHandler.CreateMerchantOrder)
+		merchant.GET("/orders/:out_trade_no", paymentHandler.GetMerchantOrder)
 	}
 
 	// --- Webhook endpoints (no auth) ---
@@ -105,6 +113,14 @@ func RegisterPaymentRoutes(
 			providers.POST("", adminPaymentHandler.CreateProvider)
 			providers.PUT("/:id", adminPaymentHandler.UpdateProvider)
 			providers.DELETE("/:id", adminPaymentHandler.DeleteProvider)
+		}
+
+		// Merchant registry (merchant payment API)
+		merchants := adminGroup.Group("/merchants")
+		{
+			merchants.GET("", adminPaymentHandler.ListMerchants)
+			merchants.POST("", adminPaymentHandler.CreateMerchant)
+			merchants.PUT("/:id", adminPaymentHandler.UpdateMerchant)
 		}
 	}
 }

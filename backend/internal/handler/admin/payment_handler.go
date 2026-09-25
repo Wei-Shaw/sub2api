@@ -1,7 +1,9 @@
 package admin
 
 import (
+	"regexp"
 	"strconv"
+	"strings"
 	"time"
 
 	dbent "github.com/Wei-Shaw/sub2api/ent"
@@ -439,4 +441,94 @@ func (h *PaymentHandler) UpdateConfig(c *gin.Context) {
 		return
 	}
 	response.Success(c, gin.H{"message": "updated"})
+}
+
+// --- Merchant registry management ---
+
+type merchantUpsertRequest struct {
+	ID        string `json:"id"`
+	Name      string `json:"name" binding:"required"`
+	NotifyURL string `json:"notify_url"`
+	Enabled   *bool  `json:"enabled"`
+}
+
+var merchantIDPattern = regexp.MustCompile(`^[a-z0-9][a-z0-9-]{1,31}$`)
+
+// ListMerchants returns all registered payment merchants.
+// GET /api/v1/admin/payment/merchants
+func (h *PaymentHandler) ListMerchants(c *gin.Context) {
+	merchants, err := h.configService.ListPaymentMerchants(c.Request.Context())
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, merchants)
+}
+
+// CreateMerchant registers a payment merchant; the secret is generated
+// server-side and returned exactly once.
+// POST /api/v1/admin/payment/merchants
+func (h *PaymentHandler) CreateMerchant(c *gin.Context) {
+	var req merchantUpsertRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "Invalid request: "+err.Error())
+		return
+	}
+	id := strings.TrimSpace(req.ID)
+	if id == "" {
+		id = "m" + service.GenerateMerchantSecret()[:8]
+	}
+	if !merchantIDPattern.MatchString(id) {
+		response.BadRequest(c, "id must match ^[a-z0-9][a-z0-9-]{1,31}$")
+		return
+	}
+	if existing, _ := h.configService.GetPaymentMerchant(c.Request.Context(), id); existing != nil {
+		response.BadRequest(c, "merchant id already exists")
+		return
+	}
+	enabled := true
+	if req.Enabled != nil {
+		enabled = *req.Enabled
+	}
+	m := service.PaymentMerchant{
+		ID:        id,
+		Name:      strings.TrimSpace(req.Name),
+		Secret:    service.GenerateMerchantSecret(),
+		NotifyURL: strings.TrimSpace(req.NotifyURL),
+		Enabled:   enabled,
+	}
+	if err := h.configService.SavePaymentMerchant(c.Request.Context(), m); err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Created(c, m)
+}
+
+// UpdateMerchant updates a merchant (name/notify_url/enabled). The stored
+// secret is preserved unless reset=true is provided.
+// PUT /api/v1/admin/payment/merchants/:id
+func (h *PaymentHandler) UpdateMerchant(c *gin.Context) {
+	id := c.Param("id")
+	current, err := h.configService.GetPaymentMerchant(c.Request.Context(), id)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	var req merchantUpsertRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "Invalid request: "+err.Error())
+		return
+	}
+	if strings.TrimSpace(req.Name) != "" {
+		current.Name = strings.TrimSpace(req.Name)
+	}
+	current.NotifyURL = strings.TrimSpace(req.NotifyURL)
+	if req.Enabled != nil {
+		current.Enabled = *req.Enabled
+	}
+	if err := h.configService.SavePaymentMerchant(c.Request.Context(), *current); err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, current)
 }

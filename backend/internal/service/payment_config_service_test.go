@@ -395,7 +395,13 @@ func (s *paymentConfigSettingRepoStub) Get(context.Context, string) (*Setting, e
 func (s *paymentConfigSettingRepoStub) GetValue(_ context.Context, key string) (string, error) {
 	return s.values[key], nil
 }
-func (s *paymentConfigSettingRepoStub) Set(context.Context, string, string) error { return nil }
+func (s *paymentConfigSettingRepoStub) Set(_ context.Context, key, value string) error {
+	if s.values == nil {
+		s.values = map[string]string{}
+	}
+	s.values[key] = value
+	return nil
+}
 func (s *paymentConfigSettingRepoStub) GetMultiple(_ context.Context, keys []string) (map[string]string, error) {
 	out := make(map[string]string, len(keys))
 	for _, key := range keys {

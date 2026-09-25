@@ -41,6 +41,10 @@ const (
 const (
 	OrderTypeBalance      = "balance"
 	OrderTypeSubscription = "subscription"
+	// OrderTypeMerchant marks orders collected on behalf of an external
+	// merchant site via the merchant payment API. Fulfillment does not touch
+	// any user balance: it completes the order and notifies the merchant.
+	OrderTypeMerchant = "merchant"
 )
 
 // Entity statuses shared across users, groups, etc.
