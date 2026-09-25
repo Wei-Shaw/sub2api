@@ -41,9 +41,9 @@ func TestNormalizeGroupModelAllowlist(t *testing.T) {
 			want: GroupModelAllowlist{Enabled: true, Models: []string{"gpt-5.5-*"}},
 		},
 		{
-			name:    "wildcard in the middle is rejected",
-			in:      GroupModelAllowlist{Enabled: true, Models: []string{"gpt-*-5.4"}},
-			wantErr: "INVALID_MODEL_ALLOWLIST",
+			name: "wildcards at any position are accepted",
+			in:   GroupModelAllowlist{Enabled: true, Models: []string{"gpt-*-5.4", "*codex", "gpt-*-codex-*"}},
+			want: GroupModelAllowlist{Enabled: true, Models: []string{"gpt-*-5.4", "*codex", "gpt-*-codex-*"}},
 		},
 		{
 			name:    "bare wildcard is accepted as allow-all",
@@ -52,9 +52,9 @@ func TestNormalizeGroupModelAllowlist(t *testing.T) {
 			wantErr: "",
 		},
 		{
-			name:    "disabled config with invalid wildcard still rejected",
-			in:      GroupModelAllowlist{Enabled: false, Models: []string{"foo-*bar"}},
-			wantErr: "INVALID_MODEL_ALLOWLIST",
+			name: "disabled config preserves interior wildcard",
+			in:   GroupModelAllowlist{Enabled: false, Models: []string{"foo-*bar"}},
+			want: GroupModelAllowlist{Enabled: false, Models: []string{"foo-*bar"}},
 		},
 	}
 
@@ -106,6 +106,7 @@ func TestGroupModelAllowlistAllows(t *testing.T) {
 		{name: "openai reasoning suffix on unlisted model", model: "gpt-4.1-low", want: false},
 		{name: "trailing wildcard prefix match", model: "grok-4.6", want: true},
 		{name: "trailing wildcard requires prefix", model: "grok", want: false},
+		{name: "interior and suffix wildcard", model: "gpt-5-codex-fast", want: false},
 		{name: "empty model passes (handler decides required-ness)", model: "", want: true},
 	}
 
@@ -116,6 +117,20 @@ func TestGroupModelAllowlistAllows(t *testing.T) {
 			}
 		})
 	}
+
+	t.Run("wildcards match at any position and remain anchored", func(t *testing.T) {
+		cfg := GroupModelAllowlist{Enabled: true, Models: []string{"gpt-*-codex-*", "*sonnet*", "gemini-?.*-pro"}}
+		for _, model := range []string{"gpt-5-codex-high", "CLAUDE-SONNET-4.5", "models/claude-sonnet-4.5"} {
+			if !cfg.Allows(model) {
+				t.Fatalf("expected %q to match", model)
+			}
+		}
+		for _, model := range []string{"xgpt-5-codex-high", "gpt-5-codex", "gemini-2.5-pro"} {
+			if cfg.Allows(model) {
+				t.Fatalf("expected %q not to match", model)
+			}
+		}
+	})
 
 	t.Run("disabled allowlist allows everything", func(t *testing.T) {
 		disabled := GroupModelAllowlist{Enabled: false, Models: []string{"only-model"}}
@@ -188,6 +203,42 @@ func TestGroupModelAllowlistFilterForListing(t *testing.T) {
 		want := []string{"claude-opus-4.6", "claude-sonnet-4.5", "gpt-5.5-codex", "gpt-5.5-mini"}
 		if strings.Join(got, ",") != strings.Join(want, ",") {
 			t.Fatalf("got %#v want %#v", got, want)
+		}
+	})
+
+	t.Run("interior and leading wildcards expand source models", func(t *testing.T) {
+		cfg := GroupModelAllowlist{Enabled: true, Models: []string{"gpt-*-codex", "*sonnet*"}}
+		got := cfg.FilterForListing(source)
+		want := []string{"gpt-5.5-codex", "claude-sonnet-4.5"}
+		if strings.Join(got, ",") != strings.Join(want, ",") {
+			t.Fatalf("got %#v want %#v", got, want)
+		}
+	})
+
+	t.Run("source prefix wildcard retains only a safe infinite intersection", func(t *testing.T) {
+		cfg := GroupModelAllowlist{Enabled: true, Models: []string{"gpt-*-codex"}}
+		if !cfg.Allows("gpt-5-codex") || cfg.Allows("gpt-5-mini") {
+			t.Fatal("request admission must distinguish allowed and denied models")
+		}
+		got := cfg.FilterForListing([]string{"gpt-*"})
+		if strings.Join(got, ",") != "gpt-*-codex" {
+			t.Fatalf("expected safe allowlist pattern, got %#v", got)
+		}
+		if groupAllowlistPatternMatches(got[0], "gpt-5-mini") {
+			t.Fatal("listing pattern must not expose unauthorized models")
+		}
+	})
+
+	t.Run("unrepresentable wildcard intersections do not leak source patterns", func(t *testing.T) {
+		cfg := GroupModelAllowlist{Enabled: true, Models: []string{"gpt-*-codex"}}
+		for _, source := range [][]string{{"gpt-5*"}, {"*-codex"}} {
+			if got := cfg.FilterForListing(source); len(got) != 0 {
+				t.Fatalf("source %#v would expose unauthorized models: %#v", source, got)
+			}
+		}
+		leadingWildcard := GroupModelAllowlist{Enabled: true, Models: []string{"*codex"}}
+		if got := leadingWildcard.FilterForListing([]string{"gpt-*"}); len(got) != 0 {
+			t.Fatalf("source prefix would expose unauthorized models: %#v", got)
 		}
 	})
 
