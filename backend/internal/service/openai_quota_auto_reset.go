@@ -27,6 +27,10 @@ const (
 	openAIAutoResetQueueCapacity = 1024
 	openAIAutoResetAttemptTTL    = 8 * 24 * time.Hour
 	openAIAutoResetLeaderLockKey = "jobs:openai-auto-reset-credit"
+	// 查询阶段失败后的最短重试间隔。调度热路径和扫描都会触发评估，不设间隔时上游
+	// 故障期间同一账号会被十几秒重查一次；用卡阶段的失败不受此限，超时后仍立即用
+	// 同一幂等键重试。
+	openAIAutoResetQueryFailureRetryAfter = time.Minute
 	// 调度热路径每次过滤候选都会评估暂停，对同一账号的通知按此冷却合并；
 	// 后台每分钟全量扫描兜底，冷却不会让账号漏检。
 	openAIAutoResetSchedulerNotifyCooldown = 30 * time.Second
@@ -291,9 +295,15 @@ func (s *OpenAIQuotaAutoResetService) evaluateAccount(ctx context.Context, accou
 	now := time.Now()
 	assessment := s.assessExtra(account, config, now)
 	state := openAIAutoResetStateFromExtra(account.Extra)
-	needsQuery := openAIAutoResetSnapshotStale(account.Extra, now) || assessment.resetReached
+	// 达到用卡阈值本应立即查询以便用卡；但 10 分钟内已确认无卡时，重查不会改变结论，
+	// 只会让调度热路径的通知把同一账号的上游额度接口打到十几秒一次。
+	needsQuery := openAIAutoResetSnapshotStale(account.Extra, now) ||
+		(assessment.resetReached && !openAIAutoResetNoCreditConfirmed(state, now))
 	if assessment.pauseReached && !assessment.resetReached {
 		needsQuery = needsQuery || state == nil || state.Status == OpenAIAutoResetStatusChecking || state.Status == OpenAIAutoResetStatusFailed || openAIAutoResetStateStale(state, now)
+	}
+	if needsQuery && openAIAutoResetQueryFailureBackoffActive(state, now) {
+		needsQuery = false
 	}
 	if !needsQuery {
 		if !assessment.pauseReached && state != nil && state.TriggerWindow != "" {
@@ -691,6 +701,30 @@ func openAIAutoResetStateFromExtra(extra map[string]any) *OpenAIAutoResetCreditS
 		return nil
 	}
 	return &state
+}
+
+// openAIAutoResetNoCreditConfirmed 报告账号在状态有效期内已被确认无卡。
+func openAIAutoResetNoCreditConfirmed(state *OpenAIAutoResetCreditState, now time.Time) bool {
+	return state != nil && state.Status == OpenAIAutoResetStatusNoCredit && !openAIAutoResetStateStale(state, now)
+}
+
+// openAIAutoResetQueryFailureBackoffActive 报告查询阶段刚失败、仍在重试间隔内。
+// 只覆盖查询、快照写入、卡明细缺失三类失败；用卡阶段的失败需要立即按原幂等键重试。
+func openAIAutoResetQueryFailureBackoffActive(state *OpenAIAutoResetCreditState, now time.Time) bool {
+	if state == nil || state.Status != OpenAIAutoResetStatusFailed {
+		return false
+	}
+	switch state.ErrorCode {
+	case "RESET_CREDIT_QUERY_FAILED", "USAGE_SNAPSHOT_WRITE_FAILED", "RESET_CREDIT_DETAILS_UNAVAILABLE":
+	default:
+		return false
+	}
+	failedAt, err := time.Parse(time.RFC3339, state.LastResultAt)
+	if err != nil {
+		return false
+	}
+	elapsed := now.Sub(failedAt)
+	return elapsed >= 0 && elapsed < openAIAutoResetQueryFailureRetryAfter
 }
 
 func openAIAutoResetStateStale(state *OpenAIAutoResetCreditState, now time.Time) bool {
