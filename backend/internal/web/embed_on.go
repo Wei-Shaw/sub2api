@@ -285,7 +285,7 @@ func injectSiteTitle(html, settingsJSON []byte) []byte {
 		return html
 	}
 
-	newTitle := []byte("<title>" + htmlpkg.EscapeString(cfg.SiteName) + " - AI API Gateway</title>")
+	newTitle := []byte("<title>" + htmlpkg.EscapeString(cfg.SiteName) + " - 多模型 AI 平台</title>")
 	var buf bytes.Buffer
 	buf.Write(html[:titleStart])
 	buf.Write(newTitle)
@@ -360,6 +360,7 @@ func shouldBypassEmbeddedFrontend(path string) bool {
 		strings.HasPrefix(trimmed, "/backend-api/") ||
 		strings.HasPrefix(trimmed, "/antigravity/") ||
 		strings.HasPrefix(trimmed, "/setup/") ||
+		strings.HasPrefix(trimmed, "/pay-qr/") ||
 		trimmed == "/health" ||
 		trimmed == "/models" ||
 		trimmed == "/responses" ||

@@ -2,6 +2,7 @@ package handler
 
 import (
 	"fmt"
+	"net/http"
 	"strconv"
 	"strings"
 	"time"
@@ -568,6 +569,28 @@ func (h *PaymentHandler) VerifyOrderPublic(c *gin.Context) {
 		return
 	}
 	response.Success(c, buildPublicOrderVerifyResult(order))
+}
+
+// RedirectPayQR resolves a compact payment QR payload to the order's persisted
+// pay URL via 302. The QR exposed by paymentMode=wap desktop orders points here
+// so the encoded content stays ~40 chars instead of the ~900-char signed wap
+// gateway URL; scanning apps follow the redirect to the Alipay H5 cashier.
+// GET /pay-qr/:order_no
+func (h *PaymentHandler) RedirectPayQR(c *gin.Context) {
+	order, err := h.paymentService.VerifyOrderPublic(c.Request.Context(), c.Param("order_no"))
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	payURL := ""
+	if order.PayURL != nil {
+		payURL = strings.TrimSpace(*order.PayURL)
+	}
+	if payURL == "" {
+		response.NotFound(c, "pay url not available")
+		return
+	}
+	c.Redirect(http.StatusFound, payURL)
 }
 
 // ResolveOrderPublicByResumeToken resolves a payment order from a signed resume token.
