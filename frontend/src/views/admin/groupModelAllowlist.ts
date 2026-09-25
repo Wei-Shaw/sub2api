@@ -15,7 +15,7 @@ export interface ModelAllowlistState {
 }
 
 // 自定义条目校验错误码，由视图映射为 i18n 提示。
-export type ModelAllowlistAddError = 'empty' | 'invalid_wildcard' | 'duplicate'
+export type ModelAllowlistAddError = 'empty' | 'duplicate'
 
 export const createModelAllowlistState = (
   config?: Partial<ModelAllowlistConfig> | null,
@@ -106,7 +106,7 @@ export const moveModelAllowlistItem = (
 }
 
 // addCustomModelAllowlistItem 把手工输入的条目追加到白名单末尾（选中状态）。
-// 去重；`*` 只允许出现在末尾。返回错误码或 null（成功）。
+// 去重；`*` 可出现在任意位置。返回错误码或 null（成功）。
 export const addCustomModelAllowlistItem = (
   state: ModelAllowlistState,
   raw: string,
@@ -114,9 +114,6 @@ export const addCustomModelAllowlistItem = (
   const entry = raw.trim()
   if (!entry) {
     return 'empty'
-  }
-  if (entry.slice(0, -1).includes('*')) {
-    return 'invalid_wildcard'
   }
   if (
     state.items.some(item => item.id.toLowerCase() === entry.toLowerCase()) ||
