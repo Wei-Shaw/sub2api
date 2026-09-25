@@ -108,7 +108,10 @@ func (s *GatewayService) ForwardAsChatCompletions(
 		anthropicBody = s.applyClaudeCodeOAuthMimicryToBody(ctx, c, account, anthropicBody, anthropicReq.System, mappedModel)
 	}
 
-	// 7. Enforce cache_control block limit
+	// 7. 注入随对话前进的缓存断点并强制执行 cache_control 块数量限制。
+	// Chat Completions 客户端同样不带 cache_control，不注入断点的话每轮
+	// 只有 cache_read，新增长的内容永远不写缓存。
+	anthropicBody = applyResponsesAnthropicCacheBreakpoints(anthropicBody, mappedModel)
 	anthropicBody = enforceCacheControlLimit(anthropicBody)
 
 	// 8. Get access token
