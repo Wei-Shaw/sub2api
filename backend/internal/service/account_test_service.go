@@ -600,6 +600,10 @@ func (s *AccountTestService) testClaudeAccountConnection(c *gin.Context, account
 		if resp.StatusCode == http.StatusForbidden {
 			_ = s.accountRepo.SetError(ctx, account.ID, errMsg)
 		}
+		// 429 按 Anthropic 限流头进入限流，与真实转发一致，避免测试后账号继续被调度
+		if resp.StatusCode == http.StatusTooManyRequests {
+			s.reconcileAnthropic429State(ctx, account, resp.Header)
+		}
 
 		return s.sendErrorAndEnd(c, errMsg)
 	}
@@ -2363,6 +2367,32 @@ func (s *AccountTestService) reconcileOpenAI429State(ctx context.Context, accoun
 		account.Status = StatusActive
 		account.ErrorMessage = ""
 	}
+}
+
+// reconcileAnthropic429State persists the reset time carried by an Anthropic
+// 429 during an account test, parsed from the same headers the gateway uses,
+// so a test on an exhausted account parks it the way live traffic would.
+func (s *AccountTestService) reconcileAnthropic429State(ctx context.Context, account *Account, headers http.Header) {
+	if s == nil || s.accountRepo == nil || account == nil {
+		return
+	}
+
+	var resetAt time.Time
+	if result := calculateAnthropic429ResetTime(headers); result != nil {
+		resetAt = result.resetAt
+	} else if aggregated, ok := parseAnthropicAggregateReset(headers, time.Now()); ok {
+		resetAt = aggregated
+	} else {
+		return
+	}
+
+	if err := s.accountRepo.SetRateLimited(ctx, account.ID, resetAt); err != nil {
+		return
+	}
+
+	now := time.Now()
+	account.RateLimitedAt = &now
+	account.RateLimitResetAt = &resetAt
 }
 
 // testGeminiAccountConnection tests a Gemini account's connection
