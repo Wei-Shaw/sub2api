@@ -60,6 +60,8 @@ func EvaluateAccountSchedulingThreshold(account *Account, thresholds map[string]
 		winner = pickLatestResetSchedulingCandidate(grokThresholdCandidates(account), threshold, now)
 	case PlatformKimi, PlatformZhipu, PlatformMiniMax, PlatformOpenCodeGo:
 		winner = pickLatestResetSchedulingCandidate(cnProviderThresholdCandidates(account, decision.Platform), threshold, now)
+	case PlatformOllamaCloud:
+		winner = pickLatestResetSchedulingCandidate(ollamaCloudThresholdCandidates(account), threshold, now)
 	default:
 		return decision
 	}
@@ -390,6 +392,40 @@ func cnThresholdCandidate(extra map[string]any, provider, window string) *accoun
 		scope:       provider,
 		usedPercent: schedulingPercentValue(usedPercent),
 		until:       parseSchedulingResetAt(extra[resetKey]),
+	}
+}
+
+// ollamaCloudThresholdCandidates 读取 ollama_cloud 账号 5h / 7d 滚动窗口的用量快照
+// （由 OllamaCloudUsageService 写入 account.Extra，经 decodeOllamaCloudUsageSnapshot
+// 解出嵌套 struct —— 与 CN 的扁平 extra 键不同构，不复用 cnThresholdCandidate）。
+//
+// 仅 legacy 账号有滚动窗口；credits 型是月度美元信用池、没有窗口 reset 可等，
+// 候选恒空（credits 赗欠告警走余额告警通道，不写 TempUnschedulableUntil）。
+// 快照缺失 / status != ok / 无窗口数据时同样返回 nil —— 宁可不停调也不基于
+// 坏快照误停。窗口语义与 openai/anthropic/kimi 同类：取最晚 reset。
+func ollamaCloudThresholdCandidates(account *Account) []*accountSchedulingThresholdCandidate {
+	if account == nil || account.GetOllamaCloudAccountMode() != AccountModeOllamaLegacy {
+		return nil
+	}
+	snapshot := decodeOllamaCloudUsageSnapshot(account.Extra)
+	if snapshot == nil || snapshot.Status != OllamaCloudUsageStatusOK || snapshot.Data == nil {
+		return nil
+	}
+	return []*accountSchedulingThresholdCandidate{
+		ollamaCloudThresholdCandidate(snapshot.Data.FiveHour, "5h"),
+		ollamaCloudThresholdCandidate(snapshot.Data.SevenDay, "weekly"),
+	}
+}
+
+func ollamaCloudThresholdCandidate(window *OllamaCloudUsageWindow, label string) *accountSchedulingThresholdCandidate {
+	if window == nil {
+		return nil
+	}
+	return &accountSchedulingThresholdCandidate{
+		window:      label,
+		scope:       PlatformOllamaCloud,
+		usedPercent: window.UsedPercent,
+		until:       cloneTimePtr(window.ResetAt),
 	}
 }
 

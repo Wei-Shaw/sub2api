@@ -210,7 +210,10 @@ const upstreamSyncPlatforms = new Set([
   'zhipu',
   'deepseek',
   'minimax',
-  'opencode_go'
+  'opencode_go',
+  // ollama_cloud：后端探测路径已就绪（upstream_models.go 的 IsOllamaCloud 谓词），
+  // 打开真实 /v1/models 上游同步。
+  'ollama_cloud'
 ])
 const canSyncUpstream = computed(() => {
   if (props.accountId) {

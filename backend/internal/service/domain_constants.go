@@ -49,7 +49,9 @@ const (
 	PlatformDeepseek   = domain.PlatformDeepseek
 	PlatformMiniMax    = domain.PlatformMiniMax
 	PlatformOpenCodeGo = domain.PlatformOpenCodeGo
-	PlatformComposite  = domain.PlatformComposite
+	// PlatformOllamaCloud 是 Ollama Cloud 订阅制聚合上游。
+	PlatformOllamaCloud = domain.PlatformOllamaCloud
+	PlatformComposite   = domain.PlatformComposite
 	// PlatformKiro is retained for unsupported-platform threshold tests and legacy
 	// account rows. Scheduling-threshold evaluation never pauses kiro accounts.
 	PlatformKiro = "kiro"
@@ -61,6 +63,9 @@ const (
 	AccountModeCoding = domain.AccountModeCoding
 	AccountModeZen    = domain.AccountModeZen
 	AccountModeGo     = domain.AccountModeGo
+
+	AccountModeOllamaLegacy  = domain.AccountModeOllamaLegacy  // Ollama Cloud legacy：5h / 7d 滚动窗口
+	AccountModeOllamaCredits = domain.AccountModeOllamaCredits // Ollama Cloud 月度美元信用池
 )
 
 // 上游 API 协议（国产供应商）：决定转发端点与格式，与接入模式正交。
@@ -85,6 +90,8 @@ const (
 	DefaultOpenCodeGoBaseURL = "https://opencode.ai/zen/go/v1"
 	// OpenCode Zen：按量付费网关，模型列表为 /zen/v1/models。
 	DefaultOpenCodeZenBaseURL = "https://opencode.ai/zen/v1"
+	// Ollama Cloud：Chat Completions / Responses 共用带 /v1 的基址。
+	DefaultOllamaCloudBaseURL = "https://ollama.com/v1"
 )
 
 // 国产供应商 Anthropic 协议端点的默认 base_url（上游路径为 {base}/v1/messages）。
@@ -98,6 +105,8 @@ const (
 	// OpenCode Go Anthropic 基址不含 /v1：nativeAnthropicTargetURL 会再拼 /v1/messages。
 	DefaultOpenCodeGoAnthropicBaseURL  = "https://opencode.ai/zen/go"
 	DefaultOpenCodeZenAnthropicBaseURL = "https://opencode.ai/zen"
+	// Ollama Cloud Anthropic 基址不含 /v1：nativeAnthropicTargetURL 会再拼 /v1/messages。
+	DefaultOllamaCloudAnthropicBaseURL = "https://ollama.com"
 )
 
 // IsCNProvider 报告 platform 是否为国产 OpenAI 兼容供应商（kimi/zhipu/deepseek/minimax）。
@@ -115,10 +124,15 @@ func IsOpenCodeGo(platform string) bool {
 	return platform == PlatformOpenCodeGo
 }
 
+// IsOllamaCloud 报告 platform 是否为 Ollama Cloud 多协议 API Key 网关。
+func IsOllamaCloud(platform string) bool {
+	return platform == PlatformOllamaCloud
+}
+
 // IsMultiProtocolAPIKeyProvider 报告 platform 是否为多协议 API Key 网关
-// （国产供应商 + OpenCode）：走 OpenAI 网关、支持 adaptive 协议分流。
+// （国产供应商 + OpenCode + Ollama Cloud）：走 OpenAI 网关、支持 adaptive 协议分流。
 func IsMultiProtocolAPIKeyProvider(platform string) bool {
-	return IsCNProvider(platform) || platform == PlatformOpenCodeGo
+	return IsCNProvider(platform) || platform == PlatformOpenCodeGo || IsOllamaCloud(platform)
 }
 
 // AllowedQuotaPlatforms 是允许设置 user × platform quota 的平台列表（单一权威来源）。
@@ -135,11 +149,14 @@ var AllowedQuotaPlatforms = []string{
 	PlatformDeepseek,
 	PlatformMiniMax,
 	PlatformOpenCodeGo,
+	PlatformOllamaCloud,
 }
 
 // AllowedSchedulingThresholdPlatforms 是允许设置账号自动停调阈值的平台列表。
 // openai/anthropic/grok 有原生用量窗口；kimi/zhipu/minimax 的 Coding Plan 同样暴露
 // 5h/weekly 滚动窗口，纳入阈值评估。deepseek 为余额型，走余额检测而非阈值。
+// ollama_cloud 仅 legacy 账号有 5h/7d 滚动窗口可等 reset；credits 型是月度美元
+// 信用池、没有窗口 reset，评估器候选恒空（见 ollamaCloudThresholdCandidates）。
 var AllowedSchedulingThresholdPlatforms = []string{
 	PlatformOpenAI,
 	PlatformAnthropic,
@@ -148,6 +165,7 @@ var AllowedSchedulingThresholdPlatforms = []string{
 	PlatformZhipu,
 	PlatformMiniMax,
 	PlatformOpenCodeGo,
+	PlatformOllamaCloud,
 }
 
 // IsAllowedQuotaPlatform 报告 s 是否为合法的 quota platform 标识。

@@ -294,11 +294,32 @@ func (a *Account) IsCNProvider() bool {
 	return a != nil && IsCNProvider(a.Platform)
 }
 
+// IsOllamaCloud 报告账号平台是否为 Ollama Cloud。
+func (a *Account) IsOllamaCloud() bool {
+	return a != nil && IsOllamaCloud(a.Platform)
+}
+
+// GetOllamaCloudAccountMode 返回 Ollama Cloud 账号的额度模式
+// （AccountModeOllamaLegacy / AccountModeOllamaCredits）。非 ollama_cloud 平台
+// 或非 apikey 类型返回空串；credentials 未设置或值不认识时默认 legacy
+// （保守：legacy 有 5h/7d 滚动窗口 → 受阈值停调保护，默认 credits 会让存量
+// legacy 账号失去保护）。与 GetAccountMode（国产 payg/coding 白名单）互不影响。
+func (a *Account) GetOllamaCloudAccountMode() string {
+	if a == nil || !a.IsOllamaCloud() || a.Type != AccountTypeAPIKey {
+		return ""
+	}
+	if strings.TrimSpace(a.GetCredential("account_mode")) == AccountModeOllamaCredits {
+		return AccountModeOllamaCredits
+	}
+	return AccountModeOllamaLegacy
+}
+
 // IsOpenAICompatible 报告账号是否走 OpenAI 网关（OpenAI 协议族）。
 // openai/grok 原生走 OpenAI 网关；国产供应商同为 OpenAI Chat Completions
-// 兼容上游，也经 OpenAI 网关转发。OpenCode 同样经 OpenAI 网关按模型分流。
+// 兼容上游，也经 OpenAI 网关转发。OpenCode 与 Ollama Cloud 同样经 OpenAI
+// 网关按模型/协议分流。
 func (a *Account) IsOpenAICompatible() bool {
-	return a != nil && (a.Platform == PlatformOpenAI || a.Platform == PlatformGrok || a.IsCNProvider() || a.IsOpenCodeGo())
+	return a != nil && (a.Platform == PlatformOpenAI || a.Platform == PlatformGrok || a.IsCNProvider() || a.IsOpenCodeGo() || a.IsOllamaCloud())
 }
 
 func (a *Account) GeminiOAuthType() string {
@@ -412,6 +433,36 @@ func (a *Account) GetCredentialAsInt64(key string) int64 {
 	case string:
 		if i, err := strconv.ParseInt(strings.TrimSpace(v), 10, 64); err == nil {
 			return i
+		}
+	}
+	return 0
+}
+
+// GetCredentialAsFloat64 返回浮点型凭据值，缺失或无法解析时返回 0。与
+// GetCredentialAsInt64 同样的类型容忍（JSONB 数字为 float64/json.Number，
+// 运营也可能手写成字符串），供 Ollama Cloud monthly_credit_usd 等金额键读取。
+func (a *Account) GetCredentialAsFloat64(key string) float64 {
+	if a == nil || a.Credentials == nil {
+		return 0
+	}
+	val, ok := a.Credentials[key]
+	if !ok || val == nil {
+		return 0
+	}
+	switch v := val.(type) {
+	case float64:
+		return v
+	case int64:
+		return float64(v)
+	case int:
+		return float64(v)
+	case json.Number:
+		if f, err := v.Float64(); err == nil {
+			return f
+		}
+	case string:
+		if f, err := strconv.ParseFloat(strings.TrimSpace(v), 64); err == nil {
+			return f
 		}
 	}
 	return 0
@@ -867,6 +918,26 @@ func (a *Account) IsModelSupported(requestedModel string) bool {
 		}
 		if a.Platform == PlatformDeepseek {
 			return isDeepseekServableModel(requestedModel)
+		}
+		// ollama_cloud 运行时白名单：空映射时 extra.allowed_models 清单就是
+		// 唯一可出站白名单；既无映射也无清单则 deny-all（不支持任何模型）。
+		// 与保存期门禁 validateOllamaCloudAccountModelPricingGate 的「mapping
+		// 或清单至少其一」语义对齐。空映射下请求的公开模型名即出站名
+		// （ResolveMappedModel 原样透传），清单项又是按出站名断言过定价的，
+		// 因此对公开名做精确匹配即可；保存期门禁已确保清单不含通配符
+		// （通配符串无法解析到定价，保存即被拒）。
+		if a.IsOllamaCloud() {
+			allowed := ollamaCloudOutboundModelNames(a)
+			if len(allowed) == 0 {
+				return false
+			}
+			trimmed := strings.TrimSpace(requestedModel)
+			for _, model := range allowed {
+				if model == trimmed {
+					return true
+				}
+			}
+			return false
 		}
 		return true // 无映射 = 允许所有
 	}
@@ -1350,10 +1421,10 @@ func (a *Account) IsOpenAIApiKey() bool {
 }
 
 // GetOpenAIBaseURL 解析 OpenAI 协议族账号的上游 base_url。
-// 适用 openai、国产 OpenAI 兼容供应商（kimi/zhipu/deepseek）与 OpenCode Go；
-// grok 走 GetGrokBaseURL，此处对 grok 返回 "" 以保持原有行为。
+// 适用 openai、国产 OpenAI 兼容供应商（kimi/zhipu/deepseek）、OpenCode Go 与
+// Ollama Cloud；grok 走 GetGrokBaseURL，此处对 grok 返回 "" 以保持原有行为。
 func (a *Account) GetOpenAIBaseURL() string {
-	if !a.IsOpenAI() && !a.IsCNProvider() && !a.IsOpenCodeGo() {
+	if !a.IsOpenAI() && !a.IsCNProvider() && !a.IsOpenCodeGo() && !a.IsOllamaCloud() {
 		return ""
 	}
 	if a.IsMultiProtocolAPIKey() && a.IsAdaptiveAPIProtocol() {
@@ -1386,7 +1457,14 @@ func (a *Account) GetOpenAIBaseURL() string {
 		return DefaultMiniMaxBaseURL
 	case PlatformOpenCodeGo:
 		return a.openCodeDefaultChatBaseURL()
+	case PlatformOllamaCloud:
+		return DefaultOllamaCloudBaseURL
 	default:
+		if a.IsMultiProtocolAPIKey() {
+			// 多协议网关（CN / OpenCode / Ollama Cloud）的缺省端点必须由上面的平台
+			// 分支显式给出：回落官方域名会把第三方 key 明文发到 api.openai.com。
+			return ""
+		}
 		return "https://api.openai.com"
 	}
 }
@@ -1409,10 +1487,11 @@ func (a *Account) IsCodingPlan() bool {
 	return a.GetAccountMode() == AccountModeCoding
 }
 
-// GetAPIProtocol 返回国产供应商账号的上游 API 协议。存储于
+// GetAPIProtocol 返回多协议 API Key 账号的上游 API 协议。存储于
 // credentials["api_protocol"]；缺失或与平台不匹配时回退 chat_completions
-// （与既有行为完全一致）。responses 协议仅 deepseek / kimi / minimax 支持（官方原生
-// Responses 端点，适配 Codex）；zhipu 无此端点。
+// （与既有行为完全一致），opencode_go / ollama_cloud 例外：缺省为 adaptive
+// （按入站协议选择供应商原生端点）。responses 协议仅 deepseek / kimi / minimax 支持
+// （官方原生 Responses 端点，适配 Codex）；zhipu 无此端点。
 func (a *Account) GetAPIProtocol() string {
 	if a == nil || !a.IsMultiProtocolAPIKey() {
 		return APIProtocolChatCompletions
@@ -1429,7 +1508,7 @@ func (a *Account) GetAPIProtocol() string {
 	case APIProtocolChatCompletions:
 		return APIProtocolChatCompletions
 	}
-	if a.IsOpenCodeGo() {
+	if a.IsOpenCodeGo() || a.IsOllamaCloud() {
 		return APIProtocolAdaptive
 	}
 	return APIProtocolChatCompletions
@@ -1437,13 +1516,14 @@ func (a *Account) GetAPIProtocol() string {
 
 // SupportsNativeCNResponses 报告该国产供应商是否提供原生 Responses 端点。
 // DeepSeek 官方为 /responses（无 /v1）；Kimi 按量付费与 Coding Plan 均为
-// /v1/responses（moonshot.cn / kimi.com/coding）；MiniMax 为 /v1/responses。
+// /v1/responses（moonshot.cn / kimi.com/coding）；MiniMax 为 /v1/responses；
+// Ollama Cloud 为 /v1/responses（non-stateful，见 normalizeDeepSeekResponsesRequestBody）。
 func (a *Account) SupportsNativeCNResponses() bool {
 	if a == nil {
 		return false
 	}
 	switch a.Platform {
-	case PlatformDeepseek, PlatformKimi, PlatformMiniMax, PlatformOpenCodeGo:
+	case PlatformDeepseek, PlatformKimi, PlatformMiniMax, PlatformOpenCodeGo, PlatformOllamaCloud:
 		return true
 	default:
 		return false
@@ -1508,6 +1588,8 @@ func (a *Account) defaultCNProtocolBaseURL(protocol string) string {
 			return DefaultMiniMaxAnthropicBaseURL
 		case PlatformOpenCodeGo:
 			return a.openCodeDefaultAnthropicBaseURL()
+		case PlatformOllamaCloud:
+			return DefaultOllamaCloudAnthropicBaseURL
 		}
 	case APIProtocolChatCompletions, APIProtocolResponses:
 		switch a.Platform {
@@ -1527,6 +1609,8 @@ func (a *Account) defaultCNProtocolBaseURL(protocol string) string {
 			return DefaultMiniMaxBaseURL
 		case PlatformOpenCodeGo:
 			return a.openCodeDefaultChatBaseURL()
+		case PlatformOllamaCloud:
+			return DefaultOllamaCloudBaseURL
 		}
 	}
 	return ""
@@ -1567,6 +1651,11 @@ func (a *Account) GetAnthropicProtocolBaseURL() string {
 		return DefaultMiniMaxAnthropicBaseURL
 	case PlatformOpenCodeGo:
 		return a.openCodeDefaultAnthropicBaseURL()
+	case PlatformOllamaCloud:
+		// 与 adaptive 分支（defaultCNProtocolBaseURL）同源：官方 Anthropic
+		// 兼容端点不带 /v1 前缀。缺失时 pinned-anthropic 的 ollama_cloud 账号
+		// 会拿到空 base，转发与连接测试都报「no anthropic protocol base url」。
+		return DefaultOllamaCloudAnthropicBaseURL
 	default:
 		return ""
 	}

@@ -17,7 +17,26 @@ export interface DefaultSubscriptionSetting {
 }
 
 // ── 平台限额类型 ──────────────────────────────────────────────────
-export type PlatformType = "anthropic" | "openai" | "gemini" | "antigravity" | "grok"
+
+// 配额平台镜像：与后端 service.AllowedQuotaPlatforms 保持一致（单一权威来源：
+// backend/internal/service/domain_constants.go）。后端对 default_platform_quotas
+// 与用户平台配额均为整体替换语义：这份列表缺一个平台，保存时就会静默丢弃
+// 该平台的配额行（缺行等价于不限额 → 限额 fail-open）。新增平台必须同步此列表。
+export const QUOTA_PLATFORMS = [
+  "anthropic",
+  "openai",
+  "gemini",
+  "antigravity",
+  "grok",
+  "kimi",
+  "zhipu",
+  "deepseek",
+  "minimax",
+  "opencode_go",
+  "ollama_cloud",
+] as const
+
+export type PlatformType = (typeof QUOTA_PLATFORMS)[number]
 export type QuotaWindowType = "daily" | "weekly" | "monthly"
 
 /** 单平台三档限额；null = 不限制，undefined = 未填（等价 null） */
@@ -27,10 +46,13 @@ export interface PlatformQuotaLimits {
   monthly: number | null
 }
 
-/** 全平台默认限额 map（key = PlatformType） */
-export type DefaultPlatformQuotasMap = Partial<Record<PlatformType, PlatformQuotaLimits>>
-
-const PLATFORMS: PlatformType[] = ["anthropic", "openai", "gemini", "antigravity", "grok"]
+/**
+ * 全平台默认限额 map（key = PlatformType）。
+ * 可能额外含后端新加、前端尚未收录的平台 key：整体替换语义下 normalize/sanitize
+ * 必须原样保留这些 key，否则一次保存就会静默删除该平台的默认配额。
+ */
+export type DefaultPlatformQuotasMap = Partial<Record<PlatformType, PlatformQuotaLimits>> &
+  Record<string, PlatformQuotaLimits | undefined>
 
 export type SchedulingThresholdPlatformType =
   | "openai"
@@ -40,11 +62,13 @@ export type SchedulingThresholdPlatformType =
   | "zhipu"
   | "minimax"
   | "opencode_go"
+  | "ollama_cloud"
 
 export type AccountSchedulingThresholdsMap = Record<SchedulingThresholdPlatformType, number>
 
 // 与后端 AllowedSchedulingThresholdPlatforms 保持一致（deepseek 为余额型，
-// 走余额检测而非用量阈值；minimax Coding/Token Plan 与 OpenCode GO 有滚动窗口）。
+// 走余额检测而非用量阈值；minimax Coding/Token Plan 与 OpenCode GO 有滚动窗口；
+// ollama_cloud 仅 legacy 账号有 5h/7d 滚动窗口，credits 型月度信用池无窗口不停调）。
 export const SCHEDULING_THRESHOLD_PLATFORMS: SchedulingThresholdPlatformType[] = [
   "openai",
   "anthropic",
@@ -53,6 +77,7 @@ export const SCHEDULING_THRESHOLD_PLATFORMS: SchedulingThresholdPlatformType[] =
   "zhipu",
   "minimax",
   "opencode_go",
+  "ollama_cloud",
 ]
 
 export function normalizeAccountSchedulingThresholdsMap(
@@ -74,27 +99,45 @@ export function sanitizeAccountSchedulingThresholdsMap(
   return normalizeAccountSchedulingThresholdsMap(input)
 }
 
-/** 归一化为全 4 平台 × 3 窗口（缺失填 null），供模板非空绑定 */
+/** 归一化为全平台 × 3 窗口（缺失填 null），供模板非空绑定；保留输入中的未知平台 key */
 export function normalizePlatformQuotasMap(input?: DefaultPlatformQuotasMap | null): DefaultPlatformQuotasMap {
+  const normalizeOne = (src?: PlatformQuotaLimits): PlatformQuotaLimits => ({
+    daily:   typeof src?.daily === "number" ? src.daily : null,
+    weekly:  typeof src?.weekly === "number" ? src.weekly : null,
+    monthly: typeof src?.monthly === "number" ? src.monthly : null,
+  })
   const result: DefaultPlatformQuotasMap = {}
-  for (const p of PLATFORMS) {
-    const src = input?.[p]
-    result[p] = {
-      daily:   typeof src?.daily === "number" ? src.daily : null,
-      weekly:  typeof src?.weekly === "number" ? src.weekly : null,
-      monthly: typeof src?.monthly === "number" ? src.monthly : null,
+  for (const p of QUOTA_PLATFORMS) {
+    result[p] = normalizeOne(input?.[p])
+  }
+  // 稳健性护栏：后端新加、前端尚未收录的平台 key 原样保留（整体替换语义下
+  // 丢弃 = 静默删除该平台的默认配额）。
+  if (input) {
+    for (const [key, value] of Object.entries(input)) {
+      if (!(QUOTA_PLATFORMS as readonly string[]).includes(key)) {
+        result[key] = normalizeOne(value)
+      }
     }
   }
   return result
 }
 
-/** 提交前清洗：非有限数/负数/空字符串 → null（保留 0 = 显式禁用），返回全 4 平台嵌套 map */
+/** 提交前清洗：非有限数/负数/空字符串 → null（保留 0 = 显式禁用），返回全平台嵌套 map；保留未知平台 key */
 export function sanitizePlatformQuotasMap(input?: DefaultPlatformQuotasMap | null): DefaultPlatformQuotasMap {
   const clean = (v: unknown): number | null => (typeof v === "number" && Number.isFinite(v) && v >= 0 ? v : null)
+  const sanitizeOne = (src?: PlatformQuotaLimits): PlatformQuotaLimits => ({
+    daily: clean(src?.daily), weekly: clean(src?.weekly), monthly: clean(src?.monthly),
+  })
   const result: DefaultPlatformQuotasMap = {}
-  for (const p of PLATFORMS) {
-    const src = input?.[p]
-    result[p] = { daily: clean(src?.daily), weekly: clean(src?.weekly), monthly: clean(src?.monthly) }
+  for (const p of QUOTA_PLATFORMS) {
+    result[p] = sanitizeOne(input?.[p])
+  }
+  if (input) {
+    for (const [key, value] of Object.entries(input)) {
+      if (!(QUOTA_PLATFORMS as readonly string[]).includes(key)) {
+        result[key] = sanitizeOne(value)
+      }
+    }
   }
   return result
 }
