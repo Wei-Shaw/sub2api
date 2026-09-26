@@ -402,6 +402,11 @@ export default {
           OPENCODE_GO_USAGE_REFRESH_RATE_LIMITED: '刷新过于频繁，请在 {retry_after_seconds} 秒后重试。'
         }
       },
+      zhipuMcp: {
+        title: 'MCP 转发',
+        hint: '开启后 MCP 协议请求将通过该智谱账号转发。',
+        paygDisabledHint: '仅 Coding Plan 订阅模式的智谱账号可开启 MCP 转发。',
+      },
       types: {
         oauth: 'OAuth',
         chatgptOauth: 'ChatGPT OAuth',
