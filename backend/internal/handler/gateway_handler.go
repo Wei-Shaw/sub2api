@@ -169,6 +169,19 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 	body = parsedReq.Body.Bytes()
 	reqModel := parsedReq.Model
 	reqStream := parsedReq.Stream
+	// Image-input rewrite: when the request carries image input and the model
+	// matches the gateway-level image_input_model_map, rewrite the model before
+	// account selection so a text-only upstream does not 400 on the image.
+	if rewritten, newModel, changed := service.RewriteImageInputModel(body, imageInputModelMap(h.cfg)); changed {
+		if err := parsedReq.ReplaceBody(rewritten); err != nil {
+			reqLog.Warn("gateway.image_input_model_rewrite_failed", zap.Error(err))
+		} else {
+			body = parsedReq.Body.Bytes()
+			reqModel = parsedReq.Model
+			reqStream = parsedReq.Stream
+			reqLog.Info("gateway.image_input_model_rewritten", zap.String("image_input_model", newModel))
+		}
+	}
 	bindRequestedReasoningEffort(c, body, reqModel)
 	ensureCompositeTargetPlatform(c, apiKey, reqModel)
 	if policyBody, changed, err := applyAnthropicReasoningEffortPolicyForRequest(c, apiKey, body); err != nil {

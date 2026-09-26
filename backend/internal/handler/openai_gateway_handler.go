@@ -459,6 +459,14 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 		return
 	}
 	reqModel := modelResult.String()
+	// Image-input rewrite: when the request carries image input and the model
+	// matches the gateway-level image_input_model_map, rewrite the model before
+	// account selection so a text-only upstream does not 400 on the image.
+	if rewritten, newModel, changed := service.RewriteImageInputModel(body, imageInputModelMap(h.cfg)); changed {
+		body = rewritten
+		reqModel = newModel
+		reqLog.Info("openai.image_input_model_rewritten", zap.String("image_input_model", newModel))
+	}
 	ensureCompositeTargetPlatform(c, apiKey, reqModel)
 	if !openAICompatibleTextTargetAllowed(c, apiKey, reqModel) {
 		h.errorResponse(c, http.StatusBadRequest, "invalid_request_error", "Model is not supported by this OpenAI-compatible endpoint for composite groups")
