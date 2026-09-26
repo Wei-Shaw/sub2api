@@ -939,20 +939,60 @@ func TestOllamaCloudUsageRedirectAndBodyLimitArePersistedSafely(t *testing.T) {
 	for _, test := range []struct {
 		name   string
 		status int
+		header http.Header
 		body   []byte
+		want   string
 		reason string
 	}{
-		{"redirect", http.StatusFound, nil, "redirect_blocked"},
-		{"body limit", http.StatusOK, make([]byte, ollamaCloudUsageMaxBodyBytes+1), "response_too_large"},
+		{
+			name:   "redirect",
+			status: http.StatusFound,
+			want:   OllamaCloudUsageStatusFailed,
+			reason: "redirect_blocked",
+		},
+		{
+			name:   "redirect to signin relative",
+			status: http.StatusSeeOther,
+			header: http.Header{"Location": []string{"/signin"}},
+			want:   OllamaCloudUsageStatusUnauthorized,
+			reason: "redirect_to_signin",
+		},
+		{
+			name:   "redirect to signin absolute ollama host",
+			status: http.StatusSeeOther,
+			header: http.Header{"Location": []string{"https://www.ollama.com/signin"}},
+			want:   OllamaCloudUsageStatusUnauthorized,
+			reason: "redirect_to_signin",
+		},
+		{
+			name:   "redirect to other path",
+			status: http.StatusSeeOther,
+			header: http.Header{"Location": []string{"/dashboard"}},
+			want:   OllamaCloudUsageStatusFailed,
+			reason: "redirect_blocked",
+		},
+		{
+			name:   "redirect without location",
+			status: http.StatusSeeOther,
+			want:   OllamaCloudUsageStatusFailed,
+			reason: "redirect_blocked",
+		},
+		{
+			name:   "body limit",
+			status: http.StatusOK,
+			body:   make([]byte, ollamaCloudUsageMaxBodyBytes+1),
+			want:   OllamaCloudUsageStatusFailed,
+			reason: "response_too_large",
+		},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			account := ollamaUsageAccount(9)
 			account.Extra[OllamaCloudUsageSessionExtraKey] = "cipher:wos-session=secret"
 			repo := &ollamaUsageTestRepo{upstreamBillingProbeAccountRepo: &upstreamBillingProbeAccountRepo{accounts: map[int64]*Account{9: account}}}
-			svc := newOllamaUsageTestService(t, repo, &ollamaUsageHTTPStub{status: test.status, body: test.body}, &upstreamBillingProbeSettingRepo{}, true)
+			svc := newOllamaUsageTestService(t, repo, &ollamaUsageHTTPStub{status: test.status, header: test.header, body: test.body}, &upstreamBillingProbeSettingRepo{}, true)
 			state, err := svc.Refresh(context.Background(), 9)
 			require.NoError(t, err)
-			require.Equal(t, OllamaCloudUsageStatusFailed, state.Snapshot.Status)
+			require.Equal(t, test.want, state.Snapshot.Status)
 			require.Equal(t, test.reason, state.Snapshot.LastError)
 		})
 	}
