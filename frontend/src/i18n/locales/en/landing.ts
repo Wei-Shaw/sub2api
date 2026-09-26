@@ -15,10 +15,10 @@ export default {
     getStarted: 'Get Started',
     goToDashboard: 'Go to Dashboard',
     // User-focused value proposition
-    heroSubtitle: 'One Key, All AI Models',
-    heroDescription: 'No need to manage multiple subscriptions. Access Claude, GPT, Gemini and more with a single API key',
+    heroSubtitle: 'One Key, All Leading AI Models',
+    heroDescription: 'All leading AI models in one place. Access Claude, GPT, Gemini, DeepSeek, Qwen and more with a single API key',
     tags: {
-      subscriptionToApi: 'Subscription to API',
+      subscriptionToApi: 'Multi-Model Aggregation',
       stickySession: 'Session Persistence',
       realtimeBilling: 'Pay As You Go'
     },
@@ -95,19 +95,40 @@ export default {
     },
     providers: {
       title: 'Supported AI Models',
-      description: 'One API, Multiple Choices',
+      description: 'One Platform, All Leading AI Models',
       supported: 'Supported',
       soon: 'Soon',
-      claude: 'Claude',
-      gemini: 'Gemini',
-      antigravity: 'Antigravity',
+      deepseek: 'DeepSeek',
+      qwen: 'Qwen',
+      kimi: 'Kimi',
+      zhipu: 'Zhipu AI',
       more: 'More'
     },
     // CTA section
     cta: {
       title: 'Ready to Get Started?',
-      description: 'Sign up now and get free trial credits to experience seamless AI access',
+      description: 'Sign up now and get free trial credits to access all leading AI models',
       button: 'Sign Up Free'
+    },
+    techHighlights: {
+      title: 'Technical Advantages',
+      items: {
+        compatible: { title: 'OpenAI Compatible', desc: 'Fully compatible with OpenAI API format. No code changes needed.' },
+        smartRouting: { title: 'Smart Routing', desc: 'Automatic optimal account selection based on load, latency and error rate.' },
+        sessionSticky: { title: 'Session Persistence', desc: 'Same conversation routes to same upstream for context continuity.' },
+        realtime: { title: 'Streaming', desc: 'SSE streaming support for smooth token-by-token output.' },
+        quotaControl: { title: 'Quota Control', desc: 'RPM/TPM rate limiting and balance quotas for team management.' },
+        monitoring: { title: 'Real-time Monitoring', desc: 'Request logs, usage stats and error tracking at a glance.' }
+      }
+    },
+    faq: {
+      title: 'FAQ',
+      items: {
+        q1: { question: 'What is a multi-model aggregation platform?', answer: 'We aggregate multiple leading AI models (DeepSeek, Qwen, Kimi, Zhipu, etc.) into one platform. You only need one API key to access all models.' },
+        q2: { question: 'Is the API format compatible?', answer: 'Fully compatible with OpenAI Chat Completions API format. Just replace the base_url and api_key in your existing code.' },
+        q3: { question: 'How does billing work?', answer: 'Pay-as-you-go based on actual usage. Supports balance top-up and quota limits for team spending control.' },
+        q4: { question: 'How is service stability ensured?', answer: 'Multi-account pool architecture with smart scheduling engine for automatic load balancing and failover.' }
+      }
     },
     footer: {
       allRightsReserved: 'All rights reserved.'

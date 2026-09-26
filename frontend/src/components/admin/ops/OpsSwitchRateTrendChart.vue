@@ -33,8 +33,8 @@ const { t } = useI18n()
 
 const isDarkMode = computed(() => document.documentElement.classList.contains('dark'))
 const colors = computed(() => ({
-  teal: '#FF6B35',
-  tealAlpha: '#FF6B3520',
+  teal: '#2563EB',
+  tealAlpha: '#2563EB20',
   grid: isDarkMode.value ? '#374151' : '#f3f4f6',
   text: isDarkMode.value ? '#9ca3af' : '#6b7280'
 }))

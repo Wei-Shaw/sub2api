@@ -5,19 +5,19 @@ export default {
   theme: {
     extend: {
       colors: {
-        // 主色调 - Orange 橙色系
+        // 主色调 - Corporate Blue 商务蓝
         primary: {
-          50: '#FFF4ED',
-          100: '#FFE6D5',
-          200: '#FFC9A8',
-          300: '#FFA570',
-          400: '#FF7E3D',
-          500: '#FF6B35',
-          600: '#F04E1A',
-          700: '#C73C13',
-          800: '#9E3116',
-          900: '#7F2B16',
-          950: '#45140A'
+          50: '#EFF6FF',
+          100: '#DBEAFE',
+          200: '#BFDBFE',
+          300: '#93C5FD',
+          400: '#60A5FA',
+          500: '#3B82F6',
+          600: '#2563EB',
+          700: '#1D4ED8',
+          800: '#1E3A8A',
+          900: '#1E2D6D',
+          950: '#172554'
         },
         // 辅助色 - 深蓝灰
         accent: {
@@ -50,6 +50,8 @@ export default {
       },
       fontFamily: {
         sans: [
+          'Inter Variable',
+          'Inter',
           'system-ui',
           '-apple-system',
           'BlinkMacSystemFont',
@@ -67,20 +69,20 @@ export default {
       boxShadow: {
         glass: '0 8px 32px rgba(0, 0, 0, 0.08)',
         'glass-sm': '0 4px 16px rgba(0, 0, 0, 0.06)',
-        glow: '0 0 20px rgba(255, 107, 53, 0.25)',
-        'glow-lg': '0 0 40px rgba(255, 107, 53, 0.35)',
+        glow: '0 0 20px rgba(37, 99, 235, 0.20)',
+        'glow-lg': '0 0 40px rgba(37, 99, 235, 0.25)',
         card: '0 1px 3px rgba(0, 0, 0, 0.04), 0 1px 2px rgba(0, 0, 0, 0.06)',
         'card-hover': '0 10px 40px rgba(0, 0, 0, 0.08)',
         'inner-glow': 'inset 0 1px 0 rgba(255, 255, 255, 0.1)'
       },
       backgroundImage: {
         'gradient-radial': 'radial-gradient(var(--tw-gradient-stops))',
-        'gradient-primary': 'linear-gradient(135deg, #FF6B35 0%, #F04E1A 100%)',
+        'gradient-primary': 'linear-gradient(135deg, #2563EB 0%, #1D4ED8 100%)',
         'gradient-dark': 'linear-gradient(135deg, #1e293b 0%, #0f172a 100%)',
         'gradient-glass':
           'linear-gradient(135deg, rgba(255,255,255,0.1) 0%, rgba(255,255,255,0.05) 100%)',
         'mesh-gradient':
-          'radial-gradient(at 40% 20%, rgba(255, 107, 53, 0.12) 0px, transparent 50%), radial-gradient(at 80% 0%, rgba(6, 182, 212, 0.08) 0px, transparent 50%), radial-gradient(at 0% 50%, rgba(255, 107, 53, 0.08) 0px, transparent 50%)'
+          'radial-gradient(at 40% 20%, rgba(37, 99, 235, 0.10) 0px, transparent 50%), radial-gradient(at 80% 0%, rgba(6, 182, 212, 0.06) 0px, transparent 50%), radial-gradient(at 0% 50%, rgba(37, 99, 235, 0.06) 0px, transparent 50%)'
       },
       animation: {
         'fade-in': 'fadeIn 0.3s ease-out',
@@ -118,8 +120,8 @@ export default {
           '100%': { backgroundPosition: '200% 0' }
         },
         glow: {
-          '0%': { boxShadow: '0 0 20px rgba(255, 107, 53, 0.25)' },
-          '100%': { boxShadow: '0 0 30px rgba(255, 107, 53, 0.4)' }
+          '0%': { boxShadow: '0 0 20px rgba(37, 99, 235, 0.20)' },
+          '100%': { boxShadow: '0 0 30px rgba(37, 99, 235, 0.30)' }
         }
       },
       backdropBlur: {

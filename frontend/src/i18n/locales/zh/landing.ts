@@ -15,10 +15,10 @@ export default {
     getStarted: '立即开始',
     goToDashboard: '进入控制台',
     // 新增：面向用户的价值主张
-    heroSubtitle: '一个密钥，畅用多个 AI 模型',
-    heroDescription: '无需管理多个订阅账号，一站式接入 Claude、GPT、Gemini 等主流 AI 服务',
+    heroSubtitle: '一个密钥，畅用所有主流 AI 模型',
+    heroDescription: '汇聚国内主流 AI 模型，一个密钥即可接入 DeepSeek、通义千问、Kimi、智谱清言等所有 AI 服务',
     tags: {
-      subscriptionToApi: '订阅转 API',
+      subscriptionToApi: '多模型聚合',
       stickySession: '会话保持',
       realtimeBilling: '按量计费'
     },
@@ -50,6 +50,8 @@ export default {
       subtitle: '简单三步，开始省心使用 AI'
     },
     features: {
+      title: '核心能力',
+      description: '一个平台，汇聚所有主流 AI 模型',
       unifiedGateway: '一键接入',
       unifiedGatewayDesc: '获取一个 API 密钥，即可调用所有已接入的 AI 模型，无需分别申请。',
       multiAccount: '稳定可靠',
@@ -95,19 +97,72 @@ export default {
     },
     providers: {
       title: '已支持的 AI 模型',
-      description: '一个 API，多种选择',
+      description: '一个平台，汇聚所有主流 AI 模型',
       supported: '已支持',
       soon: '即将推出',
-      claude: 'Claude',
-      gemini: 'Gemini',
-      antigravity: 'Antigravity',
+      deepseek: 'DeepSeek',
+      qwen: '通义千问',
+      kimi: 'Kimi',
+      zhipu: '智谱清言',
       more: '更多'
     },
     // CTA 区块
     cta: {
       title: '准备好开始了吗？',
-      description: '注册即可获得免费试用额度，体验一站式 AI 服务',
+      description: '注册即可获得免费试用额度，体验全模型一站式接入',
       button: '免费注册'
+    },
+    // 技术亮点
+    techHighlights: {
+      title: '技术优势',
+      items: {
+        compatible: {
+          title: 'OpenAI 兼容',
+          desc: '完全兼容 OpenAI API 格式，现有代码无需修改即可接入'
+        },
+        smartRouting: {
+          title: '智能路由',
+          desc: '基于负载、延迟、错误率自动选择最优上游账号'
+        },
+        sessionSticky: {
+          title: '会话保持',
+          desc: '同一对话自动路由到相同上游，保证上下文连贯性'
+        },
+        realtime: {
+          title: '流式传输',
+          desc: '支持 SSE 流式响应，Token 逐字输出，体验流畅'
+        },
+        quotaControl: {
+          title: '配额管控',
+          desc: '支持 RPM/TPM 限流与余额配额，精确控制团队用量'
+        },
+        monitoring: {
+          title: '实时监控',
+          desc: '请求日志、用量统计、错误追踪，运营数据一目了然'
+        }
+      }
+    },
+    // FAQ
+    faq: {
+      title: '常见问题',
+      items: {
+        q1: {
+          question: '什么是多模型集合平台？',
+          answer: '我们将多个主流 AI 模型（DeepSeek、通义千问、Kimi、智谱等）聚合在一个平台，您只需一个 API 密钥即可调用所有模型，无需分别注册各个平台。'
+        },
+        q2: {
+          question: 'API 格式兼容吗？',
+          answer: '完全兼容 OpenAI Chat Completions API 格式。您现有的代码只需将 base_url 和 api_key 替换为我们的地址和密钥即可使用，无需修改任何业务逻辑。'
+        },
+        q3: {
+          question: '如何计费？',
+          answer: '按实际使用量计费，用多少付多少。支持充值余额和设置配额上限，方便控制团队开支。'
+        },
+        q4: {
+          question: '服务稳定性如何保证？',
+          answer: '平台采用多账号池化架构，智能调度引擎自动负载均衡和故障切换，单一账号异常不影响整体服务。'
+        }
+      }
     },
     footer: {
       allRightsReserved: '保留所有权利。'
