@@ -374,7 +374,7 @@ func (s *AntigravityGatewayService) handleAntigravityCompatTransportError(c *gin
 		}
 	}
 	if c.Request.Context().Err() != nil {
-		return s.writeAntigravityCompatError(c, http.StatusBadGateway, "client_disconnected", "Client disconnected before upstream response")
+		return s.writeAntigravityCompatError(c, antigravityStatusClientClosed, "client_disconnected", "Client disconnected before upstream response")
 	}
 	return s.writeAntigravityCompatError(c, http.StatusBadGateway, "upstream_error", "Upstream request failed after retries")
 }
