@@ -35,15 +35,9 @@
             type="text"
             class="input"
             :placeholder="
-              account.platform === 'openai'
-                ? 'https://api.openai.com'
-                : account.platform === 'gemini'
-                  ? 'https://generativelanguage.googleapis.com'
-                  : account.platform === 'antigravity'
-                    ? 'https://cloudcode-pa.googleapis.com'
-                    : account.platform === 'grok'
-                      ? 'https://api.x.ai/v1'
-                      : 'https://api.anthropic.com'
+              account.platform === 'antigravity'
+                ? 'https://cloudcode-pa.googleapis.com'
+                : defaultApiKeyBaseUrlForPlatform(account.platform)
             "
           />
           <p v-if="baseUrlHint" class="input-hint">{{ baseUrlHint }}</p>
@@ -3150,6 +3144,7 @@ import {
   applyPlanType,
   buildPlanTypeOptions,
   cloneOpenCodeGoProtocolRules,
+  defaultApiKeyBaseUrlForPlatform,
   defaultOpenCodeProtocolRules,
   parseOpenCodeGoProtocolRules,
   readPlanType,
@@ -3350,7 +3345,8 @@ interface TempUnschedRuleForm {
 
 // State
 const submitting = ref(false)
-const editBaseUrl = ref('https://api.anthropic.com')
+// 初始平台为 anthropic（props.account 为空时），经统一平台默认端点分支解析。
+const editBaseUrl = ref(defaultApiKeyBaseUrlForPlatform('anthropic'))
 const editApiKey = ref('')
 
 // ── 国产供应商（Kimi / Zhipu / DeepSeek）account_mode / api_protocol 编辑 ──
@@ -3988,20 +3984,18 @@ const tempUnschedPresets = computed(() => [
 
 // Computed: default base URL based on platform
 const defaultBaseUrl = computed(() => {
-  if (props.account?.platform === 'openai') return 'https://api.openai.com'
-  if (props.account?.platform === 'gemini') return 'https://generativelanguage.googleapis.com'
-  if (props.account?.platform === 'grok') return 'https://api.x.ai/v1'
+  const platform = props.account?.platform
   // CN 供应商：按当前模式/协议回落到官方预设（清空输入框提交时使用），
   // 不能落到 anthropic 默认值（会被当 CC base 拼出错误端点）。
   if (
-    props.account?.platform === 'kimi' ||
-    props.account?.platform === 'zhipu' ||
-    props.account?.platform === 'deepseek' ||
-    props.account?.platform === 'opencode_go'
+    platform === 'kimi' ||
+    platform === 'zhipu' ||
+    platform === 'deepseek' ||
+    platform === 'opencode_go'
   ) {
-    return defaultCNBaseUrl(props.account.platform, currentOpenCodeOrCNMode(), editApiProtocol.value)
+    return defaultCNBaseUrl(platform, currentOpenCodeOrCNMode(), editApiProtocol.value)
   }
-  return 'https://api.anthropic.com'
+  return defaultApiKeyBaseUrlForPlatform(platform ?? '')
 })
 
 const mixedChannelWarningMessageText = computed(() => {
@@ -4434,18 +4428,12 @@ const syncFormFromAccount = (newAccount: Account | null) => {
       }
     }
     const platformDefaultUrl =
-      newAccount.platform === 'openai'
-        ? 'https://api.openai.com'
-        : newAccount.platform === 'gemini'
-          ? 'https://generativelanguage.googleapis.com'
-          : newAccount.platform === 'grok'
-            ? 'https://api.x.ai/v1'
-            : newAccount.platform === 'kimi' ||
-                newAccount.platform === 'zhipu' ||
-                newAccount.platform === 'deepseek' ||
-                newAccount.platform === 'opencode_go'
-              ? defaultCNBaseUrl(newAccount.platform, currentOpenCodeOrCNMode(), editApiProtocol.value)
-              : 'https://api.anthropic.com'
+      newAccount.platform === 'kimi' ||
+      newAccount.platform === 'zhipu' ||
+      newAccount.platform === 'deepseek' ||
+      newAccount.platform === 'opencode_go'
+        ? defaultCNBaseUrl(newAccount.platform, currentOpenCodeOrCNMode(), editApiProtocol.value)
+        : defaultApiKeyBaseUrlForPlatform(newAccount.platform)
     editBaseUrl.value = isCNApiKeyAccount.value && editApiProtocol.value === 'adaptive'
       ? editAdaptiveBaseUrls.value.chat_completions
       : (credentials.base_url as string) || platformDefaultUrl
@@ -4511,14 +4499,7 @@ const syncFormFromAccount = (newAccount: Account | null) => {
     // Load model mappings for service_account
     loadModelRestrictionFromMapping(credentials.model_mapping as Record<string, unknown> | undefined)
   } else {
-    const platformDefaultUrl =
-      newAccount.platform === 'openai'
-        ? 'https://api.openai.com'
-        : newAccount.platform === 'gemini'
-          ? 'https://generativelanguage.googleapis.com'
-          : newAccount.platform === 'grok'
-            ? 'https://api.x.ai/v1'
-            : 'https://api.anthropic.com'
+    const platformDefaultUrl = defaultApiKeyBaseUrlForPlatform(newAccount.platform)
     editBaseUrl.value = platformDefaultUrl
 
     // Load model mappings for OpenAI/Grok OAuth accounts

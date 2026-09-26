@@ -26,6 +26,7 @@ func TestNormalizeInboundEndpoint(t *testing.T) {
 		{"/v1/chat/completions", EndpointChatCompletions},
 		{"/v1/embeddings", EndpointEmbeddings},
 		{"/v1/alpha/search", EndpointAlphaSearch},
+		{"/v1/systemone", EndpointSystemOne},
 		{"/v1/responses", EndpointResponses},
 		{"/v1/responses/input_tokens", EndpointResponsesInputTokens},
 		{"/v1/responses/compact", EndpointResponsesCompact},
@@ -139,6 +140,11 @@ func TestDeriveUpstreamEndpoint(t *testing.T) {
 		// Antigravity — uses inbound to pick Claude vs Gemini upstream.
 		{"antigravity claude", EndpointMessages, "/antigravity/v1/messages", service.PlatformAntigravity, EndpointMessages},
 		{"antigravity gemini", EndpointGeminiModels, "/antigravity/v1beta/models", service.PlatformAntigravity, EndpointGeminiModels},
+
+		// typesafe — /v1/systemone 是原生透传端点，入站即上游端点，
+		// 绝不能被改写成 /v1/responses（那会让 usage log 的 upstream_endpoint 说谎）。
+		{"typesafe systemone", EndpointSystemOne, "/v1/systemone", service.PlatformTypeSafe, EndpointSystemOne},
+		{"openai family systemone stays native", EndpointSystemOne, "/v1/systemone", service.PlatformOpenAI, EndpointSystemOne},
 
 		// Unknown platform — passthrough.
 		{"unknown platform", "/v1/embeddings", "/v1/embeddings", "unknown", "/v1/embeddings"},

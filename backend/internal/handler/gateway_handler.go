@@ -1185,6 +1185,13 @@ func (h *GatewayHandler) Models(c *gin.Context) {
 		writeGrokModelsList(c, xai.DefaultModelIDs())
 		return
 	}
+	// typesafe 只提供 POST /v1/systemone（Jev 判断题服务），没有模型目录：
+	// 显式返回空清单，绝不回落 claude.DefaultModels——那会把无关的 Claude
+	// 模型名当作可用模型回给客户端。
+	if platform == service.PlatformTypeSafe {
+		writeModelsList(c, platform, nil)
+		return
+	}
 
 	writeModelsListResponse(c, claude.DefaultModels)
 }
@@ -1453,6 +1460,9 @@ func defaultModelIDsForPlatform(platform string) []string {
 		return xai.DefaultModelIDs()
 	case service.PlatformOpenCodeGo:
 		return service.DefaultOpenCodeGoModelIDs()
+	case service.PlatformTypeSafe:
+		// 见 Models()：typesafe 只提供 /v1/systemone，没有模型目录。
+		return nil
 	case service.PlatformComposite:
 		ids := make([]string, 0)
 		seen := make(map[string]struct{})

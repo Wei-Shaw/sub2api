@@ -1,0 +1,386 @@
+# TypeSafe 平台（platform=typesafe）交接：上线、行为边界与 integration 合并清单
+
+> **整理日期**: 2026-09-21
+> **分支**: `feature/typesafe-platform`（基于本地 `main`；HEAD = `a5769ffa4`）
+> **范围**: 一级平台 `platform=typesafe`（TypeSafe AI 的 Jev 判断题服务）+ 原生透传端点 `POST /v1/systemone`
+> **文档位置**: 本文已从本地研究笔记目录 `docs/research/`（`docs/*` 默认忽略、不入库）归位到 `docs/TYPESAFE_PLATFORM.md`，并在 `.gitignore` 的 `!docs/...` 白名单中登记；这次归位本身是紧随 `a5769ffa4` 之后的一个提交。
+> **证据基线**: 本文所有路径、行号、测试名、环境变量均在本分支工作区逐条核实过；带「未验证」标注的除外。行号对应上述 HEAD `a5769ffa4` 的工作区状态。
+> **生产验证**: 另有一次 2026-09-21 的**生产端到端实测**（生产版本 `v0.9.338`），结论单列在 **§6.1**；它属运行证据、没有代码行号依据，也不进仓库自动化测试。同日还按 TypeSafe 官方价格完成了分组定价卡配置与计费验证，单列在 **§6.3**。
+
+---
+
+## 1. 这是什么
+
+新增一级平台 `platform=typesafe`，承载 **TypeSafe AI 的 Jev 判断题服务**，并提供一个原生透传端点：
+
+| 项 | 值 | 依据 |
+| --- | --- | --- |
+| 平台值 | `typesafe` | `backend/internal/domain/constants.go:36`；service 层别名 `backend/internal/service/domain_constants.go:53` |
+| 端点 | `POST /v1/systemone` | 路由与平台门 `backend/internal/server/routes/gateway.go:308-321` |
+| 请求体 | `{model, state, questions}`（`questions` 是 `map[string]{type, instructions}`） | `backend/internal/pkg/typesafe/client.go:18-24` |
+| 响应体 | `{model, usage, answers}`（`answers[id] = {type, noul}`） | `backend/internal/pkg/typesafe/client.go:66-74` |
+| 形态 | 同步、无流式、不生成文本、非 OpenAI 兼容 | `backend/internal/handler/openai_systemone.go:21-26`；`backend/internal/service/openai_systemone.go:193`（`Stream: false`） |
+| 上游地址 | `{base_url}/v1/systemone` | `backend/internal/service/openai_systemone.go:280-282` |
+
+**为什么是一级平台，而不是挂在 `openai` 平台下**
+
+本仓库的平台标签表示「上游厂商 / 凭据池」，不是「请求走哪个网关」。调度器按平台做精确匹配：`NormalizeOpenAICompatiblePlatform` 对每个平台返回自身，账号池才会按平台隔离（`backend/internal/service/openai_gateway_scheduling.go:294-302`）。TypeSafe 是**另一个厂商的域名 + 另一套 key**，所以它必须有自己的平台标签。
+
+对照：`embeddings`（本分支 `backend/internal/server/routes/gateway.go:292-304`）与 `rerank`（本分支树里没有，见集成分支上的 `feature/openai-rerank-endpoint`；`integration:backend/internal/handler/endpoint.go:22` 有 `EndpointRerank`）之所以挂在 `openai` 平台下，是因为它们是**同一批 openai 系账号上的能力位**，用账号凭据里的 `credentials["openai_capabilities"]` 表达（键名常量 `backend/internal/service/account.go:109`；能力判定 `backend/internal/service/account.go:1850-1920`）。能力位的前提是「同一个上游厂商」，对 TypeSafe 不成立。
+
+---
+
+## 2. 改了什么（按区域）
+
+### 域名常量 / 谓词 / 凭据读取
+
+- `backend/internal/service/domain_constants.go:90-93` — 新增 `DefaultTypeSafeBaseURL = "https://api.typesafe.ai"` 与 `DefaultTypeSafeTestModel = "jev-latest"`。
+- `backend/internal/service/domain_constants.go:124-129` — `IsTypeSafe(platform)`；注释明确 typesafe **刻意不纳入** `IsMultiProtocolAPIKeyProvider`（`backend/internal/service/domain_constants.go:131-135`）。
+- `backend/internal/service/account.go:297-302` — `(*Account).IsTypeSafe()`。
+- `backend/internal/service/account.go:983-999` — `GetBaseURL()` 对 typesafe **早退返回空串**（Anthropic 协议路径 fail-closed，不再回落 `https://api.anthropic.com`）。
+- `backend/internal/service/account.go:1370-1410` — `GetOpenAIBaseURL()` 纳入 typesafe，缺失 `credentials["base_url"]` 时回落 `DefaultTypeSafeBaseURL`。
+- `backend/internal/service/account.go:1779-1788` — `GetOpenAIProtocolAPIKey()` 覆盖 typesafe（`credentials["api_key"]`）。
+- `backend/internal/domain/constants.go:34-36` — domain 层常量。
+
+### 迁移
+
+- `backend/migrations/240_typesafe_platform.sql` — 只放宽 `user_platform_quotas.platform` 的 CHECK 约束，写成「main 与 integration 已知平台并集 + typesafe」（显式含 `ollama_cloud`），可重入、零 DML。
+- `backend/ent/schema/user_platform_quota.go:42-47` — ent 构建期 `Validate` 白名单同步加 `typesafe`。
+
+### 路由门禁与对话端点拒绝
+
+- `backend/internal/server/routes/gateway.go:59-84` — `isTypeSafeGatewayPlatform` 与 `rejectTypeSafeConversationalEndpoint`（显式 404，文案提示 `POST /v1/systemone` 是唯一可用端点）。
+- 调用点：`backend/internal/server/routes/gateway.go:86`（count_tokens）、`:217`（Responses WebSocket ingress）、`:237`（messages）、`:260`/`:270`（responses POST 与其 subpath 别名）、`:283`（chat/completions）、`:424`（根路径/codex 的 responses 别名）、`:463`（根路径 chat/completions）。
+- `backend/internal/server/routes/gateway.go:308-321` — `/v1/systemone` 的独立平台门（非 typesafe 分组 404）。
+
+### 端点 handler / service
+
+- `backend/internal/handler/openai_systemone.go` — handler（鉴权、只校验 `model` 必填、调度、计费、失败切换）。
+- `backend/internal/service/openai_systemone.go` — 透传与错误体净化。
+- `backend/internal/handler/endpoint.go:22`、`:94-95`、`:240-242` — `EndpointSystemOne` 常量、路径识别、typesafe 入站端点即上游端点。
+
+### 端点常量与路由覆盖测试
+
+- `backend/internal/handler/endpoint_test.go:29`、`:144-147` — 端点识别与上游端点映射。
+- `backend/internal/server/routes/prompt_audit_route_coverage_test.go:37` — `/systemone` 路由覆盖登记。
+
+### admin 测试连接修复
+
+- `backend/internal/service/account_test_service.go:52-57` — typesafe 最小良性探测体常量。
+- `backend/internal/service/account_test_service.go:400-402` — 分派到 typesafe 专用探测。
+- `backend/internal/service/account_test_service.go:457-512` — `testTypeSafeAccountConnection`：用 `GetOpenAIBaseURL()` + `buildOpenAISystemOneURL` 打到 `/v1/systemone`，`Authorization: Bearer <key>`，不再走 Anthropic 形状的 `/v1/messages?beta=true` 探测。
+
+### 前端面
+
+- **建号入口** `frontend/src/components/account/CreateAccountModal.vue:232-245`（平台卡片）、`:4295-4302`（`selectTypeSafePlatform`：设 `type='apikey'`、`accountCategory='apikey'`、base_url 预设）。
+- **base_url 兜底** `frontend/src/components/account/credentialsBuilder.ts:255-280` — `TYPESAFE_BASE_URL = 'https://api.typesafe.ai'` 与 `defaultApiKeyBaseUrlForPlatform` 的 typesafe 分支。
+- **平台色表 / 图标** `frontend/src/utils/platformColors.ts`（新增 16 处，含 `getPlatformLabel`）、`frontend/src/components/common/PlatformIcon.vue:57-58`。
+- **分组平台名** `frontend/src/constants/platforms.ts:24`（`CONCRETE_PLATFORM_OPTIONS`，`GROUP_PLATFORM_OPTIONS:28-31` 自动inherit）、`frontend/src/types/index.ts:541`（`GroupPlatform`）、`:921`（`AccountPlatform`）。
+- **渠道定价列表** `frontend/src/views/admin/ChannelsView.vue:766` — `platformOrder` 加 `typesafe`；`:769` 的 `compositePlatforms` **不加**（typesafe 不是 composite 可路由的对话上游，见 `frontend/src/views/admin/GroupsView.vue:4617-4620`）。
+- 其他：`frontend/src/components/keys/UseKeyModal.vue:1255`、`frontend/src/utils/keyGroupProviders.ts:20`、`frontend/src/i18n/locales/{en,zh}/admin/accounts.ts`（各 1 行）、`frontend/src/i18n/locales/{en,zh}/admin/overview.ts`（各 1 行）、`frontend/src/composables/useModelWhitelist.ts:470-471`、`frontend/src/api/admin/settings.ts`（配额平台镜像）、`frontend/src/views/admin/GroupsView.vue`。
+
+### commit 列表（`git log --oneline main..HEAD` 的真实输出，截至 `a5769ffa4`）
+
+```
+a5769ffa4 docs(typesafe): align ws ingress test comment with current base-url behavior
+b85066940 docs(typesafe): document onboarding, limitations and integration merge checklist
+77688108b fix(typesafe): correct stale base-url comment in the gateway route gate
+39a8d23a8 feat(typesafe): expose account onboarding and platform surfaces in admin UI
+4c1a93b72 fix(typesafe): reject responses websocket ingress for typesafe groups
+34727633f fix(typesafe): keep account test connection on the systemone upstream
+73ced85f1 test(typesafe): cover /v1/systemone contract, routing and scheduling
+f09a07449 feat(typesafe): add /v1/systemone passthrough endpoint
+827ceeaf7 feat(typesafe): add typesafe platform skeleton
+```
+
+紧随 `a5769ffa4` 之后是本次文档归位提交：把本文件从 `docs/research/typesafe-platform-merge-and-ops.md` 移到 `docs/TYPESAFE_PLATFORM.md`，并在 `.gitignore` 的 `!docs/...` 白名单中登记（`b85066940` 是它上一次落库的位置，当时写在 `docs/research/` 下）。
+
+---
+
+## 3. 怎么上线（可执行步骤）
+
+1. **建 typesafe 分组**：管理后台 →「分组 / Groups」→ 新建，平台下拉选 `TypeSafe`（该下拉来自 `GROUP_PLATFORM_OPTIONS`，`frontend/src/constants/platforms.ts:24-31`）。后端 `CreateGroupRequest.Platform` 的 binding 白名单已含 `typesafe`（`backend/internal/handler/admin/group_handler.go:187`）。
+2. **建账号**：管理后台 →「账号 / Accounts」→ 新建，平台卡片选 `TypeSafe`（`frontend/src/components/account/CreateAccountModal.vue:232-245`）。字段：
+   - 类型 / `type` = `apikey`（由 `selectTypeSafePlatform` 固定，`CreateAccountModal.vue:4299-4300`）；
+   - `base_url` = `https://api.typesafe.ai`（默认值来自 `TYPESAFE_BASE_URL`，`frontend/src/components/account/credentialsBuilder.ts:261`；与后端 `DefaultTypeSafeBaseURL` 一致）；
+   - `api_key` = TypeSafe 侧签发的 key。
+   落库形态：`accounts.credentials = {"base_url": ..., "api_key": ...}`。
+3. **模型名**：用 `jev-latest`（后端默认探测模型 `backend/internal/service/domain_constants.go:93`，审核引擎默认模型 `backend/internal/service/content_moderation_engines.go:64`）。TypeSafe 没有模型目录，模型名以账号映射 / 渠道映射 / 分组定价卡上写的为准。
+4. **定价**，两条路：
+   - **分组模型定价卡**：分组新建 / 编辑表单里的 `model_pricing` 列表（`frontend/src/views/admin/GroupsView.vue:1494`、`:3144`，组件 `PricingEntryCard`）。
+   - **渠道按模型定价**：渠道页面顶部按平台切换的标签页由 `platformOrder` 驱动（`frontend/src/views/admin/ChannelsView.vue:236`、`:766`），在渠道表单里加 pricing rule（`ChannelsView.vue:446-450`）。**本分支这条已可用**（`platformOrder` 已含 typesafe）；**在 integration 上需要合并后把 typesafe 加进 `platformOrder`**（integration 当前是 `[..., 'opencode_go', 'ollama_cloud']`，`integration:frontend/src/views/admin/ChannelsView.vue:766`）。
+   - 注意：渠道里的「从 LiteLLM 目录同步模型」按钮**不支持 typesafe** —— `platformToLiteLLMProvider`（`backend/internal/handler/admin/channel_handler.go:637-648`）没有 typesafe，`SyncPricingModels` 会返回 `400 UNSUPPORTED_PLATFORM`（同文件 `:650-670`）。所以 typesafe 的定价只能手填。
+   - **生产现状（2026-09-21）**：实际采用的是**分组定价卡**（当时生产上没有任何 channel），已按 TypeSafe 官方价配好并验证，见 §6.3。
+   - 具体界面字段名如与本文不符，**以当前界面为准**。
+5. **建绑定该分组的 API Key**：管理后台 →「API Keys」→ 新建，分组选第 1 步的 typesafe 分组。该分组的平台标签决定 `/v1/systemone` 的平台门是否放行。
+6. **客户端调用**：`POST /v1/systemone`。请求形状见第 1 节表格与第 6 节的 curl 示例。
+
+---
+
+## 4. 行为与边界（均有代码依据）
+
+- **同步、无流式。** 透传结果固定 `Stream: false`（`backend/internal/service/openai_systemone.go:193`）；服务层注释明确「无流式、不生成文本」（同文件 `:21-23`）。请求体只解析 `model`，`state` / `questions` 逐字节透传（`backend/internal/handler/openai_systemone.go:72-77`）。
+- **`/v1/models` 对 typesafe 有意返回空清单。** `backend/internal/handler/gateway_handler.go:1188-1193`（`writeModelsList(c, platform, nil)`，注释说明「绝不回落 `claude.DefaultModels`」）；同链路 `defaultModelIDsForPlatform` 在 `:1463-1465` 返回 `nil`；分组可用模型解析 `backend/internal/service/admin_group.go:299-302` 同样返回 `nil`。前端白名单同步返回空（`frontend/src/composables/useModelWhitelist.ts:470-471`）。
+- **对话端点对 typesafe 分组显式 404。** `/v1/messages`、`/v1/messages/count_tokens`、`/v1/chat/completions`、`/v1/responses`（POST 与 `/v1/responses/*subpath`）、`GET /v1/responses`（Responses WebSocket ingress），以及不带 `/v1` 前缀的别名与 `/backend-api/codex/responses`，统一由 `rejectTypeSafeConversationalEndpoint` 在入口拒绝（`backend/internal/server/routes/gateway.go:72-84` 及第 2 节列出的 8 个调用点），响应体为自造的 `not_found_error`，message 形如 `<Api> is not supported for TypeSafe groups; POST /v1/systemone is the only available endpoint`（`gateway.go:78-80`）。
+  门禁**现在**存在的理由：typesafe 分组没有对话端点，通用 Anthropic 网关按 platform 过滤后仍可能选中 typesafe 账号，不拦就会落到通用网关 / 上游并返回语义不清的错误；这里改为干净的显式 404。曾经担心的「把 typesafe 的 key 当 Anthropic key 发到 `https://api.anthropic.com`」已由 `GetBaseURL()` 对 typesafe 早退返回空串（`backend/internal/service/account.go:997-999`）在 base URL 层关闭。
+- **上游错误体绝不透传。** 凡上游 `status >= 400`，只回自造错误体（`{"error":{"type":"upstream_error","message":"Upstream returned status N (upstream request id: ...)"}}`），message 只带上游状态码与上游 request id：`backend/internal/service/openai_systemone.go:126-174`（含 failover 分支把 `failoverErr.ResponseBody` 覆盖为自造体，`:167-169`）、`:219-254`（`writeOpenAISystemOneError` / `openAISystemOneUpstreamErrorMessage` / `buildOpenAISystemOneUpstreamErrorBody`）。这样做的目标是**保守**的：不让上游的任意内容外泄给客户端。服务层注释（同文件 `:25-29`）写的理由是 TypeSafe 错误响应可能回显请求内容甚至凭据，而出站 `Authorization` 用的是平台账号的 key；上游 body 只用于内部判定（failover 分类 / 熔断 / ops 事件）。同类注释也在 `backend/internal/pkg/typesafe/client.go:61-63`（「Do not log provider error bodies: they may echo user input or credentials」）。**注意（2026-09-21 修正）**：本轮生产实测里的 400 unknown model 样本，上游返回的是 `{"detail":{"error_type":"api_usage_error","message":"Unknown model: ..."}}`，**没有回显凭据**；即「错误体会回显凭据」这一条在现有样本中**没有被复现**，只能按保守设计对待，**不要当成已验证事实**（详见 §6.1 C）。
+- **`openai_capabilities` 白名单不作用于 `/v1/systemone`。** handler 调用 `SelectAccountWithSchedulerForCapability` 时 `requiredCapability` 传空串（`backend/internal/handler/openai_systemone.go:126-142`），而 `SupportsOpenAIEndpointCapability("")` 恒真（`backend/internal/service/account.go:1859-1861`），能力过滤链（`backend/internal/service/openai_ws_forwarder_support.go:577`）因此被跳过。调度隔离由平台门 + 平台归一保证：`NormalizeOpenAICompatiblePlatform` 对 typesafe 返回自身（`backend/internal/service/openai_gateway_scheduling.go:294-302`）。
+- **WS ingress 另有独立拒绝路径。** typesafe 账号在 WSv2 ingress 模式解析上恒为 `off`（非 openai 平台），因此 `isOpenAIAccountTransportCompatible` 判定其与 ingress transport 不兼容（钉在 `backend/internal/service/openai_ws_ingress_typesafe_test.go:10-33`）。
+
+### 其他入口的现状（未逐一加 typesafe 断言，行为由既有门禁决定）
+
+| 入口 | typesafe 分组的行为 | 依据 |
+| --- | --- | --- |
+| `GET /v1/models/:model` | **返回空清单，不是 404**（该路由直接挂 `h.Gateway.Models`，与 `GET /v1/models` 同一处理器，且不读 `:model`） | 路由 `backend/internal/server/routes/gateway.go:254`、`:448`；处理器 `backend/internal/handler/gateway_handler.go:1188-1193` |
+| `POST /v1/live`、`GET /v1/live/:call_id`、`POST /backend-api/codex/realtime/calls`、`GET /backend-api/codex/:call_id` | 404 `Live is not supported for this platform`（handler 内部门禁只放行 openai / composite）；sideband 另有 `liveEnabledForAPIKey` 门 | `backend/internal/handler/openai_live.go:33-35`、`:245-250` |
+| `POST /v1/alpha/search`、`POST /alpha/search`、`POST /backend-api/codex/alpha/search` | 404 `Codex alpha search is only available for OpenAI and Composite groups` | `backend/internal/handler/openai_alpha_search.go:33-35` |
+| `POST /v1/embeddings`、`POST /embeddings` | 404 `Embeddings API is not supported for this platform`（路由级门 `isOpenAIOnlyEndpointGatewayPlatform` == openai） | `backend/internal/server/routes/gateway.go:292-304`、`:472-483` |
+
+---
+
+## 5. 两个 key 存放处（重要运维提示）
+
+TypeSafe 的 key 在本仓库有**两套互不相通**的存储，**当前不共享、不迁移**：
+
+1. **内容审核引擎的 TypeSafe 配置**（设置里的 engine profile）
+   - 存储：`settings` 表的 `content_moderation_config`（JSON）。键名常量 `backend/internal/service/domain_constants.go:255`（`SettingKeyContentModerationConfig = "content_moderation_config"`）。
+   - 结构：`engine` + `engine_configs.typesafe{base_url, model, api_keys, timeout_ms, retry_count, thresholds}`，见 `backend/internal/service/content_moderation_engines.go:13-25`、`:46-68`；`api_keys` 在服务端以哈希标识用于删除匹配（`backend/internal/service/content_moderation.go:2580-2586`、`:2908-2925`）。
+   - 控制台入口：风控中心 / Risk Control 页面（`frontend/src/views/admin/RiskControlView.vue:1255-1256`、`:415-424`；类型定义 `frontend/src/api/admin/riskControl.ts:4`、`:20-21`）。
+   - 用途：审核链路的 `typesafe.Evaluate` 直连（`backend/internal/service/content_moderation_typesafe.go:60-75`），**不经** `/v1/systemone` 网关端点。
+2. **平台账号的 `credentials`**
+   - 存储：`accounts.credentials` JSONB，键 `base_url` + `api_key`；读取路径 `backend/internal/service/account.go:1779-1788`（`GetOpenAIProtocolAPIKey`）与 `:1370-1410`（`GetOpenAIBaseURL`）。
+   - 用途：`POST /v1/systemone` 转发鉴权（`backend/internal/service/openai_systemone.go:61-71`）。
+
+**运维结论**：如果审核引擎与平台账号都在用 TypeSafe，**轮换 key 必须两边都换**。两处配置在代码里没有任何同步逻辑，改一处不影响另一处。
+
+---
+
+## 6. 已知限制与未验证项
+
+- **仓库里没有对真实上游做端到端调用的自动化测试。** 本开发环境**没有** `TYPESAFE_API_KEY` / `TYPESAFE_LIVE_TEST`（grep 全仓库只有下面那一个 opt-in 测试读这两个变量）；本分支的自动化证据仍是 httptest 契约测试 + 路由级测试 + 调度隔离测试（见第 8 节）。真实上游的端到端验证是 2026-09-21 在生产上**人工跑的一次**，结论见 §6.1 —— 它没有进仓库测试，也没有自动化回归。
+- **仓库里既有的 live 测试入口（覆盖的是审核引擎，不是网关端点）：**
+  - 测试：`TestContentModerationTypeSafeLive`，`backend/internal/service/content_moderation_typesafe_live_test.go:15-36`。
+  - 开关：`TYPESAFE_LIVE_TEST=1` + `TYPESAFE_API_KEY=<真实 key>`（同文件 `:16-20`）。默认 `t.Skip`。
+  - 调用路径：`typesafe.Evaluate(ctx, http.DefaultClient, "https://api.typesafe.ai", key, ...)`（同文件 `:28`），即**直连上游**，绕开 `/v1/systemone`。它验证「TypeSafe 上游可达、协议与 13 条 noul 判定可用」，**不验证**本分支新增的网关端点、账号调度、计费或错误体净化。
+- **网关端点在仓库里没有 live 测试**，只能人工用 curl 跑（2026-09-21 已在生产上跑过一次，见 §6.1；自动化回归仍然没有）。示例（key 用占位符，**不要把真实凭据写进命令历史或文档**）：
+
+  ```bash
+  curl -sS -X POST "https://<your-sub2api-host>/v1/systemone" \
+    -H "Authorization: Bearer <SUB2API_API_KEY>" \
+    -H "Content-Type: application/json" \
+    -d '{
+      "model": "jev-latest",
+      "state": "请帮我写一个 Go 函数，对整数数组排序。",
+      "questions": {
+        "harassment": {
+          "type": "noul",
+          "instructions": "文本是否包含针对个人或群体的辱骂、贬损或骚扰？"
+        }
+      }
+    }'
+  ```
+
+  期望：HTTP 200，响应 `{"model": "...", "usage": {"input_tokens": N, "output_tokens": M}, "answers": {"harassment": {"type": "noul", "noul": 0.x}}}`（`questions` 是对象 map、`answers` 按 question id 回填，见 `backend/internal/pkg/typesafe/client.go:18-24`、`:66-74`）。失败时若返回 `upstream_error`，message 只会带状态码与上游 request id，不带上游 body —— 这是设计行为，不是 bug。（2026-09-21 生产实测的正常路径与上述期望一致，只是 `model` 回的是上游真实版本而不是入参字面量，见 §6.1 B1。）
+- **`/v1/models/:model` 返回空清单而非 404**（第 4 节表格）。需要 404 的客户端不要依赖该路径判断 typesafe 分组的可用性。
+- **`/v1/live*`、`/alpha/search`、`/embeddings`** 现状见第 4 节表格；这几条**没有** typesafe 专属测试钉住，它们的 404 来自既有平台门。其中 `/v1/embeddings` 与 `GET /v1/responses`（Responses WebSocket ingress）的 404 已在 2026-09-21 生产实测中确认（§6.1 B3）；`/v1/live*` 与 `/alpha/search` **未在本次改动中回归验证**，也没有生产实测样本。
+- **未验证**：`POST /v1/systemone` 在真实上游下的**完整**错误码分布与各类错误的超时表现 —— 本轮只覆盖「400 unknown model」一类，且上游错误体是否回显凭据在本次样本中**没有被复现**（§6.1 C）；其余仍只按上游文档与代码注释做了防护性设计，没有实测样本。
+
+### 6.1 生产端到端实测结论（已验证，2026-09-21）
+
+> 本节是**生产环境实测**结论，与上面的「代码依据 / httptest 契约测试」是两类证据；结论只覆盖本轮实际跑过的样本，不外推。
+> 环境：生产版本 `v0.9.338`；调用方是分组平台 `typesafe` 的 **API Key**；涉及账号 `account_id=169`、`api_key_id=45`。本节只出现这类标识，不写任何凭据内容；生产网关 host 也从略，统一写成 `<生产网关域名>`。
+
+**A. 上游直连探测**（`POST https://api.typesafe.ai/v1/systemone`，`model=jev-latest`，一次良性判断）
+
+- 不带鉴权 → **403**。
+- 带鉴权 → **HTTP 200**，耗时约 **2.06s**，响应体：
+
+  ```json
+  {"model":"jev-1.13.0","answers":{"connectivity":{"type":"noul","noul":0.96}},"usage":{"input_tokens":295,"output_tokens":22}}
+  ```
+
+- 即 `jev-latest` 被上游解析为真实版本 **`jev-1.13.0`**；响应形状与第 1 节表格一致（`{model, usage, answers}`，`answers[id] = {type, noul}`）。
+- **2 秒级延迟**说明审核引擎那条 3s 默认超时偏紧（`content_moderation_config.engine_configs.typesafe.timeout_ms`）；**网关端点 `/v1/systemone` 不受那条超时约束**（它不在审核链路上）。
+
+**B. 网关端到端**（`POST https://<生产网关域名>/v1/systemone`，生产 `v0.9.338`，分组平台 `typesafe` 的 API Key）
+
+1. **正常判断请求 → 200**，耗时约 **1.1s**，响应体与上面直连探测**逐字段一致**（透传成立，网关没有改写响应）。
+2. **不存在的模型 → 400**，客户端看到的是**我们自造**的错误体 `{"error":{"message":"Upstream returned status 400","type":"upstream_error"}}`；上游原文（`Unknown model` 字样）在响应中出现 **0 次**（错误体净化生效，见第 4 节）。
+3. **对话端点拒绝**（均为 404，与第 4 节的门禁设计一致）：
+   - `/v1/messages` → 404 `"Messages API is not supported for TypeSafe groups; POST /v1/systemone is the only available endpoint"`；
+   - `/v1/chat/completions` → 404（同款文案）；
+   - `GET /v1/responses`（Responses WebSocket ingress）→ 404（同款文案）；
+   - `/v1/embeddings` → 404 `"Embeddings API is not supported for this platform"`。
+4. **`GET /v1/models` → `{"data":[],"object":"list"}`**：有意空清单，**没有**回落 Claude 目录（第 4 节的行为在生产上确认）。
+5. **记账**：`usage_logs` 新增一行（model `jev-latest`、input 295、output 22、`billing_mode=token`、`stream=false`、`account_id=169`、`api_key_id=45`）；按 `groups` / `accounts` join 得出的平台归因是 **typesafe**；`inbound_endpoint` 与 `upstream_endpoint` **都是 `/v1/systemone`**（`backend/internal/handler/endpoint.go:94-95` 的映射在生产上确认）。**失败那一次没有产生 usage 行**；账号与 Key 的 `last_used_at` 均已更新。
+6. **成本为 0（当轮尚未配价）**：这一轮跑的时候 `jev-latest` 还没有配置定价，走既有的 fail-open —— 记零成本并打 `openai_usage.pricing_missing_record_zero_cost` 告警（日志里 `billing_models: ["jev-latest"]`）。fail-open 机制本身不变（命中不到价卡就按零成本记账并告警，不拒服务）；**原「运维待办：必须给 `jev-latest` 配价」已于同日完成** —— 按 TypeSafe 官方价格配好分组定价卡并实测通过，完整配置与验证见 **§6.3**。渠道页的「从 LiteLLM 同步模型」对 typesafe 不可用（第 3 节第 4 条），只能手填；生产当时也没有任何 channel，故渠道按模型定价不构成可选项。
+
+**C. 对第 4 节「上游错误体绝不透传」理由的修正**
+
+第 4 节原先把「不透传上游错误体」的理由写成「TypeSafe 错误响应可能回显请求内容甚至凭据」。本轮实测的**一类**错误（400 unknown model）上游返回的是 `{"detail":{"error_type":"api_usage_error","message":"Unknown model: ..."}}`，**没有回显凭据**。准确口径因此是：该防护仍然是**保守设计**（避免上游任意内容外泄），但「错误体会回显凭据」这一条在本次样本中**没有被复现**，不作为已验证事实。第 4 节对应条目已按此口径改写。
+
+### 6.2 仍未验证的部分
+
+下面这些本轮**没有**实测样本，依旧按「未验证」对待（不要因为 6.1 通过就当成都已验证）：
+
+- **多账号故障转移 / 负载均衡**：生产当前只有 **1 个** typesafe 账号，failover 与池内选择都没被覆盖。
+- **并发与限流行为**：本轮只发了单请求，没有并发 / 压测样本。
+- **platform 级配额扣除路径**：生产该用户**没有** typesafe 的 `user_platform_quotas` 行，这条路径**未被触发**；目前链路仅有单测覆盖。
+- **图片等非文本输入**：协议本身不涉及（请求体只有 `state` / `questions` 文本字段）。
+
+### 6.3 计费配置与验证（2026-09-21）
+
+> 本节是**生产实配 + 实测**结论，接在 §6.1 之后：§6.1 那一轮跑的时候还没有价卡（fail-open 记零成本），本节记录其后按 TypeSafe 官方价格完成配置并验证的结果。口径同 §6.1 —— 只出现标识（`group id=39`、`account_id=169`、`api_key_id=45`），不写任何凭据内容；生产网关 host 沿用 `<生产网关域名>` 占位。
+
+**A. 官方价格与来源**
+
+- **TypeSafe 官方博客**「Introducing System One models and Jev」（https://typesafe.ai/blog/introducing-system-one-models-and-jev ）写明：**输入 tokens = `$0.042 / MTok`**（即 **$42 per billion tokens**）；**输出 tokens = FREE**（原文「too cheap to meter」）。
+- 第三方多源同值（DataCamp / flaviocopes / requesty 等）可作为**交叉印证**。
+- 因此本平台价格口径是：input `0.042` USD/MTok，output `0`。
+
+**B. 落在哪里：内置兜底价（本仓库代码）+ 分组定价卡（运行时覆盖层）**
+
+**B1. 内置兜底价（2026-09-21 起，单一价格来源）**
+
+- 官方价已写进**二进制内置兜底价表**：`backend/internal/service/billing_service.go` 的 `initFallbackPricing` 新增 `jev-latest` 条目 —— `InputPricePerToken: 0.042e-6`（= **`0.042/1e6`**）、`OutputPricePerToken: 0`。单位换算同下表：结构体口径是 **USD per token**，`$0.042/MTok` → `0.042e-6`；按 `$0.042` 这种 **$/MTok 写法填库/填结构体会差 100 万倍**，单测以 `0.042/1e6` 钉死量级。
+- 命中由同文件 `getFallbackPricing` 的 **`jev-` 前缀家族规则**负责：`jev-latest`、上游解析出的真实版本号（§6.1 A 实测 `jev-1.13.0`）、将来的 `jev-preview` 等都走同一条价卡。该规则**只放行 `jev-` 前缀**——不要放宽到其它前缀，该函数既有的「白名单语义、未知型号不回退以避免误计价」必须保持（任何非 `jev-` 的未知模型仍返回 nil）。
+- 因此：**裸部署后只要有人配了 typesafe 账号/分组（这步不可避免），`/v1/systemone` 即可正确计价，不再需要额外逐分组配价**——价格随镜像走，不再依赖生产库里的运行时数据。
+
+**B2. 分组级定价卡 `groups.model_pricing`（历史配置，正在冗余化）**
+
+- 存储位置为 **`groups.model_pricing`**（JSONB **数组**），条目结构与**渠道定价同构**（`service.ChannelModelPricing`）。
+- 生产分组 **`group id=39`**（TypeSafe / `platform=typesafe`）当前值（**单条**）：
+
+  | 字段 | 值 |
+  | --- | --- |
+  | `platform` | `typesafe` |
+  | `models` | `["jev-latest","jev-*"]` |
+  | `billing_mode` | `token` |
+  | `input_price` | `0.000000042` |
+  | `output_price` | `0` |
+  | `intervals` | `[]` |
+  | 其余价格字段 | `null` |
+
+- **单位坑（必须记住）**：库里存的是**每 token 的美元数**（USD **per token**），而前端界面显示与提交的是 **$/MTok**，提交时 ÷1e6。所以 `$0.042/MTok` 对应库值 **`0.000000042`**。把 `$0.042` 这种 $/MTok 写法直接写进库会**差 100 万倍**。
+- `models` 里的 **`jev-*` 是前缀通配**（配置名以 `*` 结尾即按前缀匹配），用于覆盖未来**按版本号固定模型名**的调用 —— 上游会把 `jev-latest` 解析为真实版本（§6.1 A 实测为 `jev-1.13.0`），命中前缀就不会漏计费。
+- **现状（2026-09-21 起，本次改动上线后）**：B1 的内置价生效后，生产分组上此前配的这条价卡（`groups.model_pricing` 里的 `jev-latest`/`jev-*`）成为**冗余且可能造成价格漂移的覆盖层**——分组价**覆盖**内置价，两边一旦不同步就以库里的为准。因此计划随后**从生产移除该条价卡**，让价格回到**单一来源（本仓库代码）**；分组价卡此后只剩**覆盖 / 差异化定价**的用途（例如给某个分组单独加价）。
+
+**C. 生效路径的坑（必须记住）**
+
+- 分组定价随「**API Key 认证快照**」缓存：**L1 进程内默认 15s**，**L2 Redis 默认 300s + 10% jitter**。
+- `groups` 表的失效触发器**不监控 `model_pricing` 列** ⇒ **直接写库不会触发失效**，最长约 **330s** 才生效。
+- 两种正确做法：
+  1. **推荐：走 admin API** `PUT /api/v1/admin/groups/{id}`，body 只需 `{"model_pricing":[…]}`（**指针局部更新**，值同样是 **per-token**）。服务端会做校验并**自动失效缓存**（跨实例广播），不必手工投递。
+  2. **只能写库时**：`UPDATE` 之后**补一次与触发器等价的失效投递**（cache_key 是 API Key 明文的 sha256 hex）：
+
+     ```sql
+     INSERT INTO auth_cache_invalidation_outbox (cache_key)
+     SELECT encode(sha256(convert_to(k.key,'UTF8')),'hex')
+     FROM api_keys k
+     WHERE k.group_id=<id> AND k.deleted_at IS NULL AND k.key <> '';
+     ```
+
+     并自行 `updated_at=NOW()`。本次生产就是这么做的：worker **两段投递均送达、队列已清空**。
+
+**D. 验证结果（生产实测）**
+
+- 调用 `POST /v1/systemone`（模型 `jev-latest`）→ **HTTP 200**。`usage_logs` 新增行：`input_tokens=295`、`output_tokens=22`、`input_cost=0.0000123900`、`output_cost=0`、`total_cost=actual_cost=0.0000123900`、`billing_mode=token`、`rate_multiplier=1.0`。数值与 **`295 × 0.000000042 = 1.239e-5` 精确吻合**。
+- **不再**出现 `openai_usage.pricing_missing_record_zero_cost`（jev）告警，也**没有** `group model_pricing unmarshal failed` 告警 ⇒ 价卡被正确命中，且 JSON 合法。
+- **余额扣减经受控对照验证**：同一时间窗内 `users.balance` 变化 **`0.00001239`**，等于该用户在该窗口**全部** `usage_logs.actual_cost` 之和。该用户另有其它在跑流量，所以用**时间窗求和对照**，而不是裸看余额。
+- 该 API Key 的 `quota_used` 仍为 **0**，**这不是缺陷**：该 Key 未配置 `quota`（`shouldDeductAPIKeyQuota` 要求 `quota > 0`）。分组的 `rate_multiplier=1.0` 表示用户**按上游成本价结算**；若要加价，需调 `rate_multiplier` 或价格。
+
+**E. 仍未覆盖 / 需注意**
+
+- **定价不再依赖分组级配置**：早期「新建的其它 typesafe 分组不会自动继承、需要按同样方式单独配价」的问题**已由内置兜底价解决**（B1）——所有 typesafe 分组默认都命中同一条内置价，**裸部署即可正确计价**；分组定价卡此后只剩**覆盖 / 差异化定价**的用途。
+- 渠道页的「**从 LiteLLM 同步模型**」对 typesafe 仍**不可用**（LiteLLM 目录没有该模型），只能手填；且生产当前**没有任何 channel**，因此**渠道路径对 typesafe 不是可选项**——定价靠**内置兜底价**（B1），或按需用分组定价卡做覆盖。
+- **仍未验证**（与 §6.2 并列，不因本节通过而改变）：多账号 failover、并发 / 限流、platform 级配额扣减路径（该用户未设 typesafe 配额行）、非文本输入。
+
+---
+
+## 7. 合并 integration 的人工清单
+
+> **本节是本 fork 的 integration 工作流专属，提上游 PR 时可删除。**
+> 背景：本分支基于本地 `main`，而 `integration` 上已经并入了 `feature/composite-ollama-unified`（`ollama_cloud` 平台）等分支。两边都在往同一批「平台列表」里追加，必须做**并集**而不是取一边。
+
+1. **`QUOTA_PLATFORMS` 加 `typesafe`**。该常量只存在于 integration：`integration:frontend/src/api/admin/settings.ts:25-37`（当前 `[..., 'opencode_go', 'ollama_cloud']`），`PlatformType` 由它派生（`:39`）。本分支同名位置叫 `PLATFORMS`（本分支 `frontend/src/api/admin/settings.ts:38`）。合并时以 integration 的 `QUOTA_PLATFORMS` 为单一来源，补 `"typesafe"`。它必须与后端 `service.AllowedQuotaPlatforms` 一致，否则用户平台配额是整体替换语义、保存时会静默丢行（本分支 `settings.ts:20-24` 的注释）。
+2. **`CONCRETE_PLATFORM_OPTIONS` 需同时含 `ollama_cloud` 与 `typesafe`**：`frontend/src/constants/platforms.ts:13-25`。integration 当前该数组有 `ollama_cloud`（`integration:frontend/src/constants/platforms.ts:24`），本分支有 `typesafe`（本分支同文件 `:24`）。
+3. **「双方各自追加」的并集文件清单**（每处两边各加了一行/一项，直接冲突或需并集）：
+   - `frontend/src/types/index.ts`：`GroupPlatform`（本分支 `:541`）与 `AccountPlatform`（本分支 `:921`）。
+   - `frontend/src/utils/keyGroupProviders.ts`：`PROVIDER_BY_PLATFORM`（本分支 `:20` 加 `typesafe: 'other'`；integration `:20` 加 `ollama_cloud: 'other'`）。
+   - `frontend/src/components/keys/UseKeyModal.vue`：平台显示名表（本分支 `:1255`；integration `:1255` 加 `ollama_cloud`）。
+   - `frontend/src/i18n/locales/{en,zh}/admin/accounts.ts`：平台名（本分支各 1 行；integration `en:112`、`zh:330` 加 `ollama_cloud`）。
+   - `frontend/src/constants/__tests__/platforms.spec.ts`：期望的平台值数组（本分支 `:15` 加 `'typesafe'`；integration `:15` 加 `'ollama_cloud'`）。
+4. **`platformColors.ts` 的 16 处全表并入**：本分支在 `frontend/src/utils/platformColors.ts` 追加 16 行（平台联合类型 + 15 张色表，行号 `:19,34,51,67,84,102,119,136,153,170,187,204,221,237,256,325`）；integration 同样有 16 处 `ollama_cloud`。两边逐表并入，不要覆盖任一边。
+5. **`ChannelsView.vue` 两个数组合并后仍应不同**（`frontend/src/views/admin/ChannelsView.vue:766`、`:769`）：
+   - `platformOrder` **含** `typesafe`（渠道定价/映射的标签页要能选到它）；
+   - `compositePlatforms` **不含** `typesafe`（composite 白名单不接受它，`frontend/src/views/admin/GroupsView.vue:4617-4620`）；
+   - 两边合并后 integration 版本应是「`ollama_cloud` 与 `typesafe` 都在 `platformOrder`，而 `compositePlatforms` 只拿到 integration 原有的 `ollama_cloud`、**不含** `typesafe`」（integration 现状两数组都含 `ollama_cloud`，见 `integration:frontend/src/views/admin/ChannelsView.vue:766`、`:769`）。
+6. **后端列表并存**：
+   - `service.AllowedQuotaPlatforms`：本分支 `backend/internal/service/domain_constants.go:141-153`（含 `PlatformTypeSafe`），integration 同位置含 `PlatformOllamaCloud`（`integration:backend/internal/service/domain_constants.go:141-153`）→ 合并后两者都要有。
+   - `service.IsMultiProtocolAPIKeyProvider`：本分支 `backend/internal/service/domain_constants.go:131-135`（`IsCNProvider || OpenCodeGo`，**刻意不含 typesafe**），integration 是 `IsCNProvider || OpenCodeGo || IsOllamaCloud`（`integration:backend/internal/service/domain_constants.go:134-136`）→ 合并后保留 integration 的 `IsOllamaCloud` 项，同时**不要**把 typesafe 加进去。
+   - `ent/schema/user_platform_quota.go` 的构建期 `Validate` 白名单同样要并集（本分支 `:42-47` 已加 `typesafe`；integration 加 `ollama_cloud`）。
+7. **迁移顺序无关**：`backend/migrations/240_typesafe_platform.sql` 的 CHECK 已写成「main 与 integration 已知平台并集 + typesafe」（含 `ollama_cloud`），与 integration 上的 `239_ollama_cloud_platform.sql` 谁先应用都成立；合并后不需要再改这个迁移（也不要改它 —— 迁移一旦应用不可修改）。
+8. **尾逗号**：并集 `frontend/src/utils/keyGroupProviders.ts` 的 `PROVIDER_BY_PLATFORM` 时，必须先把 integration 侧（`feature/composite-ollama-unified`）的最后一项写成带尾逗号的 `ollama_cloud: 'other',`，**再**在其后追加 `typesafe: 'other'`。该分支新增的那一行本身没有尾逗号（它替换掉了 main 里同样无尾逗号的末项 `opencode_go: 'other'`），不补逗号直接追加就是 TS 语法错误，`vue-tsc` / `pnpm build` 会直接失败。通用提醒：凡是要在 integration 的**最后一项**之后追加条目的对象/数组字面量（同类穷尽 `Record`、平台目录数组等），追加前都先确认该末项已有尾逗号。
+9. **composite 子用例合并时无需再改**：`backend/internal/server/routes/gateway_typesafe_test.go` 的 `TestGatewayRoutesSystemoneRejectedForOtherPlatforms` composite 分支，合并后会走 integration 的 composite 入口准入（400 `cannot be resolved to any platform in this composite group`），而**不是** `/v1/systemone` 的平台门（404 `System One API is not supported for this platform`）—— 本分支已把该断言写成「两种拒绝都接受、其余响应（含 2xx）一律失败」，所以重建 integration 时不必再动这个测试。记这条是因为上一次重建把该适配以额外提交补在了 integration 上，而那种提交会在下次重建时丢失。
+
+---
+
+## 8. 验证证据
+
+### 关键测试文件与测试名（均从仓库 grep 到的真实名字）
+
+| 层 | 文件 | 测试名 |
+| --- | --- | --- |
+| 路由 / 门禁 | `backend/internal/server/routes/gateway_typesafe_test.go` | `TestGatewayRoutesTypeSafeGroupCanReachSystemone`、`TestGatewayRoutesSystemoneIsRegistered`、`TestGatewayRoutesSystemoneRejectedForOtherPlatforms`、`TestGatewayRoutesTypeSafeGroupCannotReachConversationalEndpoints`、`TestGatewayRoutesOtherPlatformsKeepConversationalEndpoints`、`TestGatewayRoutesTypeSafeGroupCannotReachResponsesWebSocketIngress`、`TestGatewayRoutesOtherPlatformsKeepResponsesWebSocketIngress` |
+| 端点契约 | `backend/internal/service/openai_systemone_test.go` | `TestBuildOpenAISystemOneURL`、`TestExtractOpenAISystemOneUsage`、`TestForwardSystemOne_APIKeyPassthroughRecordsUsage`、`TestForwardSystemOne_UnmappedBodyPassesThroughUnchanged`、`TestForwardSystemOne_DefaultBaseURLDoesNotFallBackToOpenAI`、`TestForwardSystemOne_UpstreamErrorDoesNotLeakUpstreamBody`、`TestForwardSystemOne_FailoverErrorCarriesNoUpstreamBody` |
+| 调度隔离 | `backend/internal/service/typesafe_scheduling_test.go` | `TestNormalizeOpenAICompatiblePlatform_TypeSafeKeepsOwnValue`、`TestSelectAccountWithSchedulerForCapability_TypeSafePlatformIsExactMatch`、`TestSelectAccountWithSchedulerForCapability_TypeSafePoolIsNotShared` |
+| WS ingress | `backend/internal/service/openai_ws_ingress_typesafe_test.go`、`backend/internal/handler/openai_ws_ingress_typesafe_test.go` | `TestOpenAIWSIngressTransportRejectsTypeSafeAccount`、`TestOpenAIResponsesWebSocket_TypeSafeGroupSelectsNoAccountAndCallsNoUpstream`、`TestOpenAIResponsesWebSocket_OpenAIAccountStillDialsUpstream` |
+| base URL | `backend/internal/service/account_base_url_test.go` | `TestGetBaseURL`、`TestGetBaseURLTypeSafeKeepsUpstreamOnTypeSafeHost` |
+| 测试连接 | `backend/internal/service/account_test_service_typesafe_test.go` | `TestAccountTestService_TypeSafeConnectionProbesSystemOneWithBearerKey`、`TestAccountTestService_TypeSafeConnectionWithoutBaseURLNeverTargetsAnthropic`、`TestAccountTestService_NonTypeSafeConnectionStillUsesAnthropicProbe` |
+| 端点常量 | `backend/internal/handler/endpoint_test.go` | `TestNormalizeInboundEndpoint`、`TestDeriveUpstreamEndpoint`（含 `typesafe systemone` / `openai family systemone stays native` 子用例） |
+| 路由覆盖 | `backend/internal/server/routes/prompt_audit_route_coverage_test.go` | `TestEveryGatewayPOSTRouteIsClassifiedForPromptAuditCoverage`（`/systemone` 登记） |
+| 迁移 | `backend/migrations/typesafe_platform_migration_test.go` | `TestTypeSafePlatformMigration`、`TestTypeSafePlatformMigrationIsStrictSupersetOf238` |
+| 分组平台白名单 | `backend/internal/handler/admin/group_handler_platform_test.go` | `TestGroupPlatformBinding_AllowedPlatforms`、`TestGroupPlatformBinding_RejectsInvalidPlatforms` |
+| 前端平台目录 | `frontend/src/constants/__tests__/platforms.spec.ts` | `platform option catalogs > exposes every concrete account platform` |
+| 前端配额平台 | `frontend/src/api/__tests__/settings.authSourceDefaults.spec.ts` | `normalizePlatformQuotasMap > 无参数时返回全 6 平台全 null`、`sanitizePlatformQuotasMap > 缺失平台填充为全 null` |
+| 审核引擎（真实调用入口） | `backend/internal/service/content_moderation_typesafe_live_test.go` | `TestContentModerationTypeSafeLive`（opt-in，见第 6 节） |
+
+### 生产端到端验证（2026-09-21，人工执行，不在仓库自动化测试内）
+
+- 上游直连探测 + 网关端点端到端（生产 `v0.9.338`，分组平台 `typesafe` 的 API Key）的**完整结论在 §6.1**。要点：直连 200（~2.06s，`jev-latest` → `jev-1.13.0`）、网关 200（~1.1s，响应与直连逐字段一致）、未知模型 400（自造错误体、上游原文出现 0 次）、对话端点与 `/v1/embeddings` 404、`GET /v1/models` 有意空清单、`usage_logs` 记账与平台归因 typesafe 正确。该轮**未配价**，成本为 0（fail-open 记零成本 + 告警）；其后同日按 TypeSafe 官方价完成分组定价卡配置并验证（成本精确吻合、余额扣减对照通过），结论在 **§6.3**。这些都是运行证据，**没有**对应的仓库测试。
+
+### 验收命令
+
+```bash
+# 后端：单测（unit build tag）、构建、格式
+cd backend && go test -tags unit ./internal/... ./migrations/...
+cd backend && go build ./... && gofmt -l internal/ migrations/
+
+# 前端：类型检查与单测（必须带 --config.verify-deps-before-run=false）
+cd frontend && pnpm --config.verify-deps-before-run=false typecheck
+cd frontend && pnpm --config.verify-deps-before-run=false exec vitest run
+```
+
+本环境实测（本轮）：`go build ./...` 通过；`gofmt -l internal/server/routes/gateway.go` 无输出；`go test -tags unit ./internal/server/routes/` `ok`；`pnpm --config.verify-deps-before-run=false typecheck` 通过；`pnpm --config.verify-deps-before-run=false exec vitest run` `299 passed (299) / 2266 passed (2266)`，且**没有**改动 `frontend/pnpm-lock.yaml`。
+
+### 本环境两个既存故障（与本改动无关，但会挡住上面的命令）
+
+1. **`go generate ./...` 的 wire go.sum 问题。** `backend/cmd/server/main.go:3` 的 `//go:generate go run github.com/google/wire/cmd/wire`（注意这条**没有** `-mod=mod`）在本环境直接失败：
+
+   ```
+   .../wire@v0.7.0/cmd/wire/main.go:34:2: missing go.sum entry for module providing package
+   github.com/google/subcommands (imported by github.com/google/wire/cmd/wire); to add:
+       go get github.com/google/wire/cmd/wire@v0.7.0
+   ```
+
+   同一命令在 `backend/cmd/server/wire_gen.go:3` 上是带 `-mod=mod` 的版本。**不要**为了让 `go generate` 跑通而修改 `go.mod` / `go.sum`。
+2. **裸 `pnpm typecheck` 的 pnpm 11 问题（实测会破坏 lockfile）。** 本环境 pnpm 版本 `11.7.0`，它已不再读取 `package.json` 的 `pnpm` 字段（`frontend/package.json:63-70` 的 `pnpm.overrides`），并会打印：
+
+   ```
+   [WARN] The "pnpm" field in package.json is no longer read by pnpm. The following keys were ignored: "pnpm.overrides".
+   ```
+
+   裸跑 `pnpm typecheck` 会先隐式执行依赖校验/安装，实测**删掉了 `frontend/pnpm-lock.yaml:7-11` 的安全 overrides 块**（`js-cookie` / `form-data` / `postcss` / `dompurify`）并把 `postcss` 的 `specifier` 从 `'>=8.5.18'` 改回 `^8.4.32`。因此：
+
+   - 所有前端命令都要带 `--config.verify-deps-before-run=false`；
+   - **禁止 `pnpm install`** —— 同样会删掉 lockfile 里的安全 overrides 块（该块只存在于 `pnpm-lock.yaml`，`package.json` 里的副本对 pnpm 11 已失效）。

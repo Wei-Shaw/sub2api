@@ -252,6 +252,33 @@ export const GROK_BASE_URL_PRESETS: GrokBaseUrlPreset[] = [
   { label: 'eu-west-1', url: 'https://eu-west-1.api.x.ai/v1' }
 ]
 
+// ========== TypeSafe AI（Jev 判断题服务）base_url ==========
+// TypeSafe 是 APIKey 账号，但既不是国产供应商也不是 multi-protocol：只有
+// POST /v1/systemone 一个端点，无流式、无模型目录。因此它的默认 base_url
+// 走独立常量与独立分支，不并入 CnProviderPlatform / isMultiProtocolApiKeyPlatform
+// / defaultCNBaseUrl（那些会要求 account_mode / api_protocol，与后端语义不符）。
+// 与后端 service.DefaultTypeSafeBaseURL 一字不差。
+export const TYPESAFE_BASE_URL = 'https://api.typesafe.ai'
+
+/**
+ * 非 CN / 非 multi-protocol 的 APIKey 平台默认 base_url（含 TypeSafe 独立分支）。
+ * openai / gemini / grok / typesafe 之外的平台回落 anthropic 端点，保持既有行为。
+ */
+export function defaultApiKeyBaseUrlForPlatform(platform: string): string {
+  switch (platform) {
+    case 'openai':
+      return 'https://api.openai.com'
+    case 'gemini':
+      return 'https://generativelanguage.googleapis.com'
+    case 'grok':
+      return 'https://api.x.ai/v1'
+    case 'typesafe':
+      return TYPESAFE_BASE_URL
+    default:
+      return 'https://api.anthropic.com'
+  }
+}
+
 // ========== 国产供应商（Kimi / Zhipu / DeepSeek）base_url 预设 ==========
 // 与后端 service/domain_constants.go 的默认 base url 保持一致。
 // 账号类型（payg 按量付费 / coding 编程套餐）决定额度监控方式；

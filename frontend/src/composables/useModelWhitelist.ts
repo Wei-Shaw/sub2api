@@ -473,6 +473,8 @@ export function getModelsByPlatform(platform: string): string[] {
     ]
     case 'doubao': return doubaoModels
     case 'minimax': return minimaxModels
+    // TypeSafe 无模型目录（/v1/models 返回空清单），白名单不能列出 Claude 模型。
+    case 'typesafe': return []
     case 'baidu': return baiduModels
     case 'spark': return sparkModels
     case 'hunyuan': return hunyuanModels
