@@ -1,4 +1,5 @@
 import { i18n } from '@/i18n'
+import { resolveSiteName } from '@/constants/site'
 import type { RouteLocationNormalizedLoaded } from 'vue-router'
 import type { CustomMenuItem } from '@/types'
 import type { SiteBillingMode } from '@/utils/siteBillingMode'
@@ -8,7 +9,7 @@ import type { SiteBillingMode } from '@/utils/siteBillingMode'
  * 优先使用 titleKey 通过 i18n 翻译，fallback 到静态 routeTitle。
  */
 export function resolveDocumentTitle(routeTitle: unknown, siteName?: string, titleKey?: string): string {
-  const normalizedSiteName = typeof siteName === 'string' && siteName.trim() ? siteName.trim() : 'Sub2API'
+  const normalizedSiteName = resolveSiteName(siteName)
 
   if (typeof titleKey === 'string' && titleKey.trim()) {
     const translated = i18n.global.t(titleKey)

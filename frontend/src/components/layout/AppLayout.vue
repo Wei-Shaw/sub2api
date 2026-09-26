@@ -1,5 +1,8 @@
 <template>
-  <div class="min-h-screen bg-gray-50 dark:bg-dark-950">
+  <div
+    class="min-h-screen bg-[#e9eaee] p-2 dark:bg-dark-950 lg:grid lg:gap-4 lg:p-4"
+    :style="layoutStyle"
+  >
     <!-- Background Decoration -->
     <div class="pointer-events-none fixed inset-0 bg-mesh-gradient"></div>
 
@@ -8,14 +11,13 @@
 
     <!-- Main Content Area -->
     <div
-      class="relative min-h-screen transition-all duration-300"
-      :class="[sidebarCollapsed ? 'lg:ml-[72px]' : 'lg:ml-64']"
+      class="console-surface relative min-w-0 min-h-[calc(100vh-1rem)] transition-all duration-300 lg:col-start-2 lg:min-h-[calc(100vh-2rem)]"
     >
       <!-- Header -->
       <AppHeader />
 
       <!-- Main Content -->
-      <main class="p-4 md:p-6 lg:p-8">
+      <main class="p-4 md:p-6 lg:p-7">
         <slot />
       </main>
     </div>
@@ -36,6 +38,9 @@ const appStore = useAppStore()
 const authStore = useAuthStore()
 const sidebarCollapsed = computed(() => appStore.sidebarCollapsed)
 const isAdmin = computed(() => authStore.user?.role === 'admin')
+const layoutStyle = computed(() => ({
+  gridTemplateColumns: sidebarCollapsed.value ? '72px minmax(0, 1fr)' : '256px minmax(0, 1fr)'
+}))
 
 const { replayTour } = useOnboardingTour({
   storageKey: isAdmin.value ? 'admin_guide' : 'user_guide',

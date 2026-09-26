@@ -2974,6 +2974,36 @@ func TestRecordUsageKeepsCompactionSemanticFlagOrthogonalToTransport(t *testing.
 	require.Equal(t, RequestTypeStream, RequestTypeFromLegacy(logStub.lastLog.Stream, logStub.lastLog.OpenAIWSMode))
 }
 
+func TestRecordUsagePreservesFirstServeRequestSnapshot(t *testing.T) {
+	for _, tc := range []struct {
+		name                          string
+		active, stream, compact, want bool
+	}{
+		{name: "reused stream", active: true, stream: true, want: true},
+		{name: "fresh combination", stream: true},
+		{name: "non-stream", active: true},
+		{name: "compaction", active: true, stream: true, compact: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			logStub := &openAIRecordUsageLogRepoStub{inserted: true}
+			svc := newOpenAIRecordUsageServiceForTest(logStub, &openAIRecordUsageUserRepoStub{}, &openAIRecordUsageSubRepoStub{}, nil)
+			require.NoError(t, svc.RecordUsage(context.Background(), &OpenAIRecordUsageInput{
+				NativeCompactionV2: tc.compact,
+				Result: &OpenAIForwardResult{
+					Model: "gpt-5", Stream: tc.stream, FirstServeActive: tc.active,
+					Duration: time.Second, Usage: OpenAIUsage{InputTokens: 100, OutputTokens: 10},
+				},
+				APIKey: &APIKey{ID: 20, UserID: 21, Group: &Group{RateMultiplier: 1}},
+				User:   &User{ID: 21},
+				// Current account settings cannot change a historical request snapshot.
+				Account: &Account{ID: 22},
+			}))
+			require.NotNil(t, logStub.lastLog)
+			require.Equal(t, tc.want, logStub.lastLog.FirstServeActive)
+		})
+	}
+}
+
 func TestRecordUsageMarksCyberRequestType(t *testing.T) {
 	logStub := &openAIRecordUsageLogRepoStub{inserted: true}
 	userStub := &openAIRecordUsageUserRepoStub{}

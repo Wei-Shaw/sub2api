@@ -99,6 +99,8 @@ func cloneGroupForDuplicate(source *Group, operationID string) *Group {
 		Description:                     source.Description,
 		Platform:                        source.Platform,
 		RateMultiplier:                  source.RateMultiplier,
+		AutoRouteEnabled:                source.AutoRouteEnabled,
+		AutoRouteGroupIDs:               append([]int64(nil), source.AutoRouteGroupIDs...),
 		PeakRateEnabled:                 source.PeakRateEnabled,
 		PeakStart:                       source.PeakStart,
 		PeakEnd:                         source.PeakEnd,
@@ -183,7 +185,7 @@ func (s *adminServiceImpl) RecoverDuplicateGroup(ctx context.Context, id int64, 
 	if group == nil {
 		return nil, nil
 	}
-	hydrated, err := s.groupRepo.GetByID(ctx, group.ID)
+	hydrated, err := s.GetGroup(ctx, group.ID)
 	if err != nil {
 		return nil, fmt.Errorf("load recovered duplicate group: %w", err)
 	}
@@ -209,6 +211,11 @@ func (s *adminServiceImpl) DuplicateGroup(ctx context.Context, id int64, actorSc
 	if err != nil {
 		return nil, err
 	}
+	configs, err := s.loadGroupAutoRouteConfigs(ctx, []int64{id})
+	if err != nil {
+		return nil, err
+	}
+	applyGroupAutoRouteConfig(source, configs[id])
 	if s.groupDuplicateRepo == nil {
 		return nil, errors.New("group duplicate repository is not configured")
 	}
@@ -221,7 +228,7 @@ func (s *adminServiceImpl) DuplicateGroup(ctx context.Context, id int64, actorSc
 		duplicate.CreatedAt = time.Time{}
 		duplicate.UpdatedAt = time.Time{}
 		if err := s.groupDuplicateRepo.CreateFromSource(ctx, duplicate, source.ID); err == nil {
-			hydrated, loadErr := s.groupRepo.GetByID(ctx, duplicate.ID)
+			hydrated, loadErr := s.GetGroup(ctx, duplicate.ID)
 			if loadErr != nil {
 				return nil, fmt.Errorf("load duplicate group: %w", loadErr)
 			}

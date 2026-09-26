@@ -623,6 +623,9 @@ export interface Group {
 }
 
 export interface AdminGroup extends Group {
+	/** OpenAI 自动路由入口配置（仅管理员可见）。 */
+	auto_route_enabled?: boolean
+	auto_route_group_ids?: number[]
   force_openai_fast: boolean
   free_openai_fast: boolean
   model_pricing: import('@/api/admin/channels').ChannelModelPricing[]
@@ -791,6 +794,8 @@ export interface CreateGroupRequest {
   description?: string | null
   platform?: GroupPlatform
   rate_multiplier?: number
+  auto_route_enabled?: boolean
+  auto_route_group_ids?: number[]
   is_exclusive?: boolean
   subscription_type?: SubscriptionType
   daily_limit_usd?: number | null
@@ -856,6 +861,8 @@ export interface UpdateGroupRequest {
   description?: string | null
   platform?: GroupPlatform
   rate_multiplier?: number
+  auto_route_enabled?: boolean
+  auto_route_group_ids?: number[]
   is_exclusive?: boolean
   status?: 'active' | 'inactive'
   subscription_type?: SubscriptionType
@@ -958,6 +965,19 @@ export interface Proxy {
   fallback_mode: 'none' | 'proxy' | 'direct'
   backup_proxy_id?: number | null
   expiry_warn_days: number
+  created_at: string
+  updated_at: string
+}
+
+export interface ProxyGroup {
+  id: number
+  name: string
+  description?: string | null
+  status: 'active' | 'inactive'
+  proxy_ids: number[]
+  member_count: number
+  available_member_count: number
+  account_count: number
   created_at: string
   updated_at: string
 }
@@ -1238,6 +1258,7 @@ export interface Account {
     }
   } & Record<string, unknown>)
   proxy_id: number | null
+  proxy_group_id: number | null
   proxy_fallback_origin_id?: number | null
   proxy_fallback_origin_name?: string | null
   concurrency: number
@@ -1524,6 +1545,7 @@ export interface CreateAccountRequest {
   credentials: Record<string, unknown>
   extra?: Record<string, unknown>
   proxy_id?: number | null
+  proxy_group_id?: number | null
   concurrency?: number
   load_factor?: number | null
   priority?: number
@@ -1542,6 +1564,7 @@ export interface UpdateAccountRequest {
   credentials?: Record<string, unknown>
   extra?: Record<string, unknown>
   proxy_id?: number | null
+  proxy_group_id?: number | null
   concurrency?: number
   load_factor?: number | null
   priority?: number
@@ -1671,6 +1694,7 @@ export interface CodexSessionImportRequest {
   notes?: string | null
   group_ids?: number[]
   proxy_id?: number | null
+  proxy_group_id?: number | null
   concurrency?: number
   priority?: number
   rate_multiplier?: number
@@ -1690,6 +1714,7 @@ export interface OpenAICodexPATCreateRequest {
   notes?: string | null
   group_ids?: number[]
   proxy_id?: number | null
+  proxy_group_id?: number | null
   concurrency?: number
   priority?: number
   rate_multiplier?: number
@@ -1770,6 +1795,7 @@ export interface UsageLog {
   stream: boolean
   openai_ws_mode?: boolean
   native_compaction_v2: boolean
+  first_serve_active?: boolean
   duration_ms: number | null
   first_token_ms: number | null
 

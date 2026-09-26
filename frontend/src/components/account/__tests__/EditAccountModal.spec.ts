@@ -41,7 +41,8 @@ vi.mock('@/api/admin', () => ({
 }))
 
 vi.mock('@/api/admin/accounts', () => ({
-  getAntigravityDefaultModelMapping: vi.fn()
+  getAntigravityDefaultModelMapping: vi.fn(),
+  getFirstServeStatus: vi.fn().mockResolvedValue([])
 }))
 
 vi.mock('vue-i18n', async () => {
@@ -1493,6 +1494,118 @@ describe('EditAccountModal', () => {
     expect(updateAccountMock).toHaveBeenCalledTimes(1)
     expect(updateAccountMock.mock.calls[0]?.[1]?.extra?.openai_oauth_responses_websockets_v2_mode).toBe('http_bridge')
     expect(updateAccountMock.mock.calls[0]?.[1]?.extra?.openai_oauth_responses_websockets_v2_enabled).toBe(true)
+  })
+
+  it('saves the default first serve group and clears the previous single proxy binding', async () => {
+    const account = { ...buildOpenAISetupTokenAccount(), proxy_id: 99, extra: { openai_passthrough: true } }
+    updateAccountMock.mockReset().mockResolvedValue(account)
+    checkMixedChannelRiskMock.mockResolvedValue({ has_risk: false })
+    const wrapper = mountModal(account)
+    await wrapper.setProps({ proxyGroups: [{ id: 12, name: 'Group A', status: 'active', proxy_ids: [1, 2], member_count: 2, available_member_count: 2, account_count: 0, created_at: '', updated_at: '' }] })
+    await wrapper.get('[data-testid="first-serve-toggle"]').trigger('click')
+    expect((wrapper.get('[data-testid="first-serve-group"]').element as HTMLSelectElement).value).toBe('12')
+    await wrapper.get('form#edit-account-form').trigger('submit.prevent')
+    expect(updateAccountMock).toHaveBeenCalledTimes(1)
+    expect(updateAccountMock.mock.calls[0]?.[1]?.proxy_group_id).toBe(12)
+    expect(updateAccountMock.mock.calls[0]?.[1]).not.toHaveProperty('proxy_id')
+    expect(updateAccountMock.mock.calls[0]?.[1]?.extra?.codex_fingerprint_mode).toBe('full')
+    expect(updateAccountMock.mock.calls[0]?.[1]?.extra?.openai_passthrough).toBe(true)
+    expect(updateAccountMock.mock.calls[0]?.[1]?.extra?.openai_oauth_responses_websockets_v2_mode).toBe('first_serve')
+    wrapper.unmount()
+  })
+
+  it('preserves setup-token fingerprint and passthrough settings when saving first serve', async () => {
+    const account = { ...buildOpenAISetupTokenAccount(), proxy_group_id: 12, extra: {
+      openai_oauth_responses_websockets_v2_mode: 'first_serve',
+      codex_fingerprint_mode: 'full',
+      openai_passthrough: true
+    } }
+    updateAccountMock.mockReset().mockResolvedValue(account)
+    checkMixedChannelRiskMock.mockResolvedValue({ has_risk: false })
+    const wrapper = mountModal(account)
+    await wrapper.get('form#edit-account-form').trigger('submit.prevent')
+    expect(updateAccountMock).toHaveBeenCalledTimes(1)
+    expect(updateAccountMock.mock.calls[0]?.[1]?.extra?.codex_fingerprint_mode).toBe('full')
+    expect(updateAccountMock.mock.calls[0]?.[1]?.extra?.openai_passthrough).toBe(true)
+    wrapper.unmount()
+  })
+
+  it('persists an explicit fingerprint off after enabling first serve without enabling passthrough', async () => {
+    const account = buildOpenAIOAuthParentAccount()
+    updateAccountMock.mockReset().mockResolvedValue(account)
+    checkMixedChannelRiskMock.mockResolvedValue({ has_risk: false })
+    const wrapper = mountModal(account)
+    await wrapper.get('[data-testid="first-serve-toggle"]').trigger('click')
+    const fingerprint = wrapper.get('[data-testid="edit-codex-fingerprint-mode-select"]')
+    expect((fingerprint.element as HTMLSelectElement).value).toBe('full')
+    await fingerprint.setValue('off')
+    await wrapper.get('form#edit-account-form').trigger('submit.prevent')
+    expect(updateAccountMock).toHaveBeenCalledTimes(1)
+    expect(updateAccountMock.mock.calls[0]?.[1]?.extra?.codex_fingerprint_mode).toBe('off')
+    expect(updateAccountMock.mock.calls[0]?.[1]?.extra?.openai_passthrough).not.toBe(true)
+    wrapper.unmount()
+  })
+
+  it('saves first serve mode with its proxy group and allows pending group configuration', async () => {
+    const account = { ...buildOpenAISetupTokenAccount(), proxy_group_id: 12 }
+    updateAccountMock.mockReset().mockResolvedValue(account)
+    checkMixedChannelRiskMock.mockResolvedValue({ has_risk: false })
+    const wrapper = mountModal(account)
+    expect(wrapper.get('[data-testid="first-serve-settings"]').element.previousElementSibling?.getAttribute('data-testid')).toBe('temp-unschedulable-settings')
+    await wrapper.get('[data-testid="first-serve-toggle"]').trigger('click')
+    await wrapper.get('[data-testid="first-serve-rotate_seconds"]').setValue('600')
+    await wrapper.get('form#edit-account-form').trigger('submit.prevent')
+    expect(updateAccountMock).toHaveBeenCalledTimes(1)
+    expect(updateAccountMock.mock.calls[0]?.[1]?.extra?.openai_oauth_responses_websockets_v2_mode).toBe('first_serve')
+    expect(updateAccountMock.mock.calls[0]?.[1]?.proxy_group_id).toBe(12)
+    const config = updateAccountMock.mock.calls[0]?.[1]?.extra?.openai_first_serve
+    expect(config).toEqual({ reuse_scope: 'account', rotate_seconds: 600, proxy_mode: 'all', proxy_ids: [] })
+    await wrapper.setProps({ account: { ...account, extra: { openai_oauth_responses_websockets_v2_mode: 'first_serve', openai_first_serve: config } } })
+    expect((wrapper.get('[data-testid="first-serve-rotate_seconds"]').element as HTMLInputElement).value).toBe('600')
+    await wrapper.setProps({ account: { ...account, id: 999, extra: { openai_oauth_responses_websockets_v2_mode: 'first_serve' } } })
+    expect((wrapper.get('[data-testid="first-serve-rotate_seconds"]').element as HTMLInputElement).value).toBe('240')
+    wrapper.unmount()
+
+    updateAccountMock.mockReset()
+    const missing = mountModal(buildOpenAISetupTokenAccount())
+    await missing.get('[data-testid="first-serve-toggle"]').trigger('click')
+    await missing.get('form#edit-account-form').trigger('submit.prevent')
+    expect(updateAccountMock).toHaveBeenCalledTimes(1)
+    missing.unmount()
+  })
+
+  it('restores the ordinary connection mode when first serve is toggled off', async () => {
+    const account = { ...buildOpenAISetupTokenAccount(), proxy_group_id: 12 }
+    updateAccountMock.mockReset().mockResolvedValue(account)
+    checkMixedChannelRiskMock.mockResolvedValue({ has_risk: false })
+    const wrapper = mountModal(account)
+    await wrapper.get('[data-testid="edit-openai-ws-mode-select"]').setValue('http_bridge')
+    await wrapper.get('[data-testid="first-serve-toggle"]').trigger('click')
+    expect(wrapper.find('[data-testid="edit-openai-ws-mode-select"]').exists()).toBe(false)
+    await wrapper.get('[data-testid="first-serve-toggle"]').trigger('click')
+    expect((wrapper.get('[data-testid="edit-openai-ws-mode-select"]').element as HTMLSelectElement).value).toBe('http_bridge')
+    await wrapper.get('form#edit-account-form').trigger('submit.prevent')
+    expect(updateAccountMock.mock.calls[0]?.[1]?.extra?.openai_oauth_responses_websockets_v2_mode).toBe('http_bridge')
+    wrapper.unmount()
+  })
+
+  it('loads legacy first serve mode into the switch and preserves an explicit conversation scope', async () => {
+    const account = { ...buildOpenAISetupTokenAccount(), proxy_group_id: 12, extra: {
+      openai_oauth_responses_websockets_v2_mode: 'first_serve',
+      openai_first_serve: { reuse_scope: 'session', ttl_minutes: 45 }
+    } }
+    updateAccountMock.mockReset().mockResolvedValue(account)
+    checkMixedChannelRiskMock.mockResolvedValue({ has_risk: false })
+    const wrapper = mountModal(account)
+    expect(wrapper.get('[data-testid="first-serve-toggle"]').attributes('aria-checked')).toBe('true')
+    expect((wrapper.get('[data-testid="first-serve-scope"]').element as HTMLSelectElement).value).toBe('session')
+    await wrapper.get('form#edit-account-form').trigger('submit.prevent')
+    expect(updateAccountMock.mock.calls[0]?.[1]?.extra?.openai_first_serve?.reuse_scope).toBe('session')
+    updateAccountMock.mockClear()
+    await wrapper.get('[data-testid="first-serve-toggle"]').trigger('click')
+    await wrapper.get('form#edit-account-form').trigger('submit.prevent')
+    expect(updateAccountMock.mock.calls[0]?.[1]?.extra?.openai_oauth_responses_websockets_v2_mode).toBe('ctx_pool')
+    wrapper.unmount()
   })
 
   it('allows saving apikey account when backend redacted api_key but credentials_status reports it exists', async () => {

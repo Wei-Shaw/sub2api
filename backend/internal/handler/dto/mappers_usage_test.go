@@ -49,6 +49,15 @@ func TestUsageLogFromService_PreservesNativeCompactionAndStream(t *testing.T) {
 	require.True(t, adminDTO.NativeCompactionV2)
 }
 
+func TestUsageLogFromService_PreservesFirstServeSnapshot(t *testing.T) {
+	t.Parallel()
+	for _, active := range []bool{false, true} {
+		log := &service.UsageLog{FirstServeActive: active}
+		require.Equal(t, active, UsageLogFromService(log).FirstServeActive)
+		require.Equal(t, active, UsageLogFromServiceAdmin(log).FirstServeActive)
+	}
+}
+
 func TestUsageLogFromService_PrefersRequestTypeForLegacyFields(t *testing.T) {
 	t.Parallel()
 

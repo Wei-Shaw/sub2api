@@ -1181,8 +1181,12 @@ func OpsErrorLoggerMiddleware(ops *service.OpsService) gin.HandlerFunc {
 		}
 
 		normalizedType := normalizeOpsErrorType(parsed.ErrorType, parsed.Code)
+		opsMessage := parsed.Message
+		if diagnostic, ok := requestBodyDiagnosticFromContext(c); ok {
+			opsMessage = truncateString(opsMessage+" ("+formatRequestBodyDiagnostic(diagnostic)+")", 2048)
+		}
 
-		phase, isBusinessLimited, errorOwner, errorSource := classifyOpsErrorLog(c, normalizedType, parsed.Message, parsed.Code, status)
+		phase, isBusinessLimited, errorOwner, errorSource := classifyOpsErrorLog(c, normalizedType, opsMessage, parsed.Code, status)
 
 		entry := &service.OpsInsertErrorLogInput{
 			RequestID:       requestID,
@@ -1230,7 +1234,7 @@ func OpsErrorLoggerMiddleware(ops *service.OpsService) gin.HandlerFunc {
 			IsBusinessLimited: isBusinessLimited,
 			IsCountTokens:     isCountTokensRequest(c),
 
-			ErrorMessage: parsed.Message,
+			ErrorMessage: opsMessage,
 			// Sanitize each SSE data payload before the body enters the async queue.
 			ErrorBody:   sanitizeOpsSSEDataForPersistence(body),
 			ErrorSource: errorSource,

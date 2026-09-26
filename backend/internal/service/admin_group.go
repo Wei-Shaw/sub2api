@@ -44,21 +44,41 @@ func (s *adminServiceImpl) ListGroups(ctx context.Context, page, pageSize int, p
 	if err != nil {
 		return nil, 0, err
 	}
+	if err := s.hydrateGroupAutoRouteConfigs(ctx, groups); err != nil {
+		return nil, 0, err
+	}
 	return groups, result.Total, nil
 }
 
 func (s *adminServiceImpl) GetAllGroups(ctx context.Context) ([]Group, error) {
-	return s.groupRepo.ListActive(ctx)
+	groups, err := s.groupRepo.ListActive(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if err := s.hydrateGroupAutoRouteConfigs(ctx, groups); err != nil {
+		return nil, err
+	}
+	return groups, nil
 }
 
 func (s *adminServiceImpl) GetAllGroupsByPlatform(ctx context.Context, platform string) ([]Group, error) {
-	return s.groupRepo.ListActiveByPlatform(ctx, platform)
+	groups, err := s.groupRepo.ListActiveByPlatform(ctx, platform)
+	if err != nil {
+		return nil, err
+	}
+	if err := s.hydrateGroupAutoRouteConfigs(ctx, groups); err != nil {
+		return nil, err
+	}
+	return groups, nil
 }
 
 func (s *adminServiceImpl) GetAllGroupsIncludingInactive(ctx context.Context) ([]Group, error) {
 	// ListWithFilters with empty status = no status filter, so active + disabled groups are returned.
 	// PageSize 10000 is intentionally large; group count is O(dozens) in practice.
 	groups, _, err := s.groupRepo.ListWithFilters(ctx, pagination.PaginationParams{Page: 1, PageSize: 10000}, "", "", "", nil)
+	if err == nil {
+		err = s.hydrateGroupAutoRouteConfigs(ctx, groups)
+	}
 	return groups, err
 }
 
@@ -70,7 +90,43 @@ func (s *adminServiceImpl) GetGroup(ctx context.Context, id int64) (*Group, erro
 	if err := s.validateSimpleModeGroupAccess(group); err != nil {
 		return nil, err
 	}
+	configs, err := s.loadGroupAutoRouteConfigs(ctx, []int64{id})
+	if err != nil {
+		return nil, err
+	}
+	applyGroupAutoRouteConfig(group, configs[id])
 	return group, nil
+}
+
+func (s *adminServiceImpl) loadGroupAutoRouteConfigs(ctx context.Context, ids []int64) (map[int64]GroupAutoRouteConfig, error) {
+	repo, ok := s.groupRepo.(GroupAutoRouteConfigRepository)
+	if !ok {
+		return map[int64]GroupAutoRouteConfig{}, nil
+	}
+	return repo.GetAutoRouteConfigs(ctx, ids)
+}
+
+func (s *adminServiceImpl) hydrateGroupAutoRouteConfigs(ctx context.Context, groups []Group) error {
+	ids := make([]int64, 0, len(groups))
+	for i := range groups {
+		ids = append(ids, groups[i].ID)
+	}
+	configs, err := s.loadGroupAutoRouteConfigs(ctx, ids)
+	if err != nil {
+		return err
+	}
+	for i := range groups {
+		applyGroupAutoRouteConfig(&groups[i], configs[groups[i].ID])
+	}
+	return nil
+}
+
+func applyGroupAutoRouteConfig(group *Group, config GroupAutoRouteConfig) {
+	if group == nil {
+		return
+	}
+	group.AutoRouteEnabled = config.Enabled
+	group.AutoRouteGroupIDs = append([]int64(nil), config.GroupIDs...)
 }
 
 func (s *adminServiceImpl) validateSimpleModeGroupAccess(group *Group) error {
@@ -487,6 +543,10 @@ func (s *adminServiceImpl) CreateGroup(ctx context.Context, input *CreateGroupIn
 	if err := ValidateProfitControlConfig(platform, profitControlEnabled, profitMinMargin, profitSafetyBuffer); err != nil {
 		return nil, err
 	}
+	autoRouteGroupIDs := NormalizeAutoRouteGroupIDs(0, input.AutoRouteGroupIDs)
+	if err := s.validateAutoRouteConfig(ctx, 0, platform, subscriptionType, input.IsExclusive, input.AutoRouteEnabled, autoRouteGroupIDs); err != nil {
+		return nil, err
+	}
 
 	// 校验降级分组
 	if input.FallbackGroupID != nil {
@@ -557,6 +617,8 @@ func (s *adminServiceImpl) CreateGroup(ctx context.Context, input *CreateGroupIn
 		Description:                     input.Description,
 		Platform:                        platform,
 		RateMultiplier:                  input.RateMultiplier,
+		AutoRouteEnabled:                input.AutoRouteEnabled,
+		AutoRouteGroupIDs:               autoRouteGroupIDs,
 		IsExclusive:                     input.IsExclusive,
 		Status:                          StatusActive,
 		SubscriptionType:                subscriptionType,
@@ -711,6 +773,61 @@ func (s *adminServiceImpl) validateFallbackGroup(ctx context.Context, currentGro
 	}
 }
 
+func (s *adminServiceImpl) validateAutoRouteConfig(ctx context.Context, currentGroupID int64, platform, subscriptionType string, sourceExclusive, enabled bool, groupIDs []int64) error {
+	if !enabled {
+		return nil
+	}
+	if platform != PlatformOpenAI {
+		return errors.New("auto route is only supported for openai groups")
+	}
+	if subscriptionType != SubscriptionTypeStandard {
+		return errors.New("auto route group must use standard billing")
+	}
+	groupIDs = NormalizeAutoRouteGroupIDs(currentGroupID, groupIDs)
+	if len(groupIDs) == 0 {
+		return errors.New("auto route requires at least one target group")
+	}
+	configs, err := s.loadGroupAutoRouteConfigs(ctx, groupIDs)
+	if err != nil {
+		return err
+	}
+	for _, groupID := range groupIDs {
+		target, err := s.groupRepo.GetByIDLite(ctx, groupID)
+		if err != nil {
+			return fmt.Errorf("auto route target group %d not found: %w", groupID, err)
+		}
+		if target.Platform != PlatformOpenAI {
+			return fmt.Errorf("auto route target group %d must use openai platform", groupID)
+		}
+		if target.SubscriptionType != SubscriptionTypeStandard {
+			return fmt.Errorf("auto route target group %d must use standard billing", groupID)
+		}
+		if target.IsExclusive && !sourceExclusive {
+			return fmt.Errorf("public auto route group cannot use exclusive target group %d", groupID)
+		}
+		if configs[groupID].Enabled {
+			return fmt.Errorf("auto route target group %d cannot be another auto route group", groupID)
+		}
+	}
+	if s.accountRepo != nil {
+		accountOwner := make(map[int64]int64)
+		for _, groupID := range groupIDs {
+			accounts, err := s.accountRepo.ListByGroup(ctx, groupID)
+			if err != nil {
+				return fmt.Errorf("load auto route target group %d accounts: %w", groupID, err)
+			}
+			for i := range accounts {
+				accountID := accounts[i].ID
+				if ownerGroupID, exists := accountOwner[accountID]; exists && ownerGroupID != groupID {
+					return fmt.Errorf("auto route target groups %d and %d share account %d", ownerGroupID, groupID, accountID)
+				}
+				accountOwner[accountID] = groupID
+			}
+		}
+	}
+	return nil
+}
+
 // validateFallbackGroupOnInvalidRequest 校验无效请求兜底分组的有效性
 // currentGroupID: 当前分组 ID（新建时为 0）
 // platform/subscriptionType: 当前分组的有效平台/订阅类型
@@ -756,6 +873,11 @@ func (s *adminServiceImpl) UpdateGroup(ctx context.Context, id int64, input *Upd
 	if s.cfg != nil && s.cfg.RunMode == config.RunModeSimple {
 		normalizeUpdateGroupInputForSimpleMode(input)
 	}
+	configs, err := s.loadGroupAutoRouteConfigs(ctx, []int64{id})
+	if err != nil {
+		return nil, err
+	}
+	applyGroupAutoRouteConfig(group, configs[id])
 
 	// 渠道缓存里存了 groupID → platform 的映射，改了平台要让它失效（见函数末尾）
 	previousPlatform := group.Platform
@@ -774,6 +896,12 @@ func (s *adminServiceImpl) UpdateGroup(ctx context.Context, id int64, input *Upd
 			return nil, errors.New("rate_multiplier must be > 0")
 		}
 		group.RateMultiplier = *input.RateMultiplier
+	}
+	if input.AutoRouteEnabled != nil {
+		group.AutoRouteEnabled = *input.AutoRouteEnabled
+	}
+	if input.AutoRouteGroupIDs != nil {
+		group.AutoRouteGroupIDs = NormalizeAutoRouteGroupIDs(id, *input.AutoRouteGroupIDs)
 	}
 	if input.IsExclusive != nil {
 		group.IsExclusive = *input.IsExclusive
@@ -884,6 +1012,13 @@ func (s *adminServiceImpl) UpdateGroup(ctx context.Context, id int64, input *Upd
 	// 再对合并后的最终配置统一校验，防止部分字段更新拼出非法组合入库。
 	group.ProfitControlEnabled, group.ProfitMinMargin, group.ProfitSafetyBuffer = NormalizeProfitControlConfig(group.Platform, group.ProfitControlEnabled, group.ProfitMinMargin, group.ProfitSafetyBuffer)
 	if err := ValidateProfitControlConfig(group.Platform, group.ProfitControlEnabled, group.ProfitMinMargin, group.ProfitSafetyBuffer); err != nil {
+		return nil, err
+	}
+	if group.Platform != PlatformOpenAI || group.SubscriptionType != SubscriptionTypeStandard {
+		group.AutoRouteEnabled = false
+		group.AutoRouteGroupIDs = []int64{}
+	}
+	if err := s.validateAutoRouteConfig(ctx, id, group.Platform, group.SubscriptionType, group.IsExclusive, group.AutoRouteEnabled, group.AutoRouteGroupIDs); err != nil {
 		return nil, err
 	}
 	if input.ImagePrice1K != nil {

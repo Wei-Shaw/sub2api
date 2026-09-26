@@ -52,6 +52,25 @@
         @update:interval="autoRefresh.setInterval"
       />
     </div>
+
+    <div
+      class="mt-2 flex flex-wrap items-center justify-end gap-x-4 gap-y-1 text-[11px] text-gray-500 dark:text-gray-400"
+      :aria-label="t('monitorCommon.timelineLegendAria')"
+    >
+      <span class="font-medium text-gray-600 dark:text-gray-300">{{ t('monitorCommon.timelineLegendTitle') }}</span>
+      <span class="inline-flex items-center gap-1.5">
+        <i class="h-2 w-2 rounded-full bg-primary-600" aria-hidden="true"></i>
+        {{ t('monitorCommon.timelineLegend.operational') }}
+      </span>
+      <span class="inline-flex items-center gap-1.5">
+        <i class="h-2 w-2 rounded-full bg-amber-500" aria-hidden="true"></i>
+        {{ t('monitorCommon.timelineLegend.degraded') }}
+      </span>
+      <span class="inline-flex items-center gap-1.5">
+        <i class="h-2 w-2 rounded-full bg-red-500" aria-hidden="true"></i>
+        {{ t('monitorCommon.timelineLegend.unavailable') }}
+      </span>
+    </div>
   </section>
 </template>
 

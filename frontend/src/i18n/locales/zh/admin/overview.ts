@@ -218,7 +218,7 @@ export default {
         step1: {
           title: '创建 R2 存储桶',
           line1: '登录 Cloudflare Dashboard (dash.cloudflare.com)，左侧菜单选择「R2 对象存储」',
-          line2: '点击「创建存储桶」，输入名称（如 sub2api-backups），选择区域',
+          line2: '点击「创建存储桶」，输入名称（如 gptplusch-backups），选择区域',
           line3: '点击创建完成'
         },
         step2: {
@@ -733,10 +733,12 @@ export default {
       allTypes: '全部类型',
       typeBalance: '余额（兑换码）',
       typeAffiliateBalance: '余额（返利转入）',
+      typeCheckInBalance: '余额（签到赠送）',
       typeAdminBalance: '余额（管理员调整）',
       typeConcurrency: '并发（兑换码）',
       typeAdminConcurrency: '并发（管理员调整）',
       typeSubscription: '订阅',
+      checkInReward: '签到赠送',
       failedToLoadBalanceHistory: '加载余额记录失败',
       createdAt: '创建时间',
       totalRecharged: '总充值',
@@ -1228,6 +1230,13 @@ export default {
         fallbackGroup: '降级分组',
         fallbackHint: '非 Claude Code 请求将使用此分组，留空则直接拒绝',
         noFallback: '不降级（直接拒绝）'
+      },
+      autoRoute: {
+        title: 'OpenAI 自动路由分组',
+        hint: '按用户实际倍率优先使用低倍率目标；目标无可调度账号时自动使用下一档，恢复后自动切回。',
+        targets: '候选目标分组',
+        targetsHint: '可多选。实际顺序按用户倍率、分组排序、分组 ID 自动计算。',
+        targetsRequired: '启用自动路由前请至少选择一个候选目标分组。'
       },
       openaiMessages: {
         title: 'OpenAI Messages 调度配置',

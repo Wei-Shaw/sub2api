@@ -130,6 +130,14 @@
               {{ getRequestTypeLabel(row) }}
             </span>
             <span
+              v-if="row.first_serve_active"
+              data-testid="first-serve-badge"
+              :title="t('usage.firstServeActiveHint')"
+              class="inline-flex items-center rounded bg-emerald-100 px-2 py-0.5 text-xs font-medium text-emerald-800 dark:bg-emerald-900 dark:text-emerald-200"
+            >
+              {{ t('usage.firstServeActive') }}
+            </span>
+            <span
               v-if="row.native_compaction_v2"
               data-testid="native-compaction-badge"
               class="inline-flex items-center rounded bg-teal-100 px-2 py-0.5 text-xs font-medium text-teal-800 dark:bg-teal-900 dark:text-teal-200"
@@ -493,7 +501,7 @@
           <!-- Rate and Summary -->
           <div class="flex items-center justify-between gap-6">
             <span class="text-gray-400">{{ t('usage.serviceTier') }}</span>
-            <span class="font-semibold text-cyan-300">{{ getUsageServiceTierLabel(tooltipData?.service_tier, t) }}</span>
+            <span class="font-semibold text-gray-300">{{ getUsageServiceTierLabel(tooltipData?.service_tier, t) }}</span>
           </div>
           <div class="flex items-center justify-between gap-6">
             <span class="text-gray-400">{{ t('usage.rate') }}</span>

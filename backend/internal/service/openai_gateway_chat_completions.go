@@ -58,7 +58,15 @@ func (s *OpenAIGatewayService) ForwardAsChatCompletions(
 	body []byte,
 	promptCacheKey string,
 	defaultMappedModel string,
-) (*OpenAIForwardResult, error) {
+) (firstServeResult *OpenAIForwardResult, firstServeErr error) {
+	ctx, account, firstServe, prepareErr := s.prepareFirstServeHTTP(ctx, c, account, body)
+	if prepareErr != nil {
+		return nil, prepareErr
+	}
+	defer func() { firstServe.finish(firstServeResult, firstServeErr) }()
+	if err := resolveDefaultProxyGroupAccount(ctx, account); err != nil {
+		return nil, err
+	}
 	return s.forwardAsChatCompletions(ctx, c, account, body, promptCacheKey, defaultMappedModel, false)
 }
 
@@ -703,6 +711,10 @@ func (s *OpenAIGatewayService) handleChatStreamingResponse(
 	startTime time.Time,
 	requestBodyLen int,
 ) (*OpenAIForwardResult, error) {
+	ctx := context.Background()
+	if resp.Request != nil {
+		ctx = resp.Request.Context()
+	}
 	requestID := resp.Header.Get("x-request-id")
 	writeStreamHeaders := s.newStreamHeaderWriter(c, resp.Header)
 
@@ -770,10 +782,11 @@ func (s *OpenAIGatewayService) handleChatStreamingResponse(
 
 	processDataLine := func(payload string) bool {
 		payload = string(restoreCodexToolNamesFromContext(c, []byte(payload)))
-		if firstChunk {
+		if firstChunk && (firstServeHTTPLease(ctx) == nil || openAIStreamDataStartsTTFT(payload, "", false, s.openAITTFTMode(ctx))) {
 			firstChunk = false
 			ms := int(time.Since(startTime).Milliseconds())
 			firstTokenMs = &ms
+			observeFirstServeHTTP(ctx, ms)
 		}
 		if countSearch {
 			searchCount += countGrokNativeSearchCallsInSSEDataDedup([]byte(payload), streamSearchSeen)

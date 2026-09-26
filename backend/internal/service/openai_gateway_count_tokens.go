@@ -49,10 +49,21 @@ func (s *OpenAIGatewayService) ForwardResponsesInputTokens(
 	c *gin.Context,
 	account *Account,
 	body []byte,
-) error {
+) (firstServeErr error) {
 	if account == nil {
 		writeOpenAIResponsesInputTokensError(c, http.StatusServiceUnavailable, "api_error", "No available OpenAI accounts")
 		return fmt.Errorf("responses input_tokens: missing account")
+	}
+	ctx, account, firstServe, prepareErr := s.prepareFirstServeHTTP(ctx, c, account, body)
+	if prepareErr != nil {
+		writeOpenAIResponsesInputTokensError(c, http.StatusServiceUnavailable, "api_error", prepareErr.Error())
+		return prepareErr
+	}
+	defer func() { firstServe.finish(nil, firstServeErr) }()
+
+	if err := resolveDefaultProxyGroupAccount(ctx, account); err != nil {
+		writeOpenAIResponsesInputTokensError(c, http.StatusServiceUnavailable, "api_error", err.Error())
+		return err
 	}
 
 	prepared, err := prepareNativeOpenAIInputTokensCountRequest(body, account)
@@ -258,11 +269,17 @@ func (s *OpenAIGatewayService) ForwardCountTokensAsAnthropic(
 	account *Account,
 	body []byte,
 	defaultMappedModel string,
-) error {
+) (firstServeErr error) {
 	if account == nil {
 		writeAnthropicCountTokensError(c, http.StatusServiceUnavailable, "api_error", "No available OpenAI accounts")
 		return fmt.Errorf("count_tokens: missing account")
 	}
+	ctx, account, firstServe, prepareErr := s.prepareFirstServeHTTP(ctx, c, account, body)
+	if prepareErr != nil {
+		writeAnthropicCountTokensError(c, http.StatusServiceUnavailable, "api_error", prepareErr.Error())
+		return prepareErr
+	}
+	defer func() { firstServe.finish(nil, firstServeErr) }()
 
 	// 国产供应商与 OpenCode（全部协议，含 anthropic）：一律本地估算，不发上游请求。
 	// 依据（2026-08 核实）：三家的 Anthropic 兼容层均未提供

@@ -495,7 +495,7 @@ const handleEvent = (event: {
     case 'test_start':
       addLine(t('admin.accounts.connectedToApi'), 'text-green-400')
       if (event.model) {
-        addLine(t('admin.accounts.usingModel', { model: event.model }), 'text-cyan-400')
+        addLine(t('admin.accounts.usingModel', { model: event.model }), 'text-gray-400')
       }
       addLine(
         supportsImageTest.value
@@ -516,7 +516,7 @@ const handleEvent = (event: {
 
     case 'status':
       if (event.text) {
-        addLine(event.text, 'text-cyan-300')
+        addLine(event.text, 'text-gray-300')
       }
       break
 

@@ -163,6 +163,9 @@ func createAccountRecord(ctx context.Context, client *dbent.Client, account *ser
 	if account.ProxyID != nil {
 		builder.SetProxyID(*account.ProxyID)
 	}
+	if account.ProxyGroupID != nil {
+		builder.SetProxyGroupID(*account.ProxyGroupID)
+	}
 	if account.LastUsedAt != nil {
 		builder.SetLastUsedAt(*account.LastUsedAt)
 	}
@@ -560,6 +563,11 @@ func (r *accountRepository) updateLockedAccount(
 		builder.SetProxyID(*account.ProxyID)
 	} else {
 		builder.ClearProxyID()
+	}
+	if account.ProxyGroupID != nil {
+		builder.SetProxyGroupID(*account.ProxyGroupID)
+	} else {
+		builder.ClearProxyGroupID()
 	}
 	if account.LastUsedAt != nil {
 		builder.SetLastUsedAt(*account.LastUsedAt)
@@ -3032,6 +3040,19 @@ func (r *accountRepository) BulkUpdate(ctx context.Context, ids []int64, updates
 			args = append(args, *updates.ProxyID)
 			idx++
 		}
+		// A single proxy and a proxy group are mutually exclusive.
+		setClauses = append(setClauses, "proxy_group_id = NULL")
+	}
+	if updates.ProxyGroupID != nil {
+		if *updates.ProxyGroupID == 0 {
+			setClauses = append(setClauses, "proxy_group_id = NULL")
+		} else {
+			setClauses = append(setClauses, "proxy_group_id = $"+itoa(idx))
+			args = append(args, *updates.ProxyGroupID)
+			idx++
+		}
+		// A proxy group and a single proxy are mutually exclusive.
+		setClauses = append(setClauses, "proxy_id = NULL")
 	}
 	if updates.Concurrency != nil {
 		setClauses = append(setClauses, "concurrency = $"+itoa(idx))
@@ -3628,6 +3649,7 @@ func accountEntityToService(m *dbent.Account) *service.Account {
 		Credentials:             copyJSONMap(m.Credentials),
 		Extra:                   copyJSONMap(m.Extra),
 		ProxyID:                 m.ProxyID,
+		ProxyGroupID:            m.ProxyGroupID,
 		ProxyFallbackOriginID:   m.ProxyFallbackOriginID,
 		Concurrency:             m.Concurrency,
 		Priority:                m.Priority,

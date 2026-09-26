@@ -74,6 +74,14 @@
               <Icon v-else name="checkCircle" size="md" class="mr-2" />
               {{ submitting ? t('redeem.redeeming') : t('redeem.redeemButton') }}
             </button>
+
+            <router-link
+              to="/store"
+              class="btn btn-secondary w-full py-3"
+            >
+              <Icon name="creditCard" size="md" class="mr-2" />
+              {{ t('redeem.buyCode') }}
+            </router-link>
           </form>
         </div>
       </div>
@@ -375,6 +383,7 @@ import { redeemAPI, authAPI, type RedeemHistoryItem } from '@/api'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import Icon from '@/components/icons/Icon.vue'
 import { formatDateTime } from '@/utils/format'
+import { parseRedeemLink } from '@/utils/redeemLink'
 
 const { t } = useI18n()
 const authStore = useAuthStore()
@@ -522,12 +531,22 @@ const handleRedeem = async () => {
 }
 
 onMounted(async () => {
+  const redeemLink = parseRedeemLink(window.location.href)
+  if (redeemLink.code) {
+    redeemCode.value = redeemLink.code
+    window.history.replaceState(null, '', redeemLink.cleanUrl)
+  }
+
   fetchHistory()
   try {
     const settings = await authAPI.getPublicSettings()
     contactInfo.value = settings.contact_info || ''
   } catch (error) {
     console.error('Failed to load contact info:', error)
+  }
+
+  if (redeemLink.auto) {
+    await handleRedeem()
   }
 })
 </script>

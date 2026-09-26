@@ -143,3 +143,23 @@ func TestPrepareUsageLogInsert_UpstreamRequestIDArgWiring(t *testing.T) {
 
 	require.Contains(t, usageLogSelectColumns, "upstream_request_id")
 }
+
+func TestUsageLogFirstServeSnapshotPersistsAndScans(t *testing.T) {
+	for _, active := range []bool{false, true} {
+		log := &service.UsageLog{UserID: 1, APIKeyID: 2, AccountID: 3, RequestID: "first-serve", Model: "gpt-5", FirstServeActive: active}
+		prepared := prepareUsageLogInsert(log)
+		idx := len(prepared.args) - 5
+		require.Equal(t, "boolean", usageLogInsertArgTypes[idx])
+		require.Equal(t, active, prepared.args[idx])
+		db, mock, err := sqlmock.New()
+		require.NoError(t, err)
+		values := append([]any{int64(1)}, prepared.args...)
+		mock.ExpectQuery("SELECT").WillReturnRows(sqlmock.NewRows(strings.Split(usageLogSelectColumns, ", ")).AddRow(anySliceToDriverValues(values)...))
+		stored, err := scanUsageLog(db.QueryRowContext(context.Background(), "SELECT "+usageLogSelectColumns))
+		require.NoError(t, err)
+		require.Equal(t, active, stored.FirstServeActive)
+		require.NoError(t, mock.ExpectationsWereMet())
+		mock.ExpectClose()
+		require.NoError(t, db.Close())
+	}
+}

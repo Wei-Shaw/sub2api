@@ -17,6 +17,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/ip"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/timezone"
 	"github.com/dgraph-io/ristretto"
@@ -282,8 +283,13 @@ type RateLimitCacheInvalidator interface {
 	InvalidateAPIKeyRateLimit(ctx context.Context, keyID int64) error
 }
 
+type autoRouteAccountRepository interface {
+	ListSchedulableByGroupIDAndPlatform(ctx context.Context, groupID int64, platform string) ([]Account, error)
+}
+
 type APIKeyService struct {
 	apiKeyRepo                APIKeyRepository
+	accountRepo               autoRouteAccountRepository
 	userRepo                  UserRepository
 	groupRepo                 GroupRepository
 	userSubRepo               UserSubscriptionRepository
@@ -367,6 +373,12 @@ func (s *APIKeyService) SetRateLimitCacheInvalidator(inv RateLimitCacheInvalidat
 
 func (s *APIKeyService) SetConcurrencyService(concurrencyService *ConcurrencyService) {
 	s.concurrencyService = concurrencyService
+}
+
+// SetAccountRepository 注入自动路由模型/能力过滤所需的账号仓储。
+// 保留 setter 形式，避免扩大 APIKeyService 构造函数对现有测试的影响。
+func (s *APIKeyService) SetAccountRepository(accountRepo autoRouteAccountRepository) {
+	s.accountRepo = accountRepo
 }
 
 func (s *APIKeyService) compileAPIKeyIPRules(apiKey *APIKey) {
@@ -1106,6 +1118,366 @@ func (s *APIKeyService) GetUserGroupRates(ctx context.Context, userID int64) (ma
 		return nil, fmt.Errorf("get user group rates: %w", err)
 	}
 	return rates, nil
+}
+
+type autoRouteGroupCapacity struct {
+	Max       int
+	Used      int
+	Unlimited bool
+}
+
+// AutoRouteRequirements 描述最终路由时当前请求对上游账号的最低要求。
+// 鉴权阶段不带这些条件，只做不占容量的倍率初选。
+type AutoRouteRequirements struct {
+	RequestedModel  string
+	Capability      OpenAIEndpointCapability
+	ImageCapability OpenAIImagesCapability
+	RequireCompact  bool
+}
+
+func (c autoRouteGroupCapacity) remaining() int {
+	if c.Unlimited {
+		return int(^uint(0) >> 1)
+	}
+	remaining := c.Max - c.Used
+	if remaining < 0 {
+		return 0
+	}
+	return remaining
+}
+
+// ResolveAutoRouteGroup 把自动路由入口 Key 映射到当前有效倍率最低的可用 OpenAI 分组。
+// 非上游请求不参与容量竞争，保留原有方法签名供查询类端点使用。
+func (s *APIKeyService) ResolveAutoRouteGroup(ctx context.Context, apiKey *APIKey) (*APIKey, error) {
+	routed, _, err := s.resolveAutoRouteGroup(ctx, apiKey, false, AutoRouteRequirements{})
+	return routed, err
+}
+
+// ResolveAutoRouteGroupWithCapacity 在倍率排序后检查每个目标分组的实时剩余并发。
+// 返回的 reservation 必须注入请求上下文，并在请求结束时兜底释放。
+func (s *APIKeyService) ResolveAutoRouteGroupWithCapacity(ctx context.Context, apiKey *APIKey) (*APIKey, *AutoRouteCapacityReservation, error) {
+	return s.ResolveAutoRouteGroupWithCapacityForRequest(ctx, apiKey, AutoRouteRequirements{})
+}
+
+// ResolveAutoRouteGroupWithCapacityForRequest 在用户并发准入成功后，按模型、端点能力
+// 和实时账号容量完成终选。共享账号只归属于倍率排序最靠前的候选组，避免重复计容。
+func (s *APIKeyService) ResolveAutoRouteGroupWithCapacityForRequest(ctx context.Context, apiKey *APIKey, requirements AutoRouteRequirements) (*APIKey, *AutoRouteCapacityReservation, error) {
+	return s.resolveAutoRouteGroup(ctx, apiKey, true, requirements)
+}
+
+func (s *APIKeyService) resolveAutoRouteGroup(ctx context.Context, apiKey *APIKey, capacityEnabled bool, requirements AutoRouteRequirements) (*APIKey, *AutoRouteCapacityReservation, error) {
+	if apiKey == nil || apiKey.GroupID == nil || apiKey.Group == nil || s.groupRepo == nil {
+		return apiKey, nil, nil
+	}
+	entryAPIKey := apiKey
+	if apiKey.autoRouteEntryGroup != nil {
+		entry := *apiKey
+		entry.Group = apiKey.autoRouteEntryGroup
+		entry.GroupID = new(int64)
+		*entry.GroupID = apiKey.autoRouteEntryGroup.ID
+		entryAPIKey = &entry
+	}
+	autoRepo, ok := s.groupRepo.(GroupAutoRouteConfigRepository)
+	if !ok {
+		return apiKey, nil, nil
+	}
+	configs, err := autoRepo.GetAutoRouteConfigs(ctx, []int64{*entryAPIKey.GroupID})
+	if err != nil {
+		return nil, nil, fmt.Errorf("load auto route config: %w", err)
+	}
+	config := configs[*entryAPIKey.GroupID]
+	if !config.Enabled {
+		return apiKey, nil, nil
+	}
+	if entryAPIKey.Group.Platform != PlatformOpenAI || entryAPIKey.Group.SubscriptionType != SubscriptionTypeStandard {
+		return nil, nil, fmt.Errorf("invalid auto route entry group")
+	}
+
+	groups, err := s.groupRepo.ListActiveByPlatform(ctx, PlatformOpenAI)
+	if err != nil {
+		return nil, nil, fmt.Errorf("list auto route target groups: %w", err)
+	}
+	allowed := make(map[int64]struct{}, len(config.GroupIDs))
+	for _, id := range config.GroupIDs {
+		allowed[id] = struct{}{}
+	}
+	rates, err := s.GetUserGroupRates(ctx, entryAPIKey.UserID)
+	if err != nil {
+		return nil, nil, err
+	}
+	candidates := rankAutoRouteTargets(groups, allowed, rates, entryAPIKey.Group.IsExclusive)
+	if len(candidates) == 0 {
+		return nil, nil, ErrNoAvailableAutoRouteGroup
+	}
+
+	var capacities map[int64]autoRouteGroupCapacity
+	capacityAware := false
+	if capacityEnabled {
+		capacities, capacityAware = s.loadAutoRouteGroupCapacitiesForRequest(ctx, candidates, requirements)
+	}
+	var target *Group
+	var reservation *AutoRouteCapacityReservation
+	for i := range candidates {
+		candidate := candidates[i]
+		if !capacityAware {
+			target = &candidate
+			break
+		}
+		capacity, ok := capacities[candidate.ID]
+		if !ok || capacity.remaining() <= 0 {
+			continue
+		}
+		if capacity.Unlimited || s.concurrencyService == nil {
+			target = &candidate
+			break
+		}
+		pending, acquired, acquireErr := s.concurrencyService.AcquireAutoRouteGroupSlot(ctx, candidate.ID, capacity.remaining())
+		if acquireErr != nil {
+			// Redis 容量保护失败时沿用现有 fail-open 策略，真实账号槽位仍会二次校验。
+			logger.LegacyPrintf("service.api_key", "Warning: acquire auto route capacity for group %d failed: %v", candidate.ID, acquireErr)
+			target = &candidate
+			break
+		}
+		if !acquired {
+			continue
+		}
+		target = &candidate
+		reservation = pending
+		break
+	}
+	if target == nil {
+		return nil, nil, ErrNoAvailableAutoRouteGroup
+	}
+
+	routed := *entryAPIKey
+	routed.GroupID = new(int64)
+	*routed.GroupID = target.ID
+	routed.Group = target
+	routed.autoRouteEntryGroup = entryAPIKey.Group
+	return &routed, reservation, nil
+}
+
+func selectAutoRouteTarget(groups []Group, allowed map[int64]struct{}, rates map[int64]float64, allowExclusive bool) *Group {
+	candidates := rankAutoRouteTargets(groups, allowed, rates, allowExclusive)
+	if len(candidates) == 0 {
+		return nil
+	}
+	target := candidates[0]
+	return &target
+}
+
+func rankAutoRouteTargets(groups []Group, allowed map[int64]struct{}, rates map[int64]float64, allowExclusive bool) []Group {
+	type candidate struct {
+		group Group
+		rate  float64
+	}
+	candidates := make([]candidate, 0, len(allowed))
+	for i := range groups {
+		group := groups[i]
+		if _, ok := allowed[group.ID]; !ok || group.ActiveAccountCount <= 0 || group.SubscriptionType != SubscriptionTypeStandard || (group.IsExclusive && !allowExclusive) {
+			continue
+		}
+		rate := group.RateMultiplier
+		if userRate, ok := rates[group.ID]; ok && !math.IsNaN(userRate) && !math.IsInf(userRate, 0) && userRate >= 0 {
+			rate = userRate
+		}
+		candidates = append(candidates, candidate{group: group, rate: rate})
+	}
+	if len(candidates) == 0 {
+		return nil
+	}
+	sort.SliceStable(candidates, func(i, j int) bool {
+		if candidates[i].rate != candidates[j].rate {
+			return candidates[i].rate < candidates[j].rate
+		}
+		if candidates[i].group.SortOrder != candidates[j].group.SortOrder {
+			return candidates[i].group.SortOrder < candidates[j].group.SortOrder
+		}
+		return candidates[i].group.ID < candidates[j].group.ID
+	})
+	result := make([]Group, 0, len(candidates))
+	for i := range candidates {
+		result = append(result, candidates[i].group)
+	}
+	return result
+}
+
+func (s *APIKeyService) loadAutoRouteGroupCapacities(ctx context.Context, groupIDs []int64) (map[int64]autoRouteGroupCapacity, bool) {
+	repo, ok := s.groupRepo.(GroupAutoRouteCapacityRepository)
+	if !ok || s.concurrencyService == nil {
+		return nil, false
+	}
+	rows, err := repo.ListAutoRouteAccountCapacities(ctx, groupIDs)
+	if err != nil {
+		logger.LegacyPrintf("service.api_key", "Warning: load auto route group capacities failed: %v", err)
+		return nil, false
+	}
+	capacities := make(map[int64]autoRouteGroupCapacity, len(groupIDs))
+	accountIDs := make([]int64, 0, len(rows))
+	capacityRows := make([]GroupAutoRouteAccountCapacity, 0, len(rows))
+	seenAccounts := make(map[int64]struct{}, len(rows))
+	seenGroupAccounts := make(map[[2]int64]struct{}, len(rows))
+	for _, row := range rows {
+		key := [2]int64{row.GroupID, row.AccountID}
+		if row.GroupID <= 0 || row.AccountID <= 0 {
+			continue
+		}
+		if _, exists := seenGroupAccounts[key]; exists {
+			continue
+		}
+		seenGroupAccounts[key] = struct{}{}
+		// 一个物理账号即使绑定多个目标分组，也只能贡献一次真实容量。
+		if _, exists := seenAccounts[row.AccountID]; exists {
+			continue
+		}
+		seenAccounts[row.AccountID] = struct{}{}
+		capacityRows = append(capacityRows, row)
+		capacity := capacities[row.GroupID]
+		if row.MaxConcurrency <= 0 {
+			capacity.Unlimited = true
+		} else {
+			capacity.Max += row.MaxConcurrency
+		}
+		capacities[row.GroupID] = capacity
+		accountIDs = append(accountIDs, row.AccountID)
+	}
+	loads, err := s.concurrencyService.GetAccountConcurrencyBatch(ctx, accountIDs)
+	if err != nil {
+		logger.LegacyPrintf("service.api_key", "Warning: load auto route account concurrency failed: %v", err)
+		return nil, false
+	}
+	for _, row := range capacityRows {
+		if row.MaxConcurrency <= 0 {
+			continue
+		}
+		capacity := capacities[row.GroupID]
+		used := loads[row.AccountID]
+		if used < 0 {
+			used = 0
+		}
+		if used > row.MaxConcurrency {
+			used = row.MaxConcurrency
+		}
+		capacity.Used += used
+		capacities[row.GroupID] = capacity
+	}
+	return capacities, true
+}
+
+func (s *APIKeyService) loadAutoRouteGroupCapacitiesForRequest(ctx context.Context, candidates []Group, requirements AutoRouteRequirements) (map[int64]autoRouteGroupCapacity, bool) {
+	if s.accountRepo == nil {
+		groupIDs := make([]int64, 0, len(candidates))
+		for i := range candidates {
+			groupIDs = append(groupIDs, candidates[i].ID)
+		}
+		return s.loadAutoRouteGroupCapacities(ctx, groupIDs)
+	}
+
+	type accountCapacity struct {
+		groupID int64
+		account *Account
+	}
+	rows := make([]accountCapacity, 0)
+	ownedAccounts := make(map[int64]struct{})
+	accountIDs := make([]int64, 0)
+	for i := range candidates {
+		candidate := candidates[i]
+		accounts, err := s.accountRepo.ListSchedulableByGroupIDAndPlatform(ctx, candidate.ID, PlatformOpenAI)
+		if err != nil {
+			logger.LegacyPrintf("service.api_key", "Warning: load model-aware auto route accounts for group %d failed: %v", candidate.ID, err)
+			// 单组读取失败时只跳过该组，不能退回到不校验模型的倍率初选。
+			continue
+		}
+		eligible := make([]*Account, 0, len(accounts))
+		candidateAccounts := make(map[int64]struct{}, len(accounts))
+		hasSharedAccount := false
+		for j := range accounts {
+			account := &accounts[j]
+			if account.ID <= 0 || !autoRouteAccountSupports(account, requirements) {
+				continue
+			}
+			if _, exists := candidateAccounts[account.ID]; exists {
+				continue
+			}
+			candidateAccounts[account.ID] = struct{}{}
+			eligible = append(eligible, account)
+			if _, exists := ownedAccounts[account.ID]; exists {
+				hasSharedAccount = true
+			}
+		}
+		if hasSharedAccount {
+			// 调度器仍可能在该组内选到共享账号。为避免容量终选认为有独立
+			// 容量、实际却再次竞争同一账号，保守跳过整个后续分组。
+			logger.LegacyPrintf("service.api_key", "Warning: skip auto route group %d because it shares eligible accounts with a lower-rate group", candidate.ID)
+			continue
+		}
+		for _, account := range eligible {
+			ownedAccounts[account.ID] = struct{}{}
+			rows = append(rows, accountCapacity{groupID: candidate.ID, account: account})
+			accountIDs = append(accountIDs, account.ID)
+		}
+	}
+	if s.concurrencyService == nil {
+		// 没有并发服务时仍保留模型与端点能力过滤；实际账号调度沿用原有
+		// fail-open 行为，不额外限制已经确认兼容的候选组。
+		capacities := make(map[int64]autoRouteGroupCapacity, len(candidates))
+		for _, row := range rows {
+			capacity := capacities[row.groupID]
+			capacity.Unlimited = true
+			capacities[row.groupID] = capacity
+		}
+		return capacities, true
+	}
+
+	loads, err := s.concurrencyService.GetAccountConcurrencyBatch(ctx, accountIDs)
+	if err != nil {
+		logger.LegacyPrintf("service.api_key", "Warning: load model-aware auto route concurrency failed: %v", err)
+		// Redis 读失败只放开容量判断，不能放开模型/能力判断。
+		capacities := make(map[int64]autoRouteGroupCapacity, len(candidates))
+		for _, row := range rows {
+			capacity := capacities[row.groupID]
+			capacity.Unlimited = true
+			capacities[row.groupID] = capacity
+		}
+		return capacities, true
+	}
+	capacities := make(map[int64]autoRouteGroupCapacity, len(candidates))
+	for _, row := range rows {
+		capacity := capacities[row.groupID]
+		if row.account.Concurrency <= 0 {
+			capacity.Unlimited = true
+			capacities[row.groupID] = capacity
+			continue
+		}
+		capacity.Max += row.account.Concurrency
+		used := loads[row.account.ID]
+		if used < 0 {
+			used = 0
+		}
+		if used > row.account.Concurrency {
+			used = row.account.Concurrency
+		}
+		capacity.Used += used
+		capacities[row.groupID] = capacity
+	}
+	return capacities, true
+}
+
+func autoRouteAccountSupports(account *Account, requirements AutoRouteRequirements) bool {
+	if account == nil {
+		return false
+	}
+	model := strings.TrimSpace(requirements.RequestedModel)
+	if model != "" && !account.IsModelSupported(model) {
+		return false
+	}
+	if requirements.Capability != "" && !account.SupportsOpenAIEndpointCapability(requirements.Capability) {
+		return false
+	}
+	if requirements.ImageCapability != "" && !account.SupportsOpenAIImageCapability(requirements.ImageCapability) {
+		return false
+	}
+	return !requirements.RequireCompact || openAICompactSupportTier(account) > 0
 }
 
 // CheckAPIKeyQuotaAndExpiry checks if the API key is valid for use (not expired, quota not exhausted)

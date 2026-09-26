@@ -12,7 +12,6 @@ import (
 	"time"
 
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
-	pkghttputil "github.com/Wei-Shaw/sub2api/internal/pkg/httputil"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	middleware2 "github.com/Wei-Shaw/sub2api/internal/server/middleware"
 	"github.com/Wei-Shaw/sub2api/internal/service"
@@ -66,7 +65,9 @@ func (h *AsyncImageHandler) Submit(c *gin.Context) {
 		imageTaskJSONError(c, http.StatusNotFound, "not_found_error", "Images API is not supported for this platform")
 		return
 	}
-	if !service.GroupAllowsImageGeneration(apiKey.Group) {
+	// 自动路由入口要等异步任务真正执行、取得用户并发槽位后，
+	// 再由 Images handler 按模型、端点能力和实时容量选择目标分组。
+	if !apiKey.IsAutoRouteRequest() && !service.GroupAllowsImageGeneration(apiKey.Group) {
 		imageTaskJSONError(c, http.StatusForbidden, "permission_error", service.ImageGenerationPermissionMessage())
 		return
 	}
@@ -75,13 +76,9 @@ func (h *AsyncImageHandler) Submit(c *gin.Context) {
 		return
 	}
 
-	body, err := pkghttputil.ReadRequestBodyWithPrealloc(c.Request)
+	body, err := readRequestBodyWithDiagnostics(c, nil)
 	if err != nil {
-		if maxErr, ok := extractMaxBytesError(err); ok {
-			imageTaskJSONError(c, http.StatusRequestEntityTooLarge, "invalid_request_error", buildBodyTooLargeMessage(maxErr.Limit))
-			return
-		}
-		imageTaskJSONError(c, http.StatusBadRequest, "invalid_request_error", "Failed to read request body")
+		requestBodyImageTaskErrorResponse(c, err)
 		return
 	}
 	if len(body) == 0 {

@@ -46,6 +46,15 @@ func RegisterAdminRoutes(
 		// 账号管理
 		registerAccountRoutes(admin, h, stepUpAuth)
 
+		// 评测报告和原始账号信息当前仅对管理员开放。
+		if h.Admin.ModelEvaluation != nil {
+			evaluation := admin.Group("/model-evaluation")
+			evaluation.POST("/reports", h.Admin.ModelEvaluation.Create)
+			evaluation.GET("/reports", h.Admin.ModelEvaluation.List)
+			evaluation.GET("/reports/:id", h.Admin.ModelEvaluation.Get)
+			evaluation.POST("/reports/:id/rounds", h.Admin.ModelEvaluation.Run)
+		}
+
 		// 公告管理
 		registerAnnouncementRoutes(admin, h)
 
@@ -66,12 +75,16 @@ func RegisterAdminRoutes(
 
 		// 代理管理
 		registerProxyRoutes(admin, h, stepUpAuth)
+		registerProxyGroupRoutes(admin, h)
 
 		// 卡密管理
 		registerRedeemCodeRoutes(admin, h)
 
 		// 优惠码管理
 		registerPromoCodeRoutes(admin, h)
+
+		// 每日签到
+		registerCheckInRoutes(admin, h, stepUpAuth)
 
 		// 系统设置
 		registerSettingsRoutes(admin, h)
@@ -130,6 +143,18 @@ func RegisterAdminRoutes(
 
 		// 操作审计日志
 		registerAuditLogRoutes(admin, h, stepUpAuth)
+	}
+}
+
+func registerProxyGroupRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
+	groups := admin.Group("/proxy-groups")
+	{
+		groups.GET("", h.Admin.ProxyGroup.List)
+		groups.GET("/all", h.Admin.ProxyGroup.GetAll)
+		groups.GET("/:id", h.Admin.ProxyGroup.GetByID)
+		groups.POST("", h.Admin.ProxyGroup.Create)
+		groups.PUT("/:id", h.Admin.ProxyGroup.Update)
+		groups.DELETE("/:id", h.Admin.ProxyGroup.Delete)
 	}
 }
 
@@ -367,6 +392,7 @@ func registerAccountRoutes(admin *gin.RouterGroup, h *handler.Handlers, stepUpAu
 		accounts.GET("/opencode-go-usage/settings", h.Admin.Account.GetOpenCodeGoUsageSettings)
 		accounts.PUT("/opencode-go-usage/settings", h.Admin.Account.UpdateOpenCodeGoUsageSettings)
 		accounts.GET("/:id", h.Admin.Account.GetByID)
+		accounts.GET("/:id/first-serve", h.Admin.Account.GetFirstServeStatus)
 		accounts.POST("", h.Admin.Account.Create)
 		accounts.POST("/:id/duplicate", h.Admin.Account.Duplicate)
 		accounts.POST("/check-mixed-channel", h.Admin.Account.CheckMixedChannel)
@@ -558,6 +584,15 @@ func registerPromoCodeRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 		promoCodes.PUT("/:id", h.Admin.Promo.Update)
 		promoCodes.DELETE("/:id", h.Admin.Promo.Delete)
 		promoCodes.GET("/:id/usages", h.Admin.Promo.GetUsages)
+	}
+}
+
+func registerCheckInRoutes(admin *gin.RouterGroup, h *handler.Handlers, stepUpAuth middleware.StepUpAuthMiddleware) {
+	checkIn := admin.Group("/checkin")
+	{
+		checkIn.GET("/stats", h.Admin.CheckIn.GetStats)
+		checkIn.PUT("/enabled", h.Admin.CheckIn.SetEnabled)
+		checkIn.POST("/reset-cycles", gin.HandlerFunc(stepUpAuth), h.Admin.CheckIn.ResetAllCycles)
 	}
 }
 

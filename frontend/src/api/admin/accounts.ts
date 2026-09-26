@@ -1131,6 +1131,37 @@ export async function refreshOpenCodeGoUsage(id: number): Promise<OpenCodeGoUsag
   return data
 }
 
+export interface FirstServeStatus {
+  requests?: number
+  last_request?: {
+    kind: 'stream' | 'non_stream' | 'compact'
+    outcome: string
+    request_id?: string
+    input_tokens: number | null
+    output_tokens: number | null
+    duration_ms: number
+  }
+  transport?: 'http' | 'ws'
+  session_missing?: boolean
+  id: string
+  account_id: number
+  proxy_id: number
+  proxy_name: string
+  conn_id: string
+  expires_at: string
+  updated_at: string
+  first_token_ms: number | null
+  rotations: number
+  reason: string
+  active: boolean
+  config?: import('@/utils/firstServe').FirstServeConfig
+}
+
+export async function getFirstServeStatus(id: number, signal?: AbortSignal): Promise<FirstServeStatus[]> {
+  const { data } = await apiClient.get<FirstServeStatus[]>(`/admin/accounts/${id}/first-serve`, { signal })
+  return data
+}
+
 export const accountsAPI = {
   list,
   listWithEtag,

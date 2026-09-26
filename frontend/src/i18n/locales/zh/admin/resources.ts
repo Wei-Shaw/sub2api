@@ -236,6 +236,47 @@ export default {
       backupProxy: '备用代理',
     },
 
+    proxyGroups: {
+      title: '代理组管理',
+      description: '按请求随机使用代理组成员',
+      create: '新建代理组',
+      edit: '编辑代理组',
+      delete: '删除代理组',
+      name: '名称',
+      namePlaceholder: '请输入代理组名称',
+      descriptionLabel: '说明',
+      descriptionPlaceholder: '可选说明',
+      status: '状态',
+      active: '启用',
+      inactive: '停用',
+      members: '成员数',
+      availableMembers: '可用成员',
+      accounts: '绑定账号',
+      proxies: '代理成员',
+      selectProxies: '选择代理成员',
+      noGroups: '暂无代理组',
+      createFirst: '创建代理组后，账号请求会在成员代理之间随机分配。',
+      save: '保存',
+      createSuccess: '代理组创建成功',
+      updateSuccess: '代理组更新成功',
+      deleteSuccess: '代理组已删除',
+      deleteConfirm: '确定删除代理组“{name}”吗？',
+      deleteInUse: '代理组“{name}”仍绑定 {count} 个账号，请先解除账号绑定后再删除。',
+      failedToLoad: '加载代理组失败',
+      failedToSave: '保存代理组失败',
+      failedToDelete: '删除代理组失败',
+      nameRequired: '请输入代理组名称',
+      memberRequired: '请至少选择一个代理成员',
+      binding: {
+        none: '无代理',
+        proxy: '单个 IP',
+        group: 'IP 代理组',
+        chooseProxy: '请选择代理 IP',
+        chooseGroup: '请选择代理组',
+        groupHint: '请求将在 {available}/{total} 个可用成员之间随机选择代理。'
+      }
+    },
+
     // Redeem Codes Management
     redeem: {
       title: '兑换码管理',

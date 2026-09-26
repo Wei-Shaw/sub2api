@@ -49,6 +49,10 @@ vi.mock("@/stores/app", () => ({
   }),
 }));
 
+vi.mock("@/stores/auth", () => ({
+  useAuthStore: () => ({ isSimpleMode: false }),
+}));
+
 vi.mock("@/stores/onboarding", () => ({
   useOnboardingStore: () => ({
     isCurrentStep: vi.fn(() => false),

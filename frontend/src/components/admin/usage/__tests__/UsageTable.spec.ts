@@ -58,6 +58,7 @@ const messages: Record<string, string> = {
   'usage.stream': 'Stream',
   'usage.sync': 'Sync',
   'usage.nativeCompactionV2': 'Compaction',
+  'usage.firstServeActive': '首服生效中',
   'admin.usage.billingModeToken': 'Token',
   'admin.usage.billingModePerRequest': 'Per request',
   'admin.usage.billingModeImage': 'Image',
@@ -129,6 +130,26 @@ const baseImageRow = {
 }
 
 describe('admin UsageTable tooltip', () => {
+  it('marks only requests with a saved first-serve reuse snapshot', () => {
+    const wrapper = mount(UsageTable, {
+      props: {
+        data: [
+          { ...baseImageRow, request_id: 'reused', stream: true, first_serve_active: true },
+          { ...baseImageRow, request_id: 'first-use', stream: true, first_serve_active: false },
+          { ...baseImageRow, request_id: 'historical', stream: true, account: { extra: { openai_apikey_responses_websockets_v2_mode: 'first_serve' } } }
+        ],
+        loading: false, columns: []
+      },
+      global: { stubs: {
+        DataTable: { props: ['data'], template: '<div><div v-for="row in data" :key="row.request_id"><slot name="cell-stream" :row="row" /></div></div>' },
+        EmptyState: true, Icon: true, Teleport: true
+      } }
+    })
+    expect(wrapper.findAll('[data-testid="first-serve-badge"]')).toHaveLength(1)
+    expect(wrapper.get('[data-testid="first-serve-badge"]').text()).toBe('首服生效中')
+    wrapper.unmount()
+  })
+
   beforeEach(() => {
     vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockReturnValue({
       x: 0,

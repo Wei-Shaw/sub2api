@@ -237,6 +237,8 @@ type CreateGroupInput struct {
 	Description               string
 	Platform                  string
 	RateMultiplier            float64
+	AutoRouteEnabled          bool
+	AutoRouteGroupIDs         []int64
 	IsExclusive               bool
 	SubscriptionType          string   // standard/subscription
 	DailyLimitUSD             *float64 // 日限额 (USD)
@@ -317,6 +319,8 @@ type UpdateGroupInput struct {
 	Description               *string
 	Platform                  string
 	RateMultiplier            *float64 // 使用指针以支持设置为0
+	AutoRouteEnabled          *bool
+	AutoRouteGroupIDs         *[]int64
 	IsExclusive               *bool
 	Status                    string
 	SubscriptionType          string   // standard/subscription
@@ -401,6 +405,7 @@ type CreateAccountInput struct {
 	Credentials        map[string]any
 	Extra              map[string]any
 	ProxyID            *int64
+	ProxyGroupID       *int64
 	Concurrency        int
 	Priority           int
 	RateMultiplier     *float64 // 账号计费倍率（>=0，允许 0）
@@ -432,6 +437,7 @@ type UpdateAccountInput struct {
 	Credentials           map[string]any
 	Extra                 map[string]any
 	ProxyID               *int64
+	ProxyGroupID          *int64
 	Concurrency           *int     // 使用指针区分"未提供"和"设置为0"
 	Priority              *int     // 使用指针区分"未提供"和"设置为0"
 	RateMultiplier        *float64 // 账号计费倍率（>=0，允许 0）
@@ -451,6 +457,7 @@ type BulkUpdateAccountsInput struct {
 	Filters        *BulkUpdateAccountFilters
 	Name           string
 	ProxyID        *int64
+	ProxyGroupID   *int64
 	Concurrency    *int
 	Priority       *int
 	RateMultiplier *float64 // 账号计费倍率（>=0，允许 0）

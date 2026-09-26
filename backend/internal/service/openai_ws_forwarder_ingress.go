@@ -83,6 +83,38 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 	if account == nil {
 		return errors.New("account is nil")
 	}
+	var firstServe *openAIFirstServeState
+	var firstServeRoute *openAIFirstServeHTTPLease
+	routeOptions := openAIFirstServeRouteOptions{fallbackScope: "ws:" + generateRequestID(), webSocket: true}
+	defer func() {
+		if firstServeRoute != nil {
+			firstServeRoute.release()
+		}
+	}()
+	defer func() {
+		if account.IsOpenAIFirstServe() && firstServe == nil && returnErr != nil {
+			status := newOpenAIFirstServeState(account, "", time.Now())
+			status.status.Active = false
+			status.publish("connection_failed", time.Now())
+		}
+	}()
+	if account.IsOpenAIFirstServe() {
+		scoped := *account
+		account = &scoped
+		if err := validateOpenAIFirstServeRouting(account); err != nil {
+			return err
+		}
+		if s.cfg == nil || !s.cfg.Gateway.OpenAIWS.ModeRouterV2Enabled {
+			return fmt.Errorf("账号 %s：首服模式需要开启 gateway.openai_ws.mode_router_v2_enabled", account.Name)
+		}
+		var err error
+		_, account, firstServeRoute, err = s.prepareFirstServeRoute(ctx, c, account, firstClientMessage, routeOptions)
+		if err != nil {
+			return err
+		}
+	} else if err := resolveDefaultProxyGroupAccount(ctx, account); err != nil {
+		return err
+	}
 	// A handler may reuse the same gin context across account failover attempts.
 	// Never let an OAuth attempt's response aliases leak into the next account.
 	setCodexToolNameReverse(c, nil)
@@ -152,18 +184,22 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 			)
 		case OpenAIWSIngressModeHTTPBridge:
 			forceHTTPBridge = true
-		case OpenAIWSIngressModeCtxPool, OpenAIWSIngressModeShared, OpenAIWSIngressModeDedicated:
+		case OpenAIWSIngressModeFirstServe, OpenAIWSIngressModeCtxPool, OpenAIWSIngressModeShared, OpenAIWSIngressModeDedicated:
 			// continue
 		default:
 			return NewOpenAIWSClientCloseError(
 				coderws.StatusPolicyViolation,
-				"websocket mode only supports ctx_pool/passthrough/http_bridge",
+				"websocket mode only supports ctx_pool/first_serve/passthrough/http_bridge",
 				nil,
 			)
 		}
 	}
 	if !forceHTTPBridge && wsDecision.Transport != OpenAIUpstreamTransportResponsesWebsocketV2 {
 		return fmt.Errorf("websocket ingress requires ws_v2 transport, got=%s", wsDecision.Transport)
+	}
+	firstServeMode := account.IsOpenAIFirstServe()
+	if firstServeMode && (forceHTTPBridge || wsDecision.Transport != OpenAIUpstreamTransportResponsesWebsocketV2) {
+		return fmt.Errorf("账号 %s：首服模式需要启用上游 WebSocket v2，请检查全局与账号协议配置", account.Name)
 	}
 	dedicatedMode := modeRouterV2Enabled && ingressMode == OpenAIWSIngressModeDedicated
 
@@ -521,7 +557,7 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 		return err
 	}
 
-	useHTTPBridge := forceHTTPBridge || s.shouldBridgeOpenAIWSHTTP(account, firstPayload.payloadBytes, firstPayload.previousResponseID)
+	useHTTPBridge := !firstServeMode && (forceHTTPBridge || s.shouldBridgeOpenAIWSHTTP(account, firstPayload.payloadBytes, firstPayload.previousResponseID))
 	turnState := strings.TrimSpace(c.GetHeader(openAIWSTurnStateHeader))
 	stateStore := s.getOpenAIWSStateStore()
 	groupID := getOpenAIGroupIDFromContext(c)
@@ -858,15 +894,29 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 		acquireTimeout = 30 * time.Second
 	}
 
+	firstServeScope := ""
+	if firstServeMode {
+		cfg, _ := account.firstServeConfig() // Validated before resolving the initial proxy.
+		firstServeScope = fmt.Sprintf("%d:%d:%s", groupID, apiKeyID, cfg.key(*account.ProxyGroupID))
+		if scope, _ := resolveOpenAIWSExecutionScope(c, firstPayload.rawForHash, apiKeyID); scope != "" {
+			firstServeScope += ":" + scope
+		}
+		baseAcquireReq.FirstServeScope = firstServeScope
+	}
 	agentTaskRecoveryTried := false
 	var acquireTurnLease func(int, string, bool, bool) (*openAIWSConnLease, error)
 	acquireTurnLease = func(turn int, preferred string, forcePreferredConn bool, forceNewConn bool) (*openAIWSConnLease, error) {
 		req := cloneOpenAIWSAcquireRequest(baseAcquireReq)
 		req.PreferredConnID = strings.TrimSpace(preferred)
 		req.ForcePreferredConn = forcePreferredConn
+		if firstServeRoute != nil {
+			// A stale pooled connection must not pin the account to its old IP.
+			req.ForcePreferredConn = false
+			applyFirstServeHeaders(req.Headers, firstServeRoute)
+		}
 		// dedicated 模式下每次获取均新建连接，避免跨会话复用残留上下文；
 		// 上游读写失败后的重试同样新建，避免再拿到同批陈旧的空闲连接。
-		req.ForceNewConn = dedicatedMode || forceNewConn
+		req.ForceNewConn = dedicatedMode || forceNewConn || (firstServeMode && req.PreferredConnID == "")
 		acquireCtx, acquireCancel := context.WithTimeout(ctx, acquireTimeout)
 		lease, acquireErr := pool.Acquire(acquireCtx, req)
 		acquireCancel()
@@ -927,6 +977,24 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 			return nil, acquireErr
 		}
 		connID := strings.TrimSpace(lease.ConnID())
+		if firstServeMode {
+			if firstServe == nil && lease.conn.firstServe != nil && lease.conn.firstServe.scope == firstServeScope {
+				firstServe = lease.conn.firstServe
+				firstServe.status.Active = true
+			}
+			if firstServe == nil {
+				firstServe = newOpenAIFirstServeState(account, connID, time.Now())
+				firstServe.scope = firstServeScope
+				firstServe.fingerprint = lease.conn.handshakeCompatibility.codexInstallationID
+			} else if firstServe.status.ConnID != connID {
+				firstServe.bind(account.Proxy, connID, time.Now())
+				firstServe.fingerprint = lease.conn.handshakeCompatibility.codexInstallationID
+			}
+			firstServeRoute.entry.mu.Lock()
+			firstServe.status.ExpiresAt = firstServeRoute.entry.state.status.ExpiresAt
+			firstServeRoute.entry.mu.Unlock()
+			lease.conn.firstServe = firstServe
+		}
 		if handshakeTurnState := strings.TrimSpace(lease.HandshakeHeader(openAIWSTurnStateHeader)); handshakeTurnState != "" {
 			turnState = handshakeTurnState
 			if stateStore != nil && sessionHash != "" {
@@ -956,6 +1024,10 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 	}
 
 	var rejectedFieldRetryState *openAIResponsesRejectedFieldRetryState
+	firstServeTTFTMode := OpenAITTFTModeSemantic
+	if firstServeMode {
+		firstServeTTFTMode = s.openAITTFTMode(ctx)
+	}
 	sendAndRelay := func(turn int, lease *openAIWSConnLease, payload []byte, payloadBytes int, originalModel string, imageBillingModel string, imageSizeTier string, imageInputSize string, requestedReasoningEffort *string) (*OpenAIForwardResult, error) {
 		responseModelObserver := &upstreamResponseModelObserver{}
 		if lease == nil {
@@ -985,6 +1057,11 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 		imageCounter := newOpenAIImageOutputCounter()
 		var firstTokenMs *int
 		reqStream := openAIWSPayloadBoolFromRaw(payload, "stream", true)
+		firstServeStream := reqStream && !isExplicitOpenAICompactRequest(c, payload) && !isOpenAINativeCompactionV2(c)
+		if firstServe != nil && firstServeStream {
+			firstServe.status.Requests++
+			firstServe.publish(firstServe.status.Reason, time.Now())
+		}
 		turnPreviousResponseID := openAIWSPayloadStringFromRaw(payload, "previous_response_id")
 		turnPreviousResponseIDKind := ClassifyOpenAIPreviousResponseIDKind(turnPreviousResponseID)
 		turnPromptCacheKey := openAIWSPayloadStringFromRaw(payload, "prompt_cache_key")
@@ -1152,9 +1229,16 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 			if isTerminalEvent {
 				terminalEventCount++
 			}
-			if firstTokenMs == nil && isTokenEvent {
+			startsToken := isTokenEvent
+			if firstServeMode {
+				startsToken = isTokenEvent && openAIStreamDataStartsTTFT(string(upstreamMessage), eventType, false, firstServeTTFTMode)
+			}
+			if firstTokenMs == nil && startsToken {
 				ms := int(time.Since(turnStart).Milliseconds())
 				firstTokenMs = &ms
+				if firstServe != nil && firstServeStream {
+					firstServe.observe(ms, time.Now())
+				}
 			}
 			imageCounter.AddSSEData(upstreamMessage)
 
@@ -1259,6 +1343,12 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 					result.wsReplayInput = replayInput
 					result.wsReplayInputExists = true
 				}
+				if firstServe != nil {
+					result.FirstServeActive = firstServe.uses.Add(1) > 1 && firstServeStream
+					output := replayCollector.AllItems()
+					fullOutput := gjson.GetBytes(upstreamMessage, "response.output").IsArray()
+					firstServe.finish(responseID, output, fullOutput && (terminalEvent == "response.completed" || terminalEvent == "response.done"))
+				}
 				if imageCount > 0 {
 					result.ImageCount = imageCount
 					result.ImageSize = imageSizeTier
@@ -1333,6 +1423,17 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 		}
 	}
 	defer releaseSessionLease()
+	defer func() {
+		if firstServe == nil {
+			return
+		}
+		firstServe.status.Active = false
+		reason := firstServe.status.Reason
+		if returnErr != nil {
+			reason = "connection_failed"
+		}
+		firstServe.publish(reason, time.Now())
+	}()
 
 	turn := 1
 	rejectedFieldRetryState = newOpenAIResponsesRejectedFieldRetryState(currentPayload)
@@ -1371,6 +1472,18 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 		}
 		if turnPrevRecoveryTried || !s.openAIWSIngressPreviousResponseRecoveryEnabled() {
 			return false
+		}
+		if firstServe != nil {
+			replay, safe := firstServe.replay(currentPayload)
+			if !safe {
+				firstServe.publish("context_incomplete", time.Now())
+				return false
+			}
+			turnPrevRecoveryTried = true
+			currentPayload, currentPayloadBytes = replay, len(replay)
+			resetSessionLease(true)
+			skipBeforeTurn = true
+			return true
 		}
 		// 携带 function_call_output 的请求不能丢弃 previous_response_id：
 		// 上游 API 需要 response chain 来匹配 tool_result 与之前的 tool_use，
@@ -1548,10 +1661,16 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 			currentTurnReplayInput = nextReplayInput
 			currentTurnReplayInputExists = nextReplayInputExists
 		}
+		if firstServe != nil {
+			_, safe := firstServe.replay(currentPayload)
+			// A locally complete conversation includes assistant messages as well as tools.
+			currentTurnReplayInput = firstServe.current
+			currentTurnReplayInputExists = safe
+		}
 		replayHasFunctionCallOutput := currentTurnReplayInputExists &&
 			openAIWSRawItemsHasFunctionCallOutput(currentTurnReplayInput)
 		hasFunctionCallOutput = hasFunctionCallOutput || replayHasFunctionCallOutput
-		if storeDisabled && turn > 1 && currentPreviousResponseID != "" {
+		if storeDisabled && turn > 1 && currentPreviousResponseID != "" && (!firstServeMode || currentTurnReplayInputExists) {
 			shouldKeepPreviousResponseID := false
 			strictReason := ""
 			var strictErr error
@@ -1636,6 +1755,46 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 				}
 			}
 		}
+		if firstServeRoute != nil {
+			_, routedAccount, route, routeErr := s.prepareFirstServeRoute(ctx, c, account, firstClientMessage, routeOptions)
+			if routeErr != nil {
+				return routeErr
+			}
+			firstServeRoute.release()
+			firstServeRoute = route
+			changed := firstServe != nil && (firstServe.status.ProxyID != routedAccount.Proxy.ID || firstServe.fingerprint != route.fingerprint)
+			account = routedAccount
+			baseAcquireReq.Account = account
+			baseAcquireReq.ProxyURL = account.Proxy.URL()
+			if changed {
+				// Preserve server continuation when full local replay is unavailable.
+				// Context completeness no longer delays the fixed IP rotation.
+				if replay, safe := firstServe.replay(currentPayload); safe {
+					currentPayload, currentPayloadBytes = replay, len(replay)
+					currentPreviousResponseID = ""
+				}
+				if stateStore != nil {
+					stateStore.DeleteResponseConn(firstServe.lastID)
+					if bound, ok := stateStore.GetSessionConn(groupID, sessionHash); ok && bound == sessionConnID {
+						stateStore.DeleteSessionConn(groupID, sessionHash)
+					}
+					stateStore.DeleteSessionTurnState(groupID, sessionHash)
+				}
+				resetSessionLease(true)
+				baseAcquireReq.Headers.Del(openAIWSTurnStateHeader)
+				turnState = ""
+				firstServe.status.Rotations++
+				logOpenAIWSModeInfo("first_serve_rotate account_id=%d turn=%d proxy_id=%d", account.ID, turn, account.Proxy.ID)
+			}
+			if firstServe != nil {
+				route.entry.mu.Lock()
+				firstServe.status.ExpiresAt = route.entry.state.status.ExpiresAt
+				if route.entry.state.status.Reason == "proxy_unavailable" {
+					firstServe.publish("proxy_unavailable", time.Now())
+				}
+				route.entry.mu.Unlock()
+			}
+		}
 		forcePreferredConn := isStrictAffinityTurn(currentPayload)
 		if sessionLease == nil {
 			acquiredLease, acquireErr := acquireTurnLease(turn, preferredConnID, forcePreferredConn, turnRetry > 0)
@@ -1650,6 +1809,14 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 				unpinSessionConn(sessionConnID)
 			}
 		}
+
+		if firstServe != nil && (firstServe.status.ProxyID != account.Proxy.ID || firstServe.fingerprint != firstServeRoute.fingerprint) {
+			// A reconnect may recover history from a lease on the previous IP.
+			// Rotate at the next loop boundary before sending anything upstream.
+			skipBeforeTurn = true
+			continue
+		}
+
 		shouldPreflightPing := turn > 1 && sessionLease != nil && sessionLease.SupportsIdlePingWithoutReader() && turnRetry == 0
 		if shouldPreflightPing && openAIWSIngressPreflightPingIdle > 0 && !lastTurnFinishedAt.IsZero() {
 			if time.Since(lastTurnFinishedAt) < openAIWSIngressPreflightPingIdle {
@@ -1673,7 +1840,7 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 					hasReplayToolContext := hasFCOutput &&
 						currentTurnReplayInputExists &&
 						openAIWSRawItemsHaveToolCallContextForOutputs(currentTurnReplayInput)
-					if !turnPrevRecoveryTried && currentPreviousResponseID != "" && (!hasFCOutput || hasReplayToolContext) {
+					if !turnPrevRecoveryTried && currentPreviousResponseID != "" && (!firstServeMode || currentTurnReplayInputExists) && (!hasFCOutput || hasReplayToolContext) {
 						updatedPayload, removed, dropErr := dropPreviousResponseIDFromRawPayload(currentPayload)
 						if dropErr != nil || !removed {
 							reason := "not_removed"
@@ -1780,6 +1947,17 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 			)
 		}
 
+		if firstServeRoute != nil {
+			var routeErr error
+			currentPayload, routeErr = applyFirstServeBody(currentPayload, firstServeRoute)
+			if routeErr != nil {
+				return routeErr
+			}
+			currentPayloadBytes = len(currentPayload)
+		}
+		if firstServe != nil {
+			firstServe.input(currentPayload)
+		}
 		result, relayErr := sendAndRelay(turn, sessionLease, currentPayload, currentPayloadBytes, currentOriginalModel, currentImageBillingModel, currentImageSizeTier, currentImageInputSize, currentRequestedReasoningEffort)
 		if relayErr != nil {
 			lastTurnClean = false

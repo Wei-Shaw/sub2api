@@ -684,10 +684,14 @@
           />
         </div>
         <div id="bulk-edit-proxy-body" :class="!enableProxy && 'pointer-events-none opacity-50'">
-          <ProxySelector
-            v-model="proxyId"
+          <ProxyBindingSelector
+            :proxy-id="proxyId"
+            :proxy-group-id="proxyGroupId"
             :proxies="proxies"
+            :proxy-groups="props.proxyGroups"
             aria-labelledby="bulk-edit-proxy-label"
+            @update:proxy-id="proxyId = $event"
+            @update:proxy-group-id="proxyGroupId = $event"
           />
         </div>
       </div>
@@ -1482,6 +1486,7 @@ import type {
   AdminGroup,
   AccountPlatform,
   AccountType,
+  ProxyGroup,
   OpenAICompactMode,
   OpenAIEndpointCapability,
   OpenAIResponsesMode
@@ -1489,7 +1494,7 @@ import type {
 import BaseDialog from '@/components/common/BaseDialog.vue'
 import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
 import Select from '@/components/common/Select.vue'
-import ProxySelector from '@/components/common/ProxySelector.vue'
+import ProxyBindingSelector from '@/components/common/ProxyBindingSelector.vue'
 import GroupSelector from '@/components/common/GroupSelector.vue'
 import ModelWhitelistSelector from '@/components/account/ModelWhitelistSelector.vue'
 import Icon from '@/components/icons/Icon.vue'
@@ -1530,9 +1535,12 @@ interface Props {
   }
   proxies: ProxyConfig[]
   groups: AdminGroup[]
+  proxyGroups?: ProxyGroup[]
 }
 
-const props = defineProps<Props>()
+const props = withDefaults(defineProps<Props>(), {
+  proxyGroups: () => []
+})
 const emit = defineEmits<{
   close: []
   updated: []
@@ -1686,6 +1694,7 @@ const interceptWarmupRequests = ref(false)
 const headerOverrideEnabled = ref(false)
 const headerOverrideRows = ref<HeaderOverrideRow[]>([])
 const proxyId = ref<number | null>(null)
+const proxyGroupId = ref<number | null>(null)
 const concurrency = ref(1)
 const loadFactor = ref<number | null>(null)
 const priority = ref(1)
@@ -1938,8 +1947,12 @@ const buildUpdatePayload = (): Record<string, unknown> | null => {
   }
 
   if (enableProxy.value) {
-    // 后端期望 proxy_id: 0 表示清除代理，而不是 null
-    updates.proxy_id = proxyId.value === null ? 0 : proxyId.value
+    // 代理组与单个代理互斥；0 表示清除当前单代理绑定。
+    if (proxyGroupId.value !== null) {
+      updates.proxy_group_id = proxyGroupId.value
+    } else {
+      updates.proxy_id = proxyId.value === null ? 0 : proxyId.value
+    }
   }
 
   if (enableConcurrency.value) {
@@ -2396,6 +2409,7 @@ watch(
       headerOverrideEnabled.value = false
       headerOverrideRows.value = []
       proxyId.value = null
+      proxyGroupId.value = null
       concurrency.value = 1
       loadFactor.value = null
       priority.value = 1

@@ -734,6 +734,9 @@ func (s *GeminiOAuthService) RefreshAccountToken(ctx context.Context, account *A
 	if account.Platform != PlatformGemini || account.Type != AccountTypeOAuth {
 		return nil, fmt.Errorf("account is not a Gemini OAuth account")
 	}
+	if err := resolveDefaultProxyGroupAccount(ctx, account); err != nil {
+		return nil, err
+	}
 
 	refreshToken := account.GetCredential("refresh_token")
 	if strings.TrimSpace(refreshToken) == "" {

@@ -564,7 +564,7 @@ func detachStreamUpstreamContext(ctx context.Context, stream bool) (context.Cont
 	if ctx == nil {
 		return context.Background(), func() {}
 	}
-	if !stream {
+	if !stream || ctx.Value(modelEvaluationContextKey{}) == true {
 		return ctx, func() {}
 	}
 	return context.WithoutCancel(ctx), func() {}
@@ -573,6 +573,9 @@ func detachStreamUpstreamContext(ctx context.Context, stream bool) (context.Cont
 func detachUpstreamContext(ctx context.Context) (context.Context, context.CancelFunc) {
 	if ctx == nil {
 		return context.Background(), func() {}
+	}
+	if ctx.Value(modelEvaluationContextKey{}) == true {
+		return ctx, func() {}
 	}
 	return context.WithoutCancel(ctx), func() {}
 }

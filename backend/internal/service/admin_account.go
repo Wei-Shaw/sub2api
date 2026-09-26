@@ -294,6 +294,7 @@ func (s *adminServiceImpl) DuplicateAccount(ctx context.Context, id int64, actor
 		return nil, err
 	}
 	proxyID := source.ProxyID
+	proxyGroupID := source.ProxyGroupID
 	if source.ProxyFallbackOriginID != nil {
 		// Proxy fallback is transient runtime state; duplicate the configured origin.
 		proxyID = source.ProxyFallbackOriginID
@@ -306,6 +307,7 @@ func (s *adminServiceImpl) DuplicateAccount(ctx context.Context, id int64, actor
 		Credentials:           credentials,
 		Extra:                 extra,
 		ProxyID:               cloneAccountValuePointer(proxyID),
+		ProxyGroupID:          cloneAccountValuePointer(proxyGroupID),
 		Concurrency:           source.Concurrency,
 		Priority:              source.Priority,
 		RateMultiplier:        cloneAccountValuePointer(source.RateMultiplier),
@@ -328,6 +330,9 @@ func (s *adminServiceImpl) DuplicateAccount(ctx context.Context, id int64, actor
 	}
 	duplicate, err := buildAccountForCreate(input, accountExtra)
 	if err != nil {
+		return nil, err
+	}
+	if err := validateOpenAIFirstServeProxies(ctx, duplicate); err != nil {
 		return nil, err
 	}
 	// A copied credential must be reviewed before it can share live traffic with its source.
@@ -422,17 +427,30 @@ func buildAccountForCreate(input *CreateAccountInput, accountExtra map[string]an
 	delete(accountExtra, OpenCodeGoUsageSnapshotExtraKey)
 	accountExtra = prepareCodexFingerprintExtraForCreate(input.Platform, input.Type, accountExtra)
 	account := &Account{
-		Name:        input.Name,
-		Notes:       normalizeAccountNotes(input.Notes),
-		Platform:    input.Platform,
-		Type:        input.Type,
-		Credentials: input.Credentials,
-		Extra:       accountExtra,
-		ProxyID:     input.ProxyID,
-		Concurrency: normalizeAccountConcurrency(input.Platform, input.Type, input.Concurrency),
-		Priority:    input.Priority,
-		Status:      StatusActive,
-		Schedulable: true,
+		Name:         input.Name,
+		Notes:        normalizeAccountNotes(input.Notes),
+		Platform:     input.Platform,
+		Type:         input.Type,
+		Credentials:  input.Credentials,
+		Extra:        accountExtra,
+		ProxyID:      input.ProxyID,
+		ProxyGroupID: input.ProxyGroupID,
+		Concurrency:  normalizeAccountConcurrency(input.Platform, input.Type, input.Concurrency),
+		Priority:     input.Priority,
+		Status:       StatusActive,
+		Schedulable:  true,
+	}
+	if account.ProxyID != nil && *account.ProxyID <= 0 {
+		account.ProxyID = nil
+	}
+	if account.ProxyGroupID != nil && *account.ProxyGroupID <= 0 {
+		account.ProxyGroupID = nil
+	}
+	if account.ProxyID != nil && account.ProxyGroupID != nil {
+		return nil, infraerrors.BadRequest("ACCOUNT_PROXY_BINDING_CONFLICT", "proxy_id and proxy_group_id cannot be set together")
+	}
+	if err := validateOpenAIFirstServe(account); err != nil {
+		return nil, err
 	}
 	if input.ProbeEnabled != nil && *input.ProbeEnabled {
 		if !isUpstreamBillingProbeAccount(account) {
@@ -475,6 +493,56 @@ func buildAccountForCreate(input *CreateAccountInput, accountExtra map[string]an
 	return account, nil
 }
 
+// DefaultOpenAIFirstServeExtra enables the fixed-IP rotation policy for
+// every newly created OpenAI account unless the caller explicitly supplied a
+// mode. A proxy group may be attached later (imports often do that in a
+// separate step); runtime validation reports the missing group clearly.
+func DefaultOpenAIFirstServeExtra(platform, accountType string, extra map[string]any) map[string]any {
+	if platform != PlatformOpenAI || (accountType != AccountTypeOAuth && accountType != AccountTypeSetupToken && accountType != AccountTypeAPIKey) {
+		return extra
+	}
+	result := maps.Clone(extra)
+	if result == nil {
+		result = make(map[string]any, 4)
+	}
+	modeKey, enabledKey := "", ""
+	switch accountType {
+	case AccountTypeOAuth, AccountTypeSetupToken:
+		modeKey, enabledKey = "openai_oauth_responses_websockets_v2_mode", "openai_oauth_responses_websockets_v2_enabled"
+	case AccountTypeAPIKey:
+		modeKey, enabledKey = "openai_apikey_responses_websockets_v2_mode", "openai_apikey_responses_websockets_v2_enabled"
+	}
+	explicitMode := false
+	for _, key := range []string{modeKey, enabledKey, "responses_websockets_v2_enabled", "openai_ws_enabled"} {
+		if _, exists := result[key]; exists {
+			explicitMode = true
+			break
+		}
+	}
+	if !explicitMode {
+		result[modeKey] = OpenAIWSIngressModeFirstServe
+		result[enabledKey] = true
+	}
+	account := &Account{Platform: platform, Type: accountType, Extra: result}
+	if !account.IsOpenAIFirstServe() {
+		return result
+	}
+	if _, exists := result["openai_first_serve"]; !exists {
+		result["openai_first_serve"] = map[string]any{
+			"reuse_scope":    "account",
+			"rotate_seconds": 240,
+			"proxy_mode":     "all",
+			"proxy_ids":      []int64{},
+		}
+	}
+	if accountType == AccountTypeOAuth || accountType == AccountTypeSetupToken {
+		if _, exists := result[codexFingerprintModeExtraKey]; !exists {
+			result[codexFingerprintModeExtraKey] = string(codexFingerprintFull)
+		}
+	}
+	return result
+}
+
 func (s *adminServiceImpl) CreateAccount(ctx context.Context, input *CreateAccountInput) (*Account, error) {
 	accountExtra, err := normalizeOpenAILongContextBillingExtra(input.Platform, input.Extra)
 	if err != nil {
@@ -484,6 +552,7 @@ func (s *adminServiceImpl) CreateAccount(ctx context.Context, input *CreateAccou
 	if err != nil {
 		return nil, err
 	}
+	accountExtra = DefaultOpenAIFirstServeExtra(input.Platform, input.Type, accountExtra)
 	accountExtra, err = normalizeOpenAIAutoResetCreditExtra(input.Platform, input.Type, false, accountExtra)
 	if err != nil {
 		return nil, err
@@ -527,6 +596,12 @@ func (s *adminServiceImpl) CreateAccount(ctx context.Context, input *CreateAccou
 
 	account, err := buildAccountForCreate(input, accountExtra)
 	if err != nil {
+		return nil, err
+	}
+	if err := assignDefaultFirstServeProxyGroup(ctx, account); err != nil {
+		return nil, err
+	}
+	if err := validateOpenAIFirstServeProxies(ctx, account); err != nil {
 		return nil, err
 	}
 	if err := s.ValidateAccountGroupBindings(ctx, groupIDs); err != nil {
@@ -755,12 +830,25 @@ func (s *adminServiceImpl) UpdateAccount(ctx context.Context, id int64, input *U
 	}
 	// 影子代理恒继承母账号(由 propagateProxyToShadows 同步),不接受独立编辑——外审 B/P1;
 	// 否则要等母账号下次改 proxy 才被覆盖,期间影子会出现"有时继承、有时独立"的漂移。
-	if input.ProxyID != nil && !account.IsCredentialShadow() {
+	if (input.ProxyID != nil || input.ProxyGroupID != nil) && !account.IsCredentialShadow() {
+		if input.ProxyID != nil && input.ProxyGroupID != nil {
+			return nil, infraerrors.BadRequest("ACCOUNT_PROXY_BINDING_CONFLICT", "proxy_id and proxy_group_id cannot be set together")
+		}
 		// 0 表示清除代理（前端发送 0 而不是 null 来表达清除意图）
-		if *input.ProxyID == 0 {
-			account.ProxyID = nil
+		if input.ProxyID != nil {
+			if *input.ProxyID == 0 {
+				account.ProxyID = nil
+			} else {
+				account.ProxyID = input.ProxyID
+			}
+			account.ProxyGroupID = nil
 		} else {
-			account.ProxyID = input.ProxyID
+			if *input.ProxyGroupID == 0 {
+				account.ProxyGroupID = nil
+			} else {
+				account.ProxyGroupID = input.ProxyGroupID
+			}
+			account.ProxyID = nil
 		}
 		account.Proxy = nil // 清除关联对象，防止 GORM Save 时根据 Proxy.ID 覆盖 ProxyID
 	}
@@ -855,6 +943,15 @@ func (s *adminServiceImpl) UpdateAccount(ctx context.Context, id int64, input *U
 		}
 	}
 
+	if err := assignDefaultFirstServeProxyGroup(ctx, account); err != nil {
+		return nil, err
+	}
+	if err := validateOpenAIFirstServe(account); err != nil {
+		return nil, err
+	}
+	if err := validateOpenAIFirstServeProxies(ctx, account); err != nil {
+		return nil, err
+	}
 	billingSettingsAppliedAtomically := false
 	updater := s.accountBillingRepo
 	if updater == nil {
@@ -898,6 +995,11 @@ func (s *adminServiceImpl) UpdateAccount(ctx context.Context, id int64, input *U
 	// 影子自身 proxy 不可独立编辑(见上),故对影子的更新不触发传播。
 	if input.ProxyID != nil && !account.IsCredentialShadow() {
 		if err := s.propagateProxyToShadows(ctx, id, account.ProxyID); err != nil {
+			return nil, err
+		}
+	}
+	if input.ProxyGroupID != nil && !account.IsCredentialShadow() {
+		if err := s.propagateProxyGroupToShadows(ctx, id, account.ProxyGroupID); err != nil {
 			return nil, err
 		}
 	}
@@ -1135,6 +1237,9 @@ func (s *adminServiceImpl) BulkUpdateAccounts(ctx context.Context, input *BulkUp
 	if input.ProxyID != nil {
 		repoUpdates.ProxyID = input.ProxyID
 	}
+	if input.ProxyGroupID != nil {
+		repoUpdates.ProxyGroupID = input.ProxyGroupID
+	}
 	if input.Concurrency != nil {
 		repoUpdates.Concurrency = input.Concurrency
 	}
@@ -1173,6 +1278,17 @@ func (s *adminServiceImpl) BulkUpdateAccounts(ctx context.Context, input *BulkUp
 		}
 		for _, accountID := range input.AccountIDs {
 			if err := s.propagateProxyToShadows(ctx, accountID, effectiveProxyID); err != nil {
+				return nil, err
+			}
+		}
+	}
+	if repoUpdates.ProxyGroupID != nil {
+		var effectiveProxyGroupID *int64
+		if *repoUpdates.ProxyGroupID != 0 {
+			effectiveProxyGroupID = repoUpdates.ProxyGroupID
+		}
+		for _, accountID := range input.AccountIDs {
+			if err := s.propagateProxyGroupToShadows(ctx, accountID, effectiveProxyGroupID); err != nil {
 				return nil, err
 			}
 		}
@@ -1440,6 +1556,7 @@ func (s *adminServiceImpl) CreateShadow(ctx context.Context, parentID int64, opt
 		ParentAccountID: &parentID,
 		QuotaDimension:  QuotaDimensionSpark,
 		ProxyID:         parent.ProxyID,
+		ProxyGroupID:    parent.ProxyGroupID,
 		Priority:        priority,
 		Concurrency:     concurrency,
 		Schedulable:     true,
@@ -1484,6 +1601,10 @@ func (s *adminServiceImpl) propagateProxyToShadows(ctx context.Context, parentID
 	return propagateAccountProxyToShadows(ctx, s.accountRepo, parentID, proxyID)
 }
 
+func (s *adminServiceImpl) propagateProxyGroupToShadows(ctx context.Context, parentID int64, groupID *int64) error {
+	return propagateAccountProxyGroupToShadows(ctx, s.accountRepo, parentID, groupID)
+}
+
 // propagateAccountProxyToShadows 把母账号的 proxy 同步到其所有 spark 影子(影子 proxy 恒继承母账号)。
 // 供 AdminService 编辑路径与 CRS 同步路径共用——后者改动母账号 proxy 后必须同样传播,否则影子保留
 // 旧 proxy 出现出站漂移(外审第8轮)。
@@ -1494,8 +1615,24 @@ func propagateAccountProxyToShadows(ctx context.Context, repo AccountRepository,
 	}
 	for _, shadow := range shadows {
 		shadow.ProxyID = proxyID
+		shadow.ProxyGroupID = nil
 		if err := repo.Update(ctx, shadow); err != nil {
 			return fmt.Errorf("update spark shadow %d proxy: %w", shadow.ID, err)
+		}
+	}
+	return nil
+}
+
+func propagateAccountProxyGroupToShadows(ctx context.Context, repo AccountRepository, parentID int64, groupID *int64) error {
+	shadows, err := repo.ListShadowsByParent(ctx, parentID)
+	if err != nil {
+		return fmt.Errorf("list spark shadows for proxy group propagation: %w", err)
+	}
+	for _, shadow := range shadows {
+		shadow.ProxyGroupID = groupID
+		shadow.ProxyID = nil
+		if err := repo.Update(ctx, shadow); err != nil {
+			return fmt.Errorf("update spark shadow %d proxy group: %w", shadow.ID, err)
 		}
 	}
 	return nil

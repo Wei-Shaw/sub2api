@@ -4,6 +4,9 @@ import (
 	"bytes"
 	"compress/gzip"
 	"compress/zlib"
+	"context"
+	"errors"
+	"io"
 	"net/http"
 	"strings"
 	"testing"
@@ -107,6 +110,13 @@ func TestReadRequestBodyWithPrealloc_RejectsUnsupportedEncoding(t *testing.T) {
 	if !strings.Contains(err.Error(), "br") {
 		t.Fatalf("error should mention encoding, got %v", err)
 	}
+	diagnostic := RequestBodyDiagnostics(err)
+	if diagnostic.Kind != RequestBodyErrorUnsupportedEncoding {
+		t.Fatalf("unexpected error kind: %s", diagnostic.Kind)
+	}
+	if diagnostic.Encoding != "br" {
+		t.Fatalf("unexpected encoding: %q", diagnostic.Encoding)
+	}
 }
 
 func TestReadRequestBodyWithPrealloc_RejectsCorruptZstd(t *testing.T) {
@@ -115,7 +125,69 @@ func TestReadRequestBodyWithPrealloc_RejectsCorruptZstd(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error for corrupt zstd body, got nil")
 	}
+	if got := RequestBodyDiagnostics(err).Kind; got != RequestBodyErrorInvalidCompression {
+		t.Fatalf("unexpected error kind: %s", got)
+	}
 }
+
+func TestReadRequestBodyWithPrealloc_DetectsShortBody(t *testing.T) {
+	req := newRequestWithBody(t, []byte(samplePayload), "")
+	req.ContentLength += 10
+
+	_, err := ReadRequestBodyWithPrealloc(req)
+	if err == nil {
+		t.Fatal("expected short body error, got nil")
+	}
+	diagnostic := RequestBodyDiagnostics(err)
+	if diagnostic.Kind != RequestBodyErrorUnexpectedEOF {
+		t.Fatalf("unexpected error kind: %s", diagnostic.Kind)
+	}
+	if diagnostic.BytesRead != int64(len(samplePayload)) {
+		t.Fatalf("unexpected bytes read: %d", diagnostic.BytesRead)
+	}
+}
+
+type canceledBodyReader struct{}
+
+func (canceledBodyReader) Read([]byte) (int, error) { return 0, context.Canceled }
+func (canceledBodyReader) Close() error             { return nil }
+
+func TestReadRequestBodyWithPrealloc_ClassifiesCanceledRead(t *testing.T) {
+	req := newRequestWithBody(t, nil, "")
+	req.Body = canceledBodyReader{}
+	req.ContentLength = -1
+
+	_, err := ReadRequestBodyWithPrealloc(req)
+	if err == nil {
+		t.Fatal("expected canceled read error, got nil")
+	}
+	if got := RequestBodyDiagnostics(err).Kind; got != RequestBodyErrorReadCanceled {
+		t.Fatalf("unexpected error kind: %s", got)
+	}
+}
+
+func TestReadDecompressedBody_RejectsOverflow(t *testing.T) {
+	_, err := readDecompressedBody(bytes.NewReader([]byte("12345")), 4)
+	if err == nil {
+		t.Fatal("expected overflow error, got nil")
+	}
+	var maxErr *http.MaxBytesError
+	if !errors.As(err, &maxErr) || maxErr.Limit != 4 {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestReadDecompressedBody_PreservesReadError(t *testing.T) {
+	wantErr := io.ErrClosedPipe
+	_, err := readDecompressedBody(errorReader{err: wantErr}, 4)
+	if !errors.Is(err, wantErr) {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+type errorReader struct{ err error }
+
+func (r errorReader) Read([]byte) (int, error) { return 0, r.err }
 
 func TestReadRequestBodyWithPrealloc_NilBody(t *testing.T) {
 	req, err := http.NewRequest(http.MethodPost, "/v1/responses", nil)

@@ -195,7 +195,7 @@ func (s *OpenAIGatewayService) CreateLiveCall(
 			return nil, ErrLiveConcurrencyFull
 		}
 
-		created, createErr := s.createUpstreamLiveCall(ctx, account, request, attestation)
+		created, createErr := s.createUpstreamLiveCall(ctx, account, request, attestation, leaseID)
 		selection.ReleaseFunc()
 		if createErr != nil {
 			s.releaseLiveLease(account.ID, identity.UserID, identity.APIKeyID, leaseID)
@@ -263,7 +263,18 @@ func (s *OpenAIGatewayService) createUpstreamLiveCall(
 	account *Account,
 	request *LiveCallRequest,
 	attestation string,
+	scope string,
 ) (*LiveCallCreated, error) {
+	ctx, account, route, routeErr := s.prepareFirstServeRoute(ctx, nil, account, nil, openAIFirstServeRouteOptions{fallbackScope: "live:" + scope})
+	if routeErr != nil {
+		return nil, routeErr
+	}
+	if route != nil {
+		defer route.release()
+	}
+	if err := resolveDefaultProxyGroupAccount(ctx, account); err != nil {
+		return nil, err
+	}
 	token, _, err := s.GetAccessToken(ctx, account)
 	if err != nil {
 		logLiveCreateStageFailure(ctx, account.ID, "access_token", err)
@@ -446,9 +457,19 @@ func (s *OpenAIGatewayService) dialLiveSideband(ctx context.Context, record *Liv
 	if account == nil || !account.SupportsOpenAIEndpointCapability(OpenAIEndpointCapabilityLive) {
 		return nil, ErrLiveUnavailable
 	}
+	ctx, account, route, err := s.prepareFirstServeRoute(ctx, nil, account, nil, openAIFirstServeRouteOptions{fallbackScope: "live:" + record.LeaseID})
+	if err != nil {
+		return nil, err
+	}
+	if route != nil {
+		defer route.release()
+	}
 	headers, err := s.liveSidebandHeaders(ctx, account, record)
 	if err != nil {
 		return nil, err
+	}
+	if route != nil {
+		applyFirstServeHeaders(headers, route)
 	}
 	target := strings.TrimRight(chatGPTLiveSidebandBaseURL, "/") + "/" + url.PathEscape(record.CallID)
 	conn, status, _, err := s.getOpenAIWSPassthroughDialer().Dial(ctx, target, headers, resolveAccountProxyURL(account))

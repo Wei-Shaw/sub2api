@@ -3,6 +3,7 @@ package repository
 import (
 	"context"
 	"testing"
+	"time"
 
 	"github.com/DATA-DOG/go-sqlmock"
 	dbent "github.com/Wei-Shaw/sub2api/ent"
@@ -52,5 +53,16 @@ func TestApplyRedeemAdjustment_MissingUser(t *testing.T) {
 
 	err := repo.ApplyRedeemBalanceAdjustment(context.Background(), 404, -1)
 	require.ErrorIs(t, err, service.ErrUserNotFound)
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
+func TestResetCheckInCycle_PreservesDailyCheckInState(t *testing.T) {
+	repo, mock := newRedeemAdjustmentRepoMock(t)
+	resetAt := time.Date(2026, 8, 30, 12, 0, 0, 0, time.UTC)
+	mock.ExpectExec(`INSERT INTO user_checkin_states .* ON CONFLICT \(user_id\) DO UPDATE SET cycle_reward = 0, reset_at = EXCLUDED\.reset_at, updated_at = EXCLUDED\.updated_at`).
+		WithArgs(int64(42), resetAt).
+		WillReturnResult(sqlmock.NewResult(0, 1))
+
+	require.NoError(t, repo.ResetCheckInCycle(context.Background(), 42, resetAt))
 	require.NoError(t, mock.ExpectationsWereMet())
 }
