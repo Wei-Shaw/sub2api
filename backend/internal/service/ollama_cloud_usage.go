@@ -915,6 +915,12 @@ func (s *OllamaCloudUsageService) refreshLoadedAccount(ctx context.Context, acco
 		return s.persistFailure(ctx, account, intervalMinutes, now, resp.StatusCode, "response_host_mismatch", 0, false)
 	}
 	if resp.StatusCode >= 300 && resp.StatusCode < 400 {
+		// A redirect to the sign-in page means the stored web session is no
+		// longer valid, which administrators must see as unauthorized rather
+		// than a generic redirect block.
+		if ollamaSettingsRedirectTargetsSignin(resp.Header.Get("Location")) {
+			return s.persistFailure(ctx, account, intervalMinutes, now, resp.StatusCode, "redirect_to_signin", retryAfter(resp.Header, now), true)
+		}
 		return s.persistFailure(ctx, account, intervalMinutes, now, resp.StatusCode, "redirect_blocked", retryAfter(resp.Header, now), false)
 	}
 	if resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden {
@@ -949,6 +955,27 @@ func (s *OllamaCloudUsageService) refreshLoadedAccount(ctx context.Context, acco
 		return nil, err
 	}
 	return snapshot, nil
+}
+
+// ollamaSettingsRedirectTargetsSignin reports whether a redirect Location from
+// the settings page points at the Ollama sign-in page, either as the relative
+// path /signin or as an absolute URL on ollama.com or www.ollama.com. Empty or
+// malformed values and any other host never count as a sign-in redirect.
+func ollamaSettingsRedirectTargetsSignin(location string) bool {
+	if location == "" {
+		return false
+	}
+	parsed, err := url.Parse(location)
+	if err != nil {
+		return false
+	}
+	if parsed.Path != "/signin" {
+		return false
+	}
+	if parsed.Host == "" {
+		return true
+	}
+	return strings.EqualFold(parsed.Host, "ollama.com") || strings.EqualFold(parsed.Host, "www.ollama.com")
 }
 
 func (s *OllamaCloudUsageService) persistFailure(
