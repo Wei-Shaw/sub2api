@@ -144,12 +144,15 @@ func (s *antigravityCompatStreamSession) hasMeaningfulData() bool {
 	return s.meaningfulData
 }
 
-func (s *antigravityCompatStreamSession) finish() *antigravityStreamResult {
+func (s *antigravityCompatStreamSession) finish() (*antigravityStreamResult, error) {
 	finalEvents, usage := s.processor.Finish()
 	mergeAntigravityCompatUsage(s.usage, usage)
 	s.consumeClaudeEvents(finalEvents)
+	if !s.hasMeaningfulData() && !s.writer.Disconnected() {
+		return nil, antigravityCompatEmptyStreamError()
+	}
 	s.adapter.Finalize(s.writer)
-	return s.result(s.writer.Disconnected())
+	return s.result(s.writer.Disconnected()), nil
 }
 
 func (s *antigravityCompatStreamSession) collectResult(clientDisconnect bool) *antigravityStreamResult {
@@ -236,8 +239,7 @@ func isMeaningfulAntigravityCompatEvent(event *apicompat.AnthropicStreamEvent) b
 		return delta.Text != "" ||
 			delta.PartialJSON != "" ||
 			delta.Thinking != "" ||
-			delta.Signature != "" ||
-			delta.StopReason != ""
+			delta.Signature != ""
 	}
 	return false
 }
@@ -295,7 +297,7 @@ func (s *AntigravityGatewayService) handleAntigravityCompatStream(
 				if !session.hasMeaningfulData() && !writer.Disconnected() {
 					return nil, antigravityCompatEmptyStreamError()
 				}
-				return session.finish(), nil
+				return session.finish()
 			}
 			if event.err != nil {
 				return s.handleAntigravityCompatReadError(c, session, event.err, maxLineSize, prefix)
