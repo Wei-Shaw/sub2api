@@ -1598,10 +1598,6 @@ type RedisConfig struct {
 	EnableTLS bool `mapstructure:"enable_tls"`
 }
 
-func (r *RedisConfig) Address() string {
-	return fmt.Sprintf("%s:%d", r.Host, r.Port)
-}
-
 type OpsConfig struct {
 	// Enabled controls whether ops features should run.
 	//
@@ -1818,6 +1814,10 @@ func load(allowMissingJWTSecret bool) (*Config, error) {
 			return nil, fmt.Errorf("read config error: %w", err)
 		}
 		// 配置文件不存在时使用默认值
+	}
+	// Only change the default: an explicit nonzero YAML/env port must still fail UDS validation.
+	if (&RedisConfig{Host: viper.GetString("redis.host")}).IsUnix() {
+		viper.SetDefault("redis.port", 0)
 	}
 	trustedProxiesEnv, trustedProxiesEnvConfigured := os.LookupEnv("SERVER_TRUSTED_PROXIES")
 	forwardedClientIPHeadersEnv, forwardedClientIPHeadersEnvConfigured := os.LookupEnv("SECURITY_FORWARDED_CLIENT_IP_HEADERS")
@@ -2662,6 +2662,9 @@ func setEnvReachableDefaults() {
 }
 
 func (c *Config) Validate() error {
+	if err := c.Redis.ValidateUnix(); err != nil {
+		return err
+	}
 	forwardedClientIPHeaders, err := NormalizeForwardedClientIPHeaders(c.Security.ForwardedClientIPHeaders)
 	if err != nil {
 		return fmt.Errorf("security.forwarded_client_ip_headers: %w", err)
