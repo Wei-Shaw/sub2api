@@ -494,9 +494,9 @@ describe('API Client', () => {
   // --- 网络错误 ---
 
   describe('网络错误', () => {
-    it('网络错误返回 status 0 的错误', async () => {
+    it.each(['ERR_NETWORK', 'ECONNABORTED', 'ETIMEDOUT', undefined])('网络错误保留错误码 %s', async (code) => {
       const adapter = vi.fn().mockRejectedValue({
-        code: 'ERR_NETWORK',
+        code,
         message: 'Network Error',
         config: { url: '/test' },
         // 没有 response
@@ -506,6 +506,7 @@ describe('API Client', () => {
       await expect(apiClient.get('/test')).rejects.toEqual(
         expect.objectContaining({
           status: 0,
+          code: code || 'ERR_NETWORK',
           message: 'Network error. Please check your connection.',
         })
       )

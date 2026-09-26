@@ -13,6 +13,33 @@ function pressTab(input: Element, shiftKey = false) {
 }
 
 describe('model tag keyboard navigation', () => {
+  it.each(['Enter', 'Tab', 'Backspace'])('leaves composing %s to the input method', async (key) => {
+    const wrapper = mount(ModelTagInput, { props: { models: ['existing'] } })
+    const input = wrapper.get('input')
+    if (key !== 'Backspace') await input.setValue('prefix')
+    const event = new KeyboardEvent('keydown', { key, isComposing: true, bubbles: true, cancelable: true })
+    input.element.dispatchEvent(event)
+    expect(event.defaultPrevented).toBe(false)
+    expect(wrapper.emitted('update:models')).toBeUndefined()
+  })
+
+  it('keeps tags on Delete and removes the last tag only on Backspace', async () => {
+    const wrapper = mount(ModelTagInput, { props: { models: ['existing'] } })
+    await wrapper.get('input').trigger('keydown', { key: 'Delete' })
+    expect(wrapper.emitted('update:models')).toBeUndefined()
+    await wrapper.get('input').trigger('keydown', { key: 'Backspace' })
+    expect(wrapper.emitted('update:models')).toEqual([[[]]])
+  })
+
+  it('commits ordinary Enter input and prevents form submission', async () => {
+    const wrapper = mount(ModelTagInput, { props: { models: [] } })
+    const input = wrapper.get('input'); await input.setValue('new-model')
+    const event = new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true })
+    input.element.dispatchEvent(event)
+    expect(event.defaultPrevented).toBe(true)
+    expect(wrapper.emitted('update:models')).toEqual([[['new-model']]])
+  })
+
   it.each([false, true])('allows leaving an empty input with Tab (shift: %s)', (shift) => {
     const wrapper = mount(ModelTagInput, { props: { models: ['gpt-4o'] } })
     expect(pressTab(wrapper.get('input').element, shift).defaultPrevented).toBe(false)
