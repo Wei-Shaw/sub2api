@@ -43,6 +43,10 @@ func buildRedisOptions(cfg *config.Config) *redis.Options {
 		MinIdleConns: cfg.Redis.MinIdleConns,                                     // 最小空闲连接
 	}
 
+	if cfg.Redis.IsUnix() {
+		opts.Network = "unix"
+	}
+
 	if cfg.Redis.EnableTLS {
 		opts.TLSConfig = &tls.Config{
 			MinVersion: tls.VersionTLS12,

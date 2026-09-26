@@ -870,8 +870,10 @@ database:
 # Redis 配置
 # =============================================================================
 redis:
-  # Redis host address
-  # Redis 主机地址
+  # Hostname/IP, or unix:/absolute/redis.sock (unix:///absolute/redis.sock also works).
+  # UDS: omit port or set it to null/0, and disable TLS. Credentials/db stay below.
+  # 主机名/IP 或 Unix Socket URL；UDS 端口省略、留空或填 0，TLS 必须关闭。
+  # 用户名、密码和 DB 仍使用下面的独立字段。
   host: "localhost"
   # Redis port
   # Redis 端口

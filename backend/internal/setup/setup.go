@@ -277,13 +277,36 @@ func testDatabaseConnection(cfg *DatabaseConfig, openDatabase postgresDatabaseOp
 	return nil
 }
 
+// validateRedisConnection is shared by setup validation and its connection test.
+func validateRedisConnection(host string, port int, enableTLS bool) error {
+	rc := config.RedisConfig{Host: host, Port: port, EnableTLS: enableTLS}
+	if rc.IsUnix() {
+		return rc.ValidateUnix()
+	}
+	if !validateHostname(host) {
+		return fmt.Errorf("invalid Redis hostname")
+	}
+	if !validatePort(port) {
+		return fmt.Errorf("invalid Redis port")
+	}
+	return nil
+}
+
 // TestRedisConnection tests the Redis connection
 func TestRedisConnection(cfg *RedisConfig) error {
+	rc := config.RedisConfig{Host: cfg.Host, Port: cfg.Port, EnableTLS: cfg.EnableTLS}
+	if err := rc.ValidateUnix(); err != nil {
+		return err
+	}
 	opts := &redis.Options{
-		Addr:     fmt.Sprintf("%s:%d", cfg.Host, cfg.Port),
+		Addr:     rc.Address(),
 		Username: cfg.Username,
 		Password: cfg.Password,
 		DB:       cfg.DB,
+	}
+
+	if rc.IsUnix() {
+		opts.Network = "unix"
 	}
 
 	if cfg.EnableTLS {
@@ -621,6 +644,11 @@ func AutoSetupFromEnv() error {
 		},
 		Timezone:                tz,
 		MigrationTimeoutSeconds: getEnvIntOrDefault("SETUP_MIGRATION_TIMEOUT_SECONDS", 0),
+	}
+
+	// UDS has no port; keep an explicit REDIS_PORT for strict validation.
+	if (&config.RedisConfig{Host: cfg.Redis.Host}).IsUnix() && strings.TrimSpace(os.Getenv("REDIS_PORT")) == "" {
+		cfg.Redis.Port = 0
 	}
 
 	// Generate JWT secret if not provided

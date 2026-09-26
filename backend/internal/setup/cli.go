@@ -10,6 +10,8 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/Wei-Shaw/sub2api/internal/config"
+
 	"golang.org/x/term"
 )
 
@@ -125,13 +127,18 @@ func RunCLI() error {
 
 	for {
 		cfg.Redis.Host = promptString(reader, "Redis Host", "localhost")
-		if cliValidateHostname(cfg.Redis.Host) {
+		port := 6379
+		if (&config.RedisConfig{Host: cfg.Redis.Host}).IsUnix() {
+			port = 0
+		}
+		if validateRedisConnection(cfg.Redis.Host, port, false) == nil {
 			break
 		}
-		fmt.Println("  Invalid hostname format. Use alphanumeric, dots, hyphens only.")
+		fmt.Println("  Invalid Redis host. Use a hostname/IP or unix:/absolute/path.")
 	}
 
-	for {
+	redisUsesUnixSocket := (&config.RedisConfig{Host: cfg.Redis.Host}).IsUnix()
+	for !redisUsesUnixSocket {
 		cfg.Redis.Port = promptInt(reader, "Redis Port", 6379)
 		if cliValidatePort(cfg.Redis.Port) {
 			break
@@ -149,7 +156,9 @@ func RunCLI() error {
 		fmt.Println("  Invalid Redis DB. Must be between 0 and 15.")
 	}
 
-	cfg.Redis.EnableTLS = promptConfirm(reader, "Enable Redis TLS?")
+	if !redisUsesUnixSocket {
+		cfg.Redis.EnableTLS = promptConfirm(reader, "Enable Redis TLS?")
+	}
 
 	fmt.Println()
 	fmt.Print("Testing Redis connection... ")
