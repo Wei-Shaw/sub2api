@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"log/slog"
 	"time"
 )
 
@@ -35,8 +36,8 @@ const (
 // when an account's Ollama Cloud usage is confirmed exhausted from a fresh
 // successful snapshot; resetAt is the earliest wall-clock rollover of the
 // exhausted window(s). It is never invoked for accounts that are not configured
-// Ollama usage accounts, lack a web session, are in failure backoff, or whose most
-// recent snapshot is not exhausted.
+// Ollama usage accounts, lack a web session, or whose most recent snapshot is not
+// exhausted.
 //
 // The callback runs on the single coordinator, so it must not block indefinitely:
 // the next serialized probe (and Stop) would be held back. It MAY do bounded
@@ -185,13 +186,17 @@ func (s *OllamaCloudUsageService) storeProbeGroupResult(key string, entry ollama
 
 // runOllamaCloudUsageProbe resolves the account and, when appropriate, performs a
 // controlled group refresh and reports exhaustion. All decisions are best-effort;
-// ineligible/missing-session accounts, transient failures, backoff and
-// non-exhaustion are skipped silently.
+// accounts that cannot be probed at all are skipped with a single Debug line, and
+// every executed probe reports its outcome (fetch failure, non-exhaustion, or an
+// exhausted window without a usable reset) exactly once.
 //
 // This is a 429-event recovery query: it deliberately runs regardless of the
 // periodic auto_refresh switch (a model was just refused, so a one-off read is
-// warranted even when auto-refresh is off). It still respects the presence of a
-// configured session/cookie and any scrape-429 failure backoff.
+// warranted even when auto-refresh is off) and regardless of a scrape-429
+// failure backoff recorded on the snapshot — the model 429 is itself fresh
+// evidence that the account still needs a recovery horizon, and the auto-refresh
+// chain keeps enforcing its own backoff unchanged. It still respects the
+// presence of a configured session/cookie and the 30s group cooldown.
 func (s *OllamaCloudUsageService) runOllamaCloudUsageProbe(
 	ctx context.Context,
 	accountID int64,
@@ -202,21 +207,26 @@ func (s *OllamaCloudUsageService) runOllamaCloudUsageProbe(
 	}
 	account, err := s.accountRepo.GetByID(ctx, accountID)
 	if err != nil || account == nil {
+		logOllamaCloudUsageProbeSkipped(accountID, "account_unavailable", err)
 		return
 	}
 	if !IsOllamaCloudUsageAccount(account) {
+		logOllamaCloudUsageProbeSkipped(accountID, "account_ineligible", nil)
 		return
 	}
 	// Resolve the api_key group so the account sees the group's managed session
 	// and most recent snapshot even when it is not the row that last refreshed.
 	if err := s.ResolveAccounts(ctx, []*Account{account}); err != nil {
+		logOllamaCloudUsageProbeSkipped(accountID, "group_resolve_failed", err)
 		return
 	}
 	if !ollamaCloudUsageConfigured(account) {
+		logOllamaCloudUsageProbeSkipped(accountID, "session_missing", nil)
 		return
 	}
 	key, valid := ollamaCloudUsageGroupFingerprint(account)
 	if !valid {
+		logOllamaCloudUsageProbeSkipped(accountID, "group_fingerprint_invalid", nil)
 		return
 	}
 
@@ -232,17 +242,18 @@ func (s *OllamaCloudUsageService) runOllamaCloudUsageProbe(
 		return
 	}
 
-	// Failure backoff: a model 429 must not bypass a scrape 429's NextRefreshAt.
-	if horizon := ollamaCloudUsageProbeBackoffHorizon(accountSnapshot, cached, hasCached); !horizon.IsZero() && now.Before(horizon) {
-		return
-	}
-	// 30s group cooldown after the most recent group attempt.
+	// A model 429 is itself fresh evidence that the account still needs a
+	// recovery horizon, so this probe deliberately ignores any scrape-429
+	// failure backoff recorded on the snapshot (the auto-refresh chain keeps
+	// enforcing its own NextRefreshAt). The 30s group cooldown after the most
+	// recent group attempt remains the only throttle here.
 	if hasCached && now.Before(cached.attemptAt.Add(window)) {
 		return
 	}
 
 	settings, settingsErr := s.GetSettings(ctx)
 	if settingsErr != nil {
+		logOllamaCloudUsageProbeSkipped(accountID, "settings_unavailable", settingsErr)
 		return
 	}
 	fetched, refreshErr := s.refreshAccount(ctx, accountID, settings, false)
@@ -259,6 +270,21 @@ func (s *OllamaCloudUsageService) runOllamaCloudUsageProbe(
 	doneNow := s.currentTime()
 	s.storeProbeGroupResult(key, ollamaCloudUsageProbeGroupEntry{attemptAt: doneNow, snapshot: fetched})
 	if refreshErr != nil {
+		// No snapshot came back (transport/pre-check failure): the error itself
+		// is the only failure evidence.
+		slog.Warn("ollama_cloud_usage_probe_fetch_failed",
+			"account_id", accountID,
+			"reason", refreshErr.Error())
+		return
+	}
+	if fetched.Status != OllamaCloudUsageStatusOK {
+		// persistFailure does not return an error: a failed scrape is reported
+		// through the returned snapshot's status, reason and counters.
+		slog.Warn("ollama_cloud_usage_probe_fetch_failed",
+			"account_id", accountID,
+			"reason", fetched.LastError,
+			"http_status", fetched.HTTPStatus,
+			"failure_count", fetched.FailureCount)
 		return
 	}
 	maybeOllamaCloudUsageProbeExhaustion(ctx, accountID, fetched, doneNow, window, onExhausted)
@@ -328,40 +354,59 @@ func ollamaCloudUsageProbeNewestSuccess(
 	return newest
 }
 
-// ollamaCloudUsageProbeBackoffHorizon returns the furthest NextRefreshAt among
-// failed/unauthorized snapshots (the account's persisted one and the coordinator's
-// most recent group outcome), or the zero time when no failure backoff is in force.
-func ollamaCloudUsageProbeBackoffHorizon(
-	accountSnapshot *OllamaCloudUsageSnapshot,
-	cached ollamaCloudUsageProbeGroupEntry,
-	hasCached bool,
-) time.Time {
-	var horizon time.Time
-	consider := func(snapshot *OllamaCloudUsageSnapshot) {
-		if snapshot == nil {
-			return
-		}
-		if snapshot.Status != OllamaCloudUsageStatusFailed && snapshot.Status != OllamaCloudUsageStatusUnauthorized {
-			return
-		}
-		if snapshot.NextRefreshAt.IsZero() {
-			return
-		}
-		if horizon.IsZero() || snapshot.NextRefreshAt.After(horizon) {
-			horizon = snapshot.NextRefreshAt.UTC()
+// ollamaCloudUsageSnapshotHasExhaustedWindow reports whether any usage window is
+// at or above 100% used, mirroring the window rule of
+// ollamaCloudUsageExhaustionResetAt. It only classifies snapshots that failed to
+// yield a recovery horizon.
+func ollamaCloudUsageSnapshotHasExhaustedWindow(snapshot *OllamaCloudUsageSnapshot) bool {
+	if snapshot == nil || snapshot.Data == nil {
+		return false
+	}
+	for _, window := range []*OllamaCloudUsageWindow{snapshot.Data.FiveHour, snapshot.Data.SevenDay} {
+		if window != nil && window.UsedPercent >= 100 {
+			return true
 		}
 	}
-	consider(accountSnapshot)
-	if hasCached {
-		consider(cached.snapshot)
+	return false
+}
+
+// logOllamaCloudUsageProbeSkipped reports a probe request that could not run at
+// all (missing/ineligible account, missing session, group or settings failure).
+// Each scheduled probe emits at most one such Debug line, so these stay quiet
+// while remaining diagnosable.
+func logOllamaCloudUsageProbeSkipped(accountID int64, reason string, err error) {
+	attrs := []any{"account_id", accountID, "reason", reason}
+	if err != nil {
+		attrs = append(attrs, "error", err)
 	}
-	return horizon
+	slog.Debug("ollama_cloud_usage_probe_skipped", attrs...)
+}
+
+// logOllamaCloudUsageProbeOutcome reports a fresh, successful probe observation
+// that does not yield a recovery horizon. A window at or above 100% used whose
+// reset could not be determined is a Warn (the account is still blocked upstream
+// with no known recovery time); a genuinely not-exhausted observation is an Info.
+func logOllamaCloudUsageProbeOutcome(accountID int64, snapshot *OllamaCloudUsageSnapshot) {
+	attrs := []any{"account_id", accountID}
+	if data := snapshot.Data; data != nil {
+		if data.FiveHour != nil {
+			attrs = append(attrs, "five_hour_used_percent", data.FiveHour.UsedPercent)
+		}
+		if data.SevenDay != nil {
+			attrs = append(attrs, "seven_day_used_percent", data.SevenDay.UsedPercent)
+		}
+	}
+	if ollamaCloudUsageSnapshotHasExhaustedWindow(snapshot) {
+		slog.Warn("ollama_cloud_usage_probe_reset_unknown", attrs...)
+		return
+	}
+	slog.Info("ollama_cloud_usage_probe_not_exhausted", attrs...)
 }
 
 // maybeOllamaCloudUsageProbeExhaustion invokes onExhausted only when the snapshot
 // is a fresh, successful, genuinely exhausted one (per
 // ollamaCloudUsageExhaustionResetAt). Non-exhausted or unusable snapshots yield
-// no callback.
+// no callback but are logged once per probe (see logOllamaCloudUsageProbeOutcome).
 func maybeOllamaCloudUsageProbeExhaustion(
 	ctx context.Context,
 	accountID int64,
@@ -375,6 +420,7 @@ func maybeOllamaCloudUsageProbeExhaustion(
 	}
 	resetAt, exhausted := ollamaCloudUsageExhaustionResetAt(snapshot, now, now.Add(-window))
 	if !exhausted {
+		logOllamaCloudUsageProbeOutcome(accountID, snapshot)
 		return
 	}
 	if ctx.Err() != nil {
