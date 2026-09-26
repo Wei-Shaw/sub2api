@@ -973,6 +973,12 @@ type GatewayConfig struct {
 	MaxBodySize int64 `mapstructure:"max_body_size"`
 	// TextMaxBodySize limits endpoints that cannot carry inline image/video payloads.
 	TextMaxBodySize int64 `mapstructure:"text_max_body_size"`
+	// ImageInputModelMap: when a request carries image input (screenshots, pasted
+	// images, image blocks), rewrite the given model to a vision-capable
+	// alternative (model -> vision model). Used so a model whose upstream is a
+	// text-only deployment no longer 400s on image input. Only takes effect when
+	// the request actually carries image input; pure-text requests are unaffected.
+	ImageInputModelMap map[string]string `mapstructure:"image_input_model_map"`
 	// 非流式上游响应体读取上限（字节），用于防止无界读取导致内存放大
 	UpstreamResponseReadMaxBytes int64 `mapstructure:"upstream_response_read_max_bytes"`
 	// 上游模型列表响应体读取上限（字节）
