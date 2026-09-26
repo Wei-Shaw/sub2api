@@ -1,17 +1,17 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" role="img" aria-labelledby="title">
-  <title id="title">沃德AI</title>
+  <title id="title">稳得AI</title>
   <defs>
     <linearGradient id="background" x1="16" y1="8" x2="112" y2="120" gradientUnits="userSpaceOnUse">
-      <stop stop-color="#17315F"/>
-      <stop offset="1" stop-color="#071329"/>
+      <stop stop-color="#1E3A8A"/>
+      <stop offset="1" stop-color="#0F172A"/>
     </linearGradient>
     <linearGradient id="glyph" x1="30" y1="25" x2="98" y2="103" gradientUnits="userSpaceOnUse">
-      <stop stop-color="#79F4BD"/>
-      <stop offset=".55" stop-color="#39D9E7"/>
-      <stop offset="1" stop-color="#6B8CFF"/>
+      <stop stop-color="#93C5FD"/>
+      <stop offset=".55" stop-color="#3B82F6"/>
+      <stop offset="1" stop-color="#1D4ED8"/>
     </linearGradient>
   </defs>
   <rect x="4" y="4" width="120" height="120" rx="30" fill="url(#background)"/>
-  <rect x="5" y="5" width="118" height="118" rx="29" fill="none" stroke="#A5BFFF" stroke-opacity=".2" stroke-width="2"/>
-  <text x="64" y="88" text-anchor="middle" fill="url(#glyph)" font-family="PingFang SC, Microsoft YaHei, Noto Sans CJK SC, sans-serif" font-size="70" font-weight="700">沃</text>
+  <rect x="5" y="5" width="118" height="118" rx="29" fill="none" stroke="#93C5FD" stroke-opacity=".2" stroke-width="2"/>
+  <text x="64" y="88" text-anchor="middle" fill="url(#glyph)" font-family="PingFang SC, Microsoft YaHei, Noto Sans CJK SC, sans-serif" font-size="70" font-weight="700">稳</text>
 </svg>
