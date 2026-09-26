@@ -422,10 +422,12 @@ export default {
 
     affiliates: {
       invitesDescription: '查看全站邀请关系和被邀请用户累计返利',
-      rebatesDescription: '查看每一笔产生返利的充值订单',
-      transfersDescription: '查看返利额度转入账户余额的提取流水',
+      rebatesDescription: '查看每一笔返利入账，包括充值订单、兑换码和管理员充值产生的返利',
+      transfersDescription: '查看返利额度转入余额与线下提现的流水',
       errors: {
-        loadFailed: '加载邀请返利记录失败'
+        loadFailed: '加载邀请返利记录失败',
+        AFFILIATE_QUOTA_INSUFFICIENT: '可提取返利额度不足',
+        AFFILIATE_WITHDRAW_AMOUNT_INVALID: '提现金额无效'
       },
       records: {
         search: '搜索',
@@ -450,7 +452,33 @@ export default {
         historyQuotaAfter: '提取后历史返利',
         invitedAt: '邀请时间',
         rebatedAt: '返利时间',
-        transferredAt: '提取时间'
+        transferredAt: '提取时间',
+        outflowType: '类型'
+      },
+      outflowTypes: {
+        transfer: '转入余额',
+        withdraw: '线下提现'
+      },
+      withdraw: {
+        button: '登记线下提现',
+        title: '登记线下提现',
+        user: '用户',
+        userPlaceholder: '输入邮箱或用户名搜索',
+        noUserFound: '未找到匹配的用户',
+        changeUser: '更换用户',
+        availableQuota: '当前可提取额度',
+        frozenHint: '冻结期内的返利不计入可提取额度',
+        amount: '提现金额（USD）',
+        amountHint: '填写已在站外实际打款给该用户的金额',
+        fillAll: '全部',
+        warning: '登记后将从该用户的可提取返利额度中扣除，且无法撤销。请确认已完成站外打款。',
+        submit: '确认登记',
+        submitting: '登记中...',
+        success: '已登记线下提现 {amount}，剩余可提取 {remaining}',
+        replayed: '这笔线下提现此前已登记（{amount}），本次未重复扣减；登记后剩余可提取 {remaining}',
+        uncertainHint: '上次提交没有收到结果，可能已经登记成功。用户与金额已锁定，重新提交会沿用同一笔登记，已登记时不会重复扣减。',
+        amountRequired: '请输入大于 0 的金额',
+        amountExceeds: '提现金额不能超过当前可提取额度'
       },
       overview: {
         title: '用户返利概览',
