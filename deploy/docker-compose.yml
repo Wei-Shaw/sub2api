@@ -30,8 +30,9 @@ services:
     restart: unless-stopped
     logging: *default-logging
     # Shutdown drains in-flight requests for up to 30s, then flushes ops error
-    # logs (up to 10s) and usage/billing (Cleanup, 10s budget) before closing
-    # DB/Redis. Docker's default 10s would SIGKILL mid-flush.
+    # logs (up to 10s) and usage/billing (Cleanup, nominally ~10s; its wait is
+    # not hard-capped) before closing DB/Redis, so 50s is a nominal bound.
+    # Docker's default 10s would SIGKILL mid-flush.
     # backend/cmd/server/main_test.go checks this budget.
     stop_grace_period: 50s
     security_opt:
