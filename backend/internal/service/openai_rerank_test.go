@@ -387,6 +387,32 @@ func TestConvertBailianTextRerankResponse(t *testing.T) {
 	require.Equal(t, notJSON, convertBailianTextRerankResponse(notJSON, "qwen3.7-text-rerank"))
 }
 
+// 无损转换：未知顶层字段与 output 内未知字段均提升到顶层且内容不变，output 键删除。
+func TestConvertBailianTextRerankResponse_LosslessKeepsUnknownFields(t *testing.T) {
+	t.Parallel()
+
+	bailian := []byte(`{"extra_top":{"a":1},"output":{"results":[{"index":0,"relevance_score":0.9}],"extra_out":"x"},"usage":{"prompt_tokens":7,"total_tokens":7},"request_id":"req-1"}`)
+	flat := convertBailianTextRerankResponse(bailian, "qwen3.7-text-rerank")
+	require.JSONEq(t, `{"extra_top":{"a":1},"results":[{"index":0,"relevance_score":0.9}],"extra_out":"x","usage":{"prompt_tokens":7,"total_tokens":7},"request_id":"req-1","id":"req-1","model":"qwen3.7-text-rerank"}`, string(flat))
+	// 未知字段原样搬运（逐字节比对）。
+	require.Equal(t, gjson.GetBytes(bailian, "extra_top").Raw, gjson.GetBytes(flat, "extra_top").Raw)
+	require.Equal(t, gjson.GetBytes(bailian, "output.extra_out").Raw, gjson.GetBytes(flat, "extra_out").Raw)
+	require.False(t, gjson.GetBytes(flat, "output").Exists())
+	require.Equal(t, "req-1", gjson.GetBytes(flat, "id").String())
+	require.Equal(t, "qwen3.7-text-rerank", gjson.GetBytes(flat, "model").String())
+}
+
+// 顶层优先：output 内与顶层同名的 usage 不覆盖顶层原值。
+func TestConvertBailianTextRerankResponse_TopLevelFieldWinsOverOutput(t *testing.T) {
+	t.Parallel()
+
+	bailian := []byte(`{"output":{"results":[],"usage":{"prompt_tokens":1,"total_tokens":1}},"usage":{"prompt_tokens":99,"total_tokens":99},"request_id":"req-2"}`)
+	flat := convertBailianTextRerankResponse(bailian, "qwen3.7-text-rerank")
+	require.JSONEq(t, `{"results":[],"usage":{"prompt_tokens":99,"total_tokens":99},"request_id":"req-2","id":"req-2","model":"qwen3.7-text-rerank"}`, string(flat))
+	require.Equal(t, int64(99), gjson.GetBytes(flat, "usage.total_tokens").Int())
+	require.False(t, gjson.GetBytes(flat, "output").Exists())
+}
+
 func TestForwardRerank_BailianModelUsesNestedEndpointAndFlattensResponse(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
