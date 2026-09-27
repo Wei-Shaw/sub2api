@@ -323,7 +323,7 @@ async function handleSubmit(): Promise<void> {
     isSuccess.value = true
     appStore.showSuccess(t('auth.passwordResetSuccess'))
   } catch (error: unknown) {
-    errorMessage.value = buildAuthErrorMessage(error, t, t('auth.resetPasswordFailed'))
+    errorMessage.value = buildAuthErrorMessage(error, { fallback: t('auth.resetPasswordFailed'), t })
 
     appStore.showError(errorMessage.value)
   } finally {

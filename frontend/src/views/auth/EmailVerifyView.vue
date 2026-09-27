@@ -592,7 +592,7 @@ async function sendCode(): Promise<void> {
 
     showResendTurnstile.value = false
   } catch (error: unknown) {
-    errorMessage.value = buildAuthErrorMessage(error, t, t('auth.sendCodeFailed'))
+    errorMessage.value = buildAuthErrorMessage(error, { fallback: t('auth.sendCodeFailed'), t })
 
     appStore.showError(errorMessage.value)
   } finally {
@@ -755,7 +755,7 @@ async function handleVerify(): Promise<void> {
     // Redirect to dashboard
     await router.push(pendingRedirect.value || '/dashboard')
   } catch (error: unknown) {
-    errorMessage.value = buildAuthErrorMessage(error, t, t('auth.verifyFailed'))
+    errorMessage.value = buildAuthErrorMessage(error, { fallback: t('auth.verifyFailed'), t })
 
     appStore.showError(errorMessage.value)
   } finally {

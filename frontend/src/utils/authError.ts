@@ -1,13 +1,18 @@
-import { extractApiErrorCode, extractI18nErrorMessage } from '@/utils/apiError'
+import { extractApiErrorCode, extractApiErrorMessage, extractI18nErrorMessage } from '@/utils/apiError'
 
 type TranslateFn = (key: string, params?: Record<string, unknown>) => string
 
 /**
- * Localized message for a failed login/registration request: the backend
- * reason is looked up under `auth.errors.<REASON>`, falling back to the
- * backend message and then to `fallback`.
+ * Message for a failed login/registration request. With `t`, the backend
+ * reason is looked up under `auth.errors.<REASON>` first; either way it falls
+ * back to the backend message and then to `fallback`.
  */
-export function buildAuthErrorMessage(error: unknown, t: TranslateFn, fallback: string): string {
+export function buildAuthErrorMessage(
+  error: unknown,
+  options: { fallback: string; t?: TranslateFn }
+): string {
+  const { fallback, t } = options
+  if (!t) return extractApiErrorMessage(error, fallback)
   if (extractApiErrorCode(error) === 'EMAIL_DOMAIN_REGISTRATION_LIMIT') {
     return t('auth.emailDomainRegistrationLimit')
   }

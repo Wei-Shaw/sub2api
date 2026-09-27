@@ -1113,7 +1113,7 @@ async function handleRegister(): Promise<void> {
     await router.push('/dashboard')
   } catch (error: unknown) {
     // Handle registration error
-    errorMessage.value = buildAuthErrorMessage(error, t, t('auth.registrationFailed'))
+    errorMessage.value = buildAuthErrorMessage(error, { fallback: t('auth.registrationFailed'), t })
 
     // Also show error toast
     appStore.showError(errorMessage.value)
