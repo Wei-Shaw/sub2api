@@ -3,6 +3,7 @@ import { mount } from '@vue/test-utils'
 import { defineComponent, h, nextTick, ref } from 'vue'
 import BaseDialog from '../BaseDialog.vue'
 import ConfirmDialog from '../ConfirmDialog.vue'
+import Toggle from '../Toggle.vue'
 
 vi.mock('vue-i18n', () => ({
   useI18n: () => ({ t: (key: string) => key })
@@ -161,6 +162,23 @@ describe('BaseDialog', () => {
     await nextTick()
     pressKey(document, 'Escape')
     expect(wrapper.emitted('close')).toHaveLength(2)
+    wrapper.unmount()
+  })
+
+  it('treats flipping a Toggle as a dirty edit', async () => {
+    const wrapper = mount(BaseDialog, {
+      attachTo: document.body,
+      props: { show: true, title: 'Edit group', confirmDiscard: true },
+      slots: { default: () => h(Toggle, { modelValue: false }) },
+      global: { stubs: { Icon: true } }
+    })
+    await nextTick()
+
+    document.body.querySelector<HTMLElement>('.modal-body [role="switch"]')!.click()
+    pressKey(document, 'Escape')
+    await nextTick()
+    expect(wrapper.emitted('close')).toBeUndefined()
+    expect(promptShown(wrapper)).toBe(true)
     wrapper.unmount()
   })
 

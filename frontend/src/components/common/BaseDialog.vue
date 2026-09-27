@@ -14,7 +14,7 @@
         <div
           ref="dialogRef"
           :class="['modal-content', widthClasses]"
-          @click.stop
+          @click.stop="markDirtyOnSwitch"
           @keydown.tab="trapFocus"
           @input="markDirty"
           @change="markDirty"
@@ -129,13 +129,17 @@ const widthClasses = computed(() => {
   return widths[props.width]
 })
 
-// ponytail: dirty = any native input/change event inside the panel since opening. Custom widgets
-// (Toggle, Select) emit none, so flipping only those skips the prompt; add a dirty prop if that matters.
+// ponytail: dirty = any native input/change event or [role="switch"] click inside the panel since
+// opening. Custom Select (teleported) and role-less inline switches are missed; add a dirty prop if that matters.
 let dirty = false
 const confirmingDiscard = ref(false)
 
 const markDirty = () => {
   dirty = true
+}
+
+const markDirtyOnSwitch = (event: MouseEvent) => {
+  if ((event.target as Element | null)?.closest?.('[role="switch"]')) dirty = true
 }
 
 // Esc, the X button and the backdrop all close through here.
