@@ -307,6 +307,9 @@ services:
     container_name: sub2api-postgres
     restart: unless-stopped
     logging: *default-logging
+    # Parallel queries use /dev/shm; Docker's 64MB default can fail large
+    # dashboard/ops queries with "could not resize shared memory segment".
+    shm_size: 256mb
     ulimits:
       nofile:
         soft: 100000
