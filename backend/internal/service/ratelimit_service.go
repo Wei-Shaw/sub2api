@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"maps"
 	"net/http"
 	"regexp"
 	"strconv"
@@ -42,6 +43,12 @@ type RateLimitService struct {
 	// OpenAI Team 联动熔断的进程内去重：teamID → 去重窗口截止时间
 	openaiTeamLinkedMu     sync.Mutex
 	openaiTeamLinkedRecent map[string]time.Time
+
+	// 本进程最近一次写入的 session_window_status（accountID → status），
+	// 状态未变且无窗口更新时跳过写库。
+	sessionWindowStatusWritten sync.Map
+	// 成功响应的被动采样异步合并写入；为 nil 时（测试直接构造）同步写入。
+	passiveUsage *passiveUsageWriter
 }
 
 type AccountRuntimeBlocker interface {
@@ -105,6 +112,7 @@ func NewRateLimitService(accountRepo AccountRepository, usageRepo UsageLogReposi
 		geminiQuotaService: geminiQuotaService,
 		tempUnschedCache:   tempUnschedCache,
 		usageCache:         make(map[int64]*geminiUsageCacheEntry),
+		passiveUsage:       newPassiveUsageWriter(accountRepo, passiveUsagePersistMinInterval),
 	}
 }
 
@@ -1234,7 +1242,7 @@ func (s *RateLimitService) handle429(ctx context.Context, account *Account, head
 			windowEnd = *result.fiveHourReset
 		}
 		windowStart := windowEnd.Add(-5 * time.Hour)
-		if err := s.accountRepo.UpdateSessionWindow(ctx, account.ID, &windowStart, &windowEnd, "rejected"); err != nil {
+		if err := s.updateSessionWindow(ctx, account.ID, &windowStart, &windowEnd, "rejected"); err != nil {
 			slog.Warn("rate_limit_update_session_window_failed", "account_id", account.ID, "error", err)
 		}
 
@@ -1312,7 +1320,7 @@ func (s *RateLimitService) handle429(ctx context.Context, account *Account, head
 	// 根据重置时间反推5h窗口
 	windowEnd := resetAt
 	windowStart := resetAt.Add(-5 * time.Hour)
-	if err := s.accountRepo.UpdateSessionWindow(ctx, account.ID, &windowStart, &windowEnd, "rejected"); err != nil {
+	if err := s.updateSessionWindow(ctx, account.ID, &windowStart, &windowEnd, "rejected"); err != nil {
 		slog.Warn("rate_limit_update_session_window_failed", "account_id", account.ID, "error", err)
 	}
 
@@ -2046,12 +2054,16 @@ func (s *RateLimitService) UpdateSessionWindow(ctx context.Context, account *Acc
 		})
 	}
 
-	if err := s.accountRepo.UpdateSessionWindow(ctx, account.ID, windowStart, windowEnd, status); err != nil {
+	if err := s.updateSessionWindow(ctx, account.ID, windowStart, windowEnd, status); err != nil {
 		slog.Warn("session_window_update_failed", "account_id", account.ID, "error", err)
 	}
 
 	// 被动采样：从响应头收集 5h + 7d + 7d_oi utilization，合并为一次 DB 写入
-	s.samplePassiveUsageFromHeaders(ctx, account, headers)
+	if s.passiveUsage != nil {
+		s.passiveUsage.enqueue(account.ID, passiveUsageUpdatesFromHeaders(headers))
+	} else {
+		s.samplePassiveUsageFromHeaders(ctx, account, headers)
+	}
 
 	// 如果状态为allowed且之前有限流，说明窗口已重置，清除限流状态
 	if status == "allowed" && account.IsRateLimited() {
@@ -2061,9 +2073,86 @@ func (s *RateLimitService) UpdateSessionWindow(ctx context.Context, account *Acc
 	}
 }
 
-// samplePassiveUsageFromHeaders 从 Anthropic 响应头收集 5h/7d/7d_oi 的
-// utilization 与 reset 被动采样数据，合并为一次 Extra 写入。无数据时不写。
+// updateSessionWindow 写入 5h 窗口并记录本进程写入的状态；无窗口更新且状态与
+// 上次写入相同时跳过。
+// ponytail: 进程内记忆，多实例部署下其他实例改写的状态要等本实例状态变化才会覆盖。
+func (s *RateLimitService) updateSessionWindow(ctx context.Context, accountID int64, start, end *time.Time, status string) error {
+	if start == nil && end == nil {
+		if last, ok := s.sessionWindowStatusWritten.Load(accountID); ok && last == status {
+			return nil
+		}
+	}
+	if err := s.accountRepo.UpdateSessionWindow(ctx, accountID, start, end, status); err != nil {
+		return err
+	}
+	s.sessionWindowStatusWritten.Store(accountID, status)
+	return nil
+}
+
+// passiveUsagePersistMinInterval 成功响应被动采样写库的每账号最小间隔。
+const passiveUsagePersistMinInterval = 30 * time.Second
+
+// passiveUsageWriter 把成功响应的被动采样移出请求路径：每账号每个间隔最多一次
+// UpdateExtra，间隔内的后续采样合并（后到覆盖），在间隔结束时写入最新值。
+// ponytail: 进程退出时尚未到期的合并采样会丢失（下一次响应会重新采样）；需要时再接 shutdown flush。
+type passiveUsageWriter struct {
+	repo     AccountRepository
+	interval time.Duration
+
+	mu      sync.Mutex
+	pending map[int64]map[string]any
+	lastAt  map[int64]time.Time
+}
+
+func newPassiveUsageWriter(repo AccountRepository, interval time.Duration) *passiveUsageWriter {
+	return &passiveUsageWriter{
+		repo:     repo,
+		interval: interval,
+		pending:  make(map[int64]map[string]any),
+		lastAt:   make(map[int64]time.Time),
+	}
+}
+
+func (w *passiveUsageWriter) enqueue(accountID int64, updates map[string]any) {
+	if len(updates) == 0 {
+		return
+	}
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	if pending, ok := w.pending[accountID]; ok {
+		maps.Copy(pending, updates)
+		return
+	}
+	w.pending[accountID] = updates
+	time.AfterFunc(w.interval-time.Since(w.lastAt[accountID]), func() { w.flush(accountID) })
+}
+
+func (w *passiveUsageWriter) flush(accountID int64) {
+	w.mu.Lock()
+	updates := w.pending[accountID]
+	delete(w.pending, accountID)
+	w.lastAt[accountID] = time.Now()
+	w.mu.Unlock()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	if err := w.repo.UpdateExtra(ctx, accountID, updates); err != nil {
+		slog.Warn("passive_usage_update_failed", "account_id", accountID, "error", err)
+	}
+}
+
+// samplePassiveUsageFromHeaders 同步写入响应头中的被动采样数据。无数据时不写。
 func (s *RateLimitService) samplePassiveUsageFromHeaders(ctx context.Context, account *Account, headers http.Header) {
+	if extraUpdates := passiveUsageUpdatesFromHeaders(headers); extraUpdates != nil {
+		if err := s.accountRepo.UpdateExtra(ctx, account.ID, extraUpdates); err != nil {
+			slog.Warn("passive_usage_update_failed", "account_id", account.ID, "error", err)
+		}
+	}
+}
+
+// passiveUsageUpdatesFromHeaders 从 Anthropic 响应头收集 5h/7d/7d_oi 的
+// utilization 与 reset 被动采样数据，合并为一次 Extra 更新。无数据时返回 nil。
+func passiveUsageUpdatesFromHeaders(headers http.Header) map[string]any {
 	extraUpdates := make(map[string]any, 6)
 	// 5h utilization（0-1 小数），供 estimateSetupTokenUsage 使用
 	if utilStr := headers.Get("anthropic-ratelimit-unified-5h-utilization"); utilStr != "" {
@@ -2101,12 +2190,11 @@ func (s *RateLimitService) samplePassiveUsageFromHeaders(ctx context.Context, ac
 			extraUpdates["passive_usage_7d_oi_reset"] = ts
 		}
 	}
-	if len(extraUpdates) > 0 {
-		extraUpdates["passive_usage_sampled_at"] = time.Now().UTC().Format(time.RFC3339)
-		if err := s.accountRepo.UpdateExtra(ctx, account.ID, extraUpdates); err != nil {
-			slog.Warn("passive_usage_update_failed", "account_id", account.ID, "error", err)
-		}
+	if len(extraUpdates) == 0 {
+		return nil
 	}
+	extraUpdates["passive_usage_sampled_at"] = time.Now().UTC().Format(time.RFC3339)
+	return extraUpdates
 }
 
 // ClearRateLimit 清除账号的限流状态
