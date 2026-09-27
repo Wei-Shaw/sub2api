@@ -27,6 +27,9 @@ const getCheckoutInfo = vi.hoisted(() => vi.fn())
 const getExchangeRate = vi.hoisted(() => vi.fn())
 const bridgeInvoke = vi.hoisted(() => vi.fn())
 const translate = vi.hoisted(() => vi.fn((key: string) => key))
+const authState = vi.hoisted(() => ({
+  user: { username: 'demo-user', balance: 0 } as Record<string, unknown>,
+}))
 // Public settings live in a reactive holder so tests can flip feature flags after mount
 // and exercise the watchers that react to them.
 const appStoreState = vi.hoisted(() => ({
@@ -58,9 +61,8 @@ vi.mock('vue-i18n', async () => {
 
 vi.mock('@/stores/auth', () => ({
   useAuthStore: () => ({
-    user: {
-      username: 'demo-user',
-      balance: 0,
+    get user() {
+      return authState.user
     },
     refreshUser,
   }),
@@ -356,6 +358,37 @@ describe('PaymentView checkout load failure', () => {
     expect(getCheckoutInfo).toHaveBeenCalledTimes(2)
     expect(wrapper.text()).not.toContain('Internal Server Error')
     expect(wrapper.text()).toContain('payment.rechargeAccount')
+    wrapper.unmount()
+  })
+})
+
+describe('PaymentView recharge account meter', () => {
+  afterEach(() => {
+    authState.user = { username: 'demo-user', balance: 0 }
+  })
+
+  it('falls back to the email for email-registered users and prefixes the balance with $', async () => {
+    vi.useRealTimers()
+    routeState.path = '/purchase'
+    routeState.query = {}
+    window.localStorage.clear()
+    authState.user = { username: '', email: 'buyer@example.com', balance: 12.5 }
+    getCheckoutInfo.mockReset().mockResolvedValue(checkoutInfoFixture())
+
+    const wrapper = shallowMount(PaymentView, {
+      global: {
+        stubs: {
+          AppLayout: { template: '<div><slot /></div>' },
+          Teleport: true,
+          Transition: false,
+        },
+      },
+    })
+    await flushPromises()
+
+    const cells = wrapper.findAll('.meter-cell')
+    expect(cells[0].text()).toContain('buyer@example.com')
+    expect(cells[1].get('.meter-value').text()).toBe('$12.50')
     wrapper.unmount()
   })
 })

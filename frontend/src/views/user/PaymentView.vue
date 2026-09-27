@@ -47,11 +47,11 @@
             <div class="meter">
               <div class="meter-cell">
                 <span class="meter-label">{{ t('payment.rechargeAccount') }}</span>
-                <span class="truncate text-h3 font-bold text-fg">{{ user?.username || '' }}</span>
+                <span class="truncate text-h3 font-bold text-fg">{{ user?.username || user?.email || '' }}</span>
               </div>
               <div class="meter-cell meter-cell-current">
                 <span class="meter-label">{{ t('payment.currentBalance') }}</span>
-                <span class="meter-value">{{ user?.balance?.toFixed(2) || '0.00' }}</span>
+                <span class="meter-value">${{ user?.balance?.toFixed(2) || '0.00' }}</span>
               </div>
             </div>
             <div v-if="enabledMethods.length === 0" class="card empty-state">
