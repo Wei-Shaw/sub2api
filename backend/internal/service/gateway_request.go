@@ -417,16 +417,29 @@ func (p *ParsedRequest) CloneForBody(body []byte) (*ParsedRequest, error) {
 	clone := *p
 	clone.Body = NewRequestBodyRef(body)
 	clone.OnUpstreamAccepted = nil
+	// failover 每次尝试通常传入同一个原始 body：派生状态已与之一致，无需重新解析。
+	if sameBodySlice(p.Body.Bytes(), body) {
+		return &clone, nil
+	}
 	if err := refreshGatewayRequestRanges(&clone, clone.protocol); err != nil {
 		return nil, err
 	}
 	return &clone, nil
 }
 
+// sameBodySlice 判断 data 是否就是 cur 本身（同起点、同长度）。
+// 各 filter 未改写时会原样返回同一切片，此时派生状态仍然有效。
+func sameBodySlice(cur, data []byte) bool {
+	return len(cur) > 0 && len(cur) == len(data) && &cur[0] == &data[0]
+}
+
 // ReplaceBody 统一刷新当前 body 和 raw range，保证后续 helper 读取的是最新请求体。
 func (p *ParsedRequest) ReplaceBody(data []byte) error {
 	if p == nil {
 		return fmt.Errorf("parse request: empty request")
+	}
+	if sameBodySlice(p.Body.Bytes(), data) {
+		return nil
 	}
 	if p.Body == nil {
 		p.Body = NewRequestBodyRef(data)

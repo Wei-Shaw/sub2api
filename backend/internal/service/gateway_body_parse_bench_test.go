@@ -15,6 +15,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/domain"
 	"github.com/gin-gonic/gin"
+	"github.com/stretchr/testify/require"
 )
 
 // buildBodyParseBenchBody 构造约 200KB、带 tools 与已签名 thinking 的 Claude Code 风格请求体。
@@ -71,6 +72,58 @@ func BenchmarkReplaceBody(b *testing.B) {
 			}
 		}
 	})
+}
+
+func TestReplaceBody_SameSliceSkipsReparse(t *testing.T) {
+	body := []byte(`{"model":"claude-sonnet-4-5","speed":"FAST","stream":true,"max_tokens":1024,"metadata":{"user_id":"u1"},"system":"sys","messages":[{"role":"user","content":"hi"}]}`)
+	golden := append([]byte(nil), body...)
+	parsed, err := ParseGatewayRequest(NewRequestBodyRef(body), domain.PlatformAnthropic)
+	require.NoError(t, err)
+	want := *parsed
+
+	allocs := testing.AllocsPerRun(20, func() {
+		if err := parsed.ReplaceBody(parsed.Body.Bytes()); err != nil {
+			panic(err)
+		}
+	})
+	require.Zero(t, allocs, "an unchanged body must not be re-parsed")
+	require.Equal(t, golden, parsed.Body.Bytes())
+	require.Same(t, &body[0], &parsed.Body.Bytes()[0])
+	require.Equal(t, want.Model, parsed.Model)
+	require.Equal(t, want.Stream, parsed.Stream)
+	require.Equal(t, "fast", parsed.Speed)
+	require.Equal(t, want.MaxTokens, parsed.MaxTokens)
+	require.Equal(t, want.MetadataUserID, parsed.MetadataUserID)
+	require.Equal(t, `"sys"`, string(parsed.SystemRaw()))
+	require.Equal(t, `[{"role":"user","content":"hi"}]`, string(parsed.MessagesRaw()))
+
+	// 不同切片（哪怕只改一个字段）仍然重新解析。
+	edited := bytes.Replace(body, []byte(`"stream":true`), []byte(`"stream":false`), 1)
+	require.NoError(t, parsed.ReplaceBody(edited))
+	require.False(t, parsed.Stream)
+	require.Equal(t, `[{"role":"user","content":"hi"}]`, string(parsed.MessagesRaw()))
+}
+
+func TestCloneForBody_SameSliceSkipsReparse(t *testing.T) {
+	body := []byte(`{"model":"claude-sonnet-4-5","speed":"FAST","stream":true,"system":"sys","messages":[{"role":"user","content":"hi"}]}`)
+	parsed, err := ParseGatewayRequest(NewRequestBodyRef(body), domain.PlatformAnthropic)
+	require.NoError(t, err)
+	parsed.OnUpstreamAccepted = func() {}
+
+	clone, err := parsed.CloneForBody(body)
+	require.NoError(t, err)
+	require.NotSame(t, parsed.Body, clone.Body)
+	require.Nil(t, clone.OnUpstreamAccepted)
+	require.Equal(t, parsed.Model, clone.Model)
+	require.Equal(t, "fast", clone.Speed)
+	require.True(t, clone.Stream)
+	require.Equal(t, `"sys"`, string(clone.SystemRaw()))
+	require.Equal(t, `[{"role":"user","content":"hi"}]`, string(clone.MessagesRaw()))
+
+	copied := append([]byte(nil), body...)
+	sameAllocs := testing.AllocsPerRun(20, func() { _, _ = parsed.CloneForBody(body) })
+	copyAllocs := testing.AllocsPerRun(20, func() { _, _ = parsed.CloneForBody(copied) })
+	require.Less(t, sameAllocs, copyAllocs, "cloning onto the same body slice must skip the re-parse")
 }
 
 func BenchmarkFilterThinkingBlocks(b *testing.B) {
