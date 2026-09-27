@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { defineComponent, h } from "vue";
 import { flushPromises, mount } from "@vue/test-utils";
+import { createMemoryHistory, createRouter, RouterView } from "vue-router";
 
 import enCommon from "@/i18n/locales/en/common";
 import enSettings from "@/i18n/locales/en/admin/settings";
@@ -567,26 +568,26 @@ const baseSettingsResponse = {
   },
 };
 
+const mountGlobalOptions = {
+  components: { "i18n-t": I18nTStub },
+  stubs: {
+    AppLayout: AppLayoutStub,
+    Select: SelectStub,
+    Toggle: ToggleStub,
+    Icon: true,
+    ConfirmDialog: true,
+    PaymentProviderList: true,
+    PaymentProviderDialog: true,
+    GroupBadge: true,
+    GroupOptionItem: true,
+    ProxySelector: true,
+    ImageUpload: ImageUploadStub,
+    BackupSettings: true,
+  },
+};
+
 function mountView() {
-  return mount(SettingsView, {
-    global: {
-      components: { "i18n-t": I18nTStub },
-      stubs: {
-        AppLayout: AppLayoutStub,
-        Select: SelectStub,
-        Toggle: ToggleStub,
-        Icon: true,
-        ConfirmDialog: true,
-        PaymentProviderList: true,
-        PaymentProviderDialog: true,
-        GroupBadge: true,
-        GroupOptionItem: true,
-        ProxySelector: true,
-        ImageUpload: ImageUploadStub,
-        BackupSettings: true,
-      },
-    },
-  });
+  return mount(SettingsView, { global: mountGlobalOptions });
 }
 
 async function openPaymentTab(wrapper: ReturnType<typeof mountView>) {
@@ -2306,5 +2307,80 @@ describe("admin SettingsView settings UX", () => {
     expect(showError).toHaveBeenCalledWith(message);
     expect(wrapper.get(`#settings-tab-${tab}`).attributes("aria-selected")).toBe("true");
     expect(wrapper.get("#settings-tab-general").attributes("aria-selected")).toBe("false");
+  });
+
+  const siteNameInput = 'input[placeholder="admin.settings.site.siteNamePlaceholder"]';
+
+  it("flags unsaved edits, guards page unload, and clears the flag after a successful save", async () => {
+    const addListener = vi.spyOn(window, "addEventListener");
+    const removeListener = vi.spyOn(window, "removeEventListener");
+    try {
+      const wrapper = mountView();
+      await flushPromises();
+
+      const beforeUnload = addListener.mock.calls.find(
+        ([type]) => type === "beforeunload",
+      )?.[1] as EventListener;
+      expect(beforeUnload).toBeTypeOf("function");
+      const unloadPrevented = () => {
+        const event = new Event("beforeunload", { cancelable: true });
+        beforeUnload(event);
+        return event.defaultPrevented;
+      };
+
+      expect(wrapper.find('[data-testid="settings-unsaved-indicator"]').exists()).toBe(false);
+      expect(unloadPrevented()).toBe(false);
+
+      await wrapper.get(siteNameInput).setValue("Renamed site");
+
+      expect(wrapper.find('[data-testid="settings-unsaved-indicator"]').exists()).toBe(true);
+      expect(unloadPrevented()).toBe(true);
+
+      await wrapper.find("form").trigger("submit.prevent");
+      await flushPromises();
+
+      expect(updateSettings).toHaveBeenCalledWith(
+        expect.objectContaining({ site_name: "Renamed site" }),
+      );
+      expect(wrapper.find('[data-testid="settings-unsaved-indicator"]').exists()).toBe(false);
+      expect(unloadPrevented()).toBe(false);
+
+      wrapper.unmount();
+      expect(removeListener).toHaveBeenCalledWith("beforeunload", beforeUnload);
+    } finally {
+      addListener.mockRestore();
+      removeListener.mockRestore();
+    }
+  });
+
+  it("asks for confirmation before leaving the route with unsaved changes", async () => {
+    const router = createRouter({
+      history: createMemoryHistory(),
+      routes: [
+        { path: "/admin/settings", component: SettingsView },
+        { path: "/elsewhere", component: { template: "<div />" } },
+      ],
+    });
+    await router.push("/admin/settings");
+    const wrapper = mount(RouterView, {
+      global: { ...mountGlobalOptions, plugins: [router] },
+    });
+    await flushPromises();
+
+    const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(false);
+    try {
+      await wrapper.get(siteNameInput).setValue("Renamed site");
+
+      await router.push("/elsewhere");
+      expect(confirmSpy).toHaveBeenCalledWith("admin.settings.leaveUnsavedConfirm");
+      expect(router.currentRoute.value.path).toBe("/admin/settings");
+
+      confirmSpy.mockReturnValue(true);
+      await router.push("/elsewhere");
+      expect(router.currentRoute.value.path).toBe("/elsewhere");
+    } finally {
+      confirmSpy.mockRestore();
+      wrapper.unmount();
+    }
   });
 });

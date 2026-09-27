@@ -1,6 +1,7 @@
 // 由 SettingsView.vue 的 <script setup> 纯移动而来（openspec: rebuild-frontend-design-system Phase 3）。
 // 所有状态、计算属性与方法在此定义，通过 provide/inject 供各 Tab 组件使用。
-import { ref, reactive, computed, onMounted, watch } from "vue";
+import { ref, reactive, computed, nextTick, onBeforeUnmount, onMounted, watch } from "vue";
+import { onBeforeRouteLeave } from "vue-router";
 import type { SelectOption } from "@/components/common/Select.vue";
 import {
   SITE_BILLING_MODES,
@@ -2143,6 +2144,49 @@ export function useSettingsView() {
     });
   });
 
+  // Unsaved-change tracking: snapshot everything the main Save button submits.
+  // Secret inputs are blanked after load and save, so they only count once typed.
+  const settingsSnapshot = ref<string | null>(null);
+
+  function serializeSettingsState(): string {
+    return JSON.stringify([
+      form,
+      authSourceDefaults,
+      openaiFastPolicyForm,
+      webSearchConfig,
+      serializeClaudeOAuthSystemPromptBlocksToJSON(claudeOAuthSystemPromptBlocks.value),
+      codexBlacklistRows.value,
+      codexWhitelistRows.value,
+      codexFingerprintRows.value,
+      registrationEmailSuffixWhitelistTags.value,
+      tablePageSizeOptionsInput.value,
+      customPageIframeMode.value,
+      customPageIframeHostsDraft.value,
+    ]);
+  }
+
+  const isDirty = computed(
+    () =>
+      settingsSnapshot.value !== null &&
+      serializeSettingsState() !== settingsSnapshot.value,
+  );
+
+  async function markSettingsClean(): Promise<void> {
+    // Let watchers triggered by load/save settle before taking the snapshot.
+    await nextTick();
+    settingsSnapshot.value = serializeSettingsState();
+  }
+
+  function handleBeforeUnload(event: BeforeUnloadEvent): void {
+    if (!isDirty.value) return;
+    event.preventDefault();
+    event.returnValue = "";
+  }
+
+  onBeforeRouteLeave(
+    () => !isDirty.value || window.confirm(t("admin.settings.leaveUnsavedConfirm")),
+  );
+
   async function loadSettings() {
     loading.value = true;
     loadFailed.value = false;
@@ -2325,6 +2369,7 @@ export function useSettingsView() {
 
       // Load web search emulation config separately
       await loadWebSearchConfig();
+      await markSettingsClean();
     } catch (error: unknown) {
       loadFailed.value = true;
       appStore.showError(
@@ -3047,6 +3092,7 @@ export function useSettingsView() {
       await adminSettingsStore.fetch(true);
       if (wsOk) {
         appStore.showSuccess(t("admin.settings.settingsSaved"));
+        await markSettingsClean();
       }
     } catch (error: unknown) {
       // 用户取消 step-up 验证：静默返回，不弹错误
@@ -3929,6 +3975,7 @@ export function useSettingsView() {
   }
 
   onMounted(() => {
+    window.addEventListener("beforeunload", handleBeforeUnload);
     loadSettings();
     loadSubscriptionGroups();
     loadAdminApiKey();
@@ -3942,6 +3989,10 @@ export function useSettingsView() {
     loadRectifierSettings();
     loadBetaPolicySettings();
     loadProviders();
+  });
+
+  onBeforeUnmount(() => {
+    window.removeEventListener("beforeunload", handleBeforeUnload);
   });
 
   // =========================
@@ -4308,6 +4359,7 @@ export function useSettingsView() {
     loading,
     loadFailed,
     saving,
+    isDirty,
     testingSmtp,
     sendingTestEmail,
     smtpPasswordManuallyEdited,

@@ -1309,6 +1309,8 @@ export default {
         description: 'Khi bật, người dùng có thể xem bản đã ẩn thông tin nhạy cảm của các yêu cầu thất bại trên trang sử dụng (không có chi tiết nội bộ/upstream). Cần bật giám sát vận hành để có dữ liệu.',
       },
       saveSettings: 'Lưu cài đặt',
+      unsavedChanges: 'Có thay đổi chưa lưu',
+      leaveUnsavedConfirm: 'Bạn có thay đổi cài đặt chưa lưu. Rời trang này và bỏ các thay đổi đó?',
       saving: 'Đang lưu...',
       settingsSaved: 'Đã lưu cài đặt thành công',
       smtpConnectionSuccess: 'Kết nối SMTP thành công',
