@@ -204,7 +204,7 @@ func ensurePaymentProviderConfigsDecryptable(ctx context.Context, db *sql.DB, ke
 			"with the configured secret encryption key — it is not the key this installation was using.\n"+
 			"Starting anyway would treat those providers as unconfigured: payment webhooks would be acknowledged "+
 			"but paid orders never credited.\n"+
-			"Set %s to the original key, or set %s=true to start anyway and re-enter the payment provider configs in the admin UI.",
+			"Set %s to the original key, or set %s=true to start anyway and re-enter the payment provider configs in the admin UI",
 		config.SecretEncryptionKeyEnvVar,
 		allowUndecryptablePaymentConfigEnvVar,
 	)
