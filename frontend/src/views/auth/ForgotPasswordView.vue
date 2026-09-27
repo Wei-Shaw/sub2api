@@ -58,9 +58,15 @@
               :disabled="isLoading"
               class="input"
               :class="{ 'input-error': errors.email }"
+              :aria-invalid="!!errors.email"
+              :aria-describedby="errors.email ? 'email-error' : undefined"
               :placeholder="t('auth.emailPlaceholder')"
+              @input="errors.email = ''"
             />
           </div>
+          <p v-if="errors.email" id="email-error" class="input-error-text" role="alert">
+            {{ errors.email }}
+          </p>
         </div>
 
         <!-- Turnstile Widget -->
@@ -80,7 +86,14 @@
             @expire="onTurnstileExpire"
             @error="onTurnstileError"
           />
+          <p v-if="errors.turnstile" class="input-error-text" role="alert">
+            {{ errors.turnstile }}
+          </p>
         </div>
+
+        <p v-if="errorMessage" class="input-error-text" role="alert" data-testid="auth-form-error">
+          {{ errorMessage }}
+        </p>
 
         <!-- Submit Button -->
         <button

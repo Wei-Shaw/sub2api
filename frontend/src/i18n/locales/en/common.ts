@@ -52,6 +52,7 @@ export default {
     close: 'Close',
     toggleMenu: 'Toggle menu',
     userMenu: 'User menu',
+    language: 'Language',
     pageNotFound: 'Page not found',
     enabled: 'Enabled',
     disabled: 'Disabled',

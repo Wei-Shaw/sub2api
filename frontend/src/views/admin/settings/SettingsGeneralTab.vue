@@ -92,11 +92,13 @@
           <div class="mt-4 grid grid-cols-1 gap-6 md:grid-cols-2">
             <div>
               <label
+                for="settings-table-default-page-size"
                 class="input-label"
               >
                 {{ t("admin.settings.site.tableDefaultPageSize") }}
               </label>
               <input
+                id="settings-table-default-page-size"
                 v-model.number="form.table_default_page_size"
                 type="number"
                 min="5"
@@ -110,11 +112,13 @@
             </div>
             <div>
               <label
+                for="settings-table-page-size-options"
                 class="input-label"
               >
                 {{ t("admin.settings.site.tablePageSizeOptions") }}
               </label>
               <input
+                id="settings-table-page-size-options"
                 v-model="tablePageSizeOptionsInput"
                 type="text"
                 class="input font-mono"
@@ -696,11 +700,13 @@
         <!-- Explicit host list -->
         <div v-else>
           <label
+            for="settings-custom-page-iframe-hosts"
             class="input-label"
           >
             {{ t("admin.settings.customPageIframe.hosts") }}
           </label>
           <textarea
+            id="settings-custom-page-iframe-hosts"
             v-model="customPageIframeHostsDraft"
             rows="5"
             class="input font-mono"

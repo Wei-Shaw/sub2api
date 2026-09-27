@@ -287,6 +287,12 @@ export function useSettingsView() {
     activeTab.value = tab;
   }
 
+  // 保存校验失败：切到字段所在 Tab 并聚焦该字段（Tab 用 v-show，需等 DOM 更新后字段才可聚焦）。
+  function revealInvalidField(tab: SettingsTab, fieldId: string): void {
+    activeTab.value = tab;
+    void nextTick(() => document.getElementById(fieldId)?.focus());
+  }
+
   function focusSettingsTab(tab: SettingsTab): void {
     window.requestAnimationFrame(() => {
       document.getElementById(`settings-tab-${tab}`)?.focus();
@@ -1547,10 +1553,11 @@ export function useSettingsView() {
 
   async function saveWebSearchConfig(): Promise<boolean> {
     try {
-      for (const p of webSearchConfig.providers) {
+      for (const [pIdx, p] of webSearchConfig.providers.entries()) {
         const raw = p.quota_limit;
         if (raw != null && Number(raw) !== 0 && Number(raw) < 1) {
-          activeTab.value = "gateway";
+          expandedProviders[pIdx] = true;
+          revealInvalidField("gateway", `web-search-provider-${pIdx}-quota-limit`);
           appStore.showError(
             t("admin.settings.webSearchEmulation.quotaLimitMustBePositive"),
           );
@@ -2481,7 +2488,7 @@ export function useSettingsView() {
         normalizedTableDefaultPageSize < tablePageSizeMin ||
         normalizedTableDefaultPageSize > tablePageSizeMax
       ) {
-        activeTab.value = "general";
+        revealInvalidField("general", "settings-table-default-page-size");
         appStore.showError(
           t("admin.settings.site.tableDefaultPageSizeRangeError", {
             min: tablePageSizeMin,
@@ -2495,7 +2502,7 @@ export function useSettingsView() {
         tablePageSizeOptionsInput.value,
       );
       if (!normalizedTablePageSizeOptions) {
-        activeTab.value = "general";
+        revealInvalidField("general", "settings-table-page-size-options");
         appStore.showError(
           t("admin.settings.site.tablePageSizeOptionsFormatError", {
             min: tablePageSizeMin,
@@ -2548,7 +2555,12 @@ export function useSettingsView() {
         normalizedDefaultSubscriptions,
       );
       if (duplicateDefaultSubscription) {
-        activeTab.value = "users";
+        revealInvalidField(
+          "users",
+          `settings-default-sub-group-${form.default_subscriptions.findIndex(
+            (item) => item.group_id === duplicateDefaultSubscription.group_id,
+          )}`,
+        );
         appStore.showError(
           t("admin.settings.defaults.defaultSubscriptionsDuplicate", {
             groupId: duplicateDefaultSubscription.group_id,
@@ -2566,7 +2578,12 @@ export function useSettingsView() {
           authSourceDefaults[authSource.source].subscriptions,
         );
         if (duplicate) {
-          activeTab.value = "users";
+          revealInvalidField(
+            "users",
+            `settings-${authSource.source}-sub-group-${authSourceDefaults[
+              authSource.source
+            ].subscriptions.findIndex((item) => item.group_id === duplicate.group_id)}`,
+          );
           appStore.showError(
             `${authSource.title}: ${t(
               "admin.settings.defaults.defaultSubscriptionsDuplicate",
@@ -2614,7 +2631,7 @@ export function useSettingsView() {
       // 自定义页面 iframe 白名单：本地先按后端同一套规则挡一次，让运维当场看到是哪条填错了，
       // 而不是等后端 400 回来只给一句笼统的报错。
       if (customPageIframeInvalidEntry.value !== null) {
-        activeTab.value = "general";
+        revealInvalidField("general", "settings-custom-page-iframe-hosts");
         appStore.showError(
           t("admin.settings.customPageIframe.invalidHost", {
             host: customPageIframeInvalidEntry.value,
@@ -2625,7 +2642,7 @@ export function useSettingsView() {
       if (
         customPageIframeNormalizedHosts.value.length > MAX_CUSTOM_PAGE_IFRAME_HOSTS
       ) {
-        activeTab.value = "general";
+        revealInvalidField("general", "settings-custom-page-iframe-hosts");
         appStore.showError(
           t("admin.settings.customPageIframe.tooManyHosts", {
             max: MAX_CUSTOM_PAGE_IFRAME_HOSTS,
@@ -2640,7 +2657,7 @@ export function useSettingsView() {
         oauthSchedulingRate !== null &&
         (!Number.isFinite(oauthSchedulingRate) || oauthSchedulingRate < 0)
       ) {
-        activeTab.value = "gateway";
+        revealInvalidField("gateway", "openai-oauth-scheduling-rate-multiplier");
         appStore.showError(t("admin.settings.openaiExperimentalScheduler.oauthRateInvalid"));
         return;
       }

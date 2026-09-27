@@ -5,12 +5,12 @@
       @click="toggleDropdown"
       :disabled="switching"
       class="flex min-h-10 items-center gap-1.5 rounded-sm px-2 py-1.5 text-label font-semibold text-fg-muted transition-colors hover:bg-accent-weak hover:text-accent-strong"
-      :title="currentLocale?.name"
+      :title="triggerLabel"
       :aria-expanded="isOpen"
     >
       <span class="text-base" aria-hidden="true">{{ currentLocale?.flag }}</span>
       <span class="hidden sm:inline" aria-hidden="true">{{ currentLocale?.code.toUpperCase() }}</span>
-      <span class="sr-only" :lang="currentLocale?.code">{{ currentLocale?.name }}</span>
+      <span class="sr-only" :lang="currentLocale?.code">{{ triggerLabel }}</span>
       <Icon
         name="chevronDown"
         size="xs"
@@ -52,7 +52,7 @@ import { useI18n } from 'vue-i18n'
 import Icon from '@/components/icons/Icon.vue'
 import { setLocale, availableLocales } from '@/i18n'
 
-const { locale } = useI18n()
+const { locale, t } = useI18n()
 
 const isOpen = ref(false)
 const dropdownRef = ref<HTMLElement | null>(null)
@@ -61,6 +61,8 @@ const switching = ref(false)
 
 const currentLocaleCode = computed(() => locale.value)
 const currentLocale = computed(() => availableLocales.find((l) => l.code === locale.value))
+// 界面语言即当前语言，所以整段标签都能沿用 currentLocale 的 lang。
+const triggerLabel = computed(() => `${t('common.language')}: ${currentLocale.value?.name ?? ''}`)
 
 function toggleDropdown() {
   isOpen.value = !isOpen.value

@@ -52,6 +52,7 @@ export default {
     close: 'Đóng',
     toggleMenu: 'Bật/tắt menu',
     userMenu: 'Menu người dùng',
+    language: 'Ngôn ngữ',
     pageNotFound: 'Không tìm thấy trang',
     enabled: 'Đã bật',
     disabled: 'Đã tắt',
