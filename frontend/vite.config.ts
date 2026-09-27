@@ -140,11 +140,6 @@ export default defineConfig(({ mode }) => {
               return 'vendor-i18n'
             }
 
-            // Stripe 仅在支付流程中按需加载，避免进入首页公共依赖。
-            if (id.includes('/@stripe/stripe-js/')) {
-              return 'vendor-stripe'
-            }
-
             // 其他第三方库不手动合并（返回 undefined），交给 Rollup 按引用关系分包：
             // 统一塞进 vendor-misc 会让 qrcode、driver.js 等仅懒加载页面才用的库随首屏预加载。
           }
