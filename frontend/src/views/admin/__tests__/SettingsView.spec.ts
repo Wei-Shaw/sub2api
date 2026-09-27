@@ -1652,6 +1652,58 @@ describe("admin SettingsView payment visible method controls", () => {
     expect(Array.isArray(receivedProviders[0].supported_types)).toBe(true);
     expect(receivedProviders[0].supported_types).toEqual([]);
   });
+
+  it("prompts for step-up and retries provider writes once verified", async () => {
+    const provider = { id: 7, provider_key: "sepay", enabled: true, supported_types: [] };
+    getProviders.mockResolvedValue({ data: [provider] });
+    updateProvider
+      .mockRejectedValueOnce({ status: 403, code: "STEP_UP_REQUIRED", message: "step-up" })
+      .mockResolvedValueOnce({ data: provider });
+
+    const wrapper = mountView();
+    await flushPromises();
+    await openPaymentTab(wrapper);
+    const stepUp = wrapper.findComponent({ name: "TotpStepUpDialog" }).props("controller");
+    showError.mockClear(); // unrelated settings loaders may toast during mount
+
+    wrapper.findComponent({ name: "PaymentProviderList" }).vm.$emit("toggle-field", provider, "enabled");
+    await flushPromises();
+    expect(stepUp.visible.value).toBe(true);
+    expect(updateProvider).toHaveBeenCalledTimes(1);
+
+    stepUp.onVerified();
+    await flushPromises();
+    expect(updateProvider).toHaveBeenCalledTimes(2);
+    expect(updateProvider).toHaveBeenLastCalledWith(7, { enabled: false });
+    expect(showError).not.toHaveBeenCalled();
+  });
+
+  it("silently drops a provider delete when step-up is cancelled", async () => {
+    const provider = { id: 9, provider_key: "sepay", enabled: true, supported_types: [] };
+    getProviders.mockResolvedValue({ data: [provider] });
+    deleteProvider.mockRejectedValueOnce({ status: 403, code: "STEP_UP_REQUIRED", message: "step-up" });
+
+    const wrapper = mountView();
+    await flushPromises();
+    await openPaymentTab(wrapper);
+    const stepUp = wrapper.findComponent({ name: "TotpStepUpDialog" }).props("controller");
+    showError.mockClear(); // unrelated settings loaders may toast during mount
+
+    wrapper.findComponent({ name: "PaymentProviderList" }).vm.$emit("delete", provider);
+    await flushPromises();
+    const confirmDialogs = wrapper.findAllComponents({ name: "ConfirmDialog" });
+    const deleteDialog = confirmDialogs.find((d) => d.props("show") === true);
+    expect(deleteDialog).toBeDefined();
+    deleteDialog!.vm.$emit("confirm");
+    await flushPromises();
+    expect(stepUp.visible.value).toBe(true);
+
+    stepUp.onCancel();
+    await flushPromises();
+    expect(deleteProvider).toHaveBeenCalledTimes(1);
+    expect(showError).not.toHaveBeenCalled();
+    expect(showSuccess).not.toHaveBeenCalled();
+  });
 });
 
 describe("admin SettingsView wechat connect controls", () => {

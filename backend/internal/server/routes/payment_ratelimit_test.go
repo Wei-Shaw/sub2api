@@ -30,8 +30,14 @@ func newPaymentRoutesTestRouter(t *testing.T, panelRateLimitSettings string) (*g
 	// Reuses the route-guard SettingRepository stub from channel_monitor_feature_gate_test.go.
 	settings := service.NewSettingService(&channelMonitorRouteSettingRepoStub{values: map[string]string{
 		service.SettingKeyPanelRateLimitSettings: panelRateLimitSettings,
+		// Admin user 1 has acknowledged compliance, so admin routes get past AdminComplianceGuard.
+		"admin_compliance_acknowledgement:1": `{"version":"` + service.AdminComplianceVersion + `"}`,
 	}}, &config.Config{})
 	passThrough := func(c *gin.Context) { c.Next() }
+	adminAuth := func(c *gin.Context) {
+		c.Set(string(servermiddleware.ContextKeyUser), servermiddleware.AuthSubject{UserID: 1})
+		c.Next()
+	}
 
 	gin.SetMode(gin.TestMode)
 	router := gin.New()
@@ -45,8 +51,9 @@ func newPaymentRoutesTestRouter(t *testing.T, panelRateLimitSettings string) (*g
 		&handler.PaymentWebhookHandler{},
 		&admin.PaymentHandler{},
 		servermiddleware.JWTAuthMiddleware(passThrough),
-		servermiddleware.AdminAuthMiddleware(passThrough),
+		servermiddleware.AdminAuthMiddleware(adminAuth),
 		servermiddleware.AuditLogMiddleware(passThrough),
+		servermiddleware.StepUpAuthMiddleware(fakePaymentStepUp),
 		settings,
 		servermiddleware.NewPanelRateLimiter(rdb, settings),
 	)

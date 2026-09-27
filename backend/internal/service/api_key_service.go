@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"html"
+	"log/slog"
 	"math"
 	"sort"
 	"strconv"
@@ -52,6 +53,9 @@ const (
 	apiKeySortCurrentConcurrency = "current_concurrency"
 	// DB 写失败后的短退避，避免请求路径持续同步重试造成写风暴与高延迟。
 	apiKeyLastUsedFailBackoff = 5 * time.Second
+	// 异步 touch 的写库超时与全局在途上限（超出上限时本次跳过，下一个请求会再尝试）。
+	apiKeyLastUsedTouchTimeout     = 3 * time.Second
+	apiKeyLastUsedTouchMaxInFlight = 64
 )
 
 // APIKeyUpdateFields 声明 APIKeyRepository.Update 允许写回的列。
@@ -309,6 +313,8 @@ type APIKeyService struct {
 	authInvalidationFailures  atomic.Uint64
 	lastUsedTouchL1           sync.Map // keyID -> nextAllowedAt(time.Time)
 	lastUsedTouchSF           singleflight.Group
+	lastUsedTouchPending      sync.Map // keyID -> struct{}: 已有异步写入在途
+	lastUsedTouchInFlight     atomic.Int64
 }
 
 type APIKeyAuthLookupMetrics struct {
@@ -998,6 +1004,41 @@ func (s *APIKeyService) TouchLastUsed(ctx context.Context, keyID int64) error {
 		return nil, nil
 	})
 	return err
+}
+
+// TouchLastUsedAsync 是鉴权链路用的非阻塞版 TouchLastUsed：防抖窗口内直接返回；
+// 到期时每个 key 同一时刻只派生一个后台写入（脱离请求 ctx 的取消，带超时），
+// 全局在途写入数有上限。写入失败或被跳过只影响 last_used_at 的时效，不影响请求。
+func (s *APIKeyService) TouchLastUsedAsync(ctx context.Context, keyID int64) {
+	if keyID <= 0 {
+		return
+	}
+	if v, ok := s.lastUsedTouchL1.Load(keyID); ok {
+		if nextAllowedAt, ok := v.(time.Time); ok && time.Now().Before(nextAllowedAt) {
+			return
+		}
+	}
+	if _, busy := s.lastUsedTouchPending.LoadOrStore(keyID, struct{}{}); busy {
+		return
+	}
+	if s.lastUsedTouchInFlight.Add(1) > apiKeyLastUsedTouchMaxInFlight {
+		s.lastUsedTouchInFlight.Add(-1)
+		s.lastUsedTouchPending.Delete(keyID)
+		return
+	}
+
+	touchCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), apiKeyLastUsedTouchTimeout)
+	go func() {
+		defer func() {
+			if r := recover(); r != nil {
+				slog.Error("api_key_touch_last_used_panic", "api_key_id", keyID, "recover", r)
+			}
+			cancel()
+			s.lastUsedTouchPending.Delete(keyID)
+			s.lastUsedTouchInFlight.Add(-1)
+		}()
+		_ = s.TouchLastUsed(touchCtx, keyID)
+	}()
 }
 
 // IncrementUsage 增加API Key使用次数（可选：用于统计）
