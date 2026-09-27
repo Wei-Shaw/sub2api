@@ -96,7 +96,8 @@ watch(
   () => authStore.isAuthenticated,
   (isAuthenticated, oldValue) => {
     if (isAuthenticated) {
-      if (authStore.isAdmin) {
+      // The admin route guard fetches it before mount; don't request it twice on reload.
+      if (authStore.isAdmin && !adminComplianceStore.initialized) {
         adminComplianceStore.fetchStatus().catch((error) => {
           console.error('Failed to fetch admin compliance status:', error)
         })
@@ -145,15 +146,18 @@ onBeforeUnmount(() => {
 onMounted(async () => {
   window.addEventListener('admin-compliance-required', onAdminComplianceRequired)
 
-  // Check if setup is needed
-  try {
-    const status = await getSetupStatus()
-    if (status.needs_setup && route.path !== '/setup') {
-      router.replace('/setup')
-      return
+  // Check if setup is needed. Skipped when __APP_CONFIG__ is present: only the main server
+  // injects it, and the main server never needs setup (the setup-mode server does not inject).
+  if (!window.__APP_CONFIG__) {
+    try {
+      const status = await getSetupStatus()
+      if (status.needs_setup && route.path !== '/setup') {
+        router.replace('/setup')
+        return
+      }
+    } catch {
+      // If setup endpoint fails, assume normal mode and continue
     }
-  } catch {
-    // If setup endpoint fails, assume normal mode and continue
   }
 
   // Load public settings into appStore (will be cached for other components)

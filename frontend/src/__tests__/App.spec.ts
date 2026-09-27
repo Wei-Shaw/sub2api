@@ -71,14 +71,26 @@ describe('App', () => {
   })
 
   // Must run first: module mocks are cached, so a load count of 0 proves the dialogs are not static imports.
-  it('does not load either dialog for guests', async () => {
+  it('does not load either dialog for guests and skips /setup/status when config is injected', async () => {
     const wrapper = mount(App)
     await flushPromises()
 
     expect(s.loads).toEqual({ popup: 0, compliance: 0 })
     expect(wrapper.find('[data-testid="announcement-popup"]').exists()).toBe(false)
     expect(wrapper.find('[data-testid="admin-compliance"]').exists()).toBe(false)
+    expect(s.getSetupStatus).not.toHaveBeenCalled()
     expect(s.app.fetchPublicSettings).toHaveBeenCalledTimes(1)
+  })
+
+  it('still redirects to /setup when the server injected no config', async () => {
+    delete window.__APP_CONFIG__
+    s.getSetupStatus.mockResolvedValue({ needs_setup: true, step: 'database' })
+
+    mount(App)
+    await flushPromises()
+
+    expect(s.getSetupStatus).toHaveBeenCalledTimes(1)
+    expect(s.router.replace).toHaveBeenCalledWith('/setup')
   })
 
   it('loads only the announcement popup for signed-in users', async () => {
@@ -91,11 +103,21 @@ describe('App', () => {
     expect(s.loads.compliance).toBe(0)
   })
 
-  it('renders the compliance dialog for admins', async () => {
+  it('reuses the compliance status the router guard already fetched', async () => {
     signIn(true)
+    s.compliance.initialized = true
     const wrapper = mount(App)
     await flushPromises()
 
+    expect(s.compliance.fetchStatus).not.toHaveBeenCalled()
     expect(wrapper.find('[data-testid="admin-compliance"]').exists()).toBe(true)
+  })
+
+  it('fetches the compliance status once when the guard has not', async () => {
+    signIn(true)
+    mount(App)
+    await flushPromises()
+
+    expect(s.compliance.fetchStatus).toHaveBeenCalledTimes(1)
   })
 })
