@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { mount } from '@vue/test-utils'
-import { nextTick } from 'vue'
+import { defineComponent, h, nextTick, ref } from 'vue'
 import BaseDialog from '../BaseDialog.vue'
 import ConfirmDialog from '../ConfirmDialog.vue'
 
@@ -179,6 +179,49 @@ describe('BaseDialog', () => {
     expect(document.activeElement).not.toBe(opener)
 
     await wrapper.setProps({ show: false })
+    expect(document.activeElement).toBe(opener)
+    wrapper.unmount()
+  })
+
+  it('returns focus to the opener after discarding a dirty form', async () => {
+    const opener = document.createElement('button')
+    document.body.appendChild(opener)
+    opener.focus()
+
+    const Host = defineComponent(() => {
+      const show = ref(false)
+      opener.onclick = () => (show.value = true)
+      return () =>
+        h(
+          BaseDialog,
+          { show: show.value, title: 'Create account', confirmDiscard: true, onClose: () => (show.value = false) },
+          () => h('input', { id: 'name' })
+        )
+    })
+    const wrapper = mount(Host, {
+      attachTo: document.body,
+      global: { stubs: { Icon: true, transition: false } }
+    })
+    opener.click()
+    await nextTick()
+    await nextTick()
+
+    const input = document.getElementById('name')!
+    input.focus()
+    input.dispatchEvent(new Event('input', { bubbles: true }))
+    pressKey(document, 'Escape')
+    await nextTick()
+    const discard = Array.from(document.body.querySelectorAll<HTMLElement>('.modal-footer button')).find(
+      (el) => el.textContent?.trim() === 'common.discard'
+    )
+    discard!.click()
+    await nextTick()
+    await nextTick()
+    expect(document.activeElement).toBe(opener)
+
+    // After the leave transition removes the panel, focus must not fall to <body>.
+    await new Promise((resolve) => setTimeout(resolve, 100))
+    expect(document.getElementById('name')).toBeNull()
     expect(document.activeElement).toBe(opener)
     wrapper.unmount()
   })

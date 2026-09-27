@@ -148,8 +148,14 @@ const requestClose = () => {
 }
 
 const discardAndClose = () => {
+  const opener = previousActiveElement
   confirmingDiscard.value = false
   emit('close')
+  // The prompt closes in the same flush and refocuses a node inside this leaving panel;
+  // hand focus back to our opener once that settles.
+  nextTick(() => {
+    if (!props.show) opener?.focus()
+  })
 }
 
 const handleClose = () => {
