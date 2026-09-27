@@ -3868,6 +3868,11 @@ func isWeakJWTSecret(secret string) bool {
 	return exists
 }
 
+// IsWeakJWTSecret reports whether secret is a known sample or weak JWT secret.
+func IsWeakJWTSecret(secret string) bool {
+	return isWeakJWTSecret(secret)
+}
+
 func generateJWTSecret(byteLength int) (string, error) {
 	if byteLength <= 0 {
 		byteLength = 32

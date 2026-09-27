@@ -127,6 +127,39 @@ func TestEnsureBootstrapSecretsConfiguredSecretDuplicateIgnored(t *testing.T) {
 	require.Equal(t, "existing-jwt-secret-32bytes-long!!!!", cfg.JWT.Secret)
 }
 
+func TestEnsureBootstrapSecretsRotatesPersistedSampleJWTSecret(t *testing.T) {
+	client := newSecuritySecretTestClient(t)
+	// Case and surrounding whitespace must not hide the old config.example.yaml sample value.
+	sample := "  Change-This-To-A-Secure-Random-String "
+	_, err := client.SecuritySecret.Create().SetKey(securitySecretKeyJWT).SetValue(sample).Save(context.Background())
+	require.NoError(t, err)
+
+	cfg := &config.Config{}
+	err = ensureBootstrapSecrets(context.Background(), client, cfg)
+	require.NoError(t, err)
+	require.Len(t, cfg.JWT.Secret, 64)
+	require.False(t, config.IsWeakJWTSecret(cfg.JWT.Secret))
+
+	stored, err := client.SecuritySecret.Query().Where(securitysecret.KeyEQ(securitySecretKeyJWT)).Only(context.Background())
+	require.NoError(t, err)
+	require.Equal(t, cfg.JWT.Secret, stored.Value)
+}
+
+func TestEnsureBootstrapSecretsRotatesPersistedSampleJWTSecretToConfiguredSecret(t *testing.T) {
+	client := newSecuritySecretTestClient(t)
+	_, err := client.SecuritySecret.Create().SetKey(securitySecretKeyJWT).SetValue("change-this-to-a-secure-random-string").Save(context.Background())
+	require.NoError(t, err)
+
+	cfg := &config.Config{JWT: config.JWTConfig{Secret: "configured-jwt-secret-32bytes-long!!"}}
+	err = ensureBootstrapSecrets(context.Background(), client, cfg)
+	require.NoError(t, err)
+	require.Equal(t, "configured-jwt-secret-32bytes-long!!", cfg.JWT.Secret)
+
+	stored, err := client.SecuritySecret.Query().Where(securitysecret.KeyEQ(securitySecretKeyJWT)).Only(context.Background())
+	require.NoError(t, err)
+	require.Equal(t, "configured-jwt-secret-32bytes-long!!", stored.Value)
+}
+
 func TestGetOrCreateGeneratedSecuritySecretTrimmedExistingValue(t *testing.T) {
 	client := newSecuritySecretTestClient(t)
 	_, err := client.SecuritySecret.Create().
