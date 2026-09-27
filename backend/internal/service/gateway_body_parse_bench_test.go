@@ -4,6 +4,7 @@ package service
 
 import (
 	"bytes"
+	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
@@ -14,6 +15,7 @@ import (
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/domain"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/antigravity"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
 )
@@ -143,6 +145,141 @@ func BenchmarkFilterThinkingBlocks(b *testing.B) {
 			}
 		})
 	}
+}
+
+// legacyFilterThinkingBlocks 是加入 gjson 预扫描之前 filterThinkingBlocksInternal 的 map 路径，
+// 作为等价性对照。
+func legacyFilterThinkingBlocks(body []byte, alwaysThinking bool) []byte {
+	var req map[string]any
+	if err := json.Unmarshal(body, &req); err != nil {
+		return body
+	}
+	thinkingEnabled := alwaysThinking
+	if thinking, ok := req["thinking"].(map[string]any); ok {
+		if thinkType, ok := thinking["type"].(string); ok && (thinkType == "enabled" || thinkType == "adaptive") {
+			thinkingEnabled = true
+		}
+	}
+	messages, ok := req["messages"].([]any)
+	if !ok {
+		return body
+	}
+	filtered := false
+	for _, msg := range messages {
+		msgMap, ok := msg.(map[string]any)
+		if !ok {
+			continue
+		}
+		role, _ := msgMap["role"].(string)
+		content, ok := msgMap["content"].([]any)
+		if !ok {
+			continue
+		}
+		newContent := make([]any, 0, len(content))
+		filteredThisMessage := false
+		for _, block := range content {
+			blockMap, ok := block.(map[string]any)
+			if !ok {
+				newContent = append(newContent, block)
+				continue
+			}
+			blockType, _ := blockMap["type"].(string)
+			if blockType == "thinking" || blockType == "redacted_thinking" {
+				if thinkingEnabled && role == "assistant" {
+					if alwaysThinking && blockType == "redacted_thinking" {
+						if data, ok := blockMap["data"].(string); ok && data != "" {
+							newContent = append(newContent, block)
+							continue
+						}
+					}
+					signature, _ := blockMap["signature"].(string)
+					if signature != "" && signature != antigravity.DummyThoughtSignature {
+						newContent = append(newContent, block)
+						continue
+					}
+				}
+				filtered = true
+				filteredThisMessage = true
+				continue
+			}
+			if blockType == "" {
+				if _, hasThinking := blockMap["thinking"]; hasThinking {
+					filtered = true
+					filteredThisMessage = true
+					continue
+				}
+			}
+			newContent = append(newContent, block)
+		}
+		if filteredThisMessage {
+			msgMap["content"] = newContent
+		}
+	}
+	if !filtered {
+		return body
+	}
+	newBody, err := json.Marshal(req)
+	if err != nil {
+		return body
+	}
+	return newBody
+}
+
+func TestFilterThinkingBlocksInternal_MatchesLegacyMapPath(t *testing.T) {
+	const on = `"thinking":{"type":"enabled","budget_tokens":1024},`
+	signed := `{"type":"thinking","thinking":"t","signature":"sig"}`
+	cases := map[string]string{
+		"signed kept":                  `{` + on + `"messages":[{"role":"assistant","content":[` + signed + `,{"type":"text","text":"a"}]}]}`,
+		"adaptive signed kept":         `{"thinking":{"type":"adaptive"},"messages":[{"role":"assistant","content":[` + signed + `]}]}`,
+		"escaped enabled":              `{"thinking":{"type":"enabled"},"messages":[{"role":"assistant","content":[` + signed + `]}]}`,
+		"missing signature":            `{` + on + `"messages":[{"role":"assistant","content":[{"type":"thinking","thinking":"t"},{"type":"text","text":"a"}]}]}`,
+		"empty signature":              `{` + on + `"messages":[{"role":"assistant","content":[{"type":"thinking","thinking":"t","signature":""}]}]}`,
+		"non-string signature":         `{` + on + `"messages":[{"role":"assistant","content":[{"type":"thinking","thinking":"t","signature":123}]}]}`,
+		"dummy signature":              `{` + on + `"messages":[{"role":"assistant","content":[{"type":"thinking","thinking":"t","signature":"skip_thought_signature_validator"}]}]}`,
+		"thinking disabled":            `{"thinking":{"type":"disabled"},"messages":[{"role":"assistant","content":[` + signed + `]}]}`,
+		"no top-level thinking":        `{"messages":[{"role":"assistant","content":[` + signed + `]}]}`,
+		"thinking in user message":     `{` + on + `"messages":[{"role":"user","content":[` + signed + `]}]}`,
+		"redacted with data":           `{` + on + `"messages":[{"role":"assistant","content":[{"type":"redacted_thinking","data":"d"}]}]}`,
+		"redacted signed":              `{` + on + `"messages":[{"role":"assistant","content":[{"type":"redacted_thinking","data":"d","signature":"sig"}]}]}`,
+		"untyped thinking key":         `{` + on + `"messages":[{"role":"assistant","content":[{"thinking":"t","signature":"sig"}]}]}`,
+		"non-string type":              `{` + on + `"messages":[{"role":"assistant","content":[{"type":1,"thinking":"t"}]}]}`,
+		"text block only":              `{` + on + `"messages":[{"role":"assistant","content":[{"type":"text","text":"a","thinking":"x"}]}]}`,
+		"duplicate block type":         `{` + on + `"messages":[{"role":"assistant","content":[{"type":"text","type":"thinking","thinking":"t"}]}]}`,
+		"duplicate signature":          `{` + on + `"messages":[{"role":"assistant","content":[{"type":"thinking","thinking":"t","signature":"sig","signature":""}]}]}`,
+		"duplicate top-level thinking": `{` + on + `"messages":[{"role":"assistant","content":[` + signed + `]}],"thinking":{"type":"disabled"}}`,
+		"duplicate messages last ok":   `{` + on + `"messages":[{"role":"assistant","content":[{"type":"thinking","thinking":"t"}]}],"messages":[{"role":"assistant","content":[` + signed + `]}]}`,
+		"duplicate messages last bad":  `{` + on + `"messages":[{"role":"assistant","content":[` + signed + `]}],"messages":[{"role":"assistant","content":[{"type":"thinking","thinking":"t"}]}]}`,
+		"duplicate role":               `{` + on + `"messages":[{"role":"user","role":"assistant","content":[` + signed + `]}]}`,
+		"escaped key":                  `{` + on + `"messages":[{"role":"assistant","content":[{"type":"thinking","thinking":"t"}]}]}`,
+		"pretty printed":               "{\n  \"thinking\" : {\"type\" : \"enabled\"},\n  \"messages\" : [ { \"role\" : \"assistant\", \"content\" : [ { \"type\" : \"thinking\", \"thinking\" : \"t\" } ] } ]\n}",
+		"string content":               `{` + on + `"messages":[{"role":"assistant","content":"thinking"}]}`,
+		"non-object entries":           `{` + on + `"messages":[null,"x",{"role":"assistant","content":[null,"thinking",` + signed + `]}]}`,
+		"messages not array":           `{` + on + `"messages":{"role":"assistant"}}`,
+		"invalid json":                 `{` + on + `"messages":[{"role":"assistant","content":[{"type":"thinking"}]}`,
+		"top-level array":              `[{"thinking":{"type":"enabled"},"messages":[{"role":"assistant","content":[{"type":"thinking"}]}]}]`,
+	}
+	for name, raw := range cases {
+		for _, alwaysThinking := range []bool{false, true} {
+			t.Run(fmt.Sprintf("%s/always=%v", name, alwaysThinking), func(t *testing.T) {
+				body := []byte(raw)
+				want := legacyFilterThinkingBlocks(body, alwaysThinking)
+				got := filterThinkingBlocksInternal(body, alwaysThinking)
+				require.Equal(t, string(want), string(got))
+				require.Equal(t, sameBodySlice(body, want), sameBodySlice(body, got), "unchanged bodies must be returned as the same slice")
+			})
+		}
+	}
+}
+
+func TestFilterThinkingBlocks_SignedBodySkipsMapDecode(t *testing.T) {
+	body := buildBodyParseBenchBody(false)
+	require.Same(t, &body[0], &FilterThinkingBlocks(body, "claude-sonnet-4-5")[0])
+	allocs := testing.AllocsPerRun(5, func() { _ = FilterThinkingBlocks(body, "claude-sonnet-4-5") })
+	require.Zero(t, allocs, "signed thinking history must not be decoded into a map")
+
+	unsigned := buildBodyParseBenchBody(true)
+	require.Equal(t, string(legacyFilterThinkingBlocks(unsigned, false)), string(FilterThinkingBlocks(unsigned, "claude-sonnet-4-5")))
+	require.NotEqual(t, string(unsigned), string(FilterThinkingBlocks(unsigned, "claude-sonnet-4-5")))
 }
 
 func BenchmarkRestoreToolNames(b *testing.B) {

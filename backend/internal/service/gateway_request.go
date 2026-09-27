@@ -1364,6 +1364,11 @@ func filterThinkingBlocksInternal(body []byte, alwaysThinking bool) []byte {
 		!bytes.Contains(body, []byte(`"thinking" :`)) {
 		return body
 	}
+	// 开启 thinking 的请求都会命中上面的字节模式；先用 gjson 预扫描，
+	// 只有确实存在要移除的块时才走下面的 map 解码与重编码。
+	if !thinkingBlocksNeedFilter(body, alwaysThinking) {
+		return body
+	}
 
 	var req map[string]any
 	if err := json.Unmarshal(body, &req); err != nil {
@@ -1455,6 +1460,104 @@ func filterThinkingBlocksInternal(body []byte, alwaysThinking bool) []byte {
 		return body
 	}
 	return newBody
+}
+
+// thinkingBlocksNeedFilter 零分配预扫描 messages[].content，判断 filterThinkingBlocksInternal
+// 的 map 路径是否会移除任何块。重复 key 按 encoding/json 解码进 map 的“后者覆盖”语义处理，
+// 保证返回 false 时 map 路径一定原样返回 body；返回 true 时交给原有逻辑处理。
+func thinkingBlocksNeedFilter(body []byte, alwaysThinking bool) bool {
+	// 只在本函数内零拷贝读取，body 在调用期间不会被修改。
+	jsonStr := *(*string)(unsafe.Pointer(&body))
+	str := func(r gjson.Result) string {
+		if r.Type == gjson.String {
+			return r.Str
+		}
+		return ""
+	}
+
+	var thinking, messages gjson.Result
+	gjson.Parse(jsonStr).ForEach(func(key, value gjson.Result) bool {
+		switch key.Str {
+		case "thinking":
+			thinking = value
+		case "messages":
+			messages = value
+		}
+		return true
+	})
+	if !messages.IsArray() {
+		return false
+	}
+	thinkingEnabled := alwaysThinking
+	if thinking.IsObject() {
+		var thinkType gjson.Result
+		thinking.ForEach(func(key, value gjson.Result) bool {
+			if key.Str == "type" {
+				thinkType = value
+			}
+			return true
+		})
+		if t := str(thinkType); t == "enabled" || t == "adaptive" {
+			thinkingEnabled = true
+		}
+	}
+
+	needFilter := false
+	messages.ForEach(func(_, msg gjson.Result) bool {
+		if !msg.IsObject() {
+			return true
+		}
+		var role, content gjson.Result
+		msg.ForEach(func(key, value gjson.Result) bool {
+			switch key.Str {
+			case "role":
+				role = value
+			case "content":
+				content = value
+			}
+			return true
+		})
+		if !content.IsArray() {
+			return true
+		}
+		keepSigned := thinkingEnabled && str(role) == "assistant"
+		content.ForEach(func(_, block gjson.Result) bool {
+			if !block.IsObject() {
+				return true
+			}
+			var blockType, signature, data gjson.Result
+			hasThinking := false
+			block.ForEach(func(key, value gjson.Result) bool {
+				switch key.Str {
+				case "type":
+					blockType = value
+				case "thinking":
+					hasThinking = true
+				case "signature":
+					signature = value
+				case "data":
+					data = value
+				}
+				return true
+			})
+			switch t := str(blockType); t {
+			case "thinking", "redacted_thinking":
+				needFilter = true
+				if keepSigned {
+					if alwaysThinking && t == "redacted_thinking" && str(data) != "" {
+						needFilter = false
+					} else if sig := str(signature); sig != "" && sig != antigravity.DummyThoughtSignature {
+						needFilter = false
+					}
+				}
+			case "":
+				needFilter = hasThinking
+			}
+			return !needFilter
+		})
+		return !needFilter
+	})
+	return needFilter
 }
 
 // NormalizeClaudeOutputEffort normalizes Claude's output_config.effort value.
