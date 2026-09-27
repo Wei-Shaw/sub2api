@@ -219,6 +219,8 @@
               >
                 <span>{{ suffix }}</span>
                 <button
+                  :aria-label="t('common.remove')"
+                  :title="t('common.remove')"
                   type="button"
                   class="rounded-sm text-fg-muted hover:bg-accent-weak hover:text-fg"
                   @click="

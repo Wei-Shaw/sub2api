@@ -396,6 +396,8 @@
                 "
               />
               <button
+                :aria-label="t('common.remove')"
+                :title="t('common.remove')"
                 @click="form.account_quota_notify_emails.splice(index, 1)"
                 class="btn btn-secondary px-2"
                 type="button"

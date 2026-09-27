@@ -3801,9 +3801,13 @@ export function useSettingsView() {
     );
     for (const p of matching) {
       try {
-        await adminAPI.payment.updateProvider(p.id, { enabled: false });
+        await settingsStepUp.run(() =>
+          adminAPI.payment.updateProvider(p.id, { enabled: false }),
+        );
         p.enabled = false;
       } catch (err: unknown) {
+        // 用户取消 step-up：不再为剩余服务商重复弹窗
+        if (isStepUpCancelled(err)) return;
         slog("disable provider failed", p.id, err);
       }
     }
@@ -3811,6 +3815,20 @@ export function useSettingsView() {
 
   function slog(...args: unknown[]) {
     console.warn("[payment]", ...args);
+  }
+
+  // 服务商增删改带商户凭据/IPN 密钥，后端要求 step-up：取消验证静默返回，其余错误照常提示。
+  function showProviderError(err: unknown) {
+    if (isStepUpCancelled(err)) return;
+    if (isStepUpBlocked(err)) {
+      appStore.showError(
+        stepUpBlockReason(err) === "STEP_UP_ADMIN_API_KEY_FORBIDDEN"
+          ? t("stepUp.adminApiKeyForbidden")
+          : t("stepUp.notEnabled"),
+      );
+      return;
+    }
+    appStore.showError(extractI18nErrorMessage(err, t, "payment.errors", t("common.error")));
   }
 
   const providersLoading = ref(false);
@@ -3906,18 +3924,19 @@ export function useSettingsView() {
   async function handleSaveProvider(payload: Partial<ProviderInstance>) {
     providerSaving.value = true;
     try {
-      if (editingProvider.value) {
-        await adminAPI.payment.updateProvider(editingProvider.value.id, payload);
-      } else {
-        await adminAPI.payment.createProvider(payload);
-      }
+      const editing = editingProvider.value;
+      await settingsStepUp.run(() =>
+        editing
+          ? adminAPI.payment.updateProvider(editing.id, payload)
+          : adminAPI.payment.createProvider(payload),
+      );
       showProviderDialog.value = false;
       // Reload full list (API returns decrypted/formatted data with correct sort order)
       await loadProviders();
       // Auto-save settings so provider changes take effect immediately
       await saveSettings();
     } catch (err: unknown) {
-      appStore.showError(extractI18nErrorMessage(err, t, "payment.errors", t("common.error")));
+      showProviderError(err);
     } finally {
       providerSaving.value = false;
     }
@@ -3932,10 +3951,12 @@ export function useSettingsView() {
 
     const payload: Record<string, boolean> = { [field]: newValue };
     try {
-      await adminAPI.payment.updateProvider(provider.id, payload);
+      await settingsStepUp.run(() =>
+        adminAPI.payment.updateProvider(provider.id, payload),
+      );
       await loadProviders();
     } catch (err: unknown) {
-      appStore.showError(extractI18nErrorMessage(err, t, "payment.errors", t("common.error")));
+      showProviderError(err);
     }
   }
 
@@ -3947,12 +3968,14 @@ export function useSettingsView() {
       ? currentTypes.filter((t) => t !== type)
       : [...currentTypes, type];
     try {
-      await adminAPI.payment.updateProvider(provider.id, {
-        supported_types: updated,
-      } as any);
+      await settingsStepUp.run(() =>
+        adminAPI.payment.updateProvider(provider.id, {
+          supported_types: updated,
+        } as any),
+      );
       await loadProviders();
     } catch (err: unknown) {
-      appStore.showError(extractI18nErrorMessage(err, t, "payment.errors", t("common.error")));
+      showProviderError(err);
     }
   }
 
@@ -3965,29 +3988,33 @@ export function useSettingsView() {
     updates: { id: number; sort_order: number }[],
   ) {
     try {
-      await Promise.all(
-        updates.map((u) =>
-          adminAPI.payment.updateProvider(u.id, {
-            sort_order: u.sort_order,
-          } as Partial<ProviderInstance>),
+      // 整批包进一次 run：并发请求同时撞上 STEP_UP_REQUIRED 时只弹一次验证，通过后整批重试（sort_order 幂等）
+      await settingsStepUp.run(() =>
+        Promise.all(
+          updates.map((u) =>
+            adminAPI.payment.updateProvider(u.id, {
+              sort_order: u.sort_order,
+            } as Partial<ProviderInstance>),
+          ),
         ),
       );
       await loadProviders();
     } catch (err: unknown) {
-      appStore.showError(extractI18nErrorMessage(err, t, "payment.errors", t("common.error")));
+      showProviderError(err);
       loadProviders();
     }
   }
 
   async function handleDeleteProvider() {
     if (!deletingProviderId.value) return;
+    const id = deletingProviderId.value;
     try {
-      await adminAPI.payment.deleteProvider(deletingProviderId.value);
+      await settingsStepUp.run(() => adminAPI.payment.deleteProvider(id));
       appStore.showSuccess(t("common.deleted"));
       showDeleteProviderDialog.value = false;
       loadProviders();
     } catch (err: unknown) {
-      appStore.showError(extractI18nErrorMessage(err, t, "payment.errors", t("common.error")));
+      showProviderError(err);
     }
   }
 

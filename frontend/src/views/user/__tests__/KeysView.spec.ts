@@ -11,7 +11,7 @@ import UseKeyModal from '@/components/keys/UseKeyModal.vue'
 const {
   listKeys,
   updateKey,
-  getPublicSettings,
+  fetchPublicSettings,
   getDashboardApiKeysUsage,
   getAvailableGroups,
   getUserGroupRates,
@@ -27,7 +27,7 @@ const {
   authState: { isSimpleMode: false },
   listKeys: vi.fn(),
   updateKey: vi.fn(),
-  getPublicSettings: vi.fn(),
+  fetchPublicSettings: vi.fn(),
   getDashboardApiKeysUsage: vi.fn(),
   getAvailableGroups: vi.fn(),
   getUserGroupRates: vi.fn(),
@@ -73,9 +73,6 @@ vi.mock('@/api', () => ({
     delete: vi.fn(),
     toggleStatus: vi.fn(),
   },
-  authAPI: {
-    getPublicSettings,
-  },
   usageAPI: {
     getDashboardApiKeysUsage,
   },
@@ -89,6 +86,7 @@ vi.mock('@/stores/app', () => ({
   useAppStore: () => ({
     showError,
     showSuccess,
+    fetchPublicSettings,
     cachedPublicSettings: appSettings,
   }),
 }))
@@ -285,7 +283,7 @@ describe('user KeysView column settings', () => {
     listKeys.mockReset()
     updateKey.mockReset()
     vi.mocked(keysAPI.create).mockReset()
-    getPublicSettings.mockReset()
+    fetchPublicSettings.mockReset()
     getDashboardApiKeysUsage.mockReset()
     getAvailableGroups.mockReset()
     getUserGroupRates.mockReset()
@@ -302,7 +300,7 @@ describe('user KeysView column settings', () => {
       page_size: 20,
       pages: 1,
     })
-    getPublicSettings.mockResolvedValue({})
+    fetchPublicSettings.mockResolvedValue({})
     getDashboardApiKeysUsage.mockResolvedValue({ stats: {} })
     getAvailableGroups.mockResolvedValue([])
     getUserGroupRates.mockResolvedValue({})
@@ -682,9 +680,31 @@ describe('user KeysView column settings', () => {
     const wrapper = await mountView()
     expect(wrapper.findComponent(EndpointPopover).props('apiBaseUrl')).toBe(window.location.origin)
 
-    getPublicSettings.mockResolvedValue({ api_base_url: 'https://api.example.com' })
+    fetchPublicSettings.mockResolvedValue({ api_base_url: 'https://api.example.com' })
     const configured = await mountView()
     expect(configured.findComponent(EndpointPopover).props('apiBaseUrl')).toBe('https://api.example.com')
+  })
+
+  it('sends a single DELETE when the confirm is triggered again while pending', async () => {
+    let resolveDelete!: () => void
+    vi.mocked(keysAPI.delete).mockReset().mockReturnValue(new Promise<void>((resolve) => { resolveDelete = resolve }))
+    const wrapper = await mountView()
+    await wrapper.get('button[title="common.delete"]').trigger('click')
+    const confirmation = wrapper.findAllComponents({ name: 'ConfirmDialog' })
+      .find((dialog) => dialog.props('title') === 'keys.deleteKey')!
+    confirmation.vm.$emit('confirm')
+    confirmation.vm.$emit('confirm')
+    resolveDelete()
+    await flushPromises()
+    expect(keysAPI.delete).toHaveBeenCalledOnce()
+    expect(showSuccess).toHaveBeenCalledOnce()
+    expect(showError).not.toHaveBeenCalled()
+
+    // The guard is released once the request settles.
+    await wrapper.get('button[title="common.delete"]').trigger('click')
+    confirmation.vm.$emit('confirm')
+    await flushPromises()
+    expect(keysAPI.delete).toHaveBeenCalledTimes(2)
   })
 
   it('shows and resubmits HTML-escaped key names decoded', async () => {

@@ -53,6 +53,8 @@
 
       <!-- Remove button (always visible, stop propagation) -->
       <button
+        :aria-label="t('common.delete')"
+        :title="t('common.delete')"
         type="button"
         @click.stop="emit('remove')"
         class="flex-shrink-0 rounded-sm p-1 text-fg-subtle hover:text-danger"

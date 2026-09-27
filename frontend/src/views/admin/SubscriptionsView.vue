@@ -512,6 +512,8 @@
             />
             <button
               v-if="selectedUser"
+              :aria-label="t('common.clear')"
+              :title="t('common.clear')"
               @click="clearUserSelection"
               type="button"
               class="absolute right-2 top-1/2 -translate-y-1/2 text-fg-subtle hover:text-fg-muted"

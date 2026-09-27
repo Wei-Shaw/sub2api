@@ -18,6 +18,8 @@
         :placeholder="t('admin.accounts.headerOverride.valuePlaceholder')"
       />
       <button
+        :aria-label="t('common.delete')"
+        :title="t('common.delete')"
         type="button"
         class="rounded-sm p-2 text-danger transition-colors hover:bg-danger-weak hover:text-danger"
         @click="removeRow(index)"

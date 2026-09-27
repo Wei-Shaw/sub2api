@@ -10,6 +10,8 @@
       >
         {{ model }}
         <button
+          :aria-label="t('common.remove')"
+          :title="t('common.remove')"
           type="button"
           @click="removeModel(idx)"
           class="ml-0.5 rounded-sm p-0.5 hover:bg-accent-weak"

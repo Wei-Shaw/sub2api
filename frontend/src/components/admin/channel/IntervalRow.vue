@@ -90,7 +90,7 @@
       </div>
     </template>
 
-    <button type="button" @click="emit('remove')" class="mt-4 rounded-sm p-0.5 text-fg-subtle hover:text-danger">
+    <button :aria-label="t('common.remove')" :title="t('common.remove')" type="button" @click="emit('remove')" class="mt-4 rounded-sm p-0.5 text-fg-subtle hover:text-danger">
       <Icon name="x" size="sm" />
     </button>
   </div>

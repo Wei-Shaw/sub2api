@@ -4,6 +4,7 @@
     :show="showEditModal"
     :title="t('admin.groups.editGroup')"
     width="wide"
+    confirm-discard
     @close="closeEditModal"
   >
     <form
@@ -89,6 +90,8 @@
                 ?.label || `#${groupId}`
             }}
             <button
+              :aria-label="t('common.remove')"
+              :title="t('common.remove')"
               type="button"
               @click="
                 editForm.copy_accounts_from_group_ids =
@@ -383,6 +386,8 @@
                 </span>
               </span>
               <button
+                :aria-label="t('common.moveUp')"
+                :title="t('common.moveUp')"
                 type="button"
                 :disabled="index === 0"
                 class="rounded-sm p-1 text-fg-subtle hover:bg-accent-weak hover:text-accent-strong disabled:opacity-40"
@@ -391,6 +396,8 @@
                 <Icon name="arrowUp" size="sm" />
               </button>
               <button
+                :aria-label="t('common.moveDown')"
+                :title="t('common.moveDown')"
                 type="button"
                 :disabled="index === editModelAllowlistState.items.length - 1"
                 class="rounded-sm p-1 text-fg-subtle hover:bg-accent-weak hover:text-accent-strong disabled:opacity-40"
@@ -1620,6 +1627,8 @@
                     >
                       {{ account.name }}
                       <button
+                        :aria-label="t('common.remove')"
+                        :title="t('common.remove')"
                         type="button"
                         @click="removeSelectedAccount(rule, account.id, true)"
                         class="ml-0.5 text-accent hover:text-accent-strong"

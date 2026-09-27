@@ -285,6 +285,16 @@ func newTestAPIKeyService(repo service.APIKeyRepository) *service.APIKeyService 
 	)
 }
 
+// waitTouched waits for the last_used write that TouchLastUsedAsync runs off the request path.
+func waitTouched(t *testing.T, touched <-chan struct{}) {
+	t.Helper()
+	select {
+	case <-touched:
+	case <-time.After(time.Second):
+		t.Fatal("expected an async last_used touch")
+	}
+}
+
 func TestApiKeyAuthWithSubscriptionGoogle_MissingKey(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
@@ -706,6 +716,7 @@ func TestApiKeyAuthWithSubscriptionGoogle_TouchesLastUsedOnSuccess(t *testing.T)
 
 	var touchedID int64
 	var touchedAt time.Time
+	touched := make(chan struct{})
 	r := gin.New()
 	apiKeyService := newTestAPIKeyService(fakeAPIKeyRepo{
 		getByKey: func(ctx context.Context, key string) (*service.APIKey, error) {
@@ -718,6 +729,7 @@ func TestApiKeyAuthWithSubscriptionGoogle_TouchesLastUsedOnSuccess(t *testing.T)
 		updateLastUsed: func(ctx context.Context, id int64, usedAt time.Time) error {
 			touchedID = id
 			touchedAt = usedAt
+			close(touched)
 			return nil
 		},
 	})
@@ -731,6 +743,7 @@ func TestApiKeyAuthWithSubscriptionGoogle_TouchesLastUsedOnSuccess(t *testing.T)
 	r.ServeHTTP(rec, req)
 
 	require.Equal(t, http.StatusOK, rec.Code)
+	waitTouched(t, touched)
 	require.Equal(t, apiKey.ID, touchedID)
 	require.False(t, touchedAt.IsZero())
 }
@@ -753,7 +766,7 @@ func TestApiKeyAuthWithSubscriptionGoogle_TouchFailureDoesNotBlock(t *testing.T)
 		User:   user,
 	}
 
-	touchCalls := 0
+	var touchCalls atomic.Int32
 	r := gin.New()
 	apiKeyService := newTestAPIKeyService(fakeAPIKeyRepo{
 		getByKey: func(ctx context.Context, key string) (*service.APIKey, error) {
@@ -764,7 +777,7 @@ func TestApiKeyAuthWithSubscriptionGoogle_TouchFailureDoesNotBlock(t *testing.T)
 			return &clone, nil
 		},
 		updateLastUsed: func(ctx context.Context, id int64, usedAt time.Time) error {
-			touchCalls++
+			touchCalls.Add(1)
 			return errors.New("write failed")
 		},
 	})
@@ -778,7 +791,7 @@ func TestApiKeyAuthWithSubscriptionGoogle_TouchFailureDoesNotBlock(t *testing.T)
 	r.ServeHTTP(rec, req)
 
 	require.Equal(t, http.StatusOK, rec.Code)
-	require.Equal(t, 1, touchCalls)
+	require.Eventually(t, func() bool { return touchCalls.Load() == 1 }, time.Second, 5*time.Millisecond)
 }
 
 func TestApiKeyAuthWithSubscriptionGoogle_TouchesLastUsedInStandardMode(t *testing.T) {
@@ -799,7 +812,7 @@ func TestApiKeyAuthWithSubscriptionGoogle_TouchesLastUsedInStandardMode(t *testi
 		User:   user,
 	}
 
-	touchCalls := 0
+	var touchCalls atomic.Int32
 	r := gin.New()
 	apiKeyService := newTestAPIKeyService(fakeAPIKeyRepo{
 		getByKey: func(ctx context.Context, key string) (*service.APIKey, error) {
@@ -810,7 +823,7 @@ func TestApiKeyAuthWithSubscriptionGoogle_TouchesLastUsedInStandardMode(t *testi
 			return &clone, nil
 		},
 		updateLastUsed: func(ctx context.Context, id int64, usedAt time.Time) error {
-			touchCalls++
+			touchCalls.Add(1)
 			return nil
 		},
 	})
@@ -824,7 +837,7 @@ func TestApiKeyAuthWithSubscriptionGoogle_TouchesLastUsedInStandardMode(t *testi
 	r.ServeHTTP(rec, req)
 
 	require.Equal(t, http.StatusOK, rec.Code)
-	require.Equal(t, 1, touchCalls)
+	require.Eventually(t, func() bool { return touchCalls.Load() == 1 }, time.Second, 5*time.Millisecond)
 }
 
 func TestApiKeyAuthWithSubscriptionGoogle_SubscriptionLimitExceededReturns429(t *testing.T) {

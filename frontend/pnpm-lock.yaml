@@ -14,12 +14,6 @@ importers:
 
   .:
     dependencies:
-      '@airwallex/components-sdk':
-        specifier: ^1.30.2
-        version: 1.30.2
-      '@stripe/stripe-js':
-        specifier: ^9.0.1
-        version: 9.0.1
       '@tanstack/vue-virtual':
         specifier: ^3.13.23
         version: 3.13.23(vue@3.5.26(typescript@5.6.3))
@@ -137,12 +131,6 @@ importers:
         version: 2.2.12(typescript@5.6.3)
 
 packages:
-
-  '@airwallex/airtracker@3.2.0':
-    resolution: {integrity: sha512-PKE5N38ajTVg6ph9JzLpWsICNjqLtf/wWudNVU3UPX9SVy2I5s5ITc281sMSD8+LIE6RJoGjGTO+VYP/io5kig==}
-
-  '@airwallex/components-sdk@1.30.2':
-    resolution: {integrity: sha512-BGwAPCACwOJm8XNxDxJGMq1o/73D9+ZWifvp5YHvfgIwxg1RGVCIME0tP1g8cash3fVLHgl7xObyS1QbIOSDXw==}
 
   '@alloc/quick-lru@5.2.0':
     resolution: {integrity: sha512-UrcABB+4bUrFABwbluTIBErXwvbsU/V7TZWfmbgJfbkwiBuziS9gxdODUyuiecfdGQ85jglMW6juS3+z5TsKLw==}
@@ -540,10 +528,6 @@ packages:
     resolution: {integrity: sha512-hYT5d3YNdSh3mbCU1gwQyPgQd3T2ne0A3KG8KSBdav5TiBg6eInVmV+TeR5uHufiIgSFg0XsOWGW5/RhNcSvPg==}
     cpu: [x64]
     os: [win32]
-
-  '@stripe/stripe-js@9.0.1':
-    resolution: {integrity: sha512-un0URSosrW7wNr7xZ5iI2mC9mdeXZ3KERoVlA2RdmeLXYxHUPXq0yHzir2n/MtyXXEdSaELtz4WXGS6dzPEeKA==}
-    engines: {node: '>=12.16'}
 
   '@tanstack/virtual-core@3.13.23':
     resolution: {integrity: sha512-zSz2Z2HNyLjCplANTDyl3BcdQJc2k1+yyFoKhNRmCr7V7dY8o8q5m8uFTI1/Pg1kL+Hgrz6u3Xo6eFUB7l66cg==}
@@ -2244,12 +2228,6 @@ packages:
 
 snapshots:
 
-  '@airwallex/airtracker@3.2.0': {}
-
-  '@airwallex/components-sdk@1.30.2':
-    dependencies:
-      '@airwallex/airtracker': 3.2.0
-
   '@alloc/quick-lru@5.2.0': {}
 
   '@ampproject/remapping@2.3.0':
@@ -2531,8 +2509,6 @@ snapshots:
 
   '@rollup/rollup-win32-x64-msvc@4.54.0':
     optional: true
-
-  '@stripe/stripe-js@9.0.1': {}
 
   '@tanstack/virtual-core@3.13.23': {}
 

@@ -403,6 +403,8 @@
                     @input="section.model_mapping[srcModel] = ($event.target as HTMLInputElement).value"
                   />
                   <button
+                    :aria-label="t('common.delete')"
+                    :title="t('common.delete')"
                     type="button"
                     @click="removeMappingEntry(sIdx, srcModel)"
                     class="rounded-sm p-0.5 text-fg-subtle hover:text-danger"
@@ -520,7 +522,7 @@
                       class="badge badge-primary gap-1"
                     >
                       <span :class="['font-medium', platformTextClass(section.platform)]">{{ getRuleAccountLabel(accountId) }}</span>
-                      <button type="button" @click="removeRuleAccount(rule, accountId)" class="text-fg-subtle hover:text-danger">
+                      <button :aria-label="t('common.remove')" :title="t('common.remove')" type="button" @click="removeRuleAccount(rule, accountId)" class="text-fg-subtle hover:text-danger">
                         <Icon name="x" size="xs" />
                       </button>
                     </span>

@@ -515,6 +515,8 @@
                   "
                 />
                 <button
+                  :aria-label="t('common.remove')"
+                  :title="t('common.remove')"
                   type="button"
                   @click="
                     rectifierForm.apikey_signature_patterns.splice(
@@ -727,6 +729,8 @@
                   "
                 />
                 <button
+                  :aria-label="t('common.remove')"
+                  :title="t('common.remove')"
                   type="button"
                   @click="rule.model_whitelist!.splice(index, 1)"
                   class="shrink-0 rounded-sm p-1 text-danger transition-colors hover:bg-danger-weak hover:text-danger-strong"
@@ -1103,6 +1107,8 @@
                 "
               />
               <button
+                :aria-label="t('common.remove')"
+                :title="t('common.remove')"
                 type="button"
                 @click="
                   removeOpenAIFastPolicyModelPattern(rule, patternIdx)
@@ -2308,6 +2314,8 @@
                     />
                   </button>
                   <button
+                    :aria-label="t('common.moveUp')"
+                    :title="t('common.moveUp')"
                     type="button"
                     class="btn btn-secondary btn-sm px-2"
                     :disabled="index === 0"
@@ -2316,6 +2324,8 @@
                     <Icon name="arrowUp" size="xs" />
                   </button>
                   <button
+                    :aria-label="t('common.moveDown')"
+                    :title="t('common.moveDown')"
                     type="button"
                     class="btn btn-secondary btn-sm px-2"
                     :disabled="
@@ -2327,6 +2337,8 @@
                   </button>
                   <Toggle v-model="block.enabled" />
                   <button
+                    :aria-label="t('common.delete')"
+                    :title="t('common.delete')"
                     type="button"
                     class="btn btn-secondary btn-sm px-2 text-danger hover:text-danger-strong"
                     @click="removeClaudeOAuthSystemPromptBlock(index)"
