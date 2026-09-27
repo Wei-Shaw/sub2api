@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 
@@ -273,14 +274,19 @@ func isBailianTextRerankModel(model string) bool {
 // bailianTextRerankURLPath 百炼 text-rerank 端点的固定路径后缀。
 const bailianTextRerankURLPath = "/api/v1/services/rerank/text-rerank/text-rerank"
 
-// buildBailianTextRerankURL 构造百炼 text-rerank 端点 URL。base 为百炼域名根
-// （如 https://dashscope.aliyuncs.com 或
-// https://{WorkspaceId}.cn-beijing.maas.aliyuncs.com）；base 已带完整路径后缀时
-// 原样返回（幂等）。
+// buildBailianTextRerankURL 构造百炼 text-rerank 端点 URL。百炼嵌套端点固定位于
+// 域名根（如 https://dashscope.aliyuncs.com 或
+// https://{WorkspaceId}.cn-beijing.maas.aliyuncs.com），base 配成
+// compatible-mode/v1 等 OpenAI 兼容前缀时剥到 scheme://host 再拼固定路径；
+// base 已是完整端点 URL 时原样返回（幂等，反代场景请如此配置）；
+// 解析不出 scheme/host 时退回尾部拼接。
 func buildBailianTextRerankURL(base string) string {
 	trimmed := strings.TrimRight(strings.TrimSpace(base), "/")
 	if strings.HasSuffix(trimmed, bailianTextRerankURLPath) {
 		return trimmed
+	}
+	if u, err := url.Parse(trimmed); err == nil && u.Scheme != "" && u.Host != "" {
+		return u.Scheme + "://" + u.Host + bailianTextRerankURLPath
 	}
 	return trimmed + bailianTextRerankURLPath
 }
