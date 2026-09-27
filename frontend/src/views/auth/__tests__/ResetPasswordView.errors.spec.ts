@@ -64,5 +64,24 @@ describe('ResetPasswordView errors', () => {
     await flushPromises()
 
     expect(showErrorMock).toHaveBeenCalledWith(viCommon.auth.errors.INVALID_RESET_TOKEN)
+    const alert = wrapper.get('[data-testid="auth-form-error"]')
+    expect(alert.attributes('role')).toBe('alert')
+    expect(alert.text()).toBe(viCommon.auth.errors.INVALID_RESET_TOKEN)
+  })
+
+  it('links a mismatched confirmation to its inline error message', async () => {
+    const wrapper = mountReset()
+    await flushPromises()
+    await wrapper.get('#password').setValue('secret-123')
+    await wrapper.get('#confirmPassword').setValue('different')
+    await wrapper.get('form').trigger('submit.prevent')
+    await flushPromises()
+
+    const input = wrapper.get('#confirmPassword')
+    expect(input.attributes('aria-invalid')).toBe('true')
+    const message = wrapper.get(`#${input.attributes('aria-describedby')}`)
+    expect(message.attributes('role')).toBe('alert')
+    expect(message.text()).toBe(viCommon.auth.passwordsDoNotMatch)
+    expect(resetPasswordMock).not.toHaveBeenCalled()
   })
 })

@@ -46,8 +46,13 @@
             :disabled="isLoading"
             class="input py-3 text-center font-mono text-xl tracking-[0.5em]"
             :class="{ 'input-error': errors.code }"
+            :aria-invalid="!!errors.code"
+            :aria-describedby="errors.code ? 'code-error' : undefined"
             placeholder="000000"
           />
+          <p v-if="errors.code" id="code-error" class="input-error-text" role="alert">
+            {{ errors.code }}
+          </p>
           <p class="input-hint">{{ t('auth.verificationCodeHint') }}</p>
         </div>
 
@@ -104,6 +109,14 @@
             @error="onCreateAccountTurnstileError"
           />
         </div>
+
+        <p v-if="errors.turnstile" class="input-error-text" role="alert">
+          {{ errors.turnstile }}
+        </p>
+
+        <p v-if="errorMessage" class="input-error-text" role="alert" data-testid="auth-form-error">
+          {{ errorMessage }}
+        </p>
 
         <!-- Submit Button -->
         <button

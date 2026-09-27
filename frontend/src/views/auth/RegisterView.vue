@@ -44,9 +44,14 @@
               :disabled="registrationActionDisabled"
               class="input"
               :class="{ 'input-error': errors.email }"
+              :aria-invalid="!!errors.email"
+              :aria-describedby="errors.email ? 'email-error' : undefined"
               :placeholder="t('auth.emailPlaceholder')"
             />
           </div>
+          <p v-if="errors.email" id="email-error" class="input-error-text" role="alert">
+            {{ errors.email }}
+          </p>
         </div>
 
         <!-- Password Input -->
@@ -64,6 +69,8 @@
               :disabled="registrationActionDisabled"
               class="input pr-11"
               :class="{ 'input-error': errors.password }"
+              :aria-invalid="!!errors.password"
+              :aria-describedby="errors.password ? 'password-error' : undefined"
               :placeholder="t('auth.createPasswordPlaceholder')"
             />
             <button
@@ -76,6 +83,9 @@
               <Icon v-else name="eye" size="md" />
             </button>
           </div>
+          <p v-if="errors.password" id="password-error" class="input-error-text" role="alert">
+            {{ errors.password }}
+          </p>
           <p class="input-hint">
             {{ t('auth.passwordHint') }}
           </p>
@@ -96,6 +106,8 @@
               :disabled="registrationActionDisabled"
               class="input pr-11"
               :class="{ 'input-error': errors.confirmPassword }"
+              :aria-invalid="!!errors.confirmPassword"
+              :aria-describedby="errors.confirmPassword ? 'confirmPassword-error' : undefined"
               :placeholder="t('auth.confirmPasswordPlaceholder')"
             />
             <button
@@ -108,6 +120,14 @@
               <Icon v-else name="eye" size="md" />
             </button>
           </div>
+          <p
+            v-if="errors.confirmPassword"
+            id="confirmPassword-error"
+            class="input-error-text"
+            role="alert"
+          >
+            {{ errors.confirmPassword }}
+          </p>
         </div>
 
         <!-- Invitation Code Input (Required when enabled) -->
@@ -126,6 +146,8 @@
                 'border-success focus:border-success focus:ring-success': invitationValidation.valid,
                 'border-danger focus:border-danger focus:ring-danger': invitationValidation.invalid || errors.invitation_code
               }"
+              :aria-invalid="!!invitationCodeError"
+              :aria-describedby="invitationCodeError ? 'invitation_code-error' : undefined"
               :placeholder="t('auth.invitationCodePlaceholder')"
               @input="handleInvitationCodeInput"
             />
@@ -143,6 +165,9 @@
               <Icon name="exclamationCircle" size="md" class="text-danger" />
             </div>
           </div>
+          <p v-if="invitationCodeError" id="invitation_code-error" class="input-error-text" role="alert">
+            {{ invitationCodeError }}
+          </p>
           <!-- Invitation code validation result -->
           <transition name="fade">
             <div v-if="invitationValidation.valid" class="mt-2 flex items-center gap-2 border border-success/60 bg-success-weak px-3 py-2">
@@ -189,6 +214,8 @@
                 'border-success focus:border-success focus:ring-success': promoValidation.valid,
                 'border-danger focus:border-danger focus:ring-danger': promoValidation.invalid
               }"
+              :aria-invalid="promoValidation.invalid"
+              :aria-describedby="promoValidation.invalid ? 'promo_code-error' : undefined"
               :placeholder="t('auth.promoCodePlaceholder')"
               @input="handlePromoCodeInput"
             />
@@ -206,6 +233,9 @@
               <Icon name="exclamationCircle" size="md" class="text-danger" />
             </div>
           </div>
+          <p v-if="promoValidation.invalid" id="promo_code-error" class="input-error-text" role="alert">
+            {{ promoValidation.message }}
+          </p>
           <!-- Promo code validation result -->
           <transition name="fade">
             <div v-if="promoValidation.valid" class="mt-2 flex items-center gap-2 border border-success/60 bg-success-weak px-3 py-2">
@@ -234,6 +264,9 @@
             @expire="onTurnstileExpire"
             @error="onTurnstileError"
           />
+          <p v-if="errors.turnstile" class="input-error-text" role="alert">
+            {{ errors.turnstile }}
+          </p>
         </div>
 
         <LoginAgreementPrompt
@@ -247,6 +280,10 @@
           @reject="rejectLoginAgreement"
           @open="showAgreementModal = true"
         />
+
+        <p v-if="errorMessage" class="input-error-text" role="alert" data-testid="auth-form-error">
+          {{ errorMessage }}
+        </p>
 
         <!-- Submit Button -->
         <button
@@ -490,12 +527,15 @@ const errors = reactive({
   invitation_code: ''
 })
 
+const invitationCodeError = computed(
+  () => (invitationValidation.invalid ? invitationValidation.message : '') || errors.invitation_code
+)
+
 const validationToastMessage = computed(() =>
   errors.email ||
   errors.password ||
   errors.confirmPassword ||
-  (invitationValidation.invalid ? invitationValidation.message : '') ||
-  errors.invitation_code ||
+  invitationCodeError.value ||
   (promoValidation.invalid ? promoValidation.message : '') ||
   errors.turnstile ||
   ''

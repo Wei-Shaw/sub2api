@@ -3,11 +3,18 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import RegisterView from '@/views/auth/RegisterView.vue'
 import viCommon from '@/i18n/locales/vi/common'
 
-const { getPublicSettingsMock, registerMock, showErrorMock, pushMock } = vi.hoisted(() => ({
+const {
+  getPublicSettingsMock,
+  registerMock,
+  showErrorMock,
+  pushMock,
+  validateInvitationCodeMock
+} = vi.hoisted(() => ({
   getPublicSettingsMock: vi.fn(),
   registerMock: vi.fn(),
   showErrorMock: vi.fn(),
-  pushMock: vi.fn()
+  pushMock: vi.fn(),
+  validateInvitationCodeMock: vi.fn()
 }))
 
 vi.mock('vue-i18n', async () => {
@@ -37,7 +44,8 @@ vi.mock('@/api/auth', async () => {
   const actual = await vi.importActual<typeof import('@/api/auth')>('@/api/auth')
   return {
     ...actual,
-    getPublicSettings: (...args: unknown[]) => getPublicSettingsMock(...args)
+    getPublicSettings: (...args: unknown[]) => getPublicSettingsMock(...args),
+    validateInvitationCode: (...args: unknown[]) => validateInvitationCodeMock(...args)
   }
 })
 
@@ -87,6 +95,7 @@ describe('RegisterView errors', () => {
     registerMock.mockReset()
     showErrorMock.mockReset()
     pushMock.mockReset()
+    validateInvitationCodeMock.mockReset()
     sessionStorage.clear()
     getPublicSettingsMock.mockResolvedValue(publicSettings)
   })
@@ -106,5 +115,41 @@ describe('RegisterView errors', () => {
 
     expect(showErrorMock).toHaveBeenCalledWith(viCommon.auth.errors.EMAIL_EXISTS)
     expect(showErrorMock).not.toHaveBeenCalledWith('email already exists')
+  })
+
+  it('renders the blocking submit error instead of failing silently', async () => {
+    getPublicSettingsMock.mockResolvedValue({ ...publicSettings, invitation_code_enabled: true })
+    validateInvitationCodeMock.mockResolvedValue({ valid: false, error_code: 'INVITATION_CODE_INVALID' })
+    const wrapper = mountRegister()
+    await flushPromises()
+    await fillValidForm(wrapper)
+    await wrapper.get('#invitation_code').setValue('bad-code')
+    await wrapper.get('form').trigger('submit.prevent')
+    await flushPromises()
+
+    const alert = wrapper.get('[data-testid="auth-form-error"]')
+    expect(alert.attributes('role')).toBe('alert')
+    expect(alert.text()).toBe(viCommon.auth.invitationCodeInvalidCannotRegister)
+    expect(registerMock).not.toHaveBeenCalled()
+  })
+
+  it('links each invalid field to its inline error message', async () => {
+    const wrapper = mountRegister()
+    await flushPromises()
+    await wrapper.get('#email').setValue('user@example.com')
+    await wrapper.get('#password').setValue('secret-123')
+    await wrapper.get('#confirmPassword').setValue('different')
+
+    for (let attempt = 0; attempt < 2; attempt++) {
+      await wrapper.get('form').trigger('submit.prevent')
+      await flushPromises()
+      const input = wrapper.get('#confirmPassword')
+      expect(input.attributes('aria-invalid')).toBe('true')
+      const message = wrapper.get(`#${input.attributes('aria-describedby')}`)
+      expect(message.attributes('role')).toBe('alert')
+      expect(message.text()).toBe(viCommon.auth.passwordsDoNotMatch)
+    }
+    expect(wrapper.get('#password').attributes('aria-invalid')).toBe('false')
+    expect(registerMock).not.toHaveBeenCalled()
   })
 })

@@ -101,6 +101,8 @@
               :disabled="isLoading"
               class="input pr-11"
               :class="{ 'input-error': errors.password }"
+              :aria-invalid="!!errors.password"
+              :aria-describedby="errors.password ? 'password-error' : undefined"
               :placeholder="t('auth.newPasswordPlaceholder')"
             />
             <button
@@ -112,6 +114,9 @@
               <Icon v-else name="eye" size="md" />
             </button>
           </div>
+          <p v-if="errors.password" id="password-error" class="input-error-text" role="alert">
+            {{ errors.password }}
+          </p>
         </div>
 
         <!-- Confirm Password Input -->
@@ -129,6 +134,8 @@
               :disabled="isLoading"
               class="input pr-11"
               :class="{ 'input-error': errors.confirmPassword }"
+              :aria-invalid="!!errors.confirmPassword"
+              :aria-describedby="errors.confirmPassword ? 'confirmPassword-error' : undefined"
               :placeholder="t('auth.confirmPasswordPlaceholder')"
             />
             <button
@@ -140,7 +147,19 @@
               <Icon v-else name="eye" size="md" />
             </button>
           </div>
+          <p
+            v-if="errors.confirmPassword"
+            id="confirmPassword-error"
+            class="input-error-text"
+            role="alert"
+          >
+            {{ errors.confirmPassword }}
+          </p>
         </div>
+
+        <p v-if="errorMessage" class="input-error-text" role="alert" data-testid="auth-form-error">
+          {{ errorMessage }}
+        </p>
 
         <!-- Submit Button -->
         <button
