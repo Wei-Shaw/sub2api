@@ -217,8 +217,7 @@ func TestGrokOAuthServiceConvertFromSSOExtractsBuildClaims(t *testing.T) {
 	require.Equal(t, "user-sub", credentials["sub"])
 	require.Equal(t, "team-1", credentials["team_id"])
 	require.Equal(t, "supergrok_heavy", credentials["subscription_tier"])
-	// Persisted for the web imagine WebSocket; redacted in API responses.
-	require.Equal(t, "sso-token", credentials["sso_token"])
+	require.NotContains(t, credentials, "sso_token")
 }
 
 func TestGrokOAuthServiceRefreshAccountTokenOverwritesStaleTierFromNewJWT(t *testing.T) {
@@ -298,7 +297,7 @@ func TestGrokOAuthServiceRefreshAccountTokenKeepsStoredTierWhenJWTHasNoClaim(t *
 	require.Equal(t, "supergrok_lite", info.SubscriptionTier)
 }
 
-func TestGrokOAuthServiceValidateSSOTokenReturnsOAuthTokensAndKeepsSSO(t *testing.T) {
+func TestGrokOAuthServiceValidateSSOTokenReturnsOAuthTokensWithoutPersistingSSO(t *testing.T) {
 	svc := NewGrokOAuthService(nil, &grokOAuthClientStub{
 		ssoResponse: &xai.TokenResponse{
 			AccessToken:  "access-from-sso",
@@ -315,8 +314,7 @@ func TestGrokOAuthServiceValidateSSOTokenReturnsOAuthTokensAndKeepsSSO(t *testin
 	require.Equal(t, "refresh-from-sso", info.RefreshToken)
 
 	creds := svc.BuildAccountCredentials(info)
-	// The sso cookie is kept for the web imagine WebSocket; the password is not.
-	require.Equal(t, "sso-token", creds["sso_token"])
+	require.NotContains(t, creds, "sso_token")
 	require.NotContains(t, creds, "password")
 }
 
@@ -344,8 +342,7 @@ func TestGrokOAuthServiceAuthorizePasswordUsesLoginThenSSOAuthorize(t *testing.T
 	require.Equal(t, "access-from-password", info.AccessToken)
 	creds := svc.BuildAccountCredentials(info)
 	require.NotContains(t, creds, "password")
-	// Login-derived sso cookie is kept for the web imagine WebSocket.
-	require.Equal(t, "password-derived-sso", creds["sso_token"])
+	require.NotContains(t, creds, "sso_token")
 	require.Equal(t, "user@example.com", client.loginEmail)
 	require.Equal(t, "  super-secret  ", client.loginPassword)
 }
