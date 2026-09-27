@@ -189,7 +189,8 @@ func (s *ExchangeRateService) refresh(ctx context.Context) (*ExchangeRateSnapsho
 	if err != nil {
 		return nil, err
 	}
-	return v.(*ExchangeRateSnapshot), nil
+	snapshot, _ := v.(*ExchangeRateSnapshot)
+	return snapshot, nil
 }
 
 func (s *ExchangeRateService) fetchUpstream(ctx context.Context) (*ExchangeRateSnapshot, error) {
