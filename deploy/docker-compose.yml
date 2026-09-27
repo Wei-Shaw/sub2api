@@ -174,9 +174,9 @@ services:
       # - Usage statistics "today" boundary
       # - Subscription expiry times
       # - Log timestamps
-      # Common values: Asia/Shanghai, America/New_York, Europe/London, UTC
+      # Common values: Asia/Ho_Chi_Minh, Asia/Shanghai, America/New_York, Europe/London, UTC
       # =======================================================================
-      - TZ=${TZ:-Asia/Shanghai}
+      - TZ=${TZ:-Asia/Ho_Chi_Minh}
 
       # =======================================================================
       # Gemini OAuth Configuration (for Gemini accounts)
@@ -333,7 +333,7 @@ services:
       - POSTGRES_USER=${POSTGRES_USER:-sub2api}
       - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
       - POSTGRES_DB=${POSTGRES_DB:-sub2api}
-      - TZ=${TZ:-Asia/Shanghai}
+      - TZ=${TZ:-Asia/Ho_Chi_Minh}
     networks:
       - sub2api-network
     healthcheck:
@@ -376,7 +376,7 @@ services:
         --maxclients ${REDIS_MAXCLIENTS:-10000} \
         ${REDIS_PASSWORD:+--requirepass "$REDIS_PASSWORD"}'
     environment:
-      - TZ=${TZ:-Asia/Shanghai}
+      - TZ=${TZ:-Asia/Ho_Chi_Minh}
       # REDISCLI_AUTH is used by redis-cli for authentication (safer than -a flag)
       - REDISCLI_AUTH=${REDIS_PASSWORD:-}
     networks:
@@ -405,7 +405,7 @@ services:
     mem_limit: 1g
     profiles: ["grok-web"]
     environment:
-      - TZ=${TZ:-Asia/Shanghai}
+      - TZ=${TZ:-Asia/Ho_Chi_Minh}
     networks:
       - sub2api-network
 
