@@ -418,6 +418,12 @@ describe('CreateAccountModal OpenAI long-context billing', () => {
     expect(createAccountMock).not.toHaveBeenCalled()
   })
 
+  it('emits the created account so the list can offer a connection test', async () => {
+    const wrapper = await submitApiKeyAccount('openai')
+
+    expect(wrapper.emitted('created')?.[0]).toEqual([{ id: 42, platform: 'openai', type: 'apikey' }])
+  })
+
   // namespace 摊平是仅 OAuth 的兼容开关：API Key 走 chat completions 回退桥时由桥自行摊平
   it('shows the Codex namespace flatten toggle only for OpenAI OAuth accounts', async () => {
     const wrapper = mountModal()

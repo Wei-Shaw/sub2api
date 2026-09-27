@@ -254,6 +254,7 @@ export default {
       resetQuota: '重置配额',
       resetQuotaConfirm: "确定要重置账号 '{name}' 的配额用量吗？已统计的用量会立即清零且无法恢复。",
       failedToResetQuota: '重置配额失败',
+      testNewAccountHint: '账号已创建。建议先测试连接，确认可用后再承接流量。',
       quotaLimit: '配额限制',
       quotaLimitPlaceholder: '0 表示不限制',
       quotaLimitHint: '设置日/周/总使用额度（美元），任一维度达到限额后账号暂停调度。Anthropic API Key 账号还可配置客户端亲和。修改限额不会重置已用额度。',

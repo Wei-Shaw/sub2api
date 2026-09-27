@@ -293,4 +293,19 @@ describe('admin AccountsView error feedback', () => {
     expect(showError).toHaveBeenCalledWith('upstream timeout')
     expect(showError).not.toHaveBeenCalledWith('[object Object]')
   })
+
+  it('offers a connection test after creating an API-key account only', async () => {
+    const wrapper = mountView()
+    await flushPromises()
+
+    wrapper.getComponent(CreateAccountModalStub).vm.$emit('created', account(9, 'oauth'))
+    await flushPromises()
+    expect(wrapper.get('[data-test="test-modal"]').attributes('data-show')).toBe('false')
+
+    wrapper.getComponent(CreateAccountModalStub).vm.$emit('created', account(10, 'apikey'))
+    await flushPromises()
+    expect(wrapper.get('[data-test="test-modal"]').attributes('data-show')).toBe('true')
+    expect(wrapper.get('[data-test="test-modal"]').attributes('data-account')).toBe('10')
+    expect(showInfo).toHaveBeenCalledWith('admin.accounts.testNewAccountHint')
+  })
 })
