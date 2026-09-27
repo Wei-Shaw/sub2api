@@ -124,8 +124,9 @@ export default defineConfig(({ mode }) => {
               return 'vendor-vue'
             }
 
-            // UI 工具库（较大，单独分离）
-            if (id.includes('/@vueuse/') || id.includes('/xlsx/')) {
+            // UI 工具库。xlsx 不在此列：它只被 admin 用量导出动态 import，
+            // 放进这里会随 @vueuse 被 /keys 等页面静态加载。
+            if (id.includes('/@vueuse/')) {
               return 'vendor-ui'
             }
 
