@@ -129,6 +129,11 @@ func (s *SettingService) InitializeDefaultSettings(ctx context.Context) error {
 		SettingKeyAffiliateRebateFreezeHours:                strconv.Itoa(AffiliateRebateFreezeHoursDefault),
 		SettingKeyAffiliateRebateDurationDays:               strconv.Itoa(AffiliateRebateDurationDaysDefault),
 		SettingKeyAffiliateRebatePerInviteeCap:              strconv.FormatFloat(AffiliateRebatePerInviteeCapDefault, 'f', 2, 64),
+		SettingKeyStudentVerificationEnabled:                "false",
+		SettingKeyStudentVerificationEmailSuffixes:          "[]",
+		SettingKeyStudentVerificationValidityDays:           strconv.Itoa(StudentVerificationValidityDaysDefault),
+		SettingKeyStudentVerificationGroupIDs:               "[]",
+		SettingKeyStudentVerificationRebateRate:             "0",
 		SettingKeyDefaultUserRPMLimit:                       "0",
 		SettingKeyDefaultSubscriptions:                      "[]",
 		SettingKeyAuthSourceDefaultEmailBalance:             "0",
@@ -423,6 +428,24 @@ func (s *SettingService) parseSettings(settings map[string]string) *SystemSettin
 	}
 	result.AdminRechargeRebateEnabled = settings[SettingKeyAffiliateAdminRechargeEnabled] == "true"
 	result.DefaultSubscriptions = parseDefaultSubscriptions(settings[SettingKeyDefaultSubscriptions])
+
+	result.StudentVerificationEnabled = settings[SettingKeyStudentVerificationEnabled] == "true"
+	result.StudentVerificationEmailSuffixes = ParseRegistrationEmailSuffixWhitelist(settings[SettingKeyStudentVerificationEmailSuffixes])
+	if validityDays, err := strconv.Atoi(settings[SettingKeyStudentVerificationValidityDays]); err == nil {
+		if validityDays < StudentVerificationValidityDaysMin {
+			validityDays = StudentVerificationValidityDaysMin
+		}
+		if validityDays > StudentVerificationValidityDaysMax {
+			validityDays = StudentVerificationValidityDaysMax
+		}
+		result.StudentVerificationValidityDays = validityDays
+	} else {
+		result.StudentVerificationValidityDays = StudentVerificationValidityDaysDefault
+	}
+	result.StudentVerificationGroupIDs = parseStudentVerificationGroupIDs(settings[SettingKeyStudentVerificationGroupIDs])
+	if studentRate, err := strconv.ParseFloat(settings[SettingKeyStudentVerificationRebateRate], 64); err == nil && studentRate > 0 {
+		result.StudentVerificationRebateRate = clampAffiliateRebateRate(studentRate)
+	}
 
 	// 敏感信息直接返回，方便测试连接时使用
 	result.SMTPPassword = settings[SettingKeySMTPPassword]
@@ -1191,6 +1214,32 @@ func normalizeOptionalNonNegativeFloatString(raw string) (string, error) {
 		return "", fmt.Errorf("invalid non-negative float")
 	}
 	return strconv.FormatFloat(value, 'f', -1, 64), nil
+}
+
+// parseStudentVerificationGroupIDs parses the stored JSON array of student
+// group IDs; invalid entries are dropped so a bad row cannot break settings.
+func parseStudentVerificationGroupIDs(raw string) []int64 {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return []int64{}
+	}
+	var ids []int64
+	if err := json.Unmarshal([]byte(raw), &ids); err != nil {
+		return []int64{}
+	}
+	seen := make(map[int64]struct{}, len(ids))
+	out := make([]int64, 0, len(ids))
+	for _, id := range ids {
+		if id <= 0 {
+			continue
+		}
+		if _, ok := seen[id]; ok {
+			continue
+		}
+		seen[id] = struct{}{}
+		out = append(out, id)
+	}
+	return out
 }
 
 func parseDefaultSubscriptions(raw string) []DefaultSubscriptionSetting {

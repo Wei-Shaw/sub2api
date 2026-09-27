@@ -35,6 +35,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/schema"
 	"github.com/Wei-Shaw/sub2api/ent/securitysecret"
 	"github.com/Wei-Shaw/sub2api/ent/setting"
+	"github.com/Wei-Shaw/sub2api/ent/studentverification"
 	"github.com/Wei-Shaw/sub2api/ent/subscriptionplan"
 	"github.com/Wei-Shaw/sub2api/ent/tlsfingerprintprofile"
 	"github.com/Wei-Shaw/sub2api/ent/usagecleanuptask"
@@ -1824,6 +1825,54 @@ func init() {
 	setting.DefaultUpdatedAt = settingDescUpdatedAt.Default.(func() time.Time)
 	// setting.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
 	setting.UpdateDefaultUpdatedAt = settingDescUpdatedAt.UpdateDefault.(func() time.Time)
+	studentverificationMixin := schema.StudentVerification{}.Mixin()
+	studentverificationMixinFields0 := studentverificationMixin[0].Fields()
+	_ = studentverificationMixinFields0
+	studentverificationFields := schema.StudentVerification{}.Fields()
+	_ = studentverificationFields
+	// studentverificationDescCreatedAt is the schema descriptor for created_at field.
+	studentverificationDescCreatedAt := studentverificationMixinFields0[0].Descriptor()
+	// studentverification.DefaultCreatedAt holds the default value on creation for the created_at field.
+	studentverification.DefaultCreatedAt = studentverificationDescCreatedAt.Default.(func() time.Time)
+	// studentverificationDescUpdatedAt is the schema descriptor for updated_at field.
+	studentverificationDescUpdatedAt := studentverificationMixinFields0[1].Descriptor()
+	// studentverification.DefaultUpdatedAt holds the default value on creation for the updated_at field.
+	studentverification.DefaultUpdatedAt = studentverificationDescUpdatedAt.Default.(func() time.Time)
+	// studentverification.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
+	studentverification.UpdateDefaultUpdatedAt = studentverificationDescUpdatedAt.UpdateDefault.(func() time.Time)
+	// studentverificationDescEmail is the schema descriptor for email field.
+	studentverificationDescEmail := studentverificationFields[1].Descriptor()
+	// studentverification.EmailValidator is a validator for the "email" field. It is called by the builders before save.
+	studentverification.EmailValidator = studentverificationDescEmail.Validators[0].(func(string) error)
+	// studentverificationDescEmailRaw is the schema descriptor for email_raw field.
+	studentverificationDescEmailRaw := studentverificationFields[2].Descriptor()
+	// studentverification.EmailRawValidator is a validator for the "email_raw" field. It is called by the builders before save.
+	studentverification.EmailRawValidator = studentverificationDescEmailRaw.Validators[0].(func(string) error)
+	// studentverificationDescStatus is the schema descriptor for status field.
+	studentverificationDescStatus := studentverificationFields[3].Descriptor()
+	// studentverification.DefaultStatus holds the default value on creation for the status field.
+	studentverification.DefaultStatus = studentverificationDescStatus.Default.(string)
+	// studentverification.StatusValidator is a validator for the "status" field. It is called by the builders before save.
+	studentverification.StatusValidator = func() func(string) error {
+		validators := studentverificationDescStatus.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+			validators[2].(func(string) error),
+		}
+		return func(status string) error {
+			for _, fn := range fns {
+				if err := fn(status); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}()
+	// studentverificationDescGrantedGroupIds is the schema descriptor for granted_group_ids field.
+	studentverificationDescGrantedGroupIds := studentverificationFields[11].Descriptor()
+	// studentverification.DefaultGrantedGroupIds holds the default value on creation for the granted_group_ids field.
+	studentverification.DefaultGrantedGroupIds = studentverificationDescGrantedGroupIds.Default.(func() []int64)
 	subscriptionplanFields := schema.SubscriptionPlan{}.Fields()
 	_ = subscriptionplanFields
 	// subscriptionplanDescName is the schema descriptor for name field.

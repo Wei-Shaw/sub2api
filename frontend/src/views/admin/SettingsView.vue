@@ -4098,6 +4098,170 @@
             </div>
           </div>
 
+          <!-- 学生认证 -->
+          <div class="card">
+            <div
+              class="border-b border-gray-100 px-6 py-4 dark:border-dark-700"
+            >
+              <h2 class="text-lg font-semibold text-gray-900 dark:text-white">
+                {{ t("admin.settings.studentVerification.title") }}
+              </h2>
+              <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                {{ t("admin.settings.studentVerification.description") }}
+              </p>
+            </div>
+            <div class="space-y-6 p-6">
+              <div class="flex items-center justify-between">
+                <div>
+                  <label class="font-medium text-gray-900 dark:text-white">
+                    {{ t("admin.settings.studentVerification.enabled") }}
+                  </label>
+                  <p class="text-sm text-gray-500 dark:text-gray-400">
+                    {{ t("admin.settings.studentVerification.enabledHint") }}
+                  </p>
+                </div>
+                <Toggle v-model="form.student_verification_enabled" />
+              </div>
+
+              <template v-if="form.student_verification_enabled">
+                <!-- 学校邮箱域名白名单 -->
+                <div class="border-t border-gray-100 pt-4 dark:border-dark-700">
+                  <label class="font-medium text-gray-900 dark:text-white">
+                    {{ t("admin.settings.studentVerification.emailSuffixes") }}
+                  </label>
+                  <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                    {{ t("admin.settings.studentVerification.emailSuffixesHint") }}
+                  </p>
+                  <div
+                    class="mt-3 rounded-lg border border-gray-300 bg-white p-2 dark:border-dark-500 dark:bg-dark-700"
+                  >
+                    <div class="flex flex-wrap items-center gap-2">
+                      <span
+                        v-for="suffix in studentVerificationSuffixTags"
+                        :key="suffix"
+                        class="inline-flex items-center gap-1 rounded bg-gray-100 px-2 py-1 text-xs font-mono text-gray-700 dark:bg-dark-600 dark:text-gray-200"
+                      >
+                        <span>{{ suffix }}</span>
+                        <button
+                          type="button"
+                          class="rounded-full text-gray-500 hover:bg-gray-200 hover:text-gray-700 dark:text-gray-300 dark:hover:bg-dark-500 dark:hover:text-white"
+                          @click="removeStudentVerificationSuffixTag(suffix)"
+                        >
+                          <Icon
+                            name="x"
+                            size="xs"
+                            class="h-3.5 w-3.5"
+                            :stroke-width="2"
+                          />
+                        </button>
+                      </span>
+                      <div
+                        class="flex min-w-[220px] flex-1 items-center gap-1 rounded border border-transparent px-2 py-1 focus-within:border-primary-300 dark:focus-within:border-primary-700"
+                      >
+                        <input
+                          v-model="studentVerificationSuffixDraft"
+                          type="text"
+                          class="w-full bg-transparent text-sm font-mono text-gray-900 outline-none placeholder:text-gray-400 dark:text-white dark:placeholder:text-gray-500"
+                          :placeholder="
+                            t(
+                              'admin.settings.studentVerification.emailSuffixPlaceholder',
+                            )
+                          "
+                          @input="handleStudentVerificationSuffixDraftInput"
+                          @keydown="handleStudentVerificationSuffixDraftKeydown"
+                          @blur="commitStudentVerificationSuffixDraft"
+                          @paste="handleStudentVerificationSuffixPaste"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                  <p class="mt-2 text-xs text-gray-500 dark:text-gray-400">
+                    {{ t("admin.settings.studentVerification.emailSuffixInputHint") }}
+                  </p>
+                </div>
+
+                <div class="grid grid-cols-1 gap-6 md:grid-cols-2">
+                  <div>
+                    <label
+                      class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300"
+                    >
+                      {{ t("admin.settings.studentVerification.validityDays") }}
+                    </label>
+                    <input
+                      v-model.number="form.student_verification_validity_days"
+                      type="number"
+                      min="1"
+                      max="3650"
+                      step="1"
+                      class="input"
+                      placeholder="365"
+                    />
+                    <p class="mt-1.5 text-xs text-gray-500 dark:text-gray-400">
+                      {{ t("admin.settings.studentVerification.validityDaysHint") }}
+                    </p>
+                  </div>
+                  <div>
+                    <label
+                      class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300"
+                    >
+                      {{ t("admin.settings.studentVerification.rebateRate") }}
+                    </label>
+                    <input
+                      v-model.number="form.student_verification_rebate_rate"
+                      type="number"
+                      min="0"
+                      max="100"
+                      step="0.1"
+                      class="input"
+                      placeholder="0"
+                    />
+                    <p class="mt-1.5 text-xs text-gray-500 dark:text-gray-400">
+                      {{ t("admin.settings.studentVerification.rebateRateHint") }}
+                    </p>
+                  </div>
+                </div>
+
+                <!-- 学生专属分组（多选） -->
+                <div class="border-t border-gray-100 pt-4 dark:border-dark-700">
+                  <label class="font-medium text-gray-900 dark:text-white">
+                    {{ t("admin.settings.studentVerification.groups") }}
+                  </label>
+                  <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                    {{ t("admin.settings.studentVerification.groupsHint") }}
+                  </p>
+                  <div
+                    v-if="studentGroupCandidates.length === 0"
+                    class="mt-3 rounded border border-dashed border-gray-300 px-4 py-3 text-sm text-gray-500 dark:border-dark-600 dark:text-gray-400"
+                  >
+                    {{ t("admin.settings.studentVerification.groupsEmpty") }}
+                  </div>
+                  <div v-else class="mt-3 grid grid-cols-1 gap-2 md:grid-cols-2">
+                    <label
+                      v-for="group in studentGroupCandidates"
+                      :key="group.id"
+                      class="flex items-center gap-3 rounded border border-gray-200 px-3 py-2 dark:border-dark-600"
+                    >
+                      <input
+                        type="checkbox"
+                        :checked="form.student_verification_group_ids.includes(group.id)"
+                        class="h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+                        @change="
+                          toggleStudentGroup(
+                            group.id,
+                            ($event.target as HTMLInputElement).checked,
+                          )
+                        "
+                      />
+                      <GroupBadge :name="group.name" :platform="group.platform" />
+                      <span class="text-xs text-gray-400">#{{ group.id }}</span>
+                    </label>
+                  </div>
+                </div>
+              </template>
+            </div>
+          </div>
+          <!-- /学生认证 -->
+
           <div class="card">
             <div
               class="border-b border-gray-100 px-6 py-4 dark:border-dark-700"
@@ -9765,6 +9929,11 @@ const form = reactive<SettingsForm>({
   affiliate_admin_recharge_enabled: false,
   default_concurrency: 1,
   default_subscriptions: [],
+  student_verification_enabled: false,
+  student_verification_email_suffixes: [],
+  student_verification_validity_days: 365,
+  student_verification_group_ids: [],
+  student_verification_rebate_rate: 0,
   force_email_on_third_party_signup: false,
   default_user_rpm_limit: 0,
   site_name: "Sub2API",
@@ -10505,6 +10674,73 @@ function handleRegistrationEmailSuffixWhitelistPaste(event: ClipboardEvent) {
   }
 }
 
+// ── 学生认证学校邮箱后缀白名单（复用注册白名单的归一化与校验规则）──
+const studentVerificationSuffixTags = ref<string[]>([]);
+const studentVerificationSuffixDraft = ref("");
+
+function removeStudentVerificationSuffixTag(suffix: string) {
+  studentVerificationSuffixTags.value =
+    studentVerificationSuffixTags.value.filter((item) => item !== suffix);
+}
+
+function addStudentVerificationSuffixTag(raw: string) {
+  const suffix = normalizeRegistrationEmailSuffixDomain(raw);
+  if (
+    !isRegistrationEmailSuffixDomainValid(suffix) ||
+    studentVerificationSuffixTags.value.includes(suffix)
+  ) {
+    return;
+  }
+  studentVerificationSuffixTags.value = [
+    ...studentVerificationSuffixTags.value,
+    suffix,
+  ];
+}
+
+function commitStudentVerificationSuffixDraft() {
+  if (!studentVerificationSuffixDraft.value) {
+    return;
+  }
+  addStudentVerificationSuffixTag(studentVerificationSuffixDraft.value);
+  studentVerificationSuffixDraft.value = "";
+}
+
+function handleStudentVerificationSuffixDraftInput() {
+  studentVerificationSuffixDraft.value = normalizeRegistrationEmailSuffixDomain(
+    studentVerificationSuffixDraft.value,
+  );
+}
+
+function handleStudentVerificationSuffixDraftKeydown(event: KeyboardEvent) {
+  if (event.isComposing) {
+    return;
+  }
+  if (registrationEmailSuffixWhitelistSeparatorKeys.has(event.key)) {
+    event.preventDefault();
+    commitStudentVerificationSuffixDraft();
+    return;
+  }
+  if (
+    event.key === "Backspace" &&
+    !studentVerificationSuffixDraft.value &&
+    studentVerificationSuffixTags.value.length > 0
+  ) {
+    studentVerificationSuffixTags.value.pop();
+  }
+}
+
+function handleStudentVerificationSuffixPaste(event: ClipboardEvent) {
+  const text = event.clipboardData?.getData("text") || "";
+  if (!text.trim()) {
+    return;
+  }
+  event.preventDefault();
+  const tokens = parseRegistrationEmailSuffixWhitelistInput(text);
+  for (const token of tokens) {
+    addStudentVerificationSuffixTag(token);
+  }
+}
+
 const forwardedClientIpHeaderSeparatorKeys = new Set([
   " ",
   ",",
@@ -11055,6 +11291,31 @@ async function loadSettings() {
     form.default_subscriptions = normalizeDefaultSubscriptionSettings(
       settings.default_subscriptions,
     );
+    form.student_verification_enabled =
+      settings.student_verification_enabled === true;
+    studentVerificationSuffixTags.value = normalizeRegistrationEmailSuffixDomains(
+      Array.isArray(settings.student_verification_email_suffixes)
+        ? settings.student_verification_email_suffixes
+        : [],
+    );
+    studentVerificationSuffixDraft.value = "";
+    form.student_verification_validity_days = Number.isFinite(
+      settings.student_verification_validity_days,
+    )
+      ? settings.student_verification_validity_days
+      : 365;
+    form.student_verification_group_ids = Array.isArray(
+      settings.student_verification_group_ids,
+    )
+      ? settings.student_verification_group_ids.filter(
+          (id): id is number => typeof id === "number" && id > 0,
+        )
+      : [];
+    form.student_verification_rebate_rate = Number.isFinite(
+      settings.student_verification_rebate_rate,
+    )
+      ? settings.student_verification_rebate_rate
+      : 0;
     registrationEmailSuffixWhitelistTags.value =
       normalizeRegistrationEmailSuffixDomains(
         settings.registration_email_suffix_whitelist,
@@ -11174,9 +11435,29 @@ async function loadSubscriptionGroups() {
       (group) =>
         group.subscription_type === "subscription" && group.status === "active",
     );
+    // 学生认证专属分组候选：仅限「专属」的标准计费分组（订阅分组对学生认证无意义）
+    studentGroupCandidates.value = groups.filter(
+      (group) =>
+        group.is_exclusive === true &&
+        group.subscription_type !== "subscription" &&
+        group.status === "active",
+    );
   } catch (_error: unknown) {
     subscriptionGroups.value = [];
+    studentGroupCandidates.value = [];
   }
+}
+
+const studentGroupCandidates = ref<AdminGroup[]>([]);
+
+function toggleStudentGroup(groupId: number, checked: boolean) {
+  const set = new Set(form.student_verification_group_ids);
+  if (checked) {
+    set.add(groupId);
+  } else {
+    set.delete(groupId);
+  }
+  form.student_verification_group_ids = [...set];
 }
 
 function findNextAvailableSubscriptionGroup(
@@ -11448,6 +11729,20 @@ async function saveSettings() {
       affiliate_admin_recharge_enabled: form.affiliate_admin_recharge_enabled,
       default_concurrency: form.default_concurrency,
       default_subscriptions: normalizedDefaultSubscriptions,
+      student_verification_enabled: form.student_verification_enabled,
+      student_verification_email_suffixes: studentVerificationSuffixTags.value.map(
+        (suffix) => (suffix.startsWith("*.") ? suffix : `@${suffix}`),
+      ),
+      student_verification_validity_days: Number.isFinite(
+        form.student_verification_validity_days,
+      )
+        ? Math.floor(form.student_verification_validity_days)
+        : 365,
+      student_verification_group_ids: form.student_verification_group_ids,
+      student_verification_rebate_rate: Math.min(
+        100,
+        Math.max(0, Number(form.student_verification_rebate_rate) || 0),
+      ),
       force_email_on_third_party_signup: form.force_email_on_third_party_signup,
       default_user_rpm_limit: form.default_user_rpm_limit,
       site_name: form.site_name,

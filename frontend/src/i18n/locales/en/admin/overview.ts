@@ -518,6 +518,38 @@ export default {
       }
     },
 
+    studentVerifications: {
+      description: 'Review student verification records; revoke a verification or delete a record to release the school email',
+      searchPlaceholder: 'Search email or user ID',
+      allStatus: 'All statuses',
+      deletedUser: 'User deleted',
+      status: {
+        active: 'Active',
+        expired: 'Expired',
+        revoked: 'Revoked'
+      },
+      columns: {
+        user: 'User',
+        email: 'School Email',
+        status: 'Status',
+        groups: 'Granted Groups',
+        rebate: 'Rebate Rate',
+        expiresAt: 'Expires At',
+        verifiedAt: 'Verified At',
+        actions: 'Actions'
+      },
+      revoke: 'Revoke',
+      revokeTitle: 'Revoke Student Verification',
+      revokeConfirm: 'Revoking removes the exclusive groups and rebate for {email} immediately. The email remains claimed until the record is deleted.',
+      revokeReason: 'Revoke Reason',
+      revokeReasonPlaceholder: 'Optional, stored as audit metadata',
+      revokeSuccess: 'Verification revoked',
+      delete: 'Delete',
+      deleteTitle: 'Delete Verification Record',
+      deleteConfirm: 'Deleting the record for {email} releases the email so another account can verify with it. Continue?',
+      deleteSuccess: 'Record deleted and email released'
+    },
+
     // Users
     users: {
       title: 'User Management',

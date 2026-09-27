@@ -91,6 +91,8 @@ const (
 	EdgePendingAuthSessions = "pending_auth_sessions"
 	// EdgePlatformQuotas holds the string denoting the platform_quotas edge name in mutations.
 	EdgePlatformQuotas = "platform_quotas"
+	// EdgeStudentVerification holds the string denoting the student_verification edge name in mutations.
+	EdgeStudentVerification = "student_verification"
 	// EdgeUserAllowedGroups holds the string denoting the user_allowed_groups edge name in mutations.
 	EdgeUserAllowedGroups = "user_allowed_groups"
 	// Table holds the table name of the user in the database.
@@ -184,6 +186,13 @@ const (
 	PlatformQuotasInverseTable = "user_platform_quotas"
 	// PlatformQuotasColumn is the table column denoting the platform_quotas relation/edge.
 	PlatformQuotasColumn = "user_id"
+	// StudentVerificationTable is the table that holds the student_verification relation/edge.
+	StudentVerificationTable = "student_verifications"
+	// StudentVerificationInverseTable is the table name for the StudentVerification entity.
+	// It exists in this package in order to avoid circular dependency with the "studentverification" package.
+	StudentVerificationInverseTable = "student_verifications"
+	// StudentVerificationColumn is the table column denoting the student_verification relation/edge.
+	StudentVerificationColumn = "user_id"
 	// UserAllowedGroupsTable is the table that holds the user_allowed_groups relation/edge.
 	UserAllowedGroupsTable = "user_allowed_groups"
 	// UserAllowedGroupsInverseTable is the table name for the UserAllowedGroup entity.
@@ -612,6 +621,13 @@ func ByPlatformQuotas(term sql.OrderTerm, terms ...sql.OrderTerm) OrderOption {
 	}
 }
 
+// ByStudentVerificationField orders the results by student_verification field.
+func ByStudentVerificationField(field string, opts ...sql.OrderTermOption) OrderOption {
+	return func(s *sql.Selector) {
+		sqlgraph.OrderByNeighborTerms(s, newStudentVerificationStep(), sql.OrderByField(field, opts...))
+	}
+}
+
 // ByUserAllowedGroupsCount orders the results by user_allowed_groups count.
 func ByUserAllowedGroupsCount(opts ...sql.OrderTermOption) OrderOption {
 	return func(s *sql.Selector) {
@@ -714,6 +730,13 @@ func newPlatformQuotasStep() *sqlgraph.Step {
 		sqlgraph.From(Table, FieldID),
 		sqlgraph.To(PlatformQuotasInverseTable, FieldID),
 		sqlgraph.Edge(sqlgraph.O2M, false, PlatformQuotasTable, PlatformQuotasColumn),
+	)
+}
+func newStudentVerificationStep() *sqlgraph.Step {
+	return sqlgraph.NewStep(
+		sqlgraph.From(Table, FieldID),
+		sqlgraph.To(StudentVerificationInverseTable, FieldID),
+		sqlgraph.Edge(sqlgraph.O2O, false, StudentVerificationTable, StudentVerificationColumn),
 	)
 }
 func newUserAllowedGroupsStep() *sqlgraph.Step {

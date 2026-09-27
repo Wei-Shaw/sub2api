@@ -42,6 +42,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/redeemcode"
 	"github.com/Wei-Shaw/sub2api/ent/securitysecret"
 	"github.com/Wei-Shaw/sub2api/ent/setting"
+	"github.com/Wei-Shaw/sub2api/ent/studentverification"
 	"github.com/Wei-Shaw/sub2api/ent/subscriptionplan"
 	"github.com/Wei-Shaw/sub2api/ent/tlsfingerprintprofile"
 	"github.com/Wei-Shaw/sub2api/ent/usagecleanuptask"
@@ -93,6 +94,7 @@ const (
 	TypeRedeemCode                    = "RedeemCode"
 	TypeSecuritySecret                = "SecuritySecret"
 	TypeSetting                       = "Setting"
+	TypeStudentVerification           = "StudentVerification"
 	TypeSubscriptionPlan              = "SubscriptionPlan"
 	TypeTLSFingerprintProfile         = "TLSFingerprintProfile"
 	TypeUsageCleanupTask              = "UsageCleanupTask"
@@ -40848,6 +40850,1326 @@ func (m *SettingMutation) ResetEdge(name string) error {
 	return fmt.Errorf("unknown Setting edge %s", name)
 }
 
+// StudentVerificationMutation represents an operation that mutates the StudentVerification nodes in the graph.
+type StudentVerificationMutation struct {
+	config
+	op                      Op
+	typ                     string
+	id                      *int64
+	created_at              *time.Time
+	updated_at              *time.Time
+	email                   *string
+	email_raw               *string
+	status                  *string
+	verified_at             *time.Time
+	expires_at              *time.Time
+	revoked_at              *time.Time
+	revoked_by              *int64
+	addrevoked_by           *int64
+	revoke_reason           *string
+	rebate_rate_applied     *float64
+	addrebate_rate_applied  *float64
+	previous_rebate_rate    *float64
+	addprevious_rebate_rate *float64
+	granted_group_ids       *[]int64
+	appendgranted_group_ids []int64
+	clearedFields           map[string]struct{}
+	user                    *int64
+	cleareduser             bool
+	done                    bool
+	oldValue                func(context.Context) (*StudentVerification, error)
+	predicates              []predicate.StudentVerification
+}
+
+var _ ent.Mutation = (*StudentVerificationMutation)(nil)
+
+// studentverificationOption allows management of the mutation configuration using functional options.
+type studentverificationOption func(*StudentVerificationMutation)
+
+// newStudentVerificationMutation creates new mutation for the StudentVerification entity.
+func newStudentVerificationMutation(c config, op Op, opts ...studentverificationOption) *StudentVerificationMutation {
+	m := &StudentVerificationMutation{
+		config:        c,
+		op:            op,
+		typ:           TypeStudentVerification,
+		clearedFields: make(map[string]struct{}),
+	}
+	for _, opt := range opts {
+		opt(m)
+	}
+	return m
+}
+
+// withStudentVerificationID sets the ID field of the mutation.
+func withStudentVerificationID(id int64) studentverificationOption {
+	return func(m *StudentVerificationMutation) {
+		var (
+			err   error
+			once  sync.Once
+			value *StudentVerification
+		)
+		m.oldValue = func(ctx context.Context) (*StudentVerification, error) {
+			once.Do(func() {
+				if m.done {
+					err = errors.New("querying old values post mutation is not allowed")
+				} else {
+					value, err = m.Client().StudentVerification.Get(ctx, id)
+				}
+			})
+			return value, err
+		}
+		m.id = &id
+	}
+}
+
+// withStudentVerification sets the old StudentVerification of the mutation.
+func withStudentVerification(node *StudentVerification) studentverificationOption {
+	return func(m *StudentVerificationMutation) {
+		m.oldValue = func(context.Context) (*StudentVerification, error) {
+			return node, nil
+		}
+		m.id = &node.ID
+	}
+}
+
+// Client returns a new `ent.Client` from the mutation. If the mutation was
+// executed in a transaction (ent.Tx), a transactional client is returned.
+func (m StudentVerificationMutation) Client() *Client {
+	client := &Client{config: m.config}
+	client.init()
+	return client
+}
+
+// Tx returns an `ent.Tx` for mutations that were executed in transactions;
+// it returns an error otherwise.
+func (m StudentVerificationMutation) Tx() (*Tx, error) {
+	if _, ok := m.driver.(*txDriver); !ok {
+		return nil, errors.New("ent: mutation is not running in a transaction")
+	}
+	tx := &Tx{config: m.config}
+	tx.init()
+	return tx, nil
+}
+
+// ID returns the ID value in the mutation. Note that the ID is only available
+// if it was provided to the builder or after it was returned from the database.
+func (m *StudentVerificationMutation) ID() (id int64, exists bool) {
+	if m.id == nil {
+		return
+	}
+	return *m.id, true
+}
+
+// IDs queries the database and returns the entity ids that match the mutation's predicate.
+// That means, if the mutation is applied within a transaction with an isolation level such
+// as sql.LevelSerializable, the returned ids match the ids of the rows that will be updated
+// or updated by the mutation.
+func (m *StudentVerificationMutation) IDs(ctx context.Context) ([]int64, error) {
+	switch {
+	case m.op.Is(OpUpdateOne | OpDeleteOne):
+		id, exists := m.ID()
+		if exists {
+			return []int64{id}, nil
+		}
+		fallthrough
+	case m.op.Is(OpUpdate | OpDelete):
+		return m.Client().StudentVerification.Query().Where(m.predicates...).IDs(ctx)
+	default:
+		return nil, fmt.Errorf("IDs is not allowed on %s operations", m.op)
+	}
+}
+
+// SetCreatedAt sets the "created_at" field.
+func (m *StudentVerificationMutation) SetCreatedAt(t time.Time) {
+	m.created_at = &t
+}
+
+// CreatedAt returns the value of the "created_at" field in the mutation.
+func (m *StudentVerificationMutation) CreatedAt() (r time.Time, exists bool) {
+	v := m.created_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCreatedAt returns the old "created_at" field's value of the StudentVerification entity.
+// If the StudentVerification object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *StudentVerificationMutation) OldCreatedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCreatedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCreatedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCreatedAt: %w", err)
+	}
+	return oldValue.CreatedAt, nil
+}
+
+// ResetCreatedAt resets all changes to the "created_at" field.
+func (m *StudentVerificationMutation) ResetCreatedAt() {
+	m.created_at = nil
+}
+
+// SetUpdatedAt sets the "updated_at" field.
+func (m *StudentVerificationMutation) SetUpdatedAt(t time.Time) {
+	m.updated_at = &t
+}
+
+// UpdatedAt returns the value of the "updated_at" field in the mutation.
+func (m *StudentVerificationMutation) UpdatedAt() (r time.Time, exists bool) {
+	v := m.updated_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldUpdatedAt returns the old "updated_at" field's value of the StudentVerification entity.
+// If the StudentVerification object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *StudentVerificationMutation) OldUpdatedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldUpdatedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldUpdatedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldUpdatedAt: %w", err)
+	}
+	return oldValue.UpdatedAt, nil
+}
+
+// ResetUpdatedAt resets all changes to the "updated_at" field.
+func (m *StudentVerificationMutation) ResetUpdatedAt() {
+	m.updated_at = nil
+}
+
+// SetUserID sets the "user_id" field.
+func (m *StudentVerificationMutation) SetUserID(i int64) {
+	m.user = &i
+}
+
+// UserID returns the value of the "user_id" field in the mutation.
+func (m *StudentVerificationMutation) UserID() (r int64, exists bool) {
+	v := m.user
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldUserID returns the old "user_id" field's value of the StudentVerification entity.
+// If the StudentVerification object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *StudentVerificationMutation) OldUserID(ctx context.Context) (v *int64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldUserID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldUserID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldUserID: %w", err)
+	}
+	return oldValue.UserID, nil
+}
+
+// ClearUserID clears the value of the "user_id" field.
+func (m *StudentVerificationMutation) ClearUserID() {
+	m.user = nil
+	m.clearedFields[studentverification.FieldUserID] = struct{}{}
+}
+
+// UserIDCleared returns if the "user_id" field was cleared in this mutation.
+func (m *StudentVerificationMutation) UserIDCleared() bool {
+	_, ok := m.clearedFields[studentverification.FieldUserID]
+	return ok
+}
+
+// ResetUserID resets all changes to the "user_id" field.
+func (m *StudentVerificationMutation) ResetUserID() {
+	m.user = nil
+	delete(m.clearedFields, studentverification.FieldUserID)
+}
+
+// SetEmail sets the "email" field.
+func (m *StudentVerificationMutation) SetEmail(s string) {
+	m.email = &s
+}
+
+// Email returns the value of the "email" field in the mutation.
+func (m *StudentVerificationMutation) Email() (r string, exists bool) {
+	v := m.email
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldEmail returns the old "email" field's value of the StudentVerification entity.
+// If the StudentVerification object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *StudentVerificationMutation) OldEmail(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldEmail is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldEmail requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldEmail: %w", err)
+	}
+	return oldValue.Email, nil
+}
+
+// ResetEmail resets all changes to the "email" field.
+func (m *StudentVerificationMutation) ResetEmail() {
+	m.email = nil
+}
+
+// SetEmailRaw sets the "email_raw" field.
+func (m *StudentVerificationMutation) SetEmailRaw(s string) {
+	m.email_raw = &s
+}
+
+// EmailRaw returns the value of the "email_raw" field in the mutation.
+func (m *StudentVerificationMutation) EmailRaw() (r string, exists bool) {
+	v := m.email_raw
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldEmailRaw returns the old "email_raw" field's value of the StudentVerification entity.
+// If the StudentVerification object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *StudentVerificationMutation) OldEmailRaw(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldEmailRaw is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldEmailRaw requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldEmailRaw: %w", err)
+	}
+	return oldValue.EmailRaw, nil
+}
+
+// ResetEmailRaw resets all changes to the "email_raw" field.
+func (m *StudentVerificationMutation) ResetEmailRaw() {
+	m.email_raw = nil
+}
+
+// SetStatus sets the "status" field.
+func (m *StudentVerificationMutation) SetStatus(s string) {
+	m.status = &s
+}
+
+// Status returns the value of the "status" field in the mutation.
+func (m *StudentVerificationMutation) Status() (r string, exists bool) {
+	v := m.status
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldStatus returns the old "status" field's value of the StudentVerification entity.
+// If the StudentVerification object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *StudentVerificationMutation) OldStatus(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldStatus is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldStatus requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldStatus: %w", err)
+	}
+	return oldValue.Status, nil
+}
+
+// ResetStatus resets all changes to the "status" field.
+func (m *StudentVerificationMutation) ResetStatus() {
+	m.status = nil
+}
+
+// SetVerifiedAt sets the "verified_at" field.
+func (m *StudentVerificationMutation) SetVerifiedAt(t time.Time) {
+	m.verified_at = &t
+}
+
+// VerifiedAt returns the value of the "verified_at" field in the mutation.
+func (m *StudentVerificationMutation) VerifiedAt() (r time.Time, exists bool) {
+	v := m.verified_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldVerifiedAt returns the old "verified_at" field's value of the StudentVerification entity.
+// If the StudentVerification object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *StudentVerificationMutation) OldVerifiedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldVerifiedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldVerifiedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldVerifiedAt: %w", err)
+	}
+	return oldValue.VerifiedAt, nil
+}
+
+// ResetVerifiedAt resets all changes to the "verified_at" field.
+func (m *StudentVerificationMutation) ResetVerifiedAt() {
+	m.verified_at = nil
+}
+
+// SetExpiresAt sets the "expires_at" field.
+func (m *StudentVerificationMutation) SetExpiresAt(t time.Time) {
+	m.expires_at = &t
+}
+
+// ExpiresAt returns the value of the "expires_at" field in the mutation.
+func (m *StudentVerificationMutation) ExpiresAt() (r time.Time, exists bool) {
+	v := m.expires_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldExpiresAt returns the old "expires_at" field's value of the StudentVerification entity.
+// If the StudentVerification object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *StudentVerificationMutation) OldExpiresAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldExpiresAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldExpiresAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldExpiresAt: %w", err)
+	}
+	return oldValue.ExpiresAt, nil
+}
+
+// ResetExpiresAt resets all changes to the "expires_at" field.
+func (m *StudentVerificationMutation) ResetExpiresAt() {
+	m.expires_at = nil
+}
+
+// SetRevokedAt sets the "revoked_at" field.
+func (m *StudentVerificationMutation) SetRevokedAt(t time.Time) {
+	m.revoked_at = &t
+}
+
+// RevokedAt returns the value of the "revoked_at" field in the mutation.
+func (m *StudentVerificationMutation) RevokedAt() (r time.Time, exists bool) {
+	v := m.revoked_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldRevokedAt returns the old "revoked_at" field's value of the StudentVerification entity.
+// If the StudentVerification object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *StudentVerificationMutation) OldRevokedAt(ctx context.Context) (v *time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldRevokedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldRevokedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldRevokedAt: %w", err)
+	}
+	return oldValue.RevokedAt, nil
+}
+
+// ClearRevokedAt clears the value of the "revoked_at" field.
+func (m *StudentVerificationMutation) ClearRevokedAt() {
+	m.revoked_at = nil
+	m.clearedFields[studentverification.FieldRevokedAt] = struct{}{}
+}
+
+// RevokedAtCleared returns if the "revoked_at" field was cleared in this mutation.
+func (m *StudentVerificationMutation) RevokedAtCleared() bool {
+	_, ok := m.clearedFields[studentverification.FieldRevokedAt]
+	return ok
+}
+
+// ResetRevokedAt resets all changes to the "revoked_at" field.
+func (m *StudentVerificationMutation) ResetRevokedAt() {
+	m.revoked_at = nil
+	delete(m.clearedFields, studentverification.FieldRevokedAt)
+}
+
+// SetRevokedBy sets the "revoked_by" field.
+func (m *StudentVerificationMutation) SetRevokedBy(i int64) {
+	m.revoked_by = &i
+	m.addrevoked_by = nil
+}
+
+// RevokedBy returns the value of the "revoked_by" field in the mutation.
+func (m *StudentVerificationMutation) RevokedBy() (r int64, exists bool) {
+	v := m.revoked_by
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldRevokedBy returns the old "revoked_by" field's value of the StudentVerification entity.
+// If the StudentVerification object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *StudentVerificationMutation) OldRevokedBy(ctx context.Context) (v *int64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldRevokedBy is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldRevokedBy requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldRevokedBy: %w", err)
+	}
+	return oldValue.RevokedBy, nil
+}
+
+// AddRevokedBy adds i to the "revoked_by" field.
+func (m *StudentVerificationMutation) AddRevokedBy(i int64) {
+	if m.addrevoked_by != nil {
+		*m.addrevoked_by += i
+	} else {
+		m.addrevoked_by = &i
+	}
+}
+
+// AddedRevokedBy returns the value that was added to the "revoked_by" field in this mutation.
+func (m *StudentVerificationMutation) AddedRevokedBy() (r int64, exists bool) {
+	v := m.addrevoked_by
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ClearRevokedBy clears the value of the "revoked_by" field.
+func (m *StudentVerificationMutation) ClearRevokedBy() {
+	m.revoked_by = nil
+	m.addrevoked_by = nil
+	m.clearedFields[studentverification.FieldRevokedBy] = struct{}{}
+}
+
+// RevokedByCleared returns if the "revoked_by" field was cleared in this mutation.
+func (m *StudentVerificationMutation) RevokedByCleared() bool {
+	_, ok := m.clearedFields[studentverification.FieldRevokedBy]
+	return ok
+}
+
+// ResetRevokedBy resets all changes to the "revoked_by" field.
+func (m *StudentVerificationMutation) ResetRevokedBy() {
+	m.revoked_by = nil
+	m.addrevoked_by = nil
+	delete(m.clearedFields, studentverification.FieldRevokedBy)
+}
+
+// SetRevokeReason sets the "revoke_reason" field.
+func (m *StudentVerificationMutation) SetRevokeReason(s string) {
+	m.revoke_reason = &s
+}
+
+// RevokeReason returns the value of the "revoke_reason" field in the mutation.
+func (m *StudentVerificationMutation) RevokeReason() (r string, exists bool) {
+	v := m.revoke_reason
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldRevokeReason returns the old "revoke_reason" field's value of the StudentVerification entity.
+// If the StudentVerification object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *StudentVerificationMutation) OldRevokeReason(ctx context.Context) (v *string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldRevokeReason is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldRevokeReason requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldRevokeReason: %w", err)
+	}
+	return oldValue.RevokeReason, nil
+}
+
+// ClearRevokeReason clears the value of the "revoke_reason" field.
+func (m *StudentVerificationMutation) ClearRevokeReason() {
+	m.revoke_reason = nil
+	m.clearedFields[studentverification.FieldRevokeReason] = struct{}{}
+}
+
+// RevokeReasonCleared returns if the "revoke_reason" field was cleared in this mutation.
+func (m *StudentVerificationMutation) RevokeReasonCleared() bool {
+	_, ok := m.clearedFields[studentverification.FieldRevokeReason]
+	return ok
+}
+
+// ResetRevokeReason resets all changes to the "revoke_reason" field.
+func (m *StudentVerificationMutation) ResetRevokeReason() {
+	m.revoke_reason = nil
+	delete(m.clearedFields, studentverification.FieldRevokeReason)
+}
+
+// SetRebateRateApplied sets the "rebate_rate_applied" field.
+func (m *StudentVerificationMutation) SetRebateRateApplied(f float64) {
+	m.rebate_rate_applied = &f
+	m.addrebate_rate_applied = nil
+}
+
+// RebateRateApplied returns the value of the "rebate_rate_applied" field in the mutation.
+func (m *StudentVerificationMutation) RebateRateApplied() (r float64, exists bool) {
+	v := m.rebate_rate_applied
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldRebateRateApplied returns the old "rebate_rate_applied" field's value of the StudentVerification entity.
+// If the StudentVerification object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *StudentVerificationMutation) OldRebateRateApplied(ctx context.Context) (v *float64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldRebateRateApplied is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldRebateRateApplied requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldRebateRateApplied: %w", err)
+	}
+	return oldValue.RebateRateApplied, nil
+}
+
+// AddRebateRateApplied adds f to the "rebate_rate_applied" field.
+func (m *StudentVerificationMutation) AddRebateRateApplied(f float64) {
+	if m.addrebate_rate_applied != nil {
+		*m.addrebate_rate_applied += f
+	} else {
+		m.addrebate_rate_applied = &f
+	}
+}
+
+// AddedRebateRateApplied returns the value that was added to the "rebate_rate_applied" field in this mutation.
+func (m *StudentVerificationMutation) AddedRebateRateApplied() (r float64, exists bool) {
+	v := m.addrebate_rate_applied
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ClearRebateRateApplied clears the value of the "rebate_rate_applied" field.
+func (m *StudentVerificationMutation) ClearRebateRateApplied() {
+	m.rebate_rate_applied = nil
+	m.addrebate_rate_applied = nil
+	m.clearedFields[studentverification.FieldRebateRateApplied] = struct{}{}
+}
+
+// RebateRateAppliedCleared returns if the "rebate_rate_applied" field was cleared in this mutation.
+func (m *StudentVerificationMutation) RebateRateAppliedCleared() bool {
+	_, ok := m.clearedFields[studentverification.FieldRebateRateApplied]
+	return ok
+}
+
+// ResetRebateRateApplied resets all changes to the "rebate_rate_applied" field.
+func (m *StudentVerificationMutation) ResetRebateRateApplied() {
+	m.rebate_rate_applied = nil
+	m.addrebate_rate_applied = nil
+	delete(m.clearedFields, studentverification.FieldRebateRateApplied)
+}
+
+// SetPreviousRebateRate sets the "previous_rebate_rate" field.
+func (m *StudentVerificationMutation) SetPreviousRebateRate(f float64) {
+	m.previous_rebate_rate = &f
+	m.addprevious_rebate_rate = nil
+}
+
+// PreviousRebateRate returns the value of the "previous_rebate_rate" field in the mutation.
+func (m *StudentVerificationMutation) PreviousRebateRate() (r float64, exists bool) {
+	v := m.previous_rebate_rate
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldPreviousRebateRate returns the old "previous_rebate_rate" field's value of the StudentVerification entity.
+// If the StudentVerification object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *StudentVerificationMutation) OldPreviousRebateRate(ctx context.Context) (v *float64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldPreviousRebateRate is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldPreviousRebateRate requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldPreviousRebateRate: %w", err)
+	}
+	return oldValue.PreviousRebateRate, nil
+}
+
+// AddPreviousRebateRate adds f to the "previous_rebate_rate" field.
+func (m *StudentVerificationMutation) AddPreviousRebateRate(f float64) {
+	if m.addprevious_rebate_rate != nil {
+		*m.addprevious_rebate_rate += f
+	} else {
+		m.addprevious_rebate_rate = &f
+	}
+}
+
+// AddedPreviousRebateRate returns the value that was added to the "previous_rebate_rate" field in this mutation.
+func (m *StudentVerificationMutation) AddedPreviousRebateRate() (r float64, exists bool) {
+	v := m.addprevious_rebate_rate
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ClearPreviousRebateRate clears the value of the "previous_rebate_rate" field.
+func (m *StudentVerificationMutation) ClearPreviousRebateRate() {
+	m.previous_rebate_rate = nil
+	m.addprevious_rebate_rate = nil
+	m.clearedFields[studentverification.FieldPreviousRebateRate] = struct{}{}
+}
+
+// PreviousRebateRateCleared returns if the "previous_rebate_rate" field was cleared in this mutation.
+func (m *StudentVerificationMutation) PreviousRebateRateCleared() bool {
+	_, ok := m.clearedFields[studentverification.FieldPreviousRebateRate]
+	return ok
+}
+
+// ResetPreviousRebateRate resets all changes to the "previous_rebate_rate" field.
+func (m *StudentVerificationMutation) ResetPreviousRebateRate() {
+	m.previous_rebate_rate = nil
+	m.addprevious_rebate_rate = nil
+	delete(m.clearedFields, studentverification.FieldPreviousRebateRate)
+}
+
+// SetGrantedGroupIds sets the "granted_group_ids" field.
+func (m *StudentVerificationMutation) SetGrantedGroupIds(i []int64) {
+	m.granted_group_ids = &i
+	m.appendgranted_group_ids = nil
+}
+
+// GrantedGroupIds returns the value of the "granted_group_ids" field in the mutation.
+func (m *StudentVerificationMutation) GrantedGroupIds() (r []int64, exists bool) {
+	v := m.granted_group_ids
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldGrantedGroupIds returns the old "granted_group_ids" field's value of the StudentVerification entity.
+// If the StudentVerification object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *StudentVerificationMutation) OldGrantedGroupIds(ctx context.Context) (v []int64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldGrantedGroupIds is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldGrantedGroupIds requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldGrantedGroupIds: %w", err)
+	}
+	return oldValue.GrantedGroupIds, nil
+}
+
+// AppendGrantedGroupIds adds i to the "granted_group_ids" field.
+func (m *StudentVerificationMutation) AppendGrantedGroupIds(i []int64) {
+	m.appendgranted_group_ids = append(m.appendgranted_group_ids, i...)
+}
+
+// AppendedGrantedGroupIds returns the list of values that were appended to the "granted_group_ids" field in this mutation.
+func (m *StudentVerificationMutation) AppendedGrantedGroupIds() ([]int64, bool) {
+	if len(m.appendgranted_group_ids) == 0 {
+		return nil, false
+	}
+	return m.appendgranted_group_ids, true
+}
+
+// ResetGrantedGroupIds resets all changes to the "granted_group_ids" field.
+func (m *StudentVerificationMutation) ResetGrantedGroupIds() {
+	m.granted_group_ids = nil
+	m.appendgranted_group_ids = nil
+}
+
+// ClearUser clears the "user" edge to the User entity.
+func (m *StudentVerificationMutation) ClearUser() {
+	m.cleareduser = true
+	m.clearedFields[studentverification.FieldUserID] = struct{}{}
+}
+
+// UserCleared reports if the "user" edge to the User entity was cleared.
+func (m *StudentVerificationMutation) UserCleared() bool {
+	return m.UserIDCleared() || m.cleareduser
+}
+
+// UserIDs returns the "user" edge IDs in the mutation.
+// Note that IDs always returns len(IDs) <= 1 for unique edges, and you should use
+// UserID instead. It exists only for internal usage by the builders.
+func (m *StudentVerificationMutation) UserIDs() (ids []int64) {
+	if id := m.user; id != nil {
+		ids = append(ids, *id)
+	}
+	return
+}
+
+// ResetUser resets all changes to the "user" edge.
+func (m *StudentVerificationMutation) ResetUser() {
+	m.user = nil
+	m.cleareduser = false
+}
+
+// Where appends a list predicates to the StudentVerificationMutation builder.
+func (m *StudentVerificationMutation) Where(ps ...predicate.StudentVerification) {
+	m.predicates = append(m.predicates, ps...)
+}
+
+// WhereP appends storage-level predicates to the StudentVerificationMutation builder. Using this method,
+// users can use type-assertion to append predicates that do not depend on any generated package.
+func (m *StudentVerificationMutation) WhereP(ps ...func(*sql.Selector)) {
+	p := make([]predicate.StudentVerification, len(ps))
+	for i := range ps {
+		p[i] = ps[i]
+	}
+	m.Where(p...)
+}
+
+// Op returns the operation name.
+func (m *StudentVerificationMutation) Op() Op {
+	return m.op
+}
+
+// SetOp allows setting the mutation operation.
+func (m *StudentVerificationMutation) SetOp(op Op) {
+	m.op = op
+}
+
+// Type returns the node type of this mutation (StudentVerification).
+func (m *StudentVerificationMutation) Type() string {
+	return m.typ
+}
+
+// Fields returns all fields that were changed during this mutation. Note that in
+// order to get all numeric fields that were incremented/decremented, call
+// AddedFields().
+func (m *StudentVerificationMutation) Fields() []string {
+	fields := make([]string, 0, 14)
+	if m.created_at != nil {
+		fields = append(fields, studentverification.FieldCreatedAt)
+	}
+	if m.updated_at != nil {
+		fields = append(fields, studentverification.FieldUpdatedAt)
+	}
+	if m.user != nil {
+		fields = append(fields, studentverification.FieldUserID)
+	}
+	if m.email != nil {
+		fields = append(fields, studentverification.FieldEmail)
+	}
+	if m.email_raw != nil {
+		fields = append(fields, studentverification.FieldEmailRaw)
+	}
+	if m.status != nil {
+		fields = append(fields, studentverification.FieldStatus)
+	}
+	if m.verified_at != nil {
+		fields = append(fields, studentverification.FieldVerifiedAt)
+	}
+	if m.expires_at != nil {
+		fields = append(fields, studentverification.FieldExpiresAt)
+	}
+	if m.revoked_at != nil {
+		fields = append(fields, studentverification.FieldRevokedAt)
+	}
+	if m.revoked_by != nil {
+		fields = append(fields, studentverification.FieldRevokedBy)
+	}
+	if m.revoke_reason != nil {
+		fields = append(fields, studentverification.FieldRevokeReason)
+	}
+	if m.rebate_rate_applied != nil {
+		fields = append(fields, studentverification.FieldRebateRateApplied)
+	}
+	if m.previous_rebate_rate != nil {
+		fields = append(fields, studentverification.FieldPreviousRebateRate)
+	}
+	if m.granted_group_ids != nil {
+		fields = append(fields, studentverification.FieldGrantedGroupIds)
+	}
+	return fields
+}
+
+// Field returns the value of a field with the given name. The second boolean
+// return value indicates that this field was not set, or was not defined in the
+// schema.
+func (m *StudentVerificationMutation) Field(name string) (ent.Value, bool) {
+	switch name {
+	case studentverification.FieldCreatedAt:
+		return m.CreatedAt()
+	case studentverification.FieldUpdatedAt:
+		return m.UpdatedAt()
+	case studentverification.FieldUserID:
+		return m.UserID()
+	case studentverification.FieldEmail:
+		return m.Email()
+	case studentverification.FieldEmailRaw:
+		return m.EmailRaw()
+	case studentverification.FieldStatus:
+		return m.Status()
+	case studentverification.FieldVerifiedAt:
+		return m.VerifiedAt()
+	case studentverification.FieldExpiresAt:
+		return m.ExpiresAt()
+	case studentverification.FieldRevokedAt:
+		return m.RevokedAt()
+	case studentverification.FieldRevokedBy:
+		return m.RevokedBy()
+	case studentverification.FieldRevokeReason:
+		return m.RevokeReason()
+	case studentverification.FieldRebateRateApplied:
+		return m.RebateRateApplied()
+	case studentverification.FieldPreviousRebateRate:
+		return m.PreviousRebateRate()
+	case studentverification.FieldGrantedGroupIds:
+		return m.GrantedGroupIds()
+	}
+	return nil, false
+}
+
+// OldField returns the old value of the field from the database. An error is
+// returned if the mutation operation is not UpdateOne, or the query to the
+// database failed.
+func (m *StudentVerificationMutation) OldField(ctx context.Context, name string) (ent.Value, error) {
+	switch name {
+	case studentverification.FieldCreatedAt:
+		return m.OldCreatedAt(ctx)
+	case studentverification.FieldUpdatedAt:
+		return m.OldUpdatedAt(ctx)
+	case studentverification.FieldUserID:
+		return m.OldUserID(ctx)
+	case studentverification.FieldEmail:
+		return m.OldEmail(ctx)
+	case studentverification.FieldEmailRaw:
+		return m.OldEmailRaw(ctx)
+	case studentverification.FieldStatus:
+		return m.OldStatus(ctx)
+	case studentverification.FieldVerifiedAt:
+		return m.OldVerifiedAt(ctx)
+	case studentverification.FieldExpiresAt:
+		return m.OldExpiresAt(ctx)
+	case studentverification.FieldRevokedAt:
+		return m.OldRevokedAt(ctx)
+	case studentverification.FieldRevokedBy:
+		return m.OldRevokedBy(ctx)
+	case studentverification.FieldRevokeReason:
+		return m.OldRevokeReason(ctx)
+	case studentverification.FieldRebateRateApplied:
+		return m.OldRebateRateApplied(ctx)
+	case studentverification.FieldPreviousRebateRate:
+		return m.OldPreviousRebateRate(ctx)
+	case studentverification.FieldGrantedGroupIds:
+		return m.OldGrantedGroupIds(ctx)
+	}
+	return nil, fmt.Errorf("unknown StudentVerification field %s", name)
+}
+
+// SetField sets the value of a field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *StudentVerificationMutation) SetField(name string, value ent.Value) error {
+	switch name {
+	case studentverification.FieldCreatedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCreatedAt(v)
+		return nil
+	case studentverification.FieldUpdatedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetUpdatedAt(v)
+		return nil
+	case studentverification.FieldUserID:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetUserID(v)
+		return nil
+	case studentverification.FieldEmail:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetEmail(v)
+		return nil
+	case studentverification.FieldEmailRaw:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetEmailRaw(v)
+		return nil
+	case studentverification.FieldStatus:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetStatus(v)
+		return nil
+	case studentverification.FieldVerifiedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetVerifiedAt(v)
+		return nil
+	case studentverification.FieldExpiresAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetExpiresAt(v)
+		return nil
+	case studentverification.FieldRevokedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetRevokedAt(v)
+		return nil
+	case studentverification.FieldRevokedBy:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetRevokedBy(v)
+		return nil
+	case studentverification.FieldRevokeReason:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetRevokeReason(v)
+		return nil
+	case studentverification.FieldRebateRateApplied:
+		v, ok := value.(float64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetRebateRateApplied(v)
+		return nil
+	case studentverification.FieldPreviousRebateRate:
+		v, ok := value.(float64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetPreviousRebateRate(v)
+		return nil
+	case studentverification.FieldGrantedGroupIds:
+		v, ok := value.([]int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetGrantedGroupIds(v)
+		return nil
+	}
+	return fmt.Errorf("unknown StudentVerification field %s", name)
+}
+
+// AddedFields returns all numeric fields that were incremented/decremented during
+// this mutation.
+func (m *StudentVerificationMutation) AddedFields() []string {
+	var fields []string
+	if m.addrevoked_by != nil {
+		fields = append(fields, studentverification.FieldRevokedBy)
+	}
+	if m.addrebate_rate_applied != nil {
+		fields = append(fields, studentverification.FieldRebateRateApplied)
+	}
+	if m.addprevious_rebate_rate != nil {
+		fields = append(fields, studentverification.FieldPreviousRebateRate)
+	}
+	return fields
+}
+
+// AddedField returns the numeric value that was incremented/decremented on a field
+// with the given name. The second boolean return value indicates that this field
+// was not set, or was not defined in the schema.
+func (m *StudentVerificationMutation) AddedField(name string) (ent.Value, bool) {
+	switch name {
+	case studentverification.FieldRevokedBy:
+		return m.AddedRevokedBy()
+	case studentverification.FieldRebateRateApplied:
+		return m.AddedRebateRateApplied()
+	case studentverification.FieldPreviousRebateRate:
+		return m.AddedPreviousRebateRate()
+	}
+	return nil, false
+}
+
+// AddField adds the value to the field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *StudentVerificationMutation) AddField(name string, value ent.Value) error {
+	switch name {
+	case studentverification.FieldRevokedBy:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddRevokedBy(v)
+		return nil
+	case studentverification.FieldRebateRateApplied:
+		v, ok := value.(float64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddRebateRateApplied(v)
+		return nil
+	case studentverification.FieldPreviousRebateRate:
+		v, ok := value.(float64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddPreviousRebateRate(v)
+		return nil
+	}
+	return fmt.Errorf("unknown StudentVerification numeric field %s", name)
+}
+
+// ClearedFields returns all nullable fields that were cleared during this
+// mutation.
+func (m *StudentVerificationMutation) ClearedFields() []string {
+	var fields []string
+	if m.FieldCleared(studentverification.FieldUserID) {
+		fields = append(fields, studentverification.FieldUserID)
+	}
+	if m.FieldCleared(studentverification.FieldRevokedAt) {
+		fields = append(fields, studentverification.FieldRevokedAt)
+	}
+	if m.FieldCleared(studentverification.FieldRevokedBy) {
+		fields = append(fields, studentverification.FieldRevokedBy)
+	}
+	if m.FieldCleared(studentverification.FieldRevokeReason) {
+		fields = append(fields, studentverification.FieldRevokeReason)
+	}
+	if m.FieldCleared(studentverification.FieldRebateRateApplied) {
+		fields = append(fields, studentverification.FieldRebateRateApplied)
+	}
+	if m.FieldCleared(studentverification.FieldPreviousRebateRate) {
+		fields = append(fields, studentverification.FieldPreviousRebateRate)
+	}
+	return fields
+}
+
+// FieldCleared returns a boolean indicating if a field with the given name was
+// cleared in this mutation.
+func (m *StudentVerificationMutation) FieldCleared(name string) bool {
+	_, ok := m.clearedFields[name]
+	return ok
+}
+
+// ClearField clears the value of the field with the given name. It returns an
+// error if the field is not defined in the schema.
+func (m *StudentVerificationMutation) ClearField(name string) error {
+	switch name {
+	case studentverification.FieldUserID:
+		m.ClearUserID()
+		return nil
+	case studentverification.FieldRevokedAt:
+		m.ClearRevokedAt()
+		return nil
+	case studentverification.FieldRevokedBy:
+		m.ClearRevokedBy()
+		return nil
+	case studentverification.FieldRevokeReason:
+		m.ClearRevokeReason()
+		return nil
+	case studentverification.FieldRebateRateApplied:
+		m.ClearRebateRateApplied()
+		return nil
+	case studentverification.FieldPreviousRebateRate:
+		m.ClearPreviousRebateRate()
+		return nil
+	}
+	return fmt.Errorf("unknown StudentVerification nullable field %s", name)
+}
+
+// ResetField resets all changes in the mutation for the field with the given name.
+// It returns an error if the field is not defined in the schema.
+func (m *StudentVerificationMutation) ResetField(name string) error {
+	switch name {
+	case studentverification.FieldCreatedAt:
+		m.ResetCreatedAt()
+		return nil
+	case studentverification.FieldUpdatedAt:
+		m.ResetUpdatedAt()
+		return nil
+	case studentverification.FieldUserID:
+		m.ResetUserID()
+		return nil
+	case studentverification.FieldEmail:
+		m.ResetEmail()
+		return nil
+	case studentverification.FieldEmailRaw:
+		m.ResetEmailRaw()
+		return nil
+	case studentverification.FieldStatus:
+		m.ResetStatus()
+		return nil
+	case studentverification.FieldVerifiedAt:
+		m.ResetVerifiedAt()
+		return nil
+	case studentverification.FieldExpiresAt:
+		m.ResetExpiresAt()
+		return nil
+	case studentverification.FieldRevokedAt:
+		m.ResetRevokedAt()
+		return nil
+	case studentverification.FieldRevokedBy:
+		m.ResetRevokedBy()
+		return nil
+	case studentverification.FieldRevokeReason:
+		m.ResetRevokeReason()
+		return nil
+	case studentverification.FieldRebateRateApplied:
+		m.ResetRebateRateApplied()
+		return nil
+	case studentverification.FieldPreviousRebateRate:
+		m.ResetPreviousRebateRate()
+		return nil
+	case studentverification.FieldGrantedGroupIds:
+		m.ResetGrantedGroupIds()
+		return nil
+	}
+	return fmt.Errorf("unknown StudentVerification field %s", name)
+}
+
+// AddedEdges returns all edge names that were set/added in this mutation.
+func (m *StudentVerificationMutation) AddedEdges() []string {
+	edges := make([]string, 0, 1)
+	if m.user != nil {
+		edges = append(edges, studentverification.EdgeUser)
+	}
+	return edges
+}
+
+// AddedIDs returns all IDs (to other nodes) that were added for the given edge
+// name in this mutation.
+func (m *StudentVerificationMutation) AddedIDs(name string) []ent.Value {
+	switch name {
+	case studentverification.EdgeUser:
+		if id := m.user; id != nil {
+			return []ent.Value{*id}
+		}
+	}
+	return nil
+}
+
+// RemovedEdges returns all edge names that were removed in this mutation.
+func (m *StudentVerificationMutation) RemovedEdges() []string {
+	edges := make([]string, 0, 1)
+	return edges
+}
+
+// RemovedIDs returns all IDs (to other nodes) that were removed for the edge with
+// the given name in this mutation.
+func (m *StudentVerificationMutation) RemovedIDs(name string) []ent.Value {
+	return nil
+}
+
+// ClearedEdges returns all edge names that were cleared in this mutation.
+func (m *StudentVerificationMutation) ClearedEdges() []string {
+	edges := make([]string, 0, 1)
+	if m.cleareduser {
+		edges = append(edges, studentverification.EdgeUser)
+	}
+	return edges
+}
+
+// EdgeCleared returns a boolean which indicates if the edge with the given name
+// was cleared in this mutation.
+func (m *StudentVerificationMutation) EdgeCleared(name string) bool {
+	switch name {
+	case studentverification.EdgeUser:
+		return m.cleareduser
+	}
+	return false
+}
+
+// ClearEdge clears the value of the edge with the given name. It returns an error
+// if that edge is not defined in the schema.
+func (m *StudentVerificationMutation) ClearEdge(name string) error {
+	switch name {
+	case studentverification.EdgeUser:
+		m.ClearUser()
+		return nil
+	}
+	return fmt.Errorf("unknown StudentVerification unique edge %s", name)
+}
+
+// ResetEdge resets all changes to the edge with the given name in this mutation.
+// It returns an error if the edge is not defined in the schema.
+func (m *StudentVerificationMutation) ResetEdge(name string) error {
+	switch name {
+	case studentverification.EdgeUser:
+		m.ResetUser()
+		return nil
+	}
+	return fmt.Errorf("unknown StudentVerification edge %s", name)
+}
+
 // SubscriptionPlanMutation represents an operation that mutates the SubscriptionPlan nodes in the graph.
 type SubscriptionPlanMutation struct {
 	config
@@ -48771,6 +50093,8 @@ type UserMutation struct {
 	platform_quotas               map[int64]struct{}
 	removedplatform_quotas        map[int64]struct{}
 	clearedplatform_quotas        bool
+	student_verification          *int64
+	clearedstudent_verification   bool
 	done                          bool
 	oldValue                      func(context.Context) (*User, error)
 	predicates                    []predicate.User
@@ -50675,6 +51999,45 @@ func (m *UserMutation) ResetPlatformQuotas() {
 	m.removedplatform_quotas = nil
 }
 
+// SetStudentVerificationID sets the "student_verification" edge to the StudentVerification entity by id.
+func (m *UserMutation) SetStudentVerificationID(id int64) {
+	m.student_verification = &id
+}
+
+// ClearStudentVerification clears the "student_verification" edge to the StudentVerification entity.
+func (m *UserMutation) ClearStudentVerification() {
+	m.clearedstudent_verification = true
+}
+
+// StudentVerificationCleared reports if the "student_verification" edge to the StudentVerification entity was cleared.
+func (m *UserMutation) StudentVerificationCleared() bool {
+	return m.clearedstudent_verification
+}
+
+// StudentVerificationID returns the "student_verification" edge ID in the mutation.
+func (m *UserMutation) StudentVerificationID() (id int64, exists bool) {
+	if m.student_verification != nil {
+		return *m.student_verification, true
+	}
+	return
+}
+
+// StudentVerificationIDs returns the "student_verification" edge IDs in the mutation.
+// Note that IDs always returns len(IDs) <= 1 for unique edges, and you should use
+// StudentVerificationID instead. It exists only for internal usage by the builders.
+func (m *UserMutation) StudentVerificationIDs() (ids []int64) {
+	if id := m.student_verification; id != nil {
+		ids = append(ids, *id)
+	}
+	return
+}
+
+// ResetStudentVerification resets all changes to the "student_verification" edge.
+func (m *UserMutation) ResetStudentVerification() {
+	m.student_verification = nil
+	m.clearedstudent_verification = false
+}
+
 // Where appends a list predicates to the UserMutation builder.
 func (m *UserMutation) Where(ps ...predicate.User) {
 	m.predicates = append(m.predicates, ps...)
@@ -51330,7 +52693,7 @@ func (m *UserMutation) ResetField(name string) error {
 
 // AddedEdges returns all edge names that were set/added in this mutation.
 func (m *UserMutation) AddedEdges() []string {
-	edges := make([]string, 0, 13)
+	edges := make([]string, 0, 14)
 	if m.api_keys != nil {
 		edges = append(edges, user.EdgeAPIKeys)
 	}
@@ -51369,6 +52732,9 @@ func (m *UserMutation) AddedEdges() []string {
 	}
 	if m.platform_quotas != nil {
 		edges = append(edges, user.EdgePlatformQuotas)
+	}
+	if m.student_verification != nil {
+		edges = append(edges, user.EdgeStudentVerification)
 	}
 	return edges
 }
@@ -51455,13 +52821,17 @@ func (m *UserMutation) AddedIDs(name string) []ent.Value {
 			ids = append(ids, id)
 		}
 		return ids
+	case user.EdgeStudentVerification:
+		if id := m.student_verification; id != nil {
+			return []ent.Value{*id}
+		}
 	}
 	return nil
 }
 
 // RemovedEdges returns all edge names that were removed in this mutation.
 func (m *UserMutation) RemovedEdges() []string {
-	edges := make([]string, 0, 13)
+	edges := make([]string, 0, 14)
 	if m.removedapi_keys != nil {
 		edges = append(edges, user.EdgeAPIKeys)
 	}
@@ -51592,7 +52962,7 @@ func (m *UserMutation) RemovedIDs(name string) []ent.Value {
 
 // ClearedEdges returns all edge names that were cleared in this mutation.
 func (m *UserMutation) ClearedEdges() []string {
-	edges := make([]string, 0, 13)
+	edges := make([]string, 0, 14)
 	if m.clearedapi_keys {
 		edges = append(edges, user.EdgeAPIKeys)
 	}
@@ -51632,6 +53002,9 @@ func (m *UserMutation) ClearedEdges() []string {
 	if m.clearedplatform_quotas {
 		edges = append(edges, user.EdgePlatformQuotas)
 	}
+	if m.clearedstudent_verification {
+		edges = append(edges, user.EdgeStudentVerification)
+	}
 	return edges
 }
 
@@ -51665,6 +53038,8 @@ func (m *UserMutation) EdgeCleared(name string) bool {
 		return m.clearedpending_auth_sessions
 	case user.EdgePlatformQuotas:
 		return m.clearedplatform_quotas
+	case user.EdgeStudentVerification:
+		return m.clearedstudent_verification
 	}
 	return false
 }
@@ -51673,6 +53048,9 @@ func (m *UserMutation) EdgeCleared(name string) bool {
 // if that edge is not defined in the schema.
 func (m *UserMutation) ClearEdge(name string) error {
 	switch name {
+	case user.EdgeStudentVerification:
+		m.ClearStudentVerification()
+		return nil
 	}
 	return fmt.Errorf("unknown User unique edge %s", name)
 }
@@ -51719,6 +53097,9 @@ func (m *UserMutation) ResetEdge(name string) error {
 		return nil
 	case user.EdgePlatformQuotas:
 		m.ResetPlatformQuotas()
+		return nil
+	case user.EdgeStudentVerification:
+		m.ResetStudentVerification()
 		return nil
 	}
 	return fmt.Errorf("unknown User edge %s", name)

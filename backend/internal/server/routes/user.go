@@ -35,6 +35,11 @@ func RegisterUserRoutes(
 			user.POST("/aff/transfer", h.User.TransferAffiliateQuota)
 			user.POST("/account-bindings/email/send-code", h.User.SendEmailBindingCode)
 			user.POST("/account-bindings/email", h.User.BindEmailIdentity)
+
+			// 学生认证
+			user.GET("/student-verification", h.StudentVerification.GetStatus)
+			user.POST("/student-verification/send-code", h.StudentVerification.SendCode)
+			user.POST("/student-verification/verify", h.StudentVerification.Verify)
 			user.DELETE("/account-bindings/:provider", h.User.UnbindIdentity)
 			user.POST("/auth-identities/bind/start", h.User.StartIdentityBinding)
 			user.GET("/api-keys/:id/usage/daily", panelRateLimiter.Heavy(), h.Usage.GetMyAPIKeyDailyUsage)

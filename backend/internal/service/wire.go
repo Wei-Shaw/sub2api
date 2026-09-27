@@ -978,7 +978,26 @@ var ProviderSet = wire.NewSet(
 	ProvideChannelMonitorV2Aggregator,
 	NewChannelMonitorRequestTemplateService,
 	ProvideUserPlatformQuotaUsageFlusher,
+	ProvideStudentVerificationService,
 )
+
+// ProvideStudentVerificationService wires the student verification service and
+// starts its expiry sweeper. groupRepo satisfies DefaultSubscriptionGroupReader.
+func ProvideStudentVerificationService(
+	repo StudentVerificationRepository,
+	userRepo UserRepository,
+	groupRepo GroupRepository,
+	affiliateRepo AffiliateRepository,
+	settingService *SettingService,
+	emailService *EmailService,
+	entClient *dbent.Client,
+	authCacheInvalidator APIKeyAuthCacheInvalidator,
+) *StudentVerificationService {
+	svc := NewStudentVerificationService(repo, userRepo, groupRepo, affiliateRepo,
+		settingService, emailService, entClient, authCacheInvalidator)
+	svc.Start()
+	return svc
+}
 
 // ProvideUserPlatformQuotaUsageFlusher 创建并启动 UserPlatformQuotaUsageFlusher。
 func ProvideUserPlatformQuotaUsageFlusher(cfg *config.Config, cache BillingCache, quotaRepo UserPlatformQuotaRepository, tw *TimingWheelService) *UserPlatformQuotaUsageFlusher {

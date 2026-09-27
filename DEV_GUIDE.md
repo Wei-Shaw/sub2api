@@ -72,6 +72,31 @@ cd backend && golangci-lint run ./...
 cd frontend && pnpm install
 ```
 
+### 本地起服务（当前开发机实测）
+
+本机 8080 常被其他项目（Java/知影等）占用；前端 3000 也可能被别的 vite 占。推荐 8090 + 5173：
+
+```powershell
+# 后端（环境变量覆盖 G:\app\data\config.yaml 里的连接信息）
+cd backend
+$env:DATABASE_HOST='127.0.0.1'; $env:DATABASE_PORT='5432'
+$env:DATABASE_USER='postgres'; $env:DATABASE_PASSWORD='postgres'
+$env:DATABASE_DBNAME='sub2api_test'; $env:DATABASE_SSLMODE='disable'
+$env:REDIS_HOST='127.0.0.1'; $env:REDIS_PORT='6379'
+$env:SERVER_PORT='8090'; go run ./cmd/server
+
+# 前端
+cd frontend
+$env:VITE_DEV_PROXY_TARGET='http://localhost:8090'
+npx vite --port 5173 --strictPort
+```
+
+注意：
+- `GetDataDir()` 在 Windows 会把 `/app/data` 解析为 `G:\app\data`；本机已存在旧的 `config.yaml`+`.installed`，`NeedsSetup()` 恒为 false，AUTO_SETUP 不会跑——新库只需让启动时的 `applyMigrationsFS` 自动补迁移即可（幂等，每次启动都会执行）
+- 迁移/登录都走 SQL 逐语句往返：DB 在远程时一次登录 ~10s，本地库毫秒级。**本地测试一律用本地库**
+- 管理员若无，需手动 INSERT users 行（bcrypt hash，注意 PowerShell 双引号里 `$2b$...` 会被当变量吃掉，用单引号）
+- 验证码可直接读 Redis：`redis-cli GET "verify_code:<邮箱>"`
+
 ## 四、常见坑点 & 解决方案
 
 ### 坑 1：pnpm-lock.yaml 必须同步提交

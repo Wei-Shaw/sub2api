@@ -430,6 +430,12 @@ export interface SystemSettings {
   default_concurrency: number;
   default_user_rpm_limit: number;
   default_subscriptions: DefaultSubscriptionSetting[];
+  // Student verification
+  student_verification_enabled: boolean;
+  student_verification_email_suffixes: string[];
+  student_verification_validity_days: number;
+  student_verification_group_ids: number[];
+  student_verification_rebate_rate: number;
   auth_source_default_email_balance?: number;
   auth_source_default_email_concurrency?: number;
   auth_source_default_email_subscriptions?: DefaultSubscriptionSetting[];
@@ -779,6 +785,12 @@ export interface UpdateSettingsRequest {
   default_concurrency?: number;
   default_user_rpm_limit?: number;
   default_subscriptions?: DefaultSubscriptionSetting[];
+  // Student verification
+  student_verification_enabled?: boolean;
+  student_verification_email_suffixes?: string[];
+  student_verification_validity_days?: number;
+  student_verification_group_ids?: number[];
+  student_verification_rebate_rate?: number;
   auth_source_default_email_balance?: number;
   auth_source_default_email_concurrency?: number;
   auth_source_default_email_subscriptions?: DefaultSubscriptionSetting[];

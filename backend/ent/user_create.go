@@ -19,6 +19,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/pendingauthsession"
 	"github.com/Wei-Shaw/sub2api/ent/promocodeusage"
 	"github.com/Wei-Shaw/sub2api/ent/redeemcode"
+	"github.com/Wei-Shaw/sub2api/ent/studentverification"
 	"github.com/Wei-Shaw/sub2api/ent/usagelog"
 	"github.com/Wei-Shaw/sub2api/ent/user"
 	"github.com/Wei-Shaw/sub2api/ent/userattributevalue"
@@ -563,6 +564,25 @@ func (_c *UserCreate) AddPlatformQuotas(v ...*UserPlatformQuota) *UserCreate {
 	return _c.AddPlatformQuotaIDs(ids...)
 }
 
+// SetStudentVerificationID sets the "student_verification" edge to the StudentVerification entity by ID.
+func (_c *UserCreate) SetStudentVerificationID(id int64) *UserCreate {
+	_c.mutation.SetStudentVerificationID(id)
+	return _c
+}
+
+// SetNillableStudentVerificationID sets the "student_verification" edge to the StudentVerification entity by ID if the given value is not nil.
+func (_c *UserCreate) SetNillableStudentVerificationID(id *int64) *UserCreate {
+	if id != nil {
+		_c = _c.SetStudentVerificationID(*id)
+	}
+	return _c
+}
+
+// SetStudentVerification sets the "student_verification" edge to the StudentVerification entity.
+func (_c *UserCreate) SetStudentVerification(v *StudentVerification) *UserCreate {
+	return _c.SetStudentVerificationID(v.ID)
+}
+
 // Mutation returns the UserMutation object of the builder.
 func (_c *UserCreate) Mutation() *UserMutation {
 	return _c.mutation
@@ -1098,6 +1118,22 @@ func (_c *UserCreate) createSpec() (*User, *sqlgraph.CreateSpec) {
 			Bidi:    false,
 			Target: &sqlgraph.EdgeTarget{
 				IDSpec: sqlgraph.NewFieldSpec(userplatformquota.FieldID, field.TypeInt64),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges = append(_spec.Edges, edge)
+	}
+	if nodes := _c.mutation.StudentVerificationIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2O,
+			Inverse: false,
+			Table:   user.StudentVerificationTable,
+			Columns: []string{user.StudentVerificationColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(studentverification.FieldID, field.TypeInt64),
 			},
 		}
 		for _, k := range nodes {

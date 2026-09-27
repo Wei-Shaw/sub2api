@@ -648,6 +648,18 @@ const routes: RouteRecordRaw[] = [
     }
   },
   {
+    path: '/admin/student-verifications',
+    name: 'AdminStudentVerifications',
+    component: () => import('@/views/admin/StudentVerificationsView.vue'),
+    meta: {
+      requiresAuth: true,
+      requiresAdmin: true,
+      title: 'Student Verifications',
+      titleKey: 'nav.studentVerifications',
+      descriptionKey: 'admin.studentVerifications.description'
+    }
+  },
+  {
     path: '/admin/affiliates',
     redirect: '/admin/affiliates/invites'
   },

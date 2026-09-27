@@ -174,6 +174,7 @@ export default {
     affiliateInviteRecords: 'Invite Records',
     affiliateRebateRecords: 'Rebate Records',
     affiliateTransferRecords: 'Transfer Records',
+    studentVerifications: 'Student Verifications',
     profile: 'Profile',
     users: 'Users',
     groups: 'Groups',

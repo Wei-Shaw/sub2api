@@ -179,6 +179,13 @@ type SystemSettings struct {
 	DefaultUserRPMLimit          int
 	DefaultSubscriptions         []DefaultSubscriptionSetting
 
+	// 学生资格认证
+	StudentVerificationEnabled       bool
+	StudentVerificationEmailSuffixes []string
+	StudentVerificationValidityDays  int
+	StudentVerificationGroupIDs      []int64
+	StudentVerificationRebateRate    float64
+
 	// Model fallback configuration
 	EnableModelFallback      bool   `json:"enable_model_fallback"`
 	FallbackModelAnthropic   string `json:"fallback_model_anthropic"`

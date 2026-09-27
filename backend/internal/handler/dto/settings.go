@@ -175,6 +175,13 @@ type SystemSettings struct {
 	DefaultUserRPMLimit          int                          `json:"default_user_rpm_limit"`
 	DefaultSubscriptions         []DefaultSubscriptionSetting `json:"default_subscriptions"`
 
+	// Student verification
+	StudentVerificationEnabled       bool     `json:"student_verification_enabled"`
+	StudentVerificationEmailSuffixes []string `json:"student_verification_email_suffixes"`
+	StudentVerificationValidityDays  int      `json:"student_verification_validity_days"`
+	StudentVerificationGroupIDs      []int64  `json:"student_verification_group_ids"`
+	StudentVerificationRebateRate    float64  `json:"student_verification_rebate_rate"`
+
 	// Model fallback configuration
 	EnableModelFallback      bool   `json:"enable_model_fallback"`
 	FallbackModelAnthropic   string `json:"fallback_model_anthropic"`

@@ -1699,6 +1699,29 @@ func HasPlatformQuotasWith(preds ...predicate.UserPlatformQuota) predicate.User 
 	})
 }
 
+// HasStudentVerification applies the HasEdge predicate on the "student_verification" edge.
+func HasStudentVerification() predicate.User {
+	return predicate.User(func(s *sql.Selector) {
+		step := sqlgraph.NewStep(
+			sqlgraph.From(Table, FieldID),
+			sqlgraph.Edge(sqlgraph.O2O, false, StudentVerificationTable, StudentVerificationColumn),
+		)
+		sqlgraph.HasNeighbors(s, step)
+	})
+}
+
+// HasStudentVerificationWith applies the HasEdge predicate on the "student_verification" edge with a given conditions (other predicates).
+func HasStudentVerificationWith(preds ...predicate.StudentVerification) predicate.User {
+	return predicate.User(func(s *sql.Selector) {
+		step := newStudentVerificationStep()
+		sqlgraph.HasNeighborsWith(s, step, func(s *sql.Selector) {
+			for _, p := range preds {
+				p(s)
+			}
+		})
+	})
+}
+
 // HasUserAllowedGroups applies the HasEdge predicate on the "user_allowed_groups" edge.
 func HasUserAllowedGroups() predicate.User {
 	return predicate.User(func(s *sql.Selector) {

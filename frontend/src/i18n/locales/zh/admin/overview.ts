@@ -518,6 +518,38 @@ export default {
       }
     },
 
+    studentVerifications: {
+      description: '查看学生认证记录，撤销认证或删除记录以释放学校邮箱',
+      searchPlaceholder: '搜索邮箱或用户 ID',
+      allStatus: '全部状态',
+      deletedUser: '用户已删除',
+      status: {
+        active: '生效中',
+        expired: '已过期',
+        revoked: '已撤销'
+      },
+      columns: {
+        user: '用户',
+        email: '学校邮箱',
+        status: '状态',
+        groups: '授予分组',
+        rebate: '返利比例',
+        expiresAt: '到期时间',
+        verifiedAt: '认证时间',
+        actions: '操作'
+      },
+      revoke: '撤销',
+      revokeTitle: '撤销学生认证',
+      revokeConfirm: '撤销后 {email} 的专属分组与返利将立即失效，但该邮箱仍被占用，需删除记录才可重新认证。',
+      revokeReason: '撤销原因',
+      revokeReasonPlaceholder: '可选，记录到审计字段',
+      revokeSuccess: '已撤销认证',
+      delete: '删除',
+      deleteTitle: '删除认证记录',
+      deleteConfirm: '删除 {email} 的认证记录后将释放该邮箱，允许其他账号重新使用此邮箱认证。确定继续吗？',
+      deleteSuccess: '已删除记录并释放邮箱'
+    },
+
     // Users Management
     users: {
       title: '用户管理',

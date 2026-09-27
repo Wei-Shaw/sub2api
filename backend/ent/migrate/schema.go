@@ -1535,6 +1535,55 @@ var (
 		Columns:    SettingsColumns,
 		PrimaryKey: []*schema.Column{SettingsColumns[0]},
 	}
+	// StudentVerificationsColumns holds the columns for the "student_verifications" table.
+	StudentVerificationsColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeInt64, Increment: true},
+		{Name: "created_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "updated_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "email", Type: field.TypeString, SchemaType: map[string]string{"postgres": "text"}},
+		{Name: "email_raw", Type: field.TypeString, SchemaType: map[string]string{"postgres": "text"}},
+		{Name: "status", Type: field.TypeString, Size: 20, Default: "active"},
+		{Name: "verified_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "expires_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "revoked_at", Type: field.TypeTime, Nullable: true, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "revoked_by", Type: field.TypeInt64, Nullable: true},
+		{Name: "revoke_reason", Type: field.TypeString, Nullable: true, SchemaType: map[string]string{"postgres": "text"}},
+		{Name: "rebate_rate_applied", Type: field.TypeFloat64, Nullable: true},
+		{Name: "previous_rebate_rate", Type: field.TypeFloat64, Nullable: true},
+		{Name: "granted_group_ids", Type: field.TypeJSON, SchemaType: map[string]string{"postgres": "jsonb"}},
+		{Name: "user_id", Type: field.TypeInt64, Unique: true, Nullable: true},
+	}
+	// StudentVerificationsTable holds the schema information for the "student_verifications" table.
+	StudentVerificationsTable = &schema.Table{
+		Name:       "student_verifications",
+		Columns:    StudentVerificationsColumns,
+		PrimaryKey: []*schema.Column{StudentVerificationsColumns[0]},
+		ForeignKeys: []*schema.ForeignKey{
+			{
+				Symbol:     "student_verifications_users_student_verification",
+				Columns:    []*schema.Column{StudentVerificationsColumns[14]},
+				RefColumns: []*schema.Column{UsersColumns[0]},
+				OnDelete:   schema.SetNull,
+			},
+		},
+		Indexes: []*schema.Index{
+			{
+				Name:    "studentverification_email",
+				Unique:  true,
+				Columns: []*schema.Column{StudentVerificationsColumns[3]},
+			},
+			{
+				Name:    "studentverification_user_id",
+				Unique:  true,
+				Columns: []*schema.Column{StudentVerificationsColumns[14]},
+			},
+			{
+				Name:    "studentverification_status_expires_at",
+				Unique:  false,
+				Columns: []*schema.Column{StudentVerificationsColumns[5], StudentVerificationsColumns[7]},
+			},
+		},
+	}
 	// SubscriptionPlansColumns holds the columns for the "subscription_plans" table.
 	SubscriptionPlansColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeInt64, Increment: true},
@@ -2117,6 +2166,7 @@ var (
 		RedeemCodesTable,
 		SecuritySecretsTable,
 		SettingsTable,
+		StudentVerificationsTable,
 		SubscriptionPlansTable,
 		TLSFingerprintProfilesTable,
 		UsageCleanupTasksTable,
@@ -2240,6 +2290,10 @@ func init() {
 	}
 	SettingsTable.Annotation = &entsql.Annotation{
 		Table: "settings",
+	}
+	StudentVerificationsTable.ForeignKeys[0].RefTable = UsersTable
+	StudentVerificationsTable.Annotation = &entsql.Annotation{
+		Table: "student_verifications",
 	}
 	SubscriptionPlansTable.Annotation = &entsql.Annotation{
 		Table: "subscription_plans",

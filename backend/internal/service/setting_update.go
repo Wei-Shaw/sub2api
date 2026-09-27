@@ -391,6 +391,40 @@ func (s *SettingService) buildSystemSettingsUpdates(ctx context.Context, setting
 	}
 	updates[SettingKeyDefaultSubscriptions] = string(defaultSubsJSON)
 
+	// 学生资格认证
+	updates[SettingKeyStudentVerificationEnabled] = strconv.FormatBool(settings.StudentVerificationEnabled)
+	studentSuffixes, err := NormalizeRegistrationEmailSuffixWhitelist(settings.StudentVerificationEmailSuffixes)
+	if err != nil {
+		return nil, err
+	}
+	studentSuffixesJSON, err := json.Marshal(studentSuffixes)
+	if err != nil {
+		return nil, fmt.Errorf("marshal student verification email suffixes: %w", err)
+	}
+	updates[SettingKeyStudentVerificationEmailSuffixes] = string(studentSuffixesJSON)
+	if settings.StudentVerificationValidityDays < StudentVerificationValidityDaysMin {
+		settings.StudentVerificationValidityDays = StudentVerificationValidityDaysDefault
+	}
+	if settings.StudentVerificationValidityDays > StudentVerificationValidityDaysMax {
+		settings.StudentVerificationValidityDays = StudentVerificationValidityDaysMax
+	}
+	updates[SettingKeyStudentVerificationValidityDays] = strconv.Itoa(settings.StudentVerificationValidityDays)
+	if err := s.validateStudentVerificationGroupIDs(ctx, settings.StudentVerificationGroupIDs); err != nil {
+		return nil, err
+	}
+	studentGroupIDsJSON, err := json.Marshal(dedupePositiveInt64s(settings.StudentVerificationGroupIDs))
+	if err != nil {
+		return nil, fmt.Errorf("marshal student verification group ids: %w", err)
+	}
+	updates[SettingKeyStudentVerificationGroupIDs] = string(studentGroupIDsJSON)
+	if settings.StudentVerificationRebateRate < 0 || math.IsNaN(settings.StudentVerificationRebateRate) || math.IsInf(settings.StudentVerificationRebateRate, 0) {
+		settings.StudentVerificationRebateRate = 0
+	}
+	if settings.StudentVerificationRebateRate > 0 {
+		settings.StudentVerificationRebateRate = clampAffiliateRebateRate(settings.StudentVerificationRebateRate)
+	}
+	updates[SettingKeyStudentVerificationRebateRate] = strconv.FormatFloat(settings.StudentVerificationRebateRate, 'f', 8, 64)
+
 	// Model fallback configuration
 	updates[SettingKeyEnableModelFallback] = strconv.FormatBool(settings.EnableModelFallback)
 	updates[SettingKeyFallbackModelAnthropic] = settings.FallbackModelAnthropic
@@ -846,5 +880,50 @@ func (s *SettingService) validateDefaultSubscriptionGroups(ctx context.Context, 
 		}
 	}
 
+	return nil
+}
+
+// dedupePositiveInt64s returns ids with non-positive values and duplicates removed.
+func dedupePositiveInt64s(ids []int64) []int64 {
+	seen := make(map[int64]struct{}, len(ids))
+	out := make([]int64, 0, len(ids))
+	for _, id := range ids {
+		if id <= 0 {
+			continue
+		}
+		if _, ok := seen[id]; ok {
+			continue
+		}
+		seen[id] = struct{}{}
+		out = append(out, id)
+	}
+	return out
+}
+
+// validateStudentVerificationGroupIDs ensures configured student groups exist
+// and are exclusive standard-type groups — subscription groups would silently
+// grant nothing because API-key binding for them requires an active
+// subscription, and public groups would give nothing extra.
+func (s *SettingService) validateStudentVerificationGroupIDs(ctx context.Context, ids []int64) error {
+	ids = dedupePositiveInt64s(ids)
+	if len(ids) == 0 || s.defaultSubGroupReader == nil {
+		return nil
+	}
+	for _, id := range ids {
+		group, err := s.defaultSubGroupReader.GetByID(ctx, id)
+		if err != nil {
+			if errors.Is(err, ErrGroupNotFound) {
+				return ErrStudentGroupInvalid.WithMetadata(map[string]string{
+					"group_id": strconv.FormatInt(id, 10),
+				})
+			}
+			return fmt.Errorf("get student verification group %d: %w", id, err)
+		}
+		if !group.IsExclusive || group.IsSubscriptionType() {
+			return ErrStudentGroupInvalid.WithMetadata(map[string]string{
+				"group_id": strconv.FormatInt(id, 10),
+			})
+		}
+	}
 	return nil
 }

@@ -787,6 +787,7 @@ const adminNavItems = computed((): NavItem[] => {
       ],
     },
     { path: '/admin/users', label: t('nav.users'), icon: UsersIcon, hideInSimpleMode: true },
+    { path: '/admin/student-verifications', label: t('nav.studentVerifications'), icon: UsersIcon, hideInSimpleMode: true },
     { path: '/admin/groups', label: t('nav.groups'), icon: FolderIcon },
     {
       path: '/admin/channels',

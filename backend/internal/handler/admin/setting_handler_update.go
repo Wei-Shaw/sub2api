@@ -179,6 +179,11 @@ type UpdateSettingsRequest struct {
 	AdminRechargeRebateEnabled                *bool                             `json:"affiliate_admin_recharge_enabled"`
 	DefaultUserRPMLimit                       int                               `json:"default_user_rpm_limit"`
 	DefaultSubscriptions                      []dto.DefaultSubscriptionSetting  `json:"default_subscriptions"`
+	StudentVerificationEnabled                *bool                             `json:"student_verification_enabled"`
+	StudentVerificationEmailSuffixes          *[]string                         `json:"student_verification_email_suffixes"`
+	StudentVerificationValidityDays           *int                              `json:"student_verification_validity_days"`
+	StudentVerificationGroupIDs               *[]int64                          `json:"student_verification_group_ids"`
+	StudentVerificationRebateRate             *float64                          `json:"student_verification_rebate_rate"`
 	AuthSourceDefaultEmailBalance             *float64                          `json:"auth_source_default_email_balance"`
 	AuthSourceDefaultEmailConcurrency         *int                              `json:"auth_source_default_email_concurrency"`
 	AuthSourceDefaultEmailSubscriptions       *[]dto.DefaultSubscriptionSetting `json:"auth_source_default_email_subscriptions"`
@@ -604,6 +609,26 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 	adminRechargeRebateEnabled := previousSettings.AdminRechargeRebateEnabled
 	if req.AdminRechargeRebateEnabled != nil {
 		adminRechargeRebateEnabled = *req.AdminRechargeRebateEnabled
+	}
+	studentVerificationEnabled := previousSettings.StudentVerificationEnabled
+	if req.StudentVerificationEnabled != nil {
+		studentVerificationEnabled = *req.StudentVerificationEnabled
+	}
+	studentVerificationEmailSuffixes := previousSettings.StudentVerificationEmailSuffixes
+	if req.StudentVerificationEmailSuffixes != nil {
+		studentVerificationEmailSuffixes = *req.StudentVerificationEmailSuffixes
+	}
+	studentVerificationValidityDays := previousSettings.StudentVerificationValidityDays
+	if req.StudentVerificationValidityDays != nil {
+		studentVerificationValidityDays = *req.StudentVerificationValidityDays
+	}
+	studentVerificationGroupIDs := previousSettings.StudentVerificationGroupIDs
+	if req.StudentVerificationGroupIDs != nil {
+		studentVerificationGroupIDs = *req.StudentVerificationGroupIDs
+	}
+	studentVerificationRebateRate := previousSettings.StudentVerificationRebateRate
+	if req.StudentVerificationRebateRate != nil {
+		studentVerificationRebateRate = *req.StudentVerificationRebateRate
 	}
 	// 通用表格配置：兼容旧客户端未传字段时保留当前值。
 	if req.TableDefaultPageSize <= 0 {
@@ -1652,6 +1677,11 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		AdminRechargeRebateEnabled:             adminRechargeRebateEnabled,
 		DefaultUserRPMLimit:                    req.DefaultUserRPMLimit,
 		DefaultSubscriptions:                   defaultSubscriptions,
+		StudentVerificationEnabled:             studentVerificationEnabled,
+		StudentVerificationEmailSuffixes:       studentVerificationEmailSuffixes,
+		StudentVerificationValidityDays:        studentVerificationValidityDays,
+		StudentVerificationGroupIDs:            studentVerificationGroupIDs,
+		StudentVerificationRebateRate:          studentVerificationRebateRate,
 		EnableModelFallback:                    req.EnableModelFallback,
 		FallbackModelAnthropic:                 req.FallbackModelAnthropic,
 		FallbackModelOpenAI:                    req.FallbackModelOpenAI,
@@ -2307,6 +2337,11 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		AdminRechargeRebateEnabled:                             updatedSettings.AdminRechargeRebateEnabled,
 		DefaultUserRPMLimit:                                    updatedSettings.DefaultUserRPMLimit,
 		DefaultSubscriptions:                                   updatedDefaultSubscriptions,
+		StudentVerificationEnabled:                             updatedSettings.StudentVerificationEnabled,
+		StudentVerificationEmailSuffixes:                       updatedSettings.StudentVerificationEmailSuffixes,
+		StudentVerificationValidityDays:                        updatedSettings.StudentVerificationValidityDays,
+		StudentVerificationGroupIDs:                            updatedSettings.StudentVerificationGroupIDs,
+		StudentVerificationRebateRate:                          updatedSettings.StudentVerificationRebateRate,
 		EnableModelFallback:                                    updatedSettings.EnableModelFallback,
 		FallbackModelAnthropic:                                 updatedSettings.FallbackModelAnthropic,
 		FallbackModelOpenAI:                                    updatedSettings.FallbackModelOpenAI,

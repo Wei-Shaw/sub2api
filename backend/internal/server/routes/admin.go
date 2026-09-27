@@ -128,6 +128,9 @@ func RegisterAdminRoutes(
 		// 邀请返利（专属用户管理）
 		registerAffiliateRoutes(admin, h)
 
+		// 学生认证记录
+		registerStudentVerificationRoutes(admin, h)
+
 		// 操作审计日志
 		registerAuditLogRoutes(admin, h, stepUpAuth)
 	}
@@ -834,6 +837,16 @@ func registerAffiliateRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 			users.PUT("/:user_id", h.Admin.Affiliate.UpdateUserSettings)
 			users.DELETE("/:user_id", h.Admin.Affiliate.ClearUserSettings)
 		}
+	}
+}
+
+// registerStudentVerificationRoutes 注册学生认证记录的管理端路由
+func registerStudentVerificationRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
+	records := admin.Group("/student-verifications")
+	{
+		records.GET("", h.Admin.StudentVerification.List)
+		records.POST("/:id/revoke", h.Admin.StudentVerification.Revoke)
+		records.DELETE("/:id", h.Admin.StudentVerification.Delete)
 	}
 }
 

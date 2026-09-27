@@ -94,6 +94,10 @@ var (
 		"DEFAULT_SUBSCRIPTION_GROUP_DUPLICATE",
 		"default subscription group cannot be duplicated",
 	)
+	ErrStudentGroupInvalid = infraerrors.BadRequest(
+		"STUDENT_GROUP_INVALID",
+		"student group must exist and be an exclusive standard group",
+	)
 )
 
 type SettingRepository interface {
