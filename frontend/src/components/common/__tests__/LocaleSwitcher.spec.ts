@@ -27,7 +27,8 @@ describe('LocaleSwitcher a11y', () => {
     const trigger = wrapper.get('button')
 
     expect(trigger.element.tagName).toBe('BUTTON')
-    expect(trigger.attributes('aria-haspopup')).toBe('true')
+    // 披露模式：选项是普通按钮而非 role=menu，所以只暴露 aria-expanded。
+    expect(trigger.attributes('aria-haspopup')).toBeUndefined()
     expect(trigger.attributes('aria-expanded')).toBe('false')
     expect(trigger.get('.sr-only').text()).toBe('Tiếng Việt')
 

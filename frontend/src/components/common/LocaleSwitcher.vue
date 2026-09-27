@@ -6,7 +6,6 @@
       :disabled="switching"
       class="flex min-h-10 items-center gap-1.5 rounded-sm px-2 py-1.5 text-label font-semibold text-fg-muted transition-colors hover:bg-accent-weak hover:text-accent-strong"
       :title="currentLocale?.name"
-      aria-haspopup="true"
       :aria-expanded="isOpen"
     >
       <span class="text-base" aria-hidden="true">{{ currentLocale?.flag }}</span>
