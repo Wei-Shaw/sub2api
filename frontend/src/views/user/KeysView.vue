@@ -475,6 +475,14 @@
           <p class="input-hint mt-2" aria-live="polite">
             {{ groups.length === 0 ? t('common.noGroupsAvailable') : t(`keys.providerHints.${createProvider}`) }}
           </p>
+          <div v-if="groups.length === 0" class="mt-2 space-y-2" data-test="no-groups-help">
+            <p class="input-hint">{{ t('keys.noGroupsHint') }}</p>
+            <div class="flex flex-wrap gap-2">
+              <router-link v-if="canPurchase" to="/purchase" class="btn btn-secondary btn-sm">{{ t('nav.buySubscription') }}</router-link>
+              <router-link v-if="!authStore.isSimpleMode" to="/redeem" class="btn btn-secondary btn-sm">{{ t('nav.redeem') }}</router-link>
+              <router-link v-if="canViewChannels" to="/available-channels" class="btn btn-secondary btn-sm">{{ t('keys.viewModelsAndPricing') }}</router-link>
+            </div>
+          </div>
         </fieldset>
 
         <div>
@@ -1170,6 +1178,7 @@
 	import { ref, reactive, computed, watch, onMounted, onUnmounted, type ComponentPublicInstance } from 'vue'
 	import { useI18n } from 'vue-i18n'
 	import { useAppStore } from '@/stores/app'
+	import { useAuthStore } from '@/stores/auth'
 	import { useOnboardingStore } from '@/stores/onboarding'
 	import { useClipboard } from '@/composables/useClipboard'
 import { getPersistedPageSize } from '@/composables/usePersistedPageSize'
@@ -1198,6 +1207,7 @@ import type { BatchApiKeyUsageStats } from '@/api/usage'
 import { formatDateTime } from '@/utils/format'
 import { maskApiKey } from '@/utils/maskApiKey'
 import { extractI18nErrorMessage } from '@/utils/apiError'
+import { FeatureFlags, isFeatureFlagEnabled } from '@/utils/featureFlags'
 import PlatformIcon from '@/components/common/PlatformIcon.vue'
 import { KEY_GROUP_PROVIDERS, KEY_GROUP_PROVIDER_ICONS, getKeyGroupProvider, type KeyGroupProvider } from '@/utils/keyGroupProviders'
 import {
@@ -1231,7 +1241,11 @@ interface GroupOption {
 }
 
 const appStore = useAppStore()
+const authStore = useAuthStore()
 const onboardingStore = useOnboardingStore()
+// 与侧边栏入口同条件，避免把用户引到被隐藏或会被重定向的页面。
+const canPurchase = computed(() => !authStore.isSimpleMode && isFeatureFlagEnabled(FeatureFlags.payment))
+const canViewChannels = computed(() => !authStore.isSimpleMode && isFeatureFlagEnabled(FeatureFlags.availableChannels))
 const { copyToClipboard: clipboardCopy } = useClipboard()
 
 const allColumns = computed<Column[]>(() => [
@@ -1617,6 +1631,7 @@ const loadGroups = async () => {
     groups.value = await userGroupsAPI.getAvailable()
   } catch (error) {
     console.error('Failed to load groups:', error)
+    appStore.showError(extractI18nErrorMessage(error, t, 'keys.errors', t('keys.failedToLoadGroups')))
   }
 }
 

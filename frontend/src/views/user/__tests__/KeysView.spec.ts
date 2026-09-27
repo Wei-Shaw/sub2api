@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { flushPromises, mount, type VueWrapper } from '@vue/test-utils'
+import { flushPromises, mount, RouterLinkStub, type VueWrapper } from '@vue/test-utils'
 import { nextTick } from 'vue'
 
 import type { ApiKey } from '@/types'
@@ -20,7 +20,11 @@ const {
   copyToClipboard,
   isCurrentStep,
   nextStep,
+  appSettings,
+  authState,
 } = vi.hoisted(() => ({
+  appSettings: {} as Record<string, unknown>,
+  authState: { isSimpleMode: false },
   listKeys: vi.fn(),
   updateKey: vi.fn(),
   getPublicSettings: vi.fn(),
@@ -85,7 +89,12 @@ vi.mock('@/stores/app', () => ({
   useAppStore: () => ({
     showError,
     showSuccess,
+    cachedPublicSettings: appSettings,
   }),
+}))
+
+vi.mock('@/stores/auth', () => ({
+  useAuthStore: () => authState,
 }))
 
 vi.mock('@/stores/onboarding', () => ({
@@ -245,6 +254,7 @@ const mountView = async () => {
         EndpointPopover: true,
         GroupBadge: true,
         GroupOptionItem: true,
+        RouterLink: RouterLinkStub,
         Teleport: true,
       },
     },
@@ -297,6 +307,8 @@ describe('user KeysView column settings', () => {
     getAvailableGroups.mockResolvedValue([])
     getUserGroupRates.mockResolvedValue({})
     isCurrentStep.mockReturnValue(false)
+    for (const key of Object.keys(appSettings)) delete appSettings[key]
+    authState.isSimpleMode = false
   })
 
   it.each([
@@ -619,6 +631,26 @@ describe('user KeysView column settings', () => {
       expect(wrapper.get('[data-tour="key-form-provider"]').text()).toContain('common.noGroupsAvailable')
       expect(optionIds(wrapper)).toEqual([])
       expect(wrapper.findAll<HTMLInputElement>('input[name="key-provider"]').every((input) => input.element.disabled)).toBe(true)
+    })
+
+    it.each([
+      [{}, false, ['/purchase', '/redeem']],
+      [{ payment_enabled: false, available_channels_enabled: true }, false, ['/redeem', '/available-channels']],
+      [{ available_channels_enabled: true }, true, []],
+    ])('links users without groups to where they can get one (settings %o, simple %s)', async (settings, simple, links) => {
+      Object.assign(appSettings, settings)
+      authState.isSimpleMode = simple
+      getAvailableGroups.mockResolvedValue([])
+      const wrapper = await openCreate()
+      const help = wrapper.get('[data-test="no-groups-help"]')
+      expect(help.text()).toContain('keys.noGroupsHint')
+      expect(help.findAllComponents(RouterLinkStub).map((link) => link.props('to'))).toEqual(links)
+    })
+
+    it('reports a failure to load groups instead of only showing an empty list', async () => {
+      getAvailableGroups.mockRejectedValue({ status: 500, message: 'groups unavailable' })
+      await mountView()
+      expect(showError).toHaveBeenCalledWith('groups unavailable')
     })
 
     it('selects an available provider when groups arrive after opening', async () => {
