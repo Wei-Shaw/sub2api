@@ -4,6 +4,7 @@ package service
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -18,6 +19,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/pkg/antigravity"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
+	"github.com/tidwall/gjson"
 )
 
 // buildBodyParseBenchBody 构造约 200KB、带 tools 与已签名 thinking 的 Claude Code 风格请求体。
@@ -346,6 +348,33 @@ func BenchmarkChatCompletionsPayload(b *testing.B) {
 			b.Fatal(err)
 		}
 	}
+}
+
+func TestForwardAsChatCompletions_APIKeyPromptCacheKeyPreservesBodyOrder(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	body := []byte(`{"model":"gpt-5.4","input":[{"role":"user","content":[{"type":"input_text","text":"a<b"}]}],"stream":false}`)
+	c, _ := gin.CreateTestContext(httptest.NewRecorder())
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/chat/completions", bytes.NewReader(body))
+	c.Set("api_key", &APIKey{ID: 99})
+	upstream := &httpUpstreamRecorder{resp: &http.Response{
+		StatusCode: http.StatusBadRequest,
+		Header:     http.Header{"Content-Type": []string{"application/json"}},
+		Body:       io.NopCloser(strings.NewReader(`{"error":{"type":"invalid_request_error","message":"stop"}}`)),
+	}}
+	svc := &OpenAIGatewayService{cfg: &config.Config{}, httpUpstream: upstream}
+	account := &Account{
+		ID: 2, Name: "openai-compatible", Platform: PlatformOpenAI, Type: AccountTypeAPIKey, Concurrency: 1,
+		Credentials: map[string]any{"api_key": "sk-compatible"},
+		Extra:       map[string]any{"openai_responses_supported": true},
+	}
+
+	_, err := svc.ForwardAsChatCompletions(context.Background(), c, account, body, "cache-key-1", "gpt-5.4")
+	require.Error(t, err)
+	sent := string(upstream.lastBody)
+	require.Equal(t, "cache-key-1", gjson.Get(sent, "prompt_cache_key").String())
+	// 注入 prompt_cache_key 不应重编码整个 body：原有 key 顺序与原始字符保持不变。
+	require.Less(t, strings.Index(sent, `"model"`), strings.Index(sent, `"input"`))
+	require.Contains(t, sent, `"text":"a<b"`)
 }
 
 // geminiDeltaBenchChunks 生成 n 个互不为前缀的 64 字节 delta 模式文本块。
