@@ -56,6 +56,7 @@ const messages: Record<string, string> = {
   'keys.status.inactive': 'Inactive',
   'keys.status.quota_exhausted': 'Quota exhausted',
   'keys.usage': 'Usage',
+  'keys.errors.API_KEY_EXISTS': 'Key already exists',
 }
 
 vi.mock('@/api', () => ({
@@ -640,6 +641,25 @@ describe('user KeysView column settings', () => {
       await wrapper.get('button[title="common.edit"]').trigger('click')
       expect(wrapper.find('[data-tour="key-form-provider"]').exists()).toBe(false)
       expect(optionIds(wrapper)).toHaveLength(11)
+    })
+  })
+
+  describe('save errors', () => {
+    it.each([
+      [{ status: 400, message: 'x' }, 'x'],
+      [{ status: 409, reason: 'API_KEY_EXISTS', message: 'api key already exists' }, 'Key already exists'],
+      [{}, 'keys.failedToSave'],
+    ])('shows the backend reason when creating fails: %o', async (error, expected) => {
+      getAvailableGroups.mockResolvedValue([{ id: 1, name: 'Claude', platform: 'anthropic', rate_multiplier: 1, subscription_type: 'standard' }])
+      vi.mocked(keysAPI.create).mockRejectedValue(error)
+      const wrapper = await mountView()
+      await wrapper.get('[data-tour="keys-create-btn"]').trigger('click')
+      await wrapper.get('[data-tour="key-form-name"]').setValue('My key')
+      await wrapper.findComponent('[data-tour="key-form-group"]').vm.$emit('update:modelValue', 1)
+      await wrapper.get('#key-form').trigger('submit')
+      await flushPromises()
+      expect(showError).toHaveBeenCalledWith(expected)
+      expect(showSuccess).not.toHaveBeenCalled()
     })
   })
 })

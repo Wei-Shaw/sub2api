@@ -27,7 +27,8 @@ vi.mock('@/stores/app', () => ({
 }))
 vi.mock('vue-i18n', async () => {
   const actual = await vi.importActual<typeof import('vue-i18n')>('vue-i18n')
-  return { ...actual, useI18n: () => ({ t: (key: string) => key }) }
+  const messages: Record<string, string> = { 'redeem.errors.REDEEM_CODE_USED': 'Code already used' }
+  return { ...actual, useI18n: () => ({ t: (key: string) => messages[key] ?? key }) }
 })
 
 async function submitCode() {
@@ -236,6 +237,19 @@ describe('RedeemView refresh after redemption', () => {
     expect(getHistory).toHaveBeenCalledOnce()
     expect(showSuccess).not.toHaveBeenCalled()
     expect(showWarning).not.toHaveBeenCalled()
+    wrapper.unmount()
+  })
+
+  it.each([
+    [{ status: 409, reason: 'REDEEM_CODE_USED', message: 'redeem code already used' }, 'Code already used'],
+    [{ status: 429, reason: 'SOMETHING_NEW', message: 'too many failed attempts' }, 'too many failed attempts'],
+    [{ status: 0, message: 'Network error' }, 'Network error'],
+  ])('shows why redemption failed: %o', async (error, expected) => {
+    redeem.mockRejectedValue(error)
+    const wrapper = await submitCode()
+
+    expect(wrapper.text()).toContain(expected)
+    expect(wrapper.text()).not.toContain('redeem.failedToRedeem')
     wrapper.unmount()
   })
 })
