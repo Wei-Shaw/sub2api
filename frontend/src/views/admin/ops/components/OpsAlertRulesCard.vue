@@ -306,11 +306,19 @@ function newRuleDraft(): AlertRule {
   }
 }
 
-// The evaluator silently skips email when alert emails are off or have no recipients; warn in the editor.
+// The evaluator silently skips email when alert emails are off, have no recipients, or the rule is
+// below alert.min_severity; warn in the editor.
 const emailConfig = ref<EmailNotificationConfig | null>(null)
+const EMAIL_SEVERITY_RANK: Record<string, number> = { critical: 3, warning: 2, info: 1 }
 const emailAlertsInactive = computed(() => {
   const alert = emailConfig.value?.alert
-  return !!alert && (!alert.enabled || !alert.recipients?.some((r) => r.trim()))
+  if (!alert) return false
+  if (!alert.enabled || !alert.recipients?.some((r) => r.trim())) return true
+  // Mirrors backend shouldSendOpsAlertEmailByMinSeverity: P0 = critical, P1 = warning, others = info.
+  const minRank = EMAIL_SEVERITY_RANK[(alert.min_severity || '').trim().toLowerCase()] ?? 0
+  const severity = String(draft.value?.severity ?? '').trim().toUpperCase()
+  const ruleRank = severity === 'P0' ? 3 : severity === 'P1' ? 2 : 1
+  return ruleRank < minRank
 })
 
 async function loadEmailConfig() {

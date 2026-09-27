@@ -564,7 +564,7 @@ export default {
           cooldown: 'Thời gian chờ (phút)',
           enabled: 'Bật',
           notifyEmail: 'Gửi thông báo qua email',
-          notifyEmailInactive: 'Email cảnh báo đang tắt hoặc chưa có người nhận trong cài đặt vận hành, nên quy tắc này sẽ không gửi email.'
+          notifyEmailInactive: 'Cài đặt vận hành đang tắt email cảnh báo, chưa có người nhận, hoặc đặt mức độ tối thiểu cao hơn mức của quy tắc này, nên quy tắc này sẽ không gửi email.'
         },
         validation: {
           title: 'Vui lòng sửa các vấn đề sau',

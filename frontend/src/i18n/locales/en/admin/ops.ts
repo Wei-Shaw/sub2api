@@ -564,7 +564,7 @@ export default {
           cooldown: 'Cooldown (minutes)',
           enabled: 'Enabled',
           notifyEmail: 'Send email notifications',
-          notifyEmailInactive: 'Alert emails are turned off or have no recipients in Ops settings, so this rule will not send email.'
+          notifyEmailInactive: 'Ops settings turn alert emails off, list no recipients, or require a higher severity than this rule has, so this rule will not send email.'
         },
         validation: {
           title: 'Please fix the following issues',

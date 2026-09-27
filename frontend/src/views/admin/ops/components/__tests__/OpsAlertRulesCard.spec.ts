@@ -20,7 +20,10 @@ vi.mock('vue-i18n', async (importOriginal) => ({
   useI18n: () => ({ t: (key: string) => key })
 }))
 
-const emailConfig = (enabled: boolean, recipients: string[]) => ({ alert: { enabled, recipients }, report: {} })
+const emailConfig = (enabled: boolean, recipients: string[], min_severity = '') => ({
+  alert: { enabled, recipients, min_severity },
+  report: {}
+})
 
 async function openCreateEditor() {
   const wrapper = mount(OpsAlertRulesCard, {
@@ -59,6 +62,20 @@ describe('OpsAlertRulesCard email notification hint', () => {
     ;(wrapper.vm as any).draft.notify_email = false
     await flushPromises()
     expect(wrapper.find('[data-test="notify-email-inactive"]').exists()).toBe(false)
+  })
+
+  it('warns when the rule severity is below alert.min_severity, mirroring the evaluator', async () => {
+    mocks.getEmailNotificationConfig.mockResolvedValue(emailConfig(true, ['ops@example.com'], 'critical'))
+    const wrapper = await openCreateEditor() // new rules default to P1 (warning)
+    expect(wrapper.find('[data-test="notify-email-inactive"]').exists()).toBe(true)
+
+    ;(wrapper.vm as any).draft.severity = 'P0' // critical passes the gate
+    await flushPromises()
+    expect(wrapper.find('[data-test="notify-email-inactive"]').exists()).toBe(false)
+
+    ;(wrapper.vm as any).draft.severity = 'P3'
+    await flushPromises()
+    expect(wrapper.find('[data-test="notify-email-inactive"]').exists()).toBe(true)
   })
 
   it('shows no warning when alert emails will be delivered or the config cannot be read', async () => {
