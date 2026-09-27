@@ -84,4 +84,17 @@ describe('ResetPasswordView errors', () => {
     expect(message.text()).toBe(viCommon.auth.passwordsDoNotMatch)
     expect(resetPasswordMock).not.toHaveBeenCalled()
   })
+
+  it('names the show/hide password buttons', async () => {
+    const wrapper = mountReset()
+    await flushPromises()
+
+    for (const id of ['#password', '#confirmPassword']) {
+      const toggle = wrapper.get(id).element.parentElement!.querySelector('button')!
+      expect(toggle.getAttribute('aria-label')).toBe(viCommon.auth.showPassword)
+      toggle.click()
+      await flushPromises()
+      expect(toggle.getAttribute('aria-label')).toBe(viCommon.auth.hidePassword)
+    }
+  })
 })

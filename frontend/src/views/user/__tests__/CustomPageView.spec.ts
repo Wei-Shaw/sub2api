@@ -165,4 +165,12 @@ describe('custom page open button', () => {
     expect(wrapper.find('iframe').exists()).toBe(false)
     expect(wrapper.get('.markdown-page-content h1').text()).toBe('Guide')
   })
+
+  it('names the icon-only table-of-contents close button', async () => {
+    appStore.cachedPublicSettings.custom_menu_items = [{ id: 'docs', url: 'md:guide' }]
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, text: async () => '# Guide' }))
+    const wrapper = mountPage()
+    await flushPromises()
+    expect(wrapper.get('.toc-close-btn').attributes('aria-label')).toBe('common.close')
+  })
 })

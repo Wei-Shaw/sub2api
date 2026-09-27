@@ -75,9 +75,10 @@
             />
             <button
               type="button"
+              :aria-label="showPassword ? t('auth.hidePassword') : t('auth.showPassword')"
               :disabled="registrationActionDisabled"
               @click="showPassword = !showPassword"
-              class="absolute inset-y-0 right-0 flex items-center pr-3.5 text-fg-subtle transition-colors hover:text-fg"
+              class="absolute inset-y-0 right-0 flex items-center rounded pr-3.5 text-fg-subtle transition-colors hover:text-fg focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/50"
             >
               <Icon v-if="showPassword" name="eyeOff" size="md" />
               <Icon v-else name="eye" size="md" />
@@ -112,9 +113,10 @@
             />
             <button
               type="button"
+              :aria-label="showConfirmPassword ? t('auth.hidePassword') : t('auth.showPassword')"
               :disabled="registrationActionDisabled"
               @click="showConfirmPassword = !showConfirmPassword"
-              class="absolute inset-y-0 right-0 flex items-center pr-3.5 text-fg-subtle transition-colors hover:text-fg"
+              class="absolute inset-y-0 right-0 flex items-center rounded pr-3.5 text-fg-subtle transition-colors hover:text-fg focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/50"
             >
               <Icon v-if="showConfirmPassword" name="eyeOff" size="md" />
               <Icon v-else name="eye" size="md" />

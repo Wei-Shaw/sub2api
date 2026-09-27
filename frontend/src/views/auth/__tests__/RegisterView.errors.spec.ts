@@ -152,4 +152,17 @@ describe('RegisterView errors', () => {
     expect(wrapper.get('#password').attributes('aria-invalid')).toBe('false')
     expect(registerMock).not.toHaveBeenCalled()
   })
+
+  it('names the show/hide password buttons', async () => {
+    const wrapper = mountRegister()
+    await flushPromises()
+
+    for (const id of ['#password', '#confirmPassword']) {
+      const toggle = wrapper.get(id).element.parentElement!.querySelector('button')!
+      expect(toggle.getAttribute('aria-label')).toBe(viCommon.auth.showPassword)
+      toggle.click()
+      await flushPromises()
+      expect(toggle.getAttribute('aria-label')).toBe(viCommon.auth.hidePassword)
+    }
+  })
 })
