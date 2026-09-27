@@ -61,6 +61,23 @@ describe('AffiliateView', () => {
     })
   })
 
+  it('shows a retry action instead of a blank page when loading fails', async () => {
+    getAffiliateDetail.mockRejectedValueOnce({ status: 500, message: 'affiliate unavailable' })
+    const wrapper = mount(AffiliateView, {
+      global: { stubs: { AppLayout: { template: '<main><slot /></main>' }, Icon: true } },
+    })
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('affiliate.loadFailed')
+    expect(wrapper.find('code').exists()).toBe(false)
+
+    await wrapper.findAll('button').find((button) => button.text() === 'common.refresh')!.trigger('click')
+    await flushPromises()
+    expect(getAffiliateDetail).toHaveBeenCalledTimes(2)
+    expect(wrapper.text()).not.toContain('affiliate.loadFailed')
+    expect(wrapper.find('code').text()).toBe(affiliateCode)
+  })
+
   it('stacks long values and copy controls on mobile while retaining desktop rows', async () => {
     const wrapper = mount(AffiliateView, {
       global: {

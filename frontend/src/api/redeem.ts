@@ -28,24 +28,12 @@ export interface RedeemHistoryItem {
 /**
  * Redeem a code
  * @param code - Redeem code string
- * @returns Redemption result with updated balance or concurrency
+ * @returns The redeemed code record (same shape as a history item; group is not loaded)
  */
-export async function redeem(code: string): Promise<{
-  message: string
-  type: string
-  value: number
-  new_balance?: number
-  new_concurrency?: number
-}> {
+export async function redeem(code: string): Promise<RedeemHistoryItem> {
   const payload: RedeemCodeRequest = { code }
 
-  const { data } = await apiClient.post<{
-    message: string
-    type: string
-    value: number
-    new_balance?: number
-    new_concurrency?: number
-  }>('/redeem', payload)
+  const { data } = await apiClient.post<RedeemHistoryItem>('/redeem', payload)
 
   return data
 }

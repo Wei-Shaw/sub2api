@@ -1,6 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { flushPromises, mount } from '@vue/test-utils'
+import { config, flushPromises, mount, RouterLinkStub } from '@vue/test-utils'
 import RedeemView from '../RedeemView.vue'
+
+config.global.stubs = { ...config.global.stubs, RouterLink: RouterLinkStub }
 
 const { redeem, getHistory, refreshUser, fetchActiveSubscriptions, showError, showWarning, showSuccess } = vi.hoisted(() => ({
   redeem: vi.fn(),
@@ -27,7 +29,8 @@ vi.mock('@/stores/app', () => ({
 }))
 vi.mock('vue-i18n', async () => {
   const actual = await vi.importActual<typeof import('vue-i18n')>('vue-i18n')
-  return { ...actual, useI18n: () => ({ t: (key: string) => key }) }
+  const messages: Record<string, string> = { 'redeem.errors.REDEEM_CODE_USED': 'Code already used' }
+  return { ...actual, useI18n: () => ({ t: (key: string) => messages[key] ?? key }) }
 })
 
 async function submitCode() {
@@ -69,7 +72,8 @@ describe('RedeemView refresh after redemption', () => {
       expect(showError).not.toHaveBeenCalled()
       expect(showWarning).toHaveBeenCalledWith('redeem.userRefreshFailed')
       expect(showSuccess).toHaveBeenCalledWith('redeem.codeRedeemSuccess')
-      expect(wrapper.text()).toContain('Code applied')
+      expect(wrapper.text()).toContain('redeem.redeemSuccess')
+      expect(wrapper.text()).not.toContain('redeem.newBalance')
       expect(wrapper.text()).not.toContain('redeem.failedToRedeem')
       expect((wrapper.get('input#code').element as HTMLInputElement).value).toBe('')
       expect((wrapper.get('input#code').element as HTMLInputElement).disabled).toBe(false)
@@ -229,13 +233,48 @@ describe('RedeemView refresh after redemption', () => {
 
     expect(showError).toHaveBeenCalledWith('redeem.redeemFailed')
     expect(wrapper.text()).toContain('Invalid code')
-    expect(wrapper.text()).not.toContain('Code applied')
+    expect(wrapper.text()).not.toContain('redeem.redeemSuccess')
     expect((wrapper.get('input#code').element as HTMLInputElement).value).toBe(' REDEEM-CODE ')
     expect(refreshUser).not.toHaveBeenCalled()
     expect(fetchActiveSubscriptions).not.toHaveBeenCalled()
     expect(getHistory).toHaveBeenCalledOnce()
     expect(showSuccess).not.toHaveBeenCalled()
     expect(showWarning).not.toHaveBeenCalled()
+    wrapper.unmount()
+  })
+
+  it('shows the refreshed balance and a next step after redeeming balance', async () => {
+    // The endpoint returns the redeemed code record, not message/new_balance.
+    redeem.mockResolvedValue({ id: 1, code: 'REDEEM-CODE', type: 'balance', value: 20, status: 'used', used_at: '2026-03-08T00:00:00Z', created_at: '2026-03-01T00:00:00Z' })
+    const wrapper = await submitCode()
+
+    expect(wrapper.text()).toContain('redeem.added: $20.00')
+    expect(wrapper.text()).toContain('redeem.newBalance: $30.00')
+    expect(wrapper.text()).not.toContain('redeem.newConcurrency')
+    expect(wrapper.getComponent(RouterLinkStub).props('to')).toBe('/keys')
+    wrapper.unmount()
+  })
+
+  it('names the granted group from the refreshed subscriptions', async () => {
+    redeem.mockResolvedValue({ id: 2, code: 'SUB-CODE', type: 'subscription', value: 30, status: 'used', used_at: '2026-03-08T00:00:00Z', created_at: '2026-03-01T00:00:00Z', group_id: 42, validity_days: 30 })
+    fetchActiveSubscriptions.mockResolvedValue([{ id: 7, group_id: 42, group: { id: 42, name: 'Claude Max' } }])
+    const wrapper = await submitCode()
+
+    expect(wrapper.text()).toMatch(/redeem\.subscriptionAssigned\s+- Claude Max/)
+    expect(wrapper.getComponent(RouterLinkStub).props('to')).toBe('/subscriptions')
+    wrapper.unmount()
+  })
+
+  it.each([
+    [{ status: 409, reason: 'REDEEM_CODE_USED', message: 'redeem code already used' }, 'Code already used'],
+    [{ status: 429, reason: 'SOMETHING_NEW', message: 'too many failed attempts' }, 'too many failed attempts'],
+    [{ status: 0, message: 'Network error' }, 'Network error'],
+  ])('shows why redemption failed: %o', async (error, expected) => {
+    redeem.mockRejectedValue(error)
+    const wrapper = await submitCode()
+
+    expect(wrapper.text()).toContain(expected)
+    expect(wrapper.text()).not.toContain('redeem.failedToRedeem')
     wrapper.unmount()
   })
 })

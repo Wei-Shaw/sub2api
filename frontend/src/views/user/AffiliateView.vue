@@ -104,6 +104,16 @@
           </DataTable>
         </section>
       </template>
+
+      <EmptyState
+        v-else-if="loadError"
+        class="card"
+        :title="t('affiliate.loadFailed')"
+        :description="t('errors.tryAgain')"
+        :action-text="t('common.refresh')"
+        :action-icon="false"
+        @action="loadAffiliateDetail()"
+      />
     </div>
   </AppLayout>
 </template>
@@ -113,6 +123,7 @@ import { computed, onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import DataTable from '@/components/common/DataTable.vue'
+import EmptyState from '@/components/common/EmptyState.vue'
 import type { Column } from '@/components/common/types'
 import Icon from '@/components/icons/Icon.vue'
 import userAPI from '@/api/user'
@@ -129,6 +140,7 @@ const authStore = useAuthStore()
 const { copyToClipboard } = useClipboard()
 
 const loading = ref(true)
+const loadError = ref(false)
 const transferring = ref(false)
 const detail = ref<UserAffiliateDetail | null>(null)
 
@@ -160,10 +172,12 @@ function formatCount(value: number): string {
 async function loadAffiliateDetail(silent = false): Promise<void> {
   if (!silent) {
     loading.value = true
+    loadError.value = false
   }
   try {
     detail.value = await userAPI.getAffiliateDetail()
   } catch (error) {
+    if (!silent) loadError.value = true
     appStore.showError(extractApiErrorMessage(error, t('affiliate.loadFailed')))
   } finally {
     if (!silent) {

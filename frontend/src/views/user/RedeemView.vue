@@ -58,7 +58,6 @@
               <Icon name="checkCircle" size="sm" />
               {{ t('redeem.redeemSuccess') }}
             </h3>
-            <p class="text-body text-fg-muted">{{ redeemResult.message }}</p>
             <div class="divide-y divide-border border-y border-border text-body">
               <p v-if="redeemResult.type === 'balance'" class="py-2 font-semibold tabular-nums text-success">
                 {{ t('redeem.added') }}: ${{ redeemResult.value.toFixed(2) }}
@@ -87,6 +86,12 @@
                 >
               </p>
             </div>
+            <router-link
+              :to="redeemResult.type === 'subscription' ? '/subscriptions' : '/keys'"
+              class="btn btn-secondary btn-sm"
+            >
+              {{ redeemResult.type === 'subscription' ? t('nav.mySubscriptions') : t('nav.apiKeys') }}
+            </router-link>
           </div>
 
           <!-- Error Message -->
@@ -233,6 +238,7 @@ import { redeemAPI, authAPI, type RedeemHistoryItem } from '@/api'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import Icon from '@/components/icons/Icon.vue'
 import { formatDateTime } from '@/utils/format'
+import { extractI18nErrorMessage } from '@/utils/apiError'
 
 const { t } = useI18n()
 const authStore = useAuthStore()
@@ -243,15 +249,12 @@ const user = computed(() => authStore.user)
 
 const redeemCode = ref('')
 const submitting = ref(false)
-const redeemResult = ref<{
-  message: string
-  type: string
-  value: number
+// 接口只返回兑换码记录；新余额/并发来自刷新后的用户，分组名来自刷新后的订阅列表。
+const redeemResult = ref<(RedeemHistoryItem & {
   new_balance?: number
   new_concurrency?: number
   group_name?: string
-  validity_days?: number
-} | null>(null)
+}) | null>(null)
 const errorMessage = ref('')
 
 // History data
@@ -346,7 +349,12 @@ const handleRedeem = async () => {
 
     // Refresh user data to get updated balance/concurrency
     try {
-      await authStore.refreshUser()
+      const refreshed = await authStore.refreshUser()
+      redeemResult.value = {
+        ...result,
+        new_balance: result.type === 'balance' ? refreshed.balance : undefined,
+        new_concurrency: result.type === 'concurrency' ? refreshed.concurrency : undefined,
+      }
     } catch (error) {
       console.error('Failed to refresh user after redeem:', error)
       appStore.showWarning(t('redeem.userRefreshFailed'))
@@ -355,7 +363,9 @@ const handleRedeem = async () => {
     // If subscription type, immediately refresh subscription status
     if (result.type === 'subscription') {
       try {
-        await subscriptionStore.fetchActiveSubscriptions(true) // force refresh
+        const subscriptions = await subscriptionStore.fetchActiveSubscriptions(true) // force refresh
+        const groupName = subscriptions.find((sub) => sub.group_id === result.group_id)?.group?.name
+        redeemResult.value = { ...result, ...redeemResult.value, group_name: groupName }
       } catch (error) {
         console.error('Failed to refresh subscriptions after redeem:', error)
         appStore.showWarning(t('redeem.subscriptionRefreshFailed'))
@@ -370,8 +380,8 @@ const handleRedeem = async () => {
 
     // Show success toast
     appStore.showSuccess(t('redeem.codeRedeemSuccess'))
-  } catch (error: any) {
-    errorMessage.value = error.response?.data?.detail || t('redeem.failedToRedeem')
+  } catch (error: unknown) {
+    errorMessage.value = extractI18nErrorMessage(error, t, 'redeem.errors', t('redeem.failedToRedeem'))
 
     appStore.showError(t('redeem.redeemFailed'))
   } finally {
