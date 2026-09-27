@@ -817,6 +817,8 @@ export default {
       mappingExists: 'Mapping for {model} already exists',
       wildcardOnlyAtEnd: 'Wildcard * can only be at the end',
       targetNoWildcard: 'Target model cannot contain wildcard *',
+      whitelistWildcardNotSupported: 'Wildcards (*) are not supported in this list; enter exact model names. To match a prefix such as claude-* on an account, use model mapping.',
+      modelRestrictionInvalidEntries: 'Model restriction has entries that cannot be saved: whitelist entries must not contain *, a mapping source may only end with *, and a mapping target must not contain *. Fix or remove them first.',
       searchModels: 'Search models...',
       noMatchingModels: 'No matching models',
       fillRelatedModels: 'Sync latest supported models',

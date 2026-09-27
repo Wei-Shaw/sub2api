@@ -3897,6 +3897,7 @@ import {
   commonErrorCodes,
   buildModelMappingObject,
   fetchAntigravityDefaultMappings,
+  hasInvalidModelRestrictionEntries,
   isValidWildcardPattern
 } from '@/composables/useModelWhitelist'
 import { adminAPI } from '@/api/admin'
@@ -5619,6 +5620,13 @@ const handleVertexServiceAccountDrop = async (event: DragEvent) => {
 }
 
 const handleSubmit = async () => {
+  if (
+    !isOpenAIModelRestrictionDisabled.value &&
+    hasInvalidModelRestrictionEntries(modelRestrictionMode.value, allowedModels.value, modelMappings.value)
+  ) {
+    appStore.showError(t('admin.accounts.modelRestrictionInvalidEntries'))
+    return
+  }
   // For OAuth-based type, handle OAuth flow (goes to step 2)
   if (isOAuthFlow.value) {
     if (!isGrokSSOInputMethod.value && !form.name.trim()) {

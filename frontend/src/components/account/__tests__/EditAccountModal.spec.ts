@@ -2,15 +2,16 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { defineComponent } from 'vue'
 import { mount } from '@vue/test-utils'
 
-const { updateAccountMock, checkMixedChannelRiskMock, authIsSimpleMode } = vi.hoisted(() => ({
+const { updateAccountMock, checkMixedChannelRiskMock, authIsSimpleMode, showErrorMock } = vi.hoisted(() => ({
   updateAccountMock: vi.fn(),
   checkMixedChannelRiskMock: vi.fn(),
-  authIsSimpleMode: { value: true }
+  authIsSimpleMode: { value: true },
+  showErrorMock: vi.fn()
 }))
 
 vi.mock('@/stores/app', () => ({
   useAppStore: () => ({
-    showError: vi.fn(),
+    showError: showErrorMock,
     showSuccess: vi.fn(),
     showInfo: vi.fn()
   })
@@ -747,6 +748,42 @@ describe('EditAccountModal', () => {
       'gpt-5.2-2025-12-11': 'gpt-5.2-2025-12-11',
       'gpt-latest': 'gpt-5.2'
     })
+  })
+
+  it('blocks saving a whitelist wildcard that would silently turn into allow-all', async () => {
+    const account = buildAccount()
+    account.credentials.model_mapping = {
+      'gpt-5.2': 'gpt-5.2',
+      'claude-*': 'claude-*'
+    }
+    updateAccountMock.mockReset()
+    showErrorMock.mockReset()
+    checkMixedChannelRiskMock.mockReset()
+    checkMixedChannelRiskMock.mockResolvedValue({ has_risk: false })
+
+    const wrapper = mountModal(account)
+    await wrapper.get('form#edit-account-form').trigger('submit.prevent')
+
+    expect(showErrorMock).toHaveBeenCalledWith('admin.accounts.modelRestrictionInvalidEntries')
+    expect(updateAccountMock).not.toHaveBeenCalled()
+  })
+
+  it('does not block saving account types whose form never writes the model mapping', async () => {
+    const account = {
+      ...buildAccount(),
+      platform: 'anthropic',
+      type: 'oauth',
+      credentials: { access_token: 'oauth-token', model_mapping: { 'claude-*': 'claude-*' } }
+    }
+    updateAccountMock.mockReset()
+    updateAccountMock.mockResolvedValue(account)
+    checkMixedChannelRiskMock.mockReset()
+    checkMixedChannelRiskMock.mockResolvedValue({ has_risk: false })
+
+    const wrapper = mountModal(account)
+    await wrapper.get('form#edit-account-form').trigger('submit.prevent')
+
+    expect(updateAccountMock).toHaveBeenCalledTimes(1)
   })
 
   it('submits OpenAI compact mode and compact-only model mapping', async () => {

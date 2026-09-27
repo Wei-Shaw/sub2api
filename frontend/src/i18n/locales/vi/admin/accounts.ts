@@ -817,6 +817,8 @@ export default {
       mappingExists: 'Ánh xạ cho {model} đã tồn tại',
       wildcardOnlyAtEnd: 'Ký tự đại diện * chỉ được đặt ở cuối',
       targetNoWildcard: 'Model đích không được chứa ký tự đại diện *',
+      whitelistWildcardNotSupported: 'Danh sách này không hỗ trợ ký tự đại diện (*); hãy nhập tên model đầy đủ. Để tài khoản khớp theo tiền tố như claude-*, hãy dùng ánh xạ model.',
+      modelRestrictionInvalidEntries: 'Giới hạn model có mục không thể lưu: mục trong danh sách trắng không được chứa *, model nguồn của ánh xạ chỉ được kết thúc bằng *, model đích không được chứa *. Hãy sửa hoặc xóa các mục đó trước.',
       searchModels: 'Tìm kiếm model...',
       noMatchingModels: 'Không có model phù hợp',
       fillRelatedModels: 'Đồng bộ các model được hỗ trợ mới nhất',

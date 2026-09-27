@@ -1500,7 +1500,8 @@ import ModelWhitelistSelector from '@/components/account/ModelWhitelistSelector.
 import Icon from '@/components/icons/Icon.vue'
 import {
   buildModelMappingObject as buildModelMappingPayload,
-  getPresetMappingsByPlatform
+  getPresetMappingsByPlatform,
+  hasInvalidModelRestrictionEntries
 } from '@/composables/useModelWhitelist'
 import HeaderOverrideEditor from '@/components/account/HeaderOverrideEditor.vue'
 import {
@@ -2258,6 +2259,15 @@ const handleSubmit = async () => {
       appStore.showError(t('admin.accounts.grokCustomBaseUrl.invalid'))
       return
     }
+  }
+
+  if (
+    enableModelRestriction.value &&
+    !isOpenAIModelRestrictionDisabled.value &&
+    hasInvalidModelRestrictionEntries(modelRestrictionMode.value, allowedModels.value, modelMappings.value)
+  ) {
+    appStore.showError(t('admin.accounts.modelRestrictionInvalidEntries'))
+    return
   }
 
   if (enableHeaderOverride.value && headerOverrideEnabled.value) {

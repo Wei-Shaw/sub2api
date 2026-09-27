@@ -929,6 +929,8 @@ export default {
       mappingExists: '模型 {model} 的映射已存在',
       wildcardOnlyAtEnd: '通配符 * 只能放在末尾',
       targetNoWildcard: '目标模型不能包含通配符 *',
+      whitelistWildcardNotSupported: '此列表不支持通配符 (*)，请填写完整模型名。如需让账号按前缀匹配（如 claude-*），请改用模型映射。',
+      modelRestrictionInvalidEntries: '模型限制中存在无法保存的条目：白名单条目不能包含 *，映射的请求模型只能以 * 结尾，映射的目标模型不能包含 *。请先修正或删除。',
       searchModels: '搜索模型...',
       noMatchingModels: '没有匹配的模型',
       fillRelatedModels: '同步最新支持模型',

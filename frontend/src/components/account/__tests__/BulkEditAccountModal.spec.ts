@@ -1051,4 +1051,19 @@ describe('BulkEditAccountModal', () => {
     expect(adminAPI.accounts.bulkUpdate).toHaveBeenCalledWith([1, 2], { group_ids: [5] })
     confirmSpy.mockRestore()
   })
+
+  it('白名单包含通配符时阻止提交，而不是写入会被误映射的 claude-*', async () => {
+    const wrapper = mountModal({
+      selectedPlatforms: ['anthropic'],
+      selectedTypes: ['apikey']
+    })
+
+    await wrapper.get('#bulk-edit-model-restriction-enabled').setValue(true)
+    wrapper.findComponent(ModelWhitelistSelector).vm.$emit('update:modelValue', ['claude-*'])
+    await wrapper.get('#bulk-edit-account-form').trigger('submit.prevent')
+    await flushPromises()
+
+    expect(showError).toHaveBeenCalledWith('admin.accounts.modelRestrictionInvalidEntries')
+    expect(adminAPI.accounts.bulkUpdate).not.toHaveBeenCalled()
+  })
 })
