@@ -455,6 +455,9 @@ func TestLoadDefaultOpenAIWSConfig(t *testing.T) {
 	if !cfg.Gateway.OpenAIWS.ResponsesWebsocketsV2 {
 		t.Fatalf("Gateway.OpenAIWS.ResponsesWebsocketsV2 = false, want true")
 	}
+	if cfg.Gateway.OpenAIWS.OAuthResponsesWebsocketsV2ModeDefault != "off" {
+		t.Fatalf("Gateway.OpenAIWS.OAuthResponsesWebsocketsV2ModeDefault = %q, want off", cfg.Gateway.OpenAIWS.OAuthResponsesWebsocketsV2ModeDefault)
+	}
 	if cfg.Gateway.OpenAIWS.ResponsesWebsockets {
 		t.Fatalf("Gateway.OpenAIWS.ResponsesWebsockets = true, want false")
 	}
@@ -557,6 +560,37 @@ func TestLoadDefaultOpenAIWSConfig(t *testing.T) {
 	}
 	if cfg.Gateway.OpenAIWS.MaxIngressConnectionsPerAPIKey != 64 {
 		t.Fatalf("Gateway.OpenAIWS.MaxIngressConnectionsPerAPIKey = %d, want 64", cfg.Gateway.OpenAIWS.MaxIngressConnectionsPerAPIKey)
+	}
+}
+
+func TestLoadOpenAIOAuthWebsocketModeDefaultFromEnvironment(t *testing.T) {
+	resetViperWithJWTSecret(t)
+	t.Setenv("GATEWAY_OPENAI_WS_OAUTH_RESPONSES_WEBSOCKETS_V2_MODE_DEFAULT", "passthrough")
+
+	cfg, err := Load()
+	require.NoError(t, err)
+	require.Equal(t, "passthrough", cfg.Gateway.OpenAIWS.OAuthResponsesWebsocketsV2ModeDefault)
+}
+
+func TestValidateOpenAIOAuthWebsocketModeDefault(t *testing.T) {
+	for _, mode := range []string{"off", "ctx_pool", "passthrough", "http_bridge"} {
+		t.Run(mode, func(t *testing.T) {
+			resetViperWithJWTSecret(t)
+			cfg, err := Load()
+			require.NoError(t, err)
+			cfg.Gateway.OpenAIWS.OAuthResponsesWebsocketsV2ModeDefault = mode
+			require.NoError(t, cfg.Validate())
+		})
+	}
+
+	for _, mode := range []string{"invalid", "shared", "dedicated"} {
+		t.Run("reject_"+mode, func(t *testing.T) {
+			resetViperWithJWTSecret(t)
+			cfg, err := Load()
+			require.NoError(t, err)
+			cfg.Gateway.OpenAIWS.OAuthResponsesWebsocketsV2ModeDefault = mode
+			require.ErrorContains(t, cfg.Validate(), "oauth_responses_websockets_v2_mode_default")
+		})
 	}
 }
 

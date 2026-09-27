@@ -4436,6 +4436,7 @@ const openAIImagesUrlToB64JsonEnabled = ref(false)
 const openAIEndpointCapabilities = ref<OpenAIEndpointCapability[]>(['chat_completions', 'embeddings'])
 const openaiOAuthResponsesWebSocketV2Mode = ref<OpenAIWSMode>(OPENAI_WS_MODE_OFF)
 const openaiAPIKeyResponsesWebSocketV2Mode = ref<OpenAIWSMode>(OPENAI_WS_MODE_OFF)
+const openaiOAuthResponsesWebSocketV2ModeTouched = ref(false)
 const codexCLIOnlyEnabled = ref(false)
 const codexCLIOnlyAppServerEnabled = ref(false)
 type CodexFingerprintMode = 'off' | 'device' | 'session' | 'full'
@@ -4632,6 +4633,9 @@ const geminiSelectedTier = computed(() => {
 })
 
 const openAIWSModeOptions = computed(() => [
+  ...(accountCategory.value === 'oauth-based'
+    ? [{ value: '', label: t('admin.accounts.openai.wsModeServerDefault') }]
+    : []),
   { value: OPENAI_WS_MODE_OFF, label: t('admin.accounts.openai.wsModeOff') },
   { value: OPENAI_WS_MODE_CTX_POOL, label: t('admin.accounts.openai.wsModeCtxPool') },
   { value: OPENAI_WS_MODE_PASSTHROUGH, label: t('admin.accounts.openai.wsModePassthrough') },
@@ -4643,20 +4647,28 @@ const openaiResponsesWebSocketV2Mode = computed({
     if (form.platform === 'openai' && accountCategory.value === 'apikey') {
       return openaiAPIKeyResponsesWebSocketV2Mode.value
     }
-    return openaiOAuthResponsesWebSocketV2Mode.value
+    return openaiOAuthResponsesWebSocketV2ModeTouched.value
+      ? openaiOAuthResponsesWebSocketV2Mode.value
+      : ''
   },
-  set: (mode: OpenAIWSMode) => {
+  set: (mode: OpenAIWSMode | '') => {
     if (form.platform === 'openai' && accountCategory.value === 'apikey') {
-      openaiAPIKeyResponsesWebSocketV2Mode.value = mode
+      openaiAPIKeyResponsesWebSocketV2Mode.value = mode || OPENAI_WS_MODE_OFF
       return
     }
+    if (mode === '') {
+      openaiOAuthResponsesWebSocketV2ModeTouched.value = false
+      return
+    }
+    openaiOAuthResponsesWebSocketV2ModeTouched.value = true
     openaiOAuthResponsesWebSocketV2Mode.value = mode
   }
 })
 
-const openAIWSModeHintKey = computed(() =>
-  resolveOpenAIWSModeHintKey(openaiResponsesWebSocketV2Mode.value)
-)
+const openAIWSModeHintKey = computed(() => {
+  const mode = openaiResponsesWebSocketV2Mode.value
+  return mode ? resolveOpenAIWSModeHintKey(mode) : null
+})
 
 const isOpenAIModelRestrictionDisabled = computed(() =>
   form.platform === 'openai' && openaiPassthroughEnabled.value
@@ -4901,6 +4913,7 @@ watch(
       openAIEndpointCapabilities.value = ['chat_completions', 'embeddings']
       openaiOAuthResponsesWebSocketV2Mode.value = OPENAI_WS_MODE_OFF
       openaiAPIKeyResponsesWebSocketV2Mode.value = OPENAI_WS_MODE_OFF
+      openaiOAuthResponsesWebSocketV2ModeTouched.value = false
       codexCLIOnlyEnabled.value = false
       codexCLIOnlyAppServerEnabled.value = false
     }
@@ -5358,6 +5371,7 @@ const resetForm = () => {
   openAIEndpointCapabilities.value = ['chat_completions', 'embeddings']
   openaiOAuthResponsesWebSocketV2Mode.value = OPENAI_WS_MODE_OFF
   openaiAPIKeyResponsesWebSocketV2Mode.value = OPENAI_WS_MODE_OFF
+  openaiOAuthResponsesWebSocketV2ModeTouched.value = false
   codexCLIOnlyEnabled.value = false
   codexCLIOnlyAppServerEnabled.value = false
   codexFingerprintMode.value = 'off'
@@ -5422,8 +5436,10 @@ const buildOpenAIExtra = (base?: Record<string, unknown>): Record<string, unknow
 
   const extra: Record<string, unknown> = { ...(base || {}) }
   if (accountCategory.value === 'oauth-based') {
-    extra.openai_oauth_responses_websockets_v2_mode = openaiOAuthResponsesWebSocketV2Mode.value
-    extra.openai_oauth_responses_websockets_v2_enabled = isOpenAIWSModeEnabled(openaiOAuthResponsesWebSocketV2Mode.value)
+    if (openaiOAuthResponsesWebSocketV2ModeTouched.value) {
+      extra.openai_oauth_responses_websockets_v2_mode = openaiOAuthResponsesWebSocketV2Mode.value
+      extra.openai_oauth_responses_websockets_v2_enabled = isOpenAIWSModeEnabled(openaiOAuthResponsesWebSocketV2Mode.value)
+    }
   } else if (accountCategory.value === 'apikey') {
     extra.openai_apikey_responses_websockets_v2_mode = openaiAPIKeyResponsesWebSocketV2Mode.value
     extra.openai_apikey_responses_websockets_v2_enabled = isOpenAIWSModeEnabled(openaiAPIKeyResponsesWebSocketV2Mode.value)
