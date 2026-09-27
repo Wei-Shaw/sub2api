@@ -4,6 +4,7 @@
     :show="showCreateModal"
     :title="t('admin.groups.createGroup')"
     width="wide"
+    confirm-discard
     @close="closeCreateModal"
   >
     <form

@@ -3,6 +3,7 @@
     :show="show"
     :title="t('admin.accounts.editAccount')"
     width="wide"
+    confirm-discard
     @close="handleClose"
   >
     <form

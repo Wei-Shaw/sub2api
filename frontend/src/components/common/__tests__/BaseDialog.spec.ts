@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { mount } from '@vue/test-utils'
 import { nextTick } from 'vue'
 import BaseDialog from '../BaseDialog.vue'
+import ConfirmDialog from '../ConfirmDialog.vue'
 
 vi.mock('vue-i18n', () => ({
   useI18n: () => ({ t: (key: string) => key })
@@ -108,6 +109,58 @@ describe('BaseDialog', () => {
     pressKey(close, 'Tab', true)
     expect(document.activeElement).toBe(save)
 
+    wrapper.unmount()
+  })
+
+  const mountForm = () =>
+    mount(BaseDialog, {
+      attachTo: document.body,
+      props: { show: true, title: 'Create account', confirmDiscard: true },
+      slots: { default: '<input id="name" />' },
+      global: { stubs: { Icon: true } }
+    })
+  const promptShown = (wrapper: ReturnType<typeof mountForm>) =>
+    wrapper.findComponent(ConfirmDialog).props('show')
+
+  it('closes a pristine confirm-discard form without asking', async () => {
+    const wrapper = mountForm()
+    await nextTick()
+
+    pressKey(document, 'Escape')
+    expect(wrapper.emitted('close')).toHaveLength(1)
+    expect(promptShown(wrapper)).toBe(false)
+    wrapper.unmount()
+  })
+
+  it('asks before Escape or X discards a dirty form, and Escape only dismisses the prompt', async () => {
+    const wrapper = mountForm()
+    await nextTick()
+    document.getElementById('name')!.dispatchEvent(new Event('input', { bubbles: true }))
+
+    pressKey(document, 'Escape')
+    await nextTick()
+    expect(wrapper.emitted('close')).toBeUndefined()
+    expect(promptShown(wrapper)).toBe(true)
+
+    pressKey(document, 'Escape')
+    await nextTick()
+    expect(wrapper.emitted('close')).toBeUndefined()
+    expect(promptShown(wrapper)).toBe(false)
+
+    document.body.querySelector<HTMLElement>('.modal-header button')!.click()
+    await nextTick()
+    const confirm = Array.from(document.body.querySelectorAll<HTMLElement>('.modal-footer button')).find(
+      (el) => el.textContent?.trim() === 'common.discard'
+    )
+    confirm!.click()
+    expect(wrapper.emitted('close')).toHaveLength(1)
+
+    // Reopening starts pristine again.
+    await wrapper.setProps({ show: false })
+    await wrapper.setProps({ show: true })
+    await nextTick()
+    pressKey(document, 'Escape')
+    expect(wrapper.emitted('close')).toHaveLength(2)
     wrapper.unmount()
   })
 

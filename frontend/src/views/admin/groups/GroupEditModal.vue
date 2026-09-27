@@ -4,6 +4,7 @@
     :show="showEditModal"
     :title="t('admin.groups.editGroup')"
     width="wide"
+    confirm-discard
     @close="closeEditModal"
   >
     <form

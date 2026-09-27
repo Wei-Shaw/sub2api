@@ -3,6 +3,7 @@
     :show="show"
     :title="t('admin.accounts.bulkEdit.title')"
     width="wide"
+    confirm-discard
     @close="handleClose"
   >
     <form id="bulk-edit-account-form" class="space-y-5" @submit.prevent="() => handleSubmit()">

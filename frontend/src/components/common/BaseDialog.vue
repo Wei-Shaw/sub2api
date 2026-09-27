@@ -11,7 +11,14 @@
         @click.self="handleClose"
       >
         <!-- Modal panel -->
-        <div ref="dialogRef" :class="['modal-content', widthClasses]" @click.stop @keydown.tab="trapFocus">
+        <div
+          ref="dialogRef"
+          :class="['modal-content', widthClasses]"
+          @click.stop
+          @keydown.tab="trapFocus"
+          @input="markDirty"
+          @change="markDirty"
+        >
           <!-- Header -->
           <div class="modal-header">
             <h3 :id="dialogId" class="modal-title">
@@ -19,7 +26,7 @@
             </h3>
             <button
               v-if="showCloseButton"
-              @click="emit('close')"
+              @click="requestClose"
               class="-mr-2 rounded-sm p-2 text-fg-subtle transition-colors hover:bg-accent-weak hover:text-accent-strong focus:outline-none focus-visible:ring-2 focus-visible:ring-accent"
               :aria-label="t('common.close')"
             >
@@ -39,6 +46,16 @@
         </div>
       </div>
     </Transition>
+    <ConfirmDialog
+      v-if="confirmDiscard"
+      :show="confirmingDiscard"
+      :title="t('common.unsavedChangesTitle')"
+      :message="t('common.unsavedChangesMessage')"
+      :confirm-text="t('common.discard')"
+      danger
+      @confirm="discardAndClose"
+      @cancel="confirmingDiscard = false"
+    />
   </Teleport>
 </template>
 
@@ -52,6 +69,7 @@ const openDialogs: string[] = []
 import { computed, watch, onMounted, onUnmounted, ref, nextTick } from 'vue'
 import { useI18n } from 'vue-i18n'
 import Icon from '@/components/icons/Icon.vue'
+import ConfirmDialog from './ConfirmDialog.vue'
 
 const { t } = useI18n()
 
@@ -73,6 +91,8 @@ interface Props {
   closeOnClickOutside?: boolean
   showCloseButton?: boolean
   zIndex?: number
+  /** Ask before Esc / X / backdrop closes a form the user has typed into. */
+  confirmDiscard?: boolean
 }
 
 interface Emits {
@@ -84,7 +104,8 @@ const props = withDefaults(defineProps<Props>(), {
   closeOnEscape: true,
   closeOnClickOutside: false,
   showCloseButton: true,
-  zIndex: 50
+  zIndex: 50,
+  confirmDiscard: false
 })
 
 const emit = defineEmits<Emits>()
@@ -108,16 +129,39 @@ const widthClasses = computed(() => {
   return widths[props.width]
 })
 
+// ponytail: dirty = any native input/change event inside the panel since opening. Custom widgets
+// (Toggle, Select) emit none, so flipping only those skips the prompt; add a dirty prop if that matters.
+let dirty = false
+const confirmingDiscard = ref(false)
+
+const markDirty = () => {
+  dirty = true
+}
+
+// Esc, the X button and the backdrop all close through here.
+const requestClose = () => {
+  if (props.confirmDiscard && dirty) {
+    confirmingDiscard.value = true
+  } else {
+    emit('close')
+  }
+}
+
+const discardAndClose = () => {
+  confirmingDiscard.value = false
+  emit('close')
+}
+
 const handleClose = () => {
   if (props.closeOnClickOutside) {
-    emit('close')
+    requestClose()
   }
 }
 
 const handleEscape = (event: KeyboardEvent) => {
   if (openDialogs[openDialogs.length - 1] !== dialogId) return
   if (props.show && props.closeOnEscape && event.key === 'Escape') {
-    emit('close')
+    requestClose()
   }
 }
 
@@ -154,6 +198,8 @@ const updateScrollLock = (isOpen: boolean) => {
 watch(
   () => props.show,
   async (isOpen) => {
+    dirty = false
+    confirmingDiscard.value = false
     if (isOpen) {
       // 保存当前焦点元素
       previousActiveElement = document.activeElement as HTMLElement

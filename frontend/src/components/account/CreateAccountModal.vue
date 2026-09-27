@@ -3,6 +3,7 @@
     :show="show"
     :title="t('admin.accounts.createAccount')"
     width="wide"
+    confirm-discard
     @close="handleClose"
   >
     <!-- Step Indicator for OAuth accounts -->
