@@ -68,7 +68,7 @@ onBeforeUnmount(() => {
     <div
       v-for="(item, index) in allEndpoints"
       :key="index"
-      class="flex min-h-[36px] items-center gap-1.5 rounded-sm border border-border bg-surface px-2.5 py-1.5 text-meta transition-colors hover:border-accent"
+      class="flex min-h-[36px] min-w-0 max-w-full flex-wrap items-center gap-1.5 rounded-sm border border-border bg-surface px-2.5 py-1.5 text-meta transition-colors hover:border-accent"
     >
       <span class="font-semibold text-fg">{{ item.name }}</span>
       <span
@@ -78,9 +78,9 @@ onBeforeUnmount(() => {
 
       <span class="text-border-strong" aria-hidden="true">|</span>
 
-      <div class="group/endpoint relative flex items-center gap-1.5">
+      <div class="group/endpoint relative flex min-w-0 items-center gap-1.5">
         <div
-          class="pointer-events-none absolute bottom-full left-1/2 z-20 mb-2 w-max max-w-[24rem] -translate-x-1/2 translate-y-1 rounded-sm border border-border-strong bg-surface-raised px-3 py-2.5 text-left opacity-0 shadow-overlay transition-opacity duration-150 group-hover/endpoint:translate-y-0 group-hover/endpoint:opacity-100 group-focus-within/endpoint:translate-y-0 group-focus-within/endpoint:opacity-100"
+          class="pointer-events-none absolute bottom-full left-1/2 z-20 mb-2 w-max max-w-[min(24rem,calc(100vw-2rem))] -translate-x-1/2 translate-y-1 rounded-sm border border-border-strong bg-surface-raised px-3 py-2.5 text-left opacity-0 shadow-overlay transition-opacity duration-150 group-hover/endpoint:translate-y-0 group-hover/endpoint:opacity-100 group-focus-within/endpoint:translate-y-0 group-focus-within/endpoint:opacity-100"
         >
           <p
             v-if="item.description"
@@ -99,7 +99,7 @@ onBeforeUnmount(() => {
         </div>
 
         <code
-          class="cursor-pointer font-mono text-fg-muted decoration-border-strong decoration-dashed underline-offset-2 hover:text-accent-strong hover:underline focus:text-accent-strong focus:underline focus:outline-none"
+          class="min-w-0 cursor-pointer break-all font-mono text-fg-muted decoration-border-strong decoration-dashed underline-offset-2 hover:text-accent-strong hover:underline focus:text-accent-strong focus:underline focus:outline-none"
           role="button"
           tabindex="0"
           @click="copy(item.endpoint)"
@@ -109,7 +109,7 @@ onBeforeUnmount(() => {
 
         <button
           type="button"
-          class="rounded-sm p-1 transition-colors"
+          class="-my-1.5 inline-flex min-h-10 min-w-10 items-center justify-center rounded-sm p-2 transition-colors"
           :class="copiedEndpoint === item.endpoint
             ? 'text-success'
             : 'text-fg-subtle hover:text-accent'"
@@ -128,7 +128,7 @@ onBeforeUnmount(() => {
           :href="speedTestUrl(item.endpoint)"
           target="_blank"
           rel="noopener noreferrer"
-          class="rounded-sm p-1 text-fg-subtle transition-colors hover:text-accent"
+          class="-my-1.5 inline-flex min-h-10 min-w-10 items-center justify-center rounded-sm p-2 text-fg-subtle transition-colors hover:text-accent"
           :title="t('keys.endpoints.speedTest')"
         >
           <svg class="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">

@@ -217,3 +217,24 @@ describe('Select remote search', () => {
     expect(labels).toEqual(['Alpha account'])
   })
 })
+
+describe('Select accessible name', () => {
+  it('leaves the trigger name to its label and value when no ariaLabel is passed', () => {
+    const wrapper = mount(Select, {
+      props: { modelValue: 'a', clearable: true, options: [{ value: 'a', label: 'Alpha' }] },
+    })
+    unmountWrapper = () => wrapper.unmount()
+
+    expect(wrapper.get('button').attributes('aria-label')).toBeUndefined()
+    expect(wrapper.get('.select-clear').attributes('aria-label')).toBe('common.clear')
+  })
+
+  it('uses the ariaLabel prop when provided', () => {
+    const wrapper = mount(Select, {
+      props: { modelValue: null, ariaLabel: 'Group', options: [] },
+    })
+    unmountWrapper = () => wrapper.unmount()
+
+    expect(wrapper.get('button').attributes('aria-label')).toBe('Group')
+  })
+})

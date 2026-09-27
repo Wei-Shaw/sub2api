@@ -1,5 +1,8 @@
 <script setup lang="ts">
-import { onBeforeUnmount, onMounted, ref, useTemplateRef, nextTick } from 'vue'
+import { onBeforeUnmount, onMounted, ref, useId, useTemplateRef, nextTick } from 'vue'
+import { useI18n } from 'vue-i18n'
+
+const { t } = useI18n()
 
 const props = withDefaults(defineProps<{
   content?: string
@@ -14,8 +17,13 @@ const show = ref(false)
 const triggerRef = useTemplateRef<HTMLElement>('trigger')
 const tooltipRef = useTemplateRef<HTMLElement>('tooltip')
 const tooltipStyle = ref({ top: '0px', left: '0px' })
+const tooltipId = useId()
+// 自定义触发器自带可聚焦元素（如链接）时不再额外占一个 Tab 位，也避免 role=button 吞掉链接语义。
+const triggerHasFocusable = ref(false)
+let openedByFocus = false
 
-function openTooltip() {
+function openTooltip(byFocus = false) {
+  openedByFocus = byFocus
   show.value = true
   nextTick(updatePosition)
 }
@@ -46,7 +54,18 @@ function onTooltipLeave(event: MouseEvent) {
   closeTooltip()
 }
 
-function onClick(event: MouseEvent) {
+// 键盘聚焦等同悬停；只关闭由聚焦打开的提示，避免鼠标点进提示框选字时被 focusout 关掉。
+function onFocusIn() {
+  if (props.trigger !== 'hover' || show.value) return
+  openTooltip(true)
+}
+
+function onFocusOut(event: FocusEvent) {
+  if (!openedByFocus || isInside(tooltipRef.value, event.relatedTarget)) return
+  closeTooltip()
+}
+
+function onClick(event: Event) {
   if (props.trigger !== 'click') return
   event.stopPropagation()
   if (show.value) {
@@ -64,9 +83,10 @@ function onDocumentClick(event: MouseEvent) {
   closeTooltip()
 }
 
+// 捕获阶段处理并吞掉 Esc：先关提示框，避免同一次按键把外层 BaseDialog 也关掉。
 function onDocumentKeydown(event: KeyboardEvent) {
-  if (props.trigger !== 'click') return
-  if (event.key === 'Escape') {
+  if (event.key === 'Escape' && show.value) {
+    event.stopPropagation()
     closeTooltip()
   }
 }
@@ -87,15 +107,18 @@ function updatePosition() {
 }
 
 onMounted(() => {
+  const innerFocusable = triggerRef.value?.querySelector('a[href], button, input, select, textarea, [tabindex]')
+  triggerHasFocusable.value = !!innerFocusable
+  innerFocusable?.setAttribute('aria-describedby', tooltipId)
   document.addEventListener('click', onDocumentClick, true)
-  document.addEventListener('keydown', onDocumentKeydown)
+  document.addEventListener('keydown', onDocumentKeydown, true)
   window.addEventListener('resize', onViewportChange)
   window.addEventListener('scroll', onViewportChange, true)
 })
 
 onBeforeUnmount(() => {
   document.removeEventListener('click', onDocumentClick, true)
-  document.removeEventListener('keydown', onDocumentKeydown)
+  document.removeEventListener('keydown', onDocumentKeydown, true)
   window.removeEventListener('resize', onViewportChange)
   window.removeEventListener('scroll', onViewportChange, true)
 })
@@ -105,13 +128,22 @@ onBeforeUnmount(() => {
   <div
     ref="trigger"
     class="group relative ml-1 inline-flex items-center align-middle"
+    :tabindex="triggerHasFocusable ? undefined : 0"
+    :role="triggerHasFocusable ? undefined : 'button'"
+    :aria-describedby="triggerHasFocusable ? undefined : tooltipId"
     @mouseenter="onEnter"
     @mouseleave="onLeave"
     @click="onClick"
+    @focusin="onFocusIn"
+    @focusout="onFocusOut"
+    @keydown.enter.self.prevent="onClick"
+    @keydown.space.self.prevent="onClick"
   >
     <!-- Trigger Icon -->
     <slot name="trigger">
+      <span class="sr-only">{{ t('common.info') }}</span>
       <svg
+        aria-hidden="true"
         class="h-4 w-4 cursor-help text-fg-subtle transition-colors hover:text-accent"
         fill="none"
         viewBox="0 0 24 24"
@@ -130,6 +162,7 @@ onBeforeUnmount(() => {
     <Teleport to="body">
       <!-- before: 伪元素向下延伸一段透明区域，盖住提示框与触发图标之间的空隙，让指针能连续移入提示框。 -->
       <div
+        :id="tooltipId"
         ref="tooltip"
         v-show="show"
         role="tooltip"
@@ -144,7 +177,7 @@ onBeforeUnmount(() => {
           v-if="props.trigger === 'click'"
           type="button"
           class="absolute right-1 top-1 rounded-sm p-1 text-fg-subtle transition-colors hover:bg-accent-weak hover:text-accent-strong"
-          aria-label="Close"
+          :aria-label="t('common.close')"
           @click.stop="closeTooltip"
         >
           <svg class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
