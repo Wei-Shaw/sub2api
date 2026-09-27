@@ -116,6 +116,8 @@ export default {
     noActiveSubscriptions: '暂无有效订阅',
     noActiveSubscriptionsDesc: '您没有任何有效订阅。请联系管理员获取订阅。',
     failedToLoad: '加载订阅失败',
+    noActiveSubscriptionsPurchaseDesc: '您没有任何有效订阅，可前往购买页面查看当前在售的套餐。',
+    viewPlans: '查看套餐',
     status: {
       active: '有效',
       expired: '已过期',

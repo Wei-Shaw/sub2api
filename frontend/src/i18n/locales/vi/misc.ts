@@ -119,6 +119,8 @@ export default {
     noActiveSubscriptionsDesc:
       'Bạn chưa có gói đăng ký nào đang hoạt động. Hãy liên hệ quản trị viên để được cấp.',
     failedToLoad: 'Tải gói đăng ký thất bại',
+    noActiveSubscriptionsPurchaseDesc: 'Bạn chưa có gói đăng ký nào đang hoạt động. Xem trang mua để biết các gói đang được bán.',
+    viewPlans: 'Xem các gói',
     status: {
       active: 'Đang hoạt động',
       expired: 'Đã hết hạn',

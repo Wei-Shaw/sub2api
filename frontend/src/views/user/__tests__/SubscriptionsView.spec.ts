@@ -3,15 +3,16 @@ import { flushPromises, mount, RouterLinkStub } from '@vue/test-utils'
 
 import SubscriptionsView from '../SubscriptionsView.vue'
 
-const { getMySubscriptions, showError } = vi.hoisted(() => ({
+const { getMySubscriptions, showError, appSettings } = vi.hoisted(() => ({
   getMySubscriptions: vi.fn(),
   showError: vi.fn(),
+  appSettings: {} as Record<string, unknown>,
 }))
 
 vi.mock('@/api/subscriptions', () => ({ default: { getMySubscriptions } }))
 
 vi.mock('@/stores/app', () => ({
-  useAppStore: () => ({ showError, cachedPublicSettings: {} }),
+  useAppStore: () => ({ showError, cachedPublicSettings: appSettings }),
 }))
 
 vi.mock('vue-router', () => ({ useRouter: () => ({ push: vi.fn() }) }))
@@ -36,6 +37,23 @@ describe('user SubscriptionsView', () => {
     vi.clearAllMocks()
     vi.spyOn(console, 'error').mockImplementation(() => {})
     getMySubscriptions.mockResolvedValue([])
+    delete appSettings.payment_enabled
+  })
+
+  it('points to the purchase page when there is no subscription and payment is on', async () => {
+    const wrapper = await mountView()
+
+    expect(wrapper.text()).toContain('userSubscriptions.noActiveSubscriptionsPurchaseDesc')
+    expect(wrapper.text()).not.toContain('userSubscriptions.noActiveSubscriptionsDesc')
+    expect(wrapper.getComponent(RouterLinkStub).props('to')).toEqual({ path: '/purchase', query: { tab: 'subscription' } })
+  })
+
+  it('keeps the contact-admin text without a link when payment is off', async () => {
+    appSettings.payment_enabled = false
+    const wrapper = await mountView()
+
+    expect(wrapper.text()).toContain('userSubscriptions.noActiveSubscriptionsDesc')
+    expect(wrapper.findComponent(RouterLinkStub).exists()).toBe(false)
   })
 
   it('reports a load failure with a retry instead of claiming there are no subscriptions', async () => {

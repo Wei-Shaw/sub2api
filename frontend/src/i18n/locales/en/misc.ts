@@ -119,6 +119,8 @@ export default {
     noActiveSubscriptionsDesc:
       "You don't have any active subscriptions. Contact administrator to get one.",
     failedToLoad: 'Failed to load subscriptions',
+    noActiveSubscriptionsPurchaseDesc: "You don't have any active subscriptions. Check the purchase page for the plans currently on offer.",
+    viewPlans: 'View plans',
     status: {
       active: 'Active',
       expired: 'Expired',
