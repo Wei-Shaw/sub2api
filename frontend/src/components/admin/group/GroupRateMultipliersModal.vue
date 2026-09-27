@@ -173,6 +173,8 @@
                     </td>
                     <td class="px-2">
                       <button
+                        :aria-label="t('common.delete')"
+                        :title="t('common.delete')"
                         type="button"
                         class="rounded-sm p-1 text-fg-subtle transition-colors hover:bg-danger-weak hover:text-danger"
                         @click="removeLocal(entry.user_id)"

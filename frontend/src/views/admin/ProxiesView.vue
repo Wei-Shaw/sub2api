@@ -183,6 +183,8 @@
               </div>
               <button
                 v-if="row.password"
+                :aria-label="visiblePasswordIds.has(row.id) ? t('auth.hidePassword') : t('auth.showPassword')"
+                :title="visiblePasswordIds.has(row.id) ? t('auth.hidePassword') : t('auth.showPassword')"
                 type="button"
                 class="ml-1 rounded-sm p-0.5 text-fg-subtle hover:text-fg-muted"
                 @click.stop="visiblePasswordIds.has(row.id) ? visiblePasswordIds.delete(row.id) : visiblePasswordIds.add(row.id)"
@@ -490,6 +492,8 @@
               :placeholder="t('admin.proxies.optionalAuth')"
             />
             <button
+              :aria-label="createPasswordVisible ? t('auth.hidePassword') : t('auth.showPassword')"
+              :title="createPasswordVisible ? t('auth.hidePassword') : t('auth.showPassword')"
               type="button"
               class="absolute right-3 top-1/2 -translate-y-1/2 text-fg-subtle hover:text-fg-muted"
               @click="createPasswordVisible = !createPasswordVisible"
@@ -719,6 +723,8 @@
               @input="editPasswordDirty = true"
             />
             <button
+              :aria-label="editPasswordVisible ? t('auth.hidePassword') : t('auth.showPassword')"
+              :title="editPasswordVisible ? t('auth.hidePassword') : t('auth.showPassword')"
               type="button"
               class="absolute right-3 top-1/2 -translate-y-1/2 text-fg-subtle hover:text-fg-muted"
               @click="editPasswordVisible = !editPasswordVisible"

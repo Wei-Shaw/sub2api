@@ -530,6 +530,8 @@
                         >
                           <img :src="image" alt="" class="h-full w-full object-cover" />
                           <button
+                            :aria-label="t('common.remove')"
+                            :title="t('common.remove')"
                             type="button"
                             class="absolute right-1.5 top-1.5 flex h-7 w-7 items-center justify-center rounded-full bg-black/60 text-white opacity-0 transition-opacity group-hover:opacity-100"
                             @click="removeModerationTestImage(index)"

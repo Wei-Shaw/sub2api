@@ -542,6 +542,9 @@
                 </span>
                 <button
                   v-if="showHelp"
+                  :aria-label="t('admin.accounts.oauth.howToGetSessionKey')"
+                  :title="t('admin.accounts.oauth.howToGetSessionKey')"
+                  :aria-expanded="showHelpDialog"
                   type="button"
                   class="text-accent hover:text-accent-strong"
                   @click="showHelpDialog = !showHelpDialog"

@@ -17,6 +17,8 @@
               <span class="truncate">{{ model }}</span>
             </span>
             <button
+              :aria-label="t('common.remove')"
+              :title="t('common.remove')"
               type="button"
               @click.stop="removeModel(model)"
               class="shrink-0 rounded-full hover:bg-border"
