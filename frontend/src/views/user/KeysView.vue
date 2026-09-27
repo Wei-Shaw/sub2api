@@ -1212,6 +1212,10 @@ const formatDateTimeLocal = (isoDate: string): string => {
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`
 }
 
+// 后端用 html.EscapeString 存储名称；显示和回填编辑表单前还原这五个实体。
+const KEY_NAME_ENTITIES: Record<string, string> = { '&lt;': '<', '&gt;': '>', '&amp;': '&', '&#39;': "'", '&#34;': '"' }
+const decodeKeyName = (name: string) => name.replace(/&(?:lt|gt|amp|#39|#34);/g, (entity) => KEY_NAME_ENTITIES[entity])
+
 interface GroupOption {
   value: number
   label: string
@@ -1578,7 +1582,7 @@ const loadApiKeys = async () => {
       signal
     })
     if (signal.aborted) return
-    apiKeys.value = response.items
+    apiKeys.value = response.items.map((key) => ({ ...key, name: decodeKeyName(key.name) }))
     handleSelectionChange(selectedIds.value)
     pagination.value.total = response.total
     pagination.value.pages = response.pages

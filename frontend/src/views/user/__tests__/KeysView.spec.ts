@@ -655,6 +655,23 @@ describe('user KeysView column settings', () => {
     expect(configured.findComponent(EndpointPopover).props('apiBaseUrl')).toBe('https://api.example.com')
   })
 
+  it('shows and resubmits HTML-escaped key names decoded', async () => {
+    listKeys.mockResolvedValue({
+      items: [{ ...createApiKey(), group_id: 1, name: 'Bob&#39;s &amp; Co &lt;x&gt; &amp;amp;' }],
+      total: 1, page: 1, page_size: 20, pages: 1,
+    })
+    updateKey.mockResolvedValue(createApiKey())
+    const wrapper = await mountView()
+    expect(wrapper.text()).toContain("Bob's & Co <x> &amp;")
+
+    await wrapper.get('button[title="common.edit"]').trigger('click')
+    const input = wrapper.get<HTMLInputElement>('[data-tour="key-form-name"]')
+    expect(input.element.value).toBe("Bob's & Co <x> &amp;")
+    await wrapper.get('#key-form').trigger('submit')
+    await flushPromises()
+    expect(updateKey).toHaveBeenCalledWith(1, expect.objectContaining({ name: "Bob's & Co <x> &amp;" }))
+  })
+
   it('opens the usage guide for a newly created key', async () => {
     getAvailableGroups.mockResolvedValue([{ id: 1, name: 'Codex', platform: 'openai', rate_multiplier: 1, subscription_type: 'standard' }])
     vi.mocked(keysAPI.create).mockResolvedValue({ ...createApiKey(), id: 9, key: 'sk-new-key', group_id: 1 })
