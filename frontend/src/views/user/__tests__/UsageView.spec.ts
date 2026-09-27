@@ -389,7 +389,7 @@ describe('user UsageView', () => {
 
     expect(exportedBlob).not.toBeNull()
     expect(query).toHaveBeenCalledWith(expect.objectContaining({
-      page_size: 100,
+      page_size: 1000,
       sort_by: 'created_at',
       sort_order: 'desc',
       native_compaction_v2: true,
@@ -449,7 +449,7 @@ describe('user UsageView', () => {
   })
 
   it('keeps the initial filters, sort, and filename while exporting multiple pages', async () => {
-    const pageResponse = { items: [usageLog], total: 101, pages: 2 }
+    const pageResponse = { items: [usageLog], total: 1001, pages: 2 }
     query.mockResolvedValue(pageResponse)
     const wrapper = mountUsageView()
     await flushPromises()
@@ -477,7 +477,7 @@ describe('user UsageView', () => {
       await wrapper.findAll('button').find((button) => button.text() === 'Export CSV')!.trigger('click')
       const initialParams = { ...query.mock.calls[0][0] }
       expect(initialParams).toMatchObject({
-        page: 1, page_size: 100, start_date: '2026-03-01', end_date: '2026-03-08',
+        page: 1, page_size: 1000, start_date: '2026-03-01', end_date: '2026-03-08',
         sort_by: 'created_at', sort_order: 'desc',
       })
 
@@ -505,6 +505,60 @@ describe('user UsageView', () => {
     } finally {
       window.URL.createObjectURL = originalCreateObjectURL
       window.URL.revokeObjectURL = originalRevokeObjectURL
+      clickSpy.mockRestore()
+      wrapper.unmount()
+    }
+  })
+
+  it('exports 10,000 rows in 1000-row pages using the total from the list load', async () => {
+    const TOTAL = 10_000
+    const LATENCY_MS = 50
+    query.mockImplementation((params: { page: number; page_size: number }, options?: unknown) => {
+      if (options) return Promise.resolve({ items: [usageLog], total: TOTAL, pages: 1 })
+      return new Promise((resolve) => setTimeout(() => {
+        const start = (params.page - 1) * params.page_size
+        const count = Math.max(0, Math.min(params.page_size, TOTAL - start))
+        resolve({ items: Array(count).fill(usageLog), total: TOTAL, pages: Math.ceil(TOTAL / params.page_size) })
+      }, LATENCY_MS))
+    })
+    const wrapper = mountUsageView()
+    await flushPromises()
+
+    let csvContent = ''
+    const OriginalBlob = globalThis.Blob
+    vi.stubGlobal('Blob', vi.fn((parts: BlobPart[], options?: BlobPropertyBag) => {
+      csvContent = parts.map((part) => String(part)).join('')
+      return new OriginalBlob(parts, options)
+    }))
+    const originalCreateObjectURL = window.URL.createObjectURL
+    const originalRevokeObjectURL = window.URL.revokeObjectURL
+    window.URL.createObjectURL = vi.fn(() => 'blob:usage-export') as typeof window.URL.createObjectURL
+    window.URL.revokeObjectURL = vi.fn(() => {}) as typeof window.URL.revokeObjectURL
+    const clickSpy = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {})
+    vi.useFakeTimers()
+
+    try {
+      query.mockClear()
+      const startedAt = Date.now()
+      let settled = false
+      const done = (wrapper.vm as any).exportToCSV().finally(() => { settled = true })
+      while (!settled) await vi.advanceTimersByTimeAsync(LATENCY_MS)
+      await done
+      const elapsedMs = Date.now() - startedAt
+      const exportCalls = query.mock.calls.filter((call) => call.length === 1).map(([params]) => params)
+      const exportedRows = csvContent.split('\n').length - 1
+      console.info(`[perf] user usage csv export: rows=${exportedRows} requests=${exportCalls.length} simulated_ms=${elapsedMs}`)
+
+      expect(exportedRows).toBe(TOTAL)
+      expect(exportCalls).toHaveLength(10)
+      expect(exportCalls.map((params) => params.page_size)).toEqual(Array(10).fill(1000))
+      expect(elapsedMs).toBe(10 * LATENCY_MS)
+      expect(showSuccess).toHaveBeenCalledWith('Export success')
+    } finally {
+      vi.useRealTimers()
+      window.URL.createObjectURL = originalCreateObjectURL
+      window.URL.revokeObjectURL = originalRevokeObjectURL
+      vi.unstubAllGlobals()
       clickSpy.mockRestore()
       wrapper.unmount()
     }
