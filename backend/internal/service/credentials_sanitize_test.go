@@ -22,10 +22,8 @@ func TestSanitizeStoredCredentials_StripsEphemeralSSOSecrets(t *testing.T) {
 	require.Equal(t, "at", out["access_token"])
 	require.Equal(t, "rt", out["refresh_token"])
 	require.Equal(t, "https://api.x.ai", out["base_url"])
-	// sso_token is persisted on purpose: the web imagine WebSocket
-	// authenticates with the sso cookie, not the Build OAuth token.
-	require.Equal(t, "sso", out["sso_token"])
 	require.NotContains(t, out, "password")
+	require.NotContains(t, out, "sso_token")
 	require.NotContains(t, out, "sso")
 	require.NotContains(t, out, "sso-rw")
 	require.NotContains(t, out, "clearTextPassword")

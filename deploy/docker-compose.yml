@@ -257,8 +257,6 @@ services:
       - GATEWAY_IMAGE_CONCURRENCY_OVERFLOW_MODE=${GATEWAY_IMAGE_CONCURRENCY_OVERFLOW_MODE:-reject}
       - GATEWAY_IMAGE_CONCURRENCY_WAIT_TIMEOUT_SECONDS=${GATEWAY_IMAGE_CONCURRENCY_WAIT_TIMEOUT_SECONDS:-30}
       - GATEWAY_IMAGE_CONCURRENCY_MAX_WAITING_REQUESTS=${GATEWAY_IMAGE_CONCURRENCY_MAX_WAITING_REQUESTS:-100}
-      # grok.com web image edits: FlareSolverr endpoint that clears Cloudflare (see flaresolverr service)
-      - GATEWAY_GROK_FLARESOLVERR_URL=${GATEWAY_GROK_FLARESOLVERR_URL:-}
 
       # =======================================================================
       # Rate Limiting, Dashboard Aggregation & Ops Monitoring
@@ -390,25 +388,6 @@ services:
       start_period: 5s
     # 注意：不暴露端口到宿主机，应用通过内部网络连接
     # 如需调试，可临时添加：ports: ["127.0.0.1:6379:6379"]
-  # ===========================================================================
-  # FlareSolverr (optional): solves grok.com's Cloudflare challenge for Grok
-  # web image edits. Enable with COMPOSE_PROFILES=grok-web and set
-  # GATEWAY_GROK_FLARESOLVERR_URL=http://flaresolverr:8191/v1 in .env.
-  # ===========================================================================
-  flaresolverr:
-    # Pinned: a new release can break the Grok Cloudflare flow. Bump deliberately.
-    image: ghcr.io/flaresolverr/flaresolverr:v3.5.2
-    container_name: sub2api-flaresolverr
-    restart: unless-stopped
-    logging: *default-logging
-    # Headless Chromium shares the host with Postgres; cap it so an OOM kills
-    # FlareSolverr rather than the database.
-    mem_limit: 1g
-    profiles: ["grok-web"]
-    environment:
-      - TZ=${TZ:-Asia/Ho_Chi_Minh}
-    networks:
-      - sub2api-network
 
 # =============================================================================
 # Volumes

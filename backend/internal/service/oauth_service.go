@@ -22,10 +22,8 @@ type OpenAIOAuthClient interface {
 type GrokOAuthClient interface {
 	ExchangeCode(ctx context.Context, code, codeVerifier, redirectURI, proxyURL, clientID string) (*xai.TokenResponse, error)
 	RefreshToken(ctx context.Context, refreshToken, proxyURL, clientID string) (*xai.TokenResponse, error)
-	// LoginWithPassword exchanges email/password for a Web SSO cookie. Callers
-	// must convert via ConvertSSOToBuild and must never persist the password.
-	// The SSO cookie itself is stored with the account credentials because the
-	// web imagine WebSocket authenticates with it.
+	// LoginWithPassword exchanges email/password for a short-lived Web SSO cookie.
+	// Callers must convert via ConvertSSOToBuild and must not persist password or raw SSO.
 	LoginWithPassword(ctx context.Context, email, password, proxyURL string) (*GrokPasswordLoginResult, error)
 	ConvertSSOToBuild(ctx context.Context, ssoToken, proxyURL string) (*xai.TokenResponse, error)
 }
