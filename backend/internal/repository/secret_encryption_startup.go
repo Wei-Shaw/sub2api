@@ -8,6 +8,8 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"os"
+	"strconv"
 	"strings"
 	"time"
 
@@ -94,11 +96,23 @@ var secretEncryptionProbes = []secretEncryptionProbe{
 		name:  "users with 2FA enabled (users.totp_enabled)",
 		query: `SELECT EXISTS (SELECT 1 FROM users WHERE totp_enabled = true)`,
 	},
+	{
+		name:  "payment provider credentials (payment_provider_instances.config)",
+		query: `SELECT EXISTS (SELECT 1 FROM payment_provider_instances WHERE ` + paymentConfigCiphertextFilter + `)`,
+	},
 }
+
+// paymentConfigCiphertextFilter 选出只有主密钥才能解开的支付服务商配置：回归窗口写入的
+// 明文是 json.Marshal 输出（以 '{' 开头或为 "null"），密文永远不是。
+const paymentConfigCiphertextFilter = `config <> '' AND config <> 'null' AND config NOT LIKE '{%'`
+
+// allowUndecryptablePaymentConfigEnvVar 是应急开关：设为 true 时，支付服务商配置解不开
+// 只记 ERROR 日志并继续启动（这些服务商在后台重新录入前按未配置处理）。
+const allowUndecryptablePaymentConfigEnvVar = "SECURITY_ALLOW_UNDECRYPTABLE_PAYMENT_CONFIG"
 
 // ensureSecretEncryptionKeyUsable 在主密钥缺失时决定是放行还是阻断启动。
 //
-// 密钥已配置：零查询返回。
+// 密钥已配置：只抽查一行支付服务商配置密文能否解开，见 ensurePaymentProviderConfigsDecryptable。
 //
 // 密钥为空：逐条探测数据库。命中任意一条就返回错误——此时已经存在只有这把密钥才能
 // 解开的数据，继续启动只会让运维在功能报错时才发现密钥丢了，或者更糟，在
@@ -112,11 +126,11 @@ func ensureSecretEncryptionKeyUsable(ctx context.Context, db *sql.DB, cfg *confi
 	if cfg == nil {
 		return errors.New("nil config")
 	}
-	if strings.TrimSpace(cfg.Security.SecretEncryptionKey) != "" {
-		return nil
-	}
 	if db == nil {
 		return errors.New("nil sql db")
+	}
+	if keyHex := strings.TrimSpace(cfg.Security.SecretEncryptionKey); keyHex != "" {
+		return ensurePaymentProviderConfigsDecryptable(ctx, db, keyHex)
 	}
 
 	triggered := make([]string, 0, len(secretEncryptionProbes))
@@ -152,6 +166,47 @@ func ensureSecretEncryptionKeyUsable(ctx context.Context, db *sql.DB, cfg *confi
 		strings.Join(triggered, "; "),
 		config.SecretEncryptionKeyEnvVar,
 		config.LegacySecretEncryptionKeyEnvVar,
+	)
+}
+
+// ensurePaymentProviderConfigsDecryptable 用已配置的主密钥抽查一行支付服务商配置密文。
+//
+// 解不开说明密钥丢了或被换了：decryptConfig 会把这类配置当成空，于是 webhook 被 ACK、
+// 已付款的订单却过期不到账。因此默认拒绝启动；运维确认放弃这些配置（之后在后台重新
+// 录入）时，可设置 allowUndecryptablePaymentConfigEnvVar=true 降级为 ERROR 日志。
+//
+// 查询失败（表不存在、权限不足）与探测一样按未命中处理；密钥格式非法由 NewAESEncryptor 报错。
+func ensurePaymentProviderConfigsDecryptable(ctx context.Context, db *sql.DB, keyHex string) error {
+	key, err := hex.DecodeString(keyHex)
+	if err != nil || len(key) != payment.AES256KeySize {
+		return nil
+	}
+	var stored string
+	if err := db.QueryRowContext(ctx,
+		`SELECT config FROM payment_provider_instances WHERE `+paymentConfigCiphertextFilter+` ORDER BY id LIMIT 1`,
+	).Scan(&stored); err != nil {
+		if !errors.Is(err, sql.ErrNoRows) {
+			slog.Debug("payment provider config decrypt check skipped", "error", err)
+		}
+		return nil
+	}
+	if _, err := payment.Decrypt(stored, key); err == nil {
+		return nil
+	}
+	if allow, _ := strconv.ParseBool(strings.TrimSpace(os.Getenv(allowUndecryptablePaymentConfigEnvVar))); allow {
+		slog.Error("payment provider configs cannot be decrypted with the configured secret encryption key; "+
+			"starting anyway because the override is set — affected providers stay unconfigured until re-entered in the admin UI",
+			"override_env", allowUndecryptablePaymentConfigEnvVar)
+		return nil
+	}
+	return fmt.Errorf(
+		"refusing to start: payment provider configs (payment_provider_instances.config) cannot be decrypted "+
+			"with the configured secret encryption key — it is not the key this installation was using.\n"+
+			"Starting anyway would treat those providers as unconfigured: payment webhooks would be acknowledged "+
+			"but paid orders never credited.\n"+
+			"Set %s to the original key, or set %s=true to start anyway and re-enter the payment provider configs in the admin UI.",
+		config.SecretEncryptionKeyEnvVar,
+		allowUndecryptablePaymentConfigEnvVar,
 	)
 }
 
