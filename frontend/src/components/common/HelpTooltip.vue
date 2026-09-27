@@ -83,8 +83,10 @@ function onDocumentClick(event: MouseEvent) {
   closeTooltip()
 }
 
+// 捕获阶段处理并吞掉 Esc：先关提示框，避免同一次按键把外层 BaseDialog 也关掉。
 function onDocumentKeydown(event: KeyboardEvent) {
   if (event.key === 'Escape' && show.value) {
+    event.stopPropagation()
     closeTooltip()
   }
 }
@@ -105,16 +107,18 @@ function updatePosition() {
 }
 
 onMounted(() => {
-  triggerHasFocusable.value = !!triggerRef.value?.querySelector('a[href], button, input, select, textarea, [tabindex]')
+  const innerFocusable = triggerRef.value?.querySelector('a[href], button, input, select, textarea, [tabindex]')
+  triggerHasFocusable.value = !!innerFocusable
+  innerFocusable?.setAttribute('aria-describedby', tooltipId)
   document.addEventListener('click', onDocumentClick, true)
-  document.addEventListener('keydown', onDocumentKeydown)
+  document.addEventListener('keydown', onDocumentKeydown, true)
   window.addEventListener('resize', onViewportChange)
   window.addEventListener('scroll', onViewportChange, true)
 })
 
 onBeforeUnmount(() => {
   document.removeEventListener('click', onDocumentClick, true)
-  document.removeEventListener('keydown', onDocumentKeydown)
+  document.removeEventListener('keydown', onDocumentKeydown, true)
   window.removeEventListener('resize', onViewportChange)
   window.removeEventListener('scroll', onViewportChange, true)
 })
@@ -137,7 +141,9 @@ onBeforeUnmount(() => {
   >
     <!-- Trigger Icon -->
     <slot name="trigger">
+      <span class="sr-only">{{ t('common.info') }}</span>
       <svg
+        aria-hidden="true"
         class="h-4 w-4 cursor-help text-fg-subtle transition-colors hover:text-accent"
         fill="none"
         viewBox="0 0 24 24"

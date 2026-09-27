@@ -122,6 +122,9 @@ describe('HelpTooltip', () => {
     expect(trigger.attributes('role')).toBe('button')
     expect(trigger.attributes('aria-describedby')).toBe(tooltip.id)
     expect(tooltip.id).not.toBe('')
+    // 默认图标触发器必须有可访问名称（svg 已 aria-hidden，名称来自 sr-only 文本）。
+    expect(trigger.get('.sr-only').text()).toBe('common.info')
+    expect(trigger.get('svg').attributes('aria-hidden')).toBe('true')
 
     ;(trigger.element as HTMLElement).focus()
     await nextTick()
@@ -137,6 +140,29 @@ describe('HelpTooltip', () => {
     await nextTick()
     expect(tooltip.style.display).toBe('none')
 
+    wrapper.unmount()
+  })
+
+  it('consumes Escape while open so an outer dialog listener does not also close', async () => {
+    const outer = vi.fn()
+    document.addEventListener('keydown', outer)
+    const wrapper = mount(HelpTooltip, {
+      attachTo: document.body,
+      props: { content: 'details' },
+    })
+    const trigger = wrapper.get('.group')
+    const tooltip = getTooltipElement()
+
+    await trigger.trigger('mouseenter')
+    trigger.element.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
+    await nextTick()
+    expect(tooltip.style.display).toBe('none')
+    expect(outer).not.toHaveBeenCalled()
+
+    trigger.element.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
+    expect(outer).toHaveBeenCalledTimes(1)
+
+    document.removeEventListener('keydown', outer)
     wrapper.unmount()
   })
 
@@ -169,6 +195,8 @@ describe('HelpTooltip', () => {
     const trigger = wrapper.get('.group')
     expect(trigger.attributes('tabindex')).toBeUndefined()
     expect(trigger.attributes('role')).toBeUndefined()
+    expect(trigger.get('a').attributes('aria-describedby')).toBe(getTooltipElement().id)
+    expect(trigger.find('.sr-only').exists()).toBe(false)
 
     wrapper.unmount()
   })
