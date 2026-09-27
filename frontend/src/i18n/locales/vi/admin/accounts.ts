@@ -517,7 +517,10 @@ export default {
         probeUpstreamBilling: 'Dò hệ số upstream',
         resetStatusSuccess: 'Đã đặt lại trạng thái cho {count} tài khoản',
         refreshTokenSuccess: 'Đã làm mới token cho {count} tài khoản',
-        partialSuccess: 'Hoàn tất một phần: {success} thành công, {failed} thất bại'
+        partialSuccess: 'Hoàn tất một phần: {success} thành công, {failed} thất bại',
+        confirmResetStatus: 'Đặt lại trạng thái của {count} tài khoản đã chọn?',
+        confirmRefreshToken: 'Làm mới token của {count} tài khoản đã chọn? Việc này có thể mất tới 2 phút.',
+        processing: 'Đang xử lý {count} tài khoản...'
       },
       bulkEdit: {
         title: 'Sửa tài khoản hàng loạt',

@@ -266,4 +266,31 @@ describe('admin AccountsView error feedback', () => {
 
     expect(showSuccess).toHaveBeenCalledWith('admin.accounts.tokenRefreshed')
   })
+
+  it('marks bulk actions busy while running, confirms with the count and extracts the error message', async () => {
+    listAccounts.mockResolvedValue(page([account(1), account(2)]))
+    let rejectRefresh: (reason: unknown) => void = () => {}
+    batchRefresh.mockImplementationOnce(() => new Promise((_, reject) => { rejectRefresh = reject }))
+    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true)
+    const wrapper = mountView()
+    await flushPromises()
+
+    await wrapper.get('[data-test="select-page"]').trigger('click')
+    await wrapper.get('[data-test="refresh-token"]').trigger('click')
+    await flushPromises()
+
+    expect(confirmSpy).toHaveBeenCalledWith('admin.accounts.bulkActions.confirmRefreshToken:{"count":2}')
+    expect(wrapper.get('[data-test="busy"]').text()).toBe('true')
+
+    // A second click while the first batch is still running must not start another batch.
+    await wrapper.get('[data-test="refresh-token"]').trigger('click')
+    expect(batchRefresh).toHaveBeenCalledTimes(1)
+
+    rejectRefresh({ status: 502, message: 'upstream timeout' })
+    await flushPromises()
+
+    expect(wrapper.get('[data-test="busy"]').text()).toBe('false')
+    expect(showError).toHaveBeenCalledWith('upstream timeout')
+    expect(showError).not.toHaveBeenCalledWith('[object Object]')
+  })
 })

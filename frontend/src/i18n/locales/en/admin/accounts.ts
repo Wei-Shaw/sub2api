@@ -517,7 +517,10 @@ export default {
         probeUpstreamBilling: 'Probe Upstream Rate',
         resetStatusSuccess: 'Successfully reset {count} account(s) status',
         refreshTokenSuccess: 'Successfully refreshed {count} account(s) token',
-        partialSuccess: 'Partially completed: {success} succeeded, {failed} failed'
+        partialSuccess: 'Partially completed: {success} succeeded, {failed} failed',
+        confirmResetStatus: 'Reset the status of the selected {count} account(s)?',
+        confirmRefreshToken: 'Refresh the tokens of the selected {count} account(s)? This can take up to 2 minutes.',
+        processing: 'Processing {count} account(s)...'
       },
       bulkEdit: {
         title: 'Bulk Edit Accounts',

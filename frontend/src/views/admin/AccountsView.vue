@@ -180,6 +180,7 @@
           :total-results="pagination.total"
           :selecting-all="selectingAllResults"
           :all-results-selected="allResultsSelected"
+          :busy="bulkBusy"
           @delete="handleBulkDelete"
           @reset-status="handleBulkResetStatus"
           @refresh-token="handleBulkRefreshToken"
@@ -629,6 +630,7 @@ const showSchedulePanel = ref(false)
 const scheduleAcc = ref<Account | null>(null)
 const scheduleModelOptions = ref<SelectOption[]>([])
 const togglingSchedulable = ref<number | null>(null)
+const bulkBusy = ref(false)
 const loadError = ref<string | null>(null)
 const menu = reactive<{show:boolean, acc:Account|null, anchorRect:DOMRect|null}>({ show: false, acc: null, anchorRect: null })
 const exportingData = ref(false)
@@ -1894,8 +1896,10 @@ const toggleSelectAllVisible = (event: Event) => {
   toggleVisible(target.checked)
 }
 const handleBulkDelete = async () => {
+  if (bulkBusy.value) return
   const accountIds = [...selIds.value]
   if (!confirm(t('admin.accounts.bulkActions.confirmDelete', { count: accountIds.length }))) return
+  bulkBusy.value = true
   try {
     const result = await adminAPI.accounts.batchDelete(accountIds)
     if (result.failed > 0) {
@@ -1911,11 +1915,15 @@ const handleBulkDelete = async () => {
     await reload()
   } catch (error) {
     console.error('Failed to bulk delete accounts:', error)
-    appStore.showError(String(error))
+    appStore.showError(extractApiErrorMessage(error, t('common.error')))
+  } finally {
+    bulkBusy.value = false
   }
 }
 const handleBulkResetStatus = async () => {
-  if (!confirm(t('common.confirm'))) return
+  if (bulkBusy.value) return
+  if (!confirm(t('admin.accounts.bulkActions.confirmResetStatus', { count: selIds.value.length }))) return
+  bulkBusy.value = true
   try {
     const result = await adminAPI.accounts.batchClearError(selIds.value)
     if (result.failed > 0) {
@@ -1927,12 +1935,16 @@ const handleBulkResetStatus = async () => {
     reload()
   } catch (error) {
     console.error('Failed to bulk reset status:', error)
-    appStore.showError(String(error))
+    appStore.showError(extractApiErrorMessage(error, t('common.error')))
+  } finally {
+    bulkBusy.value = false
   }
 }
 const handleBulkRefreshToken = async () => {
-  if (!confirm(t('common.confirm'))) return
+  if (bulkBusy.value) return
   const accountIds = [...selIds.value]
+  if (!confirm(t('admin.accounts.bulkActions.confirmRefreshToken', { count: accountIds.length }))) return
+  bulkBusy.value = true
   try {
     const result = await adminAPI.accounts.batchRefresh(accountIds)
     if (result.failed > 0) {
@@ -1946,10 +1958,13 @@ const handleBulkRefreshToken = async () => {
     reload()
   } catch (error) {
     console.error('Failed to bulk refresh token:', error)
-    appStore.showError(String(error))
+    appStore.showError(extractApiErrorMessage(error, t('common.error')))
+  } finally {
+    bulkBusy.value = false
   }
 }
 const handleBulkProbeUpstreamBilling = async () => {
+  if (bulkBusy.value) return
   const accountIDs = [...selIds.value]
   if (accountIDs.length === 0) {
     appStore.showError(t('admin.accounts.upstreamBilling.noEligibleAccounts'))
@@ -1960,6 +1975,7 @@ const handleBulkProbeUpstreamBilling = async () => {
     return
   }
   accountIDs.forEach(id => probingUpstreamBilling.add(id))
+  bulkBusy.value = true
   try {
     const results = await adminAPI.accounts.probeUpstreamBillingBatch(accountIDs)
     let patched = false
@@ -1981,6 +1997,7 @@ const handleBulkProbeUpstreamBilling = async () => {
     appStore.showError(extractApiErrorMessage(error, t('admin.accounts.upstreamBilling.probeFailed')))
   } finally {
     accountIDs.forEach(id => probingUpstreamBilling.delete(id))
+    bulkBusy.value = false
   }
 }
 const updateSchedulableInList = (accountIds: number[], schedulable: boolean) => {
@@ -2049,7 +2066,9 @@ const normalizeBulkSchedulableResult = (
   }
 }
 const handleBulkToggleSchedulable = async (schedulable: boolean) => {
+  if (bulkBusy.value) return
   const accountIds = [...selIds.value]
+  bulkBusy.value = true
   try {
     const result = await adminAPI.accounts.bulkUpdate(accountIds, { schedulable })
     const { successIds, failedIds, successCount, failedCount, hasIds, hasCounts } = normalizeBulkSchedulableResult(result, accountIds)
@@ -2082,7 +2101,9 @@ const handleBulkToggleSchedulable = async (schedulable: boolean) => {
     }
   } catch (error) {
     console.error('Failed to bulk toggle schedulable:', error)
-    appStore.showError(t('common.error'))
+    appStore.showError(extractApiErrorMessage(error, t('common.error')))
+  } finally {
+    bulkBusy.value = false
   }
 }
 const buildBulkEditFilterSnapshot = () => {

@@ -642,7 +642,10 @@ export default {
         probeUpstreamBilling: '探测上游倍率',
         resetStatusSuccess: '已成功重置 {count} 个账号状态',
         refreshTokenSuccess: '已成功刷新 {count} 个账号令牌',
-        partialSuccess: '操作部分完成：{success} 成功，{failed} 失败'
+        partialSuccess: '操作部分完成：{success} 成功，{failed} 失败',
+        confirmResetStatus: '确定要重置所选 {count} 个账号的状态吗？',
+        confirmRefreshToken: '确定要刷新所选 {count} 个账号的令牌吗？最长可能需要 2 分钟。',
+        processing: '正在处理 {count} 个账号...'
       },
       bulkEdit: {
         title: '批量编辑账号',
