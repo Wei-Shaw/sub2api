@@ -5,6 +5,7 @@ import { nextTick } from 'vue'
 import type { ApiKey } from '@/types'
 import { keysAPI } from '@/api'
 import KeysView from '../KeysView.vue'
+import EndpointPopover from '@/components/keys/EndpointPopover.vue'
 
 const {
   listKeys,
@@ -642,6 +643,15 @@ describe('user KeysView column settings', () => {
       expect(wrapper.find('[data-tour="key-form-provider"]').exists()).toBe(false)
       expect(optionIds(wrapper)).toHaveLength(11)
     })
+  })
+
+  it('shows the site origin as base URL when none is configured', async () => {
+    const wrapper = await mountView()
+    expect(wrapper.findComponent(EndpointPopover).props('apiBaseUrl')).toBe(window.location.origin)
+
+    getPublicSettings.mockResolvedValue({ api_base_url: 'https://api.example.com' })
+    const configured = await mountView()
+    expect(configured.findComponent(EndpointPopover).props('apiBaseUrl')).toBe('https://api.example.com')
   })
 
   it('exposes the key form toggles as labelled switches', async () => {
