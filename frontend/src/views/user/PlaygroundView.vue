@@ -62,7 +62,7 @@
             <div
               v-if="message.role === 'assistant' && message.content"
               class="markdown-body prose prose-sm max-w-none break-words text-fg dark:prose-invert"
-              v-html="renderMarkdown(message.content)"
+              v-html="renderMarkdown(message)"
             />
             <p v-else class="whitespace-pre-wrap break-words text-fg">{{ message.content || (sending ? '…' : '') }}</p>
           </div>
@@ -175,6 +175,16 @@ async function send() {
 
   const temperature = form.temperature === '' ? undefined : Number(form.temperature)
   const system = form.system.trim()
+  // Apply stream deltas at most once per animation frame; each apply re-renders the reply's markdown.
+  let pending = ''
+  let frame = 0
+  const flush = () => {
+    frame = 0
+    if (!pending) return
+    reply.content += pending
+    pending = ''
+    scrollToBottom()
+  }
   try {
     const res = await gatewayFetch('/v1/chat/completions', {
       method: 'POST',
@@ -188,12 +198,14 @@ async function send() {
     })
     if (!res.ok || !res.body) throw new Error(await responseError(res))
     for await (const delta of readChatDeltas(res.body)) {
-      reply.content += delta
-      scrollToBottom()
+      pending += delta
+      if (!frame) frame = requestAnimationFrame(flush)
     }
   } catch (err) {
     if ((err as Error).name !== 'AbortError') appStore.showError((err as Error).message || t('common.unknownError'))
   } finally {
+    cancelAnimationFrame(frame)
+    flush()
     // Drop an empty reply so a failed turn leaves no blank bubble.
     if (!reply.content) messages.value = messages.value.filter((message) => message !== reply)
     sending.value = false
@@ -201,9 +213,16 @@ async function send() {
   }
 }
 
+// Rendered HTML per message: finished turns hit the cache, so a stream delta only re-parses the streaming reply.
+const renderedMarkdown = new WeakMap<ChatMessage, { content: string; html: string }>()
+
 // Model output is untrusted: always sanitize the rendered HTML.
-function renderMarkdown(content: string) {
-  return DOMPurify.sanitize(marked.parse(content, { breaks: true, gfm: true, async: false }))
+function renderMarkdown(message: ChatMessage) {
+  const cached = renderedMarkdown.get(message)
+  if (cached?.content === message.content) return cached.html
+  const html = DOMPurify.sanitize(marked.parse(message.content, { breaks: true, gfm: true, async: false }))
+  renderedMarkdown.set(message, { content: message.content, html })
+  return html
 }
 
 function scrollToBottom() {

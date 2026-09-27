@@ -8,7 +8,9 @@ import playground from './playground'
 import admin from './admin'
 import misc from './misc'
 
-export default {
+// Everything except the `admin` namespace (~72% of the bundle). The app loads this first and
+// merges `./admin` lazily (see i18n/index.ts); the default export stays the full bundle.
+export const baseMessages = {
   ...landing,
   ...common,
   ...dashboard,
@@ -16,6 +18,7 @@ export default {
   ...batchImage,
   ...imageStudio,
   ...playground,
-  admin,
   ...misc,
 }
+
+export default { ...baseMessages, admin }

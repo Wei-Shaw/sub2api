@@ -364,6 +364,58 @@ describe('useAuthStore', () => {
       const store = useAuthStore()
       await expect(store.refreshUser()).rejects.toThrow('Not authenticated')
     })
+
+    it('并发调用共用同一个 /auth/me 请求', async () => {
+      mockLogin.mockResolvedValue(fakeAuthResponse)
+      const store = useAuthStore()
+      await store.login({ email: 'test@example.com', password: '123456' })
+
+      let resolveMe!: (value: { data: typeof fakeUser }) => void
+      mockGetCurrentUser.mockReturnValue(new Promise((resolve) => { resolveMe = resolve }))
+
+      const first = store.refreshUser()
+      const second = store.refreshUser()
+      expect(mockGetCurrentUser).toHaveBeenCalledTimes(1)
+
+      resolveMe({ data: fakeUser })
+      expect(await first).toEqual(fakeUser)
+      expect(await second).toEqual(fakeUser)
+
+      mockGetCurrentUser.mockResolvedValue({ data: fakeUser })
+      await store.refreshUser()
+      expect(mockGetCurrentUser).toHaveBeenCalledTimes(2)
+    })
+  })
+
+  // --- auto refresh ---
+
+  describe('auto refresh', () => {
+    function setVisibility(state: DocumentVisibilityState) {
+      Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => state })
+    }
+
+    afterEach(() => {
+      delete (document as { visibilityState?: DocumentVisibilityState }).visibilityState
+    })
+
+    it('标签页隐藏时不轮询 /auth/me，恢复可见后继续', async () => {
+      localStorage.setItem('auth_token', 'saved-token')
+      localStorage.setItem('auth_user', JSON.stringify(fakeUser))
+      mockGetCurrentUser.mockResolvedValue({ data: fakeUser })
+      setVisibility('hidden')
+
+      const store = useAuthStore()
+      store.checkAuth()
+      await vi.advanceTimersByTimeAsync(0)
+      const initialCalls = mockGetCurrentUser.mock.calls.length
+
+      await vi.advanceTimersByTimeAsync(10 * 60 * 1000)
+      expect(mockGetCurrentUser).toHaveBeenCalledTimes(initialCalls)
+
+      setVisibility('visible')
+      await vi.advanceTimersByTimeAsync(60 * 1000)
+      expect(mockGetCurrentUser).toHaveBeenCalledTimes(initialCalls + 1)
+    })
   })
 
   // --- isSimpleMode ---
