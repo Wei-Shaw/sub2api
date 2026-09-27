@@ -50,6 +50,18 @@ func recoverStreamGoroutine(name string, onPanic func(err error)) {
 	}
 }
 
+// recoverBackgroundWorker 是后台 worker 单个 tick / 单个任务的 panic 兜底，同样必须以
+// defer 直接调用。放在每一轮（而不是整个循环）里：panic 只结束当前这一轮，下一轮照常运行。
+// onPanic 可为 nil；需要把 panic 计为失败时用它接收 error。
+func recoverBackgroundWorker(name string, onPanic func(err error)) {
+	if recovered := recover(); recovered != nil {
+		err := reportStreamPanic(name, recovered)
+		if onPanic != nil {
+			onPanic(err)
+		}
+	}
+}
+
 // recoverStreamPipeWriter 是 io.Pipe 转换协程专用的兜底：panic 时必须用
 // CloseWithError 关闭写端，否则读端（通常是 http.Response.Body 的消费者）
 // 会永远阻塞在 Read 上。io.Pipe 的错误是“先写先得”，因此即便调用方还有
