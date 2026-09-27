@@ -9,6 +9,7 @@ import (
 	"reflect"
 	"testing"
 
+	"github.com/Wei-Shaw/sub2api/internal/config"
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
 	"github.com/stretchr/testify/require"
@@ -594,4 +595,109 @@ func TestAdminServiceBulkUpdateAccounts_ValidatesFilterResolvedOpenAITargets(t *
 	requireApplicationErrorReason(t, err, "OPENAI_BULK_TARGET_INVALID")
 	require.Equal(t, []int64{7}, repo.getByIDsIDs)
 	require.Zero(t, repo.bulkUpdateCalls)
+}
+
+func TestAdminServiceBulkUpdateAccounts_GroupModeReplaceByDefault(t *testing.T) {
+	for _, mode := range []string{"", BulkGroupModeReplace} {
+		t.Run("mode="+mode, func(t *testing.T) {
+			repo := &accountRepoStubForBulkUpdate{}
+			svc := &adminServiceImpl{accountRepo: repo, groupRepo: &groupRepoStubForAdmin{getByID: &Group{ID: 10}}}
+			groupIDs := []int64{10}
+
+			result, err := svc.BulkUpdateAccounts(context.Background(), &BulkUpdateAccountsInput{
+				AccountIDs:            []int64{1, 2},
+				GroupIDs:              &groupIDs,
+				GroupMode:             mode,
+				SkipMixedChannelCheck: true,
+			})
+
+			require.NoError(t, err)
+			require.Equal(t, 2, result.Success)
+			require.False(t, repo.getByIDsCalled, "replace must not read current groups")
+			require.Equal(t, map[int64][]int64{1: {10}, 2: {10}}, repo.bindGroupsByAccount)
+		})
+	}
+}
+
+func TestAdminServiceBulkUpdateAccounts_GroupModeAddKeepsExistingGroups(t *testing.T) {
+	repo := &accountRepoStubForBulkUpdate{getByIDsAccounts: []*Account{
+		{ID: 1, Platform: PlatformOpenAI, GroupIDs: []int64{10}},
+		{ID: 2, Platform: PlatformOpenAI, GroupIDs: []int64{11, 10}},
+		{ID: 3, Platform: PlatformOpenAI},
+	}}
+	svc := &adminServiceImpl{accountRepo: repo, groupRepo: &groupRepoStubForAdmin{getByID: &Group{ID: 10}}}
+	groupIDs := []int64{10, 12}
+
+	result, err := svc.BulkUpdateAccounts(context.Background(), &BulkUpdateAccountsInput{
+		AccountIDs: []int64{1, 2, 3},
+		GroupIDs:   &groupIDs,
+		GroupMode:  BulkGroupModeAdd,
+	})
+
+	require.NoError(t, err)
+	require.Equal(t, 3, result.Success)
+	require.Equal(t, map[int64][]int64{1: {10, 12}, 2: {11, 10, 12}, 3: {10, 12}}, repo.bindGroupsByAccount)
+}
+
+func TestAdminServiceBulkUpdateAccounts_GroupModeAddStillChecksMixedChannel(t *testing.T) {
+	repo := &accountRepoStubForBulkUpdate{
+		getByIDsAccounts: []*Account{{ID: 1, Platform: PlatformAntigravity, GroupIDs: []int64{11}}},
+		listByGroupData:  map[int64][]Account{10: {{ID: 99, Platform: PlatformAnthropic}}},
+	}
+	svc := &adminServiceImpl{accountRepo: repo, groupRepo: &groupRepoStubForAdmin{getByID: &Group{ID: 10, Name: "target-group"}}}
+	groupIDs := []int64{10}
+
+	result, err := svc.BulkUpdateAccounts(context.Background(), &BulkUpdateAccountsInput{
+		AccountIDs: []int64{1},
+		GroupIDs:   &groupIDs,
+		GroupMode:  BulkGroupModeAdd,
+	})
+
+	require.Nil(t, result)
+	require.ErrorContains(t, err, "mixed channel")
+	require.Empty(t, repo.bindGroupsCalls)
+}
+
+func TestAdminServiceBulkUpdateAccounts_GroupModeRemoveDropsOnlyListedGroups(t *testing.T) {
+	repo := &accountRepoStubForBulkUpdate{
+		getByIDsAccounts: []*Account{
+			{ID: 1, Platform: PlatformAntigravity, GroupIDs: []int64{9, 11}},
+			{ID: 2, Platform: PlatformAntigravity, GroupIDs: []int64{12}},
+		},
+		// Removing must not trip the mixed-channel check or the simple-mode composite guard.
+		listByGroupData: map[int64][]Account{9: {{ID: 99, Platform: PlatformAnthropic}}},
+	}
+	svc := &adminServiceImpl{
+		accountRepo: repo,
+		groupRepo:   &groupRepoStubForAdmin{getByIDByID: map[int64]*Group{9: {ID: 9, Platform: PlatformComposite}}},
+		cfg:         &config.Config{RunMode: config.RunModeSimple},
+	}
+	groupIDs := []int64{9}
+
+	result, err := svc.BulkUpdateAccounts(context.Background(), &BulkUpdateAccountsInput{
+		AccountIDs: []int64{1, 2},
+		GroupIDs:   &groupIDs,
+		GroupMode:  BulkGroupModeRemove,
+	})
+
+	require.NoError(t, err)
+	require.Equal(t, 2, result.Success)
+	require.Equal(t, map[int64][]int64{1: {11}, 2: {12}}, repo.bindGroupsByAccount)
+}
+
+func TestAdminServiceBulkUpdateAccounts_GroupModeMergeRejectsMissingAccount(t *testing.T) {
+	repo := &accountRepoStubForBulkUpdate{getByIDsAccounts: []*Account{{ID: 1, GroupIDs: []int64{10}}}}
+	svc := &adminServiceImpl{accountRepo: repo, groupRepo: &groupRepoStubForAdmin{getByID: &Group{ID: 10}}}
+	groupIDs := []int64{10}
+
+	result, err := svc.BulkUpdateAccounts(context.Background(), &BulkUpdateAccountsInput{
+		AccountIDs: []int64{1, 2},
+		GroupIDs:   &groupIDs,
+		GroupMode:  BulkGroupModeRemove,
+	})
+
+	require.Nil(t, result)
+	require.ErrorIs(t, err, ErrAccountNotFound)
+	require.Zero(t, repo.bulkUpdateCalls)
+	require.Empty(t, repo.bindGroupsCalls)
 }

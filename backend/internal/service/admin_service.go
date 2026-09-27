@@ -466,6 +466,7 @@ type BulkUpdateAccountsInput struct {
 	Status         string
 	Schedulable    *bool
 	GroupIDs       *[]int64
+	GroupMode      string // BulkGroupMode*; empty means replace
 	Credentials    map[string]any
 	Extra          map[string]any
 	ProbeEnabled   *bool
@@ -473,6 +474,13 @@ type BulkUpdateAccountsInput struct {
 	// This should only be set when the caller has explicitly confirmed the risk.
 	SkipMixedChannelCheck bool
 }
+
+// Bulk update group modes.
+const (
+	BulkGroupModeReplace = "replace"
+	BulkGroupModeAdd     = "add"
+	BulkGroupModeRemove  = "remove"
+)
 
 type BulkUpdateAccountFilters struct {
 	Platform    string
