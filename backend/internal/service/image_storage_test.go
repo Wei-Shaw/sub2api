@@ -7,6 +7,7 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -80,7 +81,8 @@ func TestImageResultUploaderRewritesURL(t *testing.T) {
 	defer upstream.Close()
 
 	storage := &fakeImageStorage{}
-	uploader := NewImageResultUploader(storage, "images/", 0, nil)
+	// httptest 监听 127.0.0.1，默认客户端会按 SSRF 策略拒绝，这里显式注入测试客户端。
+	uploader := NewImageResultUploader(storage, "images/", 0, upstream.Client())
 
 	result := json.RawMessage(`{"created":1,"data":[{"url":"` + upstream.URL + `/pic.png"}]}`)
 	out, err := uploader.Rewrite(context.Background(), "imgtask_xyz", result)
@@ -95,6 +97,78 @@ func TestImageResultUploaderRewritesURL(t *testing.T) {
 	}
 	require.NoError(t, json.Unmarshal(out, &parsed))
 	require.JSONEq(t, `"https://cdn.test/images/imgtask_xyz-0.png"`, string(parsed.Data[0]["url"]))
+}
+
+func TestImageResultUploaderDefaultClientBlocksPrivateTargets(t *testing.T) {
+	var hits atomic.Int32
+	local := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		hits.Add(1)
+		_, _ = w.Write(pngBytes)
+	}))
+	defer local.Close()
+
+	for _, rawURL := range []string{
+		local.URL + "/pic.png",                     // 127.0.0.1
+		"http://169.254.169.254/latest/meta-data/", // 云元数据
+		"http://10.0.0.1/pic.png",                  // RFC1918
+	} {
+		t.Run(rawURL, func(t *testing.T) {
+			storage := &fakeImageStorage{}
+			uploader := NewImageResultUploader(storage, "images/", 0, nil)
+			ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+			defer cancel()
+
+			result, err := json.Marshal(map[string]any{"data": []map[string]string{{"url": rawURL}}})
+			require.NoError(t, err)
+			_, err = uploader.Rewrite(ctx, "imgtask_ssrf", result)
+			require.ErrorContains(t, err, "blocked by SSRF policy")
+			require.Empty(t, storage.saved)
+		})
+	}
+	require.Zero(t, hits.Load(), "private target must never be contacted")
+}
+
+func TestImageResultUploaderDefaultClientBlocksRedirectToPrivateTarget(t *testing.T) {
+	client := defaultImageDownloadHTTPClient()
+	base := client.Transport
+	if base == nil {
+		base = http.DefaultTransport
+	}
+	// 第一跳是「公网」地址（在内存中应答 302），第二跳指向内网，必须在拨号时被拦截。
+	client.Transport = roundTripFunc(func(req *http.Request) (*http.Response, error) {
+		if req.URL.Hostname() == "public.example" {
+			return &http.Response{
+				StatusCode: http.StatusFound,
+				Header:     http.Header{"Location": []string{"http://10.0.0.1/pic.png"}},
+				Body:       http.NoBody,
+				Request:    req,
+			}, nil
+		}
+		return base.RoundTrip(req)
+	})
+	storage := &fakeImageStorage{}
+	uploader := NewImageResultUploader(storage, "images/", 0, client)
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+
+	_, err := uploader.Rewrite(ctx, "imgtask_redirect", json.RawMessage(`{"data":[{"url":"http://public.example/pic.png"}]}`))
+	require.ErrorContains(t, err, "blocked by SSRF policy")
+	require.Empty(t, storage.saved)
+}
+
+func TestImageResultUploaderRejectsNonImageDownload(t *testing.T) {
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "image/png")
+		_, _ = w.Write([]byte(`{"secret":"internal metadata"}`))
+	}))
+	defer upstream.Close()
+
+	storage := &fakeImageStorage{}
+	uploader := NewImageResultUploader(storage, "images/", 0, upstream.Client())
+
+	_, err := uploader.Rewrite(context.Background(), "imgtask_text", json.RawMessage(`{"data":[{"url":"`+upstream.URL+`/pic.png"}]}`))
+	require.ErrorContains(t, err, "not an image")
+	require.Empty(t, storage.saved)
 }
 
 func TestImageResultUploaderRewritesImageDataURLWithoutHTTP(t *testing.T) {

@@ -352,7 +352,7 @@ func TestFrontendServer_ServeIndexHTML(t *testing.T) {
 		assert.True(t, strings.HasSuffix(etag, `"`))
 	})
 
-	t.Run("returns_304_for_matching_etag", func(t *testing.T) {
+	t.Run("ignores_if_none_match_so_csp_nonce_stays_fresh", func(t *testing.T) {
 		provider := &mockSettingsProvider{
 			settings: map[string]string{"test": "value"},
 		}
@@ -360,10 +360,12 @@ func TestFrontendServer_ServeIndexHTML(t *testing.T) {
 		server, err := NewFrontendServer(provider)
 		require.NoError(t, err)
 
-		// Use a real router for proper 304 handling
+		// Each request gets a new nonce, like SecurityHeaders does.
+		nonces := []string{"nonce-first", "nonce-second"}
 		router := gin.New()
 		router.Use(func(c *gin.Context) {
-			c.Set(middleware.CSPNonceKey, "test-nonce")
+			c.Set(middleware.CSPNonceKey, nonces[0])
+			nonces = nonces[1:]
 			c.Next()
 		})
 		router.Use(server.Middleware())
@@ -375,14 +377,16 @@ func TestFrontendServer_ServeIndexHTML(t *testing.T) {
 		etag := w1.Header().Get("ETag")
 		require.NotEmpty(t, etag)
 
-		// Second request with If-None-Match
+		// Revalidating with the old ETag must still return the body with the new nonce:
+		// a 304 would pair the new CSP nonce with the cached body's old one.
 		w2 := httptest.NewRecorder()
 		req2 := httptest.NewRequest(http.MethodGet, "/", nil)
 		req2.Header.Set("If-None-Match", etag)
 		router.ServeHTTP(w2, req2)
 
-		assert.Equal(t, http.StatusNotModified, w2.Code)
-		assert.Empty(t, w2.Body.String())
+		assert.Equal(t, http.StatusOK, w2.Code)
+		assert.Contains(t, w2.Body.String(), `nonce="nonce-second"`)
+		assert.NotContains(t, w2.Body.String(), "nonce-first")
 	})
 
 	t.Run("sets_cache_control_header", func(t *testing.T) {

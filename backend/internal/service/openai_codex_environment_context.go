@@ -5,6 +5,7 @@ import (
 	"regexp"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/tidwall/gjson"
@@ -31,6 +32,12 @@ const (
 
 	// codexTimezoneExtraKey 是账号 Extra 里的 IANA 时区名，空值表示不绑定。
 	codexTimezoneExtraKey = "codex_timezone"
+
+	// codexTimezoneNameMaxLen 是可接受的时区名长度上限（最长的 IANA 名约 32 字符）。
+	codexTimezoneNameMaxLen = 64
+	// codexEnvironmentLocationCacheMax 是时区缓存条目上限。时区名来自客户端请求体，
+	// 即使只缓存能加载的名字，"Asia/./Shanghai" 这类路径变体也能无限制造新 key。
+	codexEnvironmentLocationCacheMax = 256
 )
 
 var (
@@ -38,13 +45,15 @@ var (
 	codexEnvironmentDatePattern     = regexp.MustCompile(`<current_date>(\d{4}-\d{2}-\d{2})</current_date>`)
 
 	// time.LoadLocation 每次都读 zoneinfo，热路径上缓存已解析结果。
-	codexEnvironmentLocationCache sync.Map // string -> *time.Location
+	codexEnvironmentLocationCache     sync.Map // string -> *time.Location
+	codexEnvironmentLocationCacheSize atomic.Int64
 )
 
-// loadCodexLocationCached 解析并缓存 IANA 时区。失败结果同样缓存，避免坏值反复触发磁盘读取。
+// loadCodexLocationCached 解析并缓存 IANA 时区。只缓存加载成功的名字且条目数有上限，
+// 失败结果不缓存：客户端可发送任意字符串，缓存失败结果会让内存无限增长。
 func loadCodexLocationCached(name string) *time.Location {
 	name = strings.TrimSpace(name)
-	if name == "" {
+	if name == "" || len(name) > codexTimezoneNameMaxLen {
 		return nil
 	}
 	if cached, ok := codexEnvironmentLocationCache.Load(name); ok {
@@ -53,10 +62,15 @@ func loadCodexLocationCached(name string) *time.Location {
 	}
 	loc, err := time.LoadLocation(name)
 	if err != nil {
-		codexEnvironmentLocationCache.Store(name, (*time.Location)(nil))
 		return nil
 	}
-	codexEnvironmentLocationCache.Store(name, loc)
+	// ponytail: 软上限，并发未命中可能略微超出；缓存满后新名字每次都走 LoadLocation。
+	if codexEnvironmentLocationCacheSize.Load() < codexEnvironmentLocationCacheMax {
+		// Clone：name 可能是请求体文本的子串，直接作 key 会让整段文本常驻内存。
+		if _, loaded := codexEnvironmentLocationCache.LoadOrStore(strings.Clone(name), loc); !loaded {
+			codexEnvironmentLocationCacheSize.Add(1)
+		}
+	}
 	return loc
 }
 
