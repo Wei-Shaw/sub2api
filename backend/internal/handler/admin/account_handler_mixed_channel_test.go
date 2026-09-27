@@ -263,3 +263,37 @@ func TestBulkUpdateAcceptsDedicatedUpstreamBillingProbeSetting(t *testing.T) {
 	require.NotNil(t, adminSvc.lastBulkUpdateAccountInput.ProbeEnabled)
 	require.False(t, *adminSvc.lastBulkUpdateAccountInput.ProbeEnabled)
 }
+
+func TestBulkUpdateGroupMode(t *testing.T) {
+	for _, tt := range []struct {
+		name     string
+		body     map[string]any
+		wantCode int
+		wantMode string
+	}{
+		{"default", map[string]any{"account_ids": []int64{1}, "group_ids": []int64{27}}, http.StatusOK, ""},
+		{"add", map[string]any{"account_ids": []int64{1}, "group_ids": []int64{27}, "group_mode": "add"}, http.StatusOK, service.BulkGroupModeAdd},
+		{"remove", map[string]any{"account_ids": []int64{1}, "group_ids": []int64{27}, "group_mode": "remove"}, http.StatusOK, service.BulkGroupModeRemove},
+		{"unknown mode", map[string]any{"account_ids": []int64{1}, "group_ids": []int64{27}, "group_mode": "merge"}, http.StatusBadRequest, ""},
+		{"add without groups", map[string]any{"account_ids": []int64{1}, "group_ids": []int64{}, "group_mode": "add"}, http.StatusBadRequest, ""},
+		{"remove without group_ids", map[string]any{"account_ids": []int64{1}, "schedulable": true, "group_mode": "remove"}, http.StatusBadRequest, ""},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			adminSvc := newStubAdminService()
+			router := setupAccountMixedChannelRouter(adminSvc)
+
+			body, _ := json.Marshal(tt.body)
+			rec := httptest.NewRecorder()
+			req := httptest.NewRequest(http.MethodPost, "/api/v1/admin/accounts/bulk-update", bytes.NewReader(body))
+			req.Header.Set("Content-Type", "application/json")
+			router.ServeHTTP(rec, req)
+
+			require.Equal(t, tt.wantCode, rec.Code, rec.Body.String())
+			if tt.wantCode != http.StatusOK {
+				require.Nil(t, adminSvc.lastBulkUpdateAccountInput)
+				return
+			}
+			require.Equal(t, tt.wantMode, adminSvc.lastBulkUpdateAccountInput.GroupMode)
+		})
+	}
+}

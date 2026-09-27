@@ -524,6 +524,9 @@ export async function batchUpdateCredentials(request: {
   return data
 }
 
+/** How bulk update applies group_ids; the backend defaults to 'replace'. */
+export type BulkGroupMode = 'replace' | 'add' | 'remove'
+
 /**
  * Bulk update multiple accounts
  * @param accountIds - Array of account IDs

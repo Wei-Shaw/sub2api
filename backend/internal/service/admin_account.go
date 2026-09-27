@@ -10,6 +10,7 @@ import (
 	"maps"
 	"net/http"
 	"reflect"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -981,12 +982,16 @@ func (s *adminServiceImpl) BulkUpdateAccounts(ctx context.Context, input *BulkUp
 	if len(input.AccountIDs) == 0 {
 		return result, nil
 	}
+	// Removing bindings cannot create a disallowed binding or a mixed channel.
+	removingGroups := input.GroupMode == BulkGroupModeRemove
 	if input.GroupIDs != nil {
 		if err := s.validateGroupIDsExist(ctx, *input.GroupIDs); err != nil {
 			return nil, err
 		}
-		if err := s.ValidateAccountGroupBindings(ctx, *input.GroupIDs); err != nil {
-			return nil, err
+		if !removingGroups {
+			if err := s.ValidateAccountGroupBindings(ctx, *input.GroupIDs); err != nil {
+				return nil, err
+			}
 		}
 	}
 	openAISettings, err := normalizeBulkOpenAISettings(input)
@@ -994,11 +999,15 @@ func (s *adminServiceImpl) BulkUpdateAccounts(ctx context.Context, input *BulkUp
 		return nil, err
 	}
 
-	needMixedChannelCheck := input.GroupIDs != nil && !input.SkipMixedChannelCheck
+	needMixedChannelCheck := input.GroupIDs != nil && !input.SkipMixedChannelCheck && !removingGroups
+	// add/remove start from each account's current groups.
+	// ponytail: read-then-rebind is not atomic, so a concurrent group edit on the same
+	// account can be lost; move the merge into the BindGroups tx if that ever matters.
+	mergeGroups := input.GroupIDs != nil && (input.GroupMode == BulkGroupModeAdd || removingGroups)
 
 	// 预取所有目标账号，供凭据守卫/代理守卫/混合渠道检查共用，避免多次 DB 查询。
 	var cachedTargets []*Account
-	if len(input.Credentials) > 0 || input.ProxyID != nil || needMixedChannelCheck || openAISettings.any() || input.ProbeEnabled != nil || input.RateMultiplier != nil {
+	if len(input.Credentials) > 0 || input.ProxyID != nil || needMixedChannelCheck || mergeGroups || openAISettings.any() || input.ProbeEnabled != nil || input.RateMultiplier != nil {
 		loaded, err := s.accountRepo.GetByIDs(ctx, input.AccountIDs)
 		if err != nil {
 			return nil, err
@@ -1017,6 +1026,13 @@ func (s *adminServiceImpl) BulkUpdateAccounts(ctx context.Context, input *BulkUp
 			return nil, err
 		}
 		result.LongContextInheritedCount = inheritedCount
+	}
+	if mergeGroups {
+		for _, accountID := range input.AccountIDs {
+			if _, ok := targetsByID[accountID]; !ok {
+				return nil, ErrAccountNotFound
+			}
+		}
 	}
 	if input.ProbeEnabled != nil {
 		for _, accountID := range input.AccountIDs {
@@ -1187,7 +1203,11 @@ func (s *adminServiceImpl) BulkUpdateAccounts(ctx context.Context, input *BulkUp
 		entry := BulkUpdateAccountResult{AccountID: accountID}
 
 		if input.GroupIDs != nil {
-			if err := s.accountRepo.BindGroups(ctx, accountID, *input.GroupIDs); err != nil {
+			groupIDs := *input.GroupIDs
+			if mergeGroups {
+				groupIDs = bulkGroupIDsForMode(input.GroupMode, targetsByID[accountID].GroupIDs, groupIDs)
+			}
+			if err := s.accountRepo.BindGroups(ctx, accountID, groupIDs); err != nil {
 				entry.Success = false
 				entry.Error = err.Error()
 				result.Failed++
@@ -1204,6 +1224,21 @@ func (s *adminServiceImpl) BulkUpdateAccounts(ctx context.Context, input *BulkUp
 	}
 
 	return result, nil
+}
+
+// bulkGroupIDsForMode applies ids to an account's current groups for the add
+// and remove modes, keeping the current order.
+func bulkGroupIDsForMode(mode string, current, ids []int64) []int64 {
+	if mode == BulkGroupModeRemove {
+		return slices.DeleteFunc(slices.Clone(current), func(id int64) bool { return slices.Contains(ids, id) })
+	}
+	out := slices.Clone(current)
+	for _, id := range ids {
+		if !slices.Contains(out, id) {
+			out = append(out, id)
+		}
+	}
+	return out
 }
 
 func updatesUpstreamBillingProbeIdentity(credentials map[string]any) bool {

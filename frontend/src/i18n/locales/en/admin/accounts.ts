@@ -545,7 +545,15 @@ export default {
         mixedPlatformWarning: 'Selected accounts span multiple platforms ({platforms}). Model mapping presets shown are combined — ensure mappings are appropriate for each platform.',
         groupsReplaceHint: 'Checked groups REPLACE all current groups of every target account. Accounts are removed from any group left unchecked.',
         groupsReplaceConfirm: 'Replace the groups of {count} account(s)? They will be removed from every group that is not checked.',
-        groupsClearConfirm: 'No group is checked. {count} account(s) will be removed from ALL groups and stop serving them. Continue?'
+        groupsClearConfirm: 'No group is checked. {count} account(s) will be removed from ALL groups and stop serving them. Continue?',
+        groupMode: 'How to apply groups',
+        groupModeReplace: 'Replace',
+        groupModeAdd: 'Add',
+        groupModeRemove: 'Remove',
+        groupsAddHint: 'Checked groups are ADDED to every target account. Current groups are kept.',
+        groupsRemoveHint: 'Target accounts are removed from the checked groups only. Other groups are kept.',
+        groupsRemoveConfirm: 'Remove {count} account(s) from the checked groups?',
+        groupsModeEmpty: 'Check at least one group to add or remove.'
       },
       bulkDeleteTitle: 'Bulk Delete Accounts',
       bulkDeleteConfirm: 'Delete the selected {count} account(s)? This action cannot be undone.',

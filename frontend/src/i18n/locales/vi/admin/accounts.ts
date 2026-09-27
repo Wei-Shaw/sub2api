@@ -545,7 +545,15 @@ export default {
         mixedPlatformWarning: 'Các tài khoản đã chọn thuộc nhiều nền tảng ({platforms}). Các preset ánh xạ model hiển thị là kết hợp — hãy đảm bảo ánh xạ phù hợp với từng nền tảng.',
         groupsReplaceHint: 'Các nhóm được chọn sẽ THAY THẾ toàn bộ nhóm hiện tại của mọi tài khoản mục tiêu. Tài khoản sẽ bị gỡ khỏi mọi nhóm không được chọn.',
         groupsReplaceConfirm: 'Thay thế nhóm của {count} tài khoản? Các tài khoản sẽ bị gỡ khỏi mọi nhóm không được chọn.',
-        groupsClearConfirm: 'Chưa chọn nhóm nào. {count} tài khoản sẽ bị gỡ khỏi TẤT CẢ nhóm và ngừng phục vụ các nhóm đó. Tiếp tục?'
+        groupsClearConfirm: 'Chưa chọn nhóm nào. {count} tài khoản sẽ bị gỡ khỏi TẤT CẢ nhóm và ngừng phục vụ các nhóm đó. Tiếp tục?',
+        groupMode: 'Cách áp dụng nhóm',
+        groupModeReplace: 'Thay thế',
+        groupModeAdd: 'Thêm',
+        groupModeRemove: 'Gỡ',
+        groupsAddHint: 'Các nhóm được chọn sẽ được THÊM vào mọi tài khoản mục tiêu. Nhóm hiện có được giữ nguyên.',
+        groupsRemoveHint: 'Tài khoản mục tiêu chỉ bị gỡ khỏi các nhóm được chọn. Các nhóm khác được giữ nguyên.',
+        groupsRemoveConfirm: 'Gỡ {count} tài khoản khỏi các nhóm được chọn?',
+        groupsModeEmpty: 'Hãy chọn ít nhất một nhóm để thêm hoặc gỡ.'
       },
       bulkDeleteTitle: 'Xóa tài khoản hàng loạt',
       bulkDeleteConfirm: 'Xóa {count} tài khoản đã chọn? Thao tác này không thể hoàn tác.',
