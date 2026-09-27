@@ -11,6 +11,13 @@
 # No Setup Wizard needed - the system auto-initializes on first run.
 # =============================================================================
 
+# Cap Docker's json-file logs so stdout logging cannot fill the disk.
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "50m"
+    max-file: "5"
+
 services:
   # ===========================================================================
   # Sub2API Application
@@ -21,6 +28,7 @@ services:
       dockerfile: Dockerfile
     container_name: sub2api
     restart: unless-stopped
+    logging: *default-logging
     # Shutdown drains in-flight requests for up to 30s, then flushes ops error
     # logs (up to 10s) and usage/billing (Cleanup, 10s budget) before closing
     # DB/Redis. Docker's default 10s would SIGKILL mid-flush.
@@ -252,6 +260,7 @@ services:
     image: postgres:18-alpine
     container_name: sub2api-postgres
     restart: unless-stopped
+    logging: *default-logging
     ulimits:
       nofile:
         soft: 100000
@@ -298,6 +307,7 @@ services:
     image: redis:8-alpine
     container_name: sub2api-redis
     restart: unless-stopped
+    logging: *default-logging
     ulimits:
       nofile:
         soft: 100000
@@ -338,6 +348,7 @@ services:
     image: ghcr.io/flaresolverr/flaresolverr:latest
     container_name: sub2api-flaresolverr
     restart: unless-stopped
+    logging: *default-logging
     profiles: ["grok-web"]
     environment:
       - TZ=${TZ:-Asia/Shanghai}
