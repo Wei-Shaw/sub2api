@@ -253,6 +253,18 @@ export default {
     loginFailed: 'Đăng nhập thất bại. Vui lòng kiểm tra thông tin đăng nhập và thử lại.',
     errors: {
       USER_NOT_ACTIVE: 'Tài khoản đã bị vô hiệu hóa.',
+      INVALID_CREDENTIALS: 'Email hoặc mật khẩu không đúng.',
+      EMAIL_EXISTS: 'Email này đã được đăng ký. Hãy đăng nhập hoặc dùng email khác.',
+      EMAIL_RESERVED: 'Địa chỉ email này không thể dùng để đăng ký.',
+      EMAIL_SUFFIX_NOT_ALLOWED: 'Tên miền email này không được phép đăng ký.',
+      REGISTRATION_DISABLED: 'Hiện đã tắt đăng ký. Vui lòng liên hệ quản trị viên.',
+      INVITATION_CODE_REQUIRED: 'Mã mời là bắt buộc',
+      INVITATION_CODE_INVALID: 'Mã mời không hợp lệ hoặc đã được sử dụng',
+      INVALID_VERIFY_CODE: 'Mã xác minh không hợp lệ hoặc đã hết hạn.',
+      VERIFY_CODE_TOO_FREQUENT: 'Vui lòng chờ một lát trước khi yêu cầu mã mới.',
+      VERIFY_CODE_MAX_ATTEMPTS: 'Nhập sai quá nhiều lần. Vui lòng yêu cầu mã mới.',
+      TURNSTILE_VERIFICATION_FAILED: 'Xác minh thất bại, vui lòng thử lại',
+      INVALID_RESET_TOKEN: 'Liên kết đặt lại mật khẩu không hợp lệ hoặc đã hết hạn. Vui lòng yêu cầu liên kết mới.',
     },
     registrationFailed: 'Đăng ký thất bại. Vui lòng thử lại.',
     emailDomainRegistrationLimit:
@@ -305,6 +317,8 @@ export default {
     invitationCodeInvalid: 'Mã mời không hợp lệ hoặc đã được sử dụng',
     invitationCodeValidating: 'Đang kiểm tra mã mời...',
     invitationCodeInvalidCannotRegister: 'Mã mời không hợp lệ. Vui lòng kiểm tra và thử lại',
+    affiliateCodeLabel: 'Mã giới thiệu',
+    affiliateCodePlaceholder: 'Nhập mã giới thiệu',
     oauthOrContinue: 'hoặc tiếp tục bằng cách khác',
     linuxdo: {
       signIn: 'Tiếp tục với Linux.do',
@@ -416,7 +430,21 @@ export default {
       invalidCallbackHint: 'Trang này không chứa kết quả ủy quyền hợp lệ. Hãy quay lại trang đăng nhập và bắt đầu đăng nhập nhanh lại.',
       code: 'Code',
       state: 'State',
-      fullUrl: 'URL đầy đủ'
+      fullUrl: 'URL đầy đủ',
+      error: {
+        access_denied: 'Bạn đã hủy đăng nhập ở nhà cung cấp.',
+        provider_error: 'Nhà cung cấp đăng nhập trả về lỗi. Vui lòng thử lại.',
+        invalid_state: 'Phiên đăng nhập không hợp lệ hoặc đã hết hạn. Vui lòng bắt đầu lại.',
+        missing_params: 'Phản hồi đăng nhập không đầy đủ. Vui lòng bắt đầu lại.',
+        missing_browser_session: 'Phiên trình duyệt đã mất. Vui lòng đăng nhập lại từ đầu.',
+        token_exchange_failed: 'Không thể hoàn tất đăng nhập với nhà cung cấp. Vui lòng thử lại.',
+        userinfo_failed: 'Không đọc được thông tin tài khoản từ nhà cung cấp. Vui lòng thử lại.',
+        session_error: 'Không thể hoàn tất đăng nhập. Vui lòng thử lại.',
+        config_error: 'Phương thức đăng nhập này chưa được cấu hình đúng. Vui lòng liên hệ quản trị viên.',
+        login_blocked: 'Tài khoản này không được phép đăng nhập. Vui lòng liên hệ quản trị viên.',
+        email_not_verified: 'Email của bạn ở nhà cung cấp chưa được xác minh.',
+        ownership_conflict: 'Phương thức đăng nhập này đã được liên kết với tài khoản khác.'
+      }
     },
     // Forgot password
     forgotPassword: 'Quên mật khẩu?',

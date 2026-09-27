@@ -230,6 +230,13 @@
           </template>
         </div>
       </transition>
+
+      <div v-if="errorMessage" class="space-y-4" data-testid="oauth-callback-error">
+        <p class="text-body text-danger" role="alert">{{ errorMessage }}</p>
+        <button type="button" class="btn btn-primary w-full" @click="router.replace('/login')">
+          {{ t('auth.backToLogin') }}
+        </button>
+      </div>
     </div>
   </AuthLayout>
 </template>
@@ -245,6 +252,7 @@ import PendingOAuthCreateAccountForm, {
 import { apiClient } from '@/api/client'
 import { useAuthStore, useAppStore } from '@/stores'
 import { sanitizeRedirectPath } from '@/utils/redirect'
+import { buildOAuthCallbackErrorMessage } from '@/utils/authError'
 import {
   completeLinuxDoOAuthRegistration,
   exchangePendingOAuthCompletion,
@@ -744,7 +752,6 @@ onMounted(async () => {
   const legacyLogin = readLegacyFragmentLogin(params)
   const legacyPendingToken = params.get('pending_oauth_token')?.trim() || ''
   const error = params.get('error')
-  const errorDesc = params.get('error_description') || params.get('error_message') || ''
   const redirect = sanitizeRedirectPath(
     params.get('redirect') || (route.query.redirect as string | undefined)
   )
@@ -768,7 +775,7 @@ onMounted(async () => {
     }
 
     if (error) {
-      errorMessage.value = errorDesc || error
+      errorMessage.value = buildOAuthCallbackErrorMessage(t, params)
       isProcessing.value = false
       return
     }

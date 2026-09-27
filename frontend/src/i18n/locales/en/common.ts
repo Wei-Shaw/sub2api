@@ -253,6 +253,18 @@ export default {
     loginFailed: 'Login failed. Please check your credentials and try again.',
     errors: {
       USER_NOT_ACTIVE: 'Account has been disabled.',
+      INVALID_CREDENTIALS: 'Incorrect email or password.',
+      EMAIL_EXISTS: 'This email is already registered. Sign in instead or use another email.',
+      EMAIL_RESERVED: 'This email address cannot be used for registration.',
+      EMAIL_SUFFIX_NOT_ALLOWED: 'This email domain is not allowed for registration.',
+      REGISTRATION_DISABLED: 'Registration is currently disabled. Please contact the administrator.',
+      INVITATION_CODE_REQUIRED: 'Invitation code is required',
+      INVITATION_CODE_INVALID: 'Invalid or used invitation code',
+      INVALID_VERIFY_CODE: 'The verification code is invalid or has expired.',
+      VERIFY_CODE_TOO_FREQUENT: 'Please wait a moment before requesting a new code.',
+      VERIFY_CODE_MAX_ATTEMPTS: 'Too many failed attempts. Please request a new code.',
+      TURNSTILE_VERIFICATION_FAILED: 'Verification failed, please try again',
+      INVALID_RESET_TOKEN: 'The password reset link is invalid or has expired. Please request a new one.',
     },
     registrationFailed: 'Registration failed. Please try again.',
     emailDomainRegistrationLimit:
@@ -305,6 +317,8 @@ export default {
     invitationCodeInvalid: 'Invalid or used invitation code',
     invitationCodeValidating: 'Validating invitation code...',
     invitationCodeInvalidCannotRegister: 'Invalid invitation code. Please check and try again',
+    affiliateCodeLabel: 'Affiliate Code',
+    affiliateCodePlaceholder: 'Enter affiliate code',
     oauthOrContinue: 'or continue with others',
     linuxdo: {
       signIn: 'Continue with Linux.do',
@@ -416,7 +430,21 @@ export default {
       invalidCallbackHint: 'This page does not contain a valid authorization result. Return to the login page and start quick sign-in again.',
       code: 'Code',
       state: 'State',
-      fullUrl: 'Full URL'
+      fullUrl: 'Full URL',
+      error: {
+        access_denied: 'Sign-in was cancelled at the provider.',
+        provider_error: 'The sign-in provider returned an error. Please try again.',
+        invalid_state: 'The sign-in session is invalid or has expired. Please start again.',
+        missing_params: 'The sign-in response is incomplete. Please start again.',
+        missing_browser_session: 'Your browser session was lost. Please start sign-in again.',
+        token_exchange_failed: 'Could not complete sign-in with the provider. Please try again.',
+        userinfo_failed: 'Could not read your account details from the provider. Please try again.',
+        session_error: 'Could not finish signing you in. Please try again.',
+        config_error: 'This sign-in method is not configured correctly. Please contact the administrator.',
+        login_blocked: 'This account is not allowed to sign in. Please contact the administrator.',
+        email_not_verified: 'Your email address at the provider is not verified.',
+        ownership_conflict: 'This sign-in is already linked to another account.'
+      }
     },
     // Forgot password
     forgotPassword: 'Forgot password?',

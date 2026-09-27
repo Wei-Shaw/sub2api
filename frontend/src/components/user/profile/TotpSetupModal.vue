@@ -96,6 +96,7 @@
               <button
                 type="button"
                 class="btn btn-ghost btn-icon"
+                :aria-label="t('common.copy')"
                 @click="copySecret"
               >
                 <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">

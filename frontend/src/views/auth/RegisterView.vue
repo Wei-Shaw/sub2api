@@ -44,9 +44,14 @@
               :disabled="registrationActionDisabled"
               class="input"
               :class="{ 'input-error': errors.email }"
+              :aria-invalid="!!errors.email"
+              :aria-describedby="errors.email ? 'email-error' : undefined"
               :placeholder="t('auth.emailPlaceholder')"
             />
           </div>
+          <p v-if="errors.email" id="email-error" class="input-error-text" role="alert">
+            {{ errors.email }}
+          </p>
         </div>
 
         <!-- Password Input -->
@@ -64,18 +69,24 @@
               :disabled="registrationActionDisabled"
               class="input pr-11"
               :class="{ 'input-error': errors.password }"
+              :aria-invalid="!!errors.password"
+              :aria-describedby="errors.password ? 'password-error' : undefined"
               :placeholder="t('auth.createPasswordPlaceholder')"
             />
             <button
               type="button"
+              :aria-label="showPassword ? t('auth.hidePassword') : t('auth.showPassword')"
               :disabled="registrationActionDisabled"
               @click="showPassword = !showPassword"
-              class="absolute inset-y-0 right-0 flex items-center pr-3.5 text-fg-subtle transition-colors hover:text-fg"
+              class="absolute inset-y-0 right-0 flex items-center rounded pr-3.5 text-fg-subtle transition-colors hover:text-fg focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/50"
             >
               <Icon v-if="showPassword" name="eyeOff" size="md" />
               <Icon v-else name="eye" size="md" />
             </button>
           </div>
+          <p v-if="errors.password" id="password-error" class="input-error-text" role="alert">
+            {{ errors.password }}
+          </p>
           <p class="input-hint">
             {{ t('auth.passwordHint') }}
           </p>
@@ -96,18 +107,29 @@
               :disabled="registrationActionDisabled"
               class="input pr-11"
               :class="{ 'input-error': errors.confirmPassword }"
+              :aria-invalid="!!errors.confirmPassword"
+              :aria-describedby="errors.confirmPassword ? 'confirmPassword-error' : undefined"
               :placeholder="t('auth.confirmPasswordPlaceholder')"
             />
             <button
               type="button"
+              :aria-label="showConfirmPassword ? t('auth.hidePassword') : t('auth.showPassword')"
               :disabled="registrationActionDisabled"
               @click="showConfirmPassword = !showConfirmPassword"
-              class="absolute inset-y-0 right-0 flex items-center pr-3.5 text-fg-subtle transition-colors hover:text-fg"
+              class="absolute inset-y-0 right-0 flex items-center rounded pr-3.5 text-fg-subtle transition-colors hover:text-fg focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/50"
             >
               <Icon v-if="showConfirmPassword" name="eyeOff" size="md" />
               <Icon v-else name="eye" size="md" />
             </button>
           </div>
+          <p
+            v-if="errors.confirmPassword"
+            id="confirmPassword-error"
+            class="input-error-text"
+            role="alert"
+          >
+            {{ errors.confirmPassword }}
+          </p>
         </div>
 
         <!-- Invitation Code Input (Required when enabled) -->
@@ -126,6 +148,8 @@
                 'border-success focus:border-success focus:ring-success': invitationValidation.valid,
                 'border-danger focus:border-danger focus:ring-danger': invitationValidation.invalid || errors.invitation_code
               }"
+              :aria-invalid="!!invitationCodeError"
+              :aria-describedby="invitationCodeError ? 'invitation_code-error' : undefined"
               :placeholder="t('auth.invitationCodePlaceholder')"
               @input="handleInvitationCodeInput"
             />
@@ -143,6 +167,9 @@
               <Icon name="exclamationCircle" size="md" class="text-danger" />
             </div>
           </div>
+          <p v-if="invitationCodeError" id="invitation_code-error" class="input-error-text" role="alert">
+            {{ invitationCodeError }}
+          </p>
           <!-- Invitation code validation result -->
           <transition name="fade">
             <div v-if="invitationValidation.valid" class="mt-2 flex items-center gap-2 border border-success/60 bg-success-weak px-3 py-2">
@@ -157,7 +184,7 @@
         <!-- Affiliate Invitation Code Input (Optional) -->
         <div v-else-if="affiliateEnabled" data-testid="affiliate-invitation-field">
           <label for="affiliate_code" class="input-label">
-            {{ t('auth.invitationCodeLabel') }}
+            {{ t('auth.affiliateCodeLabel') }}
             <span class="ml-1 text-meta font-normal text-fg-subtle">({{ t('common.optional') }})</span>
           </label>
           <div class="relative">
@@ -167,7 +194,7 @@
               type="text"
               :disabled="registrationActionDisabled"
               class="input"
-              :placeholder="t('auth.invitationCodePlaceholder')"
+              :placeholder="t('auth.affiliateCodePlaceholder')"
             />
           </div>
         </div>
@@ -189,6 +216,8 @@
                 'border-success focus:border-success focus:ring-success': promoValidation.valid,
                 'border-danger focus:border-danger focus:ring-danger': promoValidation.invalid
               }"
+              :aria-invalid="promoValidation.invalid"
+              :aria-describedby="promoValidation.invalid ? 'promo_code-error' : undefined"
               :placeholder="t('auth.promoCodePlaceholder')"
               @input="handlePromoCodeInput"
             />
@@ -206,6 +235,9 @@
               <Icon name="exclamationCircle" size="md" class="text-danger" />
             </div>
           </div>
+          <p v-if="promoValidation.invalid" id="promo_code-error" class="input-error-text" role="alert">
+            {{ promoValidation.message }}
+          </p>
           <!-- Promo code validation result -->
           <transition name="fade">
             <div v-if="promoValidation.valid" class="mt-2 flex items-center gap-2 border border-success/60 bg-success-weak px-3 py-2">
@@ -234,6 +266,9 @@
             @expire="onTurnstileExpire"
             @error="onTurnstileError"
           />
+          <p v-if="errors.turnstile" class="input-error-text" role="alert">
+            {{ errors.turnstile }}
+          </p>
         </div>
 
         <LoginAgreementPrompt
@@ -247,6 +282,10 @@
           @reject="rejectLoginAgreement"
           @open="showAgreementModal = true"
         />
+
+        <p v-if="errorMessage" class="input-error-text" role="alert" data-testid="auth-form-error">
+          {{ errorMessage }}
+        </p>
 
         <!-- Submit Button -->
         <button
@@ -364,7 +403,7 @@ import {
   validateInvitationCode
 } from '@/api/auth'
 import { buildAuthErrorMessage } from '@/utils/authError'
-import { extractApiErrorCode, extractI18nErrorMessage } from '@/utils/apiError'
+import { extractI18nErrorMessage } from '@/utils/apiError'
 import {
   isRegistrationEmailSuffixAllowed,
   normalizeRegistrationEmailSuffixWhitelist
@@ -490,12 +529,15 @@ const errors = reactive({
   invitation_code: ''
 })
 
+const invitationCodeError = computed(
+  () => (invitationValidation.invalid ? invitationValidation.message : '') || errors.invitation_code
+)
+
 const validationToastMessage = computed(() =>
   errors.email ||
   errors.password ||
   errors.confirmPassword ||
-  (invitationValidation.invalid ? invitationValidation.message : '') ||
-  errors.invitation_code ||
+  invitationCodeError.value ||
   (promoValidation.invalid ? promoValidation.message : '') ||
   errors.turnstile ||
   ''
@@ -532,9 +574,27 @@ function syncAffiliateReferralCode(): string {
   return code
 }
 
+// EmailVerifyView's back button leaves the typed fields (never the password) in register_data.
+// A draft that still holds a password is the live submission reached via browser Back:
+// keep it so browser Forward to /email-verify still works.
+function restoreRegisterDraft(): void {
+  try {
+    const draft = JSON.parse(sessionStorage.getItem('register_data') || '{}')
+    formData.email = draft.email || ''
+    formData.promo_code = draft.promo_code || ''
+    formData.invitation_code = draft.invitation_code || ''
+    formData.aff_code = draft.aff_code || ''
+    if (draft.password) return
+  } catch {
+    // Ignore a malformed draft; the form simply starts empty.
+  }
+  sessionStorage.removeItem('register_data')
+}
+
 // ==================== Lifecycle ====================
 
 onMounted(async () => {
+  restoreRegisterDraft()
   syncAffiliateReferralCode()
 
   try {
@@ -566,9 +626,9 @@ onMounted(async () => {
     emailDomainQuotaEnabled.value = settings.registration_email_domain_quota_enabled === true
     applyLoginAgreementSettings(settings)
 
-    // Read promo code from URL parameter only if promo code is enabled
+    // Read promo code from URL parameter (or the restored draft) only if promo code is enabled
     if (promoCodeEnabled.value) {
-      const promoParam = route.query.promo as string
+      const promoParam = (route.query.promo as string) || formData.promo_code
       if (promoParam) {
         formData.promo_code = promoParam
         // Validate the promo code from URL
@@ -1056,7 +1116,7 @@ async function handleRegister(): Promise<void> {
     await router.push('/dashboard')
   } catch (error: unknown) {
     // Handle registration error
-    errorMessage.value = buildRegistrationErrorMessage(error, t('auth.registrationFailed'))
+    errorMessage.value = buildAuthErrorMessage(error, { fallback: t('auth.registrationFailed'), t })
 
     // Also show error toast
     appStore.showError(errorMessage.value)
@@ -1066,13 +1126,6 @@ async function handleRegister(): Promise<void> {
     }
     isLoading.value = false
   }
-}
-
-function buildRegistrationErrorMessage(error: unknown, fallback: string): string {
-  if (extractApiErrorCode(error) === 'EMAIL_DOMAIN_REGISTRATION_LIMIT') {
-    return t('auth.emailDomainRegistrationLimit')
-  }
-  return buildAuthErrorMessage(error, { fallback })
 }
 </script>
 

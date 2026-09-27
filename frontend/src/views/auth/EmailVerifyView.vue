@@ -46,8 +46,13 @@
             :disabled="isLoading"
             class="input py-3 text-center font-mono text-xl tracking-[0.5em]"
             :class="{ 'input-error': errors.code }"
+            :aria-invalid="!!errors.code"
+            :aria-describedby="errors.code ? 'code-error' : undefined"
             placeholder="000000"
           />
+          <p v-if="errors.code" id="code-error" class="input-error-text" role="alert">
+            {{ errors.code }}
+          </p>
           <p class="input-hint">{{ t('auth.verificationCodeHint') }}</p>
         </div>
 
@@ -104,6 +109,14 @@
             @error="onCreateAccountTurnstileError"
           />
         </div>
+
+        <p v-if="errors.turnstile" class="input-error-text" role="alert">
+          {{ errors.turnstile }}
+        </p>
+
+        <p v-if="errorMessage" class="input-error-text" role="alert" data-testid="auth-form-error">
+          {{ errorMessage }}
+        </p>
 
         <!-- Submit Button -->
         <button
@@ -194,7 +207,6 @@ import {
 } from '@/api/auth'
 import { apiClient } from '@/api/client'
 import { buildAuthErrorMessage } from '@/utils/authError'
-import { extractApiErrorCode } from '@/utils/apiError'
 import {
   isRegistrationEmailSuffixAllowed,
   normalizeRegistrationEmailSuffixWhitelist
@@ -580,7 +592,7 @@ async function sendCode(): Promise<void> {
 
     showResendTurnstile.value = false
   } catch (error: unknown) {
-    errorMessage.value = buildRegistrationErrorMessage(error, t('auth.sendCodeFailed'))
+    errorMessage.value = buildAuthErrorMessage(error, { fallback: t('auth.sendCodeFailed'), t })
 
     appStore.showError(errorMessage.value)
   } finally {
@@ -743,7 +755,7 @@ async function handleVerify(): Promise<void> {
     // Redirect to dashboard
     await router.push(pendingRedirect.value || '/dashboard')
   } catch (error: unknown) {
-    errorMessage.value = buildRegistrationErrorMessage(error, t('auth.verifyFailed'))
+    errorMessage.value = buildAuthErrorMessage(error, { fallback: t('auth.verifyFailed'), t })
 
     appStore.showError(errorMessage.value)
   } finally {
@@ -757,18 +769,19 @@ async function handleVerify(): Promise<void> {
 }
 
 function handleBack(): void {
-  // Clear session data
-  sessionStorage.removeItem('register_data')
+  // Hand the typed fields back to RegisterView; never the password or captcha proof
+  sessionStorage.setItem(
+    'register_data',
+    JSON.stringify({
+      email: email.value,
+      promo_code: promoCode.value || undefined,
+      invitation_code: invitationCode.value || undefined,
+      aff_code: affCode.value || undefined
+    })
+  )
 
   // Go back to registration
   router.push('/register')
-}
-
-function buildRegistrationErrorMessage(error: unknown, fallback: string): string {
-  if (extractApiErrorCode(error) === 'EMAIL_DOMAIN_REGISTRATION_LIMIT') {
-    return t('auth.emailDomainRegistrationLimit')
-  }
-  return buildAuthErrorMessage(error, { fallback })
 }
 </script>
 

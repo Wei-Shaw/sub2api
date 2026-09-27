@@ -35,6 +35,15 @@ vi.mock('vue-i18n', async () => {
         if (key === 'auth.oauthFlow.totpHint') {
           return `verify ${params?.account ?? ''}`.trim()
         }
+        if (key === 'auth.oauth.error.access_denied') {
+          return 'Sign-in was cancelled'
+        }
+        if (key === 'auth.oauth.error.provider_error') {
+          return 'Provider error'
+        }
+        if (key === 'auth.errors.USER_NOT_ACTIVE') {
+          return 'Account disabled'
+        }
         return key
       }
     })
@@ -736,5 +745,93 @@ describe('LinuxDoCallbackView', () => {
     })
     expect(setToken).toHaveBeenCalledWith('2fa-access-token')
     expect(replace).toHaveBeenCalledWith('/profile')
+  })
+
+  it('shows a persistent localized error with a way back to login when the provider returns an error', async () => {
+    window.location.hash = '#error=access_denied&error_description=The+user+denied+access'
+
+    const wrapper = mount(LinuxDoCallbackView, {
+      global: {
+        stubs: {
+          AuthLayout: { template: '<div><slot /></div>' },
+          Icon: true,
+          RouterLink: { template: '<a><slot /></a>' },
+          transition: false
+        }
+      }
+    })
+
+    await flushPromises()
+
+    const block = wrapper.get('[data-testid="oauth-callback-error"]')
+    expect(block.get('[role="alert"]').text()).toBe('Sign-in was cancelled')
+    expect(showError).toHaveBeenCalledWith('Sign-in was cancelled')
+    expect(exchangePendingOAuthCompletion).not.toHaveBeenCalled()
+
+    await block.get('button').trigger('click')
+    expect(replace).toHaveBeenCalledWith('/login')
+  })
+
+  it.each([
+    ['access_denied', 'Sign-in was cancelled'],
+    ['server_error', 'The user denied access']
+  ])('maps a backend-relayed provider_error carrying %s', async (providerCode, expected) => {
+    window.location.hash = `#error=provider_error&error_message=${providerCode}&error_description=The+user+denied+access`
+
+    const wrapper = mount(LinuxDoCallbackView, {
+      global: {
+        stubs: {
+          AuthLayout: { template: '<div><slot /></div>' },
+          Icon: true,
+          RouterLink: { template: '<a><slot /></a>' },
+          transition: false
+        }
+      }
+    })
+
+    await flushPromises()
+
+    expect(wrapper.get('[data-testid="oauth-callback-error"] [role="alert"]').text()).toBe(expected)
+  })
+
+  it('prefers the localized backend reason carried by a session_error callback', async () => {
+    window.location.hash = '#error=session_error&error_message=USER_NOT_ACTIVE&error_description=user+is+not+active'
+
+    const wrapper = mount(LinuxDoCallbackView, {
+      global: {
+        stubs: {
+          AuthLayout: { template: '<div><slot /></div>' },
+          Icon: true,
+          RouterLink: { template: '<a><slot /></a>' },
+          transition: false
+        }
+      }
+    })
+
+    await flushPromises()
+
+    expect(wrapper.get('[data-testid="oauth-callback-error"] [role="alert"]').text()).toBe('Account disabled')
+  })
+
+  it('offers a way back to login when the pending exchange fails', async () => {
+    exchangePendingOAuthCompletion.mockRejectedValue(new Error('exchange failed'))
+
+    const wrapper = mount(LinuxDoCallbackView, {
+      global: {
+        stubs: {
+          AuthLayout: { template: '<div><slot /></div>' },
+          Icon: true,
+          RouterLink: { template: '<a><slot /></a>' },
+          transition: false
+        }
+      }
+    })
+
+    await flushPromises()
+
+    const block = wrapper.get('[data-testid="oauth-callback-error"]')
+    expect(block.text()).toContain('exchange failed')
+    await block.get('button').trigger('click')
+    expect(replace).toHaveBeenCalledWith('/login')
   })
 })

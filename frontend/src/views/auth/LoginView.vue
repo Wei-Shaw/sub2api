@@ -27,8 +27,13 @@
             :disabled="authActionDisabled"
             class="input"
             :class="{ 'input-error': errors.email }"
+            :aria-invalid="!!errors.email"
+            :aria-describedby="errors.email ? 'email-error' : undefined"
             :placeholder="t('auth.emailPlaceholder')"
           />
+          <p v-if="errors.email" id="email-error" class="input-error-text" role="alert">
+            {{ errors.email }}
+          </p>
         </div>
 
         <!-- Password Input -->
@@ -55,6 +60,8 @@
               :disabled="authActionDisabled"
               class="input pr-11"
               :class="{ 'input-error': errors.password }"
+              :aria-invalid="!!errors.password"
+              :aria-describedby="errors.password ? 'password-error' : undefined"
               :placeholder="t('auth.passwordPlaceholder')"
             />
             <button
@@ -68,6 +75,9 @@
               <Icon v-else name="eye" size="md" />
             </button>
           </div>
+          <p v-if="errors.password" id="password-error" class="input-error-text" role="alert">
+            {{ errors.password }}
+          </p>
         </div>
 
         <!-- Turnstile Widget -->
@@ -87,7 +97,14 @@
             @expire="onTurnstileExpire"
             @error="onTurnstileError"
           />
+          <p v-if="errors.turnstile" class="input-error-text" role="alert">
+            {{ errors.turnstile }}
+          </p>
         </div>
+
+        <p v-if="errorMessage" class="input-error-text" role="alert" data-testid="auth-form-error">
+          {{ errorMessage }}
+        </p>
 
         <!-- Submit Button -->
         <button
@@ -363,9 +380,7 @@ onMounted(async () => {
   const expiredFlag = sessionStorage.getItem('auth_expired')
   if (expiredFlag) {
     sessionStorage.removeItem('auth_expired')
-    const message = t('auth.reloginRequired')
-    errorMessage.value = message
-    appStore.showWarning(message)
+    appStore.showWarning(t('auth.reloginRequired'))
   }
 
   try {
