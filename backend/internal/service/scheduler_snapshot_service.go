@@ -372,6 +372,7 @@ func (s *SchedulerSnapshotService) runFullRebuildWorker(interval time.Duration) 
 }
 
 func (s *SchedulerSnapshotService) pollOutbox() {
+	defer recoverBackgroundWorker("scheduler outbox poll", nil)
 	if s.outboxRepo == nil || s.cache == nil {
 		return
 	}
@@ -1273,7 +1274,12 @@ func (s *SchedulerSnapshotService) coalesceFullRebuild(run func() error) error {
 	coveredThrough := s.fullRebuildRequested
 	s.fullRebuildStateMu.Unlock()
 
-	err := run()
+	// 启动、定时、outbox 触发的全量重建都经过这里：panic 转成本轮的错误返回给调用方，
+	// 调用方的状态（如 outboxRebuildRunning）照常复位，下一轮照常运行。
+	err := func() (err error) {
+		defer recoverBackgroundWorker("scheduler full rebuild", func(panicErr error) { err = panicErr })
+		return run()
+	}()
 
 	s.fullRebuildStateMu.Lock()
 	s.fullRebuildCompleted = coveredThrough

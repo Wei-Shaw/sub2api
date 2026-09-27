@@ -502,6 +502,7 @@ func (s *PaymentService) dispatchPaymentFulfillmentNotification(o *dbent.Payment
 	go func() {
 		ctx, cancel := context.WithTimeout(context.Background(), emailSendTimeout)
 		defer cancel()
+		defer recoverBackgroundWorker("payment fulfillment notification", nil)
 		var err error
 		switch auditAction {
 		case "RECHARGE_SUCCESS":

@@ -39,6 +39,12 @@ const (
 	imageStudioTimeoutPerImage      = 12 * time.Minute
 	// 超过最长执行时间仍未结束的任务视为实例重启遗留，按用户惰性标记失败（多副本安全）。
 	imageStudioStaleAfter = imageStudioTimeoutPerImage*imageStudioMaxN + 5*time.Minute
+	// 转存用独立超时：生成可能已耗尽任务超时，而上游已计费，图片不能因此丢失。
+	imageStudioSaveTimeout = 2 * time.Minute
+	// Stop 取消在途任务后等待其落库的上限（整体清理预算为 10s）。
+	imageStudioShutdownWait = 5 * time.Second
+
+	imageStudioInterruptedMessage = "interrupted: the server shut down before the job finished"
 )
 
 var (
@@ -133,6 +139,12 @@ type ImageStudioService struct {
 	stopOnce sync.Once
 	stop     chan struct{}
 	done     chan struct{}
+
+	// 在途任务运行在服务级上下文下：Stop 取消它并有限等待任务落库为 interrupted。
+	runMu     sync.Mutex
+	runCtx    context.Context
+	runCancel context.CancelFunc
+	runs      sync.WaitGroup
 }
 
 func NewImageStudioService(repo ImageStudioRepository, apiKeys *APIKeyService, settings *ImageStorageSettingService) *ImageStudioService {
@@ -176,11 +188,51 @@ func (s *ImageStudioService) Start() {
 }
 
 func (s *ImageStudioService) Stop() {
-	if s == nil || s.stop == nil {
+	if s == nil {
+		return
+	}
+	s.runMu.Lock()
+	s.runContextLocked()
+	s.runCancel()
+	s.runMu.Unlock()
+	finished := make(chan struct{})
+	go func() {
+		s.runs.Wait()
+		close(finished)
+	}()
+	select {
+	case <-finished:
+	case <-time.After(imageStudioShutdownWait):
+		// 未落库的任务保持 running，由 FailStaleJobs 兜底。
+		logger.L().Warn("image_studio.shutdown_wait_timeout")
+	}
+
+	if s.stop == nil {
 		return
 	}
 	s.stopOnce.Do(func() { close(s.stop) })
 	<-s.done
+}
+
+// runContextLocked 惰性创建服务级任务上下文；调用方须持有 runMu。
+func (s *ImageStudioService) runContextLocked() context.Context {
+	if s.runCtx == nil {
+		s.runCtx, s.runCancel = context.WithCancel(context.Background())
+	}
+	return s.runCtx
+}
+
+// trackRun 登记一个在途任务并返回服务级上下文与完成回调。停机后不再登记（避免与
+// Stop 的 Wait 并发 Add），任务拿到已取消的上下文，快速收尾为 interrupted。
+func (s *ImageStudioService) trackRun() (context.Context, func()) {
+	s.runMu.Lock()
+	defer s.runMu.Unlock()
+	ctx := s.runContextLocked()
+	if ctx.Err() != nil {
+		return ctx, func() {}
+	}
+	s.runs.Add(1)
+	return ctx, s.runs.Done
 }
 
 // RunRetentionOnce 删除超过保留期的已结束任务（级联资产）并尽力清理对象，返回删除的任务数。
@@ -285,13 +337,15 @@ func (s *ImageStudioService) Submit(ctx context.Context, userID int64, in ImageS
 
 // Run 执行任务并把结果写回；调用方应在独立 goroutine 中调用。
 func (s *ImageStudioService) Run(sub *ImageStudioSubmission, execute ImageStudioExecutor) {
+	runCtx, runDone := s.trackRun()
+	defer runDone()
 	job := sub.Job
 	started := time.Now()
 	n := int(gjson.GetBytes(job.Params, "n").Int())
 	if n <= 0 {
 		n = 1
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), imageStudioTimeoutPerImage*time.Duration(n))
+	ctx, cancel := context.WithTimeout(runCtx, imageStudioTimeoutPerImage*time.Duration(n))
 	defer cancel()
 
 	if err := s.repo.MarkJobRunning(ctx, job.ID); err != nil {
@@ -300,13 +354,18 @@ func (s *ImageStudioService) Run(sub *ImageStudioSubmission, execute ImageStudio
 
 	var assets []ImageStudioAsset
 	status, respBody := execute(ctx, sub.Path, sub.APIKey, sub.Body)
+	succeeded := status >= http.StatusOK && status < http.StatusMultipleChoices
 	switch {
+	case runCtx.Err() != nil && !succeeded:
+		job.Status, job.ErrorMessage = ImageStudioStatusFailed, imageStudioInterruptedMessage
 	case ctx.Err() != nil && len(respBody) == 0:
 		job.Status, job.ErrorMessage = ImageStudioStatusFailed, "image generation timed out"
-	case status < http.StatusOK || status >= http.StatusMultipleChoices:
+	case !succeeded:
 		job.Status, job.ErrorMessage = ImageStudioStatusFailed, imageStudioErrorMessage(status, respBody)
 	default:
-		assets = s.saveAssets(ctx, job, respBody)
+		saveCtx, saveCancel := context.WithTimeout(context.Background(), imageStudioSaveTimeout)
+		assets = s.saveAssets(saveCtx, job, respBody)
+		saveCancel()
 	}
 	job.ImageCount = len(assets)
 	job.ErrorMessage = truncateRunes(job.ErrorMessage, imageStudioMessageRuneLimit)

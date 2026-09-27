@@ -112,10 +112,18 @@ func (d *PgDumper) Restore(ctx context.Context, data io.Reader) error {
 		"-p", fmt.Sprintf("%d", d.cfg.Port),
 		"-U", d.cfg.User,
 		"-d", d.cfg.DBName,
+		// Without ON_ERROR_STOP psql exits 0 even when an error aborted the
+		// single transaction (COMMIT turns into ROLLBACK), so a restore that
+		// restored nothing would be reported as successful.
+		"-v", "ON_ERROR_STOP=1",
 		"--single-transaction",
 	}
 
-	cmd := exec.CommandContext(ctx, "psql", args...)
+	commandContext := d.commandContext
+	if commandContext == nil {
+		commandContext = exec.CommandContext
+	}
+	cmd := commandContext(ctx, "psql", args...)
 	if d.cfg.Password != "" {
 		cmd.Env = append(cmd.Environ(), "PGPASSWORD="+d.cfg.Password)
 	}
