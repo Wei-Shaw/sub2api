@@ -321,6 +321,45 @@ describe('PaymentView help text', () => {
   })
 })
 
+describe('PaymentView checkout load failure', () => {
+  it('shows the load error with a retry instead of claiming top-up is unavailable', async () => {
+    vi.useRealTimers()
+    routeState.path = '/purchase'
+    routeState.query = {}
+    showError.mockReset()
+    window.localStorage.clear()
+    getCheckoutInfo.mockReset()
+      .mockRejectedValueOnce({ status: 500, message: 'Internal Server Error' })
+      .mockResolvedValueOnce(checkoutInfoFixture())
+
+    const wrapper = shallowMount(PaymentView, {
+      global: {
+        stubs: {
+          AppLayout: { template: '<div><slot /></div>' },
+          Teleport: true,
+          Transition: false,
+        },
+      },
+    })
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('Internal Server Error')
+    expect(wrapper.text()).not.toContain('payment.notAvailable')
+    expect(wrapper.text()).not.toContain('payment.rechargeAccount')
+    expect(showError).toHaveBeenCalledWith('Internal Server Error')
+
+    const retry = wrapper.findAll('button').find(button => button.text() === 'common.refresh')
+    expect(retry).toBeDefined()
+    await retry!.trigger('click')
+    await flushPromises()
+
+    expect(getCheckoutInfo).toHaveBeenCalledTimes(2)
+    expect(wrapper.text()).not.toContain('Internal Server Error')
+    expect(wrapper.text()).toContain('payment.rechargeAccount')
+    wrapper.unmount()
+  })
+})
+
 describe('PaymentView subscription plan grid', () => {
   it.each([3, 4, 6])('keeps %i plans on the existing mobile/tablet/desktop grid', async (planCount) => {
     const wrapper = await mountSubscriptionPlanList(planCount)
