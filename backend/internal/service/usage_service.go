@@ -4,17 +4,23 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strconv"
 	"time"
 
 	dbent "github.com/Wei-Shaw/sub2api/ent"
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/usagestats"
+	gocache "github.com/patrickmn/go-cache"
 )
 
 var (
 	ErrUsageLogNotFound = infraerrors.NotFound("USAGE_LOG_NOT_FOUND", "usage log not found")
 )
+
+// 仪表盘汇总会聚合该用户/API Key 的全部历史 usage_logs，短 TTL 缓存挡住反复刷新。
+// 仅用于展示，额度与计费判断不读这里。
+const usageDashboardStatsCacheTTL = 30 * time.Second
 
 // CreateUsageLogRequest 创建使用日志请求
 type CreateUsageLogRequest struct {
@@ -60,6 +66,7 @@ type UsageService struct {
 	userRepo             UserRepository
 	entClient            *dbent.Client
 	authCacheInvalidator APIKeyAuthCacheInvalidator
+	statsCache           *gocache.Cache
 }
 
 // NewUsageService 创建使用统计服务实例
@@ -69,6 +76,7 @@ func NewUsageService(usageRepo UsageLogRepository, userRepo UserRepository, entC
 		userRepo:             userRepo,
 		entClient:            entClient,
 		authCacheInvalidator: authCacheInvalidator,
+		statsCache:           gocache.New(usageDashboardStatsCacheTTL, time.Minute),
 	}
 }
 
@@ -291,20 +299,49 @@ func (s *UsageService) Delete(ctx context.Context, id int64) error {
 
 // GetUserDashboardStats returns per-user dashboard summary stats.
 func (s *UsageService) GetUserDashboardStats(ctx context.Context, userID int64) (*usagestats.UserDashboardStats, error) {
+	key := "u:" + strconv.FormatInt(userID, 10)
+	if stats, ok := s.cachedDashboardStats(key); ok {
+		return stats, nil
+	}
 	stats, err := s.usageRepo.GetUserDashboardStats(ctx, userID)
 	if err != nil {
 		return nil, fmt.Errorf("get user dashboard stats: %w", err)
 	}
+	s.cacheDashboardStats(key, stats)
 	return stats, nil
 }
 
 // GetAPIKeyDashboardStats returns dashboard summary stats filtered by API Key.
 func (s *UsageService) GetAPIKeyDashboardStats(ctx context.Context, apiKeyID int64) (*usagestats.UserDashboardStats, error) {
+	key := "k:" + strconv.FormatInt(apiKeyID, 10)
+	if stats, ok := s.cachedDashboardStats(key); ok {
+		return stats, nil
+	}
 	stats, err := s.usageRepo.GetAPIKeyDashboardStats(ctx, apiKeyID)
 	if err != nil {
 		return nil, fmt.Errorf("get api key dashboard stats: %w", err)
 	}
+	s.cacheDashboardStats(key, stats)
 	return stats, nil
+}
+
+// cachedDashboardStats 返回的指针在调用方之间共享，只读使用。
+func (s *UsageService) cachedDashboardStats(key string) (*usagestats.UserDashboardStats, bool) {
+	if s.statsCache == nil {
+		return nil, false
+	}
+	cached, ok := s.statsCache.Get(key)
+	if !ok {
+		return nil, false
+	}
+	stats, ok := cached.(*usagestats.UserDashboardStats)
+	return stats, ok
+}
+
+func (s *UsageService) cacheDashboardStats(key string, stats *usagestats.UserDashboardStats) {
+	if s.statsCache != nil && stats != nil {
+		s.statsCache.SetDefault(key, stats)
+	}
 }
 
 // GetUserUsageTrendByUserID returns per-user usage trend.

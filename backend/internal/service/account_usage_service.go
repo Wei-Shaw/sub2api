@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log"
 	"log/slog"
+	"maps"
 	"math/rand/v2"
 	"net/http"
 	"strings"
@@ -1795,4 +1796,57 @@ func buildGeminiUsageProgress(used, limit int64, resetAt time.Time, tokens int64
 // 用于账号列表页面显示当前窗口费用
 func (s *AccountUsageService) GetAccountWindowStats(ctx context.Context, accountID int64, startTime time.Time) (*usagestats.AccountStats, error) {
 	return s.usageLogRepo.GetAccountWindowStats(ctx, accountID, startTime)
+}
+
+// GetWindowCostBatch 返回账号当前窗口的标准费用，用于账号列表页。
+// 与网关调度预取一致：先批量读窗口费用缓存（cache 可为 nil），未命中的按窗口起点分组
+// 各走一次批量 SQL 并回写缓存；批量不可用或失败时回退逐个查询，查询失败的账号不出现在结果里。
+func (s *AccountUsageService) GetWindowCostBatch(ctx context.Context, accounts []*Account, cache SessionLimitCache) map[int64]float64 {
+	costs := make(map[int64]float64, len(accounts))
+	if len(accounts) == 0 {
+		return costs
+	}
+	if cache != nil {
+		accountIDs := make([]int64, 0, len(accounts))
+		for _, account := range accounts {
+			accountIDs = append(accountIDs, account.ID)
+		}
+		if cached, err := cache.GetWindowCostBatch(ctx, accountIDs); err == nil {
+			maps.Copy(costs, cached)
+		}
+	}
+
+	missingByStart := make(map[time.Time][]int64)
+	for _, account := range accounts {
+		if _, ok := costs[account.ID]; ok {
+			continue
+		}
+		startTime := account.GetCurrentWindowStartTime().UTC()
+		missingByStart[startTime] = append(missingByStart[startTime], account.ID)
+	}
+
+	batchReader, hasBatch := s.usageLogRepo.(accountWindowStatsBatchReader)
+	for startTime, accountIDs := range missingByStart {
+		if hasBatch {
+			if statsByAccount, err := batchReader.GetAccountWindowStatsBatch(ctx, accountIDs, startTime); err == nil {
+				for _, accountID := range accountIDs {
+					cost := 0.0
+					if stats := statsByAccount[accountID]; stats != nil {
+						cost = stats.StandardCost
+					}
+					costs[accountID] = cost
+					if cache != nil {
+						_ = cache.SetWindowCost(ctx, accountID, cost)
+					}
+				}
+				continue
+			}
+		}
+		for _, accountID := range accountIDs {
+			if stats, err := s.usageLogRepo.GetAccountWindowStats(ctx, accountID, startTime); err == nil && stats != nil {
+				costs[accountID] = stats.StandardCost
+			}
+		}
+	}
+	return costs
 }
