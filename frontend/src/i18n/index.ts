@@ -102,6 +102,7 @@ export async function setLocale(locale: string): Promise<void> {
   const { useAppStore } = await import('@/stores/app')
   const { useAuthStore } = await import('@/stores/auth')
   const { useAdminSettingsStore } = await import('@/stores/adminSettings')
+  const { resolveSiteBillingMode } = await import('@/utils/siteBillingMode')
   const route = router.currentRoute.value
   const appStore = useAppStore()
   const authStore = useAuthStore()
@@ -110,7 +111,10 @@ export async function setLocale(locale: string): Promise<void> {
     ...(appStore.cachedPublicSettings?.custom_menu_items ?? []),
     ...(authStore.isAdmin ? adminSettingsStore.customMenuItems : []),
   ]
-  document.title = resolveRouteDocumentTitle(route, appStore.siteName, customMenuItems)
+  // Same options as App.vue, so /purchase keeps its billing-mode title after a language switch.
+  document.title = resolveRouteDocumentTitle(route, appStore.siteName, customMenuItems, {
+    billingMode: resolveSiteBillingMode(appStore.cachedPublicSettings),
+  })
 }
 
 export function getLocale(): LocaleCode {

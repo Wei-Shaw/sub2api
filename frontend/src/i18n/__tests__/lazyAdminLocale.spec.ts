@@ -1,6 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
 import { i18n, setLocale } from '@/i18n'
 import en from '../locales/en'
+import zh from '../locales/zh'
 
 // vite.config.ts defines this for the app build; without it the runtime build cannot compile messages and t() returns keys.
 vi.hoisted(() => {
@@ -95,5 +96,18 @@ describe('lazy admin locale namespace', () => {
     await setLocale('vi')
 
     expect(i18n.global.te('admin.ops.title', 'vi')).toBe(true)
+  })
+
+  it('switching locale on /purchase keeps the billing-mode title', async () => {
+    routerHarness.currentRoute.value = {
+      name: 'PurchaseSubscription',
+      params: {},
+      meta: { title: 'Purchase Subscription', titleKey: 'nav.buySubscription' },
+    }
+    appStore.cachedPublicSettings = { subscription_enabled: false }
+
+    await setLocale('zh')
+
+    expect(document.title).toBe(`${zh.nav.recharge} - Sub2API`)
   })
 })
