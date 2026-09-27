@@ -1541,9 +1541,14 @@ func (s *GatewayService) filterAccountsBySchedulingThreshold(ctx context.Context
 		return accounts
 	}
 
+	var thresholds map[string]int
+	if s.rateLimitService != nil {
+		thresholds = s.rateLimitService.settingService.GetAccountSchedulingThresholds(ctx)
+	}
+	now := time.Now().UTC()
 	filtered := make([]Account, 0, len(accounts))
 	for i := range accounts {
-		if s.isAccountBlockedBySchedulingThreshold(ctx, &accounts[i]) {
+		if s.rateLimitService.applyAccountSchedulingThresholdWith(ctx, &accounts[i], thresholds, now) {
 			continue
 		}
 		filtered = append(filtered, accounts[i])

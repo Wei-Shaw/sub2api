@@ -163,6 +163,15 @@ func (s *RateLimitService) notifyAccountSchedulingBlockCleared(accountID int64) 
 // unschedulable until the winning window resets. Returns true when the account
 // is blocked (either newly or already paused for the same threshold reason).
 func (s *RateLimitService) ApplyAccountSchedulingThreshold(ctx context.Context, account *Account) bool {
+	if s == nil || s.settingService == nil {
+		return false
+	}
+	return s.applyAccountSchedulingThresholdWith(ctx, account, s.settingService.GetAccountSchedulingThresholds(ctx), time.Now().UTC())
+}
+
+// applyAccountSchedulingThresholdWith is ApplyAccountSchedulingThreshold with
+// thresholds read once by the caller, for loops over many accounts.
+func (s *RateLimitService) applyAccountSchedulingThresholdWith(ctx context.Context, account *Account, thresholds map[string]int, now time.Time) bool {
 	if s == nil || s.settingService == nil || s.accountRepo == nil || account == nil || account.ID <= 0 {
 		return false
 	}
@@ -170,8 +179,6 @@ func (s *RateLimitService) ApplyAccountSchedulingThreshold(ctx context.Context, 
 		return false
 	}
 
-	now := time.Now().UTC()
-	thresholds := s.settingService.GetAccountSchedulingThresholds(ctx)
 	decision := EvaluateAccountSchedulingThreshold(account, thresholds, now)
 	if !decision.ShouldPause || decision.Until == nil || !decision.Until.After(now) {
 		s.applyAnthropicFableSchedulingThreshold(ctx, account, thresholds, now)
