@@ -146,8 +146,9 @@ onBeforeUnmount(() => {
 onMounted(async () => {
   window.addEventListener('admin-compliance-required', onAdminComplianceRequired)
 
-  // Check if setup is needed. Skipped when __APP_CONFIG__ is present: only the main server
-  // injects it, and the main server never needs setup (the setup-mode server does not inject).
+  // Check if setup is needed. Skipped when __APP_CONFIG__ is present: it is set only when the
+  // main server injected public settings or /api/v1/settings/public was fetched successfully,
+  // and neither happens on the setup-mode server (it does not inject and /api/* returns 404).
   if (!window.__APP_CONFIG__) {
     try {
       const status = await getSetupStatus()
