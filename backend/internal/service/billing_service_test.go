@@ -844,6 +844,26 @@ func TestGetFallbackPricing_FamilyMatching(t *testing.T) {
 			expectedCacheRead: floatPtr(0.03e-6),
 		},
 
+		// ---- 阿里百炼 文本重排序（text-rerank）----
+		{
+			name:           "bailian text rerank input only",
+			model:          "qwen3.7-text-rerank",
+			expectedInput:  0.069e-6,
+			expectedOutput: floatPtr(0),
+		},
+		{
+			name:           "bailian text rerank dash alias",
+			model:          "Qwen3-7-Text-Rerank",
+			expectedInput:  0.069e-6,
+			expectedOutput: floatPtr(0),
+		},
+		{
+			name:           "bailian text rerank versioned alias",
+			model:          "qwen3.7-text-rerank-2026-01-15",
+			expectedInput:  0.069e-6,
+			expectedOutput: floatPtr(0),
+		},
+
 		// ---- 火山方舟 豆包 Embedding（多模态向量化）----
 		{
 			name:           "doubao embedding vision text rate",

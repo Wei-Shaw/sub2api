@@ -286,3 +286,166 @@ func TestAccountSupportsOpenAIEndpointCapability_RerankRequiresAPIKeyAccount(t *
 	}
 	require.False(t, oauth.SupportsOpenAIEndpointCapability(OpenAIEndpointCapabilityRerank))
 }
+
+func TestIsBailianTextRerankModel(t *testing.T) {
+	t.Parallel()
+
+	require.True(t, isBailianTextRerankModel("qwen3.7-text-rerank"))
+	require.True(t, isBailianTextRerankModel(" QWEN3.7-TEXT-RERANK "))
+	require.False(t, isBailianTextRerankModel("qwen3.7-text-reranker"))
+	require.False(t, isBailianTextRerankModel("gte-rerank-v2"))
+	require.False(t, isBailianTextRerankModel("BAAI/bge-reranker-v2-m3"))
+	require.False(t, isBailianTextRerankModel(""))
+}
+
+func TestBuildBailianTextRerankURL(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		base string
+		want string
+	}{
+		{
+			name: "bare dashscope domain",
+			base: "https://dashscope.aliyuncs.com",
+			want: "https://dashscope.aliyuncs.com/api/v1/services/rerank/text-rerank/text-rerank",
+		},
+		{
+			name: "workspace subdomain with trailing slash",
+			base: "https://ws-abc.cn-beijing.maas.aliyuncs.com/",
+			want: "https://ws-abc.cn-beijing.maas.aliyuncs.com/api/v1/services/rerank/text-rerank/text-rerank",
+		},
+		{
+			name: "already full path stays unchanged",
+			base: "https://dashscope.aliyuncs.com/api/v1/services/rerank/text-rerank/text-rerank",
+			want: "https://dashscope.aliyuncs.com/api/v1/services/rerank/text-rerank/text-rerank",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			require.Equal(t, tt.want, buildBailianTextRerankURL(tt.base))
+		})
+	}
+}
+
+func TestBuildBailianTextRerankUpstreamBody(t *testing.T) {
+	t.Parallel()
+
+	// 扁平 → 嵌套：query/documents 入 input，top_n/instruct 入 parameters，
+	// return_documents 及其他百炼不支持的扁平参数丢弃。
+	flat := []byte(`{"model":"qwen3.7-text-rerank","query":"q","documents":["a","b"],"top_n":2,"instruct":"rank by relevance","return_documents":true,"temperature":0}`)
+	nested := buildBailianTextRerankUpstreamBody(flat)
+	require.JSONEq(t, `{"model":"qwen3.7-text-rerank","input":{"query":"q","documents":["a","b"]},"parameters":{"top_n":2,"instruct":"rank by relevance"}}`, string(nested))
+	require.False(t, gjson.GetBytes(nested, "return_documents").Exists())
+	require.False(t, gjson.GetBytes(nested, "query").Exists())
+	require.False(t, gjson.GetBytes(nested, "documents").Exists())
+	require.False(t, gjson.GetBytes(nested, "top_n").Exists())
+	require.False(t, gjson.GetBytes(nested, "temperature").Exists())
+
+	// 已嵌套输入原样透传（逐字节不变）。
+	alreadyNested := []byte(`{"model":"qwen3.7-text-rerank","input":{"query":"q","documents":["a"]},"parameters":{"top_n":1}}`)
+	require.Equal(t, alreadyNested, buildBailianTextRerankUpstreamBody(alreadyNested))
+
+	// top_n / instruct 缺省时不生成 parameters 对象。
+	minimal := buildBailianTextRerankUpstreamBody([]byte(`{"model":"qwen3.7-text-rerank","query":"q","documents":["a"]}`))
+	require.JSONEq(t, `{"model":"qwen3.7-text-rerank","input":{"query":"q","documents":["a"]}}`, string(minimal))
+	require.False(t, gjson.GetBytes(minimal, "parameters").Exists())
+}
+
+func TestConvertBailianTextRerankResponse(t *testing.T) {
+	t.Parallel()
+
+	bailian := []byte(`{"output":{"results":[{"index":0,"relevance_score":0.93},{"index":3,"relevance_score":0.81}]},"usage":{"prompt_tokens":79,"total_tokens":79},"request_id":"req-abc"}`)
+	flat := convertBailianTextRerankResponse(bailian, "qwen3.7-text-rerank")
+	require.JSONEq(t, `{"id":"req-abc","model":"qwen3.7-text-rerank","results":[{"index":0,"relevance_score":0.93},{"index":3,"relevance_score":0.81}],"usage":{"prompt_tokens":79,"total_tokens":79},"request_id":"req-abc"}`, string(flat))
+	// results 原样搬运（逐字节比对）。
+	require.Equal(t, gjson.GetBytes(bailian, "output.results").Raw, gjson.GetBytes(flat, "results").Raw)
+	require.Equal(t, "req-abc", gjson.GetBytes(flat, "id").String())
+	require.Equal(t, "req-abc", gjson.GetBytes(flat, "request_id").String())
+	require.Equal(t, "qwen3.7-text-rerank", gjson.GetBytes(flat, "model").String())
+
+	// 无顶层 output：原样返回。
+	noOutput := []byte(`{"results":[],"usage":{"total_tokens":5}}`)
+	require.Equal(t, noOutput, convertBailianTextRerankResponse(noOutput, "qwen3.7-text-rerank"))
+
+	// 非 JSON：原样返回。
+	notJSON := []byte(`plain text`)
+	require.Equal(t, notJSON, convertBailianTextRerankResponse(notJSON, "qwen3.7-text-rerank"))
+}
+
+func TestForwardRerank_BailianModelUsesNestedEndpointAndFlattensResponse(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	reqBody := []byte(`{"model":"qwen3.7-text-rerank","query":"what is sub2api","documents":["doc-a","doc-b"],"top_n":2,"return_documents":true}`)
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/rerank", bytes.NewReader(reqBody))
+
+	bailianBody := `{"output":{"results":[{"index":1,"relevance_score":0.95},{"index":0,"relevance_score":0.60}]},"usage":{"prompt_tokens":79,"total_tokens":79},"request_id":"bailian-rid"}`
+	upstream := &httpUpstreamRecorder{resp: &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     http.Header{"Content-Type": []string{"application/json"}},
+		Body:       io.NopCloser(strings.NewReader(bailianBody)),
+	}}
+	svc := &OpenAIGatewayService{cfg: &config.Config{}, httpUpstream: upstream}
+	account := &Account{
+		ID:          93,
+		Platform:    PlatformOpenAI,
+		Type:        AccountTypeAPIKey,
+		Credentials: map[string]any{"api_key": "sk-test", "base_url": "https://dashscope.aliyuncs.com"},
+	}
+
+	result, err := svc.ForwardRerank(context.Background(), c, account, reqBody, "")
+
+	require.NoError(t, err)
+	// URL 改走百炼嵌套端点。
+	require.Equal(t, "https://dashscope.aliyuncs.com/api/v1/services/rerank/text-rerank/text-rerank", upstream.lastReq.URL.String())
+	// 请求体转换为嵌套格式，return_documents 被丢弃。
+	require.JSONEq(t, `{"model":"qwen3.7-text-rerank","input":{"query":"what is sub2api","documents":["doc-a","doc-b"]},"parameters":{"top_n":2}}`, string(upstream.lastBody))
+	require.False(t, gjson.GetBytes(upstream.lastBody, "return_documents").Exists())
+	// 响应转换为扁平格式回写客户端。
+	require.Equal(t, http.StatusOK, rec.Code)
+	require.JSONEq(t, `{"id":"bailian-rid","model":"qwen3.7-text-rerank","results":[{"index":1,"relevance_score":0.95},{"index":0,"relevance_score":0.60}],"usage":{"prompt_tokens":79,"total_tokens":79},"request_id":"bailian-rid"}`, rec.Body.String())
+	// 百炼 usage 经转换后正常记账（转换发生在 usage 提取之前）。
+	require.NotNil(t, result)
+	require.Equal(t, 79, result.Usage.InputTokens)
+	require.Equal(t, 0, result.Usage.OutputTokens)
+	require.Equal(t, "qwen3.7-text-rerank", result.UpstreamModel)
+}
+
+func TestForwardRerank_BailianUpstreamErrorPassedThroughUnchanged(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	reqBody := []byte(`{"model":"qwen3.7-text-rerank","query":"q","documents":["a"]}`)
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/rerank", bytes.NewReader(reqBody))
+
+	upstreamBody := `{"code":"InvalidParameter","message":"Invalid parameter: documents","request_id":"req-err"}`
+	upstream := &httpUpstreamRecorder{resp: &http.Response{
+		StatusCode: http.StatusBadRequest,
+		Header:     http.Header{"Content-Type": []string{"application/json"}},
+		Body:       io.NopCloser(strings.NewReader(upstreamBody)),
+	}}
+	svc := &OpenAIGatewayService{cfg: &config.Config{}, httpUpstream: upstream}
+	account := &Account{
+		ID:          94,
+		Platform:    PlatformOpenAI,
+		Type:        AccountTypeAPIKey,
+		Credentials: map[string]any{"api_key": "sk-test", "base_url": "https://dashscope.aliyuncs.com"},
+	}
+
+	result, err := svc.ForwardRerank(context.Background(), c, account, reqBody, "")
+
+	require.Error(t, err)
+	require.Nil(t, result)
+	// 上游错误状态码与响应体原样回写，不做格式转换。
+	require.Equal(t, http.StatusBadRequest, rec.Code)
+	require.Equal(t, upstreamBody, rec.Body.String())
+	// 错误路径请求体仍转换为百炼嵌套格式。
+	require.False(t, gjson.GetBytes(upstream.lastBody, "query").Exists())
+	require.JSONEq(t, `{"model":"qwen3.7-text-rerank","input":{"query":"q","documents":["a"]}}`, string(upstream.lastBody))
+}
