@@ -1,6 +1,8 @@
 export default {
   dashboard: {
     loadFailed: 'Failed to load dashboard data',
+    zeroBalanceTitle: 'Your balance is empty',
+    zeroBalanceDesc: 'API requests are rejected with INSUFFICIENT_BALANCE until you add balance. Top up or redeem a code to continue.',
     title: 'Dashboard',
     welcomeMessage: "Welcome back! Here's an overview of your account.",
     balance: 'Balance',

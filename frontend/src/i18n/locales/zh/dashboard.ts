@@ -1,6 +1,8 @@
 export default {
   dashboard: {
     loadFailed: '加载仪表盘数据失败',
+    zeroBalanceTitle: '余额已用完',
+    zeroBalanceDesc: '在补充余额之前，API 请求会因 INSUFFICIENT_BALANCE 被拒绝。请充值或使用兑换码后继续。',
     title: '仪表盘',
     welcomeMessage: '欢迎回来！这是您账户的概览。',
     balance: '余额',

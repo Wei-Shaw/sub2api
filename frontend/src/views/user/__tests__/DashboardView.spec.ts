@@ -3,7 +3,8 @@ import { flushPromises, mount, RouterLinkStub } from '@vue/test-utils'
 
 import DashboardView from '../DashboardView.vue'
 
-const { apiGet, refreshUser, showError, authState } = vi.hoisted(() => ({
+const { apiGet, refreshUser, showError, authState, subscriptionState } = vi.hoisted(() => ({
+  subscriptionState: { loading: false, hasActiveSubscriptions: false },
   apiGet: vi.fn(),
   refreshUser: vi.fn(),
   showError: vi.fn(),
@@ -19,6 +20,10 @@ vi.mock('@/api/client', () => ({ apiClient: { get: apiGet } }))
 
 vi.mock('@/stores/auth', () => ({
   useAuthStore: () => ({ ...authState, refreshUser }),
+}))
+
+vi.mock('@/stores/subscriptions', () => ({
+  useSubscriptionStore: () => subscriptionState,
 }))
 
 vi.mock('@/stores', () => ({
@@ -95,6 +100,8 @@ describe('user DashboardView', () => {
     showError.mockReset()
     authState.user = { id: 1, username: 'alice', email: 'alice@example.com', balance: 12.5 }
     authState.isSimpleMode = false
+    subscriptionState.loading = false
+    subscriptionState.hasActiveSubscriptions = false
   })
 
   afterEach(() => {
@@ -144,6 +151,29 @@ describe('user DashboardView', () => {
     await vi.runAllTimersAsync()
     expect(wrapper.find('[data-test="stats"]').exists()).toBe(true)
     expect(wrapper.text()).not.toContain('dashboard.loadFailed')
+  })
+
+  it.each([
+    { name: 'zero balance', balance: 0, simple: false, subscribed: false, subsLoading: false, shown: true },
+    { name: 'negative balance', balance: -0.4, simple: false, subscribed: false, subsLoading: false, shown: true },
+    { name: 'positive balance', balance: 12.5, simple: false, subscribed: false, subsLoading: false, shown: false },
+    { name: 'active subscription', balance: 0, simple: false, subscribed: true, subsLoading: false, shown: false },
+    { name: 'subscriptions still loading', balance: 0, simple: false, subscribed: false, subsLoading: true, shown: false },
+    { name: 'simple mode', balance: 0, simple: true, subscribed: false, subsLoading: false, shown: false },
+  ])('zero-balance banner: $name', async ({ balance, simple, subscribed, subsLoading, shown }) => {
+    authState.user = { ...authState.user, balance }
+    authState.isSimpleMode = simple
+    subscriptionState.hasActiveSubscriptions = subscribed
+    subscriptionState.loading = subsLoading
+    const wrapper = mountView()
+    await vi.runAllTimersAsync()
+
+    const banner = wrapper.find('[data-test="zero-balance-banner"]')
+    expect(banner.exists()).toBe(shown)
+    if (shown) {
+      expect(banner.text()).toContain('dashboard.zeroBalanceDesc')
+      expect(banner.findAllComponents(RouterLinkStub).map((link) => link.props('to'))).toEqual(['/purchase', '/redeem'])
+    }
   })
 
   it('still renders stats when refreshing the profile fails', async () => {

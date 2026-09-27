@@ -1,6 +1,8 @@
 export default {
   dashboard: {
     loadFailed: 'Không thể tải dữ liệu bảng điều khiển',
+    zeroBalanceTitle: 'Số dư của bạn đã hết',
+    zeroBalanceDesc: 'Request API sẽ bị từ chối với lỗi INSUFFICIENT_BALANCE cho tới khi bạn nạp thêm số dư. Hãy nạp tiền hoặc đổi mã để tiếp tục.',
     title: 'Bảng điều khiển',
     welcomeMessage: 'Chào mừng trở lại! Đây là tổng quan về tài khoản của bạn.',
     balance: 'Số dư',

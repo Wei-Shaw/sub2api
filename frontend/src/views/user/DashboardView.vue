@@ -28,6 +28,15 @@
         </router-link>
       </section>
 
+      <div v-if="showZeroBalanceBanner" role="status" class="flex flex-wrap items-center gap-3 border border-warning/40 bg-warning-weak px-4 py-3 text-body text-warning-strong" data-test="zero-balance-banner">
+        <div class="min-w-0 flex-1">
+          <p class="font-semibold">{{ t('dashboard.zeroBalanceTitle') }}</p>
+          <p>{{ t('dashboard.zeroBalanceDesc') }}</p>
+        </div>
+        <router-link v-if="canTopUp" to="/purchase" class="btn btn-primary btn-sm">{{ t('nav.recharge') }}</router-link>
+        <router-link to="/redeem" class="btn btn-secondary btn-sm">{{ t('nav.redeem') }}</router-link>
+      </div>
+
       <div v-if="loading" class="flex items-center justify-center py-12"><LoadingSpinner /></div>
       <template v-else-if="stats">
         <UserDashboardStats :stats="stats" :balance="user?.balance || 0" :is-simple="authStore.isSimpleMode" :platform-quotas="platformQuotas" />
@@ -54,6 +63,7 @@ import { extractApiErrorMessage } from '@/utils/apiError'
 import Icon from '@/components/icons/Icon.vue'
 import MeterValue from '@/components/common/MeterValue.vue'
 import { useAppStore } from '@/stores'
+import { useSubscriptionStore } from '@/stores/subscriptions'
 import { sanitizeUrl } from '@/utils/url'
 import UserDashboardStats from '@/components/user/dashboard/UserDashboardStats.vue'; import UserDashboardCharts from '@/components/user/dashboard/UserDashboardCharts.vue'
 import UserDashboardRecentUsage from '@/components/user/dashboard/UserDashboardRecentUsage.vue'; import UserDashboardQuickActions from '@/components/user/dashboard/UserDashboardQuickActions.vue'
@@ -69,6 +79,9 @@ const formatBalance = (b: number) => new Intl.NumberFormat('en-US', { minimumFra
 const authStore = useAuthStore(); const user = computed(() => authStore.user)
 // 充值入口与侧边栏 /purchase 同条件：支付开关 + 非简单模式
 const canTopUp = computed(() => !authStore.isSimpleMode && isFeatureFlagEnabled(FeatureFlags.payment))
+// 网关在余额 <= 0 时拒绝请求（订阅分组除外）；订阅列表加载完之前不判断，避免订阅用户看到闪现。
+const subscriptionStore = useSubscriptionStore()
+const showZeroBalanceBanner = computed(() => !authStore.isSimpleMode && !!user.value && (user.value.balance ?? 0) <= 0 && !subscriptionStore.loading && !subscriptionStore.hasActiveSubscriptions)
 const stats = ref<UserStatsType | null>(null); const loadError = ref(false); const loading = ref(false); const loadingUsage = ref(false); const loadingCharts = ref(false)
 const trendData = ref<TrendDataPoint[]>([]); const modelStats = ref<ModelStat[]>([]); const recentUsage = ref<UsageLog[]>([])
 const platformQuotas = ref<PlatformQuotaItem[] | null>(null)
