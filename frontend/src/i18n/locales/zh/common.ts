@@ -429,7 +429,21 @@ export default {
       invalidCallbackHint: '当前页面缺少有效的授权结果，请返回登录页重新发起快捷登录。',
       code: '授权码',
       state: '状态',
-      fullUrl: '完整URL'
+      fullUrl: '完整URL',
+      error: {
+        access_denied: '已在登录服务商处取消授权。',
+        provider_error: '登录服务商返回错误，请重试。',
+        invalid_state: '登录会话无效或已过期，请重新开始。',
+        missing_params: '登录回调参数不完整，请重新开始。',
+        missing_browser_session: '浏览器会话已丢失，请重新发起登录。',
+        token_exchange_failed: '无法与登录服务商完成登录，请重试。',
+        userinfo_failed: '无法从登录服务商获取账号信息，请重试。',
+        session_error: '无法完成登录，请重试。',
+        config_error: '该登录方式配置有误，请联系管理员。',
+        login_blocked: '该账号不允许登录，请联系管理员。',
+        email_not_verified: '您在登录服务商处的邮箱尚未验证。',
+        ownership_conflict: '该登录方式已绑定到其他账号。'
+      }
     },
     // 忘记密码
     forgotPassword: '忘记密码？',

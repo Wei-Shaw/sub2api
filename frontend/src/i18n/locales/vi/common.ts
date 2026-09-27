@@ -430,7 +430,21 @@ export default {
       invalidCallbackHint: 'Trang này không chứa kết quả ủy quyền hợp lệ. Hãy quay lại trang đăng nhập và bắt đầu đăng nhập nhanh lại.',
       code: 'Code',
       state: 'State',
-      fullUrl: 'URL đầy đủ'
+      fullUrl: 'URL đầy đủ',
+      error: {
+        access_denied: 'Bạn đã hủy đăng nhập ở nhà cung cấp.',
+        provider_error: 'Nhà cung cấp đăng nhập trả về lỗi. Vui lòng thử lại.',
+        invalid_state: 'Phiên đăng nhập không hợp lệ hoặc đã hết hạn. Vui lòng bắt đầu lại.',
+        missing_params: 'Phản hồi đăng nhập không đầy đủ. Vui lòng bắt đầu lại.',
+        missing_browser_session: 'Phiên trình duyệt đã mất. Vui lòng đăng nhập lại từ đầu.',
+        token_exchange_failed: 'Không thể hoàn tất đăng nhập với nhà cung cấp. Vui lòng thử lại.',
+        userinfo_failed: 'Không đọc được thông tin tài khoản từ nhà cung cấp. Vui lòng thử lại.',
+        session_error: 'Không thể hoàn tất đăng nhập. Vui lòng thử lại.',
+        config_error: 'Phương thức đăng nhập này chưa được cấu hình đúng. Vui lòng liên hệ quản trị viên.',
+        login_blocked: 'Tài khoản này không được phép đăng nhập. Vui lòng liên hệ quản trị viên.',
+        email_not_verified: 'Email của bạn ở nhà cung cấp chưa được xác minh.',
+        ownership_conflict: 'Phương thức đăng nhập này đã được liên kết với tài khoản khác.'
+      }
     },
     // Forgot password
     forgotPassword: 'Quên mật khẩu?',

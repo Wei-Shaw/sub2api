@@ -430,7 +430,21 @@ export default {
       invalidCallbackHint: 'This page does not contain a valid authorization result. Return to the login page and start quick sign-in again.',
       code: 'Code',
       state: 'State',
-      fullUrl: 'Full URL'
+      fullUrl: 'Full URL',
+      error: {
+        access_denied: 'Sign-in was cancelled at the provider.',
+        provider_error: 'The sign-in provider returned an error. Please try again.',
+        invalid_state: 'The sign-in session is invalid or has expired. Please start again.',
+        missing_params: 'The sign-in response is incomplete. Please start again.',
+        missing_browser_session: 'Your browser session was lost. Please start sign-in again.',
+        token_exchange_failed: 'Could not complete sign-in with the provider. Please try again.',
+        userinfo_failed: 'Could not read your account details from the provider. Please try again.',
+        session_error: 'Could not finish signing you in. Please try again.',
+        config_error: 'This sign-in method is not configured correctly. Please contact the administrator.',
+        login_blocked: 'This account is not allowed to sign in. Please contact the administrator.',
+        email_not_verified: 'Your email address at the provider is not verified.',
+        ownership_conflict: 'This sign-in is already linked to another account.'
+      }
     },
     // Forgot password
     forgotPassword: 'Forgot password?',
