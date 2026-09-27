@@ -3307,10 +3307,10 @@ func computeGeminiTextDelta(seen *geminiSeenText, incoming string) (delta string
 	// Delta mode: treat incoming as incremental chunk.
 	if !seen.inBuf {
 		seen.buf.Reset()
-		seen.buf.WriteString(seen.text)
+		_, _ = seen.buf.WriteString(seen.text)
 		seen.inBuf = true
 	}
-	seen.buf.WriteString(incoming)
+	_, _ = seen.buf.WriteString(incoming)
 	seen.text = seen.buf.String()
 	return incoming
 }
