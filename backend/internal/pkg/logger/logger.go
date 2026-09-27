@@ -36,6 +36,13 @@ type Sink interface {
 	WriteLogEvent(event *LogEvent)
 }
 
+// SinkEntryFilter is optionally implemented by a Sink so entries it would drop
+// are skipped before their fields are encoded. component is the entry's
+// "component" field, or its logger name when that field is absent or empty.
+type SinkEntryFilter interface {
+	AcceptsLogEntry(level Level, component string) bool
+}
+
 type LogEvent struct {
 	Time       time.Time
 	Level      string
@@ -386,6 +393,11 @@ func (s *sinkCore) Write(entry zapcore.Entry, fields []zapcore.Field) error {
 	if sink == nil {
 		return nil
 	}
+	if filter, ok := sink.(SinkEntryFilter); ok {
+		if component, known := entryComponent(entry, s.fields, fields); known && !filter.AcceptsLogEntry(entry.Level, component) {
+			return nil
+		}
+	}
 
 	enc := zapcore.NewMapObjectEncoder()
 	for _, f := range s.fields {
@@ -405,6 +417,29 @@ func (s *sinkCore) Write(entry zapcore.Entry, fields []zapcore.Field) error {
 	}
 	sink.WriteLogEvent(event)
 	return nil
+}
+
+// entryComponent resolves the component a sink will see: the last "component"
+// field (the map encoder keeps the last one), else the logger name. known is
+// false when that field is not a plain string.
+func entryComponent(entry zapcore.Entry, fieldSets ...[]zapcore.Field) (component string, known bool) {
+	var last *zapcore.Field
+	for _, fields := range fieldSets {
+		for i := range fields {
+			if fields[i].Key == "component" {
+				last = &fields[i]
+			}
+		}
+	}
+	switch {
+	case last == nil:
+		return entry.LoggerName, true
+	case last.Type != zapcore.StringType:
+		return "", false
+	case strings.TrimSpace(last.String) == "":
+		return entry.LoggerName, true
+	}
+	return last.String, true
 }
 
 func (s *sinkCore) Sync() error {
