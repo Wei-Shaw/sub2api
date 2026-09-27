@@ -1200,6 +1200,8 @@ export default {
         preview: 'Xem trước',
         matched: 'Khớp',
         notMatched: 'Không khớp',
+        availableAccounts: 'Tài khoản khả dụng',
+        noAvailableAccounts: 'Nhóm này không có tài khoản nào điều phối được và hỗ trợ model này; request sẽ lỗi',
         publicModelRequired: 'Bắt buộc nhập model công khai',
         routeCreated: 'Đã tạo tuyến Composite',
         routeUpdated: 'Đã cập nhật tuyến Composite',

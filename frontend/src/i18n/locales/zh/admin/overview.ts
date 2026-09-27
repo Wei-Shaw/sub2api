@@ -1197,6 +1197,8 @@ export default {
         preview: '预览',
         matched: '已匹配',
         notMatched: '未匹配',
+        availableAccounts: '可用账号',
+        noAvailableAccounts: '该分组内没有可调度且支持此模型的账号，请求将失败',
         publicModelRequired: '请输入公开模型',
         routeCreated: 'Composite 路由已创建',
         routeUpdated: 'Composite 路由已更新',

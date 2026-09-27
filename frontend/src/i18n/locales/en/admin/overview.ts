@@ -1200,6 +1200,8 @@ export default {
         preview: 'Preview',
         matched: 'Matched',
         notMatched: 'No Match',
+        availableAccounts: 'Available accounts',
+        noAvailableAccounts: 'No schedulable account in this group serves this model; requests will fail',
         publicModelRequired: 'Public model is required',
         routeCreated: 'Composite route created',
         routeUpdated: 'Composite route updated',
