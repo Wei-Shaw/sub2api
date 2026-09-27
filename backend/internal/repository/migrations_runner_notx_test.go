@@ -469,7 +469,7 @@ func TestConcurrentlyCreatedIndexNamesCoverEveryEmbeddedNotxMigration(t *testing
 				wantCreates++
 			}
 		}
-		require.Positivef(t, wantCreates, "%s has no CREATE INDEX CONCURRENTLY statement", name)
+		// 只含 DROP INDEX CONCURRENTLY 的迁移（如 246）不创建索引，wantCreates 可以为 0。
 
 		indexes := concurrentlyCreatedIndexNames(content)
 		require.Lenf(t, indexes, wantCreates,
