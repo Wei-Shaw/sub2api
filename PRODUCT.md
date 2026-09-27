@@ -31,7 +31,7 @@ This is a fork of Wei-Shaw/sub2api (origin: YunaBotDeveloper/sub2api) built for 
 
 ## Capabilities and Constraints
 
-- Stack: Go (Gin, Ent) backend; Vue 3 + Vite + TailwindCSS + Pinia + vue-i18n frontend (`frontend/`). Charts use chart.js; onboarding uses driver.js; icons include `@lobehub/icons`.
+- Stack: Go (Gin, Ent) backend; Vue 3 + Vite + TailwindCSS + Pinia + vue-i18n frontend (`frontend/`). Charts use chart.js; onboarding uses driver.js; model/provider icons are inline SVG paths extracted from `@lobehub/icons` (not a dependency).
 - Light and dark themes both exist and must both be supported.
 - **Operator-branded:** the admin sets the site name, logo, custom home content, doc URL and custom pages at runtime. The UI must not hard-code a brand, and it has to work with whatever name and logo the operator supplies.
 - **Localization:** en and zh ship today. A **Vietnamese (vi) locale must be added**, and layouts must handle longer strings and diacritics.
