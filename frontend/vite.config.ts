@@ -124,8 +124,9 @@ export default defineConfig(({ mode }) => {
               return 'vendor-vue'
             }
 
-            // UI 工具库（较大，单独分离）
-            if (id.includes('/@vueuse/') || id.includes('/xlsx/')) {
+            // UI 工具库。xlsx 不在此列：它只被 admin 用量导出动态 import，
+            // 放进这里会随 @vueuse 被 /keys 等页面静态加载。
+            if (id.includes('/@vueuse/')) {
               return 'vendor-ui'
             }
 
@@ -144,8 +145,8 @@ export default defineConfig(({ mode }) => {
               return 'vendor-stripe'
             }
 
-            // 其他小型第三方库合并
-            return 'vendor-misc'
+            // 其他第三方库不手动合并（返回 undefined），交给 Rollup 按引用关系分包：
+            // 统一塞进 vendor-misc 会让 qrcode、driver.js 等仅懒加载页面才用的库随首屏预加载。
           }
 
           // 应用代码：按入口点自动分包，不手动干预

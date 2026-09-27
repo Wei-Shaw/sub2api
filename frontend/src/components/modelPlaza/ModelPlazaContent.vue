@@ -91,7 +91,9 @@ const searchActive = computed(() => searchQuery.value.trim() !== '')
 const descriptionHtml = computed(() => {
   const md = props.response?.description?.trim()
   if (!md) return ''
-  return DOMPurify.sanitize(marked.parse(md) as string)
+  // Explicit options: guests on the standalone /model-plaza never mount a component that sets
+  // marked's global defaults (breaks: true), so don't depend on that hidden global.
+  return DOMPurify.sanitize(marked.parse(md, { breaks: true, gfm: true, async: false }))
 })
 
 /** 生效倍率 = 用户专属倍率 ?? 分组默认倍率。 */
