@@ -27,6 +27,8 @@ func RegisterAuthRoutes(
 
 	// 公开接口
 	auth := v1.Group("/auth")
+	// 匿名可达的认证接口请求体都很小，限制为 1MB，避免继承全局上限（可达 256MB）被用来打爆内存。
+	auth.Use(servermiddleware.RequestBodyLimit(1 << 20))
 	auth.Use(servermiddleware.BackendModeAuthGuard(settingService))
 	// 认证事件（登录/注册/2FA/token 刷新失败）入审计
 	auth.Use(gin.HandlerFunc(auditLog))
@@ -55,7 +57,8 @@ func RegisterAuthRoutes(
 			FailureMode: middleware.RateLimitFailClose,
 		}), h.Auth.RefreshToken)
 		// 登出接口（公开，允许未认证用户调用以撤销Refresh Token）
-		auth.POST("/logout", h.Auth.Logout)
+		// 速率限制：每分钟最多 30 次；Redis 故障时 fail-open，保证用户始终能登出。
+		auth.POST("/logout", rateLimiter.Limit("auth-logout", 30, time.Minute), h.Auth.Logout)
 		// 优惠码验证接口添加速率限制：每分钟最多 10 次（Redis 故障时 fail-close）
 		auth.POST("/validate-promo-code", rateLimiter.LimitWithOptions("validate-promo", 10, time.Minute, middleware.RateLimitOptions{
 			FailureMode: middleware.RateLimitFailClose,

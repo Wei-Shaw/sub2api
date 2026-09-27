@@ -237,4 +237,19 @@ describe('ModelWhitelistSelector', () => {
     expect(syncButton).toBeDefined()
     expect(syncButton?.exists()).toBe(true)
   })
+
+  it('rejects wildcard custom entries instead of adding a model that is dropped on save', async () => {
+    const wrapper = mountSelector({ modelValue: ['gpt-5.4'] })
+
+    await wrapper.get('input[placeholder="admin.accounts.enterCustomModelName"]').setValue('claude-*')
+    await wrapper.findAll('button').find(button => button.text() === 'admin.accounts.addModel')!.trigger('click')
+
+    expect(showError).toHaveBeenCalledWith('admin.accounts.whitelistWildcardNotSupported')
+    expect(wrapper.emitted('update:modelValue')).toBeUndefined()
+
+    await wrapper.get('input[placeholder="admin.accounts.enterCustomModelName"]').setValue('claude-sonnet-4-5')
+    await wrapper.findAll('button').find(button => button.text() === 'admin.accounts.addModel')!.trigger('click')
+
+    expect(wrapper.emitted('update:modelValue')?.[0]).toEqual([['gpt-5.4', 'claude-sonnet-4-5']])
+  })
 })

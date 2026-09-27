@@ -249,7 +249,7 @@ func (h *AuthHandler) Login(c *gin.Context) {
 		return
 	}
 
-	token, user, err := h.authService.Login(c.Request.Context(), req.Email, req.Password)
+	token, user, err := h.authService.LoginFromIP(c.Request.Context(), req.Email, req.Password, ip.GetClientIP(c))
 	if err != nil {
 		response.ErrorFrom(c, err)
 		return

@@ -89,8 +89,11 @@ vi.mock('vue-i18n', () => ({
       if (key === 'auth.oidc.completing') {
         return 'Completing'
       }
-      if (key === 'auth.oidc.backToLogin') {
+      if (key === 'auth.oidc.backToLogin' || key === 'auth.backToLogin') {
         return 'Back to login'
+      }
+      if (key === 'auth.oauth.error.access_denied') {
+        return 'Sign-in was cancelled'
       }
       if (key === 'auth.invitationCodePlaceholder') {
         return 'Invitation code'
@@ -1087,5 +1090,34 @@ describe('WechatCallbackView', () => {
     expect(replaceMock.mock.calls[0]?.[0]).toContain('wechat_bind_existing%3D1')
     expect(replaceMock.mock.calls[0]?.[0]).toContain('mode%3Dmp')
     expect(replaceMock.mock.calls[0]?.[0]).toContain('email=resume%40example.com')
+  })
+
+  it('shows a persistent localized error with a way back to login when the provider returns an error', async () => {
+    locationState.current.hash = '#error=access_denied&error_description=The+user+denied+access'
+    Object.defineProperty(window, 'location', {
+      configurable: true,
+      value: locationState.current,
+    })
+
+    const wrapper = mount(WechatCallbackView, {
+      global: {
+        stubs: {
+          AuthLayout: { template: '<div><slot /></div>' },
+          Icon: true,
+          RouterLink: { template: '<a><slot /></a>' },
+          transition: false,
+        },
+      },
+    })
+
+    await flushPromises()
+
+    const block = wrapper.get('[data-testid="oauth-callback-error"]')
+    expect(block.get('[role="alert"]').text()).toBe('Sign-in was cancelled')
+    expect(exchangePendingOAuthCompletionMock).not.toHaveBeenCalled()
+
+    await block.get('button').trigger('click')
+    expect(block.get('button').text()).toBe('Back to login')
+    expect(replaceMock).toHaveBeenCalledWith('/login')
   })
 })

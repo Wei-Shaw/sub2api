@@ -5,7 +5,7 @@ import apiClient from '@/api/client'
 import OpenAIReferralCell from '../OpenAIReferralCell.vue'
 import type { Account } from '@/types'
 
-vi.mock('@/i18n', () => ({ getLocale: () => 'en' }))
+vi.mock('@/i18n', () => ({ getLocale: () => 'en', i18n: { global: { t: (key: string) => key } } }))
 vi.mock('vue-i18n', () => ({ useI18n: () => ({ t: (key: string) => key }) }))
 
 // Exercise the actual accounts API and shared Axios interceptor together.
@@ -42,7 +42,7 @@ describe('invitation transport failures', () => {
       await wrapper.get('form').trigger('submit')
       await flushPromises()
       expect(wrapper.get('[role="alert"]').text()).toBe('admin.accounts.openaiReferral.sendUnknown')
-      expect(wrapper.text()).not.toContain('Network error.')
+      expect(wrapper.text()).not.toContain('errors.networkError')
       expect(wrapper.text()).not.toContain('admin.accounts.openaiReferral.sent')
       expect(wrapper.get('[data-testid="referral-send"]').attributes('disabled')).toBeDefined()
       await wrapper.get('form').trigger('submit')
@@ -58,7 +58,7 @@ describe('invitation transport failures', () => {
     wrapper = mountCell()
     await wrapper.get('[data-testid="referral-open"]').trigger('click')
     await flushPromises()
-    expect(wrapper.get('[role="alert"]').text()).toBe('Network error. Please check your connection.')
+    expect(wrapper.get('[role="alert"]').text()).toBe('errors.networkError')
     expect(wrapper.text()).not.toContain('admin.accounts.openaiReferral.sendUnknown')
     expect(wrapper.get('[data-testid="referral-send"]').attributes('disabled')).toBeDefined()
   })

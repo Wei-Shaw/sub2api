@@ -13,6 +13,50 @@ export default {
         backup: 'Sao lưu',
         payment: 'Thanh toán',
       },
+      agreement: {
+        title: 'Xác nhận điều khoản đăng nhập',
+        description: 'Quy định trang đăng nhập có yêu cầu người dùng đọc và đồng ý các tài liệu Markdown (điều khoản dịch vụ, chính sách quyền riêng tư...) trước khi đăng nhập hay không.',
+        enabled: 'Đã bật',
+        disabled: 'Chưa bật',
+        displayMode: 'Kiểu hiển thị',
+        modeModal: 'Hộp thoại',
+        modeCheckbox: 'Ô đánh dấu',
+        modeCheckboxHint: 'Ô đánh dấu hiển thị bên dưới nút đăng nhập; mọi cách đăng nhập bị khóa cho đến khi người dùng đánh dấu.',
+        modeModalHint: 'Hộp thoại mở ra trên trang đăng nhập; nếu người dùng từ chối, mọi cách đăng nhập vẫn bị khóa.',
+        updatedAt: 'Ngày cập nhật điều khoản',
+        updatedAtHint: 'Khi đổi ngày hoặc nội dung tài liệu, người dùng phải đồng ý lại.',
+        documents: 'Tài liệu điều khoản',
+        documentsHint: 'Tên tài liệu có thể tùy chỉnh, nội dung được lưu dạng Markdown. Gợi ý: Điều khoản dịch vụ, Chính sách sử dụng, Quốc gia và khu vực được hỗ trợ, Điều khoản riêng của dịch vụ.',
+        addDocument: 'Thêm tài liệu',
+        untitledDocument: 'Tài liệu chưa đặt tên',
+        documentTitle: 'Tên tài liệu',
+        documentTitlePlaceholder: 'Ví dụ: Điều khoản dịch vụ',
+        routeSlug: 'Định danh đường dẫn',
+        markdownContent: 'Nội dung Markdown',
+        markdownContentPlaceholder: 'Nhập nội dung Markdown chính thức tại đây.',
+        defaultDocuments: {
+          terms: 'Điều khoản dịch vụ',
+          usagePolicy: 'Chính sách sử dụng',
+          supportedRegions: 'Quốc gia và khu vực được hỗ trợ',
+          serviceSpecificTerms: 'Điều khoản riêng của dịch vụ',
+        },
+        documentRequired: 'Khi bật xác nhận điều khoản đăng nhập, cần giữ lại ít nhất một tài liệu.',
+        documentTitleRequired: 'Tên tài liệu điều khoản đăng nhập không được để trống.',
+        duplicateRoute: 'Đường dẫn tài liệu điều khoản đăng nhập bị trùng: /legal/{id}',
+      },
+      oauthLogin: {
+        title: 'Đăng nhập nhanh bằng email (OAuth)',
+        description: 'Sau khi bật đăng nhập bằng email GitHub hoặc Google, hệ thống đọc email đã xác minh: có tài khoản thì đăng nhập ngay, chưa có thì tự động đăng ký.',
+        githubHint: 'GitHub OAuth App cần quyền read:user user:email. Callback URL điền địa chỉ backend bên dưới.',
+        githubGuide: 'Hướng dẫn: GitHub Settings → Developer settings → {link} → New OAuth App. Homepage URL điền tên miền của trang, Authorization callback URL điền địa chỉ callback backend bên dưới.',
+        googleHint: 'OAuth client của Google cần phạm vi openid email profile và phải đăng ký địa chỉ callback backend trong Credentials.',
+        googleGuide: 'Hướng dẫn: Google Cloud Console → APIs & Services → OAuth consent screen để hoàn tất màn hình đồng ý; sau đó Credentials → Create Credentials → OAuth client ID, chọn loại Web application và thêm địa chỉ bên dưới vào Authorized redirect URIs.',
+        secretConfiguredPlaceholder: 'Đã cấu hình secret. Để trống để giữ giá trị hiện tại.',
+        backendCallbackUrl: 'Địa chỉ callback backend',
+        frontendCallbackUrl: 'Địa chỉ chuyển hướng frontend',
+        generateAndCopy: 'Tạo và sao chép',
+        callbackUrlSetAndCopied: 'Đã điền và sao chép địa chỉ callback.',
+      },
       features: {
         channelMonitor: {
           title: 'Giám sát kênh',
@@ -343,12 +387,15 @@ export default {
         syncDeptHint: 'Ghi đường dẫn phòng ban DingTalk đầy đủ vào thuộc tính dingtalk_department mỗi lần đăng nhập (lấy trực tiếp mỗi lần).',
         syncDeptPermissionHint: 'Yêu cầu cấp quyền OAPI "Đọc thông tin phòng ban (qyapi_get_department_list)" cho ứng dụng trên DingTalk open platform, nếu không sẽ không xác định được đường dẫn phòng ban.',
         syncDisplayNameTarget: 'Khóa thuộc tính',
-        syncDisplayNameTargetHint: 'Mặc định là dingtalk_name / DingTalk Name. Lưu cài đặt sẽ tự động tạo thuộc tính người dùng theo khóa và tên hiển thị ở trên (định nghĩa đã tồn tại chỉ được đồng bộ tên hiển thị).',
+        syncDisplayNameTargetHint: 'Mặc định là dingtalk_name / Tên DingTalk. Lưu cài đặt sẽ tự động tạo thuộc tính người dùng theo khóa và tên hiển thị ở trên (định nghĩa đã tồn tại chỉ được đồng bộ tên hiển thị).',
         syncCorpEmailTarget: 'Khóa thuộc tính',
-        syncCorpEmailTargetHint: 'Mặc định là dingtalk_email / DingTalk Corporate Email. Lưu cài đặt sẽ tự động tạo thuộc tính người dùng theo khóa và tên hiển thị ở trên (định nghĩa đã tồn tại chỉ được đồng bộ tên hiển thị).',
+        syncCorpEmailTargetHint: 'Mặc định là dingtalk_email / Email doanh nghiệp DingTalk. Lưu cài đặt sẽ tự động tạo thuộc tính người dùng theo khóa và tên hiển thị ở trên (định nghĩa đã tồn tại chỉ được đồng bộ tên hiển thị).',
         syncDeptTarget: 'Khóa thuộc tính',
-        syncDeptTargetHint: 'Mặc định là dingtalk_department / DingTalk Department. Lưu cài đặt sẽ tự động tạo thuộc tính người dùng theo khóa và tên hiển thị ở trên (định nghĩa đã tồn tại chỉ được đồng bộ tên hiển thị).',
-        syncAttrDisplayName: 'Tên hiển thị'
+        syncDeptTargetHint: 'Mặc định là dingtalk_department / Phòng ban DingTalk. Lưu cài đặt sẽ tự động tạo thuộc tính người dùng theo khóa và tên hiển thị ở trên (định nghĩa đã tồn tại chỉ được đồng bộ tên hiển thị).',
+        syncAttrDisplayName: 'Tên hiển thị',
+        defaultAttrCorpEmail: 'Email doanh nghiệp DingTalk',
+        defaultAttrDisplayName: 'Tên DingTalk',
+        defaultAttrDept: 'Phòng ban DingTalk'
       },
       oidc: {
         title: 'Đăng nhập OIDC',
@@ -940,7 +987,18 @@ export default {
         validationRequired: 'Tiêu đề và mẫu HTML là bắt buộc',
         empty: 'Chưa có sự kiện hoặc ngôn ngữ mẫu email nào.',
         noPreview: 'Làm mới bản xem trước để thấy tiêu đề email đã được hiển thị.',
-        customized: 'Đã tùy chỉnh'
+        customized: 'Đã tùy chỉnh',
+        optional: 'Thông báo có thể hủy nhận',
+        transactional: 'Email giao dịch',
+        categories: {
+          notification: 'Thông báo',
+          auth: 'Xác thực',
+          subscription: 'Gói đăng ký',
+          billing: 'Thanh toán',
+          admin: 'Cảnh báo quản trị',
+          risk_control: 'Kiểm soát rủi ro',
+          ops: 'Vận hành'
+        }
       },
       opsMonitoring: {
         title: 'Giám sát vận hành',
@@ -1146,7 +1204,25 @@ export default {
         redirectUrlSetAndCopied: 'Đã tạo redirect URL và sao chép vào clipboard',
         frontendRedirectUrlLabel: 'Redirect URL frontend',
         frontendRedirectUrlPlaceholder: '/auth/wechat/callback',
-        frontendRedirectUrlHint: 'Thường là đường dẫn callback của route frontend; giữ thống nhất với backend.'
+        frontendRedirectUrlHint: 'Thường là đường dẫn callback của route frontend; giữ thống nhất với backend.',
+        pcAppTitle: 'Ứng dụng PC',
+        pcAppHint: 'Trình duyệt máy tính đăng nhập bằng cách quét mã QR của WeChat Open Platform. Có thể dùng song song với Official Account hoặc ứng dụng di động.',
+        pcAppIdLabel: 'App ID ứng dụng PC',
+        pcAppIdPlaceholder: 'App ID ứng dụng PC trên WeChat Open Platform',
+        pcAppSecretLabel: 'App Secret ứng dụng PC',
+        pcAppSecretPlaceholder: 'App Secret ứng dụng PC trên WeChat Open Platform',
+        mpTitle: 'Official Account',
+        mpHint: 'Chỉ dùng được trong trình duyệt WeChat; bên ngoài WeChat sẽ hiển thị là không khả dụng.',
+        mpAppIdLabel: 'App ID Official Account',
+        mpAppSecretLabel: 'App Secret Official Account',
+        mobileTitle: 'Ứng dụng di động',
+        mobileHint: 'Ứng dụng di động gốc gọi ủy quyền qua WeChat SDK; giao diện web không trực tiếp khởi chạy luồng này.',
+        mobileAppIdLabel: 'App ID ứng dụng di động',
+        mobileAppSecretLabel: 'App Secret ứng dụng di động',
+        sameOpenPlatformWarning: 'Nếu bật ứng dụng PC cùng lúc với Official Account hoặc ứng dụng di động, các ứng dụng này phải thuộc cùng một tài khoản WeChat Open Platform, nếu không UnionID không thể gộp tài khoản ổn định.',
+        browserRedirectUrlLabel: 'Địa chỉ callback trình duyệt',
+        browserRedirectUrlHint: 'Dùng cho callback web của ứng dụng PC và Official Account. Luồng SDK gốc của ứng dụng di động không dùng trực tiếp callback trình duyệt này.',
+        mpMobileConflict: 'Không thể bật Official Account và ứng dụng di động cùng lúc.'
       },
       authSourceDefaults: {
         title: 'Mặc định theo nguồn xác thực',
@@ -1170,6 +1246,15 @@ export default {
           wechat: {
             title: 'Đăng ký qua WeChat',
             description: 'Hạn mức cấp mặc định cho đăng ký qua WeChat.'
+          },
+          github: {
+            description: 'Áp dụng khi đăng ký lần đầu hoặc liên kết lần đầu bằng email GitHub đã xác minh.'
+          },
+          google: {
+            description: 'Áp dụng khi đăng ký lần đầu hoặc liên kết lần đầu bằng email Google đã xác minh.'
+          },
+          dingtalk: {
+            description: 'Áp dụng khi đăng ký lần đầu hoặc liên kết lần đầu qua DingTalk.'
           }
         },
         grantOnFirstBindLabel: 'Cấp khi liên kết lần đầu',
@@ -1224,6 +1309,8 @@ export default {
         description: 'Khi bật, người dùng có thể xem bản đã ẩn thông tin nhạy cảm của các yêu cầu thất bại trên trang sử dụng (không có chi tiết nội bộ/upstream). Cần bật giám sát vận hành để có dữ liệu.',
       },
       saveSettings: 'Lưu cài đặt',
+      unsavedChanges: 'Có thay đổi chưa lưu',
+      leaveUnsavedConfirm: 'Bạn có thay đổi cài đặt chưa lưu. Rời trang này và bỏ các thay đổi đó?',
       saving: 'Đang lưu...',
       settingsSaved: 'Đã lưu cài đặt thành công',
       smtpConnectionSuccess: 'Kết nối SMTP thành công',

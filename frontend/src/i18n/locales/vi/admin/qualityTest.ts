@@ -15,6 +15,8 @@ export default {
     chars: '{n} ký tự',
     preview: 'Xem trước',
     source: 'Mã nguồn',
+    loadAccountsFailed: 'Không tải được danh sách tài khoản',
+    loadModelsFailed: 'Không tải được danh sách model',
     status: {
       idle: 'Chờ',
       running: 'Đang chạy',

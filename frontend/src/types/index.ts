@@ -738,6 +738,7 @@ export interface CompositeRouteDecision {
   endpoint: CompositeRouteEndpoint
   route?: CompositeModelRoute
   reason?: string
+  available_accounts?: number
 }
 
 export interface ApiKey {

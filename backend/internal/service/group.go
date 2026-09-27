@@ -258,14 +258,20 @@ func (g *Group) GetRoutingAccountIDs(requestedModel string) []int64 {
 		return accountIDs
 	}
 
-	// 2. 通配符匹配（前缀匹配）
+	// 2. 通配符匹配（前缀匹配）：map 遍历无序，多个规则同时命中时取最长（最具体）的模式，
+	// 等长再按字典序，保证结果稳定。
+	var bestPattern string
+	var bestIDs []int64
 	for pattern, accountIDs := range g.ModelRouting {
-		if matchModelPattern(pattern, requestedModel) && len(accountIDs) > 0 {
-			return accountIDs
+		if len(accountIDs) == 0 || !matchModelPattern(pattern, requestedModel) {
+			continue
+		}
+		if bestIDs == nil || len(pattern) > len(bestPattern) || (len(pattern) == len(bestPattern) && pattern < bestPattern) {
+			bestPattern, bestIDs = pattern, accountIDs
 		}
 	}
 
-	return nil
+	return bestIDs
 }
 
 // matchModelPattern 检查模型是否匹配模式

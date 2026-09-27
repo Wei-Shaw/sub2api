@@ -3,12 +3,16 @@
 package repository
 
 import (
+	"bytes"
 	"context"
 	"database/sql"
+	"encoding/hex"
 	"encoding/json"
+	"regexp"
 	"strings"
 	"testing"
 
+	"github.com/DATA-DOG/go-sqlmock"
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/payment"
 	"github.com/stretchr/testify/assert"
@@ -105,13 +109,76 @@ func TestPlaintextDetectionRoundTrip(t *testing.T) {
 
 // ── 前置检查 ─────────────────────────────────────────────────────────────────
 
-// 密钥已配置时必须零查询返回：传 nil db 也不能出错，证明它根本没碰数据库。
+// 密钥已配置时只做支付配置解密抽查，查询失败按未命中处理，不得阻断启动。
 func TestEnsureSecretEncryptionKeyUsableSkipsProbesWhenKeyConfigured(t *testing.T) {
 	t.Parallel()
 
-	err := ensureSecretEncryptionKeyUsable(context.Background(), nil,
+	err := ensureSecretEncryptionKeyUsable(context.Background(), newUnreachableDB(t),
 		secretKeyCfg(strings.Repeat("ab", 32)))
 	require.NoError(t, err)
+}
+
+// 空密钥但库里已有支付服务商配置密文：必须阻断启动，否则这些配置会被静默当成空。
+func TestEnsureSecretEncryptionKeyUsableBlocksEmptyKeyWithPaymentCiphertext(t *testing.T) {
+	t.Parallel()
+
+	db, mock, err := sqlmock.New()
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = db.Close() })
+	// 其它探测没有匹配的期望，会返回错误并按未命中处理。
+	mock.MatchExpectationsInOrder(false)
+	mock.ExpectQuery(regexp.QuoteMeta(`SELECT EXISTS (SELECT 1 FROM payment_provider_instances WHERE`)).
+		WillReturnRows(sqlmock.NewRows([]string{"exists"}).AddRow(true))
+
+	err = ensureSecretEncryptionKeyUsable(context.Background(), db, secretKeyCfg(""))
+	require.ErrorContains(t, err, "payment_provider_instances.config")
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
+// 主密钥解不开已存的支付服务商配置时（密钥丢失或被换），必须拒绝启动；
+// 设置应急开关后只记 ERROR 并放行。
+func TestEnsureSecretEncryptionKeyUsableChecksPaymentConfigDecryption(t *testing.T) {
+	keyHex := strings.Repeat("ab", 32)
+	key, err := hex.DecodeString(keyHex)
+	require.NoError(t, err)
+	encryptedWith := func(k []byte) string {
+		ciphertext, err := payment.Encrypt(`{"apiKey":"sk_live"}`, k)
+		require.NoError(t, err)
+		return ciphertext
+	}
+	otherKey := bytes.Repeat([]byte{0x11}, payment.AES256KeySize)
+
+	tests := []struct {
+		name     string
+		rows     *sqlmock.Rows
+		override string
+		wantErr  bool
+	}{
+		{"decryptable", sqlmock.NewRows([]string{"config"}).AddRow(encryptedWith(key)), "", false},
+		{"no_ciphertext_rows", sqlmock.NewRows([]string{"config"}), "", false},
+		{"wrong_key_refuses_start", sqlmock.NewRows([]string{"config"}).AddRow(encryptedWith(otherKey)), "", true},
+		{"wrong_key_with_override", sqlmock.NewRows([]string{"config"}).AddRow(encryptedWith(otherKey)), "true", false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Setenv(allowUndecryptablePaymentConfigEnvVar, tt.override)
+			db, mock, err := sqlmock.New()
+			require.NoError(t, err)
+			t.Cleanup(func() { _ = db.Close() })
+			mock.ExpectQuery(regexp.QuoteMeta(
+				`SELECT config FROM payment_provider_instances WHERE config <> '' AND config <> 'null' AND config NOT LIKE '{%' ORDER BY id LIMIT 1`,
+			)).WillReturnRows(tt.rows)
+
+			err = ensureSecretEncryptionKeyUsable(context.Background(), db, secretKeyCfg(keyHex))
+			if tt.wantErr {
+				require.ErrorContains(t, err, "payment_provider_instances.config")
+				require.ErrorContains(t, err, allowUndecryptablePaymentConfigEnvVar)
+			} else {
+				require.NoError(t, err)
+			}
+			require.NoError(t, mock.ExpectationsWereMet())
+		})
+	}
 }
 
 func TestEnsureSecretEncryptionKeyUsableRejectsNilConfig(t *testing.T) {
@@ -153,6 +220,7 @@ func TestSecretEncryptionProbesCoverEveryKnownConsumer(t *testing.T) {
 		"channel_monitors",             // stored channel monitor ciphertext
 		"sub2api_plugin_installations", // stored plugin ciphertext
 		"users",                        // users with 2FA enabled
+		"payment_provider_instances",   // payment_config_providers.go
 	} {
 		assert.Contains(t, joined, needle, "no probe covers %q", needle)
 	}

@@ -5,6 +5,30 @@
 
 import { i18n, getLocale } from '@/i18n'
 
+// Building an Intl formatter costs ~100x a format() call and table cells format per row,
+// so formatters are reused per locale + options.
+const intlFormatterCache = new Map<string, Intl.NumberFormat | Intl.DateTimeFormat>()
+
+function getNumberFormat(locale: string, options: Intl.NumberFormatOptions): Intl.NumberFormat {
+  const key = `number|${locale}|${JSON.stringify(options)}`
+  let formatter = intlFormatterCache.get(key) as Intl.NumberFormat | undefined
+  if (!formatter) {
+    formatter = new Intl.NumberFormat(locale, options)
+    intlFormatterCache.set(key, formatter)
+  }
+  return formatter
+}
+
+function getDateTimeFormat(locale: string, options: Intl.DateTimeFormatOptions): Intl.DateTimeFormat {
+  const key = `date|${locale}|${JSON.stringify(options)}`
+  let formatter = intlFormatterCache.get(key) as Intl.DateTimeFormat | undefined
+  if (!formatter) {
+    formatter = new Intl.DateTimeFormat(locale, options)
+    intlFormatterCache.set(key, formatter)
+  }
+  return formatter
+}
+
 /**
  * 格式化相对时间
  * @param date 日期字符串或 Date 对象
@@ -44,7 +68,7 @@ export function formatNumber(num: number | null | undefined): string {
 
   // Use Intl.NumberFormat for compact notation if supported and needed
   // Note: Compact notation in 'zh' uses '万/亿', which is appropriate for Chinese
-  const formatter = new Intl.NumberFormat(locale, {
+  const formatter = getNumberFormat(locale, {
     notation: absNum >= 10000 ? 'compact' : 'standard',
     maximumFractionDigits: 1
   })
@@ -66,7 +90,7 @@ export function formatCurrency(amount: number | null | undefined, currency: stri
   // For very small amounts, show more decimals
   const fractionDigits = amount > 0 && amount < 0.01 ? 6 : 2
 
-  return new Intl.NumberFormat(locale, {
+  return getNumberFormat(locale, {
     style: 'currency',
     currency: currency,
     minimumFractionDigits: fractionDigits,
@@ -118,7 +142,7 @@ export function formatDate(
   if (isNaN(d.getTime())) return ''
 
   const locale = localeOverride ?? getLocale()
-  return new Intl.DateTimeFormat(locale, options).format(d)
+  return getDateTimeFormat(locale, options).format(d)
 }
 
 /**

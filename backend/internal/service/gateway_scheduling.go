@@ -141,7 +141,7 @@ func (s *GatewayService) SelectAccountWithLoadAwareness(ctx context.Context, gro
 	}
 
 	// [DEBUG-STICKY] 调度器入口日志
-	slog.Info("sticky.scheduler_entry",
+	slog.Debug("sticky.scheduler_entry",
 		"group_id", derefGroupID(groupID),
 		"session_hash", shortSessionHash(sessionHash),
 		"sticky_account_id", stickyAccountID,
@@ -1541,9 +1541,14 @@ func (s *GatewayService) filterAccountsBySchedulingThreshold(ctx context.Context
 		return accounts
 	}
 
+	var thresholds map[string]int
+	if s.rateLimitService != nil {
+		thresholds = s.rateLimitService.settingService.GetAccountSchedulingThresholds(ctx)
+	}
+	now := time.Now().UTC()
 	filtered := make([]Account, 0, len(accounts))
 	for i := range accounts {
-		if s.isAccountBlockedBySchedulingThreshold(ctx, &accounts[i]) {
+		if s.rateLimitService.applyAccountSchedulingThresholdWith(ctx, &accounts[i], thresholds, now) {
 			continue
 		}
 		filtered = append(filtered, accounts[i])

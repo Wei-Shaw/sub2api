@@ -254,19 +254,23 @@
 
           <template #cell-account_count="{ row }">
             <div class="space-y-0.5 text-xs tabular-nums">
-              <div>
+              <RouterLink
+                :to="{ path: '/admin/accounts', query: { group: String(row.id) } }"
+                class="block hover:underline"
+                data-testid="group-available-accounts-link"
+              >
                 <span class="text-fg-muted">{{
                   t("admin.groups.accountsAvailable")
                 }}</span>
                 <span
-                  class="ml-1 font-medium text-success"
+                  :class="['ml-1 font-medium', row.active_account_count ? 'text-success' : 'text-danger']"
                   >{{ row.active_account_count || 0 }}</span
                 >
                 <span
                   class="ml-0.5 text-fg-subtle"
                   >{{ t("admin.groups.accountsUnit") }}</span
                 >
-              </div>
+              </RouterLink>
               <div v-if="row.rate_limited_account_count">
                 <span class="text-fg-muted">{{
                   t("admin.groups.accountsRateLimited")

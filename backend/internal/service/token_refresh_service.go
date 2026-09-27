@@ -485,6 +485,7 @@ func (s *TokenRefreshService) processRefresh() {
 
 // processRefreshContext executes one bounded, cursor-resumable refresh cycle.
 func (s *TokenRefreshService) processRefreshContext(parent context.Context) {
+	defer recoverBackgroundWorker("token refresh cycle", nil)
 	if parent == nil {
 		parent = context.Background()
 	}
@@ -682,7 +683,12 @@ func (s *TokenRefreshService) processProviderAccounts(
 					results <- refreshResult{accountID: account.ID, err: errRefreshSkipped}
 					continue
 				}
-				err := s.refreshWithRetryWithRateGate(ctx, account, state.registration.refresher, state.registration.executor, refreshWindow, state)
+				var err error
+				func() {
+					// 单个账号的 panic 计为该账号失败，worker 继续处理后续账号。
+					defer recoverBackgroundWorker("token refresh account", func(panicErr error) { err = panicErr })
+					err = s.refreshWithRetryWithRateGate(ctx, account, state.registration.refresher, state.registration.executor, refreshWindow, state)
+				}()
 				state.recordResult(err)
 				results <- refreshResult{accountID: account.ID, err: err}
 			}
@@ -852,6 +858,9 @@ func (s *TokenRefreshService) refreshWithRetryWithRateGate(
 				if err != nil {
 					return err
 				}
+				// panic 被 worker 兜底时也要归还进程级并发槽，否则每次 panic 都会永久占掉一个槽。
+				releaseAttempt = sync.OnceFunc(releaseAttempt)
+				defer releaseAttempt()
 				acquireRate = providerGate.acquireRate
 			} else {
 				// Compatibility gates are rate-admission gates. Acquire them only

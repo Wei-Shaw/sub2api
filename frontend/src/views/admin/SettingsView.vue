@@ -58,8 +58,23 @@
 
         <SettingsBackupTab />
 
-        <!-- Save Button -->
-        <div v-show="activeTab !== 'backup'" class="flex justify-end">
+        <!-- Save Button: sticks to the viewport bottom while there are unsaved changes -->
+        <div
+          v-show="activeTab !== 'backup'"
+          :class="[
+            'flex items-center justify-end gap-3',
+            isDirty &&
+              'sticky bottom-0 z-20 -mx-1 border-t border-border bg-surface-sunken px-1 py-3',
+          ]"
+        >
+          <span
+            v-if="isDirty"
+            class="text-sm text-warning"
+            role="status"
+            data-testid="settings-unsaved-indicator"
+          >
+            {{ t("admin.settings.unsavedChanges") }}
+          </span>
           <button
             type="submit"
             :disabled="saving || loadFailed"
@@ -162,6 +177,7 @@ const {
   handleDeleteProvider,
   handleSaveProvider,
   handleSettingsTabKeydown,
+  isDirty,
   loadFailed,
   loading,
   providerKeyOptions,

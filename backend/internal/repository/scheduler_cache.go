@@ -244,29 +244,24 @@ func newSchedulerCacheWithChunkSizes(rdb *redis.Client, mgetChunkSize, writeChun
 }
 
 func (c *schedulerCache) GetSnapshot(ctx context.Context, bucket service.SchedulerBucket) ([]*service.Account, bool, error) {
-	readyKey := schedulerBucketKey(schedulerReadyPrefix, bucket)
-	readyVal, err := c.rdb.Get(ctx, readyKey).Result()
-	if err == redis.Nil {
-		return nil, false, nil
-	}
+	// ready 与 active 用一次 MGET 读取；快照 key 必须以普通命令访问，
+	// 不能在 Lua 里用 ARGV 拼接（key 前缀 hook / Redis Cluster 只认 KEYS）。
+	state, err := c.rdb.MGet(ctx,
+		schedulerBucketKey(schedulerReadyPrefix, bucket),
+		schedulerBucketKey(schedulerActivePrefix, bucket),
+	).Result()
 	if err != nil {
 		return nil, false, err
 	}
-	if readyVal != "1" {
+	if ready, _ := state[0].(string); ready != "1" {
+		return nil, false, nil
+	}
+	activeVal, ok := state[1].(string)
+	if !ok {
 		return nil, false, nil
 	}
 
-	activeKey := schedulerBucketKey(schedulerActivePrefix, bucket)
-	activeVal, err := c.rdb.Get(ctx, activeKey).Result()
-	if err == redis.Nil {
-		return nil, false, nil
-	}
-	if err != nil {
-		return nil, false, err
-	}
-
-	snapshotKey := schedulerSnapshotKey(bucket, activeVal)
-	ids, err := c.rdb.ZRange(ctx, snapshotKey, 0, -1).Result()
+	ids, err := c.rdb.ZRange(ctx, schedulerSnapshotKey(bucket, activeVal), 0, -1).Result()
 	if err != nil {
 		return nil, false, err
 	}
@@ -282,14 +277,11 @@ func (c *schedulerCache) GetSnapshot(ctx context.Context, bucket service.Schedul
 		keys = append(keys, schedulerAccountMetaKey(id))
 		lastUsedKeys = append(lastUsedKeys, schedulerLastUsedKey(id))
 	}
-	values, err := c.mgetChunked(ctx, keys)
+	groups, err := c.mgetChunked(ctx, keys, lastUsedKeys)
 	if err != nil {
 		return nil, false, err
 	}
-	lastUsedValues, err := c.mgetChunked(ctx, lastUsedKeys)
-	if err != nil {
-		return nil, false, err
-	}
+	values, lastUsedValues := groups[0], groups[1]
 
 	accounts := make([]*service.Account, 0, len(values))
 	for i, val := range values {
@@ -838,26 +830,35 @@ func marshalSchedulerCacheAccount(account service.Account) ([]byte, []byte, erro
 	return fullPayload, metaPayload, nil
 }
 
-func (c *schedulerCache) mgetChunked(ctx context.Context, keys []string) ([]any, error) {
-	if len(keys) == 0 {
-		return []any{}, nil
-	}
-
-	out := make([]any, 0, len(keys))
+// mgetChunked 把各组 key 分块 MGET 后放进同一个 pipeline，一次往返取回；结果与 keyGroups 按组一一对应。
+func (c *schedulerCache) mgetChunked(ctx context.Context, keyGroups ...[]string) ([][]any, error) {
 	chunkSize := c.mgetChunkSize
 	if chunkSize <= 0 {
 		chunkSize = defaultSchedulerSnapshotMGetChunkSize
 	}
-	for start := 0; start < len(keys); start += chunkSize {
-		end := start + chunkSize
-		if end > len(keys) {
-			end = len(keys)
+	pipe := c.rdb.Pipeline()
+	cmds := make([][]*redis.SliceCmd, len(keyGroups))
+	for g, keys := range keyGroups {
+		for start := 0; start < len(keys); start += chunkSize {
+			end := start + chunkSize
+			if end > len(keys) {
+				end = len(keys)
+			}
+			cmds[g] = append(cmds[g], pipe.MGet(ctx, keys[start:end]...))
 		}
-		part, err := c.rdb.MGet(ctx, keys[start:end]...).Result()
-		if err != nil {
+	}
+	if pipe.Len() > 0 {
+		if _, err := pipe.Exec(ctx); err != nil {
 			return nil, err
 		}
-		out = append(out, part...)
+	}
+
+	out := make([][]any, len(keyGroups))
+	for g, keys := range keyGroups {
+		out[g] = make([]any, 0, len(keys))
+		for _, cmd := range cmds[g] {
+			out[g] = append(out[g], cmd.Val()...)
+		}
 	}
 	return out, nil
 }

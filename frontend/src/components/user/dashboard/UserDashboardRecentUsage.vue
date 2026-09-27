@@ -26,7 +26,12 @@
         <span class="tabular-nums text-fg">{{ (row.input_tokens + row.output_tokens).toLocaleString() }}</span>
       </template>
       <template #empty>
-        <EmptyState :title="t('dashboard.noUsageRecords')" :description="t('dashboard.startUsingApi')" />
+        <EmptyState
+          :title="t('dashboard.noUsageRecords')"
+          :description="t('dashboard.startUsingApi')"
+          :action-text="t('dashboard.createApiKey')"
+          action-to="/keys"
+        />
       </template>
     </DataTable>
     <div class="card-footer flex justify-center">

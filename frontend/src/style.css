@@ -259,6 +259,14 @@
     @apply rounded-sm p-2;
   }
 
+  /* Touch screens: icon buttons get at least a 40px hit area (DESIGN.md) */
+  @media (pointer: coarse) {
+    .btn-icon {
+      min-width: 2.5rem;
+      min-height: 2.5rem;
+    }
+  }
+
   /* ============ 输入框：票据填写栏 ============ */
   .input {
     @apply w-full rounded-sm border border-border-strong bg-surface px-3 py-2 text-body text-fg;
@@ -744,7 +752,7 @@
     @apply border-r border-border;
     @apply flex flex-col;
     @apply transition-transform duration-200;
-    transition-property: width, transform;
+    transition-property: width, transform, visibility;
   }
 
   .sidebar-header {

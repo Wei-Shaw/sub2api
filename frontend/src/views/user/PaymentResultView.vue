@@ -89,7 +89,12 @@
         </div>
         <div class="stub-perforation" />
         <!-- Actions -->
-        <div class="flex gap-3 px-5 py-4">
+        <!-- Paid: point at the next step (using the service), not back at the top-up page -->
+        <div v-if="isSuccess" class="flex gap-3 px-5 py-4">
+          <button class="btn btn-secondary flex-1" @click="router.push('/dashboard')">{{ t('home.goToDashboard') }}</button>
+          <button class="btn btn-primary flex-1" @click="router.push('/keys')">{{ t('dashboard.createApiKey') }}</button>
+        </div>
+        <div v-else class="flex gap-3 px-5 py-4">
           <button class="btn btn-secondary flex-1" @click="router.push('/purchase')">{{ t('payment.result.backToRecharge') }}</button>
           <button class="btn btn-primary flex-1" @click="router.push('/orders')">{{ t('payment.result.viewOrders') }}</button>
         </div>

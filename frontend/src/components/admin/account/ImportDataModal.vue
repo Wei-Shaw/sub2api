@@ -51,6 +51,8 @@
         />
       </div>
 
+      <GroupSelector v-model="groupIds" :groups="groups" />
+
       <div
         v-if="result"
         class="space-y-2 border-t border-border pt-4"
@@ -99,9 +101,10 @@
 import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import BaseDialog from '@/components/common/BaseDialog.vue'
+import GroupSelector from '@/components/common/GroupSelector.vue'
 import { adminAPI } from '@/api/admin'
 import { useAppStore } from '@/stores/app'
-import type { AdminDataImportResult, AdminDataPayload } from '@/types'
+import type { AdminDataImportResult, AdminDataPayload, AdminGroup } from '@/types'
 
 interface Props {
   show: boolean
@@ -124,6 +127,10 @@ const dragDepth = ref(0)
 const dragActive = computed(() => dragDepth.value > 0)
 const hasCreatedData = ref(false)
 const result = ref<AdminDataImportResult | null>(null)
+const groups = ref<AdminGroup[]>([])
+const groupIds = ref<number[]>([])
+// 同一批文件+分组的重试（含超时后重试）复用同一个 key，后端据此去重；选择变化时重置。
+let importKey: string | null = null
 
 const fileInput = ref<HTMLInputElement | null>(null)
 const selectedFilesLabel = computed(() => {
@@ -143,12 +150,27 @@ watch(
       dragDepth.value = 0
       hasCreatedData.value = false
       result.value = null
+      groupIds.value = []
+      importKey = null
       if (fileInput.value) {
         fileInput.value.value = ''
       }
+      void loadGroups()
     }
   }
 )
+
+watch(groupIds, () => {
+  importKey = null
+})
+
+const loadGroups = async () => {
+  try {
+    groups.value = await adminAPI.groups.getAll()
+  } catch {
+    appStore.showError(t('admin.groups.failedToLoad'))
+  }
+}
 
 const openFilePicker = () => {
   fileInput.value?.click()
@@ -189,6 +211,7 @@ const setSelectedFiles = (sourceFiles: FileList | File[] | null | undefined) => 
   }
   files.value = picked
   result.value = null
+  importKey = null
 }
 
 const handleDragEnter = () => {
@@ -256,7 +279,8 @@ const mergeDataPayloads = (payloads: AdminDataPayload[]): AdminDataPayload => {
   return {
     type: payloads.find((item) => typeof item.type === 'string')?.type,
     version: payloads.find((item) => typeof item.version === 'number')?.version,
-    exported_at: new Date().toISOString(),
+    // 取确定值：同一批文件重试时请求指纹不变，Idempotency-Key 才能去重
+    exported_at: firstPayload?.exported_at ?? '',
     proxies: payloads.flatMap((item) => item.proxies),
     accounts: payloads.flatMap((item) => item.accounts),
     skipped_shadows: payloads.reduce((sum, item) => {
@@ -293,10 +317,15 @@ const handleImport = async () => {
     }
     const dataPayload = mergeDataPayloads(dataPayloads)
 
-    const res = await adminAPI.accounts.importData({
-      data: dataPayload,
-      skip_default_group_bind: true
-    })
+    importKey ??= `account-import-${globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`}`
+    const res = await adminAPI.accounts.importData(
+      {
+        data: dataPayload,
+        skip_default_group_bind: true,
+        group_ids: groupIds.value.length ? [...groupIds.value] : undefined
+      },
+      { idempotencyKey: importKey }
+    )
 
     result.value = res
 

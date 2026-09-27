@@ -10,6 +10,11 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/service"
 )
 
+const (
+	opsRequestDetailsExactCountWindow = 24 * time.Hour
+	opsRequestDetailsCountCap         = 10000
+)
+
 func (r *opsRepository) ListRequestDetails(ctx context.Context, filter *service.OpsRequestDetailFilter) ([]*service.OpsRequestDetail, int64, error) {
 	if r == nil || r.db == nil {
 		return nil, 0, fmt.Errorf("nil ops repository")
@@ -138,8 +143,16 @@ WITH combined AS (
 `
 
 	countQuery := fmt.Sprintf(`%s SELECT COUNT(1) FROM combined %s`, cte, where)
+	countArgs := args
+	if endTime.Sub(startTime) > opsRequestDetailsExactCountWindow {
+		// 长窗口不再精确数完 usage_logs + ops_error_logs：最多数到上限（且总能翻到下一页），
+		// total 字段含义变为“至少这么多”，响应结构不变。
+		countLimit := max(opsRequestDetailsCountCap, offset+pageSize) + 1
+		countQuery = fmt.Sprintf(`%s SELECT COUNT(1) FROM (SELECT 1 FROM combined %s LIMIT $%d) capped`, cte, where, len(args)+1)
+		countArgs = append(append([]any{}, args...), countLimit)
+	}
 	var total int64
-	if err := r.db.QueryRowContext(ctx, countQuery, args...).Scan(&total); err != nil {
+	if err := r.db.QueryRowContext(ctx, countQuery, countArgs...).Scan(&total); err != nil {
 		if err == sql.ErrNoRows {
 			total = 0
 		} else {

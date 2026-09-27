@@ -1003,4 +1003,126 @@ describe('BulkEditAccountModal', () => {
       }
     })
   })
+
+  it('分组只列出目标平台（antigravity 放开混合调度），并提示会替换现有分组', () => {
+    const wrapper = mountModal()
+    const selector = wrapper.findComponent({ name: 'GroupSelector' })
+
+    expect(selector.props('platform')).toBe('antigravity')
+    expect(selector.props('mixedScheduling')).toBe(true)
+    expect(wrapper.get('[data-testid="bulk-edit-groups-hint"]').text()).toContain(
+      'admin.accounts.bulkEdit.groupsReplaceHint'
+    )
+
+    const mixed = mountModal({ selectedPlatforms: ['anthropic', 'openai'] })
+    expect(mixed.findComponent({ name: 'GroupSelector' }).props('platform')).toBeUndefined()
+  })
+
+  it('勾选分组但留空时必须确认，取消则不提交', async () => {
+    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(false)
+    const wrapper = mountModal()
+
+    await wrapper.get('#bulk-edit-groups-enabled').setValue(true)
+    await wrapper.get('#bulk-edit-account-form').trigger('submit.prevent')
+    await flushPromises()
+
+    expect(confirmSpy).toHaveBeenCalledWith('admin.accounts.bulkEdit.groupsClearConfirm')
+    expect(translate).toHaveBeenCalledWith('admin.accounts.bulkEdit.groupsClearConfirm', { count: 2 })
+    expect(adminAPI.accounts.bulkUpdate).not.toHaveBeenCalled()
+
+    confirmSpy.mockReturnValue(true)
+    await wrapper.get('#bulk-edit-account-form').trigger('submit.prevent')
+    await flushPromises()
+
+    expect(adminAPI.accounts.bulkUpdate).toHaveBeenCalledWith([1, 2], { group_ids: [] })
+    confirmSpy.mockRestore()
+  })
+
+  it('替换为非空分组前同样要求确认', async () => {
+    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true)
+    const wrapper = mountModal()
+
+    await wrapper.get('#bulk-edit-groups-enabled').setValue(true)
+    wrapper.findComponent({ name: 'GroupSelector' }).vm.$emit('update:modelValue', [5])
+    await wrapper.get('#bulk-edit-account-form').trigger('submit.prevent')
+    await flushPromises()
+
+    expect(confirmSpy).toHaveBeenCalledWith('admin.accounts.bulkEdit.groupsReplaceConfirm')
+    expect(adminAPI.accounts.bulkUpdate).toHaveBeenCalledWith([1, 2], { group_ids: [5] })
+    confirmSpy.mockRestore()
+  })
+
+  it('添加模式只增不减：无需确认，仍做混合渠道预检，提交 group_mode=add', async () => {
+    const confirmSpy = vi.spyOn(window, 'confirm')
+    const wrapper = mountModal()
+
+    await wrapper.get('#bulk-edit-groups-enabled').setValue(true)
+    await wrapper.get('[data-testid="bulk-edit-group-mode-add"]').trigger('click')
+    expect(wrapper.get('[data-testid="bulk-edit-groups-hint"]').text()).toContain(
+      'admin.accounts.bulkEdit.groupsAddHint'
+    )
+    wrapper.findComponent({ name: 'GroupSelector' }).vm.$emit('update:modelValue', [5])
+    await wrapper.get('#bulk-edit-account-form').trigger('submit.prevent')
+    await flushPromises()
+
+    expect(confirmSpy).not.toHaveBeenCalled()
+    expect(adminAPI.accounts.checkMixedChannelRisk).toHaveBeenCalledWith({
+      platform: 'antigravity',
+      group_ids: [5]
+    })
+    expect(adminAPI.accounts.bulkUpdate).toHaveBeenCalledWith([1, 2], {
+      group_ids: [5],
+      group_mode: 'add'
+    })
+    confirmSpy.mockRestore()
+  })
+
+  it('移除模式需确认、跳过混合渠道预检，提交 group_mode=remove', async () => {
+    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true)
+    const wrapper = mountModal()
+
+    await wrapper.get('#bulk-edit-groups-enabled').setValue(true)
+    await wrapper.get('[data-testid="bulk-edit-group-mode-remove"]').trigger('click')
+    expect(wrapper.get('[data-testid="bulk-edit-groups-hint"]').text()).toContain(
+      'admin.accounts.bulkEdit.groupsRemoveHint'
+    )
+    wrapper.findComponent({ name: 'GroupSelector' }).vm.$emit('update:modelValue', [5])
+    await wrapper.get('#bulk-edit-account-form').trigger('submit.prevent')
+    await flushPromises()
+
+    expect(confirmSpy).toHaveBeenCalledWith('admin.accounts.bulkEdit.groupsRemoveConfirm')
+    expect(adminAPI.accounts.checkMixedChannelRisk).not.toHaveBeenCalled()
+    expect(adminAPI.accounts.bulkUpdate).toHaveBeenCalledWith([1, 2], {
+      group_ids: [5],
+      group_mode: 'remove'
+    })
+    confirmSpy.mockRestore()
+  })
+
+  it('添加/移除模式未勾选分组时阻止提交', async () => {
+    const wrapper = mountModal()
+
+    await wrapper.get('#bulk-edit-groups-enabled').setValue(true)
+    await wrapper.get('[data-testid="bulk-edit-group-mode-remove"]').trigger('click')
+    await wrapper.get('#bulk-edit-account-form').trigger('submit.prevent')
+    await flushPromises()
+
+    expect(showError).toHaveBeenCalledWith('admin.accounts.bulkEdit.groupsModeEmpty')
+    expect(adminAPI.accounts.bulkUpdate).not.toHaveBeenCalled()
+  })
+
+  it('白名单包含通配符时阻止提交，而不是写入会被误映射的 claude-*', async () => {
+    const wrapper = mountModal({
+      selectedPlatforms: ['anthropic'],
+      selectedTypes: ['apikey']
+    })
+
+    await wrapper.get('#bulk-edit-model-restriction-enabled').setValue(true)
+    wrapper.findComponent(ModelWhitelistSelector).vm.$emit('update:modelValue', ['claude-*'])
+    await wrapper.get('#bulk-edit-account-form').trigger('submit.prevent')
+    await flushPromises()
+
+    expect(showError).toHaveBeenCalledWith('admin.accounts.modelRestrictionInvalidEntries')
+    expect(adminAPI.accounts.bulkUpdate).not.toHaveBeenCalled()
+  })
 })

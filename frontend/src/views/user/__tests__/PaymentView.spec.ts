@@ -27,6 +27,9 @@ const getCheckoutInfo = vi.hoisted(() => vi.fn())
 const getExchangeRate = vi.hoisted(() => vi.fn())
 const bridgeInvoke = vi.hoisted(() => vi.fn())
 const translate = vi.hoisted(() => vi.fn((key: string) => key))
+const authState = vi.hoisted(() => ({
+  user: { username: 'demo-user', balance: 0 } as Record<string, unknown>,
+}))
 // Public settings live in a reactive holder so tests can flip feature flags after mount
 // and exercise the watchers that react to them.
 const appStoreState = vi.hoisted(() => ({
@@ -58,9 +61,8 @@ vi.mock('vue-i18n', async () => {
 
 vi.mock('@/stores/auth', () => ({
   useAuthStore: () => ({
-    user: {
-      username: 'demo-user',
-      balance: 0,
+    get user() {
+      return authState.user
     },
     refreshUser,
   }),
@@ -318,6 +320,76 @@ describe('PaymentView help text', () => {
     const wrapper = await mountHelp('', 'https://example.com/help.png')
     expect(wrapper.find('.markdown-body').exists()).toBe(false)
     expect(wrapper.get('img').attributes('src')).toBe('https://example.com/help.png')
+  })
+})
+
+describe('PaymentView checkout load failure', () => {
+  it('shows the load error with a retry instead of claiming top-up is unavailable', async () => {
+    vi.useRealTimers()
+    routeState.path = '/purchase'
+    routeState.query = {}
+    showError.mockReset()
+    window.localStorage.clear()
+    getCheckoutInfo.mockReset()
+      .mockRejectedValueOnce({ status: 500, message: 'Internal Server Error' })
+      .mockResolvedValueOnce(checkoutInfoFixture())
+
+    const wrapper = shallowMount(PaymentView, {
+      global: {
+        stubs: {
+          AppLayout: { template: '<div><slot /></div>' },
+          Teleport: true,
+          Transition: false,
+        },
+      },
+    })
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('Internal Server Error')
+    expect(wrapper.text()).not.toContain('payment.notAvailable')
+    expect(wrapper.text()).not.toContain('payment.rechargeAccount')
+    expect(showError).toHaveBeenCalledWith('Internal Server Error')
+
+    const retry = wrapper.findAll('button').find(button => button.text() === 'common.refresh')
+    expect(retry).toBeDefined()
+    await retry!.trigger('click')
+    await flushPromises()
+
+    expect(getCheckoutInfo).toHaveBeenCalledTimes(2)
+    expect(wrapper.text()).not.toContain('Internal Server Error')
+    expect(wrapper.text()).toContain('payment.rechargeAccount')
+    wrapper.unmount()
+  })
+})
+
+describe('PaymentView recharge account meter', () => {
+  afterEach(() => {
+    authState.user = { username: 'demo-user', balance: 0 }
+  })
+
+  it('falls back to the email for email-registered users and prefixes the balance with $', async () => {
+    vi.useRealTimers()
+    routeState.path = '/purchase'
+    routeState.query = {}
+    window.localStorage.clear()
+    authState.user = { username: '', email: 'buyer@example.com', balance: 12.5 }
+    getCheckoutInfo.mockReset().mockResolvedValue(checkoutInfoFixture())
+
+    const wrapper = shallowMount(PaymentView, {
+      global: {
+        stubs: {
+          AppLayout: { template: '<div><slot /></div>' },
+          Teleport: true,
+          Transition: false,
+        },
+      },
+    })
+    await flushPromises()
+
+    const cells = wrapper.findAll('.meter-cell')
+    expect(cells[0].text()).toContain('buyer@example.com')
+    expect(cells[1].get('.meter-value').text()).toBe('$12.50')
+    wrapper.unmount()
   })
 })
 

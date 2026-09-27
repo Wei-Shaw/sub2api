@@ -1,11 +1,9 @@
 import { onMounted, onUnmounted, nextTick } from 'vue'
-import { driver, type Driver, type DriveStep } from 'driver.js'
-import 'driver.js/dist/driver.css'
+import type { Driver, DriveStep } from 'driver.js'
 import { useAuthStore as useUserStore } from '@/stores/auth'
 import { useOnboardingStore } from '@/stores/onboarding'
 import { useAppStore } from '@/stores/app'
 import { useI18n } from 'vue-i18n'
-import { getAdminSteps, getUserSteps } from '@/components/Guide/steps'
 
 export interface OnboardingOptions {
   storageKey?: string
@@ -94,6 +92,13 @@ export function useOnboardingTour(options: OnboardingOptions) {
   }
 
   const startTour = async (startIndex = 0) => {
+    // driver.js、样式与引导步骤仅在真正启动引导时加载，不进入每个登录页面的首屏
+    const [{ driver }, { getAdminSteps, getUserSteps }] = await Promise.all([
+      import('driver.js'),
+      import('@/components/Guide/steps'),
+      import('driver.js/dist/driver.css')
+    ])
+
     // 动态获取当前用户角色和步骤
     const isAdmin = userStore.user?.role === 'admin'
     const isSimpleMode = userStore.isSimpleMode

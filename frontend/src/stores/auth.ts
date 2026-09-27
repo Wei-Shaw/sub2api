@@ -85,6 +85,7 @@ export const useAuthStore = defineStore('auth', () => {
   const pendingAuthSession = ref<PendingAuthSessionSummary | null>(null)
   let refreshIntervalId: ReturnType<typeof setInterval> | null = null
   let tokenRefreshTimeoutId: ReturnType<typeof setTimeout> | null = null
+  let refreshUserInFlight: Promise<User> | null = null
 
   // ==================== Computed ====================
 
@@ -149,7 +150,8 @@ export const useAuthStore = defineStore('auth', () => {
     stopAutoRefresh()
 
     refreshIntervalId = setInterval(() => {
-      if (token.value) {
+      // Background tabs skip the poll; the next tick after the tab is shown refreshes.
+      if (token.value && document.visibilityState === 'visible') {
         refreshUser().catch((error) => {
           console.error('Auto-refresh user failed:', error)
         })
@@ -437,6 +439,16 @@ export const useAuthStore = defineStore('auth', () => {
       throw new Error('Not authenticated')
     }
 
+    // checkAuth and view onMounted hooks both refresh on load; share one /auth/me request.
+    if (!refreshUserInFlight) {
+      refreshUserInFlight = fetchCurrentUser().finally(() => {
+        refreshUserInFlight = null
+      })
+    }
+    return refreshUserInFlight
+  }
+
+  async function fetchCurrentUser(): Promise<User> {
     try {
       const response = await authAPI.getCurrentUser()
       if (response.data.run_mode) {
@@ -468,6 +480,7 @@ export const useAuthStore = defineStore('auth', () => {
     // Stop token refresh
     stopTokenRefresh()
 
+    refreshUserInFlight = null
     token.value = null
     refreshTokenValue.value = null
     tokenExpiresAt.value = null

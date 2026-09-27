@@ -198,6 +198,7 @@ import { ref, watch, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useAppStore } from '@/stores/app'
 import { adminAPI } from '@/api/admin'
+import { extractApiErrorMessage } from '@/utils/apiError'
 import type { AdminUser, Group, GroupPlatform } from '@/types'
 import BaseDialog from '@/components/common/BaseDialog.vue'
 import PlatformIcon from '@/components/common/PlatformIcon.vue'
@@ -272,6 +273,7 @@ const load = async () => {
     loaded.value = true
   } catch (error) {
     console.error('Failed to load groups:', error)
+    appStore.showError(extractApiErrorMessage(error, t('admin.users.failedToLoadGroups')))
   } finally {
     loading.value = false
   }
@@ -351,6 +353,7 @@ const handleSave = async () => {
     emit('close')
   } catch (error) {
     console.error('Failed to update user group config:', error)
+    appStore.showError(extractApiErrorMessage(error, t('admin.users.failedToUpdateAllowedGroups')))
   } finally {
     submitting.value = false
   }

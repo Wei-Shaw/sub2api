@@ -33,23 +33,33 @@
     </template>
 
     <!-- Error Info Indicator -->
+    <!-- Tooltips open on hover, tap and keyboard focus (button + focus-within) -->
     <div v-if="hasError && account.error_message" class="group/error relative">
-      <svg
-        class="h-4 w-4 cursor-help text-danger transition-colors hover:text-danger"
-        fill="none"
-        viewBox="0 0 24 24"
-        stroke="currentColor"
-        stroke-width="2"
+      <button
+        type="button"
+        class="inline-flex"
+        :aria-label="t('admin.accounts.status.error')"
+        :aria-describedby="`${tooltipId}-error`"
       >
-        <path
-          stroke-linecap="round"
-          stroke-linejoin="round"
-          d="M9.879 7.519c1.171-1.025 3.071-1.025 4.242 0 1.172 1.025 1.172 2.687 0 3.712-.203.179-.43.326-.67.442-.745.361-1.45.999-1.45 1.827v.75M21 12a9 9 0 11-18 0 9 9 0 0118 0zm-9 5.25h.008v.008H12v-.008z"
-        />
-      </svg>
+        <svg
+          class="h-4 w-4 cursor-help text-danger transition-colors hover:text-danger"
+          fill="none"
+          viewBox="0 0 24 24"
+          stroke="currentColor"
+          stroke-width="2"
+        >
+          <path
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            d="M9.879 7.519c1.171-1.025 3.071-1.025 4.242 0 1.172 1.025 1.172 2.687 0 3.712-.203.179-.43.326-.67.442-.745.361-1.45.999-1.45 1.827v.75M21 12a9 9 0 11-18 0 9 9 0 0118 0zm-9 5.25h.008v.008H12v-.008z"
+          />
+        </svg>
+      </button>
       <!-- Tooltip - 向下显示 -->
       <div
-        class="invisible absolute left-0 top-full z-[100] mt-1.5 min-w-[200px] max-w-[300px] rounded-sm border border-border-strong bg-surface-raised px-3 py-2 text-xs text-fg opacity-0 shadow-overlay transition-all duration-200 group-hover/error:visible group-hover/error:opacity-100"
+        :id="`${tooltipId}-error`"
+        role="tooltip"
+        class="invisible absolute left-0 top-full z-[100] mt-1.5 min-w-[200px] max-w-[300px] rounded-sm border border-border-strong bg-surface-raised px-3 py-2 text-xs text-fg opacity-0 shadow-overlay transition-all duration-200 group-hover/error:visible group-hover/error:opacity-100 group-focus-within/error:visible group-focus-within/error:opacity-100"
       >
         <div class="whitespace-pre-wrap break-words leading-relaxed text-fg-subtle">
           {{ account.error_message }}
@@ -63,15 +73,19 @@
 
     <!-- Rate Limit Indicator (429) -->
     <div v-if="isRateLimited" class="group relative">
-      <span
-        class="inline-flex items-center gap-1 rounded-sm bg-warning-weak px-1.5 py-0.5 text-xs font-medium text-warning-strong"
-      >
-        <Icon name="exclamationTriangle" size="xs" :stroke-width="2" />
-        429
-      </span>
+      <button type="button" class="inline-flex" :aria-describedby="`${tooltipId}-429`">
+        <span
+          class="inline-flex items-center gap-1 rounded-sm bg-warning-weak px-1.5 py-0.5 text-xs font-medium text-warning-strong"
+        >
+          <Icon name="exclamationTriangle" size="xs" :stroke-width="2" />
+          429
+        </span>
+      </button>
       <!-- Tooltip -->
       <div
-        class="pointer-events-none absolute bottom-full left-1/2 z-50 mb-2 w-56 -translate-x-1/2 whitespace-normal rounded-sm border border-border-strong bg-surface-raised px-3 py-2 text-center text-xs leading-relaxed text-fg opacity-0 transition-opacity group-hover:opacity-100 shadow-overlay"
+        :id="`${tooltipId}-429`"
+        role="tooltip"
+        class="pointer-events-none absolute bottom-full left-1/2 z-50 mb-2 w-56 -translate-x-1/2 whitespace-normal rounded-sm border border-border-strong bg-surface-raised px-3 py-2 text-center text-xs leading-relaxed text-fg opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100 shadow-overlay"
       >
         {{ t('admin.accounts.status.rateLimitedUntil', { time: formatDateTime(account.rate_limit_reset_at) }) }}
         <div
@@ -91,37 +105,41 @@
             : 'columns-3 gap-x-2'
       ]"
     >
-      <div v-for="item in activeModelStatuses" :key="`${item.kind}-${item.model}`" class="group relative mb-1 break-inside-avoid">
-        <!-- 积分已用尽 -->
-        <span
-          v-if="item.kind === 'credits_exhausted'"
-          class="inline-flex items-center gap-1 rounded-sm bg-danger-weak px-1.5 py-0.5 text-xs font-medium text-danger-strong"
-        >
-          <Icon name="exclamationTriangle" size="xs" :stroke-width="2" />
-          {{ t('admin.accounts.status.creditsExhausted') }}
-          <span class="text-[10px] opacity-70">{{ formatCountdown(item.reset_at) }}</span>
-        </span>
-        <!-- 正在走积分（模型限流但积分可用）-->
-        <span
-          v-else-if="item.kind === 'credits_active'"
-          class="inline-flex items-center gap-1 rounded-sm bg-warning-weak px-1.5 py-0.5 text-xs font-medium text-warning-strong"
-        >
-          <span>⚡</span>
-          {{ formatScopeName(item.model) }}
-          <span class="text-[10px] opacity-70">{{ formatCountdown(item.reset_at) }}</span>
-        </span>
-        <!-- 普通模型限流 -->
-        <span
-          v-else
-          class="inline-flex items-center gap-1 rounded-sm bg-surface-sunken px-1.5 py-0.5 text-xs font-medium text-fg"
-        >
-          <Icon name="exclamationTriangle" size="xs" :stroke-width="2" />
-          {{ formatScopeName(item.model) }}
-          <span class="text-[10px] opacity-70">{{ formatCountdown(item.reset_at) }}</span>
-        </span>
+      <div v-for="(item, index) in activeModelStatuses" :key="`${item.kind}-${item.model}`" class="group relative mb-1 break-inside-avoid">
+        <button type="button" class="inline-flex" :aria-describedby="`${tooltipId}-model-${index}`">
+          <!-- 积分已用尽 -->
+          <span
+            v-if="item.kind === 'credits_exhausted'"
+            class="inline-flex items-center gap-1 rounded-sm bg-danger-weak px-1.5 py-0.5 text-xs font-medium text-danger-strong"
+          >
+            <Icon name="exclamationTriangle" size="xs" :stroke-width="2" />
+            {{ t('admin.accounts.status.creditsExhausted') }}
+            <span class="text-[10px] opacity-70">{{ formatCountdown(item.reset_at) }}</span>
+          </span>
+          <!-- 正在走积分（模型限流但积分可用）-->
+          <span
+            v-else-if="item.kind === 'credits_active'"
+            class="inline-flex items-center gap-1 rounded-sm bg-warning-weak px-1.5 py-0.5 text-xs font-medium text-warning-strong"
+          >
+            <span>⚡</span>
+            {{ formatScopeName(item.model) }}
+            <span class="text-[10px] opacity-70">{{ formatCountdown(item.reset_at) }}</span>
+          </span>
+          <!-- 普通模型限流 -->
+          <span
+            v-else
+            class="inline-flex items-center gap-1 rounded-sm bg-surface-sunken px-1.5 py-0.5 text-xs font-medium text-fg"
+          >
+            <Icon name="exclamationTriangle" size="xs" :stroke-width="2" />
+            {{ formatScopeName(item.model) }}
+            <span class="text-[10px] opacity-70">{{ formatCountdown(item.reset_at) }}</span>
+          </span>
+        </button>
         <!-- Tooltip -->
         <div
-          class="pointer-events-none absolute bottom-full left-1/2 z-50 mb-2 w-max max-w-[320px] -translate-x-1/2 whitespace-nowrap rounded-sm border border-border-strong bg-surface-raised px-3 py-2 text-center text-xs leading-relaxed text-fg opacity-0 transition-opacity group-hover:opacity-100 shadow-overlay"
+          :id="`${tooltipId}-model-${index}`"
+          role="tooltip"
+          class="pointer-events-none absolute bottom-full left-1/2 z-50 mb-2 w-max max-w-[320px] -translate-x-1/2 whitespace-nowrap rounded-sm border border-border-strong bg-surface-raised px-3 py-2 text-center text-xs leading-relaxed text-fg opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100 shadow-overlay"
         >
           {{
             item.kind === 'credits_exhausted'
@@ -139,15 +157,19 @@
 
     <!-- Overload Indicator (529) -->
     <div v-if="isOverloaded" class="group relative">
-      <span
-        class="inline-flex items-center gap-1 rounded-sm bg-danger-weak px-1.5 py-0.5 text-xs font-medium text-danger-strong"
-      >
-        <Icon name="exclamationTriangle" size="xs" :stroke-width="2" />
-        529
-      </span>
+      <button type="button" class="inline-flex" :aria-describedby="`${tooltipId}-529`">
+        <span
+          class="inline-flex items-center gap-1 rounded-sm bg-danger-weak px-1.5 py-0.5 text-xs font-medium text-danger-strong"
+        >
+          <Icon name="exclamationTriangle" size="xs" :stroke-width="2" />
+          529
+        </span>
+      </button>
       <!-- Tooltip -->
       <div
-        class="pointer-events-none absolute bottom-full left-1/2 z-50 mb-2 w-56 -translate-x-1/2 whitespace-normal rounded-sm border border-border-strong bg-surface-raised px-3 py-2 text-center text-xs leading-relaxed text-fg opacity-0 transition-opacity group-hover:opacity-100 shadow-overlay"
+        :id="`${tooltipId}-529`"
+        role="tooltip"
+        class="pointer-events-none absolute bottom-full left-1/2 z-50 mb-2 w-56 -translate-x-1/2 whitespace-normal rounded-sm border border-border-strong bg-surface-raised px-3 py-2 text-center text-xs leading-relaxed text-fg opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100 shadow-overlay"
       >
         {{ t('admin.accounts.status.overloadedUntil', { time: formatTime(account.overload_until) }) }}
         <div
@@ -159,13 +181,14 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, useId } from 'vue'
 import { useI18n } from 'vue-i18n'
 import Icon from '@/components/icons/Icon.vue'
 import type { Account } from '@/types'
 import { formatCountdown, formatDateTime, formatDateTimeToMinute, formatCountdownWithSuffix, formatTime } from '@/utils/format'
 
 const { t } = useI18n()
+const tooltipId = useId()
 
 const props = defineProps<{
   account: Account

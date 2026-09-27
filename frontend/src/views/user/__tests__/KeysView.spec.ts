@@ -1,10 +1,12 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { flushPromises, mount, type VueWrapper } from '@vue/test-utils'
+import { flushPromises, mount, RouterLinkStub, type VueWrapper } from '@vue/test-utils'
 import { nextTick } from 'vue'
 
 import type { ApiKey } from '@/types'
 import { keysAPI } from '@/api'
 import KeysView from '../KeysView.vue'
+import EndpointPopover from '@/components/keys/EndpointPopover.vue'
+import UseKeyModal from '@/components/keys/UseKeyModal.vue'
 
 const {
   listKeys,
@@ -18,7 +20,11 @@ const {
   copyToClipboard,
   isCurrentStep,
   nextStep,
+  appSettings,
+  authState,
 } = vi.hoisted(() => ({
+  appSettings: {} as Record<string, unknown>,
+  authState: { isSimpleMode: false },
   listKeys: vi.fn(),
   updateKey: vi.fn(),
   getPublicSettings: vi.fn(),
@@ -56,6 +62,7 @@ const messages: Record<string, string> = {
   'keys.status.inactive': 'Inactive',
   'keys.status.quota_exhausted': 'Quota exhausted',
   'keys.usage': 'Usage',
+  'keys.errors.API_KEY_EXISTS': 'Key already exists',
 }
 
 vi.mock('@/api', () => ({
@@ -82,7 +89,12 @@ vi.mock('@/stores/app', () => ({
   useAppStore: () => ({
     showError,
     showSuccess,
+    cachedPublicSettings: appSettings,
   }),
+}))
+
+vi.mock('@/stores/auth', () => ({
+  useAuthStore: () => authState,
 }))
 
 vi.mock('@/stores/onboarding', () => ({
@@ -242,6 +254,7 @@ const mountView = async () => {
         EndpointPopover: true,
         GroupBadge: true,
         GroupOptionItem: true,
+        RouterLink: RouterLinkStub,
         Teleport: true,
       },
     },
@@ -294,6 +307,8 @@ describe('user KeysView column settings', () => {
     getAvailableGroups.mockResolvedValue([])
     getUserGroupRates.mockResolvedValue({})
     isCurrentStep.mockReturnValue(false)
+    for (const key of Object.keys(appSettings)) delete appSettings[key]
+    authState.isSimpleMode = false
   })
 
   it.each([
@@ -618,6 +633,26 @@ describe('user KeysView column settings', () => {
       expect(wrapper.findAll<HTMLInputElement>('input[name="key-provider"]').every((input) => input.element.disabled)).toBe(true)
     })
 
+    it.each([
+      [{}, false, ['/purchase', '/redeem']],
+      [{ payment_enabled: false, available_channels_enabled: true }, false, ['/redeem', '/available-channels']],
+      [{ available_channels_enabled: true }, true, []],
+    ])('links users without groups to where they can get one (settings %o, simple %s)', async (settings, simple, links) => {
+      Object.assign(appSettings, settings)
+      authState.isSimpleMode = simple
+      getAvailableGroups.mockResolvedValue([])
+      const wrapper = await openCreate()
+      const help = wrapper.get('[data-test="no-groups-help"]')
+      expect(help.text()).toContain('keys.noGroupsHint')
+      expect(help.findAllComponents(RouterLinkStub).map((link) => link.props('to'))).toEqual(links)
+    })
+
+    it('reports a failure to load groups instead of only showing an empty list', async () => {
+      getAvailableGroups.mockRejectedValue({ status: 500, message: 'groups unavailable' })
+      await mountView()
+      expect(showError).toHaveBeenCalledWith('groups unavailable')
+    })
+
     it('selects an available provider when groups arrive after opening', async () => {
       let resolveGroups!: (value: typeof availableGroups) => void
       getAvailableGroups.mockReturnValue(new Promise((resolve) => { resolveGroups = resolve }))
@@ -640,6 +675,84 @@ describe('user KeysView column settings', () => {
       await wrapper.get('button[title="common.edit"]').trigger('click')
       expect(wrapper.find('[data-tour="key-form-provider"]').exists()).toBe(false)
       expect(optionIds(wrapper)).toHaveLength(11)
+    })
+  })
+
+  it('shows the site origin as base URL when none is configured', async () => {
+    const wrapper = await mountView()
+    expect(wrapper.findComponent(EndpointPopover).props('apiBaseUrl')).toBe(window.location.origin)
+
+    getPublicSettings.mockResolvedValue({ api_base_url: 'https://api.example.com' })
+    const configured = await mountView()
+    expect(configured.findComponent(EndpointPopover).props('apiBaseUrl')).toBe('https://api.example.com')
+  })
+
+  it('shows and resubmits HTML-escaped key names decoded', async () => {
+    listKeys.mockResolvedValue({
+      items: [{ ...createApiKey(), group_id: 1, name: 'Bob&#39;s &amp; Co &lt;x&gt; &amp;amp;' }],
+      total: 1, page: 1, page_size: 20, pages: 1,
+    })
+    updateKey.mockResolvedValue(createApiKey())
+    const wrapper = await mountView()
+    expect(wrapper.text()).toContain("Bob's & Co <x> &amp;")
+
+    await wrapper.get('button[title="common.edit"]').trigger('click')
+    const input = wrapper.get<HTMLInputElement>('[data-tour="key-form-name"]')
+    expect(input.element.value).toBe("Bob's & Co <x> &amp;")
+    await wrapper.get('#key-form').trigger('submit')
+    await flushPromises()
+    expect(updateKey).toHaveBeenCalledWith(1, expect.objectContaining({ name: "Bob's & Co <x> &amp;" }))
+  })
+
+  it('opens the usage guide for a newly created key', async () => {
+    getAvailableGroups.mockResolvedValue([{ id: 1, name: 'Codex', platform: 'openai', rate_multiplier: 1, subscription_type: 'standard' }])
+    vi.mocked(keysAPI.create).mockResolvedValue({ ...createApiKey(), id: 9, key: 'sk-new-key', group_id: 1 })
+    const wrapper = await mountView()
+    await wrapper.get('[data-tour="keys-create-btn"]').trigger('click')
+    await wrapper.get('[data-tour="key-form-name"]').setValue('My key')
+    await wrapper.findComponent('[data-tour="key-form-group"]').vm.$emit('update:modelValue', 1)
+    expect(wrapper.findComponent(UseKeyModal).props('show')).toBe(false)
+    await wrapper.get('#key-form').trigger('submit')
+    await flushPromises()
+
+    const modal = wrapper.findComponent(UseKeyModal)
+    expect(modal.props('show')).toBe(true)
+    expect(modal.props('apiKey')).toBe('sk-new-key')
+    expect(modal.props('platform')).toBe('openai')
+    expect(wrapper.find('#key-form').exists()).toBe(false)
+  })
+
+  it('exposes the key form toggles as labelled switches', async () => {
+    const wrapper = await mountView()
+    await wrapper.get('[data-tour="keys-create-btn"]').trigger('click')
+    const switches = wrapper.findAll('[role="switch"]')
+    expect(switches.map((item) => item.attributes('aria-label'))).toEqual([
+      'keys.customKeyLabel',
+      'keys.ipRestriction',
+      'keys.rateLimitSection',
+      'keys.expiration',
+    ])
+    expect(switches.every((item) => item.attributes('aria-checked') === 'false')).toBe(true)
+    await switches[1].trigger('click')
+    expect(wrapper.findAll('[role="switch"]')[1].attributes('aria-checked')).toBe('true')
+  })
+
+  describe('save errors', () => {
+    it.each([
+      [{ status: 400, message: 'x' }, 'x'],
+      [{ status: 409, reason: 'API_KEY_EXISTS', message: 'api key already exists' }, 'Key already exists'],
+      [{}, 'keys.failedToSave'],
+    ])('shows the backend reason when creating fails: %o', async (error, expected) => {
+      getAvailableGroups.mockResolvedValue([{ id: 1, name: 'Claude', platform: 'anthropic', rate_multiplier: 1, subscription_type: 'standard' }])
+      vi.mocked(keysAPI.create).mockRejectedValue(error)
+      const wrapper = await mountView()
+      await wrapper.get('[data-tour="keys-create-btn"]').trigger('click')
+      await wrapper.get('[data-tour="key-form-name"]').setValue('My key')
+      await wrapper.findComponent('[data-tour="key-form-group"]').vm.$emit('update:modelValue', 1)
+      await wrapper.get('#key-form').trigger('submit')
+      await flushPromises()
+      expect(showError).toHaveBeenCalledWith(expected)
+      expect(showSuccess).not.toHaveBeenCalled()
     })
   })
 })

@@ -1,13 +1,10 @@
 package service
 
 import (
-	"errors"
 	"io"
 	"strings"
 	"testing"
 	"time"
-
-	"github.com/Wei-Shaw/sub2api/internal/pkg/apicompat"
 )
 
 // panickingStreamSource 在第一次 Read 时 panic，用来模拟“上游返回的字节流触发解析
@@ -119,59 +116,5 @@ func TestAntigravityCompatScannerPanicClosesEventChannel(t *testing.T) {
 		}
 	case <-time.After(2 * time.Second):
 		t.Fatal("event channel was never closed after the pump panicked")
-	}
-}
-
-// TestGrokBillingPingFilterPanicUnblocksBodyReader 覆盖 io.Pipe 转换协程：panic
-// 之后写端必须以错误关闭，否则 http.Response.Body 的读者会永远阻塞。
-func TestGrokBillingPingFilterPanicUnblocksBodyReader(t *testing.T) {
-	source := &panickingStreamSource{message: "grok filter boom"}
-	body := newGrokResponsesBillingPingFilterBody(source, &Account{Platform: PlatformGrok}, 0)
-	defer func() { _ = body.Close() }()
-
-	errs := make(chan error, 1)
-	go func() {
-		_, err := io.ReadAll(body)
-		errs <- err
-	}()
-
-	select {
-	case err := <-errs:
-		if err == nil {
-			t.Fatal("body reader saw a clean EOF instead of the panic error")
-		}
-		if !strings.Contains(err.Error(), "grok filter boom") {
-			t.Fatalf("unexpected body error: %v", err)
-		}
-		if errors.Is(err, io.EOF) {
-			t.Fatalf("panic must not be reported as EOF: %v", err)
-		}
-	case <-time.After(2 * time.Second):
-		t.Fatal("body reader hung: the pipe writer was never closed after the panic")
-	}
-}
-
-// TestResponsesClientToolStreamPanicUnblocksBodyReader 覆盖第二个 io.Pipe 站点。
-func TestResponsesClientToolStreamPanicUnblocksBodyReader(t *testing.T) {
-	source := &panickingStreamSource{message: "tool stream boom"}
-	body := newResponsesClientToolStreamBody(source, apicompat.ResponsesClientToolMapping{}, 0)
-	defer func() { _ = body.Close() }()
-
-	errs := make(chan error, 1)
-	go func() {
-		_, err := io.ReadAll(body)
-		errs <- err
-	}()
-
-	select {
-	case err := <-errs:
-		if err == nil {
-			t.Fatal("body reader saw a clean EOF instead of the panic error")
-		}
-		if !strings.Contains(err.Error(), "tool stream boom") {
-			t.Fatalf("unexpected body error: %v", err)
-		}
-	case <-time.After(2 * time.Second):
-		t.Fatal("body reader hung: the pipe writer was never closed after the panic")
 	}
 }

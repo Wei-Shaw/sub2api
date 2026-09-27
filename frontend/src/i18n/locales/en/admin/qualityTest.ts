@@ -15,6 +15,8 @@ export default {
     chars: '{n} chars',
     preview: 'Preview',
     source: 'Source',
+    loadAccountsFailed: 'Failed to load accounts',
+    loadModelsFailed: 'Failed to load models',
     status: {
       idle: 'Idle',
       running: 'Running',

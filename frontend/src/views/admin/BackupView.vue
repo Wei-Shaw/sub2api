@@ -380,6 +380,34 @@
         </div>
       </template>
     </BaseDialog>
+
+    <!-- 恢复确认：管理员密码用 type=password 输入，不再用 window.prompt 明文显示 -->
+    <BaseDialog
+      :show="restoreTargetId !== ''"
+      :title="t('admin.backup.actions.restore')"
+      width="narrow"
+      @close="closeRestoreDialog"
+    >
+      <form id="backup-restore-form" class="space-y-3" @submit.prevent="submitRestore">
+        <p class="text-sm text-danger">{{ t('admin.backup.actions.restoreConfirm') }}</p>
+        <label for="backup-restore-password" class="input-label">{{ t('admin.backup.actions.restorePasswordPrompt') }}</label>
+        <input
+          id="backup-restore-password"
+          v-model="restorePassword"
+          type="password"
+          autocomplete="current-password"
+          class="input w-full"
+        />
+      </form>
+      <template #footer>
+        <div class="flex justify-end gap-3">
+          <button type="button" class="btn btn-secondary btn-sm" @click="closeRestoreDialog">{{ t('common.cancel') }}</button>
+          <button type="submit" form="backup-restore-form" class="btn btn-danger btn-sm" :disabled="!restorePassword">
+            {{ t('admin.backup.actions.restore') }}
+          </button>
+        </div>
+      </template>
+    </BaseDialog>
     <TotpStepUpDialog :controller="backupStepUp" />
 </template>
 
@@ -842,10 +870,24 @@ function closeDownloadParts() {
   downloadParts.value = []
 }
 
-async function restoreBackup(id: string) {
-  if (!window.confirm(t('admin.backup.actions.restoreConfirm'))) return
-  const password = window.prompt(t('admin.backup.actions.restorePasswordPrompt'))
-  if (!password) return
+const restoreTargetId = ref('')
+const restorePassword = ref('')
+
+function restoreBackup(id: string) {
+  restoreTargetId.value = id
+  restorePassword.value = ''
+}
+
+function closeRestoreDialog() {
+  restoreTargetId.value = ''
+  restorePassword.value = ''
+}
+
+async function submitRestore() {
+  const id = restoreTargetId.value
+  const password = restorePassword.value
+  if (!id || !password) return
+  closeRestoreDialog()
   restoringId.value = id
   try {
     const record = await backupStepUp.run(() => adminAPI.backup.restoreBackup(id, password))

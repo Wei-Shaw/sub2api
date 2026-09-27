@@ -13,6 +13,7 @@ import { useRoutePrefetch } from '@/composables/useRoutePrefetch'
 import { getSetupStatus } from '@/api/setup'
 import { resolveCompletedSetupRedirectPath } from './setupRedirect'
 import { resolveRouteDocumentTitle } from './title'
+import { loadAdminLocaleMessages } from '@/i18n'
 
 /**
  * Route definitions with lazy loading
@@ -779,6 +780,11 @@ router.beforeEach(async (to, _from, next) => {
   if (!authInitialized) {
     authStore.checkAuth()
     authInitialized = true
+  }
+
+  // Signed-in pages use admin.* keys (header, badges, admin routes), loaded lazily; public pages skip it.
+  if (authStore.isAuthenticated) {
+    await loadAdminLocaleMessages()
   }
 
   // Set page title

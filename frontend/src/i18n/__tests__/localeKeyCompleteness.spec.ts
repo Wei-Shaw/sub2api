@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest'
 
-import en from '../locales/en'
-import zh from '../locales/zh'
-import vi from '../locales/vi'
+import en, { baseMessages as enBase } from '../locales/en'
+import zh, { baseMessages as zhBase } from '../locales/zh'
+import vi, { baseMessages as viBase } from '../locales/vi'
 
 type LocaleValue = Record<string, unknown>
 
@@ -87,6 +87,13 @@ describe('locale key completeness', () => {
         return typeof current !== 'string' || current.trim() === ''
       })
       expect(emptyKeys, `${locale} has empty or non-string messages`).toEqual([])
+    }
+  })
+
+  it('keeps only the lazily loaded admin namespace out of the startup bundle', () => {
+    for (const [full, base] of [[en, enBase], [zh, zhBase], [vi, viBase]] as const) {
+      expect(Object.keys(base)).not.toContain('admin')
+      expect(Object.keys(full).sort()).toEqual([...Object.keys(base), 'admin'].sort())
     }
   })
 

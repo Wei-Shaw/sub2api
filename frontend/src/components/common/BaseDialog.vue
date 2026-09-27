@@ -11,7 +11,7 @@
         @click.self="handleClose"
       >
         <!-- Modal panel -->
-        <div ref="dialogRef" :class="['modal-content', widthClasses]" @click.stop>
+        <div ref="dialogRef" :class="['modal-content', widthClasses]" @click.stop @keydown.tab="trapFocus">
           <!-- Header -->
           <div class="modal-header">
             <h3 :id="dialogId" class="modal-title">
@@ -21,7 +21,7 @@
               v-if="showCloseButton"
               @click="emit('close')"
               class="-mr-2 rounded-sm p-2 text-fg-subtle transition-colors hover:bg-accent-weak hover:text-accent-strong focus:outline-none focus-visible:ring-2 focus-visible:ring-accent"
-              aria-label="Close modal"
+              :aria-label="t('common.close')"
             >
               <Icon name="x" size="md" />
             </button>
@@ -44,12 +44,16 @@
 
 <script lang="ts">
 let dialogIdCounter = 0
-const openDialogs = new Set<string>()
+// Stack of open dialogs, topmost last: only the top one reacts to Escape.
+const openDialogs: string[] = []
 </script>
 
 <script setup lang="ts">
 import { computed, watch, onMounted, onUnmounted, ref, nextTick } from 'vue'
+import { useI18n } from 'vue-i18n'
 import Icon from '@/components/icons/Icon.vue'
+
+const { t } = useI18n()
 
 // 生成唯一ID以避免多个对话框时ID冲突
 const dialogId = `modal-title-${++dialogIdCounter}`
@@ -111,15 +115,39 @@ const handleClose = () => {
 }
 
 const handleEscape = (event: KeyboardEvent) => {
+  if (openDialogs[openDialogs.length - 1] !== dialogId) return
   if (props.show && props.closeOnEscape && event.key === 'Escape') {
     emit('close')
   }
 }
 
+const FOCUSABLE = 'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
+
+// Keep Tab / Shift+Tab cycling inside the dialog panel.
+// ponytail: elements hidden by display:none still count; filter by layout if a dialog hides its first/last control.
+const trapFocus = (event: KeyboardEvent) => {
+  if (!dialogRef.value) return
+  const focusable = Array.from(dialogRef.value.querySelectorAll<HTMLElement>(FOCUSABLE)).filter(
+    (el) => !el.hasAttribute('disabled')
+  )
+  if (focusable.length === 0) return
+  const first = focusable[0]
+  const last = focusable[focusable.length - 1]
+  const active = document.activeElement
+  if (event.shiftKey && (active === first || !dialogRef.value.contains(active))) {
+    event.preventDefault()
+    last.focus()
+  } else if (!event.shiftKey && active === last) {
+    event.preventDefault()
+    first.focus()
+  }
+}
+
 const updateScrollLock = (isOpen: boolean) => {
-  if (isOpen) openDialogs.add(dialogId)
-  else openDialogs.delete(dialogId)
-  document.body.classList.toggle('modal-open', openDialogs.size > 0)
+  const index = openDialogs.indexOf(dialogId)
+  if (index !== -1) openDialogs.splice(index, 1)
+  if (isOpen) openDialogs.push(dialogId)
+  document.body.classList.toggle('modal-open', openDialogs.length > 0)
 }
 
 // Prevent body scroll when modal is open and manage focus
@@ -138,9 +166,7 @@ watch(
         modalBodyRef.value.scrollTop = 0
       }
       if (dialogRef.value) {
-        const firstFocusable = dialogRef.value.querySelector<HTMLElement>(
-          'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
-        )
+        const firstFocusable = dialogRef.value.querySelector<HTMLElement>(FOCUSABLE)
         firstFocusable?.focus()
       }
     } else {

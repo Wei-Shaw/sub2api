@@ -10,7 +10,7 @@ import Select, { type SelectOption } from '@/components/common/Select.vue'
 import { adminAPI } from '@/api'
 import { opsAPI } from '@/api/admin/ops'
 import type { AlertRule, MetricType, Operator } from '../types'
-import type { OpsSeverity } from '@/api/admin/ops'
+import type { EmailNotificationConfig, OpsSeverity } from '@/api/admin/ops'
 import { formatDateTime } from '../utils/opsFormatters'
 
 const { t } = useI18n()
@@ -306,16 +306,41 @@ function newRuleDraft(): AlertRule {
   }
 }
 
+// The evaluator silently skips email when alert emails are off, have no recipients, or the rule is
+// below alert.min_severity; warn in the editor.
+const emailConfig = ref<EmailNotificationConfig | null>(null)
+const EMAIL_SEVERITY_RANK: Record<string, number> = { critical: 3, warning: 2, info: 1 }
+const emailAlertsInactive = computed(() => {
+  const alert = emailConfig.value?.alert
+  if (!alert) return false
+  if (!alert.enabled || !alert.recipients?.some((r) => r.trim())) return true
+  // Mirrors backend shouldSendOpsAlertEmailByMinSeverity: P0 = critical, P1 = warning, others = info.
+  const minRank = EMAIL_SEVERITY_RANK[(alert.min_severity || '').trim().toLowerCase()] ?? 0
+  const severity = String(draft.value?.severity ?? '').trim().toUpperCase()
+  const ruleRank = severity === 'P0' ? 3 : severity === 'P1' ? 2 : 1
+  return ruleRank < minRank
+})
+
+async function loadEmailConfig() {
+  try {
+    emailConfig.value = await opsAPI.getEmailNotificationConfig()
+  } catch {
+    emailConfig.value = null // best-effort hint only
+  }
+}
+
 function openCreate() {
   editingId.value = null
   draft.value = newRuleDraft()
   showEditor.value = true
+  void loadEmailConfig()
 }
 
 function openEdit(rule: AlertRule) {
   editingId.value = rule.id ?? null
   draft.value = JSON.parse(JSON.stringify(rule))
   showEditor.value = true
+  void loadEmailConfig()
 }
 
 const editorValidation = computed(() => {
@@ -559,6 +584,9 @@ function cancelDelete() {
             <span class="text-xs font-bold text-fg">{{ t('admin.ops.alertRules.form.notifyEmail') }}</span>
             <input v-model="draft!.notify_email" type="checkbox" class="h-4 w-4 rounded-sm border-border-strong text-accent focus:ring-accent" />
           </div>
+          <p v-if="draft!.notify_email && emailAlertsInactive" class="text-xs text-warning md:col-span-2" data-test="notify-email-inactive">
+            {{ t('admin.ops.alertRules.form.notifyEmailInactive') }}
+          </p>
         </div>
       </div>
 

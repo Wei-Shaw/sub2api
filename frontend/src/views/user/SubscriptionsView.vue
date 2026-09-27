@@ -6,6 +6,16 @@
         <div class="spinner h-8 w-8 text-accent"></div>
       </div>
 
+      <EmptyState
+        v-else-if="loadError"
+        class="card"
+        :title="t('userSubscriptions.failedToLoad')"
+        :description="t('errors.tryAgain')"
+        :action-text="t('common.refresh')"
+        :action-icon="false"
+        @action="loadSubscriptions"
+      />
+
       <!-- Empty State -->
       <div v-else-if="subscriptions.length === 0" class="card empty-state">
         <Icon name="creditCard" size="xl" class="empty-state-icon" />
@@ -13,8 +23,15 @@
           {{ t('userSubscriptions.noActiveSubscriptions') }}
         </h3>
         <p class="empty-state-description">
-          {{ t('userSubscriptions.noActiveSubscriptionsDesc') }}
+          {{ canPurchase ? t('userSubscriptions.noActiveSubscriptionsPurchaseDesc') : t('userSubscriptions.noActiveSubscriptionsDesc') }}
         </p>
+        <router-link
+          v-if="canPurchase"
+          :to="{ path: '/purchase', query: { tab: 'subscription' } }"
+          class="btn btn-primary mt-5"
+        >
+          {{ t('userSubscriptions.viewPlans') }}
+        </router-link>
       </div>
 
       <!-- Subscriptions: one bill section per plan, usage windows as ruled rows with a ruler -->
@@ -167,7 +184,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { computed, ref, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
 import { useAppStore } from '@/stores/app'
@@ -175,9 +192,11 @@ import subscriptionsAPI from '@/api/subscriptions'
 import type { UserSubscription } from '@/types'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import Icon from '@/components/icons/Icon.vue'
+import EmptyState from '@/components/common/EmptyState.vue'
 import { formatDateTimeToMinute } from '@/utils/format'
 import { hasPeakRate, formatPeakRateWindow, serverTimezoneLabel } from '@/utils/peak-rate'
 import { platformLabel } from '@/utils/platformColors'
+import { FeatureFlags, isFeatureFlagEnabled } from '@/utils/featureFlags'
 import {
   getExpirationDateRelation,
   getRemainingDurationParts,
@@ -191,6 +210,9 @@ const appStore = useAppStore()
 
 const subscriptions = ref<UserSubscription[]>([])
 const loading = ref(true)
+const loadError = ref(false)
+// 开了支付不代表一定有在售套餐，所以文案只引导去购买页查看，不承诺能买到。
+const canPurchase = computed(() => isFeatureFlagEnabled(FeatureFlags.payment))
 
 function subscriptionHasPeakRate(subscription: UserSubscription): boolean {
   return hasPeakRate(subscription.group)
@@ -203,9 +225,11 @@ function subscriptionPeakRateLabel(subscription: UserSubscription): string {
 async function loadSubscriptions() {
   try {
     loading.value = true
+    loadError.value = false
     subscriptions.value = await subscriptionsAPI.getMySubscriptions()
   } catch (error) {
     console.error('Failed to load subscriptions:', error)
+    loadError.value = true
     appStore.showError(t('userSubscriptions.failedToLoad'))
   } finally {
     loading.value = false

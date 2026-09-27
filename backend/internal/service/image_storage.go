@@ -69,8 +69,10 @@ func NewImageResultUploader(storage ImageStorage, prefix string, maxDownloadByte
 	}
 }
 
+// defaultImageDownloadHTTPClient 下载上游返回的图片 url。url 由上游控制，不可信：
+// safeDialContext 在每次拨号（含重定向的每一跳）时校验解析后的 IP，拒绝私网/环回/云元数据地址。
 func defaultImageDownloadHTTPClient() *http.Client {
-	return &http.Client{Timeout: 60 * time.Second}
+	return newSSRFSafeHTTPClient(60 * time.Second)
 }
 
 // Rewrite 将 result（上游生图响应 JSON）里的每张图片转存到对象存储，
@@ -270,9 +272,10 @@ func (u *ImageResultUploader) download(ctx context.Context, rawURL string) ([]by
 	if int64(len(data)) > limit {
 		return nil, "", fmt.Errorf("downloaded image exceeds %d bytes", limit)
 	}
-	contentType := strings.TrimSpace(strings.Split(resp.Header.Get("Content-Type"), ";")[0])
-	if !strings.HasPrefix(contentType, "image/") {
-		contentType = detectImageContentType(data)
+	// 以字节嗅探为准，响应头不作为依据：非图片内容一律拒绝，避免把任意响应当图片转存后回显给用户。
+	contentType := detectedImageContentType(data)
+	if contentType == "" {
+		return nil, "", errors.New("downloaded content is not an image")
 	}
 	return data, contentType, nil
 }

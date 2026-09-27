@@ -121,6 +121,7 @@ type BillingCacheService struct {
 	stopped            atomic.Bool
 	balanceLoadSF      singleflight.Group
 	quotaLoadSF        singleflight.Group
+	rateLimitResetSF   singleflight.Group
 	// 丢弃日志节流计数器（减少高负载下日志噪音）
 	cacheWriteDropFullCount     uint64
 	cacheWriteDropFullLastLog   int64
@@ -635,24 +636,27 @@ func (s *BillingCacheService) checkAPIKeyRateLimits(ctx context.Context, apiKey 
 func (s *BillingCacheService) evaluateRateLimits(ctx context.Context, apiKey *APIKey, usage5h, usage1d, usage7d float64, w5h, w1d, w7d *time.Time) error {
 	needsReset := false
 
-	// Reset expired windows in-memory for check purposes
+	// Reset expired windows in-memory for check purposes. Only a started window
+	// needs a DB reset: a NULL window is opened by the next usage write and the
+	// reset SQL skips it, so resetting it would repeat on every request.
 	if IsWindowExpired(w5h, RateLimitWindow5h) {
 		usage5h = 0
-		needsReset = true
+		needsReset = needsReset || w5h != nil
 	}
 	if IsWindowExpired(w1d, RateLimitWindow1d) {
 		usage1d = 0
-		needsReset = true
+		needsReset = needsReset || w1d != nil
 	}
 	if IsWindowExpired(w7d, RateLimitWindow7d) {
 		usage7d = 0
-		needsReset = true
+		needsReset = needsReset || w7d != nil
 	}
 
-	// Trigger async DB reset if any window expired
+	// Trigger async DB reset if any window expired; concurrent requests for the
+	// same key share one in-flight reset.
 	if needsReset {
 		keyID := apiKey.ID
-		go func() {
+		s.rateLimitResetSF.DoChan(strconv.FormatInt(keyID, 10), func() (any, error) {
 			resetCtx, cancel := context.WithTimeout(context.Background(), cacheWriteTimeout)
 			defer cancel()
 			if s.apiKeyRateLimitLoader != nil {
@@ -671,7 +675,8 @@ func (s *BillingCacheService) evaluateRateLimits(ctx context.Context, apiKey *AP
 					logger.LegacyPrintf("service.billing_cache", "Warning: invalidate rate limit cache failed for api key %d: %v", keyID, err)
 				}
 			}
-		}()
+			return nil, nil
+		})
 	}
 
 	// Check limits

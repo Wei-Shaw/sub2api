@@ -330,6 +330,16 @@
                   {{ t("admin.groups.compositeRoutes.upstreamModel") }}:
                   {{ compositePreviewDecision.upstream_model }}
                 </div>
+                <div
+                  v-if="compositePreviewDecision.available_accounts === 0"
+                  class="font-medium text-danger"
+                >
+                  {{ t("admin.groups.compositeRoutes.noAvailableAccounts") }}
+                </div>
+                <div v-else-if="compositePreviewDecision.available_accounts !== undefined">
+                  {{ t("admin.groups.compositeRoutes.availableAccounts") }}:
+                  {{ compositePreviewDecision.available_accounts }}
+                </div>
               </div>
               <div
                 v-else

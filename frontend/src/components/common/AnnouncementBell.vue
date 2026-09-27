@@ -53,9 +53,13 @@
         <div
           v-for="item in announcements"
           :key="item.id"
-          class="group relative flex min-h-12 cursor-pointer items-center gap-3 px-2 py-3 transition-colors hover:bg-accent-weak"
+          class="group relative flex min-h-12 cursor-pointer items-center gap-3 px-2 py-3 transition-colors hover:bg-accent-weak focus-visible:bg-accent-weak focus-visible:-outline-offset-2"
           :class="{ 'shadow-[inset_3px_0_0_rgb(var(--meter))]': !item.read_at }"
+          role="button"
+          tabindex="0"
           @click="openDetail(item)"
+          @keydown.enter.prevent="openDetail(item)"
+          @keydown.space.prevent="openDetail(item)"
         >
           <!-- Status Indicator -->
           <Icon

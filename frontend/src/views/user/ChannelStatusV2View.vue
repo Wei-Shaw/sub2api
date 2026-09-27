@@ -804,7 +804,8 @@ function scheduleAutoRefresh() {
     ? 10
     : snapshot.value?.config?.refresh_interval_seconds || 300
   autoRefreshTimer = window.setInterval(() => {
-    if (!loading.value && !refreshing.value) {
+    // Same as V1's shouldPause: hidden tabs do not poll the monitor endpoints.
+    if (!document.hidden && !loading.value && !refreshing.value) {
       void reload(true)
     }
   }, Math.max(bootstrapActive.value ? 10 : 60, seconds) * 1000)

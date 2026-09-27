@@ -61,7 +61,7 @@
             v-if="!m.enabled"
             class="badge badge-gray ml-auto"
           >
-            {{ t('admin.channelMonitor.onlyDisabled').replace(/^仅|^Only /, '') }}
+            {{ t('common.disabled') }}
           </span>
         </li>
       </ul>

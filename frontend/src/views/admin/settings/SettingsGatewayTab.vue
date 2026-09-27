@@ -2918,10 +2918,14 @@
               <!-- Quota + Subscription in compact row -->
               <div class="grid grid-cols-2 gap-3">
                 <div>
-                  <label class="text-xs text-fg-muted">{{
+                  <label
+                    :for="`web-search-provider-${pIdx}-quota-limit`"
+                    class="text-xs text-fg-muted"
+                  >{{
                     t("admin.settings.webSearchEmulation.quotaLimit")
                   }}</label>
                   <input
+                    :id="`web-search-provider-${pIdx}-quota-limit`"
                     v-model="provider.quota_limit"
                     type="number"
                     min="1"

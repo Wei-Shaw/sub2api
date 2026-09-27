@@ -563,7 +563,8 @@ export default {
           sustained: 'Duy trì (phút)',
           cooldown: 'Thời gian chờ (phút)',
           enabled: 'Bật',
-          notifyEmail: 'Gửi thông báo qua email'
+          notifyEmail: 'Gửi thông báo qua email',
+          notifyEmailInactive: 'Cài đặt vận hành đang tắt email cảnh báo, chưa có người nhận, hoặc đặt mức độ tối thiểu cao hơn mức của quy tắc này, nên quy tắc này sẽ không gửi email.'
         },
         validation: {
           title: 'Vui lòng sửa các vấn đề sau',

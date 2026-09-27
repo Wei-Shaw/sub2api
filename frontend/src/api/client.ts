@@ -5,7 +5,7 @@
 
 import axios, { AxiosInstance, AxiosError, InternalAxiosRequestConfig, AxiosResponse } from 'axios'
 import type { ApiResponse } from '@/types'
-import { getLocale } from '@/i18n'
+import { getLocale, i18n } from '@/i18n'
 import {
   ADMIN_UI_REQUEST_HEADER,
   USER_UI_REQUEST_HEADER,
@@ -95,6 +95,8 @@ apiClient.interceptors.response.use(
           message: apiResponse.message || 'Unknown error',
           reason: resp.reason,
           metadata: resp.metadata,
+          // Keep the backend body for callers that read error.response.data.*
+          response: { status: response.status, data: { ...resp, detail: resp.detail ?? resp.message } },
         })
       }
     }
@@ -196,6 +198,7 @@ apiClient.interceptors.response.use(
               return Promise.reject({
                 status: 401,
                 code: 'AUTH_SESSION_CHANGED',
+                // TODO(i18n): no locale key exists for this message yet; add one to common.ts.
                 message: 'Authentication session changed while refreshing.'
               })
             }
@@ -219,13 +222,14 @@ apiClient.interceptors.response.use(
             sessionStorage.setItem('auth_expired', '1')
 
             if (!window.location.pathname.includes('/login')) {
-              window.location.href = '/login'
+              window.location.href =
+                '/login?redirect=' + encodeURIComponent(window.location.pathname + window.location.search)
             }
 
             return Promise.reject({
               status: 401,
               code: 'TOKEN_REFRESH_FAILED',
-              message: 'Session expired. Please log in again.'
+              message: i18n.global.t('auth.reloginRequired')
             })
           }
         }
@@ -250,7 +254,8 @@ apiClient.interceptors.response.use(
         }
         // Only redirect if not already on login page
         if (!window.location.pathname.includes('/login')) {
-          window.location.href = '/login'
+          window.location.href =
+            '/login?redirect=' + encodeURIComponent(window.location.pathname + window.location.search)
         }
       }
 
@@ -262,6 +267,8 @@ apiClient.interceptors.response.use(
         error: apiData.error,
         message: apiData.message || apiData.detail || error.message,
         metadata: apiData.metadata,
+        // Keep the backend body for callers that read error.response.data.*
+        response: { status, data: { ...apiData, detail: apiData.detail ?? apiData.message } },
       })
     }
 
@@ -269,7 +276,7 @@ apiClient.interceptors.response.use(
     return Promise.reject({
       status: 0,
       code: error.code || 'ERR_NETWORK',
-      message: 'Network error. Please check your connection.'
+      message: i18n.global.t('errors.networkError')
     })
   }
 )

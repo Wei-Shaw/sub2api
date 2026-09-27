@@ -24,8 +24,7 @@
             />
           </div>
           <EndpointPopover
-            v-if="publicSettings?.api_base_url || (publicSettings?.custom_endpoints?.length ?? 0) > 0"
-            :api-base-url="publicSettings?.api_base_url || ''"
+            :api-base-url="publicSettings?.api_base_url || defaultApiBaseUrl"
             :custom-endpoints="publicSettings?.custom_endpoints || []"
           />
           <div v-if="selectedIds.length" class="flex flex-wrap items-center gap-3 border border-meter/40 bg-meter-weak py-1.5 pl-3 pr-2 text-label">
@@ -476,6 +475,14 @@
           <p class="input-hint mt-2" aria-live="polite">
             {{ groups.length === 0 ? t('common.noGroupsAvailable') : t(`keys.providerHints.${createProvider}`) }}
           </p>
+          <div v-if="groups.length === 0" class="mt-2 space-y-2" data-test="no-groups-help">
+            <p class="input-hint">{{ t('keys.noGroupsHint') }}</p>
+            <div class="flex flex-wrap gap-2">
+              <router-link v-if="canPurchase" to="/purchase" class="btn btn-secondary btn-sm">{{ t('nav.buySubscription') }}</router-link>
+              <router-link v-if="!authStore.isSimpleMode" to="/redeem" class="btn btn-secondary btn-sm">{{ t('nav.redeem') }}</router-link>
+              <router-link v-if="canViewChannels" to="/available-channels" class="btn btn-secondary btn-sm">{{ t('keys.viewModelsAndPricing') }}</router-link>
+            </div>
+          </div>
         </fieldset>
 
         <div>
@@ -531,6 +538,9 @@
             <label class="input-label mb-0">{{ t('keys.customKeyLabel') }}</label>
             <button
               type="button"
+              role="switch"
+              :aria-checked="formData.use_custom_key"
+              :aria-label="t('keys.customKeyLabel')"
               @click="formData.use_custom_key = !formData.use_custom_key"
               :class="[
                 'relative inline-flex h-5 w-9 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/50 focus-visible:ring-offset-2 focus-visible:ring-offset-surface',
@@ -573,6 +583,9 @@
             <label class="input-label mb-0">{{ t('keys.ipRestriction') }}</label>
             <button
               type="button"
+              role="switch"
+              :aria-checked="formData.enable_ip_restriction"
+              :aria-label="t('keys.ipRestriction')"
               @click="formData.enable_ip_restriction = !formData.enable_ip_restriction"
               :class="[
                 'relative inline-flex h-5 w-9 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/50 focus-visible:ring-offset-2 focus-visible:ring-offset-surface',
@@ -685,6 +698,9 @@
             <label class="input-label mb-0">{{ t('keys.rateLimitSection') }}</label>
             <button
               type="button"
+              role="switch"
+              :aria-checked="formData.enable_rate_limit"
+              :aria-label="t('keys.rateLimitSection')"
               @click="formData.enable_rate_limit = !formData.enable_rate_limit"
               :class="[
                 'relative inline-flex h-5 w-9 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/50 focus-visible:ring-offset-2 focus-visible:ring-offset-surface',
@@ -859,6 +875,9 @@
             <label class="input-label mb-0">{{ t('keys.expiration') }}</label>
             <button
               type="button"
+              role="switch"
+              :aria-checked="formData.enable_expiration"
+              :aria-label="t('keys.expiration')"
               @click="formData.enable_expiration = !formData.enable_expiration"
               :class="[
                 'relative inline-flex h-5 w-9 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/50 focus-visible:ring-offset-2 focus-visible:ring-offset-surface',
@@ -1159,6 +1178,7 @@
 	import { ref, reactive, computed, watch, onMounted, onUnmounted, type ComponentPublicInstance } from 'vue'
 	import { useI18n } from 'vue-i18n'
 	import { useAppStore } from '@/stores/app'
+	import { useAuthStore } from '@/stores/auth'
 	import { useOnboardingStore } from '@/stores/onboarding'
 	import { useClipboard } from '@/composables/useClipboard'
 import { getPersistedPageSize } from '@/composables/usePersistedPageSize'
@@ -1186,6 +1206,8 @@ import type { Column } from '@/components/common/types'
 import type { BatchApiKeyUsageStats } from '@/api/usage'
 import { formatDateTime } from '@/utils/format'
 import { maskApiKey } from '@/utils/maskApiKey'
+import { extractI18nErrorMessage } from '@/utils/apiError'
+import { FeatureFlags, isFeatureFlagEnabled } from '@/utils/featureFlags'
 import PlatformIcon from '@/components/common/PlatformIcon.vue'
 import { KEY_GROUP_PROVIDERS, KEY_GROUP_PROVIDER_ICONS, getKeyGroupProvider, type KeyGroupProvider } from '@/utils/keyGroupProviders'
 import {
@@ -1199,6 +1221,10 @@ const formatDateTimeLocal = (isoDate: string): string => {
   const pad = (n: number) => n.toString().padStart(2, '0')
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`
 }
+
+// 后端用 html.EscapeString 存储名称；显示和回填编辑表单前还原这五个实体。
+const KEY_NAME_ENTITIES: Record<string, string> = { '&lt;': '<', '&gt;': '>', '&amp;': '&', '&#39;': "'", '&#34;': '"' }
+const decodeKeyName = (name: string) => name.replace(/&(?:lt|gt|amp|#39|#34);/g, (entity) => KEY_NAME_ENTITIES[entity])
 
 interface GroupOption {
   value: number
@@ -1215,7 +1241,11 @@ interface GroupOption {
 }
 
 const appStore = useAppStore()
+const authStore = useAuthStore()
 const onboardingStore = useOnboardingStore()
+// 与侧边栏入口同条件，避免把用户引到被隐藏或会被重定向的页面。
+const canPurchase = computed(() => !authStore.isSimpleMode && isFeatureFlagEnabled(FeatureFlags.payment))
+const canViewChannels = computed(() => !authStore.isSimpleMode && isFeatureFlagEnabled(FeatureFlags.availableChannels))
 const { copyToClipboard: clipboardCopy } = useClipboard()
 
 const allColumns = computed<Column[]>(() => [
@@ -1365,6 +1395,8 @@ const selectedKey = ref<ApiKey | null>(null)
 const copiedKeyId = ref<number | null>(null)
 const groupSelectorKeyId = ref<number | null>(null)
 const publicSettings = ref<PublicSettings | null>(null)
+// 未配置 api_base_url 时，网关就是当前站点本身。
+const defaultApiBaseUrl = window.location.origin
 const dropdownRef = ref<HTMLElement | null>(null)
 const columnDropdownRef = ref<HTMLElement | null>(null)
 const dropdownPosition = ref<{ top?: number; bottom?: number; left: number } | null>(null)
@@ -1564,7 +1596,7 @@ const loadApiKeys = async () => {
       signal
     })
     if (signal.aborted) return
-    apiKeys.value = response.items
+    apiKeys.value = response.items.map((key) => ({ ...key, name: decodeKeyName(key.name) }))
     handleSelectionChange(selectedIds.value)
     pagination.value.total = response.total
     pagination.value.pages = response.pages
@@ -1599,6 +1631,7 @@ const loadGroups = async () => {
     groups.value = await userGroupsAPI.getAvailable()
   } catch (error) {
     console.error('Failed to load groups:', error)
+    appStore.showError(extractI18nErrorMessage(error, t, 'keys.errors', t('keys.failedToLoadGroups')))
   }
 }
 
@@ -1809,6 +1842,7 @@ const handleSubmit = async () => {
 
   submitting.value = true
   try {
+    let created: ApiKey | null = null
     if (showEditModal.value && selectedKey.value) {
       const updates: UpdateApiKeyRequest = {
         name: formData.value.name,
@@ -1828,7 +1862,7 @@ const handleSubmit = async () => {
       appStore.showSuccess(t('keys.keyUpdatedSuccess'))
     } else {
       const customKey = formData.value.use_custom_key ? formData.value.custom_key : undefined
-      await keysAPI.create(
+      created = await keysAPI.create(
         formData.value.name,
         formData.value.group_id,
         customKey,
@@ -1846,9 +1880,13 @@ const handleSubmit = async () => {
     }
     closeModals()
     loadApiKeys()
-  } catch (error: any) {
-    const errorMsg = error.response?.data?.detail || t('keys.failedToSave')
-    appStore.showError(errorMsg)
+    if (created) {
+      // 创建接口不回填 group；UseKeyModal 要靠分组平台挑选配置模板。
+      const groupId = created.group_id
+      openUseKeyModal({ ...created, group: created.group ?? groups.value.find((g) => g.id === groupId) })
+    }
+  } catch (error: unknown) {
+    appStore.showError(extractI18nErrorMessage(error, t, 'keys.errors', t('keys.failedToSave')))
     // Don't advance tour on error
   } finally {
     submitting.value = false
@@ -1928,9 +1966,8 @@ const resetQuotaUsed = async () => {
         formData.value.status = updatedKey.status === 'active' ? 'active' : 'inactive'
       }
     }
-  } catch (error: any) {
-    const errorMsg = error.response?.data?.detail || t('keys.failedToResetQuota')
-    appStore.showError(errorMsg)
+  } catch (error: unknown) {
+    appStore.showError(extractI18nErrorMessage(error, t, 'keys.errors', t('keys.failedToResetQuota')))
   }
 }
 
@@ -1959,9 +1996,8 @@ const resetRateLimitUsage = async () => {
     if (refreshedKey) {
       selectedKey.value = refreshedKey
     }
-  } catch (error: any) {
-    const errorMsg = error.response?.data?.detail || t('keys.failedToResetRateLimit')
-    appStore.showError(errorMsg)
+  } catch (error: unknown) {
+    appStore.showError(extractI18nErrorMessage(error, t, 'keys.errors', t('keys.failedToResetRateLimit')))
   }
 }
 

@@ -941,18 +941,20 @@ ops:
 # JWT 配置
 # =============================================================================
 jwt:
-  # IMPORTANT: Change this to a random string in production!
-  # 重要：生产环境中请更改为随机字符串！
+  # IMPORTANT: Set a unique random string, or leave empty to let the server
+  # generate one and persist it in the database. Known sample values are ignored.
+  # 重要：请设置唯一的随机字符串，或留空由服务自动生成并持久化到数据库；已知示例值会被忽略。
   # Generate with / 生成命令: openssl rand -hex 32
-  secret: "change-this-to-a-secure-random-string"
+  secret: ""
   # Token expiration time in hours (max 168)
   # 令牌过期时间（小时，最大 168）
   expire_hour: 24
-  # Access Token 过期时间（分钟）
+  # Access token lifetime in minutes (default 30; the frontend refreshes it before expiry)
+  # Access Token 过期时间（分钟，默认 30，前端会在过期前自动刷新）
   # 优先级说明：
   # - >0: 按分钟生效（优先于 expire_hour）
   # - =0: 回退使用 expire_hour
-  access_token_expire_minutes: 0
+  access_token_expire_minutes: 30
 
 # =============================================================================
 # TOTP (2FA) Configuration

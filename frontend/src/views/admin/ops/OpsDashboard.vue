@@ -404,6 +404,8 @@ const dashboardRefreshToken = ref(0)
 // Countdown timer (drives auto refresh; updates every second)
 const { pause: pauseCountdown, resume: resumeCountdown } = useIntervalFn(
   () => {
+    // Hidden tabs pause the countdown so a forgotten tab does not keep running aggregate queries.
+    if (document.hidden) return
     if (!autoRefreshEnabled.value) return
     if (!opsEnabled.value) return
     if (loading.value) return

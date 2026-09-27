@@ -1,13 +1,16 @@
 <template>
-  <div class="relative" ref="dropdownRef">
+  <div class="relative" ref="dropdownRef" @keydown.esc="closeOnEscape">
     <button
+      ref="triggerRef"
       @click="toggleDropdown"
       :disabled="switching"
       class="flex min-h-10 items-center gap-1.5 rounded-sm px-2 py-1.5 text-label font-semibold text-fg-muted transition-colors hover:bg-accent-weak hover:text-accent-strong"
-      :title="currentLocale?.name"
+      :title="triggerLabel"
+      :aria-expanded="isOpen"
     >
-      <span class="text-base">{{ currentLocale?.flag }}</span>
-      <span class="hidden sm:inline">{{ currentLocale?.code.toUpperCase() }}</span>
+      <span class="text-base" aria-hidden="true">{{ currentLocale?.flag }}</span>
+      <span class="hidden sm:inline" aria-hidden="true">{{ currentLocale?.code.toUpperCase() }}</span>
+      <span class="sr-only" :lang="currentLocale?.code">{{ triggerLabel }}</span>
       <Icon
         name="chevronDown"
         size="xs"
@@ -25,6 +28,8 @@
           v-for="locale in availableLocales"
           :key="locale.code"
           :disabled="switching"
+          :lang="locale.code"
+          :aria-current="locale.code === currentLocaleCode ? 'true' : undefined"
           @click="selectLocale(locale.code)"
           class="flex w-full items-center gap-2 px-3 py-2 text-body text-fg transition-colors hover:bg-accent-weak hover:text-accent-strong"
           :class="{
@@ -47,14 +52,17 @@ import { useI18n } from 'vue-i18n'
 import Icon from '@/components/icons/Icon.vue'
 import { setLocale, availableLocales } from '@/i18n'
 
-const { locale } = useI18n()
+const { locale, t } = useI18n()
 
 const isOpen = ref(false)
 const dropdownRef = ref<HTMLElement | null>(null)
+const triggerRef = ref<HTMLButtonElement | null>(null)
 const switching = ref(false)
 
 const currentLocaleCode = computed(() => locale.value)
 const currentLocale = computed(() => availableLocales.find((l) => l.code === locale.value))
+// 界面语言即当前语言，所以整段标签都能沿用 currentLocale 的 lang。
+const triggerLabel = computed(() => `${t('common.language')}: ${currentLocale.value?.name ?? ''}`)
 
 function toggleDropdown() {
   isOpen.value = !isOpen.value
@@ -72,6 +80,12 @@ async function selectLocale(code: string) {
   } finally {
     switching.value = false
   }
+}
+
+function closeOnEscape() {
+  if (!isOpen.value) return
+  isOpen.value = false
+  triggerRef.value?.focus()
 }
 
 function handleClickOutside(event: MouseEvent) {

@@ -224,7 +224,42 @@ func (s *adminServiceImpl) PreviewCompositeRoute(ctx context.Context, groupID in
 	if err != nil {
 		return nil, err
 	}
+	if decision.Matched && s.accountRepo != nil {
+		available, err := s.countCompositePreviewAccounts(ctx, groupID, decision.TargetPlatform, decision.UpstreamModel)
+		if err != nil {
+			return nil, err
+		}
+		decision.AvailableAccounts = &available
+	}
 	return &decision, nil
+}
+
+// countCompositePreviewAccounts counts schedulable accounts in the composite
+// group that could serve the resolved target, mirroring gateway selection
+// (Antigravity accounts join Anthropic/Gemini only with mixed scheduling).
+func (s *adminServiceImpl) countCompositePreviewAccounts(ctx context.Context, groupID int64, platform, model string) (int, error) {
+	platforms := []string{platform}
+	if platform == PlatformAnthropic || platform == PlatformGemini {
+		platforms = append(platforms, PlatformAntigravity)
+	}
+	accounts, err := s.accountRepo.ListSchedulableByGroupIDAndPlatforms(ctx, groupID, platforms)
+	if err != nil {
+		return 0, err
+	}
+	count := 0
+	for i := range accounts {
+		acc := &accounts[i]
+		if acc.Platform == PlatformAntigravity {
+			if (platform == PlatformAntigravity || acc.IsMixedSchedulingEnabled()) && mapAntigravityModel(acc, model) != "" {
+				count++
+			}
+			continue
+		}
+		if acc.IsModelSupported(model) {
+			count++
+		}
+	}
+	return count, nil
 }
 
 func (s *adminServiceImpl) requireCompositeGroup(ctx context.Context, groupID int64) error {

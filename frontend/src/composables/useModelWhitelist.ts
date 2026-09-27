@@ -537,6 +537,26 @@ export function splitModelMappingObject(
   return { allowedModels, modelMappings }
 }
 
+// hasInvalidModelRestrictionEntries 报告 buildModelMappingObject 会静默丢弃的条目。
+// 全部条目被丢弃时结果为 null，后端会把"无映射"当作允许所有模型，所以提交前必须拦截。
+export function hasInvalidModelRestrictionEntries(
+  mode: ModelRestrictionMode,
+  allowedModels: string[],
+  modelMappings: ModelMappingEntry[]
+): boolean {
+  if ((mode === 'whitelist' || mode === 'combined') && allowedModels.some(m => m.includes('*'))) {
+    return true
+  }
+  if (mode === 'mapping' || mode === 'combined') {
+    return modelMappings.some(m => {
+      const from = m.from.trim()
+      const to = m.to.trim()
+      return Boolean(from && to) && (!isValidWildcardPattern(from) || to.includes('*'))
+    })
+  }
+  return false
+}
+
 export function buildModelMappingObject(
   mode: ModelRestrictionMode,
   allowedModels: string[],

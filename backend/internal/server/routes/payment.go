@@ -50,6 +50,10 @@ func RegisterPaymentRoutes(
 	// The legacy anonymous out_trade_no verify endpoint remains available as a
 	// persisted-state compatibility path for staggered upgrades.
 	public := v1.Group("/payment/public")
+	// Anonymous lookup bodies are tiny; cap them at 1MB instead of inheriting the global limit (up to 256MB).
+	public.Use(middleware.RequestBodyLimit(1 << 20))
+	// Unauthenticated payment endpoints share the per-IP public panel limit.
+	public.Use(panelRateLimiter.PublicIP())
 	{
 		public.POST("/orders/verify", paymentHandler.VerifyOrderPublic)
 		public.POST("/orders/resolve", paymentHandler.ResolveOrderPublicByResumeToken)
@@ -57,6 +61,7 @@ func RegisterPaymentRoutes(
 
 	// --- Webhook endpoints (no auth) ---
 	webhook := v1.Group("/payment/webhook")
+	webhook.Use(panelRateLimiter.PublicIP())
 	{
 		webhook.POST("/sepay", webhookHandler.SePayNotify)
 		webhook.POST("/nowpayments", webhookHandler.NowPaymentsNotify)
@@ -65,7 +70,7 @@ func RegisterPaymentRoutes(
 	// --- Hosted checkout bridge (no auth) ---
 	// SePay 收银台要求 POST 表单，浏览器无法直接跳转过去；这里用一个自动提交页
 	// 承接跳转，访问凭据是建单时签发的 resume token。
-	v1.GET("/payment/checkout", paymentHandler.Checkout)
+	v1.GET("/payment/checkout", panelRateLimiter.PublicIP(), paymentHandler.Checkout)
 
 	// --- Admin payment endpoints (admin auth) ---
 	adminGroup := v1.Group("/admin/payment")

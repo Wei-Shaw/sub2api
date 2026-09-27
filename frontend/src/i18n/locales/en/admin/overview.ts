@@ -504,7 +504,8 @@ export default {
         title: 'Delete selected users',
         confirm: 'Delete the {count} selected users? This action cannot be undone. Administrator accounts cannot be deleted.',
         success: 'Deleted {count} users',
-        failed: 'Failed to delete {count} users. They remain selected for retry.'
+        failed: 'Failed to delete {count} users. They remain selected for retry.',
+        progress: 'Deleting {done}/{total}…'
       },
       bulkLimits: {
         action: 'Set limits ({count})',
@@ -625,6 +626,7 @@ export default {
       disable: 'Disable',
       enable: 'Enable',
       disableUser: 'Disable User',
+      disableConfirm: 'Disable {email}? Their API keys stop working immediately until the user is enabled again.',
       enableUser: 'Enable User',
       viewApiKeys: 'View API Keys',
       groups: 'Groups',
@@ -1200,6 +1202,8 @@ export default {
         preview: 'Preview',
         matched: 'Matched',
         notMatched: 'No Match',
+        availableAccounts: 'Available accounts',
+        noAvailableAccounts: 'No schedulable account in this group serves this model; requests will fail',
         publicModelRequired: 'Public model is required',
         routeCreated: 'Composite route created',
         routeUpdated: 'Composite route updated',

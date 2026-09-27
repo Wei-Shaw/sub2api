@@ -4,6 +4,11 @@
       <div v-if="loading" class="flex items-center justify-center py-20">
         <div class="spinner h-8 w-8 text-accent"></div>
       </div>
+      <!-- Checkout info failed to load: say so and offer a retry instead of claiming top-up is unavailable -->
+      <div v-else-if="checkoutError" class="card empty-state">
+        <p class="empty-state-description">{{ checkoutError }}</p>
+        <button class="btn btn-secondary mt-4" @click="loadCheckout">{{ t('common.refresh') }}</button>
+      </div>
       <template v-else>
         <!-- Tab Switcher (hide during payment and subscription confirm) -->
         <div v-if="tabs.length > 1 && paymentPhase === 'select' && !selectedPlan" class="tabs">
@@ -42,11 +47,11 @@
             <div class="meter">
               <div class="meter-cell">
                 <span class="meter-label">{{ t('payment.rechargeAccount') }}</span>
-                <span class="truncate text-h3 font-bold text-fg">{{ user?.username || '' }}</span>
+                <span class="truncate text-h3 font-bold text-fg">{{ user?.username || user?.email || '' }}</span>
               </div>
               <div class="meter-cell meter-cell-current">
                 <span class="meter-label">{{ t('payment.currentBalance') }}</span>
-                <span class="meter-value">{{ user?.balance?.toFixed(2) || '0.00' }}</span>
+                <span class="meter-value">${{ user?.balance?.toFixed(2) || '0.00' }}</span>
               </div>
             </div>
             <div v-if="enabledMethods.length === 0" class="card empty-state">
@@ -334,6 +339,7 @@ function subscriptionPeakRateLabel(sub: { group?: PeakRateFields | null }): stri
 }
 
 const loading = ref(true)
+const checkoutError = ref('')
 const submitting = ref(false)
 const errorMessage = ref('')
 const errorHintMessage = ref('')
@@ -918,7 +924,9 @@ onUnmounted(() => {
   stopPopupResultListener = null
 })
 
-onMounted(async () => {
+async function loadCheckout() {
+  loading.value = true
+  checkoutError.value = ''
   try {
     const res = await paymentAPI.getCheckoutInfo()
     checkout.value = res.data
@@ -971,8 +979,15 @@ onMounted(async () => {
         }
       }
     }
-  } catch (err: unknown) { appStore.showError(extractI18nErrorMessage(err, t, 'payment.errors', t('common.error'))) }
+  } catch (err: unknown) {
+    checkoutError.value = extractI18nErrorMessage(err, t, 'payment.errors', t('common.error'))
+    appStore.showError(checkoutError.value)
+  }
   finally { loading.value = false }
+}
+
+onMounted(async () => {
+  await loadCheckout()
   // Fetch active subscriptions (uses cache, non-blocking); skipped when the subscription feature is off
   if (subscriptionEnabled.value) {
     subscriptionStore.fetchActiveSubscriptions().catch(() => {})

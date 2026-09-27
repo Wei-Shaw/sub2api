@@ -524,6 +524,9 @@ export async function batchUpdateCredentials(request: {
   return data
 }
 
+/** How bulk update applies group_ids; the backend defaults to 'replace'. */
+export type BulkGroupMode = 'replace' | 'add' | 'remove'
+
 /**
  * Bulk update multiple accounts
  * @param accountIds - Array of account IDs
@@ -753,13 +756,21 @@ export async function exportData(options?: {
   return data
 }
 
-export async function importData(payload: {
-  data: AdminDataPayload
-  skip_default_group_bind?: boolean
-}): Promise<AdminDataImportResult> {
+export async function importData(
+  payload: {
+    data: AdminDataPayload
+    skip_default_group_bind?: boolean
+    group_ids?: number[]
+  },
+  options?: { idempotencyKey?: string }
+): Promise<AdminDataImportResult> {
   const { data } = await apiClient.post<AdminDataImportResult>('/admin/accounts/data', {
     data: payload.data,
-    skip_default_group_bind: payload.skip_default_group_bind
+    skip_default_group_bind: payload.skip_default_group_bind,
+    group_ids: payload.group_ids
+  }, {
+    timeout: 300000, // 5 min: the backend creates accounts one by one
+    headers: options?.idempotencyKey ? { 'Idempotency-Key': options.idempotencyKey } : undefined
   })
   return data
 }
