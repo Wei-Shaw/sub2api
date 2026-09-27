@@ -11,8 +11,7 @@
         </div>
       </div>
       <div>
-        <h2 class="mb-4 text-3xl font-bold text-white">{{ siteSubtitle }}</h2>
-        <p class="text-primary-100">多模型 AI 集合平台</p>
+        <h2 class="text-3xl font-bold text-white">{{ siteSubtitle }}</h2>
       </div>
       <div class="text-sm text-primary-200">
         &copy; {{ currentYear }} {{ siteName }}. 保留所有权利
