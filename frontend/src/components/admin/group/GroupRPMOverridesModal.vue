@@ -72,11 +72,9 @@
         <div v-if="localEntries.length > 0" class="mt-3 flex items-center justify-end border-t border-border pt-3">
           <button
             type="button"
-            :disabled="clearing"
             class="btn btn-secondary btn-sm text-danger hover:border-danger hover:text-danger"
             @click="clearAllLocal"
           >
-            <Icon v-if="clearing" name="refresh" size="sm" class="mr-1 inline animate-spin" />
             {{ t('admin.groups.clearAll') }}
           </button>
         </div>
@@ -361,21 +359,10 @@ const removeLocal = (userId: number) => {
   adjustPage()
 }
 
-const clearing = ref(false)
-const clearAllLocal = async () => {
-  if (!props.group || clearing.value) return
-  clearing.value = true
-  try {
-    await adminAPI.groups.clearGroupRPMOverrides(props.group.id)
-    localEntries.value = []
-    serverEntries.value = []
-    appStore.showSuccess(t('admin.groups.rpmSaved'))
-  } catch (error) {
-    appStore.showError(t('admin.groups.failedToSave'))
-    console.error('Error clearing RPM overrides:', error)
-  } finally {
-    clearing.value = false
-  }
+// 仅清空本地列表，与倍率弹窗一致：需点击保存才会提交（批量设置空列表即清空全部）。
+const clearAllLocal = () => {
+  localEntries.value = []
+  adjustPage()
 }
 
 const handleCancel = () => {

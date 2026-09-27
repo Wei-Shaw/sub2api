@@ -11,6 +11,7 @@ const {
   deleteBackup,
   listBackups,
   getDownloadURL,
+  restoreBackup,
 } = vi.hoisted(() => ({
   getS3Config: vi.fn(),
   getImageStorageConfig: vi.fn(),
@@ -19,6 +20,7 @@ const {
   deleteBackup: vi.fn(),
   listBackups: vi.fn(),
   getDownloadURL: vi.fn(),
+  restoreBackup: vi.fn(),
 }))
 
 vi.mock('@/api', () => ({
@@ -37,7 +39,7 @@ vi.mock('@/api', () => ({
       getBackup: vi.fn(),
       deleteBackup,
       getDownloadURL,
-      restoreBackup: vi.fn(),
+      restoreBackup,
     },
   },
 }))
@@ -277,5 +279,53 @@ describe('admin BackupView', () => {
     await button.trigger('click')
     await flushPromises()
     expect(deleteBackup).toHaveBeenCalledWith('archived', true)
+  })
+
+  it('恢复时在对话框内用密码框输入管理员密码，不使用 window.prompt', async () => {
+    listBackups.mockResolvedValue({ items: [baseRecord('restore-me')] })
+    restoreBackup.mockReset().mockResolvedValue({ ...baseRecord('restore-me'), restore_status: 'running' })
+    const prompt = vi.spyOn(window, 'prompt')
+    const confirm = vi.spyOn(window, 'confirm')
+    const wrapper = mountBackupView()
+    await flushPromises()
+
+    await wrapper.findAll('button').find(button => button.text() === 'admin.backup.actions.restore')!.trigger('click')
+    await flushPromises()
+    const input = document.body.querySelector<HTMLInputElement>('#backup-restore-password')!
+    expect(input.type).toBe('password')
+    expect(input.autocomplete).toBe('current-password')
+    expect(document.body.textContent).toContain('admin.backup.actions.restoreConfirm')
+    const submit = document.body.querySelector<HTMLButtonElement>('button[form="backup-restore-form"]')!
+    expect(submit.disabled).toBe(true)
+
+    input.value = 'admin-secret'
+    input.dispatchEvent(new Event('input'))
+    await flushPromises()
+    expect(submit.disabled).toBe(false)
+    document.body.querySelector('#backup-restore-form')!.dispatchEvent(new Event('submit'))
+    await flushPromises()
+
+    expect(restoreBackup).toHaveBeenCalledWith('restore-me', 'admin-secret')
+    expect(prompt).not.toHaveBeenCalled()
+    expect(confirm).not.toHaveBeenCalled()
+    // BaseDialog 的离场过渡在 jsdom 中需等待动画帧后才移除节点
+    await vi.waitFor(() => expect(document.body.querySelector('#backup-restore-password')).toBeNull())
+  })
+
+  it('取消恢复对话框不会发起恢复请求', async () => {
+    listBackups.mockResolvedValue({ items: [baseRecord('restore-me')] })
+    restoreBackup.mockReset()
+    const wrapper = mountBackupView()
+    await flushPromises()
+
+    await wrapper.findAll('button').find(button => button.text() === 'admin.backup.actions.restore')!.trigger('click')
+    await flushPromises()
+    const cancel = [...document.body.querySelectorAll('button')].find(button => button.textContent?.trim() === 'common.cancel')!
+    cancel.click()
+    await flushPromises()
+
+    // BaseDialog 的离场过渡在 jsdom 中需等待动画帧后才移除节点
+    await vi.waitFor(() => expect(document.body.querySelector('#backup-restore-password')).toBeNull())
+    expect(restoreBackup).not.toHaveBeenCalled()
   })
 })

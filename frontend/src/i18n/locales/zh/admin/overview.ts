@@ -504,7 +504,8 @@ export default {
         title: '删除已选用户',
         confirm: '确定删除已选的 {count} 个用户吗？此操作无法撤销。管理员账号无法删除。',
         success: '已删除 {count} 个用户',
-        failed: '{count} 个用户删除失败，已保留选中，可重试。'
+        failed: '{count} 个用户删除失败，已保留选中，可重试。',
+        progress: '正在删除 {done}/{total}…'
       },
       bulkLimits: {
         action: '批量设置限制（{count}）',
@@ -603,6 +604,7 @@ export default {
       disable: '禁用',
       enable: '启用',
       disableUser: '禁用用户',
+      disableConfirm: '确定禁用 {email} 吗？在重新启用之前，该用户的 API 密钥将立即失效。',
       enableUser: '启用用户',
       viewApiKeys: '查看 API 密钥',
       groups: '分组',
@@ -1197,6 +1199,8 @@ export default {
         preview: '预览',
         matched: '已匹配',
         notMatched: '未匹配',
+        availableAccounts: '可用账号',
+        noAvailableAccounts: '该分组内没有可调度且支持此模型的账号，请求将失败',
         publicModelRequired: '请输入公开模型',
         routeCreated: 'Composite 路由已创建',
         routeUpdated: 'Composite 路由已更新',

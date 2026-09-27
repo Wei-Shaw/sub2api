@@ -3,7 +3,9 @@ import { enableAutoUnmount, flushPromises, mount } from '@vue/test-utils'
 import type { AdminGroup } from '@/types'
 import GroupRPMOverridesModal from '../GroupRPMOverridesModal.vue'
 
-const mocks = vi.hoisted(() => ({ list: vi.fn(), getGroupRPMOverrides: vi.fn(), batchSetGroupRPMOverrides: vi.fn() }))
+const mocks = vi.hoisted(() => ({
+  list: vi.fn(), getGroupRPMOverrides: vi.fn(), batchSetGroupRPMOverrides: vi.fn(), clearGroupRPMOverrides: vi.fn()
+}))
 vi.mock('@/api/admin', () => ({ adminAPI: { users: { list: mocks.list }, groups: mocks } }))
 vi.mock('@/stores/app', () => ({ useAppStore: () => ({ showSuccess: vi.fn(), showError: vi.fn() }) }))
 vi.mock('vue-i18n', () => ({ useI18n: () => ({ t: (key: string) => key }) }))
@@ -54,5 +56,26 @@ describe('GroupRPMOverridesModal new override validation', () => {
     await wrapper.findAll('button').find(b => b.text() === 'common.save')!.trigger('click')
     await flushPromises()
     expect(mocks.batchSetGroupRPMOverrides).toHaveBeenCalledWith(1, [{ user_id: 7, rpm_override: value }])
+  })
+})
+
+describe('GroupRPMOverridesModal clear all', () => {
+  it('clears only locally until the admin saves', async () => {
+    mocks.getGroupRPMOverrides.mockResolvedValue([{ user_id: 7, user_email: 'user@example.com', rpm_override: 50 }])
+    const wrapper = await selectUser()
+    expect(wrapper.findAll('tbody tr')).toHaveLength(1)
+
+    await wrapper.findAll('button').find(b => b.text() === 'admin.groups.clearAll')!.trigger('click')
+    await flushPromises()
+
+    expect(mocks.clearGroupRPMOverrides).not.toHaveBeenCalled()
+    expect(mocks.batchSetGroupRPMOverrides).not.toHaveBeenCalled()
+    expect(wrapper.find('tbody tr').exists()).toBe(false)
+    expect(wrapper.text()).toContain('admin.groups.unsavedChanges')
+
+    await wrapper.findAll('button').find(b => b.text() === 'common.save')!.trigger('click')
+    await flushPromises()
+    expect(mocks.batchSetGroupRPMOverrides).toHaveBeenCalledWith(1, [])
+    expect(mocks.clearGroupRPMOverrides).not.toHaveBeenCalled()
   })
 })

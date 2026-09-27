@@ -73,6 +73,8 @@ type CompositeRouteDecision struct {
 	Endpoint       string               `json:"endpoint"`
 	Route          *CompositeModelRoute `json:"route,omitempty"`
 	Reason         string               `json:"reason,omitempty"`
+	// AvailableAccounts is only set by the admin preview when a route matched.
+	AvailableAccounts *int `json:"available_accounts,omitempty"`
 }
 
 type CompositeRouteInput struct {

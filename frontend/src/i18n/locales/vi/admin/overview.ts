@@ -504,7 +504,8 @@ export default {
         title: 'Xóa người dùng đã chọn',
         confirm: 'Xóa {count} người dùng đã chọn? Thao tác này không thể hoàn tác. Không thể xóa tài khoản quản trị viên.',
         success: 'Đã xóa {count} người dùng',
-        failed: 'Không thể xóa {count} người dùng. Họ vẫn được chọn để thử lại.'
+        failed: 'Không thể xóa {count} người dùng. Họ vẫn được chọn để thử lại.',
+        progress: 'Đang xóa {done}/{total}…'
       },
       bulkLimits: {
         action: 'Đặt giới hạn ({count})',
@@ -625,6 +626,7 @@ export default {
       disable: 'Tắt',
       enable: 'Bật',
       disableUser: 'Vô hiệu hóa người dùng',
+      disableConfirm: 'Vô hiệu hóa {email}? API key của người dùng này sẽ ngừng hoạt động ngay cho đến khi được kích hoạt lại.',
       enableUser: 'Kích hoạt người dùng',
       viewApiKeys: 'Xem API Key',
       groups: 'Nhóm',
@@ -1200,6 +1202,8 @@ export default {
         preview: 'Xem trước',
         matched: 'Khớp',
         notMatched: 'Không khớp',
+        availableAccounts: 'Tài khoản khả dụng',
+        noAvailableAccounts: 'Nhóm này không có tài khoản nào điều phối được và hỗ trợ model này; request sẽ lỗi',
         publicModelRequired: 'Bắt buộc nhập model công khai',
         routeCreated: 'Đã tạo tuyến Composite',
         routeUpdated: 'Đã cập nhật tuyến Composite',
