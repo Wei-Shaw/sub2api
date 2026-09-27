@@ -296,10 +296,19 @@ func cleanupUsageLogsBatchWithRollupInvalidation(ctx context.Context, db *sql.DB
 		return 0, err
 	}
 
-	if err := lockGroupUsageRollupState(ctx, tx); err != nil {
-		return rollback(err)
+	// usage_logs 的行级 DELETE 触发器会把 closed_before 退回到被删记录所在日，
+	// 下一次同步就得把整个保留窗口重扫一遍。保留清理只删最早的记录，同步时会
+	// 按 MIN(created_at) 丢弃更早的日桶并重算边界日，所以这里持锁把水位恢复成删除前的值。
+	var closedBefore string
+	if err := tx.QueryRowContext(ctx, `
+		SELECT closed_before::text
+		FROM usage_group_rollup_state
+		WHERE id = 1
+		FOR UPDATE
+	`).Scan(&closedBefore); err != nil {
+		return rollback(fmt.Errorf("锁定分组用量汇总水位: %w", err))
 	}
-	rows, err := tx.QueryContext(ctx, `
+	res, err := tx.ExecContext(ctx, `
 		WITH victims AS (
 			SELECT tableoid, ctid
 			FROM usage_logs
@@ -309,34 +318,21 @@ func cleanupUsageLogsBatchWithRollupInvalidation(ctx context.Context, db *sql.DB
 		)
 		DELETE FROM usage_logs
 		WHERE (tableoid, ctid) IN (SELECT tableoid, ctid FROM victims)
-		RETURNING created_at
 	`, cutoff.UTC(), usageLogsCleanupBatchSize)
 	if err != nil {
 		return rollback(err)
 	}
-
-	var affected int64
-	var earliestDeletedAt time.Time
-	for rows.Next() {
-		var deletedAt time.Time
-		if err := rows.Scan(&deletedAt); err != nil {
-			_ = rows.Close()
-			return rollback(err)
-		}
-		affected++
-		if earliestDeletedAt.IsZero() || deletedAt.Before(earliestDeletedAt) {
-			earliestDeletedAt = deletedAt
-		}
-	}
-	if err := rows.Err(); err != nil {
-		_ = rows.Close()
-		return rollback(err)
-	}
-	if err := rows.Close(); err != nil {
+	affected, err := res.RowsAffected()
+	if err != nil {
 		return rollback(err)
 	}
 	if affected > 0 {
-		if err := invalidateGroupUsageRollupsAt(ctx, tx, earliestDeletedAt); err != nil {
+		if _, err := tx.ExecContext(ctx, `
+			UPDATE usage_group_rollup_state
+			SET closed_before = $1::date,
+				updated_at = NOW()
+			WHERE id = 1
+		`, closedBefore); err != nil {
 			return rollback(err)
 		}
 	}
@@ -632,7 +628,7 @@ func (r *dashboardAggregationRepository) dropUsageLogsPartitions(ctx context.Con
 	})
 	if db, ok := r.sql.(*sql.DB); ok {
 		for _, partition := range partitions {
-			if err := dropUsageLogsPartitionWithRollupInvalidation(ctx, db, partition.name, partition.month); err != nil {
+			if err := dropUsageLogsPartitionWithRollupInvalidation(ctx, db, partition.name); err != nil {
 				return err
 			}
 		}
@@ -646,7 +642,9 @@ func (r *dashboardAggregationRepository) dropUsageLogsPartitions(ctx context.Con
 	return nil
 }
 
-func dropUsageLogsPartitionWithRollupInvalidation(ctx context.Context, db *sql.DB, name string, monthStart time.Time) error {
+// DROP TABLE 不触发行级触发器；过期分区整体早于保留下界，
+// 由随后的同步按 MIN(created_at) 丢弃对应日桶，无需退回水位触发全量重建。
+func dropUsageLogsPartitionWithRollupInvalidation(ctx context.Context, db *sql.DB, name string) error {
 	tx, err := db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
@@ -657,9 +655,6 @@ func dropUsageLogsPartitionWithRollupInvalidation(ctx context.Context, db *sql.D
 	}
 
 	if err := lockGroupUsageRollupState(ctx, tx); err != nil {
-		return rollback(err)
-	}
-	if err := invalidateGroupUsageRollupsAt(ctx, tx, monthStart); err != nil {
 		return rollback(err)
 	}
 	if _, err := tx.ExecContext(ctx, fmt.Sprintf("DROP TABLE IF EXISTS %s", pq.QuoteIdentifier(name))); err != nil {

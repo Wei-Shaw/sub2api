@@ -213,9 +213,6 @@ func (r *dashboardAggregationRepository) syncGroupUsageRollupsInTx(ctx context.C
 		if closedTime.After(todayDateTime) {
 			return fmt.Errorf("分组用量汇总水位位于未来: %s", closedBefore)
 		}
-		if closedBefore == todayDate {
-			return nil
-		}
 	}
 
 	var earliest sql.NullTime
@@ -225,6 +222,10 @@ func (r *dashboardAggregationRepository) syncGroupUsageRollupsInTx(ctx context.C
 	retainedFrom := todayStart
 	if earliest.Valid {
 		retainedFrom = earliest.Time.UTC()
+	}
+	retainedMoved := !retainedFrom.Equal(previousRetainedFrom)
+	if !timezoneChanged && closedBefore == todayDate && !retainedMoved {
+		return nil
 	}
 	retainedDate := service.GroupUsageDate(retainedFrom)
 	retainedDateTime, err := service.ParseGroupUsageDate(retainedDate)
@@ -240,33 +241,48 @@ func (r *dashboardAggregationRepository) syncGroupUsageRollupsInTx(ctx context.C
 		return err
 	}
 
+	deleteBeforeDate := retainedDate
+	rebuildRanges := make([][2]time.Time, 0, 2)
+	if rebuildStartDate != retainedDate && retainedMoved {
+		// 保留清理只删 retained_from 之前的记录：更早的日桶整体丢弃，
+		// 只重算可能被删掉一部分的边界日，不再把整个保留窗口重扫一遍。
+		boundaryEnd := retainedDateTime.AddDate(0, 0, 1)
+		deleteBeforeDate = service.GroupUsageDate(boundaryEnd)
+		rebuildRanges = append(rebuildRanges, [2]time.Time{retainedDateTime, boundaryEnd})
+	}
+	if rebuildStart.Before(todayStart) {
+		rebuildRanges = append(rebuildRanges, [2]time.Time{rebuildStart, todayStart})
+	}
+
 	if _, err := r.sql.ExecContext(ctx, `
 		DELETE FROM usage_group_daily_rollups
 		WHERE bucket_date < $1::date
 			OR (bucket_date >= $2::date AND bucket_date < $3::date)
 			OR bucket_date >= $3::date
-	`, retainedDate, rebuildStartDate, todayDate); err != nil {
+	`, deleteBeforeDate, rebuildStartDate, todayDate); err != nil {
 		return fmt.Errorf("清理分组用量日桶: %w", err)
 	}
 
-	if _, err := r.sql.ExecContext(ctx, `
-		INSERT INTO usage_group_daily_rollups (bucket_date, group_id, actual_cost, computed_at)
-		SELECT
-			(created_at AT TIME ZONE $3::text)::date AS bucket_date,
-			group_id,
-			COALESCE(SUM(actual_cost), 0) AS actual_cost,
-			NOW()
-		FROM usage_logs
-		WHERE group_id IS NOT NULL
-			AND created_at >= $1
-			AND created_at < $2
-		GROUP BY 1, 2
-		ON CONFLICT (bucket_date, group_id)
-		DO UPDATE SET
-			actual_cost = EXCLUDED.actual_cost,
-			computed_at = EXCLUDED.computed_at
-	`, rebuildStart.UTC(), todayStart.UTC(), timezoneName); err != nil {
-		return fmt.Errorf("重建分组用量日桶: %w", err)
+	for _, rebuildRange := range rebuildRanges {
+		if _, err := r.sql.ExecContext(ctx, `
+			INSERT INTO usage_group_daily_rollups (bucket_date, group_id, actual_cost, computed_at)
+			SELECT
+				(created_at AT TIME ZONE $3::text)::date AS bucket_date,
+				group_id,
+				COALESCE(SUM(actual_cost), 0) AS actual_cost,
+				NOW()
+			FROM usage_logs
+			WHERE group_id IS NOT NULL
+				AND created_at >= $1
+				AND created_at < $2
+			GROUP BY 1, 2
+			ON CONFLICT (bucket_date, group_id)
+			DO UPDATE SET
+				actual_cost = EXCLUDED.actual_cost,
+				computed_at = EXCLUDED.computed_at
+		`, rebuildRange[0].UTC(), rebuildRange[1].UTC(), timezoneName); err != nil {
+			return fmt.Errorf("重建分组用量日桶: %w", err)
+		}
 	}
 
 	if _, err := r.sql.ExecContext(ctx, `
