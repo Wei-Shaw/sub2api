@@ -27,6 +27,8 @@ func RegisterAuthRoutes(
 
 	// 公开接口
 	auth := v1.Group("/auth")
+	// 匿名可达的认证接口请求体都很小，限制为 1MB，避免继承全局上限（可达 256MB）被用来打爆内存。
+	auth.Use(servermiddleware.RequestBodyLimit(1 << 20))
 	auth.Use(servermiddleware.BackendModeAuthGuard(settingService))
 	// 认证事件（登录/注册/2FA/token 刷新失败）入审计
 	auth.Use(gin.HandlerFunc(auditLog))
