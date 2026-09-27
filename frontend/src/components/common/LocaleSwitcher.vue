@@ -1,13 +1,17 @@
 <template>
-  <div class="relative" ref="dropdownRef">
+  <div class="relative" ref="dropdownRef" @keydown.esc="closeOnEscape">
     <button
+      ref="triggerRef"
       @click="toggleDropdown"
       :disabled="switching"
       class="flex min-h-10 items-center gap-1.5 rounded-sm px-2 py-1.5 text-label font-semibold text-fg-muted transition-colors hover:bg-accent-weak hover:text-accent-strong"
       :title="currentLocale?.name"
+      aria-haspopup="true"
+      :aria-expanded="isOpen"
     >
-      <span class="text-base">{{ currentLocale?.flag }}</span>
-      <span class="hidden sm:inline">{{ currentLocale?.code.toUpperCase() }}</span>
+      <span class="text-base" aria-hidden="true">{{ currentLocale?.flag }}</span>
+      <span class="hidden sm:inline" aria-hidden="true">{{ currentLocale?.code.toUpperCase() }}</span>
+      <span class="sr-only" :lang="currentLocale?.code">{{ currentLocale?.name }}</span>
       <Icon
         name="chevronDown"
         size="xs"
@@ -25,6 +29,8 @@
           v-for="locale in availableLocales"
           :key="locale.code"
           :disabled="switching"
+          :lang="locale.code"
+          :aria-current="locale.code === currentLocaleCode ? 'true' : undefined"
           @click="selectLocale(locale.code)"
           class="flex w-full items-center gap-2 px-3 py-2 text-body text-fg transition-colors hover:bg-accent-weak hover:text-accent-strong"
           :class="{
@@ -51,6 +57,7 @@ const { locale } = useI18n()
 
 const isOpen = ref(false)
 const dropdownRef = ref<HTMLElement | null>(null)
+const triggerRef = ref<HTMLButtonElement | null>(null)
 const switching = ref(false)
 
 const currentLocaleCode = computed(() => locale.value)
@@ -72,6 +79,12 @@ async function selectLocale(code: string) {
   } finally {
     switching.value = false
   }
+}
+
+function closeOnEscape() {
+  if (!isOpen.value) return
+  isOpen.value = false
+  triggerRef.value?.focus()
 }
 
 function handleClickOutside(event: MouseEvent) {
