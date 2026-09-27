@@ -182,7 +182,7 @@ func apiKeyAuthWithSubscription(apiKeyService *service.APIKeyService, subscripti
 			c.Set(string(ContextKeyUserRole), apiKey.User.Role)
 			setGroupContext(c, apiKey.Group)
 			if !billingInfoRequest {
-				_ = apiKeyService.TouchLastUsed(c.Request.Context(), apiKey.ID)
+				apiKeyService.TouchLastUsedAsync(c.Request.Context(), apiKey.ID)
 			}
 			c.Next()
 			return
@@ -280,7 +280,7 @@ func apiKeyAuthWithSubscription(apiKeyService *service.APIKeyService, subscripti
 		c.Set(string(ContextKeyUserRole), apiKey.User.Role)
 		setGroupContext(c, apiKey.Group)
 		if !billingInfoRequest {
-			_ = apiKeyService.TouchLastUsed(c.Request.Context(), apiKey.ID)
+			apiKeyService.TouchLastUsedAsync(c.Request.Context(), apiKey.ID)
 		}
 
 		c.Next()
