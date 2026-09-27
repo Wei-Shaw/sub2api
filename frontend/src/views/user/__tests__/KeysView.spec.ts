@@ -644,6 +644,21 @@ describe('user KeysView column settings', () => {
     })
   })
 
+  it('exposes the key form toggles as labelled switches', async () => {
+    const wrapper = await mountView()
+    await wrapper.get('[data-tour="keys-create-btn"]').trigger('click')
+    const switches = wrapper.findAll('[role="switch"]')
+    expect(switches.map((item) => item.attributes('aria-label'))).toEqual([
+      'keys.customKeyLabel',
+      'keys.ipRestriction',
+      'keys.rateLimitSection',
+      'keys.expiration',
+    ])
+    expect(switches.every((item) => item.attributes('aria-checked') === 'false')).toBe(true)
+    await switches[1].trigger('click')
+    expect(wrapper.findAll('[role="switch"]')[1].attributes('aria-checked')).toBe('true')
+  })
+
   describe('save errors', () => {
     it.each([
       [{ status: 400, message: 'x' }, 'x'],

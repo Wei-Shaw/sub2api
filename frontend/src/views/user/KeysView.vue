@@ -531,6 +531,9 @@
             <label class="input-label mb-0">{{ t('keys.customKeyLabel') }}</label>
             <button
               type="button"
+              role="switch"
+              :aria-checked="formData.use_custom_key"
+              :aria-label="t('keys.customKeyLabel')"
               @click="formData.use_custom_key = !formData.use_custom_key"
               :class="[
                 'relative inline-flex h-5 w-9 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/50 focus-visible:ring-offset-2 focus-visible:ring-offset-surface',
@@ -573,6 +576,9 @@
             <label class="input-label mb-0">{{ t('keys.ipRestriction') }}</label>
             <button
               type="button"
+              role="switch"
+              :aria-checked="formData.enable_ip_restriction"
+              :aria-label="t('keys.ipRestriction')"
               @click="formData.enable_ip_restriction = !formData.enable_ip_restriction"
               :class="[
                 'relative inline-flex h-5 w-9 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/50 focus-visible:ring-offset-2 focus-visible:ring-offset-surface',
@@ -685,6 +691,9 @@
             <label class="input-label mb-0">{{ t('keys.rateLimitSection') }}</label>
             <button
               type="button"
+              role="switch"
+              :aria-checked="formData.enable_rate_limit"
+              :aria-label="t('keys.rateLimitSection')"
               @click="formData.enable_rate_limit = !formData.enable_rate_limit"
               :class="[
                 'relative inline-flex h-5 w-9 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/50 focus-visible:ring-offset-2 focus-visible:ring-offset-surface',
@@ -859,6 +868,9 @@
             <label class="input-label mb-0">{{ t('keys.expiration') }}</label>
             <button
               type="button"
+              role="switch"
+              :aria-checked="formData.enable_expiration"
+              :aria-label="t('keys.expiration')"
               @click="formData.enable_expiration = !formData.enable_expiration"
               :class="[
                 'relative inline-flex h-5 w-9 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/50 focus-visible:ring-offset-2 focus-visible:ring-offset-surface',
