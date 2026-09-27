@@ -15,6 +15,7 @@ import (
 
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 	"github.com/shopspring/decimal"
+	"golang.org/x/sync/singleflight"
 )
 
 // 用户可以按 USD 或 VND 填充值金额，但 SePay 只结算 VND，而账户余额只记 USD。
@@ -26,7 +27,11 @@ const (
 
 	// exchangeRateHTTPTimeout 限制单次牌价抓取时长。建单路径会等这个调用，
 	// 不能让外部接口把下单拖死。
-	exchangeRateHTTPTimeout = 10 * time.Second
+	exchangeRateHTTPTimeout = 5 * time.Second
+
+	// exchangeRateFailureBackoff 是抓取失败后暂停重试的时长。期间直接走库里的
+	// 快照兜底，源站挂起时不会让每次下单都等满超时。
+	exchangeRateFailureBackoff = time.Minute
 
 	// exchangeRateRefreshInterval 是内存里认为汇率仍然新鲜的时长。
 	// Vietcombank 一天只更新几次，一小时足够贴近，也不会打扰对方。
@@ -73,6 +78,10 @@ type ExchangeRateService struct {
 
 	mu     sync.Mutex
 	cached *ExchangeRateSnapshot
+	// lastFetchFailure / lastFetchErr 记录最近一次抓取失败，供失败退避使用。
+	lastFetchFailure time.Time
+	lastFetchErr     error
+	fetchGroup       singleflight.Group
 }
 
 // NewExchangeRateService 构造汇率服务。
@@ -117,9 +126,8 @@ func (s *ExchangeRateService) snapshot(ctx context.Context) (*ExchangeRateSnapsh
 		return cached, nil
 	}
 
-	fetched, fetchErr := s.fetchUpstream(ctx)
+	fetched, fetchErr := s.refresh(ctx)
 	if fetchErr == nil {
-		s.store(ctx, fetched)
 		return fetched, nil
 	}
 
@@ -149,6 +157,39 @@ func (s *ExchangeRateService) snapshot(ctx context.Context) (*ExchangeRateSnapsh
 	s.cached = stored
 	s.mu.Unlock()
 	return stored, nil
+}
+
+// refresh 合并并发抓取，并在上次失败后的退避期内直接返回那次的错误。
+// 抓取不继承调用方的取消：客户端断开不能被记成源站故障；抓取加落库仍有总时限。
+func (s *ExchangeRateService) refresh(ctx context.Context) (*ExchangeRateSnapshot, error) {
+	v, err, _ := s.fetchGroup.Do("usd_vnd", func() (any, error) {
+		s.mu.Lock()
+		cached, failedAt, failErr := s.cached, s.lastFetchFailure, s.lastFetchErr
+		s.mu.Unlock()
+		// 上一轮合并抓取可能刚刚结束。
+		if cached != nil && time.Since(cached.FetchedAt) < exchangeRateRefreshInterval {
+			return cached, nil
+		}
+		if failErr != nil && time.Since(failedAt) < exchangeRateFailureBackoff {
+			return nil, failErr
+		}
+
+		fetchCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 2*exchangeRateHTTPTimeout)
+		defer cancel()
+		fetched, err := s.fetchUpstream(fetchCtx)
+		if err != nil {
+			s.mu.Lock()
+			s.lastFetchFailure, s.lastFetchErr = time.Now(), err
+			s.mu.Unlock()
+			return nil, err
+		}
+		s.store(fetchCtx, fetched)
+		return fetched, nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return v.(*ExchangeRateSnapshot), nil
 }
 
 func (s *ExchangeRateService) fetchUpstream(ctx context.Context) (*ExchangeRateSnapshot, error) {
