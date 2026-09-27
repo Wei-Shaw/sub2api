@@ -50,6 +50,8 @@ func RegisterPaymentRoutes(
 	// The legacy anonymous out_trade_no verify endpoint remains available as a
 	// persisted-state compatibility path for staggered upgrades.
 	public := v1.Group("/payment/public")
+	// Anonymous lookup bodies are tiny; cap them at 1MB instead of inheriting the global limit (up to 256MB).
+	public.Use(middleware.RequestBodyLimit(1 << 20))
 	// Unauthenticated payment endpoints share the per-IP public panel limit.
 	public.Use(panelRateLimiter.PublicIP())
 	{

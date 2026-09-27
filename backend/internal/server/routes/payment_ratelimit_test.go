@@ -20,14 +20,16 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestPaymentUnauthenticatedRoutesArePerIPRateLimited(t *testing.T) {
+// newPaymentRoutesTestRouter mounts the payment routes with zero-value handlers and the given panel rate limit settings JSON.
+func newPaymentRoutesTestRouter(t *testing.T, panelRateLimitSettings string) (*gin.Engine, *miniredis.Miniredis) {
+	t.Helper()
 	mr := miniredis.RunT(t)
 	rdb := redis.NewClient(&redis.Options{Addr: mr.Addr()})
 	t.Cleanup(func() { _ = rdb.Close() })
 
 	// Reuses the route-guard SettingRepository stub from channel_monitor_feature_gate_test.go.
 	settings := service.NewSettingService(&channelMonitorRouteSettingRepoStub{values: map[string]string{
-		service.SettingKeyPanelRateLimitSettings: `{"enabled":true,"public_ip_rpm":2}`,
+		service.SettingKeyPanelRateLimitSettings: panelRateLimitSettings,
 	}}, &config.Config{})
 	passThrough := func(c *gin.Context) { c.Next() }
 
@@ -48,6 +50,11 @@ func TestPaymentUnauthenticatedRoutesArePerIPRateLimited(t *testing.T) {
 		settings,
 		servermiddleware.NewPanelRateLimiter(rdb, settings),
 	)
+	return router, mr
+}
+
+func TestPaymentUnauthenticatedRoutesArePerIPRateLimited(t *testing.T) {
+	router, mr := newPaymentRoutesTestRouter(t, `{"enabled":true,"public_ip_rpm":2}`)
 
 	routes := []struct{ method, path string }{
 		{http.MethodPost, "/api/v1/payment/webhook/sepay"},
