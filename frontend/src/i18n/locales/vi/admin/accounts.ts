@@ -448,6 +448,8 @@ export default {
       },
       clearRateLimit: 'Xóa giới hạn tốc độ',
       resetQuota: 'Đặt lại hạn mức',
+      resetQuotaConfirm: "Đặt lại mức đã dùng của hạn mức tài khoản '{name}'? Lượng sử dụng đã ghi nhận sẽ bị xóa ngay và không thể khôi phục.",
+      failedToResetQuota: 'Đặt lại hạn mức thất bại',
       quotaLimit: 'Giới hạn hạn mức',
       quotaLimitPlaceholder: '0 nghĩa là không giới hạn',
       quotaLimitHint: 'Thiết lập giới hạn chi tiêu theo ngày/tuần/tổng (USD). Tài khoản Anthropic API Key cũng có thể cấu hình client affinity. Thay đổi giới hạn sẽ không đặt lại mức sử dụng.',

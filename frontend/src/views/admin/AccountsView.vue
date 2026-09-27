@@ -207,6 +207,18 @@
           :overscan="5"
           :virtualize-threshold="50"
         >
+          <template #empty>
+            <div v-if="loadError" class="flex flex-col items-center" role="alert" data-testid="accounts-load-error">
+              <Icon name="exclamationCircle" size="xl" class="mb-3 h-10 w-10 text-danger" />
+              <p class="text-h3 font-semibold text-fg">{{ t('admin.accounts.failedToLoad') }}</p>
+              <p class="mt-1 text-sm text-fg-muted">{{ loadError }}</p>
+              <button type="button" class="btn btn-secondary btn-sm mt-4" @click="load()">{{ t('admin.accounts.retry') }}</button>
+            </div>
+            <div v-else class="flex flex-col items-center">
+              <Icon name="inbox" size="xl" class="mb-3 h-10 w-10 text-border-strong" />
+              <p class="text-h3 font-semibold text-fg-muted">{{ t('empty.noData') }}</p>
+            </div>
+          </template>
           <template #header-select>
             <input
               type="checkbox"
@@ -472,6 +484,7 @@
     />
     <TempUnschedStatusModal :show="showTempUnsched" :account="tempUnschedAcc" @close="showTempUnsched = false" @reset="handleTempUnschedReset" />
     <ConfirmDialog :show="showDeleteDialog" :title="t('admin.accounts.deleteAccount')" :message="t('admin.accounts.deleteConfirm', { name: deletingAcc?.name })" :confirm-text="t('common.delete')" :cancel-text="t('common.cancel')" :danger="true" @confirm="confirmDelete" @cancel="showDeleteDialog = false" />
+    <ConfirmDialog :show="showResetQuotaDialog" :title="t('admin.accounts.resetQuota')" :message="t('admin.accounts.resetQuotaConfirm', { name: resettingQuotaAcc?.name })" :confirm-text="t('admin.accounts.resetQuota')" :cancel-text="t('common.cancel')" :danger="true" @confirm="confirmResetQuota" @cancel="showResetQuotaDialog = false" />
     <ConfirmDialog :show="showCreateShadowDialog" :title="t('admin.accounts.createSparkShadow')" :message="t('admin.accounts.createSparkShadowConfirm', { name: creatingShadowAcc?.name })" @confirm="confirmCreateSparkShadow" @cancel="showCreateShadowDialog = false" />
     <ConfirmDialog :show="showExportDataDialog" :title="t('admin.accounts.dataExport')" :message="t('admin.accounts.dataExportConfirmMessage')" :confirm-text="t('admin.accounts.dataExportConfirm')" :cancel-text="t('common.cancel')" @confirm="handleExportData" @cancel="showExportDataDialog = false">
       <label class="flex items-center gap-2 text-sm text-fg">
@@ -597,6 +610,7 @@ const showBulkEdit = ref(false)
 const bulkEditTarget = ref<AccountBulkEditTarget | null>(null)
 const showTempUnsched = ref(false)
 const showDeleteDialog = ref(false)
+const showResetQuotaDialog = ref(false)
 const showCreateShadowDialog = ref(false)
 const showReAuth = ref(false)
 const showTest = ref(false)
@@ -606,6 +620,7 @@ const showTLSFingerprintProfiles = ref(false)
 const edAcc = ref<Account | null>(null)
 const tempUnschedAcc = ref<Account | null>(null)
 const deletingAcc = ref<Account | null>(null)
+const resettingQuotaAcc = ref<Account | null>(null)
 const creatingShadowAcc = ref<Account | null>(null)
 const reAuthAcc = ref<Account | null>(null)
 const testingAcc = ref<Account | null>(null)
@@ -614,6 +629,7 @@ const showSchedulePanel = ref(false)
 const scheduleAcc = ref<Account | null>(null)
 const scheduleModelOptions = ref<SelectOption[]>([])
 const togglingSchedulable = ref<number | null>(null)
+const loadError = ref<string | null>(null)
 const menu = reactive<{show:boolean, acc:Account|null, anchorRect:DOMRect|null}>({ show: false, acc: null, anchorRect: null })
 const exportingData = ref(false)
 const probingUpstreamBilling = reactive(new Set<number>())
@@ -1077,7 +1093,22 @@ const {
   handlePageChange: baseHandlePageChange,
   handlePageSizeChange: baseHandlePageSizeChange
 } = useTableLoader<AccountListItem, any>({
-  fetchFn: adminAPI.accounts.list,
+  // useTableLoader rethrows fetch errors; surfacing them here covers every load path
+  // (mount, paging, sorting, filtering) so a failed request is not shown as an empty list.
+  fetchFn: async (...args: Parameters<typeof adminAPI.accounts.list>) => {
+    try {
+      const result = await adminAPI.accounts.list(...args)
+      loadError.value = null
+      return result
+    } catch (error) {
+      const e = error as { name?: string; code?: string } | null
+      if (e?.name !== 'AbortError' && e?.name !== 'CanceledError' && e?.code !== 'ERR_CANCELED') {
+        loadError.value = extractApiErrorMessage(error, t('admin.accounts.failedToLoad'))
+        appStore.showError(loadError.value)
+      }
+      throw error
+    }
+  },
   initialParams: {
     platform: '',
     type: '',
@@ -1160,7 +1191,11 @@ const load = async (options: AccountLoadOptions = {}) => {
   resetAutoRefreshCache()
   pendingTodayStatsRefresh.value = false
   requestParams.lite = '1'
-  await baseLoad()
+  try {
+    await baseLoad()
+  } catch {
+    return // already surfaced by fetchFn
+  }
   if (options.refreshTodayStats !== false) await refreshTodayStatsBatch()
 }
 
@@ -1169,7 +1204,11 @@ const reload = async () => {
   hasPendingListSync.value = false
   resetAutoRefreshCache()
   pendingTodayStatsRefresh.value = false
-  await baseReload()
+  try {
+    await baseReload()
+  } catch {
+    return // already surfaced by fetchFn
+  }
   await refreshTodayStatsBatch()
 }
 
@@ -1364,6 +1403,7 @@ const isAnyModalOpen = computed(() => {
     showBulkEdit.value ||
     showTempUnsched.value ||
     showDeleteDialog.value ||
+    showResetQuotaDialog.value ||
     showReAuth.value ||
     showTest.value ||
     showStats.value ||
@@ -1466,6 +1506,7 @@ const refreshAccountsIncrementally = async () => {
       pagination.pages = result.data.pages || 0
       mergeAccountsIncrementally(result.data.items || [])
       hasPendingListSync.value = false
+      loadError.value = null
     }
     upstreamBillingNow.value = Date.now()
 
@@ -2356,8 +2397,10 @@ const handleRefresh = async (a: Account) => {
     patchAccountInList(result.account)
     enterAutoRefreshSilentWindow()
     if (result.warning) appStore.showWarning(result.message)
+    else appStore.showSuccess(t('admin.accounts.tokenRefreshed'))
   } catch (error) {
     console.error('Failed to refresh credentials:', error)
+    appStore.showError(extractApiErrorMessage(error, t('admin.accounts.failedToRefresh')))
   }
 }
 const handleRecoverState = async (a: Account) => {
@@ -2371,14 +2414,20 @@ const handleRecoverState = async (a: Account) => {
     appStore.showError(error?.message || t('admin.accounts.recoverStateFailed'))
   }
 }
-const handleResetQuota = async (a: Account) => {
+const handleResetQuota = (a: Account) => { resettingQuotaAcc.value = a; showResetQuotaDialog.value = true }
+const confirmResetQuota = async () => {
+  const a = resettingQuotaAcc.value
+  if (!a) return
   try {
     const updated = await adminAPI.accounts.resetAccountQuota(a.id)
+    showResetQuotaDialog.value = false
+    resettingQuotaAcc.value = null
     patchAccountInList(updated)
     enterAutoRefreshSilentWindow()
     appStore.showSuccess(t('common.success'))
   } catch (error) {
     console.error('Failed to reset quota:', error)
+    appStore.showError(extractApiErrorMessage(error, t('admin.accounts.failedToResetQuota')))
   }
 }
 
@@ -2448,7 +2497,7 @@ const confirmCreateSparkShadow = async () => {
   }
 }
 const handleDelete = (a: Account) => { deletingAcc.value = a; showDeleteDialog.value = true }
-const confirmDelete = async () => { if(!deletingAcc.value) return; try { await adminAPI.accounts.delete(deletingAcc.value.id); showDeleteDialog.value = false; deletingAcc.value = null; reload() } catch (error) { console.error('Failed to delete account:', error) } }
+const confirmDelete = async () => { if(!deletingAcc.value) return; try { await adminAPI.accounts.delete(deletingAcc.value.id); showDeleteDialog.value = false; deletingAcc.value = null; reload() } catch (error) { console.error('Failed to delete account:', error); appStore.showError(extractApiErrorMessage(error, t('admin.accounts.failedToDelete'))) } }
 const handleToggleSchedulable = async (a: Account) => {
   const nextSchedulable = !a.schedulable
   togglingSchedulable.value = a.id
