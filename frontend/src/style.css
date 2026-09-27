@@ -744,7 +744,7 @@
     @apply border-r border-border;
     @apply flex flex-col;
     @apply transition-transform duration-200;
-    transition-property: width, transform;
+    transition-property: width, transform, visibility;
   }
 
   .sidebar-header {

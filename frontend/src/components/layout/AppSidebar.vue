@@ -3,7 +3,7 @@
     class="sidebar"
     :class="[
       sidebarCollapsed ? 'w-[72px]' : 'w-64',
-      { '-translate-x-full lg:translate-x-0': !mobileOpen }
+      { '-translate-x-full max-lg:invisible lg:translate-x-0': !mobileOpen }
     ]"
   >
     <!-- Logo/Brand -->
@@ -172,7 +172,7 @@
       <!-- Collapse Button -->
       <button
         @click="toggleSidebar"
-        class="sidebar-link w-full"
+        class="sidebar-link hidden w-full lg:flex"
         :class="{ 'sidebar-link-collapsed': sidebarCollapsed }"
         :title="sidebarCollapsed ? t('nav.expand') : t('nav.collapse')"
         :aria-label="sidebarCollapsed ? t('nav.expand') : t('nav.collapse')"
@@ -899,6 +899,10 @@ function closeMobile() {
   appStore.setMobileOpen(false)
 }
 
+function handleEscape(event: KeyboardEvent) {
+  if (event.key === 'Escape' && mobileOpen.value) closeMobile()
+}
+
 function handleMenuItemClick(itemPath: string) {
   if (mobileOpen.value) {
     setTimeout(() => {
@@ -980,6 +984,7 @@ watch(
 )
 
 onMounted(() => {
+  document.addEventListener('keydown', handleEscape)
   void refreshBatchImageAccess()
   if (isAdmin.value) {
     adminSettingsStore.fetch()
@@ -995,6 +1000,7 @@ onMounted(() => {
 })
 
 onBeforeUnmount(() => {
+  document.removeEventListener('keydown', handleEscape)
   if (sidebarNavRef.value) {
     appStore.sidebarScrollTop = sidebarNavRef.value.scrollTop
   }
