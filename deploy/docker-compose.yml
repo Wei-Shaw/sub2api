@@ -11,6 +11,13 @@
 # No Setup Wizard needed - the system auto-initializes on first run.
 # =============================================================================
 
+# Cap Docker's json-file logs so stdout logging cannot fill the disk.
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "50m"
+    max-file: "5"
+
 services:
   # ===========================================================================
   # Sub2API Application
@@ -21,6 +28,13 @@ services:
       dockerfile: Dockerfile
     container_name: sub2api
     restart: unless-stopped
+    logging: *default-logging
+    # Shutdown drains in-flight requests for up to 30s, then flushes ops error
+    # logs (up to 10s) and usage/billing (Cleanup, nominally ~10s; its wait is
+    # not hard-capped) before closing DB/Redis, so 50s is a nominal bound.
+    # Docker's default 10s would SIGKILL mid-flush.
+    # backend/cmd/server/main_test.go checks this budget.
+    stop_grace_period: 50s
     security_opt:
       - no-new-privileges:true
     ulimits:
@@ -28,7 +42,9 @@ services:
         soft: 100000
         hard: 100000
     ports:
-      - "${BIND_HOST:-0.0.0.0}:${SERVER_PORT:-8080}:8080"
+      # Loopback only: put a reverse proxy in front. Docker publishes ports via
+      # iptables, so a host firewall (ufw) does not block BIND_HOST=0.0.0.0.
+      - "${BIND_HOST:-127.0.0.1}:${SERVER_PORT:-8080}:8080"
     volumes:
       # Data persistence (config.yaml will be auto-generated here)
       - sub2api_data:/app/data
@@ -57,6 +73,36 @@ services:
       - SIMPLE_MODE_KEY_RATE_LIMIT_ENABLED=${SIMPLE_MODE_KEY_RATE_LIMIT_ENABLED:-false}
       - UPDATE_GITHUB_TOKEN=${UPDATE_GITHUB_TOKEN:-}
       - ALIPAY_MOBILE_PRECREATE_DEEP_LINK=${ALIPAY_MOBILE_PRECREATE_DEEP_LINK:-}
+      # Empty `${VAR:-}` fallbacks count as unset: config.yaml and backend
+      # defaults still apply unless .env sets the variable.
+      - SERVER_MAX_REQUEST_BODY_SIZE=${SERVER_MAX_REQUEST_BODY_SIZE:-}
+      - SERVER_H2C_ENABLED=${SERVER_H2C_ENABLED:-}
+      - SERVER_H2C_MAX_CONCURRENT_STREAMS=${SERVER_H2C_MAX_CONCURRENT_STREAMS:-}
+      - SERVER_H2C_IDLE_TIMEOUT=${SERVER_H2C_IDLE_TIMEOUT:-}
+      - SERVER_H2C_MAX_READ_FRAME_SIZE=${SERVER_H2C_MAX_READ_FRAME_SIZE:-}
+      - SERVER_H2C_MAX_UPLOAD_BUFFER_PER_CONNECTION=${SERVER_H2C_MAX_UPLOAD_BUFFER_PER_CONNECTION:-}
+      - SERVER_H2C_MAX_UPLOAD_BUFFER_PER_STREAM=${SERVER_H2C_MAX_UPLOAD_BUFFER_PER_STREAM:-}
+
+      # =======================================================================
+      # Logging Configuration
+      # =======================================================================
+      - LOG_LEVEL=${LOG_LEVEL:-}
+      - LOG_FORMAT=${LOG_FORMAT:-}
+      - LOG_SERVICE_NAME=${LOG_SERVICE_NAME:-}
+      - LOG_ENV=${LOG_ENV:-}
+      - LOG_CALLER=${LOG_CALLER:-}
+      - LOG_STACKTRACE_LEVEL=${LOG_STACKTRACE_LEVEL:-}
+      - LOG_OUTPUT_TO_STDOUT=${LOG_OUTPUT_TO_STDOUT:-}
+      - LOG_OUTPUT_TO_FILE=${LOG_OUTPUT_TO_FILE:-}
+      - LOG_OUTPUT_FILE_PATH=${LOG_OUTPUT_FILE_PATH:-}
+      - LOG_ROTATION_MAX_SIZE_MB=${LOG_ROTATION_MAX_SIZE_MB:-}
+      - LOG_ROTATION_MAX_BACKUPS=${LOG_ROTATION_MAX_BACKUPS:-}
+      - LOG_ROTATION_MAX_AGE_DAYS=${LOG_ROTATION_MAX_AGE_DAYS:-}
+      - LOG_ROTATION_COMPRESS=${LOG_ROTATION_COMPRESS:-}
+      - LOG_ROTATION_LOCAL_TIME=${LOG_ROTATION_LOCAL_TIME:-}
+      - LOG_SAMPLING_ENABLED=${LOG_SAMPLING_ENABLED:-}
+      - LOG_SAMPLING_INITIAL=${LOG_SAMPLING_INITIAL:-}
+      - LOG_SAMPLING_THEREAFTER=${LOG_SAMPLING_THEREAFTER:-}
 
       # =======================================================================
       # Database Configuration (PostgreSQL)
@@ -99,6 +145,7 @@ services:
       # Generate a secure secret: openssl rand -hex 32
       - JWT_SECRET=${JWT_SECRET:-}
       - JWT_EXPIRE_HOUR=${JWT_EXPIRE_HOUR:-24}
+      - JWT_ACCESS_TOKEN_EXPIRE_MINUTES=${JWT_ACCESS_TOKEN_EXPIRE_MINUTES:-}
 
       # =======================================================================
       # Setup Configuration
@@ -128,9 +175,9 @@ services:
       # - Usage statistics "today" boundary
       # - Subscription expiry times
       # - Log timestamps
-      # Common values: Asia/Shanghai, America/New_York, Europe/London, UTC
+      # Common values: Asia/Ho_Chi_Minh, Asia/Shanghai, America/New_York, Europe/London, UTC
       # =======================================================================
-      - TZ=${TZ:-Asia/Shanghai}
+      - TZ=${TZ:-Asia/Ho_Chi_Minh}
 
       # =======================================================================
       # Gemini OAuth Configuration (for Gemini accounts)
@@ -212,6 +259,21 @@ services:
       - GATEWAY_IMAGE_CONCURRENCY_MAX_WAITING_REQUESTS=${GATEWAY_IMAGE_CONCURRENCY_MAX_WAITING_REQUESTS:-100}
       # grok.com web image edits: FlareSolverr endpoint that clears Cloudflare (see flaresolverr service)
       - GATEWAY_GROK_FLARESOLVERR_URL=${GATEWAY_GROK_FLARESOLVERR_URL:-}
+
+      # =======================================================================
+      # Rate Limiting, Dashboard Aggregation & Ops Monitoring
+      # =======================================================================
+      - RATE_LIMIT_OVERLOAD_COOLDOWN_MINUTES=${RATE_LIMIT_OVERLOAD_COOLDOWN_MINUTES:-}
+      - DASHBOARD_AGGREGATION_ENABLED=${DASHBOARD_AGGREGATION_ENABLED:-}
+      - DASHBOARD_AGGREGATION_INTERVAL_SECONDS=${DASHBOARD_AGGREGATION_INTERVAL_SECONDS:-}
+      - DASHBOARD_AGGREGATION_LOOKBACK_SECONDS=${DASHBOARD_AGGREGATION_LOOKBACK_SECONDS:-}
+      - DASHBOARD_AGGREGATION_BACKFILL_ENABLED=${DASHBOARD_AGGREGATION_BACKFILL_ENABLED:-}
+      - DASHBOARD_AGGREGATION_BACKFILL_MAX_DAYS=${DASHBOARD_AGGREGATION_BACKFILL_MAX_DAYS:-}
+      - DASHBOARD_AGGREGATION_RECOMPUTE_DAYS=${DASHBOARD_AGGREGATION_RECOMPUTE_DAYS:-}
+      - DASHBOARD_AGGREGATION_RETENTION_USAGE_LOGS_DAYS=${DASHBOARD_AGGREGATION_RETENTION_USAGE_LOGS_DAYS:-}
+      - DASHBOARD_AGGREGATION_RETENTION_HOURLY_DAYS=${DASHBOARD_AGGREGATION_RETENTION_HOURLY_DAYS:-}
+      - DASHBOARD_AGGREGATION_RETENTION_DAILY_DAYS=${DASHBOARD_AGGREGATION_RETENTION_DAILY_DAYS:-}
+      - OPS_ENABLED=${OPS_ENABLED:-}
     depends_on:
       postgres:
         condition: service_healthy
@@ -245,6 +307,10 @@ services:
     image: postgres:18-alpine
     container_name: sub2api-postgres
     restart: unless-stopped
+    logging: *default-logging
+    # Parallel queries use /dev/shm; Docker's 64MB default can fail large
+    # dashboard/ops queries with "could not resize shared memory segment".
+    shm_size: 256mb
     ulimits:
       nofile:
         soft: 100000
@@ -268,7 +334,7 @@ services:
       - POSTGRES_USER=${POSTGRES_USER:-sub2api}
       - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
       - POSTGRES_DB=${POSTGRES_DB:-sub2api}
-      - TZ=${TZ:-Asia/Shanghai}
+      - TZ=${TZ:-Asia/Ho_Chi_Minh}
     networks:
       - sub2api-network
     healthcheck:
@@ -291,6 +357,7 @@ services:
     image: redis:8-alpine
     container_name: sub2api-redis
     restart: unless-stopped
+    logging: *default-logging
     ulimits:
       nofile:
         soft: 100000
@@ -307,9 +374,10 @@ services:
         --save 60 1 \
         --appendonly yes \
         --appendfsync everysec \
+        --maxclients ${REDIS_MAXCLIENTS:-10000} \
         ${REDIS_PASSWORD:+--requirepass "$REDIS_PASSWORD"}'
     environment:
-      - TZ=${TZ:-Asia/Shanghai}
+      - TZ=${TZ:-Asia/Ho_Chi_Minh}
       # REDISCLI_AUTH is used by redis-cli for authentication (safer than -a flag)
       - REDISCLI_AUTH=${REDIS_PASSWORD:-}
     networks:
@@ -328,12 +396,17 @@ services:
   # GATEWAY_GROK_FLARESOLVERR_URL=http://flaresolverr:8191/v1 in .env.
   # ===========================================================================
   flaresolverr:
-    image: ghcr.io/flaresolverr/flaresolverr:latest
+    # Pinned: a new release can break the Grok Cloudflare flow. Bump deliberately.
+    image: ghcr.io/flaresolverr/flaresolverr:v3.5.2
     container_name: sub2api-flaresolverr
     restart: unless-stopped
+    logging: *default-logging
+    # Headless Chromium shares the host with Postgres; cap it so an OOM kills
+    # FlareSolverr rather than the database.
+    mem_limit: 1g
     profiles: ["grok-web"]
     environment:
-      - TZ=${TZ:-Asia/Shanghai}
+      - TZ=${TZ:-Asia/Ho_Chi_Minh}
     networks:
       - sub2api-network
 

@@ -184,12 +184,28 @@ func runMainServer() {
 
 	log.Println("Shutting down server...")
 
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-
-	if err := app.Server.Shutdown(ctx); err != nil {
-		log.Printf("Server forced to shutdown: %v", err)
-	}
+	shutdownServer(app.Server, gracefulShutdownTimeout, handler.StopOpsErrorLogWorkers)
 
 	log.Println("Server exited")
+}
+
+// gracefulShutdownTimeout bounds how long in-flight requests (SSE streams
+// included) may finish after SIGTERM. The deferred app.Cleanup, which flushes
+// usage/billing and then closes Redis/Ent, runs only after this. Keep it plus
+// the ops error log drain and Cleanup budgets below stop_grace_period in
+// deploy/docker-compose.yml, or Docker SIGKILLs mid-flush.
+const gracefulShutdownTimeout = 30 * time.Second
+
+// shutdownServer drains HTTP requests, then flushes queued ops error logs
+// while DB/Redis are still open.
+func shutdownServer(srv *http.Server, timeout time.Duration, stopOpsErrorLogWorkers func() bool) {
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
+
+	if err := srv.Shutdown(ctx); err != nil {
+		log.Printf("Server forced to shutdown: %v", err)
+	}
+	if !stopOpsErrorLogWorkers() {
+		log.Println("Ops error log queue not fully drained before shutdown")
+	}
 }
