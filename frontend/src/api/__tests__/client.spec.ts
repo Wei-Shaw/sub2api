@@ -2,10 +2,15 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import axios from 'axios'
 import type { AxiosInstance } from 'axios'
 
-// 需要在导入 client 之前设置 mock
-vi.mock('@/i18n', () => ({
-  getLocale: () => 'zh-CN',
-}))
+// 需要在导入 client 之前设置 mock；t 直接按 key 查真实的 vi 文案，验证拦截器消息已本地化
+vi.mock('@/i18n', async () => {
+  const { default: viMessages } = await import('@/i18n/locales/vi')
+  const t = (key: string) => key.split('.').reduce<any>((node, part) => node?.[part], viMessages) ?? key
+  return {
+    getLocale: () => 'zh-CN',
+    i18n: { global: { t } },
+  }
+})
 
 describe('API Client', () => {
   let apiClient: AxiosInstance
@@ -502,7 +507,11 @@ describe('API Client', () => {
         config: { url: '/test', headers: { Authorization: 'Bearer expired-token' } },
       })
 
-      await expect(apiClient.get('/test')).rejects.toMatchObject({ status: 401, code: 'TOKEN_REFRESH_FAILED' })
+      await expect(apiClient.get('/test')).rejects.toMatchObject({
+        status: 401,
+        code: 'TOKEN_REFRESH_FAILED',
+        message: 'Phiên đã hết hạn. Vui lòng đăng nhập lại.',
+      })
       for (const key of ['auth_token', 'refresh_token', 'auth_user', 'token_expires_at']) {
         expect(localStorage.getItem(key)).toBeNull()
       }
@@ -554,7 +563,7 @@ describe('API Client', () => {
   // --- 网络错误 ---
 
   describe('网络错误', () => {
-    it.each(['ERR_NETWORK', 'ECONNABORTED', 'ETIMEDOUT', undefined])('网络错误保留错误码 %s', async (code) => {
+    it.each(['ERR_NETWORK', 'ECONNABORTED', 'ETIMEDOUT', undefined])('网络错误保留错误码 %s 并返回当前语言文案', async (code) => {
       const adapter = vi.fn().mockRejectedValue({
         code,
         message: 'Network Error',
@@ -567,7 +576,7 @@ describe('API Client', () => {
         expect.objectContaining({
           status: 0,
           code: code || 'ERR_NETWORK',
-          message: 'Network error. Please check your connection.',
+          message: 'Lỗi mạng',
         })
       )
     })

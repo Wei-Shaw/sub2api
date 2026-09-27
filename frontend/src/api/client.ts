@@ -5,7 +5,7 @@
 
 import axios, { AxiosInstance, AxiosError, InternalAxiosRequestConfig, AxiosResponse } from 'axios'
 import type { ApiResponse } from '@/types'
-import { getLocale } from '@/i18n'
+import { getLocale, i18n } from '@/i18n'
 import {
   ADMIN_UI_REQUEST_HEADER,
   USER_UI_REQUEST_HEADER,
@@ -198,6 +198,7 @@ apiClient.interceptors.response.use(
               return Promise.reject({
                 status: 401,
                 code: 'AUTH_SESSION_CHANGED',
+                // TODO(i18n): no locale key exists for this message yet; add one to common.ts.
                 message: 'Authentication session changed while refreshing.'
               })
             }
@@ -227,7 +228,7 @@ apiClient.interceptors.response.use(
             return Promise.reject({
               status: 401,
               code: 'TOKEN_REFRESH_FAILED',
-              message: 'Session expired. Please log in again.'
+              message: i18n.global.t('auth.reloginRequired')
             })
           }
         }
@@ -273,7 +274,7 @@ apiClient.interceptors.response.use(
     return Promise.reject({
       status: 0,
       code: error.code || 'ERR_NETWORK',
-      message: 'Network error. Please check your connection.'
+      message: i18n.global.t('errors.networkError')
     })
   }
 )
