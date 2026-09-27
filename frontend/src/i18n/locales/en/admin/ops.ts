@@ -563,7 +563,8 @@ export default {
           sustained: 'Sustained (minutes)',
           cooldown: 'Cooldown (minutes)',
           enabled: 'Enabled',
-          notifyEmail: 'Send email notifications'
+          notifyEmail: 'Send email notifications',
+          notifyEmailInactive: 'Alert emails are turned off or have no recipients in Ops settings, so this rule will not send email.'
         },
         validation: {
           title: 'Please fix the following issues',
