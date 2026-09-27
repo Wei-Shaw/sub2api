@@ -575,6 +575,8 @@ function syncAffiliateReferralCode(): string {
 }
 
 // EmailVerifyView's back button leaves the typed fields (never the password) in register_data.
+// A draft that still holds a password is the live submission reached via browser Back:
+// keep it so browser Forward to /email-verify still works.
 function restoreRegisterDraft(): void {
   try {
     const draft = JSON.parse(sessionStorage.getItem('register_data') || '{}')
@@ -582,6 +584,7 @@ function restoreRegisterDraft(): void {
     formData.promo_code = draft.promo_code || ''
     formData.invitation_code = draft.invitation_code || ''
     formData.aff_code = draft.aff_code || ''
+    if (draft.password) return
   } catch {
     // Ignore a malformed draft; the form simply starts empty.
   }

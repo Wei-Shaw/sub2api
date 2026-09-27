@@ -184,6 +184,17 @@ describe('RegisterView errors', () => {
     expect(sessionStorage.getItem('register_data')).toBeNull()
   })
 
+  it('keeps a live submission reached via browser Back so Forward still works', async () => {
+    const submission = JSON.stringify({ email: 'user@example.com', password: 'secret-123' })
+    sessionStorage.setItem('register_data', submission)
+    const wrapper = mountRegister()
+    await flushPromises()
+
+    expect((wrapper.get('#email').element as HTMLInputElement).value).toBe('user@example.com')
+    expect((wrapper.get('#password').element as HTMLInputElement).value).toBe('')
+    expect(sessionStorage.getItem('register_data')).toBe(submission)
+  })
+
   it('labels the optional affiliate field as a referral code, not an invitation code', async () => {
     getPublicSettingsMock.mockResolvedValue({ ...publicSettings, affiliate_enabled: true })
     const wrapper = mountRegister()

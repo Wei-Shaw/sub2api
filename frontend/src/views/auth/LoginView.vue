@@ -380,9 +380,7 @@ onMounted(async () => {
   const expiredFlag = sessionStorage.getItem('auth_expired')
   if (expiredFlag) {
     sessionStorage.removeItem('auth_expired')
-    const message = t('auth.reloginRequired')
-    errorMessage.value = message
-    appStore.showWarning(message)
+    appStore.showWarning(t('auth.reloginRequired'))
   }
 
   try {
