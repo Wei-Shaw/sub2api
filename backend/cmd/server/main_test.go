@@ -77,6 +77,18 @@ func TestGracefulShutdownFitsComposeStopGracePeriod(t *testing.T) {
 	require.NoError(t, err)
 
 	// After the HTTP drain come the ops error log drain (up to 10s) and
-	// app.Cleanup (10s budget); all of it must finish before Docker SIGKILLs.
+	// app.Cleanup (nominally ~10s, not hard-capped); all of it should finish
+	// before Docker SIGKILLs.
 	require.LessOrEqual(t, gracefulShutdownTimeout+20*time.Second, time.Duration(secs)*time.Second)
+}
+
+// docker-compose.yml forwards these keys, so a value in .env.example would
+// override config.yaml and the backend default for anyone who copies it.
+func TestEnvExampleLeavesBehaviorChangingOverridesEmpty(t *testing.T) {
+	sample, err := os.ReadFile("../../../deploy/.env.example")
+	require.NoError(t, err)
+	for _, key := range []string{"JWT_ACCESS_TOKEN_EXPIRE_MINUTES", "LOG_FORMAT", "SERVER_H2C_ENABLED", "REDIS_MAXCLIENTS"} {
+		lines := regexp.MustCompile(`(?m)^`+key+`=[^\r\n]*`).FindAllString(string(sample), -1)
+		require.Equal(t, []string{key + "="}, lines, key)
+	}
 }
