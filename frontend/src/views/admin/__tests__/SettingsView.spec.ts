@@ -2309,6 +2309,71 @@ describe("admin SettingsView settings UX", () => {
     expect(wrapper.get("#settings-tab-general").attributes("aria-selected")).toBe("false");
   });
 
+  it.each([
+    {
+      tab: "general",
+      field: "settings-table-default-page-size",
+      overrides: { table_default_page_size: 1 },
+    },
+    {
+      tab: "users",
+      field: "settings-default-sub-group-0",
+      overrides: {
+        default_subscriptions: [
+          { group_id: 7, validity_days: 30 },
+          { group_id: 7, validity_days: 60 },
+        ],
+      },
+    },
+    {
+      tab: "gateway",
+      field: "openai-oauth-scheduling-rate-multiplier",
+      overrides: {
+        openai_low_upstream_rate_priority_enabled: true,
+        openai_oauth_scheduling_rate_multiplier: -1,
+      },
+    },
+  ])("focuses the invalid $tab field after switching tabs on a failed save", async ({ tab, field, overrides }) => {
+    getSettings.mockResolvedValue({ ...baseSettingsResponse, ...overrides });
+
+    const wrapper = mount(SettingsView, { global: mountGlobalOptions, attachTo: document.body });
+    try {
+      await flushPromises();
+      await wrapper.find("form").trigger("submit.prevent");
+      await flushPromises();
+
+      expect(updateSettings).not.toHaveBeenCalled();
+      expect(wrapper.get(`#settings-tab-${tab}`).attributes("aria-selected")).toBe("true");
+      expect(document.activeElement?.id).toBe(field);
+    } finally {
+      wrapper.unmount();
+    }
+  });
+
+  it("expands and focuses the web search provider whose quota fails validation", async () => {
+    getWebSearchEmulationConfig.mockResolvedValue({
+      enabled: true,
+      providers: [{ type: "brave", api_key: "", proxy_id: null, quota_limit: 0.5 }],
+    });
+
+    const wrapper = mount(SettingsView, { global: mountGlobalOptions, attachTo: document.body });
+    try {
+      await flushPromises();
+      expect(wrapper.find("#web-search-provider-0-quota-limit").exists()).toBe(false);
+
+      await wrapper.find("form").trigger("submit.prevent");
+      await flushPromises();
+
+      expect(showError).toHaveBeenCalledWith(
+        "admin.settings.webSearchEmulation.quotaLimitMustBePositive",
+      );
+      expect(wrapper.get("#settings-tab-gateway").attributes("aria-selected")).toBe("true");
+      expect(document.activeElement?.id).toBe("web-search-provider-0-quota-limit");
+    } finally {
+      wrapper.unmount();
+    }
+  });
+
   const siteNameInput = 'input[placeholder="admin.settings.site.siteNamePlaceholder"]';
 
   it("flags unsaved edits, guards page unload, and clears the flag after a successful save", async () => {

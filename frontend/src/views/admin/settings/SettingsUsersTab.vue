@@ -106,11 +106,13 @@
             >
               <div>
                 <label
+                  :for="`settings-default-sub-group-${index}`"
                   class="mb-1 block text-xs font-medium text-fg-muted"
                 >
                   {{ t("admin.settings.defaults.subscriptionGroup") }}
                 </label>
                 <Select
+                  :id="`settings-default-sub-group-${index}`"
                   v-model="item.group_id"
                   class="default-sub-group-select"
                   :options="defaultSubscriptionGroupOptions"
@@ -436,11 +438,13 @@
                 >
                   <div>
                     <label
+                      :for="`settings-${authSource.source}-sub-group-${index}`"
                       class="mb-1 block text-xs font-medium text-fg-muted"
                     >
                       {{ t("admin.settings.defaults.subscriptionGroup") }}
                     </label>
                     <Select
+                      :id="`settings-${authSource.source}-sub-group-${index}`"
                       v-model="item.group_id"
                       class="default-sub-group-select"
                       :options="defaultSubscriptionGroupOptions"
