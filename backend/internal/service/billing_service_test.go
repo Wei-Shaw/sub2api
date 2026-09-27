@@ -864,6 +864,33 @@ func TestGetFallbackPricing_FamilyMatching(t *testing.T) {
 			expectedOutput: floatPtr(0),
 		},
 
+		// ---- 阿里百炼 文本向量化（text-embedding）----
+		{
+			name:           "bailian text embedding input only",
+			model:          "qwen3.7-text-embedding",
+			expectedInput:  0.069e-6,
+			expectedOutput: floatPtr(0),
+		},
+		{
+			name:           "bailian text embedding dash alias",
+			model:          "Qwen3-7-Text-Embedding",
+			expectedInput:  0.069e-6,
+			expectedOutput: floatPtr(0),
+		},
+		{
+			// 关键：flash 名含标准版子串，须命中 flash 价而非标准价（most-specific-first）。
+			name:           "bailian text embedding flash input only",
+			model:          "qwen3.7-text-embedding-flash",
+			expectedInput:  0.01736e-6,
+			expectedOutput: floatPtr(0),
+		},
+		{
+			name:           "bailian text embedding flash versioned alias",
+			model:          "qwen3.7-text-embedding-flash-2026-01-15",
+			expectedInput:  0.01736e-6,
+			expectedOutput: floatPtr(0),
+		},
+
 		// ---- 火山方舟 豆包 Embedding（多模态向量化）----
 		{
 			name:           "doubao embedding vision text rate",
