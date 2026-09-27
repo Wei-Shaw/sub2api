@@ -7,10 +7,18 @@ type LocaleMessages = Record<string, any>
 const LOCALE_KEY = 'sub2api_locale'
 const DEFAULT_LOCALE: LocaleCode = 'en'
 
-const localeLoaders: Record<LocaleCode, () => Promise<{ default: LocaleMessages }>> = {
-  en: () => import('./locales/en'),
-  zh: () => import('./locales/zh'),
-  vi: () => import('./locales/vi')
+// Destructured so the bundler tree-shakes the full default export (and the admin namespace) out of the chunk.
+const localeLoaders: Record<LocaleCode, () => Promise<LocaleMessages>> = {
+  en: () => import('./locales/en').then(({ baseMessages }) => baseMessages),
+  zh: () => import('./locales/zh').then(({ baseMessages }) => baseMessages),
+  vi: () => import('./locales/vi').then(({ baseMessages }) => baseMessages)
+}
+
+// admin.* is ~72% of each bundle and only needed once signed in, so it is a separate chunk.
+const adminLocaleLoaders: Record<LocaleCode, () => Promise<{ default: LocaleMessages }>> = {
+  en: () => import('./locales/en/admin'),
+  zh: () => import('./locales/zh/admin'),
+  vi: () => import('./locales/vi/admin')
 }
 
 function isLocaleCode(value: string): value is LocaleCode {
@@ -45,16 +53,31 @@ export const i18n = createI18n({
 })
 
 const loadedLocales = new Set<LocaleCode>()
+const loadedAdminLocales = new Set<LocaleCode>()
+// Set by the first signed-in navigation; from then on setLocale() also loads admin.* for the new locale.
+let adminMessagesNeeded = false
 
 export async function loadLocaleMessages(locale: LocaleCode): Promise<void> {
-  if (loadedLocales.has(locale)) {
-    return
+  if (!loadedLocales.has(locale)) {
+    const loader = localeLoaders[locale]
+    i18n.global.setLocaleMessage(locale, await loader())
+    loadedLocales.add(locale)
   }
 
-  const loader = localeLoaders[locale]
-  const module = await loader()
-  i18n.global.setLocaleMessage(locale, module.default)
-  loadedLocales.add(locale)
+  if (adminMessagesNeeded && !loadedAdminLocales.has(locale)) {
+    const module = await adminLocaleLoaders[locale]()
+    i18n.global.mergeLocaleMessage(locale, { admin: module.default })
+    loadedAdminLocales.add(locale)
+  }
+}
+
+/**
+ * Loads the admin.* namespace for the current locale. Signed-in pages need it even for
+ * non-admins (AppHeader role label, GroupBadge…), so the router awaits it before entering them.
+ */
+export async function loadAdminLocaleMessages(): Promise<void> {
+  adminMessagesNeeded = true
+  await loadLocaleMessages(getLocale())
 }
 
 export async function initI18n(): Promise<void> {
