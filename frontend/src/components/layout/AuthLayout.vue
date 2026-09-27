@@ -18,6 +18,9 @@
               </p>
             </div>
           </template>
+          <div class="ml-auto shrink-0">
+            <LocaleSwitcher />
+          </div>
         </div>
 
         <div class="p-6 sm:p-8">
@@ -42,6 +45,7 @@
 import { computed, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useAppStore } from '@/stores'
+import LocaleSwitcher from '@/components/common/LocaleSwitcher.vue'
 import { sanitizeUrl } from '@/utils/url'
 
 const { t } = useI18n()
