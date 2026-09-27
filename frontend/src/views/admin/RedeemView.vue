@@ -269,8 +269,12 @@
       :cancel-text="t('common.cancel')"
       danger
       @confirm="confirmDeleteUnused"
-      @cancel="showDeleteUnusedDialog = false"
-    />
+      @cancel="cancelDeleteUnused"
+    >
+      <p v-if="deletingUnused && deletedUnusedCount > 0" class="text-sm text-fg-muted">
+        {{ t('admin.redeem.codesDeleted', { count: deletedUnusedCount }) }}
+      </p>
+    </ConfirmDialog>
 
     <!-- Generate Codes Dialog -->
     <BaseDialog
@@ -1060,25 +1064,51 @@ const confirmDelete = async () => {
   }
 }
 
-const confirmDeleteUnused = async () => {
-  try {
-    // Get all unused codes and delete them
-    const unusedCodesResponse = await adminAPI.redeem.list(1, 1000, { status: 'unused' })
-    const unusedCodeIds = unusedCodesResponse.items.map((code) => code.id)
+// 后端 page_size 上限为 1000，需逐批删除；轮数上限防止失控（100 × 1000 个码）。
+const MAX_DELETE_UNUSED_ROUNDS = 100
+const deletingUnused = ref(false)
+const deletedUnusedCount = ref(0)
+let deleteUnusedCancelled = false
 
-    if (unusedCodeIds.length === 0) {
-      appStore.showInfo(t('admin.redeem.noUnusedCodes'))
-      showDeleteUnusedDialog.value = false
-      return
+const cancelDeleteUnused = () => {
+  deleteUnusedCancelled = true
+  showDeleteUnusedDialog.value = false
+}
+
+const confirmDeleteUnused = async () => {
+  if (deletingUnused.value) return
+  deletingUnused.value = true
+  deleteUnusedCancelled = false
+  deletedUnusedCount.value = 0
+  try {
+    let complete = false
+    for (let round = 0; round < MAX_DELETE_UNUSED_ROUNDS && !deleteUnusedCancelled; round++) {
+      const { items } = await adminAPI.redeem.list(1, 1000, { status: 'unused' })
+      if (items.length === 0) {
+        complete = true
+        break
+      }
+      const result = await adminAPI.redeem.batchDelete(items.map((code) => code.id))
+      deletedUnusedCount.value += result.deleted
+      if (result.deleted === 0) break
     }
 
-    const result = await adminAPI.redeem.batchDelete(unusedCodeIds)
-    appStore.showSuccess(t('admin.redeem.codesDeleted', { count: result.deleted }))
+    if (deletedUnusedCount.value > 0) {
+      appStore.showSuccess(t('admin.redeem.codesDeleted', { count: deletedUnusedCount.value }))
+    } else if (complete) {
+      appStore.showInfo(t('admin.redeem.noUnusedCodes'))
+    }
+    // 未取消却仍有剩余（达到轮数上限或某批一个都没删掉），明确提示未删完。
+    if (!complete && !deleteUnusedCancelled) {
+      appStore.showError(t('admin.redeem.failedToDeleteUnused'))
+    }
     showDeleteUnusedDialog.value = false
     loadCodes()
   } catch (error: any) {
     appStore.showError(error.response?.data?.detail || t('admin.redeem.failedToDeleteUnused'))
     console.error('Error deleting unused codes:', error)
+  } finally {
+    deletingUnused.value = false
   }
 }
 
