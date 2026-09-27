@@ -124,6 +124,7 @@ func provideCleanup(
 	channelMonitorRunner *service.ChannelMonitorRunner,
 	channelMonitorV2Aggregator *service.ChannelMonitorV2Aggregator,
 	quotaFlusher *service.UserPlatformQuotaUsageFlusher,
+	rateLimit *service.RateLimitService,
 	upstreamBillingProbe *service.UpstreamBillingProbeService,
 	ollamaCloudUsage *service.OllamaCloudUsageService,
 	opencodeGoUsage *service.OpenCodeGoUsageService,
@@ -379,6 +380,10 @@ func provideCleanup(
 				if quotaFlusher != nil {
 					quotaFlusher.Stop()
 				}
+				return nil
+			}},
+			{"RateLimitPassiveUsage", func() error {
+				rateLimit.FlushPassiveUsage(ctx)
 				return nil
 			}},
 			{"UpstreamBillingProbeService", func() error {

@@ -2094,7 +2094,7 @@ const passiveUsagePersistMinInterval = 30 * time.Second
 
 // passiveUsageWriter 把成功响应的被动采样移出请求路径：每账号每个间隔最多一次
 // UpdateExtra，间隔内的后续采样合并（后到覆盖），在间隔结束时写入最新值。
-// ponytail: 进程退出时尚未到期的合并采样会丢失（下一次响应会重新采样）；需要时再接 shutdown flush。
+// 进程退出时由 FlushPassiveUsage 写入尚未到期的合并采样。
 type passiveUsageWriter struct {
 	repo     AccountRepository
 	interval time.Duration
@@ -2129,16 +2129,44 @@ func (w *passiveUsageWriter) enqueue(accountID int64, updates map[string]any) {
 
 func (w *passiveUsageWriter) flush(accountID int64) {
 	w.mu.Lock()
-	updates := w.pending[accountID]
+	updates, ok := w.pending[accountID]
 	delete(w.pending, accountID)
-	w.lastAt[accountID] = time.Now()
+	if ok {
+		w.lastAt[accountID] = time.Now()
+	}
 	w.mu.Unlock()
+	if !ok { // 已被 flushAll 写走
+		return
+	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
+	w.write(ctx, accountID, updates)
+}
+
+// flushAll 立即写入全部待写采样；之后到期的定时器发现无待写数据直接返回。
+func (w *passiveUsageWriter) flushAll(ctx context.Context) {
+	w.mu.Lock()
+	pending := w.pending
+	w.pending = make(map[int64]map[string]any)
+	w.mu.Unlock()
+	for accountID, updates := range pending {
+		w.write(ctx, accountID, updates)
+	}
+}
+
+func (w *passiveUsageWriter) write(ctx context.Context, accountID int64, updates map[string]any) {
 	if err := w.repo.UpdateExtra(ctx, accountID, updates); err != nil {
 		slog.Warn("passive_usage_update_failed", "account_id", accountID, "error", err)
 	}
+}
+
+// FlushPassiveUsage 在 shutdown 时写入尚未到期的被动采样，须在关闭 DB 前调用。
+func (s *RateLimitService) FlushPassiveUsage(ctx context.Context) {
+	if s == nil || s.passiveUsage == nil {
+		return
+	}
+	s.passiveUsage.flushAll(ctx)
 }
 
 // samplePassiveUsageFromHeaders 同步写入响应头中的被动采样数据。无数据时不写。
