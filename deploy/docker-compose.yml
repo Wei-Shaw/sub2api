@@ -33,7 +33,9 @@ services:
         soft: 100000
         hard: 100000
     ports:
-      - "${BIND_HOST:-0.0.0.0}:${SERVER_PORT:-8080}:8080"
+      # Loopback only: put a reverse proxy in front. Docker publishes ports via
+      # iptables, so a host firewall (ufw) does not block BIND_HOST=0.0.0.0.
+      - "${BIND_HOST:-127.0.0.1}:${SERVER_PORT:-8080}:8080"
     volumes:
       # Data persistence (config.yaml will be auto-generated here)
       - sub2api_data:/app/data
