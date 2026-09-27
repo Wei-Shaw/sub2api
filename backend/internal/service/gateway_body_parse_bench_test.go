@@ -388,14 +388,70 @@ func geminiDeltaBenchChunks(n int) []string {
 
 // runGeminiTextDeltaStream 用 computeGeminiTextDelta 处理一整段流，返回输出的 delta 总字节数。
 func runGeminiTextDeltaStream(chunks []string) int {
-	seen := ""
+	var seen geminiSeenText
 	total := 0
 	for _, chunk := range chunks {
-		var delta string
-		delta, seen = computeGeminiTextDelta(seen, chunk)
-		total += len(delta)
+		total += len(computeGeminiTextDelta(&seen, chunk))
 	}
 	return total
+}
+
+// legacyComputeGeminiTextDelta 是改为追加写入之前的实现，作为等价性对照。
+func legacyComputeGeminiTextDelta(seen, incoming string) (delta, newSeen string) {
+	incoming = strings.TrimSuffix(incoming, "\u0000")
+	if incoming == "" {
+		return "", seen
+	}
+	if strings.HasPrefix(incoming, seen) {
+		return strings.TrimPrefix(incoming, seen), incoming
+	}
+	if strings.HasPrefix(seen, incoming) {
+		return "", seen
+	}
+	return incoming, seen + incoming
+}
+
+func TestComputeGeminiTextDelta_MatchesLegacy(t *testing.T) {
+	sequences := map[string][]string{
+		"cumulative":            {"He", "Hello", "Hello wor", "Hello world"},
+		"delta":                 {"He", "llo", " wor", "ld"},
+		"repeated prefix delta": {"ab", "ab", "abab", "b", "ab", "aba"},
+		"duplicate and rewind":  {"Hello world", "Hello", "Hello world", "Hello world!"},
+		"nul suffix and empty":  {"abc\u0000", "", "\u0000", "abcdef\u0000", "gh"},
+		"multibyte delta":       {"你", "好", "，世界", "🙂", "é"},
+		"multibyte cumulative":  {"你", "你好", "你好，世界", "你好，世界🙂"},
+		"mode switches":         {"a", "b", "abc", "d", "abcde", "abcdef", "x", "y", "abcdefxyz"},
+		"tool json":             {`{"a":`, `{"a":1}`, `,"b":2}`, `{}`},
+	}
+	for name, chunks := range sequences {
+		t.Run(name, func(t *testing.T) {
+			var seen geminiSeenText
+			for round := 0; round < 2; round++ {
+				seen = geminiSeenText{} // 与调用方关闭 tool block 时的重置方式一致
+				legacySeen := ""
+				for i, chunk := range chunks {
+					var want string
+					want, legacySeen = legacyComputeGeminiTextDelta(legacySeen, chunk)
+					require.Equal(t, want, computeGeminiTextDelta(&seen, chunk), "round %d chunk %d", round, i)
+					require.Equal(t, legacySeen, seen.text, "round %d chunk %d", round, i)
+				}
+			}
+		})
+	}
+}
+
+func TestComputeGeminiTextDelta_DeltaModeAppendsInsteadOfRecopying(t *testing.T) {
+	chunks := geminiDeltaBenchChunks(1000)
+	allocs := testing.AllocsPerRun(5, func() { _ = runGeminiTextDeltaStream(chunks) })
+	legacyAllocs := testing.AllocsPerRun(5, func() {
+		seen := ""
+		for _, chunk := range chunks {
+			_, seen = legacyComputeGeminiTextDelta(seen, chunk)
+		}
+	})
+	// 旧实现每个 chunk 都重新拼接 seen+incoming（每 chunk 一次分配、O(n²) 拷贝）；追加写入只随容量增长分配。
+	require.GreaterOrEqual(t, legacyAllocs, float64(len(chunks)-1))
+	require.Less(t, allocs, float64(100))
 }
 
 func BenchmarkGeminiTextDelta(b *testing.B) {

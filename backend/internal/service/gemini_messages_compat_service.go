@@ -2141,11 +2141,11 @@ func (s *GeminiMessagesCompatService) handleStreamingResponse(c *gin.Context, re
 	nextBlockIndex := 0
 	openBlockIndex := -1
 	openBlockType := ""
-	seenText := ""
+	var seenText geminiSeenText
 	openToolIndex := -1
 	openToolID := ""
 	openToolName := ""
-	seenToolJSON := ""
+	var seenToolJSON geminiSeenText
 
 	reader := bufio.NewReader(resp.Body)
 	for {
@@ -2204,11 +2204,10 @@ func (s *GeminiMessagesCompatService) handleStreamingResponse(c *gin.Context, re
 					})
 					openToolIndex = -1
 					openToolName = ""
-					seenToolJSON = ""
+					seenToolJSON = geminiSeenText{}
 				}
 
-				delta, newSeen := computeGeminiTextDelta(seenText, text)
-				seenText = newSeen
+				delta := computeGeminiTextDelta(&seenText, text)
 				if delta == "" {
 					continue
 				}
@@ -2274,7 +2273,7 @@ func (s *GeminiMessagesCompatService) handleStreamingResponse(c *gin.Context, re
 					})
 					openToolIndex = -1
 					openToolName = ""
-					seenToolJSON = ""
+					seenToolJSON = geminiSeenText{}
 				}
 
 				if openToolIndex < 0 {
@@ -2310,8 +2309,7 @@ func (s *GeminiMessagesCompatService) handleStreamingResponse(c *gin.Context, re
 					}
 				}
 
-				delta, newSeen := computeGeminiTextDelta(seenToolJSON, argsJSONText)
-				seenToolJSON = newSeen
+				delta := computeGeminiTextDelta(&seenToolJSON, argsJSONText)
 				if delta != "" {
 					writeSSE(c.Writer, "content_block_delta", map[string]any{
 						"type":  "content_block_delta",
@@ -3282,22 +3280,39 @@ func extractGeminiParts(geminiResp map[string]any) []map[string]any {
 	return nil
 }
 
-func computeGeminiTextDelta(seen, incoming string) (delta, newSeen string) {
+// geminiSeenText 记录流中已见文本。delta 模式追加进 Builder（摊还 O(1)），
+// cumulative 模式直接引用 incoming；避免每个 chunk 都把 seen+incoming 整段重新拼接（O(n²)）。
+type geminiSeenText struct {
+	text  string
+	buf   strings.Builder
+	inBuf bool // text 是否就是 buf 当前内容
+}
+
+func computeGeminiTextDelta(seen *geminiSeenText, incoming string) (delta string) {
 	incoming = strings.TrimSuffix(incoming, "\u0000")
 	if incoming == "" {
-		return "", seen
+		return ""
 	}
 
 	// Cumulative mode: incoming contains full text so far.
-	if strings.HasPrefix(incoming, seen) {
-		return strings.TrimPrefix(incoming, seen), incoming
+	if strings.HasPrefix(incoming, seen.text) {
+		delta = incoming[len(seen.text):]
+		seen.text, seen.inBuf = incoming, false
+		return delta
 	}
 	// Duplicate/rewind: ignore.
-	if strings.HasPrefix(seen, incoming) {
-		return "", seen
+	if strings.HasPrefix(seen.text, incoming) {
+		return ""
 	}
 	// Delta mode: treat incoming as incremental chunk.
-	return incoming, seen + incoming
+	if !seen.inBuf {
+		seen.buf.Reset()
+		seen.buf.WriteString(seen.text)
+		seen.inBuf = true
+	}
+	seen.buf.WriteString(incoming)
+	seen.text = seen.buf.String()
+	return incoming
 }
 
 func mapGeminiFinishReasonToClaudeStopReason(finishReason string) string {
