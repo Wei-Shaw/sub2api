@@ -306,6 +306,20 @@ func BenchmarkRestoreToolNames(b *testing.B) {
 	})
 }
 
+func TestRestoreToolNamesInBytes_NoMatchDoesNotCopyChunk(t *testing.T) {
+	chunk := []byte(`{"type":"content_block_delta","index":1,"delta":{"type":"input_json_delta","partial_json":"` + strings.Repeat(`{\"path\":\"/src/main.go\"} `, 36) + `"}}`)
+	rw := &ToolNameRewrite{ReverseOrdered: [][2]string{{"fetch_g7h8i9", "list_dir"}}}
+
+	require.Same(t, &chunk[0], &restoreToolNamesInBytes(chunk, rw)[0])
+	allocs := testing.AllocsPerRun(20, func() { _ = restoreToolNamesInBytes(chunk, rw) })
+	require.Zero(t, allocs, "a chunk without fake tool names must not be copied")
+
+	matched := []byte(`{"name":"fetch_g7h8i9","other":"cc_sess_x","more":"cc_ses_y","again":"fetch_g7h8i9"}`)
+	golden := append([]byte(nil), matched...)
+	require.Equal(t, `{"name":"list_dir","other":"sessions_x","more":"session_y","again":"list_dir"}`, string(restoreToolNamesInBytes(matched, rw)))
+	require.Equal(t, golden, matched, "the input chunk must not be modified in place")
+}
+
 func BenchmarkChatCompletionsPayload(b *testing.B) {
 	gin.SetMode(gin.TestMode)
 	var sb strings.Builder

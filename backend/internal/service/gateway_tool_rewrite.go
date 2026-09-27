@@ -1,6 +1,7 @@
 package service
 
 import (
+	"bytes"
 	"fmt"
 	"hash/fnv"
 	"math/rand"
@@ -345,11 +346,12 @@ func restoreToolNamesInBytes(data []byte, rw *ToolNameRewrite) []byte {
 }
 
 // replaceAllBytes 是 bytes.ReplaceAll 的便捷封装，避免每个调用点各自做 []byte 转换。
+// 直接在 []byte 上查找/替换：未命中时零分配，不再把整个 chunk 复制成 string。
 func replaceAllBytes(data []byte, from, to string) []byte {
-	if len(data) == 0 || from == to || !strings.Contains(string(data), from) {
+	if len(data) == 0 || from == to || !bytes.Contains(data, []byte(from)) {
 		return data
 	}
-	return []byte(strings.ReplaceAll(string(data), from, to))
+	return bytes.ReplaceAll(data, []byte(from), []byte(to))
 }
 
 // toolNameRewriteFromContext 从 gin.Context 取出请求阶段保存的工具名映射。
