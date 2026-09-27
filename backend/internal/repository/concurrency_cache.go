@@ -63,11 +63,12 @@ const (
 var (
 	// acquireScript 使用有序集合计数并在未达上限时添加槽位
 	// 使用 Redis TIME 命令获取服务器时间，避免多实例时钟不同步问题
-	// KEYS[1] = 普通槽位键，KEYS[2] = 对应 Live 槽位键
+	// KEYS[1] = 普通槽位键，KEYS[2] = 对应 Live 槽位键，KEYS[3] = 活跃索引键
 	// ARGV[1] = maxConcurrency
 	// ARGV[2] = TTL（秒）
 	// ARGV[3] = requestID
-	// 返回 {是否成功, Redis 当前秒}，Go 侧复用同一时间源写活跃索引，省去额外 TIME 往返。
+	// ARGV[4] = 活跃索引 member（账号/用户 ID）
+	// 返回 1 = 成功，0 = 已达上限；成功时在脚本内写活跃索引，省去额外往返。
 	acquireScript = redis.NewScript(`
 		-- Redis 3.2-4.x compat: opt into effects replication so redis.call('TIME')
 		-- replicates correctly. No-op on Redis 5.0+ (effects replication is default).
@@ -92,7 +93,8 @@ var (
 		if exists ~= false then
 			redis.call('ZADD', key, now, requestID)
 			redis.call('EXPIRE', key, ttl)
-			return {1, now}
+			redis.call('ZADD', KEYS[3], now + ttl, ARGV[4])
+			return 1
 		end
 
 		-- 检查是否达到并发上限
@@ -100,10 +102,36 @@ var (
 		if count < maxConcurrency then
 			redis.call('ZADD', key, now, requestID)
 			redis.call('EXPIRE', key, ttl)
-			return {1, now}
+			redis.call('ZADD', KEYS[3], now + ttl, ARGV[4])
+			return 1
 		end
 
-		return {0, now}
+		return 0
+	`)
+
+	// releaseSlotScript 释放槽位并按剩余真实负载修正活跃索引（语义同 refreshActiveIndex），一次往返完成。
+	// KEYS[1] = 槽位键，KEYS[2] = 等待计数键，KEYS[3] = 活跃索引键
+	// ARGV[1] = requestID，ARGV[2] = 槽位 TTL（秒），ARGV[3] = 等待队列 TTL（秒），ARGV[4] = 活跃索引 member
+	releaseSlotScript = redis.NewScript(`
+		redis.replicate_commands()
+		local slotTTL = tonumber(ARGV[2])
+		local waitTTL = tonumber(ARGV[3])
+		redis.call('ZREM', KEYS[1], ARGV[1])
+		local now = tonumber(redis.call('TIME')[1])
+		redis.call('ZREMRANGEBYSCORE', KEYS[1], '-inf', now - slotTTL)
+		local slotCount = redis.call('ZCARD', KEYS[1])
+		local waitCount = tonumber(redis.call('GET', KEYS[2])) or 0
+		if slotCount == 0 and waitCount <= 0 then
+			redis.call('ZREM', KEYS[3], ARGV[4])
+			return 1
+		end
+		local ttl = 0
+		if slotCount > 0 then ttl = slotTTL end
+		if waitCount > 0 and waitTTL > ttl then ttl = waitTTL end
+		if ttl > 0 then
+			redis.call('ZADD', KEYS[3], now + ttl, ARGV[4])
+		end
+		return 1
 	`)
 
 	// getCountScript 统计有序集合中的槽位数量并清理过期条目
@@ -631,25 +659,22 @@ func runScriptInt64Pair(ctx context.Context, rdb *redis.Client, script *redis.Sc
 func (c *concurrencyCache) AcquireAccountSlot(ctx context.Context, accountID int64, maxConcurrency int, requestID string) (bool, error) {
 	key := accountSlotKey(accountID)
 	// 时间戳在 Lua 脚本内使用 Redis TIME 命令获取，确保多实例时钟一致
-	result, now, err := runScriptInt64Pair(ctx, c.rdb, acquireScript, []string{key, liveAccountSlotKey(accountID)}, maxConcurrency, c.slotTTLSeconds, requestID)
+	// 成功占槽后脚本同时标记活跃账号，后台清理即可从索引定位候选账号。
+	result, err := acquireScript.Run(ctx, c.rdb, []string{key, liveAccountSlotKey(accountID), accountActiveIndexKey}, maxConcurrency, c.slotTTLSeconds, requestID, accountID).Int()
 	if err != nil {
 		return false, err
-	}
-	if result == 1 {
-		// 成功占槽后标记活跃账号，后台清理即可从索引定位候选账号。
-		c.touchActiveIndexAt(ctx, accountActiveIndexKey, accountID, now+int64(c.slotTTLSeconds))
 	}
 	return result == 1, nil
 }
 
 func (c *concurrencyCache) ReleaseAccountSlot(ctx context.Context, accountID int64, requestID string) error {
-	key := accountSlotKey(accountID)
-	if err := c.rdb.ZRem(ctx, key, requestID).Err(); err != nil {
-		return err
-	}
 	// 释放后用真实负载刷新索引；若没有槽位和等待计数，会移除索引 member。
-	c.refreshAccountActiveIndex(ctx, accountID)
-	return nil
+	return c.releaseSlot(ctx, accountSlotIndex, accountID, requestID)
+}
+
+func (c *concurrencyCache) releaseSlot(ctx context.Context, spec slotIndexSpec, id int64, requestID string) error {
+	return releaseSlotScript.Run(ctx, c.rdb, []string{spec.slotKey(id), spec.waitKey(id), spec.indexKey},
+		requestID, c.slotTTLSeconds, c.waitQueueTTLSeconds, id).Err()
 }
 
 func (c *concurrencyCache) GetAccountConcurrency(ctx context.Context, accountID int64) (int, error) {
@@ -708,25 +733,17 @@ func (c *concurrencyCache) GetAccountConcurrencyBatch(ctx context.Context, accou
 func (c *concurrencyCache) AcquireUserSlot(ctx context.Context, userID int64, maxConcurrency int, requestID string) (bool, error) {
 	key := userSlotKey(userID)
 	// 时间戳在 Lua 脚本内使用 Redis TIME 命令获取，确保多实例时钟一致
-	result, now, err := runScriptInt64Pair(ctx, c.rdb, acquireScript, []string{key, liveUserSlotKey(userID)}, maxConcurrency, c.slotTTLSeconds, requestID)
+	// 成功占槽后脚本同时标记活跃用户，避免启动清理依赖全量 SCAN。
+	result, err := acquireScript.Run(ctx, c.rdb, []string{key, liveUserSlotKey(userID), userActiveIndexKey}, maxConcurrency, c.slotTTLSeconds, requestID, userID).Int()
 	if err != nil {
 		return false, err
-	}
-	if result == 1 {
-		// 成功占槽后标记活跃用户，避免启动清理依赖全量 SCAN。
-		c.touchActiveIndexAt(ctx, userActiveIndexKey, userID, now+int64(c.slotTTLSeconds))
 	}
 	return result == 1, nil
 }
 
 func (c *concurrencyCache) ReleaseUserSlot(ctx context.Context, userID int64, requestID string) error {
-	key := userSlotKey(userID)
-	if err := c.rdb.ZRem(ctx, key, requestID).Err(); err != nil {
-		return err
-	}
 	// 释放后按 Redis 中剩余负载修正索引状态。
-	c.refreshUserActiveIndex(ctx, userID)
-	return nil
+	return c.releaseSlot(ctx, userSlotIndex, userID, requestID)
 }
 
 func (c *concurrencyCache) GetUserConcurrency(ctx context.Context, userID int64) (int, error) {
