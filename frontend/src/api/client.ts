@@ -95,6 +95,8 @@ apiClient.interceptors.response.use(
           message: apiResponse.message || 'Unknown error',
           reason: resp.reason,
           metadata: resp.metadata,
+          // Keep the backend body for callers that read error.response.data.*
+          response: { status: response.status, data: { ...resp, detail: resp.detail ?? resp.message } },
         })
       }
     }
@@ -262,6 +264,8 @@ apiClient.interceptors.response.use(
         error: apiData.error,
         message: apiData.message || apiData.detail || error.message,
         metadata: apiData.metadata,
+        // Keep the backend body for callers that read error.response.data.*
+        response: { status, data: { ...apiData, detail: apiData.detail ?? apiData.message } },
       })
     }
 

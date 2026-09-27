@@ -260,6 +260,66 @@ describe('API Client', () => {
       )
     })
 
+    it('code!=0 时在 response.data 中保留原始 body', async () => {
+      apiClient.defaults.adapter = vi.fn().mockResolvedValue({
+        status: 200,
+        data: { code: 1001, message: '参数错误', reason: 'BAD_PARAM', data: null },
+        headers: {},
+        config: {},
+        statusText: 'OK',
+      })
+
+      const err = await apiClient.get('/test').catch((e) => e)
+      expect(err.response).toEqual({
+        status: 200,
+        data: { code: 1001, message: '参数错误', reason: 'BAD_PARAM', data: null, detail: '参数错误' },
+      })
+    })
+
+    it('HTTP 错误保留原有字段，并在 response.data 中提供后端 body（detail 兜底为 message）', async () => {
+      apiClient.defaults.adapter = vi.fn().mockRejectedValue({
+        response: {
+          status: 409,
+          data: { code: 409, message: 'proxy is in use', reason: 'PROXY_IN_USE', metadata: { count: 2 } },
+        },
+        config: { url: '/admin/proxies/1' },
+        code: 'ERR_BAD_REQUEST',
+        message: 'Request failed with status code 409',
+      })
+
+      const { response, ...legacy } = await apiClient.delete('/admin/proxies/1').catch((e) => e)
+      expect(legacy).toEqual({
+        status: 409,
+        code: 409,
+        reason: 'PROXY_IN_USE',
+        error: undefined,
+        message: 'proxy is in use',
+        metadata: { count: 2 },
+      })
+      expect(response).toEqual({
+        status: 409,
+        data: {
+          code: 409,
+          message: 'proxy is in use',
+          reason: 'PROXY_IN_USE',
+          metadata: { count: 2 },
+          detail: 'proxy is in use',
+        },
+      })
+    })
+
+    it('HTTP 错误 body 自带 detail/error 时原样保留', async () => {
+      apiClient.defaults.adapter = vi.fn().mockRejectedValue({
+        response: { status: 409, data: { error: 'mixed_channel_warning', message: 'mixed', detail: 'explicit detail' } },
+        config: { url: '/admin/accounts' },
+        code: 'ERR_BAD_REQUEST',
+      })
+
+      const err = await apiClient.post('/admin/accounts', {}).catch((e) => e)
+      expect(err.response.status).toBe(409)
+      expect(err.response.data).toMatchObject({ error: 'mixed_channel_warning', detail: 'explicit detail' })
+    })
+
     it('部署与运营合规未确认时广播事件且保留登录态', async () => {
       localStorage.setItem('auth_token', 'admin-token')
       const listener = vi.fn()
