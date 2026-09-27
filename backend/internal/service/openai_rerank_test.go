@@ -317,6 +317,17 @@ func TestBuildBailianTextRerankURL(t *testing.T) {
 			want: "https://ws-abc.cn-beijing.maas.aliyuncs.com/api/v1/services/rerank/text-rerank/text-rerank",
 		},
 		{
+			// 生产实证：百炼账号 base_url 配 OpenAI 兼容模式前缀，嵌套端点仍固定在域名根。
+			name: "compatible-mode prefix stripped to host",
+			base: "https://ws-x.cn-beijing.maas.aliyuncs.com/compatible-mode/v1",
+			want: "https://ws-x.cn-beijing.maas.aliyuncs.com/api/v1/services/rerank/text-rerank/text-rerank",
+		},
+		{
+			name: "compatible-mode prefix with trailing slash stripped to host",
+			base: "https://dashscope.aliyuncs.com/compatible-mode/v1/",
+			want: "https://dashscope.aliyuncs.com/api/v1/services/rerank/text-rerank/text-rerank",
+		},
+		{
 			name: "already full path stays unchanged",
 			base: "https://dashscope.aliyuncs.com/api/v1/services/rerank/text-rerank/text-rerank",
 			want: "https://dashscope.aliyuncs.com/api/v1/services/rerank/text-rerank/text-rerank",
