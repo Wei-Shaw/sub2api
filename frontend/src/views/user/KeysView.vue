@@ -1184,7 +1184,7 @@
 import { getPersistedPageSize } from '@/composables/usePersistedPageSize'
 
 const { t } = useI18n()
-import { keysAPI, authAPI, usageAPI, userGroupsAPI } from '@/api'
+import { keysAPI, usageAPI, userGroupsAPI } from '@/api'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import TablePageLayout from '@/components/layout/TablePageLayout.vue'
 import BulkEditKeysModal from '@/components/keys/BulkEditKeysModal.vue'
@@ -1385,6 +1385,7 @@ const filterGroupId = ref<string | number>('')
 const showCreateModal = ref(false)
 const showEditModal = ref(false)
 const showDeleteDialog = ref(false)
+const deleting = ref(false)
 const showResetQuotaDialog = ref(false)
 const showResetRateLimitDialog = ref(false)
 const showUseKeyModal = ref(false)
@@ -1645,7 +1646,7 @@ const loadUserGroupRates = async () => {
 
 const loadPublicSettings = async () => {
   try {
-    publicSettings.value = await authAPI.getPublicSettings()
+    publicSettings.value = await appStore.fetchPublicSettings()
   } catch (error) {
     console.error('Failed to load public settings:', error)
   }
@@ -1899,8 +1900,9 @@ const handleSubmit = async () => {
  * 若后端未返回消息则显示默认的国际化文本
  */
 const handleDelete = async () => {
-  if (!selectedKey.value) return
+  if (!selectedKey.value || deleting.value) return
 
+  deleting.value = true
   try {
     await keysAPI.delete(selectedKey.value.id)
     appStore.showSuccess(t('keys.keyDeletedSuccess'))
@@ -1910,6 +1912,8 @@ const handleDelete = async () => {
     // 优先使用后端返回的错误消息，提供更具体的错误信息给用户
     const errorMsg = error?.message || t('keys.failedToDelete')
     appStore.showError(errorMsg)
+  } finally {
+    deleting.value = false
   }
 }
 
