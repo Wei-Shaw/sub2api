@@ -299,6 +299,7 @@ describe('admin UsersView', () => {
     expect(wrapper.get('[data-test="row-state"]').text()).toBe('42:active:3,43:active:0')
 
     await getToggleStatusButton(wrapper, 42).trigger('click')
+    await wrapper.get('[data-test="confirm-delete"]').trigger('click')
     await flushPromises()
 
     expect(toggleStatus.mock.calls).toEqual([[42, 'disabled']])
@@ -316,6 +317,7 @@ describe('admin UsersView', () => {
     await flushPromises()
 
     await getToggleStatusButton(wrapper, 42).trigger('click')
+    await wrapper.get('[data-test="confirm-delete"]').trigger('click')
     await flushPromises()
 
     expect(listUsers).toHaveBeenCalledTimes(1)
@@ -333,6 +335,7 @@ describe('admin UsersView', () => {
     await flushPromises()
 
     await getToggleStatusButton(wrapper, 42).trigger('click')
+    await wrapper.get('[data-test="confirm-delete"]').trigger('click')
     listUsers.mockImplementationOnce(() => new Promise(() => {}))
     await wrapper.get('[data-test="sort-last-used"]').trigger('click')
     await flushPromises()
@@ -347,6 +350,40 @@ describe('admin UsersView', () => {
 
     expect(listUsers).toHaveBeenCalledTimes(3)
     expect(wrapper.get('[data-test="row-state"]').text()).toBe('42:disabled:0')
+    wrapper.unmount()
+  })
+
+  it('asks for confirmation before disabling and keeps the toggle away from Edit', async () => {
+    const wrapper = mountBulkDeleteView()
+    await flushPromises()
+
+    const labels = wrapper.get('[data-test="actions-42"]').findAll('button').map((b) => b.text())
+    expect(labels).toEqual(['common.edit', 'common.more', 'admin.users.disable'])
+
+    await getToggleStatusButton(wrapper, 42).trigger('click')
+    expect(wrapper.get('[data-test="delete-dialog"]').text()).toContain('admin.users.disableConfirm')
+    expect(toggleStatus).not.toHaveBeenCalled()
+
+    await wrapper.get('[data-test="cancel-delete"]').trigger('click')
+    expect(wrapper.find('[data-test="delete-dialog"]').exists()).toBe(false)
+    expect(toggleStatus).not.toHaveBeenCalled()
+    wrapper.unmount()
+  })
+
+  it('enables a disabled user without confirmation', async () => {
+    listUsers.mockResolvedValue({
+      items: [createAdminUser({ status: 'disabled' })],
+      total: 1, page: 1, page_size: 20, pages: 1
+    })
+    toggleStatus.mockResolvedValue(createAdminUser({ status: 'active' }))
+    const wrapper = mountBulkDeleteView()
+    await flushPromises()
+
+    await getToggleStatusButton(wrapper, 42).trigger('click')
+    await flushPromises()
+
+    expect(wrapper.find('[data-test="delete-dialog"]').exists()).toBe(false)
+    expect(toggleStatus.mock.calls).toEqual([[42, 'active']])
     wrapper.unmount()
   })
 

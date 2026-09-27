@@ -625,6 +625,7 @@ export default {
       disable: 'Disable',
       enable: 'Enable',
       disableUser: 'Disable User',
+      disableConfirm: 'Disable {email}? Their API keys stop working immediately until the user is enabled again.',
       enableUser: 'Enable User',
       viewApiKeys: 'View API Keys',
       groups: 'Groups',

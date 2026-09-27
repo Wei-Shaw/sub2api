@@ -625,6 +625,7 @@ export default {
       disable: 'Tắt',
       enable: 'Bật',
       disableUser: 'Vô hiệu hóa người dùng',
+      disableConfirm: 'Vô hiệu hóa {email}? API key của người dùng này sẽ ngừng hoạt động ngay cho đến khi được kích hoạt lại.',
       enableUser: 'Kích hoạt người dùng',
       viewApiKeys: 'Xem API Key',
       groups: 'Nhóm',

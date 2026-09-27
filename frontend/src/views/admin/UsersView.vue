@@ -604,7 +604,17 @@
                 <span class="text-xs">{{ t('common.edit') }}</span>
               </button>
 
-              <!-- Toggle Status Button (not for admin) -->
+              <!-- More Actions Menu Trigger -->
+              <button
+                @click="openActionMenu(row, $event)"
+                class="action-menu-trigger flex flex-col items-center gap-0.5 rounded-sm p-1.5 text-fg-muted transition-colors hover:bg-accent-weak hover:text-accent-strong"
+                :class="{ 'bg-accent-weak text-accent-strong': activeMenuId === row.id }"
+              >
+                <Icon name="more" size="sm" />
+                <span class="text-xs">{{ t('common.more') }}</span>
+              </button>
+
+              <!-- Toggle Status Button (not for admin); kept away from Edit -->
               <button
                 v-if="row.role !== 'admin'"
                 @click="handleToggleStatus(row)"
@@ -618,16 +628,6 @@
                 <Icon v-if="row.status === 'active'" name="ban" size="sm" />
                 <Icon v-else name="checkCircle" size="sm" />
                 <span class="text-xs">{{ row.status === 'active' ? t('admin.users.disable') : t('admin.users.enable') }}</span>
-              </button>
-
-              <!-- More Actions Menu Trigger -->
-              <button
-                @click="openActionMenu(row, $event)"
-                class="action-menu-trigger flex flex-col items-center gap-0.5 rounded-sm p-1.5 text-fg-muted transition-colors hover:bg-accent-weak hover:text-accent-strong"
-                :class="{ 'bg-accent-weak text-accent-strong': activeMenuId === row.id }"
-              >
-                <Icon name="more" size="sm" />
-                <span class="text-xs">{{ t('common.more') }}</span>
               </button>
             </div>
           </template>
@@ -750,6 +750,15 @@
       danger
       @confirm="confirmBulkDelete"
       @cancel="bulkDeleteIds = []"
+    />
+    <ConfirmDialog
+      :show="disablingUser !== null"
+      :title="t('admin.users.disableUser')"
+      :message="t('admin.users.disableConfirm', { email: disablingUser?.email })"
+      :confirm-text="t('admin.users.disable')"
+      danger
+      @confirm="confirmDisable"
+      @cancel="disablingUser = null"
     />
     <UserCreateModal :show="showCreateModal" @close="showCreateModal = false" @success="loadUsers" />
     <UserEditModal :show="showEditModal" :user="editingUser" @close="closeEditModal" @success="loadUsers" />
@@ -1333,6 +1342,7 @@ const showAttributesModal = ref(false)
 const showPlatformQuotaModal = ref(false)
 const editingUser = ref<AdminUser | null>(null)
 const deletingUser = ref<AdminUser | null>(null)
+const disablingUser = ref<AdminUser | null>(null)
 const viewingUser = ref<AdminUser | null>(null)
 const platformQuotaUser = ref<AdminUser | null>(null)
 
@@ -1725,7 +1735,22 @@ const closeEditModal = () => {
   editingUser.value = null
 }
 
-const handleToggleStatus = async (user: AdminUser) => {
+const handleToggleStatus = (user: AdminUser) => {
+  // 禁用会立即切断该用户的 API 调用，需要二次确认；启用直接执行。
+  if (user.status === 'active') {
+    disablingUser.value = user
+    return
+  }
+  toggleUserStatus(user)
+}
+
+const confirmDisable = () => {
+  const user = disablingUser.value
+  disablingUser.value = null
+  if (user) toggleUserStatus(user)
+}
+
+const toggleUserStatus = async (user: AdminUser) => {
   const newStatus = user.status === 'active' ? 'disabled' : 'active'
   try {
     const updated = await adminAPI.users.toggleStatus(user.id, newStatus)

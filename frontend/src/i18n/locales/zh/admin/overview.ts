@@ -603,6 +603,7 @@ export default {
       disable: '禁用',
       enable: '启用',
       disableUser: '禁用用户',
+      disableConfirm: '确定禁用 {email} 吗？在重新启用之前，该用户的 API 密钥将立即失效。',
       enableUser: '启用用户',
       viewApiKeys: '查看 API 密钥',
       groups: '分组',
