@@ -392,10 +392,14 @@ services:
   # GATEWAY_GROK_FLARESOLVERR_URL=http://flaresolverr:8191/v1 in .env.
   # ===========================================================================
   flaresolverr:
-    image: ghcr.io/flaresolverr/flaresolverr:latest
+    # Pinned: a new release can break the Grok Cloudflare flow. Bump deliberately.
+    image: ghcr.io/flaresolverr/flaresolverr:v3.5.2
     container_name: sub2api-flaresolverr
     restart: unless-stopped
     logging: *default-logging
+    # Headless Chromium shares the host with Postgres; cap it so an OOM kills
+    # FlareSolverr rather than the database.
+    mem_limit: 1g
     profiles: ["grok-web"]
     environment:
       - TZ=${TZ:-Asia/Shanghai}
