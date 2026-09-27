@@ -563,7 +563,8 @@ export default {
           sustained: '持续时长（分钟）',
           cooldown: '冷却期（分钟）',
           enabled: '启用',
-          notifyEmail: '发送邮件通知'
+          notifyEmail: '发送邮件通知',
+          notifyEmailInactive: '运维设置中的告警邮件未启用、未配置收件人，或最低级别高于此规则的级别，此规则不会发送邮件。'
         },
         validation: {
           title: '请先修正以下问题',

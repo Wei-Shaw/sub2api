@@ -15,6 +15,8 @@ export default {
     chars: '{n} 字符',
     preview: '预览',
     source: '源码',
+    loadAccountsFailed: '加载账号失败',
+    loadModelsFailed: '加载模型列表失败',
     status: {
       idle: '空闲',
       running: '进行中',

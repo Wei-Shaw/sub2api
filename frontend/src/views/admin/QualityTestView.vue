@@ -88,6 +88,8 @@ import Select from '@/components/common/Select.vue'
 import Icon from '@/components/icons/Icon.vue'
 import { adminAPI } from '@/api/admin'
 import { buildApiUrl } from '@/api/client'
+import { useAppStore } from '@/stores/app'
+import { extractApiErrorMessage } from '@/utils/apiError'
 import { ADMIN_UI_REQUEST_HEADER } from '@/api/adminUIRequest'
 import { extractHtml } from './qualityTestHtml'
 
@@ -107,6 +109,7 @@ interface TestSlot {
 }
 
 const { t } = useI18n()
+const appStore = useAppStore()
 
 const DEFAULT_PROMPT =
   'Create a single self-contained HTML document (inline SVG/CSS/JS, no external resources) showing an animated pelican riding a bicycle. Return only the HTML.'
@@ -138,16 +141,31 @@ function newSlot(): TestSlot {
 }
 
 async function loadAccounts() {
-  const res = await adminAPI.accounts.list(1, 200, { platform: platform.value, lite: '1' })
-  accounts.value = res.items.map((a) => ({ id: a.id, name: a.name }))
+  const current = platform.value
+  try {
+    // 1000 = backend max page_size; keep paging so accounts past the first page stay selectable
+    const all: { id: number; name: string }[] = []
+    for (let page = 1; ; page++) {
+      const res = await adminAPI.accounts.list(page, 1000, { platform: current, lite: '1' })
+      all.push(...res.items.map((a) => ({ id: a.id, name: a.name })))
+      if (res.items.length === 0 || all.length >= res.total) break
+    }
+    if (platform.value === current) accounts.value = all
+  } catch (err) {
+    if (platform.value === current) appStore.showError(extractApiErrorMessage(err, t('admin.qualityTest.loadAccountsFailed')))
+  }
 }
 
 async function loadModels(slot: TestSlot) {
   slot.model = ''
   slot.models = []
   if (!slot.accountId) return
-  const models = await adminAPI.accounts.getAvailableModels(slot.accountId)
-  slot.models = models.map((m) => ({ value: m.id, label: m.display_name || m.id }))
+  try {
+    const models = await adminAPI.accounts.getAvailableModels(slot.accountId)
+    slot.models = models.map((m) => ({ value: m.id, label: m.display_name || m.id }))
+  } catch (err) {
+    appStore.showError(extractApiErrorMessage(err, t('admin.qualityTest.loadModelsFailed')))
+  }
 }
 
 function accountName(id: number | null) {
