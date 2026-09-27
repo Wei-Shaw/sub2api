@@ -99,6 +99,7 @@ describe('user DashboardView', () => {
 
   afterEach(() => {
     vi.useRealTimers()
+    vi.restoreAllMocks()
   })
 
   it('loads stats in one round trip and fetches only the recent rows it shows', async () => {
@@ -121,5 +122,37 @@ describe('user DashboardView', () => {
     // 5 HTTP requests through the client plus the /auth/me refresh in the store.
     expect(apiGet).toHaveBeenCalledTimes(5)
     expect(refreshUser).toHaveBeenCalledTimes(1)
+  })
+
+  it('shows an error with a retry button instead of a blank page when stats fail', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {})
+    apiGet.mockImplementation((url: string, config?: { params?: { page_size?: number } }) =>
+      url === '/usage/dashboard/stats'
+        ? Promise.reject({ status: 500, message: 'stats unavailable' })
+        : respond(url, config))
+    const wrapper = mountView()
+    await vi.runAllTimersAsync()
+
+    expect(wrapper.find('[data-test="stats"]').exists()).toBe(false)
+    expect(wrapper.text()).toContain('dashboard.loadFailed')
+    expect(wrapper.find('[data-test="quick-actions"]').exists()).toBe(true)
+    expect(showError).toHaveBeenCalledWith('stats unavailable')
+
+    apiGet.mockImplementation(respond)
+    const retry = wrapper.findAll('button').find((button) => button.text() === 'common.refresh')!
+    await retry.trigger('click')
+    await vi.runAllTimersAsync()
+    expect(wrapper.find('[data-test="stats"]').exists()).toBe(true)
+    expect(wrapper.text()).not.toContain('dashboard.loadFailed')
+  })
+
+  it('still renders stats when refreshing the profile fails', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {})
+    refreshUser.mockRejectedValue({ status: 503, message: 'profile unavailable' })
+    const wrapper = mountView()
+    await vi.runAllTimersAsync()
+
+    expect(wrapper.find('[data-test="stats"]').exists()).toBe(true)
+    expect(wrapper.text()).not.toContain('dashboard.loadFailed')
   })
 })

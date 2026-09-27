@@ -1,5 +1,6 @@
 export default {
   dashboard: {
+    loadFailed: 'Failed to load dashboard data',
     title: 'Dashboard',
     welcomeMessage: "Welcome back! Here's an overview of your account.",
     balance: 'Balance',

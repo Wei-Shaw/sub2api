@@ -37,6 +37,10 @@
           <div class="lg:col-span-1"><UserDashboardQuickActions /></div>
         </div>
       </template>
+      <template v-else-if="loadError">
+        <EmptyState class="card" :title="t('dashboard.loadFailed')" :description="t('errors.tryAgain')" :action-text="t('common.refresh')" :action-icon="false" @action="refreshAll" />
+        <UserDashboardQuickActions />
+      </template>
     </div>
   </AppLayout>
 </template>
@@ -45,6 +49,8 @@
 import { ref, computed, onMounted } from 'vue'; import { useAuthStore } from '@/stores/auth'; import { usageAPI, type UserDashboardStats as UserStatsType } from '@/api/usage'
 import { useI18n } from 'vue-i18n'
 import AppLayout from '@/components/layout/AppLayout.vue'; import LoadingSpinner from '@/components/common/LoadingSpinner.vue'
+import EmptyState from '@/components/common/EmptyState.vue'
+import { extractApiErrorMessage } from '@/utils/apiError'
 import Icon from '@/components/icons/Icon.vue'
 import MeterValue from '@/components/common/MeterValue.vue'
 import { useAppStore } from '@/stores'
@@ -63,13 +69,13 @@ const formatBalance = (b: number) => new Intl.NumberFormat('en-US', { minimumFra
 const authStore = useAuthStore(); const user = computed(() => authStore.user)
 // 充值入口与侧边栏 /purchase 同条件：支付开关 + 非简单模式
 const canTopUp = computed(() => !authStore.isSimpleMode && isFeatureFlagEnabled(FeatureFlags.payment))
-const stats = ref<UserStatsType | null>(null); const loading = ref(false); const loadingUsage = ref(false); const loadingCharts = ref(false)
+const stats = ref<UserStatsType | null>(null); const loadError = ref(false); const loading = ref(false); const loadingUsage = ref(false); const loadingCharts = ref(false)
 const trendData = ref<TrendDataPoint[]>([]); const modelStats = ref<ModelStat[]>([]); const recentUsage = ref<UsageLog[]>([])
 const platformQuotas = ref<PlatformQuotaItem[] | null>(null)
 
 const startDate = ref(formatDateLocalInput(new Date(Date.now() - 6 * 86400000))); const endDate = ref(formatDateLocalInput(new Date())); const granularity = ref('day')
 
-const loadStats = async () => { loading.value = true; try { stats.value = await usageAPI.getDashboardStats() } catch (error) { console.error('Failed to load dashboard stats:', error) } finally { loading.value = false } }
+const loadStats = async () => { loading.value = true; loadError.value = false; try { stats.value = await usageAPI.getDashboardStats() } catch (error) { console.error('Failed to load dashboard stats:', error); loadError.value = !stats.value; appStore.showError(extractApiErrorMessage(error, t('dashboard.loadFailed'))) } finally { loading.value = false } }
 const loadCharts = async () => { loadingCharts.value = true; try { const res = await Promise.all([usageAPI.getDashboardTrend({ start_date: startDate.value, end_date: endDate.value, granularity: granularity.value as any }), usageAPI.getDashboardModels({ start_date: startDate.value, end_date: endDate.value })]); trendData.value = res[0].trend || []; modelStats.value = res[1].models || [] } catch (error) { console.error('Failed to load charts:', error) } finally { loadingCharts.value = false } }
 const loadRecent = async () => { loadingUsage.value = true; try { const res = await usageAPI.query({ start_date: startDate.value, end_date: endDate.value, page: 1, page_size: 5 }); recentUsage.value = res.items } catch (error) { console.error('Failed to load recent usage:', error) } finally { loadingUsage.value = false } }
 const loadPlatformQuotas = async () => { try { const data = await getMyPlatformQuotas(); platformQuotas.value = data.platform_quotas ?? [] } catch (error) { console.warn('Failed to load platform quotas:', error); platformQuotas.value = [] } }

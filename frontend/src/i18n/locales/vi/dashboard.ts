@@ -1,5 +1,6 @@
 export default {
   dashboard: {
+    loadFailed: 'Không thể tải dữ liệu bảng điều khiển',
     title: 'Bảng điều khiển',
     welcomeMessage: 'Chào mừng trở lại! Đây là tổng quan về tài khoản của bạn.',
     balance: 'Số dư',
