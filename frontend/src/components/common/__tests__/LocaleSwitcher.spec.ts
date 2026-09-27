@@ -4,7 +4,10 @@ import { ref } from 'vue'
 
 const locale = ref('vi')
 
-vi.mock('vue-i18n', () => ({ useI18n: () => ({ locale }) }))
+vi.mock('vue-i18n', async () => {
+  const { viT } = await import('@/views/auth/__tests__/viTranslate')
+  return { useI18n: () => ({ locale, t: viT }) }
+})
 vi.mock('@/i18n', () => ({
   setLocale: vi.fn(),
   availableLocales: [
@@ -22,7 +25,7 @@ afterEach(() => {
 })
 
 describe('LocaleSwitcher a11y', () => {
-  it('names the native trigger button by the current language and reflects the open state', async () => {
+  it('labels the native trigger button with the current language and reflects the open state', async () => {
     wrapper = mount(LocaleSwitcher, { attachTo: document.body, global: { stubs: { Icon: true } } })
     const trigger = wrapper.get('button')
 
@@ -30,7 +33,8 @@ describe('LocaleSwitcher a11y', () => {
     // 披露模式：选项是普通按钮而非 role=menu，所以只暴露 aria-expanded。
     expect(trigger.attributes('aria-haspopup')).toBeUndefined()
     expect(trigger.attributes('aria-expanded')).toBe('false')
-    expect(trigger.get('.sr-only').text()).toBe('Tiếng Việt')
+    expect(trigger.get('.sr-only').text()).toBe('Ngôn ngữ: Tiếng Việt')
+    expect(trigger.attributes('title')).toBe('Ngôn ngữ: Tiếng Việt')
 
     await trigger.trigger('click')
     expect(trigger.attributes('aria-expanded')).toBe('true')
