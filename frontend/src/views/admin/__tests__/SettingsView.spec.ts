@@ -2274,4 +2274,37 @@ describe("admin SettingsView settings UX", () => {
     expect(wrapper.text()).not.toContain("Email OAuth Sign-in");
     expect(wrapper.text()).not.toContain("Setup guide: GitHub Settings");
   });
+
+  it.each([
+    {
+      tab: "security",
+      overrides: { wechat_connect_mobile_enabled: true },
+      message: "admin.settings.wechatConnect.mpMobileConflict",
+    },
+    {
+      tab: "agreement",
+      overrides: {
+        login_agreement_enabled: true,
+        login_agreement_documents: [
+          { id: "terms", title: "Terms", content_md: "a" },
+          { id: "terms", title: "Terms copy", content_md: "b" },
+        ],
+      },
+      message: "admin.settings.agreement.duplicateRoute",
+    },
+  ])("switches from General to the $tab tab when its validation fails on save", async ({ tab, overrides, message }) => {
+    getSettings.mockResolvedValue({ ...baseSettingsResponse, ...overrides });
+
+    const wrapper = mountView();
+    await flushPromises();
+    expect(wrapper.get("#settings-tab-general").attributes("aria-selected")).toBe("true");
+
+    await wrapper.find("form").trigger("submit.prevent");
+    await flushPromises();
+
+    expect(updateSettings).not.toHaveBeenCalled();
+    expect(showError).toHaveBeenCalledWith(message);
+    expect(wrapper.get(`#settings-tab-${tab}`).attributes("aria-selected")).toBe("true");
+    expect(wrapper.get("#settings-tab-general").attributes("aria-selected")).toBe("false");
+  });
 });

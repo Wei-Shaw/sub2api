@@ -1549,6 +1549,7 @@ export function useSettingsView() {
       for (const p of webSearchConfig.providers) {
         const raw = p.quota_limit;
         if (raw != null && Number(raw) !== 0 && Number(raw) < 1) {
+          activeTab.value = "gateway";
           appStore.showError(
             t("admin.settings.webSearchEmulation.quotaLimitMustBePositive"),
           );
@@ -2435,6 +2436,7 @@ export function useSettingsView() {
         normalizedTableDefaultPageSize < tablePageSizeMin ||
         normalizedTableDefaultPageSize > tablePageSizeMax
       ) {
+        activeTab.value = "general";
         appStore.showError(
           t("admin.settings.site.tableDefaultPageSizeRangeError", {
             min: tablePageSizeMin,
@@ -2448,6 +2450,7 @@ export function useSettingsView() {
         tablePageSizeOptionsInput.value,
       );
       if (!normalizedTablePageSizeOptions) {
+        activeTab.value = "general";
         appStore.showError(
           t("admin.settings.site.tablePageSizeOptionsFormatError", {
             min: tablePageSizeMin,
@@ -2463,6 +2466,7 @@ export function useSettingsView() {
       const normalizedLoginAgreementDocuments =
         normalizeLoginAgreementDocumentsForSave();
       if (form.login_agreement_enabled && normalizedLoginAgreementDocuments.length === 0) {
+        activeTab.value = "agreement";
         appStore.showError(t("admin.settings.agreement.documentRequired"));
         return;
       }
@@ -2470,12 +2474,14 @@ export function useSettingsView() {
         (doc) => !doc.title,
       );
       if (emptyTitleDocument) {
+        activeTab.value = "agreement";
         appStore.showError(t("admin.settings.agreement.documentTitleRequired"));
         return;
       }
       const duplicateLoginAgreementDocumentId =
         findDuplicateLoginAgreementDocumentId(normalizedLoginAgreementDocuments);
       if (duplicateLoginAgreementDocumentId) {
+        activeTab.value = "agreement";
         appStore.showError(
           t("admin.settings.agreement.duplicateRoute", {
             id: duplicateLoginAgreementDocumentId,
@@ -2497,6 +2503,7 @@ export function useSettingsView() {
         normalizedDefaultSubscriptions,
       );
       if (duplicateDefaultSubscription) {
+        activeTab.value = "users";
         appStore.showError(
           t("admin.settings.defaults.defaultSubscriptionsDuplicate", {
             groupId: duplicateDefaultSubscription.group_id,
@@ -2514,6 +2521,7 @@ export function useSettingsView() {
           authSourceDefaults[authSource.source].subscriptions,
         );
         if (duplicate) {
+          activeTab.value = "users";
           appStore.showError(
             `${authSource.title}: ${t(
               "admin.settings.defaults.defaultSubscriptionsDuplicate",
@@ -2527,6 +2535,7 @@ export function useSettingsView() {
       }
 
       if (form.wechat_connect_mp_enabled && form.wechat_connect_mobile_enabled) {
+        activeTab.value = "security";
         appStore.showError(t("admin.settings.wechatConnect.mpMobileConflict"));
         return;
       }
@@ -2560,6 +2569,7 @@ export function useSettingsView() {
       // 自定义页面 iframe 白名单：本地先按后端同一套规则挡一次，让运维当场看到是哪条填错了，
       // 而不是等后端 400 回来只给一句笼统的报错。
       if (customPageIframeInvalidEntry.value !== null) {
+        activeTab.value = "general";
         appStore.showError(
           t("admin.settings.customPageIframe.invalidHost", {
             host: customPageIframeInvalidEntry.value,
@@ -2570,6 +2580,7 @@ export function useSettingsView() {
       if (
         customPageIframeNormalizedHosts.value.length > MAX_CUSTOM_PAGE_IFRAME_HOSTS
       ) {
+        activeTab.value = "general";
         appStore.showError(
           t("admin.settings.customPageIframe.tooManyHosts", {
             max: MAX_CUSTOM_PAGE_IFRAME_HOSTS,
@@ -2584,6 +2595,7 @@ export function useSettingsView() {
         oauthSchedulingRate !== null &&
         (!Number.isFinite(oauthSchedulingRate) || oauthSchedulingRate < 0)
       ) {
+        activeTab.value = "gateway";
         appStore.showError(t("admin.settings.openaiExperimentalScheduler.oauthRateInvalid"));
         return;
       }
