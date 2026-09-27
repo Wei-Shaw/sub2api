@@ -158,20 +158,6 @@ redis.call('DEL', KEYS[4], KEYS[5])
 return currentEpoch
 `)
 
-	// getSnapshotIDsScript 在一次往返内读取 ready/active 并返回激活版本的快照成员；
-	// 未就绪或无激活版本时返回空数组，由调用方视为缓存未命中。
-	// KEYS[1] = readyKey, KEYS[2] = activeKey, ARGV[1] = 快照 key 前缀（后接版本号）
-	getSnapshotIDsScript = redis.NewScript(`
-if redis.call('GET', KEYS[1]) ~= '1' then
-    return {}
-end
-local active = redis.call('GET', KEYS[2])
-if active == false then
-    return {}
-end
-return redis.call('ZRANGE', ARGV[1] .. active, 0, -1)
-`)
-
 	// 释放租约必须先比较所有者令牌再删除，过期持有者的延迟释放不能误删继任租约。
 	releaseGroupLifecycleLeaseScript = redis.NewScript(`
 if redis.call('GET', KEYS[1]) == ARGV[1] then
@@ -258,11 +244,24 @@ func newSchedulerCacheWithChunkSizes(rdb *redis.Client, mgetChunkSize, writeChun
 }
 
 func (c *schedulerCache) GetSnapshot(ctx context.Context, bucket service.SchedulerBucket) ([]*service.Account, bool, error) {
-	// 未就绪、无激活版本与空快照都返回空列表，一次往返完成。
-	ids, err := getSnapshotIDsScript.Run(ctx, c.rdb, []string{
+	// ready 与 active 用一次 MGET 读取；快照 key 必须以普通命令访问，
+	// 不能在 Lua 里用 ARGV 拼接（key 前缀 hook / Redis Cluster 只认 KEYS）。
+	state, err := c.rdb.MGet(ctx,
 		schedulerBucketKey(schedulerReadyPrefix, bucket),
 		schedulerBucketKey(schedulerActivePrefix, bucket),
-	}, schedulerSnapshotKey(bucket, "")).StringSlice()
+	).Result()
+	if err != nil {
+		return nil, false, err
+	}
+	if ready, _ := state[0].(string); ready != "1" {
+		return nil, false, nil
+	}
+	activeVal, ok := state[1].(string)
+	if !ok {
+		return nil, false, nil
+	}
+
+	ids, err := c.rdb.ZRange(ctx, schedulerSnapshotKey(bucket, activeVal), 0, -1).Result()
 	if err != nil {
 		return nil, false, err
 	}

@@ -88,7 +88,7 @@ func TestSchedulerCacheGetSnapshotRoundTrips(t *testing.T) {
 	const n = 300
 	seedSchedulerSnapshotForRTT(t, cache, bucket, n)
 
-	// Warm up once so the script SHA is cached server side (steady-state count).
+	// Warm up once (steady-state count).
 	_, hit, err := cache.GetSnapshot(ctx, bucket)
 	require.NoError(t, err)
 	require.True(t, hit)
@@ -97,7 +97,7 @@ func TestSchedulerCacheGetSnapshotRoundTrips(t *testing.T) {
 	accounts, hit, err := cache.GetSnapshot(ctx, bucket)
 	require.NoError(t, err)
 	require.True(t, hit)
-	require.Equal(t, int64(2), hook.n.Load(), "GetSnapshot must cost 2 round trips regardless of chunk count")
+	require.Equal(t, int64(3), hook.n.Load(), "GetSnapshot must cost 3 round trips (MGET state, ZRANGE, pipelined MGETs) regardless of chunk count")
 	require.Len(t, accounts, n)
 	for i, account := range accounts {
 		require.Equal(t, int64(7001+i), account.ID)
