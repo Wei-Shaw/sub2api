@@ -317,6 +317,8 @@ export default {
     invitationCodeInvalid: 'Mã mời không hợp lệ hoặc đã được sử dụng',
     invitationCodeValidating: 'Đang kiểm tra mã mời...',
     invitationCodeInvalidCannotRegister: 'Mã mời không hợp lệ. Vui lòng kiểm tra và thử lại',
+    affiliateCodeLabel: 'Mã giới thiệu',
+    affiliateCodePlaceholder: 'Nhập mã giới thiệu',
     oauthOrContinue: 'hoặc tiếp tục bằng cách khác',
     linuxdo: {
       signIn: 'Tiếp tục với Linux.do',

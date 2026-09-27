@@ -184,6 +184,17 @@ describe('RegisterView errors', () => {
     expect(sessionStorage.getItem('register_data')).toBeNull()
   })
 
+  it('labels the optional affiliate field as a referral code, not an invitation code', async () => {
+    getPublicSettingsMock.mockResolvedValue({ ...publicSettings, affiliate_enabled: true })
+    const wrapper = mountRegister()
+    await flushPromises()
+
+    const field = wrapper.get('[data-testid="affiliate-invitation-field"]')
+    expect(field.get('label').text()).toContain('Mã giới thiệu')
+    expect(field.get('label').text()).not.toContain(viCommon.auth.invitationCodeLabel)
+    expect(field.get('input').attributes('placeholder')).toBe('Nhập mã giới thiệu')
+  })
+
   it('names the show/hide password buttons', async () => {
     const wrapper = mountRegister()
     await flushPromises()

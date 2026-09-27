@@ -184,7 +184,7 @@
         <!-- Affiliate Invitation Code Input (Optional) -->
         <div v-else-if="affiliateEnabled" data-testid="affiliate-invitation-field">
           <label for="affiliate_code" class="input-label">
-            {{ t('auth.invitationCodeLabel') }}
+            {{ t('auth.affiliateCodeLabel') }}
             <span class="ml-1 text-meta font-normal text-fg-subtle">({{ t('common.optional') }})</span>
           </label>
           <div class="relative">
@@ -194,7 +194,7 @@
               type="text"
               :disabled="registrationActionDisabled"
               class="input"
-              :placeholder="t('auth.invitationCodePlaceholder')"
+              :placeholder="t('auth.affiliateCodePlaceholder')"
             />
           </div>
         </div>
