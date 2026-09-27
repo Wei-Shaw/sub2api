@@ -1,6 +1,7 @@
 // 由 SettingsView.vue 的 <script setup> 纯移动而来（openspec: rebuild-frontend-design-system Phase 3）。
 // 所有状态、计算属性与方法在此定义，通过 provide/inject 供各 Tab 组件使用。
-import { ref, reactive, computed, onMounted, watch } from "vue";
+import { ref, reactive, computed, nextTick, onBeforeUnmount, onMounted, watch } from "vue";
+import { onBeforeRouteLeave } from "vue-router";
 import type { SelectOption } from "@/components/common/Select.vue";
 import {
   SITE_BILLING_MODES,
@@ -247,11 +248,6 @@ export function useSettingsView() {
   // 关闭 step-up 开关是敏感操作：后端返回 STEP_UP_REQUIRED 时弹 TOTP 码重试
   const settingsStepUp = useStepUp();
   const adminSettingsStore = useAdminSettingsStore();
-  const isZhLocale = computed(() => locale.value.startsWith("zh"));
-
-  function localText(zh: string, en: string): string {
-    return isZhLocale.value ? zh : en;
-  }
 
   const paymentGuideHref = computed(() =>
     locale.value.startsWith("zh")
@@ -538,22 +534,22 @@ export function useSettingsView() {
     return [
       {
         id: "terms",
-        title: localText("服务条款", "Terms of Service"),
+        title: t("admin.settings.agreement.defaultDocuments.terms"),
         content_md: "",
       },
       {
         id: "usage-policy",
-        title: localText("使用政策", "Usage Policy"),
+        title: t("admin.settings.agreement.defaultDocuments.usagePolicy"),
         content_md: "",
       },
       {
         id: "supported-regions",
-        title: localText("支持的国家和地区", "Supported Countries and Regions"),
+        title: t("admin.settings.agreement.defaultDocuments.supportedRegions"),
         content_md: "",
       },
       {
         id: "service-specific-terms",
-        title: localText("服务特定条款", "Service-Specific Terms"),
+        title: t("admin.settings.agreement.defaultDocuments.serviceSpecificTerms"),
         content_md: "",
       },
     ];
@@ -1071,9 +1067,9 @@ export function useSettingsView() {
     dingtalk_connect_sync_corp_email_attr_key: "dingtalk_email",
     dingtalk_connect_sync_display_name_attr_key: "dingtalk_name",
     dingtalk_connect_sync_dept_attr_key: "dingtalk_department",
-    dingtalk_connect_sync_corp_email_attr_name: localText("钉钉企业邮箱", "DingTalk Corporate Email"),
-    dingtalk_connect_sync_display_name_attr_name: localText("钉钉姓名", "DingTalk Name"),
-    dingtalk_connect_sync_dept_attr_name: localText("钉钉部门", "DingTalk Department"),
+    dingtalk_connect_sync_corp_email_attr_name: t("admin.settings.dingtalk.defaultAttrCorpEmail"),
+    dingtalk_connect_sync_display_name_attr_name: t("admin.settings.dingtalk.defaultAttrDisplayName"),
+    dingtalk_connect_sync_dept_attr_name: t("admin.settings.dingtalk.defaultAttrDept"),
     wechat_connect_enabled: false,
     wechat_connect_app_id: "",
     wechat_connect_app_secret: "",
@@ -1386,26 +1382,17 @@ export function useSettingsView() {
     {
       source: "github" as AuthSourceType,
       title: "GitHub",
-      description: localText(
-        "通过 GitHub 已验证邮箱首次注册或首次绑定时应用。",
-        "Applied on first signup or first bind through a verified GitHub email.",
-      ),
+      description: t("admin.settings.authSourceDefaults.sources.github.description"),
     },
     {
       source: "google" as AuthSourceType,
       title: "Google",
-      description: localText(
-        "通过 Google 已验证邮箱首次注册或首次绑定时应用。",
-        "Applied on first signup or first bind through a verified Google email.",
-      ),
+      description: t("admin.settings.authSourceDefaults.sources.google.description"),
     },
     {
       source: "dingtalk" as AuthSourceType,
       title: t("auth.dingtalkProviderName"),
-      description: localText(
-        "通过钉钉首次注册或首次绑定时应用。",
-        "Applied on first signup or first bind through DingTalk.",
-      ),
+      description: t("admin.settings.authSourceDefaults.sources.dingtalk.description"),
     },
   ]);
 
@@ -1563,6 +1550,7 @@ export function useSettingsView() {
       for (const p of webSearchConfig.providers) {
         const raw = p.quota_limit;
         if (raw != null && Number(raw) !== 0 && Number(raw) < 1) {
+          activeTab.value = "gateway";
           appStore.showError(
             t("admin.settings.webSearchEmulation.quotaLimitMustBePositive"),
           );
@@ -1875,7 +1863,7 @@ export function useSettingsView() {
     }
     await copyToClipboard(
       url,
-      localText("回调地址已写入并复制。", "Callback URL set and copied."),
+      t("admin.settings.oauthLogin.callbackUrlSetAndCopied"),
     );
   }
 
@@ -2156,6 +2144,49 @@ export function useSettingsView() {
     });
   });
 
+  // Unsaved-change tracking: snapshot everything the main Save button submits.
+  // Secret inputs are blanked after load and save, so they only count once typed.
+  const settingsSnapshot = ref<string | null>(null);
+
+  function serializeSettingsState(): string {
+    return JSON.stringify([
+      form,
+      authSourceDefaults,
+      openaiFastPolicyForm,
+      webSearchConfig,
+      serializeClaudeOAuthSystemPromptBlocksToJSON(claudeOAuthSystemPromptBlocks.value),
+      codexBlacklistRows.value,
+      codexWhitelistRows.value,
+      codexFingerprintRows.value,
+      registrationEmailSuffixWhitelistTags.value,
+      tablePageSizeOptionsInput.value,
+      customPageIframeMode.value,
+      customPageIframeHostsDraft.value,
+    ]);
+  }
+
+  const isDirty = computed(
+    () =>
+      settingsSnapshot.value !== null &&
+      serializeSettingsState() !== settingsSnapshot.value,
+  );
+
+  async function markSettingsClean(): Promise<void> {
+    // Let watchers triggered by load/save settle before taking the snapshot.
+    await nextTick();
+    settingsSnapshot.value = serializeSettingsState();
+  }
+
+  function handleBeforeUnload(event: BeforeUnloadEvent): void {
+    if (!isDirty.value) return;
+    event.preventDefault();
+    event.returnValue = "";
+  }
+
+  onBeforeRouteLeave(
+    () => !isDirty.value || window.confirm(t("admin.settings.leaveUnsavedConfirm")),
+  );
+
   async function loadSettings() {
     loading.value = true;
     loadFailed.value = false;
@@ -2338,6 +2369,7 @@ export function useSettingsView() {
 
       // Load web search emulation config separately
       await loadWebSearchConfig();
+      await markSettingsClean();
     } catch (error: unknown) {
       loadFailed.value = true;
       appStore.showError(
@@ -2449,6 +2481,7 @@ export function useSettingsView() {
         normalizedTableDefaultPageSize < tablePageSizeMin ||
         normalizedTableDefaultPageSize > tablePageSizeMax
       ) {
+        activeTab.value = "general";
         appStore.showError(
           t("admin.settings.site.tableDefaultPageSizeRangeError", {
             min: tablePageSizeMin,
@@ -2462,6 +2495,7 @@ export function useSettingsView() {
         tablePageSizeOptionsInput.value,
       );
       if (!normalizedTablePageSizeOptions) {
+        activeTab.value = "general";
         appStore.showError(
           t("admin.settings.site.tablePageSizeOptionsFormatError", {
             min: tablePageSizeMin,
@@ -2477,34 +2511,26 @@ export function useSettingsView() {
       const normalizedLoginAgreementDocuments =
         normalizeLoginAgreementDocumentsForSave();
       if (form.login_agreement_enabled && normalizedLoginAgreementDocuments.length === 0) {
-        appStore.showError(
-          localText(
-            "启用登录条款确认时，至少需要保留一份文档。",
-            "At least one document is required when login agreement is enabled.",
-          ),
-        );
+        activeTab.value = "agreement";
+        appStore.showError(t("admin.settings.agreement.documentRequired"));
         return;
       }
       const emptyTitleDocument = normalizedLoginAgreementDocuments.find(
         (doc) => !doc.title,
       );
       if (emptyTitleDocument) {
-        appStore.showError(
-          localText(
-            "登录条款文档名称不能为空。",
-            "Login agreement document title cannot be empty.",
-          ),
-        );
+        activeTab.value = "agreement";
+        appStore.showError(t("admin.settings.agreement.documentTitleRequired"));
         return;
       }
       const duplicateLoginAgreementDocumentId =
         findDuplicateLoginAgreementDocumentId(normalizedLoginAgreementDocuments);
       if (duplicateLoginAgreementDocumentId) {
+        activeTab.value = "agreement";
         appStore.showError(
-          localText(
-            `登录条款文档路由不能重复：/legal/${duplicateLoginAgreementDocumentId}`,
-            `Login agreement document routes cannot be duplicated: /legal/${duplicateLoginAgreementDocumentId}`,
-          ),
+          t("admin.settings.agreement.duplicateRoute", {
+            id: duplicateLoginAgreementDocumentId,
+          }),
         );
         return;
       }
@@ -2522,6 +2548,7 @@ export function useSettingsView() {
         normalizedDefaultSubscriptions,
       );
       if (duplicateDefaultSubscription) {
+        activeTab.value = "users";
         appStore.showError(
           t("admin.settings.defaults.defaultSubscriptionsDuplicate", {
             groupId: duplicateDefaultSubscription.group_id,
@@ -2539,6 +2566,7 @@ export function useSettingsView() {
           authSourceDefaults[authSource.source].subscriptions,
         );
         if (duplicate) {
+          activeTab.value = "users";
           appStore.showError(
             `${authSource.title}: ${t(
               "admin.settings.defaults.defaultSubscriptionsDuplicate",
@@ -2552,12 +2580,8 @@ export function useSettingsView() {
       }
 
       if (form.wechat_connect_mp_enabled && form.wechat_connect_mobile_enabled) {
-        appStore.showError(
-          localText(
-            "公众号和移动应用不能同时启用。",
-            "Official Account and Mobile App cannot be enabled at the same time.",
-          ),
-        );
+        activeTab.value = "security";
+        appStore.showError(t("admin.settings.wechatConnect.mpMobileConflict"));
         return;
       }
       // Validate URL fields — novalidate disables browser-native checks, so we validate here
@@ -2590,6 +2614,7 @@ export function useSettingsView() {
       // 自定义页面 iframe 白名单：本地先按后端同一套规则挡一次，让运维当场看到是哪条填错了，
       // 而不是等后端 400 回来只给一句笼统的报错。
       if (customPageIframeInvalidEntry.value !== null) {
+        activeTab.value = "general";
         appStore.showError(
           t("admin.settings.customPageIframe.invalidHost", {
             host: customPageIframeInvalidEntry.value,
@@ -2600,6 +2625,7 @@ export function useSettingsView() {
       if (
         customPageIframeNormalizedHosts.value.length > MAX_CUSTOM_PAGE_IFRAME_HOSTS
       ) {
+        activeTab.value = "general";
         appStore.showError(
           t("admin.settings.customPageIframe.tooManyHosts", {
             max: MAX_CUSTOM_PAGE_IFRAME_HOSTS,
@@ -2614,6 +2640,7 @@ export function useSettingsView() {
         oauthSchedulingRate !== null &&
         (!Number.isFinite(oauthSchedulingRate) || oauthSchedulingRate < 0)
       ) {
+        activeTab.value = "gateway";
         appStore.showError(t("admin.settings.openaiExperimentalScheduler.oauthRateInvalid"));
         return;
       }
@@ -3065,6 +3092,7 @@ export function useSettingsView() {
       await adminSettingsStore.fetch(true);
       if (wsOk) {
         appStore.showSuccess(t("admin.settings.settingsSaved"));
+        await markSettingsClean();
       }
     } catch (error: unknown) {
       // 用户取消 step-up 验证：静默返回，不弹错误
@@ -3947,6 +3975,7 @@ export function useSettingsView() {
   }
 
   onMounted(() => {
+    window.addEventListener("beforeunload", handleBeforeUnload);
     loadSettings();
     loadSubscriptionGroups();
     loadAdminApiKey();
@@ -3960,6 +3989,10 @@ export function useSettingsView() {
     loadRectifierSettings();
     loadBetaPolicySettings();
     loadProviders();
+  });
+
+  onBeforeUnmount(() => {
+    window.removeEventListener("beforeunload", handleBeforeUnload);
   });
 
   // =========================
@@ -4314,8 +4347,6 @@ export function useSettingsView() {
     appStore,
     settingsStepUp,
     adminSettingsStore,
-    isZhLocale,
-    localText,
     paymentGuideHref,
     paymentMethodsHref,
     activeTab,
@@ -4328,6 +4359,7 @@ export function useSettingsView() {
     loading,
     loadFailed,
     saving,
+    isDirty,
     testingSmtp,
     sendingTestEmail,
     smtpPasswordManuallyEdited,
