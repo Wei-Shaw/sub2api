@@ -75,6 +75,7 @@ type DataAccount struct {
 type DataImportRequest struct {
 	Data                 DataPayload `json:"data"`
 	SkipDefaultGroupBind *bool       `json:"skip_default_group_bind"`
+	GroupIDs             []int64     `json:"group_ids,omitempty"`
 }
 
 type DataImportResult struct {
@@ -237,7 +238,9 @@ func (h *AccountHandler) ImportData(c *gin.Context) {
 		return
 	}
 
-	executeAdminIdempotentJSON(c, "admin.accounts.import_data", req, service.DefaultWriteIdempotencyTTL(), func(ctx context.Context) (any, error) {
+	// 导入按账号串行创建，耗时可能远超普通请求：与前端 5 分钟超时对齐，并脱离客户端断开，
+	// 避免中途取消导致"部分成功但不可见"，重试时凭同一 Idempotency-Key 回放完整结果。
+	executeAdminIdempotentJSONWithTimeout(c, "admin.accounts.import_data", req, service.DefaultWriteIdempotencyTTL(), 5*time.Minute, func(ctx context.Context) (any, error) {
 		return h.importData(ctx, req)
 	})
 }
@@ -444,7 +447,7 @@ func (h *AccountHandler) importData(ctx context.Context, req DataImportRequest) 
 			Concurrency:          item.Concurrency,
 			Priority:             item.Priority,
 			RateMultiplier:       item.RateMultiplier,
-			GroupIDs:             nil,
+			GroupIDs:             req.GroupIDs,
 			ExpiresAt:            item.ExpiresAt,
 			AutoPauseOnExpired:   item.AutoPauseOnExpired,
 			SkipDefaultGroupBind: skipDefaultGroupBind,
