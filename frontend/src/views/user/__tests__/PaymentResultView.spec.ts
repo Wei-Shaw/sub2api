@@ -611,6 +611,36 @@ describe('PaymentResultView', () => {
     expect(wrapper.text()).not.toContain('payment.orders.creditedAmount')
   })
 
+  it('points a successful payment at creating an API key instead of back to top-up', async () => {
+    routeState.query = { resume_token: 'resume-next-step' }
+    resolveOrderPublicByResumeToken.mockResolvedValue({ data: orderFactory('COMPLETED') })
+
+    const wrapper = mount(PaymentResultView, {
+      global: { stubs: { OrderStatusBadge: true } },
+    })
+    await flushPromises()
+
+    const labels = wrapper.findAll('button').map(button => button.text())
+    expect(labels).toEqual(['home.goToDashboard', 'dashboard.createApiKey'])
+    await wrapper.findAll('button')[1].trigger('click')
+    expect(routerPush).toHaveBeenCalledWith('/keys')
+    await wrapper.findAll('button')[0].trigger('click')
+    expect(routerPush).toHaveBeenCalledWith('/dashboard')
+  })
+
+  it('keeps the top-up and orders actions when the payment did not succeed', async () => {
+    routeState.query = { resume_token: 'resume-failed', order_id: '42', status: 'failed' }
+    resolveOrderPublicByResumeToken.mockResolvedValue({ data: orderFactory('PENDING') })
+
+    const wrapper = mount(PaymentResultView, {
+      global: { stubs: { OrderStatusBadge: true } },
+    })
+    await flushPromises()
+
+    const labels = wrapper.findAll('button').map(button => button.text())
+    expect(labels).toEqual(['payment.result.backToRecharge', 'payment.result.viewOrders'])
+  })
+
   it('renders each SePay method under its own label', async () => {
     // The methods are distinct user choices, so the result page must not fold
     // one onto another when naming what the payer used.

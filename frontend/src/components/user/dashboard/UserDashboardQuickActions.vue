@@ -26,10 +26,12 @@ import { computed, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import Icon from '@/components/icons/Icon.vue'
 import { useBatchImageAccess } from '@/composables/useBatchImageAccess'
+import { useAuthStore } from '@/stores/auth'
 
 type IconName = InstanceType<typeof Icon>['$props']['name']
 
 const { t } = useI18n()
+const authStore = useAuthStore()
 const { canUseBatchImage, refreshBatchImageAccess } = useBatchImageAccess()
 
 const actions = computed<{ to: string; icon: IconName; title: string; desc: string }[]>(() => [
@@ -38,7 +40,10 @@ const actions = computed<{ to: string; icon: IconName; title: string; desc: stri
   ...(canUseBatchImage.value
     ? [{ to: '/batch-image', icon: 'sparkles' as IconName, title: 'dashboard.batchImageAgent', desc: 'dashboard.batchImageAgentDesc' }]
     : []),
-  { to: '/redeem', icon: 'gift', title: 'dashboard.redeemCode', desc: 'dashboard.addBalanceWithCode' }
+  // The router blocks /redeem in simple mode, so do not link to it there.
+  ...(authStore.isSimpleMode
+    ? []
+    : [{ to: '/redeem', icon: 'gift' as IconName, title: 'dashboard.redeemCode', desc: 'dashboard.addBalanceWithCode' }])
 ])
 
 onMounted(() => {
