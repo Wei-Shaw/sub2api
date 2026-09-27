@@ -25,7 +25,7 @@ func TestFakePsqlProcess(t *testing.T) {
 	}
 	_, _ = io.Copy(io.Discard, os.Stdin)
 	if code != "0" {
-		fmt.Fprint(os.Stderr, `psql:<stdin>:42: ERROR:  cannot drop table users because other objects depend on it`)
+		_, _ = fmt.Fprint(os.Stderr, `psql:<stdin>:42: ERROR:  cannot drop table users because other objects depend on it`)
 	}
 	var exitCode int
 	_, _ = fmt.Sscan(code, &exitCode)
@@ -37,7 +37,7 @@ func fakePsql(t *testing.T, exitCode int, gotArgs *[]string) func(context.Contex
 	return func(ctx context.Context, name string, args ...string) *exec.Cmd {
 		require.Equal(t, "psql", name)
 		*gotArgs = args
-		cmd := exec.CommandContext(ctx, os.Args[0], "-test.run=^TestFakePsqlProcess$")
+		cmd := exec.CommandContext(ctx, os.Args[0], "-test.run=^TestFakePsqlProcess$") //nolint:gosec // re-execs the test binary itself
 		cmd.Env = append(os.Environ(), fmt.Sprintf("%s=%d", fakePsqlExitCodeEnv, exitCode))
 		return cmd
 	}
