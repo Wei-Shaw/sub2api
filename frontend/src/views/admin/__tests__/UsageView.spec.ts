@@ -829,7 +829,6 @@ describe('admin UsageView model audit export', () => {
 		const elapsedMs = Date.now() - startedAt
 		const calls = exportList.mock.calls.map(([params]) => params)
 		const exportedRows = sheetAddAoa.mock.calls.reduce((sum, [, rows]) => sum + rows.length, 0)
-		console.info(`[perf] admin usage export: rows=${exportedRows} requests=${calls.length} exact_total_requests=${calls.filter((p) => p.exact_total).length} simulated_ms=${elapsedMs}`)
 
 		expect(exportedRows).toBe(TOTAL)
 		expect(calls).toHaveLength(10)

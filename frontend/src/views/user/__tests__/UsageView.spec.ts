@@ -547,7 +547,6 @@ describe('user UsageView', () => {
       const elapsedMs = Date.now() - startedAt
       const exportCalls = query.mock.calls.filter((call) => call.length === 1).map(([params]) => params)
       const exportedRows = csvContent.split('\n').length - 1
-      console.info(`[perf] user usage csv export: rows=${exportedRows} requests=${exportCalls.length} simulated_ms=${elapsedMs}`)
 
       expect(exportedRows).toBe(TOTAL)
       expect(exportCalls).toHaveLength(10)
