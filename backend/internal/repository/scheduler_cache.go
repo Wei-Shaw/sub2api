@@ -158,6 +158,20 @@ redis.call('DEL', KEYS[4], KEYS[5])
 return currentEpoch
 `)
 
+	// getSnapshotIDsScript 在一次往返内读取 ready/active 并返回激活版本的快照成员；
+	// 未就绪或无激活版本时返回空数组，由调用方视为缓存未命中。
+	// KEYS[1] = readyKey, KEYS[2] = activeKey, ARGV[1] = 快照 key 前缀（后接版本号）
+	getSnapshotIDsScript = redis.NewScript(`
+if redis.call('GET', KEYS[1]) ~= '1' then
+    return {}
+end
+local active = redis.call('GET', KEYS[2])
+if active == false then
+    return {}
+end
+return redis.call('ZRANGE', ARGV[1] .. active, 0, -1)
+`)
+
 	// 释放租约必须先比较所有者令牌再删除，过期持有者的延迟释放不能误删继任租约。
 	releaseGroupLifecycleLeaseScript = redis.NewScript(`
 if redis.call('GET', KEYS[1]) == ARGV[1] then
@@ -244,29 +258,11 @@ func newSchedulerCacheWithChunkSizes(rdb *redis.Client, mgetChunkSize, writeChun
 }
 
 func (c *schedulerCache) GetSnapshot(ctx context.Context, bucket service.SchedulerBucket) ([]*service.Account, bool, error) {
-	readyKey := schedulerBucketKey(schedulerReadyPrefix, bucket)
-	readyVal, err := c.rdb.Get(ctx, readyKey).Result()
-	if err == redis.Nil {
-		return nil, false, nil
-	}
-	if err != nil {
-		return nil, false, err
-	}
-	if readyVal != "1" {
-		return nil, false, nil
-	}
-
-	activeKey := schedulerBucketKey(schedulerActivePrefix, bucket)
-	activeVal, err := c.rdb.Get(ctx, activeKey).Result()
-	if err == redis.Nil {
-		return nil, false, nil
-	}
-	if err != nil {
-		return nil, false, err
-	}
-
-	snapshotKey := schedulerSnapshotKey(bucket, activeVal)
-	ids, err := c.rdb.ZRange(ctx, snapshotKey, 0, -1).Result()
+	// 未就绪、无激活版本与空快照都返回空列表，一次往返完成。
+	ids, err := getSnapshotIDsScript.Run(ctx, c.rdb, []string{
+		schedulerBucketKey(schedulerReadyPrefix, bucket),
+		schedulerBucketKey(schedulerActivePrefix, bucket),
+	}, schedulerSnapshotKey(bucket, "")).StringSlice()
 	if err != nil {
 		return nil, false, err
 	}
@@ -282,14 +278,11 @@ func (c *schedulerCache) GetSnapshot(ctx context.Context, bucket service.Schedul
 		keys = append(keys, schedulerAccountMetaKey(id))
 		lastUsedKeys = append(lastUsedKeys, schedulerLastUsedKey(id))
 	}
-	values, err := c.mgetChunked(ctx, keys)
+	groups, err := c.mgetChunked(ctx, keys, lastUsedKeys)
 	if err != nil {
 		return nil, false, err
 	}
-	lastUsedValues, err := c.mgetChunked(ctx, lastUsedKeys)
-	if err != nil {
-		return nil, false, err
-	}
+	values, lastUsedValues := groups[0], groups[1]
 
 	accounts := make([]*service.Account, 0, len(values))
 	for i, val := range values {
@@ -838,26 +831,35 @@ func marshalSchedulerCacheAccount(account service.Account) ([]byte, []byte, erro
 	return fullPayload, metaPayload, nil
 }
 
-func (c *schedulerCache) mgetChunked(ctx context.Context, keys []string) ([]any, error) {
-	if len(keys) == 0 {
-		return []any{}, nil
-	}
-
-	out := make([]any, 0, len(keys))
+// mgetChunked 把各组 key 分块 MGET 后放进同一个 pipeline，一次往返取回；结果与 keyGroups 按组一一对应。
+func (c *schedulerCache) mgetChunked(ctx context.Context, keyGroups ...[]string) ([][]any, error) {
 	chunkSize := c.mgetChunkSize
 	if chunkSize <= 0 {
 		chunkSize = defaultSchedulerSnapshotMGetChunkSize
 	}
-	for start := 0; start < len(keys); start += chunkSize {
-		end := start + chunkSize
-		if end > len(keys) {
-			end = len(keys)
+	pipe := c.rdb.Pipeline()
+	cmds := make([][]*redis.SliceCmd, len(keyGroups))
+	for g, keys := range keyGroups {
+		for start := 0; start < len(keys); start += chunkSize {
+			end := start + chunkSize
+			if end > len(keys) {
+				end = len(keys)
+			}
+			cmds[g] = append(cmds[g], pipe.MGet(ctx, keys[start:end]...))
 		}
-		part, err := c.rdb.MGet(ctx, keys[start:end]...).Result()
-		if err != nil {
+	}
+	if pipe.Len() > 0 {
+		if _, err := pipe.Exec(ctx); err != nil {
 			return nil, err
 		}
-		out = append(out, part...)
+	}
+
+	out := make([][]any, len(keyGroups))
+	for g, keys := range keyGroups {
+		out[g] = make([]any, 0, len(keys))
+		for _, cmd := range cmds[g] {
+			out[g] = append(out[g], cmd.Val()...)
+		}
 	}
 	return out, nil
 }
