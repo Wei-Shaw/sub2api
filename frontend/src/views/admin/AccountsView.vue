@@ -503,6 +503,7 @@
 import { ref, reactive, computed, onMounted, onUnmounted, toRaw, watch } from 'vue'
 import { useIntervalFn } from '@vueuse/core'
 import { useI18n } from 'vue-i18n'
+import { useRoute } from 'vue-router'
 import { useAppStore } from '@/stores/app'
 import { useAuthStore } from '@/stores/auth'
 import { adminAPI } from '@/api/admin'
@@ -551,6 +552,7 @@ import type { Account, AccountListItem, AccountPlatform, AccountSchedulerGroupSc
 const { t } = useI18n()
 const appStore = useAppStore()
 const authStore = useAuthStore()
+const route = useRoute()
 
 const proxies = ref<AccountProxy[]>([])
 const groups = ref<AdminGroup[]>([])
@@ -1116,7 +1118,7 @@ const {
     type: '',
     status: '',
     privacy_mode: '',
-    group: '',
+    group: typeof route?.query.group === 'string' ? route.query.group : '',
     search: '',
     lite: '1',
     include_scheduler_score: shouldIncludeSchedulerScore() ? '1' : '0',

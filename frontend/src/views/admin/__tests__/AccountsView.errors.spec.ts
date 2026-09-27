@@ -308,4 +308,12 @@ describe('admin AccountsView error feedback', () => {
     expect(wrapper.get('[data-test="test-modal"]').attributes('data-account')).toBe('10')
     expect(showInfo).toHaveBeenCalledWith('admin.accounts.testNewAccountHint')
   })
+
+  it('applies the group filter from the route query on first load', async () => {
+    routeState.query = { group: '7' }
+    mountView()
+    await flushPromises()
+
+    expect(listAccounts.mock.calls[0]?.[2]).toMatchObject({ group: '7' })
+  })
 })
