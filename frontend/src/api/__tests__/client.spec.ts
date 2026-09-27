@@ -2,10 +2,15 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import axios from 'axios'
 import type { AxiosInstance } from 'axios'
 
-// 需要在导入 client 之前设置 mock
-vi.mock('@/i18n', () => ({
-  getLocale: () => 'zh-CN',
-}))
+// 需要在导入 client 之前设置 mock；t 直接按 key 查真实的 vi 文案，验证拦截器消息已本地化
+vi.mock('@/i18n', async () => {
+  const { default: viMessages } = await import('@/i18n/locales/vi')
+  const t = (key: string) => key.split('.').reduce<any>((node, part) => node?.[part], viMessages) ?? key
+  return {
+    getLocale: () => 'zh-CN',
+    i18n: { global: { t } },
+  }
+})
 
 describe('API Client', () => {
   let apiClient: AxiosInstance
@@ -260,6 +265,66 @@ describe('API Client', () => {
       )
     })
 
+    it('code!=0 时在 response.data 中保留原始 body', async () => {
+      apiClient.defaults.adapter = vi.fn().mockResolvedValue({
+        status: 200,
+        data: { code: 1001, message: '参数错误', reason: 'BAD_PARAM', data: null },
+        headers: {},
+        config: {},
+        statusText: 'OK',
+      })
+
+      const err = await apiClient.get('/test').catch((e) => e)
+      expect(err.response).toEqual({
+        status: 200,
+        data: { code: 1001, message: '参数错误', reason: 'BAD_PARAM', data: null, detail: '参数错误' },
+      })
+    })
+
+    it('HTTP 错误保留原有字段，并在 response.data 中提供后端 body（detail 兜底为 message）', async () => {
+      apiClient.defaults.adapter = vi.fn().mockRejectedValue({
+        response: {
+          status: 409,
+          data: { code: 409, message: 'proxy is in use', reason: 'PROXY_IN_USE', metadata: { count: 2 } },
+        },
+        config: { url: '/admin/proxies/1' },
+        code: 'ERR_BAD_REQUEST',
+        message: 'Request failed with status code 409',
+      })
+
+      const { response, ...legacy } = await apiClient.delete('/admin/proxies/1').catch((e) => e)
+      expect(legacy).toEqual({
+        status: 409,
+        code: 409,
+        reason: 'PROXY_IN_USE',
+        error: undefined,
+        message: 'proxy is in use',
+        metadata: { count: 2 },
+      })
+      expect(response).toEqual({
+        status: 409,
+        data: {
+          code: 409,
+          message: 'proxy is in use',
+          reason: 'PROXY_IN_USE',
+          metadata: { count: 2 },
+          detail: 'proxy is in use',
+        },
+      })
+    })
+
+    it('HTTP 错误 body 自带 detail/error 时原样保留', async () => {
+      apiClient.defaults.adapter = vi.fn().mockRejectedValue({
+        response: { status: 409, data: { error: 'mixed_channel_warning', message: 'mixed', detail: 'explicit detail' } },
+        config: { url: '/admin/accounts' },
+        code: 'ERR_BAD_REQUEST',
+      })
+
+      const err = await apiClient.post('/admin/accounts', {}).catch((e) => e)
+      expect(err.response.status).toBe(409)
+      expect(err.response.data).toMatchObject({ error: 'mixed_channel_warning', detail: 'explicit detail' })
+    })
+
     it('部署与运营合规未确认时广播事件且保留登录态', async () => {
       localStorage.setItem('auth_token', 'admin-token')
       const listener = vi.fn()
@@ -338,12 +403,14 @@ describe('API Client', () => {
       await expect(apiClient.get('/test')).rejects.toBeDefined()
 
       expect(localStorage.getItem('auth_token')).toBeNull()
+      const redirectedHref = window.location.href
 
       // 恢复 location
       Object.defineProperty(window, 'location', {
         value: originalLocation,
         writable: true,
       })
+      expect(redirectedHref).toBe('/login?redirect=%2Fdashboard')
     })
 
     it('有 refresh_token 时刷新并重试原请求', async () => {
@@ -442,11 +509,39 @@ describe('API Client', () => {
         config: { url: '/test', headers: { Authorization: 'Bearer expired-token' } },
       })
 
-      await expect(apiClient.get('/test')).rejects.toMatchObject({ status: 401, code: 'TOKEN_REFRESH_FAILED' })
+      await expect(apiClient.get('/test')).rejects.toMatchObject({
+        status: 401,
+        code: 'TOKEN_REFRESH_FAILED',
+        message: 'Phiên đã hết hạn. Vui lòng đăng nhập lại.',
+      })
       for (const key of ['auth_token', 'refresh_token', 'auth_user', 'token_expires_at']) {
         expect(localStorage.getItem(key)).toBeNull()
       }
       expect(sessionStorage.getItem('auth_expired')).toBe('1')
+    })
+
+    it('刷新失败跳转登录页时携带编码后的当前路径', async () => {
+      localStorage.setItem('auth_token', 'expired-token')
+      localStorage.setItem('refresh_token', 'refresh-token')
+      localStorage.setItem('auth_user', JSON.stringify({ id: 7 }))
+      const originalLocation = window.location
+      const location = { pathname: '/usage', search: '?page=2&model=claude', href: '/usage?page=2&model=claude' }
+      Object.defineProperty(window, 'location', { value: location, writable: true })
+      const refresh = await import('@/api/tokenRefresh')
+      vi.spyOn(refresh, 'refreshAuthTokens').mockRejectedValueOnce(
+        Object.assign(new axios.AxiosError('Refresh rejected'), { response: { status: 401 } })
+      )
+      apiClient.defaults.adapter = vi.fn().mockRejectedValueOnce({
+        response: { status: 401, data: { code: 'TOKEN_EXPIRED' } },
+        config: { url: '/usage', headers: { Authorization: 'Bearer expired-token' } },
+      })
+
+      try {
+        await expect(apiClient.get('/usage')).rejects.toMatchObject({ code: 'TOKEN_REFRESH_FAILED' })
+        expect(location.href).toBe('/login?redirect=%2Fusage%3Fpage%3D2%26model%3Dclaude')
+      } finally {
+        Object.defineProperty(window, 'location', { value: originalLocation, writable: true })
+      }
     })
 
     it('刷新期间换号时旧请求不会清除新会话', async () => {
@@ -494,7 +589,7 @@ describe('API Client', () => {
   // --- 网络错误 ---
 
   describe('网络错误', () => {
-    it.each(['ERR_NETWORK', 'ECONNABORTED', 'ETIMEDOUT', undefined])('网络错误保留错误码 %s', async (code) => {
+    it.each(['ERR_NETWORK', 'ECONNABORTED', 'ETIMEDOUT', undefined])('网络错误保留错误码 %s 并返回当前语言文案', async (code) => {
       const adapter = vi.fn().mockRejectedValue({
         code,
         message: 'Network Error',
@@ -507,7 +602,7 @@ describe('API Client', () => {
         expect.objectContaining({
           status: 0,
           code: code || 'ERR_NETWORK',
-          message: 'Network error. Please check your connection.',
+          message: 'Lỗi mạng',
         })
       )
     })
