@@ -934,7 +934,7 @@ export default {
       description: 'Verify with your school email to unlock student groups and an exclusive invite rebate',
       notVerified: 'Not verified yet. Verify with your school email to receive student benefits.',
       schoolEmail: 'School email',
-      emailPlaceholder: 'e.g. name@stu.example.edu',
+      emailPlaceholder: 'e.g. name{\'@\'}stu.example.edu',
       sendCode: 'Send Code',
       resendIn: 'Resend in {seconds}s',
       code: 'Verification code',

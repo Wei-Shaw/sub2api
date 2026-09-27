@@ -938,7 +938,7 @@ export default {
       description: '使用学校邮箱完成认证，解锁学生专属分组与邀请返利',
       notVerified: '尚未完成学生认证。使用学校邮箱验证后即可获得学生权益。',
       schoolEmail: '学校邮箱',
-      emailPlaceholder: '例如 name@stu.example.edu',
+      emailPlaceholder: '例如 name{\'@\'}stu.example.edu',
       sendCode: '发送验证码',
       resendIn: '{seconds} 秒后重发',
       code: '验证码',
