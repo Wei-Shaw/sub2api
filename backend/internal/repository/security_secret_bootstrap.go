@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"log/slog"
 	"strings"
 	"time"
 
@@ -33,6 +34,9 @@ func ensureBootstrapSecrets(ctx context.Context, client *ent.Client, cfg *config
 	}
 
 	cfg.JWT.Secret = strings.TrimSpace(cfg.JWT.Secret)
+	if err := rotateWeakJWTSecret(ctx, client, cfg.JWT.Secret); err != nil {
+		return fmt.Errorf("rotate weak jwt secret: %w", err)
+	}
 	if cfg.JWT.Secret != "" {
 		storedSecret, err := createSecuritySecretIfAbsent(ctx, client, securitySecretKeyJWT, cfg.JWT.Secret)
 		if err != nil {
@@ -53,6 +57,38 @@ func ensureBootstrapSecrets(ctx context.Context, client *ent.Client, cfg *config
 
 	if created {
 		log.Println("Warning: JWT secret auto-generated and persisted to database. Consider rotating to a managed secret for production.")
+	}
+	return nil
+}
+
+// rotateWeakJWTSecret replaces a persisted sample/weak jwt_secret (e.g. an old config.example.yaml value)
+// with replacement, or with a fresh random secret when replacement is empty. Custom secrets are never touched.
+func rotateWeakJWTSecret(ctx context.Context, client *ent.Client, replacement string) error {
+	existing, err := client.SecuritySecret.Query().Where(securitysecret.KeyEQ(securitySecretKeyJWT)).Only(ctx)
+	if ent.IsNotFound(err) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	if !config.IsWeakJWTSecret(existing.Value) {
+		return nil
+	}
+	if replacement == "" {
+		if replacement, err = generateHexSecret(32); err != nil {
+			return err
+		}
+	}
+	// Compare-and-swap on the old value so instances starting concurrently converge on a single secret.
+	updated, err := client.SecuritySecret.Update().
+		Where(securitysecret.KeyEQ(securitySecretKeyJWT), securitysecret.ValueEQ(existing.Value)).
+		SetValue(replacement).
+		Save(ctx)
+	if err != nil {
+		return err
+	}
+	if updated > 0 {
+		slog.Error("persisted jwt_secret was a known sample value and has been replaced; all existing sessions are invalidated and users must sign in again.")
 	}
 	return nil
 }

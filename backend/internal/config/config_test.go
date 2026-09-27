@@ -39,7 +39,7 @@ func TestLoadTimezonePrecedence(t *testing.T) {
 		tzEnv        string
 		want         string
 	}{
-		{name: "default", want: "Asia/Shanghai"},
+		{name: "default", want: "Asia/Ho_Chi_Minh"},
 		{name: "config_file", fileTimezone: "Europe/London", want: "Europe/London"},
 		{name: "timezone_env", fileTimezone: "Europe/London", timezoneEnv: "UTC", want: "UTC"},
 		{name: "tz_env", fileTimezone: "Europe/London", timezoneEnv: "UTC", tzEnv: "America/New_York", want: "America/New_York"},

@@ -2416,8 +2416,8 @@ func setDefaults() {
 	viper.SetDefault("plugins.max_uncompressed_bytes", int64(256*1024*1024))
 	viper.SetDefault("plugins.start_timeout_seconds", 15)
 
-	// Timezone (default to Asia/Shanghai for Chinese users)
-	viper.SetDefault("timezone", "Asia/Shanghai")
+	// Timezone (default to Asia/Ho_Chi_Minh, matching the compose/.env.example defaults)
+	viper.SetDefault("timezone", "Asia/Ho_Chi_Minh")
 
 	// API Key auth cache
 	viper.SetDefault("api_key_auth_cache.l1_size", 65535)
@@ -3866,6 +3866,11 @@ func isWeakJWTSecret(secret string) bool {
 	}
 	_, exists := weak[lower]
 	return exists
+}
+
+// IsWeakJWTSecret reports whether secret is a known sample or weak JWT secret.
+func IsWeakJWTSecret(secret string) bool {
+	return isWeakJWTSecret(secret)
 }
 
 func generateJWTSecret(byteLength int) (string, error) {
