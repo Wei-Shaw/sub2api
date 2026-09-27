@@ -69,11 +69,13 @@ const platformQuotas = ref<PlatformQuotaItem[] | null>(null)
 
 const startDate = ref(formatDateLocalInput(new Date(Date.now() - 6 * 86400000))); const endDate = ref(formatDateLocalInput(new Date())); const granularity = ref('day')
 
-const loadStats = async () => { loading.value = true; try { await authStore.refreshUser(); stats.value = await usageAPI.getDashboardStats() } catch (error) { console.error('Failed to load dashboard stats:', error) } finally { loading.value = false } }
+const loadStats = async () => { loading.value = true; try { stats.value = await usageAPI.getDashboardStats() } catch (error) { console.error('Failed to load dashboard stats:', error) } finally { loading.value = false } }
 const loadCharts = async () => { loadingCharts.value = true; try { const res = await Promise.all([usageAPI.getDashboardTrend({ start_date: startDate.value, end_date: endDate.value, granularity: granularity.value as any }), usageAPI.getDashboardModels({ start_date: startDate.value, end_date: endDate.value })]); trendData.value = res[0].trend || []; modelStats.value = res[1].models || [] } catch (error) { console.error('Failed to load charts:', error) } finally { loadingCharts.value = false } }
-const loadRecent = async () => { loadingUsage.value = true; try { const res = await usageAPI.getByDateRange(startDate.value, endDate.value); recentUsage.value = res.items.slice(0, 5) } catch (error) { console.error('Failed to load recent usage:', error) } finally { loadingUsage.value = false } }
+const loadRecent = async () => { loadingUsage.value = true; try { const res = await usageAPI.query({ start_date: startDate.value, end_date: endDate.value, page: 1, page_size: 5 }); recentUsage.value = res.items } catch (error) { console.error('Failed to load recent usage:', error) } finally { loadingUsage.value = false } }
 const loadPlatformQuotas = async () => { try { const data = await getMyPlatformQuotas(); platformQuotas.value = data.platform_quotas ?? [] } catch (error) { console.warn('Failed to load platform quotas:', error); platformQuotas.value = [] } }
-const refreshAll = () => { loadStats(); loadCharts(); loadRecent(); loadPlatformQuotas() }
+// 用户资料刷新与统计请求并行，不再串行等待 /auth/me。
+const refreshUser = async () => { try { await authStore.refreshUser() } catch (error) { console.error('Failed to refresh user:', error) } }
+const refreshAll = () => { refreshUser(); loadStats(); loadCharts(); loadRecent(); loadPlatformQuotas() }
 
 onMounted(() => { refreshAll() })
 </script>
