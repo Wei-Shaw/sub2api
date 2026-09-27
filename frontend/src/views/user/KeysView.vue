@@ -1823,6 +1823,7 @@ const handleSubmit = async () => {
 
   submitting.value = true
   try {
+    let created: ApiKey | null = null
     if (showEditModal.value && selectedKey.value) {
       const updates: UpdateApiKeyRequest = {
         name: formData.value.name,
@@ -1842,7 +1843,7 @@ const handleSubmit = async () => {
       appStore.showSuccess(t('keys.keyUpdatedSuccess'))
     } else {
       const customKey = formData.value.use_custom_key ? formData.value.custom_key : undefined
-      await keysAPI.create(
+      created = await keysAPI.create(
         formData.value.name,
         formData.value.group_id,
         customKey,
@@ -1860,6 +1861,11 @@ const handleSubmit = async () => {
     }
     closeModals()
     loadApiKeys()
+    if (created) {
+      // 创建接口不回填 group；UseKeyModal 要靠分组平台挑选配置模板。
+      const groupId = created.group_id
+      openUseKeyModal({ ...created, group: created.group ?? groups.value.find((g) => g.id === groupId) })
+    }
   } catch (error: unknown) {
     appStore.showError(extractI18nErrorMessage(error, t, 'keys.errors', t('keys.failedToSave')))
     // Don't advance tour on error

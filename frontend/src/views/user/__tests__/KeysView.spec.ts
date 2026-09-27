@@ -6,6 +6,7 @@ import type { ApiKey } from '@/types'
 import { keysAPI } from '@/api'
 import KeysView from '../KeysView.vue'
 import EndpointPopover from '@/components/keys/EndpointPopover.vue'
+import UseKeyModal from '@/components/keys/UseKeyModal.vue'
 
 const {
   listKeys,
@@ -652,6 +653,24 @@ describe('user KeysView column settings', () => {
     getPublicSettings.mockResolvedValue({ api_base_url: 'https://api.example.com' })
     const configured = await mountView()
     expect(configured.findComponent(EndpointPopover).props('apiBaseUrl')).toBe('https://api.example.com')
+  })
+
+  it('opens the usage guide for a newly created key', async () => {
+    getAvailableGroups.mockResolvedValue([{ id: 1, name: 'Codex', platform: 'openai', rate_multiplier: 1, subscription_type: 'standard' }])
+    vi.mocked(keysAPI.create).mockResolvedValue({ ...createApiKey(), id: 9, key: 'sk-new-key', group_id: 1 })
+    const wrapper = await mountView()
+    await wrapper.get('[data-tour="keys-create-btn"]').trigger('click')
+    await wrapper.get('[data-tour="key-form-name"]').setValue('My key')
+    await wrapper.findComponent('[data-tour="key-form-group"]').vm.$emit('update:modelValue', 1)
+    expect(wrapper.findComponent(UseKeyModal).props('show')).toBe(false)
+    await wrapper.get('#key-form').trigger('submit')
+    await flushPromises()
+
+    const modal = wrapper.findComponent(UseKeyModal)
+    expect(modal.props('show')).toBe(true)
+    expect(modal.props('apiKey')).toBe('sk-new-key')
+    expect(modal.props('platform')).toBe('openai')
+    expect(wrapper.find('#key-form').exists()).toBe(false)
   })
 
   it('exposes the key form toggles as labelled switches', async () => {
