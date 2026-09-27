@@ -212,11 +212,11 @@ func (s *AntigravityGatewayService) prepareAntigravityCompatCall(
 		return nil, s.writeAntigravityCompatError(c, http.StatusBadRequest, "invalid_request_error", "Invalid request body")
 	}
 
-	mappedModel := s.getMappedModelForThinkingLevel(
-		account,
-		request.originalModel,
-		geminiThinkingLevelFromClaudeThinking(claudeRequest.Thinking),
-	)
+	thinkingLevel := geminiThinkingLevelFromClaudeThinking(claudeRequest.Thinking)
+	if level, ok := geminiThinkingLevelFromReasoningEffort(request.reasoningEffort); ok {
+		thinkingLevel = level
+	}
+	mappedModel := s.getMappedModelForThinkingLevel(account, request.originalModel, thinkingLevel)
 	if mappedModel == "" {
 		MarkOpsClientBusinessLimited(c, OpsClientBusinessLimitedReasonLocalFeatureGate)
 		message := fmt.Sprintf("model %s not in whitelist", request.originalModel)
@@ -242,7 +242,14 @@ func (s *AntigravityGatewayService) prepareAntigravityCompatCall(
 		_ = s.writeAntigravityCompatError(c, http.StatusBadRequest, "invalid_request_error", err.Error())
 		return nil, err
 	}
-	geminiBody, err := s.buildAntigravityCompatGeminiBody(ctx, request.claudeBody, &claudeRequest, projectID, mappedModel)
+	geminiBody, err := s.buildAntigravityCompatGeminiBody(
+		ctx,
+		request.claudeBody,
+		&claudeRequest,
+		projectID,
+		mappedModel,
+		request.reasoningEffort,
+	)
 	if err != nil {
 		return nil, s.writeAntigravityCompatError(c, http.StatusBadRequest, "invalid_request_error", "Invalid request")
 	}
@@ -264,6 +271,7 @@ func (s *AntigravityGatewayService) buildAntigravityCompatGeminiBody(
 	claudeRequest *antigravity.ClaudeRequest,
 	projectID string,
 	mappedModel string,
+	reasoningEffort *string,
 ) ([]byte, error) {
 	if strings.HasPrefix(strings.ToLower(mappedModel), "gemini-") {
 		body, err := convertClaudeMessagesToGeminiGenerateContent(claudeBody)
@@ -281,6 +289,12 @@ func (s *AntigravityGatewayService) buildAntigravityCompatGeminiBody(
 		}
 		if cleaned, cleanErr := cleanGeminiRequest(body); cleanErr == nil {
 			body = cleaned
+		}
+		if level, ok := geminiThinkingLevelFromReasoningEffort(reasoningEffort); ok {
+			body, err = antigravity.ApplyGeminiThinkingConfig(body, mappedModel, level)
+			if err != nil {
+				return nil, err
+			}
 		}
 		return s.wrapV1InternalRequest(projectID, mappedModel, body)
 	}
