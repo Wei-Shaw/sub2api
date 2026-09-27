@@ -222,7 +222,8 @@ apiClient.interceptors.response.use(
             sessionStorage.setItem('auth_expired', '1')
 
             if (!window.location.pathname.includes('/login')) {
-              window.location.href = '/login'
+              window.location.href =
+                '/login?redirect=' + encodeURIComponent(window.location.pathname + window.location.search)
             }
 
             return Promise.reject({
@@ -253,7 +254,8 @@ apiClient.interceptors.response.use(
         }
         // Only redirect if not already on login page
         if (!window.location.pathname.includes('/login')) {
-          window.location.href = '/login'
+          window.location.href =
+            '/login?redirect=' + encodeURIComponent(window.location.pathname + window.location.search)
         }
       }
 

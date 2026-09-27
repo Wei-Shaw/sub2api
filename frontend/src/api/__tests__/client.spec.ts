@@ -403,12 +403,14 @@ describe('API Client', () => {
       await expect(apiClient.get('/test')).rejects.toBeDefined()
 
       expect(localStorage.getItem('auth_token')).toBeNull()
+      const redirectedHref = window.location.href
 
       // 恢复 location
       Object.defineProperty(window, 'location', {
         value: originalLocation,
         writable: true,
       })
+      expect(redirectedHref).toBe('/login?redirect=%2Fdashboard')
     })
 
     it('有 refresh_token 时刷新并重试原请求', async () => {
@@ -516,6 +518,30 @@ describe('API Client', () => {
         expect(localStorage.getItem(key)).toBeNull()
       }
       expect(sessionStorage.getItem('auth_expired')).toBe('1')
+    })
+
+    it('刷新失败跳转登录页时携带编码后的当前路径', async () => {
+      localStorage.setItem('auth_token', 'expired-token')
+      localStorage.setItem('refresh_token', 'refresh-token')
+      localStorage.setItem('auth_user', JSON.stringify({ id: 7 }))
+      const originalLocation = window.location
+      const location = { pathname: '/usage', search: '?page=2&model=claude', href: '/usage?page=2&model=claude' }
+      Object.defineProperty(window, 'location', { value: location, writable: true })
+      const refresh = await import('@/api/tokenRefresh')
+      vi.spyOn(refresh, 'refreshAuthTokens').mockRejectedValueOnce(
+        Object.assign(new axios.AxiosError('Refresh rejected'), { response: { status: 401 } })
+      )
+      apiClient.defaults.adapter = vi.fn().mockRejectedValueOnce({
+        response: { status: 401, data: { code: 'TOKEN_EXPIRED' } },
+        config: { url: '/usage', headers: { Authorization: 'Bearer expired-token' } },
+      })
+
+      try {
+        await expect(apiClient.get('/usage')).rejects.toMatchObject({ code: 'TOKEN_REFRESH_FAILED' })
+        expect(location.href).toBe('/login?redirect=%2Fusage%3Fpage%3D2%26model%3Dclaude')
+      } finally {
+        Object.defineProperty(window, 'location', { value: originalLocation, writable: true })
+      }
     })
 
     it('刷新期间换号时旧请求不会清除新会话', async () => {
