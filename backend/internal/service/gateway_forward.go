@@ -8,6 +8,7 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 	"time"
@@ -32,6 +33,15 @@ const (
 	// 用于防止极端情况下 goroutine 长时间堆积导致资源耗尽。
 	maxRetryElapsed = 10 * time.Second
 )
+
+// redactProxyURL masks the proxy password so logs never carry it.
+func redactProxyURL(raw string) string {
+	u, err := url.Parse(raw)
+	if err != nil {
+		return ""
+	}
+	return u.Redacted()
+}
 
 func (s *GatewayService) shouldRetryUpstreamError(account *Account, statusCode int) bool {
 	// OAuth/Setup Token 账号：仅 403 重试
@@ -341,7 +351,7 @@ func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *A
 
 	// 调试日志：记录即将转发的账号信息
 	logger.LegacyPrintf("service.gateway", "[Forward] Using account: ID=%d Name=%s Platform=%s Type=%s TLSFingerprint=%v Proxy=%s",
-		account.ID, account.Name, account.Platform, account.Type, tlsProfile, proxyURL)
+		account.ID, account.Name, account.Platform, account.Type, tlsProfile, redactProxyURL(proxyURL))
 	// Pre-filter: strip empty text blocks (including nested in tool_result) to prevent upstream 400.
 	if err := replaceBody(StripEmptyTextBlocks(body)); err != nil {
 		return nil, err
