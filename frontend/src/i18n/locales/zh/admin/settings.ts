@@ -13,6 +13,50 @@ export default {
         backup: '数据备份',
         payment: '支付设置',
       },
+      agreement: {
+        title: '登录条款确认',
+        description: '控制登录页是否要求用户先阅读并同意服务条款、隐私政策或其他 Markdown 文档。',
+        enabled: '已启用',
+        disabled: '未启用',
+        displayMode: '展示形式',
+        modeModal: '弹窗',
+        modeCheckbox: '复选框',
+        modeCheckboxHint: '复选框会显示在登录按钮下方，未勾选前所有登录入口禁用。',
+        modeModalHint: '弹窗会在登录页打开，用户拒绝后所有登录入口保持禁用。',
+        updatedAt: '条款更新日期',
+        updatedAtHint: '日期或文档内容变化后，用户需要重新同意。',
+        documents: '协议文档',
+        documentsHint: '文档名称可自定义，内容按 Markdown 保存。可参考：服务条款、使用政策、支持的国家和地区、服务特定条款。',
+        addDocument: '添加文档',
+        untitledDocument: '未命名文档',
+        documentTitle: '文档名称',
+        documentTitlePlaceholder: '例如：服务条款',
+        routeSlug: '路由标识',
+        markdownContent: 'Markdown 内容',
+        markdownContentPlaceholder: '在这里填写正式 Markdown 内容。',
+        defaultDocuments: {
+          terms: '服务条款',
+          usagePolicy: '使用政策',
+          supportedRegions: '支持的国家和地区',
+          serviceSpecificTerms: '服务特定条款',
+        },
+        documentRequired: '启用登录条款确认时，至少需要保留一份文档。',
+        documentTitleRequired: '登录条款文档名称不能为空。',
+        duplicateRoute: '登录条款文档路由不能重复：/legal/{id}',
+      },
+      oauthLogin: {
+        title: '邮箱快捷登录',
+        description: '开启 GitHub 或 Google 邮箱授权登录后，系统会读取已验证邮箱，存在则直接登录，不存在则自动注册。',
+        githubHint: 'GitHub OAuth App 需要 read:user user:email 权限，回调地址填写下方后端地址。',
+        githubGuide: '开通引导：GitHub Settings → Developer settings → {link} → New OAuth App；Homepage URL 填站点域名，Authorization callback URL 填下面的后端回调地址。',
+        googleHint: 'Google OAuth 客户端需要 openid email profile 范围，并在凭据里登记后端回调地址。',
+        googleGuide: '开通引导：Google Cloud Console → APIs & Services → OAuth consent screen 完成同意屏幕；Credentials → Create Credentials → OAuth client ID，类型选择 Web application，并把下面地址加入 Authorized redirect URIs。',
+        secretConfiguredPlaceholder: '密钥已配置，留空以保留当前值。',
+        backendCallbackUrl: '后端回调地址',
+        frontendCallbackUrl: '前端回跳地址',
+        generateAndCopy: '生成并复制',
+        callbackUrlSetAndCopied: '回调地址已写入并复制。',
+      },
       features: {
         channelMonitor: {
           title: '渠道监控',
@@ -345,7 +389,10 @@ export default {
         syncCorpEmailTargetHint: '默认 dingtalk_email / 钉钉企业邮箱；保存设置时按上述属性键和显示名称自动创建用户属性（已存在则仅同步显示名称）',
         syncDeptTarget: '属性键',
         syncDeptTargetHint: '默认 dingtalk_department / 钉钉部门；保存设置时按上述属性键和显示名称自动创建用户属性（已存在则仅同步显示名称）',
-        syncAttrDisplayName: '显示名称'
+        syncAttrDisplayName: '显示名称',
+        defaultAttrCorpEmail: '钉钉企业邮箱',
+        defaultAttrDisplayName: '钉钉姓名',
+        defaultAttrDept: '钉钉部门'
       },
       oidc: {
         title: 'OIDC 登录',
@@ -934,7 +981,18 @@ export default {
         validationRequired: '主题和 HTML 模板不能为空',
         empty: '暂无可用的邮件模板事件或语言。',
         noPreview: '刷新预览后查看渲染后的邮件主题。',
-        customized: '已自定义'
+        customized: '已自定义',
+        optional: '可退订通知',
+        transactional: '事务邮件',
+        categories: {
+          notification: '通知',
+          auth: '认证安全',
+          subscription: '订阅',
+          billing: '计费',
+          admin: '管理告警',
+          risk_control: '风控',
+          ops: '运维'
+        }
       },
       opsMonitoring: {
         title: '运维监控',
@@ -1139,7 +1197,25 @@ export default {
         redirectUrlSetAndCopied: '已使用当前站点生成回调地址并复制到剪贴板',
         frontendRedirectUrlLabel: '前端回调地址',
         frontendRedirectUrlPlaceholder: '/auth/wechat/callback',
-        frontendRedirectUrlHint: '通常用于前端路由回调地址，需与后端配置保持一致。'
+        frontendRedirectUrlHint: '通常用于前端路由回调地址，需与后端配置保持一致。',
+        pcAppTitle: 'PC 应用',
+        pcAppHint: '桌面浏览器通过微信开放平台扫码登录。可与公众号或移动应用同时存在。',
+        pcAppIdLabel: 'PC AppID',
+        pcAppIdPlaceholder: '微信开放平台 PC 应用 AppID',
+        pcAppSecretLabel: 'PC AppSecret',
+        pcAppSecretPlaceholder: '微信开放平台 PC 应用 AppSecret',
+        mpTitle: '公众号',
+        mpHint: '仅在微信内浏览器可用；非微信环境下会显示不可用。',
+        mpAppIdLabel: '公众号 AppID',
+        mpAppSecretLabel: '公众号 AppSecret',
+        mobileTitle: '移动应用',
+        mobileHint: '原生移动端通过微信 SDK 唤起授权，网页端不会直接发起该流程。',
+        mobileAppIdLabel: '移动应用 AppID',
+        mobileAppSecretLabel: '移动应用 AppSecret',
+        sameOpenPlatformWarning: '如果同时启用 PC 应用和公众号/移动应用，这些应用需要挂在同一个微信开放平台主体下，否则 UnionID 无法稳定归并账号。',
+        browserRedirectUrlLabel: '浏览器回调地址',
+        browserRedirectUrlHint: '用于 PC 应用和公众号的网页回调。移动应用走原生 SDK 时不直接使用这个浏览器回调。',
+        mpMobileConflict: '公众号和移动应用不能同时启用。'
       },
       authSourceDefaults: {
         title: '认证来源默认值',
@@ -1163,6 +1239,15 @@ export default {
           wechat: {
             title: '微信登录',
             description: '适用于微信第三方注册的新用户默认配额。'
+          },
+          github: {
+            description: '通过 GitHub 已验证邮箱首次注册或首次绑定时应用。'
+          },
+          google: {
+            description: '通过 Google 已验证邮箱首次注册或首次绑定时应用。'
+          },
+          dingtalk: {
+            description: '通过钉钉首次注册或首次绑定时应用。'
           }
         },
         grantOnFirstBindLabel: '首次绑定时授权',

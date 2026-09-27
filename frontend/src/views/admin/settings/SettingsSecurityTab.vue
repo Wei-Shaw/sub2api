@@ -1293,14 +1293,11 @@
         class="card-header"
       >
         <h2 class="card-title">
-          {{ localText("邮箱快捷登录", "Email OAuth Sign-in") }}
+          {{ t("admin.settings.oauthLogin.title") }}
         </h2>
         <p class="mt-1 text-sm text-fg-muted">
           {{
-            localText(
-              "开启 GitHub 或 Google 邮箱授权登录后，系统会读取已验证邮箱，存在则直接登录，不存在则自动注册。",
-              "After GitHub or Google email OAuth is enabled, the system reads a verified email, signs in matching users, and auto-registers missing users.",
-            )
+            t("admin.settings.oauthLogin.description")
           }}
         </p>
       </div>
@@ -1314,10 +1311,7 @@
                 </h3>
                 <p class="mt-1 text-sm text-fg-muted">
                   {{
-                    localText(
-                      "GitHub OAuth App 需要 read:user user:email 权限，回调地址填写下方后端地址。",
-                      "GitHub OAuth App needs read:user user:email scopes. Use the backend callback URL below.",
-                    )
+                    t("admin.settings.oauthLogin.githubHint")
                   }}
                 </p>
               </div>
@@ -1326,28 +1320,17 @@
 
             <div v-if="form.github_oauth_enabled" class="mt-4 space-y-4">
               <div class="border-l border-border-strong px-3 py-1 text-xs text-fg-muted">
-                <template v-if="isZhLocale">
-                  开通引导：GitHub Settings → Developer settings →
-                  <a
-                    data-testid="github-oauth-apps-guide-link"
-                    href="https://github.com/settings/developers"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    class="font-medium text-accent hover:underline"
-                  >OAuth Apps</a>
-                  → New OAuth App；Homepage URL 填站点域名，Authorization callback URL 填下面的后端回调地址。
-                </template>
-                <template v-else>
-                  Setup guide: GitHub Settings → Developer settings →
-                  <a
-                    data-testid="github-oauth-apps-guide-link"
-                    href="https://github.com/settings/developers"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    class="font-medium text-accent hover:underline"
-                  >OAuth Apps</a>
-                  → New OAuth App. Use your site origin as Homepage URL and the backend callback URL below as Authorization callback URL.
-                </template>
+                <i18n-t keypath="admin.settings.oauthLogin.githubGuide" tag="span" scope="global">
+                  <template #link>
+                    <a
+                      data-testid="github-oauth-apps-guide-link"
+                      href="https://github.com/settings/developers"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      class="font-medium text-accent hover:underline"
+                    >OAuth Apps</a>
+                  </template>
+                </i18n-t>
               </div>
 
               <div class="grid grid-cols-1 gap-4 lg:grid-cols-2">
@@ -1368,7 +1351,7 @@
                     class="input font-mono text-sm"
                     :placeholder="
                       form.github_oauth_client_secret_configured
-                        ? localText('密钥已配置，留空以保留当前值。', 'Secret configured. Leave empty to keep the current value.')
+                        ? t('admin.settings.oauthLogin.secretConfiguredPlaceholder')
                         : 'GitHub OAuth Client Secret'
                     "
                   />
@@ -1377,7 +1360,7 @@
 
               <div>
                 <label class="input-label">
-                  {{ localText("后端回调地址", "Backend Callback URL") }}
+                  {{ t("admin.settings.oauthLogin.backendCallbackUrl") }}
                 </label>
                 <input
                   v-model="form.github_oauth_redirect_url"
@@ -1391,7 +1374,7 @@
                     class="btn btn-secondary btn-sm w-fit"
                     @click="setAndCopyEmailOAuthRedirectUrl('github')"
                   >
-                    {{ localText("生成并复制", "Generate and copy") }}
+                    {{ t("admin.settings.oauthLogin.generateAndCopy") }}
                   </button>
                   <code
                     v-if="githubOAuthRedirectUrlSuggestion"
@@ -1404,7 +1387,7 @@
 
               <div>
                 <label class="input-label">
-                  {{ localText("前端回跳地址", "Frontend Callback URL") }}
+                  {{ t("admin.settings.oauthLogin.frontendCallbackUrl") }}
                 </label>
                 <input
                   v-model="form.github_oauth_frontend_redirect_url"
@@ -1424,10 +1407,7 @@
                 </h3>
                 <p class="mt-1 text-sm text-fg-muted">
                   {{
-                    localText(
-                      "Google OAuth 客户端需要 openid email profile 范围，并在凭据里登记后端回调地址。",
-                      "Google OAuth client needs openid email profile scopes and the backend callback URL registered in credentials.",
-                    )
+                    t("admin.settings.oauthLogin.googleHint")
                   }}
                 </p>
               </div>
@@ -1437,10 +1417,7 @@
             <div v-if="form.google_oauth_enabled" class="mt-4 space-y-4">
               <div class="border-l border-border-strong px-3 py-1 text-xs text-fg-muted">
                 {{
-                  localText(
-                    "开通引导：Google Cloud Console → APIs & Services → OAuth consent screen 完成同意屏幕；Credentials → Create Credentials → OAuth client ID，类型选择 Web application，并把下面地址加入 Authorized redirect URIs。",
-                    "Setup guide: Google Cloud Console → APIs & Services → OAuth consent screen, then Credentials → Create Credentials → OAuth client ID, choose Web application, and add the URL below to Authorized redirect URIs.",
-                  )
+                  t("admin.settings.oauthLogin.googleGuide")
                 }}
               </div>
 
@@ -1462,7 +1439,7 @@
                     class="input font-mono text-sm"
                     :placeholder="
                       form.google_oauth_client_secret_configured
-                        ? localText('密钥已配置，留空以保留当前值。', 'Secret configured. Leave empty to keep the current value.')
+                        ? t('admin.settings.oauthLogin.secretConfiguredPlaceholder')
                         : 'Google OAuth Client Secret'
                     "
                   />
@@ -1471,7 +1448,7 @@
 
               <div>
                 <label class="input-label">
-                  {{ localText("后端回调地址", "Backend Callback URL") }}
+                  {{ t("admin.settings.oauthLogin.backendCallbackUrl") }}
                 </label>
                 <input
                   v-model="form.google_oauth_redirect_url"
@@ -1485,7 +1462,7 @@
                     class="btn btn-secondary btn-sm w-fit"
                     @click="setAndCopyEmailOAuthRedirectUrl('google')"
                   >
-                    {{ localText("生成并复制", "Generate and copy") }}
+                    {{ t("admin.settings.oauthLogin.generateAndCopy") }}
                   </button>
                   <code
                     v-if="googleOAuthRedirectUrlSuggestion"
@@ -1498,7 +1475,7 @@
 
               <div>
                 <label class="input-label">
-                  {{ localText("前端回跳地址", "Frontend Callback URL") }}
+                  {{ t("admin.settings.oauthLogin.frontendCallbackUrl") }}
                 </label>
                 <input
                   v-model="form.google_oauth_frontend_redirect_url"
@@ -1552,14 +1529,11 @@
               <div class="flex items-start justify-between gap-4">
                 <div>
                   <h3 class="font-medium text-fg">
-                    {{ localText("PC 应用", "PC App") }}
+                    {{ t("admin.settings.wechatConnect.pcAppTitle") }}
                   </h3>
                   <p class="mt-1 text-sm text-fg-muted">
                     {{
-                      localText(
-                        "桌面浏览器通过微信开放平台扫码登录。可与公众号或移动应用同时存在。",
-                        "Desktop browsers sign in through WeChat Open Platform QR login. This can coexist with Official Account or Mobile App.",
-                      )
+                      t("admin.settings.wechatConnect.pcAppHint")
                     }}
                   </p>
                 </div>
@@ -1577,7 +1551,7 @@
                   <label
                     class="input-label"
                   >
-                    {{ localText("PC AppID", "PC App ID") }}
+                    {{ t("admin.settings.wechatConnect.pcAppIdLabel") }}
                   </label>
                   <input
                     v-model="form.wechat_connect_open_app_id"
@@ -1585,10 +1559,7 @@
                     type="text"
                     class="input font-mono text-sm"
                     :placeholder="
-                      localText(
-                        '微信开放平台 PC 应用 AppID',
-                        'WeChat Open Platform PC App ID',
-                      )
+                      t('admin.settings.wechatConnect.pcAppIdPlaceholder')
                     "
                   />
                 </div>
@@ -1596,7 +1567,7 @@
                   <label
                     class="input-label"
                   >
-                    {{ localText("PC AppSecret", "PC App Secret") }}
+                    {{ t("admin.settings.wechatConnect.pcAppSecretLabel") }}
                   </label>
                   <input
                     v-model="form.wechat_connect_open_app_secret"
@@ -1605,14 +1576,8 @@
                     class="input font-mono text-sm"
                     :placeholder="
                       form.wechat_connect_open_app_secret_configured
-                        ? localText(
-                            '密钥已配置，留空以保留当前值。',
-                            'Secret configured. Leave empty to keep the current value.',
-                          )
-                        : localText(
-                            '微信开放平台 PC 应用 AppSecret',
-                            'WeChat Open Platform PC App Secret',
-                          )
+                        ? t('admin.settings.wechatConnect.appSecretConfiguredPlaceholder')
+                        : t('admin.settings.wechatConnect.pcAppSecretPlaceholder')
                     "
                   />
                 </div>
@@ -1625,14 +1590,11 @@
               <div class="flex items-start justify-between gap-4">
                 <div>
                   <h3 class="font-medium text-fg">
-                    {{ localText("公众号", "Official Account") }}
+                    {{ t("admin.settings.wechatConnect.mpTitle") }}
                   </h3>
                   <p class="mt-1 text-sm text-fg-muted">
                     {{
-                      localText(
-                        "仅在微信内浏览器可用；非微信环境下会显示不可用。",
-                        "Only available inside the WeChat browser. It is shown as unavailable outside WeChat.",
-                      )
+                      t("admin.settings.wechatConnect.mpHint")
                     }}
                   </p>
                 </div>
@@ -1650,7 +1612,7 @@
                   <label
                     class="input-label"
                   >
-                    {{ localText("公众号 AppID", "Official Account App ID") }}
+                    {{ t("admin.settings.wechatConnect.mpAppIdLabel") }}
                   </label>
                   <input
                     v-model="form.wechat_connect_mp_app_id"
@@ -1658,10 +1620,7 @@
                     type="text"
                     class="input font-mono text-sm"
                     :placeholder="
-                      localText(
-                        '公众号 AppID',
-                        'Official Account App ID',
-                      )
+                      t('admin.settings.wechatConnect.mpAppIdLabel')
                     "
                   />
                 </div>
@@ -1670,10 +1629,7 @@
                     class="input-label"
                   >
                     {{
-                      localText(
-                        "公众号 AppSecret",
-                        "Official Account App Secret",
-                      )
+                      t("admin.settings.wechatConnect.mpAppSecretLabel")
                     }}
                   </label>
                   <input
@@ -1683,14 +1639,8 @@
                     class="input font-mono text-sm"
                     :placeholder="
                       form.wechat_connect_mp_app_secret_configured
-                        ? localText(
-                            '密钥已配置，留空以保留当前值。',
-                            'Secret configured. Leave empty to keep the current value.',
-                          )
-                        : localText(
-                            '公众号 AppSecret',
-                            'Official Account App Secret',
-                          )
+                        ? t('admin.settings.wechatConnect.appSecretConfiguredPlaceholder')
+                        : t('admin.settings.wechatConnect.mpAppSecretLabel')
                     "
                   />
                 </div>
@@ -1703,14 +1653,11 @@
               <div class="flex items-start justify-between gap-4">
                 <div>
                   <h3 class="font-medium text-fg">
-                    {{ localText("移动应用", "Mobile App") }}
+                    {{ t("admin.settings.wechatConnect.mobileTitle") }}
                   </h3>
                   <p class="mt-1 text-sm text-fg-muted">
                     {{
-                      localText(
-                        "原生移动端通过微信 SDK 唤起授权，网页端不会直接发起该流程。",
-                        "Native mobile clients start authorization through the WeChat SDK. The web UI does not launch this flow directly.",
-                      )
+                      t("admin.settings.wechatConnect.mobileHint")
                     }}
                   </p>
                 </div>
@@ -1728,7 +1675,7 @@
                   <label
                     class="input-label"
                   >
-                    {{ localText("移动应用 AppID", "Mobile App ID") }}
+                    {{ t("admin.settings.wechatConnect.mobileAppIdLabel") }}
                   </label>
                   <input
                     v-model="form.wechat_connect_mobile_app_id"
@@ -1736,10 +1683,7 @@
                     type="text"
                     class="input font-mono text-sm"
                     :placeholder="
-                      localText(
-                        '移动应用 AppID',
-                        'Mobile App ID',
-                      )
+                      t('admin.settings.wechatConnect.mobileAppIdLabel')
                     "
                   />
                 </div>
@@ -1747,7 +1691,7 @@
                   <label
                     class="input-label"
                   >
-                    {{ localText("移动应用 AppSecret", "Mobile App Secret") }}
+                    {{ t("admin.settings.wechatConnect.mobileAppSecretLabel") }}
                   </label>
                   <input
                     v-model="form.wechat_connect_mobile_app_secret"
@@ -1756,14 +1700,8 @@
                     class="input font-mono text-sm"
                     :placeholder="
                       form.wechat_connect_mobile_app_secret_configured
-                        ? localText(
-                            '密钥已配置，留空以保留当前值。',
-                            'Secret configured. Leave empty to keep the current value.',
-                          )
-                        : localText(
-                            '移动应用 AppSecret',
-                            'Mobile App Secret',
-                          )
+                        ? t('admin.settings.wechatConnect.appSecretConfiguredPlaceholder')
+                        : t('admin.settings.wechatConnect.mobileAppSecretLabel')
                     "
                   />
                 </div>
@@ -1780,10 +1718,7 @@
             class="border border-warning/40 bg-warning-weak px-4 py-3 text-sm text-warning-strong"
           >
             {{
-              localText(
-                "如果同时启用 PC 应用和公众号/移动应用，这些应用需要挂在同一个微信开放平台主体下，否则 UnionID 无法稳定归并账号。",
-                "When PC App is enabled together with Official Account or Mobile App, they should belong to the same WeChat Open Platform account so UnionID can merge identities reliably.",
-              )
+              t("admin.settings.wechatConnect.sameOpenPlatformWarning")
             }}
           </div>
 
@@ -1793,10 +1728,7 @@
                 class="input-label"
               >
                 {{
-                  localText(
-                    "浏览器回调地址",
-                    "Browser Redirect URL",
-                  )
+                  t("admin.settings.wechatConnect.browserRedirectUrlLabel")
                 }}
               </label>
               <input
@@ -1808,10 +1740,7 @@
               />
               <p class="input-hint">
                 {{
-                  localText(
-                    "用于 PC 应用和公众号的网页回调。移动应用走原生 SDK 时不直接使用这个浏览器回调。",
-                    "Used by PC App and Official Account browser callbacks. Native mobile SDK flows do not start from this browser callback directly.",
-                  )
+                  t("admin.settings.wechatConnect.browserRedirectUrlHint")
                 }}
               </p>
               <div
@@ -2037,7 +1966,7 @@
                   <input
                     v-model="form.dingtalk_connect_sync_display_name_attr_name"
                     type="text"
-                    :placeholder="localText('钉钉姓名', 'DingTalk Name')"
+                    :placeholder="t('admin.settings.dingtalk.defaultAttrDisplayName')"
                     class="input text-sm flex-1 max-w-xs"
                   />
                 </div>
@@ -2083,7 +2012,7 @@
                   <input
                     v-model="form.dingtalk_connect_sync_corp_email_attr_name"
                     type="text"
-                    :placeholder="localText('钉钉企业邮箱', 'DingTalk Corporate Email')"
+                    :placeholder="t('admin.settings.dingtalk.defaultAttrCorpEmail')"
                     class="input text-sm flex-1 max-w-xs"
                   />
                 </div>
@@ -2129,7 +2058,7 @@
                   <input
                     v-model="form.dingtalk_connect_sync_dept_attr_name"
                     type="text"
-                    :placeholder="localText('钉钉部门', 'DingTalk Department')"
+                    :placeholder="t('admin.settings.dingtalk.defaultAttrDept')"
                     class="input text-sm flex-1 max-w-xs"
                   />
                 </div>
@@ -2586,9 +2515,7 @@ const {
   handleWeChatMPEnabledChange,
   handleWeChatMobileEnabledChange,
   handleWeChatOpenEnabledChange,
-  isZhLocale,
   linuxdoRedirectUrlSuggestion,
-  localText,
   newAdminApiKey,
   oidcRedirectUrlSuggestion,
   panelRateLimitForm,

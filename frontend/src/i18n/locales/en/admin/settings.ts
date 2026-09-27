@@ -13,6 +13,50 @@ export default {
         backup: 'Backup',
         payment: 'Payment',
       },
+      agreement: {
+        title: 'Login agreement',
+        description: 'Control whether the login page requires users to accept Markdown policy documents first.',
+        enabled: 'Enabled',
+        disabled: 'Disabled',
+        displayMode: 'Display mode',
+        modeModal: 'Modal',
+        modeCheckbox: 'Checkbox',
+        modeCheckboxHint: 'The checkbox appears below the login button and gates all login actions.',
+        modeModalHint: 'The modal opens on the login page and gates all login actions until accepted.',
+        updatedAt: 'Updated date',
+        updatedAtHint: 'Changing the date or content requires fresh consent.',
+        documents: 'Agreement documents',
+        documentsHint: 'Document titles are customizable and content is saved as Markdown.',
+        addDocument: 'Add document',
+        untitledDocument: 'Untitled document',
+        documentTitle: 'Document title',
+        documentTitlePlaceholder: 'Example: Terms of Service',
+        routeSlug: 'Route slug',
+        markdownContent: 'Markdown content',
+        markdownContentPlaceholder: 'Write the final Markdown content here.',
+        defaultDocuments: {
+          terms: 'Terms of Service',
+          usagePolicy: 'Usage Policy',
+          supportedRegions: 'Supported Countries and Regions',
+          serviceSpecificTerms: 'Service-Specific Terms',
+        },
+        documentRequired: 'At least one document is required when login agreement is enabled.',
+        documentTitleRequired: 'Login agreement document title cannot be empty.',
+        duplicateRoute: 'Login agreement document routes cannot be duplicated: /legal/{id}',
+      },
+      oauthLogin: {
+        title: 'Email OAuth Sign-in',
+        description: 'After GitHub or Google email OAuth is enabled, the system reads a verified email, signs in matching users, and auto-registers missing users.',
+        githubHint: 'GitHub OAuth App needs read:user user:email scopes. Use the backend callback URL below.',
+        githubGuide: 'Setup guide: GitHub Settings → Developer settings → {link} → New OAuth App. Use your site origin as Homepage URL and the backend callback URL below as Authorization callback URL.',
+        googleHint: 'Google OAuth client needs openid email profile scopes and the backend callback URL registered in credentials.',
+        googleGuide: 'Setup guide: Google Cloud Console → APIs & Services → OAuth consent screen, then Credentials → Create Credentials → OAuth client ID, choose Web application, and add the URL below to Authorized redirect URIs.',
+        secretConfiguredPlaceholder: 'Secret configured. Leave empty to keep the current value.',
+        backendCallbackUrl: 'Backend Callback URL',
+        frontendCallbackUrl: 'Frontend Callback URL',
+        generateAndCopy: 'Generate and copy',
+        callbackUrlSetAndCopied: 'Callback URL set and copied.',
+      },
       features: {
         channelMonitor: {
           title: 'Channel Monitor',
@@ -348,7 +392,10 @@ export default {
         syncCorpEmailTargetHint: 'Defaults to dingtalk_email / DingTalk Corporate Email. Saving settings auto-creates the user attribute by the key and display name above (existing definition only has its display name synced).',
         syncDeptTarget: 'Attribute key',
         syncDeptTargetHint: 'Defaults to dingtalk_department / DingTalk Department. Saving settings auto-creates the user attribute by the key and display name above (existing definition only has its display name synced).',
-        syncAttrDisplayName: 'Display name'
+        syncAttrDisplayName: 'Display name',
+        defaultAttrCorpEmail: 'DingTalk Corporate Email',
+        defaultAttrDisplayName: 'DingTalk Name',
+        defaultAttrDept: 'DingTalk Department'
       },
       oidc: {
         title: 'OIDC Login',
@@ -940,7 +987,18 @@ export default {
         validationRequired: 'Subject and HTML template are required',
         empty: 'No email template events or locales are available yet.',
         noPreview: 'Refresh the preview to see the rendered email subject.',
-        customized: 'Customized'
+        customized: 'Customized',
+        optional: 'Optional',
+        transactional: 'Transactional',
+        categories: {
+          notification: 'Notification',
+          auth: 'Auth',
+          subscription: 'Subscription',
+          billing: 'Billing',
+          admin: 'Admin',
+          risk_control: 'Risk Control',
+          ops: 'Ops'
+        }
       },
       opsMonitoring: {
         title: 'Ops Monitoring',
@@ -1146,7 +1204,25 @@ export default {
         redirectUrlSetAndCopied: 'Redirect URL generated and copied to clipboard',
         frontendRedirectUrlLabel: 'Frontend redirect URL',
         frontendRedirectUrlPlaceholder: '/auth/wechat/callback',
-        frontendRedirectUrlHint: 'Usually the frontend route callback path; keep it aligned with the backend.'
+        frontendRedirectUrlHint: 'Usually the frontend route callback path; keep it aligned with the backend.',
+        pcAppTitle: 'PC App',
+        pcAppHint: 'Desktop browsers sign in through WeChat Open Platform QR login. This can coexist with Official Account or Mobile App.',
+        pcAppIdLabel: 'PC App ID',
+        pcAppIdPlaceholder: 'WeChat Open Platform PC App ID',
+        pcAppSecretLabel: 'PC App Secret',
+        pcAppSecretPlaceholder: 'WeChat Open Platform PC App Secret',
+        mpTitle: 'Official Account',
+        mpHint: 'Only available inside the WeChat browser. It is shown as unavailable outside WeChat.',
+        mpAppIdLabel: 'Official Account App ID',
+        mpAppSecretLabel: 'Official Account App Secret',
+        mobileTitle: 'Mobile App',
+        mobileHint: 'Native mobile clients start authorization through the WeChat SDK. The web UI does not launch this flow directly.',
+        mobileAppIdLabel: 'Mobile App ID',
+        mobileAppSecretLabel: 'Mobile App Secret',
+        sameOpenPlatformWarning: 'When PC App is enabled together with Official Account or Mobile App, they should belong to the same WeChat Open Platform account so UnionID can merge identities reliably.',
+        browserRedirectUrlLabel: 'Browser Redirect URL',
+        browserRedirectUrlHint: 'Used by PC App and Official Account browser callbacks. Native mobile SDK flows do not start from this browser callback directly.',
+        mpMobileConflict: 'Official Account and Mobile App cannot be enabled at the same time.'
       },
       authSourceDefaults: {
         title: 'Auth Source Defaults',
@@ -1170,6 +1246,15 @@ export default {
           wechat: {
             title: 'WeChat signup',
             description: 'Default quota grants for WeChat signups.'
+          },
+          github: {
+            description: 'Applied on first signup or first bind through a verified GitHub email.'
+          },
+          google: {
+            description: 'Applied on first signup or first bind through a verified Google email.'
+          },
+          dingtalk: {
+            description: 'Applied on first signup or first bind through DingTalk.'
           }
         },
         grantOnFirstBindLabel: 'Grant on first bind',

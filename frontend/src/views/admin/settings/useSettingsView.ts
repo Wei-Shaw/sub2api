@@ -247,11 +247,6 @@ export function useSettingsView() {
   // 关闭 step-up 开关是敏感操作：后端返回 STEP_UP_REQUIRED 时弹 TOTP 码重试
   const settingsStepUp = useStepUp();
   const adminSettingsStore = useAdminSettingsStore();
-  const isZhLocale = computed(() => locale.value.startsWith("zh"));
-
-  function localText(zh: string, en: string): string {
-    return isZhLocale.value ? zh : en;
-  }
 
   const paymentGuideHref = computed(() =>
     locale.value.startsWith("zh")
@@ -538,22 +533,22 @@ export function useSettingsView() {
     return [
       {
         id: "terms",
-        title: localText("服务条款", "Terms of Service"),
+        title: t("admin.settings.agreement.defaultDocuments.terms"),
         content_md: "",
       },
       {
         id: "usage-policy",
-        title: localText("使用政策", "Usage Policy"),
+        title: t("admin.settings.agreement.defaultDocuments.usagePolicy"),
         content_md: "",
       },
       {
         id: "supported-regions",
-        title: localText("支持的国家和地区", "Supported Countries and Regions"),
+        title: t("admin.settings.agreement.defaultDocuments.supportedRegions"),
         content_md: "",
       },
       {
         id: "service-specific-terms",
-        title: localText("服务特定条款", "Service-Specific Terms"),
+        title: t("admin.settings.agreement.defaultDocuments.serviceSpecificTerms"),
         content_md: "",
       },
     ];
@@ -1071,9 +1066,9 @@ export function useSettingsView() {
     dingtalk_connect_sync_corp_email_attr_key: "dingtalk_email",
     dingtalk_connect_sync_display_name_attr_key: "dingtalk_name",
     dingtalk_connect_sync_dept_attr_key: "dingtalk_department",
-    dingtalk_connect_sync_corp_email_attr_name: localText("钉钉企业邮箱", "DingTalk Corporate Email"),
-    dingtalk_connect_sync_display_name_attr_name: localText("钉钉姓名", "DingTalk Name"),
-    dingtalk_connect_sync_dept_attr_name: localText("钉钉部门", "DingTalk Department"),
+    dingtalk_connect_sync_corp_email_attr_name: t("admin.settings.dingtalk.defaultAttrCorpEmail"),
+    dingtalk_connect_sync_display_name_attr_name: t("admin.settings.dingtalk.defaultAttrDisplayName"),
+    dingtalk_connect_sync_dept_attr_name: t("admin.settings.dingtalk.defaultAttrDept"),
     wechat_connect_enabled: false,
     wechat_connect_app_id: "",
     wechat_connect_app_secret: "",
@@ -1386,26 +1381,17 @@ export function useSettingsView() {
     {
       source: "github" as AuthSourceType,
       title: "GitHub",
-      description: localText(
-        "通过 GitHub 已验证邮箱首次注册或首次绑定时应用。",
-        "Applied on first signup or first bind through a verified GitHub email.",
-      ),
+      description: t("admin.settings.authSourceDefaults.sources.github.description"),
     },
     {
       source: "google" as AuthSourceType,
       title: "Google",
-      description: localText(
-        "通过 Google 已验证邮箱首次注册或首次绑定时应用。",
-        "Applied on first signup or first bind through a verified Google email.",
-      ),
+      description: t("admin.settings.authSourceDefaults.sources.google.description"),
     },
     {
       source: "dingtalk" as AuthSourceType,
       title: t("auth.dingtalkProviderName"),
-      description: localText(
-        "通过钉钉首次注册或首次绑定时应用。",
-        "Applied on first signup or first bind through DingTalk.",
-      ),
+      description: t("admin.settings.authSourceDefaults.sources.dingtalk.description"),
     },
   ]);
 
@@ -1875,7 +1861,7 @@ export function useSettingsView() {
     }
     await copyToClipboard(
       url,
-      localText("回调地址已写入并复制。", "Callback URL set and copied."),
+      t("admin.settings.oauthLogin.callbackUrlSetAndCopied"),
     );
   }
 
@@ -2477,34 +2463,23 @@ export function useSettingsView() {
       const normalizedLoginAgreementDocuments =
         normalizeLoginAgreementDocumentsForSave();
       if (form.login_agreement_enabled && normalizedLoginAgreementDocuments.length === 0) {
-        appStore.showError(
-          localText(
-            "启用登录条款确认时，至少需要保留一份文档。",
-            "At least one document is required when login agreement is enabled.",
-          ),
-        );
+        appStore.showError(t("admin.settings.agreement.documentRequired"));
         return;
       }
       const emptyTitleDocument = normalizedLoginAgreementDocuments.find(
         (doc) => !doc.title,
       );
       if (emptyTitleDocument) {
-        appStore.showError(
-          localText(
-            "登录条款文档名称不能为空。",
-            "Login agreement document title cannot be empty.",
-          ),
-        );
+        appStore.showError(t("admin.settings.agreement.documentTitleRequired"));
         return;
       }
       const duplicateLoginAgreementDocumentId =
         findDuplicateLoginAgreementDocumentId(normalizedLoginAgreementDocuments);
       if (duplicateLoginAgreementDocumentId) {
         appStore.showError(
-          localText(
-            `登录条款文档路由不能重复：/legal/${duplicateLoginAgreementDocumentId}`,
-            `Login agreement document routes cannot be duplicated: /legal/${duplicateLoginAgreementDocumentId}`,
-          ),
+          t("admin.settings.agreement.duplicateRoute", {
+            id: duplicateLoginAgreementDocumentId,
+          }),
         );
         return;
       }
@@ -2552,12 +2527,7 @@ export function useSettingsView() {
       }
 
       if (form.wechat_connect_mp_enabled && form.wechat_connect_mobile_enabled) {
-        appStore.showError(
-          localText(
-            "公众号和移动应用不能同时启用。",
-            "Official Account and Mobile App cannot be enabled at the same time.",
-          ),
-        );
+        appStore.showError(t("admin.settings.wechatConnect.mpMobileConflict"));
         return;
       }
       // Validate URL fields — novalidate disables browser-native checks, so we validate here
@@ -4314,8 +4284,6 @@ export function useSettingsView() {
     appStore,
     settingsStepUp,
     adminSettingsStore,
-    isZhLocale,
-    localText,
     paymentGuideHref,
     paymentMethodsHref,
     activeTab,

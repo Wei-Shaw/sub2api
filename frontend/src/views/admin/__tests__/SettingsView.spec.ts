@@ -365,6 +365,29 @@ const ImageUploadStub = defineComponent({
   },
 });
 
+// The app registers <i18n-t> globally via the vue-i18n plugin; this spec mocks
+// vue-i18n instead, so render the keypath plus its slots.
+const I18nTStub = defineComponent({
+  props: {
+    keypath: {
+      type: String,
+      required: true,
+    },
+    tag: {
+      type: String,
+      default: "span",
+    },
+  },
+  setup(props, { slots }) {
+    return () =>
+      h(
+        props.tag,
+        { "data-keypath": props.keypath },
+        Object.values(slots).flatMap((slot) => slot?.() ?? []),
+      );
+  },
+});
+
 const baseSettingsResponse = {
   registration_enabled: true,
   email_verify_enabled: false,
@@ -547,6 +570,7 @@ const baseSettingsResponse = {
 function mountView() {
   return mount(SettingsView, {
     global: {
+      components: { "i18n-t": I18nTStub },
       stubs: {
         AppLayout: AppLayoutStub,
         Select: SelectStub,
@@ -2186,5 +2210,68 @@ describe("admin SettingsView custom page iframe hosts", () => {
 
     expect(updateSettings).not.toHaveBeenCalled();
     expect(showError).toHaveBeenCalled();
+  });
+});
+
+describe("admin SettingsView settings UX", () => {
+  beforeEach(() => {
+    getSettings.mockReset();
+    updateSettings.mockReset();
+    getWebSearchEmulationConfig.mockReset();
+    updateWebSearchEmulationConfig.mockReset();
+    getAdminApiKey.mockReset();
+    getOverloadCooldownSettings.mockReset();
+    getRateLimit429CooldownSettings.mockReset();
+    updateRateLimit429CooldownSettings.mockReset();
+    getStreamTimeoutSettings.mockReset();
+    getRectifierSettings.mockReset();
+    getBetaPolicySettings.mockReset();
+    getGroups.mockReset();
+    listProxies.mockReset();
+    getProviders.mockReset();
+    fetchPublicSettings.mockReset();
+    adminSettingsFetch.mockReset();
+    showError.mockReset();
+    showSuccess.mockReset();
+    localeRef.value = "zh-CN";
+
+    getSettings.mockResolvedValue({ ...baseSettingsResponse });
+    updateSettings.mockImplementation(async (payload) => ({
+      ...baseSettingsResponse,
+      ...payload,
+    }));
+    getWebSearchEmulationConfig.mockResolvedValue({ enabled: false, providers: [] });
+    updateWebSearchEmulationConfig.mockResolvedValue({ enabled: false, providers: [] });
+    getAdminApiKey.mockResolvedValue({ exists: false, masked_key: "" });
+    getOverloadCooldownSettings.mockResolvedValue({});
+    getRateLimit429CooldownSettings.mockResolvedValue({});
+    updateRateLimit429CooldownSettings.mockResolvedValue({});
+    getStreamTimeoutSettings.mockResolvedValue({});
+    getRectifierSettings.mockResolvedValue({});
+    getBetaPolicySettings.mockResolvedValue({});
+    getGroups.mockResolvedValue([]);
+    listProxies.mockResolvedValue({ items: [] });
+    getProviders.mockResolvedValue({ data: [] });
+  });
+
+  it("renders agreement and email OAuth copy through vue-i18n instead of hardcoded English for non-zh locales", async () => {
+    localeRef.value = "vi";
+    getSettings.mockResolvedValue({
+      ...baseSettingsResponse,
+      github_oauth_enabled: true,
+    });
+
+    const wrapper = mountView();
+    await flushPromises();
+
+    expect(wrapper.text()).toContain("admin.settings.agreement.title");
+    expect(wrapper.text()).toContain("admin.settings.agreement.defaultDocuments.terms");
+    expect(wrapper.text()).toContain("admin.settings.oauthLogin.title");
+    expect(
+      wrapper.find('[data-keypath="admin.settings.oauthLogin.githubGuide"]').exists(),
+    ).toBe(true);
+    expect(wrapper.text()).not.toContain("Login agreement");
+    expect(wrapper.text()).not.toContain("Email OAuth Sign-in");
+    expect(wrapper.text()).not.toContain("Setup guide: GitHub Settings");
   });
 });
