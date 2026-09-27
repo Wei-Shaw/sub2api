@@ -4,7 +4,7 @@ import { defineComponent, ref } from 'vue'
 
 import UsageView from '../UsageView.vue'
 
-const { list, exportList, getStats, getSnapshotV2, getById, getModelStats, listErrorLogs, routeQuery, aoaToSheet, sheetAddAoa, saveAs, xlsxWrite } = vi.hoisted(() => {
+const { list, exportList, getStats, getSnapshotV2, getById, getModelStats, listErrorLogs, routeQuery, aoaToSheet, sheetAddAoa, saveAs, xlsxWrite, showError } = vi.hoisted(() => {
   vi.stubGlobal('localStorage', {
     getItem: vi.fn(() => null),
     setItem: vi.fn(),
@@ -24,6 +24,7 @@ const { list, exportList, getStats, getSnapshotV2, getById, getModelStats, listE
 		sheetAddAoa: vi.fn(),
 		saveAs: vi.fn(),
 		xlsxWrite: vi.fn(() => new Uint8Array([1, 2, 3])),
+		showError: vi.fn(),
   }
 })
 
@@ -89,7 +90,7 @@ vi.mock('@/api/admin/ops', () => ({
 
 vi.mock('@/stores/app', () => ({
   useAppStore: () => ({
-    showError: vi.fn(),
+    showError,
     showWarning: vi.fn(),
     showSuccess: vi.fn(),
     showInfo: vi.fn(),
@@ -798,5 +799,58 @@ describe('admin UsageView model audit export', () => {
 		const row = sheetAddAoa.mock.calls[0][1][0]
 		expect(row.slice(4, 8)).toEqual(['gpt-5.6-sol', 'gpt-5.5', 'gpt-5.4', 'Yes'])
 		expect(saveAs).toHaveBeenCalledTimes(1)
+	})
+
+	it('pages 10,000 rows 1000 at a time and asks for the exact total only on the first page', async () => {
+		const TOTAL = 10_000
+		const LATENCY_MS = 50
+		exportList.mockReset().mockImplementation((params: { page: number; page_size: number; exact_total: boolean }) =>
+			new Promise((resolve) => setTimeout(() => {
+				const start = (params.page - 1) * params.page_size
+				const count = Math.max(0, Math.min(params.page_size, TOTAL - start))
+				const items = Array.from({ length: count }, (_, i) => ({
+					id: start + i + 1, created_at: '2026-08-04T00:00:00Z', model: 'm', request_type: 'sync',
+					input_tokens: 1, output_tokens: 1, cache_read_tokens: 0, cache_creation_tokens: 0, duration_ms: 1,
+				}))
+				// exact_total=false mimics the backend fast path (no COUNT(*)): offset + rows (+1 when more remain)
+				const total = params.exact_total ? TOTAL : start + count + (start + count < TOTAL ? 1 : 0)
+				resolve({ items, total, pages: 0 })
+			}, LATENCY_MS))
+		)
+		const wrapper = mountRouteFilteredUsageView()
+		vi.advanceTimersByTime(120)
+		await flushPromises()
+
+		const startedAt = Date.now()
+		let settled = false
+		const done = (wrapper.vm as any).exportToExcel().finally(() => { settled = true })
+		while (!settled) await vi.advanceTimersByTimeAsync(LATENCY_MS)
+		await done
+		const elapsedMs = Date.now() - startedAt
+		const calls = exportList.mock.calls.map(([params]) => params)
+		const exportedRows = sheetAddAoa.mock.calls.reduce((sum, [, rows]) => sum + rows.length, 0)
+		console.info(`[perf] admin usage export: rows=${exportedRows} requests=${calls.length} exact_total_requests=${calls.filter((p) => p.exact_total).length} simulated_ms=${elapsedMs}`)
+
+		expect(exportedRows).toBe(TOTAL)
+		expect(calls).toHaveLength(10)
+		expect(calls.map((p) => p.page_size)).toEqual(Array(10).fill(1000))
+		expect(calls.map((p) => p.exact_total)).toEqual([true, ...Array(9).fill(false)])
+		expect(elapsedMs).toBe(10 * LATENCY_MS)
+		expect(saveAs).toHaveBeenCalledTimes(1)
+	})
+
+	it('shows a translated toast when the export fails', async () => {
+		exportList.mockReset().mockRejectedValue(new Error('boom'))
+		const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {})
+		showError.mockClear()
+		const wrapper = mountRouteFilteredUsageView()
+		vi.advanceTimersByTime(120)
+		await flushPromises()
+
+		await (wrapper.vm as any).exportToExcel()
+
+		expect(showError).toHaveBeenCalledWith('usage.exportFailed')
+		expect(saveAs).not.toHaveBeenCalled()
+		consoleError.mockRestore()
 	})
 })
