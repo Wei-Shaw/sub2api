@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/alicebob/miniredis/v2"
@@ -48,4 +49,24 @@ func TestAuthRoutesLimitRequestBodySize(t *testing.T) {
 
 	require.Equal(t, http.StatusOK, w.Code, "logout tolerates an unreadable body")
 	require.LessOrEqual(t, body.read, int64(1<<20)+1)
+}
+
+func TestAuthRoutesLogoutRateLimited(t *testing.T) {
+	router := newAuthRoutesMiniredisRouter(t)
+
+	send := func() *httptest.ResponseRecorder {
+		req := httptest.NewRequest(http.MethodPost, "/api/v1/auth/logout", strings.NewReader(`{}`))
+		req.Header.Set("Content-Type", "application/json")
+		req.RemoteAddr = "203.0.113.21:12345"
+		w := httptest.NewRecorder()
+		router.ServeHTTP(w, req)
+		return w
+	}
+
+	for i := 0; i < 30; i++ {
+		require.Equal(t, http.StatusOK, send().Code, "request %d", i+1)
+	}
+	w := send()
+	require.Equal(t, http.StatusTooManyRequests, w.Code)
+	require.Contains(t, w.Body.String(), "rate limit exceeded")
 }
