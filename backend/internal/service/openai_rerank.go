@@ -321,9 +321,11 @@ func buildBailianTextRerankUpstreamBody(body []byte) []byte {
 	return nested
 }
 
-// convertBailianTextRerankResponse 将百炼嵌套成功响应转换为扁平 Cohere 风格：
-// results 从 output.results 提到顶层，id 取 request_id，model 回填本次上游模型名，
-// usage 与 request_id 保持顶层原样。响应体非 JSON 或无顶层 output 对象时原样返回。
+// convertBailianTextRerankResponse 将百炼嵌套成功响应无损转换为扁平 Cohere 风格：
+// 以原始响应体为基底保留全部顶层字段，output 内每个字段原样提升到顶层
+// （顶层已有同名键时保留顶层原值、不覆盖），随后删除嵌套 output；
+// 顶层缺 id 时补 request_id 原值，缺 model 时回填本次上游模型名。
+// 响应体为空或无顶层 output 对象时原样返回。
 // 必须在 extractOpenAIRerankUsage 之前调用，使百炼 usage.prompt_tokens 正常入账。
 func convertBailianTextRerankResponse(body []byte, upstreamModel string) []byte {
 	if len(body) == 0 {
@@ -333,19 +335,23 @@ func convertBailianTextRerankResponse(body []byte, upstreamModel string) []byte 
 	if !output.IsObject() {
 		return body
 	}
-	flat := []byte(`{}`)
-	if requestID := gjson.GetBytes(body, "request_id"); requestID.Exists() {
-		flat, _ = sjson.SetRawBytes(flat, "id", []byte(requestID.Raw))
-		flat, _ = sjson.SetRawBytes(flat, "request_id", []byte(requestID.Raw))
+	flat, _ := sjson.DeleteBytes(body, "output")
+	output.ForEach(func(key, value gjson.Result) bool {
+		name := key.String()
+		// 顶层已有同名键（如 usage/request_id）：保留顶层原值，不覆盖。
+		if gjson.GetBytes(flat, name).Exists() {
+			return true
+		}
+		flat, _ = sjson.SetRawBytes(flat, name, []byte(value.Raw))
+		return true
+	})
+	if !gjson.GetBytes(flat, "id").Exists() {
+		if requestID := gjson.GetBytes(flat, "request_id"); requestID.Exists() {
+			flat, _ = sjson.SetRawBytes(flat, "id", []byte(requestID.Raw))
+		}
 	}
-	if upstreamModel != "" {
+	if upstreamModel != "" && !gjson.GetBytes(flat, "model").Exists() {
 		flat, _ = sjson.SetBytes(flat, "model", upstreamModel)
-	}
-	if results := output.Get("results"); results.Exists() {
-		flat, _ = sjson.SetRawBytes(flat, "results", []byte(results.Raw))
-	}
-	if usage := gjson.GetBytes(body, "usage"); usage.Exists() {
-		flat, _ = sjson.SetRawBytes(flat, "usage", []byte(usage.Raw))
 	}
 	return flat
 }
