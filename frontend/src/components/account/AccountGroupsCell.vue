@@ -44,6 +44,8 @@
               {{ t('admin.accounts.groupCountTotal', { count: groups.length }) }}
             </span>
             <button
+              :aria-label="t('common.close')"
+              :title="t('common.close')"
               @click="showPopover = false"
               class="rounded-sm p-0.5 text-fg-subtle hover:bg-surface-sunken hover:text-fg-muted"
             >

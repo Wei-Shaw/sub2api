@@ -134,6 +134,8 @@
                   </div>
                 </div>
                 <button
+                  :aria-label="t('common.delete')"
+                  :title="t('common.delete')"
                   type="button"
                   class="rounded-sm p-2 text-danger transition hover:bg-danger-weak hover:text-danger-strong disabled:cursor-not-allowed disabled:opacity-40"
                   :disabled="

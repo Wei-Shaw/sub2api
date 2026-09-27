@@ -409,6 +409,8 @@
                     :placeholder="t('admin.accounts.actualModel')"
                   />
                   <button
+                    :aria-label="t('common.delete')"
+                    :title="t('common.delete')"
                     type="button"
                     class="rounded-sm p-2 text-danger transition-colors hover:bg-danger-weak hover:text-danger"
                     @click="removeModelMapping(index)"
@@ -526,7 +528,7 @@
               aria-labelledby="bulk-edit-custom-error-codes-label"
               @keyup.enter="addCustomErrorCode"
             />
-            <button type="button" class="btn btn-secondary px-3" @click="addCustomErrorCode">
+            <button :aria-label="t('common.add')" :title="t('common.add')" type="button" class="btn btn-secondary px-3" @click="addCustomErrorCode">
               <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path
                   stroke-linecap="round"
@@ -547,6 +549,8 @@
             >
               {{ code }}
               <button
+                :aria-label="t('common.remove')"
+                :title="t('common.remove')"
                 type="button"
                 class="hover:text-danger-strong"
                 @click="removeErrorCode(code)"
@@ -1249,6 +1253,8 @@
                 data-testid="bulk-edit-openai-compact-model-mapping-input"
               />
               <button
+                :aria-label="t('common.delete')"
+                :title="t('common.delete')"
                 type="button"
                 class="rounded-sm p-2 text-danger transition-colors hover:bg-danger-weak hover:text-danger"
                 @click="removeOpenAICompactModelMapping(index)"

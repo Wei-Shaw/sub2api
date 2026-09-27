@@ -363,6 +363,8 @@
                   :placeholder="t('admin.accounts.actualModel')"
                 />
                 <button
+                  :aria-label="t('common.delete')"
+                  :title="t('common.delete')"
                   type="button"
                   @click="removeModelMapping(index)"
                   class="rounded-sm p-2 text-danger transition-colors hover:bg-danger-weak hover:text-danger"
@@ -543,7 +545,7 @@
                 :placeholder="t('admin.accounts.enterErrorCode')"
                 @keyup.enter="addCustomErrorCode"
               />
-              <button type="button" @click="addCustomErrorCode" class="btn btn-secondary px-3">
+              <button :aria-label="t('common.add')" :title="t('common.add')" type="button" @click="addCustomErrorCode" class="btn btn-secondary px-3">
                 <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path
                     stroke-linecap="round"
@@ -564,6 +566,8 @@
               >
                 {{ code }}
                 <button
+                  :aria-label="t('common.remove')"
+                  :title="t('common.remove')"
                   type="button"
                   @click="removeErrorCode(code)"
                   class="hover:text-danger-strong"
@@ -829,6 +833,8 @@
                   :placeholder="t('admin.accounts.actualModel')"
                 />
                 <button
+                  :aria-label="t('common.delete')"
+                  :title="t('common.delete')"
                   type="button"
                   @click="removeModelMapping(index)"
                   class="rounded-sm p-2 text-danger transition-colors hover:bg-danger-weak hover:text-danger"
@@ -1055,6 +1061,8 @@
                   :placeholder="t('admin.accounts.actualModel')"
                 />
                 <button
+                  :aria-label="t('common.delete')"
+                  :title="t('common.delete')"
                   type="button"
                   @click="removeModelMapping(index)"
                   class="rounded-sm p-2 text-danger transition-colors hover:bg-danger-weak hover:text-danger"
@@ -1227,7 +1235,7 @@
               <input v-model="mapping.from" type="text" class="input flex-1" :placeholder="t('admin.accounts.fromModel')" />
               <span class="text-fg-subtle">→</span>
               <input v-model="mapping.to" type="text" class="input flex-1" :placeholder="t('admin.accounts.toModel')" />
-              <button type="button" @click="modelMappings.splice(index, 1)" class="text-danger hover:text-danger-strong">
+              <button :aria-label="t('common.delete')" :title="t('common.delete')" type="button" @click="modelMappings.splice(index, 1)" class="text-danger hover:text-danger-strong">
                 <Icon name="trash" size="sm" />
               </button>
             </div>
@@ -1381,6 +1389,8 @@
                   :placeholder="t('admin.accounts.actualModel')"
                 />
                 <button
+                  :aria-label="t('common.delete')"
+                  :title="t('common.delete')"
                   type="button"
                   @click="removeAntigravityModelMapping(index)"
                   class="rounded-sm p-2 text-danger transition-colors hover:bg-danger-weak hover:text-danger"
@@ -1488,6 +1498,8 @@
                 </span>
                 <div class="flex items-center gap-2">
                   <button
+                    :aria-label="t('common.moveUp')"
+                    :title="t('common.moveUp')"
                     type="button"
                     :disabled="index === 0"
                     @click="moveTempUnschedRule(index, -1)"
@@ -1496,6 +1508,8 @@
                     <Icon name="chevronUp" size="sm" :stroke-width="2" />
                   </button>
                   <button
+                    :aria-label="t('common.moveDown')"
+                    :title="t('common.moveDown')"
                     type="button"
                     :disabled="index === tempUnschedRules.length - 1"
                     @click="moveTempUnschedRule(index, 1)"
@@ -1506,6 +1520,8 @@
                     </svg>
                   </button>
                   <button
+                    :aria-label="t('common.remove')"
+                    :title="t('common.remove')"
                     type="button"
                     @click="removeTempUnschedRule(index)"
                     class="rounded-sm p-1 text-danger transition-colors hover:text-danger"
@@ -2417,7 +2433,7 @@
                 class="input flex-1"
                 :placeholder="t('admin.accounts.toModel')"
               />
-              <button type="button" @click="removeOpenAICompactModelMapping(index)" class="text-danger hover:text-danger-strong">
+              <button :aria-label="t('common.delete')" :title="t('common.delete')" type="button" @click="removeOpenAICompactModelMapping(index)" class="text-danger hover:text-danger-strong">
                 <Icon name="trash" size="sm" />
               </button>
             </div>

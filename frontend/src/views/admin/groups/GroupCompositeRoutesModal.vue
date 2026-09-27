@@ -19,6 +19,8 @@
             {{ t("admin.groups.compositeRoutes.routes") }}
           </h3>
           <button
+            :aria-label="t('common.refresh')"
+            :title="t('common.refresh')"
             type="button"
             class="btn btn-secondary btn-sm"
             :disabled="compositeRoutesLoading"
@@ -278,6 +280,8 @@
                 class="min-w-0 flex-1"
               />
               <button
+                :aria-label="t('admin.groups.compositeRoutes.preview')"
+                :title="t('admin.groups.compositeRoutes.preview')"
                 type="button"
                 class="btn btn-secondary"
                 :disabled="compositePreviewLoading || !compositePreviewModel"

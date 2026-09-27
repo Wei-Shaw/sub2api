@@ -93,6 +93,8 @@ export default {
     chooseFile: '选择文件',
     upload: '上传',
     remove: '移除',
+    moveUp: '上移',
+    moveDown: '下移',
     noFileSelected: '未选择文件',
     selectedFile: '已选：{name}',
     fileReadFailed: '读取文件失败',

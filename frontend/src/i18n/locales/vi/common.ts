@@ -93,6 +93,8 @@ export default {
     chooseFile: 'Chọn tệp',
     upload: 'Tải lên',
     remove: 'Gỡ bỏ',
+    moveUp: 'Di chuyển lên',
+    moveDown: 'Di chuyển xuống',
     noFileSelected: 'Chưa chọn tệp',
     selectedFile: 'Đã chọn: {name}',
     fileReadFailed: 'Đọc tệp thất bại',

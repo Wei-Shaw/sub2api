@@ -93,6 +93,8 @@ export default {
     chooseFile: 'Choose File',
     upload: 'Upload',
     remove: 'Remove',
+    moveUp: 'Move up',
+    moveDown: 'Move down',
     noFileSelected: 'No file selected',
     selectedFile: 'Selected: {name}',
     fileReadFailed: 'Failed to read file',
