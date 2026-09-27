@@ -8,13 +8,15 @@ const {
   registerMock,
   showErrorMock,
   pushMock,
-  validateInvitationCodeMock
+  validateInvitationCodeMock,
+  validatePromoCodeMock
 } = vi.hoisted(() => ({
   getPublicSettingsMock: vi.fn(),
   registerMock: vi.fn(),
   showErrorMock: vi.fn(),
   pushMock: vi.fn(),
-  validateInvitationCodeMock: vi.fn()
+  validateInvitationCodeMock: vi.fn(),
+  validatePromoCodeMock: vi.fn()
 }))
 
 vi.mock('vue-i18n', async () => {
@@ -45,7 +47,8 @@ vi.mock('@/api/auth', async () => {
   return {
     ...actual,
     getPublicSettings: (...args: unknown[]) => getPublicSettingsMock(...args),
-    validateInvitationCode: (...args: unknown[]) => validateInvitationCodeMock(...args)
+    validateInvitationCode: (...args: unknown[]) => validateInvitationCodeMock(...args),
+    validatePromoCode: (...args: unknown[]) => validatePromoCodeMock(...args)
   }
 })
 
@@ -96,6 +99,8 @@ describe('RegisterView errors', () => {
     showErrorMock.mockReset()
     pushMock.mockReset()
     validateInvitationCodeMock.mockReset()
+    validatePromoCodeMock.mockReset()
+    validatePromoCodeMock.mockResolvedValue({ valid: true, bonus_amount: 1 })
     sessionStorage.clear()
     getPublicSettingsMock.mockResolvedValue(publicSettings)
   })
@@ -151,6 +156,32 @@ describe('RegisterView errors', () => {
     }
     expect(wrapper.get('#password').attributes('aria-invalid')).toBe('false')
     expect(registerMock).not.toHaveBeenCalled()
+  })
+
+  it('restores the fields saved by the email verification back button', async () => {
+    getPublicSettingsMock.mockResolvedValue({
+      ...publicSettings,
+      invitation_code_enabled: true,
+      promo_code_enabled: true
+    })
+    sessionStorage.setItem(
+      'register_data',
+      JSON.stringify({
+        email: 'user@example.com',
+        promo_code: 'PROMO10',
+        invitation_code: 'INVITE1',
+        aff_code: 'AFF42'
+      })
+    )
+    const wrapper = mountRegister()
+    await flushPromises()
+
+    expect((wrapper.get('#email').element as HTMLInputElement).value).toBe('user@example.com')
+    expect((wrapper.get('#invitation_code').element as HTMLInputElement).value).toBe('INVITE1')
+    expect((wrapper.get('#promo_code').element as HTMLInputElement).value).toBe('PROMO10')
+    expect((wrapper.get('#password').element as HTMLInputElement).value).toBe('')
+    expect(validatePromoCodeMock).toHaveBeenCalledWith('PROMO10')
+    expect(sessionStorage.getItem('register_data')).toBeNull()
   })
 
   it('names the show/hide password buttons', async () => {

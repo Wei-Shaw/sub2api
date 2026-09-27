@@ -114,4 +114,35 @@ describe('EmailVerifyView errors', () => {
     expect(message.text()).toBe(viCommon.auth.invalidCode)
     expect(registerMock).not.toHaveBeenCalled()
   })
+
+  it('keeps the typed registration fields, never the password, when going back', async () => {
+    sessionStorage.setItem(
+      'register_data',
+      JSON.stringify({
+        email: 'user@example.com',
+        password: 'secret-123',
+        turnstile_token: 'captcha-proof',
+        promo_code: 'PROMO10',
+        invitation_code: 'INVITE1',
+        aff_code: 'AFF42'
+      })
+    )
+    const wrapper = mountVerify()
+    await flushPromises()
+    const back = wrapper
+      .findAll('button')
+      .find(button => button.text() === viCommon.auth.backToRegistration)!
+    await back.trigger('click')
+
+    const draft = sessionStorage.getItem('register_data')!
+    expect(JSON.parse(draft)).toEqual({
+      email: 'user@example.com',
+      promo_code: 'PROMO10',
+      invitation_code: 'INVITE1',
+      aff_code: 'AFF42'
+    })
+    expect(draft).not.toContain('secret-123')
+    expect(draft).not.toContain('captcha-proof')
+    expect(pushMock).toHaveBeenCalledWith('/register')
+  })
 })

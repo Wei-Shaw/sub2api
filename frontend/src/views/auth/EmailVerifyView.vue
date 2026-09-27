@@ -769,8 +769,16 @@ async function handleVerify(): Promise<void> {
 }
 
 function handleBack(): void {
-  // Clear session data
-  sessionStorage.removeItem('register_data')
+  // Hand the typed fields back to RegisterView; never the password or captcha proof
+  sessionStorage.setItem(
+    'register_data',
+    JSON.stringify({
+      email: email.value,
+      promo_code: promoCode.value || undefined,
+      invitation_code: invitationCode.value || undefined,
+      aff_code: affCode.value || undefined
+    })
+  )
 
   // Go back to registration
   router.push('/register')

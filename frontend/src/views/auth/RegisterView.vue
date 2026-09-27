@@ -574,9 +574,24 @@ function syncAffiliateReferralCode(): string {
   return code
 }
 
+// EmailVerifyView's back button leaves the typed fields (never the password) in register_data.
+function restoreRegisterDraft(): void {
+  try {
+    const draft = JSON.parse(sessionStorage.getItem('register_data') || '{}')
+    formData.email = draft.email || ''
+    formData.promo_code = draft.promo_code || ''
+    formData.invitation_code = draft.invitation_code || ''
+    formData.aff_code = draft.aff_code || ''
+  } catch {
+    // Ignore a malformed draft; the form simply starts empty.
+  }
+  sessionStorage.removeItem('register_data')
+}
+
 // ==================== Lifecycle ====================
 
 onMounted(async () => {
+  restoreRegisterDraft()
   syncAffiliateReferralCode()
 
   try {
@@ -608,9 +623,9 @@ onMounted(async () => {
     emailDomainQuotaEnabled.value = settings.registration_email_domain_quota_enabled === true
     applyLoginAgreementSettings(settings)
 
-    // Read promo code from URL parameter only if promo code is enabled
+    // Read promo code from URL parameter (or the restored draft) only if promo code is enabled
     if (promoCodeEnabled.value) {
-      const promoParam = route.query.promo as string
+      const promoParam = (route.query.promo as string) || formData.promo_code
       if (promoParam) {
         formData.promo_code = promoParam
         // Validate the promo code from URL
