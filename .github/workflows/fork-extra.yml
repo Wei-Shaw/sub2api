@@ -1,0 +1,73 @@
+# Fork-only checks that upstream CI (backend-ci.yml) does not run:
+# the full vitest suite, the production frontend build, the `embed` tests
+# against that build, and a no-push Docker image build.
+name: Fork Extra
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  frontend-full:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v6
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v6
+        with:
+          version: 9
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+          cache: 'pnpm'
+          cache-dependency-path: frontend/pnpm-lock.yaml
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: backend/go.mod
+          check-latest: false
+          cache: true
+          cache-dependency-path: backend/go.sum
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: pnpm install --frozen-lockfile
+      - name: Full vitest suite
+        working-directory: frontend
+        run: pnpm exec vitest run
+      - name: Build frontend
+        working-directory: frontend
+        run: pnpm run build
+      # Known failures, skipped until embed_test.go is fixed: both subtests
+      # request /logo.png, which upstream replaced with logo.svg (fa402b909).
+      - name: Embed tests against the built frontend
+        working-directory: backend
+        run: go test -tags='unit embed' -skip '^(TestFrontendServer_Middleware|TestServeEmbeddedFrontend)$/^serves_static_files$' ./internal/web/...
+
+  docker-build:
+    # PRs into main; pushes to main keep the gha cache warm for those PRs.
+    if: github.event_name == 'push' || github.base_ref == 'main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v6
+      - uses: docker/setup-buildx-action@v3
+      - name: Build image (no push)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile
+          push: false
+          build-args: |
+            GOPROXY=https://proxy.golang.org,direct
+            GOSUMDB=sum.golang.org
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
