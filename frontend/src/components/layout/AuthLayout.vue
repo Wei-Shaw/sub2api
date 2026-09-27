@@ -7,7 +7,7 @@
         <div class="flex min-h-[4.5rem] items-center gap-3 border-b border-border px-6 py-4 sm:px-8">
           <template v-if="settingsLoaded">
             <div class="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden">
-              <img :src="siteLogo || '/logo.svg'" alt="Logo" class="h-full w-full object-contain" />
+              <img :src="siteLogo || '/logo.svg'" alt="" class="h-full w-full object-contain" />
             </div>
             <div class="min-w-0">
               <h1 class="truncate text-h2 font-bold text-accent-strong">

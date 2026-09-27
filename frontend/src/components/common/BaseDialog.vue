@@ -21,7 +21,7 @@
               v-if="showCloseButton"
               @click="emit('close')"
               class="-mr-2 rounded-sm p-2 text-fg-subtle transition-colors hover:bg-accent-weak hover:text-accent-strong focus:outline-none focus-visible:ring-2 focus-visible:ring-accent"
-              aria-label="Close modal"
+              :aria-label="t('common.close')"
             >
               <Icon name="x" size="md" />
             </button>
@@ -50,7 +50,10 @@ const openDialogs: string[] = []
 
 <script setup lang="ts">
 import { computed, watch, onMounted, onUnmounted, ref, nextTick } from 'vue'
+import { useI18n } from 'vue-i18n'
 import Icon from '@/components/icons/Icon.vue'
+
+const { t } = useI18n()
 
 // 生成唯一ID以避免多个对话框时ID冲突
 const dialogId = `modal-title-${++dialogIdCounter}`

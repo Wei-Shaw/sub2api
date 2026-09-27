@@ -98,6 +98,7 @@ describe('BaseDialog', () => {
 
     const close = document.body.querySelector<HTMLElement>('.modal-header button')!
     const save = document.getElementById('save')!
+    expect(close.getAttribute('aria-label')).toBe('common.close')
     expect(document.activeElement).toBe(close)
 
     save.focus()
