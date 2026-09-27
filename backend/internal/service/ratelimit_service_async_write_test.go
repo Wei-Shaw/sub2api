@@ -138,6 +138,23 @@ func TestUpdateSessionWindow_SteadyStateWritesLeaveRequestPath(t *testing.T) {
 	require.Equal(t, 1, sessionWindowCalls, "an unchanged status is not rewritten")
 }
 
+func TestFlushPassiveUsage_WritesPendingSamples(t *testing.T) {
+	repo := &gatedAccountWriteRepo{}
+	svc := NewRateLimitService(repo, nil, nil, nil, nil)
+	svc.passiveUsage.interval = 100 * time.Millisecond
+	svc.passiveUsage.lastAt[7] = time.Now() // keep the samples pending until the interval ends
+	svc.passiveUsage.enqueue(7, map[string]any{"session_window_utilization": 0.20})
+	svc.passiveUsage.enqueue(7, map[string]any{"session_window_utilization": 0.30})
+
+	svc.FlushPassiveUsage(context.Background())
+	_, extra := repo.snapshot()
+	require.Len(t, extra, 1)
+	require.Equal(t, 0.30, extra[0]["session_window_utilization"])
+
+	// The already-scheduled timer finds nothing left and does not write again.
+	require.Never(t, func() bool { _, extra := repo.snapshot(); return len(extra) != 1 }, 300*time.Millisecond, 10*time.Millisecond)
+}
+
 func TestUpdateSessionWindow_RewritesStatusOnlyWhenChanged(t *testing.T) {
 	repo := &anthropicWindowLimitRepo{}
 	svc := newRateLimitServiceForTest(repo)
