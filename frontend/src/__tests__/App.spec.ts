@@ -23,14 +23,6 @@ vi.mock('vue-router', () => ({
 }))
 vi.mock('@/components/common/Toast.vue', () => ({ default: s.stub('toast') }))
 vi.mock('@/components/common/NavigationProgress.vue', () => ({ default: s.stub('nav-progress') }))
-vi.mock('@/components/common/AnnouncementPopup.vue', () => {
-  s.loads.popup++
-  return { __esModule: true, default: s.stub('announcement-popup') }
-})
-vi.mock('@/components/admin/AdminComplianceDialog.vue', () => {
-  s.loads.compliance++
-  return { __esModule: true, default: s.stub('admin-compliance') }
-})
 vi.mock('@/api/setup', () => ({ getSetupStatus: s.getSetupStatus }))
 vi.mock('@/router/title', () => ({ resolveRouteDocumentTitle: () => 'title' }))
 vi.mock('@/utils/branding', () => ({ updateFavicon: vi.fn() }))
@@ -45,7 +37,12 @@ vi.mock('@/stores', () => ({
   useAdminSettingsStore: () => ({ customMenuItems: [] }),
 }))
 
-import App from '../App.vue'
+// Fresh App module per test with re-registered dialog mocks (doMock drops the cached mock), so the
+// load counts are per test and prove the dialogs are not static imports in any test order.
+async function mountApp() {
+  const { default: App } = await import('../App.vue')
+  return mount(App)
+}
 
 function signIn(isAdmin: boolean) {
   s.auth.isAuthenticated = true
@@ -56,6 +53,17 @@ describe('App', () => {
   enableAutoUnmount(afterEach)
 
   beforeEach(() => {
+    vi.resetModules()
+    s.loads.popup = 0
+    s.loads.compliance = 0
+    vi.doMock('@/components/common/AnnouncementPopup.vue', () => {
+      s.loads.popup++
+      return { __esModule: true, default: s.stub('announcement-popup') }
+    })
+    vi.doMock('@/components/admin/AdminComplianceDialog.vue', () => {
+      s.loads.compliance++
+      return { __esModule: true, default: s.stub('admin-compliance') }
+    })
     window.__APP_CONFIG__ = {} as NonNullable<typeof window.__APP_CONFIG__>
     s.auth.isAuthenticated = false
     s.auth.isAdmin = false
@@ -70,9 +78,8 @@ describe('App', () => {
     delete window.__APP_CONFIG__
   })
 
-  // Must run first: module mocks are cached, so a load count of 0 proves the dialogs are not static imports.
   it('does not load either dialog for guests and skips /setup/status when config is injected', async () => {
-    const wrapper = mount(App)
+    const wrapper = await mountApp()
     await flushPromises()
 
     expect(s.loads).toEqual({ popup: 0, compliance: 0 })
@@ -86,7 +93,7 @@ describe('App', () => {
     delete window.__APP_CONFIG__
     s.getSetupStatus.mockResolvedValue({ needs_setup: true, step: 'database' })
 
-    mount(App)
+    await mountApp()
     await flushPromises()
 
     expect(s.getSetupStatus).toHaveBeenCalledTimes(1)
@@ -95,18 +102,18 @@ describe('App', () => {
 
   it('loads only the announcement popup for signed-in users', async () => {
     signIn(false)
-    const wrapper = mount(App)
+    const wrapper = await mountApp()
     await flushPromises()
 
     expect(wrapper.find('[data-testid="announcement-popup"]').exists()).toBe(true)
     expect(wrapper.find('[data-testid="admin-compliance"]').exists()).toBe(false)
-    expect(s.loads.compliance).toBe(0)
+    expect(s.loads).toEqual({ popup: 1, compliance: 0 })
   })
 
   it('reuses the compliance status the router guard already fetched', async () => {
     signIn(true)
     s.compliance.initialized = true
-    const wrapper = mount(App)
+    const wrapper = await mountApp()
     await flushPromises()
 
     expect(s.compliance.fetchStatus).not.toHaveBeenCalled()
@@ -115,7 +122,7 @@ describe('App', () => {
 
   it('fetches the compliance status once when the guard has not', async () => {
     signIn(true)
-    mount(App)
+    await mountApp()
     await flushPromises()
 
     expect(s.compliance.fetchStatus).toHaveBeenCalledTimes(1)
