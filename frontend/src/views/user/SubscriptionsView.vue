@@ -6,6 +6,16 @@
         <div class="spinner h-8 w-8 text-accent"></div>
       </div>
 
+      <EmptyState
+        v-else-if="loadError"
+        class="card"
+        :title="t('userSubscriptions.failedToLoad')"
+        :description="t('errors.tryAgain')"
+        :action-text="t('common.refresh')"
+        :action-icon="false"
+        @action="loadSubscriptions"
+      />
+
       <!-- Empty State -->
       <div v-else-if="subscriptions.length === 0" class="card empty-state">
         <Icon name="creditCard" size="xl" class="empty-state-icon" />
@@ -175,6 +185,7 @@ import subscriptionsAPI from '@/api/subscriptions'
 import type { UserSubscription } from '@/types'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import Icon from '@/components/icons/Icon.vue'
+import EmptyState from '@/components/common/EmptyState.vue'
 import { formatDateTimeToMinute } from '@/utils/format'
 import { hasPeakRate, formatPeakRateWindow, serverTimezoneLabel } from '@/utils/peak-rate'
 import { platformLabel } from '@/utils/platformColors'
@@ -191,6 +202,7 @@ const appStore = useAppStore()
 
 const subscriptions = ref<UserSubscription[]>([])
 const loading = ref(true)
+const loadError = ref(false)
 
 function subscriptionHasPeakRate(subscription: UserSubscription): boolean {
   return hasPeakRate(subscription.group)
@@ -203,9 +215,11 @@ function subscriptionPeakRateLabel(subscription: UserSubscription): string {
 async function loadSubscriptions() {
   try {
     loading.value = true
+    loadError.value = false
     subscriptions.value = await subscriptionsAPI.getMySubscriptions()
   } catch (error) {
     console.error('Failed to load subscriptions:', error)
+    loadError.value = true
     appStore.showError(t('userSubscriptions.failedToLoad'))
   } finally {
     loading.value = false
