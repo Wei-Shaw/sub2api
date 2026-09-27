@@ -22,7 +22,8 @@ vi.mock('@/api/admin', () => ({
   }
 }))
 
-vi.mock('vue-i18n', () => ({
+vi.mock('vue-i18n', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('vue-i18n')>()),
   useI18n: () => ({
     t: (key: string) => key
   })
@@ -33,7 +34,8 @@ const mountModal = () =>
     props: { show: true },
     global: {
       stubs: {
-        BaseDialog: { template: '<div><slot /><slot name="footer" /></div>' }
+        BaseDialog: { template: '<div><slot /><slot name="footer" /></div>' },
+        GroupSelector: true
       }
     }
   })
@@ -131,7 +133,7 @@ describe('ImportDataModal', () => {
         accounts: [{ name: 'a' }]
       }),
       skip_default_group_bind: true
-    })
+    }, { idempotencyKey: expect.any(String) })
   })
 
   it('merges multiple selected JSON files before importing', async () => {
@@ -171,7 +173,7 @@ describe('ImportDataModal', () => {
         accounts: [{ name: 'a' }, { name: 'b' }]
       }),
       skip_default_group_bind: true
-    })
+    }, { idempotencyKey: expect.any(String) })
     expect(showSuccess).toHaveBeenCalledWith('admin.accounts.dataImportSuccess')
   })
 
