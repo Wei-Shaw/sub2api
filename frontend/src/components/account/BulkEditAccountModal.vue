@@ -1412,9 +1412,14 @@
           />
         </div>
         <div id="bulk-edit-groups" :class="!enableGroups && 'pointer-events-none opacity-50'">
+          <p class="mb-2 text-xs text-warning-strong" data-testid="bulk-edit-groups-replace-hint">
+            {{ t('admin.accounts.bulkEdit.groupsReplaceHint') }}
+          </p>
           <GroupSelector
             v-model="groupIds"
             :groups="groups"
+            :platform="groupPlatformFilter"
+            :mixed-scheduling="groupPlatformFilter === 'antigravity'"
             aria-labelledby="bulk-edit-groups-label"
           />
         </div>
@@ -1495,7 +1500,8 @@ import ModelWhitelistSelector from '@/components/account/ModelWhitelistSelector.
 import Icon from '@/components/icons/Icon.vue'
 import {
   buildModelMappingObject as buildModelMappingPayload,
-  getPresetMappingsByPlatform
+  getPresetMappingsByPlatform,
+  hasInvalidModelRestrictionEntries
 } from '@/composables/useModelWhitelist'
 import HeaderOverrideEditor from '@/components/account/HeaderOverrideEditor.vue'
 import {
@@ -1554,6 +1560,11 @@ const allTargetsGrok = computed(
     targetSelectedPlatforms.value.every((p) => p === 'grok')
 )
 const isMixedPlatform = computed(() => targetSelectedPlatforms.value.length > 1)
+// 单一平台时只列出该平台（及 composite）的分组；antigravity 账号可能开启混合调度，
+// 放开 anthropic/gemini 分组，真实风险由 mixed-channel 预检兜底。
+const groupPlatformFilter = computed(() =>
+  targetSelectedPlatforms.value.length === 1 ? targetSelectedPlatforms.value[0] : undefined
+)
 
 const allOpenAIPassthroughCapable = computed(() => {
   return (
@@ -2250,6 +2261,15 @@ const handleSubmit = async () => {
     }
   }
 
+  if (
+    enableModelRestriction.value &&
+    !isOpenAIModelRestrictionDisabled.value &&
+    hasInvalidModelRestrictionEntries(modelRestrictionMode.value, allowedModels.value, modelMappings.value)
+  ) {
+    appStore.showError(t('admin.accounts.modelRestrictionInvalidEntries'))
+    return
+  }
+
   if (enableHeaderOverride.value && headerOverrideEnabled.value) {
     // 批量保存对 header_overrides 是整键替换：开启但没有任何有效行会把所选账号的
     // 既有覆写配置静默清空，必须显式拦截（清空请走关闭开关的路径，有专门提示）
@@ -2262,6 +2282,14 @@ const handleSubmit = async () => {
       appStore.showError(t(`admin.accounts.headerOverride.${headerError}`))
       return
     }
+  }
+
+  // group_ids 是整组替换（后端先删后建），会把账号移出未勾选的分组，必须显式确认；留空则移出全部分组。
+  if (enableGroups.value) {
+    const confirmKey = groupIds.value.length === 0
+      ? 'admin.accounts.bulkEdit.groupsClearConfirm'
+      : 'admin.accounts.bulkEdit.groupsReplaceConfirm'
+    if (!confirm(t(confirmKey, { count: targetPreviewCount.value }))) return
   }
 
   const built = buildUpdatePayload()

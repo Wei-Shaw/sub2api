@@ -448,6 +448,9 @@ export default {
       },
       clearRateLimit: 'Clear Rate Limit',
       resetQuota: 'Reset Quota',
+      resetQuotaConfirm: "Reset the quota usage of '{name}'? The tracked usage is cleared immediately and cannot be restored.",
+      failedToResetQuota: 'Failed to reset quota',
+      testNewAccountHint: 'Account created. Run a connection test to confirm it works before it serves traffic.',
       quotaLimit: 'Quota Limit',
       quotaLimitPlaceholder: '0 means unlimited',
       quotaLimitHint: 'Set daily/weekly/total spending limits (USD). Anthropic API key accounts can also configure client affinity. Changing limits won\'t reset usage.',
@@ -515,7 +518,10 @@ export default {
         probeUpstreamBilling: 'Probe Upstream Rate',
         resetStatusSuccess: 'Successfully reset {count} account(s) status',
         refreshTokenSuccess: 'Successfully refreshed {count} account(s) token',
-        partialSuccess: 'Partially completed: {success} succeeded, {failed} failed'
+        partialSuccess: 'Partially completed: {success} succeeded, {failed} failed',
+        confirmResetStatus: 'Reset the status of the selected {count} account(s)?',
+        confirmRefreshToken: 'Refresh the tokens of the selected {count} account(s)? This can take up to 2 minutes.',
+        processing: 'Processing {count} account(s)...'
       },
       bulkEdit: {
         title: 'Bulk Edit Accounts',
@@ -536,7 +542,10 @@ export default {
         rateSyncConflict: 'Cannot change account rates: {count} target account(s) have upstream rate sync enabled.',
         longContextShadowHint: 'Long-context billing belongs to the parent account. Selected shadow accounts keep following their parent, including when targets come from a filter.',
         longContextParentRequired: 'All selected accounts are shadows. Select the parent account to change long-context billing.',
-        mixedPlatformWarning: 'Selected accounts span multiple platforms ({platforms}). Model mapping presets shown are combined — ensure mappings are appropriate for each platform.'
+        mixedPlatformWarning: 'Selected accounts span multiple platforms ({platforms}). Model mapping presets shown are combined — ensure mappings are appropriate for each platform.',
+        groupsReplaceHint: 'Checked groups REPLACE all current groups of every target account. Accounts are removed from any group left unchecked.',
+        groupsReplaceConfirm: 'Replace the groups of {count} account(s)? They will be removed from every group that is not checked.',
+        groupsClearConfirm: 'No group is checked. {count} account(s) will be removed from ALL groups and stop serving them. Continue?'
       },
       bulkDeleteTitle: 'Bulk Delete Accounts',
       bulkDeleteConfirm: 'Delete the selected {count} account(s)? This action cannot be undone.',
@@ -809,6 +818,8 @@ export default {
       mappingExists: 'Mapping for {model} already exists',
       wildcardOnlyAtEnd: 'Wildcard * can only be at the end',
       targetNoWildcard: 'Target model cannot contain wildcard *',
+      whitelistWildcardNotSupported: 'Wildcards (*) are not supported in this list; enter exact model names. To match a prefix such as claude-* on an account, use model mapping.',
+      modelRestrictionInvalidEntries: 'Model restriction has entries that cannot be saved: whitelist entries must not contain *, a mapping source may only end with *, and a mapping target must not contain *. Fix or remove them first.',
       searchModels: 'Search models...',
       noMatchingModels: 'No matching models',
       fillRelatedModels: 'Sync latest supported models',

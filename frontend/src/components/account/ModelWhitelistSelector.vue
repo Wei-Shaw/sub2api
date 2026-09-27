@@ -270,6 +270,11 @@ const copyModelId = async (model: string) => {
 const addCustom = () => {
   const model = customModel.value.trim()
   if (!model) return
+  // 白名单按精确模型名写入 model_mapping，保存时会丢弃通配符条目，所以在输入时就拒绝
+  if (model.includes('*')) {
+    appStore.showError(t('admin.accounts.whitelistWildcardNotSupported'))
+    return
+  }
   if (props.modelValue.includes(model)) {
     appStore.showInfo(t('admin.accounts.modelExists'))
     return

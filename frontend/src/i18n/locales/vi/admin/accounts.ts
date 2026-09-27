@@ -448,6 +448,9 @@ export default {
       },
       clearRateLimit: 'Xóa giới hạn tốc độ',
       resetQuota: 'Đặt lại hạn mức',
+      resetQuotaConfirm: "Đặt lại mức đã dùng của hạn mức tài khoản '{name}'? Lượng sử dụng đã ghi nhận sẽ bị xóa ngay và không thể khôi phục.",
+      failedToResetQuota: 'Đặt lại hạn mức thất bại',
+      testNewAccountHint: 'Đã tạo tài khoản. Hãy kiểm tra kết nối để chắc chắn tài khoản hoạt động trước khi nhận lưu lượng.',
       quotaLimit: 'Giới hạn hạn mức',
       quotaLimitPlaceholder: '0 nghĩa là không giới hạn',
       quotaLimitHint: 'Thiết lập giới hạn chi tiêu theo ngày/tuần/tổng (USD). Tài khoản Anthropic API Key cũng có thể cấu hình client affinity. Thay đổi giới hạn sẽ không đặt lại mức sử dụng.',
@@ -515,7 +518,10 @@ export default {
         probeUpstreamBilling: 'Dò hệ số upstream',
         resetStatusSuccess: 'Đã đặt lại trạng thái cho {count} tài khoản',
         refreshTokenSuccess: 'Đã làm mới token cho {count} tài khoản',
-        partialSuccess: 'Hoàn tất một phần: {success} thành công, {failed} thất bại'
+        partialSuccess: 'Hoàn tất một phần: {success} thành công, {failed} thất bại',
+        confirmResetStatus: 'Đặt lại trạng thái của {count} tài khoản đã chọn?',
+        confirmRefreshToken: 'Làm mới token của {count} tài khoản đã chọn? Việc này có thể mất tới 2 phút.',
+        processing: 'Đang xử lý {count} tài khoản...'
       },
       bulkEdit: {
         title: 'Sửa tài khoản hàng loạt',
@@ -536,7 +542,10 @@ export default {
         rateSyncConflict: 'Không thể thay đổi hệ số tài khoản: {count} tài khoản đích đang bật đồng bộ hệ số upstream.',
         longContextShadowHint: 'Tính phí ngữ cảnh dài thuộc về tài khoản cha. Các tài khoản shadow đã chọn tiếp tục theo tài khoản cha, kể cả khi mục tiêu đến từ bộ lọc.',
         longContextParentRequired: 'Tất cả tài khoản đã chọn đều là shadow. Hãy chọn tài khoản cha để thay đổi tính phí ngữ cảnh dài.',
-        mixedPlatformWarning: 'Các tài khoản đã chọn thuộc nhiều nền tảng ({platforms}). Các preset ánh xạ model hiển thị là kết hợp — hãy đảm bảo ánh xạ phù hợp với từng nền tảng.'
+        mixedPlatformWarning: 'Các tài khoản đã chọn thuộc nhiều nền tảng ({platforms}). Các preset ánh xạ model hiển thị là kết hợp — hãy đảm bảo ánh xạ phù hợp với từng nền tảng.',
+        groupsReplaceHint: 'Các nhóm được chọn sẽ THAY THẾ toàn bộ nhóm hiện tại của mọi tài khoản mục tiêu. Tài khoản sẽ bị gỡ khỏi mọi nhóm không được chọn.',
+        groupsReplaceConfirm: 'Thay thế nhóm của {count} tài khoản? Các tài khoản sẽ bị gỡ khỏi mọi nhóm không được chọn.',
+        groupsClearConfirm: 'Chưa chọn nhóm nào. {count} tài khoản sẽ bị gỡ khỏi TẤT CẢ nhóm và ngừng phục vụ các nhóm đó. Tiếp tục?'
       },
       bulkDeleteTitle: 'Xóa tài khoản hàng loạt',
       bulkDeleteConfirm: 'Xóa {count} tài khoản đã chọn? Thao tác này không thể hoàn tác.',
@@ -809,6 +818,8 @@ export default {
       mappingExists: 'Ánh xạ cho {model} đã tồn tại',
       wildcardOnlyAtEnd: 'Ký tự đại diện * chỉ được đặt ở cuối',
       targetNoWildcard: 'Model đích không được chứa ký tự đại diện *',
+      whitelistWildcardNotSupported: 'Danh sách này không hỗ trợ ký tự đại diện (*); hãy nhập tên model đầy đủ. Để tài khoản khớp theo tiền tố như claude-*, hãy dùng ánh xạ model.',
+      modelRestrictionInvalidEntries: 'Giới hạn model có mục không thể lưu: mục trong danh sách trắng không được chứa *, model nguồn của ánh xạ chỉ được kết thúc bằng *, model đích không được chứa *. Hãy sửa hoặc xóa các mục đó trước.',
       searchModels: 'Tìm kiếm model...',
       noMatchingModels: 'Không có model phù hợp',
       fillRelatedModels: 'Đồng bộ các model được hỗ trợ mới nhất',

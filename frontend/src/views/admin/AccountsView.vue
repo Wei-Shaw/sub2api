@@ -180,6 +180,7 @@
           :total-results="pagination.total"
           :selecting-all="selectingAllResults"
           :all-results-selected="allResultsSelected"
+          :busy="bulkBusy"
           @delete="handleBulkDelete"
           @reset-status="handleBulkResetStatus"
           @refresh-token="handleBulkRefreshToken"
@@ -207,6 +208,18 @@
           :overscan="5"
           :virtualize-threshold="50"
         >
+          <template #empty>
+            <div v-if="loadError" class="flex flex-col items-center" role="alert" data-testid="accounts-load-error">
+              <Icon name="exclamationCircle" size="xl" class="mb-3 h-10 w-10 text-danger" />
+              <p class="text-h3 font-semibold text-fg">{{ t('admin.accounts.failedToLoad') }}</p>
+              <p class="mt-1 text-sm text-fg-muted">{{ loadError }}</p>
+              <button type="button" class="btn btn-secondary btn-sm mt-4" @click="load()">{{ t('admin.accounts.retry') }}</button>
+            </div>
+            <div v-else class="flex flex-col items-center">
+              <Icon name="inbox" size="xl" class="mb-3 h-10 w-10 text-border-strong" />
+              <p class="text-h3 font-semibold text-fg-muted">{{ t('empty.noData') }}</p>
+            </div>
+          </template>
           <template #header-select>
             <input
               type="checkbox"
@@ -450,7 +463,7 @@
       </template>
       <template #pagination><Pagination v-if="pagination.total > 0" :page="pagination.page" :total="pagination.total" :page-size="pagination.page_size" @update:page="handlePageChange" @update:pageSize="handlePageSizeChange" /></template>
     </TablePageLayout>
-    <CreateAccountModal :show="showCreate" :proxies="proxies" :groups="groups" @close="showCreate = false" @created="reload" />
+    <CreateAccountModal :show="showCreate" :proxies="proxies" :groups="groups" @close="showCreate = false" @created="handleAccountCreated" />
     <EditAccountModal :show="showEdit" :account="edAcc" :proxies="proxies" :groups="groups" @close="showEdit = false" @updated="handleAccountUpdated" />
     <ReAuthAccountModal :show="showReAuth" :account="reAuthAcc" @close="closeReAuthModal" @reauthorized="handleAccountUpdated" />
     <AccountTestModal :show="showTest" :account="testingAcc" @close="closeTestModal" />
@@ -472,6 +485,7 @@
     />
     <TempUnschedStatusModal :show="showTempUnsched" :account="tempUnschedAcc" @close="showTempUnsched = false" @reset="handleTempUnschedReset" />
     <ConfirmDialog :show="showDeleteDialog" :title="t('admin.accounts.deleteAccount')" :message="t('admin.accounts.deleteConfirm', { name: deletingAcc?.name })" :confirm-text="t('common.delete')" :cancel-text="t('common.cancel')" :danger="true" @confirm="confirmDelete" @cancel="showDeleteDialog = false" />
+    <ConfirmDialog :show="showResetQuotaDialog" :title="t('admin.accounts.resetQuota')" :message="t('admin.accounts.resetQuotaConfirm', { name: resettingQuotaAcc?.name })" :confirm-text="t('admin.accounts.resetQuota')" :cancel-text="t('common.cancel')" :danger="true" @confirm="confirmResetQuota" @cancel="showResetQuotaDialog = false" />
     <ConfirmDialog :show="showCreateShadowDialog" :title="t('admin.accounts.createSparkShadow')" :message="t('admin.accounts.createSparkShadowConfirm', { name: creatingShadowAcc?.name })" @confirm="confirmCreateSparkShadow" @cancel="showCreateShadowDialog = false" />
     <ConfirmDialog :show="showExportDataDialog" :title="t('admin.accounts.dataExport')" :message="t('admin.accounts.dataExportConfirmMessage')" :confirm-text="t('admin.accounts.dataExportConfirm')" :cancel-text="t('common.cancel')" @confirm="handleExportData" @cancel="showExportDataDialog = false">
       <label class="flex items-center gap-2 text-sm text-fg">
@@ -489,6 +503,7 @@
 import { ref, reactive, computed, onMounted, onUnmounted, toRaw, watch } from 'vue'
 import { useIntervalFn } from '@vueuse/core'
 import { useI18n } from 'vue-i18n'
+import { useRoute } from 'vue-router'
 import { useAppStore } from '@/stores/app'
 import { useAuthStore } from '@/stores/auth'
 import { adminAPI } from '@/api/admin'
@@ -537,6 +552,7 @@ import type { Account, AccountListItem, AccountPlatform, AccountSchedulerGroupSc
 const { t } = useI18n()
 const appStore = useAppStore()
 const authStore = useAuthStore()
+const route = useRoute()
 
 const proxies = ref<AccountProxy[]>([])
 const groups = ref<AdminGroup[]>([])
@@ -597,6 +613,7 @@ const showBulkEdit = ref(false)
 const bulkEditTarget = ref<AccountBulkEditTarget | null>(null)
 const showTempUnsched = ref(false)
 const showDeleteDialog = ref(false)
+const showResetQuotaDialog = ref(false)
 const showCreateShadowDialog = ref(false)
 const showReAuth = ref(false)
 const showTest = ref(false)
@@ -606,6 +623,7 @@ const showTLSFingerprintProfiles = ref(false)
 const edAcc = ref<Account | null>(null)
 const tempUnschedAcc = ref<Account | null>(null)
 const deletingAcc = ref<Account | null>(null)
+const resettingQuotaAcc = ref<Account | null>(null)
 const creatingShadowAcc = ref<Account | null>(null)
 const reAuthAcc = ref<Account | null>(null)
 const testingAcc = ref<Account | null>(null)
@@ -614,6 +632,8 @@ const showSchedulePanel = ref(false)
 const scheduleAcc = ref<Account | null>(null)
 const scheduleModelOptions = ref<SelectOption[]>([])
 const togglingSchedulable = ref<number | null>(null)
+const bulkBusy = ref(false)
+const loadError = ref<string | null>(null)
 const menu = reactive<{show:boolean, acc:Account|null, anchorRect:DOMRect|null}>({ show: false, acc: null, anchorRect: null })
 const exportingData = ref(false)
 const probingUpstreamBilling = reactive(new Set<number>())
@@ -1077,13 +1097,28 @@ const {
   handlePageChange: baseHandlePageChange,
   handlePageSizeChange: baseHandlePageSizeChange
 } = useTableLoader<AccountListItem, any>({
-  fetchFn: adminAPI.accounts.list,
+  // useTableLoader rethrows fetch errors; surfacing them here covers every load path
+  // (mount, paging, sorting, filtering) so a failed request is not shown as an empty list.
+  fetchFn: async (...args: Parameters<typeof adminAPI.accounts.list>) => {
+    try {
+      const result = await adminAPI.accounts.list(...args)
+      loadError.value = null
+      return result
+    } catch (error) {
+      const e = error as { name?: string; code?: string } | null
+      if (e?.name !== 'AbortError' && e?.name !== 'CanceledError' && e?.code !== 'ERR_CANCELED') {
+        loadError.value = extractApiErrorMessage(error, t('admin.accounts.failedToLoad'))
+        appStore.showError(loadError.value)
+      }
+      throw error
+    }
+  },
   initialParams: {
     platform: '',
     type: '',
     status: '',
     privacy_mode: '',
-    group: '',
+    group: typeof route?.query.group === 'string' ? route.query.group : '',
     search: '',
     lite: '1',
     include_scheduler_score: shouldIncludeSchedulerScore() ? '1' : '0',
@@ -1160,7 +1195,11 @@ const load = async (options: AccountLoadOptions = {}) => {
   resetAutoRefreshCache()
   pendingTodayStatsRefresh.value = false
   requestParams.lite = '1'
-  await baseLoad()
+  try {
+    await baseLoad()
+  } catch {
+    return // already surfaced by fetchFn
+  }
   if (options.refreshTodayStats !== false) await refreshTodayStatsBatch()
 }
 
@@ -1169,7 +1208,11 @@ const reload = async () => {
   hasPendingListSync.value = false
   resetAutoRefreshCache()
   pendingTodayStatsRefresh.value = false
-  await baseReload()
+  try {
+    await baseReload()
+  } catch {
+    return // already surfaced by fetchFn
+  }
   await refreshTodayStatsBatch()
 }
 
@@ -1364,6 +1407,7 @@ const isAnyModalOpen = computed(() => {
     showBulkEdit.value ||
     showTempUnsched.value ||
     showDeleteDialog.value ||
+    showResetQuotaDialog.value ||
     showReAuth.value ||
     showTest.value ||
     showStats.value ||
@@ -1466,6 +1510,7 @@ const refreshAccountsIncrementally = async () => {
       pagination.pages = result.data.pages || 0
       mergeAccountsIncrementally(result.data.items || [])
       hasPendingListSync.value = false
+      loadError.value = null
     }
     upstreamBillingNow.value = Date.now()
 
@@ -1853,8 +1898,10 @@ const toggleSelectAllVisible = (event: Event) => {
   toggleVisible(target.checked)
 }
 const handleBulkDelete = async () => {
+  if (bulkBusy.value) return
   const accountIds = [...selIds.value]
   if (!confirm(t('admin.accounts.bulkActions.confirmDelete', { count: accountIds.length }))) return
+  bulkBusy.value = true
   try {
     const result = await adminAPI.accounts.batchDelete(accountIds)
     if (result.failed > 0) {
@@ -1870,11 +1917,15 @@ const handleBulkDelete = async () => {
     await reload()
   } catch (error) {
     console.error('Failed to bulk delete accounts:', error)
-    appStore.showError(String(error))
+    appStore.showError(extractApiErrorMessage(error, t('common.error')))
+  } finally {
+    bulkBusy.value = false
   }
 }
 const handleBulkResetStatus = async () => {
-  if (!confirm(t('common.confirm'))) return
+  if (bulkBusy.value) return
+  if (!confirm(t('admin.accounts.bulkActions.confirmResetStatus', { count: selIds.value.length }))) return
+  bulkBusy.value = true
   try {
     const result = await adminAPI.accounts.batchClearError(selIds.value)
     if (result.failed > 0) {
@@ -1886,12 +1937,16 @@ const handleBulkResetStatus = async () => {
     reload()
   } catch (error) {
     console.error('Failed to bulk reset status:', error)
-    appStore.showError(String(error))
+    appStore.showError(extractApiErrorMessage(error, t('common.error')))
+  } finally {
+    bulkBusy.value = false
   }
 }
 const handleBulkRefreshToken = async () => {
-  if (!confirm(t('common.confirm'))) return
+  if (bulkBusy.value) return
   const accountIds = [...selIds.value]
+  if (!confirm(t('admin.accounts.bulkActions.confirmRefreshToken', { count: accountIds.length }))) return
+  bulkBusy.value = true
   try {
     const result = await adminAPI.accounts.batchRefresh(accountIds)
     if (result.failed > 0) {
@@ -1905,10 +1960,13 @@ const handleBulkRefreshToken = async () => {
     reload()
   } catch (error) {
     console.error('Failed to bulk refresh token:', error)
-    appStore.showError(String(error))
+    appStore.showError(extractApiErrorMessage(error, t('common.error')))
+  } finally {
+    bulkBusy.value = false
   }
 }
 const handleBulkProbeUpstreamBilling = async () => {
+  if (bulkBusy.value) return
   const accountIDs = [...selIds.value]
   if (accountIDs.length === 0) {
     appStore.showError(t('admin.accounts.upstreamBilling.noEligibleAccounts'))
@@ -1919,6 +1977,7 @@ const handleBulkProbeUpstreamBilling = async () => {
     return
   }
   accountIDs.forEach(id => probingUpstreamBilling.add(id))
+  bulkBusy.value = true
   try {
     const results = await adminAPI.accounts.probeUpstreamBillingBatch(accountIDs)
     let patched = false
@@ -1940,6 +1999,7 @@ const handleBulkProbeUpstreamBilling = async () => {
     appStore.showError(extractApiErrorMessage(error, t('admin.accounts.upstreamBilling.probeFailed')))
   } finally {
     accountIDs.forEach(id => probingUpstreamBilling.delete(id))
+    bulkBusy.value = false
   }
 }
 const updateSchedulableInList = (accountIds: number[], schedulable: boolean) => {
@@ -2008,7 +2068,9 @@ const normalizeBulkSchedulableResult = (
   }
 }
 const handleBulkToggleSchedulable = async (schedulable: boolean) => {
+  if (bulkBusy.value) return
   const accountIds = [...selIds.value]
+  bulkBusy.value = true
   try {
     const result = await adminAPI.accounts.bulkUpdate(accountIds, { schedulable })
     const { successIds, failedIds, successCount, failedCount, hasIds, hasCounts } = normalizeBulkSchedulableResult(result, accountIds)
@@ -2041,7 +2103,9 @@ const handleBulkToggleSchedulable = async (schedulable: boolean) => {
     }
   } catch (error) {
     console.error('Failed to bulk toggle schedulable:', error)
-    appStore.showError(t('common.error'))
+    appStore.showError(extractApiErrorMessage(error, t('common.error')))
+  } finally {
+    bulkBusy.value = false
   }
 }
 const buildBulkEditFilterSnapshot = () => {
@@ -2122,6 +2186,14 @@ const handleBulkUpdated = () => {
   reload()
 }
 const handleDataImported = () => { showImportData.value = false; reload() }
+// A new API-key account enters the pool immediately; offer a connection test (not auto-run).
+const handleAccountCreated = (account?: Account) => {
+  reload()
+  if (account?.type !== 'apikey') return
+  testingAcc.value = account
+  showTest.value = true
+  appStore.showInfo(t('admin.accounts.testNewAccountHint'))
+}
 const ACCOUNT_UNGROUPED_GROUP_QUERY_VALUE = 'ungrouped'
 const ACCOUNT_PRIVACY_MODE_UNSET_QUERY_VALUE = '__unset__'
 const buildAccountQueryFilters = () => ({
@@ -2356,8 +2428,10 @@ const handleRefresh = async (a: Account) => {
     patchAccountInList(result.account)
     enterAutoRefreshSilentWindow()
     if (result.warning) appStore.showWarning(result.message)
+    else appStore.showSuccess(t('admin.accounts.tokenRefreshed'))
   } catch (error) {
     console.error('Failed to refresh credentials:', error)
+    appStore.showError(extractApiErrorMessage(error, t('admin.accounts.failedToRefresh')))
   }
 }
 const handleRecoverState = async (a: Account) => {
@@ -2371,14 +2445,20 @@ const handleRecoverState = async (a: Account) => {
     appStore.showError(error?.message || t('admin.accounts.recoverStateFailed'))
   }
 }
-const handleResetQuota = async (a: Account) => {
+const handleResetQuota = (a: Account) => { resettingQuotaAcc.value = a; showResetQuotaDialog.value = true }
+const confirmResetQuota = async () => {
+  const a = resettingQuotaAcc.value
+  if (!a) return
   try {
     const updated = await adminAPI.accounts.resetAccountQuota(a.id)
+    showResetQuotaDialog.value = false
+    resettingQuotaAcc.value = null
     patchAccountInList(updated)
     enterAutoRefreshSilentWindow()
     appStore.showSuccess(t('common.success'))
   } catch (error) {
     console.error('Failed to reset quota:', error)
+    appStore.showError(extractApiErrorMessage(error, t('admin.accounts.failedToResetQuota')))
   }
 }
 
@@ -2448,7 +2528,7 @@ const confirmCreateSparkShadow = async () => {
   }
 }
 const handleDelete = (a: Account) => { deletingAcc.value = a; showDeleteDialog.value = true }
-const confirmDelete = async () => { if(!deletingAcc.value) return; try { await adminAPI.accounts.delete(deletingAcc.value.id); showDeleteDialog.value = false; deletingAcc.value = null; reload() } catch (error) { console.error('Failed to delete account:', error) } }
+const confirmDelete = async () => { if(!deletingAcc.value) return; try { await adminAPI.accounts.delete(deletingAcc.value.id); showDeleteDialog.value = false; deletingAcc.value = null; reload() } catch (error) { console.error('Failed to delete account:', error); appStore.showError(extractApiErrorMessage(error, t('admin.accounts.failedToDelete'))) } }
 const handleToggleSchedulable = async (a: Account) => {
   const nextSchedulable = !a.schedulable
   togglingSchedulable.value = a.id

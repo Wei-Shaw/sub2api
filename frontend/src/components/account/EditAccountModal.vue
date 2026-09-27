@@ -3221,6 +3221,7 @@ import {
   commonErrorCodes,
   buildModelMappingObject,
   splitModelMappingObject,
+  hasInvalidModelRestrictionEntries,
   isValidWildcardPattern
 } from '@/composables/useModelWhitelist'
 
@@ -4105,8 +4106,14 @@ const loadModelRestrictionFromMapping = (rawMapping?: Record<string, unknown>) =
       : 'whitelist'
 }
 
-const buildModelRestrictionMapping = () =>
-  buildModelMappingObject('combined', allowedModels.value, modelMappings.value)
+// 只在真正写入 model_mapping 的分支调用；抛出的错误由 handleSubmit 的 catch 提示并中止保存，
+// 避免无效条目被静默丢弃后账号变成"允许所有模型"。
+const buildModelRestrictionMapping = () => {
+  if (hasInvalidModelRestrictionEntries('combined', allowedModels.value, modelMappings.value)) {
+    throw new Error(t('admin.accounts.modelRestrictionInvalidEntries'))
+  }
+  return buildModelMappingObject('combined', allowedModels.value, modelMappings.value)
+}
 
 const applyOpenAIModelMappingCredentials = (credentials: Record<string, unknown>) => {
   const shouldApplyModelMapping = !openaiPassthroughEnabled.value

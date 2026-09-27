@@ -4,7 +4,7 @@ vi.mock('@/api/admin/accounts', () => ({
   getAntigravityDefaultModelMapping: vi.fn()
 }))
 
-import { buildModelMappingObject, getModelsByPlatform, getPresetMappingsByPlatform, splitModelMappingObject } from '../useModelWhitelist'
+import { buildModelMappingObject, getModelsByPlatform, getPresetMappingsByPlatform, hasInvalidModelRestrictionEntries, splitModelMappingObject } from '../useModelWhitelist'
 
 describe('useModelWhitelist', () => {
   it('openai 模型列表包含 GPT-5.4 官方快照', () => {
@@ -170,5 +170,22 @@ describe('useModelWhitelist', () => {
       allowedModels: ['gpt-5.4'],
       modelMappings: [{ from: 'gpt-latest', to: 'gpt-5.4' }]
     })
+  })
+
+  it('hasInvalidModelRestrictionEntries 标记会被 buildModelMappingObject 静默丢弃的条目', () => {
+    // 仅含通配符白名单时 build 结果为 null，后端会当作允许所有模型
+    expect(buildModelMappingObject('whitelist', ['claude-*'], [])).toBeNull()
+    expect(hasInvalidModelRestrictionEntries('whitelist', ['claude-*'], [])).toBe(true)
+    expect(hasInvalidModelRestrictionEntries('combined', ['claude-*'], [])).toBe(true)
+    expect(hasInvalidModelRestrictionEntries('whitelist', ['claude-sonnet-4-5'], [])).toBe(false)
+
+    expect(hasInvalidModelRestrictionEntries('mapping', [], [{ from: 'claude-*', to: 'claude-sonnet-4-5' }])).toBe(false)
+    expect(hasInvalidModelRestrictionEntries('mapping', [], [{ from: 'claude-*-x', to: 'claude-sonnet-4-5' }])).toBe(true)
+    expect(hasInvalidModelRestrictionEntries('mapping', [], [{ from: 'claude-*', to: 'claude-*' }])).toBe(true)
+    // 空行在构建时本来就会被忽略，不算无效
+    expect(hasInvalidModelRestrictionEntries('mapping', [], [{ from: 'claude-*-x', to: '' }])).toBe(false)
+    // 映射模式不看白名单，白名单模式不看映射
+    expect(hasInvalidModelRestrictionEntries('mapping', ['claude-*'], [])).toBe(false)
+    expect(hasInvalidModelRestrictionEntries('whitelist', [], [{ from: 'a*b', to: 'c' }])).toBe(false)
   })
 })
