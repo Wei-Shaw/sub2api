@@ -504,7 +504,8 @@ export default {
         title: '删除已选用户',
         confirm: '确定删除已选的 {count} 个用户吗？此操作无法撤销。管理员账号无法删除。',
         success: '已删除 {count} 个用户',
-        failed: '{count} 个用户删除失败，已保留选中，可重试。'
+        failed: '{count} 个用户删除失败，已保留选中，可重试。',
+        progress: '正在删除 {done}/{total}…'
       },
       bulkLimits: {
         action: '批量设置限制（{count}）',

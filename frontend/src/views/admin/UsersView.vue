@@ -260,7 +260,11 @@
               @click="bulkDeleteIds = [...selectedIds]"
             >
               <Icon name="trash" size="md" class="mr-2" />
-              {{ t('admin.users.bulkDelete.action', { count: selectedCount }) }}
+              {{
+                bulkDeleting
+                  ? t('admin.users.bulkDelete.progress', bulkDeleteProgress)
+                  : t('admin.users.bulkDelete.action', { count: selectedCount })
+              }}
             </button>
 
             <!-- Create User Button (full width on mobile, auto width on desktop) -->
@@ -790,6 +794,7 @@ import { useAppStore } from '@/stores/app'
 import { getPersistedPageSize } from '@/composables/usePersistedPageSize'
 import { useTableSelection } from '@/composables/useTableSelection'
 import { formatDateTime } from '@/utils/format'
+import { extractApiErrorMessage } from '@/utils/apiError'
 import Icon from '@/components/icons/Icon.vue'
 
 const { t } = useI18n()
@@ -1337,6 +1342,7 @@ const showBulkEditModal = ref(false)
 const showDeleteDialog = ref(false)
 const bulkDeleteIds = ref<number[]>([])
 const bulkDeleting = ref(false)
+const bulkDeleteProgress = reactive({ done: 0, total: 0 })
 const showApiKeysModal = ref(false)
 const showAttributesModal = ref(false)
 const showPlatformQuotaModal = ref(false)
@@ -1826,26 +1832,43 @@ const confirmDelete = async () => {
   }
 }
 
+const BULK_DELETE_CONCURRENCY = 4
+const BULK_DELETE_ERRORS_SHOWN = 5
+
 const confirmBulkDelete = async () => {
   const ids = bulkDeleteIds.value
   bulkDeleteIds.value = []
   bulkDeleting.value = true
+  bulkDeleteProgress.done = 0
+  bulkDeleteProgress.total = ids.length
   const deletedIds: number[] = []
-  for (const id of ids) {
-    try {
-      await adminAPI.users.delete(id)
-      deletedIds.push(id)
-    } catch (error) {
-      console.error('Error deleting user:', error)
+  const failures: string[] = []
+  let next = 0
+  // 有限并发删除，逐条记录失败原因，供错误提示展示。
+  const worker = async () => {
+    while (next < ids.length) {
+      const id = ids[next++]
+      try {
+        await adminAPI.users.delete(id)
+        deletedIds.push(id)
+      } catch (error) {
+        const label = users.value.find((u) => u.id === id)?.email ?? `#${id}`
+        failures.push(`${label}: ${extractApiErrorMessage(error, t('admin.users.failedToDelete'))}`)
+      }
+      bulkDeleteProgress.done++
     }
   }
+  await Promise.all(Array.from({ length: Math.min(BULK_DELETE_CONCURRENCY, ids.length) }, worker))
   removeSelectedIds(deletedIds)
   if (deletedIds.length > 0) {
     appStore.showSuccess(t('admin.users.bulkDelete.success', { count: deletedIds.length }))
     pagination.page = 1
   }
-  const failed = ids.length - deletedIds.length
-  if (failed > 0) appStore.showError(t('admin.users.bulkDelete.failed', { count: failed }))
+  if (failures.length > 0) {
+    const shown = failures.slice(0, BULK_DELETE_ERRORS_SHOWN).join('; ')
+    const more = failures.length > BULK_DELETE_ERRORS_SHOWN ? '; …' : ''
+    appStore.showError(`${t('admin.users.bulkDelete.failed', { count: failures.length })} ${shown}${more}`, 10000)
+  }
   await loadUsers()
   bulkDeleting.value = false
 }

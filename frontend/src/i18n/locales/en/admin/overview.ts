@@ -504,7 +504,8 @@ export default {
         title: 'Delete selected users',
         confirm: 'Delete the {count} selected users? This action cannot be undone. Administrator accounts cannot be deleted.',
         success: 'Deleted {count} users',
-        failed: 'Failed to delete {count} users. They remain selected for retry.'
+        failed: 'Failed to delete {count} users. They remain selected for retry.',
+        progress: 'Deleting {done}/{total}…'
       },
       bulkLimits: {
         action: 'Set limits ({count})',

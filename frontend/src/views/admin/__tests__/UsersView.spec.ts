@@ -58,8 +58,10 @@ vi.mock('vue-i18n', async () => {
   return {
     ...actual,
     useI18n: () => ({
-      t: (key: string, params?: { count?: number }) =>
-        params?.count === undefined ? key : `${key}:${params.count}`
+      t: (key: string, params?: { count?: number; done?: number; total?: number }) => {
+        if (params?.done !== undefined) return `${key}:${params.done}/${params.total}`
+        return params?.count === undefined ? key : `${key}:${params.count}`
+      }
     })
   }
 })
@@ -259,8 +261,12 @@ describe('admin UsersView', () => {
     } else {
       expect(showSuccess).not.toHaveBeenCalled()
     }
-    if (failedIds.length) expect(showError).toHaveBeenCalledWith(`admin.users.bulkDelete.failed:${failedIds.length}`)
-    else expect(showError).not.toHaveBeenCalled()
+    if (failedIds.length) {
+      expect(showError).toHaveBeenCalledWith(
+        expect.stringContaining(`admin.users.bulkDelete.failed:${failedIds.length}`),
+        10000
+      )
+    } else expect(showError).not.toHaveBeenCalled()
     wrapper.unmount()
   })
 
@@ -384,6 +390,56 @@ describe('admin UsersView', () => {
 
     expect(wrapper.find('[data-test="delete-dialog"]').exists()).toBe(false)
     expect(toggleStatus.mock.calls).toEqual([[42, 'active']])
+    wrapper.unmount()
+  })
+
+  it('bulk deletes with bounded concurrency, shows progress, and lists every failure', async () => {
+    const ids = Array.from({ length: 10 }, (_, i) => 100 + i)
+    listUsers.mockResolvedValue({
+      items: ids.map((id) => createAdminUser({ id, email: `u${id}@example.com` })),
+      total: 10, page: 1, page_size: 20, pages: 1
+    })
+    let inFlight = 0
+    let maxInFlight = 0
+    const pending: Array<() => void> = []
+    deleteUser.mockImplementation((id: number) => {
+      inFlight++
+      maxInFlight = Math.max(maxInFlight, inFlight)
+      return new Promise<void>((resolve, reject) => {
+        pending.push(() => {
+          inFlight--
+          if (id === 103) reject({ message: 'user has active subscription' })
+          else if (id === 107) reject({ message: 'user not found' })
+          else resolve()
+        })
+      })
+    })
+    const wrapper = mountBulkDeleteView()
+    await flushPromises()
+    for (const id of ids) await wrapper.get(`[data-test="select-${id}"]`).trigger('click')
+    await wrapper.get('[data-test="bulk-delete-users"]').trigger('click')
+    await wrapper.get('[data-test="confirm-delete"]').trigger('click')
+    await flushPromises()
+
+    expect(deleteUser).toHaveBeenCalledTimes(4)
+    expect(wrapper.get('[data-test="bulk-delete-users"]').text()).toBe('admin.users.bulkDelete.progress:0/10')
+    pending.shift()!()
+    await flushPromises()
+    expect(wrapper.get('[data-test="bulk-delete-users"]').text()).toBe('admin.users.bulkDelete.progress:1/10')
+    while (pending.length) {
+      pending.shift()!()
+      await flushPromises()
+    }
+
+    expect(deleteUser).toHaveBeenCalledTimes(10)
+    expect(maxInFlight).toBe(4)
+    expect(showSuccess).toHaveBeenCalledWith('admin.users.bulkDelete.success:8')
+    expect(showError).toHaveBeenCalledTimes(1)
+    const message = showError.mock.calls[0][0] as string
+    expect(message).toContain('admin.users.bulkDelete.failed:2')
+    expect(message).toContain('u103@example.com: user has active subscription')
+    expect(message).toContain('u107@example.com: user not found')
+    expect(wrapper.get('[data-test="selected-keys"]').text()).toBe('103,107')
     wrapper.unmount()
   })
 

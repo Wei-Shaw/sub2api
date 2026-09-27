@@ -504,7 +504,8 @@ export default {
         title: 'Xóa người dùng đã chọn',
         confirm: 'Xóa {count} người dùng đã chọn? Thao tác này không thể hoàn tác. Không thể xóa tài khoản quản trị viên.',
         success: 'Đã xóa {count} người dùng',
-        failed: 'Không thể xóa {count} người dùng. Họ vẫn được chọn để thử lại.'
+        failed: 'Không thể xóa {count} người dùng. Họ vẫn được chọn để thử lại.',
+        progress: 'Đang xóa {done}/{total}…'
       },
       bulkLimits: {
         action: 'Đặt giới hạn ({count})',
