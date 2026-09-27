@@ -93,16 +93,57 @@ export default {
         }
       }
     },
-    providers: {
-      title: 'Supported AI Models',
-      description: 'One Platform, All Leading AI Models',
+    models: {
+      title: 'Supported Model Families',
+      description: 'Four leading model families, one API key — switch freely',
       supported: 'Supported',
-      soon: 'Soon',
-      deepseek: 'DeepSeek',
-      qwen: 'Qwen',
-      kimi: 'Kimi',
-      zhipu: 'Zhipu AI',
-      more: 'More'
+      note: 'The model lineup keeps growing; available models and pricing are subject to the console',
+      families: [
+        {
+          key: 'deepseek',
+          name: 'DeepSeek',
+          vendor: 'DeepSeek AI',
+          desc: 'V4 flagship and lightweight Flash line — the industry benchmark for deep reasoning and value',
+          models: ['deepseek-v4-pro', 'deepseek-v4-flash', 'deepseek-chat', 'deepseek-reasoner'],
+          tags: ['Deep reasoning', 'Great value']
+        },
+        {
+          key: 'qwen',
+          name: 'Qwen',
+          vendor: 'Alibaba Cloud',
+          desc: 'Full-size matrix from Max flagship to Flash speed, with strong multimodal and long-context skills',
+          models: ['qwen3.8-max', 'qwen3.8-flash', 'qwen-plus', 'qwen-turbo'],
+          tags: ['Full-size', 'Multimodal']
+        },
+        {
+          key: 'kimi',
+          name: 'Kimi',
+          vendor: 'Moonshot AI',
+          desc: 'Long-context pioneer; the K2.8 series excels at agentic workflows and tool use',
+          models: ['kimi-k2.8-preview', 'kimi-k2', 'moonshot-v1-128k'],
+          tags: ['Long context', 'Agent']
+        },
+        {
+          key: 'glm',
+          name: 'GLM',
+          vendor: 'Zhipu Z.ai',
+          desc: 'GLM-5.3 flagship plus Flash lightweight — a balanced open-source leader for code and reasoning',
+          models: ['glm-5.3', 'glm-5.3-flash', 'glm-4.5-air'],
+          tags: ['Code', 'Reasoning']
+        }
+      ]
+    },
+    quickstart: {
+      title: 'Integrate in Three Minutes',
+      description: 'OpenAI-compatible — just swap the base_url and key, no code changes needed',
+      stepOneTitle: 'Get your API key',
+      stepOneDesc: 'Create one from the API Keys page after sign-up',
+      stepTwoTitle: 'Point your client here',
+      stepTwoDesc: 'Set base_url to this site and use your sk- key',
+      tabCurl: 'curl',
+      tabPython: 'Python',
+      tabSdk: 'OpenAI SDK',
+      compatibilityNote: 'Works with any tool that supports a custom OpenAI endpoint: ChatGPT-Next-Web, LobeChat, Cursor, Claude Code and more'
     },
     // CTA section
     cta: {

@@ -95,16 +95,57 @@ export default {
         }
       }
     },
-    providers: {
-      title: '已支持的 AI 模型',
-      description: '一个平台，汇聚所有主流 AI 模型',
+    models: {
+      title: '支持的模型家族',
+      description: '四大主流国产模型家族一站接入，一个密钥自由切换',
       supported: '已支持',
-      soon: '即将推出',
-      deepseek: 'DeepSeek',
-      qwen: '通义千问',
-      kimi: 'Kimi',
-      zhipu: '智谱清言',
-      more: '更多'
+      note: '模型列表持续更新，具体可用模型与定价以控制台为准',
+      families: [
+        {
+          key: 'deepseek',
+          name: 'DeepSeek',
+          vendor: '深度求索',
+          desc: 'V4 旗舰与 Flash 轻量双线并行，深度推理与通用对话的行业性价比标杆',
+          models: ['deepseek-v4-pro', 'deepseek-v4-flash', 'deepseek-chat', 'deepseek-reasoner'],
+          tags: ['深度推理', '高性价比']
+        },
+        {
+          key: 'qwen',
+          name: '通义千问 Qwen',
+          vendor: '阿里云',
+          desc: '从 Max 旗舰到 Flash 极速的全尺寸矩阵，多模态与长文本能力全面',
+          models: ['qwen3.8-max', 'qwen3.8-flash', 'qwen-plus', 'qwen-turbo'],
+          tags: ['全尺寸', '多模态']
+        },
+        {
+          key: 'kimi',
+          name: 'Kimi',
+          vendor: '月之暗面 Moonshot',
+          desc: '长上下文先驱，K2.8 系列 Agent 与工具调用能力出色，适合复杂任务编排',
+          models: ['kimi-k2.8-preview', 'kimi-k2', 'moonshot-v1-128k'],
+          tags: ['长上下文', 'Agent']
+        },
+        {
+          key: 'glm',
+          name: 'GLM 智谱',
+          vendor: '智谱 Z.ai',
+          desc: 'GLM-5.3 旗舰与 Flash 轻量版，代码生成与逻辑推理均衡的国产开源标杆',
+          models: ['glm-5.3', 'glm-5.3-flash', 'glm-4.5-air'],
+          tags: ['代码', '推理']
+        }
+      ]
+    },
+    quickstart: {
+      title: '三分钟完成接入',
+      description: 'OpenAI 兼容格式，现有代码只需替换 base_url 与密钥即可无缝迁移',
+      stepOneTitle: '获取 API 密钥',
+      stepOneDesc: '注册后在控制台「API 密钥」页一键创建',
+      stepTwoTitle: '替换接入地址',
+      stepTwoDesc: '将客户端 base_url 指向本站，密钥填入 sk- 开头的密钥',
+      tabCurl: 'curl',
+      tabPython: 'Python',
+      tabSdk: 'OpenAI SDK',
+      compatibilityNote: '兼容所有支持自定义 OpenAI 接入的工具：ChatGPT-Next-Web、LobeChat、Cursor、Claude Code 等'
     },
     // CTA 区块
     cta: {

@@ -72,7 +72,7 @@
         </div>
         <!-- Stats -->
         <div class="mt-14 grid grid-cols-2 gap-6 border-t border-gray-200/60 pt-10 dark:border-dark-800 sm:grid-cols-4">
-          <div class="text-center"><div class="text-3xl font-bold text-primary-600 dark:text-primary-400">10+</div><div class="mt-1 text-sm text-gray-500 dark:text-dark-400">AI 模型</div></div>
+          <div class="text-center"><div class="text-3xl font-bold text-primary-600 dark:text-primary-400">20+</div><div class="mt-1 text-sm text-gray-500 dark:text-dark-400">主流 AI 模型</div></div>
           <div class="text-center"><div class="text-3xl font-bold text-primary-600 dark:text-primary-400">99.9%</div><div class="mt-1 text-sm text-gray-500 dark:text-dark-400">服务可用性</div></div>
           <div class="text-center"><div class="text-3xl font-bold text-primary-600 dark:text-primary-400">1</div><div class="mt-1 text-sm text-gray-500 dark:text-dark-400">统一 API 密钥</div></div>
           <div class="text-center"><div class="text-3xl font-bold text-primary-600 dark:text-primary-400">7×24</div><div class="mt-1 text-sm text-gray-500 dark:text-dark-400">稳定运行</div></div>
@@ -149,6 +149,35 @@
       </div>
     </section>
 
+    <!-- Quickstart -->
+    <section class="border-b border-gray-100 py-16 dark:border-dark-800">
+      <div class="mx-auto max-w-7xl px-6">
+        <div class="mb-12 text-center"><h2 class="mb-3 text-2xl font-bold text-gray-900 dark:text-white md:text-3xl">{{ t('home.quickstart.title') }}</h2><p class="text-gray-500 dark:text-dark-400">{{ t('home.quickstart.description') }}</p></div>
+        <div class="grid gap-8 lg:grid-cols-5 lg:items-center">
+          <div class="space-y-4 lg:col-span-2">
+            <div class="flex items-start gap-4 rounded-xl border border-gray-100 bg-white p-5 dark:border-dark-700 dark:bg-dark-800/50">
+              <div class="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full bg-primary-600 text-sm font-bold text-white">1</div>
+              <div><h3 class="mb-1 text-sm font-semibold text-gray-900 dark:text-white">{{ t('home.quickstart.stepOneTitle') }}</h3><p class="text-xs text-gray-500 dark:text-dark-400">{{ t('home.quickstart.stepOneDesc') }}</p></div>
+            </div>
+            <div class="flex items-start gap-4 rounded-xl border border-gray-100 bg-white p-5 dark:border-dark-700 dark:bg-dark-800/50">
+              <div class="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full bg-primary-600 text-sm font-bold text-white">2</div>
+              <div><h3 class="mb-1 text-sm font-semibold text-gray-900 dark:text-white">{{ t('home.quickstart.stepTwoTitle') }}</h3><p class="text-xs text-gray-500 dark:text-dark-400">{{ t('home.quickstart.stepTwoDesc') }}</p></div>
+            </div>
+            <p class="pl-1 text-xs leading-relaxed text-gray-400 dark:text-dark-500">{{ t('home.quickstart.compatibilityNote') }}</p>
+          </div>
+          <div class="overflow-hidden rounded-xl border border-gray-200 bg-gray-900 shadow-2xl dark:border-dark-700 lg:col-span-3">
+            <div class="flex items-center gap-2 border-b border-gray-700 px-4 py-3">
+              <span class="h-3 w-3 rounded-full bg-red-500"></span><span class="h-3 w-3 rounded-full bg-yellow-500"></span><span class="h-3 w-3 rounded-full bg-green-500"></span>
+              <div class="ml-3 flex gap-1">
+                <button v-for="tab in quickstartTabs" :key="tab" @click="quickstartTab = tab" :class="['rounded px-2.5 py-1 text-xs transition-colors', quickstartTab === tab ? 'bg-gray-700 text-white' : 'text-gray-400 hover:text-gray-200']">{{ tabLabel(tab) }}</button>
+              </div>
+            </div>
+            <pre class="overflow-x-auto p-5 font-mono text-xs leading-relaxed text-gray-300 sm:text-sm">{{ quickstartCode }}</pre>
+          </div>
+        </div>
+      </div>
+    </section>
+
     <!-- Comparison -->
     <section class="border-b border-gray-100 bg-gray-50 py-16 dark:border-dark-800 dark:bg-dark-900/30">
       <div class="mx-auto max-w-4xl px-6">
@@ -162,17 +191,32 @@
       </div>
     </section>
 
-    <!-- Providers -->
+    <!-- Model Families -->
     <section class="border-b border-gray-100 py-16 dark:border-dark-800">
       <div class="mx-auto max-w-7xl px-6">
-        <div class="mb-10 text-center"><h2 class="mb-3 text-2xl font-bold text-gray-900 dark:text-white md:text-3xl">{{ t('home.providers.title') }}</h2><p class="text-gray-500 dark:text-dark-400">{{ t('home.providers.description') }}</p></div>
-        <div class="mx-auto grid max-w-4xl grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-5">
-          <div class="flex flex-col items-center gap-3 rounded-xl border border-gray-100 bg-white p-5 dark:border-dark-700 dark:bg-dark-800/50"><div class="flex h-11 w-11 items-center justify-center rounded-lg bg-blue-600"><span class="text-sm font-bold text-white">D</span></div><span class="text-sm font-medium text-gray-700 dark:text-dark-200">{{ t('home.providers.deepseek') }}</span><span class="rounded bg-emerald-50 px-2 py-0.5 text-[10px] font-medium text-emerald-700 dark:bg-emerald-950/30 dark:text-emerald-400">{{ t('home.providers.supported') }}</span></div>
-          <div class="flex flex-col items-center gap-3 rounded-xl border border-gray-100 bg-white p-5 dark:border-dark-700 dark:bg-dark-800/50"><div class="flex h-11 w-11 items-center justify-center rounded-lg bg-violet-600"><span class="text-sm font-bold text-white">通</span></div><span class="text-sm font-medium text-gray-700 dark:text-dark-200">{{ t('home.providers.qwen') }}</span><span class="rounded bg-emerald-50 px-2 py-0.5 text-[10px] font-medium text-emerald-700 dark:bg-emerald-950/30 dark:text-emerald-400">{{ t('home.providers.supported') }}</span></div>
-          <div class="flex flex-col items-center gap-3 rounded-xl border border-gray-100 bg-white p-5 dark:border-dark-700 dark:bg-dark-800/50"><div class="flex h-11 w-11 items-center justify-center rounded-lg bg-slate-800"><span class="text-sm font-bold text-white">K</span></div><span class="text-sm font-medium text-gray-700 dark:text-dark-200">{{ t('home.providers.kimi') }}</span><span class="rounded bg-emerald-50 px-2 py-0.5 text-[10px] font-medium text-emerald-700 dark:bg-emerald-950/30 dark:text-emerald-400">{{ t('home.providers.supported') }}</span></div>
-          <div class="flex flex-col items-center gap-3 rounded-xl border border-gray-100 bg-white p-5 dark:border-dark-700 dark:bg-dark-800/50"><div class="flex h-11 w-11 items-center justify-center rounded-lg bg-indigo-600"><span class="text-sm font-bold text-white">智</span></div><span class="text-sm font-medium text-gray-700 dark:text-dark-200">{{ t('home.providers.zhipu') }}</span><span class="rounded bg-emerald-50 px-2 py-0.5 text-[10px] font-medium text-emerald-700 dark:bg-emerald-950/30 dark:text-emerald-400">{{ t('home.providers.supported') }}</span></div>
-          <div class="flex flex-col items-center gap-3 rounded-xl border border-dashed border-gray-200 bg-white/50 p-5 dark:border-dark-700 dark:bg-dark-800/30"><div class="flex h-11 w-11 items-center justify-center rounded-lg bg-gray-200 dark:bg-dark-700"><span class="text-sm font-bold text-gray-500 dark:text-dark-400">+</span></div><span class="text-sm font-medium text-gray-500 dark:text-dark-400">{{ t('home.providers.more') }}</span><span class="rounded bg-gray-100 px-2 py-0.5 text-[10px] font-medium text-gray-500 dark:bg-dark-700 dark:text-dark-400">{{ t('home.providers.soon') }}</span></div>
+        <div class="mb-10 text-center"><h2 class="mb-3 text-2xl font-bold text-gray-900 dark:text-white md:text-3xl">{{ t('home.models.title') }}</h2><p class="text-gray-500 dark:text-dark-400">{{ t('home.models.description') }}</p></div>
+        <div class="grid gap-6 md:grid-cols-2">
+          <div v-for="family in modelFamilies" :key="family.key" class="flex flex-col rounded-xl border border-gray-100 bg-white p-6 transition-shadow hover:shadow-md dark:border-dark-700 dark:bg-dark-800/50">
+            <div class="mb-4 flex items-start justify-between">
+              <div class="flex items-center gap-3">
+                <div :class="['flex h-11 w-11 items-center justify-center rounded-lg', familyMeta[family.key]?.tile || 'bg-gray-600']"><span class="text-sm font-bold text-white">{{ familyMeta[family.key]?.badge || 'AI' }}</span></div>
+                <div>
+                  <h3 class="text-base font-semibold text-gray-900 dark:text-white">{{ family.name }}</h3>
+                  <p class="text-xs text-gray-400 dark:text-dark-500">{{ family.vendor }}</p>
+                </div>
+              </div>
+              <span class="rounded bg-emerald-50 px-2 py-0.5 text-[10px] font-medium text-emerald-700 dark:bg-emerald-950/30 dark:text-emerald-400">{{ t('home.models.supported') }}</span>
+            </div>
+            <p class="mb-4 text-sm leading-relaxed text-gray-500 dark:text-dark-400">{{ family.desc }}</p>
+            <div class="mb-4 flex flex-wrap gap-2">
+              <code v-for="model in family.models" :key="model" class="rounded-md border border-gray-100 bg-gray-50 px-2 py-1 font-mono text-xs text-gray-600 dark:border-dark-600 dark:bg-dark-900/60 dark:text-dark-300">{{ model }}</code>
+            </div>
+            <div class="mt-auto flex flex-wrap gap-2">
+              <span v-for="tag in family.tags" :key="tag" class="rounded-full bg-primary-50 px-2.5 py-0.5 text-[11px] font-medium text-primary-700 dark:bg-primary-950/30 dark:text-primary-300">{{ tag }}</span>
+            </div>
+          </div>
         </div>
+        <p class="mt-6 text-center text-xs text-gray-400 dark:text-dark-500">{{ t('home.models.note') }}</p>
       </div>
     </section>
 
@@ -220,7 +264,7 @@ import { useAuthStore, useAppStore } from '@/stores'
 import Icon from '@/components/icons/Icon.vue'
 import { sanitizeUrl } from '@/utils/url'
 
-const { t } = useI18n()
+const { t, tm } = useI18n()
 const authStore = useAuthStore()
 const appStore = useAppStore()
 
@@ -242,6 +286,33 @@ const currentYear = computed(() => new Date().getFullYear())
 const comparisonItems = computed(() => { try { const items = t('home.comparison.items') as any; if (!items || typeof items !== 'object') return []; return Object.values(items) as any[] } catch { return [] } })
 const techItems = computed(() => { try { const items = t('home.techHighlights.items') as any; if (!items || typeof items !== 'object') return {}; return items } catch { return {} } })
 const faqItems = computed(() => { try { const items = t('home.faq.items') as any; if (!items || typeof items !== 'object') return {}; return items } catch { return {} } })
+
+// 模型家族卡片：文案来自 i18n（home.models.families 数组），视觉样式按 key 固定映射
+type ModelFamily = { key: string; name: string; vendor: string; desc: string; models: string[]; tags: string[] }
+const modelFamilies = computed<ModelFamily[]>(() => {
+  const raw = tm('home.models.families') as unknown
+  if (Array.isArray(raw)) return raw as ModelFamily[]
+  return raw && typeof raw === 'object' ? (Object.values(raw) as ModelFamily[]) : []
+})
+const familyMeta: Record<string, { tile: string; badge: string }> = {
+  deepseek: { tile: 'bg-blue-600', badge: 'D' },
+  qwen: { tile: 'bg-violet-600', badge: '通' },
+  kimi: { tile: 'bg-slate-800', badge: 'K' },
+  glm: { tile: 'bg-indigo-600', badge: '智' },
+}
+
+// 快速接入示例：base_url 取公开设置，未配置时回退当前站点域名
+const quickstartTabs = ['curl', 'python', 'sdk'] as const
+type QuickstartTab = (typeof quickstartTabs)[number]
+const quickstartTab = ref<QuickstartTab>('curl')
+const apiBase = computed(() => appStore.apiBaseUrl || window.location.origin)
+const quickstartCodes = computed<Record<QuickstartTab, string>>(() => ({
+  curl: `curl ${apiBase.value}/v1/chat/completions \\\n  -H "Authorization: Bearer sk-***" \\\n  -H "Content-Type: application/json" \\\n  -d '{\n    "model": "deepseek-v4-pro",\n    "messages": [{ "role": "user", "content": "你好" }]\n  }'`,
+  python: `import requests\n\nresp = requests.post(\n    "${apiBase.value}/v1/chat/completions",\n    headers={"Authorization": "Bearer sk-***"},\n    json={\n        "model": "qwen3.8-max",\n        "messages": [{"role": "user", "content": "你好"}],\n    },\n)\nprint(resp.json()["choices"][0]["message"]["content"])`,
+  sdk: `from openai import OpenAI\n\nclient = OpenAI(\n    api_key="sk-***",\n    base_url="${apiBase.value}/v1",\n)\n\nresp = client.chat.completions.create(\n    model="glm-5.3",\n    messages=[{"role": "user", "content": "你好"}],\n)\nprint(resp.choices[0].message.content)`,
+}))
+const quickstartCode = computed(() => quickstartCodes.value[quickstartTab.value])
+function tabLabel(tab: QuickstartTab) { return tab === 'curl' ? t('home.quickstart.tabCurl') : tab === 'python' ? t('home.quickstart.tabPython') : t('home.quickstart.tabSdk') }
 
 const openFaq = ref<string | null>(null)
 function toggleFaq(key: string) { openFaq.value = openFaq.value === key ? null : key }
