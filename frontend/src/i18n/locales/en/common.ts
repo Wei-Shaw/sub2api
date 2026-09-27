@@ -253,6 +253,18 @@ export default {
     loginFailed: 'Login failed. Please check your credentials and try again.',
     errors: {
       USER_NOT_ACTIVE: 'Account has been disabled.',
+      INVALID_CREDENTIALS: 'Incorrect email or password.',
+      EMAIL_EXISTS: 'This email is already registered. Sign in instead or use another email.',
+      EMAIL_RESERVED: 'This email address cannot be used for registration.',
+      EMAIL_SUFFIX_NOT_ALLOWED: 'This email domain is not allowed for registration.',
+      REGISTRATION_DISABLED: 'Registration is currently disabled. Please contact the administrator.',
+      INVITATION_CODE_REQUIRED: 'Invitation code is required',
+      INVITATION_CODE_INVALID: 'Invalid or used invitation code',
+      INVALID_VERIFY_CODE: 'The verification code is invalid or has expired.',
+      VERIFY_CODE_TOO_FREQUENT: 'Please wait a moment before requesting a new code.',
+      VERIFY_CODE_MAX_ATTEMPTS: 'Too many failed attempts. Please request a new code.',
+      TURNSTILE_VERIFICATION_FAILED: 'Verification failed, please try again',
+      INVALID_RESET_TOKEN: 'The password reset link is invalid or has expired. Please request a new one.',
     },
     registrationFailed: 'Registration failed. Please try again.',
     emailDomainRegistrationLimit:

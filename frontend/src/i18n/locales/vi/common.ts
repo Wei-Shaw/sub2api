@@ -253,6 +253,18 @@ export default {
     loginFailed: 'Đăng nhập thất bại. Vui lòng kiểm tra thông tin đăng nhập và thử lại.',
     errors: {
       USER_NOT_ACTIVE: 'Tài khoản đã bị vô hiệu hóa.',
+      INVALID_CREDENTIALS: 'Email hoặc mật khẩu không đúng.',
+      EMAIL_EXISTS: 'Email này đã được đăng ký. Hãy đăng nhập hoặc dùng email khác.',
+      EMAIL_RESERVED: 'Địa chỉ email này không thể dùng để đăng ký.',
+      EMAIL_SUFFIX_NOT_ALLOWED: 'Tên miền email này không được phép đăng ký.',
+      REGISTRATION_DISABLED: 'Hiện đã tắt đăng ký. Vui lòng liên hệ quản trị viên.',
+      INVITATION_CODE_REQUIRED: 'Mã mời là bắt buộc',
+      INVITATION_CODE_INVALID: 'Mã mời không hợp lệ hoặc đã được sử dụng',
+      INVALID_VERIFY_CODE: 'Mã xác minh không hợp lệ hoặc đã hết hạn.',
+      VERIFY_CODE_TOO_FREQUENT: 'Vui lòng chờ một lát trước khi yêu cầu mã mới.',
+      VERIFY_CODE_MAX_ATTEMPTS: 'Nhập sai quá nhiều lần. Vui lòng yêu cầu mã mới.',
+      TURNSTILE_VERIFICATION_FAILED: 'Xác minh thất bại, vui lòng thử lại',
+      INVALID_RESET_TOKEN: 'Liên kết đặt lại mật khẩu không hợp lệ hoặc đã hết hạn. Vui lòng yêu cầu liên kết mới.',
     },
     registrationFailed: 'Đăng ký thất bại. Vui lòng thử lại.',
     emailDomainRegistrationLimit:

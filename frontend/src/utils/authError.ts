@@ -1,25 +1,15 @@
-interface APIErrorLike {
-  message?: string
-  response?: {
-    data?: {
-      detail?: string
-      message?: string
-    }
-  }
-}
+import { extractApiErrorCode, extractI18nErrorMessage } from '@/utils/apiError'
 
-function extractErrorMessage(error: unknown): string {
-  const err = (error || {}) as APIErrorLike
-  return err.response?.data?.detail || err.response?.data?.message || err.message || ''
-}
+type TranslateFn = (key: string, params?: Record<string, unknown>) => string
 
-export function buildAuthErrorMessage(
-  error: unknown,
-  options: {
-    fallback: string
+/**
+ * Localized message for a failed login/registration request: the backend
+ * reason is looked up under `auth.errors.<REASON>`, falling back to the
+ * backend message and then to `fallback`.
+ */
+export function buildAuthErrorMessage(error: unknown, t: TranslateFn, fallback: string): string {
+  if (extractApiErrorCode(error) === 'EMAIL_DOMAIN_REGISTRATION_LIMIT') {
+    return t('auth.emailDomainRegistrationLimit')
   }
-): string {
-  const { fallback } = options
-  const message = extractErrorMessage(error)
-  return message || fallback
+  return extractI18nErrorMessage(error, t, 'auth.errors', fallback)
 }

@@ -253,6 +253,18 @@ export default {
     loginFailed: '登录失败，请检查您的凭据后重试。',
     errors: {
       USER_NOT_ACTIVE: '账号已被禁用',
+      INVALID_CREDENTIALS: '邮箱或密码错误。',
+      EMAIL_EXISTS: '该邮箱已注册，请直接登录或使用其他邮箱。',
+      EMAIL_RESERVED: '该邮箱地址不可用于注册。',
+      EMAIL_SUFFIX_NOT_ALLOWED: '该邮箱域名不在允许注册范围内。',
+      REGISTRATION_DISABLED: '注册功能暂时关闭，请联系管理员。',
+      INVITATION_CODE_REQUIRED: '请输入邀请码',
+      INVITATION_CODE_INVALID: '邀请码无效或已被使用',
+      INVALID_VERIFY_CODE: '验证码无效或已过期。',
+      VERIFY_CODE_TOO_FREQUENT: '请稍候再重新获取验证码。',
+      VERIFY_CODE_MAX_ATTEMPTS: '错误次数过多，请重新获取验证码。',
+      TURNSTILE_VERIFICATION_FAILED: '验证失败，请重试',
+      INVALID_RESET_TOKEN: '密码重置链接无效或已过期。请重新请求一个新链接。',
     },
     registrationFailed: '注册失败，请重试。',
     emailDomainRegistrationLimit:

@@ -194,7 +194,6 @@ import {
 } from '@/api/auth'
 import { apiClient } from '@/api/client'
 import { buildAuthErrorMessage } from '@/utils/authError'
-import { extractApiErrorCode } from '@/utils/apiError'
 import {
   isRegistrationEmailSuffixAllowed,
   normalizeRegistrationEmailSuffixWhitelist
@@ -580,7 +579,7 @@ async function sendCode(): Promise<void> {
 
     showResendTurnstile.value = false
   } catch (error: unknown) {
-    errorMessage.value = buildRegistrationErrorMessage(error, t('auth.sendCodeFailed'))
+    errorMessage.value = buildAuthErrorMessage(error, t, t('auth.sendCodeFailed'))
 
     appStore.showError(errorMessage.value)
   } finally {
@@ -743,7 +742,7 @@ async function handleVerify(): Promise<void> {
     // Redirect to dashboard
     await router.push(pendingRedirect.value || '/dashboard')
   } catch (error: unknown) {
-    errorMessage.value = buildRegistrationErrorMessage(error, t('auth.verifyFailed'))
+    errorMessage.value = buildAuthErrorMessage(error, t, t('auth.verifyFailed'))
 
     appStore.showError(errorMessage.value)
   } finally {
@@ -762,13 +761,6 @@ function handleBack(): void {
 
   // Go back to registration
   router.push('/register')
-}
-
-function buildRegistrationErrorMessage(error: unknown, fallback: string): string {
-  if (extractApiErrorCode(error) === 'EMAIL_DOMAIN_REGISTRATION_LIMIT') {
-    return t('auth.emailDomainRegistrationLimit')
-  }
-  return buildAuthErrorMessage(error, { fallback })
 }
 </script>
 

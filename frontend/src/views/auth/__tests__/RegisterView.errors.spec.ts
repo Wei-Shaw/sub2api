@@ -1,0 +1,110 @@
+import { flushPromises, mount } from '@vue/test-utils'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
+import RegisterView from '@/views/auth/RegisterView.vue'
+import viCommon from '@/i18n/locales/vi/common'
+
+const { getPublicSettingsMock, registerMock, showErrorMock, pushMock } = vi.hoisted(() => ({
+  getPublicSettingsMock: vi.fn(),
+  registerMock: vi.fn(),
+  showErrorMock: vi.fn(),
+  pushMock: vi.fn()
+}))
+
+vi.mock('vue-i18n', async () => {
+  const { viT } = await import('./viTranslate')
+  return {
+    createI18n: () => ({ global: { t: viT } }),
+    useI18n: () => ({ t: viT, locale: { value: 'vi' } })
+  }
+})
+
+vi.mock('vue-router', () => ({
+  useRouter: () => ({ push: pushMock }),
+  useRoute: () => ({ query: {} })
+}))
+
+vi.mock('@/stores', () => ({
+  useAuthStore: () => ({ register: (...args: unknown[]) => registerMock(...args) }),
+  useAppStore: () => ({
+    cachedPublicSettings: null,
+    showError: (...args: unknown[]) => showErrorMock(...args),
+    showSuccess: vi.fn(),
+    showWarning: vi.fn()
+  })
+}))
+
+vi.mock('@/api/auth', async () => {
+  const actual = await vi.importActual<typeof import('@/api/auth')>('@/api/auth')
+  return {
+    ...actual,
+    getPublicSettings: (...args: unknown[]) => getPublicSettingsMock(...args)
+  }
+})
+
+const publicSettings = {
+  registration_enabled: true,
+  email_verify_enabled: false,
+  promo_code_enabled: false,
+  invitation_code_enabled: false,
+  affiliate_enabled: false,
+  turnstile_enabled: false,
+  site_name: 'Sub2API',
+  registration_email_suffix_whitelist: [],
+  linuxdo_oauth_enabled: false,
+  oidc_oauth_enabled: false,
+  github_oauth_enabled: false,
+  google_oauth_enabled: false
+}
+
+function mountRegister() {
+  return mount(RegisterView, {
+    global: {
+      stubs: {
+        AuthLayout: { template: '<div><slot /><slot name="footer" /></div>' },
+        Icon: true,
+        TurnstileWidget: true,
+        LoginAgreementPrompt: true,
+        EmailOAuthButtons: true,
+        LinuxDoOAuthSection: true,
+        WechatOAuthSection: true,
+        OidcOAuthSection: true,
+        RouterLink: true,
+        transition: false
+      }
+    }
+  })
+}
+
+async function fillValidForm(wrapper: ReturnType<typeof mountRegister>) {
+  await wrapper.get('#email').setValue('user@example.com')
+  await wrapper.get('#password').setValue('secret-123')
+  await wrapper.get('#confirmPassword').setValue('secret-123')
+}
+
+describe('RegisterView errors', () => {
+  beforeEach(() => {
+    getPublicSettingsMock.mockReset()
+    registerMock.mockReset()
+    showErrorMock.mockReset()
+    pushMock.mockReset()
+    sessionStorage.clear()
+    getPublicSettingsMock.mockResolvedValue(publicSettings)
+  })
+
+  it('shows the Vietnamese message for a backend EMAIL_EXISTS reason', async () => {
+    registerMock.mockRejectedValue({
+      status: 409,
+      code: 409,
+      reason: 'EMAIL_EXISTS',
+      message: 'email already exists'
+    })
+    const wrapper = mountRegister()
+    await flushPromises()
+    await fillValidForm(wrapper)
+    await wrapper.get('form').trigger('submit.prevent')
+    await flushPromises()
+
+    expect(showErrorMock).toHaveBeenCalledWith(viCommon.auth.errors.EMAIL_EXISTS)
+    expect(showErrorMock).not.toHaveBeenCalledWith('email already exists')
+  })
+})
