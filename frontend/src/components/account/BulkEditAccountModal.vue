@@ -1412,8 +1412,29 @@
           />
         </div>
         <div id="bulk-edit-groups" :class="!enableGroups && 'pointer-events-none opacity-50'">
-          <p class="mb-2 text-xs text-warning-strong" data-testid="bulk-edit-groups-replace-hint">
-            {{ t('admin.accounts.bulkEdit.groupsReplaceHint') }}
+          <div class="mb-2 flex gap-2" role="group" :aria-label="t('admin.accounts.bulkEdit.groupMode')">
+            <button
+              v-for="mode in groupModes"
+              :key="mode"
+              type="button"
+              :data-testid="`bulk-edit-group-mode-${mode}`"
+              :aria-pressed="groupMode === mode"
+              @click="groupMode = mode"
+              :class="[
+                'flex-1 rounded-sm px-3 py-2 text-sm font-medium transition-all',
+                groupMode === mode
+                  ? 'bg-accent-weak text-accent-strong'
+                  : 'bg-surface-sunken text-fg-muted hover:bg-border'
+              ]"
+            >
+              {{ t(groupModeKeys[mode].label) }}
+            </button>
+          </div>
+          <p
+            :class="['mb-2 text-xs', groupMode === 'add' ? 'text-fg-muted' : 'text-warning-strong']"
+            data-testid="bulk-edit-groups-hint"
+          >
+            {{ t(groupModeKeys[groupMode].hint) }}
           </p>
           <GroupSelector
             v-model="groupIds"
@@ -1482,6 +1503,7 @@ import { ref, watch, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useAppStore } from '@/stores/app'
 import { adminAPI } from '@/api/admin'
+import type { BulkGroupMode } from '@/api/admin/accounts'
 import type {
   Proxy as ProxyConfig,
   AdminGroup,
@@ -1704,6 +1726,13 @@ const priority = ref(1)
 const rateMultiplier = ref(1)
 const status = ref<'active' | 'inactive'>('active')
 const groupIds = ref<number[]>([])
+const groupMode = ref<BulkGroupMode>('replace')
+const groupModes: BulkGroupMode[] = ['replace', 'add', 'remove']
+const groupModeKeys: Record<BulkGroupMode, { label: string; hint: string }> = {
+  replace: { label: 'admin.accounts.bulkEdit.groupModeReplace', hint: 'admin.accounts.bulkEdit.groupsReplaceHint' },
+  add: { label: 'admin.accounts.bulkEdit.groupModeAdd', hint: 'admin.accounts.bulkEdit.groupsAddHint' },
+  remove: { label: 'admin.accounts.bulkEdit.groupModeRemove', hint: 'admin.accounts.bulkEdit.groupsRemoveHint' }
+}
 const openaiPassthroughEnabled = ref(false)
 // Codex namespace 工具摊平兼容开关（仅 OAuth），缺省关闭即原样保留
 const openaiFlattenNamespacesEnabled = ref(false)
@@ -1983,6 +2012,9 @@ const buildUpdatePayload = (): Record<string, unknown> | null => {
 
   if (enableGroups.value) {
     updates.group_ids = groupIds.value
+    if (groupMode.value !== 'replace') {
+      updates.group_mode = groupMode.value
+    }
   }
 
   if (enableBaseUrl.value) {
@@ -2177,6 +2209,7 @@ const mixedChannelConfirmed = ref(false)
 // 多平台混合的情况由 submitBulkUpdate 的 409 catch 兜底
 const canPreCheck = () =>
   enableGroups.value &&
+  groupMode.value !== 'remove' &&
   groupIds.value.length > 0 &&
   targetSelectedPlatforms.value.length === 1 &&
   (targetSelectedPlatforms.value[0] === 'antigravity' || targetSelectedPlatforms.value[0] === 'anthropic')
@@ -2284,11 +2317,19 @@ const handleSubmit = async () => {
     }
   }
 
-  // group_ids 是整组替换（后端先删后建），会把账号移出未勾选的分组，必须显式确认；留空则移出全部分组。
-  if (enableGroups.value) {
-    const confirmKey = groupIds.value.length === 0
-      ? 'admin.accounts.bulkEdit.groupsClearConfirm'
-      : 'admin.accounts.bulkEdit.groupsReplaceConfirm'
+  if (enableGroups.value && groupMode.value !== 'replace' && groupIds.value.length === 0) {
+    appStore.showError(t('admin.accounts.bulkEdit.groupsModeEmpty'))
+    return
+  }
+
+  // replace 是整组替换（后端先删后建），会把账号移出未勾选的分组，必须显式确认；留空则移出全部分组。
+  // remove 会把账号移出勾选的分组，同样确认；add 只增不减，无需确认。
+  if (enableGroups.value && groupMode.value !== 'add') {
+    const confirmKey = groupMode.value === 'remove'
+      ? 'admin.accounts.bulkEdit.groupsRemoveConfirm'
+      : groupIds.value.length === 0
+        ? 'admin.accounts.bulkEdit.groupsClearConfirm'
+        : 'admin.accounts.bulkEdit.groupsReplaceConfirm'
     if (!confirm(t(confirmKey, { count: targetPreviewCount.value }))) return
   }
 
@@ -2436,6 +2477,7 @@ watch(
       rateMultiplier.value = 1
       status.value = 'active'
       groupIds.value = []
+      groupMode.value = 'replace'
       openaiOAuthResponsesWebSocketV2Mode.value = OPENAI_WS_MODE_OFF
       openaiAPIKeyResponsesWebSocketV2Mode.value = OPENAI_WS_MODE_OFF
       upstreamBillingAutoProbeMode.value = 'enabled'
