@@ -541,7 +541,10 @@ export default {
         rateSyncConflict: 'Không thể thay đổi hệ số tài khoản: {count} tài khoản đích đang bật đồng bộ hệ số upstream.',
         longContextShadowHint: 'Tính phí ngữ cảnh dài thuộc về tài khoản cha. Các tài khoản shadow đã chọn tiếp tục theo tài khoản cha, kể cả khi mục tiêu đến từ bộ lọc.',
         longContextParentRequired: 'Tất cả tài khoản đã chọn đều là shadow. Hãy chọn tài khoản cha để thay đổi tính phí ngữ cảnh dài.',
-        mixedPlatformWarning: 'Các tài khoản đã chọn thuộc nhiều nền tảng ({platforms}). Các preset ánh xạ model hiển thị là kết hợp — hãy đảm bảo ánh xạ phù hợp với từng nền tảng.'
+        mixedPlatformWarning: 'Các tài khoản đã chọn thuộc nhiều nền tảng ({platforms}). Các preset ánh xạ model hiển thị là kết hợp — hãy đảm bảo ánh xạ phù hợp với từng nền tảng.',
+        groupsReplaceHint: 'Các nhóm được chọn sẽ THAY THẾ toàn bộ nhóm hiện tại của mọi tài khoản mục tiêu. Tài khoản sẽ bị gỡ khỏi mọi nhóm không được chọn.',
+        groupsReplaceConfirm: 'Thay thế nhóm của {count} tài khoản? Các tài khoản sẽ bị gỡ khỏi mọi nhóm không được chọn.',
+        groupsClearConfirm: 'Chưa chọn nhóm nào. {count} tài khoản sẽ bị gỡ khỏi TẤT CẢ nhóm và ngừng phục vụ các nhóm đó. Tiếp tục?'
       },
       bulkDeleteTitle: 'Xóa tài khoản hàng loạt',
       bulkDeleteConfirm: 'Xóa {count} tài khoản đã chọn? Thao tác này không thể hoàn tác.',

@@ -541,7 +541,10 @@ export default {
         rateSyncConflict: 'Cannot change account rates: {count} target account(s) have upstream rate sync enabled.',
         longContextShadowHint: 'Long-context billing belongs to the parent account. Selected shadow accounts keep following their parent, including when targets come from a filter.',
         longContextParentRequired: 'All selected accounts are shadows. Select the parent account to change long-context billing.',
-        mixedPlatformWarning: 'Selected accounts span multiple platforms ({platforms}). Model mapping presets shown are combined — ensure mappings are appropriate for each platform.'
+        mixedPlatformWarning: 'Selected accounts span multiple platforms ({platforms}). Model mapping presets shown are combined — ensure mappings are appropriate for each platform.',
+        groupsReplaceHint: 'Checked groups REPLACE all current groups of every target account. Accounts are removed from any group left unchecked.',
+        groupsReplaceConfirm: 'Replace the groups of {count} account(s)? They will be removed from every group that is not checked.',
+        groupsClearConfirm: 'No group is checked. {count} account(s) will be removed from ALL groups and stop serving them. Continue?'
       },
       bulkDeleteTitle: 'Bulk Delete Accounts',
       bulkDeleteConfirm: 'Delete the selected {count} account(s)? This action cannot be undone.',

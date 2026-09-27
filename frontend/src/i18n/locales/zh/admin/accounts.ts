@@ -665,7 +665,10 @@ export default {
         rateSyncConflict: '无法修改账号倍率：{count} 个目标账号已开启上游倍率同步。',
         longContextShadowHint: '长上下文计费归母账号所有。选中的影子账号仍跟随母账号，筛选全量目标时同样如此。',
         longContextParentRequired: '选中的账号全部是影子账号，请选择母账号修改长上下文计费。',
-        mixedPlatformWarning: '所选账号跨越多个平台（{platforms}）。显示的模型映射预设为合并结果——请确保映射对每个平台都适用。'
+        mixedPlatformWarning: '所选账号跨越多个平台（{platforms}）。显示的模型映射预设为合并结果——请确保映射对每个平台都适用。',
+        groupsReplaceHint: '勾选的分组会替换每个目标账号当前的全部分组，账号将被移出所有未勾选的分组。',
+        groupsReplaceConfirm: '确定替换 {count} 个账号的分组吗？这些账号将被移出所有未勾选的分组。',
+        groupsClearConfirm: '未勾选任何分组。{count} 个账号将被移出所有分组，不再为这些分组提供服务。确定继续吗？'
       },
       bulkDeleteTitle: '批量删除账号',
       bulkDeleteConfirm: '确定要删除选中的 {count} 个账号吗？此操作无法撤销。',
