@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"net/mail"
 	"strings"
+	"sync"
 	"time"
 
 	dbent "github.com/Wei-Shaw/sub2api/ent"
@@ -530,12 +531,20 @@ func (s *AuthService) IsEmailVerifyEnabled(ctx context.Context) bool {
 	return s.settingService.IsEmailVerifyEnabled(ctx)
 }
 
+// loginDummyPasswordHash 在邮箱不存在时参与一次同 cost 的 bcrypt 比较，
+// 让响应耗时与“密码错误”一致，避免据此枚举已注册邮箱。
+var loginDummyPasswordHash = sync.OnceValue(func() []byte {
+	hash, _ := bcrypt.GenerateFromPassword([]byte("sub2api-login-timing-equalizer"), bcrypt.DefaultCost)
+	return hash
+})
+
 // Login 用户登录，返回JWT token
 func (s *AuthService) Login(ctx context.Context, email, password string) (string, *User, error) {
 	// 查找用户
 	user, err := s.userRepo.GetByEmail(ctx, email)
 	if err != nil {
 		if errors.Is(err, ErrUserNotFound) {
+			_ = bcrypt.CompareHashAndPassword(loginDummyPasswordHash(), []byte(password))
 			return "", nil, ErrInvalidCredentials
 		}
 		// 记录数据库错误但不暴露给用户
