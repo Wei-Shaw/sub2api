@@ -363,6 +363,23 @@ func TestLoadForBootstrapAllowsMissingJWTSecret(t *testing.T) {
 	}
 }
 
+func TestLoadForBootstrapIgnoresSampleJWTSecret(t *testing.T) {
+	for _, secret := range []string{"change-this-to-a-secure-random-string", " ChangeMe "} {
+		t.Run(secret, func(t *testing.T) {
+			viper.Reset()
+			t.Cleanup(viper.Reset)
+			t.Setenv("CONFIG_FILE", "")
+			t.Setenv("DATA_DIR", "")
+			t.Setenv("JWT_SECRET", secret)
+
+			// 不拒绝启动；清空后由数据库初始化流程沿用已有密钥或生成随机密钥。
+			cfg, err := LoadForBootstrap()
+			require.NoError(t, err)
+			require.Empty(t, cfg.JWT.Secret)
+		})
+	}
+}
+
 func TestNormalizeRunMode(t *testing.T) {
 	tests := []struct {
 		input    string
@@ -875,8 +892,8 @@ func TestLoadDefaultJWTAccessTokenExpireMinutes(t *testing.T) {
 	if cfg.JWT.ExpireHour != 24 {
 		t.Fatalf("JWT.ExpireHour = %d, want 24", cfg.JWT.ExpireHour)
 	}
-	if cfg.JWT.AccessTokenExpireMinutes != 0 {
-		t.Fatalf("JWT.AccessTokenExpireMinutes = %d, want 0", cfg.JWT.AccessTokenExpireMinutes)
+	if cfg.JWT.AccessTokenExpireMinutes != 30 {
+		t.Fatalf("JWT.AccessTokenExpireMinutes = %d, want 30", cfg.JWT.AccessTokenExpireMinutes)
 	}
 }
 
