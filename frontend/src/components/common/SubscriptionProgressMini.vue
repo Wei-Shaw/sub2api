@@ -5,6 +5,7 @@
       @click="toggleTooltip"
       class="flex cursor-pointer items-center gap-2 rounded-sm bg-surface-sunken px-3 py-1.5 transition-colors hover:bg-surface-sunken"
       :title="t('subscriptionProgress.viewDetails')"
+      :aria-expanded="tooltipOpen"
     >
       <Icon name="creditCard" size="sm" class="text-fg-muted" />
       <div class="flex items-center gap-1.5">
@@ -27,7 +28,7 @@
     <transition name="dropdown">
       <div
         v-if="tooltipOpen"
-        class="absolute right-0 z-50 mt-2 w-[340px] overflow-hidden rounded-sm border border-border bg-surface shadow-overlay"
+        class="fixed inset-x-2 top-16 z-50 overflow-hidden rounded-sm border border-border bg-surface shadow-overlay sm:absolute sm:inset-x-auto sm:right-0 sm:top-auto sm:mt-2 sm:w-[340px]"
       >
         <div class="border-b border-border p-3">
           <h3 class="text-sm font-semibold text-fg">
