@@ -333,15 +333,11 @@ func (s *OpenAIGatewayService) forwardAsChatCompletions(
 
 	if account.Type == AccountTypeAPIKey {
 		if trimmedKey := strings.TrimSpace(promptCacheKey); trimmedKey != "" {
-			var reqBody map[string]any
-			if err := json.Unmarshal(responsesBody, &reqBody); err != nil {
-				return nil, fmt.Errorf("unmarshal for prompt cache key injection: %w", err)
-			}
-			if existing, ok := reqBody["prompt_cache_key"].(string); !ok || strings.TrimSpace(existing) == "" {
-				reqBody["prompt_cache_key"] = trimmedKey
-				responsesBody, err = json.Marshal(reqBody)
+			// responsesBody 此处一定是合法 JSON 对象；用 sjson 原地补字段，保留原有 key 顺序与数值精度。
+			if existing := gjson.GetBytes(responsesBody, "prompt_cache_key"); existing.Type != gjson.String || strings.TrimSpace(existing.Str) == "" {
+				responsesBody, err = sjson.SetBytes(responsesBody, "prompt_cache_key", trimmedKey)
 				if err != nil {
-					return nil, fmt.Errorf("remarshal after prompt cache key injection: %w", err)
+					return nil, fmt.Errorf("inject prompt cache key: %w", err)
 				}
 			}
 		}
@@ -769,27 +765,28 @@ func (s *OpenAIGatewayService) handleChatStreamingResponse(
 	}
 
 	processDataLine := func(payload string) bool {
-		payload = string(restoreCodexToolNamesFromContext(c, []byte(payload)))
+		// 只转换一次 []byte，下游 helper 均为只读，共用同一份 payloadBytes。
+		payloadBytes := restoreCodexToolNamesFromContext(c, []byte(payload))
 		if firstChunk {
 			firstChunk = false
 			ms := int(time.Since(startTime).Milliseconds())
 			firstTokenMs = &ms
 		}
 		if countSearch {
-			searchCount += countGrokNativeSearchCallsInSSEDataDedup([]byte(payload), streamSearchSeen)
+			searchCount += countGrokNativeSearchCallsInSSEDataDedup(payloadBytes, streamSearchSeen)
 		}
 
 		var event apicompat.ResponsesStreamEvent
-		if err := json.Unmarshal([]byte(payload), &event); err != nil {
+		if err := json.Unmarshal(payloadBytes, &event); err != nil {
 			logger.L().Warn("openai chat_completions stream: failed to parse event",
 				zap.Error(err),
 				zap.String("request_id", requestID),
 			)
 			return false
 		}
-		observer.ObserveOpenAI([]byte(payload), event.Type)
-		refusalDetector.ObservePayload([]byte(payload))
-		s.parseSSEUsageBytesWithType([]byte(payload), event.Type, &usage)
+		observer.ObserveOpenAI(payloadBytes, event.Type)
+		refusalDetector.ObservePayload(payloadBytes)
+		s.parseSSEUsageBytesWithType(payloadBytes, event.Type, &usage)
 
 		isTerminalEvent := isOpenAICompatResponsesTerminalEvent(event.Type)
 		if isTerminalEvent {
@@ -802,7 +799,6 @@ func (s *OpenAIGatewayService) handleChatStreamingResponse(
 			}
 		}
 		if strings.TrimSpace(event.Type) == "response.failed" || strings.TrimSpace(event.Type) == "error" {
-			payloadBytes := []byte(payload)
 			message := extractOpenAISSEErrorMessage(payloadBytes)
 			if hit, code, msg := detectOpenAICyberPolicy(payloadBytes); hit {
 				// cyber_policy 致命且不可重试：不 failover。下发标准 error chunk +
