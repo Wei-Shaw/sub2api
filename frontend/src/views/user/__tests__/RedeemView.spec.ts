@@ -4,11 +4,12 @@ import RedeemView from '../RedeemView.vue'
 
 config.global.stubs = { ...config.global.stubs, RouterLink: RouterLinkStub }
 
-const { redeem, getHistory, refreshUser, fetchActiveSubscriptions, showError, showWarning, showSuccess } = vi.hoisted(() => ({
+const { redeem, getHistory, refreshUser, fetchActiveSubscriptions, fetchPublicSettings, showError, showWarning, showSuccess } = vi.hoisted(() => ({
   redeem: vi.fn(),
   getHistory: vi.fn(),
   refreshUser: vi.fn(),
   fetchActiveSubscriptions: vi.fn(),
+  fetchPublicSettings: vi.fn(),
   showError: vi.fn(),
   showWarning: vi.fn(),
   showSuccess: vi.fn(),
@@ -16,7 +17,6 @@ const { redeem, getHistory, refreshUser, fetchActiveSubscriptions, showError, sh
 
 vi.mock('@/api', () => ({
   redeemAPI: { redeem, getHistory },
-  authAPI: { getPublicSettings: vi.fn().mockResolvedValue({}) },
 }))
 vi.mock('@/stores/auth', () => ({
   useAuthStore: () => ({ user: { balance: 10, concurrency: 2 }, refreshUser }),
@@ -25,7 +25,7 @@ vi.mock('@/stores/subscriptions', () => ({
   useSubscriptionStore: () => ({ fetchActiveSubscriptions }),
 }))
 vi.mock('@/stores/app', () => ({
-  useAppStore: () => ({ showError, showWarning, showSuccess }),
+  useAppStore: () => ({ showError, showWarning, showSuccess, fetchPublicSettings }),
 }))
 vi.mock('vue-i18n', async () => {
   const actual = await vi.importActual<typeof import('vue-i18n')>('vue-i18n')
@@ -51,6 +51,7 @@ describe('RedeemView refresh after redemption', () => {
     getHistory.mockResolvedValue({ items: [], total: 0 })
     refreshUser.mockResolvedValue({ balance: 30, concurrency: 2 })
     fetchActiveSubscriptions.mockResolvedValue([])
+    fetchPublicSettings.mockResolvedValue({})
     vi.spyOn(console, 'error').mockImplementation(() => {})
   })
 
@@ -193,6 +194,17 @@ describe('RedeemView refresh after redemption', () => {
     await button('pagination.previous').trigger('click')
     await flushPromises()
     expect(getHistory).toHaveBeenLastCalledWith(1, 50)
+    wrapper.unmount()
+  })
+
+  it('shows the contact info from the cached public settings', async () => {
+    fetchPublicSettings.mockResolvedValue({ contact_info: 'support@example.com' })
+    const wrapper = mount(RedeemView, {
+      global: { stubs: { AppLayout: { template: '<div><slot /></div>' }, Icon: true } },
+    })
+    await flushPromises()
+    expect(fetchPublicSettings).toHaveBeenCalledWith()
+    expect(wrapper.text()).toContain('support@example.com')
     wrapper.unmount()
   })
 
