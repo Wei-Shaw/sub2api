@@ -48,6 +48,7 @@ var (
 	ErrInvitationCodeInvalid   = infraerrors.BadRequest("INVITATION_CODE_INVALID", "invalid or used invitation code")
 	ErrOAuthInvitationRequired = infraerrors.Forbidden("OAUTH_INVITATION_REQUIRED", "invitation code required to complete oauth registration")
 	ErrCaptchaProviderConflict = infraerrors.ServiceUnavailable("CAPTCHA_PROVIDER_CONFLICT", "multiple captcha providers are enabled")
+	ErrLoginThrottled          = infraerrors.TooManyRequests("LOGIN_THROTTLED", "too many failed login attempts, please try again later")
 )
 
 // maxTokenLength 限制 token 大小，避免超长 header 触发解析时的异常内存分配。
@@ -86,6 +87,7 @@ type AuthService struct {
 	affiliateService      *AffiliateService
 	defaultSubAssigner    DefaultSubscriptionAssigner
 	userPlatformQuotaRepo UserPlatformQuotaRepository
+	loginThrottle         loginThrottle
 }
 
 type CaptchaProof struct {
@@ -569,6 +571,93 @@ func (s *AuthService) Login(ctx context.Context, email, password string) (string
 	}
 
 	return token, user, nil
+}
+
+// LoginFromIP 在 Login 外层按 (email, IP) 做失败节流，供 HTTP 密码登录入口使用。
+func (s *AuthService) LoginFromIP(ctx context.Context, email, password, clientIP string) (string, *User, error) {
+	key := loginThrottleKey(email, clientIP)
+	if s.loginThrottle.blocked(key, time.Now()) {
+		return "", nil, ErrLoginThrottled
+	}
+	token, user, err := s.Login(ctx, email, password)
+	switch {
+	case err == nil:
+		s.loginThrottle.reset(key)
+	case errors.Is(err, ErrInvalidCredentials):
+		s.loginThrottle.recordFailure(key, time.Now())
+	}
+	return token, user, err
+}
+
+// 登录失败节流：同一 (email, IP) 前 loginThrottleFreeFailures 次失败不限制，之后每次失败的
+// 冷却期翻倍（上限 loginThrottleMaxDelay），冷却期内直接拒绝；登录成功即清零，
+// loginThrottleFailureTTL 内无新失败也会重新计数。刻意不做按邮箱的硬锁定，避免被人借此锁死管理员。
+const (
+	loginThrottleFreeFailures = 5
+	loginThrottleBaseDelay    = time.Second
+	loginThrottleMaxDelay     = 5 * time.Minute
+	loginThrottleFailureTTL   = 15 * time.Minute
+	loginThrottleCapacity     = 100_000
+)
+
+// ponytail: 进程内计数，多实例各算各的；需要跨实例一致时迁到 Redis。
+type loginThrottle struct {
+	mu      sync.Mutex
+	entries map[string]*loginThrottleEntry
+}
+
+type loginThrottleEntry struct {
+	failures     int
+	lastFailure  time.Time
+	blockedUntil time.Time
+}
+
+func loginThrottleKey(email, clientIP string) string {
+	return strings.ToLower(strings.TrimSpace(email)) + "|" + clientIP
+}
+
+func (t *loginThrottle) blocked(key string, now time.Time) bool {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	e := t.entries[key]
+	return e != nil && now.Before(e.blockedUntil)
+}
+
+func (t *loginThrottle) recordFailure(key string, now time.Time) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	e := t.entries[key]
+	switch {
+	case e == nil:
+		if len(t.entries) >= loginThrottleCapacity {
+			for k, old := range t.entries {
+				if now.Sub(old.lastFailure) > loginThrottleFailureTTL {
+					delete(t.entries, k)
+				}
+			}
+			if len(t.entries) >= loginThrottleCapacity {
+				return // ponytail: 满容量时不再跟踪新 key（fail-open），已在冷却中的 key 不受影响
+			}
+		}
+		if t.entries == nil {
+			t.entries = make(map[string]*loginThrottleEntry)
+		}
+		e = &loginThrottleEntry{}
+		t.entries[key] = e
+	case now.Sub(e.lastFailure) > loginThrottleFailureTTL:
+		*e = loginThrottleEntry{}
+	}
+	e.failures++
+	e.lastFailure = now
+	if over := e.failures - loginThrottleFreeFailures; over > 0 {
+		e.blockedUntil = now.Add(min(loginThrottleBaseDelay<<min(over-1, 20), loginThrottleMaxDelay))
+	}
+}
+
+func (t *loginThrottle) reset(key string) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	delete(t.entries, key)
 }
 
 // LoginOrRegisterOAuth 用于第三方 OAuth/SSO 登录：
