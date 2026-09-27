@@ -83,6 +83,35 @@ func TestCompositeTargetPlatformMiddlewareResolvesModelAndRestoresBody(t *testin
 	require.Equal(t, http.StatusNoContent, w.Code)
 }
 
+func TestCompositeTargetPlatformMiddlewareReturnsActionableTruncatedBodyError(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	router := gin.New()
+	router.Use(gin.HandlerFunc(servermiddleware.APIKeyAuthMiddleware(func(c *gin.Context) {
+		groupID := int64(1)
+		c.Set(string(servermiddleware.ContextKeyAPIKey), &service.APIKey{
+			GroupID: &groupID,
+			Group:   &service.Group{ID: groupID, Platform: service.PlatformComposite},
+		})
+		c.Next()
+	})))
+	router.Use(compositeTargetPlatformMiddleware(nil))
+	router.POST("/", func(c *gin.Context) {
+		t.Fatal("request with a truncated body must not reach the handler")
+	})
+
+	payload := `{"model":"gpt-5"}`
+	req := httptest.NewRequest(http.MethodPost, "/", strings.NewReader(payload))
+	req.ContentLength = int64(len(payload) + 10)
+	w := httptest.NewRecorder()
+
+	router.ServeHTTP(w, req)
+
+	require.Equal(t, http.StatusBadRequest, w.Code)
+	require.Contains(t, w.Body.String(), `"code":"request_body_truncated"`)
+	require.Contains(t, w.Body.String(), "Request body was truncated before upload completed")
+	require.Contains(t, w.Body.String(), "Please retry the request")
+}
+
 func TestCompositeTargetPlatformMiddlewareUsesExplicitRouteAndRewritesBody(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	router := gin.New()

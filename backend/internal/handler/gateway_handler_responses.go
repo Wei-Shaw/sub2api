@@ -45,13 +45,9 @@ func (h *GatewayHandler) Responses(c *gin.Context) {
 	)
 
 	// Read request body
-	body, err := readLenientJSONRequestBodyWithPrealloc(c.Request, h.cfg)
+	body, err := readLenientJSONRequestBodyWithDiagnostics(c, h.cfg, reqLog)
 	if err != nil {
-		if maxErr, ok := extractMaxBytesError(err); ok {
-			h.responsesErrorResponse(c, http.StatusRequestEntityTooLarge, "invalid_request_error", buildBodyTooLargeMessage(maxErr.Limit))
-			return
-		}
-		h.responsesErrorResponse(c, http.StatusBadRequest, "invalid_request_error", "Failed to read request body")
+		h.requestBodyResponsesErrorResponse(c, err)
 		return
 	}
 
@@ -176,13 +172,13 @@ func (h *GatewayHandler) Responses(c *gin.Context) {
 		selection, err := h.gatewayService.SelectAccountWithLoadAwareness(requestCtx, apiKey.GroupID, sessionHash, reqModel, fs.FailedAccountIDs, "", int64(0))
 		if err != nil {
 			if len(fs.FailedAccountIDs) == 0 {
-				cls := classifyNoAccountErrorFromGin(c, h.gatewayService, apiKey, reqModel, reqModel, effectiveAPIKeyPlatform(c, apiKey))
+				cls := classifyNoAccountErrorFromGin(c, h.gatewayService, apiKey, reqModel, reqModel, effectiveAPIKeyPlatform(c, apiKey), err)
 				cls = classifySelectionFailureError(err, cls)
-				if !cls.ModelNotFound {
+				if !cls.ModelNotFound && !cls.ModelNotAllowed {
 					markOpsRoutingCapacityLimitedIfNoAvailable(c, err)
 				}
 				message := cls.Message
-				if !cls.ModelNotFound {
+				if !cls.ModelNotFound && !cls.ModelNotAllowed {
 					message = "No available accounts: " + err.Error()
 				}
 				h.responsesErrorResponse(c, cls.Status, cls.ErrType, message)
@@ -355,11 +351,19 @@ func (h *GatewayHandler) Responses(c *gin.Context) {
 
 // responsesErrorResponse writes an error in OpenAI Responses API format.
 func (h *GatewayHandler) responsesErrorResponse(c *gin.Context, status int, code, message string) {
+	h.responsesErrorResponseWithCode(c, status, "", code, message)
+}
+
+func (h *GatewayHandler) responsesErrorResponseWithCode(c *gin.Context, status int, errType, code, message string) {
+	errorBody := gin.H{"code": code, "message": message}
+	if errType != "" {
+		errorBody["type"] = errType
+	}
+	if code == "" {
+		delete(errorBody, "code")
+	}
 	c.JSON(status, gin.H{
-		"error": gin.H{
-			"code":    code,
-			"message": message,
-		},
+		"error": errorBody,
 	})
 }
 

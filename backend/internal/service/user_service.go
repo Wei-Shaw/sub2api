@@ -198,6 +198,12 @@ type RedeemUserAdjustmentRepository interface {
 	ApplyRedeemConcurrencyAdjustment(ctx context.Context, id int64, delta int) error
 }
 
+// CheckInCycleResetter resets only the reduced-reward cycle after a user
+// redeems a purchased benefit. It must preserve today's check-in state.
+type CheckInCycleResetter interface {
+	ResetCheckInCycle(ctx context.Context, userID int64, resetAt time.Time) error
+}
+
 type UserAuthIdentityRecord struct {
 	ProviderType    string
 	ProviderKey     string

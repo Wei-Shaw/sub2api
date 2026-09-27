@@ -171,6 +171,9 @@ func createGroupRecord(ctx context.Context, client *dbent.Client, groupIn *servi
 	if err != nil {
 		return translatePersistenceError(err, nil, service.ErrGroupExists)
 	}
+	if err := persistGroupAutoRouteConfig(ctx, client, created.ID, groupIn.AutoRouteEnabled, groupIn.AutoRouteGroupIDs); err != nil {
+		return fmt.Errorf("persist group auto route config: %w", err)
+	}
 	groupIn.ID = created.ID
 	groupIn.CreatedAt = created.CreatedAt
 	groupIn.UpdatedAt = created.UpdatedAt
@@ -435,11 +438,105 @@ func (r *groupRepository) Update(ctx context.Context, groupIn *service.Group) er
 	if err != nil {
 		return translatePersistenceError(err, service.ErrGroupNotFound, service.ErrGroupExists)
 	}
+	if err := persistGroupAutoRouteConfig(ctx, r.client, groupIn.ID, groupIn.AutoRouteEnabled, groupIn.AutoRouteGroupIDs); err != nil {
+		return fmt.Errorf("persist group auto route config: %w", err)
+	}
 	groupIn.UpdatedAt = updated.UpdatedAt
 	if err := enqueueSchedulerOutbox(ctx, r.sql, service.SchedulerOutboxEventGroupChanged, nil, &groupIn.ID, nil); err != nil {
 		logger.LegacyPrintf("repository.group", "[SchedulerOutbox] enqueue group update failed: group=%d err=%v", groupIn.ID, err)
 	}
 	return nil
+}
+
+func persistGroupAutoRouteConfig(ctx context.Context, exec sqlExecutor, groupID int64, enabled bool, groupIDs []int64) error {
+	if exec == nil {
+		return errors.New("group auto route SQL executor is nil")
+	}
+	normalized := service.NormalizeAutoRouteGroupIDs(groupID, groupIDs)
+	raw, err := json.Marshal(normalized)
+	if err != nil {
+		return err
+	}
+	_, err = exec.ExecContext(ctx, `
+		UPDATE groups
+		SET auto_route_enabled = $2, auto_route_group_ids = $3::jsonb
+		WHERE id = $1 AND deleted_at IS NULL
+	`, groupID, enabled, string(raw))
+	return err
+}
+
+func (r *groupRepository) GetAutoRouteConfigs(ctx context.Context, groupIDs []int64) (map[int64]service.GroupAutoRouteConfig, error) {
+	result := make(map[int64]service.GroupAutoRouteConfig, len(groupIDs))
+	if len(groupIDs) == 0 {
+		return result, nil
+	}
+	exec := r.sql
+	if exec == nil {
+		exec = r.client
+	}
+	rows, err := exec.QueryContext(ctx, `
+		SELECT id, auto_route_enabled, auto_route_group_ids
+		FROM groups
+		WHERE id = ANY($1) AND deleted_at IS NULL
+	`, pq.Array(groupIDs))
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+	for rows.Next() {
+		var id int64
+		var enabled bool
+		var raw []byte
+		if err := rows.Scan(&id, &enabled, &raw); err != nil {
+			return nil, err
+		}
+		var targets []int64
+		if len(raw) > 0 {
+			if err := json.Unmarshal(raw, &targets); err != nil {
+				return nil, fmt.Errorf("decode group %d auto route config: %w", id, err)
+			}
+		}
+		result[id] = service.GroupAutoRouteConfig{
+			Enabled:  enabled,
+			GroupIDs: service.NormalizeAutoRouteGroupIDs(id, targets),
+		}
+	}
+	return result, rows.Err()
+}
+
+func (r *groupRepository) ListAutoRouteAccountCapacities(ctx context.Context, groupIDs []int64) ([]service.GroupAutoRouteAccountCapacity, error) {
+	if len(groupIDs) == 0 {
+		return []service.GroupAutoRouteAccountCapacity{}, nil
+	}
+	exec := r.sql
+	if exec == nil {
+		exec = r.client
+	}
+	rows, err := exec.QueryContext(ctx, fmt.Sprintf(`
+		SELECT ag.group_id, a.id, a.concurrency
+		FROM account_groups ag
+		JOIN accounts a ON a.id = ag.account_id
+		WHERE ag.group_id = ANY($1)
+			AND %s
+		ORDER BY ag.group_id ASC, ag.priority ASC, a.priority ASC, a.id ASC
+	`, groupAccountAvailableSQL), pq.Array(groupIDs))
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+
+	result := make([]service.GroupAutoRouteAccountCapacity, 0)
+	for rows.Next() {
+		var item service.GroupAutoRouteAccountCapacity
+		if err := rows.Scan(&item.GroupID, &item.AccountID, &item.MaxConcurrency); err != nil {
+			return nil, err
+		}
+		result = append(result, item)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return result, nil
 }
 
 func (r *groupRepository) Delete(ctx context.Context, id int64) error {

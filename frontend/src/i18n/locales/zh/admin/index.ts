@@ -6,7 +6,9 @@ import ops from './ops'
 import settings from './settings'
 import audit from './audit'
 import promptAudit from './promptAudit'
+import checkin from './checkin'
 import plugins from './plugins'
+import modelEvaluation from './modelEvaluation'
 
 export default {
   ...overview,
@@ -17,5 +19,7 @@ export default {
   ...settings,
   ...audit,
   ...promptAudit,
+  ...checkin,
   ...plugins,
+  ...modelEvaluation,
 }

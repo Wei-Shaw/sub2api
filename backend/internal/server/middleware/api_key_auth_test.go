@@ -1424,7 +1424,7 @@ func TestAPIKeyAuthRejectsExhaustedBalance(t *testing.T) {
 	router.ServeHTTP(w, req)
 
 	require.Equal(t, http.StatusForbidden, w.Code)
-	requireAPIKeyAuthError(t, w, "INSUFFICIENT_BALANCE", "Insufficient account balance")
+	requireAPIKeyAuthError(t, w, "INSUFFICIENT_BALANCE", billingBalanceExhaustedMessage())
 }
 
 func TestAPIKeyAuthOpenAIQuotaErrorFormat(t *testing.T) {
@@ -1463,7 +1463,7 @@ func TestAPIKeyAuthOpenAIQuotaErrorFormat(t *testing.T) {
 		} `json:"error"`
 	}
 	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &response))
-	require.Equal(t, "API key 额度已用完", response.Error.Message)
+	require.Equal(t, apiKeyQuotaExhaustedMessage, response.Error.Message)
 	require.Equal(t, "insufficient_quota", response.Error.Type)
 	require.Nil(t, response.Error.Param)
 	require.Equal(t, "insufficient_quota", response.Error.Code)
@@ -1496,7 +1496,7 @@ func TestAPIKeyAuthQuotaErrorKeepsLegacyFormatOutsideResponses(t *testing.T) {
 	router.ServeHTTP(w, req)
 
 	require.Equal(t, http.StatusTooManyRequests, w.Code)
-	requireAPIKeyAuthError(t, w, "API_KEY_QUOTA_EXHAUSTED", "API key 额度已用完")
+	requireAPIKeyAuthError(t, w, "API_KEY_QUOTA_EXHAUSTED", apiKeyQuotaExhaustedMessage)
 }
 
 func newAuthTestRouter(apiKeyService *service.APIKeyService, subscriptionService *service.SubscriptionService, cfg *config.Config) *gin.Engine {
@@ -1791,4 +1791,49 @@ func (r *stubUserSubscriptionRepo) IncrementUsage(ctx context.Context, id int64,
 
 func (r *stubUserSubscriptionRepo) BatchUpdateExpiredStatus(ctx context.Context) (int64, error) {
 	return 0, errors.New("not implemented")
+}
+
+func TestAPIKeyAuthRepeatedQuotaRejectionAndRecovery(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	user := &service.User{ID: 11, Role: service.RoleUser, Status: service.StatusActive, Balance: 10}
+	group := &service.Group{ID: 8, Platform: service.PlatformOpenAI, Status: service.StatusActive}
+	key := &service.APIKey{ID: 105, UserID: user.ID, Key: "quota-recovery", Status: service.StatusActive, Quota: 1, QuotaUsed: 1, User: user, Group: group, GroupID: &group.ID}
+	repo := &stubApiKeyRepo{getByKey: func(context.Context, string) (*service.APIKey, error) {
+		clone := *key
+		return &clone, nil
+	}}
+	cfg := &config.Config{RunMode: config.RunModeStandard}
+	svc := service.NewAPIKeyService(repo, nil, nil, nil, nil, nil, cfg)
+	router := gin.New()
+	var rejected bool
+	router.Use(func(c *gin.Context) {
+		c.Next()
+		_, rejected = GetIngressRejectReason(c)
+	})
+	router.Use(gin.HandlerFunc(NewAPIKeyAuthMiddleware(svc, nil, cfg)))
+	calls := 0
+	router.POST("/v1/responses", func(c *gin.Context) { calls++; c.Status(http.StatusOK) })
+	router.GET("/v1/usage", func(c *gin.Context) { c.Status(http.StatusOK) })
+	request := func(method, path string) *httptest.ResponseRecorder {
+		w := httptest.NewRecorder()
+		req := httptest.NewRequest(method, path, nil)
+		req.Header.Set("x-api-key", key.Key)
+		router.ServeHTTP(w, req)
+		return w
+	}
+	for i := 0; i < 10; i++ {
+		w := request(http.MethodPost, "/v1/responses")
+		require.Equal(t, http.StatusTooManyRequests, w.Code)
+		require.Equal(t, "60", w.Header().Get("Retry-After"))
+		require.Equal(t, "false", w.Header().Get("x-should-retry"))
+		require.True(t, rejected)
+	}
+	require.Zero(t, calls)
+	require.Equal(t, http.StatusOK, request(http.MethodGet, "/v1/usage").Code)
+	key.QuotaUsed = 0
+	w := request(http.MethodPost, "/v1/responses")
+	require.Equal(t, http.StatusOK, w.Code)
+	require.Empty(t, w.Header().Get("Retry-After"))
+	require.False(t, rejected)
+	require.Equal(t, 1, calls)
 }

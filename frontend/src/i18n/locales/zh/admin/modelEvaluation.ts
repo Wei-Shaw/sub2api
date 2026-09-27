@@ -1,0 +1,33 @@
+export default {
+  modelEvaluation: {
+    title: '模型推理评测', action: '推理评测', account: '账号', group: '分组',
+    model: '模型', modelPlaceholder: '选择或输入模型名称', effort: '推理强度', rounds: '测试轮数（1–20）',
+    accountHint: '固定测试此账号，不自动切换其他账号。首版支持普通 OpenAI OAuth / API Key 文本模型。',
+    groupHint: '按分组模型白名单、渠道映射、推理策略和调度器逐轮抽样，展示实际账号。每轮不自动换号重试，不代表覆盖分组内所有账号，也不模拟用户计费、会话或利润准入。',
+    hint: '参考 codex-candy-eval 糖果题，可按触感选择形状。仅校验最后一行 FINAL_ANSWER，不因解释中出现 21 而判对。单题结果只能提供能力波动线索。',
+    costHint: '每轮独立请求，最长 180 秒，会消耗上游账号额度。默认 5 轮；取消或关闭弹窗会终止剩余请求。结果逐轮保存到服务端，刷新后可从历史记录查看，也可导出。',
+    history: '历史记录', historyHint: '报告长期保存在服务端，当前仅管理员可见。记录包含计划轮数与已完成轮数，未完成的轮次不会算作答错。',
+    historyPage: '第 {page} 页', refresh: '刷新', previous: '上一页', next: '下一页', loadingHistory: '正在加载历史记录…', emptyHistory: '暂无历史报告',
+    historySummary: '已保存最终结果 {completed} / {total} 轮；答对 {correct} / 可判分 {graded}', viewReport: '查看结果',
+    reportId: '报告编号', privateReport: '仅管理员可见', creating: '正在保存评测报告…',
+    loadedReport: '已载入报告 {id}，已保存最终结果 {completed} / {total} 轮。',
+    historyFailed: '历史记录读取失败，请刷新重试。', createFailed: '评测报告创建失败，请刷新历史记录确认后重试。',
+    saveFailed: '报告 {id} 第 {round} 轮未能确认保存；请先导出结果，再刷新历史记录检查。',
+    pendingHint: '{count} 轮尚无最终结果，请刷新历史记录确认；中断后可新建评测复测。',
+    progress: '正在测试第 {current} / {total} 轮…', finished: '评测结束，已记录 {completed} / {total} 轮。', canceled: '已取消；已记录 {completed} / {total} 轮。已发送请求可能已消耗额度。',
+    start: '开始评测', cancel: '取消评测', export: '导出报告',
+    round: '轮次', result: '结果', tokens: '输入 / 输出 / 推理 token', time: '耗时',
+    summary: '答对 {correct} / 可判分 {graded}，已记录 {total} 轮；请求失败 {errors}，无法判分 {ungraded}。',
+    accuracy: '可判分正确率', noData: '暂无有效结果',
+    checkAgain: '本次存在答错，建议在相同模型与推理强度下对照复测；不能单独证明降智。',
+    noConclusion: '仅展示本次样本表现。请结合历史或对照账号、多题结果判断能力变化。',
+    missingTokens: '— 表示上游未提供或当前协议未保留该指标，不等于 0。推理 token 多寡不代表智力高低。',
+    detail: '第 {round} 轮原始回答与调用信息', mapping: '请求 → 上游模型', reportedModel: '上游报告模型（不作为身份保证）',
+    modelsFailed: '模型列表加载失败，请重新打开或手动输入模型。',
+    invalid: '请填写模型，并将测试轮数设为 1–20 的整数。', retryHint: '请检查目标状态与网络后重试。',
+    roundFailed: '{target}，第 {round} 轮：{detail}',
+    ungradedHint: '最终答案格式不符合要求，无法判分；请展开回答检查后复测。',
+    incorrectHint: '最终答案与标准答案不符；请展开推理过程并对照复测。',
+    status: { correct: '答对', incorrect: '答错', ungraded: '无法判分', error: '请求失败', running: '运行中', interrupted: '未完成 / 已中断' }
+  }
+}

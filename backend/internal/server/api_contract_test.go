@@ -592,6 +592,7 @@ func TestAPIContracts(t *testing.T) {
 								"model": "claude-3",
 								"request_type": "stream",
 								"native_compaction_v2": false,
+								"first_serve_active": false,
 								"openai_ws_mode": false,
 								"group_id": null,
 								"subscription_id": null,

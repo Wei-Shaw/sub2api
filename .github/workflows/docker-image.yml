@@ -1,0 +1,159 @@
+name: Build Docker Image
+
+on:
+  push:
+    branches:
+      - custom-ui
+  workflow_dispatch:
+
+concurrency:
+  group: sub2api-production
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+env:
+  AWS_REGION: ap-northeast-1
+  AWS_INSTANCE_ID: i-0e54fc7a3f3d399d5
+  AWS_DEPLOY_ROLE_ARN: arn:aws:iam::386566550227:role/gptplusch-sub2api-github-deploy
+  IMAGE_NAME: ghcr.io/domenlee/sub2api
+
+jobs:
+  ci:
+    name: Required CI
+    uses: ./.github/workflows/backend-ci.yml
+    permissions:
+      contents: read
+
+  build:
+    needs: ci
+    permissions:
+      contents: read
+      packages: write
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.repository_owner }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile
+          push: true
+          platforms: linux/amd64
+          tags: |
+            ${{ env.IMAGE_NAME }}:latest
+            ${{ env.IMAGE_NAME }}:${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  deploy:
+    name: Deploy to AWS production
+    if: github.ref == 'refs/heads/custom-ui'
+    needs: build
+    permissions:
+      contents: read
+      id-token: write
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v5
+        with:
+          role-to-assume: ${{ env.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+          audience: sts.amazonaws.com
+          allowed-account-ids: '386566550227'
+          unset-current-credentials: true
+          role-session-name: gptplusch-${{ github.run_id }}
+
+      - name: Verify temporary AWS credentials
+        run: |
+          set -Eeuo pipefail
+
+          test -n "${AWS_ACCESS_KEY_ID:-}"
+          test -n "${AWS_SECRET_ACCESS_KEY:-}"
+          test -n "${AWS_SESSION_TOKEN:-}"
+
+          caller_arn="$(aws sts get-caller-identity --query Arn --output text)"
+          case "${caller_arn}" in
+            arn:aws:sts::386566550227:assumed-role/gptplusch-sub2api-github-deploy/gptplusch-*)
+              echo "Verified temporary credentials for the production deployment role."
+              ;;
+            *)
+              echo "Unexpected AWS caller identity: ${caller_arn}" >&2
+              exit 1
+              ;;
+          esac
+
+      - name: Deploy through SSM
+        env:
+          TARGET_SHA: ${{ github.sha }}
+        run: |
+          set -Eeuo pipefail
+
+          remote_script="$(cat <<EOF
+          set -Eeuo pipefail
+          repo=/home/ec2-user/gptplusch-sub2api
+          target_sha='${TARGET_SHA}'
+          image='${IMAGE_NAME}:${TARGET_SHA}'
+          script_path=\$(mktemp /tmp/sub2api-deploy.XXXXXX)
+          trap 'rm -f "\${script_path}"' EXIT
+
+          runuser -u ec2-user -- git -C "\${repo}" fetch --quiet origin custom-ui
+          test "\$(runuser -u ec2-user -- git -C "\${repo}" rev-parse origin/custom-ui)" = "\${target_sha}"
+          runuser -u ec2-user -- git -C "\${repo}" show "\${target_sha}:deploy/aws-ssm-deploy.sh" > "\${script_path}"
+          chown ec2-user:ec2-user "\${script_path}"
+          chmod 700 "\${script_path}"
+          runuser -u ec2-user -- "\${script_path}" "\${target_sha}" "\${image}"
+          EOF
+          )"
+
+          encoded_script="$(printf '%s' "${remote_script}" | base64 -w 0)"
+          parameters="$(jq -cn --arg command "printf '%s' '${encoded_script}' | base64 --decode | bash" '{commands: [$command]}')"
+          command_id="$(aws ssm send-command \
+            --instance-ids "${AWS_INSTANCE_ID}" \
+            --document-name AWS-RunShellScript \
+            --comment "Deploy ${GITHUB_REPOSITORY}@${TARGET_SHA}" \
+            --parameters "${parameters}" \
+            --timeout-seconds 900 \
+            --query 'Command.CommandId' \
+            --output text)"
+
+          echo "SSM command: ${command_id}"
+          for attempt in $(seq 1 120); do
+            status="$(aws ssm get-command-invocation \
+              --command-id "${command_id}" \
+              --instance-id "${AWS_INSTANCE_ID}" \
+              --query 'Status' \
+              --output text 2>/dev/null || true)"
+            case "${status}" in
+              Success)
+                break
+                ;;
+              Failed|Cancelled|TimedOut|Cancelling)
+                break
+                ;;
+            esac
+            sleep 5
+          done
+
+          aws ssm get-command-invocation \
+            --command-id "${command_id}" \
+            --instance-id "${AWS_INSTANCE_ID}" \
+            --query '{Status:Status,Output:StandardOutputContent,Error:StandardErrorContent}' \
+            --output yaml
+
+          test "${status}" = Success

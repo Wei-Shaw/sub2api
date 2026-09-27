@@ -29,10 +29,12 @@ const (
 	// 格式: concurrency:user:{userID}
 	userSlotKeyPrefix = "concurrency:user:"
 	// 格式: concurrency:api_key:{apiKeyID}
-	apiKeySlotKeyPrefix      = "concurrency:api_key:"
-	liveAccountSlotKeyPrefix = "concurrency:live:account:"
-	liveUserSlotKeyPrefix    = "concurrency:live:user:"
-	liveAPIKeySlotKeyPrefix  = "concurrency:live:api_key:"
+	apiKeySlotKeyPrefix = "concurrency:api_key:"
+	// 格式: concurrency:auto_route_pending:group:{groupID}
+	autoRouteGroupSlotKeyPrefix = "concurrency:auto_route_pending:group:"
+	liveAccountSlotKeyPrefix    = "concurrency:live:account:"
+	liveUserSlotKeyPrefix       = "concurrency:live:user:"
+	liveAPIKeySlotKeyPrefix     = "concurrency:live:api_key:"
 	// API-key-scoped client WebSocket ingress leases use a shorter TTL than
 	// ordinary request slots, because idle ingress sessions do not hold a turn slot.
 	openAIWSIngressLeaseKeyPrefix  = "concurrency:openai_ws_ingress:api_key:"
@@ -45,6 +47,8 @@ const (
 
 	// 默认槽位过期时间（分钟），可通过配置覆盖
 	defaultSlotTTLMinutes = 15
+	// 自动路由槽位只覆盖“已选分组但尚未取得真实账号槽位”的短窗口。
+	autoRouteGroupSlotTTLSeconds = 60
 
 	// 活跃索引用来替代后台任务全量 SCAN 槽位键。
 	// member 是账号/用户 ID，score 是“预计仍需关注到”的 Redis Unix 秒时间戳。
@@ -104,6 +108,27 @@ var (
 		end
 
 		return {0, now}
+	`)
+
+	acquireAutoRouteGroupSlotScript = redis.NewScript(`
+		redis.replicate_commands()
+		local key = KEYS[1]
+		local maxPending = tonumber(ARGV[1])
+		local ttl = tonumber(ARGV[2])
+		local requestID = ARGV[3]
+		local now = tonumber(redis.call('TIME')[1])
+		redis.call('ZREMRANGEBYSCORE', key, '-inf', now - ttl)
+		if redis.call('ZSCORE', key, requestID) ~= false then
+			redis.call('ZADD', key, now, requestID)
+			redis.call('EXPIRE', key, ttl)
+			return 1
+		end
+		if redis.call('ZCARD', key) >= maxPending then
+			return 0
+		end
+		redis.call('ZADD', key, now, requestID)
+		redis.call('EXPIRE', key, ttl)
+		return 1
 	`)
 
 	// getCountScript 统计有序集合中的槽位数量并清理过期条目
@@ -388,6 +413,10 @@ func userSlotKey(userID int64) string {
 
 func apiKeySlotKey(apiKeyID int64) string {
 	return fmt.Sprintf("%s%d", apiKeySlotKeyPrefix, apiKeyID)
+}
+
+func autoRouteGroupSlotKey(groupID int64) string {
+	return fmt.Sprintf("%s%d", autoRouteGroupSlotKeyPrefix, groupID)
 }
 
 func liveAccountSlotKey(accountID int64) string {
@@ -748,6 +777,31 @@ func (c *concurrencyCache) TrackAPIKeySlot(ctx context.Context, apiKeyID int64, 
 func (c *concurrencyCache) ReleaseAPIKeySlot(ctx context.Context, apiKeyID int64, requestID string) error {
 	key := apiKeySlotKey(apiKeyID)
 	return c.rdb.ZRem(ctx, key, requestID).Err()
+}
+
+func (c *concurrencyCache) AcquireAutoRouteGroupSlot(ctx context.Context, groupID int64, maxPending int, requestID string) (bool, error) {
+	if groupID <= 0 || maxPending <= 0 || requestID == "" {
+		return false, nil
+	}
+	result, err := acquireAutoRouteGroupSlotScript.Run(
+		ctx,
+		c.rdb,
+		[]string{autoRouteGroupSlotKey(groupID)},
+		maxPending,
+		autoRouteGroupSlotTTLSeconds,
+		requestID,
+	).Int()
+	if err != nil {
+		return false, err
+	}
+	return result == 1, nil
+}
+
+func (c *concurrencyCache) ReleaseAutoRouteGroupSlot(ctx context.Context, groupID int64, requestID string) error {
+	if groupID <= 0 || requestID == "" {
+		return nil
+	}
+	return c.rdb.ZRem(ctx, autoRouteGroupSlotKey(groupID), requestID).Err()
 }
 
 func (c *concurrencyCache) AcquireOpenAIWSIngressLease(ctx context.Context, apiKeyID int64, maxConnections int, leaseID string) (bool, error) {

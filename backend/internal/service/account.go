@@ -29,6 +29,7 @@ type Account struct {
 	Credentials             map[string]any
 	Extra                   map[string]any
 	ProxyID                 *int64
+	ProxyGroupID            *int64
 	ProxyFallbackOriginID   *int64
 	ProxyFallbackOriginName *string // 仅展示用
 	Concurrency             int
@@ -61,10 +62,11 @@ type Account struct {
 	ParentAccountID *int64 // non-nil → 影子账号（不持凭据，透传母账号凭据）
 	QuotaDimension  string // 用量维度："" / "global" / "spark"
 
-	Proxy         *Proxy
-	AccountGroups []AccountGroup
-	GroupIDs      []int64
-	Groups        []*Group
+	Proxy              *Proxy
+	proxyGroupResolved bool
+	AccountGroups      []AccountGroup
+	GroupIDs           []int64
+	Groups             []*Group
 
 	// model_mapping 热路径缓存（非持久化字段）
 	modelMappingCache               map[string]string
@@ -2150,6 +2152,7 @@ const (
 	OpenAIWSIngressModeShared      = "shared"
 	OpenAIWSIngressModeDedicated   = "dedicated"
 	OpenAIWSIngressModeCtxPool     = "ctx_pool"
+	OpenAIWSIngressModeFirstServe  = "first_serve"
 	OpenAIWSIngressModePassthrough = "passthrough"
 	OpenAIWSIngressModeHTTPBridge  = "http_bridge"
 )
@@ -2158,6 +2161,8 @@ func normalizeOpenAIWSIngressMode(mode string) string {
 	switch strings.ToLower(strings.TrimSpace(mode)) {
 	case OpenAIWSIngressModeOff:
 		return OpenAIWSIngressModeOff
+	case OpenAIWSIngressModeFirstServe:
+		return OpenAIWSIngressModeFirstServe
 	case OpenAIWSIngressModeCtxPool:
 		return OpenAIWSIngressModeCtxPool
 	case OpenAIWSIngressModePassthrough:

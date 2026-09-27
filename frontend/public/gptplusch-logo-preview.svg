@@ -1,0 +1,50 @@
+<svg width="1684" height="921" viewBox="0 0 1684 921" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <filter id="softGlow" x="-8%" y="-20%" width="116%" height="140%" color-interpolation-filters="sRGB">
+      <feDropShadow dx="0" dy="0" stdDeviation="2.2" flood-color="#ffffff" flood-opacity="0.45"/>
+      <feDropShadow dx="0" dy="2" stdDeviation="4" flood-color="#ffffff" flood-opacity="0.18"/>
+    </filter>
+    <filter id="bgNoise" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB">
+      <feTurbulence type="fractalNoise" baseFrequency="0.8" numOctaves="2" stitchTiles="stitch"/>
+      <feColorMatrix type="saturate" values="0"/>
+      <feComponentTransfer>
+        <feFuncA type="table" tableValues="0 0.035"/>
+      </feComponentTransfer>
+    </filter>
+  </defs>
+
+  <rect width="1684" height="921" fill="#030303"/>
+  <rect width="1684" height="921" fill="#0b0b0b" filter="url(#bgNoise)" opacity="0.45"/>
+
+  <g filter="url(#softGlow)" fill="#fff">
+    <!-- g symbol -->
+    <path fill-rule="evenodd" clip-rule="evenodd" d="M274 354c-53 0-96 43-96 96s43 96 96 96h2c-18 20-47 30-76 24-14-3-28 7-31 21s7 28 21 31c72 14 142-33 154-105l2-14c15-14 24-33 24-53 0-7-1-14-3-21l35-37h18c14 0 26-12 26-26v-9c0-14-12-26-26-26h-28c-11 0-21 4-28 12l-20 21c-20-7-43-10-70-10Zm0 48c27 0 52 9 70 25-2 7-3 15-3 23 0 37-30 68-67 68s-68-31-68-68 31-48 68-48Z"/>
+    <circle cx="249" cy="450" r="17"/>
+    <circle cx="300" cy="450" r="17"/>
+    <rect x="249" y="441" width="51" height="18" rx="9"/>
+
+    <!-- p -->
+    <path fill-rule="evenodd" clip-rule="evenodd" d="M397 397c0-14 12-26 26-26s26 12 26 26v10c18-23 47-37 82-37 54 0 97 45 97 102s-43 102-97 102c-34 0-63-14-82-36v20c0 14-12 26-26 26s-26-12-26-26V397Zm52 75c0 33 26 56 61 56s62-23 62-56-27-56-62-56-61 23-61 56Z"/>
+
+    <!-- t -->
+    <path d="M654 331c0-14 12-26 26-26s26 12 26 26v39h39c14 0 26 12 26 26s-12 26-26 26h-39v61c0 23 13 37 35 37h15c14 0 26 12 26 26s-12 26-26 26h-22c-49 0-80-31-80-80v-70h-18c-14 0-26-12-26-26s12-26 26-26h18v-39Z"/>
+
+    <!-- p -->
+    <path fill-rule="evenodd" clip-rule="evenodd" d="M810 397c0-14 12-26 26-26s26 12 26 26v10c18-23 47-37 82-37 54 0 97 45 97 102s-43 102-97 102c-34 0-63-14-82-36v20c0 14-12 26-26 26s-26-12-26-26V397Zm52 75c0 33 26 56 61 56s62-23 62-56-27-56-62-56-61 23-61 56Z"/>
+
+    <!-- l -->
+    <rect x="1068" y="309" width="53" height="264" rx="26"/>
+
+    <!-- u -->
+    <path d="M1149 397c0-14 12-26 26-26s26 12 26 26v78c0 34 20 53 50 53s50-19 50-53v-78c0-14 12-26 26-26s26 12 26 26v80c0 61-42 97-102 97s-102-36-102-97v-80Z"/>
+
+    <!-- s -->
+    <path d="M1442 395c7-12 23-17 35-10 12 6 17 22 11 34-14 27-46 44-87 44-18 0-31 5-31 15 0 11 17 13 42 16 45 5 91 19 91 65 0 48-44 75-100 75-47 0-84-17-103-47-8-12-4-28 8-36 12-8 28-4 36 8 10 15 31 26 59 26 28 0 47-8 47-24 0-13-17-16-49-20-44-6-84-20-84-63 0-43 39-66 87-66 18 0 33-6 38-17Z" transform="translate(0 -54)"/>
+
+    <!-- c -->
+    <path d="M1518 472c0-59 47-102 108-102 34 0 65 12 84 34 10 11 9 27-2 37-11 10-27 9-37-2-9-10-25-17-45-17-32 0-56 20-56 50s24 50 56 50c20 0 36-7 45-18 10-11 26-12 37-2 11 10 12 26 2 37-19 22-50 35-84 35-61 0-108-43-108-102Z"/>
+
+    <!-- h -->
+    <path d="M1754 331c0-14 12-26 26-26s26 12 26 26v71c18-21 44-32 75-32 55 0 91 35 91 94v83c0 14-12 26-26 26s-26-12-26-26v-76c0-31-18-49-48-49-39 0-66 27-66 67v58c0 14-12 26-26 26s-26-12-26-26V331Z" transform="translate(-230 0)"/>
+  </g>
+</svg>

@@ -39,6 +39,52 @@ func (r *countTokensRuntimeStateRepo) SetError(_ context.Context, _ int64, _ str
 	return nil
 }
 
+func TestFirstServeCountTokensProxyFailureWritesError(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	for _, protocol := range []string{"responses", "anthropic"} {
+		for _, missingGroup := range []bool{true, false} {
+			t.Run(fmt.Sprintf("%s/missing_group=%t", protocol, missingGroup), func(t *testing.T) {
+				account := firstServeHTTPAccount(t)
+				if missingGroup {
+					account.ProxyGroupID = nil
+				} else {
+					SetDefaultProxyGroupResolver(firstServeTestResolver{})
+				}
+				body := []byte(`{"model":"gpt-5","input":"hello"}`)
+				path := "/v1/responses/input_tokens"
+				if protocol == "anthropic" {
+					path = "/v1/messages/count_tokens"
+					body = []byte(`{"model":"gpt-5","messages":[{"role":"user","content":"hello"}]}`)
+				}
+				rec := httptest.NewRecorder()
+				c, _ := gin.CreateTestContext(rec)
+				c.Request = httptest.NewRequest(http.MethodPost, path, bytes.NewReader(body))
+				upstream := &httpUpstreamRecorder{}
+				svc := &OpenAIGatewayService{httpUpstream: upstream}
+				var err error
+				if protocol == "anthropic" {
+					err = svc.ForwardCountTokensAsAnthropic(context.Background(), c, account, body, "gpt-5")
+				} else {
+					err = svc.ForwardResponsesInputTokens(context.Background(), c, account, body)
+				}
+				require.Error(t, err)
+				require.Equal(t, http.StatusServiceUnavailable, rec.Code)
+				require.Contains(t, rec.Header().Get("Content-Type"), "application/json")
+				require.Equal(t, "api_error", gjson.GetBytes(rec.Body.Bytes(), "error.type").String())
+				require.Equal(t, err.Error(), gjson.GetBytes(rec.Body.Bytes(), "error.message").String())
+				if missingGroup {
+					require.Contains(t, err.Error(), account.Name)
+					require.Contains(t, err.Error(), "账号编辑")
+				}
+				if protocol == "anthropic" {
+					require.Equal(t, "error", gjson.GetBytes(rec.Body.Bytes(), "type").String())
+				}
+				require.Nil(t, upstream.lastReq, "proxy failure must not fall back to a direct request")
+			})
+		}
+	}
+}
+
 func TestOpenAIGatewayService_ForwardCountTokensAsAnthropic_APIKeyUsesResponsesInputTokens(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 

@@ -420,6 +420,26 @@ var (
 // ErrNoAvailableAccounts 表示没有可用的账号
 var ErrNoAvailableAccounts = errors.New("no available accounts")
 
+// ErrModelNotAllowed 表示请求模型被分组关联渠道的模型白名单禁用。
+var ErrModelNotAllowed = errors.New("model is not enabled for this group")
+
+// ModelNotAllowedError 保留被拒绝的客户端模型名，供 Handler 返回明确的业务错误。
+type ModelNotAllowedError struct {
+	Model string
+}
+
+func (e *ModelNotAllowedError) Error() string {
+	return fmt.Sprintf("model %q is not enabled for this group", e.Model)
+}
+
+func (e *ModelNotAllowedError) Unwrap() error {
+	return ErrModelNotAllowed
+}
+
+func newModelNotAllowedError(model string) error {
+	return &ModelNotAllowedError{Model: strings.TrimSpace(model)}
+}
+
 // ErrClaudeCodeOnly 表示分组仅允许 Claude Code 客户端访问
 var ErrClaudeCodeOnly = errors.New("this group only allows Claude Code clients")
 
@@ -1315,6 +1335,9 @@ func (s *GatewayService) DoGrokNativeResponsesJSON(ctx context.Context, account 
 	}
 	if account == nil {
 		return nil, errors.New("account is required")
+	}
+	if err := resolveDefaultProxyGroupAccount(ctx, account); err != nil {
+		return nil, err
 	}
 	if !account.IsGrok() {
 		return nil, errors.New("grok account required")

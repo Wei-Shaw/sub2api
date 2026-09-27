@@ -178,6 +178,8 @@ type UsageLog struct {
 	Stream             bool
 	OpenAIWSMode       bool
 	NativeCompactionV2 bool
+	FirstServeActive   bool
+	FirstServeSnapshot *OpenAIFirstServeUsageSnapshot
 	DurationMs         *int
 	FirstTokenMs       *int
 	UserAgent          *string

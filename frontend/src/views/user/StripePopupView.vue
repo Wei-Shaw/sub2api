@@ -65,8 +65,8 @@ interface StripeWithWechatPay {
 }
 
 const METHOD_COLORS: Record<string, string> = {
-  alipay: '#00AEEF',
-  wechat_pay: '#07C160',
+  alipay: '#737373',
+  wechat_pay: '#737373',
 }
 const DEFAULT_METHOD_COLOR = '#635bff'
 

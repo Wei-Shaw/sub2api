@@ -219,6 +219,10 @@ underscores_in_headers on;
 
 Nginx 默认会丢弃名称中含下划线的请求头（如 `session_id`），这会导致多账号环境下的粘性会话功能失效。
 
+如果你要接入 Cloudflare CDN，建议直接看这份说明：
+
+- [Cloudflare CDN 接入说明](docs/CLOUDFLARE_CN.md)
+
 ## Codex Fast/Flex 策略说明
 
 管理员后台的 `系统设置 -> 网关服务 -> OpenAI Fast/Flex 策略` 只负责处理请求体中的 `service_tier`，不会修改 Codex 客户端的模型目录，也不会让 Codex UI 自动出现 Speed 或 `/fast` 选项。
