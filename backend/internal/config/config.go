@@ -2377,9 +2377,9 @@ func setDefaults() {
 	// JWT
 	viper.SetDefault("jwt.secret", "")
 	viper.SetDefault("jwt.expire_hour", 24)
-	viper.SetDefault("jwt.access_token_expire_minutes", 0) // 0 表示回退到 expire_hour
-	viper.SetDefault("jwt.refresh_token_expire_days", 30)  // 30天Refresh Token有效期
-	viper.SetDefault("jwt.refresh_window_minutes", 2)      // 过期前2分钟开始允许刷新
+	viper.SetDefault("jwt.access_token_expire_minutes", 30) // 显式配置 0 表示回退到 expire_hour
+	viper.SetDefault("jwt.refresh_token_expire_days", 30)   // 30天Refresh Token有效期
+	viper.SetDefault("jwt.refresh_window_minutes", 2)       // 过期前2分钟开始允许刷新
 
 	// 应用级密钥加密主密钥。
 	// 规范键 + 历史别名都要注册默认值：viper.Unmarshal 只解码 AllKeys() 里的键，

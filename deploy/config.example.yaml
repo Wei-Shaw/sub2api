@@ -949,11 +949,12 @@ jwt:
   # Token expiration time in hours (max 168)
   # 令牌过期时间（小时，最大 168）
   expire_hour: 24
-  # Access Token 过期时间（分钟）
+  # Access token lifetime in minutes (default 30; the frontend refreshes it before expiry)
+  # Access Token 过期时间（分钟，默认 30，前端会在过期前自动刷新）
   # 优先级说明：
   # - >0: 按分钟生效（优先于 expire_hour）
   # - =0: 回退使用 expire_hour
-  access_token_expire_minutes: 0
+  access_token_expire_minutes: 30
 
 # =============================================================================
 # TOTP (2FA) Configuration
