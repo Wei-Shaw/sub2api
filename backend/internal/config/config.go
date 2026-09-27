@@ -2018,6 +2018,13 @@ func load(allowMissingJWTSecret bool) (*Config, error) {
 	// 规范键 security.secret_encryption_key 与兼容别名 totp.encryption_key 都被接受。
 	resolveSecretEncryptionKey(&cfg)
 
+	// 示例/弱密钥（如 config.example.yaml 旧版的示例值）一律丢弃，按“未配置”处理：
+	// 启动时由数据库初始化流程沿用库里已有的密钥或生成并持久化随机密钥，不拒绝启动。
+	if cfg.JWT.Secret != "" && isWeakJWTSecret(cfg.JWT.Secret) {
+		slog.Error("jwt.secret is a known sample or weak value and is ignored; the secret already persisted in the database (or a newly generated random one) is used instead. Set a unique value (openssl rand -hex 32) or leave jwt.secret empty.")
+		cfg.JWT.Secret = ""
+	}
+
 	originalJWTSecret := cfg.JWT.Secret
 	if allowMissingJWTSecret && originalJWTSecret == "" {
 		// 启动阶段允许先无 JWT 密钥，后续在数据库初始化后补齐。
@@ -2048,9 +2055,6 @@ func load(allowMissingJWTSecret bool) (*Config, error) {
 		slog.Warn("security.response_headers.enabled=false; configurable header filtering disabled (default allowlist only).")
 	}
 
-	if cfg.JWT.Secret != "" && isWeakJWTSecret(cfg.JWT.Secret) {
-		slog.Warn("JWT secret appears weak; use a 32+ character random secret in production.")
-	}
 	if len(cfg.Security.ResponseHeaders.AdditionalAllowed) > 0 || len(cfg.Security.ResponseHeaders.ForceRemove) > 0 {
 		slog.Info("response header policy configured",
 			"additional_allowed", cfg.Security.ResponseHeaders.AdditionalAllowed,
@@ -2834,6 +2838,10 @@ func (c *Config) Validate() error {
 	// 选择 bytes 而不是 rune 计数，确保二进制/随机串的长度语义更接近“熵”而非“字符数”。
 	if len([]byte(jwtSecret)) < 32 {
 		return fmt.Errorf("jwt.secret must be at least 32 bytes")
+	}
+	if isWeakJWTSecret(jwtSecret) {
+		// 加载阶段已丢弃配置里的示例值，走到这里说明示例值早已持久化在数据库中（数据库优先）。
+		slog.Error("jwt.secret persisted in the database is a known sample value; rotate it by replacing the jwt_secret row in security_secrets with a random value (this signs out all sessions).")
 	}
 	switch c.Log.Level {
 	case "debug", "info", "warn", "error":
@@ -3856,6 +3864,9 @@ func isWeakJWTSecret(secret string) bool {
 		"12345678":                {},
 		"admin":                   {},
 		"jwt-secret":              {},
+		// 仓库文档/示例配置里出现过的示例值
+		"change-this-to-a-secure-random-string": {},
+		"your_jwt_secret_here":                  {},
 	}
 	_, exists := weak[lower]
 	return exists

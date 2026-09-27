@@ -941,10 +941,11 @@ ops:
 # JWT 配置
 # =============================================================================
 jwt:
-  # IMPORTANT: Change this to a random string in production!
-  # 重要：生产环境中请更改为随机字符串！
+  # IMPORTANT: Set a unique random string, or leave empty to let the server
+  # generate one and persist it in the database. Known sample values are ignored.
+  # 重要：请设置唯一的随机字符串，或留空由服务自动生成并持久化到数据库；已知示例值会被忽略。
   # Generate with / 生成命令: openssl rand -hex 32
-  secret: "change-this-to-a-secure-random-string"
+  secret: ""
   # Token expiration time in hours (max 168)
   # 令牌过期时间（小时，最大 168）
   expire_hour: 24
