@@ -56,7 +56,7 @@
               <button
                 @click="removeToast(toast.id)"
                 class="-m-1 flex-shrink-0 rounded-sm p-1 text-fg-subtle transition-colors hover:bg-accent-weak hover:text-accent-strong"
-                aria-label="Close notification"
+                :aria-label="t('common.close')"
               >
                 <Icon name="x" size="sm" />
               </button>
@@ -78,9 +78,11 @@
 
 <script setup lang="ts">
 import { computed } from 'vue'
+import { useI18n } from 'vue-i18n'
 import Icon from '@/components/icons/Icon.vue'
 import { useAppStore } from '@/stores/app'
 
+const { t } = useI18n()
 const appStore = useAppStore()
 
 const toasts = computed(() => appStore.toasts)

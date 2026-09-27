@@ -3,7 +3,7 @@
     <!-- 62px + 2px 蓝色规线 = 64px，与侧边栏抬头的规线对齐成一条线 -->
     <div class="flex h-[62px] items-center justify-between gap-2 px-2 sm:px-4 md:px-6">
       <!-- Left: Mobile Menu Toggle + Page Title -->
-      <div class="flex shrink-0 items-center gap-2 sm:gap-4">
+      <div class="flex min-w-12 items-center gap-2 sm:gap-4 lg:shrink-0">
         <button
           @click="toggleMobileSidebar"
           class="btn btn-ghost btn-icon lg:hidden"
@@ -11,6 +11,8 @@
         >
           <Icon name="menu" size="md" />
         </button>
+
+        <h1 class="truncate text-h3 font-bold text-fg lg:hidden">{{ pageTitle }}</h1>
 
         <div class="hidden lg:block">
           <h1 class="truncate text-h2 font-bold text-fg">
@@ -23,7 +25,7 @@
       </div>
 
       <!-- Right: Announcements + Docs + Language + Subscriptions + Balance + User Dropdown -->
-      <div class="flex min-w-0 items-center gap-1 sm:gap-3">
+      <div class="flex min-w-0 items-center gap-1 sm:gap-3 max-lg:shrink-0">
         <!-- Announcement Bell -->
         <AnnouncementBell v-if="user" />
 
