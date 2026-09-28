@@ -413,6 +413,22 @@ func TestNewConfiguredCodexModelDescriptorUsesProviderMetadataAndSafeFallback(t 
 	require.NotEmpty(t, custom.ModelMessages.InstructionsTemplate)
 	require.Equal(t, "auto", custom.DefaultReasoningSummary)
 	require.Equal(t, configuredCodexTruncationPolicy{Mode: "bytes", Limit: 10_000}, custom.TruncationPolicy)
+
+	// Provider-qualified upstream IDs must inherit the same reasoning
+	// descriptor as the bare DeepSeek model instead of the "none" fallback.
+	for _, alias := range []string{"deepseek/deepseek-v4.1-flash", "openrouter/deepseek/deepseek-r1"} {
+		qualified := newConfiguredCodexModelDescriptor(alias)
+		require.Equal(t, alias, qualified.DisplayName)
+		require.NotNil(t, qualified.DefaultReasoningLevel)
+		require.Equal(t, "high", *qualified.DefaultReasoningLevel)
+		require.Equal(t, []configuredCodexReasoningLevel{
+			{Effort: "low", Description: "Fast responses with lighter reasoning"},
+			{Effort: "high", Description: "Greater reasoning depth for coding and agent tasks"},
+			{Effort: "max", Description: "Maximum reasoning depth for complex tasks"},
+		}, qualified.SupportedReasoningLevels)
+		require.Equal(t, int64(1_000_000), qualified.ContextWindow)
+		require.True(t, qualified.SupportsParallelToolCalls)
+	}
 }
 
 func TestBuildCodexModelsManifestUsesGPT6AstraInstructions(t *testing.T) {
@@ -1013,6 +1029,41 @@ func TestBuildCodexModelsManifestForGroupUsesMappedTargetMetadataForCompositeAli
 	require.Equal(t, "reasoning-alias", models[0]["display_name"])
 	require.Equal(t, "Custom model routed through Sub2API.", models[0]["description"])
 	require.Equal(t, []string{"low", "medium", "high", "xhigh", "max"}, effortsFromManifestModel(t, models[0]))
+}
+
+// Scenario: a provider-qualified DeepSeek ID advertised through the composite
+// catalog keeps the DeepSeek reasoning selector instead of the "none" fallback.
+func TestBuildCodexModelsManifestForGroupAdvertisesReasoningForProviderQualifiedDeepSeekID(t *testing.T) {
+	t.Parallel()
+
+	const groupID int64 = 736
+	const model = "deepseek/deepseek-v4.1-flash"
+	svc := &GatewayService{accountRepo: codexModelsVisibilityAccountRepo{byGroup: map[int64][]Account{
+		groupID: {{
+			ID:       26,
+			Platform: PlatformOpenAI,
+			Type:     AccountTypeAPIKey,
+			Credentials: map[string]any{
+				"base_url":      "https://api.example.test/v1",
+				"model_mapping": map[string]any{model: model},
+			},
+		}},
+	}}}
+
+	body, err := svc.BuildCodexModelsManifestForGroup(
+		context.Background(),
+		&Group{ID: groupID, Platform: PlatformComposite},
+		"",
+		[]string{model},
+	)
+	require.NoError(t, err)
+
+	models := decodeCodexManifestModels(t, body)
+	require.Len(t, models, 1)
+	require.Equal(t, model, models[0]["slug"])
+	require.Equal(t, []string{"low", "high", "max"}, effortsFromManifestModel(t, models[0]))
+	require.Equal(t, "high", models[0]["default_reasoning_level"])
+	require.EqualValues(t, 1_000_000, models[0]["context_window"])
 }
 
 // Scenario: conflicting targets on the same platform keep the public alias but do not guess capabilities.
