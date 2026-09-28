@@ -137,23 +137,60 @@
                       <div class="my-2 border-t border-gray-100 dark:border-dark-700"></div>
                       <div class="px-2 py-2">
                         <div class="flex items-center justify-between gap-3">
-                          <span class="text-xs font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500">
-                            {{ t('admin.accounts.viewColumns') }}
-                          </span>
-                          <Icon name="grid" size="sm" class="text-gray-400" />
+                          <div>
+                            <div class="text-xs font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500">
+                              {{ t('admin.accounts.viewColumns') }}
+                            </div>
+                            <p class="mt-0.5 text-[11px] text-gray-400 dark:text-gray-500">
+                              {{ t('admin.accounts.viewColumnsHint') }}
+                            </p>
+                          </div>
+                          <button
+                            type="button"
+                            class="shrink-0 rounded px-1.5 py-0.5 text-[11px] text-primary-600 hover:bg-primary-50 dark:text-primary-400 dark:hover:bg-primary-900/20"
+                            data-testid="reset-column-order"
+                            @click.stop="resetColumnOrder"
+                          >
+                            {{ t('admin.accounts.resetColumnOrder') }}
+                          </button>
                         </div>
                       </div>
-                      <div class="grid grid-cols-1 gap-1">
-                        <button
-                          v-for="col in toggleableColumns"
+                      <VueDraggable
+                        v-model="reorderableColumns"
+                        :animation="180"
+                        handle=".account-column-drag-handle"
+                        class="grid grid-cols-1 gap-1"
+                        @update="persistColumnOrder"
+                      >
+                        <div
+                          v-for="col in reorderableColumns"
                           :key="col.key"
-                          @click="toggleColumn(col.key)"
-                          class="flex w-full items-center justify-between rounded-md px-3 py-2 text-sm text-gray-700 transition-colors hover:bg-gray-100 dark:text-gray-200 dark:hover:bg-dark-700"
+                          class="flex w-full items-center gap-1 rounded-md px-2 py-1.5 text-sm text-gray-700 transition-colors hover:bg-gray-100 dark:text-gray-200 dark:hover:bg-dark-700"
                         >
-                          <span class="truncate">{{ col.label }}</span>
-                          <Icon v-if="isColumnVisible(col.key)" name="check" size="sm" class="text-primary-500" />
-                        </button>
-                      </div>
+                          <button
+                            type="button"
+                            class="account-column-drag-handle cursor-grab touch-none p-0.5 text-gray-300 hover:text-gray-500 active:cursor-grabbing dark:text-dark-500 dark:hover:text-dark-300"
+                            :aria-label="t('admin.accounts.dragColumn')"
+                            @click.stop
+                          >
+                            <Icon name="menu" size="sm" />
+                          </button>
+                          <button
+                            type="button"
+                            class="flex min-w-0 flex-1 items-center justify-between gap-2 text-left"
+                            :disabled="col.key === 'name'"
+                            @click="col.key !== 'name' && toggleColumn(col.key)"
+                          >
+                            <span class="truncate">{{ col.label }}</span>
+                            <Icon
+                              v-if="col.key === 'name' || isColumnVisible(col.key)"
+                              name="check"
+                              size="sm"
+                              class="shrink-0 text-primary-500"
+                            />
+                          </button>
+                        </div>
+                      </VueDraggable>
                     </div>
                   </div>
                 </Teleport>
@@ -526,6 +563,7 @@ import UpstreamBillingRateCell from '@/components/account/UpstreamBillingRateCel
 import UpstreamBalanceCell from '@/components/account/UpstreamBalanceCell.vue'
 import PlatformTypeBadge from '@/components/common/PlatformTypeBadge.vue'
 import Icon from '@/components/icons/Icon.vue'
+import { VueDraggable } from 'vue-draggable-plus'
 import ErrorPassthroughRulesModal from '@/components/admin/ErrorPassthroughRulesModal.vue'
 import TLSFingerprintProfilesModal from '@/components/admin/TLSFingerprintProfilesModal.vue'
 import { fetchAllAccountIds } from '@/utils/accountSelection'
@@ -651,6 +689,13 @@ const HIDDEN_COLUMNS_KEY = 'account-hidden-columns'
 // One-time migration: hide scheduler score for existing admins too, because showing it opt-ins to heavy backend scoring.
 const HIDDEN_COLUMNS_VERSION_KEY = 'account-hidden-columns-version'
 const HIDDEN_COLUMNS_CURRENT_VERSION = 'scheduler-score-hidden-by-default'
+const COLUMN_ORDER_KEY = 'account-column-order'
+const PINNED_START_COLUMNS = new Set(['select'])
+const PINNED_END_COLUMNS = new Set(['actions'])
+/** Saved middle-column order (excludes select/actions). Empty = use default allColumns order. */
+const savedColumnOrder = ref<string[]>([])
+type ReorderableColumnItem = { key: string; label: string }
+const reorderableColumns = ref<ReorderableColumnItem[]>([])
 
 // Sorting settings
 const ACCOUNT_SORT_STORAGE_KEY = 'account-table-sort'
@@ -986,6 +1031,46 @@ const saveColumnsToStorage = () => {
   }
 }
 
+const loadSavedColumnOrder = () => {
+  try {
+    const raw = localStorage.getItem(COLUMN_ORDER_KEY)
+    if (!raw) {
+      savedColumnOrder.value = []
+      return
+    }
+    const parsed = JSON.parse(raw)
+    if (!Array.isArray(parsed) || !parsed.every((key) => typeof key === 'string')) {
+      savedColumnOrder.value = []
+      return
+    }
+    savedColumnOrder.value = parsed.filter(
+      (key) => !PINNED_START_COLUMNS.has(key) && !PINNED_END_COLUMNS.has(key)
+    )
+  } catch (e) {
+    console.error('Failed to load column order:', e)
+    savedColumnOrder.value = []
+  }
+}
+
+const saveColumnOrderToStorage = () => {
+  try {
+    localStorage.setItem(COLUMN_ORDER_KEY, JSON.stringify(savedColumnOrder.value))
+  } catch (e) {
+    console.error('Failed to save column order:', e)
+  }
+}
+
+const persistColumnOrder = () => {
+  savedColumnOrder.value = reorderableColumns.value.map((col) => col.key)
+  saveColumnOrderToStorage()
+}
+
+const resetColumnOrder = () => {
+  savedColumnOrder.value = []
+  saveColumnOrderToStorage()
+  syncReorderableColumns()
+}
+
 const loadSavedAutoRefresh = () => {
   try {
     const saved = localStorage.getItem(AUTO_REFRESH_STORAGE_KEY)
@@ -1017,6 +1102,7 @@ const saveAutoRefreshToStorage = () => {
 
 if (typeof window !== 'undefined') {
   loadSavedColumns()
+  loadSavedColumnOrder()
   loadSavedAutoRefresh()
 }
 
@@ -1814,14 +1900,50 @@ const allColumns = computed(() => {
   return c
 })
 
-// Columns that can be toggled (exclude select, name, and actions)
-const toggleableColumns = computed(() =>
-  allColumns.value.filter(col => col.key !== 'select' && col.key !== 'name' && col.key !== 'actions')
+// Columns that can be toggled (exclude select, name, and actions) — used for visibility prefs.
+const orderedAllColumns = computed(() => {
+  const byKey = new Map(allColumns.value.map((col) => [col.key, col]))
+  const defaultMiddle = allColumns.value
+    .map((col) => col.key)
+    .filter((key) => !PINNED_START_COLUMNS.has(key) && !PINNED_END_COLUMNS.has(key))
+  const preferredMiddle = savedColumnOrder.value.filter((key) => byKey.has(key) && defaultMiddle.includes(key))
+  const middleKeys = [
+    ...preferredMiddle,
+    ...defaultMiddle.filter((key) => !preferredMiddle.includes(key))
+  ]
+  const ordered: typeof allColumns.value = []
+  const selectCol = byKey.get('select')
+  if (selectCol) ordered.push(selectCol)
+  for (const key of middleKeys) {
+    const col = byKey.get(key)
+    if (col) ordered.push(col)
+  }
+  const actionsCol = byKey.get('actions')
+  if (actionsCol) ordered.push(actionsCol)
+  return ordered
+})
+
+const syncReorderableColumns = () => {
+  reorderableColumns.value = orderedAllColumns.value
+    .filter((col) => !PINNED_START_COLUMNS.has(col.key) && !PINNED_END_COLUMNS.has(col.key))
+    .map((col) => ({ key: col.key, label: col.label }))
+}
+
+watch(
+  () => allColumns.value.map((col) => `${col.key}:${col.label}`).join('|'),
+  () => {
+    syncReorderableColumns()
+  },
+  { immediate: true }
 )
 
-// Filtered columns based on visibility
+watch(savedColumnOrder, () => {
+  syncReorderableColumns()
+})
+
+// Filtered columns based on visibility + custom order
 const cols = computed(() =>
-  allColumns.value.filter(col =>
+  orderedAllColumns.value.filter(col =>
     col.key === 'select' || col.key === 'name' || col.key === 'actions' || !hiddenColumns.has(col.key)
   )
 )
