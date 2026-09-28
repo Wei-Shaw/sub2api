@@ -1151,19 +1151,18 @@ export default {
       },
       modelAllowlist: {
         title: 'Danh sách model cho phép',
-        hint: 'Khi bật, model ngoài danh sách cho phép sẽ bị từ chối với 404 model_not_found, và các endpoint liệt kê model chỉ hiển thị model trong danh sách. Mục hỗ trợ model ID chính xác và ký tự đại diện * ở cuối. Lưu ý: Claude Code thăm dò bằng các model họ haiku để tạo tiêu đề/tóm tắt và /messages/count_tokens cũng chịu kiểm soát của danh sách cho phép, vì vậy hãy chắc chắn đã chọn cả các model nhỏ cần thiết.',
+        hint: 'Khi bật, model ngoài danh sách cho phép sẽ bị từ chối với 404 model_not_found, và các endpoint liệt kê model chỉ hiển thị model trong danh sách. Mục hỗ trợ model ID chính xác và ký tự đại diện * ở bất kỳ vị trí nào (ví dụ gpt-*-codex). Lưu ý: Claude Code thăm dò bằng các model họ haiku để tạo tiêu đề/tóm tắt và /messages/count_tokens cũng chịu kiểm soát của danh sách cho phép, vì vậy hãy chắc chắn đã chọn cả các model nhỏ cần thiết.',
         loading: 'Đang tải model ứng viên...',
         empty: 'Không có model ứng viên; thêm mục tùy chỉnh bên dưới',
         selectedSummary: 'Đã chọn {selected} / {total}',
         selectAll: 'Chọn tất cả',
         invertSelection: 'Đảo chọn',
         wildcardTag: 'ký tự đại diện',
-        customPlaceholder: 'Mục tùy chỉnh, ví dụ claude-* hoặc gpt-5.5-codex',
+        customPlaceholder: 'Mục tùy chỉnh, ví dụ gpt-*-codex hoặc claude-*',
         addCustom: 'Thêm',
         emptySelectionError: 'Danh sách model cho phép đang bật; hãy chọn hoặc thêm ít nhất một mục model',
         errors: {
           empty: 'Vui lòng nhập mục model',
-          invalidWildcard: 'Ký tự đại diện * chỉ được phép ở cuối mục',
           duplicate: 'Mục này đã tồn tại'
         }
       },

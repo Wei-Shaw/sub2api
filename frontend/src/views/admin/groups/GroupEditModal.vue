@@ -379,7 +379,7 @@
               <span class="min-w-0 flex-1 break-all font-mono text-label text-fg">
                 {{ item.id }}
                 <span
-                  v-if="item.id.endsWith('*')"
+                  v-if="item.id.includes('*')"
                   class="badge badge-primary ml-1 font-sans"
                 >
                   {{ t("admin.groups.modelAllowlist.wildcardTag") }}
