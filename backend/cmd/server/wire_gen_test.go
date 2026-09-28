@@ -98,6 +98,7 @@ func TestProvideCleanup_WithMinimalDependencies_NoPanic(t *testing.T) {
 		nil, // opencodeGoUsage
 		nil, // auditLog
 		nil, // openAIAutoReset
+		nil, // claudeReset
 		nil, // promptAudit
 		nil, // pluginManager
 	)

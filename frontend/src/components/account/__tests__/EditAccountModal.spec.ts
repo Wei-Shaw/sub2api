@@ -1711,4 +1711,83 @@ describe('EditAccountModal OpenAI 自动使用重置卡', () => {
     expect(updateAccountMock).not.toHaveBeenCalled()
     wrapper.unmount()
   })
+  it('persists expiry policy in seconds and ratios with its master switch', async () => {
+    const account = buildOpenAIOAuthParentAccount()
+    updateAccountMock.mockResolvedValue(account)
+    const wrapper = mountModal(account)
+    expect((wrapper.get('[data-testid="auto-reset-credit-mode"]').element as HTMLSelectElement).value).toBe('threshold')
+    await wrapper.get('[data-testid="auto-reset-credit-enabled"]').trigger('click')
+    await wrapper.get('[data-testid="auto-reset-credit-mode"]').setValue('expiring_or_exhausted')
+    expect(wrapper.find('[data-testid="auto-reset-credit-5h-threshold"]').exists()).toBe(false)
+    await wrapper.get('[data-testid="auto-reset-credit-expiry-horizon"]').setValue('7200')
+    await wrapper.get('[data-testid="auto-reset-credit-expiry-utilization"]').setValue('35.5')
+    await wrapper.get('form#edit-account-form').trigger('submit.prevent')
+    expect(updateAccountMock.mock.calls[0]?.[1]?.extra).toMatchObject({
+      auto_reset_credit_enabled: true, auto_reset_credit_mode: 'expiring_or_exhausted',
+      auto_reset_credit_expiry_horizon_seconds: 7200, auto_reset_credit_expiry_min_utilization: 0.355
+    })
+    wrapper.unmount()
+  })
+  it('rejects invalid expiry settings and preserves legacy disabled defaults', async () => {
+    const wrapper = mountModal(buildOpenAIOAuthParentAccount())
+    await wrapper.get('[data-testid="auto-reset-credit-enabled"]').trigger('click')
+    await wrapper.get('[data-testid="auto-reset-credit-mode"]').setValue('expiring_or_exhausted')
+    await wrapper.get('[data-testid="auto-reset-credit-expiry-horizon"]').setValue('59')
+    await wrapper.get('form#edit-account-form').trigger('submit.prevent')
+    expect(updateAccountMock).not.toHaveBeenCalled()
+    wrapper.unmount()
+  })
+
+  it.each(['threshold', 'exhausted', 'expiring', 'expiring_or_exhausted'] as const)('loads and saves %s without changing its meaning', async (mode) => {
+    const account = buildOpenAIOAuthParentAccount()
+    account.extra = { auto_reset_credit_enabled: true, auto_reset_credit_mode: mode }
+    updateAccountMock.mockResolvedValue(account)
+    const wrapper = mountModal(account)
+    expect((wrapper.get('[data-testid="auto-reset-credit-mode"]').element as HTMLSelectElement).value).toBe(mode)
+    expect(wrapper.find('[data-testid="auto-reset-credit-expiry-horizon"]').exists()).toBe(mode === 'expiring' || mode === 'expiring_or_exhausted')
+    await wrapper.get('form#edit-account-form').trigger('submit.prevent')
+    expect(updateAccountMock.mock.calls[0]?.[1]?.extra.auto_reset_credit_mode).toBe(mode)
+    wrapper.unmount()
+  })
+  it('validates the expiring-only horizon', async () => {
+    const account = buildOpenAIOAuthParentAccount()
+    account.extra = { auto_reset_credit_enabled: true, auto_reset_credit_mode: 'expiring' }
+    const wrapper = mountModal(account)
+    await wrapper.get('[data-testid="auto-reset-credit-expiry-horizon"]').setValue('604801')
+    await wrapper.get('form#edit-account-form').trigger('submit.prevent')
+    expect(updateAccountMock).not.toHaveBeenCalled()
+    wrapper.unmount()
+  })
+
+  it.each(['exhausted', 'expiring', 'expiring_or_exhausted'] as const)('loads and saves Claude %s using isolated keys', async (mode) => {
+    const account = { ...buildOpenAIOAuthParentAccount(), platform: 'anthropic', extra: {
+      claude_auto_reset_credit_enabled: true, claude_auto_reset_credit_mode: mode,
+      claude_auto_reset_credit_expiry_horizon_seconds: 1800,
+      claude_auto_reset_credit_expiry_min_utilization: 0.45
+    } }
+    updateAccountMock.mockResolvedValue(account)
+    const wrapper = mountModal(account)
+    expect(wrapper.get('[data-testid="auto-reset-credit-mode"]').findAll('option').map(o => o.attributes('value'))).toEqual(['exhausted', 'expiring', 'expiring_or_exhausted'])
+    expect((wrapper.get('[data-testid="auto-reset-credit-mode"]').element as HTMLSelectElement).value).toBe(mode)
+    await wrapper.get('form#edit-account-form').trigger('submit.prevent')
+    const extra = updateAccountMock.mock.calls[0]?.[1]?.extra
+    expect(extra).toMatchObject(account.extra)
+    expect(extra).not.toHaveProperty('auto_reset_credit_enabled')
+    expect(extra).not.toHaveProperty('auto_reset_credit_mode')
+    expect(extra).not.toHaveProperty('auto_reset_credit_5h_threshold')
+    wrapper.unmount()
+  })
+  it('defaults Claude to disabled exhausted policy and excludes setup tokens and shadows', async () => {
+    const account = { ...buildOpenAIOAuthParentAccount(), platform: 'anthropic', extra: {} }
+    const wrapper = mountModal(account)
+    expect((wrapper.get('[data-testid="auto-reset-credit-mode"]').element as HTMLSelectElement).value).toBe('exhausted')
+    expect(wrapper.get('[data-testid="auto-reset-credit-mode"]').attributes('disabled')).toBeDefined()
+    wrapper.unmount()
+    for (const excluded of [{ ...account, type: 'setup-token' }, { ...account, parent_account_id: 5 }]) {
+      const hidden = mountModal(excluded)
+      expect(hidden.find('[data-testid="auto-reset-credit-settings"]').exists()).toBe(false)
+      hidden.unmount()
+    }
+  })
+
 })
