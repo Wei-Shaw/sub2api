@@ -36,8 +36,12 @@ func ResponsesToAnthropicRequest(req *ResponsesRequest) (*AnthropicRequest, erro
 		out.MaxTokens = *req.MaxOutputTokens
 	}
 	if out.MaxTokens == 0 {
-		// Anthropic requires max_tokens; default to a sensible value.
-		out.MaxTokens = 8192
+		// Anthropic requires max_tokens. Responses clients such as Codex do not
+		// send max_output_tokens, and thinking tokens count toward this budget,
+		// so a small default truncates reasoning-heavy turns (stop_reason
+		// "max_tokens" → response.incomplete). 64000 matches the Claude Code
+		// default for current Claude models.
+		out.MaxTokens = 64000
 	}
 
 	// Convert tools
