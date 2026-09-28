@@ -99,7 +99,19 @@
       'is-scrollable': isScrollable
     }"
   >
-    <table class="w-full min-w-max divide-y divide-gray-200 dark:divide-dark-700">
+    <table
+      class="w-full min-w-max divide-y divide-gray-200 dark:divide-dark-700"
+      :class="{ 'table-fixed-layout': resizable && hasExplicitColumnWidths }"
+      :style="resizableTableStyle"
+    >
+      <colgroup v-if="resizable">
+        <col v-if="selectable" style="width: 44px" />
+        <col
+          v-for="column in columns"
+          :key="column.key"
+          :style="getColumnWidthStyle(column)"
+        />
+      </colgroup>
       <thead class="table-header bg-gray-50 dark:bg-dark-800">
         <tr>
           <th
@@ -123,22 +135,23 @@
             scope="col"
             :aria-sort="column.sortable ? getColumnAriaSort(column.key) : undefined"
             :class="[
-              'sticky-header-cell py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-dark-400',
+              'sticky-header-cell relative py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-dark-400',
               getAdaptivePaddingClass(),
-              { 'cursor-pointer hover:bg-gray-100 dark:hover:bg-dark-700': column.sortable },
+              { 'cursor-pointer hover:bg-gray-100 dark:hover:bg-dark-700': column.sortable && !isResizing },
               getStickyColumnClass(column, index),
               column.class
             ]"
-            @click="column.sortable && handleSort(column.key)"
+            :style="resizable ? getColumnWidthStyle(column) : undefined"
+            @click="column.sortable && !isResizing && handleSort(column.key)"
           >
-            <div :class="['flex items-center space-x-1', getHeaderContentAlignmentClass(column)]">
+            <div :class="['flex min-w-0 items-center space-x-1', getHeaderContentAlignmentClass(column)]">
               <slot
                 :name="`header-${column.key}`"
                 :column="column"
                 :sort-key="sortKey"
                 :sort-order="sortOrder"
               >
-                <span>{{ column.label }}</span>
+                <span class="min-w-0 truncate">{{ column.label }}</span>
               </slot>
               <span
                 v-if="column.sortable"
@@ -163,6 +176,15 @@
                 </svg>
               </span>
             </div>
+            <div
+              v-if="resizable && column.key !== 'actions' && column.key !== 'select'"
+              class="column-resize-handle"
+              data-testid="column-resize-handle"
+              :title="t('admin.accounts.resizeColumn')"
+              @mousedown.prevent.stop="startColumnResize($event, column)"
+              @click.stop
+              @dblclick.stop="resetColumnWidth(column.key)"
+            />
           </th>
         </tr>
       </thead>
@@ -235,11 +257,13 @@
               v-for="(column, colIndex) in columns"
               :key="column.key"
               :class="[
-                'whitespace-nowrap py-4 text-sm text-gray-900 dark:text-gray-100',
+                'py-4 text-sm text-gray-900 dark:text-gray-100',
+                resizable ? 'overflow-hidden' : 'whitespace-nowrap',
                 getAdaptivePaddingClass(),
                 getStickyColumnClass(column, colIndex),
                 column.class
               ]"
+              :style="resizable ? getColumnWidthStyle(column) : undefined"
             >
               <slot :name="`cell-${column.key}`"
                     :row="item.row"
@@ -281,6 +305,7 @@ const emit = defineEmits<{
   rowClick: [row: any]
   'update:selectedKeys': [keys: Array<string | number>]
   selectionChange: [keys: Array<string | number>]
+  'column-resize': [key: string, width: number]
 }>()
 
 // 表格容器引用
@@ -471,6 +496,10 @@ interface Props {
   selectedKeys?: Array<string | number>
   /** Accessible label for a row selection checkbox. */
   selectionLabel?: string | ((row: any) => string)
+  /** Allow dragging header edges to resize columns. */
+  resizable?: boolean
+  /** Minimum width in px when resizing (default 72). */
+  minColumnWidth?: number
 }
 
 const props = withDefaults(defineProps<Props>(), {
@@ -481,7 +510,9 @@ const props = withDefaults(defineProps<Props>(), {
   defaultSortOrder: 'asc',
   serverSideSort: false,
   selectable: false,
-  selectedKeys: () => []
+  selectedKeys: () => [],
+  resizable: false,
+  minColumnWidth: 72
 })
 
 const sortKey = ref<string>('')
@@ -852,6 +883,124 @@ const hasSelectColumn = computed(() => {
   return props.columns.length > 0 && props.columns[0].key === 'select'
 })
 
+const widthOverrides = ref<Record<string, number>>({})
+const isResizing = ref(false)
+let resizeState: {
+  key: string
+  startX: number
+  startWidth: number
+} | null = null
+
+const getResolvedColumnWidth = (column: Column): number | undefined => {
+  const override = widthOverrides.value[column.key]
+  if (typeof override === 'number' && Number.isFinite(override)) return override
+  if (typeof column.width === 'number' && Number.isFinite(column.width) && column.width > 0) {
+    return column.width
+  }
+  return undefined
+}
+
+const getColumnWidthStyle = (column: Column): Record<string, string> | undefined => {
+  const width = getResolvedColumnWidth(column)
+  if (width == null) return undefined
+  return {
+    width: `${width}px`,
+    minWidth: `${width}px`,
+    maxWidth: `${width}px`
+  }
+}
+
+const hasExplicitColumnWidths = computed(() => {
+  if (!props.resizable) return false
+  return props.columns.some((column) => getResolvedColumnWidth(column) != null)
+})
+
+const resizableTableStyle = computed(() => {
+  if (!props.resizable || !hasExplicitColumnWidths.value) return undefined
+  const widths = props.columns.map((column) => getResolvedColumnWidth(column) ?? 140)
+  const selectWidth = props.selectable || hasSelectColumn.value ? 44 : 0
+  const total = widths.reduce((sum, width) => sum + width, 0) + selectWidth
+  return {
+    width: `max(100%, ${total}px)`,
+    minWidth: `${total}px`
+  }
+})
+
+watch(
+  () => props.columns.map((column) => `${column.key}:${column.width ?? ''}`).join('|'),
+  () => {
+    // Drop local drag overrides once parent persisted widths catch up.
+    const next: Record<string, number> = {}
+    for (const [key, width] of Object.entries(widthOverrides.value)) {
+      const column = props.columns.find((item) => item.key === key)
+      if (!column || column.width !== width) {
+        next[key] = width
+      }
+    }
+    widthOverrides.value = next
+  }
+)
+
+const startColumnResize = (event: MouseEvent, column: Column) => {
+  if (!props.resizable) return
+  const header = (event.currentTarget as HTMLElement | null)?.parentElement
+  const measured = header?.getBoundingClientRect().width
+  const startWidth =
+    getResolvedColumnWidth(column) ??
+    (typeof measured === 'number' && measured > 0 ? measured : 140)
+  resizeState = {
+    key: column.key,
+    startX: event.clientX,
+    startWidth
+  }
+  isResizing.value = true
+  document.body.style.cursor = 'col-resize'
+  document.body.style.userSelect = 'none'
+  window.addEventListener('mousemove', onColumnResizeMove)
+  window.addEventListener('mouseup', onColumnResizeEnd)
+}
+
+const onColumnResizeMove = (event: MouseEvent) => {
+  if (!resizeState) return
+  const delta = event.clientX - resizeState.startX
+  const nextWidth = Math.max(props.minColumnWidth, Math.round(resizeState.startWidth + delta))
+  widthOverrides.value = {
+    ...widthOverrides.value,
+    [resizeState.key]: nextWidth
+  }
+}
+
+const onColumnResizeEnd = () => {
+  if (!resizeState) return
+  const key = resizeState.key
+  const width = widthOverrides.value[key]
+  resizeState = null
+  isResizing.value = false
+  document.body.style.cursor = ''
+  document.body.style.userSelect = ''
+  window.removeEventListener('mousemove', onColumnResizeMove)
+  window.removeEventListener('mouseup', onColumnResizeEnd)
+  if (typeof width === 'number' && Number.isFinite(width)) {
+    emit('column-resize', key, width)
+  }
+}
+
+const resetColumnWidth = (key: string) => {
+  const next = { ...widthOverrides.value }
+  delete next[key]
+  widthOverrides.value = next
+  emit('column-resize', key, 0)
+}
+
+onUnmounted(() => {
+  window.removeEventListener('mousemove', onColumnResizeMove)
+  window.removeEventListener('mouseup', onColumnResizeEnd)
+  if (isResizing.value) {
+    document.body.style.cursor = ''
+    document.body.style.userSelect = ''
+  }
+})
+
 // 生成固定列的 CSS 类
 const getStickyColumnClass = (column: Column, index: number) => {
   const classes: string[] = []
@@ -990,6 +1139,44 @@ defineExpose({
 
 .dark .sticky-header-cell {
   background-color: rgb(31 41 55);
+}
+
+.table-fixed-layout {
+  table-layout: fixed;
+}
+
+.column-resize-handle {
+  position: absolute;
+  top: 0;
+  right: -3px;
+  z-index: 220;
+  width: 8px;
+  height: 100%;
+  cursor: col-resize;
+  user-select: none;
+  touch-action: none;
+}
+
+.column-resize-handle::after {
+  content: '';
+  position: absolute;
+  top: 25%;
+  bottom: 25%;
+  left: 3px;
+  width: 2px;
+  border-radius: 1px;
+  background: transparent;
+  transition: background-color 0.15s ease;
+}
+
+.column-resize-handle:hover::after,
+.column-resize-handle:active::after {
+  background: rgb(59 130 246 / 0.85);
+}
+
+.dark .column-resize-handle:hover::after,
+.dark .column-resize-handle:active::after {
+  background: rgb(96 165 250 / 0.9);
 }
 
 /* Sticky 列基础样式 */
