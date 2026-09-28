@@ -99,6 +99,8 @@ const typeLabel = computed(() => {
     if (normalizedAuthMode.value === 'personalaccesstoken') return 'PAT'
   }
   switch (props.type) {
+    case 'session':
+      return 'Session'
     case 'oauth':
       return 'OAuth'
     case 'setup-token':

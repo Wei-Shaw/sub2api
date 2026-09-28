@@ -23,6 +23,7 @@ const (
 	PlatformGemini      = "gemini"
 	PlatformAntigravity = "antigravity"
 	PlatformGrok        = "grok"
+	PlatformMuse        = "muse"
 	// 国产 OpenAI 兼容供应商（经 OpenAI 网关转发，按 Chat Completions 协议）。
 	PlatformKimi     = "kimi"     // Kimi (月之暗面 / Moonshot)
 	PlatformZhipu    = "zhipu"    // 智谱 GLM (bigmodel)
@@ -55,6 +56,7 @@ const (
 
 // Account type constants
 const (
+	AccountTypeSession        = "session"         // Consumer app subscription session, not an OAuth grant.
 	AccountTypeOAuth          = "oauth"           // OAuth类型账号（full scope: profile + inference）
 	AccountTypeSetupToken     = "setup-token"     // Setup Token类型账号（inference only scope）
 	AccountTypeAPIKey         = "apikey"          // API Key类型账号

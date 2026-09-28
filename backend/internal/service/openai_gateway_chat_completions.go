@@ -59,6 +59,9 @@ func (s *OpenAIGatewayService) ForwardAsChatCompletions(
 	promptCacheKey string,
 	defaultMappedModel string,
 ) (*OpenAIForwardResult, error) {
+	if account.IsMuse() {
+		return s.forwardMuse(ctx, c, account, body, "chat_completions")
+	}
 	return s.forwardAsChatCompletions(ctx, c, account, body, promptCacheKey, defaultMappedModel, false)
 }
 

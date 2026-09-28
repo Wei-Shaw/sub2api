@@ -1126,7 +1126,7 @@ func (s *BillingCacheService) checkUserPlatformQuotaEligibility(
 		ok       bool
 		cacheErr error
 	)
-	if s.cache != nil {
+	if s.cache != nil && platform != PlatformMuse {
 		entry, ok, cacheErr = s.cache.GetUserPlatformQuotaCache(ctx, userID, platform)
 	} else {
 		// 标记为"cache 故障"分支：跳过 HIT 路径、不回填、走 DB 一次性检查

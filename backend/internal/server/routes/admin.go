@@ -60,6 +60,7 @@ func RegisterAdminRoutes(
 
 		// Grok OAuth
 		registerGrokOAuthRoutes(admin, h)
+		registerMuseRoutes(admin, h, stepUpAuth)
 
 		// 国产供应商（kimi/zhipu/deepseek）额度与余额
 		registerCNProviderRoutes(admin, h)
@@ -894,4 +895,14 @@ func channelMonitorModeV2Guard(settingService *service.SettingService) gin.Handl
 		}
 		c.Next()
 	}
+}
+
+func registerMuseRoutes(admin *gin.RouterGroup, h *handler.Handlers, stepUp middleware.StepUpAuthMiddleware) {
+	group := admin.Group("/muse")
+	group.GET("/accounts/:id/status", h.Admin.Muse.Status)
+	group.POST("/accounts/:id/verify", h.Admin.Muse.Verify)
+	group.POST("/accounts/:id/renew", gin.HandlerFunc(stepUp), h.Admin.Muse.Renew)
+	group.GET("/turns/:turn", h.Admin.Muse.Turn)
+	group.POST("/turns/:turn/resolve", gin.HandlerFunc(stepUp), h.Admin.Muse.Resolve)
+	group.POST("/turns/:turn/settle", gin.HandlerFunc(stepUp), h.Admin.Muse.Settle)
 }

@@ -1,82 +1,113 @@
-# Native Meta Muse runtime foundation
+# Native Meta Muse provider integration
 
 Tracking: [#7625](https://github.com/Wei-Shaw/sub2api/issues/7625).
 
-This implements persistent workspace and accepted-turn ownership for the consumer
-Muse app provider. It is a backend foundation, not a working inference provider.
-No Muse account type, public route, model listing, browser runtime, or live
-transport is enabled by this change. The app authentication and event contract
-must be verified before those surfaces are connected.
+This targets the consumer Muse app and its account-owned workspace. It implements
+Sub2API's native account, gateway, runtime, billing, recovery, and operator surfaces.
+Production wiring uses `muse.DisabledProvider`: **there is no working Meta inference
+transport yet**. Synthetic conformance tests are not evidence of Meta compatibility.
 
-## Implemented behavior
+## Implemented contracts
 
-- `internal/pkg/muse` defines validated runtime inputs, a conservative turn state
-  machine, bounded leases, and explicit flat-request/free-test pricing snapshots.
-- `MuseRuntimeService` allocates server-generated operation IDs and persists the
-  `submitting` state before a future transport may perform an external action.
-- `NewMuseRuntimeRepository` uses the existing raw PostgreSQL repository pattern
-  used by audit/plugin storage. Migration `241_muse_runtime.sql` adds canonical
-  workspaces, verified local-account aliases, and durable turn records.
-- The same remote principal/workspace has one downstream owner. Local account
-  aliases share its active-turn boundary. Reservation checks the authenticated
-  key owner, active user/account, selected provider, alias membership, and the
-  account snapshot used during verification.
-- A verification observation carries the selected account's `updated_at` value.
-  An edit invalidates that observation until revalidation. This conservative
-  fence includes non-credential account edits; it does not claim a verified Muse
-  credential-version contract.
-- Admission is checked again before `reserved → submitting`. A changed account
-  cannot dispatch from a stale queued reservation.
-- Expired leases do not clear remote occupancy. A recovery claimant obtains the
-  same operation with a higher fence; an interrupted submission becomes
-  `ambiguous`, never a fresh submission. Old workers cannot renew or advance it.
-- Client cancellation does not release the remote workspace. Confirmed terminal
-  outcomes clear occupancy; `owner_review` stops automatic recovery and remains
-  occupied pending a future explicit owner-resolution flow.
-- Turn reads enforce user and API-key ownership. Provider correlation IDs cannot
-  be replaced by a different task ID after assignment. Prices are stored with
-  the turn rather than recomputed from a mutable caller object.
-- The complete nested `muse_session` credential document is classified as
-  sensitive for DTO/audit redaction and preserved on redacted account edits.
+- `muse` platform and `session` account type. A bounded opaque `muse_session` document
+  uses existing credential redaction and preserves secrets on ordinary account edits.
+  It never selects the Meta developer API or OpenCode as a fallback.
+- Every Muse workspace is assigned to one authenticated Sub2API user. A fresh
+  verified principal/workspace identity binds local account aliases to one canonical
+  PostgreSQL occupancy record. Separate side chats do not establish tenant isolation.
+- Accounts start unschedulable with concurrency one. Verification must observe
+  identity, explicitly allowed inference, and actual supported models/capabilities.
+  Account edits invalidate the observed snapshot. Unknown models and usage are not
+  populated from the third-party repos or plan names.
+- Server-generated operations persist `submitting` before invoking a transport.
+  Workspace leases survive client disconnects and are fenced across replicas.
+  Expiry never authorizes another submission. Recovery probes the original remote
+  task once and retains occupancy in `owner_review` when it cannot prove termination.
+- Normalized event callbacks require the same operation/provider task, contiguous
+  sequences, and identical duplicate events. Unrelated/proactive work cannot enter
+  the response. Native adapters must finish callbacks before returning.
+- Responses, Chat Completions, and Messages reuse Sub2API's wire serializers.
+  The native path preserves client streaming and token limits, removes converter
+  defaults intended for OpenAI, and rejects unknown or unsupported semantics.
+  Tools, vision, reasoning, controls, and continuations require observed capability
+  flags; compact, WebSocket, media, embeddings, and token counting are unsupported.
+- Continuations require the original user/key, canonical workspace, generation,
+  and a completed parent. The external provider ID is resolved by the server.
+- Billing requires an explicit positive flat request price from the existing
+  resolver, frozen with the user/group multiplier before submission. Simple mode
+  uses explicit `test_free` pricing. Token pricing and request tiers are rejected.
+  Only confirmed completed turns charge; failed/cancelled/rejected turns settle zero.
+- Settlement uses the existing billing deduplication primitives and usage-log
+  serializer in one SQL transaction, including balance/subscription, API-key quota
+  and windows, native platform quota, usage-log link, and the turn settlement marker.
+  The existing `(request_id, api_key_id)` unique usage index is reused.
+  Cache invalidation follows commit; native platform quota preflight reads the DB
+  directly, so a crash cannot lose its authoritative quota increment.
+- A bounded worker retries local settlement with backoff, at most eight automatic
+  attempts; operators can retry local settlement without replaying remote work.
+  Remote completion is returned even when local settlement is temporarily pending.
+  Another turn cannot be reserved in that workspace until settlement succeeds.
+  Known session expiries support bounded renewal with backoff. Unknown expiries
+  are never assigned a guessed refresh interval.
+- Renewal locks the canonical workspace and validates the account snapshot before
+  contacting the provider, preserves model mapping, invalidates verification, then
+  re-verifies. Busy workspaces and stale callers do not invoke remote renewal.
+- Admin routes use existing authentication/audit handling. Terminal owner resolution
+  and local settlement retries use step-up middleware. The account editor shows
+  connection status, observed allowance, and unresolved work. Releasing a workspace
+  requires an explicit confirmed remote terminal outcome.
 
-## Integration boundary
+No response text, reasoning, request transcript, or session document is stored in
+native turn metadata. It contains model attribution and provider-reported usage
+only. `reported_usage = null` means unknown; zeros in legacy compatibility counters
+are not measurements or a basis for token billing. Anthropic wire compatibility
+may require zero-valued usage fields when the source supplies none.
 
-`BindVerifiedWorkspace` accepts server-trusted identity information from a future
-authenticated provider observation. It must not be exposed directly to a client
-as a way to claim arbitrary remote identities. A binding also requires an active
-`muse` account row with the exact observed account timestamp.
+## Remaining qualification gate
 
-The future gateway must retain the workspace lease separately from HTTP request
-slots and renew it while it owns work. Before external submission it must commit
-`BeginSubmission`. After any uncertainty it must reconcile the original task.
-Neither local lease expiry nor a lack of text output authorizes replay. Fencing
-protects local persistence; it cannot undo remote work already accepted by Meta.
+Implement `muse.Provider` only from a dedicated authenticated consumer-app session
+and sanitized captures. Do not derive a chat endpoint from a warmed WebSocket/tab,
+DOM output, Muse Code, Meta Model API, or another product's protocol. Qualification
+must establish the following before replacing production `DisabledProvider`:
 
-This foundation deliberately does not infer session cookie requirements, OAuth
-grants, quota windows, VM trust modes, cancellation acknowledgements, causal
-event fields, client tool support, or token counts. Those remain live-protocol
-qualification requirements. Settlement and idempotent usage projection are
-subsequent native components; a stored price snapshot alone does not apply a
-charge or prove customer billing.
+| Evidence | Required proof |
+| --- | --- |
+| Bootstrap/session | Actual cookie/token/CSRF fields, principal and workspace binding, session expiry and verified model access |
+| Entitlement | The app plan and allowance actually used; missing values remain unknown |
+| Turn submission | Request/acknowledgement correlation, definite rejection, durable acceptance and server task identity |
+| Output | Complete and partial text, causal revisions, duplicate/out-of-order events, proactive side-chat filtering, terminal errors |
+| Cancellation/recovery | Confirmed cancellation, lost acceptance acknowledgement, process loss, and reconciliation of the same task without replay |
+| Renewal | Real renewal contract, stale credential rejection, concurrent alias/replica behavior and proxy/session affinity |
+| App safeguards | Observed approval/Sentinel and any VM trust mode; never auto-approve actions or assume confidential VM is universal |
+| Live acceptance | One subscribed account, correct public JSON/SSE, observable completion, one usage row and one charge after fault injection |
+
+Enabling an account in the UI cannot bypass this code-level qualification gate.
+Successful local tests or CI do not establish live app compatibility.
 
 ## Verification
 
 ```sh
 cd backend
-go test ./internal/pkg/muse
+go test -tags=unit ./...
+go test -race -tags=unit ./internal/pkg/muse ./internal/service \
+  -run 'TestMuse|TestCapabilities'
 go test -race -tags=integration ./internal/pkg/muse
-go test -tags=unit ./internal/service ./internal/handler/dto \
-  -run 'Test.*Muse|Test.*Redact|TestMergePreservingSensitiveCreds|TestAudit.*Sensitive'
+golangci-lint run --timeout=10m
+cd ../frontend
+pnpm run typecheck
+pnpm run lint:check
+pnpm run test:run
+pnpm run build
 ```
 
-The integration test starts an isolated PostgreSQL container by default. An
-explicit `SUB2API_MUSE_TEST_DSN` PostgreSQL URL can instead point to a disposable
-test server. The test creates and removes only its own randomly named schema,
-uses minimal existing-table fixtures, and applies the migration twice. It tests
-concurrent aliases/replicas, lease expiry, recovery/fencing, cancellation,
-ownership/admission, account changes, immutable pricing, provider correlation,
-and the owner-review stop. It makes no Meta requests.
+The PostgreSQL tests create and remove only their own randomly named schemas.
+They use a container by default or an explicitly configured disposable
+`SUB2API_MUSE_TEST_DSN` PostgreSQL URL. Runtime tests use minimal admission fixtures;
+billing tests use the generated ORM schema plus the authoritative billing, usage,
+scheduler-outbox, and native migrations. They cover concurrent settlement, rollback
+on usage-log failure, zero-charge failures, canonical locking, recovery/fencing,
+credential edits, pricing mismatch, renewal, and owner resolution. They send no
+Meta requests.
 
-Existing providers and public gateway behavior remain unchanged. The migration
-is additive; rollback of application code preserves these records for later
-reconciliation rather than deleting accepted-work history.
+Application rollback preserves accepted-work and settlement records. Do not delete
+native tables to release an uncertain remote task.
