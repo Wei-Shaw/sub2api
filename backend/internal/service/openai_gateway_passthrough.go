@@ -1428,11 +1428,11 @@ func openAIStreamFailureStatus(payload []byte, message string) int {
 		return http.StatusBadGateway
 	}
 	semanticStatus := openAIStreamFailedEventSemanticStatus(payload, message)
-	if semanticStatus >= 500 && semanticStatus <= 599 {
-		return semanticStatus
-	}
 	switch semanticStatus {
 	case http.StatusUnauthorized, http.StatusForbidden, http.StatusTooManyRequests, 529:
+		return semanticStatus
+	case http.StatusServiceUnavailable:
+		// 503 is an explicit transient upstream status and must remain retryable; unlike generic 5xx (for example 500), it is safe to expose as service unavailable.
 		return semanticStatus
 	}
 	return http.StatusBadGateway
