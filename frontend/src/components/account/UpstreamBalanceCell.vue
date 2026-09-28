@@ -49,8 +49,7 @@
 import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { adminAPI } from '@/api/admin'
-import type { UpstreamBalanceProbeResult } from '@/api/admin/accounts'
-import type { Account } from '@/types'
+import type { Account, UpstreamBalanceProbeResult } from '@/types'
 import { accountBalanceProbeSource } from './credentialsBuilder'
 
 const props = defineProps<{
