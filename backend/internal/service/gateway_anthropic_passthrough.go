@@ -300,6 +300,10 @@ func (s *GatewayService) buildUpstreamRequestAnthropicAPIKeyPassthrough(
 	token string,
 ) (*http.Request, []byte, error) {
 	body = stripDeferredToolCacheControl(body)
+	body, err := s.redactClientGeoMetadata(body)
+	if err != nil {
+		return nil, nil, err
+	}
 	targetURL := claudeAPIURL
 	baseURL := account.GetBaseURL()
 	if baseURL != "" {
@@ -365,6 +369,7 @@ func (s *GatewayService) buildUpstreamRequestAnthropicAPIKeyPassthrough(
 
 	// 账号级请求头覆写（最终生效，覆盖上面所有来源的同名头）
 	account.ApplyHeaderOverrides(req.Header)
+	s.redactClientGeoHeaders(req.Header)
 
 	return req, body, nil
 }

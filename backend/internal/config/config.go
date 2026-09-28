@@ -955,6 +955,9 @@ const (
 
 // GatewayConfig API网关相关配置
 type GatewayConfig struct {
+	// RedactClientGeoMetadata removes optional client location metadata
+	// from recognized environment envelopes, without rewriting task content.
+	RedactClientGeoMetadata bool `mapstructure:"redact_client_geo_metadata"`
 	// 等待上游响应头的超时时间（秒），0表示无超时
 	// 注意：这不影响流式数据传输，只控制等待响应头的时间
 	ResponseHeaderTimeout int `mapstructure:"response_header_timeout"`
@@ -2376,6 +2379,7 @@ func setDefaults() {
 
 	// Gateway
 	viper.SetDefault("gateway.response_header_timeout", 600) // 600秒(10分钟)等待上游响应头，LLM高负载时可能排队较久
+	viper.SetDefault("gateway.redact_client_geo_metadata", false)
 	viper.SetDefault("gateway.openai_response_header_timeout", 0)
 	viper.SetDefault("gateway.grok_response_header_timeout", 120)
 	viper.SetDefault("gateway.openai_first_output_timeout_seconds", 0)
