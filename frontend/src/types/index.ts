@@ -1056,6 +1056,8 @@ export interface UpstreamBillingData {
   object: 'sub2api.key_billing'
   schema_version: 1
   billing_scope: 'token'
+  billing_source?: string
+  group_name?: string
   group_rate_multiplier: number
   user_rate_multiplier?: number
   resolved_rate_multiplier: number
@@ -1094,6 +1096,18 @@ export interface UpstreamBillingProbeSettings {
 export interface UpstreamBillingProbeResult {
   account_id: number
   snapshot?: UpstreamBillingProbeSnapshot
+  error?: string
+}
+
+export interface UpstreamBalanceProbeResult {
+  source: 'sub2api' | 'newapi' | string
+  success: boolean
+  balance: number
+  currency?: string
+  available: boolean
+  status_code?: number
+  fetched_at: number
+  persisted: boolean
   error?: string
 }
 
@@ -1220,6 +1234,11 @@ export interface Account {
     upstream_billing_probe_enabled?: boolean
     upstream_billing_rate_sync_enabled?: boolean
     upstream_billing_probe?: UpstreamBillingProbeSnapshot
+    upstream_balance?: number
+    upstream_balance_currency?: string
+    upstream_balance_source?: string
+    upstream_balance_available?: boolean
+    upstream_balance_updated_at?: string
     codex_reset_credit_snapshot?: {
       available_count?: number
       credits?: { expires_at?: string }[]
