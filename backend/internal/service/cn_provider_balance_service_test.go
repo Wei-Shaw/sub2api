@@ -128,3 +128,88 @@ func TestCNProviderBalanceService_DeepSeekValidZeroBalanceRemainsSuccessful(t *t
 	require.Len(t, result.Balances, 1)
 	require.Len(t, repo.extraWrites, 1, "a valid upstream zero balance must still be persisted")
 }
+
+type cnBalanceSequenceUpstream struct {
+	responses []cnBalanceResponseUpstream
+	calls     int
+	urls      []string
+}
+
+func (u *cnBalanceSequenceUpstream) Do(
+	req *http.Request,
+	_ string,
+	_ int64,
+	_ int,
+) (*http.Response, error) {
+	u.urls = append(u.urls, req.URL.String())
+	idx := u.calls
+	u.calls++
+	if idx >= len(u.responses) {
+		idx = len(u.responses) - 1
+	}
+	r := u.responses[idx]
+	return &http.Response{
+		StatusCode: r.statusCode,
+		Body:       io.NopCloser(strings.NewReader(r.body)),
+		Header:     make(http.Header),
+	}, nil
+}
+
+func (u *cnBalanceSequenceUpstream) DoWithTLS(
+	req *http.Request,
+	proxyURL string,
+	accountID int64,
+	accountConcurrency int,
+	_ *tlsfingerprint.Profile,
+) (*http.Response, error) {
+	return u.Do(req, proxyURL, accountID, accountConcurrency)
+}
+
+func TestCNProviderBalanceService_DeepSeekFallsBackToNewAPITokenUsage(t *testing.T) {
+	repo := &cnBalanceProbeRepo{account: newDeepSeekBalanceProbeAccount()}
+	upstream := &cnBalanceSequenceUpstream{
+		responses: []cnBalanceResponseUpstream{
+			{statusCode: http.StatusOK, body: `<!doctype html><html><body>spa</body></html>`},
+			{statusCode: http.StatusOK, body: `{"code":true,"message":"ok","data":{"object":"token_usage","remaining":87.006556,"unit":"USD","is_active":true,"unlimited_quota":true}}`},
+		},
+	}
+	svc := NewCNProviderBalanceService(repo, nil, upstream, nil)
+
+	result, err := svc.QueryBalance(context.Background(), repo.account.ID)
+
+	require.NoError(t, err)
+	require.True(t, result.Success)
+	require.Equal(t, 87.006556, result.Balance)
+	require.Equal(t, "USD", result.Currency)
+	require.True(t, result.Available)
+	require.Equal(t, 2, upstream.calls)
+	require.Contains(t, upstream.urls[0], "/user/balance")
+	require.True(t, strings.Contains(upstream.urls[1], "/api/usage/token"), upstream.urls[1])
+	require.Len(t, repo.extraWrites, 1)
+}
+
+func TestParseNewAPITokenUsageBalance(t *testing.T) {
+	entries, available, ok := parseNewAPITokenUsageBalance([]byte(
+		`{"code":true,"data":{"remaining":12.5,"unit":"USD","is_active":true}}`,
+	))
+	require.True(t, ok)
+	require.True(t, available)
+	require.Equal(t, []CNProviderBalanceEntry{{Currency: "USD", Balance: 12.5}}, entries)
+
+	entries, available, ok = parseNewAPITokenUsageBalance([]byte(
+		`{"code":true,"data":{"total_available":500000,"object":"token_usage"}}`,
+	))
+	require.True(t, ok)
+	require.True(t, available)
+	require.InDelta(t, 1.0, entries[0].Balance, 1e-9)
+	require.Equal(t, "USD", entries[0].Currency)
+
+	_, _, ok = parseNewAPITokenUsageBalance([]byte(`{"success":false}`))
+	require.False(t, ok)
+}
+
+func TestCNNewAPITokenUsageURL(t *testing.T) {
+	account := newDeepSeekBalanceProbeAccount()
+	account.Credentials["base_url"] = "https://www.sheapi.top/v1"
+	require.Equal(t, "https://www.sheapi.top/api/usage/token/", cnNewAPITokenUsageURL(account))
+}

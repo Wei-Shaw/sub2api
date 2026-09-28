@@ -1986,6 +1986,76 @@
         />
       </div>
 
+      <div
+        v-if="account?.type === 'apikey'"
+        class="space-y-4 border-t border-gray-200 pt-4 dark:border-dark-600"
+      >
+        <div class="space-y-2">
+          <label class="input-label" for="edit-upstream-group">
+            {{ t('admin.accounts.upstreamBilling.upstreamGroup') }}
+          </label>
+          <input
+            id="edit-upstream-group"
+            v-model="upstreamGroup"
+            type="text"
+            class="input font-mono"
+            data-testid="upstream-group"
+            :placeholder="t('admin.accounts.upstreamBilling.upstreamGroupPlaceholder')"
+          />
+          <p class="input-hint">{{ t('admin.accounts.upstreamBilling.upstreamGroupHint') }}</p>
+        </div>
+        <div class="space-y-2">
+          <label class="input-label" for="edit-upstream-rate">
+            {{ t('admin.accounts.upstreamBilling.upstreamRateMultiplier') }}
+          </label>
+          <input
+            id="edit-upstream-rate"
+            v-model="upstreamRateMultiplier"
+            type="text"
+            inputmode="decimal"
+            class="input font-mono"
+            data-testid="upstream-rate-multiplier"
+            :placeholder="t('admin.accounts.upstreamBilling.upstreamRateMultiplierPlaceholder')"
+          />
+          <p class="input-hint">{{ t('admin.accounts.upstreamBilling.upstreamRateMultiplierHint') }}</p>
+        </div>
+        <div class="space-y-2">
+          <label class="input-label" for="edit-upstream-access-token">
+            {{ t('admin.accounts.upstreamBilling.upstreamAccessToken') }}
+          </label>
+          <input
+            id="edit-upstream-access-token"
+            v-model="upstreamAccessToken"
+            type="password"
+            autocomplete="off"
+            class="input font-mono"
+            data-testid="upstream-access-token"
+            :placeholder="
+              hasUpstreamAccessToken
+                ? t('admin.accounts.upstreamBilling.upstreamAccessTokenKeep')
+                : t('admin.accounts.upstreamBilling.upstreamAccessTokenPlaceholder')
+            "
+          />
+          <p class="input-hint">{{ t('admin.accounts.upstreamBilling.upstreamAccessTokenHint') }}</p>
+        </div>
+        <div class="space-y-2">
+          <label class="input-label" for="edit-balance-probe-source">
+            {{ t('admin.accounts.upstreamBalance.source') }}
+          </label>
+          <select
+            id="edit-balance-probe-source"
+            v-model="balanceProbeSource"
+            class="input"
+            data-testid="balance-probe-source"
+          >
+            <option value="">{{ t('admin.accounts.upstreamBalance.sourceNone') }}</option>
+            <option value="sub2api">{{ t('admin.accounts.upstreamBalance.sourceSub2API') }}</option>
+            <option value="newapi">{{ t('admin.accounts.upstreamBalance.sourceNewAPI') }}</option>
+          </select>
+          <p class="input-hint">{{ t('admin.accounts.upstreamBalance.sourceHint') }}</p>
+        </div>
+      </div>
+
       <OllamaCloudUsageSettings
         v-if="account?.ollama_cloud_usage?.eligible"
         :account="account"
@@ -3144,6 +3214,7 @@ import HeaderOverrideEditor from '@/components/account/HeaderOverrideEditor.vue'
 import OllamaCloudUsageSettings from '@/components/account/OllamaCloudUsageSettings.vue'
 import {
   applyAntigravityProjectID,
+  applyBalanceProbeSource,
   applyHeaderOverride,
   applyInterceptWarmup,
   applyOpenCodeGoProtocolRules,
@@ -3151,6 +3222,7 @@ import {
   buildPlanTypeOptions,
   cloneOpenCodeGoProtocolRules,
   defaultOpenCodeProtocolRules,
+  normalizeBalanceProbeSource,
   parseOpenCodeGoProtocolRules,
   readPlanType,
   resolveOpenCodeAccountMode,
@@ -3620,6 +3692,11 @@ const autoResetCredit5hThreshold = ref(100)
 const autoResetCredit7dThreshold = ref(100)
 const upstreamBillingAutoProbeEnabled = ref(false)
 const upstreamBillingRateSyncEnabled = ref(false)
+const upstreamGroup = ref('')
+const upstreamRateMultiplier = ref('')
+const upstreamAccessToken = ref('')
+const hasUpstreamAccessToken = ref(false)
+const balanceProbeSource = ref('')
 const mixedScheduling = ref(false) // For antigravity accounts: enable mixed scheduling
 // 上游ID：直接上游声明请求标识的响应头名，留空不记录。
 const upstreamRequestIdHeader = ref('')
@@ -4167,6 +4244,11 @@ const syncFormFromAccount = (newAccount: Account | null) => {
 	upstreamBillingAutoProbeEnabled.value = extra?.upstream_billing_probe_enabled === true
   upstreamBillingRateSyncEnabled.value =
     upstreamBillingAutoProbeEnabled.value && extra?.upstream_billing_rate_sync_enabled === true
+  upstreamGroup.value = ''
+  upstreamRateMultiplier.value = ''
+  upstreamAccessToken.value = ''
+  hasUpstreamAccessToken.value = false
+  balanceProbeSource.value = ''
 
   // Load OpenAI passthrough toggle (OpenAI OAuth/SetupToken/API Key)
   openaiPassthroughEnabled.value = false
@@ -4449,6 +4531,15 @@ const syncFormFromAccount = (newAccount: Account | null) => {
     editBaseUrl.value = isCNApiKeyAccount.value && editApiProtocol.value === 'adaptive'
       ? editAdaptiveBaseUrls.value.chat_completions
       : (credentials.base_url as string) || platformDefaultUrl
+    upstreamGroup.value =
+      typeof credentials.upstream_group === 'string' ? credentials.upstream_group.trim() : ''
+    upstreamRateMultiplier.value =
+      credentials.upstream_rate_multiplier != null && String(credentials.upstream_rate_multiplier).trim() !== ''
+        ? String(credentials.upstream_rate_multiplier).trim()
+        : ''
+    upstreamAccessToken.value = ''
+    hasUpstreamAccessToken.value = Boolean(newAccount.credentials_status?.has_upstream_access_token)
+    balanceProbeSource.value = normalizeBalanceProbeSource(credentials.balance_probe_source)
 
     // Load model mappings and detect mode
     loadModelRestrictionFromMapping(credentials.model_mapping as Record<string, unknown> | undefined)
@@ -4502,6 +4593,15 @@ const syncFormFromAccount = (newAccount: Account | null) => {
   } else if (newAccount.type === 'upstream' && newAccount.credentials) {
     const credentials = newAccount.credentials as Record<string, unknown>
     editBaseUrl.value = (credentials.base_url as string) || ''
+    upstreamGroup.value =
+      typeof credentials.upstream_group === 'string' ? credentials.upstream_group.trim() : ''
+    upstreamRateMultiplier.value =
+      credentials.upstream_rate_multiplier != null && String(credentials.upstream_rate_multiplier).trim() !== ''
+        ? String(credentials.upstream_rate_multiplier).trim()
+        : ''
+    upstreamAccessToken.value = ''
+    hasUpstreamAccessToken.value = Boolean(newAccount.credentials_status?.has_upstream_access_token)
+    balanceProbeSource.value = normalizeBalanceProbeSource(credentials.balance_probe_source)
   } else if ((newAccount.platform === 'gemini' || newAccount.platform === 'anthropic') && newAccount.type === 'service_account' && newAccount.credentials) {
     const credentials = newAccount.credentials as Record<string, unknown>
     editVertexProjectId.value = (credentials.project_id as string) || ''
@@ -4762,6 +4862,30 @@ const buildTempUnschedRules = (rules: TempUnschedRuleForm[]) => {
   }
 
   return out
+}
+
+const applyUpstreamBillingCredentialEdits = (credentials: Record<string, unknown>) => {
+  const trimmedUpstreamGroup = upstreamGroup.value.trim()
+  if (trimmedUpstreamGroup) {
+    credentials.upstream_group = trimmedUpstreamGroup
+  } else {
+    delete credentials.upstream_group
+  }
+  const trimmedRate = upstreamRateMultiplier.value.trim()
+  if (trimmedRate) {
+    credentials.upstream_rate_multiplier = trimmedRate
+  } else {
+    delete credentials.upstream_rate_multiplier
+  }
+  const trimmedAccessToken = upstreamAccessToken.value.trim()
+  if (trimmedAccessToken) {
+    credentials.upstream_access_token = trimmedAccessToken
+  } else {
+    // Keep previously saved token unless the user explicitly clears via empty + no existing.
+    // Empty input means "unchanged" when a token already exists (password field pattern).
+    delete credentials.upstream_access_token
+  }
+  applyBalanceProbeSource(credentials, balanceProbeSource.value, 'edit')
 }
 
 const applyTempUnschedConfig = (credentials: Record<string, unknown>) => {
@@ -5174,6 +5298,7 @@ const handleSubmit = async () => {
         ...currentCredentials,
         base_url: newBaseUrl
       }
+      applyUpstreamBillingCredentialEdits(newCredentials)
 
       // 国产供应商：模式与协议写入凭据（决定额度/余额探测与转发端点/格式）。
       if (isCNApiKeyAccount.value) {
@@ -5297,6 +5422,7 @@ const handleSubmit = async () => {
       if (editApiKey.value.trim()) {
         newCredentials.api_key = editApiKey.value.trim()
       }
+      applyUpstreamBillingCredentialEdits(newCredentials)
 
       // Add intercept warmup requests setting
       applyInterceptWarmup(newCredentials, interceptWarmupRequests.value, 'edit')
