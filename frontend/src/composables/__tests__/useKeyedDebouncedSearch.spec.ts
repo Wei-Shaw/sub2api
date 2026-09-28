@@ -97,4 +97,16 @@ describe('useKeyedDebouncedSearch', () => {
     expect(search).not.toHaveBeenCalled()
     expect(onSuccess).not.toHaveBeenCalled()
   })
+
+  it('立即搜索会替换待执行的防抖任务', async () => {
+    const search = vi.fn().mockResolvedValue(['latest'])
+    const onSuccess = vi.fn()
+    const searcher = useKeyedDebouncedSearch({ delay: 300, search, onSuccess })
+    searcher.trigger('a', 'old')
+    searcher.trigger('a', 'latest', true)
+    expect(search).toHaveBeenCalledTimes(1)
+    await vi.advanceTimersByTimeAsync(300)
+    expect(search).toHaveBeenCalledTimes(1)
+    expect(onSuccess).toHaveBeenCalledWith('a', ['latest'])
+  })
 })

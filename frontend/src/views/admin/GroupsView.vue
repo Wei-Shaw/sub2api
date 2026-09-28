@@ -3115,6 +3115,14 @@
           </div>
         </div>
 
+        <ModelConfigEditor
+          v-if="editingGroup"
+          :key="`${editingGroup.id}:${editForm.platform}`"
+          ref="editModelConfigRef"
+          :group-id="editingGroup.id"
+          :model-allowlist="buildModelAllowlistConfig(editModelAllowlistState)"
+          v-model="editCodexManifestConfig.model_overrides"
+        />
         <!-- 固定账号获取 Codex Model Manifest（仅 openai 平台，仅编辑对话框） -->
         <CodexManifestAccountsField
           v-if="editForm.platform === 'openai' && editingGroup"
@@ -4303,6 +4311,7 @@ import GroupRPMOverridesModal from "@/components/admin/group/GroupRPMOverridesMo
 import GroupCapacityBadge from "@/components/common/GroupCapacityBadge.vue";
 import ReasoningEffortPolicyFields from "@/components/admin/group/ReasoningEffortPolicyFields.vue";
 import CodexManifestAccountsField from "@/components/admin/group/CodexManifestAccountsField.vue";
+import ModelConfigEditor from "@/components/admin/group/ModelConfigEditor.vue";
 import PricingEntryCard from "@/components/admin/channel/PricingEntryCard.vue";
 import type { PricingFormEntry } from "@/components/admin/channel/types";
 import {
@@ -4894,6 +4903,7 @@ type CodexManifestAccountsFieldExpose = {
   resetValidation: () => void;
 };
 const editCodexManifestRef = ref<CodexManifestAccountsFieldExpose | null>(null);
+const editModelConfigRef = ref<{ validate: () => boolean } | null>(null);
 const createCodexManifestDefaults = (): CodexModelsManifestConfig => ({
   enabled: false,
   account_ids: [],
@@ -6140,6 +6150,7 @@ const handleEdit = async (group: AdminGroup) => {
     group.codex_models_manifest_config ?? createCodexManifestDefaults();
   editCodexManifestConfig.value = {
     enabled: savedCodexManifestConfig.enabled ?? false,
+    model_overrides: JSON.parse(JSON.stringify(savedCodexManifestConfig.model_overrides ?? {})),
     account_ids: [...(savedCodexManifestConfig.account_ids ?? [])],
     fallback_to_scheduler: savedCodexManifestConfig.fallback_to_scheduler ?? false,
   };
@@ -6210,6 +6221,10 @@ const closeEditModal = () => {
 
 const handleUpdateGroup = async () => {
   if (!editingGroup.value) return;
+  if (editModelConfigRef.value && !editModelConfigRef.value.validate()) {
+    appStore.showError(t("modelConfig.invalid"));
+    return;
+  }
   if (!editForm.name.trim()) {
     appStore.showError(t("admin.groups.nameRequired"));
     return;
@@ -6288,10 +6303,11 @@ const handleUpdateGroup = async () => {
         editForm.platform === "openai"
           ? {
               enabled: editCodexManifestConfig.value.enabled,
+              model_overrides: editCodexManifestConfig.value.model_overrides,
               account_ids: [...editCodexManifestConfig.value.account_ids],
               fallback_to_scheduler: editCodexManifestConfig.value.fallback_to_scheduler,
             }
-          : createCodexManifestDefaults(),
+          : { ...createCodexManifestDefaults(), model_overrides: editCodexManifestConfig.value.model_overrides },
       supported_model_scopes: normalizeSupportedModelScopesForPlatform(
         editForm.platform,
         editForm.supported_model_scopes,

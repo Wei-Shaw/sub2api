@@ -1219,6 +1219,9 @@ func (h *GatewayHandler) CodexModels(c *gin.Context) {
 		forcedPlatform,
 		modelIDs,
 	)
+	if err == nil {
+		body, err = service.ApplyGroupCodexModelOverrides(body, apiKey.Group)
+	}
 	if err != nil {
 		h.errorResponse(c, http.StatusInternalServerError, "api_error", "Failed to build Codex models manifest")
 		return
@@ -1245,6 +1248,7 @@ func (h *GatewayHandler) codexModelIDsForGroup(ctx context.Context, group *servi
 	}
 	if platform == service.PlatformComposite {
 		availableModels := h.compositeAvailableModels(ctx, groupID)
+		availableModels = mergeModelIDs(availableModels, h.gatewayService.GetCompositeCodexRouteModelIDs(ctx, group))
 		fallbackModels := defaultCodexModelIDsForPlatform(service.PlatformComposite)
 		if group.ModelAllowlistEnabled() {
 			source := availableModels
