@@ -258,7 +258,7 @@
               :key="column.key"
               :class="[
                 'py-4 text-sm text-gray-900 dark:text-gray-100',
-                resizable ? 'overflow-hidden' : 'whitespace-nowrap',
+                resizable && column.key !== 'actions' ? 'overflow-hidden' : 'whitespace-nowrap',
                 getAdaptivePaddingClass(),
                 getStickyColumnClass(column, colIndex),
                 column.class
@@ -885,6 +885,7 @@ const hasSelectColumn = computed(() => {
 
 const widthOverrides = ref<Record<string, number>>({})
 const isResizing = ref(false)
+const ACTIONS_COLUMN_MIN_WIDTH = 180
 let resizeState: {
   key: string
   startX: number
@@ -901,6 +902,15 @@ const getResolvedColumnWidth = (column: Column): number | undefined => {
 }
 
 const getColumnWidthStyle = (column: Column): Record<string, string> | undefined => {
+  // Keep the actions column wide enough for Edit/Delete/More; never clamp it
+  // with max-width or it wraps into single-character columns.
+  if (column.key === 'actions') {
+    const width = Math.max(ACTIONS_COLUMN_MIN_WIDTH, getResolvedColumnWidth(column) ?? ACTIONS_COLUMN_MIN_WIDTH)
+    return {
+      width: `${width}px`,
+      minWidth: `${width}px`
+    }
+  }
   const width = getResolvedColumnWidth(column)
   if (width == null) return undefined
   return {
@@ -912,12 +922,17 @@ const getColumnWidthStyle = (column: Column): Record<string, string> | undefined
 
 const hasExplicitColumnWidths = computed(() => {
   if (!props.resizable) return false
-  return props.columns.some((column) => getResolvedColumnWidth(column) != null)
+  return props.columns.some((column) => column.key !== 'actions' && getResolvedColumnWidth(column) != null)
 })
 
 const resizableTableStyle = computed(() => {
   if (!props.resizable || !hasExplicitColumnWidths.value) return undefined
-  const widths = props.columns.map((column) => getResolvedColumnWidth(column) ?? 140)
+  const widths = props.columns.map((column) => {
+    if (column.key === 'actions') {
+      return Math.max(ACTIONS_COLUMN_MIN_WIDTH, getResolvedColumnWidth(column) ?? ACTIONS_COLUMN_MIN_WIDTH)
+    }
+    return getResolvedColumnWidth(column) ?? 140
+  })
   const selectWidth = props.selectable || hasSelectColumn.value ? 44 : 0
   const total = widths.reduce((sum, width) => sum + width, 0) + selectWidth
   return {
