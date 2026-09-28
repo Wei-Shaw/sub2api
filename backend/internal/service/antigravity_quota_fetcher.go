@@ -188,19 +188,25 @@ func (f *AntigravityQuotaFetcher) buildUsageInfo(
 	// 2. 如果存在 QuotaSummary，同步 buckets 真实配额桶
 	if quotaSummaryResp != nil {
 		applyBucket := func(b antigravity.QuotaSummaryBucket) {
-			if b.RemainingFraction < 0 {
+			if b.Disabled || b.RemainingFraction < 0 {
 				return
 			}
 			utilization := int((1.0 - b.RemainingFraction) * 100)
+			if utilization < 0 {
+				utilization = 0
+			} else if utilization > 100 {
+				utilization = 100
+			}
 			q := &AntigravityModelQuota{
 				Utilization: utilization,
 				ResetTime:   b.ResetTime,
 			}
-			if b.BucketID != "" {
-				info.AntigravityQuota[b.BucketID] = q
+			key := b.BucketID
+			if key == "" {
+				key = b.DisplayName
 			}
-			if b.DisplayName != "" {
-				info.AntigravityQuota[b.DisplayName] = q
+			if key != "" {
+				info.AntigravityQuota[key] = q
 			}
 		}
 		for _, b := range quotaSummaryResp.Buckets {
@@ -238,6 +244,9 @@ func (f *AntigravityQuotaFetcher) buildUsageInfo(
 					if resetTime, err := time.Parse(time.RFC3339, modelInfo.QuotaInfo.ResetTime); err == nil {
 						progress.ResetsAt = &resetTime
 						progress.RemainingSeconds = int(time.Until(resetTime).Seconds())
+						if progress.RemainingSeconds < 0 {
+							progress.RemainingSeconds = 0
+						}
 					}
 				}
 				info.FiveHour = progress
@@ -252,6 +261,9 @@ func (f *AntigravityQuotaFetcher) buildUsageInfo(
 				if resetTime, err := time.Parse(time.RFC3339, q.ResetTime); err == nil {
 					progress.ResetsAt = &resetTime
 					progress.RemainingSeconds = int(time.Until(resetTime).Seconds())
+					if progress.RemainingSeconds < 0 {
+						progress.RemainingSeconds = 0
+					}
 				}
 			}
 			info.FiveHour = progress

@@ -579,6 +579,18 @@ func TestBuildUsageInfo_WithQuotaSummary(t *testing.T) {
 				RemainingFraction: 0.85,
 				ResetTime:         "2026-03-08T18:00:00Z",
 			},
+			{
+				BucketID:          "disabled-model",
+				DisplayName:       "Disabled Model",
+				Disabled:          true,
+				RemainingFraction: 0.0,
+			},
+			{
+				BucketID:          "",
+				DisplayName:       "Only-DisplayName-Model",
+				RemainingFraction: 0.5,
+				ResetTime:         "2026-03-08T20:00:00Z",
+			},
 		},
 		Groups: []antigravity.QuotaSummaryGroup{
 			{
@@ -598,16 +610,23 @@ func TestBuildUsageInfo_WithQuotaSummary(t *testing.T) {
 	info := fetcher.buildUsageInfo(modelsResp, "g1-pro-tier", "PRO", nil, quotaSummary)
 
 	require.NotNil(t, info.AntigravityQuotaSummary)
-	require.Len(t, info.AntigravityQuotaSummary.Buckets, 1)
+	require.Len(t, info.AntigravityQuotaSummary.Buckets, 3)
 	require.Len(t, info.AntigravityQuotaSummary.Groups, 1)
 
-	// Buckets should populate AntigravityQuota by BucketID and DisplayName
+	// Buckets should populate AntigravityQuota by BucketID primarily (not duplicating with DisplayName)
 	require.NotNil(t, info.AntigravityQuota["gemini-3.8-flash"])
 	require.Equal(t, 15, info.AntigravityQuota["gemini-3.8-flash"].Utilization)
 	require.Equal(t, "2026-03-08T18:00:00Z", info.AntigravityQuota["gemini-3.8-flash"].ResetTime)
 
-	require.NotNil(t, info.AntigravityQuota["Gemini 3.8 Flash"])
-	require.Equal(t, 15, info.AntigravityQuota["Gemini 3.8 Flash"].Utilization)
+	// DisplayName should not be added as a duplicate key when BucketID exists
+	require.Nil(t, info.AntigravityQuota["Gemini 3.8 Flash"])
+
+	// Disabled bucket should be skipped
+	require.Nil(t, info.AntigravityQuota["disabled-model"])
+
+	// DisplayName should be used as fallback when BucketID is empty
+	require.NotNil(t, info.AntigravityQuota["Only-DisplayName-Model"])
+	require.Equal(t, 50, info.AntigravityQuota["Only-DisplayName-Model"].Utilization)
 
 	// Group buckets should also populate
 	require.NotNil(t, info.AntigravityQuota["gemini-3.8-flash-high"])

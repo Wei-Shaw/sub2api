@@ -918,6 +918,9 @@ const getAntigravityUsageFromAPI = (
   let maxUtilization = 0
   let earliestReset: string | null = null
   let matched = false
+  const isImageQuery =
+    (summaryKeywords && summaryKeywords.some((kw) => kw.toLowerCase().includes('image'))) ||
+    modelNames.some((m) => m.toLowerCase().includes('image'))
 
   // 1. 优先从官方配额摘要 antigravity_quota_summary 中匹配 (对应 agy /usage)
   const summary = usageInfo.value?.antigravity_quota_summary
@@ -927,8 +930,16 @@ const getAntigravityUsageFromAPI = (
       ...(summary.groups || []).flatMap((g) => g.buckets || [])
     ]
     for (const b of allBuckets) {
+      if (b.disabled) continue
       const bId = (b.bucketId || '').toLowerCase()
       const dName = (b.displayName || '').toLowerCase()
+
+      // 避免非生图模型（如普通 Flash）误匹配到包含 "flash" 的生图配额桶（如 gemini-2.5-flash-image）
+      const isImageBucket = bId.includes('image') || dName.includes('image')
+      if (!isImageQuery && isImageBucket) {
+        continue
+      }
+
       const hit =
         modelNames.some((m) => {
           const mLower = m.toLowerCase()
@@ -978,6 +989,10 @@ const getAntigravityUsageFromAPI = (
       for (const [quotaKey, modelQuota] of Object.entries(quota)) {
         if (!modelQuota) continue
         const quotaKeyLower = quotaKey.toLowerCase()
+        const isImageQuota = quotaKeyLower.includes('image')
+        if (!isImageQuery && isImageQuota) {
+          continue
+        }
         const hit = modelNames.some((m) => quotaKeyLower.startsWith(m.toLowerCase()))
         if (hit) {
           matched = true

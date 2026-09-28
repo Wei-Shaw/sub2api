@@ -663,7 +663,7 @@ type QuotaSummaryBucket struct {
 	DisplayName       string  `json:"displayName,omitempty"`
 	Description       string  `json:"description,omitempty"`
 	Window            string  `json:"window,omitempty"`
-	RemainingFraction float64 `json:"remainingFraction,omitempty"`
+	RemainingFraction float64 `json:"remainingFraction"`
 	RemainingAmount   int64   `json:"remainingAmount,omitempty"`
 	Disabled          bool    `json:"disabled,omitempty"`
 	ResetTime         string  `json:"resetTime,omitempty"`
