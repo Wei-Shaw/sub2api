@@ -84,6 +84,25 @@ func CompositeRouteSourceFromContext(ctx context.Context) (string, bool) {
 	return source, true
 }
 
+// accountOwnsCompositeAccountModelRoute reports whether an account may serve
+// the request's account_model public alias. Other route sources and noncomposite
+// requests are unconstrained; account_model requests fail closed when the public
+// alias is missing or is not exactly claimed by the account.
+func accountOwnsCompositeAccountModelRoute(ctx context.Context, account *Account) bool {
+	if account == nil {
+		return false
+	}
+	source, ok := CompositeRouteSourceFromContext(ctx)
+	if !ok || source != CompositeRouteSourceAccount {
+		return true
+	}
+	publicModel, ok := RequestedPublicModelFromContext(ctx)
+	if !ok {
+		return false
+	}
+	return explicitModelMappingClaims(*account, publicModel)
+}
+
 // DetectModelPlatform maps common public model IDs to the concrete provider
 // platform used by sub2api. It intentionally returns false for ambiguous model
 // names so composite groups fail closed instead of guessing.
