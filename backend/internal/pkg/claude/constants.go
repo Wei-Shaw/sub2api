@@ -18,6 +18,8 @@ const (
 	BetaTokenCounting            = "token-counting-2024-11-01"
 	BetaContext1M                = "context-1m-2025-08-07"
 	BetaFastMode                 = "fast-mode-2026-02-01"
+	// Legacy structured output compatibility; forwarded only when explicitly requested.
+	BetaStructuredOutputs = "structured-outputs-2025-11-13"
 
 	// 新增（对齐官方 CLI 2.1.9x 以来的流量）
 	BetaPromptCachingScope          = "prompt-caching-scope-2026-01-05"
