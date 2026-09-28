@@ -388,7 +388,9 @@ func cnThresholdCandidate(extra map[string]any, provider, window string) *accoun
 		return nil
 	}
 	usedPercent, ok := extra[usedKey]
-	if !ok {
+	// null 表示上游本次没有下发该窗口（cnQuotaExtraUpdates 显式置空），
+	// 与键不存在等价：不产生候选，也就不会用旧值触发阈值停调。
+	if !ok || usedPercent == nil {
 		return nil
 	}
 	return &accountSchedulingThresholdCandidate{
