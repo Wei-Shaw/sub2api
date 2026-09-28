@@ -39,9 +39,13 @@ func (UserPlatformQuota) Fields() []ent.Field {
 			MaxLen(32).
 			NotEmpty().
 			Validate(func(s string) error {
-				// 平台白名单为平台清单（domain/platforms.go）中的全部具体平台，
-				// 与 service.AllowedQuotaPlatforms 同源；数据库不再维护 CHECK 约束。
-				if !domain.IsConcretePlatform(s) {
+				// 注意：平台列表的单一权威源为 service.AllowedQuotaPlatforms；
+				// 此处为 ent 构建期约束，需与 service.AllowedQuotaPlatforms 保持同步。
+				switch s {
+				case "anthropic", "openai", "gemini", "antigravity", "grok",
+					"kimi", "zhipu", "deepseek", "minimax", "opencode_go", "typesafe", "muse":
+					return nil
+				default:
 					return fmt.Errorf("platform %q is not allowed", s)
 				}
 				return nil

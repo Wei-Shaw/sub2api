@@ -47,12 +47,23 @@ func RegisterGatewayRoutes(
 	groupModelAllowlist := middleware.GroupModelAllowlist()
 
 	isOpenAIResponsesCompatibleGatewayPlatform := func(c *gin.Context) bool {
-		// openai、grok 与多协议 API Key 供应商经 OpenAI 网关转发（平台清单）。
-		return domain.UsesOpenAIGateway(getGroupPlatform(c))
+		switch getGroupPlatform(c) {
+		case service.PlatformOpenAI, service.PlatformGrok,
+			service.PlatformKimi, service.PlatformZhipu, service.PlatformDeepseek,
+			service.PlatformMiniMax, service.PlatformOpenCodeGo, service.PlatformMuse:
+			// 国产 OpenAI 兼容供应商与 openai/grok 一样经 OpenAI 网关转发。
+			return true
+		default:
+			return false
+		}
 	}
 	countTokensHandler := func(c *gin.Context) {
-		switch platform := getGroupPlatform(c); {
-		case platform == service.PlatformGrok:
+		switch getGroupPlatform(c) {
+		case service.PlatformOpenAI, service.PlatformKimi, service.PlatformZhipu, service.PlatformDeepseek, service.PlatformMiniMax, service.PlatformOpenCodeGo:
+			h.OpenAIGateway.CountTokens(c)
+		case service.PlatformMuse:
+			c.JSON(http.StatusBadRequest, gin.H{"error": gin.H{"type": "invalid_request_error", "code": "muse_capability_unsupported", "message": "Muse does not expose verified token counting"}})
+		case service.PlatformGrok:
 			h.OpenAIGateway.GrokCountTokens(c)
 		case domain.UsesOpenAIGateway(platform):
 			h.OpenAIGateway.CountTokens(c)
@@ -186,6 +197,16 @@ func RegisterGatewayRoutes(
 	gateway.GET("/sub2api/billing", h.Gateway.KeyBillingInfo)
 	gateway.Use(groupModelAllowlist)
 	gateway.Use(compositeTarget)
+	gateway.Use(func(c *gin.Context) {
+		if getGroupPlatform(c) == service.PlatformMuse {
+			path := c.Request.URL.Path
+			if c.Request.Method == http.MethodGet && strings.HasSuffix(path, "/responses") || strings.HasSuffix(path, "/responses/compact") || strings.Contains(path, "/live") || strings.HasSuffix(path, "/alpha/search") {
+				c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"error": gin.H{"type": "invalid_request_error", "code": "muse_capability_unsupported", "message": "This endpoint is not supported by the Muse app provider"}})
+				return
+			}
+		}
+		c.Next()
+	})
 	gateway.Use(requireGroupAnthropic)
 	{
 		// /v1/messages: auto-route based on group platform

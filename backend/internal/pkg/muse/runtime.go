@@ -95,8 +95,8 @@ type Workspace struct {
 
 // Actor is resolved by Sub2API authentication, not the request's user field.
 type Actor struct {
-	UserID   int64
-	APIKeyID int64
+	UserID   int64 `json:"user_id"`
+	APIKeyID int64 `json:"api_key_id"`
 }
 
 // Pricing freezes an explicit flat charge policy, not invented provider tokens.
@@ -158,16 +158,16 @@ func (l Lease) Validate() error {
 }
 
 type Turn struct {
-	ID             string
-	WorkspaceID    int64
-	Generation     int64
-	Actor          Actor
-	AccountID      int64
-	State          State
-	ProviderTurnID string
-	Pricing        Pricing
-	CreatedAt      time.Time
-	UpdatedAt      time.Time
+	ID             string    `json:"id"`
+	WorkspaceID    int64     `json:"workspace_id"`
+	Generation     int64     `json:"generation"`
+	Actor          Actor     `json:"actor"`
+	AccountID      int64     `json:"account_id"`
+	State          State     `json:"state"`
+	ProviderTurnID string    `json:"provider_turn_id,omitempty"`
+	Pricing        Pricing   `json:"pricing"`
+	CreatedAt      time.Time `json:"created_at"`
+	UpdatedAt      time.Time `json:"updated_at"`
 }
 
 func ValidateLease(d time.Duration) error {

@@ -26,8 +26,7 @@ const concretePlatforms = [
   'minimax',
   'opencode_go',
   'typesafe',
-  'command_code',
-  'cline'
+  'muse'
 ]
 
 describe('platform option catalogs', () => {

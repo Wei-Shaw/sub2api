@@ -315,7 +315,7 @@ func (a *Account) IsCNProvider() bool {
 // openai/grok 原生走 OpenAI 网关；国产供应商同为 OpenAI Chat Completions
 // 兼容上游，也经 OpenAI 网关转发。OpenCode 同样经 OpenAI 网关按模型分流。
 func (a *Account) IsOpenAICompatible() bool {
-	return a != nil && domain.UsesOpenAIGateway(a.Platform)
+	return a != nil && (a.Platform == PlatformOpenAI || a.Platform == PlatformGrok || a.Platform == PlatformMuse || a.IsCNProvider() || a.IsOpenCodeGo())
 }
 
 func (a *Account) GeminiOAuthType() string {
@@ -1446,6 +1446,8 @@ func (a *Account) SupportsAccountQuota() bool {
 	return AccountTypeSupportsQuota(a.Type)
 }
 
+func (a *Account) IsMuse() bool { return a != nil && a.Platform == PlatformMuse }
+
 func (a *Account) IsOpenAI() bool {
 	return a.Platform == PlatformOpenAI
 }
@@ -1927,6 +1929,9 @@ func (a *Account) SupportsOpenAIEndpointCapability(capability OpenAIEndpointCapa
 	}
 	if !a.IsOpenAICompatible() {
 		return false
+	}
+	if a.IsMuse() {
+		return capability == OpenAIEndpointCapabilityChatCompletions || capability == OpenAIEndpointCapabilityResponses
 	}
 	if a.IsGrok() {
 		switch capability {

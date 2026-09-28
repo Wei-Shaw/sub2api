@@ -765,10 +765,9 @@ const form = reactive({
 let abortController: AbortController | null = null
 
 // ── Platform config ──
-// 平台清单中的全部具体平台（展示顺序）。
-const platformOrder = computed<GroupPlatform[]>(() => listPlatformIds())
+const platformOrder: GroupPlatform[] = ['anthropic', 'openai', 'gemini', 'antigravity', 'grok', 'kimi', 'zhipu', 'deepseek', 'minimax', 'opencode_go', 'typesafe', 'muse']
 // Composite pricing/mapping may target every concrete schedulable provider.
-const compositePlatforms = platformOrder
+const compositePlatforms: GroupPlatform[] = ['anthropic', 'openai', 'gemini', 'antigravity', 'grok', 'kimi', 'zhipu', 'deepseek', 'minimax', 'opencode_go', 'typesafe', 'muse']
 
 // ── Helpers ──
 function formatDate(value: string): string {
