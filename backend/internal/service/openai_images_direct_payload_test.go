@@ -121,3 +121,18 @@ func TestCodexDirectImagesShadowCredentials(t *testing.T) {
 	require.Equal(t, "test-account", upstream.lastReq.Header.Get("Chatgpt-Account-Id"))
 	require.Equal(t, "/backend-api/codex/images/generations", upstream.lastReq.URL.Path)
 }
+
+func TestOpenAIImageUploadToDataURL_SniffsOctetStream(t *testing.T) {
+	png := []byte("\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR")
+	upload := OpenAIImagesUpload{FileName: "a.png", ContentType: "application/octet-stream", Data: png}
+
+	dataURL, err := openAIImageUploadToDataURL(upload)
+	require.NoError(t, err)
+	require.True(t, strings.HasPrefix(dataURL, "data:image/png;base64,"), dataURL)
+	require.True(t, strings.HasPrefix(upload.ModerationDataURL(), "data:image/png;base64,"))
+
+	upload.ContentType = "image/webp"
+	dataURL, err = openAIImageUploadToDataURL(upload)
+	require.NoError(t, err)
+	require.True(t, strings.HasPrefix(dataURL, "data:image/webp;base64,"), dataURL)
+}

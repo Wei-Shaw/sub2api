@@ -157,14 +157,25 @@ func (u OpenAIImagesUpload) ModerationDataURL() string {
 	if len(u.Data) == 0 {
 		return ""
 	}
-	contentType := strings.TrimSpace(u.ContentType)
-	if contentType == "" {
-		contentType = http.DetectContentType(u.Data)
-	}
+	contentType := u.imageContentType()
 	if !strings.HasPrefix(strings.ToLower(contentType), "image/") {
 		return ""
 	}
 	return fmt.Sprintf("data:%s;base64,%s", contentType, base64.StdEncoding.EncodeToString(u.Data))
+}
+
+// imageContentType returns the declared part type when it is an image type,
+// otherwise sniffs the bytes: clients often send application/octet-stream,
+// which upstream rejects inside a data URL.
+func (u OpenAIImagesUpload) imageContentType() string {
+	contentType := strings.TrimSpace(u.ContentType)
+	if strings.HasPrefix(strings.ToLower(contentType), "image/") {
+		return contentType
+	}
+	if sniffed := http.DetectContentType(u.Data); strings.HasPrefix(sniffed, "image/") || contentType == "" {
+		return sniffed
+	}
+	return contentType
 }
 
 func (r *OpenAIImagesRequest) IsEdits() bool {
