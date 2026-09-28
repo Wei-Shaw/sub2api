@@ -431,15 +431,53 @@ func targetsDeepSeekAPIHost(account *Account) bool {
 	return strings.EqualFold(u.Hostname(), ds.Hostname())
 }
 
+// targetsOpenCodeZenUpstream 报告该账号上游是否是官方 OpenCode Zen / Go 网关。
+// platform=opencode_go 直接命中；其他平台按 base_url 主机判定，覆盖用 API Key
+// 直接把 openai 平台账号指向 opencode.ai 的接入方式。
+func targetsOpenCodeZenUpstream(account *Account) bool {
+	if account == nil {
+		return false
+	}
+	if account.IsOpenCodeGo() {
+		return true
+	}
+	return isOfficialOpenCodeHost(account.GetOpenAIBaseURL())
+}
+
+// isDeepSeekCatalogModel 判定（剥掉 opencode 前缀后的）模型 ID 是否属于
+// DeepSeek 系列，例如 deepseek-v4-flash / deepseek-v4.1-flash / deepseek-chat。
+func isDeepSeekCatalogModel(model string) bool {
+	return strings.HasPrefix(normalizeOpenCodeGoModelID(model), "deepseek")
+}
+
+// requiresDeepSeekChatReasoning 报告该 Chat Completions 请求的上游是否按
+// DeepSeek thinking mode 语义校验 reasoning_content。
+//
+// DeepSeek 官方 API 直接命中。OpenCode Zen / Go 是转发型订阅网关：deepseek-*
+// 模型由 DeepSeek 实际承载，同一条 400 原文会被一字不差地回吐，所以按
+// 「官方 OpenCode 上游 + deepseek-* 模型」补一条判定。
+//
+// 不放宽成「任意上游的 deepseek-* 模型名」：占位符是写进请求体的额外字段，
+// 对没有这条约束的上游属于无谓改写，且可能触发未知字段校验。
+func requiresDeepSeekChatReasoning(account *Account, body []byte) bool {
+	if targetsDeepSeekAPIHost(account) {
+		return true
+	}
+	if !targetsOpenCodeZenUpstream(account) {
+		return false
+	}
+	return isDeepSeekCatalogModel(gjson.GetBytes(body, "model").String())
+}
+
 // ensureDeepSeekChatReasoningPlaceholders 给缺 reasoning_content 的 assistant
 // 消息补单个空格占位。DeepSeek thinking mode 要求历史里每条产生过思维的
 // assistant 消息都回传该字段，否则 400
 // "The `reasoning_content` in the thinking mode must be passed back to the API"。
 //
 // 桥接会从 summary / 缓存回注真实明文；这里只填仍为空的缺口，不覆盖已有内容。
-// 非 DeepSeek 上游原样返回（字节不变）。
+// 判定见 requiresDeepSeekChatReasoning，不命中的上游原样返回（字节不变）。
 func ensureDeepSeekChatReasoningPlaceholders(account *Account, body []byte) []byte {
-	if !targetsDeepSeekAPIHost(account) {
+	if !requiresDeepSeekChatReasoning(account, body) {
 		return body
 	}
 	messages := gjson.GetBytes(body, "messages")
