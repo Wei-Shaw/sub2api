@@ -704,6 +704,52 @@ export default {
     }
   },
 
+  userInvitation: {
+    title: '邀请好友',
+    description: '生成一次性邀请码，邀请好友注册',
+    loadFailed: '加载邀请信息失败',
+    createFailed: '生成邀请码失败',
+    created: '邀请码已生成',
+    generate: '生成邀请码',
+    generating: '生成中...',
+    disabled: '管理员当前未开放用户邀请功能。',
+    limitReached: '您的邀请名额已用完。',
+    stats: {
+      used: '已用名额',
+      remaining: '剩余名额',
+      unlimited: '不限',
+      validity: '邀请码有效期',
+      validityDays: '{days} 天',
+      neverExpires: '永不过期',
+    },
+    tips: {
+      title: '使用说明',
+      line1: '每个邀请码仅可用于注册一个账号。',
+      line2: '将邀请码或邀请链接发送给您想邀请的人。',
+      line3: '过期未使用的邀请码会释放名额。',
+    },
+    list: {
+      title: '我的邀请码',
+      empty: '暂无邀请码',
+      copyCode: '复制邀请码',
+      copyLink: '复制链接',
+      codeCopied: '邀请码已复制',
+      linkCopied: '邀请链接已复制',
+      columns: {
+        code: '邀请码',
+        status: '状态',
+        invitee: '被邀请人',
+        createdAt: '生成时间',
+        expiresAt: '过期时间',
+        actions: '操作',
+      },
+      status: {
+        unused: '待使用',
+        used: '已使用',
+        expired: '已过期',
+      },
+    },
+  },
   affiliate: {
     title: '邀请返利',
     description: '邀请新用户注册，并将返利额度转入账户余额',

@@ -287,6 +287,25 @@ func parseAuditLogRetentionDays(value string) int {
 	return n
 }
 
+// parseBoundedNonNegativeInt 解析 [0, max] 范围内的整数设置；空值或非法值返回默认值，越界时截断。
+func parseBoundedNonNegativeInt(value string, defaultValue, max int) int {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return defaultValue
+	}
+	n, err := strconv.Atoi(value)
+	if err != nil {
+		return defaultValue
+	}
+	if n < 0 {
+		return 0
+	}
+	if n > max {
+		return max
+	}
+	return n
+}
+
 // GetSiteName 获取网站名称
 func (s *SettingService) GetSiteName(ctx context.Context) string {
 	value, err := s.settingRepo.GetValue(ctx, SettingKeySiteName)

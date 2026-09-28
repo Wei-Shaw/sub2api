@@ -170,6 +170,7 @@ export default {
     usage: '使用记录',
     redeem: '兑换',
     affiliate: '邀请返利',
+    userInvitation: '邀请好友',
     affiliateManagement: '邀请返利',
     affiliateInviteRecords: '邀请记录',
     affiliateRebateRecords: '返利记录',

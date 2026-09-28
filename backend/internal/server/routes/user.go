@@ -126,6 +126,13 @@ func RegisterUserRoutes(
 			redeem.GET("/history", h.Redeem.GetHistory)
 		}
 
+		// 用户自助邀请（邀请码注册模式下由管理员开启）
+		invitations := authenticated.Group("/invitations")
+		{
+			invitations.GET("", h.UserInvitation.GetOverview)
+			invitations.POST("", h.UserInvitation.Create)
+		}
+
 		// 用户订阅
 		subscriptions := authenticated.Group("/subscriptions")
 		{

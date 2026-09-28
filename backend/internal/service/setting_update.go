@@ -174,6 +174,9 @@ func (s *SettingService) buildSystemSettingsUpdates(ctx context.Context, setting
 	updates[SettingKeyPasswordResetEnabled] = strconv.FormatBool(settings.PasswordResetEnabled)
 	updates[SettingKeyFrontendURL] = settings.FrontendURL
 	updates[SettingKeyInvitationCodeEnabled] = strconv.FormatBool(settings.InvitationCodeEnabled)
+	updates[SettingKeyUserInvitationEnabled] = strconv.FormatBool(settings.UserInvitationEnabled)
+	updates[SettingKeyUserInvitationMaxCodesPerUser] = strconv.Itoa(clampUserInvitationSetting(settings.UserInvitationMaxCodesPerUser, UserInvitationMaxCodesPerUserMax))
+	updates[SettingKeyUserInvitationCodeValidityDays] = strconv.Itoa(clampUserInvitationSetting(settings.UserInvitationCodeValidityDays, UserInvitationCodeValidityDaysMax))
 	updates[SettingKeyTotpEnabled] = strconv.FormatBool(settings.TotpEnabled)
 	updates[SettingKeyPasskeyEnabled] = strconv.FormatBool(settings.PasskeyEnabled)
 	updates[SettingKeySessionBindingEnabled] = strconv.FormatBool(settings.SessionBindingEnabled)

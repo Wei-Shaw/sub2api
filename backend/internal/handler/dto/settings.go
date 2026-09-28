@@ -36,8 +36,11 @@ type SystemSettings struct {
 	PasswordResetEnabled                bool                     `json:"password_reset_enabled"`
 	FrontendURL                         string                   `json:"frontend_url"`
 	InvitationCodeEnabled               bool                     `json:"invitation_code_enabled"`
-	TotpEnabled                         bool                     `json:"totp_enabled"`                   // TOTP 双因素认证
-	TotpEncryptionKeyConfigured         bool                     `json:"totp_encryption_key_configured"` // TOTP 加密密钥是否已配置
+	UserInvitationEnabled               bool                     `json:"user_invitation_enabled"`            // 已注册用户可自助生成邀请码
+	UserInvitationMaxCodesPerUser       int                      `json:"user_invitation_max_codes_per_user"` // 每人可邀请次数（0=不限）
+	UserInvitationCodeValidityDays      int                      `json:"user_invitation_code_validity_days"` // 用户邀请码有效期（天，0=永不过期）
+	TotpEnabled                         bool                     `json:"totp_enabled"`                       // TOTP 双因素认证
+	TotpEncryptionKeyConfigured         bool                     `json:"totp_encryption_key_configured"`     // TOTP 加密密钥是否已配置
 	PasskeyEnabled                      bool                     `json:"passkey_enabled"`
 	PasskeyConfigured                   bool                     `json:"passkey_configured"`
 	PasskeyRPID                         string                   `json:"passkey_rp_id"`
@@ -368,6 +371,7 @@ type PublicSettings struct {
 	PromoCodeEnabled                    bool                     `json:"promo_code_enabled"`
 	PasswordResetEnabled                bool                     `json:"password_reset_enabled"`
 	InvitationCodeEnabled               bool                     `json:"invitation_code_enabled"`
+	UserInvitationEnabled               bool                     `json:"user_invitation_enabled"`
 	TotpEnabled                         bool                     `json:"totp_enabled"` // TOTP 双因素认证
 	PasskeyEnabled                      bool                     `json:"passkey_enabled"`
 	LoginAgreementEnabled               bool                     `json:"login_agreement_enabled"`

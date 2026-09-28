@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"reflect"
@@ -31,11 +32,14 @@ type UpdateSettingsRequest struct {
 	PasswordResetEnabled                bool                         `json:"password_reset_enabled"`
 	FrontendURL                         string                       `json:"frontend_url"`
 	InvitationCodeEnabled               bool                         `json:"invitation_code_enabled"`
-	TotpEnabled                         bool                         `json:"totp_enabled"`             // TOTP 双因素认证
-	PasskeyEnabled                      *bool                        `json:"passkey_enabled"`          // Passkey 登录（省略=保持现值）
-	SessionBindingEnabled               *bool                        `json:"session_binding_enabled"`  // 会话 IP/UA 绑定（省略=保持现值）
-	StepUpEnabled                       *bool                        `json:"step_up_enabled"`          // 敏感操作 step-up 2FA（省略=保持现值）
-	AuditLogRetentionDays               int                          `json:"audit_log_retention_days"` // 审计日志保留天数
+	UserInvitationEnabled               *bool                        `json:"user_invitation_enabled"`            // 用户自助邀请开关（省略=保持现值）
+	UserInvitationMaxCodesPerUser       *int                         `json:"user_invitation_max_codes_per_user"` // 每人可邀请次数（省略=保持现值）
+	UserInvitationCodeValidityDays      *int                         `json:"user_invitation_code_validity_days"` // 邀请码有效期天数（省略=保持现值）
+	TotpEnabled                         bool                         `json:"totp_enabled"`                       // TOTP 双因素认证
+	PasskeyEnabled                      *bool                        `json:"passkey_enabled"`                    // Passkey 登录（省略=保持现值）
+	SessionBindingEnabled               *bool                        `json:"session_binding_enabled"`            // 会话 IP/UA 绑定（省略=保持现值）
+	StepUpEnabled                       *bool                        `json:"step_up_enabled"`                    // 敏感操作 step-up 2FA（省略=保持现值）
+	AuditLogRetentionDays               int                          `json:"audit_log_retention_days"`           // 审计日志保留天数
 	LoginAgreementEnabled               bool                         `json:"login_agreement_enabled"`
 	LoginAgreementMode                  string                       `json:"login_agreement_mode"`
 	LoginAgreementUpdatedAt             string                       `json:"login_agreement_updated_at"`
@@ -523,6 +527,26 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 	passkeyEnabled := previousSettings.PasskeyEnabled
 	if req.PasskeyEnabled != nil {
 		passkeyEnabled = *req.PasskeyEnabled
+	}
+	userInvitationEnabled := previousSettings.UserInvitationEnabled
+	if req.UserInvitationEnabled != nil {
+		userInvitationEnabled = *req.UserInvitationEnabled
+	}
+	userInvitationMaxCodesPerUser := previousSettings.UserInvitationMaxCodesPerUser
+	if req.UserInvitationMaxCodesPerUser != nil {
+		if *req.UserInvitationMaxCodesPerUser < 0 || *req.UserInvitationMaxCodesPerUser > service.UserInvitationMaxCodesPerUserMax {
+			response.BadRequest(c, fmt.Sprintf("user_invitation_max_codes_per_user must be between 0 and %d", service.UserInvitationMaxCodesPerUserMax))
+			return
+		}
+		userInvitationMaxCodesPerUser = *req.UserInvitationMaxCodesPerUser
+	}
+	userInvitationCodeValidityDays := previousSettings.UserInvitationCodeValidityDays
+	if req.UserInvitationCodeValidityDays != nil {
+		if *req.UserInvitationCodeValidityDays < 0 || *req.UserInvitationCodeValidityDays > service.UserInvitationCodeValidityDaysMax {
+			response.BadRequest(c, fmt.Sprintf("user_invitation_code_validity_days must be between 0 and %d", service.UserInvitationCodeValidityDaysMax))
+			return
+		}
+		userInvitationCodeValidityDays = *req.UserInvitationCodeValidityDays
 	}
 	registrationEmailDomainQuotaEnabled := previousSettings.RegistrationEmailDomainQuotaEnabled
 	if req.RegistrationEmailDomainQuotaEnabled != nil {
@@ -1522,6 +1546,9 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		PasswordResetEnabled:                req.PasswordResetEnabled,
 		FrontendURL:                         req.FrontendURL,
 		InvitationCodeEnabled:               req.InvitationCodeEnabled,
+		UserInvitationEnabled:               userInvitationEnabled,
+		UserInvitationMaxCodesPerUser:       userInvitationMaxCodesPerUser,
+		UserInvitationCodeValidityDays:      userInvitationCodeValidityDays,
 		TotpEnabled:                         req.TotpEnabled,
 		PasskeyEnabled:                      passkeyEnabled,
 		SessionBindingEnabled:               sessionBindingEnabled,
@@ -2178,6 +2205,9 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		PasswordResetEnabled:                                   updatedSettings.PasswordResetEnabled,
 		FrontendURL:                                            updatedSettings.FrontendURL,
 		InvitationCodeEnabled:                                  updatedSettings.InvitationCodeEnabled,
+		UserInvitationEnabled:                                  updatedSettings.UserInvitationEnabled,
+		UserInvitationMaxCodesPerUser:                          updatedSettings.UserInvitationMaxCodesPerUser,
+		UserInvitationCodeValidityDays:                         updatedSettings.UserInvitationCodeValidityDays,
 		TotpEnabled:                                            updatedSettings.TotpEnabled,
 		TotpEncryptionKeyConfigured:                            h.settingService.IsTotpEncryptionKeyConfigured(),
 		PasskeyEnabled:                                         updatedSettings.PasskeyEnabled,

@@ -700,6 +700,52 @@ export default {
     }
   },
 
+  userInvitation: {
+    title: 'Invite Friends',
+    description: 'Generate one-time invitation codes so friends can register',
+    loadFailed: 'Failed to load invitations',
+    createFailed: 'Failed to generate invitation code',
+    created: 'Invitation code generated',
+    generate: 'Generate Invitation',
+    generating: 'Generating...',
+    disabled: 'Inviting new users is currently disabled by the administrator.',
+    limitReached: 'You have reached your invitation limit.',
+    stats: {
+      used: 'Invitations Used',
+      remaining: 'Remaining',
+      unlimited: 'Unlimited',
+      validity: 'Code Validity',
+      validityDays: '{days} days',
+      neverExpires: 'Never expires',
+    },
+    tips: {
+      title: 'How it works',
+      line1: 'Each invitation code can be used to register exactly one account.',
+      line2: 'Share the code or the invitation link with the person you want to invite.',
+      line3: 'Unused codes that expire free up your invitation slot.',
+    },
+    list: {
+      title: 'My Invitation Codes',
+      empty: 'No invitation codes yet',
+      copyCode: 'Copy code',
+      copyLink: 'Copy link',
+      codeCopied: 'Invitation code copied',
+      linkCopied: 'Invitation link copied',
+      columns: {
+        code: 'Code',
+        status: 'Status',
+        invitee: 'Invitee',
+        createdAt: 'Created',
+        expiresAt: 'Expires',
+        actions: 'Actions',
+      },
+      status: {
+        unused: 'Pending',
+        used: 'Used',
+        expired: 'Expired',
+      },
+    },
+  },
   affiliate: {
     title: 'Affiliate Rebates',
     description: 'Invite new users and convert your rebate quota into account balance',

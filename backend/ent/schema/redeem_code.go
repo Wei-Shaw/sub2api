@@ -72,6 +72,10 @@ func (RedeemCode) Fields() []ent.Field {
 			Nillable(),
 		field.Int("validity_days").
 			Default(30),
+		// created_by 记录用户自助生成邀请码时的生成者；管理员生成的码为 NULL。
+		field.Int64("created_by").
+			Optional().
+			Nillable(),
 	}
 }
 
@@ -95,5 +99,6 @@ func (RedeemCode) Indexes() []ent.Index {
 		index.Fields("used_by"),
 		index.Fields("group_id"),
 		index.Fields("expires_at"),
+		index.Fields("created_by"),
 	}
 }

@@ -1581,6 +1581,60 @@
                 </div>
                 <Toggle v-model="form.invitation_code_enabled" />
               </div>
+
+              <!-- User Invitation - Only meaningful in invitation code mode -->
+              <div
+                v-if="form.invitation_code_enabled"
+                class="space-y-4 border-t border-gray-100 pt-4 dark:border-dark-700"
+              >
+                <div class="flex items-center justify-between">
+                  <div>
+                    <label class="font-medium text-gray-900 dark:text-white">{{
+                      t("admin.settings.registration.userInvitation")
+                    }}</label>
+                    <p class="text-sm text-gray-500 dark:text-gray-400">
+                      {{ t("admin.settings.registration.userInvitationHint") }}
+                    </p>
+                  </div>
+                  <Toggle v-model="form.user_invitation_enabled" />
+                </div>
+                <template v-if="form.user_invitation_enabled">
+                  <div class="flex items-center justify-between">
+                    <div>
+                      <label class="font-medium text-gray-900 dark:text-white">{{
+                        t("admin.settings.registration.userInvitationMaxCodes")
+                      }}</label>
+                      <p class="text-sm text-gray-500 dark:text-gray-400">
+                        {{ t("admin.settings.registration.userInvitationMaxCodesHint") }}
+                      </p>
+                    </div>
+                    <input
+                      v-model.number="form.user_invitation_max_codes_per_user"
+                      type="number"
+                      min="0"
+                      max="10000"
+                      class="input w-28 text-right"
+                    />
+                  </div>
+                  <div class="flex items-center justify-between">
+                    <div>
+                      <label class="font-medium text-gray-900 dark:text-white">{{
+                        t("admin.settings.registration.userInvitationValidityDays")
+                      }}</label>
+                      <p class="text-sm text-gray-500 dark:text-gray-400">
+                        {{ t("admin.settings.registration.userInvitationValidityDaysHint") }}
+                      </p>
+                    </div>
+                    <input
+                      v-model.number="form.user_invitation_code_validity_days"
+                      type="number"
+                      min="0"
+                      max="3650"
+                      class="input w-28 text-right"
+                    />
+                  </div>
+                </template>
+              </div>
               <!-- Password Reset - Only show when email verification is enabled -->
               <div
                 v-if="form.email_verify_enabled"
@@ -9741,6 +9795,9 @@ const form = reactive<SettingsForm>({
   registration_email_domain_quota_enabled: false,
   promo_code_enabled: true,
   invitation_code_enabled: false,
+  user_invitation_enabled: false,
+  user_invitation_max_codes_per_user: 5,
+  user_invitation_code_validity_days: 7,
   password_reset_enabled: false,
   totp_enabled: false,
   totp_encryption_key_configured: false,
@@ -11423,6 +11480,18 @@ async function saveSettings() {
         form.registration_email_domain_quota_enabled,
       promo_code_enabled: form.promo_code_enabled,
       invitation_code_enabled: form.invitation_code_enabled,
+      user_invitation_enabled: form.user_invitation_enabled,
+      // 清空数字框时 v-model.number 会得到空串；非法值回退默认值，避免整次保存被拒绝。
+      user_invitation_max_codes_per_user: Number.isFinite(
+        form.user_invitation_max_codes_per_user,
+      )
+        ? form.user_invitation_max_codes_per_user
+        : 5,
+      user_invitation_code_validity_days: Number.isFinite(
+        form.user_invitation_code_validity_days,
+      )
+        ? form.user_invitation_code_validity_days
+        : 7,
       password_reset_enabled: form.password_reset_enabled,
       totp_enabled: form.totp_enabled,
       passkey_enabled: form.passkey_enabled,

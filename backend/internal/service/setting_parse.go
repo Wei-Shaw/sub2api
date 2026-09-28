@@ -218,6 +218,11 @@ func (s *SettingService) InitializeDefaultSettings(ctx context.Context) error {
 		// 风控中心功能（默认关闭，显式启用）
 		SettingKeyRiskControlEnabled: "false",
 
+		// 用户自助邀请（默认关闭，显式启用）
+		SettingKeyUserInvitationEnabled:          "false",
+		SettingKeyUserInvitationMaxCodesPerUser:  strconv.Itoa(UserInvitationMaxCodesPerUserDefault),
+		SettingKeyUserInvitationCodeValidityDays: strconv.Itoa(UserInvitationCodeValidityDaysDefault),
+
 		// cyber 会话屏蔽（默认关闭，TTL 默认 3600s）
 		SettingKeyCyberSessionBlockEnabled:    "false",
 		SettingKeyCyberSessionBlockTTLSeconds: "3600",
@@ -317,6 +322,7 @@ func (s *SettingService) parseSettings(settings map[string]string) *SystemSettin
 			forwardedClientIPHeaders = parsed
 		}
 	}
+	userInvitation := userInvitationConfigFromSettings(settings)
 	result := &SystemSettings{
 		RegistrationEnabled:                    settings[SettingKeyRegistrationEnabled] == "true",
 		EmailVerifyEnabled:                     emailVerifyEnabled,
@@ -326,6 +332,9 @@ func (s *SettingService) parseSettings(settings map[string]string) *SystemSettin
 		PasswordResetEnabled:                   emailVerifyEnabled && settings[SettingKeyPasswordResetEnabled] == "true",
 		FrontendURL:                            settings[SettingKeyFrontendURL],
 		InvitationCodeEnabled:                  settings[SettingKeyInvitationCodeEnabled] == "true",
+		UserInvitationEnabled:                  userInvitation.Enabled,
+		UserInvitationMaxCodesPerUser:          userInvitation.MaxCodesPerUser,
+		UserInvitationCodeValidityDays:         userInvitation.CodeValidityDays,
 		TotpEnabled:                            settings[SettingKeyTotpEnabled] == "true",
 		PasskeyEnabled:                         s.passkeySettingEnabled(settings),
 		SessionBindingEnabled:                  settings[SettingKeySessionBindingEnabled] == "true", // 默认关闭

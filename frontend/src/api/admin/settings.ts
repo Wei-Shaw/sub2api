@@ -407,6 +407,9 @@ export interface SystemSettings {
   password_reset_enabled: boolean;
   frontend_url: string;
   invitation_code_enabled: boolean;
+  user_invitation_enabled: boolean; // 已注册用户可自助生成邀请码
+  user_invitation_max_codes_per_user: number; // 每人可邀请次数（0=不限）
+  user_invitation_code_validity_days: number; // 用户邀请码有效期（天，0=永不过期）
   totp_enabled: boolean; // TOTP 双因素认证
   totp_encryption_key_configured: boolean; // TOTP 加密密钥是否已配置
   passkey_enabled: boolean;
@@ -761,6 +764,9 @@ export interface UpdateSettingsRequest {
   password_reset_enabled?: boolean;
   frontend_url?: string;
   invitation_code_enabled?: boolean;
+  user_invitation_enabled?: boolean;
+  user_invitation_max_codes_per_user?: number;
+  user_invitation_code_validity_days?: number;
   totp_enabled?: boolean; // TOTP 双因素认证
   passkey_enabled?: boolean;
   session_binding_enabled?: boolean; // 会话 IP/UA 绑定

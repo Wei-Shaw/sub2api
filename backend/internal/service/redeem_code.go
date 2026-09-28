@@ -21,6 +21,9 @@ type RedeemCode struct {
 	GroupID      *int64
 	ValidityDays int
 
+	// CreatedBy 用户自助生成邀请码时的生成者；管理员生成的码为 nil。
+	CreatedBy *int64
+
 	User  *User
 	Group *Group
 }

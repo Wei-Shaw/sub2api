@@ -165,6 +165,14 @@ export default {
         promoCodeHint: 'Allow users to use promo codes during registration',
         invitationCode: 'Invitation Code Registration',
         invitationCodeHint: 'When enabled, users must enter a valid invitation code to register',
+        userInvitation: 'User Invitations',
+        userInvitationHint:
+          'Allow registered users to generate one-time invitation codes and links so new users can join by invitation only (requires registration and invitation code registration to be enabled)',
+        userInvitationMaxCodes: 'Invitations per User',
+        userInvitationMaxCodesHint:
+          'Maximum number of invitations each user can hold (used + pending). Expired unused codes free their slot. 0 = unlimited',
+        userInvitationValidityDays: 'Invitation Validity (days)',
+        userInvitationValidityDaysHint: 'How long a user-generated invitation code stays valid. 0 = never expires',
         passwordReset: 'Password Reset',
         passwordResetHint: 'Allow users to reset their password via email',
         frontendUrl: 'Frontend URL',

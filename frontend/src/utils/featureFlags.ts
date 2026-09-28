@@ -134,6 +134,11 @@ export const FeatureFlags = {
     mode: 'opt-in',
     label: 'Affiliate',
   }),
+  userInvitation: defineFlag({
+    key: 'user_invitation_enabled',
+    mode: 'opt-in',
+    label: 'User Invitation',
+  }),
 } as const
 
 export type RegisteredFeatureFlag = keyof typeof FeatureFlags

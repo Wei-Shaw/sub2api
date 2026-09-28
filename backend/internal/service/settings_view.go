@@ -20,6 +20,9 @@ type SystemSettings struct {
 	PasswordResetEnabled                bool
 	FrontendURL                         string
 	InvitationCodeEnabled               bool
+	UserInvitationEnabled               bool // 已注册用户可自助生成邀请码
+	UserInvitationMaxCodesPerUser       int  // 每人可邀请次数（0=不限）
+	UserInvitationCodeValidityDays      int  // 用户邀请码有效期（天，0=永不过期）
 	TotpEnabled                         bool // TOTP 双因素认证
 	PasskeyEnabled                      bool // Passkey 登录
 	SessionBindingEnabled               bool // 会话 IP/UA 绑定（变更即失效）
@@ -334,6 +337,7 @@ type PublicSettings struct {
 	PromoCodeEnabled                    bool
 	PasswordResetEnabled                bool
 	InvitationCodeEnabled               bool
+	UserInvitationEnabled               bool // 用户自助邀请是否实际可用
 	TotpEnabled                         bool // TOTP 双因素认证
 	PasskeyEnabled                      bool
 	LoginAgreementEnabled               bool

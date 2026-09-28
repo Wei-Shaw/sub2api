@@ -548,6 +548,11 @@ watch(validationToastMessage, (value, previousValue) => {
   }
 })
 
+function firstQueryValue(value: unknown): string {
+  const raw = Array.isArray(value) ? value[0] : value
+  return typeof raw === 'string' ? raw.trim() : ''
+}
+
 function syncAffiliateReferralCode(): string {
   const code = resolveAffiliateReferralCode(route.query.aff, route.query.aff_code)
   if (code) {
@@ -597,6 +602,14 @@ onMounted(async () => {
         formData.promo_code = promoParam
         // Validate the promo code from URL
         await validatePromoCodeDebounced(promoParam)
+      }
+    }
+    // Read invitation code from URL parameter (user invite links) only if invitation code is enabled
+    if (invitationCodeEnabled.value) {
+      const invitationParam = firstQueryValue(route.query.invitation_code)
+      if (invitationParam) {
+        formData.invitation_code = invitationParam
+        await validateInvitationCodeDebounced(invitationParam)
       }
     }
     syncAffiliateReferralCode()
