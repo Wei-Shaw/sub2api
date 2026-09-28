@@ -1402,6 +1402,195 @@ export async function updateStreamTimeoutSettings(
   return data;
 }
 
+// ==================== Model Downgrade Guard Settings ====================
+
+/**
+ * A single downgrade pair: the model sent upstream -> the model the upstream
+ * reported in a successful response.
+ */
+export interface ModelDowngradePair {
+  sent_model: string;
+  response_model: string;
+}
+
+/**
+ * Action taken once an account hits the threshold.
+ * - "model_block": block only this model on the account (default)
+ * - "temp_unsched": make the whole account temporarily unschedulable
+ * - "none": observation mode, record only
+ */
+export type ModelDowngradeGuardAction = "model_block" | "temp_unsched" | "none";
+
+/**
+ * Model downgrade guard settings interface
+ */
+export interface ModelDowngradeGuardSettings {
+  enabled: boolean;
+  action: ModelDowngradeGuardAction;
+  pairs: ModelDowngradePair[];
+  threshold_count: number;
+  threshold_window_minutes: number;
+  block_hours: number;
+  max_blocked_ratio: number;
+}
+
+/**
+ * Get model downgrade guard settings
+ * @returns Model downgrade guard settings
+ */
+export async function getModelDowngradeGuardSettings(): Promise<ModelDowngradeGuardSettings> {
+  const { data } = await apiClient.get<ModelDowngradeGuardSettings>(
+    "/admin/settings/model-downgrade-guard",
+  );
+  return data;
+}
+
+/**
+ * Update model downgrade guard settings
+ * @param settings - Model downgrade guard settings to update
+ * @returns Updated settings (normalized by the backend)
+ */
+export async function updateModelDowngradeGuardSettings(
+  settings: ModelDowngradeGuardSettings,
+): Promise<ModelDowngradeGuardSettings> {
+  const { data } = await apiClient.put<ModelDowngradeGuardSettings>(
+    "/admin/settings/model-downgrade-guard",
+    settings,
+  );
+  return data;
+}
+
+/** Scope of one row: a real block, or the pseudo-scope used by observation records */
+export type ModelDowngradeBlockedScope = "account" | "model" | "observed";
+
+/**
+ * Row status.
+ * - "blocked": the account (or model) really is blocked
+ * - "observed": observation mode (action=none) reached the threshold
+ * - "ratio_capped": the blocked-ratio cap refused the block
+ */
+export type ModelDowngradeBlockedStatus =
+  | "blocked"
+  | "observed"
+  | "ratio_capped";
+
+/**
+ * One account (or account + model) currently blocked by the model downgrade guard,
+ * or one "would have been blocked" observation record.
+ */
+export interface ModelDowngradeBlockedAccount {
+  account_id: number;
+  account_name: string;
+  /** "account" = whole account blocked, "model" = only this model blocked, "observed" = observation record */
+  scope: ModelDowngradeBlockedScope;
+  status: ModelDowngradeBlockedStatus;
+  /** "dry_run" | "ratio_cap", only set on observation rows */
+  cause?: string;
+  /** Set when scope is "model" or "observed": the model sent upstream */
+  model?: string;
+  sent_model: string;
+  response_model: string;
+  trigger_count: number;
+  trigger_threshold: number;
+  trigger_window_minutes: number;
+  /** RFC3339, omitted when unknown */
+  triggered_at?: string;
+  /** RFC3339. Recovery time for real blocks, record expiry for observation rows */
+  until: string;
+  /** Only set when status === "ratio_capped" */
+  blocked?: number;
+  /** Only set when status === "ratio_capped" */
+  total?: number;
+  /** Only set when status === "ratio_capped" */
+  max_blocked_ratio?: number;
+}
+
+/**
+ * Summary shown above the blocked-accounts table.
+ * `observed` counts observation records and is deliberately kept out of `blocked`,
+ * so the displayed ratio only reflects real blocks.
+ */
+export interface ModelDowngradeBlockedSummary {
+  blocked: number;
+  observed: number;
+  total_active: number;
+  max_blocked_ratio: number;
+}
+
+export interface ModelDowngradeBlockedResponse {
+  items: ModelDowngradeBlockedAccount[];
+  summary: ModelDowngradeBlockedSummary;
+}
+
+/**
+ * List the accounts currently blocked by the model downgrade guard, plus observation records
+ * @returns Blocked accounts plus the ratio-cap summary
+ */
+export async function getModelDowngradeGuardBlocked(): Promise<ModelDowngradeBlockedResponse> {
+  const { data } = await apiClient.get<ModelDowngradeBlockedResponse>(
+    "/admin/settings/model-downgrade-guard/blocked",
+  );
+  return data;
+}
+
+export interface ModelDowngradeBlockedRelease {
+  account_id: number;
+  scope: ModelDowngradeBlockedScope;
+  model?: string;
+}
+
+/**
+ * Release one downgrade-guard block early, or drop one observation record.
+ *
+ * Deliberately not the generic reset-temp-unschedulable endpoint: that one also
+ * wipes the whole model_rate_limits map and would clear unrelated cooldowns.
+ * @param accountID Blocked account
+ * @param scope "account" clears the temporary block, "model" clears one model only,
+ *              "observed" drops the observation record (nothing in the database changes)
+ * @param model Required when scope is "model" or "observed"
+ */
+export async function releaseModelDowngradeGuardBlocked(
+  accountID: number,
+  scope: ModelDowngradeBlockedScope,
+  model?: string,
+): Promise<ModelDowngradeBlockedRelease> {
+  const { data } = await apiClient.delete<ModelDowngradeBlockedRelease>(
+    `/admin/settings/model-downgrade-guard/blocked/${accountID}`,
+    { params: { scope, ...(scope === "account" ? {} : { model }) } },
+  );
+  return data;
+}
+
+export interface ModelDowngradeBlockedApply {
+  account_id: number;
+  scope: "account" | "model";
+  model?: string;
+  /** RFC3339 */
+  until: string;
+}
+
+/**
+ * Turn one observation record into a real block right away.
+ *
+ * Switching the guard action never retro-applies old observation records, so this
+ * is the manual path. The action follows the current configuration; observation
+ * mode blocks only this model. Rejected with HTTP 409 when the blocked-ratio cap
+ * refuses the block or the account is already blocked.
+ * @param accountID Account to block
+ * @param model The model sent upstream, as shown on the observation row
+ */
+export async function applyModelDowngradeGuardBlocked(
+  accountID: number,
+  model: string,
+): Promise<ModelDowngradeBlockedApply> {
+  const { data } = await apiClient.post<ModelDowngradeBlockedApply>(
+    `/admin/settings/model-downgrade-guard/blocked/${accountID}/apply`,
+    null,
+    { params: { model } },
+  );
+  return data;
+}
+
 // ==================== Rectifier Settings ====================
 
 /**
@@ -1594,6 +1783,11 @@ export const settingsAPI = {
   updatePanelRateLimitSettings,
   getStreamTimeoutSettings,
   updateStreamTimeoutSettings,
+  getModelDowngradeGuardSettings,
+  updateModelDowngradeGuardSettings,
+  getModelDowngradeGuardBlocked,
+  releaseModelDowngradeGuardBlocked,
+  applyModelDowngradeGuardBlocked,
   getRectifierSettings,
   updateRectifierSettings,
   getBetaPolicySettings,

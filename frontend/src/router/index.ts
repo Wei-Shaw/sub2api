@@ -526,6 +526,18 @@ const routes: RouteRecordRaw[] = [
     }
   },
   {
+    path: '/admin/model-downgrade-guard',
+    name: 'AdminModelDowngradeGuard',
+    component: () => import('@/views/admin/ModelDowngradeGuardView.vue'),
+    meta: {
+      requiresAuth: true,
+      requiresAdmin: true,
+      title: 'Model Downgrade Guard',
+      titleKey: 'admin.modelDowngradeGuard.title',
+      descriptionKey: 'admin.modelDowngradeGuard.description'
+    }
+  },
+  {
     path: '/admin/plugins',
     name: 'AdminPlugins',
     component: () => import('@/views/admin/PluginsView.vue'),

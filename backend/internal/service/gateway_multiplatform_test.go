@@ -3586,3 +3586,19 @@ func TestGatewayService_SelectAccountForModelWithPlatform_RoutedOpenAIGroup(t *t
 	require.NotNil(t, acc)
 	require.Equal(t, int64(2), acc.ID, "routed account must win over the higher-priority unrouted one")
 }
+
+func (*mockAccountRepoForPlatform) CountOpenAIModelDowngradeBlocked(context.Context, time.Time) (int64, int64, error) {
+	return 0, 0, nil
+}
+
+func (*mockAccountRepoForPlatform) ListOpenAIModelDowngradeBlocked(context.Context, time.Time) ([]ModelDowngradeBlockedAccount, error) {
+	return nil, nil
+}
+
+func (*mockAccountRepoForPlatform) ApplyOpenAIModelDowngradeBlock(context.Context, int64, string, string, time.Time, string, float64, time.Time) (ModelDowngradeBlockApplyResult, error) {
+	return ModelDowngradeBlockApplyResult{}, nil
+}
+
+func (*mockAccountRepoForPlatform) ReleaseOpenAIModelDowngradeBlock(context.Context, int64, string, string) (bool, error) {
+	return false, nil
+}
