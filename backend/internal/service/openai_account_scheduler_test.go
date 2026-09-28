@@ -3813,3 +3813,12 @@ func TestOpenAIGatewayService_SelectAccountWithScheduler_SubscriptionPriorityWai
 	require.Equal(t, int64(38011), selection.WaitPlan.AccountID)
 	require.Equal(t, openAIAccountScheduleLayerLoadBalance, decision.Layer)
 }
+
+// 通用路径成功粘性偏好：本替身不参与该用例，保持恒定 miss / 不写入。
+func (*schedulerTestGatewayCache) GetGatewayStickySuccess(context.Context, int64, string, string) (GatewayStickySuccessBinding, error) {
+	return GatewayStickySuccessBinding{}, ErrStickySessionNotFound
+}
+
+func (*schedulerTestGatewayCache) CompareAndSwapGatewayStickySuccess(context.Context, int64, string, string, GatewayStickySuccessBinding, GatewayStickySuccessBinding, time.Duration) (bool, error) {
+	return false, nil
+}

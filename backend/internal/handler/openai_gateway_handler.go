@@ -639,6 +639,9 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 	// 生图意图只影响能力路由与图片计费，不关门：混合 /v1/responses 请求的
 	// token 计费部分仍受利润门保护，独立图片/视频端点才在门外。
 	pricingCtx, pricingAt := h.gatewayService.WithOpenAIRequestPricingContext(c.Request.Context(), apiKey.GroupID)
+	if requestPlatform == service.PlatformOpenAI && !legacyCompact && !nativeV2 && previousResponseID == "" {
+		pricingCtx = h.gatewayService.BeginOpenAILegacyStickySuccess(pricingCtx, apiKey.GroupID, sessionHash, reqModel)
+	}
 	c.Request = c.Request.WithContext(pricingCtx)
 
 	for {
@@ -971,6 +974,8 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 		} else {
 			h.gatewayService.ReportOpenAIAccountScheduleResult(account, openAIAccountScheduleModel(c, account, forwardModel, requireCompact, result), openAIForwardSucceededForScheduling(result), nil)
 		}
+
+		h.gatewayService.CommitOpenAILegacyStickySuccess(c.Request.Context(), account, result)
 
 		// 使用量记录通过有界 worker 池提交，避免请求热路径创建无界 goroutine。
 		submitResponsesUsage(result)

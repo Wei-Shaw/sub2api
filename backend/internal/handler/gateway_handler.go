@@ -320,6 +320,12 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 	if platform == service.PlatformGemini {
 		fs := NewFailoverState(h.maxAccountSwitchesGemini, hasBoundSession)
 
+		// 登记粘性身份模型：成功偏好键固定用渠道映射前的客户端请求模型，不随
+		// composite 路由在调度栈内改写调度模型而换键。
+		c.Request = c.Request.WithContext(
+			service.WithGatewayStickyIdentityModel(c.Request.Context(), reqModel),
+		)
+
 		// 单账号分组提前设置 SingleAccountRetry 标记，让 Service 层首次 503 就不设模型限流标记。
 		// 避免单账号分组收到 503 (MODEL_CAPACITY_EXHAUSTED) 时设 29s 限流，导致后续请求连续快速失败。
 		if h.gatewayService.IsSingleAntigravityAccountGroup(c.Request.Context(), apiKey.GroupID) {
@@ -368,6 +374,9 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 				}
 			}
 			account := selection.Account
+			// 把调度器在有效分组上装配的成功偏好状态带到下一轮选号：整轮 failover
+			// 共用同一份 CAS expected，晚到覆盖保护才不会被中途重读削弱。
+			c.Request = c.Request.WithContext(service.ContextWithSelectionStickySuccess(c.Request.Context(), selection))
 			setOpsSelectedAccount(c, account.ID, account.Platform)
 
 			// 检查请求拦截（预热请求、SUGGESTION MODE等）
@@ -459,7 +468,7 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 			// 等待路径保持既有 eager 绑定（无门时 helper 直接绑定）；调度器已
 			// 抢槽的直达路径无门时由选号内部绑定，这里只在门下补准入后绑定。
 			if selection.ProfitGateActive() || !selection.Acquired {
-				if err := h.gatewayService.BindStickySessionAfterProfitAdmission(admissionCtx, apiKey.GroupID, sessionKey, account.ID); err != nil {
+				if err := h.gatewayService.BindStickySessionAfterProfitAdmission(admissionCtx, stickyGroupIDForSelection(selection, apiKey.GroupID), sessionKey, account.ID); err != nil {
 					reqLog.Warn("gateway.bind_sticky_session_after_profit_admission_failed", zap.Int64("account_id", account.ID), zap.Error(err))
 				}
 			}
@@ -547,6 +556,9 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 					reqLog.Warn("gateway.rpm_increment_failed", zap.Int64("account_id", account.ID), zap.Error(err))
 				}
 			}
+
+			// 成功终态：门下把成功偏好提交/续期到真正成功的账号（无门为空操作）。
+			h.gatewayService.CommitGatewayStickySuccess(c.Request.Context(), selection, account, result, err)
 
 			// 捕获请求信息（用于异步记录，避免在 goroutine 中访问 gin.Context）
 			userAgent := c.GetHeader("User-Agent")
@@ -640,6 +652,12 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 		}
 	}()
 
+	// 登记粘性身份模型：成功偏好键固定用渠道映射前的客户端请求模型。兜底分组重试
+	// 只换分组、不换请求模型，因此登记一次即可覆盖整条链。
+	c.Request = c.Request.WithContext(
+		service.WithGatewayStickyIdentityModel(c.Request.Context(), reqModel),
+	)
+
 	for {
 		fs := NewFailoverState(h.maxAccountSwitches, hasBoundSession)
 		retryWithFallback := false
@@ -699,6 +717,9 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 				}
 			}
 			account := selection.Account
+			// 把调度器在有效分组上装配的成功偏好状态带到下一轮选号：整轮 failover
+			// 共用同一份 CAS expected，晚到覆盖保护才不会被中途重读削弱。
+			c.Request = c.Request.WithContext(service.ContextWithSelectionStickySuccess(c.Request.Context(), selection))
 			setOpsSelectedAccount(c, account.ID, account.Platform)
 
 			// [DEBUG-STICKY] 打印账号选择结果
@@ -805,7 +826,7 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 			// 等待路径保持既有 eager 绑定（无门时 helper 直接绑定）；调度器已
 			// 抢槽的直达路径无门时由选号内部绑定，这里只在门下补准入后绑定。
 			if selection.ProfitGateActive() || !selection.Acquired {
-				if err := h.gatewayService.BindStickySessionAfterProfitAdmission(admissionCtx, currentAPIKey.GroupID, sessionKey, account.ID); err != nil {
+				if err := h.gatewayService.BindStickySessionAfterProfitAdmission(admissionCtx, stickyGroupIDForSelection(selection, currentAPIKey.GroupID), sessionKey, account.ID); err != nil {
 					reqLog.Warn("gateway.bind_sticky_session_after_profit_admission_failed", zap.Int64("account_id", account.ID), zap.Error(err))
 				}
 			}
@@ -1095,12 +1116,15 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 			}
 
 			// 绑定粘性会话（成功转发后绑定/刷新）
-			// - 无现有绑定（首次请求）：创建绑定
-			// - 选中账号与粘性账号一致：刷新 TTL
-			// - 粘性账号因负载/RPM 被跳过、选中了其他账号：不覆盖原绑定，
-			//   下次请求粘性账号恢复后仍可命中
-			if sessionKey != "" && (sessionBoundAccountID == 0 || sessionBoundAccountID == account.ID) {
-				if err := h.gatewayService.BindStickySession(c.Request.Context(), currentAPIKey.GroupID, sessionKey, account.ID); err != nil {
+			// - 成功偏好已装配：改由成功提交维护，按 CAS 换 revision 并把旧键
+			//   同步到本次成功账号；请求开始的绑定快照不再参与判定，因此经
+			//   failover 成功的替代账号可以直接接替。
+			// - 未装配：保持既有行为——无现有绑定则创建，选中账号与粘性账号
+			//   一致则刷新 TTL，粘性账号被跳过而选中其他账号时不覆盖原绑定。
+			if selection.StickySuccessActive() {
+				h.gatewayService.CommitGatewayStickySuccess(c.Request.Context(), selection, account, result, err)
+			} else if sessionKey != "" && (sessionBoundAccountID == 0 || sessionBoundAccountID == account.ID) {
+				if err := h.gatewayService.BindStickySession(c.Request.Context(), stickyGroupIDForSelection(selection, currentAPIKey.GroupID), sessionKey, account.ID); err != nil {
 					reqLog.Warn("gateway.bind_sticky_session_failed", zap.Int64("account_id", account.ID), zap.Error(err))
 				}
 			}
@@ -2572,4 +2596,16 @@ func (h *GatewayHandler) getUserMsgQueueMode(account *service.Account, parsed *s
 		mode = h.cfg.Gateway.UserMessageQueue.GetEffectiveMode()
 	}
 	return mode
+}
+
+// stickyGroupIDForSelection 返回粘性写入应当使用的分组：优先用调度真实生效的
+// 分组（Claude Code 限制可能在调度器内部把入口分组换成降级分组），调度侧没能
+// 确定时回退调用方传入的入口分组。
+//
+// 它只影响粘性键的归属，不改变计费分组、售价/利润阈值与权限检查。
+func stickyGroupIDForSelection(selection *service.AccountSelectionResult, entryGroupID *int64) *int64 {
+	if effective, ok := selection.EffectiveGroupID(); ok {
+		return &effective
+	}
+	return entryGroupID
 }

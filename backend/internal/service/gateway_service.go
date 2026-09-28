@@ -481,6 +481,17 @@ type GatewayCache interface {
 	// Delete sticky session binding, used to proactively clean up when account becomes unavailable
 	DeleteSessionAccountID(ctx context.Context, groupID int64, sessionHash string) error
 
+	// GetGatewayStickySuccess 读取分组/会话/模型三维隔离的成功粘性偏好；
+	// 无偏好时返回 ErrStickySessionNotFound，与旧绑定读取的 miss 语义一致。
+	// Get the group/session/model scoped success preference.
+	GetGatewayStickySuccess(ctx context.Context, groupID int64, sessionHash, model string) (GatewayStickySuccessBinding, error)
+	// CompareAndSwapGatewayStickySuccess 仅在当前值与 expected 逐字相同时写入
+	// next 并重置 TTL；expected 为零值表示要求该键当前不存在。晚完成的旧请求
+	// 因此无法覆盖另一个请求已提交的更新偏好。
+	// Compare-and-swap the success preference so a late completion cannot
+	// overwrite a newer committed preference.
+	CompareAndSwapGatewayStickySuccess(ctx context.Context, groupID int64, sessionHash, model string, expected, next GatewayStickySuccessBinding, ttl time.Duration) (bool, error)
+
 	// Grok async video billing snapshot (create → status success).
 	// SetGrokVideoPendingBilling stores create-time model/duration/resolution for status billing.
 	SetGrokVideoPendingBilling(ctx context.Context, key string, payload []byte, ttl time.Duration) error
@@ -586,6 +597,36 @@ type AccountSelectionResult struct {
 	// 局部 ctx 上，handler 必须经 ContextWithSelectionProfitGate 重放后才能在
 	// 调度栈之外做抢槽后终检与准入后粘性绑定。
 	profitGate *openAIProfitControlGate
+	// effectiveGroupID 是本次选号真实生效的分组：调度器可能因 Claude Code 限制
+	// 把入口分组换成降级分组，此后账号候选、利润门与粘性键都按它来。
+	// 0 表示未记录（无分组请求）。
+	effectiveGroupID int64
+	// stickySuccess 是调度器在有效分组上装配的成功偏好状态（未装配为 nil）。
+	// handler 靠它把候选读取、终检补绑与成功提交统一到同一个分组和同一份
+	// CAS expected 上，不必自己推断降级后的分组。
+	stickySuccess *gatewayStickySuccessState
+}
+
+// EffectiveGroupID 返回本次选号真实生效的分组；第二个返回值为 false 表示调度
+// 侧没能确定分组（无分组请求），调用方此时不得据此否定任何写入。
+func (r *AccountSelectionResult) EffectiveGroupID() (int64, bool) {
+	if r == nil || r.effectiveGroupID <= 0 {
+		return 0, false
+	}
+	return r.effectiveGroupID, true
+}
+
+// StickySuccessActive 报告本次选号是否由成功偏好接管。handler 用它区分「按成功
+// 维护粘性」与「保持既有行为」两条出口。
+func (r *AccountSelectionResult) StickySuccessActive() bool {
+	return r != nil && r.stickySuccess != nil
+}
+
+func (r *AccountSelectionResult) stickySuccessState() *gatewayStickySuccessState {
+	if r == nil {
+		return nil
+	}
+	return r.stickySuccess
 }
 
 // ProfitGateActive 报告本次选号是否处于利润门之下。
@@ -975,12 +1016,21 @@ func (s *GatewayService) bindGatewayStickySessionDuringSelection(ctx context.Con
 
 // BindStickySessionAfterProfitAdmission records a terminally admitted
 // account. Without a profit gate it preserves the pre-existing eager binding
-// behavior at the handler bind points. With a gate it never replaces a
-// different binding that already exists: a temporarily ineligible sticky
-// account remains bound and automatically becomes eligible again if its
-// account rate recovers.
+// behavior at the handler bind points.
+//
+// 当本请求的粘性由成功偏好接管（handler 调用过 BeginGatewayStickySuccess）时，
+// 它是空操作：终检通过只说明这个账号此刻合格，上游请求还没有发出，据此建立或
+// 覆盖绑定会让一个从未成功的账号被反复优先选中；这类会话的粘性改由
+// CommitGatewayStickySuccess 在确认成功后维护。
+//
+// 没有接入成功偏好的调用方（OpenAI 家族自带调度器的入口、count_tokens）逐字
+// 保持原来的门下语义：不替换已经存在的其他绑定。门下选号内部本就不做 eager
+// 绑定，终检绑定是这些入口唯一的写入点，不能一并改掉。
 func (s *GatewayService) BindStickySessionAfterProfitAdmission(ctx context.Context, groupID *int64, sessionHash string, accountID int64) error {
 	if sessionHash == "" || accountID <= 0 || s.cache == nil {
+		return nil
+	}
+	if gatewayStickySuccessManaged(ctx, groupID, sessionHash) {
 		return nil
 	}
 	if !gatewayProfitControlGateActive(ctx) {

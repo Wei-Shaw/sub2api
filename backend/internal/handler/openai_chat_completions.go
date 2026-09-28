@@ -159,6 +159,9 @@ func (h *OpenAIGatewayHandler) ChatCompletions(c *gin.Context) {
 
 	// 分组利润控制：chat completions 文本入口请求级装门并固定 pricingAt。
 	ccPricingCtx, pricingAt := h.gatewayService.WithOpenAIRequestPricingContext(c.Request.Context(), apiKey.GroupID)
+	if requestPlatform == service.PlatformOpenAI {
+		ccPricingCtx = h.gatewayService.BeginOpenAILegacyStickySuccess(ccPricingCtx, apiKey.GroupID, sessionHash, reqModel)
+	}
 	c.Request = c.Request.WithContext(ccPricingCtx)
 
 	for {
@@ -397,6 +400,7 @@ func (h *OpenAIGatewayHandler) ChatCompletions(c *gin.Context) {
 				return
 			}
 		}
+		h.gatewayService.CommitOpenAILegacyStickySuccess(c.Request.Context(), account, result)
 		if result != nil {
 			h.gatewayService.ReportOpenAIAccountScheduleResult(account, openAIAccountScheduleModel(c, account, reqModel, false, result), true, result.FirstTokenMs)
 		} else {

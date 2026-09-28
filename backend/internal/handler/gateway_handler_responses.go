@@ -169,6 +169,11 @@ func (h *GatewayHandler) Responses(c *gin.Context) {
 	// 3. Account selection + failover loop
 	fs := NewFailoverState(h.maxAccountSwitches, false)
 
+	// 登记粘性身份模型：成功偏好键固定用渠道映射前的客户端请求模型，不随
+	// composite 路由在调度栈内改写调度模型而换键。
+	requestCtx = service.WithGatewayStickyIdentityModel(requestCtx, reqModel)
+	c.Request = c.Request.WithContext(requestCtx)
+
 	for {
 		if requestCtx.Err() != nil {
 			return
@@ -205,6 +210,10 @@ func (h *GatewayHandler) Responses(c *gin.Context) {
 			}
 		}
 		account := selection.Account
+		// 把调度器在有效分组上装配的成功偏好状态带到下一轮选号：整轮 failover
+		// 共用同一份 CAS expected，晚到覆盖保护才不会被中途重读削弱。
+		requestCtx = service.ContextWithSelectionStickySuccess(requestCtx, selection)
+		c.Request = c.Request.WithContext(requestCtx)
 		setOpsSelectedAccount(c, account.ID, account.Platform)
 
 		// 4. Acquire account concurrency slot
@@ -249,7 +258,7 @@ func (h *GatewayHandler) Responses(c *gin.Context) {
 		account = latest
 		selection.Account = latest
 		if selection.ProfitGateActive() {
-			if err := h.gatewayService.BindStickySessionAfterProfitAdmission(admissionCtx, apiKey.GroupID, sessionHash, account.ID); err != nil {
+			if err := h.gatewayService.BindStickySessionAfterProfitAdmission(admissionCtx, stickyGroupIDForSelection(selection, apiKey.GroupID), sessionHash, account.ID); err != nil {
 				reqLog.Warn("gateway.responses.bind_sticky_session_after_profit_admission_failed", zap.Int64("account_id", account.ID), zap.Error(err))
 			}
 		}
@@ -314,6 +323,9 @@ func (h *GatewayHandler) Responses(c *gin.Context) {
 			)
 			return
 		}
+
+		// 成功终态：门下把成功偏好提交/续期到真正成功的账号（无门为空操作）。
+		h.gatewayService.CommitGatewayStickySuccess(requestCtx, selection, account, result, err)
 
 		// 6. Record usage
 		userAgent := c.GetHeader("User-Agent")
