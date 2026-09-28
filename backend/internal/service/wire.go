@@ -192,6 +192,8 @@ func ProvideOpenAIQuotaService(
 // ProvideOpenAIQuotaAutoResetService 启动账号级自动用卡队列与补偿扫描。
 func ProvideOpenAIQuotaAutoResetService(
 	accountRepo AccountRepository,
+	accountTest *AccountTestService,
+	cfg *config.Config,
 	quotaService *OpenAIQuotaService,
 	rateLimitService *RateLimitService,
 	idempotency *IdempotencyCoordinator,
@@ -208,6 +210,10 @@ func ProvideOpenAIQuotaAutoResetService(
 		settingService,
 		leaderLock,
 	)
+	service.accountTest = accountTest
+	if cfg != nil {
+		service.activationLocation, _ = time.LoadLocation(cfg.Timezone)
+	}
 	service.Start()
 	return service
 }

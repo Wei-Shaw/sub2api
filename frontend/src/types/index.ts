@@ -1190,6 +1190,7 @@ export interface Account {
       last_result_at?: string
       error_code?: string
     }
+    openai_window_activation?: { enabled: boolean; start: string; end: string }
   } & Record<string, unknown>)
   proxy_id: number | null
   proxy_fallback_origin_id?: number | null

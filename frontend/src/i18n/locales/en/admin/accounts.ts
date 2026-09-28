@@ -827,6 +827,7 @@ export default {
       enterErrorCode: 'Enter error code (100-599)',
       invalidErrorCode: 'Please enter a valid HTTP error code (100-599)',
       errorCodeExists: 'This error code is already selected',
+      windowActivation: { title: 'Activate 5h window', hint: 'During these hours in the server timezone, send at most one real test request every 5 minutes after the window expires until a new 5h countdown appears. 00:00 means the next midnight; tests consume a small amount of upstream usage.', start: 'Start (server timezone)', end: 'End (server timezone)', invalid: 'Invalid or equal start/end times' },
       interceptWarmupRequests: 'Intercept Warmup Requests',
       interceptWarmupRequestsDesc:
         'When enabled, warmup requests like title generation will return mock responses without consuming upstream tokens',

@@ -1699,3 +1699,25 @@ describe('EditAccountModal OpenAI 自动使用重置卡', () => {
     wrapper.unmount()
   })
 })
+
+describe('EditAccountModal OpenAI 5h window activation', () => {
+  beforeEach(() => {
+    authIsSimpleMode.value = true
+    updateAccountMock.mockReset()
+    checkMixedChannelRiskMock.mockReset().mockResolvedValue({ has_risk: false })
+  })
+
+  it('saves an independent daily activation schedule on an OAuth parent', async () => {
+    const account = buildOpenAIOAuthParentAccount()
+    updateAccountMock.mockResolvedValue(account)
+    const wrapper = mountModal(account)
+    await wrapper.get('[data-testid="window-activation-enabled"]').trigger('click')
+    await wrapper.get('[data-testid="window-activation-start"]').setValue('05:00')
+    await wrapper.get('[data-testid="window-activation-end"]').setValue('00:00')
+    await wrapper.get('form#edit-account-form').trigger('submit.prevent')
+    expect(updateAccountMock.mock.calls[0]?.[1]?.extra?.openai_window_activation).toEqual({
+      enabled: true, start: '05:00', end: '00:00'
+    })
+    wrapper.unmount()
+  })
+})
