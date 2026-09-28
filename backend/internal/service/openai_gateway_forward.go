@@ -1367,6 +1367,31 @@ func shouldForwardOpenAIResponsesViaRawChatCompletions(account *Account) bool {
 	return !openai_compat.ShouldUseResponsesAPI(account.Extra)
 }
 
+// shouldRequestResponsesReasoningSummary reports whether the upstream accepts
+// reasoning.summary on a Responses request. Only official OpenAI endpoints do
+// (the ChatGPT/Codex backend and api.openai.com); strict third-party Responses
+// implementations reject the field with `json: unknown field "summary"`
+// (research/20260928_dev-requirement_responses-input-type-fix.md §一/§四). The
+// summary only enriches the reasoning text echoed back to Chat clients, so
+// dropping it on other upstreams keeps reasoning.effort effective without the
+// 400.
+func shouldRequestResponsesReasoningSummary(account *Account) bool {
+	if account == nil {
+		return false
+	}
+	if account.UsesOpenAICodexProtocol() {
+		return true
+	}
+	if account.Type != AccountTypeAPIKey {
+		return false
+	}
+	baseURL := strings.TrimSpace(account.GetCredential("base_url"))
+	if baseURL == "" {
+		baseURL = account.GetOpenAIBaseURL()
+	}
+	return isOfficialOpenAIModelsBaseURL(baseURL)
+}
+
 func (s *OpenAIGatewayService) buildUpstreamRequest(ctx context.Context, c *gin.Context, account *Account, body []byte, token string, isStream bool, promptCacheKey string, isCodexCLI bool) (*http.Request, error) {
 	// Determine target URL based on account type
 	var targetURL string
