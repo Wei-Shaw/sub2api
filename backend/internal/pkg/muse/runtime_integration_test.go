@@ -252,7 +252,7 @@ func TestMuseRuntimePostgres(t *testing.T) {
 	})
 }
 
-func museTestDatabase(t *testing.T) *sql.DB {
+func museIsolatedTestDatabase(t *testing.T) *sql.DB {
 	t.Helper()
 	ctx := context.Background()
 	dsn := os.Getenv("SUB2API_MUSE_TEST_DSN")
@@ -283,7 +283,14 @@ func museTestDatabase(t *testing.T) *sql.DB {
 	require.NoError(t, err)
 	db.SetMaxOpenConns(24)
 	t.Cleanup(func() { _ = db.Close() })
-	_, err = db.ExecContext(ctx, `CREATE TABLE users(id BIGINT PRIMARY KEY,status TEXT NOT NULL DEFAULT 'active',deleted_at TIMESTAMPTZ);
+	return db
+}
+
+func museTestDatabase(t *testing.T) *sql.DB {
+	t.Helper()
+	ctx := context.Background()
+	db := museIsolatedTestDatabase(t)
+	_, err := db.ExecContext(ctx, `CREATE TABLE users(id BIGINT PRIMARY KEY,status TEXT NOT NULL DEFAULT 'active',deleted_at TIMESTAMPTZ);
 		CREATE TABLE api_keys(id BIGINT PRIMARY KEY,user_id BIGINT REFERENCES users(id),status TEXT NOT NULL DEFAULT 'active',deleted_at TIMESTAMPTZ,expires_at TIMESTAMPTZ);
 		CREATE TABLE accounts(id BIGINT PRIMARY KEY,platform TEXT NOT NULL,status TEXT NOT NULL DEFAULT 'active',schedulable BOOLEAN NOT NULL DEFAULT TRUE,deleted_at TIMESTAMPTZ,updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW());
 		INSERT INTO users(id) VALUES (1),(2);
@@ -296,5 +303,8 @@ func museTestDatabase(t *testing.T) *sql.DB {
 		_, err = db.ExecContext(ctx, string(ddl))
 		require.NoError(t, err, "migration must be rerunnable")
 	}
+	// The registered provider migration adds the two settlement admission fields.
+	_, err = db.ExecContext(ctx, `ALTER TABLE muse_turns ADD COLUMN billing_command JSONB;ALTER TABLE muse_turns ADD COLUMN settled_at TIMESTAMPTZ`)
+	require.NoError(t, err)
 	return db
 }

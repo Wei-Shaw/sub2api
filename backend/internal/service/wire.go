@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"database/sql"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/muse"
 	"os"
 	"time"
 
@@ -884,6 +885,7 @@ var ProviderSet = wire.NewSet(
 	NewAdminService,
 	NewGatewayService,
 	NewOpenAIGatewayService,
+	ProvideMuseCoreService,
 	ProvideImageStorageSettingService,
 	ProvideImageTaskService,
 	ProvideBatchImageModelPricingResolver,
@@ -1099,4 +1101,11 @@ func ProvideClaudeResetCreditService(accounts AccountRepository, tokens *ClaudeT
 	s := NewClaudeResetCreditService(accounts, tokens, proxies, settings)
 	s.ConfigureRedemption(idem, locks)
 	return s
+}
+
+func ProvideMuseCoreService(accounts AccountRepository, runtimeStore muse.RuntimeStore, store MuseProviderStore, gateway *OpenAIGatewayService, keys *APIKeyService) *MuseCoreService {
+	core := NewMuseCoreService(accounts, runtimeStore, store, gateway)
+	core.keys = keys
+	core.Start()
+	return core
 }

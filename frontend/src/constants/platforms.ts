@@ -14,7 +14,20 @@ export type PlatformOption<T extends string = string> = {
  * so newly registered providers show up in every selector without frontend
  * changes. Reactive so that tests replacing the catalog see the update.
  */
-export const CONCRETE_PLATFORM_OPTIONS: PlatformOption<AccountPlatform>[] = reactive([])
+export const CONCRETE_PLATFORM_OPTIONS = [
+  { value: 'anthropic', label: 'Anthropic' },
+  { value: 'openai', label: 'OpenAI' },
+  { value: 'gemini', label: 'Gemini' },
+  { value: 'antigravity', label: 'Antigravity' },
+  { value: 'grok', label: 'Grok' },
+  { value: 'kimi', label: 'Kimi' },
+  { value: 'zhipu', label: 'Zhipu GLM' },
+  { value: 'deepseek', label: 'DeepSeek' },
+  { value: 'minimax', label: 'MiniMax' },
+  { value: 'opencode_go', label: 'OpenCode' },
+  { value: 'typesafe', label: 'TypeSafe / Jev' },
+  { value: 'muse', label: 'Meta Muse' }
+] as const satisfies readonly PlatformOption<AccountPlatform>[]
 
 /** Platforms that can own a group. */
 export const GROUP_PLATFORM_OPTIONS: PlatformOption<GroupPlatform>[] = reactive([])
