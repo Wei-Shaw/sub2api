@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/muse"
 	"math"
 	"net/http"
 	"strconv"
@@ -40,6 +41,7 @@ var gatewayCompatibilityMetricsLogCounter atomic.Uint64
 
 // GatewayHandler handles API gateway requests
 type GatewayHandler struct {
+	muse                      *service.MuseCoreService
 	gatewayService            *service.GatewayService
 	openAIGatewayService      *service.OpenAIGatewayService
 	geminiCompatService       *service.GeminiMessagesCompatService
@@ -1165,8 +1167,27 @@ func (h *GatewayHandler) Models(c *gin.Context) {
 		return
 	}
 
+	if platform == service.PlatformMuse {
+		ids := []string{}
+		if h.muse != nil && apiKey != nil {
+			if value, err := h.muse.Models(c.Request.Context(), groupID, muse.Actor{UserID: apiKey.UserID, APIKeyID: apiKey.ID}); err == nil {
+				ids = value
+			}
+		}
+		if apiKey != nil && apiKey.Group != nil && apiKey.Group.ModelAllowlistEnabled() {
+			ids = apiKey.Group.ModelAllowlist.FilterForListing(ids)
+		}
+		writeModelsList(c, platform, ids)
+		return
+	}
 	if platform == service.PlatformComposite {
 		availableModels := h.compositeAvailableModels(c.Request.Context(), groupID, true)
+		if h.muse != nil && apiKey != nil {
+			native, err := h.muse.Models(c.Request.Context(), groupID, muse.Actor{UserID: apiKey.UserID, APIKeyID: apiKey.ID})
+			if err == nil {
+				availableModels = mergeModelIDs(availableModels, native)
+			}
+		}
 		if apiKey != nil && apiKey.Group != nil && apiKey.Group.ModelAllowlistEnabled() {
 			source := availableModels
 			if len(source) == 0 {
@@ -1233,6 +1254,12 @@ func (h *GatewayHandler) CodexModels(c *gin.Context) {
 		forcedPlatform = strings.TrimSpace(value)
 	}
 	modelIDs := h.codexModelIDsForGroup(c.Request.Context(), apiKey.Group, forcedPlatform)
+	if apiKey.Group.Platform == service.PlatformMuse || forcedPlatform == service.PlatformMuse {
+		modelIDs = []string{}
+		if h.muse != nil {
+			modelIDs, _ = h.muse.Models(c.Request.Context(), apiKey.GroupID, muse.Actor{UserID: apiKey.UserID, APIKeyID: apiKey.ID})
+		}
+	}
 	modelIDs = service.FilterCodexModelIDsForGroup(modelIDs, apiKey.Group)
 	body, err := h.gatewayService.BuildCodexModelsManifestForGroup(
 		c.Request.Context(),
@@ -2624,3 +2651,5 @@ func (h *GatewayHandler) getUserMsgQueueMode(account *service.Account, parsed *s
 	}
 	return mode
 }
+
+func (h *GatewayHandler) SetMuseCore(core *service.MuseCoreService) { h.muse = core }

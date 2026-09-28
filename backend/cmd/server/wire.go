@@ -82,6 +82,7 @@ func providePluginHostInfo(buildInfo handler.BuildInfo) service.PluginHostInfo {
 }
 
 func provideCleanup(
+	museCore *service.MuseCoreService,
 	entClient *ent.Client,
 	rdb *redis.Client,
 	opsMetricsCollector *service.OpsMetricsCollector,
@@ -132,6 +133,9 @@ func provideCleanup(
 	pluginManager *service.PluginManager,
 ) func() {
 	return func() {
+		if museCore != nil {
+			museCore.Stop()
+		}
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
 

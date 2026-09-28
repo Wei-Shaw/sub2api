@@ -1335,6 +1335,7 @@ function generateRoutedCodexFiles(
     minimax: 'MiniMax',
     opencode_go: 'OpenCode',
     typesafe: 'TypeSafe / Jev',
+    muse: 'Meta Muse',
     composite: 'Composite'
   }
   const label = labels[platform]

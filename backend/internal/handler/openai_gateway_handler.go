@@ -2321,6 +2321,10 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 		h.errorResponse(c, http.StatusUnauthorized, "authentication_error", "Invalid API key")
 		return
 	}
+	if apiKey.Group != nil && apiKey.Group.Platform == service.PlatformMuse {
+		h.errorResponse(c, http.StatusBadRequest, "invalid_request_error", "Muse does not support the Responses WebSocket endpoint")
+		return
+	}
 	subject, ok := middleware2.GetAuthSubjectFromContext(c)
 	if !ok {
 		h.errorResponse(c, http.StatusInternalServerError, "api_error", "User context not found")

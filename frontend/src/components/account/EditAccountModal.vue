@@ -26,6 +26,8 @@
         <p class="input-hint">{{ t('admin.accounts.notesHint') }}</p>
       </div>
 
+      <MuseSessionFields v-if="account.platform === 'muse'" v-model:owner-id="museOwnerId" v-model:session-json="museSessionJson" replacement />
+      <MuseStatusPanel v-if="account.platform === 'muse'" :account-id="account.id" />
       <!-- API Key fields (only for apikey type) -->
       <div v-if="account.type === 'apikey'" class="space-y-4">
         <div v-if="!isCNApiKeyAccount || editApiProtocol !== 'adaptive'">
@@ -3104,6 +3106,9 @@
 </template>
 
 <script setup lang="ts">
+import MuseSessionFields from './MuseSessionFields.vue'
+import MuseStatusPanel from './MuseStatusPanel.vue'
+import { buildMuseSession } from './museSession'
 import { ref, reactive, computed, watch, nextTick, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useAppStore } from '@/stores/app'
@@ -5127,9 +5132,26 @@ const submitUpdateAccount = async (accountID: number, updatePayload: Record<stri
   }
 }
 
+const museOwnerId = ref(0)
+const museSessionJson = ref('')
+watch(() => props.account, (account) => { museOwnerId.value = Number(account?.extra?.muse_owner_user_id || 0); museSessionJson.value = '' }, { immediate: true })
+
 const handleSubmit = async () => {
   if (!props.account) return
   const accountID = props.account.id
+  if (props.account.platform === 'muse') {
+    submitting.value = true
+    try {
+      const session = buildMuseSession(museOwnerId.value, museSessionJson.value, true)
+      const updated = await adminAPI.accounts.update(accountID, { name: form.name, notes: form.notes,
+        credentials: session.credentials, extra: { ...(props.account.extra || {}), ...session.extra },
+        concurrency: 1, schedulable: false, status: form.status })
+      museSessionJson.value = ''; emit('updated', updated); handleClose()
+    } catch (error: unknown) { appStore.showError(error instanceof Error ? error.message : t('admin.accounts.failedToUpdate')) }
+    finally { submitting.value = false }
+    return
+  }
+
 
   if (form.status !== 'active' && form.status !== 'inactive' && form.status !== 'error') {
     appStore.showError(t('admin.accounts.pleaseSelectStatus'))
