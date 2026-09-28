@@ -112,6 +112,10 @@ func (s *AuthService) loginOrRegisterVerifiedEmailOAuth(
 				logger.LegacyPrintf("service.auth", "[Auth] Database error during %s oauth login: %v", providerType, err)
 				return nil, nil, ErrServiceUnavailable
 			}
+		} else if !emailOAuthCanAutoLinkExistingUser(user) {
+			// 本地账号邮箱所有权未经第三方验证（例如邮箱密码注册且可能未做邮箱验证），
+			// 不能仅凭邮箱相同就静默绑定并登录，否则预先占用该邮箱的人可接管后续 OAuth 登录。
+			return nil, nil, ErrOAuthExistingAccountBindRequired
 		}
 	}
 
@@ -286,4 +290,20 @@ func (s *AuthService) ensureEmailOAuthIdentity(ctx context.Context, userID int64
 		SetMetadata(metadata).
 		Save(ctx)
 	return err
+}
+
+// emailOAuthCanAutoLinkExistingUser 判断是否可以把一个尚未绑定的 Google/GitHub 身份
+// 自动关联到同邮箱的本地账号。本地用户没有持久化的「邮箱已验证」标记，
+// 因此只有当本地账号本身就是通过会校验邮箱所有权的 Google/GitHub OAuth 注册时，
+// 才视为邮箱已验证并允许自动关联。
+func emailOAuthCanAutoLinkExistingUser(user *User) bool {
+	if user == nil {
+		return false
+	}
+	switch normalizeOAuthSignupSource(user.SignupSource) {
+	case "google", "github":
+		return true
+	default:
+		return false
+	}
 }
