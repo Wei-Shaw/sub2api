@@ -308,6 +308,9 @@ type SystemSettings struct {
 	SubscriptionExpiryNotifyEnabled bool               `json:"subscription_expiry_notify_enabled"`
 	AccountQuotaNotifyEnabled       bool               `json:"account_quota_notify_enabled"`
 	AccountQuotaNotifyEmails        []NotifyEmailEntry `json:"account_quota_notify_emails"`
+	AccountBalanceLowNotifyEnabled  bool               `json:"account_balance_low_notify_enabled"`
+	AccountBalanceLowNotifyThreshold float64           `json:"account_balance_low_notify_threshold"`
+	AccountBalanceLowNotifyEmails   []NotifyEmailEntry `json:"account_balance_low_notify_emails"`
 
 	// Channel Monitor feature switch
 	ChannelMonitorEnabled                bool   `json:"channel_monitor_enabled"`

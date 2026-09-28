@@ -28,6 +28,7 @@ const (
 	NotificationEmailEventBalanceLow                  = "balance.low"
 	NotificationEmailEventBalanceRechargeSuccess      = "balance.recharge_success"
 	NotificationEmailEventAccountQuotaAlert           = "account.quota_alert"
+	NotificationEmailEventAccountBalanceLow           = "account.balance_low"
 	NotificationEmailEventContentModerationViolation  = "content_moderation.violation_notice"
 	NotificationEmailEventContentModerationDisabled   = "content_moderation.account_disabled"
 	NotificationEmailEventCyberPolicyNotice           = "content_moderation.cyber_policy_notice"
@@ -1029,6 +1030,7 @@ var notificationEmailEventOrder = []string{
 	NotificationEmailEventBalanceLow,
 	NotificationEmailEventBalanceRechargeSuccess,
 	NotificationEmailEventAccountQuotaAlert,
+	NotificationEmailEventAccountBalanceLow,
 	NotificationEmailEventContentModerationViolation,
 	NotificationEmailEventContentModerationDisabled,
 	NotificationEmailEventCyberPolicyNotice,
@@ -1101,6 +1103,15 @@ var notificationEmailEventDefinitions = map[string]NotificationEmailEventInfo{
 		Optional:    false,
 		Placeholders: append(append([]string{}, notificationEmailCommonPlaceholders...),
 			"account_id", "account_name", "platform", "quota_dimension", "quota_used", "quota_limit", "quota_remaining", "quota_threshold"),
+	},
+	NotificationEmailEventAccountBalanceLow: {
+		Event:       NotificationEmailEventAccountBalanceLow,
+		Label:       "Account balance low",
+		Description: "Sent to configured admin emails when a probed upstream/account balance falls below the alert threshold.",
+		Category:    "admin",
+		Optional:    false,
+		Placeholders: append(append([]string{}, notificationEmailCommonPlaceholders...),
+			"account_id", "account_name", "platform", "current_balance", "currency", "threshold"),
 	},
 	NotificationEmailEventContentModerationViolation: {
 		Event:       NotificationEmailEventContentModerationViolation,
@@ -1317,6 +1328,30 @@ var notificationEmailOfficialTemplates = map[string]map[string]notificationEmail
   <tr><td>已用 / 限额</td><td>{{quota_used}} / {{quota_limit}}</td></tr>
   <tr><td>剩余额度</td><td>{{quota_remaining}}</td></tr>
   <tr><td>告警阈值</td><td>{{quota_threshold}}</td></tr>
+</table>`),
+		},
+	},
+	NotificationEmailEventAccountBalanceLow: {
+		notificationEmailDefaultLocale: {
+			Subject: "[{{site_name}}] Account balance low - {{account_name}}",
+			HTML: notificationEmailCard("#f59e0b", "Account balance low", `
+<p>The upstream account <strong>{{account_name}}</strong> balance fell below the alert threshold.</p>
+<table style="width:100%;border-collapse:collapse;">
+  <tr><td>Account ID</td><td>{{account_id}}</td></tr>
+  <tr><td>Platform</td><td>{{platform}}</td></tr>
+  <tr><td>Current balance</td><td>{{currency}} {{current_balance}}</td></tr>
+  <tr><td>Threshold</td><td>{{threshold}}</td></tr>
+</table>`),
+		},
+		notificationEmailLocaleChinese: {
+			Subject: "[{{site_name}}] 账号余额不足 - {{account_name}}",
+			HTML: notificationEmailCard("#f59e0b", "账号余额不足", `
+<p>上游账号 <strong>{{account_name}}</strong> 余额已低于告警阈值。</p>
+<table style="width:100%;border-collapse:collapse;">
+  <tr><td>账号 ID</td><td>{{account_id}}</td></tr>
+  <tr><td>平台</td><td>{{platform}}</td></tr>
+  <tr><td>当前余额</td><td>{{currency}} {{current_balance}}</td></tr>
+  <tr><td>告警阈值</td><td>{{threshold}}</td></tr>
 </table>`),
 		},
 	},

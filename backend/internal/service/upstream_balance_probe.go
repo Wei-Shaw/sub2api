@@ -154,6 +154,9 @@ func (s *UpstreamBillingProbeService) ProbeUpstreamBalance(ctx context.Context, 
 	} else {
 		result.Persisted = true
 	}
+	if s.balanceNotify != nil {
+		s.balanceNotify.CheckAccountBalanceLow(ctx, account, balance, currency)
+	}
 	return result, nil
 }
 

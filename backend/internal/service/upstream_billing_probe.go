@@ -241,6 +241,7 @@ type UpstreamBillingProbeService struct {
 	accountRepo        AccountRepository
 	accountTestService *AccountTestService
 	settingService     *SettingService
+	balanceNotify      *BalanceNotifyService
 
 	parentCtx    context.Context
 	parentCancel context.CancelFunc
@@ -291,6 +292,13 @@ func (s *UpstreamBillingProbeService) SetLeaderLock(lockCache LeaderLockCache, d
 	s.db = db
 }
 
+func (s *UpstreamBillingProbeService) SetBalanceNotifyService(notify *BalanceNotifyService) {
+	if s == nil {
+		return
+	}
+	s.balanceNotify = notify
+}
+
 // ProvideUpstreamBillingProbeService starts the process-wide periodic runner.
 func ProvideUpstreamBillingProbeService(
 	accountRepo AccountRepository,
@@ -298,9 +306,11 @@ func ProvideUpstreamBillingProbeService(
 	settingService *SettingService,
 	lockCache LeaderLockCache,
 	db *sql.DB,
+	balanceNotify *BalanceNotifyService,
 ) *UpstreamBillingProbeService {
 	svc := NewUpstreamBillingProbeService(accountRepo, accountTestService, settingService)
 	svc.SetLeaderLock(lockCache, db)
+	svc.SetBalanceNotifyService(balanceNotify)
 	svc.Start()
 	return svc
 }

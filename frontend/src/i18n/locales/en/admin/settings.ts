@@ -931,6 +931,17 @@ export default {
         addEmail: 'Add Email',
         emailPlaceholder: 'Enter email address',
       },
+      accountBalanceNotify: {
+        title: 'Account Balance Low Notification',
+        description: 'Email admins when a probed upstream account balance (Sub2API / NewAPI / CN payg) falls below the threshold',
+        enabled: 'Enable Account Balance Low Notification',
+        threshold: 'Alert Threshold',
+        thresholdHint: 'Compared in the same unit as the probed balance (e.g. USD / CNY). Emails fire when balance drops below this value and can fire again after recovery.',
+        emails: 'Notification Emails',
+        emailsHint: 'Leave empty to disable notifications; emails must be verified',
+        addEmail: 'Add Email',
+        emailPlaceholder: 'Enter email address',
+      },
       subscriptionExpiryNotify: {
         title: 'Subscription Expiry Reminder',
         description: 'Control whether users receive subscription expiry reminder emails.',

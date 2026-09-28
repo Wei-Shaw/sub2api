@@ -739,6 +739,11 @@ const (
 	SettingKeyAccountQuotaNotifyEnabled = "account_quota_notify_enabled" // 全局开关
 	SettingKeyAccountQuotaNotifyEmails  = "account_quota_notify_emails"  // 管理员通知邮箱列表（JSON 数组）
 
+	// 账号上游余额不足提醒（Sub2API / NewAPI / 国产 payg 探测余额）
+	SettingKeyAccountBalanceLowNotifyEnabled   = "account_balance_low_notify_enabled"   // 全局开关
+	SettingKeyAccountBalanceLowNotifyThreshold = "account_balance_low_notify_threshold" // 阈值（与探测币种同单位比较）
+	SettingKeyAccountBalanceLowNotifyEmails    = "account_balance_low_notify_emails"    // 管理员通知邮箱列表（JSON 数组）
+
 	// Web Search Emulation
 	SettingKeyWebSearchEmulationConfig = "web_search_emulation_config" // JSON 配置
 )
