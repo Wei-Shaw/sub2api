@@ -94,6 +94,7 @@ type OpenAIQuotaAutoResetService struct {
 	cancel  context.CancelFunc
 	queue   chan int64
 	pending sync.Map
+	scopes  sync.Map
 	owner   string
 	start   sync.Once
 	stop    sync.Once
@@ -269,6 +270,7 @@ type openAIAutoResetAssessment struct {
 }
 
 func (s *OpenAIQuotaAutoResetService) evaluateAccount(ctx context.Context, accountID int64) error {
+	defer s.scopes.Delete(accountID)
 	ctx = withOpenAIAutoResetContext(ctx)
 	account, err := s.accountRepo.GetByID(ctx, accountID)
 	if err != nil || account == nil {
@@ -285,10 +287,30 @@ func (s *OpenAIQuotaAutoResetService) evaluateAccount(ctx context.Context, accou
 		return nil
 	}
 
+	initialMode := config.Mode
+	// Bound policy work below the distributed lease; legacy behavior is unchanged.
+	if config.Mode != OpenAIAutoResetModeThreshold {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, 50*time.Second)
+		defer cancel()
+		release, ok := s.acquireResetPolicyLease(ctx)
+		if !ok {
+			return nil
+		}
+		defer release()
+		account, err = s.accountRepo.GetByID(ctx, accountID)
+		if err != nil || account == nil {
+			return err
+		}
+		config = ResolveOpenAIAutoResetCreditConfig(account)
+		if !config.Enabled || config.Mode != initialMode {
+			return nil
+		}
+	}
 	now := time.Now()
 	assessment := s.assessExtra(account, config, now)
 	state := openAIAutoResetStateFromExtra(account.Extra)
-	needsQuery := openAIAutoResetSnapshotStale(account.Extra, now) || assessment.resetReached
+	needsQuery := config.Mode != OpenAIAutoResetModeThreshold || openAIAutoResetSnapshotStale(account.Extra, now) || assessment.resetReached
 	if assessment.pauseReached && !assessment.resetReached {
 		needsQuery = needsQuery || state == nil || state.Status == OpenAIAutoResetStatusChecking || state.Status == OpenAIAutoResetStatusFailed || openAIAutoResetStateStale(state, now)
 	}
@@ -335,10 +357,14 @@ func (s *OpenAIQuotaAutoResetService) evaluateAccount(ctx context.Context, accou
 		return err
 	}
 	config = ResolveOpenAIAutoResetCreditConfig(account)
-	if !config.Enabled {
+	if !config.Enabled || config.Mode != initialMode {
 		return nil
 	}
+	now = time.Now()
 	assessment = s.assessUsage(usage, account, config, now)
+	if config.Mode != OpenAIAutoResetModeThreshold {
+		assessment.resetReached = s.exhaustedCohort(ctx, account, usage, now)
+	}
 	available := usage.RateLimitResetCredits.AvailableCount
 	if !assessment.resetReached {
 		status := OpenAIAutoResetStatusNoCredit
@@ -391,6 +417,18 @@ func (s *OpenAIQuotaAutoResetService) evaluateAccount(ctx context.Context, accou
 	account, err = s.accountRepo.GetByID(ctx, accountID)
 	if err != nil || account == nil || !ResolveOpenAIAutoResetCreditConfig(account).Enabled {
 		return err
+	}
+	latestConfig := ResolveOpenAIAutoResetCreditConfig(account)
+	if latestConfig.Mode != config.Mode || !account.IsActive() || !account.Schedulable {
+		return nil
+	}
+	if config.Mode != OpenAIAutoResetModeThreshold {
+		if !openAIResetNativeExhausted(usage, time.Now()) {
+			return nil
+		}
+		if err := ctx.Err(); err != nil {
+			return err
+		}
 	}
 	result, err := s.idempotency.Execute(ctx, IdempotencyExecuteOptions{
 		Scope:          "openai_auto_reset_credit",
