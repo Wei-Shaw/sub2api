@@ -721,6 +721,9 @@ export interface SystemSettings {
   subscription_expiry_notify_enabled: boolean;
   account_quota_notify_enabled: boolean;
   account_quota_notify_emails: NotifyEmailEntry[];
+  account_balance_low_notify_enabled: boolean;
+  account_balance_low_notify_threshold: number;
+  account_balance_low_notify_emails: NotifyEmailEntry[];
 
   // Channel Monitor feature switch
   channel_monitor_enabled: boolean;
@@ -1029,6 +1032,9 @@ export interface UpdateSettingsRequest {
   subscription_expiry_notify_enabled?: boolean;
   account_quota_notify_enabled?: boolean;
   account_quota_notify_emails?: NotifyEmailEntry[];
+  account_balance_low_notify_enabled?: boolean;
+  account_balance_low_notify_threshold?: number;
+  account_balance_low_notify_emails?: NotifyEmailEntry[];
 
   // Channel Monitor feature switch
   channel_monitor_enabled?: boolean;

@@ -912,6 +912,17 @@ export default {
         addEmail: '添加邮箱',
         emailPlaceholder: '输入邮箱地址',
       },
+      accountBalanceNotify: {
+        title: '账号余额不足提醒',
+        description: '当探测到上游账号（Sub2API / NewAPI / 国产 payg）余额低于阈值时，向管理员发送邮件提醒',
+        enabled: '启用账号余额不足提醒',
+        threshold: '告警阈值',
+        thresholdHint: '与探测到的余额同单位比较（如 USD / CNY）。探测余额低于该值时发送邮件，恢复后可再次触发。',
+        emails: '通知邮箱',
+        emailsHint: '留空则不发送通知；需先通过邮箱验证',
+        addEmail: '添加邮箱',
+        emailPlaceholder: '输入邮箱地址',
+      },
       subscriptionExpiryNotify: {
         title: '订阅到期提醒',
         description: '控制是否向用户发送订阅即将到期的邮件提醒。',

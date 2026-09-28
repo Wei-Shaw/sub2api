@@ -60,11 +60,12 @@ type CNProviderBalanceResult struct {
 
 // CNProviderBalanceService 探测 Kimi / DeepSeek payg 账号的账户余额。
 type CNProviderBalanceService struct {
-	accountRepo  AccountRepository
-	proxyRepo    ProxyRepository
-	httpUpstream HTTPUpstream
-	cfg          *config.Config
-	flight       singleflight.Group
+	accountRepo    AccountRepository
+	proxyRepo      ProxyRepository
+	httpUpstream   HTTPUpstream
+	cfg            *config.Config
+	balanceNotify  *BalanceNotifyService
+	flight         singleflight.Group
 }
 
 // NewCNProviderBalanceService 构造余额探测服务。
@@ -80,6 +81,13 @@ func NewCNProviderBalanceService(
 		httpUpstream: httpUpstream,
 		cfg:          cfg,
 	}
+}
+
+func (s *CNProviderBalanceService) SetBalanceNotifyService(notify *BalanceNotifyService) {
+	if s == nil {
+		return
+	}
+	s.balanceNotify = notify
 }
 
 // QueryBalance 探测指定 payg 账号的余额并落 Extra 快照。
@@ -211,6 +219,15 @@ func (s *CNProviderBalanceService) queryBalanceForAccount(ctx context.Context, a
 		slog.Warn("cn_balance_persist_failed", "account_id", account.ID, "provider", provider, "error", err)
 	} else {
 		result.Persisted = true
+	}
+	if s.balanceNotify != nil {
+		notifyBalance := result.Balance
+		for _, entry := range result.Balances {
+			if entry.Balance > notifyBalance {
+				notifyBalance = entry.Balance
+			}
+		}
+		s.balanceNotify.CheckAccountBalanceLow(ctx, account, notifyBalance, result.Currency)
 	}
 	return result, nil
 }

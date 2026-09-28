@@ -8873,6 +8873,100 @@
               </div>
             </div>
           </div>
+
+          <!-- Account Balance Low Notification (upstream / CN payg) -->
+          <div class="card">
+            <div
+              class="border-b border-gray-100 px-6 py-4 dark:border-dark-700"
+            >
+              <h3 class="text-base font-medium text-gray-900 dark:text-white">
+                {{ t("admin.settings.accountBalanceNotify.title") }}
+              </h3>
+              <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                {{ t("admin.settings.accountBalanceNotify.description") }}
+              </p>
+            </div>
+            <div class="px-6 py-6 space-y-4">
+              <div class="flex items-center justify-between">
+                <label
+                  class="mb-0 block text-sm font-medium text-gray-700 dark:text-gray-300"
+                  >{{ t("admin.settings.accountBalanceNotify.enabled") }}</label
+                >
+                <Toggle v-model="form.account_balance_low_notify_enabled" />
+              </div>
+              <div v-if="form.account_balance_low_notify_enabled" class="space-y-4">
+                <div>
+                  <label
+                    class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300"
+                    >{{ t("admin.settings.accountBalanceNotify.threshold") }}</label
+                  >
+                  <input
+                    v-model.number="form.account_balance_low_notify_threshold"
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    class="input"
+                  />
+                  <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                    {{ t("admin.settings.accountBalanceNotify.thresholdHint") }}
+                  </p>
+                </div>
+                <div>
+                  <label
+                    class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300"
+                    >{{ t("admin.settings.accountBalanceNotify.emails") }}</label
+                  >
+                  <div class="space-y-2">
+                    <div
+                      v-for="(entry, index) in form.account_balance_low_notify_emails ||
+                      []"
+                      :key="index"
+                      class="flex items-center gap-2"
+                    >
+                      <label
+                        class="relative inline-flex items-center cursor-pointer shrink-0"
+                      >
+                        <input
+                          type="checkbox"
+                          :checked="!entry.disabled"
+                          @change="entry.disabled = !entry.disabled"
+                          class="sr-only peer"
+                        />
+                        <div
+                          class="w-9 h-5 bg-gray-200 peer-focus:outline-none rounded-full peer dark:bg-gray-600 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all dark:after:border-gray-500 peer-checked:bg-primary-600"
+                        ></div>
+                      </label>
+                      <input
+                        v-model="entry.email"
+                        type="email"
+                        class="input flex-1"
+                        :placeholder="
+                          t('admin.settings.accountBalanceNotify.emailPlaceholder')
+                        "
+                      />
+                      <button
+                        @click="form.account_balance_low_notify_emails.splice(index, 1)"
+                        class="btn btn-secondary px-2"
+                        type="button"
+                      >
+                        <Icon name="x" size="xs" class="h-4 w-4" />
+                      </button>
+                    </div>
+                    <button
+                      @click="addAccountBalanceNotifyEmail"
+                      class="btn btn-secondary btn-sm"
+                      type="button"
+                    >
+                      + {{ t("admin.settings.accountBalanceNotify.addEmail") }}
+                    </button>
+                  </div>
+                  <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                    {{ t("admin.settings.accountBalanceNotify.emailsHint") }}
+                  </p>
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
         <!-- /Tab: Email -->
 
@@ -10005,6 +10099,9 @@ const form = reactive<SettingsForm>({
   subscription_expiry_notify_enabled: true,
   account_quota_notify_enabled: false,
   account_quota_notify_emails: [] as NotifyEmailEntry[],
+  account_balance_low_notify_enabled: false,
+  account_balance_low_notify_threshold: 0,
+  account_balance_low_notify_emails: [] as NotifyEmailEntry[],
   // Channel Monitor feature switch
   channel_monitor_enabled: true,
   channel_monitor_mode: 'v1' as 'v1' | 'v2',
@@ -10648,6 +10745,17 @@ const addQuotaNotifyEmail = () => {
     form.account_quota_notify_emails = [];
   }
   form.account_quota_notify_emails.push({
+    email: "",
+    disabled: false,
+    verified: true,
+  });
+};
+
+const addAccountBalanceNotifyEmail = () => {
+  if (!form.account_balance_low_notify_emails) {
+    form.account_balance_low_notify_emails = [];
+  }
+  form.account_balance_low_notify_emails.push({
     email: "",
     disabled: false,
     verified: true,
@@ -11712,6 +11820,12 @@ async function saveSettings() {
       account_quota_notify_enabled: form.account_quota_notify_enabled,
       account_quota_notify_emails: (
         form.account_quota_notify_emails || []
+      ).filter((e) => e.email.trim() !== ""),
+      account_balance_low_notify_enabled: form.account_balance_low_notify_enabled,
+      account_balance_low_notify_threshold:
+        Number(form.account_balance_low_notify_threshold) || 0,
+      account_balance_low_notify_emails: (
+        form.account_balance_low_notify_emails || []
       ).filter((e) => e.email.trim() !== ""),
       // Channel Monitor feature switch
       channel_monitor_enabled: form.channel_monitor_enabled,
