@@ -788,7 +788,12 @@ func TestBuildCodexModelsManifestForGroupUsesProviderImageCapabilities(t *testin
 func TestBuildCodexModelsManifestForGroupUsesDeepSeekVisionCapabilities(t *testing.T) {
 	t.Parallel()
 
-	const visionModel = "deepseek-v4-flash-vision-exp"
+	const (
+		visionModel   = "deepseek-v4-flash-vision-exp"
+		flashModel    = "deepseek-flash"
+		legacyFlash   = "deepseek-v4-flash"
+		thirdPartyURL = "https://open-weights.example.test/v1"
+	)
 	newAccount := func(id int64, platform, model string, modalities []string) Account {
 		account := Account{
 			ID: id, Platform: platform, Type: AccountTypeAPIKey,
@@ -798,6 +803,12 @@ func TestBuildCodexModelsManifestForGroupUsesDeepSeekVisionCapabilities(t *testi
 			account.SetUpstreamModelMetadataSnapshot(UpstreamModelMetadataSnapshot{Models: map[string]UpstreamModelMetadata{
 				model: {ID: model, InputModalities: modalities},
 			}})
+		}
+		return account
+	}
+	withCredentials := func(account Account, credentials map[string]any) Account {
+		for key, value := range credentials {
+			account.Credentials[key] = value
 		}
 		return account
 	}
@@ -824,8 +835,73 @@ func TestBuildCodexModelsManifestForGroupUsesDeepSeekVisionCapabilities(t *testi
 			modalities: []any{"text", "image"},
 		},
 		{
-			name: "text-only DeepSeek Flash", platform: PlatformDeepseek,
-			accounts:   []Account{newAccount(1, PlatformDeepseek, "deepseek-v4-flash", nil)},
+			name: "native DeepSeek V4.1 Flash", platform: PlatformDeepseek,
+			accounts:   []Account{newAccount(1, PlatformDeepseek, flashModel, nil)},
+			modalities: []any{"text", "image"},
+		},
+		{
+			name: "OpenAI-compatible DeepSeek V4.1 Flash", platform: PlatformOpenAI,
+			accounts:   []Account{newAccount(1, PlatformOpenAI, flashModel, nil)},
+			modalities: []any{"text", "image"},
+		},
+		{
+			name: "Composite DeepSeek V4.1 Flash alias", platform: PlatformComposite,
+			accounts:   []Account{newAccount(1, PlatformDeepseek, flashModel, nil)},
+			modalities: []any{"text", "image"},
+		},
+		{
+			name: "legacy Flash name on DeepSeek API", platform: PlatformDeepseek,
+			accounts:   []Account{newAccount(1, PlatformDeepseek, legacyFlash, nil)},
+			modalities: []any{"text", "image"},
+		},
+		{
+			name: "legacy Flash name on adaptive DeepSeek API", platform: PlatformDeepseek,
+			accounts: []Account{withCredentials(newAccount(1, PlatformDeepseek, legacyFlash, nil), map[string]any{
+				"base_url":     "https://api.deepseek.com",
+				"api_protocol": "adaptive",
+				"api_base_urls": map[string]any{
+					"responses":        "https://api.deepseek.com",
+					"chat_completions": "https://api.deepseek.com",
+				},
+			})},
+			modalities: []any{"text", "image"},
+		},
+		{
+			name: "legacy Flash name on custom DeepSeek base URL", platform: PlatformDeepseek,
+			accounts: []Account{withCredentials(newAccount(1, PlatformDeepseek, legacyFlash, nil), map[string]any{
+				"base_url": thirdPartyURL,
+			})},
+			modalities: []any{"text"},
+		},
+		{
+			name: "legacy Flash name on custom adaptive Responses URL", platform: PlatformDeepseek,
+			accounts: []Account{withCredentials(newAccount(1, PlatformDeepseek, legacyFlash, nil), map[string]any{
+				"base_url":     "https://api.deepseek.com",
+				"api_protocol": "adaptive",
+				"api_base_urls": map[string]any{
+					"responses":        thirdPartyURL,
+					"chat_completions": "https://api.deepseek.com",
+				},
+			})},
+			modalities: []any{"text"},
+		},
+		{
+			name: "legacy Flash name on OpenAI-compatible DeepSeek API", platform: PlatformOpenAI,
+			accounts: []Account{withCredentials(newAccount(1, PlatformOpenAI, legacyFlash, nil), map[string]any{
+				"base_url": "https://api.deepseek.com",
+			})},
+			modalities: []any{"text", "image"},
+		},
+		{
+			name: "legacy Flash name on third-party host", platform: PlatformOpenAI,
+			accounts: []Account{withCredentials(newAccount(1, PlatformOpenAI, legacyFlash, nil), map[string]any{
+				"base_url": thirdPartyURL,
+			})},
+			modalities: []any{"text"},
+		},
+		{
+			name: "text-only DeepSeek Pro", platform: PlatformDeepseek,
+			accounts:   []Account{newAccount(1, PlatformDeepseek, "deepseek-v4-pro", nil)},
 			modalities: []any{"text"},
 		},
 		{
@@ -836,8 +912,8 @@ func TestBuildCodexModelsManifestForGroupUsesDeepSeekVisionCapabilities(t *testi
 		{
 			name: "mixed vision and text-only alias", platform: PlatformDeepseek,
 			accounts: []Account{
-				newAccount(1, PlatformDeepseek, visionModel, nil),
-				newAccount(2, PlatformDeepseek, "deepseek-v4-flash", nil),
+				newAccount(1, PlatformDeepseek, flashModel, nil),
+				newAccount(2, PlatformDeepseek, "deepseek-v4-pro", nil),
 			},
 			modalities: []any{"text"},
 		},
@@ -858,6 +934,45 @@ func TestBuildCodexModelsManifestForGroupUsesDeepSeekVisionCapabilities(t *testi
 			require.Equal(t, tt.modalities, models[0]["input_modalities"])
 		})
 	}
+}
+
+// Composite groups expose DeepSeek API-key accounts under the official model
+// names without synced metadata; deepseek-flash must still accept images.
+func TestBuildCodexModelsManifestForCompositeGroupAdvertisesDeepSeekFlashImageInput(t *testing.T) {
+	t.Parallel()
+
+	newAccount := func(id int64) Account {
+		return Account{
+			ID: id, Platform: PlatformDeepseek, Type: AccountTypeAPIKey,
+			Credentials: map[string]any{
+				"base_url":     "https://api.deepseek.com",
+				"api_protocol": "adaptive",
+				"model_mapping": map[string]any{
+					"deepseek-flash":  "deepseek-flash",
+					"deepseek-v4-pro": "deepseek-v4-pro",
+				},
+			},
+		}
+	}
+	const groupID int64 = 791
+	svc := &GatewayService{accountRepo: codexModelsVisibilityAccountRepo{byGroup: map[int64][]Account{
+		groupID: {newAccount(1), newAccount(2)},
+	}}}
+
+	body, err := svc.BuildCodexModelsManifestForGroup(context.Background(),
+		&Group{ID: groupID, Platform: PlatformComposite}, "", []string{"deepseek-flash", "deepseek-v4-pro"})
+	require.NoError(t, err)
+
+	modalities := make(map[string]any)
+	for _, model := range decodeCodexManifestModels(t, body) {
+		slug, ok := model["slug"].(string)
+		require.True(t, ok)
+		modalities[slug] = model["input_modalities"]
+	}
+	require.Equal(t, map[string]any{
+		"deepseek-flash":  []any{"text", "image"},
+		"deepseek-v4-pro": []any{"text"},
+	}, modalities)
 }
 
 func TestBuildCodexModelsManifestForGroupPrefersSyncedOpenAIImageCapabilities(t *testing.T) {
