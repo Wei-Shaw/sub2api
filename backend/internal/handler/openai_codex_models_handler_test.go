@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/tlsfingerprint"
 	"io"
 	"net"
 	"net/http"
@@ -110,6 +111,12 @@ func (u *codexModelsFailoverHTTPUpstream) Do(_ *http.Request, _ string, accountI
 	}, nil
 }
 
+// DoWithTLS forwards to Do: tests run with TLS fingerprint disabled,
+// and the gateway falls back to the plain path when the profile is nil.
+func (u *codexModelsFailoverHTTPUpstream) DoWithTLS(req *http.Request, proxyURL string, accountID int64, accountConcurrency int, _ *tlsfingerprint.Profile) (*http.Response, error) {
+	return u.Do(req, proxyURL, accountID, accountConcurrency)
+}
+
 func (u *codexModelsFailoverHTTPUpstream) calls() []int64 {
 	u.mu.Lock()
 	defer u.mu.Unlock()
@@ -157,8 +164,8 @@ func TestCodexModelsAppliesLocalFiltersBeforeClientETag(t *testing.T) {
 		repo,
 		nil, nil, nil, nil, nil, nil, &config.Config{RunMode: config.RunModeSimple}, nil, nil, nil, nil, nil,
 		upstream,
-		nil, nil, nil, nil, nil, nil, nil, nil,
-	)
+		nil, // tlsFPProfileService (test default: disabled),
+		nil, nil, nil, nil, nil, nil, nil, nil)
 	handler := &OpenAIGatewayHandler{gatewayService: gatewayService}
 	group := &service.Group{
 		ID:       groupID,
@@ -226,8 +233,8 @@ func TestCodexModelsAPIKeyCacheDoesNotLeakGroupFilters(t *testing.T) {
 		repo,
 		nil, nil, nil, nil, nil, nil, &config.Config{RunMode: config.RunModeSimple}, nil, nil, nil, nil, nil,
 		upstream,
-		nil, nil, nil, nil, nil, nil, nil, nil,
-	)
+		nil, // tlsFPProfileService (test default: disabled),
+		nil, nil, nil, nil, nil, nil, nil, nil)
 	handler := &OpenAIGatewayHandler{gatewayService: gatewayService}
 	groupA := &service.Group{
 		ID:       91,
@@ -332,8 +339,8 @@ func TestCodexModelsSupplementsConfiguredModelsWithUnmappedAccountDefaults(t *te
 		repo,
 		nil, nil, nil, nil, nil, nil, &config.Config{RunMode: config.RunModeSimple}, nil, nil, nil, nil, nil,
 		upstream,
-		nil, nil, nil, nil, nil, nil, nil, nil,
-	)
+		nil, // tlsFPProfileService (test default: disabled),
+		nil, nil, nil, nil, nil, nil, nil, nil)
 	handler := &OpenAIGatewayHandler{gatewayService: gatewayService}
 
 	recorder := performCodexModelsRequestForGroup(t, handler, &service.Group{
@@ -381,8 +388,8 @@ func TestCodexModelsUnmappedParentAndSparkShadowHonorCustomListAndETag(t *testin
 		repo,
 		nil, nil, nil, nil, nil, nil, &config.Config{RunMode: config.RunModeSimple}, nil, nil, nil, nil, nil,
 		upstream,
-		nil, nil, nil, nil, nil, nil, nil, nil,
-	)
+		nil, // tlsFPProfileService (test default: disabled),
+		nil, nil, nil, nil, nil, nil, nil, nil)
 	handler := &OpenAIGatewayHandler{gatewayService: gatewayService}
 	group := &service.Group{ID: 45, Platform: service.PlatformOpenAI}
 	first := performCodexModelsRequestForGroup(t, handler, group, "")
@@ -598,8 +605,8 @@ func newCodexModelsFailoverTestHandlerWithAccountCount(firstStatus, accountCount
 		codexModelsFailoverAccountRepo{accounts: accounts},
 		nil, nil, nil, nil, nil, nil, cfg, nil, nil, nil, nil, nil,
 		upstream,
-		nil, nil, nil, nil, nil, nil, nil, nil,
-	)
+		nil, // tlsFPProfileService (test default: disabled),
+		nil, nil, nil, nil, nil, nil, nil, nil)
 	return &OpenAIGatewayHandler{gatewayService: gatewayService, maxAccountSwitches: maxSwitches}, upstream, groupID
 }
 
@@ -724,6 +731,12 @@ func (u *codexModelsPinnedHTTPUpstream) Do(_ *http.Request, _ string, accountID 
 	}, nil
 }
 
+// DoWithTLS forwards to Do: tests run with TLS fingerprint disabled,
+// and the gateway falls back to the plain path when the profile is nil.
+func (u *codexModelsPinnedHTTPUpstream) DoWithTLS(req *http.Request, proxyURL string, accountID int64, accountConcurrency int, _ *tlsfingerprint.Profile) (*http.Response, error) {
+	return u.Do(req, proxyURL, accountID, accountConcurrency)
+}
+
 func (u *codexModelsPinnedHTTPUpstream) accountIDs() []int64 {
 	u.mu.Lock()
 	defer u.mu.Unlock()
@@ -761,8 +774,8 @@ func newPinnedCodexTestHandler(accounts []service.Account, upstream *codexModels
 		codexModelsFailoverAccountRepo{accounts: accounts},
 		nil, nil, nil, nil, nil, nil, cfg, nil, nil, nil, nil, nil,
 		upstream,
-		nil, nil, nil, nil, nil, nil, nil, nil,
-	)
+		nil, // tlsFPProfileService (test default: disabled),
+		nil, nil, nil, nil, nil, nil, nil, nil)
 	return &OpenAIGatewayHandler{gatewayService: gatewayService, maxAccountSwitches: maxSwitches}
 }
 

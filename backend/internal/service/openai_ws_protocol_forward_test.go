@@ -613,6 +613,7 @@ func TestNewOpenAIGatewayService_InitializesOpenAIWSResolver(t *testing.T) {
 		nil,
 		nil,
 		nil,
+		nil, // tlsFPProfileService (test default: disabled),
 		nil,
 		nil,
 		nil,
@@ -620,8 +621,7 @@ func TestNewOpenAIGatewayService_InitializesOpenAIWSResolver(t *testing.T) {
 		nil,
 		nil,
 		nil,
-		nil, // userPlatformQuotaRepo
-	)
+		nil)
 
 	decision := svc.getOpenAIWSProtocolResolver().Resolve(nil)
 	require.Equal(t, OpenAIUpstreamTransportHTTPSSE, decision.Transport)

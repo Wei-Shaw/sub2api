@@ -1,6 +1,21 @@
 package claude
 
-import "testing"
+import (
+	"fmt"
+	"testing"
+)
+
+// patchAboveBuiltin 返回一个严格高于内置基线、且主/次版本不变的合法补丁位版本，
+// 供测试构造“合法覆盖”用例。硬编码具体数值（如 2.1.259）会在基线抬升后低于
+// 新基线而误判为向下覆盖。
+func patchAboveBuiltin(t *testing.T) string {
+	t.Helper()
+	var major, minor, patch int
+	if _, err := fmt.Sscanf(CLICurrentVersion, "%d.%d.%d", &major, &minor, &patch); err != nil {
+		t.Fatalf("解析内置基线 %q 失败: %v", CLICurrentVersion, err)
+	}
+	return fmt.Sprintf("%d.%d.%d", major, minor, patch+1)
+}
 
 func TestIsSupportedCLIVersion(t *testing.T) {
 	cases := []struct {
@@ -9,7 +24,7 @@ func TestIsSupportedCLIVersion(t *testing.T) {
 		want    bool
 	}{
 		{"内置基线本身", CLICurrentVersion, true},
-		{"高于基线的补丁位", "2.1.259", true},
+		{"高于基线的补丁位", patchAboveBuiltin(t), true},
 		{"高于基线的次版本", "2.2.0", true},
 		{"高于基线的主版本", "3.0.0", true},
 		{"低于基线", "2.1.219", false},
@@ -41,8 +56,8 @@ func TestResolveCLIVersion(t *testing.T) {
 	}{
 		{"未配置时用内置基线", "", CLICurrentVersion},
 		{"只有空白等同未配置", "   ", CLICurrentVersion},
-		{"合法覆盖生效", "2.1.259", "2.1.259"},
-		{"两侧空白被裁掉", "  2.1.259  ", "2.1.259"},
+		{"合法覆盖生效", patchAboveBuiltin(t), patchAboveBuiltin(t)},
+		{"两侧空白被裁掉", "  " + patchAboveBuiltin(t) + "  ", patchAboveBuiltin(t)},
 		{"非法值回落基线", "not-a-version", CLICurrentVersion},
 		{"向下覆盖被拒", "2.0.0", CLICurrentVersion},
 		{"预发布后缀被拒（会毒化账号指纹）", "2.2.0-local", CLICurrentVersion},

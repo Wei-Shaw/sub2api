@@ -5,6 +5,7 @@ package handler
 import (
 	"bytes"
 	"context"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/tlsfingerprint"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -41,6 +42,12 @@ func (u *openAIResponsesFailoverCancelUpstream) Do(_ *http.Request, _ string, ac
 		Header:     http.Header{"Content-Type": []string{"text/html"}},
 		Body:       io.NopCloser(bytes.NewBufferString("<html>520: unknown error</html>")),
 	}, nil
+}
+
+// DoWithTLS forwards to Do: tests run with TLS fingerprint disabled,
+// and the gateway falls back to the plain path when the profile is nil.
+func (u *openAIResponsesFailoverCancelUpstream) DoWithTLS(req *http.Request, proxyURL string, accountID int64, accountConcurrency int, _ *tlsfingerprint.Profile) (*http.Response, error) {
+	return u.Do(req, proxyURL, accountID, accountConcurrency)
 }
 
 func (u *openAIResponsesFailoverCancelUpstream) calls() []int64 {
@@ -92,6 +99,7 @@ func newOpenAIResponsesFailoverTestHandler(t *testing.T, upstream service.HTTPUp
 		nil,
 		nil,
 		upstream,
+		nil, // tlsFPProfileService (test default: disabled),
 		nil,
 		nil,
 		nil,
@@ -99,8 +107,7 @@ func newOpenAIResponsesFailoverTestHandler(t *testing.T, upstream service.HTTPUp
 		nil,
 		nil,
 		nil,
-		nil,
-	)
+		nil)
 	billingService := service.NewBillingCacheService(nil, nil, nil, nil, nil, nil, cfg, nil)
 	t.Cleanup(billingService.Stop)
 	concurrencyService := service.NewConcurrencyService(nil)

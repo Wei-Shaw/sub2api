@@ -6,6 +6,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/tlsfingerprint"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -47,6 +48,12 @@ func (u *chatRoleContractUpstream) Do(req *http.Request, proxyURL string, accoun
 	}
 	u.resp = &http.Response{StatusCode: status, Header: http.Header{"Content-Type": {contentType}}, Body: io.NopCloser(strings.NewReader(result))}
 	return u.httpUpstreamRecorder.Do(req, proxyURL, accountID, concurrency)
+}
+
+// DoWithTLS routes through this stub's Do override so per-test behavior
+// (strict roles, quota sequences) applies on the DoWithTLS path too.
+func (u *chatRoleContractUpstream) DoWithTLS(req *http.Request, proxyURL string, accountID int64, accountConcurrency int, _ *tlsfingerprint.Profile) (*http.Response, error) {
+	return u.Do(req, proxyURL, accountID, accountConcurrency)
 }
 
 func TestForwardAsChatCompletions_StrictDeveloperRole(t *testing.T) {

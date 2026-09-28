@@ -49,8 +49,9 @@ func newKeyBillingGatewayService(repo service.UserGroupRateRepository) *service.
 func newKeyBillingOpenAIGatewayService(repo service.UserGroupRateRepository) *service.OpenAIGatewayService {
 	return service.NewOpenAIGatewayService(
 		nil, nil, nil, nil, nil, repo, nil, nil, nil, nil, nil,
-		nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil,
-	)
+		nil, nil, nil,
+		nil, // tlsFPProfileService (test default: disabled)
+		nil, nil, nil, nil, nil, nil, nil, nil)
 }
 
 func newKeyBillingContext(apiKey *service.APIKey) (*gin.Context, *httptest.ResponseRecorder) {

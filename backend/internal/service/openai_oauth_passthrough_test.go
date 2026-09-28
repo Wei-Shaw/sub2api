@@ -86,6 +86,9 @@ func (u *httpUpstreamRecorder) Do(req *http.Request, proxyURL string, accountID 
 	return u.resp, nil
 }
 
+// DoWithTLS falls back to the plain Do recording path: tests run with TLS
+// fingerprinting disabled. Stubs that override Do (per-test behavior) must
+// also override DoWithTLS so their behavior is not bypassed here.
 func (u *httpUpstreamRecorder) DoWithTLS(req *http.Request, proxyURL string, accountID int64, accountConcurrency int, profile *tlsfingerprint.Profile) (*http.Response, error) {
 	return u.Do(req, proxyURL, accountID, accountConcurrency)
 }

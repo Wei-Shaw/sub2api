@@ -453,6 +453,23 @@ docker compose -f docker-compose.local.yml down
 rm -rf data/ postgres_data/ redis_data/
 ```
 
+#### Claude Code Client Version Override
+
+Anthropic gates some newer models on the Claude Code client version reported by
+the account identity (for example `claude-opus-5-5` requires `claude-cli`
+>= `2.1.280`, otherwise upstream replies with
+`claude_code_version_too_old`). The mimicked version defaults to the builtin
+pin and can be raised without rebuilding via:
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `SUB2API_CLAUDE_CLI_VERSION` | builtin pin (see `CLICurrentVersion` in `backend/internal/pkg/claude/constants.go`) | Optional override for the Claude Code client identity sent upstream (User-Agent, billing attribution `cc_version`, and persisted account fingerprints). Strict three-part semver; a value below the builtin pin is dropped. Must match the version actually used by the pinned mimicry baseline. |
+
+Add it to the `environment:` list of the `sub2api` service in your
+`docker-compose.yml` (see the bundled deploy compose file) or export it for
+source deployments. Once set, the value must stay consistent across restarts:
+persisted account fingerprints treat it as a floor and are only ever raised.
+
 ---
 
 ### Method 3: Apple container (macOS)

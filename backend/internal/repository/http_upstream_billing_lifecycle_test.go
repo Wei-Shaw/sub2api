@@ -91,8 +91,8 @@ func TestHTTPUpstreamForwardDrainsUsageAfterClientDisconnect(t *testing.T) {
 	svc := service.NewOpenAIGatewayService(
 		nil, usageRepo, billingRepo, nil, nil, nil, nil, cfg, nil, nil,
 		service.NewBillingService(cfg, nil), nil, nil, upstream,
-		&service.DeferredService{}, nil, nil, nil, nil, nil, nil, nil,
-	)
+		nil, // tlsFPProfileService (test default: disabled),
+		&service.DeferredService{}, nil, nil, nil, nil, nil, nil, nil)
 	account := &service.Account{
 		ID: 1, Platform: service.PlatformOpenAI, Type: service.AccountTypeAPIKey,
 		Concurrency: 1,
