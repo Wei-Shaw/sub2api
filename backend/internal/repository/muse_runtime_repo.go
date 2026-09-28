@@ -101,6 +101,16 @@ func (r *museRuntimeRepository) Reserve(ctx context.Context, input muse.Reservat
 	if !admissible {
 		return nil, muse.Lease{}, muse.ErrOwner
 	}
+	// Keep billing failures from admitting an unbounded stream of uncharged
+	// requests after remote completion. This check shares the workspace row lock.
+	var unsettled bool
+	err = tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM muse_turns WHERE workspace_id=$1 AND billing_command IS NOT NULL AND settled_at IS NULL AND state IN ('completed','failed','cancelled','rejected'))`, w.ID).Scan(&unsettled)
+	if err != nil {
+		return nil, muse.Lease{}, err
+	}
+	if unsettled {
+		return nil, muse.Lease{}, muse.ErrBusy
+	}
 	// Expired leases remain occupied until the original work is reconciled.
 	if w.ActiveTurnID != "" {
 		return nil, muse.Lease{}, muse.ErrBusy
