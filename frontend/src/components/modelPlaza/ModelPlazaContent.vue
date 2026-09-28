@@ -25,32 +25,20 @@
     </div>
     <template v-else>
       <div class="rounded-2xl border border-gray-100 bg-white p-4 shadow-sm dark:border-dark-700 dark:bg-dark-800/60">
-        <div class="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-          <div class="flex flex-wrap gap-2" role="group" :aria-label="t('modelPlaza.filters.categoryLabel')">
-            <button
-              v-for="category in MODEL_CATEGORIES"
-              :key="category"
-              type="button"
-              class="rounded-full border px-3.5 py-1.5 text-sm font-medium transition"
-              :class="selectedCategories.includes(category)
-                ? 'border-primary-600 bg-primary-600 text-white'
-                : 'border-gray-200 bg-white text-gray-600 hover:border-primary-300 dark:border-dark-600 dark:bg-dark-800 dark:text-dark-300'"
-              :aria-pressed="selectedCategories.includes(category)"
-              @click="toggleCategory(category)"
-            >
-              {{ category }}
-            </button>
-          </div>
-          <input
-            v-model="searchQuery"
-            type="search"
-            class="input w-full lg:w-72"
-            :placeholder="t('modelPlaza.filters.searchPlaceholder')"
-          />
-        </div>
-        <p v-if="selectedCategories.length > 1" class="mt-2 text-xs text-gray-400 dark:text-dark-500">
-          {{ t('modelPlaza.filters.orHint') }}
-        </p>
+        <PlazaFilterBar
+          :platforms="platforms"
+          :groups="groupOptions"
+          :rates="rates"
+          :platform="selectedPlatform"
+          :group-id="selectedGroupId"
+          :rate="selectedRate"
+          :search="searchQuery"
+          :show-rate="true"
+          @update:platform="selectedPlatform = $event"
+          @update:group-id="selectedGroupId = $event"
+          @update:rate="selectedRate = $event"
+          @update:search="searchQuery = $event"
+        />
       </div>
 
       <div v-if="filteredModels.length > 0" class="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
@@ -76,12 +64,8 @@ import { useI18n } from 'vue-i18n'
 import { marked } from 'marked'
 import DOMPurify from 'dompurify'
 import ModelMetadataCard from './ModelMetadataCard.vue'
-import {
-  MODEL_CATEGORIES,
-  type ModelCategory,
-  type ModelPlazaResponse,
-  type PlazaModel
-} from '@/api/modelPlaza'
+import PlazaFilterBar from './PlazaFilterBar.vue'
+import type { ModelPlazaGroup, ModelPlazaResponse, PlazaModel } from '@/api/modelPlaza'
 
 const props = withDefaults(defineProps<{
   response: ModelPlazaResponse | null
@@ -96,10 +80,17 @@ const props = withDefaults(defineProps<{
 })
 
 const { t } = useI18n()
-const selectedCategories = ref<ModelCategory[]>([])
+const selectedPlatform = ref<string>('all')
+const selectedGroupId = ref<number | 'all'>('all')
+const selectedRate = ref<number | 'all'>('all')
 const searchQuery = ref('')
 
-const searchActive = computed(() => searchQuery.value.trim() !== '' || selectedCategories.value.length > 0)
+const searchActive = computed(() => {
+  return searchQuery.value.trim() !== '' ||
+    selectedPlatform.value !== 'all' ||
+    selectedGroupId.value !== 'all' ||
+    selectedRate.value !== 'all'
+})
 
 const descriptionHtml = computed(() => {
   const md = props.response?.description?.trim()
@@ -107,41 +98,86 @@ const descriptionHtml = computed(() => {
   return DOMPurify.sanitize(marked.parse(md) as string)
 })
 
-const allModels = computed<PlazaModel[]>(() => {
-  const byName = new Map<string, PlazaModel>()
+/** 生效倍率：登录用户的专属倍率优先于分组默认倍率。 */
+function effectiveRate(group: ModelPlazaGroup): number {
+  return group.user_rate_multiplier ?? group.rate_multiplier
+}
+
+const platforms = computed(() => {
+  const values = new Set((props.response?.groups ?? []).map((group) => group.platform).filter(Boolean))
+  // 平台筛选项固定展示，避免某个平台暂时没有已授权模型时整项消失。
+  // 有数据的平台可正常点击；暂无数据的平台由筛选栏置灰。
+  const preferredOrder = ['anthropic', 'deepseek', 'zhipu', 'openai']
+  const excludedPlatforms = new Set(['gemini', 'grok'])
+  return [
+    ...preferredOrder,
+    ...[...values]
+      .filter((platform) => !preferredOrder.includes(platform) && !excludedPlatforms.has(platform))
+      .sort()
+  ]
+})
+
+const groupOptions = computed(() =>
+  (props.response?.groups ?? []).map((group) => ({
+    id: group.id,
+    name: group.name,
+    platform: group.platform,
+    rate: effectiveRate(group)
+  }))
+)
+
+const rates = computed(() =>
+  [...new Set((props.response?.groups ?? []).map(effectiveRate))].sort((a, b) => a - b)
+)
+
+type ModelEntry = { model: PlazaModel; groupIds: Set<number> }
+
+/** 同名模型只展示一张卡，但保留它所属的全部分组用于筛选。 */
+const modelEntries = computed<ModelEntry[]>(() => {
+  const byName = new Map<string, ModelEntry>()
   for (const group of props.response?.groups ?? []) {
     for (const model of group.models) {
-      if (!model.display_name) continue
       const key = model.name.toLowerCase()
-      if (!byName.has(key)) byName.set(key, model)
+      const existing = byName.get(key)
+      if (existing) {
+        existing.groupIds.add(group.id)
+      } else {
+        // 元数据还未补齐展示名时，使用调用名作为兜底，不能因此隐藏模型。
+        const displayModel = model.display_name?.trim()
+          ? model
+          : { ...model, display_name: model.name }
+        byName.set(key, { model: displayModel, groupIds: new Set([group.id]) })
+      }
     }
   }
   return [...byName.values()].sort(
-    (a, b) => b.launch_date.localeCompare(a.launch_date) || a.name.localeCompare(b.name)
+    (a, b) => b.model.launch_date.localeCompare(a.model.launch_date) || a.model.name.localeCompare(b.model.name)
   )
 })
 
+const matchingGroupIds = computed(() => {
+  const groups = (props.response?.groups ?? []).filter((group) => {
+    if (selectedPlatform.value !== 'all' && group.platform !== selectedPlatform.value) return false
+    if (selectedGroupId.value !== 'all' && group.id !== selectedGroupId.value) return false
+    if (selectedRate.value !== 'all' && effectiveRate(group) !== selectedRate.value) return false
+    return true
+  })
+  return new Set(groups.map((group) => group.id))
+})
+
 const filteredModels = computed(() => {
-  let models = allModels.value
-  if (selectedCategories.value.length > 0) {
-    models = models.filter((model) =>
-      model.categories.some((category) => selectedCategories.value.includes(category))
-    )
-  }
+  let entries = modelEntries.value.filter((entry) =>
+    [...entry.groupIds].some((groupId) => matchingGroupIds.value.has(groupId))
+  )
   const q = searchQuery.value.trim().toLowerCase()
   if (q) {
-    models = models.filter((model) =>
+    entries = entries.filter(({ model }) =>
       `${model.name} ${model.display_name}`.toLowerCase().includes(q)
     )
   }
-  return models
+  return entries.map((entry) => entry.model)
 })
 
-function toggleCategory(category: ModelCategory) {
-  selectedCategories.value = selectedCategories.value.includes(category)
-    ? selectedCategories.value.filter((item) => item !== category)
-    : [...selectedCategories.value, category]
-}
 </script>
 
 <style scoped>

@@ -101,6 +101,14 @@ func TestNeedsSetupSkipsWhenSkipSetupIsEnabled(t *testing.T) {
 	}
 }
 
+func TestGetDataDirDoesNotTreatWindowsDrivePathAsDockerData(t *testing.T) {
+	t.Setenv("DATA_DIR", "")
+
+	if got := getDataDir("windows"); got != "." {
+		t.Fatalf("getDataDir(windows) = %q, want current directory", got)
+	}
+}
+
 func TestNeedsSetupFallsBackToFileDetectionWhenSkipSetupIsDisabled(t *testing.T) {
 	tests := []struct {
 		name         string

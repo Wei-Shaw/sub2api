@@ -1,63 +1,95 @@
 <template>
-  <article
-    class="group flex h-full cursor-pointer flex-col rounded-2xl border border-gray-200 bg-white p-5 shadow-sm transition hover:-translate-y-0.5 hover:border-primary-300 hover:shadow-card dark:border-dark-700 dark:bg-dark-800/70 dark:hover:border-primary-700"
-    tabindex="0"
-    role="button"
-    :aria-label="t('modelPlaza.card.viewDetails', { name: model.display_name })"
-    @click="detailsOpen = true"
-    @keydown.enter="detailsOpen = true"
-    @keydown.space.prevent="detailsOpen = true"
+  <div class="model-card-wrapper flex flex-col">
+    <article
+    class="model-card group relative flex h-full flex-col rounded-[22px] border border-primary-200 bg-white p-5 shadow-card transition hover:border-primary-400 hover:shadow-card-hover dark:border-primary-800/70 dark:bg-dark-800/80 dark:hover:border-primary-600"
+    :class="{ 'pricing-open rounded-b-none border-b-0': pricingOpen }"
   >
-    <div class="flex items-start justify-between gap-3">
-      <div class="min-w-0">
-        <h2 class="truncate text-lg font-semibold text-gray-900 dark:text-white">
+    <div class="flex items-start gap-4">
+      <div
+        class="flex h-16 w-16 shrink-0 items-center justify-center rounded-2xl border border-gray-200 bg-gray-50 text-gray-900 shadow-sm dark:border-dark-600 dark:bg-dark-900/60 dark:text-white"
+        :aria-label="platformName"
+      >
+        <PlatformIcon
+          platform="openai"
+          size="lg"
+          class="text-gray-900 dark:text-white"
+        />
+      </div>
+      <div class="min-w-0 flex-1">
+        <h2 class="truncate pr-24 text-xl font-semibold leading-tight text-gray-900 dark:text-white">
           {{ model.display_name }}
         </h2>
-        <div class="mt-1 flex items-center gap-1.5">
-          <code class="truncate text-xs text-gray-500 dark:text-dark-400">{{ model.name }}</code>
-          <button
-            type="button"
-            class="rounded p-1 text-gray-400 hover:bg-gray-100 hover:text-primary-600 dark:hover:bg-dark-700 dark:hover:text-primary-300"
-            :aria-label="t('modelPlaza.card.copyCallName')"
-            @click.stop="copyCallName"
-          >
-            <Icon name="copy" size="xs" />
-          </button>
-        </div>
+        <p class="mt-1 text-base text-gray-500 dark:text-dark-400">{{ platformName }}</p>
       </div>
     </div>
 
-    <div class="mt-3 flex flex-wrap gap-1.5">
-      <span
-        v-for="category in model.categories"
-        :key="category"
-        class="rounded-full bg-primary-50 px-2.5 py-1 text-xs font-medium text-primary-700 dark:bg-primary-950/40 dark:text-primary-300"
+    <div class="absolute right-5 top-5 flex items-center gap-2">
+      <button
+        type="button"
+        class="flex h-10 w-10 items-center justify-center rounded-xl border border-gray-300 bg-white text-gray-500 transition hover:border-primary-400 hover:bg-primary-50 hover:text-primary-700 dark:border-dark-600 dark:bg-dark-800 dark:text-dark-300 dark:hover:border-primary-500 dark:hover:bg-primary-950/30 dark:hover:text-primary-300"
+        :aria-label="t('modelPlaza.card.copyCallName')"
+        @click.stop="copyCallName"
       >
-        {{ category }}
-      </span>
-      <span class="rounded-full bg-gray-100 px-2.5 py-1 text-xs text-gray-600 dark:bg-dark-700 dark:text-dark-300">
-        {{ model.tier_condition }}
-      </span>
+        <Icon name="copy" size="sm" />
+      </button>
+      <button
+        type="button"
+        class="flex h-10 w-10 items-center justify-center rounded-xl border border-gray-300 bg-white text-gray-500 transition hover:border-primary-400 hover:bg-primary-50 hover:text-primary-700 dark:border-dark-600 dark:bg-dark-800 dark:text-dark-300 dark:hover:border-primary-500 dark:hover:bg-primary-950/30 dark:hover:text-primary-300"
+        :aria-label="t('modelPlaza.card.viewDetails', { name: model.display_name })"
+        @click.stop="detailsOpen = true"
+      >
+        <Icon name="more" size="sm" />
+      </button>
     </div>
 
-    <dl class="mt-4 space-y-3 text-sm">
-      <div>
-        <dt class="font-medium text-gray-700 dark:text-dark-200">{{ t('modelPlaza.card.capability') }}</dt>
-        <dd class="summary mt-1 text-gray-500 dark:text-dark-400">{{ model.capability }}</dd>
-      </div>
-      <div>
-        <dt class="font-medium text-gray-700 dark:text-dark-200">{{ t('modelPlaza.card.useCases') }}</dt>
-        <dd class="summary mt-1 text-gray-500 dark:text-dark-400">{{ model.use_cases }}</dd>
-      </div>
-    </dl>
+    <p class="model-description mt-5 text-base leading-7 text-gray-500 dark:text-dark-300">
+      {{ descriptionText }}
+    </p>
 
-    <div class="mt-5 grid grid-cols-2 gap-2 border-t border-gray-100 pt-4 text-xs dark:border-dark-700">
-      <PriceItem :label="t('modelPlaza.card.inputPrice')" :value="model.input_price" />
-      <PriceItem :label="t('modelPlaza.card.outputPrice')" :value="model.output_price" />
-      <PriceItem :label="t('modelPlaza.card.cacheRead')" :value="model.cache_read_price" />
-      <PriceItem :label="t('modelPlaza.card.cacheWrite')" :value="model.cache_write_price" />
+    <div class="mt-auto flex flex-wrap items-center justify-between gap-3 pt-5" @click.stop>
+      <button
+        v-if="hasTieredPricing"
+        type="button"
+        class="inline-flex items-center rounded-full border border-orange-300 bg-orange-50 px-3.5 py-1.5 text-sm font-medium text-orange-700 transition hover:bg-orange-100 dark:border-orange-400/40 dark:bg-orange-950/30 dark:text-orange-300 dark:hover:bg-orange-950/50"
+        :aria-expanded="pricingOpen"
+        @click.stop="pricingOpen = !pricingOpen"
+      >
+        {{ t('modelPlaza.card.tieredBilling') }}
+      </button>
+      <span v-else class="text-sm text-gray-400 dark:text-dark-500">
+        {{ t('modelPlaza.card.standardBilling') }}
+      </span>
+      <div class="flex flex-wrap items-center justify-end gap-2">
+        <span
+          v-if="model.tier_condition"
+          class="rounded-full border border-gray-200 bg-gray-50 px-3.5 py-1.5 text-sm text-gray-600 dark:border-dark-600 dark:bg-dark-700 dark:text-dark-200"
+        >
+          {{ model.tier_condition }}
+        </span>
+        <span
+          v-for="category in model.categories"
+          :key="category"
+          class="rounded-full border border-gray-200 bg-gray-50 px-3.5 py-1.5 text-sm text-gray-600 dark:border-dark-600 dark:bg-dark-700 dark:text-dark-200"
+        >
+          {{ category }}
+        </span>
+      </div>
     </div>
-  </article>
+    </article>
+
+    <div
+      v-if="pricingOpen"
+      class="pricing-dropdown rounded-b-[22px] border border-t-0 border-primary-200 bg-white px-5 pb-5 pt-1 dark:border-primary-800/70 dark:bg-dark-800"
+      @click.stop
+    >
+      <div class="grid gap-4 text-sm sm:grid-cols-2">
+        <DetailItem :label="t('modelPlaza.card.inputPrice')" :value="displayMetadata(model.input_price)" />
+        <DetailItem :label="t('modelPlaza.card.outputPrice')" :value="displayMetadata(model.output_price)" />
+        <DetailItem :label="t('modelPlaza.card.cacheRead')" :value="displayMetadata(model.cache_read_price)" />
+        <DetailItem :label="t('modelPlaza.card.cacheWrite')" :value="displayMetadata(model.cache_write_price)" />
+      </div>
+    </div>
+  </div>
 
   <BaseDialog
     :show="detailsOpen"
@@ -76,41 +108,49 @@
           {{ category }}
         </span>
       </div>
-      <DetailItem :label="t('modelPlaza.card.capability')" :value="model.capability" />
-      <DetailItem :label="t('modelPlaza.card.useCases')" :value="model.use_cases" />
-      <DetailItem :label="t('modelPlaza.card.tier')" :value="model.tier_condition" />
+      <DetailItem :label="t('modelPlaza.card.capability')" :value="displayMetadata(model.capability)" />
+      <DetailItem :label="t('modelPlaza.card.useCases')" :value="displayMetadata(model.use_cases)" />
+      <DetailItem :label="t('modelPlaza.card.tier')" :value="displayMetadata(model.tier_condition)" />
       <div class="grid gap-3 sm:grid-cols-2">
-        <DetailItem :label="t('modelPlaza.card.inputPrice')" :value="model.input_price" />
-        <DetailItem :label="t('modelPlaza.card.outputPrice')" :value="model.output_price" />
-        <DetailItem :label="t('modelPlaza.card.cacheRead')" :value="model.cache_read_price" />
-        <DetailItem :label="t('modelPlaza.card.cacheWrite')" :value="model.cache_write_price" />
+        <DetailItem :label="t('modelPlaza.card.inputPrice')" :value="displayMetadata(model.input_price)" />
+        <DetailItem :label="t('modelPlaza.card.outputPrice')" :value="displayMetadata(model.output_price)" />
+        <DetailItem :label="t('modelPlaza.card.cacheRead')" :value="displayMetadata(model.cache_read_price)" />
+        <DetailItem :label="t('modelPlaza.card.cacheWrite')" :value="displayMetadata(model.cache_write_price)" />
       </div>
-      <DetailItem :label="t('modelPlaza.card.glossary')" :value="model.glossary" />
+      <DetailItem :label="t('modelPlaza.card.glossary')" :value="displayMetadata(model.glossary)" />
     </div>
   </BaseDialog>
+
 </template>
 
 <script setup lang="ts">
-import { defineComponent, h, ref } from 'vue'
+import { computed, defineComponent, h, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import type { PlazaModel } from '@/api/modelPlaza'
 import Icon from '@/components/icons/Icon.vue'
+import PlatformIcon from '@/components/common/PlatformIcon.vue'
 import BaseDialog from '@/components/common/BaseDialog.vue'
 import { useAppStore } from '@/stores/app'
+import { platformLabel } from '@/utils/platformColors'
 
 const props = defineProps<{ model: PlazaModel }>()
 const { t } = useI18n()
 const appStore = useAppStore()
 const detailsOpen = ref(false)
+const pricingOpen = ref(false)
+const platformName = computed(() => platformLabel(props.model.platform))
 
-const PriceItem = defineComponent({
-  props: { label: { type: String, required: true }, value: { type: String, required: true } },
-  setup(item) {
-    return () => h('div', { class: 'rounded-xl bg-gray-50 p-2.5 dark:bg-dark-900/50' }, [
-      h('div', { class: 'text-gray-400 dark:text-dark-500' }, item.label),
-      h('div', { class: 'mt-1 font-semibold text-gray-900 dark:text-white' }, item.value)
-    ])
-  }
+function displayMetadata(value: string | null | undefined): string {
+  const normalized = value?.trim()
+  return !normalized || normalized === '待补充' ? '-' : normalized
+}
+
+const descriptionText = computed(() => {
+  return displayMetadata(props.model.capability || props.model.use_cases)
+})
+
+const hasTieredPricing = computed(() => {
+  return Boolean(props.model.tier_condition?.trim()) || (props.model.pricing?.intervals?.length ?? 0) > 1
 })
 
 const DetailItem = defineComponent({
@@ -130,7 +170,33 @@ async function copyCallName() {
 </script>
 
 <style scoped>
-.summary {
+.model-card {
+  min-height: 15rem;
+}
+
+.model-card.pricing-open {
+  border-bottom-width: 0;
+  border-bottom-left-radius: 0;
+  border-bottom-right-radius: 0;
+  box-shadow: none;
+}
+
+.pricing-dropdown {
+  animation: pricing-dropdown-in 0.16s ease-out;
+}
+
+@keyframes pricing-dropdown-in {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.model-description {
   display: -webkit-box;
   overflow: hidden;
   -webkit-box-orient: vertical;

@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest'
 import { mount } from '@vue/test-utils'
 import { defineComponent, h } from 'vue'
 import ModelPlazaContent from '../ModelPlazaContent.vue'
+import PlazaFilterBar from '../PlazaFilterBar.vue'
 import type { ModelPlazaGroup, ModelPlazaResponse, PlazaModel } from '@/api/modelPlaza'
 
 vi.mock('vue-i18n', () => ({
@@ -15,10 +16,15 @@ const CardStub = defineComponent({
   }
 })
 
-function model(name: string, launchDate: string, categories: PlazaModel['categories']): PlazaModel {
+function model(
+  name: string,
+  launchDate: string,
+  categories: PlazaModel['categories'],
+  platform = 'openai'
+): PlazaModel {
   return {
     name,
-    platform: 'openai',
+    platform,
     display_name: name.toUpperCase(),
     capability: 'capability',
     use_cases: 'use cases',
@@ -35,14 +41,19 @@ function model(name: string, launchDate: string, categories: PlazaModel['categor
   }
 }
 
-function group(id: number, models: PlazaModel[]): ModelPlazaGroup {
+function group(
+  id: number,
+  models: PlazaModel[],
+  platform = 'openai',
+  rateMultiplier = 1
+): ModelPlazaGroup {
   return {
     id,
     name: `group-${id}`,
     description: '',
-    platform: 'openai',
+    platform,
     subscription_type: 'standard',
-    rate_multiplier: 1,
+    rate_multiplier: rateMultiplier,
     peak_rate_enabled: false,
     peak_start: '',
     peak_end: '',
@@ -78,24 +89,46 @@ describe('ModelPlazaContent R2', () => {
     ])
   })
 
-  it('uses OR semantics when multiple categories are selected', async () => {
+  it('keeps models whose metadata display name is missing', () => {
+    const missingDisplayName = model('model-without-display-name', '2026-01-01', ['文本'])
+    missingDisplayName.display_name = ''
+    const wrapper = mountContent({
+      description: '',
+      groups: [group(1, [missingDisplayName])]
+    })
+    expect(wrapper.findAll('.model-card').map((card) => card.attributes('data-name'))).toEqual([
+      'model-without-display-name'
+    ])
+  })
+
+  it('uses platform, group, and rate filters from the new filter bar', async () => {
     const wrapper = mountContent({
       description: '',
       groups: [
         group(1, [
-          model('text-only', '2026-01-01', ['文本']),
-          model('code-only', '2026-01-02', ['代码']),
-          model('voice-only', '2026-01-03', ['语音'])
-        ])
+          model('openai-model', '2026-01-01', ['文本'])
+        ], 'openai', 0.1),
+        group(2, [
+          model('anthropic-model', '2026-01-02', ['文本'], 'anthropic')
+        ], 'anthropic', 0.5)
       ]
     })
-    const buttons = wrapper.findAll('button')
-    await buttons.find((button) => button.text() === '文本')!.trigger('click')
-    await buttons.find((button) => button.text() === '代码')!.trigger('click')
+    const filter = wrapper.findComponent(PlazaFilterBar)
+    expect(filter.props('platforms')).toEqual(['anthropic', 'deepseek', 'zhipu', 'openai'])
+    expect(filter.props('rates')).toEqual([0.1, 0.5])
+
+    await filter.vm.$emit('update:platform', 'anthropic')
     expect(wrapper.findAll('.model-card').map((card) => card.attributes('data-name'))).toEqual([
-      'code-only',
-      'text-only'
+      'anthropic-model'
     ])
-    expect(wrapper.text()).toContain('modelPlaza.filters.orHint')
+
+    await filter.vm.$emit('update:groupId', 2)
+    await filter.vm.$emit('update:rate', 0.5)
+    expect(wrapper.findAll('.model-card').map((card) => card.attributes('data-name'))).toEqual([
+      'anthropic-model'
+    ])
+
+    await filter.vm.$emit('update:search', 'openai')
+    expect(wrapper.findAll('.model-card')).toHaveLength(0)
   })
 })

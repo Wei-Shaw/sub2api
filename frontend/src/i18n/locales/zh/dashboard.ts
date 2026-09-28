@@ -674,7 +674,9 @@ export default {
       glossary: '术语解释',
       copyCallName: '复制调用名',
       copySuccess: '调用名已复制',
-      viewDetails: '查看 {name} 完整信息'
+      viewDetails: '查看 {name} 完整信息',
+      tieredBilling: '阶梯计费',
+      standardBilling: '标准计费'
     },
     badges: {
       exclusive: '专属分组',

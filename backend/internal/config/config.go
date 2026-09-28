@@ -10,6 +10,7 @@ import (
 	"net/textproto"
 	"net/url"
 	"os"
+	"runtime"
 	"strings"
 	"sync/atomic"
 	"time"
@@ -1975,6 +1976,10 @@ func load(allowMissingJWTSecret bool) (*Config, error) {
 }
 
 func configureConfigSource(setConfigFile, addConfigPath func(string)) {
+	configureConfigSourceForOS(runtime.GOOS, setConfigFile, addConfigPath)
+}
+
+func configureConfigSourceForOS(goos string, setConfigFile, addConfigPath func(string)) {
 	if configFile := strings.TrimSpace(os.Getenv("CONFIG_FILE")); configFile != "" {
 		setConfigFile(configFile)
 		return
@@ -1984,10 +1989,16 @@ func configureConfigSource(setConfigFile, addConfigPath func(string)) {
 	if dataDir := strings.TrimSpace(os.Getenv("DATA_DIR")); dataDir != "" {
 		addConfigPath(dataDir)
 	}
-	addConfigPath("/app/data")
+	// On Windows, /app/data resolves to the current drive (for example
+	// D:\app\data), which can make a local launch read unrelated state.
+	if goos != "windows" {
+		addConfigPath("/app/data")
+	}
 	addConfigPath(".")
 	addConfigPath("./config")
-	addConfigPath("/etc/sub2api")
+	if goos != "windows" {
+		addConfigPath("/etc/sub2api")
+	}
 }
 
 func setDefaults() {

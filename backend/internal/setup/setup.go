@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"runtime"
 	"strconv"
 	"strings"
 	"time"
@@ -45,14 +46,24 @@ func setupDefaultAdminConcurrency() int {
 // GetDataDir returns the data directory for storing config and lock files.
 // Priority: DATA_DIR env > /app/data (if exists and writable) > current directory
 func GetDataDir() string {
+	return getDataDir(runtime.GOOS)
+}
+
+func getDataDir(goos string) string {
 	// Check DATA_DIR environment variable first
 	if dir := os.Getenv("DATA_DIR"); dir != "" {
 		return dir
 	}
 
-	// Check if /app/data exists and is writable (Docker environment)
+	// On Windows, /app/data resolves to a drive-relative path such as
+	// D:\app\data and must not be treated as evidence of Docker.
 	dockerDataDir := "/app/data"
-	if info, err := os.Stat(dockerDataDir); err == nil && info.IsDir() {
+	if goos != "windows" {
+		info, err := os.Stat(dockerDataDir)
+		if err != nil || !info.IsDir() {
+			return "."
+		}
+
 		// Try to check if writable by creating a temp file
 		testFile := dockerDataDir + "/.write_test"
 		if f, err := os.Create(testFile); err == nil {

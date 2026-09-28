@@ -669,7 +669,9 @@ export default {
       glossary: 'Terms',
       copyCallName: 'Copy model ID',
       copySuccess: 'Model ID copied',
-      viewDetails: 'View full details for {name}'
+      viewDetails: 'View full details for {name}',
+      tieredBilling: 'Tiered billing',
+      standardBilling: 'Standard billing'
     },
     badges: {
       exclusive: 'Exclusive',

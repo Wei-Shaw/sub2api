@@ -329,6 +329,20 @@ func TestConfigFileTakesPrecedenceOverDataDir(t *testing.T) {
 	require.Equal(t, "192.0.2.30", cfg.Server.Host)
 }
 
+func TestConfigureConfigSourceSkipsDockerPathOnWindows(t *testing.T) {
+	t.Setenv("CONFIG_FILE", "")
+	t.Setenv("DATA_DIR", "")
+
+	var paths []string
+	configureConfigSourceForOS("windows", func(string) {
+		t.Fatal("setConfigFile should not be called")
+	}, func(path string) {
+		paths = append(paths, path)
+	})
+
+	require.Equal(t, []string{".", "./config"}, paths)
+}
+
 func TestLoadReturnsErrorForMissingConfigFile(t *testing.T) {
 	resetViperWithJWTSecret(t)
 	t.Setenv("CONFIG_FILE", filepath.Join(t.TempDir(), "missing.yaml"))
