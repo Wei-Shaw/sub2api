@@ -53,6 +53,11 @@ func normalizeEffortModelID(model string) string {
 	}
 	id = strings.TrimPrefix(id, "anthropic.")
 	id = strings.TrimSuffix(id, "-thinking")
+	// OpenRouter uses a dotted minor version for this exact Opus 5.5 ID.
+	// Normalize it before effort, thinking, and billing family lookups.
+	if id == "claude-opus-5.5" {
+		id = "claude-opus-5-5"
+	}
 	if mapped, ok := ModelIDReverseOverrides[id]; ok {
 		id = mapped
 	}
