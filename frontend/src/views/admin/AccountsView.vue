@@ -149,7 +149,7 @@
                             type="button"
                             class="shrink-0 rounded px-1.5 py-0.5 text-[11px] text-primary-600 hover:bg-primary-50 dark:text-primary-400 dark:hover:bg-primary-900/20"
                             data-testid="reset-column-order"
-                            @click.stop="resetColumnOrder"
+                            @click.stop="resetColumnLayout"
                           >
                             {{ t('admin.accounts.resetColumnOrder') }}
                           </button>
@@ -236,7 +236,9 @@
           :loading="loading"
           row-key="id"
           :server-side-sort="true"
+          :resizable="true"
           @sort="handleSort"
+          @column-resize="handleColumnResize"
           default-sort-key="name"
           default-sort-order="asc"
           :sort-storage-key="ACCOUNT_SORT_STORAGE_KEY"
@@ -690,10 +692,13 @@ const HIDDEN_COLUMNS_KEY = 'account-hidden-columns'
 const HIDDEN_COLUMNS_VERSION_KEY = 'account-hidden-columns-version'
 const HIDDEN_COLUMNS_CURRENT_VERSION = 'scheduler-score-hidden-by-default'
 const COLUMN_ORDER_KEY = 'account-column-order'
+const COLUMN_WIDTH_KEY = 'account-column-widths'
 const PINNED_START_COLUMNS = new Set(['select'])
 const PINNED_END_COLUMNS = new Set(['actions'])
 /** Saved middle-column order (excludes select/actions). Empty = use default allColumns order. */
 const savedColumnOrder = ref<string[]>([])
+/** Saved column widths in px. Missing key = auto width. */
+const columnWidths = ref<Record<string, number>>({})
 type ReorderableColumnItem = { key: string; label: string }
 const reorderableColumns = ref<ReorderableColumnItem[]>([])
 
@@ -1071,6 +1076,67 @@ const resetColumnOrder = () => {
   syncReorderableColumns()
 }
 
+const loadSavedColumnWidths = () => {
+  try {
+    const raw = localStorage.getItem(COLUMN_WIDTH_KEY)
+    if (!raw) {
+      columnWidths.value = {}
+      return
+    }
+    const parsed = JSON.parse(raw) as Record<string, unknown>
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+      columnWidths.value = {}
+      return
+    }
+    const next: Record<string, number> = {}
+    for (const [key, value] of Object.entries(parsed)) {
+      const width = Number(value)
+      if (typeof key === 'string' && Number.isFinite(width) && width >= 72) {
+        next[key] = Math.round(width)
+      }
+    }
+    columnWidths.value = next
+  } catch (e) {
+    console.error('Failed to load column widths:', e)
+    columnWidths.value = {}
+  }
+}
+
+const saveColumnWidthsToStorage = () => {
+  try {
+    localStorage.setItem(COLUMN_WIDTH_KEY, JSON.stringify(columnWidths.value))
+  } catch (e) {
+    console.error('Failed to save column widths:', e)
+  }
+}
+
+const handleColumnResize = (key: string, width: number) => {
+  if (!key || key === 'select' || key === 'actions') return
+  if (!Number.isFinite(width) || width <= 0) {
+    if (!(key in columnWidths.value)) return
+    const next = { ...columnWidths.value }
+    delete next[key]
+    columnWidths.value = next
+    saveColumnWidthsToStorage()
+    return
+  }
+  columnWidths.value = {
+    ...columnWidths.value,
+    [key]: Math.max(72, Math.round(width))
+  }
+  saveColumnWidthsToStorage()
+}
+
+const resetColumnWidths = () => {
+  columnWidths.value = {}
+  saveColumnWidthsToStorage()
+}
+
+const resetColumnLayout = () => {
+  resetColumnOrder()
+  resetColumnWidths()
+}
+
 const loadSavedAutoRefresh = () => {
   try {
     const saved = localStorage.getItem(AUTO_REFRESH_STORAGE_KEY)
@@ -1103,6 +1169,7 @@ const saveAutoRefreshToStorage = () => {
 if (typeof window !== 'undefined') {
   loadSavedColumns()
   loadSavedColumnOrder()
+  loadSavedColumnWidths()
   loadSavedAutoRefresh()
 }
 
@@ -1941,11 +2008,19 @@ watch(savedColumnOrder, () => {
   syncReorderableColumns()
 })
 
-// Filtered columns based on visibility + custom order
+// Filtered columns based on visibility + custom order + widths
 const cols = computed(() =>
-  orderedAllColumns.value.filter(col =>
-    col.key === 'select' || col.key === 'name' || col.key === 'actions' || !hiddenColumns.has(col.key)
-  )
+  orderedAllColumns.value
+    .filter(col =>
+      col.key === 'select' || col.key === 'name' || col.key === 'actions' || !hiddenColumns.has(col.key)
+    )
+    .map((col) => {
+      const width = columnWidths.value[col.key]
+      if (typeof width === 'number' && Number.isFinite(width) && width > 0) {
+        return { ...col, width }
+      }
+      return col
+    })
 )
 
 const accountDetailLoading = new Set<number>()
