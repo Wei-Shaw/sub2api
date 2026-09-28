@@ -12,6 +12,14 @@ func TestRedactCredentials_NilInput(t *testing.T) {
 	require.Nil(t, status)
 }
 
+func TestRedactCredentials_MuseSessionNeverReturnsNestedSecrets(t *testing.T) {
+	bundle := map[string]any{"cookies": map[string]string{"session": "test-only-secret"}, "binding": "private-binding"}
+	out, status := RedactCredentials(map[string]any{"muse_session": bundle, "expires_at": int64(123)})
+	require.NotContains(t, out, "muse_session")
+	require.True(t, status["has_muse_session"])
+	require.Equal(t, int64(123), out["expires_at"])
+}
+
 func TestRedactCredentials_StripsSensitiveKeysAndReportsStatus(t *testing.T) {
 	in := map[string]any{
 		"refresh_token":         "rt-secret",
