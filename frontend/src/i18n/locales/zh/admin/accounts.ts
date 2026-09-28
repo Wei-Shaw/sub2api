@@ -1026,7 +1026,8 @@ export default {
 	  autoPause5hDisabled: '禁用 5h 自动暂停',
 	  autoPause7dDisabled: '禁用 7d 自动暂停',
 	  autoPauseDisabledHint: '开启后该账号永不进入自动暂停（即使全局默认阈值已配置）。',
-	  autoResetCredit: {
+	  claudeResetCredits: {redeem: '使用重置额度', confirm: '确认消耗一次不可退还的 Claude 重置额度？此操作无法撤销。', retry: '重新查询同一操作', outcomes: { reset: '重置已确认。', unknown: '结果未知。请勿消耗其他额度；仅可重试同一操作。', already_used: '此重置次数已被消耗。', not_limited: '未重置：账号未受限。', cooldown: '未重置：冷却中。', ineligible: '未重置：账号不符合条件。', unavailable: '没有可用重置额度。' }, "query": "Claude 重置额度", "error": "无法刷新重置额度，未执行重置。", "count": "可用重置次数：{count}", "ineligible": "此账号不符合使用条件。", "cooldown": "冷却截止：{time}", "weekly": "每周窗口重置时间：{time}", "expires": "到期时间：{time}", "clears": "清除窗口：{windows}", "fetched": "查询时间：{time}"},
+      autoResetCredit: {
 	    title: '自动使用重置卡',
 	    hint: '仅在实际用量达到阈值时使用最早到期的可用卡；默认关闭。无卡或失败时账号保持暂停。',
 	    threshold5h: '5h 自动用卡阈值(%)',

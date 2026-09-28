@@ -880,6 +880,7 @@ var ProviderSet = wire.NewSet(
 	ProvideBatchImageWorkerRuntime,
 	wire.Bind(new(AccountRuntimeBlocker), new(*OpenAIGatewayService)),
 	NewOAuthService,
+	ProvideClaudeResetCreditService,
 	ProvideOpenAIOAuthService,
 	ProvideGrokOAuthService,
 	wire.Bind(new(GrokOAuthTokenService), new(*GrokOAuthService)),
@@ -1069,4 +1070,10 @@ func ProvideChannelMonitorV2Aggregator(repo ChannelMonitorV2Repository, db *sql.
 	}
 	aggregator.Start()
 	return aggregator
+}
+
+func ProvideClaudeResetCreditService(accounts AccountRepository, tokens *ClaudeTokenProvider, proxies ProxyRepository, settings *SettingService, idem *IdempotencyCoordinator, locks LeaderLockCache) *ClaudeResetCreditService {
+	s := NewClaudeResetCreditService(accounts, tokens, proxies, settings)
+	s.ConfigureRedemption(accounts, idem, locks)
+	return s
 }
