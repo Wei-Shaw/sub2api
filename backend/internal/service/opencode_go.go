@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
+	"github.com/tidwall/gjson"
 )
 
 // OpenCode Go 是 OpenCode Zen 的订阅网关：同一 API Key 下按模型分流到
@@ -56,6 +57,8 @@ func DefaultOpenCodeGoModelIDs() []string {
 		"hy4-preview",
 		"hy3",
 		"omen-alpha",
+		"jev-1.13",
+		"jev-1.13-free",
 	}
 }
 
@@ -65,6 +68,13 @@ func normalizeOpenCodeGoModelID(model string) string {
 		model = strings.TrimPrefix(model, prefix)
 	}
 	return model
+}
+
+// isOpenCodeGoSystemOneModel 报告模型是否为 SystemOne (Jev) 原生模型。
+// 匹配归一化后的 jev- 前缀：覆盖 jev-1.13 / jev-1.13-free 及后续版本，
+// 大小写与 opencode/ 前缀不敏感（与 normalizeOpenCodeGoModelID 同口径）。
+func isOpenCodeGoSystemOneModel(model string) bool {
+	return strings.HasPrefix(normalizeOpenCodeGoModelID(model), "jev-")
 }
 
 // OpenCodeGoProtocolRule is one model-pattern → native protocol mapping.
@@ -251,6 +261,14 @@ func NormalizeOpenCodeGoProtocolRulesCredentials(credentials map[string]any) err
 
 func (a *Account) IsOpenCodeGo() bool {
 	return a != nil && a.Platform == PlatformOpenCodeGo
+}
+
+func isOpenCodeFreeTierRequestRejection(account *Account, statusCode int, body []byte) bool {
+	if account == nil || statusCode != http.StatusForbidden ||
+		(!account.IsOpenCodeGo() && !isOfficialOpenCodeHost(account.GetOpenAIBaseURL())) {
+		return false
+	}
+	return strings.EqualFold(gjson.GetBytes(body, "error.type").String(), "FreeTierError")
 }
 
 // GetOpenCodeAccountMode 返回 OpenCode 账号类型。未设置时按 Go 处理，兼容已有账号。

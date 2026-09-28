@@ -22,6 +22,7 @@ func TestExtractPromptSnapshotProtocols(t *testing.T) {
 		{"anthropic_messages", `{"messages":[{"role":"user","content":[{"type":"text","text":"claude"}]}]}`, "claude", 1},
 		{"gemini", `{"contents":[{"role":"user","parts":[{"text":"gemini"},{"inline_data":{"data":"BASE64"}}]}]}`, "gemini", 1},
 		{"openai_images", `{"prompt":"draw a cat","image":"BASE64SECRET"}`, "draw a cat", 1},
+		{"systemone", `{"model":"jev-1.13","state":"payments failed three days","questions":{"department":{"type":"choice","instructions":"which team","criteria":{"billing":"payment problems","technical":"bugs"}},"frustration":{"type":"score","instructions":"how frustrated","criteria":["calm","angry"]}}}`, "payments failed three days", 7},
 		{"responses_websocket", `{"type":"response.create","response":{"input":"turn two"}}`, "turn two", 1},
 	}
 	for _, tt := range tests {

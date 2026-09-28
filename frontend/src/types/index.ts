@@ -680,6 +680,7 @@ export type CompositeRouteEndpoint =
   | 'embeddings'
   | 'images'
   | 'gemini'
+  | 'systemone'
 
 export type CompositeRouteSource = 'route' | 'detector' | string
 

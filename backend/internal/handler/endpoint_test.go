@@ -35,6 +35,10 @@ func TestNormalizeInboundEndpoint(t *testing.T) {
 		{"/v1/images/tasks/imgtask_123", EndpointImageTasks},
 		{"/v1/videos/generations", EndpointVideosGenerations},
 		{"/v1/videos/req_123", EndpointVideos},
+		{"/v1/systemone", EndpointSystemOne},
+		{"/systemone", EndpointSystemOne},
+		{"/systemone/", EndpointSystemOne},
+		{"/openai/v1/systemone", EndpointSystemOne},
 		{"/v1beta/models", EndpointGeminiModels},
 
 		// Prefixed paths (antigravity, openai) — root Responses.
@@ -142,6 +146,9 @@ func TestDeriveUpstreamEndpoint(t *testing.T) {
 
 		// Unknown platform — passthrough.
 		{"unknown platform", "/v1/embeddings", "/v1/embeddings", "unknown", "/v1/embeddings"},
+		// OpenCode SystemOne — inbound endpoint passes through to the same upstream path.
+		{"opencode systemone", EndpointSystemOne, "/v1/systemone", service.PlatformOpenCodeGo, EndpointSystemOne},
+		{"opencode bare systemone", EndpointSystemOne, "/systemone", service.PlatformOpenCodeGo, EndpointSystemOne},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

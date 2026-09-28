@@ -431,7 +431,14 @@ func (s *AccountTestService) testOpenCodeGoAccountConnection(c *gin.Context, acc
 	if testModelID == "" {
 		testModelID = DefaultOpenCodeGoTestModel
 	}
-	testModelID = account.GetMappedModel(testModelID)
+	// 映射前后都参与 SystemOne 判定：合法映射（如 opencode/jev-1.13→jev-1.13）
+	// 不应改变探针端点；映射后不再是 jev 名时仍按映射前的原生模型选择探针，
+	// 与运行时 /v1/systemone 入口行为一致。
+	mappedModelID := account.GetMappedModel(testModelID)
+	if isOpenCodeGoSystemOneModel(testModelID) || isOpenCodeGoSystemOneModel(mappedModelID) {
+		return s.testOpenCodeGoSystemOneConnection(c, account, mappedModelID, prompt)
+	}
+	testModelID = mappedModelID
 	proto := account.GetAPIProtocol()
 	switch proto {
 	case APIProtocolChatCompletions, APIProtocolAnthropic, APIProtocolResponses:
@@ -460,6 +467,77 @@ func (s *AccountTestService) testOpenCodeGoResponsesConnection(c *gin.Context, a
 	c.Writer.Flush()
 	s.sendEvent(c, TestEvent{Type: "test_start", Model: testModelID})
 	return s.testCNProviderAdaptiveResponsesConnection(c, account, testModelID, authToken)
+}
+
+// testOpenCodeGoSystemOneConnection probes the native SystemOne (Jev) endpoint
+// for jev-* models: POST {base}/v1/systemone with a minimal noul question.
+// A 200 with a non-empty answers object marks the credential reachable.
+func (s *AccountTestService) testOpenCodeGoSystemOneConnection(c *gin.Context, account *Account, testModelID string, prompt string) error {
+	authToken := strings.TrimSpace(account.GetOpenAIProtocolAPIKey())
+	if authToken == "" {
+		return s.sendErrorAndEnd(c, "No API key available")
+	}
+	baseURL, err := s.validateUpstreamBaseURL(account.GetOpenAIBaseURL())
+	if err != nil {
+		return s.sendErrorAndEnd(c, fmt.Sprintf("Invalid base URL: %s", err.Error()))
+	}
+	apiURL := buildOpenAISystemOneURL(baseURL)
+
+	state := strings.TrimSpace(prompt)
+	if state == "" {
+		state = "SystemOne connectivity probe."
+	}
+	payloadBytes, _ := json.Marshal(map[string]any{
+		"model": testModelID,
+		"state": state,
+		"questions": map[string]any{
+			"probe": map[string]any{
+				"type":         "noul",
+				"instructions": "Does this message describe a connectivity probe?",
+			},
+		},
+	})
+
+	c.Writer.Header().Set("Content-Type", "text/event-stream")
+	c.Writer.Header().Set("Cache-Control", "no-cache")
+	c.Writer.Header().Set("Connection", "keep-alive")
+	c.Writer.Header().Set("X-Accel-Buffering", "no")
+	c.Writer.Flush()
+	s.sendEvent(c, TestEvent{Type: "test_start", Model: testModelID})
+
+	ctx := c.Request.Context()
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, apiURL, bytes.NewReader(payloadBytes))
+	if err != nil {
+		return s.sendErrorAndEnd(c, "Failed to create SystemOne test request")
+	}
+	req = req.WithContext(WithHTTPUpstreamProfile(req.Context(), HTTPUpstreamProfileOpenAI))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Accept", "application/json")
+	req.Header.Set("Authorization", "Bearer "+authToken)
+	applyOpenCodeUpstreamUserAgent(account, apiURL, req.Header)
+	account.ApplyHeaderOverrides(req.Header)
+	applyOpenCodeSessionHeader(c, account, apiURL, req.Header, payloadBytes)
+
+	resp, err := s.doCNProviderAdaptiveRequest(req, account)
+	if err != nil {
+		return s.sendErrorAndEnd(c, fmt.Sprintf("SystemOne endpoint request failed: %s", err.Error()))
+	}
+	defer func() { _ = resp.Body.Close() }()
+	respBody, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+	if resp.StatusCode != http.StatusOK {
+		errMsg := fmt.Sprintf("SystemOne endpoint returned %d: %s", resp.StatusCode, string(respBody))
+		if resp.StatusCode == http.StatusUnauthorized && s.accountRepo != nil {
+			_ = s.accountRepo.SetError(ctx, account.ID, errMsg)
+		}
+		return s.sendErrorAndEnd(c, errMsg)
+	}
+	answers := gjson.GetBytes(respBody, "answers")
+	if !answers.Exists() || !answers.IsObject() || len(answers.Map()) == 0 {
+		return s.sendErrorAndEnd(c, "SystemOne endpoint returned no answers")
+	}
+	s.sendEvent(c, TestEvent{Type: "status", Text: "已通过原生 /v1/systemone 验证"})
+	s.sendEvent(c, TestEvent{Type: "test_complete", Model: testModelID, Success: true})
+	return nil
 }
 
 func (s *AccountTestService) testCNProviderChatCompletionsConnection(c *gin.Context, account *Account, modelID string, prompt string) error {

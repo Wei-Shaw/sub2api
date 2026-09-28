@@ -117,6 +117,7 @@ func TestOpenCodeGatewayAppliesMappedModelOnAllIngresses(t *testing.T) {
 			require.NoError(t, err)
 			require.NotNil(t, upstream.lastReq)
 			require.Equal(t, tt.wantURL, upstream.lastReq.URL.String())
+			require.Regexp(t, `^ses_[0-9a-f]{12}[0-9A-Za-z]{14}$`, upstream.lastReq.Header.Get(openCodeSessionHeader))
 			require.Equal(t, tt.wantModel, gjson.GetBytes(upstream.lastBody, "model").String())
 			require.NotContains(t, string(upstream.lastBody), tt.wantNotModel)
 		})

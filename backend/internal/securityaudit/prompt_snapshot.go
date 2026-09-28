@@ -106,6 +106,8 @@ func extractProtocolSegments(protocol string, document any) []promptSegment {
 		return append(extractInstructions(root["instructions"]), extractResponses(root["input"])...)
 	case "openai_images", "grok_media", "media", "images":
 		return userPromptSegments(extractMediaPrompts(root))
+	case "systemone":
+		return extractSystemOneSegments(root)
 	default:
 		if segments := extractChatLikeSegments(root); len(segments) > 0 {
 			return segments
@@ -130,6 +132,66 @@ func extractChatLikeSegments(root map[string]any) []promptSegment {
 		return nil
 	}
 	return extractMessages(root["messages"], clientInstructionRoles...)
+}
+
+// extractSystemOneSegments 提取 SystemOne (Jev) 请求的待审文本：各 question
+// 的 instructions 与 criteria 在前（按 question ID 排序保证稳定），state
+// 居末——normalizeSegmentsLatestUserFirst 会把末尾的 state 提升为优先扫描段。
+func extractSystemOneSegments(root map[string]any) []promptSegment {
+	if root == nil {
+		return nil
+	}
+	var texts []string
+	if questions, ok := root["questions"].(map[string]any); ok {
+		ids := make([]string, 0, len(questions))
+		for id := range questions {
+			ids = append(ids, id)
+		}
+		sort.Strings(ids)
+		for _, id := range ids {
+			question, _ := questions[id].(map[string]any)
+			if instructions := stringValue(question["instructions"]); instructions != "" {
+				texts = append(texts, instructions)
+			}
+			texts = append(texts, systemOneCriteriaTexts(question["criteria"])...)
+		}
+	}
+	if state := stringValue(root["state"]); state != "" {
+		texts = append(texts, state)
+	}
+	return userPromptSegments(texts)
+}
+
+// systemOneCriteriaTexts 拍平 question criteria 的两种形态：
+// choice 的 {"label": "描述"} 对象，或 score 的 ["rubric", ...] 数组。
+func systemOneCriteriaTexts(criteria any) []string {
+	switch typed := criteria.(type) {
+	case map[string]any:
+		labels := make([]string, 0, len(typed))
+		for label := range typed {
+			labels = append(labels, label)
+		}
+		sort.Strings(labels)
+		texts := make([]string, 0, len(labels))
+		for _, label := range labels {
+			if description := stringValue(typed[label]); description != "" {
+				texts = append(texts, label+": "+description)
+			} else {
+				texts = append(texts, label)
+			}
+		}
+		return texts
+	case []any:
+		texts := make([]string, 0, len(typed))
+		for _, rubric := range typed {
+			if text := stringValue(rubric); text != "" {
+				texts = append(texts, text)
+			}
+		}
+		return texts
+	default:
+		return nil
+	}
 }
 
 func extractMessages(value any, wantedRoles ...string) []promptSegment {

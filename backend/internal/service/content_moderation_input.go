@@ -4,6 +4,7 @@ import (
 	"crypto/rand"
 	"fmt"
 	"math/big"
+	"sort"
 	"strings"
 
 	"github.com/tidwall/gjson"
@@ -46,6 +47,8 @@ func extractContentModerationInput(protocol string, body []byte, filterReminders
 	case ContentModerationProtocolOpenAIImages:
 		collector.addModerationText(&parts, gjson.GetBytes(body, "prompt").String())
 		collector.collectContentValue(gjson.GetBytes(body, "images"), &parts, &images)
+	case ContentModerationProtocolSystemOne:
+		collector.collectSystemOneText(gjson.GetBytes(body, "state"), gjson.GetBytes(body, "questions"), &parts)
 	default:
 		collector.collectLastResponsesInput(gjson.GetBytes(body, "input"), &parts, &images)
 		collector.collectLastRoleMessage(gjson.GetBytes(body, "messages"), "user", &parts, &images)
@@ -335,6 +338,53 @@ func (collector moderationTextCollector) addModerationText(parts *[]string, text
 		return
 	}
 	*parts = append(*parts, text)
+}
+
+// collectSystemOneText 收集 SystemOne (Jev) 请求的待审文本。
+//
+// 两条与其它协议不同的规则：
+//
+//  1. state 排第一：Normalize 只保留前 12K runes，state 排在 questions
+//     之后时，超长 questions 会把 state 完全挤出审核，形成旁路。
+//  2. 不经过 addModerationText 的 reminder 过滤：state/questions 是普通
+//     客户端数据，没有 Anthropic reminder 语义；复用该过滤会让
+//     "<system-reminder>敏感内容</system-reminder>" 免审直达上游。
+func (collector moderationTextCollector) collectSystemOneText(state, questions gjson.Result, parts *[]string) {
+	appendText := func(text string) {
+		if text = strings.TrimSpace(text); text != "" {
+			*parts = append(*parts, text)
+		}
+	}
+	appendText(state.String())
+	if questions.IsObject() {
+		ids := make([]string, 0)
+		questions.ForEach(func(id, _ gjson.Result) bool {
+			ids = append(ids, id.String())
+			return true
+		})
+		sort.Strings(ids)
+		for _, id := range ids {
+			question := questions.Get(id)
+			appendText(question.Get("instructions").String())
+			criteria := question.Get("criteria")
+			if criteria.IsObject() {
+				labels := make([]string, 0)
+				criteria.ForEach(func(label, _ gjson.Result) bool {
+					labels = append(labels, label.String())
+					return true
+				})
+				sort.Strings(labels)
+				for _, label := range labels {
+					appendText(label + ": " + criteria.Get(label).String())
+				}
+			} else if criteria.IsArray() {
+				criteria.ForEach(func(_, rubric gjson.Result) bool {
+					appendText(rubric.String())
+					return true
+				})
+			}
+		}
+	}
 }
 
 func normalizeContentModerationText(text string) string {
