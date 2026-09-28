@@ -334,6 +334,10 @@ func (s *GatewayService) buildUpstreamRequestBedrock(
 	stream bool,
 	signer *BedrockSigner,
 ) (*http.Request, error) {
+	body, err := s.redactClientGeoMetadata(body)
+	if err != nil {
+		return nil, err
+	}
 	targetURL := BuildBedrockURL(region, modelID, stream)
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, targetURL, bytes.NewReader(body))
@@ -361,6 +365,10 @@ func (s *GatewayService) buildUpstreamRequestBedrockAPIKey(
 	stream bool,
 	apiKey string,
 ) (*http.Request, error) {
+	body, err := s.redactClientGeoMetadata(body)
+	if err != nil {
+		return nil, err
+	}
 	targetURL := BuildBedrockURL(region, modelID, stream)
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, targetURL, bytes.NewReader(body))

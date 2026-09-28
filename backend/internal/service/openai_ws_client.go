@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -12,6 +13,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/config"
 	openaiwsv2 "github.com/Wei-Shaw/sub2api/internal/service/openai_ws_v2"
 	coderws "github.com/coder/websocket"
 	"github.com/coder/websocket/wsjson"
@@ -72,17 +74,22 @@ type openAIWSTransportMetricsDialer interface {
 	SnapshotTransportMetrics() OpenAIWSTransportMetricsSnapshot
 }
 
-func newDefaultOpenAIWSClientDialer() openAIWSClientDialer {
-	return &coderOpenAIWSClientDialer{
+func newDefaultOpenAIWSClientDialer(configs ...*config.Config) openAIWSClientDialer {
+	dialer := &coderOpenAIWSClientDialer{
 		proxyClients: make(map[string]*openAIWSProxyClientEntry),
 	}
+	if len(configs) > 0 && configs[0] != nil {
+		dialer.redactClientGeo = configs[0].Gateway.RedactClientGeoMetadata
+	}
+	return dialer
 }
 
 type coderOpenAIWSClientDialer struct {
-	proxyMu      sync.Mutex
-	proxyClients map[string]*openAIWSProxyClientEntry
-	proxyHits    atomic.Int64
-	proxyMisses  atomic.Int64
+	redactClientGeo bool
+	proxyMu         sync.Mutex
+	proxyClients    map[string]*openAIWSProxyClientEntry
+	proxyHits       atomic.Int64
+	proxyMisses     atomic.Int64
 }
 
 // openAIWSHandshakeError keeps a bounded, non-logged HTTP error body so the
@@ -123,7 +130,7 @@ func (d *coderOpenAIWSClientDialer) Dial(
 		return nil, 0, nil, errors.New("ws url is empty")
 	}
 
-	wrapped := &coderOpenAIWSClientConn{}
+	wrapped := &coderOpenAIWSClientConn{redactClientGeo: d.redactClientGeo}
 	opts := &coderws.DialOptions{
 		HTTPHeader:      cloneHeader(headers),
 		CompressionMode: coderws.CompressionContextTakeover,
@@ -131,6 +138,9 @@ func (d *coderOpenAIWSClientDialer) Dial(
 			wrapped.upstreamPings.Add(1)
 			return true
 		},
+	}
+	if d.redactClientGeo {
+		RedactClientGeoHeaders(opts.HTTPHeader)
 	}
 	if proxy := strings.TrimSpace(proxyURL); proxy != "" {
 		proxyClient, err := d.proxyHTTPClient(proxy)
@@ -289,8 +299,9 @@ func (d *coderOpenAIWSClientDialer) SnapshotTransportMetrics() OpenAIWSTransport
 }
 
 type coderOpenAIWSClientConn struct {
-	conn          *coderws.Conn
-	upstreamPings atomic.Int64
+	redactClientGeo bool
+	conn            *coderws.Conn
+	upstreamPings   atomic.Int64
 }
 
 func (c *coderOpenAIWSClientConn) UpstreamPingCount() int64 {
@@ -308,6 +319,13 @@ func (c *coderOpenAIWSClientConn) WriteJSON(ctx context.Context, value any) erro
 	}
 	if ctx == nil {
 		ctx = context.Background()
+	}
+	if c.redactClientGeo {
+		payload, err := json.Marshal(value)
+		if err != nil {
+			return err
+		}
+		return c.WriteFrame(ctx, coderws.MessageText, payload)
 	}
 	return wsjson.Write(ctx, c.conn, value)
 }
@@ -352,6 +370,13 @@ func (c *coderOpenAIWSClientConn) WriteFrame(ctx context.Context, msgType coderw
 	}
 	if ctx == nil {
 		ctx = context.Background()
+	}
+	if c.redactClientGeo && (msgType == coderws.MessageText || msgType == coderws.MessageBinary) {
+		var err error
+		payload, err = RedactClientGeoMetadata(payload)
+		if err != nil {
+			return err
+		}
 	}
 	return c.conn.Write(ctx, msgType, payload)
 }

@@ -217,6 +217,14 @@ security:
 # 网关配置
 # =============================================================================
 gateway:
+  # Opt-in removal of automatic client location metadata before upstream requests.
+  # Applies to shared HTTP egress and OpenAI WebSocket messages, for all regions.
+  # Recognizes metadata fields and standalone <environment_context>/<environment>/<env> blocks.
+  # Preserves task text, paths, code examples, tool inputs/results and uploaded files.
+  # Unknown formats and already-stored upstream context are outside this filter's scope.
+  # 可选清理自动附带的时区、客户端 IP、地区等元数据；默认关闭，保留任务内容。
+  # 环境变量：GATEWAY_REDACT_CLIENT_GEO_METADATA=true
+  redact_client_geo_metadata: false
   # Timeout for waiting upstream response headers (seconds)
   # 等待上游响应头超时时间（秒）
   response_header_timeout: 600
