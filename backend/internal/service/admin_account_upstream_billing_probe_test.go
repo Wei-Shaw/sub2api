@@ -218,6 +218,49 @@ func TestUpdateAccountPreservesGrokBillingSnapshotForUnrelatedEdit(t *testing.T)
 	require.Equal(t, "billing_forbidden", reason)
 }
 
+func TestUpdateAccountPreservesSyncedUpstreamModelMetadata(t *testing.T) {
+	synced := UpstreamModelMetadataSnapshot{Source: "upstream", Models: map[string]UpstreamModelMetadata{
+		"gpt-5.7": {ID: "gpt-5.7", SupportedReasoningLevels: []string{"high", "xhigh", "max"}},
+	}}
+	stale := UpstreamModelMetadataSnapshot{Source: "upstream", Models: map[string]UpstreamModelMetadata{
+		"gpt-5.5": {ID: "gpt-5.5", SupportedReasoningLevels: []string{"high", "xhigh"}},
+	}}
+	tests := []struct {
+		name  string
+		extra map[string]any
+	}{
+		{name: "编辑弹窗提交同步前的旧快照", extra: map[string]any{"custom": "value", UpstreamModelMetadataExtraKey: stale}},
+		{name: "编辑弹窗未携带元数据", extra: map[string]any{"custom": "value"}},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			accountID := int64(113)
+			repo := &upstreamBillingProbeAccountRepo{accounts: map[int64]*Account{
+				accountID: {
+					ID:       accountID,
+					Platform: PlatformOpenAI,
+					Type:     AccountTypeAPIKey,
+					Status:   StatusActive,
+					Extra:    map[string]any{UpstreamModelMetadataExtraKey: synced},
+				},
+			}}
+
+			updated, err := (&adminServiceImpl{accountRepo: repo}).UpdateAccount(context.Background(), accountID, &UpdateAccountInput{
+				Extra: tt.extra,
+			})
+
+			require.NoError(t, err)
+			metadata, ok := updated.GetUpstreamModelMetadata("gpt-5.7")
+			require.True(t, ok)
+			require.Contains(t, metadata.SupportedReasoningLevels, "max")
+			_, ok = updated.GetUpstreamModelMetadata("gpt-5.5")
+			require.False(t, ok)
+			require.Equal(t, "value", updated.Extra["custom"])
+		})
+	}
+}
+
 func TestUpdateAccountPreservesProbeSnapshotWhenIdentityValuesAreUnchanged(t *testing.T) {
 	accountID := int64(119)
 	repo := &upstreamBillingProbeAccountRepo{accounts: map[int64]*Account{

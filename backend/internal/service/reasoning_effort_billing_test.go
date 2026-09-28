@@ -216,7 +216,7 @@ func TestReasoningEffortBillingPreservesForwardedNoneAndMinimal(t *testing.T) {
 				[]byte(`{"model":"gpt-5.4","reasoning":{"effort":"` + effort + `"}}`),
 				[]byte(`{"model":"gpt-5.4","reasoning_effort":"` + effort + `"}`),
 			} {
-				got := extractOpenAIReasoningEffortFromBody(body, "gpt-5.4")
+				got := extractOpenAIReasoningEffortFromBody(nil, body, "gpt-5.4")
 				require.NotNil(t, got)
 				require.Equal(t, effort, *got)
 				require.Equal(t, 0.5, reasoningEffortBillingMultiplier(*got, map[string]float64{effort: 0.5}))
@@ -226,7 +226,7 @@ func TestReasoningEffortBillingPreservesForwardedNoneAndMinimal(t *testing.T) {
 				{"reasoning": map[string]any{"effort": effort}},
 				{"reasoning_effort": effort},
 			} {
-				got := extractOpenAIReasoningEffort(body, "gpt-5.4")
+				got := extractOpenAIReasoningEffort(nil, body, "gpt-5.4")
 				require.NotNil(t, got)
 				require.Equal(t, effort, *got)
 			}
@@ -241,5 +241,5 @@ func TestReasoningEffortBillingPreservesForwardedNoneAndMinimal(t *testing.T) {
 	account := &Account{Platform: PlatformOpenAI, Type: AccountTypeAPIKey, Credentials: map[string]any{"base_url": "https://compat.example/v1"}}
 	filtered, err := filterOpenAIResponsesNoneReasoningEffortForAccount(account, []byte(`{"model":"custom-model","reasoning":{"effort":"none"}}`))
 	require.NoError(t, err)
-	require.Nil(t, extractOpenAIReasoningEffortFromBody(filtered, "custom-model"))
+	require.Nil(t, extractOpenAIReasoningEffortFromBody(nil, filtered, "custom-model"))
 }

@@ -49,12 +49,13 @@ func TestForwardAsAnthropic_ForceChatCompletionsPreservesFinalModelReasoningEffo
 	gin.SetMode(gin.TestMode)
 
 	tests := []struct {
-		name       string
-		model      string
-		mapped     string
-		effortJSON string
-		wantEffort string
-		maxPolicy  string
+		name           string
+		model          string
+		mapped         string
+		effortJSON     string
+		upstreamLevels []string
+		wantEffort     string
+		maxPolicy      string
 	}{
 		{
 			name:       "policy caps converted effort",
@@ -77,6 +78,22 @@ func TestForwardAsAnthropic_ForceChatCompletionsPreservesFinalModelReasoningEffo
 			mapped:     "gpt-5.5",
 			effortJSON: `,"output_config":{"effort":"max"}`,
 			wantEffort: "xhigh",
+		},
+		{
+			name:           "upstream metadata declares max",
+			model:          "gpt-5.7",
+			mapped:         "gpt-5.7",
+			effortJSON:     `,"output_config":{"effort":"max"}`,
+			upstreamLevels: []string{"low", "medium", "high", "xhigh", "max"},
+			wantEffort:     "max",
+		},
+		{
+			name:           "upstream metadata without max overrides built-in list",
+			model:          "luna",
+			mapped:         "gpt-5.6-luna",
+			effortJSON:     `,"output_config":{"effort":"max"}`,
+			upstreamLevels: []string{"low", "medium", "high", "xhigh"},
+			wantEffort:     "xhigh",
 		},
 		{
 			name:       "high remains high",
@@ -110,6 +127,11 @@ func TestForwardAsAnthropic_ForceChatCompletionsPreservesFinalModelReasoningEffo
 			}}
 			account := forceChatMessagesFallbackAccount()
 			account.Credentials["model_mapping"] = map[string]any{tt.model: tt.mapped}
+			if len(tt.upstreamLevels) > 0 {
+				account.SetUpstreamModelMetadataSnapshot(UpstreamModelMetadataSnapshot{Models: map[string]UpstreamModelMetadata{
+					tt.mapped: {ID: tt.mapped, SupportedReasoningLevels: tt.upstreamLevels},
+				}})
+			}
 
 			svc := &OpenAIGatewayService{cfg: rawChatCompletionsTestConfig(), httpUpstream: upstream}
 			ctx := context.Background()

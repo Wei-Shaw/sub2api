@@ -80,6 +80,56 @@ func TestNormalizeOpenAIReasoningEffortForMaxCapableModels(t *testing.T) {
 	}
 }
 
+func accountWithUpstreamReasoningLevels(model string, levels ...string) *Account {
+	account := &Account{Platform: PlatformOpenAI, Type: AccountTypeAPIKey}
+	account.SetUpstreamModelMetadataSnapshot(UpstreamModelMetadataSnapshot{Models: map[string]UpstreamModelMetadata{
+		model: {ID: model, SupportedReasoningLevels: levels},
+	}})
+	return account
+}
+
+func TestNormalizeOpenAIReasoningEffortForAccountModelPrefersUpstreamMetadata(t *testing.T) {
+	tests := []struct {
+		name    string
+		account *Account
+		model   string
+		want    string
+	}{
+		{name: "无账号沿用内置白名单", model: "gpt-5.6-sol", want: "max"},
+		{name: "无账号旧模型降级", model: "gpt-5.5", want: "xhigh"},
+		{
+			name:    "元数据声明 max 的新模型保留 max",
+			account: accountWithUpstreamReasoningLevels("gpt-5.7", "low", "medium", "high", "xhigh", "max"),
+			model:   "gpt-5.7",
+			want:    "max",
+		},
+		{
+			name:    "元数据未声明 max 时覆盖白名单",
+			account: accountWithUpstreamReasoningLevels("kimi-k2.6", "low", "medium", "high"),
+			model:   "kimi-k2.6",
+			want:    "xhigh",
+		},
+		{
+			name:    "元数据未列档位时回退白名单",
+			account: accountWithUpstreamReasoningLevels("gpt-5.6-sol"),
+			model:   "gpt-5.6-sol",
+			want:    "max",
+		},
+		{
+			name:    "元数据缺少该模型时回退白名单",
+			account: accountWithUpstreamReasoningLevels("gpt-5.7", "max"),
+			model:   "gpt-5.5",
+			want:    "xhigh",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			require.Equal(t, tt.want, normalizeOpenAIReasoningEffortForAccountModel(tt.account, "max", tt.model))
+		})
+	}
+}
+
 func TestNormalizeOpenAICodexCompactReasoningEffortDowngradesMax(t *testing.T) {
 	body := []byte(`{"model":"gpt-5.6-sol","input":"compact me","reasoning":{"effort":"max","summary":"auto"}}`)
 

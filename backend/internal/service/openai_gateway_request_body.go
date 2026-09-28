@@ -990,7 +990,7 @@ func (s *OpenAIGatewayService) replaceModelInResponseBody(body []byte, fromModel
 	return body
 }
 
-func getOpenAIReasoningEffortFromReqBody(reqBody map[string]any, requestedModel string) (value string, present bool) {
+func getOpenAIReasoningEffortFromReqBody(account *Account, reqBody map[string]any, requestedModel string) (value string, present bool) {
 	if reqBody == nil {
 		return "", false
 	}
@@ -998,13 +998,13 @@ func getOpenAIReasoningEffortFromReqBody(reqBody map[string]any, requestedModel 
 	// Primary: reasoning.effort
 	if reasoning, ok := reqBody["reasoning"].(map[string]any); ok {
 		if effort, ok := reasoning["effort"].(string); ok {
-			return normalizeOpenAIReasoningEffortForModel(effort, requestedModel), true
+			return normalizeOpenAIReasoningEffortForAccountModel(account, effort, requestedModel), true
 		}
 	}
 
 	// Fallback: some clients may use a flat field.
 	if effort, ok := reqBody["reasoning_effort"].(string); ok {
-		return normalizeOpenAIReasoningEffortForModel(effort, requestedModel), true
+		return normalizeOpenAIReasoningEffortForAccountModel(account, effort, requestedModel), true
 	}
 
 	return "", false
@@ -1691,15 +1691,16 @@ func isOpenAICodexModel(model string) bool {
 
 // extractOpenAIReasoningEffortFromBody 按优先级传入模型候选（如 upstreamModel,
 // billingModel, originalModel）：显式 effort 的模型归一化（max 保留判定）用第一个
-// 非空候选；body 未携带 effort 时的模型后缀推导依次尝试每个候选——OAuth 的
-// normalizeCodexModel 会剥掉 upstreamModel 的 effort 后缀，只有原始模型名还留着。
-func extractOpenAIReasoningEffortFromBody(body []byte, modelCandidates ...string) *string {
+// 非空候选（account 同步过该模型的上游推理档位时以其为准）；body 未携带 effort
+// 时的模型后缀推导依次尝试每个候选——OAuth 的 normalizeCodexModel 会剥掉
+// upstreamModel 的 effort 后缀，只有原始模型名还留着。
+func extractOpenAIReasoningEffortFromBody(account *Account, body []byte, modelCandidates ...string) *string {
 	reasoningEffort := strings.TrimSpace(gjson.GetBytes(body, "reasoning.effort").String())
 	if reasoningEffort == "" {
 		reasoningEffort = strings.TrimSpace(gjson.GetBytes(body, "reasoning_effort").String())
 	}
 	if reasoningEffort != "" {
-		normalized := normalizeOpenAIReasoningEffortForModel(reasoningEffort, firstNonEmpty(modelCandidates...))
+		normalized := normalizeOpenAIReasoningEffortForAccountModel(account, reasoningEffort, firstNonEmpty(modelCandidates...))
 		if normalized == "" {
 			return nil
 		}
@@ -2483,8 +2484,8 @@ func getOpenAIRequestBodyMap(_ *gin.Context, body []byte) (map[string]any, error
 }
 
 // extractOpenAIReasoningEffort 的模型候选语义同 extractOpenAIReasoningEffortFromBody。
-func extractOpenAIReasoningEffort(reqBody map[string]any, modelCandidates ...string) *string {
-	if value, present := getOpenAIReasoningEffortFromReqBody(reqBody, firstNonEmpty(modelCandidates...)); present {
+func extractOpenAIReasoningEffort(account *Account, reqBody map[string]any, modelCandidates ...string) *string {
+	if value, present := getOpenAIReasoningEffortFromReqBody(account, reqBody, firstNonEmpty(modelCandidates...)); present {
 		if value == "" {
 			return nil
 		}
@@ -2544,13 +2545,35 @@ func normalizeOpenAIReasoningEffort(raw string) string {
 }
 
 func normalizeOpenAIReasoningEffortForModel(raw, model string) string {
+	return normalizeOpenAIReasoningEffortForAccountModel(nil, raw, model)
+}
+
+// normalizeOpenAIReasoningEffortForAccountModel is normalizeOpenAIReasoningEffortForModel
+// with the account's synced upstream model metadata consulted for max support.
+func normalizeOpenAIReasoningEffortForAccountModel(account *Account, raw, model string) string {
 	if strings.EqualFold(strings.TrimSpace(raw), "none") && openai.IsGPT6SolOrLunaModelSpelling(model) {
 		return "none"
 	}
-	if strings.EqualFold(strings.TrimSpace(raw), "max") && supportsOpenAIReasoningEffortMax(model) {
+	if strings.EqualFold(strings.TrimSpace(raw), "max") && accountSupportsOpenAIReasoningEffortMax(account, model) {
 		return "max"
 	}
 	return normalizeOpenAIReasoningEffort(raw)
+}
+
+// accountSupportsOpenAIReasoningEffortMax prefers the reasoning levels synced
+// from the account's upstream model catalog, so a new model gains (or loses)
+// max by re-syncing upstream models instead of a code change. Without synced
+// levels it falls back to the built-in model-family list.
+func accountSupportsOpenAIReasoningEffortMax(account *Account, model string) bool {
+	if metadata, ok := account.GetUpstreamModelMetadata(model); ok && len(metadata.SupportedReasoningLevels) > 0 {
+		for _, level := range metadata.SupportedReasoningLevels {
+			if normalizeReasoningLevel(level) == "max" {
+				return true
+			}
+		}
+		return false
+	}
+	return supportsOpenAIReasoningEffortMax(model)
 }
 
 // supportsOpenAIReasoningEffortMax reports model families whose upstream scale

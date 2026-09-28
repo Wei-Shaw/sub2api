@@ -235,6 +235,7 @@ func TestExtractGrokResponsesReasoningEffortSupportsOpenAICompatibleField(t *tes
 	t.Parallel()
 
 	effort := extractOpenAIReasoningEffortFromBody(
+		nil,
 		[]byte(`{"model":"grok-4.3","reasoning_effort":"high"}`),
 		"grok-4.3",
 	)
