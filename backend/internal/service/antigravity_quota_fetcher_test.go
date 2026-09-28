@@ -624,9 +624,8 @@ func TestBuildUsageInfo_WithQuotaSummary(t *testing.T) {
 	// Disabled bucket should be skipped
 	require.Nil(t, info.AntigravityQuota["disabled-model"])
 
-	// DisplayName should be used as fallback when BucketID is empty
-	require.NotNil(t, info.AntigravityQuota["Only-DisplayName-Model"])
-	require.Equal(t, 50, info.AntigravityQuota["Only-DisplayName-Model"].Utilization)
+	// Buckets without BucketID stay in the summary only; AntigravityQuota is keyed by model name
+	require.Nil(t, info.AntigravityQuota["Only-DisplayName-Model"])
 
 	// Group buckets should also populate
 	require.NotNil(t, info.AntigravityQuota["gemini-3.8-flash-high"])

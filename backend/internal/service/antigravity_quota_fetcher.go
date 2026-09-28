@@ -185,10 +185,16 @@ func (f *AntigravityQuotaFetcher) buildUsageInfo(
 		}
 	}
 
-	// 2. 如果存在 QuotaSummary，同步 buckets 真实配额桶
+	// 2. 如果存在 QuotaSummary，将以模型 ID 命名的桶补充到 AntigravityQuota。
+	// AntigravityQuota 的键约定为模型名（渠道监控会逐项输出为模型档位），因此：
+	//   - 仅接受形如模型 ID 的 BucketID，DisplayName 或 "weekly" 等汇总桶只保留在 AntigravityQuotaSummary 中；
+	//   - 不覆盖 fetchAvailableModels 已返回的模型数据，也不让后出现的同名桶覆盖先出现的桶。
 	if quotaSummaryResp != nil {
 		applyBucket := func(b antigravity.QuotaSummaryBucket) {
-			if b.Disabled || b.RemainingFraction < 0 {
+			if b.Disabled || b.RemainingFraction < 0 || !isAntigravityModelBucketID(b.BucketID) {
+				return
+			}
+			if _, exists := info.AntigravityQuota[b.BucketID]; exists {
 				return
 			}
 			utilization := int((1.0 - b.RemainingFraction) * 100)
@@ -197,16 +203,9 @@ func (f *AntigravityQuotaFetcher) buildUsageInfo(
 			} else if utilization > 100 {
 				utilization = 100
 			}
-			q := &AntigravityModelQuota{
+			info.AntigravityQuota[b.BucketID] = &AntigravityModelQuota{
 				Utilization: utilization,
 				ResetTime:   b.ResetTime,
-			}
-			key := b.BucketID
-			if key == "" {
-				key = b.DisplayName
-			}
-			if key != "" {
-				info.AntigravityQuota[key] = q
 			}
 		}
 		for _, b := range quotaSummaryResp.Buckets {
@@ -282,6 +281,23 @@ func (f *AntigravityQuotaFetcher) buildUsageInfo(
 	}
 
 	return info
+}
+
+// antigravityModelBucketPrefixes 为 Antigravity 模型 ID 的已知前缀，用于区分模型桶与汇总桶
+var antigravityModelBucketPrefixes = []string{"gemini-", "claude-", "gpt-"}
+
+// isAntigravityModelBucketID 判断 quota summary 的 BucketID 是否为模型 ID
+func isAntigravityModelBucketID(bucketID string) bool {
+	if bucketID == "" || strings.ContainsAny(bucketID, " \t") {
+		return false
+	}
+	lower := strings.ToLower(bucketID)
+	for _, prefix := range antigravityModelBucketPrefixes {
+		if strings.HasPrefix(lower, prefix) {
+			return true
+		}
+	}
+	return false
 }
 
 // GetProxyURL 获取账户的代理 URL
