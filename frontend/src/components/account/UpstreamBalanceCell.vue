@@ -46,7 +46,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { adminAPI } from '@/api/admin'
 import type { Account, UpstreamBalanceProbeResult } from '@/types'
@@ -60,6 +60,7 @@ const { t } = useI18n()
 const loading = ref(false)
 const error = ref<string | null>(null)
 const data = ref<UpstreamBalanceProbeResult | null>(null)
+const autoProbed = ref(false)
 
 const source = computed(() => accountBalanceProbeSource(props.account))
 const enabled = computed(() => source.value === 'sub2api' || source.value === 'newapi')
@@ -75,6 +76,10 @@ const snapshotCurrency = computed(() => {
 const snapshotSource = computed(() => {
   const v = props.account.extra?.upstream_balance_source
   return typeof v === 'string' ? v : source.value
+})
+const snapshotUpdatedAt = computed(() => {
+  const v = props.account.extra?.upstream_balance_updated_at
+  return typeof v === 'string' ? v : ''
 })
 
 const currentBalance = computed(() => {
@@ -113,6 +118,14 @@ const truncatedError = computed(() => {
   return error.value.length > 80 ? `${error.value.slice(0, 80)}...` : error.value
 })
 
+const isSnapshotStale = () => {
+  if (snapshotBalance.value == null || !snapshotUpdatedAt.value) return true
+  const updated = Date.parse(snapshotUpdatedAt.value)
+  if (Number.isNaN(updated)) return true
+  // Match backend default interval (30m); refresh earlier in UI for freshness.
+  return Date.now() - updated > 30 * 60 * 1000
+}
+
 const handleProbe = async () => {
   if (loading.value) return
   loading.value = true
@@ -132,12 +145,29 @@ const handleProbe = async () => {
   }
 }
 
+const maybeAutoProbe = () => {
+  if (!enabled.value || autoProbed.value || loading.value) return
+  if (!isSnapshotStale()) return
+  autoProbed.value = true
+  void handleProbe()
+}
+
+onMounted(() => {
+  maybeAutoProbe()
+})
+
 watch(
   () => props.account.id,
   () => {
     data.value = null
     error.value = null
     loading.value = false
+    autoProbed.value = false
+    maybeAutoProbe()
   }
 )
+
+watch(enabled, (value) => {
+  if (value) maybeAutoProbe()
+})
 </script>

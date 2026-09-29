@@ -348,6 +348,7 @@ func (s *UpstreamBillingProbeService) Stop() {
 func (s *UpstreamBillingProbeService) runLoop() {
 	defer s.wg.Done()
 	_ = s.RunDue(s.parentCtx)
+	_ = s.RunDueBalances(s.parentCtx)
 	ticker := time.NewTicker(upstreamBillingProbeCycleInterval)
 	defer ticker.Stop()
 	for {
@@ -357,6 +358,9 @@ func (s *UpstreamBillingProbeService) runLoop() {
 		case <-ticker.C:
 			if err := s.RunDue(s.parentCtx); err != nil {
 				logger.LegacyPrintf("service.upstream_billing_probe", "run_due_failed: err=%v", err)
+			}
+			if err := s.RunDueBalances(s.parentCtx); err != nil {
+				logger.LegacyPrintf("service.upstream_billing_probe", "run_due_balances_failed: err=%v", err)
 			}
 		}
 	}
