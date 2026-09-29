@@ -22,6 +22,7 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"regexp"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -252,6 +253,43 @@ func (s *AccountTestService) FetchOpenAIAccountModels(ctx context.Context, accou
 			}
 			payload.Data = append(payload.Data, openai.Model{ID: publicID, Object: "model", Type: "model", OwnedBy: "openai", DisplayName: openaiCodexDisplayName(publicID)})
 			seen[publicID] = true
+		}
+	}
+	// The upstream catalog is not authoritative for what this account can serve:
+	// the gateway routes by mapping and never consults it. A configured alias
+	// whose target the catalog does not advertise would otherwise disappear from
+	// the picker without a trace, so keep it and mark it instead of dropping it.
+	// Only exact keys are recovered; a wildcard rule can still lose concrete
+	// candidates the catalog knows about.
+	if account != nil && !account.IsOpenAIPassthroughEnabled() {
+		mapping := account.GetModelMapping()
+		if len(mapping) > 0 {
+			seen := make(map[string]bool, len(payload.Data))
+			for _, model := range payload.Data {
+				seen[model.ID] = true
+			}
+			aliases := make([]string, 0, len(mapping))
+			for alias := range mapping {
+				aliases = append(aliases, alias)
+			}
+			sort.Strings(aliases)
+			for _, alias := range aliases {
+				if strings.Contains(alias, "*") || seen[alias] {
+					continue
+				}
+				// An image-shaped public name drives the picker's image test mode,
+				// so it may only come back when its target really is an image model.
+				if IsGPTImageGenerationModel(alias) && !IsGPTImageGenerationModel(account.GetMappedModel(alias)) {
+					continue
+				}
+				payload.Data = append(payload.Data, openai.Model{
+					ID:          alias,
+					Object:      "model",
+					Type:        "model",
+					DisplayName: alias,
+					Unlisted:    true,
+				})
+			}
 		}
 	}
 	return payload.Data, nil

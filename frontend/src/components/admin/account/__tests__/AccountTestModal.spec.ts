@@ -1,5 +1,6 @@
 import { flushPromises, mount } from '@vue/test-utils'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { nextTick } from 'vue'
 import AccountTestModal from '../AccountTestModal.vue'
 
 const { getAvailableModels, copyToClipboard } = vi.hoisted(() => ({
@@ -24,7 +25,8 @@ vi.mock('@/composables/useClipboard', () => ({
 vi.mock('vue-i18n', async () => {
   const actual = await vi.importActual<typeof import('vue-i18n')>('vue-i18n')
   const messages: Record<string, string> = {
-    'admin.accounts.imagePromptDefault': 'Generate a cute orange cat astronaut sticker on a clean pastel background.'
+    'admin.accounts.imagePromptDefault': 'Generate a cute orange cat astronaut sticker on a clean pastel background.',
+    'admin.accounts.unlistedModelHint': 'not-listed-upstream'
   }
   return {
     ...actual,
@@ -62,30 +64,37 @@ function createStreamResponse(lines: string[]) {
   } as Response
 }
 
-function mountModal(account: Record<string, unknown> = {
-  id: 42,
-  name: 'Gemini Image Test',
-  platform: 'gemini',
-  type: 'apikey',
-  status: 'active'
-}) {
+function mountModal(
+  account: Record<string, unknown> = {
+    id: 42,
+    name: 'Gemini Image Test',
+    platform: 'gemini',
+    type: 'apikey',
+    status: 'active'
+  },
+  { stubSelect = true }: { stubSelect?: boolean } = {}
+) {
+  const stubs: Record<string, unknown> = {
+    BaseDialog: { template: '<div><slot /><slot name="footer" /></div>' },
+    TextArea: {
+      props: ['modelValue'],
+      emits: ['update:modelValue'],
+      template: '<textarea class="textarea-stub" :value="modelValue" @input="$emit(\'update:modelValue\', $event.target.value)" />'
+    },
+    Icon: true
+  }
+  // The option rows are where the picker labels a mapping-only model, so that
+  // case needs the real Select instead of the stub.
+  if (stubSelect) {
+    stubs.Select = { template: '<div class="select-stub"></div>' }
+  }
+
   return mount(AccountTestModal, {
     props: {
       show: false,
       account
     } as any,
-    global: {
-      stubs: {
-        BaseDialog: { template: '<div><slot /><slot name="footer" /></div>' },
-        Select: { template: '<div class="select-stub"></div>' },
-        TextArea: {
-          props: ['modelValue'],
-          emits: ['update:modelValue'],
-          template: '<textarea class="textarea-stub" :value="modelValue" @input="$emit(\'update:modelValue\', $event.target.value)" />'
-        },
-        Icon: true
-      }
-    }
+    global: { stubs }
   })
 }
 
@@ -117,6 +126,7 @@ describe('AccountTestModal', () => {
 
   afterEach(() => {
     vi.restoreAllMocks()
+    document.body.innerHTML = ''
   })
 
   it('gemini 图片模型测试会携带提示词并渲染图片预览', async () => {
@@ -219,5 +229,46 @@ describe('AccountTestModal', () => {
       prompt: '',
       mode: 'compact'
     })
+  })
+
+  it('上游未列出的模型在选择器里带提示，且仍可被选中', async () => {
+    getAvailableModels.mockResolvedValue([
+      { id: 'catalog-model', display_name: 'Catalog Model' },
+      { id: 'mapping-only', display_name: 'Mapping Only', unlisted: true }
+    ])
+
+    const wrapper = mountModal(
+      { id: 42, name: 'Cline Pass', platform: 'openai', type: 'apikey', status: 'active' },
+      { stubSelect: false }
+    )
+    await wrapper.setProps({ show: true })
+    await flushPromises()
+
+    const trigger = wrapper.findAll('button.select-trigger')[0]
+    expect(trigger).toBeTruthy()
+    await trigger.trigger('click')
+    await nextTick()
+
+    const rows = Array.from(document.body.querySelectorAll<HTMLElement>('.select-option'))
+    const listed = rows.find((row) => row.textContent?.includes('Catalog Model'))
+    const unlisted = rows.find((row) => row.textContent?.includes('Mapping Only'))
+
+    expect(listed).toBeTruthy()
+    expect(unlisted).toBeTruthy()
+    expect(listed?.textContent).not.toContain('not-listed-upstream')
+    expect(unlisted?.textContent).toContain('not-listed-upstream')
+
+    // The badge is only useful if the model stays selectable, so the selection
+    // has to be exercised rather than just rendered.
+    unlisted?.click()
+    await nextTick()
+    expect((wrapper.vm as any).selectedModelId).toBe('mapping-only')
+
+    await (wrapper.vm as any).startTest()
+    await flushPromises()
+
+    expect(global.fetch).toHaveBeenCalledTimes(1)
+    const [, request] = (global.fetch as any).mock.calls[0]
+    expect(JSON.parse(request.body)).toMatchObject({ model_id: 'mapping-only' })
   })
 })
