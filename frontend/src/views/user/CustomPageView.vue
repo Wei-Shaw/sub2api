@@ -133,6 +133,7 @@ import { useAdminSettingsStore } from '@/stores/adminSettings'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import Icon from '@/components/icons/Icon.vue'
 import { buildApiUrl } from '@/api/client'
+import { refreshAuthTokens } from '@/api/tokenRefresh'
 import { buildEmbeddedUrl, detectTheme } from '@/utils/embedded-url'
 import { marked } from 'marked'
 import { resolveAllowedIframeHosts, sanitizeCustomPageHtml } from '@/utils/iframeSanitize'
@@ -300,9 +301,20 @@ async function fetchAndRenderMarkdown(slug: string) {
   tocItems.value = []
   activeHeadingId.value = ''
   try {
-    const resp = await fetch(buildApiUrl(`/pages/${encodeURIComponent(slug)}`), {
-      headers: authStore.token ? { Authorization: `Bearer ${authStore.token}` } : {},
-    })
+    const url = buildApiUrl(`/pages/${encodeURIComponent(slug)}`)
+    const load = (token: string | null) =>
+      fetch(url, { headers: token ? { Authorization: `Bearer ${token}` } : {} })
+    const token = authStore.token
+    let resp = await load(token)
+    // 原生 fetch 不走 apiClient 的 401 刷新：访问令牌过期时刷新一次后重试
+    if (resp.status === 401 && token) {
+      try {
+        const tokens = await refreshAuthTokens({ failedAccessToken: token })
+        resp = await load(tokens.access_token)
+      } catch {
+        // 刷新失败则沿用下方的 not-found 渲染
+      }
+    }
     if (!resp.ok) {
       renderedHtml.value = `<p class="text-danger-500">${t('common.pageNotFound')}</p>`
       return
