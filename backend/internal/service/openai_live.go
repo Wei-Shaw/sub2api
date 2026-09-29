@@ -842,15 +842,7 @@ func (s *OpenAIGatewayService) finalizeLiveCall(record *LiveCallRecord) {
 	if record.SubscriptionID > 0 {
 		billingType = BillingTypeSubscription
 	}
-	// TODO(billing): Live 会话目前不计费：TotalCost/ActualCost 恒为 0，完全绕过
-	// recordUsageCore/applyUsageBilling，余额模式下极低余额也能反复开启最长
-	// liveMaxSessionDuration 的会话。若确认按时长计费，应在此接入计费管道；
-	// 若确认有意免费，删除本注释即可（零值行为由
-	// TestFinalizeLiveCallIsIdempotentAndWritesZeroUsage 锁定）。
-	//
-	// 这是该会话唯一一次落库机会（MarkLiveCallClosed 已标记 first），失败即永久
-	// 丢失，因此走带日志与同步兜底的 writeUsageLogBestEffort（issue #3656）。
-	writeUsageLogBestEffort(context.Background(), s.usageLogRepo, &UsageLog{
+	usageLog := &UsageLog{
 		UserID:           record.UserID,
 		APIKeyID:         record.APIKeyID,
 		AccountID:        record.AccountID,
@@ -868,5 +860,18 @@ func (s *OpenAIGatewayService) finalizeLiveCall(record *LiveCallRecord) {
 		InboundEndpoint:  &inboundEndpoint,
 		UpstreamEndpoint: &upstreamEndpoint,
 		CreatedAt:        record.CreatedAt,
-	}, "service.openai_live")
+	}
+	// 网关只能看到通话时长（看不到 token），Live 按时长计费：
+	// gateway.live.price_per_minute_usd × 通话分钟数（按毫秒折算的分钟小数，不取整），
+	// 再乘分组/用户专属倍率，经与普通请求相同的 applyUsageBilling 管道扣费，
+	// RequestID=CallHash 由计费去重保证不会重复扣费（见 recordLiveUsageWithBilling）。
+	// 单价为 0（默认）时免费：不进计费管道，只写零成本用量行。
+	//
+	// 这是该会话唯一一次落库机会（MarkLiveCallClosed 已标记 first），失败即永久
+	// 丢失，因此走带日志与同步兜底的 writeUsageLogBestEffort（issue #3656）。
+	if price := s.livePricePerMinuteUSD(); price > 0 {
+		s.recordLiveUsageWithBilling(record, usageLog, price, duration)
+		return
+	}
+	writeUsageLogBestEffort(context.Background(), s.usageLogRepo, usageLog, "service.openai_live")
 }

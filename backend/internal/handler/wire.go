@@ -134,6 +134,10 @@ func ProvideOpenAIGatewayHandler(
 	coordinator *securityaudit.Coordinator,
 ) *OpenAIGatewayHandler {
 	gatewayService.SetPluginManager(pluginManager)
+	if apiKeyService != nil {
+		// Live 会话结束时按 ID 回查 API Key 并走计费管道（gateway.live.price_per_minute_usd）。
+		gatewayService.SetLiveBillingAPIKeyService(apiKeyService)
+	}
 	h := NewOpenAIGatewayHandler(gatewayService, concurrencyService, billingCacheService, apiKeyService,
 		usageRecordWorkerPool, errorPassthroughService, contentModerationService, opsService, cfg)
 	h.securityAuditCoordinator = coordinator
