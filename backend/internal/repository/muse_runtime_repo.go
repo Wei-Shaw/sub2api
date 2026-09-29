@@ -94,7 +94,7 @@ func (r *museRuntimeRepository) Reserve(ctx context.Context, input muse.Reservat
 	if w.Generation != input.Generation {
 		return nil, muse.Lease{}, muse.ErrGeneration
 	}
-	admissible, err := museAdmissionValid(ctx, tx, input.Actor, input.AccountID, w.ID)
+	admissible, err := museAdmissionValid(ctx, tx, input.Actor, input.AccountID, w.ID, input.AccountUpdatedAt, input.ProxyUpdatedAt)
 	if err != nil {
 		return nil, muse.Lease{}, err
 	}
@@ -120,9 +120,9 @@ func (r *museRuntimeRepository) Reserve(ctx context.Context, input muse.Reservat
 		return nil, muse.Lease{}, err
 	}
 	turn, err := scanMuseTurn(tx.QueryRowContext(ctx, `
-		INSERT INTO muse_turns (id, workspace_id, identity_generation, owner_user_id, api_key_id, account_id, pricing_snapshot)
-		VALUES ($1,$2,$3,$4,$5,$6,$7::jsonb) RETURNING `+museTurnColumns,
-		input.TurnID, w.ID, w.Generation, input.Actor.UserID, input.Actor.APIKeyID, input.AccountID, string(pricing)))
+		INSERT INTO muse_turns (id, workspace_id, identity_generation, owner_user_id, api_key_id, account_id, pricing_snapshot, account_updated_at, proxy_updated_at)
+		VALUES ($1,$2,$3,$4,$5,$6,$7::jsonb,$8,$9) RETURNING `+museTurnColumns,
+		input.TurnID, w.ID, w.Generation, input.Actor.UserID, input.Actor.APIKeyID, input.AccountID, string(pricing), input.AccountUpdatedAt, input.ProxyUpdatedAt))
 	if err != nil {
 		return nil, muse.Lease{}, err
 	}
@@ -159,7 +159,7 @@ func (r *museRuntimeRepository) Advance(ctx context.Context, lease muse.Lease, f
 		if err != nil {
 			return err
 		}
-		valid, err := museAdmissionValid(ctx, tx, turn.Actor, turn.AccountID, turn.WorkspaceID)
+		valid, err := museAdmissionValid(ctx, tx, turn.Actor, turn.AccountID, turn.WorkspaceID, turn.AccountUpdatedAt, turn.ProxyUpdatedAt)
 		if err != nil {
 			return err
 		}
@@ -302,13 +302,14 @@ func verifyMuseLease(ctx context.Context, tx *sql.Tx, lease muse.Lease) error {
 }
 
 const museTurnColumns = `id, workspace_id, identity_generation, owner_user_id, api_key_id, account_id,
-	state, provider_turn_id, pricing_snapshot, created_at, updated_at`
+	state, provider_turn_id, pricing_snapshot, created_at, updated_at, account_updated_at, proxy_updated_at`
 
 func scanMuseTurn(row interface{ Scan(...any) error }) (*muse.Turn, error) {
 	t := &muse.Turn{}
 	var pricing []byte
+	var accountAt, proxyAt sql.NullTime
 	err := row.Scan(&t.ID, &t.WorkspaceID, &t.Generation, &t.Actor.UserID, &t.Actor.APIKeyID, &t.AccountID,
-		&t.State, &t.ProviderTurnID, &pricing, &t.CreatedAt, &t.UpdatedAt)
+		&t.State, &t.ProviderTurnID, &pricing, &t.CreatedAt, &t.UpdatedAt, &accountAt, &proxyAt)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, muse.ErrNotFound
 	}
@@ -317,6 +318,12 @@ func scanMuseTurn(row interface{ Scan(...any) error }) (*muse.Turn, error) {
 	}
 	if err := json.Unmarshal(pricing, &t.Pricing); err != nil {
 		return nil, err
+	}
+	if accountAt.Valid {
+		t.AccountUpdatedAt = accountAt.Time
+	}
+	if proxyAt.Valid {
+		t.ProxyUpdatedAt = &proxyAt.Time
 	}
 	return t, nil
 }
@@ -332,17 +339,19 @@ func museOneRow(result sql.Result, conflict error) error {
 	return nil
 }
 
-func museAdmissionValid(ctx context.Context, tx *sql.Tx, actor muse.Actor, accountID, workspaceID int64) (bool, error) {
+func museAdmissionValid(ctx context.Context, tx *sql.Tx, actor muse.Actor, accountID, workspaceID int64, accountAt time.Time, proxyAt *time.Time) (bool, error) {
 	var valid bool
 	err := tx.QueryRowContext(ctx, `SELECT EXISTS (
 		SELECT 1 FROM api_keys k JOIN users u ON u.id=k.user_id
 		JOIN accounts a ON a.id=$3
-		JOIN muse_account_workspace_bindings b ON b.account_id=a.id AND b.workspace_id=$4
+ LEFT JOIN proxies px ON px.id=a.proxy_id
+ JOIN muse_account_workspace_bindings b ON b.account_id=a.id AND b.workspace_id=$4
 		WHERE k.id=$1 AND k.user_id=$2 AND k.status='active' AND k.deleted_at IS NULL
 		AND (k.expires_at IS NULL OR k.expires_at>clock_timestamp())
 		AND u.status='active' AND u.deleted_at IS NULL
 		AND a.platform='muse' AND a.status='active' AND a.schedulable AND a.deleted_at IS NULL
-		AND a.updated_at=b.verified_account_updated_at
-	)`, actor.APIKeyID, actor.UserID, accountID, workspaceID).Scan(&valid)
+		AND a.updated_at=b.verified_account_updated_at AND a.updated_at=$5
+ AND ((a.proxy_id IS NULL AND $6::timestamptz IS NULL) OR (a.proxy_id IS NOT NULL AND px.deleted_at IS NULL AND px.updated_at=$6::timestamptz))
+ )`, actor.APIKeyID, actor.UserID, accountID, workspaceID, accountAt, proxyAt).Scan(&valid)
 	return valid, err
 }

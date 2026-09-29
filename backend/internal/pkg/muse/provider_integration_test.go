@@ -51,6 +51,7 @@ func TestMuseProviderPostgres(t *testing.T) {
 		"232_add_usage_log_upstream_request_id.sql",
 		"241_muse_runtime.sql",
 		"242_muse_provider.sql",
+		"243_muse_submission_snapshot.sql",
 	} {
 		ddl, e := migrations.FS.ReadFile(name)
 		require.NoError(t, e)
@@ -99,7 +100,7 @@ func TestMuseProviderPostgres(t *testing.T) {
 		return w
 	}
 	reserve := func(t *testing.T, w *muse.Workspace) (*muse.Turn, muse.Lease) {
-		turn, lease, e := runtime.Reserve(ctx, muse.Reservation{WorkspaceID: w.ID, Generation: w.Generation, Actor: muse.Actor{UserID: 1, APIKeyID: 1}, AccountID: w.Identity.AccountID, LeaseOwner: "fixture", LeaseDuration: time.Minute, Pricing: muse.Pricing{Mode: "flat_request", UnitPrice: "0.03", Multiplier: "1.25"}})
+		turn, lease, e := runtime.Reserve(ctx, muse.Reservation{WorkspaceID: w.ID, Generation: w.Generation, Actor: muse.Actor{UserID: 1, APIKeyID: 1}, AccountID: w.Identity.AccountID, AccountUpdatedAt: w.Identity.AccountUpdatedAt, LeaseOwner: "fixture", LeaseDuration: time.Minute, Pricing: muse.Pricing{Mode: "flat_request", UnitPrice: "0.03", Multiplier: "1.25"}})
 		require.NoError(t, e)
 		return turn, lease
 	}
@@ -175,7 +176,7 @@ func TestMuseProviderPostgres(t *testing.T) {
 		freeze(t, turn)
 		complete(t, turn, lease, muse.Completed)
 		before := balance()
-		_, _, blocked := runtime.Reserve(ctx, muse.Reservation{WorkspaceID: w.ID, Generation: w.Generation, Actor: turn.Actor, AccountID: a.ID, LeaseOwner: "blocked", LeaseDuration: time.Minute, Pricing: turn.Pricing})
+		_, _, blocked := runtime.Reserve(ctx, muse.Reservation{WorkspaceID: w.ID, Generation: w.Generation, Actor: turn.Actor, AccountID: a.ID, AccountUpdatedAt: a.UpdatedAt, LeaseOwner: "blocked", LeaseDuration: time.Minute, Pricing: turn.Pricing})
 		require.ErrorIs(t, blocked, muse.ErrBusy, "pending settlement blocks new work")
 		_, e := db.ExecContext(ctx, `CREATE FUNCTION muse_fail_log() RETURNS trigger LANGUAGE plpgsql AS $$BEGIN RAISE EXCEPTION 'synthetic log failure'; END$$;CREATE TRIGGER muse_fail_log BEFORE INSERT ON usage_logs FOR EACH ROW EXECUTE FUNCTION muse_fail_log()`)
 		require.NoError(t, e)
@@ -253,6 +254,23 @@ func TestMuseProviderPostgres(t *testing.T) {
 		require.ErrorIs(t, e, muse.ErrTransportUnqualified)
 		e = store.RenewSession(ctx, a, func(context.Context) (map[string]any, error) { t.Fatal("stale proxy must not renew"); return nil, nil })
 		require.ErrorIs(t, e, muse.ErrGeneration)
+	})
+	t.Run("ProfileRejectsStaleLoadedAccountAfterReverification", func(t *testing.T) {
+		a := newAccount(t)
+		w := bind(t, a)
+		old := *a
+		_, e := db.ExecContext(ctx, `UPDATE accounts SET updated_at=clock_timestamp()+INTERVAL '1 second' WHERE id=$1`, a.ID)
+		require.NoError(t, e)
+		require.NoError(t, db.QueryRowContext(ctx, `SELECT updated_at FROM accounts WHERE id=$1`, a.ID).Scan(&a.UpdatedAt))
+		fresh := w.Identity
+		fresh.AccountUpdatedAt = a.UpdatedAt
+		_, e = runtime.BindVerifiedWorkspace(ctx, fresh)
+		require.NoError(t, e)
+		require.NoError(t, store.SaveProfile(ctx, a, &muse.Observation{InferenceAllowed: true, Identity: fresh, Capabilities: muse.Capabilities{Models: []string{"muse/assistant"}}}))
+		_, e = store.Profile(ctx, &old)
+		require.ErrorIs(t, e, muse.ErrTransportUnqualified)
+		_, e = store.Profile(ctx, a)
+		require.NoError(t, e)
 	})
 	t.Run("PriceMismatchRejectedBeforeSubmission", func(t *testing.T) {
 		a := newAccount(t)

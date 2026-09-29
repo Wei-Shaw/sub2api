@@ -151,7 +151,7 @@ func (s *MuseCoreService) Status(ctx context.Context, id int64) (map[string]any,
 		result["state"] = "transport_unqualified"
 		return result, nil
 	}
-	profile, err := s.store.Profile(ctx, a)
+	profile, err := s.verifiedProfile(ctx, a)
 	if errors.Is(err, muse.ErrTransportUnqualified) {
 		return result, nil
 	}
@@ -199,7 +199,7 @@ func (s *MuseCoreService) Models(ctx context.Context, groupID *int64, actor muse
 		if MuseOwnerUserID(a.Extra) != actor.UserID {
 			continue
 		}
-		p, err := s.store.Profile(ctx, a)
+		p, err := s.verifiedProfile(ctx, a)
 		if err != nil {
 			continue
 		}
@@ -241,7 +241,7 @@ func (s *MuseCoreService) Execute(ctx context.Context, key *APIKey, account *Acc
 	if MuseOwnerUserID(a.Extra) != key.UserID {
 		return nil, nil, muse.ErrOwner
 	}
-	profile, err := s.store.Profile(ctx, a)
+	profile, err := s.verifiedProfile(ctx, a)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -281,7 +281,7 @@ func (s *MuseCoreService) Execute(ctx context.Context, key *APIKey, account *Acc
 	if err != nil {
 		return nil, nil, err
 	}
-	turn, lease, err := s.runtime.Reserve(ctx, muse.Reservation{WorkspaceID: w.ID, Generation: w.Generation, Actor: actor, AccountID: a.ID, LeaseOwner: "gateway", LeaseDuration: time.Minute, Pricing: pricing})
+	turn, lease, err := s.runtime.Reserve(ctx, muse.Reservation{WorkspaceID: w.ID, Generation: w.Generation, Actor: actor, AccountID: a.ID, AccountUpdatedAt: a.UpdatedAt, ProxyUpdatedAt: profile.ProxyUpdatedAt, LeaseOwner: "gateway", LeaseDuration: time.Minute, Pricing: pricing})
 	if err != nil {
 		return nil, nil, err
 	}
@@ -608,7 +608,7 @@ func (s *MuseCoreService) Recover(ctx context.Context) {
 			continue
 		}
 		session, err := s.session(a)
-		profile, profileErr := s.store.Profile(ctx, a)
+		profile, profileErr := s.verifiedProfile(ctx, a)
 		if err != nil || profileErr != nil || profile == nil || turn.ProviderTurnID == "" {
 			_ = s.runtime.Advance(ctx, lease, muse.Ambiguous, muse.OwnerReview, "")
 			continue
@@ -701,7 +701,7 @@ func (s *MuseCoreService) RenewDue(ctx context.Context) {
 		if e != nil {
 			continue
 		}
-		p, e := s.store.Profile(ctx, a)
+		p, e := s.verifiedProfile(ctx, a)
 		if e != nil || p == nil || p.SessionExpiresAt == nil || p.SessionExpiresAt.After(time.Now().Add(5*time.Minute)) {
 			continue
 		}
@@ -718,4 +718,24 @@ func (s *MuseCoreService) RetrySettlement(ctx context.Context, id string) error 
 	}
 	_, err = s.settle(ctx, id)
 	return err
+}
+
+// The observation and credentials must describe the same loaded snapshot. The
+// runtime persists this version and checks it again before external submission.
+func (s *MuseCoreService) verifiedProfile(ctx context.Context, a *Account) (*muse.Observation, error) {
+	p, err := s.store.Profile(ctx, a)
+	if err != nil {
+		return nil, err
+	}
+	if p == nil || p.Identity.AccountID != a.ID || p.Identity.OwnerUserID != MuseOwnerUserID(a.Extra) || !p.Identity.AccountUpdatedAt.Equal(a.UpdatedAt) {
+		return nil, muse.ErrGeneration
+	}
+	if a.ProxyID == nil {
+		if p.ProxyUpdatedAt != nil {
+			return nil, muse.ErrGeneration
+		}
+	} else if a.Proxy == nil || p.ProxyUpdatedAt == nil || !p.ProxyUpdatedAt.Equal(a.Proxy.UpdatedAt) {
+		return nil, muse.ErrGeneration
+	}
+	return p, nil
 }
