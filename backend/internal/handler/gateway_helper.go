@@ -201,6 +201,31 @@ func wrapReleaseOnDone(ctx context.Context, releaseFunc func()) func() {
 	}
 }
 
+// wrapReleaseOnDoneDisarmable 与 wrapReleaseOnDone 相同，但额外返回 disarm：
+// 调用后取消 context 取消时的自动释放，槽位只由显式调用 release 回收（至多一次）。
+// 用于流式转发：上游在客户端断开后被分离并继续排空（计费），请求交给 Forward 后
+// 必须持有并发槽位直到 Forward 返回，否则 Redis 视其为空闲，并发上限被绕过。
+// Forward 之前的等待/排队窗口仍保留断开即释放的语义。
+func wrapReleaseOnDoneDisarmable(ctx context.Context, releaseFunc func()) (release func(), disarm func()) {
+	if releaseFunc == nil {
+		return nil, func() {}
+	}
+	var once sync.Once
+	releaseOnce := func() {
+		once.Do(releaseFunc)
+	}
+	stop := context.AfterFunc(ctx, releaseOnce)
+
+	release = func() {
+		_ = stop()
+		releaseOnce()
+	}
+	disarm = func() {
+		_ = stop()
+	}
+	return release, disarm
+}
+
 // IncrementWaitCount increments the wait count for a user
 func (h *ConcurrencyHelper) IncrementWaitCount(ctx context.Context, userID int64, maxWait int) (bool, error) {
 	return h.concurrencyService.IncrementWaitCount(ctx, userID, maxWait)

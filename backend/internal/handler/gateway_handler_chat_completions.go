@@ -131,7 +131,9 @@ func (h *GatewayHandler) ChatCompletions(c *gin.Context) {
 		h.handleConcurrencyError(c, err, "user", streamStarted)
 		return
 	}
-	userReleaseFunc = wrapReleaseOnDone(c.Request.Context(), userReleaseFunc)
+	// 交给流式 Forward 后 disarm：上游被分离继续排空，槽位须持有到 Forward 返回。
+	var disarmUserRelease func()
+	userReleaseFunc, disarmUserRelease = wrapReleaseOnDoneDisarmable(c.Request.Context(), userReleaseFunc)
 	if userReleaseFunc != nil {
 		defer userReleaseFunc()
 	}
@@ -256,7 +258,7 @@ func (h *GatewayHandler) ChatCompletions(c *gin.Context) {
 				reqLog.Warn("gateway.cc.bind_sticky_session_after_profit_admission_failed", zap.Int64("account_id", account.ID), zap.Error(err))
 			}
 		}
-		accountReleaseFunc = wrapReleaseOnDone(c.Request.Context(), accountReleaseFunc)
+		accountReleaseFunc, disarmAccountRelease := wrapReleaseOnDoneDisarmable(c.Request.Context(), accountReleaseFunc)
 
 		if groupPlatform == service.PlatformGemini && account.Platform != service.PlatformGemini {
 			if accountReleaseFunc != nil {
@@ -274,6 +276,10 @@ func (h *GatewayHandler) ChatCompletions(c *gin.Context) {
 		}
 		var result *service.ForwardResult
 		setActualUpstreamEndpoint(c, "")
+		// 流式上游在客户端断开后被分离并继续排空（计费），期间用户/账号槽位必须保持占用，
+		// 由 Forward 返回后的显式释放 / handler 退出时的 defer 回收。
+		disarmUserRelease()
+		disarmAccountRelease()
 		if account.Platform == service.PlatformGemini {
 			if h.geminiCompatService == nil {
 				h.chatCompletionsErrorResponse(c, http.StatusBadGateway, "upstream_error", "Gemini compatibility service is not configured")
