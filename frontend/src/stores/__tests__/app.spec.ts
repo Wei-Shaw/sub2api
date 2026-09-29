@@ -417,6 +417,22 @@ describe('useAppStore', () => {
       expect(store.publicSettingsLoaded).toBe(true)
     })
 
+    it('hashed site logo is resolved once for every consumer', () => {
+      const hashed = `/api/v1/settings/public/logo-${'ab'.repeat(32)}.png`
+      const windowAny = window as any
+      windowAny.__APP_CONFIG__ = {
+        site_name: 'TestSite',
+        site_logo: hashed,
+      }
+
+      const store = useAppStore()
+      store.initFromInjectedConfig()
+
+      expect(store.siteLogo).toBe(hashed)
+      expect(store.cachedPublicSettings?.site_logo).toBe(hashed)
+      expect(windowAny.__APP_CONFIG__.site_logo).toBe(hashed)
+    })
+
     it('无注入配置时返回 false', () => {
       const store = useAppStore()
       const result = store.initFromInjectedConfig()

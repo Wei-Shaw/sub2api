@@ -13,6 +13,7 @@ import {
   type ReleaseInfo
 } from '@/api/admin/system'
 import { getPublicSettings as fetchPublicSettingsAPI } from '@/api/auth'
+import { resolveSiteLogo } from '@/utils/branding'
 
 export const useAppStore = defineStore('app', () => {
   // ==================== State ====================
@@ -289,18 +290,24 @@ export const useAppStore = defineStore('app', () => {
   /**
    * Apply settings to store state (internal helper to avoid code duplication)
    */
-  function applySettings(config: PublicSettings): void {
-    if (typeof window !== 'undefined') {
-      window.__APP_CONFIG__ = { ...config }
+  function applySettings(config: PublicSettings): PublicSettings {
+    // Resolve once so every logo <img> and the favicon share the API origin.
+    const resolved: PublicSettings = {
+      ...config,
+      site_logo: resolveSiteLogo(config.site_logo || ''),
     }
-    cachedPublicSettings.value = config
-    siteName.value = config.site_name || 'Sub2API'
-    siteLogo.value = config.site_logo || ''
-    siteVersion.value = config.version || ''
-    contactInfo.value = config.contact_info || ''
-    apiBaseUrl.value = config.api_base_url || ''
-    docUrl.value = config.doc_url || ''
+    if (typeof window !== 'undefined') {
+      window.__APP_CONFIG__ = { ...resolved }
+    }
+    cachedPublicSettings.value = resolved
+    siteName.value = resolved.site_name || 'Sub2API'
+    siteLogo.value = resolved.site_logo || ''
+    siteVersion.value = resolved.version || ''
+    contactInfo.value = resolved.contact_info || ''
+    apiBaseUrl.value = resolved.api_base_url || ''
+    docUrl.value = resolved.doc_url || ''
     publicSettingsLoaded.value = true
+    return resolved
   }
 
   /**
@@ -316,8 +323,7 @@ export const useAppStore = defineStore('app', () => {
 
     // Check for injected config from server (eliminates flash)
     if (!publicSettingsLoaded.value && !force && window.__APP_CONFIG__) {
-      applySettings(window.__APP_CONFIG__)
-      return Promise.resolve(window.__APP_CONFIG__)
+      return Promise.resolve(applySettings(window.__APP_CONFIG__))
     }
 
     // Return cached data if available and not forcing refresh
@@ -394,10 +400,7 @@ export const useAppStore = defineStore('app', () => {
     }
 
     const request = apiRequest
-      .then((data) => {
-        applySettings(data)
-        return data
-      })
+      .then((data) => applySettings(data))
       .catch((error) => {
         console.error('Failed to fetch public settings:', error)
         return null
