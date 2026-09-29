@@ -79,8 +79,12 @@ func parseLegacyPaymentOrderID(orderID string, lookupErr error) (int64, bool) {
 func (s *PaymentService) confirmPayment(ctx context.Context, oid int64, tradeNo string, paid decimal.Decimal, pk string, metadata map[string]string) error {
 	o, err := s.entClient.PaymentOrder.Get(ctx, oid)
 	if err != nil {
-		slog.Error("order not found", "orderID", oid)
-		return nil
+		if dbent.IsNotFound(err) {
+			slog.Error("order not found", "orderID", oid)
+			return nil
+		}
+		// 瞬时 DB 错误要返回，让 webhook 回 5xx 触发服务商重试。
+		return fmt.Errorf("load order %d: %w", oid, err)
 	}
 	instanceProviderKey := ""
 	if inst, instErr := s.getOrderProviderInstance(ctx, o); instErr == nil && inst != nil {
@@ -210,7 +214,10 @@ func (s *PaymentService) toPaid(ctx context.Context, o *dbent.PaymentOrder, trad
 func (s *PaymentService) alreadyProcessed(ctx context.Context, o *dbent.PaymentOrder) error {
 	cur, err := s.entClient.PaymentOrder.Get(ctx, o.ID)
 	if err != nil {
-		return nil
+		if dbent.IsNotFound(err) {
+			return nil
+		}
+		return fmt.Errorf("reload order %d: %w", o.ID, err)
 	}
 	switch cur.Status {
 	case OrderStatusCompleted, OrderStatusRefunded:

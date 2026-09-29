@@ -405,7 +405,11 @@ func (s *PaymentService) getOrderProvider(ctx context.Context, o *dbent.PaymentO
 	if providerKey == "" {
 		return nil, fmt.Errorf("order %d provider fallback key is missing", o.ID)
 	}
-	if !s.webhookRegistryFallbackAllowed(ctx, providerKey) {
+	allowed, err := s.webhookRegistryFallbackAllowed(ctx, providerKey)
+	if err != nil {
+		return nil, err
+	}
+	if !allowed {
 		return nil, fmt.Errorf("order %d provider fallback is ambiguous for %s", o.ID, providerKey)
 	}
 	s.EnsureProviders(ctx)

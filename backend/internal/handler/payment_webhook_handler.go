@@ -71,8 +71,14 @@ func (h *PaymentWebhookHandler) handleNotify(c *gin.Context, providerKey string)
 
 	providers, err := h.paymentService.GetWebhookProviders(c.Request.Context(), providerKey, outTradeNo)
 	if err != nil {
-		slog.Warn("[Payment Webhook] provider not found", "provider", providerKey, "outTradeNo", outTradeNo, "error", err)
-		writeSuccessResponse(c, providerKey)
+		// 只有确定性的「找不到/无法区分实例」才 ACK；DB 等瞬时错误回 5xx 让服务商重试。
+		if errors.Is(err, payment.ErrProviderNotFound) || errors.Is(err, service.ErrWebhookProviderAmbiguous) {
+			slog.Warn("[Payment Webhook] provider not found", "provider", providerKey, "outTradeNo", outTradeNo, "error", err)
+			writeSuccessResponse(c, providerKey)
+			return
+		}
+		slog.Error("[Payment Webhook] provider lookup failed", "provider", providerKey, "outTradeNo", outTradeNo, "error", err)
+		c.String(http.StatusInternalServerError, "provider lookup failed")
 		return
 	}
 
