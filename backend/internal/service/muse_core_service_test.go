@@ -304,3 +304,61 @@ func TestMuseRejectsProxySnapshotNewerThanLoadedProxy(t *testing.T) {
 	require.ErrorIs(t, err, muse.ErrGeneration)
 	require.Zero(t, p.calls)
 }
+
+func TestMuseSchedulerFiltersObservedModelsAndMappedAliases(t *testing.T) {
+	g, _, _, store, _, a, key := newMuseCoreFixture()
+	a.Schedulable = true
+	store.observation.Capabilities.Models = []string{"muse/basic"}
+	ctx := context.WithValue(context.Background(), ctxkey.UserID, key.UserID)
+	candidates := g.filterMuseAccounts(ctx, []Account{*a})
+	require.Len(t, candidates, 1)
+	require.Equal(t, "model_not_supported", openAICompatibleAccountEligibilityFailureReasonBeforeProfit(ctx, &candidates[0], PlatformMuse, "muse/premium", false, ""))
+	require.Empty(t, openAICompatibleAccountEligibilityFailureReasonBeforeProfit(ctx, &candidates[0], PlatformMuse, "muse/basic", false, ""))
+	a.Credentials["model_mapping"] = map[string]any{"client-basic": "muse/basic"}
+	candidates = g.filterMuseAccounts(ctx, []Account{*a})
+	require.True(t, candidates[0].IsModelSupported("client-basic"))
+	require.False(t, candidates[0].IsModelSupported("muse/premium"))
+}
+
+type museProfileSetFixture struct {
+	*museStoreFixture
+	profiles map[int64]*muse.Observation
+}
+
+func (f *museProfileSetFixture) Profile(_ context.Context, a *Account) (*muse.Observation, error) {
+	return f.profiles[a.ID], nil
+}
+
+type museAccountSetFixture struct {
+	AccountRepository
+	accounts map[int64]*Account
+}
+
+func (f *museAccountSetFixture) GetByID(_ context.Context, id int64) (*Account, error) {
+	return f.accounts[id], nil
+}
+
+func TestMuseSelectionSkipsHigherPriorityUnsupportedAccountAndRechecksSticky(t *testing.T) {
+	g, core, _, store, _, a, key := newMuseCoreFixture()
+	a.Schedulable = true
+	a.Priority = 1
+	other := *a
+	other.ID = 2
+	other.Priority = 10
+	first := *store.observation
+	first.Capabilities.Models = []string{"muse/basic"}
+	second := *store.observation
+	second.Identity.AccountID = 2
+	second.Capabilities.Models = []string{"muse/premium"}
+	core.store = &museProfileSetFixture{museStoreFixture: store, profiles: map[int64]*muse.Observation{1: &first, 2: &second}}
+	g.accountRepo = &museAccountSetFixture{accounts: map[int64]*Account{1: a, 2: &other}}
+	ctx := context.WithValue(context.Background(), ctxkey.UserID, key.UserID)
+	candidates := g.filterMuseAccounts(ctx, []Account{*a, other})
+	selected, _, _ := g.selectBestAccount(ctx, nil, PlatformMuse, candidates, "muse/premium", nil, false, "", false)
+	require.NotNil(t, selected)
+	require.EqualValues(t, 2, selected.ID)
+	sticky, err := g.getSchedulableAccount(ctx, 1)
+	require.NoError(t, err)
+	require.Equal(t, "model_not_supported", openAICompatibleAccountEligibilityFailureReasonBeforeProfit(ctx, sticky, PlatformMuse, "muse/premium", false, ""))
+	require.Empty(t, openAICompatibleAccountEligibilityFailureReasonBeforeProfit(ctx, sticky, PlatformMuse, "muse/basic", false, ""))
+}
