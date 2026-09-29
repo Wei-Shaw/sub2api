@@ -2074,8 +2074,13 @@ type geminiStreamResult struct {
 }
 
 func (s *GeminiMessagesCompatService) handleNonStreamingResponse(c *gin.Context, resp *http.Response, originalModel string) (*ClaudeUsage, error) {
-	body, err := io.ReadAll(io.LimitReader(resp.Body, 8<<20))
+	// 使用可配置的读取上限（gateway.upstream_response_read_max_bytes），超限时显式报错而非静默截断
+	body, err := ReadUpstreamResponseBody(resp.Body, s.cfg, c, anthropicTooLargeError)
 	if err != nil {
+		if errors.Is(err, ErrUpstreamResponseBodyTooLarge) {
+			MarkResponseCommitted(c)
+			return nil, err
+		}
 		return nil, s.writeClaudeError(c, http.StatusBadGateway, "upstream_error", "Failed to read upstream response")
 	}
 
