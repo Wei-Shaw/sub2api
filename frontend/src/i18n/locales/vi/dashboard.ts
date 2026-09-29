@@ -868,7 +868,7 @@ export default {
     changePasswordButton: 'Đổi mật khẩu',
     passwordsNotMatch: 'Mật khẩu mới không khớp',
     passwordTooShort: 'Mật khẩu phải có ít nhất 8 ký tự',
-    passwordChangeSuccess: 'Đã đổi mật khẩu thành công',
+    passwordChangeSuccess: 'Đã đổi mật khẩu thành công. Vui lòng đăng nhập lại bằng mật khẩu mới.',
     passwordChangeFailed: 'Không thể đổi mật khẩu',
     // TOTP 2FA
     totp: {
