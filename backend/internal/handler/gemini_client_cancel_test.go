@@ -78,7 +78,7 @@ func (f *geminiClientCancelFixture) serve(t *testing.T, route, path, body string
 	setupOpsErrorLogTestQueue(t, 4)
 	ops := service.NewOpsService(nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
 	router := gin.New()
-	router.Use(OpsErrorLoggerMiddleware(ops))
+	router.Use(OpsErrorLoggerMiddleware(ops, nil))
 	router.POST(route, func(c *gin.Context) {
 		c.Set(string(middleware.ContextKeyAPIKey), f.apiKey)
 		c.Set(string(middleware.ContextKeyUser), middleware.AuthSubject{UserID: f.apiKey.UserID, Concurrency: 10})

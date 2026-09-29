@@ -2257,7 +2257,7 @@ func (r *opsAdvancedSettingsRepoStub) Set(context.Context, string, string) error
 func serveClientClosedRequest(t *testing.T, ops *service.OpsService, prepare func(c *gin.Context)) {
 	t.Helper()
 	router := gin.New()
-	router.Use(OpsErrorLoggerMiddleware(ops))
+	router.Use(OpsErrorLoggerMiddleware(ops, nil))
 	router.POST("/v1/messages", func(c *gin.Context) {
 		if prepare != nil {
 			prepare(c)
