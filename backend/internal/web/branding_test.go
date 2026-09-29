@@ -21,13 +21,13 @@ func (f brandingAssetProviderFunc) GetSiteBrandingAsset(ctx context.Context, pat
 
 func brandingTestRouter(provider BrandingAssetProvider) *gin.Engine {
 	router := gin.New()
-	router.GET("/branding/:asset", ServeBrandingAsset(provider))
-	router.HEAD("/branding/:asset", ServeBrandingAsset(provider))
+	router.GET("/api/v1/settings/branding/:asset", ServeBrandingAsset(provider))
+	router.HEAD("/api/v1/settings/branding/:asset", ServeBrandingAsset(provider))
 	return router
 }
 
 func TestServeBrandingAsset(t *testing.T) {
-	const path = "/branding/logo-abc.svg"
+	const path = "/api/v1/settings/branding/logo-abc.svg"
 	for _, tc := range []struct {
 		name        string
 		content     []byte
@@ -70,7 +70,7 @@ func TestServeBrandingAsset(t *testing.T) {
 }
 
 func TestServeBrandingAssetNotFound(t *testing.T) {
-	const path = "/branding/logo-missing.svg"
+	const path = "/api/v1/settings/branding/logo-missing.svg"
 	for _, tc := range []struct {
 		name     string
 		provider BrandingAssetProvider

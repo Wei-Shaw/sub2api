@@ -84,7 +84,7 @@ func TestGetSiteBrandingAssetColdAndCrossInstanceRefresh(t *testing.T) {
 		require.Equal(t, oldAsset.contentType, contentType)
 	}
 	require.Equal(t, 1, repo.reads)
-	_, _, ok := svc.GetSiteBrandingAsset(ctx, "/branding/invalid.svg")
+	_, _, ok := svc.GetSiteBrandingAsset(ctx, "/api/v1/settings/branding/invalid.svg")
 	require.False(t, ok)
 	require.Equal(t, 1, repo.reads)
 

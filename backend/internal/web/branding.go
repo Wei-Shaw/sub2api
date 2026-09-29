@@ -26,8 +26,7 @@ func ServeBrandingAsset(provider BrandingAssetProvider) gin.HandlerFunc {
 			return
 		}
 
-		requestedPath := "/branding/" + c.Param("asset")
-		content, contentType, ok := provider.GetSiteBrandingAsset(c.Request.Context(), requestedPath)
+		content, contentType, ok := provider.GetSiteBrandingAsset(c.Request.Context(), c.Request.URL.Path)
 		if !ok {
 			c.Status(http.StatusNotFound)
 			return

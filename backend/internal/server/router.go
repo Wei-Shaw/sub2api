@@ -115,12 +115,15 @@ func registerRoutes(
 ) {
 	// 通用路由（健康检查、状态等）
 	routes.RegisterCommonRoutes(r)
-	// Content-addressed branding assets are safe for CDN immutable caching.
-	r.GET("/branding/:asset", web.ServeBrandingAsset(settingService))
-	r.HEAD("/branding/:asset", web.ServeBrandingAsset(settingService))
 
 	// API v1
 	v1 := r.Group("/api/v1")
+
+	// 内容寻址的站点 Logo 资源：URL 里带内容哈希，可安全使用 immutable 长缓存。
+	// 挂在 /api 前缀下，复用已有反代规则，不额外要求 location。
+	// 不挂面板限流：静态资源不应按客户端 IP 计数。
+	v1.GET("/settings/branding/:asset", web.ServeBrandingAsset(settingService))
+	v1.HEAD("/settings/branding/:asset", web.ServeBrandingAsset(settingService))
 
 	// 面板 API 限流器：认证接口按用户 ID、公开接口按安全客户端 IP，
 	// 防止高频刷管理面接口打爆数据库（阈值可在系统设置中调整）。

@@ -690,7 +690,7 @@ func TestEmbeddedFrontendBypassesBareVideoAPIRoutes(t *testing.T) {
 }
 
 func TestEmbeddedFrontendBypassesRegisteredBrandingRoute(t *testing.T) {
-	const path = "/branding/logo-abc.svg"
+	const path = "/api/v1/settings/branding/logo-abc.svg"
 	for _, tc := range []struct {
 		name       string
 		middleware func(t *testing.T) gin.HandlerFunc
@@ -713,7 +713,7 @@ func TestEmbeddedFrontendBypassesRegisteredBrandingRoute(t *testing.T) {
 			})
 			router := gin.New()
 			router.Use(tc.middleware(t))
-			router.GET("/branding/:asset", ServeBrandingAsset(provider))
+			router.GET("/api/v1/settings/branding/:asset", ServeBrandingAsset(provider))
 
 			w := httptest.NewRecorder()
 			router.ServeHTTP(w, httptest.NewRequest(http.MethodGet, path, nil))
