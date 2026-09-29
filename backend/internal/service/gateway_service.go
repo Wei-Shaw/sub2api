@@ -740,6 +740,26 @@ type sseStreamErrorEventError struct {
 
 func (e *sseStreamErrorEventError) Error() string { return "have error in stream" }
 
+// anthropicSSEErrorSemanticStatus 按流内 error.type 推导语义状态码（对齐 Anthropic
+// 同类型 HTTP 错误的状态码），仅用于 failover 标注、ops 记录与最终错误映射；
+// 未识别的类型沿用旧的 403。
+func anthropicSSEErrorSemanticStatus(body []byte) int {
+	switch gjson.GetBytes(body, "error.type").String() {
+	case "overloaded_error":
+		return 529
+	case "rate_limit_error":
+		return http.StatusTooManyRequests
+	case "api_error":
+		return http.StatusInternalServerError
+	case "invalid_request_error":
+		return http.StatusBadRequest
+	case "authentication_error":
+		return http.StatusUnauthorized
+	default:
+		return http.StatusForbidden
+	}
+}
+
 // TempUnscheduleRetryableError 对 RetryableOnSameAccount 类型的 failover 错误触发临时封禁。
 // 由 handler 层在同账号重试全部用尽、切换账号时调用。
 func (s *GatewayService) TempUnscheduleRetryableError(ctx context.Context, accountID int64, failoverErr *UpstreamFailoverError) {
