@@ -316,6 +316,7 @@ function mountModal(account = buildAccount(), renderGroupSelector = false) {
         Select: SelectStub,
         Icon: true,
         ProxySelector: true,
+        MuseStatusPanel: true,
         GroupSelector: renderGroupSelector ? false : GroupSelectorStub,
         ModelWhitelistSelector: ModelWhitelistSelectorStub
       }
@@ -329,6 +330,18 @@ describe('EditAccountModal', () => {
   })
 
   afterEach(() => vi.useRealTimers())
+
+  it('saves Muse proxy priority and group edits using the common account payload', async () => {
+    const account = { ...buildAccount(), platform: 'muse', type: 'session', credentials: {}, extra: { muse_owner_user_id: 10 } }
+    updateAccountMock.mockReset().mockResolvedValue(account)
+    const wrapper = mountModal(account)
+    await wrapper.findComponent({ name: 'ProxySelector' }).vm.$emit('update:modelValue', 9)
+    await wrapper.get('input[data-tour="account-form-priority"]').setValue(8)
+    await wrapper.get('[data-testid="set-shadow-group"]').trigger('click')
+    await wrapper.get('form#edit-account-form').trigger('submit.prevent')
+    expect(updateAccountMock).toHaveBeenCalledWith(1, expect.objectContaining({ proxy_id: 9, priority: 8, group_ids: [7], concurrency: 1, schedulable: false, credentials: {}, extra: { muse_owner_user_id: 10 } }))
+    wrapper.unmount()
+  })
 
   it('sets expiry presets from now instead of extending the saved expiry', async () => {
     vi.useFakeTimers({ toFake: ['Date'] })
