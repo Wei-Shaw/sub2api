@@ -82,7 +82,8 @@ func (h *ImageStudioHandler) executor(c *gin.Context) service.ImageStudioExecuto
 		if h.gateway == nil {
 			return http.StatusServiceUnavailable, []byte(`{"error":{"message":"image gateway is unavailable"}}`)
 		}
-		req, err := http.NewRequestWithContext(ctx, http.MethodPost, path, bytes.NewReader(body))
+		// 回放写入 recorder，关闭 JSON 心跳以保留上游真实状态码。
+		req, err := http.NewRequestWithContext(service.WithOpenAIImagesJSONKeepaliveDisabled(ctx), http.MethodPost, path, bytes.NewReader(body))
 		if err != nil {
 			return http.StatusInternalServerError, []byte(`{"error":{"message":"failed to build image request"}}`)
 		}
