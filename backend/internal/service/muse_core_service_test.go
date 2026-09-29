@@ -6,6 +6,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/ctxkey"
 	"net/http/httptest"
 	"strings"
@@ -361,4 +362,37 @@ func TestMuseSelectionSkipsHigherPriorityUnsupportedAccountAndRechecksSticky(t *
 	require.NoError(t, err)
 	require.Equal(t, "model_not_supported", openAICompatibleAccountEligibilityFailureReasonBeforeProfit(ctx, sticky, PlatformMuse, "muse/premium", false, ""))
 	require.Empty(t, openAICompatibleAccountEligibilityFailureReasonBeforeProfit(ctx, sticky, PlatformMuse, "muse/basic", false, ""))
+}
+
+func TestMuseChatStreamHonorsIncludeUsageWithoutInventingCounts(t *testing.T) {
+	for _, tc := range []struct {
+		name                    string
+		include, reported, want bool
+	}{{"requested-known", true, true, true}, {"not-requested", false, true, false}, {"unknown", true, false, false}} {
+		t.Run(tc.name, func(t *testing.T) {
+			g, _, p, _, _, a, key := newMuseCoreFixture()
+			p.execute = func(_ context.Context, r muse.Request, emit func(muse.Event) error) (*muse.Result, error) {
+				response := &apicompat.ResponsesResponse{ID: "remote", Object: "response", Status: "completed", Model: "fixture-model"}
+				if tc.reported {
+					response.Usage = &apicompat.ResponsesUsage{InputTokens: 10, OutputTokens: 20, TotalTokens: 30}
+				}
+				for i, event := range []apicompat.ResponsesStreamEvent{{Type: "response.created", Response: response}, {Type: "response.output_text.delta", Delta: "reply"}, {Type: "response.completed", Response: response}} {
+					require.NoError(t, emit(muse.Event{OperationID: r.OperationID, ProviderTurnID: "fixture-turn", Sequence: int64(i + 1), Data: event}))
+				}
+				return &muse.Result{ProviderTurnID: "fixture-turn", Response: response}, nil
+			}
+			body := `{"model":"muse/assistant","messages":[{"role":"user","content":"hello"}],"stream":true,"stream_options":{"include_usage":` + fmt.Sprint(tc.include) + `}}`
+			recorder := httptest.NewRecorder()
+			c, _ := gin.CreateTestContext(recorder)
+			c.Request = httptest.NewRequest("POST", "/v1/chat/completions", nil)
+			c.Set("api_key", key)
+			_, err := g.forwardMuse(c.Request.Context(), c, a, []byte(body), "chat_completions")
+			require.NoError(t, err)
+			if tc.want {
+				require.Contains(t, recorder.Body.String(), `"usage":{"prompt_tokens":10,"completion_tokens":20,"total_tokens":30`)
+			} else {
+				require.NotContains(t, recorder.Body.String(), `"usage"`)
+			}
+		})
+	}
 }
