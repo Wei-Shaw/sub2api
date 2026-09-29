@@ -45,8 +45,8 @@ func (r *museProviderRepository) Profile(ctx context.Context, a *service.Account
 	}
 	var encoded []byte
 	err := r.db.QueryRowContext(ctx, `SELECT p.capabilities FROM muse_account_profiles p JOIN accounts a ON a.id=p.account_id LEFT JOIN proxies px ON px.id=a.proxy_id
-  WHERE a.id=$1 AND a.updated_at=p.verified_account_updated_at AND a.status='active' AND a.deleted_at IS NULL
-  AND (a.proxy_id IS NULL OR (px.deleted_at IS NULL AND px.updated_at=(p.capabilities->>'proxy_updated_at')::timestamptz))`, a.ID).Scan(&encoded)
+  WHERE a.id=$1 AND a.updated_at=$2 AND a.updated_at=p.verified_account_updated_at AND a.status='active' AND a.deleted_at IS NULL
+  AND (a.proxy_id IS NULL OR (px.deleted_at IS NULL AND px.updated_at=(p.capabilities->>'proxy_updated_at')::timestamptz))`, a.ID, a.UpdatedAt).Scan(&encoded)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, muse.ErrTransportUnqualified
 	}
