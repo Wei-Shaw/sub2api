@@ -10,6 +10,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"hash/fnv"
 	"io"
 	"log/slog"
 	"net"
@@ -557,8 +558,8 @@ func (s *httpUpstreamService) getClientEntryWithTLS(proxyURL string, accountID i
 	}
 	settings := s.resolvePoolSettings(isolation, accountConcurrency)
 	settings = s.applyProfilePoolSettings(settings, upstreamProfile)
-	// TLS 指纹客户端使用独立的缓存键，加 "tls:" 前缀
-	cacheKey := "tls:" + buildCacheKey(isolation, proxyKey, accountID, upstreamProtocolModeDefault)
+	// TLS 指纹客户端使用独立的缓存键，加 "tls:" 前缀；并包含 profile 标识，profile 变更时使用新客户端
+	cacheKey := "tls:" + buildCacheKey(isolation, proxyKey, accountID, upstreamProtocolModeDefault) + "|fp:" + buildTLSProfileKey(profile)
 	poolKey := buildPoolKey(settings, upstreamProtocolModeDefault) + ":tls"
 
 	now := time.Now()
@@ -1000,6 +1001,20 @@ func buildPoolKey(settings poolSettings, protocolMode string) string {
 		return base
 	}
 	return base + "|proto:" + protocolMode
+}
+
+// buildTLSProfileKey 构建 TLS 指纹 profile 的稳定标识（名称 + 全部字段的哈希），
+// 内容相同的 profile 得到相同的键，名称或参数变化时键随之变化。
+func buildTLSProfileKey(p *tlsfingerprint.Profile) string {
+	if p == nil {
+		return "none"
+	}
+	h := fnv.New64a()
+	_, _ = fmt.Fprintf(h, "%q|%v|%v|%v|%t|%v|%q|%v|%v|%v|%v",
+		p.Name, p.CipherSuites, p.Curves, p.PointFormats, p.EnableGREASE,
+		p.SignatureAlgorithms, p.ALPNProtocols, p.SupportedVersions,
+		p.KeyShareGroups, p.PSKModes, p.Extensions)
+	return fmt.Sprintf("%s#%016x", p.Name, h.Sum64())
 }
 
 // buildCacheKey 构建客户端缓存键
