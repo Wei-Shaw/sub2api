@@ -37,6 +37,17 @@ func (s *OpenAIGatewayService) forwardMuse(ctx context.Context, c *gin.Context, 
 	}
 	publicModel := input.Model
 	chatState := apicompat.NewResponsesEventToChatState()
+	if endpoint == "chat_completions" {
+		var options struct {
+			StreamOptions *apicompat.ChatStreamOptions `json:"stream_options"`
+		}
+		// parseMuseRequest already validated this request and option's shape.
+		if err := json.Unmarshal(body, &options); err != nil {
+			return nil, writeMuseError(c, endpoint, muse.ErrInvalid, false)
+		}
+		chatState.IncludeUsage = options.StreamOptions != nil && options.StreamOptions.IncludeUsage
+	}
+
 	anthropicState := apicompat.NewResponsesEventToAnthropicState()
 	started := false
 	start := time.Now()
