@@ -31,6 +31,8 @@ const (
 	outboxRebuildRetryBaseDelay           = 5 * time.Second
 	outboxRebuildRetryMaxDelay            = 5 * time.Minute
 	outboxMaxIDErrorLogSampleInterval     = time.Minute
+	// 临时封锁（限流/过载/临时不可调度）到期后补一次重建的额外延迟，覆盖应用与 DB 时钟的微小偏差。
+	schedulerTransientRecoveryDelay = time.Second
 )
 
 // batchSeenKey tracks completed per-platform rebuilds and group lifecycle work
@@ -143,6 +145,10 @@ type SchedulerSnapshotService struct {
 	fullRebuildRequested uint64
 	fullRebuildCompleted uint64
 	fullRebuildLastErr   error
+
+	// 账号临时封锁到期后的一次性重建定时器，按账号 ID 替换，Stop 时全部停止。
+	recoveryMu     sync.Mutex
+	recoveryTimers map[int64]*time.Timer
 }
 
 func NewSchedulerSnapshotService(
@@ -204,6 +210,12 @@ func (s *SchedulerSnapshotService) Stop() {
 	s.stopOnce.Do(func() {
 		close(s.stopCh)
 	})
+	s.recoveryMu.Lock()
+	for id, timer := range s.recoveryTimers {
+		timer.Stop()
+		delete(s.recoveryTimers, id)
+	}
+	s.recoveryMu.Unlock()
 	s.wg.Wait()
 }
 
@@ -683,7 +695,67 @@ func (s *SchedulerSnapshotService) handleAccountEvent(ctx context.Context, accou
 	if len(groupIDs) == 0 {
 		groupIDs = account.GroupIDs
 	}
+	s.scheduleTransientRecoveryRebuild(account)
 	return s.rebuildByAccount(ctx, account, groupIDs, "account_change", seen)
+}
+
+// scheduleTransientRecoveryRebuild 在账号处于临时封锁时，安排封锁结束后重建其所属桶。
+// 快照重建按重建时刻排除限流/过载/临时不可调度账号，而封锁自然到期不会产生 outbox 事件，
+// 否则账号要等到其他事件或下一次全量重建才会回到快照中。
+func (s *SchedulerSnapshotService) scheduleTransientRecoveryRebuild(account *Account) {
+	if s == nil || account == nil || account.ID <= 0 {
+		return
+	}
+	now := time.Now()
+	var until time.Time
+	for _, t := range []*time.Time{account.RateLimitResetAt, account.OverloadUntil, account.TempUnschedulableUntil} {
+		if t != nil && t.After(now) && t.After(until) {
+			until = *t
+		}
+	}
+
+	accountID := account.ID
+	s.recoveryMu.Lock()
+	defer s.recoveryMu.Unlock()
+	if old := s.recoveryTimers[accountID]; old != nil {
+		old.Stop()
+		delete(s.recoveryTimers, accountID)
+	}
+	if until.IsZero() {
+		return
+	}
+	select {
+	case <-s.stopCh:
+		return
+	default:
+	}
+	if s.recoveryTimers == nil {
+		s.recoveryTimers = make(map[int64]*time.Timer)
+	}
+	var timer *time.Timer
+	timer = time.AfterFunc(until.Sub(now)+schedulerTransientRecoveryDelay, func() {
+		s.recoveryMu.Lock()
+		// 已被新事件替换或被 Stop 清理的定时器不再执行。
+		if s.recoveryTimers[accountID] != timer {
+			s.recoveryMu.Unlock()
+			return
+		}
+		delete(s.recoveryTimers, accountID)
+		s.wg.Add(1)
+		s.recoveryMu.Unlock()
+		defer s.wg.Done()
+		s.runTransientRecoveryRebuild(accountID)
+	})
+	s.recoveryTimers[accountID] = timer
+}
+
+func (s *SchedulerSnapshotService) runTransientRecoveryRebuild(accountID int64) {
+	defer recoverBackgroundWorker("scheduler transient recovery rebuild", nil)
+	ctx, cancel := context.WithTimeout(context.Background(), outboxEventTimeout)
+	defer cancel()
+	if err := s.handleAccountEvent(ctx, &accountID, nil, nil); err != nil {
+		logger.LegacyPrintf("service.scheduler_snapshot", "[Scheduler] transient recovery rebuild failed: account=%d err=%v", accountID, err)
+	}
 }
 
 func (s *SchedulerSnapshotService) handleGroupEvent(ctx context.Context, groupID *int64, seen map[batchSeenKey]struct{}) error {
