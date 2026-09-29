@@ -813,6 +813,7 @@ export default {
     adminAdjustment: '管理员调整',
     subscriptionAssigned: '订阅已分配',
     subscriptionAssignedDesc: '您已获得 {groupName} 的访问权限',
+    invitationCodeUsed: '已使用邀请码',
     subscriptionDays: '{days} 天',
     days: '天',
     codeRedeemSuccess: '兑换成功！',

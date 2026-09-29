@@ -809,6 +809,7 @@ export default {
     adminAdjustment: 'Điều chỉnh của quản trị viên',
     subscriptionAssigned: 'Đã cấp gói đăng ký',
     subscriptionAssignedDesc: 'Bạn đã được cấp quyền truy cập {groupName}',
+    invitationCodeUsed: 'Đã sử dụng mã mời',
     subscriptionDays: '{days} ngày',
     days: ' ngày',
     codeRedeemSuccess: 'Đổi mã thành công!',

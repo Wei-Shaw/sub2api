@@ -809,6 +809,7 @@ export default {
     adminAdjustment: 'Admin Adjustment',
     subscriptionAssigned: 'Subscription Assigned',
     subscriptionAssignedDesc: 'You have been granted access to {groupName}',
+    invitationCodeUsed: 'Invitation Code Used',
     subscriptionDays: '{days} days',
     days: ' days',
     codeRedeemSuccess: 'Code redeemed successfully!',
