@@ -870,6 +870,19 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 				}
 			}
 
+			// 排队期间客户端已断开：不再转发上游（fail-open 仅适用于客户端在线时的超时/缓存错误）
+			if umqMode != "" && c.Request.Context().Err() != nil {
+				if queueRelease != nil {
+					queueRelease()
+				}
+				if accountReleaseFunc != nil {
+					accountReleaseFunc()
+				}
+				reqLog.Info("gateway.umq_wait_aborted_client_disconnected", zap.Int64("account_id", account.ID))
+				failoverClientGone(c)
+				return
+			}
+
 			// 用 wrapReleaseOnDone 确保 context 取消时自动释放（仅 serialize 模式有 queueRelease）
 			queueRelease = wrapReleaseOnDone(c.Request.Context(), queueRelease)
 			// 注入回调到 ParsedRequest：使用外层 wrapper 以便提前清理 AfterFunc
