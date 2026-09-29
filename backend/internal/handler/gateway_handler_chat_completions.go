@@ -122,7 +122,10 @@ func (h *GatewayHandler) ChatCompletions(c *gin.Context) {
 
 	service.SetOpsLatencyMs(c, service.OpsAuthLatencyMsKey, time.Since(requestStart).Milliseconds())
 
-	userReleaseFunc, err := h.concurrencyHelper.AcquireUserSlotWithWait(c, subject.UserID, subject.Concurrency, reqStream, &streamStarted)
+	// OpenAI Chat Completions 客户端会把 data 帧当 chunk 解析，槽位等待心跳用 SSE 注释而非 Claude ping。
+	ccConcurrency := NewConcurrencyHelper(h.concurrencyHelper.concurrencyService, SSEPingFormatComment, h.concurrencyHelper.pingInterval)
+
+	userReleaseFunc, err := ccConcurrency.AcquireUserSlotWithWait(c, subject.UserID, subject.Concurrency, reqStream, &streamStarted)
 	if err != nil {
 		reqLog.Warn("gateway.cc.user_slot_acquire_failed", zap.Error(err))
 		h.handleConcurrencyError(c, err, "user", streamStarted)
@@ -217,7 +220,7 @@ func (h *GatewayHandler) ChatCompletions(c *gin.Context) {
 				h.chatCompletionsErrorResponse(c, http.StatusServiceUnavailable, "api_error", "No available accounts")
 				return
 			}
-			accountReleaseFunc, err = h.concurrencyHelper.AcquireAccountSlotWithWaitTimeout(
+			accountReleaseFunc, err = ccConcurrency.AcquireAccountSlotWithWaitTimeout(
 				c,
 				account.ID,
 				selection.WaitPlan.MaxConcurrency,
@@ -381,33 +384,32 @@ func (h *GatewayHandler) chatCompletionsErrorResponse(c *gin.Context, status int
 
 // handleCCFailoverExhausted writes a failover-exhausted error in CC format.
 func (h *GatewayHandler) handleCCFailoverExhausted(c *gin.Context, lastErr *service.UpstreamFailoverError, streamStarted bool) {
-	if streamStarted {
-		return
-	}
 	if lastErr != nil {
 		copyFailoverRetryAfter(c, lastErr.ResponseHeaders)
-	}
-	if lastErr != nil && lastErr.IsCredentialFailure() {
-		status, message := credentialFailoverClientResponse(lastErr)
-		h.chatCompletionsErrorResponse(c, status, "server_error", message)
-		return
-	}
-	if lastErr != nil && lastErr.IsOpenAICapacityShed() && strings.TrimSpace(lastErr.ClientMessage) != "" {
-		status := lastErr.ClientStatusCode
-		if status <= 0 {
-			status = http.StatusServiceUnavailable
-		}
-		h.chatCompletionsErrorResponse(c, status, "server_error", lastErr.ClientMessage)
-		return
 	}
 	statusCode := http.StatusBadGateway
 	if lastErr != nil && lastErr.StatusCode > 0 {
 		statusCode = lastErr.StatusCode
 	}
-	if lastErr != nil && service.IsOpenAISilentRefusalErrorBody(lastErr.ResponseBody) {
+	status, errType, message := statusCode, "server_error", "All available accounts exhausted"
+	if lastErr != nil && lastErr.IsCredentialFailure() {
+		status, message = credentialFailoverClientResponse(lastErr)
+	} else if lastErr != nil && lastErr.IsOpenAICapacityShed() && strings.TrimSpace(lastErr.ClientMessage) != "" {
+		status = lastErr.ClientStatusCode
+		if status <= 0 {
+			status = http.StatusServiceUnavailable
+		}
+		message = lastErr.ClientMessage
+	} else if lastErr != nil && service.IsOpenAISilentRefusalErrorBody(lastErr.ResponseBody) {
 		service.SetOpsUpstreamError(c, statusCode, service.OpenAISilentRefusalClientMessage(), "")
-		h.chatCompletionsErrorResponse(c, http.StatusBadGateway, "upstream_error", service.OpenAISilentRefusalClientMessage())
+		status, errType, message = http.StatusBadGateway, "upstream_error", service.OpenAISilentRefusalClientMessage()
+	}
+	if streamStarted {
+		// 槽位等待心跳已提交 200 时仍需补发终止错误帧；Forward 已写出实际内容则保持原样。
+		if c != nil && c.Writer != nil && (c.Writer.Size() <= 0 || gatewayStreamHasOnlyHeartbeats(c)) {
+			h.handleStreamingAwareError(c, status, errType, message, true)
+		}
 		return
 	}
-	h.chatCompletionsErrorResponse(c, statusCode, "server_error", "All available accounts exhausted")
+	h.chatCompletionsErrorResponse(c, status, errType, message)
 }
