@@ -1480,11 +1480,18 @@ const mergeAccountsIncrementally = (nextRows: Account[]) => {
   }
 }
 
+const accountListRequestKey = () => JSON.stringify({
+  page: pagination.page,
+  pageSize: pagination.page_size,
+  params: toRaw(params)
+})
+
 const refreshAccountsIncrementally = async () => {
   if (autoRefreshFetching.value) return
   syncAccountListDerivedParams()
   autoRefreshFetching.value = true
   try {
+    const requestKey = accountListRequestKey()
     const result = await adminAPI.accounts.listWithEtag(
       pagination.page,
       pagination.page_size,
@@ -1501,6 +1508,8 @@ const refreshAccountsIncrementally = async () => {
       },
       { etag: autoRefreshETag.value }
     )
+    // 期间翻页/筛选/排序已触发新加载时，丢弃旧查询的响应（含 etag）
+    if (loading.value || requestKey !== accountListRequestKey()) return
 
     if (result.etag) {
       autoRefreshETag.value = result.etag
