@@ -2,9 +2,11 @@ package service
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
+	"net/http"
 	"strings"
 	"sync"
 	"time"
@@ -1183,8 +1185,10 @@ func (s *TokenRefreshService) postRefreshActions(ctx context.Context, account *A
 			s.notifyAccountSchedulingBlockCleared(account.ID)
 		}
 	}
-	// 刷新成功后清除临时不可调度状态（处理 OAuth 401 恢复场景）
-	if account.TempUnschedulableUntil != nil && time.Now().Before(*account.TempUnschedulableUntil) {
+	// 刷新成功后清除临时不可调度状态（处理 OAuth 401 恢复场景）；
+	// 其它原因（500 惩罚、管理员规则等）与凭证无关，不能被刷新提前解除。
+	if account.TempUnschedulableUntil != nil && time.Now().Before(*account.TempUnschedulableUntil) &&
+		tempUnschedResolvedByTokenRefresh(account.TempUnschedulableReason) {
 		if clearErr := s.accountRepo.ClearTempUnschedulable(ctx, account.ID); clearErr != nil {
 			slog.Warn("token_refresh.clear_temp_unschedulable_failed",
 				"account_id", account.ID,
@@ -1408,6 +1412,30 @@ func isSharedProviderRefreshError(err error) bool {
 		if strings.Contains(msg, needle) {
 			return true
 		}
+	}
+	return false
+}
+
+// tempUnschedResolvedByTokenRefresh 判断临时不可调度是否由认证/刷新失败引起，
+// 只有这类状态能被一次成功的 token 刷新解除。
+func tempUnschedResolvedByTokenRefresh(reason string) bool {
+	reason = strings.TrimSpace(reason)
+	if reason == "" {
+		return true
+	}
+	for _, prefix := range []string{
+		"OAuth 401",
+		"Authentication failed (401)",
+		"token refresh retry exhausted",
+		"token refresh failed on request path",
+	} {
+		if strings.HasPrefix(reason, prefix) {
+			return true
+		}
+	}
+	var state TempUnschedState
+	if err := json.Unmarshal([]byte(reason), &state); err == nil {
+		return state.StatusCode == http.StatusUnauthorized
 	}
 	return false
 }
