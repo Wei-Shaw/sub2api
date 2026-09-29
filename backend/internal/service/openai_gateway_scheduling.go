@@ -1651,6 +1651,13 @@ func (s *OpenAIGatewayService) recheckSelectedOpenAIAccountFromDBBeforeProfit(ct
 	if err != nil || latest == nil {
 		return nil
 	}
+	if latest.IsMuse() {
+		candidates := s.filterMuseAccounts(ctx, []Account{*latest})
+		if len(candidates) == 0 {
+			return nil
+		}
+		latest = &candidates[0]
+	}
 	if !s.openAIAccountMatchesSchedulingGroup(latest, groupID) {
 		return nil
 	}
@@ -1695,8 +1702,12 @@ func (s *OpenAIGatewayService) getSchedulableAccount(ctx context.Context, accoun
 	if err != nil || account == nil {
 		return account, err
 	}
-	if account.IsMuse() && len(s.filterMuseAccounts(ctx, []Account{*account})) == 0 {
-		return nil, nil
+	if account.IsMuse() {
+		candidates := s.filterMuseAccounts(ctx, []Account{*account})
+		if len(candidates) == 0 {
+			return nil, nil
+		}
+		account = &candidates[0]
 	}
 	if s.isOpenAIAccountBlockedBySchedulingThreshold(ctx, account) {
 		return nil, nil
@@ -1806,10 +1817,11 @@ func (s *OpenAIGatewayService) filterMuseAccounts(ctx context.Context, accounts 
 			if s.muse == nil || !s.muse.Qualified() || MuseOwnerUserID(a.Extra) != userID {
 				continue
 			}
-			p, err := s.muse.store.Profile(ctx, &a)
+			p, err := s.muse.verifiedProfile(ctx, &a)
 			if err != nil || p == nil || !p.InferenceAllowed || p.Identity.OwnerUserID != userID || (p.SessionExpiresAt != nil && !time.Now().Before(*p.SessionExpiresAt)) {
 				continue
 			}
+			a.museVerifiedModels = append([]string(nil), p.Capabilities.Models...)
 		}
 		result = append(result, a)
 	}
