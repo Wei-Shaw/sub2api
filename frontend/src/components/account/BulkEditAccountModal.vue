@@ -2211,6 +2211,10 @@ const buildUpdatePayload = (): Record<string, unknown> | null => {
 }
 
 const mixedChannelConfirmed = ref(false)
+// 确认只对当时选中的分组有效，分组变更后需重新预检
+watch([enableGroups, groupMode, () => groupIds.value.join(',')], () => {
+  mixedChannelConfirmed.value = false
+})
 
 // 是否需要预检查：改了分组 + 全是单一的 antigravity 或 anthropic 平台
 // 多平台混合的情况由 submitBulkUpdate 的 409 catch 兜底
@@ -2393,8 +2397,13 @@ const submitBulkUpdate = async (baseUpdates: Record<string, unknown>) => {
       pendingUpdatesForConfirm.value = null
       emit('updated')
       handleClose()
+    } else {
+      // 保存失败，确认作废，下次提交重新预检
+      mixedChannelConfirmed.value = false
     }
   } catch (error: any) {
+    // 保存失败，确认作废（409 兜底会重新弹窗确认）
+    mixedChannelConfirmed.value = false
     // 兜底：多平台混合场景下，预检查跳过，由后端 409 触发确认框
     if (error.status === 409 && error.error === 'mixed_channel_warning') {
       pendingUpdatesForConfirm.value = baseUpdates

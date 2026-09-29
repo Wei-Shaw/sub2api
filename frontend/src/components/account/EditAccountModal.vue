@@ -5101,6 +5101,11 @@ const ensureAntigravityMixedChannelConfirmed = async (onConfirm: () => Promise<v
   }
 }
 
+// 确认只对当时选中的分组有效，分组变更后需重新预检
+watch(() => form.group_ids.join(','), () => {
+  antigravityMixedChannelConfirmed.value = false
+})
+
 const formatDateTimeLocal = formatDateTimeLocalInput
 const parseDateTimeLocal = parseDateTimeLocalInput
 
@@ -5167,6 +5172,8 @@ const submitUpdateAccount = async (accountID: number, updatePayload: Record<stri
       })
       return
     }
+    // 保存失败，确认作废，下次提交重新预检
+    antigravityMixedChannelConfirmed.value = false
     appStore.showError(error.message || t('admin.accounts.failedToUpdate'))
   } finally {
     submitting.value = false
