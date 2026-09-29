@@ -45,10 +45,10 @@ export default {
           code: 'export ANTHROPIC_BASE_URL="$BASE"\nexport ANTHROPIC_AUTH_TOKEN="sk-***"',
         },
         {
-          key: 'gemini-cli',
-          name: 'Gemini CLI',
-          desc: '通过环境变量接入 Gemini 兼容端点（/v1beta）',
-          code: 'export GEMINI_API_BASE="$BASE/v1beta"\nexport GEMINI_API_KEY="sk-***"',
+          key: 'codex-cli',
+          name: 'Codex CLI',
+          desc: '通过 OpenAI Responses 兼容端点（/v1/responses）接入',
+          code: '# ~/.codex/config.toml\n[model_providers.wende]\nname = "wende-ai"\nbase_url = "$BASE/v1"\nwire_api = "responses"\n\n# ~/.codex/auth.json\n{ "OPENAI_API_KEY": "sk-***" }',
         },
       ],
       ccsTip:
@@ -179,15 +179,15 @@ export default {
           id: 'base-url',
           category: 'quality',
           question: '不同客户端的接入地址分别是什么？',
-          summary: 'OpenAI 兼容用 $BASE/v1，Claude Code 用 $BASE（/v1/messages），Gemini CLI 用 $BASE/v1beta。',
+          summary: 'OpenAI 兼容用 $BASE/v1，Claude Code 用 $BASE（/v1/messages），Codex CLI 用 $BASE/v1/responses。',
           answer:
-            '站点同时提供 OpenAI、Anthropic、Gemini 三种兼容端点，接入地址均为本站域名，具体路径见「配置指南」页的常用客户端配置。',
+            '站点同时提供 OpenAI、Anthropic、Responses 三种兼容端点，接入地址均为本站域名，具体配置见「配置指南」页的常用客户端配置。',
           points: [
             'OpenAI 兼容：$BASE/v1（chat/completions）',
             'Claude Code：ANTHROPIC_BASE_URL=$BASE（/v1/messages）',
-            'Gemini CLI：$BASE/v1beta',
+            'Codex CLI：$BASE/v1/responses（Responses 协议）',
           ],
-          note: '三种端点共用同一批 sk- 密钥。',
+          note: '所有端点共用同一批 sk- 密钥。',
         },
         {
           id: 'refund',

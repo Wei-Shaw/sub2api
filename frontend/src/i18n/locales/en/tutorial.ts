@@ -45,10 +45,10 @@ export default {
           code: 'export ANTHROPIC_BASE_URL="$BASE"\nexport ANTHROPIC_AUTH_TOKEN="sk-***"',
         },
         {
-          key: 'gemini-cli',
-          name: 'Gemini CLI',
-          desc: 'Connect via the Gemini-compatible endpoint (/v1beta)',
-          code: 'export GEMINI_API_BASE="$BASE/v1beta"\nexport GEMINI_API_KEY="sk-***"',
+          key: 'codex-cli',
+          name: 'Codex CLI',
+          desc: 'Connect via the OpenAI Responses-compatible endpoint (/v1/responses)',
+          code: '# ~/.codex/config.toml\n[model_providers.wende]\nname = "wende-ai"\nbase_url = "$BASE/v1"\nwire_api = "responses"\n\n# ~/.codex/auth.json\n{ "OPENAI_API_KEY": "sk-***" }',
         },
       ],
       ccsTip:
@@ -179,15 +179,15 @@ export default {
           id: 'base-url',
           category: 'quality',
           question: 'Which endpoint should each client use?',
-          summary: 'OpenAI-compatible: $BASE/v1; Claude Code: $BASE (/v1/messages); Gemini CLI: $BASE/v1beta.',
+          summary: 'OpenAI-compatible: $BASE/v1; Claude Code: $BASE (/v1/messages); Codex CLI: $BASE/v1/responses.',
           answer:
-            'The site exposes OpenAI, Anthropic, and Gemini compatible endpoints on the same domain; see the "Setup Guide" tab for per-client snippets.',
+            'The site exposes OpenAI, Anthropic, and Responses compatible endpoints on the same domain; see the "Setup Guide" tab for per-client snippets.',
           points: [
             'OpenAI-compatible: $BASE/v1 (chat/completions)',
             'Claude Code: ANTHROPIC_BASE_URL=$BASE (/v1/messages)',
-            'Gemini CLI: $BASE/v1beta',
+            'Codex CLI: $BASE/v1/responses (Responses protocol)',
           ],
-          note: 'All three endpoints share the same sk- keys.',
+          note: 'All endpoints share the same sk- keys.',
         },
         {
           id: 'refund',
