@@ -844,6 +844,8 @@ func (s *GatewayService) handleStreamingResponse(ctx context.Context, resp *http
 		}
 		_, _ = fmt.Fprintf(w, "event: error\ndata: %s\n\n", body)
 		flusher.Flush()
+		// 已写出终止 error 事件，标记已提交，避免 handler 再追加通用错误帧
+		MarkResponseCommitted(c)
 	}
 
 	needModelReplace := originalModel != mappedModel
