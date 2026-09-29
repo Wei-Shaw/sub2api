@@ -139,6 +139,9 @@ func (c StubSessionLimitCache) RegisterSession(_ context.Context, _ int64, _ str
 func (c StubSessionLimitCache) RefreshSession(_ context.Context, _ int64, _ string, _ time.Duration) error {
 	return nil
 }
+func (c StubSessionLimitCache) UnregisterSession(_ context.Context, _ int64, _ string) error {
+	return nil
+}
 func (c StubSessionLimitCache) GetActiveSessionCount(_ context.Context, _ int64) (int, error) {
 	return 0, nil
 }

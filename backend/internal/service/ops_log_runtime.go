@@ -14,14 +14,23 @@ import (
 )
 
 func defaultOpsRuntimeLogConfig(cfg *config.Config) *OpsRuntimeLogConfig {
+	requestRetentionDays := 90
+	if cfg != nil {
+		requestRetentionDays = cfg.DashboardAgg.Retention.UsageLogsDays
+		if !cfg.DashboardAgg.Enabled {
+			requestRetentionDays = 0
+		}
+	}
 	out := &OpsRuntimeLogConfig{
-		Level:           "info",
-		EnableSampling:  false,
-		SamplingInitial: 100,
-		SamplingNext:    100,
-		Caller:          true,
-		StacktraceLevel: "error",
-		RetentionDays:   30,
+		Level:                "info",
+		PersistAccessLogs:    false,
+		EnableSampling:       false,
+		SamplingInitial:      100,
+		SamplingNext:         100,
+		Caller:               true,
+		StacktraceLevel:      "error",
+		RetentionDays:        30,
+		RequestRetentionDays: &requestRetentionDays,
 	}
 	if cfg == nil {
 		return out
@@ -32,8 +41,8 @@ func defaultOpsRuntimeLogConfig(cfg *config.Config) *OpsRuntimeLogConfig {
 	out.SamplingNext = cfg.Log.Sampling.Thereafter
 	out.Caller = cfg.Log.Caller
 	out.StacktraceLevel = strings.ToLower(strings.TrimSpace(cfg.Log.StacktraceLevel))
-	if cfg.Ops.Cleanup.ErrorLogRetentionDays > 0 {
-		out.RetentionDays = cfg.Ops.Cleanup.ErrorLogRetentionDays
+	if cfg.Ops.Cleanup.SystemLogRetentionDays > 0 {
+		out.RetentionDays = cfg.Ops.Cleanup.SystemLogRetentionDays
 	}
 	return out
 }
@@ -59,6 +68,10 @@ func normalizeOpsRuntimeLogConfig(cfg *OpsRuntimeLogConfig, defaults *OpsRuntime
 	if cfg.RetentionDays <= 0 {
 		cfg.RetentionDays = defaults.RetentionDays
 	}
+	if cfg.RequestRetentionDays == nil && defaults.RequestRetentionDays != nil {
+		days := *defaults.RequestRetentionDays
+		cfg.RequestRetentionDays = &days
+	}
 }
 
 func validateOpsRuntimeLogConfig(cfg *OpsRuntimeLogConfig) error {
@@ -83,6 +96,9 @@ func validateOpsRuntimeLogConfig(cfg *OpsRuntimeLogConfig) error {
 	}
 	if cfg.RetentionDays < 1 || cfg.RetentionDays > 3650 {
 		return errors.New("retention_days must be between 1 and 3650")
+	}
+	if cfg.RequestRetentionDays != nil && (*cfg.RequestRetentionDays < 0 || *cfg.RequestRetentionDays > 3650) {
+		return errors.New("request_retention_days must be between 0 and 3650")
 	}
 	return nil
 }
@@ -138,13 +154,16 @@ func (s *OpsService) UpdateRuntimeLogConfig(ctx context.Context, req *OpsRuntime
 		return nil, err
 	}
 	next := *req
+	if next.RequestRetentionDays == nil {
+		next.RequestRetentionDays = oldCfg.RequestRetentionDays
+	}
 	normalizeOpsRuntimeLogConfig(&next, defaultOpsRuntimeLogConfig(s.cfg))
 	if err := validateOpsRuntimeLogConfig(&next); err != nil {
 		s.auditRuntimeLogConfigFailure(operatorID, oldCfg, &next, "validation_failed: "+err.Error())
 		return nil, err
 	}
 
-	if err := applyOpsRuntimeLogConfig(&next); err != nil {
+	if err := s.applyRuntimeLogConfig(&next); err != nil {
 		s.auditRuntimeLogConfigFailure(operatorID, oldCfg, &next, "apply_failed: "+err.Error())
 		return nil, err
 	}
@@ -159,12 +178,13 @@ func (s *OpsService) UpdateRuntimeLogConfig(ctx context.Context, req *OpsRuntime
 	}
 	if err := s.settingRepo.Set(ctx, SettingKeyOpsRuntimeLogConfig, string(encoded)); err != nil {
 		// 存储失败时回滚到旧配置，避免内存状态与持久化状态不一致。
-		_ = applyOpsRuntimeLogConfig(oldCfg)
+		_ = s.applyRuntimeLogConfig(oldCfg)
 		s.auditRuntimeLogConfigFailure(operatorID, oldCfg, &next, "persist_failed: "+err.Error())
 		return nil, err
 	}
 
 	s.auditRuntimeLogConfigChange(operatorID, oldCfg, &next, "updated")
+	s.reloadOpsCleanup(ctx)
 
 	return &next, nil
 }
@@ -191,14 +211,14 @@ func (s *OpsService) ResetRuntimeLogConfig(ctx context.Context, operatorID int64
 		s.auditRuntimeLogConfigFailure(operatorID, oldCfg, resetCfg, "reset_validation_failed: "+err.Error())
 		return nil, err
 	}
-	if err := applyOpsRuntimeLogConfig(resetCfg); err != nil {
+	if err := s.applyRuntimeLogConfig(resetCfg); err != nil {
 		s.auditRuntimeLogConfigFailure(operatorID, oldCfg, resetCfg, "reset_apply_failed: "+err.Error())
 		return nil, err
 	}
 
 	// 清理 runtime 覆盖配置，回退到 env/yaml baseline。
 	if err := s.settingRepo.Delete(ctx, SettingKeyOpsRuntimeLogConfig); err != nil && !errors.Is(err, ErrSettingNotFound) {
-		_ = applyOpsRuntimeLogConfig(oldCfg)
+		_ = s.applyRuntimeLogConfig(oldCfg)
 		s.auditRuntimeLogConfigFailure(operatorID, oldCfg, resetCfg, "reset_persist_failed: "+err.Error())
 		return nil, err
 	}
@@ -209,7 +229,27 @@ func (s *OpsService) ResetRuntimeLogConfig(ctx context.Context, operatorID int64
 	resetCfg.UpdatedByUserID = operatorID
 
 	s.auditRuntimeLogConfigChange(operatorID, oldCfg, resetCfg, "reset")
+	s.reloadOpsCleanup(ctx)
 	return resetCfg, nil
+}
+
+func (s *OpsService) applyRuntimeLogConfig(cfg *OpsRuntimeLogConfig) error {
+	if err := applyOpsRuntimeLogConfig(cfg); err != nil {
+		return err
+	}
+	if s != nil && s.systemLogSink != nil {
+		s.systemLogSink.SetPersistAccessLogs(cfg.PersistAccessLogs)
+	}
+	return nil
+}
+
+func (s *OpsService) reloadOpsCleanup(ctx context.Context) {
+	if s == nil || s.cleanupReloader == nil {
+		return
+	}
+	if err := s.cleanupReloader.Reload(ctx); err != nil {
+		logger.LegacyPrintf("service.ops_log_runtime", "[OpsLogRuntime] cleanup reload failed: %v", err)
+	}
 }
 
 func applyOpsRuntimeLogConfig(cfg *OpsRuntimeLogConfig) error {
@@ -238,7 +278,7 @@ func (s *OpsService) applyRuntimeLogConfigOnStartup(ctx context.Context) {
 	if err != nil {
 		return
 	}
-	_ = applyOpsRuntimeLogConfig(cfg)
+	_ = s.applyRuntimeLogConfig(cfg)
 }
 
 func (s *OpsService) auditRuntimeLogConfigChange(operatorID int64, oldCfg *OpsRuntimeLogConfig, newCfg *OpsRuntimeLogConfig, action string) {

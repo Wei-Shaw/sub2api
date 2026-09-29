@@ -69,17 +69,22 @@ type OpsMetricThresholds struct {
 }
 
 type OpsRuntimeLogConfig struct {
-	Level           string         `json:"level"`
-	EnableSampling  bool           `json:"enable_sampling"`
-	SamplingInitial int            `json:"sampling_initial"`
-	SamplingNext    int            `json:"sampling_thereafter"`
-	Caller          bool           `json:"caller"`
-	StacktraceLevel string         `json:"stacktrace_level"`
-	RetentionDays   int            `json:"retention_days"`
-	Source          string         `json:"source,omitempty"`
-	UpdatedAt       string         `json:"updated_at,omitempty"`
-	UpdatedByUserID int64          `json:"updated_by_user_id,omitempty"`
-	Extra           map[string]any `json:"extra,omitempty"`
+	Level             string `json:"level"`
+	PersistAccessLogs bool   `json:"persist_access_logs"`
+	EnableSampling    bool   `json:"enable_sampling"`
+	SamplingInitial   int    `json:"sampling_initial"`
+	SamplingNext      int    `json:"sampling_thereafter"`
+	Caller            bool   `json:"caller"`
+	StacktraceLevel   string `json:"stacktrace_level"`
+	// RetentionDays is the authoritative retention for ops_system_logs.
+	RetentionDays int `json:"retention_days"`
+	// RequestRetentionDays controls usage_logs; 0 keeps request history indefinitely.
+	// A nil value from older clients preserves the existing setting.
+	RequestRetentionDays *int           `json:"request_retention_days"`
+	Source               string         `json:"source,omitempty"`
+	UpdatedAt            string         `json:"updated_at,omitempty"`
+	UpdatedByUserID      int64          `json:"updated_by_user_id,omitempty"`
+	Extra                map[string]any `json:"extra,omitempty"`
 }
 
 type OpsAlertRuntimeSettings struct {

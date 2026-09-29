@@ -18,22 +18,22 @@ func TestRedeemRateLimitKey(t *testing.T) {
 		{
 			name:     "normal_user_id",
 			userID:   123,
-			expected: "redeem:ratelimit:123",
+			expected: "redeem:ratelimit:v2:123",
 		},
 		{
 			name:     "zero_user_id",
 			userID:   0,
-			expected: "redeem:ratelimit:0",
+			expected: "redeem:ratelimit:v2:0",
 		},
 		{
 			name:     "negative_user_id",
 			userID:   -1,
-			expected: "redeem:ratelimit:-1",
+			expected: "redeem:ratelimit:v2:-1",
 		},
 		{
 			name:     "max_int64",
 			userID:   math.MaxInt64,
-			expected: "redeem:ratelimit:9223372036854775807",
+			expected: "redeem:ratelimit:v2:9223372036854775807",
 		},
 	}
 

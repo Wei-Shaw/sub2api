@@ -27,6 +27,21 @@ func promoteResponsesToolSearchDiscoveries(req map[string]any) (bool, error) {
 	if !ok || len(input) == 0 {
 		return false, nil
 	}
+	promoted, err := promotedResponsesToolSearchDiscoveries(tools, input)
+	if err != nil {
+		return false, err
+	}
+	if len(promoted) == 0 {
+		return false, nil
+	}
+	req["tools"] = append(tools, promoted...)
+	return true, nil
+}
+
+func promotedResponsesToolSearchDiscoveries(tools, input []any) ([]any, error) {
+	if len(tools) == 0 || !hasResponsesToolSearchDeclaration(tools) || len(input) == 0 {
+		return nil, nil
+	}
 
 	known := make(map[string]responsesDiscoveredToolIdentity)
 	for _, raw := range tools {
@@ -60,7 +75,7 @@ func promoteResponsesToolSearchDiscoveries(req map[string]any) (bool, error) {
 				}
 				appendTool, err := admitResponsesDiscoveredTool(known, identity.name, identity)
 				if err != nil {
-					return false, err
+					return nil, err
 				}
 				if appendTool {
 					promoted = append(promoted, copy)
@@ -74,7 +89,7 @@ func promoteResponsesToolSearchDiscoveries(req map[string]any) (bool, error) {
 				for _, candidate := range identities {
 					appendTool, err := admitResponsesDiscoveredTool(known, candidate.flat, candidate.identity)
 					if err != nil {
-						return false, err
+						return nil, err
 					}
 					if appendTool {
 						children = append(children, candidate.child)
@@ -88,11 +103,7 @@ func promoteResponsesToolSearchDiscoveries(req map[string]any) (bool, error) {
 			}
 		}
 	}
-	if len(promoted) == 0 {
-		return false, nil
-	}
-	req["tools"] = append(tools, promoted...)
-	return true, nil
+	return promoted, nil
 }
 
 func hasResponsesToolSearchDeclaration(tools []any) bool {

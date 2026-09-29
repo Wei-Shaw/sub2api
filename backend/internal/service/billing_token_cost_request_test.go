@@ -23,7 +23,7 @@ func newTokenCostTestEnv(t *testing.T, groupPlatform string, pricing []ChannelMo
 			return map[int64]string{100: groupPlatform}, nil
 		},
 	}
-	cs := NewChannelService(repo, nil, nil, nil)
+	cs := NewChannelService(repo, nil, nil, nil, nil)
 	bs := NewBillingService(&config.Config{}, catalog)
 	return bs, NewModelPricingResolver(cs, bs)
 }
@@ -215,4 +215,39 @@ func TestCalculateTokenCostForRequest_NoResolverFallsBackToCatalog(t *testing.T)
 	want, err := bs.CalculateCost("gpt-5.4", tokens, 1)
 	require.NoError(t, err)
 	require.Equal(t, want, got)
+}
+
+func TestCalculateTokenCostForRequest_Fable51HasNoImplicitReasoningMultiplier(t *testing.T) {
+	bs := NewBillingService(&config.Config{}, nil)
+	tokens := UsageTokens{InputTokens: 1000, OutputTokens: 10}
+	standard, err := bs.CalculateTokenCostForRequest(TokenCostRequest{
+		Model: "claude-fable-5-1", Tokens: tokens, RateMultiplier: 1, ReasoningEffort: "xhigh",
+	})
+	require.NoError(t, err)
+	max, err := bs.CalculateTokenCostForRequest(TokenCostRequest{
+		Model: "claude-fable-5-1", Tokens: tokens, RateMultiplier: 1, ReasoningEffort: "max",
+	})
+	require.NoError(t, err)
+	require.Equal(t, standard, max)
+}
+
+func TestCalculateTokenCostForRequest_ChannelConfiguresReasoningEffortMultiplier(t *testing.T) {
+	configured := 1.5
+	bs, resolver := newTokenCostTestEnv(t, PlatformAnthropic, []ChannelModelPricing{{
+		Platform: PlatformAnthropic, Models: []string{"claude-fable-5-1"}, BillingMode: BillingModeToken,
+		InputPrice: testPtrFloat64(10e-6), OutputPrice: testPtrFloat64(50e-6),
+		ReasoningEffortMultipliers: map[string]float64{"max": configured},
+	}}, nil)
+	group := &Group{ID: 100, Platform: PlatformAnthropic}
+	gid := group.ID
+	resolved := resolver.Resolve(context.Background(), PricingInput{Model: "claude-fable-5-1", GroupID: &gid, Group: group})
+
+	got, err := bs.CalculateTokenCostForRequest(TokenCostRequest{
+		Ctx: context.Background(), Model: "claude-fable-5-1", Group: group,
+		Tokens: UsageTokens{InputTokens: 1000}, RateMultiplier: 1, ReasoningEffort: "max",
+		Resolver: resolver, Resolved: resolved,
+	})
+	require.NoError(t, err)
+	require.InDelta(t, 1000*10e-6*configured, got.TotalCost, 1e-12)
+	require.InDelta(t, got.TotalCost, got.ActualCost, 1e-12)
 }

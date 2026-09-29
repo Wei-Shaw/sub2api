@@ -6,6 +6,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -455,6 +456,9 @@ func TestForwardAsRawChatCompletions_NormalizesGLMReasoningEffortForUpstream(t *
 	require.NoError(t, err)
 	require.NotNil(t, result)
 	require.Equal(t, "max", gjson.GetBytes(upstream.lastBody, "reasoning_effort").String())
+	require.NotNil(t, result.ReasoningEffort)
+	require.Equal(t, "max", *result.ReasoningEffort)
+	require.Equal(t, 3.0, reasoningEffortBillingMultiplier(*result.ReasoningEffort, map[string]float64{"xhigh": 2, "max": 3}))
 }
 
 func TestForwardAsRawChatCompletions_SilentRefusalTriggersFailover(t *testing.T) {
@@ -727,6 +731,50 @@ func TestForwardAsRawChatCompletions_TruncatedStreamAfterOutputFailsRequest(t *t
 	// 已写出的内容保持原样透传，客户端拿到的仍是它已经收到的那部分。
 	require.Contains(t, rec.Body.String(), `"content":"half an ans"`)
 	require.NotContains(t, rec.Body.String(), "data: [DONE]")
+
+	rawEvents, ok := c.Get(OpsUpstreamErrorsKey)
+	require.True(t, ok)
+	events := rawEvents.([]*OpsUpstreamErrorEvent)
+	require.Len(t, events, 1)
+	require.Equal(t, "http_error", events[0].Kind)
+	require.Nil(t, events[0].ProxyID)
+	require.Equal(t, opsProxyNameDirect, events[0].ProxyName)
+}
+
+// 截断 failover 事件必须带上本次传输真实使用的托管代理快照。
+func TestForwardAsRawChatCompletions_TruncationFailoverAttributesManagedProxy(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	body := []byte(`{"model":"deepseek-v4-pro","messages":[{"role":"user","content":"hello"}],"stream":true}`)
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/chat/completions", bytes.NewReader(body))
+	c.Request.Header.Set("Content-Type", "application/json")
+
+	upstream := &httpUpstreamRecorder{resp: &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     http.Header{"Content-Type": []string{"text/event-stream"}, "x-request-id": []string{"rid_empty_proxy"}},
+		Body:       io.NopCloser(strings.NewReader("")),
+	}}
+	svc := &OpenAIGatewayService{cfg: rawChatCompletionsTestConfig(), httpUpstream: upstream}
+	proxy := &Proxy{ID: 8001, Name: "oxylabs-uk-8001", Protocol: "http", Host: "proxy.example", Port: 8080}
+	account := rawChatCompletionsTestAccount()
+	account.ProxyID = &proxy.ID
+	account.Proxy = proxy
+
+	_, err := svc.forwardAsRawChatCompletions(context.Background(), c, account, body, "")
+	var failoverErr *UpstreamFailoverError
+	require.ErrorAs(t, err, &failoverErr)
+	require.Equal(t, proxy.URL(), upstream.lastProxyURL)
+
+	rawEvents, ok := c.Get(OpsUpstreamErrorsKey)
+	require.True(t, ok)
+	events := rawEvents.([]*OpsUpstreamErrorEvent)
+	require.Len(t, events, 1)
+	require.Equal(t, "failover", events[0].Kind)
+	require.NotNil(t, events[0].ProxyID)
+	require.Equal(t, proxy.ID, *events[0].ProxyID)
+	require.Equal(t, proxy.Name, events[0].ProxyName)
 }
 
 // 上游 200 但一个 SSE 字节都没发：响应头尚未提交，应换号重试而不是回 200 空流。
@@ -1195,4 +1243,40 @@ func largeRawChatCompletionsBody() []byte {
 	return []byte(`{"model":"gpt-5.5","messages":[{"role":"user","content":"` +
 		strings.Repeat("x", openAISilentRefusalMinRequestBodyBytes) +
 		`"}],"stream":true}`)
+}
+
+func TestForwardAsRawChatCompletions_RestoresMappedResponseModel(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	for _, stream := range []bool{false, true} {
+		for _, mapped := range []bool{false, true} {
+			for _, returned := range []string{"zhipu/glm-5.3", "glm-5.3-alias"} {
+				t.Run(fmt.Sprintf("stream=%v/mapped=%v/%s", stream, mapped, returned), func(t *testing.T) {
+					body := []byte(fmt.Sprintf(`{"model":"public","messages":[{"role":"user","content":"hello"}],"stream":%v}`, stream))
+					payload := `{"id":"chatcmpl_1","model":"` + returned + `","choices":[{"index":0,"delta":{"content":"keep alias"},"finish_reason":"stop"}],"usage":{"prompt_tokens":1,"completion_tokens":1}}`
+					upstreamBody, contentType := payload, "application/json"
+					if stream {
+						upstreamBody = "data: " + payload + "\n\ndata: [DONE]\n\n"
+						contentType = "text/event-stream"
+					}
+					upstream := &httpUpstreamRecorder{resp: &http.Response{StatusCode: 200, Header: http.Header{"Content-Type": {contentType}}, Body: io.NopCloser(strings.NewReader(upstreamBody))}}
+					svc := &OpenAIGatewayService{cfg: rawChatCompletionsTestConfig(), httpUpstream: upstream}
+					account := rawChatCompletionsTestAccount()
+					expectedModel, expectedUpstream := returned, "public"
+					if mapped {
+						account.Credentials["model_mapping"] = map[string]any{"public": "ZHIPU/GLM-5.3"}
+						expectedModel = "public"
+						expectedUpstream = "ZHIPU/GLM-5.3"
+					}
+					rec := httptest.NewRecorder()
+					c, _ := gin.CreateTestContext(rec)
+					c.Request = httptest.NewRequest(http.MethodPost, "/v1/chat/completions", bytes.NewReader(body))
+					result, err := svc.forwardAsRawChatCompletions(context.Background(), c, account, body, "")
+					require.NoError(t, err)
+					require.Equal(t, expectedUpstream, gjson.GetBytes(upstream.lastBody, "model").String())
+					require.Contains(t, rec.Body.String(), strings.Replace(payload, `"model":"`+returned+`"`, `"model":"`+expectedModel+`"`, 1))
+					require.Equal(t, returned, result.UpstreamResponseModel)
+				})
+			}
+		}
+	}
 }

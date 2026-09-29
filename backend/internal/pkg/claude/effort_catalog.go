@@ -24,6 +24,7 @@ var effortFamilies = []struct {
 	{family: "claude-opus-4-7", levels: effortLowMediumHighXHighMax},
 	{family: "claude-opus-4-6", levels: effortLowMediumHighMax},
 	{family: "claude-opus-4-5", levels: effortLowMediumHigh},
+	{family: "claude-opus-5-5", levels: effortLowMediumHighXHighMax},
 	{family: "claude-opus-5", levels: effortLowMediumHighXHighMax},
 }
 
@@ -39,6 +40,11 @@ func EffortLevelsForModel(model string) []string {
 	return nil
 }
 
+// IsOpus55 identifies the fixed Opus 5.5 ID after provider/local suffix normalization.
+func IsOpus55(model string) bool {
+	return normalizeEffortModelID(model) == "claude-opus-5-5"
+}
+
 func normalizeEffortModelID(model string) string {
 	id := strings.ToLower(strings.TrimSpace(model))
 	id = strings.TrimPrefix(id, "models/")
@@ -47,6 +53,11 @@ func normalizeEffortModelID(model string) string {
 	}
 	id = strings.TrimPrefix(id, "anthropic.")
 	id = strings.TrimSuffix(id, "-thinking")
+	// OpenRouter uses a dotted minor version for this exact Opus 5.5 ID.
+	// Normalize it before effort, thinking, and billing family lookups.
+	if id == "claude-opus-5.5" {
+		id = "claude-opus-5-5"
+	}
 	if mapped, ok := ModelIDReverseOverrides[id]; ok {
 		id = mapped
 	}

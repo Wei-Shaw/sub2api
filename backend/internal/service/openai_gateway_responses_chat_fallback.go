@@ -7,6 +7,8 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"net/url"
+	"strconv"
 	"strings"
 	"time"
 
@@ -14,6 +16,8 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	"github.com/Wei-Shaw/sub2api/internal/util/responseheaders"
 	"github.com/gin-gonic/gin"
+	"github.com/tidwall/gjson"
+	"github.com/tidwall/sjson"
 	"go.uber.org/zap"
 )
 
@@ -87,6 +91,9 @@ func (s *OpenAIGatewayService) forwardResponsesViaRawChatCompletions(
 		}
 		return nil, err
 	}
+	// /v1/responses 降级到 raw CC 的出站与 forwardAsRawChatCompletions 共用同一个
+	// 独立 Ollama Cloud token 钩子；chatReq.Model 已是模型映射后的 upstreamModel。
+	chatBody = clampOllamaCloudUpstreamMaxTokens(account, chatBody)
 	// Keep the final outbound tier for usage-time reconciliation. A policy
 	// filter that removes the field therefore leaves this nil.
 	serviceTier := extractOpenAIServiceTierFromBody(chatBody)
@@ -154,6 +161,7 @@ func (s *OpenAIGatewayService) bufferChatCompletionsAsResponses(
 
 	return &OpenAIForwardResult{
 		RequestID:                   requestID,
+		UpstreamHeaders:             resp.Header,
 		Usage:                       usage,
 		Model:                       originalModel,
 		BillingModel:                billingModel,
@@ -225,6 +233,7 @@ func (s *OpenAIGatewayService) streamChatCompletionsAsResponses(
 	if scan.Err != nil {
 		return &OpenAIForwardResult{
 			RequestID:                   requestID,
+			UpstreamHeaders:             resp.Header,
 			Usage:                       scan.Usage,
 			Model:                       originalModel,
 			BillingModel:                billingModel,
@@ -240,6 +249,7 @@ func (s *OpenAIGatewayService) streamChatCompletionsAsResponses(
 	if err := state.ValidateToolCallArguments(); err != nil {
 		return &OpenAIForwardResult{
 			RequestID:                   requestID,
+			UpstreamHeaders:             resp.Header,
 			Usage:                       scan.Usage,
 			Model:                       originalModel,
 			BillingModel:                billingModel,
@@ -271,6 +281,7 @@ func (s *OpenAIGatewayService) streamChatCompletionsAsResponses(
 
 	return &OpenAIForwardResult{
 		RequestID:                   requestID,
+		UpstreamHeaders:             resp.Header,
 		Usage:                       scan.Usage,
 		Model:                       originalModel,
 		BillingModel:                billingModel,
@@ -391,4 +402,106 @@ func (s *OpenAIGatewayService) setReasoningContent(itemID, content string) {
 			zap.String("item_id", itemID),
 		)
 	}
+}
+
+// deepSeekChatReasoningPlaceholderText 是 Chat Completions 侧 thinking-mode
+// 占位明文。必须是单个空格：DeepSeek 拒绝空串，非空即可通过；LiteLLM 同样注入
+// 单个空格。
+const deepSeekChatReasoningPlaceholderText = " "
+
+// targetsDeepSeekAPIHost 报告该账号实际上游是否是 DeepSeek 官方 API。
+// platform=deepseek 直接命中；platform=openai 但 base_url 指向
+// api.deepseek.com 的映射账号同样命中（Codex 把 GPT 模型名映射到 DeepSeek
+// 时的典型接入方式）。
+func targetsDeepSeekAPIHost(account *Account) bool {
+	if account == nil {
+		return false
+	}
+	if account.Platform == PlatformDeepseek {
+		return true
+	}
+	u, err := url.Parse(strings.TrimSpace(account.GetOpenAIBaseURL()))
+	if err != nil {
+		return false
+	}
+	ds, err := url.Parse(DefaultDeepseekBaseURL)
+	if err != nil {
+		return false
+	}
+	return strings.EqualFold(u.Hostname(), ds.Hostname())
+}
+
+// targetsOpenCodeZenUpstream 报告该账号上游是否是官方 OpenCode Zen / Go 网关。
+// platform=opencode_go 直接命中；其他平台按 base_url 主机判定，覆盖用 API Key
+// 直接把 openai 平台账号指向 opencode.ai 的接入方式。
+func targetsOpenCodeZenUpstream(account *Account) bool {
+	if account == nil {
+		return false
+	}
+	if account.IsOpenCodeGo() {
+		return true
+	}
+	return isOfficialOpenCodeHost(account.GetOpenAIBaseURL())
+}
+
+// isDeepSeekCatalogModel 判定（剥掉 opencode 前缀后的）模型 ID 是否属于
+// DeepSeek 系列，例如 deepseek-v4-flash / deepseek-v4.1-flash / deepseek-chat。
+func isDeepSeekCatalogModel(model string) bool {
+	return strings.HasPrefix(normalizeOpenCodeGoModelID(model), "deepseek")
+}
+
+// requiresDeepSeekChatReasoning 报告该 Chat Completions 请求的上游是否按
+// DeepSeek thinking mode 语义校验 reasoning_content。
+//
+// DeepSeek 官方 API 直接命中。OpenCode Zen / Go 是转发型订阅网关：deepseek-*
+// 模型由 DeepSeek 实际承载，同一条 400 原文会被一字不差地回吐，所以按
+// 「官方 OpenCode 上游 + deepseek-* 模型」补一条判定。
+//
+// 不放宽成「任意上游的 deepseek-* 模型名」：占位符是写进请求体的额外字段，
+// 对没有这条约束的上游属于无谓改写，且可能触发未知字段校验。
+func requiresDeepSeekChatReasoning(account *Account, body []byte) bool {
+	if targetsDeepSeekAPIHost(account) {
+		return true
+	}
+	if !targetsOpenCodeZenUpstream(account) {
+		return false
+	}
+	return isDeepSeekCatalogModel(gjson.GetBytes(body, "model").String())
+}
+
+// ensureDeepSeekChatReasoningPlaceholders 给缺 reasoning_content 的 assistant
+// 消息补单个空格占位。DeepSeek thinking mode 要求历史里每条产生过思维的
+// assistant 消息都回传该字段，否则 400
+// "The `reasoning_content` in the thinking mode must be passed back to the API"。
+//
+// 桥接会从 summary / 缓存回注真实明文；这里只填仍为空的缺口，不覆盖已有内容。
+// 判定见 requiresDeepSeekChatReasoning，不命中的上游原样返回（字节不变）。
+func ensureDeepSeekChatReasoningPlaceholders(account *Account, body []byte) []byte {
+	if !requiresDeepSeekChatReasoning(account, body) {
+		return body
+	}
+	messages := gjson.GetBytes(body, "messages")
+	if !messages.IsArray() {
+		return body
+	}
+	updated := body
+	changed := false
+	for i, msg := range messages.Array() {
+		if strings.TrimSpace(msg.Get("role").String()) != "assistant" {
+			continue
+		}
+		if msg.Get("reasoning_content").String() != "" {
+			continue
+		}
+		next, err := sjson.SetBytes(updated, "messages."+strconv.Itoa(i)+".reasoning_content", deepSeekChatReasoningPlaceholderText)
+		if err != nil {
+			return body
+		}
+		updated = next
+		changed = true
+	}
+	if !changed {
+		return body
+	}
+	return updated
 }

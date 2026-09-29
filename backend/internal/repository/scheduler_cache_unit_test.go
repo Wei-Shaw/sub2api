@@ -446,6 +446,47 @@ func TestBuildSchedulerMetadataAccount_KeepsQuotaAutoPauseFields(t *testing.T) {
 	require.Equal(t, false, got.Extra["auto_pause_7d_disabled"])
 }
 
+// 候选过滤读的是 Redis 元数据投影；自动用卡的开关、阈值和卡状态缺失时，
+// 卡可用的 OpenAI 号会在暂停阈值处被一刀切停调，放行到用卡阈值的逻辑永远不生效。
+func TestSchedulerMetadataPayload_KeepsOpenAIAutoResetCreditFields(t *testing.T) {
+	checkedAt := time.Now().UTC().Format(time.RFC3339)
+	account := service.Account{
+		ID:          40,
+		Platform:    service.PlatformOpenAI,
+		Type:        service.AccountTypeOAuth,
+		Status:      service.StatusActive,
+		Schedulable: true,
+		Extra: map[string]any{
+			"codex_7d_used_percent":                          90.0,
+			service.OpenAIAutoResetCreditEnabledExtraKey:     true,
+			service.OpenAIAutoResetCredit5hThresholdExtraKey: 0.95,
+			service.OpenAIAutoResetCredit7dThresholdExtraKey: 0.98,
+			service.OpenAIAutoResetCreditStateExtraKey: map[string]any{
+				"status":          service.OpenAIAutoResetStatusAvailable,
+				"available_count": 3,
+				"checked_at":      checkedAt,
+				"trigger_window":  "7d",
+			},
+		},
+	}
+
+	_, metaPayload, err := marshalSchedulerCacheAccount(account)
+	require.NoError(t, err)
+	var cached service.Account
+	require.NoError(t, json.Unmarshal(metaPayload, &cached))
+
+	config := service.ResolveOpenAIAutoResetCreditConfig(&cached)
+	require.True(t, config.Enabled)
+	require.Equal(t, 0.95, config.Threshold5h)
+	require.Equal(t, 0.98, config.Threshold7d)
+
+	state, ok := cached.Extra[service.OpenAIAutoResetCreditStateExtraKey].(map[string]any)
+	require.True(t, ok, "卡状态必须进入调度投影")
+	require.Equal(t, service.OpenAIAutoResetStatusAvailable, state["status"])
+	require.EqualValues(t, 3, state["available_count"])
+	require.Equal(t, checkedAt, state["checked_at"])
+}
+
 func TestBuildSchedulerMetadataAccount_KeepsQuotaStateForCachedAccounts(t *testing.T) {
 	now := time.Now().UTC()
 	activeStart := now.Add(-time.Hour).Format(time.RFC3339)
@@ -1078,4 +1119,107 @@ func schedulerCacheBenchmarkAccounts(size int) []service.Account {
 		}
 	}
 	return accounts
+}
+
+// 调度投影必须保留 OpenAI 透传开关。
+//
+// 候选过滤走 ListSchedulableAccounts，读的是 buildSchedulerMetadataAccount 产出的精简投影；
+// Account.IsModelSupported 又靠 extra 上的透传开关短路 model_mapping 白名单（#4936）。
+// 一旦投影把开关裁掉、却保留了白名单，透传账号在选号阶段就会退回白名单判定并被误判成
+// model_not_supported，而转发阶段（读完整账号）仍按透传工作 —— 表现为"单独测这个账号能通、
+// 走网关却报 no available accounts"。#4936 修的是判定逻辑，这里守的是喂给判定的输入。
+func TestBuildSchedulerMetadataAccount_KeepsOpenAIPassthroughForModelGate(t *testing.T) {
+	for _, key := range []string{"openai_passthrough", "openai_oauth_passthrough"} {
+		t.Run(key, func(t *testing.T) {
+			account := service.Account{
+				ID:       383,
+				Platform: service.PlatformOpenAI,
+				Type:     service.AccountTypeOAuth,
+				Credentials: map[string]any{
+					// 账号从白名单模式切到透传后常见的残留映射，未列出请求的模型。
+					"model_mapping": map[string]any{"gpt-5.5": "gpt-5.5"},
+					"access_token":  "drop-me",
+				},
+				Extra: map[string]any{key: true},
+			}
+			require.True(t, account.IsModelSupported("gpt-5.6-sol"),
+				"前置条件：透传账号本应放行白名单外的模型")
+
+			meta := buildSchedulerMetadataAccount(account)
+
+			// 走一遍真实的序列化/反序列化路径（写入 sched:meta 再由 decodeCachedAccount 读回）。
+			payload, err := json.Marshal(meta)
+			require.NoError(t, err)
+			var restored service.Account
+			require.NoError(t, json.Unmarshal(payload, &restored))
+
+			require.Equal(t, true, restored.Extra[key])
+			require.True(t, restored.IsOpenAIPassthroughEnabled())
+			require.True(t, restored.IsModelSupported("gpt-5.6-sol"),
+				"投影裁掉透传开关会让透传账号在候选过滤阶段被误判为 model_not_supported")
+			// 白名单本身仍需保留：非透传账号依赖它做模型门。
+			require.Equal(t, map[string]any{"gpt-5.5": "gpt-5.5"}, restored.Credentials["model_mapping"])
+		})
+	}
+}
+
+// 调度投影必须保留账号的 RPM 配置。
+//
+// 候选过滤走 ListSchedulableAccounts，读的是 buildSchedulerMetadataAccount 产出的精简投影；
+// isAccountSchedulableForRPM 靠 extra 上的 base_rpm 判定，缺失时 GetBaseRPM() 返回 0，
+// baseRPM <= 0 直接放行，已配置限流的账号在选号阶段被当作未开启 RPM（#7225）。
+// rpm_strategy / rpm_sticky_buffer 同理：只保留 base_rpm 会让三区判定退回默认值，
+// 红区（不可调度）被误判成黄区（仅粘性），超额请求照样被转发。
+func TestBuildSchedulerMetadataAccount_KeepsRPMFieldsForRPMGate(t *testing.T) {
+	newAccount := func(extra map[string]any) service.Account {
+		return service.Account{
+			ID:       7225,
+			Platform: service.PlatformAnthropic,
+			Type:     service.AccountTypeOAuth,
+			Extra:    extra,
+		}
+	}
+	roundTrip := func(t *testing.T, account service.Account) service.Account {
+		t.Helper()
+		// 走一遍真实的序列化/反序列化路径（写入 sched:meta 再由 decodeCachedAccount 读回）。
+		payload, err := json.Marshal(buildSchedulerMetadataAccount(account))
+		require.NoError(t, err)
+		var restored service.Account
+		require.NoError(t, json.Unmarshal(payload, &restored))
+		return restored
+	}
+
+	t.Run("tiered", func(t *testing.T) {
+		account := newAccount(map[string]any{
+			"base_rpm":          10,
+			"rpm_strategy":      "tiered",
+			"rpm_sticky_buffer": 1,
+		})
+		require.Equal(t, service.WindowCostNotSchedulable, account.CheckRPMSchedulability(11),
+			"前置条件：base_rpm=10 + 缓冲 1，当前 11 次已进红区")
+
+		restored := roundTrip(t, account)
+
+		require.Equal(t, 10, restored.GetBaseRPM())
+		require.Equal(t, "tiered", restored.GetRPMStrategy())
+		require.Equal(t, 1, restored.GetRPMStickyBuffer())
+		require.Equal(t, service.WindowCostNotSchedulable, restored.CheckRPMSchedulability(11),
+			"投影裁掉 RPM 配置会让已配置限流的账号在候选过滤阶段被放行")
+	})
+
+	t.Run("sticky_exempt", func(t *testing.T) {
+		account := newAccount(map[string]any{
+			"base_rpm":     10,
+			"rpm_strategy": "sticky_exempt",
+		})
+		require.Equal(t, service.WindowCostStickyOnly, account.CheckRPMSchedulability(100),
+			"前置条件：粘性豁免策略没有红区")
+
+		restored := roundTrip(t, account)
+
+		require.Equal(t, 10, restored.GetBaseRPM())
+		require.Equal(t, "sticky_exempt", restored.GetRPMStrategy())
+		require.Equal(t, service.WindowCostStickyOnly, restored.CheckRPMSchedulability(100),
+			"投影裁掉 rpm_strategy 会让粘性豁免账号退回三区判定")
+	})
 }

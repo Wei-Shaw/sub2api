@@ -8,10 +8,12 @@ import (
 	"errors"
 	"strings"
 	"testing"
+	"time"
 
 	dbent "github.com/Wei-Shaw/sub2api/ent"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
 	"github.com/Wei-Shaw/sub2api/internal/service"
+	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
 )
 
@@ -243,6 +245,103 @@ func (s *GroupRepoSuite) TestDelete() {
 	_, err = s.repo.GetByID(s.ctx, group.ID)
 	s.Require().Error(err, "expected error after delete")
 	s.Require().ErrorIs(err, service.ErrGroupNotFound)
+}
+
+func (s *GroupRepoSuite) TestDeleteCascadeIfEmptyRejectsGroupWithNonDeletedAccount() {
+	group := &service.Group{Name: "guarded-non-empty", Platform: service.PlatformAnthropic, RateMultiplier: 1, Status: service.StatusActive, SubscriptionType: service.SubscriptionTypeStandard}
+	s.Require().NoError(s.repo.Create(s.ctx, group))
+	var accountID int64
+	s.Require().NoError(scanSingleRow(s.ctx, s.tx,
+		"INSERT INTO accounts (name, platform, type) VALUES ($1, $2, $3) RETURNING id",
+		[]any{"guarded-account", service.PlatformAnthropic, service.AccountTypeOAuth}, &accountID))
+	_, err := s.tx.ExecContext(s.ctx, "INSERT INTO account_groups (account_id, group_id, priority, created_at) VALUES ($1, $2, 1, NOW())", accountID, group.ID)
+	s.Require().NoError(err)
+
+	_, err = s.repo.DeleteCascadeIfEmpty(s.ctx, group.ID)
+	s.Require().ErrorIs(err, service.ErrGroupNotEmpty)
+	_, err = s.repo.GetByID(s.ctx, group.ID)
+	s.Require().NoError(err)
+	var bindings int
+	s.Require().NoError(scanSingleRow(s.ctx, s.tx, "SELECT COUNT(*) FROM account_groups WHERE group_id = $1", []any{group.ID}, &bindings))
+	s.Require().Equal(1, bindings)
+}
+
+func (s *GroupRepoSuite) TestDeleteCascadeIfEmptyDeletesEmptyGroup() {
+	group := &service.Group{Name: "guarded-empty", Platform: service.PlatformAnthropic, RateMultiplier: 1, Status: service.StatusActive, SubscriptionType: service.SubscriptionTypeStandard}
+	s.Require().NoError(s.repo.Create(s.ctx, group))
+
+	_, err := s.repo.DeleteCascadeIfEmpty(s.ctx, group.ID)
+	s.Require().NoError(err)
+	_, err = s.repo.GetByID(s.ctx, group.ID)
+	s.Require().ErrorIs(err, service.ErrGroupNotFound)
+}
+
+func (s *GroupRepoSuite) TestDeleteCascadeIfEmptyIgnoresBindingsToSoftDeletedAccounts() {
+	group := &service.Group{Name: "guarded-soft-deleted-account", Platform: service.PlatformAnthropic, RateMultiplier: 1, Status: service.StatusActive, SubscriptionType: service.SubscriptionTypeStandard}
+	s.Require().NoError(s.repo.Create(s.ctx, group))
+	var accountID int64
+	s.Require().NoError(scanSingleRow(s.ctx, s.tx,
+		"INSERT INTO accounts (name, platform, type, deleted_at) VALUES ($1, $2, $3, NOW()) RETURNING id",
+		[]any{"guarded-deleted-account", service.PlatformAnthropic, service.AccountTypeOAuth}, &accountID))
+	_, err := s.tx.ExecContext(s.ctx, "INSERT INTO account_groups (account_id, group_id, priority, created_at) VALUES ($1, $2, 1, NOW())", accountID, group.ID)
+	s.Require().NoError(err)
+
+	_, err = s.repo.DeleteCascadeIfEmpty(s.ctx, group.ID)
+	s.Require().NoError(err)
+	_, err = s.repo.GetByID(s.ctx, group.ID)
+	s.Require().ErrorIs(err, service.ErrGroupNotFound)
+}
+
+func TestBindAccountsToGroupWaitingBehindGuardedDeleteCannotCommit(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	var groupID, accountID int64
+	require.NoError(t, scanSingleRow(ctx, integrationDB,
+		"INSERT INTO groups (name, platform, rate_multiplier, status, subscription_type) VALUES ($1, $2, 1, $3, $4) RETURNING id",
+		[]any{"guarded-delete-bind-race", service.PlatformAnthropic, service.StatusActive, service.SubscriptionTypeStandard}, &groupID))
+	require.NoError(t, scanSingleRow(ctx, integrationDB,
+		"INSERT INTO accounts (name, platform, type) VALUES ($1, $2, $3) RETURNING id",
+		[]any{"guarded-delete-bind-race-account", service.PlatformAnthropic, service.AccountTypeOAuth}, &accountID))
+	t.Cleanup(func() {
+		_, _ = integrationDB.ExecContext(context.Background(), "DELETE FROM account_groups WHERE group_id = $1 OR account_id = $2", groupID, accountID)
+		_, _ = integrationDB.ExecContext(context.Background(), "DELETE FROM accounts WHERE id = $1", accountID)
+		_, _ = integrationDB.ExecContext(context.Background(), "DELETE FROM groups WHERE id = $1", groupID)
+	})
+
+	deleteTx, err := integrationEntClient.Tx(ctx)
+	require.NoError(t, err)
+	defer func() { _ = deleteTx.Rollback() }()
+	rows, err := deleteTx.Client().QueryContext(ctx, "SELECT id FROM groups WHERE id = $1 FOR UPDATE", groupID)
+	require.NoError(t, err)
+	require.True(t, rows.Next())
+	require.NoError(t, rows.Close())
+
+	bindDone := make(chan error, 1)
+	go func() {
+		bindDone <- newGroupRepositoryWithSQL(integrationEntClient, integrationDB).
+			BindAccountsToGroup(ctx, groupID, []int64{accountID})
+	}()
+
+	require.Eventually(t, func() bool {
+		var waiting bool
+		err := scanSingleRow(ctx, integrationDB, `SELECT EXISTS (
+			SELECT 1 FROM pg_stat_activity
+			WHERE query LIKE '/* account_group_live_group_lock */%'
+			  AND wait_event_type = 'Lock'
+		)`, nil, &waiting)
+		return err == nil && waiting
+	}, 5*time.Second, 10*time.Millisecond, "binder did not wait on the guarded deletion lock")
+
+	deleteRepo := newGroupRepositoryWithSQL(deleteTx.Client(), deleteTx)
+	_, err = deleteRepo.DeleteCascadeIfEmpty(ctx, groupID)
+	require.NoError(t, err)
+	require.NoError(t, deleteTx.Commit())
+
+	require.ErrorIs(t, <-bindDone, service.ErrGroupNotFound)
+	var bindings int
+	require.NoError(t, scanSingleRow(ctx, integrationDB, "SELECT COUNT(*) FROM account_groups WHERE group_id = $1", []any{groupID}, &bindings))
+	require.Zero(t, bindings)
 }
 
 // --- List / ListWithFilters ---
@@ -617,6 +716,22 @@ func (s *GroupRepoSuite) TestListActive() {
 		}
 	}
 	s.Require().True(found, "active1 group should be in results")
+}
+
+func (s *GroupRepoSuite) TestListBindableWithFiltersAppliesFilterBeforePagination() {
+	for _, g := range []*service.Group{
+		{Name: "bindable-a", Platform: service.PlatformAnthropic, RateMultiplier: 1, Status: service.StatusActive, SubscriptionType: service.SubscriptionTypeStandard},
+		{Name: "composite-hidden", Platform: service.PlatformComposite, RateMultiplier: 1, Status: service.StatusActive, SubscriptionType: service.SubscriptionTypeStandard},
+		{Name: "bindable-b", Platform: service.PlatformOpenAI, RateMultiplier: 1, Status: service.StatusActive, SubscriptionType: service.SubscriptionTypeStandard},
+	} {
+		s.Require().NoError(s.repo.Create(s.ctx, g))
+	}
+
+	groups, page, err := s.repo.ListBindableWithFilters(s.ctx, pagination.PaginationParams{Page: 2, PageSize: 1, SortBy: "name", SortOrder: "asc"}, "", service.StatusActive, "bindable-", nil)
+	s.Require().NoError(err)
+	s.Require().Equal(int64(2), page.Total)
+	s.Require().Len(groups, 1)
+	s.Require().NotEqual(service.PlatformComposite, groups[0].Platform)
 }
 
 func (s *GroupRepoSuite) TestListActiveByPlatform() {

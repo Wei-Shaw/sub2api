@@ -53,6 +53,8 @@ func newGrokMissingUsageFailoverError(c *gin.Context, account *Account, upstream
 
 	setOpsUpstreamError(c, http.StatusBadGateway, grokMissingUsageMessage, "")
 	appendOpsUpstreamError(c, OpsUpstreamErrorEvent{
+		ProxyID:            opsUpstreamProxyID(account),
+		ProxyName:          opsUpstreamProxyName(account),
 		Platform:           PlatformGrok,
 		AccountID:          accountID,
 		AccountName:        accountName,

@@ -290,13 +290,14 @@ func TestSchedulerFullRebuildActiveTombstoneDoesNotBlockFollowingGroupEvent(t *t
 	require.Equal(t, 1, activeCalls)
 	require.Zero(t, fallbackCalls)
 	require.Equal(t, []int64{groupID, groupID}, freshCalls)
-	require.Len(t, cache.tokens(), 36, "full rebuild and the following group event must each run fresh authority")
+	canonicalCount := len(canonical)
+	require.Len(t, cache.tokens(), 2*canonicalCount, "full rebuild and the following group event must each run fresh authority")
 	_, reopenHeld := cache.lifecycleMutationLeaseStates()
-	require.Len(t, reopenHeld, 36)
+	require.Len(t, reopenHeld, 2*canonicalCount)
 	for _, held := range reopenHeld {
 		require.True(t, held)
 	}
-	require.Equal(t, 30, accounts.callCount())
+	require.Equal(t, 3*schedulerCanonicalAccountQueryCount(), accounts.callCount())
 }
 
 func TestSchedulerFullRebuildGlobalReadErrorsFailBeforeMutationOrDB(t *testing.T) {
@@ -367,15 +368,15 @@ func TestSchedulerFullRebuildFreshActivePreparesEveryTokenBeforeFirstDB(t *testi
 		capturesAtFirstDB = cache.captureAttemptCount()
 		held, reopenCount := cache.leaseHeldAndTokenCount()
 		require.False(t, held)
-		require.Equal(t, 18, reopenCount)
-		require.Equal(t, 19, capturesAtFirstDB, "C(0) and the historical bucket must be captured before DB")
+		require.Equal(t, schedulerCanonicalBucketCount(), reopenCount)
+		require.Equal(t, schedulerCanonicalBucketCount()+1, capturesAtFirstDB, "C(0) and the historical bucket must be captured before DB")
 	}
 	svc := newFullRebuildLifecycleService(cache, nil, accounts, groups, config.RunModeStandard)
 
 	require.NoError(t, svc.rebuildFullSnapshot(context.Background(), "test"))
 	require.Equal(t, capturesAtFirstDB, cache.captureAttemptCount())
-	require.Equal(t, 21, accounts.callCount())
-	require.Equal(t, 11, accounts.groupCallCount(groupID))
+	require.Equal(t, 2*schedulerCanonicalAccountQueryCount()+1, accounts.callCount())
+	require.Equal(t, schedulerCanonicalAccountQueryCount()+1, accounts.groupCallCount(groupID))
 	_, historicalPublished := cache.counts(historical)
 	require.Equal(t, 1, historicalPublished)
 	activeCalls, fallbackCalls, freshCalls := groups.stats()
@@ -398,7 +399,7 @@ func TestSchedulerFullRebuildOrdinaryCaptureErrorReturnsBeforeFirstDB(t *testing
 
 	err := svc.rebuildFullSnapshot(context.Background(), "test")
 	require.ErrorIs(t, err, wantErr)
-	require.Equal(t, 20, cache.captureAttemptCount(), "all canonical and ordinary captures must be attempted before returning")
+	require.Equal(t, schedulerCanonicalBucketCount()+2, cache.captureAttemptCount(), "all canonical and ordinary captures must be attempted before returning")
 	require.Zero(t, accounts.callCount())
 	require.Zero(t, cache.totalSetAttempts())
 }
@@ -416,8 +417,8 @@ func TestSchedulerFullRebuildPreservesGroupZeroActiveHistoricalAndInvalidRegistr
 	svc := newFullRebuildLifecycleService(cache, nil, accounts, groups, config.RunModeStandard)
 
 	require.NoError(t, svc.rebuildFullSnapshot(context.Background(), "test"))
-	require.Equal(t, 39, cache.captureAttemptCount())
-	require.Equal(t, 23, accounts.callCount())
+	require.Equal(t, 2*schedulerCanonicalBucketCount()+3, cache.captureAttemptCount())
+	require.Equal(t, 2*schedulerCanonicalAccountQueryCount()+3, accounts.callCount())
 	groups.mu.Lock()
 	require.Equal(t, 1, groups.listCalls)
 	groups.mu.Unlock()
@@ -456,7 +457,7 @@ func TestSchedulerFullRebuildActiveTombstoneFreshInactiveOrMissingFiltersAllGrou
 
 			require.NoError(t, svc.rebuildFullSnapshot(context.Background(), "test"))
 			require.Zero(t, accounts.groupCallCount(groupID))
-			require.Equal(t, 10, accounts.groupCallCount(0))
+			require.Equal(t, schedulerCanonicalAccountQueryCount(), accounts.groupCallCount(0))
 			require.Empty(t, cache.tokens())
 			require.Equal(t, bucketStrings(append(canonical, historical)), bucketStrings(cache.retiredBuckets()))
 			for _, bucket := range append(canonical, historical) {
@@ -528,7 +529,7 @@ func TestSchedulerFullRebuildPartialLifecycleFailureReturnsBeforeDBAndRetries(t 
 	require.Equal(t, []int64{1, 2}, freshCalls)
 	require.Zero(t, accounts.callCount())
 	require.Zero(t, cache.totalSetAttempts())
-	require.Equal(t, 19, len(cache.retiredBuckets()))
+	require.Equal(t, schedulerCanonicalBucketCount()+1, len(cache.retiredBuckets()))
 
 	groups.mu.Lock()
 	delete(groups.freshErr, 2)
@@ -537,8 +538,8 @@ func TestSchedulerFullRebuildPartialLifecycleFailureReturnsBeforeDBAndRetries(t 
 	require.NoError(t, svc.triggerFullRebuild("retry"))
 	_, _, freshCalls = groups.stats()
 	require.Equal(t, []int64{1, 2, 2, 3}, freshCalls)
-	require.Equal(t, 57, len(cache.retiredBuckets()))
-	require.Equal(t, 10, accounts.callCount())
+	require.Equal(t, 3*(schedulerCanonicalBucketCount()+1), len(cache.retiredBuckets()))
+	require.Equal(t, schedulerCanonicalAccountQueryCount(), accounts.callCount())
 	require.Empty(t, cache.tokens())
 }
 
@@ -561,14 +562,15 @@ func TestSchedulerFullRebuildActiveTombstoneLazyRecoveryDiscardsPartialCaptureTa
 		capturesAtFirstDB = cache.captureAttemptCount()
 		held, reopenCount := cache.leaseHeldAndTokenCount()
 		require.False(t, held)
-		require.Equal(t, 18, reopenCount)
-		require.Equal(t, 25, capturesAtFirstDB)
+		require.Equal(t, len(canonical), reopenCount)
+		// C(0) + captures through the retired canonical index (inclusive) + historical ordinary bucket.
+		require.Equal(t, schedulerCanonicalBucketCount()+6+1, capturesAtFirstDB)
 	}
 	svc := newFullRebuildLifecycleService(cache, nil, accounts, groups, config.RunModeStandard)
 
 	require.NoError(t, svc.rebuildFullSnapshot(context.Background(), "test"))
 	require.Equal(t, capturesAtFirstDB, cache.captureAttemptCount())
-	require.Equal(t, 21, accounts.callCount())
+	require.Equal(t, 2*schedulerCanonicalAccountQueryCount()+1, accounts.callCount())
 	for _, bucket := range canonical {
 		attempts, published := cache.counts(bucket)
 		require.Equal(t, 1, attempts, "discarded pre-recovery tokens must never publish: %s", bucket.String())
@@ -600,9 +602,9 @@ func TestSchedulerFullRebuildSimpleModePreservesRegistryWithoutLifecycleAuthorit
 	require.Zero(t, activeCalls)
 	require.Zero(t, fallbackCalls)
 	require.Empty(t, freshCalls)
-	require.Equal(t, 21, cache.captureAttemptCount())
-	require.Equal(t, 13, accounts.callCount())
-	require.Equal(t, 13, accounts.groupCallCount(0))
+	require.Equal(t, schedulerCanonicalBucketCount()+len(registered), cache.captureAttemptCount())
+	require.Equal(t, schedulerCanonicalAccountQueryCount()+len(registered), accounts.callCount())
+	require.Equal(t, schedulerCanonicalAccountQueryCount()+len(registered), accounts.groupCallCount(0))
 	require.Empty(t, cache.retiredBuckets())
 	require.Empty(t, cache.tokens())
 	for _, bucket := range registered {
@@ -632,11 +634,11 @@ func TestSchedulerFullRebuildFreshReopenLockBusyRetriesWithoutBlockingOrdinaryTa
 	require.Zero(t, cache.currentWatermark())
 	_, groupZeroPublished := cache.counts(schedulerCanonicalBuckets(0)[0])
 	require.Equal(t, 1, groupZeroPublished, "ordinary tasks must still run when one strict Reopen task is busy")
-	require.Equal(t, 20, accounts.callCount())
+	require.Equal(t, 2*schedulerCanonicalAccountQueryCount(), accounts.callCount())
 
 	svc.pollOutbox()
 	require.Equal(t, int64(1), cache.currentWatermark())
-	require.Equal(t, 40, accounts.callCount())
+	require.Equal(t, 4*schedulerCanonicalAccountQueryCount(), accounts.callCount())
 	_, busyBucketPublished := cache.counts(canonical[0])
 	require.Equal(t, 1, busyBucketPublished)
 	activeCalls, fallbackCalls, freshCalls := groups.stats()
@@ -654,7 +656,7 @@ func TestSchedulerFullRebuildOrdinaryLockBusyKeepsExistingSkipSemantics(t *testi
 	svc := newFullRebuildLifecycleService(cache, nil, accounts, groups, config.RunModeStandard)
 
 	require.NoError(t, svc.rebuildFullSnapshot(context.Background(), "test"))
-	require.Equal(t, 10, accounts.callCount())
+	require.Equal(t, schedulerCanonicalAccountQueryCount(), accounts.callCount())
 	attempts, published := cache.counts(busyBucket)
 	require.Zero(t, attempts)
 	require.Zero(t, published)

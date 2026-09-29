@@ -108,13 +108,17 @@ const snapshotData = computed<CNProviderQuotaProbeResult | null>(() => {
   const platform = props.account.platform
   const used5h = readExtraNumber(`${platform}_5h_used_percent`)
   const usedWeekly = readExtraNumber(`${platform}_weekly_used_percent`)
-  if (used5h == null && usedWeekly == null) return null
+  const usedMonthly = readExtraNumber(`${platform}_monthly_used_percent`)
+  if (used5h == null && usedWeekly == null && usedMonthly == null) return null
   const tiers: CNProviderQuotaProbeResult['tiers'] = []
   if (used5h != null) {
     tiers.push({ window: '5h', used_percent: used5h, reset_at: readExtraString(`${platform}_5h_reset_at`) || undefined })
   }
   if (usedWeekly != null) {
     tiers.push({ window: 'weekly', used_percent: usedWeekly, reset_at: readExtraString(`${platform}_weekly_reset_at`) || undefined })
+  }
+  if (usedMonthly != null) {
+    tiers.push({ window: 'monthly', used_percent: usedMonthly, reset_at: readExtraString(`${platform}_monthly_reset_at`) || undefined })
   }
   return { success: true, tiers } as CNProviderQuotaProbeResult
 })
@@ -161,10 +165,11 @@ const truncatedError = computed(() => {
   return error.value.length > 80 ? `${error.value.slice(0, 80)}...` : error.value
 })
 
-const windowLabel = (window: string) =>
-  window === 'weekly'
-    ? t('admin.accounts.cnProviders.windowWeekly')
-    : t('admin.accounts.cnProviders.window5h')
+const windowLabel = (window: string) => {
+  if (window === 'weekly') return t('admin.accounts.cnProviders.windowWeekly')
+  if (window === 'monthly') return t('admin.accounts.cnProviders.windowMonthly')
+  return t('admin.accounts.cnProviders.window5h')
+}
 
 const handleProbe = async () => {
   if (loading.value) return

@@ -19,12 +19,13 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	TransportPlugin_GetInfo_FullMethodName        = "/sub2api.plugin.v1.TransportPlugin/GetInfo"
-	TransportPlugin_Health_FullMethodName         = "/sub2api.plugin.v1.TransportPlugin/Health"
-	TransportPlugin_ValidateConfig_FullMethodName = "/sub2api.plugin.v1.TransportPlugin/ValidateConfig"
-	TransportPlugin_ApplyConfig_FullMethodName    = "/sub2api.plugin.v1.TransportPlugin/ApplyConfig"
-	TransportPlugin_TestConfig_FullMethodName     = "/sub2api.plugin.v1.TransportPlugin/TestConfig"
-	TransportPlugin_Forward_FullMethodName        = "/sub2api.plugin.v1.TransportPlugin/Forward"
+	TransportPlugin_GetInfo_FullMethodName          = "/sub2api.plugin.v1.TransportPlugin/GetInfo"
+	TransportPlugin_Health_FullMethodName           = "/sub2api.plugin.v1.TransportPlugin/Health"
+	TransportPlugin_ValidateConfig_FullMethodName   = "/sub2api.plugin.v1.TransportPlugin/ValidateConfig"
+	TransportPlugin_ApplyConfig_FullMethodName      = "/sub2api.plugin.v1.TransportPlugin/ApplyConfig"
+	TransportPlugin_TestConfig_FullMethodName       = "/sub2api.plugin.v1.TransportPlugin/TestConfig"
+	TransportPlugin_Forward_FullMethodName          = "/sub2api.plugin.v1.TransportPlugin/Forward"
+	TransportPlugin_InitHostServices_FullMethodName = "/sub2api.plugin.v1.TransportPlugin/InitHostServices"
 )
 
 // TransportPluginClient is the client API for TransportPlugin service.
@@ -37,6 +38,11 @@ type TransportPluginClient interface {
 	ApplyConfig(ctx context.Context, in *ApplyConfigRequest, opts ...grpc.CallOption) (*ApplyConfigResponse, error)
 	TestConfig(ctx context.Context, in *TestConfigRequest, opts ...grpc.CallOption) (*TestConfigResponse, error)
 	Forward(ctx context.Context, opts ...grpc.CallOption) (grpc.BidiStreamingClient[ForwardRequest, ForwardResponse], error)
+	// InitHostServices hands the plugin a go-plugin broker stream id it can dial
+	// back to reach the host-provided HostService. It is an optional, generic
+	// lifecycle hook: plugins built against an older contract leave it
+	// Unimplemented and the host simply runs without offering host services.
+	InitHostServices(ctx context.Context, in *InitHostServicesRequest, opts ...grpc.CallOption) (*InitHostServicesResponse, error)
 }
 
 type transportPluginClient struct {
@@ -110,6 +116,16 @@ func (c *transportPluginClient) Forward(ctx context.Context, opts ...grpc.CallOp
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
 type TransportPlugin_ForwardClient = grpc.BidiStreamingClient[ForwardRequest, ForwardResponse]
 
+func (c *transportPluginClient) InitHostServices(ctx context.Context, in *InitHostServicesRequest, opts ...grpc.CallOption) (*InitHostServicesResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(InitHostServicesResponse)
+	err := c.cc.Invoke(ctx, TransportPlugin_InitHostServices_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // TransportPluginServer is the server API for TransportPlugin service.
 // All implementations must embed UnimplementedTransportPluginServer
 // for forward compatibility.
@@ -120,6 +136,11 @@ type TransportPluginServer interface {
 	ApplyConfig(context.Context, *ApplyConfigRequest) (*ApplyConfigResponse, error)
 	TestConfig(context.Context, *TestConfigRequest) (*TestConfigResponse, error)
 	Forward(grpc.BidiStreamingServer[ForwardRequest, ForwardResponse]) error
+	// InitHostServices hands the plugin a go-plugin broker stream id it can dial
+	// back to reach the host-provided HostService. It is an optional, generic
+	// lifecycle hook: plugins built against an older contract leave it
+	// Unimplemented and the host simply runs without offering host services.
+	InitHostServices(context.Context, *InitHostServicesRequest) (*InitHostServicesResponse, error)
 	mustEmbedUnimplementedTransportPluginServer()
 }
 
@@ -147,6 +168,9 @@ func (UnimplementedTransportPluginServer) TestConfig(context.Context, *TestConfi
 }
 func (UnimplementedTransportPluginServer) Forward(grpc.BidiStreamingServer[ForwardRequest, ForwardResponse]) error {
 	return status.Error(codes.Unimplemented, "method Forward not implemented")
+}
+func (UnimplementedTransportPluginServer) InitHostServices(context.Context, *InitHostServicesRequest) (*InitHostServicesResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method InitHostServices not implemented")
 }
 func (UnimplementedTransportPluginServer) mustEmbedUnimplementedTransportPluginServer() {}
 func (UnimplementedTransportPluginServer) testEmbeddedByValue()                         {}
@@ -266,6 +290,24 @@ func _TransportPlugin_Forward_Handler(srv interface{}, stream grpc.ServerStream)
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
 type TransportPlugin_ForwardServer = grpc.BidiStreamingServer[ForwardRequest, ForwardResponse]
 
+func _TransportPlugin_InitHostServices_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(InitHostServicesRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(TransportPluginServer).InitHostServices(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: TransportPlugin_InitHostServices_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(TransportPluginServer).InitHostServices(ctx, req.(*InitHostServicesRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // TransportPlugin_ServiceDesc is the grpc.ServiceDesc for TransportPlugin service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -293,6 +335,10 @@ var TransportPlugin_ServiceDesc = grpc.ServiceDesc{
 			MethodName: "TestConfig",
 			Handler:    _TransportPlugin_TestConfig_Handler,
 		},
+		{
+			MethodName: "InitHostServices",
+			Handler:    _TransportPlugin_InitHostServices_Handler,
+		},
 	},
 	Streams: []grpc.StreamDesc{
 		{
@@ -302,5 +348,321 @@ var TransportPlugin_ServiceDesc = grpc.ServiceDesc{
 			ClientStreams: true,
 		},
 	},
+	Metadata: "plugin.proto",
+}
+
+const (
+	HostService_KVGet_FullMethodName                   = "/sub2api.plugin.v1.HostService/KVGet"
+	HostService_KVSet_FullMethodName                   = "/sub2api.plugin.v1.HostService/KVSet"
+	HostService_KVDelete_FullMethodName                = "/sub2api.plugin.v1.HostService/KVDelete"
+	HostService_KVList_FullMethodName                  = "/sub2api.plugin.v1.HostService/KVList"
+	HostService_ListAccounts_FullMethodName            = "/sub2api.plugin.v1.HostService/ListAccounts"
+	HostService_ResolveOutboundIdentity_FullMethodName = "/sub2api.plugin.v1.HostService/ResolveOutboundIdentity"
+)
+
+// HostServiceClient is the client API for HostService service.
+//
+// For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
+//
+// HostService is implemented by the host and dialed by the plugin over the
+// go-plugin broker id delivered via InitHostServices. It exposes generic,
+// capability-neutral facilities that any plugin may use; new facilities are
+// added here as new RPCs without changing the transport contract version.
+type HostServiceClient interface {
+	KVGet(ctx context.Context, in *KVGetRequest, opts ...grpc.CallOption) (*KVGetResponse, error)
+	KVSet(ctx context.Context, in *KVSetRequest, opts ...grpc.CallOption) (*KVSetResponse, error)
+	KVDelete(ctx context.Context, in *KVDeleteRequest, opts ...grpc.CallOption) (*KVDeleteResponse, error)
+	KVList(ctx context.Context, in *KVListRequest, opts ...grpc.CallOption) (*KVListResponse, error)
+	// Account directory: enumerate the accounts the plugin is bound to act on
+	// (with full readable metadata) and resolve the outbound identity
+	// (credentials/headers/proxy) the host would attach to a live request. The
+	// host restricts both calls to the account scope the requesting plugin's
+	// declared capabilities cover; a plugin can never widen that scope. Metadata
+	// never carries raw credentials — those are only handed out by
+	// ResolveOutboundIdentity, the dedicated (equally sensitive) credential channel.
+	ListAccounts(ctx context.Context, in *ListAccountsRequest, opts ...grpc.CallOption) (*ListAccountsResponse, error)
+	ResolveOutboundIdentity(ctx context.Context, in *ResolveOutboundIdentityRequest, opts ...grpc.CallOption) (*ResolveOutboundIdentityResponse, error)
+}
+
+type hostServiceClient struct {
+	cc grpc.ClientConnInterface
+}
+
+func NewHostServiceClient(cc grpc.ClientConnInterface) HostServiceClient {
+	return &hostServiceClient{cc}
+}
+
+func (c *hostServiceClient) KVGet(ctx context.Context, in *KVGetRequest, opts ...grpc.CallOption) (*KVGetResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(KVGetResponse)
+	err := c.cc.Invoke(ctx, HostService_KVGet_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *hostServiceClient) KVSet(ctx context.Context, in *KVSetRequest, opts ...grpc.CallOption) (*KVSetResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(KVSetResponse)
+	err := c.cc.Invoke(ctx, HostService_KVSet_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *hostServiceClient) KVDelete(ctx context.Context, in *KVDeleteRequest, opts ...grpc.CallOption) (*KVDeleteResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(KVDeleteResponse)
+	err := c.cc.Invoke(ctx, HostService_KVDelete_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *hostServiceClient) KVList(ctx context.Context, in *KVListRequest, opts ...grpc.CallOption) (*KVListResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(KVListResponse)
+	err := c.cc.Invoke(ctx, HostService_KVList_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *hostServiceClient) ListAccounts(ctx context.Context, in *ListAccountsRequest, opts ...grpc.CallOption) (*ListAccountsResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ListAccountsResponse)
+	err := c.cc.Invoke(ctx, HostService_ListAccounts_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *hostServiceClient) ResolveOutboundIdentity(ctx context.Context, in *ResolveOutboundIdentityRequest, opts ...grpc.CallOption) (*ResolveOutboundIdentityResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ResolveOutboundIdentityResponse)
+	err := c.cc.Invoke(ctx, HostService_ResolveOutboundIdentity_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+// HostServiceServer is the server API for HostService service.
+// All implementations must embed UnimplementedHostServiceServer
+// for forward compatibility.
+//
+// HostService is implemented by the host and dialed by the plugin over the
+// go-plugin broker id delivered via InitHostServices. It exposes generic,
+// capability-neutral facilities that any plugin may use; new facilities are
+// added here as new RPCs without changing the transport contract version.
+type HostServiceServer interface {
+	KVGet(context.Context, *KVGetRequest) (*KVGetResponse, error)
+	KVSet(context.Context, *KVSetRequest) (*KVSetResponse, error)
+	KVDelete(context.Context, *KVDeleteRequest) (*KVDeleteResponse, error)
+	KVList(context.Context, *KVListRequest) (*KVListResponse, error)
+	// Account directory: enumerate the accounts the plugin is bound to act on
+	// (with full readable metadata) and resolve the outbound identity
+	// (credentials/headers/proxy) the host would attach to a live request. The
+	// host restricts both calls to the account scope the requesting plugin's
+	// declared capabilities cover; a plugin can never widen that scope. Metadata
+	// never carries raw credentials — those are only handed out by
+	// ResolveOutboundIdentity, the dedicated (equally sensitive) credential channel.
+	ListAccounts(context.Context, *ListAccountsRequest) (*ListAccountsResponse, error)
+	ResolveOutboundIdentity(context.Context, *ResolveOutboundIdentityRequest) (*ResolveOutboundIdentityResponse, error)
+	mustEmbedUnimplementedHostServiceServer()
+}
+
+// UnimplementedHostServiceServer must be embedded to have
+// forward compatible implementations.
+//
+// NOTE: this should be embedded by value instead of pointer to avoid a nil
+// pointer dereference when methods are called.
+type UnimplementedHostServiceServer struct{}
+
+func (UnimplementedHostServiceServer) KVGet(context.Context, *KVGetRequest) (*KVGetResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method KVGet not implemented")
+}
+func (UnimplementedHostServiceServer) KVSet(context.Context, *KVSetRequest) (*KVSetResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method KVSet not implemented")
+}
+func (UnimplementedHostServiceServer) KVDelete(context.Context, *KVDeleteRequest) (*KVDeleteResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method KVDelete not implemented")
+}
+func (UnimplementedHostServiceServer) KVList(context.Context, *KVListRequest) (*KVListResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method KVList not implemented")
+}
+func (UnimplementedHostServiceServer) ListAccounts(context.Context, *ListAccountsRequest) (*ListAccountsResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method ListAccounts not implemented")
+}
+func (UnimplementedHostServiceServer) ResolveOutboundIdentity(context.Context, *ResolveOutboundIdentityRequest) (*ResolveOutboundIdentityResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method ResolveOutboundIdentity not implemented")
+}
+func (UnimplementedHostServiceServer) mustEmbedUnimplementedHostServiceServer() {}
+func (UnimplementedHostServiceServer) testEmbeddedByValue()                     {}
+
+// UnsafeHostServiceServer may be embedded to opt out of forward compatibility for this service.
+// Use of this interface is not recommended, as added methods to HostServiceServer will
+// result in compilation errors.
+type UnsafeHostServiceServer interface {
+	mustEmbedUnimplementedHostServiceServer()
+}
+
+func RegisterHostServiceServer(s grpc.ServiceRegistrar, srv HostServiceServer) {
+	// If the following call panics, it indicates UnimplementedHostServiceServer was
+	// embedded by pointer and is nil.  This will cause panics if an
+	// unimplemented method is ever invoked, so we test this at initialization
+	// time to prevent it from happening at runtime later due to I/O.
+	if t, ok := srv.(interface{ testEmbeddedByValue() }); ok {
+		t.testEmbeddedByValue()
+	}
+	s.RegisterService(&HostService_ServiceDesc, srv)
+}
+
+func _HostService_KVGet_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(KVGetRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(HostServiceServer).KVGet(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: HostService_KVGet_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(HostServiceServer).KVGet(ctx, req.(*KVGetRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _HostService_KVSet_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(KVSetRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(HostServiceServer).KVSet(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: HostService_KVSet_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(HostServiceServer).KVSet(ctx, req.(*KVSetRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _HostService_KVDelete_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(KVDeleteRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(HostServiceServer).KVDelete(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: HostService_KVDelete_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(HostServiceServer).KVDelete(ctx, req.(*KVDeleteRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _HostService_KVList_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(KVListRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(HostServiceServer).KVList(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: HostService_KVList_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(HostServiceServer).KVList(ctx, req.(*KVListRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _HostService_ListAccounts_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ListAccountsRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(HostServiceServer).ListAccounts(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: HostService_ListAccounts_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(HostServiceServer).ListAccounts(ctx, req.(*ListAccountsRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _HostService_ResolveOutboundIdentity_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ResolveOutboundIdentityRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(HostServiceServer).ResolveOutboundIdentity(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: HostService_ResolveOutboundIdentity_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(HostServiceServer).ResolveOutboundIdentity(ctx, req.(*ResolveOutboundIdentityRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+// HostService_ServiceDesc is the grpc.ServiceDesc for HostService service.
+// It's only intended for direct use with grpc.RegisterService,
+// and not to be introspected or modified (even as a copy)
+var HostService_ServiceDesc = grpc.ServiceDesc{
+	ServiceName: "sub2api.plugin.v1.HostService",
+	HandlerType: (*HostServiceServer)(nil),
+	Methods: []grpc.MethodDesc{
+		{
+			MethodName: "KVGet",
+			Handler:    _HostService_KVGet_Handler,
+		},
+		{
+			MethodName: "KVSet",
+			Handler:    _HostService_KVSet_Handler,
+		},
+		{
+			MethodName: "KVDelete",
+			Handler:    _HostService_KVDelete_Handler,
+		},
+		{
+			MethodName: "KVList",
+			Handler:    _HostService_KVList_Handler,
+		},
+		{
+			MethodName: "ListAccounts",
+			Handler:    _HostService_ListAccounts_Handler,
+		},
+		{
+			MethodName: "ResolveOutboundIdentity",
+			Handler:    _HostService_ResolveOutboundIdentity_Handler,
+		},
+	},
+	Streams:  []grpc.StreamDesc{},
 	Metadata: "plugin.proto",
 }

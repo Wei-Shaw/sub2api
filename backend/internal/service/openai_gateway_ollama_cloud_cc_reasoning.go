@@ -47,12 +47,13 @@ func accountHasOllamaCloudUsageExtra(account *Account) bool {
 	return false
 }
 
+// applyOllamaCloudRawChatCompletionsRequest 只做 Ollama Cloud reasoning 归一化；
+// max_tokens clamp 已解耦到独立钩子 clampOllamaCloudUpstreamMaxTokens，由出站方依次调用。
 func applyOllamaCloudRawChatCompletionsRequest(account *Account, body []byte) []byte {
 	if !isOllamaCloudRawChatCompletionsAccount(account) || len(body) == 0 {
 		return body
 	}
-	body = normalizeOllamaCloudChatCompletionsRequest(body)
-	return clampOllamaCloudMaxTokens(account, body)
+	return normalizeOllamaCloudChatCompletionsRequest(body)
 }
 
 func applyOllamaCloudRawChatCompletionsResponse(account *Account, body []byte) []byte {

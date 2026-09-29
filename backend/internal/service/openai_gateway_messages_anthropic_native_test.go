@@ -4,6 +4,7 @@ package service
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"net/http"
 	"strings"
@@ -11,6 +12,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
+	"github.com/tidwall/gjson"
 )
 
 // 国产供应商原生 Anthropic 直通路径（api_protocol=anthropic）的 reasoning_effort 记录。
@@ -33,6 +35,13 @@ func nativeAnthropicTestAccount() *Account {
 			},
 		},
 	}
+}
+
+func nativeAnthropicGLMTestAccount() *Account {
+	account := nativeAnthropicTestAccount()
+	account.Name = "zhipu-native"
+	account.Platform = PlatformZhipu
+	return account
 }
 
 func nativeAnthropicBufferedResponse() *http.Response {
@@ -136,4 +145,71 @@ func TestNativeAnthropicPassthroughNoEffortStaysNil(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, result)
 	require.Nil(t, result.ReasoningEffort)
+}
+
+func TestNativeAnthropicPassthroughNormalizesGLM53Thinking(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	tests := []struct {
+		name       string
+		stream     bool
+		preference string
+		wantEffort string
+	}{
+		{name: "disabled buffered", preference: `"thinking":{"type":"disabled"},`, wantEffort: "low"},
+		{name: "off buffered", preference: `"thinking":{"type":"off"},`, wantEffort: "low"},
+		{name: "none buffered", preference: `"thinking":{"type":"none"},`, wantEffort: "low"},
+		{name: "enabled buffered", preference: `"thinking":{"type":"enabled"},`, wantEffort: "high"},
+		{name: "enabled streaming", stream: true, preference: `"thinking":{"type":"enabled"},`, wantEffort: "high"},
+		{name: "adaptive buffered", preference: `"thinking":{"type":"adaptive"},`, wantEffort: "high"},
+		{name: "adaptive streaming", stream: true, preference: `"thinking":{"type":"adaptive"},`, wantEffort: "high"},
+		{name: "minimal buffered", preference: `"output_config":{"effort":"minimal"},`, wantEffort: "low"},
+		{name: "low buffered", preference: `"output_config":{"effort":"low"},`, wantEffort: "low"},
+		{name: "medium streaming", stream: true, preference: `"output_config":{"effort":"medium"},`, wantEffort: "high"},
+		{name: "high buffered", preference: `"output_config":{"effort":"high"},`, wantEffort: "high"},
+		{name: "xhigh buffered", preference: `"output_config":{"effort":"xhigh"},`, wantEffort: "max"},
+		{name: "max buffered", preference: `"output_config":{"effort":"max"},`, wantEffort: "max"},
+		{name: "ultra buffered", preference: `"output_config":{"effort":"ultra"},`, wantEffort: "max"},
+		{name: "output effort wins over thinking", preference: `"thinking":{"type":"adaptive"},"output_config":{"effort":"low"},`, wantEffort: "low"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			body := []byte(fmt.Sprintf(`{"model":"glm-5.3","max_tokens":32,"stream":%t,%s"messages":[{"role":"user","content":"hi"}]}`, tt.stream, tt.preference))
+			response := nativeAnthropicBufferedResponse()
+			if tt.stream {
+				response = nativeAnthropicStreamResponse()
+			}
+			upstream := &httpUpstreamRecorder{resp: response}
+			svc := &OpenAIGatewayService{cfg: rawChatCompletionsTestConfig(), httpUpstream: upstream}
+
+			_, err := svc.ForwardAsAnthropic(context.Background(),
+				adaptiveProtocolTestContext("/v1/messages", body), nativeAnthropicGLMTestAccount(), body, "", "")
+			require.NoError(t, err)
+			require.Equal(t, "enabled", gjson.GetBytes(upstream.lastBody, "thinking.type").String())
+			require.Equal(t, tt.wantEffort, gjson.GetBytes(upstream.lastBody, "output_config.effort").String())
+		})
+	}
+}
+
+func TestNativeAnthropicPassthroughLeavesOtherThinkingUntouched(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	tests := []struct {
+		name string
+		body string
+	}{
+		{name: "glm 5.3 unspecified", body: `{"model":"glm-5.3","max_tokens":32,"stream":false,"messages":[]}`},
+		{name: "glm 5.2 disabled", body: `{"model":"glm-5.2","max_tokens":32,"stream":false,"thinking":{"type":"disabled"},"messages":[]}`},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			body := []byte(tt.body)
+			upstream := &httpUpstreamRecorder{resp: nativeAnthropicBufferedResponse()}
+			svc := &OpenAIGatewayService{cfg: rawChatCompletionsTestConfig(), httpUpstream: upstream}
+			_, err := svc.ForwardAsAnthropic(context.Background(),
+				adaptiveProtocolTestContext("/v1/messages", body), nativeAnthropicGLMTestAccount(), body, "", "")
+			require.NoError(t, err)
+			require.JSONEq(t, tt.body, string(upstream.lastBody))
+		})
+	}
 }

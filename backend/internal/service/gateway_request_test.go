@@ -1606,12 +1606,27 @@ func TestNormalizeGLMOpenAIReasoningEffort(t *testing.T) {
 			wantValue:   "high",
 		},
 		{
+			name:        "glm 5.2 low maps to high",
+			model:       "glm-5.2",
+			input:       `{"model":"glm-5.2","reasoning_effort":"low","messages":[]}`,
+			wantApplied: true,
+			wantPath:    "reasoning_effort",
+			wantValue:   "high",
+		},
+		{
 			name:        "nested high case-normalizes",
 			model:       "glm-5.2",
 			input:       `{"model":"glm-5.2","reasoning":{"effort":"HIGH"},"messages":[]}`,
 			wantApplied: true,
 			wantPath:    "reasoning.effort",
 			wantValue:   "high",
+		},
+		{
+			name:          "glm 5.3 native low unchanged",
+			model:         "glm-5.3",
+			input:         `{"model":"glm-5.3","reasoning_effort":"low","messages":[]}`,
+			wantApplied:   false,
+			wantUnchanged: true,
 		},
 		{
 			name:          "native max unchanged",

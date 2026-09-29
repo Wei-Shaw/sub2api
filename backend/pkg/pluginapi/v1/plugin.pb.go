@@ -170,9 +170,15 @@ func (*HealthRequest) Descriptor() ([]byte, []int) {
 }
 
 type HealthResponse struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Healthy       bool                   `protobuf:"varint,1,opt,name=healthy,proto3" json:"healthy,omitempty"`
-	Message       string                 `protobuf:"bytes,2,opt,name=message,proto3" json:"message,omitempty"`
+	state   protoimpl.MessageState `protogen:"open.v1"`
+	Healthy bool                   `protobuf:"varint,1,opt,name=healthy,proto3" json:"healthy,omitempty"`
+	Message string                 `protobuf:"bytes,2,opt,name=message,proto3" json:"message,omitempty"`
+	// status_json is an optional plugin-defined JSON blob describing current runtime
+	// state (e.g. a status summary for the config UI). It MUST be produced passively
+	// — reading it must not apply config, reach upstream, or cause side effects — so
+	// the host can expose it via a lightweight, ungated status endpoint. Ignored by
+	// the host's health gating.
+	StatusJson    string `protobuf:"bytes,3,opt,name=status_json,json=statusJson,proto3" json:"status_json,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -217,6 +223,13 @@ func (x *HealthResponse) GetHealthy() bool {
 func (x *HealthResponse) GetMessage() string {
 	if x != nil {
 		return x.Message
+	}
+	return ""
+}
+
+func (x *HealthResponse) GetStatusJson() string {
+	if x != nil {
+		return x.StatusJson
 	}
 	return ""
 }
@@ -466,10 +479,13 @@ func (x *TestConfigRequest) GetConfigJson() []byte {
 }
 
 type TestConfigResponse struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Success       bool                   `protobuf:"varint,1,opt,name=success,proto3" json:"success,omitempty"`
-	Message       string                 `protobuf:"bytes,2,opt,name=message,proto3" json:"message,omitempty"`
-	LatencyMs     int64                  `protobuf:"varint,3,opt,name=latency_ms,json=latencyMs,proto3" json:"latency_ms,omitempty"`
+	state     protoimpl.MessageState `protogen:"open.v1"`
+	Success   bool                   `protobuf:"varint,1,opt,name=success,proto3" json:"success,omitempty"`
+	Message   string                 `protobuf:"bytes,2,opt,name=message,proto3" json:"message,omitempty"`
+	LatencyMs int64                  `protobuf:"varint,3,opt,name=latency_ms,json=latencyMs,proto3" json:"latency_ms,omitempty"`
+	// status_json is an optional plugin-defined JSON blob surfaced to the config UI
+	// alongside the test result (e.g. a runtime status summary). Ignored by the host.
+	StatusJson    string `protobuf:"bytes,4,opt,name=status_json,json=statusJson,proto3" json:"status_json,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -523,6 +539,13 @@ func (x *TestConfigResponse) GetLatencyMs() int64 {
 		return x.LatencyMs
 	}
 	return 0
+}
+
+func (x *TestConfigResponse) GetStatusJson() string {
+	if x != nil {
+		return x.StatusJson
+	}
+	return ""
 }
 
 type HeaderValues struct {
@@ -1117,6 +1140,892 @@ func (*ForwardResponse_End) isForwardResponse_Frame() {}
 
 func (*ForwardResponse_Error) isForwardResponse_Frame() {}
 
+type InitHostServicesRequest struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// host_service_id is the broker stream id the plugin dials to reach HostService.
+	HostServiceId uint32 `protobuf:"varint,1,opt,name=host_service_id,json=hostServiceId,proto3" json:"host_service_id,omitempty"`
+	// host_service_api_version lets the plugin reject a host it cannot talk to.
+	HostServiceApiVersion uint32 `protobuf:"varint,2,opt,name=host_service_api_version,json=hostServiceApiVersion,proto3" json:"host_service_api_version,omitempty"`
+	unknownFields         protoimpl.UnknownFields
+	sizeCache             protoimpl.SizeCache
+}
+
+func (x *InitHostServicesRequest) Reset() {
+	*x = InitHostServicesRequest{}
+	mi := &file_plugin_proto_msgTypes[17]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *InitHostServicesRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*InitHostServicesRequest) ProtoMessage() {}
+
+func (x *InitHostServicesRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_plugin_proto_msgTypes[17]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use InitHostServicesRequest.ProtoReflect.Descriptor instead.
+func (*InitHostServicesRequest) Descriptor() ([]byte, []int) {
+	return file_plugin_proto_rawDescGZIP(), []int{17}
+}
+
+func (x *InitHostServicesRequest) GetHostServiceId() uint32 {
+	if x != nil {
+		return x.HostServiceId
+	}
+	return 0
+}
+
+func (x *InitHostServicesRequest) GetHostServiceApiVersion() uint32 {
+	if x != nil {
+		return x.HostServiceApiVersion
+	}
+	return 0
+}
+
+type InitHostServicesResponse struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// ready is true once the plugin has successfully dialed back the host service.
+	Ready         bool   `protobuf:"varint,1,opt,name=ready,proto3" json:"ready,omitempty"`
+	Message       string `protobuf:"bytes,2,opt,name=message,proto3" json:"message,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *InitHostServicesResponse) Reset() {
+	*x = InitHostServicesResponse{}
+	mi := &file_plugin_proto_msgTypes[18]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *InitHostServicesResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*InitHostServicesResponse) ProtoMessage() {}
+
+func (x *InitHostServicesResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_plugin_proto_msgTypes[18]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use InitHostServicesResponse.ProtoReflect.Descriptor instead.
+func (*InitHostServicesResponse) Descriptor() ([]byte, []int) {
+	return file_plugin_proto_rawDescGZIP(), []int{18}
+}
+
+func (x *InitHostServicesResponse) GetReady() bool {
+	if x != nil {
+		return x.Ready
+	}
+	return false
+}
+
+func (x *InitHostServicesResponse) GetMessage() string {
+	if x != nil {
+		return x.Message
+	}
+	return ""
+}
+
+// KV messages back a namespaced, per-plugin persistent key-value store. The
+// host derives the owning plugin from the runtime that serves the connection,
+// so a plugin can never read or write another plugin's namespace.
+type KVGetRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Namespace     string                 `protobuf:"bytes,1,opt,name=namespace,proto3" json:"namespace,omitempty"`
+	Key           string                 `protobuf:"bytes,2,opt,name=key,proto3" json:"key,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *KVGetRequest) Reset() {
+	*x = KVGetRequest{}
+	mi := &file_plugin_proto_msgTypes[19]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *KVGetRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*KVGetRequest) ProtoMessage() {}
+
+func (x *KVGetRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_plugin_proto_msgTypes[19]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use KVGetRequest.ProtoReflect.Descriptor instead.
+func (*KVGetRequest) Descriptor() ([]byte, []int) {
+	return file_plugin_proto_rawDescGZIP(), []int{19}
+}
+
+func (x *KVGetRequest) GetNamespace() string {
+	if x != nil {
+		return x.Namespace
+	}
+	return ""
+}
+
+func (x *KVGetRequest) GetKey() string {
+	if x != nil {
+		return x.Key
+	}
+	return ""
+}
+
+type KVGetResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Found         bool                   `protobuf:"varint,1,opt,name=found,proto3" json:"found,omitempty"`
+	Value         []byte                 `protobuf:"bytes,2,opt,name=value,proto3" json:"value,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *KVGetResponse) Reset() {
+	*x = KVGetResponse{}
+	mi := &file_plugin_proto_msgTypes[20]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *KVGetResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*KVGetResponse) ProtoMessage() {}
+
+func (x *KVGetResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_plugin_proto_msgTypes[20]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use KVGetResponse.ProtoReflect.Descriptor instead.
+func (*KVGetResponse) Descriptor() ([]byte, []int) {
+	return file_plugin_proto_rawDescGZIP(), []int{20}
+}
+
+func (x *KVGetResponse) GetFound() bool {
+	if x != nil {
+		return x.Found
+	}
+	return false
+}
+
+func (x *KVGetResponse) GetValue() []byte {
+	if x != nil {
+		return x.Value
+	}
+	return nil
+}
+
+type KVSetRequest struct {
+	state     protoimpl.MessageState `protogen:"open.v1"`
+	Namespace string                 `protobuf:"bytes,1,opt,name=namespace,proto3" json:"namespace,omitempty"`
+	Key       string                 `protobuf:"bytes,2,opt,name=key,proto3" json:"key,omitempty"`
+	Value     []byte                 `protobuf:"bytes,3,opt,name=value,proto3" json:"value,omitempty"`
+	// ttl_seconds > 0 sets an expiry; 0 stores the entry without expiry.
+	TtlSeconds    int64 `protobuf:"varint,4,opt,name=ttl_seconds,json=ttlSeconds,proto3" json:"ttl_seconds,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *KVSetRequest) Reset() {
+	*x = KVSetRequest{}
+	mi := &file_plugin_proto_msgTypes[21]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *KVSetRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*KVSetRequest) ProtoMessage() {}
+
+func (x *KVSetRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_plugin_proto_msgTypes[21]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use KVSetRequest.ProtoReflect.Descriptor instead.
+func (*KVSetRequest) Descriptor() ([]byte, []int) {
+	return file_plugin_proto_rawDescGZIP(), []int{21}
+}
+
+func (x *KVSetRequest) GetNamespace() string {
+	if x != nil {
+		return x.Namespace
+	}
+	return ""
+}
+
+func (x *KVSetRequest) GetKey() string {
+	if x != nil {
+		return x.Key
+	}
+	return ""
+}
+
+func (x *KVSetRequest) GetValue() []byte {
+	if x != nil {
+		return x.Value
+	}
+	return nil
+}
+
+func (x *KVSetRequest) GetTtlSeconds() int64 {
+	if x != nil {
+		return x.TtlSeconds
+	}
+	return 0
+}
+
+type KVSetResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *KVSetResponse) Reset() {
+	*x = KVSetResponse{}
+	mi := &file_plugin_proto_msgTypes[22]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *KVSetResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*KVSetResponse) ProtoMessage() {}
+
+func (x *KVSetResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_plugin_proto_msgTypes[22]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use KVSetResponse.ProtoReflect.Descriptor instead.
+func (*KVSetResponse) Descriptor() ([]byte, []int) {
+	return file_plugin_proto_rawDescGZIP(), []int{22}
+}
+
+type KVDeleteRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Namespace     string                 `protobuf:"bytes,1,opt,name=namespace,proto3" json:"namespace,omitempty"`
+	Key           string                 `protobuf:"bytes,2,opt,name=key,proto3" json:"key,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *KVDeleteRequest) Reset() {
+	*x = KVDeleteRequest{}
+	mi := &file_plugin_proto_msgTypes[23]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *KVDeleteRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*KVDeleteRequest) ProtoMessage() {}
+
+func (x *KVDeleteRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_plugin_proto_msgTypes[23]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use KVDeleteRequest.ProtoReflect.Descriptor instead.
+func (*KVDeleteRequest) Descriptor() ([]byte, []int) {
+	return file_plugin_proto_rawDescGZIP(), []int{23}
+}
+
+func (x *KVDeleteRequest) GetNamespace() string {
+	if x != nil {
+		return x.Namespace
+	}
+	return ""
+}
+
+func (x *KVDeleteRequest) GetKey() string {
+	if x != nil {
+		return x.Key
+	}
+	return ""
+}
+
+type KVDeleteResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *KVDeleteResponse) Reset() {
+	*x = KVDeleteResponse{}
+	mi := &file_plugin_proto_msgTypes[24]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *KVDeleteResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*KVDeleteResponse) ProtoMessage() {}
+
+func (x *KVDeleteResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_plugin_proto_msgTypes[24]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use KVDeleteResponse.ProtoReflect.Descriptor instead.
+func (*KVDeleteResponse) Descriptor() ([]byte, []int) {
+	return file_plugin_proto_rawDescGZIP(), []int{24}
+}
+
+type KVListRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Namespace     string                 `protobuf:"bytes,1,opt,name=namespace,proto3" json:"namespace,omitempty"`
+	KeyPrefix     string                 `protobuf:"bytes,2,opt,name=key_prefix,json=keyPrefix,proto3" json:"key_prefix,omitempty"`
+	Limit         int32                  `protobuf:"varint,3,opt,name=limit,proto3" json:"limit,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *KVListRequest) Reset() {
+	*x = KVListRequest{}
+	mi := &file_plugin_proto_msgTypes[25]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *KVListRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*KVListRequest) ProtoMessage() {}
+
+func (x *KVListRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_plugin_proto_msgTypes[25]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use KVListRequest.ProtoReflect.Descriptor instead.
+func (*KVListRequest) Descriptor() ([]byte, []int) {
+	return file_plugin_proto_rawDescGZIP(), []int{25}
+}
+
+func (x *KVListRequest) GetNamespace() string {
+	if x != nil {
+		return x.Namespace
+	}
+	return ""
+}
+
+func (x *KVListRequest) GetKeyPrefix() string {
+	if x != nil {
+		return x.KeyPrefix
+	}
+	return ""
+}
+
+func (x *KVListRequest) GetLimit() int32 {
+	if x != nil {
+		return x.Limit
+	}
+	return 0
+}
+
+type KVListResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Keys          []string               `protobuf:"bytes,1,rep,name=keys,proto3" json:"keys,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *KVListResponse) Reset() {
+	*x = KVListResponse{}
+	mi := &file_plugin_proto_msgTypes[26]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *KVListResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*KVListResponse) ProtoMessage() {}
+
+func (x *KVListResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_plugin_proto_msgTypes[26]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use KVListResponse.ProtoReflect.Descriptor instead.
+func (*KVListResponse) Descriptor() ([]byte, []int) {
+	return file_plugin_proto_rawDescGZIP(), []int{26}
+}
+
+func (x *KVListResponse) GetKeys() []string {
+	if x != nil {
+		return x.Keys
+	}
+	return nil
+}
+
+type ListAccountsRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Platform      string                 `protobuf:"bytes,1,opt,name=platform,proto3" json:"platform,omitempty"`
+	AccountType   string                 `protobuf:"bytes,2,opt,name=account_type,json=accountType,proto3" json:"account_type,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ListAccountsRequest) Reset() {
+	*x = ListAccountsRequest{}
+	mi := &file_plugin_proto_msgTypes[27]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListAccountsRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListAccountsRequest) ProtoMessage() {}
+
+func (x *ListAccountsRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_plugin_proto_msgTypes[27]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListAccountsRequest.ProtoReflect.Descriptor instead.
+func (*ListAccountsRequest) Descriptor() ([]byte, []int) {
+	return file_plugin_proto_rawDescGZIP(), []int{27}
+}
+
+func (x *ListAccountsRequest) GetPlatform() string {
+	if x != nil {
+		return x.Platform
+	}
+	return ""
+}
+
+func (x *ListAccountsRequest) GetAccountType() string {
+	if x != nil {
+		return x.AccountType
+	}
+	return ""
+}
+
+type ListAccountsResponse struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// account_ids is retained for plugins built against host_service_api_version 1.
+	// The host keeps filling it (the ids of the accounts in `accounts`) so those
+	// plugins keep working; new plugins should read `accounts` instead.
+	AccountIds []int64 `protobuf:"varint,1,rep,packed,name=account_ids,json=accountIds,proto3" json:"account_ids,omitempty"`
+	// accounts carries the full readable metadata for every account in the
+	// plugin's scope — including active accounts that are currently NOT
+	// schedulable because they are paused (rate-limited / temp-unschedulable /
+	// overloaded). This lets a plugin make its own decisions (e.g. skip paused
+	// accounts) instead of hammering them. (Administratively disabled / expired
+	// accounts are already excluded upstream by the host.) Available when
+	// host_service_api_version >= 2.
+	Accounts      []*AccountInfo `protobuf:"bytes,2,rep,name=accounts,proto3" json:"accounts,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ListAccountsResponse) Reset() {
+	*x = ListAccountsResponse{}
+	mi := &file_plugin_proto_msgTypes[28]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListAccountsResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListAccountsResponse) ProtoMessage() {}
+
+func (x *ListAccountsResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_plugin_proto_msgTypes[28]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListAccountsResponse.ProtoReflect.Descriptor instead.
+func (*ListAccountsResponse) Descriptor() ([]byte, []int) {
+	return file_plugin_proto_rawDescGZIP(), []int{28}
+}
+
+func (x *ListAccountsResponse) GetAccountIds() []int64 {
+	if x != nil {
+		return x.AccountIds
+	}
+	return nil
+}
+
+func (x *ListAccountsResponse) GetAccounts() []*AccountInfo {
+	if x != nil {
+		return x.Accounts
+	}
+	return nil
+}
+
+// AccountInfo is the host's readable, non-secret view of one account. It never
+// contains credentials (token / refresh_token / cookies); use
+// ResolveOutboundIdentity for those.
+//
+// The typed fields are a small, STABLE decision core. Everything else about the
+// account — including any field added to the account model later — is carried in
+// metadata_json, so new fields reach plugins WITHOUT a contract change, a host
+// mapper edit, or a plugin rebuild. Only a newly added *secret* field would ever
+// require a host change (a one-line denylist entry), which is the safe default.
+type AccountInfo struct {
+	state       protoimpl.MessageState `protogen:"open.v1"`
+	Id          int64                  `protobuf:"varint,1,opt,name=id,proto3" json:"id,omitempty"`
+	Platform    string                 `protobuf:"bytes,2,opt,name=platform,proto3" json:"platform,omitempty"`
+	AccountType string                 `protobuf:"bytes,3,opt,name=account_type,json=accountType,proto3" json:"account_type,omitempty"`
+	Name        string                 `protobuf:"bytes,4,opt,name=name,proto3" json:"name,omitempty"`
+	// status is the coarse lifecycle state: active / disabled / error / expired.
+	Status string `protobuf:"bytes,5,opt,name=status,proto3" json:"status,omitempty"`
+	// schedulable is the host-authoritative decision (IsSchedulable) — false when
+	// the account is active but paused for ANY reason (rate limit,
+	// temp-unschedulable, overload, expiry auto-pause, quota). This is the primary
+	// signal a plugin should use to skip an account so it stops probing paused ones.
+	Schedulable bool `protobuf:"varint,6,opt,name=schedulable,proto3" json:"schedulable,omitempty"`
+	IsShadow    bool `protobuf:"varint,7,opt,name=is_shadow,json=isShadow,proto3" json:"is_shadow,omitempty"`
+	// metadata_json is a host-produced JSON object holding the account's readable
+	// field set (status timestamps, rate-limit / overload / temp-unschedulable
+	// windows and reason, last-used, expiry, session window, group ids, priority,
+	// concurrency, quota dimension, extra config, proxy, and any future field).
+	// Keys are the account model's field names. Times are RFC3339 strings (JSON
+	// null when unset). Only two things are withheld: the raw Credentials blob
+	// (the refresh_token — a long-lived secret the outbound-identity RPC does not
+	// hand out; the short-lived access token and proxy URL come from that RPC), and
+	// the Groups/AccountGroups relation graphs (cyclic — group_ids conveys
+	// membership). Plugins read whatever keys they need; the host does not have to
+	// change when the account model gains a field.
+	MetadataJson  []byte `protobuf:"bytes,20,opt,name=metadata_json,json=metadataJson,proto3" json:"metadata_json,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *AccountInfo) Reset() {
+	*x = AccountInfo{}
+	mi := &file_plugin_proto_msgTypes[29]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *AccountInfo) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*AccountInfo) ProtoMessage() {}
+
+func (x *AccountInfo) ProtoReflect() protoreflect.Message {
+	mi := &file_plugin_proto_msgTypes[29]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use AccountInfo.ProtoReflect.Descriptor instead.
+func (*AccountInfo) Descriptor() ([]byte, []int) {
+	return file_plugin_proto_rawDescGZIP(), []int{29}
+}
+
+func (x *AccountInfo) GetId() int64 {
+	if x != nil {
+		return x.Id
+	}
+	return 0
+}
+
+func (x *AccountInfo) GetPlatform() string {
+	if x != nil {
+		return x.Platform
+	}
+	return ""
+}
+
+func (x *AccountInfo) GetAccountType() string {
+	if x != nil {
+		return x.AccountType
+	}
+	return ""
+}
+
+func (x *AccountInfo) GetName() string {
+	if x != nil {
+		return x.Name
+	}
+	return ""
+}
+
+func (x *AccountInfo) GetStatus() string {
+	if x != nil {
+		return x.Status
+	}
+	return ""
+}
+
+func (x *AccountInfo) GetSchedulable() bool {
+	if x != nil {
+		return x.Schedulable
+	}
+	return false
+}
+
+func (x *AccountInfo) GetIsShadow() bool {
+	if x != nil {
+		return x.IsShadow
+	}
+	return false
+}
+
+func (x *AccountInfo) GetMetadataJson() []byte {
+	if x != nil {
+		return x.MetadataJson
+	}
+	return nil
+}
+
+type ResolveOutboundIdentityRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	AccountId     int64                  `protobuf:"varint,1,opt,name=account_id,json=accountId,proto3" json:"account_id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ResolveOutboundIdentityRequest) Reset() {
+	*x = ResolveOutboundIdentityRequest{}
+	mi := &file_plugin_proto_msgTypes[30]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ResolveOutboundIdentityRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ResolveOutboundIdentityRequest) ProtoMessage() {}
+
+func (x *ResolveOutboundIdentityRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_plugin_proto_msgTypes[30]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ResolveOutboundIdentityRequest.ProtoReflect.Descriptor instead.
+func (*ResolveOutboundIdentityRequest) Descriptor() ([]byte, []int) {
+	return file_plugin_proto_rawDescGZIP(), []int{30}
+}
+
+func (x *ResolveOutboundIdentityRequest) GetAccountId() int64 {
+	if x != nil {
+		return x.AccountId
+	}
+	return 0
+}
+
+type ResolveOutboundIdentityResponse struct {
+	state         protoimpl.MessageState   `protogen:"open.v1"`
+	Found         bool                     `protobuf:"varint,1,opt,name=found,proto3" json:"found,omitempty"`
+	AccountId     int64                    `protobuf:"varint,2,opt,name=account_id,json=accountId,proto3" json:"account_id,omitempty"`
+	Platform      string                   `protobuf:"bytes,3,opt,name=platform,proto3" json:"platform,omitempty"`
+	AccountType   string                   `protobuf:"bytes,4,opt,name=account_type,json=accountType,proto3" json:"account_type,omitempty"`
+	ProxyUrl      string                   `protobuf:"bytes,5,opt,name=proxy_url,json=proxyUrl,proto3" json:"proxy_url,omitempty"`
+	Token         string                   `protobuf:"bytes,6,opt,name=token,proto3" json:"token,omitempty"`
+	Headers       map[string]*HeaderValues `protobuf:"bytes,7,rep,name=headers,proto3" json:"headers,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ResolveOutboundIdentityResponse) Reset() {
+	*x = ResolveOutboundIdentityResponse{}
+	mi := &file_plugin_proto_msgTypes[31]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ResolveOutboundIdentityResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ResolveOutboundIdentityResponse) ProtoMessage() {}
+
+func (x *ResolveOutboundIdentityResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_plugin_proto_msgTypes[31]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ResolveOutboundIdentityResponse.ProtoReflect.Descriptor instead.
+func (*ResolveOutboundIdentityResponse) Descriptor() ([]byte, []int) {
+	return file_plugin_proto_rawDescGZIP(), []int{31}
+}
+
+func (x *ResolveOutboundIdentityResponse) GetFound() bool {
+	if x != nil {
+		return x.Found
+	}
+	return false
+}
+
+func (x *ResolveOutboundIdentityResponse) GetAccountId() int64 {
+	if x != nil {
+		return x.AccountId
+	}
+	return 0
+}
+
+func (x *ResolveOutboundIdentityResponse) GetPlatform() string {
+	if x != nil {
+		return x.Platform
+	}
+	return ""
+}
+
+func (x *ResolveOutboundIdentityResponse) GetAccountType() string {
+	if x != nil {
+		return x.AccountType
+	}
+	return ""
+}
+
+func (x *ResolveOutboundIdentityResponse) GetProxyUrl() string {
+	if x != nil {
+		return x.ProxyUrl
+	}
+	return ""
+}
+
+func (x *ResolveOutboundIdentityResponse) GetToken() string {
+	if x != nil {
+		return x.Token
+	}
+	return ""
+}
+
+func (x *ResolveOutboundIdentityResponse) GetHeaders() map[string]*HeaderValues {
+	if x != nil {
+		return x.Headers
+	}
+	return nil
+}
+
 var File_plugin_proto protoreflect.FileDescriptor
 
 const file_plugin_proto_rawDesc = "" +
@@ -1129,10 +2038,12 @@ const file_plugin_proto_rawDesc = "" +
 	"\x10protocol_version\x18\x03 \x01(\rR\x0fprotocolVersion\x122\n" +
 	"\x15transport_api_version\x18\x04 \x01(\rR\x13transportApiVersion\x12\"\n" +
 	"\fcapabilities\x18\x05 \x03(\tR\fcapabilities\"\x0f\n" +
-	"\rHealthRequest\"D\n" +
+	"\rHealthRequest\"e\n" +
 	"\x0eHealthResponse\x12\x18\n" +
 	"\ahealthy\x18\x01 \x01(\bR\ahealthy\x12\x18\n" +
-	"\amessage\x18\x02 \x01(\tR\amessage\"8\n" +
+	"\amessage\x18\x02 \x01(\tR\amessage\x12\x1f\n" +
+	"\vstatus_json\x18\x03 \x01(\tR\n" +
+	"statusJson\"8\n" +
 	"\x15ValidateConfigRequest\x12\x1f\n" +
 	"\vconfig_json\x18\x01 \x01(\fR\n" +
 	"configJson\"~\n" +
@@ -1148,12 +2059,14 @@ const file_plugin_proto_rawDesc = "" +
 	"\amessage\x18\x02 \x01(\tR\amessage\"4\n" +
 	"\x11TestConfigRequest\x12\x1f\n" +
 	"\vconfig_json\x18\x01 \x01(\fR\n" +
-	"configJson\"g\n" +
+	"configJson\"\x88\x01\n" +
 	"\x12TestConfigResponse\x12\x18\n" +
 	"\asuccess\x18\x01 \x01(\bR\asuccess\x12\x18\n" +
 	"\amessage\x18\x02 \x01(\tR\amessage\x12\x1d\n" +
 	"\n" +
-	"latency_ms\x18\x03 \x01(\x03R\tlatencyMs\"&\n" +
+	"latency_ms\x18\x03 \x01(\x03R\tlatencyMs\x12\x1f\n" +
+	"\vstatus_json\x18\x04 \x01(\tR\n" +
+	"statusJson\"&\n" +
 	"\fHeaderValues\x12\x16\n" +
 	"\x06values\x18\x01 \x03(\tR\x06values\"\x8c\x04\n" +
 	"\x13ForwardRequestStart\x12\x1d\n" +
@@ -1207,7 +2120,68 @@ const file_plugin_proto_rawDesc = "" +
 	"body_chunk\x18\x02 \x01(\fH\x00R\tbodyChunk\x129\n" +
 	"\x03end\x18\x03 \x01(\v2%.sub2api.plugin.v1.ForwardResponseEndH\x00R\x03end\x12?\n" +
 	"\x05error\x18\x04 \x01(\v2'.sub2api.plugin.v1.ForwardResponseErrorH\x00R\x05errorB\a\n" +
-	"\x05frame2\xa8\x04\n" +
+	"\x05frame\"z\n" +
+	"\x17InitHostServicesRequest\x12&\n" +
+	"\x0fhost_service_id\x18\x01 \x01(\rR\rhostServiceId\x127\n" +
+	"\x18host_service_api_version\x18\x02 \x01(\rR\x15hostServiceApiVersion\"J\n" +
+	"\x18InitHostServicesResponse\x12\x14\n" +
+	"\x05ready\x18\x01 \x01(\bR\x05ready\x12\x18\n" +
+	"\amessage\x18\x02 \x01(\tR\amessage\">\n" +
+	"\fKVGetRequest\x12\x1c\n" +
+	"\tnamespace\x18\x01 \x01(\tR\tnamespace\x12\x10\n" +
+	"\x03key\x18\x02 \x01(\tR\x03key\";\n" +
+	"\rKVGetResponse\x12\x14\n" +
+	"\x05found\x18\x01 \x01(\bR\x05found\x12\x14\n" +
+	"\x05value\x18\x02 \x01(\fR\x05value\"u\n" +
+	"\fKVSetRequest\x12\x1c\n" +
+	"\tnamespace\x18\x01 \x01(\tR\tnamespace\x12\x10\n" +
+	"\x03key\x18\x02 \x01(\tR\x03key\x12\x14\n" +
+	"\x05value\x18\x03 \x01(\fR\x05value\x12\x1f\n" +
+	"\vttl_seconds\x18\x04 \x01(\x03R\n" +
+	"ttlSeconds\"\x0f\n" +
+	"\rKVSetResponse\"A\n" +
+	"\x0fKVDeleteRequest\x12\x1c\n" +
+	"\tnamespace\x18\x01 \x01(\tR\tnamespace\x12\x10\n" +
+	"\x03key\x18\x02 \x01(\tR\x03key\"\x12\n" +
+	"\x10KVDeleteResponse\"b\n" +
+	"\rKVListRequest\x12\x1c\n" +
+	"\tnamespace\x18\x01 \x01(\tR\tnamespace\x12\x1d\n" +
+	"\n" +
+	"key_prefix\x18\x02 \x01(\tR\tkeyPrefix\x12\x14\n" +
+	"\x05limit\x18\x03 \x01(\x05R\x05limit\"$\n" +
+	"\x0eKVListResponse\x12\x12\n" +
+	"\x04keys\x18\x01 \x03(\tR\x04keys\"T\n" +
+	"\x13ListAccountsRequest\x12\x1a\n" +
+	"\bplatform\x18\x01 \x01(\tR\bplatform\x12!\n" +
+	"\faccount_type\x18\x02 \x01(\tR\vaccountType\"s\n" +
+	"\x14ListAccountsResponse\x12\x1f\n" +
+	"\vaccount_ids\x18\x01 \x03(\x03R\n" +
+	"accountIds\x12:\n" +
+	"\baccounts\x18\x02 \x03(\v2\x1e.sub2api.plugin.v1.AccountInfoR\baccounts\"\xec\x01\n" +
+	"\vAccountInfo\x12\x0e\n" +
+	"\x02id\x18\x01 \x01(\x03R\x02id\x12\x1a\n" +
+	"\bplatform\x18\x02 \x01(\tR\bplatform\x12!\n" +
+	"\faccount_type\x18\x03 \x01(\tR\vaccountType\x12\x12\n" +
+	"\x04name\x18\x04 \x01(\tR\x04name\x12\x16\n" +
+	"\x06status\x18\x05 \x01(\tR\x06status\x12 \n" +
+	"\vschedulable\x18\x06 \x01(\bR\vschedulable\x12\x1b\n" +
+	"\tis_shadow\x18\a \x01(\bR\bisShadow\x12#\n" +
+	"\rmetadata_json\x18\x14 \x01(\fR\fmetadataJson\"?\n" +
+	"\x1eResolveOutboundIdentityRequest\x12\x1d\n" +
+	"\n" +
+	"account_id\x18\x01 \x01(\x03R\taccountId\"\x80\x03\n" +
+	"\x1fResolveOutboundIdentityResponse\x12\x14\n" +
+	"\x05found\x18\x01 \x01(\bR\x05found\x12\x1d\n" +
+	"\n" +
+	"account_id\x18\x02 \x01(\x03R\taccountId\x12\x1a\n" +
+	"\bplatform\x18\x03 \x01(\tR\bplatform\x12!\n" +
+	"\faccount_type\x18\x04 \x01(\tR\vaccountType\x12\x1b\n" +
+	"\tproxy_url\x18\x05 \x01(\tR\bproxyUrl\x12\x14\n" +
+	"\x05token\x18\x06 \x01(\tR\x05token\x12Y\n" +
+	"\aheaders\x18\a \x03(\v2?.sub2api.plugin.v1.ResolveOutboundIdentityResponse.HeadersEntryR\aheaders\x1a[\n" +
+	"\fHeadersEntry\x12\x10\n" +
+	"\x03key\x18\x01 \x01(\tR\x03key\x125\n" +
+	"\x05value\x18\x02 \x01(\v2\x1f.sub2api.plugin.v1.HeaderValuesR\x05value:\x028\x012\x95\x05\n" +
 	"\x0fTransportPlugin\x12P\n" +
 	"\aGetInfo\x12!.sub2api.plugin.v1.GetInfoRequest\x1a\".sub2api.plugin.v1.GetInfoResponse\x12M\n" +
 	"\x06Health\x12 .sub2api.plugin.v1.HealthRequest\x1a!.sub2api.plugin.v1.HealthResponse\x12e\n" +
@@ -1215,7 +2189,15 @@ const file_plugin_proto_rawDesc = "" +
 	"\vApplyConfig\x12%.sub2api.plugin.v1.ApplyConfigRequest\x1a&.sub2api.plugin.v1.ApplyConfigResponse\x12Y\n" +
 	"\n" +
 	"TestConfig\x12$.sub2api.plugin.v1.TestConfigRequest\x1a%.sub2api.plugin.v1.TestConfigResponse\x12T\n" +
-	"\aForward\x12!.sub2api.plugin.v1.ForwardRequest\x1a\".sub2api.plugin.v1.ForwardResponse(\x010\x01B7Z5github.com/Wei-Shaw/sub2api/pkg/pluginapi/v1;pluginv1b\x06proto3"
+	"\aForward\x12!.sub2api.plugin.v1.ForwardRequest\x1a\".sub2api.plugin.v1.ForwardResponse(\x010\x01\x12k\n" +
+	"\x10InitHostServices\x12*.sub2api.plugin.v1.InitHostServicesRequest\x1a+.sub2api.plugin.v1.InitHostServicesResponse2\xad\x04\n" +
+	"\vHostService\x12J\n" +
+	"\x05KVGet\x12\x1f.sub2api.plugin.v1.KVGetRequest\x1a .sub2api.plugin.v1.KVGetResponse\x12J\n" +
+	"\x05KVSet\x12\x1f.sub2api.plugin.v1.KVSetRequest\x1a .sub2api.plugin.v1.KVSetResponse\x12S\n" +
+	"\bKVDelete\x12\".sub2api.plugin.v1.KVDeleteRequest\x1a#.sub2api.plugin.v1.KVDeleteResponse\x12M\n" +
+	"\x06KVList\x12 .sub2api.plugin.v1.KVListRequest\x1a!.sub2api.plugin.v1.KVListResponse\x12_\n" +
+	"\fListAccounts\x12&.sub2api.plugin.v1.ListAccountsRequest\x1a'.sub2api.plugin.v1.ListAccountsResponse\x12\x80\x01\n" +
+	"\x17ResolveOutboundIdentity\x121.sub2api.plugin.v1.ResolveOutboundIdentityRequest\x1a2.sub2api.plugin.v1.ResolveOutboundIdentityResponseB7Z5github.com/Wei-Shaw/sub2api/pkg/pluginapi/v1;pluginv1b\x06proto3"
 
 var (
 	file_plugin_proto_rawDescOnce sync.Once
@@ -1229,54 +2211,87 @@ func file_plugin_proto_rawDescGZIP() []byte {
 	return file_plugin_proto_rawDescData
 }
 
-var file_plugin_proto_msgTypes = make([]protoimpl.MessageInfo, 19)
+var file_plugin_proto_msgTypes = make([]protoimpl.MessageInfo, 35)
 var file_plugin_proto_goTypes = []any{
-	(*GetInfoRequest)(nil),         // 0: sub2api.plugin.v1.GetInfoRequest
-	(*GetInfoResponse)(nil),        // 1: sub2api.plugin.v1.GetInfoResponse
-	(*HealthRequest)(nil),          // 2: sub2api.plugin.v1.HealthRequest
-	(*HealthResponse)(nil),         // 3: sub2api.plugin.v1.HealthResponse
-	(*ValidateConfigRequest)(nil),  // 4: sub2api.plugin.v1.ValidateConfigRequest
-	(*ValidateConfigResponse)(nil), // 5: sub2api.plugin.v1.ValidateConfigResponse
-	(*ApplyConfigRequest)(nil),     // 6: sub2api.plugin.v1.ApplyConfigRequest
-	(*ApplyConfigResponse)(nil),    // 7: sub2api.plugin.v1.ApplyConfigResponse
-	(*TestConfigRequest)(nil),      // 8: sub2api.plugin.v1.TestConfigRequest
-	(*TestConfigResponse)(nil),     // 9: sub2api.plugin.v1.TestConfigResponse
-	(*HeaderValues)(nil),           // 10: sub2api.plugin.v1.HeaderValues
-	(*ForwardRequestStart)(nil),    // 11: sub2api.plugin.v1.ForwardRequestStart
-	(*ForwardRequest)(nil),         // 12: sub2api.plugin.v1.ForwardRequest
-	(*ForwardResponseStart)(nil),   // 13: sub2api.plugin.v1.ForwardResponseStart
-	(*ForwardResponseEnd)(nil),     // 14: sub2api.plugin.v1.ForwardResponseEnd
-	(*ForwardResponseError)(nil),   // 15: sub2api.plugin.v1.ForwardResponseError
-	(*ForwardResponse)(nil),        // 16: sub2api.plugin.v1.ForwardResponse
-	nil,                            // 17: sub2api.plugin.v1.ForwardRequestStart.HeadersEntry
-	nil,                            // 18: sub2api.plugin.v1.ForwardResponseStart.HeadersEntry
+	(*GetInfoRequest)(nil),                  // 0: sub2api.plugin.v1.GetInfoRequest
+	(*GetInfoResponse)(nil),                 // 1: sub2api.plugin.v1.GetInfoResponse
+	(*HealthRequest)(nil),                   // 2: sub2api.plugin.v1.HealthRequest
+	(*HealthResponse)(nil),                  // 3: sub2api.plugin.v1.HealthResponse
+	(*ValidateConfigRequest)(nil),           // 4: sub2api.plugin.v1.ValidateConfigRequest
+	(*ValidateConfigResponse)(nil),          // 5: sub2api.plugin.v1.ValidateConfigResponse
+	(*ApplyConfigRequest)(nil),              // 6: sub2api.plugin.v1.ApplyConfigRequest
+	(*ApplyConfigResponse)(nil),             // 7: sub2api.plugin.v1.ApplyConfigResponse
+	(*TestConfigRequest)(nil),               // 8: sub2api.plugin.v1.TestConfigRequest
+	(*TestConfigResponse)(nil),              // 9: sub2api.plugin.v1.TestConfigResponse
+	(*HeaderValues)(nil),                    // 10: sub2api.plugin.v1.HeaderValues
+	(*ForwardRequestStart)(nil),             // 11: sub2api.plugin.v1.ForwardRequestStart
+	(*ForwardRequest)(nil),                  // 12: sub2api.plugin.v1.ForwardRequest
+	(*ForwardResponseStart)(nil),            // 13: sub2api.plugin.v1.ForwardResponseStart
+	(*ForwardResponseEnd)(nil),              // 14: sub2api.plugin.v1.ForwardResponseEnd
+	(*ForwardResponseError)(nil),            // 15: sub2api.plugin.v1.ForwardResponseError
+	(*ForwardResponse)(nil),                 // 16: sub2api.plugin.v1.ForwardResponse
+	(*InitHostServicesRequest)(nil),         // 17: sub2api.plugin.v1.InitHostServicesRequest
+	(*InitHostServicesResponse)(nil),        // 18: sub2api.plugin.v1.InitHostServicesResponse
+	(*KVGetRequest)(nil),                    // 19: sub2api.plugin.v1.KVGetRequest
+	(*KVGetResponse)(nil),                   // 20: sub2api.plugin.v1.KVGetResponse
+	(*KVSetRequest)(nil),                    // 21: sub2api.plugin.v1.KVSetRequest
+	(*KVSetResponse)(nil),                   // 22: sub2api.plugin.v1.KVSetResponse
+	(*KVDeleteRequest)(nil),                 // 23: sub2api.plugin.v1.KVDeleteRequest
+	(*KVDeleteResponse)(nil),                // 24: sub2api.plugin.v1.KVDeleteResponse
+	(*KVListRequest)(nil),                   // 25: sub2api.plugin.v1.KVListRequest
+	(*KVListResponse)(nil),                  // 26: sub2api.plugin.v1.KVListResponse
+	(*ListAccountsRequest)(nil),             // 27: sub2api.plugin.v1.ListAccountsRequest
+	(*ListAccountsResponse)(nil),            // 28: sub2api.plugin.v1.ListAccountsResponse
+	(*AccountInfo)(nil),                     // 29: sub2api.plugin.v1.AccountInfo
+	(*ResolveOutboundIdentityRequest)(nil),  // 30: sub2api.plugin.v1.ResolveOutboundIdentityRequest
+	(*ResolveOutboundIdentityResponse)(nil), // 31: sub2api.plugin.v1.ResolveOutboundIdentityResponse
+	nil,                                     // 32: sub2api.plugin.v1.ForwardRequestStart.HeadersEntry
+	nil,                                     // 33: sub2api.plugin.v1.ForwardResponseStart.HeadersEntry
+	nil,                                     // 34: sub2api.plugin.v1.ResolveOutboundIdentityResponse.HeadersEntry
 }
 var file_plugin_proto_depIdxs = []int32{
-	17, // 0: sub2api.plugin.v1.ForwardRequestStart.headers:type_name -> sub2api.plugin.v1.ForwardRequestStart.HeadersEntry
+	32, // 0: sub2api.plugin.v1.ForwardRequestStart.headers:type_name -> sub2api.plugin.v1.ForwardRequestStart.HeadersEntry
 	11, // 1: sub2api.plugin.v1.ForwardRequest.start:type_name -> sub2api.plugin.v1.ForwardRequestStart
-	18, // 2: sub2api.plugin.v1.ForwardResponseStart.headers:type_name -> sub2api.plugin.v1.ForwardResponseStart.HeadersEntry
+	33, // 2: sub2api.plugin.v1.ForwardResponseStart.headers:type_name -> sub2api.plugin.v1.ForwardResponseStart.HeadersEntry
 	13, // 3: sub2api.plugin.v1.ForwardResponse.start:type_name -> sub2api.plugin.v1.ForwardResponseStart
 	14, // 4: sub2api.plugin.v1.ForwardResponse.end:type_name -> sub2api.plugin.v1.ForwardResponseEnd
 	15, // 5: sub2api.plugin.v1.ForwardResponse.error:type_name -> sub2api.plugin.v1.ForwardResponseError
-	10, // 6: sub2api.plugin.v1.ForwardRequestStart.HeadersEntry.value:type_name -> sub2api.plugin.v1.HeaderValues
-	10, // 7: sub2api.plugin.v1.ForwardResponseStart.HeadersEntry.value:type_name -> sub2api.plugin.v1.HeaderValues
-	0,  // 8: sub2api.plugin.v1.TransportPlugin.GetInfo:input_type -> sub2api.plugin.v1.GetInfoRequest
-	2,  // 9: sub2api.plugin.v1.TransportPlugin.Health:input_type -> sub2api.plugin.v1.HealthRequest
-	4,  // 10: sub2api.plugin.v1.TransportPlugin.ValidateConfig:input_type -> sub2api.plugin.v1.ValidateConfigRequest
-	6,  // 11: sub2api.plugin.v1.TransportPlugin.ApplyConfig:input_type -> sub2api.plugin.v1.ApplyConfigRequest
-	8,  // 12: sub2api.plugin.v1.TransportPlugin.TestConfig:input_type -> sub2api.plugin.v1.TestConfigRequest
-	12, // 13: sub2api.plugin.v1.TransportPlugin.Forward:input_type -> sub2api.plugin.v1.ForwardRequest
-	1,  // 14: sub2api.plugin.v1.TransportPlugin.GetInfo:output_type -> sub2api.plugin.v1.GetInfoResponse
-	3,  // 15: sub2api.plugin.v1.TransportPlugin.Health:output_type -> sub2api.plugin.v1.HealthResponse
-	5,  // 16: sub2api.plugin.v1.TransportPlugin.ValidateConfig:output_type -> sub2api.plugin.v1.ValidateConfigResponse
-	7,  // 17: sub2api.plugin.v1.TransportPlugin.ApplyConfig:output_type -> sub2api.plugin.v1.ApplyConfigResponse
-	9,  // 18: sub2api.plugin.v1.TransportPlugin.TestConfig:output_type -> sub2api.plugin.v1.TestConfigResponse
-	16, // 19: sub2api.plugin.v1.TransportPlugin.Forward:output_type -> sub2api.plugin.v1.ForwardResponse
-	14, // [14:20] is the sub-list for method output_type
-	8,  // [8:14] is the sub-list for method input_type
-	8,  // [8:8] is the sub-list for extension type_name
-	8,  // [8:8] is the sub-list for extension extendee
-	0,  // [0:8] is the sub-list for field type_name
+	29, // 6: sub2api.plugin.v1.ListAccountsResponse.accounts:type_name -> sub2api.plugin.v1.AccountInfo
+	34, // 7: sub2api.plugin.v1.ResolveOutboundIdentityResponse.headers:type_name -> sub2api.plugin.v1.ResolveOutboundIdentityResponse.HeadersEntry
+	10, // 8: sub2api.plugin.v1.ForwardRequestStart.HeadersEntry.value:type_name -> sub2api.plugin.v1.HeaderValues
+	10, // 9: sub2api.plugin.v1.ForwardResponseStart.HeadersEntry.value:type_name -> sub2api.plugin.v1.HeaderValues
+	10, // 10: sub2api.plugin.v1.ResolveOutboundIdentityResponse.HeadersEntry.value:type_name -> sub2api.plugin.v1.HeaderValues
+	0,  // 11: sub2api.plugin.v1.TransportPlugin.GetInfo:input_type -> sub2api.plugin.v1.GetInfoRequest
+	2,  // 12: sub2api.plugin.v1.TransportPlugin.Health:input_type -> sub2api.plugin.v1.HealthRequest
+	4,  // 13: sub2api.plugin.v1.TransportPlugin.ValidateConfig:input_type -> sub2api.plugin.v1.ValidateConfigRequest
+	6,  // 14: sub2api.plugin.v1.TransportPlugin.ApplyConfig:input_type -> sub2api.plugin.v1.ApplyConfigRequest
+	8,  // 15: sub2api.plugin.v1.TransportPlugin.TestConfig:input_type -> sub2api.plugin.v1.TestConfigRequest
+	12, // 16: sub2api.plugin.v1.TransportPlugin.Forward:input_type -> sub2api.plugin.v1.ForwardRequest
+	17, // 17: sub2api.plugin.v1.TransportPlugin.InitHostServices:input_type -> sub2api.plugin.v1.InitHostServicesRequest
+	19, // 18: sub2api.plugin.v1.HostService.KVGet:input_type -> sub2api.plugin.v1.KVGetRequest
+	21, // 19: sub2api.plugin.v1.HostService.KVSet:input_type -> sub2api.plugin.v1.KVSetRequest
+	23, // 20: sub2api.plugin.v1.HostService.KVDelete:input_type -> sub2api.plugin.v1.KVDeleteRequest
+	25, // 21: sub2api.plugin.v1.HostService.KVList:input_type -> sub2api.plugin.v1.KVListRequest
+	27, // 22: sub2api.plugin.v1.HostService.ListAccounts:input_type -> sub2api.plugin.v1.ListAccountsRequest
+	30, // 23: sub2api.plugin.v1.HostService.ResolveOutboundIdentity:input_type -> sub2api.plugin.v1.ResolveOutboundIdentityRequest
+	1,  // 24: sub2api.plugin.v1.TransportPlugin.GetInfo:output_type -> sub2api.plugin.v1.GetInfoResponse
+	3,  // 25: sub2api.plugin.v1.TransportPlugin.Health:output_type -> sub2api.plugin.v1.HealthResponse
+	5,  // 26: sub2api.plugin.v1.TransportPlugin.ValidateConfig:output_type -> sub2api.plugin.v1.ValidateConfigResponse
+	7,  // 27: sub2api.plugin.v1.TransportPlugin.ApplyConfig:output_type -> sub2api.plugin.v1.ApplyConfigResponse
+	9,  // 28: sub2api.plugin.v1.TransportPlugin.TestConfig:output_type -> sub2api.plugin.v1.TestConfigResponse
+	16, // 29: sub2api.plugin.v1.TransportPlugin.Forward:output_type -> sub2api.plugin.v1.ForwardResponse
+	18, // 30: sub2api.plugin.v1.TransportPlugin.InitHostServices:output_type -> sub2api.plugin.v1.InitHostServicesResponse
+	20, // 31: sub2api.plugin.v1.HostService.KVGet:output_type -> sub2api.plugin.v1.KVGetResponse
+	22, // 32: sub2api.plugin.v1.HostService.KVSet:output_type -> sub2api.plugin.v1.KVSetResponse
+	24, // 33: sub2api.plugin.v1.HostService.KVDelete:output_type -> sub2api.plugin.v1.KVDeleteResponse
+	26, // 34: sub2api.plugin.v1.HostService.KVList:output_type -> sub2api.plugin.v1.KVListResponse
+	28, // 35: sub2api.plugin.v1.HostService.ListAccounts:output_type -> sub2api.plugin.v1.ListAccountsResponse
+	31, // 36: sub2api.plugin.v1.HostService.ResolveOutboundIdentity:output_type -> sub2api.plugin.v1.ResolveOutboundIdentityResponse
+	24, // [24:37] is the sub-list for method output_type
+	11, // [11:24] is the sub-list for method input_type
+	11, // [11:11] is the sub-list for extension type_name
+	11, // [11:11] is the sub-list for extension extendee
+	0,  // [0:11] is the sub-list for field type_name
 }
 
 func init() { file_plugin_proto_init() }
@@ -1301,9 +2316,9 @@ func file_plugin_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_plugin_proto_rawDesc), len(file_plugin_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   19,
+			NumMessages:   35,
 			NumExtensions: 0,
-			NumServices:   1,
+			NumServices:   2,
 		},
 		GoTypes:           file_plugin_proto_goTypes,
 		DependencyIndexes: file_plugin_proto_depIdxs,
