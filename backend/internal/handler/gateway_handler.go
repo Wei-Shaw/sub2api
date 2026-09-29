@@ -735,6 +735,10 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 				}
 			}
 
+			// 选号（含 WaitPlan 路径）时已注册会话槽：先登记，确保下方等待/准入失败的
+			// 提前返回也由 defer 释放；准入后会以最新账号指针覆盖同一 ID。
+			sessionSlotAccounts[account.ID] = account
+
 			// 3. 获取账号并发槽位
 			accountReleaseFunc := selection.ReleaseFunc
 			if !selection.Acquired {
