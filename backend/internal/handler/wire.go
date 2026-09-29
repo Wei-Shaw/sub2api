@@ -149,6 +149,9 @@ func ProvideBatchImageHandler(
 ) *BatchImageHandler {
 	h := NewBatchImageHandler(batchService, download, cleanup)
 	h.openAI = openAI
+	if openAI != nil && openAI.billingCacheService != nil {
+		h.billing = openAI.billingCacheService
+	}
 	return h
 }
 

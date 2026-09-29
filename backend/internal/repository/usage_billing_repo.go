@@ -344,7 +344,11 @@ func captureUsageBillingBatchImageBalance(ctx context.Context, tx *sql.Tx, cmd *
 		RETURNING balance, frozen_balance
 	`, cmd.HoldAmount, cmd.ActualAmount, cmd.UserID).Scan(&balance, &frozen)
 	if err == nil {
-		return &service.BatchImageBalanceHoldResult{NewBalance: &balance, FrozenBalance: &frozen}, nil
+		result := &service.BatchImageBalanceHoldResult{NewBalance: &balance, FrozenBalance: &frozen, Captured: true}
+		if err := applyBatchImageAPIKeyLimitUsage(ctx, tx, cmd, result); err != nil {
+			return nil, err
+		}
+		return result, nil
 	}
 	if !errors.Is(err, sql.ErrNoRows) {
 		return nil, err
@@ -355,6 +359,24 @@ func captureUsageBillingBatchImageBalance(ctx context.Context, tx *sql.Tx, cmd *
 		return nil, service.ErrUserNotFound
 	}
 	return nil, errors.New("batch image frozen balance is insufficient")
+}
+
+// applyBatchImageAPIKeyLimitUsage 在核销事务内累加 API Key 总额度与 5h/1d/7d 窗口，
+// 与 applyUsageBillingEffects 对其它计费端点使用同一组 SQL。
+func applyBatchImageAPIKeyLimitUsage(ctx context.Context, tx *sql.Tx, cmd *service.BatchImageBalanceHoldCommand, result *service.BatchImageBalanceHoldResult) error {
+	if cmd.APIKeyQuotaCost > 0 {
+		exhausted, err := incrementUsageBillingAPIKeyQuota(ctx, tx, cmd.APIKeyID, cmd.APIKeyQuotaCost)
+		if err != nil {
+			return err
+		}
+		result.APIKeyQuotaExhausted = exhausted
+	}
+	if cmd.APIKeyRateLimitCost > 0 {
+		if err := incrementUsageBillingAPIKeyRateLimit(ctx, tx, cmd.APIKeyID, cmd.APIKeyRateLimitCost); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func releaseUsageBillingBatchImageBalance(ctx context.Context, tx *sql.Tx, cmd *service.BatchImageBalanceHoldCommand) (*service.BatchImageBalanceHoldResult, error) {

@@ -63,6 +63,7 @@ var (
 	ErrBatchImageSettlementCostExceedsHold  = infraerrors.New(http.StatusConflict, "BATCH_IMAGE_SETTLEMENT_COST_EXCEEDS_HOLD", "batch image settlement cost exceeds held balance")
 	ErrBatchImageBillingHoldFailed          = infraerrors.New(http.StatusBadGateway, "BATCH_IMAGE_BILLING_HOLD_FAILED", "batch image balance hold failed")
 	ErrBatchImageInsufficientBalance        = infraerrors.New(http.StatusPaymentRequired, "BATCH_IMAGE_INSUFFICIENT_BALANCE", "insufficient balance for batch image hold")
+	ErrBatchImageAPIKeyQuotaInsufficient    = infraerrors.New(http.StatusTooManyRequests, "BATCH_IMAGE_API_KEY_QUOTA_INSUFFICIENT", "batch image estimated cost exceeds the remaining API key quota")
 
 	ErrBatchImageDisabled                   = infraerrors.New(http.StatusNotFound, "BATCH_IMAGE_DISABLED", "batch image API is disabled")
 	ErrBatchImageGroupDisabled              = infraerrors.New(http.StatusForbidden, "BATCH_IMAGE_GROUP_DISABLED", "batch image API is disabled for this group")

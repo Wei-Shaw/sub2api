@@ -54,6 +54,11 @@ func (r *BatchImageModelPricingResolver) BatchImageUnitPrice(ctx context.Context
 	return 0, ErrBatchImageSettlementPricingMissing
 }
 
+// BatchImageAPIKeyReader 读取结算所需的 API Key 限额配置。
+type BatchImageAPIKeyReader interface {
+	GetByID(ctx context.Context, id int64) (*APIKey, error)
+}
+
 type BatchImageSettlementService struct {
 	Repo         BatchImageRepository
 	BillingRepo  UsageBillingRepository
@@ -61,6 +66,12 @@ type BatchImageSettlementService struct {
 	Pricing      BatchImagePricingResolver
 	AuthCache    APIKeyAuthCacheInvalidator
 	Config       *config.Config
+
+	// 以下依赖用于把核销金额计入 API Key 额度/窗口与 user×platform 配额，
+	// 与 applyUsageBilling 对其它计费端点的处理保持一致。
+	APIKeyRepo            BatchImageAPIKeyReader
+	BillingCache          *BillingCacheService
+	UserPlatformQuotaRepo UserPlatformQuotaRepository
 }
 
 type BatchImageSettlementResult struct {
@@ -149,7 +160,17 @@ func (s *BatchImageSettlementService) Settle(ctx context.Context, batchID string
 		return nil, ErrBatchImageSettlementCostExceedsHold
 	}
 
-	if err := captureBatchImageBalanceHold(ctx, s.BillingRepo, job, actualCost, manifestHash); err != nil {
+	apiKey, err := s.settlementAPIKey(ctx, job)
+	if err != nil {
+		msg := truncateBatchImageMessage(err.Error(), batchImageMaxErrorMessageLength)
+		if failErr := s.recordSettlementFailure(ctx, job, "SETTLEMENT_BILLING_FAILED", msg); failErr != nil {
+			return nil, failErr
+		}
+		return nil, ErrBatchImageSettlementBillingFailed.WithCause(err)
+	}
+	limitCosts := resolveBatchImageAPIKeyLimitCosts(s.Config, apiKey, actualCost)
+	captureResult, err := captureBatchImageBalanceHold(ctx, s.BillingRepo, job, actualCost, manifestHash, limitCosts)
+	if err != nil {
 		msg := truncateBatchImageMessage(err.Error(), batchImageMaxErrorMessageLength)
 		if failErr := s.recordSettlementFailure(ctx, job, "SETTLEMENT_BILLING_FAILED", msg); failErr != nil {
 			return nil, failErr
@@ -157,6 +178,7 @@ func (s *BatchImageSettlementService) Settle(ctx context.Context, batchID string
 		return nil, err
 	}
 	s.invalidateAuthCache(ctx, job.UserID)
+	s.syncCapturedUsageLimits(ctx, job, apiKey, captureResult, actualCost, limitCosts)
 
 	now := time.Now()
 	outputExpiresAt := now.Add(s.outputRetentionAfterTerminal())
@@ -281,6 +303,49 @@ func (s *BatchImageSettlementService) recordUsageLog(ctx context.Context, job *B
 		CreatedAt:             createdAt,
 	}
 	writeUsageLogBestEffort(ctx, s.UsageLogRepo, usageLog, "service.batch_image_settlement")
+}
+
+// settlementAPIKey 读取 job 所属 API Key 的当前限额配置。
+// Key 已被删除时返回 (nil, nil)：扣款照常核销，只是不再有可累加的 Key 限额；
+// 否则一个被删除的 Key 会让结算一直失败、最终把冻结额整笔退回。
+func (s *BatchImageSettlementService) settlementAPIKey(ctx context.Context, job *BatchImageJob) (*APIKey, error) {
+	if s == nil || s.APIKeyRepo == nil || job == nil || job.APIKeyID == nil {
+		return nil, nil
+	}
+	apiKey, err := s.APIKeyRepo.GetByID(ctx, *job.APIKeyID)
+	if errors.Is(err, ErrAPIKeyNotFound) {
+		logger.L().Warn("batch_image.settlement_api_key_missing",
+			zap.String("batch_id", job.BatchID),
+			zap.Int64("api_key_id", *job.APIKeyID),
+		)
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("load api key for batch image settlement: %w", err)
+	}
+	return apiKey, nil
+}
+
+// syncCapturedUsageLimits 在核销提交后同步各类限额缓存，口径与 applyUsageBilling /
+// finalizePostUsageBilling 一致。只在本次真正扣了款时执行：重放的 capture
+// （dedup 命中）已由首次执行处理过，重复累加会把 user×platform 用量记两遍。
+func (s *BatchImageSettlementService) syncCapturedUsageLimits(ctx context.Context, job *BatchImageJob, apiKey *APIKey, result *BatchImageBalanceHoldResult, actualCost float64, limitCosts batchImageAPIKeyLimitCosts) {
+	if s == nil || job == nil || result == nil || !result.Applied || !result.Captured {
+		return
+	}
+	if result.APIKeyQuotaExhausted && apiKey != nil && s.AuthCache != nil && strings.TrimSpace(apiKey.Key) != "" {
+		s.AuthCache.InvalidateAuthCacheByKey(ctx, apiKey.Key)
+	}
+	if s.BillingCache == nil {
+		return
+	}
+	// 窗口用量已在核销事务里写库；直接让缓存失效，下次 preflight 从数据库重新加载。
+	if limitCosts.RateLimitCost > 0 && apiKey != nil {
+		_ = s.BillingCache.InvalidateAPIKeyRateLimit(ctx, apiKey.ID)
+	}
+	// 批量生图只对 Gemini 平台分组开放（ensureGroupAllowsBatchImage），
+	// 提交时的 CheckBillingEligibility 也按该平台检查 user×platform 配额。
+	incrementUserPlatformQuotaUsage(ctx, s.BillingCache, s.UserPlatformQuotaRepo, s.Config, job.UserID, PlatformGemini, actualCost)
 }
 
 func (s *BatchImageSettlementService) invalidateAuthCache(ctx context.Context, userID int64) {

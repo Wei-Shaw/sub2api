@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"io"
@@ -22,6 +23,12 @@ type BatchImageHandler struct {
 	download *service.BatchImageDownloadService
 	cleanup  *service.BatchImageCleanupService
 	openAI   *OpenAIGatewayHandler
+	billing  batchImageBillingEligibilityChecker
+}
+
+// batchImageBillingEligibilityChecker 是 BillingCacheService.CheckBillingEligibility 的窄接口。
+type batchImageBillingEligibilityChecker interface {
+	CheckBillingEligibility(ctx context.Context, user *service.User, apiKey *service.APIKey, group *service.Group, subscription *service.UserSubscription, platform string) error
 }
 
 func NewBatchImageHandler(service *service.BatchImagePublicService, download *service.BatchImageDownloadService, cleanup *service.BatchImageCleanupService) *BatchImageHandler {
@@ -42,6 +49,9 @@ func (h *BatchImageHandler) Submit(c *gin.Context) {
 	if !h.checkSecurityAuditBeforeSubmit(c, &req) {
 		return
 	}
+	if !h.checkBillingEligibilityBeforeSubmit(c) {
+		return
+	}
 	if sessionID := service.ExtractClientSessionID(c); sessionID != "" {
 		req.SessionID = &sessionID
 	}
@@ -51,6 +61,36 @@ func (h *BatchImageHandler) Submit(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, got)
+}
+
+// checkBillingEligibilityBeforeSubmit 与其它计费端点一样在受理前跑 CheckBillingEligibility：
+// 余额、user×platform 配额、API Key 5h/1d/7d 窗口与 RPM。批量生图始终从余额冻结扣款，
+// 不走订阅额度，所以按余额模式检查（不传订阅）。
+func (h *BatchImageHandler) checkBillingEligibilityBeforeSubmit(c *gin.Context) bool {
+	if h == nil || h.billing == nil {
+		return true
+	}
+	apiKey, ok := middleware.GetAPIKeyFromContext(c)
+	if !ok || apiKey == nil {
+		batchImageError(c, infraerrors.New(http.StatusUnauthorized, "API_KEY_REQUIRED", "API key is required"))
+		return false
+	}
+	ctx := c.Request.Context()
+	if err := h.billing.CheckBillingEligibility(ctx, apiKey.User, apiKey, apiKey.Group, nil, service.QuotaPlatform(ctx, apiKey)); err != nil {
+		status, code, message, retryAfter := billingErrorDetails(err)
+		if retryAfter > 0 {
+			c.Header("Retry-After", strconv.Itoa(retryAfter))
+		}
+		c.JSON(status, gin.H{
+			"error": gin.H{
+				"type":    "invalid_request_error",
+				"code":    code,
+				"message": message,
+			},
+		})
+		return false
+	}
+	return true
 }
 
 func (h *BatchImageHandler) checkSecurityAuditBeforeSubmit(c *gin.Context, req *service.BatchImageSubmitRequest) bool {
@@ -300,9 +340,11 @@ func batchImageOwnerFromContext(c *gin.Context) (service.BatchImageOwner, bool) 
 		return service.BatchImageOwner{}, false
 	}
 	return service.BatchImageOwner{
-		UserID:   apiKey.UserID,
-		APIKeyID: apiKey.ID,
-		GroupID:  apiKey.GroupID,
+		UserID:          apiKey.UserID,
+		APIKeyID:        apiKey.ID,
+		GroupID:         apiKey.GroupID,
+		APIKeyQuota:     apiKey.Quota,
+		APIKeyQuotaUsed: apiKey.QuotaUsed,
 	}, true
 }
 

@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math"
 	"sort"
 	"strconv"
 	"strings"
@@ -79,6 +80,9 @@ type BatchImageOwner struct {
 	UserID   int64
 	APIKeyID int64
 	GroupID  *int64
+	// APIKeyQuota / APIKeyQuotaUsed 是鉴权快照里的 Key 总额度与已用额度（Quota<=0 表示不限）。
+	APIKeyQuota     float64
+	APIKeyQuotaUsed float64
 }
 
 type BatchImagePublicService struct {
@@ -237,6 +241,9 @@ func (s *BatchImagePublicService) Submit(ctx context.Context, owner BatchImageOw
 	}
 	pricingSnapshot, err := s.resolvePricingSnapshot(ctx, owner, normalized, provider.Name(), account)
 	if err != nil {
+		return nil, err
+	}
+	if err := checkBatchImageAPIKeyQuota(owner, pricingSnapshot.EstimatedCost); err != nil {
 		return nil, err
 	}
 	parentBatchID := batchImageOptionalStringPtr(normalized.ParentBatchID)
@@ -399,6 +406,23 @@ func (s *BatchImagePublicService) Submit(ctx context.Context, owner BatchImageOw
 		return nil, err
 	}
 	return BatchImageJobToPublic(created), nil
+}
+
+// checkBatchImageAPIKeyQuota 在冻结余额前确认本批次最多可能扣的钱放得进 Key 的剩余额度。
+// 结算扣款 = 成功张数 × 折后单价，上限就是 EstimatedCost（全部成功）；冻结额另含
+// hold 余量，不会被实际扣走，所以按 EstimatedCost 而不是 HoldAmount 比较。
+func checkBatchImageAPIKeyQuota(owner BatchImageOwner, estimatedCost float64) error {
+	if owner.APIKeyQuota <= 0 || estimatedCost <= 0 {
+		return nil
+	}
+	remaining := owner.APIKeyQuota - owner.APIKeyQuotaUsed
+	if estimatedCost-remaining > batchImageCostEpsilon {
+		return ErrBatchImageAPIKeyQuotaInsufficient.WithMetadata(map[string]string{
+			"remaining":      strconv.FormatFloat(math.Max(0, remaining), 'f', -1, 64),
+			"estimated_cost": strconv.FormatFloat(estimatedCost, 'f', -1, 64),
+		})
+	}
+	return nil
 }
 
 func (s *BatchImagePublicService) releaseFailedSubmitHold(ctx context.Context, job *BatchImageJob, requestHash string) error {
