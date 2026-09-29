@@ -451,17 +451,18 @@ describe('plan_type helpers', () => {
   describe('planTypeDisplayLabel', () => {
     it('maps canonical + alias values to friendly labels', () => {
       expect(planTypeDisplayLabel('plus')).toBe('Plus')
-      expect(planTypeDisplayLabel('pro')).toBe('Pro 20x')
-      expect(planTypeDisplayLabel('chatgptpro')).toBe('Pro 20x')
-      expect(planTypeDisplayLabel('prolite')).toBe('Pro 5x')
+      expect(planTypeDisplayLabel('pro')).toBe('Pro 200')
+      expect(planTypeDisplayLabel('chatgptpro')).toBe('Pro 200')
+      expect(planTypeDisplayLabel('prolite')).toBe('Pro 100')
+      expect(planTypeDisplayLabel('promax')).toBe('Pro 500')
       expect(planTypeDisplayLabel('free')).toBe('Free')
       expect(planTypeDisplayLabel('team')).toBe('Business Standard')
       expect(planTypeDisplayLabel('self_serve_business_prolite')).toBe('Business Premium')
     })
     it('normalizes case, separators and surrounding blanks', () => {
-      expect(planTypeDisplayLabel('CHATGPTPRO')).toBe('Pro 20x')
-      expect(planTypeDisplayLabel('PROLITE')).toBe('Pro 5x')
-      expect(planTypeDisplayLabel('  Pro Lite  ')).toBe('Pro 5x')
+      expect(planTypeDisplayLabel('CHATGPTPRO')).toBe('Pro 200')
+      expect(planTypeDisplayLabel('PROLITE')).toBe('Pro 100')
+      expect(planTypeDisplayLabel('  Pro Lite  ')).toBe('Pro 100')
       expect(planTypeDisplayLabel('self-serve-business-pro-lite')).toBe('Business Premium')
     })
     it('returns unknown values verbatim', () => {
@@ -488,22 +489,24 @@ describe('plan_type helpers', () => {
       expect(buildPlanTypeOptions('', clear)).toEqual([
         { value: '', label: clear },
         { value: 'plus', label: 'Plus' },
-        { value: 'pro', label: 'Pro 20x' },
-        { value: 'prolite', label: 'Pro 5x' },
+        { value: 'prolite', label: 'Pro 100' },
+        { value: 'pro', label: 'Pro 200' },
+        { value: 'promax', label: 'Pro 500' },
         { value: 'self_serve_business_prolite', label: 'Business Premium' },
         { value: 'free', label: 'Free' }
       ])
     })
-    it('keeps canonical chatgptpro under a single friendly "Pro 20x" option (no duplicate)', () => {
+    it('keeps canonical chatgptpro under a single friendly "Pro 200" option (no duplicate)', () => {
       const opts = buildPlanTypeOptions('chatgptpro', clear)
-      const pros = opts.filter(o => o.label === 'Pro 20x')
+      const pros = opts.filter(o => o.label === 'Pro 200')
       expect(pros).toHaveLength(1)
       expect(pros[0].value).toBe('chatgptpro')
       expect(opts.map(o => o.value)).toEqual([
         '',
         'plus',
-        'chatgptpro',
         'prolite',
+        'chatgptpro',
+        'promax',
         'self_serve_business_prolite',
         'free'
       ])
@@ -515,8 +518,9 @@ describe('plan_type helpers', () => {
       expect(opts.map(o => o.value)).toEqual([
         '',
         'plus',
-        'pro',
         'prolite',
+        'pro',
+        'promax',
         'self_serve_business_prolite',
         'free',
         'team'
@@ -532,8 +536,9 @@ describe('plan_type helpers', () => {
       expect(opts.map(o => o.value)).toEqual([
         '',
         'plus',
-        'pro',
         'prolite',
+        'pro',
+        'promax',
         'self_serve_business_prolite',
         'free'
       ])
