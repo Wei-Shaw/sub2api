@@ -72,3 +72,15 @@ type RefreshTokenCache interface {
 	// 用于验证Token家族关系
 	IsTokenInFamily(ctx context.Context, familyID string, tokenHash string) (bool, error)
 }
+
+// UserTokenRevocationStore 可选能力：按用户记录 access token 撤销水位（Unix 秒）。
+// 由 RefreshTokenCache 实现方按需实现，通过类型断言使用；未实现时不做水位校验。
+//
+// Key 格式:
+//   - user_tokens_revoked_at:{user_id} -> Unix 秒
+type UserTokenRevocationStore interface {
+	// SetUserTokensRevokedAt 记录撤销时间，ttl 应覆盖 access token 最长有效期
+	SetUserTokensRevokedAt(ctx context.Context, userID int64, revokedAtUnix int64, ttl time.Duration) error
+	// GetUserTokensRevokedAt 返回撤销时间，无记录时返回 0
+	GetUserTokensRevokedAt(ctx context.Context, userID int64) (int64, error)
+}

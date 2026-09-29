@@ -14,6 +14,7 @@ const (
 	refreshTokenKeyPrefix   = "refresh_token:"
 	userRefreshTokensPrefix = "user_refresh_tokens:"
 	tokenFamilyPrefix       = "token_family:"
+	userTokensRevokedPrefix = "user_tokens_revoked_at:"
 )
 
 // refreshTokenKey generates the Redis key for a refresh token.
@@ -29,6 +30,11 @@ func userRefreshTokensKey(userID int64) string {
 // tokenFamilyKey generates the Redis key for token family set.
 func tokenFamilyKey(familyID string) string {
 	return tokenFamilyPrefix + familyID
+}
+
+// userTokensRevokedAtKey generates the Redis key for user's access token revocation watermark.
+func userTokensRevokedAtKey(userID int64) string {
+	return fmt.Sprintf("%s%d", userTokensRevokedPrefix, userID)
 }
 
 type refreshTokenCache struct {
@@ -155,4 +161,16 @@ func (c *refreshTokenCache) GetFamilyTokenHashes(ctx context.Context, familyID s
 func (c *refreshTokenCache) IsTokenInFamily(ctx context.Context, familyID string, tokenHash string) (bool, error) {
 	key := tokenFamilyKey(familyID)
 	return c.rdb.SIsMember(ctx, key, tokenHash).Result()
+}
+
+func (c *refreshTokenCache) SetUserTokensRevokedAt(ctx context.Context, userID int64, revokedAtUnix int64, ttl time.Duration) error {
+	return c.rdb.Set(ctx, userTokensRevokedAtKey(userID), revokedAtUnix, ttl).Err()
+}
+
+func (c *refreshTokenCache) GetUserTokensRevokedAt(ctx context.Context, userID int64) (int64, error) {
+	revokedAt, err := c.rdb.Get(ctx, userTokensRevokedAtKey(userID)).Int64()
+	if err == redis.Nil {
+		return 0, nil
+	}
+	return revokedAt, err
 }

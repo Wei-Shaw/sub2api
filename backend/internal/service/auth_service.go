@@ -1979,17 +1979,55 @@ func (s *AuthService) RevokeAllUserSessions(ctx context.Context, userID int64) e
 // 注意：users 表没有 token_version 列（resolvedTokenVersion 由 email+password_hash
 // 指纹推导），因此对 user.TokenVersion 自增只影响内存副本。之前紧跟其后的整行
 // Update 不写任何有效数据，却会用旧快照覆盖并发写入的列，故已移除。
-// 会话撤销由下面的 refresh session 清理承担；改密路径通过 password_hash 变化
-// 改变指纹，从而使旧 token 失效。
+// access token 通过 Redis 撤销水位失效（见 IsAccessTokenRevoked），refresh session
+// 由下面的清理承担；改密路径通过 password_hash 变化改变指纹，从而使旧 token 失效。
 func (s *AuthService) RevokeAllUserTokens(ctx context.Context, userID int64) error {
 	if _, err := s.userRepo.GetByID(ctx, userID); err != nil {
 		return fmt.Errorf("get user: %w", err)
 	}
 
+	var revokeErr error
+	if store, ok := s.refreshTokenCache.(UserTokenRevocationStore); ok {
+		if err := store.SetUserTokensRevokedAt(ctx, userID, time.Now().Unix(), s.maxAccessTokenLifetime()+time.Minute); err != nil {
+			revokeErr = fmt.Errorf("set access token revocation watermark: %w", err)
+		}
+	}
+
 	if err := s.RevokeAllUserSessions(ctx, userID); err != nil {
 		logger.LegacyPrintf("service.auth", "[Auth] Failed to revoke refresh sessions after token invalidation for user %d: %v", userID, err)
 	}
-	return nil
+	return revokeErr
+}
+
+// maxAccessTokenLifetime 返回 access token 可能的最长有效期（两种配置取大，兼容配置切换）。
+func (s *AuthService) maxAccessTokenLifetime() time.Duration {
+	byMinutes := time.Duration(s.cfg.JWT.AccessTokenExpireMinutes) * time.Minute
+	byHours := time.Duration(s.cfg.JWT.ExpireHour) * time.Hour
+	if byMinutes > byHours {
+		return byMinutes
+	}
+	return byHours
+}
+
+// IsAccessTokenRevoked 判断 access token 是否签发于用户最近一次"撤销全部会话"之时或之前。
+// JWT 的 iat 精度为秒，因此用 <= 比较。Redis 读取失败时 fail-open（仅记录日志）。
+func (s *AuthService) IsAccessTokenRevoked(ctx context.Context, claims *JWTClaims) bool {
+	if s == nil || claims == nil {
+		return false
+	}
+	store, ok := s.refreshTokenCache.(UserTokenRevocationStore)
+	if !ok {
+		return false
+	}
+	revokedAt, err := store.GetUserTokensRevokedAt(ctx, claims.UserID)
+	if err != nil {
+		logger.LegacyPrintf("service.auth", "[Auth] Failed to read access token revocation watermark for user %d: %v", claims.UserID, err)
+		return false
+	}
+	if revokedAt <= 0 {
+		return false
+	}
+	return claims.IssuedAt == nil || claims.IssuedAt.Unix() <= revokedAt
 }
 
 // hashToken 计算Token的SHA256哈希
