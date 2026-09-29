@@ -2,6 +2,7 @@ import { apiClient } from '../client'
 
 export interface MuseStatus {
   state: 'transport_unqualified' | 'verification_required' | 'ready' | 'session_expired'
+  cookie_auth_supported?: boolean
   qualified_transport: boolean
   verified: boolean
   owner_user_id: number
@@ -34,4 +35,16 @@ export interface MuseTurn {
 
 export async function retryMuseSettlement(id: string) {
  return (await apiClient.post(`/admin/muse/turns/${encodeURIComponent(id)}/settle`)).data
+}
+
+export interface MuseSessionCheck {
+ authenticated: boolean
+ status: string
+ vm_id?: string
+ vm_state?: string
+ expires_at?: string
+ checked_at: string
+}
+export async function authenticateMuse(id: number): Promise<MuseSessionCheck> {
+ return (await apiClient.post<MuseSessionCheck>(`/admin/muse/accounts/${id}/authenticate`)).data
 }
