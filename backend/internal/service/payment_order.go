@@ -72,6 +72,12 @@ func (s *PaymentService) CreateOrder(ctx context.Context, req CreateOrderRequest
 	if err != nil {
 		return nil, err
 	}
+	// 单笔上下限按网关币种配置，必须拿换算后的 gatewayAmount 比较，而不是用户填的数。
+	if plan == nil {
+		if err := validateOrderAmountRange(gatewayAmount, cfg); err != nil {
+			return nil, err
+		}
+	}
 	orderAmount := creditedUSD
 	limitAmount := gatewayAmount
 	if plan != nil {
@@ -217,11 +223,16 @@ func (s *PaymentService) validateOrderInput(ctx context.Context, req CreateOrder
 	if math.IsNaN(req.Amount) || math.IsInf(req.Amount, 0) || req.Amount <= 0 {
 		return nil, infraerrors.BadRequest("INVALID_AMOUNT", "amount must be a positive number")
 	}
-	if (cfg.MinAmount > 0 && req.Amount < cfg.MinAmount) || (cfg.MaxAmount > 0 && req.Amount > cfg.MaxAmount) {
-		return nil, infraerrors.BadRequest("INVALID_AMOUNT", "amount out of range").
+	return nil, nil
+}
+
+// validateOrderAmountRange 用网关币种金额校验单笔上下限（与实例限额、当日限额口径一致）。
+func validateOrderAmountRange(gatewayAmount float64, cfg *PaymentConfig) error {
+	if (cfg.MinAmount > 0 && gatewayAmount < cfg.MinAmount) || (cfg.MaxAmount > 0 && gatewayAmount > cfg.MaxAmount) {
+		return infraerrors.BadRequest("INVALID_AMOUNT", "amount out of range").
 			WithMetadata(map[string]string{"min": fmt.Sprintf("%.2f", cfg.MinAmount), "max": fmt.Sprintf("%.2f", cfg.MaxAmount)})
 	}
-	return nil, nil
+	return nil
 }
 
 func (s *PaymentService) validateSubOrder(ctx context.Context, req CreateOrderRequest) (*dbent.SubscriptionPlan, error) {
