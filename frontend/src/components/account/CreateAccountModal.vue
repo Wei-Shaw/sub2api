@@ -228,10 +228,17 @@
             <PlatformIcon platform="opencode_go" size="sm" />
             OpenCode
           </button>
+          <button type="button" class="flex flex-1 items-center justify-center gap-2 rounded-md px-3 py-2.5 text-sm font-medium"
+            :class="form.platform === 'muse' ? 'bg-white text-sky-700 shadow-sm dark:bg-dark-600 dark:text-sky-300' : 'text-gray-600 dark:text-gray-400'"
+            @click="form.platform = 'muse'">
+            <PlatformIcon platform="muse" size="sm" /> Meta Muse
+          </button>
         </div>
       </div>
 
       <!-- Account Type Selection (Anthropic) -->
+      <MuseSessionFields v-if="form.platform === 'muse'" v-model:owner-id="museOwnerId" v-model:session-json="museSessionJson" />
+
       <div v-if="form.platform === 'anthropic'">
         <label class="input-label">{{ t('admin.accounts.accountType') }}</label>
         <div class="mt-2 grid grid-cols-2 gap-3 sm:grid-cols-4" data-tour="account-form-type">
@@ -3886,6 +3893,8 @@
 </template>
 
 <script setup lang="ts">
+import MuseSessionFields from './MuseSessionFields.vue'
+import { buildMuseSession } from './museSession'
 import { ref, reactive, computed, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useAppStore } from '@/stores/app'
@@ -4732,7 +4741,11 @@ const form = reactive({
 })
 
 // Helper to check if current type needs OAuth flow
+const museOwnerId = ref(0)
+const museSessionJson = ref('')
+
 const isOAuthFlow = computed(() => {
+  if (form.platform === 'muse') return false
   // Antigravity upstream 类型不需要 OAuth 流程
   if (form.platform === 'antigravity' && antigravityAccountType.value === 'upstream') {
     return false
@@ -5619,6 +5632,20 @@ const handleVertexServiceAccountDrop = async (event: DragEvent) => {
 }
 
 const handleSubmit = async () => {
+  if (form.platform === 'muse') {
+    submitting.value = true
+    try {
+      const session = buildMuseSession(museOwnerId.value, museSessionJson.value)
+      await adminAPI.accounts.create({ name: form.name.trim(), notes: form.notes || undefined,
+        platform: 'muse', type: 'session', credentials: session.credentials, extra: session.extra,
+        concurrency: 1, priority: form.priority, proxy_id: form.proxy_id ?? undefined, group_ids: form.group_ids })
+      appStore.showSuccess(t('admin.accounts.muse.setupNote'))
+      museSessionJson.value = ''; emit('created'); handleClose()
+    } catch (error: unknown) { appStore.showError(error instanceof Error ? error.message : t('admin.accounts.failedToCreate')) }
+    finally { submitting.value = false }
+    return
+  }
+
   // For OAuth-based type, handle OAuth flow (goes to step 2)
   if (isOAuthFlow.value) {
     if (!isGrokSSOInputMethod.value && !form.name.trim()) {

@@ -152,6 +152,9 @@ func groupBillsOpenAIFastAtStandard(apiKey *APIKey, account *Account, serviceTie
 
 // RecordUsage records usage and deducts balance
 func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRecordUsageInput) error {
+	if input != nil && input.Result != nil && input.Result.MuseTurnID != "" {
+		return nil
+	} // Native turn settlement owns the ledger and projection.
 	if input == nil {
 		return errors.New("openai usage input is nil")
 	}
