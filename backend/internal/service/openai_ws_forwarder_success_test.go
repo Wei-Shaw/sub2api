@@ -430,6 +430,27 @@ func TestOpenAIGatewayService_BuildOpenAIWSHeadersPreservesCodexIdentity(t *test
 	require.Empty(t, headers.Get("X-Test"))
 }
 
+func TestOpenAIWSHeadersPreserveMultiAgentBetaOptIn(t *testing.T) {
+	for _, tc := range []struct {
+		transport OpenAIUpstreamTransport
+		beta      string
+	}{
+		{OpenAIUpstreamTransportResponsesWebsocket, openAIWSBetaV1Value},
+		{OpenAIUpstreamTransportResponsesWebsocketV2, openAIWSBetaV2Value},
+	} {
+		rec := httptest.NewRecorder()
+		c, _ := gin.CreateTestContext(rec)
+		c.Request = httptest.NewRequest(http.MethodGet, "/v1/responses", nil)
+		c.Request.Header.Add("OpenAI-Beta", "responses=experimental, responses_multi_agent=v1")
+		c.Request.Header.Add("OpenAI-Beta", "responses_multi_agent=v1")
+		svc := &OpenAIGatewayService{}
+		account := &Account{Platform: PlatformOpenAI, Type: AccountTypeAPIKey}
+		headers, _, err := svc.buildOpenAIWSHeaders(context.Background(), c, account, "token", OpenAIWSProtocolDecision{Transport: tc.transport}, false, "", "", "", "", "")
+		require.NoError(t, err)
+		require.Equal(t, tc.beta+", responses_multi_agent=v1", headers.Get("OpenAI-Beta"))
+	}
+}
+
 func TestOpenAIGatewayService_BuildOpenAIWSHeadersDeviceModePreservesNamespacedClientSessionIdentity(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	rec := httptest.NewRecorder()

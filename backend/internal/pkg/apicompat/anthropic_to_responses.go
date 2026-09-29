@@ -479,7 +479,7 @@ func boolPtr(v bool) *bool {
 // request until someone edited this line.
 func isReasoningModel(model string) bool {
 	major, ok := openAIModelGeneration(model)
-	return (ok && major >= 5) || openai.IsGPT6SolOrLunaModelSpelling(model)
+	return (ok && major >= 5) || openai.IsGPT6SolOrLunaModelSpelling(model) || openai.IsGPT61SolModelSpelling(model)
 }
 
 // openAIModelGeneration extracts N from a "gpt-N[.M][-suffix]" model id.

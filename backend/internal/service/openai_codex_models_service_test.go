@@ -370,6 +370,10 @@ func TestNewConfiguredCodexModelDescriptorUsesProviderMetadataAndSafeFallback(t 
 		ID:          "priority",
 		Name:        "Fast",
 		Description: "Priority processing for lower latency.",
+	}, {
+		ID:          OpenAIFastTierUltrafast,
+		Name:        "Ultrafast",
+		Description: "Ultra-low latency processing.",
 	}}, gpt6Astra.ServiceTiers)
 	require.True(t, isOpenAICodexImageInputModel("gpt-6-astra"))
 	require.True(t, isOpenAICodexReasoningGPTModel("openai/gpt-6-astra"))
@@ -3785,4 +3789,20 @@ func TestGPT6SolLunaCatalogKeepsAuthoritativeCapabilities(t *testing.T) {
 		require.Contains(t, models[0], "apply_patch_tool_type")
 		require.Nil(t, models[0]["apply_patch_tool_type"])
 	}
+}
+
+func TestGPT61SolAndAstraUltrafastFallbackCapabilities(t *testing.T) {
+	sol := newConfiguredCodexModelDescriptor("gpt-6.1-sol")
+	require.Equal(t, "medium", *sol.DefaultReasoningLevel)
+	require.Equal(t, []string{"low", "medium", "high", "xhigh", "max"}, func() []string {
+		levels := make([]string, 0, len(sol.SupportedReasoningLevels))
+		for _, level := range sol.SupportedReasoningLevels {
+			levels = append(levels, level.Effort)
+		}
+		return levels
+	}())
+	require.Equal(t, []configuredCodexServiceTier{{ID: OpenAIFastTierPriority, Name: "Fast", Description: "Priority processing for lower latency."}}, sol.ServiceTiers)
+	require.Equal(t, int64(configuredCodexGPT56MaxContext), sol.MaxContextWindow)
+	require.True(t, configuredCodexSupportsUltrafastServiceTier("gpt-6-astra"))
+	require.False(t, configuredCodexSupportsUltrafastServiceTier("gpt-6.1-sol"))
 }

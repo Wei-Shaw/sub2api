@@ -118,7 +118,7 @@ const normalizedPlanType = computed(() => normalizePlanType(props.planType))
 
 const planLabel = computed(() => {
   if (!normalizedPlanType.value) return ''
-  // ChatGPT 档位命名（Pro 5x / Pro 20x、Business Standard / Business Premium）只适用于
+  // ChatGPT 档位命名（Pro 100 / Pro 200 / Pro 500、Business Standard / Business Premium）只适用于
   // OpenAI：Antigravity 与 Grok 各自的 pro/team 沿用下面的通用标签。
   if (props.platform === 'openai') {
     const label = openAIPlanTypeLabel(props.planType)
@@ -263,6 +263,7 @@ const planBadgeClass = computed(() => {
     return 'bg-indigo-100 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-300'
   }
   if (
+    (props.platform === 'openai' && normalizedPlanType.value === 'promax') ||
     normalizedPlanType.value === 'pro' ||
     normalizedPlanType.value === 'chatgptpro' ||
     normalizedPlanType.value === 'prolite'

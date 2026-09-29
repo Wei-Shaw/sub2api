@@ -1983,6 +1983,7 @@ func TestNewModelPricingCatalogFallbackAndContext(t *testing.T) {
 			input, output, write, read float64
 		}{
 			{"gpt-6-sol", 2e-6, 10e-6, 2.5e-6, 0.2e-6},
+			{"gpt-6.1-sol", 2e-6, 10e-6, 2.5e-6, 0.1e-6},
 			{"gpt-6-luna", 0.1e-6, 0.5e-6, 0.125e-6, 0.01e-6},
 		} {
 			t.Run(source+"/"+tc.model, func(t *testing.T) {
@@ -2043,9 +2044,44 @@ func TestNewModelPricingCatalogFallbackAndContext(t *testing.T) {
 	}
 }
 
+func TestGPT6AstraUltrafastAPIRates(t *testing.T) {
+	data, err := os.ReadFile("../../resources/model-pricing/model_prices_and_context_window.json")
+	require.NoError(t, err)
+	catalog := &PricingService{}
+	catalog.pricingData, err = catalog.parsePricingData(data)
+	require.NoError(t, err)
+	for name, svc := range map[string]*BillingService{
+		"fallback": newTestBillingService(),
+		"catalog":  NewBillingService(&config.Config{}, catalog),
+	} {
+		t.Run(name, func(t *testing.T) {
+			for _, totalInput := range []int{272_000, 272_001} {
+				input := totalInput - 2000
+				cost, err := svc.CalculateCostWithServiceTier("gpt-6-astra", UsageTokens{InputTokens: input, CacheReadTokens: 1000, CacheCreationTokens: 1000, OutputTokens: 1000}, 1, "ultrafast")
+				require.NoError(t, err)
+				longInput, longOutput := 1.0, 1.0
+				if totalInput > 272_000 {
+					longInput, longOutput = 2, 1.5
+				}
+				require.InDelta(t, float64(input)*60e-6*longInput, cost.InputCost, 1e-8)
+				require.InDelta(t, 1000*6e-6*longInput, cost.CacheReadCost, 1e-8)
+				require.InDelta(t, 1000*75e-6*longInput, cost.CacheCreationCost, 1e-8)
+				require.InDelta(t, 1000*300e-6*longOutput, cost.OutputCost, 1e-8)
+			}
+		})
+	}
+}
+
+func TestGPT61SolAliasAndUnsupportedEfforts(t *testing.T) {
+	require.Equal(t, "gpt-6.1-sol", normalizeKnownOpenAICodexModel("openai/GPT-6.1-SOL-max"))
+	require.Empty(t, normalizeKnownOpenAICodexModel("gpt-6.1-sol-none"))
+	require.Empty(t, normalizeKnownOpenAICodexModel("gpt-6.1-sol-minimal"))
+	require.Empty(t, normalizeKnownOpenAICodexModel("gpt-6.1-sol-preview"))
+}
+
 func TestNewModelPricingChannelOverridesAndFamilyIsolation(t *testing.T) {
 	svc := newTestBillingService()
-	for _, model := range []string{"gpt-6-sol", "gpt-6-luna", "claude-opus-5-5"} {
+	for _, model := range []string{"gpt-6-sol", "gpt-6.1-sol", "gpt-6-luna", "claude-opus-5-5"} {
 		t.Run(model, func(t *testing.T) {
 			zero := 0.0
 			prices, err := svc.GetModelPricingWithChannel(model, &ChannelModelPricing{InputPrice: &zero, OutputPrice: &zero, CacheWritePrice: &zero, CacheReadPrice: &zero})

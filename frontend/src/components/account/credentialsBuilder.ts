@@ -503,7 +503,7 @@ export interface PlanTypeOption {
 /**
  * plan_type 值的友好显示标签（ChatGPT 档位命名）。
  * 与 PlatformTypeBadge 共用 openAIPlanTypeLabel，避免两处映射漂移；
- * canonical 值 chatgptpro 显示为 Pro 20x，team 显示为 Business Standard。未知值原样返回。
+ * canonical 值 chatgptpro 显示为 Pro 200，team 显示为 Business Standard。未知值原样返回。
  */
 export function planTypeDisplayLabel(value: string): string {
   return openAIPlanTypeLabel(value) || value
@@ -519,8 +519,8 @@ export function readPlanType(credentials: Record<string, unknown> | undefined | 
 }
 
 /**
- * 构建 plan_type 下拉选项：清空 + Plus/Pro 20x/Pro 5x/Business Premium/Free 预设。
- * 若当前值是某预设的别名（如 chatgptpro↔Pro 20x），用当前的 canonical 值占据该
+ * 构建 plan_type 下拉选项：清空 + Plus/Pro 100/Pro 200/Pro 500/Business Premium/Free 预设。
+ * 若当前值是某预设的别名（如 chatgptpro↔Pro 200），用当前的 canonical 值占据该
  * 标签位（保留 canonical，显示友好标签，避免重复项）；若是完全预设外的值
  * （如 team 或异常值），追加为一项，避免编辑时下拉丢失原值。
  */
@@ -529,8 +529,9 @@ export function buildPlanTypeOptions(current: string, clearLabel: string): PlanT
   const curLabel = cur ? planTypeDisplayLabel(cur) : ''
   const presets: PlanTypeOption[] = [
     { value: 'plus', label: 'Plus' },
-    { value: 'pro', label: 'Pro 20x' },
-    { value: 'prolite', label: 'Pro 5x' },
+    { value: 'prolite', label: 'Pro 100' },
+    { value: 'pro', label: 'Pro 200' },
+    { value: 'promax', label: 'Pro 500' },
     { value: 'self_serve_business_prolite', label: 'Business Premium' },
     { value: 'free', label: 'Free' }
   ]

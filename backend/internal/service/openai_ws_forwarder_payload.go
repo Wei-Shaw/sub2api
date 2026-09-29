@@ -158,6 +158,19 @@ func (s *OpenAIGatewayService) buildOpenAIWSHeaders(
 	if decision.Transport == OpenAIUpstreamTransportResponsesWebsocket {
 		betaValue = openAIWSBetaV1Value
 	}
+	if c != nil && c.Request != nil {
+		for _, value := range c.Request.Header.Values("OpenAI-Beta") {
+			for _, feature := range strings.Split(value, ",") {
+				if strings.TrimSpace(feature) == "responses_multi_agent=v1" {
+					betaValue += ", responses_multi_agent=v1"
+					break
+				}
+			}
+			if strings.Contains(betaValue, "responses_multi_agent=v1") {
+				break
+			}
+		}
+	}
 	headers.Set("OpenAI-Beta", betaValue)
 
 	customUA := ""
