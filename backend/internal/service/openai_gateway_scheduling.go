@@ -457,6 +457,11 @@ func openAICompatibleAccountEligibilityFailureReasonBeforeProfit(ctx context.Con
 	if account == nil {
 		return "account_nil"
 	}
+	if source, ok := CompositeRouteSourceFromContext(ctx); ok && source == CompositeRouteSourceAccount {
+		if publicModel, modelOK := RequestedPublicModelFromContext(ctx); modelOK && !CompositeAccountClaimsModel(account, publicModel) {
+			return "account_model_not_owned"
+		}
+	}
 	if !account.IsOpenAICompatible() || !openAISchedulingPlatformMatchesAccount(ctx, account, platform) {
 		return "platform_mismatch"
 	}
