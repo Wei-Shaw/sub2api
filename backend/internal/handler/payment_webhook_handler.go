@@ -71,8 +71,14 @@ func (h *PaymentWebhookHandler) handleNotify(c *gin.Context, providerKey string)
 
 	providers, err := h.paymentService.GetWebhookProviders(c.Request.Context(), providerKey, outTradeNo)
 	if err != nil {
-		slog.Warn("[Payment Webhook] provider not found", "provider", providerKey, "outTradeNo", outTradeNo, "error", err)
-		writeSuccessResponse(c, providerKey)
+		// 只有确定性的「找不到/无法区分实例」才 ACK；DB 等瞬时错误回 5xx 让服务商重试。
+		if errors.Is(err, payment.ErrProviderNotFound) || errors.Is(err, service.ErrWebhookProviderAmbiguous) {
+			slog.Warn("[Payment Webhook] provider not found", "provider", providerKey, "outTradeNo", outTradeNo, "error", err)
+			writeSuccessResponse(c, providerKey)
+			return
+		}
+		slog.Error("[Payment Webhook] provider lookup failed", "provider", providerKey, "outTradeNo", outTradeNo, "error", err)
+		c.String(http.StatusInternalServerError, "provider lookup failed")
 		return
 	}
 
@@ -134,8 +140,9 @@ func extractOutTradeNo(rawBody string) string {
 	if strings.HasPrefix(trimmed, "{") {
 		// order_invoice_number is SePay's name for it, order_id is NOWPayments'.
 		var payload struct {
-			OrderInvoiceNumber string `json:"order_invoice_number"`
-			OrderID            string `json:"order_id"`
+			OrderInvoiceNumber string          `json:"order_invoice_number"`
+			OrderID            string          `json:"order_id"`
+			Order              json.RawMessage `json:"order"`
 			Data               struct {
 				OrderInvoiceNumber string `json:"order_invoice_number"`
 				OrderID            string `json:"order_id"`
@@ -144,8 +151,14 @@ func extractOutTradeNo(rawBody string) string {
 		if err := json.Unmarshal([]byte(trimmed), &payload); err != nil {
 			return ""
 		}
+		// SePay 真实 IPN 把订单嵌在 order 下；order.order_id 是 SePay 自己的单号，不能用。
+		var nestedOrder struct {
+			OrderInvoiceNumber string `json:"order_invoice_number"`
+		}
+		_ = json.Unmarshal(payload.Order, &nestedOrder)
 		for _, candidate := range []string{
 			payload.OrderInvoiceNumber,
+			nestedOrder.OrderInvoiceNumber,
 			payload.OrderID,
 			payload.Data.OrderInvoiceNumber,
 			payload.Data.OrderID,

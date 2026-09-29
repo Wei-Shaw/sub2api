@@ -792,7 +792,10 @@ func (s *GeminiMessagesCompatService) Forward(ctx context.Context, c *gin.Contex
 	var resp *http.Response
 	signatureRetryStage := 0
 	for attempt := 1; attempt <= geminiMaxRetries; attempt++ {
-		upstreamReq, idHeader, err := buildReq(ctx)
+		// 流式请求与客户端 context 解耦：客户端断开后继续读取上游，确保已生成的 token 计费。
+		upstreamCtx, releaseUpstreamCtx := detachStreamUpstreamContext(ctx, req.Stream)
+		upstreamReq, idHeader, err := buildReq(upstreamCtx)
+		releaseUpstreamCtx()
 		if err != nil {
 			if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
 				return nil, err
@@ -1085,6 +1088,7 @@ func (s *GeminiMessagesCompatService) Forward(ctx context.Context, c *gin.Contex
 
 	var usage *ClaudeUsage
 	var firstTokenMs *int
+	clientDisconnect := false
 	if req.Stream {
 		streamRes, err := s.handleStreamingResponse(c, resp, startTime, originalModel)
 		if err != nil {
@@ -1092,9 +1096,10 @@ func (s *GeminiMessagesCompatService) Forward(ctx context.Context, c *gin.Contex
 		}
 		usage = streamRes.usage
 		firstTokenMs = streamRes.firstTokenMs
+		clientDisconnect = streamRes.clientDisconnect
 	} else {
 		if useUpstreamStream {
-			collected, usageObj, err := collectGeminiSSE(resp.Body, true)
+			collected, usageObj, err := collectGeminiSSE(resp.Body, true, resolveUpstreamMaxLineSize(s.cfg))
 			if err != nil {
 				return nil, s.writeClaudeError(c, http.StatusBadGateway, "upstream_error", "Failed to read upstream stream")
 			}
@@ -1131,6 +1136,7 @@ func (s *GeminiMessagesCompatService) Forward(ctx context.Context, c *gin.Contex
 		Stream:                        req.Stream,
 		Duration:                      time.Since(startTime),
 		FirstTokenMs:                  firstTokenMs,
+		ClientDisconnect:              clientDisconnect,
 		ImageCount:                    imageCount,
 		ImageSize:                     imageSize,
 		ImageInputSize:                imageInputSize,
@@ -1327,7 +1333,10 @@ func (s *GeminiMessagesCompatService) ForwardNative(ctx context.Context, c *gin.
 
 	var resp *http.Response
 	for attempt := 1; attempt <= geminiMaxRetries; attempt++ {
-		upstreamReq, idHeader, err := buildReq(ctx)
+		// 流式请求与客户端 context 解耦：客户端断开后继续读取上游，确保已生成的 token 计费。
+		upstreamCtx, releaseUpstreamCtx := detachStreamUpstreamContext(ctx, stream)
+		upstreamReq, idHeader, err := buildReq(upstreamCtx)
+		releaseUpstreamCtx()
 		if err != nil {
 			if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
 				return nil, err
@@ -1582,6 +1591,7 @@ func (s *GeminiMessagesCompatService) ForwardNative(ctx context.Context, c *gin.
 
 	var usage *ClaudeUsage
 	var firstTokenMs *int
+	clientDisconnect := false
 
 	if stream {
 		streamRes, err := s.handleNativeStreamingResponse(c, resp, startTime, isOAuth, account, requestID)
@@ -1590,10 +1600,11 @@ func (s *GeminiMessagesCompatService) ForwardNative(ctx context.Context, c *gin.
 		}
 		usage = streamRes.usage
 		firstTokenMs = streamRes.firstTokenMs
+		clientDisconnect = streamRes.clientDisconnect
 	} else {
 		if useUpstreamStream {
 			var best geminiResponseSignal
-			collected, usageObj, stats, err := collectGeminiSSEObserved(resp.Body, isOAuth, func(rawBytes []byte) {
+			collected, usageObj, stats, err := collectGeminiSSEObserved(resp.Body, isOAuth, resolveUpstreamMaxLineSize(s.cfg), func(rawBytes []byte) {
 				if sig, ok := detectGeminiResponseSignal(rawBytes); ok && sig.Kind > best.Kind {
 					best = sig
 				}
@@ -1637,6 +1648,7 @@ func (s *GeminiMessagesCompatService) ForwardNative(ctx context.Context, c *gin.
 		ReasoningEffort:               extractGeminiReasoningEffortFromBody(body),
 		Duration:                      time.Since(startTime),
 		FirstTokenMs:                  firstTokenMs,
+		ClientDisconnect:              clientDisconnect,
 		ImageCount:                    imageCount,
 		ImageSize:                     imageSize,
 		ImageInputSize:                imageInputSize,
@@ -2069,13 +2081,47 @@ func mapGeminiStatusToClaudeErrorType(status string) string {
 }
 
 type geminiStreamResult struct {
-	usage        *ClaudeUsage
-	firstTokenMs *int
+	usage            *ClaudeUsage
+	firstTokenMs     *int
+	clientDisconnect bool // 客户端是否在流式传输过程中断开
+}
+
+// streamDataInterval 返回流式读取的上游数据间隔上限（gateway.stream_data_interval_timeout）；
+// cfg 为空或 <= 0 时禁用。流式上游 context 已与客户端解耦，客户端断开后的排水靠它兜底。
+func (s *GeminiMessagesCompatService) streamDataInterval() time.Duration {
+	if s.cfg != nil && s.cfg.Gateway.StreamDataIntervalTimeout > 0 {
+		return time.Duration(s.cfg.Gateway.StreamDataIntervalTimeout) * time.Second
+	}
+	return 0
+}
+
+// geminiStreamClientGone 判断下游客户端是否已断开：写入失败，或请求 context 已取消
+// （客户端断开后若上游恰好不再发数据，就不会再有写入失败可供感知）。
+func geminiStreamClientGone(c *gin.Context, cw *antigravityClientWriter) bool {
+	if cw.Disconnected() {
+		return true
+	}
+	return c.Request != nil && c.Request.Context().Err() != nil
+}
+
+// newGeminiStreamLinePump 以 gateway.max_line_size 限长逐行读取上游 SSE，并施加数据间隔上限。
+func (s *GeminiMessagesCompatService) newGeminiStreamLinePump(body io.Reader) *anthropicNativeLinePump {
+	reader := bufio.NewReader(body)
+	maxLineSize := resolveUpstreamMaxLineSize(s.cfg)
+	return newUpstreamLinePump(func() (string, error) {
+		lineBytes, err := readUpstreamLineLimited(reader, maxLineSize)
+		return string(lineBytes), err
+	}, s.streamDataInterval())
 }
 
 func (s *GeminiMessagesCompatService) handleNonStreamingResponse(c *gin.Context, resp *http.Response, originalModel string) (*ClaudeUsage, error) {
-	body, err := io.ReadAll(io.LimitReader(resp.Body, 8<<20))
+	// 使用可配置的读取上限（gateway.upstream_response_read_max_bytes），超限时显式报错而非静默截断
+	body, err := ReadUpstreamResponseBody(resp.Body, s.cfg, c, anthropicTooLargeError)
 	if err != nil {
+		if errors.Is(err, ErrUpstreamResponseBodyTooLarge) {
+			MarkResponseCommitted(c)
+			return nil, err
+		}
 		return nil, s.writeClaudeError(c, http.StatusBadGateway, "upstream_error", "Failed to read upstream response")
 	}
 
@@ -2113,6 +2159,17 @@ func (s *GeminiMessagesCompatService) handleStreamingResponse(c *gin.Context, re
 		return nil, errors.New("streaming not supported")
 	}
 
+	// 客户端写失败后标记断开并停止写入，但继续排水上游以收齐 usage。
+	cw := newAntigravityClientWriter(c.Writer, flusher, "gemini messages")
+	emitSSE := func(event string, data any) {
+		if cw.Disconnected() {
+			return
+		}
+		var buf bytes.Buffer
+		writeSSE(&buf, event, data)
+		cw.Write(buf.Bytes())
+	}
+
 	messageID := generateAnthropicMsgID()
 	messageStart := map[string]any{
 		"type": "message_start",
@@ -2130,8 +2187,7 @@ func (s *GeminiMessagesCompatService) handleStreamingResponse(c *gin.Context, re
 			},
 		},
 	}
-	writeSSE(c.Writer, "message_start", messageStart)
-	flusher.Flush()
+	emitSSE("message_start", messageStart)
 
 	var firstTokenMs *int
 	var usage ClaudeUsage
@@ -2147,11 +2203,16 @@ func (s *GeminiMessagesCompatService) handleStreamingResponse(c *gin.Context, re
 	openToolName := ""
 	var seenToolJSON geminiSeenText
 
-	reader := bufio.NewReader(resp.Body)
+	pump := s.newGeminiStreamLinePump(resp.Body)
+	defer pump.stop()
 	for {
-		line, err := reader.ReadString('\n')
-		if err != nil && !errors.Is(err, io.EOF) {
-			return nil, fmt.Errorf("stream read error: %w", err)
+		line, err := pump.next()
+		if readErr := finishBridgeRead(resp, err); readErr != nil {
+			// 客户端已断开时上游读错误/间隔超时：返回已收集的 usage 供计费。
+			if disconnect, handled := handleStreamReadError(readErr, geminiStreamClientGone(c, cw), "gemini messages"); handled {
+				return &geminiStreamResult{usage: &usage, firstTokenMs: firstTokenMs, clientDisconnect: disconnect}, nil
+			}
+			return nil, fmt.Errorf("stream read error: %w", readErr)
 		}
 
 		if !strings.HasPrefix(line, "data:") {
@@ -2198,7 +2259,7 @@ func (s *GeminiMessagesCompatService) handleStreamingResponse(c *gin.Context, re
 				// text block starts, emitting overlapping Anthropic content
 				// blocks that violate the SSE contract.
 				if openToolIndex >= 0 {
-					writeSSE(c.Writer, "content_block_stop", map[string]any{
+					emitSSE("content_block_stop", map[string]any{
 						"type":  "content_block_stop",
 						"index": openToolIndex,
 					})
@@ -2214,7 +2275,7 @@ func (s *GeminiMessagesCompatService) handleStreamingResponse(c *gin.Context, re
 
 				if openBlockType != "text" {
 					if openBlockIndex >= 0 {
-						writeSSE(c.Writer, "content_block_stop", map[string]any{
+						emitSSE("content_block_stop", map[string]any{
 							"type":  "content_block_stop",
 							"index": openBlockIndex,
 						})
@@ -2222,7 +2283,7 @@ func (s *GeminiMessagesCompatService) handleStreamingResponse(c *gin.Context, re
 					openBlockType = "text"
 					openBlockIndex = nextBlockIndex
 					nextBlockIndex++
-					writeSSE(c.Writer, "content_block_start", map[string]any{
+					emitSSE("content_block_start", map[string]any{
 						"type":  "content_block_start",
 						"index": openBlockIndex,
 						"content_block": map[string]any{
@@ -2236,7 +2297,7 @@ func (s *GeminiMessagesCompatService) handleStreamingResponse(c *gin.Context, re
 					ms := int(time.Since(startTime).Milliseconds())
 					firstTokenMs = &ms
 				}
-				writeSSE(c.Writer, "content_block_delta", map[string]any{
+				emitSSE("content_block_delta", map[string]any{
 					"type":  "content_block_delta",
 					"index": openBlockIndex,
 					"delta": map[string]any{
@@ -2244,7 +2305,6 @@ func (s *GeminiMessagesCompatService) handleStreamingResponse(c *gin.Context, re
 						"text": delta,
 					},
 				})
-				flusher.Flush()
 				continue
 			}
 
@@ -2257,7 +2317,7 @@ func (s *GeminiMessagesCompatService) handleStreamingResponse(c *gin.Context, re
 
 				// Close any open text block before tool_use.
 				if openBlockIndex >= 0 {
-					writeSSE(c.Writer, "content_block_stop", map[string]any{
+					emitSSE("content_block_stop", map[string]any{
 						"type":  "content_block_stop",
 						"index": openBlockIndex,
 					})
@@ -2267,7 +2327,7 @@ func (s *GeminiMessagesCompatService) handleStreamingResponse(c *gin.Context, re
 
 				// If we receive streamed tool args in pieces, keep a single tool block open and emit deltas.
 				if openToolIndex >= 0 && openToolName != name {
-					writeSSE(c.Writer, "content_block_stop", map[string]any{
+					emitSSE("content_block_stop", map[string]any{
 						"type":  "content_block_stop",
 						"index": openToolIndex,
 					})
@@ -2283,7 +2343,7 @@ func (s *GeminiMessagesCompatService) handleStreamingResponse(c *gin.Context, re
 					nextBlockIndex++
 					sawToolUse = true
 
-					writeSSE(c.Writer, "content_block_start", map[string]any{
+					emitSSE("content_block_start", map[string]any{
 						"type":  "content_block_start",
 						"index": openToolIndex,
 						"content_block": map[string]any{
@@ -2311,7 +2371,7 @@ func (s *GeminiMessagesCompatService) handleStreamingResponse(c *gin.Context, re
 
 				delta := computeGeminiTextDelta(&seenToolJSON, argsJSONText)
 				if delta != "" {
-					writeSSE(c.Writer, "content_block_delta", map[string]any{
+					emitSSE("content_block_delta", map[string]any{
 						"type":  "content_block_delta",
 						"index": openToolIndex,
 						"delta": map[string]any{
@@ -2320,7 +2380,6 @@ func (s *GeminiMessagesCompatService) handleStreamingResponse(c *gin.Context, re
 						},
 					})
 				}
-				flusher.Flush()
 			}
 		}
 
@@ -2335,13 +2394,13 @@ func (s *GeminiMessagesCompatService) handleStreamingResponse(c *gin.Context, re
 	}
 
 	if openBlockIndex >= 0 {
-		writeSSE(c.Writer, "content_block_stop", map[string]any{
+		emitSSE("content_block_stop", map[string]any{
 			"type":  "content_block_stop",
 			"index": openBlockIndex,
 		})
 	}
 	if openToolIndex >= 0 {
-		writeSSE(c.Writer, "content_block_stop", map[string]any{
+		emitSSE("content_block_stop", map[string]any{
 			"type":  "content_block_stop",
 			"index": openToolIndex,
 		})
@@ -2358,7 +2417,7 @@ func (s *GeminiMessagesCompatService) handleStreamingResponse(c *gin.Context, re
 	if usage.InputTokens > 0 {
 		usageObj["input_tokens"] = usage.InputTokens
 	}
-	writeSSE(c.Writer, "message_delta", map[string]any{
+	emitSSE("message_delta", map[string]any{
 		"type": "message_delta",
 		"delta": map[string]any{
 			"stop_reason":   stopReason,
@@ -2366,12 +2425,11 @@ func (s *GeminiMessagesCompatService) handleStreamingResponse(c *gin.Context, re
 		},
 		"usage": usageObj,
 	})
-	writeSSE(c.Writer, "message_stop", map[string]any{
+	emitSSE("message_stop", map[string]any{
 		"type": "message_stop",
 	})
-	flusher.Flush()
 
-	return &geminiStreamResult{usage: &usage, firstTokenMs: firstTokenMs}, nil
+	return &geminiStreamResult{usage: &usage, firstTokenMs: firstTokenMs, clientDisconnect: geminiStreamClientGone(c, cw)}, nil
 }
 
 func writeSSE(w io.Writer, event string, data any) {
@@ -2435,8 +2493,8 @@ func unwrapIfNeeded(isOAuth bool, raw []byte) []byte {
 	return inner
 }
 
-func collectGeminiSSE(body io.Reader, isOAuth bool) (map[string]any, *ClaudeUsage, error) {
-	collected, usage, _, err := collectGeminiSSEObserved(body, isOAuth, nil)
+func collectGeminiSSE(body io.Reader, isOAuth bool, maxLineSize int) (map[string]any, *ClaudeUsage, error) {
+	collected, usage, _, err := collectGeminiSSEObserved(body, isOAuth, maxLineSize, nil)
 	return collected, usage, err
 }
 
@@ -2447,7 +2505,8 @@ type geminiSSECollectStats struct {
 }
 
 // collectGeminiSSEObserved 在聚合的同时把每个解包后的事件原文交给 observe（可为 nil）。
-func collectGeminiSSEObserved(body io.Reader, isOAuth bool, observe func(rawBytes []byte)) (map[string]any, *ClaudeUsage, geminiSSECollectStats, error) {
+// maxLineSize 为单行上限，<=0 时使用默认值。
+func collectGeminiSSEObserved(body io.Reader, isOAuth bool, maxLineSize int, observe func(rawBytes []byte)) (map[string]any, *ClaudeUsage, geminiSSECollectStats, error) {
 	reader := bufio.NewReader(body)
 
 	var last map[string]any
@@ -2457,7 +2516,8 @@ func collectGeminiSSEObserved(body io.Reader, isOAuth bool, observe func(rawByte
 	stats := geminiSSECollectStats{fallback: &geminiSSEFallbackBody{}}
 
 	for {
-		line, err := reader.ReadString('\n')
+		lineBytes, err := readUpstreamLineLimited(reader, maxLineSize)
+		line := string(lineBytes)
 		if len(line) > 0 {
 			trimmed := strings.TrimRight(line, "\r\n")
 			if !strings.HasPrefix(trimmed, "data:") {
@@ -2608,8 +2668,9 @@ func mergeCollectedTextParts(response map[string]any, textParts []string) map[st
 }
 
 type geminiNativeStreamResult struct {
-	usage        *ClaudeUsage
-	firstTokenMs *int
+	usage            *ClaudeUsage
+	firstTokenMs     *int
+	clientDisconnect bool // 客户端是否在流式传输过程中断开
 }
 
 func isGeminiInsufficientScope(headers http.Header, body []byte) bool {
@@ -2757,7 +2818,8 @@ func (s *GeminiMessagesCompatService) handleNativeStreamingResponse(c *gin.Conte
 		return nil, errors.New("streaming not supported")
 	}
 
-	reader := bufio.NewReader(resp.Body)
+	// 客户端写失败后标记断开并停止写入，但继续排水上游以收齐 usage。
+	cw := newAntigravityClientWriter(c.Writer, flusher, "gemini native")
 	usage := &ClaudeUsage{}
 	observer := upstreamResponseModelObserverFromContext(c)
 	if observer == nil {
@@ -2767,17 +2829,18 @@ func (s *GeminiMessagesCompatService) handleNativeStreamingResponse(c *gin.Conte
 	var best geminiResponseSignal
 	sawDataEvent := false
 	fallback := &geminiSSEFallbackBody{}
+	pump := s.newGeminiStreamLinePump(resp.Body)
+	defer pump.stop()
 
 	for {
-		line, err := reader.ReadString('\n')
+		line, err := pump.next()
 		if len(line) > 0 {
 			trimmed := strings.TrimRight(line, "\r\n")
 			if strings.HasPrefix(trimmed, "data:") {
 				payload := strings.TrimSpace(strings.TrimPrefix(trimmed, "data:"))
 				// Keepalive / done markers
 				if payload == "" || payload == "[DONE]" {
-					_, _ = io.WriteString(c.Writer, line)
-					flusher.Flush()
+					cw.Write([]byte(line))
 				} else {
 					var rawToWrite string
 					rawToWrite = payload
@@ -2810,33 +2873,35 @@ func (s *GeminiMessagesCompatService) handleNativeStreamingResponse(c *gin.Conte
 
 					if isOAuth {
 						// SSE format requires double newline (\n\n) to separate events
-						_, _ = fmt.Fprintf(c.Writer, "data: %s\n\n", rawToWrite)
+						cw.Fprintf("data: %s\n\n", rawToWrite)
 					} else {
 						// Pass-through for AI Studio responses.
-						_, _ = io.WriteString(c.Writer, line)
+						cw.Write([]byte(line))
 					}
-					flusher.Flush()
 				}
 			} else {
 				if !sawDataEvent {
 					fallback.AddLine(trimmed)
 				}
-				_, _ = io.WriteString(c.Writer, line)
-				flusher.Flush()
+				cw.Write([]byte(line))
 			}
 		}
 
 		if errors.Is(err, io.EOF) {
 			break
 		}
-		if err != nil {
-			return nil, err
+		if readErr := finishBridgeRead(resp, err); readErr != nil {
+			// 客户端已断开时上游读错误/间隔超时：返回已收集的 usage 供计费。
+			if disconnect, handled := handleStreamReadError(readErr, geminiStreamClientGone(c, cw), "gemini native"); handled {
+				return &geminiNativeStreamResult{usage: usage, firstTokenMs: firstTokenMs, clientDisconnect: disconnect}, nil
+			}
+			return nil, readErr
 		}
 	}
 
 	s.finalizeGeminiSSESignal(c, account, true, upstreamRequestID, best, sawDataEvent, fallback)
 
-	return &geminiNativeStreamResult{usage: usage, firstTokenMs: firstTokenMs}, nil
+	return &geminiNativeStreamResult{usage: usage, firstTokenMs: firstTokenMs, clientDisconnect: geminiStreamClientGone(c, cw)}, nil
 }
 
 // ForwardAIStudioGET forwards a GET request to AI Studio (generativelanguage.googleapis.com) for

@@ -179,10 +179,11 @@ const handleDocumentClick = (event: MouseEvent) => {
   }
 };
 onMounted(() => {
-  document.addEventListener("click", handleDocumentClick);
+  // 捕获阶段监听：BaseDialog 面板的 @click.stop 会拦住冒泡，否则对话框内点击其他位置关不掉下拉。
+  document.addEventListener("click", handleDocumentClick, true);
 });
 onUnmounted(() => {
-  document.removeEventListener("click", handleDocumentClick);
+  document.removeEventListener("click", handleDocumentClick, true);
 });
 
 const searchRunner = useKeyedDebouncedSearch<SimpleAccount[]>({

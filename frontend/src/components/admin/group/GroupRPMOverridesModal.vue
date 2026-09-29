@@ -21,7 +21,7 @@
           {{ t('admin.groups.addUserRpm') }}
         </h4>
         <div class="flex items-end gap-2">
-          <div class="relative flex-1">
+          <div ref="searchContainerRef" class="relative flex-1">
             <input
               v-model="searchQuery"
               type="text"
@@ -233,6 +233,7 @@ const localEntries = ref<LocalEntry[]>([])
 const searchQuery = ref('')
 const searchResults = ref<AdminUser[]>([])
 const showDropdown = ref(false)
+const searchContainerRef = ref<HTMLElement | null>(null)
 const selectedUser = ref<AdminUser | null>(null)
 const newRpm = ref<number | null>(null)
 const currentPage = ref(1)
@@ -399,13 +400,16 @@ const handleClose = () => {
   emit('close')
 }
 
-const handleClickOutside = () => { showDropdown.value = false }
+// 捕获阶段监听：BaseDialog 面板的 @click.stop 会拦住冒泡，否则对话框内点击其他位置关不掉下拉。
+const handleClickOutside = (event: MouseEvent) => {
+  if (!searchContainerRef.value?.contains(event.target as Node)) showDropdown.value = false
+}
 if (typeof document !== 'undefined') {
-  document.addEventListener('click', handleClickOutside)
+  document.addEventListener('click', handleClickOutside, true)
 }
 onUnmounted(() => {
   clearTimeout(searchTimeout)
-  document.removeEventListener('click', handleClickOutside)
+  document.removeEventListener('click', handleClickOutside, true)
 })
 </script>
 

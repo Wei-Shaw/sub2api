@@ -32,6 +32,8 @@ export interface PaymentRecoverySnapshot {
   paymentMode: string
   resumeToken: string
   createdAt: number
+  /** 下单用户；恢复时与当前用户比对，避免同一浏览器换号后看到别人的订单 */
+  userId?: number
 }
 
 export interface PaymentLaunchContext {
@@ -184,7 +186,7 @@ export function clearPaymentRecoverySnapshot(
 
 export function readPaymentRecoverySnapshot(
   raw: string | null | undefined,
-  options: { now?: number; resumeToken?: string } = {},
+  options: { now?: number; resumeToken?: string; userId?: number } = {},
 ): PaymentRecoverySnapshot | null {
   if (!raw) return null
 
@@ -216,6 +218,9 @@ export function readPaymentRecoverySnapshot(
     if (options.resumeToken && parsed.resumeToken !== options.resumeToken) {
       return null
     }
+    if (options.userId != null && parsed.userId !== options.userId) {
+      return null
+    }
 
     return {
       orderId: parsed.orderId,
@@ -232,6 +237,7 @@ export function readPaymentRecoverySnapshot(
       paymentMode: parsed.paymentMode,
       resumeToken: parsed.resumeToken,
       createdAt: parsed.createdAt,
+      ...(typeof parsed.userId === 'number' ? { userId: parsed.userId } : {}),
     }
   } catch {
     return null

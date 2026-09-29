@@ -118,6 +118,10 @@ func (s *AuthService) loginOrRegisterVerifiedEmailOAuth(
 	if !user.IsActive() {
 		return nil, nil, ErrUserNotActive
 	}
+	// 按邮箱匹配到已启用 TOTP 的现有账号时，不能跳过二次验证直接绑定身份并签发令牌
+	if identityUser == nil && !created && user.TotpEnabled && s.settingService != nil && s.settingService.IsTotpEnabled(ctx) {
+		return nil, nil, infraerrors.Forbidden("OAUTH_TOTP_BIND_REQUIRED", "two-factor authentication is enabled for this account; sign in with your password first")
+	}
 	if err := s.ensureEmailOAuthIdentity(ctx, user.ID, EmailOAuthIdentityInput{
 		ProviderType:     providerType,
 		ProviderKey:      providerKey,

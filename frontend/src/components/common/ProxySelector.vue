@@ -287,21 +287,24 @@ const handleClickOutside = (event: MouseEvent) => {
   }
 }
 
+// 捕获阶段处理并吞掉 Esc：只关下拉，避免同一次按键把外层 BaseDialog 也关掉。
 const handleEscape = (event: KeyboardEvent) => {
   if (event.key === 'Escape' && isOpen.value) {
+    event.stopPropagation()
     isOpen.value = false
     searchQuery.value = ''
   }
 }
 
 onMounted(() => {
-  document.addEventListener('click', handleClickOutside)
-  document.addEventListener('keydown', handleEscape)
+  // 捕获阶段监听：BaseDialog 面板的 @click.stop 会拦住冒泡，否则对话框内点击其他位置关不掉下拉。
+  document.addEventListener('click', handleClickOutside, true)
+  document.addEventListener('keydown', handleEscape, true)
 })
 
 onUnmounted(() => {
-  document.removeEventListener('click', handleClickOutside)
-  document.removeEventListener('keydown', handleEscape)
+  document.removeEventListener('click', handleClickOutside, true)
+  document.removeEventListener('keydown', handleEscape, true)
 })
 </script>
 

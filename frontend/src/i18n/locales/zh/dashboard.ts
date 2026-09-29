@@ -813,6 +813,7 @@ export default {
     adminAdjustment: '管理员调整',
     subscriptionAssigned: '订阅已分配',
     subscriptionAssignedDesc: '您已获得 {groupName} 的访问权限',
+    invitationCodeUsed: '已使用邀请码',
     subscriptionDays: '{days} 天',
     days: '天',
     codeRedeemSuccess: '兑换成功！',
@@ -871,7 +872,7 @@ export default {
     changePasswordButton: '修改密码',
     passwordsNotMatch: '两次输入的密码不一致',
     passwordTooShort: '密码至少需要 8 个字符',
-    passwordChangeSuccess: '密码修改成功',
+    passwordChangeSuccess: '密码修改成功，请使用新密码重新登录。',
     passwordChangeFailed: '密码修改失败',
     // TOTP 2FA
     totp: {

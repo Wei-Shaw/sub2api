@@ -1598,6 +1598,12 @@ const loadApiKeys = async () => {
       signal
     })
     if (signal.aborted) return
+    // 删除或筛选后当前页越界：回到最后一页重新加载
+    if (response.items.length === 0 && response.total > 0 && pagination.value.page > Math.max(1, response.pages)) {
+      pagination.value.page = Math.max(1, response.pages)
+      void loadApiKeys()
+      return
+    }
     apiKeys.value = response.items.map((key) => ({ ...key, name: decodeKeyName(key.name) }))
     handleSelectionChange(selectedIds.value)
     pagination.value.total = response.total
@@ -1833,6 +1839,9 @@ const handleSubmit = async () => {
   } else if (showEditModal.value) {
     // Edit mode: if expiration disabled or date cleared, send empty string to clear
     expiresAt = ''
+  } else if (formData.value.enable_expiration && formData.value.expiration_preset !== 'custom') {
+    // Create mode: 未点预设、日期为空时按当前高亮的预设天数
+    expiresInDays = Number(formData.value.expiration_preset)
   }
 
   // Calculate rate limit values (send 0 when toggle is off)
@@ -1951,7 +1960,10 @@ const confirmResetQuota = () => {
 // Set expiration date based on quick select days
 const setExpirationDays = (days: number) => {
   formData.value.expiration_preset = days.toString() as '7' | '30' | '90'
-  const expDate = new Date()
+  // 编辑模式的 "+N 天" 从 max(当前时间, 原到期时间) 起算，避免缩短有效期
+  const now = new Date()
+  const current = showEditModal.value && selectedKey.value?.expires_at ? new Date(selectedKey.value.expires_at) : null
+  const expDate = current && current.getTime() > now.getTime() ? current : now
   expDate.setDate(expDate.getDate() + days)
   formData.value.expiration_date = formatDateTimeLocal(expDate.toISOString())
 }

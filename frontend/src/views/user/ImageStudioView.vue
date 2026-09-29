@@ -336,10 +336,12 @@ async function removeAsset(asset: ImageStudioAsset) {
 }
 
 // Poll only while something is unfinished; results land in the job list.
+// disposed 防止卸载后仍在进行中的请求返回时重新挂上定时器。
 let pollTimer: number | undefined
+let disposed = false
 function schedulePoll() {
   window.clearTimeout(pollTimer)
-  if (!jobs.value.some(isUnfinished)) return
+  if (disposed || !jobs.value.some(isUnfinished)) return
   pollTimer = window.setTimeout(async () => {
     await loadJobs(1)
     schedulePoll()
@@ -402,6 +404,7 @@ onMounted(async () => {
 })
 
 onBeforeUnmount(() => {
+  disposed = true
   window.clearTimeout(pollTimer)
   objectURLs.forEach((url) => url && URL.revokeObjectURL(url))
 })

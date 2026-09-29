@@ -73,12 +73,16 @@
 <script setup lang="ts">
 import { ref } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { useRouter } from 'vue-router'
 import { useAppStore } from '@/stores/app'
+import { useAuthStore } from '@/stores/auth'
 import { userAPI } from '@/api'
 import { extractApiErrorMessage } from '@/utils/apiError'
 
 const { t } = useI18n()
+const router = useRouter()
 const appStore = useAppStore()
+const authStore = useAuthStore()
 const props = withDefaults(defineProps<{
   embedded?: boolean
 }>(), {
@@ -108,6 +112,9 @@ const handleChangePassword = async () => {
     await userAPI.changePassword(form.value.old_password, form.value.new_password)
     form.value = { old_password: '', new_password: '', confirm_password: '' }
     appStore.showSuccess(t('profile.passwordChangeSuccess'))
+    // 改密后服务端已吊销所有 token：主动登出并回到登录页，避免下一次请求被当成“会话过期”
+    await authStore.logout()
+    await router.push('/login')
   } catch (error: unknown) {
     appStore.showError(extractApiErrorMessage(error, t('profile.passwordChangeFailed')))
   } finally {

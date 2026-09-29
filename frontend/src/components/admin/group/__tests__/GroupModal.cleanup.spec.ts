@@ -17,10 +17,10 @@ describe.each([GroupRPMOverridesModal, GroupRateMultipliersModal])('group modal 
   it('removes its document click listener on unmount', () => {
     const add = vi.spyOn(document, 'addEventListener'); const remove = vi.spyOn(document, 'removeEventListener')
     const w = open()
-    const handlers = add.mock.calls.filter(([event]) => event === 'click').map(([, handler]) => handler)
-    expect(handlers.length).toBeGreaterThan(0)
+    const clickCalls = add.mock.calls.filter(([event]) => event === 'click')
+    expect(clickCalls.length).toBeGreaterThan(0)
     w.unmount()
-    for (const handler of handlers) expect(remove).toHaveBeenCalledWith('click', handler)
+    for (const [, handler, options] of clickCalls) expect(remove).toHaveBeenCalledWith('click', handler, options)
   })
   it('cancels a queued search when navigating away', async () => {
     const w = open(); await w.get('input[type="text"]').setValue('alice')

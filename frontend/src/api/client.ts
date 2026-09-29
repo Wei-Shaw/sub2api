@@ -78,6 +78,36 @@ apiClient.interceptors.request.use(
 
 // ==================== Response Interceptor ====================
 
+// 401 reasons that mean the access token / session is unusable (see backend jwt_auth.go, auth_service.go).
+// Other 401 reasons are business errors (INVALID_CREDENTIALS, PASSKEY_VERIFICATION_FAILED, PENDING_AUTH_*, ...)
+// and go straight back to the caller without refresh, replay or logout.
+const TOKEN_AUTH_ERROR_CODES = new Set([
+  'UNAUTHORIZED',
+  'INVALID_AUTH_HEADER',
+  'EMPTY_TOKEN',
+  'TOKEN_EXPIRED',
+  'ACCESS_TOKEN_EXPIRED',
+  'INVALID_TOKEN',
+  'TOKEN_REVOKED',
+  'USER_NOT_FOUND',
+  'USER_INACTIVE',
+  'SESSION_BINDING_MISMATCH',
+  'REFRESH_TOKEN_INVALID',
+  'REFRESH_TOKEN_EXPIRED',
+  'REFRESH_TOKEN_REUSED',
+])
+
+const isTokenAuthError = (apiData: Record<string, any>): boolean => {
+  // Envelope errors carry the reason in `reason` (numeric code); middleware errors use a string `code`.
+  const authCode =
+    typeof apiData.reason === 'string' && apiData.reason
+      ? apiData.reason
+      : typeof apiData.code === 'string'
+        ? apiData.code
+        : ''
+  return !authCode || TOKEN_AUTH_ERROR_CODES.has(authCode)
+}
+
 apiClient.interceptors.response.use(
   (response: AxiosResponse) => {
     // Unwrap standard API response format { code, message, data }
@@ -164,7 +194,7 @@ apiClient.interceptors.response.use(
 
       // 401: Try to refresh the token if we have a refresh token
       // This handles TOKEN_EXPIRED, INVALID_TOKEN, TOKEN_REVOKED, etc.
-      if (status === 401 && !originalRequest._retry) {
+      if (status === 401 && !originalRequest._retry && isTokenAuthError(apiData)) {
         const refreshToken = localStorage.getItem('refresh_token')
         const isAuthEndpoint =
           url.includes('/auth/login') || url.includes('/auth/register') || url.includes('/auth/refresh')
@@ -252,8 +282,11 @@ apiClient.interceptors.response.use(
         if ((hasToken || sentAuth) && !isAuthEndpoint) {
           sessionStorage.setItem('auth_expired', '1')
         }
-        // Only redirect if not already on login page
-        if (!window.location.pathname.includes('/login')) {
+        // Only redirect if not already on login page. Signed-out requests from public flow pages
+        // (OAuth callbacks, payment result) keep the page so the caller can show the error inline.
+        const pathname = window.location.pathname
+        const onPublicFlowPage = pathname.startsWith('/auth/') || pathname.startsWith('/payment/result')
+        if (!pathname.includes('/login') && (hasToken || sentAuth || !onPublicFlowPage)) {
           window.location.href =
             '/login?redirect=' + encodeURIComponent(window.location.pathname + window.location.search)
         }

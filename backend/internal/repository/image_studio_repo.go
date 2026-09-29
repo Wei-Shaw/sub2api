@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"fmt"
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/service"
@@ -62,6 +63,37 @@ func (r *imageStudioRepository) CreateJob(ctx context.Context, job *service.Imag
 		VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id, created_at`,
 		job.UserID, job.APIKeyID, job.Status, job.Kind, job.Model, job.Prompt, []byte(job.Params),
 	).Scan(&job.ID, &job.CreatedAt)
+}
+
+// CreateJobWithinLimit 在按用户加的事务级咨询锁内计数并插入，并发提交也无法越过上限。
+func (r *imageStudioRepository) CreateJobWithinLimit(ctx context.Context, job *service.ImageStudioJob, limit int) (err error) {
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer func() {
+		if err != nil {
+			_ = tx.Rollback()
+		}
+	}()
+	if _, err = tx.ExecContext(ctx, `SELECT pg_advisory_xact_lock($1)`, advisoryLockHash(fmt.Sprintf("image_studio_submit:%d", job.UserID))); err != nil {
+		return err
+	}
+	var count int
+	if err = tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM image_studio_jobs WHERE user_id = $1 AND status IN ('queued', 'running')`, job.UserID).Scan(&count); err != nil {
+		return err
+	}
+	if count >= limit {
+		err = service.ErrImageStudioBusy
+		return err
+	}
+	if err = tx.QueryRowContext(ctx, `INSERT INTO image_studio_jobs (user_id, api_key_id, status, kind, model, prompt, params)
+		VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id, created_at`,
+		job.UserID, job.APIKeyID, job.Status, job.Kind, job.Model, job.Prompt, []byte(job.Params),
+	).Scan(&job.ID, &job.CreatedAt); err != nil {
+		return err
+	}
+	return tx.Commit()
 }
 
 func (r *imageStudioRepository) FailStaleJobs(ctx context.Context, userID int64, before time.Time, message string) error {

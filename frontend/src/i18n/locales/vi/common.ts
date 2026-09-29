@@ -271,6 +271,11 @@ export default {
       VERIFY_CODE_MAX_ATTEMPTS: 'Nhập sai quá nhiều lần. Vui lòng yêu cầu mã mới.',
       TURNSTILE_VERIFICATION_FAILED: 'Xác minh thất bại, vui lòng thử lại',
       INVALID_RESET_TOKEN: 'Liên kết đặt lại mật khẩu không hợp lệ hoặc đã hết hạn. Vui lòng yêu cầu liên kết mới.',
+      LOGIN_THROTTLED: 'Đăng nhập sai quá nhiều lần. Vui lòng thử lại sau.',
+      BACKEND_MODE_ADMIN_ONLY: 'Hệ thống đang ở chế độ backend. Chỉ quản trị viên được phép đăng nhập.',
+      PASSKEY_VERIFICATION_FAILED: 'Xác minh passkey thất bại. Vui lòng thử lại.',
+      TOTP_INVALID_CODE: 'Mã xác minh không đúng. Vui lòng thử lại.',
+      TOTP_TOO_MANY_ATTEMPTS: 'Xác minh sai quá nhiều lần. Vui lòng thử lại sau.',
     },
     registrationFailed: 'Đăng ký thất bại. Vui lòng thử lại.',
     emailDomainRegistrationLimit:

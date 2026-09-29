@@ -31,6 +31,13 @@ const (
 	outboxRebuildRetryBaseDelay           = 5 * time.Second
 	outboxRebuildRetryMaxDelay            = 5 * time.Minute
 	outboxMaxIDErrorLogSampleInterval     = time.Minute
+	// 临时封锁（限流/过载/临时不可调度）到期后补一次重建的额外延迟，覆盖应用与 DB 时钟的微小偏差。
+	schedulerTransientRecoveryDelay = time.Second
+	// outbox id 在 INSERT 时分配，长事务可能晚于更大的 id 提交。水位在缺口处最多停留这么久，
+	// 让迟到的行仍能被消费；超时视为回滚或 ON CONFLICT 消耗的 id 直接跳过。
+	// 必须小于 DeleteConsumedUpTo 的 10s 宽限期。
+	outboxGapGrace  = 5 * time.Second
+	outboxPollLimit = 200
 )
 
 // batchSeenKey tracks completed per-platform rebuilds and group lifecycle work
@@ -143,6 +150,16 @@ type SchedulerSnapshotService struct {
 	fullRebuildRequested uint64
 	fullRebuildCompleted uint64
 	fullRebuildLastErr   error
+
+	// 账号临时封锁到期后的一次性重建定时器，按账号 ID 替换，Stop 时全部停止。
+	recoveryMu     sync.Mutex
+	recoveryTimers map[int64]*time.Timer
+
+	// outbox 缺口状态，只由 pollOutbox 访问：水位停在缺口处时，记录水位之后已处理的事件
+	// 和每个缺口首次出现的时间，保证缺口后的事件只处理一次。
+	outboxLastWatermark int64
+	outboxHandledAhead  map[int64]struct{}
+	outboxGapSeenAt     map[int64]time.Time
 }
 
 func NewSchedulerSnapshotService(
@@ -204,6 +221,12 @@ func (s *SchedulerSnapshotService) Stop() {
 	s.stopOnce.Do(func() {
 		close(s.stopCh)
 	})
+	s.recoveryMu.Lock()
+	for id, timer := range s.recoveryTimers {
+		timer.Stop()
+		delete(s.recoveryTimers, id)
+	}
+	s.recoveryMu.Unlock()
 	s.wg.Wait()
 }
 
@@ -385,7 +408,9 @@ func (s *SchedulerSnapshotService) pollOutbox() {
 		return
 	}
 
-	events, err := s.outboxRepo.ListAfterAndReleaseDedup(ctx, watermark, 200)
+	s.syncOutboxGapState(watermark)
+
+	events, err := s.listOutboxEvents(ctx, watermark)
 	if err != nil {
 		logger.LegacyPrintf("service.scheduler_snapshot", "[Scheduler] outbox poll failed: %v", err)
 		return
@@ -400,6 +425,9 @@ func (s *SchedulerSnapshotService) pollOutbox() {
 
 	seen := make(map[batchSeenKey]struct{})
 	for _, event := range events {
+		if _, handled := s.outboxHandledAhead[event.ID]; handled {
+			continue
+		}
 		eventCtx, cancel := context.WithTimeout(context.Background(), outboxEventTimeout)
 		err := s.handleOutboxEvent(eventCtx, event, seen)
 		cancel()
@@ -410,29 +438,124 @@ func (s *SchedulerSnapshotService) pollOutbox() {
 	}
 
 	lastID := events[len(events)-1].ID
-	var wmErr error
-	for i := range 3 {
-		wmCtx, wmCancel := context.WithTimeout(context.Background(), 5*time.Second)
-		wmErr = s.cache.SetOutboxWatermark(wmCtx, lastID)
-		wmCancel()
-		if wmErr == nil {
-			break
+	safeID := s.advanceOutboxGapState(watermark, events, time.Now())
+	if safeID > watermark {
+		var wmErr error
+		for i := range 3 {
+			wmCtx, wmCancel := context.WithTimeout(context.Background(), 5*time.Second)
+			wmErr = s.cache.SetOutboxWatermark(wmCtx, safeID)
+			wmCancel()
+			if wmErr == nil {
+				break
+			}
+			if i < 2 {
+				time.Sleep(200 * time.Millisecond)
+			}
 		}
-		if i < 2 {
-			time.Sleep(200 * time.Millisecond)
+		if wmErr != nil {
+			logger.LegacyPrintf("service.scheduler_snapshot", "[Scheduler] outbox watermark write failed: %v", wmErr)
+			return
 		}
 	}
-	if wmErr != nil {
-		logger.LegacyPrintf("service.scheduler_snapshot", "[Scheduler] outbox watermark write failed: %v", wmErr)
-		return
-	}
-	s.cleanupConsumedOutbox(lastID)
+	s.cleanupConsumedOutbox(safeID)
 
 	// 只有 watermark 成功推进后，当前批次才算已消费。延迟必须按下一条待消费事件计算，
 	// 否则本批次处理越慢，越容易误触发一次更慢的全量重建，形成正反馈。
+	// 缺口等待期间水位可能低于 lastID，但 lastID 及之前的可见事件都已处理。
 	lagCtx, lagCancel := context.WithTimeout(context.Background(), 5*time.Second)
 	s.checkOutboxLag(lagCtx, lastID)
 	lagCancel()
+}
+
+// syncOutboxGapState 按当前持久化水位裁剪缺口状态。水位为 0（首次启动/缓存清空）或回退时
+// 丢弃全部状态，保持原有的从水位重新消费语义。
+func (s *SchedulerSnapshotService) syncOutboxGapState(watermark int64) {
+	if watermark <= 0 || watermark < s.outboxLastWatermark {
+		s.outboxHandledAhead = nil
+		s.outboxGapSeenAt = nil
+	}
+	s.outboxLastWatermark = watermark
+	for id := range s.outboxHandledAhead {
+		if id <= watermark {
+			delete(s.outboxHandledAhead, id)
+		}
+	}
+	for id := range s.outboxGapSeenAt {
+		if id <= watermark {
+			delete(s.outboxGapSeenAt, id)
+		}
+	}
+}
+
+// listOutboxEvents 从水位开始读取事件。水位停在缺口处时，前几页可能全是已处理事件，
+// 此时继续向后翻页，避免新事件被饿死。
+func (s *SchedulerSnapshotService) listOutboxEvents(ctx context.Context, watermark int64) ([]SchedulerOutboxEvent, error) {
+	events, err := s.outboxRepo.ListAfterAndReleaseDedup(ctx, watermark, outboxPollLimit)
+	if err != nil {
+		return nil, err
+	}
+	page := events
+	for len(page) >= outboxPollLimit && s.outboxAllHandledAhead(page) {
+		page, err = s.outboxRepo.ListAfterAndReleaseDedup(ctx, page[len(page)-1].ID, outboxPollLimit)
+		if err != nil {
+			return nil, err
+		}
+		events = append(events, page...)
+	}
+	return events, nil
+}
+
+func (s *SchedulerSnapshotService) outboxAllHandledAhead(events []SchedulerOutboxEvent) bool {
+	if len(s.outboxHandledAhead) == 0 {
+		return false
+	}
+	for _, event := range events {
+		if _, ok := s.outboxHandledAhead[event.ID]; !ok {
+			return false
+		}
+	}
+	return true
+}
+
+// advanceOutboxGapState 返回可安全持久化的水位：越过连续的 id 与已超过 outboxGapGrace 的缺口，
+// 停在第一个仍在等待期内的缺口之前（该缺口可能属于尚未提交的事务）。
+// 水位之后已处理的事件记入 outboxHandledAhead，后续轮询不再重复处理。
+func (s *SchedulerSnapshotService) advanceOutboxGapState(watermark int64, events []SchedulerOutboxEvent, now time.Time) int64 {
+	if watermark <= 0 {
+		return events[len(events)-1].ID
+	}
+	safeID := watermark
+	blocked := false
+	expected := watermark + 1
+	for _, event := range events {
+		if event.ID > expected {
+			if s.outboxGapSeenAt == nil {
+				s.outboxGapSeenAt = make(map[int64]time.Time)
+			}
+			firstSeen, ok := s.outboxGapSeenAt[expected]
+			if !ok {
+				firstSeen = now
+				s.outboxGapSeenAt[expected] = now
+			}
+			if now.Sub(firstSeen) < outboxGapGrace {
+				blocked = true
+			}
+		}
+		if !blocked {
+			safeID = event.ID
+		}
+		expected = event.ID + 1
+	}
+	for _, event := range events {
+		if event.ID <= safeID {
+			continue
+		}
+		if s.outboxHandledAhead == nil {
+			s.outboxHandledAhead = make(map[int64]struct{})
+		}
+		s.outboxHandledAhead[event.ID] = struct{}{}
+	}
+	return safeID
 }
 
 func (s *SchedulerSnapshotService) cleanupConsumedOutbox(watermark int64) {
@@ -683,7 +806,67 @@ func (s *SchedulerSnapshotService) handleAccountEvent(ctx context.Context, accou
 	if len(groupIDs) == 0 {
 		groupIDs = account.GroupIDs
 	}
+	s.scheduleTransientRecoveryRebuild(account)
 	return s.rebuildByAccount(ctx, account, groupIDs, "account_change", seen)
+}
+
+// scheduleTransientRecoveryRebuild 在账号处于临时封锁时，安排封锁结束后重建其所属桶。
+// 快照重建按重建时刻排除限流/过载/临时不可调度账号，而封锁自然到期不会产生 outbox 事件，
+// 否则账号要等到其他事件或下一次全量重建才会回到快照中。
+func (s *SchedulerSnapshotService) scheduleTransientRecoveryRebuild(account *Account) {
+	if s == nil || account == nil || account.ID <= 0 {
+		return
+	}
+	now := time.Now()
+	var until time.Time
+	for _, t := range []*time.Time{account.RateLimitResetAt, account.OverloadUntil, account.TempUnschedulableUntil} {
+		if t != nil && t.After(now) && t.After(until) {
+			until = *t
+		}
+	}
+
+	accountID := account.ID
+	s.recoveryMu.Lock()
+	defer s.recoveryMu.Unlock()
+	if old := s.recoveryTimers[accountID]; old != nil {
+		old.Stop()
+		delete(s.recoveryTimers, accountID)
+	}
+	if until.IsZero() {
+		return
+	}
+	select {
+	case <-s.stopCh:
+		return
+	default:
+	}
+	if s.recoveryTimers == nil {
+		s.recoveryTimers = make(map[int64]*time.Timer)
+	}
+	var timer *time.Timer
+	timer = time.AfterFunc(until.Sub(now)+schedulerTransientRecoveryDelay, func() {
+		s.recoveryMu.Lock()
+		// 已被新事件替换或被 Stop 清理的定时器不再执行。
+		if s.recoveryTimers[accountID] != timer {
+			s.recoveryMu.Unlock()
+			return
+		}
+		delete(s.recoveryTimers, accountID)
+		s.wg.Add(1)
+		s.recoveryMu.Unlock()
+		defer s.wg.Done()
+		s.runTransientRecoveryRebuild(accountID)
+	})
+	s.recoveryTimers[accountID] = timer
+}
+
+func (s *SchedulerSnapshotService) runTransientRecoveryRebuild(accountID int64) {
+	defer recoverBackgroundWorker("scheduler transient recovery rebuild", nil)
+	ctx, cancel := context.WithTimeout(context.Background(), outboxEventTimeout)
+	defer cancel()
+	if err := s.handleAccountEvent(ctx, &accountID, nil, nil); err != nil {
+		logger.LegacyPrintf("service.scheduler_snapshot", "[Scheduler] transient recovery rebuild failed: account=%d err=%v", accountID, err)
+	}
 }
 
 func (s *SchedulerSnapshotService) handleGroupEvent(ctx context.Context, groupID *int64, seen map[batchSeenKey]struct{}) error {

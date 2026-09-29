@@ -5254,6 +5254,11 @@ const ensureAntigravityMixedChannelConfirmed = async (onConfirm: () => Promise<v
   }
 }
 
+// 确认只对当时的平台和分组有效，变更后需重新预检
+watch([() => form.platform, () => form.group_ids.join(',')], () => {
+  antigravityMixedChannelConfirmed.value = false
+})
+
 const submitCreateAccount = async (payload: CreateAccountRequest) => {
   submitting.value = true
   try {
@@ -5302,6 +5307,8 @@ const submitCreateAccount = async (payload: CreateAccountRequest) => {
       })
       return
     }
+    // 创建失败，确认作废，下次提交重新预检
+    antigravityMixedChannelConfirmed.value = false
     appStore.showError(error.response?.data?.message || error.response?.data?.detail || t('admin.accounts.failedToCreate'))
   } finally {
     submitting.value = false

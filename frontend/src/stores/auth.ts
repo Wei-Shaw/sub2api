@@ -6,6 +6,7 @@
 import { defineStore } from 'pinia'
 import { ref, computed, readonly } from 'vue'
 import { authAPI, isTotp2FARequired, passkeyAPI, type LoginResponse } from '@/api'
+import { PAYMENT_RECOVERY_STORAGE_KEY } from '@/components/payment/paymentFlow'
 import type {
   User,
   LoginRequest,
@@ -431,19 +432,34 @@ export const useAuthStore = defineStore('auth', () => {
   /**
    * Refresh current user data
    * Fetches latest user info from the server
+   * @param options.force - 充值/兑换/划转等变更之后使用：进行中的请求可能在变更前就读了余额，
+   *   此时排在它之后重新请求，而不是复用它
    * @returns Promise resolving to the updated user
    * @throws Error if not authenticated or request fails
    */
-  async function refreshUser(): Promise<User> {
+  async function refreshUser(options?: { force?: boolean }): Promise<User> {
     if (!token.value) {
       throw new Error('Not authenticated')
     }
 
     // checkAuth and view onMounted hooks both refresh on load; share one /auth/me request.
-    if (!refreshUserInFlight) {
-      refreshUserInFlight = fetchCurrentUser().finally(() => {
-        refreshUserInFlight = null
+    if (!refreshUserInFlight || options?.force) {
+      const previous = refreshUserInFlight
+      // 等旧请求结束再发，避免旧响应晚到覆盖新数据
+      const request: Promise<User> = (previous
+        ? previous.catch(() => undefined).then(() => {
+          if (!token.value) {
+            throw new Error('Not authenticated')
+          }
+          return fetchCurrentUser()
+        })
+        : fetchCurrentUser()
+      ).finally(() => {
+        if (refreshUserInFlight === request) {
+          refreshUserInFlight = null
+        }
       })
+      refreshUserInFlight = request
     }
     return refreshUserInFlight
   }
@@ -489,6 +505,8 @@ export const useAuthStore = defineStore('auth', () => {
     localStorage.removeItem(AUTH_USER_KEY)
     localStorage.removeItem(REFRESH_TOKEN_KEY)
     localStorage.removeItem(TOKEN_EXPIRES_AT_KEY)
+    // 待支付订单快照属于当前用户，登出后不能留给下一个登录的人
+    localStorage.removeItem(PAYMENT_RECOVERY_STORAGE_KEY)
 
     if (options?.preservePendingAuthSession) {
       pendingAuthSession.value = getPersistedPendingAuthSession()

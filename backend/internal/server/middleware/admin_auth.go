@@ -196,6 +196,12 @@ func validateJWTForAdmin(
 		return false
 	}
 
+	// 撤销全部会话后，此前签发的 access token 立即失效
+	if authService.IsAccessTokenRevoked(c.Request.Context(), claims) {
+		AbortWithError(c, 401, "TOKEN_REVOKED", "Token has been revoked")
+		return false
+	}
+
 	// 会话绑定校验：IP/UA 任一变化即撤销会话（功能可在系统设置中关闭）
 	if !enforceSessionBinding(c, authService, settingService, auditService, claims) {
 		return false

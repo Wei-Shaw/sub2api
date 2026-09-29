@@ -24,7 +24,8 @@ import (
 var errAnthropicNativeStreamIdle = errors.New("stream data interval timeout")
 
 // anthropicNativeLineEvent 是行泵交付的单次读取结果：line 为一行 SSE 文本，
-// err 为 scanner 读错误（流自然结束时 next 返回 io.EOF，不经过本字段）。
+// err 为读错误（流自然结束时 next 返回 io.EOF；仅 newUpstreamLinePump 的无换行末行
+// 会随 io.EOF 经本字段交付）。
 type anthropicNativeLineEvent struct {
 	line string
 	err  error
@@ -41,6 +42,21 @@ type anthropicNativeLinePump struct {
 
 // newAnthropicNativeLinePump 启动泵 goroutine；调用方 defer pump.stop()。
 func newAnthropicNativeLinePump(scanner *bufio.Scanner, interval time.Duration) *anthropicNativeLinePump {
+	return newUpstreamLinePump(func() (string, error) {
+		if scanner.Scan() {
+			return scanner.Text(), nil
+		}
+		if err := scanner.Err(); err != nil {
+			return "", err
+		}
+		return "", io.EOF
+	}, interval)
+}
+
+// newUpstreamLinePump 以任意逐行读取函数 read 启动泵 goroutine（如 Gemini 的
+// readUpstreamLineLimited）；调用方 defer pump.stop()。read 返回 io.EOF 时泵结束，
+// 随 EOF 一并返回的非空末行（无换行结尾）以 (line, io.EOF) 交付；其它错误交付后结束。
+func newUpstreamLinePump(read func() (string, error), interval time.Duration) *anthropicNativeLinePump {
 	p := &anthropicNativeLinePump{
 		events:   make(chan anthropicNativeLineEvent, 16),
 		done:     make(chan struct{}),
@@ -51,23 +67,24 @@ func newAnthropicNativeLinePump(scanner *bufio.Scanner, interval time.Duration) 
 	}
 	go func() {
 		defer close(p.events)
-		defer recoverStreamGoroutine("anthropicNativeLinePump SSE pump", func(err error) {
+		defer recoverStreamGoroutine("upstreamLinePump SSE pump", func(err error) {
 			select {
 			case p.events <- anthropicNativeLineEvent{err: err}:
 			case <-p.done:
 			}
 		})
-		for scanner.Scan() {
+		for {
+			line, err := read()
+			if errors.Is(err, io.EOF) && line == "" {
+				return
+			}
 			select {
-			case p.events <- anthropicNativeLineEvent{line: scanner.Text()}:
+			case p.events <- anthropicNativeLineEvent{line: line, err: err}:
 			case <-p.done:
 				return
 			}
-		}
-		if err := scanner.Err(); err != nil {
-			select {
-			case p.events <- anthropicNativeLineEvent{err: err}:
-			case <-p.done:
+			if err != nil {
+				return
 			}
 		}
 	}()

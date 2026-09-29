@@ -72,6 +72,12 @@ func (s *PaymentService) CreateOrder(ctx context.Context, req CreateOrderRequest
 	if err != nil {
 		return nil, err
 	}
+	// 单笔上下限按网关币种配置，必须拿换算后的 gatewayAmount 比较，而不是用户填的数。
+	if plan == nil {
+		if err := validateOrderAmountRange(gatewayAmount, cfg); err != nil {
+			return nil, err
+		}
+	}
 	orderAmount := creditedUSD
 	limitAmount := gatewayAmount
 	if plan != nil {
@@ -109,7 +115,7 @@ func (s *PaymentService) CreateOrder(ctx context.Context, req CreateOrderRequest
 	if err := validateSelectedCreateOrderAmountCurrency(payAmountStr, sel); err != nil {
 		return nil, err
 	}
-	order, err := s.createOrderInTx(ctx, req, user, plan, cfg, orderAmount, limitAmount, feeRate, payAmount, sel)
+	order, err := s.createOrderInTx(ctx, req, user, plan, cfg, orderAmount, feeRate, payAmount, sel)
 	if err != nil {
 		return nil, err
 	}
@@ -203,6 +209,11 @@ func (s *PaymentService) effectiveExchangeRate(ctx context.Context) (decimal.Dec
 }
 
 func (s *PaymentService) validateOrderInput(ctx context.Context, req CreateOrderRequest, cfg *PaymentConfig) (*dbent.SubscriptionPlan, error) {
+	// 履约时非 subscription 一律按余额充值处理，未知类型必须在这里拒绝，
+	// 否则会绕过下面只对 balance 生效的禁用开关、充值倍率与每日限额口径。
+	if req.OrderType != payment.OrderTypeBalance && req.OrderType != payment.OrderTypeSubscription {
+		return nil, infraerrors.BadRequest("INVALID_ORDER_TYPE", "order_type must be balance or subscription")
+	}
 	if req.OrderType == payment.OrderTypeBalance && cfg.BalanceDisabled {
 		return nil, infraerrors.Forbidden("BALANCE_PAYMENT_DISABLED", "balance recharge has been disabled")
 	}
@@ -212,11 +223,16 @@ func (s *PaymentService) validateOrderInput(ctx context.Context, req CreateOrder
 	if math.IsNaN(req.Amount) || math.IsInf(req.Amount, 0) || req.Amount <= 0 {
 		return nil, infraerrors.BadRequest("INVALID_AMOUNT", "amount must be a positive number")
 	}
-	if (cfg.MinAmount > 0 && req.Amount < cfg.MinAmount) || (cfg.MaxAmount > 0 && req.Amount > cfg.MaxAmount) {
-		return nil, infraerrors.BadRequest("INVALID_AMOUNT", "amount out of range").
+	return nil, nil
+}
+
+// validateOrderAmountRange 用网关币种金额校验单笔上下限（与实例限额、当日限额口径一致）。
+func validateOrderAmountRange(gatewayAmount float64, cfg *PaymentConfig) error {
+	if (cfg.MinAmount > 0 && gatewayAmount < cfg.MinAmount) || (cfg.MaxAmount > 0 && gatewayAmount > cfg.MaxAmount) {
+		return infraerrors.BadRequest("INVALID_AMOUNT", "amount out of range").
 			WithMetadata(map[string]string{"min": fmt.Sprintf("%.2f", cfg.MinAmount), "max": fmt.Sprintf("%.2f", cfg.MaxAmount)})
 	}
-	return nil, nil
+	return nil
 }
 
 func (s *PaymentService) validateSubOrder(ctx context.Context, req CreateOrderRequest) (*dbent.SubscriptionPlan, error) {
@@ -237,7 +253,7 @@ func (s *PaymentService) validateSubOrder(ctx context.Context, req CreateOrderRe
 	return plan, nil
 }
 
-func (s *PaymentService) createOrderInTx(ctx context.Context, req CreateOrderRequest, user *User, plan *dbent.SubscriptionPlan, cfg *PaymentConfig, orderAmount, limitAmount, feeRate, payAmount float64, sel *payment.InstanceSelection) (*dbent.PaymentOrder, error) {
+func (s *PaymentService) createOrderInTx(ctx context.Context, req CreateOrderRequest, user *User, plan *dbent.SubscriptionPlan, cfg *PaymentConfig, orderAmount, feeRate, payAmount float64, sel *payment.InstanceSelection) (*dbent.PaymentOrder, error) {
 	tx, err := s.entClient.Tx(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("begin transaction: %w", err)
@@ -251,7 +267,7 @@ func (s *PaymentService) createOrderInTx(ctx context.Context, req CreateOrderReq
 	if err := s.checkPendingLimit(ctx, tx, req.UserID, cfg.MaxPendingOrders); err != nil {
 		return nil, err
 	}
-	if err := s.checkDailyLimit(ctx, tx, req.UserID, limitAmount, cfg.DailyLimit); err != nil {
+	if err := s.checkDailyLimit(ctx, tx, req.UserID, payAmount, cfg.DailyLimit); err != nil {
 		return nil, err
 	}
 	tm := cfg.OrderTimeoutMin
@@ -455,24 +471,12 @@ func buildPaymentOrderProviderSnapshot(sel *payment.InstanceSelection, req Creat
 	return snapshot
 }
 
-// sumDailyOrderAmount 按「余额订单算实付、其余算订单金额」的口径求和。
+// sumDailyOrderAmount 按实付金额（网关币种，含手续费）求和，所有订单类型同一口径。
+// 订阅单的 amount 是 USD 套餐价，和网关币种的日限额不能相加。
 // extra 是这一类订单的附加谓词（已支付 / 未过期挂起）。
 func sumDailyOrderAmount(ctx context.Context, tx *dbent.Tx, userID int64, extra ...predicate.PaymentOrder) (float64, error) {
-	base := func() []predicate.PaymentOrder {
-		preds := []predicate.PaymentOrder{paymentorder.UserIDEQ(userID)}
-		return append(preds, extra...)
-	}
-	balanceUsed, err := sumPaymentOrderAmount(ctx, tx,
-		append(base(), paymentorder.OrderTypeEQ(payment.OrderTypeBalance)), paymentorder.FieldPayAmount)
-	if err != nil {
-		return 0, err
-	}
-	otherUsed, err := sumPaymentOrderAmount(ctx, tx,
-		append(base(), paymentorder.OrderTypeNEQ(payment.OrderTypeBalance)), paymentorder.FieldAmount)
-	if err != nil {
-		return 0, err
-	}
-	return balanceUsed + otherUsed, nil
+	preds := append([]predicate.PaymentOrder{paymentorder.UserIDEQ(userID)}, extra...)
+	return sumPaymentOrderAmount(ctx, tx, preds, paymentorder.FieldPayAmount)
 }
 
 // unexpiredPendingDailyLimitPredicates 返回「仍会被支付」的挂起订单谓词。
@@ -502,7 +506,8 @@ func earliestUnexpiredPendingExpiry(ctx context.Context, tx *dbent.Tx, userID in
 }
 
 // checkDailyLimit 统计用户当天额度是否还放得下本次订单。
-// 余额订单按实付金额计入，其余（订阅）按订单金额计入，聚合语句都在库内求和。
+// 日限额按网关币种配置：所有订单都按实付金额（pay_amount）计入，amount 是本次订单的
+// 实付金额，聚合语句都在库内求和。
 // 调用方必须已经通过 lockUserRowForOrderLimits 持有用户行锁。
 //
 // 除了已支付（paid/recharging/completed）的订单，未过期的挂起订单也计入额度：

@@ -1,6 +1,7 @@
 package service
 
 import (
+	"bufio"
 	"errors"
 	"fmt"
 	"io"
@@ -80,4 +81,31 @@ func openAITooLargeError(c *gin.Context) {
 			"message": "Upstream response too large",
 		},
 	})
+}
+
+// resolveUpstreamMaxLineSize 返回上游 SSE 单行上限（gateway.max_line_size），未配置时用默认值。
+func resolveUpstreamMaxLineSize(cfg *config.Config) int {
+	if cfg != nil && cfg.Gateway.MaxLineSize > 0 {
+		return cfg.Gateway.MaxLineSize
+	}
+	return defaultMaxLineSize
+}
+
+// readUpstreamLineLimited 语义同 reader.ReadBytes('\n')，但单行超过 maxLineSize 时返回
+// bufio.ErrTooLong，避免上游超长行（无换行）被无上限缓冲导致 OOM。
+func readUpstreamLineLimited(reader *bufio.Reader, maxLineSize int) ([]byte, error) {
+	if maxLineSize <= 0 {
+		maxLineSize = defaultMaxLineSize
+	}
+	var line []byte
+	for {
+		frag, err := reader.ReadSlice('\n')
+		if len(line)+len(frag) > maxLineSize {
+			return nil, fmt.Errorf("upstream stream line exceeds %d bytes: %w", maxLineSize, bufio.ErrTooLong)
+		}
+		line = append(line, frag...)
+		if !errors.Is(err, bufio.ErrBufferFull) {
+			return line, err
+		}
+	}
 }

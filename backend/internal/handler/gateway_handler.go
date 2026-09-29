@@ -246,8 +246,10 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 		h.handleConcurrencyError(c, err, "user", streamStarted)
 		return
 	}
-	// 在请求结束或 Context 取消时确保释放槽位，避免客户端断开造成泄漏
-	userReleaseFunc = wrapReleaseOnDone(c.Request.Context(), userReleaseFunc)
+	// 在请求结束或 Context 取消时确保释放槽位，避免客户端断开造成泄漏。
+	// 交给流式 Forward 后需 disarm：上游被分离继续排空，槽位须持有到 Forward 返回。
+	var disarmUserRelease func()
+	userReleaseFunc, disarmUserRelease = wrapReleaseOnDoneDisarmable(c.Request.Context(), userReleaseFunc)
 	if userReleaseFunc != nil {
 		defer userReleaseFunc()
 	}
@@ -735,6 +737,10 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 				}
 			}
 
+			// 选号（含 WaitPlan 路径）时已注册会话槽：先登记，确保下方等待/准入失败的
+			// 提前返回也由 defer 释放；准入后会以最新账号指针覆盖同一 ID。
+			sessionSlotAccounts[account.ID] = account
+
 			// 3. 获取账号并发槽位
 			accountReleaseFunc := selection.ReleaseFunc
 			if !selection.Acquired {
@@ -817,8 +823,9 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 					reqLog.Warn("gateway.bind_sticky_session_after_profit_admission_failed", zap.Int64("account_id", account.ID), zap.Error(err))
 				}
 			}
-			// 账号槽位/等待计数需要在超时或断开时安全回收
-			accountReleaseFunc = wrapReleaseOnDone(c.Request.Context(), accountReleaseFunc)
+			// 账号槽位/等待计数需要在超时或断开时安全回收（Forward 前）；
+			// 交给 Forward 后 disarm，槽位持有到 Forward 返回（见下方）。
+			accountReleaseFunc, disarmAccountRelease := wrapReleaseOnDoneDisarmable(c.Request.Context(), accountReleaseFunc)
 
 			// ===== 用户消息串行队列 START =====
 			var queueRelease func()
@@ -866,6 +873,19 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 				}
 			}
 
+			// 排队期间客户端已断开：不再转发上游（fail-open 仅适用于客户端在线时的超时/缓存错误）
+			if umqMode != "" && c.Request.Context().Err() != nil {
+				if queueRelease != nil {
+					queueRelease()
+				}
+				if accountReleaseFunc != nil {
+					accountReleaseFunc()
+				}
+				reqLog.Info("gateway.umq_wait_aborted_client_disconnected", zap.Int64("account_id", account.ID))
+				failoverClientGone(c)
+				return
+			}
+
 			// 用 wrapReleaseOnDone 确保 context 取消时自动释放（仅 serialize 模式有 queueRelease）
 			queueRelease = wrapReleaseOnDone(c.Request.Context(), queueRelease)
 			// 注入回调到 ParsedRequest：使用外层 wrapper 以便提前清理 AfterFunc
@@ -876,12 +896,24 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 			if channelMapping.Mapped {
 				attemptParsedReq.Model = channelMapping.MappedModel
 				if err := attemptParsedReq.ReplaceBody(h.gatewayService.ReplaceModelInBody(attemptParsedReq.Body.Bytes(), channelMapping.MappedModel)); err != nil {
+					if queueRelease != nil {
+						queueRelease()
+					}
+					if accountReleaseFunc != nil {
+						accountReleaseFunc()
+					}
 					h.errorResponse(c, http.StatusBadRequest, "invalid_request_error", "Failed to parse request body")
 					return
 				}
 			}
 			// Bedrock CC 兼容：清理 body 专有字段 + 过滤 anthropic-beta header，适用于所有转发路径
 			if err := attemptParsedReq.ReplaceBody(h.gatewayService.ApplyBedrockCCCompat(c, attemptParsedReq.Body.Bytes(), attemptParsedReq.Model, account, apiKey.GroupID)); err != nil {
+				if queueRelease != nil {
+					queueRelease()
+				}
+				if accountReleaseFunc != nil {
+					accountReleaseFunc()
+				}
 				h.errorResponse(c, http.StatusBadRequest, "invalid_request_error", "Failed to parse request body")
 				return
 			}
@@ -899,6 +931,11 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 			}
 			// 记录 Forward 前已写入字节数，Forward 后若增加则说明 SSE 内容已发，禁止 failover
 			writerSizeBeforeForward := c.Writer.Size()
+			// 流式上游在客户端断开后被分离并继续排空（计费），期间用户/账号槽位必须保持占用：
+			// 取消断开即释放，改由 Forward 返回后的显式释放 / handler 退出时的 defer 回收
+			// （排空时长受流空闲超时约束）。
+			disarmUserRelease()
+			disarmAccountRelease()
 			if account.Platform == service.PlatformAntigravity && account.Type != service.AccountTypeAPIKey {
 				result, err = h.antigravityGatewayService.Forward(requestCtx, c, account, attemptBody, hasBoundSession)
 			} else {
@@ -1061,7 +1098,18 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 				upstreamErrorAlreadyCommunicated := gatewayForwardErrorAlreadyCommunicated(c, writerSizeBeforeForward, err)
 				wroteFallback := false
 				if !upstreamErrorAlreadyCommunicated {
-					wroteFallback = h.ensureForwardErrorResponse(c, streamStarted)
+					var afterOutputErr *service.StreamErrorEventAfterOutputError
+					if errors.As(err, &afterOutputErr) {
+						// 已输出内容后的流内 error 事件：无法 failover，沿用 failover 耗尽的
+						// 映射/透传规则写终止错误帧；部分 usage 由下方照常入账。
+						h.handleFailoverExhausted(c, &service.UpstreamFailoverError{
+							StatusCode:   afterOutputErr.StatusCode,
+							ResponseBody: afterOutputErr.ResponseBody,
+						}, account.Platform, true)
+						wroteFallback = true
+					} else {
+						wroteFallback = h.ensureForwardErrorResponse(c, streamStarted)
+					}
 				}
 				forwardFailedFields := []zap.Field{
 					zap.Int64("account_id", account.ID),
@@ -2303,12 +2351,18 @@ func sendMockInterceptStream(c *gin.Context, model string, interceptType Interce
 	var msgID string
 	var outputTokens int
 	var textDeltas []string
+	stopReason := "end_turn"
 
 	switch interceptType {
 	case InterceptTypeSuggestionMode:
 		msgID = generateRealisticMsgID()
 		outputTokens = 1
 		textDeltas = []string{""} // 空内容
+	case InterceptTypeMaxTokensOneHaiku:
+		msgID = generateRealisticMsgID()
+		outputTokens = 1
+		textDeltas = []string{"#"}
+		stopReason = "max_tokens" // 与非流式一致：max_tokens=1 探测的 stop_reason 为 max_tokens
 	default: // InterceptTypeWarmup
 		msgID = generateRealisticMsgID()
 		outputTokens = 2
@@ -2331,7 +2385,7 @@ func sendMockInterceptStream(c *gin.Context, model string, interceptType Interce
 	}
 
 	// Add final events
-	messageDeltaJSON := `{"type":"message_delta","delta":{"stop_reason":"end_turn","stop_sequence":null,"stop_details":null},"usage":{"output_tokens":` + strconv.Itoa(outputTokens) + `}}`
+	messageDeltaJSON := `{"type":"message_delta","delta":{"stop_reason":` + strconv.Quote(stopReason) + `,"stop_sequence":null,"stop_details":null},"usage":{"output_tokens":` + strconv.Itoa(outputTokens) + `}}`
 
 	events = append(events,
 		`event: content_block_stop`+"\n"+`data: {"index":0,"type":"content_block_stop"}`,

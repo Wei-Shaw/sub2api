@@ -15,7 +15,6 @@ import (
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/claude"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
-	"github.com/tidwall/gjson"
 
 	"github.com/gin-gonic/gin"
 )
@@ -829,9 +828,9 @@ func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *A
 			if errors.As(err, &sseErr) {
 				// 上游 HTTP 200 + SSE 流体内出现 event:error 帧。
 				body := []byte(sseErr.RawData)
-				semanticStatus := http.StatusForbidden
-				if c.Writer.Size() == writerSizeBeforeStream && gjson.GetBytes(body, "error.type").String() == "overloaded_error" {
-					semanticStatus = 529
+				semanticStatus := anthropicSSEErrorSemanticStatus(body)
+				// 账号副作用仍仅限未输出前的 overloaded_error
+				if c.Writer.Size() == writerSizeBeforeStream && semanticStatus == 529 {
 					syntheticResp := &http.Response{
 						StatusCode: semanticStatus,
 						Header:     resp.Header.Clone(),
@@ -871,6 +870,17 @@ func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *A
 					account.ID, account.Name, resp.Header.Get("x-request-id"),
 					truncateString(sseErr.RawData, 1000),
 				)
+
+				// 已向客户端输出内容：无法 failover，改以非 failover 错误连同已计量的
+				// 部分 usage 一起返回，由 handler 写终止错误帧并照常入账。
+				// 未输出前保持 result=nil + UpstreamFailoverError（failover 重试不双重计费）。
+				if c.Writer.Size() != writerSizeBeforeStream {
+					afterOutputErr := &StreamErrorEventAfterOutputError{
+						StatusCode:   semanticStatus,
+						ResponseBody: body,
+					}
+					return partialStreamUsageResult(c, resp, streamResult, originalModel, mappedModel, startTime, afterOutputErr), afterOutputErr
+				}
 
 				return nil, &UpstreamFailoverError{
 					StatusCode:   semanticStatus,

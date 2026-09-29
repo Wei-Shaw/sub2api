@@ -291,14 +291,18 @@ const getHistoryItemTitle = (item: RedeemHistoryItem) => {
     return item.value >= 0 ? t('redeem.concurrencyAddedAdmin') : t('redeem.concurrencyReducedAdmin')
   } else if (item.type === 'subscription') {
     return t('redeem.subscriptionAssigned')
+  } else if (item.type === 'invitation') {
+    return t('redeem.invitationCodeUsed')
   }
   return t('common.unknown')
 }
 
 const formatHistoryValue = (item: RedeemHistoryItem) => {
+  // 注册时使用的邀请码没有可兑换的数值
+  if (item.type === 'invitation') return ''
   if (isBalanceType(item.type)) {
-    const sign = item.value >= 0 ? '+' : ''
-    return `${sign}$${item.value.toFixed(2)}`
+    const sign = item.value >= 0 ? '+' : '-'
+    return `${sign}$${Math.abs(item.value).toFixed(2)}`
   } else if (isSubscriptionType(item.type)) {
     // 订阅类型显示有效天数和分组名称
     const days = item.validity_days || Math.round(item.value)
@@ -349,7 +353,7 @@ const handleRedeem = async () => {
 
     // Refresh user data to get updated balance/concurrency
     try {
-      const refreshed = await authStore.refreshUser()
+      const refreshed = await authStore.refreshUser({ force: true })
       redeemResult.value = {
         ...result,
         new_balance: result.type === 'balance' ? refreshed.balance : undefined,

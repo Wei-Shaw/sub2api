@@ -259,7 +259,8 @@ func (h *AsyncImageHandler) failTask(taskID string, statusCode int, taskErr json
 }
 
 func newAsyncImageContext(c *gin.Context, body []byte, timeoutDuration time.Duration) (*gin.Context, *httptest.ResponseRecorder, context.CancelFunc) {
-	base := context.WithoutCancel(c.Request.Context())
+	// 结果写入 recorder 而非客户端，关闭 JSON 心跳以免提前提交 200 掩盖上游错误。
+	base := service.WithOpenAIImagesJSONKeepaliveDisabled(context.WithoutCancel(c.Request.Context()))
 	executionCtx, cancel := context.WithTimeout(base, timeoutDuration)
 	request := c.Request.Clone(executionCtx)
 	request.Body = io.NopCloser(bytes.NewReader(body))

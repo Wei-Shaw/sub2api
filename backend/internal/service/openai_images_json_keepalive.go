@@ -2,6 +2,7 @@ package service
 
 import (
 	"bufio"
+	"context"
 	"errors"
 	"net"
 	"net/http"
@@ -12,6 +13,15 @@ import (
 )
 
 const openAIImagesJSONKeepaliveKey = "openai_images_json_keepalive"
+
+type openAIImagesJSONKeepaliveDisabledKey struct{}
+
+// WithOpenAIImagesJSONKeepaliveDisabled marks detached executions (async image
+// tasks, Image Studio replays) that have no client connection to keep alive and
+// must see the real upstream status instead of a heartbeat-committed 200.
+func WithOpenAIImagesJSONKeepaliveDisabled(ctx context.Context) context.Context {
+	return context.WithValue(ctx, openAIImagesJSONKeepaliveDisabledKey{}, true)
+}
 
 // openAIImagesJSONKeepalive keeps non-streaming Images API requests alive while
 // an OAuth upstream is producing SSE internally. JSON permits leading
@@ -34,6 +44,9 @@ type openAIImagesJSONKeepalive struct {
 // non-streaming Images request. A non-positive interval disables the feature.
 func StartOpenAIImagesJSONKeepalive(c *gin.Context, interval time.Duration) func() {
 	if c == nil || c.Writer == nil || interval <= 0 {
+		return func() {}
+	}
+	if c.Request != nil && c.Request.Context().Value(openAIImagesJSONKeepaliveDisabledKey{}) != nil {
 		return func() {}
 	}
 	originalWriter := c.Writer

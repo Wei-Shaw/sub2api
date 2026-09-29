@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"strings"
@@ -11,6 +12,9 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/paymentproviderinstance"
 	"github.com/Wei-Shaw/sub2api/internal/payment"
 )
+
+// ErrWebhookProviderAmbiguous 表示无法确定唯一的回调服务商实例（确定性结果，重试也无用）。
+var ErrWebhookProviderAmbiguous = errors.New("webhook provider fallback is ambiguous")
 
 // GetWebhookProvider returns the provider instance that should verify a webhook.
 // It resolves the original provider instance from the order whenever possible and
@@ -32,6 +36,10 @@ func (s *PaymentService) GetWebhookProvider(ctx context.Context, providerKey, ou
 func (s *PaymentService) GetWebhookProviders(ctx context.Context, providerKey, outTradeNo string) ([]payment.Provider, error) {
 	if outTradeNo != "" {
 		order, err := s.entClient.PaymentOrder.Query().Where(paymentorder.OutTradeNo(outTradeNo)).Only(ctx)
+		if err != nil && !dbent.IsNotFound(err) {
+			// 瞬时 DB 错误不能当成订单不存在去走兜底，否则回调会被 ACK 掉。
+			return nil, fmt.Errorf("load order %s: %w", outTradeNo, err)
+		}
 		if err == nil {
 			if psHasPinnedProviderInstance(order) {
 				prov, err := s.getPinnedOrderProvider(ctx, order)
@@ -51,8 +59,12 @@ func (s *PaymentService) GetWebhookProviders(ctx context.Context, providerKey, o
 				}
 				return []payment.Provider{prov}, nil
 			}
-			if !s.webhookRegistryFallbackAllowed(ctx, providerKey) {
-				return nil, fmt.Errorf("webhook provider fallback is ambiguous for %s", providerKey)
+			allowed, err := s.webhookRegistryFallbackAllowed(ctx, providerKey)
+			if err != nil {
+				return nil, err
+			}
+			if !allowed {
+				return nil, fmt.Errorf("%w for %s", ErrWebhookProviderAmbiguous, providerKey)
 			}
 			s.EnsureProviders(ctx)
 			prov, err := s.registry.GetProviderByKey(providerKey)
@@ -63,8 +75,12 @@ func (s *PaymentService) GetWebhookProviders(ctx context.Context, providerKey, o
 		}
 	}
 
-	if !s.webhookRegistryFallbackAllowed(ctx, providerKey) {
-		return nil, fmt.Errorf("webhook provider fallback is ambiguous for %s", providerKey)
+	allowed, err := s.webhookRegistryFallbackAllowed(ctx, providerKey)
+	if err != nil {
+		return nil, err
+	}
+	if !allowed {
+		return nil, fmt.Errorf("%w for %s", ErrWebhookProviderAmbiguous, providerKey)
 	}
 
 	s.EnsureProviders(ctx)
@@ -86,10 +102,10 @@ func (s *PaymentService) getPinnedOrderProvider(ctx context.Context, o *dbent.Pa
 	return s.createProviderFromInstance(ctx, inst)
 }
 
-func (s *PaymentService) webhookRegistryFallbackAllowed(ctx context.Context, providerKey string) bool {
+func (s *PaymentService) webhookRegistryFallbackAllowed(ctx context.Context, providerKey string) (bool, error) {
 	providerKey = strings.TrimSpace(providerKey)
 	if providerKey == "" || s == nil || s.entClient == nil {
-		return false
+		return false, nil
 	}
 
 	count, err := s.entClient.PaymentProviderInstance.Query().
@@ -100,9 +116,9 @@ func (s *PaymentService) webhookRegistryFallbackAllowed(ctx context.Context, pro
 		Count(ctx)
 	if err != nil {
 		slog.Warn("payment webhook fallback instance count failed", "provider", providerKey, "error", err)
-		return false
+		return false, fmt.Errorf("count %s provider instances: %w", providerKey, err)
 	}
-	return count <= 1
+	return count <= 1, nil
 }
 
 func psHasPinnedProviderInstance(order *dbent.PaymentOrder) bool {

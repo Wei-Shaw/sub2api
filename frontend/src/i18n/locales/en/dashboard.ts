@@ -809,6 +809,7 @@ export default {
     adminAdjustment: 'Admin Adjustment',
     subscriptionAssigned: 'Subscription Assigned',
     subscriptionAssignedDesc: 'You have been granted access to {groupName}',
+    invitationCodeUsed: 'Invitation Code Used',
     subscriptionDays: '{days} days',
     days: ' days',
     codeRedeemSuccess: 'Code redeemed successfully!',
@@ -867,7 +868,7 @@ export default {
     changePasswordButton: 'Change Password',
     passwordsNotMatch: 'New passwords do not match',
     passwordTooShort: 'Password must be at least 8 characters long',
-    passwordChangeSuccess: 'Password changed successfully',
+    passwordChangeSuccess: 'Password changed successfully. Please sign in again with your new password.',
     passwordChangeFailed: 'Failed to change password',
     // TOTP 2FA
     totp: {

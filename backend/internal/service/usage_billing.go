@@ -180,6 +180,12 @@ type BatchImageBalanceHoldCommand struct {
 	BatchID            string
 	HoldAmount         float64
 	ActualAmount       float64
+
+	// 核销时与余额同一事务累加的 API Key 限额用量（语义同 UsageBillingCommand）。
+	// 不进入指纹：它们由 ActualAmount 与 Key 配置推导，Key 配置在重试之间可能被
+	// 管理员修改，计入指纹会让同一 capture 的重试被判为 fingerprint conflict。
+	APIKeyQuotaCost     float64
+	APIKeyRateLimitCost float64
 }
 
 func (c *BatchImageBalanceHoldCommand) Normalize() {
@@ -216,6 +222,10 @@ type BatchImageBalanceHoldResult struct {
 	Applied       bool
 	NewBalance    *float64
 	FrozenBalance *float64
+	// Captured 表示本次核销真正从冻结额扣了款（API Key 限额用量也随之累加）；
+	// 冻结额已不在押等空操作时为 false。
+	Captured             bool
+	APIKeyQuotaExhausted bool
 }
 
 type UsageBillingRepository interface {

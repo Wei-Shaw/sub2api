@@ -350,6 +350,9 @@ gateway:
   # ChatGPT Frameless Live 单会话硬上限（秒）。
   live:
     max_session_duration_seconds: 3600
+    # Live 按通话时长计费的单价（美元/分钟，按实际时长折算分钟小数，再乘分组/用户倍率）。
+    # 默认 0 = 免费（只写零成本用量行，不扣余额/订阅/Key 配额）。
+    price_per_minute_usd: 0
   # OpenAI Responses WebSocket 配置（默认开启，可按需回滚到 HTTP）
   openai_ws:
     # 新版 WS mode 路由（默认关闭）。关闭时忽略账号级 WS mode（包括 http_bridge），保持 legacy ctx_pool 行为。

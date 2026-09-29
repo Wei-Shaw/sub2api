@@ -1312,7 +1312,8 @@ func (s *adminServiceImpl) ClearGroupRateMultipliers(ctx context.Context, groupI
 	if s.userGroupRateRepo == nil {
 		return nil
 	}
-	return s.userGroupRateRepo.DeleteByGroupID(ctx, groupID)
+	// 仅清空 rate_multiplier，保留同一行中的 rpm_override（DeleteByGroupID 仅用于分组删除）。
+	return s.userGroupRateRepo.SyncGroupRateMultipliers(ctx, groupID, nil)
 }
 
 func (s *adminServiceImpl) BatchSetGroupRateMultipliers(ctx context.Context, groupID int64, entries []GroupRateMultiplierInput) error {

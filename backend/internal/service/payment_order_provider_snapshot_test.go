@@ -83,7 +83,6 @@ func TestCreateOrderInTx_WritesProviderSnapshot(t *testing.T) {
 			OrderTimeoutMin:  30,
 		},
 		88,
-		88,
 		0,
 		88,
 		&payment.InstanceSelection{

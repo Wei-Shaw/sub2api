@@ -1176,6 +1176,9 @@ type GatewayCNProvidersConfig struct {
 type GatewayLiveConfig struct {
 	// MaxSessionDurationSeconds 是 Live 会话的硬上限。
 	MaxSessionDurationSeconds int `mapstructure:"max_session_duration_seconds"`
+	// PricePerMinuteUSD 是 Live 会话按通话时长计费的单价（美元/分钟，未乘分组倍率）。
+	// 默认 0 = 免费：不走计费管道，仅写零成本用量行。
+	PricePerMinuteUSD float64 `mapstructure:"price_per_minute_usd"`
 }
 
 // GatewayOpenAIHTTP2Config OpenAI HTTP 上游协议配置。
@@ -2494,6 +2497,7 @@ func setDefaults() {
 	viper.SetDefault("gateway.openai_passthrough_allow_timeout_headers", false)
 	viper.SetDefault("gateway.openai_compact_model", "gpt-5.5")
 	viper.SetDefault("gateway.live.max_session_duration_seconds", 3600)
+	viper.SetDefault("gateway.live.price_per_minute_usd", 0.0)
 	// OpenAI Responses WebSocket（默认开启；可通过 force_http 紧急回滚）
 	viper.SetDefault("gateway.openai_ws.enabled", true)
 	viper.SetDefault("gateway.openai_ws.mode_router_v2_enabled", false)
@@ -3423,6 +3427,9 @@ func (c *Config) Validate() error {
 	}
 	if c.Gateway.Live.MaxSessionDurationSeconds <= 0 {
 		c.Gateway.Live.MaxSessionDurationSeconds = 3600
+	}
+	if price := c.Gateway.Live.PricePerMinuteUSD; price < 0 || math.IsNaN(price) || math.IsInf(price, 0) {
+		return fmt.Errorf("gateway.live.price_per_minute_usd must be a finite non-negative number")
 	}
 	if strings.TrimSpace(c.Gateway.ConnectionPoolIsolation) != "" {
 		switch c.Gateway.ConnectionPoolIsolation {

@@ -43,6 +43,8 @@ const (
 	imageStudioSaveTimeout = 2 * time.Minute
 	// Stop 取消在途任务后等待其落库的上限（整体清理预算为 10s）。
 	imageStudioShutdownWait = 5 * time.Second
+	// 等待超时后 Stop 代为把仍在途的任务落库为 interrupted 的上限。
+	imageStudioShutdownWriteBack = 3 * time.Second
 
 	imageStudioInterruptedMessage = "interrupted: the server shut down before the job finished"
 )
@@ -88,6 +90,8 @@ type ImageStudioAsset struct {
 
 type ImageStudioRepository interface {
 	CreateJob(ctx context.Context, job *ImageStudioJob) error
+	// CreateJobWithinLimit 原子地计数并插入：用户已有 limit 个未结束任务时返回 ErrImageStudioBusy。
+	CreateJobWithinLimit(ctx context.Context, job *ImageStudioJob, limit int) error
 	FailStaleJobs(ctx context.Context, userID int64, before time.Time, message string) error
 	CountUnfinishedJobs(ctx context.Context, userID int64) (int, error)
 	MarkJobRunning(ctx context.Context, id int64) error
@@ -145,6 +149,14 @@ type ImageStudioService struct {
 	runCtx    context.Context
 	runCancel context.CancelFunc
 	runs      sync.WaitGroup
+	active    map[*imageStudioRun]struct{}
+}
+
+// imageStudioRun 是一个在途任务；claimed 表示写回权已被 Run 或 Stop 取得（受 runMu 保护）。
+type imageStudioRun struct {
+	jobID   int64
+	started time.Time
+	claimed bool
 }
 
 func NewImageStudioService(repo ImageStudioRepository, apiKeys *APIKeyService, settings *ImageStorageSettingService) *ImageStudioService {
@@ -203,8 +215,9 @@ func (s *ImageStudioService) Stop() {
 	select {
 	case <-finished:
 	case <-time.After(imageStudioShutdownWait):
-		// 未落库的任务保持 running，由 FailStaleJobs 兜底。
+		// 网关回放的上游调用不响应取消，任务可能迟迟不返回：由服务代为落库 interrupted。
 		logger.L().Warn("image_studio.shutdown_wait_timeout")
+		s.interruptUnclaimedRuns()
 	}
 
 	if s.stop == nil {
@@ -224,15 +237,54 @@ func (s *ImageStudioService) runContextLocked() context.Context {
 
 // trackRun 登记一个在途任务并返回服务级上下文与完成回调。停机后不再登记（避免与
 // Stop 的 Wait 并发 Add），任务拿到已取消的上下文，快速收尾为 interrupted。
-func (s *ImageStudioService) trackRun() (context.Context, func()) {
+func (s *ImageStudioService) trackRun(jobID int64, started time.Time) (context.Context, *imageStudioRun, func()) {
 	s.runMu.Lock()
 	defer s.runMu.Unlock()
 	ctx := s.runContextLocked()
+	run := &imageStudioRun{jobID: jobID, started: started}
 	if ctx.Err() != nil {
-		return ctx, func() {}
+		return ctx, run, func() {}
 	}
+	if s.active == nil {
+		s.active = make(map[*imageStudioRun]struct{})
+	}
+	s.active[run] = struct{}{}
 	s.runs.Add(1)
-	return ctx, s.runs.Done
+	return ctx, run, s.runs.Done
+}
+
+// claimRun 取得任务的写回权；Stop 已代为落库 interrupted 时返回 false。
+func (s *ImageStudioService) claimRun(run *imageStudioRun) bool {
+	s.runMu.Lock()
+	defer s.runMu.Unlock()
+	if run.claimed {
+		return false
+	}
+	run.claimed = true
+	delete(s.active, run)
+	return true
+}
+
+// interruptUnclaimedRuns 取走仍未写回的在途任务的写回权并落库为 interrupted，迟到的结果不再覆盖。
+func (s *ImageStudioService) interruptUnclaimedRuns() {
+	s.runMu.Lock()
+	pending := make([]*imageStudioRun, 0, len(s.active))
+	for run := range s.active {
+		run.claimed = true
+		pending = append(pending, run)
+	}
+	s.active = nil
+	s.runMu.Unlock()
+
+	ctx, cancel := context.WithTimeout(context.Background(), imageStudioShutdownWriteBack)
+	defer cancel()
+	for _, run := range pending {
+		duration := time.Since(run.started).Milliseconds()
+		job := &ImageStudioJob{ID: run.jobID, Status: ImageStudioStatusFailed, ErrorMessage: imageStudioInterruptedMessage, DurationMs: &duration}
+		if err := s.repo.FinishJob(ctx, job, nil); err != nil {
+			logger.L().Error("image_studio.finish_job_failed", zap.Int64("job_id", run.jobID), zap.Error(err))
+		}
+	}
 }
 
 // RunRetentionOnce 删除超过保留期的已结束任务（级联资产）并尽力清理对象，返回删除的任务数。
@@ -329,7 +381,8 @@ func (s *ImageStudioService) Submit(ctx context.Context, userID int64, in ImageS
 	paramsJSON, _ := json.Marshal(params)
 
 	job := &ImageStudioJob{UserID: userID, APIKeyID: apiKey.ID, Status: ImageStudioStatusQueued, Kind: kind, Model: in.Model, Prompt: in.Prompt, Params: paramsJSON}
-	if err := s.repo.CreateJob(ctx, job); err != nil {
+	// 上面的计数只是快速拒绝；并发提交由仓储在同一事务内复核上限。
+	if err := s.repo.CreateJobWithinLimit(ctx, job, imageStudioMaxUnfinishedPerUser); err != nil {
 		return nil, err
 	}
 	return &ImageStudioSubmission{Job: job, APIKey: apiKey.Key, Path: path, Body: body}, nil
@@ -337,10 +390,10 @@ func (s *ImageStudioService) Submit(ctx context.Context, userID int64, in ImageS
 
 // Run 执行任务并把结果写回；调用方应在独立 goroutine 中调用。
 func (s *ImageStudioService) Run(sub *ImageStudioSubmission, execute ImageStudioExecutor) {
-	runCtx, runDone := s.trackRun()
-	defer runDone()
 	job := sub.Job
 	started := time.Now()
+	runCtx, run, runDone := s.trackRun(job.ID, started)
+	defer runDone()
 	n := int(gjson.GetBytes(job.Params, "n").Int())
 	if n <= 0 {
 		n = 1
@@ -354,6 +407,10 @@ func (s *ImageStudioService) Run(sub *ImageStudioSubmission, execute ImageStudio
 
 	var assets []ImageStudioAsset
 	status, respBody := execute(ctx, sub.Path, sub.APIKey, sub.Body)
+	if !s.claimRun(run) {
+		// Stop 等待超时后已代为落库 interrupted，迟到的结果不再覆盖。
+		return
+	}
 	succeeded := status >= http.StatusOK && status < http.StatusMultipleChoices
 	switch {
 	case runCtx.Err() != nil && !succeeded:

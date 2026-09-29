@@ -539,7 +539,7 @@ import PlatformTypeBadge from '@/components/common/PlatformTypeBadge.vue'
 import Icon from '@/components/icons/Icon.vue'
 import ErrorPassthroughRulesModal from '@/components/admin/ErrorPassthroughRulesModal.vue'
 import TLSFingerprintProfilesModal from '@/components/admin/TLSFingerprintProfilesModal.vue'
-import { fetchAllAccountIds } from '@/utils/accountSelection'
+import { fetchAllAccounts } from '@/utils/accountSelection'
 import { buildGrokUsageRefreshKey, buildOpenAIUsageRefreshKey } from '@/utils/accountUsageRefresh'
 import { formatDateTime, formatRelativeTime } from '@/utils/format'
 import { proxyExpiryBadgeClass, proxyExpiryLabelKey } from '@/utils/proxyExpiry'
@@ -587,22 +587,27 @@ type AccountBulkEditTarget =
       selectedPlatforms: AccountPlatform[]
       selectedTypes: AccountType[]
     }
-const selPlatforms = computed<AccountPlatform[]>(() => {
-  const platforms = new Set(
-    accounts.value
-      .filter(a => isSelected(a.id))
-      .map(a => a.platform)
-  )
-  return [...platforms]
+// 选择可跨页（含"选择全部结果"），平台/类型按整个选择推导，不能只看当前页。
+// 任一已选账号元数据未知时按未知处理（返回空，弹窗不做平台过滤/平台专属项）。
+const selectionMetaByID = reactive(new Map<number, { platform: AccountPlatform; type: AccountType }>())
+const rememberSelectionMeta = (rows: Array<Pick<AccountListItem, 'id' | 'platform' | 'type'>>) => {
+  rows.forEach(row => {
+    const meta = selectionMetaByID.get(row.id)
+    if (meta?.platform === row.platform && meta.type === row.type) return
+    selectionMetaByID.set(row.id, { platform: row.platform, type: row.type })
+  })
+}
+const selectionMeta = computed(() => {
+  const metas = selIds.value.map(id => selectionMetaByID.get(id))
+  if (metas.some(meta => !meta)) return { platforms: [], types: [] }
+  const known = metas as Array<{ platform: AccountPlatform; type: AccountType }>
+  return {
+    platforms: [...new Set(known.map(meta => meta.platform))],
+    types: [...new Set(known.map(meta => meta.type))]
+  }
 })
-const selTypes = computed<AccountType[]>(() => {
-  const types = new Set(
-    accounts.value
-      .filter(a => isSelected(a.id))
-      .map(a => a.type)
-  )
-  return [...types]
-})
+const selPlatforms = computed<AccountPlatform[]>(() => selectionMeta.value.platforms)
+const selTypes = computed<AccountType[]>(() => selectionMeta.value.types)
 const showCreate = ref(false)
 const showEdit = ref(false)
 const showSync = ref(false)
@@ -1172,6 +1177,8 @@ const swipeVirtualContext: SwipeSelectVirtualContext = {
   getRowId: (row: any) => row.id,
 }
 
+watch(accounts, rows => rememberSelectionMeta(rows), { immediate: true, flush: 'sync' })
+
 useSwipeSelect(accountTableRef, {
   isSelected,
   select,
@@ -1480,11 +1487,18 @@ const mergeAccountsIncrementally = (nextRows: Account[]) => {
   }
 }
 
+const accountListRequestKey = () => JSON.stringify({
+  page: pagination.page,
+  pageSize: pagination.page_size,
+  params: toRaw(params)
+})
+
 const refreshAccountsIncrementally = async () => {
   if (autoRefreshFetching.value) return
   syncAccountListDerivedParams()
   autoRefreshFetching.value = true
   try {
+    const requestKey = accountListRequestKey()
     const result = await adminAPI.accounts.listWithEtag(
       pagination.page,
       pagination.page_size,
@@ -1501,6 +1515,8 @@ const refreshAccountsIncrementally = async () => {
       },
       { etag: autoRefreshETag.value }
     )
+    // 期间翻页/筛选/排序已触发新加载时，丢弃旧查询的响应（含 etag）
+    if (loading.value || requestKey !== accountListRequestKey()) return
 
     if (result.etag) {
       autoRefreshETag.value = result.etag
@@ -2130,12 +2146,14 @@ const handleSelectAllResults = async () => {
   const filters = buildBulkEditFilterSnapshot()
   selectingAllResults.value = true
   try {
-    const ids = await fetchAllAccountIds(
+    const rows = await fetchAllAccounts(
       (page, pageSize, requestFilters) => adminAPI.accounts.list(page, pageSize, requestFilters),
       filters
     )
     if (requestVersion !== selectionRequestVersion.value) return
 
+    const ids = rows.map(row => row.id)
+    rememberSelectionMeta(rows)
     setSelectedIds(ids)
     selectedAllResultIDs.value = new Set(ids)
   } catch (error) {
@@ -2166,17 +2184,30 @@ const openBulkEditSelected = () => {
 }
 
 const openBulkEditFiltered = async () => {
+  if (bulkBusy.value) return
   const filters = buildBulkEditFilterSnapshot()
-  const preview = await adminAPI.accounts.list(1, 100, filters)
-  const { selectedPlatforms, selectedTypes } = collectSelectionMetadata(preview.items)
-  bulkEditTarget.value = {
-    mode: 'filtered',
-    filters,
-    previewCount: preview.total,
-    selectedPlatforms,
-    selectedTypes
+  bulkBusy.value = true
+  try {
+    // 按全部匹配账号推导平台/类型，避免只看前 100 条漏掉其他平台
+    const rows = await fetchAllAccounts(
+      (page, pageSize, requestFilters) => adminAPI.accounts.list(page, pageSize, requestFilters),
+      filters
+    )
+    const { selectedPlatforms, selectedTypes } = collectSelectionMetadata(rows)
+    bulkEditTarget.value = {
+      mode: 'filtered',
+      filters,
+      previewCount: rows.length,
+      selectedPlatforms,
+      selectedTypes
+    }
+    showBulkEdit.value = true
+  } catch (error) {
+    console.error('Failed to load bulk edit preview:', error)
+    appStore.showError(extractApiErrorMessage(error, t('admin.accounts.failedToLoad')))
+  } finally {
+    bulkBusy.value = false
   }
-  showBulkEdit.value = true
 }
 
 const handleBulkUpdated = () => {

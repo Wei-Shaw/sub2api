@@ -133,13 +133,15 @@ func TestAdminService_GetGroupRateMultipliers(t *testing.T) {
 }
 
 func TestAdminService_ClearGroupRateMultipliers(t *testing.T) {
-	t.Run("deletes by group ID", func(t *testing.T) {
+	t.Run("clears rate multipliers only, keeps rows", func(t *testing.T) {
 		repo := &userGroupRateRepoStubForGroupRate{}
 		svc := &adminServiceImpl{userGroupRateRepo: repo}
 
 		err := svc.ClearGroupRateMultipliers(context.Background(), 42)
 		require.NoError(t, err)
-		require.Equal(t, []int64{42}, repo.deletedGroupIDs)
+		require.Equal(t, int64(42), repo.syncedGroupID)
+		require.Empty(t, repo.syncedEntries)
+		require.Empty(t, repo.deletedGroupIDs)
 	})
 
 	t.Run("returns nil when repo is nil", func(t *testing.T) {
@@ -151,13 +153,13 @@ func TestAdminService_ClearGroupRateMultipliers(t *testing.T) {
 
 	t.Run("propagates repo error", func(t *testing.T) {
 		repo := &userGroupRateRepoStubForGroupRate{
-			deleteByGroupErr: errors.New("delete failed"),
+			syncGroupErr: errors.New("clear failed"),
 		}
 		svc := &adminServiceImpl{userGroupRateRepo: repo}
 
 		err := svc.ClearGroupRateMultipliers(context.Background(), 42)
 		require.Error(t, err)
-		require.Contains(t, err.Error(), "delete failed")
+		require.Contains(t, err.Error(), "clear failed")
 	})
 }
 

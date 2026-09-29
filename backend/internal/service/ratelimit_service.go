@@ -417,16 +417,16 @@ func (s *RateLimitService) HandleUpstreamError(ctx context.Context, account *Acc
 	switch statusCode {
 	case 400:
 		// "organization has been disabled" → 永久禁用
-		if strings.Contains(strings.ToLower(upstreamMsg), "organization has been disabled") {
+		if upstream400AccountStatePhrase(upstreamMsg, "organization has been disabled") {
 			msg := "Organization disabled (400): " + upstreamMsg
 			s.handleAuthError(ctx, account, msg)
 			shouldDisable = true
-		} else if account.Platform == PlatformAnthropic && strings.Contains(strings.ToLower(upstreamMsg), "credit balance") {
+		} else if account.Platform == PlatformAnthropic && upstream400AccountStatePhrase(upstreamMsg, "credit balance") {
 			// Anthropic API key 余额不足（语义等同 402），停止调度
 			msg := "Credit balance exhausted (400): " + upstreamMsg
 			s.handleAuthError(ctx, account, msg)
 			shouldDisable = true
-		} else if strings.Contains(strings.ToLower(upstreamMsg), "identity verification is required") {
+		} else if upstream400AccountStatePhrase(upstreamMsg, "identity verification is required") {
 			// KYC 身份验证要求 → 永久禁用，账号需完成身份验证后才能恢复
 			msg := "Identity verification required (400): " + upstreamMsg
 			s.handleAuthError(ctx, account, msg)
@@ -957,6 +957,41 @@ func (s *RateLimitService) GeminiCooldown(ctx context.Context, account *Account)
 		return 5 * time.Minute
 	}
 	return s.geminiQuotaService.CooldownForAccount(ctx, account)
+}
+
+// upstream400ClientEchoMarkers 是上游参数校验错误的固定措辞。这类 400 会把客户端
+// 提交的字段名 / header 值 / 枚举值原样回显进 message，不能据此判定账号状态。
+var upstream400ClientEchoMarkers = []string{
+	"extra inputs are not permitted", // Anthropic: "<field>: Extra inputs are not permitted"
+	"unexpected value",               // Anthropic: "Unexpected value(s) `x` for the `anthropic-beta` header"
+	"input tag",                      // Anthropic: "Input tag 'x' found using 'type' does not match ..."
+	"unknown parameter",              // OpenAI: "Unknown parameter: 'x'."
+	"unsupported parameter",          // OpenAI: "Unsupported parameter: 'x' is not supported with this model."
+	"unrecognized request argument",  // OpenAI: "Unrecognized request argument supplied: x"
+}
+
+// upstream400AccountStatePhrase 判断 400 message 是否为上游陈述的账号状态（如
+// "This organization has been disabled."）。客户端可控文本被回显时（校验错误措辞、
+// 引号/反引号包裹、作为 "字段路径:" 出现）不算，否则任意用户构造一个同名字段
+// 就能让请求经过的每个账号被永久禁用。
+func upstream400AccountStatePhrase(upstreamMsg, phrase string) bool {
+	lower := strings.ToLower(upstreamMsg)
+	idx := strings.Index(lower, phrase)
+	if idx < 0 {
+		return false
+	}
+	for _, marker := range upstream400ClientEchoMarkers {
+		if strings.Contains(lower, marker) {
+			return false
+		}
+	}
+	if idx > 0 && strings.ContainsRune("'\"`.", rune(lower[idx-1])) {
+		return false
+	}
+	if end := idx + len(phrase); end < len(lower) && strings.ContainsRune("'\"`:", rune(lower[end])) {
+		return false
+	}
+	return true
 }
 
 // handleAuthError 处理认证类错误(401/403)，停止账号调度

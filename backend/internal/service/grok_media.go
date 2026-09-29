@@ -70,6 +70,8 @@ type GrokMediaRequestInfo struct {
 	MaskImageURL    string
 	Uploads         []OpenAIImagesUpload
 	MaskUpload      *OpenAIImagesUpload
+	// ResponseFormat 仅在 multipart 转 JSON 时透传；JSON 请求直接转发原始 body。
+	ResponseFormat string
 }
 
 func (r GrokMediaRequestInfo) ModerationBody() []byte {
@@ -133,6 +135,7 @@ func ParseGrokMediaRequest(contentType string, body []byte) GrokMediaRequestInfo
 	info.Size = strings.TrimSpace(info.Size)
 	info.SizeTier = NormalizeImageBillingTierOrDefault(info.Size)
 	info.AspectRatio = strings.TrimSpace(info.AspectRatio)
+	info.ResponseFormat = strings.TrimSpace(info.ResponseFormat)
 	info.ImageResolution = grokImagineImageResolution(info.ImageResolution)
 	info.Resolution = NormalizeVideoBillingResolutionOrDefault(info.Resolution)
 	info.DurationSeconds = NormalizeVideoBillingDurationSecondsOrDefault(info.DurationSeconds)
@@ -265,6 +268,8 @@ func parseGrokMediaMultipartRequest(contentType string, body []byte, info *GrokM
 			info.Size = value
 		case "aspect_ratio":
 			info.AspectRatio = value
+		case "response_format":
+			info.ResponseFormat = value
 		case "resolution":
 			assignGrokMediaResolution(value, info)
 		case "duration":
@@ -987,6 +992,9 @@ func prepareGrokMediaForwardBody(endpoint GrokMediaEndpoint, body []byte, conten
 	}
 	if info.AspectRatio != "" {
 		payload["aspect_ratio"] = info.AspectRatio
+	}
+	if info.ResponseFormat != "" {
+		payload["response_format"] = info.ResponseFormat
 	}
 
 	images := make([]map[string]string, 0, len(info.InputImageURLs)+len(info.Uploads))

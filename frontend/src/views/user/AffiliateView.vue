@@ -204,7 +204,7 @@ async function transferQuota(): Promise<void> {
     appStore.showSuccess(t('affiliate.transfer.success', { amount: formatCurrency(resp.transferred_quota) }))
     await Promise.all([
       loadAffiliateDetail(true),
-      authStore.refreshUser().catch(() => undefined),
+      authStore.refreshUser({ force: true }).catch(() => undefined),
     ])
   } catch (error) {
     appStore.showError(extractApiErrorMessage(error, t('affiliate.transferFailed')))
