@@ -121,21 +121,6 @@
       </div>
     </section>
 
-    <!-- Tech Highlights - 6 cards -->
-    <section class="border-b border-gray-100 bg-gray-50 py-16 dark:border-dark-800 dark:bg-dark-900/30">
-      <div class="mx-auto max-w-7xl px-6">
-        <div class="mb-12 text-center"><h2 class="mb-3 text-2xl font-bold text-gray-900 dark:text-white md:text-3xl">{{ t('home.techHighlights.title') }}</h2></div>
-        <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          <div v-for="(item, key) in techItems" :key="key" class="flex items-start gap-4 rounded-xl border border-gray-100 bg-white p-5 dark:border-dark-700 dark:bg-dark-800/50">
-            <div class="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-lg bg-primary-50 dark:bg-primary-950/30">
-              <component :is="techIcons[key]" />
-            </div>
-            <div><h3 class="mb-1 text-sm font-semibold text-gray-900 dark:text-white">{{ item.title }}</h3><p class="text-xs leading-relaxed text-gray-500 dark:text-dark-400">{{ item.desc }}</p></div>
-          </div>
-        </div>
-      </div>
-    </section>
-
     <!-- How It Works -->
     <section class="border-b border-gray-100 py-16 dark:border-dark-800">
       <div class="mx-auto max-w-7xl px-6">
@@ -174,19 +159,6 @@
             </div>
             <pre class="overflow-x-auto p-5 font-mono text-xs leading-relaxed text-gray-300 sm:text-sm">{{ quickstartCode }}</pre>
           </div>
-        </div>
-      </div>
-    </section>
-
-    <!-- Comparison -->
-    <section class="border-b border-gray-100 bg-gray-50 py-16 dark:border-dark-800 dark:bg-dark-900/30">
-      <div class="mx-auto max-w-4xl px-6">
-        <div class="mb-10 text-center"><h2 class="text-2xl font-bold text-gray-900 dark:text-white md:text-3xl">{{ t('home.comparison.title') }}</h2></div>
-        <div class="overflow-hidden rounded-xl border border-gray-200 bg-white dark:border-dark-700 dark:bg-dark-800/50">
-          <table class="w-full text-sm">
-            <thead><tr class="border-b border-gray-100 bg-gray-50 dark:border-dark-700 dark:bg-dark-900/50"><th class="px-6 py-4 text-left font-semibold text-gray-700 dark:text-dark-200">{{ t('home.comparison.headers.feature') }}</th><th class="px-6 py-4 text-center font-semibold text-gray-400 dark:text-dark-500">{{ t('home.comparison.headers.official') }}</th><th class="px-6 py-4 text-center font-semibold text-primary-600 dark:text-primary-400">{{ t('home.comparison.headers.us') }}</th></tr></thead>
-            <tbody><tr v-for="(item, key) in comparisonItems" :key="key" class="border-b border-gray-50 last:border-0 dark:border-dark-700/50"><td class="px-6 py-4 font-medium text-gray-900 dark:text-white">{{ item.feature }}</td><td class="px-6 py-4 text-center text-gray-400 dark:text-dark-500"><span class="inline-flex items-center gap-1"><svg class="h-4 w-4 text-gray-300 dark:text-dark-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>{{ item.official }}</span></td><td class="px-6 py-4 text-center text-primary-600 dark:text-primary-400"><span class="inline-flex items-center gap-1"><svg class="h-4 w-4 text-primary-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7" /></svg>{{ item.us }}</span></td></tr></tbody>
-          </table>
         </div>
       </div>
     </section>
@@ -258,7 +230,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, h, onMounted } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useAuthStore, useAppStore } from '@/stores'
 import Icon from '@/components/icons/Icon.vue'
@@ -283,9 +255,8 @@ const isAdmin = computed(() => authStore.isAdmin)
 const dashboardPath = computed(() => isAdmin.value ? '/admin/dashboard' : '/dashboard')
 const currentYear = computed(() => new Date().getFullYear())
 
-const comparisonItems = computed(() => { try { const items = t('home.comparison.items') as any; if (!items || typeof items !== 'object') return []; return Object.values(items) as any[] } catch { return [] } })
-const techItems = computed(() => { try { const items = t('home.techHighlights.items') as any; if (!items || typeof items !== 'object') return {}; return items } catch { return {} } })
-const faqItems = computed(() => { try { const items = t('home.faq.items') as any; if (!items || typeof items !== 'object') return {}; return items } catch { return {} } })
+// t() 只能返回字符串，取对象/数组文案必须用 tm()（同 modelFamilies），否则渲染为空
+const faqItems = computed(() => { const raw = tm('home.faq.items') as unknown; return raw && typeof raw === 'object' ? (Object.values(raw) as any[]) : [] })
 
 // 模型家族卡片：文案来自 i18n（home.models.families 数组），视觉样式按 key 固定映射
 type ModelFamily = { key: string; name: string; vendor: string; desc: string; models: string[]; tags: string[] }
@@ -316,17 +287,6 @@ function tabLabel(tab: QuickstartTab) { return tab === 'curl' ? t('home.quicksta
 
 const openFaq = ref<string | null>(null)
 function toggleFaq(key: string) { openFaq.value = openFaq.value === key ? null : key }
-
-// Tech icon components
-const makeIcon = (path: string) => () => h('svg', { class: 'h-5 w-5 text-primary-600 dark:text-primary-400', fill: 'none', viewBox: '0 0 24 24', stroke: 'currentColor', 'stroke-width': '1.5' }, [h('path', { 'stroke-linecap': 'round', 'stroke-linejoin': 'round', d: path })])
-const techIcons: Record<string, any> = {
-  compatible: makeIcon('M17.25 6.75L22.5 12l-5.25 5.25m-10.5 0L1.5 12l5.25-5.25m7.5-3l-4.5 16.5'),
-  smartRouting: makeIcon('M7.5 21L3 16.5m0 0L7.5 12M3 16.5h13.5m0-13.5L21 7.5m0 0L16.5 12M21 7.5H7.5'),
-  sessionSticky: makeIcon('M13.19 8.688a4.5 4.5 0 011.242 7.244l-4.5 4.5a4.5 4.5 0 01-6.364-6.364l1.757-1.757m9.86-2.556a4.5 4.5 0 00-1.242-7.244l4.5-4.5a4.5 4.5 0 016.364 6.364l-1.757 1.757'),
-  realtime: makeIcon('M3.75 13.5l10.5-11.25L12 10.5h8.25L9.75 21.75 12 13.5H3.75z'),
-  quotaControl: makeIcon('M9 12.75L11.25 15 15 9.75m-3-7.036A11.959 11.959 0 013.598 6 11.99 11.99 0 003 9.749c0 5.592 3.824 10.29 9 11.623 5.176-1.332 9-6.03 9-11.622 0-1.31-.21-2.571-.598-3.751h-.152c-3.196 0-6.1-1.248-8.25-3.285z'),
-  monitoring: makeIcon('M3 13.125C3 12.504 3.504 12 4.125 12h2.25c.621 0 1.125.504 1.125 1.125v6.75C7.5 20.496 6.996 21 6.375 21h-2.25A1.125 1.125 0 013 19.875v-6.75zM9.75 8.625c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125v11.25c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 01-1.125-1.125V8.625zM16.5 4.125c0-.621.504-1.125 1.125-1.125h2.25C20.496 3 21 3.504 21 4.125v15.75c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 01-1.125-1.125V4.125z')
-}
 
 function toggleTheme() { isDark.value = !isDark.value; document.documentElement.classList.toggle('dark', isDark.value); localStorage.setItem('theme', isDark.value ? 'dark' : 'light') }
 function initTheme() { const s = localStorage.getItem('theme'); if (s === 'dark' || (!s && window.matchMedia('(prefers-color-scheme: dark)').matches)) { isDark.value = true; document.documentElement.classList.add('dark') } }

@@ -57,42 +57,6 @@ export default {
       balanceQuota: 'Pay What You Use',
       balanceQuotaDesc: 'Usage-based billing with quota limits. Full visibility into team consumption.'
     },
-    // Comparison section
-    comparison: {
-      title: 'Why Choose Us?',
-      headers: {
-        feature: 'Comparison',
-        official: 'Official Subscriptions',
-        us: 'Our Platform'
-      },
-      items: {
-        pricing: {
-          feature: 'Pricing',
-          official: 'Fixed monthly fee, pay even if unused',
-          us: 'Pay only for what you use'
-        },
-        models: {
-          feature: 'Model Selection',
-          official: 'Single provider only',
-          us: 'Switch between models freely'
-        },
-        management: {
-          feature: 'Account Management',
-          official: 'Manage each service separately',
-          us: 'Unified key, one dashboard'
-        },
-        stability: {
-          feature: 'Stability',
-          official: 'Single account rate limits',
-          us: 'Multi-account pool, auto-failover'
-        },
-        control: {
-          feature: 'Usage Control',
-          official: 'Not available',
-          us: 'Quotas & detailed analytics'
-        }
-      }
-    },
     models: {
       title: 'Supported Model Families',
       description: 'Four leading model families, one API key — switch freely',
@@ -150,17 +114,6 @@ export default {
       title: 'Ready to Get Started?',
       description: 'Sign up now and get free trial credits to access all leading AI models',
       button: 'Sign Up Free'
-    },
-    techHighlights: {
-      title: 'Technical Advantages',
-      items: {
-        compatible: { title: 'OpenAI Compatible', desc: 'Fully compatible with OpenAI API format. No code changes needed.' },
-        smartRouting: { title: 'Smart Routing', desc: 'Automatic optimal account selection based on load, latency and error rate.' },
-        sessionSticky: { title: 'Session Persistence', desc: 'Same conversation routes to same upstream for context continuity.' },
-        realtime: { title: 'Streaming', desc: 'SSE streaming support for smooth token-by-token output.' },
-        quotaControl: { title: 'Quota Control', desc: 'RPM/TPM rate limiting and balance quotas for team management.' },
-        monitoring: { title: 'Real-time Monitoring', desc: 'Request logs, usage stats and error tracking at a glance.' }
-      }
     },
     faq: {
       title: 'FAQ',

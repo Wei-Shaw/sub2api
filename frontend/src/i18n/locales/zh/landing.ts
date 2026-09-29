@@ -60,41 +60,6 @@ export default {
       balanceQuotaDesc: '按实际使用量计费，支持设置配额上限，团队用量一目了然。'
     },
     // 优势对比
-    comparison: {
-      title: '为什么选择我们？',
-      headers: {
-        feature: '对比项',
-        official: '官方订阅',
-        us: '本平台'
-      },
-      items: {
-        pricing: {
-          feature: '付费方式',
-          official: '固定月费，用不完也付',
-          us: '按量付费，用多少付多少'
-        },
-        models: {
-          feature: '模型选择',
-          official: '单一服务商',
-          us: '多模型随意切换'
-        },
-        management: {
-          feature: '账号管理',
-          official: '每个服务单独管理',
-          us: '统一密钥，一站管理'
-        },
-        stability: {
-          feature: '服务稳定性',
-          official: '单账号易触发限制',
-          us: '多账号池，自动切换'
-        },
-        control: {
-          feature: '用量控制',
-          official: '无法限制',
-          us: '可设配额、查明细'
-        }
-      }
-    },
     models: {
       title: '支持的模型家族',
       description: '四大主流国产模型家族一站接入，一个密钥自由切换',
@@ -152,36 +117,6 @@ export default {
       title: '准备好开始了吗？',
       description: '注册即可获得免费试用额度，体验全模型一站式接入',
       button: '免费注册'
-    },
-    // 技术亮点
-    techHighlights: {
-      title: '技术优势',
-      items: {
-        compatible: {
-          title: 'OpenAI 兼容',
-          desc: '完全兼容 OpenAI API 格式，现有代码无需修改即可接入'
-        },
-        smartRouting: {
-          title: '智能路由',
-          desc: '基于负载、延迟、错误率自动选择最优上游账号'
-        },
-        sessionSticky: {
-          title: '会话保持',
-          desc: '同一对话自动路由到相同上游，保证上下文连贯性'
-        },
-        realtime: {
-          title: '流式传输',
-          desc: '支持 SSE 流式响应，Token 逐字输出，体验流畅'
-        },
-        quotaControl: {
-          title: '配额管控',
-          desc: '支持 RPM/TPM 限流与余额配额，精确控制团队用量'
-        },
-        monitoring: {
-          title: '实时监控',
-          desc: '请求日志、用量统计、错误追踪，运营数据一目了然'
-        }
-      }
     },
     // FAQ
     faq: {
