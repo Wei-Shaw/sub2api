@@ -328,12 +328,29 @@ func (s *GatewayService) handleCCBufferedFromAnthropic(
 		}
 	}
 
-	if err := finishBridgeRead(resp, readErr); err != nil {
-		if !errors.Is(err, context.Canceled) && !errors.Is(err, context.DeadlineExceeded) {
-			logger.L().Warn("forward_as_cc buffered: read error",
-				zap.Error(err),
-				zap.String("request_id", requestID),
-			)
+	if err := finishBridgeRead(resp, readErr); err != nil && !bridgeReadErrorIsClientCancel(err) {
+		logger.L().Warn("forward_as_cc buffered: read error",
+			zap.Error(err),
+			zap.String("request_id", requestID),
+		)
+		// 上游中途读错误/读间隔超时不得返回截断的 200（A1-04）：尚无响应时交给
+		// handler failover；已计量时返回错误响应并携带部分 usage。
+		if finalResp == nil && bridgeReadErrorFailoverEligible(err) {
+			return nil, bridgeReadFailoverError(err)
+		}
+		if finalResp != nil {
+			errType, message := bridgeReadErrorInfo(err)
+			writeGatewayCCError(c, http.StatusBadGateway, errType, message)
+			return bridgePartialResult(&ForwardResult{
+				RequestID:       requestID,
+				UpstreamHeaders: resp.Header,
+				Usage:           usage,
+				Model:           originalModel,
+				UpstreamModel:   mappedModel,
+				ReasoningEffort: reasoningEffort,
+				Stream:          false,
+				Duration:        time.Since(startTime),
+			}), fmt.Errorf("upstream stream read error: %w", err)
 		}
 	}
 
@@ -546,10 +563,7 @@ func (s *GatewayService) handleCCStreamingFromAnthropic(
 			errType, message := bridgeSSEErrorInfo(payload)
 			MarkOpsStreamError(c, errType, message, anthropicSSEErrorSemanticStatus([]byte(payload)))
 			if !clientDisconnected {
-				errorPayload, _ := json.Marshal(gin.H{"error": gin.H{"type": errType, "message": message}})
-				if _, err := fmt.Fprintf(c.Writer, "data: %s\n\n", errorPayload); err == nil {
-					c.Writer.Flush()
-				}
+				writeCCStreamErrorChunk(c, errType, message)
 			}
 			return resultWithUsage(), nil
 		}
@@ -561,13 +575,24 @@ func (s *GatewayService) handleCCStreamingFromAnthropic(
 		}
 	}
 
-	if err := finishBridgeRead(resp, readErr); err != nil {
-		if !errors.Is(err, context.Canceled) && !errors.Is(err, context.DeadlineExceeded) {
-			logger.L().Warn("forward_as_cc stream: read error",
-				zap.Error(err),
-				zap.String("request_id", requestID),
-			)
+	if err := finishBridgeRead(resp, readErr); err != nil && !bridgeReadErrorIsClientCancel(err) {
+		logger.L().Warn("forward_as_cc stream: read error",
+			zap.Error(err),
+			zap.String("request_id", requestID),
+		)
+		// 上游中途读错误/读间隔超时不得补 finish chunk + [DONE] 伪装成功（A1-04）：
+		// 未输出且无 usage 时交给 handler failover；否则写 error chunk 终止（无 [DONE]），
+		// 返回错误并携带已计量的部分 usage。
+		if !clientDisconnected && c.Writer.Size() == writerSizeBeforeStream && usage == (ClaudeUsage{}) && bridgeReadErrorFailoverEligible(err) {
+			return nil, bridgeReadFailoverError(err)
 		}
+		if !clientDisconnected {
+			errType, message := bridgeReadErrorInfo(err)
+			MarkOpsStreamError(c, errType, message, http.StatusBadGateway)
+			writeCCStreamErrorChunk(c, errType, message)
+			MarkResponseCommitted(c)
+		}
+		return bridgePartialResult(resultWithUsage()), fmt.Errorf("upstream stream read error: %w", err)
 	}
 
 	// Finalize both state machines
@@ -590,6 +615,14 @@ func (s *GatewayService) handleCCStreamingFromAnthropic(
 	}
 
 	return resultWithUsage(), nil
+}
+
+// writeCCStreamErrorChunk 以 OpenAI 风格 error chunk 终止 Chat Completions 流（不补 [DONE]）。
+func writeCCStreamErrorChunk(c *gin.Context, errType, message string) {
+	errorPayload, _ := json.Marshal(gin.H{"error": gin.H{"type": errType, "message": message}})
+	if _, err := fmt.Fprintf(c.Writer, "data: %s\n\n", errorPayload); err == nil {
+		c.Writer.Flush()
+	}
 }
 
 // writeGatewayCCError writes an error in OpenAI Chat Completions format for

@@ -3,6 +3,7 @@
 package service
 
 import (
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -90,12 +91,19 @@ func TestA105BridgeReaderIdleTimeoutAfterMessageStart(t *testing.T) {
 	for _, h := range a105Handlers() {
 		t.Run(h.name, func(t *testing.T) {
 			out, rec, pw := a105RunStalled(t, h, a105MessageStart)
-			// 与上游读错误的既有路径一致：返回已累计 usage，不报错
-			require.NoError(t, out.err)
+			// A1-04: 读间隔超时按失败收尾（不 failover），返回错误并携带已累计 usage
+			require.Error(t, out.err)
+			require.ErrorIs(t, out.err, errAnthropicNativeStreamIdle)
+			var failoverErr *UpstreamFailoverError
+			require.False(t, errors.As(out.err, &failoverErr))
 			require.NotNil(t, out.result)
 			require.Equal(t, 3, out.result.Usage.InputTokens)
 			if h.buffered {
-				require.Equal(t, http.StatusOK, rec.Code)
+				require.Equal(t, http.StatusBadGateway, rec.Code)
+			} else {
+				require.Contains(t, rec.Body.String(), "stream_timeout")
+				require.NotContains(t, rec.Body.String(), "[DONE]")
+				require.NotContains(t, rec.Body.String(), "response.completed")
 			}
 			// 超时后必须关闭 resp.Body，释放上游连接
 			_, werr := pw.Write([]byte("x"))

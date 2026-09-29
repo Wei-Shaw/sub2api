@@ -459,12 +459,29 @@ func (s *GatewayService) handleResponsesBufferedStreamingResponse(
 		}
 	}
 
-	if err := finishBridgeRead(resp, readErr); err != nil {
-		if !errors.Is(err, context.Canceled) && !errors.Is(err, context.DeadlineExceeded) {
-			logger.L().Warn("forward_as_responses buffered: read error",
-				zap.Error(err),
-				zap.String("request_id", requestID),
-			)
+	if err := finishBridgeRead(resp, readErr); err != nil && !bridgeReadErrorIsClientCancel(err) {
+		logger.L().Warn("forward_as_responses buffered: read error",
+			zap.Error(err),
+			zap.String("request_id", requestID),
+		)
+		// 上游中途读错误/读间隔超时不得返回截断的 200（A1-04）：尚无响应时交给
+		// handler failover；已计量时返回错误响应并携带部分 usage。
+		if finalResp == nil && bridgeReadErrorFailoverEligible(err) {
+			return nil, bridgeReadFailoverError(err)
+		}
+		if finalResp != nil {
+			errType, message := bridgeReadErrorInfo(err)
+			writeResponsesError(c, http.StatusBadGateway, errType, message)
+			return bridgePartialResult(&ForwardResult{
+				RequestID:       requestID,
+				UpstreamHeaders: resp.Header,
+				Usage:           usage,
+				Model:           originalModel,
+				UpstreamModel:   mappedModel,
+				ReasoningEffort: reasoningEffort,
+				Stream:          false,
+				Duration:        time.Since(startTime),
+			}), fmt.Errorf("upstream stream read error: %w", err)
 		}
 	}
 
@@ -700,24 +717,7 @@ func (s *GatewayService) handleResponsesStreamingResponse(
 			if clientDisconnected {
 				return resultWithUsage(), nil
 			}
-			failed := apicompat.ResponsesStreamEvent{
-				Type:           "response.failed",
-				SequenceNumber: state.SequenceNumber,
-				Response: &apicompat.ResponsesResponse{
-					ID:        state.ResponseID,
-					Object:    "response",
-					CreatedAt: state.Created,
-					Model:     state.Model,
-					Status:    "failed",
-					Output:    []apicompat.ResponsesOutput{},
-					Error:     &apicompat.ResponsesError{Code: errType, Message: message},
-				},
-			}
-			if sse, err := apicompat.ResponsesEventToSSE(failed); err == nil {
-				if _, err := fmt.Fprint(c.Writer, sse); err == nil {
-					c.Writer.Flush()
-				}
-			}
+			writeResponsesStreamFailed(c, state, errType, message)
 			return resultWithUsage(), nil
 		}
 
@@ -728,13 +728,24 @@ func (s *GatewayService) handleResponsesStreamingResponse(
 		}
 	}
 
-	if err := finishBridgeRead(resp, readErr); err != nil {
-		if !errors.Is(err, context.Canceled) && !errors.Is(err, context.DeadlineExceeded) {
-			logger.L().Warn("forward_as_responses stream: read error",
-				zap.Error(err),
-				zap.String("request_id", requestID),
-			)
+	if err := finishBridgeRead(resp, readErr); err != nil && !bridgeReadErrorIsClientCancel(err) {
+		logger.L().Warn("forward_as_responses stream: read error",
+			zap.Error(err),
+			zap.String("request_id", requestID),
+		)
+		// 上游中途读错误/读间隔超时不得按 response.completed 收尾（A1-04）：
+		// 未输出且无 usage 时交给 handler failover；否则以 response.failed 终止，
+		// 返回错误并携带已计量的部分 usage。
+		if !clientDisconnected && c.Writer.Size() == writerSizeBeforeStream && usage == (ClaudeUsage{}) && bridgeReadErrorFailoverEligible(err) {
+			return nil, bridgeReadFailoverError(err)
 		}
+		if !clientDisconnected {
+			errType, message := bridgeReadErrorInfo(err)
+			MarkOpsStreamError(c, errType, message, http.StatusBadGateway)
+			writeResponsesStreamFailed(c, state, errType, message)
+			MarkResponseCommitted(c)
+		}
+		return bridgePartialResult(resultWithUsage()), fmt.Errorf("upstream stream read error: %w", err)
 	}
 
 	return finalizeStream()
@@ -783,6 +794,80 @@ func finishBridgeRead(resp *http.Response, readErr error) error {
 		return nil
 	}
 	return readErr
+}
+
+// bridgeReadErrorIsClientCancel 报告读错误是否源自请求取消（保持既有收尾语义）。
+func bridgeReadErrorIsClientCancel(err error) bool {
+	return errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded)
+}
+
+// bridgeReadErrorFailoverEligible 报告上游中途读错误能否交给 handler failover（A1-04）。
+// 仅普通读错误（unexpected EOF / connection reset 等）可同账号重试；读间隔超时（A1-05）
+// 与超长行与 messages 主路径一致按失败终止，不 failover。调用方还须保证尚未向客户端输出、
+// 也无已计量 usage，否则 failover 会造成流拼接或双重计费。
+func bridgeReadErrorFailoverEligible(err error) bool {
+	return !errors.Is(err, errAnthropicNativeStreamIdle) && !errors.Is(err, bufio.ErrTooLong)
+}
+
+// bridgeReadFailoverError 把尚未输出时的上游中途读错误包成可同账号重试的
+// UpstreamFailoverError（与 handleStreamingResponse 的同类分支一致，消息已脱敏）。
+func bridgeReadFailoverError(err error) *UpstreamFailoverError {
+	body, _ := json.Marshal(map[string]any{
+		"type": "error",
+		"error": map[string]string{
+			"type":    "upstream_disconnected",
+			"message": "upstream stream disconnected: " + sanitizeStreamError(err),
+		},
+	})
+	return &UpstreamFailoverError{
+		StatusCode:             http.StatusBadGateway,
+		ResponseBody:           body,
+		RetryableOnSameAccount: true,
+	}
+}
+
+// bridgeReadErrorInfo 返回上游中途读错误对应的终止错误类型与脱敏消息。
+func bridgeReadErrorInfo(err error) (string, string) {
+	switch {
+	case errors.Is(err, errAnthropicNativeStreamIdle):
+		return "stream_timeout", "upstream stream idle timeout"
+	case errors.Is(err, bufio.ErrTooLong):
+		return "response_too_large", "upstream SSE line too long"
+	default:
+		return "stream_read_error", "upstream stream disconnected: " + sanitizeStreamError(err)
+	}
+}
+
+// bridgePartialResult 仅在已观测到 usage 时返回部分结果（供 handler 在错误路径入账），
+// 否则返回 nil，避免记录零用量。
+func bridgePartialResult(result *ForwardResult) *ForwardResult {
+	if result == nil || !result.Usage.hasObservedTokens() {
+		return nil
+	}
+	return result
+}
+
+// writeResponsesStreamFailed 以 response.failed 终止 Responses 流（严格 SDK 要求终止事件
+// 属于 completed/failed/incomplete/cancelled 集合）。
+func writeResponsesStreamFailed(c *gin.Context, state *apicompat.AnthropicEventToResponsesState, errType, message string) {
+	failed := apicompat.ResponsesStreamEvent{
+		Type:           "response.failed",
+		SequenceNumber: state.SequenceNumber,
+		Response: &apicompat.ResponsesResponse{
+			ID:        state.ResponseID,
+			Object:    "response",
+			CreatedAt: state.Created,
+			Model:     state.Model,
+			Status:    "failed",
+			Output:    []apicompat.ResponsesOutput{},
+			Error:     &apicompat.ResponsesError{Code: errType, Message: message},
+		},
+	}
+	if sse, err := apicompat.ResponsesEventToSSE(failed); err == nil {
+		if _, err := fmt.Fprint(c.Writer, sse); err == nil {
+			c.Writer.Flush()
+		}
+	}
 }
 
 // bridgeSSEErrorInfo 从上游 event:error 的 data 中提取 error.type 与脱敏后的 message。
