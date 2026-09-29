@@ -1836,7 +1836,8 @@ async function saveConfig() {
       proxy_id: configForm.proxy_id ?? 0,
       timeout_ms: Number(configForm.timeout_ms) || 3000,
       retry_count: Number(configForm.retry_count) || 0,
-      sample_rate: Number(configForm.sample_rate) || 0,
+      // 清空输入时回退默认 100，显式 0 保留（0 表示不抽样）
+      sample_rate: numberOrDefault(configForm.sample_rate, 100),
       all_groups: configForm.all_groups,
       group_ids: configForm.all_groups ? [] : [...configForm.group_ids],
       record_non_hits: configForm.record_non_hits,
@@ -2350,6 +2351,14 @@ function buildRiskThresholdPayload(): Record<string, number> {
 
 function resetRiskThresholds() {
   configForm.thresholds = { ...riskThresholdDefaults }
+}
+
+function numberOrDefault(value: unknown, fallback: number): number {
+  if (value === '' || value === null || value === undefined) {
+    return fallback
+  }
+  const numeric = Number(value)
+  return Number.isFinite(numeric) ? numeric : fallback
 }
 
 function clampPercent(value: unknown): number {
