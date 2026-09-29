@@ -22,7 +22,7 @@
           {{ t('admin.groups.addUserRate') }}
         </h4>
         <div class="flex items-end gap-2">
-          <div class="relative flex-1">
+          <div ref="searchContainerRef" class="relative flex-1">
             <input
               v-model="searchQuery"
               type="text"
@@ -268,6 +268,7 @@ const localEntries = ref<LocalEntry[]>([])
 const searchQuery = ref('')
 const searchResults = ref<AdminUser[]>([])
 const showDropdown = ref(false)
+const searchContainerRef = ref<HTMLElement | null>(null)
 const selectedUser = ref<AdminUser | null>(null)
 const newRate = ref<number | null>(null)
 const currentPage = ref(1)
@@ -478,17 +479,18 @@ const handleClose = () => {
   emit('close')
 }
 
-// 点击外部关闭下拉
-const handleClickOutside = () => {
-  showDropdown.value = false
+// 点击外部关闭下拉（搜索框与结果列表内的点击除外）
+// 捕获阶段监听：BaseDialog 面板的 @click.stop 会拦住冒泡，否则对话框内点击其他位置关不掉下拉。
+const handleClickOutside = (event: MouseEvent) => {
+  if (!searchContainerRef.value?.contains(event.target as Node)) showDropdown.value = false
 }
 
 if (typeof document !== 'undefined') {
-  document.addEventListener('click', handleClickOutside)
+  document.addEventListener('click', handleClickOutside, true)
 }
 onUnmounted(() => {
   clearTimeout(searchTimeout)
-  document.removeEventListener('click', handleClickOutside)
+  document.removeEventListener('click', handleClickOutside, true)
 })
 </script>
 
