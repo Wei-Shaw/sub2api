@@ -188,9 +188,8 @@ const shouldShowResetTime = computed(() => {
 
 // Format reset time
 const formatResetTime = computed(() => {
-  // A future reset is an active countdown even when utilization is 0%.
-  if (props.showNowWhenIdle && props.utilization <= 0 &&
-      (!props.resetsAt || new Date(props.resetsAt).getTime() <= now.value.getTime())) {
+  // For rolling windows, when utilization is 0%, treat as immediately available.
+  if (props.showNowWhenIdle && props.utilization <= 0) {
     return t('usage.resetNow')
   }
 
