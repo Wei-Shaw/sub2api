@@ -56,7 +56,7 @@ import {
 import { affiliatesAPI, type AffiliateAdminEntry, type SimpleUser as AffiliateSimpleUser } from "@/api/admin/affiliates";
 import { extractApiErrorMessage, extractI18nErrorMessage } from "@/utils/apiError";
 import { DEFAULT_ALLOWED_IFRAME_HOSTS } from "@/utils/iframeSanitize";
-import { useAppStore } from "@/stores";
+import { useAppStore, useAuthStore } from "@/stores";
 import { useAdminSettingsStore } from "@/stores/adminSettings";
 import {
   METHOD_ORDER,
@@ -245,6 +245,7 @@ export function useSettingsView() {
 
   const { t, locale } = useI18n();
   const appStore = useAppStore();
+  const authStore = useAuthStore();
   // 关闭 step-up 开关是敏感操作：后端返回 STEP_UP_REQUIRED 时弹 TOTP 码重试
   const settingsStepUp = useStepUp();
   const adminSettingsStore = useAdminSettingsStore();
@@ -2190,8 +2191,12 @@ export function useSettingsView() {
     event.returnValue = "";
   }
 
+  // 会话已清除（登出后跳转 /login）时修改已无法保存：直接放行，避免取消后停留在已登出的设置页
   onBeforeRouteLeave(
-    () => !isDirty.value || window.confirm(t("admin.settings.leaveUnsavedConfirm")),
+    () =>
+      !isDirty.value ||
+      !authStore.isAuthenticated ||
+      window.confirm(t("admin.settings.leaveUnsavedConfirm")),
   );
 
   async function loadSettings() {

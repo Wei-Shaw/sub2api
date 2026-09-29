@@ -81,6 +81,7 @@ const {
 }));
 
 const localeRef = vi.hoisted(() => ({ value: "zh-CN" }));
+const f108AuthState = vi.hoisted(() => ({ isAuthenticated: true }));
 
 vi.mock("@/api", () => ({
   adminAPI: {
@@ -128,6 +129,7 @@ vi.mock("@/stores", () => ({
     showInfo: vi.fn(),
     fetchPublicSettings,
   }),
+  useAuthStore: () => f108AuthState,
 }));
 
 vi.mock("@/stores/adminSettings", () => ({
@@ -2496,6 +2498,37 @@ describe("admin SettingsView settings UX", () => {
       await router.push("/elsewhere");
       expect(router.currentRoute.value.path).toBe("/elsewhere");
     } finally {
+      confirmSpy.mockRestore();
+      wrapper.unmount();
+    }
+  });
+
+  it("does not block the logout redirect to /login once the session is cleared (F1-08)", async () => {
+    const router = createRouter({
+      history: createMemoryHistory(),
+      routes: [
+        { path: "/admin/settings", component: SettingsView },
+        { path: "/login", component: { template: "<div />" } },
+      ],
+    });
+    await router.push("/admin/settings");
+    const wrapper = mount(RouterView, {
+      global: { ...mountGlobalOptions, plugins: [router] },
+    });
+    await flushPromises();
+
+    const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(false);
+    try {
+      await wrapper.get(siteNameInput).setValue("Renamed site");
+
+      // AppHeader.handleLogout: authStore.logout() clears the session, then pushes /login.
+      f108AuthState.isAuthenticated = false;
+      await router.push("/login");
+
+      expect(confirmSpy).not.toHaveBeenCalled();
+      expect(router.currentRoute.value.path).toBe("/login");
+    } finally {
+      f108AuthState.isAuthenticated = true;
       confirmSpy.mockRestore();
       wrapper.unmount();
     }
