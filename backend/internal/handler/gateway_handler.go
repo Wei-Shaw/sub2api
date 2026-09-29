@@ -2320,12 +2320,18 @@ func sendMockInterceptStream(c *gin.Context, model string, interceptType Interce
 	var msgID string
 	var outputTokens int
 	var textDeltas []string
+	stopReason := "end_turn"
 
 	switch interceptType {
 	case InterceptTypeSuggestionMode:
 		msgID = generateRealisticMsgID()
 		outputTokens = 1
 		textDeltas = []string{""} // 空内容
+	case InterceptTypeMaxTokensOneHaiku:
+		msgID = generateRealisticMsgID()
+		outputTokens = 1
+		textDeltas = []string{"#"}
+		stopReason = "max_tokens" // 与非流式一致：max_tokens=1 探测的 stop_reason 为 max_tokens
 	default: // InterceptTypeWarmup
 		msgID = generateRealisticMsgID()
 		outputTokens = 2
@@ -2348,7 +2354,7 @@ func sendMockInterceptStream(c *gin.Context, model string, interceptType Interce
 	}
 
 	// Add final events
-	messageDeltaJSON := `{"type":"message_delta","delta":{"stop_reason":"end_turn","stop_sequence":null,"stop_details":null},"usage":{"output_tokens":` + strconv.Itoa(outputTokens) + `}}`
+	messageDeltaJSON := `{"type":"message_delta","delta":{"stop_reason":` + strconv.Quote(stopReason) + `,"stop_sequence":null,"stop_details":null},"usage":{"output_tokens":` + strconv.Itoa(outputTokens) + `}}`
 
 	events = append(events,
 		`event: content_block_stop`+"\n"+`data: {"index":0,"type":"content_block_stop"}`,
