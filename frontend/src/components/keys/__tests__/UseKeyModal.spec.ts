@@ -40,6 +40,44 @@ describe('UseKeyModal', () => {
     saveAsMock.mockClear()
   })
 
+  it('shows only Claude Code for Claude Code-only groups', async () => {
+    const wrapper = mount(UseKeyModal, {
+      props: {
+        show: true,
+        apiKey: 'sk-anthropic-test',
+        baseUrl: 'https://example.com/v1',
+        platform: 'anthropic'
+      },
+      global: {
+        stubs: {
+          BaseDialog: { template: '<div><slot /><slot name="footer" /></div>' },
+          Icon: { template: '<span />' }
+        }
+      }
+    })
+
+    const clientTabs = () => wrapper.find('nav[aria-label="Client"]').text()
+    expect(clientTabs()).toContain('keys.useKeyModal.cliTabs.codexCli')
+    expect(clientTabs()).toContain('keys.useKeyModal.cliTabs.opencode')
+
+    const codexTab = wrapper.find('nav[aria-label="Client"]').findAll('button').find(
+      (button) => button.text().includes('keys.useKeyModal.cliTabs.codexCli')
+    )
+    await codexTab!.trigger('click')
+    await wrapper.setProps({ claudeCodeOnly: true })
+
+    expect(clientTabs()).toContain('keys.useKeyModal.cliTabs.claudeCode')
+    expect(clientTabs()).not.toContain('keys.useKeyModal.cliTabs.codexCli')
+    expect(clientTabs()).not.toContain('keys.useKeyModal.cliTabs.opencode')
+    expect(wrapper.find('pre code').text()).toContain('CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC')
+
+    await wrapper.setProps({ platform: 'openai' })
+    expect(clientTabs()).toContain('keys.useKeyModal.cliTabs.claudeCode')
+    expect(clientTabs()).not.toContain('keys.useKeyModal.cliTabs.codexCli')
+    expect(clientTabs()).not.toContain('keys.useKeyModal.cliTabs.opencode')
+    expect(wrapper.find('pre code').text()).toContain('ANTHROPIC_BASE_URL')
+  })
+
   it('omits the attribution override from every standard Claude Code setup form', async () => {
     const wrapper = mount(UseKeyModal, {
       props: {
@@ -690,7 +728,7 @@ describe('UseKeyModal', () => {
     })
   })
 
-  it('exports Opus 5.5 only on the Anthropic provider with adaptive defaults', async () => {
+  it('exports Claude 5.5 models on the Anthropic provider with adaptive defaults', async () => {
     const wrapper = mount(UseKeyModal, {
       props: { show: true, apiKey: 'sk-test', baseUrl: 'https://example.com/v1', platform: 'anthropic' },
       global: { stubs: { BaseDialog: { template: '<div><slot /><slot name="footer" /></div>' }, Icon: { template: '<span />' } } }
@@ -699,11 +737,15 @@ describe('UseKeyModal', () => {
     expect(tab).toBeDefined()
     await tab!.trigger('click')
     await nextTick()
-    const model = JSON.parse(wrapper.find('pre code').text()).provider.anthropic.models['claude-opus-5-5']
-    expect(model.limit).toEqual({ context: 1000000, output: 128000 })
-    expect(model.options).toEqual({ thinking: { type: 'adaptive' }, effort: 'medium' })
-    expect(model.variants.xhigh.effort).toBe('xhigh')
-    expect(model.variants).not.toHaveProperty('none')
+    const models = JSON.parse(wrapper.find('pre code').text()).provider.anthropic.models
+    expect(models['claude-opus-5-5'].limit).toEqual({ context: 1000000, output: 128000 })
+    expect(models['claude-opus-5-5'].options).toEqual({ thinking: { type: 'adaptive' }, effort: 'medium' })
+    expect(models['claude-opus-5-5'].variants.xhigh.effort).toBe('xhigh')
+    expect(models['claude-opus-5-5'].variants).not.toHaveProperty('none')
+    expect(models['claude-sonnet-5-5'].limit).toEqual({ context: 1000000, output: 128000 })
+    expect(models['claude-sonnet-5-5'].options).toEqual({ thinking: { type: 'adaptive' }, effort: 'high' })
+    expect(models['claude-sonnet-5-5'].variants.xhigh.effort).toBe('xhigh')
+    expect(models['claude-sonnet-5-5'].variants).not.toHaveProperty('none')
   })
 
   it('renders Claude Fable 5 OpenCode config with adaptive thinking', async () => {
@@ -941,21 +983,9 @@ describe('UseKeyModal', () => {
     expect(config).toContain('review_model = "gpt-5.5"')
   })
 
-  it('derives OpenAI Codex reasoning effort from the selected catalog descriptor', async () => {
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
-      ok: true,
-      status: 200,
-      json: async () => ({
-        models: [
-          {
-            slug: 'glm-5.3',
-            default_reasoning_level: 'none',
-            supported_reasoning_levels: [{ effort: 'none' }]
-          }
-        ]
-      })
-    }))
-
+  it('omits the Codex catalog for OpenAI in both transport modes and on both platforms', async () => {
+    const fetchMock = vi.fn()
+    vi.stubGlobal('fetch', fetchMock)
     const wrapper = mount(UseKeyModal, {
       props: {
         show: true,
@@ -975,13 +1005,18 @@ describe('UseKeyModal', () => {
       }
     })
 
-    await wrapper.get('[data-testid="codex-model-catalog-fetch"]').trigger('click')
-    await flushPromises()
-
-    const configToml = wrapper.findAll('pre code')
-      .map((code) => code.text())
-      .find((content) => content.includes('model_provider = "OpenAI"'))
-    expect(configToml).toContain('model = "glm-5.3"')
-    expect(configToml).not.toContain('model_reasoning_effort')
+    for (const transport of ['keys.useKeyModal.cliTabs.codexCli', 'keys.useKeyModal.cliTabs.codexCliWs']) {
+      await wrapper.findAll('button').find((button) => button.text().trim() === transport)!.trigger('click')
+      for (const os of ['macOS / Linux', 'Windows']) {
+        await wrapper.findAll('button').find((button) => button.text().trim() === os)!.trigger('click')
+        const configToml = wrapper.findAll('pre code')
+          .map((code) => code.text())
+          .find((content) => content.includes('model_provider = "OpenAI"'))
+        expect(configToml).toContain('model = "gpt-5.5"')
+        expect(configToml).not.toContain('model_catalog_json')
+        expect(wrapper.find('[data-testid="codex-model-catalog"]').exists()).toBe(false)
+      }
+    }
+    expect(fetchMock).not.toHaveBeenCalled()
   })
 })

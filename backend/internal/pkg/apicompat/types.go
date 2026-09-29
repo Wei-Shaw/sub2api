@@ -42,7 +42,7 @@ type AnthropicOutputConfig struct {
 
 // AnthropicThinking configures extended thinking in the Anthropic API.
 type AnthropicThinking struct {
-	Type         string `json:"type"`                    // "enabled" | "adaptive" | "disabled"
+	Type         string `json:"type"`                    // "enabled" | "adaptive" | "disabled" | "between_tools"
 	BudgetTokens int    `json:"budget_tokens,omitempty"` // max thinking tokens
 }
 

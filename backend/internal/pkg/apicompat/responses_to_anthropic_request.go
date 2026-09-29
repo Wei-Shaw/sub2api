@@ -14,7 +14,9 @@ import (
 // enables Anthropic platform groups to accept OpenAI Responses API requests
 // by converting them to the native /v1/messages format before forwarding upstream.
 func ResponsesToAnthropicRequest(req *ResponsesRequest) (*AnthropicRequest, error) {
-	system, messages, err := convertResponsesInputToAnthropic(req.Instructions, req.Input, claude.IsOpus55(req.Model))
+	isOpus55 := claude.IsOpus55(req.Model)
+	isSonnet55 := claude.IsSonnet55(req.Model)
+	system, messages, err := convertResponsesInputToAnthropic(req.Instructions, req.Input, isOpus55 || isSonnet55)
 	if err != nil {
 		return nil, err
 	}
@@ -54,9 +56,11 @@ func ResponsesToAnthropicRequest(req *ResponsesRequest) (*AnthropicRequest, erro
 		out.ToolChoice = tc
 	}
 
-	// Opus 5.5 always uses adaptive thinking. Resolve the upstream model before
-	// conversion, because client aliases need not identify a Claude model.
-	if claude.IsOpus55(req.Model) {
+	// The 5.5 models reject manual thinking and forced tool use. Sonnet 5.5
+	// additionally supports between_tools to disable up-front thinking.
+	// Resolve the upstream model before conversion: client aliases need not
+	// identify a Claude model.
+	if isOpus55 || isSonnet55 {
 		var choice struct {
 			Type string `json:"type"`
 		}
@@ -66,16 +70,36 @@ func ResponsesToAnthropicRequest(req *ResponsesRequest) (*AnthropicRequest, erro
 			}
 		}
 		if choice.Type == "any" || choice.Type == "tool" {
-			return nil, fmt.Errorf("claude-opus-5-5 does not support forced tool_choice; use auto or none")
+			return nil, fmt.Errorf("%s does not support forced tool_choice; use auto or none", req.Model)
 		}
 		effort := "medium"
+		if isSonnet55 {
+			effort = "high"
+			if req.Temperature != nil && *req.Temperature != 1 {
+				return nil, fmt.Errorf("claude-sonnet-5-5 does not support non-default temperature")
+			}
+			if req.TopP != nil && (*req.TopP < 0.99 || *req.TopP > 1) {
+				return nil, fmt.Errorf("claude-sonnet-5-5 does not support non-default top_p")
+			}
+		}
 		if req.Reasoning != nil && req.Reasoning.Effort != "" {
 			effort = req.Reasoning.Effort
+		}
+		if isSonnet55 && effort == "none" {
+			// OpenAI's no-reasoning request maps to Sonnet 5.5's lowest
+			// thinking mode. between_tools still preserves signed progress
+			// blocks produced during tool use.
+			out.Thinking = &AnthropicThinking{Type: "between_tools"}
+			if out.OutputConfig == nil {
+				out.OutputConfig = &AnthropicOutputConfig{}
+			}
+			out.OutputConfig.Effort = "low"
+			return out, nil
 		}
 		switch effort {
 		case "low", "medium", "high", "xhigh", "max":
 		default:
-			return nil, fmt.Errorf("claude-opus-5-5 does not support reasoning effort %q; use low, medium, high, xhigh or max", effort)
+			return nil, fmt.Errorf("%s does not support reasoning effort %q; use low, medium, high, xhigh or max", req.Model, effort)
 		}
 		out.Thinking = &AnthropicThinking{Type: "adaptive"}
 		out.OutputConfig = &AnthropicOutputConfig{Effort: effort}
