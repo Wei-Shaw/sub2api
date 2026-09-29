@@ -462,6 +462,8 @@ const onDropdownKeyDown = (e: KeyboardEvent) => {
       break
     case 'Escape':
       e.preventDefault()
+      // 吞掉 Esc：只关下拉，避免同一次按键把外层 BaseDialog 也关掉。
+      e.stopPropagation()
       isOpen.value = false
       triggerRef.value?.focus()
       break

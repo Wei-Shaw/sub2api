@@ -287,8 +287,10 @@ const handleClickOutside = (event: MouseEvent) => {
   }
 }
 
+// 捕获阶段处理并吞掉 Esc：只关下拉，避免同一次按键把外层 BaseDialog 也关掉。
 const handleEscape = (event: KeyboardEvent) => {
   if (event.key === 'Escape' && isOpen.value) {
+    event.stopPropagation()
     isOpen.value = false
     searchQuery.value = ''
   }
@@ -296,12 +298,12 @@ const handleEscape = (event: KeyboardEvent) => {
 
 onMounted(() => {
   document.addEventListener('click', handleClickOutside)
-  document.addEventListener('keydown', handleEscape)
+  document.addEventListener('keydown', handleEscape, true)
 })
 
 onUnmounted(() => {
   document.removeEventListener('click', handleClickOutside)
-  document.removeEventListener('keydown', handleEscape)
+  document.removeEventListener('keydown', handleEscape, true)
 })
 </script>
 
