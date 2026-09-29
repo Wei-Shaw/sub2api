@@ -428,7 +428,7 @@ function onPaymentDone() {
 async function onPaymentSuccess() {
   const completedPayment = { ...paymentState.value }
   removeRecoverySnapshot()
-  authStore.refreshUser()
+  authStore.refreshUser({ force: true })
   if (paymentState.value.orderType === 'subscription') {
     subscriptionStore.fetchActiveSubscriptions(true).catch(() => {})
   }

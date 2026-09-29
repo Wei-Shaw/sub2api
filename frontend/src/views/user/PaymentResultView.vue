@@ -260,7 +260,7 @@ function refreshUserBalanceForSuccessfulOrder(nextOrder: ResolvedOrder | null): 
   }
 
   userBalanceRefreshStarted = true
-  void authStore.refreshUser().catch(() => {
+  void authStore.refreshUser({ force: true }).catch(() => {
     // The order result remains authoritative even if refreshing profile data fails.
   })
 }

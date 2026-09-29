@@ -349,7 +349,7 @@ const handleRedeem = async () => {
 
     // Refresh user data to get updated balance/concurrency
     try {
-      const refreshed = await authStore.refreshUser()
+      const refreshed = await authStore.refreshUser({ force: true })
       redeemResult.value = {
         ...result,
         new_balance: result.type === 'balance' ? refreshed.balance : undefined,
