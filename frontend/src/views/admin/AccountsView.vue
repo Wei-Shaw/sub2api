@@ -2184,21 +2184,30 @@ const openBulkEditSelected = () => {
 }
 
 const openBulkEditFiltered = async () => {
+  if (bulkBusy.value) return
   const filters = buildBulkEditFilterSnapshot()
-  // 按全部匹配账号推导平台/类型，避免只看前 100 条漏掉其他平台
-  const rows = await fetchAllAccounts(
-    (page, pageSize, requestFilters) => adminAPI.accounts.list(page, pageSize, requestFilters),
-    filters
-  )
-  const { selectedPlatforms, selectedTypes } = collectSelectionMetadata(rows)
-  bulkEditTarget.value = {
-    mode: 'filtered',
-    filters,
-    previewCount: rows.length,
-    selectedPlatforms,
-    selectedTypes
+  bulkBusy.value = true
+  try {
+    // 按全部匹配账号推导平台/类型，避免只看前 100 条漏掉其他平台
+    const rows = await fetchAllAccounts(
+      (page, pageSize, requestFilters) => adminAPI.accounts.list(page, pageSize, requestFilters),
+      filters
+    )
+    const { selectedPlatforms, selectedTypes } = collectSelectionMetadata(rows)
+    bulkEditTarget.value = {
+      mode: 'filtered',
+      filters,
+      previewCount: rows.length,
+      selectedPlatforms,
+      selectedTypes
+    }
+    showBulkEdit.value = true
+  } catch (error) {
+    console.error('Failed to load bulk edit preview:', error)
+    appStore.showError(extractApiErrorMessage(error, t('admin.accounts.failedToLoad')))
+  } finally {
+    bulkBusy.value = false
   }
-  showBulkEdit.value = true
 }
 
 const handleBulkUpdated = () => {
