@@ -1,9 +1,11 @@
 package admin
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"io"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -33,6 +35,17 @@ func setupAvailableModelsRouter(adminSvc service.AdminService) *gin.Engine {
 	gin.SetMode(gin.TestMode)
 	router := gin.New()
 	handler := NewAccountHandler(adminSvc, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+	router.GET("/api/v1/admin/accounts/:id/models", handler.GetAvailableModels)
+	return router
+}
+
+// setupAvailableModelsRouter passes no account test service, which short-circuits
+// the discovery branch entirely. Tests that need that branch must use this
+// variant, otherwise deleting its code would still leave them green.
+func setupAvailableModelsRouterWithDiscovery(adminSvc service.AdminService, accountTestSvc *service.AccountTestService) *gin.Engine {
+	gin.SetMode(gin.TestMode)
+	router := gin.New()
+	handler := NewAccountHandler(adminSvc, nil, nil, nil, nil, nil, nil, nil, accountTestSvc, nil, nil, nil, nil, nil)
 	router.GET("/api/v1/admin/accounts/:id/models", handler.GetAvailableModels)
 	return router
 }
@@ -183,6 +196,111 @@ func TestAccountHandlerGetAvailableModels_OpenAIOAuthUsesExplicitModelMapping(t 
 	require.Equal(t, "gpt-5", resp.Data[0].ID)
 }
 
+// The mapping fallback used to iterate the mapping map directly, so the same
+// account could answer with a different order on every request. Two identical
+// requests are needed to catch that: a single call cannot see the instability.
+func TestAccountHandlerGetAvailableModels_FallbackIsSorted(t *testing.T) {
+	svc := &availableModelsAdminService{
+		stubAdminService: newStubAdminService(),
+		account: service.Account{
+			ID:       47,
+			Name:     "openai-apikey-mapping-fallback",
+			Platform: service.PlatformOpenAI,
+			Type:     service.AccountTypeAPIKey,
+			Status:   service.StatusActive,
+			Credentials: map[string]any{
+				"api_key": "test-key",
+				"model_mapping": map[string]any{
+					"model-e": "upstream-e",
+					"model-c": "upstream-c",
+					"model-a": "upstream-a",
+					"model-d": "upstream-d",
+					"model-b": "upstream-b",
+				},
+			},
+		},
+	}
+	router := setupAvailableModelsRouter(svc)
+
+	// Five keys make an accidental match improbable: unsorted code would have to
+	// hit the sorted order by chance on every attempt, not just once.
+	want := []string{"model-a", "model-b", "model-c", "model-d", "model-e"}
+	for attempt := 0; attempt < 3; attempt++ {
+		rec := httptest.NewRecorder()
+		req := httptest.NewRequest(http.MethodGet, "/api/v1/admin/accounts/47/models", nil)
+		router.ServeHTTP(rec, req)
+
+		require.Equal(t, http.StatusOK, rec.Code)
+		require.Equal(t, "local-fallback", rec.Header().Get("X-Sub2API-Models-Source"))
+
+		var resp struct {
+			Data []struct {
+				ID string `json:"id"`
+			} `json:"data"`
+		}
+		require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
+		ids := make([]string, 0, len(resp.Data))
+		for _, model := range resp.Data {
+			ids = append(ids, model.ID)
+		}
+		require.Equal(t, want, ids, "fallback order must be stable across requests")
+	}
+}
+
+// The "fallback is no longer silent" promise needs a test that actually reaches
+// the branch: the other cases here pass no account test service, so they never
+// execute it and would stay green if the warning were deleted.
+func TestAccountHandlerGetAvailableModels_DiscoveryFailureWarnsAndFallsBack(t *testing.T) {
+	svc := &availableModelsAdminService{
+		stubAdminService: newStubAdminService(),
+		account: service.Account{
+			ID:       48,
+			Name:     "openai-apikey-discovery-down",
+			Platform: service.PlatformOpenAI,
+			Type:     service.AccountTypeAPIKey,
+			Status:   service.StatusActive,
+			Credentials: map[string]any{
+				"api_key":  "test-key",
+				"base_url": "https://provider.example/v1",
+				"model_mapping": map[string]any{
+					"model-b": "upstream-b",
+					"model-a": "upstream-a",
+				},
+			},
+		},
+	}
+	// A service without a gateway reports discovery as unavailable, which is the
+	// state the picker is in whenever the upstream catalog cannot be read.
+	accountTestSvc := service.NewAccountTestService(nil, nil, nil, nil, nil, nil,
+		&config.Config{Security: config.SecurityConfig{URLAllowlist: config.URLAllowlistConfig{Enabled: false}}}, nil)
+	router := setupAvailableModelsRouterWithDiscovery(svc, accountTestSvc)
+
+	var logged bytes.Buffer
+	previous := slog.Default()
+	slog.SetDefault(slog.New(slog.NewTextHandler(&logged, nil)))
+	t.Cleanup(func() { slog.SetDefault(previous) })
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/admin/accounts/48/models", nil)
+	router.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	require.Contains(t, logged.String(), "account_models_catalog_unavailable")
+	require.Equal(t, "local-fallback", rec.Header().Get("X-Sub2API-Models-Source"))
+
+	var resp struct {
+		Data []struct {
+			ID string `json:"id"`
+		} `json:"data"`
+	}
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
+	ids := make([]string, 0, len(resp.Data))
+	for _, model := range resp.Data {
+		ids = append(ids, model.ID)
+	}
+	require.Equal(t, []string{"model-a", "model-b"}, ids)
+}
+
 func TestAccountHandlerGetAvailableModels_OpenAIOAuthPassthroughFallsBackToDefaults(t *testing.T) {
 	svc := &availableModelsAdminService{
 		stubAdminService: newStubAdminService(),
@@ -218,6 +336,8 @@ func TestAccountHandlerGetAvailableModels_OpenAIOAuthPassthroughFallsBackToDefau
 	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
 	require.NotEmpty(t, resp.Data)
 	require.NotEqual(t, "gpt-5", resp.Data[0].ID)
+	require.Equal(t, "local-fallback", rec.Header().Get("X-Sub2API-Models-Source"),
+		"the static default catalog is a local answer, not a mapping answer")
 }
 
 func TestAccountHandlerGetAvailableModels_OpenAIAPIKeyDefaultsToConcreteGPT56Sol(t *testing.T) {
@@ -250,6 +370,7 @@ func TestAccountHandlerGetAvailableModels_OpenAIAPIKeyDefaultsToConcreteGPT56Sol
 	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
 	require.NotEmpty(t, resp.Data)
 	require.Equal(t, "gpt-5.6-sol", resp.Data[0].ID)
+	require.Equal(t, "local-fallback", rec.Header().Get("X-Sub2API-Models-Source"))
 }
 
 func TestAccountHandlerGetAvailableModels_OpenAISparkShadowReturnsMappingModels(t *testing.T) {
