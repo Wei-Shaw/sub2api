@@ -116,7 +116,7 @@ func TestCreateOrderInTxRechargeCodeDoesNotLeakOrderID(t *testing.T) {
 			&User{ID: user.ID, Email: user.Email, Username: user.Username},
 			nil,
 			&PaymentConfig{MaxPendingOrders: 10, OrderTimeoutMin: 30},
-			10, 10, 0, 10,
+			10, 0, 10,
 			nil,
 		)
 		require.NoError(t, err)
@@ -184,7 +184,7 @@ func TestLockUserRowForOrderLimitsSkipsNonPostgres(t *testing.T) {
 }
 
 // TestCheckDailyLimitAggregatesInDatabase 新的库内聚合必须和旧的「读全部订单再在 Go
-// 里累加」结果一致：余额订单按实付金额计入，订阅订单按订单金额计入。
+// 里累加」结果一致：所有订单都按实付金额（网关币种）计入（C-03）。
 // 已过期的挂起订单不计入（它不会再被履约，继续占额度就成了永久封锁）。
 func TestCheckDailyLimitAggregatesInDatabase(t *testing.T) {
 	ctx := context.Background()
@@ -200,8 +200,8 @@ func TestCheckDailyLimitAggregatesInDatabase(t *testing.T) {
 
 	// 余额订单：amount=100（到账）但 pay_amount=30（实付），只应计入 30。
 	mustCreatePaidPaymentOrder(t, ctx, client, user.ID, payment.OrderTypeBalance, 100, 30, OrderStatusCompleted, paidAt)
-	// 订阅订单：按 amount=20 计入。
-	mustCreatePaidPaymentOrder(t, ctx, client, user.ID, payment.OrderTypeSubscription, 20, 19, OrderStatusPaid, paidAt)
+	// 订阅订单：amount=1（USD 套餐价）但 pay_amount=20（网关币种实付），只应计入 20。
+	mustCreatePaidPaymentOrder(t, ctx, client, user.ID, payment.OrderTypeSubscription, 1, 20, OrderStatusPaid, paidAt)
 	// 已过期的挂起订单不计入。
 	mustCreatePaymentOrderWithExpiry(t, ctx, client, user.ID, payment.OrderTypeBalance, 500, 500,
 		OrderStatusPending, time.Time{}, time.Now().Add(-time.Minute))
@@ -380,11 +380,11 @@ func TestCreateOrderInTxPendingOrdersConsumeDailyLimit(t *testing.T) {
 	}
 	svcUser := &User{ID: user.ID, Email: user.Email, Username: user.Username}
 
-	first, err := svc.createOrderInTx(ctx, req, svcUser, nil, cfg, 60, 60, 0, 60, nil)
+	first, err := svc.createOrderInTx(ctx, req, svcUser, nil, cfg, 60, 0, 60, nil)
 	require.NoError(t, err)
 	require.Equal(t, OrderStatusPending, first.Status)
 
-	_, err = svc.createOrderInTx(ctx, req, svcUser, nil, cfg, 60, 60, 0, 60, nil)
+	_, err = svc.createOrderInTx(ctx, req, svcUser, nil, cfg, 60, 0, 60, nil)
 	require.Error(t, err)
 	require.Equal(t, "DAILY_LIMIT_PENDING_HOLD", infraerrors.Reason(err))
 
@@ -394,7 +394,7 @@ func TestCreateOrderInTxPendingOrdersConsumeDailyLimit(t *testing.T) {
 		Save(ctx)
 	require.NoError(t, err)
 
-	third, err := svc.createOrderInTx(ctx, req, svcUser, nil, cfg, 60, 60, 0, 60, nil)
+	third, err := svc.createOrderInTx(ctx, req, svcUser, nil, cfg, 60, 0, 60, nil)
 	require.NoError(t, err)
 	require.Equal(t, OrderStatusPending, third.Status)
 }

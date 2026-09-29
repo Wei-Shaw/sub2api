@@ -113,7 +113,6 @@ func createOrderIfPendingHeadroomAllows(
 			paymentorder.UserIDEQ(userID),
 			paymentorder.StatusEQ(service.OrderStatusPending),
 			paymentorder.ExpiresAtGT(time.Now()),
-			paymentorder.OrderTypeEQ(payment.OrderTypeBalance),
 		).
 		Aggregate(dbent.As(dbent.Sum(paymentorder.FieldPayAmount), "sum")).
 		Scan(ctx, &agg); err != nil {
