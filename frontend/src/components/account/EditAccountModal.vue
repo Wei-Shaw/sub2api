@@ -1662,7 +1662,7 @@
       <div class="grid grid-cols-2 gap-4 lg:grid-cols-4">
         <div>
           <label class="input-label">{{ t('admin.accounts.concurrency') }}</label>
-          <input v-model.number="form.concurrency" type="number" min="1" class="input"
+          <input v-model.number="form.concurrency" type="number" min="1" class="input" :disabled="account.platform === 'muse'"
             @input="form.concurrency = Math.max(1, form.concurrency || 1)" />
         </div>
         <div>
@@ -5139,20 +5139,6 @@ watch(() => props.account, (account) => { museOwnerId.value = Number(account?.ex
 const handleSubmit = async () => {
   if (!props.account) return
   const accountID = props.account.id
-  if (props.account.platform === 'muse') {
-    submitting.value = true
-    try {
-      const session = buildMuseSession(museOwnerId.value, museSessionJson.value, true)
-      const updated = await adminAPI.accounts.update(accountID, { name: form.name, notes: form.notes,
-        credentials: session.credentials, extra: { ...(props.account.extra || {}), ...session.extra },
-        concurrency: 1, schedulable: false, status: form.status })
-      museSessionJson.value = ''; emit('updated', updated); handleClose()
-    } catch (error: unknown) { appStore.showError(error instanceof Error ? error.message : t('admin.accounts.failedToUpdate')) }
-    finally { submitting.value = false }
-    return
-  }
-
-
   if (form.status !== 'active' && form.status !== 'inactive' && form.status !== 'error') {
     appStore.showError(t('admin.accounts.pleaseSelectStatus'))
     return
@@ -5180,6 +5166,16 @@ const handleSubmit = async () => {
       updatePayload.load_factor = 0
     }
     updatePayload.auto_pause_on_expired = autoPauseOnExpired.value
+    if (props.account.platform === 'muse') {
+      const session = buildMuseSession(museOwnerId.value, museSessionJson.value, true)
+      updatePayload.credentials = session.credentials
+      updatePayload.extra = { ...(props.account.extra || {}), ...session.extra }
+      updatePayload.concurrency = 1
+      updatePayload.schedulable = false
+      await submitUpdateAccount(accountID, updatePayload)
+      museSessionJson.value = ''
+      return
+    }
     if (props.account.type === 'apikey') {
       updatePayload.upstream_billing_probe_enabled = upstreamBillingAutoProbeEnabled.value
       updatePayload.upstream_billing_rate_sync_enabled = upstreamBillingRateSyncEnabled.value
