@@ -26,7 +26,8 @@ function normalizeForAuthorityCheck(path: string): string {
  * 清洗跳转路径，防止开放重定向（open redirect）。
  *
  * 拒绝规则（任一命中即回落到 `/dashboard`）：
- * 1. 空值：undefined / null / 空字符串
+ * 1. 空值：undefined / null / 空字符串，以及其他非字符串值
+ *    （重复的 `?redirect=` 会被 vue-router 解析成数组，此时只取第一个元素）
  * 2. 不以 `/` 开头：相对路径、`javascript:` 等伪协议、绝对 URL、裸 `\evil.com`
  * 3. 以 `//` 开头：协议相对 URL，例如 `//evil.com`
  * 4. 包含 `://`：绝对 URL，例如 `https://evil.com`
@@ -38,11 +39,12 @@ function normalizeForAuthorityCheck(path: string): string {
  * 路径中部的反斜杠（如 `/docs/a\b`）不拦截：它归一化成 `/docs/a/b`，
  * 仍然是同源路径，拦截它只会误伤合法链接。
  *
- * @param path 待清洗的路径，通常来自 `route.query.redirect` 或后端返回的 redirect
+ * @param raw 待清洗的路径，通常来自 `route.query.redirect` 或后端返回的 redirect
  * @returns 可安全用于 router.push / router.replace 的站内路径
  */
-export function sanitizeRedirectPath(path: string | null | undefined): string {
-  if (!path) return DEFAULT_REDIRECT_PATH
+export function sanitizeRedirectPath(raw: unknown): string {
+  const path = Array.isArray(raw) ? raw[0] : raw
+  if (typeof path !== 'string' || !path) return DEFAULT_REDIRECT_PATH
   if (!path.startsWith('/')) return DEFAULT_REDIRECT_PATH
   if (path.startsWith('//')) return DEFAULT_REDIRECT_PATH
   if (path.includes('://')) return DEFAULT_REDIRECT_PATH
