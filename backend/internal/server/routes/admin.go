@@ -901,6 +901,7 @@ func registerMuseRoutes(admin *gin.RouterGroup, h *handler.Handlers, stepUp midd
 	group := admin.Group("/muse")
 	group.GET("/accounts/:id/status", h.Admin.Muse.Status)
 	group.POST("/accounts/:id/verify", h.Admin.Muse.Verify)
+	group.POST("/accounts/:id/authenticate", gin.HandlerFunc(stepUp), h.Admin.Muse.Authenticate)
 	group.POST("/accounts/:id/renew", gin.HandlerFunc(stepUp), h.Admin.Muse.Renew)
 	group.GET("/turns/:turn", h.Admin.Muse.Turn)
 	group.POST("/turns/:turn/resolve", gin.HandlerFunc(stepUp), h.Admin.Muse.Resolve)

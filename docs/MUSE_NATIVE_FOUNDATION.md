@@ -63,6 +63,33 @@ only. `reported_usage = null` means unknown; zeros in legacy compatibility count
 are not measurements or a basis for token billing. Anthropic wire compatibility
 may require zero-valued usage fields when the source supplies none.
 
+## Native app authentication port
+
+The MIT-licensed reference projects now share a concrete cookie-authentication path.
+The native Go port accepts their `{cookies, expires}` / `cookie_expires` /
+`cookies_exp` documents and CDP/Playwright HttpOnly cookie arrays. It imports
+`hatch_sess`, `hatch_gw`, `hatch_vml`, and `hatch_native_auth_device`, using exact
+Muse cookie-domain checks. `tools/muse-cookie-export` provides a Chromium exporter
+that saves local JSON without sending credentials to a remote collector.
+
+`POST /admin/muse/accounts/:id/authenticate` checks/renews via the fixed
+`https://muse.ai/api/session` endpoint through the configured account proxy.
+Redirects are disabled. Assigned-session metadata and returned `Set-Cookie` values
+are validated; actual cookie expiry/deletion is honored. Unknown expiry stays
+unknown. The port does not copy synthetic seven-day expiry extension, swallow auth
+failures, clear shared browser cookies, or wake a VM during an authentication check.
+
+Credential rotation uses the existing canonical workspace lock and account/proxy
+snapshot checks. It preserves opaque session extensions and model mapping. The
+admin panel can check app cookies and renew sessions before inference is qualified.
+A successful session check proves neither paid entitlement nor a canonical subject,
+model catalog, chat-wire support, or live inference. `DisabledProvider` stays in place
+until those contracts are established.
+
+Authentication sources and copyright notices are recorded in
+`THIRD_PARTY_NOTICES_MUSE.md`, pinned to the reviewed repository revisions. The
+HTTP flow is verified with scripted transport fixtures; no real session was used.
+
 ## Remaining qualification gate
 
 Implement `muse.Provider` only from a dedicated authenticated consumer-app session
