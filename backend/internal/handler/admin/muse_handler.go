@@ -1,6 +1,7 @@
 package admin
 
 import (
+	"errors"
 	"net/http"
 	"strconv"
 
@@ -87,4 +88,27 @@ func (h *MuseHandler) Settle(c *gin.Context) {
 		return
 	}
 	response.Success(c, gin.H{"settled": true})
+}
+
+func (h *MuseHandler) Authenticate(c *gin.Context) {
+	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil || id <= 0 {
+		response.Error(c, http.StatusBadRequest, "invalid account ID")
+		return
+	}
+	check, err := h.core.CheckSession(c.Request.Context(), id)
+	if err != nil {
+		switch {
+		case errors.Is(err, muse.ErrSessionCredentials):
+			response.Error(c, http.StatusBadRequest, "import the four Muse app HttpOnly cookies")
+		case errors.Is(err, muse.ErrBusy):
+			response.Error(c, http.StatusConflict, "finish or resolve workspace work before renewing its app cookies")
+		case errors.Is(err, muse.ErrSessionExpired):
+			response.Error(c, http.StatusBadRequest, "Muse app session expired; reconnect in Muse and import fresh cookies")
+		default:
+			response.Error(c, http.StatusServiceUnavailable, "Muse app session check could not be verified")
+		}
+		return
+	}
+	response.Success(c, check)
 }

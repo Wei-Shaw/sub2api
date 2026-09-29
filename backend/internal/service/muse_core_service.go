@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"log/slog"
 	"math"
+	"net/http"
 	"sort"
 	"strings"
 	"sync"
@@ -116,7 +117,8 @@ func (s *MuseCoreService) Verify(ctx context.Context, id int64) (*muse.Observati
 
 func (s *MuseCoreService) RenewSession(ctx context.Context, id int64) error {
 	if !s.Qualified() {
-		return muse.ErrTransportUnqualified
+		_, err := s.CheckSession(ctx, id)
+		return err
 	}
 	a, err := s.accounts.GetByID(ctx, id)
 	if err != nil {
@@ -142,7 +144,12 @@ func (s *MuseCoreService) Status(ctx context.Context, id int64) (map[string]any,
 	if !a.IsMuse() {
 		return nil, muse.ErrOwner
 	}
-	result := map[string]any{"qualified_transport": s.Qualified(), "owner_user_id": MuseOwnerUserID(a.Extra), "verified": false, "state": "verification_required", "models": []string{}}
+	cookieAuthSupported := false
+	if session, e := s.session(a); e == nil {
+		_, e = muse.ParseCookieSession(session.Document)
+		cookieAuthSupported = e == nil && s.gateway.httpUpstream != nil
+	}
+	result := map[string]any{"cookie_auth_supported": cookieAuthSupported, "qualified_transport": s.Qualified(), "owner_user_id": MuseOwnerUserID(a.Extra), "verified": false, "state": "verification_required", "models": []string{}}
 	result["pending_turns"], err = s.store.PendingTurns(ctx, id)
 	if err != nil {
 		return nil, err
@@ -738,4 +745,41 @@ func (s *MuseCoreService) verifiedProfile(ctx context.Context, a *Account) (*mus
 		return nil, muse.ErrGeneration
 	}
 	return p, nil
+}
+
+// CheckSession ports the reference projects' app-cookie bootstrap/renewal path.
+// Authentication success does not qualify inference or fabricate a model catalog,
+// subscription allowance, subject identifier, or canonical workspace identity.
+func (s *MuseCoreService) CheckSession(ctx context.Context, id int64) (*muse.SessionCheck, error) {
+	a, err := s.accounts.GetByID(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	session, err := s.session(a)
+	if err != nil {
+		return nil, err
+	}
+	if _, err = muse.ParseCookieSession(session.Document); err != nil {
+		return nil, err
+	}
+	if s.gateway.httpUpstream == nil {
+		return nil, muse.ErrTransportUnqualified
+	}
+	client := &muse.SessionClient{Do: func(req *http.Request, session muse.Session) (*http.Response, error) {
+		req = req.WithContext(WithHTTPUpstreamRedirectsDisabled(req.Context()))
+		return s.gateway.httpUpstream.Do(req, session.ProxyURL, session.AccountID, 1)
+	}}
+	var refreshed *muse.SessionRefresh
+	err = s.store.RenewSession(ctx, a, func(probe context.Context) (map[string]any, error) {
+		var e error
+		refreshed, e = client.Refresh(probe, session)
+		if e != nil {
+			return nil, e
+		}
+		return refreshed.Document, nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return &refreshed.Check, nil
 }

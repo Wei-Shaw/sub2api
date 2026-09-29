@@ -8,6 +8,8 @@ import (
 	"errors"
 	"fmt"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/ctxkey"
+	"io"
+	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
@@ -395,4 +397,67 @@ func TestMuseChatStreamHonorsIncludeUsageWithoutInventingCounts(t *testing.T) {
 			}
 		})
 	}
+}
+
+type museAuthStoreFixture struct {
+	*museStoreFixture
+	busy     bool
+	document map[string]any
+}
+
+func (f *museAuthStoreFixture) RenewSession(ctx context.Context, _ *Account, renew func(context.Context) (map[string]any, error)) error {
+	if f.busy {
+		return muse.ErrBusy
+	}
+	document, err := renew(ctx)
+	if err == nil {
+		f.document = document
+	}
+	return err
+}
+
+type museAuthHTTPFixture struct {
+	HTTPUpstream
+	t             *testing.T
+	calls         int
+	expectedProxy string
+}
+
+func (f *museAuthHTTPFixture) Do(req *http.Request, proxy string, accountID int64, concurrency int) (*http.Response, error) {
+	f.calls++
+	require.True(f.t, HTTPUpstreamRedirectsDisabled(req.Context()))
+	require.Equal(f.t, f.expectedProxy, proxy)
+	require.EqualValues(f.t, 1, accountID)
+	require.Equal(f.t, 1, concurrency)
+	require.Equal(f.t, muse.SessionEndpoint, req.URL.String())
+	require.Equal(f.t, "GET", req.Method)
+	return &http.Response{StatusCode: 200, Header: http.Header{"Set-Cookie": []string{"hatch_vml=rotated-fixture; Path=/; Secure; HttpOnly; Max-Age=7200"}}, Body: io.NopCloser(strings.NewReader(`{"status":"assigned","vm_id":"fixture-vm","vm_state":"RUNNING"}`))}, nil
+}
+
+func TestMuseCookieAuthenticationWorksWithoutQualifyingInference(t *testing.T) {
+	g, core, p, store, _, a, _ := newMuseCoreFixture()
+	core.SetProvider(muse.DisabledProvider{})
+	a.Credentials["muse_session"] = map[string]any{"cookies": map[string]any{"hatch_sess": "fixture", "hatch_gw": "fixture", "hatch_vml": "fixture", "hatch_native_auth_device": "fixture"}}
+	proxyID := int64(9)
+	a.ProxyID = &proxyID
+	a.Proxy = &Proxy{ID: proxyID, Protocol: "http", Host: "fixture-proxy.local", Port: 8080}
+	authStore := &museAuthStoreFixture{museStoreFixture: store}
+	core.store = authStore
+	httpPort := &museAuthHTTPFixture{t: t, expectedProxy: "http://fixture-proxy.local:8080"}
+	g.httpUpstream = httpPort
+	check, err := core.CheckSession(context.Background(), 1)
+	require.NoError(t, err)
+	require.True(t, check.Authenticated)
+	require.False(t, core.Qualified())
+	require.Zero(t, p.calls)
+	require.Zero(t, store.charges)
+	cookies, err := muse.ParseCookieSession(authStore.document)
+	require.NoError(t, err)
+	require.Equal(t, "rotated-fixture", cookies.Cookies["hatch_vml"])
+	require.NoError(t, core.RenewSession(context.Background(), 1))
+	require.Equal(t, 2, httpPort.calls)
+	authStore.busy = true
+	_, err = core.CheckSession(context.Background(), 1)
+	require.ErrorIs(t, err, muse.ErrBusy)
+	require.Equal(t, 2, httpPort.calls)
 }

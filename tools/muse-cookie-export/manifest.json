@@ -1,0 +1,9 @@
+{
+  "manifest_version": 3,
+  "name": "Sub2API Muse session exporter",
+  "version": "1.0.0",
+  "description": "Export authorized Muse app HttpOnly session cookies for native Sub2API account setup.",
+  "permissions": ["cookies", "downloads"],
+  "host_permissions": ["https://muse.ai/*"],
+  "action": {"default_popup": "popup.html"}
+}

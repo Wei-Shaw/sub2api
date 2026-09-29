@@ -1,6 +1,7 @@
 <template>
   <div class="space-y-4">
     <p class="input-hint">{{ t('admin.accounts.muse.setupNote') }}</p>
+    <p class="input-hint">{{ t('admin.accounts.muse.cookieImport') }}</p>
     <div>
       <label class="input-label" for="muse-owner">{{ t('admin.accounts.muse.owner') }}</label>
       <input id="muse-owner" :value="ownerId" type="number" min="1" step="1" required class="input"

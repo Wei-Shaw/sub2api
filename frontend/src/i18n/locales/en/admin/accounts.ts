@@ -1,6 +1,9 @@
 export default {
     accounts: {
       muse: {
+        authenticate: "Check app cookies",
+        authenticated: "App session authenticated. Inference still requires protocol qualification.",
+        cookieImport: "Import the JSON export from the Muse cookie exporter, CDP, or Playwright; page JavaScript cannot read HttpOnly cookies.",
         retrySettlement: "Retry local settlement",
         expired: "Session expired. Reconnect or renew it.",
         usageUnknown: "Muse has not reported subscription usage.",
