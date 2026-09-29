@@ -1598,6 +1598,12 @@ const loadApiKeys = async () => {
       signal
     })
     if (signal.aborted) return
+    // 删除或筛选后当前页越界：回到最后一页重新加载
+    if (response.items.length === 0 && response.total > 0 && pagination.value.page > Math.max(1, response.pages)) {
+      pagination.value.page = Math.max(1, response.pages)
+      void loadApiKeys()
+      return
+    }
     apiKeys.value = response.items.map((key) => ({ ...key, name: decodeKeyName(key.name) }))
     handleSelectionChange(selectedIds.value)
     pagination.value.total = response.total
