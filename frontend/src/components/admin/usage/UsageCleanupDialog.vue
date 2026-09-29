@@ -7,6 +7,7 @@
         v-model:endDate="localEndDate"
         :exporting="false"
         :show-actions="false"
+        mode="cleanup"
         flat
         class="border-y border-border bg-surface-sunken"
         @change="noop"
@@ -161,7 +162,14 @@ let pollTimer: number | null = null
 const noop = () => {}
 
 const resetFilters = () => {
-  localFilters.value = { ...props.filters }
+  // 清理任务接口不支持这些筛选，带过来只会让删除范围看起来比实际更窄
+  const {
+    native_compaction_v2: _compaction,
+    billing_mode: _billingMode,
+    upstream_model_mismatch: _upstreamMismatch,
+    ...supported
+  } = props.filters
+  localFilters.value = { ...supported }
   localStartDate.value = props.startDate
   localEndDate.value = props.endDate
   localFilters.value.start_date = localStartDate.value
