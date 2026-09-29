@@ -11,12 +11,12 @@ import (
 	"strings"
 )
 
-// brandingAssetPathPrefix deliberately lives under /api/v1/settings/ so that
-// existing reverse proxies that already forward /api to the backend keep
+// brandingAssetPathPrefix deliberately lives under /api/v1/settings/public/ so
+// that existing reverse proxies that already forward /api to the backend keep
 // working without any additional location rule.
-const brandingAssetPathPrefix = "/api/v1/settings/branding/logo-"
+const brandingAssetPathPrefix = "/api/v1/settings/public/logo-"
 
-var brandingAssetPathPattern = regexp.MustCompile(`^/api/v1/settings/branding/logo-[0-9a-f]{64}\.(png|jpg|gif|webp|ico|svg)$`)
+var brandingAssetPathPattern = regexp.MustCompile(`^/api/v1/settings/public/logo-[0-9a-f]{64}\.(png|jpg|gif|webp|ico|svg)$`)
 
 // siteBrandingAsset is an immutable, content-addressed representation of an
 // inline site logo. Its path changes whenever its content changes.

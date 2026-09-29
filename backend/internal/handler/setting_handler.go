@@ -3,6 +3,7 @@ package handler
 import (
 	"html"
 	"net/http"
+	"strconv"
 	"strings"
 
 	"github.com/Wei-Shaw/sub2api/internal/handler/dto"
@@ -12,6 +13,8 @@ import (
 
 	"github.com/gin-gonic/gin"
 )
+
+const brandingAssetCacheControl = "public, max-age=31536000, immutable"
 
 // SettingHandler 公开设置处理器（无需认证）
 type SettingHandler struct {
@@ -124,6 +127,35 @@ func (h *SettingHandler) GetPublicSettings(c *gin.Context) {
 
 		AllowUserViewErrorRequests: settings.AllowUserViewErrorRequests,
 	})
+}
+
+// GetPublicBrandingAsset serves the content-addressed site logo. The URL embeds
+// a hash of the logo bytes, so it is safe for a CDN to cache it immutably; a
+// new logo simply gets a new URL. A cache miss reloads site_logo so a freshly
+// started instance can serve a URL that another instance minted.
+// GET/HEAD /api/v1/settings/public/:asset
+func (h *SettingHandler) GetPublicBrandingAsset(c *gin.Context) {
+	// A transient miss must not be cached by an intermediate CDN while a
+	// rolling deploy has instances with different in-memory state.
+	c.Header("Cache-Control", "no-store")
+
+	content, contentType, ok := h.settingService.GetSiteBrandingAsset(c.Request.Context(), c.Request.URL.Path)
+	if !ok {
+		c.Status(http.StatusNotFound)
+		return
+	}
+
+	c.Header("Cache-Control", brandingAssetCacheControl)
+	// An uploaded SVG must not be able to run script when opened as a document.
+	c.Header("Content-Security-Policy", "default-src 'none'; style-src 'unsafe-inline'; sandbox")
+	c.Header("X-Content-Type-Options", "nosniff")
+	if c.Request.Method == http.MethodHead {
+		c.Header("Content-Type", contentType)
+		c.Header("Content-Length", strconv.Itoa(len(content)))
+		c.Status(http.StatusOK)
+		return
+	}
+	c.Data(http.StatusOK, contentType, content)
 }
 
 // UnsubscribeNotificationEmail handles optional notification email opt-outs.
