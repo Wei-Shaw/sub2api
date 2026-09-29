@@ -32,6 +32,12 @@ func (r *fakeImageStudioRepo) CreateJob(_ context.Context, job *ImageStudioJob) 
 	r.created = job
 	return nil
 }
+func (r *fakeImageStudioRepo) CreateJobWithinLimit(ctx context.Context, job *ImageStudioJob, limit int) error {
+	if r.unfinished >= limit {
+		return ErrImageStudioBusy
+	}
+	return r.CreateJob(ctx, job)
+}
 func (r *fakeImageStudioRepo) FailStaleJobs(context.Context, int64, time.Time, string) error {
 	return nil
 }

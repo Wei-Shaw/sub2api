@@ -88,6 +88,8 @@ type ImageStudioAsset struct {
 
 type ImageStudioRepository interface {
 	CreateJob(ctx context.Context, job *ImageStudioJob) error
+	// CreateJobWithinLimit 原子地计数并插入：用户已有 limit 个未结束任务时返回 ErrImageStudioBusy。
+	CreateJobWithinLimit(ctx context.Context, job *ImageStudioJob, limit int) error
 	FailStaleJobs(ctx context.Context, userID int64, before time.Time, message string) error
 	CountUnfinishedJobs(ctx context.Context, userID int64) (int, error)
 	MarkJobRunning(ctx context.Context, id int64) error
@@ -329,7 +331,8 @@ func (s *ImageStudioService) Submit(ctx context.Context, userID int64, in ImageS
 	paramsJSON, _ := json.Marshal(params)
 
 	job := &ImageStudioJob{UserID: userID, APIKeyID: apiKey.ID, Status: ImageStudioStatusQueued, Kind: kind, Model: in.Model, Prompt: in.Prompt, Params: paramsJSON}
-	if err := s.repo.CreateJob(ctx, job); err != nil {
+	// 上面的计数只是快速拒绝；并发提交由仓储在同一事务内复核上限。
+	if err := s.repo.CreateJobWithinLimit(ctx, job, imageStudioMaxUnfinishedPerUser); err != nil {
 		return nil, err
 	}
 	return &ImageStudioSubmission{Job: job, APIKey: apiKey.Key, Path: path, Body: body}, nil
