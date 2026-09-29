@@ -271,6 +271,11 @@ export default {
       VERIFY_CODE_MAX_ATTEMPTS: '错误次数过多，请重新获取验证码。',
       TURNSTILE_VERIFICATION_FAILED: '验证失败，请重试',
       INVALID_RESET_TOKEN: '密码重置链接无效或已过期。请重新请求一个新链接。',
+      LOGIN_THROTTLED: '登录失败次数过多，请稍后再试。',
+      BACKEND_MODE_ADMIN_ONLY: '当前为后台模式，仅允许管理员登录。',
+      PASSKEY_VERIFICATION_FAILED: 'Passkey 验证失败，请重试。',
+      TOTP_INVALID_CODE: '验证码错误，请重试。',
+      TOTP_TOO_MANY_ATTEMPTS: '验证尝试次数过多，请稍后再试。',
     },
     registrationFailed: '注册失败，请重试。',
     emailDomainRegistrationLimit:

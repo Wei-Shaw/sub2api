@@ -271,6 +271,11 @@ export default {
       VERIFY_CODE_MAX_ATTEMPTS: 'Too many failed attempts. Please request a new code.',
       TURNSTILE_VERIFICATION_FAILED: 'Verification failed, please try again',
       INVALID_RESET_TOKEN: 'The password reset link is invalid or has expired. Please request a new one.',
+      LOGIN_THROTTLED: 'Too many failed login attempts. Please try again later.',
+      BACKEND_MODE_ADMIN_ONLY: 'The site is in backend mode. Only administrators can sign in.',
+      PASSKEY_VERIFICATION_FAILED: 'Passkey verification failed. Please try again.',
+      TOTP_INVALID_CODE: 'Invalid verification code. Please try again.',
+      TOTP_TOO_MANY_ATTEMPTS: 'Too many verification attempts. Please try again later.',
     },
     registrationFailed: 'Registration failed. Please try again.',
     emailDomainRegistrationLimit:
