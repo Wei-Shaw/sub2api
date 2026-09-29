@@ -203,6 +203,11 @@ func (s *PaymentService) effectiveExchangeRate(ctx context.Context) (decimal.Dec
 }
 
 func (s *PaymentService) validateOrderInput(ctx context.Context, req CreateOrderRequest, cfg *PaymentConfig) (*dbent.SubscriptionPlan, error) {
+	// 履约时非 subscription 一律按余额充值处理，未知类型必须在这里拒绝，
+	// 否则会绕过下面只对 balance 生效的禁用开关、充值倍率与每日限额口径。
+	if req.OrderType != payment.OrderTypeBalance && req.OrderType != payment.OrderTypeSubscription {
+		return nil, infraerrors.BadRequest("INVALID_ORDER_TYPE", "order_type must be balance or subscription")
+	}
 	if req.OrderType == payment.OrderTypeBalance && cfg.BalanceDisabled {
 		return nil, infraerrors.Forbidden("BALANCE_PAYMENT_DISABLED", "balance recharge has been disabled")
 	}
