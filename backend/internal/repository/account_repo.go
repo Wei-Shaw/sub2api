@@ -1851,6 +1851,13 @@ func (r *accountRepository) syncSchedulerAccountSnapshots(ctx context.Context, a
 }
 
 func (r *accountRepository) ClearError(ctx context.Context, id int64) error {
+	// SetError 会同时置 schedulable=false，清除错误时一并恢复；仅限 error 状态，手动暂停的 active 账号保持不变
+	if _, err := r.client.Account.Update().
+		Where(dbaccount.IDEQ(id), dbaccount.StatusEQ(service.StatusError)).
+		SetSchedulable(true).
+		Save(ctx); err != nil {
+		return err
+	}
 	_, err := r.client.Account.Update().
 		Where(dbaccount.IDEQ(id)).
 		SetStatus(service.StatusActive).
