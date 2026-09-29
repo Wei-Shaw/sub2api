@@ -29,7 +29,7 @@
     </div>
     <div class="mt-3 flex gap-2">
       <button @click="copyUrl" class="btn btn-primary flex-1">{{ t('dashboard.quickAccess.copyUrl') }}</button>
-      <button @click="router.push('/keys')" class="btn btn-secondary flex-1">{{ t('dashboard.quickAccess.tutorial') }}</button>
+      <button @click="router.push('/tutorial')" class="btn btn-secondary flex-1">{{ t('dashboard.quickAccess.tutorial') }}</button>
     </div>
   </div>
 </template>
