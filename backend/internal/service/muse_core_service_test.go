@@ -282,3 +282,25 @@ func TestMuseCausalCallbackFailureCannotBeIgnoredByAdapter(t *testing.T) {
 	require.Equal(t, muse.Ambiguous, runtime.state)
 	require.Zero(t, store.settlements)
 }
+
+func TestMuseRejectsAccountSnapshotNewerThanLoadedCredentials(t *testing.T) {
+	_, core, p, store, _, a, key := newMuseCoreFixture()
+	store.observation.Identity.AccountUpdatedAt = a.UpdatedAt.Add(time.Second)
+	_, _, err := core.Execute(context.Background(), key, a, &apicompat.ResponsesRequest{Model: "muse/assistant", Input: json.RawMessage(`"hello"`)}, nil, nil)
+	require.ErrorIs(t, err, muse.ErrGeneration)
+	require.Zero(t, p.calls)
+	require.Zero(t, store.charges)
+}
+
+func TestMuseRejectsProxySnapshotNewerThanLoadedProxy(t *testing.T) {
+	_, core, p, store, _, a, key := newMuseCoreFixture()
+	id := int64(2)
+	at := time.Now()
+	a.ProxyID = &id
+	a.Proxy = &Proxy{ID: id, UpdatedAt: at}
+	newer := at.Add(time.Second)
+	store.observation.ProxyUpdatedAt = &newer
+	_, _, err := core.Execute(context.Background(), key, a, &apicompat.ResponsesRequest{Model: "muse/assistant", Input: json.RawMessage(`"hello"`)}, nil, nil)
+	require.ErrorIs(t, err, muse.ErrGeneration)
+	require.Zero(t, p.calls)
+}

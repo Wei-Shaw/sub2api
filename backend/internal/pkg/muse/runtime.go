@@ -122,19 +122,21 @@ func (p Pricing) Validate() error {
 }
 
 type Reservation struct {
-	TurnID        string
-	WorkspaceID   int64
-	Generation    int64
-	Actor         Actor
-	AccountID     int64
-	LeaseOwner    string
-	LeaseDuration time.Duration
-	Pricing       Pricing
+	TurnID           string
+	WorkspaceID      int64
+	Generation       int64
+	Actor            Actor
+	AccountID        int64
+	AccountUpdatedAt time.Time
+	ProxyUpdatedAt   *time.Time
+	LeaseOwner       string
+	LeaseDuration    time.Duration
+	Pricing          Pricing
 }
 
 func (r Reservation) Validate() error {
 	if !validID(r.TurnID, 96) || !validID(r.LeaseOwner, 96) || r.WorkspaceID <= 0 || r.Generation <= 0 ||
-		r.Actor.UserID <= 0 || r.Actor.APIKeyID <= 0 || r.AccountID <= 0 {
+		r.Actor.UserID <= 0 || r.Actor.APIKeyID <= 0 || r.AccountID <= 0 || r.AccountUpdatedAt.IsZero() {
 		return ErrInvalid
 	}
 	if err := ValidateLease(r.LeaseDuration); err != nil {
@@ -158,16 +160,18 @@ func (l Lease) Validate() error {
 }
 
 type Turn struct {
-	ID             string    `json:"id"`
-	WorkspaceID    int64     `json:"workspace_id"`
-	Generation     int64     `json:"generation"`
-	Actor          Actor     `json:"actor"`
-	AccountID      int64     `json:"account_id"`
-	State          State     `json:"state"`
-	ProviderTurnID string    `json:"provider_turn_id,omitempty"`
-	Pricing        Pricing   `json:"pricing"`
-	CreatedAt      time.Time `json:"created_at"`
-	UpdatedAt      time.Time `json:"updated_at"`
+	ID               string     `json:"id"`
+	WorkspaceID      int64      `json:"workspace_id"`
+	Generation       int64      `json:"generation"`
+	Actor            Actor      `json:"actor"`
+	AccountID        int64      `json:"account_id"`
+	AccountUpdatedAt time.Time  `json:"account_updated_at"`
+	ProxyUpdatedAt   *time.Time `json:"proxy_updated_at,omitempty"`
+	State            State      `json:"state"`
+	ProviderTurnID   string     `json:"provider_turn_id,omitempty"`
+	Pricing          Pricing    `json:"pricing"`
+	CreatedAt        time.Time  `json:"created_at"`
+	UpdatedAt        time.Time  `json:"updated_at"`
 }
 
 func ValidateLease(d time.Duration) error {
