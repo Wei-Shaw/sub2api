@@ -1094,7 +1094,7 @@ func (s *GeminiMessagesCompatService) Forward(ctx context.Context, c *gin.Contex
 		firstTokenMs = streamRes.firstTokenMs
 	} else {
 		if useUpstreamStream {
-			collected, usageObj, err := collectGeminiSSE(resp.Body, true)
+			collected, usageObj, err := collectGeminiSSE(resp.Body, true, resolveUpstreamMaxLineSize(s.cfg))
 			if err != nil {
 				return nil, s.writeClaudeError(c, http.StatusBadGateway, "upstream_error", "Failed to read upstream stream")
 			}
@@ -1593,7 +1593,7 @@ func (s *GeminiMessagesCompatService) ForwardNative(ctx context.Context, c *gin.
 	} else {
 		if useUpstreamStream {
 			var best geminiResponseSignal
-			collected, usageObj, stats, err := collectGeminiSSEObserved(resp.Body, isOAuth, func(rawBytes []byte) {
+			collected, usageObj, stats, err := collectGeminiSSEObserved(resp.Body, isOAuth, resolveUpstreamMaxLineSize(s.cfg), func(rawBytes []byte) {
 				if sig, ok := detectGeminiResponseSignal(rawBytes); ok && sig.Kind > best.Kind {
 					best = sig
 				}
@@ -2148,8 +2148,10 @@ func (s *GeminiMessagesCompatService) handleStreamingResponse(c *gin.Context, re
 	var seenToolJSON geminiSeenText
 
 	reader := bufio.NewReader(resp.Body)
+	maxLineSize := resolveUpstreamMaxLineSize(s.cfg)
 	for {
-		line, err := reader.ReadString('\n')
+		lineBytes, err := readUpstreamLineLimited(reader, maxLineSize)
+		line := string(lineBytes)
 		if err != nil && !errors.Is(err, io.EOF) {
 			return nil, fmt.Errorf("stream read error: %w", err)
 		}
@@ -2435,8 +2437,8 @@ func unwrapIfNeeded(isOAuth bool, raw []byte) []byte {
 	return inner
 }
 
-func collectGeminiSSE(body io.Reader, isOAuth bool) (map[string]any, *ClaudeUsage, error) {
-	collected, usage, _, err := collectGeminiSSEObserved(body, isOAuth, nil)
+func collectGeminiSSE(body io.Reader, isOAuth bool, maxLineSize int) (map[string]any, *ClaudeUsage, error) {
+	collected, usage, _, err := collectGeminiSSEObserved(body, isOAuth, maxLineSize, nil)
 	return collected, usage, err
 }
 
@@ -2447,7 +2449,8 @@ type geminiSSECollectStats struct {
 }
 
 // collectGeminiSSEObserved 在聚合的同时把每个解包后的事件原文交给 observe（可为 nil）。
-func collectGeminiSSEObserved(body io.Reader, isOAuth bool, observe func(rawBytes []byte)) (map[string]any, *ClaudeUsage, geminiSSECollectStats, error) {
+// maxLineSize 为单行上限，<=0 时使用默认值。
+func collectGeminiSSEObserved(body io.Reader, isOAuth bool, maxLineSize int, observe func(rawBytes []byte)) (map[string]any, *ClaudeUsage, geminiSSECollectStats, error) {
 	reader := bufio.NewReader(body)
 
 	var last map[string]any
@@ -2457,7 +2460,8 @@ func collectGeminiSSEObserved(body io.Reader, isOAuth bool, observe func(rawByte
 	stats := geminiSSECollectStats{fallback: &geminiSSEFallbackBody{}}
 
 	for {
-		line, err := reader.ReadString('\n')
+		lineBytes, err := readUpstreamLineLimited(reader, maxLineSize)
+		line := string(lineBytes)
 		if len(line) > 0 {
 			trimmed := strings.TrimRight(line, "\r\n")
 			if !strings.HasPrefix(trimmed, "data:") {
@@ -2767,9 +2771,11 @@ func (s *GeminiMessagesCompatService) handleNativeStreamingResponse(c *gin.Conte
 	var best geminiResponseSignal
 	sawDataEvent := false
 	fallback := &geminiSSEFallbackBody{}
+	maxLineSize := resolveUpstreamMaxLineSize(s.cfg)
 
 	for {
-		line, err := reader.ReadString('\n')
+		lineBytes, err := readUpstreamLineLimited(reader, maxLineSize)
+		line := string(lineBytes)
 		if len(line) > 0 {
 			trimmed := strings.TrimRight(line, "\r\n")
 			if strings.HasPrefix(trimmed, "data:") {

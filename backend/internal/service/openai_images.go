@@ -1155,10 +1155,11 @@ func (s *OpenAIGatewayService) handleOpenAIImagesStreamingResponse(
 
 	streamInterval := s.openAIImageStreamDataInterval()
 	keepaliveInterval := s.openAIImageStreamKeepaliveInterval()
+	maxLineSize := resolveUpstreamMaxLineSize(s.cfg)
 	if streamInterval <= 0 && keepaliveInterval <= 0 {
 		reader := bufio.NewReader(resp.Body)
 		for {
-			line, err := reader.ReadBytes('\n')
+			line, err := readUpstreamLineLimited(reader, maxLineSize)
 			processLine(line)
 			if err == io.EOF {
 				break
@@ -1196,7 +1197,7 @@ func (s *OpenAIGatewayService) handleOpenAIImagesStreamingResponse(
 		})
 		reader := bufio.NewReader(resp.Body)
 		for {
-			line, err := reader.ReadBytes('\n')
+			line, err := readUpstreamLineLimited(reader, maxLineSize)
 			if len(line) > 0 {
 				atomic.StoreInt64(&lastReadAt, time.Now().UnixNano())
 			}

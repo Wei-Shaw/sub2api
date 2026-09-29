@@ -243,7 +243,7 @@ func (s *GeminiMessagesCompatService) forwardClaudeBodyAsChatCompletions(
 		usage = streamRes.usage
 		firstTokenMs = streamRes.firstTokenMs
 	} else if useUpstreamStream {
-		collected, usageObj, err := collectGeminiSSE(resp.Body, account.Type == AccountTypeOAuth)
+		collected, usageObj, err := collectGeminiSSE(resp.Body, account.Type == AccountTypeOAuth, resolveUpstreamMaxLineSize(s.cfg))
 		if err != nil {
 			return nil, s.writeChatCompletionsError(c, http.StatusBadGateway, "upstream_error", "Failed to read upstream stream")
 		}
@@ -596,8 +596,10 @@ func (s *GeminiMessagesCompatService) handleChatCompletionsStreamingResponseFrom
 	}
 
 	reader := bufio.NewReader(resp.Body)
+	maxLineSize := resolveUpstreamMaxLineSize(s.cfg)
 	for {
-		line, err := reader.ReadString('\n')
+		lineBytes, err := readUpstreamLineLimited(reader, maxLineSize)
+		line := string(lineBytes)
 		if len(line) > 0 {
 			trimmed := strings.TrimRight(line, "\r\n")
 			if strings.HasPrefix(trimmed, "data:") {

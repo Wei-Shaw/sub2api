@@ -1625,10 +1625,11 @@ func (s *OpenAIGatewayService) handleOpenAIImagesOAuthStreamingResponse(
 
 	streamInterval := s.openAIImageStreamDataInterval()
 	keepaliveInterval := s.openAIImageStreamKeepaliveInterval()
+	maxLineSize := resolveUpstreamMaxLineSize(s.cfg)
 	if streamInterval <= 0 && keepaliveInterval <= 0 {
 		reader := bufio.NewReader(resp.Body)
 		for {
-			line, err := reader.ReadBytes('\n')
+			line, err := readUpstreamLineLimited(reader, maxLineSize)
 			done, processErr := processLine(line)
 			if processErr != nil {
 				return usage, imageCount, imageOutputSizes, firstTokenMs, processErr
@@ -1685,7 +1686,7 @@ func (s *OpenAIGatewayService) handleOpenAIImagesOAuthStreamingResponse(
 		})
 		reader := bufio.NewReader(resp.Body)
 		for {
-			line, err := reader.ReadBytes('\n')
+			line, err := readUpstreamLineLimited(reader, maxLineSize)
 			if len(line) > 0 {
 				atomic.StoreInt64(&lastReadAt, time.Now().UnixNano())
 			}
