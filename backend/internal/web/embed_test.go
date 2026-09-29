@@ -689,6 +689,42 @@ func TestEmbeddedFrontendBypassesBareVideoAPIRoutes(t *testing.T) {
 	}
 }
 
+func TestEmbeddedFrontendBypassesRegisteredBrandingRoute(t *testing.T) {
+	const path = "/branding/logo-abc.svg"
+	for _, tc := range []struct {
+		name       string
+		middleware func(t *testing.T) gin.HandlerFunc
+	}{
+		{name: "settings_middleware", middleware: func(t *testing.T) gin.HandlerFunc {
+			server, err := NewFrontendServer(&mockSettingsProvider{settings: map[string]string{}})
+			require.NoError(t, err)
+			return server.Middleware()
+		}},
+		{name: "legacy_middleware", middleware: func(_ *testing.T) gin.HandlerFunc {
+			return ServeEmbeddedFrontend()
+		}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			called := false
+			provider := brandingAssetProviderFunc(func(_ context.Context, requestedPath string) ([]byte, string, bool) {
+				called = true
+				assert.Equal(t, path, requestedPath)
+				return []byte("brand"), "image/svg+xml", true
+			})
+			router := gin.New()
+			router.Use(tc.middleware(t))
+			router.GET("/branding/:asset", ServeBrandingAsset(provider))
+
+			w := httptest.NewRecorder()
+			router.ServeHTTP(w, httptest.NewRequest(http.MethodGet, path, nil))
+			assert.True(t, called, "branding route must run instead of SPA fallback")
+			assert.Equal(t, http.StatusOK, w.Code)
+			assert.Equal(t, "brand", w.Body.String())
+			assert.Equal(t, "image/svg+xml", w.Header().Get("Content-Type"))
+		})
+	}
+}
+
 func TestNewFrontendServer(t *testing.T) {
 	t.Run("creates_server_successfully", func(t *testing.T) {
 		provider := &mockSettingsProvider{

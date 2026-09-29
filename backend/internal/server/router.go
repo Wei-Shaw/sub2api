@@ -115,6 +115,9 @@ func registerRoutes(
 ) {
 	// 通用路由（健康检查、状态等）
 	routes.RegisterCommonRoutes(r)
+	// Content-addressed branding assets are safe for CDN immutable caching.
+	r.GET("/branding/:asset", web.ServeBrandingAsset(settingService))
+	r.HEAD("/branding/:asset", web.ServeBrandingAsset(settingService))
 
 	// API v1
 	v1 := r.Group("/api/v1")

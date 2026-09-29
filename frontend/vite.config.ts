@@ -169,6 +169,10 @@ export default defineConfig(({ mode }) => {
         '/setup': {
           target: backendUrl,
           changeOrigin: true
+        },
+        '/branding': {
+          target: backendUrl,
+          changeOrigin: true
         }
       }
     }
