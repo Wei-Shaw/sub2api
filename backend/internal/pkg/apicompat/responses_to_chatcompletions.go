@@ -609,6 +609,24 @@ func (a *BufferedResponseAccumulator) SupplementResponseOutput(resp *ResponsesRe
 		return
 	}
 
+	// The terminal event can carry a non-empty output array whose message has
+	// no usable text. Trusting it as-is silently drops the text that already
+	// streamed: the client gets an empty reply while usage still bills the
+	// terminal output_tokens. Refill it from the accumulated deltas; non-empty
+	// terminal text stays authoritative.
+	if a.text.Len() > 0 && !responsesOutputHasText(resp.Output) {
+		if !fillResponsesOutputText(resp.Output, a.text.String()) {
+			resp.Output = append(resp.Output, ResponsesOutput{
+				Type: "message",
+				Role: "assistant",
+				Content: []ResponsesContentPart{{
+					Type: "output_text",
+					Text: a.text.String(),
+				}},
+			})
+		}
+	}
+
 	for outputIndex := range resp.Output {
 		item := &resp.Output[outputIndex]
 		if item.Type != "function_call" || item.Arguments != "" {
@@ -626,4 +644,47 @@ func (a *BufferedResponseAccumulator) SupplementResponseOutput(resp *ResponsesRe
 			break
 		}
 	}
+}
+
+// responsesOutputHasText reports whether the terminal output already carries
+// usable message text. Whitespace-only text does not count.
+func responsesOutputHasText(output []ResponsesOutput) bool {
+	for i := range output {
+		if output[i].Type != "message" {
+			continue
+		}
+		for _, part := range output[i].Content {
+			if part.Type == "output_text" && strings.TrimSpace(part.Text) != "" {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// fillResponsesOutputText writes text into the first empty output_text part of
+// the first message item, adding an output_text part when that message has
+// none. It returns false when the output holds no message item, leaving the
+// caller to append one.
+func fillResponsesOutputText(output []ResponsesOutput, text string) bool {
+	for i := range output {
+		if output[i].Type != "message" {
+			continue
+		}
+		for j := range output[i].Content {
+			if output[i].Content[j].Type != "output_text" {
+				continue
+			}
+			if strings.TrimSpace(output[i].Content[j].Text) == "" {
+				output[i].Content[j].Text = text
+				return true
+			}
+		}
+		output[i].Content = append(output[i].Content, ResponsesContentPart{
+			Type: "output_text",
+			Text: text,
+		})
+		return true
+	}
+	return false
 }
