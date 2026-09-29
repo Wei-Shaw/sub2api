@@ -203,6 +203,10 @@ func (s *GatewayService) ForwardAsResponses(
 		result, handleErr = s.handleResponsesBufferedStreamingResponse(resp, c, originalModel, mappedModel, reasoningEffort, startTime, clientToolMapping)
 	}
 
+	var sseErr *sseStreamErrorEventError
+	if errors.As(handleErr, &sseErr) {
+		return nil, s.bridgeSSEErrorToFailover(ctx, c, resp, account, mappedModel, sseErr)
+	}
 	return result, handleErr
 }
 
@@ -390,6 +394,26 @@ func (s *GatewayService) handleResponsesBufferedStreamingResponse(
 			continue
 		}
 
+		// 上游 HTTP 200 后的 event:error：尚无 usage 时交给调用方 failover；
+		// 已收到 message_start 时返回错误响应，但保留 usage（计费不变）。
+		if eventType == "error" || event.Type == "error" {
+			if finalResp == nil {
+				return nil, &sseStreamErrorEventError{RawData: payload}
+			}
+			errType, message := bridgeSSEErrorInfo(payload)
+			writeResponsesError(c, mapUpstreamStatusCode(anthropicSSEErrorSemanticStatus([]byte(payload))), errType, message)
+			return &ForwardResult{
+				RequestID:       requestID,
+				UpstreamHeaders: resp.Header,
+				Usage:           usage,
+				Model:           originalModel,
+				UpstreamModel:   mappedModel,
+				ReasoningEffort: reasoningEffort,
+				Stream:          false,
+				Duration:        time.Since(startTime),
+			}, nil
+		}
+
 		// message_start carries the initial response structure
 		if event.Type == "message_start" && event.Message != nil {
 			finalResp = event.Message
@@ -519,6 +543,7 @@ func (s *GatewayService) handleResponsesStreamingResponse(
 	var usage ClaudeUsage
 	var firstTokenMs *int
 	firstChunk := true
+	writerSizeBeforeStream := c.Writer.Size()
 
 	scanner := bufio.NewScanner(resp.Body)
 	maxLineSize := defaultMaxLineSize
@@ -637,6 +662,35 @@ func (s *GatewayService) handleResponsesStreamingResponse(
 			continue
 		}
 
+		// 上游 event:error：未输出（且无 usage）前交给调用方 failover；否则以
+		// response.failed 终止（不再补 response.completed），usage 照常返回（计费不变）。
+		if eventType == "error" || event.Type == "error" {
+			if c.Writer.Size() == writerSizeBeforeStream && usage == (ClaudeUsage{}) {
+				return nil, &sseStreamErrorEventError{RawData: payload}
+			}
+			errType, message := bridgeSSEErrorInfo(payload)
+			MarkOpsStreamError(c, errType, message, anthropicSSEErrorSemanticStatus([]byte(payload)))
+			failed := apicompat.ResponsesStreamEvent{
+				Type:           "response.failed",
+				SequenceNumber: state.SequenceNumber,
+				Response: &apicompat.ResponsesResponse{
+					ID:        state.ResponseID,
+					Object:    "response",
+					CreatedAt: state.Created,
+					Model:     state.Model,
+					Status:    "failed",
+					Output:    []apicompat.ResponsesOutput{},
+					Error:     &apicompat.ResponsesError{Code: errType, Message: message},
+				},
+			}
+			if sse, err := apicompat.ResponsesEventToSSE(failed); err == nil {
+				if _, err := fmt.Fprint(c.Writer, sse); err == nil {
+					c.Writer.Flush()
+				}
+			}
+			return resultWithUsage(), nil
+		}
+
 		if processEvent(&event) {
 			return resultWithUsage(), nil
 		}
@@ -676,6 +730,60 @@ func writeResponsesError(c *gin.Context, statusCode int, code, message string) {
 			"message": message,
 		},
 	})
+}
+
+// bridgeSSEErrorInfo 从上游 event:error 的 data 中提取 error.type 与脱敏后的 message。
+func bridgeSSEErrorInfo(payload string) (string, string) {
+	errType := strings.TrimSpace(gjson.Get(payload, "error.type").String())
+	if errType == "" {
+		errType = "upstream_error"
+	}
+	message := sanitizeUpstreamErrorMessage(strings.TrimSpace(extractUpstreamErrorMessage([]byte(payload))))
+	if message == "" {
+		message = "Upstream stream error"
+	}
+	return errType, message
+}
+
+// bridgeSSEErrorToFailover 把 CC/Responses 桥接路径上"尚未向客户端输出"时收到的
+// 上游 event:error 转成 UpstreamFailoverError，语义与 Forward 的流内错误处理一致：
+// 状态码按 error.type 推导，overloaded_error 触发账号过载副作用。
+func (s *GatewayService) bridgeSSEErrorToFailover(ctx context.Context, c *gin.Context, resp *http.Response, account *Account, mappedModel string, sseErr *sseStreamErrorEventError) *UpstreamFailoverError {
+	body := []byte(sseErr.RawData)
+	semanticStatus := anthropicSSEErrorSemanticStatus(body)
+	if semanticStatus == 529 && s.rateLimitService != nil {
+		syntheticResp := &http.Response{
+			StatusCode: semanticStatus,
+			Header:     resp.Header.Clone(),
+			Body:       io.NopCloser(bytes.NewReader(body)),
+		}
+		s.handleFailoverSideEffects(ctx, syntheticResp, account, mappedModel)
+	}
+
+	upstreamDetail := ""
+	if s.cfg != nil && s.cfg.Gateway.LogUpstreamErrorBody {
+		maxBytes := s.cfg.Gateway.LogUpstreamErrorBodyMaxBytes
+		if maxBytes <= 0 {
+			maxBytes = 2048
+		}
+		upstreamDetail = truncateString(sseErr.RawData, maxBytes)
+	}
+	appendOpsUpstreamError(c, OpsUpstreamErrorEvent{
+		ProxyID:            opsUpstreamProxyID(account),
+		ProxyName:          opsUpstreamProxyName(account),
+		Platform:           account.Platform,
+		AccountID:          account.ID,
+		AccountName:        account.Name,
+		UpstreamStatusCode: semanticStatus,
+		UpstreamRequestID:  resp.Header.Get("x-request-id"),
+		Kind:               "stream_error",
+		Message:            sanitizeUpstreamErrorMessage(strings.TrimSpace(extractUpstreamErrorMessage(body))),
+		Detail:             upstreamDetail,
+	})
+	return &UpstreamFailoverError{
+		StatusCode:   semanticStatus,
+		ResponseBody: body,
+	}
 }
 
 // mapUpstreamStatusCode maps upstream HTTP status codes to appropriate client-facing codes.

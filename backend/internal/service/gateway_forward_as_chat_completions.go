@@ -193,6 +193,10 @@ func (s *GatewayService) ForwardAsChatCompletions(
 		result, handleErr = s.handleCCBufferedFromAnthropic(resp, c, originalModel, mappedModel, reasoningEffort, startTime)
 	}
 
+	var sseErr *sseStreamErrorEventError
+	if errors.As(handleErr, &sseErr) {
+		return nil, s.bridgeSSEErrorToFailover(ctx, c, resp, account, mappedModel, sseErr)
+	}
 	return result, handleErr
 }
 
@@ -244,7 +248,8 @@ func (s *GatewayService) handleCCBufferedFromAnthropic(
 		line := scanner.Text()
 		// SSE 规范允许 `event:xxx`（冒号后无空格）：Kimi 等 Anthropic 兼容上游
 		// 返回紧凑格式，严格匹配 "event: " 会丢弃全部事件（#4653 同根因）。
-		if _, ok := extractOpenAISSEEventLine(line); !ok {
+		eventName, ok := extractOpenAISSEEventLine(line)
+		if !ok {
 			continue
 		}
 
@@ -259,6 +264,26 @@ func (s *GatewayService) handleCCBufferedFromAnthropic(
 		var event apicompat.AnthropicStreamEvent
 		if err := json.Unmarshal([]byte(payload), &event); err != nil {
 			continue
+		}
+
+		// 上游 HTTP 200 后的 event:error：尚无 usage 时交给调用方 failover；
+		// 已收到 message_start 时返回错误响应，但保留 usage（计费不变）。
+		if eventName == "error" || event.Type == "error" {
+			if finalResp == nil {
+				return nil, &sseStreamErrorEventError{RawData: payload}
+			}
+			errType, message := bridgeSSEErrorInfo(payload)
+			writeGatewayCCError(c, mapUpstreamStatusCode(anthropicSSEErrorSemanticStatus([]byte(payload))), errType, message)
+			return &ForwardResult{
+				RequestID:       requestID,
+				UpstreamHeaders: resp.Header,
+				Usage:           usage,
+				Model:           originalModel,
+				UpstreamModel:   mappedModel,
+				ReasoningEffort: reasoningEffort,
+				Stream:          false,
+				Duration:        time.Since(startTime),
+			}, nil
 		}
 
 		// message_start carries the initial response structure and cache usage
@@ -384,6 +409,7 @@ func (s *GatewayService) handleCCStreamingFromAnthropic(
 	var usage ClaudeUsage
 	var firstTokenMs *int
 	firstChunk := true
+	writerSizeBeforeStream := c.Writer.Size()
 
 	scanner := bufio.NewScanner(resp.Body)
 	maxLineSize := defaultMaxLineSize
@@ -462,7 +488,8 @@ func (s *GatewayService) handleCCStreamingFromAnthropic(
 	for scanner.Scan() {
 		line := scanner.Text()
 		// 与缓冲路径一致：接受 SSE 紧凑格式（冒号后无空格，#4653 同根因）。
-		if _, ok := extractOpenAISSEEventLine(line); !ok {
+		eventName, ok := extractOpenAISSEEventLine(line)
+		if !ok {
 			continue
 		}
 
@@ -477,6 +504,21 @@ func (s *GatewayService) handleCCStreamingFromAnthropic(
 		var event apicompat.AnthropicStreamEvent
 		if err := json.Unmarshal([]byte(payload), &event); err != nil {
 			continue
+		}
+
+		// 上游 event:error：未输出（且无 usage）前交给调用方 failover；否则写 error
+		// chunk 作为终止帧（不再补 finish/[DONE]），usage 照常返回（计费不变）。
+		if eventName == "error" || event.Type == "error" {
+			if c.Writer.Size() == writerSizeBeforeStream && usage == (ClaudeUsage{}) {
+				return nil, &sseStreamErrorEventError{RawData: payload}
+			}
+			errType, message := bridgeSSEErrorInfo(payload)
+			MarkOpsStreamError(c, errType, message, anthropicSSEErrorSemanticStatus([]byte(payload)))
+			errorPayload, _ := json.Marshal(gin.H{"error": gin.H{"type": errType, "message": message}})
+			if _, err := fmt.Fprintf(c.Writer, "data: %s\n\n", errorPayload); err == nil {
+				c.Writer.Flush()
+			}
+			return resultWithUsage(), nil
 		}
 
 		if processAnthropicEvent(&event) {
