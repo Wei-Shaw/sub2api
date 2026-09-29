@@ -31,6 +31,8 @@ const (
 	EventGuardBlocked         = "prompt_guard.blocked"
 	EventGuardFailed          = "prompt_guard.failed"
 	EventResultRecordFailed   = "prompt_guard.result_record_failed"
+	EventLatestTurnCacheHit   = "prompt_guard.latest_turn_cache_hit"
+	EventLatestTurnCacheError = "prompt_guard.latest_turn_cache_error"
 	EventEventDeleted         = "prompt_audit.event_deleted"
 	EventEventsDeleted        = "prompt_audit.events_deleted"
 	EventDeletePreviewed      = "prompt_audit.events_delete_previewed"
@@ -44,6 +46,7 @@ var knownLogEvents = map[string]struct{}{
 	EventAuditStarted: {}, EventProcessingReclaimed: {}, EventProcessed: {}, EventProcessFailed: {}, EventFindingRecorded: {},
 	EventChunkStarted: {}, EventChunkCompleted: {}, EventChunkFailed: {}, EventChunksAggregated: {},
 	EventEvaluationStarted: {}, EventGuardAllowed: {}, EventGuardBlocked: {}, EventGuardFailed: {}, EventResultRecordFailed: {},
+	EventLatestTurnCacheHit: {}, EventLatestTurnCacheError: {},
 	EventEventDeleted: {}, EventEventsDeleted: {}, EventDeletePreviewed: {}, EventEventsFilterDeleted: {},
 }
 
