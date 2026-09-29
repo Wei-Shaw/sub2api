@@ -22,6 +22,9 @@ import (
 )
 
 type Account struct {
+	// Request-local capability snapshot; never serialized into shared scheduler
+	// caches. Every native candidate is hydrated from its verified profile.
+	museVerifiedModels      []string
 	ID                      int64
 	Name                    string
 	Notes                   *string
@@ -858,6 +861,15 @@ func resolveRequestedModelInMapping(mapping map[string]string, requestedModel st
 // （isDeepseekServableModel）——未知模型名透传上游只会得到 404/400，并误触发
 // per-(账号,模型) 30 分钟冷却；带 [1m] 上下文后缀的写法先归一化再比对。
 func (a *Account) IsModelSupported(requestedModel string) bool {
+	if a.IsMuse() {
+		mapped := a.GetMappedModel(requestedModel)
+		for _, model := range a.museVerifiedModels {
+			if mapped == model {
+				return true
+			}
+		}
+		return false
+	}
 	// 透传模式仅替换认证、模型语义完全交由上游决定，因此放行所有模型。
 	// 该短路必须在 model_mapping 判定之前：账号从"白名单模式"切换到透传后，
 	// credentials 里常残留旧的非空 model_mapping，若不在此放行，透传账号会被
