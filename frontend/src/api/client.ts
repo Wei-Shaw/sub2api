@@ -252,8 +252,11 @@ apiClient.interceptors.response.use(
         if ((hasToken || sentAuth) && !isAuthEndpoint) {
           sessionStorage.setItem('auth_expired', '1')
         }
-        // Only redirect if not already on login page
-        if (!window.location.pathname.includes('/login')) {
+        // Only redirect if not already on login page. Signed-out requests from public flow pages
+        // (OAuth callbacks, payment result) keep the page so the caller can show the error inline.
+        const pathname = window.location.pathname
+        const onPublicFlowPage = pathname.startsWith('/auth/') || pathname.startsWith('/payment/result')
+        if (!pathname.includes('/login') && (hasToken || sentAuth || !onPublicFlowPage)) {
           window.location.href =
             '/login?redirect=' + encodeURIComponent(window.location.pathname + window.location.search)
         }
