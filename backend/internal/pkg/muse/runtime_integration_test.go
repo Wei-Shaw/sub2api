@@ -49,7 +49,7 @@ func TestMuseRuntimePostgres(t *testing.T) {
 	}
 	reserve := func(w *muse.Workspace) muse.Reservation {
 		return muse.Reservation{WorkspaceID: w.ID, Generation: w.Generation,
-			Actor: muse.Actor{UserID: 1, APIKeyID: 10}, AccountID: w.Identity.AccountID, LeaseOwner: "worker-a", LeaseDuration: time.Minute,
+			Actor: muse.Actor{UserID: 1, APIKeyID: 10}, AccountID: w.Identity.AccountID, AccountUpdatedAt: w.Identity.AccountUpdatedAt, LeaseOwner: "worker-a", LeaseDuration: time.Minute,
 			Pricing: muse.Pricing{Mode: "flat_request", UnitPrice: "0.03", Multiplier: "1.25"}}
 	}
 	expire := func(id int64) {
@@ -236,6 +236,32 @@ func TestMuseRuntimePostgres(t *testing.T) {
 		require.ErrorIs(t, err, muse.ErrOwner)
 	})
 
+	t.Run("ReverificationCannotUpgradeQueuedCredentials", func(t *testing.T) {
+		w := bind(t.Name())
+		old := reserve(w)
+		_, err := db.ExecContext(ctx, `UPDATE accounts SET updated_at=clock_timestamp()+INTERVAL '1 second' WHERE id=$1`, old.AccountID)
+		require.NoError(t, err)
+		fresh := w.Identity
+		require.NoError(t, db.QueryRowContext(ctx, `SELECT updated_at FROM accounts WHERE id=$1`, old.AccountID).Scan(&fresh.AccountUpdatedAt))
+		_, err = newService().BindVerifiedWorkspace(ctx, fresh)
+		require.NoError(t, err)
+		_, _, err = newService().Reserve(ctx, old)
+		require.Error(t, err, "old credentials must not inherit a new verification")
+	})
+	t.Run("ProxyEditAfterReservationStopsDispatch", func(t *testing.T) {
+		w := bind(t.Name())
+		var at time.Time
+		require.NoError(t, db.QueryRowContext(ctx, `INSERT INTO proxies(id) VALUES($1) RETURNING updated_at`, w.ID).Scan(&at))
+		_, err := db.ExecContext(ctx, `UPDATE accounts SET proxy_id=$2 WHERE id=$1`, w.Identity.AccountID, w.ID)
+		require.NoError(t, err)
+		input := reserve(w)
+		input.ProxyUpdatedAt = &at
+		_, lease, err := newService().Reserve(ctx, input)
+		require.NoError(t, err)
+		_, err = db.ExecContext(ctx, `UPDATE proxies SET updated_at=clock_timestamp()+INTERVAL '1 second' WHERE id=$1`, w.ID)
+		require.NoError(t, err)
+		require.ErrorIs(t, newService().BeginSubmission(ctx, lease), muse.ErrGeneration)
+	})
 	t.Run("OwnerReviewDoesNotAutomaticallyResume", func(t *testing.T) {
 		w := bind(t.Name())
 		s := newService()
@@ -292,7 +318,8 @@ func museTestDatabase(t *testing.T) *sql.DB {
 	db := museIsolatedTestDatabase(t)
 	_, err := db.ExecContext(ctx, `CREATE TABLE users(id BIGINT PRIMARY KEY,status TEXT NOT NULL DEFAULT 'active',deleted_at TIMESTAMPTZ);
 		CREATE TABLE api_keys(id BIGINT PRIMARY KEY,user_id BIGINT REFERENCES users(id),status TEXT NOT NULL DEFAULT 'active',deleted_at TIMESTAMPTZ,expires_at TIMESTAMPTZ);
-		CREATE TABLE accounts(id BIGINT PRIMARY KEY,platform TEXT NOT NULL,status TEXT NOT NULL DEFAULT 'active',schedulable BOOLEAN NOT NULL DEFAULT TRUE,deleted_at TIMESTAMPTZ,updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW());
+		CREATE TABLE proxies(id BIGINT PRIMARY KEY,updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),deleted_at TIMESTAMPTZ);
+ CREATE TABLE accounts(id BIGINT PRIMARY KEY,proxy_id BIGINT REFERENCES proxies(id),platform TEXT NOT NULL,status TEXT NOT NULL DEFAULT 'active',schedulable BOOLEAN NOT NULL DEFAULT TRUE,deleted_at TIMESTAMPTZ,updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW());
 		INSERT INTO users(id) VALUES (1),(2);
 		INSERT INTO api_keys(id,user_id) VALUES (10,1),(11,1),(20,2);
 		INSERT INTO accounts(id,platform) VALUES (100,'muse'),(101,'muse'),(200,'openai');`)
@@ -305,6 +332,10 @@ func museTestDatabase(t *testing.T) *sql.DB {
 	}
 	// The registered provider migration adds the two settlement admission fields.
 	_, err = db.ExecContext(ctx, `ALTER TABLE muse_turns ADD COLUMN billing_command JSONB;ALTER TABLE muse_turns ADD COLUMN settled_at TIMESTAMPTZ`)
+	require.NoError(t, err)
+	snapshotDDL, err := migrations.FS.ReadFile("243_muse_submission_snapshot.sql")
+	require.NoError(t, err)
+	_, err = db.ExecContext(ctx, string(snapshotDDL))
 	require.NoError(t, err)
 	return db
 }
