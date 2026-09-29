@@ -166,6 +166,41 @@ func (s *RateLimitService) cnBalanceCooldownDuration() time.Duration {
 	return cooldown
 }
 
+// cnProviderResponseIsFrequencyLimit reports frequency-type 429s that carry
+// no quota-reset semantics (e.g. zhipu 1302/控制请求频率). These must use
+// short backoff, never window-reset cooldown.
+func cnProviderResponseIsFrequencyLimit(responseBody []byte) bool {
+	if len(responseBody) == 0 {
+		return false
+	}
+	s := string(responseBody)
+	if strings.Contains(s, "1302") || strings.Contains(s, "控制请求频率") {
+		return true
+	}
+	return strings.Contains(strings.ToLower(s), "frequency")
+}
+
+// cnProviderQuotaNearlyExhausted returns true only when a quota snapshot shows
+// ≥95% usage on any known window. Below that, 429s are treated as transient
+// frequency limits with short backoff (#6804 / #7105-style cn429).
+// Percent values follow the same numeric shapes as other Extra snapshots
+// (float64 / json.Number / numeric string); see schedulingPercentValue.
+func cnProviderQuotaNearlyExhausted(account *Account) bool {
+	if account == nil || len(account.Extra) == 0 {
+		return false
+	}
+	for key, val := range account.Extra {
+		lower := strings.ToLower(key)
+		if !strings.Contains(lower, "used_percent") && !strings.Contains(lower, "usedpercent") {
+			continue
+		}
+		if schedulingPercentValue(val) >= 95 {
+			return true
+		}
+	}
+	return false
+}
+
 // cnProviderQuotaSnapshotReset 读取 Coding Plan 账号快照中最早一个仍在未来的窗口
 // 重置时间（5h / weekly）。429 多数由 5h 滚动窗口触发，取较早的重置点可避免
 // 把账号冷却到 weekly 重置（可达数天）的过度停调；如果确是 weekly 窗口耗尽，
@@ -273,9 +308,18 @@ func (s *RateLimitService) applyCNProviderReactive429(
 	}
 	// 2) Coding Plan 窗口耗尽：冷却到快照中最早的窗口重置点（见
 	// cnProviderQuotaSnapshotReset：429 多由 5h 窗口触发，取较早点避免过度停调）。
-	if account.IsCodingPlan() &&
-		s.cooldownCNProviderToQuotaSnapshotReset(ctx, account, "429", "cn_coding_plan_rate_limited") != nil {
-		return true
+	// #6804/#7105-style cn429: 频率型 429（如 zhipu 1302/控制请求频率）与窗口额度无关，
+	// 快照用量远未耗尽时必须走默认秒级退避，不能冷却到窗口重置点。
+	if account.IsCodingPlan() {
+		if cnProviderResponseIsFrequencyLimit(responseBody) {
+			return false
+		}
+		if !cnProviderQuotaNearlyExhausted(account) {
+			return false
+		}
+		if s.cooldownCNProviderToQuotaSnapshotReset(ctx, account, "429", "cn_coding_plan_rate_limited") != nil {
+			return true
+		}
 	}
 	return false
 }
