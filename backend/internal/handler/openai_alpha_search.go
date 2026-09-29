@@ -278,6 +278,7 @@ func (h *OpenAIGatewayHandler) recordAlphaSearchUsage(
 	clientIP := ip.GetClientIP(c)
 	sessionID := service.ExtractClientSessionID(c)
 	requestPayloadHash := service.HashUsageRequestPayload(body)
+	userPrompt := service.ExtractUserPrompt(body, "openai_responses")
 	inboundEndpoint := GetInboundEndpoint(c)
 	upstreamEndpoint := GetUpstreamEndpoint(c, account.Platform)
 	quotaPlatform := service.QuotaPlatform(c.Request.Context(), apiKey)
@@ -285,6 +286,7 @@ func (h *OpenAIGatewayHandler) recordAlphaSearchUsage(
 	h.submitMandatoryUsageRecordTask(c.Request.Context(), func(ctx context.Context) {
 		if err := h.gatewayService.RecordUsage(ctx, &service.OpenAIRecordUsageInput{
 			Result:             result,
+			UserPrompt:         userPrompt,
 			APIKey:             apiKey,
 			User:               apiKey.User,
 			Account:            account,
