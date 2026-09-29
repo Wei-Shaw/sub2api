@@ -1954,7 +1954,10 @@ const confirmResetQuota = () => {
 // Set expiration date based on quick select days
 const setExpirationDays = (days: number) => {
   formData.value.expiration_preset = days.toString() as '7' | '30' | '90'
-  const expDate = new Date()
+  // 编辑模式的 "+N 天" 从 max(当前时间, 原到期时间) 起算，避免缩短有效期
+  const now = new Date()
+  const current = showEditModal.value && selectedKey.value?.expires_at ? new Date(selectedKey.value.expires_at) : null
+  const expDate = current && current.getTime() > now.getTime() ? current : now
   expDate.setDate(expDate.getDate() + days)
   formData.value.expiration_date = formatDateTimeLocal(expDate.toISOString())
 }
