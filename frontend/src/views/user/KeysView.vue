@@ -1833,6 +1833,9 @@ const handleSubmit = async () => {
   } else if (showEditModal.value) {
     // Edit mode: if expiration disabled or date cleared, send empty string to clear
     expiresAt = ''
+  } else if (formData.value.enable_expiration && formData.value.expiration_preset !== 'custom') {
+    // Create mode: 未点预设、日期为空时按当前高亮的预设天数
+    expiresInDays = Number(formData.value.expiration_preset)
   }
 
   // Calculate rate limit values (send 0 when toggle is off)
