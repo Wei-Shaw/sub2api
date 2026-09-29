@@ -83,6 +83,22 @@ func TestCoordinatorDoesNotMutateRequestBody(t *testing.T) {
 	require.Equal(t, original, body)
 }
 
+func TestCoordinatorAllowsConfiguredGuardFailureWithoutBypassingLegacyBlock(t *testing.T) {
+	failure := &PromptDecision{Kind: DecisionUnavailable, ErrorCode: ErrorCodeUnavailable, AllowNextStage: true}
+
+	allowed := NewCoordinator(&fakeLegacyEngine{decision: &LegacyDecision{Allowed: true}},
+		&fakePromptEngine{mode: ModeBlocking, decision: failure}).Check(context.Background(), Request{})
+	require.Equal(t, DecisionAllow, allowed.Kind)
+	require.True(t, allowed.AllowNextStage)
+	require.Same(t, failure, allowed.Prompt)
+
+	blocked := NewCoordinator(&fakeLegacyEngine{decision: &LegacyDecision{Blocked: true, StatusCode: http.StatusForbidden, ErrorCode: "legacy_block"}},
+		&fakePromptEngine{mode: ModeBlocking, decision: failure}).Check(context.Background(), Request{})
+	require.Equal(t, DecisionBlock, blocked.Kind)
+	require.False(t, blocked.AllowNextStage)
+	require.Equal(t, "legacy_block", blocked.ErrorCode)
+}
+
 func TestCoordinatorBlockingPriorityCoversBothEngineDecisionMatrix(t *testing.T) {
 	legacyCases := []struct {
 		name     string
