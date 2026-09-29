@@ -271,13 +271,19 @@ func openAIThresholdCandidate(extra map[string]any, window string, now time.Time
 	if !ok {
 		return nil
 	}
-	if openAIQuotaWindowReset(extra, window, now) || openAICodexSnapshotStaleForPause(extra, now) {
+	if openAIQuotaWindowReset(extra, window, now) || (openAICodexSnapshotStaleForPause(extra, now) && !openAIQuotaWindowResetPending(extra, window, now)) {
 		return nil
+	}
+	until := parseSchedulingResetAt(extra[resetAtKey])
+	if until == nil {
+		if resetAt, ok := openAICodexWindowResetAt(extra, window); ok {
+			until = &resetAt
+		}
 	}
 	return &accountSchedulingThresholdCandidate{
 		window:      window,
 		usedPercent: schedulingPercentValue(usedPercent),
-		until:       parseSchedulingResetAt(extra[resetAtKey]),
+		until:       until,
 	}
 }
 
