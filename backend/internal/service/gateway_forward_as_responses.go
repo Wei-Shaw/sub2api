@@ -367,18 +367,26 @@ func (s *GatewayService) handleResponsesBufferedStreamingResponse(
 	var finalResp *apicompat.AnthropicResponse
 	var usage ClaudeUsage
 
-	for scanner.Scan() {
-		line := scanner.Text()
+	pump := newAnthropicNativeLinePump(scanner, s.bridgeStreamInterval())
+	defer pump.stop()
+	var readErr error
+	for {
+		line, err := pump.next()
+		if err != nil {
+			readErr = err
+			break
+		}
 		eventType, ok := parseAnthropicSSEField(line, "event")
 		if !ok {
 			continue
 		}
 
 		// Read the data line
-		if !scanner.Scan() {
+		dataLine, err := pump.next()
+		if err != nil {
+			readErr = err
 			break
 		}
-		dataLine := scanner.Text()
 		payload, ok := parseAnthropicSSEField(dataLine, "data")
 		if !ok {
 			continue
@@ -451,7 +459,7 @@ func (s *GatewayService) handleResponsesBufferedStreamingResponse(
 		}
 	}
 
-	if err := scanner.Err(); err != nil {
+	if err := finishBridgeRead(resp, readErr); err != nil {
 		if !errors.Is(err, context.Canceled) && !errors.Is(err, context.DeadlineExceeded) {
 			logger.L().Warn("forward_as_responses buffered: read error",
 				zap.Error(err),
@@ -635,18 +643,26 @@ func (s *GatewayService) handleResponsesStreamingResponse(
 	}
 
 	// Read Anthropic SSE events
-	for scanner.Scan() {
-		line := scanner.Text()
+	pump := newAnthropicNativeLinePump(scanner, s.bridgeStreamInterval())
+	defer pump.stop()
+	var readErr error
+	for {
+		line, err := pump.next()
+		if err != nil {
+			readErr = err
+			break
+		}
 		eventType, ok := parseAnthropicSSEField(line, "event")
 		if !ok {
 			continue
 		}
 
 		// Read data line
-		if !scanner.Scan() {
+		dataLine, err := pump.next()
+		if err != nil {
+			readErr = err
 			break
 		}
-		dataLine := scanner.Text()
 		payload, ok := parseAnthropicSSEField(dataLine, "data")
 		if !ok {
 			continue
@@ -696,7 +712,7 @@ func (s *GatewayService) handleResponsesStreamingResponse(
 		}
 	}
 
-	if err := scanner.Err(); err != nil {
+	if err := finishBridgeRead(resp, readErr); err != nil {
 		if !errors.Is(err, context.Canceled) && !errors.Is(err, context.DeadlineExceeded) {
 			logger.L().Warn("forward_as_responses stream: read error",
 				zap.Error(err),
@@ -730,6 +746,27 @@ func writeResponsesError(c *gin.Context, statusCode int, code, message string) {
 			"message": message,
 		},
 	})
+}
+
+// bridgeStreamInterval 返回桥接读取的上游数据间隔上限（gateway.stream_data_interval_timeout）；
+// cfg 为空或 <= 0 时禁用。
+func (s *GatewayService) bridgeStreamInterval() time.Duration {
+	if s.cfg != nil && s.cfg.Gateway.StreamDataIntervalTimeout > 0 {
+		return time.Duration(s.cfg.Gateway.StreamDataIntervalTimeout) * time.Second
+	}
+	return 0
+}
+
+// finishBridgeRead 在桥接读取结束后调用：间隔超时时关闭 resp.Body，解除泵 goroutine
+// 的阻塞读并释放上游连接；返回应按"上游读错误"处理的错误（正常 EOF 返回 nil）。
+func finishBridgeRead(resp *http.Response, readErr error) error {
+	if errors.Is(readErr, errAnthropicNativeStreamIdle) {
+		_ = resp.Body.Close()
+	}
+	if readErr == nil || errors.Is(readErr, io.EOF) {
+		return nil
+	}
+	return readErr
 }
 
 // bridgeSSEErrorInfo 从上游 event:error 的 data 中提取 error.type 与脱敏后的 message。

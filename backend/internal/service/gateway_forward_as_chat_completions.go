@@ -244,8 +244,15 @@ func (s *GatewayService) handleCCBufferedFromAnthropic(
 	var finalResp *apicompat.AnthropicResponse
 	var usage ClaudeUsage
 
-	for scanner.Scan() {
-		line := scanner.Text()
+	pump := newAnthropicNativeLinePump(scanner, s.bridgeStreamInterval())
+	defer pump.stop()
+	var readErr error
+	for {
+		line, err := pump.next()
+		if err != nil {
+			readErr = err
+			break
+		}
 		// SSE 规范允许 `event:xxx`（冒号后无空格）：Kimi 等 Anthropic 兼容上游
 		// 返回紧凑格式，严格匹配 "event: " 会丢弃全部事件（#4653 同根因）。
 		eventName, ok := extractOpenAISSEEventLine(line)
@@ -253,10 +260,12 @@ func (s *GatewayService) handleCCBufferedFromAnthropic(
 			continue
 		}
 
-		if !scanner.Scan() {
+		dataLine, err := pump.next()
+		if err != nil {
+			readErr = err
 			break
 		}
-		payload, ok := extractOpenAISSEDataLine(scanner.Text())
+		payload, ok := extractOpenAISSEDataLine(dataLine)
 		if !ok {
 			continue
 		}
@@ -319,7 +328,7 @@ func (s *GatewayService) handleCCBufferedFromAnthropic(
 		}
 	}
 
-	if err := scanner.Err(); err != nil {
+	if err := finishBridgeRead(resp, readErr); err != nil {
 		if !errors.Is(err, context.Canceled) && !errors.Is(err, context.DeadlineExceeded) {
 			logger.L().Warn("forward_as_cc buffered: read error",
 				zap.Error(err),
@@ -485,18 +494,27 @@ func (s *GatewayService) handleCCStreamingFromAnthropic(
 		return false
 	}
 
-	for scanner.Scan() {
-		line := scanner.Text()
+	pump := newAnthropicNativeLinePump(scanner, s.bridgeStreamInterval())
+	defer pump.stop()
+	var readErr error
+	for {
+		line, err := pump.next()
+		if err != nil {
+			readErr = err
+			break
+		}
 		// 与缓冲路径一致：接受 SSE 紧凑格式（冒号后无空格，#4653 同根因）。
 		eventName, ok := extractOpenAISSEEventLine(line)
 		if !ok {
 			continue
 		}
 
-		if !scanner.Scan() {
+		dataLine, err := pump.next()
+		if err != nil {
+			readErr = err
 			break
 		}
-		payload, ok := extractOpenAISSEDataLine(scanner.Text())
+		payload, ok := extractOpenAISSEDataLine(dataLine)
 		if !ok {
 			continue
 		}
@@ -526,7 +544,7 @@ func (s *GatewayService) handleCCStreamingFromAnthropic(
 		}
 	}
 
-	if err := scanner.Err(); err != nil {
+	if err := finishBridgeRead(resp, readErr); err != nil {
 		if !errors.Is(err, context.Canceled) && !errors.Is(err, context.DeadlineExceeded) {
 			logger.L().Warn("forward_as_cc stream: read error",
 				zap.Error(err),
