@@ -164,6 +164,32 @@ type UserSpendingRankingResponse struct {
 	TotalTokens     int64                     `json:"total_tokens"`
 }
 
+// APIKeyUsageRankingItem represents an API key usage ranking row.
+type APIKeyUsageRankingItem struct {
+	APIKeyID     int64   `json:"api_key_id"`
+	KeyName      string  `json:"key_name"`
+	KeyDeleted   bool    `json:"key_deleted"` // Key 已被软删除(历史用量仍计入)
+	UserID       int64   `json:"user_id"`
+	Email        string  `json:"email"`
+	Username     string  `json:"username"`
+	Requests     int64   `json:"requests"`
+	InputTokens  int64   `json:"input_tokens"`
+	OutputTokens int64   `json:"output_tokens"`
+	CacheTokens  int64   `json:"cache_tokens"`
+	TotalTokens  int64   `json:"total_tokens"`
+	Cost         float64 `json:"cost"`        // 标准计费
+	ActualCost   float64 `json:"actual_cost"` // 实际扣除
+}
+
+// APIKeyUsageRankingResponse represents ranking rows plus window totals for the time range.
+type APIKeyUsageRankingResponse struct {
+	Ranking         []APIKeyUsageRankingItem `json:"ranking"`
+	TotalActualCost float64                  `json:"total_actual_cost"`
+	TotalRequests   int64                    `json:"total_requests"`
+	TotalTokens     int64                    `json:"total_tokens"`
+	TotalKeys       int64                    `json:"total_keys"` // 时间范围内有用量的 Key 总数(含未上榜)
+}
+
 // UserBreakdownItem represents per-user usage breakdown within a dimension (group, model, endpoint).
 type UserBreakdownItem struct {
 	UserID       int64   `json:"user_id"`
@@ -199,11 +225,12 @@ type UserBreakdownDimension struct {
 
 // APIKeyUsageTrendPoint represents API key usage trend data point
 type APIKeyUsageTrendPoint struct {
-	Date     string `json:"date"`
-	APIKeyID int64  `json:"api_key_id"`
-	KeyName  string `json:"key_name"`
-	Requests int64  `json:"requests"`
-	Tokens   int64  `json:"tokens"`
+	Date       string  `json:"date"`
+	APIKeyID   int64   `json:"api_key_id"`
+	KeyName    string  `json:"key_name"`
+	Requests   int64   `json:"requests"`
+	Tokens     int64   `json:"tokens"`
+	ActualCost float64 `json:"actual_cost"` // 实际扣除
 }
 
 // APIKeyDailyUsagePoint represents one day of usage for a single API key.

@@ -846,6 +846,85 @@ func TestUsageLogRepositoryGetUserSpendingRanking(t *testing.T) {
 	require.NoError(t, mock.ExpectationsWereMet())
 }
 
+func TestUsageLogRepositoryGetAPIKeyUsageRanking(t *testing.T) {
+	db, mock := newSQLMock(t)
+	repo := &usageLogRepository{sql: db}
+
+	start := time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC)
+	end := start.Add(24 * time.Hour)
+
+	columns := []string{
+		"api_key_id", "key_name", "key_deleted", "user_id", "email", "username",
+		"requests", "input_tokens", "output_tokens", "cache_tokens", "total_tokens",
+		"cost", "actual_cost", "total_actual_cost", "total_requests", "total_tokens_all", "total_keys",
+	}
+	rows := sqlmock.NewRows(columns).
+		AddRow(int64(11), "prod-main", false, int64(2), "beta@example.com", "beta",
+			int64(9), int64(500), int64(300), int64(100), int64(900),
+			15.0, 12.5, 40.0, int64(30), int64(2600), int64(5)).
+		AddRow(int64(12), "", true, int64(0), "", "",
+			int64(5), int64(200), int64(80), int64(20), int64(300),
+			5.0, 4.25, 40.0, int64(30), int64(2600), int64(5))
+
+	mock.ExpectQuery("WITH key_spend AS \\(").
+		WithArgs(start, end, 12).
+		WillReturnRows(rows)
+
+	got, err := repo.GetAPIKeyUsageRanking(context.Background(), start, end, 12, "actual_cost", 0)
+	require.NoError(t, err)
+	require.Equal(t, &usagestats.APIKeyUsageRankingResponse{
+		Ranking: []usagestats.APIKeyUsageRankingItem{
+			{APIKeyID: 11, KeyName: "prod-main", KeyDeleted: false, UserID: 2, Email: "beta@example.com", Username: "beta",
+				Requests: 9, InputTokens: 500, OutputTokens: 300, CacheTokens: 100, TotalTokens: 900, Cost: 15.0, ActualCost: 12.5},
+			{APIKeyID: 12, KeyName: "", KeyDeleted: true, UserID: 0, Email: "", Username: "",
+				Requests: 5, InputTokens: 200, OutputTokens: 80, CacheTokens: 20, TotalTokens: 300, Cost: 5.0, ActualCost: 4.25},
+		},
+		TotalActualCost: 40.0,
+		TotalRequests:   30,
+		TotalTokens:     2600,
+		TotalKeys:       5,
+	}, got)
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
+func TestUsageLogRepositoryGetAPIKeyUsageRankingSortByAllowlist(t *testing.T) {
+	db, mock := newSQLMock(t)
+	repo := &usageLogRepository{sql: db}
+
+	start := time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC)
+	end := start.Add(24 * time.Hour)
+	emptyRows := func() *sqlmock.Rows {
+		return sqlmock.NewRows([]string{
+			"api_key_id", "key_name", "key_deleted", "user_id", "email", "username",
+			"requests", "input_tokens", "output_tokens", "cache_tokens", "total_tokens",
+			"cost", "actual_cost", "total_actual_cost", "total_requests", "total_tokens_all", "total_keys",
+		})
+	}
+
+	// 合法 sort_by 透传到 ORDER BY
+	mock.ExpectQuery("(?s)WITH key_spend AS \\(.*ORDER BY total_tokens DESC").
+		WithArgs(start, end, 50).
+		WillReturnRows(emptyRows())
+	_, err := repo.GetAPIKeyUsageRanking(context.Background(), start, end, 50, "total_tokens", 0)
+	require.NoError(t, err)
+
+	// 非法 sort_by 静默回退 actual_cost
+	mock.ExpectQuery("(?s)WITH key_spend AS \\(.*ORDER BY actual_cost DESC").
+		WithArgs(start, end, 50).
+		WillReturnRows(emptyRows())
+	_, err = repo.GetAPIKeyUsageRanking(context.Background(), start, end, 50, "actual_cost; DROP TABLE usage_logs", 0)
+	require.NoError(t, err)
+
+	// user_id 过滤追加为 $3，limit 顺延为 $4
+	mock.ExpectQuery("(?s)WITH key_spend AS \\(.*AND u\\.user_id = \\$3").
+		WithArgs(start, end, int64(7), 50).
+		WillReturnRows(emptyRows())
+	_, err = repo.GetAPIKeyUsageRanking(context.Background(), start, end, 50, "", 7)
+	require.NoError(t, err)
+
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
 func TestBuildRequestTypeFilterConditionLegacyFallback(t *testing.T) {
 	tests := []struct {
 		name      string

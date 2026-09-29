@@ -384,8 +384,8 @@ func parseStatsUpdatedAt(raw string) time.Time {
 	return parsed.UTC()
 }
 
-func (s *DashboardService) GetAPIKeyUsageTrend(ctx context.Context, startTime, endTime time.Time, granularity string, limit int) ([]usagestats.APIKeyUsageTrendPoint, error) {
-	trend, err := s.usageRepo.GetAPIKeyUsageTrend(ctx, startTime, endTime, granularity, limit)
+func (s *DashboardService) GetAPIKeyUsageTrend(ctx context.Context, startTime, endTime time.Time, granularity string, limit int, userID int64) ([]usagestats.APIKeyUsageTrendPoint, error) {
+	trend, err := s.usageRepo.GetAPIKeyUsageTrend(ctx, startTime, endTime, granularity, limit, userID)
 	if err != nil {
 		return nil, fmt.Errorf("get api key usage trend: %w", err)
 	}
@@ -404,6 +404,14 @@ func (s *DashboardService) GetUserSpendingRanking(ctx context.Context, startTime
 	ranking, err := s.usageRepo.GetUserSpendingRanking(ctx, startTime, endTime, limit)
 	if err != nil {
 		return nil, fmt.Errorf("get user spending ranking: %w", err)
+	}
+	return ranking, nil
+}
+
+func (s *DashboardService) GetAPIKeyUsageRanking(ctx context.Context, startTime, endTime time.Time, limit int, sortBy string, userID int64) (*usagestats.APIKeyUsageRankingResponse, error) {
+	ranking, err := s.usageRepo.GetAPIKeyUsageRanking(ctx, startTime, endTime, limit, sortBy, userID)
+	if err != nil {
+		return nil, fmt.Errorf("get api key usage ranking: %w", err)
 	}
 	return ranking, nil
 }

@@ -279,7 +279,7 @@
                   @change="onDateRangeChange"
                 />
               </div>
-              <button @click="loadDashboardStats" :disabled="chartsLoading" class="btn btn-secondary">
+              <button @click="refreshDashboard" :disabled="chartsLoading" class="btn btn-secondary">
                 {{ t('common.refresh') }}
               </button>
               <div class="ml-auto flex items-center gap-2">
@@ -314,6 +314,22 @@
               @ranking-click="goToUserUsage"
             />
             <TokenUsageTrend :trend-data="trendData" :loading="chartsLoading" />
+          </div>
+
+          <!-- API Key Distribution & Trend -->
+          <div class="grid grid-cols-1 gap-6 lg:grid-cols-2">
+            <ApiKeyDistributionChart
+              ref="apiKeyDistRef"
+              :start-date="startDate"
+              :end-date="endDate"
+              @key-click="goToKeyUsage"
+            />
+            <ApiKeyUsageTrendChart
+              ref="apiKeyTrendRef"
+              :start-date="startDate"
+              :end-date="endDate"
+              :granularity="granularity"
+            />
           </div>
 
           <!-- User Usage Trend (Full Width) -->
@@ -353,7 +369,8 @@ import type {
   TrendDataPoint,
   ModelStat,
   UserUsageTrendPoint,
-  UserSpendingRankingItem
+  UserSpendingRankingItem,
+  ApiKeyUsageRankingItem
 } from '@/types'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import LoadingSpinner from '@/components/common/LoadingSpinner.vue'
@@ -362,6 +379,8 @@ import DateRangePicker from '@/components/common/DateRangePicker.vue'
 import Select from '@/components/common/Select.vue'
 import ModelDistributionChart from '@/components/charts/ModelDistributionChart.vue'
 import TokenUsageTrend from '@/components/charts/TokenUsageTrend.vue'
+import ApiKeyDistributionChart from '@/components/charts/ApiKeyDistributionChart.vue'
+import ApiKeyUsageTrendChart from '@/components/charts/ApiKeyUsageTrendChart.vue'
 import { useBatchImageAccess } from '@/composables/useBatchImageAccess'
 
 import {
@@ -622,6 +641,18 @@ const goToUserUsage = (item: UserSpendingRankingItem) => {
   })
 }
 
+const goToKeyUsage = (item: ApiKeyUsageRankingItem) => {
+  void router.push({
+    path: '/admin/usage',
+    query: {
+      api_key_id: String(item.api_key_id),
+      ...(item.key_name ? { key_name: item.key_name } : {}),
+      start_date: startDate.value,
+      end_date: endDate.value
+    }
+  })
+}
+
 // Date range change handler
 const onDateRangeChange = (range: {
   startDate: string
@@ -738,6 +769,16 @@ const loadDashboardStats = async () => {
     loadUsersTrend(),
     loadUserSpendingRanking()
   ])
+}
+
+// 刷新按钮：除快照数据外，还要刷新两张自取数的 API Key 卡片
+// (它们只 watch 日期/粒度，挂载时已自取数，故 reload 不放进 loadDashboardStats)。
+const apiKeyDistRef = ref<InstanceType<typeof ApiKeyDistributionChart> | null>(null)
+const apiKeyTrendRef = ref<InstanceType<typeof ApiKeyUsageTrendChart> | null>(null)
+const refreshDashboard = () => {
+  void loadDashboardStats()
+  apiKeyDistRef.value?.reload()
+  apiKeyTrendRef.value?.reload()
 }
 
 const loadChartData = async () => {
