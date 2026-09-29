@@ -552,6 +552,7 @@ func (s *GatewayService) handleResponsesStreamingResponse(
 	var firstTokenMs *int
 	firstChunk := true
 	writerSizeBeforeStream := c.Writer.Size()
+	clientDisconnected := false
 
 	scanner := bufio.NewScanner(resp.Body)
 	maxLineSize := defaultMaxLineSize
@@ -562,20 +563,23 @@ func (s *GatewayService) handleResponsesStreamingResponse(
 
 	resultWithUsage := func() *ForwardResult {
 		return &ForwardResult{
-			RequestID:       requestID,
-			UpstreamHeaders: resp.Header,
-			Usage:           usage,
-			Model:           originalModel,
-			UpstreamModel:   mappedModel,
-			ReasoningEffort: reasoningEffort,
-			Stream:          true,
-			Duration:        time.Since(startTime),
-			FirstTokenMs:    firstTokenMs,
+			RequestID:        requestID,
+			UpstreamHeaders:  resp.Header,
+			Usage:            usage,
+			Model:            originalModel,
+			UpstreamModel:    mappedModel,
+			ReasoningEffort:  reasoningEffort,
+			Stream:           true,
+			Duration:         time.Since(startTime),
+			FirstTokenMs:     firstTokenMs,
+			ClientDisconnect: clientDisconnected,
 		}
 	}
 
 	// processEvent handles a single parsed Anthropic SSE event.
-	processEvent := func(event *apicompat.AnthropicStreamEvent) bool {
+	// 客户端写失败后置 clientDisconnected，不再写客户端但继续累计 usage：
+	// Anthropic 只在最终 message_delta 报告 output_tokens，提前返回会漏计。
+	processEvent := func(event *apicompat.AnthropicStreamEvent) {
 		if firstChunk {
 			firstChunk = false
 			ms := int(time.Since(startTime).Milliseconds())
@@ -589,6 +593,10 @@ func (s *GatewayService) handleResponsesStreamingResponse(
 		// Also capture usage from message_start
 		if event.Type == "message_start" && event.Message != nil {
 			mergeAnthropicUsage(&usage, event.Message.Usage)
+		}
+
+		if clientDisconnected {
+			return
 		}
 
 		// Convert to Responses events
@@ -614,20 +622,23 @@ func (s *GatewayService) handleResponsesStreamingResponse(
 			for _, restored := range payloads {
 				eventType := gjson.GetBytes(restored, "type").String()
 				if _, err := fmt.Fprintf(c.Writer, "event: %s\ndata: %s\n\n", eventType, restored); err != nil {
-					logger.L().Info("forward_as_responses stream: client disconnected",
+					logger.L().Info("forward_as_responses stream: client disconnected, draining upstream for billing",
 						zap.String("request_id", requestID),
 					)
-					return true // client disconnected
+					clientDisconnected = true
+					return
 				}
 			}
 		}
 		if len(events) > 0 {
 			c.Writer.Flush()
 		}
-		return false
 	}
 
 	finalizeStream := func() (*ForwardResult, error) {
+		if clientDisconnected {
+			return resultWithUsage(), nil
+		}
 		if finalEvents := apicompat.FinalizeAnthropicResponsesStream(state); len(finalEvents) > 0 {
 			for _, evt := range finalEvents {
 				sse, err := apicompat.ResponsesEventToSSE(evt)
@@ -681,11 +692,14 @@ func (s *GatewayService) handleResponsesStreamingResponse(
 		// 上游 event:error：未输出（且无 usage）前交给调用方 failover；否则以
 		// response.failed 终止（不再补 response.completed），usage 照常返回（计费不变）。
 		if eventType == "error" || event.Type == "error" {
-			if c.Writer.Size() == writerSizeBeforeStream && usage == (ClaudeUsage{}) {
+			if c.Writer.Size() == writerSizeBeforeStream && usage == (ClaudeUsage{}) && !clientDisconnected {
 				return nil, &sseStreamErrorEventError{RawData: payload}
 			}
 			errType, message := bridgeSSEErrorInfo(payload)
 			MarkOpsStreamError(c, errType, message, anthropicSSEErrorSemanticStatus([]byte(payload)))
+			if clientDisconnected {
+				return resultWithUsage(), nil
+			}
 			failed := apicompat.ResponsesStreamEvent{
 				Type:           "response.failed",
 				SequenceNumber: state.SequenceNumber,
@@ -707,8 +721,10 @@ func (s *GatewayService) handleResponsesStreamingResponse(
 			return resultWithUsage(), nil
 		}
 
-		if processEvent(&event) {
-			return resultWithUsage(), nil
+		processEvent(&event)
+		// 客户端已断开且上游已发终止事件：排水完成，无需再等 EOF。
+		if clientDisconnected && event.Type == "message_stop" {
+			break
 		}
 	}
 

@@ -419,6 +419,7 @@ func (s *GatewayService) handleCCStreamingFromAnthropic(
 	var firstTokenMs *int
 	firstChunk := true
 	writerSizeBeforeStream := c.Writer.Size()
+	clientDisconnected := false
 
 	scanner := bufio.NewScanner(resp.Body)
 	maxLineSize := defaultMaxLineSize
@@ -429,41 +430,49 @@ func (s *GatewayService) handleCCStreamingFromAnthropic(
 
 	resultWithUsage := func() *ForwardResult {
 		return &ForwardResult{
-			RequestID:       requestID,
-			UpstreamHeaders: resp.Header,
-			Usage:           usage,
-			Model:           originalModel,
-			UpstreamModel:   mappedModel,
-			ReasoningEffort: reasoningEffort,
-			Stream:          true,
-			Duration:        time.Since(startTime),
-			FirstTokenMs:    firstTokenMs,
+			RequestID:        requestID,
+			UpstreamHeaders:  resp.Header,
+			Usage:            usage,
+			Model:            originalModel,
+			UpstreamModel:    mappedModel,
+			ReasoningEffort:  reasoningEffort,
+			Stream:           true,
+			Duration:         time.Since(startTime),
+			FirstTokenMs:     firstTokenMs,
+			ClientDisconnect: clientDisconnected,
 		}
 	}
 
-	writeChunk := func(chunk apicompat.ChatCompletionsChunk) bool {
+	writeChunk := func(chunk apicompat.ChatCompletionsChunk) {
+		if clientDisconnected {
+			return // 已断开：不再写客户端，只排水上游累计 usage
+		}
 		sse, err := apicompat.ChatChunkToSSE(chunk)
 		if err != nil {
-			return false
+			return
 		}
 		// Reverse tool name mapping: fake → real, per-chunk bytes.Replace.
 		// c 可能持有请求侧注入的 ToolNameRewrite；无则仅做静态前缀还原。
 		out := string(reverseToolNamesIfPresent(c, []byte(sse)))
 		if _, err := fmt.Fprint(c.Writer, out); err != nil {
-			return true // client disconnected
+			// 客户端断开：继续读取上游直到流结束，Anthropic 只在最终 message_delta
+			// 报告 output_tokens，提前返回会漏计（与 native 路径一致）。
+			clientDisconnected = true
+			logger.L().Info("forward_as_cc stream: client disconnected, draining upstream for billing",
+				zap.String("request_id", requestID),
+			)
 		}
-		return false
 	}
 
-	processAnthropicEvent := func(event *apicompat.AnthropicStreamEvent) bool {
+	processAnthropicEvent := func(event *apicompat.AnthropicStreamEvent) {
 		if event == nil {
-			return false
+			return
 		}
 		// Drop Anthropic keepalive pings before OpenAI conversion:
 		// leaking `event: ping` frames crashes OpenAI-stream clients.
 		// Error events must still forward — they carry upstream failures.
 		if event.Type == "ping" {
-			return false
+			return
 		}
 		if firstChunk {
 			firstChunk = false
@@ -480,18 +489,22 @@ func (s *GatewayService) handleCCStreamingFromAnthropic(
 			mergeAnthropicUsage(&usage, event.Message.Usage)
 		}
 
+		// 客户端已断开：跳过转换与写出，只累计 usage。
+		if clientDisconnected {
+			return
+		}
+
 		// Chain: Anthropic event → Responses events → CC chunks
 		responsesEvents := apicompat.AnthropicEventToResponsesEvents(event, anthState)
 		for _, resEvt := range responsesEvents {
 			ccChunks := apicompat.ResponsesEventToChatChunks(&resEvt, ccState)
 			for _, chunk := range ccChunks {
-				if disconnected := writeChunk(chunk); disconnected {
-					return true
-				}
+				writeChunk(chunk)
 			}
 		}
-		c.Writer.Flush()
-		return false
+		if !clientDisconnected {
+			c.Writer.Flush()
+		}
 	}
 
 	pump := newAnthropicNativeLinePump(scanner, s.bridgeStreamInterval())
@@ -527,20 +540,24 @@ func (s *GatewayService) handleCCStreamingFromAnthropic(
 		// 上游 event:error：未输出（且无 usage）前交给调用方 failover；否则写 error
 		// chunk 作为终止帧（不再补 finish/[DONE]），usage 照常返回（计费不变）。
 		if eventName == "error" || event.Type == "error" {
-			if c.Writer.Size() == writerSizeBeforeStream && usage == (ClaudeUsage{}) {
+			if c.Writer.Size() == writerSizeBeforeStream && usage == (ClaudeUsage{}) && !clientDisconnected {
 				return nil, &sseStreamErrorEventError{RawData: payload}
 			}
 			errType, message := bridgeSSEErrorInfo(payload)
 			MarkOpsStreamError(c, errType, message, anthropicSSEErrorSemanticStatus([]byte(payload)))
-			errorPayload, _ := json.Marshal(gin.H{"error": gin.H{"type": errType, "message": message}})
-			if _, err := fmt.Fprintf(c.Writer, "data: %s\n\n", errorPayload); err == nil {
-				c.Writer.Flush()
+			if !clientDisconnected {
+				errorPayload, _ := json.Marshal(gin.H{"error": gin.H{"type": errType, "message": message}})
+				if _, err := fmt.Fprintf(c.Writer, "data: %s\n\n", errorPayload); err == nil {
+					c.Writer.Flush()
+				}
 			}
 			return resultWithUsage(), nil
 		}
 
-		if processAnthropicEvent(&event) {
-			return resultWithUsage(), nil
+		processAnthropicEvent(&event)
+		// 客户端已断开且上游已发终止事件：排水完成，无需再等 EOF。
+		if clientDisconnected && event.Type == "message_stop" {
+			break
 		}
 	}
 
@@ -558,17 +575,19 @@ func (s *GatewayService) handleCCStreamingFromAnthropic(
 	for _, resEvt := range finalResEvents {
 		ccChunks := apicompat.ResponsesEventToChatChunks(&resEvt, ccState)
 		for _, chunk := range ccChunks {
-			writeChunk(chunk) //nolint:errcheck
+			writeChunk(chunk)
 		}
 	}
 	finalCCChunks := apicompat.FinalizeResponsesChatStream(ccState)
 	for _, chunk := range finalCCChunks {
-		writeChunk(chunk) //nolint:errcheck
+		writeChunk(chunk)
 	}
 
 	// Write [DONE] marker
-	fmt.Fprint(c.Writer, "data: [DONE]\n\n") //nolint:errcheck
-	c.Writer.Flush()
+	if !clientDisconnected {
+		fmt.Fprint(c.Writer, "data: [DONE]\n\n") //nolint:errcheck
+		c.Writer.Flush()
+	}
 
 	return resultWithUsage(), nil
 }
