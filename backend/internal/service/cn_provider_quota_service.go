@@ -71,6 +71,9 @@ type CNProviderQuotaService struct {
 	httpUpstream HTTPUpstream
 	cfg          *config.Config
 	flight       singleflight.Group
+
+	// zhipuResetRecoverer 用智谱重置卡后恢复账号运行时状态（见 SetZhipuResetRecoverer）。
+	zhipuResetRecoverer ZhipuResetAccountRecoverer
 }
 
 // NewCNProviderQuotaService 构造 Coding Plan 额度探测服务。

@@ -29,7 +29,7 @@
         class="inline-flex items-center gap-0.5 whitespace-nowrap rounded px-1.5 py-0.5 text-[10px] font-medium leading-4 text-blue-600 transition-colors hover:bg-blue-50 disabled:cursor-not-allowed disabled:opacity-50 dark:text-blue-400 dark:hover:bg-blue-900/30"
         :disabled="loading"
         :title="t('admin.accounts.cnProviders.probeTooltip')"
-        @click="handleProbe()"
+        @click="handleProbe(true)"
       >
         <svg
           class="h-2.5 w-2.5"
@@ -49,6 +49,15 @@
       </button>
     </div>
 
+    <!-- 智谱 GLM Coding Plan（国内站个人版）重置卡：卡数摘要 + 手动用卡。 -->
+    <ZhipuResetCardActions
+      v-if="resetCardsSupported"
+      :account="account"
+      :cards="resetCards"
+      :tiers="data?.tiers ?? null"
+      @used="handleResetCardUsed"
+    />
+
     <div
       v-if="error"
       class="truncate text-[10px] leading-4 text-red-600 dark:text-red-400"
@@ -63,10 +72,15 @@
 import { computed, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { adminAPI } from '@/api/admin'
-import type { CNProviderQuotaProbeResult } from '@/api/admin/cnProviders'
+import type {
+  CNProviderQuotaProbeResult,
+  ZhipuResetCards,
+  ZhipuResetCardUseResult
+} from '@/api/admin/cnProviders'
 import type { Account } from '@/types'
-import { cnQuotaCellVisible } from './credentialsBuilder'
+import { cnQuotaCellVisible, zhipuResetCardsSupported } from './credentialsBuilder'
 import UsageProgressBar from './UsageProgressBar.vue'
+import ZhipuResetCardActions from './ZhipuResetCardActions.vue'
 
 const props = defineProps<{
   account: Account
@@ -84,6 +98,13 @@ const visible = computed(() => cnQuotaCellVisible(props.account.platform, readMo
 const loading = ref(false)
 const error = ref<string | null>(null)
 const data = ref<CNProviderQuotaProbeResult | null>(null)
+
+const resetCardsSupported = computed(() =>
+  zhipuResetCardsSupported(props.account.platform, props.account.credentials)
+)
+// 最近一次查询 / 用卡返回的重置卡列表（后端已同步落 extra 快照）。为空时子组件读
+// account.extra；父组件刷新账号（extra 里的卡快照时间变化）后回到读快照。
+const resetCards = ref<ZhipuResetCards | null>(null)
 
 // 后端周期任务/手动探测写入的 extra 快照键（<provider>_ 前缀，与后端
 // cnQuotaExtraUpdates 对齐）。页面加载即有数据，无需等待探测。
@@ -171,10 +192,25 @@ const windowLabel = (window: string) => {
   return t('admin.accounts.cnProviders.window5h')
 }
 
-const handleProbe = async () => {
+// 刷新重置卡列表，返回错误文案（成功返回 null）。
+const refreshResetCards = async (): Promise<string | null> => {
+  const accountID = props.account.id
+  try {
+    const cards = await adminAPI.cnProviders.listResetCards(accountID)
+    if (props.account.id === accountID) resetCards.value = cards
+    return null
+  } catch (e) {
+    return t('admin.accounts.cnProviders.resetCardsFailed', { error: extractErrorMessage(e) })
+  }
+}
+
+// withResetCards：手动「查询」在支持重置卡的智谱账号下顺带刷新卡列表，与额度探测
+// 并行、互不影响；挂载时的自动探测只刷新额度。
+const handleProbe = async (withResetCards = false) => {
   if (loading.value) return
   loading.value = true
   error.value = null
+  const cardsRequest = withResetCards && resetCardsSupported.value ? refreshResetCards() : null
   try {
     const result = await adminAPI.cnProviders.queryQuota(props.account.id)
     // 失败时保留已渲染的快照条形图（仅显示错误行），成功才覆盖。
@@ -186,9 +222,24 @@ const handleProbe = async () => {
   } catch (e) {
     error.value = extractErrorMessage(e)
   } finally {
+    const cardsError = await cardsRequest
+    if (cardsError && !error.value) error.value = cardsError
     loading.value = false
   }
 }
+
+// 用卡成功：后端已刷新卡列表、强制重探额度并恢复账号状态，直接用响应刷新展示。
+const handleResetCardUsed = (result: ZhipuResetCardUseResult) => {
+  if (result.cards) resetCards.value = result.cards
+  if (result.probe?.success) data.value = result.probe
+}
+
+watch(
+  () => (props.account.extra as Record<string, unknown> | undefined)?.zhipu_reset_cards_updated_at,
+  () => {
+    resetCards.value = null
+  }
+)
 
 watch(
   () => props.account.id,
@@ -196,6 +247,7 @@ watch(
     data.value = null
     error.value = null
     loading.value = false
+    resetCards.value = null
   }
 )
 </script>
