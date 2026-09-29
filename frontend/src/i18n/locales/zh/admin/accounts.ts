@@ -1,6 +1,9 @@
 export default {
     accounts: {
       muse: {
+        authenticate: "检查应用 Cookie",
+        authenticated: "应用会话已认证。推理仍需完成协议验证。",
+        cookieImport: "导入 Muse Cookie 导出工具、CDP 或 Playwright 的 JSON；网页 JavaScript 无法读取 HttpOnly Cookie。",
         retrySettlement: "重试本地结算",
         expired: "会话已过期，请重新连接或续期。",
         usageUnknown: "Muse 尚未报告订阅用量。",
