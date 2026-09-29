@@ -1085,7 +1085,9 @@ func (s *GatewayService) handleStreamingResponse(ctx context.Context, resp *http
 					if clientDisconnected {
 						return &streamingResult{usage: usage, firstTokenMs: firstTokenMs, clientDisconnect: true}, nil
 					}
-					return nil, err
+					// 连同已累计的 usage 一起返回：流内 error 事件出现在已输出内容之后时，
+					// Forward 需据此入账已计量的部分 usage（A1-01）。
+					return &streamingResult{usage: usage, firstTokenMs: firstTokenMs}, err
 				}
 
 				for _, block := range outputBlocks {

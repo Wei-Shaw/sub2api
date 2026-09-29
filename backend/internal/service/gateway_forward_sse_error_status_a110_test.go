@@ -72,12 +72,22 @@ func TestA110GatewayForward_SSEErrorEventSemanticStatus(t *testing.T) {
 
 			result, err := svc.Forward(context.Background(), c, newAnthropicOAuthAccountForPartialUsageTest(), parsed)
 			require.Error(t, err)
-			require.Nil(t, result)
 
-			var failoverErr *UpstreamFailoverError
-			require.ErrorAs(t, err, &failoverErr)
-			require.Equal(t, tc.wantStatus, failoverErr.StatusCode)
-			require.JSONEq(t, errorJSON, string(failoverErr.ResponseBody))
+			if tc.afterOutput {
+				// A1-01: 已输出内容后不可 failover，改为非 failover 错误 + 部分 usage。
+				require.NotNil(t, result)
+				require.Equal(t, 1, result.Usage.InputTokens)
+				var afterOutputErr *StreamErrorEventAfterOutputError
+				require.ErrorAs(t, err, &afterOutputErr)
+				require.Equal(t, tc.wantStatus, afterOutputErr.StatusCode)
+				require.JSONEq(t, errorJSON, string(afterOutputErr.ResponseBody))
+			} else {
+				require.Nil(t, result)
+				var failoverErr *UpstreamFailoverError
+				require.ErrorAs(t, err, &failoverErr)
+				require.Equal(t, tc.wantStatus, failoverErr.StatusCode)
+				require.JSONEq(t, errorJSON, string(failoverErr.ResponseBody))
+			}
 			require.Equal(t, tc.wantOverloads, repo.overloadCalls)
 			require.Zero(t, repo.tempCalls)
 			require.Empty(t, repo.modelRateLimitCalls)

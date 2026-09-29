@@ -1098,7 +1098,18 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 				upstreamErrorAlreadyCommunicated := gatewayForwardErrorAlreadyCommunicated(c, writerSizeBeforeForward, err)
 				wroteFallback := false
 				if !upstreamErrorAlreadyCommunicated {
-					wroteFallback = h.ensureForwardErrorResponse(c, streamStarted)
+					var afterOutputErr *service.StreamErrorEventAfterOutputError
+					if errors.As(err, &afterOutputErr) {
+						// 已输出内容后的流内 error 事件：无法 failover，沿用 failover 耗尽的
+						// 映射/透传规则写终止错误帧；部分 usage 由下方照常入账。
+						h.handleFailoverExhausted(c, &service.UpstreamFailoverError{
+							StatusCode:   afterOutputErr.StatusCode,
+							ResponseBody: afterOutputErr.ResponseBody,
+						}, account.Platform, true)
+						wroteFallback = true
+					} else {
+						wroteFallback = h.ensureForwardErrorResponse(c, streamStarted)
+					}
 				}
 				forwardFailedFields := []zap.Field{
 					zap.Int64("account_id", account.ID),

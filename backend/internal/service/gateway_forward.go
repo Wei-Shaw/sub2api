@@ -871,6 +871,17 @@ func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *A
 					truncateString(sseErr.RawData, 1000),
 				)
 
+				// 已向客户端输出内容：无法 failover，改以非 failover 错误连同已计量的
+				// 部分 usage 一起返回，由 handler 写终止错误帧并照常入账。
+				// 未输出前保持 result=nil + UpstreamFailoverError（failover 重试不双重计费）。
+				if c.Writer.Size() != writerSizeBeforeStream {
+					afterOutputErr := &StreamErrorEventAfterOutputError{
+						StatusCode:   semanticStatus,
+						ResponseBody: body,
+					}
+					return partialStreamUsageResult(c, resp, streamResult, originalModel, mappedModel, startTime, afterOutputErr), afterOutputErr
+				}
+
 				return nil, &UpstreamFailoverError{
 					StatusCode:   semanticStatus,
 					ResponseBody: body,

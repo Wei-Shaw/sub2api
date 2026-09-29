@@ -292,12 +292,16 @@ func TestGatewayService_Forward_PostOutputSSEOverloadedErrorUsesSemantic529Witho
 
 	result, err := svc.Forward(context.Background(), c, newAnthropicOAuthAccountForPartialUsageTest(), parsed)
 	require.Error(t, err)
-	require.Nil(t, result)
+	// A1-01: 已输出内容后不可 failover：返回已计量的部分 usage + 非 failover 错误。
+	require.NotNil(t, result)
+	require.Equal(t, 1, result.Usage.InputTokens)
 
 	var failoverErr *UpstreamFailoverError
-	require.ErrorAs(t, err, &failoverErr)
-	require.Equal(t, 529, failoverErr.StatusCode)
-	require.JSONEq(t, errorJSON, string(failoverErr.ResponseBody))
+	require.False(t, errors.As(err, &failoverErr))
+	var afterOutputErr *StreamErrorEventAfterOutputError
+	require.ErrorAs(t, err, &afterOutputErr)
+	require.Equal(t, 529, afterOutputErr.StatusCode)
+	require.JSONEq(t, errorJSON, string(afterOutputErr.ResponseBody))
 	require.Zero(t, repo.tempCalls)
 	require.Zero(t, repo.overloadCalls)
 	require.Contains(t, rec.Body.String(), "message_start")

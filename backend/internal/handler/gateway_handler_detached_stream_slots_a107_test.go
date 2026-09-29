@@ -69,6 +69,7 @@ type a107Env struct {
 	h      *GatewayHandler
 	cache  *a107ConcurrencyCache
 	c      *gin.Context
+	rec    *httptest.ResponseRecorder
 	cancel context.CancelFunc
 }
 
@@ -141,7 +142,7 @@ func a107NewEnv(t *testing.T, upstream service.HTTPUpstream, path string, body [
 	c.Set(string(middleware.ContextKeyAPIKey), apiKey)
 	c.Set(string(middleware.ContextKeyUser), middleware.AuthSubject{UserID: apiKey.UserID, Concurrency: 10})
 
-	return &a107Env{h: h, cache: cache, c: c, cancel: cancel}
+	return &a107Env{h: h, cache: cache, c: c, rec: rec, cancel: cancel}
 }
 
 const a107SSEHead = "event: message_start\n" +

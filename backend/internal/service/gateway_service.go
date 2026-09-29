@@ -740,6 +740,19 @@ type sseStreamErrorEventError struct {
 
 func (e *sseStreamErrorEventError) Error() string { return "have error in stream" }
 
+// StreamErrorEventAfterOutputError 表示上游 HTTP 200 后、已向客户端输出内容之后，
+// 流体内才出现 event:error 帧。已写出的内容无法撤销，故不能 failover：
+// Forward 以该错误（刻意不是、也不包装 UpstreamFailoverError）连同已计量 usage 的
+// 部分结果一起返回，handler 据 StatusCode/ResponseBody 写出终止错误帧并照常入账。
+type StreamErrorEventAfterOutputError struct {
+	StatusCode   int
+	ResponseBody []byte
+}
+
+func (e *StreamErrorEventAfterOutputError) Error() string {
+	return fmt.Sprintf("upstream stream error event after output (status %d)", e.StatusCode)
+}
+
 // anthropicSSEErrorSemanticStatus 按流内 error.type 推导语义状态码（对齐 Anthropic
 // 同类型 HTTP 错误的状态码），仅用于 failover 标注、ops 记录与最终错误映射；
 // 未识别的类型沿用旧的 403。
