@@ -50,6 +50,12 @@ type ImageStorageSettings struct {
 
 const defaultImageStudioRetentionDays = 30
 
+const (
+	// 读取设置失败（如数据库瞬时不可用）时不永久缓存，退避一段时间后重试。
+	imageStorageResolveRetryInterval = 30 * time.Second
+	imageStorageResolveLoadTimeout   = 10 * time.Second
+)
+
 // ImageStudioRetention 返回 Image Studio 图片保留时长；0 表示永久保留。
 func (s *ImageStorageSettingService) ImageStudioRetention(ctx context.Context) time.Duration {
 	days := defaultImageStudioRetentionDays
@@ -80,6 +86,7 @@ type ImageStorageSettingService struct {
 	resolved bool
 	uploader *ImageResultUploader
 	enabled  bool
+	retryAt  time.Time // 上次读取失败后，允许再次解析的时间
 }
 
 func NewImageStorageSettingService(
@@ -114,14 +121,23 @@ func (s *ImageStorageSettingService) resolve() (*ImageResultUploader, bool) {
 	if s.resolved {
 		return s.uploader, s.enabled
 	}
+	if time.Now().Before(s.retryAt) {
+		return nil, false
+	}
 
 	ctx := context.Background()
 	s.resolved = true
 	s.uploader, s.enabled = nil, false
 
-	cfg, err := s.effectiveConfig(ctx)
+	loadCtx, cancel := context.WithTimeout(ctx, imageStorageResolveLoadTimeout)
+	cfg, err := s.effectiveConfig(loadCtx)
+	cancel()
 	if err != nil {
-		logger.L().Warn("image_storage.settings_load_failed; async image tasks stay disabled", zap.Error(err))
+		// 不缓存失败结果，否则一次读库抖动会让功能关闭到重启或重新保存为止。
+		s.resolved = false
+		s.retryAt = time.Now().Add(imageStorageResolveRetryInterval)
+		logger.L().Warn("image_storage.settings_load_failed; async image tasks stay disabled until retry",
+			zap.Error(err), zap.Duration("retry_in", imageStorageResolveRetryInterval))
 		return nil, false
 	}
 	if !cfg.Enabled {
@@ -152,6 +168,7 @@ func (s *ImageStorageSettingService) Invalidate() {
 	s.resolved = false
 	s.uploader = nil
 	s.enabled = false
+	s.retryAt = time.Time{}
 	s.mu.Unlock()
 }
 
@@ -306,12 +323,15 @@ func (s *ImageStorageSettingService) backupCredentials(ctx context.Context) (*Ba
 	return s.backup.loadS3Config(ctx)
 }
 
-// load 读出后台设置；从未保存过时返回 nil。
+// load 读出后台设置；从未保存过时返回 nil，读库失败时返回错误。
 func (s *ImageStorageSettingService) load(ctx context.Context) (*ImageStorageSettings, error) {
 	if s.settingRepo == nil {
 		return nil, nil //nolint:nilnil // no repository means no stored settings
 	}
 	raw, err := s.settingRepo.GetValue(ctx, settingKeyImageStorageConfig)
+	if err != nil && !errors.Is(err, ErrSettingNotFound) {
+		return nil, fmt.Errorf("load image storage settings: %w", err)
+	}
 	if err != nil || strings.TrimSpace(raw) == "" {
 		return nil, nil //nolint:nilnil // never configured is a valid state
 	}
