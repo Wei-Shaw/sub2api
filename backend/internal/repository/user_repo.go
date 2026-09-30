@@ -720,11 +720,20 @@ func (r *userRepository) GetLatestUsedAtByUserIDs(ctx context.Context, userIDs [
 		return nil, fmt.Errorf("sql executor is not configured")
 	}
 
+	// Fetch one index entry per user instead of aggregating their entire usage
+	// history. Keep user_id in the ordering via equivalent inclusive bounds:
+	// an equality lets PostgreSQL drop that sort key and choose the created_at
+	// index under skewed statistics, scanning unrelated users' history on misses.
 	const query = `
-		SELECT user_id, MAX(created_at) AS last_used_at
-		FROM usage_logs
-		WHERE user_id = ANY($1)
-		GROUP BY user_id
+		SELECT requested.user_id, latest.created_at AS last_used_at
+		FROM (SELECT DISTINCT unnest($1::bigint[]) AS user_id) AS requested
+		CROSS JOIN LATERAL (
+			SELECT created_at
+			FROM usage_logs
+			WHERE user_id >= requested.user_id AND user_id <= requested.user_id
+			ORDER BY user_id DESC, created_at DESC
+			LIMIT 1
+		) AS latest
 	`
 
 	rows, err := r.sql.QueryContext(ctx, query, pq.Array(userIDs))
