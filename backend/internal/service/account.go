@@ -2123,7 +2123,8 @@ func (a *Account) IsOpenAIPassthroughEnabled() bool {
 // 1. 按账号类型读取分类型字段
 // 2. 分类型字段缺失时，回退兼容字段
 func (a *Account) IsOpenAIResponsesWebSocketV2Enabled() bool {
-	if a == nil || !a.IsOpenAI() || a.Extra == nil {
+	// Excel BPS is HTTP/SSE only.
+	if a == nil || !a.IsOpenAI() || a.Extra == nil || a.isExcelBPSAllModelsEnabled() {
 		return false
 	}
 	if a.IsOpenAIOAuthLike() {

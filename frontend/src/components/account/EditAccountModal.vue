@@ -1786,6 +1786,31 @@
         </div>
       </div>
 
+      <!-- Excel / BPS protocol (OpenAI OAuth only) -->
+      <div v-if="account?.platform === 'openai' && account?.type === 'oauth'" class="border-t border-border pt-4">
+        <div class="flex items-center justify-between">
+          <div>
+            <label class="input-label mb-0">{{ t('admin.accounts.openai.excelBps.title') }}</label>
+            <p class="mt-1 text-xs text-fg-muted">{{ t('admin.accounts.openai.excelBps.desc') }}</p>
+            <p v-if="!excelBPS.enabled && excelBPSDisabledAt" class="mt-1 text-xs text-danger">
+              {{ t('admin.accounts.openai.excelBps.disabledBy403', { time: excelBPSDisabledAt }) }}
+            </p>
+          </div>
+          <Toggle v-model="excelBPS.enabled" :aria-label="t('admin.accounts.openai.excelBps.title')" />
+        </div>
+        <div v-if="excelBPS.enabled" class="mt-3 space-y-2">
+          <div>
+            <label class="input-label">{{ t('admin.accounts.openai.excelBps.models') }}</label>
+            <input v-model="excelBPS.models" type="text" class="input" placeholder="gpt-6-sol, gpt-5.6-sol" />
+            <p class="input-hint mt-1">{{ t('admin.accounts.openai.excelBps.modelsHint') }}</p>
+          </div>
+          <label v-for="key in excelBPSFlagKeys" :key="key" class="flex items-center gap-2">
+            <input v-model="excelBPS.flags[key]" type="checkbox" class="rounded-sm border-border-strong text-accent focus:ring-accent" />
+            <span class="text-sm text-fg">{{ t(`admin.accounts.openai.excelBps.flags.${key}`) }}</span>
+          </label>
+        </div>
+      </div>
+
       <!-- OpenAI Codex namespace 工具摊平（兼容开关，仅 OAuth） -->
       <div
         v-if="account?.platform === 'openai' && account?.type === 'oauth'"
@@ -3724,6 +3749,35 @@ const customBaseUrl = ref('')
 
 // OpenAI 自动透传开关（OAuth/API Key）
 const openaiPassthroughEnabled = ref(false)
+// Excel / BPS protocol (OpenAI OAuth only); settings live in extra.
+const excelBPSFlagKeys = [
+  'openai_excel_bps_auto_disable_on_403',
+  'openai_excel_bps_cache_creation_as_input',
+  'openai_excel_bps_ignore_images',
+  'openai_excel_bps_ignore_encrypted_content'
+] as const
+const excelBPS = reactive({ enabled: false, models: '', flags: {} as Record<string, boolean> })
+const excelBPSDisabledAt = computed(() => {
+  const value = props.account?.extra?.openai_excel_bps_403_disabled_at
+  return typeof value === 'string' ? new Date(value).toLocaleString() : ''
+})
+function loadExcelBPS(extra: Record<string, unknown> | undefined) {
+  excelBPS.enabled = extra?.openai_excel_bps === true
+  const models = extra?.openai_excel_bps_models
+  excelBPS.models = Array.isArray(models) ? models.filter((m) => typeof m === 'string').join(', ') : ''
+  excelBPS.flags = Object.fromEntries(excelBPSFlagKeys.map((key) => [key, extra?.[key] === true]))
+}
+function applyExcelBPS(extra: Record<string, unknown>) {
+  for (const key of ['openai_excel_bps', 'openai_excel_bps_models', ...excelBPSFlagKeys]) delete extra[key]
+  if (!excelBPS.enabled) return
+  extra.openai_excel_bps = true
+  // Re-enabling acknowledges an automatic 403 shutdown.
+  delete extra.openai_excel_bps_403_disabled_at
+  // Empty list = every model uses BPS.
+  const models = [...new Set(excelBPS.models.split(/[\s,]+/).filter(Boolean))]
+  if (models.length) extra.openai_excel_bps_models = models
+  for (const key of excelBPSFlagKeys) if (excelBPS.flags[key]) extra[key] = true
+}
 // OpenAI Codex namespace 工具摊平兼容开关（仅 OAuth），缺省关闭即原样保留
 const openaiFlattenNamespacesEnabled = ref(false)
 const openAILongContextBillingEnabled = ref(false)
@@ -4235,6 +4289,7 @@ const syncFormFromAccount = (newAccount: Account | null) => {
   anthropicPassthroughEnabled.value = false
   anthropicAPIKeyAuthScheme.value = 'x_api_key'
   webSearchEmulationMode.value = 'default'
+  loadExcelBPS(newAccount.platform === 'openai' && newAccount.type === 'oauth' ? extra : undefined)
   if (newAccount.platform === 'openai' && (newAccount.type === 'oauth' || newAccount.type === 'setup-token' || newAccount.type === 'apikey')) {
     openaiPassthroughEnabled.value = extra?.openai_passthrough === true || extra?.openai_oauth_passthrough === true
     openaiFlattenNamespacesEnabled.value =
@@ -5732,6 +5787,9 @@ const handleSubmit = async () => {
       } else {
         delete newExtra.openai_passthrough
         delete newExtra.openai_oauth_passthrough
+      }
+      if (props.account.type === 'oauth') {
+        applyExcelBPS(newExtra)
       }
       // 缺省即保留 namespace，不写空值，避免 extra 里堆积默认项
       if (props.account.type === 'oauth' && openaiFlattenNamespacesEnabled.value) {
