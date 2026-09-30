@@ -451,7 +451,7 @@
       <template #pagination><Pagination v-if="pagination.total > 0" :page="pagination.page" :total="pagination.total" :page-size="pagination.page_size" @update:page="handlePageChange" @update:pageSize="handlePageSizeChange" /></template>
     </TablePageLayout>
     <CreateAccountModal :show="showCreate" :proxies="proxies" :groups="groups" @close="showCreate = false" @created="reload" />
-    <EditAccountModal :show="showEdit" :account="edAcc" :proxies="proxies" :groups="groups" @close="showEdit = false" @updated="handleAccountUpdated" />
+    <EditAccountModal :show="showEdit" :account="edAcc" :proxies="proxies" :groups="groups" :accounts="accounts" @close="showEdit = false" @updated="handleAccountUpdated" />
     <ReAuthAccountModal :show="showReAuth" :account="reAuthAcc" @close="closeReAuthModal" @reauthorized="handleAccountUpdated" />
     <AccountTestModal :show="showTest" :account="testingAcc" @close="closeTestModal" />
     <AccountStatsModal :show="showStats" :account="statsAcc" @close="closeStatsModal" />
@@ -1709,10 +1709,15 @@ function getAntigravityTierLabel(row: any): string | null {
   }
 }
 
-// 账号显示邮箱:优先账号自身(extra/credentials),影子账号回退母账号 parent_email。
+// 账号显示邮箱:普通账号优先账号自身(extra/credentials)。
+// 影子账号不展示关联账号:底层数据仍返回 parent_* 字段,但界面按需求隐藏,
+// 避免把复制来源或改绑后的母账号身份暴露在列表行里。
 // 供名称单元格 v-if/标题/文本三处共用,避免同一回退链在模板里重复三次。
 function accountDisplayEmail(row: any): string {
-  return row.extra?.email_address || row.extra?.email || row.credentials?.email || row.parent_email || ''
+  if (row.parent_account_id != null) {
+    return ''
+  }
+  return row.extra?.email_address || row.extra?.email || row.credentials?.email || ''
 }
 
 function accountHomepageUrl(row: Account): string {
