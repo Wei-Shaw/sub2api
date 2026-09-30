@@ -275,3 +275,47 @@ func TestWithOpenAIWSStateStoreRedisTimeout_WithParentContext(t *testing.T) {
 	_, ok := ctx.Deadline()
 	require.True(t, ok, "应附加短超时")
 }
+
+func TestOpenAIWSStateStoreStrictHTTPBindingSurvivesSchedulerInvalidation(t *testing.T) {
+	cache := &strictScopedGatewayCache{schedulerTestGatewayCache: &schedulerTestGatewayCache{}}
+	ctx := context.Background()
+	writer := NewOpenAIWSStateStore(cache)
+	require.NoError(t, writer.BindResponseAccount(ctx, 7, "resp_strict", 101, time.Minute))
+	require.NoError(t, writer.BindStrictHTTPResponseAccount(ctx, 7, "resp_strict", 101, time.Minute))
+	require.NoError(t, writer.DeleteResponseAccount(ctx, 7, "resp_strict"))
+	reader := NewOpenAIWSStateStore(cache)
+	id, err := reader.GetStrictHTTPResponseAccount(ctx, 7, "resp_strict")
+	require.NoError(t, err)
+	require.Equal(t, int64(101), id)
+	id, err = reader.GetStrictHTTPResponseAccount(ctx, 8, "resp_strict")
+	require.NoError(t, err)
+	require.Zero(t, id, "strict bindings remain group-scoped")
+}
+
+type strictScopedGatewayCache struct {
+	*schedulerTestGatewayCache
+	readErr error
+}
+
+func (c *strictScopedGatewayCache) GetSessionAccountID(ctx context.Context, groupID int64, key string) (int64, error) {
+	if c.readErr != nil {
+		return 0, c.readErr
+	}
+	return c.schedulerTestGatewayCache.GetSessionAccountID(ctx, groupID, fmt.Sprintf("%d:%s", groupID, key))
+}
+func (c *strictScopedGatewayCache) SetSessionAccountID(ctx context.Context, groupID int64, key string, id int64, ttl time.Duration) error {
+	return c.schedulerTestGatewayCache.SetSessionAccountID(ctx, groupID, fmt.Sprintf("%d:%s", groupID, key), id, ttl)
+}
+func (c *strictScopedGatewayCache) DeleteSessionAccountID(ctx context.Context, groupID int64, key string) error {
+	return c.schedulerTestGatewayCache.DeleteSessionAccountID(ctx, groupID, fmt.Sprintf("%d:%s", groupID, key))
+}
+func TestOpenAIWSStateStoreStrictHTTPBindingDistinguishesMissFromCacheFailure(t *testing.T) {
+	cache := &strictScopedGatewayCache{schedulerTestGatewayCache: &schedulerTestGatewayCache{}}
+	store := NewOpenAIWSStateStore(cache)
+	id, err := store.GetStrictHTTPResponseAccount(context.Background(), 7, "resp_normal")
+	require.NoError(t, err)
+	require.Zero(t, id)
+	cache.readErr = errors.New("cache unavailable")
+	_, err = store.GetStrictHTTPResponseAccount(context.Background(), 7, "resp_strict")
+	require.ErrorIs(t, err, cache.readErr)
+}
