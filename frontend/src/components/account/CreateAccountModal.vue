@@ -1407,6 +1407,10 @@
           v-model:rows="openCodeGoProtocolRules"
           :plan="openCodeAccountMode"
         />
+        <OpenCodeFreeTierGateSelect
+          v-if="isOpenCodeGoPlatform"
+          v-model:mode="openCodeFreeTierGate"
+        />
         <div>
           <label class="input-label">{{ t('admin.accounts.apiKeyRequired') }}</label>
           <input
@@ -3948,12 +3952,14 @@ import CnBaseUrlPresets from '@/components/account/CnBaseUrlPresets.vue'
 import OpenCodeGoProtocolRulesEditor from '@/components/account/OpenCodeGoProtocolRulesEditor.vue'
 import HeaderOverrideEditor from '@/components/account/HeaderOverrideEditor.vue'
 import PoolUpstreamInfoSelector from '@/components/account/PoolUpstreamInfoSelector.vue'
+import OpenCodeFreeTierGateSelect from '@/components/account/OpenCodeFreeTierGateSelect.vue'
 import { allSelectedGroupsEnableLongContextPricing } from '@/components/account/longContextBilling'
 import {
   applyAntigravityProjectID,
   applyHeaderOverride,
   applyInterceptWarmup,
   applyOpenCodeGoProtocolRules,
+  applyOpenCodeFreeTierGate,
   cloneOpenCodeGoProtocolRules,
   cnSupportsNativeResponses,
   defaultCNAdaptiveBaseUrls,
@@ -3967,7 +3973,9 @@ import {
   type CnNativeApiProtocol,
   type CnProviderPlatform,
   type HeaderOverrideRow,
+  DEFAULT_OPENCODE_FREE_TIER_GATE,
   type OpenCodeAccountMode,
+  type OpenCodeFreeTierGateMode,
   type OpenCodeGoProtocolRule
 } from '@/components/account/credentialsBuilder'
 import {
@@ -4171,6 +4179,7 @@ const apiProtocol = ref<CnApiProtocol>('adaptive')
 const openCodeGoProtocolRules = ref<OpenCodeGoProtocolRule[]>(
   cloneOpenCodeGoProtocolRules(defaultOpenCodeProtocolRules('zen'))
 )
+const openCodeFreeTierGate = ref<OpenCodeFreeTierGateMode>(DEFAULT_OPENCODE_FREE_TIER_GATE)
 // 智谱团队版 Coding Plan：组织/项目 ID，写入 credentials 供额度探测切换团队端点
 const zhipuOrganization = ref('')
 const zhipuProject = ref('')
@@ -5324,6 +5333,7 @@ const resetForm = () => {
   openCodeAccountMode.value = 'zen'
   apiProtocol.value = 'adaptive'
   openCodeGoProtocolRules.value = cloneOpenCodeGoProtocolRules(defaultOpenCodeProtocolRules('zen'))
+  openCodeFreeTierGate.value = DEFAULT_OPENCODE_FREE_TIER_GATE
   adaptiveBaseUrls.value = { chat_completions: '', anthropic: '', responses: '' }
   apiKeyBaseUrl.value = 'https://api.anthropic.com'
   apiKeyValue.value = ''
@@ -5845,6 +5855,7 @@ const handleSubmit = async () => {
     }
     if (form.platform === 'opencode_go') {
       applyOpenCodeGoProtocolRules(credentials, openCodeGoProtocolRules.value, 'create')
+      applyOpenCodeFreeTierGate(credentials, openCodeFreeTierGate.value, 'create')
     }
   }
 

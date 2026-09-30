@@ -68,6 +68,12 @@ func (s *AccountTestService) testCNProviderAdaptiveAnthropicConnection(c *gin.Co
 		return s.sendErrorAndEnd(c, "Failed to create adaptive Anthropic test payload")
 	}
 	payloadBytes, _ := json.Marshal(payload)
+	// 连通性测试复用与真实转发相同的免费层门禁，否则管理员测试免费模型会看到 403。
+	gatedPayload, gateErr := applyOpenCodeFreeTierGateBody(account, payloadBytes, openCodeGateDialectAnthropic)
+	if gateErr != nil {
+		return s.sendErrorAndEnd(c, gateErr.Error())
+	}
+	payloadBytes = gatedPayload
 
 	s.sendEvent(c, TestEvent{Type: "status", Text: "正在通过原生 /v1/messages 测试自适应 Anthropic 端点"})
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, apiURL, bytes.NewReader(payloadBytes))
@@ -87,6 +93,7 @@ func (s *AccountTestService) testCNProviderAdaptiveAnthropicConnection(c *gin.Co
 	applyOpenCodeUpstreamUserAgent(account, apiURL, req.Header)
 	account.ApplyHeaderOverrides(req.Header)
 	applyOpenCodeSessionHeader(c, account, apiURL, req.Header, payloadBytes)
+	applyOpenCodeFreeTierGateSession(account, req.Header, payloadBytes)
 
 	resp, err := s.doCNProviderAdaptiveRequest(req, account)
 	if err != nil {
@@ -168,6 +175,12 @@ func (s *AccountTestService) testCNProviderAdaptiveResponsesConnection(c *gin.Co
 	delete(payload, "instructions")
 	payloadBytes, _ := json.Marshal(payload)
 	payloadBytes = normalizeDeepSeekResponsesRequestBody(account, payloadBytes)
+	// 连通性测试复用与真实转发相同的免费层门禁。
+	gatedPayload, gateErr := applyOpenCodeFreeTierGateBody(account, payloadBytes, openCodeGateDialectResponses)
+	if gateErr != nil {
+		return s.sendErrorAndEnd(c, gateErr.Error())
+	}
+	payloadBytes = gatedPayload
 
 	s.sendEvent(c, TestEvent{Type: "status", Text: "正在通过原生 /responses 测试自适应 Responses 端点"})
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, apiURL, bytes.NewReader(payloadBytes))
@@ -182,6 +195,7 @@ func (s *AccountTestService) testCNProviderAdaptiveResponsesConnection(c *gin.Co
 	applyOpenCodeUpstreamUserAgent(account, apiURL, req.Header)
 	account.ApplyHeaderOverrides(req.Header)
 	applyOpenCodeSessionHeader(c, account, apiURL, req.Header, payloadBytes)
+	applyOpenCodeFreeTierGateSession(account, req.Header, payloadBytes)
 
 	resp, err := s.doCNProviderAdaptiveRequest(req, account)
 	if err != nil {
@@ -255,6 +269,12 @@ func (s *AccountTestService) testCNProviderAnthropicConnection(c *gin.Context, a
 	payloadBytes, _ := json.Marshal(payload)
 
 	s.sendEvent(c, TestEvent{Type: "test_start", Model: testModelID})
+	// 连通性测试复用与真实转发相同的免费层门禁。
+	gatedPayload, gateErr := applyOpenCodeFreeTierGateBody(account, payloadBytes, openCodeGateDialectAnthropic)
+	if gateErr != nil {
+		return s.sendErrorAndEnd(c, gateErr.Error())
+	}
+	payloadBytes = gatedPayload
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, apiURL, bytes.NewReader(payloadBytes))
 	if err != nil {
@@ -272,6 +292,7 @@ func (s *AccountTestService) testCNProviderAnthropicConnection(c *gin.Context, a
 	applyOpenCodeUpstreamUserAgent(account, apiURL, req.Header)
 	account.ApplyHeaderOverrides(req.Header)
 	applyOpenCodeSessionHeader(c, account, apiURL, req.Header, payloadBytes)
+	applyOpenCodeFreeTierGateSession(account, req.Header, payloadBytes)
 
 	resp, err := s.doCNProviderAdaptiveRequest(req, account)
 	if err != nil {

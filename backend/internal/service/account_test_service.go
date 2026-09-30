@@ -2117,6 +2117,12 @@ func (s *AccountTestService) testOpenAIChatCompletionsConnection(
 
 	payload := createOpenAIChatCompletionsTestPayload(testModelID, prompt)
 	payloadBytes, _ := json.Marshal(payload)
+	// 连通性测试复用与真实转发相同的免费层门禁，否则管理员测试免费模型会看到 403。
+	gatedPayload, gateErr := applyOpenCodeFreeTierGateBody(account, payloadBytes, openCodeGateDialectChat)
+	if gateErr != nil {
+		return s.sendErrorAndEnd(c, gateErr.Error())
+	}
+	payloadBytes = gatedPayload
 
 	s.sendEvent(c, TestEvent{Type: "test_start", Model: testModelID})
 	s.sendEvent(c, TestEvent{Type: "status", Text: "正在通过 /v1/chat/completions 测试连接"})
@@ -2136,6 +2142,7 @@ func (s *AccountTestService) testOpenAIChatCompletionsConnection(
 	// 账号级请求头覆写：测试请求与真实转发保持一致的最终头
 	account.ApplyHeaderOverrides(req.Header)
 	applyOpenCodeSessionHeader(c, account, apiURL, req.Header, payloadBytes)
+	applyOpenCodeFreeTierGateSession(account, req.Header, payloadBytes)
 
 	proxyURL := ""
 	if account.ProxyID != nil && account.Proxy != nil {

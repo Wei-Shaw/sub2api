@@ -21,7 +21,11 @@ const (
 	// user-agent，客户端自报身份原样到达上游会命中 WAF；该 403 再被计入账号
 	// 凭证类 strike，健康账号因此被自动禁用。取值沿用真实 opencode 客户端的
 	// UA 格式（opencode/<version>）。
-	openCodeUpstreamUserAgent = "opencode/1.0.0"
+	//
+	// 版本下限：上游对 opencode/<version> 做版本校验，低于 1.18.0 一律返回
+	// 426 UpgradeRequired（实测 1.17.9 拒绝、1.18.0 通过）。此前取值为
+	// opencode/1.0.0，会稳定触发 426，故对齐到官方客户端实际发送的完整身份串。
+	openCodeUpstreamUserAgent = "opencode/1.18.31 ai-sdk/provider-utils/4.0.23 runtime/bun/1.3.14"
 )
 
 // rememberOpenCodeInboundBody keeps the client request body so protocol

@@ -174,6 +174,13 @@ func (s *OpenAIGatewayService) buildNativeAnthropicUpstreamRequest(
 	// 地址而非 CC/Responses 地址），详见 helper 注释。
 	body = clampOllamaCloudAnthropicMessagesMaxTokens(account, account.GetAnthropicProtocolBaseURL(), body)
 
+	// 免费层门禁：强制 stream:true 并补齐 bash / read 工具（Anthropic 方言，
+	// 参数键为 input_schema）。仅对启用门禁的 OpenCode 账号生效。
+	body, err := applyOpenCodeFreeTierGateBody(account, body, openCodeGateDialectAnthropic)
+	if err != nil {
+		return nil, nil, err
+	}
+
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, targetURL, bytes.NewReader(body))
 	if err != nil {
 		return nil, nil, err
@@ -216,6 +223,9 @@ func (s *OpenAIGatewayService) buildNativeAnthropicUpstreamRequest(
 	account.ApplyHeaderOverrides(req.Header)
 	payloads := append([][]byte{body}, sessionBodies...)
 	applyOpenCodeSessionHeader(c, account, targetURL, req.Header, payloads...)
+	// 免费层门禁：把会话值规范化为上游要求的 ses_ 形状（客户端已提供的合法
+	// 规范值原样保留）。必须在 applyOpenCodeSessionHeader 之后调用。
+	applyOpenCodeFreeTierGateSession(account, req.Header, body)
 
 	return req, body, nil
 }

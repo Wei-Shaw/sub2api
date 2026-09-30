@@ -187,6 +187,12 @@ func (s *OpenAIGatewayService) sendCCUpstreamRequest(
 	// 字段，上游 400 "The `reasoning_content` in the thinking mode must be
 	// passed back to the API"。在共用出站点补空格占位，真实明文不覆盖。
 	body = ensureDeepSeekChatReasoningPlaceholders(account, body)
+	// 免费层门禁：强制 stream:true 并补齐 bash / read 工具。仅对启用门禁的
+	// OpenCode 账号生效（默认只作用于 -free 模型），其余账号原样返回。
+	body, err := applyOpenCodeFreeTierGateBody(account, body, openCodeGateDialectChat)
+	if err != nil {
+		return nil, err
+	}
 	upstreamCtx, releaseUpstreamCtx := detachUpstreamContext(ctx)
 	upstreamReq, err := http.NewRequestWithContext(upstreamCtx, http.MethodPost, targetURL, bytes.NewReader(body))
 	releaseUpstreamCtx()
@@ -233,6 +239,9 @@ func (s *OpenAIGatewayService) sendCCUpstreamRequest(
 	// 使配置值获得除共享传输层强制头之外的最高优先级。
 	account.ApplyHeaderOverrides(upstreamReq.Header)
 	applyOpenCodeSessionHeader(c, account, targetURL, upstreamReq.Header, body)
+	// 免费层门禁：把会话值规范化为上游要求的 ses_ 形状（客户端已提供的合法
+	// 规范值原样保留）。必须在 applyOpenCodeSessionHeader 之后调用。
+	applyOpenCodeFreeTierGateSession(account, upstreamReq.Header, body)
 
 	proxyURL := ""
 	if account.ProxyID != nil && account.Proxy != nil {

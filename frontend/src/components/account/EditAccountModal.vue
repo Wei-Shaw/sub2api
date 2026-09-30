@@ -175,6 +175,10 @@
           v-model:rows="editOpenCodeGoProtocolRules"
           :plan="editOpenCodeAccountMode"
         />
+        <OpenCodeFreeTierGateSelect
+          v-if="account.platform === 'opencode_go'"
+          v-model:mode="editOpenCodeFreeTierGate"
+        />
         <!-- Zhipu 团队版 Coding Plan：组织/项目 ID（可选，填写后用量查询走团队版端点） -->
         <div v-if="account.platform === 'zhipu' && editAccountMode === 'coding'">
           <div class="flex items-center">
@@ -3148,6 +3152,7 @@ import QuotaLimitCard from '@/components/account/QuotaLimitCard.vue'
 import GrokBaseUrlPresets from '@/components/account/GrokBaseUrlPresets.vue'
 import CnBaseUrlPresets from '@/components/account/CnBaseUrlPresets.vue'
 import OpenCodeGoProtocolRulesEditor from '@/components/account/OpenCodeGoProtocolRulesEditor.vue'
+import OpenCodeFreeTierGateSelect from '@/components/account/OpenCodeFreeTierGateSelect.vue'
 import HeaderOverrideEditor from '@/components/account/HeaderOverrideEditor.vue'
 import PoolUpstreamInfoSelector from '@/components/account/PoolUpstreamInfoSelector.vue'
 import OllamaCloudUsageSettings from '@/components/account/OllamaCloudUsageSettings.vue'
@@ -3156,6 +3161,7 @@ import {
   applyHeaderOverride,
   applyInterceptWarmup,
   applyOpenCodeGoProtocolRules,
+  applyOpenCodeFreeTierGate,
   applyPlanType,
   buildPlanTypeOptions,
   cloneOpenCodeGoProtocolRules,
@@ -3163,6 +3169,7 @@ import {
   parseOpenCodeGoProtocolRules,
   readPlanType,
   resolveOpenCodeAccountMode,
+  resolveOpenCodeFreeTierGate,
   isCustomGrokBaseUrl,
   isHeaderOverrideCapable,
   splitHeaderOverridesObject,
@@ -3173,12 +3180,14 @@ import {
   isCNProviderPlatform,
   HEADER_OVERRIDE_ENABLED_CREDENTIAL_KEY,
   HEADER_OVERRIDES_CREDENTIAL_KEY,
+  DEFAULT_OPENCODE_FREE_TIER_GATE,
   type CnAccountMode,
   type CnApiProtocol,
   type CnNativeApiProtocol,
   type CnProviderPlatform,
   type HeaderOverrideRow,
   type OpenCodeAccountMode,
+  type OpenCodeFreeTierGateMode,
   type OpenCodeGoProtocolRule
 } from '@/components/account/credentialsBuilder'
 import {
@@ -3385,6 +3394,7 @@ const adaptivePresetPlatform = computed<CnProviderPlatform | 'opencode_go'>(() =
 })
 const editApiProtocol = ref<CnApiProtocol>('adaptive')
 const editOpenCodeGoProtocolRules = ref<OpenCodeGoProtocolRule[]>(cloneOpenCodeGoProtocolRules())
+const editOpenCodeFreeTierGate = ref<OpenCodeFreeTierGateMode>(DEFAULT_OPENCODE_FREE_TIER_GATE)
 const editAccountMode = ref<CnAccountMode>('payg')
 const editOpenCodeAccountMode = ref<OpenCodeAccountMode>('go')
 function currentOpenCodeOrCNMode(): CnAccountMode | OpenCodeAccountMode {
@@ -4443,6 +4453,7 @@ const syncFormFromAccount = (newAccount: Account | null) => {
         editOpenCodeGoProtocolRules.value =
           parseOpenCodeGoProtocolRules(credentials.protocol_rules) ??
           cloneOpenCodeGoProtocolRules(defaultOpenCodeProtocolRules(editOpenCodeAccountMode.value))
+        editOpenCodeFreeTierGate.value = resolveOpenCodeFreeTierGate(credentials.free_tier_gate)
       }
     }
     const platformDefaultUrl =
@@ -5221,6 +5232,7 @@ const handleSubmit = async () => {
         }
         if (props.account.platform === 'opencode_go') {
           applyOpenCodeGoProtocolRules(newCredentials, editOpenCodeGoProtocolRules.value, 'edit')
+          applyOpenCodeFreeTierGate(newCredentials, editOpenCodeFreeTierGate.value, 'edit')
         }
         // 智谱团队版 Coding Plan：组织/项目 ID 写入凭据（非空才写，清空即移除回落个人版路径）
         if (props.account.platform === 'zhipu') {

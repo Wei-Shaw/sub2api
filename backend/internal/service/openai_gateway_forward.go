@@ -1404,6 +1404,13 @@ func (s *OpenAIGatewayService) buildUpstreamRequest(ctx context.Context, c *gin.
 	// previous_response_id，避免携带状态字段被上游拒绝。
 	body = normalizeDeepSeekResponsesRequestBody(account, body)
 
+	// 免费层门禁：强制 stream:true 并补齐 bash / read 工具（Responses 方言）。
+	// 仅对启用门禁的 OpenCode 账号生效（默认只作用于 -free 模型）。
+	body, err := applyOpenCodeFreeTierGateBody(account, body, openCodeGateDialectResponses)
+	if err != nil {
+		return nil, err
+	}
+
 	req, err := http.NewRequestWithContext(ctx, "POST", targetURL, bytes.NewReader(body))
 	if err != nil {
 		return nil, err
@@ -1518,6 +1525,9 @@ func (s *OpenAIGatewayService) buildUpstreamRequest(ctx context.Context, c *gin.
 	// 账号级请求头覆写（仅 openai api_key 账号启用时生效；OAuth 路径 no-op）
 	account.ApplyHeaderOverrides(req.Header)
 	applyOpenCodeSessionHeader(c, account, targetURL, req.Header, body, openCodeSessionHintBody(promptCacheKey))
+	// 免费层门禁：把会话值规范化为上游要求的 ses_ 形状（客户端已提供的合法
+	// 规范值原样保留）。必须在 applyOpenCodeSessionHeader 之后调用。
+	applyOpenCodeFreeTierGateSession(account, req.Header, body)
 	// x-codex-beta-features：按真实 Codex 的会话级行为补注（在账号级覆写之后，
 	// 保证不被覆盖丢失）。
 	applyOpenAICodexBetaFeatures(c, account, req.Header)

@@ -26,7 +26,7 @@ const (
 // DefaultOpenCodeGoModelIDs 是官方文档当前公开的模型 ID 目录，
 // 供 /v1/models 在尚未同步上游列表时回退，以及账号白名单预填。
 func DefaultOpenCodeGoModelIDs() []string {
-	return []string{
+	ids := []string{
 		"grok-4.7",
 		"grok-4.6",
 		"gpt-5.6-luna",
@@ -56,6 +56,27 @@ func DefaultOpenCodeGoModelIDs() []string {
 		"hy4-preview",
 		"hy3",
 		"omen-alpha",
+	}
+	return append(ids, DefaultOpenCodeZenFreeModelIDs()...)
+}
+
+// DefaultOpenCodeZenFreeModelIDs 是 OpenCode Zen 免费层模型 ID 目录
+// （官方 /zen/v1/models 实测，2026-09-30 共 11 个）。免费层模型需要门禁伪装
+// 才能通过上游「仅允许官方 CLI 发起」的校验（见 openai_opencode_freetier.go）。
+// 计费沿用既有逻辑，本目录不参与定价。
+func DefaultOpenCodeZenFreeModelIDs() []string {
+	return []string{
+		"jev-1.13-free",
+		"deepseek-v4-flash-free",
+		"muse-spark-1.3-contributor-free",
+		"muse-spark-1.2-contributor-free",
+		"mimo-v2.6-flash-free",
+		"space-bunny-free",
+		"longcat-2.5-preview-free",
+		"mimo-v2.5-free",
+		"ling-3.0-flash-fin-free",
+		"nemotron-3-ultra-free",
+		"nemotron-3.5-lightning-free",
 	}
 }
 

@@ -361,6 +361,33 @@ export function isMultiProtocolApiKeyPlatform(platform: string): boolean {
   return platform === 'kimi' || platform === 'zhipu' || platform === 'deepseek' || platform === 'minimax' || platform === 'opencode_go'
 }
 
+// ── OpenCode Zen 免费层门禁 ────────────────────────────────────────────────
+// 上游只允许官方 OpenCode CLI 使用免费层模型（模型 ID 以 -free 结尾），网关
+// 需要伪装客户端身份才能放行。auto 只作用于 -free 模型；always 把伪装扩大到
+// 该账号全部请求（上游规则收紧时的应急开关）；off 完全关闭。
+
+export type OpenCodeFreeTierGateMode = 'auto' | 'always' | 'off'
+
+export const OPENCODE_FREE_TIER_GATE_KEY = 'free_tier_gate'
+
+export const DEFAULT_OPENCODE_FREE_TIER_GATE: OpenCodeFreeTierGateMode = 'auto'
+
+export function resolveOpenCodeFreeTierGate(value: unknown): OpenCodeFreeTierGateMode {
+  return value === 'always' || value === 'off' ? value : 'auto'
+}
+
+export function applyOpenCodeFreeTierGate(
+  credentials: Record<string, unknown>,
+  mode: OpenCodeFreeTierGateMode,
+  writeMode: 'create' | 'edit'
+): void {
+  // create 时缺省 auto 不落库：后端缺省语义即为 auto，写入反而制造无谓的
+  // 凭据差异。edit 时始终写入，使运营者能把 always/off 改回 auto。
+  if (writeMode === 'edit' || mode !== DEFAULT_OPENCODE_FREE_TIER_GATE) {
+    credentials[OPENCODE_FREE_TIER_GATE_KEY] = mode
+  }
+}
+
 export interface CnBaseUrlPreset {
   mode: CnAccountMode
   protocol: CnApiProtocol
