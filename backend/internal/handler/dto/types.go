@@ -86,6 +86,11 @@ type APIKey struct {
 	Reset1dAt     *time.Time `json:"reset_1d_at,omitempty"`
 	Reset7dAt     *time.Time `json:"reset_7d_at,omitempty"`
 
+	// PlatformLimits 是按上游来源（平台）细分的子限额配置；
+	// PlatformUsages 是对应的用量，仅在单个 key 的详情接口返回。
+	PlatformLimits service.APIKeyPlatformLimits `json:"platform_limits,omitempty"`
+	PlatformUsages []APIKeyPlatformUsage        `json:"platform_usages,omitempty"`
+
 	User  *User  `json:"user,omitempty"`
 	Group *Group `json:"group,omitempty"`
 }
@@ -817,4 +822,17 @@ type PromoCodeUsage struct {
 	UsedAt      time.Time `json:"used_at"`
 
 	User *User `json:"user,omitempty"`
+}
+
+// APIKeyPlatformUsage 是某个 API Key 在单个上游来源上的子限额用量视图。
+type APIKeyPlatformUsage struct {
+	Platform  string  `json:"platform"`
+	QuotaUsed float64 `json:"quota_used"`
+	Usage5h   float64 `json:"usage_5h"`
+	Usage1d   float64 `json:"usage_1d"`
+	Usage7d   float64 `json:"usage_7d"`
+	// 窗口重置时刻；窗口未初始化或已过期时为 nil（对应用量已按过期折算为 0）。
+	Reset5hAt *time.Time `json:"reset_5h_at,omitempty"`
+	Reset1dAt *time.Time `json:"reset_1d_at,omitempty"`
+	Reset7dAt *time.Time `json:"reset_7d_at,omitempty"`
 }

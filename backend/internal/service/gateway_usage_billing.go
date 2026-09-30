@@ -208,6 +208,10 @@ func postUsageBilling(ctx context.Context, p *postUsageBillingParams, deps *bill
 		}
 	}
 
+	// key × platform 子限额用量累加（legacy 兜底路径）。与 key 级 rate limit 一致，
+	// 余额/订阅两种计费模式都生效；仅对显式配置了该来源限额的 key 写入。
+	incrementAPIKeyPlatformUsage(billingCtx, deps, p.APIKey, p.Platform, cost.ActualCost)
+
 	// NOTE: finalizePostUsageBilling is NOT called here to avoid double-queuing
 	// cache updates. The legacy path does DB writes directly; the finalize path
 	// does cache queue + notifications. Notifications are dispatched separately
@@ -456,10 +460,50 @@ func finalizePostUsageBilling(ctx context.Context, p *postUsageBillingParams, de
 		}
 	}
 
+	// key × platform 子限额用量累加：与 user×platform 配额同样走 detached context，
+	// 避免上游连接结束后写入被取消。
+	if p.APIKey != nil && p.Platform != "" && p.Cost.ActualCost > 0 {
+		if _, configured := p.APIKey.PlatformLimit(p.Platform); configured {
+			usageCtx, usageCancel := detachUpstreamContext(ctx)
+			apiKey, platform, cost := p.APIKey, p.Platform, p.Cost.ActualCost
+			go func() {
+				defer func() {
+					if r := recover(); r != nil {
+						logger.LegacyPrintf("service.gateway", "ALERT: panic in api key platform usage incr goroutine key=%d platform=%s: %v", apiKey.ID, platform, r)
+					}
+				}()
+				defer usageCancel()
+				incrementAPIKeyPlatformUsage(usageCtx, deps, apiKey, platform, cost)
+			}()
+		}
+	}
+
 	// Notification checks run async — all parameters are already captured,
 	// no dependency on the request context or upstream connection.
 	go notifyBalanceLow(p, deps, result)
 	go notifyAccountQuota(p, deps, result)
+}
+
+// incrementAPIKeyPlatformUsage 把本次消费累加到 (api_key, platform) 的用量行。
+//
+// 只有该来源上显式配置了子限额的 key 才写入：未配置的组合不建行，对既有部署
+// 没有任何额外写负载。写失败仅记 ALERT 日志，不影响主扣费链路（与 user×platform
+// 配额的取舍一致：限额精度让位于可用性，偏差由 oncall 对账）。
+func incrementAPIKeyPlatformUsage(ctx context.Context, deps *billingDeps, apiKey *APIKey, platform string, cost float64) {
+	if deps == nil || deps.billingCacheService == nil || apiKey == nil || platform == "" || cost <= 0 {
+		return
+	}
+	repo := deps.billingCacheService.apiKeyPlatformUsageRepo
+	if repo == nil {
+		return
+	}
+	if _, configured := apiKey.PlatformLimit(platform); !configured {
+		return
+	}
+	if err := repo.IncrementUsage(ctx, apiKey.ID, platform, cost, time.Now().UTC()); err != nil {
+		logger.LegacyPrintf("service.gateway",
+			"ALERT: incr api key platform usage failed key=%d platform=%s cost=%f: %v", apiKey.ID, platform, cost, err)
+	}
 }
 
 func syncBalanceCacheAfterDeduction(ctx context.Context, p *postUsageBillingParams, deps *billingDeps, result *UsageBillingApplyResult) {

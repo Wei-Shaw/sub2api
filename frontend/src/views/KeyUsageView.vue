@@ -238,6 +238,37 @@
 
           <!-- Detail Card -->
           <div
+            v-if="platformLimitGroups.length > 0"
+            class="fade-up fade-up-delay-2 mb-6 rounded-2xl border border-gray-200 bg-white/90 backdrop-blur-sm overflow-hidden dark:border-dark-700 dark:bg-dark-900/90"
+            data-test="platform-limits-block"
+          >
+            <div class="px-8 py-5 border-b border-gray-200 dark:border-dark-700">
+              <h3 class="text-sm font-semibold uppercase tracking-wider text-gray-500 dark:text-dark-400">{{ t('keyUsage.platformLimitsSection') }}</h3>
+            </div>
+            <div class="divide-y divide-gray-100 dark:divide-dark-800">
+              <div
+                v-for="group in platformLimitGroups"
+                :key="group.platform"
+                class="px-8 py-5 space-y-3"
+              >
+                <p class="text-sm font-semibold text-gray-900 dark:text-white">{{ group.label }}</p>
+                <div v-for="row in group.rows" :key="row.label" class="space-y-1.5">
+                  <div class="flex items-center justify-between gap-4 text-sm">
+                    <span class="text-gray-600 dark:text-dark-300">
+                      {{ row.label }}
+                      <span v-if="row.resetText" class="ml-1 text-xs text-gray-400 dark:text-gray-500 tabular-nums">⟳ {{ row.resetText }}</span>
+                    </span>
+                    <span class="font-semibold tabular-nums" :class="row.valueClass">{{ row.value }}</span>
+                  </div>
+                  <div class="h-1.5 w-full overflow-hidden rounded-full bg-gray-200 dark:bg-dark-700">
+                    <div class="h-full rounded-full transition-all" :class="row.barClass" :style="{ width: row.pct + '%' }" />
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div
             v-if="detailRows.length > 0"
             class="fade-up fade-up-delay-3 rounded-2xl border border-gray-200 bg-white/90 backdrop-blur-sm overflow-hidden dark:border-dark-700 dark:bg-dark-900/90"
           >
@@ -426,6 +457,7 @@ import Icon from '@/components/icons/Icon.vue'
 import { buildGatewayUrl } from '@/api/client'
 import { formatDateLocalInput } from '@/utils/format'
 import { sanitizeUrl } from '@/utils/url'
+import { CONCRETE_PLATFORM_OPTIONS } from '@/constants/platforms'
 
 const { t, locale } = useI18n()
 const appStore = useAppStore()
@@ -656,6 +688,82 @@ const ringItems = computed<RingItem[]>(() => {
 
   return items
 })
+
+interface PlatformLimitRow {
+  label: string
+  value: string
+  resetText: string
+  pct: number
+  valueClass: string
+  barClass: string
+}
+
+interface PlatformLimitGroup {
+  platform: string
+  label: string
+  rows: PlatformLimitRow[]
+}
+
+/**
+ * Per-source limits get their own compact block instead of more rings: a key
+ * routed to three upstreams would otherwise add half a dozen ring cards.
+ * One group per source, one thin bar per configured window.
+ *
+ * Applies in every billing mode, so it is built from the raw payload rather
+ * than inside one mode branch.
+ */
+const platformLimitGroups = computed<PlatformLimitGroup[]>(() => {
+  const entries = resultData.value?.platform_limits
+  if (!Array.isArray(entries)) return []
+
+  const windowLabels: Record<string, string> = {
+    '5h': 'keyUsage.limit5h',
+    '1d': 'keyUsage.limitDaily',
+    '7d': 'keyUsage.limit7d',
+  }
+  const groups: PlatformLimitGroup[] = []
+
+  for (const entry of entries) {
+    const rows: PlatformLimitRow[] = []
+    if (entry.quota && entry.quota.limit > 0) {
+      rows.push(platformLimitRow(t('keyUsage.totalQuota'), entry.quota.used, entry.quota.limit, null))
+    }
+    for (const rl of entry.rate_limits || []) {
+      if (!(rl.limit > 0)) continue
+      rows.push(platformLimitRow(t(windowLabels[rl.window] || 'keyUsage.totalQuota'), rl.used, rl.limit, rl.reset_at))
+    }
+    // A source with no window over its limit still shows up — the limit existing
+    // is itself worth seeing, even at zero usage.
+    if (rows.length > 0) {
+      groups.push({ platform: entry.platform, label: platformLabel(entry.platform), rows })
+    }
+  }
+  return groups
+})
+
+function platformLimitRow(label: string, used: number, limit: number, resetAt: string | null): PlatformLimitRow {
+  const pct = limit > 0 ? Math.min((used / limit) * 100, 100) : 0
+  return {
+    label,
+    value: `${usd(used)} / ${usd(limit)}`,
+    resetText: formatResetTime(resetAt),
+    pct,
+    valueClass: getUsageColor(pct),
+    barClass: getUsageBarColor(pct),
+  }
+}
+
+/** Bar counterpart of getUsageColor, so text and bar never disagree. */
+function getUsageBarColor(pct: number): string {
+  if (pct > 90) return 'bg-rose-500'
+  if (pct > 70) return 'bg-amber-500'
+  return 'bg-emerald-500'
+}
+
+/** Falls back to the raw id so a platform added upstream still renders. */
+function platformLabel(platform: string): string {
+  return CONCRETE_PLATFORM_OPTIONS.find((option) => option.value === platform)?.label || platform
+}
 
 const ringGridClass = computed(() => {
   const len = ringItems.value.length

@@ -12,9 +12,11 @@ import (
 	"entgo.io/ent/dialect/sql/sqlgraph"
 	"entgo.io/ent/schema/field"
 	"github.com/Wei-Shaw/sub2api/ent/apikey"
+	"github.com/Wei-Shaw/sub2api/ent/apikeyplatformusage"
 	"github.com/Wei-Shaw/sub2api/ent/group"
 	"github.com/Wei-Shaw/sub2api/ent/usagelog"
 	"github.com/Wei-Shaw/sub2api/ent/user"
+	"github.com/Wei-Shaw/sub2api/internal/domain"
 )
 
 // APIKeyCreate is the builder for creating a APIKey entity.
@@ -136,6 +138,12 @@ func (_c *APIKeyCreate) SetIPWhitelist(v []string) *APIKeyCreate {
 // SetIPBlacklist sets the "ip_blacklist" field.
 func (_c *APIKeyCreate) SetIPBlacklist(v []string) *APIKeyCreate {
 	_c.mutation.SetIPBlacklist(v)
+	return _c
+}
+
+// SetPlatformLimits sets the "platform_limits" field.
+func (_c *APIKeyCreate) SetPlatformLimits(v domain.APIKeyPlatformLimits) *APIKeyCreate {
+	_c.mutation.SetPlatformLimits(v)
 	return _c
 }
 
@@ -330,6 +338,21 @@ func (_c *APIKeyCreate) AddUsageLogs(v ...*UsageLog) *APIKeyCreate {
 		ids[i] = v[i].ID
 	}
 	return _c.AddUsageLogIDs(ids...)
+}
+
+// AddPlatformUsageIDs adds the "platform_usages" edge to the APIKeyPlatformUsage entity by IDs.
+func (_c *APIKeyCreate) AddPlatformUsageIDs(ids ...int64) *APIKeyCreate {
+	_c.mutation.AddPlatformUsageIDs(ids...)
+	return _c
+}
+
+// AddPlatformUsages adds the "platform_usages" edges to the APIKeyPlatformUsage entity.
+func (_c *APIKeyCreate) AddPlatformUsages(v ...*APIKeyPlatformUsage) *APIKeyCreate {
+	ids := make([]int64, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _c.AddPlatformUsageIDs(ids...)
 }
 
 // Mutation returns the APIKeyMutation object of the builder.
@@ -547,6 +570,10 @@ func (_c *APIKeyCreate) createSpec() (*APIKey, *sqlgraph.CreateSpec) {
 		_spec.SetField(apikey.FieldIPBlacklist, field.TypeJSON, value)
 		_node.IPBlacklist = value
 	}
+	if value, ok := _c.mutation.PlatformLimits(); ok {
+		_spec.SetField(apikey.FieldPlatformLimits, field.TypeJSON, value)
+		_node.PlatformLimits = value
+	}
 	if value, ok := _c.mutation.Quota(); ok {
 		_spec.SetField(apikey.FieldQuota, field.TypeFloat64, value)
 		_node.Quota = value
@@ -638,6 +665,22 @@ func (_c *APIKeyCreate) createSpec() (*APIKey, *sqlgraph.CreateSpec) {
 			Bidi:    false,
 			Target: &sqlgraph.EdgeTarget{
 				IDSpec: sqlgraph.NewFieldSpec(usagelog.FieldID, field.TypeInt64),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges = append(_spec.Edges, edge)
+	}
+	if nodes := _c.mutation.PlatformUsagesIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   apikey.PlatformUsagesTable,
+			Columns: []string{apikey.PlatformUsagesColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(apikeyplatformusage.FieldID, field.TypeInt64),
 			},
 		}
 		for _, k := range nodes {
@@ -844,6 +887,24 @@ func (u *APIKeyUpsert) UpdateIPBlacklist() *APIKeyUpsert {
 // ClearIPBlacklist clears the value of the "ip_blacklist" field.
 func (u *APIKeyUpsert) ClearIPBlacklist() *APIKeyUpsert {
 	u.SetNull(apikey.FieldIPBlacklist)
+	return u
+}
+
+// SetPlatformLimits sets the "platform_limits" field.
+func (u *APIKeyUpsert) SetPlatformLimits(v domain.APIKeyPlatformLimits) *APIKeyUpsert {
+	u.Set(apikey.FieldPlatformLimits, v)
+	return u
+}
+
+// UpdatePlatformLimits sets the "platform_limits" field to the value that was provided on create.
+func (u *APIKeyUpsert) UpdatePlatformLimits() *APIKeyUpsert {
+	u.SetExcluded(apikey.FieldPlatformLimits)
+	return u
+}
+
+// ClearPlatformLimits clears the value of the "platform_limits" field.
+func (u *APIKeyUpsert) ClearPlatformLimits() *APIKeyUpsert {
+	u.SetNull(apikey.FieldPlatformLimits)
 	return u
 }
 
@@ -1280,6 +1341,27 @@ func (u *APIKeyUpsertOne) UpdateIPBlacklist() *APIKeyUpsertOne {
 func (u *APIKeyUpsertOne) ClearIPBlacklist() *APIKeyUpsertOne {
 	return u.Update(func(s *APIKeyUpsert) {
 		s.ClearIPBlacklist()
+	})
+}
+
+// SetPlatformLimits sets the "platform_limits" field.
+func (u *APIKeyUpsertOne) SetPlatformLimits(v domain.APIKeyPlatformLimits) *APIKeyUpsertOne {
+	return u.Update(func(s *APIKeyUpsert) {
+		s.SetPlatformLimits(v)
+	})
+}
+
+// UpdatePlatformLimits sets the "platform_limits" field to the value that was provided on create.
+func (u *APIKeyUpsertOne) UpdatePlatformLimits() *APIKeyUpsertOne {
+	return u.Update(func(s *APIKeyUpsert) {
+		s.UpdatePlatformLimits()
+	})
+}
+
+// ClearPlatformLimits clears the value of the "platform_limits" field.
+func (u *APIKeyUpsertOne) ClearPlatformLimits() *APIKeyUpsertOne {
+	return u.Update(func(s *APIKeyUpsert) {
+		s.ClearPlatformLimits()
 	})
 }
 
@@ -1918,6 +2000,27 @@ func (u *APIKeyUpsertBulk) UpdateIPBlacklist() *APIKeyUpsertBulk {
 func (u *APIKeyUpsertBulk) ClearIPBlacklist() *APIKeyUpsertBulk {
 	return u.Update(func(s *APIKeyUpsert) {
 		s.ClearIPBlacklist()
+	})
+}
+
+// SetPlatformLimits sets the "platform_limits" field.
+func (u *APIKeyUpsertBulk) SetPlatformLimits(v domain.APIKeyPlatformLimits) *APIKeyUpsertBulk {
+	return u.Update(func(s *APIKeyUpsert) {
+		s.SetPlatformLimits(v)
+	})
+}
+
+// UpdatePlatformLimits sets the "platform_limits" field to the value that was provided on create.
+func (u *APIKeyUpsertBulk) UpdatePlatformLimits() *APIKeyUpsertBulk {
+	return u.Update(func(s *APIKeyUpsert) {
+		s.UpdatePlatformLimits()
+	})
+}
+
+// ClearPlatformLimits clears the value of the "platform_limits" field.
+func (u *APIKeyUpsertBulk) ClearPlatformLimits() *APIKeyUpsertBulk {
+	return u.Update(func(s *APIKeyUpsert) {
+		s.ClearPlatformLimits()
 	})
 }
 

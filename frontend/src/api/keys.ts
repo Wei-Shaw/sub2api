@@ -4,7 +4,13 @@
  */
 
 import { apiClient } from './client'
-import type { ApiKey, CreateApiKeyRequest, UpdateApiKeyRequest, PaginatedResponse } from '@/types'
+import type {
+  ApiKey,
+  ApiKeyPlatformLimits,
+  CreateApiKeyRequest,
+  UpdateApiKeyRequest,
+  PaginatedResponse
+} from '@/types'
 
 /**
  * List all API keys for current user
@@ -55,6 +61,7 @@ export async function getById(id: number): Promise<ApiKey> {
  * @param quota - Optional quota limit in USD (0 = unlimited)
  * @param expiresInDays - Optional days until expiry (undefined = never expires)
  * @param rateLimitData - Optional rate limit fields
+ * @param platformLimits - Optional per-upstream-platform sub-limits
  * @returns Created API key
  */
 export async function create(
@@ -65,7 +72,8 @@ export async function create(
   ipBlacklist?: string[],
   quota?: number,
   expiresInDays?: number,
-  rateLimitData?: { rate_limit_5h?: number; rate_limit_1d?: number; rate_limit_7d?: number }
+  rateLimitData?: { rate_limit_5h?: number; rate_limit_1d?: number; rate_limit_7d?: number },
+  platformLimits?: ApiKeyPlatformLimits
 ): Promise<ApiKey> {
   const payload: CreateApiKeyRequest = { name }
   if (groupId !== undefined) {
@@ -94,6 +102,9 @@ export async function create(
   }
   if (rateLimitData?.rate_limit_7d && rateLimitData.rate_limit_7d > 0) {
     payload.rate_limit_7d = rateLimitData.rate_limit_7d
+  }
+  if (platformLimits && Object.keys(platformLimits).length > 0) {
+    payload.platform_limits = platformLimits
   }
 
   const { data } = await apiClient.post<ApiKey>('/keys', payload)

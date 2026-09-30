@@ -155,6 +155,8 @@ export default {
     limit7d: '7 天限额',
     limitWeekly: '周限额',
     limitMonthly: '月限额',
+    // Per-source (upstream platform) limits
+    platformLimitsSection: '按来源限额',
     // Detail rows
     remainingQuota: '剩余额度',
     expiresAt: '过期时间',

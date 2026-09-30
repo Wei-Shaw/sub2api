@@ -13,10 +13,12 @@ import (
 	"entgo.io/ent/dialect/sql/sqljson"
 	"entgo.io/ent/schema/field"
 	"github.com/Wei-Shaw/sub2api/ent/apikey"
+	"github.com/Wei-Shaw/sub2api/ent/apikeyplatformusage"
 	"github.com/Wei-Shaw/sub2api/ent/group"
 	"github.com/Wei-Shaw/sub2api/ent/predicate"
 	"github.com/Wei-Shaw/sub2api/ent/usagelog"
 	"github.com/Wei-Shaw/sub2api/ent/user"
+	"github.com/Wei-Shaw/sub2api/internal/domain"
 )
 
 // APIKeyUpdate is the builder for updating APIKey entities.
@@ -187,6 +189,18 @@ func (_u *APIKeyUpdate) AppendIPBlacklist(v []string) *APIKeyUpdate {
 // ClearIPBlacklist clears the value of the "ip_blacklist" field.
 func (_u *APIKeyUpdate) ClearIPBlacklist() *APIKeyUpdate {
 	_u.mutation.ClearIPBlacklist()
+	return _u
+}
+
+// SetPlatformLimits sets the "platform_limits" field.
+func (_u *APIKeyUpdate) SetPlatformLimits(v domain.APIKeyPlatformLimits) *APIKeyUpdate {
+	_u.mutation.SetPlatformLimits(v)
+	return _u
+}
+
+// ClearPlatformLimits clears the value of the "platform_limits" field.
+func (_u *APIKeyUpdate) ClearPlatformLimits() *APIKeyUpdate {
+	_u.mutation.ClearPlatformLimits()
 	return _u
 }
 
@@ -463,6 +477,21 @@ func (_u *APIKeyUpdate) AddUsageLogs(v ...*UsageLog) *APIKeyUpdate {
 	return _u.AddUsageLogIDs(ids...)
 }
 
+// AddPlatformUsageIDs adds the "platform_usages" edge to the APIKeyPlatformUsage entity by IDs.
+func (_u *APIKeyUpdate) AddPlatformUsageIDs(ids ...int64) *APIKeyUpdate {
+	_u.mutation.AddPlatformUsageIDs(ids...)
+	return _u
+}
+
+// AddPlatformUsages adds the "platform_usages" edges to the APIKeyPlatformUsage entity.
+func (_u *APIKeyUpdate) AddPlatformUsages(v ...*APIKeyPlatformUsage) *APIKeyUpdate {
+	ids := make([]int64, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _u.AddPlatformUsageIDs(ids...)
+}
+
 // Mutation returns the APIKeyMutation object of the builder.
 func (_u *APIKeyUpdate) Mutation() *APIKeyMutation {
 	return _u.mutation
@@ -499,6 +528,27 @@ func (_u *APIKeyUpdate) RemoveUsageLogs(v ...*UsageLog) *APIKeyUpdate {
 		ids[i] = v[i].ID
 	}
 	return _u.RemoveUsageLogIDs(ids...)
+}
+
+// ClearPlatformUsages clears all "platform_usages" edges to the APIKeyPlatformUsage entity.
+func (_u *APIKeyUpdate) ClearPlatformUsages() *APIKeyUpdate {
+	_u.mutation.ClearPlatformUsages()
+	return _u
+}
+
+// RemovePlatformUsageIDs removes the "platform_usages" edge to APIKeyPlatformUsage entities by IDs.
+func (_u *APIKeyUpdate) RemovePlatformUsageIDs(ids ...int64) *APIKeyUpdate {
+	_u.mutation.RemovePlatformUsageIDs(ids...)
+	return _u
+}
+
+// RemovePlatformUsages removes "platform_usages" edges to APIKeyPlatformUsage entities.
+func (_u *APIKeyUpdate) RemovePlatformUsages(v ...*APIKeyPlatformUsage) *APIKeyUpdate {
+	ids := make([]int64, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _u.RemovePlatformUsageIDs(ids...)
 }
 
 // Save executes the query and returns the number of nodes affected by the update operation.
@@ -623,6 +673,12 @@ func (_u *APIKeyUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	}
 	if _u.mutation.IPBlacklistCleared() {
 		_spec.ClearField(apikey.FieldIPBlacklist, field.TypeJSON)
+	}
+	if value, ok := _u.mutation.PlatformLimits(); ok {
+		_spec.SetField(apikey.FieldPlatformLimits, field.TypeJSON, value)
+	}
+	if _u.mutation.PlatformLimitsCleared() {
+		_spec.ClearField(apikey.FieldPlatformLimits, field.TypeJSON)
 	}
 	if value, ok := _u.mutation.Quota(); ok {
 		_spec.SetField(apikey.FieldQuota, field.TypeFloat64, value)
@@ -792,6 +848,51 @@ func (_u *APIKeyUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 			Bidi:    false,
 			Target: &sqlgraph.EdgeTarget{
 				IDSpec: sqlgraph.NewFieldSpec(usagelog.FieldID, field.TypeInt64),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Add = append(_spec.Edges.Add, edge)
+	}
+	if _u.mutation.PlatformUsagesCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   apikey.PlatformUsagesTable,
+			Columns: []string{apikey.PlatformUsagesColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(apikeyplatformusage.FieldID, field.TypeInt64),
+			},
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.RemovedPlatformUsagesIDs(); len(nodes) > 0 && !_u.mutation.PlatformUsagesCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   apikey.PlatformUsagesTable,
+			Columns: []string{apikey.PlatformUsagesColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(apikeyplatformusage.FieldID, field.TypeInt64),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.PlatformUsagesIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   apikey.PlatformUsagesTable,
+			Columns: []string{apikey.PlatformUsagesColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(apikeyplatformusage.FieldID, field.TypeInt64),
 			},
 		}
 		for _, k := range nodes {
@@ -974,6 +1075,18 @@ func (_u *APIKeyUpdateOne) AppendIPBlacklist(v []string) *APIKeyUpdateOne {
 // ClearIPBlacklist clears the value of the "ip_blacklist" field.
 func (_u *APIKeyUpdateOne) ClearIPBlacklist() *APIKeyUpdateOne {
 	_u.mutation.ClearIPBlacklist()
+	return _u
+}
+
+// SetPlatformLimits sets the "platform_limits" field.
+func (_u *APIKeyUpdateOne) SetPlatformLimits(v domain.APIKeyPlatformLimits) *APIKeyUpdateOne {
+	_u.mutation.SetPlatformLimits(v)
+	return _u
+}
+
+// ClearPlatformLimits clears the value of the "platform_limits" field.
+func (_u *APIKeyUpdateOne) ClearPlatformLimits() *APIKeyUpdateOne {
+	_u.mutation.ClearPlatformLimits()
 	return _u
 }
 
@@ -1250,6 +1363,21 @@ func (_u *APIKeyUpdateOne) AddUsageLogs(v ...*UsageLog) *APIKeyUpdateOne {
 	return _u.AddUsageLogIDs(ids...)
 }
 
+// AddPlatformUsageIDs adds the "platform_usages" edge to the APIKeyPlatformUsage entity by IDs.
+func (_u *APIKeyUpdateOne) AddPlatformUsageIDs(ids ...int64) *APIKeyUpdateOne {
+	_u.mutation.AddPlatformUsageIDs(ids...)
+	return _u
+}
+
+// AddPlatformUsages adds the "platform_usages" edges to the APIKeyPlatformUsage entity.
+func (_u *APIKeyUpdateOne) AddPlatformUsages(v ...*APIKeyPlatformUsage) *APIKeyUpdateOne {
+	ids := make([]int64, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _u.AddPlatformUsageIDs(ids...)
+}
+
 // Mutation returns the APIKeyMutation object of the builder.
 func (_u *APIKeyUpdateOne) Mutation() *APIKeyMutation {
 	return _u.mutation
@@ -1286,6 +1414,27 @@ func (_u *APIKeyUpdateOne) RemoveUsageLogs(v ...*UsageLog) *APIKeyUpdateOne {
 		ids[i] = v[i].ID
 	}
 	return _u.RemoveUsageLogIDs(ids...)
+}
+
+// ClearPlatformUsages clears all "platform_usages" edges to the APIKeyPlatformUsage entity.
+func (_u *APIKeyUpdateOne) ClearPlatformUsages() *APIKeyUpdateOne {
+	_u.mutation.ClearPlatformUsages()
+	return _u
+}
+
+// RemovePlatformUsageIDs removes the "platform_usages" edge to APIKeyPlatformUsage entities by IDs.
+func (_u *APIKeyUpdateOne) RemovePlatformUsageIDs(ids ...int64) *APIKeyUpdateOne {
+	_u.mutation.RemovePlatformUsageIDs(ids...)
+	return _u
+}
+
+// RemovePlatformUsages removes "platform_usages" edges to APIKeyPlatformUsage entities.
+func (_u *APIKeyUpdateOne) RemovePlatformUsages(v ...*APIKeyPlatformUsage) *APIKeyUpdateOne {
+	ids := make([]int64, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _u.RemovePlatformUsageIDs(ids...)
 }
 
 // Where appends a list predicates to the APIKeyUpdate builder.
@@ -1440,6 +1589,12 @@ func (_u *APIKeyUpdateOne) sqlSave(ctx context.Context) (_node *APIKey, err erro
 	}
 	if _u.mutation.IPBlacklistCleared() {
 		_spec.ClearField(apikey.FieldIPBlacklist, field.TypeJSON)
+	}
+	if value, ok := _u.mutation.PlatformLimits(); ok {
+		_spec.SetField(apikey.FieldPlatformLimits, field.TypeJSON, value)
+	}
+	if _u.mutation.PlatformLimitsCleared() {
+		_spec.ClearField(apikey.FieldPlatformLimits, field.TypeJSON)
 	}
 	if value, ok := _u.mutation.Quota(); ok {
 		_spec.SetField(apikey.FieldQuota, field.TypeFloat64, value)
@@ -1609,6 +1764,51 @@ func (_u *APIKeyUpdateOne) sqlSave(ctx context.Context) (_node *APIKey, err erro
 			Bidi:    false,
 			Target: &sqlgraph.EdgeTarget{
 				IDSpec: sqlgraph.NewFieldSpec(usagelog.FieldID, field.TypeInt64),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Add = append(_spec.Edges.Add, edge)
+	}
+	if _u.mutation.PlatformUsagesCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   apikey.PlatformUsagesTable,
+			Columns: []string{apikey.PlatformUsagesColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(apikeyplatformusage.FieldID, field.TypeInt64),
+			},
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.RemovedPlatformUsagesIDs(); len(nodes) > 0 && !_u.mutation.PlatformUsagesCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   apikey.PlatformUsagesTable,
+			Columns: []string{apikey.PlatformUsagesColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(apikeyplatformusage.FieldID, field.TypeInt64),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.PlatformUsagesIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   apikey.PlatformUsagesTable,
+			Columns: []string{apikey.PlatformUsagesColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(apikeyplatformusage.FieldID, field.TypeInt64),
 			},
 		}
 		for _, k := range nodes {

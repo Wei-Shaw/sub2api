@@ -113,6 +113,10 @@ type BillingCacheService struct {
 	cfg                   *config.Config
 	circuitBreaker        *billingCircuitBreaker
 	userPlatformQuotaRepo UserPlatformQuotaRepository
+	// apiKeyPlatformUsageRepo 承载「按上游来源细分的 key 限额」的用量读写。
+	// 通过 setter 注入（见 SetAPIKeyPlatformUsageRepo）：未注入时该特性静默关闭，
+	// 既有构造点与测试无需改动。
+	apiKeyPlatformUsageRepo APIKeyPlatformUsageRepository
 
 	cacheWriteChan     chan cacheWriteTask
 	cacheWriteWg       sync.WaitGroup
@@ -152,6 +156,12 @@ func NewBillingCacheService(
 	svc.circuitBreaker = newBillingCircuitBreaker(cfg.Billing.CircuitBreaker)
 	svc.startCacheWriteWorkers()
 	return svc
+}
+
+// SetAPIKeyPlatformUsageRepo 注入按来源细分的 key 用量仓储。
+// 未注入（nil）时 platform 级子限额不生效，行为与本特性上线前完全一致。
+func (s *BillingCacheService) SetAPIKeyPlatformUsageRepo(repo APIKeyPlatformUsageRepository) {
+	s.apiKeyPlatformUsageRepo = repo
 }
 
 // Stop 关闭缓存写入工作池
@@ -631,6 +641,33 @@ func (s *BillingCacheService) checkAPIKeyRateLimits(ctx context.Context, apiKey 
 	return s.evaluateRateLimits(ctx, apiKey, cacheData.Usage5h, cacheData.Usage1d, cacheData.Usage7d, w5h, w1d, w7d)
 }
 
+// checkAPIKeyPlatformLimits 判定 key 在本次请求目标来源上的子限额。
+//
+// 设计取舍：这里**直读 DB**，不经 Redis。
+//   - 只有显式配置了 platform_limits 的 key 才会走到查询，默认部署零额外读；
+//   - 命中的是 (api_key_id, platform) 唯一索引上的单行，代价与一次 key 级缓存
+//     未命中回源相当；
+//   - DB 为权威源可避免「缓存未刷新导致子限额被绕过」，与 simple 模式下
+//     checkSimpleModeAPIKeyRateLimits 的取舍一致。
+//
+// 读失败不阻断请求（与 key 级限流一致：不拿可用性换限额精度）。
+func (s *BillingCacheService) checkAPIKeyPlatformLimits(ctx context.Context, apiKey *APIKey, platform string) error {
+	if apiKey == nil || platform == "" || s.apiKeyPlatformUsageRepo == nil {
+		return nil
+	}
+	limit, ok := apiKey.PlatformLimit(platform)
+	if !ok {
+		return nil
+	}
+	usage, err := s.apiKeyPlatformUsageRepo.Get(ctx, apiKey.ID, platform)
+	if err != nil {
+		logger.LegacyPrintf("service.billing_cache",
+			"Warning: load api key platform usage failed key=%d platform=%s: %v", apiKey.ID, platform, err)
+		return nil
+	}
+	return EvaluateAPIKeyPlatformLimits(limit, usage)
+}
+
 // evaluateRateLimits checks usage against limits, triggering async resets for expired windows.
 func (s *BillingCacheService) evaluateRateLimits(ctx context.Context, apiKey *APIKey, usage5h, usage1d, usage7d float64, w5h, w1d, w7d *time.Time) error {
 	needsReset := false
@@ -738,7 +775,12 @@ func (s *BillingCacheService) CheckBillingEligibility(ctx context.Context, user 
 	// API-key monetary windows from the database source of truth.
 	if s.cfg != nil && s.cfg.RunMode == config.RunModeSimple {
 		if s.cfg.SimpleModeKeyRateLimitEnabled {
-			return s.checkSimpleModeAPIKeyRateLimits(ctx, apiKey)
+			if err := s.checkSimpleModeAPIKeyRateLimits(ctx, apiKey); err != nil {
+				return err
+			}
+			// key 窗口在 simple 模式下显式 opt-in 时，来源级子限额同样生效：
+			// 两者是同一套 key 限额的不同粒度，不应只强制其中一档。
+			return s.checkAPIKeyPlatformLimits(ctx, apiKey, platform)
 		}
 		return nil
 	}
@@ -771,6 +813,12 @@ func (s *BillingCacheService) CheckBillingEligibility(ctx context.Context, user 
 		if err := s.checkAPIKeyRateLimits(ctx, apiKey); err != nil {
 			return err
 		}
+	}
+
+	// 按上游来源细分的 key 子限额（composite 分组下 platform 为本次请求解析到的
+	// 真实目标平台）。与 key 级限额是 AND 关系，任一触顶即拒绝。
+	if err := s.checkAPIKeyPlatformLimits(ctx, apiKey, platform); err != nil {
+		return err
 	}
 
 	// RPM 限流：级联回落（Override → Group → User），放在最后以避免为注定失败的请求增加计数。

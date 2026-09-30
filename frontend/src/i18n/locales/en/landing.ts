@@ -155,6 +155,8 @@ export default {
     limit7d: '7-Day Limit',
     limitWeekly: 'Weekly Limit',
     limitMonthly: 'Monthly Limit',
+    // Per-source (upstream platform) limits
+    platformLimitsSection: 'Per-Source Limits',
     // Detail rows
     remainingQuota: 'Remaining Quota',
     expiresAt: 'Expires At',

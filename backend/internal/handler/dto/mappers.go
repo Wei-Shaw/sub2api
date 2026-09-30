@@ -107,6 +107,7 @@ func APIKeyFromService(k *service.APIKey) *APIKey {
 		Window5hStart:      k.Window5hStart,
 		Window1dStart:      k.Window1dStart,
 		Window7dStart:      k.Window7dStart,
+		PlatformLimits:     k.PlatformLimits,
 		User:               UserFromServiceShallow(k.User),
 		Group:              GroupFromServiceShallow(k.Group),
 	}
@@ -121,6 +122,40 @@ func APIKeyFromService(k *service.APIKey) *APIKey {
 	if k.Window7dStart != nil && !service.IsWindowExpired(k.Window7dStart, service.RateLimitWindow7d) {
 		t := k.Window7dStart.Add(service.RateLimitWindow7d)
 		out.Reset7dAt = &t
+	}
+	return out
+}
+
+// APIKeyPlatformUsagesFromService 映射按来源细分的用量，窗口用量按有效期折算
+// （已过期的窗口返回 0），与 key 级 EffectiveUsage* 的展示口径一致。
+func APIKeyPlatformUsagesFromService(rows []service.APIKeyPlatformUsageRecord) []APIKeyPlatformUsage {
+	if len(rows) == 0 {
+		return nil
+	}
+	out := make([]APIKeyPlatformUsage, 0, len(rows))
+	for i := range rows {
+		row := rows[i]
+		usage5h, usage1d, usage7d := row.EffectiveUsage()
+		item := APIKeyPlatformUsage{
+			Platform:  row.Platform,
+			QuotaUsed: row.QuotaUsed,
+			Usage5h:   usage5h,
+			Usage1d:   usage1d,
+			Usage7d:   usage7d,
+		}
+		if row.Window5hStart != nil && !service.IsWindowExpired(row.Window5hStart, service.RateLimitWindow5h) {
+			t := row.Window5hStart.Add(service.RateLimitWindow5h)
+			item.Reset5hAt = &t
+		}
+		if row.Window1dStart != nil && !service.IsWindowExpired(row.Window1dStart, service.RateLimitWindow1d) {
+			t := row.Window1dStart.Add(service.RateLimitWindow1d)
+			item.Reset1dAt = &t
+		}
+		if row.Window7dStart != nil && !service.IsWindowExpired(row.Window7dStart, service.RateLimitWindow7d) {
+			t := row.Window7dStart.Add(service.RateLimitWindow7d)
+			item.Reset7dAt = &t
+		}
+		out = append(out, item)
 	}
 	return out
 }

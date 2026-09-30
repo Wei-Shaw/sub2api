@@ -20,6 +20,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/announcement"
 	"github.com/Wei-Shaw/sub2api/ent/announcementread"
 	"github.com/Wei-Shaw/sub2api/ent/apikey"
+	"github.com/Wei-Shaw/sub2api/ent/apikeyplatformusage"
 	"github.com/Wei-Shaw/sub2api/ent/authidentity"
 	"github.com/Wei-Shaw/sub2api/ent/authidentitychannel"
 	"github.com/Wei-Shaw/sub2api/ent/batchimageevent"
@@ -65,6 +66,8 @@ type Client struct {
 	Schema *migrate.Schema
 	// APIKey is the client for interacting with the APIKey builders.
 	APIKey *APIKeyClient
+	// APIKeyPlatformUsage is the client for interacting with the APIKeyPlatformUsage builders.
+	APIKeyPlatformUsage *APIKeyPlatformUsageClient
 	// Account is the client for interacting with the Account builders.
 	Account *AccountClient
 	// AccountGroup is the client for interacting with the AccountGroup builders.
@@ -153,6 +156,7 @@ func NewClient(opts ...Option) *Client {
 func (c *Client) init() {
 	c.Schema = migrate.NewSchema(c.driver)
 	c.APIKey = NewAPIKeyClient(c.config)
+	c.APIKeyPlatformUsage = NewAPIKeyPlatformUsageClient(c.config)
 	c.Account = NewAccountClient(c.config)
 	c.AccountGroup = NewAccountGroupClient(c.config)
 	c.Announcement = NewAnnouncementClient(c.config)
@@ -284,6 +288,7 @@ func (c *Client) Tx(ctx context.Context) (*Tx, error) {
 		ctx:                           ctx,
 		config:                        cfg,
 		APIKey:                        NewAPIKeyClient(cfg),
+		APIKeyPlatformUsage:           NewAPIKeyPlatformUsageClient(cfg),
 		Account:                       NewAccountClient(cfg),
 		AccountGroup:                  NewAccountGroupClient(cfg),
 		Announcement:                  NewAnnouncementClient(cfg),
@@ -342,6 +347,7 @@ func (c *Client) BeginTx(ctx context.Context, opts *sql.TxOptions) (*Tx, error) 
 		ctx:                           ctx,
 		config:                        cfg,
 		APIKey:                        NewAPIKeyClient(cfg),
+		APIKeyPlatformUsage:           NewAPIKeyPlatformUsageClient(cfg),
 		Account:                       NewAccountClient(cfg),
 		AccountGroup:                  NewAccountGroupClient(cfg),
 		Announcement:                  NewAnnouncementClient(cfg),
@@ -409,16 +415,16 @@ func (c *Client) Close() error {
 // In order to add hooks to a specific client, call: `client.Node.Use(...)`.
 func (c *Client) Use(hooks ...Hook) {
 	for _, n := range []interface{ Use(...Hook) }{
-		c.APIKey, c.Account, c.AccountGroup, c.Announcement, c.AnnouncementRead,
-		c.AuthIdentity, c.AuthIdentityChannel, c.BatchImageEvent, c.BatchImageItem,
-		c.BatchImageJob, c.ChannelMonitor, c.ChannelMonitorDailyRollup,
-		c.ChannelMonitorHistory, c.ChannelMonitorRequestTemplate,
-		c.CompositeModelRoute, c.ErrorPassthroughRule, c.Group, c.IdempotencyRecord,
-		c.IdentityAdoptionDecision, c.PaymentAuditLog, c.PaymentOrder,
-		c.PaymentProviderInstance, c.PendingAuthSession, c.PromoCode, c.PromoCodeUsage,
-		c.Proxy, c.RedeemCode, c.SecuritySecret, c.Setting, c.SubscriptionPlan,
-		c.TLSFingerprintProfile, c.UsageCleanupTask, c.UsageLog, c.User,
-		c.UserAllowedGroup, c.UserAttributeDefinition, c.UserAttributeValue,
+		c.APIKey, c.APIKeyPlatformUsage, c.Account, c.AccountGroup, c.Announcement,
+		c.AnnouncementRead, c.AuthIdentity, c.AuthIdentityChannel, c.BatchImageEvent,
+		c.BatchImageItem, c.BatchImageJob, c.ChannelMonitor,
+		c.ChannelMonitorDailyRollup, c.ChannelMonitorHistory,
+		c.ChannelMonitorRequestTemplate, c.CompositeModelRoute, c.ErrorPassthroughRule,
+		c.Group, c.IdempotencyRecord, c.IdentityAdoptionDecision, c.PaymentAuditLog,
+		c.PaymentOrder, c.PaymentProviderInstance, c.PendingAuthSession, c.PromoCode,
+		c.PromoCodeUsage, c.Proxy, c.RedeemCode, c.SecuritySecret, c.Setting,
+		c.SubscriptionPlan, c.TLSFingerprintProfile, c.UsageCleanupTask, c.UsageLog,
+		c.User, c.UserAllowedGroup, c.UserAttributeDefinition, c.UserAttributeValue,
 		c.UserPlatformQuota, c.UserSubscription,
 	} {
 		n.Use(hooks...)
@@ -429,16 +435,16 @@ func (c *Client) Use(hooks ...Hook) {
 // In order to add interceptors to a specific client, call: `client.Node.Intercept(...)`.
 func (c *Client) Intercept(interceptors ...Interceptor) {
 	for _, n := range []interface{ Intercept(...Interceptor) }{
-		c.APIKey, c.Account, c.AccountGroup, c.Announcement, c.AnnouncementRead,
-		c.AuthIdentity, c.AuthIdentityChannel, c.BatchImageEvent, c.BatchImageItem,
-		c.BatchImageJob, c.ChannelMonitor, c.ChannelMonitorDailyRollup,
-		c.ChannelMonitorHistory, c.ChannelMonitorRequestTemplate,
-		c.CompositeModelRoute, c.ErrorPassthroughRule, c.Group, c.IdempotencyRecord,
-		c.IdentityAdoptionDecision, c.PaymentAuditLog, c.PaymentOrder,
-		c.PaymentProviderInstance, c.PendingAuthSession, c.PromoCode, c.PromoCodeUsage,
-		c.Proxy, c.RedeemCode, c.SecuritySecret, c.Setting, c.SubscriptionPlan,
-		c.TLSFingerprintProfile, c.UsageCleanupTask, c.UsageLog, c.User,
-		c.UserAllowedGroup, c.UserAttributeDefinition, c.UserAttributeValue,
+		c.APIKey, c.APIKeyPlatformUsage, c.Account, c.AccountGroup, c.Announcement,
+		c.AnnouncementRead, c.AuthIdentity, c.AuthIdentityChannel, c.BatchImageEvent,
+		c.BatchImageItem, c.BatchImageJob, c.ChannelMonitor,
+		c.ChannelMonitorDailyRollup, c.ChannelMonitorHistory,
+		c.ChannelMonitorRequestTemplate, c.CompositeModelRoute, c.ErrorPassthroughRule,
+		c.Group, c.IdempotencyRecord, c.IdentityAdoptionDecision, c.PaymentAuditLog,
+		c.PaymentOrder, c.PaymentProviderInstance, c.PendingAuthSession, c.PromoCode,
+		c.PromoCodeUsage, c.Proxy, c.RedeemCode, c.SecuritySecret, c.Setting,
+		c.SubscriptionPlan, c.TLSFingerprintProfile, c.UsageCleanupTask, c.UsageLog,
+		c.User, c.UserAllowedGroup, c.UserAttributeDefinition, c.UserAttributeValue,
 		c.UserPlatformQuota, c.UserSubscription,
 	} {
 		n.Intercept(interceptors...)
@@ -450,6 +456,8 @@ func (c *Client) Mutate(ctx context.Context, m Mutation) (Value, error) {
 	switch m := m.(type) {
 	case *APIKeyMutation:
 		return c.APIKey.mutate(ctx, m)
+	case *APIKeyPlatformUsageMutation:
+		return c.APIKeyPlatformUsage.mutate(ctx, m)
 	case *AccountMutation:
 		return c.Account.mutate(ctx, m)
 	case *AccountGroupMutation:
@@ -687,6 +695,22 @@ func (c *APIKeyClient) QueryUsageLogs(_m *APIKey) *UsageLogQuery {
 	return query
 }
 
+// QueryPlatformUsages queries the platform_usages edge of a APIKey.
+func (c *APIKeyClient) QueryPlatformUsages(_m *APIKey) *APIKeyPlatformUsageQuery {
+	query := (&APIKeyPlatformUsageClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := _m.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(apikey.Table, apikey.FieldID, id),
+			sqlgraph.To(apikeyplatformusage.Table, apikeyplatformusage.FieldID),
+			sqlgraph.Edge(sqlgraph.O2M, false, apikey.PlatformUsagesTable, apikey.PlatformUsagesColumn),
+		)
+		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
 // Hooks returns the client hooks.
 func (c *APIKeyClient) Hooks() []Hook {
 	hooks := c.hooks.APIKey
@@ -711,6 +735,155 @@ func (c *APIKeyClient) mutate(ctx context.Context, m *APIKeyMutation) (Value, er
 		return (&APIKeyDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
 	default:
 		return nil, fmt.Errorf("ent: unknown APIKey mutation op: %q", m.Op())
+	}
+}
+
+// APIKeyPlatformUsageClient is a client for the APIKeyPlatformUsage schema.
+type APIKeyPlatformUsageClient struct {
+	config
+}
+
+// NewAPIKeyPlatformUsageClient returns a client for the APIKeyPlatformUsage from the given config.
+func NewAPIKeyPlatformUsageClient(c config) *APIKeyPlatformUsageClient {
+	return &APIKeyPlatformUsageClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `apikeyplatformusage.Hooks(f(g(h())))`.
+func (c *APIKeyPlatformUsageClient) Use(hooks ...Hook) {
+	c.hooks.APIKeyPlatformUsage = append(c.hooks.APIKeyPlatformUsage, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `apikeyplatformusage.Intercept(f(g(h())))`.
+func (c *APIKeyPlatformUsageClient) Intercept(interceptors ...Interceptor) {
+	c.inters.APIKeyPlatformUsage = append(c.inters.APIKeyPlatformUsage, interceptors...)
+}
+
+// Create returns a builder for creating a APIKeyPlatformUsage entity.
+func (c *APIKeyPlatformUsageClient) Create() *APIKeyPlatformUsageCreate {
+	mutation := newAPIKeyPlatformUsageMutation(c.config, OpCreate)
+	return &APIKeyPlatformUsageCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of APIKeyPlatformUsage entities.
+func (c *APIKeyPlatformUsageClient) CreateBulk(builders ...*APIKeyPlatformUsageCreate) *APIKeyPlatformUsageCreateBulk {
+	return &APIKeyPlatformUsageCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *APIKeyPlatformUsageClient) MapCreateBulk(slice any, setFunc func(*APIKeyPlatformUsageCreate, int)) *APIKeyPlatformUsageCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &APIKeyPlatformUsageCreateBulk{err: fmt.Errorf("calling to APIKeyPlatformUsageClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*APIKeyPlatformUsageCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &APIKeyPlatformUsageCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for APIKeyPlatformUsage.
+func (c *APIKeyPlatformUsageClient) Update() *APIKeyPlatformUsageUpdate {
+	mutation := newAPIKeyPlatformUsageMutation(c.config, OpUpdate)
+	return &APIKeyPlatformUsageUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *APIKeyPlatformUsageClient) UpdateOne(_m *APIKeyPlatformUsage) *APIKeyPlatformUsageUpdateOne {
+	mutation := newAPIKeyPlatformUsageMutation(c.config, OpUpdateOne, withAPIKeyPlatformUsage(_m))
+	return &APIKeyPlatformUsageUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *APIKeyPlatformUsageClient) UpdateOneID(id int64) *APIKeyPlatformUsageUpdateOne {
+	mutation := newAPIKeyPlatformUsageMutation(c.config, OpUpdateOne, withAPIKeyPlatformUsageID(id))
+	return &APIKeyPlatformUsageUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for APIKeyPlatformUsage.
+func (c *APIKeyPlatformUsageClient) Delete() *APIKeyPlatformUsageDelete {
+	mutation := newAPIKeyPlatformUsageMutation(c.config, OpDelete)
+	return &APIKeyPlatformUsageDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *APIKeyPlatformUsageClient) DeleteOne(_m *APIKeyPlatformUsage) *APIKeyPlatformUsageDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *APIKeyPlatformUsageClient) DeleteOneID(id int64) *APIKeyPlatformUsageDeleteOne {
+	builder := c.Delete().Where(apikeyplatformusage.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &APIKeyPlatformUsageDeleteOne{builder}
+}
+
+// Query returns a query builder for APIKeyPlatformUsage.
+func (c *APIKeyPlatformUsageClient) Query() *APIKeyPlatformUsageQuery {
+	return &APIKeyPlatformUsageQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeAPIKeyPlatformUsage},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a APIKeyPlatformUsage entity by its id.
+func (c *APIKeyPlatformUsageClient) Get(ctx context.Context, id int64) (*APIKeyPlatformUsage, error) {
+	return c.Query().Where(apikeyplatformusage.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *APIKeyPlatformUsageClient) GetX(ctx context.Context, id int64) *APIKeyPlatformUsage {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// QueryAPIKey queries the api_key edge of a APIKeyPlatformUsage.
+func (c *APIKeyPlatformUsageClient) QueryAPIKey(_m *APIKeyPlatformUsage) *APIKeyQuery {
+	query := (&APIKeyClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := _m.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(apikeyplatformusage.Table, apikeyplatformusage.FieldID, id),
+			sqlgraph.To(apikey.Table, apikey.FieldID),
+			sqlgraph.Edge(sqlgraph.M2O, true, apikeyplatformusage.APIKeyTable, apikeyplatformusage.APIKeyColumn),
+		)
+		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
+// Hooks returns the client hooks.
+func (c *APIKeyPlatformUsageClient) Hooks() []Hook {
+	return c.hooks.APIKeyPlatformUsage
+}
+
+// Interceptors returns the client interceptors.
+func (c *APIKeyPlatformUsageClient) Interceptors() []Interceptor {
+	return c.inters.APIKeyPlatformUsage
+}
+
+func (c *APIKeyPlatformUsageClient) mutate(ctx context.Context, m *APIKeyPlatformUsageMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&APIKeyPlatformUsageCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&APIKeyPlatformUsageUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&APIKeyPlatformUsageUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&APIKeyPlatformUsageDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown APIKeyPlatformUsage mutation op: %q", m.Op())
 	}
 }
 
@@ -6841,28 +7014,28 @@ func (c *UserSubscriptionClient) mutate(ctx context.Context, m *UserSubscription
 // hooks and interceptors per client, for fast access.
 type (
 	hooks struct {
-		APIKey, Account, AccountGroup, Announcement, AnnouncementRead, AuthIdentity,
-		AuthIdentityChannel, BatchImageEvent, BatchImageItem, BatchImageJob,
-		ChannelMonitor, ChannelMonitorDailyRollup, ChannelMonitorHistory,
-		ChannelMonitorRequestTemplate, CompositeModelRoute, ErrorPassthroughRule,
-		Group, IdempotencyRecord, IdentityAdoptionDecision, PaymentAuditLog,
-		PaymentOrder, PaymentProviderInstance, PendingAuthSession, PromoCode,
-		PromoCodeUsage, Proxy, RedeemCode, SecuritySecret, Setting, SubscriptionPlan,
-		TLSFingerprintProfile, UsageCleanupTask, UsageLog, User, UserAllowedGroup,
-		UserAttributeDefinition, UserAttributeValue, UserPlatformQuota,
-		UserSubscription []ent.Hook
+		APIKey, APIKeyPlatformUsage, Account, AccountGroup, Announcement,
+		AnnouncementRead, AuthIdentity, AuthIdentityChannel, BatchImageEvent,
+		BatchImageItem, BatchImageJob, ChannelMonitor, ChannelMonitorDailyRollup,
+		ChannelMonitorHistory, ChannelMonitorRequestTemplate, CompositeModelRoute,
+		ErrorPassthroughRule, Group, IdempotencyRecord, IdentityAdoptionDecision,
+		PaymentAuditLog, PaymentOrder, PaymentProviderInstance, PendingAuthSession,
+		PromoCode, PromoCodeUsage, Proxy, RedeemCode, SecuritySecret, Setting,
+		SubscriptionPlan, TLSFingerprintProfile, UsageCleanupTask, UsageLog, User,
+		UserAllowedGroup, UserAttributeDefinition, UserAttributeValue,
+		UserPlatformQuota, UserSubscription []ent.Hook
 	}
 	inters struct {
-		APIKey, Account, AccountGroup, Announcement, AnnouncementRead, AuthIdentity,
-		AuthIdentityChannel, BatchImageEvent, BatchImageItem, BatchImageJob,
-		ChannelMonitor, ChannelMonitorDailyRollup, ChannelMonitorHistory,
-		ChannelMonitorRequestTemplate, CompositeModelRoute, ErrorPassthroughRule,
-		Group, IdempotencyRecord, IdentityAdoptionDecision, PaymentAuditLog,
-		PaymentOrder, PaymentProviderInstance, PendingAuthSession, PromoCode,
-		PromoCodeUsage, Proxy, RedeemCode, SecuritySecret, Setting, SubscriptionPlan,
-		TLSFingerprintProfile, UsageCleanupTask, UsageLog, User, UserAllowedGroup,
-		UserAttributeDefinition, UserAttributeValue, UserPlatformQuota,
-		UserSubscription []ent.Interceptor
+		APIKey, APIKeyPlatformUsage, Account, AccountGroup, Announcement,
+		AnnouncementRead, AuthIdentity, AuthIdentityChannel, BatchImageEvent,
+		BatchImageItem, BatchImageJob, ChannelMonitor, ChannelMonitorDailyRollup,
+		ChannelMonitorHistory, ChannelMonitorRequestTemplate, CompositeModelRoute,
+		ErrorPassthroughRule, Group, IdempotencyRecord, IdentityAdoptionDecision,
+		PaymentAuditLog, PaymentOrder, PaymentProviderInstance, PendingAuthSession,
+		PromoCode, PromoCodeUsage, Proxy, RedeemCode, SecuritySecret, Setting,
+		SubscriptionPlan, TLSFingerprintProfile, UsageCleanupTask, UsageLog, User,
+		UserAllowedGroup, UserAttributeDefinition, UserAttributeValue,
+		UserPlatformQuota, UserSubscription []ent.Interceptor
 	}
 )
 

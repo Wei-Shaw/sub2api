@@ -17,6 +17,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/announcement"
 	"github.com/Wei-Shaw/sub2api/ent/announcementread"
 	"github.com/Wei-Shaw/sub2api/ent/apikey"
+	"github.com/Wei-Shaw/sub2api/ent/apikeyplatformusage"
 	"github.com/Wei-Shaw/sub2api/ent/authidentity"
 	"github.com/Wei-Shaw/sub2api/ent/authidentitychannel"
 	"github.com/Wei-Shaw/sub2api/ent/batchimageevent"
@@ -65,6 +66,7 @@ const (
 
 	// Node types.
 	TypeAPIKey                        = "APIKey"
+	TypeAPIKeyPlatformUsage           = "APIKeyPlatformUsage"
 	TypeAccount                       = "Account"
 	TypeAccountGroup                  = "AccountGroup"
 	TypeAnnouncement                  = "Announcement"
@@ -108,51 +110,55 @@ const (
 // APIKeyMutation represents an operation that mutates the APIKey nodes in the graph.
 type APIKeyMutation struct {
 	config
-	op                 Op
-	typ                string
-	id                 *int64
-	created_at         *time.Time
-	updated_at         *time.Time
-	deleted_at         *time.Time
-	key                *string
-	name               *string
-	status             *string
-	last_used_at       *time.Time
-	ip_whitelist       *[]string
-	appendip_whitelist []string
-	ip_blacklist       *[]string
-	appendip_blacklist []string
-	quota              *float64
-	addquota           *float64
-	quota_used         *float64
-	addquota_used      *float64
-	expires_at         *time.Time
-	rate_limit_5h      *float64
-	addrate_limit_5h   *float64
-	rate_limit_1d      *float64
-	addrate_limit_1d   *float64
-	rate_limit_7d      *float64
-	addrate_limit_7d   *float64
-	usage_5h           *float64
-	addusage_5h        *float64
-	usage_1d           *float64
-	addusage_1d        *float64
-	usage_7d           *float64
-	addusage_7d        *float64
-	window_5h_start    *time.Time
-	window_1d_start    *time.Time
-	window_7d_start    *time.Time
-	clearedFields      map[string]struct{}
-	user               *int64
-	cleareduser        bool
-	group              *int64
-	clearedgroup       bool
-	usage_logs         map[int64]struct{}
-	removedusage_logs  map[int64]struct{}
-	clearedusage_logs  bool
-	done               bool
-	oldValue           func(context.Context) (*APIKey, error)
-	predicates         []predicate.APIKey
+	op                     Op
+	typ                    string
+	id                     *int64
+	created_at             *time.Time
+	updated_at             *time.Time
+	deleted_at             *time.Time
+	key                    *string
+	name                   *string
+	status                 *string
+	last_used_at           *time.Time
+	ip_whitelist           *[]string
+	appendip_whitelist     []string
+	ip_blacklist           *[]string
+	appendip_blacklist     []string
+	platform_limits        *domain.APIKeyPlatformLimits
+	quota                  *float64
+	addquota               *float64
+	quota_used             *float64
+	addquota_used          *float64
+	expires_at             *time.Time
+	rate_limit_5h          *float64
+	addrate_limit_5h       *float64
+	rate_limit_1d          *float64
+	addrate_limit_1d       *float64
+	rate_limit_7d          *float64
+	addrate_limit_7d       *float64
+	usage_5h               *float64
+	addusage_5h            *float64
+	usage_1d               *float64
+	addusage_1d            *float64
+	usage_7d               *float64
+	addusage_7d            *float64
+	window_5h_start        *time.Time
+	window_1d_start        *time.Time
+	window_7d_start        *time.Time
+	clearedFields          map[string]struct{}
+	user                   *int64
+	cleareduser            bool
+	group                  *int64
+	clearedgroup           bool
+	usage_logs             map[int64]struct{}
+	removedusage_logs      map[int64]struct{}
+	clearedusage_logs      bool
+	platform_usages        map[int64]struct{}
+	removedplatform_usages map[int64]struct{}
+	clearedplatform_usages bool
+	done                   bool
+	oldValue               func(context.Context) (*APIKey, error)
+	predicates             []predicate.APIKey
 }
 
 var _ ent.Mutation = (*APIKeyMutation)(nil)
@@ -744,6 +750,55 @@ func (m *APIKeyMutation) ResetIPBlacklist() {
 	m.ip_blacklist = nil
 	m.appendip_blacklist = nil
 	delete(m.clearedFields, apikey.FieldIPBlacklist)
+}
+
+// SetPlatformLimits sets the "platform_limits" field.
+func (m *APIKeyMutation) SetPlatformLimits(dkpl domain.APIKeyPlatformLimits) {
+	m.platform_limits = &dkpl
+}
+
+// PlatformLimits returns the value of the "platform_limits" field in the mutation.
+func (m *APIKeyMutation) PlatformLimits() (r domain.APIKeyPlatformLimits, exists bool) {
+	v := m.platform_limits
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldPlatformLimits returns the old "platform_limits" field's value of the APIKey entity.
+// If the APIKey object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *APIKeyMutation) OldPlatformLimits(ctx context.Context) (v domain.APIKeyPlatformLimits, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldPlatformLimits is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldPlatformLimits requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldPlatformLimits: %w", err)
+	}
+	return oldValue.PlatformLimits, nil
+}
+
+// ClearPlatformLimits clears the value of the "platform_limits" field.
+func (m *APIKeyMutation) ClearPlatformLimits() {
+	m.platform_limits = nil
+	m.clearedFields[apikey.FieldPlatformLimits] = struct{}{}
+}
+
+// PlatformLimitsCleared returns if the "platform_limits" field was cleared in this mutation.
+func (m *APIKeyMutation) PlatformLimitsCleared() bool {
+	_, ok := m.clearedFields[apikey.FieldPlatformLimits]
+	return ok
+}
+
+// ResetPlatformLimits resets all changes to the "platform_limits" field.
+func (m *APIKeyMutation) ResetPlatformLimits() {
+	m.platform_limits = nil
+	delete(m.clearedFields, apikey.FieldPlatformLimits)
 }
 
 // SetQuota sets the "quota" field.
@@ -1498,6 +1553,60 @@ func (m *APIKeyMutation) ResetUsageLogs() {
 	m.removedusage_logs = nil
 }
 
+// AddPlatformUsageIDs adds the "platform_usages" edge to the APIKeyPlatformUsage entity by ids.
+func (m *APIKeyMutation) AddPlatformUsageIDs(ids ...int64) {
+	if m.platform_usages == nil {
+		m.platform_usages = make(map[int64]struct{})
+	}
+	for i := range ids {
+		m.platform_usages[ids[i]] = struct{}{}
+	}
+}
+
+// ClearPlatformUsages clears the "platform_usages" edge to the APIKeyPlatformUsage entity.
+func (m *APIKeyMutation) ClearPlatformUsages() {
+	m.clearedplatform_usages = true
+}
+
+// PlatformUsagesCleared reports if the "platform_usages" edge to the APIKeyPlatformUsage entity was cleared.
+func (m *APIKeyMutation) PlatformUsagesCleared() bool {
+	return m.clearedplatform_usages
+}
+
+// RemovePlatformUsageIDs removes the "platform_usages" edge to the APIKeyPlatformUsage entity by IDs.
+func (m *APIKeyMutation) RemovePlatformUsageIDs(ids ...int64) {
+	if m.removedplatform_usages == nil {
+		m.removedplatform_usages = make(map[int64]struct{})
+	}
+	for i := range ids {
+		delete(m.platform_usages, ids[i])
+		m.removedplatform_usages[ids[i]] = struct{}{}
+	}
+}
+
+// RemovedPlatformUsages returns the removed IDs of the "platform_usages" edge to the APIKeyPlatformUsage entity.
+func (m *APIKeyMutation) RemovedPlatformUsagesIDs() (ids []int64) {
+	for id := range m.removedplatform_usages {
+		ids = append(ids, id)
+	}
+	return
+}
+
+// PlatformUsagesIDs returns the "platform_usages" edge IDs in the mutation.
+func (m *APIKeyMutation) PlatformUsagesIDs() (ids []int64) {
+	for id := range m.platform_usages {
+		ids = append(ids, id)
+	}
+	return
+}
+
+// ResetPlatformUsages resets all changes to the "platform_usages" edge.
+func (m *APIKeyMutation) ResetPlatformUsages() {
+	m.platform_usages = nil
+	m.clearedplatform_usages = false
+	m.removedplatform_usages = nil
+}
+
 // Where appends a list predicates to the APIKeyMutation builder.
 func (m *APIKeyMutation) Where(ps ...predicate.APIKey) {
 	m.predicates = append(m.predicates, ps...)
@@ -1532,7 +1641,7 @@ func (m *APIKeyMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *APIKeyMutation) Fields() []string {
-	fields := make([]string, 0, 23)
+	fields := make([]string, 0, 24)
 	if m.created_at != nil {
 		fields = append(fields, apikey.FieldCreatedAt)
 	}
@@ -1565,6 +1674,9 @@ func (m *APIKeyMutation) Fields() []string {
 	}
 	if m.ip_blacklist != nil {
 		fields = append(fields, apikey.FieldIPBlacklist)
+	}
+	if m.platform_limits != nil {
+		fields = append(fields, apikey.FieldPlatformLimits)
 	}
 	if m.quota != nil {
 		fields = append(fields, apikey.FieldQuota)
@@ -1632,6 +1744,8 @@ func (m *APIKeyMutation) Field(name string) (ent.Value, bool) {
 		return m.IPWhitelist()
 	case apikey.FieldIPBlacklist:
 		return m.IPBlacklist()
+	case apikey.FieldPlatformLimits:
+		return m.PlatformLimits()
 	case apikey.FieldQuota:
 		return m.Quota()
 	case apikey.FieldQuotaUsed:
@@ -1687,6 +1801,8 @@ func (m *APIKeyMutation) OldField(ctx context.Context, name string) (ent.Value, 
 		return m.OldIPWhitelist(ctx)
 	case apikey.FieldIPBlacklist:
 		return m.OldIPBlacklist(ctx)
+	case apikey.FieldPlatformLimits:
+		return m.OldPlatformLimits(ctx)
 	case apikey.FieldQuota:
 		return m.OldQuota(ctx)
 	case apikey.FieldQuotaUsed:
@@ -1796,6 +1912,13 @@ func (m *APIKeyMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetIPBlacklist(v)
+		return nil
+	case apikey.FieldPlatformLimits:
+		v, ok := value.(domain.APIKeyPlatformLimits)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetPlatformLimits(v)
 		return nil
 	case apikey.FieldQuota:
 		v, ok := value.(float64)
@@ -2025,6 +2148,9 @@ func (m *APIKeyMutation) ClearedFields() []string {
 	if m.FieldCleared(apikey.FieldIPBlacklist) {
 		fields = append(fields, apikey.FieldIPBlacklist)
 	}
+	if m.FieldCleared(apikey.FieldPlatformLimits) {
+		fields = append(fields, apikey.FieldPlatformLimits)
+	}
 	if m.FieldCleared(apikey.FieldExpiresAt) {
 		fields = append(fields, apikey.FieldExpiresAt)
 	}
@@ -2065,6 +2191,9 @@ func (m *APIKeyMutation) ClearField(name string) error {
 		return nil
 	case apikey.FieldIPBlacklist:
 		m.ClearIPBlacklist()
+		return nil
+	case apikey.FieldPlatformLimits:
+		m.ClearPlatformLimits()
 		return nil
 	case apikey.FieldExpiresAt:
 		m.ClearExpiresAt()
@@ -2119,6 +2248,9 @@ func (m *APIKeyMutation) ResetField(name string) error {
 	case apikey.FieldIPBlacklist:
 		m.ResetIPBlacklist()
 		return nil
+	case apikey.FieldPlatformLimits:
+		m.ResetPlatformLimits()
+		return nil
 	case apikey.FieldQuota:
 		m.ResetQuota()
 		return nil
@@ -2161,7 +2293,7 @@ func (m *APIKeyMutation) ResetField(name string) error {
 
 // AddedEdges returns all edge names that were set/added in this mutation.
 func (m *APIKeyMutation) AddedEdges() []string {
-	edges := make([]string, 0, 3)
+	edges := make([]string, 0, 4)
 	if m.user != nil {
 		edges = append(edges, apikey.EdgeUser)
 	}
@@ -2170,6 +2302,9 @@ func (m *APIKeyMutation) AddedEdges() []string {
 	}
 	if m.usage_logs != nil {
 		edges = append(edges, apikey.EdgeUsageLogs)
+	}
+	if m.platform_usages != nil {
+		edges = append(edges, apikey.EdgePlatformUsages)
 	}
 	return edges
 }
@@ -2192,15 +2327,24 @@ func (m *APIKeyMutation) AddedIDs(name string) []ent.Value {
 			ids = append(ids, id)
 		}
 		return ids
+	case apikey.EdgePlatformUsages:
+		ids := make([]ent.Value, 0, len(m.platform_usages))
+		for id := range m.platform_usages {
+			ids = append(ids, id)
+		}
+		return ids
 	}
 	return nil
 }
 
 // RemovedEdges returns all edge names that were removed in this mutation.
 func (m *APIKeyMutation) RemovedEdges() []string {
-	edges := make([]string, 0, 3)
+	edges := make([]string, 0, 4)
 	if m.removedusage_logs != nil {
 		edges = append(edges, apikey.EdgeUsageLogs)
+	}
+	if m.removedplatform_usages != nil {
+		edges = append(edges, apikey.EdgePlatformUsages)
 	}
 	return edges
 }
@@ -2215,13 +2359,19 @@ func (m *APIKeyMutation) RemovedIDs(name string) []ent.Value {
 			ids = append(ids, id)
 		}
 		return ids
+	case apikey.EdgePlatformUsages:
+		ids := make([]ent.Value, 0, len(m.removedplatform_usages))
+		for id := range m.removedplatform_usages {
+			ids = append(ids, id)
+		}
+		return ids
 	}
 	return nil
 }
 
 // ClearedEdges returns all edge names that were cleared in this mutation.
 func (m *APIKeyMutation) ClearedEdges() []string {
-	edges := make([]string, 0, 3)
+	edges := make([]string, 0, 4)
 	if m.cleareduser {
 		edges = append(edges, apikey.EdgeUser)
 	}
@@ -2230,6 +2380,9 @@ func (m *APIKeyMutation) ClearedEdges() []string {
 	}
 	if m.clearedusage_logs {
 		edges = append(edges, apikey.EdgeUsageLogs)
+	}
+	if m.clearedplatform_usages {
+		edges = append(edges, apikey.EdgePlatformUsages)
 	}
 	return edges
 }
@@ -2244,6 +2397,8 @@ func (m *APIKeyMutation) EdgeCleared(name string) bool {
 		return m.clearedgroup
 	case apikey.EdgeUsageLogs:
 		return m.clearedusage_logs
+	case apikey.EdgePlatformUsages:
+		return m.clearedplatform_usages
 	}
 	return false
 }
@@ -2275,8 +2430,1126 @@ func (m *APIKeyMutation) ResetEdge(name string) error {
 	case apikey.EdgeUsageLogs:
 		m.ResetUsageLogs()
 		return nil
+	case apikey.EdgePlatformUsages:
+		m.ResetPlatformUsages()
+		return nil
 	}
 	return fmt.Errorf("unknown APIKey edge %s", name)
+}
+
+// APIKeyPlatformUsageMutation represents an operation that mutates the APIKeyPlatformUsage nodes in the graph.
+type APIKeyPlatformUsageMutation struct {
+	config
+	op              Op
+	typ             string
+	id              *int64
+	created_at      *time.Time
+	updated_at      *time.Time
+	platform        *string
+	quota_used      *float64
+	addquota_used   *float64
+	usage_5h        *float64
+	addusage_5h     *float64
+	usage_1d        *float64
+	addusage_1d     *float64
+	usage_7d        *float64
+	addusage_7d     *float64
+	window_5h_start *time.Time
+	window_1d_start *time.Time
+	window_7d_start *time.Time
+	clearedFields   map[string]struct{}
+	api_key         *int64
+	clearedapi_key  bool
+	done            bool
+	oldValue        func(context.Context) (*APIKeyPlatformUsage, error)
+	predicates      []predicate.APIKeyPlatformUsage
+}
+
+var _ ent.Mutation = (*APIKeyPlatformUsageMutation)(nil)
+
+// apikeyplatformusageOption allows management of the mutation configuration using functional options.
+type apikeyplatformusageOption func(*APIKeyPlatformUsageMutation)
+
+// newAPIKeyPlatformUsageMutation creates new mutation for the APIKeyPlatformUsage entity.
+func newAPIKeyPlatformUsageMutation(c config, op Op, opts ...apikeyplatformusageOption) *APIKeyPlatformUsageMutation {
+	m := &APIKeyPlatformUsageMutation{
+		config:        c,
+		op:            op,
+		typ:           TypeAPIKeyPlatformUsage,
+		clearedFields: make(map[string]struct{}),
+	}
+	for _, opt := range opts {
+		opt(m)
+	}
+	return m
+}
+
+// withAPIKeyPlatformUsageID sets the ID field of the mutation.
+func withAPIKeyPlatformUsageID(id int64) apikeyplatformusageOption {
+	return func(m *APIKeyPlatformUsageMutation) {
+		var (
+			err   error
+			once  sync.Once
+			value *APIKeyPlatformUsage
+		)
+		m.oldValue = func(ctx context.Context) (*APIKeyPlatformUsage, error) {
+			once.Do(func() {
+				if m.done {
+					err = errors.New("querying old values post mutation is not allowed")
+				} else {
+					value, err = m.Client().APIKeyPlatformUsage.Get(ctx, id)
+				}
+			})
+			return value, err
+		}
+		m.id = &id
+	}
+}
+
+// withAPIKeyPlatformUsage sets the old APIKeyPlatformUsage of the mutation.
+func withAPIKeyPlatformUsage(node *APIKeyPlatformUsage) apikeyplatformusageOption {
+	return func(m *APIKeyPlatformUsageMutation) {
+		m.oldValue = func(context.Context) (*APIKeyPlatformUsage, error) {
+			return node, nil
+		}
+		m.id = &node.ID
+	}
+}
+
+// Client returns a new `ent.Client` from the mutation. If the mutation was
+// executed in a transaction (ent.Tx), a transactional client is returned.
+func (m APIKeyPlatformUsageMutation) Client() *Client {
+	client := &Client{config: m.config}
+	client.init()
+	return client
+}
+
+// Tx returns an `ent.Tx` for mutations that were executed in transactions;
+// it returns an error otherwise.
+func (m APIKeyPlatformUsageMutation) Tx() (*Tx, error) {
+	if _, ok := m.driver.(*txDriver); !ok {
+		return nil, errors.New("ent: mutation is not running in a transaction")
+	}
+	tx := &Tx{config: m.config}
+	tx.init()
+	return tx, nil
+}
+
+// ID returns the ID value in the mutation. Note that the ID is only available
+// if it was provided to the builder or after it was returned from the database.
+func (m *APIKeyPlatformUsageMutation) ID() (id int64, exists bool) {
+	if m.id == nil {
+		return
+	}
+	return *m.id, true
+}
+
+// IDs queries the database and returns the entity ids that match the mutation's predicate.
+// That means, if the mutation is applied within a transaction with an isolation level such
+// as sql.LevelSerializable, the returned ids match the ids of the rows that will be updated
+// or updated by the mutation.
+func (m *APIKeyPlatformUsageMutation) IDs(ctx context.Context) ([]int64, error) {
+	switch {
+	case m.op.Is(OpUpdateOne | OpDeleteOne):
+		id, exists := m.ID()
+		if exists {
+			return []int64{id}, nil
+		}
+		fallthrough
+	case m.op.Is(OpUpdate | OpDelete):
+		return m.Client().APIKeyPlatformUsage.Query().Where(m.predicates...).IDs(ctx)
+	default:
+		return nil, fmt.Errorf("IDs is not allowed on %s operations", m.op)
+	}
+}
+
+// SetCreatedAt sets the "created_at" field.
+func (m *APIKeyPlatformUsageMutation) SetCreatedAt(t time.Time) {
+	m.created_at = &t
+}
+
+// CreatedAt returns the value of the "created_at" field in the mutation.
+func (m *APIKeyPlatformUsageMutation) CreatedAt() (r time.Time, exists bool) {
+	v := m.created_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCreatedAt returns the old "created_at" field's value of the APIKeyPlatformUsage entity.
+// If the APIKeyPlatformUsage object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *APIKeyPlatformUsageMutation) OldCreatedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCreatedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCreatedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCreatedAt: %w", err)
+	}
+	return oldValue.CreatedAt, nil
+}
+
+// ResetCreatedAt resets all changes to the "created_at" field.
+func (m *APIKeyPlatformUsageMutation) ResetCreatedAt() {
+	m.created_at = nil
+}
+
+// SetUpdatedAt sets the "updated_at" field.
+func (m *APIKeyPlatformUsageMutation) SetUpdatedAt(t time.Time) {
+	m.updated_at = &t
+}
+
+// UpdatedAt returns the value of the "updated_at" field in the mutation.
+func (m *APIKeyPlatformUsageMutation) UpdatedAt() (r time.Time, exists bool) {
+	v := m.updated_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldUpdatedAt returns the old "updated_at" field's value of the APIKeyPlatformUsage entity.
+// If the APIKeyPlatformUsage object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *APIKeyPlatformUsageMutation) OldUpdatedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldUpdatedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldUpdatedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldUpdatedAt: %w", err)
+	}
+	return oldValue.UpdatedAt, nil
+}
+
+// ResetUpdatedAt resets all changes to the "updated_at" field.
+func (m *APIKeyPlatformUsageMutation) ResetUpdatedAt() {
+	m.updated_at = nil
+}
+
+// SetAPIKeyID sets the "api_key_id" field.
+func (m *APIKeyPlatformUsageMutation) SetAPIKeyID(i int64) {
+	m.api_key = &i
+}
+
+// APIKeyID returns the value of the "api_key_id" field in the mutation.
+func (m *APIKeyPlatformUsageMutation) APIKeyID() (r int64, exists bool) {
+	v := m.api_key
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldAPIKeyID returns the old "api_key_id" field's value of the APIKeyPlatformUsage entity.
+// If the APIKeyPlatformUsage object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *APIKeyPlatformUsageMutation) OldAPIKeyID(ctx context.Context) (v int64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldAPIKeyID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldAPIKeyID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldAPIKeyID: %w", err)
+	}
+	return oldValue.APIKeyID, nil
+}
+
+// ResetAPIKeyID resets all changes to the "api_key_id" field.
+func (m *APIKeyPlatformUsageMutation) ResetAPIKeyID() {
+	m.api_key = nil
+}
+
+// SetPlatform sets the "platform" field.
+func (m *APIKeyPlatformUsageMutation) SetPlatform(s string) {
+	m.platform = &s
+}
+
+// Platform returns the value of the "platform" field in the mutation.
+func (m *APIKeyPlatformUsageMutation) Platform() (r string, exists bool) {
+	v := m.platform
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldPlatform returns the old "platform" field's value of the APIKeyPlatformUsage entity.
+// If the APIKeyPlatformUsage object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *APIKeyPlatformUsageMutation) OldPlatform(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldPlatform is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldPlatform requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldPlatform: %w", err)
+	}
+	return oldValue.Platform, nil
+}
+
+// ResetPlatform resets all changes to the "platform" field.
+func (m *APIKeyPlatformUsageMutation) ResetPlatform() {
+	m.platform = nil
+}
+
+// SetQuotaUsed sets the "quota_used" field.
+func (m *APIKeyPlatformUsageMutation) SetQuotaUsed(f float64) {
+	m.quota_used = &f
+	m.addquota_used = nil
+}
+
+// QuotaUsed returns the value of the "quota_used" field in the mutation.
+func (m *APIKeyPlatformUsageMutation) QuotaUsed() (r float64, exists bool) {
+	v := m.quota_used
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldQuotaUsed returns the old "quota_used" field's value of the APIKeyPlatformUsage entity.
+// If the APIKeyPlatformUsage object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *APIKeyPlatformUsageMutation) OldQuotaUsed(ctx context.Context) (v float64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldQuotaUsed is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldQuotaUsed requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldQuotaUsed: %w", err)
+	}
+	return oldValue.QuotaUsed, nil
+}
+
+// AddQuotaUsed adds f to the "quota_used" field.
+func (m *APIKeyPlatformUsageMutation) AddQuotaUsed(f float64) {
+	if m.addquota_used != nil {
+		*m.addquota_used += f
+	} else {
+		m.addquota_used = &f
+	}
+}
+
+// AddedQuotaUsed returns the value that was added to the "quota_used" field in this mutation.
+func (m *APIKeyPlatformUsageMutation) AddedQuotaUsed() (r float64, exists bool) {
+	v := m.addquota_used
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetQuotaUsed resets all changes to the "quota_used" field.
+func (m *APIKeyPlatformUsageMutation) ResetQuotaUsed() {
+	m.quota_used = nil
+	m.addquota_used = nil
+}
+
+// SetUsage5h sets the "usage_5h" field.
+func (m *APIKeyPlatformUsageMutation) SetUsage5h(f float64) {
+	m.usage_5h = &f
+	m.addusage_5h = nil
+}
+
+// Usage5h returns the value of the "usage_5h" field in the mutation.
+func (m *APIKeyPlatformUsageMutation) Usage5h() (r float64, exists bool) {
+	v := m.usage_5h
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldUsage5h returns the old "usage_5h" field's value of the APIKeyPlatformUsage entity.
+// If the APIKeyPlatformUsage object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *APIKeyPlatformUsageMutation) OldUsage5h(ctx context.Context) (v float64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldUsage5h is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldUsage5h requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldUsage5h: %w", err)
+	}
+	return oldValue.Usage5h, nil
+}
+
+// AddUsage5h adds f to the "usage_5h" field.
+func (m *APIKeyPlatformUsageMutation) AddUsage5h(f float64) {
+	if m.addusage_5h != nil {
+		*m.addusage_5h += f
+	} else {
+		m.addusage_5h = &f
+	}
+}
+
+// AddedUsage5h returns the value that was added to the "usage_5h" field in this mutation.
+func (m *APIKeyPlatformUsageMutation) AddedUsage5h() (r float64, exists bool) {
+	v := m.addusage_5h
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetUsage5h resets all changes to the "usage_5h" field.
+func (m *APIKeyPlatformUsageMutation) ResetUsage5h() {
+	m.usage_5h = nil
+	m.addusage_5h = nil
+}
+
+// SetUsage1d sets the "usage_1d" field.
+func (m *APIKeyPlatformUsageMutation) SetUsage1d(f float64) {
+	m.usage_1d = &f
+	m.addusage_1d = nil
+}
+
+// Usage1d returns the value of the "usage_1d" field in the mutation.
+func (m *APIKeyPlatformUsageMutation) Usage1d() (r float64, exists bool) {
+	v := m.usage_1d
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldUsage1d returns the old "usage_1d" field's value of the APIKeyPlatformUsage entity.
+// If the APIKeyPlatformUsage object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *APIKeyPlatformUsageMutation) OldUsage1d(ctx context.Context) (v float64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldUsage1d is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldUsage1d requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldUsage1d: %w", err)
+	}
+	return oldValue.Usage1d, nil
+}
+
+// AddUsage1d adds f to the "usage_1d" field.
+func (m *APIKeyPlatformUsageMutation) AddUsage1d(f float64) {
+	if m.addusage_1d != nil {
+		*m.addusage_1d += f
+	} else {
+		m.addusage_1d = &f
+	}
+}
+
+// AddedUsage1d returns the value that was added to the "usage_1d" field in this mutation.
+func (m *APIKeyPlatformUsageMutation) AddedUsage1d() (r float64, exists bool) {
+	v := m.addusage_1d
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetUsage1d resets all changes to the "usage_1d" field.
+func (m *APIKeyPlatformUsageMutation) ResetUsage1d() {
+	m.usage_1d = nil
+	m.addusage_1d = nil
+}
+
+// SetUsage7d sets the "usage_7d" field.
+func (m *APIKeyPlatformUsageMutation) SetUsage7d(f float64) {
+	m.usage_7d = &f
+	m.addusage_7d = nil
+}
+
+// Usage7d returns the value of the "usage_7d" field in the mutation.
+func (m *APIKeyPlatformUsageMutation) Usage7d() (r float64, exists bool) {
+	v := m.usage_7d
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldUsage7d returns the old "usage_7d" field's value of the APIKeyPlatformUsage entity.
+// If the APIKeyPlatformUsage object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *APIKeyPlatformUsageMutation) OldUsage7d(ctx context.Context) (v float64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldUsage7d is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldUsage7d requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldUsage7d: %w", err)
+	}
+	return oldValue.Usage7d, nil
+}
+
+// AddUsage7d adds f to the "usage_7d" field.
+func (m *APIKeyPlatformUsageMutation) AddUsage7d(f float64) {
+	if m.addusage_7d != nil {
+		*m.addusage_7d += f
+	} else {
+		m.addusage_7d = &f
+	}
+}
+
+// AddedUsage7d returns the value that was added to the "usage_7d" field in this mutation.
+func (m *APIKeyPlatformUsageMutation) AddedUsage7d() (r float64, exists bool) {
+	v := m.addusage_7d
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetUsage7d resets all changes to the "usage_7d" field.
+func (m *APIKeyPlatformUsageMutation) ResetUsage7d() {
+	m.usage_7d = nil
+	m.addusage_7d = nil
+}
+
+// SetWindow5hStart sets the "window_5h_start" field.
+func (m *APIKeyPlatformUsageMutation) SetWindow5hStart(t time.Time) {
+	m.window_5h_start = &t
+}
+
+// Window5hStart returns the value of the "window_5h_start" field in the mutation.
+func (m *APIKeyPlatformUsageMutation) Window5hStart() (r time.Time, exists bool) {
+	v := m.window_5h_start
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldWindow5hStart returns the old "window_5h_start" field's value of the APIKeyPlatformUsage entity.
+// If the APIKeyPlatformUsage object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *APIKeyPlatformUsageMutation) OldWindow5hStart(ctx context.Context) (v *time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldWindow5hStart is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldWindow5hStart requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldWindow5hStart: %w", err)
+	}
+	return oldValue.Window5hStart, nil
+}
+
+// ClearWindow5hStart clears the value of the "window_5h_start" field.
+func (m *APIKeyPlatformUsageMutation) ClearWindow5hStart() {
+	m.window_5h_start = nil
+	m.clearedFields[apikeyplatformusage.FieldWindow5hStart] = struct{}{}
+}
+
+// Window5hStartCleared returns if the "window_5h_start" field was cleared in this mutation.
+func (m *APIKeyPlatformUsageMutation) Window5hStartCleared() bool {
+	_, ok := m.clearedFields[apikeyplatformusage.FieldWindow5hStart]
+	return ok
+}
+
+// ResetWindow5hStart resets all changes to the "window_5h_start" field.
+func (m *APIKeyPlatformUsageMutation) ResetWindow5hStart() {
+	m.window_5h_start = nil
+	delete(m.clearedFields, apikeyplatformusage.FieldWindow5hStart)
+}
+
+// SetWindow1dStart sets the "window_1d_start" field.
+func (m *APIKeyPlatformUsageMutation) SetWindow1dStart(t time.Time) {
+	m.window_1d_start = &t
+}
+
+// Window1dStart returns the value of the "window_1d_start" field in the mutation.
+func (m *APIKeyPlatformUsageMutation) Window1dStart() (r time.Time, exists bool) {
+	v := m.window_1d_start
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldWindow1dStart returns the old "window_1d_start" field's value of the APIKeyPlatformUsage entity.
+// If the APIKeyPlatformUsage object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *APIKeyPlatformUsageMutation) OldWindow1dStart(ctx context.Context) (v *time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldWindow1dStart is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldWindow1dStart requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldWindow1dStart: %w", err)
+	}
+	return oldValue.Window1dStart, nil
+}
+
+// ClearWindow1dStart clears the value of the "window_1d_start" field.
+func (m *APIKeyPlatformUsageMutation) ClearWindow1dStart() {
+	m.window_1d_start = nil
+	m.clearedFields[apikeyplatformusage.FieldWindow1dStart] = struct{}{}
+}
+
+// Window1dStartCleared returns if the "window_1d_start" field was cleared in this mutation.
+func (m *APIKeyPlatformUsageMutation) Window1dStartCleared() bool {
+	_, ok := m.clearedFields[apikeyplatformusage.FieldWindow1dStart]
+	return ok
+}
+
+// ResetWindow1dStart resets all changes to the "window_1d_start" field.
+func (m *APIKeyPlatformUsageMutation) ResetWindow1dStart() {
+	m.window_1d_start = nil
+	delete(m.clearedFields, apikeyplatformusage.FieldWindow1dStart)
+}
+
+// SetWindow7dStart sets the "window_7d_start" field.
+func (m *APIKeyPlatformUsageMutation) SetWindow7dStart(t time.Time) {
+	m.window_7d_start = &t
+}
+
+// Window7dStart returns the value of the "window_7d_start" field in the mutation.
+func (m *APIKeyPlatformUsageMutation) Window7dStart() (r time.Time, exists bool) {
+	v := m.window_7d_start
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldWindow7dStart returns the old "window_7d_start" field's value of the APIKeyPlatformUsage entity.
+// If the APIKeyPlatformUsage object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *APIKeyPlatformUsageMutation) OldWindow7dStart(ctx context.Context) (v *time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldWindow7dStart is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldWindow7dStart requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldWindow7dStart: %w", err)
+	}
+	return oldValue.Window7dStart, nil
+}
+
+// ClearWindow7dStart clears the value of the "window_7d_start" field.
+func (m *APIKeyPlatformUsageMutation) ClearWindow7dStart() {
+	m.window_7d_start = nil
+	m.clearedFields[apikeyplatformusage.FieldWindow7dStart] = struct{}{}
+}
+
+// Window7dStartCleared returns if the "window_7d_start" field was cleared in this mutation.
+func (m *APIKeyPlatformUsageMutation) Window7dStartCleared() bool {
+	_, ok := m.clearedFields[apikeyplatformusage.FieldWindow7dStart]
+	return ok
+}
+
+// ResetWindow7dStart resets all changes to the "window_7d_start" field.
+func (m *APIKeyPlatformUsageMutation) ResetWindow7dStart() {
+	m.window_7d_start = nil
+	delete(m.clearedFields, apikeyplatformusage.FieldWindow7dStart)
+}
+
+// ClearAPIKey clears the "api_key" edge to the APIKey entity.
+func (m *APIKeyPlatformUsageMutation) ClearAPIKey() {
+	m.clearedapi_key = true
+	m.clearedFields[apikeyplatformusage.FieldAPIKeyID] = struct{}{}
+}
+
+// APIKeyCleared reports if the "api_key" edge to the APIKey entity was cleared.
+func (m *APIKeyPlatformUsageMutation) APIKeyCleared() bool {
+	return m.clearedapi_key
+}
+
+// APIKeyIDs returns the "api_key" edge IDs in the mutation.
+// Note that IDs always returns len(IDs) <= 1 for unique edges, and you should use
+// APIKeyID instead. It exists only for internal usage by the builders.
+func (m *APIKeyPlatformUsageMutation) APIKeyIDs() (ids []int64) {
+	if id := m.api_key; id != nil {
+		ids = append(ids, *id)
+	}
+	return
+}
+
+// ResetAPIKey resets all changes to the "api_key" edge.
+func (m *APIKeyPlatformUsageMutation) ResetAPIKey() {
+	m.api_key = nil
+	m.clearedapi_key = false
+}
+
+// Where appends a list predicates to the APIKeyPlatformUsageMutation builder.
+func (m *APIKeyPlatformUsageMutation) Where(ps ...predicate.APIKeyPlatformUsage) {
+	m.predicates = append(m.predicates, ps...)
+}
+
+// WhereP appends storage-level predicates to the APIKeyPlatformUsageMutation builder. Using this method,
+// users can use type-assertion to append predicates that do not depend on any generated package.
+func (m *APIKeyPlatformUsageMutation) WhereP(ps ...func(*sql.Selector)) {
+	p := make([]predicate.APIKeyPlatformUsage, len(ps))
+	for i := range ps {
+		p[i] = ps[i]
+	}
+	m.Where(p...)
+}
+
+// Op returns the operation name.
+func (m *APIKeyPlatformUsageMutation) Op() Op {
+	return m.op
+}
+
+// SetOp allows setting the mutation operation.
+func (m *APIKeyPlatformUsageMutation) SetOp(op Op) {
+	m.op = op
+}
+
+// Type returns the node type of this mutation (APIKeyPlatformUsage).
+func (m *APIKeyPlatformUsageMutation) Type() string {
+	return m.typ
+}
+
+// Fields returns all fields that were changed during this mutation. Note that in
+// order to get all numeric fields that were incremented/decremented, call
+// AddedFields().
+func (m *APIKeyPlatformUsageMutation) Fields() []string {
+	fields := make([]string, 0, 11)
+	if m.created_at != nil {
+		fields = append(fields, apikeyplatformusage.FieldCreatedAt)
+	}
+	if m.updated_at != nil {
+		fields = append(fields, apikeyplatformusage.FieldUpdatedAt)
+	}
+	if m.api_key != nil {
+		fields = append(fields, apikeyplatformusage.FieldAPIKeyID)
+	}
+	if m.platform != nil {
+		fields = append(fields, apikeyplatformusage.FieldPlatform)
+	}
+	if m.quota_used != nil {
+		fields = append(fields, apikeyplatformusage.FieldQuotaUsed)
+	}
+	if m.usage_5h != nil {
+		fields = append(fields, apikeyplatformusage.FieldUsage5h)
+	}
+	if m.usage_1d != nil {
+		fields = append(fields, apikeyplatformusage.FieldUsage1d)
+	}
+	if m.usage_7d != nil {
+		fields = append(fields, apikeyplatformusage.FieldUsage7d)
+	}
+	if m.window_5h_start != nil {
+		fields = append(fields, apikeyplatformusage.FieldWindow5hStart)
+	}
+	if m.window_1d_start != nil {
+		fields = append(fields, apikeyplatformusage.FieldWindow1dStart)
+	}
+	if m.window_7d_start != nil {
+		fields = append(fields, apikeyplatformusage.FieldWindow7dStart)
+	}
+	return fields
+}
+
+// Field returns the value of a field with the given name. The second boolean
+// return value indicates that this field was not set, or was not defined in the
+// schema.
+func (m *APIKeyPlatformUsageMutation) Field(name string) (ent.Value, bool) {
+	switch name {
+	case apikeyplatformusage.FieldCreatedAt:
+		return m.CreatedAt()
+	case apikeyplatformusage.FieldUpdatedAt:
+		return m.UpdatedAt()
+	case apikeyplatformusage.FieldAPIKeyID:
+		return m.APIKeyID()
+	case apikeyplatformusage.FieldPlatform:
+		return m.Platform()
+	case apikeyplatformusage.FieldQuotaUsed:
+		return m.QuotaUsed()
+	case apikeyplatformusage.FieldUsage5h:
+		return m.Usage5h()
+	case apikeyplatformusage.FieldUsage1d:
+		return m.Usage1d()
+	case apikeyplatformusage.FieldUsage7d:
+		return m.Usage7d()
+	case apikeyplatformusage.FieldWindow5hStart:
+		return m.Window5hStart()
+	case apikeyplatformusage.FieldWindow1dStart:
+		return m.Window1dStart()
+	case apikeyplatformusage.FieldWindow7dStart:
+		return m.Window7dStart()
+	}
+	return nil, false
+}
+
+// OldField returns the old value of the field from the database. An error is
+// returned if the mutation operation is not UpdateOne, or the query to the
+// database failed.
+func (m *APIKeyPlatformUsageMutation) OldField(ctx context.Context, name string) (ent.Value, error) {
+	switch name {
+	case apikeyplatformusage.FieldCreatedAt:
+		return m.OldCreatedAt(ctx)
+	case apikeyplatformusage.FieldUpdatedAt:
+		return m.OldUpdatedAt(ctx)
+	case apikeyplatformusage.FieldAPIKeyID:
+		return m.OldAPIKeyID(ctx)
+	case apikeyplatformusage.FieldPlatform:
+		return m.OldPlatform(ctx)
+	case apikeyplatformusage.FieldQuotaUsed:
+		return m.OldQuotaUsed(ctx)
+	case apikeyplatformusage.FieldUsage5h:
+		return m.OldUsage5h(ctx)
+	case apikeyplatformusage.FieldUsage1d:
+		return m.OldUsage1d(ctx)
+	case apikeyplatformusage.FieldUsage7d:
+		return m.OldUsage7d(ctx)
+	case apikeyplatformusage.FieldWindow5hStart:
+		return m.OldWindow5hStart(ctx)
+	case apikeyplatformusage.FieldWindow1dStart:
+		return m.OldWindow1dStart(ctx)
+	case apikeyplatformusage.FieldWindow7dStart:
+		return m.OldWindow7dStart(ctx)
+	}
+	return nil, fmt.Errorf("unknown APIKeyPlatformUsage field %s", name)
+}
+
+// SetField sets the value of a field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *APIKeyPlatformUsageMutation) SetField(name string, value ent.Value) error {
+	switch name {
+	case apikeyplatformusage.FieldCreatedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCreatedAt(v)
+		return nil
+	case apikeyplatformusage.FieldUpdatedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetUpdatedAt(v)
+		return nil
+	case apikeyplatformusage.FieldAPIKeyID:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetAPIKeyID(v)
+		return nil
+	case apikeyplatformusage.FieldPlatform:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetPlatform(v)
+		return nil
+	case apikeyplatformusage.FieldQuotaUsed:
+		v, ok := value.(float64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetQuotaUsed(v)
+		return nil
+	case apikeyplatformusage.FieldUsage5h:
+		v, ok := value.(float64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetUsage5h(v)
+		return nil
+	case apikeyplatformusage.FieldUsage1d:
+		v, ok := value.(float64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetUsage1d(v)
+		return nil
+	case apikeyplatformusage.FieldUsage7d:
+		v, ok := value.(float64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetUsage7d(v)
+		return nil
+	case apikeyplatformusage.FieldWindow5hStart:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetWindow5hStart(v)
+		return nil
+	case apikeyplatformusage.FieldWindow1dStart:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetWindow1dStart(v)
+		return nil
+	case apikeyplatformusage.FieldWindow7dStart:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetWindow7dStart(v)
+		return nil
+	}
+	return fmt.Errorf("unknown APIKeyPlatformUsage field %s", name)
+}
+
+// AddedFields returns all numeric fields that were incremented/decremented during
+// this mutation.
+func (m *APIKeyPlatformUsageMutation) AddedFields() []string {
+	var fields []string
+	if m.addquota_used != nil {
+		fields = append(fields, apikeyplatformusage.FieldQuotaUsed)
+	}
+	if m.addusage_5h != nil {
+		fields = append(fields, apikeyplatformusage.FieldUsage5h)
+	}
+	if m.addusage_1d != nil {
+		fields = append(fields, apikeyplatformusage.FieldUsage1d)
+	}
+	if m.addusage_7d != nil {
+		fields = append(fields, apikeyplatformusage.FieldUsage7d)
+	}
+	return fields
+}
+
+// AddedField returns the numeric value that was incremented/decremented on a field
+// with the given name. The second boolean return value indicates that this field
+// was not set, or was not defined in the schema.
+func (m *APIKeyPlatformUsageMutation) AddedField(name string) (ent.Value, bool) {
+	switch name {
+	case apikeyplatformusage.FieldQuotaUsed:
+		return m.AddedQuotaUsed()
+	case apikeyplatformusage.FieldUsage5h:
+		return m.AddedUsage5h()
+	case apikeyplatformusage.FieldUsage1d:
+		return m.AddedUsage1d()
+	case apikeyplatformusage.FieldUsage7d:
+		return m.AddedUsage7d()
+	}
+	return nil, false
+}
+
+// AddField adds the value to the field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *APIKeyPlatformUsageMutation) AddField(name string, value ent.Value) error {
+	switch name {
+	case apikeyplatformusage.FieldQuotaUsed:
+		v, ok := value.(float64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddQuotaUsed(v)
+		return nil
+	case apikeyplatformusage.FieldUsage5h:
+		v, ok := value.(float64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddUsage5h(v)
+		return nil
+	case apikeyplatformusage.FieldUsage1d:
+		v, ok := value.(float64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddUsage1d(v)
+		return nil
+	case apikeyplatformusage.FieldUsage7d:
+		v, ok := value.(float64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddUsage7d(v)
+		return nil
+	}
+	return fmt.Errorf("unknown APIKeyPlatformUsage numeric field %s", name)
+}
+
+// ClearedFields returns all nullable fields that were cleared during this
+// mutation.
+func (m *APIKeyPlatformUsageMutation) ClearedFields() []string {
+	var fields []string
+	if m.FieldCleared(apikeyplatformusage.FieldWindow5hStart) {
+		fields = append(fields, apikeyplatformusage.FieldWindow5hStart)
+	}
+	if m.FieldCleared(apikeyplatformusage.FieldWindow1dStart) {
+		fields = append(fields, apikeyplatformusage.FieldWindow1dStart)
+	}
+	if m.FieldCleared(apikeyplatformusage.FieldWindow7dStart) {
+		fields = append(fields, apikeyplatformusage.FieldWindow7dStart)
+	}
+	return fields
+}
+
+// FieldCleared returns a boolean indicating if a field with the given name was
+// cleared in this mutation.
+func (m *APIKeyPlatformUsageMutation) FieldCleared(name string) bool {
+	_, ok := m.clearedFields[name]
+	return ok
+}
+
+// ClearField clears the value of the field with the given name. It returns an
+// error if the field is not defined in the schema.
+func (m *APIKeyPlatformUsageMutation) ClearField(name string) error {
+	switch name {
+	case apikeyplatformusage.FieldWindow5hStart:
+		m.ClearWindow5hStart()
+		return nil
+	case apikeyplatformusage.FieldWindow1dStart:
+		m.ClearWindow1dStart()
+		return nil
+	case apikeyplatformusage.FieldWindow7dStart:
+		m.ClearWindow7dStart()
+		return nil
+	}
+	return fmt.Errorf("unknown APIKeyPlatformUsage nullable field %s", name)
+}
+
+// ResetField resets all changes in the mutation for the field with the given name.
+// It returns an error if the field is not defined in the schema.
+func (m *APIKeyPlatformUsageMutation) ResetField(name string) error {
+	switch name {
+	case apikeyplatformusage.FieldCreatedAt:
+		m.ResetCreatedAt()
+		return nil
+	case apikeyplatformusage.FieldUpdatedAt:
+		m.ResetUpdatedAt()
+		return nil
+	case apikeyplatformusage.FieldAPIKeyID:
+		m.ResetAPIKeyID()
+		return nil
+	case apikeyplatformusage.FieldPlatform:
+		m.ResetPlatform()
+		return nil
+	case apikeyplatformusage.FieldQuotaUsed:
+		m.ResetQuotaUsed()
+		return nil
+	case apikeyplatformusage.FieldUsage5h:
+		m.ResetUsage5h()
+		return nil
+	case apikeyplatformusage.FieldUsage1d:
+		m.ResetUsage1d()
+		return nil
+	case apikeyplatformusage.FieldUsage7d:
+		m.ResetUsage7d()
+		return nil
+	case apikeyplatformusage.FieldWindow5hStart:
+		m.ResetWindow5hStart()
+		return nil
+	case apikeyplatformusage.FieldWindow1dStart:
+		m.ResetWindow1dStart()
+		return nil
+	case apikeyplatformusage.FieldWindow7dStart:
+		m.ResetWindow7dStart()
+		return nil
+	}
+	return fmt.Errorf("unknown APIKeyPlatformUsage field %s", name)
+}
+
+// AddedEdges returns all edge names that were set/added in this mutation.
+func (m *APIKeyPlatformUsageMutation) AddedEdges() []string {
+	edges := make([]string, 0, 1)
+	if m.api_key != nil {
+		edges = append(edges, apikeyplatformusage.EdgeAPIKey)
+	}
+	return edges
+}
+
+// AddedIDs returns all IDs (to other nodes) that were added for the given edge
+// name in this mutation.
+func (m *APIKeyPlatformUsageMutation) AddedIDs(name string) []ent.Value {
+	switch name {
+	case apikeyplatformusage.EdgeAPIKey:
+		if id := m.api_key; id != nil {
+			return []ent.Value{*id}
+		}
+	}
+	return nil
+}
+
+// RemovedEdges returns all edge names that were removed in this mutation.
+func (m *APIKeyPlatformUsageMutation) RemovedEdges() []string {
+	edges := make([]string, 0, 1)
+	return edges
+}
+
+// RemovedIDs returns all IDs (to other nodes) that were removed for the edge with
+// the given name in this mutation.
+func (m *APIKeyPlatformUsageMutation) RemovedIDs(name string) []ent.Value {
+	return nil
+}
+
+// ClearedEdges returns all edge names that were cleared in this mutation.
+func (m *APIKeyPlatformUsageMutation) ClearedEdges() []string {
+	edges := make([]string, 0, 1)
+	if m.clearedapi_key {
+		edges = append(edges, apikeyplatformusage.EdgeAPIKey)
+	}
+	return edges
+}
+
+// EdgeCleared returns a boolean which indicates if the edge with the given name
+// was cleared in this mutation.
+func (m *APIKeyPlatformUsageMutation) EdgeCleared(name string) bool {
+	switch name {
+	case apikeyplatformusage.EdgeAPIKey:
+		return m.clearedapi_key
+	}
+	return false
+}
+
+// ClearEdge clears the value of the edge with the given name. It returns an error
+// if that edge is not defined in the schema.
+func (m *APIKeyPlatformUsageMutation) ClearEdge(name string) error {
+	switch name {
+	case apikeyplatformusage.EdgeAPIKey:
+		m.ClearAPIKey()
+		return nil
+	}
+	return fmt.Errorf("unknown APIKeyPlatformUsage unique edge %s", name)
+}
+
+// ResetEdge resets all changes to the edge with the given name in this mutation.
+// It returns an error if the edge is not defined in the schema.
+func (m *APIKeyPlatformUsageMutation) ResetEdge(name string) error {
+	switch name {
+	case apikeyplatformusage.EdgeAPIKey:
+		m.ResetAPIKey()
+		return nil
+	}
+	return fmt.Errorf("unknown APIKeyPlatformUsage edge %s", name)
 }
 
 // AccountMutation represents an operation that mutates the Account nodes in the graph.

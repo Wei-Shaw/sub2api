@@ -44,6 +44,7 @@ const messages: Record<string, string> = {
   'keyUsage.limit7d': '7-Day Limit',
   'keyUsage.limitWeekly': 'Weekly Limit',
   'keyUsage.limitMonthly': 'Monthly Limit',
+  'keyUsage.platformLimitsSection': 'Per-Source Limits',
   'keyUsage.remainingQuota': 'Remaining Quota',
   'keyUsage.usedQuota': 'Used Quota',
   'keyUsage.subscriptionType': 'Subscription Type',
@@ -78,7 +79,11 @@ vi.mock('vue-i18n', async () => {
   return {
     ...actual,
     useI18n: () => ({
-      t: (key: string) => messages[key] ?? key,
+      t: (key: string, params?: Record<string, unknown>) => {
+        const raw = messages[key] ?? key
+        if (!params) return raw
+        return raw.replace(/\{(\w+)\}/g, (_, name: string) => String(params[name] ?? `{${name}}`))
+      },
       locale: { value: 'en' },
     }),
   }
@@ -211,6 +216,121 @@ describe('KeyUsageView daily detail', () => {
     expect(text).toContain('10')
     expect(text).toContain('$0.12')
 
+    wrapper.unmount()
+  })
+
+  it('renders one compact group per source with a row per configured window', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        mode: 'quota_limited',
+        isValid: true,
+        status: 'active',
+        platform_limits: [
+          {
+            platform: 'openai',
+            quota: { limit: 20, used: 3, remaining: 17, unit: 'USD' },
+            rate_limits: [
+              { window: '1d', limit: 5, used: 2, remaining: 3, reset_at: '2030-01-01T00:00:00Z' },
+            ],
+          },
+          {
+            platform: 'antigravity',
+            rate_limits: [{ window: '5h', limit: 1, used: 0, remaining: 1 }],
+          },
+        ],
+      }),
+    }))
+
+    const wrapper = mount(KeyUsageView, {
+      global: {
+        stubs: {
+          RouterLink: { template: '<a><slot /></a>' },
+          LocaleSwitcher: true,
+          Icon: true,
+        },
+      },
+    })
+
+    await wrapper.find('input').setValue('sk-test-key')
+    await wrapper.find('input').trigger('keydown.enter')
+    await flushPromises()
+    await nextTick()
+
+    const block = wrapper.get('[data-test="platform-limits-block"]')
+    const text = block.text()
+    expect(text).toContain('Per-Source Limits')
+    // Grouped by source, one row per configured window.
+    expect(text).toContain('OpenAI')
+    expect(text).toContain('Total Quota')
+    expect(text).toContain('$3.00 / $20.00')
+    expect(text).toContain('Daily Limit')
+    expect(text).toContain('$2.00 / $5.00')
+    // A source that has never been used still shows its limit.
+    expect(text).toContain('Antigravity')
+    expect(text).toContain('$0.00 / $1.00')
+
+    // Bar and amount colours agree, and only a filled window turns red.
+    expect(block.html()).toContain('bg-emerald-500')
+    expect(block.html()).not.toContain('bg-rose-500')
+
+    wrapper.unmount()
+  })
+
+  it('marks a source at its limit in red', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        mode: 'quota_limited',
+        isValid: true,
+        status: 'active',
+        platform_limits: [
+          {
+            platform: 'antigravity',
+            rate_limits: [{ window: '5h', limit: 1, used: 1, remaining: 0 }],
+          },
+        ],
+      }),
+    }))
+
+    const wrapper = mount(KeyUsageView, {
+      global: {
+        stubs: {
+          RouterLink: { template: '<a><slot /></a>' },
+          LocaleSwitcher: true,
+          Icon: true,
+        },
+      },
+    })
+
+    await wrapper.find('input').setValue('sk-test-key')
+    await wrapper.find('input').trigger('keydown.enter')
+    await flushPromises()
+    await nextTick()
+
+    const block = wrapper.get('[data-test="platform-limits-block"]')
+    expect(block.html()).toContain('bg-rose-500')
+    expect(block.html()).toContain('text-rose-500')
+    wrapper.unmount()
+  })
+
+  it('renders no per-source block when the key has none', async () => {
+    const wrapper = mount(KeyUsageView, {
+      global: {
+        stubs: {
+          RouterLink: { template: '<a><slot /></a>' },
+          LocaleSwitcher: true,
+          Icon: true,
+        },
+      },
+    })
+
+    await wrapper.find('input').setValue('sk-test-key')
+    await wrapper.find('input').trigger('keydown.enter')
+    await flushPromises()
+    await nextTick()
+
+    expect(wrapper.find('[data-test="platform-limits-block"]').exists()).toBe(false)
     wrapper.unmount()
   })
 

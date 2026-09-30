@@ -9,6 +9,7 @@ import KeysView from '../KeysView.vue'
 const {
   listKeys,
   updateKey,
+  getKeyById,
   getPublicSettings,
   getDashboardApiKeysUsage,
   getAvailableGroups,
@@ -21,6 +22,7 @@ const {
 } = vi.hoisted(() => ({
   listKeys: vi.fn(),
   updateKey: vi.fn(),
+  getKeyById: vi.fn(),
   getPublicSettings: vi.fn(),
   getDashboardApiKeysUsage: vi.fn(),
   getAvailableGroups: vi.fn(),
@@ -63,6 +65,7 @@ vi.mock('@/api', () => ({
     list: listKeys,
     create: vi.fn(),
     update: updateKey,
+    getById: getKeyById,
     delete: vi.fn(),
     toggleStatus: vi.fn(),
   },
@@ -271,6 +274,8 @@ describe('user KeysView column settings', () => {
 
     listKeys.mockReset()
     updateKey.mockReset()
+    getKeyById.mockReset()
+    getKeyById.mockResolvedValue({ ...createApiKey(), platform_usages: [] })
     vi.mocked(keysAPI.create).mockReset()
     getPublicSettings.mockReset()
     getDashboardApiKeysUsage.mockReset()
@@ -330,6 +335,56 @@ describe('user KeysView column settings', () => {
     await wrapper.get('#key-form').trigger('submit')
     await flushPromises()
     expect(updateKey).toHaveBeenNthCalledWith(2, key.id, expect.objectContaining({ name: 'Unsaved name', status: formStatus }))
+    wrapper.unmount()
+  })
+
+  it('round-trips per-source limits through the edit form', async () => {
+    const key: ApiKey = {
+      ...createApiKey(),
+      group_id: 1,
+      platform_limits: { openai: { quota: 20, rate_limit_1d: 5 } },
+    }
+    listKeys.mockResolvedValueOnce({ items: [key], total: 1, page: 1, page_size: 20, pages: 1 })
+    getKeyById.mockResolvedValue({
+      ...key,
+      platform_usages: [
+        { platform: 'openai', quota_used: 1, usage_5h: 0, usage_1d: 0, usage_7d: 0 },
+      ],
+    })
+    updateKey.mockResolvedValue(key)
+    const wrapper = await mountView()
+    await getButtonByText(wrapper, 'common.edit').trigger('click')
+    await flushPromises()
+
+    // Usage only lives on the detail endpoint, so editing such a key fetches it.
+    expect(getKeyById).toHaveBeenCalledWith(key.id)
+    expect(wrapper.findComponent({ name: 'ApiKeyPlatformLimitsEditor' }).props('usages'))
+      .toEqual([{ platform: 'openai', quota_used: 1, usage_5h: 0, usage_1d: 0, usage_7d: 0 }])
+
+    await wrapper.get('#key-form').trigger('submit')
+    await flushPromises()
+    expect(updateKey).toHaveBeenCalledWith(key.id, expect.objectContaining({
+      platform_limits: { openai: { quota: 20, rate_limit_1d: 5 } },
+    }))
+    wrapper.unmount()
+  })
+
+  it('clears every per-source limit when the section is switched off', async () => {
+    const key: ApiKey = {
+      ...createApiKey(),
+      group_id: 1,
+      platform_limits: { openai: { quota: 20 } },
+    }
+    listKeys.mockResolvedValueOnce({ items: [key], total: 1, page: 1, page_size: 20, pages: 1 })
+    updateKey.mockResolvedValue(key)
+    const wrapper = await mountView()
+    await getButtonByText(wrapper, 'common.edit').trigger('click')
+    await flushPromises()
+
+    await wrapper.get('[data-test="toggle-platform-limits"]').trigger('click')
+    await wrapper.get('#key-form').trigger('submit')
+    await flushPromises()
+    expect(updateKey).toHaveBeenCalledWith(key.id, expect.objectContaining({ platform_limits: {} }))
     wrapper.unmount()
   })
 
