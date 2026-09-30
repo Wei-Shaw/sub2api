@@ -981,6 +981,7 @@ const (
 type GatewayConfig struct {
 	// ClaudeOpus55LegacyThinkingEnabled opts into converting legacy enabled/budget
 	// thinking to adaptive thinking. The old budget is not an enforceable limit.
+	// Also removes stale budgets from requests already using adaptive thinking.
 	ClaudeOpus55LegacyThinkingEnabled bool `mapstructure:"claude_opus55_legacy_thinking_enabled"`
 	// 等待上游响应头的超时时间（秒），0表示无超时
 	// 注意：这不影响流式数据传输，只控制等待响应头的时间

@@ -573,14 +573,13 @@ func isClaude55SignedThinkingModel(model string) bool {
 	return claude.IsOpus55(model) || claude.IsSonnet55(model)
 }
 
-// NormalizeClaudeOpus55Thinking converts the legacy Anthropic thinking shape
-// into the adaptive shape required by Claude Opus 5.5. Older SDKs send
-// thinking.type=enabled with budget_tokens; Opus 5.5 rejects those fields
-// before processing the request. A missing effort uses medium as the compatibility
-// default, while an explicitly supplied effort is preserved. The legacy
+// NormalizeClaudeOpus55Thinking converts legacy enabled thinking to adaptive
+// and removes stale budget_tokens from adaptive requests for Claude Opus 5.5.
+// Converting enabled thinking supplies medium only when effort is absent;
+// existing adaptive requests retain their effort or its absence. The legacy
 // budget is discarded, not translated into an equivalent token limit.
 //
-// This is deliberately limited to Opus 5.5 and to type=enabled. Explicitly
+// This is deliberately limited to Opus 5.5 and enabled/adaptive thinking. Explicitly
 // disabled thinking and unknown model families retain the existing validation
 // behavior. Invalid JSON and rewrite failures are handled fail-safe.
 func NormalizeClaudeOpus55Thinking(body []byte, model string) ([]byte, bool) {
@@ -588,7 +587,9 @@ func NormalizeClaudeOpus55Thinking(body []byte, model string) ([]byte, bool) {
 		return body, false
 	}
 	thinking := gjson.GetBytes(body, "thinking")
-	if !thinking.Exists() || thinking.Get("type").String() != "enabled" {
+	thinkingType := thinking.Get("type").String()
+	hasBudget := thinking.Get("budget_tokens").Exists()
+	if thinkingType != "enabled" && !(thinkingType == "adaptive" && hasBudget) {
 		return body, false
 	}
 
@@ -598,17 +599,21 @@ func NormalizeClaudeOpus55Thinking(body []byte, model string) ([]byte, bool) {
 		return body, false
 	}
 
-	modified, err := sjson.SetBytes(body, "thinking.type", "adaptive")
-	if err != nil {
-		return body, false
-	}
-	if !gjson.GetBytes(modified, "output_config.effort").Exists() {
-		modified, err = sjson.SetBytes(modified, "output_config.effort", "medium")
+	modified := body
+	var err error
+	if thinkingType == "enabled" {
+		modified, err = sjson.SetBytes(modified, "thinking.type", "adaptive")
 		if err != nil {
 			return body, false
 		}
+		if !gjson.GetBytes(modified, "output_config.effort").Exists() {
+			modified, err = sjson.SetBytes(modified, "output_config.effort", "medium")
+			if err != nil {
+				return body, false
+			}
+		}
 	}
-	if gjson.GetBytes(modified, "thinking.budget_tokens").Exists() {
+	if hasBudget {
 		modified, err = sjson.DeleteBytes(modified, "thinking.budget_tokens")
 		if err != nil {
 			return body, false

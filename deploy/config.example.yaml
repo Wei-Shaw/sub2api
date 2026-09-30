@@ -219,6 +219,7 @@ security:
 gateway:
   # Opt in to legacy thinking compatibility for the final mapped Opus 5.5 model.
   # enabled -> adaptive; remove budget_tokens; preserve effort, or default to medium.
+  # Also remove stale budget_tokens from adaptive requests, preserving their effort.
   # The legacy thinking budget is no longer enforced; max_tokens stays unchanged.
   # 默认关闭。启用后兼容旧 enabled 参数，但不再保留旧思考预算上限。
   # Environment: GATEWAY_CLAUDE_OPUS55_LEGACY_THINKING_ENABLED=true
