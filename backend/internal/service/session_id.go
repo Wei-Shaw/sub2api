@@ -1,6 +1,7 @@
 package service
 
 import (
+	"net/http"
 	"strings"
 	"unicode/utf8"
 
@@ -11,6 +12,11 @@ import (
 // usage_logs.session_id column width (VARCHAR(255)). Longer values are rejected so
 // distinct identifiers can never alias through truncation.
 const maxPersistedSessionIDLength = 255
+
+const (
+	openAISessionAffinityContextKey        = "openai_session_affinity_id"
+	openAISessionAffinityEnabledCredential = "session_affinity_header_enabled"
+)
 
 // clientSessionIDHeaders extends the OpenAI-compatible sticky-session signals with
 // native protocol identifiers that are safe to persist but must not alter OpenAI
@@ -84,4 +90,61 @@ func sanitizeSessionID(raw string) string {
 		}
 	}
 	return trimmed
+}
+
+func sanitizeOpenAISessionAffinityID(raw string) string {
+	sessionID := sanitizeSessionID(raw)
+	if len(sessionID) > maxPersistedSessionIDLength {
+		return ""
+	}
+	return sessionID
+}
+
+func resolveOpenAISessionAffinityID(c *gin.Context, body []byte, includeClaudeMessages bool) string {
+	if c == nil {
+		return ""
+	}
+	for _, header := range explicitOpenAIHeaderSessionNames {
+		if sessionID := sanitizeOpenAISessionAffinityID(c.GetHeader(header)); sessionID != "" {
+			return sessionID
+		}
+	}
+	if isGrokRequestContext(c) {
+		if sessionID := sanitizeOpenAISessionAffinityID(c.GetHeader(grokConversationIDHeader)); sessionID != "" {
+			return sessionID
+		}
+	}
+	if len(body) > 0 {
+		if sessionID := sanitizeOpenAISessionAffinityID(openAIRequestPayloadView(body).Get("prompt_cache_key").String()); sessionID != "" {
+			return sessionID
+		}
+	}
+	if includeClaudeMessages {
+		if sessionID := sanitizeOpenAISessionAffinityID(c.GetHeader(claudeCodeSessionHeader)); sessionID != "" {
+			return sessionID
+		}
+		return sanitizeOpenAISessionAffinityID(extractClaudeCodeSessionIDFromPayload(body))
+	}
+	return ""
+}
+
+func rememberOpenAISessionAffinityID(c *gin.Context, body []byte, includeClaudeMessages bool) {
+	if c == nil {
+		return
+	}
+	c.Set(openAISessionAffinityContextKey, resolveOpenAISessionAffinityID(c, body, includeClaudeMessages))
+}
+
+func applyOpenAISessionAffinityHeader(c *gin.Context, account *Account, headers http.Header) {
+	if c == nil || account == nil || headers == nil || !account.IsOpenAIApiKey() {
+		return
+	}
+	enabled, _ := account.Credentials[openAISessionAffinityEnabledCredential].(bool)
+	if !enabled {
+		return
+	}
+	value, _ := c.Get(openAISessionAffinityContextKey)
+	if sessionID, _ := value.(string); sessionID != "" {
+		headers.Set("session_id", sessionID)
+	}
 }
