@@ -217,6 +217,12 @@ security:
 # 网关配置
 # =============================================================================
 gateway:
+  # Opt in to legacy thinking compatibility for the final mapped Opus 5.5 model.
+  # enabled -> adaptive; remove budget_tokens; preserve effort, or default to medium.
+  # The legacy thinking budget is no longer enforced; max_tokens stays unchanged.
+  # 默认关闭。启用后兼容旧 enabled 参数，但不再保留旧思考预算上限。
+  # Environment: GATEWAY_CLAUDE_OPUS55_LEGACY_THINKING_ENABLED=true
+  claude_opus55_legacy_thinking_enabled: false
   # Timeout for waiting upstream response headers (seconds)
   # 等待上游响应头超时时间（秒）
   response_header_timeout: 600
