@@ -126,9 +126,20 @@ func openAIWindowActivationAt(account *Account, usage *OpenAIQuotaUsage, now tim
 	if !shouldActivateOpenAIWindow(account, now, loc) {
 		return time.Time{}
 	}
-	config := account.Extra[openAIWindowActivationExtraKey].(map[string]any)
-	startMinute, _ := activationMinute(config["start"].(string))
-	endMinute, _ := activationMinute(config["end"].(string))
+	config, ok := account.Extra[openAIWindowActivationExtraKey].(map[string]any)
+	if !ok {
+		return time.Time{}
+	}
+	startText, okStart := config["start"].(string)
+	endText, okEnd := config["end"].(string)
+	if !okStart || !okEnd {
+		return time.Time{}
+	}
+	startMinute, validStart := activationMinute(startText)
+	endMinute, validEnd := activationMinute(endText)
+	if !validStart || !validEnd {
+		return time.Time{}
+	}
 	local := now.In(loc)
 	year, month, day := local.Date()
 	if startMinute > endMinute && local.Hour()*60+local.Minute() < endMinute {
