@@ -138,26 +138,34 @@ func CanonicalizeOpenAIModelAliasSpelling(model string) string {
 //
 // 任一专用 prompt 意外为空时回退链最终落到 DefaultInstructions，保证返回非空。
 func CodexBaseInstructionsForModel(model string) string {
+	s, _ := CodexBaseInstructionsForModelMatched(model)
+	return s
+}
+
+// CodexBaseInstructionsForModelMatched 在 CodexBaseInstructionsForModel 的语义
+// 之上额外报告本次选择是否为显式家族匹配：false 表示走了通用"最新版本"兜底
+// （未知模型），调用方可据此用远端同步的 prompt 补缺口。
+func CodexBaseInstructionsForModelMatched(model string) (string, bool) {
 	canonical := CanonicalizeOpenAIModelAliasSpelling(model)
 	switch {
 	case canonical == "gpt-6" || canonical == "gpt-6-astra" || strings.HasPrefix(canonical, "gpt-6-astra-"):
 		if v := strings.TrimSpace(instructionsGPT6Astra); v != "" {
-			return instructionsGPT6Astra
+			return instructionsGPT6Astra, true
 		}
 	case strings.Contains(canonical, "codex"):
-		return DefaultInstructions
+		return DefaultInstructions, true
 	case strings.HasPrefix(canonical, "gpt-5.5"):
-		return latestCodexInstructions()
+		return latestCodexInstructions(), true
 	case strings.HasPrefix(canonical, "gpt-5.2"):
 		if v := strings.TrimSpace(instructionsGPT52); v != "" {
-			return instructionsGPT52
+			return instructionsGPT52, true
 		}
 	case strings.HasPrefix(canonical, "gpt-5.1"):
 		if v := strings.TrimSpace(instructionsGPT51); v != "" {
-			return instructionsGPT51
+			return instructionsGPT51, true
 		}
 	}
-	return latestCodexInstructions()
+	return latestCodexInstructions(), false
 }
 
 // IsGPT6SolOrLunaModelSpelling recognizes official IDs and existing local effort/compact suffixes.
