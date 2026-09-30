@@ -1,26 +1,36 @@
 /**
- * formatScaled formats a per-token (or per-request) USD price scaled by `scale`.
- *
- *   formatScaled(0.000003, 1_000_000)    → "$3"      // per 1M tokens
- *   formatScaled(0.5,        1)          → "$0.5"    // per request
- *   formatScaled(null,       1_000_000)  → "-"
- *   formatScaled(0.000003, 1_000_000, 2) → "$3.00"   // pad to ≥2 decimals
- *   formatScaled(1.25e-8,  1_000_000, 2) → "$0.0125" // longer decimals kept as-is
- *
- * Uses toPrecision(10) then strips trailing zeros to avoid IEEE 754 display noise.
- * `minFractionDigits` pads the result back up to a minimum number of decimals.
+ * Model Plaza pricing display currency. Billing remains in USD; this is only a
+ * fixed display conversion so public users can understand the listed prices.
  */
-export function formatScaled(value: number | null, scale: number, minFractionDigits = 0): string {
+export const MODEL_PLAZA_USD_TO_VND = 1_000
+
+/**
+ * formatScaled formats a scaled price in the requested display currency.
+ *
+ * `currency` defaults to USD for existing channel screens. Model Plaza passes
+ * `{ currency: 'VND' }`, using the fixed 1 USD = 1,000 VND display rate.
+ */
+export function formatScaled(
+  value: number | null,
+  scale: number,
+  minFractionDigits = 0,
+  options: { currency?: 'USD' | 'VND' } = {}
+): string {
   if (value == null) return '-'
-  let s = (value * scale).toPrecision(10).replace(/\.?0+$/, '')
-  if (minFractionDigits > 0 && !s.includes('e')) {
+  const currency = options.currency ?? 'USD'
+  const displayValue = value * scale * (currency === 'VND' ? MODEL_PLAZA_USD_TO_VND : 1)
+  let s = displayValue.toPrecision(10).replace(/\.?0+$/, '')
+  if (minFractionDigits > 0 && currency === 'USD' && !s.includes('e')) {
     const dot = s.indexOf('.')
     const digits = dot === -1 ? 0 : s.length - dot - 1
     if (digits < minFractionDigits) {
       s = (dot === -1 ? `${s}.` : s) + '0'.repeat(minFractionDigits - digits)
     }
   }
-  return `$${s}`
+  if (currency === 'VND') {
+    s = Number(s).toLocaleString('vi-VN', { maximumFractionDigits: 6 })
+  }
+  return currency === 'VND' ? `${s}₫` : `$${s}`
 }
 
 import type { UserPricingInterval } from '@/api/channels'

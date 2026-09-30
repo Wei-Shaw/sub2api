@@ -422,11 +422,11 @@ function periodRate(period: PlazaTimePricingPeriod): number {
   return Math.round(effectiveRate.value * period.multiplier * 1000) / 1000
 }
 
-/** 实付价 = 渠道单价 × 生效倍率(时段行再乘时段倍率),按 $/1M token 展示。 */
+/** 实付价 = 渠道单价 × 生效倍率(时段行再乘时段倍率),按 ₫/1M token 展示。 */
 function paidPerMillion(value: number | null | undefined, period: PlazaTimePricingPeriod | null = null): string {
   if (value == null) return '-'
   const rate = period ? periodRate(period) : effectiveRate.value
-  return formatScaled(value * rate, PER_MILLION, MIN_DECIMALS)
+  return formatScaled(value * rate, PER_MILLION, MIN_DECIMALS, { currency: 'VND' })
 }
 
 /** 图片和视频分别使用对应的独立倍率开关。 */
@@ -448,13 +448,13 @@ function requestRate(m: PlazaModel): number {
 /** 非 token 单价乘该行生效倍率，不换算为每百万 token。 */
 function paidRequestPrice(m: PlazaModel, value: number | null | undefined): string {
   if (value == null) return '-'
-  return formatScaled(value * requestRate(m), 1, MIN_DECIMALS)
+  return formatScaled(value * requestRate(m), 1, MIN_DECIMALS, { currency: 'VND' })
 }
 
 /** 官方参考价不乘倍率。 */
 function official(value: number | null | undefined): string {
   if (value == null) return '-'
-  return formatScaled(value, PER_MILLION, MIN_DECIMALS)
+  return formatScaled(value, PER_MILLION, MIN_DECIMALS, { currency: 'VND' })
 }
 
 /** 非 token 计费的单位后缀:按图片 → “/ 张”,按次 → “/ 次”。 */
