@@ -105,6 +105,12 @@ func accountCodexToolCapabilities(account *Account, modelID string) map[string]j
 		}
 		applyCodexToolCapabilities(capabilities, map[string]json.RawMessage{"service_tiers": encoded}, false)
 	}
+	// A BPS route does not implement Codex's native encrypted multi-agent
+	// contract. Explicit nulls override synced/bundled declarations.
+	if account.isExcelBPSUpstreamModelEnabled(modelID) {
+		capabilities["multi_agent_version"] = json.RawMessage("null")
+		capabilities["multi_agent_reasoning_effort"] = json.RawMessage("null")
+	}
 	return capabilities
 }
 

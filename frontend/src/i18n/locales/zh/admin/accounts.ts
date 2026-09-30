@@ -759,6 +759,19 @@ export default {
         oauthPassthrough: '自动透传（仅替换认证）',
         oauthPassthroughDesc:
           '开启后，该 OpenAI 账号将自动透传请求与响应，仅替换认证并保留计费/并发/审计及必要安全过滤；如遇兼容性问题可随时关闭回滚。',
+        excelBps: {
+          title: 'Excel / BPS 协议',
+          desc: '使用同一 OAuth 凭据，将该账号的 /v1/responses 改走 ChatGPT Excel（Basispoints）接口而非 Codex。仅支持 HTTP/SSE；托管工具（网页搜索、图片生成）会被省略。切换后请新开 Codex 会话。',
+          models: 'BPS 模型',
+          modelsHint: '以逗号分隔的上游模型名。留空表示所有模型都走 BPS。',
+          disabledBy403: '上游于 {time} 返回 403，BPS 已自动关闭。',
+          flags: {
+            openai_excel_bps_auto_disable_on_403: '遇到上游 403 时自动关闭 BPS',
+            openai_excel_bps_cache_creation_as_input: '缓存创建按普通输入计费',
+            openai_excel_bps_ignore_images: '忽略输入图片（仅文本）',
+            openai_excel_bps_ignore_encrypted_content: '用提示替换不支持的加密历史'
+          }
+        },
         flattenNamespaces: '摊平 Codex namespace 工具（兼容）',
         flattenNamespacesDesc:
           '默认关闭：/responses 上的 namespace 工具声明原样转发，这正是 ChatGPT Codex 后端期望的形态。仅当该 OAuth 账号指向不认识 namespace 的兼容上游时才开启——摊平会把工具改名为 namespace__tool，使按 functions.<命名空间>.<工具> 寻址的模型（如 gpt-5.6 多智能体）无法调用。压缩（compact）请求不受该开关影响，始终摊平。',

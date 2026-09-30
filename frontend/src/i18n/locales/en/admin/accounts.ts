@@ -636,6 +636,19 @@ export default {
         oauthPassthrough: 'Auto passthrough (auth only)',
         oauthPassthroughDesc:
           'When enabled, this OpenAI account uses automatic passthrough: the gateway forwards request/response as-is and only swaps auth, while keeping billing/concurrency/audit and necessary safety filtering.',
+        excelBps: {
+          title: 'Excel / BPS protocol',
+          desc: 'Send /v1/responses for this account through the ChatGPT Excel (Basispoints) endpoint instead of Codex, using the same OAuth token. HTTP/SSE only; hosted tools (web search, image generation) are omitted. Start a new Codex session after switching.',
+          models: 'BPS models',
+          modelsHint: 'Comma-separated upstream model names routed through BPS. Leave empty to route every model.',
+          disabledBy403: 'BPS was automatically disabled after an upstream 403 at {time}.',
+          flags: {
+            openai_excel_bps_auto_disable_on_403: 'Automatically disable BPS on upstream 403',
+            openai_excel_bps_cache_creation_as_input: 'Bill cache creation as ordinary input',
+            openai_excel_bps_ignore_images: 'Drop input images (text only)',
+            openai_excel_bps_ignore_encrypted_content: 'Replace unsupported encrypted history with a notice'
+          }
+        },
         flattenNamespaces: 'Flatten Codex namespace tools (compatibility)',
         flattenNamespacesDesc:
           'Disabled by default: Codex namespace tool declarations are forwarded as-is on /responses, which is what the ChatGPT Codex backend expects. Enable only when this OAuth account is routed to a relay that rejects namespace tools — flattening renames them to namespace__tool, which breaks models that address collaboration tools as functions.<namespace>.<tool>. Compaction requests always flatten regardless of this switch.',

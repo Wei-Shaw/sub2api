@@ -636,6 +636,19 @@ export default {
         oauthPassthrough: 'Tự động passthrough (chỉ xác thực)',
         oauthPassthroughDesc:
           'Khi bật, tài khoản OpenAI này dùng passthrough tự động: gateway chuyển tiếp nguyên trạng yêu cầu/phản hồi và chỉ thay thông tin xác thực, đồng thời vẫn giữ tính phí/đồng thời/kiểm toán và bộ lọc an toàn cần thiết.',
+        excelBps: {
+          title: 'Giao thức Excel / BPS',
+          desc: 'Gửi /v1/responses của tài khoản này qua endpoint ChatGPT Excel (Basispoints) thay vì Codex, dùng cùng token OAuth. Chỉ HTTP/SSE; các tool hosted (web search, tạo ảnh) sẽ bị bỏ qua. Mở phiên Codex mới sau khi chuyển.',
+          models: 'Model đi qua BPS',
+          modelsHint: 'Tên model upstream, cách nhau bằng dấu phẩy. Để trống để mọi model đều đi qua BPS.',
+          disabledBy403: 'BPS đã tự tắt sau lỗi 403 từ upstream lúc {time}.',
+          flags: {
+            openai_excel_bps_auto_disable_on_403: 'Tự tắt BPS khi upstream trả 403',
+            openai_excel_bps_cache_creation_as_input: 'Tính cache creation như input thường',
+            openai_excel_bps_ignore_images: 'Bỏ ảnh đầu vào (chỉ gửi text)',
+            openai_excel_bps_ignore_encrypted_content: 'Thay lịch sử mã hoá không hỗ trợ bằng thông báo'
+          }
+        },
         flattenNamespaces: 'Làm phẳng công cụ namespace của Codex (tương thích)',
         flattenNamespacesDesc:
           'Tắt theo mặc định: khai báo công cụ namespace của Codex được chuyển tiếp nguyên trạng trên /responses, đúng như backend ChatGPT Codex mong đợi. Chỉ bật khi tài khoản OAuth này được định tuyến tới relay từ chối công cụ namespace — làm phẳng sẽ đổi tên chúng thành namespace__tool, gây lỗi cho các model gọi công cụ cộng tác dạng functions.<namespace>.<tool>. Yêu cầu compaction luôn được làm phẳng bất kể công tắc này.',
