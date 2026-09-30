@@ -51,6 +51,7 @@ export default {
       accountCost: 'Chi phí',
       noDataAvailable: 'Không có dữ liệu',
       recentUsage: 'Sử dụng gần đây',
+      actualSpending: 'Chi tiêu thực tế ($)',
       viewModelDistribution: 'Phân bố model',
       viewSpendingRanking: 'Xếp hạng chi tiêu người dùng',
       spendingRankingTitle: 'Xếp hạng chi tiêu người dùng',

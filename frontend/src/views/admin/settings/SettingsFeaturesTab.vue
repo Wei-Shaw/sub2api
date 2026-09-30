@@ -300,6 +300,16 @@
         <Toggle v-model="form.risk_control_enabled" />
       </div>
 
+      <div>
+        <label class="input-label">
+          {{ t('admin.settings.features.riskControl.riskControlUserAllowlist') }}
+        </label>
+        <OpenAIFastPolicyUserSelector v-model="riskControlAllowlistedUserIds" />
+        <p class="mt-1 text-xs text-fg-muted">
+          {{ t('admin.settings.features.riskControl.riskControlUserAllowlistHint') }}
+        </p>
+      </div>
+
       <div class="flex items-center justify-between border-t border-border pt-4">
         <div>
           <label class="text-sm font-medium text-fg">
@@ -746,6 +756,7 @@
 import { useSettingsViewContext } from "./context";
 import Toggle from "@/components/common/Toggle.vue";
 import Select from "@/components/common/Select.vue";
+import OpenAIFastPolicyUserSelector from "@/views/admin/settings/OpenAIFastPolicyUserSelector.vue";
 import type { SiteBillingMode } from "@/utils/siteBillingMode";
 
 // 纯移动拆分：所有状态与方法来自 SettingsView 提供的上下文（openspec: rebuild-frontend-design-system Phase 3）
@@ -765,6 +776,7 @@ const {
   onAffiliateUserSearchInput,
   openAffiliateBatchModal,
   openAffiliateModal,
+  riskControlAllowlistedUserIds,
   selectAffiliateUser,
   siteBillingMode,
   siteBillingModeHint,

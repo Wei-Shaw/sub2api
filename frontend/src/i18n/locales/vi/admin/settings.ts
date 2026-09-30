@@ -128,6 +128,8 @@ export default {
           enabledHint: 'Khi tắt, mục trên thanh bên quản trị bị ẩn và bỏ qua kiểm duyệt tại gateway.',
           cyberSessionBlock: 'Tự động chặn phiên vi phạm cyber',
           cyberSessionBlockHint: 'Khi bật, các phiên bị upstream cyber_policy gắn cờ sẽ bị chặn cục bộ trong thời gian TTL và không còn được chuyển tiếp. Chỉ phiên vi phạm bị chặn; các phiên khác trên cùng key không bị ảnh hưởng.',
+          riskControlUserAllowlist: 'Danh sách miễn trừ kiểm soát rủi ro',
+          riskControlUserAllowlistHint: 'Nhập từ khoá email bất kỳ để tìm người dùng. Người dùng trong danh sách sẽ không bị khoá tài khoản hay chặn cục bộ, nhưng vẫn chịu giới hạn từ upstream. Thường dùng cho các trạm trung chuyển hạ nguồn đáng tin cậy.',
           cyberSessionBlockTTL: 'TTL chặn (giây)',
         },
         affiliate: {

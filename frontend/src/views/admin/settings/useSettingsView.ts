@@ -980,6 +980,7 @@ export function useSettingsView() {
     hide_ccs_import_button: false,
     payment_enabled: false,
     risk_control_enabled: false,
+    cyber_policy_user_allowlist: "",
     cyber_session_block_enabled: false,
     cyber_session_block_ttl_seconds: 3600,
     payment_min_amount: 1,
@@ -1240,6 +1241,19 @@ export function useSettingsView() {
     form.tencent_captcha_enabled = provider === "tencent";
     form.aliyun_captcha_enabled = provider === "aliyun";
   }
+
+  // Keep the settings API representation as user IDs; the selector displays emails.
+  const riskControlAllowlistedUserIds = computed<number[]>({
+    get: () => Array.from(new Set(
+      form.cyber_policy_user_allowlist
+        .split(/[,\s]+/)
+        .map(Number)
+        .filter((id) => Number.isSafeInteger(id) && id > 0),
+    )),
+    set: (ids) => {
+      form.cyber_policy_user_allowlist = ids.join(",");
+    },
+  });
 
   const captchaMasterEnabled = computed({
     get: () =>
@@ -2895,6 +2909,7 @@ export function useSettingsView() {
         // Payment configuration
         payment_enabled: form.payment_enabled,
         risk_control_enabled: form.risk_control_enabled,
+        cyber_policy_user_allowlist: form.cyber_policy_user_allowlist,
         cyber_session_block_enabled: form.cyber_session_block_enabled,
         cyber_session_block_ttl_seconds:
           Number(form.cyber_session_block_ttl_seconds) || 3600,
@@ -4499,6 +4514,7 @@ export function useSettingsView() {
     captchaProviderSelection,
     applyCaptchaSelection,
     captchaMasterEnabled,
+    riskControlAllowlistedUserIds,
     selectCaptchaProvider,
     tencentCaptchaLinks,
     syncCaptchaProviderSelection,
