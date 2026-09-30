@@ -60,11 +60,11 @@ func TestForwardResponses_ForceChatCompletionsRoutesNonStreamingToChatCompletion
 	require.False(t, result.Stream)
 }
 
-// Scenario: 第三方无推理模型不收到兼容档位。
-func TestForwardResponses_ForceChatCompletionsOmitsNoneReasoningEffort(t *testing.T) {
+// Scenario: 显式关闭推理必须传到 CC 上游，否则 Qwen 会恢复默认思考模式。
+func TestForwardResponses_ForceChatCompletionsPreservesNoneReasoningEffort(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
-	body := []byte(`{"model":"company-coding-model","input":"hello","reasoning":{"effort":"none"},"stream":false}`)
+	body := []byte(`{"model":"qwen3.5-flash","input":"hello","reasoning":{"effort":"none"},"stream":false}`)
 	rec := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(rec)
 	c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", bytes.NewReader(body))
@@ -74,7 +74,7 @@ func TestForwardResponses_ForceChatCompletionsOmitsNoneReasoningEffort(t *testin
 		StatusCode: http.StatusOK,
 		Header:     http.Header{"Content-Type": []string{"application/json"}},
 		Body: io.NopCloser(strings.NewReader(
-			`{"id":"chatcmpl_none","object":"chat.completion","model":"company-coding-model","choices":[{"index":0,"message":{"role":"assistant","content":"ok"},"finish_reason":"stop"}],"usage":{"prompt_tokens":1,"completion_tokens":1,"total_tokens":2}}`,
+			`{"id":"chatcmpl_none","object":"chat.completion","model":"qwen3.5-flash","choices":[{"index":0,"message":{"role":"assistant","content":"ok"},"finish_reason":"stop"}],"usage":{"prompt_tokens":1,"completion_tokens":1,"total_tokens":2}}`,
 		)),
 	}}
 	svc := &OpenAIGatewayService{
@@ -85,8 +85,11 @@ func TestForwardResponses_ForceChatCompletionsOmitsNoneReasoningEffort(t *testin
 	result, err := svc.Forward(context.Background(), c, forceChatResponsesFallbackAccount(), body)
 	require.NoError(t, err)
 	require.NotNil(t, result)
-	require.Equal(t, "company-coding-model", gjson.GetBytes(upstream.lastBody, "model").String())
-	require.False(t, gjson.GetBytes(upstream.lastBody, "reasoning_effort").Exists())
+	require.Equal(t, "qwen3.5-flash", gjson.GetBytes(upstream.lastBody, "model").String())
+	require.Equal(t, "/v1/chat/completions", upstream.lastReq.URL.Path)
+	require.Equal(t, "none", gjson.GetBytes(upstream.lastBody, "reasoning_effort").String())
+	require.False(t, gjson.GetBytes(upstream.lastBody, "stream").Bool())
+	require.Equal(t, http.StatusOK, rec.Code)
 	require.Nil(t, result.ReasoningEffort)
 }
 
