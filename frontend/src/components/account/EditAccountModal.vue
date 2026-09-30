@@ -2538,6 +2538,10 @@
             <input v-model="windowActivationEnd" type="time" required class="input" data-testid="window-activation-end" />
           </label>
         </div>
+        <label v-if="windowActivationEnabled" class="input-label">{{ t('admin.accounts.windowActivation.jitter') }}
+          <input v-model.number="windowActivationJitter" type="number" min="0" max="60" step="1" required class="input" data-testid="window-activation-jitter" />
+        </label>
+        <p v-if="windowActivationEnabled" class="input-hint">{{ t('admin.accounts.windowActivation.jitterHint') }}</p>
       </div>
 
       <!-- 配额控制 (Anthropic OAuth/SetupToken: 亲和 + 窗口费用 + 会话 + RPM 等) -->
@@ -3478,6 +3482,7 @@ const windowActivationEnabled = ref(false)
 const windowActivationPresent = ref(false)
 const windowActivationStart = ref('05:00')
 const windowActivationEnd = ref('00:00')
+const windowActivationJitter = ref(30)
 const autoResetCreditEnabled = ref(false)
 const autoResetCredit5hThreshold = ref(100)
 const autoResetCredit7dThreshold = ref(100)
@@ -4021,11 +4026,12 @@ const syncFormFromAccount = (newAccount: Account | null) => {
 	autoPause7dThreshold.value = typeof extra?.auto_pause_7d_threshold === 'number' ? extra.auto_pause_7d_threshold * 100 : null
 	autoPause5hDisabled.value = extra?.auto_pause_5h_disabled === true
 	autoPause7dDisabled.value = extra?.auto_pause_7d_disabled === true
-  const activation = extra?.openai_window_activation as { enabled?: boolean; start?: string; end?: string } | undefined
+  const activation = extra?.openai_window_activation as { enabled?: boolean; start?: string; end?: string; jitter_minutes?: number } | undefined
   windowActivationPresent.value = !!activation
   windowActivationEnabled.value = activation?.enabled === true
   windowActivationStart.value = activation?.start ?? '05:00'
   windowActivationEnd.value = activation?.end ?? '00:00'
+  windowActivationJitter.value = activation ? (activation.jitter_minutes ?? 0) : 30
 	autoResetCreditEnabled.value = extra?.auto_reset_credit_enabled === true
 	autoResetCredit5hThreshold.value =
 		typeof extra?.auto_reset_credit_5h_threshold === 'number' ? extra.auto_reset_credit_5h_threshold * 100 : 100
@@ -5002,7 +5008,8 @@ const handleSubmit = async () => {
   if (windowActivationEnabled.value && (
     !/^([01]\d|2[0-3]):[0-5]\d$/.test(windowActivationStart.value) ||
     !/^([01]\d|2[0-3]):[0-5]\d$/.test(windowActivationEnd.value) ||
-    windowActivationStart.value === windowActivationEnd.value
+    windowActivationStart.value === windowActivationEnd.value ||
+    !Number.isInteger(windowActivationJitter.value) || windowActivationJitter.value < 0 || windowActivationJitter.value > 60
   )) {
     appStore.showError(t('admin.accounts.windowActivation.invalid'))
     return
@@ -5605,7 +5612,8 @@ const handleSubmit = async () => {
 				newExtra.openai_window_activation = {
 					enabled: windowActivationEnabled.value,
 					start: windowActivationStart.value,
-					end: windowActivationEnd.value
+					end: windowActivationEnd.value,
+					jitter_minutes: windowActivationJitter.value
 				}
 			}
 			newExtra.auto_reset_credit_enabled = autoResetCreditEnabled.value

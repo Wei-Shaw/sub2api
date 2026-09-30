@@ -174,6 +174,7 @@ func (r *autoResetTestAccountRepo) UpdateExtra(_ context.Context, id int64, upda
 
 type autoResetTestQuota struct {
 	usage        *OpenAIQuotaUsage
+	queryCalls   atomic.Int32
 	resetCalls   atomic.Int32
 	resetEntered chan struct{}
 	releaseReset chan struct{}
@@ -184,6 +185,7 @@ type autoResetTestQuota struct {
 }
 
 func (q *autoResetTestQuota) QueryUsage(context.Context, int64) (*OpenAIQuotaUsage, error) {
+	q.queryCalls.Add(1)
 	copy := *q.usage
 	return &copy, nil
 }

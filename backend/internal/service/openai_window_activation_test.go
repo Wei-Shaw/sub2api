@@ -30,6 +30,7 @@ func TestOpenAIWindowActivationValidatesConfig(t *testing.T) {
 		{"enabled": true, "start": "25:00", "end": "00:00"},
 		{"enabled": true, "start": "05:00", "end": "00:60"},
 		{"enabled": "true", "start": "05:00", "end": "00:00"},
+		{"enabled": true, "start": "05:00", "end": "00:00", "unexpected": 1},
 	} {
 		_, err := normalizeOpenAIAutoResetCreditExtra(PlatformOpenAI, AccountTypeOAuth, false, map[string]any{openAIWindowActivationExtraKey: value})
 		require.Error(t, err)
@@ -145,4 +146,118 @@ func TestOpenAIWindowActivationSkipsExhaustedUnknownResetInWorker(t *testing.T) 
 	svc.activateWindow(context.Background(), account)
 	require.Zero(t, tester.calls)
 	require.Equal(t, int32(1), quota.queryCalls.Load())
+}
+
+func TestOpenAIWindowActivationJitterConfiguration(t *testing.T) {
+	legacy := map[string]any{openAIWindowActivationExtraKey: map[string]any{"enabled": true, "start": "05:00", "end": "00:00"}}
+	normalized, err := normalizeOpenAIAutoResetCreditExtra(PlatformOpenAI, AccountTypeOAuth, false, legacy)
+	require.NoError(t, err)
+	require.NotContains(t, normalized[openAIWindowActivationExtraKey], "jitter_minutes")
+
+	for _, valid := range []any{0, 30, 60, float64(30)} {
+		extra := map[string]any{openAIWindowActivationExtraKey: map[string]any{"enabled": true, "start": "05:00", "end": "00:00", "jitter_minutes": valid}}
+		_, err := normalizeOpenAIAutoResetCreditExtra(PlatformOpenAI, AccountTypeOAuth, false, extra)
+		require.NoError(t, err, "valid jitter %v", valid)
+	}
+	for _, invalid := range []any{-1, 61, 1.5, "30", nil} {
+		extra := map[string]any{openAIWindowActivationExtraKey: map[string]any{"enabled": true, "start": "05:00", "end": "00:00", "jitter_minutes": invalid}}
+		_, err := normalizeOpenAIAutoResetCreditExtra(PlatformOpenAI, AccountTypeOAuth, false, extra)
+		require.Error(t, err, "invalid jitter %v", invalid)
+	}
+}
+
+func TestOpenAIWindowActivationJitterSpreadsAccountsAndCycles(t *testing.T) {
+	loc := time.FixedZone("CST", 8*3600)
+	now := time.Date(2026, 9, 30, 9, 0, 0, 0, loc)
+	config := map[string]any{"enabled": true, "start": "05:00", "end": "20:00", "jitter_minutes": 30}
+	first := &Account{ID: 101, Platform: PlatformOpenAI, Type: AccountTypeOAuth, Status: StatusActive, Extra: map[string]any{openAIWindowActivationExtraKey: config}}
+	second := &Account{ID: 202, Platform: PlatformOpenAI, Type: AccountTypeOAuth, Status: StatusActive, Extra: map[string]any{openAIWindowActivationExtraKey: config}}
+	start := time.Date(2026, 9, 30, 5, 0, 0, 0, loc)
+	a := openAIWindowActivationAt(first, nil, now, loc)
+	b := openAIWindowActivationAt(second, nil, now, loc)
+	require.WithinDuration(t, a, openAIWindowActivationAt(first, nil, now, loc), 0, "restart/replica must retain the same delay")
+	require.True(t, !a.Before(start) && !a.After(start.Add(30*time.Minute)))
+	require.True(t, !b.Before(start) && !b.After(start.Add(30*time.Minute)))
+	require.NotEqual(t, a, b, "different accounts should spread out")
+
+	reset := time.Date(2026, 9, 30, 10, 7, 0, 0, loc)
+	usage := &OpenAIQuotaUsage{RateLimit: &OpenAIRateLimit{SecondaryWindow: &OpenAIRateLimitWindow{LimitWindowSeconds: 5 * 3600, ResetAt: reset.Unix()}}}
+	next := openAIWindowActivationAt(first, usage, reset.Add(time.Hour), loc)
+	require.True(t, !next.Before(reset) && !next.After(reset.Add(30*time.Minute)))
+	require.NotEqual(t, a.Sub(start), next.Sub(reset), "each window gets a fresh delay")
+}
+
+func TestOpenAIWindowActivationJitterLegacyAndOvernight(t *testing.T) {
+	loc := time.FixedZone("CST", 8*3600)
+	now := time.Date(2026, 10, 1, 1, 0, 0, 0, loc)
+	account := &Account{ID: 303, Platform: PlatformOpenAI, Type: AccountTypeOAuth, Status: StatusActive, Extra: map[string]any{
+		openAIWindowActivationExtraKey: map[string]any{"enabled": true, "start": "22:00", "end": "02:00"},
+	}}
+	yesterday := time.Date(2026, 9, 30, 22, 0, 0, 0, loc)
+	require.Equal(t, yesterday, openAIWindowActivationAt(account, nil, now, loc), "legacy configuration has no delay")
+	reset := time.Date(2026, 10, 1, 0, 30, 0, 0, loc)
+	usage := &OpenAIQuotaUsage{RateLimit: &OpenAIRateLimit{SecondaryWindow: &OpenAIRateLimitWindow{LimitWindowSeconds: 5 * 3600, ResetAt: reset.Unix()}}}
+	require.True(t, reset.Equal(openAIWindowActivationAt(account, usage, now, loc)), "zero jitter retains the actual reset instant")
+	account.Extra[openAIWindowActivationExtraKey].(map[string]any)["jitter_minutes"] = 60
+	due := openAIWindowActivationAt(account, usage, now, loc)
+	require.True(t, !due.Before(reset) && !due.After(reset.Add(time.Hour)), "cross-midnight delay uses the current interval")
+}
+
+func TestOpenAIWindowActivationJitterSkipsBeyondEndAndExistingCountdown(t *testing.T) {
+	loc := time.UTC
+	now := time.Date(2026, 9, 30, 5, 58, 0, 0, loc)
+	account := &Account{Platform: PlatformOpenAI, Type: AccountTypeOAuth, Status: StatusActive, Extra: map[string]any{
+		openAIWindowActivationExtraKey: map[string]any{"enabled": true, "start": "05:00", "end": "07:00", "jitter_minutes": 60},
+	}}
+	reset := now.Add(-time.Minute)
+	expired := &OpenAIQuotaUsage{RateLimit: &OpenAIRateLimit{SecondaryWindow: &OpenAIRateLimitWindow{LimitWindowSeconds: 5 * 3600, ResetAt: reset.Unix()}}}
+	end := time.Date(2026, 9, 30, 6, 0, 0, 0, loc)
+	for id := int64(1); id < 1000; id++ {
+		account.ID = id
+		if openAIWindowActivationAt(account, expired, now, loc).After(end) {
+			break
+		}
+	}
+	require.True(t, openAIWindowActivationAt(account, expired, now, loc).After(end))
+	account.Extra[openAIWindowActivationExtraKey].(map[string]any)["end"] = "06:00"
+	require.True(t, openAIWindowActivationAt(account, expired, now, loc).IsZero(), "do not activate when the delay crosses the configured end")
+	active := &OpenAIQuotaUsage{RateLimit: &OpenAIRateLimit{SecondaryWindow: &OpenAIRateLimitWindow{LimitWindowSeconds: 5 * 3600, ResetAt: now.Add(time.Hour).Unix()}}}
+	require.False(t, shouldProbeOpenAI5hActivation(active, now), "a user-triggered live countdown must prevent a probe")
+}
+
+func TestOpenAIWindowActivationWaitsForEachAccountAndExpiredWindow(t *testing.T) {
+	loc := time.FixedZone("CST", 8*3600)
+	now := time.Now().In(loc)
+	account := &Account{Platform: PlatformOpenAI, Type: AccountTypeOAuth, Status: StatusActive, Extra: map[string]any{
+		openAIWindowActivationExtraKey: map[string]any{"enabled": true, "start": now.Add(-time.Minute).Format("15:04"), "end": now.Add(2 * time.Hour).Format("15:04"), "jitter_minutes": 60},
+	}}
+	for id := int64(1); id < 1000; id++ {
+		account.ID = id
+		if openAIWindowActivationAt(account, nil, now, loc).After(now.Add(5 * time.Minute)) {
+			break
+		}
+	}
+	require.True(t, openAIWindowActivationAt(account, nil, now, loc).After(now.Add(5*time.Minute)))
+	quota := &autoResetTestQuota{usage: &OpenAIQuotaUsage{RateLimit: &OpenAIRateLimit{}}}
+	tester := &windowActivationTestRequester{}
+	svc := NewOpenAIQuotaAutoResetService(nil, quota, nil, nil, nil, nil, &fakeLeaderLockCache{})
+	svc.accountTest = tester
+	svc.activationLocation = loc
+	svc.activateWindow(context.Background(), account)
+	require.Zero(t, tester.calls)
+	require.Zero(t, quota.queryCalls.Load(), "first daily delay should not lock or query usage")
+
+	account.Extra[openAIWindowActivationExtraKey].(map[string]any)["start"] = now.Add(-2 * time.Hour).Format("15:04")
+	reset := now.Add(-time.Minute).Truncate(time.Second)
+	quota.usage = &OpenAIQuotaUsage{RateLimit: &OpenAIRateLimit{SecondaryWindow: &OpenAIRateLimitWindow{LimitWindowSeconds: 5 * 3600, ResetAt: reset.Unix()}}}
+	for id := int64(1); id < 1000; id++ {
+		account.ID = id
+		if openAIWindowActivationAt(account, quota.usage, now, loc).After(now.Add(5 * time.Minute)) {
+			break
+		}
+	}
+	require.True(t, openAIWindowActivationAt(account, quota.usage, now, loc).After(now.Add(5*time.Minute)))
+	svc.activateWindow(context.Background(), account)
+	require.Zero(t, tester.calls)
+	require.Equal(t, int32(1), quota.queryCalls.Load(), "expired window should be queried and delayed")
 }
