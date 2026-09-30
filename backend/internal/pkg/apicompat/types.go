@@ -182,9 +182,16 @@ type AnthropicUsage struct {
 // Anthropic SSE event types
 // ---------------------------------------------------------------------------
 
+// AnthropicSSEError is the error payload of an Anthropic SSE error event.
+type AnthropicSSEError struct {
+	Type    string `json:"type"`
+	Message string `json:"message"`
+}
+
 // AnthropicStreamEvent is a single SSE event in the Anthropic streaming protocol.
 type AnthropicStreamEvent struct {
-	Type string `json:"type"`
+	Error *AnthropicSSEError `json:"error,omitempty"`
+	Type  string             `json:"type"`
 
 	// message_start
 	Message *AnthropicResponse `json:"message,omitempty"`

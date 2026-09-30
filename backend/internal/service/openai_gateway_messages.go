@@ -105,6 +105,7 @@ func (s *OpenAIGatewayService) ForwardAsAnthropic(
 	anthropicDigestChain := ""
 	anthropicMatchedDigestChain := ""
 	compatPromptCacheInjected := false
+	compatSessionIdentityKnown := promptCacheKey != ""
 	// Grok is outside the gpt-5/codex compat injector, but Claude Code still
 	// carries a stable session id. Prefer that as the Grok prompt-cache seed so
 	// multi-turn /v1/messages traffic can hit xAI's server-side cache.
@@ -119,6 +120,7 @@ func (s *OpenAIGatewayService) ForwardAsAnthropic(
 	}
 	if promptCacheKey == "" && shouldAutoInjectPromptCacheKeyForCompat(upstreamModel) {
 		promptCacheKey = promptCacheKeyFromAnthropicMetadataSession(&anthropicReq)
+		compatSessionIdentityKnown = promptCacheKey != ""
 		if promptCacheKey == "" {
 			promptCacheKey = deriveAnthropicCacheControlPromptCacheKey(&anthropicReq)
 		}
@@ -133,24 +135,19 @@ func (s *OpenAIGatewayService) ForwardAsAnthropic(
 		}
 		compatPromptCacheInjected = promptCacheKey != ""
 	}
-	compatReplayTrimmed := false
 	compatReplayGuardEnabled := shouldAutoInjectPromptCacheKeyForCompat(upstreamModel)
-	compatContinuationEnabled := openAICompatContinuationEnabled(account, upstreamModel)
+	// A content-derived cache key is not a conversation identity: forks can
+	// share a prefix while carrying different assistant history.
+	compatContinuationEnabled := compatSessionIdentityKnown && openAICompatContinuationEnabled(account, upstreamModel)
 	previousResponseID := ""
 	if compatContinuationEnabled {
 		previousResponseID = s.getOpenAICompatSessionResponseID(ctx, c, account, promptCacheKey)
 	}
-	compatContinuationDisabled := compatContinuationEnabled &&
-		s.isOpenAICompatSessionContinuationDisabled(ctx, c, account, promptCacheKey)
 	compatTurnState := ""
-	// ChatGPT/Codex credentials rely on session_id + x-codex-turn-state; trimming to a
-	// sliding 12-message window makes the cached prefix stall at system/tools.
-	// Keep full replay there so upstream prompt caching can grow turn by turn.
-	if compatReplayGuardEnabled && !account.UsesOpenAICodexProtocol() && previousResponseID == "" && !compatContinuationDisabled {
-		compatReplayTrimmed = applyAnthropicCompatFullReplayGuard(&anthropicReq)
-	}
+	// Without a valid previous response, prompt caching does not replace any
+	// omitted history. Replay the complete task, including on state fallback.
 
-	// 3. Convert Anthropic → Responses after compatibility-only replay guard.
+	// 3. Convert the full Anthropic history unless a valid continuation is available.
 	anthropicReq.Model = upstreamModel
 	responsesReq, err := apicompat.AnthropicToResponses(&anthropicReq)
 	if err != nil {
@@ -193,11 +190,8 @@ func (s *OpenAIGatewayService) ForwardAsAnthropic(
 			zap.String("compat_prompt_cache_key_sha256", hashSensitiveValueForLog(promptCacheKey)),
 		)
 	}
-	if compatReplayTrimmed {
-		logFields = append(logFields,
-			zap.Bool("compat_full_replay_trimmed", true),
-			zap.Int("compat_messages_after_trim", len(anthropicReq.Messages)),
-		)
+	if compatContinuationEnabled && s.isOpenAICompatSessionContinuationDisabled(ctx, c, account, promptCacheKey) {
+		logFields = append(logFields, zap.Bool("compat_continuation_disabled", true))
 	}
 	if previousResponseID != "" {
 		logFields = append(logFields,
@@ -1191,6 +1185,10 @@ func (s *OpenAIGatewayService) handleAnthropicStreamingResponse(
 			return result, s.newOpenAIStreamFailoverError(c, account, false, requestID, nil, message)
 		}
 		s.recordOpenAIMessagesStreamUpstreamError(c, account, requestID, "stream_missing_terminal", message)
+		writeStreamHeaders()
+		if _, err := fmt.Fprint(c.Writer, buildAnthropicStreamErrorSSE("api_error", message)); err == nil {
+			c.Writer.Flush()
+		}
 		return result, fmt.Errorf("stream usage incomplete: missing terminal event")
 	}
 	processFrame := func(frame openAICompatSSEFrame) bool {
