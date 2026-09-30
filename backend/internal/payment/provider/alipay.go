@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/payment"
+	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 	"github.com/smartwalle/alipay/v3"
 )
 
@@ -42,7 +43,7 @@ var (
 // Alipay implements payment.Provider and payment.CancelableProvider using the smartwalle/alipay SDK.
 type Alipay struct {
 	instanceID string
-	config     map[string]string // appId, privateKey, publicKey (or alipayPublicKey), notifyUrl, returnUrl
+	config     map[string]string // appId, privateKey, authMode, public key/certificates, callback URLs
 
 	mu     sync.Mutex
 	client *alipay.Client
@@ -56,10 +57,25 @@ func NewAlipay(instanceID string, config map[string]string) (*Alipay, error) {
 			return nil, fmt.Errorf("alipay config missing required key: %s", k)
 		}
 	}
-	return &Alipay{
-		instanceID: instanceID,
-		config:     config,
-	}, nil
+	mode := alipayAuthMode(config)
+	if mode != alipayAuthModePublicKey && mode != alipayAuthModeCertificate {
+		return nil, infraerrors.BadRequest("ALIPAY_CONFIG_INVALID_AUTH_MODE", "invalid_auth_mode")
+	}
+	a := &Alipay{instanceID: instanceID, config: config}
+	// Certificate configuration is validated locally at save time. Keep the
+	// existing lazy initialization behavior for ordinary public-key instances.
+	if mode == alipayAuthModeCertificate {
+		for _, key := range []string{"appCertPublicKey", "alipayCertPublicKey", "alipayRootCert"} {
+			if strings.TrimSpace(config[key]) == "" {
+				return nil, infraerrors.BadRequest("ALIPAY_CONFIG_MISSING_CERT", "missing_required_certificate").
+					WithMetadata(map[string]string{"key": key})
+			}
+		}
+		if _, err := a.getClient(); err != nil {
+			return nil, err
+		}
+	}
+	return a, nil
 }
 
 func (a *Alipay) getClient() (*alipay.Client, error) {
@@ -70,7 +86,17 @@ func (a *Alipay) getClient() (*alipay.Client, error) {
 	}
 	client, err := alipay.New(a.config["appId"], a.config["privateKey"], true)
 	if err != nil {
+		if alipayAuthMode(a.config) == alipayAuthModeCertificate {
+			return nil, infraerrors.BadRequest("ALIPAY_CONFIG_INVALID_PRIVATE_KEY", "invalid_private_key")
+		}
 		return nil, fmt.Errorf("alipay init client: %w", err)
+	}
+	if alipayAuthMode(a.config) == alipayAuthModeCertificate {
+		if err := a.loadCertificates(client); err != nil {
+			return nil, err
+		}
+		a.client = client
+		return a.client, nil
 	}
 	pubKey := a.config["publicKey"]
 	if pubKey == "" {
