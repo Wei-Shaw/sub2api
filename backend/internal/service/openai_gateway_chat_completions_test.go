@@ -1243,9 +1243,75 @@ func TestGPT6MappedCompatibilityBridgesKeepReasoningAndTools(t *testing.T) {
 			require.False(t, gjson.GetBytes(upstream.lastBody, "temperature").Exists())
 			require.False(t, gjson.GetBytes(upstream.lastBody, "top_p").Exists())
 			if !messages {
-				require.Equal(t, "30m", gjson.GetBytes(upstream.lastBody, "prompt_cache_options.ttl").String())
+				require.False(t, gjson.GetBytes(upstream.lastBody, "prompt_cache_options").Exists())
 			}
 			require.Equal(t, 300, result.Usage.CacheCreationInputTokens)
 		}
 	}
+}
+
+func TestChatCompletionsMappedPromptCacheOptionsCompatibility(t *testing.T) {
+	for _, target := range []string{"gpt-5.4", "gpt-5.4-mini", "gpt-5.5", "gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna", "gpt-6-astra", "gpt-6-sol", "gpt-6-luna", "gpt-future-preview"} {
+		t.Run(target, func(t *testing.T) {
+			body := []byte(`{"model":"public","stream":false,"prompt_cache_options":{"mode":"explicit","ttl":"30m"},"prompt_cache_breakpoint":true,"prompt_cache_key":"keep-key","reasoning_effort":"none","tools":[{"type":"function","function":{"name":"lookup","parameters":{"type":"object","properties":{"prompt_cache_breakpoint":{"type":"string"}}}}}],"messages":[{"role":"user","prompt_cache_breakpoint":true,"content":[{"type":"text","text":"hello","prompt_cache_breakpoint":true}]}]}`)
+			response := `data: {"type":"response.completed","response":{"id":"resp_test","model":"` + target + `","status":"completed","output":[{"type":"message","role":"assistant","content":[{"type":"output_text","text":"ok"}]}],"usage":{"input_tokens":10,"output_tokens":1}}}` + "\n\n"
+			upstream := &httpUpstreamRecorder{resp: &http.Response{StatusCode: 200, Header: http.Header{"Content-Type": []string{"text/event-stream"}}, Body: io.NopCloser(strings.NewReader(response))}}
+			svc := &OpenAIGatewayService{cfg: &config.Config{}, httpUpstream: upstream}
+			account := &Account{ID: 1, Platform: PlatformOpenAI, Type: AccountTypeAPIKey, Concurrency: 1, Credentials: map[string]any{"api_key": "fixture-key", "base_url": "https://api.openai.com", "model_mapping": map[string]any{"public": target}}}
+			rec := httptest.NewRecorder()
+			c, _ := gin.CreateTestContext(rec)
+			c.Request = httptest.NewRequest(http.MethodPost, "/v1/chat/completions", bytes.NewReader(body))
+			result, err := svc.ForwardAsChatCompletions(context.Background(), c, account, body, "keep-key", "")
+			require.NoError(t, err)
+			require.NotNil(t, result)
+			require.Equal(t, target, gjson.GetBytes(upstream.lastBody, "model").String())
+			require.False(t, gjson.GetBytes(upstream.lastBody, "prompt_cache_options").Exists())
+			require.False(t, gjson.GetBytes(upstream.lastBody, "prompt_cache_breakpoint").Exists())
+			require.Equal(t, "keep-key", gjson.GetBytes(upstream.lastBody, "prompt_cache_key").String())
+			require.Len(t, gjson.GetBytes(upstream.lastBody, "tools").Array(), 1)
+			require.Contains(t, gjson.GetBytes(upstream.lastBody, "input").Raw, "hello")
+			require.NotContains(t, gjson.GetBytes(upstream.lastBody, "input.0").Raw, "prompt_cache_breakpoint")
+			require.Contains(t, gjson.GetBytes(upstream.lastBody, "tools").Raw, "prompt_cache_breakpoint")
+			require.Equal(t, "none", gjson.GetBytes(upstream.lastBody, "reasoning.effort").String())
+		})
+	}
+
+	t.Run("raw Responses shape", func(t *testing.T) {
+		body := []byte(`{"model":"public","stream":false,"prompt_cache_options":{"mode":"explicit"},"prompt_cache_breakpoint":true,"prompt_cache_key":"keep-key","input":[{"type":"message","role":"user","prompt_cache_breakpoint":true,"content":[{"type":"input_text","text":"hello","prompt_cache_breakpoint":true}]},{"type":"function_call","name":"lookup","call_id":"call_1","arguments":"{\"prompt_cache_breakpoint\":true}","prompt_cache_breakpoint":"keep"}],"tools":[{"type":"function","name":"lookup","parameters":{"type":"object","properties":{"prompt_cache_breakpoint":{"type":"string"}}}}]}`)
+		response := "data: {\"type\":\"response.completed\",\"response\":{\"id\":\"resp_test\",\"model\":\"gpt-6-sol\",\"status\":\"completed\",\"output\":[{\"type\":\"message\",\"role\":\"assistant\",\"content\":[{\"type\":\"output_text\",\"text\":\"ok\"}]}],\"usage\":{\"input_tokens\":10,\"output_tokens\":1}}}\n\n"
+		upstream := &httpUpstreamRecorder{resp: &http.Response{StatusCode: 200, Header: http.Header{"Content-Type": []string{"text/event-stream"}}, Body: io.NopCloser(strings.NewReader(response))}}
+		svc := &OpenAIGatewayService{cfg: &config.Config{}, httpUpstream: upstream}
+		account := &Account{ID: 1, Platform: PlatformOpenAI, Type: AccountTypeAPIKey, Concurrency: 1, Credentials: map[string]any{"api_key": "fixture-key", "base_url": "https://api.openai.com", "model_mapping": map[string]any{"public": "gpt-6-sol"}}}
+		c, _ := gin.CreateTestContext(httptest.NewRecorder())
+		c.Request = httptest.NewRequest(http.MethodPost, "/v1/chat/completions", bytes.NewReader(body))
+
+		result, err := svc.ForwardAsChatCompletions(context.Background(), c, account, body, "keep-key", "")
+		require.NoError(t, err)
+		require.NotNil(t, result)
+		require.False(t, gjson.GetBytes(upstream.lastBody, "prompt_cache_options").Exists())
+		require.False(t, gjson.GetBytes(upstream.lastBody, "prompt_cache_breakpoint").Exists())
+		require.False(t, gjson.GetBytes(upstream.lastBody, "input.0.prompt_cache_breakpoint").Exists())
+		require.False(t, gjson.GetBytes(upstream.lastBody, "input.0.content.0.prompt_cache_breakpoint").Exists())
+		require.Equal(t, "keep", gjson.GetBytes(upstream.lastBody, "input.1.prompt_cache_breakpoint").String())
+		require.Contains(t, gjson.GetBytes(upstream.lastBody, "input.1.arguments").String(), "prompt_cache_breakpoint")
+		require.Contains(t, gjson.GetBytes(upstream.lastBody, "tools").Raw, "prompt_cache_breakpoint")
+		require.Equal(t, "keep-key", gjson.GetBytes(upstream.lastBody, "prompt_cache_key").String())
+	})
+
+	t.Run("non GPT keeps explicit cache hints", func(t *testing.T) {
+		body := []byte(`{"model":"public","stream":false,"prompt_cache_options":{"mode":"explicit"},"prompt_cache_key":"keep-key","messages":[{"role":"user","content":[{"type":"text","text":"hello","prompt_cache_breakpoint":true}]}]}`)
+		response := "data: {\"type\":\"response.completed\",\"response\":{\"id\":\"resp_test\",\"model\":\"custom-model\",\"status\":\"completed\",\"output\":[{\"type\":\"message\",\"role\":\"assistant\",\"content\":[{\"type\":\"output_text\",\"text\":\"ok\"}]}],\"usage\":{\"input_tokens\":10,\"output_tokens\":1}}}\n\n"
+		upstream := &httpUpstreamRecorder{resp: &http.Response{StatusCode: 200, Header: http.Header{"Content-Type": []string{"text/event-stream"}}, Body: io.NopCloser(strings.NewReader(response))}}
+		svc := &OpenAIGatewayService{cfg: &config.Config{}, httpUpstream: upstream}
+		account := &Account{ID: 1, Platform: PlatformOpenAI, Type: AccountTypeAPIKey, Concurrency: 1, Credentials: map[string]any{"api_key": "fixture-key", "base_url": "https://api.openai.com", "model_mapping": map[string]any{"public": "custom-model"}}}
+		c, _ := gin.CreateTestContext(httptest.NewRecorder())
+		c.Request = httptest.NewRequest(http.MethodPost, "/v1/chat/completions", bytes.NewReader(body))
+
+		result, err := svc.ForwardAsChatCompletions(context.Background(), c, account, body, "keep-key", "")
+		require.NoError(t, err)
+		require.NotNil(t, result)
+		require.Equal(t, "explicit", gjson.GetBytes(upstream.lastBody, "prompt_cache_options.mode").String())
+		require.True(t, gjson.GetBytes(upstream.lastBody, "input.0.content.0.prompt_cache_breakpoint").Bool())
+		require.Equal(t, "keep-key", gjson.GetBytes(upstream.lastBody, "prompt_cache_key").String())
+	})
 }
