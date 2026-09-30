@@ -1155,6 +1155,13 @@ func (s *UserService) UpdateBalance(ctx context.Context, userID int64, amount fl
 	if err := s.userRepo.UpdateBalance(ctx, userID, amount); err != nil {
 		return fmt.Errorf("update balance: %w", err)
 	}
+	s.InvalidateBalanceCaches(ctx, userID)
+	return nil
+}
+
+// InvalidateBalanceCaches refreshes gateway state after an external transaction
+// has committed a balance change.
+func (s *UserService) InvalidateBalanceCaches(ctx context.Context, userID int64) {
 	if s.authCacheInvalidator != nil {
 		s.authCacheInvalidator.InvalidateAuthCacheByUserID(ctx, userID)
 	}
@@ -1172,7 +1179,6 @@ func (s *UserService) UpdateBalance(ctx context.Context, userID int64, amount fl
 			}
 		}()
 	}
-	return nil
 }
 
 // UpdateConcurrency 更新用户并发数（管理员功能）

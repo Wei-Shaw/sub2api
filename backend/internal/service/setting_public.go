@@ -11,6 +11,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/timezone"
 )
 
@@ -197,6 +198,7 @@ func (s *SettingService) GetPublicSettings(ctx context.Context) (*PublicSettings
 		SettingKeyCustomEndpoints,
 		SettingKeyLinuxDoConnectEnabled,
 		SettingKeyDingTalkConnectEnabled,
+		SettingKeyDingTalkApps,
 		SettingKeyWeChatConnectEnabled,
 		SettingKeyWeChatConnectAppID,
 		SettingKeyWeChatConnectAppSecret,
@@ -260,6 +262,18 @@ func (s *SettingService) GetPublicSettings(ctx context.Context) (*PublicSettings
 		dingTalkEnabled = raw == "true"
 	} else {
 		dingTalkEnabled = s.cfg != nil && s.cfg.DingTalk.Enabled
+	}
+	if raw := settings[SettingKeyDingTalkApps]; raw != "" {
+		var apps []config.DingTalkAppConfig
+		if json.Unmarshal([]byte(raw), &apps) == nil {
+			for _, app := range apps {
+				dingTalkEnabled = dingTalkEnabled || app.Enabled
+			}
+		}
+	} else if s.cfg != nil {
+		for _, app := range s.cfg.DingTalk.Apps {
+			dingTalkEnabled = dingTalkEnabled || app.Enabled
+		}
 	}
 	oidcEnabled := false
 	if raw, ok := settings[SettingKeyOIDCConnectEnabled]; ok {

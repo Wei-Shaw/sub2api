@@ -163,11 +163,17 @@ export default {
 
   // Navigation
   nav: {
+    organizationQuota: 'Organization quota allocation',
+    organizationStatistics: 'Organization quota statistics',
+    dingtalkManagers: 'Project managers',
+    dingtalkManagement: 'DingTalk management',
+    dingtalkOrganization: 'DingTalk organization',
     dashboard: 'Dashboard',
     announcements: 'Announcements',
     apiKeys: 'API Keys',
     batchImage: 'Batch Images',
     usage: 'Usage',
+    statistics: 'Statistics',
     redeem: 'Redeem',
     affiliate: 'Affiliate Rebates',
     affiliateManagement: 'Affiliate Rebates',
@@ -207,6 +213,7 @@ export default {
     paymentPlans: 'Plans',
     channelManagement: 'Channels',
     channelPricing: 'Channel Pricing',
+    modelManagement: 'Model Management',
     channelMonitor: 'Channel Monitor',
     channelStatus: 'Channel Status',
     riskControl: 'Risk Control',

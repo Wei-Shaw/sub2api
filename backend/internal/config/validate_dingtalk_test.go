@@ -51,3 +51,10 @@ func TestValidateDingTalkConfig_HappyPath_None(t *testing.T) {
 		CorpRestrictionPolicy: "none",
 	}))
 }
+
+func TestValidateDingTalkConfig_MultipleAppsAndQuota(t *testing.T) {
+	cfg := DingTalkConnectConfig{Enabled: true, DingTalkAppKind: "internal_app", Apps: []DingTalkAppConfig{{ID: "a", Name: "App", Enabled: true, ClientID: "id", ClientSecret: "secret", RedirectURL: "https://example.com/callback"}}}
+	require.NoError(t, ValidateDingTalkConfig(cfg))
+	cfg.Apps = append(cfg.Apps, DingTalkAppConfig{ID: "a"})
+	require.Error(t, ValidateDingTalkConfig(cfg))
+}
