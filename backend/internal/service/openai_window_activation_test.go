@@ -198,7 +198,9 @@ func TestOpenAIWindowActivationJitterLegacyAndOvernight(t *testing.T) {
 	reset := time.Date(2026, 10, 1, 0, 30, 0, 0, loc)
 	usage := &OpenAIQuotaUsage{RateLimit: &OpenAIRateLimit{SecondaryWindow: &OpenAIRateLimitWindow{LimitWindowSeconds: 5 * 3600, ResetAt: reset.Unix()}}}
 	require.True(t, reset.Equal(openAIWindowActivationAt(account, usage, now, loc)), "zero jitter retains the actual reset instant")
-	account.Extra[openAIWindowActivationExtraKey].(map[string]any)["jitter_minutes"] = 60
+	activation, ok := account.Extra[openAIWindowActivationExtraKey].(map[string]any)
+	require.True(t, ok)
+	activation["jitter_minutes"] = 60
 	due := openAIWindowActivationAt(account, usage, now, loc)
 	require.True(t, !due.Before(reset) && !due.After(reset.Add(time.Hour)), "cross-midnight delay uses the current interval")
 }
@@ -219,7 +221,9 @@ func TestOpenAIWindowActivationJitterSkipsBeyondEndAndExistingCountdown(t *testi
 		}
 	}
 	require.True(t, openAIWindowActivationAt(account, expired, now, loc).After(end))
-	account.Extra[openAIWindowActivationExtraKey].(map[string]any)["end"] = "06:00"
+	activation, ok := account.Extra[openAIWindowActivationExtraKey].(map[string]any)
+	require.True(t, ok)
+	activation["end"] = "06:00"
 	require.True(t, openAIWindowActivationAt(account, expired, now, loc).IsZero(), "do not activate when the delay crosses the configured end")
 	active := &OpenAIQuotaUsage{RateLimit: &OpenAIRateLimit{SecondaryWindow: &OpenAIRateLimitWindow{LimitWindowSeconds: 5 * 3600, ResetAt: now.Add(time.Hour).Unix()}}}
 	require.False(t, shouldProbeOpenAI5hActivation(active, now), "a user-triggered live countdown must prevent a probe")
@@ -247,7 +251,9 @@ func TestOpenAIWindowActivationWaitsForEachAccountAndExpiredWindow(t *testing.T)
 	require.Zero(t, tester.calls)
 	require.Zero(t, quota.queryCalls.Load(), "first daily delay should not lock or query usage")
 
-	account.Extra[openAIWindowActivationExtraKey].(map[string]any)["start"] = now.Add(-2 * time.Hour).Format("15:04")
+	activation, ok := account.Extra[openAIWindowActivationExtraKey].(map[string]any)
+	require.True(t, ok)
+	activation["start"] = now.Add(-2 * time.Hour).Format("15:04")
 	reset := now.Add(-time.Minute).Truncate(time.Second)
 	quota.usage = &OpenAIQuotaUsage{RateLimit: &OpenAIRateLimit{SecondaryWindow: &OpenAIRateLimitWindow{LimitWindowSeconds: 5 * 3600, ResetAt: reset.Unix()}}}
 	for id := int64(1); id < 1000; id++ {
