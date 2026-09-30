@@ -1044,7 +1044,7 @@ const additionsA = {
     paidPrice: 'Giá của bạn (Đã chiết khấu)',
     officialPrice: 'Giá chính thức',
     rate: 'Tỷ lệ',
-    unitPerMillion: '$ / 1 triệu token',
+    unitPerMillion: '₫ / 1 triệu token',
     perUnitRequest: '/ request',
     perUnitImage: '/ hình ảnh',
     perRequest: 'Mỗi yêu cầu',
