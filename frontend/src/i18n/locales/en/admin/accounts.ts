@@ -938,7 +938,33 @@ export default {
 	    expiresAtFull: 'Reset credit expires at: {time}',
 	    clears: 'Clears windows: {windows}',
 	    notUsableNow: 'Not usable now',
-	    requiresLimit: 'Usable only after hitting a limit'
+	    requiresLimit: 'Usable only after hitting a limit',
+	    reset: 'Reset',
+	    resetTooltipNeedQuery: 'Check the count first; reset is available once a usable credit is found',
+	    resetTooltipNone: 'No reset can be used right now',
+	    resetTooltipReady: 'Consume 1 reset to clear limit windows (asks for confirmation)',
+	    confirmTitle: 'Confirm Claude Reset',
+	    confirmMessage: 'This will consume 1 reset credit to immediately restore the {windows} window(s) ({count} remaining). This action cannot be undone. Continue?',
+	    windows: {
+	      fiveHour: '5h',
+	      sevenDay: '7d',
+	      sevenDayOverage: '7d overage'
+	    },
+	    outcome: {
+	      reset: 'Reset applied; cleared: {windows}',
+	      alreadyUsed: 'This reset was already used; refreshing to confirm',
+	      cooldown: 'Resets are cooling down; try again later',
+	      cooldownUntil: 'Resets are cooling down until {time}',
+	      notLimited: 'Not at a limit, so nothing was reset and no credit was used',
+	      ineligible: 'This account cannot use resets right now',
+	      unknown: 'Result unconfirmed; further redemption is blocked for now. Check again later',
+	      unavailable: 'Reset service is temporarily unavailable; retry after a while',
+	      inProgress: 'This reset request is still processing; check again shortly',
+	      retryBackoff: 'This reset request just failed; retry after a moment',
+	      busy: 'Another reset is in progress; try again later',
+	      notAvailable: 'No reset can be used right now; no credit was used',
+	      failed: 'Reset request failed'
+	    }
 	  },
       autoResetCredit: {
 	    title: 'Automatically use reset credits',
