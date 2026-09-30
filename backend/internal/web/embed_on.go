@@ -357,16 +357,30 @@ func shouldBypassEmbeddedFrontend(path string) bool {
 	return strings.HasPrefix(trimmed, "/api/") ||
 		strings.HasPrefix(trimmed, "/v1/") ||
 		strings.HasPrefix(trimmed, "/v1beta/") ||
+		strings.HasPrefix(trimmed, "/v3/") ||
 		strings.HasPrefix(trimmed, "/backend-api/") ||
 		strings.HasPrefix(trimmed, "/antigravity/") ||
 		strings.HasPrefix(trimmed, "/setup/") ||
 		trimmed == "/health" ||
 		trimmed == "/models" ||
+		strings.HasPrefix(trimmed, "/models/") ||
 		trimmed == "/responses" ||
 		strings.HasPrefix(trimmed, "/responses/") ||
+		trimmed == "/chat/completions" ||
+		trimmed == "/messages/count_tokens" ||
+		trimmed == "/embeddings" ||
 		trimmed == "/alpha/search" ||
 		strings.HasPrefix(trimmed, "/images/") ||
-		strings.HasPrefix(trimmed, "/videos/")
+		strings.HasPrefix(trimmed, "/videos/") ||
+		trimmed == "/contents/generations/tasks" ||
+		strings.HasPrefix(trimmed, "/contents/generations/tasks/") ||
+		trimmed == "/tts" ||
+		trimmed == "/stt" ||
+		trimmed == "/custom-voices" ||
+		strings.HasPrefix(trimmed, "/custom-voices/") ||
+		trimmed == "/realtime" ||
+		trimmed == "/web_search" ||
+		trimmed == "/x_search"
 }
 
 func serveIndexHTML(c *gin.Context, fsys fs.FS) {
