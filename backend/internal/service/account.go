@@ -133,6 +133,12 @@ type TempUnschedulableRule struct {
 	Keywords        []string `json:"keywords"`
 	DurationMinutes int      `json:"duration_minutes"`
 	Description     string   `json:"description"`
+	// AccountWide makes a matched rule block the whole account instead of only
+	// the (account, model) pair. Enable for providers whose quota is shared
+	// across all models on the account, so a quota-exhaustion error on one
+	// model immediately excludes the account from scheduling for every model
+	// instead of burning failover attempts on it per model.
+	AccountWide bool `json:"account_wide,omitempty"`
 }
 
 func (a *Account) IsActive() bool {
@@ -455,6 +461,7 @@ func (a *Account) GetTempUnschedulableRules() []TempUnschedulableRule {
 			Keywords:        parseTempUnschedStrings(entry["keywords"]),
 			DurationMinutes: parseTempUnschedInt(entry["duration_minutes"]),
 			Description:     parseTempUnschedString(entry["description"]),
+			AccountWide:     parseTempUnschedBool(entry["account_wide"]),
 		}
 
 		if rule.ErrorCode <= 0 || rule.DurationMinutes <= 0 || len(rule.Keywords) == 0 {
@@ -473,6 +480,11 @@ func parseTempUnschedString(value any) string {
 		return ""
 	}
 	return strings.TrimSpace(s)
+}
+
+func parseTempUnschedBool(value any) bool {
+	b, ok := value.(bool)
+	return ok && b
 }
 
 func parseTempUnschedStrings(value any) []string {

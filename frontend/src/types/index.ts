@@ -1029,6 +1029,7 @@ export interface TempUnschedulableRule {
   keywords: string[]
   duration_minutes: number
   description: string
+  account_wide?: boolean
 }
 
 export interface TempUnschedulableState {
@@ -1038,6 +1039,7 @@ export interface TempUnschedulableState {
   matched_keyword: string
   rule_index: number
   error_message: string
+  account_wide?: boolean
   trigger_count?: number
   trigger_threshold?: number
   trigger_window_minutes?: number
