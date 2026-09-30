@@ -257,6 +257,9 @@ func diffSettings(before *service.SystemSettings, after *service.SystemSettings,
 	if before.OIDCConnectProviderName != after.OIDCConnectProviderName {
 		changed = append(changed, "oidc_connect_provider_name")
 	}
+	if before.OIDCConnectLogoutURL != after.OIDCConnectLogoutURL {
+		changed = append(changed, "oidc_connect_logout_url")
+	}
 	if before.OIDCConnectClientID != after.OIDCConnectClientID {
 		changed = append(changed, "oidc_connect_client_id")
 	}

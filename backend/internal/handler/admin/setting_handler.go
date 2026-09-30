@@ -216,6 +216,7 @@ func (h *SettingHandler) GetSettings(c *gin.Context) {
 		WeChatConnectFrontendRedirectURL:                       settings.WeChatConnectFrontendRedirectURL,
 		OIDCConnectEnabled:                                     settings.OIDCConnectEnabled,
 		OIDCConnectProviderName:                                settings.OIDCConnectProviderName,
+		OIDCConnectLogoutURL:                                   settings.OIDCConnectLogoutURL,
 		OIDCConnectClientID:                                    settings.OIDCConnectClientID,
 		OIDCConnectClientSecretConfigured:                      settings.OIDCConnectClientSecretConfigured,
 		OIDCConnectIssuerURL:                                   settings.OIDCConnectIssuerURL,

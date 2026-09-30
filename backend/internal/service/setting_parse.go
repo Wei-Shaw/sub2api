@@ -103,6 +103,7 @@ func (s *SettingService) InitializeDefaultSettings(ctx context.Context) error {
 		SettingKeyGoogleOAuthFrontendRedirectURL:            defaultGoogleOAuthFrontend,
 		SettingKeyOIDCConnectEnabled:                        "false",
 		SettingKeyOIDCConnectProviderName:                   "OIDC",
+		SettingKeyOIDCConnectLogoutURL:                      "",
 		SettingKeyOIDCConnectClientID:                       "",
 		SettingKeyOIDCConnectClientSecret:                   "",
 		SettingKeyOIDCConnectIssuerURL:                      "",
@@ -616,6 +617,9 @@ func (s *SettingService) parseSettings(settings map[string]string) *SystemSettin
 	}
 	if result.OIDCConnectProviderName == "" {
 		result.OIDCConnectProviderName = "OIDC"
+	}
+	if v, ok := settings[SettingKeyOIDCConnectLogoutURL]; ok {
+		result.OIDCConnectLogoutURL = strings.TrimSpace(v)
 	}
 
 	if v, ok := settings[SettingKeyOIDCConnectClientID]; ok && strings.TrimSpace(v) != "" {
