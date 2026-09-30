@@ -181,6 +181,13 @@ export default {
     // Status
     quotaMode: 'Key 限额模式',
     walletBalance: '钱包余额',
+    statusActive: '正常',
+    statusQuotaExhausted: '额度已用尽',
+    statusExpired: '已过期',
+    statusUnknown: '未知',
+    windowDay: '日',
+    windowWeek: '周',
+    windowMonth: '月',
     // Ring card titles
     totalQuota: '总额度',
     limit5h: '5 小时限额',

@@ -238,6 +238,35 @@ describe('KeyUsageView daily detail', () => {
 
     wrapper.unmount()
   })
+
+  it('makes the 7-day range cover exactly 7 calendar days including today', async () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date(2026, 6, 13, 12, 0))
+
+    const wrapper = mount(KeyUsageView, {
+      global: {
+        stubs: {
+          RouterLink: { template: '<a><slot /></a>' },
+          LocaleSwitcher: true,
+          Icon: true,
+        },
+      },
+    })
+
+    await wrapper.find('input').setValue('sk-test-key')
+    await wrapper.find('input').trigger('keydown.enter')
+    await flushPromises()
+
+    const sevenDays = wrapper.findAll('button').find((b) => b.text() === '7 Days')
+    await sevenDays!.trigger('click')
+    await flushPromises()
+
+    const requestUrl = String(vi.mocked(fetch).mock.calls[1][0])
+    expect(requestUrl).toContain('start_date=2026-07-07')
+    expect(requestUrl).toContain('end_date=2026-07-13')
+
+    wrapper.unmount()
+  })
 })
 
 describe('KeyUsageView subscription feature flag', () => {

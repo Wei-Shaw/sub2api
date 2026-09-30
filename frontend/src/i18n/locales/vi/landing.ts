@@ -181,6 +181,13 @@ export default {
     // Status
     quotaMode: 'Chế độ hạn mức khóa',
     walletBalance: 'Số dư ví',
+    statusActive: 'Hoạt động',
+    statusQuotaExhausted: 'Hết hạn mức',
+    statusExpired: 'Đã hết hạn',
+    statusUnknown: 'Không xác định',
+    windowDay: 'Ngày',
+    windowWeek: 'Tuần',
+    windowMonth: 'Tháng',
     // Ring card titles
     totalQuota: 'Tổng hạn mức',
     limit5h: 'Giới hạn 5 giờ',
