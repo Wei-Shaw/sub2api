@@ -961,7 +961,33 @@ export default {
 	    expiresAtFull: 'Lượt reset hết hạn lúc: {time}',
 	    clears: 'Xoá các cửa sổ: {windows}',
 	    notUsableNow: 'Hiện chưa dùng được',
-	    requiresLimit: 'Chỉ dùng được sau khi chạm hạn mức'
+	    requiresLimit: 'Chỉ dùng được sau khi chạm hạn mức',
+	    reset: 'Reset',
+	    resetTooltipNeedQuery: 'Hãy kiểm tra số lượt trước; có thể reset khi tìm thấy lượt khả dụng',
+	    resetTooltipNone: 'Hiện không có lượt reset nào dùng được',
+	    resetTooltipReady: 'Dùng 1 lượt reset để xóa các cửa sổ hạn mức (sẽ hỏi xác nhận)',
+	    confirmTitle: 'Xác nhận reset Claude',
+	    confirmMessage: 'Thao tác này sẽ dùng 1 lượt reset để khôi phục ngay cửa sổ {windows} (còn {count} lượt). Không thể hoàn tác. Tiếp tục?',
+	    windows: {
+	      fiveHour: '5h',
+	      sevenDay: '7 ngày',
+	      sevenDayOverage: '7 ngày (vượt mức)'
+	    },
+	    outcome: {
+	      reset: 'Đã reset; đã xóa: {windows}',
+	      alreadyUsed: 'Lượt reset này đã được dùng; đang làm mới để xác nhận',
+	      cooldown: 'Reset đang trong thời gian chờ; vui lòng thử lại sau',
+	      cooldownUntil: 'Reset đang trong thời gian chờ đến {time}',
+	      notLimited: 'Chưa chạm hạn mức nên không reset và không tốn lượt nào',
+	      ineligible: 'Tài khoản này hiện không thể dùng reset',
+	      unknown: 'Chưa xác nhận được kết quả; tạm chặn đổi thêm. Vui lòng kiểm tra lại sau',
+	      unavailable: 'Dịch vụ reset tạm thời không khả dụng; thử lại sau ít phút',
+	      inProgress: 'Yêu cầu reset này vẫn đang xử lý; kiểm tra lại sau giây lát',
+	      retryBackoff: 'Yêu cầu reset vừa thất bại; thử lại sau giây lát',
+	      busy: 'Đang có một lượt reset khác; vui lòng thử lại sau',
+	      notAvailable: 'Hiện không có lượt reset nào dùng được; không tốn lượt nào',
+	      failed: 'Yêu cầu reset thất bại'
+	    }
 	  },
 	  autoResetCredit: {
 	    title: 'Tự động dùng credit đặt lại',

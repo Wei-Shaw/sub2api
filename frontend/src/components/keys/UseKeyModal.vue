@@ -187,7 +187,19 @@
                 {{ t('keys.useKeyModal.codexModelCatalog.description') }}
               </p>
               <p class="mt-1 truncate font-mono text-meta text-fg">
-                {{ codexModelCatalogPath }}
+                {{ codexModelCatalogMode === 'remote' ? codexModelCatalogUrl : codexModelCatalogPath }}
+              </p>
+              <select
+                v-model="codexModelCatalogMode"
+                data-testid="codex-model-catalog-mode"
+                :aria-label="t('keys.useKeyModal.codexModelCatalog.mode')"
+                class="input mt-2 text-sm"
+              >
+                <option value="remote" :disabled="codexModelCatalogOversized">{{ t('keys.useKeyModal.codexModelCatalog.remote') }}</option>
+                <option value="file">{{ t('keys.useKeyModal.codexModelCatalog.local') }}</option>
+              </select>
+              <p v-if="codexModelCatalogOversized" class="mt-2 text-meta text-warning-strong">
+                {{ t('keys.useKeyModal.codexModelCatalog.oversized') }}
               </p>
             </div>
             <button
@@ -262,7 +274,7 @@ import { saveAs } from 'file-saver'
 import BaseDialog from '@/components/common/BaseDialog.vue'
 import Icon from '@/components/icons/Icon.vue'
 import { useClipboard } from '@/composables/useClipboard'
-import { fetchCodexModelsManifest } from '@/api/codex'
+import { buildCodexModelCatalogUrl, fetchCodexModelsManifest } from '@/api/codex'
 import type { GroupPlatform } from '@/types'
 import {
   findCodexCatalogModel,
@@ -312,13 +324,20 @@ type CodexModelManifestState = 'idle' | 'loading' | 'ready' | 'error'
 const codexModelManifestState = ref<CodexModelManifestState>('idle')
 const codexModelManifestContent = ref('')
 const codexModelManifestModelCount = ref(0)
+const codexModelCatalogMode = ref<'remote' | 'file'>('remote')
+const codexModelManifestResponseBytes = ref(0)
+const codexModelCatalogOversized = computed(() => codexModelManifestResponseBytes.value > 1024 * 1024)
+const codexModelCatalogUrl = computed(() => buildCodexModelCatalogUrl(props.baseUrl))
+const codexLocalCatalogToml = computed(() => codexModelCatalogMode.value === 'file'
+  ? `model_catalog_json = "${CODEX_MODEL_CATALOG_CONFIG_PATH}"\n`
+  : '')
 let codexModelManifestController: AbortController | null = null
 let codexModelManifestRequestID = 0
 
 const showCodexModelCatalog = computed(() =>
   props.show &&
-  props.platform !== 'openai' &&
-  activeClientTab.value === 'codex'
+  (activeClientTab.value === 'codex' ||
+    (props.platform === 'openai' && activeClientTab.value === 'codex-ws'))
 )
 
 const codexModelCatalogPath = computed(() => {
@@ -633,6 +652,7 @@ function resetCodexModelManifest() {
   codexModelManifestState.value = 'idle'
   codexModelManifestContent.value = ''
   codexModelManifestModelCount.value = 0
+  codexModelManifestResponseBytes.value = 0
 }
 
 async function loadCodexModelManifest() {
@@ -649,6 +669,8 @@ async function loadCodexModelManifest() {
     if (requestID !== codexModelManifestRequestID) return
     codexModelManifestContent.value = result.content
     codexModelManifestModelCount.value = result.modelCount
+    codexModelManifestResponseBytes.value = result.responseBytes
+    if (codexModelCatalogOversized.value) codexModelCatalogMode.value = 'file'
     codexModelManifestState.value = 'ready'
   } catch (error) {
     const errorName = error && typeof error === 'object' && 'name' in error
@@ -962,13 +984,13 @@ function generateOpenAIFiles(baseUrl: string, apiKey: string): FileConfig[] {
 model = "${model}"
 review_model = "${model}"
 ${reasoningEffortLine}disable_response_storage = true
-network_access = "enabled"
+${codexLocalCatalogToml.value}network_access = "enabled"
 windows_wsl_setup_acknowledged = true
 
 [model_providers.OpenAI]
 name = "OpenAI"
 base_url = "${baseUrl}"
-wire_api = "responses"
+${codexModelCatalogMode.value === 'remote' ? `model_catalog_url = "${escapeTomlBasicString(buildCodexModelCatalogUrl(baseUrl))}"\n` : ''}wire_api = "responses"
 ${generateCodexProviderAuthConfig(apiKey)}
 
 [features]
@@ -1194,8 +1216,7 @@ function generateGrokCodexFiles(baseUrl: string, apiKey: string): FileConfig[] {
 
 model_provider = "sub2api"
 model = "${model}"
-model_catalog_json = "${CODEX_MODEL_CATALOG_CONFIG_PATH}"
-# Optional:
+${codexLocalCatalogToml.value}# Optional:
 # review_model = "${model}"
 # model_reasoning_effort = "medium"
 # model_context_window = 500000
@@ -1206,7 +1227,7 @@ model_catalog_json = "${CODEX_MODEL_CATALOG_CONFIG_PATH}"
 [model_providers.sub2api]
 name = "Sub2API Grok"
 base_url = "${baseUrl}"
-# Prefer env_key (variable NAME). Do not combine with experimental_bearer_token.
+${codexModelCatalogMode.value === 'remote' ? `model_catalog_url = "${escapeTomlBasicString(buildCodexModelCatalogUrl(baseUrl))}"\n` : ''}# Prefer env_key (variable NAME). Do not combine with experimental_bearer_token.
 env_key = "SUB2API_API_KEY"
 # Fallback only if you cannot set env (discouraged — keeps secret on disk):
 # experimental_bearer_token = "${apiKey}"
@@ -1275,12 +1296,11 @@ model_provider = "sub2api"
 model = "${model}"
 review_model = "${model}"
 disable_response_storage = true
-model_catalog_json = "${CODEX_MODEL_CATALOG_CONFIG_PATH}"
-
+${codexLocalCatalogToml.value}
 [model_providers.sub2api]
 name = "Sub2API ${label}"
 base_url = "${baseUrl}"
-env_key = "SUB2API_API_KEY"
+${codexModelCatalogMode.value === 'remote' ? `model_catalog_url = "${escapeTomlBasicString(buildCodexModelCatalogUrl(baseUrl))}"\n` : ''}env_key = "SUB2API_API_KEY"
 wire_api = "responses"
 requires_openai_auth = false
 supports_websockets = false`
@@ -1310,13 +1330,13 @@ function generateOpenAIWsFiles(baseUrl: string, apiKey: string): FileConfig[] {
 model = "${model}"
 review_model = "${model}"
 ${reasoningEffortLine}disable_response_storage = true
-network_access = "enabled"
+${codexLocalCatalogToml.value}network_access = "enabled"
 windows_wsl_setup_acknowledged = true
 
 [model_providers.OpenAI]
 name = "OpenAI"
 base_url = "${baseUrl}"
-wire_api = "responses"
+${codexModelCatalogMode.value === 'remote' ? `model_catalog_url = "${escapeTomlBasicString(buildCodexModelCatalogUrl(baseUrl))}"\n` : ''}wire_api = "responses"
 supports_websockets = true
 ${generateCodexProviderAuthConfig(apiKey)}
 
@@ -1389,6 +1409,23 @@ function generateOpenCodeConfig(platform: string, baseUrl: string, apiKey: strin
     },
     'gpt-5.6': {
       name: 'GPT-5.6 (Sol)',
+      limit: {
+        context: 1050000,
+        output: 128000
+      },
+      options: {
+        store: false
+      },
+      variants: {
+        low: {},
+        medium: {},
+        high: {},
+        xhigh: {},
+        max: {}
+      }
+    },
+    'gpt-6.1-sol': {
+      name: 'GPT-6.1 Sol',
       limit: {
         context: 1050000,
         output: 128000
