@@ -315,6 +315,16 @@ func DefaultMappedModel(v string) predicate.Group {
 	return predicate.Group(sql.FieldEQ(FieldDefaultMappedModel, v))
 }
 
+// CodexConfigDefaultModel applies equality check predicate on the "codex_config_default_model" field. It's identical to CodexConfigDefaultModelEQ.
+func CodexConfigDefaultModel(v string) predicate.Group {
+	return predicate.Group(sql.FieldEQ(FieldCodexConfigDefaultModel, v))
+}
+
+// CodexConfigReviewModel applies equality check predicate on the "codex_config_review_model" field. It's identical to CodexConfigReviewModelEQ.
+func CodexConfigReviewModel(v string) predicate.Group {
+	return predicate.Group(sql.FieldEQ(FieldCodexConfigReviewModel, v))
+}
+
 // RpmLimit applies equality check predicate on the "rpm_limit" field. It's identical to RpmLimitEQ.
 func RpmLimit(v int) predicate.Group {
 	return predicate.Group(sql.FieldEQ(FieldRpmLimit, v))
@@ -2388,6 +2398,136 @@ func DefaultMappedModelEqualFold(v string) predicate.Group {
 // DefaultMappedModelContainsFold applies the ContainsFold predicate on the "default_mapped_model" field.
 func DefaultMappedModelContainsFold(v string) predicate.Group {
 	return predicate.Group(sql.FieldContainsFold(FieldDefaultMappedModel, v))
+}
+
+// CodexConfigDefaultModelEQ applies the EQ predicate on the "codex_config_default_model" field.
+func CodexConfigDefaultModelEQ(v string) predicate.Group {
+	return predicate.Group(sql.FieldEQ(FieldCodexConfigDefaultModel, v))
+}
+
+// CodexConfigDefaultModelNEQ applies the NEQ predicate on the "codex_config_default_model" field.
+func CodexConfigDefaultModelNEQ(v string) predicate.Group {
+	return predicate.Group(sql.FieldNEQ(FieldCodexConfigDefaultModel, v))
+}
+
+// CodexConfigDefaultModelIn applies the In predicate on the "codex_config_default_model" field.
+func CodexConfigDefaultModelIn(vs ...string) predicate.Group {
+	return predicate.Group(sql.FieldIn(FieldCodexConfigDefaultModel, vs...))
+}
+
+// CodexConfigDefaultModelNotIn applies the NotIn predicate on the "codex_config_default_model" field.
+func CodexConfigDefaultModelNotIn(vs ...string) predicate.Group {
+	return predicate.Group(sql.FieldNotIn(FieldCodexConfigDefaultModel, vs...))
+}
+
+// CodexConfigDefaultModelGT applies the GT predicate on the "codex_config_default_model" field.
+func CodexConfigDefaultModelGT(v string) predicate.Group {
+	return predicate.Group(sql.FieldGT(FieldCodexConfigDefaultModel, v))
+}
+
+// CodexConfigDefaultModelGTE applies the GTE predicate on the "codex_config_default_model" field.
+func CodexConfigDefaultModelGTE(v string) predicate.Group {
+	return predicate.Group(sql.FieldGTE(FieldCodexConfigDefaultModel, v))
+}
+
+// CodexConfigDefaultModelLT applies the LT predicate on the "codex_config_default_model" field.
+func CodexConfigDefaultModelLT(v string) predicate.Group {
+	return predicate.Group(sql.FieldLT(FieldCodexConfigDefaultModel, v))
+}
+
+// CodexConfigDefaultModelLTE applies the LTE predicate on the "codex_config_default_model" field.
+func CodexConfigDefaultModelLTE(v string) predicate.Group {
+	return predicate.Group(sql.FieldLTE(FieldCodexConfigDefaultModel, v))
+}
+
+// CodexConfigDefaultModelContains applies the Contains predicate on the "codex_config_default_model" field.
+func CodexConfigDefaultModelContains(v string) predicate.Group {
+	return predicate.Group(sql.FieldContains(FieldCodexConfigDefaultModel, v))
+}
+
+// CodexConfigDefaultModelHasPrefix applies the HasPrefix predicate on the "codex_config_default_model" field.
+func CodexConfigDefaultModelHasPrefix(v string) predicate.Group {
+	return predicate.Group(sql.FieldHasPrefix(FieldCodexConfigDefaultModel, v))
+}
+
+// CodexConfigDefaultModelHasSuffix applies the HasSuffix predicate on the "codex_config_default_model" field.
+func CodexConfigDefaultModelHasSuffix(v string) predicate.Group {
+	return predicate.Group(sql.FieldHasSuffix(FieldCodexConfigDefaultModel, v))
+}
+
+// CodexConfigDefaultModelEqualFold applies the EqualFold predicate on the "codex_config_default_model" field.
+func CodexConfigDefaultModelEqualFold(v string) predicate.Group {
+	return predicate.Group(sql.FieldEqualFold(FieldCodexConfigDefaultModel, v))
+}
+
+// CodexConfigDefaultModelContainsFold applies the ContainsFold predicate on the "codex_config_default_model" field.
+func CodexConfigDefaultModelContainsFold(v string) predicate.Group {
+	return predicate.Group(sql.FieldContainsFold(FieldCodexConfigDefaultModel, v))
+}
+
+// CodexConfigReviewModelEQ applies the EQ predicate on the "codex_config_review_model" field.
+func CodexConfigReviewModelEQ(v string) predicate.Group {
+	return predicate.Group(sql.FieldEQ(FieldCodexConfigReviewModel, v))
+}
+
+// CodexConfigReviewModelNEQ applies the NEQ predicate on the "codex_config_review_model" field.
+func CodexConfigReviewModelNEQ(v string) predicate.Group {
+	return predicate.Group(sql.FieldNEQ(FieldCodexConfigReviewModel, v))
+}
+
+// CodexConfigReviewModelIn applies the In predicate on the "codex_config_review_model" field.
+func CodexConfigReviewModelIn(vs ...string) predicate.Group {
+	return predicate.Group(sql.FieldIn(FieldCodexConfigReviewModel, vs...))
+}
+
+// CodexConfigReviewModelNotIn applies the NotIn predicate on the "codex_config_review_model" field.
+func CodexConfigReviewModelNotIn(vs ...string) predicate.Group {
+	return predicate.Group(sql.FieldNotIn(FieldCodexConfigReviewModel, vs...))
+}
+
+// CodexConfigReviewModelGT applies the GT predicate on the "codex_config_review_model" field.
+func CodexConfigReviewModelGT(v string) predicate.Group {
+	return predicate.Group(sql.FieldGT(FieldCodexConfigReviewModel, v))
+}
+
+// CodexConfigReviewModelGTE applies the GTE predicate on the "codex_config_review_model" field.
+func CodexConfigReviewModelGTE(v string) predicate.Group {
+	return predicate.Group(sql.FieldGTE(FieldCodexConfigReviewModel, v))
+}
+
+// CodexConfigReviewModelLT applies the LT predicate on the "codex_config_review_model" field.
+func CodexConfigReviewModelLT(v string) predicate.Group {
+	return predicate.Group(sql.FieldLT(FieldCodexConfigReviewModel, v))
+}
+
+// CodexConfigReviewModelLTE applies the LTE predicate on the "codex_config_review_model" field.
+func CodexConfigReviewModelLTE(v string) predicate.Group {
+	return predicate.Group(sql.FieldLTE(FieldCodexConfigReviewModel, v))
+}
+
+// CodexConfigReviewModelContains applies the Contains predicate on the "codex_config_review_model" field.
+func CodexConfigReviewModelContains(v string) predicate.Group {
+	return predicate.Group(sql.FieldContains(FieldCodexConfigReviewModel, v))
+}
+
+// CodexConfigReviewModelHasPrefix applies the HasPrefix predicate on the "codex_config_review_model" field.
+func CodexConfigReviewModelHasPrefix(v string) predicate.Group {
+	return predicate.Group(sql.FieldHasPrefix(FieldCodexConfigReviewModel, v))
+}
+
+// CodexConfigReviewModelHasSuffix applies the HasSuffix predicate on the "codex_config_review_model" field.
+func CodexConfigReviewModelHasSuffix(v string) predicate.Group {
+	return predicate.Group(sql.FieldHasSuffix(FieldCodexConfigReviewModel, v))
+}
+
+// CodexConfigReviewModelEqualFold applies the EqualFold predicate on the "codex_config_review_model" field.
+func CodexConfigReviewModelEqualFold(v string) predicate.Group {
+	return predicate.Group(sql.FieldEqualFold(FieldCodexConfigReviewModel, v))
+}
+
+// CodexConfigReviewModelContainsFold applies the ContainsFold predicate on the "codex_config_review_model" field.
+func CodexConfigReviewModelContainsFold(v string) predicate.Group {
+	return predicate.Group(sql.FieldContainsFold(FieldCodexConfigReviewModel, v))
 }
 
 // RpmLimitEQ applies the EQ predicate on the "rpm_limit" field.

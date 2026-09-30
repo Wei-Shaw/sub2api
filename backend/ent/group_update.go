@@ -1101,6 +1101,34 @@ func (_u *GroupUpdate) SetNillableCodexModelsManifestConfig(v *domain.GroupCodex
 	return _u
 }
 
+// SetCodexConfigDefaultModel sets the "codex_config_default_model" field.
+func (_u *GroupUpdate) SetCodexConfigDefaultModel(v string) *GroupUpdate {
+	_u.mutation.SetCodexConfigDefaultModel(v)
+	return _u
+}
+
+// SetNillableCodexConfigDefaultModel sets the "codex_config_default_model" field if the given value is not nil.
+func (_u *GroupUpdate) SetNillableCodexConfigDefaultModel(v *string) *GroupUpdate {
+	if v != nil {
+		_u.SetCodexConfigDefaultModel(*v)
+	}
+	return _u
+}
+
+// SetCodexConfigReviewModel sets the "codex_config_review_model" field.
+func (_u *GroupUpdate) SetCodexConfigReviewModel(v string) *GroupUpdate {
+	_u.mutation.SetCodexConfigReviewModel(v)
+	return _u
+}
+
+// SetNillableCodexConfigReviewModel sets the "codex_config_review_model" field if the given value is not nil.
+func (_u *GroupUpdate) SetNillableCodexConfigReviewModel(v *string) *GroupUpdate {
+	if v != nil {
+		_u.SetCodexConfigReviewModel(*v)
+	}
+	return _u
+}
+
 // SetRpmLimit sets the "rpm_limit" field.
 func (_u *GroupUpdate) SetRpmLimit(v int) *GroupUpdate {
 	_u.mutation.ResetRpmLimit()
@@ -1881,6 +1909,12 @@ func (_u *GroupUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	}
 	if value, ok := _u.mutation.CodexModelsManifestConfig(); ok {
 		_spec.SetField(group.FieldCodexModelsManifestConfig, field.TypeJSON, value)
+	}
+	if value, ok := _u.mutation.CodexConfigDefaultModel(); ok {
+		_spec.SetField(group.FieldCodexConfigDefaultModel, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.CodexConfigReviewModel(); ok {
+		_spec.SetField(group.FieldCodexConfigReviewModel, field.TypeString, value)
 	}
 	if value, ok := _u.mutation.RpmLimit(); ok {
 		_spec.SetField(group.FieldRpmLimit, field.TypeInt, value)
@@ -3295,6 +3329,34 @@ func (_u *GroupUpdateOne) SetNillableCodexModelsManifestConfig(v *domain.GroupCo
 	return _u
 }
 
+// SetCodexConfigDefaultModel sets the "codex_config_default_model" field.
+func (_u *GroupUpdateOne) SetCodexConfigDefaultModel(v string) *GroupUpdateOne {
+	_u.mutation.SetCodexConfigDefaultModel(v)
+	return _u
+}
+
+// SetNillableCodexConfigDefaultModel sets the "codex_config_default_model" field if the given value is not nil.
+func (_u *GroupUpdateOne) SetNillableCodexConfigDefaultModel(v *string) *GroupUpdateOne {
+	if v != nil {
+		_u.SetCodexConfigDefaultModel(*v)
+	}
+	return _u
+}
+
+// SetCodexConfigReviewModel sets the "codex_config_review_model" field.
+func (_u *GroupUpdateOne) SetCodexConfigReviewModel(v string) *GroupUpdateOne {
+	_u.mutation.SetCodexConfigReviewModel(v)
+	return _u
+}
+
+// SetNillableCodexConfigReviewModel sets the "codex_config_review_model" field if the given value is not nil.
+func (_u *GroupUpdateOne) SetNillableCodexConfigReviewModel(v *string) *GroupUpdateOne {
+	if v != nil {
+		_u.SetCodexConfigReviewModel(*v)
+	}
+	return _u
+}
+
 // SetRpmLimit sets the "rpm_limit" field.
 func (_u *GroupUpdateOne) SetRpmLimit(v int) *GroupUpdateOne {
 	_u.mutation.ResetRpmLimit()
@@ -4105,6 +4167,12 @@ func (_u *GroupUpdateOne) sqlSave(ctx context.Context) (_node *Group, err error)
 	}
 	if value, ok := _u.mutation.CodexModelsManifestConfig(); ok {
 		_spec.SetField(group.FieldCodexModelsManifestConfig, field.TypeJSON, value)
+	}
+	if value, ok := _u.mutation.CodexConfigDefaultModel(); ok {
+		_spec.SetField(group.FieldCodexConfigDefaultModel, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.CodexConfigReviewModel(); ok {
+		_spec.SetField(group.FieldCodexConfigReviewModel, field.TypeString, value)
 	}
 	if value, ok := _u.mutation.RpmLimit(); ok {
 		_spec.SetField(group.FieldRpmLimit, field.TypeInt, value)

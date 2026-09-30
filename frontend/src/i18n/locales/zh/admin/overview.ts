@@ -1251,6 +1251,12 @@ export default {
         targetModelPlaceholder: '例如: gpt-5.4',
         removeExactMapping: '删除精确映射'
       },
+      codexConfig: {
+        defaultModel: 'Codex 配置首选模型',
+        defaultModelHint: '用于在“使用密钥”界面展示的 Codex 配置示例中的 model，不改变模型映射或请求限制。',
+        reviewModel: 'Codex 配置审查模型',
+        reviewModelHint: '用于在“使用密钥”界面展示的 Codex 配置示例中的 review_model。'
+      },
       openaiLive: {
         title: 'OpenAI Live',
         allow: '允许访问 Live',

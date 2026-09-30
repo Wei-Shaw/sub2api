@@ -4,6 +4,7 @@ import { createPinia } from "pinia";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { AdminGroup, CodexModelsManifestConfig } from "@/types";
+import { getCodexDefaultModel, getCodexDefaultReviewModel } from "@/constants/codexConfig";
 import GroupsView from "@/views/admin/GroupsView.vue";
 
 const {
@@ -12,12 +13,18 @@ const {
   getUsageSummary,
   getCapacitySummary,
   getLiveCapability,
+  createGroup,
+  updateGroup,
+  authState,
 } = vi.hoisted(() => ({
   listGroups: vi.fn(),
   getModelAllowlistCandidates: vi.fn(),
   getUsageSummary: vi.fn(),
   getCapacitySummary: vi.fn(),
   getLiveCapability: vi.fn(),
+  createGroup: vi.fn(),
+  updateGroup: vi.fn(),
+  authState: { isSimpleMode: false },
 }));
 
 vi.mock("@/api/admin", () => ({
@@ -29,8 +36,8 @@ vi.mock("@/api/admin", () => ({
       getUsageSummary,
       getCapacitySummary,
       getLiveCapability,
-      create: vi.fn(),
-      update: vi.fn(),
+      create: createGroup,
+      update: updateGroup,
       delete: vi.fn(),
       duplicate: vi.fn(),
       updateSortOrder: vi.fn(),
@@ -41,6 +48,8 @@ vi.mock("@/api/admin", () => ({
     },
   },
 }));
+
+vi.mock("@/stores/auth", () => ({ useAuthStore: () => authState }));
 
 vi.mock("@/stores/app", () => ({
   useAppStore: () => ({
@@ -112,6 +121,8 @@ const sourceGroup = {
   fallback_group_id_on_invalid_request: null,
   allow_messages_dispatch: false,
   allow_live: false,
+  codex_config_default_model: "existing-main",
+  codex_config_review_model: "existing-review",
   require_oauth_only: false,
   require_privacy_set: false,
   created_at: "2026-09-05T00:00:00Z",
@@ -220,7 +231,12 @@ const mountView = () =>
         GroupCapacityBadge: true,
         GroupRateMultipliersModal: true,
         GroupRPMOverridesModal: true,
-        ReasoningEffortPolicyFields: true,
+        ReasoningEffortPolicyFields: defineComponent({
+          setup(_, { expose }) {
+            expose({ validate: () => true, resetValidation: () => undefined });
+            return () => h("div");
+          },
+        }),
         CodexManifestAccountsField: CodexManifestAccountsFieldStub,
         PricingEntryCard: true,
         VueDraggable: true,
@@ -236,6 +252,9 @@ describe("GroupsView Codex manifest binding", () => {
     getUsageSummary.mockReset();
     getCapacitySummary.mockReset();
     getLiveCapability.mockReset();
+    createGroup.mockReset().mockResolvedValue({});
+    updateGroup.mockReset().mockResolvedValue({});
+    authState.isSimpleMode = false;
 
     listGroups.mockResolvedValue({
       items: [sourceGroup],
@@ -248,6 +267,62 @@ describe("GroupsView Codex manifest binding", () => {
     getUsageSummary.mockResolvedValue([]);
     getCapacitySummary.mockResolvedValue([]);
     getLiveCapability.mockResolvedValue({ supported: false });
+  });
+
+  it.each([false, true])("saves and resets Codex model settings (simple mode: %s)", async (simpleMode) => {
+    authState.isSimpleMode = simpleMode;
+    const wrapper = mountView();
+    await flushPromises();
+    const mainInput = () => wrapper.get('input[name="codex_config_default_model"]');
+    const reviewInput = () => wrapper.get('input[name="codex_config_review_model"]');
+
+    await wrapper.get('[data-tour="groups-create-btn"]').trigger("click");
+    expect(mainInput().attributes("placeholder")).toBe(getCodexDefaultModel("anthropic"));
+    expect(reviewInput().attributes("placeholder")).toBe(getCodexDefaultReviewModel("anthropic"));
+    for (const [platform, expectedMain, expectedReview] of [
+      ["openai", getCodexDefaultModel("openai"), getCodexDefaultReviewModel("openai")],
+      ["gemini", getCodexDefaultModel("gemini"), getCodexDefaultReviewModel("gemini")],
+      ["anthropic", getCodexDefaultModel("anthropic"), getCodexDefaultReviewModel("anthropic")],
+    ]) {
+      wrapper.getComponent('[data-tour="group-form-platform"]').vm.$emit("update:modelValue", platform);
+      await flushPromises();
+      expect(mainInput().attributes("placeholder")).toBe(expectedMain);
+      expect(reviewInput().attributes("placeholder")).toBe(expectedReview);
+    }
+    await wrapper.get('[data-tour="group-form-name"]').setValue("new group");
+    await mainInput().setValue("claude-opus-4-8");
+    expect(reviewInput().attributes("placeholder")).toBe(getCodexDefaultReviewModel("anthropic"));
+    await reviewInput().setValue("claude-haiku-4-5");
+    await wrapper.get("#create-group-form").trigger("submit");
+    await flushPromises();
+    expect(createGroup).toHaveBeenCalledWith(expect.objectContaining({
+      codex_config_default_model: "claude-opus-4-8",
+      codex_config_review_model: "claude-haiku-4-5",
+    }));
+    await wrapper.get('[data-tour="groups-create-btn"]').trigger("click");
+    expect((mainInput().element as HTMLInputElement).value).toBe("");
+    expect((reviewInput().element as HTMLInputElement).value).toBe("");
+    expect(reviewInput().attributes("placeholder")).toBe(getCodexDefaultReviewModel("anthropic"));
+    await wrapper.findAll("button").find((button) => button.text() === "common.cancel")!.trigger("click");
+
+    await wrapper.findAll("button").find((button) => button.text().includes("common.edit"))!.trigger("click");
+    await flushPromises();
+    expect((mainInput().element as HTMLInputElement).value).toBe("existing-main");
+    expect((reviewInput().element as HTMLInputElement).value).toBe("existing-review");
+    expect(mainInput().attributes("placeholder")).toBe(getCodexDefaultModel("openai"));
+    expect(reviewInput().attributes("placeholder")).toBe(getCodexDefaultReviewModel("openai"));
+    await mainInput().setValue(" custom-model ");
+    expect(reviewInput().attributes("placeholder")).toBe(getCodexDefaultReviewModel("openai"));
+    await mainInput().setValue("");
+    expect(reviewInput().attributes("placeholder")).toBe(getCodexDefaultReviewModel("openai"));
+    await reviewInput().setValue(" custom-review ");
+    await wrapper.get("#edit-group-form").trigger("submit");
+    await flushPromises();
+    expect(updateGroup).toHaveBeenCalledWith(sourceGroup.id, expect.objectContaining({
+      codex_config_default_model: "",
+      codex_config_review_model: "custom-review",
+    }));
+    wrapper.unmount();
   });
 
   it("preserves consecutive child updates on the reactive edit config", async () => {
