@@ -433,8 +433,25 @@ export default {
       records: {
         search: 'Search',
         searchPlaceholder: 'Email, username, user ID, or order number',
+        rebateSearchPlaceholder: 'Email, username, user ID, order number, or redeem code',
         startAt: 'Start date',
         endAt: 'End date',
+        sourceFilter: 'Rebate source',
+        source: 'Source',
+        sourceReference: 'Source reference',
+        baseAmount: 'Recharge amount',
+        sourceStatus: 'Source status',
+        sourceTypes: {
+          all: 'All sources',
+          payment_order: 'Payment order',
+          balance_redeem_code: 'Balance redeem code',
+          admin_recharge: 'Admin recharge',
+          legacy_unknown: 'Legacy unknown'
+        },
+        sourceStatuses: {
+          redeemed: 'Redeemed',
+          credited: 'Credited'
+        },
         inviter: 'Inviter',
         invitee: 'Invitee',
         user: 'User',
