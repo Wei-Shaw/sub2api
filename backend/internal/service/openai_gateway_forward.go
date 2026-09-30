@@ -1210,6 +1210,7 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 		}
 
 		serviceTier := extractOpenAIServiceTierFromBody(body)
+		setOpenAIResponseServiceTier(c, serviceTier)
 		// 上游接受后只保留计费需要的标量，避免响应处理期间继续保活完整 input/tools map。
 		reqBody = nil
 
